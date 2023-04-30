@@ -1,9 +1,11 @@
 {...}: {
   homebrew = {
     brews = [
-      "eclipse-installer"
     ];
     casks = [
+      # development
+      #      "awscli" # -> asdf
+
       # social
       "microsoft-auto-update"
       "microsoft-outlook"

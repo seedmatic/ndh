@@ -4,12 +4,12 @@
   nixConfig = {
     substituters = [
       "https://cache.nixos.org"
-      "https://kclejeune.cachix.org"
+      #      "https://kclejeune.cachix.org"
     ];
 
     trusted-public-keys = [
       "cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY="
-      "kclejeune.cachix.org-1:fOCrECygdFZKbMxHClhiTS6oowOkJ/I/dh9q9b1I4ko="
+      #      "kclejeune.cachix.org-1:fOCrECygdFZKbMxHClhiTS6oowOkJ/I/dh9q9b1I4ko="
     ];
   };
 
@@ -52,8 +52,6 @@
       then "/Users"
       else "/home";
     defaultSystems = [
-      "aarch64-linux"
-      "aarch64-darwin"
       "x86_64-darwin"
       "x86_64-linux"
     ];
@@ -125,7 +123,8 @@
     mkChecks = {
       arch,
       os,
-      username ? "kclejeune",
+      username ? "nxmatic",
+      profile ? "personal",
     }: {
       "${arch}-${os}" = {
         "${username}_${os}" =
@@ -134,13 +133,13 @@
             then self.darwinConfigurations
             else self.nixosConfigurations
           )
-          ."${username}@${arch}-${os}"
+          ."${username}+${profile}@${arch}-${os}"
           .config
           .system
           .build
           .toplevel;
         "${username}_home" =
-          self.homeConfigurations."${username}@${arch}-${os}".activationPackage;
+          self.homeConfigurations."${username}+${profile}@${arch}-${os}".activationPackage;
         devShell = self.devShells."${arch}-${os}".default;
       };
     };
@@ -148,83 +147,70 @@
     checks =
       {}
       // (mkChecks {
-        arch = "aarch64";
+        arch = "x86_64";
         os = "darwin";
+        profile = "work";
       })
       // (mkChecks {
         arch = "x86_64";
         os = "darwin";
-      })
-      // (mkChecks {
-        arch = "aarch64";
-        os = "linux";
-      })
-      // (mkChecks {
-        arch = "x86_64";
-        os = "linux";
+        profile = "personal";
       });
+    # // (mkChecks {
+    #   arch = "x86_64";
+    #   os = "linux";
+    #   profile = "personal";
+    # });
 
     darwinConfigurations = {
-      "kclejeune@aarch64-darwin" = mkDarwinConfig {
-        system = "aarch64-darwin";
-        extraModules = [./profiles/personal.nix ./modules/darwin/apps.nix];
-      };
-      "kclejeune@x86_64-darwin" = mkDarwinConfig {
+      "nxmatic+work@x86_64-darwin" = mkDarwinConfig {
         system = "x86_64-darwin";
-        extraModules = [./profiles/personal.nix ./modules/darwin/apps.nix];
-      };
-      "lejeukc1@aarch64-darwin" = mkDarwinConfig {
-        system = "aarch64-darwin";
         extraModules = [./profiles/work.nix];
       };
-      "lejeukc1@x86_64-darwin" = mkDarwinConfig {
-        system = "aarch64-darwin";
-        extraModules = [./profiles/work.nix];
+      "nxmatic+personal@x86_64-darwin" = mkDarwinConfig {
+        system = "x86_64-darwin";
+        extraModules = [./profiles/personal.nix];
       };
     };
 
     nixosConfigurations = {
-      "kclejeune@x86_64-linux" = mkNixosConfig {
-        system = "x86_64-linux";
-        hardwareModules = [
-          ./modules/hardware/phil.nix
-          inputs.nixos-hardware.nixosModules.lenovo-thinkpad-t460s
-        ];
-        extraModules = [./profiles/personal.nix];
-      };
-      "kclejeune@aarch64-linux" = mkNixosConfig {
-        system = "aarch64-linux";
-        hardwareModules = [./modules/hardware/phil.nix];
-        extraModules = [./profiles/personal.nix];
-      };
+      #   "nxmatic+work@x86_64-linux" = mkNixosConfig {
+      #     system = "x86_64-linux";
+      #     hardwareModules = [
+      #       ./modules/hardware/phil.nix
+      #       inputs.nixos-hardware.nixosModules.lenovo-thinkpad-t460s
+      #     ];
+      #     extraModules = [./profiles/work.nix];
+      #   };
+      #    "nxmatic+personal@x86_64-linux" = mkNixosConfig {
+      #      system = "x86_64-linux";
+      #      hardwareModules = [
+      #        ./modules/hardware/phil.nix
+      #        inputs.nixos-hardware.nixosModules.lenovo-thinkpad-t460s
+      #      ];
+      #     extraModules = [./profiles/personal.nix];
+      #   };
     };
 
     homeConfigurations = {
-      "kclejeune@x86_64-linux" = mkHomeConfig {
-        username = "kclejeune";
-        system = "x86_64-linux";
-        extraModules = [./profiles/home-manager/personal.nix];
-      };
-      "kclejeune@aarch64-linux" = mkHomeConfig {
-        username = "kclejeune";
-        system = "aarch64-linux";
-        extraModules = [./profiles/home-manager/personal.nix];
-      };
-      "kclejeune@x86_64-darwin" = mkHomeConfig {
-        username = "kclejeune";
+      "nxmatic+work@x86_64-darwin" = mkHomeConfig {
+        username = "nxmatic";
         system = "x86_64-darwin";
-        extraModules = [./profiles/home-manager/personal.nix];
-      };
-      "kclejeune@aarch64-darwin" = mkHomeConfig {
-        username = "kclejeune";
-        system = "aarch64-darwin";
-        extraModules = [./profiles/home-manager/personal.nix];
-      };
-      "lejeukc1@x86_64-linux" = mkHomeConfig {
-        username = "lejeukc1";
-        system = "x86_64-linux";
+        profile = "work";
         extraModules = [./profiles/home-manager/work.nix];
       };
+      "nxmatic+personal@x86_64-darwin" = mkHomeConfig {
+        username = "nxmatic";
+        system = "x86_64-darwin";
+        profile = "personal";
+        extraModules = [./profiles/home-manager/personal.nix];
+      };
+      # "nxmatic+personal@x86_64-linux" = mkHomeConfig {
+      #   username = "nxmatic";
+      #   system = "x86_64-linux";
+      #   profile = "personal";
+      #   extraModules = [./profiles/home-manager/personal.nix];
+      # };
     };
 
     devShells = eachSystemMap defaultSystems (system: let
@@ -296,7 +282,7 @@
           else
             cbpaste ''${@:+"$@"}
           fi
-        }
+                           }
 
         # ------------------------------------------------------------------------------
         if ! return 2>/dev/null; then

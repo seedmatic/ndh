@@ -1,10 +1,10 @@
 {...}: {
   programs.git = {
-    userEmail = "kennan@case.edu";
-    userName = "Kennan LeJeune";
+    userEmail = "stephane.lacoin@gmail.com";
+    userName = "Stephane Lacoin (aka nxmatic)";
     signing = {
-      key = "kennan@case.edu";
-      signByDefault = true;
+      key = "stephane.lacoin@gmail.com";
+      signByDefault = false;
     };
   };
 }

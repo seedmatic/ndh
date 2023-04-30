@@ -66,7 +66,7 @@ in {
       (mkZshPlugin {pkg = zsh-history-substring-search;})
     ];
     oh-my-zsh = {
-      enable = true;
+      enable = false;
       plugins = ["git" "sudo" "asdf"];
     };
   };

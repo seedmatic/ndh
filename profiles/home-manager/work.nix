@@ -17,8 +17,12 @@
   programs.git = {
     enable = true;
     lfs.enable = true;
-    userEmail = "kennan.lejeune@jhuapl.edu";
-    userName = "Kennan LeJeune";
+    userEmail = "stephane.lacoin@hyland.com";
+    userName = "Stephane Lacoin (aka nxmatic)";
+    signing = {
+      key = "stephane.lacoin@hyland.com";
+      signByDefault = true;
+    };
     extraConfig = {
       http.sslVerify = true;
       http.sslCAInfo = "/etc/ssl/certs/ca-certificates.crt";

@@ -5,45 +5,30 @@
       brewfile = true;
     };
     brews = [
-      "awscli"
-      "earthly"
     ];
 
     taps = [
-      "1password/tap"
-      "beeftornado/rmtree"
-      "cloudflare/cloudflare"
-      "earthly/earthly"
+      # base
       "homebrew/bundle"
       "homebrew/cask-fonts"
       "homebrew/cask-versions"
       "homebrew/services"
-      "koekeishiya/formulae"
-      "teamookla/speedtest"
+      # crypto
+      "1password/tap"
     ];
     casks = [
-      "1password"
-      "1password-cli"
+      # desktop
+      "raycast"
       "alt-tab"
       "appcleaner"
-      "bartender"
-      "docker"
-      "firefox-developer-edition"
-      "fork"
-      "google-chrome"
-      "gpg-suite"
       "hammerspoon"
-      "hot"
-      "iina"
-      "jetbrains-toolbox"
-      "kitty"
-      "obsidian"
-      "raycast"
-      # "rancher"
-      "stats"
-      "utm"
-      "visual-studio-code"
-      "zotero"
+
+      # crypto (should move in profiles)
+      "1password"
+      "1password-cli"
+
+      # terminal
+      #      "kitty" -> nix
     ];
   };
 }

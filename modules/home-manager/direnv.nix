@@ -1,30 +1,32 @@
-{config, ...}: {
+{...}: {
   programs.direnv = {
     enable = true;
     nix-direnv.enable = true;
     stdlib = ''
-      # stolen from @i077; store .direnv in cache instead of project dir
-      declare -A direnv_layout_dirs
+      use asdf
+
+      source_if_exists() {
+        local file=''${1}
+        [ ! -f ''${file} ] && return
+        source ''${file}
+      }
+
       direnv_layout_dir() {
-          echo "''${direnv_layout_dirs[$PWD]:=$(
-              echo -n "${config.xdg.cacheHome}"/direnv/layouts/
-              echo -n "$PWD" | shasum | cut -d ' ' -f 1
-          )}"
+        local pwd_hash
+        pwd_hash=$(basename "$PWD")-$(echo -n "$PWD" | shasum | cut -d ' ' -f 1 | head -c 7)
+        echo "$XDG_CACHE_HOME/direnv/layouts/$pwd_hash"
       }
 
-      layout_poetry() {
-        if [[ ! -f pyproject.toml ]]; then
-          log_error 'No pyproject.toml found. Use `poetry new` or `poetry init` to create one first.'
-          exit 2
-        fi
-
-        # create venv if it doesn't exist
-        poetry run true
-
-        export VIRTUAL_ENV=$(poetry env info --path)
-        export POETRY_ACTIVE=1
-        PATH_add "$VIRTUAL_ENV/bin"
+      function path() {
+       echo $1:$PATH | awk -v RS=: '!($0 in a) {a[$0]; printf("%s%s", length(a) > 1 ? ":" : "", $0)}'
       }
+
+      source_if_exists ''${BASH_SOURCE}~$(uname)
+      source_if_exists ''${BASH_SOURCE}~$(hostname)
+
+      source_if_exists ''${BASH_SOURCE}~golang
+      source_if_exists ''${BASH_SOURCE}~krew
+      source_if_exists ''${BASH_SOURCE}~pass
     '';
   };
 }

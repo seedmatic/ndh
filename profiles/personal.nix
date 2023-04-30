@@ -1,4 +1,4 @@
 {...}: {
-  user.name = "kclejeune";
+  user.name = "nxmatic";
   hm = {imports = [./home-manager/personal.nix];};
 }

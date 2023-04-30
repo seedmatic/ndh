@@ -19,7 +19,7 @@
   };
 
   user = {
-    description = "Kennan LeJeune";
+    description = "Stephane Lacoin";
     home = "${
       if pkgs.stdenvNoCC.isDarwin
       then "/Users"
@@ -47,26 +47,59 @@
   # environment setup
   environment = {
     systemPackages = with pkgs; [
+      # home manager
+      home-manager
+
+      # shells
+      bash
+      fish
+      zsh
+
+      # terminals
+      kitty
+      tmuxinator
+      tmux
+      # byobu (broken see above)
+
+      # git
+      tig
+
+      # disabled byobu, newt not installable on darwin, should use brew instead
+
       # editors
       neovim
+      emacs-nox
 
       # standard toolset
       coreutils-full
       findutils
       diffutils
+      ripgrep
       curl
       wget
       git
+      gh
       jq
+      yq
+
+      # virtual env manager for coding
+      asdf-vm
+
+      # keystore crypto
+      gnupg
+      passExtensions.pass-audit
+      passExtensions.pass-checkup
+      passExtensions.pass-otp
+      #passExtensions.update
+      pass-git-helper
+      sops
 
       # helpful shell stuff
+      broot
+      fd
       bat
       fzf
       ripgrep
-
-      # languages
-      python3
-      ruby
     ];
     etc = {
       home-manager.source = "${inputs.home-manager}";
@@ -79,6 +112,6 @@
 
   fonts = {
     fontDir.enable = true;
-    fonts = with pkgs; [jetbrains-mono];
+    fonts = with pkgs; [powerline-fonts];
   };
 }
