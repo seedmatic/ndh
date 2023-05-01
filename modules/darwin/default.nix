@@ -4,7 +4,6 @@
     ./core.nix
     ./brew.nix
     ./preferences.nix
-    ./display-manager.nix
-    #   ./asdf-vm.nix
+    #./display-manager.nix
   ];
 }

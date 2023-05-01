@@ -95,6 +95,7 @@
     # with overlays and any extraModules applied
     mkHomeConfig = {
       username,
+      zdotdirSource ? "/Volumes/Github/nxmatic/zdotdir",
       system ? "x86_64-linux",
       nixpkgs ? inputs.nixpkgs,
       baseModules ? [
@@ -102,6 +103,7 @@
         {
           home = {
             inherit username;
+            zdotdirSource = "${zdotdirSource}";
             homeDirectory = "${homePrefix system}/${username}";
             sessionVariables = {
               NIX_PATH = "nixpkgs=${nixpkgs}:stable=${inputs.stable}\${NIX_PATH:+:}$NIX_PATH";

@@ -32,7 +32,7 @@
   hm = {
     imports = [
       ./home-manager
-      ./home-manager/1password.nix
+      #./home-manager/1password.nix
     ];
   };
 
@@ -41,7 +41,7 @@
     extraSpecialArgs = {inherit self inputs;};
     useGlobalPkgs = true;
     useUserPackages = true;
-    backupFileExtension = "backup";
+    backupFileExtension = "nix-backup";
   };
 
   # environment setup
@@ -49,26 +49,6 @@
     systemPackages = with pkgs; [
       # home manager
       home-manager
-
-      # shells
-      bash
-      fish
-      zsh
-
-      # terminals
-      kitty
-      tmuxinator
-      tmux
-      # byobu (broken see above)
-
-      # git
-      tig
-
-      # disabled byobu, newt not installable on darwin, should use brew instead
-
-      # editors
-      neovim
-      emacs-nox
 
       # standard toolset
       coreutils-full
@@ -82,8 +62,35 @@
       jq
       yq
 
+      # shells
+      bash
+      fish
+      zsh
+
+      # terminals
+      kitty
+      tmuxinator
+      tmux
+      # byobu (broken see above)
+      # disabled byobu, newt not installable on darwin, should use brew instead
+
+      # helpful shell stuff
+      broot
+      fd
+      bat
+      fzf
+      ripgrep
+
+      # git
+      tig
+
+      # editors
+      neovim
+      emacs-nox
+
       # virtual env manager for coding
       asdf-vm
+      direnv
 
       # keystore crypto
       gnupg
@@ -94,12 +101,6 @@
       pass-git-helper
       sops
 
-      # helpful shell stuff
-      broot
-      fd
-      bat
-      fzf
-      ripgrep
     ];
     etc = {
       home-manager.source = "${inputs.home-manager}";

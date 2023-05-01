@@ -47,7 +47,8 @@
     ];
   };
   programs = {
-    yq = {
+    # crypto
+    oath-toolkit = {
       enable = true;
     };
   };

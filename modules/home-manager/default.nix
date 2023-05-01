@@ -13,7 +13,7 @@
     ./kitty.nix
     ./password-store.nix
     ./nushell.nix
-    ./nvim
+#    ./nvim
     ./shell.nix
     ./ssh.nix
     ./tldr.nix
@@ -24,9 +24,7 @@
     allowUnfree = true;
   };
 
-  home = let
-    NODE_GLOBAL = "${config.home.homeDirectory}/.node-packages";
-  in {
+  home = {
     # This value determines the Home Manager release that your
     # configuration is compatible with. This helps avoid breakage
     # when a new Home Manager release introduces backwards
@@ -38,15 +36,14 @@
     stateVersion = "22.05";
     sessionVariables = {
       GPG_TTY = "/dev/ttys000";
-      EDITOR = "nvim";
-      VISUAL = "nvim";
+      EDITOR = "emacs";
+      VISUAL = "code";
       CLICOLOR = 1;
       LSCOLORS = "ExFxBxDxCxegedabagacad";
       KAGGLE_CONFIG_DIR = "${config.xdg.configHome}/kaggle";
       NODE_PATH = "${NODE_GLOBAL}/lib";
     };
     sessionPath = [
-      "${NODE_GLOBAL}/bin"
       "${config.home.homeDirectory}/.rd/bin"
       "${config.home.homeDirectory}/.local/bin"
     ];
@@ -125,6 +122,8 @@
       yq
     ];
   };
+
+  #targets.genericLinux.enable = true;
 
   programs = {
     home-manager = {

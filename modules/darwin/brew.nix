@@ -14,7 +14,7 @@
       "homebrew/cask-versions"
       "homebrew/services"
       # crypto
-      "1password/tap"
+      #"1password/tap"
     ];
     casks = [
       # desktop
@@ -24,8 +24,8 @@
       "hammerspoon"
 
       # crypto (should move in profiles)
-      "1password"
-      "1password-cli"
+      #"1password"
+      #"1password-cli"
 
       # terminal
       #      "kitty" -> nix
