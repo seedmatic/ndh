@@ -4,6 +4,7 @@
     kubectl
     kubernetes-helm
     kustomize
+    krew
     vault-bin
   ];
   home.sessionVariables = rec {

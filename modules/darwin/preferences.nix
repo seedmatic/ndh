@@ -111,4 +111,5 @@
     enableKeyMapping = true;
     remapCapsLockToControl = true;
   };
+
 }

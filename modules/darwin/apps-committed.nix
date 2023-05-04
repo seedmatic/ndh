@@ -1,19 +1,6 @@
 {...}: {
   homebrew = {
-    enable = true;
-    global = {
-      brewfile = true;
-    };
     brews = [
-      # # ide
-      # "eclipse-installer"
-      # "visual-studio-code"
-
-      # crypto
-      #      "pass" -> nix
-      #      "pass-otp" -> nix
-      #      "pass-git-helper" -> nix
-
       # social
       "brave-browser"
       "discord"
@@ -27,17 +14,7 @@
       "zoom"
     ];
 
-    taps = [
-      "koekeishiya/formulae"
-      "teamookla/speedtest"
-    ];
     casks = [
-      # virtualization
-      "utm"
-
-      # containers
-      "rancher"
-
       # ide
       #      "visual-studio-code" -> nix
 
@@ -48,8 +25,15 @@
   };
   programs = {
     # crypto
+    gpg.enable = true;
+    password-store.enable = true;
     oath-toolkit = {
       enable = true;
     };
+    # shell 
+    powerline-go.enable = false; # prompt
+    zoxide.enable = true;        # cd
+    # document viewer
+    zathura.enable = true;
   };
 }

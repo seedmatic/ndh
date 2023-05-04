@@ -47,10 +47,12 @@
     inherit (flake-utils.lib) eachSystemMap;
 
     isDarwin = system: (builtins.elem system inputs.nixpkgs.lib.platforms.darwin);
+
     homePrefix = system:
       if isDarwin system
       then "/Users"
       else "/home";
+
     defaultSystems = [
       "x86_64-darwin"
       "x86_64-linux"
@@ -126,7 +128,7 @@
       arch,
       os,
       username ? "nxmatic",
-      profile ? "personal",
+      profile ? "core",
     }: {
       "${arch}-${os}" = {
         "${username}_${os}" =
@@ -156,77 +158,90 @@
       // (mkChecks {
         arch = "x86_64";
         os = "darwin";
-        profile = "personal";
+        profile = "committed";
       });
     # // (mkChecks {
     #   arch = "x86_64";
     #   os = "linux";
-    #   profile = "personal";
+    #   profile = "core";
     # });
 
     darwinConfigurations = {
-      "nxmatic+work@x86_64-darwin" = mkDarwinConfig {
+      "work@x86_64-darwin" = mkDarwinConfig {
         system = "x86_64-darwin";
-        extraModules = [./profiles/work.nix];
+        extraModules = [
+          ./profiles/work.nix
+        ];
       };
-      "nxmatic+personal@x86_64-darwin" = mkDarwinConfig {
+      "committed@x86_64-darwin" = mkDarwinConfig {
         system = "x86_64-darwin";
-        extraModules = [./profiles/personal.nix];
+        extraModules = [
+          ./profiles/uncommitted.nix
+        ];
       };
     };
 
     nixosConfigurations = {
-      #   "nxmatic+work@x86_64-linux" = mkNixosConfig {
+      #   "work@x86_64-linux" = mkNixosConfig {
       #     system = "x86_64-linux";
       #     hardwareModules = [
       #       ./modules/hardware/phil.nix
       #       inputs.nixos-hardware.nixosModules.lenovo-thinkpad-t460s
       #     ];
-      #     extraModules = [./profiles/work.nix];
+      #     extraModules = [./profiles/work.nix ./profiles/committed.nix ];
       #   };
-      #    "nxmatic+personal@x86_64-linux" = mkNixosConfig {
+      #    "committed@x86_64-linux" = mkNixosConfig {
       #      system = "x86_64-linux";
       #      hardwareModules = [
       #        ./modules/hardware/phil.nix
       #        inputs.nixos-hardware.nixosModules.lenovo-thinkpad-t460s
       #      ];
-      #     extraModules = [./profiles/personal.nix];
+      #     extraModules = [./profiles/committed.nix];
       #   };
     };
 
     homeConfigurations = {
-      "nxmatic+work@x86_64-darwin" = mkHomeConfig {
+      "work@x86_64-darwin" = mkHomeConfig {
         username = "nxmatic";
         system = "x86_64-darwin";
         profile = "work";
-        extraModules = [./profiles/home-manager/work.nix];
+        extraModules = [
+          ./profiles/home-manager/work.nix
+          ./profiles/home-manager/committed
+        ];
       };
-      "nxmatic+personal@x86_64-darwin" = mkHomeConfig {
+      "committed@x86_64-darwin" = mkHomeConfig {
         username = "nxmatic";
         system = "x86_64-darwin";
-        profile = "personal";
-        extraModules = [./profiles/home-manager/personal.nix];
+        profile = "committed";
+        extraModules = [
+          ./profiles/home-manager/committed.nix
+        ];
       };
-      # "nxmatic+personal@x86_64-linux" = mkHomeConfig {
+      # "nxmatic+committed@x86_64-linux" = mkHomeConfig {
       #   username = "nxmatic";
       #   system = "x86_64-linux";
-      #   profile = "personal";
-      #   extraModules = [./profiles/home-manager/personal.nix];
+      #   profile = "committed";
+      #   extraModules = [
+      #     ./profiles/home-manager/committed.nix
+      #   ];
       # };
     };
 
-    devShells = eachSystemMap defaultSystems (system: let
-      pkgs = import inputs.nixpkgs {
-        inherit system;
-        overlays = builtins.attrValues self.overlays;
-      };
+    devShells = eachSystemMap defaultSystems (
+      system: let
+        pkgs = import inputs.nixpkgs {
+          inherit system;
+          overlays = builtins.attrValues self.overlays;
+        };
     in {
-      default = devenv.lib.mkShell {
-        inherit inputs pkgs;
-        modules = [
-          (import ./devenv.nix)
-        ];
-      };
+      default =
+        devenv.lib.mkShell {
+          inherit inputs pkgs;
+          modules = [
+            (import ./devenv.nix)
+          ];
+        };
     });
 
     packages = eachSystemMap defaultSystems (system: let

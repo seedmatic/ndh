@@ -1,9 +1,10 @@
 {...}: {
   imports = [
     ../common.nix
+    ./preferences.nix
+    ./security.nix
     ./core.nix
     ./brew.nix
-    ./preferences.nix
     #./display-manager.nix
   ];
 }

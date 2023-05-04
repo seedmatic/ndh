@@ -12,10 +12,25 @@
 
   nixpkgs.overlays = builtins.attrValues self.overlays;
 
-  programs.zsh = {
-    enable = true;
-    enableCompletion = true;
-    enableBashCompletion = true;
+  programs = {
+
+    zsh = {
+      enable = true;
+      enableCompletion = true;
+      enableBashCompletion = true;
+    };
+
+    # 
+    # dircolors.enable = true;
+    # git.enable = true;
+    # go.enable = true;
+    # htop.enable = true;
+    # jq.enable = true;
+    # yq.enable = true;
+    # less.enable = true;
+    # man.enable = true;
+    # nix-index.enable = true;
+    # pandoc.enable = true;
   };
 
   user = {
@@ -61,6 +76,7 @@
       gh
       jq
       yq
+      remake
 
       # shells
       bash
@@ -100,13 +116,16 @@
       #passExtensions.update
       pass-git-helper
       sops
+      pinentry
 
     ];
+
     etc = {
       home-manager.source = "${inputs.home-manager}";
       nixpkgs.source = "${inputs.nixpkgs}";
       stable.source = "${inputs.stable}";
     };
+
     # list of acceptable shells in /etc/shells
     shells = with pkgs; [bash zsh fish];
   };

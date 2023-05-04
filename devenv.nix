@@ -13,12 +13,7 @@
 
   pre-commit = {
     hooks = {
-      black.enable = true;
-      shellcheck.enable = true;
-      alejandra.enable = true;
-      deadnix.enable = true;
-      shfmt.enable = false;
-      stylua.enable = true;
+      (import ./treefmt.nix)
     };
 
     settings = {

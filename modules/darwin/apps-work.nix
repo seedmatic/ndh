@@ -1,4 +1,6 @@
-{...}: {
+{...}: recursiveMergeAttrs [
+  import 
+  {
   homebrew = {
     brews = [
     ];
@@ -7,10 +9,15 @@
       #      "awscli" # -> asdf
 
       # social
-      "microsoft-auto-update"
       "microsoft-outlook"
       "microsoft-teams"
     ];
     masApps = {};
   };
-}
+  programs = {
+    home-manager = {
+      krew.enable = true;
+    };
+  };
+  }
+]

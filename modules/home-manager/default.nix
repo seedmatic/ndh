@@ -5,6 +5,7 @@
 }: {
   imports = [
     ./bat.nix
+    ./dircolors.nix
     ./direnv.nix
     ./dotfiles
     ./fzf.nix
@@ -13,7 +14,7 @@
     ./kitty.nix
     ./password-store.nix
     ./nushell.nix
-#    ./nvim
+    ./nvim
     ./shell.nix
     ./ssh.nix
     ./tldr.nix
@@ -42,6 +43,7 @@
       LSCOLORS = "ExFxBxDxCxegedabagacad";
       KAGGLE_CONFIG_DIR = "${config.xdg.configHome}/kaggle";
       NODE_PATH = "${NODE_GLOBAL}/lib";
+      HOMEBREW_NO_AUTO_UPDATE = 1;
     };
     sessionPath = [
       "${config.home.homeDirectory}/.rd/bin"
@@ -69,10 +71,17 @@
       gnugrep
       gnupg
       gnused
-      google-cloud-sdk
+      (
+        google-cloud-sdk.withExtraComponents(
+          [ google-cloud-sdk.components.gke-gcloud-auth-plugin ]
+        )
+      )
       helm-docs
       httpie
       hurl
+      unstable.jdk11
+      k9s
+      krew
       kubectl
       kubectx
       kubernetes-helm
