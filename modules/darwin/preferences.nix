@@ -74,10 +74,13 @@
       AutomaticallyInstallMacOSUpdates = true;
     };
 
-    universalaccess = {
-      closeViewScrollWheelToggle = true;
-      closeViewZoomFollowsFocus = true;
-    };
+    # univesal access
+    # should investigate if really needed, error with default write
+    
+    # universalaccess = {
+    #   closeViewScrollWheelToggle = true;
+    #   closeViewZoomFollowsFocus = true;
+    # };
     
     NSGlobalDomain = {
       "com.apple.sound.beep.feedback" = 0;

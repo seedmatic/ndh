@@ -20,6 +20,8 @@ vim.opt.incsearch = true
 vim.opt.hlsearch = true
 vim.opt.foldenable = false
 
+vim.cmd 'colorscheme modus-operandi'
+
 function vim.fn.stripTrailingWhitespace()
     local l = vim.fn.line(".")
     local c = vim.fn.col(".")

@@ -20,7 +20,7 @@
       enableBashCompletion = true;
     };
 
-    # 
+    #
     # dircolors.enable = true;
     # git.enable = true;
     # go.enable = true;
@@ -117,7 +117,8 @@
       pass-git-helper
       sops
       pinentry
-
+#     pinentry-curses
+#     pinentry_mac
     ];
 
     etc = {

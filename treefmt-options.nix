@@ -1,4 +1,4 @@
-{ ... }: {
+{
     alejandra.enable = true;
     black.enable = true;
     gofmt.enable = true;

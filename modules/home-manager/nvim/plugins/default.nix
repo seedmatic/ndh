@@ -1,10 +1,10 @@
 {...}: {
   imports = [
     ./coc
+    ./packer
     ./fzf
     ./lualine-nvim
     ./telescope
-    ./theme
     ./treesitter
     ./vim-closetag
   ];

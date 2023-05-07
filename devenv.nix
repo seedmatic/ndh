@@ -12,9 +12,7 @@
   ];
 
   pre-commit = {
-    hooks = {
-      (import ./treefmt.nix)
-    };
+    hooks = (import ./treefmt-options.nix);
 
     settings = {
       deadnix.edit = true;

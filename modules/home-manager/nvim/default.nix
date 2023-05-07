@@ -2,10 +2,8 @@
   config,
   pkgs,
   lib,
-  ...
+ ...
 }: {
-  imports = [./plugins];
-
   lib.vimUtils = rec {
     # For plugins configured with lua
     wrapLuaConfig = luaConfig: ''
@@ -29,7 +27,19 @@
       inherit plugin;
       config = readVimConfig file;
     };
+    # from git
+    pluginGit = ref: repo: pkgs.vimUtils.buildVimPluginFrom2Nix {
+      pname = "${lib.strings.sanitizeDerivationName repo}";
+      version = ref;
+      src = builtins.fetchGit {
+        url = "https://github.com/${repo}.git";
+        ref = ref;
+      };
+    };
+
   };
+
+  imports = [./plugins];
 
   programs.neovim = {
     enable = true;
@@ -54,10 +64,12 @@
       # vim addon utilities
       direnv-vim
       ranger-vim
+
     ];
     extraConfig = ''
       ${config.lib.vimUtils.readVimConfig ./settings.lua}
-      ${config.lib.vimUtils.readVimConfigRaw ./keybindings.lua}
+      ${config.lib.vimUtils.readVimConfig ./keybindings.lua}
+      ${config.lib.vimUtils.readVimConfig ./terminfo.vim}
     '';
   };
 }

@@ -16,7 +16,7 @@ in {
       font_size = 12;
       strip_trailing_spaces = "smart";
       enable_audio_bell = "no";
-      term = "xterm-256color";
+      term = "xterm-kitty";
       macos_titlebar_color = "background";
       macos_option_as_alt = "yes";
       scrollback_lines = 10000;
