@@ -1,3 +1,5 @@
+
+
 {
   config,
   pkgs,
@@ -166,4 +168,5 @@
     zathura.enable = true;
     zoxide.enable = true;
   };
+
 }

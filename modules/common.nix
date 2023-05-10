@@ -62,8 +62,9 @@
   # environment setup
   environment = {
     systemPackages = with pkgs; [
-      # home manager
+      # nix
       home-manager
+      nix-index
 
       # standard toolset
       coreutils-full
@@ -73,7 +74,6 @@
       curl
       wget
       git
-      gh
       jq
       yq
       remake
@@ -82,6 +82,14 @@
       bash
       fish
       zsh
+
+      # github cli
+      gh
+      actionlint
+
+      # shell debugging
+      shellcheck
+      bashdb
 
       # terminals
       kitty
@@ -105,8 +113,8 @@
       emacs-nox
 
       # virtual env manager for coding
-      asdf-vm
       direnv
+      lorri
 
       # keystore crypto
       gnupg
