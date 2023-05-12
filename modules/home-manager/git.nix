@@ -17,6 +17,7 @@
       pull.rebase = true;
       push.followTags = true;
       push.autoSetupRemote = true;
+      rebase.autoStash = true;
     };
     aliases = {
       fix = "commit --amend --no-edit";
@@ -24,13 +25,13 @@
       sub = "submodule update --init --recursive";
     };
     delta = {
-      enable = false;
+      enable = true;
       options = {
         side-by-side = true;
         line-numbers = true;
       };
     };
-    difftastic.enable = true;
+    difftastic.enable = false;
     lfs.enable = true;
   };
 }
