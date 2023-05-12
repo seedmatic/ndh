@@ -75,17 +75,13 @@
       wget
       git
       jq
-      yq
+      yq-go
       remake
 
       # shells
       bash
       fish
       zsh
-
-      # github cli
-      gh
-      actionlint
 
       # shell debugging
       shellcheck
@@ -95,6 +91,7 @@
       kitty
       tmuxinator
       tmux
+      reattach-to-user-namespace
       # byobu (broken see above)
       # disabled byobu, newt not installable on darwin, should use brew instead
 
@@ -108,6 +105,10 @@
       # git
       tig
 
+      # github cli
+      gh
+      actionlint
+
       # editors
       neovim
       emacs-nox
@@ -115,6 +116,10 @@
       # virtual env manager for coding
       direnv
       lorri
+
+      # container runtimes
+      colima
+      docker-client
 
       # keystore crypto
       gnupg

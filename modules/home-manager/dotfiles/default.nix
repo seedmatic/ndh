@@ -47,5 +47,8 @@
 
   };
 
+  imports = [
+    ./git.nix
+  ];
 
 }

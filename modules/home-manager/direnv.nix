@@ -3,6 +3,8 @@
     enable = true;
     nix-direnv.enable = true;
 
+    enableZshIntegration = true;
+
     stdlib = ''
       source_if_exists() {
         local file=''${1}

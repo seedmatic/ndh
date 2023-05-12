@@ -1,0 +1,2 @@
+[alias]
+  dtf = "!git --git-dir=${ZDOTGIT_DIR} --work-tree=${HOME}"

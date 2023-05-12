@@ -14,7 +14,8 @@ in {
     settings = {
       PASSWORD_STORE_DIR = "${store}";
       #       PASSWORD_STORE_KEY = "12345678";
-      PASSWORD_STORE_CLIP_TIME = "60";
+      PASSWORD_STORE_CLIP_TIME = "60";      
+      PASSWORD_STORE_ENABLE_EXTENSIONS = "true";
     };
   };
 }

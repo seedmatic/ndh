@@ -30,10 +30,17 @@
     oath-toolkit = {
       enable = true;
     };
+    # editor
+    emacs.enable = true;
     # shell 
-    powerline-go.enable = false; # prompt
+    powerline-go.enable = true;  # prompt
     zoxide.enable = true;        # cd
     # document viewer
     zathura.enable = true;
+  };
+  environment.services = {
+    emacs = {
+      enable == true;
+    };
   };
 }

@@ -1,5 +1,3 @@
-
-
 {
   config,
   pkgs,
@@ -10,6 +8,7 @@
     ./dircolors.nix
     ./direnv.nix
     ./dotfiles
+    ./emacs.nix
     ./fzf.nix
     ./git.nix
     ./gh.nix
@@ -18,7 +17,7 @@
     ./password-store.nix
     ./nushell.nix
     ./nvim
-    ./shell.nix
+    ./shell
     ./ssh.nix
     ./tldr.nix
     ./tmux.nix
@@ -41,16 +40,15 @@
     sessionVariables = {
       GPG_TTY = "/dev/ttys000";
       EDITOR = "emacs";
-      VISUAL = "code";
+      VISUAL = "emacs";
       CLICOLOR = 1;
       LSCOLORS = "ExFxBxDxCxegedabagacad";
       KAGGLE_CONFIG_DIR = "${config.xdg.configHome}/kaggle";
       NODE_PATH = "${NODE_GLOBAL}/lib";
       HOMEBREW_NO_AUTO_UPDATE = 1;
-      XDG_CACHE_HOME  = "$HOME/.cache";
-      XDG_CONFIG_HOME = "$HOME/.config";
-      XDG_DATA_HOME   = "$HOME/.local/share";
+      XDG_RUNTIME_DIR  = "$HOME/.xdg";
       XDG_BIN_HOME    = "$HOME/.local/bin";
+      ZDOTDIR         = "${config.xdg.configHome}/zsh";
     };
     sessionPath = [
       "${config.home.homeDirectory}/.rd/bin"
@@ -135,7 +133,7 @@
       trivy
       vagrant
       yarn
-      yq
+      yq-go
     ];
   };
 
