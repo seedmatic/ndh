@@ -20,17 +20,6 @@
       enableBashCompletion = true;
     };
 
-    #
-    # dircolors.enable = true;
-    # git.enable = true;
-    # go.enable = true;
-    # htop.enable = true;
-    # jq.enable = true;
-    # yq.enable = true;
-    # less.enable = true;
-    # man.enable = true;
-    # nix-index.enable = true;
-    # pandoc.enable = true;
   };
 
   user = {
@@ -103,6 +92,7 @@
       ripgrep
 
       # git
+      git
       tig
 
       # github cli
@@ -113,25 +103,49 @@
       neovim
       emacs-nox
 
+      # social
+      #      brave
+      #      keybase ( AudioFormat.h:161:8: error: redefinition of 'AudioFormatListItem')
+      slack
+      zoom-us
+
+      # shell
+      powerline-go
+      zoxide
+
+      # document viewer
+      zathura
+
+      # knowledge base (need glibc on darwin)
+      # obsidian 
+      # zotero
+
       # virtual env manager for coding
       direnv
       lorri
 
       # container runtimes
+      lima
       colima
+      qemu
       docker-client
 
       # keystore crypto
       gnupg
+      pinentry
+#     pinentry-curses
+#     pinentry_mac
+
+      oath-toolkit
+
+      pass
       passExtensions.pass-audit
       passExtensions.pass-checkup
       passExtensions.pass-otp
       #passExtensions.update
       pass-git-helper
+
       sops
-      pinentry
-#     pinentry-curses
-#     pinentry_mac
     ];
 
     etc = {

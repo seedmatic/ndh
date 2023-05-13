@@ -15,18 +15,23 @@
     GIT_SSL_CAINFO = NIX_SSL_CERT_FILE;
     NODE_EXTRA_CA_CERTS = NIX_SSL_CERT_FILE;
   };
-  programs.git = {
-    enable = true;
-    lfs.enable = true;
-    userEmail = "stephane.lacoin@hyland.com";
-    userName = "Stephane Lacoin (aka nxmatic)";
-    signing = {
-      key = "stephane.lacoin@hyland.com";
-      signByDefault = true;
+  programs = {
+    # version control
+    git = {
+      enable = true;
+      lfs.enable = true;
+      userEmail = "stephane.lacoin@hyland.com";
+      userName = "Stephane Lacoin (aka nxmatic)";
+      signing = {
+        key = "stephane.lacoin@hyland.com";
+        signByDefault = true;
+      };
+      extraConfig = {
+        http.sslVerify = true;
+        http.sslCAInfo = "/etc/ssl/certs/ca-certificates.crt";
+      };
     };
-    extraConfig = {
-      http.sslVerify = true;
-      http.sslCAInfo = "/etc/ssl/certs/ca-certificates.crt";
-    };
+    # kubernetes
+    krew.enable = true;
   };
 }

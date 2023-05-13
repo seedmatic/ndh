@@ -2,12 +2,7 @@
   homebrew = {
     brews = [
       # social
-      "brave-browser"
-      "discord"
-      "dropbox"
       "google-drive"
-      "keybase"
-      "messenger"
       "notion"
       "signal"
       "slack"
@@ -23,24 +18,27 @@
       #      "obsidian" -> nix
     ];
   };
-  programs = {
-    # crypto
-    gpg.enable = true;
-    password-store.enable = true;
-    oath-toolkit = {
-      enable = true;
-    };
-    # editor
+  # programs = {
+  #   # crypto
+  #   discord.enable = true;
+  #   dropbox.enable = true;
+  #   gpg.enable = true;
+  #   password-store.enable = true;
+  #   oath-toolkit.enable = true;
+  #   # social
+  #   brave.enable = true;
+  #   keybase.enable = true;
+  #   slack.enabled = true;
+  #   zoom-us.enable = true;
+  #   # editor
+  #   emacs-nox.enable = true;
+  #   # shell 
+  #   powerline-go.enable = true;  # prompt
+  #   zoxide.enable = true;        # cd
+  #   # document viewer
+  #   zathura.enable = true;
+  # };
+  services = {
     emacs.enable = true;
-    # shell 
-    powerline-go.enable = true;  # prompt
-    zoxide.enable = true;        # cd
-    # document viewer
-    zathura.enable = true;
-  };
-  environment.services = {
-    emacs = {
-      enable == true;
-    };
   };
 }

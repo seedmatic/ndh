@@ -1,6 +1,4 @@
-{...}: recursiveMergeAttrs [
-  import 
-  {
+{...}: {
   homebrew = {
     brews = [
     ];
@@ -19,5 +17,4 @@
       krew.enable = true;
     };
   };
-  }
-]
+}
