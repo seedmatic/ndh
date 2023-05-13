@@ -6,4 +6,5 @@
   services = {
     emacs.enable = true;
   };
+
 }

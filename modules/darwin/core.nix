@@ -28,6 +28,10 @@ in {
 
   nixpkgs.config.allowBroken = true;
   
+  launchd.user.envVariables = {
+    XDG_RUNTIME_DIR = "${config.user.home}/.xdg";
+  };
+
   # Auto upgrade nix package and the daemon service.
   services.nix-daemon.enable = true;
 

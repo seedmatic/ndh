@@ -37,6 +37,7 @@
     # the Home Manager release notes for a list of state version
     # changes in each release.
     stateVersion = "22.05";
+
     sessionVariables = {
       GPG_TTY = "/dev/ttys000";
       EDITOR = "emacs";
@@ -50,6 +51,7 @@
       XDG_BIN_HOME    = "$HOME/.local/bin";
       ZDOTDIR         = "${config.xdg.configHome}/zsh";
     };
+
     sessionPath = [
       "${config.home.homeDirectory}/.rd/bin"
       "${config.home.homeDirectory}/.local/bin"
