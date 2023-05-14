@@ -88,7 +88,6 @@
       httpie
       hurl
       unstable.jdk11
-      k9s
       krew
       kubectl
       kubectx
@@ -136,7 +135,7 @@
       trivy
       vagrant
       yarn
-      yq-go
+      unstable.yq-go
     ];
   };
 
