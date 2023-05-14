@@ -36,7 +36,6 @@
   hm = {
     imports = [
       ./home-manager
-      #./home-manager/1password.nix
     ];
   };
 
@@ -103,8 +102,14 @@
       neovim
       emacs-nox
 
+      # ide
+      vscode
+
+      # web browsing
+      #      brave (glibc)
+      w3m
+
       # social
-      #      brave
       #      keybase ( AudioFormat.h:161:8: error: redefinition of 'AudioFormatListItem')
       slack
       zoom-us
@@ -117,7 +122,7 @@
       zathura
 
       # knowledge base (need glibc on darwin)
-      # obsidian 
+      # obsidian
       # zotero
 
       # virtual env manager for coding

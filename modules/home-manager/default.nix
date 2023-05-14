@@ -14,13 +14,14 @@
     ./gh.nix
     ./keychain.nix
     ./kitty.nix
-    ./password-store.nix
-    ./nushell.nix
     ./nvim
+    ./nushell.nix
+    ./password-store.nix
     ./shell
     ./ssh.nix
     ./tldr.nix
     ./tmux.nix
+    ./vscode
   ];
 
   nixpkgs.config = {

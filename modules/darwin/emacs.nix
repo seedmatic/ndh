@@ -3,8 +3,9 @@
   ...
 }: {
   
-  services = {
-    emacs.enable = true;
+  services.emacs = {
+    enable = true;
+    package = pkgs.emacs-nox;
   };
 
 }
