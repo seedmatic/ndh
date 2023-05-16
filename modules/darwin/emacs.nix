@@ -1,4 +1,5 @@
 {
+  config,
   pkgs,
   ...
 }: {
@@ -8,4 +9,8 @@
     package = pkgs.emacs-nox;
   };
 
+  launchd.user.agents.emacs.serviceConfig = {
+    KeepAlive = true;
+	  UserName = "${config.user.name}";
+  };
 }
