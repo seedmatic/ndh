@@ -106,7 +106,7 @@
     # with overlays and any extraModules applied
     mkHomeConfig = {
       username,
-      zdotdirSource ? "/Volumes/Github/nxmatic/zdotdir",
+      profile,
       system ? "x86_64-linux",
       nixpkgs ? inputs.nixpkgs,
       baseModules ? [
@@ -114,7 +114,6 @@
         {
           home = {
             inherit username;
-            zdotdirSource = "${zdotdirSource}";
             homeDirectory = "${homePrefix system}/${username}";
             sessionVariables = {
               NIX_PATH = "nixpkgs=${nixpkgs}:stable=${inputs.stable}\${NIX_PATH:+:}$NIX_PATH";
@@ -146,13 +145,13 @@
             then self.darwinConfigurations
             else self.nixosConfigurations
           )
-          ."${username}+${profile}@${arch}-${os}"
+          ."${profile}@${arch}-${os}"
           .config
           .system
           .build
           .toplevel;
         "${username}_home" =
-          self.homeConfigurations."${username}+${profile}@${arch}-${os}".activationPackage;
+          self.homeConfigurations."${profile}@${arch}-${os}".activationPackage;
         devShell = self.devShells."${arch}-${os}".default;
       };
     };
@@ -226,7 +225,7 @@
           ./profiles/home-manager/committed.nix
         ];
       };
-      # "nxmatic+committed@x86_64-linux" = mkHomeConfig {
+      # "committed@x86_64-linux" = mkHomeConfig {
       #   username = "nxmatic";
       #   system = "x86_64-linux";
       #   profile = "committed";

@@ -126,6 +126,7 @@
       rsync
       (ruby.withPackages (ps: with ps; [rufo solargraph]))
       shellcheck
+      sops
       stylua
       sysdo
       terraform
@@ -135,6 +136,7 @@
       trivy
       vagrant
       yarn
+      yamllint
       unstable.yq-go
     ];
   };

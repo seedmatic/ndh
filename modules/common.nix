@@ -44,11 +44,17 @@
     extraSpecialArgs = {inherit self inputs;};
     useGlobalPkgs = true;
     useUserPackages = true;
+    verbose = true;
     backupFileExtension = "nix-backup";
   };
 
   # environment setup
   environment = {
+
+    variables = {
+      XDG_RUNTIME_DIR = "${config.user.home}/.xdg";
+    };
+
     systemPackages = with pkgs; [
       # nix
       home-manager
@@ -62,9 +68,11 @@
       curl
       wget
       git
-      jq
-      yq-go
       remake
+
+      # yaml
+      yq-go
+      yamllint
 
       # shells
       bash
@@ -95,8 +103,8 @@
       tig
 
       # github cli
-      gh
       actionlint
+      gh
 
       # editors
       neovim
