@@ -110,12 +110,17 @@
       neovim
       emacs-nox
 
+      # java
+      jdk19
+      # maven (use mvnd, mvnw wrapper instead)
+
       # ide
       vscode
 
       # web browsing
       #      brave (glibc)
       w3m
+      html2text
 
       # social
       #      keybase ( AudioFormat.h:161:8: error: redefinition of 'AudioFormatListItem')
@@ -158,7 +163,7 @@
       #passExtensions.update
       pass-git-helper
 
-      sops
+      unstable.sops
     ];
 
     etc = {

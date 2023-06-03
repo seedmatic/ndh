@@ -87,7 +87,8 @@
       helm-docs
       httpie
       hurl
-      unstable.jdk11
+      jdk19
+      k9s
       krew
       kubectl
       kubectx
