@@ -20,7 +20,7 @@ jobs:
       - name: Update flake.lock
         uses: DeterminateSystems/update-flake-lock@v19
         with:
-          token: ${{ secrets.ACTIONS_TOKEN }}
+          token: ${{ secrets.REPO_ACCESS_TOKEN }}
           pr-title: "Update flake.lock"
           pr-labels: |
             dependencies
