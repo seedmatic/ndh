@@ -16,7 +16,7 @@ jobs:
       - name: Install Nix
         uses: DeterminateSystems/nix-installer-action@v4
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.REPO_ACCESS_TOKEN }}
       - name: Update flake.lock
         uses: DeterminateSystems/update-flake-lock@v19
         with:
