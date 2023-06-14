@@ -11,7 +11,8 @@
     ./emacs.nix
     ./fzf.nix
     ./git.nix
-    ./gh.nix
+#    ./gh.nix
+    ./java.nix
     ./keychain.nix
     ./kitty.nix
     ./nvim
@@ -87,7 +88,7 @@
       helm-docs
       httpie
       hurl
-      jdk19
+      jdk
       k9s
       krew
       kubectl

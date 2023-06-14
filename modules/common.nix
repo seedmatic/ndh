@@ -111,11 +111,12 @@
       emacs-nox
 
       # java
-      jdk19
+      jdk
       # maven (use mvnd, mvnw wrapper instead)
 
       # ide
       vscode
+      openvscode-server
 
       # web browsing
       #      brave (glibc)
@@ -174,6 +175,11 @@
 
     # list of acceptable shells in /etc/shells
     shells = with pkgs; [bash zsh fish];
+  };
+
+  services.tailscale = {
+    enable = true;
+    #logDir = config.logDir or null; # Use the value of the logDir option, or null if it is not set
   };
 
   fonts = {

@@ -1,4 +1,4 @@
-{...}: {
+{ config, ...}: {
   imports = [
     ../common.nix
     ./preferences.nix
@@ -7,6 +7,9 @@
     ./core.nix
     ./lorri.nix
     ./emacs.nix
+    ./tailscale.nix
     #./display-manager.nix
   ];
+
+
 }
