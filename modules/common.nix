@@ -64,7 +64,6 @@
       coreutils-full
       findutils
       diffutils
-      ripgrep
       curl
       wget
       git
@@ -81,7 +80,7 @@
 
       # shell debugging
       shellcheck
-      bashdb
+      #bashdb
 
       # terminals
       kitty
@@ -93,7 +92,7 @@
 
       # helpful shell stuff
       broot
-      fd
+      #fd
       bat
       fzf
       ripgrep
@@ -116,7 +115,7 @@
 
       # ide
       vscode
-      openvscode-server
+      #openvscode-server
 
       # web browsing
       #      brave (glibc)
@@ -164,13 +163,12 @@
       #passExtensions.update
       pass-git-helper
 
-      unstable.sops
+      sops
     ];
 
     etc = {
       home-manager.source = "${inputs.home-manager}";
       nixpkgs.source = "${inputs.nixpkgs}";
-      stable.source = "${inputs.stable}";
     };
 
     # list of acceptable shells in /etc/shells
@@ -178,7 +176,7 @@
   };
 
   services.tailscale = {
-    enable = true;
+    enable = false;
     #logDir = config.logDir or null; # Use the value of the logDir option, or null if it is not set
   };
 

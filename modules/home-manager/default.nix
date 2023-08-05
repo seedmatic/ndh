@@ -15,7 +15,7 @@
     ./java.nix
     ./keychain.nix
     ./kitty.nix
-    ./nvim
+#    ./nvim
     ./nushell.nix
     ./password-store.nix
     ./shell
@@ -47,8 +47,6 @@
       CLICOLOR = 1;
       LSCOLORS = "ExFxBxDxCxegedabagacad";
       KAGGLE_CONFIG_DIR = "${config.xdg.configHome}/kaggle";
-      NODE_PATH = "${NODE_GLOBAL}/lib";
-      HOMEBREW_NO_AUTO_UPDATE = 1;
       XDG_RUNTIME_DIR  = "$HOME/.xdg";
       XDG_BIN_HOME    = "$HOME/.local/bin";
       ZDOTDIR         = "${config.xdg.configHome}/zsh";
@@ -71,7 +69,7 @@
       coreutils-full
       curl
       diffutils
-      fd
+      #fd
       ffmpeg
       findutils
       flyctl
@@ -139,7 +137,7 @@
       vagrant
       yarn
       yamllint
-      unstable.yq-go
+      yq-go
     ];
   };
 

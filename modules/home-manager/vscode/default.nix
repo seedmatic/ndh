@@ -12,16 +12,16 @@
     # Snippet to use insiders build
     # package = pkgs.vscode-fhs;
     # package = pkgs.vscodium;
-    package =
-      (pkgs.vscode.override {
-        isInsiders = true;
-      }).overrideAttrs (oldAttrs: rec {
-        src = (builtins.fetchTarball {
-          url = "https://code.visualstudio.com/sha/download?build=insider&os=linux-x64";
-          sha256 = "1j6xgqiijq6pjsh3n7y16bl93hi5bsbvq34j8br93kg0s7hqzkv0";
-        });
-        version = "latest";
-      });
+    #package =
+    #  (pkgs.vscode.override {
+    #    isInsiders = true;
+    #  }).overrideAttrs (oldAttrs: rec {
+    #    src = (builtins.fetchTarball {
+    #      url = "https://code.visualstudio.com/sha/download?build=insider&os=linux-x64";
+    #      sha256 = "13mk70fga643xhxf8lijmfkxk51dsfn36lbg51x99s77yabw3wcw";
+    #    });
+    #    version = "latest";
+    #  });
 
 
     # extensions = with pkgs.vscode-extensions; [

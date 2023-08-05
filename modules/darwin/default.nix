@@ -7,7 +7,7 @@
     ./core.nix
     ./lorri.nix
     ./emacs.nix
-    ./tailscale.nix
+    #./tailscale.nix
     #./display-manager.nix
   ];
 

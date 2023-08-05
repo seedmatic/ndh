@@ -15,10 +15,8 @@
 
   inputs = {
     # package repos
-    stable.url = "github:nixos/nixpkgs/nixos-23.05";
-    unstable.url = "github:nixos/nixpkgs/nixpkgs-unstable";
-    nixos-unstable.url = "github:nixos/nixpkgs/nixos-unstable";
-    devenv.url = "github:cachix/devenv/latest";
+    nixpkgs.url = "github:nixos/nixpkgs/nixpkgs-unstable";
+    nixpkgs-stable.url = "github:nixos/nixpkgs/nixos-23.05";
 
     # system management
     nixos-hardware.url = "github:nixos/nixos-hardware";
@@ -68,6 +66,7 @@
       else "/home";
 
     defaultSystems = [
+      "aarch64-darwin"
       "x86_64-darwin"
       "x86_64-linux"
     ];
@@ -93,7 +92,7 @@
     # specified overlays, hardware modules, and any extraModules applied
     mkNixosConfig = {
       system ? "x86_64-linux",
-      nixpkgs ? inputs.nixos-unstable,
+      nixpkgs ? inputs.nixpkgs,
       hardwareModules,
       baseModules ? [
         home-manager.nixosModules.home-manager
@@ -121,7 +120,7 @@
             inherit username;
             homeDirectory = "${homePrefix system}/${username}";
             sessionVariables = {
-              NIX_PATH = "nixpkgs=${nixpkgs}:stable=${inputs.stable}\${NIX_PATH:+:}$NIX_PATH";
+              NIX_PATH = "nixpkgs=${nixpkgs}:stable=${inputs.nixpkgs-stable}\${NIX_PATH:+:}$NIX_PATH";
             };
           };
         }
@@ -133,7 +132,7 @@
           inherit system;
           overlays = builtins.attrValues self.overlays;
         };
-        extraSpecialArgs = {inherit self inputs nixpkgs;};
+        extraSpecialArgs = {inherit self inputs nixpkgs ;};
         modules = baseModules ++ extraModules;
       };
 
@@ -180,8 +179,8 @@
     # });
 
     darwinConfigurations = {
-      "work@x86_64-darwin" = mkDarwinConfig {
-        system = "x86_64-darwin";
+      "work@aarch64-darwin" = mkDarwinConfig {
+        system = "aarch64-darwin";
         extraModules = [
           ./profiles/darwin/work.nix
         ];
@@ -214,9 +213,9 @@
     };
 
     homeConfigurations = {
-      "work@x86_64-darwin" = mkHomeConfig {
-        username = "nxmatic";
-        system = "x86_64-darwin";
+      "work@aarch64-darwin" = mkHomeConfig {
+        username = "stephane.lacoin";
+        system = "aarch64-darwin";
         profile = "work";
         extraModules = [
           ./profiles/home-manager/work.nix
@@ -335,7 +334,7 @@
     overlays = {
       channels = final: prev: {
         # expose other channels via overlays
-        stable = import inputs.stable {system = prev.system;};
+        nixpkgs = import inputs.nixpkgs {system = prev.system;};
       };
       extraPackages = final: prev: {
         sysdo = self.packages.${prev.system}.sysdo;

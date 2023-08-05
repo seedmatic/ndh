@@ -1,19 +1,36 @@
-{lib, pkgs, ...}: mkMerge [
-  import ./committed.nix;
-  {
-    user.name = "nxmatic";
+{lib, pkgs, ...}: {
 
-    hm = {
-      imports = [
-        ../home-manager/committed.nix
-        ../home-manager/work.nix
-      ];
-    };
-    
-    security.pki.certificateFiles = [
-      "${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
-      "/etc/certs.d/apl.pem"
-      "/etc/certs.d/dod-chain.pem"
+  user.name = "stephane.lacoin";
+  
+  hm = {
+    imports = [
+      ../home-manager/committed.nix
+      ../home-manager/committed.nix
     ];
-  }
+  };
+
+  
+  homebrew = {
+    brews = [
+    ];
+
+    casks = [
+      # social
+      "google-drive"
+      "notion"
+      "signal"
+
+      # knowledge base
+      "obsidian"
+      "zotero"
+
+      # ide
+      #      "visual-studio-code" -> nix
+
+      # social
+    ];
+  };
+
+
 }
+
