@@ -4,12 +4,12 @@
   nixConfig = {
     substituters = [
       "https://cache.nixos.org"
-      #      "https://kclejeune.cachix.org"
+      "https://kclejeune.cachix.org"
     ];
 
     trusted-public-keys = [
       "cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY="
-      #      "kclejeune.cachix.org-1:fOCrECygdFZKbMxHClhiTS6oowOkJ/I/dh9q9b1I4ko="
+      "kclejeune.cachix.org-1:fOCrECygdFZKbMxHClhiTS6oowOkJ/I/dh9q9b1I4ko="
     ];
   };
 
@@ -45,7 +45,6 @@
       repo = "packer.nvim";
       flake = false;
     };
-
   };
 
   outputs = {
@@ -76,7 +75,7 @@
     mkDarwinConfig = {
       system ? "aarch64-darwin",
       nixpkgs ? inputs.nixpkgs,
-      baseModules ? [ 
+      baseModules ? [
         home-manager.darwinModules.home-manager
         ./modules/darwin
       ],
@@ -91,7 +90,7 @@
     # generate a base nixos configuration with the
     # specified overlays, hardware modules, and any extraModules applied
     mkNixosConfig = {
-      system ? "x86_64-linux",
+      system,
       nixpkgs ? inputs.nixpkgs,
       hardwareModules,
       baseModules ? [
@@ -111,7 +110,7 @@
     mkHomeConfig = {
       username,
       profile,
-      system ? "x86_64-linux",
+      system,
       nixpkgs ? inputs.nixpkgs,
       baseModules ? [
         ./modules/home-manager
@@ -132,7 +131,7 @@
           inherit system;
           overlays = builtins.attrValues self.overlays;
         };
-        extraSpecialArgs = {inherit self inputs nixpkgs ;};
+        extraSpecialArgs = {inherit self inputs nixpkgs;};
         modules = baseModules ++ extraModules;
       };
 
@@ -163,7 +162,7 @@
     checks =
       {}
       // (mkChecks {
-        arch = "x86_64";
+        arch = "aarch64";
         os = "darwin";
         profile = "work";
       })
@@ -245,15 +244,15 @@
           inherit system;
           overlays = builtins.attrValues self.overlays;
         };
-    in {
-      default =
-        devenv.lib.mkShell {
+      in {
+        default = devenv.lib.mkShell {
           inherit inputs pkgs;
           modules = [
             (import ./devenv.nix)
           ];
         };
-    });
+      }
+    );
 
     packages = eachSystemMap defaultSystems (system: let
       pkgs = import inputs.nixpkgs {

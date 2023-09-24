@@ -1,14 +1,17 @@
-{lib, pkgs, ...}: {
-
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}: {
   user.name = "nxmatic";
-  
+
   hm = {
     imports = [
       ../home-manager/committed.nix
     ];
   };
 
-  
   homebrew = {
     brews = [
     ];
@@ -21,15 +24,13 @@
 
       # knowledge base
       "obsidian"
-      "zotero"
+      #      "zotero"
 
       # ide
       #      "visual-studio-code" -> nix
 
       # social
+      "keybase"
     ];
   };
-
-
 }
-

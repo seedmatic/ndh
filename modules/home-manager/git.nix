@@ -29,6 +29,7 @@
       options = {
         side-by-side = true;
         line-numbers = true;
+        light = true;
       };
     };
     difftastic.enable = false;

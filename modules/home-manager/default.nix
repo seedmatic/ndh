@@ -11,11 +11,11 @@
     ./emacs.nix
     ./fzf.nix
     ./git.nix
-#    ./gh.nix
+    ./gh.nix
     ./java.nix
     ./keychain.nix
     ./kitty.nix
-#    ./nvim
+    #    ./nvim
     ./nushell.nix
     ./password-store.nix
     ./shell
@@ -23,6 +23,7 @@
     ./tldr.nix
     ./tmux.nix
     ./vscode
+    ./xdg.nix
   ];
 
   nixpkgs.config = {
@@ -47,9 +48,10 @@
       CLICOLOR = 1;
       LSCOLORS = "ExFxBxDxCxegedabagacad";
       KAGGLE_CONFIG_DIR = "${config.xdg.configHome}/kaggle";
-      XDG_RUNTIME_DIR  = "$HOME/.xdg";
-      XDG_BIN_HOME    = "$HOME/.local/bin";
-      ZDOTDIR         = "${config.xdg.configHome}/zsh";
+      #      XDG_RUNTIME_DIR  = "$HOME/.xdg";
+      #      XDG_BIN_HOME     = "$HOME/.local/bin";
+      #      XDG_CACHE_HOME   = "$HOME/.local/var/cache";
+      ZDOTDIR = "${config.xdg.configHome}/zsh";
     };
 
     sessionPath = [
@@ -62,6 +64,7 @@
       awscli2
       # age
       alejandra
+      bash
       cachix
       cb
       cirrus-cli
@@ -75,13 +78,12 @@
       flyctl
       gawk
       gh
+      git-workspace
       gnugrep
       gnupg
       gnused
       (
-        google-cloud-sdk.withExtraComponents(
-          [ google-cloud-sdk.components.gke-gcloud-auth-plugin ]
-        )
+        google-cloud-sdk.withExtraComponents [google-cloud-sdk.components.gke-gcloud-auth-plugin]
       )
       helm-docs
       httpie
@@ -112,41 +114,31 @@
       passExtensions.pass-genphrase
       poetry
       pre-commit
-      # python with default packages
-      (python3.withPackages
-        (ps:
-          with ps; [
-            numpy
-            scipy
-            matplotlib
-            networkx
-          ]))
       ranger
       rclone
       rsync
-      (ruby.withPackages (ps: with ps; [rufo solargraph]))
       shellcheck
       sops
       stylua
       sysdo
-      terraform
       tig
       tree
       treefmt
       trivy
-      vagrant
       yarn
       yamllint
       yq-go
+      zsh
     ];
   };
 
-  #targets.genericLinux.enable = true;
+  targets.genericLinux.enable = false;
 
   programs = {
     home-manager = {
       enable = true;
     };
+    bash.enable = true;
     dircolors.enable = true;
     go.enable = true;
     gpg.enable = true;
@@ -156,7 +148,7 @@
     jq.enable = true;
     java = {
       enable = true;
-      package = pkgs.jdk17;
+      #     package = pkgs.jdk17;
     };
     k9s.enable = true;
     lazygit.enable = true;
@@ -170,5 +162,4 @@
     zathura.enable = true;
     zoxide.enable = true;
   };
-
 }

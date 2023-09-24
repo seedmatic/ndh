@@ -13,13 +13,11 @@
   nixpkgs.overlays = builtins.attrValues self.overlays;
 
   programs = {
-
     zsh = {
       enable = true;
       enableCompletion = true;
       enableBashCompletion = true;
     };
-
   };
 
   user = {
@@ -50,7 +48,6 @@
 
   # environment setup
   environment = {
-
     variables = {
       XDG_RUNTIME_DIR = "${config.user.home}/.xdg";
     };
@@ -62,33 +59,23 @@
 
       # standard toolset
       coreutils-full
-      findutils
-      diffutils
       curl
-      wget
+      diffutils
+      findutils
       git
+      gnused
+      pstree
       remake
+      wget
 
       # yaml
       yq-go
       yamllint
 
       # shells
-      bash
+      bashInteractive
       fish
       zsh
-
-      # shell debugging
-      shellcheck
-      #bashdb
-
-      # terminals
-      kitty
-      tmuxinator
-      tmux
-      reattach-to-user-namespace
-      # byobu (broken see above)
-      # disabled byobu, newt not installable on darwin, should use brew instead
 
       # helpful shell stuff
       broot
@@ -97,8 +84,20 @@
       fzf
       ripgrep
 
+      # shell debugging
+      shellcheck
+      bashdb
+
+      # terminals
+      kitty
+      tmuxinator
+      tmux
+      reattach-to-user-namespace
+      byobu
+
       # git
       git
+      git-workspace
       tig
 
       # github cli
@@ -111,19 +110,23 @@
 
       # java
       jdk
-      # maven (use mvnd, mvnw wrapper instead)
+      maven
+      gradle
 
       # ide
       vscode
-      #openvscode-server
+      openvscode-server
 
       # web browsing
       #      brave (glibc)
       w3m
       html2text
 
-      # social
-      #      keybase ( AudioFormat.h:161:8: error: redefinition of 'AudioFormatListItem')
+      # social (see brew cask)
+      #kbfs
+      #keybase
+      #keybase-gui
+
       slack
       zoom-us
 
@@ -140,19 +143,32 @@
 
       # virtual env manager for coding
       direnv
-      lorri
+      #lorri
+
+      # macos
+      raycast # launcher
+      syncthing # volumes synch
+
+      # networking
+      nmap
+      tshark
+
+      # android
+      android-tools
 
       # container runtimes
       lima
       colima
       qemu
+      podman
+      podman-compose
       docker-client
 
-      # keystore crypto
+      # crypto
       gnupg
       pinentry
-#     pinentry-curses
-#     pinentry_mac
+      #     pinentry-curses
+      #     pinentry_mac
 
       oath-toolkit
 
@@ -172,11 +188,11 @@
     };
 
     # list of acceptable shells in /etc/shells
-    shells = with pkgs; [bash zsh fish];
+    shells = with pkgs; [bashInteractive zsh fish];
   };
 
   services.tailscale = {
-    enable = false;
+    enable = true;
     #logDir = config.logDir or null; # Use the value of the logDir option, or null if it is not set
   };
 

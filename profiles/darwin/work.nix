@@ -1,16 +1,20 @@
-{lib, pkgs, ...}: {
-
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}: {
   user.name = "stephane.lacoin";
-  
+
   hm = {
     imports = [
-      ../home-manager/committed.nix
-      ../home-manager/committed.nix
+      ../home-manager/work.nix
     ];
   };
 
-  
   homebrew = {
+    enable = false;
+
     brews = [
     ];
 
@@ -22,15 +26,13 @@
 
       # knowledge base
       "obsidian"
-      "zotero"
+      #      "zotero"
 
       # ide
       #      "visual-studio-code" -> nix
 
       # social
+      "keybase"
     ];
   };
-
-
 }
-

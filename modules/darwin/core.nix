@@ -6,7 +6,6 @@
 }: let
   inherit (pkgs.stdenvNoCC) isAarch64 isAarch32;
 in {
-
   environment = {
     loginShell = pkgs.zsh;
     etc = {darwin.source = "${inputs.darwin}";};
@@ -27,7 +26,7 @@ in {
   };
 
   nixpkgs.config.allowBroken = true;
-  
+
   launchd.user.envVariables = {
     XDG_RUNTIME_DIR = "${config.user.home}/.xdg";
   };
@@ -38,43 +37,4 @@ in {
   # Used for backwards compatibility, please read the changelog before changing.
   # $ darwin-rebuild changelog
   system.stateVersion = 4;
-
-  # homebrew
-  homebrew = {
-
-    enable = true;
-
-    brewPrefix =
-      if isAarch64 || isAarch32
-      then "/opt/homebrew/bin"
-      else "/usr/local/bin";
-
-    global = {
-      brewfile = true;
-    };
-
-    brews = [
-    ];
-
-    casks = [
-
-      # system
-      "karabiner-elements" # keyboard
-
-      # virtualization
-      "utm"
-
-      # containers
-      "rancher"
-
-    ];
-
-    taps = [
-      "koekeishiya/formulae" # yabia window manager
-      "teamookla/speedtest" # network speed tests
-    ];
-
-
-  };
-
 }
