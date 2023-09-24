@@ -66,7 +66,6 @@
       alejandra
       bash
       cachix
-      cb
       cirrus-cli
       comma
       coreutils-full
