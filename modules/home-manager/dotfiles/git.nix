@@ -17,7 +17,4 @@
     recursive = true;
   };
 
-  home.sessionVariables = {
-    ZDOTGIT_DIR = "${config.xdg.dataHome}/zdot/bare-repository.git";
-  };
 }

@@ -1,5 +1,6 @@
 {
   config,
+  inputs,
   pkgs,
   ...
 }: {
@@ -15,7 +16,7 @@
     ./java.nix
     ./keychain.nix
     ./kitty.nix
-    #    ./nvim
+    # ./nvim
     ./nushell.nix
     ./password-store.nix
     ./shell
@@ -41,19 +42,12 @@
     # changes in each release.
     stateVersion = "22.05";
 
-    sessionVariables = {
-      GPG_TTY = "/dev/ttys000";
-      EDITOR = "emacs";
-      VISUAL = "emacs";
-      CLICOLOR = 1;
-      LSCOLORS = "ExFxBxDxCxegedabagacad";
-      KAGGLE_CONFIG_DIR = "${config.xdg.configHome}/kaggle";
-      #      XDG_RUNTIME_DIR  = "$HOME/.xdg";
-      #      XDG_BIN_HOME     = "$HOME/.local/bin";
-      #      XDG_CACHE_HOME   = "$HOME/.local/var/cache";
-      ZDOTDIR = "${config.xdg.configHome}/zsh";
-    };
-
+    # Session variables are now always set through the shell. This is
+    # done automatically if the shell configuration is managed by Home
+    # Manager. If not, then you must source the
+    
+    #   ~/.nix-profile/etc/profile.d/hm-session-vars.sh
+    
     sessionPath = [
       "${config.home.homeDirectory}/.rd/bin"
       "${config.home.homeDirectory}/.local/bin"
@@ -157,7 +151,7 @@
     pandoc.enable = true;
     ripgrep.enable = true;
     starship.enable = true;
-    yt-dlp.enable = true;
+    yt-dlp.enable = false;
     zathura.enable = true;
     zoxide.enable = true;
   };

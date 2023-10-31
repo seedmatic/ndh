@@ -118,9 +118,6 @@
           home = {
             inherit username;
             homeDirectory = "${homePrefix system}/${username}";
-            sessionVariables = {
-              NIX_PATH = "nixpkgs=${nixpkgs}:stable=${inputs.nixpkgs-stable}\${NIX_PATH:+:}$NIX_PATH";
-            };
           };
         }
       ],
