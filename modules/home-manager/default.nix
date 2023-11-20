@@ -45,9 +45,9 @@
     # Session variables are now always set through the shell. This is
     # done automatically if the shell configuration is managed by Home
     # Manager. If not, then you must source the
-    
+
     #   ~/.nix-profile/etc/profile.d/hm-session-vars.sh
-    
+
     sessionPath = [
       "${config.home.homeDirectory}/.rd/bin"
       "${config.home.homeDirectory}/.local/bin"

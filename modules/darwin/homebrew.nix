@@ -1,6 +1,6 @@
 {...}: {
   homebrew = {
-    enable = false;
+    enable = true;
 
     global = {
       brewfile = true;
@@ -20,9 +20,11 @@
 
     casks = [
       # desktop
-      "appcleaner"
+      "amethyst"
+      "hyperkey"
+      # "appcleaner"
       #
-      "keybase"
+      # "keybase"
     ];
   };
 }

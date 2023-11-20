@@ -45,6 +45,15 @@
       repo = "packer.nvim";
       flake = false;
     };
+
+    # maven-mvnd
+    maven-mvnd = {
+      type = "github";
+      owner = "nxmatic";
+      repo = "nix-maven-mvnd";
+      ref = "refs/heads/develop";
+      flake = true;
+    };
   };
 
   outputs = {
@@ -264,6 +273,8 @@
         #! ${pyEnv}/bin/python3
         ${builtins.readFile ./bin/do.py}
       '';
+      maven-mvnd-m39 = inputs.maven-mvnd.packages.${system}.maven-mvnd-m39;
+      maven-mvnd-m40 = inputs.maven-mvnd.packages.${system}.maven-mvnd-m40;
     });
 
     apps = eachSystemMap defaultSystems (system: rec {
@@ -283,6 +294,8 @@
         sysdo = self.packages.${prev.system}.sysdo;
         pyEnv = self.packages.${prev.system}.pyEnv;
         devenv = self.packages.${prev.system}.devenv;
+        maven-mvnd-m39 = self.packages.${prev.system}.maven-mvnd-m39;
+        maven-mvnd-m40 = self.packages.${prev.system}.maven-mvnd-m40;
       };
     };
   };

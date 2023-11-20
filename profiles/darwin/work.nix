@@ -13,26 +13,21 @@
   };
 
   homebrew = {
-    enable = false;
+    enable = true;
 
     brews = [
     ];
 
     casks = [
       # social
-      "google-drive"
-      "notion"
-      "signal"
+      # "notion"
 
       # knowledge base
-      "obsidian"
+      # "obsidian"
       #      "zotero"
 
-      # ide
-      #      "visual-studio-code" -> nix
-
       # social
-      "keybase"
+      # "keybase"
     ];
   };
 }

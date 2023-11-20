@@ -1,7 +1,5 @@
 {pkgs, ...}: {
-
   home = {
-
     packages = with pkgs; [
       cacert
       kubectl
@@ -11,11 +9,10 @@
       vault-bin
     ];
 
-    sessionPath = [ "$HOME/.krew/bin" ];
+    sessionPath = ["$HOME/.krew/bin"];
   };
 
   programs = {
-
     # version control
 
     git = {
@@ -32,7 +29,5 @@
         http.sslCAInfo = "/etc/ssl/certs/ca-certificates.crt";
       };
     };
-
   };
-
 }

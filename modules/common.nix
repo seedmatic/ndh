@@ -3,6 +3,7 @@
   inputs,
   config,
   pkgs,
+  system,
   ...
 }: {
   imports = [
@@ -55,7 +56,10 @@
     systemPackages = with pkgs; [
       # nix
       home-manager
-      nix-index
+      #      nix-du
+      #      nix-index
+      #      nix-tree
+      graphviz
 
       # standard toolset
       coreutils-full
@@ -63,6 +67,7 @@
       diffutils
       findutils
       git
+      git-town
       gnused
       pstree
       remake
@@ -93,7 +98,7 @@
       tmuxinator
       tmux
       reattach-to-user-namespace
-      byobu
+      zellij # replace byobu (in evaluation)
 
       # git
       git
@@ -111,11 +116,13 @@
       # java
       jdk
       maven
+      maven-mvnd-m39
       gradle
 
       # ide
       vscode
       openvscode-server
+      rnix-lsp
 
       # web browsing
       #      brave (glibc)

@@ -15,9 +15,11 @@
       source_env_if_exists ''${BASH_SOURCE}~$(uname)
       source_env_if_exists ''${BASH_SOURCE}~$(hostname)
 
-      source_env_if_exists ''${BASH_SOURCE}~golang
-      source_env_if_exists ''${BASH_SOURCE}~krew
-      source_env_if_exists ''${BASH_SOURCE}~pass
+      # source_env_if_exists ''${BASH_SOURCE}~golang
+      # source_env_if_exists ''${BASH_SOURCE}~krew
+      # source_env_if_exists ''${BASH_SOURCE}~pass
+
+      source_env_if_exists ''${BASH_SOURCE}~nos
     '';
   };
 }
