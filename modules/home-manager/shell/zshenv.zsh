@@ -1,6 +1,6 @@
 # ensure we're loading the rcs files
 
-declare -g ZDOTDIR=${ZDOTDIR:-${0:a:h}/.config/zsh}
+declare -g ZDOTDIR=${ZDOTDIR:-${HOME}/.config/zsh}
 
 # redirect stderr and trace sourced files (lsof -p $$ | grep zshenv)
 
