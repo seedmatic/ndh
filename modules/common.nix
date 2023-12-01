@@ -164,12 +164,12 @@
       android-tools
 
       # container runtimes
-      lima
+      docker-client
       colima
+      lima
       qemu
       podman
       podman-compose
-      docker-client
 
       # crypto
       gnupg
