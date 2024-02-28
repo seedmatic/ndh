@@ -14,7 +14,7 @@
       CreateDesktop = false;
       QuitMenuItem = true;
       AppleShowAllExtensions = true;
-#      FXDefautSearchScope = "SCcf";
+      #      FXDefautSearchScope = "SCcf";
       FXPreferredViewStyle = "Nlsv";
       FXEnableExtensionChangeWarning = false;
       _FXShowPosixPathInTitle = true;
@@ -76,12 +76,12 @@
 
     # univesal access
     # should investigate if really needed, error with default write
-    
+
     # universalaccess = {
     #   closeViewScrollWheelToggle = true;
     #   closeViewZoomFollowsFocus = true;
     # };
-    
+
     NSGlobalDomain = {
       "com.apple.sound.beep.feedback" = 0;
       "com.apple.sound.beep.volume" = 0.0;
@@ -93,7 +93,7 @@
       # delay between repeated keystrokes upon holding a key
       KeyRepeat = 1;
       # display
-      _HIHideMenuBar = true;
+      _HIHideMenuBar = false;
       AppleShowAllFiles = true;
       AppleShowAllExtensions = true;
       AppleShowScrollBars = "Automatic";
@@ -106,7 +106,6 @@
       NSDisableAutomaticTermination = false;
       NSDocumentSaveNewDocumentsToCloud = false;
       NSTextShowsControlCharacters = true;
-      
     };
   };
 
@@ -114,5 +113,4 @@
     enableKeyMapping = true;
     remapCapsLockToControl = true;
   };
-
 }

@@ -66,8 +66,10 @@
       curl
       diffutils
       findutils
+      getopt
       git
       git-town
+      gitAndTools.gitflow
       gnused
       pstree
       remake
@@ -126,8 +128,10 @@
 
       # web browsing
       #      brave (glibc)
-      w3m
+      #chromium
       html2text
+      #firefox
+      w3m
 
       # social (see brew cask)
       #kbfs
@@ -142,7 +146,7 @@
       zoxide
 
       # document viewer
-      zathura
+      # zathura
 
       # knowledge base (need glibc on darwin)
       # obsidian

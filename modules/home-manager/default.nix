@@ -6,10 +6,12 @@
 }: {
   imports = [
     ./bat.nix
+    ./chromium.nix
     ./dircolors.nix
     ./direnv.nix
     ./dotfiles
     ./emacs.nix
+    ./firefox.nix
     ./fzf.nix
     ./git.nix
     ./gh.nix
@@ -63,9 +65,11 @@
       cirrus-cli
       comma
       coreutils-full
+      #chromium
       curl
       diffutils
       #fd
+      #firefox
       ffmpeg
       findutils
       flyctl
@@ -141,7 +145,7 @@
     jq.enable = true;
     java = {
       enable = true;
-      #     package = pkgs.jdk17;
+      # package = pkgs.jdk17;
     };
     k9s.enable = true;
     lazygit.enable = true;
@@ -152,7 +156,7 @@
     ripgrep.enable = true;
     starship.enable = true;
     yt-dlp.enable = false;
-    zathura.enable = true;
+    # zathura.enable = true;
     zoxide.enable = true;
   };
 }
