@@ -1,6 +1,5 @@
 {
   config,
-  inputs,
   pkgs,
   ...
 }: {
@@ -98,7 +97,7 @@
       ncdu
       neofetch
       nix
-      nixfmt
+      nixfmt-classic
       nixpkgs-fmt
       nodejs-18_x
       parallel

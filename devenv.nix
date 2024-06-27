@@ -1,22 +1,27 @@
 {
   self,
-  inputs,
   pkgs,
-  lib,
   ...
 }: {
   packages = [
-    pkgs.rnix-lsp
+    pkgs.nixd
     self.packages.${pkgs.system}.pyEnv
-    (inputs.treefmt-nix.lib.mkWrapper pkgs (import ./treefmt.nix))
   ];
 
   pre-commit = {
-    hooks = (import ./treefmt-options.nix);
-
-    settings = {
-      deadnix.edit = true;
-      deadnix.noLambdaArg = true;
+    hooks = {
+      black.enable = true;
+      shellcheck.enable = true;
+      alejandra.enable = true;
+      shfmt.enable = false;
+      stylua.enable = true;
+      deadnix = {
+        enable = true;
+        settings = {
+          edit = true;
+          noLambdaArg = true;
+        };
+      };
     };
   };
 }

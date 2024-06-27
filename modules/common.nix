@@ -3,7 +3,6 @@
   inputs,
   config,
   pkgs,
-  system,
   ...
 }: {
   imports = [
@@ -124,7 +123,6 @@
       # ide
       vscode
       openvscode-server
-      rnix-lsp
 
       # web browsing
       #      brave (glibc)

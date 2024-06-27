@@ -1,8 +1,7 @@
-{ pkgs, ... }: {
-
+{pkgs, ...}: {
   home.packages = with pkgs; [
     nixpkgs-fmt
-    rnix-lsp
+    #    nix-lsp
     nil
   ];
 
@@ -13,6 +12,6 @@
   # settings = {
   #   # "nix.enableLanguageServer" = true;
   #   "nix.formatterPath" = "${nixpkgs-fmt}/bin/nixpkgs-fmt";
-  #   "nix.serverPath" = "${rnix-lsp}/bin/rnix-lsp";
+  #   "nix.serverPath" = "${nix-lsp}/bin/nix-lsp";
   # };
 }

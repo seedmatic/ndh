@@ -5,13 +5,13 @@
   ...
 }: {
   # link coc-settings to the right location
-#  xdg.configFile."nvim/coc-settings.json".source = ./coc-settings.json;
+  #  xdg.configFile."nvim/coc-settings.json".source = ./coc-settings.json;
 
   programs.neovim = {
     extraPackages = with pkgs; [
       rubyPackages.solargraph
       nodePackages.pyright
-      rnix-lsp
+      nixd
       fzf
     ];
     plugins = with pkgs.vimPlugins; [

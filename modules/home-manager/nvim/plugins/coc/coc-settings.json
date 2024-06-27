@@ -1,9 +1,8 @@
 {
   "languageserver": {
     "nix": {
-      "command": "rnix-lsp",
+      "command": "nixd",
       "filetypes": ["nix"]
     }
-  },
-  "python.formatting.blackPath": "black"
+  }
 }
