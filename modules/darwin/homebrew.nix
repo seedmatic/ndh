@@ -12,7 +12,6 @@
     taps = [
       # base
       "homebrew/bundle"
-      "homebrew/cask" # Required for casks
       "homebrew/cask-fonts"
       "homebrew/cask-versions"
       "homebrew/services"
