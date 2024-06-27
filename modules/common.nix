@@ -175,7 +175,7 @@
 
       # crypto
       gnupg
-      pinentry
+      #pinentry
       #     pinentry-curses
       #     pinentry_mac
 
