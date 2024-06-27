@@ -17,7 +17,6 @@
     ./java.nix
     ./keychain.nix
     ./kitty.nix
-    # ./nvim
     ./nushell.nix
     ./password-store.nix
     ./shell
@@ -59,7 +58,6 @@
       awscli2
       # age
       alejandra
-      bash
       cachix
       cirrus-cli
       comma

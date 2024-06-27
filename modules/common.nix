@@ -79,7 +79,7 @@
       yamllint
 
       # shells
-      bashInteractive
+      #bashInteractive
       fish
       zsh
 
@@ -197,7 +197,7 @@
     };
 
     # list of acceptable shells in /etc/shells
-    shells = with pkgs; [bashInteractive zsh fish];
+    shells = with pkgs; [bash zsh fish];
   };
 
   services.tailscale = {
