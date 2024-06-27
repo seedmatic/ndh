@@ -206,7 +206,6 @@
   };
 
   fonts = {
-    fontDir.enable = true;
-    fonts = with pkgs; [powerline-fonts];
+    packages = with pkgs; [powerline-fonts];
   };
 }
