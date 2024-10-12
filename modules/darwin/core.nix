@@ -24,6 +24,7 @@ in {
 
     # Additional garbage collection triggers
     extraOptions = ''
+      accept-flake-config = true
       extra-platforms = x86_64-darwin aarch64-darwin
       min-free = ${toString (10 * 1024 * 1024 * 1024)}  # 10 GB
       max-free = ${toString (20 * 1024 * 1024 * 1024)}  # 20 GB
@@ -48,15 +49,15 @@ in {
     checkAllPackages = false;
   };
 
-  nixpkgs.overlays = [
-    (self: super: {
-      # Disable checks for all packages
-      all = super.all.overrideAttrs (oldAttrs: {
-        doCheck = false;
-        doInstallCheck = false;
-      });
-    })
-  ];
+  # nixpkgs.overlays = [
+  #   (self: super: {
+  #     # Disable checks for all packages
+  #     all = super.all.overrideAttrs (oldAttrs: {
+  #       doCheck = false;
+  #       doInstallCheck = false;
+  #     });
+  #   })
+  # ];
 
   launchd.user.envVariables = {
     XDG_RUNTIME_DIR = "${config.user.home}/.xdg";

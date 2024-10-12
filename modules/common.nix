@@ -115,10 +115,11 @@
     systemPackages = with pkgs; [
       # nix
       home-manager
-      #      nix-du
-      #      nix-index
-      #      nix-tree
-      graphviz
+      inputs.flox.packages.${pkgs.system}.flox
+      nix-du
+      nix-index
+      nix-tree
+      nix-prefetch-git
 
       # standard toolset
       clang_19
@@ -262,6 +263,9 @@
       qemu
       podman
       podman-compose
+
+      # doc
+      graphviz
 
       # crypto
       gnupg
