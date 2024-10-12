@@ -1,6 +1,4 @@
-{pkgs, ...}: let
-  theme = builtins.readFile ./theme.conf;
-in {
+{pkgs, ...}: {
   programs.kitty = {
     enable = true;
     package = pkgs.kitty;
@@ -8,7 +6,6 @@ in {
       package = pkgs.powerline-fonts;
       name = "Hack Nerd Font Mono";
     };
-    theme = "One Dark";
     settings = {
       bold_font = "auto";
       italic_font = "auto";

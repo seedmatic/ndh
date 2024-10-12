@@ -1,5 +1,4 @@
 {
-  config,
   lib,
   pkgs,
   ...
@@ -14,7 +13,6 @@
     envExtra = builtins.readFile ./zshenv.zsh;
 
     initExtra = ''
-      set -x
       if [[ "$TERM_PROGRAM" == "vscode" ]]; then
         codepath=/usr/local/bin/code
         if [[ -x "$codepath" ]]; then
@@ -26,7 +24,6 @@
       else
         source "$ZDOTDIR/rcs/zshrc.zsh"
       fi
-      set +x
     '';
   };
 

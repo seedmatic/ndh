@@ -1,27 +1,22 @@
 {
-  config,
   pkgs,
   lib,
   ...
 }: {
-
   xdg.dataFile = {
-
     raycast = lib.mkIf pkgs.stdenvNoCC.isDarwin {
       source = ./raycast;
       recursive = true;
     };
-
   };
 
   xdg.configFile = {
-
     "nixpkgs/config.nix".source = ../../config.nix;
 
-    hammerspoon = lib.mkIf pkgs.stdenvNoCC.isDarwin {
-      source = ./hammerspoon;
-      recursive = true;
-    };
+    # hammerspoon = lib.mkIf pkgs.stdenvNoCC.isDarwin {
+    #   source = ./hammerspoon;
+    #   recursive = true;
+    # };
 
     zfunc = {
       source = ./zfunc;
@@ -44,11 +39,9 @@
       source = ./kitty;
       recursive = true;
     };
-
   };
 
   imports = [
     ./git.nix
   ];
-
 }

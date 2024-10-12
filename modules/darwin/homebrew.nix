@@ -19,8 +19,8 @@
 
     casks = [
       # desktop
-      "amethyst"
-      "hyperkey"
+      #"amethyst"
+      #"hyperkey"
       # "appcleaner"
       #
       # "keybase"

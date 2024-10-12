@@ -4,6 +4,7 @@
   ...
 }: {
   imports = [
+    ./avahi.nix
     ./bat.nix
     ./chromium.nix
     ./dircolors.nix
@@ -22,6 +23,7 @@
     ./shell
     ./ssh.nix
     ./tldr.nix
+    ./tmate.nix
     ./tmux.nix
     ./vscode
     ./xdg.nix
@@ -55,9 +57,10 @@
 
     # define package definitions for current user environment
     packages = with pkgs; [
-      awscli2
-      # age
       alejandra
+      awscli2
+      avahi
+      # age
       cachix
       cirrus-cli
       comma

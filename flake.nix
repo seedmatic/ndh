@@ -16,7 +16,7 @@
   inputs = {
     # package repos
     nixpkgs.url = "github:nixos/nixpkgs/nixpkgs-unstable";
-    nixpkgs-stable.url = "github:nixos/nixpkgs/nixos-23.11";
+    nixpkgs-stable.url = "github:nixos/nixpkgs/nixos-24.05";
 
     # system management
     nixos-hardware.url = "github:nixos/nixos-hardware";
@@ -37,6 +37,15 @@
     # shell stuff
     flake-utils.url = "github:numtide/flake-utils";
     treefmt-nix.url = "github:numtide/treefmt-nix";
+
+    # bird fork
+    bird-fork = {
+      type = "github";
+      owner = "nxmatic";
+      repo = "bird";
+      ref = "hotfix/v2.15.1-nix-darwin";
+      flake = false;
+    };
 
     # nvim git plugins
     packer-nvim = {
@@ -98,27 +107,11 @@
 
     # generate a base nixos configuration with the
     # specified overlays, hardware modules, and any extraModules applied
-    mkNixosConfig = {
-      system,
-      nixpkgs ? inputs.nixpkgs,
-      hardwareModules,
-      baseModules ? [
-        home-manager.nixosModules.home-manager
-        ./modules/nixos
-      ],
-      extraModules ? [],
-    }:
-      nixpkgs.lib.nixosSystem {
-        inherit system;
-        modules = baseModules ++ hardwareModules ++ extraModules;
-        specialArgs = {inherit self inputs nixpkgs;};
-      };
 
     # generate a home-manager configuration usable on any unix system
     # with overlays and any extraModules applied
     mkHomeConfig = {
       username,
-      profile,
       system,
       nixpkgs ? inputs.nixpkgs,
       baseModules ? [
@@ -145,7 +138,7 @@
       arch,
       os,
       username ? "nxmatic",
-      profile ? "committed",
+      profile ? "work",
     }: {
       "${arch}-${os}" = {
         "${username}_${os}" =
@@ -171,11 +164,6 @@
         arch = "aarch64";
         os = "darwin";
         profile = "work";
-      })
-      // (mkChecks {
-        arch = "x86_64";
-        os = "darwin";
-        profile = "committed";
       });
     # // (mkChecks {
     #   arch = "x86_64";
@@ -190,31 +178,12 @@
           ./profiles/darwin/work.nix
         ];
       };
-      "committed@x86_64-darwin" = mkDarwinConfig {
-        system = "x86_64-darwin";
-        extraModules = [
-          ./profiles/darwin/committed.nix
-        ];
-      };
-    };
-
-    nixosConfigurations = {
-      #   "work@x86_64-linux" = mkNixosConfig {
-      #     system = "x86_64-linux";
-      #     hardwareModules = [
-      #       ./modules/hardware/phil.nix
-      #       inputs.nixos-hardware.nixosModules.lenovo-thinkpad-t460s
-      #     ];
-      #     extraModules = [./profiles/work.nix ./profiles/committed.nix ];
-      #   };
-      #    "committed@x86_64-linux" = mkNixosConfig {
-      #      system = "x86_64-linux";
-      #      hardwareModules = [
-      #        ./modules/hardware/phil.nix
-      #        inputs.nixos-hardware.nixosModules.lenovo-thinkpad-t460s
-      #      ];
-      #     extraModules = [./profiles/committed.nix];
-      #   };
+      # "committed@aarch64-darwin" = mkDarwinConfig {
+      #   system = "aarch64-darwin";
+      #   extraModules = [
+      #     ./profiles/darwin/committed.nix
+      #   ];
+      # };
     };
 
     homeConfigurations = {
@@ -226,17 +195,9 @@
           ./profiles/home-manager/work.nix
         ];
       };
-      "committed@x86_64-darwin" = mkHomeConfig {
-        username = "nxmatic";
-        system = "x86_64-darwin";
-        profile = "committed";
-        extraModules = [
-          ./profiles/home-manager/committed.nix
-        ];
-      };
-      # "committed@x86_64-linux" = mkHomeConfig {
+      # "committed@aarch64-darwin" = mkHomeConfig {
       #   username = "nxmatic";
-      #   system = "x86_64-linux";
+      #   system = "aarch64-darwin";
       #   profile = "committed";
       #   extraModules = [
       #     ./profiles/home-manager/committed.nix
