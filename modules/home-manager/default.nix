@@ -15,6 +15,7 @@
     ./fzf.nix
     ./git.nix
     ./gh.nix
+    ./gpg.nix
     ./java.nix
     ./keychain.nix
     ./kitty.nix
