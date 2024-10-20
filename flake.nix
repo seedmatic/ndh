@@ -31,7 +31,10 @@
     flox = {
       url = "github:nxmatic/flox?ref=hotfix/nix-remove-attrcursor-force-errors";
       inputs.nixpkgs.follows = "nixpkgs";
-      #     flake = true;
+    };
+    zen-browser = {
+      url = "github:MarceColl/zen-browser-flake";
+      inputs.nixpkgs.follows = "nixpkgs";
     };
     flake-utils.url = "github:numtide/flake-utils";
     treefmt-nix.url = "github:numtide/treefmt-nix";
@@ -62,21 +65,54 @@
       else "/home";
     defaultSystems = ["aarch64-darwin" "x86_64-darwin" "x86_64-linux"];
 
+    # Helper function to generate a set of attributes for each system
+    forAllSystems = nixpkgs.lib.genAttrs defaultSystems;
+
+    # Import nixpkgs with overlays and config for each system
+    nixpkgsFor = forAllSystems (system:
+      import nixpkgs {
+        inherit system;
+        config = {
+          allowUnfree = true;
+          allowBroken = true;
+          checkAllPackages = false;
+        };
+        overlays =
+          builtins.map
+          (
+            name: let
+              overlay = self.overlays.${name} inputs;
+            in
+              final: prev: builtins.trace "Applying overlay: ${name}" (overlay final prev)
+          )
+          (builtins.attrNames self.overlays);
+      });
+
     mkDarwinConfig = {
       system ? "aarch64-darwin",
       nixpkgs ? inputs.nixpkgs,
       baseModules ? [home-manager.darwinModules.home-manager ./modules/darwin],
       extraModules ? [],
-    }:
-      inputs.darwin.lib.darwinSystem {
-        inherit system;
-        modules = baseModules ++ extraModules;
-        specialArgs = {inherit self inputs nixpkgs;};
-        pkgs = import nixpkgs {
-          inherit system;
-          overlays = [self.overlays.floxOverlay self.overlays.birdOverlay] ++ builtins.attrValues self.overlays;
+    }: let
+      debugModule = {config, ...}: {
+        _file = "debugModule";
+        config = {
+          system.activationScripts.debug.text = builtins.trace "Defining activationScripts" ''
+            echo "Debug: activationScripts is being executed"
+          '';
         };
       };
+    in
+      builtins.trace "Starting darwinSystem evaluation" (
+        inputs.darwin.lib.darwinSystem {
+          inherit system;
+          pkgs = nixpkgsFor.${system};
+          modules = builtins.trace "Combining modules" (baseModules ++ extraModules ++ [debugModule]);
+          specialArgs = builtins.trace "Setting specialArgs" {
+            inherit self inputs nixpkgs;
+          };
+        }
+      );
 
     mkHomeConfig = {
       username,
@@ -94,45 +130,22 @@
       extraModules ? [],
     }:
       inputs.home-manager.lib.homeManagerConfiguration {
-        pkgs = import nixpkgs {
-          inherit system;
-          overlays = [self.overlays.floxOverlay] ++ builtins.attrValues self.overlays;
-        };
+        pkgs = nixpkgsFor.${system};
+        modules =
+          baseModules
+          ++ extraModules
+          ++ [
+            {
+              nixpkgs.config = {
+                allowUnfree = true;
+                allowBroken = true;
+                checkAllPackages = false;
+              };
+            }
+          ];
         extraSpecialArgs = {inherit self inputs nixpkgs;};
-        modules = baseModules ++ extraModules;
       };
-
-    mkChecks = {
-      arch,
-      os,
-      username ? "nxmatic",
-      profile ? "work",
-    }: {
-      "${arch}-${os}" = {
-        "${username}_${os}" =
-          (
-            if os == "darwin"
-            then self.darwinConfigurations
-            else self.nixosConfigurations
-          )
-          ."${profile}@${arch}-${os}"
-          .config
-          .system
-          .build
-          .toplevel;
-        "${username}_home" = self.homeConfigurations."${profile}@${arch}-${os}".activationPackage;
-        devShell = self.devShells."${arch}-${os}".default;
-      };
-    };
   in {
-    checks =
-      {}
-      // (mkChecks {
-        arch = "aarch64";
-        os = "darwin";
-        profile = "work";
-      });
-
     darwinConfigurations."work@aarch64-darwin" = mkDarwinConfig {
       system = "aarch64-darwin";
       extraModules = [./profiles/darwin/work.nix];
@@ -146,14 +159,10 @@
     };
 
     devShells = eachSystemMap defaultSystems (
-      system: let
-        pkgs = import nixpkgs {
-          inherit system;
-          overlays = [self.overlays.floxOverlay];
-        };
-      in {
+      system: {
         default = devenv.lib.mkShell {
-          inherit inputs pkgs;
+          inherit inputs;
+          pkgs = nixpkgsFor.${system};
           modules = [(import ./devenv.nix)];
         };
       }
@@ -161,10 +170,7 @@
 
     packages = eachSystemMap defaultSystems (
       system: let
-        pkgs = import nixpkgs {
-          inherit system;
-          overlays = [self.overlays.floxOverlay];
-        };
+        pkgs = nixpkgsFor.${system};
       in {
         pyEnv = pkgs.python3.withPackages (ps: with ps; [black typer colorama shellingham]);
         sysdo = pkgs.writeScriptBin "sysdo" ''
@@ -177,53 +183,21 @@
     );
 
     overlays = {
-      channels = final: prev: {
+      channels = inputs: final: prev: {
         nixpkgs = import inputs.nixpkgs {system = prev.system;};
       };
 
-      extraPackages = final: prev: {
+      extraPackages = inputs: final: prev: {
         inherit (self.packages.${prev.system}) sysdo pyEnv;
         inherit (inputs.devenv.packages.${prev.system}) devenv;
         inherit (inputs.maven-mvnd.packages.${prev.system}) maven-mvnd-m39 maven-mvnd-m40;
       };
 
-      birdOverlay = final: prev: {
-        bird = let
-          birdPkg = inputs.bird.packages.${prev.system}.default;
-        in
-          builtins.trace "Bird package: ${builtins.toJSON birdPkg.meta}, sysioMd5sum: ${birdPkg.passthru.sysioMd5sum}"
-          birdPkg;
-      };
+      birdOverlay = inputs: import ./overlays/bird.nix inputs;
 
-      floxOverlay = final: prev: {
-        flox-pkgdb =
-          builtins.trace "Applying flox overlay"
-          (prev.flox.overrideAttrs (oldAttrs: {
-            patches = (oldAttrs.patches or []) ++ [./flox-maybeGetAttr.patch];
-            prePatch = ''
-              ${oldAttrs.prePatch or ""}
-              echo "Starting prePatch phase"
-            '';
-            postPatch = ''
-              ${oldAttrs.postPatch or ""}
-              echo "Starting postPatch phase"
-              echo "Content of src/buildenv/realise.cc after patching:"
-              cat src/buildenv/realise.cc
-              echo "Ending postPatch phase"
-            '';
-            postUnpack = ''
-              ${oldAttrs.postUnpack or ""}
-              echo "Starting postUnpack phase"
-              echo "Current directory: $(pwd)"
-              ls -la
-            '';
-            # Force a rebuild by changing the version
-            version = "${oldAttrs.version}-patched";
-          }))
-          .override {
-            nix = final.nix; # Ensure we're using the latest nix from the final set
-          };
-      };
+      floxOverlay = inputs: import ./overlays/flox.nix inputs;
+
+      # zenBrowserOverlay = inputs: import ./overlays/zen-browser.nix inputs;
     };
   };
 }

@@ -4,7 +4,7 @@
   ...
 }: {
   # bundles essential nixos modules
-  imports = [./keybase.nix ../common.nix];
+  imports = [./keybase.nix ../common];
 
   services.syncthing = {
     enable = true;

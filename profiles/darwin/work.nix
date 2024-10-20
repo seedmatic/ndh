@@ -1,33 +1,16 @@
-{
-  config,
-  lib,
-  pkgs,
-  ...
-}: {
-  user.name = "stephane.lacoin";
-
-  hm = {
-    imports = [
-      ../home-manager/work.nix
-    ];
+{...}: let
+  result = {
+    user.name = "stephane.lacoin";
+    hm = {
+      imports = [
+        ../home-manager/work.nix
+      ];
+    };
+    homebrew = {
+      enable = true;
+      brews = [];
+      casks = [];
+    };
   };
-
-  homebrew = {
-    enable = true;
-
-    brews = [
-    ];
-
-    casks = [
-      # social
-      # "notion"
-
-      # knowledge base
-      # "obsidian"
-      #      "zotero"
-
-      # social
-      # "keybase"
-    ];
-  };
-}
+in
+  builtins.trace "Finished evaluating profiles/darwin/work.nix" result

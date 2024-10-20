@@ -1,6 +1,7 @@
-{...}: {
-  imports = [
-    ../common.nix
+{...}:
+builtins.trace "Evaluating darwin/default.nix" {
+  imports = builtins.map (module: builtins.trace "Importing ${module}" (import module)) [
+    ../common
     ./preferences.nix
     ./security.nix
     ./core.nix
@@ -8,7 +9,6 @@
     ./raycast.nix
     ./syncthing.nix
     ./tailscale.nix
-    # install un-managed programs
     ./homebrew.nix
   ];
 }
