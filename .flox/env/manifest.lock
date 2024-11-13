@@ -1,0 +1,393 @@
+{
+  "lockfile-version": 1,
+  "manifest": {
+    "version": 1,
+    "install": {
+      "nix-tree": {
+        "pkg-path": "nix-tree"
+      },
+      "nixd": {
+        "pkg-path": "nixd"
+      },
+      "nixtract": {
+        "pkg-path": "nixtract"
+      }
+    },
+    "hook": {},
+    "profile": {},
+    "options": {
+      "systems": [
+        "aarch64-darwin",
+        "aarch64-linux",
+        "x86_64-darwin",
+        "x86_64-linux"
+      ],
+      "allow": {
+        "licenses": []
+      },
+      "semver": {}
+    }
+  },
+  "packages": [
+    {
+      "attr_path": "nix-tree",
+      "broken": false,
+      "derivation": "/nix/store/cd04zbz79wd37r45wf0ijarrgaxvaw64-nix-tree-0.5.0.drv",
+      "description": "Interactively browse a Nix store paths dependencies",
+      "install_id": "nix-tree",
+      "license": "BSD-3-Clause",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=23e89b7da85c3640bbc2173fe04f4bd114342367",
+      "name": "nix-tree-0.5.0",
+      "pname": "nix-tree",
+      "rev": "23e89b7da85c3640bbc2173fe04f4bd114342367",
+      "rev_count": 710087,
+      "rev_date": "2024-11-19T11:04:08Z",
+      "scrape_date": "2024-11-21T04:00:36Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "0.5.0",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/alg1gzmkmz4k9p8had4bn79hl68q73hk-nix-tree-0.5.0"
+      },
+      "system": "aarch64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "nix-tree",
+      "broken": false,
+      "derivation": "/nix/store/0gh1kyagmy1594k63msbilhvcg79s7p1-nix-tree-0.5.0.drv",
+      "description": "Interactively browse a Nix store paths dependencies",
+      "install_id": "nix-tree",
+      "license": "BSD-3-Clause",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=23e89b7da85c3640bbc2173fe04f4bd114342367",
+      "name": "nix-tree-0.5.0",
+      "pname": "nix-tree",
+      "rev": "23e89b7da85c3640bbc2173fe04f4bd114342367",
+      "rev_count": 710087,
+      "rev_date": "2024-11-19T11:04:08Z",
+      "scrape_date": "2024-11-21T04:00:36Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "0.5.0",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/mnh7qbnpl8435kwnm9apxc7zq5qj7aza-nix-tree-0.5.0"
+      },
+      "system": "aarch64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "nix-tree",
+      "broken": false,
+      "derivation": "/nix/store/4iqbp5z0qvy55dp54ifas5r538lp1p2x-nix-tree-0.5.0.drv",
+      "description": "Interactively browse a Nix store paths dependencies",
+      "install_id": "nix-tree",
+      "license": "BSD-3-Clause",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=23e89b7da85c3640bbc2173fe04f4bd114342367",
+      "name": "nix-tree-0.5.0",
+      "pname": "nix-tree",
+      "rev": "23e89b7da85c3640bbc2173fe04f4bd114342367",
+      "rev_count": 710087,
+      "rev_date": "2024-11-19T11:04:08Z",
+      "scrape_date": "2024-11-21T04:00:36Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "0.5.0",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/fcsym4dqjda832jhj1ima6108y2p90hl-nix-tree-0.5.0"
+      },
+      "system": "x86_64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "nix-tree",
+      "broken": false,
+      "derivation": "/nix/store/q3c8wmiw6yqyqwyd6vz496q61lyrynk4-nix-tree-0.5.0.drv",
+      "description": "Interactively browse a Nix store paths dependencies",
+      "install_id": "nix-tree",
+      "license": "BSD-3-Clause",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=23e89b7da85c3640bbc2173fe04f4bd114342367",
+      "name": "nix-tree-0.5.0",
+      "pname": "nix-tree",
+      "rev": "23e89b7da85c3640bbc2173fe04f4bd114342367",
+      "rev_count": 710087,
+      "rev_date": "2024-11-19T11:04:08Z",
+      "scrape_date": "2024-11-21T04:00:36Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "0.5.0",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/f5ym8c1r8hkr0wpy85zbvm40q392rp30-nix-tree-0.5.0"
+      },
+      "system": "x86_64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "nixd",
+      "broken": false,
+      "derivation": "/nix/store/h6q09vl0fjyd44h9vpqil2nwma97wbz3-nixd-2.5.1.drv",
+      "description": "Feature-rich Nix language server interoperating with C++ nix",
+      "install_id": "nixd",
+      "license": "LGPL-3.0-or-later",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=23e89b7da85c3640bbc2173fe04f4bd114342367",
+      "name": "nixd-2.5.1",
+      "pname": "nixd",
+      "rev": "23e89b7da85c3640bbc2173fe04f4bd114342367",
+      "rev_count": 710087,
+      "rev_date": "2024-11-19T11:04:08Z",
+      "scrape_date": "2024-11-21T04:00:36Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "2.5.1",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/p8xpyshy76p0vhzla852vlg87696y84r-nixd-2.5.1"
+      },
+      "system": "aarch64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "nixd",
+      "broken": false,
+      "derivation": "/nix/store/lgzvqrvb81qbkjq5wkb5i5h845mrzmkw-nixd-2.5.1.drv",
+      "description": "Feature-rich Nix language server interoperating with C++ nix",
+      "install_id": "nixd",
+      "license": "LGPL-3.0-or-later",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=23e89b7da85c3640bbc2173fe04f4bd114342367",
+      "name": "nixd-2.5.1",
+      "pname": "nixd",
+      "rev": "23e89b7da85c3640bbc2173fe04f4bd114342367",
+      "rev_count": 710087,
+      "rev_date": "2024-11-19T11:04:08Z",
+      "scrape_date": "2024-11-21T04:00:36Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "2.5.1",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/imf7l7r0nrcbin6qikbzdv2nlmy0qisw-nixd-2.5.1"
+      },
+      "system": "aarch64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "nixd",
+      "broken": false,
+      "derivation": "/nix/store/pf43wgg0hjqycjzyhqk6mg7y1pv9jirq-nixd-2.5.1.drv",
+      "description": "Feature-rich Nix language server interoperating with C++ nix",
+      "install_id": "nixd",
+      "license": "LGPL-3.0-or-later",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=23e89b7da85c3640bbc2173fe04f4bd114342367",
+      "name": "nixd-2.5.1",
+      "pname": "nixd",
+      "rev": "23e89b7da85c3640bbc2173fe04f4bd114342367",
+      "rev_count": 710087,
+      "rev_date": "2024-11-19T11:04:08Z",
+      "scrape_date": "2024-11-21T04:00:36Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "2.5.1",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/pxvr8fgszmfdn8f5in8qn4s02z83zihq-nixd-2.5.1"
+      },
+      "system": "x86_64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "nixd",
+      "broken": false,
+      "derivation": "/nix/store/yq3idkjqb75sg66cafa27z5bllb2xg4f-nixd-2.5.1.drv",
+      "description": "Feature-rich Nix language server interoperating with C++ nix",
+      "install_id": "nixd",
+      "license": "LGPL-3.0-or-later",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=23e89b7da85c3640bbc2173fe04f4bd114342367",
+      "name": "nixd-2.5.1",
+      "pname": "nixd",
+      "rev": "23e89b7da85c3640bbc2173fe04f4bd114342367",
+      "rev_count": 710087,
+      "rev_date": "2024-11-19T11:04:08Z",
+      "scrape_date": "2024-11-21T04:00:36Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "2.5.1",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/s10v9dv1qi11qqyv4vnyr4zb07zab09q-nixd-2.5.1"
+      },
+      "system": "x86_64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "nixtract",
+      "broken": false,
+      "derivation": "/nix/store/rw2k7r9hw6wmlr57c78rjpklhj61x0i4-nixtract-0.3.0.drv",
+      "description": "CLI tool to extract the graph of derivations from a Nix flake",
+      "install_id": "nixtract",
+      "license": "[ MIT, Apache-2.0 ]",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=23e89b7da85c3640bbc2173fe04f4bd114342367",
+      "name": "nixtract-0.3.0",
+      "pname": "nixtract",
+      "rev": "23e89b7da85c3640bbc2173fe04f4bd114342367",
+      "rev_count": 710087,
+      "rev_date": "2024-11-19T11:04:08Z",
+      "scrape_date": "2024-11-21T04:00:36Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "0.3.0",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/d69242sr3w715b10227v85cv5dqr4cis-nixtract-0.3.0"
+      },
+      "system": "aarch64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "nixtract",
+      "broken": false,
+      "derivation": "/nix/store/djhzfma13gc9vyywwgi0lc58a38l704l-nixtract-0.3.0.drv",
+      "description": "CLI tool to extract the graph of derivations from a Nix flake",
+      "install_id": "nixtract",
+      "license": "[ MIT, Apache-2.0 ]",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=23e89b7da85c3640bbc2173fe04f4bd114342367",
+      "name": "nixtract-0.3.0",
+      "pname": "nixtract",
+      "rev": "23e89b7da85c3640bbc2173fe04f4bd114342367",
+      "rev_count": 710087,
+      "rev_date": "2024-11-19T11:04:08Z",
+      "scrape_date": "2024-11-21T04:00:36Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "0.3.0",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/pzqs40db4gabqz3aan3cqh8jyj31jn43-nixtract-0.3.0"
+      },
+      "system": "aarch64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "nixtract",
+      "broken": false,
+      "derivation": "/nix/store/65jh39sznr093cihakzml6qxp0ldg75m-nixtract-0.3.0.drv",
+      "description": "CLI tool to extract the graph of derivations from a Nix flake",
+      "install_id": "nixtract",
+      "license": "[ MIT, Apache-2.0 ]",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=23e89b7da85c3640bbc2173fe04f4bd114342367",
+      "name": "nixtract-0.3.0",
+      "pname": "nixtract",
+      "rev": "23e89b7da85c3640bbc2173fe04f4bd114342367",
+      "rev_count": 710087,
+      "rev_date": "2024-11-19T11:04:08Z",
+      "scrape_date": "2024-11-21T04:00:36Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "0.3.0",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/fpmgas8nj9sbdnssgv1rx329bpbjgnpx-nixtract-0.3.0"
+      },
+      "system": "x86_64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "nixtract",
+      "broken": false,
+      "derivation": "/nix/store/lhp99r6nxghg1vzw5kq9kw99b9r7g991-nixtract-0.3.0.drv",
+      "description": "CLI tool to extract the graph of derivations from a Nix flake",
+      "install_id": "nixtract",
+      "license": "[ MIT, Apache-2.0 ]",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=23e89b7da85c3640bbc2173fe04f4bd114342367",
+      "name": "nixtract-0.3.0",
+      "pname": "nixtract",
+      "rev": "23e89b7da85c3640bbc2173fe04f4bd114342367",
+      "rev_count": 710087,
+      "rev_date": "2024-11-19T11:04:08Z",
+      "scrape_date": "2024-11-21T04:00:36Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "0.3.0",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/lz36p5mknxv7sc8sha6ixvrihq3zbfg4-nixtract-0.3.0"
+      },
+      "system": "x86_64-linux",
+      "group": "toplevel",
+      "priority": 5
+    }
+  ]
+}

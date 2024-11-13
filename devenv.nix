@@ -3,8 +3,11 @@
   pkgs,
   ...
 }: {
+  devenv.root = "/tmp";
+
   packages = [
     pkgs.nixd
+    pkgs.flox
     self.packages.${pkgs.system}.pyEnv
   ];
 

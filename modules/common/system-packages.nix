@@ -1,19 +1,15 @@
-{
-  pkgs,
-  inputs,
-  ...
-}:
+{pkgs, ...}:
 with pkgs; [
   # nix
   home-manager
-  inputs.flox.packages.${pkgs.system}.flox
+  #  inputs.flox.packages.${pkgs.system}.flox
   nix-du
   nix-index
   nix-tree
   nix-prefetch-git
 
   # standard toolset
-  clang_19
+  clang
   coreutils-full
   cmake
   curl
@@ -52,6 +48,9 @@ with pkgs; [
   fzf
   ripgrep
 
+  # graphical disk analyzer
+  gdu
+
   # shell debugging
   shellcheck
   # bashdb
@@ -83,7 +82,7 @@ with pkgs; [
   # java
   jdk
   maven
-  maven-mvnd-m39
+  # maven-mvnd-m39
   gradle
 
   # python
@@ -103,7 +102,7 @@ with pkgs; [
 
   # social (see brew cask)
   #kbfs
-  #keybase
+  keybase
   #keybase-gui
 
   slack
@@ -127,7 +126,6 @@ with pkgs; [
   # macos
   raycast # launcher
   syncthing # volumes synch
-  realvnc-vnc-viewer # vnc viewer
 
   # networking
   dbus
@@ -144,6 +142,13 @@ with pkgs; [
   # android
   android-tools
 
+  # vm runtimes
+  ubridge
+  libvirt
+  virt-manager
+  #OVMF
+  qemu
+
   # container runtimes
   buildkit
   docker-client
@@ -151,7 +156,6 @@ with pkgs; [
   docker-credential-helpers
   colima
   lima
-  qemu
   podman
   podman-compose
 
@@ -169,8 +173,9 @@ with pkgs; [
   pass
   passExtensions.pass-audit
   passExtensions.pass-checkup
+  passExtensions.pass-file
+  passExtensions.pass-genphrase
   passExtensions.pass-otp
-  #passExtensions.update
   pass-git-helper
   passff-host
 

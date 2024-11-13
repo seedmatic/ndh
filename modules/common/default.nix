@@ -8,8 +8,9 @@
   imports = [
     ./primaryUser.nix
     ./nixpkgs.nix
-    ./dnsmasq.nix
     ./bird-daemon.nix
+    ./dnsmasq.nix
+    ./qemu.nix
   ];
 
   nixpkgs.overlays =
@@ -107,13 +108,9 @@
   };
 
   # zen-browser = {
-  #   enable = true;
-  #   packages = [
-  #     inputs.zen-browser.packages.${pkgs.system}.default
-  #     inputs.zen-browser.packages.${pkgs.system}.specific
-  #     inputs.zen-browser.packages.${pkgs.system}.generic
-  #   ];
-  # };
+  #    enable = false;
+  #    packages = pkgs.zen-browser-unwrapped;
+  #  };
 
   # environment setup
   environment = {

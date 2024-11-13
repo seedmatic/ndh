@@ -12,14 +12,12 @@
         echo "$XDG_CACHE_HOME/direnv/layouts/$pwd_hash"
       }
 
+      source_url "https://raw.githubusercontent.com/flox/flox-direnv/v1.1.0/direnv.rc" 'sha256-c2YCane8WGmYeCDc9wIZyVL8AgbdfhPaEoM+5aFuysw='
+
       source_env_if_exists ''${BASH_SOURCE}~$(uname)
       source_env_if_exists ''${BASH_SOURCE}~$(hostname)
 
-      # source_env_if_exists ''${BASH_SOURCE}~golang
-      # source_env_if_exists ''${BASH_SOURCE}~krew
-      # source_env_if_exists ''${BASH_SOURCE}~pass
-
-      source_env_if_exists ''${BASH_SOURCE}~nos
+      # Additional environment configurations...
     '';
   };
 }

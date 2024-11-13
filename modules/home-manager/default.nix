@@ -35,54 +35,35 @@
   };
 
   home = {
-    # This value determines the Home Manager release that your
-    # configuration is compatible with. This helps avoid breakage
-    # when a new Home Manager release introduces backwards
-    # incompatible changes.
-    #
-    # You can update Home Manager without changing this value. See
-    # the Home Manager release notes for a list of state version
-    # changes in each release.
     stateVersion = "22.05";
-
-    # Session variables are now always set through the shell. This is
-    # done automatically if the shell configuration is managed by Home
-    # Manager. If not, then you must source the
-
-    #   ~/.nix-profile/etc/profile.d/hm-session-vars.sh
 
     sessionPath = [
       "${config.home.homeDirectory}/.rd/bin"
       "${config.home.homeDirectory}/.local/bin"
     ];
 
-    # define package definitions for current user environment
+    # Define package definitions for current user environment
     packages = with pkgs; [
       alejandra
       awscli2
       avahi
-      # age
       cachix
       cirrus-cli
       comma
       coreutils-full
-      #chromium
       curl
       diffutils
-      #fd
-      #firefox
+      direnv
       ffmpeg
       findutils
       flyctl
       gawk
+      gdu
       gh
       git-workspace
       gnugrep
       gnupg
       gnused
-      (
-        google-cloud-sdk.withExtraComponents [google-cloud-sdk.components.gke-gcloud-auth-plugin]
-      )
       helm-docs
       httpie
       hurl
@@ -96,7 +77,6 @@
       lazydocker
       luajit
       mmv
-      ncdu
       neofetch
       nix
       nixfmt-classic
@@ -105,7 +85,6 @@
       pnpm
       parallel
       passExtensions.pass-otp
-      #passExtensions.pass-tomb incompatible with darwin
       passExtensions.pass-audit
       passExtensions.pass-update
       passExtensions.pass-import
@@ -124,6 +103,7 @@
       tree
       treefmt
       trivy
+      vfkit
       yarn
       yamllint
       yq-go
@@ -137,28 +117,43 @@
     home-manager = {
       enable = true;
     };
+
     bash.enable = true;
+
     dircolors.enable = true;
+
     go.enable = true;
+
     gpg.enable = true;
+
     password-store.enable = true;
+
     git.enable = true;
+
     htop.enable = true;
+
     jq.enable = true;
-    java = {
-      enable = true;
-      # package = pkgs.jdk17;
-    };
+
+    java.enable = true;
+
     k9s.enable = true;
+
     lazygit.enable = true;
+
     less.enable = true;
+
     man.enable = true;
+
     nix-index.enable = true;
+
     pandoc.enable = true;
+
     ripgrep.enable = true;
+
     starship.enable = true;
+
     yt-dlp.enable = false;
-    # zathura.enable = true;
+
     zoxide.enable = true;
   };
 }

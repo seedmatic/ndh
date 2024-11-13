@@ -11,7 +11,6 @@
   '';
 in {
   environment = {
-    loginShell = pkgs.zsh;
     etc = {darwin.source = "${inputs.darwin}";};
     # packages installed in system profile (more in ../common.nix)
     # systemPackages = [ ];
@@ -31,7 +30,33 @@ in {
     '';
 
     # Optimize the store
-    settings.auto-optimise-store = true;
+    optimise.automatic = true;
+
+    # Define builders
+    linux-builder = {
+      enable = true;
+      ephemeral = true;
+      maxJobs = 4;
+      config = {
+        virtualisation = {
+          darwin-builder = {
+            diskSize = 200 * 1024;
+            memorySize = 8 * 1024;
+          };
+          cores = 6;
+        };
+
+        services.openssh = {
+          enable = true;
+          permitRootLogin = "yes";
+          settings = {
+            passwordAuthentication = true;
+          };
+        };
+
+        users.users.root.password = "root";
+      };
+    };
   };
 
   launchd.user.agents.nix-gc = {

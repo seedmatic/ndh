@@ -48,7 +48,7 @@
     # dock settings
     dock = {
       # auto show and hide dock
-      autohide = true;
+      autohide = false;
       # remove delay for showing dock
       autohide-delay = 0.0;
       # how fast is the dock showing animation

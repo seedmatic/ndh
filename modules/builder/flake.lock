@@ -44,6 +44,7 @@
       "inputs": {
         "devenv": "devenv",
         "flake-compat": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "flake-compat"
         ],
@@ -68,18 +69,21 @@
       "inputs": {
         "devenv": "devenv_2",
         "flake-compat": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "cachix",
           "devenv",
           "flake-compat"
         ],
         "git-hooks": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "cachix",
           "devenv",
           "pre-commit-hooks"
         ],
         "nixpkgs": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "cachix",
           "devenv",
@@ -104,6 +108,7 @@
       "inputs": {
         "devenv": "devenv_3",
         "flake-compat": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "cachix",
           "devenv",
@@ -112,6 +117,7 @@
           "flake-compat"
         ],
         "nixpkgs": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "cachix",
           "devenv",
@@ -120,6 +126,7 @@
           "nixpkgs"
         ],
         "pre-commit-hooks": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "cachix",
           "devenv",
@@ -146,6 +153,7 @@
       "inputs": {
         "devenv": "devenv_5",
         "flake-compat": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "nix-darwin-home",
           "nxmatic-flake-commons",
@@ -172,6 +180,7 @@
       "inputs": {
         "devenv": "devenv_6",
         "flake-compat": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "nix-darwin-home",
           "nxmatic-flake-commons",
@@ -180,6 +189,7 @@
           "flake-compat"
         ],
         "git-hooks": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "nix-darwin-home",
           "nxmatic-flake-commons",
@@ -188,6 +198,7 @@
           "pre-commit-hooks"
         ],
         "nixpkgs": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "nix-darwin-home",
           "nxmatic-flake-commons",
@@ -214,6 +225,7 @@
       "inputs": {
         "devenv": "devenv_7",
         "flake-compat": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "nix-darwin-home",
           "nxmatic-flake-commons",
@@ -224,6 +236,7 @@
           "flake-compat"
         ],
         "nixpkgs": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "nix-darwin-home",
           "nxmatic-flake-commons",
@@ -234,6 +247,7 @@
           "nixpkgs"
         ],
         "pre-commit-hooks": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "nix-darwin-home",
           "nxmatic-flake-commons",
@@ -291,6 +305,7 @@
     "darwin": {
       "inputs": {
         "nixpkgs": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "nixpkgs"
         ]
@@ -309,9 +324,96 @@
         "type": "github"
       }
     },
+    "darwin-home": {
+      "inputs": {
+        "bird": [
+          "darwin-home",
+          "nxmatic-flake-commons",
+          "bird"
+        ],
+        "cachix": [
+          "darwin-home",
+          "nxmatic-flake-commons",
+          "cachix"
+        ],
+        "darwin": [
+          "darwin-home",
+          "nxmatic-flake-commons",
+          "darwin"
+        ],
+        "devenv": [
+          "darwin-home",
+          "nxmatic-flake-commons",
+          "devenv"
+        ],
+        "flake-compat": [
+          "darwin-home",
+          "nxmatic-flake-commons",
+          "flake-compat"
+        ],
+        "flake-utils": [
+          "darwin-home",
+          "nxmatic-flake-commons",
+          "flake-utils"
+        ],
+        "flox": [
+          "darwin-home",
+          "nxmatic-flake-commons",
+          "flox"
+        ],
+        "home-manager": "home-manager",
+        "maven-mvnd": [
+          "darwin-home",
+          "nxmatic-flake-commons",
+          "maven-mvnd"
+        ],
+        "nix": [
+          "darwin-home",
+          "nxmatic-flake-commons",
+          "nix"
+        ],
+        "nixos-hardware": [
+          "darwin-home",
+          "nxmatic-flake-commons",
+          "nixos-hardware"
+        ],
+        "nixpkgs": [
+          "darwin-home",
+          "nxmatic-flake-commons",
+          "nixpkgs"
+        ],
+        "nxmatic-flake-commons": "nxmatic-flake-commons",
+        "socket-vmnet": [
+          "darwin-home",
+          "nxmatic-flake-commons",
+          "socket-vmnet"
+        ],
+        "treefmt-nix": "treefmt-nix_4",
+        "zen-browser": [
+          "darwin-home",
+          "nxmatic-flake-commons",
+          "zen-browser"
+        ]
+      },
+      "locked": {
+        "lastModified": 1732452031,
+        "narHash": "sha256-q46Ut4rN3BYpqPSMKz6kHwT4azqe702BlkC5s9uNwVE=",
+        "owner": "nxmatic",
+        "repo": "nix-darwin-home",
+        "rev": "ca81534011888345feeb938f08dfc975da525b2f",
+        "type": "github"
+      },
+      "original": {
+        "owner": "nxmatic",
+        "ref": "work",
+        "repo": "nix-darwin-home",
+        "type": "github"
+      }
+    },
     "darwin_2": {
       "inputs": {
         "nixpkgs": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "nix-darwin-home",
           "nxmatic-flake-commons",
@@ -336,17 +438,20 @@
       "inputs": {
         "cachix": "cachix_2",
         "flake-compat": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "cachix",
           "flake-compat"
         ],
         "nix": "nix_3",
         "nixpkgs": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "cachix",
           "nixpkgs"
         ],
         "pre-commit-hooks": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "cachix",
           "git-hooks"
@@ -370,6 +475,7 @@
       "inputs": {
         "cachix": "cachix_3",
         "flake-compat": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "cachix",
           "devenv",
@@ -378,6 +484,7 @@
         ],
         "nix": "nix_2",
         "nixpkgs": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "cachix",
           "devenv",
@@ -385,6 +492,7 @@
           "nixpkgs"
         ],
         "pre-commit-hooks": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "cachix",
           "devenv",
@@ -409,6 +517,7 @@
     "devenv_3": {
       "inputs": {
         "flake-compat": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "cachix",
           "devenv",
@@ -421,6 +530,7 @@
         "nixpkgs": "nixpkgs_3",
         "poetry2nix": "poetry2nix",
         "pre-commit-hooks": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "cachix",
           "devenv",
@@ -448,18 +558,22 @@
     "devenv_4": {
       "inputs": {
         "cachix": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "cachix"
         ],
         "flake-compat": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "flake-compat"
         ],
         "nix": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "nix"
         ],
         "nixpkgs": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "nixpkgs"
         ],
@@ -484,6 +598,7 @@
       "inputs": {
         "cachix": "cachix_5",
         "flake-compat": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "nix-darwin-home",
           "nxmatic-flake-commons",
@@ -492,6 +607,7 @@
         ],
         "nix": "nix_7",
         "nixpkgs": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "nix-darwin-home",
           "nxmatic-flake-commons",
@@ -499,6 +615,7 @@
           "nixpkgs"
         ],
         "pre-commit-hooks": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "nix-darwin-home",
           "nxmatic-flake-commons",
@@ -524,6 +641,7 @@
       "inputs": {
         "cachix": "cachix_6",
         "flake-compat": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "nix-darwin-home",
           "nxmatic-flake-commons",
@@ -534,6 +652,7 @@
         ],
         "nix": "nix_6",
         "nixpkgs": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "nix-darwin-home",
           "nxmatic-flake-commons",
@@ -543,6 +662,7 @@
           "nixpkgs"
         ],
         "pre-commit-hooks": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "nix-darwin-home",
           "nxmatic-flake-commons",
@@ -569,6 +689,7 @@
     "devenv_7": {
       "inputs": {
         "flake-compat": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "nix-darwin-home",
           "nxmatic-flake-commons",
@@ -583,6 +704,7 @@
         "nixpkgs": "nixpkgs_11",
         "poetry2nix": "poetry2nix_2",
         "pre-commit-hooks": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "nix-darwin-home",
           "nxmatic-flake-commons",
@@ -612,24 +734,28 @@
     "devenv_8": {
       "inputs": {
         "cachix": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "nix-darwin-home",
           "nxmatic-flake-commons",
           "cachix"
         ],
         "flake-compat": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "nix-darwin-home",
           "nxmatic-flake-commons",
           "flake-compat"
         ],
         "nix": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "nix-darwin-home",
           "nxmatic-flake-commons",
           "nix"
         ],
         "nixpkgs": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "nix-darwin-home",
           "nxmatic-flake-commons",
@@ -655,6 +781,7 @@
     "fenix": {
       "inputs": {
         "nixpkgs": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "flox",
           "nixpkgs"
@@ -678,6 +805,7 @@
     "fenix_2": {
       "inputs": {
         "nixpkgs": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "nix-darwin-home",
           "nxmatic-flake-commons",
@@ -893,6 +1021,7 @@
     "flake-parts": {
       "inputs": {
         "nixpkgs-lib": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "cachix",
           "devenv",
@@ -917,6 +1046,7 @@
     "flake-parts_2": {
       "inputs": {
         "nixpkgs-lib": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "nix",
           "nixpkgs"
@@ -939,6 +1069,7 @@
     "flake-parts_3": {
       "inputs": {
         "nixpkgs-lib": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "nix-darwin-home",
           "nxmatic-flake-commons",
@@ -965,6 +1096,7 @@
     "flake-parts_4": {
       "inputs": {
         "nixpkgs-lib": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "nix-darwin-home",
           "nxmatic-flake-commons",
@@ -1237,6 +1369,7 @@
         "crane": "crane",
         "fenix": "fenix",
         "nixpkgs": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "nixpkgs"
         ],
@@ -1263,6 +1396,7 @@
         "crane": "crane_2",
         "fenix": "fenix_2",
         "nixpkgs": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "nix-darwin-home",
           "nxmatic-flake-commons",
@@ -1289,12 +1423,14 @@
     "git-hooks": {
       "inputs": {
         "flake-compat": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "cachix",
           "flake-compat"
         ],
         "gitignore": "gitignore",
         "nixpkgs": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "cachix",
           "nixpkgs"
@@ -1318,19 +1454,23 @@
     "git-hooks-nix": {
       "inputs": {
         "flake-compat": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "nix"
         ],
         "gitignore": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "nix"
         ],
         "nixpkgs": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "nix",
           "nixpkgs"
         ],
         "nixpkgs-stable": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "nix",
           "nixpkgs"
@@ -1353,18 +1493,21 @@
     "git-hooks-nix_2": {
       "inputs": {
         "flake-compat": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "nix-darwin-home",
           "nxmatic-flake-commons",
           "nix"
         ],
         "gitignore": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "nix-darwin-home",
           "nxmatic-flake-commons",
           "nix"
         ],
         "nixpkgs": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "nix-darwin-home",
           "nxmatic-flake-commons",
@@ -1372,6 +1515,7 @@
           "nixpkgs"
         ],
         "nixpkgs-stable": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "nix-darwin-home",
           "nxmatic-flake-commons",
@@ -1396,6 +1540,7 @@
     "git-hooks_2": {
       "inputs": {
         "flake-compat": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "nix-darwin-home",
           "nxmatic-flake-commons",
@@ -1404,6 +1549,7 @@
         ],
         "gitignore": "gitignore_4",
         "nixpkgs": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "nix-darwin-home",
           "nxmatic-flake-commons",
@@ -1429,6 +1575,7 @@
     "gitignore": {
       "inputs": {
         "nixpkgs": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "cachix",
           "git-hooks",
@@ -1452,6 +1599,7 @@
     "gitignore_2": {
       "inputs": {
         "nixpkgs": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "devenv",
           "pre-commit-hooks",
@@ -1475,6 +1623,7 @@
     "gitignore_3": {
       "inputs": {
         "nixpkgs": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "flox",
           "pre-commit-hooks",
@@ -1498,6 +1647,7 @@
     "gitignore_4": {
       "inputs": {
         "nixpkgs": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "nix-darwin-home",
           "nxmatic-flake-commons",
@@ -1523,6 +1673,7 @@
     "gitignore_5": {
       "inputs": {
         "nixpkgs": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "nix-darwin-home",
           "nxmatic-flake-commons",
@@ -1548,6 +1699,7 @@
     "gitignore_6": {
       "inputs": {
         "nixpkgs": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "nix-darwin-home",
           "nxmatic-flake-commons",
@@ -1590,6 +1742,7 @@
     "home-manager_2": {
       "inputs": {
         "nixpkgs": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "nixpkgs"
         ]
@@ -1629,6 +1782,7 @@
     "home-manager_4": {
       "inputs": {
         "nixpkgs": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "nix-darwin-home",
           "nxmatic-flake-commons",
@@ -1800,6 +1954,7 @@
       "inputs": {
         "flake-compat": "flake-compat",
         "nixpkgs": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "cachix",
           "devenv",
@@ -1829,42 +1984,49 @@
     "nix-darwin-home": {
       "inputs": {
         "bird": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "nix-darwin-home",
           "nxmatic-flake-commons",
           "bird"
         ],
         "cachix": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "nix-darwin-home",
           "nxmatic-flake-commons",
           "cachix"
         ],
         "darwin": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "nix-darwin-home",
           "nxmatic-flake-commons",
           "darwin"
         ],
         "devenv": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "nix-darwin-home",
           "nxmatic-flake-commons",
           "devenv"
         ],
         "flake-compat": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "nix-darwin-home",
           "nxmatic-flake-commons",
           "flake-compat"
         ],
         "flake-utils": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "nix-darwin-home",
           "nxmatic-flake-commons",
           "flake-utils"
         ],
         "flox": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "nix-darwin-home",
           "nxmatic-flake-commons",
@@ -1872,24 +2034,28 @@
         ],
         "home-manager": "home-manager_3",
         "maven-mvnd": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "nix-darwin-home",
           "nxmatic-flake-commons",
           "maven-mvnd"
         ],
         "nix": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "nix-darwin-home",
           "nxmatic-flake-commons",
           "nix"
         ],
         "nixos-hardware": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "nix-darwin-home",
           "nxmatic-flake-commons",
           "nixos-hardware"
         ],
         "nixpkgs": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "nix-darwin-home",
           "nxmatic-flake-commons",
@@ -1897,6 +2063,7 @@
         ],
         "nxmatic-flake-commons": "nxmatic-flake-commons_2",
         "socket-vmnet": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "nix-darwin-home",
           "nxmatic-flake-commons",
@@ -1904,6 +2071,7 @@
         ],
         "treefmt-nix": "treefmt-nix_2",
         "zen-browser": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "nix-darwin-home",
           "nxmatic-flake-commons",
@@ -1928,6 +2096,7 @@
     "nix-github-actions": {
       "inputs": {
         "nixpkgs": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "cachix",
           "devenv",
@@ -1956,6 +2125,7 @@
     "nix-github-actions_2": {
       "inputs": {
         "nixpkgs": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "nix-darwin-home",
           "nxmatic-flake-commons",
@@ -1986,6 +2156,7 @@
     "nix_2": {
       "inputs": {
         "flake-compat": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "cachix",
           "devenv",
@@ -1994,6 +2165,7 @@
           "flake-compat"
         ],
         "nixpkgs": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "cachix",
           "devenv",
@@ -2021,6 +2193,7 @@
     "nix_3": {
       "inputs": {
         "flake-compat": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "cachix",
           "devenv",
@@ -2077,6 +2250,7 @@
       "inputs": {
         "flake-compat": "flake-compat_5",
         "nixpkgs": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "nix-darwin-home",
           "nxmatic-flake-commons",
@@ -2108,6 +2282,7 @@
     "nix_6": {
       "inputs": {
         "flake-compat": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "nix-darwin-home",
           "nxmatic-flake-commons",
@@ -2118,6 +2293,7 @@
           "flake-compat"
         ],
         "nixpkgs": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "nix-darwin-home",
           "nxmatic-flake-commons",
@@ -2147,6 +2323,7 @@
     "nix_7": {
       "inputs": {
         "flake-compat": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "nix-darwin-home",
           "nxmatic-flake-commons",
@@ -3145,6 +3322,7 @@
         "flake-utils": "flake-utils_2",
         "nix-github-actions": "nix-github-actions",
         "nixpkgs": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "cachix",
           "devenv",
@@ -3174,6 +3352,7 @@
         "flake-utils": "flake-utils_6",
         "nix-github-actions": "nix-github-actions_2",
         "nixpkgs": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "nix-darwin-home",
           "nxmatic-flake-commons",
@@ -3203,6 +3382,7 @@
     "pre-commit-hooks": {
       "inputs": {
         "flake-compat": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "cachix",
           "devenv",
@@ -3210,12 +3390,14 @@
         ],
         "flake-utils": "flake-utils_3",
         "gitignore": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "cachix",
           "devenv",
           "nix"
         ],
         "nixpkgs": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "cachix",
           "devenv",
@@ -3223,6 +3405,7 @@
           "nixpkgs"
         ],
         "nixpkgs-stable": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "cachix",
           "devenv",
@@ -3247,12 +3430,14 @@
     "pre-commit-hooks_2": {
       "inputs": {
         "flake-compat": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "devenv",
           "flake-compat"
         ],
         "gitignore": "gitignore_2",
         "nixpkgs": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "devenv",
           "nixpkgs"
@@ -3278,6 +3463,7 @@
         "flake-compat": "flake-compat_3",
         "gitignore": "gitignore_3",
         "nixpkgs": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "flox",
           "nixpkgs"
@@ -3301,6 +3487,7 @@
     "pre-commit-hooks_4": {
       "inputs": {
         "flake-compat": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "nix-darwin-home",
           "nxmatic-flake-commons",
@@ -3310,6 +3497,7 @@
         ],
         "flake-utils": "flake-utils_7",
         "gitignore": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "nix-darwin-home",
           "nxmatic-flake-commons",
@@ -3318,6 +3506,7 @@
           "nix"
         ],
         "nixpkgs": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "nix-darwin-home",
           "nxmatic-flake-commons",
@@ -3327,6 +3516,7 @@
           "nixpkgs"
         ],
         "nixpkgs-stable": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "nix-darwin-home",
           "nxmatic-flake-commons",
@@ -3353,6 +3543,7 @@
     "pre-commit-hooks_5": {
       "inputs": {
         "flake-compat": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "nix-darwin-home",
           "nxmatic-flake-commons",
@@ -3361,6 +3552,7 @@
         ],
         "gitignore": "gitignore_5",
         "nixpkgs": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "nix-darwin-home",
           "nxmatic-flake-commons",
@@ -3388,6 +3580,7 @@
         "flake-compat": "flake-compat_7",
         "gitignore": "gitignore_6",
         "nixpkgs": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "nix-darwin-home",
           "nxmatic-flake-commons",
@@ -3412,60 +3605,10 @@
     },
     "root": {
       "inputs": {
-        "bird": [
-          "nxmatic-flake-commons",
-          "bird"
-        ],
-        "cachix": [
-          "nxmatic-flake-commons",
-          "cachix"
-        ],
-        "darwin": [
-          "nxmatic-flake-commons",
-          "darwin"
-        ],
-        "devenv": [
-          "nxmatic-flake-commons",
-          "devenv"
-        ],
-        "flake-compat": [
-          "nxmatic-flake-commons",
-          "flake-compat"
-        ],
-        "flake-utils": [
-          "nxmatic-flake-commons",
-          "flake-utils"
-        ],
-        "flox": [
-          "nxmatic-flake-commons",
-          "flox"
-        ],
-        "home-manager": "home-manager",
-        "maven-mvnd": [
-          "nxmatic-flake-commons",
-          "maven-mvnd"
-        ],
-        "nix": [
-          "nxmatic-flake-commons",
-          "nix"
-        ],
-        "nixos-hardware": [
-          "nxmatic-flake-commons",
-          "nixos-hardware"
-        ],
+        "darwin-home": "darwin-home",
         "nixpkgs": [
-          "nxmatic-flake-commons",
+          "darwin-home",
           "nixpkgs"
-        ],
-        "nxmatic-flake-commons": "nxmatic-flake-commons",
-        "socket-vmnet": [
-          "nxmatic-flake-commons",
-          "socket-vmnet"
-        ],
-        "treefmt-nix": "treefmt-nix_4",
-        "zen-browser": [
-          "nxmatic-flake-commons",
-          "zen-browser"
         ]
       }
     },
@@ -3548,6 +3691,7 @@
     "sqlite3pp": {
       "inputs": {
         "nixpkgs": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "flox",
           "nixpkgs"
@@ -3570,6 +3714,7 @@
     "sqlite3pp_2": {
       "inputs": {
         "nixpkgs": [
+          "darwin-home",
           "nxmatic-flake-commons",
           "nix-darwin-home",
           "nxmatic-flake-commons",
