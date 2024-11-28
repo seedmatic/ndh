@@ -12,6 +12,8 @@
     ./dotfiles
     ./emacs.nix
     ./firefox.nix
+    ./flox.nix
+    ./flox-direnv.nix
     ./fzf.nix
     ./git.nix
     ./gh.nix
@@ -19,6 +21,7 @@
     ./java.nix
     ./keychain.nix
     ./kitty.nix
+    ./mount-maven-shadow-repositories.nix
     ./nushell.nix
     ./password-store.nix
     ./shell
@@ -35,7 +38,7 @@
   };
 
   home = {
-    stateVersion = "22.05";
+    stateVersion = "24.11";
 
     sessionPath = [
       "${config.home.homeDirectory}/.rd/bin"
@@ -56,6 +59,7 @@
       direnv
       ffmpeg
       findutils
+      flox
       flyctl
       gawk
       gdu
@@ -155,5 +159,21 @@
     yt-dlp.enable = false;
 
     zoxide.enable = true;
+
+  };
+
+  services = {
+
+    mountMavenShadowRepositories = {
+
+      enable = true;
+
+      mountPoints = [
+        "/Volumes/GitHub/HylandSoftware/hxpr"
+        "/Volumes/GitHub/nuxeo/nos"
+      ];
+
+    };
+
   };
 }

@@ -76,14 +76,22 @@
             in final: prev:
             builtins.traceVerbose "Applying overlay: ${name}"
             (overlay final prev)) (builtins.attrNames self.overlays);
-          # Combine base packages with Flox and custom overlays
+
+          applyOverlays = final: prev:
+            builtins.foldl' (acc: overlay: (acc // (overlay final prev))) { }
+            overlays;
+
+          tracePackages = pkgs:
+            builtins.mapAttrs
+            (name: pkg: builtins.traceVerbose "Processing package: ${name}" pkg)
+            pkgs;
+
         in basePackages.extend (final: prev:
-          (floxOverlay final prev)
-          // builtins.foldl' (acc: overlay: acc // (overlay final prev)) { }
-          overlays));
+          tracePackages
+          ((floxOverlay final prev) // applyOverlays final prev)));
 
       mkDarwinConfig = { system ? "aarch64-darwin", nixpkgs ? inputs.nixpkgs
-        , baseModules ? [
+        , profile ? "work", baseModules ? [
           #       inputs.zen-browser.darwinModule
           socket-vmnet.darwinModules.socket_vmnet
           home-manager.darwinModules.home-manager
@@ -111,7 +119,7 @@
         });
 
       mkHomeConfig = { username, system, nixpkgs ? inputs.nixpkgs
-        , baseModules ? [
+        , profile ? "work", baseModules ? [
           ./modules/home-manager
           {
             home = {
@@ -132,12 +140,12 @@
           extraSpecialArgs = { inherit self inputs nixpkgs; };
         };
     in {
-      darwinConfigurations."work@aarch64-darwin" = mkDarwinConfig {
+      darwinConfigurations."work" = mkDarwinConfig {
         system = "aarch64-darwin";
         extraModules = [ ./profiles/darwin/work.nix ];
       };
 
-      homeConfigurations."work@aarch64-darwin" = mkHomeConfig {
+      homeConfigurations."work" = mkHomeConfig {
         username = "stephane.lacoin";
         system = "aarch64-darwin";
         profile = "work";

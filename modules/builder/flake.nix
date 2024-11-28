@@ -17,7 +17,7 @@
     nixpkgs.follow = "darwin-home/nixpkgs";
   };
 
-  outputs = {nixpkgs}: {
+  outputs = { darwin-home, nixpkgs }: {
     nixosConfigurations.your-hostname = nixpkgs.lib.nixosSystem {
       system = "aarch64-linux";
       modules = [
@@ -50,7 +50,7 @@
             }
           ];
 
-          system.stateVersion = "24.05";
+          system.stateVersion = darwin-home.homeConfigurations.work.config.home.stateVersion;
 
           # Add any other configuration you need
           environment.systemPackages = with pkgs; [

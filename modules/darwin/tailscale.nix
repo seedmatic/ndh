@@ -6,6 +6,9 @@
 }:
 with lib; let
   cfg = config.services.tailscale;
+  username = config.user.name;
+  homeDir = config.home-manager.users."${username}".home.homeDirectory;
+  logPrefix = "${homeDir}/Library/Logs/tailscale";
 in {
   config = mkIf cfg.enable {
     environment.systemPackages = [pkgs.tailscale];
@@ -16,8 +19,8 @@ in {
         KeepAlive = true;
         LowPriorityIO = true;
         ProcessType = "Background";
-#        StandardOutPath = "~/Library/Logs/Tailscale.log";
-#        StandardErrorPath = builtins.unsafeDiscardStringContext (toString "~/Library/Logs/Tailscale-Errors.log");
+        StandardOutPath = "${logPrefix}-out.log";
+        StandardErrorPath = "${logPrefix}-error.log";
         EnvironmentVariables = {
           NIX_PATH = "nixpkgs=" + toString pkgs.path;
           STNORESTART = "1";

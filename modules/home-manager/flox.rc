@@ -1,0 +1,212 @@
+#!/usr/bin/env -S bash -e -o pipefail
+
+if [[ -n "$ZSH_VERSION" ]]; then
+  setopt LOCAL_TRAPS
+  FLOX_ENV_TRAP_RETURN=EXIT
+elif [[ -n "$BASH_VERSION" ]]; then
+  FLOX_ENV_TRAP_RETURN=RETURN
+else
+  echo "unsupported shell ${0} in flox, returning" >&2
+  return 1
+fi
+
+set -o pipefail
+
+flox:env:log() {
+  local info="${*:2}" &&
+    info="${info//$'\n'/ }"
+
+  printf "flox:env:log:%s:${PWD}:${info}\n" "$1" >&2
+}
+
+flox:env:error() {
+  flox:env:log error "${@}"
+
+  exit "${1:-1}"
+}
+
+flox:env:trace() {
+  local prefix="$1"
+
+  flox:env:log "$prefix" "Setting environment variables"
+
+  cat <<EOF | cut -c 3-
+    flox:env:log $prefix "\$( env | grep "$prefix" )"
+    trap - $FLOX_ENV_TRAP_RETURN $FLOX_ENV_TRAP_RETURN
+EOF
+}
+
+flox:env:debug() 
+{
+  path:check() {
+    local searched=( cat grep cut )
+    local nofound=( )
+    for bin in "${searched[@]}"; do
+      [[ ! -x "${bin}" ]] &&
+        continue
+      notfound=( "${notfunds[@]}" "${bin}" )
+    done
+    [[ ${notfound[#]} -ne 0 ]] &&
+      flox:env:error "Cannot find ${notfound[@]} in $PATH"
+  }
+
+  : perform checks
+  path:check
+  
+  : print out source code
+  flox:env:log SRC 'rc source code'
+  typeset -f "${functions[@]}"
+
+  : set functions in trace mode
+  local functions=( "flox:env:xdg" "flox:env:github" "flox:env:maven" )
+
+  typeset -f -t "${@:-${functions[@]}}" flox:env:xdg flox:env:gh flox:env:github flox:env:maven flox:env:maven:version
+
+  flox:env:log debug "set trace on ${@}"
+}
+
+
+flox:env:trap() {
+  cat <<EOF | cut -c 3-
+  trap '${@}; trap "" \$FLOX_ENV_TRAP_RETURN' \$FLOX_ENV_TRAP_RETURN
+EOF
+}
+
+
+flox:env:project:folder:exists() {
+  local folder="${FLOX_ENV_PROJECT}/$1"
+
+  [[ -d "${folder}" ]] &&
+    return 0
+
+  [[ -L "${folder}" ]] &&
+    return 0
+
+  return 1
+}
+
+flox:env:xdg() {
+  : setting XDG environment
+  eval "$( flox:env:trace XDG )"
+
+  local cwd=$(realpath "$PWD/.local")
+
+  export XDG_CONFIG_HOME=${XDG_CONFIG_HOME:-${cwd}/.config}
+  export XDG_CACHE_HOME=${XDG_CACHE_HOME:-${cwd}/.cache}
+  export XDG_DATA_HOME=${XDG_DATA_HOME:-${cwd}/.local/share}
+  export XDG_STATE_HOME=${XDG_STATE_HOME:-${cwd}/.local/state}
+  export XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-${cwd}/.local/xdg}
+
+  mkdir -p \
+        "${XDG_CONFIG_HOME}" \
+        "${XDG_CACHE_HOME}" \
+        "${XDG_DATA_HOME}" \
+        "${XDG_STATE_HOME}" \
+        "${XDG_RUNTIME_DIR}"
+}
+
+flox:env:github() {
+  : check if applying
+  [[ -d .github ]] ||
+    return
+
+  : setting GITHUB environment
+  eval "$( flox:env:trace GITHUB )"
+
+  local login="$( env GH_TOKEN=${GH_TOKEN:-$( pass show coding/github@work | head -n1 )} gh api user --jq '.login' )"
+
+  [[ -z "$login" ]] &&
+    ( echo "gh not logged, cannot retrieve login name" 1>&2; return 1 )
+
+  local remote="$( git remote get-url origin )"
+  local owner="$( echo "$remote" | cut -d'/' -f4 )"
+  local name="$( echo "$remote" | cut -d'/' -f5 | cut -d'.' -f1 )"
+
+  set -a
+  GITHUB_OWNER=${owner}
+  GITHUB_REPOSITORY=${owner}/${name}
+  set +a
+}
+
+flox:env:eclipse() {
+  : checking eclipse workspace ${workspace:=${FLUX_ENV_PROJECT}}
+
+  flox:env:project:folder:exists .metadata ||
+    return
+
+  set -a
+
+  ECLIPSE_WORKSPACE="$FLOX_ENV_PROJECT"
+  ECLIPSE_COMMAND=<<'EOF' | cut -c -3-
+    eclipse() {
+       rm -f /Volumes/Eclipse/Workspaces/hyland-hxpr/sslkeylogfile;
+       env SSLKEYLOGFILE=$ECLIPSE_WORKSPACE/.metadata/sslkeylogfile /Applications/Eclipse.app/Contents/MacOS/eclipse --data $ECLIPSE_WORKSPACE -console -clean
+    }
+EOF
+
+  set +a
+}
+
+flox:env:maven() {
+
+  maven:version() {
+    cat <<EOF
+    MAVEN_VERSION="$( "${project}/mvnw" -s $MAVEN_SETTINGS -N -q -DmavenVersion=3.9.9 \
+          -Dexpression=maven.version -Doutput=/dev/stdout help:evaluate |
+             grep -v -e '^\[.*\]' )"
+EOF
+  }
+
+  maven:repository:local() {
+    available() {
+      [[ -d "$1" || -L "$1" ]]
+    }
+    local repo
+    if available "${project}/.mvnrepository"; then
+      repo="${project}/.mvnrepository"
+    elif available "${project}/.m2/repo"; then
+      repo="${project}/.m2/repo"
+    else
+      return
+    fi
+    cat <<EOF
+    MAVEN_LOCAL_REPOSITORY="$repo"
+EOF
+  }
+
+  : check if applying
+  [[ ! -x ./mvnw ]] &&
+    return
+
+  : default settings require gh package
+  flox:env:github
+
+  : setting MAVEN environment
+  eval "$( flox:env:trace MAVEN )"
+
+  local project="${FLOX_ENV_PROJECT}"
+
+  set -a
+
+
+  if [[ -d "${project}/.m2" || -L "${project}/.m2" ]]; then
+    MAVEN_USER_CONFIG="${project}/.m2"
+    MAVEN_SETTINGS="${MAVEN_USER_CONFIG}/settings.xml"
+    if [[ "$MAVEN_ARGS" == *"--settings="* ]]; then
+      MAVEN_ARGS=$(echo "$MAVEN_ARGS" | sed "s|--settings=[^ ]*|--settings=${MAVEN_SETTINGS}|")
+    else
+      MAVEN_ARGS="${MAVEN_ARGS} --settings=${MAVEN_SETTINGS}"
+    fi
+  fi
+  eval $( maven:repository:local )
+  eval $( maven:version )
+
+  set +a
+
+}
+
+
+${FLOX_RC_DEBUG:-false} &&
+   flox:env:debug
+
+
