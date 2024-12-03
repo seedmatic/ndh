@@ -57,6 +57,8 @@
       curl
       diffutils
       direnv
+      docker
+      docker-compose 
       ffmpeg
       findutils
       flox
@@ -78,7 +80,7 @@
       kubectx
       kubernetes-helm
       kustomize
-      lazydocker
+#     lazydocker
       luajit
       mmv
       neofetch
