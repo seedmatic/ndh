@@ -23,9 +23,9 @@
 
     nix.follows = "nxmatic-flake-commons/nix";
     nixos-hardware.follows = "nxmatic-flake-commons/nixos-hardware";
-    #   nixpkgs.url = "github:nixos/nixpkgs/nixpkgs-24.05-darwin";
     nixpkgs.follows = "nxmatic-flake-commons/nixpkgs";
-    #   nixpkgs.url = "github:nxmatic/nixpkgs/develop";
+    nixpkgs-develop.follows = "nxmatic-flake-commons/nixpkgs-develop";
+    nixpkgs-staging.follows = "nxmatic-flake-commons/nixpkgs-staging";
 
     cachix.follows = "nxmatic-flake-commons/cachix";
     darwin.follows = "nxmatic-flake-commons/darwin";
