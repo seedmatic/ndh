@@ -151,7 +151,7 @@ flox:env:maven() {
 
   maven:version() {
     cat <<EOF
-    MAVEN_VERSION="$( "${project}/mvnw" -s $MAVEN_SETTINGS -N -q -DmavenVersion=3.9.9 \
+    MAVEN_VERSION="$( "${project}/mvnw" -N -q -DmavenVersion=3.9.9 \
           -Dexpression=maven.version -Doutput=/dev/stdout help:evaluate |
              grep -v -e '^\[.*\]' )"
 EOF

@@ -4,14 +4,14 @@
   nixConfig = {
     substituters = [
       "https://cache.nixos.org"
-      #      "https://kclejeune.cachix.org"
       "https://cache.flox.dev"
+      "https://nxmatic.cachix.org"
     ];
 
     trusted-public-keys = [
       "cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY="
-      #      "kclejeuneachix.org-1:fOCrECygdFZKbMxHClhiTS6oowOkJ/I/dh9q9b1I4ko="
       "flox-cache-public-1:7F4OyH7ZCnFhcze3fJdfyXYLQw/aV7GEed86nQ7IsOs="
+      "nxmatic.cachix.org-1:huMghYiwDpPa1PMXHXK4G1Dp4QOZjgsNqxcjf/AjuJ0="
     ];
   };
 
@@ -41,7 +41,7 @@
   };
 
   outputs = { self, darwin, devenv, flake-utils, home-manager, socket-vmnet
-    , nixpkgs, ... }@inputs:
+    , nixpkgs, nixpkgs-staging, ... }@inputs:
     let
       inherit (flake-utils.lib) eachSystemMap;
       isDarwin = system: builtins.elem system nixpkgs.lib.platforms.darwin;
@@ -71,6 +71,11 @@
             else
               throw "Flox packages not defined for ${system}";
 
+          dockerComposeOverlay = import ./overlays/docker-compose.nix {
+            fetchFromGitHub = basePackages.fetchFromGitHub;
+            buildGoModule = basePackages.buildGoModule;
+          };
+
           overlays = builtins.map (name:
             let overlay = self.overlays.${name} inputs;
             in final: prev:
@@ -88,7 +93,11 @@
 
         in basePackages.extend (final: prev:
           tracePackages
-          ((floxOverlay final prev) // applyOverlays final prev)));
+          (
+            ( floxOverlay final prev ) //
+            ( dockerComposeOverlay final prev ) //
+            ( applyOverlays final prev )
+          )));
 
       mkDarwinConfig = { system ? "aarch64-darwin", nixpkgs ? inputs.nixpkgs
         , profile ? "work", baseModules ? [
@@ -98,12 +107,13 @@
           ./modules/darwin
         ], extraModules ? [ ], }:
         let
-          debugModule = { config, ... }: {
+          debugModule = { config, pkgs, ... }: {
             _file = "debugModule";
             config = {
               system.activationScripts.debug.text =
                 builtins.traceVerbose "Defining activationScripts" ''
                   echo "Debug: activationScripts is being executed"
+                  echo "docker-compose version: ${pkgs.docker-compose.version}"
                 '';
             };
           };

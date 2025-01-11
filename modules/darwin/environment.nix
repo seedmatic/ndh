@@ -12,6 +12,6 @@ builtins.traceVerbose "Evaluating darwin/environment.nix" {
 
   environment.systemPackages = with pkgs; [
     bfg-repo-cleaner
+    nmap
   ];
-
 }

@@ -1,0 +1,22 @@
+{
+    "docker-compose": {
+        "cargoLocks": null,
+        "date": null,
+        "extract": null,
+        "name": "docker-compose",
+        "passthru": null,
+        "pinned": false,
+        "src": {
+            "deepClone": false,
+            "fetchSubmodules": false,
+            "leaveDotGit": false,
+            "name": null,
+            "owner": "docker",
+            "repo": "compose",
+            "rev": "v2.31.0",
+            "sha256": "sha256-l+xSd7eIpEy6A1mtx3WrcPQl7071IdJkbHKXbe4uFdA=",
+            "type": "github"
+        },
+        "version": "v2.31.0"
+    }
+}

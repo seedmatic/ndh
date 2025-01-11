@@ -1,2 +1,5 @@
 {pkgs, ...}:
-with pkgs; [ ]
+with pkgs; [
+  aider-chat
+  docker-compose
+]

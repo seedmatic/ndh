@@ -11,6 +11,9 @@
       },
       "nixtract": {
         "pkg-path": "nixtract"
+      },
+      "nvfetcher": {
+        "pkg-path": "nvfetcher"
       }
     },
     "hook": {},
@@ -36,13 +39,13 @@
       "description": "Interactively browse a Nix store paths dependencies",
       "install_id": "nix-tree",
       "license": "BSD-3-Clause",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=23e89b7da85c3640bbc2173fe04f4bd114342367",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=4633a7c72337ea8fd23a4f2ba3972865e3ec685d",
       "name": "nix-tree-0.5.0",
       "pname": "nix-tree",
-      "rev": "23e89b7da85c3640bbc2173fe04f4bd114342367",
-      "rev_count": 710087,
-      "rev_date": "2024-11-19T11:04:08Z",
-      "scrape_date": "2024-11-21T04:00:36Z",
+      "rev": "4633a7c72337ea8fd23a4f2ba3972865e3ec685d",
+      "rev_count": 712559,
+      "rev_date": "2024-11-25T07:53:41Z",
+      "scrape_date": "2024-11-27T03:52:37Z",
       "stabilities": [
         "staging",
         "unstable"
@@ -66,13 +69,13 @@
       "description": "Interactively browse a Nix store paths dependencies",
       "install_id": "nix-tree",
       "license": "BSD-3-Clause",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=23e89b7da85c3640bbc2173fe04f4bd114342367",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=4633a7c72337ea8fd23a4f2ba3972865e3ec685d",
       "name": "nix-tree-0.5.0",
       "pname": "nix-tree",
-      "rev": "23e89b7da85c3640bbc2173fe04f4bd114342367",
-      "rev_count": 710087,
-      "rev_date": "2024-11-19T11:04:08Z",
-      "scrape_date": "2024-11-21T04:00:36Z",
+      "rev": "4633a7c72337ea8fd23a4f2ba3972865e3ec685d",
+      "rev_count": 712559,
+      "rev_date": "2024-11-25T07:53:41Z",
+      "scrape_date": "2024-11-27T03:52:37Z",
       "stabilities": [
         "staging",
         "unstable"
@@ -96,13 +99,13 @@
       "description": "Interactively browse a Nix store paths dependencies",
       "install_id": "nix-tree",
       "license": "BSD-3-Clause",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=23e89b7da85c3640bbc2173fe04f4bd114342367",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=4633a7c72337ea8fd23a4f2ba3972865e3ec685d",
       "name": "nix-tree-0.5.0",
       "pname": "nix-tree",
-      "rev": "23e89b7da85c3640bbc2173fe04f4bd114342367",
-      "rev_count": 710087,
-      "rev_date": "2024-11-19T11:04:08Z",
-      "scrape_date": "2024-11-21T04:00:36Z",
+      "rev": "4633a7c72337ea8fd23a4f2ba3972865e3ec685d",
+      "rev_count": 712559,
+      "rev_date": "2024-11-25T07:53:41Z",
+      "scrape_date": "2024-11-27T03:52:37Z",
       "stabilities": [
         "staging",
         "unstable"
@@ -126,13 +129,13 @@
       "description": "Interactively browse a Nix store paths dependencies",
       "install_id": "nix-tree",
       "license": "BSD-3-Clause",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=23e89b7da85c3640bbc2173fe04f4bd114342367",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=4633a7c72337ea8fd23a4f2ba3972865e3ec685d",
       "name": "nix-tree-0.5.0",
       "pname": "nix-tree",
-      "rev": "23e89b7da85c3640bbc2173fe04f4bd114342367",
-      "rev_count": 710087,
-      "rev_date": "2024-11-19T11:04:08Z",
-      "scrape_date": "2024-11-21T04:00:36Z",
+      "rev": "4633a7c72337ea8fd23a4f2ba3972865e3ec685d",
+      "rev_count": 712559,
+      "rev_date": "2024-11-25T07:53:41Z",
+      "scrape_date": "2024-11-27T03:52:37Z",
       "stabilities": [
         "staging",
         "unstable"
@@ -156,13 +159,13 @@
       "description": "Feature-rich Nix language server interoperating with C++ nix",
       "install_id": "nixd",
       "license": "LGPL-3.0-or-later",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=23e89b7da85c3640bbc2173fe04f4bd114342367",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=4633a7c72337ea8fd23a4f2ba3972865e3ec685d",
       "name": "nixd-2.5.1",
       "pname": "nixd",
-      "rev": "23e89b7da85c3640bbc2173fe04f4bd114342367",
-      "rev_count": 710087,
-      "rev_date": "2024-11-19T11:04:08Z",
-      "scrape_date": "2024-11-21T04:00:36Z",
+      "rev": "4633a7c72337ea8fd23a4f2ba3972865e3ec685d",
+      "rev_count": 712559,
+      "rev_date": "2024-11-25T07:53:41Z",
+      "scrape_date": "2024-11-27T03:52:37Z",
       "stabilities": [
         "staging",
         "unstable"
@@ -186,13 +189,13 @@
       "description": "Feature-rich Nix language server interoperating with C++ nix",
       "install_id": "nixd",
       "license": "LGPL-3.0-or-later",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=23e89b7da85c3640bbc2173fe04f4bd114342367",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=4633a7c72337ea8fd23a4f2ba3972865e3ec685d",
       "name": "nixd-2.5.1",
       "pname": "nixd",
-      "rev": "23e89b7da85c3640bbc2173fe04f4bd114342367",
-      "rev_count": 710087,
-      "rev_date": "2024-11-19T11:04:08Z",
-      "scrape_date": "2024-11-21T04:00:36Z",
+      "rev": "4633a7c72337ea8fd23a4f2ba3972865e3ec685d",
+      "rev_count": 712559,
+      "rev_date": "2024-11-25T07:53:41Z",
+      "scrape_date": "2024-11-27T03:52:37Z",
       "stabilities": [
         "staging",
         "unstable"
@@ -216,13 +219,13 @@
       "description": "Feature-rich Nix language server interoperating with C++ nix",
       "install_id": "nixd",
       "license": "LGPL-3.0-or-later",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=23e89b7da85c3640bbc2173fe04f4bd114342367",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=4633a7c72337ea8fd23a4f2ba3972865e3ec685d",
       "name": "nixd-2.5.1",
       "pname": "nixd",
-      "rev": "23e89b7da85c3640bbc2173fe04f4bd114342367",
-      "rev_count": 710087,
-      "rev_date": "2024-11-19T11:04:08Z",
-      "scrape_date": "2024-11-21T04:00:36Z",
+      "rev": "4633a7c72337ea8fd23a4f2ba3972865e3ec685d",
+      "rev_count": 712559,
+      "rev_date": "2024-11-25T07:53:41Z",
+      "scrape_date": "2024-11-27T03:52:37Z",
       "stabilities": [
         "staging",
         "unstable"
@@ -246,13 +249,13 @@
       "description": "Feature-rich Nix language server interoperating with C++ nix",
       "install_id": "nixd",
       "license": "LGPL-3.0-or-later",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=23e89b7da85c3640bbc2173fe04f4bd114342367",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=4633a7c72337ea8fd23a4f2ba3972865e3ec685d",
       "name": "nixd-2.5.1",
       "pname": "nixd",
-      "rev": "23e89b7da85c3640bbc2173fe04f4bd114342367",
-      "rev_count": 710087,
-      "rev_date": "2024-11-19T11:04:08Z",
-      "scrape_date": "2024-11-21T04:00:36Z",
+      "rev": "4633a7c72337ea8fd23a4f2ba3972865e3ec685d",
+      "rev_count": 712559,
+      "rev_date": "2024-11-25T07:53:41Z",
+      "scrape_date": "2024-11-27T03:52:37Z",
       "stabilities": [
         "staging",
         "unstable"
@@ -276,13 +279,13 @@
       "description": "CLI tool to extract the graph of derivations from a Nix flake",
       "install_id": "nixtract",
       "license": "[ MIT, Apache-2.0 ]",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=23e89b7da85c3640bbc2173fe04f4bd114342367",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=4633a7c72337ea8fd23a4f2ba3972865e3ec685d",
       "name": "nixtract-0.3.0",
       "pname": "nixtract",
-      "rev": "23e89b7da85c3640bbc2173fe04f4bd114342367",
-      "rev_count": 710087,
-      "rev_date": "2024-11-19T11:04:08Z",
-      "scrape_date": "2024-11-21T04:00:36Z",
+      "rev": "4633a7c72337ea8fd23a4f2ba3972865e3ec685d",
+      "rev_count": 712559,
+      "rev_date": "2024-11-25T07:53:41Z",
+      "scrape_date": "2024-11-27T03:52:37Z",
       "stabilities": [
         "staging",
         "unstable"
@@ -306,13 +309,13 @@
       "description": "CLI tool to extract the graph of derivations from a Nix flake",
       "install_id": "nixtract",
       "license": "[ MIT, Apache-2.0 ]",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=23e89b7da85c3640bbc2173fe04f4bd114342367",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=4633a7c72337ea8fd23a4f2ba3972865e3ec685d",
       "name": "nixtract-0.3.0",
       "pname": "nixtract",
-      "rev": "23e89b7da85c3640bbc2173fe04f4bd114342367",
-      "rev_count": 710087,
-      "rev_date": "2024-11-19T11:04:08Z",
-      "scrape_date": "2024-11-21T04:00:36Z",
+      "rev": "4633a7c72337ea8fd23a4f2ba3972865e3ec685d",
+      "rev_count": 712559,
+      "rev_date": "2024-11-25T07:53:41Z",
+      "scrape_date": "2024-11-27T03:52:37Z",
       "stabilities": [
         "staging",
         "unstable"
@@ -336,13 +339,13 @@
       "description": "CLI tool to extract the graph of derivations from a Nix flake",
       "install_id": "nixtract",
       "license": "[ MIT, Apache-2.0 ]",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=23e89b7da85c3640bbc2173fe04f4bd114342367",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=4633a7c72337ea8fd23a4f2ba3972865e3ec685d",
       "name": "nixtract-0.3.0",
       "pname": "nixtract",
-      "rev": "23e89b7da85c3640bbc2173fe04f4bd114342367",
-      "rev_count": 710087,
-      "rev_date": "2024-11-19T11:04:08Z",
-      "scrape_date": "2024-11-21T04:00:36Z",
+      "rev": "4633a7c72337ea8fd23a4f2ba3972865e3ec685d",
+      "rev_count": 712559,
+      "rev_date": "2024-11-25T07:53:41Z",
+      "scrape_date": "2024-11-27T03:52:37Z",
       "stabilities": [
         "staging",
         "unstable"
@@ -366,13 +369,13 @@
       "description": "CLI tool to extract the graph of derivations from a Nix flake",
       "install_id": "nixtract",
       "license": "[ MIT, Apache-2.0 ]",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=23e89b7da85c3640bbc2173fe04f4bd114342367",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=4633a7c72337ea8fd23a4f2ba3972865e3ec685d",
       "name": "nixtract-0.3.0",
       "pname": "nixtract",
-      "rev": "23e89b7da85c3640bbc2173fe04f4bd114342367",
-      "rev_count": 710087,
-      "rev_date": "2024-11-19T11:04:08Z",
-      "scrape_date": "2024-11-21T04:00:36Z",
+      "rev": "4633a7c72337ea8fd23a4f2ba3972865e3ec685d",
+      "rev_count": 712559,
+      "rev_date": "2024-11-25T07:53:41Z",
+      "scrape_date": "2024-11-27T03:52:37Z",
       "stabilities": [
         "staging",
         "unstable"
@@ -384,6 +387,126 @@
       ],
       "outputs": {
         "out": "/nix/store/lz36p5mknxv7sc8sha6ixvrihq3zbfg4-nixtract-0.3.0"
+      },
+      "system": "x86_64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "nvfetcher",
+      "broken": false,
+      "derivation": "/nix/store/w4q292ds76xgpwi5w1a1i5yhjpddsg7h-nvfetcher-0.6.2.0.drv",
+      "description": "Generate nix sources expr for the latest version of packages",
+      "install_id": "nvfetcher",
+      "license": "MIT",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=4633a7c72337ea8fd23a4f2ba3972865e3ec685d",
+      "name": "nvfetcher-0.6.2.0",
+      "pname": "nvfetcher",
+      "rev": "4633a7c72337ea8fd23a4f2ba3972865e3ec685d",
+      "rev_count": 712559,
+      "rev_date": "2024-11-25T07:53:41Z",
+      "scrape_date": "2024-11-27T03:52:37Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "0.6.2.0",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/vfnnl5xj5fzzv2yvs96h48n0zw3z1p7m-nvfetcher-0.6.2.0"
+      },
+      "system": "aarch64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "nvfetcher",
+      "broken": false,
+      "derivation": "/nix/store/h519cmsrsww690wy6waiy3vjvzqvy07v-nvfetcher-0.6.2.0.drv",
+      "description": "Generate nix sources expr for the latest version of packages",
+      "install_id": "nvfetcher",
+      "license": "MIT",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=4633a7c72337ea8fd23a4f2ba3972865e3ec685d",
+      "name": "nvfetcher-0.6.2.0",
+      "pname": "nvfetcher",
+      "rev": "4633a7c72337ea8fd23a4f2ba3972865e3ec685d",
+      "rev_count": 712559,
+      "rev_date": "2024-11-25T07:53:41Z",
+      "scrape_date": "2024-11-27T03:52:37Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "0.6.2.0",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/m9306xi5r9mkrswrll14kwcwk8xz6znp-nvfetcher-0.6.2.0"
+      },
+      "system": "aarch64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "nvfetcher",
+      "broken": false,
+      "derivation": "/nix/store/rzakr8x1fnyf8vyf5mil5hfjnqqxn8dc-nvfetcher-0.6.2.0.drv",
+      "description": "Generate nix sources expr for the latest version of packages",
+      "install_id": "nvfetcher",
+      "license": "MIT",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=4633a7c72337ea8fd23a4f2ba3972865e3ec685d",
+      "name": "nvfetcher-0.6.2.0",
+      "pname": "nvfetcher",
+      "rev": "4633a7c72337ea8fd23a4f2ba3972865e3ec685d",
+      "rev_count": 712559,
+      "rev_date": "2024-11-25T07:53:41Z",
+      "scrape_date": "2024-11-27T03:52:37Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "0.6.2.0",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/kq27dwzn8lylj4ns574v49admhkdmxha-nvfetcher-0.6.2.0"
+      },
+      "system": "x86_64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "nvfetcher",
+      "broken": false,
+      "derivation": "/nix/store/7jj7xqj5sshx2zh5s91yx1iqxh15h0mr-nvfetcher-0.6.2.0.drv",
+      "description": "Generate nix sources expr for the latest version of packages",
+      "install_id": "nvfetcher",
+      "license": "MIT",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=4633a7c72337ea8fd23a4f2ba3972865e3ec685d",
+      "name": "nvfetcher-0.6.2.0",
+      "pname": "nvfetcher",
+      "rev": "4633a7c72337ea8fd23a4f2ba3972865e3ec685d",
+      "rev_count": 712559,
+      "rev_date": "2024-11-25T07:53:41Z",
+      "scrape_date": "2024-11-27T03:52:37Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "0.6.2.0",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/53np7s5hlwah4kfbqs996s4pb4sla8hl-nvfetcher-0.6.2.0"
       },
       "system": "x86_64-linux",
       "group": "toplevel",

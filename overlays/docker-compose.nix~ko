@@ -1,0 +1,18 @@
+{ fetchFromGitHub, ... }: final: prev: {
+  docker-compose = let
+    oldVersion = builtins.parseDrvName prev.docker-compose.name;
+  in if builtins.compareVersions oldVersion.version "v2.31.0" == -1 then
+    prev.docker-compose.overrideAttrs (oldAttrs: {
+      version = "v2.31.0";
+      src = fetchFromGitHub {
+        owner = "docker";
+        repo = "compose";
+        rev = "v2.31.0";
+        fetchSubmodules = false;
+        sha256 = "sha256-l+xSd7eIpEy6A1mtx3WrcPQl7071IdJkbHKXbe4uFdA=";
+      };
+      vendorSha256 = "sha256-j9gV1PNTqVRctbhnYRydGwJvBpb9uQCxcdBrQCdbBrg=";
+    })
+  else
+    prev.docker-compose;
+}

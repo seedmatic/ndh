@@ -1,0 +1,3 @@
+[docker-compose]
+fetch.github = "docker/compose"
+src.manual = "v2.31.0"

@@ -33,6 +33,12 @@
     ./xdg.nix
   ];
 
+  programs = {
+    
+    zellij.enable = true;
+
+  };
+
   nixpkgs.config = {
     allowUnfree = true;
   };
@@ -47,6 +53,7 @@
 
     # Define package definitions for current user environment
     packages = with pkgs; [
+      aider-chat
       alejandra
       awscli2
       avahi
@@ -113,6 +120,7 @@
       yarn
       yamllint
       yq-go
+      zellij
       zsh
     ];
   };
