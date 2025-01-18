@@ -5,6 +5,7 @@ builtins.traceVerbose "Evaluating darwin/default.nix" {
     ./preferences.nix
     ./security.nix
     ./core.nix
+    ./linux-builder.nix
     ./environment.nix
   ];
 }
