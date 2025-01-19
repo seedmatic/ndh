@@ -1,8 +1,12 @@
 { config, pkgs, lib, ... }: let
+
+  user = config.profile.user;
+  userName = user.name;
+
   teleportConfigFile = pkgs.writeText "teleport.yaml" ''
     version: v3
     teleport:
-      nodename: ${config.user.name}
+      nodename: ${userName}
       data_dir: ~/.local/var/teleport
       log:
         output: stderr

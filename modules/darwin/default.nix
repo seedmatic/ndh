@@ -1,6 +1,5 @@
-{ config, ... }:
-builtins.traceVerbose "Evaluating darwin/default.nix" {
-  imports = builtins.map (module: builtins.traceVerbose "Importing ${module}" (import module)) [
+{ config, lib, ... }:{
+  imports = [
     ../common
     ./preferences.nix
     ./security.nix

@@ -1,7 +1,7 @@
 { config, pkgs, lib, ... }: let
   nodeName = "pfouh";
   username = config.profile.username;
-  homeDir = "/Users/${username}";
+  homeDir = "${config.home.homeDirectory}";
   dataDir = "${homeDir}/.local/var/teleport";
   logPrefix = "${homeDir}/Library/Logs/teleport";
   xdgConfigFile = "${homeDir}/.config/teleport/teleport.yaml";
@@ -46,7 +46,7 @@ in
   launchd.agents.teleport = {
     enable = true;
     config = {
-      Label = "teleport";
+      Label = "org.nix-community.home.teleport";
       ProgramArguments = [
         "${pkgs.teleport}/bin/teleport"
         "start"

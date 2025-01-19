@@ -1,6 +1,0 @@
-alcide_rsa filter=sops-binary
-bioskop_ed25519 filter=sops-binary
-builder_ed25519 filter=sops-binary
-codespaces.auto filter=sops-binary
-hxpr@github filter=sops-binary
-podman-machine-default filter=sops-binary

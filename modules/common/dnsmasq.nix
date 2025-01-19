@@ -4,7 +4,9 @@
   pkgs,
   ...
 }: let
-  logFile = "/Users/${config.user.name}/Library/Logs/dnsmasq.log";
+  user = config.profile.user;
+  userName = user.name;
+  logFile = "/Users/${userName}/Library/Logs/dnsmasq.log";
 in {
   services.dnsmasq = {
     enable = true;
@@ -57,6 +59,6 @@ in {
     mkdir -p "$(dirname ${logFile})"
     touch "${logFile}"
     chmod 644 "${logFile}"
-    chown ${config.user.name}:staff "${logFile}"
+    chown ${userName}:staff "${logFile}"
   '';
 }

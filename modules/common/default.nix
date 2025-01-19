@@ -1,12 +1,23 @@
-{
-  self,
-  inputs,
-  config,
-  pkgs,
-  ...
-}: {
+{ inputs, config, lib, pkgs, self, ... }:
+let
+  inherit (lib) mkOption mkDefault types mkIf;
+
+  cfg = config.profile;
+  user = cfg.user;
+  userName = user.name;
+  userDescription = user.description;
+  userHome =  "${if pkgs.stdenvNoCC.isDarwin then "/Users" else "/home"}/${userName}";
+
+  # Define systemPackages separately
+  systemPackages = import ./system-packages.nix {
+    inherit pkgs inputs;
+    # Pass only necessary parts of config, not the entire config
+    inherit (config) programs environment;
+  };
+
+in {
+
   imports = [
-    ./profile.nix
     ./primary-user.nix
     ./nixpkgs.nix
     ./dnsmasq.nix
@@ -21,22 +32,8 @@
     };
   };
 
-  user = {
-    description = "Stephane Lacoin";
-    home = "${
-      if pkgs.stdenvNoCC.isDarwin
-      then "/Users"
-      else "/home"
-    }/${config.user.name}";
-    shell = pkgs.zsh;
-  };
-
   # bootstrap home manager using system config
-  hm = {
-    imports = [
-      ../home-manager
-    ];
-  };
+  hm = import ../home-manager { inherit config pkgs lib user self; };
 
   # let nix manage home-manager profiles and use global nixpkgs
   home-manager = {
@@ -55,7 +52,7 @@
   # environment setup
   environment = {
     variables = {
-      XDG_RUNTIME_DIR = "${config.user.home}/.xdg";
+      XDG_RUNTIME_DIR = "${userHome}/.xdg";
     };
 
     systemPackages = import ./system-packages.nix {
@@ -79,4 +76,5 @@
   fonts = {
     packages = with pkgs; [powerline-fonts];
   };
+
 }

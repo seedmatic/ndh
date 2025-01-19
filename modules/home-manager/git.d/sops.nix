@@ -1,4 +1,9 @@
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 
 {
   programs.git = {
@@ -11,11 +16,11 @@
     source = pkgs.stdenvNoCC.mkDerivation {
       name = "sops-filtered-config";
       src = ./sops.d;
-      
+
       # Ensure rsync is available for the build
       nativeBuildInputs = [ pkgs.rsync ];
       buildInputs = [ pkgs.rsync ];
-      
+
       installPhase = ''
         mkdir -p $out
         rsync -av --exclude-from=<( printf '%s\n' binary yaml json xml props csv tsv base64 uri toml lua ) $src/ $out/
@@ -25,12 +30,26 @@
   };
 
   xdg.configFile."git/sops" = {
-    source = pkgs.substituteAll {
-      src = ./sops;
-      sopsConfigHome = "${config.xdg.configHome}/git/sops.d";
-    };
+    source = ./sops;
   };
 
+  xdg.configFile."git/sops.sh" = {
+    source = pkgs.stdenvNoCC.mkDerivation {
+      name = "sops-script";
+      src = pkgs.substituteAll {
+        src = ./sops.sh;
+        sopsConfigHome = "${config.xdg.configHome}/git/sops.d";
+      };
+
+      sourceRoot = ".";
+      unpackPhase = "true"; # Skip the unpack phase
+
+      installPhase = ''
+        cp $src $out
+        chmod +x $out
+      '';
+    };
+  };
 
   xdg.configFile."git/sops.d/binary" = {
     source = pkgs.substituteAll {

@@ -2,24 +2,30 @@
   config,
   pkgs,
   ...
-}: {
+}: let
+
+  user = config.profile.user;
+  userName = user.name;
+  userHome = user.home;
+
+in {
   # bundles essential nixos modules
   imports = [./keybase.nix ../common];
 
   services.syncthing = {
     enable = true;
-    user = config.user.name;
+    user = userName;
     group = "users";
     openDefaultPorts = true;
-    dataDir = config.user.home;
+    dataDir = userHome;
   };
 
   services.tailscale = {
     enable = true;
-    user = config.user.name;
+    user = userName;
     group = "users";
     openDefaultPorts = true;
-    dataDir = config.user.home;
+    dataDir = userHome;
   };
 
   environment.systemPackages = with pkgs; [vscode firefox gnome.gnome-tweaks];
@@ -31,7 +37,7 @@
     defaultUserShell = pkgs.zsh;
     mutableUsers = false;
     users = {
-      "${config.user.name}" = {
+      "${userName}" = {
         isNormalUser = true;
         extraGroups = ["wheel" "networkmanager"]; # Enable ‘sudo’ for the user.
         hashedPassword = "$6$1kR9R2U/NA0.$thN8N2sTo7odYaoLhipeuu5Ic4CS7hKDt1Q6ClP9y0I3eVMaFmo.dZNpPfdwNitkElkaLwDVsGpDuM2SO2GqP/";
@@ -85,7 +91,12 @@
   # List services that you want to enable:
 
   # Enable the OpenSSH daemon.
-  services.openssh.enable = true;
+  services.openssh = {
+    enable = true;
+    settings = {
+      UsePAM = true;
+    };
+  };
 
   # Open ports in the firewall.
   # networking.firewall.allowedTCPPorts = [ ... ];

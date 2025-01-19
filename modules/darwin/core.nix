@@ -3,23 +3,29 @@
   config,
   pkgs,
   ...
-}: let
-  gcScript = pkgs.writeScript "nix-gc-script" ''
-    #!${pkgs.bash}/bin/bash
-    ${config.nix.package}/bin/nix-collect-garbage --delete-older-than 7d
-    ${config.nix.package}/bin/nix store optimise
-  '';
-in {
+}:
+let
+
+  user = config.profile.user;
+  userName = user.name;
+  userDescription = user.description;
+  userHome = user.home;
+  userShell = user.shell;
+
+in
+{
   environment = {
-    etc = {darwin.source = "${inputs.darwin}";};
-    # packages installed in system profile (more in ../common.nix)
+    etc = {
+      darwin.source = "${inputs.darwin}";
+    };
+    # packages installed in system profile (more in ../common/default.nix)
     # systemPackages = [ ];
   };
 
   # auto manage nixbld users with nix darwin
   nix = {
     configureBuildUsers = true;
-    nixPath = ["darwin=/etc/${config.environment.etc.darwin.target}"];
+    nixPath = [ "darwin=/etc/${config.environment.etc.darwin.target}" ];
 
     # Additional garbage collection triggers
     extraOptions = ''
@@ -31,15 +37,6 @@ in {
 
     # Optimize the store
     optimise.automatic = true;
-  };
-
-  launchd.user.agents.nix-gc = {
-    serviceConfig = {
-      ProgramArguments = ["${gcScript}"];
-      KeepAlive = false;
-      RunAtLoad = false;
-      StartInterval = 43200; # 12 hours in seconds
-    };
   };
 
   nixpkgs.config = {
@@ -59,13 +56,26 @@ in {
   # ];
 
   launchd.user.envVariables = {
-    XDG_RUNTIME_DIR = "${config.user.home}/.xdg";
+    XDG_RUNTIME_DIR = "${userHome}/.xdg";
   };
 
-  # Auto upgrade nix package and the daemon service.
-  services.nix-daemon.enable = true;
+  services = {
+
+    # Auto upgrade nix package and the daemon service.
+    nix-daemon = {
+      enable = true;
+    };
+
+  };
 
   # Used for backwards compatibility, please read the changelog before changing.
   # $ darwin-rebuild changelog
   system.stateVersion = 5;
+
+  users.users.${userName} = {
+    home = userHome;
+    description = userDescription;
+    shell = userShell;
+  };
+
 }

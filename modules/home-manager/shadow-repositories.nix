@@ -1,18 +1,18 @@
 { config, lib, pkgs, ... }:
 with lib;
 let
-  cfg = config.services.mavenShadowRepositories;
-  script = pkgs.writeScriptBin "mount-maven-shadow-repositories.sh"
-    (builtins.readFile ./maven-shadow-repositories.sh);
+  cfg = config.services.shadowRepositories;
+  script = pkgs.writeScriptBin "mount-shadow-repositories.sh"
+    (builtins.readFile ./shadow-repositories.sh);
   homeDir = config.home.homeDirectory;
-  logPrefix = "${homeDir}/Library/Logs/maven-shadow-repositories";
+  logPrefix = "${homeDir}/Library/Logs/shadow-repositories";
 in {
   options = {
-    services.mavenShadowRepositories = {
+    services.shadowRepositories = {
       enable = mkOption {
         type = types.bool;
         default = false;
-        description = "Enable the maven-shadow-repositories service.";
+        description = "Enable the shadow-repositories service.";
       };
 
       mountPoints = mkOption {
@@ -23,20 +23,20 @@ in {
 
       scriptPath = mkOption {
         type = types.str;
-        default = "${script}/bin/mount-maven-shadow-repositories.sh";
-        description = "Path to the mount-maven-shadow-repositories script.";
+        default = "${script}/bin/mount-shadow-repositories.sh";
+        description = "Path to the mount-shadow-repositories script.";
       };
     };
   };
 
   config = mkIf cfg.enable {
-    launchd.agents.maven-shadow-repositories = {
+    launchd.agents.shadow-repositories = {
       enable = true;
       config = {
-        Label = "maven-shadow-repositories";
+        Label = "org.nix-community.home.shadow-repositories";
         ProgramArguments = [ cfg.scriptPath ] ++ cfg.mountPoints;
         RunAtLoad = true;
-        KeepAlive = true;
+        KeepAlive = false;
         EnvironmentVariables = {
           PATH = "/usr/sbin:${pkgs.coreutils}/bin:${pkgs.rsync}/bin:${pkgs.yq}/bin:$PATH";
         };

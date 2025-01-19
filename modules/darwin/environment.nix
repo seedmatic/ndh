@@ -1,16 +1,25 @@
-{pkgs, ...}:
-builtins.traceVerbose "Evaluating darwin/environment.nix" {
-  imports = builtins.map (module: builtins.traceVerbose "Importing ${module}" (import module)) [
-    ./emacs.nix
-    ./raycast.nix
-    ./socket_vmnet.nix
-    ./syncthing.nix
-    ./tailscale.nix
-    ./homebrew.nix
-  ];
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
+{
+  config = {
+    # Ensure all configuration attributes are within the config attribute
+    environment = {
+      systemPackages = with pkgs; [
+        bfg-repo-cleaner
+        nmap
+      ];
+    };
 
-  environment.systemPackages = with pkgs; [
-    bfg-repo-cleaner
-    nmap
-  ];
+    # Example configuration
+    services.openssh.enable = true;
+
+    # Ensure no recursive reference to config.config
+    # If you need to reference config, do it correctly
+    # For example:
+    # someOption = config.someOtherOption;
+  };
 }

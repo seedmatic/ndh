@@ -35,10 +35,6 @@
       recursive = true;
     };
 
-    kitty = lib.mkIf pkgs.stdenvNoCC.isDarwin {
-      source = ./kitty;
-      recursive = true;
-    };
   };
 
 }

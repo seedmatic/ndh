@@ -22,7 +22,7 @@ in {
     launchd.agents.emacs-daemon = {
       enable = true;
       config = {
-        Label = "emacs-daemon";
+        Label = "org.nix-community.home.emacs-daemon";
         ProgramArguments = [ "${pkgs.emacs}/bin/emacs" "--fg-daemon" ];
         RunAtLoad = true;
         KeepAlive = true;

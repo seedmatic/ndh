@@ -52,6 +52,7 @@
         fileset = lib.fileset.difference 
           (lib.fileset.fromSource ./git.d)
           (lib.fileset.unions [
+            (./git.d/sops)
             (./git.d/sops.d)
             (./git.d/sops.sh)
             (./git.d/sops.nix)

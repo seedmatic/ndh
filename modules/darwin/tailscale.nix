@@ -5,17 +5,20 @@
   ...
 }:
 with lib; let
+  
+  user = config.profile.user;
+  userHome = user.home;
+
   cfg = config.services.tailscale;
-  username = config.user.name;
-  homeDir = config.home-manager.users."${username}".home.homeDirectory;
-  logPrefix = "${homeDir}/Library/Logs/tailscale";
+  logPrefix = "${userHome}/Library/Logs/tailscale";
 in {
   config = mkIf cfg.enable {
-    environment.systemPackages = [pkgs.tailscale];
-    launchd.user.agents.tailscale = {
+    environment.systemPackages = [ pkgs.tailscale ];
+    launchd.agents.tailscale = {
       command = "${lib.getExe pkgs.tailscale}";
-      serviceConfig = {
-        Label = "net.tailscale.tailscale";
+      config = {
+        Label = "org.nix-community.home.tailscale";
+        ProgramArguments = [ "${lib.getExe pkgs.tailscale}" "up" ];
         KeepAlive = true;
         LowPriorityIO = true;
         ProcessType = "Background";
