@@ -1,5 +1,4 @@
-{ config, pkgs, ... }:
-
+{pkgs, ...}:
 builtins.traceVerbose "Evaluating darwin/environment.nix" {
   imports = builtins.map (module: builtins.traceVerbose "Importing ${module}" (import module)) [
     ./emacs.nix

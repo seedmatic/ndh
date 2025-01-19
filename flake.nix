@@ -40,167 +40,221 @@
     zen-browser.follows = "nxmatic-flake-commons/zen-browser";
   };
 
-  outputs = { self, darwin, devenv, flake-utils, home-manager, socket-vmnet
-    , nixpkgs, nixpkgs-staging, ... }@inputs:
-    let
-      inherit (flake-utils.lib) eachSystemMap;
-      isDarwin = system: builtins.elem system nixpkgs.lib.platforms.darwin;
-      homePrefix = system: if isDarwin system then "/Users" else "/home";
-      defaultSystems = [ "aarch64-darwin" "x86_64-darwin" "x86_64-linux" ];
+  outputs = {
+    self,
+    darwin,
+    devenv,
+    flake-utils,
+    home-manager,
+    socket-vmnet,
+    nixpkgs,
+    ...
+  } @ inputs: let
+    inherit (flake-utils.lib) eachSystemMap;
+    isDarwin = system: builtins.elem system nixpkgs.lib.platforms.darwin;
+    homePrefix = system:
+      if isDarwin system
+      then "/Users"
+      else "/home";
+    defaultSystems = ["aarch64-darwin" "x86_64-darwin" "x86_64-linux"];
 
-      # Helper function to generate a set of attributes for each system
-      forAllSystems = nixpkgs.lib.genAttrs defaultSystems;
+    # Helper function to generate a set of attributes for each system
+    forAllSystems = nixpkgs.lib.genAttrs defaultSystems;
 
-      # Import nixpkgs with overlays and config for each system
-      pkgsFor = forAllSystems (system:
-        let
-          # Import base packages with specific configurations
-          basePackages = import nixpkgs {
-            inherit system;
-            config = {
-              allowUnfree = true;
-              allowBroken = true;
-              checkAllPackages = false;
-            };
-          };
-
-          # Create an overlay that includes Flox packages
-          floxOverlay = final: prev:
-            if inputs.flox.packages ? ${system} then
-              inputs.flox.packages.${system}
-            else
-              throw "Flox packages not defined for ${system}";
-
-          dockerComposeOverlay = import ./overlays/docker-compose.nix {
-            fetchFromGitHub = basePackages.fetchFromGitHub;
-            buildGoModule = basePackages.buildGoModule;
-          };
-
-          overlays = builtins.map (name:
-            let overlay = self.overlays.${name} inputs;
-            in final: prev:
-            builtins.traceVerbose "Applying overlay: ${name}"
-            (overlay final prev)) (builtins.attrNames self.overlays);
-
-          applyOverlays = final: prev:
-            builtins.foldl' (acc: overlay: (acc // (overlay final prev))) { }
-            overlays;
-
-          tracePackages = pkgs:
-            builtins.mapAttrs
-            (name: pkg: builtins.traceVerbose "Processing package: ${name}" pkg)
-            pkgs;
-
-        in basePackages.extend (final: prev:
-          tracePackages
-          (
-            ( floxOverlay final prev ) //
-            ( dockerComposeOverlay final prev ) //
-            ( applyOverlays final prev )
-          )));
-
-      mkDarwinConfig = { system ? "aarch64-darwin", nixpkgs ? inputs.nixpkgs
-        , profile ? "work", baseModules ? [
-          #       inputs.zen-browser.darwinModule
-          socket-vmnet.darwinModules.socket_vmnet
-          home-manager.darwinModules.home-manager
-          ./modules/darwin
-        ], extraModules ? [ ], }:
-        let
-          debugModule = { config, pkgs, ... }: {
-            _file = "debugModule";
-            config = {
-              system.activationScripts.debug.text =
-                builtins.traceVerbose "Defining activationScripts" ''
-                  echo "Debug: activationScripts is being executed"
-                  echo "docker-compose version: ${pkgs.docker-compose.version}"
-                '';
-            };
-          };
-        in builtins.traceVerbose "Starting darwinSystem evaluation"
-        (inputs.darwin.lib.darwinSystem {
-          inherit system;
-          pkgs = pkgsFor.${system};
-          modules = builtins.traceVerbose "Combining modules"
-            (baseModules ++ extraModules ++ [ debugModule ]);
-          specialArgs = builtins.traceVerbose "Setting specialArgs" {
-            inherit self inputs nixpkgs;
-          };
-        });
-
-      mkHomeConfig = { username, system, nixpkgs ? inputs.nixpkgs
-        , profile ? "work", baseModules ? [
-          ./modules/home-manager
-          {
-            home = {
-              inherit username;
-              homeDirectory = "${homePrefix system}/${username}";
-            };
-          }
-        ], extraModules ? [ ], }:
-        inputs.home-manager.lib.homeManagerConfiguration {
-          pkgs = pkgsFor.${system};
-          modules = baseModules ++ extraModules ++ [{
-            nixpkgs.config = {
-              allowUnfree = true;
-              allowBroken = true;
-              checkAllPackages = false;
-            };
-          }];
-          extraSpecialArgs = { inherit self inputs nixpkgs; };
+    # Import nixpkgs with overlays and config for each system
+    pkgsFor = forAllSystems (system: let
+      # Import base packages with specific configurations
+      basePackages = import nixpkgs {
+        inherit system;
+        config = {
+          allowUnfree = true;
+          allowBroken = true;
+          checkAllPackages = false;
         };
-    in {
-      darwinConfigurations."work" = mkDarwinConfig {
-        system = "aarch64-darwin";
-        extraModules = [ ./profiles/darwin/work.nix ];
       };
 
-      homeConfigurations."work" = mkHomeConfig {
+      # Create an overlay that includes Flox packages
+      floxOverlay = final: prev:
+        if inputs.flox.packages ? ${system}
+        then inputs.flox.packages.${system}
+        else throw "Flox packages not defined for ${system}";
+
+      overlays = builtins.map (name: let
+        overlay = self.overlays.${name} inputs;
+      in
+        final: prev:
+          builtins.traceVerbose "Applying overlay: ${name}"
+          (overlay final prev)) (builtins.attrNames self.overlays);
+
+      applyOverlays = final: prev:
+        builtins.foldl' (acc: overlay: (acc // (overlay final prev))) {}
+        overlays;
+
+      tracePackages = pkgs:
+        builtins.mapAttrs
+        (name: pkg: builtins.traceVerbose "Processing package: ${name}" pkg)
+        pkgs;
+    in
+      basePackages.extend (final: prev:
+        tracePackages
+        (
+          (floxOverlay final prev)
+          // (applyOverlays final prev)
+        )));
+
+    profiles = [
+      {
+        name = "work";
         username = "stephane.lacoin";
-        system = "aarch64-darwin";
-        profile = "work";
-        extraModules = [ ./profiles/home-manager/work.nix ];
-      };
+      }
+      {
+        name = "committed";
+        username = "nxmatic";
+      }
+    ];
 
-      devShells = eachSystemMap defaultSystems (system: {
-        default = devenv.lib.mkShell {
-          inherit inputs;
-          pkgs = pkgsFor.${system};
-          modules = [ (import ./devenv.nix) ];
+    mkDarwinConfig = {
+      profilename,
+      system ? "aarch64-darwin",
+      nixpkgs ? inputs.nixpkgs,
+      baseModules ? [
+        #       inputs.zen-browser.darwinModule
+        socket-vmnet.darwinModules.socket_vmnet
+        home-manager.darwinModules.home-manager
+        ./modules/darwin
+      ],
+      extraModules ? [
+        "./profiles/darwin/${profilename}.nix"
+      ],
+    }: let
+      debugModule = {
+        config,
+        pkgs,
+        ...
+      }: {
+        _file = "debugModule";
+        config = {
+          system.activationScripts.debug.text = ''
+            echo "Debug: activationScripts is being executed"
+            echo "docker-compose version: ${pkgs.docker-compose.version}"
+          '';
+        };
+      };
+    in
+      builtins.traceVerbose "Starting darwinSystem evaluation"
+      (inputs.darwin.lib.darwinSystem {
+        inherit system;
+        pkgs = pkgsFor.${system};
+        modules =
+          builtins.traceVerbose "Combining modules"
+          (baseModules ++ extraModules ++ [debugModule]);
+        specialArgs = builtins.traceVerbose "Setting specialArgs" {
+          inherit self inputs nixpkgs;
         };
       });
 
-      packages = eachSystemMap defaultSystems (system:
-        let pkgs = pkgsFor.${system};
-        in {
-          pyEnv = pkgs.python3.withPackages
-            (ps: with ps; [ black typer colorama shellingham ]);
-          sysdo = pkgs.writeScriptBin "sysdo" ''
-            #! ${pkgs.python3}/bin/python3
-            ${builtins.readFile ./bin/do.py}
-          '';
-          #       maven-mvnd-m39 = inputs.maven-mvnd.packages.${system}.maven-mvnd-m39;
-          #       maven-mvnd-m40 = inputs.maven-mvnd.packages.${system}.maven-mvnd-m40;
-        });
-
-      overlays = {
-        channels = inputs: final: prev: {
-          nixpkgs = import inputs.nixpkgs { system = prev.system; };
-        };
-
-        extraPackages = inputs: final: prev: {
-          inherit (self.packages.${prev.system}) sysdo pyEnv;
-          inherit (inputs.devenv.packages.${prev.system}) devenv;
-          inherit (inputs.maven-mvnd.packages.${prev.system})
-            maven-mvnd-m39 maven-mvnd-m40;
-          inherit (inputs.socket-vmnet.packages.${prev.system}) socket_vmnet;
-        };
-
-        birdOverlay = inputs: import ./overlays/bird.nix inputs;
-
-        floxOverlay = inputs: import ./overlays/flox.nix inputs;
-
-        # zenBrowserOverlay = inputs: import ./overlays/zen-browser.nix inputs;
+    mkHomeConfig = {
+      profilename,
+      username,
+      system,
+      nixpkgs ? inputs.nixpkgs,
+      baseModules ? [
+        ./modules/home-manager
+        {
+          home = {
+            inherit username;
+            homeDirectory = "${homePrefix system}/${username}";
+          };
+        }
+      ],
+      extraModules ? [
+        "./profiles/home-manager/${profilename}.nix"
+      ],
+    }:
+      inputs.home-manager.lib.homeManagerConfiguration {
+        pkgs = pkgsFor.${system};
+        modules =
+          baseModules
+          ++ extraModules
+          ++ [
+            {
+              nixpkgs.config = {
+                allowUnfree = true;
+                allowBroken = true;
+                checkAllPackages = false;
+              };
+            }
+          ];
+        extraSpecialArgs = {inherit self inputs nixpkgs;};
       };
+
+    darwinConfigurations = builtins.listToAttrs (map (profile: {
+        name = "${profile.name}";
+        value = mkDarwinConfig {
+          profilename = profile.profilename;
+          system = "aarch64-darwin";
+          extraModules = [./profiles/darwin/${profile.name}.nix];
+        };
+      })
+      profiles);
+
+    homeConfigurations = builtins.listToAttrs (map (profile: {
+        name = "${profile.name}";
+        value = mkHomeConfig {
+          profilename = profile.profilename;
+          username = profile.username;
+          system = "aarch64-darwin";
+          extraModules = [./profiles/home-manager/${profile.name}.nix];
+        };
+      })
+      profiles);
+  in {
+    darwinConfigurations = darwinConfigurations;
+    homeConfigurations = homeConfigurations;
+
+    devShells = eachSystemMap defaultSystems (system: {
+      default = devenv.lib.mkShell {
+        inherit inputs;
+        pkgs = pkgsFor.${system};
+        modules = [(import ./devenv.nix)];
+      };
+    });
+
+    packages = eachSystemMap defaultSystems (system: let
+      pkgs = pkgsFor.${system};
+    in {
+      pyEnv =
+        pkgs.python3.withPackages
+        (ps: with ps; [black typer colorama shellingham]);
+      sysdo = pkgs.writeScriptBin "sysdo" ''
+        #! ${pkgs.python3}/bin/python3
+        ${builtins.readFile ./bin/do.py}
+      '';
+      #       maven-mvnd-m39 = inputs.maven-mvnd.packages.${system}.maven-mvnd-m39;
+      #       maven-mvnd-m40 = inputs.maven-mvnd.packages.${system}.maven-mvnd-m40;
+    });
+
+    overlays = {
+      channels = inputs: final: prev: {
+        nixpkgs = import inputs.nixpkgs {system = prev.system;};
+      };
+
+      extraPackages = inputs: final: prev: {
+        inherit (self.packages.${prev.system}) sysdo pyEnv;
+        inherit (inputs.devenv.packages.${prev.system}) devenv;
+        inherit
+          (inputs.maven-mvnd.packages.${prev.system})
+          maven-mvnd-m39
+          maven-mvnd-m40
+          ;
+        inherit (inputs.socket-vmnet.packages.${prev.system}) socket_vmnet;
+      };
+
+      birdOverlay = inputs: import ./overlays/bird.nix inputs;
+
+      floxOverlay = inputs: import ./overlays/flox.nix inputs;
+
+      # zenBrowserOverlay = inputs: import ./overlays/zen-browser.nix inputs;
     };
+  };
 }

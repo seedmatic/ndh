@@ -31,7 +31,6 @@ in {
 
     # Optimize the store
     optimise.automatic = true;
-
   };
 
   launchd.user.agents.nix-gc = {
@@ -68,5 +67,5 @@ in {
 
   # Used for backwards compatibility, please read the changelog before changing.
   # $ darwin-rebuild changelog
-  system.stateVersion = 4;
+  system.stateVersion = 5;
 }
