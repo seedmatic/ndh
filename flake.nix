@@ -230,6 +230,7 @@
         #! ${pkgs.python3}/bin/python3
         ${builtins.readFile ./bin/do.py}
       '';
+      qemu-pkgdb = pkgs.qemu-pkgdb; # This will use the package defined in the qemuOverlay
       #       maven-mvnd-m39 = inputs.maven-mvnd.packages.${system}.maven-mvnd-m39;
       #       maven-mvnd-m40 = inputs.maven-mvnd.packages.${system}.maven-mvnd-m40;
     });
@@ -253,6 +254,8 @@
       birdOverlay = inputs: import ./overlays/bird.nix inputs;
 
       floxOverlay = inputs: import ./overlays/flox.nix inputs;
+
+      qemuOverlay = inputs: import ./overlays/qemu.nix inputs;
 
       # zenBrowserOverlay = inputs: import ./overlays/zen-browser.nix inputs;
     };
