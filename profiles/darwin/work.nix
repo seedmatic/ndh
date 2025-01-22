@@ -1,6 +1,7 @@
 {...}: let
   result = {
     user.name = "stephane.lacoin";
+    ids.gids.nixbld = 30000;
     hm = {
       imports = [
         ../home-manager/work.nix
