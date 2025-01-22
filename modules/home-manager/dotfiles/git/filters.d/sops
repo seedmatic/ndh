@@ -1,0 +1,3 @@
+[filter "sops"]
+  clean = sops clean %f 
+  smudge = sops clean %f 

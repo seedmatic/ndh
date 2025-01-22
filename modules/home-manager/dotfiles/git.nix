@@ -6,9 +6,9 @@
 }: {
   programs.git = {
     includes = [
-      {path = "githooks";}
-      {path = "dotfiles";}
-      {path = "local";}
+      { path = "dotfiles"; }
+      { path = "filters"; }
+      { path = "local"; }
     ];
   };
 

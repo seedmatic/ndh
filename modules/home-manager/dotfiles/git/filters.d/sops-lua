@@ -1,0 +1,3 @@
+[filter "sops-lua"]
+  clean = sops-lua clean %f lua
+  smudge = sops-lua clean %f lua

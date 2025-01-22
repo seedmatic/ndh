@@ -1,0 +1,3 @@
+[filter "sops-tsv"]
+  clean = sops-tsv clean %f tsv
+  smudge = sops-tsv clean %f tsv

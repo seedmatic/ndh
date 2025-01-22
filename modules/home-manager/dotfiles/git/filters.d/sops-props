@@ -1,0 +1,3 @@
+[filter "sops-props"]
+  clean = sops-props clean %f props
+  smudge = sops-props clean %f props
