@@ -1,0 +1,5 @@
+[filter "sops-yaml"]
+  clean = @sopsConfigHome@/yaml-clean %f
+  smudge = @sopsConfigHome@/yaml-smudge %f
+[diff "sops-yaml"]
+  textconv = @sopsConfigHome@/yaml-textconv

@@ -1,0 +1,5 @@
+[filter "sops-toml"]
+  clean = @sopsConfigHome@/toml-clean %f
+  smudge = @sopsConfigHome@/toml-smudge %f
+[diff "sops-toml"]
+  textconv = @sopsConfigHome@/toml-textconv

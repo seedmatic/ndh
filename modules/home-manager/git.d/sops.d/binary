@@ -1,0 +1,5 @@
+[filter "sops-binary"]
+  clean = @sopsConfigHome@/binary-clean %f
+  smudge = @sopsConfigHome@/binary-smudge %f
+[diff "sops-binary"]
+  textconv = @sopsConfigHome@/binary-textconv

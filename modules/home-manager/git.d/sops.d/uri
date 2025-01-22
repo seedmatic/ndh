@@ -1,0 +1,5 @@
+[filter "sops-uri"]
+  clean = @sopsConfigHome@/uri-clean %f
+  smudge = @sopsConfigHome@/uri-smudge %f
+[diff "sops-uri"]
+  textconv = @sopsConfigHome@/uri-textconv

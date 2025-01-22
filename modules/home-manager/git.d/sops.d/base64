@@ -1,0 +1,5 @@
+[filter "sops-base64"]
+  clean = @sopsConfigHome@/base64-clean %f
+  smudge = @sopsConfigHome@/base64-smudge %f
+[diff "sops-base64"]
+  textconv = @sopsConfigHome@/base64-textconv

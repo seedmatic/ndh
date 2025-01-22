@@ -1,3 +1,0 @@
-[filter "sops-base64"]
-  clean = sops-base64 clean %f base64
-  smudge = sops-base64 clean %f base64

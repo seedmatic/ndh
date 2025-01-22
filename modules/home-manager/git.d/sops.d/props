@@ -1,0 +1,5 @@
+[filter "sops-props"]
+  clean = @sopsConfigHome@/props-clean %f
+  smudge = @sopsConfigHome@/props-smudge %f
+[diff "sops-props"]
+  textconv = @sopsConfigHome@/props-textconv

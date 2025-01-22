@@ -5,4 +5,8 @@
     forwardAgent = true;
     controlPath = "~/.ssh/master-%C";
   };
+  home.file.".ssh" = {
+    source = ./ssh.d;
+    recursive = true;
+  };
 }

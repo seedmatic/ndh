@@ -1,3 +1,5 @@
+
+
 # Nix System Configuration
 
 [![Build Status](https://api.cirrus-ci.com/github/kclejeune/system.svg?branch=master)](https://cirrus-ci.com/github/kclejeune/system)
@@ -84,5 +86,12 @@ flake output. Documentation for this tool is found in [sysdo.md](./docs/sysdo.md
 ## `darwin-rebuild` shortcuts
 
 ```bash
-darwin-rebuild switch --flake .#work@aarch64-darwin --impure
+darwin-rebuild switch --flake .#work --impure
+```
+
+## secrets
+At bootstrap you should delete locally the ssh keys git attributes for the sops filter
+
+```bash
+rm modules/home-manager/ssh.d/keys.d/.gitattributes
 ```

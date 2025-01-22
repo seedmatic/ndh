@@ -1,3 +1,0 @@
-[filter "sops-yaml"]
-  clean = sops-yaml clean %f yaml
-  smudge = sops-yaml clean %f yaml

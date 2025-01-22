@@ -1,0 +1,12 @@
+[include]
+  path = sops.d/binary
+  path = sops.d/yaml
+  path = sops.d/json
+  path = sops.d/xml
+  path = sops.d/props
+  path = sops.d/csv
+  path = sops.d/tsv
+  path = sops.d/base64
+  path = sops.d/uri
+  path = sops.d/toml
+  path = sops.d/lua

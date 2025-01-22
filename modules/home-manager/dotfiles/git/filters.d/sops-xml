@@ -1,3 +1,0 @@
-[filter "sops-xml"]
-  clean = sops-xml clean %f xml
-  smudge = sops-xml clean %f xml

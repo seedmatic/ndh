@@ -1,3 +1,0 @@
-[filter "sops-uri"]
-  clean = sops-uri clean %f uri
-  smudge = sops-uri clean %f uri

@@ -1,3 +1,0 @@
-[filter "sops-json"]
-  clean = sops-json clean %f json
-  smudge = sops-json clean %f json

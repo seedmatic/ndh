@@ -1,0 +1,5 @@
+[filter "sops-tsv"]
+  clean = @sopsConfigHome@/tsv-clean %f
+  smudge = @sopsConfigHome@/tsv-smudge %f
+[diff "sops-tsv"]
+  textconv = @sopsConfigHome@/tsv-textconv

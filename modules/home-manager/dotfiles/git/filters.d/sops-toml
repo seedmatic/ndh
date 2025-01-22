@@ -1,3 +1,0 @@
-[filter "sops-toml"]
-  clean = sops-toml clean %f toml
-  smudge = sops-toml clean %f toml

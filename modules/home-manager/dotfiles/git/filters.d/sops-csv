@@ -1,3 +1,0 @@
-[filter "sops-csv"]
-  clean = sops-csv clean %f csv
-  smudge = sops-csv clean %f csv

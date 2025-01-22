@@ -1,0 +1,5 @@
+[filter "sops-xml"]
+  clean = @sopsConfigHome@/xml-clean %f
+  smudge = @sopsConfigHome@/xml-smudge %f
+[diff "sops-xml"]
+  textconv = @sopsConfigHome@/xml-textconv
