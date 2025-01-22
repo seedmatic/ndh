@@ -38,6 +38,7 @@
     maven-mvnd.follows = "nxmatic-flake-commons/maven-mvnd";
     socket-vmnet.follows = "nxmatic-flake-commons/socket-vmnet";
     zen-browser.follows = "nxmatic-flake-commons/zen-browser";
+    ripvcs.follows = "nxmatic-flake-commons/ripvcs";
   };
 
   outputs = {
@@ -249,6 +250,7 @@
           maven-mvnd-m40
           ;
         inherit (inputs.socket-vmnet.packages.${prev.system}) socket_vmnet;
+        inherit (inputs.ripvcs.packages.${prev.system}) ripvcs;
       };
 
       birdOverlay = inputs: import ./overlays/bird.nix inputs;

@@ -5,4 +5,9 @@ with pkgs; [
   docker-compose
   git
   gitflow
+  ssh-to-age
+  nmap
+  podman
+  ripvcs
+  sops
 ]
