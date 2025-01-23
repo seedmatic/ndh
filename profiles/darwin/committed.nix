@@ -1,36 +1,30 @@
-{
-  config,
-  lib,
-  pkgs,
-  ...
-}: {
+{ ... }: {
+  imports = [ 
+    (import ./common.nix { profileName = "committed"; }) 
+  ];
+  
   user.name = "nxmatic";
 
-  hm = {
-    imports = [
-      ../home-manager/committed.nix
-    ];
-  };
+  # homebrew = {
+  #   brews = [
+  #   ];
 
-  homebrew = {
-    brews = [
-    ];
+  #   casks = [
+  #     # social
+  #     "google-drive"
+  #     "notion"
+  #     "signal"
 
-    casks = [
-      # social
-      "google-drive"
-      "notion"
-      "signal"
+  #     # knowledge base
+  #     "obsidian"
+  #     #      "zotero"
 
-      # knowledge base
-      "obsidian"
-      #      "zotero"
+  #     # ide
+  #     #      "visual-studio-code" -> nix
 
-      # ide
-      #      "visual-studio-code" -> nix
+  #     # social
+  #     "keybase"
+  #   ];
+  # };
 
-      # social
-      "keybase"
-    ];
-  };
 }

@@ -49,6 +49,7 @@
     sessionPath = [
       "${config.home.homeDirectory}/.rd/bin"
       "${config.home.homeDirectory}/.local/bin"
+      "${config.home.homeDirectory}/.krew/bin"
     ];
 
     # Define package definitions for current user environment
@@ -82,6 +83,7 @@
       hurl
       jdk
       k9s
+      kpt
       krew
       kubectl
       kubectx
@@ -89,13 +91,13 @@
       kustomize
 #     lazydocker
       luajit
+      minikube
       mmv
       neofetch
       nix
       nixfmt-classic
       nixpkgs-fmt
       nodejs
-      pnpm
       parallel
       passExtensions.pass-otp
       passExtensions.pass-audit
@@ -103,7 +105,9 @@
       passExtensions.pass-import
       passExtensions.pass-checkup
       passExtensions.pass-genphrase
+      podman
       poetry
+      pnpm
       pre-commit
       ranger
       rclone
@@ -116,6 +120,7 @@
       tree
       treefmt
       trivy
+      vault-bin
       vfkit
       yarn
       yamllint
