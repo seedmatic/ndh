@@ -1,18 +1,18 @@
 { config, lib, pkgs, ... }:
 with lib;
 let
-  cfg = config.services.mountMavenShadowRepositories;
+  cfg = config.services.mavenShadowRepositories;
   script = pkgs.writeScriptBin "mount-maven-shadow-repositories.sh"
-    (builtins.readFile ./mount-maven-shadow-repositories.sh);
+    (builtins.readFile ./maven-shadow-repositories.sh);
   homeDir = config.home.homeDirectory;
-  logPrefix = "${homeDir}/Library/Logs/tailscale";
+  logPrefix = "${homeDir}/Library/Logs/maven-shadow-repositories";
 in {
   options = {
-    services.mountMavenShadowRepositories = {
+    services.mavenShadowRepositories = {
       enable = mkOption {
         type = types.bool;
         default = false;
-        description = "Enable the mount-maven-shadow-repositories service.";
+        description = "Enable the maven-shadow-repositories service.";
       };
 
       mountPoints = mkOption {
@@ -30,10 +30,10 @@ in {
   };
 
   config = mkIf cfg.enable {
-    launchd.agents.mount-maven-shadow-repositories = {
+    launchd.agents.maven-shadow-repositories = {
       enable = true;
       config = {
-        Label = "mount-maven-shadow-repositories";
+        Label = "maven-shadow-repositories";
         ProgramArguments = [ cfg.scriptPath ] ++ cfg.mountPoints;
         RunAtLoad = true;
         KeepAlive = true;

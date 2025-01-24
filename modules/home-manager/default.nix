@@ -21,7 +21,7 @@
     ./java.nix
     ./keychain.nix
     ./kitty.nix
-    ./mount-maven-shadow-repositories.nix
+    ./maven-shadow-repositories.nix
     ./nushell.nix
     ./password-store.nix
     ./shell
@@ -179,7 +179,11 @@
 
   services = {
 
-    mountMavenShadowRepositories = {
+    emacsDaemon = {
+      enable = true;
+    };
+
+    mavenShadowRepositories = {
 
       enable = true;
 
