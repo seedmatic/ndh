@@ -107,16 +107,20 @@
       {
         name = "work";
         username = "stephane.lacoin";
+        email = "stephane.lacoin@hyland.com";
+        description = "Stephane Lacoin (aka nxmatic)";
       }
       {
         name = "committed";
         username = "nxmatic";
+        email = "stephane.lacoin@gmail.com";
+        description = "Stephane Lacoin (aka nxmatic)";
       }
     ];
 
     mkDarwinConfig = {
       profilename,
-      system ? "aarch64-darwin",
+      system,
       nixpkgs ? inputs.nixpkgs,
       baseModules ? [
         #       inputs.zen-browser.darwinModule
@@ -125,9 +129,10 @@
         ./modules/darwin
       ],
       extraModules ? [
-        "./profiles/darwin/${profilename}.nix"
+        ./profiles/darwin/${profilename}.nix
       ],
     }: let
+      profile = builtins.head (builtins.filter (p: p.name == profilename) profiles);
       debugModule = {
         config,
         pkgs,
@@ -147,71 +152,28 @@
         inherit system;
         pkgs = pkgsFor.${system};
         modules =
-          builtins.traceVerbose "Combining modules"
-          (baseModules ++ extraModules ++ [debugModule]);
-        specialArgs = builtins.traceVerbose "Setting specialArgs" {
-          inherit self inputs nixpkgs;
+          builtins.traceVerbose "Combining darwin modules"
+          ( baseModules ++ extraModules ++ [ debugModule ] );
+        specialArgs = builtins.traceVerbose "Using darwin profile: ${builtins.toJSON profile}" {
+          inherit self profile inputs nixpkgs;
+          lib = inputs.nixpkgs.lib.extend (_: _: inputs.home-manager.lib // {
+            # Any additional lib functions you want to include
+          });
         };
       });
 
-    mkHomeConfig = {
-      profilename,
-      username,
-      system,
-      nixpkgs ? inputs.nixpkgs,
-      baseModules ? [
-        ./modules/home-manager
-        {
-          home = {
-            inherit username;
-            homeDirectory = "${homePrefix system}/${username}";
-          };
-        }
-      ],
-      extraModules ? [
-        "./profiles/home-manager/${profilename}.nix"
-      ],
-    }:
-      inputs.home-manager.lib.homeManagerConfiguration {
-        pkgs = pkgsFor.${system};
-        modules =
-          baseModules
-          ++ extraModules
-          ++ [
-            {
-              nixpkgs.config = {
-                allowUnfree = true;
-                allowBroken = true;
-                checkAllPackages = false;
-              };
-            }
-          ];
-        extraSpecialArgs = {inherit self inputs nixpkgs;};
-      };
-
     darwinConfigurations = builtins.listToAttrs (map (profile: {
-        name = "${profile.name}";
+        name = profile.name;
         value = mkDarwinConfig {
-          profilename = profile.profilename;
+          profilename = profile.name;
           system = "aarch64-darwin";
-          extraModules = [./profiles/darwin/${profile.name}.nix];
+          extraModules = [ ./profiles/darwin/${profile.name}.nix ];
         };
       })
       profiles);
 
-    homeConfigurations = builtins.listToAttrs (map (profile: {
-        name = "${profile.name}";
-        value = mkHomeConfig {
-          profilename = profile.profilename;
-          username = profile.username;
-          system = "aarch64-darwin";
-          extraModules = [./profiles/home-manager/${profile.name}.nix];
-        };
-      })
-      profiles);
   in {
     darwinConfigurations = darwinConfigurations;
-    homeConfigurations = homeConfigurations;
 
     devShells = eachSystemMap defaultSystems (system: {
       default = devenv.lib.mkShell {

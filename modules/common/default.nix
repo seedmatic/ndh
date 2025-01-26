@@ -6,7 +6,8 @@
   ...
 }: {
   imports = [
-    ./primaryUser.nix
+    ./profile.nix
+    ./primary-user.nix
     ./nixpkgs.nix
     ./dnsmasq.nix
     ./qemu.nix

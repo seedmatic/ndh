@@ -20,13 +20,14 @@ in {
       type = types.attrs;
       default = {};
     };
+
   };
 
   config = {
-    # hm -> home-manager.users.<primary user>
+    # hm -> home-manager.users.<primary user>.hm
     home-manager.users.${config.user.name} = mkAliasDefinitions options.hm;
 
-    # user -> users.users.<primary user>
+    # user -> users.users.<primary user>.user
     users.users.${config.user.name} = mkAliasDefinitions options.user;
   };
 }

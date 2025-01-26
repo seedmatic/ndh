@@ -1,12 +1,26 @@
-{ pkgs, ... }: {
+{ profile, config, pkgs, lib, ... }: {
 
-  # Base git configuration that can be extended
-  programs.git = {
-    enable = true;
-    lfs.enable = true;
-    extraConfig = {
-      http.sslVerify = true;
-      http.sslCAInfo = "/etc/ssl/certs/ca-certificates.crt";
+  options.profile = lib.mkOption {
+    type = lib.types.submodule {
+      options = {
+        name = lib.mkOption { 
+          type = lib.types.str; 
+        };
+        description = lib.mkOption { 
+          type = lib.types.str; 
+        };
+        email = lib.mkOption { 
+          type = lib.types.str; 
+        };
+        username = lib.mkOption { 
+          type = lib.types.str; 
+        };
+      };
     };
+
+    default = profile;
   };
+
+  config.profile = profile;
+
 }

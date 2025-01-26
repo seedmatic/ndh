@@ -1,19 +1,22 @@
-{pkgs, lib, ...}: {
-  home.packages = [pkgs.github-cli pkgs.git-crypt];
+{ config, pkgs, lib, ... }: {
 
+  imports = [ ./git.d/sops.nix ];
+
+  home.packages = [
+    pkgs.github-cli pkgs.git-crypt
+  ];
+  
   programs.git = {
     enable = true;
-    aliases = {
-      ignore = "!gi() { curl -sL https://www.toptal.com/developers/gitignore/api/$@ ;}; gi";
-    };
     extraConfig = {
+      commit.verbose = true;
       credential.helper =
         if pkgs.stdenvNoCC.isDarwin
         then "osxkeychain"
         else "cache --timeout=1000000000";
-      commit.verbose = true;
       fetch.prune = true;
       http.sslVerify = true;
+      http.sslCAInfo = "/etc/ssl/certs/ca-certificates.crt";
       init.defaultBranch = "main";
       pull.rebase = true;
       push.followTags = true;
@@ -22,6 +25,7 @@
     };
     aliases = {
       fix = "commit --amend --no-edit";
+      ignore = "!gi() { curl -sL https://www.toptal.com/developers/gitignore/api/$@ ;}; gi";
       oops = "reset HEAD~1";
       sub = "submodule update --init --recursive";
     };
@@ -34,11 +38,11 @@
       };
     };
     difftastic.enable = false;
-    lfs.enable = true;
     includes = [
       { path = "dotfiles"; }
       { path = "local"; }
     ];
+    lfs.enable = true;
   };
 
   xdg.configFile = {
@@ -57,6 +61,5 @@
     };
   };
 
-  imports = [ ./git.d/sops.nix ];
 
 }

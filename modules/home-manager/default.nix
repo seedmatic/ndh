@@ -3,6 +3,9 @@
   pkgs,
   ...
 }: {
+
+  xdg.enable = true;
+
   imports = [
     ./avahi.nix
     ./bat.nix
@@ -26,6 +29,7 @@
     ./password-store.nix
     ./shell
     ./ssh.nix
+    ./teleport.nix
     ./tldr.nix
     ./tmate.nix
     ./tmux.nix
@@ -34,9 +38,7 @@
   ];
 
   programs = {
-    
     zellij.enable = true;
-
   };
 
   nixpkgs.config = {
@@ -116,6 +118,7 @@
       sops
       stylua
       sysdo
+      teleport
       tig
       tree
       treefmt

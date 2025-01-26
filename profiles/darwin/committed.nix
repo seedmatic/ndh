@@ -1,30 +1,9 @@
-{ ... }: {
+{ profile, config, lib, pkgs, ... }: {
+
   imports = [ 
-    (import ./common.nix { profileName = "committed"; }) 
+    (import ./common.nix { 
+      inherit config lib pkgs profile; 
+    }) 
   ];
   
-  user.name = "nxmatic";
-
-  # homebrew = {
-  #   brews = [
-  #   ];
-
-  #   casks = [
-  #     # social
-  #     "google-drive"
-  #     "notion"
-  #     "signal"
-
-  #     # knowledge base
-  #     "obsidian"
-  #     #      "zotero"
-
-  #     # ide
-  #     #      "visual-studio-code" -> nix
-
-  #     # social
-  #     "keybase"
-  #   ];
-  # };
-
 }

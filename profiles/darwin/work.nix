@@ -1,8 +1,11 @@
-{ ... }: {
+{ profile, config, lib, pkgs, ... }: {
+
   imports = [ 
-    (import ./common.nix { profileName = "work"; }) 
+    (import ./common.nix { 
+      inherit config lib pkgs profile; 
+    }) 
   ];
-  
-  user.name = "stephane.lacoin";
+
   ids.gids.nixbld = 30000;
+
 }

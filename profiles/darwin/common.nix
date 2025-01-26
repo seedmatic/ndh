@@ -1,13 +1,24 @@
-{ profileName, ... }: 
-let
-  result = {
+{ profile, config, lib, pkgs, ... }: {
 
-    hm = {
-      imports = [
-        ../home-manager/${profileName}.nix
-      ];
+  hm = {
+    imports = [ 
+      (import ../home-manager/common.nix { 
+        inherit profile config lib pkgs; 
+      }) 
+    ];
+
+    programs.git = {
+      userEmail = profile.email;
+      userName = profile.description;
+      signing = {
+        key = profile.email;
+        signByDefault = false;
+      };
     };
-
   };
-in
-  builtins.trace "Finished evaluating profiles/darwin/${profileName}.nix" result
+    
+  user = {
+    name = profile.username;
+    description = profile.description;
+  };
+}

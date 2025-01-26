@@ -1,13 +1,14 @@
-{ pkgs, ... }: {
-  imports = [ ./common.nix ];
-
-  # Override or extend specific git configurations
-  programs.git = {
-    userEmail = "stephane.lacoin@gmail.com";
-    userName = "Stephane Lacoin (aka nxmatic)";
-    signing = {
-      key = "stephane.lacoin@gmail.com";
-      signByDefault = false;
-    };
+{ config, pkgs, lib, ... }: let
+  profile = {
+    name = "committed";
+    email = "stephane.lacoin@gmail.com";
+    username = "nxmatic";
+    description = "Stephane Lacoin (aka nxmatic)";
   };
+in {
+
+  imports = [
+    ( import ./common.nix { inherit config pkgs lib profile; } ) 
+  ];
+
 }
