@@ -5,7 +5,6 @@ with lib;
 let
 
   cfg = config.services.cachix-agent;
-  logPrefix = "${config.home.homeDirectory}/Library/Logs/cachix-agent";
 
 in {
   options = {
@@ -49,8 +48,6 @@ in {
         };
         RunAtLoad = true;
         KeepAlive = true;
-        StandardErrorPath = "${logPrefix}.err";
-        StandardOutPath = "${logPrefix}.out";
       };
     };
 

@@ -1,24 +1,26 @@
-{ user, config, pkgs, lib, self, ... }:
+# This is the home configuration of the user.
+{
+  user,
+  pkgs,
+  ...
+}:
 let
 
-  toPath = path: if builtins.typeOf path == "string" then /. + path else path;
-
   userHome = user.home;
-
   homeDirectory = userHome;
 
-in {
-
+in
+{
   imports = [
     ./avahi.nix
     ./bat.nix
     ./cachix-agent.nix
-  # ./chromium.nix
+    # ./chromium.nix
     ./dircolors.nix
     ./direnv.nix
     ./dotfiles
     ./emacs.nix
-  # ./firefox.nix
+    # ./firefox.nix
     ./flox.nix
     ./flox-direnv.nix
     ./fzf.nix
@@ -33,7 +35,7 @@ in {
     ./password-store.nix
     ./shell
     ./ssh.nix
-#   ./teleport.nix
+    #   ./teleport.nix
     ./tldr.nix
     ./tmate.nix
     ./tmux.nix
@@ -48,7 +50,8 @@ in {
   };
 
   home = {
-    homeDirectory = builtins.traceVerbose "homeDirectory: ${ builtins.typeOf homeDirectory }" homeDirectory;
+
+    inherit homeDirectory;
 
     stateVersion = "24.11";
 
@@ -112,6 +115,7 @@ in {
       passExtensions.pass-checkup
       passExtensions.pass-genphrase
       podman
+      podman-desktop
       poetry
       pnpm
       pre-commit
@@ -188,7 +192,9 @@ in {
   services = {
 
     # Enable the emacs daemon
-    emacsDaemon = { enable = true; };
+    emacsDaemon = {
+      enable = true;
+    };
 
     # Enable the cachix agent
     cachix-agent = {
@@ -202,8 +208,10 @@ in {
 
       enable = false;
 
-      mountPoints =
-        [ "/Volumes/GitHub/HylandSoftware/hxpr" "/Volumes/GitHub/nuxeo/nos" ];
+      mountPoints = [
+        "/Volumes/GitHub/HylandSoftware/hxpr"
+        "/Volumes/GitHub/nuxeo/nos"
+      ];
 
     };
 

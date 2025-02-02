@@ -1,13 +1,15 @@
 {pkgs, ...}:
 with pkgs; [
-  aider-chat
-  podman
-  docker-compose
+  bash
   git
   gitflow
-  ssh-to-age
-  nmap
+  nushell
   podman
+  podman-compose
+  podman-desktop
   ripvcs
   sops
+  ssh-to-age
+  yq-go
+  zsh
 ]

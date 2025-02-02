@@ -55,8 +55,6 @@ in
       ];
       KeepAlive = true;
       RunAtLoad = true;
-      StandardOutPath = "/var/log/teleport.log";
-      StandardErrorPath = "/var/log/teleport.error.log";
     };
   };
 

@@ -22,10 +22,9 @@
     nix.follows = "nxmatic-flake-commons/nix";
     nixos-hardware.follows = "nxmatic-flake-commons/nixos-hardware";
     nixpkgs.follows = "nxmatic-flake-commons/nixpkgs";
-    nixpkgs-develop.follows = "nxmatic-flake-commons/nixpkgs-develop";
-    nixpkgs-staging.follows = "nxmatic-flake-commons/nixpkgs-staging";
     cachix.follows = "nxmatic-flake-commons/cachix";
     darwin.follows = "nxmatic-flake-commons/darwin";
+    home-manager.follows = "nxmatic-flake-commons/home-manager";
     devenv.follows = "nxmatic-flake-commons/devenv";
     flox.follows = "nxmatic-flake-commons/flox";
     treefmt-nix.url = "github:numtide/treefmt-nix";
@@ -49,8 +48,6 @@
     }@inputs:
     let
       inherit (flake-utils.lib) eachSystemMap;
-      isDarwin = system: builtins.elem system nixpkgs.lib.platforms.darwin;
-      homePrefix = system: if isDarwin system then "/Users" else "/home";
       defaultSystems = [
         "aarch64-darwin"
         "x86_64-darwin"
@@ -77,7 +74,7 @@
               inputs.flox.packages.${system}
             else
               throw "Flox packages not defined for ${system}";
-          
+
           ripvcsOverlay =
             final: prev:
             if inputs.ripvcs.packages ? ${system} then
@@ -98,10 +95,7 @@
 
         in
         basePackages.extend (
-          final: prev: 
-          (floxOverlay final prev) // 
-          (ripvcsOverlay final prev) //
-          (applyOverlays final prev) 
+          final: prev: (floxOverlay final prev) // (ripvcsOverlay final prev) // (applyOverlays final prev)
         )
       );
 
@@ -146,12 +140,26 @@
           inherit system;
           pkgs = pkgsFor.${system};
           modules = combinedModules;
-          specialArgs = {
-            inherit self inputs nixpkgs;
-            lib = inputs.nixpkgs.lib.extend (_: _: inputs.home-manager.lib // {
-              # Any additional lib functions you want to include
-            });
-          };
+
+          specialArgs =
+            let
+              profile = profileModule.config.profile;
+            in
+            {
+              inherit
+                self
+                inputs
+                nixpkgs
+                profile
+                ;
+              lib = inputs.nixpkgs.lib.extend (
+                _: _:
+                inputs.home-manager.lib
+                // {
+                  # Any additional lib functions you want to include
+                }
+              );
+            };
         };
 
       darwinConfigurations = builtins.listToAttrs (

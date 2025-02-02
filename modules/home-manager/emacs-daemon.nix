@@ -2,8 +2,6 @@
 with lib;
 let
   cfg = config.services.emacsDaemon;
-  homeDir = config.home.homeDirectory;
-  logPrefix = "${homeDir}/Library/Logs/emacs";
 in {
   options = {
     services.emacsDaemon = {
@@ -26,8 +24,6 @@ in {
         ProgramArguments = [ "${pkgs.emacs}/bin/emacs" "--fg-daemon" ];
         RunAtLoad = true;
         KeepAlive = true;
-        StandardOutPath = "${logPrefix}-out.log";
-        StandardErrorPath = "${logPrefix}-error.log";
       };
 
     };

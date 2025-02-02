@@ -1,9 +1,7 @@
-{ config, pkgs, lib, ... }: let
+{ config, pkgs, ... }: let
   nodeName = "pfouh";
-  username = config.profile.username;
   homeDir = "${config.home.homeDirectory}";
   dataDir = "${homeDir}/.local/var/teleport";
-  logPrefix = "${homeDir}/Library/Logs/teleport";
   xdgConfigFile = "${homeDir}/.config/teleport/teleport.yaml";
 
   teleportConfigFile = pkgs.writeText "teleport.yaml" ''
@@ -55,8 +53,6 @@ in
       ];
       KeepAlive = true;
       RunAtLoad = true;
-      StandardOutPath = "${logPrefix}-out.log";
-      StandardErrorPath = "${logPrefix}-error.log";
     };
   };
 

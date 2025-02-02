@@ -30,4 +30,7 @@ in {
   inherit profile;
 
   imports = [ ./common.nix ];
+
+  ids.gids.nixbld = 30000;
+
 }

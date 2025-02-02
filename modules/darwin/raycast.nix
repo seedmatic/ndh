@@ -44,8 +44,6 @@ in {
         KeepAlive = true;
         LowPriorityIO = true;
         ProcessType = "Background";
-        StandardOutPath = "${cfg.logDir}/Raycast.log";
-        StandardErrorPath = "${cfg.logDir}/Raycast-Errors.log";
         EnvironmentVariables = {
           NIX_PATH = "nixpkgs=" + toString pkgs.path;
           STNORESTART = "1";

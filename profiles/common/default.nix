@@ -12,7 +12,7 @@ in
           name = lib.mkOption {
             type = lib.types.str;
             description = "The name of the profile";
-            default = "jdoe";
+            default = lib.mkDefault cfg.name;
           };
           host = lib.mkOption {
             type = lib.types.submodule {
@@ -78,6 +78,12 @@ in
 
       description = "Profile currently evaluated";
     };
+
+  };
+
+  config = {
+
+    profile = cfg;
 
   };
 

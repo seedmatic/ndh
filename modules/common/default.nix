@@ -1,11 +1,9 @@
 { inputs, config, lib, pkgs, self, ... }:
 let
-  inherit (lib) mkOption mkDefault types mkIf;
 
   cfg = config.profile;
   user = cfg.user;
   userName = user.name;
-  userDescription = user.description;
   userHome =  "${if pkgs.stdenvNoCC.isDarwin then "/Users" else "/home"}/${userName}";
 
   # Define systemPackages separately
@@ -19,12 +17,19 @@ in {
 
   imports = [
     ./primary-user.nix
+    ./profile.nix
     ./nixpkgs.nix
     ./dnsmasq.nix
     ./qemu.nix
   ];
 
   programs = {
+
+    bash = {
+      enable = true;
+      completion.enable = true;
+    };
+
     zsh = {
       enable = true;
       enableCompletion = true;
@@ -37,7 +42,7 @@ in {
 
   # let nix manage home-manager profiles and use global nixpkgs
   home-manager = {
-    extraSpecialArgs = {inherit self inputs;};
+    extraSpecialArgs = {inherit self inputs; profile = config.profile; };
     useGlobalPkgs = true;
     useUserPackages = true;
     verbose = true;
@@ -51,12 +56,11 @@ in {
 
   # environment setup
   environment = {
+
+    inherit systemPackages;
+
     variables = {
       XDG_RUNTIME_DIR = "${userHome}/.xdg";
-    };
-
-    systemPackages = import ./system-packages.nix {
-      inherit pkgs inputs config;
     };
 
     etc = {

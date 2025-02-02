@@ -2,40 +2,51 @@
 
 let
   inherit (lib) mkEnableOption mkIf mkOption types;
-
   cfg = config.home-manager.ssh-add-keys;
   homeDir = config.home.homeDirectory;
-  keysFile = "${homeDir}/.ssh/keys.yaml";
+  keysFileDefault = "${homeDir}/.ssh/keys.yaml";
 in
 {
   options.home-manager.ssh-add-keys = {
-
     enable = mkEnableOption "Enable the ssh-add-keys agent.";
 
     keyFile = mkOption {
-      type = types.str;
-      default = keysFile;
+      type = types.path;
+      default = keysFileDefault;
       description = "Path to the decrypted YAML file containing SSH keys.";
     };
-
   };
 
   config = mkIf cfg.enable {
 
     home.file.".ssh/add-keys.sh" = {
       text = ''
-        #!/bin/bash
-        # Extract the private keys from the YAML file
-        ${pkgs.yq-go}/bin/yq e ".keys[].private" ${cfg.keyFile} | while IFS= read -r line; do
+        #!/usr/bin/env -S bash -exuo pipefail
+        
+        # Check that the keys file exists
+        if [ ! -f "${cfg.keyFile}" ]; then
+          echo "SSH keys YAML file not found: ${cfg.keyFile}"
+          exit 1
+        fi
+
+        # Load the SSH agent using keychain
+        eval "$(${ lib.getExe pkgs.keychain } -q --confhost --agents ssh --eval)"
+       
+        # Extract private keys from the YAML file and add them to the SSH agent
+        ${ lib.getExe pkgs.yq-go } eval ".keys[].private" "${cfg.keyFile}" | while IFS= read -r line; do
           if [[ "$line" == "-----BEGIN OPENSSH PRIVATE KEY-----"* ]]; then
-            # Read the entire private key
             key="$line"
+            # Read the multiline key until its terminator is reached
             while IFS= read -r line; do
-              key+=$'\n'"$line"
-              [[ "$line" == "-----END OPENSSH PRIVATE KEY-----" ]] && break
+              key=$( printf "%s\n%s" "$key" "$line" )
+              if [[ "$line" == "-----END OPENSSH PRIVATE KEY-----" ]]; then
+                break
+              fi
             done
-            # Add the private key to the SSH agent
-            ${pkgs.openssh}/bin/ssh-add - <<< "$key"
+            # Add the complete key to the SSH agent
+            printf "%s\n" "$key" | ${pkgs.openssh}/bin/ssh-add - 2>/dev/null || {
+              echo "Failed to add an SSH key." >&2
+            }
           fi
         done
       '';
@@ -44,19 +55,14 @@ in
 
     launchd.agents.ssh-add-keys = {
       enable = true;
-
       config = {
         Label = "org.nix-community.home.ssh-add-keys";
-        EnvironmentVariables = {
-          SSH_AUTH_SOCK = "${homeDir}/Library/Containers/com.apple.sshd/ssh-agent.socket";
-        };
+        Debug = true;
         ProgramArguments = [
           "${homeDir}/.ssh/add-keys.sh"
         ];
         RunAtLoad = true;
         KeepAlive = false;
-        StandardErrorPath = "${homeDir}/.ssh/ssh-add-keys.err";
-        StandardOutPath = "${homeDir}/.ssh/ssh-add-keys.out";
       };
     };
   };

@@ -6,8 +6,8 @@ test -n "${GIT_TRACE:-}" && set -x
 sops::config() {
   local fmt=${1}
   local name=sops-${fmt}
-  
-  cat <<EOF > sops.d/$fmt
+
+  cat <<EOF >sops.d/$fmt
 [filter "$name"]
   clean = @sopsConfigHome@/$fmt-clean %f
   smudge = @sopsConfigHome@/$fmt-smudge %f
@@ -25,7 +25,7 @@ sops::bin() {
 }
 
 sops::generate_config() {
-  local -a formats=( binary yaml json xml props csv tsv base64 uri toml lua )
+  local -a formats=(binary yaml json xml props csv tsv base64 uri toml lua)
 
   # Generate individual format include files
   for fmt in "${formats[@]}"; do
@@ -34,15 +34,15 @@ sops::generate_config() {
   done
 
   # Generate the main sops include file
-  cat <<EOF > sops
+  cat <<EOF >sops
 [include]
-$( for fmt in "${formats[@]}"; do
-  echo "  path = sops.d/$fmt"
-done )
+$(for fmt in "${formats[@]}"; do
+    echo "  path = sops.d/$fmt"
+  done)
 EOF
 
   # Generate sops.nix for Nix home-manager configuration
-  cat <<EOF > sops.nix
+  cat <<EOF >sops.nix
 { config, lib, pkgs, ... }:
 
 {
@@ -76,8 +76,8 @@ EOF
     };
   };
 
-$( for fmt in "${formats[@]}"; do
-   cat <<EOL
+$(for fmt in "${formats[@]}"; do
+    cat <<EOL
 
   xdg.configFile."git/sops.d/$fmt" = {
     source = pkgs.substituteAll {
@@ -86,38 +86,48 @@ $( for fmt in "${formats[@]}"; do
     };
   };
 EOL
-    done )
+  done)
 }
 EOF
 }
 
 git::sops:input:yq:format() {
   case "${META[fileExt]}" in
-    "yml"|"yaml")
-      echo "yaml";;
-    "json")
-      echo "json";;
-    "xml")
-      echo "xml";;
-    "env|dotenv|props|properties")
-      echo "properties";;
-    "csv")
-      echo "csv";;
-    "tsv")
-      echo "tsv";;
-    "base64"|"b64")
-      echo "base64";;
-    "uri")
-      echo "uri";;
-    "toml")
-      echo "toml";;
-    "lua")
-      echo "lua";;
-    *)
-      echo "unsupported";;
+  "yml" | "yaml")
+    echo "yaml"
+    ;;
+  "json")
+    echo "json"
+    ;;
+  "xml")
+    echo "xml"
+    ;;
+  "env|dotenv|props|properties")
+    echo "properties"
+    ;;
+  "csv")
+    echo "csv"
+    ;;
+  "tsv")
+    echo "tsv"
+    ;;
+  "base64" | "b64")
+    echo "base64"
+    ;;
+  "uri")
+    echo "uri"
+    ;;
+  "toml")
+    echo "toml"
+    ;;
+  "lua")
+    echo "lua"
+    ;;
+  *)
+    echo "unsupported"
+    ;;
   esac
 }
-
 
 git::sops:show() {
   printf "%s\n" "${@}"
@@ -128,7 +138,7 @@ GIT_SOPS_TRAILER="git::sops:trailer"
 
 git::sops:input:trailer:concat() {
   cat <<!
-  ${1:-$( cat /dev/stdin )}
+  ${1:-$(cat /dev/stdin)}
   ${GIT_SOPS_TRAILER}
 !
 }
@@ -141,59 +151,58 @@ git::sops:input:trailer:strip() {
 git::sops() {
   local operation="$1"
   case $operation in
-    show)
-      git::sops:show "${@:2}"
-      ;;
-    decrypt|encrypt)
-      local filecontent="$( cat /dev/stdin )"
-      
-      [[ -z "${filecontent}" ]] &&
-        return
+  show)
+    git::sops:show "${@:2}"
+    ;;
+  decrypt | encrypt)
+    local filecontent
 
-      local operation="${1}"
+    [[ -z "${filecontent:="$(cat /dev/stdin)"}" ]] &&
+      return
 
-      git::sops::${operation} <<<"${filecontent}"
-      ;;
+    local operation="${1}"
+
+    "git::sops::${operation}" <<<"${filecontent}"
+    ;;
   esac
 }
 
-
 # Function to check if we're being called as a Git filter or textconv
 sops::is_git_operation() {
-    [[ -n "${GIT_DIR:-}" ]]
+  [[ -n "${GIT_DIR:-}" ]]
 }
 
 # Function to check if we're running under Nix
 sops::is_nix_build() {
-    [[ -n "${NIX_BUILD_TOP:-}" ]]
+  [[ -n "${NIX_BUILD_TOP:-}" ]]
 }
 
 declare -A SCRIPT
 
-SCRIPT[name]="$( basename $0 )"
-SCRIPT[dir]="$( dirname $0 )"
+SCRIPT[name]="$( basename "$0" )"
+SCRIPT[dir]="$( dirname "$0" )"
 
-if [[ -h "${0}" ]]; then
+if [[ -L "${0}" ]]; then
   # Do not run if no .sops.yaml in repository
   test -r .sops.yaml || {
-    echo >&2 "You do not have configured sops for that repository. You're missing $( pwd )/.sops.yaml.";
-    exit 1;
+    echo >&2 "You do not have configured sops for that repository. You're missing $(pwd)/.sops.yaml."
+    exit 1
   }
 
   # Exit if the file names were not given
   test $# -ge 1
 
-  OP=${SCRIPT[name]##*-} # Extract operation from script name
+  OP=${SCRIPT[name]##*-}       # Extract operation from script name
   FORMAT=${SCRIPT[name]%%[-]*} # Extract format from script name
   FILE="$1"                    # First argument as file
 
   case "$OP" in
-    "textconv")
-      exec <"${FILE}"
-      ;;
-    *)
-      exec "$( realpath $0 )" $OP $FORMAT "${@}"
-      ;;
+  "textconv")
+    exec <"${FILE}"
+    ;;
+  *)
+    exec "$(realpath "$0")" "$OP" "$FORMAT" "${@}"
+    ;;
   esac
 
   # should never occur
@@ -219,20 +228,56 @@ FILE="${3}"
 # based on .sops.yaml file in the root of the repo.
 declare -A META=(
   [filePath]="${FILE}"
-  [fileName]="$( basename "${FILE}" )"
+  [fileName]="$(basename "${FILE}")"
   [fileExt]="${FILE##*.}"
   [fileFormat]="${FORMAT}"
 )
 
-# Third arg passed to script
 if [[ -n "${META[fileFormat]}" && "${META[fileFormat]}" != "binary" ]]; then
+  git::sops::anchors() {
+    yq eval '
+      select(documentIndex == 0) |
+      .. | select(anchor | length > 0) | 
+      [path | join("."), anchor] | join("|")
+    ' /dev/stdin | while IFS='|' read -r path anchor; do
+      # Skip empty lines
+      if [ -z "$path" ] && [ -z "$anchor" ]; then
+        continue
+      fi
+
+      IFS='.' read -ra parts <<<"$path"
+      local depth=$((${#parts[@]} - 1))
+
+      for ((i = 0; i < depth; i++)); do
+        current=$(
+          IFS='.'
+          echo "${parts[*]:0:$((i + 1))}"
+        )
+        if [[ "$prev_path" != "$current"* ]]; then
+          printf "%$((i * 2))s%s:\n" "" "${parts[i]}"
+        fi
+      done
+
+      if [ ${#parts[@]} -gt 0 ]; then
+        last_part="${parts[depth]}"
+        printf "%$((depth * 2))s%s: &%s\n" "" "$last_part" "$anchor"
+      else
+        printf "P%s: &%s\n" "$path" "$anchor"
+      fi
+
+      prev_path="$path"
+    done
+  }
+
   git::sops::encrypt() {
-    yq -o yaml eval . /dev/stdin |
-      sops --encrypt --input-type=yaml --output-type=yaml --filename-override="${META[fileName]}" /dev/stdin
+    yq --output-format=yaml yaml eval . /dev/stdin |
+      tee >(git::sops::anchors >/tmp/anchors.yaml) |
+      sops --encrypt --input-type=yaml output-type=yaml --filename-override="${META[fileName]}" /dev/stdin |
+      yq --output-format=yaml  eval-all 'select(fileIndex == 0) * select(fileIndex == 1)' - /tmp/anchors.yaml
   }
   git::sops::decrypt() {
-      sops --decrypt --input-type=yaml --output-type=yaml  --filename-override="${META[fileName]}" /dev/stdin |
-    yq --input-format=yaml --output-format=${META[fileFormat]} eval . /dev/stdin
+    sops --decrypt --input-type=yaml --output-type=yaml --filename-override="${META[fileName]}" /dev/stdin |
+      yq --input-format=yaml --output-format="${META[fileFormat]}" eval . /dev/stdin
   }
 else
   git::sops::encrypt() {
@@ -244,37 +289,37 @@ else
 fi
 
 case "${OP}" in
-  "smudge")
-    # Just decrypt the stdin contents.
-    TMP=$(mktemp)
-    DECRYPTED=$( git::sops decrypt </dev/stdin 2> "$TMP" )
-    err=$(cat "$TMP")
-    rm "$TMP"
-    wrong_key_error_message="age: no identity matched any of the recipients"
-    if [[ $err == *"${wrong_key_error_message}"* ]]; then
-      :
-    else
-      git::sops show "${DECRYPTED}"
-    fi
-    ;;
-  "textconv"|"clean")
-    # Either the file was not committed yet, or the existing decrypted content is different
-    # from the input, in which case we output the new encrypted input.
-    # If the file was commited and its decrypted content is the same as the new input,
-    # output the old encrypted content.
-    ENCRYPTED_HEAD_CONTENTS="$( git cat-file -p "HEAD:${META[filePath]}" 2>/dev/null || true )"
-    DECRYPTED_HEAD_CONTENTS="$( git::sops decrypt <<<"${ENCRYPTED_HEAD_CONTENTS}" )"
-    
-    INPUT="$( cat /dev/stdin )"
+"smudge")
+  # Just decrypt the stdin contents.
+  TMP=$(mktemp)
+  DECRYPTED=$(git::sops decrypt </dev/stdin 2>"$TMP")
+  err=$(cat "$TMP")
+  rm "$TMP"
+  wrong_key_error_message="age: no identity matched any of the recipients"
+  if [[ $err == *"${wrong_key_error_message}"* ]]; then
+    :
+  else
+    git::sops show "${DECRYPTED}"
+  fi
+  ;;
+"textconv" | "clean")
+  # Either the file was not committed yet, or the existing decrypted content is different
+  # from the input, in which case we output the new encrypted input.
+  # If the file was commited and its decrypted content is the same as the new input,
+  # output the old encrypted content.
+  ENCRYPTED_HEAD_CONTENTS="$(git cat-file -p "HEAD:${META[filePath]}" 2>/dev/null || true)"
+  DECRYPTED_HEAD_CONTENTS="$(git::sops decrypt <<<"${ENCRYPTED_HEAD_CONTENTS}")"
 
-    if [[ -z "${ENCRYPTED_HEAD_CONTENTS}" || "${DECRYPTED_HEAD_CONTENTS}" != "${INPUT}" ]]; then
-      OUTPUT="$( git::sops encrypt <<<"${INPUT}" 2>/dev/null )"
-    else
-      OUTPUT="${ENCRYPTED_HEAD_CONTENTS}"
-    fi
-    git::sops show "${OUTPUT}"
-    ;;
-  *)
-    exit 1;;
+  INPUT="$(cat /dev/stdin)"
+
+  if [[ -z "${ENCRYPTED_HEAD_CONTENTS}" || "${DECRYPTED_HEAD_CONTENTS}" != "${INPUT}" ]]; then
+    OUTPUT="$(git::sops encrypt <<<"${INPUT}" 2>/dev/null)"
+  else
+    OUTPUT="${ENCRYPTED_HEAD_CONTENTS}"
+  fi
+  git::sops show "${OUTPUT}"
+  ;;
+*)
+  exit 1
+  ;;
 esac
-

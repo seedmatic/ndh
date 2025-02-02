@@ -49,8 +49,6 @@ in {
       ];
       RunAtLoad = true;
       KeepAlive = true;
-      StandardOutPath = logFile;
-      StandardErrorPath = logFile;
     };
   };
 

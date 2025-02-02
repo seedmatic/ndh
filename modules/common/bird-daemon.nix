@@ -180,8 +180,6 @@ in {
         ];
         RunAtLoad = true;
         KeepAlive = true;
-        StandardOutPath = "/var/log/bird.log";
-        StandardErrorPath = "/var/log/bird.error.log";
         WorkingDirectory = "/var/run/bird";
       };
     };

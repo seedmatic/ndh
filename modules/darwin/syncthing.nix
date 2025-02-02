@@ -44,8 +44,6 @@ in {
         KeepAlive = true;
         LowPriorityIO = true;
         ProcessType = "Background";
-        StandardOutPath = "${cfg.logDir}/Syncthing.log";
-        StandardErrorPath = "${cfg.logDir}/Syncthing-Errors.log";
         EnvironmentVariables = {
           NIX_PATH = "nixpkgs=" + toString pkgs.path;
           STNORESTART = "1";

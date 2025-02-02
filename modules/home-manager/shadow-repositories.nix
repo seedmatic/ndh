@@ -4,8 +4,6 @@ let
   cfg = config.services.shadowRepositories;
   script = pkgs.writeScriptBin "mount-shadow-repositories.sh"
     (builtins.readFile ./shadow-repositories.sh);
-  homeDir = config.home.homeDirectory;
-  logPrefix = "${homeDir}/Library/Logs/shadow-repositories";
 in {
   options = {
     services.shadowRepositories = {
@@ -40,8 +38,6 @@ in {
         EnvironmentVariables = {
           PATH = "/usr/sbin:${pkgs.coreutils}/bin:${pkgs.rsync}/bin:${pkgs.yq}/bin:$PATH";
         };
-        StandardOutPath = "${logPrefix}-out.log";
-        StandardErrorPath = "${logPrefix}-error.log";
       };
     };
   };

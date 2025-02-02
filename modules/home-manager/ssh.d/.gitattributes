@@ -1,1 +1,2 @@
-**/keys.yaml filter=sops-yaml
+keys.yaml filter=sops-yaml
+ca filter=sops-binary

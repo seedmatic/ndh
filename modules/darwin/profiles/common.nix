@@ -1,3 +1,3 @@
-{ profile, config, lib, pkgs, ... }: {
+{ config, lib, pkgs, ... }: {
   imports = [ import ../../home-manager/profiles/common.nix ];
 }
