@@ -1,0 +1,3 @@
+---
+filename: linux_builder_mammoth_skate_public.cert
+content: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMm2fu/uVbaaj1OljiSnZ9T1ES9yvbG+Y6JhyLrnQQAS cert-authority@mammoth-skate

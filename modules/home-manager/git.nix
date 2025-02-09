@@ -45,6 +45,7 @@
     difftastic.enable = false;
     includes = [
       { path = "dotfiles"; }
+      { path = "devcontainer"; }
       { path = "local"; }
     ];
     lfs.enable = true;

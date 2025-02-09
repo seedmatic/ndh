@@ -1,4 +1,4 @@
-{ pkgs, ... }:
+{ pkgs, lib, ... }:
 let
 
   tailnet = {
@@ -9,7 +9,7 @@ let
   host = {
     inherit tailnet;
 
-    name = "alcide";
+    name = lib.mkDefault "jdoe";
   }; 
 
   user = {

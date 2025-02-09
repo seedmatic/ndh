@@ -13,6 +13,7 @@ nixtract.pkg-path = "nixtract"
 nixd.pkg-path = "nixd"
 nix-tree.pkg-path = "nix-tree"
 nvfetcher.pkg-path = "nvfetcher"
+pstree.pkg-path = "pstree"
 # hello.pkg-path = "hello"
 # nodejs = { version = "^20.15.1", pkg-path = "nodejs" }
 

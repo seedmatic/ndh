@@ -1,4 +1,4 @@
-{ pkgs, lib, ... }:
+{ ... }:
 {
   imports = [
     ../common
@@ -6,8 +6,9 @@
     ./security.nix
     ./core.nix
     ./environment.nix
-    
+
     ./linux-builder.nix
     ./raycast.nix
+    ./ssh.nix
   ];
 }

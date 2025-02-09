@@ -1,0 +1,10 @@
+---
+filename: linux_builder_mammoth_skate_private.cert
+content: |-
+  -----BEGIN OPENSSH PRIVATE KEY-----
+  b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW
+  QyNTUxOQAAACDJtn7v7lW2mo9TpY4kp2fU9REvcr2xvmOiYci650EAEgAAAJiYDZtRmA2b
+  UQAAAAtzc2gtZWQyNTUxOQAAACDJtn7v7lW2mo9TpY4kp2fU9REvcr2xvmOiYci650EAEg
+  AAAEDkqwy0SqqNYXq+4+htWltyyXdBUWP3tQ/V0zAxOm8a3Mm2fu/uVbaaj1OljiSnZ9T1
+  ES9yvbG+Y6JhyLrnQQASAAAAD254bWF0aWNAYmlvc2tvcAECAwQFBg==
+  -----END OPENSSH PRIVATE KEY-----

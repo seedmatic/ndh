@@ -17,8 +17,8 @@ in {
   nix = {
     package = pkgs.nix;
     extraOptions = ''
-      keep-outputs = true
-      keep-derivations = true
+      keep-outputs = false
+      keep-derivations = false
       keep-failed = false
       experimental-features = nix-command flakes
     '';
@@ -34,7 +34,7 @@ in {
     };
     gc = {
       automatic = true;
-      options = "--delete-older-than 7d";
+      options = "--delete-older-than 1d";
     };
 
     nixPath =

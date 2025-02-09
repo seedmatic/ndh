@@ -2,12 +2,12 @@
 
 let
   inherit (lib) mkEnableOption mkIf mkOption types;
-  cfg = config.home-manager.ssh-add-keys;
+  cfg = config.ssh-add-keys;
   homeDir = config.home.homeDirectory;
   keysFileDefault = "${homeDir}/.ssh/keys.yaml";
 in
 {
-  options.home-manager.ssh-add-keys = {
+  options.ssh-add-keys = {
     enable = mkEnableOption "Enable the ssh-add-keys agent.";
 
     keyFile = mkOption {

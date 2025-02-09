@@ -9,6 +9,9 @@ with pkgs; [
   podman
   podman-compose
   podman-desktop
+  powerline-fonts
+  powerline-go
+  powerline-symbols
   ripvcs
   sops
   ssh-to-age

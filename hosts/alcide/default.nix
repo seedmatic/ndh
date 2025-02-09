@@ -1,4 +1,4 @@
-{ pkgs, lib, ... }:
+{ pkgs, ... }:
 let
 
   tailnet = {
@@ -9,25 +9,24 @@ let
   host = {
     inherit tailnet;
 
-    name = lib.mkDefault "jdoe";
+    name = "alcide";
   }; 
 
   user = {
-      name = "nxmatic";
-      email = "stephane.lacoin@gmail.com";
+      name = "stephane.lacoin";
+      email = "stephane.lacoin@hyland.com";
       description = "Stephane Lacoin (aka nxmatic)";
-      home = builtins.toPath "/Users/nxmatic";
+      home = builtins.toPath "/Users/stephane.lacoin";
       shell = pkgs.zsh;
     };
 
   profile = {
     inherit host user;
 
-    name = "committed";
+    name = "work";
   };
 
 in {
   inherit profile;
 
-  imports = [ ./common.nix ];
 }
