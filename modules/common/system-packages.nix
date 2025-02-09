@@ -1,6 +1,8 @@
 {pkgs, ...}:
 with pkgs; [
   bash
+  docker
+  docker-compose
   git
   gitflow
   nushell

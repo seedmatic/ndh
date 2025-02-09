@@ -18,5 +18,20 @@
             "type": "github"
         },
         "version": "v2.31.0"
+    },
+    "rancher-desktop": {
+        "cargoLocks": null,
+        "date": null,
+        "extract": null,
+        "name": "rancher-desktop",
+        "passthru": null,
+        "pinned": false,
+        "src": {
+            "name": null,
+            "sha256": "sha256-tInP5pbsp8tdGdXqhC36MSwfZ1ERnzfB6I+k+d+b908=",
+            "type": "url",
+            "url": "https://github.com/rancher-sandbox/rancher-desktop/releases/download/v1.17.1/Rancher.Desktop-1.17.1.aarch64.dmg"
+        },
+        "version": "v1.17.1"
     }
 }

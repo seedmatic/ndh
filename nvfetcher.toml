@@ -1,3 +1,6 @@
 [docker-compose]
 fetch.github = "docker/compose"
 src.manual = "v2.31.0"
+[rancher-desktop]
+src.github = "rancher-sandbox/rancher-desktop"
+fetch.url = "https://github.com/rancher-sandbox/rancher-desktop/releases/download/v1.17.1/Rancher.Desktop-1.17.1.aarch64.dmg"

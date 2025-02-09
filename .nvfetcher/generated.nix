@@ -12,4 +12,12 @@
       sha256 = "sha256-l+xSd7eIpEy6A1mtx3WrcPQl7071IdJkbHKXbe4uFdA=";
     };
   };
+  rancher-desktop = {
+    pname = "rancher-desktop";
+    version = "v1.17.1";
+    src = fetchurl {
+      url = "https://github.com/rancher-sandbox/rancher-desktop/releases/download/v1.17.1/Rancher.Desktop-1.17.1.aarch64.dmg";
+      sha256 = "sha256-tInP5pbsp8tdGdXqhC36MSwfZ1ERnzfB6I+k+d+b908=";
+    };
+  };
 }
