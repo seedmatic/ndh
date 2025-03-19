@@ -35,131 +35,150 @@
     ripvcs.follows = "nxmatic-flake-commons/ripvcs";
   };
 
-  outputs = { self, darwin, devenv, flake-utils, home-manager, socket-vmnet
-    , nixpkgs, ... }@inputs:
-    let
-      inherit (flake-utils.lib) eachSystemMap;
-      defaultSystems = [ "aarch64-darwin" "x86_64-darwin" "x86_64-linux" ];
+  outputs = {
+    self,
+    darwin,
+    devenv,
+    flake-utils,
+    home-manager,
+    socket-vmnet,
+    nixpkgs,
+    ...
+  } @ inputs: let
+    inherit (flake-utils.lib) eachSystemMap;
+    defaultSystems = ["aarch64-darwin" "x86_64-darwin" "x86_64-linux"];
 
-      forAllSystems = nixpkgs.lib.genAttrs defaultSystems;
+    forAllSystems = nixpkgs.lib.genAttrs defaultSystems;
 
-      pkgsFor = forAllSystems (system:
-        let
-          basePackages = import nixpkgs {
-            inherit system;
-            config = {
-              allowUnfree = true;
-              allowBroken = true;
-              checkAllPackages = false;
-            };
-          };
-
-          floxOverlay = final: prev:
-            if inputs.flox.packages ? ${system} then
-              inputs.flox.packages.${system}
-            else
-              throw "Flox packages not defined for ${system}";
-
-          ripvcsOverlay = final: prev:
-            if inputs.ripvcs.packages ? ${system} then
-              inputs.ripvcs.packages.${system}
-            else
-              throw "Ripvcs packages not defined for ${system}";
-
-          overlays = builtins.map (name:
-            let overlay = self.overlays.${name} inputs;
-            in final: prev: overlay final prev)
-            (builtins.attrNames self.overlays);
-
-          applyOverlays = final: prev:
-            builtins.foldl' (acc: overlay: (acc // (overlay final prev))) { }
-            overlays;
-
-        in basePackages.extend (final: prev:
-          (floxOverlay final prev) // (ripvcsOverlay final prev)
-          // (applyOverlays final prev)));
-
-      mkDarwinConfig = { profileModule, system ? "aarch64-darwin", nixpkgs ? inputs.nixpkgs
-        , baseModules ? [
-          socket-vmnet.darwinModules.socket_vmnet
-          home-manager.darwinModules.home-manager
-          ./modules/darwin
-        ], extraModules ? [ ], }:
-        let
-          debugModule = { config, pkgs, ... }: {
-            _file = "debugModule";
-            config = {
-              system.activationScripts.debug.text = ''
-                echo "Debug: activationScripts is being executed"
-                echo "docker-compose version: ${pkgs.docker-compose.version}"
-              '';
-            };
-          };
-          combinedModules = baseModules ++ extraModules
-            ++ [ profileModule debugModule ];
-        in inputs.darwin.lib.darwinSystem {
-          inherit system;
-          pkgs = pkgsFor.${system};
-          modules = combinedModules;
-
-          specialArgs = let profile = profileModule.config.profile;
-          in {
-            inherit self inputs nixpkgs profile;
-            lib = inputs.nixpkgs.lib.extend (_: _:
-              inputs.home-manager.lib // {
-                # Any additional lib functions you want to include
-              });
-          };
+    pkgsFor = forAllSystems (system: let
+      basePackages = import nixpkgs {
+        inherit system;
+        config = {
+          allowUnfree = true;
+          allowBroken = true;
+          checkAllPackages = false;
         };
-
-      darwinConfigurations = builtins.listToAttrs (map (profileName: {
-        name = profileName;
-        value = mkDarwinConfig {
-          profileModule =
-            import ./modules/home-manager/profiles/${profileName}.nix;
-        };
-      }) [ "work" "committed" ]);
-
-    in {
-      inherit mkDarwinConfig darwinConfigurations;
-
-      devShells = eachSystemMap defaultSystems (system: {
-        default = devenv.lib.mkShell {
-          inherit inputs;
-          pkgs = pkgsFor.${system};
-          modules = [ (import ./devenv.nix) ];
-        };
-      });
-
-      packages = eachSystemMap defaultSystems (system:
-        let pkgs = pkgsFor.${system};
-        in {
-          pyEnv = pkgs.python3.withPackages
-            (ps: with ps; [ black typer colorama shellingham ]);
-          sysdo = pkgs.writeScriptBin "sysdo" ''
-            #! ${pkgs.python3}/bin/python3
-            ${builtins.readFile ./bin/do.py}
-          '';
-          qemu-pkgdb = pkgs.qemu-pkgdb;
-        });
-
-      overlays = {
-        channels = inputs: final: prev: {
-          nixpkgs = import inputs.nixpkgs { system = prev.system; };
-        };
-
-        extraPackages = inputs: final: prev: {
-          inherit (self.packages.${prev.system}) sysdo pyEnv;
-          inherit (inputs.devenv.packages.${prev.system}) devenv;
-
-          #         rancher-desktop = final.callPackage ./pkgs/rancher-desktop.nix { };
-        };
-
-        birdOverlay = inputs: import ./overlays/bird.nix inputs;
-
-        floxOverlay = inputs: import ./overlays/flox.nix inputs;
-
-        qemuOverlay = inputs: import ./overlays/qemu.nix inputs;
       };
+
+      floxOverlay = final: prev:
+        if inputs.flox.packages ? ${system}
+        then inputs.flox.packages.${system}
+        else throw "Flox packages not defined for ${system}";
+
+      ripvcsOverlay = final: prev:
+        if inputs.ripvcs.packages ? ${system}
+        then inputs.ripvcs.packages.${system}
+        else throw "Ripvcs packages not defined for ${system}";
+
+      overlays = builtins.map (name: let
+        overlay = self.overlays.${name} inputs;
+      in
+        final: prev: overlay final prev)
+      (builtins.attrNames self.overlays);
+
+      applyOverlays = final: prev:
+        builtins.foldl' (acc: overlay: (acc // (overlay final prev))) {}
+        overlays;
+    in
+      basePackages.extend (final: prev:
+        (floxOverlay final prev)
+        // (ripvcsOverlay final prev)
+        // (applyOverlays final prev)));
+
+    mkDarwinConfig = {
+      profileModule,
+      system ? "aarch64-darwin",
+      nixpkgs ? inputs.nixpkgs,
+      baseModules ? [
+        socket-vmnet.darwinModules.socket_vmnet
+        home-manager.darwinModules.home-manager
+        ./modules/darwin
+      ],
+      extraModules ? [],
+    }: let
+      debugModule = {config, ...}: {
+        _file = "debugModule";
+        config = {
+          system.activationScripts.debug.text = ''
+            echo "Debug: activationScripts is being executed"
+            echo "baseModules: ${toString baseModules}"
+            echo "extraModules: ${toString extraModules}"
+            echo "profileModule: ${toString profileModule}"
+          '';
+        };
+      };
+      combinedModules =
+        baseModules
+        ++ extraModules
+        ++ [profileModule debugModule];
+    in
+      inputs.darwin.lib.darwinSystem {
+        inherit system;
+        pkgs = pkgsFor.${system};
+        modules = combinedModules;
+
+        specialArgs = let
+          profile = profileModule.config.profile;
+        in {
+          inherit self inputs nixpkgs profile;
+          lib = inputs.nixpkgs.lib.extend (_: _:
+            inputs.home-manager.lib
+            // {
+              # Any additional lib functions you want to include
+            });
+        };
+      };
+
+    darwinConfigurations = builtins.listToAttrs (map (profileName: {
+      name = profileName;
+      value = mkDarwinConfig {
+        profileModule =
+          import ./modules/home-manager/profiles/${profileName}.nix;
+      };
+    }) ["work" "committed"]);
+  in {
+    inherit mkDarwinConfig darwinConfigurations;
+
+    devShells = eachSystemMap defaultSystems (system: {
+      default = devenv.lib.mkShell {
+        inherit inputs;
+        pkgs = pkgsFor.${system};
+        modules = [(import ./devenv.nix)];
+      };
+    });
+
+    packages = eachSystemMap defaultSystems (system: let
+      pkgs = pkgsFor.${system};
+    in {
+      pyEnv =
+        pkgs.python3.withPackages
+        (ps: with ps; [black typer colorama shellingham]);
+      sysdo = pkgs.writeScriptBin "sysdo" ''
+        #! ${pkgs.python3}/bin/python3
+        ${builtins.readFile ./bin/do.py}
+      '';
+      qemu-pkgdb = pkgs.qemu-pkgdb;
+    });
+
+    overlays = {
+      channels = inputs: final: prev: {
+        nixpkgs = import inputs.nixpkgs {system = prev.system;};
+      };
+
+      extraPackages = inputs: final: prev: {
+        inherit (self.packages.${prev.system}) sysdo pyEnv;
+        inherit (inputs.devenv.packages.${prev.system}) devenv;
+
+        rancher-desktop = final.callPackage ./pkgs/rancher-desktop.nix {};
+      };
+
+      birdOverlay = inputs: import ./overlays/bird.nix inputs;
+
+      floxOverlay = inputs: import ./overlays/flox.nix inputs;
+
+      qemuOverlay = inputs: import ./overlays/qemu.nix inputs;
+
+      #podmanOverlay = inputs: import ./overlays/podman.nix inputs;
     };
+  };
 }

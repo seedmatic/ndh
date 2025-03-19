@@ -3,14 +3,10 @@
   user,
   pkgs,
   ...
-}:
-let
-
+}: let
   userHome = user.home;
   homeDirectory = userHome;
-
-in
-{
+in {
   imports = [
     ./avahi.nix
     ./bat.nix
@@ -50,7 +46,6 @@ in
   };
 
   home = {
-
     inherit homeDirectory;
 
     stateVersion = "24.11";
@@ -119,6 +114,7 @@ in
       poetry
       pnpm
       pre-commit
+      rancher-desktop
       ranger
       rclone
       rsync
@@ -144,7 +140,6 @@ in
   targets.genericLinux.enable = false;
 
   programs = {
-
     home-manager.enable = true;
 
     bash.enable = true;
@@ -186,11 +181,9 @@ in
     zoxide.enable = true;
 
     zellij.enable = true;
-
   };
 
   services = {
-
     # Enable the emacs daemon
     emacsDaemon = {
       enable = true;
@@ -205,16 +198,12 @@ in
 
     # Enable shadowing folders
     shadowRepositories = {
-
       enable = false;
 
       mountPoints = [
         "/Volumes/GitHub/HylandSoftware/hxpr"
         "/Volumes/GitHub/nuxeo/nos"
       ];
-
     };
-
   };
-
 }

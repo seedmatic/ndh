@@ -31,8 +31,9 @@
 
       # Use mkDarwinConfig to create the configuration
       darwinConfiguration = mkDarwinConfig {
-        profileModule = hostModule;
         inherit system;
+
+        profileModule = hostModule;
       };
     in {
       inherit darwinConfiguration devShells packages overlays;

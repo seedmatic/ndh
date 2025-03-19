@@ -8,10 +8,7 @@
   config = {
     # Ensure all configuration attributes are within the config attribute
     environment = {
-      systemPackages = with pkgs; [
-        bfg-repo-cleaner
-        nmap
-      ];
+
     };
 
     # Example configuration

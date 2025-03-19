@@ -8,6 +8,7 @@
   packages = [
     pkgs.nixd
     pkgs.flox
+    pkgs.lima
     self.packages.${pkgs.system}.pyEnv
   ];
 
