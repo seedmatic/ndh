@@ -178,6 +178,8 @@
 
       qemuOverlay = inputs: import ./overlays/qemu.nix inputs;
 
+      nodejsOverlay = inputs: import ./overlays/nodejs.nix inputs;
+
       #podmanOverlay = inputs: import ./overlays/podman.nix inputs;
     };
   };
