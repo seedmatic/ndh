@@ -8,7 +8,7 @@ with pkgs; [
   nushell
   podman
   podman-compose
-  podman-desktop
+# podman-desktop
   powerline-fonts
   powerline-go
   powerline-symbols
