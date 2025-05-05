@@ -60,6 +60,11 @@
         };
       };
 
+      vmnetOverlay = final: prev:
+        if inputs.socket-vmnet.packages ? ${system}
+        then inputs.socket-vmnet.packages.${system}
+        else throw "Socket VMNet packages not defined for ${system}";
+
       floxOverlay = final: prev:
         if inputs.flox.packages ? ${system}
         then inputs.flox.packages.${system}
@@ -81,7 +86,8 @@
         overlays;
     in
       basePackages.extend (final: prev:
-        (floxOverlay final prev)
+        (vmnetOverlay final prev)
+        // (floxOverlay final prev)
         // (ripvcsOverlay final prev)
         // (applyOverlays final prev)));
 
@@ -169,7 +175,7 @@
         inherit (self.packages.${prev.system}) sysdo pyEnv;
         inherit (inputs.devenv.packages.${prev.system}) devenv;
 
-      # rancher-desktop = final.callPackage ./pkgs/rancher-desktop.nix {};
+        # rancher-desktop = final.callPackage ./pkgs/rancher-desktop.nix {};
       };
 
       birdOverlay = inputs: import ./overlays/bird.nix inputs;

@@ -14,10 +14,13 @@
   inputs = {
     darwin-home.url = "../..";
 
-    nixpkgs.follow = "darwin-home/nixpkgs";
+    nixpkgs.follows = "darwin-home/nixpkgs";
   };
 
-  outputs = { darwin-home, nixpkgs }: {
+  outputs = {
+    darwin-home,
+    nixpkgs,
+  }: {
     nixosConfigurations.your-hostname = nixpkgs.lib.nixosSystem {
       system = "aarch64-linux";
       modules = [

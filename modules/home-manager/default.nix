@@ -110,15 +110,16 @@ in {
       passExtensions.pass-checkup
       passExtensions.pass-genphrase
       podman
-    # podman-desktop
+      # podman-desktop
       poetry
       pnpm
       pre-commit
-    # rancher-desktop
+      # rancher-desktop
       ranger
       rclone
       rsync
       shellcheck
+      socket_vmnet
       sops
       stylua
       sysdo
