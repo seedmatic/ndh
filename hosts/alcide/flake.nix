@@ -37,6 +37,7 @@
     in {
       inherit darwinConfiguration devShells packages overlays;
 
-      darwinConfigurations.bioskop = darwinConfiguration;
+      darwinConfigurations."alcide" = darwinConfiguration;
+
     };
 }

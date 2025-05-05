@@ -12,7 +12,7 @@ with pkgs; [
   powerline-fonts
   powerline-go
   powerline-symbols
-  rancher-desktop
+# rancher-desktop
   ripvcs
   sops
   ssh-to-age

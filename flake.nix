@@ -169,7 +169,7 @@
         inherit (self.packages.${prev.system}) sysdo pyEnv;
         inherit (inputs.devenv.packages.${prev.system}) devenv;
 
-        rancher-desktop = final.callPackage ./pkgs/rancher-desktop.nix {};
+      # rancher-desktop = final.callPackage ./pkgs/rancher-desktop.nix {};
       };
 
       birdOverlay = inputs: import ./overlays/bird.nix inputs;

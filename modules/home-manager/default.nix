@@ -114,7 +114,7 @@ in {
       poetry
       pnpm
       pre-commit
-      rancher-desktop
+    # rancher-desktop
       ranger
       rclone
       rsync
