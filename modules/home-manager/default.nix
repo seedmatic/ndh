@@ -11,7 +11,7 @@ in {
     ./avahi.nix
     ./bat.nix
     ./cachix-agent.nix
-    # ./chromium.nix
+    ./chromium.nix
     ./dircolors.nix
     ./direnv.nix
     ./dotfiles
@@ -64,6 +64,7 @@ in {
       avahi
       cachix
       cirrus-cli
+      chromium-bin
       comma
       coreutils-full
       curl

@@ -33,6 +33,7 @@
     socket-vmnet.follows = "nxmatic-flake-commons/socket-vmnet";
     zen-browser.follows = "nxmatic-flake-commons/zen-browser";
     ripvcs.follows = "nxmatic-flake-commons/ripvcs";
+    chromium-bin.follows = "nxmatic-flake-commons/chromium-bin";
   };
 
   outputs = {
@@ -120,7 +121,9 @@
     in
       inputs.darwin.lib.darwinSystem {
         inherit system;
-        pkgs = pkgsFor.${system};
+        pkgs = pkgsFor.${system}.extend (final: prev: {
+          chromium-bin = inputs.chromium-bin.packages.${system}.default;
+        });
         modules = combinedModules;
 
         specialArgs = let

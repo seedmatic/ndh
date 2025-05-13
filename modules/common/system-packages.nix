@@ -1,6 +1,7 @@
 {pkgs, ...}:
 with pkgs; [
   bash
+  chromium-bin
   docker
   docker-compose
   git
