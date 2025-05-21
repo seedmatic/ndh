@@ -1,4 +1,4 @@
-#!/usr/bin/env -S bash -euo pipefail
+#!/nix/store/wy51zbjg46lhxlivfqszl1jvmjdkvvac-coreutils-9.5/bin/env -S /nix/store/p17l448i83ap00v2w03c5dafl2vrlj5g-bash-5.2p37/bin/bash -euo pipefail
 # -*- mode: sh -*-
 
 test -n "${GIT_TRACE:-}" && set -x
@@ -9,10 +9,10 @@ sops::config() {
 
   cat <<EOF >sops.d/$fmt
 [filter "$name"]
-  clean = @sopsConfigHome@/$fmt-clean %f
-  smudge = @sopsConfigHome@/$fmt-smudge %f
+  clean = /Users/stephane.lacoin/.config/git/sops.d/$fmt-clean %f
+  smudge = /Users/stephane.lacoin/.config/git/sops.d/$fmt-smudge %f
 [diff "$name"]
-  textconv = @sopsConfigHome@/$fmt-textconv
+  textconv = /Users/stephane.lacoin/.config/git/sops.d/$fmt-textconv
 EOF
 }
 
@@ -129,7 +129,7 @@ git::sops:input:yq:format() {
   esac
 }
 
-git::sops:show() {
+git::sops::show() {
   printf "%s\n" "${@}"
 }
 
@@ -152,17 +152,15 @@ git::sops() {
   local operation="$1"
   case $operation in
   show)
-    git::sops:show "${@:2}"
+    git::sops::"${operation}" "${@:2}"
     ;;
   decrypt | encrypt)
     local filecontent
 
-    [[ -z "${filecontent:="$(cat /dev/stdin)"}" ]] &&
+    [[ -z "${filecontent:=$( cat /dev/stdin )}" ]] &&
       return
 
-    local operation="${1}"
-
-    "git::sops::${operation}" <<<"${filecontent}"
+    git::sops::"${operation}" <<<"${filecontent}"
     ;;
   esac
 }
@@ -270,11 +268,18 @@ if [[ -n "${META[fileFormat]}" && "${META[fileFormat]}" != "binary" ]]; then
   }
 
   git::sops::encrypt() {
-    yq --output-format=yaml yaml eval . /dev/stdin |
-      tee >(git::sops::anchors >/tmp/anchors.yaml) |
-      sops --encrypt --input-type=yaml output-type=yaml --filename-override="${META[fileName]}" /dev/stdin |
-      yq --output-format=yaml  eval-all 'select(fileIndex == 0) * select(fileIndex == 1)' - /tmp/anchors.yaml
+    local input anchors encrypted
+    input=$(cat)
+    anchors=$(printf '%s' "$input" | git::sops::anchors)
+    encrypted=$(printf '%s' "$input" | sops --encrypt --input-type=yaml --output-type=yaml --filename-override="${META[fileName]}" /dev/stdin)
+  
+    if [[ -n "$anchors" ]]; then
+      printf '%s\n%s' "$encrypted" "$anchors" | yq --output-format=yaml eval-all 'select(fileIndex == 0) * select(fileIndex == 1)' -
+    else
+      printf '%s' "$encrypted"
+    fi
   }
+
   git::sops::decrypt() {
     sops --decrypt --input-type=yaml --output-type=yaml --filename-override="${META[fileName]}" /dev/stdin |
       yq --input-format=yaml --output-format="${META[fileFormat]}" eval . /dev/stdin
@@ -313,7 +318,7 @@ case "${OP}" in
   INPUT="$(cat /dev/stdin)"
 
   if [[ -z "${ENCRYPTED_HEAD_CONTENTS}" || "${DECRYPTED_HEAD_CONTENTS}" != "${INPUT}" ]]; then
-    OUTPUT="$(git::sops encrypt <<<"${INPUT}" 2>/dev/null)"
+    OUTPUT=$( git::sops encrypt <<<"${INPUT}" )
   else
     OUTPUT="${ENCRYPTED_HEAD_CONTENTS}"
   fi
