@@ -46,8 +46,11 @@ in
   
   system.activationScripts.postActivation.text = ''
       # shellcheck disable=SC2016
-      find -L "${userHome}/.local/state/ssh-keys.d" -type f -print0 |
+      
+      : Set the permissions for the SSH keys
+      find -L "${userHome}/.ssh/keys.d" -type f -print0 |
         xargs -0 -I{} echo 'file="$( realpath {} )"; chown ${userName} $file; chmod 400 $file' | 
         bash -x
+      EoF
     '';
 }

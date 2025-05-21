@@ -1,4 +1,4 @@
-#!/usr/bin/env -S bash -euo pipefail
+#!/usr/bin/env -S bash -euxo pipefail
 
 yamlFile="$1"
 outputDir="$2"
@@ -43,10 +43,10 @@ exp=$( cat <<'EOE' | cut -c 3-
 EOE
 )
 
-# Use yq to generate the array, split it into files, and output to the specified directory
+: Use yq to generate the array, split it into files, and output to the specified directory
 env OUTPUT_DIR="$outputDir" yq eval "$exp" "$yamlFile" -s '.filename'
 
-# Post-process the generated YAML files to extract only the content
+: Post-process the generated YAML files to extract only the content
 for file in "$outputDir/"*; do
   if [[ $file == *.yml ]]; then
     file=${file%.yml}
