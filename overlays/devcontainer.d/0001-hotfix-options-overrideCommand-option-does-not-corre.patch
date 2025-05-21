@@ -1,0 +1,58 @@
+From 98dc3447bf435d21276bf5329132f9788f80e251 Mon Sep 17 00:00:00 2001
+From: "Stephane Lacoin (aka nxmatic)" <stephane.lacoin@gmail.com>
+Date: Sat, 1 Mar 2025 09:48:58 +0100
+Subject: hotfix(options): overrideCommand option does not correctly overwrite
+ entrypoint (#816)
+
+---
+ src/spec-node/singleContainer.ts | 34 +++++++++++++++++++++-----------
+ 1 file changed, 22 insertions(+), 12 deletions(-)
+
+diff --git a/src/spec-node/singleContainer.ts b/src/spec-node/singleContainer.ts
+index 9b07834..2f7802c 100644
+--- a/src/spec-node/singleContainer.ts
++++ b/src/spec-node/singleContainer.ts
+@@ -385,18 +385,28 @@ export async function spawnDevContainer(params: DockerResolverParameters, config
+ 	);
+ 
+ 	const customEntrypoints = mergedConfig.entrypoints || [];
+-	const entrypoint = ['--entrypoint', '/bin/sh'];
+-	const cmd = ['-c', `echo Container started
+-trap "exit 0" 15
+-${customEntrypoints.join('\n')}
+-exec "$@"
+-while sleep 1 & wait $!; do :; done`, '-']; // `wait $!` allows for the `trap` to run (synchronous `sleep` would not).
+-	const overrideCommand = mergedConfig.overrideCommand;
+-	if (overrideCommand === false && imageDetails) {
+-		const details = await imageDetails();
+-		cmd.push(...details.Config.Entrypoint || []);
+-		cmd.push(...details.Config.Cmd || []);
+-	}
++  	let entrypoint: string[] = [];
++    let cmd: string[] = [];
++    if (imageDetails) {
++      const details = await imageDetails();
++      entrypoint = details.Config.Entrypoint || [];
++      cmd = details.Config.Cmd || [];
++      if (mergedConfig.overrideCommand === true) {
++        entrypoint = ['--entrypoint', '/bin/sh'];
++        cmd = [
++          '-c',
++          `echo Container started
++			trap "exit 0" 15
++			${customEntrypoints.join('\n')}
++			exec "$@"
++			while sleep 1 & wait $!; do :; done`,
++          '-',
++        ]; // `wait $!` allows for the `trap` to run (synchronous `sleep` would not).
++
++        cmd.push(...(details.Config.Entrypoint || []));
++        cmd.push(...(details.Config.Cmd || []));
++      }
++    }
+ 
+ 	const args = [
+ 		'run',
+-- 
+2.47.0
+

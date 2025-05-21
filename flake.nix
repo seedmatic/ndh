@@ -183,13 +183,9 @@
 
       birdOverlay = inputs: import ./overlays/bird.nix inputs;
 
-      floxOverlay = inputs: import ./overlays/flox.nix inputs;
-
       qemuOverlay = inputs: import ./overlays/qemu.nix inputs;
 
       nodejsOverlay = inputs: import ./overlays/nodejs.nix inputs;
-
-      #podmanOverlay = inputs: import ./overlays/podman.nix inputs;
     };
   };
 }
