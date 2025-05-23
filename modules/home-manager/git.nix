@@ -1,14 +1,19 @@
-{ config, pkgs, lib, ... }:
-let
+{
+  config,
+  pkgs,
+  lib,
+  ...
+}: let
   profile = config._module.specialArgs.profile;
   userName = profile.user.description;
   userEmail = profile.user.email;
   hostKeysDir = "${config.xdg.stateHome}/ssh-keys.d";
   stateHome = config.xdg.stateHome or "${config.home.homeDirectory}/.local/state";
+  allowedSignersFile = "${config.xdg.configHome}/git/github_allowed_signers";
 in {
-  imports = [ ./git.d/sops.nix ];
+  imports = [./git.d/sops.nix];
 
-  home.packages = [ pkgs.github-cli ];
+  home.packages = [pkgs.github-cli];
 
   programs.git = {
     enable = true;
@@ -24,10 +29,10 @@ in {
 
     extraConfig = {
       commit.verbose = true;
-      credential.helper = if pkgs.stdenvNoCC.isDarwin then
-        "osxkeychain"
-      else
-        "cache --timeout=1000000000";
+      credential.helper =
+        if pkgs.stdenvNoCC.isDarwin
+        then "osxkeychain"
+        else "cache --timeout=1000000000";
       fetch.prune = true;
       http.sslVerify = true;
       http.sslCAInfo = "/etc/ssl/certs/ca-certificates.crt";
@@ -36,6 +41,11 @@ in {
       push.followTags = true;
       push.autoSetupRemote = true;
       rebase.autoStash = true;
+      gpg = {
+        ssh = {
+          allowedSignersFile = allowedSignersFile;
+        };
+      };
     };
 
     aliases = {
@@ -57,10 +67,10 @@ in {
     difftastic.enable = false;
 
     includes = [
-      { path = "config.d/signing"; }
-      { path = "dotfiles"; }
-      { path = "devcontainer"; }
-      { path = "local"; }
+      {path = "config.d/signing";}
+      {path = "dotfiles";}
+      {path = "devcontainer";}
+      {path = "local";}
     ];
 
     lfs.enable = true;
@@ -70,13 +80,14 @@ in {
     "git" = {
       source = lib.fileset.toSource {
         root = ./git.d;
-        fileset = lib.fileset.difference (lib.fileset.fromSource ./git.d)
+        fileset =
+          lib.fileset.difference (lib.fileset.fromSource ./git.d)
           (lib.fileset.unions [
-            (./git.d/config.d)
-            (./git.d/sops)
-            (./git.d/sops.d)
-            (./git.d/sops.sh)
-            (./git.d/sops.nix)
+            ./git.d/config.d
+            ./git.d/sops
+            ./git.d/sops.d
+            ./git.d/sops.sh
+            ./git.d/sops.nix
           ]);
       };
       recursive = true;
@@ -85,8 +96,14 @@ in {
     # Only the includeIf block here
     "git/config.d/signing" = {
       text = ''
-        [includeIf "gitdir:**/*Hyland*/**"]
+        [includeIf "gitdir:*/HylandExperience/*"]
             path = "config.d/signing@hyland"
+        [includeIf "gitdir:*/HylandSoftware/*"]
+            path = "config.d/signing@hyland"  
+        [includeIf "gitdir:*/HylandPlatformConfiguration/*"]
+            path = "config.d/signing@hyland"
+        [includeIf "gitdir:*/Alfresco/*"]
+            path = "config.d/signing@hyland"                     
       '';
     };
 
@@ -97,16 +114,14 @@ in {
             signingkey = ${hostKeysDir}/github_signing_hyland.pub
       '';
     };
-
-    "git/config.d/github_allowed_signers" = {
-      text = ''
-        stephane.lacoin@gmail.com namespaces="git" ${
-          builtins.readFile "${stateHome}/ssh-keys.d/github_signing.pub"
-        }
-        stephane.lacoin@hyland.com namespaces="git" ${
-          builtins.readFile "${stateHome}/ssh-keys.d/github_signing_hyland.pub"
-        }
-      '';
-    };
   };
+
+  home.activation.generateAllowedSigners = lib.hm.dag.entryAfter ["writeBoundary" "ssh-add-keys"] ''
+    set -euxo pipefail
+    : Generatig github allowed signers configuration file
+    cat <<EoF > "${allowedSignersFile}"
+    stephane.lacoin@gmail.com namespaces="git" $( cat "${stateHome}/ssh-keys.d/github_signing.pub" )
+    stephane.lacoin@hyland.com namespaces="git" $( cat "${stateHome}/ssh-keys.d/github_signing_hyland.pub" )
+    EoF
+  '';
 }

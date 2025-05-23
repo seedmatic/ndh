@@ -12,7 +12,7 @@
 
     envExtra = builtins.readFile ./zshenv.zsh;
 
-    initExtra = ''
+    initContent = ''
       if [[ "$TERM_PROGRAM" == "vscode" ]]; then
         codepath=/usr/local/bin/code
         if [[ -x "$codepath" ]]; then
@@ -29,5 +29,9 @@
 
   programs.bash = {
     enable = true;
+
+    bashrcExtra = ''
+      export PATH=/etc/profiles/per-user/$USER/bin:/run/current-system/sw/bin:$PATH
+    '';
   };
 }

@@ -20,7 +20,7 @@ in {
     ./profile.nix
     ./nixpkgs.nix
     ./dnsmasq.nix
-    ./qemu.nix
+    # ./qemu.nix
   ];
 
   programs = {

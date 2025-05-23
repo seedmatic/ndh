@@ -7,8 +7,6 @@
         Defaults:%admin timestamp_timeout=240
       '';
     };
-    security.pam.enableSudoTouchIdAuth = true;
+    security.pam.services.sudo_local.touchIdAuth = true;
   };
 }
-
-

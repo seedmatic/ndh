@@ -162,10 +162,10 @@
       pyEnv =
         pkgs.python3.withPackages
         (ps: with ps; [black typer colorama shellingham]);
-      sysdo = pkgs.writeScriptBin "sysdo" ''
-        #! ${pkgs.python3}/bin/python3
-        ${builtins.readFile ./bin/do.py}
-      '';
+      sysdo = pkgs.writeScriptBin "sysdo" (
+        "#! ${pkgs.python3}/bin/python3\n"
+        + builtins.readFile ./bin/do.py
+      );
       qemu-pkgdb = pkgs.qemu-pkgdb;
     });
 

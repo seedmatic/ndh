@@ -13,6 +13,6 @@
     extraConfig = ''
       allow-loopback-pinentry
     '';
-    pinentryPackage = pkgs.pinentry_mac;
+    pinentry.package = pkgs.pinentry_mac;
   };
 }

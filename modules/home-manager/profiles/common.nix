@@ -81,4 +81,6 @@ in
 
   };
 
+  config.system.primaryUser = cfg.user.name;
+
 }

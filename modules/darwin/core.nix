@@ -24,7 +24,6 @@ in
 
   # auto manage nixbld users with nix darwin
   nix = {
-    configureBuildUsers = true;
     nixPath = [ "darwin=/etc/${config.environment.etc.darwin.target}" ];
 
     # Additional garbage collection triggers
@@ -57,15 +56,6 @@ in
 
   launchd.user.envVariables = {
     XDG_RUNTIME_DIR = "${userHome}/.xdg";
-  };
-
-  services = {
-
-    # Auto upgrade nix package and the daemon service.
-    nix-daemon = {
-      enable = true;
-    };
-
   };
 
   # Used for backwards compatibility, please read the changelog before changing.
