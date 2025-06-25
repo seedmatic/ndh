@@ -20,6 +20,7 @@
     flake-compat.follows = "nxmatic-flake-commons/flake-compat";
     flake-utils.follows = "nxmatic-flake-commons/flake-utils";
     nix.follows = "nxmatic-flake-commons/nix";
+    lix-module.follows = "nxmatic-flake-commons/lix-module";
     nixos-hardware.follows = "nxmatic-flake-commons/nixos-hardware";
     nixpkgs.follows = "nxmatic-flake-commons/nixpkgs";
     cachix.follows = "nxmatic-flake-commons/cachix";
