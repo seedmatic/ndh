@@ -3,6 +3,9 @@
   "manifest": {
     "version": 1,
     "install": {
+      "home-manager": {
+        "pkg-path": "home-manager"
+      },
       "linux-builder": {
         "pkg-path": "darwin.linux-builder",
         "systems": [
@@ -41,6 +44,122 @@
     }
   },
   "packages": [
+    {
+      "attr_path": "home-manager",
+      "broken": false,
+      "derivation": "/nix/store/z73dqgdk5fq4ak58svj9sprd9kbzvlm8-home-manager-0-unstable-2025-06-13.drv",
+      "description": "Nix-based user environment configurator",
+      "install_id": "home-manager",
+      "license": "MIT",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=9e83b64f727c88a7711a2c463a7b16eedb69a84c",
+      "name": "home-manager-0-unstable-2025-06-13",
+      "pname": "home-manager",
+      "rev": "9e83b64f727c88a7711a2c463a7b16eedb69a84c",
+      "rev_count": 816272,
+      "rev_date": "2025-06-17T04:31:58Z",
+      "scrape_date": "2025-06-18T00:36:16.634559Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "2025-06-13",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/7l64aph9sxvm3divxrprwmxzf25g2lrz-home-manager-0-unstable-2025-06-13"
+      },
+      "system": "aarch64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "home-manager",
+      "broken": false,
+      "derivation": "/nix/store/1bppi0xfq6h8xp3145vjxkgiq92jzvjz-home-manager-0-unstable-2025-06-13.drv",
+      "description": "Nix-based user environment configurator",
+      "install_id": "home-manager",
+      "license": "MIT",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=9e83b64f727c88a7711a2c463a7b16eedb69a84c",
+      "name": "home-manager-0-unstable-2025-06-13",
+      "pname": "home-manager",
+      "rev": "9e83b64f727c88a7711a2c463a7b16eedb69a84c",
+      "rev_count": 816272,
+      "rev_date": "2025-06-17T04:31:58Z",
+      "scrape_date": "2025-06-18T00:54:50.430361Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "2025-06-13",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/18msh8hspwf5gfk040s6qcwm5z1qf711-home-manager-0-unstable-2025-06-13"
+      },
+      "system": "aarch64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "home-manager",
+      "broken": false,
+      "derivation": "/nix/store/wzyypd98wvdc4dqx4bapzk4gqln5sdpa-home-manager-0-unstable-2025-06-13.drv",
+      "description": "Nix-based user environment configurator",
+      "install_id": "home-manager",
+      "license": "MIT",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=9e83b64f727c88a7711a2c463a7b16eedb69a84c",
+      "name": "home-manager-0-unstable-2025-06-13",
+      "pname": "home-manager",
+      "rev": "9e83b64f727c88a7711a2c463a7b16eedb69a84c",
+      "rev_count": 816272,
+      "rev_date": "2025-06-17T04:31:58Z",
+      "scrape_date": "2025-06-18T01:12:23.903209Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "2025-06-13",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/7fkj25d83fmz2yq9msmz2xlaxbxrj7dk-home-manager-0-unstable-2025-06-13"
+      },
+      "system": "x86_64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "home-manager",
+      "broken": false,
+      "derivation": "/nix/store/a5c3aa69qsfg3pkkiw2fc08bw6ihd0dy-home-manager-0-unstable-2025-06-13.drv",
+      "description": "Nix-based user environment configurator",
+      "install_id": "home-manager",
+      "license": "MIT",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=9e83b64f727c88a7711a2c463a7b16eedb69a84c",
+      "name": "home-manager-0-unstable-2025-06-13",
+      "pname": "home-manager",
+      "rev": "9e83b64f727c88a7711a2c463a7b16eedb69a84c",
+      "rev_count": 816272,
+      "rev_date": "2025-06-17T04:31:58Z",
+      "scrape_date": "2025-06-18T01:32:30.092189Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "2025-06-13",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/w7ixkb0mp91x2yr19jjh0s2yxm7m0in0-home-manager-0-unstable-2025-06-13"
+      },
+      "system": "x86_64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
     {
       "attr_path": "darwin.linux-builder",
       "broken": false,
