@@ -11,7 +11,7 @@
 
 in {
   nixpkgs = {
-    config = import ./config.nix;
+    config = import ./nixpkgs-config.nix;
   };
 
   nix = {

@@ -9,6 +9,7 @@
     pkgs.nixd
     pkgs.flox
     pkgs.lima
+    pkgs.direnv
     self.packages.${pkgs.system}.pyEnv
   ];
 

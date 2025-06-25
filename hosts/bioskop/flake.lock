@@ -16647,6 +16647,33 @@
         "type": "github"
       }
     },
+    "extra-container": {
+      "inputs": {
+        "flake-utils": [
+          "nxmatic-darwin-home",
+          "nxmatic-flake-commons",
+          "flake-utils"
+        ],
+        "nixpkgs": [
+          "nxmatic-darwin-home",
+          "nxmatic-flake-commons",
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1749474221,
+        "narHash": "sha256-t31Ynq9jFNlf3lUQ8vvdJKt7xQqo5poWi+3yl2v8avk=",
+        "owner": "erikarvstedt",
+        "repo": "extra-container",
+        "rev": "6a6d1d32fde689c2ea978c1c1a4286e89f4f83c1",
+        "type": "github"
+      },
+      "original": {
+        "owner": "erikarvstedt",
+        "repo": "extra-container",
+        "type": "github"
+      }
+    },
     "fenix": {
       "inputs": {
         "nixpkgs": [
@@ -39412,6 +39439,21 @@
         "type": "github"
       }
     },
+    "impermanence": {
+      "locked": {
+        "lastModified": 1737831083,
+        "narHash": "sha256-LJggUHbpyeDvNagTUrdhe/pRVp4pnS6wVKALS782gRI=",
+        "owner": "nix-community",
+        "repo": "impermanence",
+        "rev": "4b3e914cdf97a5b536a889e939fb2fd2b043a170",
+        "type": "github"
+      },
+      "original": {
+        "owner": "nix-community",
+        "repo": "impermanence",
+        "type": "github"
+      }
+    },
     "incus-compose": {
       "inputs": {
         "nixpkgs": [
@@ -54153,11 +54195,11 @@
     },
     "nixos-hardware_11": {
       "locked": {
-        "lastModified": 1750431636,
-        "narHash": "sha256-vnzzBDbCGvInmfn2ijC4HsIY/3W1CWbwS/YQoFgdgPg=",
+        "lastModified": 1750837715,
+        "narHash": "sha256-2m1ceZjbmgrJCZ2PuQZaK4in3gcg3o6rZ7WK6dr5vAA=",
         "owner": "nixos",
         "repo": "nixos-hardware",
-        "rev": "1552a9f4513f3f0ceedcf90320e48d3d47165712",
+        "rev": "98236410ea0fe204d0447149537a924fb71a6d4f",
         "type": "github"
       },
       "original": {
@@ -61141,11 +61183,11 @@
     },
     "nixpkgs_164": {
       "locked": {
-        "lastModified": 1750784235,
-        "narHash": "sha256-IYCCkKerO3lMUcMaDRLfwnfyPopQbGWF8iHRd0XcCBc=",
+        "lastModified": 1750843480,
+        "narHash": "sha256-bGqcKJuhPFfqqXZiICGJU8Y14mk1YKKAwipguaMoWxY=",
         "owner": "nixos",
         "repo": "nixpkgs",
-        "rev": "a5e9291e97f5ba0b4ba7d657ddedd5f86d11acfd",
+        "rev": "61b9e95587bb585905173df9c3252c59c5610658",
         "type": "github"
       },
       "original": {
@@ -70836,15 +70878,14 @@
         ]
       },
       "locked": {
-        "lastModified": 0,
-        "narHash": "sha256-KB/Y80ylZjY6rEyMjaYEl696AWhEX6Za7HyuLgH5Ba8=",
         "path": "../..",
         "type": "path"
       },
       "original": {
         "path": "../..",
         "type": "path"
-      }
+      },
+      "parent": []
     },
     "nxmatic-flake-commons": {
       "inputs": {
@@ -70855,10 +70896,12 @@
         "determinate": "determinate",
         "devenv": "devenv_2",
         "disko": "disko",
+        "extra-container": "extra-container",
         "flake-compat": "flake-compat_2",
         "flake-utils": "flake-utils_2",
         "flox": "flox",
         "home-manager": "home-manager",
+        "impermanence": "impermanence",
         "incus-compose": "incus-compose",
         "lix-module": "lix-module",
         "maven-mvnd": "maven-mvnd",
@@ -70875,11 +70918,11 @@
         "zen-browser": "zen-browser_35"
       },
       "locked": {
-        "lastModified": 1750835874,
-        "narHash": "sha256-sQDKL7KjnJRtLxErlmrLugld3pHPoW/pGykWnyoAaW8=",
+        "lastModified": 1750873044,
+        "narHash": "sha256-Z4WcAs0nGyqvlG4gqO0qbBtOqqdzfSzeq7rqngYa6g0=",
         "owner": "nxmatic",
         "repo": "nix-flake-commons",
-        "rev": "5bed03643d393cf804cbc44a07937d97bffbb5f0",
+        "rev": "0a79b6c63e18c457ea7c158fc1a99ebbbb8bae88",
         "type": "github"
       },
       "original": {

@@ -38,11 +38,7 @@ in
     optimise.automatic = true;
   };
 
-  nixpkgs.config = {
-    allowBroken = true;
-    allowUnfree = true;
-    checkAllPackages = false;
-  };
+  nixpkgs.config = import ../common/nixpkgs-config.nix;
 
   # nixpkgs.overlays = [
   #   (self: super: {

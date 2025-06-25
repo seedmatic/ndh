@@ -31,6 +31,6 @@ in {
 
   imports = [ ./common.nix ];
 
-  ids.gids.nixbld = 30000;
+  ids.gids.nixbld = 350;
 
 }

@@ -14,6 +14,9 @@ nixd.pkg-path = "nixd"
 nix-tree.pkg-path = "nix-tree"
 nvfetcher.pkg-path = "nvfetcher"
 pstree.pkg-path = "pstree"
+linux-builder.pkg-path = "darwin.linux-builder"
+linux-builder.systems = ["aarch64-darwin", "x86_64-darwin"]
+pass.pkg-path = "pass"
 # hello.pkg-path = "hello"
 # nodejs = { version = "^20.15.1", pkg-path = "nodejs" }
 

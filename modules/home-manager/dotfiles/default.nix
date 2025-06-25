@@ -1,8 +1,8 @@
+{ pkgs, lib, ... }: 
+let
+  nixpkgsConfigFile = ../../common/nixpkgs-config.nix;
+in
 {
-  pkgs,
-  lib,
-  ...
-}: {
   xdg.dataFile = {
     raycast = lib.mkIf pkgs.stdenvNoCC.isDarwin {
       source = ./raycast;
@@ -11,7 +11,7 @@
   };
 
   xdg.configFile = {
-    "nixpkgs/config.nix".source = ../../config.nix;
+    "nixpkgs/config.nix".source = nixpkgsConfigFile;
 
     # hammerspoon = lib.mkIf pkgs.stdenvNoCC.isDarwin {
     #   source = ./hammerspoon;
@@ -29,11 +29,6 @@
     #   '';
     #   target = "nodejs/.npmrc";
     # };
-
-    yabai = lib.mkIf pkgs.stdenvNoCC.isDarwin {
-      source = ./yabai;
-      recursive = true;
-    };
 
   };
 

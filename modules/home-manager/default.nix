@@ -48,7 +48,7 @@ in {
   home = {
     inherit homeDirectory;
 
-    stateVersion = "24.11";
+    stateVersion = "25.05";
 
     sessionPath = [
       "${homeDirectory}/.rd/bin"

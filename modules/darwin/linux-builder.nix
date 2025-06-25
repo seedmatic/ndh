@@ -1,46 +1,32 @@
-{
-  inputs,
-  lib,
-  pkgs,
-  ...
-}:
+{ inputs, lib, pkgs, config, ... }:
 let
+  useCustomConfig = config.linux-builder.useCustomConfig;
   qemu-pkgdb = inputs.self.packages.${pkgs.system}.qemu-pkgdb or pkgs.qemu;
 in {
-  imports = [
-    # Add any necessary imports here
-  ];
+  options.linux-builder.useCustomConfig = lib.mkOption {
+    type = lib.types.bool;
+    default = true;
+    description = "Enable custom config for linux-builder";
+  };
 
   config = {
     nix.linux-builder = {
       enable = true;
-      ephemeral = true;
+      ephemeral = false;
       maxJobs = 4;
-      config =
-        { pkgs, ... }:
-        let
-          linuxPkgs = import <nixpkgs> { system = "aarch64-linux"; };
-        in
-        {
+    } // lib.optionalAttrs useCustomConfig {
+      config = { pkgs, ... }:
+        let linuxPkgs = import <nixpkgs> { system = "aarch64-linux"; };
+        in {
           nix.channel.enable = lib.mkForce true;
 
-          environment.systemPackages = [
-            linuxPkgs.emacs-nox
-            linuxPkgs.tailscale
-          ];
-
           virtualisation = {
-            qemu.package = qemu-pkgdb; # Use your patched QEMU package
+            qemu.package = qemu-pkgdb; # May use the patched QEMU package
             darwin-builder = {
               diskSize = 200 * 1024;
               memorySize = 8 * 1024;
             };
             cores = 6;
-          };
-
-          services.tailscale = {
-            enable = true;
-            package = pkgs.tailscale;
           };
 
           services.openssh = {
@@ -56,17 +42,16 @@ in {
             isNormalUser = true;
             extraGroups = [ "wheel" ];
           };
-          security.sudo.extraRules = [
-            {
-              users = [ "%wheel" ];
-              commands = [
-                {
-                  command = "ALL";
-                  options = [ "NOPASSWD" ]; # "SETENV" # Adding the following could be a good idea
-                }
-              ];
-            }
-          ];
+
+          security.sudo.extraRules = [{
+            users = [ "%wheel" ];
+            commands = [{
+              command = "ALL";
+              options = [
+                "NOPASSWD"
+              ]; # "SETENV" # Adding the following could be a good idea
+            }];
+          }];
         };
     };
   };

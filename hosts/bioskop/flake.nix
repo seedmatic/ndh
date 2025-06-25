@@ -29,15 +29,34 @@
         };
       };
 
+     # Define a bootstrap host module
+      bootstrapHostModule = { config, lib, pkgs, ... }: {
+        imports = [ ../../modules/home-manager/profiles/committed.nix ];
+        config = {
+          profile = { host.name = "alcide"; };
+          linux-builder.useCustomConfig = false;
+        };
+      };
+
       # Use mkDarwinConfig to create the configuration
       darwinConfiguration = mkDarwinConfig {
-        inherit system;
-
         profileModule = hostModule;
+        inherit system;
+      };
+
+      # Use mkDarwinConfig to create the bootstrap configuration
+      darwinBootstrapConfiguration = mkDarwinConfig {
+        profileModule = bootstrapHostModule;
+        inherit system;
       };
     in {
       inherit darwinConfiguration devShells packages overlays;
 
-      darwinConfigurations.bioskop = darwinConfiguration;
+      darwinConfigurations = {
+        "bootstrap" = darwinBootstrapConfiguration;
+        "bioskop" = darwinConfiguration;
+      };
+
+      defaultPackage.aarch64-darwin = darwinConfiguration.system;
     };
 }

@@ -4,7 +4,8 @@ let
   cfg = config.profile;
   user = cfg.user;
   userName = user.name;
-  userHome =  "${if pkgs.stdenvNoCC.isDarwin then "/Users" else "/home"}/${userName}";
+  userHome =
+    "${if pkgs.stdenvNoCC.isDarwin then "/Users" else "/home"}/${userName}";
 
   # Define systemPackages separately
   systemPackages = import ./system-packages.nix {
@@ -42,7 +43,10 @@ in {
 
   # let nix manage home-manager profiles and use global nixpkgs
   home-manager = {
-    extraSpecialArgs = {inherit self inputs; profile = config.profile; };
+    extraSpecialArgs = {
+      inherit self inputs;
+      profile = config.profile;
+    };
     useGlobalPkgs = true;
     useUserPackages = true;
     verbose = true;
@@ -59,9 +63,7 @@ in {
 
     inherit systemPackages;
 
-    variables = {
-      XDG_RUNTIME_DIR = "${userHome}/.xdg";
-    };
+    variables = { XDG_RUNTIME_DIR = "${userHome}/.xdg"; };
 
     etc = {
       home-manager.source = "${inputs.home-manager}";
@@ -69,16 +71,13 @@ in {
     };
 
     # list of acceptable shells in /etc/shells
-    shells = with pkgs; [bash zsh fish];
+    shells = with pkgs; [ bash zsh fish ];
   };
 
   services.tailscale = {
     enable = true;
-    #logDir = config.logDir or null; # Use the value of the logDir option, or null if it is not set
   };
 
-  fonts = {
-    packages = with pkgs; [powerline-fonts];
-  };
+  fonts = { packages = with pkgs; [ powerline-fonts ]; };
 
 }
