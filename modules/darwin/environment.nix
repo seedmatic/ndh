@@ -1,15 +1,6 @@
-{
-  config,
-  lib,
-  pkgs,
-  ...
-}:
-{
+{ config, lib, pkgs, ... }: {
   config = {
-    # Ensure all configuration attributes are within the config attribute
-    environment = {
-
-    };
+    environment = { };
 
     # Example configuration
     services.openssh.enable = true;

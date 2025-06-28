@@ -1,9 +1,4 @@
-{
-  inputs,
-  config,
-  pkgs,
-  ...
-}:
+{ inputs, config, pkgs, ... }:
 let
 
   user = config.profile.user;
@@ -12,12 +7,11 @@ let
   userHome = user.home;
   userShell = user.shell;
 
-in
-{
+in {
+  imports = [ ./environment.nix ./networking.nix ];
+
   environment = {
-    etc = {
-      darwin.source = "${inputs.darwin}";
-    };
+    etc = { darwin.source = "${inputs.darwin}"; };
     # packages installed in system profile (more in ../common/default.nix)
     # systemPackages = [ ];
   };
@@ -26,9 +20,9 @@ in
   nix = {
     nixPath = [ "darwin=/etc/${config.environment.etc.darwin.target}" ];
 
-    # Additional garbage collection triggers
     extraOptions = ''
       accept-flake-config = true
+      experimental-features = nix-command flakes
       extra-platforms = x86_64-darwin aarch64-darwin
       min-free = ${toString (10 * 1024 * 1024 * 1024)}  # 10 GB
       max-free = ${toString (20 * 1024 * 1024 * 1024)}  # 20 GB
@@ -50,9 +44,7 @@ in
   #   })
   # ];
 
-  launchd.user.envVariables = {
-    XDG_RUNTIME_DIR = "${userHome}/.xdg";
-  };
+  launchd.user.envVariables = { XDG_RUNTIME_DIR = "${userHome}/.xdg"; };
 
   # Used for backwards compatibility, please read the changelog before changing.
   # $ darwin-rebuild changelog

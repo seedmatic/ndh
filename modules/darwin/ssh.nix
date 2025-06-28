@@ -29,6 +29,7 @@ in {
   environment.etc = {
     "ssh/sshd_config.d/999-host-keys.conf" = {
       text = ''
+        StrictModes no
         HostKey ${hostKeyPrivateFile}
         HostCertificate ${hostKeyPublicFile}
         TrustedUserCAKeys ${caPublicKeyFiles}

@@ -10,6 +10,8 @@ let
   profileName = profile.name;
   hostName = profile.host.name; 
   userName = "Stephane Lacoin (aka nxmatic)";
+  userDescription = profile.user.description;
+  userHome = profile.user.home;
 
   # Command to filter and sign keys based on profile and host
   yamlHostKeys = pkgs.runCommand "ssh-signed-keys.yaml" {
