@@ -40,14 +40,10 @@ in {
   };
 
   system.activationScripts.postActivation.text = ''
-    # shellcheck disable=SC2016
-
-    : Set the permissions for the SSH keys
-    if [[ -d "${userHome}/.ssh/keys.d" ]]; then
-      : Setting permissions for SSH keys in ${userHome}/.ssh/keys.d
-      find -L "${userHome}/.ssh/keys.d" -type f -print0 |
-        xargs -0 -I{} echo 'file="$( realpath {} )"; chown ${userName} $file; chmod 400 $file' |
-        bash -x
-    fi
+    install -d -m 700 ~${userName}/.ssh/keys.d
+    ${lib.escapeShellArg pkgs.rsync}/bin/rsync -avL \
+      --chmod=u+w,go-r \
+      --chown=${userName}:wheel \
+      ${userHM.xdg.stateHome}/ssh-keys.d/ ${hostKeysDir}/ || true
   '';
 }

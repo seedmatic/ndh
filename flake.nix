@@ -174,5 +174,15 @@
 
         nodejsOverlay = inputs: import ./overlays/nodejs.nix inputs;
       };
+
+      homeManagerModules = {
+        primaryUser = import ./modules/common/primary-user.nix;
+        manager = import ./modules/home-manager;
+        profiles = {
+          # Optionally, expose profiles as modules if they are home-manager compatible
+          work = import ./modules/home-manager/profiles/work.nix;
+          committed = import ./modules/home-manager/profiles/committed.nix;
+        };
+      };
     };
 }

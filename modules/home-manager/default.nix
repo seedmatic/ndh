@@ -146,6 +146,8 @@ in {
 
     bash.enable = true;
 
+    zsh.enable = true;
+
     dircolors.enable = true;
 
     go.enable = true;
@@ -191,13 +193,6 @@ in {
       enable = true;
     };
 
-    # Enable the cachix agent
-    cachix-agent = {
-      enableLaunchdAgent = true;
-      name = "nix-community";
-      credentialsFile = ./cachix-agent.dhall;
-    };
-
     # Enable shadowing folders
     shadowRepositories = {
       enable = false;
@@ -207,5 +202,11 @@ in {
         "/Volumes/GitHub/nuxeo/nos"
       ];
     };
-  };
+  } // (if pkgs.stdenv.isDarwin then {
+    cachix-agent = {
+      enableLaunchdAgent = true;
+      name = "nix-community";
+      credentialsFile = ./cachix-agent.dhall;
+    };
+  } else {});
 }

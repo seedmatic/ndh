@@ -1,10 +1,10 @@
-{ lib, config, ... }:
+{ pkgs, lib, config, ... }:
+
 let
-
+  inherit (pkgs) stdenv;
+  inherit (lib) mkIf;
   cfg = config.profile;
-
-in
-{
+in {
   options = {
     profile = lib.mkOption {
       type = lib.types.submodule {
@@ -81,6 +81,5 @@ in
 
   };
 
-  config.system.primaryUser = cfg.user.name;
-
+  config = mkIf stdenv.isDarwin { system.primaryUser = config.profile.user.name; };
 }

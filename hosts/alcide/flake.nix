@@ -5,7 +5,7 @@
 
   outputs = { self, nxmatic-darwin-home, ... }@inputs:
     let
-      inherit (nxmatic-darwin-home) devShells packages overlays mkDarwinConfig;
+      inherit (nxmatic-darwin-home) homeManagerModules devShells packages overlays mkDarwinConfig;
 
       system = "aarch64-darwin";
 
@@ -48,7 +48,7 @@
         inherit system;
       };
     in {
-      inherit darwinConfiguration devShells packages overlays;
+      inherit darwinConfiguration homeManagerModules devShells packages overlays;
 
       darwinConfigurations = {
         "bootstrap" = darwinBootstrapConfiguration;
