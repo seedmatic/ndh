@@ -1,13 +1,12 @@
-{ pkgs, ... }: {
-  imports =
-    [
-      ./extensions.nix
-    ];
-
+{ pkgs, ... }:
+let
+  unfreeAllowed = pkgs.config ? allowUnfree && pkgs.config.allowUnfree == true;
+in {
+  imports = [ ./extensions.nix ];
 
   programs.vscode = {
 
-    enable = true;
+    enable = unfreeAllowed;
 
     # Snippet to use insiders build
     # package = pkgs.vscode-fhs;
@@ -22,7 +21,6 @@
     #    });
     #    version = "latest";
     #  });
-
 
     # extensions = with pkgs.vscode-extensions; [
     #  vscodevim.vim
