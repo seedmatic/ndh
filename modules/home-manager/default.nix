@@ -1,9 +1,6 @@
 # This is the home configuration of the user.
-{
-  user,
-  pkgs,
-  ...
-}: let
+{ user, pkgs, ... }:
+let
   userHome = user.home;
   homeDirectory = userHome;
 in {
@@ -56,84 +53,82 @@ in {
     ];
 
     # Define package definitions for current user environment
-    packages = with pkgs; [
-      aider-chat
-      alejandra
-      awscli2
-      avahi
-      cachix
-      cirrus-cli
-      comma
-      coreutils-full
-      curl
-      diffutils
-      direnv
-      docker
-      docker-compose
-      ffmpeg
-      findutils
-      flyctl
-      gawk
-      gdu
-      gh
-      git-workspace
-      gnugrep
-      gnupg
-      gnused
-      helm-docs
-      httpie
-      hurl
-      jdk
-      k9s
-      kpt
-      krew
-      kubectl
-      kubectx
-      kubernetes-helm
-      kustomize
-      #     lazydocker
-      luajit
-      minikube
-      mmv
-      neofetch
-      nix
-      nixfmt-classic
-      nixpkgs-fmt
-      nodejs
-      parallel
-      passExtensions.pass-otp
-      passExtensions.pass-audit
-      passExtensions.pass-update
-      passExtensions.pass-import
-      passExtensions.pass-checkup
-      passExtensions.pass-genphrase
-      podman
-      # podman-desktop
-      poetry
-      pnpm
-      pre-commit
-      # rancher-desktop
-      ranger
-      rclone
-      rsync
-      shellcheck
-      socket_vmnet
-      sops
-      stylua
-      sysdo
-      teleport
-      tig
-      tree
-      treefmt
-      trivy
-      vault-bin
-      vfkit
-      yarn
-      yamllint
-      yq-go
-      zellij
-      zsh
-    ];
+    packages = with pkgs;
+      [
+        aider-chat
+        alejandra
+        awscli2
+        avahi
+        cachix
+        cirrus-cli
+        comma
+        coreutils-full
+        curl
+        diffutils
+        direnv
+        docker
+        docker-compose
+        ffmpeg
+        findutils
+        flyctl
+        gawk
+        gdu
+        gh
+        git-workspace
+        gnugrep
+        gnupg
+        gnused
+        helm-docs
+        httpie
+        hurl
+        jdk
+        k9s
+        kpt
+        krew
+        kubectl
+        kubectx
+        kubernetes-helm
+        kustomize
+        #     lazydocker
+        luajit
+        minikube
+        mmv
+        neofetch
+        nix
+        nixfmt-classic
+        nixpkgs-fmt
+        nodejs
+        parallel
+        passExtensions.pass-otp
+        passExtensions.pass-audit
+        passExtensions.pass-update
+        passExtensions.pass-import
+        passExtensions.pass-checkup
+        passExtensions.pass-genphrase
+        podman
+        # podman-desktop
+        poetry
+        pnpm
+        pre-commit
+        # rancher-desktop
+        ranger
+        rclone
+        rsync
+        shellcheck
+        sops
+        stylua
+        teleport
+        tig
+        tree
+        treefmt
+        trivy
+        vault-bin
+        yarn
+        yamllint
+        yq-go
+        zellij
+        zsh
+      ] ++ (if pkgs.stdenv.isDarwin then [ vfkit socket_vmnet ] else [ ]);
   };
 
   targets.genericLinux.enable = false;
@@ -186,18 +181,14 @@ in {
 
   services = {
     # Enable the emacs daemon
-    emacsDaemon = {
-      enable = true;
-    };
+    emacsDaemon = { enable = true; };
 
     # Enable shadowing folders
     shadowRepositories = {
       enable = false;
 
-      mountPoints = [
-        "/Volumes/GitHub/HylandSoftware/hxpr"
-        "/Volumes/GitHub/nuxeo/nos"
-      ];
+      mountPoints =
+        [ "/Volumes/GitHub/HylandSoftware/hxpr" "/Volumes/GitHub/nuxeo/nos" ];
     };
   } // (if pkgs.stdenv.isDarwin then {
     cachix-agent = {
@@ -205,5 +196,6 @@ in {
       name = "nix-community";
       credentialsFile = ./cachix-agent.dhall;
     };
-  } else {});
+  } else
+    { });
 }
