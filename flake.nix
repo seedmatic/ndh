@@ -16,29 +16,29 @@
   };
 
   inputs = {
-    nxmatic-flake-commons.url = "github:nxmatic/nix-flake-commons/develop";
-    flake-compat.follows = "nxmatic-flake-commons/flake-compat";
-    flake-utils.follows = "nxmatic-flake-commons/flake-utils";
-    nix.follows = "nxmatic-flake-commons/nix";
-    lix-module.follows = "nxmatic-flake-commons/lix-module";
-    nixos-hardware.follows = "nxmatic-flake-commons/nixos-hardware";
-    nixpkgs.follows = "nxmatic-flake-commons/nixpkgs";
-    cachix.follows = "nxmatic-flake-commons/cachix";
-    darwin.follows = "nxmatic-flake-commons/darwin";
-    home-manager.follows = "nxmatic-flake-commons/home-manager";
-    devenv.follows = "nxmatic-flake-commons/devenv";
-    flox.follows = "nxmatic-flake-commons/flox";
+    flake-commons.url = "github:nxmatic/nix-flake-commons/develop";
+    flake-compat.follows = "flake-commons/flake-compat";
+    flake-utils.follows = "flake-commons/flake-utils";
+    nix.follows = "flake-commons/nix";
+    lix-module.follows = "flake-commons/lix-module";
+    nixos-hardware.follows = "flake-commons/nixos-hardware";
+    nixpkgs.follows = "flake-commons/nixpkgs";
+    cachix.follows = "flake-commons/cachix";
+    darwin.follows = "flake-commons/darwin";
+    home-manager.follows = "flake-commons/home-manager";
+    devenv.follows = "flake-commons/devenv";
+    flox.follows = "flake-commons/flox";
     treefmt-nix.url = "github:numtide/treefmt-nix";
-    bird.follows = "nxmatic-flake-commons/bird";
-    maven-mvnd.follows = "nxmatic-flake-commons/maven-mvnd";
-    socket-vmnet.follows = "nxmatic-flake-commons/socket-vmnet";
-    zen-browser.follows = "nxmatic-flake-commons/zen-browser";
-    ripvcs.follows = "nxmatic-flake-commons/ripvcs";
-    chromium-bin.follows = "nxmatic-flake-commons/chromium-bin";
-    disko.follows = "nxmatic-flake-commons/disko";
-    impermanence.follows = "nxmatic-flake-commons/impermanence";
-    nixos-generators.follows = "nxmatic-flake-commons/nixos-generators";
-    incus-compose.follows = "nxmatic-flake-commons/incus-compose";
+    bird.follows = "flake-commons/bird";
+    maven-mvnd.follows = "flake-commons/maven-mvnd";
+    socket-vmnet.follows = "flake-commons/socket-vmnet";
+    zen-browser.follows = "flake-commons/zen-browser";
+    ripvcs.follows = "flake-commons/ripvcs";
+    chromium-bin.follows = "flake-commons/chromium-bin";
+    disko.follows = "flake-commons/disko";
+    impermanence.follows = "flake-commons/impermanence";
+    nixos-generators.follows = "flake-commons/nixos-generators";
+    incus-compose.follows = "flake-commons/incus-compose";
   };
 
   outputs = { self, darwin, devenv, flake-utils, home-manager, socket-vmnet
