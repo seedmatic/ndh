@@ -1,13 +1,12 @@
 { config, lib, pkgs, ... }: {
   config = {
-    environment = { };
+    environment = {
 
-    # Example configuration
-    services.openssh.enable = true;
+      systemPackages = with pkgs; [ bash zsh flox direnv ];
 
-    # Ensure no recursive reference to config.config
-    # If you need to reference config, do it correctly
-    # For example:
-    # someOption = config.someOtherOption;
+      shells =
+        [ "/run/current-system/sw/bin/bash" "/run/current-system/sw/bin/zsh" ];
+    };
+
   };
 }

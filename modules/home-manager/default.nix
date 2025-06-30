@@ -17,7 +17,6 @@ in {
     ./dotfiles
     ./emacs.nix
     # ./firefox.nix
-    ./flox.nix
     ./flox-direnv.nix
     ./fzf.nix
     ./git.nix
@@ -74,7 +73,6 @@ in {
       docker-compose
       ffmpeg
       findutils
-      flox
       flyctl
       gawk
       gdu
