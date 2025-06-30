@@ -35,6 +35,10 @@
     zen-browser.follows = "nxmatic-flake-commons/zen-browser";
     ripvcs.follows = "nxmatic-flake-commons/ripvcs";
     chromium-bin.follows = "nxmatic-flake-commons/chromium-bin";
+    disko.follows = "nxmatic-flake-commons/disko";
+    impermanence.follows = "nxmatic-flake-commons/impermanence";
+    nixos-generators.follows = "nxmatic-flake-commons/nixos-generators";
+    incus-compose.follows = "nxmatic-flake-commons/incus-compose";
   };
 
   outputs = { self, darwin, devenv, flake-utils, home-manager, socket-vmnet
