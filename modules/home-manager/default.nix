@@ -63,7 +63,6 @@ in {
       avahi
       cachix
       cirrus-cli
-      chromium-bin
       comma
       coreutils-full
       curl
