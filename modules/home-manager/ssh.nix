@@ -2,7 +2,7 @@
 
 let
   # Debug function that both traces and returns its input
-  debugTrace = x: builtins.trace "Debug: profile = ${builtins.toJSON x}" x;
+  debugTrace = x: builtins.traceVerbose "Debug: profile = ${builtins.toJSON x}" x;
 
   profile = config._module.specialArgs.profile;
   debuggedProfile = debugTrace profile;
@@ -31,7 +31,7 @@ let
 
  # Script to retrieve known hosts including CA public key
   knownHostsScript = pkgs.writeScript "known-hosts-script" ''
-    #!${pkgs.bash}/bin/bash -euxo pipefail
+    #!${pkgs.bash}/bin/bash -euo pipefail
     exec 2> ~/.local/var/known-hosts.log
     sed 's/^/@cert-authority *,principals="admin,staff" /' ${keysDir}/*-ca.pub
     exit 0

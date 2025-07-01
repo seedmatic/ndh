@@ -34,6 +34,7 @@ in {
             settings = {
               PasswordAuthentication = true;
               PermitRootLogin = "yes";
+              PermitEmptyPasswords = true;
             };
           };
 
@@ -41,6 +42,10 @@ in {
           users.users.builder = {
             isNormalUser = true;
             extraGroups = [ "wheel" ];
+          };
+          users.users.test = {
+            isNormalUser = true;
+            password = "";
           };
 
           security.sudo.extraRules = [{
