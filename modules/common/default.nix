@@ -74,9 +74,7 @@ in {
     shells = with pkgs; [ bash zsh fish ];
   };
 
-  services.tailscale = {
-    enable = true;
-  };
+  services.tailscale = { enable = true; };
 
   fonts = { packages = with pkgs; [ powerline-fonts ]; };
 

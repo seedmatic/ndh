@@ -1,31 +1,30 @@
-{
-  self,
-  config,
-  pkgs,
-  ...
-}: let
+{ self, config, pkgs, lib,... }:
+let
   profile = config.profile;
   profileName = profile.name;
   userHome = profile.user.home;
   userName = profile.user.name;
 
-  userHM = self.darwinConfigurations."${profileName}".config.home-manager.users."${userName}";
+  userHM =
+    self.darwinConfigurations."${profileName}".config.home-manager.users."${userName}";
 
-  hostKeysDir = "${userHM.xdg.stateHome}/ssh-keys.d";
+  hostKeysDir = "${userHome}/.ssh/keys.d";
   hostKeyPrivateFile = "${hostKeysDir}/host";
   hostKeyPublicFile = "${hostKeysDir}/host-mammoth_skate-host-cert.pub";
   caPublicKeyFiles = "${hostKeysDir}/mammoth_skate-ca.pub";
 
-  authorizedPrincipalsCommand = pkgs.writeScript "authorized-principals-command" ''
-    #!${pkgs.bash}/bin/bash
-    # Add your logic here to generate the list of allowed principals
-    # For example, you could read from a file or query a database
-    cat <<EOF
-    staff
-    admin
-    EOF
-  '';
+  authorizedPrincipalsCommand =
+    pkgs.writeScript "authorized-principals-command" ''
+      #!${pkgs.bash}/bin/bash
+      # Add your logic here to generate the list of allowed principals
+      # For example, you could read from a file or query a database
+      cat <<EOF
+      staff
+      admin
+      EOF/
+    '';
 in {
+  environment.systemPackages = with pkgs; [ rsync ];
   environment.etc = {
     "ssh/sshd_config.d/999-host-keys.conf" = {
       text = ''
