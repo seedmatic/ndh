@@ -14,6 +14,7 @@ in {
       enable = true;
       ephemeral = false;
       maxJobs = 4;
+      supportedFeatures = [ "kvm" "benchmark" "big-parallel" ];
     } // lib.optionalAttrs useCustomConfig {
       config = { pkgs, ... }:
         let linuxPkgs = import <nixpkgs> { system = "aarch64-linux"; };
