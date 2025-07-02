@@ -5,8 +5,7 @@ let
   userHome = profile.user.home;
   userName = profile.user.name;
 
-  userHM =
-    self.darwinConfigurations."${profileName}".config.home-manager.users."${userName}";
+  userHM = config.home-manager.users."${userName}";
 
   hostKeysDir = "${userHome}/.ssh/keys.d";
   hostKeyPrivateFile = "${hostKeysDir}/host";

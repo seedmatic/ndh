@@ -1,24 +1,25 @@
 {
   description = "Flake providing dev shell for using aider-chat in NixOS";
-  inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-23.11";
-  };
+  inputs = { nixpkgs.url = "github:NixOS/nixpkgs/nixos-23.11"; };
 
   outputs = { self, nixpkgs }:
     let
-      supportedSystems = [ "x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin" ];
-      forAllSystems = f: nixpkgs.lib.genAttrs supportedSystems (system: f system);
-    in
-    {
+      supportedSystems =
+        [ "x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin" ];
+      forAllSystems = f:
+        nixpkgs.lib.genAttrs supportedSystems (system: f system);
+    in {
       url = self.sourceInfo.url;
-      
+
       devShells = forAllSystems (system:
         let pkgs = import nixpkgs { inherit system; };
         in {
           default = pkgs.mkShell {
-            buildInputs = with pkgs; [
-              (pkgs.python3.withPackages (ps: with ps; [ virtualenv pip setuptools wheel ]))
-            ];
+            buildInputs = with pkgs;
+              [
+                (pkgs.python3.withPackages
+                  (ps: with ps; [ virtualenv pip setuptools wheel ]))
+              ];
             # set LD_LIBRARY_PATH environment variable to avoid error. see https://discourse.nixos.org/t/how-to-solve-libstdc-not-found-in-shell-nix/25458
             LD_LIBRARY_PATH = "${pkgs.stdenv.cc.cc.lib}/lib:${pkgs.zlib}/lib";
             shellHook = ''
@@ -37,7 +38,6 @@
               deactivate
             '';
           };
-        }
-      );
+        });
     };
 }

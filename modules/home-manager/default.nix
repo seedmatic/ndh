@@ -1,5 +1,5 @@
 # This is the home configuration of the user.
-{ user, pkgs, ... }:
+{ user, pkgs, lib, ... }:
 let
   userHome = user.home;
   homeDirectory = userHome;
@@ -42,7 +42,7 @@ in {
   };
 
   home = {
-    inherit homeDirectory;
+    homeDirectory = lib.mkForce homeDirectory; # Ensure home directory is set
 
     stateVersion = "25.05";
 
@@ -128,15 +128,13 @@ in {
         yq-go
         zellij
         zsh
-      ] ++ (if pkgs.stdenv.isDarwin then [ vfkit socket_vmnet ] else [ ]);
+      ];
   };
 
   targets.genericLinux.enable = false;
 
   programs = {
     home-manager.enable = true;
-
-    bash.enable = true;
 
     zsh.enable = true;
 

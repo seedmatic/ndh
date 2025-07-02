@@ -1,4 +1,4 @@
-{ inputs, config, lib, pkgs, self, ... }:
+{ config, lib, pkgs, self, ... }:
 let
 
   cfg = config.profile;
@@ -9,7 +9,7 @@ let
 
   # Define systemPackages separately
   systemPackages = import ./system-packages.nix {
-    inherit pkgs inputs;
+    inherit pkgs;
     # Pass only necessary parts of config, not the entire config
     inherit (config) programs environment;
   };
@@ -17,17 +17,18 @@ let
 in {
 
   imports = [
+    ../../profiles/common.nix
     ./primary-user.nix
-    ./profile.nix
+    ./user.nix
     ./nixpkgs.nix
     ./dnsmasq.nix
+    ./lima-host.nix
     # ./qemu.nix
   ];
 
   programs = {
 
     bash = {
-      enable = true;
       completion.enable = true;
     };
 
@@ -44,7 +45,7 @@ in {
   # let nix manage home-manager profiles and use global nixpkgs
   home-manager = {
     extraSpecialArgs = {
-      inherit self inputs;
+      inherit self;
       profile = config.profile;
     };
     useGlobalPkgs = true;
@@ -65,11 +66,6 @@ in {
 
     variables = { XDG_RUNTIME_DIR = "${userHome}/.xdg"; };
 
-    etc = {
-      home-manager.source = "${inputs.home-manager}";
-      nixpkgs.source = "${inputs.nixpkgs}";
-    };
-
     # list of acceptable shells in /etc/shells
     shells = with pkgs; [ bash zsh fish ];
   };
@@ -77,5 +73,9 @@ in {
   services.tailscale = { enable = true; };
 
   fonts = { packages = with pkgs; [ powerline-fonts ]; };
+
+  limaHost = {
+    guestName = "nixos";
+  };
 
 }

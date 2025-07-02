@@ -41,15 +41,15 @@
     incus-compose.follows = "flake-commons/incus-compose";
   };
 
-  outputs = { self, darwin, devenv, flake-utils, home-manager, socket-vmnet
-    , nixpkgs, ... }@inputs:
+  outputs = { self, darwin, devenv, flake-utils, nixos-generators, home-manager
+    , disko, socket-vmnet, impermanence, nixpkgs, ... }@inputs:
     let
       inherit (flake-utils.lib) eachSystemMap;
       defaultSystems = [ "aarch64-darwin" "x86_64-darwin" "x86_64-linux" ];
 
       forAllSystems = nixpkgs.lib.genAttrs defaultSystems;
 
-      pkgsFor = forAllSystems (system:
+      pkgsFor = { system, ... }:
         let
           basePackages = import nixpkgs {
             inherit system;
@@ -88,73 +88,164 @@
             overlays;
         in basePackages.extend (final: prev:
           (vmnetOverlay final prev) // (floxOverlay final prev)
-          // (ripvcsOverlay final prev) // (applyOverlays final prev)));
+          // (ripvcsOverlay final prev) // (applyOverlays final prev));
+      pkgsForDarwin = (pkgsFor { system = "aarch64-darwin"; });
+      pkgsForLinux = (pkgsFor { system = "aarch64-linux"; });
 
-      mkDarwinConfig = { profileModule, system ? "aarch64-darwin"
-        , nixpkgs ? inputs.nixpkgs, baseModules ? [
-          socket-vmnet.darwinModules.socket_vmnet
-          home-manager.darwinModules.home-manager
-          ./modules/darwin
-        ], extraModules ? [ ], }:
+      mkBaseModulesFor = { limaHostName, system }:
+        [{ limaHost.hostName = limaHostName; }] ++ (if system == "nixos" then [
+          disko.nixosModules.disko
+          home-manager.nixosModules.home-manager
+          impermanence.nixosModules.impermanence
+          ./modules/nixos
+        ] else if system == "darwin" then
+          [
+            home-manager.darwinModules.home-manager
+            # Only include impermanence if darwinModules exists
+          ] ++ (if impermanence ? darwinModules then
+            [ impermanence.darwinModules.impermanence ]
+          else
+            [ ]) ++ [ ./modules/darwin ]
+        else
+          [ ]);
+      mkModulesFor =
+        { limaHostName, system, preModules ? [ ], extraModules ? [ ], ... }:
+        let baseModules = mkBaseModulesFor { inherit limaHostName system; };
+        in preModules ++ baseModules ++ extraModules;
+      mkSpecialArgs = { modules, profile, extraArgs ? { }, ... }:
         let
-          debugModule = { config, ... }: {
-            _file = "debugModule";
-            config = {
-              system.activationScripts.debug.text = ''
-                echo "Debug: activationScripts is being executed"
-                echo "baseModules: ${toString baseModules}"
-                echo "extraModules: ${toString extraModules}"
-                echo "profileModule: ${toString profileModule}"
-              '';
+          lib = inputs.nixpkgs.lib.extend (_: _:
+            inputs.home-manager.lib // {
+              # Any additional lib functions you want to include
+            });
+          hostId = "a225c68e";
+        in {
+          inherit self hostId profile lib;
+          _modules = modules;
+          nixpkgsInput = nixpkgs;
+        } // extraArgs;
+
+      mkContainerRegistryConfig = { hostName }:
+        nixpkgs.lib.nixosSystem {
+          system = "aarch64-linux";
+          pkgs = pkgsForLinux;
+          modules = [
+            ./modules/nixos/lima-host.nix
+            ./modules/nixos/container-host.nix
+            ./modules/nixos/caddy.nix
+            ./modules/nixos/docker-registry.nix
+            ./modules/nixos/tailscale.nix
+            ({ config, ... }: {
+              limaHost.enable = false;
+              containerHost.guestName = "ctreg";
+            })
+          ];
+        };
+      mkDarwinConfig = { limaHostName, profileModule }:
+        let
+          preModules =
+            [ profileModule socket-vmnet.darwinModules.socket_vmnet ];
+          modules = mkModulesFor {
+            inherit limaHostName preModules;
+            system = "darwin";
+          };
+          specialArgs = mkSpecialArgs {
+            inherit modules;
+            profile = profileModule.config.profile;
+          };
+        in inputs.darwin.lib.darwinSystem {
+          inherit specialArgs modules;
+          system = "aarch64-darwin";
+          pkgs = pkgsForDarwin.extend (final: prev: {
+            chromium-bin =
+              inputs.chromium-bin.packages."aarch64-darwin".default;
+          });
+        };
+      mkDarwinOutputs = { limaHostName, profileModule, ... }:
+        let
+          darwinConfiguration =
+            mkDarwinConfig { inherit limaHostName profileModule; };
+        in {
+          darwinConfigurations = { "${limaHostName}" = darwinConfiguration; };
+        };
+
+      mkNixosConfig = { limaHostName, profileModule, zfsOverlays
+        , containerRegistryConfiguration }:
+        let
+          zfsOverlaysModule = { ... }: { zfsOverlays.override = zfsOverlays; };
+          nixosTailscaleTagModule = { ... }: { tailscale.tags = [ "nixos" ]; };
+          preModules =
+            [ profileModule zfsOverlaysModule nixosTailscaleTagModule ];
+          modules = mkModulesFor {
+            inherit limaHostName preModules;
+            system = "nixos";
+          };
+          specialArgs = mkSpecialArgs {
+            inherit modules;
+            profile = profileModule.config.profile;
+            extraArgs = {
+              containerRegistrySystem = containerRegistryConfiguration;
             };
           };
-          combinedModules = baseModules ++ extraModules
-            ++ [ profileModule debugModule ];
-        in inputs.darwin.lib.darwinSystem {
-          inherit system;
-          pkgs = pkgsFor.${system}.extend (final: prev: {
-            chromium-bin = inputs.chromium-bin.packages.${system}.default;
-          });
-          modules = combinedModules;
-
-          specialArgs = let profile = profileModule.config.profile;
-          in {
-            inherit self inputs nixpkgs profile;
-            lib = inputs.nixpkgs.lib.extend (_: _:
-              inputs.home-manager.lib // {
-                # Any additional lib functions you want to include
-              });
+        in nixpkgs.lib.nixosSystem {
+          inherit modules specialArgs;
+          system = "aarch64-linux";
+          pkgs = pkgsForLinux;
+        };
+      mkNixosOutputs =
+        { limaHostName, profileModule, containerRegistryConfiguration }:
+        let
+          ext4 = mkNixosConfig {
+            inherit limaHostName profileModule containerRegistryConfiguration;
+            zfsOverlays = false;
+          };
+          zfs = mkNixosConfig {
+            inherit limaHostName profileModule containerRegistryConfiguration;
+            zfsOverlays = true;
+          };
+        in {
+          nixosConfigurations = {
+            inherit ext4 zfs;
+            "${limaHostName}-nixos" = zfs;
+          };
+          nixosDiskImage = nixos-generators.nixosGenerate {
+            modules = [{
+              # Pin nixpkgs to the flake input, so that the packages installed
+              # come from the flake inputs.nixpkgs.url.
+              nix.registry.nixpkgs.flake = nixpkgs;
+              # set disk size to to 12G
+              virtualisation.diskSize = 12 * 1024;
+            }] ++ ext4._module.specialArgs._modules;
+            specialArgs = ext4._module.specialArgs;
+            system = "aarch64-linux";
+            pkgs = pkgsForLinux;
+            format = "raw-efi";
           };
         };
-
-      darwinConfigurations = builtins.listToAttrs (map (profileName: {
-        name = profileName;
-        value = mkDarwinConfig {
-          profileModule =
-            import ./modules/home-manager/profiles/${profileName}.nix;
-        };
-      }) [ "work" "committed" ]);
     in {
-      inherit mkDarwinConfig darwinConfigurations;
+      mkHostOutputs = { limaHostName, profileModule }:
+        let
+          darwinOutputs =
+            mkDarwinOutputs { inherit limaHostName profileModule; };
+          darwinConfiguration =
+            darwinOutputs.darwinConfigurations.${limaHostName};
 
-      devShells = eachSystemMap defaultSystems (system: {
-        default = devenv.lib.mkShell {
-          inherit inputs;
-          pkgs = pkgsFor.${system};
-          modules = [ (import ./devenv.nix) ];
+          containerRegistryConfiguration =
+            mkContainerRegistryConfig { hostName = "${limaHostName}-ctreg"; };
+
+          nixosOutputs = mkNixosOutputs {
+            inherit limaHostName containerRegistryConfiguration profileModule;
+          };
+          nixosConfiguration =
+            nixosOutputs.nixosConfigurations."${limaHostName}-nixos";
+        in nixosOutputs // darwinOutputs // {
+          inherit darwinConfiguration nixosConfiguration;
+          pkgs = {
+            darwin = pkgsForDarwin;
+            linux = pkgsForLinux;
+          };
+          defaultPackage."aarch64-darwin" = darwinConfiguration.system;
         };
-      });
-
-      packages = eachSystemMap defaultSystems (system:
-        let pkgs = pkgsFor.${system};
-        in {
-          pyEnv = pkgs.python3.withPackages
-            (ps: with ps; [ black typer colorama shellingham ]);
-          sysdo = pkgs.writeScriptBin "sysdo" (''
-            #! ${pkgs.python3}/bin/python3
-          '' + builtins.readFile ./bin/do.py);
-          qemu-pkgdb = pkgs.qemu-pkgdb;
-        });
 
       overlays = {
         channels = inputs: final: prev: {
@@ -162,16 +253,17 @@
         };
 
         extraPackages = inputs: final: prev: {
-          inherit (self.packages.${prev.system}) sysdo pyEnv;
-          inherit (inputs.devenv.packages.${prev.system}) devenv;
+          #inherit (self.packages.${prev.system}) sysdo pyEnv;
+          #inherit (inputs.devenv.packages.${prev.system}) devenv;
 
           # rancher-desktop = final.callPackage ./pkgs/rancher-desktop.nix {};
+          inherit (inputs.maven-mvnd.packages.${prev.system}) maven-mvnd-m39;
+          inherit (inputs.disko.packages.${prev.system}) disko;
+          inherit (inputs.incus-compose.packages.${prev.system}) incus-compose;
         };
 
         birdOverlay = inputs: import ./overlays/bird.nix inputs;
-
         qemuOverlay = inputs: import ./overlays/qemu.nix inputs;
-
         nodejsOverlay = inputs: import ./overlays/nodejs.nix inputs;
       };
 
@@ -180,9 +272,10 @@
         manager = import ./modules/home-manager;
         profiles = {
           # Optionally, expose profiles as modules if they are home-manager compatible
-          work = import ./modules/home-manager/profiles/work.nix;
-          committed = import ./modules/home-manager/profiles/committed.nix;
+          work = import ./profiles/work.nix;
+          committed = import ./profiles/committed.nix;
         };
       };
+
     };
 }

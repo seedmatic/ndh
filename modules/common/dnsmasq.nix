@@ -1,7 +1,5 @@
 {
   config,
-  lib,
-  pkgs,
   ...
 }: let
   user = config.profile.user;
@@ -36,27 +34,7 @@ in {
 
     # Increase forwarding timeout (default is 5 seconds)
     dns-forward-max=150
-    query-timeout=10
+    # query-timeout=10
   '';
 
-  launchd.daemons.dnsmasq = lib.mkForce {
-    serviceConfig = {
-      Label = "org.nixos.dnsmasq";
-      ProgramArguments = [
-        "${pkgs.dnsmasq}/bin/dnsmasq"
-        "--conf-file=/etc/dnsmasq.conf"
-        "--keep-in-foreground"
-      ];
-      RunAtLoad = true;
-      KeepAlive = true;
-    };
-  };
-
-  # Ensure the log file exists and is writable
-  system.activationScripts.dnsmasqLogFile = lib.stringAfter ["users"] ''
-    mkdir -p "$(dirname ${logFile})"
-    touch "${logFile}"
-    chmod 644 "${logFile}"
-    chown ${userName}:staff "${logFile}"
-  '';
 }

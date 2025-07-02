@@ -6,7 +6,7 @@
 }: let
   profile = config._module.specialArgs.profile;
   userName = profile.user.description;
-  userEmail = profile.user.email;
+  userEmail = profile.email;
   hostKeysDir = "${config.xdg.stateHome}/ssh-keys.d";
   stateHome = config.xdg.stateHome or "${config.home.homeDirectory}/.local/state";
   allowedSignersFile = "${config.xdg.configHome}/git/github_allowed_signers";

@@ -1,4 +1,4 @@
-{ inputs, config, pkgs, ... }:
+{ self, config, pkgs, ... }:
 let
 
   user = config.profile.user;
@@ -10,15 +10,8 @@ let
 in {
   imports = [ ./environment.nix ./networking.nix ];
 
-  environment = {
-    etc = { darwin.source = "${inputs.darwin}"; };
-    # packages installed in system profile (more in ../common/default.nix)
-    # systemPackages = [ ];
-  };
-
   # auto manage nixbld users with nix darwin
   nix = {
-    nixPath = [ "darwin=/etc/${config.environment.etc.darwin.target}" ];
 
     extraOptions = ''
       accept-flake-config = true
@@ -49,6 +42,8 @@ in {
   # Used for backwards compatibility, please read the changelog before changing.
   # $ darwin-rebuild changelog
   system.stateVersion = 5;
+
+  system.primaryUser = userName;
 
   users.users.${userName} = {
     home = userHome;

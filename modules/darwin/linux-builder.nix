@@ -1,7 +1,7 @@
-{ inputs, lib, pkgs, config, ... }:
+{ self, lib, pkgs, config, ... }:
 let
   useCustomConfig = config.linux-builder.useCustomConfig;
-  qemu-pkgdb = inputs.self.packages.${pkgs.system}.qemu-pkgdb or pkgs.qemu;
+  qemu-pkgdb = self.packages.${pkgs.system}.qemu-pkgdb or pkgs.qemu;
 in {
   options.linux-builder.useCustomConfig = lib.mkOption {
     type = lib.types.bool;

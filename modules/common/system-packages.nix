@@ -1,19 +1,18 @@
-{pkgs, ...}:
+{ pkgs, ... }:
 with pkgs; [
   bash
-  chromium-bin
-  docker
-  docker-compose
+  # docker
+  # docker-compose
   git
   gitflow
   nushell
-  podman
-  podman-compose
-# podman-desktop
+  # podman
+  # podman-compose
+  # podman-desktop
   powerline-fonts
   powerline-go
   powerline-symbols
-# rancher-desktop
+  # rancher-desktop
   ripvcs
   sops
   ssh-to-age
