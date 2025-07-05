@@ -10,8 +10,9 @@ in {
         "${pkgs.dnsmasq}/bin/dnsmasq"
         "--conf-file=/etc/dnsmasq.conf"
         "--keep-in-foreground"
+        "--log-facility=${logFile}"
       ];
-      RunAtLoad = true;
+      RunAtLoad = false;
       KeepAlive = true;
     };
   };

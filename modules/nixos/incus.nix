@@ -69,14 +69,14 @@
   networking = {
     useNetworkd = false;
     networkmanager.enable = true;
-    bridges.externalbr0.interfaces = [ "enp0s1" ];
-    interfaces.externalbr0.useDHCP = true; # Host gets an IP from LAN DHCP
-    interfaces.enp0s1.useDHCP =
-      lib.mkForce false; # Physical NIC does not get its own IP
+    # bridges.externalbr0.interfaces = [ "enp0s1" ];
+    # interfaces.externalbr0.useDHCP = true; # Host gets an IP from LAN DHCP
+    # interfaces.enp0s1.useDHCP =
+    #   lib.mkForce false; # Physical NIC does not get its own IP
     firewall.trustedInterfaces =
       [ "externalbr0" "internalbr0" ]; # Allow DHCP/DNS/etc. on bridge
-    interfaces.externalbr0.macAddress =
-      "52:55:55:71:36:47"; # match your lima.yaml
+    # interfaces.externalbr0.macAddress =
+    #   "52:55:55:71:36:47"; # match your lima.yaml
     # networkmanager.unmanaged = [
     #   "interface-name:enp0s1"
     #   "interface-name:internalbr0"

@@ -39,8 +39,8 @@ mounts:
 mountType: "virtiofs"
 
 networks:
-- lima: host
-  macAddress: "52:55:55:71:36:47"
+# - lima: host
+#   macAddress: "52:55:55:71:36:47"
   
 ssh:
   # This allows access to GitHub, etc.

@@ -1,14 +1,7 @@
 {
   config,
   ...
-}: let
-  user = config.profile.user;
-  userName = user.name;
-  logFile = "/Users/${userName}/Library/Logs/dnsmasq.log";
-in {
-  services.dnsmasq = {
-    enable = true;
-  };
+}: {
 
   environment.etc."dnsmasq.conf".text = ''
     # Forward .internal queries to the custom DNS proxy
@@ -27,7 +20,6 @@ in {
 
     # Enable logging
     log-queries
-    log-facility=${logFile}
 
     # Increase logging verbosity
     log-debug
