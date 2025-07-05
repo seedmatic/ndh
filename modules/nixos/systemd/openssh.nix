@@ -47,6 +47,7 @@ in
       SSH_KEY_NIXBLD="$SSH_KEYS_DIR/nixbld"
       if [ ! -f "$SSH_KEY_NIXBLD" ]; then
         ${pkgs.openssh}/bin/ssh-keygen -t ed25519 -f "$SSH_KEY_NIXBLD" -N "" -C "nixbld@${hostname}"
+        chmod a+r "${dollar}{SSH_KEY_NIXBLD}".pub
         ln -sf "${dollar}{SSH_KEY_NIXBLD}.pub" "$SSH_AUTH_KEYS_DIR/nixbld"
       fi
 

@@ -72,7 +72,8 @@ let
         LIMA_SSH_KEYS_CONF=/etc/ssh/authorized_keys.d
         mkdir -p -m 700 "$LIMA_SSH_KEYS_CONF"
         cp "$LIMA_CIDATA_SSHDIR"/authorized_keys "$LIMA_SSH_KEYS_CONF/$LIMA_CIDATA_USER"
-
+        chmod a+r "$LIMA_SSH_KEYS_CONF/$LIMA_CIDATA_USER"
+        
         : Generate udev rules and systemd mount units for virtiofs mounts from user-data
         mkdir -p /run/udev/rules.d /run/systemd/system /mnt
 
