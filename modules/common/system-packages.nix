@@ -1,8 +1,7 @@
 { pkgs, ... }:
 with pkgs; [
   bash
-  # docker
-  # docker-compose
+  direnv
   git
   gitflow
   nushell
