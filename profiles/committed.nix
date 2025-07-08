@@ -1,4 +1,4 @@
-{ pkgs, lib, ... }:
+{ pkgs, lib, config, ... }:
 let
 
   tailnet = {
@@ -12,16 +12,20 @@ let
     name = lib.mkDefault "jdoe";
   }; 
 
+  # Detect system type
+  isDarwin = pkgs.stdenv.hostPlatform.isDarwin or false;
+  isLinux = pkgs.stdenv.hostPlatform.isLinux or false;
+
   user = {
-      name = "nxmatic";
-      description = "Stephane Lacoin (aka nxmatic)";
-      home = builtins.toPath "/Users/nxmatic";
-      shell = pkgs.zsh;
-      homeMode = "0750";
-      isNormalUser = true;
-      isSystemUser = false;
-      group = "users";
-    };
+    name = "nxmatic";
+    description = "Stephane Lacoin (aka nxmatic)";
+    #home = if isDarwin then "/Users/nxmatic" else "/home/nxmatic";
+    shell = pkgs.zsh;
+    homeMode = "0750";
+    isNormalUser = true;
+    isSystemUser = false;
+    group = "users";
+  };
 
   profile = {
     inherit host user;

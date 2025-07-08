@@ -1,9 +1,11 @@
+
 { home-manager, pkgs, lib, config, ... }:
 
 let
   inherit (pkgs) stdenv;
   inherit (lib) mkIf;
   cfg = config.profile;
+  defaultUserHome = if stdenv.isDarwin then "Users" else "${config.users.defaultUserHome}";
 in {
   options = {
     profile = lib.mkOption {
@@ -62,12 +64,6 @@ in {
                   default = lib.mkDefault
                     (cfg.user.description or "User ${cfg.user.name or "user"}");
                 };
-                home = lib.mkOption {
-                  type = lib.types.path;
-                  description = "The home directory of the user";
-                  default = lib.mkDefault (cfg.user.home or (builtins.toPath
-                    "/${cfg.users.home}/${cfg.user.name or "user"}"));
-                };
                 shell = lib.mkOption {
                   type = lib.types.package;
                   description = "The shell of the user";
@@ -89,6 +85,11 @@ in {
                   description = "The user primary group the user belongs to";
                   default =
                     lib.mkDefault (cfg.user.group or (cfg.user.name or "user"));
+                };
+                home = lib.mkOption {
+                  type = lib.types.path;
+                  description = "The home directory of the user";
+                  default = builtins.toPath "/${defaultUserHome}/${cfg.user.name or "user"}";
                 };
                 homeMode = lib.mkOption {
                   type = lib.types.str;
