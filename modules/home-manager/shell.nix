@@ -10,7 +10,7 @@
       ${lib.optionalString pkgs.stdenvNoCC.isLinux "[[ -e /etc/profile ]] && source /etc/profile"}
     '';
 
-    envExtra = builtins.readFile ./zshenv.zsh;
+    envExtra = builtins.readFile ./shell/zshenv.zsh;
 
     initContent = ''
       if [[ "$TERM_PROGRAM" == "vscode" ]]; then
@@ -34,4 +34,14 @@
       export PATH=/etc/profiles/per-user/$USER/bin:/run/current-system/sw/bin:$PATH
     '';
   };
+
+  home.activation.zdotdir = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+    if [ ! -d "$HOME/.config/zsh/.git" ]; then
+      git clone --depth=1 https://github.com/nxmatic/zdotdir.git "$HOME/.config/zsh"
+    else
+      git -C "$HOME/.config/zsh" pull --ff-only
+    fi
+  '';
+
+  home.sessionVariables.ZDOTDIR = "$HOME/.config/zsh";
 }

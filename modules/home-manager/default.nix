@@ -25,7 +25,7 @@ in {
     ./shadow-repositories.nix
     ./nushell.nix
     ./password-store.nix
-    ./shell
+    ./shell.nix
     ./ssh.nix
     #   ./teleport.nix
     ./tldr.nix
