@@ -166,10 +166,12 @@ in {
 
   # Security
   security.sudo.wheelNeedsPassword = false;
+  security.wrappers.sudo.source = "${pkgs.sudo}/bin/sudo";
 
-  user = cfgUser;
 
   # User configuration
+  user = cfgUser;
+
   users.users.${user} = {
     isNormalUser = true;
     group = "${user}";
