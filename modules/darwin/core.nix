@@ -8,7 +8,7 @@ let
   userShell = user.shell;
 
 in {
-  imports = [ ./environment.nix ./networking.nix ];
+  imports = [ ./networking.nix ];
 
   # auto manage nixbld users with nix darwin
   nix = {

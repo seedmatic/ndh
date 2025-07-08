@@ -33,6 +33,7 @@ in {
     #(import ./remote-nix-store.nix { inherit config pkgs lib; })
     #(import ./nix-snapshotter.nix { inherit config pkgs lib user; })
   ];
+  
 
   nix.settings = lib.mkMerge [
     {
@@ -145,6 +146,10 @@ in {
   # Remove or comment out the old networking block to avoid conflicts:
   # networking = { ... }
 
+  environment.systemPackages = with pkgs; [
+    disko
+  ];
+
   # Services
   services = {
     getty.autologinUser = "root";
@@ -179,15 +184,4 @@ in {
   };
 
   users.groups.${user} = { };
-
-  # Environment
-  environment.systemPackages = with pkgs; [
-    zsh
-    disko
-    emacs-nox
-    flox
-    git
-    yq-go
-    zfs
-  ];
 }

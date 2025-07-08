@@ -1,4 +1,4 @@
-{pkgs, ...}: {
+{ lib, ... }: {
   programs.gpg = {
     enable = true;
     settings = {
@@ -7,7 +7,7 @@
   };
 
   services.gpg-agent = {
-    enable = true;
+    enable = lib.mkDefault false;
     defaultCacheTtl = 1800;
     enableSshSupport = true;
     extraConfig = ''

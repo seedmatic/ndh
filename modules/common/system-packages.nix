@@ -2,16 +2,13 @@
 with pkgs; [
   bash
   direnv
+  flox
   git
   gitflow
-  nushell
-  # podman
-  # podman-compose
-  # podman-desktop
+  emacs-nox
   powerline-fonts
   powerline-go
   powerline-symbols
-  # rancher-desktop
   ripvcs
   sops
   ssh-to-age

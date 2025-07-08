@@ -23,14 +23,11 @@ in {
     ./nixpkgs.nix
     ./dnsmasq.nix
     ./lima-host.nix
-    # ./qemu.nix
   ];
 
   programs = {
 
-    bash = {
-      completion.enable = true;
-    };
+    bash = { completion.enable = true; };
 
     zsh = {
       enable = true;
@@ -74,8 +71,6 @@ in {
 
   fonts = { packages = with pkgs; [ powerline-fonts ]; };
 
-  limaHost = {
-    guestName = "nixos";
-  };
+  limaHost = { guestName = "nixos"; };
 
 }
