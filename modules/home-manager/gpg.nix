@@ -1,15 +1,13 @@
 { lib, ... }: {
   programs.gpg = {
     enable = true;
-    settings = {
-      use-agent = true;
-    };
+    settings = { use-agent = true; };
   };
 
   services.gpg-agent = {
     enable = lib.mkDefault false;
     defaultCacheTtl = 1800;
-    enableSshSupport = true;
+    enableSshSupport = false;
     extraConfig = ''
       allow-loopback-pinentry
     '';
