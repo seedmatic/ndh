@@ -17,6 +17,7 @@ in {
 
   hm = common.hm // {
     # Add or override Home Manager options here
+    imports = (common.hm.imports or [ ]) ++ [ ../home-manager/ssh-keys.nix ];
     services.gpg-agent.pinentry.package = pkgs.pinentry_mac;
   };
 

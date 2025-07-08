@@ -7,26 +7,26 @@ in {
 
     hostName = lib.mkOption {
       type = lib.types.str;
-      default = lib.mkDefault config.networking.hostName;
+      default = config.networking.hostName;
       description = "The name of the container host, defaults to <hostname>.";
     };
 
     guestName = lib.mkOption {
       type = lib.types.str;
-      default = lib.mkDefault "guest";
+      default = "guest";
       description = "The name of the container guest, defaults to 'container'.";
     };
 
     domainName = lib.mkOption {
       type = lib.types.str;
-      default = lib.mkDefault "mammoth-skate.ts.net";
+      default = "mammoth-skate.ts.net";
       description =
         "The domain to use for the lima host, defaults to 'mammoth-skate.ts.net'.";
     };
 
     tailscaleInterfaceName = lib.mkOption {
       type = lib.types.str;
-      default = lib.mkDefault "tailscale0";
+      default = "tailscale0";
       description =
         "The name of the Tailscale interface, defaults to 'tailscale0'.";
     };

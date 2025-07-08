@@ -9,17 +9,17 @@ in {
     };
     hostName = lib.mkOption {
       type = lib.types.str;
-      default = lib.mkDefault "host";
+      default = "host";
       description = "The name of the lima host, defaults to <hostname>.";
     };
     guestName = lib.mkOption {
       type = lib.types.str;
-      default = lib.mkDefault "nixos";
+      default = "nixos";
       description = "The name of the lima guest, defaults to 'nixos'.";
     };
     domainName = lib.mkOption {
       type = lib.types.str;
-      default = lib.mkDefault "mammoth-skate.ts.net";
+      default = "mammoth-skate.ts.net";
       description =
         "The domain to use for the lima host, defaults to mammoth-skate.ts.net.";
     };

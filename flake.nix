@@ -130,13 +130,13 @@
           system = "aarch64-linux";
           pkgs = pkgsForLinux;
           modules = [
-            ./modules/nixos/lima-host.nix
+            ./modules/common/lima-host.nix
             ./modules/nixos/container-host.nix
             ./modules/nixos/caddy.nix
             ./modules/nixos/docker-registry.nix
             ./modules/nixos/tailscale.nix
             ({ config, ... }: {
-              limaHost.enable = false;
+              limaHost.hostName = hostName;
               containerHost.guestName = "ctreg";
             })
           ];
@@ -187,11 +187,12 @@
               containerRegistrySystem = containerRegistryConfiguration;
             };
           };
-        in nixpkgs.lib.nixosSystem {
-          inherit modules specialArgs;
-          system = "aarch64-linux";
-          pkgs = pkgsForLinux;
-        };
+          nixosSystem = nixpkgs.lib.nixosSystem {
+            inherit modules specialArgs;
+            system = "aarch64-linux";
+            pkgs = pkgsForLinux;
+          };
+        in nixosSystem;
       mkNixosOutputs =
         { limaHostName, profileModule, containerRegistryConfiguration }:
         let
@@ -203,18 +204,29 @@
             inherit limaHostName profileModule containerRegistryConfiguration;
             zfsOverlays = true;
           };
+          # Disk size in MiB and bytes
+          diskSizeMiB = 14 * 1024;
+          diskSizeBytes = diskSizeMiB * 1024 * 1024;
+          # System closure path
+          systemPath = zfs.config.system.build.toplevel;
+          # Output a JSON hint with all relevant info for post-build checks
+          diskSizeHint = builtins.toJSON {
+            systemPath = systemPath;
+            diskSizeBytes = diskSizeBytes;
+            diskSizeMiB = diskSizeMiB;
+            hint = "nix path-info -Sh ${systemPath}";
+            note = "closure size should be less than diskSizeBytes";
+          };
         in {
+          inherit diskSizeHint;
           nixosConfigurations = {
             inherit ext4 zfs;
             "${limaHostName}-nixos" = zfs;
           };
-          nixosDiskImage = nixos-generators.nixosGenerate {
+          diskImage = nixos-generators.nixosGenerate {
             modules = [{
-              # Pin nixpkgs to the flake input, so that the packages installed
-              # come from the flake inputs.nixpkgs.url.
               nix.registry.nixpkgs.flake = nixpkgs;
-              # set disk size to to 12G
-              virtualisation.diskSize = 12 * 1024;
+              virtualisation.diskSize = diskSizeMiB;
             }] ++ ext4._module.specialArgs._modules;
             specialArgs = ext4._module.specialArgs;
             system = "aarch64-linux";
@@ -238,8 +250,10 @@
           };
           nixosConfiguration =
             nixosOutputs.nixosConfigurations."${limaHostName}-nixos";
+          nixosDiskImage = nixosOutputs.diskImage;
+          nixosDiskSizeHint = nixosOutputs.diskSizeHint;
         in nixosOutputs // darwinOutputs // {
-          inherit darwinConfiguration nixosConfiguration;
+          inherit darwinConfiguration nixosConfiguration nixosDiskImage nixosDiskSizeHint;
           pkgs = {
             darwin = pkgsForDarwin;
             linux = pkgsForLinux;

@@ -44,7 +44,7 @@ in {
           ./../caddy.nix
           ./../docker-registry.nix
           ./../tailscale.nix
-          ./../../common/networking-mammoth-skate.nix
+          ./../../nixos/networking-mammoth-skate.nix
           ({ config, ... }: {
             containerHost = {
               enable = true;
