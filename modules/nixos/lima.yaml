@@ -1,6 +1,6 @@
 cpus: 8
 memory: 24GiB
-disk: 16GiB
+disk: 24GiB
 vmType: vz
 plain: false
 

@@ -205,7 +205,7 @@
             zfsOverlays = true;
           };
           # Disk size in MiB and bytes
-          diskSizeMiB = 14 * 1024;
+          diskSizeMiB = 18 * 1024;
           diskSizeBytes = diskSizeMiB * 1024 * 1024;
           # System closure path
           systemPath = zfs.config.system.build.toplevel;
