@@ -1,36 +1,15 @@
 { pkgs, lib, ... }:
-let
-
-  tailnet = {
-    name = "mammoth-skate";
-    domain = "ts.net";
-  };
-
-  host = {
-    inherit tailnet;
-
-    name = lib.mkDefault "jdoe";
-  }; 
-
-  user = {
-      name = "stephane.lacoin";
-      email = "stephane.lacoin@hyland.com";
-      description = "Stephane Lacoin (aka nxmatic)";
-      home = builtins.toPath "/Users/stephane.lacoin";
-      shell = pkgs.zsh;
-    };
-
-  profile = {
-    inherit host user;
-
-    name = "work";
-  };
-
+let inherit (lib) mkDefault;
 in {
-  inherit profile;
-
   imports = [ ./common.nix ];
-
-  ids.gids.nixbld = 350;
-
+  profile = {
+    name = mkDefault "work";
+    email = mkDefault "stephane.lacoin@hyland.com";
+    user = {
+      name = mkDefault "stephane.lacoin";
+      description = mkDefault "Stephane Lacoin (aka nxmatic)";
+      shell = mkDefault pkgs.zsh;
+    };
+  };
+  ids.gids.nixbld = lib.mkForce 350;
 }

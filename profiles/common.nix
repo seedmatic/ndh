@@ -1,14 +1,15 @@
-
 { home-manager, pkgs, lib, config, ... }:
 
 let
   inherit (pkgs) stdenv;
   inherit (lib) mkIf;
   cfg = config.profile;
-  defaultUserHome = if stdenv.isDarwin then "Users" else "${config.users.defaultUserHome}";
+  defaultUserHome =
+    if stdenv.isDarwin then "Users" else "${config.users.defaultUserHome}";
 in {
   options = {
     profile = lib.mkOption {
+      description = "Profile currently evaluated";
       type = lib.types.submodule {
         options = {
           name = lib.mkOption {
@@ -28,7 +29,12 @@ in {
                 name = lib.mkOption {
                   type = lib.types.str;
                   description = "The name of the host";
-                  default = lib.mkDefault cfg.host.name;
+                  default = "nameless-host";
+                };
+                alias = lib.mkOption {
+                  type = lib.types.str;
+                  description = "An alias for the host";
+                  default = cfg.host.name;
                 };
                 tailnet = lib.mkOption {
                   type = lib.types.submodule {
@@ -36,12 +42,12 @@ in {
                       name = lib.mkOption {
                         type = lib.types.str;
                         description = "The name of the tailnet";
-                        default = lib.mkDefault cfg.tailnet.name;
+                        default = "mammoth-skate";
                       };
                       domain = lib.mkOption {
                         type = lib.types.str;
                         description = "The domain of the tailnet";
-                        default = lib.mkDefault cfg.tailnet.domain;
+                        default = "ts.net";
                       };
                     };
                   };
@@ -56,55 +62,50 @@ in {
                 name = lib.mkOption {
                   type = lib.types.str;
                   description = "The name of the user";
-                  default = lib.mkDefault (cfg.user.name or "user");
+                  default = "jdoe";
                 };
                 description = lib.mkOption {
                   type = lib.types.str;
                   description = "The description of the user";
-                  default = lib.mkDefault
-                    (cfg.user.description or "User ${cfg.user.name or "user"}");
+                  default = "Default user ${cfg.user.name}";
                 };
                 shell = lib.mkOption {
                   type = lib.types.package;
                   description = "The shell of the user";
-                  default = lib.mkDefault
-                    (cfg.user.shell or cfg.users.shell or pkgs.bash);
+                  default = pkgs.bash;
+                  example = "bash";
                 };
                 isNormalUser = lib.mkOption {
                   type = lib.types.bool;
                   description = "Whether the user is a normal user";
-                  default = lib.mkDefault (cfg.user.isNormalUser or true);
+                  default = true;
                 };
                 isSystemUser = lib.mkOption {
                   type = lib.types.bool;
                   description = "Whether the user is a system user";
-                  default = lib.mkDefault (cfg.user.isSystemUser or false);
+                  default = false;
                 };
                 group = lib.mkOption {
                   type = lib.types.str;
                   description = "The user primary group the user belongs to";
-                  default =
-                    lib.mkDefault (cfg.user.group or (cfg.user.name or "user"));
+                  default = cfg.user.name;
                 };
                 home = lib.mkOption {
                   type = lib.types.path;
                   description = "The home directory of the user";
-                  default = builtins.toPath "/${defaultUserHome}/${cfg.user.name or "user"}";
+                  default =
+                    builtins.toPath "/${defaultUserHome}/${cfg.user.name}";
                 };
                 homeMode = lib.mkOption {
                   type = lib.types.str;
                   description = "The home directory permissions";
-                  default = lib.mkDefault (cfg.user.homeMode or "0755");
+                  default = "0755";
                 };
               };
             };
           };
         };
       };
-
-      description = "Profile currently evaluated";
     };
-
   };
-
 }
