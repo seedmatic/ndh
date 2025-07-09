@@ -1,9 +1,10 @@
-{ config, pkgs, lib, user, ... }:
+{ config, pkgs, lib, profile, ... }:
+let user = profile.user.name;
 
-{
+in {
   environment.systemPackages = with pkgs; [ incus incus-compose skopeo ];
 
-  users.users.${user} = { extraGroups = [ "incus-admin" ]; };
+  users.users."${user}" = { extraGroups = [ "incus-admin" ]; };
 
   virtualisation.incus = {
     enable = true;

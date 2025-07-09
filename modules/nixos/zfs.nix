@@ -1,8 +1,8 @@
-{ config, pkgs, lib, hostId, ... }:
+{ config, pkgs, lib, ... }:
 
 let
-
   cfg = config.zfsOverlays;
+  hostId = config.networking.hostId;
 
   joinMountPoints = prefix: point:
     if point == "/" then

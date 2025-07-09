@@ -92,8 +92,8 @@
       pkgsForDarwin = (pkgsFor { system = "aarch64-darwin"; });
       pkgsForLinux = (pkgsFor { system = "aarch64-linux"; });
 
-      mkBaseModulesFor = { limaHostName, system }:
-        [{ limaHost.hostName = limaHostName; }] ++ (if system == "nixos" then [
+      mkBaseModulesFor = { hostProfile, system }:
+        [{ limaHost.hostName = hostProfile.hostName; }] ++ (if system == "nixos" then [
           disko.nixosModules.disko
           home-manager.nixosModules.home-manager
           impermanence.nixosModules.impermanence
@@ -109,8 +109,8 @@
         else
           [ ]);
       mkModulesFor =
-        { limaHostName, system, preModules ? [ ], extraModules ? [ ], ... }:
-        let baseModules = mkBaseModulesFor { inherit limaHostName system; };
+        { hostProfile, system, preModules ? [ ], extraModules ? [ ], ... }:
+        let baseModules = mkBaseModulesFor { inherit hostProfile system; };
         in preModules ++ baseModules ++ extraModules;
       mkSpecialArgs = { modules, profile, extraArgs ? { }, ... }:
         let
@@ -118,14 +118,13 @@
             inputs.home-manager.lib // {
               # Any additional lib functions you want to include
             });
-          hostId = "a225c68e";
         in {
-          inherit self hostId profile lib;
+          inherit self profile lib;
           _modules = modules;
           nixpkgsInput = nixpkgs;
         } // extraArgs;
 
-      mkContainerRegistryConfig = { hostName }:
+      mkContainerRegistryConfig = { hostProfile, ... }:
         nixpkgs.lib.nixosSystem {
           system = "aarch64-linux";
           pkgs = pkgsForLinux;
@@ -136,17 +135,17 @@
             ./modules/nixos/docker-registry.nix
             ./modules/nixos/tailscale.nix
             ({ config, ... }: {
-              limaHost.hostName = hostName;
+              limaHost.hostName = hostProfile.hostName;
               containerHost.guestName = "ctreg";
             })
           ];
         };
-      mkDarwinConfig = { limaHostName, profileModule }:
+      mkDarwinConfig = { hostProfile, profileModule }:
         let
           preModules =
             [ profileModule socket-vmnet.darwinModules.socket_vmnet ];
           modules = mkModulesFor {
-            inherit limaHostName preModules;
+            inherit hostProfile preModules;
             system = "darwin";
           };
           specialArgs = mkSpecialArgs {
@@ -161,15 +160,20 @@
               inputs.chromium-bin.packages."aarch64-darwin".default;
           });
         };
-      mkDarwinOutputs = { limaHostName, profileModule, ... }:
+      mkDarwinOutputs = { hostProfile, profileModule, ... }:
         let
           darwinConfiguration =
-            mkDarwinConfig { inherit limaHostName profileModule; };
+            mkDarwinConfig { inherit hostProfile profileModule; };
         in {
-          darwinConfigurations = { "${limaHostName}" = darwinConfiguration; };
+          darwinConfigurations = {
+            "${hostProfile.hostName}" = darwinConfiguration;
+          } // (if builtins.hasAttr "hostAlias" hostProfile then {
+            "${hostProfile.hostAlias}" = darwinConfiguration;
+          } else
+            { });
         };
 
-      mkNixosConfig = { limaHostName, profileModule, zfsOverlays
+      mkNixosConfig = { hostProfile, profileModule, zfsOverlays
         , containerRegistryConfiguration }:
         let
           zfsOverlaysModule = { ... }: { zfsOverlays.override = zfsOverlays; };
@@ -177,13 +181,14 @@
           preModules =
             [ profileModule zfsOverlaysModule nixosTailscaleTagModule ];
           modules = mkModulesFor {
-            inherit limaHostName preModules;
+            inherit hostProfile preModules;
             system = "nixos";
           };
           specialArgs = mkSpecialArgs {
             inherit modules;
             profile = profileModule.config.profile;
             extraArgs = {
+              inherit hostProfile;
               containerRegistrySystem = containerRegistryConfiguration;
             };
           };
@@ -194,14 +199,14 @@
           };
         in nixosSystem;
       mkNixosOutputs =
-        { limaHostName, profileModule, containerRegistryConfiguration }:
+        { hostProfile, profileModule, containerRegistryConfiguration }:
         let
           ext4 = mkNixosConfig {
-            inherit limaHostName profileModule containerRegistryConfiguration;
+            inherit hostProfile profileModule containerRegistryConfiguration;
             zfsOverlays = false;
           };
           zfs = mkNixosConfig {
-            inherit limaHostName profileModule containerRegistryConfiguration;
+            inherit hostProfile profileModule containerRegistryConfiguration;
             zfsOverlays = true;
           };
           # Disk size in MiB and bytes
@@ -219,10 +224,13 @@
           };
         in {
           inherit diskSizeHint;
-          nixosConfigurations = {
+          nixosConfigurations = ({
             inherit ext4 zfs;
-            "${limaHostName}-nixos" = zfs;
-          };
+            "${hostProfile.hostName}-nixos" = zfs;
+          } // (if builtins.hasAttr "hostAlias" hostProfile then {
+            "${hostProfile.hostAlias}-nixos" = zfs;
+          } else
+            { }));
           diskImage = nixos-generators.nixosGenerate {
             modules = [{
               nix.registry.nixpkgs.flake = nixpkgs;
@@ -235,25 +243,26 @@
           };
         };
     in {
-      mkHostOutputs = { limaHostName, profileModule }:
+      mkHostOutputs = { hostProfile, profileModule, ... }:
         let
           darwinOutputs =
-            mkDarwinOutputs { inherit limaHostName profileModule; };
+            mkDarwinOutputs { inherit hostProfile profileModule; };
           darwinConfiguration =
-            darwinOutputs.darwinConfigurations.${limaHostName};
+            darwinOutputs.darwinConfigurations.${hostProfile.hostName};
 
           containerRegistryConfiguration =
-            mkContainerRegistryConfig { hostName = "${limaHostName}-ctreg"; };
+            mkContainerRegistryConfig { inherit hostProfile; };
 
           nixosOutputs = mkNixosOutputs {
-            inherit limaHostName containerRegistryConfiguration profileModule;
+            inherit hostProfile containerRegistryConfiguration profileModule;
           };
           nixosConfiguration =
-            nixosOutputs.nixosConfigurations."${limaHostName}-nixos";
+            nixosOutputs.nixosConfigurations."${hostProfile.hostName}-nixos";
           nixosDiskImage = nixosOutputs.diskImage;
           nixosDiskSizeHint = nixosOutputs.diskSizeHint;
         in nixosOutputs // darwinOutputs // {
-          inherit darwinConfiguration nixosConfiguration nixosDiskImage nixosDiskSizeHint;
+          inherit darwinConfiguration nixosConfiguration nixosDiskImage
+            nixosDiskSizeHint;
           pkgs = {
             darwin = pkgsForDarwin;
             linux = pkgsForLinux;

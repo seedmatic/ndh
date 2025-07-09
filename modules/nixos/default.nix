@@ -12,28 +12,27 @@ let
     overlay = true;
   };
   # Generate a hostId (should be a 4-byte hex string, e.g. from `head -c4 /dev/urandom | od -A none -t x4`)
-  hostId = "deadbeef";
   cfgUser = config.profile.user;
 in {
   imports = [
     ../common
     ./networking-mammoth-skate.nix
     ./dnsmasq.nix
-    (import ./code-server.nix { inherit config pkgs lib user; })
-    (import ./container-host.nix { inherit config pkgs lib user; })
-    (import ./containers {
-      inherit config pkgs lib user containerRegistrySystem;
-      hostId = hostId;
-    })
-    (import ./disko.nix { inherit config pkgs lib user; })
-    (import ./incus.nix { inherit config pkgs lib user; })
-    (import ./systemd { inherit config pkgs lib user; })
-    (import ./tailscale.nix { inherit config pkgs lib user; })
-    (import ./zfs.nix { inherit config pkgs lib user hostId; })
+    ./code-server.nix
+    ./container-host.nix
+    ./containers
+    ./disko.nix
+    ./incus.nix
+    ./systemd
+    ./tailscale.nix
+    ./zfs.nix
     #(import ./remote-nix-store.nix { inherit config pkgs lib; })
     #(import ./nix-snapshotter.nix { inherit config pkgs lib user; })
+    # Inline module replaced with file import for gpg disable
+    ({ config, ... }: {
+      hm.imports = config.hm.imports ++ [ ./enable-gpg-false.nix ];
+    })
   ];
-  
 
   nix.settings = lib.mkMerge [
     {
@@ -141,14 +140,15 @@ in {
 
   limaHost.isGuest = true;
 
-  networking.mammoth-skate.enable = true;
+  networking = {
+    hostId = "deadbeef";
+    mammoth-skate.enable = true;
+  };
 
   # Remove or comment out the old networking block to avoid conflicts:
   # networking = { ... }
 
-  environment.systemPackages = with pkgs; [
-    disko
-  ];
+  environment.systemPackages = with pkgs; [ disko zfs ];
 
   # Services
   services = {
@@ -173,7 +173,6 @@ in {
   security.sudo.wheelNeedsPassword = false;
   security.wrappers.sudo.source = "${pkgs.sudo}/bin/sudo";
 
-
   # User configuration
   user = cfgUser;
 
@@ -184,4 +183,5 @@ in {
   };
 
   users.groups.${user} = { };
+
 }

@@ -1,23 +1,28 @@
 { config, pkgs, lib, ... }:
-let cfg = config.limaHost;
+let
+  inherit (lib) mkOption;
+  cfg = config.limaHost;
+  hostName = cfg.hostName;
+  guestName = cfg.guestName;
+  domainName = cfg.domainName;
 in {
   options.limaHost = {
-    isGuest = lib.mkOption {
+    isGuest = mkOption {
       type = lib.types.bool;
       default = false;
       description = "Set to true if this is the guest system.";
     };
-    hostName = lib.mkOption {
+    hostName = mkOption {
       type = lib.types.str;
       default = "host";
       description = "The name of the lima host, defaults to <hostname>.";
     };
-    guestName = lib.mkOption {
+    guestName = mkOption {
       type = lib.types.str;
       default = "nixos";
       description = "The name of the lima guest, defaults to 'nixos'.";
     };
-    domainName = lib.mkOption {
+    domainName = mkOption {
       type = lib.types.str;
       default = "mammoth-skate.ts.net";
       description =
@@ -25,9 +30,11 @@ in {
     };
   };
   config = {
-    networking.hostName = lib.mkDefault (if cfg.isGuest then
-      "${cfg.hostName}-${cfg.guestName}"
-    else
-      cfg.hostName);
+    environment.variables = rec {
+      LIMA_HOST_NAME = hostName;
+      LIMA_GUEST_NAME = guestName;
+      LIMA_DOMAIN_NAME = domainName;
+    };
+    networking.hostName = lib.mkForce ( if cfg.isGuest then "${hostName}-${guestName}" else hostName );
   };
 }

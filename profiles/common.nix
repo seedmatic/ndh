@@ -1,4 +1,4 @@
-{ home-manager, pkgs, lib, config, ... }:
+{ config, home-manager, pkgs, lib, ... }:
 
 let
   inherit (pkgs) stdenv;
@@ -23,18 +23,30 @@ in {
             default = lib.mkDefault
               (cfg.email or "${cfg.user.name or "user"}@example.com");
           };
+          darwin = lib.mkOption {
+            type = lib.types.submodule {
+              options = {
+                knownNetworkServices = lib.mkOption {
+                  type = lib.types.listOf lib.types.str;
+                  description = "List of known network services";
+                  default =
+                    [ "Wi-Fi" "Ethernet Adaptor" "Thunderbolt Ethernet" ];
+                };
+              };
+            };
+          };
           host = lib.mkOption {
             type = lib.types.submodule {
               options = {
-                name = lib.mkOption {
+                hostName = lib.mkOption {
                   type = lib.types.str;
                   description = "The name of the host";
                   default = "nameless-host";
                 };
-                alias = lib.mkOption {
+                hostAlias = lib.mkOption {
                   type = lib.types.str;
                   description = "An alias for the host";
-                  default = cfg.host.name;
+                  default = cfg.host.hostName;
                 };
                 tailnet = lib.mkOption {
                   type = lib.types.submodule {

@@ -1,16 +1,4 @@
-{
-  self,
-  inputs,
-  config,
-  pkgs,
-  ...
-}:
-let
-
-  user = config.profile.user;
-
-in
-{
+{ self, inputs, config, pkgs, ... }: {
   user = {
 
     # programs.git = {

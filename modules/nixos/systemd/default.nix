@@ -1,8 +1,6 @@
-{
-  config, pkgs, user, ...
-}: {
-  imports = [ 
-    (import ./buildkitd.nix { inherit config pkgs user; })
+{ config, pkgs, profile, ... }: {
+  imports = [
+    ./buildkitd.nix
     ./lima-cloud-init.nix
     ./lima-nixos-configuration.nix
     ./openssh.nix

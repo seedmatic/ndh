@@ -1,4 +1,4 @@
-{ config, pkgs, user, ... }:
+{ config, pkgs, profile, ... }:
 let
   buildkitdToml = pkgs.writeText "buildkitd.toml" ''
     [worker.cdi]
@@ -23,7 +23,7 @@ let
       allowedRepositories = []
   '';
 in {
-  imports = [ (import ./containerd.nix { inherit config pkgs user; }) ];
+  imports = [ ./containerd.nix ];
 
   environment.etc."buildkit/buildkitd.toml".source = buildkitdToml;
 

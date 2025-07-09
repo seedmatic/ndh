@@ -5,10 +5,16 @@
 
   outputs = { self, nix-darwin-home, ... }@inputs:
     let
-      limaHostName = "alcide";
-      profileModule = { config, lib, pkgs, ... }: {
-        imports = [ ../../profiles/work.nix ];
-        config = { profile = { host.name = limaHostName; }; };
+      hostProfile = {
+        hostName = "APL-dk40njhk9h";
+        hostAlias = "alcide";
       };
-    in nix-darwin-home.mkHostOutputs { inherit limaHostName profileModule; };
+      darwinProfile = {
+        knownNetworkServices = [ "Wi-Fi" "Thunderbolt Ethernet" ];
+      };
+      profileModule = { ... }: {
+        imports = [ ../../profiles/work.nix ];
+        config = { profile = { host = hostProfile; darwin = darwinProfile; }; };
+      };
+    in nix-darwin-home.mkHostOutputs { inherit hostProfile profileModule; };
 }

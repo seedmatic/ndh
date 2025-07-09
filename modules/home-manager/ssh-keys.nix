@@ -5,10 +5,10 @@ let
   debugTrace = x: builtins.traceVerbose "Debug: profile = ${builtins.toJSON x}" x;
 
   profile = config._module.specialArgs.profile;
-  debuggedProfile = debugTrace profile;
 
   profileName = profile.name;
-  hostName = profile.host.name; 
+  hostName = profile.host.hostName;
+  hostAlias = profile.host.hostAlias or hostName;
   userName = "Stephane Lacoin (aka nxmatic)";
   userDescription = profile.user.description;
   userHome = profile.user.home;
@@ -18,8 +18,7 @@ let
     buildInputs =
       [ pkgs.coreutils-full pkgs.yq-go pkgs.openssh pkgs.bash pkgs.gnused ];
   } ''
-    ${./ssh-add-keys.sh} "${debuggedProfile.name}" "${debuggedProfile.host.name}" "${./ssh.d/keys.yaml}" "$out" 
-    #${./ssh-add-keys.sh} "${profileName}" "${hostName}" "${./ssh.d/keys.yaml}" "$out" 
+    ${./ssh-add-keys.sh} "${profileName}" "${hostAlias}" "${./ssh.d/keys.yaml}" "$out"
   '';
 
   # Script to extract host keys and CA public key from keys.yaml

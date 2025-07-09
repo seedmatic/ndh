@@ -28,7 +28,7 @@ hostResolver:
     host.containers.internal: 192.168.5.15
 
 images:
-  - location: "file:///Users/nxmatic/Gits/nxmatic/nix-darwin-home/result/nixos.img"
+  - location: "file:///Users/stephane.lacoin/Gits/nxmatic/nix-darwin-home/result/nixos.img"
     arch: "aarch64"
 mounts:
 - location: "~"
@@ -39,8 +39,8 @@ mounts:
 mountType: "virtiofs"
 
 networks:
-# - lima: host
-#   macAddress: "52:55:55:71:36:47"
+- lima: host
+  macAddress: "52:55:55:4d:28:2a"
   
 ssh:
   # This allows access to GitHub, etc.

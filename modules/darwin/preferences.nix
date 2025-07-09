@@ -71,9 +71,7 @@
       };
 
       # darwin updates
-      SoftwareUpdate = {
-        AutomaticallyInstallMacOSUpdates = true;
-      };
+      SoftwareUpdate = { AutomaticallyInstallMacOSUpdates = true; };
 
       # univesal access
       # should investigate if really needed, error with default write
@@ -114,5 +112,13 @@
       enableKeyMapping = true;
       remapCapsLockToControl = true;
     };
+
+    # Workaround for setting DNS servers on macOS
+    system.activationScripts.setDns.text = ''
+      for iface in Wi-Fi Ethernet; do
+        networksetup -setdnsservers "$iface dns = [ 100.100.100.100 8.8.8.8 1.1.1.1 1.0.0.1 8.8.4.4 2>/dev/null || true
+        networksetup -setsearchdomains "$iface"${config.profile.host.domainName} 2>/dev/null || true
+      done
+    '';
   };
 }

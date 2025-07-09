@@ -1,9 +1,9 @@
 # This is the home configuration of the user.
-{ user, pkgs, lib, ... }:
+{ config, pkgs, lib, ... }:
 let
-  userHome = user.home;
-  homeDirectory = userHome;
+  homeDirectory = config.profile.user.home;
 in {
+
   imports = [
     ./avahi.nix
     ./bat.nix
@@ -53,128 +53,128 @@ in {
     ];
 
     # Define package definitions for current user environment
-    packages = with pkgs;
-      [
-        aider-chat
-        alejandra
-        awscli2
-        avahi
-        cachix
-        cirrus-cli
-        comma
-        coreutils-full
-        curl
-        diffutils
-        direnv
-        docker
-        docker-compose
-        ffmpeg
-        findutils
-        flyctl
-        gawk
-        gdu
-        gh
-        git-workspace
-        gnugrep
-        gnupg
-        gnused
-        helm-docs
-        httpie
-        hurl
-        jdk
-        k9s
-        kpt
-        krew
-        kubectl
-        kubectx
-        kubernetes-helm
-        kustomize
-        #     lazydocker
-        luajit
-        minikube
-        mmv
-        neofetch
-        nix
-        nixfmt-classic
-        nixpkgs-fmt
-        nodejs
-        parallel
-        passExtensions.pass-otp
-        passExtensions.pass-audit
-        passExtensions.pass-update
-        passExtensions.pass-import
-        passExtensions.pass-checkup
-        passExtensions.pass-genphrase
-        podman
-        # podman-desktop
-        poetry
-        pnpm
-        pre-commit
-        # rancher-desktop
-        ranger
-        rclone
-        rsync
-        shellcheck
-        sops
-        stylua
-        teleport
-        tig
-        tree
-        treefmt
-        trivy
-        vault-bin
-        yarn
-        yamllint
-        yq-go
-        zellij
-        zsh
-      ];
+    packages = with pkgs; [
+      aider-chat
+      alejandra
+      awscli2
+      avahi
+      cachix
+      cirrus-cli
+      comma
+      coreutils-full
+      curl
+      diffutils
+      direnv
+      docker
+      docker-compose
+      ffmpeg
+      findutils
+      flyctl
+      gawk
+      gdu
+      gh
+      git-workspace
+      gnugrep
+      gnupg
+      gnused
+      helm-docs
+      httpie
+      hurl
+      jdk
+      k9s
+      kpt
+      krew
+      kubectl
+      kubectx
+      kubernetes-helm
+      kustomize
+      #     lazydocker
+      luajit
+      minikube
+      mmv
+      neofetch
+      nix
+      nixfmt-classic
+      nixpkgs-fmt
+      nodejs
+      parallel
+      passExtensions.pass-otp
+      passExtensions.pass-audit
+      passExtensions.pass-update
+      passExtensions.pass-import
+      passExtensions.pass-checkup
+      passExtensions.pass-genphrase
+      podman
+      # podman-desktop
+      poetry
+      pnpm
+      pre-commit
+      # rancher-desktop
+      ranger
+      rclone
+      rsync
+      shellcheck
+      sops
+      stylua
+      teleport
+      tig
+      tree
+      treefmt
+      trivy
+      vault-bin
+      yarn
+      yamllint
+      yq-go
+      zellij
+      zsh
+    ];
   };
 
   targets.genericLinux.enable = false;
 
   programs = {
-    home-manager.enable = true;
 
-    zsh.enable = true;
+    home-manager.enable = lib.mkDefault true;
 
-    dircolors.enable = true;
+    zsh.enable = lib.mkDefault true;
 
-    go.enable = true;
+    dircolors.enable = lib.mkDefault true;
 
-    gpg.enable = true;
+    go.enable = lib.mkDefault true;
 
-    password-store.enable = true;
+    gpg.enable = lib.mkDefault false;
 
-    git.enable = true;
+    password-store.enable = lib.mkDefault true;
 
-    htop.enable = true;
+    git.enable = lib.mkDefault true;
 
-    jq.enable = true;
+    htop.enable = lib.mkDefault true;
 
-    java.enable = true;
+    jq.enable = lib.mkDefault true;
 
-    k9s.enable = true;
+    java.enable = lib.mkDefault true;
 
-    lazygit.enable = true;
+    k9s.enable = lib.mkDefault true;
 
-    less.enable = true;
+    lazygit.enable = lib.mkDefault true;
 
-    man.enable = true;
+    less.enable = lib.mkDefault true;
 
-    nix-index.enable = true;
+    man.enable = lib.mkDefault true;
 
-    pandoc.enable = true;
+    nix-index.enable = lib.mkDefault true;
 
-    ripgrep.enable = true;
+    pandoc.enable = lib.mkDefault true;
 
-    starship.enable = true;
+    ripgrep.enable = lib.mkDefault true;
 
-    yt-dlp.enable = false;
+    starship.enable = lib.mkDefault true;
 
-    zoxide.enable = true;
+    yt-dlp.enable = lib.mkDefault false;
 
-    zellij.enable = true;
+    zoxide.enable = lib.mkDefault true;
+
+    zellij.enable = lib.mkDefault true;
   };
 
   services = {
