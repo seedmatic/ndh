@@ -14,8 +14,8 @@ in {
     };
     hostName = mkOption {
       type = lib.types.str;
-      default = "host";
-      description = "The name of the lima host, defaults to <hostname>.";
+      default = cfg.profile.host.hostAlias;
+      description = "The name of the lima host, defaults to <profile.host.hostAlias>.";
     };
     guestName = mkOption {
       type = lib.types.str;

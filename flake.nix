@@ -93,7 +93,7 @@
       pkgsForLinux = (pkgsFor { system = "aarch64-linux"; });
 
       mkBaseModulesFor = { hostProfile, system }:
-        [{ limaHost.hostName = hostProfile.hostName; }] ++ (if system == "nixos" then [
+        [{ limaHost.hostName = hostProfile.hostAlias; }] ++ (if system == "nixos" then [
           disko.nixosModules.disko
           home-manager.nixosModules.home-manager
           impermanence.nixosModules.impermanence
