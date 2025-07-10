@@ -1,5 +1,5 @@
-{ config, pkgs, lib, profile, ... }:
-let user = profile.user.name;
+{ config, pkgs, lib, ... }:
+let user = config.profile.user.name;
 
 in {
   environment.systemPackages = with pkgs; [ incus incus-compose skopeo ];

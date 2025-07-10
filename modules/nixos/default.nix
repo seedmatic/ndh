@@ -13,6 +13,7 @@ let
   };
   # Generate a hostId (should be a 4-byte hex string, e.g. from `head -c4 /dev/urandom | od -A none -t x4`)
   cfgUser = config.profile.user;
+  cfgUserName = cfgUser.name;
 in {
   imports = [
     ../common
@@ -174,14 +175,14 @@ in {
   security.wrappers.sudo.source = "${pkgs.sudo}/bin/sudo";
 
   # User configuration
-  user = cfgUser;
+  user = lib.mkForce cfgUser;
 
-  users.users.${user} = {
+  users.users.${cfgUserName} = {
     isNormalUser = true;
-    group = "${user}";
+    group = "${cfgUserName}";
     extraGroups = [ "wheel" "ssh" ];
   };
 
-  users.groups.${user} = { };
+  users.groups.${cfgUserName} = { };
 
 }

@@ -8,7 +8,8 @@
 let
   inherit (lib) mkAliasDefinitions mkOption types;
 
-  userName = config.profile.user.name;
+  cfgUser = config.profile.user;
+  cfgUserName = config.profile.user.name;
 in
 {
 
@@ -31,10 +32,10 @@ in
   config = {
 
     # hm -> home-manager.users.<primary user>.hm
-    home-manager.users.${userName} = mkAliasDefinitions options.hm;
+    home-manager.users.${cfgUserName} = mkAliasDefinitions options.hm;
 
     # user -> users.users.<primary user>.user
-    users.users.${userName} = mkAliasDefinitions options.user;
+    users.users.${cfgUserName} = mkAliasDefinitions options.user;
 
   };
 

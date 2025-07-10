@@ -1,4 +1,4 @@
-{ config, pkgs, profile, ... }:
+{ config, pkgs, ... }:
 
 {
   virtualisation.containerd.enable = true;
@@ -11,5 +11,5 @@
   # Add your user to the containerd group for socket access
   users.groups.containerd = { };
   users.groups.nixos = { };
-  users.users.${profile.user.name}.extraGroups = [ "wheel" "containerd" "nixos" ];
+  users.users.${config.profile.user.name}.extraGroups = [ "wheel" "containerd" "nixos" ];
 }
