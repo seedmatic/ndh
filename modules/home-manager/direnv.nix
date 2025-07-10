@@ -1,5 +1,5 @@
-{ pkgs, ... }: let
-  dollar = "$";
+{ pkgs, ... }:
+let dollar = "$";
 in {
   programs.direnv = {
     enable = true;
@@ -19,4 +19,9 @@ in {
     '';
 
   };
+
+  home.file."${config.xdg.configHome}/direnv/direnv.toml".text = ''
+    [whitelist]
+    prefix = [ "/Volumes/GitHub", "/Volumes/Eclipse", "/Users/nxmatic", "/Users/stephane.lacoin", "/home/stephane.lacoin", "/home/nxmatic" ]
+  '';
 }
