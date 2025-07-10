@@ -33,6 +33,8 @@ images:
 mounts:
 - location: "~"
   writable: true
+- location: "/Volumes"
+  writable: true
 - location: "/tmp/lima"
   writable: true
 
