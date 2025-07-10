@@ -8,10 +8,12 @@
       hostProfile = {
         hostName = "APL-dk40njhk9h";
         hostAlias = "alcide";
+        tailnet = { };
       };
       darwinProfile = {
         knownNetworkServices = [ "Wi-Fi" "Thunderbolt Ethernet" ];
       };
+
       profileModule = { ... }: {
         imports = [ ../../profiles/work.nix ];
         config = { profile = { host = hostProfile; darwin = darwinProfile; }; };
