@@ -112,14 +112,14 @@
         { hostProfile, system, preModules ? [ ], extraModules ? [ ], ... }:
         let baseModules = mkBaseModulesFor { inherit hostProfile system; };
         in preModules ++ baseModules ++ extraModules;
-      mkSpecialArgs = { modules, profile, extraArgs ? { }, ... }:
+      mkSpecialArgs = { modules, extraArgs ? { }, ... }:
         let
           lib = inputs.nixpkgs.lib.extend (_: _:
             inputs.home-manager.lib // {
               # Any additional lib functions you want to include
             });
         in {
-          inherit self profile lib;
+          inherit self lib;
           _modules = modules;
           nixpkgsInput = nixpkgs;
         } // extraArgs;
@@ -150,7 +150,6 @@
           };
           specialArgs = mkSpecialArgs {
             inherit modules;
-            profile = profileModule.config.profile;
           };
         in inputs.darwin.lib.darwinSystem {
           inherit specialArgs modules;
@@ -186,7 +185,6 @@
           };
           specialArgs = mkSpecialArgs {
             inherit modules;
-            profile = profileModule.config.profile;
             extraArgs = {
               inherit hostProfile;
               containerRegistrySystem = containerRegistryConfiguration;
