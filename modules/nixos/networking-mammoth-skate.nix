@@ -10,8 +10,11 @@
 
   config = lib.mkIf config.networking.mammoth-skate.enable {
     networking = {
-      firewall.enable = true;
-      firewall.allowedTCPPorts = [ 22 2222 ];
+      firewall = {
+        enable = true;
+        allowedTCPPorts = [ 22 2222 ];
+        logRefusedPackets = true;
+      };
       nftables.enable = true;
       networkmanager.enable = true;
       wireless.enable = false;
