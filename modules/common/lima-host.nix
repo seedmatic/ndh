@@ -31,9 +31,9 @@ in {
   };
   config = {
     environment.variables = rec {
-      LIMA_HOST_NAME = hostName;
-      LIMA_GUEST_NAME = guestName;
-      LIMA_DOMAIN_NAME = domainName;
+      LIMA_HOSTNAME = hostName;
+      LIMA_GUESTNAME = guestName;
+      LIMA_DN = domainName;
     };
     networking.hostName = lib.mkForce ( if cfg.isGuest then "${hostName}-${guestName}" else hostName );
   };
