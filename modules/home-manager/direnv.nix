@@ -1,4 +1,4 @@
-{ pkgs, ... }:
+{ config, pkgs, ... }:
 let dollar = "$";
 in {
   programs.direnv = {

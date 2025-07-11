@@ -9,6 +9,7 @@ in {
   programs.direnv = {
 
     stdlib = ''
+      PATH_add /run/current-system/sw/bin
       export FLOX_RCPATH="${flox-rc-path}"
 
       source_env "${use-flox-rc-path}"
