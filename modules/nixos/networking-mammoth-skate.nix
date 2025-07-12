@@ -12,7 +12,8 @@
     networking = {
       firewall = {
         enable = true;
-        allowedTCPPorts = [ 22 2222 ];
+        allowedTCPPorts = [ 53 22 2222 80 443 ];
+        allowedUDPPorts = [ 53 67 68 ];
         logRefusedPackets = true;
       };
       nftables.enable = true;
