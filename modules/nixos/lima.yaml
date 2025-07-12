@@ -68,5 +68,5 @@ provision:
 #     set -eux -o pipefail
 
 video:
-  display: default
-  # display: none
+  # display: default
+  display: none
