@@ -52,6 +52,9 @@ in {
             "ipv6.address" = "none";
             "ipv6.nat" = "false";
             "ipv6.dhcp" = "false";
+            "raw.dnsmasq" = ''
+              dhcp-host=10:66:6a:e0:18:af,172.31.1.2
+            '';
           };
         }
       ];
@@ -91,8 +94,8 @@ in {
           };
         }
         {
-          name = "rke2-tn";
-          description = "RKE2 control plane tailnet routed network profile";
+          name = "rke2";
+          description = "RKE2 control plane network profile";
           devices = {
             root = {
               path = "/";
@@ -167,5 +170,13 @@ in {
 
   systemd.services.incus = {
     serviceConfig.ExecStartPost = [ "${fixIncusSocketPerms}" ];
+  };
+
+  security.wrappers.distrobuilder = {
+    source = "${pkgs.distrobuilder}/bin/distrobuilder";
+    owner = "root";
+    group = "incus";
+    setuid = true;
+    permissions = "u+rx,g+rx,o+rx";
   };
 }
