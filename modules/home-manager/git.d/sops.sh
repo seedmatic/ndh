@@ -1,4 +1,4 @@
-#!/nix/store/wy51zbjg46lhxlivfqszl1jvmjdkvvac-coreutils-9.5/bin/env -S /nix/store/p17l448i83ap00v2w03c5dafl2vrlj5g-bash-5.2p37/bin/bash -euo pipefail
+#!/run/current-system/sw/bin/env -S bash -euo pipefail
 # -*- mode: sh -*-
 
 test -n "${GIT_TRACE:-}" && set -x

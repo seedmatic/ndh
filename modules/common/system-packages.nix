@@ -1,11 +1,13 @@
 { pkgs, ... }:
 with pkgs; [
   bash
+  coreutils-full
   direnv
   flox
   git
   gitflow
   emacs-nox
+  remake
   powerline-fonts
   powerline-go
   powerline-symbols
