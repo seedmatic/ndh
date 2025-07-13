@@ -93,7 +93,12 @@
       pkgsForLinux = (pkgsFor { system = "aarch64-linux"; });
 
       mkBaseModulesFor = { hostProfile, system }:
-        [{ limaHost.hostName = hostProfile.hostAlias; }] ++ (if system == "nixos" then [
+        [{
+          limaHost.hostName = if hostProfile ? hostAlias then
+            hostProfile.hostAlias
+          else
+            hostProfile.hostName;
+        }] ++ (if system == "nixos" then [
           disko.nixosModules.disko
           home-manager.nixosModules.home-manager
           impermanence.nixosModules.impermanence
@@ -148,9 +153,7 @@
             inherit hostProfile preModules;
             system = "darwin";
           };
-          specialArgs = mkSpecialArgs {
-            inherit modules;
-          };
+          specialArgs = mkSpecialArgs { inherit modules; };
         in inputs.darwin.lib.darwinSystem {
           inherit specialArgs modules;
           system = "aarch64-darwin";
@@ -163,14 +166,11 @@
         let
           darwinConfiguration =
             mkDarwinConfig { inherit hostProfile profileModule; };
-        in {
-          darwinConfigurations = {
-            "${hostProfile.hostName}" = darwinConfiguration;
-          } // (if builtins.hasAttr "hostAlias" hostProfile then {
-            "${hostProfile.hostAlias}" = darwinConfiguration;
-          } else
-            { });
-        };
+          mainName = if hostProfile ? hostAlias then
+            hostProfile.hostAlias
+          else
+            hostProfile.hostName;
+        in { darwinConfigurations = { "${mainName}" = darwinConfiguration; }; };
 
       mkNixosConfig = { hostProfile, profileModule, zfsOverlays
         , containerRegistryConfiguration }:
@@ -220,15 +220,16 @@
             hint = "nix path-info -Sh ${systemPath}";
             note = "closure size should be less than diskSizeBytes";
           };
+          mainName = if hostProfile ? hostAlias then
+            hostProfile.hostAlias
+          else
+            hostProfile.hostName;
         in {
           inherit diskSizeHint;
-          nixosConfigurations = ({
+          nixosConfigurations = {
             inherit ext4 zfs;
-            "${hostProfile.hostName}-nixos" = zfs;
-          } // (if builtins.hasAttr "hostAlias" hostProfile then {
-            "${hostProfile.hostAlias}-nixos" = zfs;
-          } else
-            { }));
+            "${mainName}-nixos" = zfs;
+          };
           diskImage = nixos-generators.nixosGenerate {
             modules = [{
               nix.registry.nixpkgs.flake = nixpkgs;
@@ -243,10 +244,13 @@
     in {
       mkHostOutputs = { hostProfile, profileModule, ... }:
         let
+          mainName = if hostProfile ? hostAlias then
+            hostProfile.hostAlias
+          else
+            hostProfile.hostName;
           darwinOutputs =
             mkDarwinOutputs { inherit hostProfile profileModule; };
-          darwinConfiguration =
-            darwinOutputs.darwinConfigurations.${hostProfile.hostName};
+          darwinConfiguration = darwinOutputs.darwinConfigurations.${mainName};
 
           containerRegistryConfiguration =
             mkContainerRegistryConfig { inherit hostProfile; };
@@ -255,7 +259,7 @@
             inherit hostProfile containerRegistryConfiguration profileModule;
           };
           nixosConfiguration =
-            nixosOutputs.nixosConfigurations."${hostProfile.hostName}-nixos";
+            nixosOutputs.nixosConfigurations."${mainName}-nixos";
           nixosDiskImage = nixosOutputs.diskImage;
           nixosDiskSizeHint = nixosOutputs.diskSizeHint;
         in nixosOutputs // darwinOutputs // {

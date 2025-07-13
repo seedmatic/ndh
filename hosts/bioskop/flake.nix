@@ -1,15 +1,19 @@
 {
-  description = "nix system configurations for alcide";
+  description = "nix system configurations for bioskop";
 
   inputs = { nix-darwin-home.url = "path:../.."; };
 
   outputs = { self, nix-darwin-home, ... }@inputs:
     let
-      hostProfile = { hostName = "bioskop"; };
-      darwinProfile = {
-        knownNetworkServices = [ "Wi-Fi" "Ethernet Adaptor" "Thunderbolt Ethernet" ];
+      hostProfile = {
+        hostName = "bioskop";
+        tailnet = { };
       };
-      profileModule = { config, lib, pkgs, ... }: {
+      darwinProfile = {
+        knownNetworkServices = [ "Wi-Fi" "Ethernet Adaptor""Thunderbolt Ethernet" ];
+      };
+
+      profileModule = { ... }: {
         imports = [ ../../profiles/committed.nix ];
         config = {
           profile = {

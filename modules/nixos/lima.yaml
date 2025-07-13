@@ -28,7 +28,7 @@ hostResolver:
     host.containers.internal: 192.168.5.15
 
 images:
-  - location: "file:///Users/stephane.lacoin/Gits/nxmatic/nix-darwin-home/result/nixos.img"
+  - location: "file:///Users/nxmatic/Gits/nxmatic/nix-darwin-home/result/nixos.img"
     arch: "aarch64"
 mounts:
 - location: "~"

@@ -16,7 +16,12 @@
 
       profileModule = { ... }: {
         imports = [ ../../profiles/work.nix ];
-        config = { profile = { host = hostProfile; darwin = darwinProfile; }; };
+        config = {
+          profile = {
+            host = hostProfile;
+            darwin = darwinProfile;
+          };
+        };
       };
     in nix-darwin-home.mkHostOutputs { inherit hostProfile profileModule; };
 }
