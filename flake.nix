@@ -166,11 +166,13 @@
         let
           darwinConfiguration =
             mkDarwinConfig { inherit hostProfile profileModule; };
-          mainName = if hostProfile ? hostAlias then
-            hostProfile.hostAlias
-          else
-            hostProfile.hostName;
-        in { darwinConfigurations = { "${mainName}" = darwinConfiguration; }; };
+          darwinConfigurations = {
+            "${hostProfile.hostName}" = darwinConfiguration;
+          } // (if hostProfile ? hostAlias then {
+            "${hostProfile.hostAlias}" = darwinConfiguration;
+          } else
+            { });
+        in { inherit darwinConfigurations; };
 
       mkNixosConfig = { hostProfile, profileModule, zfsOverlays
         , containerRegistryConfiguration }:
