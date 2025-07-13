@@ -7,18 +7,18 @@ let
   profile = config._module.specialArgs.profile;
 
   profileName = profile.name;
-  hostName = profile.host.hostName;
-  hostAlias = profile.host.hostAlias or hostName;
+  hostProfile = profile.host;
+  userProfile = profile.user;
   userName = "Stephane Lacoin (aka nxmatic)";
-  userDescription = profile.user.description;
-  userHome = profile.user.home;
+  userDescription = userProfile.description;
+  userHome = userProfile.home;
 
   # Command to filter and sign keys based on profile and host
   yamlHostKeys = pkgs.runCommand "ssh-signed-keys.yaml" {
     buildInputs =
       [ pkgs.coreutils-full pkgs.yq-go pkgs.openssh pkgs.bash pkgs.gnused ];
   } ''
-    ${./ssh-add-keys.sh} "${profileName}" "${hostAlias}" "${./ssh.d/keys.yaml}" "$out"
+    ${./ssh-add-keys.sh} "${profileName}" "${hostProfile.hostAlias}" "${./ssh.d/keys.yaml}" "$out"
   '';
 
   # Script to extract host keys and CA public key from keys.yaml
