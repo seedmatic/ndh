@@ -1,7 +1,6 @@
 # This is the home configuration of the user.
 { config, pkgs, lib, ... }:
-let
-  homeDirectory = config.profile.user.home;
+let homeDirectory = config.profile.user.home;
 in {
 
   imports = [
@@ -128,6 +127,12 @@ in {
       zellij
       zsh
     ];
+
+    activation.fixConfigOwnership = lib.hm.dag.entryBefore [ "writeBoundary" ] ''
+      if [ -d "$HOME/.config" && ! -w "$HOME/.config" ]; then
+        chown -R "$USER":"$USER" "$HOME/.config"
+      fi
+    '';
   };
 
   targets.genericLinux.enable = false;

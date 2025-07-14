@@ -264,9 +264,19 @@
             nixosOutputs.nixosConfigurations."${mainName}-nixos";
           nixosDiskImage = nixosOutputs.diskImage;
           nixosDiskSizeHint = nixosOutputs.diskSizeHint;
+
+          # Home Manager configurations for direct use
+          homeManagerConfigurations = {
+            "${mainName}" = home-manager.lib.homeManagerConfiguration {
+              pkgs = pkgsForDarwin;
+              modules = [ ./modules/home-manager ];
+              extraSpecialArgs = { inherit hostProfile; };
+              # Optionally, set username and homeDirectory here if needed
+            };
+          };
         in nixosOutputs // darwinOutputs // {
           inherit darwinConfiguration nixosConfiguration nixosDiskImage
-            nixosDiskSizeHint;
+            nixosDiskSizeHint homeManagerConfigurations;
           pkgs = {
             darwin = pkgsForDarwin;
             linux = pkgsForLinux;
