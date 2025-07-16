@@ -168,6 +168,18 @@ in {
       TTYPath=/dev/console
       MaxLevelConsole=debug
     '';
+    ntopng = {
+      enable = true;
+      interfaces = [ "all" ];
+      extraConfig = ''
+        -i all
+        --dns-mode none
+        --http-port 3000
+        --http-interface
+        --http-user admin
+        --http-password admin
+      '';
+    };
   };
 
   # Security
