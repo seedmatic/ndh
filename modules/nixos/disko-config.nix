@@ -89,23 +89,38 @@ let
             compression = "zstd";
             xattr = "sa";
           };
-          options = {
-            ashift = "12";
-          };
+          options = { ashift = "12"; };
           datasets = {
             "rke2" = { type = "zfs_fs"; };
             "rke2/control-nodes" = { type = "zfs_fs"; };
             "rke2/control-nodes/master" = { type = "zfs_fs"; };
-            "rke2/control-nodes/master/root" = {
-              type = "zfs_volume";
-              size = "50G";
-              content = {
-                type = "filesystem";
-                format = "ext4";
-                # mountpoint = "/var/lib/rancher/rke2";
-              };
+            "rke2/control-nodes/master/containerd" = {
+              type = "zfs_fs";
+              options.mountpoint = "legacy";
+              mountpoint =
+                "/var/lib/rancher/rke2/agent/containerd/io.containerd.snapshotter.v1.zfs";
             };
-            "rke2/control-nodes/master/volumes" = { type = "zfs_fs"; };
+            "rke2/control-nodes/peer1" = { type = "zfs_fs"; };
+            "rke2/control-nodes/peer1/containerd" = {
+              type = "zfs_fs";
+              options.mountpoint = "legacy";
+              mountpoint =
+                "/var/lib/rancher/rke2/agent/containerd/io.containerd.snapshotter.v1.zfs";
+            };
+            "rke2/control-nodes/peer2" = { type = "zfs_fs"; };
+            "rke2/control-nodes/peer2/containerd" = {
+              type = "zfs_fs";
+              options.mountpoint = "legacy";
+              mountpoint =
+                "/var/lib/rancher/rke2/agent/containerd/io.containerd.snapshotter.v1.zfs";
+            };
+            "rke2/control-nodes/peer3" = { type = "zfs_fs"; };
+            "rke2/control-nodes/peer3/containerd" = {
+              type = "zfs_fs";
+              options.mountpoint = "legacy";
+              mountpoint =
+                "/var/lib/rancher/rke2/agent/containerd/io.containerd.snapshotter.v1.zfs";
+            };
             "nerd" = { type = "zfs_fs"; };
             "nerd/nix" = {
               type = "zfs_fs";
@@ -181,16 +196,11 @@ let
             xattr = "sa";
           };
           options = { ashift = "12"; };
-          datasets = {
-            "recover" = {
-              type = "zfs_fs";
-            };
-          };
+          datasets = { "recover" = { type = "zfs_fs"; }; };
         };
       };
     };
   };
-
 
   addDatasetOptions = dataset:
     let
