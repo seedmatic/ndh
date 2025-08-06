@@ -48,6 +48,13 @@ ssh:
   # This allows access to GitHub, etc.
   forwardAgent: true
 
+# Port forwarding for Podman API
+portForwards:
+- guestPort: 2375
+  hostPort: 2375
+- guestPort: 2376
+  hostPort: 2376
+
 containerd:
   system: false
   user: false

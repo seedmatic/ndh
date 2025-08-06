@@ -1,0 +1,121 @@
+# Podman remote engine configuration for Lima NixOS VM (@codebase)
+# This module configures Podman in the VM to act as a remote engine accessible from the host
+
+{ config, lib, pkgs, ... }:
+
+{
+  # Enable Podman and containers
+  virtualisation = {
+    podman = {
+      enable = true;
+      
+      # Create a `docker` alias for podman, to use it as a drop-in replacement
+      dockerCompat = true;
+      
+      # Required for containers under podman-compose to be able to talk to each other.
+      defaultNetwork.settings.dns_enabled = true;
+      
+      # Enable auto-pruning of old images and containers
+      autoPrune = {
+        enable = true;
+        dates = "weekly";
+        flags = [ "--all" ];
+      };
+    };
+    
+    containers = {
+      enable = true;
+      
+      # Container storage configuration optimized for ZFS
+      storage.settings = {
+        storage = {
+          driver = "zfs";
+          graphroot = "/var/lib/containers/storage";
+          runroot = "/run/containers/storage";
+        };
+        
+        storage.options.zfs = {
+          mountopt = "nodev";
+          # Use ZFS dataset for container storage
+          fsname = "tank/containers";
+        };
+      };
+      
+      # Registry configuration
+      registries = {
+        search = [ "docker.io" "quay.io" "registry.fedoraproject.org" ];
+        insecure = [ "host.containers.internal:5000" ];
+        block = [ ];
+      };
+    };
+  };
+
+  # Configure Podman socket for remote access using built-in NixOS options
+  systemd.sockets.podman.socketConfig.ListenStream = [
+    "/run/podman/podman.sock"  # Unix socket
+    "0.0.0.0:2375"             # TCP socket for remote access
+  ];
+
+  # Create ZFS dataset for container storage
+  systemd.services.podman-zfs-setup = {
+    description = "Setup ZFS dataset for Podman container storage";
+    before = [ "podman.service" "containers-storage.service" ];
+    wantedBy = [ "multi-user.target" ];
+    serviceConfig = {
+      Type = "oneshot";
+      RemainAfterExit = true;
+    };
+    script = ''
+      # Create ZFS dataset for containers if it doesn't exist
+      if ! ${pkgs.zfs}/bin/zfs list tank/containers >/dev/null 2>&1; then
+        ${pkgs.zfs}/bin/zfs create -o mountpoint=/var/lib/containers tank/containers
+        ${pkgs.coreutils}/bin/mkdir -p /var/lib/containers/storage
+        ${pkgs.coreutils}/bin/chown root:root /var/lib/containers
+        ${pkgs.coreutils}/bin/chmod 755 /var/lib/containers
+      fi
+      
+      # Ensure run directory exists
+      ${pkgs.coreutils}/bin/mkdir -p /run/containers/storage
+      ${pkgs.coreutils}/bin/mkdir -p /run/podman
+    '';
+  };
+
+  # Open firewall for Podman API
+  networking.firewall = {
+    allowedTCPPorts = [ 2375 ];
+    trustedInterfaces = [ "podman0" "cni-podman0" ];
+  };
+
+  # Add podman-related packages
+  environment.systemPackages = with pkgs; [
+    podman
+    podman-compose
+    buildah
+    skopeo
+    runc
+    conmon
+    crun
+    slirp4netns
+    fuse-overlayfs
+  ];
+
+  # Configure container networking
+  networking.nat = {
+    enable = true;
+    internalInterfaces = [ "podman0" ];
+  };
+
+  # User configuration for podman
+  users.users.nxmatic = {
+    extraGroups = [ "wheel" "users" "podman" ];
+    subUidRanges = [
+      { startUid = 100000; count = 65536; }
+    ];
+    subGidRanges = [
+      { startGid = 100000; count = 65536; }
+    ];
+  };
+
+  # Create podman group
+  users.groups.podman = {};
+}

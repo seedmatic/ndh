@@ -24,6 +24,7 @@ in {
     ./containers
     ./disko.nix
     ./incus.nix
+    ./podman-remote.nix
     ./systemd
     ./tailscale.nix
     ./zfs.nix
