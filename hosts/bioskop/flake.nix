@@ -20,6 +20,8 @@
             host = hostProfile;
             darwin = darwinProfile;
           };
+          # Enable cross-host distributed builds
+          services.crossHostBuilders.enable = true;
         };
       };
     in nix-darwin-home.mkHostOutputs { inherit hostProfile profileModule; };
