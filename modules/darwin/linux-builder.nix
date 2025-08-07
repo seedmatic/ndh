@@ -10,11 +10,33 @@ in {
   };
 
   config = {
+    # Ensure our shared SSH keys are used instead of generated ones
+    system.activationScripts.setupLinuxBuilderKey = {
+      text = ''
+        # Replace any auto-generated linux-builder keys with our shared key
+        if [ -f /etc/nix/linux-builder_ed25519 ]; then
+          cp ${../../keys/builder_ed25519} /etc/nix/linux-builder_ed25519
+          chmod 600 /etc/nix/linux-builder_ed25519
+          chown root:wheel /etc/nix/linux-builder_ed25519
+        fi
+        if [ -f /etc/nix/linux-builder_ed25519.pub ]; then
+          cp ${../../keys/builder_ed25519.pub} /etc/nix/linux-builder_ed25519.pub
+          chmod 644 /etc/nix/linux-builder_ed25519.pub
+          chown root:wheel /etc/nix/linux-builder_ed25519.pub
+        fi
+      '';
+      deps = [ "etc" ];  # Run after /etc files are set up
+    };
+    
     nix.linux-builder = {
       enable = true;
       ephemeral = false;
       maxJobs = 4;
       supportedFeatures = [ "kvm" "benchmark" "big-parallel" ];
+      # Don't automatically register as build machine if distributed builds are enabled
+    } // lib.optionalAttrs (!config.services.crossHostBuilders.enable) {
+      # Only add to build machines if distributed builds are disabled
+      # (when distributed builds are enabled, they manage build machines exclusively)
     } // lib.optionalAttrs useCustomConfig {
       config = { pkgs, ... }:
         let linuxPkgs = import <nixpkgs> { system = "aarch64-linux"; };
@@ -33,9 +55,10 @@ in {
           services.openssh = {
             enable = true;
             settings = {
-              PasswordAuthentication = true;
+              PasswordAuthentication = false;
               PermitRootLogin = "yes";
-              PermitEmptyPasswords = true;
+              PermitEmptyPasswords = false;
+              PubkeyAuthentication = true;
             };
           };
 
