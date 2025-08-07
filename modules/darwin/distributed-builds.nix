@@ -65,5 +65,11 @@ in {
         UserKnownHostsFile /dev/null
         LogLevel QUIET
     '';
+    
+    # Ensure builder keys are properly managed in /etc/nix/ only
+    environment.etc = {
+      "nix/builder_ed25519".source = ../../keys/builder_ed25519;
+      "nix/builder_ed25519.pub".source = ../../keys/builder_ed25519.pub;
+    };
   };
 }
