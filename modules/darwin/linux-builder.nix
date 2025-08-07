@@ -43,6 +43,10 @@ in {
           users.users.builder = {
             isNormalUser = true;
             extraGroups = [ "wheel" ];
+            # Add SSH key for remote builds
+            openssh.authorizedKeys.keyFiles = [
+              ../../keys/builder_ed25519.pub
+            ];
           };
           users.users.test = {
             isNormalUser = true;

@@ -7,6 +7,7 @@
     ./dnsmasq.nix
     ./linux-builder.nix
     ./distributed-builds.nix
+    ./ssh-linux-builder-proxy.nix
     ./raycast.nix
     ./ssh.nix
   # Inline module replaced with file import for Home Manager extension

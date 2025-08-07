@@ -9,9 +9,10 @@ let
   builderKeyPath = "/etc/nix/builder_ed25519";
   
   # Define remote builders based on hostname
+  # These use SSH ProxyJump to reach Linux builder VMs through Darwin hosts
   remoteBuilders = 
     (lib.optional (hostAlias == "bioskop") {
-      hostName = "ssh://builder@alcide.mammoth-skate.ts.net";
+      hostName = "ssh://linux-builder-via-alcide";
       systems = [ "aarch64-linux" ];
       maxJobs = 4;
       speedFactor = 1;
@@ -22,7 +23,7 @@ let
       protocol = "ssh-ng";
     }) ++ 
     (lib.optional (hostAlias == "alcide") {
-      hostName = "ssh://builder@bioskop.mammoth-skate.ts.net";
+      hostName = "ssh://linux-builder-via-bioskop";
       systems = [ "aarch64-linux" ];
       maxJobs = 4;
       speedFactor = 1;
@@ -34,17 +35,35 @@ let
     });
   
 in {
-  options.services.crossHostBuilders.enable = lib.mkOption {
-    type = lib.types.bool;
-    default = false;
-    description = "Enable distributed builds to other hosts in the mammoth-skate network";
-  };
-
-  config = lib.mkIf cfg.enable {
+  # Only apply the configuration on Darwin systems when enabled
+  config = lib.mkIf (cfg.enable && pkgs.stdenv.isDarwin) {
     # Enable distributed builds
     nix.distributedBuilds = true;
     
     # Configure build machines
     nix.buildMachines = remoteBuilders;
+
+    # Configure SSH to use Darwin hosts as jump hosts to reach Linux builders
+    programs.ssh.extraConfig = ''
+      # Linux builder accessible via alcide Darwin host
+      Host linux-builder-via-alcide
+        HostName linux-builder
+        User builder
+        ProxyJump ${config.profile.user.name}@alcide.mammoth-skate.ts.net
+        IdentityFile /etc/nix/builder_ed25519
+        StrictHostKeyChecking no
+        UserKnownHostsFile /dev/null
+        LogLevel QUIET
+
+      # Linux builder accessible via bioskop Darwin host  
+      Host linux-builder-via-bioskop
+        HostName linux-builder
+        User builder
+        ProxyJump ${config.profile.user.name}@bioskop.mammoth-skate.ts.net
+        IdentityFile /etc/nix/builder_ed25519
+        StrictHostKeyChecking no
+        UserKnownHostsFile /dev/null
+        LogLevel QUIET
+    '';
   };
 }

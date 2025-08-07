@@ -23,6 +23,7 @@ in {
     ./nixpkgs.nix
     ./dnsmasq.nix
     ./lima-host.nix
+    ./distributed-builds-option.nix
   ];
 
   programs = {
