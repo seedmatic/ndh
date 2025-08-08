@@ -21,6 +21,13 @@ in {
       max-free = ${toString (20 * 1024 * 1024 * 1024)}  # 20 GB
     '';
 
+    # Configure NIX_PATH for legacy nix commands and <nixpkgs> imports
+    nixPath = [
+      "nixpkgs=${pkgs.path}"
+      "darwin=${self.inputs.darwin}"  
+      "home-manager=${self.inputs.home-manager}"
+    ];
+
     # Optimize the store
     optimise.automatic = true;
   };
