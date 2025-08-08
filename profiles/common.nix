@@ -6,6 +6,26 @@ let
   cfg = config.profile;
   defaultUserHome =
     if stdenv.isDarwin then "Users" else "${config.users.defaultUserHome}";
+  
+  # Shared user profile mapping (@codebase)
+  # This defines the mapping between different profiles and their corresponding usernames
+  # Used by both profile configurations and symlink modules
+  userMapping = {
+    # Profile name -> user configuration mapping
+    profileUsers = {
+      work = {
+        name = "stephane.lacoin";
+        description = "Stephane Lacoin (aka nxmatic)";
+        email = "stephane.lacoin@hyland.com";
+      };
+      
+      committed = {
+        name = "nxmatic"; 
+        description = "Stephane Lacoin (aka nxmatic)";
+        email = "stephane.lacoin@gmail.com";
+      };
+    };
+  };
 in {
   options = {
     profile = lib.mkOption {
@@ -22,6 +42,12 @@ in {
             description = "The email of the user";
             default = lib.mkDefault
               (cfg.email or "${cfg.user.name or "user"}@example.com");
+          };
+          homeSymlinks = lib.mkOption {
+            type = lib.types.listOf lib.types.str;
+            description = "List of alternative usernames to create symlinks for in /home";
+            default = [];
+            example = [ "nxmatic" ];
           };
           darwin = lib.mkOption {
             type = lib.types.submodule {
@@ -120,4 +146,7 @@ in {
       };
     };
   };
+  
+  # Make userMapping available to other modules
+  config._module.args.userMapping = userMapping;
 }

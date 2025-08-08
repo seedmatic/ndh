@@ -5,6 +5,7 @@
     ./lima-guest-agent.nix
     ./lima-nixos-configuration.nix
     ./openssh.nix
+    ./profile-home-symlinks.nix
     ./rescue.nix
   ];
 }

@@ -129,9 +129,24 @@ in {
     ];
 
     activation.fixConfigOwnership = lib.hm.dag.entryBefore [ "writeBoundary" ] ''
-      if [ -d "$HOME/.config" && ! -w "$HOME/.config" ]; then
-        chown -R "$USER":"$USER" "$HOME/.config"
-      fi
+      # Fix ownership of common home directories that might be created by system processes
+      for dir in .config .xdg .cache .local; do
+        if [ -d "$HOME/$dir" ]; then
+          # Check if the directory is owned by the current user
+          if [ "$(stat -c '%U' "$HOME/$dir" 2>/dev/null || echo "")" != "$USER" ]; then
+            echo "Fixing ownership of $HOME/$dir (owned by $(stat -c '%U' "$HOME/$dir" 2>/dev/null || echo "unknown"))"
+            $DRY_RUN_CMD chown -R "$USER":"$USER" "$HOME/$dir"
+          fi
+        fi
+      done
+      
+      # Ensure critical directories exist with correct ownership
+      for dir in .config .local/state .local/share .cache; do
+        $DRY_RUN_CMD mkdir -p "$HOME/$dir"
+        if [ "$(stat -c '%U' "$HOME/$dir" 2>/dev/null || echo "")" != "$USER" ]; then
+          $DRY_RUN_CMD chown "$USER":"$USER" "$HOME/$dir"
+        fi
+      done
     '';
   };
 

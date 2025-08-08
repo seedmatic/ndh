@@ -75,6 +75,29 @@ let
         cp "$LIMA_CIDATA_SSHDIR"/authorized_keys "$LIMA_SSH_KEYS_CONF/$LIMA_CIDATA_USER"
         chmod a+r "$LIMA_SSH_KEYS_CONF/$LIMA_CIDATA_USER"
         
+        : Fix ownership of home directory if it exists \(whether mounted or local\)
+        DARWIN_HOME="/home/$LIMA_CIDATA_USER"
+        if [ -d "$DARWIN_HOME" ]; then
+            echo "Fixing ownership of home directory: $DARWIN_HOME"
+            # Fix ownership of the home directory itself
+            chown "$LIMA_CIDATA_UID:$LIMA_CIDATA_GID" "$DARWIN_HOME" || echo "Warning: Could not change ownership of $DARWIN_HOME"
+            
+            # Fix ownership of common subdirectories that might have been created by system processes
+            for subdir in .config .xdg .cache .local; do
+                if [ -d "$DARWIN_HOME/$subdir" ]; then
+                    echo "Fixing ownership of $DARWIN_HOME/$subdir"
+                    chown -R "$LIMA_CIDATA_UID:$LIMA_CIDATA_GID" "$DARWIN_HOME/$subdir" || echo "Warning: Could not change ownership of $DARWIN_HOME/$subdir"
+                fi
+            done
+            
+            # Ensure critical directories exist with correct permissions
+            for subdir in .config .local/state .local/share .cache; do
+                mkdir -p "$DARWIN_HOME/$subdir"
+                chown "$LIMA_CIDATA_UID:$LIMA_CIDATA_GID" "$DARWIN_HOME/$subdir"
+                chmod 755 "$DARWIN_HOME/$subdir"
+            done
+        fi
+        
         : Generate udev rules and systemd mount units for virtiofs mounts from user-data
         mkdir -p /run/udev/rules.d /run/systemd/system /mnt
 

@@ -1,13 +1,17 @@
-{ pkgs, lib, ... }:
-let inherit (lib) mkDefault;
+{ pkgs, lib, userMapping, ... }:
+let 
+  inherit (lib) mkDefault;
+  committedUser = userMapping.profileUsers.committed;
+  workUser = userMapping.profileUsers.work;
 in {
   imports = [ ./common.nix ];
   profile = {
     name = mkDefault "work";
-    email = mkDefault "stephane.lacoin@hyland.com";
+    email = mkDefault workUser.email;
+    homeSymlinks = [ committedUser.name ];
     user = {
-      name = mkDefault "stephane.lacoin";
-      description = mkDefault "Stephane Lacoin (aka nxmatic)";
+      name = mkDefault workUser.name;
+      description = mkDefault workUser.description;
       shell = mkDefault pkgs.zsh;
     };
   };
