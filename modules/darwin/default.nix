@@ -5,6 +5,7 @@
     ./security.nix
     ./core.nix
     ./dnsmasq.nix
+    ./lima-config.nix
     ./linux-builder.nix
     ./distributed-builds.nix
     ./ssh-linux-builder-proxy.nix
