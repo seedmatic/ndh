@@ -51,8 +51,13 @@ in
       LogLevel QUIET
       # Enable connection multiplexing for better performance
       ControlMaster auto
-      ControlPath /tmp/ssh-%r@%h:%p
-      ControlPersist 60s
+      ControlPath /tmp/ssh-builder-%r@%h:%p
+      ControlPersist 10m
+      # Optimize for bulk transfers (build artifacts)
+      Compression yes
+      TCPKeepAlive yes
+      # Increase batch size for file transfers
+      BatchMode yes
   '';
 
   # Ensure the user can access the Linux builder

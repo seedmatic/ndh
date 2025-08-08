@@ -12,14 +12,15 @@ let
   
   # Define remote builders based on hostname
   # These use SSH ProxyJump to reach Linux builder VMs through Darwin hosts
-  # Note: Each host connects to the OTHER host's Linux builder
+  # Note: bioskop's linux-builder is always preferred (higher speedFactor)
   remoteBuilders = 
     # Always include the local linux-builder
     [{
       hostName = "linux-builder";
       systems = [ "aarch64-linux" ];
       maxJobs = 4;
-      speedFactor = 2;  # Local builder is faster
+      # Local builder priority: bioskop local=3, alcide local=2 (fallback)
+      speedFactor = if hostAlias == "bioskop" then 3 else 2;
       supportedFeatures = [ "kvm" "benchmark" "big-parallel" ];
       mandatoryFeatures = [ ];
       sshKey = "/etc/nix/builder_ed25519";  # Local builder uses system key
@@ -31,7 +32,7 @@ let
       hostName = "linux-builder-via-alcide";
       systems = [ "aarch64-linux" ];
       maxJobs = 4;
-      speedFactor = 1;
+      speedFactor = 2;  # alcide's linux-builder as secondary for bioskop
       supportedFeatures = [ "kvm" "benchmark" "big-parallel" ];
       mandatoryFeatures = [ ];
       sshKey = builderKeyPath;
@@ -42,7 +43,7 @@ let
       hostName = "linux-builder-via-bioskop";
       systems = [ "aarch64-linux" ];
       maxJobs = 4;
-      speedFactor = 1;
+      speedFactor = 3;  # bioskop's linux-builder as primary for alcide (remote)
       supportedFeatures = [ "kvm" "benchmark" "big-parallel" ];
       mandatoryFeatures = [ ];
       sshKey = builderKeyPath;
@@ -79,6 +80,13 @@ in {
         StrictHostKeyChecking no
         UserKnownHostsFile /dev/null
         LogLevel QUIET
+        # Enable connection multiplexing for faster transfers
+        ControlMaster auto
+        ControlPath /tmp/ssh-builder-alcide-%r@%h:%p
+        ControlPersist 10m
+        # Optimize for bulk transfers
+        Compression yes
+        TCPKeepAlive yes
 
       # Linux builder accessible via bioskop Darwin host (committed profile: nxmatic)
       Host linux-builder-via-bioskop
@@ -91,6 +99,13 @@ in {
         StrictHostKeyChecking no
         UserKnownHostsFile /dev/null
         LogLevel QUIET
+        # Enable connection multiplexing for faster transfers
+        ControlMaster auto
+        ControlPath /tmp/ssh-builder-bioskop-%r@%h:%p
+        ControlPersist 10m
+        # Optimize for bulk transfers
+        Compression yes
+        TCPKeepAlive yes
     '';
     
     # Ensure builder keys are properly managed in /etc/nix/ only

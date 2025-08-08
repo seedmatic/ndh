@@ -2,6 +2,7 @@
   imports = [
     ./buildkitd.nix
     ./lima-cloud-init.nix
+    ./lima-guest-agent.nix
     ./lima-nixos-configuration.nix
     ./openssh.nix
     ./rescue.nix
