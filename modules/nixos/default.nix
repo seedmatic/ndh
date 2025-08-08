@@ -6,7 +6,7 @@ let
   user = "nixos";
   keyType = "ed25519";
   keysDirectory = "/etc/ssh/authorized_keys.d";
-  kernelModules = [ "ext4" "overlay" ];
+  kernelModules = [ "ext4" "overlay" "vhost_vsock" "vsock" ];
   supportedFilesystems = {
     ext4 = true;
     overlay = true;
@@ -150,7 +150,17 @@ in {
   # Remove or comment out the old networking block to avoid conflicts:
   # networking = { ... }
 
-  environment.systemPackages = with pkgs; [ disko zfs ];
+  environment.systemPackages = with pkgs; [ disko zfs binutils ];
+  
+  # Ensure security wrappers are in PATH for all processes
+  environment.variables = {
+    PATH = lib.mkBefore [ "/run/wrappers/bin" ];
+  };
+  
+  # Also set it in the shell init
+  environment.shellInit = ''
+    export PATH="/run/wrappers/bin:$PATH"
+  '';
 
   # Services
   services = {
@@ -184,8 +194,8 @@ in {
   };
 
   # Security
+  security.sudo.enable = true;
   security.sudo.wheelNeedsPassword = false;
-  security.wrappers.sudo.source = "${pkgs.sudo}/bin/sudo";
 
   # User configuration
   user = lib.mkForce cfgUser;

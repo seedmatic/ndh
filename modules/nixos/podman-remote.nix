@@ -50,12 +50,6 @@
     };
   };
 
-  # Configure Podman socket for remote access using built-in NixOS options
-  systemd.sockets.podman.socketConfig.ListenStream = [
-    "/run/podman/podman.sock"  # Unix socket
-    "0.0.0.0:2375"             # TCP socket for remote access
-  ];
-
   # Create ZFS dataset for container storage
   systemd.services.podman-zfs-setup = {
     description = "Setup ZFS dataset for Podman container storage";
@@ -67,8 +61,8 @@
     };
     script = ''
       # Create ZFS dataset for containers if it doesn't exist
-      if ! ${pkgs.zfs}/bin/zfs list tank/containers >/dev/null 2>&1; then
-        ${pkgs.zfs}/bin/zfs create -o mountpoint=/var/lib/containers tank/containers
+      if ! ${pkgs.zfs}/bin/zfs list tank/nerd/containers >/dev/null 2>&1; then
+        ${pkgs.zfs}/bin/zfs create -o mountpoint=/var/lib/containers tank/nerd/containers
         ${pkgs.coreutils}/bin/mkdir -p /var/lib/containers/storage
         ${pkgs.coreutils}/bin/chown root:root /var/lib/containers
         ${pkgs.coreutils}/bin/chmod 755 /var/lib/containers

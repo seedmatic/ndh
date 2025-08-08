@@ -48,18 +48,46 @@ ssh:
   # This allows access to GitHub, etc.
   forwardAgent: true
 
-# Port forwarding for Podman API
-portForwards:
-- guestPort: 2375
-  hostPort: 2375
-- guestPort: 2376
-  hostPort: 2376
-
 containerd:
   system: false
   user: false
 
 provision:
+- # Early PATH setup - run before cloud-init
+  mode: system
+  script: |
+    #!/bin/bash
+    set -eux -o pipefail
+    
+    # Ensure /usr/local/bin exists
+    mkdir -p /usr/local/bin
+    
+    # Create early symlinks for critical binaries including sudo
+    ln -sf /run/wrappers/bin/sudo /usr/local/bin/sudo || true
+    ln -sf /run/current-system/sw/bin/bash /usr/local/bin/bash || true
+    
+    # Set PATH in ssh daemon environment - for non-interactive SSH commands
+    mkdir -p /etc/ssh/sshd_config.d
+    cat > /etc/ssh/sshd_config.d/lima-path.conf << 'EOF'
+    SetEnv PATH="/run/wrappers/bin:/usr/local/bin:/run/current-system/sw/bin:/nix/var/nix/profiles/default/bin:/usr/bin:/bin"
+    EOF
+    
+    # Create a script that sets the correct PATH including wrappers
+    mkdir -p /etc/profile.d
+    cat > /etc/profile.d/lima-path.sh << 'EOF'
+    export PATH="/run/wrappers/bin:/run/current-system/sw/bin:$PATH"
+    EOF
+    chmod +x /etc/profile.d/lima-path.sh
+    
+    # Also set it in the systemd environment
+    systemctl set-environment PATH="/run/wrappers/bin:/run/current-system/sw/bin:/nix/var/nix/profiles/default/bin"
+    
+    # Create lima-ssh-ready file immediately since basic system is ready
+    if [[ -f /mnt/lima-cidata/meta-data ]]; then
+      cp /mnt/lima-cidata/meta-data /run/lima-ssh-ready
+      chmod 644 /run/lima-ssh-ready
+    fi
+
 - # zfs disk setup
   mode: system
   script: |

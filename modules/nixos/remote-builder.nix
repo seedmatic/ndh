@@ -27,6 +27,14 @@
     max-jobs = 6;
     cores = 0;  # Use all available cores
     
+    # Performance optimizations for transfers
+    connect-timeout = 20;
+    stalled-download-timeout = 300;
+    download-attempts = 3;
+    
+    # Enable compression for faster transfers
+    compress-build-log = true;
+    
     # Enable features needed for builds
     system-features = [ "kvm" "nixos-test" "benchmark" "big-parallel" ];
   };
@@ -49,6 +57,12 @@
       TCPKeepAlive = true;
       ClientAliveInterval = 60;
       ClientAliveCountMax = 10;
+      
+      # Optimize for large file transfers (build artifacts)
+      MaxSessions = 20;
+      MaxStartups = "20:30:100";
+      # Enable faster cipher for local network transfers
+      Ciphers = "chacha20-poly1305@openssh.com,aes128-gcm@openssh.com,aes256-gcm@openssh.com";
     };
     
     # Authorized keys configuration
@@ -101,8 +115,16 @@
   boot.kernel.sysctl = {
     # Increase file descriptor limits
     "fs.file-max" = 1048576;
-    # Improve network performance
+    # Improve network performance for large transfers
     "net.core.rmem_max" = 16777216;
     "net.core.wmem_max" = 16777216;
+    "net.core.rmem_default" = 262144;
+    "net.core.wmem_default" = 262144;
+    # TCP optimizations for bulk transfers
+    "net.ipv4.tcp_window_scaling" = 1;
+    "net.ipv4.tcp_timestamps" = 1;
+    "net.ipv4.tcp_sack" = 1;
+    # Reduce TCP congestion control for local transfers
+    "net.ipv4.tcp_congestion_control" = "bbr";
   };
 }

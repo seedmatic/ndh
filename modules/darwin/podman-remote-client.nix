@@ -10,24 +10,28 @@ let
     set -euo pipefail
     
     VM_NAME="${limaVmName}"
-    VM_IP=$(${pkgs.lima}/bin/limactl list "$VM_NAME" --format 'table' | grep "$VM_NAME" | awk '{print $4}' | head -1)
+    SSH_INFO=$(${pkgs.lima}/bin/limactl list "$VM_NAME" --format 'table' | grep "$VM_NAME" | awk '{print $3}' | head -1)
     
-    if [ -z "$VM_IP" ] || [ "$VM_IP" = "-" ]; then
-      echo "❌ Lima VM '$VM_NAME' is not running or IP not available"
+    if [ -z "$SSH_INFO" ] || [ "$SSH_INFO" = "-" ]; then
+      echo "❌ Lima VM '$VM_NAME' is not running or SSH not available"
       echo "💡 Start the VM with: limactl start $VM_NAME"
       exit 1
     fi
+    
+    # Extract IP from SSH info (format: 127.0.0.1:port)
+    VM_IP=$(echo "$SSH_INFO" | cut -d':' -f1)
     
     echo "🔧 Setting up Podman remote connection to $VM_NAME ($VM_IP)"
     
     # Remove existing connection if it exists
     ${pkgs.podman}/bin/podman system connection remove lima-nixos 2>/dev/null || true
     
-    # Add new remote connection via SSH
+    # Add new remote connection via SSH using Lima's SSH config
+    export CONTAINER_SSHKEY="/Users/nxmatic/.lima/_config/user"
     ${pkgs.podman}/bin/podman system connection add \
-      --identity ~/.lima/_config/user \
+      --identity /Users/nxmatic/.lima/_config/user \
       lima-nixos \
-      ssh://nxmatic@$VM_IP/run/podman/podman.sock
+      "ssh://nxmatic@127.0.0.1:50174/run/podman/podman.sock?secure=false"
     
     # Set as default connection
     ${pkgs.podman}/bin/podman system connection default lima-nixos
@@ -89,13 +93,16 @@ in {
         exit 1
       fi
       
-      # Get VM IP
-      VM_IP=$(${pkgs.lima}/bin/limactl list "$VM_NAME" --format 'table' | grep "$VM_NAME" | awk '{print $4}' | head -1)
+      # Get VM SSH info and extract IP
+      SSH_INFO=$(${pkgs.lima}/bin/limactl list "$VM_NAME" --format 'table' | grep "$VM_NAME" | awk '{print $3}' | head -1)
       
-      if [ -z "$VM_IP" ] || [ "$VM_IP" = "-" ]; then
-        echo "❌ Could not determine VM IP address"
+      if [ -z "$SSH_INFO" ] || [ "$SSH_INFO" = "-" ]; then
+        echo "❌ Could not determine VM SSH info"
         exit 1
       fi
+      
+      # Extract IP from SSH info (format: 127.0.0.1:port)
+      VM_IP=$(echo "$SSH_INFO" | cut -d':' -f1)
       
       echo "🔗 VM IP: $VM_IP"
       
@@ -104,7 +111,7 @@ in {
       ${pkgs.podman}/bin/podman system connection add \
         --identity ~/.lima/_config/user \
         lima-nixos \
-        ssh://$LIMA_USER@$VM_IP/run/podman/podman.sock
+        ssh://lima-nerd-nixos/run/podman/podman.sock
       
       ${pkgs.podman}/bin/podman system connection default lima-nixos
       
@@ -121,7 +128,7 @@ in {
 
   # Environment variables for Podman remote  
   environment.variables = {
-    CONTAINER_HOST = "ssh://nxmatic@lima-nerd-nixos/run/podman/podman.sock";
+    CONTAINER_HOST = "ssh://lima-nerd-nixos/run/podman/podman.sock";
     CONTAINER_SSHKEY = "~/.lima/_config/user";
   };
 }

@@ -12,27 +12,28 @@ let
         : Systemd service to reconfigure the system from lima-cloud-init userdata on startup using $PATH
 
         : Attempting to fetch configuration from LIMA user data...
-        if [ -f ${LIMA_CIDATA_MNT}/lima.env ]; then
-            echo "storage exists";
-        else
-            echo "storage not exists";
+        # Set up logging for debugging - stdout and stderr to separate files
+        exec > >(tee -a "$''${dollar}{LIMA_CLOUD_INIT_OUTPUT_LOG:-/var/log/lima-cloud-init-output.log}")
+        exec 2> >(tee -a "$''${dollar}{LIMA_CLOUD_INIT_LOG:-/var/log/lima-cloud-init.log}" >&2)
+        
+        if [ ! -r  ${LIMA_CIDATA_MNT}/lima.env ]; then
+            : storage not exists
             exit 2
         fi
 
         : Extend path with required binaries
-        export PATH=${
+        export PATH="/run/wrappers/bin:${
           pkgs.lib.makeBinPath [
             pkgs.bash
             pkgs.mount
             pkgs.rsync
             pkgs.shadow
-            pkgs.sudo
             pkgs.util-linux
             pkgs.yq-go
             pkgs.zfs
             pkgs.zsh
           ]
-        }:$PATH
+        }:$PATH"
 
         : Remount lima-cidata as overlay
         mkdir -p ${LIMA_CIDATA_MNT}-upper ${LIMA_CIDATA_MNT}-work
@@ -172,9 +173,20 @@ in {
     serviceConfig = {
       Type = "oneshot";
       RemainAfterExit = true;
+      # Add logging to capture output
+      StandardOutput = "journal+console";
+      StandardError = "journal+console";
+      # Also redirect to files for easier debugging
+      ExecStartPre = [ "${pkgs.coreutils}/bin/mkdir -p /var/log" ];
     };
 
     unitConfig = { X-StopOnRemoval = false; };
+
+    # Create a wrapper script that logs to files as well
+    environment = {
+      LIMA_CLOUD_INIT_LOG = "/var/log/lima-cloud-init.log";
+      LIMA_CLOUD_INIT_OUTPUT_LOG = "/var/log/lima-cloud-init-output.log";
+    };
   };
 
   systemd.services.replay-virtiofs-udev = {
