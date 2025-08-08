@@ -1,7 +1,5 @@
 # shellcheck disable=all
 
-echo "Loading Zsh environment..."
-
 : ensure we\'re loading the wrappers and user bin directory at first
 path=( /run/wrappers/bin "/etc/profiles/per-user/$USER/bin" /run/current-system/sw/bin "${path[@]}" )
 

@@ -3,6 +3,10 @@
 
 { config, lib, pkgs, ... }:
 
+let
+  cfgUser = config.profile.user;
+  cfgUserName = cfgUser.name;
+in
 {
   # Enable Podman and containers
   virtualisation = {
@@ -100,7 +104,7 @@
   };
 
   # User configuration for podman
-  users.users.nxmatic = {
+  users.users.${cfgUserName} = {
     extraGroups = [ "wheel" "users" "podman" ];
     subUidRanges = [
       { startUid = 100000; count = 65536; }
