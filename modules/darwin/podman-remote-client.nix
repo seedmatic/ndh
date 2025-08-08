@@ -1,134 +1,93 @@
 # Podman remote configuration for macOS host (@codebase)
-# This module configures the host to connect to the remote Podman engine in the Lima VM
+# This module configures the host to connect to the remote Podman engine in the Lima VM using containers.conf
 
 { config, pkgs, lib, ... }:
 
 let
-  limaVmName = "nerd-nixos";
-  podmanRemoteScript = pkgs.writeShellScriptBin "podman-remote-setup" ''
+  dollar = "$";
+  
+  # Generate containers.conf that dynamically resolves Lima VM connection details
+  containers-conf = pkgs.writeShellScript "generate-containers-conf" ''
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    LIMA_VM_NAME="${dollar}{LIMA_VM_NAME:-nerd-nixos}"
+    LIMA_USER="${dollar}{LIMA_USER:-nxmatic}"
+    LIMA_IDENTITY_FILE="$HOME/.lima/_config/user"
+    
+    : Check if Lima VM is running
+    if ! ${pkgs.lima}/bin/limactl list "$LIMA_VM_NAME" --format=yaml | ${pkgs.yq-go}/bin/yq -e '.instance.status == "Running"' >/dev/null 2>&1; then
+      cat <<EoMessage >&2
+Lima VM '$LIMA_VM_NAME' is not running - using local Podman
+EoMessage
+      cat <<EOF
+[engine]
+remote = false
+EOF
+      exit 0
+    fi
+    
+    : Get VM SSH connection details
+    SSH_HOST=$(${pkgs.lima}/bin/limactl list "$LIMA_VM_NAME" --format=yaml | ${pkgs.yq-go}/bin/yq '.instance.sshAddress')
+    SSH_PORT=$(${pkgs.lima}/bin/limactl list "$LIMA_VM_NAME" --format=yaml | ${pkgs.yq-go}/bin/yq '.instance.sshLocalPort')
+    
+    cat <<EOF
+[engine]
+remote = true
+
+[engine.service_destinations]
+[engine.service_destinations.lima-$LIMA_VM_NAME]
+uri = "ssh://$LIMA_USER@$SSH_HOST:$SSH_PORT/run/podman/podman.sock"
+identity = "$LIMA_IDENTITY_FILE"
+default = true
+EOF
+  '';
+
+  podman-remote-setup = pkgs.writeShellScriptBin "podman-remote-setup" ''
     #!/usr/bin/env bash
     set -euo pipefail
     
-    VM_NAME="${limaVmName}"
-    SSH_INFO=$(${pkgs.lima}/bin/limactl list "$VM_NAME" --format 'table' | grep "$VM_NAME" | awk '{print $3}' | head -1)
+    LIMA_VM_NAME="${dollar}{LIMA_VM_NAME:-nerd-nixos}"
+    LIMA_CONTEXT_NAME="lima-${dollar}{LIMA_VM_NAME}"
+    LIMA_USER="${dollar}{LIMA_USER:-nxmatic}"
+    LIMA_IDENTITY_FILE="$HOME/.lima/_config/user"
+    LIMA_SSH_HOST="$LIMA_CONTEXT_NAME"
     
-    if [ -z "$SSH_INFO" ] || [ "$SSH_INFO" = "-" ]; then
-      echo "❌ Lima VM '$VM_NAME' is not running or SSH not available"
-      echo "💡 Start the VM with: limactl start $VM_NAME"
-      exit 1
+    : Create containers config directory
+    mkdir -p "$HOME/.config/containers"
+    
+    : Generate and install containers.conf
+    ${containers-conf} > "$HOME/.config/containers/containers.conf"
+    
+    : Create Docker context for Lima VM
+    ${pkgs.docker}/bin/docker context rm -f $LIMA_CONTEXT_NAME 2>/dev/null
+    ${pkgs.docker}/bin/docker context create $LIMA_CONTEXT_NAME \
+      --description "Lima $LIMA_VM_NAME Podman via SSH" \
+      --docker "host=ssh://$LIMA_SSH_HOST"
+    ${pkgs.docker}/bin/docker context use $LIMA_CONTEXT_NAME
+    
+    : Test the connection
+    if ! ${pkgs.podman}/bin/podman version | head -10; then
+      cat <<EoMessage | cut -c 3- >&2
+      ⚠️ Connection test failed. Make sure Lima VM is running:
+        limactl start $LIMA_VM_NAME
+    EoMessage
     fi
-    
-    # Extract IP from SSH info (format: 127.0.0.1:port)
-    VM_IP=$(echo "$SSH_INFO" | cut -d':' -f1)
-    
-    echo "🔧 Setting up Podman remote connection to $VM_NAME ($VM_IP)"
-    
-    # Remove existing connection if it exists
-    ${pkgs.podman}/bin/podman system connection remove lima-nixos 2>/dev/null || true
-    
-    # Add new remote connection via SSH using Lima's SSH config
-    export CONTAINER_SSHKEY="/Users/nxmatic/.lima/_config/user"
-    ${pkgs.podman}/bin/podman system connection add \
-      --identity /Users/nxmatic/.lima/_config/user \
-      lima-nixos \
-      "ssh://nxmatic@127.0.0.1:50174/run/podman/podman.sock?secure=false"
-    
-    # Set as default connection
-    ${pkgs.podman}/bin/podman system connection default lima-nixos
-    
-    echo "✅ Podman remote connection configured!"
-    echo "🐳 Test with: podman --remote version"
-    
-    # Test the connection
-    if ${pkgs.podman}/bin/podman --remote version >/dev/null 2>&1; then
-      echo "🎉 Remote Podman engine is working!"
-    else
-      echo "⚠️  Connection test failed. Check if Podman service is running in the VM:"
-      echo "   lima nerd-nixos sudo systemctl status podman.socket"
-    fi
-  '';
-
-  podmanRemoteAlias = pkgs.writeShellScriptBin "podman-lima" ''
-    #!/usr/bin/env bash
-    # Wrapper script to use remote Podman via Lima
-    exec ${pkgs.podman}/bin/podman --remote "$@"
-  '';
-
-  dockerAlias = pkgs.writeShellScriptBin "docker" ''
-    #!/usr/bin/env bash
-    # Docker compatibility alias for remote Podman
-    exec ${pkgs.podman}/bin/podman --remote "$@"
   '';
 
 in {
   # Add Podman and helper scripts to system packages
+  # Note: No global environment variables set
+  #       SSH configuration and Podman connections are managed through containers.conf
   environment.systemPackages = with pkgs; [
+    buildah
+    docker
     podman
     podman-compose
+    podman-remote-setup
     podman-tui
     skopeo
-    buildah
-    podmanRemoteScript
-    podmanRemoteAlias
-    dockerAlias
   ];
 
-  # Create lima connection helper script
-  environment.etc."podman-lima-setup.sh" = {
-    text = ''
-      #!/usr/bin/env bash
-      # Helper script to setup Podman remote connection to Lima VM
-      
-      set -euo pipefail
-      
-      VM_NAME="${limaVmName}"
-      LIMA_USER="nxmatic"
-      
-      echo "🚀 Setting up Podman remote connection to Lima VM..."
-      
-      # Check if Lima VM is running
-      if ! ${pkgs.lima}/bin/limactl list | grep -q "$VM_NAME.*Running"; then
-        echo "❌ Lima VM '$VM_NAME' is not running"
-        echo "💡 Start it with: limactl start $VM_NAME"
-        exit 1
-      fi
-      
-      # Get VM SSH info and extract IP
-      SSH_INFO=$(${pkgs.lima}/bin/limactl list "$VM_NAME" --format 'table' | grep "$VM_NAME" | awk '{print $3}' | head -1)
-      
-      if [ -z "$SSH_INFO" ] || [ "$SSH_INFO" = "-" ]; then
-        echo "❌ Could not determine VM SSH info"
-        exit 1
-      fi
-      
-      # Extract IP from SSH info (format: 127.0.0.1:port)
-      VM_IP=$(echo "$SSH_INFO" | cut -d':' -f1)
-      
-      echo "🔗 VM IP: $VM_IP"
-      
-      # Setup Podman remote connection
-      ${pkgs.podman}/bin/podman system connection remove lima-nixos 2>/dev/null || true
-      ${pkgs.podman}/bin/podman system connection add \
-        --identity ~/.lima/_config/user \
-        lima-nixos \
-        ssh://lima-nerd-nixos/run/podman/podman.sock
-      
-      ${pkgs.podman}/bin/podman system connection default lima-nixos
-      
-      echo "✅ Podman remote connection configured!"
-      echo "🐳 Test with: podman --remote info"
-      
-      # Create alias for convenience
-      echo ""
-      echo "💡 You can now use:"
-      echo "   podman --remote <command>  # Use remote Podman"
-      echo "   docker <command>           # Docker compatibility"
-    '';
-  };
 
-  # Environment variables for Podman remote  
-  environment.variables = {
-    CONTAINER_HOST = "ssh://lima-nerd-nixos/run/podman/podman.sock";
-    CONTAINER_SSHKEY = "~/.lima/_config/user";
-  };
 }
