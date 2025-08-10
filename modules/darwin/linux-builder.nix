@@ -32,6 +32,47 @@ in {
       config = {
         virtualisation.darwin-builder.hostPort = 31022;
         
+        # Use the same binary caches and settings as the Darwin configuration
+        nix.settings = {
+          # Make flox cache trusted (not just extra)
+          trusted-substituters = [
+            "https://cache.flox.dev"
+            "https://cache.flakehub.com"  # Determinate Systems FlakeHub cache
+          ];
+          trusted-public-keys = [
+            "flox-cache-public-1:7F4OyH7ZCnFhcze3fJdfyXYLQw/aV7GEed86nQ7IsOs="
+            "floxhub-1:0QOAlcobcEvq1mqEf4qAYCaWnTTOXpyoRv/PmqfSixM="
+            "cache.flakehub.com-1:t7S7JjLyIJJLv0a0BqXdFnJvr4P8pAB2Z9xN2lYZXvY="  # Determinate Systems key
+          ];
+          
+          # Additional substituters from flox.conf
+          extra-trusted-substituters = [
+            "https://cache.flox.dev"
+            "https://cache.flakehub.com"
+          ];
+          extra-trusted-public-keys = [
+            "flox-cache-public-1:7F4OyH7ZCnFhcze3fJdfyXYLQw/aV7GEed86nQ7IsOs="
+            "floxhub-1:0QOAlcobcEvq1mqEf4qAYCaWnTTOXpyoRv/PmqfSixM="
+            "cache.flakehub.com-1:t7S7JjLyIJJLv0a0BqXdFnJvr4P8pAB2Z9xN2lYZXvY="
+          ];
+          
+          # Connection and performance settings from flox.conf
+          connect-timeout = lib.mkDefault 10;
+          stalled-download-timeout = lib.mkDefault 30;
+          
+          # Buffer settings - increase download buffer to prevent buffer full warnings
+          download-buffer-size = lib.mkDefault 268435456;  # 256 MB (was 64 MB default)
+          
+          # Storage management (use mkDefault to allow NixOS defaults to override)
+          min-free = lib.mkDefault 128000000;   # 128MB (from flox.conf)
+          max-free = lib.mkDefault 1000000000;  # 1GB (from flox.conf, but NixOS default 3GB will override)
+          
+          # Features
+          experimental-features = [ "nix-command" "flakes" ];
+          accept-flake-config = true;
+          always-allow-substitutes = true;
+        };
+        
         # Configure SSH daemon to also check our profile keys file
         services.openssh.authorizedKeysFiles = [
           "/var/keys/%u_ed25519.pub"           # Original nix-darwin key location  

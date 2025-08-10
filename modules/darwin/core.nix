@@ -24,6 +24,11 @@ in {
       ssl-cert-file = /etc/ssl/cert.pem
       extra-experimental-features = nix-command flakes
       extra-platforms = aarch64-darwin
+      # Add Determinate Systems cache for binary substitution
+      extra-trusted-substituters = https://cache.flakehub.com
+      extra-trusted-public-keys = cache.flakehub.com-1:t7S7JjLyIJJLv0a0BqXdFnJvr4P8pAB2Z9xN2lYZXvY=
+      # Increase download buffer size to prevent buffer full warnings
+      download-buffer-size = 268435456  # 256 MB (was 64 MB default)
     '';
 
     # Configure NIX_PATH for legacy nix commands and <nixpkgs> imports
