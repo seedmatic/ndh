@@ -22,6 +22,10 @@ in
       StrictHostKeyChecking no
       UserKnownHostsFile /dev/null
       LogLevel QUIET
+      # Connection timeouts
+      ConnectTimeout 10
+      ServerAliveInterval 30
+      ServerAliveCountMax 3
       # Enable connection multiplexing for better performance
       ControlMaster auto
       ControlPath /tmp/ssh-builder-%r@%h:%p

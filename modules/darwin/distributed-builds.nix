@@ -7,8 +7,12 @@ let
   userName = config.profile.user.name;
   userHome = config.profile.user.home;
   
-  # SSH key paths for builders (use user's .ssh directory for proper permissions)
-  builderKeyPath = "${userHome}/.ssh/keys.d/linux_builder";
+  # SSH key paths for builders
+  # Local builder uses default nix-darwin key, remote via-hosts use profile-specific keys
+  defaultBuilderKeyPath = "/etc/nix/builder_ed25519";  # Default nix-darwin key
+  profileBuilderKeyPath = "/etc/nix/builder_${config.profile.name}_ed25519";  # Profile-specific key
+  # User directory key for direct SSH connections (if needed)
+  userBuilderKeyPath = "${userHome}/.ssh/keys.d/linux_builder";
   
   # Define remote builders based on hostname
   # These use SSH ProxyJump to reach Linux builder VMs through Darwin hosts
@@ -23,7 +27,7 @@ let
       speedFactor = if hostAlias == "bioskop" then 3 else 2;
       supportedFeatures = [ "kvm" "benchmark" "big-parallel" ];
       mandatoryFeatures = [ ];
-      sshKey = "/etc/nix/builder_ed25519";  # Local builder uses system key
+      sshKey = defaultBuilderKeyPath;  # Local builder uses default nix-darwin key
       sshUser = "builder";
       protocol = "ssh-ng";
     }] ++
@@ -35,7 +39,7 @@ let
       speedFactor = 2;  # alcide's linux-builder as secondary for bioskop
       supportedFeatures = [ "kvm" "benchmark" "big-parallel" ];
       mandatoryFeatures = [ ];
-      sshKey = builderKeyPath;
+      sshKey = profileBuilderKeyPath;
       sshUser = "builder";
       protocol = "ssh-ng";
     }) ++ 
@@ -46,7 +50,7 @@ let
       speedFactor = 3;  # bioskop's linux-builder as primary for alcide (remote)
       supportedFeatures = [ "kvm" "benchmark" "big-parallel" ];
       mandatoryFeatures = [ ];
-      sshKey = builderKeyPath;
+      sshKey = profileBuilderKeyPath;
       sshUser = "builder";
       protocol = "ssh-ng";
     });
@@ -80,6 +84,10 @@ in {
         StrictHostKeyChecking no
         UserKnownHostsFile /dev/null
         LogLevel QUIET
+        # Connection timeouts
+        ConnectTimeout 10
+        ServerAliveInterval 30
+        ServerAliveCountMax 3
         # Enable connection multiplexing for faster transfers
         ControlMaster auto
         ControlPath /tmp/ssh-builder-alcide-%r@%h:%p
@@ -99,6 +107,10 @@ in {
         StrictHostKeyChecking no
         UserKnownHostsFile /dev/null
         LogLevel QUIET
+        # Connection timeouts
+        ConnectTimeout 10
+        ServerAliveInterval 30
+        ServerAliveCountMax 3
         # Enable connection multiplexing for faster transfers
         ControlMaster auto
         ControlPath /tmp/ssh-builder-bioskop-%r@%h:%p
@@ -107,11 +119,5 @@ in {
         Compression yes
         TCPKeepAlive yes
     '';
-    
-    # Ensure builder keys are properly managed in /etc/nix/ only
-    environment.etc = {
-      "nix/builder_ed25519".source = ../../keys/builder_ed25519;
-      "nix/builder_ed25519.pub".source = ../../keys/builder_ed25519.pub;
-    };
   };
 }
