@@ -3,9 +3,11 @@ let
   useCustomConfig = config.linux-builder.useCustomConfig;
   qemu-pkgdb = self.packages.${pkgs.system}.qemu-pkgdb or pkgs.qemu;
 
-  keys = lib.importYAML ./ssh.d/keys.yaml;
+  keys = builtins.fromJSON (builtins.readFile (pkgs.runCommand "keys.json" { buildInputs = [ pkgs.yq-go ]; } ''
+    yq -o=json '.' ${../home-manager/ssh.d/keys.yaml} > $out
+  ''));
   linuxBuilderCommittedPubKey = keys.profiles.committed.linux-builder.public; 
-  linuxBuilderCommittedWorkKey = keys.profiles.committed.linux-builder.work;
+  linuxBuilderCommittedWorkKey = keys.profiles.work.linux-builder.public;
 in {
   options.linux-builder.useCustomConfig = lib.mkOption {
     type = lib.types.bool;
@@ -27,7 +29,8 @@ in {
       mandatoryFeatures = [];
       config = {
         virtualisation.darwin-builder.hostPort = 31022;
-        services.openssh.authorizedKeys.keys = [ linuxBuilderCommittedPubKey
+        users.users.builder.openssh.authorizedKeys.keys = [ 
+          linuxBuilderCommittedPubKey
           linuxBuilderCommittedWorkKey
         ];
       };
