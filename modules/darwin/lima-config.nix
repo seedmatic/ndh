@@ -122,15 +122,13 @@ in {
   # Generate lima.yaml in the correct user directory
   # Note: On Darwin, we use the Darwin user's home, not the profile user's home
   # The profile user is for the NixOS guest, while Lima runs on the Darwin host
-  system.activationScripts.generateLimaConfig = {
-    text = ''
-      : Create Lima configuration directory
-      mkdir -p "$HOME/.lima/nerd-nixos"
-      
-      : Generate lima.yaml with profile user configuration
-      cat > "$HOME/.lima/nerd-nixos/lima.yaml" << 'EOF'
+  system.activationScripts.generateLimaConfig = lib.stringAfter ["users"] ''
+    : Create Lima configuration directory
+    mkdir -p "$HOME/.lima/nerd-nixos"
+    
+    : Generate lima.yaml with profile user configuration
+    cat > "$HOME/.lima/nerd-nixos/lima.yaml" << 'EOF'
 ${lib.generators.toYAML {} limaConfig}
 EOF
-    '';
-  };
+  '';
 }

@@ -8,34 +8,33 @@ let
 in
 {
   # Copy builder SSH key to user's .ssh directory with proper permissions
-  system.activationScripts.setupBuilderKey = {
-    text = ''
-      # Create .ssh directory if it doesn't exist
-      mkdir -p ${userHome}/.ssh/keys.d
-      
-      # Backup existing files before overwriting
-      if [ -f ${userHome}/.ssh/keys.d/builder_ed25519 ]; then
-        cp ${userHome}/.ssh/keys.d/builder_ed25519 ${userHome}/.ssh/keys.d/builder_ed25519.before-nix-darwin
-      fi
-      if [ -f ${userHome}/.ssh/keys.d/builder_ed25519.pub ]; then
-        cp ${userHome}/.ssh/keys.d/builder_ed25519.pub ${userHome}/.ssh/keys.d/builder_ed25519.pub.before-nix-darwin
-      fi
-      
-      # Copy the builder private key with proper permissions
-      cp /etc/nix/builder_ed25519 ${userHome}/.ssh/keys.d/builder_ed25519
-      chmod 600 ${userHome}/.ssh/keys.d/builder_ed25519
-      chown ${userName}:staff ${userHome}/.ssh/keys.d/builder_ed25519
-      
-      # Copy the public key too
-      cp /etc/nix/builder_ed25519.pub ${userHome}/.ssh/keys.d/builder_ed25519.pub
-      chmod 644 ${userHome}/.ssh/keys.d/builder_ed25519.pub
-      chown ${userName}:staff ${userHome}/.ssh/keys.d/builder_ed25519.pub
-      
-      # Ensure the directory has correct ownership
-      chown ${userName}:staff ${userHome}/.ssh/keys.d
-    '';
-    deps = [ "etc" ];  # Run after /etc files are set up
-  };
+  system.activationScripts.setupBuilderKey = lib.stringAfter ["etc"] ''
+    # Create .ssh directory if it doesn't exist
+    mkdir -p ${userHome}/.ssh/keys.d
+    
+    # Backup existing files before overwriting
+    if [ -f ${userHome}/.ssh/keys.d/builder_ed25519 ]; then
+      cp ${userHome}/.ssh/keys.d/builder_ed25519 ${userHome}/.ssh/keys.d/builder_ed25519.before-nix-darwin
+    fi
+    if [ -f ${userHome}/.ssh/keys.d/builder_ed25519.pub ]; then
+      cp ${userHome}/.ssh/keys.d/builder_ed25519.pub ${userHome}/.ssh/keys.d/builder_ed25519.pub.before-nix-darwin
+    fi
+    
+    # Copy the builder private key with proper permissions
+    cp /etc/nix/builder_ed25519 ${userHome}/.ssh/keys.d/builder_ed25519
+    chmod 600 ${userHome}/.ssh/keys.d/builder_ed25519
+    chown ${userName}:staff ${userHome}/.ssh/keys.d/builder_ed25519
+    
+    # Copy the public key too
+    cp /etc/nix/builder_ed25519.pub ${userHome}/.ssh/keys.d/builder_ed25519.pub
+    chmod 644 ${userHome}/.ssh/keys.d/builder_ed25519.pub
+    chown ${userName}:staff ${userHome}/.ssh/keys.d/builder_ed25519.pub
+    
+        # Ensure the directory has correct ownership
+    chown ${userName}:staff ${userHome}/.ssh/keys.d
+  '';
+
+  # SSH configuration for connecting to the Linux builder
 
   # Configure SSH to proxy connections to the local Linux builder
   programs.ssh.extraConfig = ''
