@@ -17,7 +17,8 @@ in {
     };
   };
 
-  system.activationScripts.dnsmasqLogFile = lib.stringAfter ["users"] ''
+  system.activationScripts.postActivation.text = ''
+    # Create dnsmasq log file
     mkdir -p "$(dirname ${logFile})"
     touch "${logFile}"
     chmod 644 "${logFile}"

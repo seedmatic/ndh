@@ -14,8 +14,8 @@ in {
         echo "${dollar}XDG_CACHE_HOME/direnv/layouts/${dollar}pwd_hash"
       }
 
-      source_env_if_exists ''${dollar}{BASH_SOURCE}~${dollar}(uname)
-      source_env_if_exists ''${dollar}{BASH_SOURCE}~${dollar}(hostname)
+      source_env_if_exists ${dollar}{BASH_SOURCE}~${dollar}(uname)
+      source_env_if_exists ${dollar}{BASH_SOURCE}~${dollar}(hostname)
     '';
 
   };

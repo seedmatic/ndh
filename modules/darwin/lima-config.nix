@@ -5,6 +5,7 @@
 
 let
   profileUser = config.profile.user.name;
+  profileHome = config.profile.user.home;
   
   limaConfig = {
     cpus = 8;
@@ -119,16 +120,14 @@ let
   };
   
 in {
-  # Generate lima.yaml in the correct user directory
-  # Note: On Darwin, we use the Darwin user's home, not the profile user's home
-  # The profile user is for the NixOS guest, while Lima runs on the Darwin host
-  system.activationScripts.generateLimaConfig = lib.stringAfter ["users"] ''
-    : Create Lima configuration directory
-    mkdir -p "$HOME/.lima/nerd-nixos"
+  # Generate lima.yaml in the profile user's home directory
+  system.activationScripts.postActivation.text = ''
+    : Create Lima configuration directory in profile home
+    mkdir -p "${profileHome}/.lima/nerd-nixos"
     
-    : Generate lima.yaml with profile user configuration
-    cat > "$HOME/.lima/nerd-nixos/lima.yaml" << 'EOF'
-${lib.generators.toYAML {} limaConfig}
-EOF
+    : Generate lima.yaml with profile user configuration using yq
+    cat << 'EOF' | ${pkgs.yq-go}/bin/yq -P -p json -o yaml eval . - > "${profileHome}/.lima/nerd-nixos/lima.yaml"
+    ${lib.generators.toJSON {} limaConfig}
+    EOF
   '';
 }
