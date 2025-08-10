@@ -302,6 +302,7 @@
         birdOverlay = inputs: import ./overlays/bird.nix inputs;
         qemuOverlay = inputs: import ./overlays/qemu.nix inputs;
         nodejsOverlay = inputs: import ./overlays/nodejs.nix inputs;
+        incusComposeOverlay = inputs: import ./overlays/incus-compose.nix inputs;
       };
 
       homeManagerModules = {
