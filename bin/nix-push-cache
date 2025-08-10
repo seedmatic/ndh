@@ -39,13 +39,12 @@ Push store paths to the nxmatic Cachix cache.
 
 OPTIONS:
     -h, --help          Show this help message
-    -a, --all-outputs   Push all outputs of derivations
     -j, --jobs N        Number of parallel jobs (default: 4)
     --dry-run          Show what would be pushed without actually pushing
 
 EXAMPLES:
     $0 /nix/store/...                    # Push specific store path
-    $0 -a result                         # Push all outputs from ./result
+    $0 result                            # Push from ./result
     $0 \$(nix-build -A mypackage)         # Push build result
     nix build .#mypackage && $0 result   # Build and push
 
@@ -70,7 +69,7 @@ check_cachix() {
         exit 1
     fi
     
-    # Check if cachix is configured with our token
+    # Check if we can read the nxmatic token from the tokens file
     local token
     if ! token=$(yq '.cache.nxmatic.token' "$CACHE_TOKENS_FILE" 2>/dev/null); then
         print_error "Failed to read nxmatic token from cache tokens file"
@@ -81,6 +80,9 @@ check_cachix() {
         print_error "nxmatic token is empty or null in cache tokens file"
         exit 1
     fi
+    
+    # Set the cachix auth token as environment variable
+    export CACHIX_AUTH_TOKEN="$token"
     
     print_status "Cache authentication configured ✓"
 }
@@ -124,7 +126,6 @@ get_paths_to_push() {
 }
 
 main() {
-    local all_outputs=false
     local jobs=4
     local dry_run=false
     local paths=()
@@ -134,10 +135,6 @@ main() {
             -h|--help)
                 show_usage
                 exit 0
-                ;;
-            -a|--all-outputs)
-                all_outputs=true
-                shift
                 ;;
             -j|--jobs)
                 jobs="$2"
@@ -177,10 +174,6 @@ main() {
     
     # Build cachix push command
     local push_cmd=(cachix push "$CACHE_NAME")
-    
-    if [[ "$all_outputs" == "true" ]]; then
-        push_cmd+=(--all-outputs)
-    fi
     
     push_cmd+=(--jobs "$jobs")
     push_cmd+=("${store_paths[@]}")

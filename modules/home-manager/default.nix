@@ -212,11 +212,12 @@ in {
         [ "/Volumes/GitHub/HylandSoftware/hxpr" "/Volumes/GitHub/nuxeo/nos" ];
     };
   } // (if pkgs.stdenv.isDarwin then {
-    cachix-agent = {
-      enableLaunchdAgent = true;
-      name = "nix-community";
-      credentialsFile = ./cachix-agent.dhall;
-    };
+    # Disable cachix-agent to avoid conflicts with our cache-tokens module
+    # cachix-agent = {
+    #   enableLaunchdAgent = true;
+    #   name = "nix-community";
+    #   credentialsFile = ./cachix-agent.dhall;
+    # };
   } else
     { });
 }

@@ -69,6 +69,9 @@ in {
           # Buffer settings - increase download buffer to prevent buffer full warnings
           download-buffer-size = lib.mkDefault 268435456;  # 256 MB (was 64 MB default)
           
+          # Progress and logging settings
+          log-lines = lib.mkDefault 50;
+          
           # Storage management (use mkDefault to allow NixOS defaults to override)
           min-free = lib.mkDefault 128000000;   # 128MB (from flox.conf)
           max-free = lib.mkDefault 1000000000;  # 1GB (from flox.conf, but NixOS default 3GB will override)

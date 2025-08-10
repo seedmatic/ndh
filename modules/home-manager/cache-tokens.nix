@@ -18,9 +18,14 @@ in {
   };
 
   config = lib.mkIf cfg.enable {
+    # Disable the conflicting cachix-agent dhall config that has SOPS parsing issues  
+    xdg.configFile."cachix/cachix.dhall" = lib.mkForce {
+      enable = false;
+    };
+    
     home.file."${cacheTokensFile}".source = cfg.tokenFile;
     
-    # Make the cache tokens available to nix
+    # Make the cache tokens available to nix and setup cachix config without SOPS issues
     home.activation.setupCacheTokens = lib.hm.dag.entryAfter ["writeBoundary"] ''
       # Extract cache configuration from SOPS-encrypted YAML
       if [[ -f "${cacheTokensFile}" ]]; then
@@ -28,38 +33,23 @@ in {
         NXMATIC_TOKEN=$(${pkgs.yq-go}/bin/yq '.cache.nxmatic.token' "${cacheTokensFile}")
         NXMATIC_URL=$(${pkgs.yq-go}/bin/yq '.cache.nxmatic.url' "${cacheTokensFile}")
         
-        # Setup cachix configuration
-        mkdir -p ~/.config/cachix
-        cat > ~/.config/cachix/cachix.dhall << EOF
-{ name = "nxmatic"
-, secretKey = None Text
-, authToken = "$NXMATIC_TOKEN"
-, publicKey = "nxmatic.cachix.org-1:oWogvXdam3gTxKzPZCDqq8khybQpqRdNpQQrKG3r4xM="
-, api = "https://cachix.org"
-, compressionMethod = "zstd"
-, compressionLevel = +3
+        if [[ -n "$NXMATIC_TOKEN" && "$NXMATIC_TOKEN" != "null" ]]; then
+          # Setup cachix configuration in the expected format
+          mkdir -p ~/.config/cachix
+          cat > ~/.config/cachix/cachix.dhall << 'EOF'
+{ authToken = "REPLACE_TOKEN_HERE"
+, hostname = "https://cachix.org" 
+, binaryCaches = [] : List { name : Text, secretKey : Text }
 }
 EOF
-        
-        # Setup .netrc for cachix authentication
-        if [[ ! -f ~/.netrc ]]; then
-          touch ~/.netrc
-          chmod 600 ~/.netrc
+          # Replace the token placeholder with the actual token
+          ${pkgs.gnused}/bin/sed -i "s/REPLACE_TOKEN_HERE/$NXMATIC_TOKEN/g" ~/.config/cachix/cachix.dhall
+          echo "✅ Cachix configuration created successfully"
+        else
+          echo "❌ Failed to extract nxmatic token from cache tokens file"
         fi
-        
-        # Remove any existing cachix.org entry and add new one
-        ${pkgs.gnugrep}/bin/grep -v "machine cachix.org" ~/.netrc > ~/.netrc.tmp || true
-        ${pkgs.gnugrep}/bin/grep -v "login token" ~/.netrc.tmp > ~/.netrc || true
-        ${pkgs.gnugrep}/bin/grep -v "password.*eyJ" ~/.netrc > ~/.netrc.tmp || true
-        mv ~/.netrc.tmp ~/.netrc 2>/dev/null || true
-        
-        cat >> ~/.netrc << EOF
-
-machine cachix.org
-login token
-password $NXMATIC_TOKEN
-EOF
-        chmod 600 ~/.netrc
+      else
+        echo "❌ Cache tokens file not found: ${cacheTokensFile}"
       fi
     '';
   };

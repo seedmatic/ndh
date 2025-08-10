@@ -1,0 +1,121 @@
+#!/usr/bin/env bash
+# Cachix Watch Helper (@codebase)
+# Wrapper for cachix watch-exec that handles authentication
+
+set -euo pipefail
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+# Configuration
+CACHE_NAME="nxmatic"
+CACHE_TOKENS_FILE="$HOME/.local/state/cache-tokens.yaml"
+
+print_status() {
+    echo -e "${BLUE}ℹ️  $1${NC}"
+}
+
+print_error() {
+    echo -e "${RED}❌ $1${NC}"
+}
+
+show_usage() {
+    cat << EOF
+Usage: $0 [CACHIX_OPTIONS] -- COMMAND [ARGS...]
+
+Wrapper for cachix watch-exec with automatic authentication.
+
+EXAMPLES:
+    $0 -- nix build .#mypackage
+    $0 -- nix build --flake ./host/bioskop#darwinConfiguration
+    $0 --jobs 8 -- nix build .#nixosConfigurations.nerd-nixos.config.system.build.vm
+
+All cachix watch-exec options are supported. The -- separator is required.
+EOF
+}
+
+check_requirements() {
+    if ! command -v cachix >/dev/null 2>&1; then
+        print_error "cachix command not found. Please ensure cachix is installed."
+        exit 1
+    fi
+    
+    if ! command -v yq >/dev/null 2>&1; then
+        print_error "yq command not found. Please ensure yq is installed."
+        exit 1
+    fi
+    
+    if [[ ! -f "$CACHE_TOKENS_FILE" ]]; then
+        print_error "Cache tokens file not found at $CACHE_TOKENS_FILE"
+        print_error "Make sure home-manager has been activated and cache-tokens.enable = true"
+        exit 1
+    fi
+    
+    # Read and export the auth token
+    local token
+    if ! token=$(yq '.cache.nxmatic.token' "$CACHE_TOKENS_FILE" 2>/dev/null); then
+        print_error "Failed to read nxmatic token from cache tokens file"
+        exit 1
+    fi
+    
+    if [[ -z "$token" || "$token" == "null" ]]; then
+        print_error "nxmatic token is empty or null in cache tokens file"
+        exit 1
+    fi
+    
+    export CACHIX_AUTH_TOKEN="$token"
+    print_status "Cache authentication configured ✓"
+}
+
+main() {
+    local cachix_args=()
+    local command_found=false
+    local command_args=()
+    
+    # Parse arguments to separate cachix options from the command
+    while [[ $# -gt 0 ]]; do
+        if [[ "$1" == "--" ]]; then
+            command_found=true
+            shift
+            command_args=("$@")
+            break
+        elif [[ "$1" == "-h" || "$1" == "--help" ]]; then
+            show_usage
+            exit 0
+        else
+            cachix_args+=("$1")
+            shift
+        fi
+    done
+    
+    if [[ "$command_found" == "false" ]]; then
+        print_error "Command separator '--' not found"
+        show_usage
+        exit 1
+    fi
+    
+    if [[ ${#command_args[@]} -eq 0 ]]; then
+        print_error "No command specified after '--'"
+        show_usage
+        exit 1
+    fi
+    
+    check_requirements
+    
+    # Build the full cachix watch-exec command
+    local full_cmd=(cachix watch-exec "$CACHE_NAME")
+    full_cmd+=("${cachix_args[@]}")
+    full_cmd+=("--")
+    full_cmd+=("${command_args[@]}")
+    
+    print_status "Executing: ${full_cmd[*]}"
+    
+    # Execute the command
+    exec "${full_cmd[@]}"
+}
+
+main "$@"
