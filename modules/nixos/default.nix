@@ -45,9 +45,14 @@ in {
       extra-sandbox-paths = [ "/dev/kvm" ];
 
       # Flox cache settings
-      extra-substituters = [ "https://cache.flox.dev" ];
-      extra-trusted-public-keys =
-        [ "flox-cache-public-1:7F4OyH7ZCnFhcze3fJdfyXYLQw/aV7GEed86nQ7IsOs=" ];
+      extra-substituters = [ 
+        "https://cache.flox.dev" 
+        "https://nxmatic.cachix.org"  # nxmatic cache
+      ];
+      extra-trusted-public-keys = [
+        "flox-cache-public-1:7F4OyH7ZCnFhcze3fJdfyXYLQw/aV7GEed86nQ7IsOs="
+        "nxmatic.cachix.org-1:oWogvXdam3gTxKzPZCDqq8khybQpqRdNpQQrKG3r4xM="  # nxmatic key
+      ];
     }
     (lib.mkIf isX86_64 {
       extra-platforms = [ "aarch64-linux" ];

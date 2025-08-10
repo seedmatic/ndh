@@ -7,7 +7,7 @@ let
   userShell = user.shell;
 
 in {
-  imports = [ ./networking.nix ];
+  imports = [ ./networking.nix ./cachix.nix ];
 
   # Enable automatic backup of conflicting files during activation
   environment.etc.backup.enable = true;
@@ -24,11 +24,13 @@ in {
       ssl-cert-file = /etc/ssl/cert.pem
       extra-experimental-features = nix-command flakes
       extra-platforms = aarch64-darwin
-      # Add Determinate Systems cache for binary substitution
-      extra-trusted-substituters = https://cache.flakehub.com
-      extra-trusted-public-keys = cache.flakehub.com-1:t7S7JjLyIJJLv0a0BqXdFnJvr4P8pAB2Z9xN2lYZXvY=
+      # Add binary caches for substitution
+      extra-trusted-substituters = https://cache.flakehub.com https://nxmatic.cachix.org
+      extra-trusted-public-keys = cache.flakehub.com-1:t7S7JjLyIJJLv0a0BqXdFnJvr4P8pAB2Z9xN2lYZXvY= nxmatic.cachix.org-1:oWogvXdam3gTxKzPZCDqq8khybQpqRdNpQQrKG3r4xM=
       # Increase download buffer size to prevent buffer full warnings
       download-buffer-size = 268435456  # 256 MB (was 64 MB default)
+      # Enable pushing to nxmatic cache
+      extra-substituters = https://nxmatic.cachix.org
     '';
 
     # Configure NIX_PATH for legacy nix commands and <nixpkgs> imports

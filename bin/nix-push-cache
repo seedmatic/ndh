@@ -1,0 +1,199 @@
+#!/usr/bin/env bash
+# nxmatic Cache Push Helper (@codebase)
+# Pushes specified paths or build results to the nxmatic Cachix cache
+
+set -euo pipefail
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+# Configuration
+CACHE_NAME="nxmatic"
+CACHE_TOKENS_FILE="$HOME/.local/state/cache-tokens.yaml"
+
+print_status() {
+    echo -e "${BLUE}ℹ️  $1${NC}"
+}
+
+print_success() {
+    echo -e "${GREEN}✅ $1${NC}"
+}
+
+print_warning() {
+    echo -e "${YELLOW}⚠️  $1${NC}"
+}
+
+print_error() {
+    echo -e "${RED}❌ $1${NC}"
+}
+
+show_usage() {
+    cat << EOF
+Usage: $0 [OPTIONS] [PATHS...]
+
+Push store paths to the nxmatic Cachix cache.
+
+OPTIONS:
+    -h, --help          Show this help message
+    -a, --all-outputs   Push all outputs of derivations
+    -j, --jobs N        Number of parallel jobs (default: 4)
+    --dry-run          Show what would be pushed without actually pushing
+
+EXAMPLES:
+    $0 /nix/store/...                    # Push specific store path
+    $0 -a result                         # Push all outputs from ./result
+    $0 \$(nix-build -A mypackage)         # Push build result
+    nix build .#mypackage && $0 result   # Build and push
+
+If no paths are provided, looks for ./result symlink.
+EOF
+}
+
+check_cachix() {
+    if ! command -v cachix >/dev/null 2>&1; then
+        print_error "cachix command not found. Please ensure cachix is installed."
+        exit 1
+    fi
+    
+    if ! command -v yq >/dev/null 2>&1; then
+        print_error "yq command not found. Please ensure yq is installed."
+        exit 1
+    fi
+    
+    if [[ ! -f "$CACHE_TOKENS_FILE" ]]; then
+        print_error "Cache tokens file not found at $CACHE_TOKENS_FILE"
+        print_error "Make sure home-manager has been activated and cache-tokens.enable = true"
+        exit 1
+    fi
+    
+    # Check if cachix is configured with our token
+    local token
+    if ! token=$(yq '.cache.nxmatic.token' "$CACHE_TOKENS_FILE" 2>/dev/null); then
+        print_error "Failed to read nxmatic token from cache tokens file"
+        exit 1
+    fi
+    
+    if [[ -z "$token" || "$token" == "null" ]]; then
+        print_error "nxmatic token is empty or null in cache tokens file"
+        exit 1
+    fi
+    
+    print_status "Cache authentication configured ✓"
+}
+
+get_paths_to_push() {
+    local paths=("$@")
+    local store_paths=()
+    
+    if [[ ${#paths[@]} -eq 0 ]]; then
+        if [[ -L "result" ]]; then
+            print_status "No paths specified, using ./result"
+            paths=("result")
+        else
+            print_error "No paths specified and no ./result symlink found"
+            show_usage
+            exit 1
+        fi
+    fi
+    
+    for path in "${paths[@]}"; do
+        if [[ -L "$path" ]]; then
+            # It's a symlink (likely from nix-build/nix build)
+            local real_path
+            real_path=$(readlink -f "$path")
+            store_paths+=("$real_path")
+            print_status "Resolved $path -> $real_path"
+        elif [[ "$path" =~ ^/nix/store/ ]]; then
+            # It's already a store path
+            store_paths+=("$path")
+        else
+            print_warning "Skipping non-store path: $path"
+        fi
+    done
+    
+    if [[ ${#store_paths[@]} -eq 0 ]]; then
+        print_error "No valid store paths found"
+        exit 1
+    fi
+    
+    printf '%s\n' "${store_paths[@]}"
+}
+
+main() {
+    local all_outputs=false
+    local jobs=4
+    local dry_run=false
+    local paths=()
+    
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            -h|--help)
+                show_usage
+                exit 0
+                ;;
+            -a|--all-outputs)
+                all_outputs=true
+                shift
+                ;;
+            -j|--jobs)
+                jobs="$2"
+                shift 2
+                ;;
+            --dry-run)
+                dry_run=true
+                shift
+                ;;
+            -*)
+                print_error "Unknown option: $1"
+                show_usage
+                exit 1
+                ;;
+            *)
+                paths+=("$1")
+                shift
+                ;;
+        esac
+    done
+    
+    check_cachix
+    
+    local store_paths
+    readarray -t store_paths < <(get_paths_to_push "${paths[@]}")
+    
+    print_status "Preparing to push ${#store_paths[@]} path(s) to cache '$CACHE_NAME'"
+    
+    for path in "${store_paths[@]}"; do
+        echo "  - $path"
+    done
+    
+    if [[ "$dry_run" == "true" ]]; then
+        print_warning "Dry run mode - not actually pushing"
+        exit 0
+    fi
+    
+    # Build cachix push command
+    local push_cmd=(cachix push "$CACHE_NAME")
+    
+    if [[ "$all_outputs" == "true" ]]; then
+        push_cmd+=(--all-outputs)
+    fi
+    
+    push_cmd+=(--jobs "$jobs")
+    push_cmd+=("${store_paths[@]}")
+    
+    print_status "Executing: ${push_cmd[*]}"
+    
+    if "${push_cmd[@]}"; then
+        print_success "Successfully pushed to cache '$CACHE_NAME'"
+        print_status "Cache URL: https://$CACHE_NAME.cachix.org"
+    else
+        print_error "Failed to push to cache"
+        exit 1
+    fi
+}
+
+main "$@"

@@ -41,17 +41,20 @@ in {
           trusted-substituters = [
             "https://cache.flox.dev"
             "https://cache.flakehub.com"  # Determinate Systems FlakeHub cache
+            "https://nxmatic.cachix.org"  # nxmatic cache
           ];
           trusted-public-keys = [
             "flox-cache-public-1:7F4OyH7ZCnFhcze3fJdfyXYLQw/aV7GEed86nQ7IsOs="
             "floxhub-1:0QOAlcobcEvq1mqEf4qAYCaWnTTOXpyoRv/PmqfSixM="
             "cache.flakehub.com-1:t7S7JjLyIJJLv0a0BqXdFnJvr4P8pAB2Z9xN2lYZXvY="  # Determinate Systems key
+            "nxmatic.cachix.org-1:oWogvXdam3gTxKzPZCDqq8khybQpqRdNpQQrKG3r4xM="  # nxmatic key
           ];
           
           # Additional substituters from flox.conf
           extra-trusted-substituters = [
             "https://cache.flox.dev"
             "https://cache.flakehub.com"
+            "https://nxmatic.cachix.org"
           ];
           extra-trusted-public-keys = [
             "flox-cache-public-1:7F4OyH7ZCnFhcze3fJdfyXYLQw/aV7GEed86nQ7IsOs="
