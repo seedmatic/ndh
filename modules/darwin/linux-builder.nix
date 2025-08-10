@@ -32,6 +32,9 @@ in {
       config = {
         virtualisation.darwin-builder.hostPort = 31022;
         
+        # Increase Linux builder VM disk size to handle large disk image builds
+        virtualisation.diskSize = lib.mkForce (150 * 1024);  # 150 GB for building 64GB+ images
+        
         # Use the same binary caches and settings as the Darwin configuration
         nix.settings = {
           # Make flox cache trusted (not just extra)
