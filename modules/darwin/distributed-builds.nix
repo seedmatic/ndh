@@ -8,26 +8,25 @@ let
   userHome = config.profile.user.home;
   
   # SSH key paths for builders
-  # Local builder uses default nix-darwin key, remote via-hosts use profile-specific keys
-  defaultBuilderKeyPath = "/etc/nix/builder_ed25519";  # Default nix-darwin key
-  profileBuilderKeyPath = "/etc/nix/builder_${config.profile.name}_ed25519";  # Profile-specific key
-  # User directory key for direct SSH connections (if needed)
-  userBuilderKeyPath = "${userHome}/.ssh/keys.d/linux_builder";
+  # Keep the original nix-darwin key as default, provide profile copy as alternative
+  defaultBuilderKeyPath = "/etc/nix/builder_ed25519";  # Original nix-darwin key (may have permission issues)
+  profileBuilderKeyPath = "/etc/nix/builder_ed25519_profile";  # Profile copy with proper permissions for nix daemon
+  userBuilderKeyPath = "${userHome}/.ssh/keys.d/linux_builder";  # User-accessible copy for remote connections
   
   # Define remote builders based on hostname
   # These use SSH ProxyJump to reach Linux builder VMs through Darwin hosts
   # Note: bioskop's linux-builder is always preferred (higher speedFactor)
   remoteBuilders = 
-    # Always include the local linux-builder
+    # Always include the local darwin-linux-builder (avoid conflict with nix-darwin's linux-builder)
     [{
-      hostName = "linux-builder";
+      hostName = "darwin-linux-builder";
       systems = [ "aarch64-linux" ];
       maxJobs = 4;
       # Local builder priority: bioskop local=3, alcide local=2 (fallback)
       speedFactor = if hostAlias == "bioskop" then 3 else 2;
       supportedFeatures = [ "kvm" "benchmark" "big-parallel" ];
       mandatoryFeatures = [ ];
-      sshKey = defaultBuilderKeyPath;  # Local builder uses default nix-darwin key
+      sshKey = profileBuilderKeyPath;  # Local builder uses profile key with proper permissions
       sshUser = "builder";
       protocol = "ssh-ng";
     }] ++
@@ -39,7 +38,7 @@ let
       speedFactor = 2;  # alcide's linux-builder as secondary for bioskop
       supportedFeatures = [ "kvm" "benchmark" "big-parallel" ];
       mandatoryFeatures = [ ];
-      sshKey = profileBuilderKeyPath;
+      sshKey = userBuilderKeyPath;
       sshUser = "builder";
       protocol = "ssh-ng";
     }) ++ 
@@ -50,7 +49,7 @@ let
       speedFactor = 3;  # bioskop's linux-builder as primary for alcide (remote)
       supportedFeatures = [ "kvm" "benchmark" "big-parallel" ];
       mandatoryFeatures = [ ];
-      sshKey = profileBuilderKeyPath;
+      sshKey = userBuilderKeyPath;
       sshUser = "builder";
       protocol = "ssh-ng";
     });
@@ -73,6 +72,28 @@ in {
 
     # Configure SSH to use Darwin hosts as jump hosts to reach Linux builders
     programs.ssh.extraConfig = ''
+      # Local darwin-linux-builder (avoid conflict with nix-darwin's linux-builder)
+      Host darwin-linux-builder
+        HostName localhost
+        Port 31022
+        User builder
+        IdentityFile ${userHome}/.ssh/keys.d/linux_builder
+        IdentitiesOnly yes
+        StrictHostKeyChecking no
+        UserKnownHostsFile /dev/null
+        LogLevel QUIET
+        # Connection timeouts
+        ConnectTimeout 10
+        ServerAliveInterval 30
+        ServerAliveCountMax 3
+        # Enable connection multiplexing for better performance
+        ControlMaster auto
+        ControlPath /tmp/ssh-darwin-builder-%r@%h:%p
+        ControlPersist 10m
+        # Optimize for bulk transfers
+        Compression yes
+        TCPKeepAlive yes
+
       # Linux builder accessible via alcide Darwin host (work profile: stephane.lacoin)
       Host linux-builder-via-alcide
         HostName localhost

@@ -1,4 +1,4 @@
-{ config, pkgs, ... }:
+{ config, pkgs, lib, ... }:
 
 let
   # Debug function that both traces and returns its input
@@ -54,10 +54,14 @@ in {
 
   home.file.".ssh/keys.yaml" = { source = yamlHostKeys; };
 
-  xdg.stateFile."ssh-keys.d" = {
-    source = keysDir;
-    recursive = true;
-  };
+  # Deploy keys directly to ~/.ssh/keys.d/ with proper permissions (skip .local/state)
+  home.activation.deploySSHKeys = lib.hm.dag.entryAfter ["writeBoundary"] ''
+    run install -d -m 700 ~/.ssh/keys.d
+    run ${pkgs.rsync}/bin/rsync -avL \
+      --chmod=u+w,go-r \
+      --chown=$(id -un):$(id -gn) \
+      ${keysDir}/ ~/.ssh/keys.d/ || true
+  '';
 
   programs.ssh.extraConfig = ''
     KnownHostsCommand ${knownHostsScript}

@@ -32,39 +32,28 @@ in {
       config = {
         virtualisation.darwin-builder.hostPort = 31022;
         
-        # Builder user gets both the default nix-darwin key and profile keys
-        users.users.builder.openssh.authorizedKeys.keys = [ 
-          linuxBuilderCommittedPubKey
-          linuxBuilderWorkPubKey
+        # Configure SSH daemon to also check our profile keys file
+        services.openssh.authorizedKeysFiles = [
+          "/var/keys/%u_ed25519.pub"           # Original nix-darwin key location  
+          "/etc/ssh/builder_profile_keys.pub"  # Our profile keys location in /etc
+          "%h/.ssh/authorized_keys"            # Standard user location
+          "/etc/ssh/authorized_keys.d/%u"      # System location
         ];
         
-        # Deploy profile SSH keys to the VM for additional access methods
+        # Deploy profile SSH keys to the VM using NixOS environment.etc with mode
         environment.etc = {
-          "ssh/builder_committed_ed25519.pub" = {
-            text = linuxBuilderCommittedPubKey;
-          };
-          "ssh/builder_work_ed25519.pub" = {
-            text = linuxBuilderWorkPubKey;
+          "ssh/builder_profile_keys.pub" = {
+            text = ''
+              ssh-ed25519 ${linuxBuilderCommittedPubKey} committed-profile
+              ssh-ed25519 ${linuxBuilderWorkPubKey} work-profile
+            '';
+            mode = "0644";
           };
         };
       };
     };
 
-    # Deploy current profile's SSH keys to /etc/nix/ for additional authentication options
-    # These are separate from the default linux-builder key managed by nix-darwin
-    environment.etc = {
-      "nix/builder_${currentProfile}_ed25519" = {
-        source = pkgs.writeText "builder_${currentProfile}_ed25519" linuxBuilderCurrentPrivKey;
-      };
-      "nix/builder_${currentProfile}_ed25519.pub" = {
-        source = pkgs.writeText "builder_${currentProfile}_ed25519.pub" linuxBuilderCurrentPubKey;
-      };
-    };
-
-    # Set correct permissions for profile SSH keys via activation script
-    system.activationScripts.fixProfileBuilderKeyPermissions = lib.stringAfter [ "etc" ] ''
-      chmod 600 /etc/nix/builder_${currentProfile}_ed25519 || true
-      chmod 644 /etc/nix/builder_${currentProfile}_ed25519.pub || true
-    '';
+    # SSH keys are managed by the home-manager ssh-keys.nix module
+    # Keys are deployed to ~/.ssh/keys.d/ with proper permissions
   };
 }

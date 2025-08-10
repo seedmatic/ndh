@@ -8,7 +8,6 @@
     ./lima-config.nix
     ./linux-builder.nix
     ./distributed-builds.nix
-    ./ssh-linux-builder-proxy.nix
     ./podman-remote-client.nix
     ./raycast.nix
     ./ssh.nix

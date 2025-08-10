@@ -38,10 +38,13 @@ in {
   };
 
   system.activationScripts.postActivation.text = ''
-    install -d -m 700 ~${userName}/.ssh/keys.d
-    ${lib.escapeShellArg pkgs.rsync}/bin/rsync -avL \
-      --chmod=u+w,go-r \
-      --chown=${userName}:wheel \
-      ${userHM.xdg.stateHome}/ssh-keys.d/ ${hostKeysDir}/ || true
+    # Also install builder keys for nix daemon (root) access
+    install -d -m 755 /etc/nix
+    if [ -f "${userHome}/.ssh/keys.d/linux_builder" ]; then
+      install -m 600 -o root -g wheel "${userHome}/.ssh/keys.d/linux_builder" /etc/nix/builder_ed25519_profile
+    fi
+    if [ -f "${userHome}/.ssh/keys.d/linux_builder.pub" ]; then
+      install -m 644 -o root -g wheel "${userHome}/.ssh/keys.d/linux_builder.pub" /etc/nix/builder_ed25519_profile.pub
+    fi
   '';
 }
