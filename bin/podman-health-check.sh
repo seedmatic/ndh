@@ -101,13 +101,13 @@ check_podman_service() {
 check_zfs_storage() {
     print_status "Checking ZFS container storage..."
     
-    if lima "$VM_NAME" sudo zfs list tank/containers >/dev/null 2>&1; then
-        print_success "ZFS dataset 'tank/containers' exists"
-        local usage=$(lima "$VM_NAME" sudo zfs list -H -o used tank/containers)
+    if lima "$VM_NAME" sudo zfs list tank/nerd/containers >/dev/null 2>&1; then
+        print_success "ZFS dataset 'tank/nerd/containers' exists"
+        local usage=$(lima "$VM_NAME" sudo zfs list -H -o used tank/nerd/containers)
         print_status "Storage used: $usage"
         return 0
     else
-        print_warning "ZFS dataset 'tank/containers' not found"
+        print_warning "ZFS dataset 'tank/nerd/containers' not found"
         print_status "This will be created automatically when Podman starts"
         return 0
     fi

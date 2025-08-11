@@ -1,4 +1,4 @@
-# Podman remote engine configuration for Lima NixOS VM (@codebase)
+# Podman engine configuration for Lima NixOS VM (@codebase)
 # This module configures Podman in the VM to act as a remote engine accessible from the host
 
 { config, lib, pkgs, ... }:
@@ -41,7 +41,7 @@ in
         storage.options.zfs = {
           mountopt = "nodev";
           # Use ZFS dataset for container storage
-          fsname = "tank/containers";
+          fsname = "tank/nerd/containers";
         };
       };
       
@@ -75,6 +75,22 @@ in
       # Ensure run directory exists
       ${pkgs.coreutils}/bin/mkdir -p /run/containers/storage
       ${pkgs.coreutils}/bin/mkdir -p /run/podman
+    '';
+  };
+
+  systemd.services.podman-docker-link = {
+    description = "Create symlink for docker compatibility";
+    after = [ "podman.socket" ];
+    wants = [ "podman.socket" ];
+    wantedBy = [ "multi-user.target" ];
+    serviceConfig = {
+      Type = "oneshot";
+      RemainAfterExit = true;
+    };
+    script = ''
+      set -eux -o pipefail
+      : Create symlink from /var/run/podman/podman.sock to /var/run/docker.sock
+      ${pkgs.coreutils}/bin/ln -sf /var/run/podman/podman.sock /var/run/docker.sock
     '';
   };
 

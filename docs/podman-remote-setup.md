@@ -91,7 +91,7 @@ docker run --rm alpine echo "Hello from remote Podman!"
 
 ### Container Storage
 
-Containers are stored on ZFS in the VM at `/var/lib/containers/storage` using the `tank/containers` dataset. This provides:
+Containers are stored on ZFS in the VM at `/var/lib/containers/storage` using the `tank/nerd/containers` dataset. This provides:
 
 - **Efficient snapshots**: Easy backup and rollback
 - **Compression**: Automatic compression of container layers
@@ -140,7 +140,7 @@ lima nerd-nixos buildah build -t myapp .
 podman --remote volume create myvolume
 podman --remote volume ls
 
-# Volumes are stored in ZFS: tank/containers/volumes
+# Volumes are stored in ZFS: tank/nerd/containers/volumes
 ```
 
 ## Troubleshooting
