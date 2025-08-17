@@ -42,8 +42,9 @@ in {
 , binaryCaches = [] : List { name : Text, secretKey : Text }
 }
 EOF
-          # Replace the token placeholder with the actual token
-          ${pkgs.gnused}/bin/sed -i "s/REPLACE_TOKEN_HERE/$NXMATIC_TOKEN/g" ~/.config/cachix/cachix.dhall
+          # Escape chars that sed 's///' treats specially (/, \\ and &)
+          ESCAPED_TOKEN=$(printf '%s' "$NXMATIC_TOKEN" | ${pkgs.gnused}/bin/sed -e 's/[\\/&]/\\&/g')
+          ${pkgs.gnused}/bin/sed -i "s/REPLACE_TOKEN_HERE/$ESCAPED_TOKEN/g" ~/.config/cachix/cachix.dhall
           echo "✅ Cachix configuration created successfully"
         else
           echo "❌ Failed to extract nxmatic token from cache tokens file"

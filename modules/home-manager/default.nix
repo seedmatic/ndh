@@ -146,13 +146,14 @@ in {
         SUDO=""
       fi
 
-      # Helper to run a command respecting dry-run and sudo
-      run() {
+      # Helper (renamed to avoid clashing with Home Manager's internal 'run') (@codebase)
+      hm_fix_exec() {
         if [ -n "${dollar}{DRY_RUN_CMD:-}" ]; then
-          echo "$@"
+          echo "$*"
           return 0
         fi
-        eval "$@"
+        # Use 'sh -c' to preserve simple string invocation semantics
+        sh -c "$*"
       }
 
       # Fix ownership of common home directories that might be created by system processes
@@ -161,17 +162,17 @@ in {
           owner="$(stat -c '%U' "$HOME/$dir" 2>/dev/null || echo "")"
           if [ "$owner" != "$USER" ]; then
             echo "Fixing ownership of $HOME/$dir (owned by ${owner:-unknown})"
-            run "$SUDO chown -R '$USER':'$USER' '$HOME/$dir'"
+            hm_fix_exec "$SUDO chown -R '$USER':'$USER' '$HOME/$dir'"
           fi
         fi
       done
 
       # Ensure critical directories exist with correct ownership
       for dir in .config .local/state .local/share .cache; do
-        run "$SUDO mkdir -p '$HOME/$dir'"
+  hm_fix_exec "$SUDO mkdir -p '$HOME/$dir'"
         owner="$(stat -c '%U' "$HOME/$dir" 2>/dev/null || echo "")"
         if [ "$owner" != "$USER" ]; then
-          run "$SUDO chown '$USER':'$USER' '$HOME/$dir'"
+          hm_fix_exec "$SUDO chown '$USER':'$USER' '$HOME/$dir'"
         fi
       done
     '';
