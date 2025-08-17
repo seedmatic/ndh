@@ -129,23 +129,49 @@ in {
       zsh
     ];
 
-    activation.fixConfigOwnership = lib.hm.dag.entryBefore [ "writeBoundary" ] ''
+    activation.fixConfigOwnership = let 
+      dollar = "$";
+    in lib.hm.dag.entryBefore [ "writeBoundary" ] ''
+      set -xe -o pipefail
+      # Escalate with sudo if available so ownership corrections can succeed (@codebase)
+      if [ "$(id -u)" -ne 0 ]; then
+        if command -v sudo >/dev/null 2>&1; then
+          SUDO="sudo -n"
+          # Fallback if password required; ignore failures silently
+          $SUDO true 2>/dev/null || SUDO="sudo"
+        else
+          SUDO=""
+        fi
+      else
+        SUDO=""
+      fi
+
+      # Helper to run a command respecting dry-run and sudo
+      run() {
+        if [ -n "${dollar}{DRY_RUN_CMD:-}" ]; then
+          echo "$@"
+          return 0
+        fi
+        eval "$@"
+      }
+
       # Fix ownership of common home directories that might be created by system processes
       for dir in .config .xdg .cache .local; do
         if [ -d "$HOME/$dir" ]; then
-          # Check if the directory is owned by the current user
-          if [ "$(stat -c '%U' "$HOME/$dir" 2>/dev/null || echo "")" != "$USER" ]; then
-            echo "Fixing ownership of $HOME/$dir (owned by $(stat -c '%U' "$HOME/$dir" 2>/dev/null || echo "unknown"))"
-            $DRY_RUN_CMD chown -R "$USER":"$USER" "$HOME/$dir"
+          owner="$(stat -c '%U' "$HOME/$dir" 2>/dev/null || echo "")"
+          if [ "$owner" != "$USER" ]; then
+            echo "Fixing ownership of $HOME/$dir (owned by ${owner:-unknown})"
+            run "$SUDO chown -R '$USER':'$USER' '$HOME/$dir'"
           fi
         fi
       done
-      
+
       # Ensure critical directories exist with correct ownership
       for dir in .config .local/state .local/share .cache; do
-        $DRY_RUN_CMD mkdir -p "$HOME/$dir"
-        if [ "$(stat -c '%U' "$HOME/$dir" 2>/dev/null || echo "")" != "$USER" ]; then
-          $DRY_RUN_CMD chown "$USER":"$USER" "$HOME/$dir"
+        run "$SUDO mkdir -p '$HOME/$dir'"
+        owner="$(stat -c '%U' "$HOME/$dir" 2>/dev/null || echo "")"
+        if [ "$owner" != "$USER" ]; then
+          run "$SUDO chown '$USER':'$USER' '$HOME/$dir'"
         fi
       done
     '';
