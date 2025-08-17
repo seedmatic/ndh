@@ -6,7 +6,7 @@ let
   cfg = config.profile;
   defaultUserHome =
     if stdenv.isDarwin then "Users" else "${config.users.defaultUserHome}";
-  
+
   # Shared user profile mapping (@codebase)
   # This defines the mapping between different profiles and their corresponding usernames
   # Used by both profile configurations and symlink modules
@@ -18,9 +18,9 @@ let
         description = "Stephane Lacoin (aka nxmatic)";
         email = "stephane.lacoin@hyland.com";
       };
-      
+
       committed = {
-        name = "nxmatic"; 
+        name = "nxmatic";
         description = "Stephane Lacoin (aka nxmatic)";
         email = "stephane.lacoin@gmail.com";
       };
@@ -40,13 +40,14 @@ in {
           email = lib.mkOption {
             type = lib.types.str;
             description = "The email of the user";
-    # Keep a simple static default; we derive a dynamic one later in config (@codebase)
-    default = lib.mkDefault "user@example.com";
+            # Keep a simple static default; we derive a dynamic one later in config (@codebase)
+            default = lib.mkDefault "user@example.com";
           };
           homeSymlinks = lib.mkOption {
             type = lib.types.listOf lib.types.str;
-            description = "List of alternative usernames to create symlinks for in /home";
-            default = [];
+            description =
+              "List of alternative usernames to create symlinks for in /home";
+            default = [ ];
             example = [ "nxmatic" ];
           };
           darwin = lib.mkOption {
@@ -70,10 +71,10 @@ in {
                   default = "nameless-host";
                 };
                 hostAlias = lib.mkOption {
-                  type = lib.types.str;
-                  description = "An alias for the host";
-      # Static fallback; dynamic alias set in config phase (@codebase)
-      default = lib.mkDefault "nameless-host";
+                  type = lib.types.nullOr lib.types.str;
+                  default = null;
+                  description = "Optional alias for the host (null means none).";
+                  example = "my-mac";
                 };
                 tailnet = lib.mkOption {
                   type = lib.types.submodule {
@@ -118,12 +119,14 @@ in {
                 uid = lib.mkOption {
                   type = lib.types.nullOr lib.types.int;
                   default = null;
-                  description = "Optional fixed UID to align with host (e.g. macOS UID 501/503).";
+                  description =
+                    "Optional fixed UID to align with host (e.g. macOS UID 501/503).";
                 };
                 gid = lib.mkOption {
                   type = lib.types.nullOr lib.types.int;
                   default = null;
-                  description = "Optional fixed primary GID. Defaults to uid if set and gid is null.";
+                  description =
+                    "Optional fixed primary GID. Defaults to uid if set and gid is null.";
                 };
                 isNormalUser = lib.mkOption {
                   type = lib.types.bool;
@@ -137,7 +140,8 @@ in {
                 };
                 group = lib.mkOption {
                   type = lib.types.nullOr lib.types.str;
-                  description = "Optional primary group name; if null a group matching the username should be created elsewhere";
+                  description =
+                    "Optional primary group name; if null a group matching the username should be created elsewhere";
                   default = null;
                 };
                 home = lib.mkOption {
@@ -158,9 +162,13 @@ in {
       };
     };
   };
-  
+
   # Compose config: expose userMapping. Avoid self-reference causing recursion
   config = {
-    _module.args.userMapping = userMapping; # (@codebase) keep simple to avoid recursion
+    _module.args.userMapping =
+      userMapping; # (@codebase) keep simple to avoid recursion
+  # Dynamic defaults (@codebase): adjust user home path to use the resolved user name
+  # instead of the static placeholder jdoe so Home Manager's activation check matches $HOME.
+  profile.user.home = lib.mkDefault (builtins.toPath "/${defaultUserHome}/${config.profile.user.name}");
   };
 }

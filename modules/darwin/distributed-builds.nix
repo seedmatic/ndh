@@ -3,7 +3,10 @@ let
   cfg = config.services.crossHostBuilders;
   hostProfile = config.profile.host;
   hostName = hostProfile.hostName;
-  hostAlias = hostProfile.hostAlias or hostName;
+  # Avoid forcing an unset option value: only use hostAlias if attribute exists and is non-empty
+  hostAlias = if (hostProfile ? hostAlias && hostProfile.hostAlias != null && hostProfile.hostAlias != "")
+    then hostProfile.hostAlias
+    else hostName;
   userName = config.profile.user.name;
   userHome = config.profile.user.home;
   

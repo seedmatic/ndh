@@ -14,11 +14,15 @@
         knownNetworkServices = [ "Wi-Fi" "Thunderbolt Ethernet" ];
       };
 
-      profileModule = { pkgs, ... }: {
+      profileModule = { pkgs, lib, ... }: {
         imports = [ ../../profiles/work.nix ];
         config = {
           profile = {
-            host = hostProfile;
+            host = {
+              hostName = lib.mkDefault hostProfile.hostName;
+              hostAlias = lib.mkDefault hostProfile.hostAlias;
+              tailnet = hostProfile.tailnet;
+            };
             darwin = darwinProfile;
           };
           # Enable cross-host distributed builds (Darwin only)

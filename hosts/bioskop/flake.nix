@@ -10,14 +10,19 @@
         tailnet = { };
       };
       darwinProfile = {
-        knownNetworkServices = [ "Wi-Fi" "Ethernet Adaptor""Thunderbolt Ethernet" ];
+        knownNetworkServices = [ "Wi-Fi" "Ethernet Adaptor" "Thunderbolt Ethernet" ];
       };
 
-      profileModule = { pkgs, ... }: {
+      profileModule = { pkgs, lib, ... }: {
         imports = [ ../../profiles/committed.nix ];
         config = {
           profile = {
-            host = hostProfile;
+            host = {
+              hostName = lib.mkDefault hostProfile.hostName;
+              tailnet = hostProfile.tailnet;
+            } // (if hostProfile ? hostAlias then {
+              hostAlias = lib.mkDefault hostProfile.hostAlias;
+            } else {});
             darwin = darwinProfile;
           };
           # Enable cross-host distributed builds (Darwin only)

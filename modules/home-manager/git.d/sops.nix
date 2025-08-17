@@ -3,8 +3,8 @@
 let
   sopsScript = pkgs.stdenvNoCC.mkDerivation {
     name = "sops-script";
-    src = pkgs.substituteAll {
-      src = ./sops.sh;
+    # replaceVars is the modern substituteAll (@codebase)
+    src = pkgs.replaceVars ./sops.sh {
       sopsConfigHome = "${config.xdg.configHome}/git/sops.d";
     };
     sourceRoot = ".";
@@ -39,10 +39,8 @@ in
   };
 
   xdg.configFile."git/sops" = {
-    source = pkgs.substituteAll {
-      src = ./sops;
-      sopsConfigHome = "${config.xdg.configHome}/git/sops.d";
-    };
+  # Plain include file has no placeholders; no need for replaceVars (@codebase)
+  source = ./sops;
   };
 
   xdg.configFile."git/sops.sh" = {
@@ -50,78 +48,67 @@ in
   };
 
   xdg.configFile."git/sops.d/binary" = {
-    source = pkgs.substituteAll {
-      src = ./sops.d/binary;
+    source = pkgs.replaceVars ./sops.d/binary {
       sopsConfigHome = "${config.xdg.configHome}/git/sops.d";
     };
   };
 
   xdg.configFile."git/sops.d/yaml" = {
-    source = pkgs.substituteAll {
-      src = ./sops.d/yaml;
+    source = pkgs.replaceVars ./sops.d/yaml {
       sopsConfigHome = "${config.xdg.configHome}/git/sops.d";
     };
   };
 
   xdg.configFile."git/sops.d/json" = {
-    source = pkgs.substituteAll {
-      src = ./sops.d/json;
+    source = pkgs.replaceVars ./sops.d/json {
       sopsConfigHome = "${config.xdg.configHome}/git/sops.d";
     };
   };
 
   xdg.configFile."git/sops.d/xml" = {
-    source = pkgs.substituteAll {
-      src = ./sops.d/xml;
+    source = pkgs.replaceVars ./sops.d/xml {
       sopsConfigHome = "${config.xdg.configHome}/git/sops.d";
     };
   };
 
   xdg.configFile."git/sops.d/props" = {
-    source = pkgs.substituteAll {
-      src = ./sops.d/props;
+    source = pkgs.replaceVars ./sops.d/props {
       sopsConfigHome = "${config.xdg.configHome}/git/sops.d";
     };
   };
 
   xdg.configFile."git/sops.d/csv" = {
-    source = pkgs.substituteAll {
-      src = ./sops.d/csv;
+    source = pkgs.replaceVars ./sops.d/csv {
       sopsConfigHome = "${config.xdg.configHome}/git/sops.d";
     };
   };
 
   xdg.configFile."git/sops.d/tsv" = {
-    source = pkgs.substituteAll {
-      src = ./sops.d/tsv;
+    source = pkgs.replaceVars ./sops.d/tsv {
       sopsConfigHome = "${config.xdg.configHome}/git/sops.d";
     };
   };
 
   xdg.configFile."git/sops.d/base64" = {
-    source = pkgs.substituteAll {
-      src = ./sops.d/base64;
+    source = pkgs.replaceVars ./sops.d/base64 {
       sopsConfigHome = "${config.xdg.configHome}/git/sops.d";
     };
   };
 
   xdg.configFile."git/sops.d/uri" = {
-    source = pkgs.substituteAll {
-      src = ./sops.d/uri;
+    source = pkgs.replaceVars ./sops.d/uri {
       sopsConfigHome = "${config.xdg.configHome}/git/sops.d";
     };
   };
 
   xdg.configFile."git/sops.d/toml" = {
-    source = pkgs.substituteAll {
-      src = ./sops.d/toml;
+    source = pkgs.replaceVars ./sops.d/toml {
       sopsConfigHome = "${config.xdg.configHome}/git/sops.d";
     };
   };
 
   xdg.configFile."git/sops.d/lua" = {
-    source = pkgs.substituteAll {
-      src = ./sops.d/lua;
+    source = pkgs.replaceVars ./sops.d/lua {
       sopsConfigHome = "${config.xdg.configHome}/git/sops.d";
     };
   };

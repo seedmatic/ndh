@@ -45,7 +45,7 @@ let
         sed --in-place 's/ = /=/' "${LIMA_CIDATA_MNT}"/lima.env
         source <( yq --input-format=props --output-format=shell ${LIMA_CIDATA_MNT}/lima.env )
 
-        : Create user (with mismatch detection)
+        : Create user
         LIMA_CIDATA_HOMEDIR="/home/$LIMA_CIDATA_USER"
         if id -u "$LIMA_CIDATA_USER" >/dev/null 2>&1; then
             EXISTING_UID=$(id -u "$LIMA_CIDATA_USER")

@@ -9,10 +9,10 @@ sops::config() {
 
   cat <<EOF >sops.d/$fmt
 [filter "$name"]
-  clean = /Users/stephane.lacoin/.config/git/sops.d/$fmt-clean %f
-  smudge = /Users/stephane.lacoin/.config/git/sops.d/$fmt-smudge %f
+  clean = @sopsConfigHome@/$fmt-clean %f
+  smudge = @sopsConfigHome@/$fmt-smudge %f
 [diff "$name"]
-  textconv = /Users/stephane.lacoin/.config/git/sops.d/$fmt-textconv
+  textconv = @sopsConfigHome@/$fmt-textconv
 EOF
 }
 

@@ -14,11 +14,15 @@ let
   userHome = userProfile.home;
 
   # Command to filter and sign keys based on profile and host
+  # Resolve a stable host identifier; hostAlias is optional by design (@codebase)
+  hostIdent = if (hostProfile ? hostAlias && hostProfile.hostAlias != null && hostProfile.hostAlias != "")
+    then hostProfile.hostAlias else hostProfile.hostName;
+
   yamlHostKeys = pkgs.runCommand "ssh-signed-keys.yaml" {
     buildInputs =
       [ pkgs.coreutils-full pkgs.yq-go pkgs.openssh pkgs.bash pkgs.gnused ];
   } ''
-    ${./ssh-add-keys.sh} "${profileName}" "${hostProfile.hostAlias}" "${./ssh.d/keys.yaml}" "$out"
+  ${./ssh-add-keys.sh} "${profileName}" "${hostIdent}" "${./ssh.d/keys.yaml}" "$out"
   '';
 
   # Script to extract host keys and CA public key from keys.yaml

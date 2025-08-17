@@ -94,7 +94,7 @@
 
       mkBaseModulesFor = { hostProfile, system }:
         [{
-          limaHost.hostName = if hostProfile ? hostAlias then
+          limaHost.hostName = if (hostProfile ? hostAlias && hostProfile.hostAlias != null && hostProfile.hostAlias != "") then
             hostProfile.hostAlias
           else
             hostProfile.hostName;
@@ -168,10 +168,9 @@
             mkDarwinConfig { inherit hostProfile profileModule; };
           darwinConfigurations = {
             "${hostProfile.hostName}" = darwinConfiguration;
-          } // (if hostProfile ? hostAlias then {
+          } // (if (hostProfile ? hostAlias && hostProfile.hostAlias != null && hostProfile.hostAlias != "") then {
             "${hostProfile.hostAlias}" = darwinConfiguration;
-          } else
-            { });
+          } else { });
         in { inherit darwinConfigurations; };
 
       mkNixosConfig = { hostProfile, profileModule, zfsOverlays
@@ -222,7 +221,7 @@
             hint = "nix path-info -Sh ${systemPath}";
             note = "closure size should be less than diskSizeBytes";
           };
-          mainName = if hostProfile ? hostAlias then
+          mainName = if (hostProfile ? hostAlias && hostProfile.hostAlias != null && hostProfile.hostAlias != "") then
             hostProfile.hostAlias
           else
             hostProfile.hostName;
@@ -246,7 +245,7 @@
     in {
       mkHostOutputs = { hostProfile, profileModule, ... }:
         let
-          mainName = if hostProfile ? hostAlias then
+          mainName = if (hostProfile ? hostAlias && hostProfile.hostAlias != null && hostProfile.hostAlias != "") then
             hostProfile.hostAlias
           else
             hostProfile.hostName;
