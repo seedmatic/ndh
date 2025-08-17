@@ -13,6 +13,8 @@ in {
       name = mkDefault workUser.name;
       description = mkDefault workUser.description;
       shell = mkDefault pkgs.zsh;
+  uid = 503;
+  gid = 503;
     };
   };
   ids.gids.nixbld = lib.mkForce 350;

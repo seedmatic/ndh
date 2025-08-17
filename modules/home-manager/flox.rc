@@ -31,7 +31,7 @@ flox:env:trace() {
   flox:env:log "$prefix" "Setting environment variables"
 
   cat <<EOF | cut -c 3-
-    flox:env:log $prefix "\$( env | grep "$prefix" )"
+    flox:env:log "$prefix" "\$( env | grep "$prefix" )"
     trap - $FLOX_ENV_TRAP_RETURN $FLOX_ENV_TRAP_RETURN
 EOF
 }
@@ -87,7 +87,7 @@ flox:env:project:folder:exists() {
 
 flox:env:xdg() {
   : setting XDG environment
-  eval "$( flox:env:trace XDG )"
+  # eval "$( flox:env:trace XDG )"
 
   local cwd=$(realpath "$PWD/.local")
 
@@ -134,10 +134,12 @@ flox:env:eclipse() {
   flox:env:project:folder:exists .metadata ||
     return
 
+  eval "$( flox:env:trace ECLIPSE )"
+
   set -a
 
   ECLIPSE_WORKSPACE="$FLOX_ENV_PROJECT"
-  ECLIPSE_COMMAND=<<'EOF' | cut -c -3-
+  ECLIPSE_COMMAND=<<'EOF' #| cut -c -3-
     eclipse() {
        rm -f /Volumes/Eclipse/Workspaces/hyland-hxpr/sslkeylogfile;
        env SSLKEYLOGFILE=$ECLIPSE_WORKSPACE/.metadata/sslkeylogfile /Applications/Eclipse.app/Contents/MacOS/eclipse --data $ECLIPSE_WORKSPACE -console -clean
@@ -208,5 +210,3 @@ EOF
 
 ${FLOX_RC_DEBUG:-false} &&
    flox:env:debug
-
-

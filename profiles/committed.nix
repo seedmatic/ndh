@@ -13,6 +13,8 @@ in {
       name = mkDefault committedUser.name;
       description = mkDefault committedUser.description;
       shell = mkDefault pkgs.zsh;
+  uid = 501;
+  gid = 501;
     };
   };
   ids.gids.nixbld = lib.mkForce 350;

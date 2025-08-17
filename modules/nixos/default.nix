@@ -202,15 +202,23 @@ in {
   security.sudo.enable = true;
   security.sudo.wheelNeedsPassword = false;
 
-  # User configuration
-  user = lib.mkForce cfgUser;
+  # User configuration: derive flags based on UID threshold (<1000 => system user)
+  user = lib.mkForce (
+    let
+      base = builtins.removeAttrs cfgUser [ "gid" "group" "isNormalUser" "isSystemUser" ];
+      low = cfgUser.uid != null && cfgUser.uid < 1000;
+    in
+    base // {
+      isNormalUser = !low;
+      isSystemUser = low;
+    }
+  );
 
   users.users.${cfgUserName} = {
-    isNormalUser = true;
-    group = "${cfgUserName}";
+    group = cfgUserName;
     extraGroups = [ "wheel" "ssh" ];
+    uid = lib.mkIf (cfgUser.uid != null) cfgUser.uid;
   };
-
-  users.groups.${cfgUserName} = { };
+  users.groups.${cfgUserName} = lib.mkIf (cfgUser.gid != null) { gid = cfgUser.gid; };
 
 }

@@ -68,6 +68,10 @@ in {
     home = userHome;
     description = userDescription;
     shell = userShell;
+    uid = pkgs.lib.mkIf (user.uid != null) user.uid;
+    # Primary group name already userName; set gid on group definition below
   };
+
+  users.groups.${userName} = pkgs.lib.mkIf (user.gid != null) { gid = user.gid; };
 
 }

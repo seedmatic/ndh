@@ -40,8 +40,8 @@ in {
           email = lib.mkOption {
             type = lib.types.str;
             description = "The email of the user";
-            default = lib.mkDefault
-              (cfg.email or "${cfg.user.name or "user"}@example.com");
+    # Keep a simple static default; we derive a dynamic one later in config (@codebase)
+    default = lib.mkDefault "user@example.com";
           };
           homeSymlinks = lib.mkOption {
             type = lib.types.listOf lib.types.str;
@@ -72,7 +72,8 @@ in {
                 hostAlias = lib.mkOption {
                   type = lib.types.str;
                   description = "An alias for the host";
-                  default = cfg.host.hostName;
+      # Static fallback; dynamic alias set in config phase (@codebase)
+      default = lib.mkDefault "nameless-host";
                 };
                 tailnet = lib.mkOption {
                   type = lib.types.submodule {
@@ -105,13 +106,24 @@ in {
                 description = lib.mkOption {
                   type = lib.types.str;
                   description = "The description of the user";
-                  default = "Default user ${cfg.user.name}";
+                  # Simple default; dynamic form applied later (@codebase)
+                  default = lib.mkDefault "Default user";
                 };
                 shell = lib.mkOption {
                   type = lib.types.package;
                   description = "The shell of the user";
                   default = pkgs.bash;
                   example = "bash";
+                };
+                uid = lib.mkOption {
+                  type = lib.types.nullOr lib.types.int;
+                  default = null;
+                  description = "Optional fixed UID to align with host (e.g. macOS UID 501/503).";
+                };
+                gid = lib.mkOption {
+                  type = lib.types.nullOr lib.types.int;
+                  default = null;
+                  description = "Optional fixed primary GID. Defaults to uid if set and gid is null.";
                 };
                 isNormalUser = lib.mkOption {
                   type = lib.types.bool;
@@ -124,15 +136,15 @@ in {
                   default = false;
                 };
                 group = lib.mkOption {
-                  type = lib.types.str;
-                  description = "The user primary group the user belongs to";
-                  default = cfg.user.name;
+                  type = lib.types.nullOr lib.types.str;
+                  description = "Optional primary group name; if null a group matching the username should be created elsewhere";
+                  default = null;
                 };
                 home = lib.mkOption {
                   type = lib.types.path;
                   description = "The home directory of the user";
-                  default =
-                    builtins.toPath "/${defaultUserHome}/${cfg.user.name}";
+                  # Static placeholder; dynamic path set in config phase (@codebase)
+                  default = builtins.toPath "/${defaultUserHome}/jdoe";
                 };
                 homeMode = lib.mkOption {
                   type = lib.types.str;
@@ -147,6 +159,8 @@ in {
     };
   };
   
-  # Make userMapping available to other modules
-  config._module.args.userMapping = userMapping;
+  # Compose config: expose userMapping. Avoid self-reference causing recursion
+  config = {
+    _module.args.userMapping = userMapping; # (@codebase) keep simple to avoid recursion
+  };
 }

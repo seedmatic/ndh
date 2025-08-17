@@ -45,9 +45,20 @@ let
         sed --in-place 's/ = /=/' "${LIMA_CIDATA_MNT}"/lima.env
         source <( yq --input-format=props --output-format=shell ${LIMA_CIDATA_MNT}/lima.env )
 
-        : Create user
-        LIMA_CIDATA_HOMEDIR="/home/$LIMA_CIDATA_USER.linux"
-        id -u "$LIMA_CIDATA_USER" >/dev/null 2>&1 || useradd --home-dir "$LIMA_CIDATA_HOMEDIR" --create-home --uid "$LIMA_CIDATA_UID" "$LIMA_CIDATA_USER"
+        : Create user (with mismatch detection)
+        LIMA_CIDATA_HOMEDIR="/home/$LIMA_CIDATA_USER"
+        if id -u "$LIMA_CIDATA_USER" >/dev/null 2>&1; then
+            EXISTING_UID=$(id -u "$LIMA_CIDATA_USER")
+            if [ "$EXISTING_UID" != "$LIMA_CIDATA_UID" ]; then
+              echo "[lima-cloud-init] WARNING: user $LIMA_CIDATA_USER already exists with UID $EXISTING_UID but requested UID is $LIMA_CIDATA_UID" >&2
+              echo "[lima-cloud-init] HINT: To adopt host-aligned UID, you must recreate the VM or run a one-time migration inside the guest:" >&2
+              echo "  sudo usermod -u $LIMA_CIDATA_UID $LIMA_CIDATA_USER && find / -xdev -uid $EXISTING_UID -exec chown $LIMA_CIDATA_UID {} +" >&2
+              echo "[lima-cloud-init] Continuing WITHOUT changing UID to avoid partial inconsistent ownership." >&2
+              LIMA_CIDATA_UID=$EXISTING_UID
+            fi
+        else
+            useradd --home-dir "$LIMA_CIDATA_HOMEDIR" --create-home --uid "$LIMA_CIDATA_UID" "$LIMA_CIDATA_USER"
+        fi
 
         : Add user to sudoers
         usermod -a -G wheel $LIMA_CIDATA_USER
