@@ -133,11 +133,22 @@ in {
       dollar = "$";
     in lib.hm.dag.entryBefore [ "writeBoundary" ] ''
       set -xe -o pipefail
-      # Escalate with sudo if available so ownership corrections can succeed (@codebase)
+      # Prefer NixOS wrapper location for sudo if present (@codebase)
+      WRAPPERS="/run/wrappers/bin"
+      if [ -d "$WRAPPERS" ]; then
+        case ":$PATH:" in
+          *":$WRAPPERS:"*) ;; # already present
+          *) PATH="$WRAPPERS:$PATH" ;;
+        esac
+      fi
+
       if [ "$(id -u)" -ne 0 ]; then
-        if command -v sudo >/dev/null 2>&1; then
+        # Explicit path first, then generic lookup
+        if [ -x "$WRAPPERS/sudo" ]; then
+          SUDO="$WRAPPERS/sudo -n"
+          $SUDO true 2>/dev/null || SUDO="$WRAPPERS/sudo"
+        elif command -v sudo >/dev/null 2>&1; then
           SUDO="sudo -n"
-          # Fallback if password required; ignore failures silently
           $SUDO true 2>/dev/null || SUDO="sudo"
         else
           SUDO=""
@@ -169,7 +180,7 @@ in {
 
       # Ensure critical directories exist with correct ownership
       for dir in .config .local/state .local/share .cache; do
-  hm_fix_exec "$SUDO mkdir -p '$HOME/$dir'"
+        hm_fix_exec "$SUDO mkdir -p '$HOME/$dir'"
         owner="$(stat -c '%U' "$HOME/$dir" 2>/dev/null || echo "")"
         if [ "$owner" != "$USER" ]; then
           hm_fix_exec "$SUDO chown '$USER':'$USER' '$HOME/$dir'"
