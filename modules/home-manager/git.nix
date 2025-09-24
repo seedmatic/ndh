@@ -7,7 +7,7 @@
   profile = config._module.specialArgs.profile;
   userName = profile.user.description;
   userEmail = profile.email;
-  hostKeysDir = "${config.xdg.stateHome}/ssh-keys.d";
+  hostKeysDir = "${config.home.homeDirectory}/.ssh/keys.d";
   stateHome = config.xdg.stateHome or "${config.home.homeDirectory}/.local/state";
   allowedSignersFile = "${config.xdg.configHome}/git/github_allowed_signers";
 in {
@@ -116,12 +116,12 @@ in {
     };
   };
 
-  home.activation.generateAllowedSigners = lib.hm.dag.entryAfter ["writeBoundary" "ssh-add-keys"] ''
+  home.activation.generateAllowedSigners = lib.hm.dag.entryAfter ["writeBoundary" "deploySSHKeys"] ''
     set -euxo pipefail
     : Generatig github allowed signers configuration file
     cat <<EoF > "${allowedSignersFile}"
-    stephane.lacoin@gmail.com namespaces="git" $( cat "${stateHome}/ssh-keys.d/github_signing.pub" )
-    stephane.lacoin@hyland.com namespaces="git" $( cat "${stateHome}/ssh-keys.d/github_signing_hyland.pub" )
+    stephane.lacoin@gmail.com namespaces="git" $( cat "${hostKeysDir}/github_signing.pub" )
+    stephane.lacoin@hyland.com namespaces="git" $( cat "${hostKeysDir}/github_signing_hyland.pub" )
     EoF
   '';
 }

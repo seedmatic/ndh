@@ -27,6 +27,7 @@ in {
     ./password-store.nix
     ./shell.nix
     ./ssh.nix
+    ./ssh-keys.nix
     #   ./teleport.nix
     ./tldr.nix
     ./tmate.nix
