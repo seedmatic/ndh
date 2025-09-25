@@ -1,5 +1,5 @@
 { pkgs, lib, userMapping, ... }:
-let 
+let
   inherit (lib) mkDefault;
   committedUser = userMapping.profileUsers.committed;
   workUser = userMapping.profileUsers.work;
@@ -13,8 +13,8 @@ in {
       name = mkDefault workUser.name;
       description = mkDefault workUser.description;
       shell = mkDefault pkgs.zsh;
-  uid = 503;
-  gid = 503;
+      uid = 503;
+      gid = 503;
     };
   };
   ids.gids.nixbld = lib.mkForce 350;
