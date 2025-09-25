@@ -41,22 +41,6 @@ in {
             "ipv6.nat" = "false";
           };
         }
-        {
-          name = "rke2-br";
-          type = "bridge";
-          description = "RKE2 network bridge";
-          config = {
-            "ipv4.address" = "172.31.1.1/24";
-            "ipv4.nat" = "true";
-            "ipv4.dhcp" = "true";
-            "ipv6.address" = "none";
-            "ipv6.nat" = "false";
-            "ipv6.dhcp" = "false";
-            "raw.dnsmasq" = ''
-              dhcp-host=10:66:6a:e0:18:af,172.31.1.2
-            '';
-          };
-        }
       ];
       profiles = [
         {
@@ -90,23 +74,6 @@ in {
               path = "/";
               pool = "default";
               type = "disk";
-            };
-          };
-        }
-        {
-          name = "rke2";
-          description = "RKE2 control plane network profile";
-          devices = {
-            root = {
-              path = "/";
-              pool = "default";
-              type = "disk";
-            };
-            eth0 = {
-              name = "eth0";
-              nictype = "bridged";
-              parent = "rke2-br";
-              type = "nic";
             };
           };
         }
