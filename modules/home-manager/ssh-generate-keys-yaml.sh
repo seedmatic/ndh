@@ -1,4 +1,10 @@
 #!/usr/bin/env -S bash -exuo pipefail
+# @codebase
+# Original name: ssh-add-keys.sh (renamed to clarify purpose: generates consolidated keys.yaml)
+# This script assembles & (re)generates SSH key material for the selected profile, signing it
+# with configured authorities and outputting a normalized YAML document consumed by Home Manager.
+
+# (Content copied verbatim from previous ssh-add-keys.sh)
 
 shopt -s extglob
 
@@ -176,7 +182,7 @@ authority::signKey() {
     local -a tmpfiles
     trap 'trap - RETURN; rm -f "${tmpfiles[@]}"' RETURN
 
-    : Construct the variable names for the authority\'s key
+    : Construct the variable names for the authority's key
     local cakeyPrivateVar cakeyPrivateTmpFile
     cakeyPrivateVar="$( var::snakeCase "$keyVar" "authorities" "$authorityName" "private" )"
     if [ -z "${!cakeyPrivateVar:-}" ]; then
@@ -187,7 +193,7 @@ authority::signKey() {
     cat <<<"${!cakeyPrivateVar}" >"$cakeyPrivateTmpFile" &&
         chmod 400 "$cakeyPrivateTmpFile"
 
-    : Construct the variable names for the public\'s key
+    : Construct the variable names for the public's key
     local keyPublicLine keyPublicTmpFile
     keyPublicLine="$( key::value "type" ) $( key::value "public" ) $( key::value "comment" )"
     keyPublicTmpFile="${tmpdir}/${keyName}.pub"
@@ -403,8 +409,8 @@ inputFile="$1"; shift
 outputFile="$1"; shift
 
 declare -g osHostname osDomainName
-osHostname="$( /bin/hostname -s )"
-osDomainName="$( /bin/hostname -d )"
+osHostname="$( hostname -s )"
+osDomainName="$( hostname -d )"
 
 : Create a temporary directory for signing
 tmpdir=$(mktemp --directory --suffix=keys.d)

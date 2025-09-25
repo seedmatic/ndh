@@ -21,20 +21,6 @@ let
             exit 2
         fi
 
-        : Extend path with required binaries
-        export PATH="/run/wrappers/bin:${
-          pkgs.lib.makeBinPath [
-            pkgs.bash
-            pkgs.mount
-            pkgs.rsync
-            pkgs.shadow
-            pkgs.util-linux
-            pkgs.yq-go
-            pkgs.zfs
-            pkgs.zsh
-          ]
-        }:$PATH"
-
         : Remount lima-cidata as overlay
         mkdir -p ${LIMA_CIDATA_MNT}-upper ${LIMA_CIDATA_MNT}-work
         mount -t overlay overlay -o lowerdir=${LIMA_CIDATA_MNT},upperdir=${LIMA_CIDATA_MNT}-upper,workdir=${LIMA_CIDATA_MNT}-work ${LIMA_CIDATA_MNT}

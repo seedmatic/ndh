@@ -19,17 +19,41 @@ let
     then hostProfile.hostAlias else hostProfile.hostName;
 
   yamlHostKeys = pkgs.runCommand "ssh-signed-keys.yaml" {
-    buildInputs =
-      [ pkgs.coreutils-full pkgs.yq-go pkgs.openssh pkgs.bash pkgs.gnused ];
+    # Provide every binary referenced by ssh-generate-keys-yaml.sh: bash, yq, ssh-keygen, sed, grep, awk, coreutils.
+    buildInputs = [
+      pkgs.bash             # bash
+      pkgs.coreutils-full   # env, cut, mktemp, etc.
+      pkgs.hostname         # hostname
+      pkgs.gawk             # awk (robust text processing)
+      pkgs.gnused           # sed
+      pkgs.gnugrep          # grep -oE
+      pkgs.openssh          # ssh-keygen
+      pkgs.yq-go            # yq
+    ];
   } ''
-  ${./ssh-add-keys.sh} "${profileName}" "${hostIdent}" "${./ssh.d/keys.yaml}" "$out"
+    bash ${./ssh-generate-keys-yaml.sh} "${profileName}" "${hostIdent}" "${./ssh.d/keys.yaml}" "$out"
+
+    # Basic sanity: produced file must start with 'keys:' (or be empty if profile has no keys)
+    if [ -s "$out" ] && ! head -n1 "$out" | grep -q '^keys:'; then
+      echo "ssh-keys generation failed: unexpected output (missing keys: header)" >&2
+      sed -n '1,200p' "$out" >&2 || true
+      exit 1
+    fi
   '';
 
   # Script to extract host keys and CA public key from keys.yaml
   keysDir = pkgs.runCommand "${userName}::ssh-host-keys.d" {
-    buildInputs = [ pkgs.coreutils-full pkgs.yq-go ];
+    buildInputs = [
+      pkgs.bash
+      pkgs.coreutils-full   # mkdir, mv, cut
+      pkgs.yq-go            # yq
+      pkgs.gnused           # sed (if needed later)
+      pkgs.gnugrep          # grep (if pattern matching added later)
+      pkgs.gawk             # awk (robust text processing)
+      pkgs.gettext          # envsubst
+    ];
   } ''
-    ${./ssh-extract-keys.sh} "${yamlHostKeys}" "$out"
+    ${pkgs.bash}/bin/bash ${./ssh-extract-keys.sh} "${yamlHostKeys}" "$out"
   '';
 
  # Script to retrieve known hosts including CA public key
@@ -51,7 +75,14 @@ in {
   home.file.".ssh" = {
     source = pkgs.lib.mkForce (pkgs.lib.cleanSourceWith {
       src = ./ssh.d;
-      filter = path: type: !(builtins.match ".*/keys.yaml" path != null);
+      # Exclude dynamically generated or unwanted files from deployment into ~/.ssh
+      # We skip:
+      #  - keys.yaml (it is generated separately as yamlHostKeys)
+      #  - .gitattributes (repo hygiene only, not needed in target)
+      #  - authorized_keys (we will manage / append dynamically at runtime)
+      filter = path: type:
+        let base = builtins.baseNameOf path; in
+        ! (base == "keys.yaml" || base == ".gitattributes" || base == "authorized_keys");
     });
     recursive = true;
   };
@@ -65,6 +96,19 @@ in {
       --chmod=u+w,go-r \
       --chown=$(id -un):$(id -gn) \
       ${keysDir}/ ~/.ssh/keys.d/ || true
+  '';
+
+  # Ensure mutable authorized_keys exists (symlink-free) with strict perms
+  home.activation.ensureAuthorizedKeys = lib.hm.dag.entryAfter ["deploySSHKeys"] ''
+    run install -d -m 700 ~/.ssh
+    if [ -L ~/.ssh/authorized_keys ]; then
+      run rm -f ~/.ssh/authorized_keys
+    fi
+    if [ ! -f ~/.ssh/authorized_keys ]; then
+      run install -m 600 /dev/null ~/.ssh/authorized_keys
+    else
+      run chmod 600 ~/.ssh/authorized_keys
+    fi
   '';
 
   programs.ssh.extraConfig = ''
