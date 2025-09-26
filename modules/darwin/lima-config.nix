@@ -94,12 +94,6 @@ let
           
           # Also set it in the systemd environment
           systemctl set-environment PATH="/run/wrappers/bin:/run/current-system/sw/bin:/nix/var/nix/profiles/default/bin"
-          
-          # Create lima-ssh-ready file immediately since basic system is ready
-          if [[ -f /mnt/lima-cidata/meta-data ]]; then
-            cp /mnt/lima-cidata/meta-data /run/lima-ssh-ready
-            chmod 644 /run/lima-ssh-ready
-          fi
         '';
       }
       {
