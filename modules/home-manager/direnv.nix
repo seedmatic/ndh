@@ -1,4 +1,4 @@
-{ config, pkgs, ... }:
+{ config, lib, pkgs, ... }:
 let dollar = "$";
 in {
   programs.direnv = {
@@ -7,7 +7,7 @@ in {
     enableBashIntegration = true;
     enableZshIntegration = true;
 
-    stdlib = ''
+    stdlib = lib.mkBefore ''
       direnv_layout_dir() {
         local pwd_hash
         pwd_hash=${dollar}(basename "${dollar}PWD")-${dollar}(echo -n "${dollar}PWD" | shasum | cut -d ' ' -f 1 | head -c 7)

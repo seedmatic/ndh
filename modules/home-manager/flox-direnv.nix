@@ -1,4 +1,4 @@
-{ pkgs, ... }: let
+{ lib, pkgs, ... }: let
 
   dollar = "$";
 
@@ -8,7 +8,7 @@
 in {
   programs.direnv = {
 
-    stdlib = ''
+    stdlib = lib.mkAfter ''
       PATH_add /run/current-system/sw/bin
       export FLOX_RCPATH="${flox-rc-path}"
 
