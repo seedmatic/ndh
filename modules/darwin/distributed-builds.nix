@@ -73,8 +73,25 @@ in {
       ) remoteBuilders;
     };
 
+    # Ensure a global /etc/ssh/ssh_config exists so that the Include directive above is honored.
+    # macOS does not create /etc/ssh/ssh_config by default on some systems; without it the
+    # fragment directory is never consulted by the system ssh client.
+    environment.etc."ssh/ssh_config" = {
+      # nix-darwin's environment.etc entries do not expose a `mode` option (unlike NixOS),
+      # so we omit it here to avoid: "The option environment.etc."ssh/ssh_config".mode does not exist".
+      text = ''
+        Host *
+          SendEnv LANG LC_*
+        Include /etc/ssh/ssh_config.d/*.conf
+      '';
+    };
+
     # Configure SSH to use Darwin hosts as jump hosts to reach Linux builders
     programs.ssh.extraConfig = ''
+      # Global /etc/ssh/ssh_config already Includes /etc/ssh/ssh_config.d/*.conf.
+      # DO NOT repeat that Include here; this file itself lives under that directory.
+      # Repeating it caused: "Too many recursive configuration includes" for host linux-builder.
+
       # Local darwin-linux-builder (avoid conflict with nix-darwin's linux-builder)
       Host darwin-linux-builder
         HostName localhost

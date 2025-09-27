@@ -28,6 +28,8 @@ in {
     ./shell.nix
     ./ssh.nix
     ./ssh-keys.nix
+    ./ssh-tailnet-hosts.nix
+    ./ssh-keychain-removal.nix
     #   ./teleport.nix
     ./tldr.nix
     ./tmate.nix

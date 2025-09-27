@@ -8,16 +8,18 @@ mkdir -p "$outputDir"
 exp=$( cat <<'EOE' | cut -c 3-
   .keys | to_entries[] | 
   .key as $name |
+  # Derive a filesystem filename base where underscores are converted back to hyphens
+  ($name | sub("_"; "-")) as $fname |
   .value.private as $private | 
   .value.public as $public | 
   .value.usage // [] as $usage |
   [
     {
-      "filename": ("$OUTPUT_DIR/" + $name), 
+      "filename": ("$OUTPUT_DIR/" + $fname), 
       "content": $private
     },
     {
-      "filename": ( "$OUTPUT_DIR/" + $name + (
+      "filename": ( "$OUTPUT_DIR/" + $fname + (
         { "suffix": ".pub" } | with( 
             select ( [ "ssh-authority"] - $usage | length == 0 );
             .suffix = "-ca.pub"
@@ -36,7 +38,7 @@ exp=$( cat <<'EOE' | cut -c 3-
       ( 
         "-" + $authorityName + "-" + $certType + "-cert.pub"
       ) as $certSuffix |
-    [{"filename": ("$OUTPUT_DIR/" + $name +  $certSuffix), "content": $certContent}]
+    [{"filename": ("$OUTPUT_DIR/" + $fname +  $certSuffix), "content": $certContent}]
   ) // []
   | (.. | select(tag == "!!str")) |= envsubst
   | .[] | select(.content != null) | splitdoc

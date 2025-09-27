@@ -54,8 +54,8 @@ usermod -a -G users "${LIMA_CIDATA_USER}" || true
 ln -fs /run/current-system/sw/bin/bash /bin/bash
 
 # Setup SSH
-install -d -m 700 "/etc/ssh/authorized_keys.d"
-yq eval '.users[].ssh-authorized-keys // []'  "${LIMA_CIDATA_MNT}/user-data" > "/etc/ssh/authorized_keys.d/${LIMA_CIDATA_USER}"
+install -d -m 755 "/etc/ssh/authorized_keys.d"
+yq eval '.users[].ssh-authorized-keys[]' "${LIMA_CIDATA_MNT}/user-data" > "/etc/ssh/authorized_keys.d/${LIMA_CIDATA_USER}"
 chmod a+r "/etc/ssh/authorized_keys.d/${LIMA_CIDATA_USER}"
 
 # Fix permissions for Darwin host shared home directory
@@ -129,4 +129,5 @@ done
 
 udevadm control --reload-rules
 
-env -S LIMA_CIDATA_MNT="${LIMA_CIDATA_MNT}" bash -ex -o pipefail "${LIMA_CIDATA_MNT}/boot.sh"
+cp "${LIMA_CIDATA_MNT}/meta-data" /run/lima-ssh-ready
+cp "${LIMA_CIDATA_MNT}/meta-data" /run/lima-boot-done

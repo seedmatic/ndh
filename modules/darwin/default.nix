@@ -10,8 +10,8 @@
     ./distributed-builds.nix
     ./podman-remote-client.nix
     ./raycast.nix
-    ./ssh.nix
-  # Inline module replaced with file import for Home Manager extension
-  ./extend-hm-imports.nix
+    ./openssh.nix
+    # Inline module replaced with file import for Home Manager extension
+    ./extend-hm-imports.nix
   ];
 }
