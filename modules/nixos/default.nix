@@ -163,9 +163,9 @@ in {
   };
   
   # Also set it in the shell init
-  environment.shellInit = ''
-    export PATH="/run/wrappers/bin:$PATH"
-  '';
+  # environment.shellInit = ''
+  #   export PATH="/run/wrappers/bin:$PATH"
+  # '';
 
   # Services
   services = {
