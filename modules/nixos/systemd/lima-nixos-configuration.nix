@@ -9,13 +9,13 @@ let
     }
 
     echo "Cloning NixOS configuration for ${config.limaHost.hostName}"
-    mkdir -p /var/run/nixos
+    mkdir -p /var/lib/nixos
     git clone --single-branch --branch develop \
-      https://github.com/nxmatic/nix-darwin-home.git /var/run/nixos/config
+      https://github.com/nxmatic/nix-darwin-home.git /var/lib/nixos/config
 
     echo "Creating symlink to NixOS configuration"
     mkdir -p /etc/nixos
-    ln -fs /var/run/nixos/config/hosts/${config.limaHost.hostName}/flake.nix /etc/nixos/
+    ln -fs /var/lib/nixos/config/hosts/${config.limaHost.hostName}/flake.nix /etc/nixos/
   '';
 
 in {

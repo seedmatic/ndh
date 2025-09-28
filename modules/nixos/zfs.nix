@@ -233,7 +233,7 @@ in {
         nixos-rebuild boot
 
         : → running disko
-        disko --mode format,mount /var/run/nixos/config/modules/nixos/disko.nix
+        disko --mode format,mount /var/lib/nixos/config/modules/nixos/disko.nix
         zfs umount -a
 
         : → setting ZFS mountpoints to legacy from fstab
