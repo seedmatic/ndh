@@ -60,6 +60,12 @@ let
       forwardAgent = true;
     };
     
+    # Ensure cidata/etc_environment provides a PATH where /bin and /usr/bin come first,
+    # so the very first sudo resolves to the setuid wrapper at /bin/sudo (symlinked).
+    env = {
+      PATH = "/run/wrappers/bin:/run/current-system/sw/bin";
+    };
+    
     containerd = {
       system = false;
       user = false;
@@ -71,19 +77,49 @@ let
         script = ''
           #!/bin/bash
           set -eux -o pipefail
-          
-          # Ensure /usr/local/bin exists
-          mkdir -p /usr/local/bin
-          
+
           # Create early symlinks for critical binaries including sudo
-          ln -sf /run/wrappers/bin/sudo /usr/local/bin/sudo || true
-          ln -sf /run/current-system/sw/bin/bash /usr/local/bin/bash || true
+          mkdir -p /bin
+          ln -sf /run/current-system/sw/bin/bash /bin/bash || true
           
           # Set PATH in ssh daemon environment - for non-interactive SSH commands
           mkdir -p /etc/ssh/sshd_config.d
           cat > /etc/ssh/sshd_config.d/lima-path.conf << 'EOF'
-          SetEnv PATH="/run/wrappers/bin:/usr/local/bin:/run/current-system/sw/bin:/nix/var/nix/profiles/default/bin:/usr/bin:/bin"
+          SetEnv PATH="/run/wrappers/bin:/run/current-system/sw/binn"
           EOF
+
+          # Ensure main sshd_config includes the drop-in directory very early
+          if [ -f /etc/ssh/sshd_config ]; then
+            if ! grep -qE '^\s*Include\s+sshd_config.d/\*' /etc/ssh/sshd_config && \
+               ! grep -qE '^\s*Include\s+/etc/ssh/sshd_config.d/\*' /etc/ssh/sshd_config; then
+              printf '\nInclude /etc/ssh/sshd_config.d/*\n' >> /etc/ssh/sshd_config
+            fi
+            # Ensure ~/.ssh/environment is honored immediately
+            if ! grep -qE '^\s*PermitUserEnvironment\s+yes' /etc/ssh/sshd_config; then
+              printf '\nPermitUserEnvironment yes\n' >> /etc/ssh/sshd_config
+            fi
+          else
+            # Create minimal config if missing
+            printf 'Include /etc/ssh/sshd_config.d/*\nPermitUserEnvironment yes\n' > /etc/ssh/sshd_config
+          fi
+
+          # Provide BASH_ENV target for non-interactive bash
+          install -d -m 755 /etc/profile.d
+          cat > /etc/profile.d/noninteractive.sh << 'EOF'
+          #!/bin/sh
+          export PATH="/run/wrappers/bin:/run/current-system/sw/bin"
+          EOF
+          chmod 0644 /etc/profile.d/noninteractive.sh
+
+          # Seed user's ~/.ssh/environment with wrapper-first PATH
+          install -d -m 700 "/home/${profileUser}/.ssh"
+          cat > "/home/${profileUser}/.ssh/environment" << 'EOF'
+          PATH=/run/wrappers/bin:/run/current-system/sw/bin:/nix/var/nix/profiles/default/bin
+          EOF
+          chown -R "${profileUser}:${profileUser}" "/home/${profileUser}/.ssh"
+
+          # Best effort reload if sshd is already up (harmless if not)
+          systemctl try-reload-or-restart sshd.service 2>/dev/null || true
           
           # Create a script that sets the correct PATH including wrappers
           mkdir -p /etc/profile.d
@@ -93,7 +129,7 @@ let
           chmod +x /etc/profile.d/lima-path.sh
           
           # Also set it in the systemd environment
-          systemctl set-environment PATH="/run/wrappers/bin:/run/current-system/sw/bin:/nix/var/nix/profiles/default/bin"
+          systemctl set-environment PATH="/run/wrappers/bin:/run/current-system/sw/binn"
         '';
       }
       {

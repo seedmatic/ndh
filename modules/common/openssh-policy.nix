@@ -31,6 +31,11 @@ let
         if (cfg.groupKeysCommandSource != null) || (cfg.groupCommand != null && cfg.groupCommand != "") then cfg.groupCommandUser else null;
       # Darwin auto-fold of AuthorizedKeysFile list; on NixOS we rely on native list option
       AuthorizedKeysFile = if pkgs.stdenv.isDarwin then lib.concatStringsSep " " cfg.authorizedKeysFiles else null;
+      # Allow user environment file by default on both platforms
+      PermitUserEnvironment = "yes";
+      # Baseline PATH for sshd sessions and ensure non-interactive bash sources our file
+      # Note: SetEnv accepts space-separated VAR=VALUE pairs.
+      SetEnv = "PATH=${cfg.setEnvPath} BASH_ENV=/etc/profile.d/noninteractive.sh";
     } // cfg.extraSettings;
     in lib.filterAttrs (_: v: v != null && v != "") raw;
 in {
@@ -127,6 +132,25 @@ in {
       description = "Basename for group keys command script when using groupKeysCommandSource.";
     };
 
+    # Shared drop-in include globs for both platforms; rendered appropriately per OS
+    includeDaemonGlobs = mkOption {
+      type = types.listOf types.str;
+      default = [ "sshd_config.d/*.conf" ];
+      description = "Glob(s) included by sshd_config via Include lines (relative to /etc/ssh).";
+    };
+    includeClientGlobs = mkOption {
+      type = types.listOf types.str;
+      default = [ "ssh_config.d/*.conf" "/etc/ssh/ssh_config.d/*.conf" ];
+      description = "Glob(s) included by ssh client config via Include lines (relative to /etc/ssh). Include both relative and absolute forms for compatibility.";
+    };
+
+    # Shared PATH used by sshd SetEnv (override per-host if needed)
+    setEnvPath = mkOption {
+      type = types.str;
+      default = "/bin:/usr/bin:/run/wrappers/bin:/run/current-system/sw/bin";
+      description = "PATH value applied via sshd SetEnv for non-interactive SSH sessions.";
+    };
+
     cleanupLegacyCommandScripts = mkOption {
       type = types.bool;
       default = true;
@@ -182,5 +206,28 @@ in {
     # Expose helpers
     opensshPolicy.hostKeys = cfg.hostKeyPaths;
     opensshPolicy.authorizedKeysFileString = if pkgs.stdenv.isDarwin then lib.concatStringsSep " " cfg.authorizedKeysFiles else null;
+
+    # Provide the BASH_ENV target so non-interactive `/bin/bash -c` launched by sshd
+    # gets the wrapper-first PATH immediately on both NixOS and Darwin.
+    environment.etc."profile.d/noninteractive.sh".source =
+      pkgs.writeText "noninteractive.sh" ''
+        #!/bin/sh
+        # Only modify PATH for non-interactive shells (bash -c; $- lacks 'i')
+        case "$-" in
+          *i*) : ;;
+          *)
+            WRAP="/run/wrappers/bin"
+            # Fallback PATH if empty (literal, no Nix interpolation)
+            if [ -z "$PATH" ]; then
+              PATH="/bin:/usr/bin:/run/wrappers/bin:/run/current-system/sw/bin"
+            fi
+            first="$(printf %s "$PATH" | cut -d: -f1)"
+            if [ "$first" != "$WRAP" ] && [ -d "$WRAP" ]; then
+              PATH="$WRAP:$PATH"
+              export PATH
+            fi
+            ;;
+        esac
+      '';
   };
 }

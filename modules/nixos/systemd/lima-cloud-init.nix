@@ -66,7 +66,7 @@ in {
 
   networking.nat.enable = true;
 
-  environment.systemPackages = with pkgs; [ bash sshfs fuse3 git ];
+  environment.systemPackages = with pkgs; [ bash sshfs fuse3 git openssh ];
 
   boot.kernel.sysctl = {
     "kernel.unprivileged_userns_clone" = 1;

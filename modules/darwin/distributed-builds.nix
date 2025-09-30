@@ -82,7 +82,7 @@ in {
       text = ''
         Host *
           SendEnv LANG LC_*
-        Include /etc/ssh/ssh_config.d/*.conf
+        Include  /etc/ssh/ssh_config.d/*.conf ssh_config.d/*.conf
       '';
     };
 

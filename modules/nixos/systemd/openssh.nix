@@ -15,27 +15,29 @@ in
 
   opensshPolicy = {
     enable = true;
-    passwordAuthentication = false;
-    permitRootLogin = "no";
     trustedCAPath = caPublicKeyPath;
-    principalsFilePath = "%h/.ssh/authorized_principals";
-  principalsCommandSource = principalsScriptStore;
-    principalsCommandUser = "nobody";
-    groupDirectory = "/etc/ssh/authorized_keys.d";
-  groupCommandUser = "nobody";
-  groupKeysCommandSource = groupKeysScriptStore;
-    authorizedKeysFiles = [ "%h/.ssh/authorized_keys" "/etc/ssh/authorized_keys.d/%u" ];
+    principalsCommandSource = principalsScriptStore;
+    groupKeysCommandSource = groupKeysScriptStore;
     hostKeyPaths = [ hostKeyPath ];
-    extraSettings = {
-      # Ensure sshd sessions search /run/wrappers/bin first.
-      SetEnv = "PATH=/run/wrappers/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin";
-    };
   };
 
   services.openssh = {
     enable = true;
     authorizedKeysFiles = lib.mkForce config.opensshPolicy.authorizedKeysFiles;
-    settings = config.opensshPolicy.settings;
+    settings = config.opensshPolicy.settings // {
+      UsePAM = true;
+    };
+    # Render shared daemon Include globs
+    extraConfig = let
+      lines = builtins.map (g: "Include ${g}") config.opensshPolicy.includeDaemonGlobs;
+    in lib.concatStringsSep "\n" lines + "\n";
+  };
+
+  # OpenSSH client configuration: allow includes for drop-ins under /etc/ssh/ssh_config.d
+  programs.ssh = {
+    extraConfig = let
+      lines = builtins.map (g: "Include ${g}") config.opensshPolicy.includeClientGlobs;
+    in lib.concatStringsSep "\n" lines + "\n";
   };
 
   # Ensure the group authorized keys directory exists and create keys
@@ -71,6 +73,21 @@ in
       if [ ! -e /etc/ssh/authorized-principals-command ]; then
         ln -s ${config.opensshPolicy.canonicalPrincipalsCommandName} /etc/ssh/authorized-principals-command
       fi
+
+      # Ensure drop-in include directories exist
+      install -d -m 755 /etc/ssh/sshd_config.d
+      install -d -m 755 /etc/ssh/ssh_config.d
     '';
   };
+
+  # Create critical symlinks as early as possible during boot so the very first
+  # ssh non-interactive session finds the setuid sudo via /bin or /usr/bin
+  systemd.tmpfiles.rules = [
+    "L+ /bin/sudo - - - - /run/wrappers/bin/sudo"
+    "L+ /usr/bin/sudo - - - - /run/wrappers/bin/sudo"
+    "L+ /bin/bash - - - - /run/current-system/sw/bin/bash"
+  ];
+
+  # Ensure all systemd services (including sshd) inherit a wrapper-first PATH
+  systemd.globalEnvironment.PATH = config.opensshPolicy.setEnvPath;
 }

@@ -9,6 +9,7 @@ in {
   programs.direnv = {
 
     stdlib = lib.mkAfter ''
+      PATH_add /run/wrappers/bin
       PATH_add /run/current-system/sw/bin
       export FLOX_RCPATH="${flox-rc-path}"
 

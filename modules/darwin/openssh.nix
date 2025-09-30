@@ -14,23 +14,15 @@ in {
 
   opensshPolicy = {
     enable = true;
-    passwordAuthentication = false;
-    permitRootLogin = "no";
     trustedCAPath = caPublicKeyFile;
-    principalsFilePath = "%h/.ssh/authorized_principals";
     principalsCommandSource = principalsScriptStore;
     principalsCommandUser = "_sshd";
-    groupDirectory = "/etc/ssh/group_authorized_keys.d";
     groupKeysCommandSource = groupKeysScriptStore;
     groupCommandUser = "_sshd";
-    authorizedKeysFiles = [ "%h/.ssh/authorized_keys" "/etc/ssh/group_authorized_keys.d/%u" ];
     hostKeyPaths = [ hostKeyPrivateFile ];
     hostCertificatePath = hostKeyPublicCert;
-    extraSettings = {
-      # Ensure sshd sessions search /run/wrappers/bin first.
-      # Note: OpenSSH does not expand $PATH here; set the full baseline explicitly.
-      SetEnv = "PATH=/run/wrappers/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin";
-    };
+    # All other defaults (AuthorizedKeysFile, groupDirectory, SetEnv PATH, Include globs)
+    # come from the shared openssh-policy. Override here only if Darwin really needs special values.
   };
 
   # Ensure tools used by principals/group commands are available (yq for principals parsing)
@@ -57,8 +49,14 @@ in {
     certAlready = lib.any (l: lib.hasPrefix "HostCertificate " l) policyLines;
     certLine = if (!certAlready && config.opensshPolicy.settings ? HostCertificate)
       then ["HostCertificate ${config.opensshPolicy.settings.HostCertificate}"] else [];
-    all = hostKeyLines ++ certLine ++ policyLines;
+    includeLines = builtins.map (g: "Include ${g}") config.opensshPolicy.includeDaemonGlobs;
+    all = hostKeyLines ++ certLine ++ policyLines ++ includeLines;
   in lib.concatStringsSep "\n" all + "\n";
+
+  # Provide a minimal ssh client config that honors shared Include globs
+  environment.etc."ssh/ssh_config".text = let
+    includeLines = builtins.map (g: "Include ${g}") config.opensshPolicy.includeClientGlobs;
+  in lib.concatStringsSep "\n" includeLines + "\n";
 
   system.activationScripts.postActivation.text = ''
     # Install builder keys for nix daemon (root) access (Darwin)
@@ -107,20 +105,22 @@ in {
       rm -f /etc/ssh/ssh-group-authorized-keys-darwin
     fi
 
-    # Migration: if legacy /etc/ssh/authorized_keys.d (previous group dir) exists and our new dir absent
-    if [ -d /etc/ssh/authorized_keys.d ] && [ ! -d /etc/ssh/group_authorized_keys.d ]; then
-      echo "[ssh] Migrating legacy /etc/ssh/authorized_keys.d -> /etc/ssh/group_authorized_keys.d" >&2
-      install -d -m 755 /etc/ssh/group_authorized_keys.d
-      # Copy only non-user-specific files (heuristic: all files) preserving perms
-      for f in /etc/ssh/authorized_keys.d/*; do
+    # Migration: if legacy Darwin path /etc/ssh/group_authorized_keys.d exists, migrate to shared default
+    if [ -d /etc/ssh/group_authorized_keys.d ] && [ ! -d ${config.opensshPolicy.groupDirectory} ]; then
+      echo "[ssh] Migrating legacy /etc/ssh/group_authorized_keys.d -> ${config.opensshPolicy.groupDirectory}" >&2
+      install -d -m 755 ${config.opensshPolicy.groupDirectory}
+      for f in /etc/ssh/group_authorized_keys.d/*; do
         [ -f "$f" ] || continue
-        cp -p "$f" /etc/ssh/group_authorized_keys.d/ || true
+        cp -p "$f" ${config.opensshPolicy.groupDirectory}/ || true
       done
-      # Do not remove automatically; instruct user once migration confirmed.
-      echo "[ssh] Review and remove /etc/ssh/authorized_keys.d if no longer needed." >&2
+      echo "[ssh] Review and remove /etc/ssh/group_authorized_keys.d if no longer needed." >&2
     fi
 
-    # Ensure new group keys directory exists
-    install -d -m 755 /etc/ssh/group_authorized_keys.d
+    # Ensure shared group keys directory exists
+    install -d -m 755 ${config.opensshPolicy.groupDirectory}
+
+    # Ensure drop-in include directories exist
+    install -d -m 755 /etc/ssh/sshd_config.d
+    install -d -m 755 /etc/ssh/ssh_config.d
   '';
 }

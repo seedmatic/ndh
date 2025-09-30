@@ -3,9 +3,6 @@
 let
   isX86_64 = pkgs.stdenv.hostPlatform.system == "x86_64-linux";
   isAarch64 = pkgs.stdenv.hostPlatform.system == "aarch64-linux";
-  user = "nixos";
-  keyType = "ed25519";
-  keysDirectory = "/etc/ssh/authorized_keys.d";
   kernelModules = [ "ext4" "overlay" "vhost_vsock" "vsock" ];
   supportedFilesystems = {
     ext4 = true;
@@ -40,7 +37,7 @@ in {
     {
       experimental-features = [ "nix-command" "flakes" ];
       auto-optimise-store = true;
-      trusted-users = [ user "root" ];
+      trusted-users = [ cfgUserName "root" ];
       sandbox = false;
       extra-sandbox-paths = [ "/dev/kvm" ];
 
@@ -170,15 +167,6 @@ in {
   # Services
   services = {
     getty.autologinUser = "root";
-    openssh = {
-      enable = true;
-      settings = {
-        AllowGroups = [ "wheel" "ssh" ];
-        PermitRootLogin = "no";
-        PasswordAuthentication = false;
-      };
-      authorizedKeysFiles = [ "${keysDirectory}/%u_${keyType}.pub" ];
-    };
     journald.extraConfig = ''
       ForwardToConsole=yes
       TTYPath=/dev/console

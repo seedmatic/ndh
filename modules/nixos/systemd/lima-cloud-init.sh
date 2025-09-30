@@ -47,7 +47,7 @@ if [[ -f "${PARAM_ENV_FILE}" ]]; then
       { print }
     ' "${PARAM_ENV_FILE}" > "${PARAM_ENV_FILE}.tmp" && mv "${PARAM_ENV_FILE}.tmp" "${PARAM_ENV_FILE}"
   else
-    printf '%s\n' 'PATH=/run/wrappers/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin' >> "${PARAM_ENV_FILE}"
+    printf '%s\n' 'PATH=/run/wrappers/bin:/run/current-system/sw/bin:/nix/var/profiles/default/bin' >> "${PARAM_ENV_FILE}"
   fi
 fi
 
@@ -80,8 +80,9 @@ fi
 usermod -a -G wheel "${LIMA_CIDATA_USER}" || true
 usermod -a -G users "${LIMA_CIDATA_USER}" || true
 
-ln -fs /run/current-system/sw/bin/bash /bin/bash
+ln -fs /run/current-system/sw/bin/bash /bin/bash || true
 ln -fs /run/wrappers/bin/sudo /bin/sudo
+ln -fs /run/wrappers/bin/sudo /usr/bin/sudo || true
 
 # Setup SSH
 install -d -m 755 "/etc/ssh/authorized_keys.d"
