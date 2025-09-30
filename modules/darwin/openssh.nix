@@ -26,7 +26,11 @@ in {
     authorizedKeysFiles = [ "%h/.ssh/authorized_keys" "/etc/ssh/group_authorized_keys.d/%u" ];
     hostKeyPaths = [ hostKeyPrivateFile ];
     hostCertificatePath = hostKeyPublicCert;
-    extraSettings = { };
+    extraSettings = {
+      # Ensure sshd sessions search /run/wrappers/bin first.
+      # Note: OpenSSH does not expand $PATH here; set the full baseline explicitly.
+      SetEnv = "PATH=/run/wrappers/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin";
+    };
   };
 
   # Ensure tools used by principals/group commands are available (yq for principals parsing)

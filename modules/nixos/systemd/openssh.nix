@@ -26,7 +26,10 @@ in
   groupKeysCommandSource = groupKeysScriptStore;
     authorizedKeysFiles = [ "%h/.ssh/authorized_keys" "/etc/ssh/authorized_keys.d/%u" ];
     hostKeyPaths = [ hostKeyPath ];
-    extraSettings = { };
+    extraSettings = {
+      # Ensure sshd sessions search /run/wrappers/bin first.
+      SetEnv = "PATH=/run/wrappers/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin";
+    };
   };
 
   services.openssh = {
