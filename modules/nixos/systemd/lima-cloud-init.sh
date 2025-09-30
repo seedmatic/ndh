@@ -20,7 +20,36 @@ mkdir -p "${LIMA_CIDATA_MNT}-upper" "${LIMA_CIDATA_MNT}-work"
 mount -t overlay overlay \
   -o "lowerdir=${LIMA_CIDATA_MNT},upperdir=${LIMA_CIDATA_MNT}-upper,workdir=${LIMA_CIDATA_MNT}-work" \
   "${LIMA_CIDATA_MNT}"
-trap 'umount "${LIMA_CIDATA_MNT}"; rm -rf "${LIMA_CIDATA_MNT}-"{upper,work}' EXIT
+# Keep overlay mounted so edits (e.g., param.env) persist for the lifetime of the system.
+# Do not remove upper/work; leaving them ensures host reads modified files via /mnt/lima-cidata later.
+
+# Ensure that Lima's param.env enforces PATH with /run/wrappers/bin first.
+# The host SSH command exports param.env into the session, which can override sshd SetEnv.
+PARAM_ENV_FILE="${LIMA_CIDATA_MNT}/param.env"
+if [[ -f "${PARAM_ENV_FILE}" ]]; then
+  if grep -qE '^PATH=' "${PARAM_ENV_FILE}"; then
+    # Normalize PATH: drop all existing /run/wrappers/bin entries, then prefix once
+    awk -v RS='\n' -v ORS='\n' '
+      BEGIN { changed=0 }
+      /^PATH=/ {
+        val = substr($0, 6)
+        n = split(val, parts, ":")
+        out = "/run/wrappers/bin"; seen_wrappers=1
+        for (i=1; i<=n; i++) {
+          p = parts[i]
+          if (p == "" || p == "/run/wrappers/bin") continue
+          # avoid consecutive duplicates while rebuilding
+          if (index(":" out ":", ":" p ":")==0) out = out ":" p
+        }
+        print "PATH=" out
+        next
+      }
+      { print }
+    ' "${PARAM_ENV_FILE}" > "${PARAM_ENV_FILE}.tmp" && mv "${PARAM_ENV_FILE}.tmp" "${PARAM_ENV_FILE}"
+  else
+    printf '%s\n' 'PATH=/run/wrappers/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin' >> "${PARAM_ENV_FILE}"
+  fi
+fi
 
 # Force plain mode and normalise props; add derived helper variables
 # These become available to later shell via source <( yq ... )
@@ -52,6 +81,7 @@ usermod -a -G wheel "${LIMA_CIDATA_USER}" || true
 usermod -a -G users "${LIMA_CIDATA_USER}" || true
 
 ln -fs /run/current-system/sw/bin/bash /bin/bash
+ln -fs /run/wrappers/bin/sudo /bin/sudo
 
 # Setup SSH
 install -d -m 755 "/etc/ssh/authorized_keys.d"
