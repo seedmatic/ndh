@@ -26,11 +26,17 @@ in
     authorizedKeysFiles = lib.mkForce config.opensshPolicy.authorizedKeysFiles;
     settings = config.opensshPolicy.settings // {
       UsePAM = true;
+      # Allow client to specify which address to bind for remote forwardsssh
+      GatewayPorts = "clientspecified";
     };
     # Render shared daemon Include globs
-    extraConfig = let
+    extraConfig = (let
       lines = builtins.map (g: "Include ${g}") config.opensshPolicy.includeDaemonGlobs;
-    in lib.concatStringsSep "\n" lines + "\n";
+    in lib.concatStringsSep "\n" lines + "\n") + ''
+      # Enable remote forwarding of Unix domain sockets (for GPG agent forwarding)
+      StreamLocalBindUnlink yes
+      AllowStreamLocalForwarding yes
+    '';
   };
 
   # OpenSSH client configuration: allow includes for drop-ins under /etc/ssh/ssh_config.d

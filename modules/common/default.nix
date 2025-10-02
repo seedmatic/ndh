@@ -21,6 +21,7 @@ in {
     ./primary-user.nix
     ./user.nix
     ./nixpkgs.nix
+    ./dns-servers.nix
     ./dnsmasq.nix
     ./lima-host.nix
     ./distributed-builds-option.nix

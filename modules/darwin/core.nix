@@ -26,11 +26,16 @@ in {
       extra-platforms = aarch64-darwin
       # Add binary caches for substitution
       extra-trusted-substituters = https://cache.flakehub.com https://nxmatic.cachix.org
-      extra-trusted-public-keys = cache.flakehub.com-1:t7S7JjLyIJJLv0a0BqXdFnJvr4P8pAB2Z9xN2lYZXvY= nxmatic.cachix.org-1:oWogvXdam3gTxKzPZCDqq8khybQpqRdNpQQrKG3r4xM=
+      extra-trusted-public-keys = cache.flakehub.com-1:t7S7JjLyIJJLv0a0BqXdFnJvr4P8pAB2Z9xN2lYZXvY= nxmatic.cachix.org-1:oWogvXdam3gTxKzPZCDqq8khybQpqRdNpQQrKG3r4xM= cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY=
       # Increase download buffer size to prevent buffer full warnings
       download-buffer-size = 268435456  # 256 MB (was 64 MB default)
-      # Enable pushing to nxmatic cache
-      extra-substituters = https://nxmatic.cachix.org
+      # Enable pushing to nxmatic cache and use mirror for faster downloads
+      # Alternative mirrors (uncomment one to use if cache.nixos.org is slow):
+      # extra-substituters = https://cache.nixos.org https://nxmatic.cachix.org  # Official (default)
+      # extra-substituters = https://mirrors.tuna.tsinghua.edu.cn/nix-channels/store https://nxmatic.cachix.org  # Tsinghua (China)
+      # extra-substituters = https://mirrors.ustc.edu.cn/nix-channels/store https://nxmatic.cachix.org  # USTC (China)
+      # extra-substituters = https://mirrors.bfsu.edu.cn/nix-channels/store https://nxmatic.cachix.org  # BFSU (China)
+      extra-substituters = https://mirrors.tuna.tsinghua.edu.cn/nix-channels/store https://nxmatic.cachix.org
     '';
 
     # Configure NIX_PATH for legacy nix commands and <nixpkgs> imports

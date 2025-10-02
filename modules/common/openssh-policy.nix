@@ -89,7 +89,7 @@ in {
     # Group keys aggregation
     groupDirectory = mkOption {
       type = types.str;
-      default = "/etc/ssh/authorized_keys.d";
+      default = "/etc/ssh/group_authorized_keys.d";
       description = "Directory containing group authorized keys files.";
     };
     groupCommand = mkOption {
@@ -112,7 +112,7 @@ in {
 
     authorizedKeysFiles = mkOption {
       type = types.listOf types.str;
-      default = [ "%h/.ssh/authorized_keys" "/etc/ssh/authorized_keys.d/%u" ];
+      default = [ "%h/.ssh/authorized_keys" "/etc/ssh/group_authorized_keys.d/%u" ];
       description = "List used to populate AuthorizedKeysFile (NixOS native option or rendered on Darwin).";
     };
 
@@ -207,7 +207,7 @@ in {
     opensshPolicy.hostKeys = cfg.hostKeyPaths;
     opensshPolicy.authorizedKeysFileString = if pkgs.stdenv.isDarwin then lib.concatStringsSep " " cfg.authorizedKeysFiles else null;
 
-    # Provide the BASH_ENV target so non-interactive `/bin/bash -c` launched by sshd
+    # Provide  target so non-interactive `/bin/bash -c` launched by sshd
     # gets the wrapper-first PATH immediately on both NixOS and Darwin.
     environment.etc."profile.d/noninteractive.sh".source =
       pkgs.writeText "noninteractive.sh" ''

@@ -8,7 +8,7 @@
 
 shopt -s extglob
 
-declare -g keyFields="type|usage|comment|public|private|authorities|principals|domain"
+declare -g keyFields="type|usage|comment|public|private|authorities|principals|domain|authorized_keys_options"
 
 : "Function to handle tracing"
 log::trace() {

@@ -3,6 +3,7 @@
 # Print authorized SSH public keys aggregated from group-based key files.
 # Invoked as: ssh-group-authorized-keys <username>
 set -euo pipefail
+PATH="/run/wrappers/bin:/run/current-system/sw/bin"
 USER_NAME="${1:-}"
 if [[ -z "${USER_NAME}" ]]; then
   exit 1

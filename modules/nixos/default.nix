@@ -14,6 +14,7 @@ let
 in {
   imports = [
     ../common
+    ./firewall.nix
     ./networking-mammoth-skate.nix
     ./dnsmasq.nix
     ./code-server.nix
@@ -27,7 +28,7 @@ in {
     ./zfs.nix
     #(import ./remote-nix-store.nix { inherit config pkgs lib; })
     #(import ./nix-snapshotter.nix { inherit config pkgs lib user; })
-    # Inline module replaced with file import for gpg disable
+    # Explicitly disable GPG in NixOS - agent is forwarded from Darwin host
     ({ config, ... }: {
       hm.imports = config.hm.imports ++ [ ./enable-gpg-false.nix ];
     })
@@ -41,14 +42,23 @@ in {
       sandbox = false;
       extra-sandbox-paths = [ "/dev/kvm" ];
 
-      # Flox cache settings
-      extra-substituters = [ 
+      # Cache settings with Fastly CDN for faster downloads
+      # Using 'substituters' (not 'extra-substituters') to control order
+      # Alternative caches (uncomment one to use):
+      # - "https://cache.nixos.org"                                  # Official NixOS cache (default)
+      # - "https://aseipp-nix-cache.freetls.fastly.net"              # Fastly Cache v2 (recommended, faster) - currently active
+      # - "https://mirrors.tuna.tsinghua.edu.cn/nix-channels/store"  # Tsinghua University (China)
+      # - "https://mirrors.ustc.edu.cn/nix-channels/store"           # USTC (China)
+      # - "https://mirrors.bfsu.edu.cn/nix-channels/store"           # BFSU (China)
+      substituters = [ 
+        "https://aseipp-nix-cache.freetls.fastly.net"  # Fastly Cache v2 (tried first)
         "https://cache.flox.dev" 
         "https://nxmatic.cachix.org"  # nxmatic cache
       ];
-      extra-trusted-public-keys = [
+      trusted-public-keys = [
+        "cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY="  # Required for mirrors
         "flox-cache-public-1:7F4OyH7ZCnFhcze3fJdfyXYLQw/aV7GEed86nQ7IsOs="
-        "nxmatic.cachix.org-1:oWogvXdam3gTxKzPZCDqq8khybQpqRdNpQQrKG3r4xM="  # nxmatic key
+        "nxmatic.cachix.org-1:huMghYiwDpPa1PMXHXK4G1Dp4QOZjgsNqxcjf/AjuJ0="  # nxmatic key
       ];
     }
     (lib.mkIf isX86_64 {

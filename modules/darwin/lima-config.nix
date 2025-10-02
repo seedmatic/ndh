@@ -28,6 +28,7 @@ let
     
     hostResolver = {
       enabled = true;
+      ipv6 = true;  # Enable IPv6 support in Lima's host resolver
       hosts = {
         "guest.lima.internal" = "127.1.1.1";
         "host.containers.internal" = "192.168.5.15";
@@ -51,7 +52,9 @@ let
     
     networks = [
       {
-        lima = "host";
+        # Use vzNAT for native IPv6 support (Apple Virtualization.framework NAT)
+        # vzNAT provides automatic IPv6 routing and NAT, unlike socket_vmnet (lima: host)
+        vzNAT = true;
         macAddress = "52:55:55:4d:28:2a";
       }
     ];
