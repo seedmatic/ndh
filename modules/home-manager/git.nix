@@ -22,7 +22,7 @@ in {
     userEmail = userEmail;
 
     signing = {
-      key = "${hostKeysDir}/github_signing.pub";
+      key = "${hostKeysDir}/github-signing.pub";
       format = "ssh";
       signByDefault = true;
     };
@@ -111,7 +111,7 @@ in {
       text = ''
         [user]
             email = stephane.lacoin@hyland.com
-            signingkey = ${hostKeysDir}/github_signing_hyland.pub
+            signingkey = ${hostKeysDir}/github-signing-hyland.pub
       '';
     };
   };
@@ -120,8 +120,8 @@ in {
     set -euxo pipefail
     : Generatig github allowed signers configuration file
     cat <<EoF > "${allowedSignersFile}"
-    stephane.lacoin@gmail.com namespaces="git" $( cat "${hostKeysDir}/github_signing.pub" )
-    stephane.lacoin@hyland.com namespaces="git" $( cat "${hostKeysDir}/github_signing_hyland.pub" )
+    stephane.lacoin@gmail.com namespaces="git" $( cat "${hostKeysDir}/github-signing.pub" )
+    stephane.lacoin@hyland.com namespaces="git" $( cat "${hostKeysDir}/github-signing-hyland.pub" )
     EoF
   '';
 }
