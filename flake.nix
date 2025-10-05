@@ -151,7 +151,7 @@
             [
               profileModule
               socket-vmnet.darwinModules.socket_vmnet
-              ({ lib, ... }: { lima.generator.vmType = lib.mkDefault "qemu"; })
+              ({ lib, ... }: { lima.configGenerator.vmType = "vz"; })
             ];
           modules = mkModulesFor {
             inherit hostProfile preModules;

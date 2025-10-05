@@ -2,6 +2,9 @@
 
 let
   LIMA_CIDATA_MNT = "/mnt/lima-cidata";
+  startScript = pkgs.writeShellScriptBin "lima-guestagent-wrapper" ''
+    exec ${./lima-guest-agent-start.sh}
+  '';
 in {
   imports = [];
 
@@ -15,7 +18,7 @@ in {
     serviceConfig = {
       Type = "simple";
       EnvironmentFile = "${LIMA_CIDATA_MNT}/lima.env";
-      ExecStart = "${LIMA_CIDATA_MNT}/lima-guestagent daemon --debug=\${LIMA_CIDATA_DEBUG} --vsock-port=\${LIMA_CIDATA_VSOCK_PORT} --virtio-port=\${LIMA_CIDATA_VIRTIO_PORT}";
+      ExecStart = "${startScript}/bin/lima-guestagent-wrapper";
       Restart = "on-failure";
       OOMPolicy = "continue";
       OOMScoreAdjust = "-500";

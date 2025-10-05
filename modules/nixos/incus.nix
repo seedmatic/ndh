@@ -18,58 +18,12 @@ in {
     package = pkgs.incus;
     preseed = {
       networks = [
-        {
-          name = "internal-br";
-          type = "bridge";
-          description = "Internal/NATted network bridge";
-          config = {
-            "ipv4.address" = "auto";
-            "ipv4.nat" = "true";
-            "ipv6.address" = "auto";
-            "ipv6.nat" = "true";
-          };
-        }
-        {
-          name = "lan-br";
-          type = "bridge";
-          description = "LAN bridge";
-          config = {
-            "bridge.external_interfaces" = "enp0s2";
-            "ipv4.address" = "none";
-            "ipv4.nat" = "false";
-            "ipv6.address" = "none";
-            "ipv6.nat" = "false";
-          };
-        }
       ];
       profiles = [
         {
           name = "default";
-          description = "Instances on the internal bridged network";
+          description = "Instances on the bridged network";
           devices = {
-            eth0 = {
-              name = "eth0";
-              nictype = "bridged";
-              parent = "internal-br";
-              type = "nic";
-            };
-            root = {
-              path = "/";
-              pool = "default";
-              type = "disk";
-            };
-          };
-        }
-        {
-          name = "lan";
-          description = "Instances bridged to the local area network (LAN)";
-          devices = {
-            eth0 = {
-              name = "eth0";
-              nictype = "bridged";
-              parent = "lan-br";
-              type = "nic";
-            };
             root = {
               path = "/";
               pool = "default";

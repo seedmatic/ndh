@@ -9,41 +9,17 @@ let
   profileUser = config.profile.user.name;
   profileHome = config.profile.user.home;
 
-  cfg = config.lima.generator;
+  cfg = config.lima.configGenerator;
 
-  effectiveVmType = cfg.vmType;
-  defaultMac = cfg.macAddress;
-  effectiveMountType =
-    if cfg.mountType != null then cfg.mountType
-    else if effectiveVmType == "vz" then "virtiofs" else "9p";
-
-  defaultNetworks =
-    if effectiveVmType == "vz" then [
-      {
-        vzNAT = true;
-        macAddress = defaultMac;
-      }
-    ] else [];
-#    ] else [
-#      {
-#        lima = "socket_vmnet";
-#        macAddress = defaultMac;
-#        socketVMNet = {
-#          sharedNetwork = false;
-#          dhcp = true;
-#        };
-#      }
-#    ];
-
-  effectiveNetworks =
-    if cfg.networks != null then cfg.networks else defaultNetworks;
+  mountType = if vmType == "qemu" then "9p" else "virtiofs";
+  vmType = cfg.vmType;
 
   limaConfig = {
     cpus = 8;
     disk = "24GiB";
     memory = "24GiB";
     plain = false;
-    vmType = effectiveVmType;
+    vmType = vmType;
 
     user = {
       name = profileUser;
@@ -78,9 +54,7 @@ let
       { location = "/tmp/lima"; writable = true; }
     ];
 
-    mountType = effectiveMountType;
-
-    networks = effectiveNetworks;
+    mountType = mountType;
 
     ssh = {
       forwardAgent = true;
@@ -169,7 +143,7 @@ let
   };
 
 in {
-  options.lima.generator = {
+  options.lima.configGenerator = {
     vmType = mkOption {
       type = types.enum [ "vz" "qemu" ];
       default = "vz";
@@ -178,32 +152,7 @@ in {
         "vz" uses Apple Virtualization.framework, "qemu" uses the QEMU driver.
       '';
     };
-
-    mountType = mkOption {
-      type = types.nullOr (types.enum [ "virtiofs" "9p" ]);
-      default = null;
-      description = ''
-        Override the mount type used for Lima shared directories.
-        When unset, virtiofs is used for "vz" and 9p for "qemu".
-      '';
-    };
-
-    macAddress = mkOption {
-      type = types.str;
-      default = "52:55:55:4d:28:2a";
-      description = "MAC address assigned to the first Lima NIC.";
-    };
-
-    networks = mkOption {
-      type = types.nullOr (types.listOf (types.attrsOf types.anything));
-      default = null;
-      description = ''
-        Custom network definitions for the Lima instance. When unset a sensible
-        default is chosen based on the selected vmType (vzNAT for "vz", socket_vmnet for "qemu").
-      '';
-    };
-  };
-
+   };
   config = {
     system.activationScripts.postActivation.text = ''
       : Create Lima configuration directory in profile home

@@ -3,7 +3,22 @@
 let
   isX86_64 = pkgs.stdenv.hostPlatform.system == "x86_64-linux";
   isAarch64 = pkgs.stdenv.hostPlatform.system == "aarch64-linux";
-  kernelModules = [ "ext4" "overlay" "vhost_vsock" "vsock" ];
+  kernelModules = [
+    "ext4"
+    "overlay"
+    "vhost_vsock"
+    "vsock"
+    "br_netfilter"
+    "iptable_filter"
+    "iptable_nat"
+    "ip6table_filter"
+    "ip6table_nat"
+    "nf_conntrack"
+    "nf_conntrack_netlink"
+    "nf_tables"
+    "nfnetlink"
+    "xt_conntrack"
+  ];
   supportedFilesystems = {
     ext4 = true;
     overlay = true;
@@ -103,6 +118,7 @@ in {
       "net.bridge.bridge-nf-call-ip6tables" = 1;
       "net.bridge.bridge-nf-call-iptables" = 1;
       "net.bridge.bridge-nf-call-arptables" = 1;
+      "net.core.devconf_inherit_init_net" = 1;
     };
 
     loader.systemd-boot.enable = true; # (for UEFI systems only)

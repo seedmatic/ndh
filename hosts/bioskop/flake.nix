@@ -15,19 +15,21 @@
 
       profileModule = { pkgs, lib, ... }: {
         imports = [ ../../profiles/committed.nix ];
-        config = {
-          profile = {
-            host = {
-              hostName = lib.mkDefault hostProfile.hostName;
-              tailnet = hostProfile.tailnet;
-            } // (if hostProfile ? hostAlias then {
-              hostAlias = lib.mkDefault hostProfile.hostAlias;
-            } else {});
-            darwin = darwinProfile;
-          };
-          # Enable cross-host distributed builds (Darwin only)
-          services.crossHostBuilders.enable = true;
-        };
+        config = (
+          {
+            profile = {
+              host = {
+                hostName = lib.mkDefault hostProfile.hostName;
+                tailnet = hostProfile.tailnet;
+              } // (if hostProfile ? hostAlias then {
+                hostAlias = lib.mkDefault hostProfile.hostAlias;
+              } else {});
+              darwin = darwinProfile;
+            };
+            # Enable cross-host distributed builds (Darwin only)
+            services.crossHostBuilders.enable = true;
+          }
+        );
       };
     in nix-darwin-home.mkHostOutputs { inherit hostProfile profileModule; };
 }
