@@ -148,7 +148,11 @@
       mkDarwinConfig = { hostProfile, profileModule }:
         let
           preModules =
-            [ profileModule socket-vmnet.darwinModules.socket_vmnet ];
+            [
+              profileModule
+              socket-vmnet.darwinModules.socket_vmnet
+              ({ lib, ... }: { lima.generator.vmType = lib.mkDefault "qemu"; })
+            ];
           modules = mkModulesFor {
             inherit hostProfile preModules;
             system = "darwin";

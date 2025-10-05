@@ -101,18 +101,29 @@ if [[ -d "${DARWIN_HOME}" ]]; then
   done
 fi
 
-# Setup virtiofs mounts
+# Setup Lima shared mounts (virtiofs or 9p)
 mkdir -p /run/udev/rules.d /run/systemd/system /mnt
 
-yq -r '.mounts[] | select(.[2] == "virtiofs") | @tsv' "${LIMA_CIDATA_MNT}/user-data" | \
-while IFS=$'\t' read -r what where _fstype fsopts; do
+yq -r '.mounts[] | @tsv' "${LIMA_CIDATA_MNT}/user-data" | \
+while IFS=$'\t' read -r what where fstype fsopts; do
+  if [[ -z "${fstype}" || "${fstype}" == "null" ]]; then
+    continue
+  fi
+
   tag="${what}"
   mountpoint="${where}"
   unit_name="$(systemd-escape --suffix=mount --path "${mountpoint}")"
 
   options=""
   unit_directives=""
-  for fsopt in $(echo "${fsopts}" | tr ', ' '\n' | grep -v '^$'); do
+  # normalise fsopts input (may be null)
+  if [[ "${fsopts}" != "" && "${fsopts}" != "null" ]]; then
+    fsopts_normalised="${fsopts}"
+  else
+    fsopts_normalised=""
+  fi
+
+  for fsopt in $(echo "${fsopts_normalised}" | tr ', ' '\n' | grep -v '^$'); do
     case "${fsopt}" in
       rw|ro|relatime|noatime|nodiratime|discard|sync|async|dirsync|remount|bind|move|defaults|_netdev|nofail|noauto)
         options+="${options:+,}${fsopt}" ;;
@@ -124,11 +135,13 @@ while IFS=$'\t' read -r what where _fstype fsopts; do
     esac
   done
 
-  cat > "/run/udev/rules.d/99-virtiofs-${tag}.rules" <<RULE
+  case "${fstype}" in
+    virtiofs)
+      cat > "/run/udev/rules.d/99-virtiofs-${tag}.rules" <<RULE
 SUBSYSTEM=="virtio", DRIVER=="virtiofs", ATTR{tag}=="${tag}", TAG+="systemd", ENV{SYSTEMD_WANTS}+="${unit_name}"
 RULE
 
-  cat > "/run/systemd/system/${unit_name}" <<UNIT
+      cat > "/run/systemd/system/${unit_name}" <<UNIT
 [Unit]
 Description=Virtiofs mount ${mountpoint} using ${tag} tag
 DefaultDependencies=no
@@ -144,7 +157,7 @@ Options=${options}
 WantedBy=multi-user.target
 UNIT
 
-  cat > "/run/systemd/system/${unit_name%.mount}.automount" <<AUTO
+      cat > "/run/systemd/system/${unit_name%.mount}.automount" <<AUTO
 [Unit]
 Description=Automount for ${mountpoint}
 [Automount]
@@ -153,9 +166,44 @@ Where=${mountpoint}
 WantedBy=multi-user.target
 AUTO
 
-  mkdir -p "${mountpoint}"
-  systemctl daemon-reload
-  systemctl enable --runtime --now "${unit_name%.mount}.mount" "${unit_name%.mount}.automount" || true
+      mkdir -p "${mountpoint}"
+      systemctl daemon-reload
+      systemctl enable --runtime --now "${unit_name%.mount}.mount" "${unit_name%.mount}.automount" || true
+      ;;
+    9p)
+      cat > "/run/systemd/system/${unit_name}" <<UNIT
+[Unit]
+Description=9p mount ${mountpoint} using ${tag} tag
+DefaultDependencies=no
+After=local-fs.target
+${unit_directives}
+[Mount]
+What=${tag}
+Where=${mountpoint}
+Type=9p
+Options=${options:-trans=virtio,version=9p2000.L,msize=262144}
+[Install]
+WantedBy=multi-user.target
+UNIT
+
+      cat > "/run/systemd/system/${unit_name%.mount}.automount" <<AUTO
+[Unit]
+Description=Automount for ${mountpoint}
+[Automount]
+Where=${mountpoint}
+[Install]
+WantedBy=multi-user.target
+AUTO
+
+      mkdir -p "${mountpoint}"
+      systemctl daemon-reload
+      systemctl enable --runtime --now "${unit_name%.mount}.automount" || true
+      ;;
+    *)
+      # Unknown fstype; skip to avoid interfering with future Lima features
+      continue
+      ;;
+  esac
 done
 
 udevadm control --reload-rules
