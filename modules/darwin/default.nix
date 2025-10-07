@@ -13,5 +13,7 @@
     ./openssh.nix
     # Inline module replaced with file import for Home Manager extension
     ./extend-hm-imports.nix
+    # Added GitHub MCP proxy module
+    ./github-mcp-proxy.nix
   ];
 }

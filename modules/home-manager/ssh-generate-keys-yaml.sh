@@ -40,15 +40,19 @@ key::authorityHostNames() {
     local authorityName
     authorityName="$1"
 
-    : "Generate hostname variations"
-    for name in "${osHostname}" "${hostName}" ; do
-    cat <<EOT | cut -c 7-
-      ${name}
-      ${name}.local
-      $( [[ -n "${osDomainName}" ]] && echo "${name}.${osDomainName}")
-EOT
-    done
-    echo "${hostName}.$( key::value "authorities" "$authorityName" "domain" )"
+    local domain
+    domain="$( key::value "authorities" "${authorityName}" "domain" )"
+
+    local -A hostNames=()
+    hostNames["${hostName}"]=1
+    hostNames["${hostName}.local"]=1
+    hostNames["${hostName}.${domain}"]=1
+
+    hostNames[$(hostname -f)]=1
+    hostNames[$(hostname -s)]=1
+    hostNames[$(hostname -s).${domain}]=1
+
+    printf '%s\n' "${!hostNames[@]}"
 }
 
 # Function to get the allowed principals for a key
@@ -416,10 +420,6 @@ profileName="$1"; shift
 hostName="$1"; shift
 inputFile="$1"; shift
 outputFile="$1"; shift
-
-declare -g osHostname osDomainName
-osHostname="$( hostname -s )"
-osDomainName="$( hostname -d )"
 
 : "Create a temporary directory for signing"
 tmpdir=$(mktemp --directory --suffix=keys.d)

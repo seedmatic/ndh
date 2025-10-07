@@ -19,13 +19,24 @@ fi
 KEYS_FILE="/Users/${USER_NAME}/.ssh/keys.yaml"
 if [[ ! -r "$KEYS_FILE" ]]; then
   # Fallback to groups
-  cat <<EoF
-  $USER_NAME
-  $( id -nG "$USER_NAME" | tr ' ' '\n' )
-EoF
+  {
+    echo "$USER_NAME"
+    id -nG "$USER_NAME" | tr ' ' '\n'
+  } | sort -u
   exit 0
 fi
 
-yq '[.. | select(has("principals")) | .principals] | flatten | sort | unique | .[]' "$KEYS_FILE" 2>/dev/null
+env -S USER_NAME=$USER_NAME yq eval-all --from-file=<( cat <<'EoF' | cut -c 5-
+    [
+      .. 
+      | select(has("principals")) 
+      | .principals
+    ] + [ env(USER_NAME) ]
+    | flatten 
+    | map(select(. != null and . != "")) 
+    | sort 
+    | unique 
+    | .[]
+EoF
+) "$KEYS_FILE" || true
 
-exit 0

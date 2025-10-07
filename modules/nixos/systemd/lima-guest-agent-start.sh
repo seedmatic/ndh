@@ -5,7 +5,8 @@ CIDATA_MNT=${CIDATA_MNT:-/mnt/lima-cidata}
 
 if [[ -f "${CIDATA_MNT}/lima.env" ]]; then
   set -a
-  # shellcheck disable=SC1090
+  # shellcheck disable=SC1090,SC1091
+  # SC1090: dynamic source path; SC1091: file not known at build time (provided at runtime by lima cidata)
   source "${CIDATA_MNT}/lima.env"
   set +a
 fi

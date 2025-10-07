@@ -4,8 +4,8 @@ let
   userHome = profile.user.home;
   hostKeysDir = "${userHome}/.ssh/keys.d";
   hostKeyPrivateFile = "${hostKeysDir}/host";
-  hostKeyPublicCert = "${hostKeysDir}/host-mammoth_skate-host-cert.pub";
-  caPublicKeyFile = "${hostKeysDir}/mammoth_skate-ca.pub";
+  hostKeyPublicCert = "${hostKeysDir}/host-mammoth-skate-host-cert.pub";
+  caPublicKeyFile = "${hostKeysDir}/mammoth-skate-ca.pub";
   # We first embed the script content; later in activation we copy it to /etc/ssh so sshd references a mutable path
   principalsScriptStore = pkgs.writeText "ssh-authorized-principals-command.sh" (builtins.readFile ../common/ssh/authorized-principals-command.sh);
   groupKeysScriptStore = pkgs.writeText "ssh-group-authorized-keys-command.sh" (builtins.readFile ../common/ssh/ssh-group-authorized-keys.sh);

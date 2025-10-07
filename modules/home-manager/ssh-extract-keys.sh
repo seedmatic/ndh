@@ -33,7 +33,8 @@ exp=$( cat <<'EOE' | cut -c 3-
   ] +
   (
     .value.certificates | to_entries[] | 
-    .key as $authorityName | 
+    .key as $authorityNameRaw | 
+    ($authorityNameRaw | sub("_"; "-")) as $authorityName |
     .value | to_entries[] | select(.key | test("^ssh-")) |
       .value as $certContent |
       .key | sub("^ssh-(.*)$", "${1}") as $certType |

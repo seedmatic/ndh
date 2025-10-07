@@ -59,11 +59,11 @@ let
   # Externalized KnownHostsCommand script sourced from repo (templated with keysDir)
   knownHostsScript =
     let
-      scriptTemplate = builtins.readFile ./ssh.d/scripts/known-hosts-command.sh;
+      scriptTemplate = builtins.readFile ./ssh.d/scripts/ca-known-hosts-command.sh;
       # Replace placeholder @CA_DIR@ with actual keysDir path (derivation output)
       # keysDir is a derivation; coerce to its store path string before replacement
       scriptProcessed = builtins.replaceStrings ["@CA_DIR@"] [ (builtins.toString keysDir) ] scriptTemplate;
-    in pkgs.writeScript "known-hosts-script" scriptProcessed;
+    in pkgs.writeScript "ssh-ca-known-hosts" scriptProcessed;
 
 in {
   imports = [ ./ssh-add-keys.nix ];

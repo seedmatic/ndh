@@ -2,9 +2,12 @@
 
 let
   LIMA_CIDATA_MNT = "/mnt/lima-cidata";
-  startScript = pkgs.writeShellScriptBin "lima-guestagent-wrapper" ''
-    exec ${./lima-guest-agent-start.sh}
-  '';
+  # Use writeShellApplication so shebang is patched to Nix store bash and runtime inputs are explicit.
+  startScriptDrv = pkgs.writeShellApplication {
+    name = "lima-guest-agent-start";
+    runtimeInputs = [ pkgs.coreutils pkgs.util-linux pkgs.bash ];
+    text = builtins.readFile ./lima-guest-agent-start.sh;
+  };
 in {
   imports = [];
 
@@ -14,11 +17,10 @@ in {
     after = [ "lima-cloud-init.service" ];
     requires = [ "lima-cloud-init.service" ];
     path = with pkgs; [ util-linux ];
-    
     serviceConfig = {
       Type = "simple";
       EnvironmentFile = "${LIMA_CIDATA_MNT}/lima.env";
-      ExecStart = "${startScript}/bin/lima-guestagent-wrapper";
+      ExecStart = "${startScriptDrv}/bin/lima-guest-agent-start";
       Restart = "on-failure";
       OOMPolicy = "continue";
       OOMScoreAdjust = "-500";
