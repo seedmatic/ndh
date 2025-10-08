@@ -10,7 +10,8 @@
     ./distributed-builds.nix
     ./podman-remote-client.nix
     ./raycast.nix
-    ./openssh.nix
+    # ./openssh.nix  # Disabled in favor of Teleport
+    ./teleport.nix
     # Inline module replaced with file import for Home Manager extension
     ./extend-hm-imports.nix
     # Added GitHub MCP proxy module

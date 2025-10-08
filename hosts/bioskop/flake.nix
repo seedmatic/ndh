@@ -14,7 +14,10 @@
       };
 
       profileModule = { pkgs, lib, ... }: {
-        imports = [ ../../profiles/committed.nix ];
+        imports = [ 
+          ../../profiles/committed.nix
+          ./teleport.nix  # Include the Teleport configuration
+        ];
         config = (
           {
             profile = {

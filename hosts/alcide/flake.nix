@@ -15,7 +15,10 @@
       };
 
       profileModule = { pkgs, lib, ... }: {
-        imports = [ ../../profiles/work.nix ];
+        imports = [ 
+          ../../profiles/work.nix 
+          ./teleport.nix  # Include the Teleport client configuration
+        ];
         config = (
           {
             profile = {

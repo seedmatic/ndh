@@ -40,6 +40,7 @@ in {
     ./podman.nix
     ./systemd
     ./tailscale.nix
+    ./teleport-node.nix
     ./zfs.nix
     #(import ./remote-nix-store.nix { inherit config pkgs lib; })
     #(import ./nix-snapshotter.nix { inherit config pkgs lib user; })

@@ -27,9 +27,9 @@ in {
     ./password-store.nix
     ./shell.nix
     ./ssh.nix
-    ./ssh-keys.nix
+    # ./ssh-keys.nix  # Disabled in favor of Teleport
     ./ssh-tailnet-hosts.nix
-    ./ssh-keychain-removal.nix
+    # ./ssh-keychain-removal.nix  # Disabled in favor of Teleport
     #   ./teleport.nix
     ./tldr.nix
     ./tmate.nix
