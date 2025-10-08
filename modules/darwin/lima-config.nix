@@ -76,17 +76,17 @@ let
           #!/bin/bash
           set -eux -o pipefail
 
-          # Create early symlinks for critical binaries including sudo
+          : "Create early symlinks for critical binaries including sudo"
           mkdir -p /bin
           ln -sf /run/current-system/sw/bin/bash /bin/bash || true
 
-          # Set PATH in ssh daemon environment - for non-interactive SSH commands
+          : "Set PATH in ssh daemon environment - for non-interactive SSH commands"
           mkdir -p /etc/ssh/sshd_config.d
           cat > /etc/ssh/sshd_config.d/lima-path.conf << 'EOF'
           SetEnv PATH="/run/wrappers/bin:/run/current-system/sw/bin"
           EOF
 
-          # Ensure main sshd_config includes the drop-in directory very early
+          : "Ensure main sshd_config includes drop-in directory and permits user environment"
           if [ -f /etc/ssh/sshd_config ]; then
             if ! grep -qE '^\s*Include\s+sshd_config.d/\*' /etc/ssh/sshd_config && \
                ! grep -qE '^\s*Include\s+/etc/ssh/sshd_config.d/\*' /etc/ssh/sshd_config; then
@@ -99,6 +99,7 @@ let
             printf 'Include /etc/ssh/sshd_config.d/*\nPermitUserEnvironment yes\n' > /etc/ssh/sshd_config
           fi
 
+          : "Install profile PATH exports for non-interactive sessions"
           install -d -m 755 /etc/profile.d
           cat > /etc/profile.d/noninteractive.sh << 'EOF'
           #!/bin/sh
@@ -106,20 +107,24 @@ let
           EOF
           chmod 0644 /etc/profile.d/noninteractive.sh
 
+          : "Ensure SSH environment directory exists for ${profileUser}"
           install -d -m 700 "/home/${profileUser}/.ssh"
           cat > "/home/${profileUser}/.ssh/environment" << 'EOF'
           PATH=/run/wrappers/bin:/run/current-system/sw/bin:/nix/var/nix/profiles/default/bin
           EOF
           chown -R "${profileUser}:${profileUser}" "/home/${profileUser}/.ssh"
 
+          : "Reload sshd if available to pick up new configuration"
           systemctl try-reload-or-restart sshd.service 2>/dev/null || true
 
+          : "Install Lima PATH helper script"
           mkdir -p /etc/profile.d
           cat > /etc/profile.d/lima-path.sh << 'EOF'
           export PATH="/run/wrappers/bin:/run/current-system/sw/bin:$PATH"
           EOF
           chmod +x /etc/profile.d/lima-path.sh
 
+          : "Set systemd environment PATH for consistency"
           systemctl set-environment PATH="/run/wrappers/bin:/run/current-system/sw/bin"
         '';
       }
@@ -129,7 +134,9 @@ let
           #!/bin/bash
           set -eux -o pipefail
 
+          : "Ensure mount point for lima NixOS disk exists"
           mkdir -p /mnt/lima-nixos
+          : "Mount lima NixOS disk"
           mount /dev/disk/by-label/nixos /mnt/lima-nixos
         '';
       }
@@ -155,10 +162,10 @@ in {
    };
   config = {
     system.activationScripts.postActivation.text = ''
-      : Create Lima configuration directory in profile home
+      : "Create Lima configuration directory in profile home"
       mkdir -p "${profileHome}/.lima/nerd-nixos"
 
-      : Generate lima.yaml with profile user configuration using yq
+      : "Generate lima.yaml with profile user configuration using yq"
       cat << 'EOF' | ${pkgs.yq-go}/bin/yq -P -p json -o yaml eval . - > "${profileHome}/.lima/nerd-nixos/lima.yaml"
       ${lib.generators.toJSON {} limaConfig}
       EOF

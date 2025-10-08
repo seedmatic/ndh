@@ -1,5 +1,7 @@
 #!/usr/bin/env -S bash -euxo pipefail
 
+shopt -s nullglob
+
 yamlFile="$1"
 outputDir="$2"
 
@@ -55,4 +57,18 @@ for file in "$outputDir/"*; do
     mv "${file}".yml "${file}"
   fi
   yq eval '.content | trim' -i "$file"
+done
+
+# Provide stable symlink names (<key>-cert.pub) pointing to the first user certificate
+for priv in "$outputDir/"*; do
+  [[ -f "$priv" ]] || continue
+  case "$priv" in
+    *.pub) continue ;;
+  esac
+  base="${priv##*/}"
+  certs=("$outputDir/${base}"-*-user-cert.pub)
+  if (( ${#certs[@]} > 0 )); then
+    cert_basename="${certs[0]##*/}"
+    ln -sf "$cert_basename" "$outputDir/${base}-cert.pub"
+  fi
 done

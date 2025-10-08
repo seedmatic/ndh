@@ -18,7 +18,7 @@ in {
   };
 
   system.activationScripts.postActivation.text = ''
-    # Create dnsmasq log file
+    : "Create dnsmasq log file"
     mkdir -p "$(dirname ${logFile})"
     touch "${logFile}"
     chmod 644 "${logFile}"

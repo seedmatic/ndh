@@ -67,7 +67,7 @@ in {
       text = ''
         #!/usr/bin/env -S bash -euxo pipefail
 
-        : Create the incus user config directory and config file
+        : "Create the incus user config directory and config file"
         install -d -m 0775 -o ${user} -g ${user} ~${user}/.config/incus
         cat  <<EoF > ~root/.config/incus/config.yml| install -Dm 600 -o ${user} -g ${user} /dev/stdin ~${user}/.config/incus/config.yml
         default-remote: local

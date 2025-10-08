@@ -5,6 +5,7 @@
 
 KEYS_FILE="$1"
 AUTHORIZED_KEYS_FILE="${HOME}/.ssh/authorized_keys"
+KEYS_DIR="${HOME}/.ssh/keys.d"
 MARK_BEGIN="# >>> managed-by: ssh-add-keys BEGIN >>>"
 MARK_END="# <<< managed-by: ssh-add-keys END <<<"
 
@@ -24,7 +25,7 @@ if [[ ! -f "$AUTHORIZED_KEYS_FILE" ]]; then
 fi
 
 # Initialize / attach to agent (keychain handles reuse)
-eval "$(keychain -q ${KEYCHAIN_FLAGS:---noask --nogui} --agents ssh --eval)"
+source <( keychain -q ${KEYCHAIN_FLAGS:---noask --nogui} --eval )
 
 :
 # Collect generated public keys (deduplicated) into a temporary file (managed block assembly later).
@@ -53,6 +54,7 @@ done < <( compgen -A variable | grep '^keys_' )
 
 for base in "${!KEY_PUBLIC[@]}"; do
   pubLine="${KEY_PUBLIC[$base]}"
+  pubLine="${pubLine%%[[:space:]]}"
   privBlock="${KEY_PRIVATE[$base]:-}"
   usagesStr="${KEY_USAGES[$base]:-}"
   include_in_authorized=0
@@ -62,11 +64,29 @@ for base in "${!KEY_PUBLIC[@]}"; do
     esac
   done
   if [[ -n "$privBlock" && "$privBlock" == *"BEGIN OPENSSH PRIVATE KEY"* ]]; then
-    printf '%s\n' "$privBlock" | ssh-add - 2>/dev/null || true
+    fileBase="${base//_/-}"
+    keyPath="${KEYS_DIR}/${fileBase}"
+    if [[ -f "$keyPath" ]]; then
+      # If the on-disk key doesn't match the YAML public key, rewrite it from YAML
+      yamlB64=$(printf '%s\n' "$pubLine" | awk '{print $2}')
+      fileB64=$(ssh-keygen -y -f "$keyPath" 2>/dev/null | awk '{print $2}' || true)
+      if [[ -n "$yamlB64" && -n "$fileB64" && "$yamlB64" != "$fileB64" ]]; then
+        printf '%s\n' "$privBlock" > "$keyPath"
+        chmod 600 "$keyPath"
+      fi
+      ssh-add -q -d "$keyPath" 2>/dev/null || true
+      ssh-add "$keyPath" 2>/dev/null || true
+    else
+      tmpKey=$(mktemp)
+      chmod 600 "$tmpKey"
+      printf '%s\n' "$privBlock" > "$tmpKey"
+      ssh-add -q -d "$tmpKey" 2>/dev/null || true
+      ssh-add "$tmpKey" 2>/dev/null || true
+      rm -f "$tmpKey"
+    fi
   fi
-  pubLineTrimmed="${pubLine%%[[:space:]]}"
-  if [[ $include_in_authorized -eq 1 && "$pubLineTrimmed" =~ ^ssh-(ed25519|rsa|ecdsa|dss)\  ]]; then
-    printf '%s\n' "$pubLineTrimmed" >> "$generatedTmp"
+  if [[ $include_in_authorized -eq 1 && "$pubLine" =~ ^ssh-(ed25519|rsa|ecdsa|dss)\  ]]; then
+    printf '%s\n' "$pubLine" >> "$generatedTmp"
   fi
 done
 

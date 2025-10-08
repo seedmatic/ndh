@@ -115,14 +115,14 @@
 
     # Workaround for setting DNS servers on macOS
     system.activationScripts.postActivation.text = ''
-      # Set DNS servers - only configure specific interfaces if they exist
+      : "Set DNS servers - only configure specific interfaces if they exist"
       for iface in "Wi-Fi" "Ethernet"; do
         if networksetup -listallnetworkservices | grep -q "^$iface$"; then
-          : Configuring DNS for interface: $iface
+          : "Configuring DNS for interface: $iface"
           networksetup -setdnsservers "$iface" ${builtins.concatStringsSep " " config.networking.dns} 2>/dev/null || true
           networksetup -setsearchdomains "$iface" "${config.profile.host.tailnet.name}.${config.profile.host.tailnet.domain}" 2>/dev/null || true
         else
-         : Interface $iface not found, skipping DNS configuration
+          : "Interface $iface not found, skipping DNS configuration"
         fi
       done
     '';

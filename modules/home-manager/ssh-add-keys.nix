@@ -19,8 +19,8 @@ in
 
   config = mkIf cfg.enable {
     # Install the external loader script referencing the generated YAML keys file
-    home.file.".ssh/load-yaml-keys.sh" = {
-      source = ./ssh-agent-load-keys.sh;
+    home.file.".ssh/ssh-add-keys.sh" = {
+      source = ./ssh-add-keys.sh;
       executable = true;
     };
 
@@ -30,7 +30,7 @@ in
         Label = "org.nix-community.home.ssh-add-keys";
         Debug = true;
         ProgramArguments = [
-          "${homeDir}/.ssh/load-yaml-keys.sh" "${cfg.keyFile}"
+          "${homeDir}/.ssh/ssh-add-keys.sh" "${cfg.keyFile}"
         ];
         RunAtLoad = true;
         KeepAlive = false;

@@ -185,7 +185,8 @@ in {
     };
 
     system.activationScripts.postActivation.text = ''
-      set -e  # Exit immediately if a command exits with a non-zero status
+      : "Exit immediately if a command exits with a non-zero status"
+      set -e
       echo "Starting BIRD configuration..."
       umask u=rwx,g=rx,o=rx
       echo "Umask set to $(umask)"
