@@ -1,0 +1,200 @@
+= Next Session: Deploy Headscale
+:toc:
+:icons: font
+
+== Immediate Goal
+
+Deploy Headscale server and gateway in Lima VM using incus-rke2-cluster.
+
+== Prerequisites Met ✅
+
+- [x] Cloud-config templates created
+  - `cloud-config.headscale-server.yaml.tmpl`
+  - `cloud-config.headscale-gateway.yaml.tmpl`
+- [x] bioskop Darwin configured with Headscale client
+- [x] Documentation complete
+- [x] RKE2 cluster running in Lima VM
+
+== TODO for Deployment
+
+=== 1. Extend Makefile in incus-rke2-cluster
+
+The Makefile needs to recognize `headscale-server` and `headscale-gateway` as valid instance names.
+
+**Location:** `modules/nixos/incus-rke2-cluster/Makefile`
+
+**Changes needed:**
+
+==== Add instance type detection
+
+Around line 67, after the existing RKE2 instance type logic:
+
+[source,makefile]
+----
+# Detect headscale instances
+ifneq (,$(findstring headscale-server,$(CLUSTER_NODE_NAME)))
+	INSTANCE_TYPE := headscale-server
+	INSTALL_RKE2_TYPE := none
+endif
+
+ifneq (,$(findstring headscale-gateway,$(CLUSTER_NODE_NAME)))
+	INSTANCE_TYPE := headscale-gateway
+	INSTALL_RKE2_TYPE := none
+endif
+----
+
+==== Add headscale-specific variables
+
+After network configuration section:
+
+[source,makefile]
+----
+#-----------------------------
+# Headscale Configuration
+#-----------------------------
+
+ifeq (headscale-server,$(CLUSTER_NODE_NAME))
+	HEADSCALE_SERVER_URL := http://192.168.5.10:8080
+	HEADSCALE_BASE_DOMAIN := home.local
+	# Use headscale cloud-config instead of RKE2 configs
+	CLOUD_CONFIG_FILES := cloud-config.headscale-server.yaml.tmpl
+	# Override RKE2 defaults
+	INSTALL_RKE2_TYPE := none
+endif
+
+ifeq (headscale-gateway,$(CLUSTER_NODE_NAME))
+	GATEWAY_HOSTNAME := $(CLUSTER_NAME)-hs-gateway
+	GATEWAY_ROUTES := 100.64.0.0/10,192.168.5.0/24,$(CLUSTER_V4_BLOCK)
+	# Use headscale gateway cloud-config
+	CLOUD_CONFIG_FILES := cloud-config.headscale-gateway.yaml.tmpl
+	# Override RKE2 defaults
+	INSTALL_RKE2_TYPE := none
+endif
+----
+
+==== Export variables for envsubst
+
+Ensure these variables are exported:
+
+[source,makefile]
+----
+export HEADSCALE_SERVER_URL
+export HEADSCALE_BASE_DOMAIN
+export GATEWAY_HOSTNAME
+export GATEWAY_ROUTES
+----
+
+=== 2. Test Deployment Commands
+
+Once Makefile is extended:
+
+[source,bash]
+----
+cd /Users/nxmatic/Gits/nxmatic/nix-darwin-home/modules/nixos/incus-rke2-cluster
+
+# Deploy Headscale server
+flox activate -- remake NAME=headscale-server start
+
+# Verify
+incus list
+incus exec headscale-server -- systemctl status headscale
+----
+
+=== 3. Create Headscale User
+
+After server is running:
+
+[source,bash]
+----
+incus exec headscale-server -- headscale users create admin
+incus exec headscale-server -- headscale preauthkeys create --user admin --reusable --expiration 720h
+# Save the auth key output
+----
+
+=== 4. Deploy Headscale Gateway
+
+[source,bash]
+----
+# First, get Tailscale auth key from https://login.tailscale.com/admin/settings/keys
+# Create secrets file on Lima VM
+mkdir -p ~/.secrets
+echo "tskey-auth-XXXXXXXXXX" > ~/.secrets/tailscale-authkey
+
+# Deploy gateway
+flox activate -- remake NAME=headscale-gateway start
+
+# Verify
+incus exec headscale-gateway -- tailscale status
+----
+
+=== 5. Connect bioskop Darwin
+
+On bioskop Darwin host:
+
+[source,bash]
+----
+# Use the Headscale auth key from step 3
+hs-connect
+# Paste the auth key when prompted
+----
+
+=== 6. Approve Routes in Tailscale
+
+1. Go to https://login.tailscale.com/admin/machines
+2. Find `bioskop-hs-gateway` or `${CLUSTER_NAME}-hs-gateway`
+3. Approve all advertised routes
+
+== Alternative: Manual Deployment
+
+If Makefile extension is complex, we can deploy manually:
+
+=== Manual Headscale Server
+
+[source,bash]
+----
+# Render cloud-config manually
+cd /Users/nxmatic/Gits/nxmatic/nix-darwin-home/modules/nixos/incus-rke2-cluster
+
+export HEADSCALE_SERVER_URL="http://192.168.5.10:8080"
+export HEADSCALE_BASE_DOMAIN="home.local"
+
+# Render template
+envsubst < cloud-config.headscale-server.yaml.tmpl > /tmp/headscale-server.yaml
+
+# Create Incus instance
+incus launch images:ubuntu/22.04 headscale-server
+incus config set headscale-server cloud-init.user-data - < /tmp/headscale-server.yaml
+incus restart headscale-server
+
+# Wait and check
+sleep 30
+incus exec headscale-server -- systemctl status headscale
+----
+
+== Current Blockers
+
+- [ ] Makefile needs extension to recognize headscale instance types
+- [ ] Need to test cloud-config templates (untested)
+- [ ] Secrets management for Tailscale auth key
+
+== Files to Work With
+
+- `modules/nixos/incus-rke2-cluster/Makefile` - Needs extension
+- `modules/nixos/incus-rke2-cluster/cloud-config.headscale-server.yaml.tmpl` - Ready
+- `modules/nixos/incus-rke2-cluster/cloud-config.headscale-gateway.yaml.tmpl` - Ready
+- `modules/nixos/incus-rke2-cluster/HEADSCALE-INTEGRATION.adoc` - Documentation
+
+== Time Estimate
+
+- Makefile extension: 30-45 minutes
+- Testing deployment: 15-30 minutes
+- Troubleshooting: Variable (depending on issues)
+
+**Total:** 1-2 hours for complete deployment
+
+== Notes
+
+- RKE2 cluster is already running (master, peer1)
+- Lima VM has flox environment configured
+- Use `remake` instead of `make`
+- All configuration files are in the subtree at `modules/nixos/incus-rke2-cluster/`
