@@ -45,17 +45,15 @@ in {
   };
 
   config = mkIf cfg.enable {
-    # Install Tailscale package
-    environment.systemPackages = [ pkgs.tailscale ];
-
     # Create helpful aliases and scripts
     environment.shellAliases = {
       hs-status = "tailscale status";
       hs-netcheck = "tailscale netcheck";
     };
 
-    # Create connection script
+    # Install Tailscale and helper scripts
     environment.systemPackages = [
+      pkgs.tailscale
       (pkgs.writeScriptBin "hs-connect" ''
         #!/usr/bin/env bash
         set -e
