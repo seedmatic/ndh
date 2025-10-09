@@ -1,0 +1,370 @@
+= Session Summary: Headscale/Tailscale Architecture Implementation
+:toc: left
+:toclevels: 3
+:icons: font
+:date: 2025-01-09
+
+== Overview
+
+Complete refactoring of network architecture, removing Teleport and implementing Headscale/Tailscale infrastructure for bioskop (Mac Mini M4 Pro) and alcide (MacBook Pro).
+
+== Completed Work
+
+=== 1. Teleport Removal ✅
+
+**Files Modified:**
+- `hosts/alcide/flake.nix` - Removed Teleport import
+- `hosts/bioskop/flake.nix` - Removed Teleport import  
+- `modules/darwin/default.nix` - Removed Teleport, re-enabled OpenSSH
+- `modules/nixos/default.nix` - Removed Teleport
+- `modules/common/default.nix` - Removed Teleport
+
+**Result:** Clean codebase ready for Headscale/Tailscale
+
+=== 2. Documentation Cleanup ✅
+
+**Removed Files:**
+- `docs/headscale-setup.md`
+- `docs/headscale-ssh-setup.md`
+- `docs/hybrid-tailscale-headscale.md`
+- `docs/lima-tailscale-gateway-example.md`
+- `docs/network-architecture-summary.md`
+- `docs/simplified-architecture.md`
+- `docs/headscale-example-topology.md`
+
+**Result:** Clean documentation focused on AsciiDoc format
+
+=== 3. New Modules Created ✅
+
+**Headscale Server (Incus-based):**
+- `modules/nixos/incus-headscale-server.nix`
+- Deploys Headscale control plane in Incus container
+- Listens on configurable IP (default: 192.168.5.10:8080)
+- Includes helper scripts: `deploy-headscale-server`, `headscale-server-status`, etc.
+
+**Headscale Gateway (Incus-based):**
+- `modules/nixos/incus-headscale-gateway.nix`
+- Bridges Tailscale network to Headscale network
+- Advertises routes to both networks
+- Includes helper scripts: `deploy-headscale-gateway`, `headscale-gateway-status`, etc.
+
+**Existing Modules (Already Created):**
+- `modules/nixos/headscale-server.nix` - Standalone Headscale server
+- `modules/nixos/headscale-client.nix` - NixOS Headscale client
+- `modules/nixos/headscale-gateway.nix` - Standalone gateway
+- `modules/darwin/headscale-client.nix` - Darwin Headscale client (FIXED: duplicate systemPackages)
+- `modules/nixos/incus-tailscale-gateway.nix` - Tailscale gateway in Incus
+
+=== 4. Git Subtree Integration ✅
+
+**Added:**
+- `modules/nixos/incus-rke2-cluster/` - Complete RKE2 deployment system
+- `.git-subtree-sync.sh` - Helper script for subtree management
+
+**Workflow:**
+```bash
+# Pull updates from standalone repo
+./.git-subtree-sync.sh pull
+
+# Push changes back
+./.git-subtree-sync.sh push
+```
+
+=== 5. Comprehensive Documentation ✅
+
+**Created:**
+- `docs/bioskop-deployment.adoc` - Step-by-step deployment guide
+- `examples/bioskop-lima-config.nix` - Example Lima VM configuration
+- Updated `docs/README.adoc` with subtree documentation and bioskop guide
+
+**Content:**
+- Architecture diagrams
+- 7-step deployment process
+- Troubleshooting sections
+- Management commands reference
+- Integration with RKE2
+
+=== 6. bioskop Darwin Configuration ✅
+
+**Status:** Successfully rebuilt with Headscale client
+
+**Configuration:**
+```nix
+services.headscale-client = {
+  enable = true;
+  serverUrl = "http://192.168.5.10:8080";
+  enableSSH = true;
+};
+```
+
+**Available Commands:**
+- `hs-connect` - Connect to Headscale server
+- `hs-status` - Check connection status
+- `hs-ssh <hostname>` - SSH via Headscale
+- `hs-disconnect` - Disconnect from Headscale
+
+**Current State:** Configured but not connected (server not yet deployed)
+
+== Architecture Design
+
+=== Network Topology
+
+```
+bioskop (Mac Mini M4 Pro - Stationary)
+├── Darwin Host
+│   └── Headscale Client → connects to 192.168.5.10:8080
+│
+└── Lima VM (NixOS) - nerd-nixos
+    ├── Incus: headscale-server
+    │   ├── IP: 192.168.5.10
+    │   ├── Ports: 8080 (HTTP), 50443 (gRPC)
+    │   └── Network: 100.64.0.0/10 (Headscale mesh)
+    │
+    ├── Incus: headscale-gateway
+    │   ├── Connects to: Tailscale network (100.x.x.x)
+    │   ├── Advertises to Tailscale:
+    │   │   - 100.64.0.0/10 (Headscale network)
+    │   │   - 192.168.1.0/24 (Home LAN)
+    │   │   - 192.168.5.0/24 (Lima network)
+    │   │   - 10.80.16.0/20 (bioskop RKE2 cluster)
+    │   └── Bridges: Tailscale ↔ Headscale
+    │
+    └── Incus: RKE2 Cluster (via incus-rke2-cluster)
+        ├── Network: 10.80.16.0/20 (bioskop)
+        ├── Pods: 10.42.0.0/16
+        ├── Services: 10.43.0.0/16
+        ├── K8s API VIP: 10.80.16.250/32
+        ├── LoadBalancer pool: 10.80.16.128/26
+        └── Tailscale Operator (exposes K8s services)
+
+alcide (MacBook Pro - Mobile)
+└── Tailscale Client ONLY
+    ↓
+    Connects via Tailscale to everything
+```
+
+=== Access Patterns
+
+**alcide (mobile) → bioskop infrastructure:**
+```
+alcide (anywhere)
+    ↓ Tailscale (100.x.x.x)
+headscale-gateway (in bioskop Lima VM)
+    ↓ Bridge
+Headscale network (100.64.0.0/10)
+    ↓
+bioskop Darwin / Lima VM / RKE2
+```
+
+**bioskop → Lima VM (local):**
+```
+bioskop Darwin
+    ↓ Headscale (100.64.x.x) or Direct (192.168.5.x)
+Lima VM nerd-nixos
+```
+
+== Pending Work
+
+=== 1. Deploy Headscale via incus-rke2-cluster (NEXT - CORRECT APPROACH)
+
+**Decision:** Extend incus-rke2-cluster instead of creating separate NixOS modules
+
+**Rationale:**
+- Reuses existing Incus infrastructure (already configured)
+- Consistent deployment pattern (Makefile + cloud-config)
+- Unified management for all containers
+- Proven approach (RKE2 deployment works well)
+
+**Files Created:**
+- ✅ `modules/nixos/incus-rke2-cluster/cloud-config.headscale-server.yaml`
+- ✅ `modules/nixos/incus-rke2-cluster/cloud-config.headscale-gateway.yaml`
+
+**Deployment Pattern:**
+```bash
+cd modules/nixos/incus-rke2-cluster
+make NAME=headscale-server start
+make NAME=headscale-gateway start
+make NAME=master start  # Existing RKE2
+```
+
+**Network Configuration:**
+- Headscale server: Static IP in Lima network (e.g., 192.168.5.10)
+- Headscale gateway: Bridges Tailscale ↔ Headscale
+- Routes advertised: 100.64.0.0/10, 192.168.5.0/24, 10.80.x.x/20
+
+**TODO:**
+1. Extend Makefile to recognize headscale-* instance types
+2. Add network configuration for Headscale instances
+3. Test deployment in Lima VM
+
+=== 2. Deploy Headscale Infrastructure
+
+**Steps:**
+1. Create/update NixOS configuration in Lima VM
+2. Deploy Headscale server container
+3. Create Headscale user and auth keys
+4. Deploy Headscale gateway container
+5. Configure Tailscale auth key for gateway
+6. Approve routes in Tailscale admin console
+
+**Reference:** See `docs/bioskop-deployment.adoc` for detailed steps
+
+=== 3. Connect bioskop Darwin to Headscale
+
+Once Headscale server is running:
+```bash
+hs-connect
+```
+
+=== 4. Configure alcide with Tailscale
+
+**Status:** Not yet configured
+
+**What's Needed:**
+- Enable Tailscale service on alcide Darwin
+- Configure to connect to official Tailscale network
+- alcide will access Headscale network via gateway
+
+=== 5. Integrate with RKE2 Deployment
+
+The incus-rke2-cluster already has Tailscale operator configured in `cloud-config.master.base.yaml` (lines 100-139).
+
+**Integration Points:**
+- RKE2 Tailscale Operator advertises K8s API and LoadBalancer IPs
+- Works alongside Headscale infrastructure
+- Both networks (Tailscale and Headscale) accessible
+
+== Technical Details
+
+=== incus-rke2-cluster Integration
+
+**Key Files:**
+- `Makefile` - Sophisticated deployment system
+- `cloud-config.*.yaml` - Layered configuration
+- Network scheme: 10.80.x.x (hierarchical addressing)
+- Already includes Tailscale operator
+
+**Network Allocation:**
+- bioskop cluster: 10.80.16.0/20
+  - Master: 10.80.16.0/24
+  - Peer1: 10.80.17.0/24
+  - Peer2: 10.80.18.0/24
+- alcide cluster: 10.80.32.0/20
+
+**Deployment:**
+```bash
+cd modules/nixos/incus-rke2-cluster
+make NAME=master start
+```
+
+=== Headscale Server Configuration
+
+**Container IP:** 192.168.5.10 (static)
+**Ports:**
+- 8080: HTTP API
+- 50443: gRPC
+
+**Network:** 100.64.0.0/10
+
+**Management:**
+```bash
+sudo headscale-server-status
+sudo headscale-create-user <username>
+sudo headscale-create-authkey <username>
+sudo headscale-server-shell
+```
+
+=== Headscale Gateway Configuration
+
+**Function:** Bridges Tailscale ↔ Headscale networks
+
+**Advertised Routes:**
+- 100.64.0.0/10 (Headscale mesh)
+- 192.168.1.0/24 (Home LAN)
+- 192.168.5.0/24 (Lima network)
+- 10.80.16.0/20 (RKE2 cluster)
+
+**Management:**
+```bash
+sudo headscale-gateway-status
+sudo headscale-gateway-logs
+sudo headscale-gateway-restart
+```
+
+== Git Commits Made
+
+```
+c751db0 Fix duplicate environment.systemPackages in headscale-client.nix
+6c224c1 Configure bioskop Darwin with Headscale client
+9d9019b Add bioskop deployment guide and configuration
+9a91f17 Add git subtree documentation and helper script
+abf1abf Merge commit '...' as 'modules/nixos/incus-rke2-cluster'
+9fc1764 Remove Teleport, add Headscale/Tailscale architecture
+```
+
+== Next Session Action Items
+
+=== Immediate (Lima VM Configuration)
+
+1. **Extend bioskop flake** to include NixOS configuration
+   - Add `nixosConfigurations.bioskop-nixos` output
+   - Enable incus-headscale-server module
+   - Enable incus-headscale-gateway module
+
+2. **Rebuild Lima VM**
+   ```bash
+   cd ~/.lima && flox activate -- limactl shell nerd-nixos
+   sudo nixos-rebuild switch --flake /etc/nixos#bioskop-nixos
+   ```
+
+3. **Deploy Headscale containers**
+   ```bash
+   sudo deploy-headscale-server
+   sudo deploy-headscale-gateway
+   ```
+
+=== Short Term
+
+4. **Create Headscale users and keys**
+5. **Configure Tailscale gateway authentication**
+6. **Connect bioskop Darwin**: `hs-connect`
+7. **Test connectivity** between all components
+
+=== Medium Term
+
+8. **Configure alcide** with Tailscale client
+9. **Test mobile access** to bioskop infrastructure
+10. **Deploy RKE2 cluster** with Tailscale operator
+11. **Test end-to-end** K8s service access
+
+== Resources
+
+**Documentation:**
+- `docs/bioskop-deployment.adoc` - Deployment guide
+- `docs/network-setup.adoc` - Network architecture
+- `docs/modules-reference.adoc` - Module reference
+- `examples/bioskop-lima-config.nix` - Example config
+
+**Helper Scripts:**
+- `.git-subtree-sync.sh` - Subtree management
+- `hs-connect`, `hs-status`, `hs-ssh` - Headscale client commands
+- Various `deploy-*` and `*-status` commands from modules
+
+**External:**
+- https://headscale.net/[Headscale Documentation]
+- https://tailscale.com/kb/[Tailscale Documentation]
+- incus-rke2-cluster README and Makefile
+
+== Notes
+
+* Lima VM name: `nerd-nixos` (currently running)
+* All configuration managed via nix flakes
+* Incus already configured for RKE2 deployment
+* Network addressing carefully planned to avoid conflicts
+* Dual-stack (IPv4/IPv6) support throughout
+* Ready for multi-cluster Cilium Cluster Mesh (non-overlapping Pod CIDRs)
+
+---
+**Session Date:** 2025-01-09, 21:00-23:58
+**Duration:** ~3 hours
+**Status:** Architecture complete, Darwin configured, Lima VM deployment pending
