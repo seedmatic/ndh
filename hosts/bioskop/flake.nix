@@ -29,6 +29,15 @@
               } else {});
               darwin = darwinProfile;
             };
+            
+            # Headscale client - connects to server in Lima VM
+            # Note: Server must be deployed first at 192.168.5.10:8080
+            services.headscale-client = {
+              enable = true;
+              serverUrl = "http://192.168.5.10:8080";
+              enableSSH = true;
+            };
+            
             # Enable cross-host distributed builds (Darwin only)
             services.crossHostBuilders.enable = true;
           }
