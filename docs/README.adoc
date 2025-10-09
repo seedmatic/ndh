@@ -8,6 +8,8 @@ This directory contains documentation for the network infrastructure and NixOS/D
 
 == Main Documents
 
+=== Network Infrastructure
+
 link:network-setup.adoc[Network Infrastructure Setup]::
 Complete guide covering Tailscale and Headscale deployment, configuration, usage, and troubleshooting. Start here for setting up your network.
 
@@ -16,6 +18,19 @@ Step-by-step guide for deploying the complete Headscale/Tailscale architecture o
 
 link:modules-reference.adoc[Modules Reference]::
 Reference documentation for all custom NixOS and Darwin modules, including options, examples, and best practices.
+
+=== Session Notes
+
+link:SESSION-SUMMARY-2025-01-09.adoc[Session Summary: 2025-01-09]::
+Complete session summary documenting Teleport removal, Headscale/Tailscale architecture implementation, and incus-rke2-cluster integration.
+
+=== Other Documentation
+
+link:github-mcp-proxy.md[GitHub MCP Proxy] (Markdown)::
+Documentation for GitHub MCP proxy configuration.
+
+link:podman-remote-setup.md[Podman Remote Setup] (Markdown)::
+Guide for setting up Podman remote client.
 
 == Quick Start
 
@@ -229,19 +244,30 @@ For issues or questions:
    * https://headscale.net/[Headscale Docs]
    * https://nixos.org/manual/nixos/stable/[NixOS Manual]
 
-== Legacy Documentation
+== Legacy and External Documentation
 
-The following Markdown files are superseded by the AsciiDoc documentation above and can be removed:
+=== Removed Files (Cleaned Up)
 
-* `headscale-setup.md`
-* `headscale-ssh-setup.md`
-* `headscale-example-topology.md`
-* `hybrid-tailscale-headscale.md`
-* `lima-tailscale-gateway-example.md`
-* `network-architecture-summary.md`
-* `simplified-architecture.md`
+The following files have been removed as their content was consolidated into AsciiDoc documentation:
 
-All content has been consolidated into `network-setup.adoc` and `modules-reference.adoc`.
+* `headscale-setup.md` → Consolidated into `network-setup.adoc`
+* `headscale-ssh-setup.md` → Consolidated into `network-setup.adoc`
+* `headscale-example-topology.md` → Consolidated into `bioskop-deployment.adoc`
+* `hybrid-tailscale-headscale.md` → Consolidated into `network-setup.adoc`
+* `lima-tailscale-gateway-example.md` → Consolidated into `modules-reference.adoc`
+* `network-architecture-summary.md` → Consolidated into `network-setup.adoc`
+* `simplified-architecture.md` → Consolidated into `bioskop-deployment.adoc`
+* `teleport-integration-summary.md` → Removed (Teleport no longer used)
+* `teleport-setup.md` → Removed (Teleport no longer used)
+
+=== Remaining Markdown Files
+
+The following Markdown files are kept for specific topics outside the main network infrastructure:
+
+* `github-mcp-proxy.md` - GitHub MCP proxy configuration
+* `podman-remote-setup.md` - Podman remote client setup
+
+NOTE: Consider converting these to AsciiDoc format in the future for consistency.
 
 == Repository Structure
 
@@ -328,9 +354,14 @@ When updating documentation:
 
 == Changelog
 
-* 2025-01-09: Added incus-rke2-cluster as git subtree
-* 2025-01-09: Created Incus-based Headscale server and gateway modules
-* 2025-01-09: Consolidated documentation into AsciiDoc format
-* 2025-01-09: Removed Teleport in favor of Tailscale/Headscale SSH
-* 2025-01-09: Added Incus Tailscale gateway module
-* 2025-01-09: Added Headscale client modules for Darwin and NixOS
+* **2025-01-10**: Extended incus-rke2-cluster with Headscale cloud-config templates
+* **2025-01-10**: Created comprehensive session summary documentation
+* **2025-01-10**: Cleaned up Teleport-related Markdown files
+* **2025-01-10**: Reorganized documentation index with clear sections
+* **2025-01-09**: Added incus-rke2-cluster as git subtree
+* **2025-01-09**: Created Incus-based Headscale server and gateway modules
+* **2025-01-09**: Consolidated documentation into AsciiDoc format
+* **2025-01-09**: Removed Teleport in favor of Tailscale/Headscale SSH
+* **2025-01-09**: Added Incus Tailscale gateway module
+* **2025-01-09**: Added Headscale client modules for Darwin and NixOS
+* **2025-01-09**: Successfully rebuilt bioskop Darwin with Headscale client
