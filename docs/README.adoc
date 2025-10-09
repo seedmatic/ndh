@@ -238,6 +238,79 @@ The following Markdown files are superseded by the AsciiDoc documentation above 
 
 All content has been consolidated into `network-setup.adoc` and `modules-reference.adoc`.
 
+== Repository Structure
+
+=== Git Subtree Integration
+
+The `modules/nixos/incus-rke2-cluster/` directory is managed as a **git subtree**, integrating the standalone `incus-rke2-cluster` repository for RKE2 deployment.
+
+==== Working with the Subtree
+
+**Helper script:**
+[source,bash]
+----
+# Pull updates from upstream
+./.git-subtree-sync.sh pull
+
+# Push changes back to upstream
+./.git-subtree-sync.sh push
+
+# Check subtree status
+./.git-subtree-sync.sh status
+----
+
+**Development workflow:**
+
+1. **RKE2-specific development** → Work in standalone `../incus-rke2-cluster/` repo
++
+[source,bash]
+----
+cd ../incus-rke2-cluster
+# Make changes, test, commit
+git add .
+git commit -m "Update RKE2 deployment"
+git push
+----
+
+2. **Sync to nix-darwin-home**
++
+[source,bash]
+----
+cd ../nix-darwin-home
+./.git-subtree-sync.sh pull
+----
+
+3. **Integration changes** → Work in `modules/nixos/incus-rke2-cluster/`
++
+[source,bash]
+----
+cd modules/nixos/incus-rke2-cluster
+# Modify for integration needs
+# Commit to nix-darwin-home
+git commit -m "Integration update"
+----
+
+4. **Optional: Push improvements back**
++
+[source,bash]
+----
+./.git-subtree-sync.sh push
+----
+
+**Manual commands:**
+[source,bash]
+----
+# Pull from upstream
+git subtree pull --prefix=modules/nixos/incus-rke2-cluster \
+  ../incus-rke2-cluster main --squash
+
+# Push to upstream
+git subtree push --prefix=modules/nixos/incus-rke2-cluster \
+  ../incus-rke2-cluster main
+----
+
+NOTE: Both repositories remain active. The standalone repo is ideal for focused RKE2 development, while the subtree provides integration with NixOS modules.
+
 == Contributing
 
 When updating documentation:
@@ -250,6 +323,8 @@ When updating documentation:
 
 == Changelog
 
+* 2025-01-09: Added incus-rke2-cluster as git subtree
+* 2025-01-09: Created Incus-based Headscale server and gateway modules
 * 2025-01-09: Consolidated documentation into AsciiDoc format
 * 2025-01-09: Removed Teleport in favor of Tailscale/Headscale SSH
 * 2025-01-09: Added Incus Tailscale gateway module
