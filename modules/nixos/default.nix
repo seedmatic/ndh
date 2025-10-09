@@ -36,11 +36,17 @@ in {
     ./container-host.nix
     ./containers
     ./disko.nix
+    ./headscale-server.nix
+    ./headscale-client.nix
+    ./headscale-gateway.nix
     ./incus.nix
+    ./incus-headscale-server.nix
+    ./incus-headscale-gateway.nix
+    ./incus-tailscale-gateway.nix
     ./podman.nix
     ./systemd
     ./tailscale.nix
-    ./teleport-node.nix
+    # Teleport removed - using Headscale/Tailscale SSH
     ./zfs.nix
     #(import ./remote-nix-store.nix { inherit config pkgs lib; })
     #(import ./nix-snapshotter.nix { inherit config pkgs lib user; })
@@ -54,7 +60,7 @@ in {
     {
       experimental-features = [ "nix-command" "flakes" ];
       auto-optimise-store = true;
-      trusted-users = [ cfgUserName "root" ];
+      trusted-users = [ cfgUserName "root" ];cd
       sandbox = false;
       extra-sandbox-paths = [ "/dev/kvm" ];
 

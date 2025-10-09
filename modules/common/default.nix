@@ -25,7 +25,7 @@ in {
     ./dnsmasq.nix
     ./lima-host.nix
     ./distributed-builds-option.nix
-    ./teleport
+    # Teleport removed - using Headscale/Tailscale SSH
   ];
 
   programs = {

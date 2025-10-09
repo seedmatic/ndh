@@ -1,0 +1,256 @@
+= Documentation Index
+:toc: left
+:icons: font
+
+== Overview
+
+This directory contains documentation for the network infrastructure and NixOS/Darwin modules.
+
+== Main Documents
+
+link:network-setup.adoc[Network Infrastructure Setup]::
+Complete guide covering Tailscale and Headscale deployment, configuration, usage, and troubleshooting. Start here for setting up your network.
+
+link:modules-reference.adoc[Modules Reference]::
+Reference documentation for all custom NixOS and Darwin modules, including options, examples, and best practices.
+
+== Quick Start
+
+=== For New Users
+
+1. Read link:network-setup.adoc#architecture[Architecture Overview]
+2. Follow link:network-setup.adoc#installation-and-configuration[Installation Steps]
+3. Reference link:modules-reference.adoc[Module Options] as needed
+
+=== For Existing Setups
+
+* link:network-setup.adoc#troubleshooting[Troubleshooting Guide]
+* link:modules-reference.adoc#migration-guide[Migration Guide]
+* link:network-setup.adoc#reference[Quick Reference]
+
+== Document Structure
+
+=== Network Setup Guide
+
+* Overview & Architecture
+* Network Topology (alcide, bioskop, Lima VMs)
+* Installation & Configuration
+** Tailscale Gateways
+** Tailscale SSH
+** Headscale (optional)
+* Usage Scenarios
+* Troubleshooting
+* Reference Tables
+* Security Considerations
+
+=== Modules Reference
+
+* Network Modules
+** Tailscale Gateway (Incus)
+** Tailscale Gateway (Container)
+** Headscale Server
+** Headscale Client (NixOS)
+** Headscale Client (Darwin)
+** Headscale Gateway
+* Module Combinations
+* Common Patterns
+* Troubleshooting
+* Migration Guide
+* Best Practices
+
+== Key Concepts
+
+=== Tailscale
+Identity-based VPN using WireGuard, provides SSH with automatic key management, subnet routing via gateways.
+
+=== Headscale
+Self-hosted Tailscale control server for internal LAN, compatible with Tailscale clients, lower latency on LAN.
+
+=== Gateways
+Advertise subnet routes to make internal networks accessible via Tailscale/Headscale, deployed as Incus instances in Lima VMs.
+
+=== Hybrid Approach
+Use Tailscale for external access and mobile devices, use Headscale for fast local SSH, both provide identity-based authentication.
+
+== Network Architecture Summary
+
+[source]
+----
+External Access (Tailscale)
+    ↓
+Darwin Hosts (alcide, bioskop)
+    ↓
+Lima VMs (NixOS)
+    ↓
+Tailscale Gateways (Incus)
+    ↓
+RKE Clusters (Incus instances)
+
+Internal LAN (Headscale - optional)
+    ↓
+All LAN hosts connected
+    ↓
+Fast local SSH
+----
+
+== Common Tasks
+
+=== Deploy Tailscale Gateway
+
+[source,bash]
+----
+# In Lima VM
+limactl shell default
+sudo deploy-tailscale-gateway
+----
+
+See: link:network-setup.adoc#step-1-tailscale-gateways-in-lima-vms[Tailscale Gateway Setup]
+
+=== Setup Headscale Server
+
+[source,nix]
+----
+services.headscale-custom = {
+  enable = true;
+  serverUrl = "http://headscale.local:8080";
+  baseDomain = "home.local";
+};
+----
+
+See: link:network-setup.adoc#step-3-optional-headscale-for-internal-lan[Headscale Setup]
+
+=== Connect to Network
+
+[source,bash]
+----
+# Tailscale
+sudo tailscale up --ssh
+
+# Headscale
+hs-connect
+----
+
+See: link:network-setup.adoc#ssh-access[SSH Access Methods]
+
+=== SSH to Hosts
+
+[source,bash]
+----
+# Via Tailscale
+tailscale ssh hostname
+
+# Via Headscale
+ssh hostname.home.local
+
+# To RKE nodes (via gateway)
+ssh 192.168.106.10
+----
+
+See: link:network-setup.adoc#usage[Usage Scenarios]
+
+== Network Ranges
+
+[options="header"]
+|===
+| Network | Range | Purpose
+| Home LAN | 192.168.1.0/24 | Main network
+| Lima Shared | 192.168.5.0/24 | Lima VMs
+| Incus (alcide) | 192.168.106.0/24 | RKE cluster
+| Incus (bioskop) | 192.168.107.0/24 | RKE cluster
+| Tailscale | 100.64.0.0/10 | Mesh overlay
+|===
+
+== Module Quick Reference
+
+=== Tailscale Gateway
+
+[source,nix]
+----
+services.incus-tailscale-gateway = {
+  enable = true;
+  authKeyFile = "/run/secrets/tailscale-authkey";
+  hostname = "my-gateway";
+  routes = [ "192.168.5.0/24" "192.168.106.0/24" ];
+};
+----
+
+=== Headscale Server
+
+[source,nix]
+----
+services.headscale-custom = {
+  enable = true;
+  serverUrl = "http://192.168.1.10:8080";
+  baseDomain = "home.local";
+};
+----
+
+=== Headscale Client
+
+[source,nix]
+----
+# NixOS
+services.headscale-client = {
+  enable = true;
+  serverUrl = "http://headscale.local:8080";
+  authKeyFile = "/run/secrets/headscale-authkey";
+  enableSSH = true;
+};
+
+# Darwin
+services.headscale-client = {
+  enable = true;
+  serverUrl = "http://headscale.local:8080";
+  enableSSH = true;
+};
+----
+
+== Troubleshooting Quick Links
+
+* link:network-setup.adoc#gateway-not-advertising-routes[Gateway Issues]
+* link:network-setup.adoc#cannot-reach-rke-nodes[RKE Connectivity]
+* link:network-setup.adoc#tailscale-ssh-not-working[Tailscale SSH]
+* link:network-setup.adoc#headscale-ssh-not-working[Headscale SSH]
+* link:network-setup.adoc#performance-issues[Performance Issues]
+
+== Support
+
+For issues or questions:
+
+1. Check link:network-setup.adoc#troubleshooting[Troubleshooting Section]
+2. Review link:modules-reference.adoc#troubleshooting[Module-Specific Troubleshooting]
+3. Consult external documentation:
+   * https://tailscale.com/kb/[Tailscale Docs]
+   * https://headscale.net/[Headscale Docs]
+   * https://nixos.org/manual/nixos/stable/[NixOS Manual]
+
+== Legacy Documentation
+
+The following Markdown files are superseded by the AsciiDoc documentation above and can be removed:
+
+* `headscale-setup.md`
+* `headscale-ssh-setup.md`
+* `headscale-example-topology.md`
+* `hybrid-tailscale-headscale.md`
+* `lima-tailscale-gateway-example.md`
+* `network-architecture-summary.md`
+* `simplified-architecture.md`
+
+All content has been consolidated into `network-setup.adoc` and `modules-reference.adoc`.
+
+== Contributing
+
+When updating documentation:
+
+* Use AsciiDoc format (`.adoc` files)
+* Follow existing structure and conventions
+* Update table of contents if adding sections
+* Test code examples before committing
+* Keep examples minimal but complete
+
+== Changelog
+
+* 2025-01-09: Consolidated documentation into AsciiDoc format
+* 2025-01-09: Removed Teleport in favor of Tailscale/Headscale SSH
+* 2025-01-09: Added Incus Tailscale gateway module
+* 2025-01-09: Added Headscale client modules for Darwin and NixOS

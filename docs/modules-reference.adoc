@@ -1,0 +1,736 @@
+= NixOS/Darwin Modules Reference
+:toc: left
+:toclevels: 3
+:icons: font
+:source-highlighter: rouge
+
+== Overview
+
+This document provides reference documentation for all custom NixOS and Darwin modules in this repository.
+
+== Network Modules
+
+=== Tailscale Gateway (Incus)
+
+Module: `modules/nixos/incus-tailscale-gateway.nix`
+
+Deploys a Tailscale gateway as an Incus instance to advertise subnet routes.
+
+==== Options
+
+[source,nix]
+----
+services.incus-tailscale-gateway = {
+  enable = true;
+  instanceName = "tailscale-gateway";
+  authKeyFile = "/run/secrets/tailscale-authkey";
+  hostname = "alcide-gateway";
+  routes = [ "192.168.5.0/24" "192.168.106.0/24" ];
+  exitNode = false;
+  tags = [ "gateway" ];
+  profile = "default";
+};
+----
+
+`enable`:: Enable the Tailscale gateway (default: `false`)
+`instanceName`:: Name of the Incus instance (default: `"tailscale-gateway"`)
+`authKeyFile`:: Path to Tailscale auth key file (required)
+`hostname`:: Hostname for the gateway (default: `${config.networking.hostName}-gateway`)
+`routes`:: List of subnet routes to advertise (default: `[]`)
+`exitNode`:: Advertise as exit node (default: `false`)
+`tags`:: Tailscale tags for ACLs (default: `[ "gateway" ]`)
+`profile`:: Incus profile to use (default: `"default"`)
+
+==== Management Scripts
+
+`deploy-tailscale-gateway`:: Deploy or update the gateway instance
+`tailscale-gateway-status`:: Show gateway status
+`tailscale-gateway-shell`:: Open shell in gateway instance
+`tailscale-gateway-logs`:: View gateway logs
+
+==== Example
+
+[source,nix]
+----
+{ config, pkgs, ... }:
+{
+  virtualisation.incus.enable = true;
+
+  services.incus-tailscale-gateway = {
+    enable = true;
+    authKeyFile = "/run/secrets/tailscale-authkey";
+    hostname = "my-gateway";
+    routes = [
+      "192.168.5.0/24"    # Lima network
+      "192.168.106.0/24"  # Incus bridge
+    ];
+    tags = [ "gateway" "lima" ];
+  };
+
+  boot.kernel.sysctl = {
+    "net.ipv4.ip_forward" = 1;
+    "net.ipv6.conf.all.forwarding" = 1;
+  };
+}
+----
+
+=== Tailscale Gateway (Container)
+
+Module: `modules/nixos/containers/tailscale-gateway.nix`
+
+Alternative implementation using NixOS containers instead of Incus.
+
+==== Options
+
+[source,nix]
+----
+containers.tailscale-gateway = {
+  enable = true;
+  authKeyFile = "/path/to/authkey";
+  hostname = "gateway";
+  routes = [ "192.168.1.0/24" ];
+  exitNode = false;
+  hostAddress = "192.168.100.10";
+  localAddress = "192.168.100.11";
+  tags = [ "gateway" ];
+};
+----
+
+`enable`:: Enable the container gateway (default: `false`)
+`authKeyFile`:: Path to Tailscale auth key file (required)
+`hostname`:: Gateway hostname (default: `${config.networking.hostName}-gateway`)
+`routes`:: Subnet routes to advertise (default: `[]`)
+`exitNode`:: Act as exit node (default: `false`)
+`hostAddress`:: Host-side IP for container (default: `"192.168.100.10"`)
+`localAddress`:: Container IP address (default: `"192.168.100.11"`)
+`tags`:: Tailscale tags (default: `[ "gateway" ]`)
+
+==== Management Scripts
+
+`tailscale-gateway-status`:: Show gateway status
+`tailscale-gateway-shell`:: Open root shell in container
+
+=== Headscale Server
+
+Module: `modules/nixos/headscale-server.nix`
+
+Self-hosted Tailscale control server for internal LAN.
+
+==== Options
+
+[source,nix]
+----
+services.headscale-custom = {
+  enable = true;
+  serverUrl = "http://headscale.local:8080";
+  baseDomain = "mammoth-skate.local";
+  listenAddr = "0.0.0.0:8080";
+  metricsListenAddr = "127.0.0.1:9090";
+  derp.urls = [ "https://controlplane.tailscale.com/derpmap/default" ];
+  derp.autoUpdate = true;
+  oidc.enable = false;
+};
+----
+
+`enable`:: Enable Headscale server (default: `false`)
+`serverUrl`:: Public URL of server (required)
+`baseDomain`:: MagicDNS base domain (default: `"mammoth-skate.local"`)
+`listenAddr`:: HTTP listen address (default: `"0.0.0.0:8080"`)
+`metricsListenAddr`:: Prometheus metrics address (default: `"127.0.0.1:9090"`)
+`derp.urls`:: DERP server URLs (default: Tailscale's servers)
+`derp.autoUpdate`:: Auto-update DERP map (default: `true`)
+`oidc.enable`:: Enable OIDC authentication (default: `false`)
+`oidc.issuer`:: OIDC issuer URL
+`oidc.clientId`:: OIDC client ID
+`oidc.clientSecretFile`:: Path to OIDC client secret file
+
+==== Management Scripts
+
+`headscale-user-add <username>`:: Create a new user
+`headscale-preauth <username> [flags]`:: Generate pre-auth key
+`headscale-routes-approve <node-id> <routes>`:: Approve advertised routes
+
+==== Example
+
+[source,nix]
+----
+{ config, pkgs, ... }:
+{
+  services.headscale-custom = {
+    enable = true;
+    serverUrl = "http://192.168.1.10:8080";
+    baseDomain = "home.local";
+  };
+
+  networking.firewall.allowedTCPPorts = [ 8080 ];
+
+  # Optional: HTTPS with Caddy
+  services.caddy = {
+    enable = true;
+    virtualHosts."headscale.home.local" = {
+      extraConfig = ''
+        reverse_proxy localhost:8080
+        tls internal
+      '';
+    };
+  };
+}
+----
+
+=== Headscale Client (NixOS)
+
+Module: `modules/nixos/headscale-client.nix`
+
+Connect NixOS hosts to Headscale.
+
+==== Options
+
+[source,nix]
+----
+services.headscale-client = {
+  enable = true;
+  serverUrl = "http://headscale.local:8080";
+  authKeyFile = "/run/secrets/headscale-authkey";
+  hostname = "my-host";
+  enableSSH = true;
+  tags = [ "server" ];
+  acceptRoutes = false;
+};
+----
+
+`enable`:: Enable Headscale client (default: `false`)
+`serverUrl`:: Headscale server URL (required)
+`authKeyFile`:: Path to auth key file (required)
+`hostname`:: Advertised hostname (default: `config.networking.hostName`)
+`enableSSH`:: Enable Tailscale SSH (default: `true`)
+`tags`:: Node tags (default: `[]`)
+`acceptRoutes`:: Accept routes from other nodes (default: `false`)
+
+==== Management Scripts
+
+`hs-status`:: Show connection status
+`hs-ssh <hostname>`:: SSH to another host
+
+==== Example
+
+[source,nix]
+----
+{ config, pkgs, ... }:
+{
+  services.headscale-client = {
+    enable = true;
+    serverUrl = "http://192.168.1.10:8080";
+    authKeyFile = "/run/secrets/headscale-authkey";
+    hostname = "server1";
+    enableSSH = true;
+    tags = [ "nixos" "server" ];
+  };
+
+  # Store auth key securely
+  # echo "your-key" | sudo tee /run/secrets/headscale-authkey
+  # sudo chmod 600 /run/secrets/headscale-authkey
+}
+----
+
+=== Headscale Client (Darwin)
+
+Module: `modules/darwin/headscale-client.nix`
+
+Connect macOS hosts to Headscale.
+
+==== Options
+
+[source,nix]
+----
+services.headscale-client = {
+  enable = true;
+  serverUrl = "http://headscale.local:8080";
+  hostname = "my-mac";
+  enableSSH = true;
+  tags = [ "darwin" ];
+  acceptRoutes = false;
+};
+----
+
+`enable`:: Enable Headscale client (default: `false`)
+`serverUrl`:: Headscale server URL (required)
+`hostname`:: Advertised hostname (default: `config.networking.hostName`)
+`enableSSH`:: Enable Tailscale SSH (default: `true`)
+`tags`:: Node tags (default: `[]`)
+`acceptRoutes`:: Accept routes from gateways (default: `false`)
+
+NOTE: Darwin doesn't support automatic connection. Use `hs-connect` after rebuilding.
+
+==== Management Scripts
+
+`hs-connect`:: Connect to Headscale server
+`hs-status`:: Show connection status
+`hs-ssh <hostname>`:: SSH to another host
+`hs-disconnect`:: Disconnect from Headscale
+
+==== Example
+
+[source,nix]
+----
+{ config, pkgs, ... }:
+{
+  services.headscale-client = {
+    enable = true;
+    serverUrl = "http://192.168.1.10:8080";
+    hostname = "macbook";
+    enableSSH = true;
+    tags = [ "darwin" "laptop" ];
+    acceptRoutes = true;  # Accept routes from gateways
+  };
+}
+----
+
+After `darwin-rebuild switch`:
+[source,bash]
+----
+hs-connect
+----
+
+=== Headscale Gateway
+
+Module: `modules/nixos/headscale-gateway.nix`
+
+Advertise subnet routes via Headscale (similar to Tailscale gateway).
+
+==== Options
+
+[source,nix]
+----
+services.headscale-gateway = {
+  enable = true;
+  serverUrl = "http://headscale.local:8080";
+  authKeyFile = "/run/secrets/headscale-authkey";
+  hostname = "gateway";
+  routes = [ "192.168.1.0/24" ];
+  exitNode = false;
+  acceptRoutes = true;
+  snat = true;
+  tags = [ "gateway" ];
+};
+----
+
+`enable`:: Enable gateway (default: `false`)
+`serverUrl`:: Headscale server URL (required)
+`authKeyFile`:: Path to auth key file (required)
+`hostname`:: Gateway hostname (default: `config.networking.hostName`)
+`routes`:: Subnet routes to advertise (default: `[]`)
+`exitNode`:: Act as exit node (default: `false`)
+`acceptRoutes`:: Accept routes from others (default: `true`)
+`snat`:: Enable source NAT (default: `true`)
+`tags`:: Node tags (default: `[ "gateway" ]`)
+
+==== Management Scripts
+
+`headscale-gateway-status`:: Show gateway status and routes
+
+==== Example
+
+[source,nix]
+----
+{ config, pkgs, ... }:
+{
+  services.headscale-gateway = {
+    enable = true;
+    serverUrl = "http://192.168.1.10:8080";
+    authKeyFile = "/run/secrets/headscale-authkey";
+    hostname = "lan-gateway";
+    routes = [ "192.168.1.0/24" "10.0.0.0/24" ];
+    snat = true;
+    tags = [ "gateway" "lan" ];
+  };
+
+  boot.kernel.sysctl = {
+    "net.ipv4.ip_forward" = 1;
+    "net.ipv6.conf.all.forwarding" = 1;
+  };
+}
+----
+
+After deployment, approve routes on Headscale server:
+[source,bash]
+----
+sudo headscale routes enable --route 192.168.1.0/24 <node-id>
+----
+
+== Other Modules
+
+=== Teleport (Darwin)
+
+Module: `modules/darwin/teleport.nix`
+
+NOTE: This module is deprecated. Use Tailscale/Headscale SSH instead.
+
+Teleport provides centralized SSH management but is redundant when using Tailscale/Headscale which have built-in identity-based SSH.
+
+To disable Teleport:
+[source,nix]
+----
+services.teleport.enable = false;
+----
+
+=== Teleport Node (NixOS)
+
+Module: `modules/nixos/teleport-node.nix`
+
+NOTE: This module is deprecated. Use Headscale client instead.
+
+== Module Combinations
+
+=== Recommended Setup: Hybrid Tailscale + Headscale
+
+.Darwin Hosts (alcide, bioskop)
+[source,nix]
+----
+{
+  # Tailscale (external access) - manual connection
+  environment.systemPackages = [ pkgs.tailscale ];
+
+  # Headscale (internal LAN)
+  services.headscale-client = {
+    enable = true;
+    serverUrl = "http://192.168.1.10:8080";
+    enableSSH = true;
+    acceptRoutes = true;  # Accept routes from gateways
+  };
+}
+----
+
+.Lima VMs (Tailscale gateway + Headscale client)
+[source,nix]
+----
+{
+  # Tailscale gateway for external access to RKE
+  services.incus-tailscale-gateway = {
+    enable = true;
+    authKeyFile = "/run/secrets/tailscale-authkey";
+    hostname = "alcide-gateway";
+    routes = [ "192.168.5.0/24" "192.168.106.0/24" ];
+  };
+
+  # Headscale client for LAN SSH
+  services.headscale-client = {
+    enable = true;
+    serverUrl = "http://192.168.1.10:8080";
+    authKeyFile = "/run/secrets/headscale-authkey";
+    hostname = "lima-alcide";
+    enableSSH = true;
+  };
+}
+----
+
+.Headscale Server (on NAS or dedicated host)
+[source,nix]
+----
+{
+  services.headscale-custom = {
+    enable = true;
+    serverUrl = "http://192.168.1.10:8080";
+    baseDomain = "home.local";
+  };
+
+  networking.firewall.allowedTCPPorts = [ 8080 ];
+}
+----
+
+=== Minimal Setup: Tailscale Only
+
+If you don't need Headscale:
+
+.Darwin Hosts
+[source,nix]
+----
+{
+  environment.systemPackages = [ pkgs.tailscale ];
+  # Manual: tailscale up --ssh
+}
+----
+
+.Lima VMs
+[source,nix]
+----
+{
+  services.incus-tailscale-gateway = {
+    enable = true;
+    authKeyFile = "/run/secrets/tailscale-authkey";
+    hostname = "alcide-gateway";
+    routes = [ "192.168.5.0/24" "192.168.106.0/24" ];
+  };
+}
+----
+
+== Common Patterns
+
+=== Storing Auth Keys Securely
+
+==== Manual Method (Development)
+
+[source,bash]
+----
+# Create secrets directory
+sudo mkdir -p /run/secrets
+
+# Store key
+echo "your-auth-key" | sudo tee /run/secrets/tailscale-authkey
+sudo chmod 600 /run/secrets/tailscale-authkey
+----
+
+==== Using sops-nix (Production)
+
+[source,nix]
+----
+{ config, ... }:
+{
+  # Configure sops
+  sops.defaultSopsFile = ./secrets.yaml;
+  sops.secrets.tailscale-authkey = {
+    mode = "0600";
+  };
+
+  # Use in module
+  services.incus-tailscale-gateway = {
+    authKeyFile = config.sops.secrets.tailscale-authkey.path;
+  };
+}
+----
+
+=== IP Forwarding for Gateways
+
+Required for any gateway configuration:
+
+[source,nix]
+----
+boot.kernel.sysctl = {
+  "net.ipv4.ip_forward" = 1;
+  "net.ipv6.conf.all.forwarding" = 1;
+};
+----
+
+=== Firewall Configuration
+
+Trusting Tailscale interface:
+
+[source,nix]
+----
+networking.firewall = {
+  enable = true;
+  trustedInterfaces = [ "tailscale0" ];
+};
+----
+
+For gateways, also trust Incus bridge:
+
+[source,nix]
+----
+networking.firewall.trustedInterfaces = [ "tailscale0" "incusbr0" ];
+----
+
+=== ACL Tagging
+
+Use tags for better access control:
+
+[source,nix]
+----
+services.headscale-client = {
+  tags = [ "nixos" "server" "production" ];
+};
+----
+
+Then in ACLs:
+[source,json]
+----
+{
+  "tagOwners": {
+    "tag:production": ["admin@example.com"]
+  },
+  "acls": [
+    {
+      "src": ["tag:production"],
+      "dst": ["tag:production:*"]
+    }
+  ]
+}
+----
+
+== Troubleshooting
+
+=== Gateway Not Working
+
+[source,bash]
+----
+# Check if gateway is running
+incus list
+incus info tailscale-gateway
+
+# Check logs
+tailscale-gateway-logs
+
+# Check inside gateway
+incus exec tailscale-gateway -- tailscale status
+----
+
+=== Headscale Client Cannot Connect
+
+[source,bash]
+----
+# Check if server is reachable
+curl http://192.168.1.10:8080/health
+
+# Check auth key
+cat /run/secrets/headscale-authkey
+
+# Check service status
+sudo systemctl status tailscaled
+
+# View logs
+sudo journalctl -u tailscaled -f
+----
+
+=== Routes Not Working
+
+[source,bash]
+----
+# For Tailscale: Check routes approved in admin console
+tailscale status --json | jq '.Peer[].AllowedIPs'
+
+# For Headscale: Check routes on server
+sudo headscale routes list
+sudo headscale routes enable --route 192.168.1.0/24 <node-id>
+
+# Check IP forwarding
+sysctl net.ipv4.ip_forward  # Should be 1
+
+# Check routing table
+ip route show table all
+----
+
+=== SSH Not Working
+
+[source,bash]
+----
+# Tailscale SSH
+tailscale status  # Ensure connected
+tailscale ssh -v hostname  # Verbose output
+
+# Check ACLs allow SSH
+# In Tailscale admin console → Access Controls
+
+# Headscale SSH
+hs-status
+ssh -v hostname.home.local
+
+# Check ACLs on server
+sudo headscale policy check
+----
+
+== Migration Guide
+
+=== From Teleport to Tailscale/Headscale
+
+1. Keep Teleport running initially
+2. Set up Tailscale/Headscale
+3. Test SSH via new methods
+4. Disable Teleport:
++
+[source,nix]
+----
+services.teleport.enable = false;
+----
+
+5. Remove Teleport configuration files
+
+=== From Standalone Tailscale to Hybrid
+
+1. Ensure Tailscale is working
+2. Deploy Headscale server
+3. Connect LAN hosts to Headscale
+4. Use Headscale for LAN SSH
+5. Keep Tailscale for external access
+
+== Best Practices
+
+=== Security
+
+* Use unique auth keys per gateway
+* Rotate auth keys regularly
+* Implement ACLs with least privilege
+* Enable MFA on Tailscale account
+* Store secrets securely (sops-nix)
+
+=== Performance
+
+* Use Headscale for LAN traffic (lower latency)
+* Prefer direct connections over DERP
+* Monitor with `tailscale netcheck`
+* Adjust MTU if needed
+
+=== Maintenance
+
+* Keep NixOS/Darwin updated
+* Monitor gateway health
+* Regular ACL audits
+* Backup Headscale database
+* Document your network ranges
+
+== Quick Reference
+
+=== Essential Commands
+
+[source,bash]
+----
+# Tailscale
+tailscale up --ssh
+tailscale status
+tailscale ssh host
+tailscale ping host
+
+# Headscale Server
+sudo headscale users create <user>
+sudo headscale-preauth <user>
+sudo headscale nodes list
+sudo headscale routes enable <route> <node>
+
+# Headscale Client
+hs-connect
+hs-status
+hs-ssh host
+
+# Gateway
+deploy-tailscale-gateway
+tailscale-gateway-status
+tailscale-gateway-shell
+----
+
+=== Module Import Paths
+
+[source,nix]
+----
+# NixOS
+imports = [
+  ./modules/nixos/incus-tailscale-gateway.nix
+  ./modules/nixos/headscale-server.nix
+  ./modules/nixos/headscale-client.nix
+  ./modules/nixos/headscale-gateway.nix
+  ./modules/nixos/containers/tailscale-gateway.nix
+];
+
+# Darwin
+imports = [
+  ./modules/darwin/headscale-client.nix
+];
+----
+
+These modules are automatically imported in:
+* `modules/nixos/default.nix`
+* `modules/darwin/default.nix`
+
+== Additional Resources
+
+* link:network-setup.adoc[Network Setup Guide]
+* link:https://tailscale.com/kb/[Tailscale Documentation]
+* link:https://headscale.net/[Headscale Documentation]
+* link:https://nixos.org/manual/nixos/stable/[NixOS Manual]

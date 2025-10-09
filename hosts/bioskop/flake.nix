@@ -16,7 +16,7 @@
       profileModule = { pkgs, lib, ... }: {
         imports = [ 
           ../../profiles/committed.nix
-          ./teleport.nix  # Include the Teleport configuration
+          # Teleport removed - using Headscale for internal network
         ];
         config = (
           {

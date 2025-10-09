@@ -5,13 +5,14 @@
     ./security.nix
     ./core.nix
     ./dnsmasq.nix
+    ./headscale-client.nix
     ./lima-config.nix
     ./linux-builder.nix
     ./distributed-builds.nix
     ./podman-remote-client.nix
     ./raycast.nix
-    # ./openssh.nix  # Disabled in favor of Teleport
-    ./teleport.nix
+    ./openssh.nix
+    # Teleport removed - using Headscale/Tailscale SSH
     # Inline module replaced with file import for Home Manager extension
     ./extend-hm-imports.nix
     # Added GitHub MCP proxy module

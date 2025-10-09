@@ -1,0 +1,762 @@
+= Network Infrastructure Setup
+:toc: left
+:toclevels: 3
+:icons: font
+:source-highlighter: rouge
+:experimental:
+
+== Overview
+
+This document covers the complete network infrastructure setup using Tailscale and Headscale for secure SSH access across subnets and external locations.
+
+=== Architecture
+
+[source]
+----
+┌─────────────────────────────────────────────────────────────────┐
+│                    External Access Layer                         │
+│                      Tailscale Cloud                             │
+│  • Identity-based SSH (no manual keys)                           │
+│  • Gateways for Lima VM subnets                                  │
+│  • Mobile and remote access                                      │
+└──────────────────────────┬──────────────────────────────────────┘
+                           │
+┌──────────────────────────▼──────────────────────────────────────┐
+│                    Internal LAN Layer                            │
+│                    Headscale (Optional)                          │
+│  • Fast local SSH (1-2ms latency)                                │
+│  • MagicDNS for hostname resolution                              │
+│  • Self-hosted, no external dependency                           │
+└──────────────────────────────────────────────────────────────────┘
+----
+
+=== Components
+
+Tailscale (External)::
+Identity-based SSH with automatic key management, subnet routing via gateways in Lima VMs, mobile device support
+
+Headscale (Internal, Optional)::
+Self-hosted Tailscale alternative for LAN, lower latency, privacy-focused
+
+=== Why No Teleport?
+
+Both Tailscale and Headscale provide built-in SSH with:
+
+* ✅ Identity-based authentication
+* ✅ Automatic SSH key management
+* ✅ ACL-based access control
+* ✅ Encrypted WireGuard tunnels
+* ✅ MagicDNS hostname resolution
+
+This eliminates the need for a separate authentication layer like Teleport.
+
+== Network Topology
+
+=== alcide (MacBook Pro - Mobile)
+
+[source]
+----
+alcide (Darwin/macOS)
+├── Tailscale (external access)
+├── Headscale Client (optional, LAN SSH)
+├── en0: 192.168.1.x/24 or external network
+│
+└── Lima VM (NixOS)
+    ├── lima0: 192.168.5.2/24
+    ├── incusbr0: 192.168.106.1/24
+    │
+    ├── Incus: tailscale-gateway
+    │   └── Advertises: 192.168.5.0/24, 192.168.106.0/24
+    │
+    └── RKE Kubernetes Cluster (Incus instances)
+        ├── rke-control-1,2,3: 192.168.106.10-12
+        └── rke-worker-N: 192.168.106.20+
+----
+
+=== bioskop (Always at Home)
+
+[source]
+----
+bioskop (Darwin/macOS)
+├── Tailscale (always connected)
+├── Headscale Client (optional, LAN SSH)
+├── en0: 192.168.1.y/24 (fixed home IP)
+│
+└── Lima VM (NixOS)
+    ├── lima0: 192.168.5.2/24
+    ├── incusbr0: 192.168.107.1/24
+    │
+    ├── Incus: tailscale-gateway
+    │   └── Advertises: 192.168.5.0/24, 192.168.107.0/24
+    │
+    └── RKE Kubernetes Cluster (Incus instances)
+        ├── rke-control-1,2,3: 192.168.107.10-12
+        └── rke-worker-N: 192.168.107.20+
+----
+
+== Installation and Configuration
+
+=== Step 1: Tailscale Gateways in Lima VMs
+
+==== Configuration
+
+Edit `/etc/nixos/configuration.nix` in each Lima VM:
+
+.alcide's Lima VM
+[source,nix]
+----
+{ config, pkgs, lib, ... }:
+{
+  imports = [
+    ./hardware-configuration.nix
+  ];
+
+  # Enable Incus
+  virtualisation.incus = {
+    enable = true;
+    ui.enable = true;
+  };
+
+  # Tailscale gateway configuration
+  services.incus-tailscale-gateway = {
+    enable = true;
+    instanceName = "tailscale-gateway";
+    authKeyFile = "/run/secrets/tailscale-authkey";
+    hostname = "alcide-gateway";
+    
+    # Advertise alcide's subnets
+    routes = [
+      "192.168.5.0/24"    # Lima shared network
+      "192.168.106.0/24"  # Incus bridge (RKE cluster)
+    ];
+    
+    tags = [ "gateway" "lima" "alcide" ];
+    exitNode = false;
+  };
+
+  # Enable IP forwarding
+  boot.kernel.sysctl = {
+    "net.ipv4.ip_forward" = 1;
+    "net.ipv6.conf.all.forwarding" = 1;
+  };
+
+  networking = {
+    hostName = "lima-alcide";
+    firewall = {
+      enable = true;
+      trustedInterfaces = [ "incusbr0" ];
+    };
+  };
+
+  environment.systemPackages = with pkgs; [
+    incus
+    tailscale
+    kubectl
+    k9s
+  ];
+
+  system.stateVersion = "24.05";
+}
+----
+
+.bioskop's Lima VM
+[source,nix]
+----
+{ config, pkgs, lib, ... }:
+{
+  # Similar configuration, but different subnets
+  services.incus-tailscale-gateway = {
+    enable = true;
+    hostname = "bioskop-gateway";
+    routes = [
+      "192.168.5.0/24"
+      "192.168.107.0/24"  # Different Incus bridge
+    ];
+    tags = [ "gateway" "lima" "bioskop" ];
+  };
+  # ... rest of config similar to alcide
+}
+----
+
+==== Deployment
+
+[source,bash]
+----
+# On alcide
+limactl shell default
+
+# Store Tailscale auth key
+echo "tskey-auth-xxxxx-alcide" | sudo tee /run/secrets/tailscale-authkey
+sudo chmod 600 /run/secrets/tailscale-authkey
+
+# Rebuild NixOS
+sudo nixos-rebuild switch
+
+# Deploy gateway
+sudo deploy-tailscale-gateway
+
+# Check status
+sudo tailscale-gateway-status
+----
+
+Repeat for bioskop with its auth key.
+
+==== Approve Routes
+
+In Tailscale admin console (https://login.tailscale.com/admin/machines):
+
+1. Find `alcide-gateway` → Approve routes: `192.168.5.0/24`, `192.168.106.0/24`
+2. Find `bioskop-gateway` → Approve routes: `192.168.5.0/24`, `192.168.107.0/24`
+
+Or via CLI:
+[source,bash]
+----
+tailscale set --advertise-routes=192.168.5.0/24,192.168.106.0/24 alcide-gateway
+tailscale set --advertise-routes=192.168.5.0/24,192.168.107.0/24 bioskop-gateway
+----
+
+=== Step 2: Configure Tailscale SSH
+
+==== Enable SSH in ACLs
+
+Edit ACLs in Tailscale admin console:
+
+[source,json]
+----
+{
+  "tagOwners": {
+    "tag:gateway": ["you@example.com"],
+    "tag:darwin": ["you@example.com"],
+    "tag:nixos": ["you@example.com"],
+    "tag:lima": ["you@example.com"]
+  },
+  
+  "acls": [
+    {
+      "action": "accept",
+      "comment": "Allow all access between your devices",
+      "src": ["you@example.com"],
+      "dst": ["*:*"]
+    }
+  ],
+  
+  "ssh": [
+    {
+      "action": "accept",
+      "comment": "SSH access to all devices",
+      "src": ["you@example.com"],
+      "dst": ["tag:darwin", "tag:nixos", "tag:lima"],
+      "users": ["autogroup:user", "root"]
+    }
+  ]
+}
+----
+
+==== Connect Darwin Hosts
+
+[source,bash]
+----
+# On alcide and bioskop
+sudo tailscale up --ssh
+----
+
+=== Step 3: Optional Headscale for Internal LAN
+
+==== Deploy Headscale Server
+
+Choose an always-on host (NAS, server, or dedicated host):
+
+[source,nix]
+----
+{ config, pkgs, ... }:
+{
+  imports = [
+    ../../modules/nixos/headscale-server.nix
+  ];
+
+  services.headscale-custom = {
+    enable = true;
+    serverUrl = "http://192.168.1.10:8080";
+    baseDomain = "mammoth-skate.local";
+  };
+
+  networking.firewall.allowedTCPPorts = [ 8080 ];
+}
+----
+
+==== Initialize Headscale
+
+[source,bash]
+----
+# Create user/namespace
+sudo headscale users create default
+
+# Generate auth keys
+sudo headscale-preauth default --reusable > /tmp/gateway-key.txt
+sudo headscale-preauth default > /tmp/client-key.txt
+----
+
+==== Connect Clients
+
+.Darwin Hosts (alcide, bioskop)
+[source,nix]
+----
+{ config, pkgs, ... }:
+{
+  imports = [
+    ../../modules/darwin/headscale-client.nix
+  ];
+
+  services.headscale-client = {
+    enable = true;
+    serverUrl = "http://192.168.1.10:8080";
+    hostname = "alcide";  # or "bioskop"
+    enableSSH = true;
+    tags = [ "darwin" "laptop" ];
+  };
+}
+----
+
+[source,bash]
+----
+# After rebuilding
+darwin-rebuild switch --flake .#alcide
+
+# Connect to Headscale
+hs-connect
+----
+
+.NixOS Hosts (Lima VMs, servers)
+[source,nix]
+----
+services.headscale-client = {
+  enable = true;
+  serverUrl = "http://192.168.1.10:8080";
+  authKeyFile = "/run/secrets/headscale-authkey";
+  hostname = "lima-alcide";
+  enableSSH = true;
+  tags = [ "nixos" "lima" ];
+};
+----
+
+==== Configure Headscale ACLs
+
+Edit `/etc/headscale/policy.json`:
+
+[source,json]
+----
+{
+  "groups": {
+    "group:admin": ["stephane"]
+  },
+  
+  "tagOwners": {
+    "tag:darwin": ["group:admin"],
+    "tag:nixos": ["group:admin"],
+    "tag:lima": ["group:admin"]
+  },
+  
+  "acls": [
+    {
+      "action": "accept",
+      "src": ["group:admin"],
+      "dst": ["*:*"]
+    }
+  ],
+  
+  "ssh": [
+    {
+      "action": "accept",
+      "src": ["group:admin"],
+      "dst": ["*"],
+      "users": ["autogroup:user", "root"]
+    }
+  ]
+}
+----
+
+[source,bash]
+----
+sudo systemctl reload headscale
+----
+
+== Usage
+
+=== SSH Access
+
+==== Via Tailscale (Works Everywhere)
+
+[source,bash]
+----
+# SSH to Darwin hosts
+tailscale ssh bioskop
+
+# SSH to Lima VM
+tailscale ssh lima-bioskop
+
+# SSH to RKE node (via gateway routing)
+ssh 192.168.107.10
+
+# List available hosts
+tailscale status
+----
+
+==== Via Headscale (When on LAN)
+
+[source,bash]
+----
+# SSH to Darwin hosts
+ssh bioskop.mammoth-skate.local
+# or
+hs-ssh bioskop
+
+# SSH to Lima VM
+ssh lima-bioskop.mammoth-skate.local
+
+# Check status
+hs-status
+----
+
+==== Traditional SSH (Still Works)
+
+[source,bash]
+----
+# Direct LAN access
+ssh user@192.168.1.y
+----
+
+=== Kubernetes Access
+
+==== Local Access
+
+[source,bash]
+----
+# From same host
+kubectl --context=local get nodes
+
+# Direct via Incus bridge
+ssh 192.168.106.10
+----
+
+==== Remote Access via Tailscale
+
+[source,bash]
+----
+# From alcide, access bioskop's RKE
+kubectl --server=https://192.168.107.10:6443 get nodes
+
+# SSH to nodes
+ssh 192.168.107.10
+
+# Port forwarding
+ssh -L 6443:192.168.107.10:6443 lima-bioskop
+----
+
+=== Usage Scenarios
+
+==== Scenario 1: alcide at Home
+
+Both Tailscale and Headscale connected.
+
+[source,bash]
+----
+# Option 1: Use Headscale (faster)
+ssh bioskop.mammoth-skate.local
+
+# Option 2: Use Tailscale
+tailscale ssh bioskop
+
+# Access bioskop's RKE
+ssh 192.168.107.10
+kubectl --server=https://192.168.107.10:6443 get nodes
+----
+
+**Best choice**: Headscale for Darwin-to-Darwin SSH (lower latency), Tailscale for RKE access.
+
+==== Scenario 2: alcide External (Coffee Shop)
+
+Only Tailscale available.
+
+[source,bash]
+----
+# SSH via Tailscale
+tailscale ssh bioskop
+tailscale ssh lima-bioskop
+
+# Access RKE clusters
+ssh 192.168.107.10  # Routes through bioskop-gateway
+ssh 192.168.106.10  # Routes through alcide-gateway (loopback)
+
+# Kubernetes
+kubectl --server=https://192.168.107.10:6443 get nodes
+----
+
+==== Scenario 3: From Mobile Device
+
+Tailscale app on phone:
+
+[source,bash]
+----
+# Use Tailscale app SSH feature
+# Or terminal emulator:
+ssh 192.168.107.10
+ssh 192.168.106.10
+----
+
+== Troubleshooting
+
+=== Gateway Not Advertising Routes
+
+[source,bash]
+----
+# Check gateway status in Lima VM
+limactl shell default
+sudo tailscale-gateway-status
+
+# Check inside gateway instance
+incus exec tailscale-gateway -- tailscale status
+
+# Check IP forwarding
+sysctl net.ipv4.ip_forward  # Should be 1
+
+# Check iptables
+sudo iptables -t nat -L -n -v
+----
+
+=== Cannot Reach RKE Nodes
+
+[source,bash]
+----
+# From Darwin host, check Tailscale routing
+tailscale status
+netstat -rn | grep 192.168.106
+
+# Test gateway connectivity
+tailscale ping alcide-gateway
+
+# Test from Lima VM
+limactl shell default
+ping 192.168.106.10  # Should work
+----
+
+=== Tailscale SSH Not Working
+
+[source,bash]
+----
+# Check Tailscale status
+tailscale status
+
+# Check SSH is enabled in ACLs
+# Go to Tailscale admin console → Access Controls
+
+# Check target host allows SSH
+tailscale up --ssh  # On target host
+
+# Try with verbose output
+ssh -v 100.x.x.x  # Tailscale IP
+----
+
+=== Headscale SSH Not Working
+
+[source,bash]
+----
+# Check Headscale connection
+hs-status
+
+# Verify SSH is enabled
+# In config: services.headscale-client.enableSSH = true;
+
+# Check ACLs on server
+ssh headscale-server
+sudo headscale policy check
+
+# Check node status
+sudo headscale nodes list
+----
+
+=== Performance Issues
+
+[source,bash]
+----
+# Check if using direct connection vs DERP relay
+tailscale netcheck
+
+# Check latency
+tailscale ping bioskop-gateway
+tailscale ping alcide-gateway
+
+# Monitor traffic
+incus exec tailscale-gateway -- tcpdump -i any -n
+----
+
+== Reference
+
+=== Network Ranges
+
+[options="header"]
+|===
+| Network | Range | Purpose
+| Home LAN | 192.168.1.0/24 | Main network
+| Lima Shared | 192.168.5.0/24 | Lima VMs
+| Incus (alcide) | 192.168.106.0/24 | RKE cluster
+| Incus (bioskop) | 192.168.107.0/24 | RKE cluster
+| Tailscale Mesh | 100.64.0.0/10 | Tailscale overlay
+| Headscale Mesh | 100.64.0.0/10 | Headscale overlay
+| K8s Pods | 10.42.0.0/16 | Kubernetes pods
+| K8s Services | 10.43.0.0/16 | Kubernetes services
+|===
+
+=== Port Reference
+
+[options="header"]
+|===
+| Service | Port | Protocol | Purpose
+| Tailscale | Dynamic | UDP | WireGuard
+| Headscale | 8080 | TCP | Control server
+| Headscale gRPC | 50443 | TCP | API
+| SSH | 22 | TCP | Shell access
+| Kubernetes API | 6443 | TCP | K8s control
+| Kubelet | 10250 | TCP | K8s node agent
+| NodePort Range | 30000-32767 | TCP/UDP | K8s services
+|===
+
+=== Useful Commands
+
+==== Tailscale
+
+[source,bash]
+----
+tailscale up --ssh                    # Connect with SSH enabled
+tailscale status                      # Show connection status
+tailscale ssh host                    # SSH to host
+tailscale ping host                   # Test connectivity
+tailscale netcheck                    # Network diagnostics
+tailscale set --advertise-routes=...  # Update routes
+----
+
+==== Headscale (Server)
+
+[source,bash]
+----
+sudo headscale users create <name>           # Create user
+sudo headscale-preauth <user> --reusable     # Generate auth key
+sudo headscale nodes list                    # List nodes
+sudo headscale routes list                   # List routes
+sudo headscale routes enable <route> <node>  # Enable route
+sudo headscale policy check                  # Validate policy
+----
+
+==== Headscale (Client)
+
+[source,bash]
+----
+hs-connect           # Connect to Headscale
+hs-status            # Show status
+hs-ssh host          # SSH to host
+hs-disconnect        # Disconnect
+----
+
+==== Gateway Management
+
+[source,bash]
+----
+deploy-tailscale-gateway      # Deploy gateway instance
+tailscale-gateway-status      # Check gateway status
+tailscale-gateway-shell       # Open shell in gateway
+tailscale-gateway-logs        # View gateway logs
+----
+
+==== Lima VM
+
+[source,bash]
+----
+limactl shell default         # SSH to Lima VM
+limactl list                  # List Lima VMs
+limactl stop default          # Stop Lima VM
+limactl start default         # Start Lima VM
+----
+
+=== Decision Matrix
+
+[options="header"]
+|===
+| Scenario | At Home | External | Recommended Method
+| Darwin → Darwin | Headscale | Tailscale | Headscale (faster)
+| Darwin → Lima VM | Tailscale | Tailscale | Tailscale
+| Darwin → RKE Node | Tailscale | Tailscale | Tailscale (via gateway)
+| Mobile → RKE | N/A | Tailscale | Tailscale (via gateway)
+| Lima → Lima | Headscale | N/A | Headscale
+|===
+
+=== Comparison: Tailscale vs Headscale
+
+[options="header"]
+|===
+| Feature | Tailscale | Headscale | Recommendation
+| Setup | Easy | Moderate | Tailscale for simplicity
+| External Access | ✅ Always works | ❌ LAN only | Tailscale when away
+| Latency (LAN) | ~5-10ms | ~1-2ms | Headscale for speed
+| Mobile App | ✅ Official | ⚠️ Manual | Tailscale for mobile
+| Privacy | Cloud | Self-hosted | Headscale for privacy
+| SSH | ✅ Built-in | ✅ Built-in | Both work
+| Cost | Free tier | Free | Both free
+|===
+
+== Security Considerations
+
+=== Authentication
+
+Both Tailscale and Headscale provide:
+
+* Identity-based authentication (no shared secrets)
+* Automatic key rotation
+* Per-device authentication
+* SSO integration (Tailscale)
+
+=== Access Control
+
+* Use ACLs to restrict access
+* Apply principle of least privilege
+* Use tags for grouping
+* Regular ACL audits
+
+=== Network Security
+
+* All traffic encrypted (WireGuard)
+* No exposed ports required
+* Firewall remains active
+* Subnet isolation via ACLs
+
+=== Best Practices
+
+1. Use tags for device categorization
+2. Implement granular ACLs
+3. Regularly rotate auth keys
+4. Monitor access logs
+5. Keep software updated
+6. Use MFA for Tailscale account
+7. Backup Headscale database
+
+== Conclusion
+
+This setup provides:
+
+✅ Secure SSH access from anywhere (Tailscale)::
+Identity-based authentication, no manual key management
+
+✅ Fast local SSH (Headscale)::
+Lower latency when on same LAN, self-hosted
+
+✅ Subnet routing (Gateways)::
+Access to RKE clusters and Lima VM networks
+
+✅ Mobile access (Tailscale)::
+Official app for iOS/Android
+
+✅ Simplified architecture::
+No need for separate authentication layer (Teleport)
+
+✅ Highly secure::
+WireGuard encryption, ACL-based access control
+
+The hybrid approach using both Tailscale and Headscale provides the best balance of external accessibility, local performance, and security.

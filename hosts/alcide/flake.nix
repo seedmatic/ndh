@@ -16,8 +16,8 @@
 
       profileModule = { pkgs, lib, ... }: {
         imports = [ 
-          ../../profiles/work.nix 
-          ./teleport.nix  # Include the Teleport client configuration
+          ../../profiles/work.nix
+          # Teleport removed - using Tailscale for external access
         ];
         config = (
           {
