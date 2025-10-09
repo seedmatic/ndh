@@ -1,0 +1,455 @@
+= bioskop Deployment Guide
+:toc: left
+:toclevels: 3
+:icons: font
+:source-highlighter: rouge
+
+== Overview
+
+This guide covers deploying the complete Headscale/Tailscale architecture on bioskop (Mac Mini M4 Pro).
+
+=== Architecture
+
+[source]
+----
+bioskop (Mac Mini M4 Pro - Stationary)
+├── Darwin Host
+│   └── Headscale Client → connects to local server (192.168.5.10:8080)
+│
+└── Lima VM (NixOS)
+    ├── Incus Container: headscale-server
+    │   ├── IP: 192.168.5.10
+    │   ├── Port: 8080 (HTTP), 50443 (gRPC)
+    │   └── Network: 100.64.0.0/10 (Headscale mesh)
+    │
+    ├── Incus Container: headscale-gateway
+    │   ├── Connects to: Tailscale network
+    │   ├── Advertises: Headscale network (100.64.0.0/10)
+    │   ├── Advertises: Home LAN (192.168.1.0/24)
+    │   ├── Advertises: Lima network (192.168.5.0/24)
+    │   └── Advertises: RKE2 cluster (10.80.16.0/20)
+    │
+    └── RKE2 Cluster (via incus-rke2-cluster)
+        └── Tailscale Operator (exposes K8s services)
+----
+
+=== Network Flow
+
+**alcide (mobile) accessing bioskop infrastructure:**
+[source]
+----
+alcide (anywhere)
+    ↓ Tailscale (100.x.x.x)
+headscale-gateway (bioskop Lima)
+    ↓ Bridge
+Headscale network (100.64.0.0/10)
+    ↓
+bioskop Darwin / Lima VM / RKE2
+----
+
+== Prerequisites
+
+1. **bioskop Darwin configured** with nix-darwin
+2. **Lima installed** and VM running
+3. **Tailscale account** with auth keys
+4. **Headscale** ready to deploy
+
+== Step 1: Configure Lima VM with Headscale Modules
+
+Create or update bioskop's Lima VM NixOS configuration to include Headscale server and gateway.
+
+=== Example Lima VM Configuration
+
+Create `~/.lima/bioskop-nixos/nixos-config.nix`:
+
+[source,nix]
+----
+{ config, pkgs, ... }:
+
+{
+  imports = [
+    # Import from your nix-darwin-home modules
+    /path/to/nix-darwin-home/modules/nixos/incus-headscale-server.nix
+    /path/to/nix-darwin-home/modules/nixos/incus-headscale-gateway.nix
+    /path/to/nix-darwin-home/modules/nixos/headscale-client.nix
+  ];
+
+  # Headscale Server (Incus container)
+  services.incus-headscale-server = {
+    enable = true;
+    instanceName = "headscale-server";
+    serverUrl = "http://192.168.5.10:8080";
+    baseDomain = "home.local";
+    ipAddress = "192.168.5.10";  # Static IP for the container
+  };
+
+  # Headscale Gateway (Tailscale bridge)
+  services.incus-headscale-gateway = {
+    enable = true;
+    instanceName = "headscale-gateway";
+    hostname = "bioskop-hs-gateway";
+    tailscaleAuthKeyFile = "/run/secrets/tailscale-authkey";
+    advertiseRoutes = [
+      "100.64.0.0/10"     # Headscale network
+      "192.168.1.0/24"    # Home LAN
+      "192.168.5.0/24"    # Lima shared network
+      "10.80.16.0/20"     # bioskop RKE2 cluster
+    ];
+    tags = [ "gateway" "bioskop" ];
+  };
+
+  # Lima VM itself as Headscale client
+  services.headscale-client = {
+    enable = true;
+    serverUrl = "http://192.168.5.10:8080";
+    enableSSH = true;
+  };
+
+  # Enable Incus
+  virtualisation.incus.enable = true;
+
+  # Networking
+  networking = {
+    hostName = "bioskop-nixos";
+    firewall = {
+      enable = true;
+      trustedInterfaces = [ "incusbr0" ];
+    };
+  };
+
+  system.stateVersion = "24.05";
+}
+----
+
+=== Apply Configuration
+
+[source,bash]
+----
+# SSH into Lima VM
+limactl shell bioskop-nixos
+
+# Copy configuration
+sudo cp nixos-config.nix /etc/nixos/configuration.nix
+
+# Rebuild
+sudo nixos-rebuild switch
+----
+
+== Step 2: Deploy Headscale Server
+
+[source,bash]
+----
+# In Lima VM
+limactl shell bioskop-nixos
+
+# Deploy the Headscale server container
+sudo deploy-headscale-server
+
+# Wait for deployment to complete
+----
+
+=== Create First User and Auth Key
+
+[source,bash]
+----
+# Create a user
+sudo headscale-create-user bioskop-admin
+
+# Create an auth key for the Lima VM
+sudo headscale-create-authkey bioskop-admin --reusable --expiration 720h
+
+# Save the auth key (example output):
+# tskey-auth-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+----
+
+=== Save Auth Key
+
+[source,bash]
+----
+# On Lima VM, save the auth key
+sudo mkdir -p /run/secrets
+echo "tskey-auth-XXXXX..." | sudo tee /run/secrets/headscale-authkey
+sudo chmod 600 /run/secrets/headscale-authkey
+----
+
+== Step 3: Connect Lima VM to Headscale
+
+[source,bash]
+----
+# Restart headscale-client service to connect
+sudo systemctl restart tailscaled
+
+# Check status
+sudo tailscale status
+
+# Should show connection to Headscale server
+----
+
+== Step 4: Deploy Headscale Gateway
+
+Before deploying the gateway, you need a **Tailscale** auth key (not Headscale).
+
+=== Get Tailscale Auth Key
+
+1. Go to https://login.tailscale.com/admin/settings/keys
+2. Generate a new auth key
+3. Enable: "Reusable", "Ephemeral" (optional)
+4. Add tags: `tag:gateway`
+
+=== Save Tailscale Auth Key
+
+[source,bash]
+----
+# On Lima VM
+sudo mkdir -p /run/secrets
+echo "tskey-auth-TAILSCALE..." | sudo tee /run/secrets/tailscale-authkey
+sudo chmod 600 /run/secrets/tailscale-authkey
+----
+
+=== Deploy Gateway
+
+[source,bash]
+----
+# Deploy the Headscale gateway (Tailscale bridge)
+sudo deploy-headscale-gateway
+
+# Check status
+sudo headscale-gateway-status
+----
+
+=== Approve Routes in Tailscale Admin
+
+1. Go to https://login.tailscale.com/admin/machines
+2. Find `bioskop-hs-gateway`
+3. Click "Edit route settings..."
+4. Approve all advertised routes:
+   - `100.64.0.0/10`
+   - `192.168.1.0/24`
+   - `192.168.5.0/24`
+   - `10.80.16.0/20`
+
+== Step 5: Configure bioskop Darwin Host
+
+Add Headscale client configuration to bioskop's Darwin flake.
+
+=== Update `hosts/bioskop/flake.nix`
+
+[source,nix]
+----
+profileModule = { pkgs, lib, ... }: {
+  imports = [ 
+    ../../profiles/committed.nix
+    # Add Headscale client import (if not already in common)
+  ];
+  config = {
+    # ... existing config ...
+    
+    # Headscale client for bioskop Darwin
+    services.headscale-client = {
+      enable = true;
+      serverUrl = "http://192.168.5.10:8080";
+      enableSSH = true;
+    };
+  };
+};
+----
+
+=== Rebuild bioskop Darwin
+
+[source,bash]
+----
+# On bioskop (macOS)
+cd ~/Gits/nxmatic/nix-darwin-home/hosts/bioskop
+darwin-rebuild switch --flake .
+----
+
+=== Connect bioskop to Headscale
+
+[source,bash]
+----
+# Get auth key from Lima VM
+limactl shell bioskop-nixos sudo headscale-create-authkey bioskop-admin --reusable
+
+# Connect on macOS (if manual script is available)
+# Or restart the tailscale service if auto-connect is configured
+----
+
+== Step 6: Verify Connectivity
+
+=== Check Headscale Network
+
+[source,bash]
+----
+# On bioskop Darwin
+tailscale status
+
+# Should show:
+# - bioskop (self)
+# - bioskop-nixos (Lima VM)
+# - Any other Headscale clients
+----
+
+=== Test SSH Access
+
+[source,bash]
+----
+# From bioskop Darwin to Lima VM via Headscale
+ssh bioskop-nixos.home.local
+
+# Should connect using Headscale SSH (no password/key needed)
+----
+
+=== Verify Gateway
+
+[source,bash]
+----
+# From alcide (via Tailscale)
+tailscale status
+
+# Should show bioskop-hs-gateway
+# Routes should be approved
+
+# Test connectivity to Headscale network
+ping 100.64.0.1  # Or whatever IP Headscale assigned
+
+# Test SSH to bioskop via gateway
+tailscale ssh bioskop
+----
+
+== Step 7: Deploy RKE2 Cluster (Optional)
+
+The integrated `incus-rke2-cluster` deployment can now use the Tailscale operator.
+
+[source,bash]
+----
+# In Lima VM, navigate to RKE2 deployment
+cd /path/to/nix-darwin-home/modules/nixos/incus-rke2-cluster
+
+# Deploy master node
+make NAME=master start
+
+# The Tailscale operator will:
+# - Create a Connector in K8s
+# - Advertise K8s API VIP (10.80.16.250/32)
+# - Advertise LoadBalancer pool (10.80.16.128/26)
+----
+
+== Troubleshooting
+
+=== Headscale Server Not Starting
+
+[source,bash]
+----
+# Check container logs
+sudo incus exec headscale-server -- journalctl -u headscale -f
+
+# Check container status
+sudo incus list
+sudo incus info headscale-server
+----
+
+=== Gateway Not Connecting to Tailscale
+
+[source,bash]
+----
+# Check auth key
+sudo cat /run/secrets/tailscale-authkey
+
+# Check gateway logs
+sudo headscale-gateway-logs
+
+# Restart gateway
+sudo headscale-gateway-restart
+----
+
+=== Routes Not Working
+
+[source,bash]
+----
+# Check IP forwarding
+sysctl net.ipv4.ip_forward
+sysctl net.ipv6.conf.all.forwarding
+
+# Both should be 1
+
+# Check routes are advertised
+sudo headscale-gateway-status
+
+# Verify routes are approved in Tailscale admin console
+----
+
+=== Cannot Reach Headscale Network from Tailscale
+
+[source,bash]
+----
+# Ensure gateway is bridging correctly
+sudo incus exec headscale-gateway -- tailscale status
+
+# Check advertised routes
+sudo incus exec headscale-gateway -- tailscale status --json | jq -r '.Self.AllowedIPs[]'
+
+# Test connectivity from gateway
+sudo incus exec headscale-gateway -- ping 100.64.0.1
+----
+
+== Management Commands
+
+=== Headscale Server
+
+[source,bash]
+----
+# Check status
+sudo headscale-server-status
+
+# Create user
+sudo headscale-create-user <username>
+
+# Create auth key
+sudo headscale-create-authkey <username> --reusable --expiration 24h
+
+# Approve routes
+sudo headscale-approve-routes <node-id> <route>
+
+# Shell into container
+sudo headscale-server-shell
+----
+
+=== Headscale Gateway
+
+[source,bash]
+----
+# Check status
+sudo headscale-gateway-status
+
+# View logs
+sudo headscale-gateway-logs
+
+# Restart
+sudo headscale-gateway-restart
+
+# Shell into container
+sudo headscale-gateway-shell
+----
+
+== Security Considerations
+
+1. **Auth Keys**: Store auth keys securely in `/run/secrets/` with 600 permissions
+2. **Firewall**: Headscale server only needs port 8080 exposed on Lima network
+3. **ACLs**: Configure Headscale policy.json for access control
+4. **Tags**: Use Tailscale tags for gateway authorization
+5. **Monitoring**: Watch gateway and server logs for suspicious activity
+
+== Next Steps
+
+1. **Configure alcide** with Tailscale client only
+2. **Add more Headscale clients** (other Darwin/NixOS hosts)
+3. **Deploy RKE2 clusters** with Tailscale operator
+4. **Set up monitoring** for Headscale server and gateway
+5. **Configure ACLs** for granular access control
+
+== Reference
+
+- link:network-setup.adoc[Network Infrastructure Setup]
+- link:modules-reference.adoc[Modules Reference]
+- https://headscale.net/[Headscale Documentation]
+- https://tailscale.com/kb/[Tailscale Documentation]

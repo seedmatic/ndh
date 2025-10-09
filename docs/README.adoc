@@ -11,6 +11,9 @@ This directory contains documentation for the network infrastructure and NixOS/D
 link:network-setup.adoc[Network Infrastructure Setup]::
 Complete guide covering Tailscale and Headscale deployment, configuration, usage, and troubleshooting. Start here for setting up your network.
 
+link:bioskop-deployment.adoc[bioskop Deployment Guide]::
+Step-by-step guide for deploying the complete Headscale/Tailscale architecture on bioskop (Mac Mini M4 Pro), including Headscale server, gateway, and RKE2 integration.
+
 link:modules-reference.adoc[Modules Reference]::
 Reference documentation for all custom NixOS and Darwin modules, including options, examples, and best practices.
 
@@ -19,14 +22,16 @@ Reference documentation for all custom NixOS and Darwin modules, including optio
 === For New Users
 
 1. Read link:network-setup.adoc#architecture[Architecture Overview]
-2. Follow link:network-setup.adoc#installation-and-configuration[Installation Steps]
-3. Reference link:modules-reference.adoc[Module Options] as needed
+2. For bioskop: Follow link:bioskop-deployment.adoc[bioskop Deployment Guide]
+3. For general setup: Follow link:network-setup.adoc#installation-and-configuration[Installation Steps]
+4. Reference link:modules-reference.adoc[Module Options] as needed
 
 === For Existing Setups
 
 * link:network-setup.adoc#troubleshooting[Troubleshooting Guide]
 * link:modules-reference.adoc#migration-guide[Migration Guide]
 * link:network-setup.adoc#reference[Quick Reference]
+* link:bioskop-deployment.adoc#troubleshooting[bioskop-Specific Troubleshooting]
 
 == Document Structure
 
