@@ -14,6 +14,28 @@ Deploy Headscale server and gateway in Lima VM using incus-rke2-cluster.
 - [x] bioskop Darwin configured with Headscale client
 - [x] Documentation complete
 - [x] RKE2 cluster running in Lima VM
+- [x] Shared directory mounted in Lima VM at `/Users/nxmatic/Gits/nxmatic/nix-darwin-home/modules/nixos/incus-rke2-cluster`
+
+== Working Directory
+
+IMPORTANT: All operations should be done from the **shared directory** in Lima VM:
+
+[source,bash]
+----
+# Connect to Lima VM
+ssh lima-nerd-nixos
+
+# Change to shared incus-rke2-cluster directory
+cd /Users/nxmatic/Gits/nxmatic/nix-darwin-home/modules/nixos/incus-rke2-cluster
+
+# Now you can run remake commands
+flox activate -- remake NAME=headscale-server start
+----
+
+This directory is shared between macOS host and Lima VM, so:
+- Files edited on macOS are immediately visible in Lima VM
+- Changes made in Lima VM are reflected on macOS
+- Git operations should be done on macOS host
 
 == TODO for Deployment
 
@@ -86,10 +108,14 @@ export GATEWAY_ROUTES
 
 === 2. Test Deployment Commands
 
-Once Makefile is extended:
+Once Makefile is extended, **from Lima VM in the shared directory**:
 
 [source,bash]
 ----
+# SSH into Lima VM
+ssh lima-nerd-nixos
+
+# Go to shared directory
 cd /Users/nxmatic/Gits/nxmatic/nix-darwin-home/modules/nixos/incus-rke2-cluster
 
 # Deploy Headscale server
