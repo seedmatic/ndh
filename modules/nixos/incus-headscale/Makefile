@@ -12,7 +12,7 @@ CLUSTER_NAME ?= $(LIMA_HOSTNAME)
 HEADSCALE_BASE_DOMAIN ?= home.local
 
 # Network Configuration (bridge to home LAN)
-NETWORK_NAME := headscale-lan-br
+NETWORK_NAME := headscale-br
 PARENT_INTERFACE ?= enp0s1
 HEADSCALE_SERVER_IP ?= dhcp
 HEADSCALE_SERVER_URL ?= http://headscale-server.local:8080
@@ -61,55 +61,9 @@ NETWORK_SETUP_MARKER := $(INCUS_DIR)/.network-setup-done
 # Makefile Macros
 #-----------------------------
 
-# Create bridged network if it doesn't exist
-define create_bridged_network
-	if ! incus network show $(1) --project $(2) >/dev/null 2>&1; then
-		echo "[+] Creating bridged network $(1) using parent $(3)..."
-		incus network create $(1) \
-			--project $(2) \
-			--type=bridge \
-			parent=$(3) \
-			ipv4.address=none \
-			ipv6.address=none
-		echo "[+] Network $(1) created (bridge to home LAN)"
-	else
-		echo "[*] Network $(1) already exists"
-	fi
-endef
-
-# Configure profile device for network
-define configure_profile_device
-	if incus profile show $(1) --project $(2) --format=yaml | yq -e '.devices.eth0' >/dev/null 2>&1; then
-		echo "[+] Updating eth0 device in $(1) profile to use $(3)..."
-		incus profile device set $(1) eth0 parent=$(3) --project $(2) || true
-	else
-		echo "[+] Adding eth0 device to $(1) profile with network $(3)..."
-		incus profile device add $(1) eth0 nic network=$(3) name=eth0 --project $(2)
-	fi
-endef
-
-# Add images remote if it doesn't exist
-define ensure_images_remote
-	incus remote list --format=yaml | yq -e '.images' >/dev/null 2>&1 || \
-		incus remote add images https://images.linuxcontainers.org --protocol=simplestreams --public
-endef
-
-# Create incus project with features if it doesn't exist
-define create_incus_project
-	if ! incus project list --format=yaml | yq -e '.[] | select(.name == "$(1)")' >/dev/null 2>&1; then
-		echo "[+] Creating project $(1)..."
-		incus project create $(1) \
-			-c features.images=true \
-			-c features.profiles=true \
-			-c features.storage.volumes=true \
-			-c features.networks=$(2)
-	fi
-	incus project switch $(1)
-endef
-
-# Check if instance exists
+# Check if instance exists (simple macro that works reliably)
 define instance_exists
-	incus list --project $(1) --format=yaml | yq -e '.[] | select(.name == "$(2)")' >/dev/null 2>&1
+incus list --project $(1) --format=yaml | yq -e '.[] | select(.name == "$(2)")' >/dev/null 2>&1
 endef
 
 .PHONY: all setup start stop delete shell status logs clean preauth-key clean-network
@@ -128,8 +82,23 @@ $(INSTANCE_DIR):
 # Setup network
 $(NETWORK_SETUP_MARKER): $(INCUS_SETUP_MARKER) | $(INCUS_DIR)
 	@echo "[+] Setting up network environment..."
-	@$(call create_bridged_network,$(NETWORK_NAME),$(INCUS_PROJECT),$(PARENT_INTERFACE))
-	@$(call configure_profile_device,default,$(INCUS_PROJECT),$(NETWORK_NAME))
+	@if ! incus network show $(NETWORK_NAME) --project $(INCUS_PROJECT) >/dev/null 2>&1; then \
+		echo "[+] Creating macvlan network $(NETWORK_NAME) using parent $(PARENT_INTERFACE)..."; \
+		incus network create $(NETWORK_NAME) \
+			--project $(INCUS_PROJECT) \
+			--type=macvlan \
+			parent=$(PARENT_INTERFACE); \
+		echo "[+] Network $(NETWORK_NAME) created (macvlan to home LAN)"; \
+	else \
+		echo "[*] Network $(NETWORK_NAME) already exists"; \
+	fi
+	@if incus profile show default --project $(INCUS_PROJECT) --format=yaml | yq -e '.devices.eth0' >/dev/null 2>&1; then \
+		echo "[+] Updating eth0 device in default profile to use $(NETWORK_NAME)..."; \
+		incus profile device set default eth0 network=$(NETWORK_NAME) --project $(INCUS_PROJECT) || true; \
+	else \
+		echo "[+] Adding eth0 device to default profile with network $(NETWORK_NAME)..."; \
+		incus profile device add default eth0 nic network=$(NETWORK_NAME) name=eth0 --project $(INCUS_PROJECT); \
+	fi
 	@touch $@
 
 $(SHARED_DIR) $(LOGS_DIR): | $(INSTANCE_DIR)
@@ -137,8 +106,17 @@ $(SHARED_DIR) $(LOGS_DIR): | $(INSTANCE_DIR)
 
 $(INCUS_SETUP_MARKER): | $(INCUS_DIR)
 	@echo "[+] Setting up Incus environment..."
-	@$(call ensure_images_remote)
-	@$(call create_incus_project,$(INCUS_PROJECT),true)
+	@incus remote list --format=yaml | yq -e '.images' >/dev/null 2>&1 || \
+		incus remote add images https://images.linuxcontainers.org --protocol=simplestreams --public
+	@if ! incus project list --format=yaml | yq -e '.[] | select(.name == "$(INCUS_PROJECT)")' >/dev/null 2>&1; then \
+		echo "[+] Creating project $(INCUS_PROJECT)..."; \
+		incus project create $(INCUS_PROJECT) \
+			-c features.images=true \
+			-c features.profiles=true \
+			-c features.storage.volumes=true \
+			-c features.networks=true; \
+	fi
+	@incus project switch $(INCUS_PROJECT)
 	@echo "[+] Incus setup complete (project: $(INCUS_PROJECT))"
 	@touch $@
 
