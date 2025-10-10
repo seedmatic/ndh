@@ -21,7 +21,7 @@ let
     hash = builtins.hashString "sha256" effectiveHostName;
     # Take first 2 hex chars and ensure it's in range 0x10-0xfe (avoid 0x00, 0xff)
     rawByte = lib.strings.toInt 16 (builtins.substring 0 2 hash);
-    boundedByte = (rawByte % 239) + 16; # Range: 16-254 (0x10-0xfe)
+    boundedByte = (lib.mod rawByte 239) + 16; # Range: 16-254 (0x10-0xfe)
   in lib.strings.toLower (builtins.substring 0 2 (lib.strings.fixedWidthString 2 "0" (lib.trivial.toHexString boundedByte)));
 
   cfg = config.lima.configGenerator;
