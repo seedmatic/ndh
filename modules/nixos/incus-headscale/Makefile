@@ -11,10 +11,11 @@ NAME ?= headscale-server
 CLUSTER_NAME ?= $(LIMA_HOSTNAME)
 HEADSCALE_BASE_DOMAIN ?= home.local
 
-# Network Configuration (using internal-br for home network access)
-NETWORK_NAME := internal-br
-HEADSCALE_SERVER_IP ?= 10.148.164.100
-HEADSCALE_SERVER_URL ?= http://$(HEADSCALE_SERVER_IP):8080
+# Network Configuration (bridge to home LAN)
+NETWORK_NAME := headscale-lan-br
+PARENT_INTERFACE ?= enp0s1
+HEADSCALE_SERVER_IP ?= dhcp
+HEADSCALE_SERVER_URL ?= http://headscale-server.local:8080
 
 # Headscale ports to expose
 HEADSCALE_HTTP_PORT := 8080
@@ -56,6 +57,37 @@ INCUS_PROJECT := headscale
 INCUS_SETUP_MARKER := $(INCUS_DIR)/.setup-done
 NETWORK_SETUP_MARKER := $(INCUS_DIR)/.network-setup-done
 
+#-----------------------------
+# Makefile Macros
+#-----------------------------
+
+# Create bridged network if it doesn't exist
+define create_bridged_network
+	if ! incus network show $(1) --project $(2) >/dev/null 2>&1; then
+		echo "[+] Creating bridged network $(1) using parent $(3)..."
+		incus network create $(1) \
+			--project $(2) \
+			--type=bridge \
+			parent=$(3) \
+			ipv4.address=none \
+			ipv6.address=none
+		echo "[+] Network $(1) created (bridge to home LAN)"
+	else
+		echo "[*] Network $(1) already exists"
+	fi
+endef
+
+# Configure profile device for network
+define configure_profile_device
+	if incus profile show $(1) --project $(2) --format=yaml | yq -e '.devices.eth0' >/dev/null 2>&1; then
+		echo "[+] Updating eth0 device in $(1) profile to use $(3)..."
+		incus profile device set $(1) eth0 parent=$(3) --project $(2) || true
+	else
+		echo "[+] Adding eth0 device to $(1) profile with network $(3)..."
+		incus profile device add $(1) eth0 nic network=$(3) name=eth0 --project $(2)
+	fi
+endef
+
 .PHONY: all setup start stop delete shell status logs clean preauth-key clean-network
 
 all: start
@@ -72,21 +104,8 @@ $(INSTANCE_DIR):
 # Setup network
 $(NETWORK_SETUP_MARKER): $(INCUS_SETUP_MARKER) | $(INCUS_DIR)
 	@echo "[+] Setting up network environment..."
-	@# Ensure internal-br has IPv4 and IPv6 DHCP enabled (global network)
-	@echo "[+] Configuring $(NETWORK_NAME) network..."
-	@incus network set $(NETWORK_NAME) ipv4.dhcp=true || true
-	@incus network set $(NETWORK_NAME) ipv4.dhcp.ranges=10.148.164.100-10.148.164.200 || true
-	@incus network set $(NETWORK_NAME) ipv6.dhcp=true || true
-	@incus network set $(NETWORK_NAME) ipv6.dhcp.stateful=true || true
-	@echo "[+] Network $(NETWORK_NAME) configured with IPv4 + IPv6 DHCP"
-	@# Configure default profile with network
-	@if incus profile show default --project $(INCUS_PROJECT) --format=yaml | yq -e '.devices.eth0' >/dev/null 2>&1; then \
-		echo "[+] Updating eth0 device in default profile to use $(NETWORK_NAME)..."; \
-		incus profile device set default eth0 parent=$(NETWORK_NAME) --project $(INCUS_PROJECT) || true; \
-	else \
-		echo "[+] Adding eth0 device to default profile with network $(NETWORK_NAME)..."; \
-		incus profile device add default eth0 nic network=$(NETWORK_NAME) name=eth0 --project $(INCUS_PROJECT); \
-	fi
+	@$(call create_bridged_network,$(NETWORK_NAME),$(INCUS_PROJECT),$(PARENT_INTERFACE))
+	@$(call configure_profile_device,default,$(INCUS_PROJECT),$(NETWORK_NAME))
 	@touch $@
 
 $(SHARED_DIR) $(LOGS_DIR): | $(INSTANCE_DIR)
@@ -97,13 +116,13 @@ $(INCUS_SETUP_MARKER): | $(INCUS_DIR)
 	@# Add images remote if not exists (global, not project-specific)
 	@incus remote list --format=yaml | yq -e '.images' >/dev/null 2>&1 || \
 		incus remote add images https://images.linuxcontainers.org --protocol=simplestreams --public
-	@# Create headscale project if it doesn't exist (networks=false to use global internal-br)
+	@# Create headscale project if it doesn't exist (networks=true for project-specific bridge)
 	@incus project list --format=yaml | yq -e '.[] | select(.name == "$(INCUS_PROJECT)")' >/dev/null 2>&1 || \
 		incus project create $(INCUS_PROJECT) \
 			-c features.images=true \
 			-c features.profiles=true \
 			-c features.storage.volumes=true \
-			-c features.networks=false
+			-c features.networks=true
 	@incus project switch $(INCUS_PROJECT)
 	@echo "[+] Incus setup complete (project: $(INCUS_PROJECT))"
 	@touch $@
@@ -219,11 +238,15 @@ clean:
 	@-rm -f $(INCUS_SETUP_MARKER)
 	@echo "[+] Cleanup complete"
 
-# Clean network (just reset marker, don't delete global internal-br)
+# Clean network
 clean-network:
-	@echo "[+] Resetting network setup marker..."
+	@echo "[+] Cleaning up network..."
+	@if incus network show $(NETWORK_NAME) --project $(INCUS_PROJECT) >/dev/null 2>&1; then \
+		echo "[+] Deleting network $(NETWORK_NAME)..."; \
+		incus network delete $(NETWORK_NAME) --project $(INCUS_PROJECT) || true; \
+	fi
 	@-rm -f $(NETWORK_SETUP_MARKER)
-	@echo "[+] Network cleanup complete ($(NETWORK_NAME) is global, not deleted)"
+	@echo "[+] Network cleanup complete"
 
 # Clean all
 clean-all: clean clean-network
