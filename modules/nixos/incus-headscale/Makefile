@@ -11,9 +11,9 @@ NAME ?= headscale-server
 CLUSTER_NAME ?= $(LIMA_HOSTNAME)
 HEADSCALE_BASE_DOMAIN ?= home.local
 
-# Network Configuration (bridge to home LAN)
+# Network Configuration (macvlan on bridged interface)
 NETWORK_NAME := headscale-br
-PARENT_INTERFACE ?= enp0s1
+PARENT_INTERFACE ?= enp0s2
 HEADSCALE_SERVER_IP ?= dhcp
 HEADSCALE_SERVER_URL ?= http://headscale-server.local:8080
 
@@ -79,26 +79,9 @@ $(INCUS_DIR):
 $(INSTANCE_DIR):
 	mkdir -p $(INSTANCE_DIR)
 
-# Setup network
+# Setup network (macvlan uses direct device config in instance template)
 $(NETWORK_SETUP_MARKER): $(INCUS_SETUP_MARKER) | $(INCUS_DIR)
-	@echo "[+] Setting up network environment..."
-	@if ! incus network show $(NETWORK_NAME) --project $(INCUS_PROJECT) >/dev/null 2>&1; then \
-		echo "[+] Creating macvlan network $(NETWORK_NAME) using parent $(PARENT_INTERFACE)..."; \
-		incus network create $(NETWORK_NAME) \
-			--project $(INCUS_PROJECT) \
-			--type=macvlan \
-			parent=$(PARENT_INTERFACE); \
-		echo "[+] Network $(NETWORK_NAME) created (macvlan to home LAN)"; \
-	else \
-		echo "[*] Network $(NETWORK_NAME) already exists"; \
-	fi
-	@if incus profile show default --project $(INCUS_PROJECT) --format=yaml | yq -e '.devices.eth0' >/dev/null 2>&1; then \
-		echo "[+] Updating eth0 device in default profile to use $(NETWORK_NAME)..."; \
-		incus profile device set default eth0 network=$(NETWORK_NAME) --project $(INCUS_PROJECT) || true; \
-	else \
-		echo "[+] Adding eth0 device to default profile with network $(NETWORK_NAME)..."; \
-		incus profile device add default eth0 nic network=$(NETWORK_NAME) name=eth0 --project $(INCUS_PROJECT); \
-	fi
+	@echo "[+] Network setup: using macvlan on $(PARENT_INTERFACE) (configured in instance template)"
 	@touch $@
 
 $(SHARED_DIR) $(LOGS_DIR): | $(INSTANCE_DIR)
@@ -228,13 +211,9 @@ clean:
 	@-rm -f $(INCUS_SETUP_MARKER)
 	@echo "[+] Cleanup complete"
 
-# Clean network
+# Clean network (macvlan uses direct device, nothing to delete)
 clean-network:
-	@echo "[+] Cleaning up network..."
-	@if incus network show $(NETWORK_NAME) --project $(INCUS_PROJECT) >/dev/null 2>&1; then \
-		echo "[+] Deleting network $(NETWORK_NAME)..."; \
-		incus network delete $(NETWORK_NAME) --project $(INCUS_PROJECT) || true; \
-	fi
+	@echo "[+] Resetting network setup marker..."
 	@-rm -f $(NETWORK_SETUP_MARKER)
 	@echo "[+] Network cleanup complete"
 

@@ -10,8 +10,8 @@ devices:
     type: disk
   eth0:
     name: eth0
-    nictype: bridged
-    parent: internal-br
+    nictype: macvlan
+    parent: enp0s2
     type: nic
   shared.dir:
     type: disk

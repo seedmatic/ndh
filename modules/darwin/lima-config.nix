@@ -146,6 +146,21 @@ let
       display = "none";
     };
 
+    # Network interfaces:
+    # 1. vznat (default) - Lima's NAT for basic connectivity
+    # 2. bridged - Direct home LAN access
+    # Requires: brew install socket_vmnet && brew tap homebrew/services && sudo brew services start socket_vmnet
+    networks = [
+      {
+        # Default Lima NAT interface (enp0s1)
+        mode = "vznat";
+      }
+      {
+        # Additional bridged interface for home LAN (enp0s2)
+        mode = "bridged";
+        interface = "en0";  # Your Mac's primary network interface
+      }
+    ];
 
   };
 
