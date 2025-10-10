@@ -8,6 +8,21 @@ let
 
   profileUser = config.profile.user.name;
   profileHome = config.profile.user.home;
+  profileHost = config.profile.host;
+  
+  # Derive effective hostname (use alias if set, otherwise hostName)
+  effectiveHostName = if (profileHost ? hostAlias && profileHost.hostAlias != null && profileHost.hostAlias != "")
+    then profileHost.hostAlias
+    else profileHost.hostName;
+  
+  # Generate unique host byte from hostname hash (for MAC address uniqueness)
+  # Takes first byte of SHA256 hash of hostname, bounded to avoid reserved ranges
+  hostByteHex = let
+    hash = builtins.hashString "sha256" effectiveHostName;
+    # Take first 2 hex chars and ensure it's in range 0x10-0xfe (avoid 0x00, 0xff)
+    rawByte = lib.strings.toInt 16 (builtins.substring 0 2 hash);
+    boundedByte = (rawByte % 239) + 16; # Range: 16-254 (0x10-0xfe)
+  in lib.strings.toLower (builtins.substring 0 2 (lib.strings.fixedWidthString 2 "0" (lib.trivial.toHexString boundedByte)));
 
   cfg = config.lima.configGenerator;
 
@@ -151,12 +166,23 @@ let
     # 2. bridged: Direct home LAN bridge (enp0s2/lima1 -> 192.168.1.x)
     # Note: VZ mode also provides automatic NAT (enp0s3) but we use explicit socket_vmnet
     # Requires: Lima's socket_vmnet at /opt/socket_vmnet
+    # 
+    # MAC addressing scheme (consistent with Incus): OUI:LIMA:HOST:IF
+    # - OUI: 10:66:6a (standard OUI for local/private use)
+    # - LIMA: 0x4C (76 in decimal, 'L' in ASCII for Lima)
+    # - HOST: Hash-derived byte from hostname (ensures uniqueness across Darwin hosts)
+    #   - bioskop -> ${hostByteHex}
+    #   - alcide  -> ${hostByteHex}
+    # - IF: Interface index (01 for lima0, 02 for lima1, etc.)
+    #
+    # This ensures MACs are unique even when multiple Lima VMs communicate on same network
     networks = [
       {
         # socket_vmnet shared NAT for reliable networking
         # Provides NAT with 172.16.105.x addresses
         socket = "/var/run/lima/socket_vmnet.shared";
         interface = "lima0";
+        macAddress = "10:66:6a:4c:${hostByteHex}:01";  # Lima shared interface
       }
       {
         # Bridged interface for home LAN access
@@ -164,6 +190,7 @@ let
         # Containers use macvlan on enp0s2 to get home LAN IPs (192.168.1.x)
         lima = "bridged";
         interface = "lima1";
+        macAddress = "10:66:6a:4c:${hostByteHex}:02";  # Lima bridged interface
       }
     ];
 

@@ -1,8 +1,12 @@
-{ config, ... }: {
+{ config, ... }: 
+let
+  # Use lima-shared interface in Lima guests, otherwise fall back to enp0s1
+  primaryInterface = if config.limaHost.isGuest then "lima-shared" else "enp0s1";
+in {
   services.dnsmasq = {
     enable = false;
     settings = {
-      interface = [ "enp0s1" ];
+      interface = [ primaryInterface ];
       except-interface = [ "internalbr0" "externalbr0" ];
     };
   };

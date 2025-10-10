@@ -30,6 +30,7 @@ in {
   imports = [
     ../common
     ./firewall.nix
+    ./lima-network-interfaces.nix
     ./networking-mammoth-skate.nix
     ./dnsmasq.nix
     ./code-server.nix
