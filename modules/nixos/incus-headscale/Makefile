@@ -13,7 +13,7 @@ HEADSCALE_BASE_DOMAIN ?= home.local
 
 # Network Configuration (macvlan on bridged interface for home LAN access)
 NETWORK_NAME := headscale-br
-PARENT_INTERFACE ?= enp0s2
+PARENT_INTERFACE ?= enp0s3
 HEADSCALE_SERVER_IP ?= dhcp
 HEADSCALE_SERVER_URL ?= http://headscale-server.local:8080
 
