@@ -1,0 +1,14 @@
+# Runtime directories
+.run.d/
+.secrets.d/
+
+# Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
