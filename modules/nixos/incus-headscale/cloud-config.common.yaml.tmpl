@@ -4,6 +4,17 @@
 
 packages:
   - curl
+  - jq
+
+write_files:
+  # Helper script to load environment variables from init process
+  - path: /usr/local/sbin/load-incus-env
+    permissions: "0755"
+    content: |
+      #!/bin/bash
+      # Load environment variables from incus (set via incus config set environment.*)
+      # These are available in /proc/1/environ (init process)
+      eval "$(cat /proc/1/environ | tr '\0' '\n' | grep -E '^(HEADSCALE_|GATEWAY_)' | sed 's/^/export /')"
 
 runcmd:
   # Install flox (same as RKE2 distrobuilder)

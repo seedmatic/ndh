@@ -57,7 +57,7 @@ runcmd:
   - chmod 700 /run/secrets
   
   # Process systemd service template with environment variables using flox
-  - /bin/bash -c 'export GATEWAY_HOSTNAME="${GATEWAY_HOSTNAME}"; export GATEWAY_ROUTES="${GATEWAY_ROUTES}"; source <(flox activate --dir=/var/lib/headscale-gateway); yq eval "( ... | select( tag == \"!!str\" ) ) |= envsubst" /etc/systemd/system/tailscale-gateway.service.tmpl > /etc/systemd/system/tailscale-gateway.service'
+  - /bin/bash -c 'source /usr/local/sbin/load-incus-env && source <(flox activate --dir=/var/lib/headscale-gateway) && yq eval "( ... | select( tag == \"!!str\" ) ) |= envsubst" /etc/systemd/system/tailscale-gateway.service.tmpl > /etc/systemd/system/tailscale-gateway.service'
   
   # Note: Tailscale auth key must be provided via instance config or manually
   # Check if auth key file exists
