@@ -112,7 +112,7 @@ runcmd:
   - chown -R headscale:headscale /var/lib/headscale
   
   # Process config template with environment variables using flox
-  - /bin/bash -c 'source /usr/local/sbin/load-incus-env && source <(flox activate --dir=/var/lib/headscale) && yq eval "( ... | select( tag == \"!!str\" ) ) |= envsubst" /etc/headscale/config.yaml.tmpl > /etc/headscale/config.yaml'
+  - /bin/bash -c 'source /usr/local/sbin/load-incus-env && source <(flox activate --dir=/var/lib/headscale) && yq eval "( ... | select( tag == \"!!str\" ) ) |= envsubst" /etc/headscale/config.yaml.tmpl > /etc/headscale/config.yaml && rm -f /etc/headscale/config.yaml.tmpl'
   
   # Download and install Headscale (latest version)
   - |
