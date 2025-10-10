@@ -25,9 +25,12 @@ export GATEWAY_ROUTES
 # Directories
 RUN_DIR := .run.d
 INCUS_DIR := $(RUN_DIR)/incus
+INSTANCE_DIR := $(INCUS_DIR)/$(NAME)
 
 # Cloud-init configuration
-CLOUD_CONFIG_TEMPLATE := cloud-config.$(NAME).yaml.tmpl
+CLOUD_CONFIG_COMMON := cloud-config.common.yaml.tmpl
+CLOUD_CONFIG_SPECIFIC := cloud-config.$(NAME).yaml.tmpl
+CLOUD_CONFIG_MERGED := $(INSTANCE_DIR)/cloud-init-merged.yaml
 
 # Marker files
 INCUS_SETUP_MARKER := $(INCUS_DIR)/.setup-done
@@ -42,23 +45,30 @@ setup: $(INCUS_SETUP_MARKER)
 $(INCUS_DIR):
 	mkdir -p $(INCUS_DIR)
 
+$(INSTANCE_DIR):
+	mkdir -p $(INSTANCE_DIR)
+
 $(INCUS_SETUP_MARKER): | $(INCUS_DIR)
 	@echo "[+] Setting up Incus environment..."
-	@# Add images remote if not exists
-	@incus remote list | grep -q "^| images" || \
-		incus remote add images https://images.linuxcontainers.org --protocol=simplestreams --public
+	@incus remote list | grep -q "images" || incus remote add images https://images.linuxcontainers.org --protocol=simplestreams --public || true
 	@echo "[+] Incus setup complete"
 	@touch $@
 
-# Start instance - depends on setup
-start: setup
+# Merge cloud-init configs (common + specific)
+$(CLOUD_CONFIG_MERGED): $(CLOUD_CONFIG_COMMON) $(CLOUD_CONFIG_SPECIFIC) | $(INSTANCE_DIR)
+	@echo "[+] Merging cloud-init configurations..."
+	@yq eval-all '. as $$item ireduce ({}; . *+ $$item)' $(CLOUD_CONFIG_COMMON) $(CLOUD_CONFIG_SPECIFIC) > $@
+
+# Start instance - depends on setup and merged config
+start: setup $(CLOUD_CONFIG_MERGED)
 	@echo "[+] Launching $(NAME) instance..."
 	@if incus list -c n -f csv | grep -q "^$(NAME)$$"; then \
 		echo "Instance $(NAME) already exists"; \
 	else \
 		incus launch images:ubuntu/22.04/cloud $(NAME) \
 			--storage default \
-			--config=cloud-init.user-data="$$(cat $(CLOUD_CONFIG_TEMPLATE))"; \
+			--network internal-br \
+			--config=cloud-init.user-data="$$(cat $(CLOUD_CONFIG_MERGED))"; \
 		echo "[+] Configuring environment variables..."; \
 		if [ "$(NAME)" = "headscale-server" ]; then \
 			incus config set $(NAME) environment.HEADSCALE_SERVER_URL "$(HEADSCALE_SERVER_URL)"; \
