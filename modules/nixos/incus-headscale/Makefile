@@ -88,6 +88,30 @@ define configure_profile_device
 	fi
 endef
 
+# Add images remote if it doesn't exist
+define ensure_images_remote
+	incus remote list --format=yaml | yq -e '.images' >/dev/null 2>&1 || \
+		incus remote add images https://images.linuxcontainers.org --protocol=simplestreams --public
+endef
+
+# Create incus project with features if it doesn't exist
+define create_incus_project
+	if ! incus project list --format=yaml | yq -e '.[] | select(.name == "$(1)")' >/dev/null 2>&1; then
+		echo "[+] Creating project $(1)..."
+		incus project create $(1) \
+			-c features.images=true \
+			-c features.profiles=true \
+			-c features.storage.volumes=true \
+			-c features.networks=$(2)
+	fi
+	incus project switch $(1)
+endef
+
+# Check if instance exists
+define instance_exists
+	incus list --project $(1) --format=yaml | yq -e '.[] | select(.name == "$(2)")' >/dev/null 2>&1
+endef
+
 .PHONY: all setup start stop delete shell status logs clean preauth-key clean-network
 
 all: start
@@ -113,17 +137,8 @@ $(SHARED_DIR) $(LOGS_DIR): | $(INSTANCE_DIR)
 
 $(INCUS_SETUP_MARKER): | $(INCUS_DIR)
 	@echo "[+] Setting up Incus environment..."
-	@# Add images remote if not exists (global, not project-specific)
-	@incus remote list --format=yaml | yq -e '.images' >/dev/null 2>&1 || \
-		incus remote add images https://images.linuxcontainers.org --protocol=simplestreams --public
-	@# Create headscale project if it doesn't exist (networks=true for project-specific bridge)
-	@incus project list --format=yaml | yq -e '.[] | select(.name == "$(INCUS_PROJECT)")' >/dev/null 2>&1 || \
-		incus project create $(INCUS_PROJECT) \
-			-c features.images=true \
-			-c features.profiles=true \
-			-c features.storage.volumes=true \
-			-c features.networks=true
-	@incus project switch $(INCUS_PROJECT)
+	@$(call ensure_images_remote)
+	@$(call create_incus_project,$(INCUS_PROJECT),true)
 	@echo "[+] Incus setup complete (project: $(INCUS_PROJECT))"
 	@touch $@
 
@@ -148,14 +163,11 @@ $(INSTANCE_CONFIG_FILE): $(INSTANCE_CONFIG_TEMPLATE) $(CLOUD_CONFIG_MERGED) $(CL
 # Initialize instance (RKE2 pattern: init + config + start)
 $(INSTANCE_DIR)/.instance-init: setup $(INSTANCE_CONFIG_FILE) | $(INSTANCE_DIR)
 	@echo "[+] Initializing $(NAME) instance..."
-	@if incus list --project $(INCUS_PROJECT) --format=yaml | yq -e '.[] | select(.name == "$(NAME)")' >/dev/null 2>&1; then \
+	@if $(call instance_exists,$(INCUS_PROJECT),$(NAME)); then \
 		echo "Instance $(NAME) already exists"; \
 	else \
-		echo "[+] Launching instance with network $(NETWORK_NAME) and IP $(HEADSCALE_SERVER_IP)"; \
+		echo "[+] Launching instance with network $(NETWORK_NAME)..."; \
 		incus init --project $(INCUS_PROJECT) images:ubuntu/22.04/cloud $(NAME) < $(INSTANCE_CONFIG_FILE); \
-		if [ "$(NAME)" = "headscale-server" ]; then \
-			incus config device set --project $(INCUS_PROJECT) $(NAME) eth0 ipv4.address=$(HEADSCALE_SERVER_IP); \
-		fi; \
 	fi
 	@touch $@
 
@@ -201,7 +213,7 @@ status:
 	@echo "[+] Status of $(NAME):"
 	@incus list --project $(INCUS_PROJECT) $(NAME)
 	@echo ""
-	@if incus list --project $(INCUS_PROJECT) --format=yaml | yq -e '.[] | select(.name == "$(NAME)")' >/dev/null 2>&1; then \
+	@if $(call instance_exists,$(INCUS_PROJECT),$(NAME)); then \
 		echo "[+] Cloud-init status:"; \
 		incus exec --project $(INCUS_PROJECT) $(NAME) -- cloud-init status || true; \
 		echo ""; \
