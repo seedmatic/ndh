@@ -87,7 +87,7 @@ write_files:
       Wants=network-online.target
       
       [Service]
-      Type=simple
+      Type=notify
       ExecStart=/usr/bin/headscale serve
       Restart=always
       RestartSec=5
@@ -97,11 +97,48 @@ write_files:
       PrivateTmp=true
       ProtectSystem=strict
       ProtectHome=true
-      ReadWritePaths=/var/lib/headscale /var/run/headscale
+      ReadWritePaths=/var/lib/headscale /var/run/headscale /.shared.d
       RuntimeDirectory=headscale
       
       [Install]
       WantedBy=multi-user.target
+  
+  # Headscale bootstrap service (runs once after headscale is ready)
+  - path: /etc/systemd/system/headscale-bootstrap.service
+    content: |
+      [Unit]
+      Description=Bootstrap Headscale (create admin user and preauth key)
+      After=headscale.service
+      Requires=headscale.service
+      
+      [Service]
+      Type=oneshot
+      RemainAfterExit=yes
+      ExecStart=/usr/local/bin/headscale-bootstrap.sh
+      
+      [Install]
+      WantedBy=multi-user.target
+  
+  # Bootstrap script
+  - path: /usr/local/bin/headscale-bootstrap.sh
+    permissions: "0755"
+    content: |
+      #!/bin/bash
+      set -e
+      
+      echo "Waiting for Headscale to be ready..."
+      # Wait for gRPC socket
+      timeout 30 bash -c 'until [ -S /var/run/headscale/headscale.sock ]; do sleep 1; done'
+      
+      echo "Creating admin user..."
+      /usr/bin/headscale users create admin || echo "User admin already exists"
+      
+      echo "Creating preauth key..."
+      /usr/bin/headscale preauthkeys create --user admin --reusable --expiration 720h | \
+        tee /.shared.d/admin-preauth-key.txt
+      chmod 644 /.shared.d/admin-preauth-key.txt
+      
+      echo "Bootstrap complete!"
 
 runcmd:
   # Initialize flox environment for headscale
@@ -126,29 +163,10 @@ runcmd:
     apt-get install -y ./headscale.deb
     rm headscale.deb
   
-  # Enable and start Headscale
+  # Enable and start services
   - systemctl daemon-reload
-  - systemctl enable headscale
-  - systemctl start headscale
-  
-  # Wait for service to be ready
-  - sleep 5
-  
-  # Create default admin user for node registration
-  - /usr/bin/headscale users create admin || true
-  
-  # Create a reusable preauth key for admin user
-  - |
-    mkdir -p /var/lib/headscale/keys
-    /usr/bin/headscale preauthkeys create --user admin --reusable --expiration 720h | \
-      tee /var/lib/headscale/keys/admin-preauth-key.txt
-    chmod 600 /var/lib/headscale/keys/admin-preauth-key.txt
-    chown headscale:headscale /var/lib/headscale/keys/admin-preauth-key.txt
-  
-  # Log startup status
-  - systemctl status headscale --no-pager || true
-  - journalctl -u headscale -n 50 --no-pager || true
-  - echo "Admin user and preauth key created. Key available at /var/lib/headscale/keys/admin-preauth-key.txt"
+  - systemctl enable headscale headscale-bootstrap
+  - systemctl start headscale headscale-bootstrap
 
 final_message: |
   Headscale server is ready!
@@ -157,10 +175,12 @@ final_message: |
   Network: 100.64.0.0/10
   Default user: admin
   
-  Preauth key location: /var/lib/headscale/keys/admin-preauth-key.txt
+  Preauth key location (in container): /.shared.d/admin-preauth-key.txt
+  Preauth key location (on host): .run.d/incus/headscale-server/shared/admin-preauth-key.txt
   
   Retrieve preauth key:
-    incus exec headscale-server -- cat /var/lib/headscale/keys/admin-preauth-key.txt
+    make preauth-key
+    or: cat .run.d/incus/headscale-server/shared/admin-preauth-key.txt
   
   Management commands:
     headscale users list

@@ -26,11 +26,17 @@ export GATEWAY_ROUTES
 RUN_DIR := .run.d
 INCUS_DIR := $(RUN_DIR)/incus
 INSTANCE_DIR := $(INCUS_DIR)/$(NAME)
+SHARED_DIR := $(INSTANCE_DIR)/shared
+LOGS_DIR := $(INSTANCE_DIR)/logs
 
 # Cloud-init configuration
 CLOUD_CONFIG_COMMON := cloud-config.common.yaml.tmpl
 CLOUD_CONFIG_SPECIFIC := cloud-config.$(NAME).yaml.tmpl
 CLOUD_CONFIG_MERGED := $(INSTANCE_DIR)/cloud-init-merged.yaml
+
+# Instance configuration
+INSTANCE_CONFIG_TEMPLATE := incus-instance-config.yaml.tmpl
+INSTANCE_CONFIG_FILE := $(INSTANCE_DIR)/incus-instance-config.yaml
 
 # Marker files
 INCUS_SETUP_MARKER := $(INCUS_DIR)/.setup-done
@@ -48,6 +54,9 @@ $(INCUS_DIR):
 $(INSTANCE_DIR):
 	mkdir -p $(INSTANCE_DIR)
 
+$(SHARED_DIR) $(LOGS_DIR): | $(INSTANCE_DIR)
+	mkdir -p $@
+
 $(INCUS_SETUP_MARKER): | $(INCUS_DIR)
 	@echo "[+] Setting up Incus environment..."
 	@incus remote list | grep -q "images" || incus remote add images https://images.linuxcontainers.org --protocol=simplestreams --public || true
@@ -59,16 +68,19 @@ $(CLOUD_CONFIG_MERGED): $(CLOUD_CONFIG_COMMON) $(CLOUD_CONFIG_SPECIFIC) | $(INST
 	@echo "[+] Merging cloud-init configurations..."
 	@yq eval-all '. as $$item ireduce ({}; . *+ $$item)' $(CLOUD_CONFIG_COMMON) $(CLOUD_CONFIG_SPECIFIC) > $@
 
+# Generate instance config from template
+$(INSTANCE_CONFIG_FILE): $(INSTANCE_CONFIG_TEMPLATE) $(CLOUD_CONFIG_MERGED) | $(SHARED_DIR) $(LOGS_DIR)
+	@echo "[+] Generating instance configuration..."
+	@PWD=$(CURDIR) NAME=$(NAME) INSTANCE_DIR=$(INSTANCE_DIR) CLOUD_CONFIG_MERGED=$(CLOUD_CONFIG_MERGED) \
+		envsubst < $(INSTANCE_CONFIG_TEMPLATE) > $@
+
 # Initialize instance (RKE2 pattern: init + config + start)
-$(INSTANCE_DIR)/.instance-init: setup $(CLOUD_CONFIG_MERGED) | $(INSTANCE_DIR)
+$(INSTANCE_DIR)/.instance-init: setup $(INSTANCE_CONFIG_FILE) | $(INSTANCE_DIR)
 	@echo "[+] Initializing $(NAME) instance..."
 	@if incus list -c n -f csv | grep -q "^$(NAME)$$"; then \
 		echo "Instance $(NAME) already exists"; \
 	else \
-		incus init images:ubuntu/22.04/cloud $(NAME) \
-			--storage default \
-			--network internal-br \
-			--config=cloud-init.user-data="$$(cat $(CLOUD_CONFIG_MERGED))"; \
+		incus init images:ubuntu/22.04/cloud $(NAME) < $(INSTANCE_CONFIG_FILE); \
 	fi
 	@touch $@
 
@@ -140,8 +152,8 @@ logs:
 
 # Get preauth key (headscale-server only)
 preauth-key:
-	@echo "[+] Retrieving preauth key from headscale-server..."
-	@incus exec headscale-server -- cat /var/lib/headscale/keys/admin-preauth-key.txt
+	@echo "[+] Retrieving preauth key from shared directory..."
+	@cat $(RUN_DIR)/incus/headscale-server/shared/admin-preauth-key.txt
 
 # Clean all
 clean:
