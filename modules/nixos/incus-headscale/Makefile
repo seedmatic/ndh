@@ -84,12 +84,12 @@ $(CLOUD_CONFIG_META): | $(INSTANCE_DIR)
 	@echo "instance-id: $(NAME)" > $@
 	@echo "local-hostname: $(NAME)" >> $@
 
-# Generate instance config from template
+# Generate instance config from template (using yq for YAML-safe envsubst like RKE2)
 $(INSTANCE_CONFIG_FILE): $(INSTANCE_CONFIG_TEMPLATE) $(CLOUD_CONFIG_MERGED) $(CLOUD_CONFIG_META) | $(SHARED_DIR) $(LOGS_DIR)
 	@echo "[+] Generating instance configuration..."
 	@PWD=$(CURDIR) NAME=$(NAME) INSTANCE_DIR=$(INSTANCE_DIR) \
 		CLOUD_CONFIG_MERGED=$(CLOUD_CONFIG_MERGED) CLOUD_CONFIG_META=$(CLOUD_CONFIG_META) \
-		envsubst < $(INSTANCE_CONFIG_TEMPLATE) > $@
+		yq eval '( ... | select(tag=="!!str") ) |= envsubst' $(INSTANCE_CONFIG_TEMPLATE) > $@
 
 # Initialize instance (RKE2 pattern: init + config + start)
 $(INSTANCE_DIR)/.instance-init: setup $(INSTANCE_CONFIG_FILE) | $(INSTANCE_DIR)
