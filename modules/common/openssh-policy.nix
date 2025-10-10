@@ -89,8 +89,8 @@ in {
     # Group keys aggregation
     groupDirectory = mkOption {
       type = types.str;
-      default = "/etc/ssh/group_authorized_keys.d";
-      description = "Directory containing group authorized keys files.";
+      default = "/etc/ssh/authorized_keys.d";
+      description = "Directory containing authorized keys files (both user and group-based).";
     };
     groupCommand = mkOption {
       type = types.str;
@@ -112,7 +112,10 @@ in {
 
     authorizedKeysFiles = mkOption {
       type = types.listOf types.str;
-      default = [ "%h/.ssh/authorized_keys" "/etc/ssh/group_authorized_keys.d/%u" ];
+      default = [ 
+        "%h/.ssh/authorized_keys" 
+        "/etc/ssh/authorized_keys.d/%u"  # Lima cloud-init keys and group keys
+      ];
       description = "List used to populate AuthorizedKeysFile (NixOS native option or rendered on Darwin).";
     };
 
