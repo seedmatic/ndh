@@ -25,3 +25,7 @@ devices:
     type: disk
     source: ${PWD}/${CLOUD_CONFIG_MERGED}
     path: /var/lib/cloud/seed/nocloud/user-data
+  user.meta-data:
+    type: disk
+    source: ${PWD}/${CLOUD_CONFIG_META}
+    path: /var/lib/cloud/seed/nocloud/meta-data

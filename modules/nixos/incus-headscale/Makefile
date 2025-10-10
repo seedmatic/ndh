@@ -33,15 +33,19 @@ LOGS_DIR := $(INSTANCE_DIR)/logs
 CLOUD_CONFIG_COMMON := cloud-config.common.yaml.tmpl
 CLOUD_CONFIG_SPECIFIC := cloud-config.$(NAME).yaml.tmpl
 CLOUD_CONFIG_MERGED := $(INSTANCE_DIR)/cloud-init-merged.yaml
+CLOUD_CONFIG_META := $(INSTANCE_DIR)/cloud-init-meta-data
 
 # Instance configuration
 INSTANCE_CONFIG_TEMPLATE := incus-instance-config.yaml.tmpl
 INSTANCE_CONFIG_FILE := $(INSTANCE_DIR)/incus-instance-config.yaml
 
+# Incus project
+INCUS_PROJECT := headscale
+
 # Marker files
 INCUS_SETUP_MARKER := $(INCUS_DIR)/.setup-done
 
-.PHONY: all setup start stop delete shell status logs clean
+.PHONY: all setup start stop delete shell status logs clean preauth-key
 
 all: start
 
@@ -59,8 +63,13 @@ $(SHARED_DIR) $(LOGS_DIR): | $(INSTANCE_DIR)
 
 $(INCUS_SETUP_MARKER): | $(INCUS_DIR)
 	@echo "[+] Setting up Incus environment..."
+	@# Create headscale project if it doesn't exist
+	@incus project list --format csv | grep -q "^$(INCUS_PROJECT)," || \
+		incus project create $(INCUS_PROJECT) -c features.images=true -c features.profiles=true -c features.storage.volumes=true
+	@incus project switch $(INCUS_PROJECT)
+	@# Add images remote if not exists
 	@incus remote list | grep -q "images" || incus remote add images https://images.linuxcontainers.org --protocol=simplestreams --public || true
-	@echo "[+] Incus setup complete"
+	@echo "[+] Incus setup complete (project: $(INCUS_PROJECT))"
 	@touch $@
 
 # Merge cloud-init configs (common + specific)
@@ -68,19 +77,26 @@ $(CLOUD_CONFIG_MERGED): $(CLOUD_CONFIG_COMMON) $(CLOUD_CONFIG_SPECIFIC) | $(INST
 	@echo "[+] Merging cloud-init configurations..."
 	@yq eval-all '. as $$item ireduce ({}; . *+ $$item)' $(CLOUD_CONFIG_COMMON) $(CLOUD_CONFIG_SPECIFIC) > $@
 
+# Create meta-data for cloud-init
+$(CLOUD_CONFIG_META): | $(INSTANCE_DIR)
+	@echo "[+] Creating cloud-init meta-data..."
+	@echo "instance-id: $(NAME)" > $@
+	@echo "local-hostname: $(NAME)" >> $@
+
 # Generate instance config from template
-$(INSTANCE_CONFIG_FILE): $(INSTANCE_CONFIG_TEMPLATE) $(CLOUD_CONFIG_MERGED) | $(SHARED_DIR) $(LOGS_DIR)
+$(INSTANCE_CONFIG_FILE): $(INSTANCE_CONFIG_TEMPLATE) $(CLOUD_CONFIG_MERGED) $(CLOUD_CONFIG_META) | $(SHARED_DIR) $(LOGS_DIR)
 	@echo "[+] Generating instance configuration..."
-	@PWD=$(CURDIR) NAME=$(NAME) INSTANCE_DIR=$(INSTANCE_DIR) CLOUD_CONFIG_MERGED=$(CLOUD_CONFIG_MERGED) \
+	@PWD=$(CURDIR) NAME=$(NAME) INSTANCE_DIR=$(INSTANCE_DIR) \
+		CLOUD_CONFIG_MERGED=$(CLOUD_CONFIG_MERGED) CLOUD_CONFIG_META=$(CLOUD_CONFIG_META) \
 		envsubst < $(INSTANCE_CONFIG_TEMPLATE) > $@
 
 # Initialize instance (RKE2 pattern: init + config + start)
 $(INSTANCE_DIR)/.instance-init: setup $(INSTANCE_CONFIG_FILE) | $(INSTANCE_DIR)
 	@echo "[+] Initializing $(NAME) instance..."
-	@if incus list -c n -f csv | grep -q "^$(NAME)$$"; then \
+	@if incus list --project $(INCUS_PROJECT) -c n -f csv | grep -q "^$(NAME)$$"; then \
 		echo "Instance $(NAME) already exists"; \
 	else \
-		incus init images:ubuntu/22.04/cloud $(NAME) < $(INSTANCE_CONFIG_FILE); \
+		incus init --project $(INCUS_PROJECT) images:ubuntu/22.04/cloud $(NAME) < $(INSTANCE_CONFIG_FILE); \
 	fi
 	@touch $@
 
@@ -88,54 +104,54 @@ $(INSTANCE_DIR)/.instance-init: setup $(INSTANCE_CONFIG_FILE) | $(INSTANCE_DIR)
 $(INSTANCE_DIR)/.instance-configured: $(INSTANCE_DIR)/.instance-init
 	@echo "[+] Configuring environment variables..."
 	@if [ "$(NAME)" = "headscale-server" ]; then \
-		incus config set $(NAME) environment.HEADSCALE_SERVER_URL "$(HEADSCALE_SERVER_URL)"; \
-		incus config set $(NAME) environment.HEADSCALE_BASE_DOMAIN "$(HEADSCALE_BASE_DOMAIN)"; \
+		incus config set --project $(INCUS_PROJECT) $(NAME) environment.HEADSCALE_SERVER_URL "$(HEADSCALE_SERVER_URL)"; \
+		incus config set --project $(INCUS_PROJECT) $(NAME) environment.HEADSCALE_BASE_DOMAIN "$(HEADSCALE_BASE_DOMAIN)"; \
 	elif [ "$(NAME)" = "headscale-gateway" ]; then \
-		incus config set $(NAME) environment.GATEWAY_HOSTNAME "$(GATEWAY_HOSTNAME)"; \
-		incus config set $(NAME) environment.GATEWAY_ROUTES "$(GATEWAY_ROUTES)"; \
+		incus config set --project $(INCUS_PROJECT) $(NAME) environment.GATEWAY_HOSTNAME "$(GATEWAY_HOSTNAME)"; \
+		incus config set --project $(INCUS_PROJECT) $(NAME) environment.GATEWAY_ROUTES "$(GATEWAY_ROUTES)"; \
 	fi
 	@touch $@
 
 # Start instance - depends on init and config
 start: $(INSTANCE_DIR)/.instance-configured
 	@echo "[+] Starting $(NAME) instance..."
-	@incus start $(NAME) || true
+	@incus start --project $(INCUS_PROJECT) $(NAME) || true
 	@echo "[+] Waiting for cloud-init to complete..."
-	@incus exec $(NAME) -- cloud-init status --wait || true
+	@incus exec --project $(INCUS_PROJECT) $(NAME) -- cloud-init status --wait || true
 	@echo "[+] Instance $(NAME) started successfully"
 
 # Stop instance
 stop:
 	@echo "[+] Stopping $(NAME)..."
-	incus stop $(NAME)
+	incus stop --project $(INCUS_PROJECT) $(NAME)
 
 # Delete instance
 delete:
 	@echo "[+] Deleting $(NAME)..."
-	incus delete -f $(NAME)
+	incus delete --project $(INCUS_PROJECT) -f $(NAME)
 	rm -f $(INSTANCE_DIR)/.instance-*
 	rm -rf $(INSTANCE_DIR)
 
 # Shell into instance
 shell:
 	@echo "[+] Opening shell in $(NAME)..."
-	incus exec $(NAME) -- bash
+	incus exec --project $(INCUS_PROJECT) $(NAME) -- bash
 
 # Show status
 status:
 	@echo "[+] Status of $(NAME):"
-	@incus list $(NAME)
+	@incus list --project $(INCUS_PROJECT) $(NAME)
 	@echo ""
-	@if incus list -c n -f csv | grep -q "^$(NAME)$$"; then \
+	@if incus list --project $(INCUS_PROJECT) -c n -f csv | grep -q "^$(NAME)$$"; then \
 		echo "[+] Cloud-init status:"; \
-		incus exec $(NAME) -- cloud-init status || true; \
+		incus exec --project $(INCUS_PROJECT) $(NAME) -- cloud-init status || true; \
 		echo ""; \
 		if [ "$(NAME)" = "headscale-server" ]; then \
 			echo "[+] Headscale service status:"; \
-			incus exec $(NAME) -- systemctl status headscale --no-pager || true; \
+			incus exec --project $(INCUS_PROJECT) $(NAME) -- systemctl status headscale --no-pager || true; \
 		elif [ "$(NAME)" = "headscale-gateway" ]; then \
 			echo "[+] Tailscale status:"; \
-			incus exec $(NAME) -- tailscale status || true; \
+			incus exec --project $(INCUS_PROJECT) $(NAME) -- tailscale status || true; \
 		fi \
 	fi
 
@@ -143,11 +159,11 @@ status:
 logs:
 	@echo "[+] Logs for $(NAME):"
 	@if [ "$(NAME)" = "headscale-server" ]; then \
-		incus exec $(NAME) -- journalctl -u headscale -n 50 --no-pager; \
+		incus exec --project $(INCUS_PROJECT) $(NAME) -- journalctl -u headscale -n 50 --no-pager; \
 	elif [ "$(NAME)" = "headscale-gateway" ]; then \
-		incus exec $(NAME) -- journalctl -u tailscaled -n 50 --no-pager; \
+		incus exec --project $(INCUS_PROJECT) $(NAME) -- journalctl -u tailscaled -n 50 --no-pager; \
 	else \
-		incus exec $(NAME) -- journalctl -n 50 --no-pager; \
+		incus exec --project $(INCUS_PROJECT) $(NAME) -- journalctl -n 50 --no-pager; \
 	fi
 
 # Get preauth key (headscale-server only)
