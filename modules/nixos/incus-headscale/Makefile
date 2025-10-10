@@ -9,8 +9,14 @@ NAME ?= headscale-server
 
 # Cluster/Network Configuration
 CLUSTER_NAME ?= $(LIMA_HOSTNAME)
-HEADSCALE_SERVER_URL ?= http://192.168.5.10:8080
 HEADSCALE_BASE_DOMAIN ?= home.local
+
+# Network Configuration (aligned with RKE2: 10.80.x.0/24, fd70:80:1:x::1/64)
+NETWORK_NAME := headscale-br
+NETWORK_IPV4_CIDR ?= 10.80.10.1/24
+NETWORK_IPV6_CIDR ?= fd70:80:1:10::1/64
+HEADSCALE_SERVER_IP ?= 10.80.10.100
+HEADSCALE_SERVER_URL ?= http://$(HEADSCALE_SERVER_IP):8080
 
 # Gateway Configuration  
 GATEWAY_HOSTNAME ?= $(CLUSTER_NAME)-hs-gateway
@@ -44,19 +50,45 @@ INCUS_PROJECT := headscale
 
 # Marker files
 INCUS_SETUP_MARKER := $(INCUS_DIR)/.setup-done
+NETWORK_SETUP_MARKER := $(INCUS_DIR)/.network-setup-done
 
-.PHONY: all setup start stop delete shell status logs clean preauth-key
+.PHONY: all setup start stop delete shell status logs clean preauth-key clean-network
 
 all: start
 
 # Setup Incus environment (run once)
-setup: $(INCUS_SETUP_MARKER)
+setup: $(INCUS_SETUP_MARKER) $(NETWORK_SETUP_MARKER)
 
 $(INCUS_DIR):
 	mkdir -p $(INCUS_DIR)
 
 $(INSTANCE_DIR):
 	mkdir -p $(INSTANCE_DIR)
+
+# Setup network
+$(NETWORK_SETUP_MARKER): $(INCUS_SETUP_MARKER) | $(INCUS_DIR)
+	@echo "[+] Setting up network environment..."
+	@# Create network if it doesn't exist
+	@if ! incus network show $(NETWORK_NAME) --project $(INCUS_PROJECT) >/dev/null 2>&1; then \
+		echo "[+] Creating network $(NETWORK_NAME) in project $(INCUS_PROJECT)..."; \
+		incus network create $(NETWORK_NAME) \
+			--project $(INCUS_PROJECT) \
+			--type=bridge \
+			ipv4.address=$(NETWORK_IPV4_CIDR) \
+			ipv4.nat=true \
+			ipv6.address=$(NETWORK_IPV6_CIDR) \
+			ipv6.nat=true; \
+		echo "[+] Network $(NETWORK_NAME) created successfully"; \
+	else \
+		echo "[*] Network $(NETWORK_NAME) already exists"; \
+	fi
+	@# Configure default profile with network
+	@if ! incus profile device show default --project $(INCUS_PROJECT) | grep -q "parent: $(NETWORK_NAME)"; then \
+		echo "[+] Configuring default profile with network $(NETWORK_NAME)..."; \
+		incus profile device set default eth0 parent=$(NETWORK_NAME) --project $(INCUS_PROJECT) 2>/dev/null || \
+			incus profile device add default eth0 nic network=$(NETWORK_NAME) name=eth0 --project $(INCUS_PROJECT); \
+	fi
+	@touch $@
 
 $(SHARED_DIR) $(LOGS_DIR): | $(INSTANCE_DIR)
 	mkdir -p $@
@@ -66,13 +98,13 @@ $(INCUS_SETUP_MARKER): | $(INCUS_DIR)
 	@# Add images remote if not exists (global, not project-specific)
 	@incus remote list --format=yaml | yq -e '.images' >/dev/null 2>&1 || \
 		incus remote add images https://images.linuxcontainers.org --protocol=simplestreams --public
-	@# Create headscale project if it doesn't exist (networks=false to use global bridges like internal-br)
+	@# Create headscale project if it doesn't exist (with network isolation)
 	@incus project list --format=yaml | yq -e '.[] | select(.name == "$(INCUS_PROJECT)")' >/dev/null 2>&1 || \
 		incus project create $(INCUS_PROJECT) \
 			-c features.images=true \
 			-c features.profiles=true \
 			-c features.storage.volumes=true \
-			-c features.networks=false
+			-c features.networks=true
 	@incus project switch $(INCUS_PROJECT)
 	@echo "[+] Incus setup complete (project: $(INCUS_PROJECT))"
 	@touch $@
@@ -101,7 +133,11 @@ $(INSTANCE_DIR)/.instance-init: setup $(INSTANCE_CONFIG_FILE) | $(INSTANCE_DIR)
 	@if incus list --project $(INCUS_PROJECT) --format=yaml | yq -e '.[] | select(.name == "$(NAME)")' >/dev/null 2>&1; then \
 		echo "Instance $(NAME) already exists"; \
 	else \
+		echo "[+] Launching instance with network $(NETWORK_NAME) and IP $(HEADSCALE_SERVER_IP)"; \
 		incus init --project $(INCUS_PROJECT) images:ubuntu/22.04/cloud $(NAME) < $(INSTANCE_CONFIG_FILE); \
+		if [ "$(NAME)" = "headscale-server" ]; then \
+			incus config device set --project $(INCUS_PROJECT) $(NAME) eth0 ipv4.address=$(HEADSCALE_SERVER_IP); \
+		fi; \
 	fi
 	@touch $@
 
@@ -176,10 +212,29 @@ preauth-key:
 	@echo "[+] Retrieving preauth key from shared directory..."
 	@cat $(RUN_DIR)/incus/headscale-server/shared/admin-preauth-key.txt
 
-# Clean all
+# Clean instance
 clean:
-	rm -rf $(RUN_DIR)
-	@echo "Run 'make setup' before next deployment"
+	@echo "[+] Cleaning up instance..."
+	@-incus delete --project $(INCUS_PROJECT) $(NAME) --force 2>/dev/null || true
+	@-rm -rf $(INSTANCE_DIR)
+	@-rm -f $(INCUS_SETUP_MARKER)
+	@echo "[+] Cleanup complete"
+
+# Clean network
+clean-network:
+	@echo "[+] Cleaning up network..."
+	@if incus network show $(NETWORK_NAME) --project $(INCUS_PROJECT) >/dev/null 2>&1; then \
+		echo "[+] Deleting network $(NETWORK_NAME)..."; \
+		incus network delete $(NETWORK_NAME) --project $(INCUS_PROJECT) || true; \
+	fi
+	@-rm -f $(NETWORK_SETUP_MARKER)
+	@echo "[+] Network cleanup complete"
+
+# Clean all
+clean-all: clean clean-network
+	@echo "[+] Cleaning up everything..."
+	@-rm -rf $(RUN_DIR)
+	@echo "[+] Complete cleanup done. Run 'make setup' before next deployment"
 
 # Help
 help:
