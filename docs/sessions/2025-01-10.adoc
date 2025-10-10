@@ -1,0 +1,247 @@
+= Session Summary: Headscale Deployment Architecture
+:toc: left
+:toclevels: 3
+:icons: font
+:date: 2025-01-10
+
+== Overview
+
+Completed the architectural separation and deployment setup for Headscale infrastructure, creating a clean, maintainable project structure.
+
+== Major Achievements
+
+=== 1. Created incus-headscale Repository ✅
+
+**New standalone project:** https://github.com/nxmatic/incus-headscale
+
+**Structure:**
+```
+incus-headscale/
+├── Makefile                                  # Simple deployment
+├── README.adoc                               # Comprehensive docs
+├── .flox/                                    # Flox environment
+├── cloud-config.headscale-server.yaml.tmpl   # Server config
+└── cloud-config.headscale-gateway.yaml.tmpl  # Gateway config
+```
+
+**Key Features:**
+- Simple Makefile (no distrobuilder complexity)
+- Uses Ubuntu 22.04 cloud images
+- Deploy with: `make NAME=headscale-server start`
+- Includes flox environment with inherited tools
+
+=== 2. Flox Environment Integration ✅
+
+**Shared environment approach:**
+- incus-headscale includes incus-rke2-cluster environment
+- Inherits all tools: `remake`, `envsubst`, `kubectl`, etc.
+- Inherits variables: `CLUSTER_NAME`, `CLUSTER_SUBNET`
+- Adds headscale-specific variables
+
+**Configuration:**
+```toml
+[include]
+environments = [
+    { dir = "../incus-rke2-cluster" }
+]
+
+[profile]
+common = '''
+  export HEADSCALE_SERVER_URL=${HEADSCALE_SERVER_URL:-http://192.168.5.10:8080}
+  export HEADSCALE_BASE_DOMAIN=${HEADSCALE_BASE_DOMAIN:-home.local}
+  export GATEWAY_HOSTNAME=${GATEWAY_HOSTNAME:-${CLUSTER_NAME:-bioskop}-hs-gateway}
+  export GATEWAY_ROUTES=${GATEWAY_ROUTES:-100.64.0.0/10,192.168.5.0/24}
+'''
+```
+
+=== 3. Git Subtree Architecture ✅
+
+**Final structure:**
+```
+nix-darwin-home/
+└── modules/nixos/
+    ├── incus-rke2-cluster/    # Subtree: Kubernetes deployment
+    └── incus-headscale/       # Subtree: Network infrastructure
+```
+
+**Updated .git-subtree-sync.sh:**
+- Supports multiple subtrees
+- Commands: `pull [name]`, `push <name>`, `status [name]`
+- Default "all" for pull and status
+- Safety: push requires explicit name
+
+**Usage:**
+```bash
+# Pull updates
+./.git-subtree-sync.sh pull              # All subtrees
+./.git-subtree-sync.sh pull headscale    # Just headscale
+
+# Push changes back
+./.git-subtree-sync.sh push headscale
+
+# Status
+./.git-subtree-sync.sh status
+```
+
+=== 4. Clean Separation of Concerns ✅
+
+**Before:** Mixed Headscale logic in RKE2 Makefile (confusing)
+
+**After:** Clear separation:
+- `incus-rke2-cluster`: Kubernetes deployment only
+- `incus-headscale`: Network/VPN infrastructure only
+- Both share common flox environment
+
+== Technical Details
+
+=== Deployment Approach
+
+**incus-rke2-cluster** (complex):
+- Custom Debian images via distrobuilder
+- Complex networking for Kubernetes
+- ZFS, custom kernels, RKE2-specific packages
+- Multi-file cloud-config merging
+
+**incus-headscale** (simple):
+- Standard Ubuntu 22.04 cloud images
+- Simple cloud-init configuration
+- No custom image building required
+- Fast deployment via `incus launch`
+
+=== Cloud-init Template Processing
+
+**RKE2 (runtime):**
+- Templates stay as `*.yaml.tmpl` in container
+- Script `/usr/local/sbin/rke2-yaml-envsubst` runs at boot
+- Uses `yq` + `envsubst` inside container
+
+**Headscale (build-time):**
+- Makefile processes templates during deployment
+- `envsubst < template.yaml.tmpl > output.yaml`
+- Variables substituted before cloud-init receives config
+
+=== Makefile Comparison
+
+**incus-headscale Makefile** (~100 lines):
+```makefile
+start: $(CLOUD_INIT_FILE)
+	incus launch images:ubuntu/22.04/cloud $(NAME) \
+		--config=cloud-init.user-data="$$(cat $(CLOUD_INIT_FILE))"
+```
+
+**incus-rke2-cluster Makefile** (~700 lines):
+- Image building with distrobuilder
+- Complex network configuration
+- Multiple cloud-config merging
+- Extensive variable management
+
+== Repository Commits
+
+=== incus-headscale Repository
+```
+6ff2475 Configure flox environment with incus-rke2-cluster include
+86c0476 Initial commit: Incus Headscale deployment system
+```
+
+=== nix-darwin-home Repository
+```
+3f0eb1c Add incus-headscale subtree and update sync script
+```
+
+== Deployment Status
+
+**Ready to Deploy:** ✅
+
+**Prerequisites:**
+- Lima VM running: `nerd-nixos` ✅
+- Incus configured ✅
+- Flox environment setup ✅
+- RKE2 cluster running (master, peer1) ✅
+
+**Next Steps:**
+
+1. **Deploy Headscale Server:**
+```bash
+cd /Users/nxmatic/Gits/nxmatic/nix-darwin-home/modules/nixos/incus-headscale
+flox activate -- make NAME=headscale-server start
+```
+
+2. **Create Headscale User:**
+```bash
+incus exec headscale-server -- headscale users create admin
+incus exec headscale-server -- headscale preauthkeys create --user admin --reusable --expiration 720h
+```
+
+3. **Deploy Headscale Gateway:**
+```bash
+# Configure Tailscale auth key first
+make NAME=headscale-gateway start
+```
+
+4. **Connect bioskop Darwin:**
+```bash
+hs-connect  # Use auth key from step 2
+```
+
+== Architecture Benefits
+
+**✅ Clean Separation**
+- RKE2 and Headscale are independent concerns
+- Each project can evolve independently
+- Clear boundaries and responsibilities
+
+**✅ Shared Tools**
+- No duplication of flox packages
+- Consistent environment across projects
+- Easy to add new tools (once in rke2, available everywhere)
+
+**✅ Git Subtree**
+- Work in standalone repos for focused development
+- IDEA modules for cross-navigation
+- Subtree for deployment integration
+- Easy to version-lock or update independently
+
+**✅ Simplified Deployment**
+- Headscale: Simple, fast, standard images
+- RKE2: Complex but isolated
+- Each uses appropriate complexity level
+
+== Files Modified/Created
+
+=== New Repository
+- `~/Gits/nxmatic/incus-headscale/` (entire new repo)
+
+=== nix-darwin-home
+- `modules/nixos/incus-headscale/` (added as subtree)
+- `.git-subtree-sync.sh` (updated for multiple subtrees)
+- Removed from incus-rke2-cluster:
+  - `cloud-config.headscale-*.yaml.tmpl`
+  - `HEADSCALE-INTEGRATION.adoc`
+  - Makefile changes (reverted)
+
+== Session Timeline
+
+**12:33** - Started session, discussed deployment
+**12:36** - Realized Headscale doesn't belong in RKE2 project  
+**12:46** - Decided to create separate incus-headscale project
+**12:53** - Created GitHub repository
+**12:54** - Converted to AsciiDoc documentation
+**13:01** - Added as git subtree
+**13:04** - Set up flox environment with includes
+**13:08** - Completed, ready for deployment
+
+**Duration:** ~35 minutes
+
+== Next Session Tasks
+
+1. Test deployment in Lima VM
+2. Verify cloud-init works correctly
+3. Create Headscale users and keys
+4. Deploy gateway with Tailscale
+5. Connect Darwin clients
+6. Document any issues/improvements
+
+---
+**Status:** Architecture complete, ready for testing deployment
+**Session Date:** 2025-01-10, 12:33-13:08
+**Key Achievement:** Clean architectural separation with shared tooling

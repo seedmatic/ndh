@@ -21,8 +21,8 @@ Reference documentation for all custom NixOS and Darwin modules, including optio
 
 === Session Notes
 
-link:SESSION-SUMMARY-2025-01-09.adoc[Session Summary: 2025-01-09]::
-Complete session summary documenting Teleport removal, Headscale/Tailscale architecture implementation, and incus-rke2-cluster integration.
+link:sessions/README.adoc[Development Session Notes]::
+Detailed session summaries documenting the evolution of the network infrastructure. Latest: link:sessions/2025-01-10.adoc[Headscale Deployment Architecture (2025-01-10)]
 
 === Other Documentation
 
@@ -354,8 +354,9 @@ When updating documentation:
 
 == Changelog
 
-* **2025-01-10**: Extended incus-rke2-cluster with Headscale cloud-config templates
-* **2025-01-10**: Created comprehensive session summary documentation
+* **2025-01-10**: Created incus-headscale repository with flox environment integration
+* **2025-01-10**: Added incus-headscale as git subtree with multi-subtree sync script
+* **2025-01-10**: Organized session summaries in docs/sessions/ with index
 * **2025-01-10**: Cleaned up Teleport-related Markdown files
 * **2025-01-10**: Reorganized documentation index with clear sections
 * **2025-01-09**: Added incus-rke2-cluster as git subtree

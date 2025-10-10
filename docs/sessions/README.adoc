@@ -1,0 +1,128 @@
+= Development Session Notes
+:toc: left
+:icons: font
+
+== Overview
+
+This directory contains detailed session summaries documenting the evolution of the network infrastructure, from Teleport removal to Headscale/Tailscale implementation.
+
+== Latest Session
+
+link:2025-01-10.adoc[**2025-01-10: Headscale Deployment Architecture**]::
+Created incus-headscale repository, set up flox environment with includes, established git subtree architecture, and prepared for deployment.
+
+== All Sessions
+
+=== 2025-01-10
+
+link:2025-01-10.adoc[Headscale Deployment Architecture]::
+**Focus:** Clean architectural separation
++
+**Achievements:**
+* Created standalone incus-headscale repository
+* Configured flox environment with incus-rke2-cluster includes
+* Updated git subtree sync script for multiple subtrees
+* Clean separation: RKE2 and Headscale as independent projects
++
+**Status:** Architecture complete, ready for deployment testing
+
+=== 2025-01-09
+
+link:2025-01-09.adoc[Teleport Removal & Headscale Architecture]::
+**Focus:** Major refactoring from Teleport to Headscale/Tailscale
++
+**Achievements:**
+* Completely removed Teleport from codebase
+* Created Headscale server and gateway modules (Incus-based)
+* Integrated incus-rke2-cluster as git subtree
+* Successfully rebuilt bioskop Darwin with Headscale client
+* Created comprehensive deployment documentation
++
+**Duration:** ~3.5 hours (21:00 - 00:22)
++
+**Status:** Darwin configured, Lima VM deployment pending
+
+== Quick Reference
+
+=== By Topic
+
+**Network Architecture:**
+- link:2025-01-09.adoc#_architecture_design[Architecture Design (2025-01-09)]
+- link:2025-01-10.adoc#_deployment_approach[Deployment Approach (2025-01-10)]
+
+**Git Subtrees:**
+- link:2025-01-09.adoc#_git_subtree_integration[Initial Subtree Integration (2025-01-09)]
+- link:2025-01-10.adoc#_git_subtree_architecture[Multi-Subtree Architecture (2025-01-10)]
+
+**Flox Environments:**
+- link:2025-01-10.adoc#_flox_environment_integration[Environment Integration (2025-01-10)]
+
+**Deployment:**
+- link:2025-01-09.adoc#_pending_work[Next Steps from 2025-01-09]
+- link:2025-01-10.adoc#_deployment_status[Current Status (2025-01-10)]
+
+=== Commit History
+
+**2025-01-10:**
+- `3f0eb1c` Add incus-headscale subtree and update sync script
+- `6ff2475` Configure flox environment (incus-headscale repo)
+- `86c0476` Initial commit (incus-headscale repo)
+
+**2025-01-09:**
+- `108892d` Clean up and organize documentation
+- `c0b62ef` Add Headscale integration to incus-rke2-cluster (reverted)
+- `c751db0` Fix duplicate environment.systemPackages
+- `6c224c1` Configure bioskop Darwin with Headscale client
+- `9d9019b` Add bioskop deployment guide
+- `9a91f17` Add git subtree documentation
+- `abf1abf` Merge incus-rke2-cluster subtree
+- `9fc1764` Remove Teleport, add Headscale/Tailscale
+
+== Contributing
+
+When adding a new session summary:
+
+1. Create file: `docs/sessions/YYYY-MM-DD.adoc`
+2. Update this index with link and summary
+3. Update "Latest Session" section
+4. Follow existing format and structure
+5. Commit: `git add docs/sessions/ && git commit -m "Add session summary for YYYY-MM-DD"`
+
+== Session Template
+
+Use this template for new sessions:
+
+```adoc
+= Session Summary: <Title>
+:toc: left
+:toclevels: 3
+:icons: font
+:date: YYYY-MM-DD
+
+== Overview
+
+Brief description of session goals and outcomes.
+
+== Major Achievements
+
+=== 1. Achievement Title ✅
+
+Description and details
+
+== Technical Details
+
+Detailed explanations
+
+== Repository Commits
+
+List of commits made
+
+== Next Session Tasks
+
+What to do next
+
+---
+**Status:** Current status
+**Session Date:** YYYY-MM-DD, HH:MM-HH:MM
+**Key Achievement:** Main takeaway
+```
