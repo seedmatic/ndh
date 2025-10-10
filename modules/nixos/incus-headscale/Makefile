@@ -94,7 +94,7 @@ $(INSTANCE_CONFIG_FILE): $(INSTANCE_CONFIG_TEMPLATE) $(CLOUD_CONFIG_MERGED) $(CL
 # Initialize instance (RKE2 pattern: init + config + start)
 $(INSTANCE_DIR)/.instance-init: setup $(INSTANCE_CONFIG_FILE) | $(INSTANCE_DIR)
 	@echo "[+] Initializing $(NAME) instance..."
-	@if incus list --project $(INCUS_PROJECT) -c n -f csv | grep -q "^$(NAME)$$"; then \
+	@if incus list --project $(INCUS_PROJECT) --format=yaml | yq -e '.[] | select(.name == "$(NAME)")' >/dev/null 2>&1; then \
 		echo "Instance $(NAME) already exists"; \
 	else \
 		incus init --project $(INCUS_PROJECT) images:ubuntu/22.04/cloud $(NAME) < $(INSTANCE_CONFIG_FILE); \
@@ -143,7 +143,7 @@ status:
 	@echo "[+] Status of $(NAME):"
 	@incus list --project $(INCUS_PROJECT) $(NAME)
 	@echo ""
-	@if incus list --project $(INCUS_PROJECT) -c n -f csv | grep -q "^$(NAME)$$"; then \
+	@if incus list --project $(INCUS_PROJECT) --format=yaml | yq -e '.[] | select(.name == "$(NAME)")' >/dev/null 2>&1; then \
 		echo "[+] Cloud-init status:"; \
 		incus exec --project $(INCUS_PROJECT) $(NAME) -- cloud-init status || true; \
 		echo ""; \
