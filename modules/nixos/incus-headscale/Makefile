@@ -11,7 +11,7 @@ NAME ?= headscale-server
 CLUSTER_NAME ?= $(LIMA_HOSTNAME)
 HEADSCALE_BASE_DOMAIN ?= home.local
 
-# Network Configuration (macvlan on bridged interface)
+# Network Configuration (macvlan on bridged interface for home LAN access)
 NETWORK_NAME := headscale-br
 PARENT_INTERFACE ?= enp0s2
 HEADSCALE_SERVER_IP ?= dhcp

@@ -146,19 +146,21 @@ let
       display = "none";
     };
 
-    # Network interfaces:
-    # 1. lima: shared (vznat) - Lima's NAT for basic connectivity (enp0s1)
-    # 2. socket_vmnet (bridged) - Direct home LAN access (enp0s2)
-    # Requires: socket_vmnet from nix (included in nix-darwin)
+    # Network interfaces (order matters - first is default):
+    # 1. vzNAT: Default Lima NAT for SSH/basic connectivity (enp0s1/lima0)
+    # 2. bridged: Direct home LAN bridge for containers (enp0s2/lima1)
+    # Requires: Lima's socket_vmnet at /opt/socket_vmnet
     networks = [
       {
-        # Default Lima NAT interface (enp0s1)
-        lima = "shared";
+        # Default interface: vzNAT for reliable SSH access
+        vzNAT = true;
+        interface = "lima0";
       }
       {
-        # Additional bridged interface for home LAN (enp0s2)
-        socket = "/var/run/lima/socket_vmnet.shared";
-        interface = "en0";  # Your Mac's primary network interface
+        # Additional bridged interface for home LAN access
+        # Containers use macvlan on this to get home LAN IPs (192.168.1.x)
+        lima = "bridged";
+        interface = "lima1";
       }
     ];
 
