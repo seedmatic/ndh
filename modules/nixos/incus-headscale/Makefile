@@ -138,6 +138,11 @@ logs:
 		incus exec $(NAME) -- journalctl -n 50 --no-pager; \
 	fi
 
+# Get preauth key (headscale-server only)
+preauth-key:
+	@echo "[+] Retrieving preauth key from headscale-server..."
+	@incus exec headscale-server -- cat /var/lib/headscale/keys/admin-preauth-key.txt
+
 # Clean all
 clean:
 	rm -rf $(RUN_DIR)
@@ -155,6 +160,7 @@ help:
 	@echo "  make NAME=<instance> shell         # Shell into instance"
 	@echo "  make NAME=<instance> status        # Show status"
 	@echo "  make NAME=<instance> logs          # Show logs"
+	@echo "  make preauth-key                   # Get headscale preauth key"
 	@echo ""
 	@echo "Environment Variables:"
 	@echo "  HEADSCALE_SERVER_URL    = $(HEADSCALE_SERVER_URL)"
