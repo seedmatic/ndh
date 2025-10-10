@@ -134,18 +134,36 @@ runcmd:
   # Wait for service to be ready
   - sleep 5
   
+  # Create default admin user for node registration
+  - /usr/bin/headscale users create admin || true
+  
+  # Create a reusable preauth key for admin user
+  - |
+    mkdir -p /var/lib/headscale/keys
+    /usr/bin/headscale preauthkeys create --user admin --reusable --expiration 720h | \
+      tee /var/lib/headscale/keys/admin-preauth-key.txt
+    chmod 600 /var/lib/headscale/keys/admin-preauth-key.txt
+    chown headscale:headscale /var/lib/headscale/keys/admin-preauth-key.txt
+  
   # Log startup status
   - systemctl status headscale --no-pager || true
   - journalctl -u headscale -n 50 --no-pager || true
+  - echo "Admin user and preauth key created. Key available at /var/lib/headscale/keys/admin-preauth-key.txt"
 
 final_message: |
   Headscale server is ready!
   
   Server URL: ${HEADSCALE_SERVER_URL}
   Network: 100.64.0.0/10
+  Default user: admin
+  
+  Preauth key location: /var/lib/headscale/keys/admin-preauth-key.txt
+  
+  Retrieve preauth key:
+    incus exec headscale-server -- cat /var/lib/headscale/keys/admin-preauth-key.txt
   
   Management commands:
-    headscale users create <username>
-    headscale preauthkeys create --user <username> --reusable --expiration 24h
+    headscale users list
     headscale nodes list
     headscale routes list
+    headscale preauthkeys list --user admin
