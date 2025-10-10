@@ -36,12 +36,13 @@ write_files:
       
       disable_check_updates: true
       
-      dns_config:
+      dns:
         override_local_dns: true
         nameservers:
-          - 1.1.1.1
-          - 1.0.0.1
-        domains: []
+          global:
+            - 1.1.1.1
+            - 1.0.0.1
+        search_domains: []
         magic_dns: true
         base_domain: ${HEADSCALE_BASE_DOMAIN}
       

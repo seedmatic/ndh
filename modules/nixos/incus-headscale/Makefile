@@ -65,19 +65,26 @@ start: setup $(CLOUD_CONFIG_MERGED)
 	@if incus list -c n -f csv | grep -q "^$(NAME)$$"; then \
 		echo "Instance $(NAME) already exists"; \
 	else \
-		incus launch images:ubuntu/22.04/cloud $(NAME) \
-			--storage default \
-			--network internal-br \
-			--config=cloud-init.user-data="$$(cat $(CLOUD_CONFIG_MERGED))"; \
-		echo "[+] Configuring environment variables..."; \
 		if [ "$(NAME)" = "headscale-server" ]; then \
-			incus config set $(NAME) environment.HEADSCALE_SERVER_URL "$(HEADSCALE_SERVER_URL)"; \
-			incus config set $(NAME) environment.HEADSCALE_BASE_DOMAIN "$(HEADSCALE_BASE_DOMAIN)"; \
+			incus launch images:ubuntu/22.04/cloud $(NAME) \
+				--storage default \
+				--network internal-br \
+				--config=environment.HEADSCALE_SERVER_URL="$(HEADSCALE_SERVER_URL)" \
+				--config=environment.HEADSCALE_BASE_DOMAIN="$(HEADSCALE_BASE_DOMAIN)" \
+				--config=cloud-init.user-data="$$(cat $(CLOUD_CONFIG_MERGED))"; \
 		elif [ "$(NAME)" = "headscale-gateway" ]; then \
-			incus config set $(NAME) environment.GATEWAY_HOSTNAME "$(GATEWAY_HOSTNAME)"; \
-			incus config set $(NAME) environment.GATEWAY_ROUTES "$(GATEWAY_ROUTES)"; \
+			incus launch images:ubuntu/22.04/cloud $(NAME) \
+				--storage default \
+				--network internal-br \
+				--config=environment.GATEWAY_HOSTNAME="$(GATEWAY_HOSTNAME)" \
+				--config=environment.GATEWAY_ROUTES="$(GATEWAY_ROUTES)" \
+				--config=cloud-init.user-data="$$(cat $(CLOUD_CONFIG_MERGED))"; \
+		else \
+			incus launch images:ubuntu/22.04/cloud $(NAME) \
+				--storage default \
+				--network internal-br \
+				--config=cloud-init.user-data="$$(cat $(CLOUD_CONFIG_MERGED))"; \
 		fi; \
-		incus restart $(NAME); \
 		echo "[+] Waiting for cloud-init to complete..."; \
 		incus exec $(NAME) -- cloud-init status --wait || true; \
 		echo "[+] Instance $(NAME) started successfully"; \
