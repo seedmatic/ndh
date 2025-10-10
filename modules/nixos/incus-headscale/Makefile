@@ -11,12 +11,16 @@ NAME ?= headscale-server
 CLUSTER_NAME ?= $(LIMA_HOSTNAME)
 HEADSCALE_BASE_DOMAIN ?= home.local
 
-# Network Configuration (aligned with RKE2: 10.80.x.0/24, fd70:80:1:x::1/64)
-NETWORK_NAME := headscale-br
-NETWORK_IPV4_CIDR ?= 10.80.10.1/24
-NETWORK_IPV6_CIDR ?= fd70:80:1:10::1/64
-HEADSCALE_SERVER_IP ?= 10.80.10.100
+# Network Configuration (using internal-br for home network access)
+NETWORK_NAME := internal-br
+HEADSCALE_SERVER_IP ?= 10.148.164.100
 HEADSCALE_SERVER_URL ?= http://$(HEADSCALE_SERVER_IP):8080
+
+# Headscale ports to expose
+HEADSCALE_HTTP_PORT := 8080
+HEADSCALE_HTTPS_PORT := 443
+HEADSCALE_METRICS_PORT := 9090
+HEADSCALE_STUN_PORT := 3478
 
 # Gateway Configuration  
 GATEWAY_HOSTNAME ?= $(CLUSTER_NAME)-hs-gateway
@@ -68,20 +72,13 @@ $(INSTANCE_DIR):
 # Setup network
 $(NETWORK_SETUP_MARKER): $(INCUS_SETUP_MARKER) | $(INCUS_DIR)
 	@echo "[+] Setting up network environment..."
-	@# Create network if it doesn't exist
-	@if ! incus network show $(NETWORK_NAME) --project $(INCUS_PROJECT) >/dev/null 2>&1; then \
-		echo "[+] Creating network $(NETWORK_NAME) in project $(INCUS_PROJECT)..."; \
-		incus network create $(NETWORK_NAME) \
-			--project $(INCUS_PROJECT) \
-			--type=bridge \
-			ipv4.address=$(NETWORK_IPV4_CIDR) \
-			ipv4.nat=true \
-			ipv6.address=$(NETWORK_IPV6_CIDR) \
-			ipv6.nat=true; \
-		echo "[+] Network $(NETWORK_NAME) created successfully"; \
-	else \
-		echo "[*] Network $(NETWORK_NAME) already exists"; \
-	fi
+	@# Ensure internal-br has IPv4 and IPv6 DHCP enabled (global network)
+	@echo "[+] Configuring $(NETWORK_NAME) network..."
+	@incus network set $(NETWORK_NAME) ipv4.dhcp=true || true
+	@incus network set $(NETWORK_NAME) ipv4.dhcp.ranges=10.148.164.100-10.148.164.200 || true
+	@incus network set $(NETWORK_NAME) ipv6.dhcp=true || true
+	@incus network set $(NETWORK_NAME) ipv6.dhcp.stateful=true || true
+	@echo "[+] Network $(NETWORK_NAME) configured with IPv4 + IPv6 DHCP"
 	@# Configure default profile with network
 	@if ! incus profile device show default --project $(INCUS_PROJECT) | grep -q "parent: $(NETWORK_NAME)"; then \
 		echo "[+] Configuring default profile with network $(NETWORK_NAME)..."; \
@@ -98,13 +95,13 @@ $(INCUS_SETUP_MARKER): | $(INCUS_DIR)
 	@# Add images remote if not exists (global, not project-specific)
 	@incus remote list --format=yaml | yq -e '.images' >/dev/null 2>&1 || \
 		incus remote add images https://images.linuxcontainers.org --protocol=simplestreams --public
-	@# Create headscale project if it doesn't exist (with network isolation)
+	@# Create headscale project if it doesn't exist (networks=false to use global internal-br)
 	@incus project list --format=yaml | yq -e '.[] | select(.name == "$(INCUS_PROJECT)")' >/dev/null 2>&1 || \
 		incus project create $(INCUS_PROJECT) \
 			-c features.images=true \
 			-c features.profiles=true \
 			-c features.storage.volumes=true \
-			-c features.networks=true
+			-c features.networks=false
 	@incus project switch $(INCUS_PROJECT)
 	@echo "[+] Incus setup complete (project: $(INCUS_PROJECT))"
 	@touch $@
@@ -220,15 +217,11 @@ clean:
 	@-rm -f $(INCUS_SETUP_MARKER)
 	@echo "[+] Cleanup complete"
 
-# Clean network
+# Clean network (just reset marker, don't delete global internal-br)
 clean-network:
-	@echo "[+] Cleaning up network..."
-	@if incus network show $(NETWORK_NAME) --project $(INCUS_PROJECT) >/dev/null 2>&1; then \
-		echo "[+] Deleting network $(NETWORK_NAME)..."; \
-		incus network delete $(NETWORK_NAME) --project $(INCUS_PROJECT) || true; \
-	fi
+	@echo "[+] Resetting network setup marker..."
 	@-rm -f $(NETWORK_SETUP_MARKER)
-	@echo "[+] Network cleanup complete"
+	@echo "[+] Network cleanup complete ($(NETWORK_NAME) is global, not deleted)"
 
 # Clean all
 clean-all: clean clean-network
