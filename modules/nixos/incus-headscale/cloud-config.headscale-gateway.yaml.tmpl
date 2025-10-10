@@ -11,8 +11,8 @@ packages:
   - tcpdump
 
 write_files:
-  # Tailscale systemd service for gateway
-  - path: /etc/systemd/system/tailscale-gateway.service
+  # Tailscale systemd service template for gateway
+  - path: /etc/systemd/system/tailscale-gateway.service.tmpl
     content: |
       [Unit]
       Description=Tailscale Gateway (Headscale Bridge)
@@ -42,6 +42,23 @@ write_files:
       net.ipv6.conf.all.forwarding = 1
 
 runcmd:
+  # Install flox (same as RKE2 distrobuilder)
+  - |
+    trap 'rm -f /tmp/flox.deb' EXIT
+    curl -sL --fail -o /tmp/flox.deb \
+      https://downloads.flox.dev/by-env/stable/deb/flox-1.5.0.aarch64-linux.deb
+    apt-get install -y /tmp/flox.deb
+    mkdir -p /etc/flox
+    cat <<EoF > /etc/flox/config.toml
+    disable_metrics = true
+    EoF
+  
+  # Initialize flox environment for gateway
+  - |
+    [[ ! -d /var/lib/headscale-gateway/.flox ]] && \
+      flox init --dir=/var/lib/headscale-gateway
+    flox install --dir=/var/lib/headscale-gateway yq-go
+  
   # Install Tailscale
   - |
     curl -fsSL https://tailscale.com/install.sh | sh
@@ -52,6 +69,14 @@ runcmd:
   # Create secrets directory
   - mkdir -p /run/secrets
   - chmod 700 /run/secrets
+  
+  # Process systemd service template with environment variables using flox
+  - |
+    export GATEWAY_HOSTNAME="${GATEWAY_HOSTNAME}"
+    export GATEWAY_ROUTES="${GATEWAY_ROUTES}"
+    source <(flox activate --dir=/var/lib/headscale-gateway)
+    yq eval '( ... | select( tag == "!!str" ) ) |= envsubst' \
+      /etc/systemd/system/tailscale-gateway.service.tmpl > /etc/systemd/system/tailscale-gateway.service
   
   # Note: Tailscale auth key must be provided via instance config or manually
   # Check if auth key file exists

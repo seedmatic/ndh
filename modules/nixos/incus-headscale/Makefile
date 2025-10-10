@@ -28,28 +28,28 @@ INSTANCE_DIR := $(RUN_DIR)/$(NAME)
 
 # Cloud-init configuration
 CLOUD_CONFIG_TEMPLATE := cloud-config.$(NAME).yaml.tmpl
-CLOUD_INIT_FILE := $(INSTANCE_DIR)/cloud-init.yaml
 
 .PHONY: all start stop delete shell status logs
 
 all: start
 
-$(INSTANCE_DIR):
-	mkdir -p $(INSTANCE_DIR)
-
-# Generate cloud-init from template
-$(CLOUD_INIT_FILE): $(CLOUD_CONFIG_TEMPLATE) | $(INSTANCE_DIR)
-	@echo "[+] Processing cloud-config template..."
-	envsubst < $(CLOUD_CONFIG_TEMPLATE) > $(CLOUD_INIT_FILE)
-
-# Start instance
-start: $(CLOUD_INIT_FILE)
+# Start instance - no preprocessing needed, variables passed via incus config
+start:
 	@echo "[+] Launching $(NAME) instance..."
 	@if incus list -c n -f csv | grep -q "^$(NAME)$$"; then \
 		echo "Instance $(NAME) already exists"; \
 	else \
 		incus launch images:ubuntu/22.04/cloud $(NAME) \
-			--config=cloud-init.user-data="$$(cat $(CLOUD_INIT_FILE))"; \
+			--config=cloud-init.user-data="$$(cat $(CLOUD_CONFIG_TEMPLATE))"; \
+		echo "[+] Configuring environment variables..."; \
+		if [ "$(NAME)" = "headscale-server" ]; then \
+			incus config set $(NAME) environment.HEADSCALE_SERVER_URL "$(HEADSCALE_SERVER_URL)"; \
+			incus config set $(NAME) environment.HEADSCALE_BASE_DOMAIN "$(HEADSCALE_BASE_DOMAIN)"; \
+		elif [ "$(NAME)" = "headscale-gateway" ]; then \
+			incus config set $(NAME) environment.GATEWAY_HOSTNAME "$(GATEWAY_HOSTNAME)"; \
+			incus config set $(NAME) environment.GATEWAY_ROUTES "$(GATEWAY_ROUTES)"; \
+		fi; \
+		incus restart $(NAME); \
 		echo "[+] Waiting for cloud-init to complete..."; \
 		incus exec $(NAME) -- cloud-init status --wait || true; \
 		echo "[+] Instance $(NAME) started successfully"; \

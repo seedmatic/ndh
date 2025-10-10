@@ -10,8 +10,8 @@ packages:
   - sqlite3
 
 write_files:
-  # Headscale main configuration
-  - path: /etc/headscale/config.yaml
+  # Headscale main configuration template
+  - path: /etc/headscale/config.yaml.tmpl
     content: |
       server_url: ${HEADSCALE_SERVER_URL}
       listen_addr: 0.0.0.0:8080
@@ -103,10 +103,35 @@ write_files:
       WantedBy=multi-user.target
 
 runcmd:
+  # Install flox (same as RKE2 distrobuilder)
+  - |
+    trap 'rm -f /tmp/flox.deb' EXIT
+    curl -sL --fail -o /tmp/flox.deb \
+      https://downloads.flox.dev/by-env/stable/deb/flox-1.5.0.aarch64-linux.deb
+    apt-get install -y /tmp/flox.deb
+    mkdir -p /etc/flox
+    cat <<EoF > /etc/flox/config.toml
+    disable_metrics = true
+    EoF
+  
+  # Initialize flox environment for headscale
+  - |
+    [[ ! -d /var/lib/headscale/.flox ]] && \
+      flox init --dir=/var/lib/headscale
+    flox install --dir=/var/lib/headscale yq-go
+  
   # Create headscale user and directories
   - useradd -r -s /bin/false headscale || true
   - mkdir -p /var/lib/headscale /etc/headscale
   - chown -R headscale:headscale /var/lib/headscale
+  
+  # Process config template with environment variables using flox
+  - |
+    export HEADSCALE_SERVER_URL="${HEADSCALE_SERVER_URL}"
+    export HEADSCALE_BASE_DOMAIN="${HEADSCALE_BASE_DOMAIN}"
+    source <(flox activate --dir=/var/lib/headscale)
+    yq eval '( ... | select( tag == "!!str" ) ) |= envsubst' \
+      /etc/headscale/config.yaml.tmpl > /etc/headscale/config.yaml
   
   # Download and install Headscale
   - |
