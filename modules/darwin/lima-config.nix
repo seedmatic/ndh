@@ -16,13 +16,11 @@ let
     else profileHost.hostName;
   
   # Generate unique host byte from hostname hash (for MAC address uniqueness)
-  # Takes first byte of SHA256 hash of hostname, bounded to avoid reserved ranges
+  # Takes first byte of SHA256 hash of hostname
   hostByteHex = let
     hash = builtins.hashString "sha256" effectiveHostName;
-    # Take first 2 hex chars and ensure it's in range 0x10-0xfe (avoid 0x00, 0xff)
-    rawByte = lib.strings.toInt 16 (builtins.substring 0 2 hash);
-    boundedByte = (lib.mod rawByte 239) + 16; # Range: 16-254 (0x10-0xfe)
-  in lib.strings.toLower (builtins.substring 0 2 (lib.strings.fixedWidthString 2 "0" (lib.trivial.toHexString boundedByte)));
+    # Take first 2 hex chars from hash - already in valid range 00-ff
+  in lib.strings.toLower (builtins.substring 0 2 hash);
 
   cfg = config.lima.configGenerator;
 
