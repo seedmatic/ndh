@@ -5,9 +5,9 @@ CIDATA_MNT=${CIDATA_MNT:-/mnt/lima-cidata}
 
 if [[ -f "${CIDATA_MNT}/lima.env" ]]; then
   set -a
-  # shellcheck disable=SC1090,SC1091
+  # Use yq to properly parse lima.env (handles values with spaces like "Stephane Lacoin")
   # SC1090: dynamic source path; SC1091: file not known at build time (provided at runtime by lima cidata)
-  source "${CIDATA_MNT}/lima.env"
+  source <( yq --input-format=props --output-format=shell "${CIDATA_MNT}/lima.env" )
   set +a
 fi
 

@@ -159,20 +159,22 @@ in {
           exit 0
         fi
         
-        # Connect if we have an auth key
-        if [ -f "${cfg.authKeyFile}" ]; then
-          ${pkgs.tailscale}/bin/tailscale up \
-            --login-server=${cfg.serverUrl} \
-            --authkey="$(cat ${cfg.authKeyFile})" \
-            ${concatStringsSep " " (
-              [ "--hostname=${cfg.hostname}" "--ssh" ]
-              ++ (if (cfg.routes != []) then [ "--advertise-routes=${concatStringsSep "," cfg.routes}" ] else [])
-              ++ (if cfg.exitNode then [ "--advertise-exit-node" ] else [])
-              ++ (if cfg.acceptRoutes then [ "--accept-routes" ] else [])
-              ++ (if cfg.snat then [ "--snat-subnet-routes=true" ] else [])
-              ++ (if (cfg.tags != []) then [ "--advertise-tags=${concatStringsSep "," (map (tag: "tag:" + tag) cfg.tags)}" ] else [])
-            )}
-        fi
+        ${optionalString (cfg.authKeyFile != null) ''
+          # Connect if we have an auth key
+          if [ -f "${cfg.authKeyFile}" ]; then
+            ${pkgs.tailscale}/bin/tailscale up \
+              --login-server=${cfg.serverUrl} \
+              --authkey="$(cat ${cfg.authKeyFile})" \
+              ${concatStringsSep " " (
+                [ "--hostname=${cfg.hostname}" "--ssh" ]
+                ++ (if (cfg.routes != []) then [ "--advertise-routes=${concatStringsSep "," cfg.routes}" ] else [])
+                ++ (if cfg.exitNode then [ "--advertise-exit-node" ] else [])
+                ++ (if cfg.acceptRoutes then [ "--accept-routes" ] else [])
+                ++ (if cfg.snat then [ "--snat-subnet-routes=true" ] else [])
+                ++ (if (cfg.tags != []) then [ "--advertise-tags=${concatStringsSep "," (map (tag: "tag:" + tag) cfg.tags)}" ] else [])
+              )}
+          fi
+        ''}
       '';
     };
   };

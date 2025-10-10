@@ -11,6 +11,7 @@
     ./distributed-builds.nix
     ./podman-remote-client.nix
     ./raycast.nix
+    ./socket_vmnet.nix
     ./openssh.nix
     # Teleport removed - using Headscale/Tailscale SSH
     # Inline module replaced with file import for Home Manager extension

@@ -90,16 +90,18 @@ in {
           exit 0
         fi
         
-        # Connect if we have an auth key
-        if [ -f "${cfg.authKeyFile}" ]; then
-          ${pkgs.tailscale}/bin/tailscale up \
-            --login-server=${cfg.serverUrl} \
-            --authkey="$(cat ${cfg.authKeyFile})" \
-            --hostname=${cfg.hostname} \
-            ${optionalString cfg.enableSSH "--ssh"} \
-            ${optionalString cfg.acceptRoutes "--accept-routes"} \
-            ${optionalString (cfg.tags != []) "--advertise-tags=${concatStringsSep "," (map (tag: "tag:" + tag) cfg.tags)}"}
-        fi
+        ${optionalString (cfg.authKeyFile != null) ''
+          # Connect if we have an auth key
+          if [ -f "${cfg.authKeyFile}" ]; then
+            ${pkgs.tailscale}/bin/tailscale up \
+              --login-server=${cfg.serverUrl} \
+              --authkey="$(cat ${cfg.authKeyFile})" \
+              --hostname=${cfg.hostname} \
+              ${optionalString cfg.enableSSH "--ssh"} \
+              ${optionalString cfg.acceptRoutes "--accept-routes"} \
+              ${optionalString (cfg.tags != []) "--advertise-tags=${concatStringsSep "," (map (tag: "tag:" + tag) cfg.tags)}"}
+          fi
+        ''}
       '';
     };
 

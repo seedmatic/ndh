@@ -1,7 +1,24 @@
-{ config, ... }: {
+{ config, lib, ... }: 
+let
+  hostProfile = config.profile.host;
+  # Use hostAlias if set, otherwise fall back to hostName
+  effectiveHostName = if (hostProfile ? hostAlias && hostProfile.hostAlias != null && hostProfile.hostAlias != "") 
+    then hostProfile.hostAlias 
+    else hostProfile.hostName;
+in {
   config = {
     # Ensure all configuration attributes are within the config attribute
     networking = {
+      # Set the computer name (what shows in Finder and System Preferences)
+      computerName = lib.mkDefault effectiveHostName;
+      
+      # Set the hostname (returned by `hostname` command)
+      hostName = lib.mkDefault effectiveHostName;
+      
+      # Set the Bonjour/mDNS local hostname (without .local suffix)
+      # This enables mDNS publishing as <localHostName>.local
+      localHostName = lib.mkDefault effectiveHostName;
+      
       dns = [ 
         "100.100.100.100"
          "8.8.8.8" "2001:4860:4860::8888" 
