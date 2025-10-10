@@ -42,7 +42,8 @@
         # 0 = disabled 1 = enabled 2 = blocks all connections except for essential services
         globalstate = 1;
         loggingenabled = 0;
-        stealthenabled = 1;
+        # Disable stealth mode to allow mDNS/Bonjour discovery on local network
+        stealthenabled = 0;
         allowdownloadsignedenabled = 0;
       };
 
