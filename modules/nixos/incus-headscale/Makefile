@@ -63,12 +63,12 @@ $(SHARED_DIR) $(LOGS_DIR): | $(INSTANCE_DIR)
 
 $(INCUS_SETUP_MARKER): | $(INCUS_DIR)
 	@echo "[+] Setting up Incus environment..."
+	@# Add images remote if not exists (global, not project-specific)
+	@incus remote list | grep -q "^images" || incus remote add images https://images.linuxcontainers.org --protocol=simplestreams --public
 	@# Create headscale project if it doesn't exist
 	@incus project list --format csv | grep -q "^$(INCUS_PROJECT)," || \
 		incus project create $(INCUS_PROJECT) -c features.images=true -c features.profiles=true -c features.storage.volumes=true
 	@incus project switch $(INCUS_PROJECT)
-	@# Add images remote if not exists
-	@incus remote list | grep -q "images" || incus remote add images https://images.linuxcontainers.org --protocol=simplestreams --public || true
 	@echo "[+] Incus setup complete (project: $(INCUS_PROJECT))"
 	@touch $@
 
