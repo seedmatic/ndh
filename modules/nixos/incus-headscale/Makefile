@@ -66,9 +66,13 @@ $(INCUS_SETUP_MARKER): | $(INCUS_DIR)
 	@# Add images remote if not exists (global, not project-specific)
 	@incus remote list --format=yaml | yq -e '.images' >/dev/null 2>&1 || \
 		incus remote add images https://images.linuxcontainers.org --protocol=simplestreams --public
-	@# Create headscale project if it doesn't exist
+	@# Create headscale project if it doesn't exist (networks=false to use global bridges like internal-br)
 	@incus project list --format=yaml | yq -e '.[] | select(.name == "$(INCUS_PROJECT)")' >/dev/null 2>&1 || \
-		incus project create $(INCUS_PROJECT) -c features.images=true -c features.profiles=true -c features.storage.volumes=true
+		incus project create $(INCUS_PROJECT) \
+			-c features.images=true \
+			-c features.profiles=true \
+			-c features.storage.volumes=true \
+			-c features.networks=false
 	@incus project switch $(INCUS_PROJECT)
 	@echo "[+] Incus setup complete (project: $(INCUS_PROJECT))"
 	@touch $@
