@@ -3,8 +3,10 @@ let
   cfg = config.tailscale;
   tailscaleKey = ./tailscale.key;
   tagsString = lib.concatStringsSep "," (map (tag: "tag:" + tag) cfg.tags);
+  # Only enable regular Tailscale if headscale-client is not enabled
+  useHeadscale = config.services.headscale-client.enable or false;
 in {
-  config = {
+  config = lib.mkIf (!useHeadscale) {
     systemd.tmpfiles.rules =
       [ "L /run/tailscale/auth.key - root root - ${tailscaleKey}" ];
 

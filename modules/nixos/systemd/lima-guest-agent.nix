@@ -2,8 +2,12 @@
 
 let
   LIMA_CIDATA_MNT = "/mnt/lima-cidata";
-  # Use writeShellScript for proper executable creation
-  startScript = pkgs.writeShellScript "lima-guest-agent-start" (builtins.readFile ./lima-guest-agent-start.sh);
+  # Use writeShellApplication to create a proper executable with dependencies
+  startScript = pkgs.writeShellApplication {
+    name = "lima-guest-agent-start";
+    runtimeInputs = with pkgs; [ util-linux bash ];
+    text = builtins.readFile ./lima-guest-agent-start.sh;
+  };
 in {
   imports = [];
 
@@ -16,7 +20,7 @@ in {
     serviceConfig = {
       Type = "simple";
       EnvironmentFile = "${LIMA_CIDATA_MNT}/lima.env";
-      ExecStart = "${startScript}";
+      ExecStart = "${startScript}/bin/lima-guest-agent-start";
       Restart = "on-failure";
       OOMPolicy = "continue";
       OOMScoreAdjust = "-500";
