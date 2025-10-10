@@ -97,7 +97,8 @@ write_files:
       PrivateTmp=true
       ProtectSystem=strict
       ProtectHome=true
-      ReadWritePaths=/var/lib/headscale
+      ReadWritePaths=/var/lib/headscale /var/run/headscale
+      RuntimeDirectory=headscale
       
       [Install]
       WantedBy=multi-user.target
