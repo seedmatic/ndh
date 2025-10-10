@@ -80,10 +80,12 @@ $(NETWORK_SETUP_MARKER): $(INCUS_SETUP_MARKER) | $(INCUS_DIR)
 	@incus network set $(NETWORK_NAME) ipv6.dhcp.stateful=true || true
 	@echo "[+] Network $(NETWORK_NAME) configured with IPv4 + IPv6 DHCP"
 	@# Configure default profile with network
-	@if ! incus profile device show default --project $(INCUS_PROJECT) | grep -q "parent: $(NETWORK_NAME)"; then \
-		echo "[+] Configuring default profile with network $(NETWORK_NAME)..."; \
-		incus profile device set default eth0 parent=$(NETWORK_NAME) --project $(INCUS_PROJECT) 2>/dev/null || \
-			incus profile device add default eth0 nic network=$(NETWORK_NAME) name=eth0 --project $(INCUS_PROJECT); \
+	@if incus profile show default --project $(INCUS_PROJECT) --format=yaml | yq -e '.devices.eth0' >/dev/null 2>&1; then \
+		echo "[+] Updating eth0 device in default profile to use $(NETWORK_NAME)..."; \
+		incus profile device set default eth0 parent=$(NETWORK_NAME) --project $(INCUS_PROJECT) || true; \
+	else \
+		echo "[+] Adding eth0 device to default profile with network $(NETWORK_NAME)..."; \
+		incus profile device add default eth0 nic network=$(NETWORK_NAME) name=eth0 --project $(INCUS_PROJECT); \
 	fi
 	@touch $@
 
