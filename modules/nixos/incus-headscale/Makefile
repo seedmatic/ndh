@@ -24,22 +24,40 @@ export GATEWAY_ROUTES
 
 # Directories
 RUN_DIR := .run.d
-INSTANCE_DIR := $(RUN_DIR)/$(NAME)
+INCUS_DIR := $(RUN_DIR)/incus
 
 # Cloud-init configuration
 CLOUD_CONFIG_TEMPLATE := cloud-config.$(NAME).yaml.tmpl
 
-.PHONY: all start stop delete shell status logs
+# Marker files
+INCUS_SETUP_MARKER := $(INCUS_DIR)/.setup-done
+
+.PHONY: all setup start stop delete shell status logs clean
 
 all: start
 
-# Start instance - no preprocessing needed, variables passed via incus config
-start:
+# Setup Incus environment (run once)
+setup: $(INCUS_SETUP_MARKER)
+
+$(INCUS_DIR):
+	mkdir -p $(INCUS_DIR)
+
+$(INCUS_SETUP_MARKER): | $(INCUS_DIR)
+	@echo "[+] Setting up Incus environment..."
+	@# Add images remote if not exists
+	@incus remote list | grep -q "^| images" || \
+		incus remote add images https://images.linuxcontainers.org --protocol=simplestreams --public
+	@echo "[+] Incus setup complete"
+	@touch $@
+
+# Start instance - depends on setup
+start: setup
 	@echo "[+] Launching $(NAME) instance..."
 	@if incus list -c n -f csv | grep -q "^$(NAME)$$"; then \
 		echo "Instance $(NAME) already exists"; \
 	else \
 		incus launch images:ubuntu/22.04/cloud $(NAME) \
+			--storage default \
 			--config=cloud-init.user-data="$$(cat $(CLOUD_CONFIG_TEMPLATE))"; \
 		echo "[+] Configuring environment variables..."; \
 		if [ "$(NAME)" = "headscale-server" ]; then \
@@ -103,6 +121,7 @@ logs:
 # Clean all
 clean:
 	rm -rf $(RUN_DIR)
+	@echo "Run 'make setup' before next deployment"
 
 # Help
 help:
