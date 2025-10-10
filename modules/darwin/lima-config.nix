@@ -147,20 +147,16 @@ let
     };
 
     # Network interfaces (order matters - first is default):
-    # 1. vzNAT: Default Lima NAT for SSH/basic connectivity (enp0s1/lima0)
-    # 2. bridged: Direct home LAN bridge for containers (enp0s2/lima1)
+    # 1. bridged: Direct home LAN bridge (enp0s2/lima0 -> 192.168.1.x)
+    # Note: VZ mode automatically provides a NAT network (enp0s1) for SSH/internet
     # Requires: Lima's socket_vmnet at /opt/socket_vmnet
     networks = [
       {
-        # Default interface: vzNAT for reliable SSH access
-        vzNAT = true;
-        interface = "lima0";
-      }
-      {
-        # Additional bridged interface for home LAN access
-        # Containers use macvlan on this to get home LAN IPs (192.168.1.x)
+        # Bridged interface for home LAN access
+        # Provides direct L2 bridge to host's en0
+        # Containers use macvlan on enp0s2 to get home LAN IPs (192.168.1.x)
         lima = "bridged";
-        interface = "lima1";
+        interface = "lima0";
       }
     ];
 
