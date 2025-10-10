@@ -60,7 +60,7 @@ in {
     {
       experimental-features = [ "nix-command" "flakes" ];
       auto-optimise-store = true;
-      trusted-users = [ cfgUserName "root" ];cd
+      trusted-users = [ cfgUserName "root" ];
       sandbox = false;
       extra-sandbox-paths = [ "/dev/kvm" ];
 
