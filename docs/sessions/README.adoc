@@ -73,10 +73,31 @@ This directory contains detailed session summaries documenting the evolution of 
 
 == Latest Session
 
-link:2025-10-11.adoc[**2025-10-11: SSH Client Architecture Refactoring**]::
-Major refactoring of SSH client configuration architecture, introducing modular, recursion-safe design with comprehensive Darwin and Home Manager integration.
+link:2025-10-11b.adoc[**2025-10-11: Guest Bootstrap & Network Alignment**]::
+Refined Lima guest bootstrap (manual switch tooling, link-first config), disabled auto-start of example ctreg container (opt-in), stabilized Home Manager activation dirs, disabled wait-online for rename-only networkd usage, added opt-in example container flag, and prepared next steps for cluster startup & Headscale network validation.
 
 == All Sessions
+
+=== 2025-10-11 (Later Session)
+
+link:2025-10-11b.adoc[Guest Bootstrap & Network Alignment]::
+**Focus:** Consolidating guest system rebuild workflow, removing noisy failures, preparing cluster & Headscale deployment groundwork
++
+**Achievements:**
+* Added manual system switch wrappers (system-manual-switch / nixos-rebuild-guest) to avoid transient unit failures
+* Converted inline scripts to external files with replaceVars (future-proof vs substituteAll deprecation)
+* Implemented link-first NixOS config initialization (no implicit clone) with optional clone fallback
+* Externalized bootstrap-zfs logic and ensured legacy mountpoint handling
+* Disabled bootloader install in Lima guest (no-bootloader.nix)
+* Added hm-state-dirs to guarantee Home Manager state path pre-exists
+* Extended profile home symlink handling (/home + /Users) for multi-username workflows
+* Added Darwin ssh-client module (dynamic guest + tailnet patterns) with guarded attribute access
+* Disabled systemd-networkd wait-online (rename-only mode) to eliminate 120s timeout
+* Introduced opt-in example container flag (zfsOverlays.examples.enableCtreg)
++
+**Status:** Guest environment stable; cluster + Headscale exercise ready
++
+**Next Focus:** RKE2 cluster startup verification, Headscale server/gateway deployment, unified network architecture docs refresh
 
 === 2025-10-11
 

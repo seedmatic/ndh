@@ -1,0 +1,118 @@
+= Session Summary: Guest Bootstrap & Network Alignment
+:toc: left
+:toclevels: 3
+:icons: font
+:date: 2025-10-11
+
+== Overview
+
+This follow-up session (same day, post SSH refactor) focused on stabilizing the Lima NixOS guest bootstrap and removing noisy / brittle behaviors (transient systemd-run failures, wait-online timeouts, unintended container startup, bootloader install errors). It established a link-first, reproducible workflow and prepared the ground for the upcoming cluster startup and Headscale deployment exercise.
+
+== Major Achievements
+
+=== 1. Manual System Rebuild Tooling ✅
+* Added `system-manual-switch`, `system-manual-boot`, and `nixos-rebuild-guest` wrappers
+* Avoids transient `systemd-run` unit creation (previous "Access denied" noise)
+* Supports switch, boot, test, build, dry-build modes
+
+=== 2. Link-First Configuration Initialization ✅
+* Replaced implicit git clone with `lima-nixos-config.sh` linking a mounted working copy
+* Optional clone fallback only when `LIMA_NIXOS_ALLOW_CLONE=1`
+* Idempotent (ConditionPathExists) + retry logic safe removal of resolvconf hard dependency
+
+=== 3. Externalized & Hardened Scripts ✅
+* Extracted all inline bash to standalone files (manual switch, bootstrap zfs, rebuild guest, config link)
+* Replaced deprecated `substituteAll` with `replaceVars`
+* Adopted colon-based no-op structured logging style for quiet, greppable output
+
+=== 4. ZFS Bootstrap Improvements ✅
+* `bootstrap-zfs.sh` now: link config, run disko, set legacy mountpoints, export pools
+* Added safe warnings (continues on partial failures) to keep bootstrap iterative
+
+=== 5. Bootloader Suppression in Guest ✅
+* Introduced `no-bootloader.nix` to disable `systemd-boot` & `grub`, stub `installBootLoader`
+* Eliminated FileNotFound/EFI copy errors in Lima environment
+
+=== 6. Home Manager Stability ✅
+* Added `hm-state-dirs.nix` to pre-create XDG/home-manager state GC root directories
+* Removed initial activation warning about missing profile directory
+
+=== 7. Network Startup Reliability ✅
+* Added rename-only `.link`-based interface mapping module; disabled `networkd` wait-online (no .network files)
+* Removed 120s timeout from `systemd-networkd-wait-online.service`
+
+=== 8. SSH Client Expansion (Darwin) ✅
+* Added guarded `ssh-client.nix` (dynamic derived guest host patterns: base, .local, tailnet FQDN)
+* Recursion-safe design; defensive attribute access for profile host/tailnet fields
+
+=== 9. Profile Home Symlink Enhancements ✅
+* Guest symlink service creates `/home/<alias>` and `/Users/<alias>` pointing to active user home
+* Darwin manual symlink module intentionally not auto-imported (no mismatch)
+
+=== 10. Example Container Strategy ✅
+* Converted `ctreg` to optional example via `zfsOverlays.examples.enableCtreg`
+* Default disabled (clean boot) while preserving a documented pattern for private NAT + Tailscale
+
+== Technical Details
+
+=== Manual Rebuild Wrapper
+* Bypasses `nixos-rebuild` transient units; uses direct `nix build` + profile set + `switch-to-configuration`
+* Provides action subcommands: switch / boot / test / build / dry-build
+
+=== Config Linking
+* Candidate order: env override, `/Users/<user>/Gits/...`, `/home/<user>/Gits/...`
+* Symlink to `/var/lib/nixos/config` ensures live edits reflect immediately inside guest
+* Fallback clone gated by explicit env var (prevents accidental divergence)
+
+=== Networking
+* Only renaming interfaces (MAC → deterministic names). No address management by `networkd`
+* Disabled wait-online to avoid waiting on unmanaged links (TAILSCALE, Lima bridges)
+
+=== Bootloader
+* Guest image does not own EFI; stubbing prevents repeated failure and keeps rebuild logs clean
+
+=== Home Manager
+* Early directory creation removes race with activation script GC root creation
+
+=== Example Container
+* `ctreg` left as teaching artifact; requires explicit opt-in to run
+* Avoids failing unit when registry not configured
+
+== Rationale
+* Reduce cognitive load in iterative guest development
+* Eliminate noisy false-negative warnings (transient unit, wait-online, bootloader)
+* Provide explicit, composable primitives (manual switch, link-first bootstrap)
+* Keep examples (ctreg) present without imposing runtime cost
+
+== Repository Artifacts (Key New / Modified)
+* New: `modules/nixos/systemd/{lima-nixos-config.sh,manual-switch.nix,system-manual-switch.sh,system-manual-boot.sh,nixos-rebuild-guest.sh,hm-state-dirs.nix,no-bootloader.nix}`
+* New: `modules/nixos/bootstrap-zfs.sh`
+* Updated: `modules/nixos/zfs.nix` (optional ctreg, external bootstrap)
+* Updated: `modules/nixos/lima-network-interfaces.nix` (disable wait-online)
+* New: `modules/darwin/ssh-client.nix`
+* Updated: `modules/darwin/default.nix` (import ssh-client)
+
+== Known Trade-offs / Follow-ups
+* No generation diff summary yet (future improvement)
+* No health-check aggregator script (proposed) — would validate symlinks, bootloader disable, network rename success
+* Dirty git warning still surfaces (intentional; opt-out not yet implemented)
+
+== Next Session Tasks
+. Exercise full RKE2 cluster startup inside Lima (confirm node readiness, services)
+. Deploy Headscale server & gateway (incus-headscale subtree)
+. Generate Headscale auth keys; connect Darwin + guest nodes
+. Validate SSH paths (patterns: base, .local, tailnet FQDN) post Headscale join
+. Test container image pulls/pushes (optional ctreg enabled scenario)
+. Add network architecture doc refresh (diagram + path flows)
+. Implement generation diff summary (optional)
+. Add health-check script (symlinks, services, network, HM, boot status)
+
+== Status
+* Guest environment stable & reproducible
+* Ready to start cluster & Headscale integration work
+
+---
+**Status:** Bootstrap hardened, environment stable
+**Session Date:** 2025-10-11 (later session)
+**Key Achievement:** Clean, link-first developer workflow & reliable system switch path
+
