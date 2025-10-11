@@ -1,0 +1,104 @@
+= Session Summary: Cluster Startup & Headscale Deployment (Planning / Kickoff)
+:toc: left
+:toclevels: 3
+:icons: font
+:date: 2025-10-12
+
+== Overview
+
+Kickoff session to exercise the full RKE2 (incus-rke2-cluster) startup inside the Lima NixOS guest and deploy the Headscale server + gateway (incus-headscale subtree). Builds on prior guest bootstrap hardening (manual switch tooling, link-first config initialization, wait-online disable, bootloader suppression) to validate end‑to‑end network architecture (Tailscale + optional Headscale hybrid) and establish measurable health criteria.
+
+== Objectives
+
+* Bring up RKE2 control plane & worker(s) inside Lima VM (verify node Ready state)
+* Deploy Headscale server container + gateway container (incus-headscale subtree)
+* Generate Headscale user + reusable auth key; connect Darwin host + Lima guest
+* Validate SSH routing & host pattern resolution (base, .local, tailnet FQDN)
+* Confirm subnet routing via gateway (advertised routes visible & approved)
+* Exercise container image operations (optional `ctreg` example if enabled)
+* Implement a health-check script summarizing critical components
+* (Optional) Implement generation diff summary before manual switch
+* Update network architecture documentation & diagrams with new paths
+
+== Scope
+
+In-scope:
+* RKE2 cluster provisioning (Makefile targets / readiness checks)
+* Headscale server + gateway lifecycle (start, status, routes)
+* SSH config validation (pattern coverage & key usage)
+* Basic performance sanity (latency across Tailscale vs Headscale)
+* Documentation updates & session note capture
+
+Out-of-scope (defer):
+* Advanced Headscale DERP or ACL tuning
+* Automated cluster autoscaling
+* Full CI pipeline integration
+
+== Success Criteria
+
+| Criterion | Target |
+|-----------|--------|
+| RKE2 nodes Ready | All planned nodes (control + worker) within 5m |
+| Headscale server health | `/health` returns 200 |
+| Gateway routes | Visible & approved in Headscale list within 2m |
+| SSH patterns | All derived patterns connect (base, .local, tailnet) |
+| Health script | Exits 0; prints summary table |
+| Manual switch diff | (Optional) shows changed services before activation |
+
+== Planned Tasks
+
+. RKE2 cluster bring-up: `make NAME=master start` (+ peers) in incus-rke2-cluster subtree
+. Validate kube-apiserver reachability & node status (`kubectl get nodes -o wide`)
+. Deploy Headscale server: `make NAME=headscale-server start` (incus-headscale)
+. Create Headscale user + reusable auth key (record in secure note)
+. Deploy Headscale gateway: `make NAME=headscale-gateway start`
+. Connect Darwin host + Lima guest via `hs-connect` (reuse auth key)
+. Approve any advertised routes (subnet & Headscale mesh) in server
+. Verify SSH host connectivity for derived patterns
+. Optional: Enable `zfsOverlays.examples.enableCtreg` and test push/pull to ctreg
+. Write `system-health` script (network, SSH, routes, HM, bootloader disabled)
+. Implement optional `system-manual-switch --diff` wrapper (service diff)
+. Update docs: network-setup.adoc (diagram + flows), modules-reference (new option & scripts)
+. Capture session summary & next steps (2025-10-12 session close)
+
+== Health Check Script (Draft Specification)
+
+Inputs: none (reads environment / system state)
+Outputs: exit 0 if all mandatory checks pass; prints table with PASS/FAIL marks.
+Checks:
+* RKE2 API reachable & nodes Ready
+* Headscale server health endpoint 200
+* Gateway routes approved (expected list non-empty)
+* SSH test (sample host pattern) returns 0
+* Home Manager generation path exists & current symlink valid
+* Bootloader disabled flag present (no systemd-boot units)
+* Interface rename present (lima-shared, lima-bridge)
+
+== Risks / Mitigations
+
+| Risk | Mitigation |
+|------|------------|
+| Slow RKE2 provisioning | Parallelize container creation; early logs tail |
+| Headscale auth delays | Pre-create reusable key; stash securely |
+| Route approval missed | Add explicit checklist item in health script |
+| SSH key mismatch | Use manual keychain load & confirm key presence before tests |
+| Script flakiness | Allow small retry window (<=3 attempts) for network checks |
+
+== Metrics (Informal)
+
+* Time to RKE2 Ready
+* Headscale connection latency vs direct (ping / SSH handshake time)
+* Route propagation delay
+* Health script runtime
+
+== Next Steps (Post-Session)
+
+* Evaluate need for automated nightly health cron (opt-in)
+* Consider adding DERP map pinning or local DERP node
+* Evaluate container registry persistence & pruning
+
+---
+**Status:** Planning initial cluster + Headscale deployment exercise
+**Session Date:** 2025-10-12 (kickoff)
+**Key Focus:** Operational validation & network integration
+
