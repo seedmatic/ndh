@@ -69,27 +69,28 @@ in {
   };
 
   config = mkIf cfg.enable {
-    # Use systemd-networkd for predictable interface naming
+    # Use systemd-networkd for predictable interface naming (rename only)
     systemd.network.enable = lib.mkDefault true;
-    
+
+    # Disable wait-online: we only rename interfaces; they may be configured by other mechanisms (e.g. kernel/Lima DHCP)
+    # Prevents 120s timeout because links are 'not managed by networkd'. If later you add .network files, remove this.
+    systemd.network.wait-online.enable = false;
+
     # Create .link files for each interface to rename based on MAC address
     systemd.network.links = builtins.listToAttrs (
       map (iface: {
         name = "10-${iface.name}";
         value = {
-          matchConfig = {
-            MACAddress = iface.macAddress;
-          };
+          matchConfig = { MACAddress = iface.macAddress; };
           linkConfig = {
             Name = iface.name;
-            # Preserve MAC address (don't randomize)
-            MACAddressPolicy = "persistent";
+            MACAddressPolicy = "persistent"; # preserve MAC (no randomization)
           };
         };
       }) cfg.interfaces
     );
 
-    # Add helpful environment variables
+    # Helpful environment variables
     environment.variables = {
       LIMA_SHARED_IFACE = "lima-shared";
       LIMA_BRIDGE_IFACE = "lima-bridge";

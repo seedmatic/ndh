@@ -186,6 +186,13 @@ in {
       To disable snapshots entirely set zfsOverlays.sanoid.enable = false.
     '';
   };
+  options.zfsOverlays.examples.enableCtreg = lib.mkOption {
+    type = lib.types.bool;
+    default = false;
+    description = ''Enable the example container registry (ctreg) container.
+    This is provided as a reference for a private networked container + NAT.
+    Disabled by default to avoid unintended service startup.'';
+  };
   config = {
 
     networking.hostId = lib.mkDefault hostId;
@@ -217,7 +224,7 @@ in {
     fileSystems = (lib.mkIf config.zfsOverlays.override
       (lib.mkMerge [ (lib.mapAttrs (_: fs: lib.mkForce fs) fileSystems) ]));
 
-    containerHost.ctreg.enable = lib.mkIf config.zfsOverlays.override true;
+    # Remove deprecated container registry container (ctreg) auto-enable
 
     # Only add extra scripts and shutdown logic if override is true
     environment.systemPackages = [
@@ -240,5 +247,7 @@ in {
 
       shutdownRamfs.storePaths = [ "${pkgs.zfs}/bin/zpool" ];
     };
+
+    containerHost.ctreg.enable = lib.mkIf config.zfsOverlays.examples.enableCtreg true;
   };
 }
