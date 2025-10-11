@@ -160,32 +160,18 @@ let
     };
 
     # Network interfaces (order matters - first is default):
-    # 1. shared: socket_vmnet NAT (enp0s1/lima0 -> 172.16.105.x)
+    # 1. shared: NAT (enp0s1/lima0 -> 172.16.105.x) using Lima's built-in shared driver (no explicit socket path)
     # 2. bridged: Direct home LAN bridge (enp0s2/lima1 -> 192.168.1.x)
-    # Note: VZ mode also provides automatic NAT (enp0s3) but we use explicit socket_vmnet
-    # Requires: Lima's socket_vmnet at /opt/socket_vmnet
-    # 
     # MAC addressing scheme (consistent with Incus): OUI:LIMA:HOST:IF
-    # - OUI: 10:66:6a (standard OUI for local/private use)
-    # - LIMA: 0x4C (76 in decimal, 'L' in ASCII for Lima)
-    # - HOST: Hash-derived byte from hostname (ensures uniqueness across Darwin hosts)
-    #   - bioskop -> ${hostByteHex}
-    #   - alcide  -> ${hostByteHex}
-    # - IF: Interface index (01 for lima0, 02 for lima1, etc.)
-    #
-    # This ensures MACs are unique even when multiple Lima VMs communicate on same network
     networks = [
       {
-        # socket_vmnet shared NAT for reliable networking
-        # Provides NAT with 172.16.105.x addresses
-        socket = "/var/run/lima/socket_vmnet.shared";
+        # Shared NAT interface (previously used explicit socket_vmnet path; now using implicit shared driver)
+        lima = "shared";
         interface = "lima0";
         macAddress = "10:66:6a:4c:${hostByteHex}:01";  # Lima shared interface
       }
       {
         # Bridged interface for home LAN access
-        # Provides direct L2 bridge to host's en0
-        # Containers use macvlan on enp0s2 to get home LAN IPs (192.168.1.x)
         lima = "bridged";
         interface = "lima1";
         macAddress = "10:66:6a:4c:${hostByteHex}:02";  # Lima bridged interface

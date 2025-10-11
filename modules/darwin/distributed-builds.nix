@@ -65,100 +65,65 @@ in {
     
     # Override build machines completely - don't let other modules add to it
     nix.buildMachines = lib.mkForce remoteBuilders;
-    
-    # Manage /etc/nix/machines file for distributed builds
-    environment.etc."nix/machines" = lib.mkForce {
-      text = lib.concatMapStringsSep "\n" (builder: 
-        "${builder.protocol}://${builder.sshUser or "builder"}@${builder.hostName} ${lib.concatStringsSep "," builder.systems} ${builder.sshKey} ${toString builder.maxJobs} ${toString builder.speedFactor} ${lib.concatStringsSep "," builder.supportedFeatures} ${lib.concatStringsSep "," builder.mandatoryFeatures} -"
-      ) remoteBuilders;
-    };
 
-    # Ensure a global /etc/ssh/ssh_config exists so that the Include directive above is honored.
-    # macOS does not create /etc/ssh/ssh_config by default on some systems; without it the
-    # fragment directory is never consulted by the system ssh client.
-    environment.etc."ssh/ssh_config" = {
-      # nix-darwin's environment.etc entries do not expose a `mode` option (unlike NixOS),
-      # so we omit it here to avoid: "The option environment.etc."ssh/ssh_config".mode does not exist".
-      text = ''
-        Host *
-          SendEnv LANG LC_*
-        Include  /etc/ssh/ssh_config.d/*.conf ssh_config.d/*.conf
-      '';
-    };
+    # Replace inline ssh extraConfig with drop-in file for clarity
+    environment.etc."ssh/ssh_config.d/60-builders.conf".text = ''
+# Builder host stanzas (@codebase)
+Host darwin-linux-builder
+  HostName localhost
+  Port 31022
+  User builder
+  IdentityFile ${userHome}/.ssh/keys.d/linux_builder
+  IdentitiesOnly yes
+  StrictHostKeyChecking no
+  UserKnownHostsFile /dev/null
+  LogLevel QUIET
+  ConnectTimeout 10
+  ServerAliveInterval 30
+  ServerAliveCountMax 3
+  ControlMaster auto
+  ControlPath /tmp/ssh-darwin-builder-%r@%h:%p
+  ControlPersist 10m
+  Compression yes
+  TCPKeepAlive yes
 
-    # Configure SSH to use Darwin hosts as jump hosts to reach Linux builders
-    programs.ssh.extraConfig = ''
-      # Global /etc/ssh/ssh_config already Includes /etc/ssh/ssh_config.d/*.conf.
-      # DO NOT repeat that Include here; this file itself lives under that directory.
-      # Repeating it caused: "Too many recursive configuration includes" for host linux-builder.
+Host linux-builder-via-alcide
+  HostName localhost
+  Port 31022
+  User builder
+  ProxyJump stephane.lacoin@alcide.mammoth-skate.ts.net
+  IdentityFile ${userHome}/.ssh/keys.d/linux_builder
+  IdentitiesOnly yes
+  StrictHostKeyChecking no
+  UserKnownHostsFile /dev/null
+  LogLevel QUIET
+  ConnectTimeout 10
+  ServerAliveInterval 30
+  ServerAliveCountMax 3
+  ControlMaster auto
+  ControlPath /tmp/ssh-builder-alcide-%r@%h:%p
+  ControlPersist 10m
+  Compression yes
+  TCPKeepAlive yes
 
-      # Local darwin-linux-builder (avoid conflict with nix-darwin's linux-builder)
-      Host darwin-linux-builder
-        HostName localhost
-        Port 31022
-        User builder
-        IdentityFile ${userHome}/.ssh/keys.d/linux_builder
-        IdentitiesOnly yes
-        StrictHostKeyChecking no
-        UserKnownHostsFile /dev/null
-        LogLevel QUIET
-        # Connection timeouts
-        ConnectTimeout 10
-        ServerAliveInterval 30
-        ServerAliveCountMax 3
-        # Enable connection multiplexing for better performance
-        ControlMaster auto
-        ControlPath /tmp/ssh-darwin-builder-%r@%h:%p
-        ControlPersist 10m
-        # Optimize for bulk transfers
-        Compression yes
-        TCPKeepAlive yes
-
-      # Linux builder accessible via alcide Darwin host (work profile: stephane.lacoin)
-      Host linux-builder-via-alcide
-        HostName localhost
-        Port 31022
-        User builder
-        ProxyJump stephane.lacoin@alcide.mammoth-skate.ts.net
-        IdentityFile ${userHome}/.ssh/keys.d/linux_builder
-        IdentitiesOnly yes
-        StrictHostKeyChecking no
-        UserKnownHostsFile /dev/null
-        LogLevel QUIET
-        # Connection timeouts
-        ConnectTimeout 10
-        ServerAliveInterval 30
-        ServerAliveCountMax 3
-        # Enable connection multiplexing for faster transfers
-        ControlMaster auto
-        ControlPath /tmp/ssh-builder-alcide-%r@%h:%p
-        ControlPersist 10m
-        # Optimize for bulk transfers
-        Compression yes
-        TCPKeepAlive yes
-
-      # Linux builder accessible via bioskop Darwin host (committed profile: nxmatic)
-      Host linux-builder-via-bioskop
-        HostName localhost
-        Port 31022
-        User builder
-        ProxyJump nxmatic@bioskop.mammoth-skate.ts.net
-        IdentityFile ${userHome}/.ssh/keys.d/linux_builder
-        IdentitiesOnly yes
-        StrictHostKeyChecking no
-        UserKnownHostsFile /dev/null
-        LogLevel QUIET
-        # Connection timeouts
-        ConnectTimeout 10
-        ServerAliveInterval 30
-        ServerAliveCountMax 3
-        # Enable connection multiplexing for faster transfers
-        ControlMaster auto
-        ControlPath /tmp/ssh-builder-bioskop-%r@%h:%p
-        ControlPersist 10m
-        # Optimize for bulk transfers
-        Compression yes
-        TCPKeepAlive yes
-    '';
+Host linux-builder-via-bioskop
+  HostName localhost
+  Port 31022
+  User builder
+  ProxyJump nxmatic@bioskop.mammoth-skate.ts.net
+  IdentityFile ${userHome}/.ssh/keys.d/linux_builder
+  IdentitiesOnly yes
+  StrictHostKeyChecking no
+  UserKnownHostsFile /dev/null
+  LogLevel QUIET
+  ConnectTimeout 10
+  ServerAliveInterval 30
+  ServerAliveCountMax 3
+  ControlMaster auto
+  ControlPath /tmp/ssh-builder-bioskop-%r@%h:%p
+  ControlPersist 10m
+  Compression yes
+  TCPKeepAlive yes
+'';
   };
 }

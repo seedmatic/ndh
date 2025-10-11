@@ -1,0 +1,97 @@
+= SSH Client Configuration (@codebase)
+
+== Overview
+This repository centralizes OpenSSH client configuration on Darwin hosts using declarative Nix modules. Goals:
+
+* Eliminate ad‑hoc edits in ~/.ssh/config for infrastructure hosts
+* Prevent multi‑key spam & premature auth failure (Too many authentication failures)
+* Keep dynamic Headscale/Tailscale SSH cert / agent flow working
+* Provide reproducible host stanzas for Lima NixOS guests and remote builders
+
+== File Layout
+
+/system etc managed by nix-darwin:
+
+* /etc/ssh/ssh_config :: Base Host * defaults + Include lines
+* /etc/ssh/ssh_config.d/50-nixos-guest.conf :: Dynamic stanza for the Lima NixOS guest
+* /etc/ssh/ssh_config.d/55-extra-hosts.conf :: (Optional) Additional user‑defined host stanzas (sshClient.extraHosts)
+* /etc/ssh/ssh_config.d/60-builders.conf :: Remote / local builder host stanzas
+
+== Module: modules/darwin/ssh-client.nix
+
+Options (namespace: sshClient):
+
+[cols="1,2,3",options="header"]
+|===
+| Option | Type / Default | Description
+| nixosGuest.enable | bool (true) | Generate stanza for Lima NixOS guest.
+| nixosGuest.nameSuffix | str ("-nixos") | Suffix appended to hostName / hostAlias.
+| nixosGuest.useHostAlias | bool (true) | Prefer profile.host.hostAlias when present.
+| nixosGuest.identityFile | path (~/.lima/_config/user) | Key pinned for the guest host patterns.
+| nixosGuest.identitiesOnly | bool (true) | Emit IdentitiesOnly yes when identityFile pinned.
+| nixosGuest.bypassAgent | bool (false) | Emit IdentityAgent none (bypass ssh-agent) if true.
+| extraHosts | list ([]) | Additional host stanza definitions (see below).
+|===
+
+extraHosts entry schema:
+
+[cols="1,2,3",options="header"]
+|===
+| Field | Type / Default | Notes
+| patterns | list<str> | Required. Host / pattern tokens joined on one Host line.
+| user | nullOr str (null) | Optional User override.
+| identityFile | nullOr path (null) | Optional pinned key.
+| identitiesOnly | bool (true) | Only applies if identityFile set.
+| bypassAgent | bool (false) | Adds IdentityAgent none.
+| extraConfig | nullOr lines (null) | Raw additional directives.
+|===
+
+== Design Rationale
+* We do NOT set global IdentitiesOnly yes to preserve dynamic ephemeral cert auth (Headscale/Tailscale).
+* Pin IdentitiesOnly only where we explicitly supply IdentityFile.
+* Agent bypass is opt‑in per stanza to allow diagnosing agent issues without affecting global behavior.
+* Drop‑in numeric ordering: 50 guest, 55 extra, 60 builders (later files can override earlier ones).
+
+== Adding Extra Hosts
+Example:
+
+[source,nix]
+sshClient.extraHosts = [
+  {
+    patterns = [ "incus-gw" "incus-gw.mammoth-skate.ts.net" ];
+    user = "root";
+    identityFile = "/Users/nxmatic/.ssh/incus_gw";
+    identitiesOnly = true;
+    bypassAgent = false;
+    extraConfig = ''
+      ProxyJump bioskop-nixos
+      Compression yes
+    '';
+  }
+];
+
+== Troubleshooting
+* Too many authentication failures :: Ensure offending host is covered by stanza with IdentitiesOnly or trim agent keys (ssh-add -D then re‑add needed ones).
+* Key accepted then sign_and_send_pubkey failed :: Use bypassAgent (IdentityAgent none) for that host to isolate agent problems.
+* Stanza not applied :: Inspect `ssh -G <host>` and check that patterns match (Host line patterns space‑separated, not comma). Confirm numeric order if overrides needed.
+
+== Validation Commands
+
+[source,bash]
+----
+# See effective parameters for a host
+ssh -G bioskop-nixos | grep -E 'identity|identitiesonly|identityagent'
+
+# List generated drop-ins
+ls -1 /etc/ssh/ssh_config.d
+----
+
+== Future Enhancements
+* Auto‑generate builder stanzas per remote builder attrset
+* Optional YAML export for external tooling
+* Lint script to detect overlapping Host * wildcard conflicts
+
+== Change Log
+* Initial consolidation: dynamic guest stanza, extraHosts, builders drop-in (60-builders.conf)
+
+

@@ -222,33 +222,7 @@ in {
     # Only add extra scripts and shutdown logic if override is true
     environment.systemPackages = [
       pkgs.zfs
-      (pkgs.writeShellScriptBin "bootstrap-zfs" ''
-        #!/usr/bin/env bash
-        set -euo pipefail
-
-        : → mounting NixOS config
-        systemctl start lima-nixos-configuration
-
-        : → booting the ZFS based system
-        nixos-rebuild boot
-
-        : → running disko
-        disko --mode format,mount /var/lib/nixos/config/modules/nixos/disko.nix
-        zfs umount -a
-
-        : → setting ZFS mountpoints to legacy from fstab
-        fstab="/nix/var/nix/profiles/system/etc/fstab"
-        if [ -r "$fstab" ]; then
-          awk '$3 == "zfs" { print $1 }' "$fstab" | while read -r dataset; do
-            zfs set mountpoint=legacy "$dataset"
-          done
-        fi
-
-        : → exporting all ZFS pools
-        zpool export -a
-
-        : systemctl reboot
-      '')
+      (pkgs.writeShellScriptBin "bootstrap-zfs" (builtins.readFile ./bootstrap-zfs.sh))
     ];
 
     systemd = {

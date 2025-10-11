@@ -5,5 +5,8 @@
     enableBashIntegration = true;
     enableNushellIntegration = true;
     enableFishIntegration = true;
+    keys = [
+      "~/.lima/_config/user"
+    ];
   };
 }

@@ -7,9 +7,11 @@
 let
   cfgUser = config.profile.user;
   cfgUserName = cfgUser.name;
-  homeSymlinks = config.profile.homeSymlinks or [];
-in
-{
+  homeSymlinksRaw = config.profile.homeSymlinks or [];
+  homeSymlinks = lib.filter (u: u != cfgUserName) (lib.unique homeSymlinksRaw);
+  currentHome = builtins.toString cfgUser.home; # dynamic rather than hard-coded /home/<user>
+  currentHomeBase = builtins.dirOf currentHome; # usually /home
+in {
   config = lib.mkIf (homeSymlinks != []) {
     # Create symlink for profile convenience
     systemd.services.lima-home-symlink = {
@@ -22,43 +24,50 @@ in
         RemainAfterExit = true;
       };
       script = let
-        currentHome = "/home/${cfgUserName}";
-        
-        # Create a bash function for symlink creation
-        script = pkgs.writeShellScript "create-profile-symlink" ''
-          set -exuo pipefail
-          
-          current_home="$1"
-          target_symlink="$2"
-          
-          create_symlink() {
-            local current_home="$1"
-            local target_symlink="$2"
-            
-            # Check if current user's home exists
-            if [[ ! -d "$current_home" ]]; then
-              : Warning: Current home directory '$current_home' does not exist, skipping symlink creation
-              return 0
-            fi
-            
-            # If target doesn't exist or is a symlink, we can safely create/update it
-            if [[ ! -e "$target_symlink" ]] || [[ -L "$target_symlink" ]]; then
-              ${pkgs.coreutils}/bin/ln -sf "$current_home" "$target_symlink"
-            else
-              : Warning: '$target_symlink' exists and is not a symlink, skipping symlink creation
-            fi
-          }
-          
-          create_symlink "$current_home" "$target_symlink"
+        # Write helper script used for each symlink creation target
+        createScript = pkgs.writeShellScript "create-profile-symlink" ''
+          set -euo pipefail
+          target_home="$1"    # real directory we want to point to
+          link_path="$2"      # symlink we want to create/update
+
+          # Validate target home exists
+          if [ ! -d "$target_home" ]; then
+            echo "[profile-home-symlinks] target '$target_home' not present, skip $link_path" >&2
+            exit 0
+          fi
+          # Disallow nesting symlink inside target (avoid loops)
+          case "$link_path" in
+            "$target_home"/*)
+              echo "[profile-home-symlinks] skip $link_path (would reside inside target)" >&2
+              exit 0 ;;
+          esac
+          # If link path exists and is not a symlink, leave it alone
+          if [ -e "$link_path" ] && [ ! -L "$link_path" ]; then
+            echo "[profile-home-symlinks] $link_path exists (not symlink), skipping" >&2
+            exit 0
+          fi
+          mkdir -p "$(dirname "$link_path")"
+          ln -snf "$target_home" "$link_path"
+          echo "[profile-home-symlinks] $link_path -> $target_home"
         '';
-        
-        # Generate commands for each symlink
-        symlinkCommands = lib.concatMapStringsSep "\n" (symlinkName: 
-          ''${script} "${currentHome}" "/home/${symlinkName}"''
-        ) homeSymlinks;
-        
+
+        # Build command list for /home aliases
+        homeAliasCmds = lib.concatMapStringsSep "\n" (alias: ''${createScript} "${currentHome}" "${currentHomeBase}/${alias}"'') homeSymlinks;
+
+        # Build command list for /Users aliases (only if /Users exists)
+        usersAliasCmds = ''
+          if [ -d /Users ]; then
+            # Ensure primary user also linked if real dir not present (optional convenience)
+            if [ ! -e "/Users/${cfgUserName}" ]; then
+              ${createScript} "${currentHome}" "/Users/${cfgUserName}"
+            fi
+            ${lib.concatMapStringsSep "\n" (alias: ''${createScript} "${currentHome}" "/Users/${alias}"'') homeSymlinks}
+          fi
+        '';
       in ''
-        ${symlinkCommands}
+        echo "[profile-home-symlinks] current user: ${cfgUserName} home: ${currentHome}"
+        ${homeAliasCmds}
+        ${usersAliasCmds}
       '';
     };
   };

@@ -9,7 +9,7 @@ let
   profileName = profile.name;
   hostProfile = profile.host;
   userProfile = profile.user;
-  userName = "Stephane Lacoin (aka nxmatic)";
+  userName = userProfile.name;  # Use profile-based name (nxmatic) instead of description
   userDescription = userProfile.description;
   userHome = userProfile.home;
 

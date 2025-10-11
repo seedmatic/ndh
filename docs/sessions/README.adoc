@@ -2,16 +2,97 @@
 :toc: left
 :icons: font
 
-== Overview
+== Project Context
+
+=== Overview
+This is a nix-darwin-home configuration managing:
+
+* Darwin (macOS) system configuration
+* Home Manager configurations
+* Development environments
+* Network infrastructure (Headscale/Tailscale replacing Teleport)
+* Container orchestration (Lima VM + Incus + RKE2)
+
+=== Architecture Overview
+
+==== Network Infrastructure (Jan 2025)
+* **External Access Layer**: Tailscale cloud for identity-based SSH, mobile access
+* **Internal LAN Layer**: Headscale (optional) for fast local SSH (1-2ms latency)
+* **Removed**: Teleport completely (Jan 9, 2025)
+
+==== Deployment Architecture
+* **incus-rke2-cluster**: Kubernetes deployment (git subtree)
+* **incus-headscale**: Network/VPN infrastructure (git subtree)
+* **Lima VM**: Primary deployment environment with shared directories
+* **Flox environments**: Shared tooling and variables across projects
+
+=== Key Configuration Files
+* `modules/common/default.nix` - Main common module configuration
+* `profiles/` - System profiles (common, work, committed)
+* `modules/darwin/` - Darwin-specific modules (Headscale client configured)
+* `modules/home-manager/` - Home Manager configurations
+* `hosts/` - Host-specific configurations (alcide, bioskop)
+* `modules/nixos/incus-rke2-cluster/` - Kubernetes deployment (git subtree)
+* `modules/nixos/incus-headscale/` - Network infrastructure (git subtree)
+
+=== Working Patterns
+
+==== Development Workflow
+* **Git operations**: Done on macOS host
+* **Deployment operations**: Done in Lima VM via `ssh lima-nerd-nixos`
+* **Shared directories**: `/Users/nxmatic/Gits/nxmatic/nix-darwin-home/modules/nixos/incus-rke2-cluster`
+* **Environment**: `flox activate -- remake NAME=headscale-server start`
+
+==== Git Subtree Management
+* Script: `.git-subtree-sync.sh`
+* Commands: `pull [name]`, `push <name>`, `status [name]`
+* Projects: incus-rke2-cluster, incus-headscale
+
+=== Current Status
+
+==== Completed ✅
+* Teleport removal from all configurations
+* Created incus-headscale standalone repository
+* Implemented git subtree architecture with sync script
+* Flox environment integration across projects
+* Cloud-config templates for Headscale server and gateway
+* Documentation cleanup (moved to AsciiDoc format)
+* bioskop Darwin configured with Headscale client
+* RKE2 cluster running in Lima VM
+
+==== Current Goal (NEXT-SESSION-TODO.adoc)
+Deploy Headscale server and gateway in Lima VM using incus-rke2-cluster
+
+**Prerequisites Met**: All cloud-config templates, client configuration, and infrastructure ready
+
+**Remaining Task**: Extend Makefile in incus-rke2-cluster to recognize headscale instance types
+
+== Session Summaries
 
 This directory contains detailed session summaries documenting the evolution of the network infrastructure, from Teleport removal to Headscale/Tailscale implementation.
 
 == Latest Session
 
-link:2025-01-10.adoc[**2025-01-10: Headscale Deployment Architecture**]::
-Created incus-headscale repository, set up flox environment with includes, established git subtree architecture, and prepared for deployment.
+link:2025-10-11.adoc[**2025-10-11: SSH Client Architecture Refactoring**]::
+Major refactoring of SSH client configuration architecture, introducing modular, recursion-safe design with comprehensive Darwin and Home Manager integration.
 
 == All Sessions
+
+=== 2025-10-11
+
+link:2025-10-11.adoc[SSH Client Architecture Refactoring]::
+**Focus:** SSH configuration architecture overhaul
++
+**Achievements:**
+* Created comprehensive SSH policy framework (openssh-policy.nix)
+* Built advanced SSH client configuration with dynamic host derivation
+* Implemented system-wide shell keychain integration
+* Enhanced flox environment and distributed builds
+* Applied recursion-safe design patterns throughout
++
+**Stats:** +475 net lines across 10 files, 3 new modules created
++
+**Status:** Architecture complete, staged and ready for testing
 
 === 2025-01-10
 

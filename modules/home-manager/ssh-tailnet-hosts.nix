@@ -5,6 +5,11 @@
 # If later we decide to generate dynamically from `tailscale status --json`, we
 # can replace the static list with a derivation producing this text.
 
+let
+  # Get username from profile configuration
+  profile = config._module.specialArgs.profile;
+  userName = profile.user.name;  # Use profile-based username (nxmatic for committed profile)
+in
 {
   programs.ssh.extraConfig = lib.mkAfter ''
     ###############################################################################
@@ -16,7 +21,7 @@
 
     Host bioskop bioskop.mammoth-skate.ts.net bioskop-ts
       HostName bioskop.mammoth-skate.ts.net
-      User stephane.lacoin
+      User ${userName}
       StrictHostKeyChecking accept-new
       UserKnownHostsFile ~/.ssh/known_hosts
       IdentitiesOnly yes
@@ -25,7 +30,7 @@
 
     Host bioskop-nixos bioskop-nixos.mammoth-skate.ts.net bioskop-nixos-ts
       HostName bioskop-nixos.mammoth-skate.ts.net
-      User stephane.lacoin
+      User ${userName}
       StrictHostKeyChecking accept-new
       UserKnownHostsFile ~/.ssh/known_hosts
       IdentitiesOnly yes
@@ -34,7 +39,7 @@
 
     Host bioskop-controlplane bioskop-controlplane.mammoth-skate.ts.net bioskop-controlplane-ts
       HostName bioskop-controlplane.mammoth-skate.ts.net
-      User stephane.lacoin
+      User ${userName}
       StrictHostKeyChecking accept-new
       UserKnownHostsFile ~/.ssh/known_hosts
       IdentitiesOnly yes
@@ -43,7 +48,7 @@
 
     Host alcide alcide.mammoth-skate.ts.net alcide-ts
       HostName alcide.mammoth-skate.ts.net
-      User stephane.lacoin
+      User ${userName}
       StrictHostKeyChecking accept-new
       UserKnownHostsFile ~/.ssh/known_hosts
       IdentitiesOnly yes
@@ -52,7 +57,7 @@
 
     # Catch-all for any future tailnet hosts (fallback user + relaxed key policy)
     Host *.mammoth-skate.ts.net
-      User stephane.lacoin
+      User ${userName}
       StrictHostKeyChecking accept-new
       UserKnownHostsFile ~/.ssh/known_hosts
       IdentitiesOnly yes

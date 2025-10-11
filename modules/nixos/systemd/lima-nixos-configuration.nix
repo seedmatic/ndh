@@ -1,53 +1,39 @@
-{ config, pkgs, ... }:
+{ config, pkgs, lib, ... }:
 let
-  script = pkgs.writeShellScript "lima-nixos-config" ''
-    set -euo pipefail
+  # Build helper binary from repository script (no inline bash to avoid interpolation issues)
+  limaNixosConfigPkg = pkgs.writeShellScriptBin "lima-nixos-config" (builtins.readFile ./lima-nixos-config.sh);
 
-    [[ -r /etc/nixos/flake.nix ]] && {
-      echo "NixOS configuration already exists, skipping clone."
-      exit 0
-    }
+  # Whether we might need network (only if cloning is allowed at runtime). We can't know env at build
+  # so we keep network dependency minimal; remove strict requires.
+  needsNetwork = false; # linking is primary path; cloning optional & user-triggered
 
-    echo "Cloning NixOS configuration for ${config.limaHost.hostName}"
-    mkdir -p /var/lib/nixos
-    git clone --single-branch --branch develop \
-      https://github.com/nxmatic/nix-darwin-home.git /var/lib/nixos/config
-
-    echo "Creating symlink to NixOS configuration"
-    mkdir -p /etc/nixos
-    ln -fs /var/lib/nixos/config/hosts/${config.limaHost.hostName}/flake.nix /etc/nixos/
-  '';
+  baseAfter = [ "lima-cloud-init.service" ];
+  afterList = baseAfter ++ lib.optional needsNetwork "network-online.target";
 
 in {
-
   systemd.services.lima-nixos-configuration = {
+    description = "Link (preferred) or optionally clone NixOS configuration repo for Lima host";
 
-    description = "Clone Git Repository if not already cloned";
+    # Only need cloud-init first (mounts, user home). Network not strictly required for linking.
+    after = afterList;
+    wants = [ "lima-cloud-init.service" ];
 
-    after = [
-      "network.target"
-      "resolvconf.service"
-      "lima-cloud-init.service"
-    ]; # Ensure network is available before cloning
-
-    requires = [
-      "network.target"
-      "resolvconf.service"
-      "lima-cloud-init.service"
-    ]; # Ensure these services are available
-
-    wantedBy =
-      [ "multi-user.target" ]; # Specify when this service should be started
+    # Don't hard require network or resolvconf anymore; cloning is fallback and user-controlled.
+    wantedBy = [ "multi-user.target" ];
 
     path = with pkgs; [ coreutils git ];
 
     serviceConfig = {
       Type = "oneshot";
-      RemainAfterExit = true; # Keep the service active after execution
-      ExecStart = "${script}";
+      RemainAfterExit = true;
+      ExecStart = "${limaNixosConfigPkg}/bin/lima-nixos-config ${config.limaHost.hostName}";
+      TimeoutStartSec = 60;
     };
 
-    unitConfig = { X-StopOnRemoval = false; };
+    # Skip running if flake already linked (negative condition prevents re-run each boot)
+    unitConfig = {
+      X-StopOnRemoval = false;
+      ConditionPathExists = "!/etc/nixos/flake.nix"; # run only if missing
+    };
   };
-
 }

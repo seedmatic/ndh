@@ -8,7 +8,7 @@
   services.gpg-agent = {
     enable = true;
     defaultCacheTtl = 1800;
-    enableSshSupport = true;  # Enable SSH support to use GPG keys for SSH authentication
+    enableSshSupport = false;  # Disable SSH support to let keychain handle SSH keys
     extraConfig = ''
       allow-loopback-pinentry
     '';

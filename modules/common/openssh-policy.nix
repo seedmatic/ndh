@@ -199,6 +199,73 @@ in {
       default = null;
       description = "Space-separated AuthorizedKeysFile directive string (Darwin only).";
     };
+
+    client = mkOption {
+      description = "Cross-platform SSH client configuration (base + derived stanzas).";
+      type = types.submodule ({ lib, ... }: {
+        options = {
+          enable = mkOption { type = types.bool; default = true; description = "Enable generation of unified ssh_config content."; };
+          baseConfig = mkOption {
+            type = types.lines;
+            default = ''
+              Host *
+                ServerAliveInterval 30
+                ServerAliveCountMax 3
+                ControlMaster auto
+                ControlPersist 5m
+                PreferredAuthentications publickey,keyboard-interactive
+              Include ssh_config.d/*.conf
+              Include /etc/ssh/ssh_config.d/*.conf
+            '';
+            description = "Base ssh_config content (common to all platforms).";
+          };
+          guest = mkOption {
+            type = types.submodule ({ ... }: {
+              options = {
+                enable = mkOption { type = types.bool; default = true; description = "Generate a derived guest stanza (Lima / VM)."; };
+                useHostAlias = mkOption { type = types.bool; default = true; description = "Prefer profile.host.hostAlias when present."; };
+                nameSuffix = mkOption { type = types.str; default = "-nixos"; description = "Suffix appended to base host (e.g. bioskop -> bioskop-nixos)."; };
+                includeLocal = mkOption { type = types.bool; default = true; description = "Include .local pattern."; };
+                includeTailnet = mkOption { type = types.bool; default = true; description = "Include tailnet FQDN pattern."; };
+                explicitPatterns = mkOption { type = types.listOf types.str; default = []; description = "Override derived patterns list if non-empty."; };
+                identityFile = mkOption { type = types.nullOr types.path; default = null; description = "Pinned key for guest (null -> inferred ~/.lima/_config/user)."; };
+                identitiesOnly = mkOption { type = types.bool; default = true; description = "Emit IdentitiesOnly yes if identityFile set."; };
+                bypassAgent = mkOption { type = types.bool; default = false; description = "Emit IdentityAgent none in guest stanza."; };
+                extraConfig = mkOption { type = types.nullOr types.lines; default = null; description = "Raw extra directives appended to guest stanza."; };
+              }; });
+            default = {};
+            description = "Guest stanza derivation parameters.";
+          };
+          extraStanzas = mkOption {
+            type = types.listOf (types.submodule ({ ... }: {
+              options = {
+                patterns = mkOption { type = types.listOf types.str; description = "Host patterns (space joined)."; };
+                user = mkOption { type = types.nullOr types.str; default = null; description = "Optional User override."; };
+                identityFile = mkOption { type = types.nullOr types.path; default = null; description = "Pinned key path."; };
+                identitiesOnly = mkOption { type = types.bool; default = true; description = "Emit IdentitiesOnly yes when identityFile set."; };
+                bypassAgent = mkOption { type = types.bool; default = false; description = "Emit IdentityAgent none."; };
+                extraConfig = mkOption { type = types.nullOr types.lines; default = null; description = "Extra raw directives appended inside stanza."; };
+              }; }));
+            default = [];
+            description = "Additional explicit host stanzas (applied after guest).";
+          };
+        };
+      });
+      default = {};
+    };
+
+    # Rendered outputs
+    clientRendered = mkOption {
+      internal = true;
+      type = types.submodule ({ ... }: {
+        options = {
+          baseConfigText = mkOption { type = types.lines; default = ""; description = "Rendered base ssh_config text."; };
+          guestStanzaText = mkOption { type = types.lines; default = ""; description = "Rendered guest stanza (empty if disabled)."; };
+          extraStanzasText = mkOption { type = types.lines; default = ""; description = "Rendered extra stanzas (may be empty)."; };
+        }; });
+      default = {};
+      description = "Computed client configuration output texts.";
+    };
   };
 
   config = mkIf cfg.enable {
@@ -232,5 +299,47 @@ in {
             ;;
         esac
       '';
+    opensshPolicy.clientRendered =
+      let
+        pcfg = cfg.client;
+        hostProfile = (config.profile.host or {});
+        userProfile = (config.profile.user or {});
+        userName = userProfile.name or "";
+        userHome = userProfile.home or ("/home/" + userName);
+        # Derive guest patterns
+        baseRaw = if (pcfg.guest.useHostAlias && (hostProfile ? hostAlias) && hostProfile.hostAlias != null && hostProfile.hostAlias != "")
+          then (hostProfile.hostAlias) else (hostProfile.hostName or "host");
+        baseHost = baseRaw + pcfg.guest.nameSuffix;
+        tailnetName = hostProfile.tailnet.name or null;
+        tailnetDomain = hostProfile.tailnet.domain or null;
+        tailnetFqdn = if (pcfg.guest.includeTailnet && tailnetName != null && tailnetDomain != null)
+          then "${baseHost}.${tailnetName}.${tailnetDomain}" else null;
+        derivedPatterns = if pcfg.guest.explicitPatterns != [] then pcfg.guest.explicitPatterns else
+          ([ baseHost ]
+            ++ lib.optional pcfg.guest.includeLocal "${baseHost}.local"
+            ++ lib.optional (tailnetFqdn != null) tailnetFqdn);
+        defaultLimaKey = "${userHome}/.lima/_config/user";
+        guestKey = if pcfg.guest.identityFile != null then pcfg.guest.identityFile else defaultLimaKey;
+        render = st: let pats = lib.concatStringsSep " " st.patterns; in ''
+          Host ${pats}
+        '' + lib.optionalString (st.user != null) "  User ${st.user}\n"
+          + lib.optionalString (st.identityFile != null) "  IdentityFile ${st.identityFile}\n"
+          + lib.optionalString (st.identityFile != null && st.identitiesOnly) "  IdentitiesOnly yes\n"
+          + lib.optionalString st.bypassAgent "  IdentityAgent none\n"
+          + lib.optionalString (st.extraConfig != null) (st.extraConfig + "\n");
+        guestStanza = if pcfg.guest.enable then render {
+          patterns = derivedPatterns;
+          user = userName;
+          identityFile = guestKey;
+          identitiesOnly = pcfg.guest.identitiesOnly;
+          bypassAgent = pcfg.guest.bypassAgent;
+          extraConfig = pcfg.guest.extraConfig;
+        } else "";
+        extraText = lib.concatStringsSep "\n" (map render pcfg.extraStanzas);
+      in {
+        baseConfigText = pcfg.baseConfig + "\n";
+        guestStanzaText = if pcfg.guest.enable then guestStanza else "";
+        extraStanzasText = if pcfg.extraStanzas != [] then extraText + "\n" else "";
+      };
   };
 }

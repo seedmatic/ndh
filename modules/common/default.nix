@@ -25,6 +25,8 @@ in {
     ./dnsmasq.nix
     ./lima-host.nix
     ./distributed-builds-option.nix
+    ./flox-env.nix
+    ./flox-config.nix
     # Teleport removed - using Headscale/Tailscale SSH
   ];
 
