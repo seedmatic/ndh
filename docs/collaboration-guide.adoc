@@ -1,0 +1,173 @@
+// filepath: docs/collaboration-guide.adoc
+= Collaboration & Session Operations Guide
+:toc: left
+:toclevels: 3
+:icons: font
+:revdate: 2025-10-11
+
+== Purpose
+
+Define a lightweight, repeatable collaboration workflow between human operator(s) and the AI assistant for: session planning, mid‑session updates, pre-expiration capture, documentation hygiene, and handoff continuity.
+
+== Core Principles
+
+* Low Friction: Append small, high-signal notes instead of verbose narratives while work is in flight.
+* Continuous Capture: Record decisive architectural changes immediately (avoid end-of-session memory drain).
+* Deterministic Structure: Every session follows the same headings so later diffing / mining is easy.
+* Pre-Expiration Safeguard: Always capture a final summary and next-step queue a few minutes before context/token expiry.
+* Separation of Concerns: Tactical TODO vs. immutable historical summary.
+
+== Session Lifecycle
+
+[cols="1,3",options="header"]
+|===
+| Phase | Actions & Artifacts
+| Pre-Session | 1. Update `docs/NEXT-SESSION-TODO.adoc` (convert any carried items)\n2. Identify blocking dependencies\n3. Draft new session file with Overview + Objectives skeleton
+| Kickoff | 1. Create `docs/sessions/YYYY-MM-DD.adoc` using template\n2. Link it in `docs/sessions/README.adoc` (Latest Session)\n3. Update main `docs/README.adoc` latest session reference
+| Active | 1. Append achievements in bullet form under "Major Achievements" or task-oriented subsections\n2. Keep a running "In-Flight Issues" list (temporary)\n3. Commit early structural file additions (avoid giant end commit)
+| Pre-Expiration (T-5m) | 1. AI posts reminder: "Capture final deltas now"\n2. Finalize: Status, Next Session Tasks, Key Metrics if any\n3. Ensure NEXT-SESSION-TODO refreshed
+| Closure | 1. Remove/merge temporary sections (In-Flight)\n2. Commit with message: "Session summary YYYY-MM-DD"\n3. Update changelog if cross-cutting architecture shift occurred
+|===
+
+== Roles & Responsibilities
+
+[cols="1,3",options="header"]
+|===
+| Actor | Responsibilities
+| Human Operator | Provide intent, approve structural changes, supply secrets out-of-band, validate runtime outcomes
+| AI Assistant | Suggest structure, detect stale references, remind pre-expiration capture, draft summaries & TODO conversions
+|===
+
+== File Conventions
+
+* Session file: `docs/sessions/YYYY-MM-DD.adoc` (date = local calendar start of session)\n* Rolling TODO: `docs/NEXT-SESSION-TODO.adoc` (single authoritative queue)\n* Index update: `docs/sessions/README.adoc` (Latest Session) + `docs/README.adoc` (Session Notes latest link)\n* Collaboration process doc: `docs/collaboration-guide.adoc` (this file)
+
+== Pre-Session Checklist (Fast)
+
+. `git pull --rebase`
+. Skim previous session summary for dangling items
+. Reconcile `NEXT-SESSION-TODO.adoc` (drop done, carry forward open)
+. Draft new session file header + Objectives list
+. Stage initial commit (optional) to establish anchor for diffs
+
+== During Session Capture Pattern
+
+Use terse heading + bullet pattern:
+
+[source,adoc]
+----
+=== RKE2 Control Plane Bring-Up ✅
+* master + worker nodes Ready in 3m12s (Target <5m)
+* kube-proxy / coredns stable, no CrashLoop
+----
+
+Mark transient explorations with an ⏳ emoji or tag (they can be culled if no lasting change occurs).
+
+== Mid-Session State Snapshots
+
+Every ~45–60 minutes (or major milestone) append a short "Checkpoint" block:
+
+[source,adoc]
+----
+=== Checkpoint (HH:MM)
+* Achievements since last checkpoint
+* Open risks / blockers
+* Adjusted priorities (if any)
+----
+
+== Pre-Expiration Reminder Protocol
+
+Goal: Avoid losing ephemeral AI reasoning context right before a conversation reset or token window closure.
+
+=== Trigger
+* Time-based: 5 minutes before known planned wrap OR
+* Token heuristic: Assistant detects sustained long exchange and absence of recent summary
+
+=== Assistant Action
+. Emit reminder block in chat: `REMINDER: 5m remaining – finalize summary + next-session TODO now.`
+. Offer quick diff of touched files (if accessible) vs HEAD for operator review.
+. Propose draft Next Session Tasks based on unresolved items.
+
+=== Human Action
+. Confirm / adjust tasks.
+. Provide any final clarifications not yet documented.
+
+=== Capture
+* Update session file Status + Next Session Tasks
+* Refresh `NEXT-SESSION-TODO.adoc`
+* Commit
+
+== Converting Session Items to NEXT-SESSION-TODO
+
+Mapping:
+
+[cols="1,2,2",options="header"]
+|===
+| Source Phrase | Conversion Pattern | Example
+| "Investigate X" | Prefix with verb + measurable outcome | "Benchmark RKE2 pod startup (<30s)"
+| "Need to clean Y" | Create concrete refactoring subtask | "Remove legacy networkd wait-online override" (if obsolete)
+| Ad-hoc idea | Park under a Backlog subsection | "Evaluate DERP local node feasibility"
+|===
+
+== Commit Strategy
+
+* Use focused commits for structural doc changes (index updates, new file) separate from content refinements if feasible.
+* Final session commit message format: `docs: session summary YYYY-MM-DD (<short tag>)`
+* If automation scripts produced, co-locate code + doc rationale in same commit only if tightly coupled.
+
+== Quality Gates for Docs
+
+Before closing a session:
+
+. Grep for date mismatches (e.g., outdated "Latest:")
+. Ensure all new session links resolve
+. No TODO placeholders left in committed session file (unless intentionally deferred)
+. NEXT-SESSION-TODO has zero checked boxes
+. Collaboration guide referenced at least once in main index
+
+== AI Assistant Operating Notes
+
+* Validate existing references before asserting "latest" to avoid stale pointer drift.
+* Offer incremental improvements (typo fixes, stale link detection) opportunistically.
+* Never invent runtime outputs—prompt operator to supply if verification impossible.
+* When uncertain about environment state, propose a minimal, safe command set.
+
+== Example End-of-Session Closure Block
+
+[source,adoc]
+----
+---
+**Status:** Cluster up; Headscale gateway pending route approval
+**Session Date:** 2025-10-12 (19:05–22:10)
+**Key Achievement:** Automated RKE2 bring-up within 4m Ready window
+**Next Session Focus:** Headscale route propagation metrics + health script implementation
+---
+----
+
+== Common Pitfalls & Mitigations
+
+[cols="1,2",options="header"]
+|===
+| Pitfall | Mitigation
+| Stale "Latest Session" links | Add grep check to pre-closure gate
+| Large unstructured diff at end | Insert early skeletal file & incremental commits
+| Missed final summary | Enforce pre-expiration reminder & gate commit on summary presence
+| Orphaned TODO items | Single authoritative NEXT-SESSION-TODO file – no stray ad-hoc lists
+| AI hallucinated runtime claims | Require explicit operator confirmation for metrics
+|===
+
+== Glossary (Focused)
+
+RKE2:: Lightweight Kubernetes distribution with minimal ops surface.
+Incus:: Container & VM manager used inside Lima guest.
+Lima Guest:: NixOS VM hosting Incus workloads.
+Headscale:: Self-hosted Tailscale control plane.
+Gateway:: Instance advertising subnet routes (Tailscale / Headscale hybrid).
+
+== Maintenance
+
+Review this guide quarterly or after any major workflow evolution. Track version date in header `:revdate:`.
+
+---
+*Guide Version:* 2025-10-11 initial draft
+

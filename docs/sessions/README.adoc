@@ -73,10 +73,21 @@ This directory contains detailed session summaries documenting the evolution of 
 
 == Latest Session
 
-link:2025-10-11b.adoc[**2025-10-11: Guest Bootstrap & Network Alignment**]::
-Refined Lima guest bootstrap (manual switch tooling, link-first config), disabled auto-start of example ctreg container (opt-in), stabilized Home Manager activation dirs, disabled wait-online for rename-only networkd usage, added opt-in example container flag, and prepared next steps for cluster startup & Headscale network validation.
+link:2025-10-12.adoc[**2025-10-12: Cluster Startup & Headscale Deployment (Planning)**]::
+Initial planning / kickoff for full RKE2 cluster bring-up inside Lima NixOS guest plus Headscale server + gateway deployment. Establishes health criteria, scripts (system-health draft), and pre-expiration documentation capture protocol.
 
 == All Sessions
+
+=== 2025-10-12 (Planning)
+
+link:2025-10-12.adoc[Cluster Startup & Headscale Deployment (Planning)]:
+**Focus:** Kickoff to validate end-to-end network (RKE2 + Headscale) and define measurable health checks
++
+**Planned Objectives:** RKE2 node readiness (<5m), Headscale server + gateway deployment, reusable auth key, route approval, health script, optional manual switch diff wrapper
++
+**Status:** Planning initiated; execution pending
++
+**Next Focus:** Execute cluster startup tasks and implement health-check script
 
 === 2025-10-11 (Later Session)
 
@@ -189,6 +200,7 @@ When adding a new session summary:
 3. Update "Latest Session" section
 4. Follow existing format and structure
 5. Commit: `git add docs/sessions/ && git commit -m "Add session summary for YYYY-MM-DD"`
+* Refer to link:../collaboration-guide.adoc[Collaboration & Session Operations Guide] for structured capture (pre-expiration reminders, checkpoints, closure gates).
 
 == Session Template
 

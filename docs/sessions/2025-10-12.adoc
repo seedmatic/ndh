@@ -97,8 +97,28 @@ Checks:
 * Consider adding DERP map pinning or local DERP node
 * Evaluate container registry persistence & pruning
 
+== Collaboration Workflow & Pre-Expiration Capture
+
+This session adopts the standardized process in link:../collaboration-guide.adoc[Collaboration & Session Operations Guide].
+
+=== Checkpoints
+* Insert a Checkpoint section approximately every 60 minutes or after major milestone (RKE2 Ready, Headscale server up, gateway routes approved).
+
+=== Pre-Expiration Reminder (T-5m)
+* Assistant will emit: `REMINDER: 5m remaining – finalize summary + next-session TODO now.`
+* Actions: Finalize Status block, convert unresolved items to `NEXT-SESSION-TODO.adoc`, verify latest-session links.
+
+=== Quality Gates Before Closure
+* Health script draft captured
+* All planned tasks either completed or moved to NEXT-SESSION-TODO
+* No stale "Latest" links (grep updated to 2025-10-12)
+* Session file includes final Status block
+
+=== Live Capture Style
+* Use concise bullet achievements under relevant headings (avoid large unstructured narrative)
+* Mark exploratory / tentative items with ⏳ and remove if abandoned
+
 ---
 **Status:** Planning initial cluster + Headscale deployment exercise
 **Session Date:** 2025-10-12 (kickoff)
 **Key Focus:** Operational validation & network integration
-

@@ -1,4 +1,4 @@
-= Documentation Index
+    = Documentation Index
 :toc: left
 :icons: font
 
@@ -22,7 +22,7 @@ Reference documentation for all custom NixOS and Darwin modules, including optio
 === Session Notes
 
 link:sessions/README.adoc[Development Session Notes]::
-Detailed session summaries documenting the evolution of the network infrastructure. Latest: link:sessions/2025-01-10.adoc[Headscale Deployment Architecture (2025-01-10)]
+Detailed session summaries documenting the evolution of the network infrastructure. Latest: link:sessions/2025-10-12.adoc[Cluster Startup & Headscale Deployment (Planning) – 2025-10-12]
 
 === Other Documentation
 
@@ -31,6 +31,9 @@ Documentation for GitHub MCP proxy configuration.
 
 link:podman-remote-setup.md[Podman Remote Setup] (Markdown)::
 Guide for setting up Podman remote client.
+
+link:collaboration-guide.adoc[Collaboration & Session Operations Guide]::
+Workflow for running, capturing, and closing collaborative sessions (includes pre-expiration reminder protocol and quality gates).
 
 == Quick Start
 
@@ -311,7 +314,7 @@ cd ../nix-darwin-home
 ./.git-subtree-sync.sh pull
 ----
 
-3. **Integration changes** → Work in `modules/nixos/incus-rke2-cluster/`
+3. **Integration changes** → Work in `modules/nixos/incus-rke2-cluster`
 +
 [source,bash]
 ----
@@ -351,9 +354,11 @@ When updating documentation:
 * Update table of contents if adding sections
 * Test code examples before committing
 * Keep examples minimal but complete
+* Reference link:collaboration-guide.adoc[Collaboration & Session Operations Guide] for session workflow
 
 == Changelog
 
+* **2025-10-12**: Added collaboration guide; updated latest session link
 * **2025-01-10**: Created incus-headscale repository with flox environment integration
 * **2025-01-10**: Added incus-headscale as git subtree with multi-subtree sync script
 * **2025-01-10**: Organized session summaries in docs/sessions/ with index
