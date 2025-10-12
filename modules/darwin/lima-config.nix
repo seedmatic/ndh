@@ -15,7 +15,7 @@ let
     then profileHost.hostAlias
     else profileHost.hostName;
   
-  # Generate unique host byte from hostname hash (for MAC address uniqueness)
+  # Generate unique host byte from hostname hash (matches existing Lima VM)
   # Takes first byte of SHA256 hash of hostname
   hostByteHex = let
     hash = builtins.hashString "sha256" effectiveHostName;
@@ -159,22 +159,21 @@ let
       display = "none";
     };
 
-    # Network interfaces (order matters - first is default):
-    # 1. shared: NAT (enp0s1/lima0 -> 172.16.105.x) using Lima's built-in shared driver (no explicit socket path)
-    # 2. bridged: Direct home LAN bridge (enp0s2/lima1 -> 192.168.1.x)
-    # MAC addressing scheme (consistent with Incus): OUI:LIMA:HOST:IF
+    # Network configuration: Bridged interface for LAN connectivity + NAT fallback
+    # Using vmlan0 as primary interface for cluster egress to home LAN
+    # MAC addressing scheme: OUI:LIMA:HOST:IF where IF indicates interface type
     networks = [
       {
-        # Shared NAT interface (previously used explicit socket_vmnet path; now using implicit shared driver)
-        lima = "shared";
-        interface = "lima0";
-        macAddress = "10:66:6a:4c:${hostByteHex}:01";  # Lima shared interface
+        # vmnet bridged interface for home LAN ingress/egress (primary)
+        lima = "bridged";
+        interface = "vmlan0"; 
+        macAddress = "10:66:6a:4c:${hostByteHex}:01";  # Bridged interface
       }
       {
-        # Bridged interface for home LAN access
-        lima = "bridged";
-        interface = "lima1";
-        macAddress = "10:66:6a:4c:${hostByteHex}:02";  # Lima bridged interface
+        # vmnet shared (NAT) interface for internet-only egress (fallback)
+        lima = "shared";
+        interface = "vmwan0";
+        macAddress = "10:66:6a:4c:${hostByteHex}:02";  # NAT interface
       }
     ];
 

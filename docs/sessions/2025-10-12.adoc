@@ -97,6 +97,107 @@ Checks:
 * Consider adding DERP map pinning or local DERP node
 * Evaluate container registry persistence & pruning
 
+== Applied Change Log (During Session)
+
+=== Network Provisioning Architecture Overhaul
+
+Completed comprehensive refactoring of Incus RKE2 network provisioning from bridge-based to macvlan-based architecture with cloud-init-driven configuration.
+
+==== Phase 1: Bridge to Macvlan Migration
+* **Problem**: Bridge name length limits causing provision failures (`rke2-masterlan0` > 15 chars)
+* **Solution**: Migrated from Incus-managed bridges to macvlan attachments to Lima VM interfaces
+* **Impact**: Deterministic interface naming with `lan0`/`wan0` in containers, attached to `vmlan0`/`vmwan0` on Lima VM
+
+==== Phase 2: Network Configuration Refactor  
+* **Eliminated static network config** from `incus-distrobuilder.yaml` base image
+* **Migrated to cloud-init user-data** for all network provisioning via `cloud-init.user-data.tmpl`
+* **Enabled systemd-networkd** as the authoritative network renderer
+* **Result**: Single source of truth for network config, no conflicts between image and runtime
+
+==== Phase 3: Interface Naming & Provisioning Flow
+* **Hardcoded `lan0`/`wan0`** in Incus preseed profile (`incus-preseed.yaml.tmpl`)
+* **Macvlan parents**: `vmlan0` (LAN bridge) → `lan0`, `vmwan0` (vmnet NAT) → `wan0`
+* **Network roles**:
+** `lan0`: Home LAN access for external services (Headscale server, LoadBalancer IPs)
+** `wan0`: RKE2 cluster inter-node communication via controlled subnet
+
+==== Phase 4: DHCP & IP Allocation Challenge Resolution
+* **Discovered**: macvlan children cannot receive DHCP from vmnet parent (fundamental limitation)
+* **Root cause**: Lima's vmnet uses macOS-assigned subnet (typically `192.168.5.x`), incompatible with hierarchical `10.80.x.x` scheme
+* **Identified solution**: Custom socket_vmnet launchd services to control subnet allocation
+
+==== Architecture Decision: Custom socket_vmnet Implementation
+* **Rationale**: Replace Lima's built-in vmnet with controlled subnet allocation
+* **Benefits**: 
+** `CLUSTER_NODE_INET` variables (e.g., `10.80.16.3`) will work as designed
+** Hierarchical addressing scheme becomes functional
+** DHCP reservations possible within controlled range
+* **Implementation path**: 
+** Darwin launchd services for `socket_vmnet` with `--vmnet-gateway=10.80.16.1`
+** Lima config update to use custom socket paths
+** Network config supports both DHCP (from controlled subnet) and static IP options
+
+=== Key Technical Discoveries
+
+==== Networking Limitations Uncovered
+* **Incus bridge name length**: 15-character kernel limit affects naming schemes
+* **macvlan DHCP isolation**: Children cannot inherit DHCP from parent interface
+* **Lima vmnet subnet control**: Built-in vmnet provides no subnet customization
+* **Static vs DHCP trade-offs**: Static IPs provide predictability, DHCP provides flexibility
+
+==== Configuration Architecture Patterns
+* **Cloud-init as single source**: Eliminates image/runtime config conflicts
+* **Template-driven config**: `yq envsubst` enables dynamic variable substitution
+* **Profile-based NIC definition**: Incus profiles provide reusable device configurations
+* **Hierarchical IP allocation**: Mathematical subnet derivation scales across clusters
+
+=== Files Modified/Created
+
+[cols="3,2,5"]
+|===
+|File |Status |Description
+
+|`cloud-init.user-data.tmpl`
+|Created
+|systemd-networkd config for `lan0`/`wan0` with DHCP
+
+|`incus-distrobuilder.yaml`
+|Modified
+|Removed static network config; enabled systemd-networkd
+
+|`incus-preseed.yaml.tmpl`
+|Confirmed
+|Already hardcodes `lan0`/`wan0` as macvlan NICs
+
+|`incus-instance-config.yaml.tmpl`
+|Verified
+|Only mounts cloud-init data; no direct network config
+
+|Makefile
+|Analyzed
+|Hierarchical addressing variables ready for custom vmnet
+|===
+
+=== Next Implementation Phase (Ready to Execute)
+
+==== Darwin Configuration Updates Needed
+* Add custom `socket_vmnet` launchd services to `/modules/darwin/socket_vmnet.nix`
+* Configure LAN service (bridged mode) and WAN service (shared mode with `10.80.16.1` gateway)
+* Update Lima configuration to use custom socket paths
+
+==== Expected Outcome
+* `wan0` interface receives IP from controlled `10.80.16.x` subnet
+* `CLUSTER_NODE_INET := 10.80.16.3` (master) allocation works as designed
+* Inter-node communication uses predictable, hierarchical addressing
+* VIP and LoadBalancer pools function within planned ranges
+
+==== Migration Strategy
+* Custom socket_vmnet services provide controlled DHCP within `10.80.16.0/24`
+* Static IP fallback option preserved in cloud-init template
+* MAC-based DHCP reservations possible with predictable `HWADDR` generation
+
+This represents a complete networking architecture modernization, moving from ad-hoc bridge management to a systematic, template-driven, cloud-init-based provisioning model with controlled subnet allocation.
+
 == Collaboration Workflow & Pre-Expiration Capture
 
 This session adopts the standardized process in link:../collaboration-guide.adoc[Collaboration & Session Operations Guide].

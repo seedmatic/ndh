@@ -12,11 +12,11 @@ let
     then resolvedHostProfile.hostAlias
     else resolvedHostProfile.hostName;
   
-  # Generate unique host byte from hostname hash (matching darwin lima-config.nix)
-  # Just use first 2 hex chars directly - they're already a valid MAC byte (00-ff)
+  # Generate unique host byte from hostname hash (matching actual Lima VM MACs)
+  # Use single byte that matches the existing Lima VM interface MACs
   hostByteHex = let
     hash = builtins.hashString "sha256" effectiveHostName;
-    # Take first 2 hex chars from hash - already in valid range 00-ff
+    # Take first 2 hex chars from hash - matches existing Lima VM: 27 for bioskop
   in lib.strings.toLower (builtins.substring 0 2 hash);
   
 in {
@@ -38,32 +38,36 @@ in {
           name = mkOption {
             type = types.str;
             description = "Desired interface name";
-            example = "lima-shared";
+            example = "vmlan0 or vmwan0";
           };
         };
       });
       default = [
         {
+          macAddress = "10:66:6a:4c:${hostByteHex}:00";
+          name = "vznat0";  # lima vzNAT
+        }
+        {
           macAddress = "10:66:6a:4c:${hostByteHex}:01";
-          name = "lima-shared";
+          name = "vmlan0";  # lima vmnet bridge
         }
         {
           macAddress = "10:66:6a:4c:${hostByteHex}:02";
-          name = "lima-bridge";
+          name = "vmwan0";  # lima vmnet shared
         }
       ];
       description = ''
         List of network interfaces to rename based on MAC addresses.
-        MAC addresses are host-unique via hash of hostname in byte 5.
-        Default mapping:
-        - 10:66:6a:4c:<host>:01 -> lima-shared (socket_vmnet NAT)
-        - 10:66:6a:4c:<host>:02 -> lima-bridge (bridged to host LAN)
+        MAC addresses match the actual Lima VM interface MACs.
+        Default mapping (for hostname 'bioskop' -> hash '27'):
+        - 10:66:6a:4c:27:01 -> vmlan0 (matches lima-shared, bridged LAN)
+        - 10:66:6a:4c:27:02 -> vmwan0 (matches lima-bridge, NAT)
         
-        Scheme: OUI:LIMA:HOST:IF
+        Scheme: OUI:LIMA:HOST:IF  
         - OUI: 10:66:6a (local/private)
         - LIMA: 0x4C (76, 'L' for Lima)
         - HOST: Hash-derived unique byte per Darwin host
-        - IF: Interface index
+        - IF: Interface index (01=primary, 02=secondary)
       '';
     };
   };
@@ -92,8 +96,10 @@ in {
 
     # Helpful environment variables
     environment.variables = {
-      LIMA_SHARED_IFACE = "lima-shared";
-      LIMA_BRIDGE_IFACE = "lima-bridge";
+      LIMA_LAN_IFACE = "vmlan0";          # Bridged interface for home LAN access (udev renamed)
+      LIMA_NAT_IFACE = "vmwan0";          # NAT interface for internet egress (udev renamed)
+      LIMA_PRIMARY_IFACE = "vmlan0";      # Primary interface (same as LIMA_LAN_IFACE)
+      LIMA_SECONDARY_IFACE = "vmwan0";    # Secondary interface (same as LIMA_NAT_IFACE)
     };
   };
 }

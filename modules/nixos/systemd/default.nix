@@ -8,7 +8,5 @@
     ./profile-home-symlinks.nix
     ./rescue.nix
     ./hm-state-dirs.nix
-    ./no-bootloader.nix
-    ./manual-switch.nix
   ];
 }

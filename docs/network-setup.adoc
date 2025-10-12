@@ -9,6 +9,58 @@
 
 This document covers the complete network infrastructure setup using Tailscale and Headscale for secure SSH access across subnets and external locations.
 
+
+=== Recent Change (2025-10-12): Dual-NIC Incus Cluster Refactor (Bridged → Macvlan/VLAN)
+
+The Incus RKE2 cluster networking inside the Lima NixOS guest was refactored from using Incus-managed bridges (with dnsmasq/DHCP) to direct macvlan (vlan) attachments:
+
+* `lan0` – Now a macvlan interface attached directly to the host's vmlan0 (physical LAN). No Incus bridge is created.
+* `wan0` – Now a macvlan interface attached directly to the host's vmwan0 (physical WAN/NAT). No Incus bridge is created.
+
+**Key implications:**
+
+* No Incus-managed bridge or DHCP/DNS (dnsmasq) is present for lan0/wan0. The instance will only get an IP if a DHCP server is present on the parent network, or if static IPs are set.
+* The macvlan setup provides L2 isolation per instance, but the instance cannot communicate with the host via the parent interface (macvlan limitation).
+* This avoids Linux bridge errors ("Only unconfigured network interfaces can be bridged") and bridge name length issues.
+* Deterministic, per-node interface naming (lan0/wan0) is preserved.
+
+**Migration steps:**
+
+1. Clean old instances (Incus cannot hot‑rename NICs):
+  ```
+  make -C modules/nixos/incus-rke2-cluster clean-all
+  ```
+2. Re‑generate preseed & recreate master:
+  ```
+  make -C modules/nixos/incus-rke2-cluster preseed@incus NAME=master start
+  ```
+3. Launch peers if desired:
+  ```
+  make -C modules/nixos/incus-rke2-cluster NAME=peer1 start
+  ```
+4. Verify inside container:
+  ```
+  incus exec master -- ip -brief addr show lan0 wan0
+  incus exec master -- grep vip_interface /var/lib/rancher/rke2/server/manifests/kube-vip.yaml.tmpl
+  ```
+5. Confirm Cilium announcements (after cluster up):
+  ```
+  kubectl -n kube-system logs -l k8s-app=cilium | grep -i wan0 || true
+  ```
+
+**DHCP/DNS Note:**
+
+* If you need DHCP/DNS for lan0/wan0, you must run a DHCP server (e.g., dnsmasq) on the Lima VM for vmlan0/vmwan0, or ensure an upstream DHCP server is present. Otherwise, configure static IPs in the instance.
+
+Rollback: revert device names and macvlan config in the Incus preseed & cloud-config YAML, then re‑create instances (not recommended unless legacy tooling mandates `eth0`).
+
+Planned Enhancements:
+
+* Inject `CONTAINER_LAN_IFACE` / `CONTAINER_VIP_IFACE` env variables for further abstraction.
+* Optional policy routing table to pin internal service traffic to `lan0` while leaving VIP + egress on `wan0`.
+
+All subsequent references in this document to the control plane VIP / egress should be assumed to operate on `wan0` unless explicitly stated otherwise.
+
 === Architecture
 
 [source]

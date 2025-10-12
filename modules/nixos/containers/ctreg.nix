@@ -18,8 +18,8 @@ in {
       nat = {
         enable = true;
         internalInterfaces = [ "ve-${containerName}" ];
-        # Use lima-shared interface (socket_vmnet NAT) for external connectivity
-        externalInterface = if config.limaHost.isGuest then "lima-shared" else "enp0s1";
+        # Use vmlan0 interface (bridged LAN) for external connectivity
+        externalInterface = if config.limaHost.isGuest then "vmlan0" else "enp0s1";
       };
     };
     containers."${containerName}" = {

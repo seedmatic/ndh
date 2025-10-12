@@ -1,7 +1,7 @@
 { config, ... }: 
 let
-  # Use lima-shared interface in Lima guests, otherwise fall back to enp0s1
-  primaryInterface = if config.limaHost.isGuest then "lima-shared" else "enp0s1";
+  # Use vmlan0 interface in Lima guests, otherwise fall back to enp0s1
+  primaryInterface = if config.limaHost.isGuest then "vmlan0" else "enp0s1";
 in {
   services.dnsmasq = {
     enable = false;
