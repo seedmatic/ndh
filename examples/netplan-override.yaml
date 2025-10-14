@@ -1,0 +1,23 @@
+# Example netplan override to be supplied via NoCloud seed as netplan-override.yaml
+# Copy or adapt this file and place it in the seed so the bootcmd picks it up
+# instead of generating the fallback. Adjust addressing as needed for the node.
+
+network:
+  version: 2
+  renderer: networkd
+  ethernets:
+    wan0:
+      dhcp4: false
+      addresses:
+        - 10.42.0.10/24   # replace with ${CLUSTER_NODE_INET}/24 for templating
+      routes:
+        - to: 0.0.0.0/0
+          via: 10.42.0.1  # replace with ${CLUSTER_INET_GATEWAY}
+      nameservers:
+        addresses:
+          - 10.42.0.1
+          - 1.1.1.1
+    lan0:
+      dhcp4: true
+      dhcp6: true
+      optional: true
