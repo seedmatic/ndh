@@ -159,21 +159,27 @@ let
       display = "none";
     };
 
-    # Network configuration: Bridged interface for LAN connectivity + NAT fallback
-    # Using vmlan0 as primary interface for cluster egress to home LAN
+    # Network configuration: Custom socket_vmnet services for controlled subnet allocation
+    # Using custom socket paths to enable hierarchical IP addressing (10.80.16.0/24)
     # MAC addressing scheme: OUI:LIMA:HOST:IF where IF indicates interface type
     networks = [
       {
-        # vmnet bridged interface for home LAN ingress/egress (primary)
+        # Keep vzNAT for basic connectivity
+        vzNAT = true;
+        interface = "vznat0";
+        macAddress = "10:66:6a:4c:${hostByteHex}:00";
+      }
+      {
+        # Built-in Lima bridged interface for home LAN access (Headscale server, LoadBalancer IPs) 
         lima = "bridged";
         interface = "vmlan0"; 
         macAddress = "10:66:6a:4c:${hostByteHex}:01";  # Bridged interface
       }
       {
-        # vmnet shared (NAT) interface for internet-only egress (fallback)
+        # Built-in Lima shared interface with controlled 10.80.16.0/24 subnet (RKE2 cluster communication)
         lima = "shared";
         interface = "vmwan0";
-        macAddress = "10:66:6a:4c:${hostByteHex}:02";  # NAT interface
+        macAddress = "10:66:6a:4c:${hostByteHex}:02";  # NAT interface with controlled subnet
       }
     ];
 

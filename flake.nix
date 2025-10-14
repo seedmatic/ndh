@@ -87,8 +87,9 @@
             builtins.foldl' (acc: overlay: (acc // (overlay final prev))) { }
             overlays;
         in basePackages.extend (final: prev:
-          (vmnetOverlay final prev) // (floxOverlay final prev)
-          // (ripvcsOverlay final prev) // (applyOverlays final prev));
+          (vmnetOverlay final prev) // 
+          (floxOverlay final prev) // 
+          (ripvcsOverlay final prev) // (applyOverlays final prev));
       pkgsForDarwin = (pkgsFor { system = "aarch64-darwin"; });
       pkgsForLinux = (pkgsFor { system = "aarch64-linux"; });
 
@@ -150,7 +151,7 @@
           preModules =
             [
               profileModule
-              socket-vmnet.darwinModules.socket_vmnet
+              # socket-vmnet.darwinModules.socket_vmnet
               ({ lib, ... }: { lima.configGenerator.vmType = "vz"; })
             ];
           modules = mkModulesFor {

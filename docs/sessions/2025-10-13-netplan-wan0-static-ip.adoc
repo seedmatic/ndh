@@ -1,0 +1,242 @@
+= Netplan WAN0 Static IP Configuration Issue Resolution
+:author: AI Assistant & nxmatic
+:date: 2025-10-13
+:toc: left
+:toclevels: 3
+:sectnums:
+:sectlinks:
+:imagesdir: images
+:source-highlighter: rouge
+
+== Problem Summary
+
+The `wan0` interface in RKE2 cluster Incus containers was not receiving its static IP configuration (`10.80.16.3/24`) despite proper netplan configuration in cloud-init user-data. Cloud-init was falling back to auto-detection and only configuring `lan0` with DHCP.
+
+== Root Cause Analysis
+
+=== Primary Issue: Cloud-Init Instance ID
+
+The fundamental issue was that cloud-init was not treating recreated instances as "new instances" due to:
+
+1. **Static Instance ID**: The `instance-id` in metadata was hardcoded to `master`
+2. **Event System Blocking**: Cloud-init's event system denied network configuration updates for non-new instances
+3. **Fallback Network Detection**: When network config updates were blocked, cloud-init used fallback auto-detection
+
+=== Secondary Issues Discovered
+
+1. **Interface Name Confusion**: Initial confusion between Lima VM interfaces (`vmlan0`/`vmwan0`) vs container interfaces (`lan0`/`wan0`)
+2. **Renderer Selection**: Cloud-init was selecting legacy `eni` renderer instead of `networkd`
+3. **Template Processing Complexity**: Earlier architectural changes had simplified template processing but this wasn't related to the network issue
+
+== Technical Investigation
+
+=== Cloud-Init Log Analysis
+
+Key log entries that revealed the problem:
+
+[source,log]
+----
+2025-10-13 11:52:43,056 - stages.py[INFO]: Applying network configuration from fallback bringup=False: {'ethernets': {'lan0': {'dhcp4': True, 'set-name': 'lan0', 'match': {'macaddress': '10:66:6a:69:28:58'}}}, 'version': 2}
+2025-10-13 11:52:43,057 - __init__.py[DEBUG]: Selected renderer 'eni' from priority list: None
+2025-10-13 11:54:43,520 - stages.py[DEBUG]: Event Denied: scopes=['network'] EventType=boot-legacy
+2025-10-13 11:54:43,520 - stages.py[DEBUG]: No network config applied. Neither a new instance nor datasource network update allowed
+----
+
+=== Interface Status Verification
+
+Before fix:
+[source,bash]
+----
+# wan0 had no IPv4 address
+28: wan0@if4: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue state UP group default qlen 1000
+    link/ether 10:66:6a:8f:10:33 brd ff:ff:ff:ff:ff:ff link-netnsid 0
+    inet6 fe80::1266:6aff:fe8f:1033/64 scope link 
+       valid_lft forever preferred_lft forever
+----
+
+After manual netplan application:
+[source,bash]
+----
+# wan0 correctly configured with static IP
+30: wan0@if4: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue state UP group default qlen 1000
+    link/ether 10:66:6a:2f:5c:35 brd ff:ff:ff:ff:ff:ff link-netnsid 0
+    inet 10.80.16.3/24 brd 10.80.16.255 scope global wan0
+       valid_lft forever preferred_lft forever
+    inet6 fe80::1266:6aff:fe2f:5c35/64 scope link 
+       valid_lft forever preferred_lft forever
+----
+
+== Solution Implementation
+
+=== Current Network Configuration
+
+The netplan configuration in `cloud-config.common.yaml` is correct:
+
+[source,yaml]
+----
+network:
+  version: 2
+  renderer: networkd
+  ethernets:
+    lan0:  # LAN (primary) - DHCP for home network access
+      dhcp4: true
+      dhcp6: true
+      dhcp-identifier: mac
+      optional: true
+    wan0:  # WAN (secondary) - Static IP for cluster communication
+      dhcp4: false
+      addresses:
+        - ${CLUSTER_NODE_INET}/24
+      routes:
+        - to: 0.0.0.0/0
+          via: ${CLUSTER_INET_GATEWAY}
+      nameservers:
+        addresses:
+          - ${CLUSTER_INET_GATEWAY}
+          - 1.1.1.1
+      optional: true
+----
+
+=== Instance ID Fix Applied
+
+Modified the Makefile to generate unique instance IDs:
+
+**File**: `/Users/nxmatic/Gits/nxmatic/nix-darwin-home/modules/nixos/incus-rke2-cluster/Makefile`
+
+[source,makefile]
+----
+# BEFORE:
+define METADATA_INLINE :=
+instance-id: $(CLUSTER_NODE_NAME)
+local-hostname: $(CLUSTER_NODE_DN)
+endef
+
+# AFTER:
+define METADATA_INLINE :=
+instance-id: $(CLUSTER_NODE_NAME)-$(shell date +%s)
+local-hostname: $(CLUSTER_NODE_DN)
+endef
+----
+
+This ensures each instance recreation gets a unique timestamp-based instance-id, forcing cloud-init to treat it as a new instance.
+
+== Validation Steps
+
+=== Manual Verification (Proven Working)
+
+The configuration works when applied manually:
+
+[source,bash]
+----
+# Create netplan file manually
+incus exec master -- bash -c 'cat > /etc/netplan/50-cloud-init.yaml << EOF
+network:
+  version: 2
+  renderer: networkd
+  ethernets:
+    lan0:
+      dhcp4: true
+      dhcp6: true
+      dhcp-identifier: mac
+      optional: true
+    wan0:
+      dhcp4: false
+      addresses:
+        - 10.80.16.3/24
+      routes:
+        - to: 0.0.0.0/0
+          via: 10.80.16.1
+      nameservers:
+        addresses:
+          - 10.80.16.1
+          - 1.1.1.1
+      optional: true
+EOF'
+
+# Fix permissions and apply
+incus exec master -- chmod 600 /etc/netplan/50-cloud-init.yaml
+incus exec master -- netplan apply
+----
+
+Results in correct routing table:
+[source,bash]
+----
+default via 10.80.16.1 dev wan0 proto static 
+default via 192.168.1.254 dev lan0 proto dhcp src 192.168.1.79 metric 100 
+10.80.16.0/24 dev wan0 proto kernel scope link src 10.80.16.3 
+192.168.1.0/24 dev lan0 proto kernel scope link src 192.168.1.79 metric 100 
+----
+
+== Current Status
+
+=== Completed Actions
+
+1. ✅ **Identified Root Cause**: Cloud-init instance-id reuse preventing network config application
+2. ✅ **Verified Configuration**: Netplan configuration is correct and works when applied manually  
+3. ✅ **Applied Fix**: Modified Makefile to generate unique instance-ids with timestamps
+4. ✅ **Regenerated Metadata**: Created new metadata file with timestamp-based instance-id
+
+=== Next Steps Required
+
+1. **Test Instance Recreation**: Create new master instance with unique instance-id
+2. **Verify Automatic Application**: Confirm cloud-init applies network config on first boot
+3. **Validate Static IP**: Check that `wan0` gets `10.80.16.3/24` automatically
+4. **Test Routing**: Verify default route via cluster gateway works
+
+=== Commands for Testing
+
+[source,bash]
+----
+# 1. Create new master instance (should have unique instance-id now)
+ssh lima-nerd-nixos "cd /Users/nxmatic/Gits/nxmatic/nix-darwin-home/modules/nixos/incus-rke2-cluster && make NAME=master start"
+
+# 2. Check instance-id is unique
+ssh lima-nerd-nixos "incus exec master -- cat /var/lib/cloud/data/instance-id"
+
+# 3. Verify wan0 has static IP
+ssh lima-nerd-nixos "incus exec master -- ip addr show wan0"
+
+# 4. Check cloud-init processed network config (not fallback)
+ssh lima-nerd-nixos "incus exec master -- grep -A5 -B5 'fallback\|network.*config' /var/log/cloud-init.log"
+
+# 5. Verify routing table
+ssh lima-nerd-nixos "incus exec master -- ip route show"
+----
+
+== Technical Context
+
+=== File Locations
+
+- **Main Config**: `cloud-config.common.yaml` - Contains correct netplan configuration
+- **Makefile**: Modified to generate unique instance-ids  
+- **Generated Metadata**: `.run.d/master/nocloud/metadata.yaml` - Now has timestamp-based instance-id
+- **Generated Userdata**: `.run.d/master/nocloud/userdata.yaml` - Contains merged cloud-config
+
+=== Network Architecture
+
+- **Lima VM Host**: Interfaces `vmlan0` (Lima LAN) and `vmwan0` (Lima WAN)
+- **Container**: Interfaces `lan0` (mapped from vmlan0) and `wan0` (mapped from vmwan0)
+- **IP Ranges**:
+  - `lan0`: DHCP from home network (192.168.1.0/24)  
+  - `wan0`: Static cluster IPs (10.80.16.0/24)
+  - Master: `10.80.16.3/24` with gateway `10.80.16.1`
+
+=== Cloud-Init Event System
+
+Cloud-init has event scopes that control when configuration can be applied:
+
+- `boot-new-instance`: Allows network configuration (what we want)
+- `boot-legacy`: Denies network configuration changes (what was happening)
+
+The instance-id determines which event type is triggered.
+
+== Recovery Information
+
+If this solution needs to be re-implemented:
+
+1. **Key Insight**: Cloud-init uses instance-id to determine if it's a new instance
+2. **Fix Location**: Makefile `METADATA_INLINE` definition around line 661
+3. **Test Method**: Manual netplan application proves config validity
+4. **Verification**: Check cloud-init logs for "fallback" vs proper network config processing
+
+This document captures the complete investigation, root cause analysis, and solution for the netplan `wan0` static IP configuration issue in the RKE2 cluster setup.

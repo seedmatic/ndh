@@ -25,6 +25,7 @@ in {
     ./shadow-repositories.nix
     ./nushell.nix
     ./password-store.nix
+    ./socket-vmnet.nix
     ./shell.nix
     ./ssh.nix
     # ./ssh-keys.nix  # Disabled in favor of Teleport

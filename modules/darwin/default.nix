@@ -11,9 +11,8 @@
     ./distributed-builds.nix
     ./podman-remote-client.nix
     ./raycast.nix
-    ./socket_vmnet.nix
+    # ./socket_vmnet.nix
     ./openssh.nix
-    ./extend-hm-imports.nix
     ./github-mcp-proxy.nix
     ./shell-keychain.nix
     ./ssh-client.nix
