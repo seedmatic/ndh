@@ -1,0 +1,85 @@
+= Session Notes 2025-10-14
+:toc: macro
+:icons: font
+
+Session status: OPEN (to be closed after summary appended)
+
+== Overview
+Single commit today on branch `develop` related to refactoring cloud-init network configuration.
+
+== Commits
+
+. *85c4fea* - refactor(cloud-init): network configuration in cloud-init
+  * Intent: Begin reorganizing network setup logic into cloud-init paths; flagged with `[todo,split]` suggesting further breakdown expected.
+  * Exercise: (Implicit) Subsequent remote checks executed via `incus exec` to inspect `cloud_config_modules` ensuring `systemd` module presence.
+
+== Steps Executed Per Commit
+
+1. Applied refactor for cloud-init network configuration (commit 85c4fea).
+2. Verified cloud-init configuration modules on running master node: inspected `/etc/cloud/cloud.cfg` for `cloud_config_modules` list.
+
+== Verification Artifacts
+
+Commands run (representative):
+
+----
+ssh lima-nerd-nixos incus exec master -- grep -n '^cloud_config_modules' /etc/cloud/cloud.cfg
+ssh lima-nerd-nixos incus exec master -- awk '/^cloud_config_modules:/{flag=1;print;next}/^[^ ]/{flag=0}flag' /etc/cloud/cloud.cfg
+----
+
+== Session Assessment
+Only one commit today; below split threshold. Further refactors and validation tooling (e.g., guard for `content:` vs `contents:` in systemd units) remain outstanding.
+
+== Next Session TODO Candidates
+
+* Complete cloud-init upgrade path (sid pin + install baked into image) ensuring `cc_systemd` executed.
+* Add validation script to fail build when `contents:` key appears in generated user-data.
+* Confirm netplan early override service activation ordering.
+* Expand session notes automation (script to append commit + exercise on each commit automatically).
+
+== Closing
+Session will be closed after appending final summary below.
+
+// CLOSE_MARKER
+== Session Closed Summary
+
+Closed at: 2025-10-14T23:59Z (approx)
+
+Summary: Initiated refactor of cloud-init network configuration; verified current module list exposes need for ensuring `systemd` module presence in future image build. Prepared next-session actionable TODOs focusing on cloud-init upgrade, validation guards, and automation of session note updates. No splits required (1 commit < threshold).
+
+Next session entry point: implement distrobuilder YAML fix for apt pin + unstable cloud-init, then add guard script.
+
+== Continuation Addendum (Same Day Workstream)
+
+This addendum consolidates what was temporarily placed in a suffixed (b) session file. Work did not meet split criteria; content merged here for single authoritative daily record.
+
+=== Objectives (Extended)
+
+* Adopt Debian trixie as base in distrobuilder image definition.
+* Retain example for optional sid cloud-init upgrade (commented).
+* Build and exercise new image; verify networking and cloud-init systemd units application.
+* Clarify that git operations occur only on host; Lima VM shares bind-mounted tree.
+
+=== Changes Planned (Extended)
+
+1. Update `incus-distrobuilder.yaml` to trixie.
+2. Confirm shared working tree model (local-only git, remote runtime exec).
+3. Build new image (distrobuilder build-dir) and optionally import into Incus.
+4. Validate networking (systemd-networkd active, addressing/routes correct).
+5. Confirm cloud-init version and `systemd` module presence in `cloud_config_modules`.
+
+=== Log Additions
+
+* Workflow clarification: Git operations strictly local; remote actions restricted to runtime verification.
+* Added helper scripts: `auto-session-note.sh`, `validate-cloudinit.sh`, `build-trixie-image.sh`.
+* Introduced guard checks for 'content:' key correctness and module presence.
+
+=== Session Split Policy
+
+Create suffixed session files (e.g., 2025-10-14b) only when one of:
+* Commit count exceeds 10 with distinct thematic groups.
+* A major context pivot (e.g., from image build to production incident) occurs mid-day.
+* Long-running experimental branch warrants isolation of noise.
+
+Otherwise, consolidate into the primary date file.
+
