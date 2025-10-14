@@ -6,3 +6,6 @@
 .pre-commit-config.yaml
 nixos.qcow2
 .run.d
+# Generated Incus/Distrobuilder root filesystem artifact
+modules/nixos/incus-rke2-cluster/rootfs.squashfs
+

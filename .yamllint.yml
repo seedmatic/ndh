@@ -1,0 +1,18 @@
+extends: default
+
+rules:
+  line-length:
+    max: 200          # Allow longer shell/script lines in cloud-config blocks
+    allow-non-breakable-words: true
+    level: warning
+  trailing-spaces:
+    level: warning    # Do not fail on occasional trailing space inside heredocs
+  comments:
+    min-spaces-from-content: 1
+  document-start: enable
+  empty-lines:
+    max: 2
+
+ignore: |
+  # Ignore yamllint for generated result/ build artifacts if any
+  result/*
