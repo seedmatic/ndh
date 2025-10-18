@@ -1,0 +1,160 @@
+= Runtime Layout (.run.d)
+:toc: left
+:toclevels: 3
+:icons: font
+:source-highlighter: rouge
+
+== Overview
+
+The `.run.d` directory is the centralized ephemeral runtime workspace for build artifacts, generated configuration, and transient state across all Makefile-driven subsystems (Incus RKE2 cluster, Headscale/Incus gateway, network arithmetic derivation, metaprogramming outputs, capture tooling).
+
+Design goals:
+
+* Single predictable root for tooling (simpler scripts, less path propagation)
+* Fast cleanup (`git clean -fdX` or `rm -rf .run.d`) without chasing scattered layer dirs
+* Cross-layer sharing (network exports consumed by Incus instance preseed/cloud-config, cluster env, etc.)
+* Avoid accidental commits (gitignored) while preserving deterministic regeneration
+* Compatible with subtree layout – does not require rewriting relative paths inside imported modules
+
+== Directory Structure
+
+Typical tree (example, trimmed):
+
+[source]
+----
+.run.d/
+  network/                 # Generated network arithmetic exports + env blocks
+    _assign.mk             # make load@network parses this
+    cluster-1.env          # human-friendly summary
+  incus/                   # Incus instance lifecycle artifacts (may include nested app dirs)
+    master/                # Per-instance workspace
+      nocloud/             # Cloud-init seed fragments assembled
+        metadata.yaml
+        userdata.yaml
+      preseed/             # Dynamic Incus preseed YAMLs
+      cluster-env/         # Exported cluster environment variables
+    headscale-server/      # Headscale server instance artifacts
+      shared/              # Items shared back to host (auth keys, preauth material)
+  tshark/                  # Packet capture output (collect-network-state.sh)
+  logs/                    # (Future) aggregated logs or status snapshots
+  status/                  # (Future) generated status reports / HTML
+  runtime.auto.mk          # Auto-generated variable exports (metaprogramming)
+----
+
+NOTE: Exact contents vary by active targets; missing subdirectories simply indicate layer not yet built.
+
+== Artifact Categories
+
+[options="header"]
+|===
+| Category | Location | Producer Target(s) | Consumer(s) | Persistence
+| Network Exports | .run.d/network/*.env, _assign.mk | generate@rke2-networks, summary@network | incus instance build, help summary | Regenerated
+| Cloud-Init Seed | .run.d/incus/<name>/nocloud/* | cloud-config@<name>, merge@cloud-config | incus preseed import | Regenerated
+| Preseed YAML | .run.d/incus/<name>/preseed/* | preseed@incus | incus image/import | Regenerated
+| Cluster Env | .run.d/incus/<name>/cluster-env/* | instance@incus, ensure-image@incus | kubernetes bootstrap, user inspection | Regenerated
+| Headscale Auth Material | .run.d/incus/headscale-server/shared/* | headscale-server build pipeline | user (copy tokens, keys) | Semi-ephemeral
+| Packet Captures | .run.d/tshark/*.pcap | tshark-capture-* scripts | analysis tooling | Optional retain
+| Metaprogrammed Vars | .run.d/runtime.auto.mk | generate@* (metaprogramming) | subsequent make invocations | Regenerated
+|===
+
+== Access Patterns
+
+* Shell scripts assume `$REPO_ROOT/.run.d/...` for output; no environment overrides required.
+* Make targets write atomically (create temp then move) for critical exports (e.g. runtime.auto.mk) to avoid partial reads.
+* Human inspection: `cat .run.d/network/_assign.mk` or `grep VIP_CIDR .run.d/runtime.auto.mk`.
+* Instance introspection: `ls .run.d/incus/master/nocloud` after a merge to confirm fragments.
+
+== Cleanup Policy
+
+Simple cleanup (all runtime artifacts):
+
+[source,bash]
+----
+rm -rf .run.d
+# or
+git clean -fdX .run.d
+----
+
+Selective cleanup (per-instance):
+
+[source,bash]
+----
+rm -rf .run.d/incus/master
+----
+
+Packet captures (often large):
+
+[source,bash]
+----
+rm -f .run.d/tshark/*.pcap
+----
+
+Best practices:
+
+* Never manually edit generated files – modify source templates or Make logic instead.
+* Use selective removal when debugging one instance to preserve expensive captures.
+* Avoid leaving sensitive material (auth or preauth keys) in shared/ beyond immediate use – rotate if accidentally retained.
+
+== Rationale for Centralization
+
+* Subtree-friendly: No need to reconcile divergent runtime roots when syncing external repos.
+* Simpler grep/search for transient state: `grep -R VIP_CIDR .run.d`.
+* Easier inclusion logic – guarded-include macro can load one path set; rules.mk files rely on static relative paths.
+* Reduces accidental drift between layers (all observe same regenerated network exports).
+
+Rejected alternative: Per-layer `.run.<layer>.d/` trees. Added complexity (multi-root cleanup, duplicated helper variables) outweighed nominal namespace clarity.
+
+== Future Considerations
+
+Planned / potential enhancements (not committed):
+
+* Namespacing: Introduce `.run.d/_v2/` for breaking layout changes without disrupting tooling.
+* Expiry / GC: Add `gc@runtime` target to remove artifacts older than N days except pinned captures.
+* Symlink strategy: For very large captures or logs relocate to `/var/tmp/<project>/` with symlink back into `.run.d`.
+* Provenance tagging: Stamp each generated file with a comment header containing target + timestamp for audit.
+* Integrity checks: `validate@runtime` target to confirm expected subtrees exist before higher-level lifecycle targets run.
+
+== Validation Targets (Planned)
+
+Potential new make targets:
+
+* `validate@runtime` – Ensures required directories exist (`network/`, `incus/<name>/nocloud/`) before instance start.
+* `validate@includes` – Greps all `rules.mk` to verify `include make.mk` present (prevent guard regression).
+* `list@runtime` – Prints categorized artifact counts (instances, captures, network exports).
+
+== Integration With Help System
+
+The help target can optionally surface runtime stats by reading `.run.d/runtime.auto.mk` if present (future enhancement). Example snippet:
+
+[source,make]
+----
+# (Conceptual) inside help recipe
+[ -f .run.d/runtime.auto.mk ] && grep -E '^CLUSTER_|^NODE_' .run.d/runtime.auto.mk || true
+----
+
+== Security Notes
+
+* Sensitive tokens (auth keys, preauth keys) must remain under `.run.d/incus/<service>/shared` and be rotated after use.
+* Ensure `.run.d` stays gitignored – verify `.gitignore` contains `.run.d` entry.
+* Avoid world-readable permissions for secrets; enforce `chmod 600` in producing targets when applicable.
+
+== Quick Reference
+
+[source,bash]
+----
+# Inspect network assignments
+cat .run.d/network/_assign.mk
+
+# Show cluster env for master
+ls .run.d/incus/master/cluster-env
+
+# View merged userdata
+sed -n '1,40p' .run.d/incus/master/nocloud/userdata.yaml
+
+# Count instances
+find .run.d/incus -maxdepth 1 -type d -not -path '*/incus' | wc -l
+----
+
+== Changelog
+
+* 2025-10-18: Initial runtime layout documentation created (centralization rationale, future considerations).

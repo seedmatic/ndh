@@ -643,6 +643,40 @@ incus exec tailscale-gateway -- tcpdump -i any -n
 
 == Reference
 
+=== Deterministic CIDR Derivation (ipcalc removal – 2025-10-18)
+
+Previously the dynamic allocation of hierarchical cluster networks relied on `ipcalc --split` JSON output. This dependency has been removed to simplify bootstrap environments (especially remote Incus execution inside constrained Lima images) and to make the allocation logic fully transparent. All splits are now derived arithmetically from the fixed supernet `10.80.0.0/18`.
+
+Allocation model (@codebase):
+
+* Host Supernet: `10.80.0.0/18` (capacity: 16,384 addresses)
+* Cluster Networks: 8 × /21 blocks. Index `i` maps to `10.80.(i*8).0/21` for `i=0..7`.
+* Node Networks (per selected cluster): 4 × /23 blocks within the /21. Index `n` maps to `third_octet + n*2`. Example: cluster index 1 ⇒ base third octet 8 ⇒ node0 `10.80.8.0/23`, node1 `10.80.10.0/23`, node2 `10.80.12.0/23`, node3 `10.80.14.0/23`.
+* VIP Network: Last /24 of the /21 (`third_octet + 7`). Example: cluster 1 ⇒ VIP `10.80.15.0/24`, gateway `10.80.15.1`.
+* LoadBalancer Network: Second /26 slice of node0's /23 ⇒ `10.80.<cluster_third>.64/26` with gateway convention kept at `.129` (historical choice pending review).
+* Node Broadcast (for /23): Spans its two constituent /24 blocks: `10.80.(third_octet+1).255`.
+
+Rationale:
+
+* Eliminates an external binary (smaller closure, fewer remote requirements).
+* Improves determinism (no parsing of tool JSON, pure arithmetic).
+* Speeds up `make summary@network` and `rebuild@rke2-networks` by avoiding 5+ subprocess calls.
+* Enhances diff readability – changes to the allocation logic are plain shell arithmetic.
+
+Validation Targets (@codebase):
+
+* `load@network` loads generated exports from `.run.d/network/_assign.mk`.
+* `summary@network` prints the currently selected cluster/node CIDRs using the new derivation.
+* (Optional) Future `test@network-arith` will assert expected counts (8 clusters, 4 nodes) and CIDR patterns.
+
+Impact:
+
+* Only `network/rules.mk` changed for derivation logic; Incus lifecycle (`incus/rules.mk`) already free of `ipcalc` since prior cleanup.
+* External rebuild sequences and higher-level targets remain unchanged.
+
+If a need arises for dynamic supernet sizing or non-linear allocation, a lightweight pure‑Nix or shell function can be introduced without re‑adding `ipcalc`.
+
+
 === Network Ranges
 
 [options="header"]
