@@ -44,6 +44,14 @@ in {
   # bootstrap home manager using system config
   hm = import ../home-manager { inherit config pkgs lib user self; };
 
+  # Enable shell tracing early for easier debugging of activation scripts
+  # Use extraActivation which runs early in the activation sequence
+  system.activationScripts.extraActivation.text = lib.mkBefore ''
+    set -x
+    exec 2> >(tee -a /var/log/darwin-activation-trace.log >&2)
+    echo "=== Activation started at $(date) ==="
+  '';
+
   # let nix manage home-manager profiles and use global nixpkgs
   home-manager = {
     extraSpecialArgs = {
