@@ -64,7 +64,14 @@ in {
     environment.source = "${LIMA_CIDATA_MNT}/etc_environment";
   };
 
-  networking.nat.enable = true;
+  # Enable NAT for Incus containers to reach internet via host
+  networking.nat = {
+    enable = true;
+    # Internal interfaces carrying container traffic (vmlan0/vmwan0 are macvlan parents for Incus)
+    internalInterfaces = [ "vmlan0" "vmwan0" ];
+    # External interface with default route (primary Lima network interface)
+    externalInterface = "enp0s1";  # Adjust if your primary outbound interface differs
+  };
 
   environment.systemPackages = with pkgs; [ bash sshfs fuse3 git openssh ];
 
