@@ -22,7 +22,9 @@ in {
       min-free = ${toString (10 * 1024 * 1024 * 1024)}  # 10 GB
       max-free = ${toString (20 * 1024 * 1024 * 1024)}  # 20 GB
       ssl-cert-file = /etc/ssl/cert.pem
-      extra-experimental-features = nix-command flakes
+      # Enable content-addressed derivations on Darwin for improved cache sharing and reduced churn of identical outputs.
+      # Rollback: remove ca-derivations from this list and re-enable automatic optimise if desired.
+      extra-experimental-features = nix-command flakes ca-derivations
       extra-platforms = aarch64-darwin
       # Add binary caches for substitution
       extra-trusted-substituters = https://cache.flakehub.com https://nxmatic.cachix.org
@@ -46,7 +48,8 @@ in {
     ];
 
     # Optimize the store
-    optimise.automatic = true;
+    # Disable automatic optimise for faster iterative builds; run `nix-store --optimise` manually when idle.
+    optimise.automatic = false; # (@codebase) Was true. Manual optimise recommended.
   };
 
   nixpkgs.config = import ../common/nixpkgs-config.nix;

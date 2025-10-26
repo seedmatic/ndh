@@ -59,8 +59,10 @@ in {
 
   nix.settings = lib.mkMerge [
     {
-      experimental-features = [ "nix-command" "flakes" ];
-      auto-optimise-store = true;
+      # Enable content-addressed derivations to reduce rebuild churn for identical outputs.
+      # We also disable auto-optimise-store for faster iterative builds; run `nix-store --optimise` manually when idle.
+      experimental-features = [ "nix-command" "flakes" "ca-derivations" ];
+      auto-optimise-store = false; # Manual optimise recommended; improves build latency during development.
       trusted-users = [ cfgUserName "root" ];
       sandbox = false;
       extra-sandbox-paths = [ "/dev/kvm" ];
@@ -83,6 +85,12 @@ in {
         "flox-cache-public-1:7F4OyH7ZCnFhcze3fJdfyXYLQw/aV7GEed86nQ7IsOs="
         "nxmatic.cachix.org-1:huMghYiwDpPa1PMXHXK4G1Dp4QOZjgsNqxcjf/AjuJ0="  # nxmatic key
       ];
+      # NOTE (@codebase): Rollback instructions:
+      #   - Remove "ca-derivations" from experimental-features.
+      #   - Set auto-optimise-store = true to restore inline dedup.
+      # Validation:
+      #   - Check a new build's store path naming stability when spec changes trivially.
+      #   - Run `nix-store --optimise --dry-run` after several builds to assess dedup benefit.
     }
     (lib.mkIf isX86_64 {
       extra-platforms = [ "aarch64-linux" ];

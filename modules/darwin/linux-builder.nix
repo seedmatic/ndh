@@ -77,7 +77,8 @@ in {
           max-free = lib.mkDefault 1000000000;  # 1GB (from flox.conf, but NixOS default 3GB will override)
           
           # Features
-          experimental-features = [ "nix-command" "flakes" ];
+          # Enable content-addressed derivations inside the Linux builder VM to align with host and improve cache hit rate.
+          experimental-features = [ "nix-command" "flakes" "ca-derivations" ];
           accept-flake-config = true;
           always-allow-substitutes = true;
         };
