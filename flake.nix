@@ -320,5 +320,23 @@
         };
       };
 
+      # Development shells (add docs environment with diagram support)
+      devShells = flake-utils.lib.eachDefaultSystem (system: let
+        pkgs = import nixpkgs { inherit system; config = { allowUnfree = true; }; };
+      in {
+        docs = pkgs.mkShell {
+          packages = with pkgs; [
+            asciidoctor-with-extensions
+            plantuml
+            graphviz
+            # Optional: dot for Graphviz is already in graphviz
+          ];
+          shellHook = ''
+            echo "Docs dev shell active (system: ${system})."
+            echo "Run: modules/nixos/incus-rke2-cluster/bin/generate-docs.sh"
+          '';
+        };
+      });
+
     };
 }
