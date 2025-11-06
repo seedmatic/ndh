@@ -294,50 +294,6 @@ ${lib.generators.toJSON {} limaConfig}
 EOF
       chmod 0600 "${profileHome}/.lima/nerd-nixos/lima.yaml"
 
-      : "Ensure deterministic networks.yaml entry for ${clusterNetworkName} when feature flag enabled"
-      ${lib.optionalString (enableClusterSubnet && limaNetworksOpts.enableManagedClusterNetwork) ''
-      cfgdir="${profileHome}/.lima/_config"
-      mkdir -p "$cfgdir"
-      nwfile="$cfgdir/networks.yaml"
-      desired_block="  ${clusterNetworkName}:\n    mode: shared\n    gateway: ${limaWanGateway}\n    dhcpEnd: ${limaWanDhcpEnd}\n    netmask: ${limaNetworksOpts.netmask}"
-      if [ ! -f "$nwfile" ]; then
-        echo "[limaConfig] creating new networks.yaml with ${clusterNetworkName}" >> "$LOG"
-        cat > "$nwfile" <<'NETCFG'
-paths:
-  # socketVMNet path autodetect; omit for Lima to fill defaults
-  varRun: /private/var/run/lima
-group: everyone
-networks:
-NETCFG
-        echo -e "$desired_block" >> "$nwfile"
-      else
-        if grep -q "^  ${clusterNetworkName}:" "$nwfile"; then
-          # Extract existing block first 5 lines after header
-          existing=$(grep -A4 "^  ${clusterNetworkName}:" "$nwfile" || true)
-          if echo "$existing" | grep -q "gateway: ${limaWanGateway}" && \
-             echo "$existing" | grep -q "dhcpEnd: ${limaWanDhcpEnd}" && \
-             echo "$existing" | grep -q "netmask: ${limaNetworksOpts.netmask}"; then
-            echo "[limaConfig] ${clusterNetworkName} block matches desired values" >> "$LOG"
-          else
-            ${lib.optionalString limaNetworksOpts.overwrite ''
-            echo "[limaConfig] overwriting ${clusterNetworkName} block (values differ)" >> "$LOG"
-            awk -v start="  ${clusterNetworkName}:" 'BEGIN{skip=0} {
-              if($0==start){print; skip=4; next}
-              if(skip>0){skip--; next}
-              print
-            }' "$nwfile" > "$nwfile.tmp" && mv "$nwfile.tmp" "$nwfile"
-            ''}
-            ${lib.optionalString (!limaNetworksOpts.overwrite) ''
-            echo "[limaConfig][WARN] ${clusterNetworkName} differs; overwrite disabled" >> "$LOG"
-            ''}
-          fi
-        else
-          echo "[limaConfig] appending ${clusterNetworkName} to existing networks.yaml" >> "$LOG"
-          echo -e "$desired_block" >> "$nwfile"
-        fi
-      fi
-      ''}
-
       : "Create symlinks for alternate profile homes (homeSymlinks)"
       ${lib.optionalString (profileHomeSymlinks != []) ''
       # shellcheck disable=SC2043
