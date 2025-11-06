@@ -45,4 +45,8 @@
   '';
 
   home.sessionVariables.ZDOTDIR = "$HOME/.config/zsh";
+
+  # Ensure XDG_RUNTIME_DIR is set (not managed by home-manager's xdg module)
+  # Must match zdotdir's zshenv.zsh default
+  home.sessionVariables.XDG_RUNTIME_DIR = "$HOME/.xdg";
 }
