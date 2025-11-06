@@ -6,6 +6,7 @@
     ./core.nix
     ./dnsmasq.nix
     ./headscale-client.nix
+    ./internet-sharing.nix
     ./lima-config.nix
     ./linux-builder.nix
     ./distributed-builds.nix
