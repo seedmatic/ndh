@@ -33,9 +33,10 @@ let
   # gets a stable slice of the 10.80.0.0/18 supernet. Current documented layout:
   #   Cluster 1 (bioskop) -> 10.80.8.0/21
   #   Cluster 2 (alcide)  -> 10.80.16.0/21
-  # We keep Lima's vmwan0 to a /24 slice carved from the cluster /21 for NAT.
-  # NOTE: bioskop currently runs with 10.80.16.0/24 (mismatch). Enabling the
-  # feature flag below will migrate bioskop to its intended 10.80.8.0/24 slice.
+  #
+  # Lima vmwan0 interface provides the cluster network (10.80.x.0/21) which Incus
+  # containers use for node-to-node communication only (no NAT, no internet routing).
+  # Internet access for containers is exclusively via vmlan0 (bridged to home network).
   hostClusterMap = {
     bioskop = 1;
     alcide = 2;
@@ -83,7 +84,8 @@ let
       ipv6 = true;
       hosts = {
         "guest.lima.internal" = "127.1.1.1";
-        "host.containers.internal" = "192.168.5.15";
+        # Note: Incus containers access external services via vmlan0 (home network)
+        # not through Lima VM NAT on vmwan0 (cluster-internal only)
       };
     };
 
@@ -193,8 +195,12 @@ let
     };
 
     # Network configuration: Custom socket_vmnet services for controlled subnet allocation
-    # Using custom socket paths to enable hierarchical IP addressing (10.80.16.0/24)
     # MAC addressing scheme: OUI:LIMA:HOST:IF where IF indicates interface type
+    #
+    # Network architecture (November 2025):
+    # - vzNAT: Basic Lima connectivity (not used by Incus containers)
+    # - vmlan0: Bridged to home network (192.168.1.0/24) - EXCLUSIVE internet path for containers
+    # - vmwan0: Cluster network (10.80.x.0/21) - node-to-node communication ONLY, no NAT/routing
     networks = [
       {
         # Keep vzNAT for basic connectivity
@@ -210,7 +216,8 @@ let
       }
       {
         # Deterministic cluster shared network provided via networks.yaml
-        # We reference a network name; its gateway/subnet are managed externally.
+        # Cluster-internal node communication ONLY - no NAT, no internet routing
+        # Incus containers get IPs from this network via DHCP but route internet via vmlan0
         lima = if enableClusterSubnet then clusterNetworkName else "shared";
         interface = "vmwan0";
         macAddress = "10:66:6a:4c:${hostByteHex}:02";
