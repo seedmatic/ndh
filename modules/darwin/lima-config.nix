@@ -34,9 +34,9 @@ let
   #   Cluster 1 (bioskop) -> 10.80.8.0/21
   #   Cluster 2 (alcide)  -> 10.80.16.0/21
   #
-  # Lima vmwan0 interface provides the cluster network (10.80.x.0/21) which Incus
-  # containers use for node-to-node communication only (no NAT, no internet routing).
-  # Internet access for containers is exclusively via vmlan0 (bridged to home network).
+  # Note: vmwan0 removed from Lima config. Incus containers now use:
+  # - lan0: macvlan on vmlan0 (bridged to bond0/en0) for internet access
+  # - wan0: macvlan on Incus bridge network (10.80.x.0/21) for cluster-internal communication
   hostClusterMap = {
     bioskop = 1;
     alcide = 2;
@@ -47,15 +47,12 @@ let
     else builtins.throw "lima-config.nix: host '${hn}' missing in hostClusterMap; add an entry to define deterministic cluster subnet.";
   clusterBaseOctet = clusterId * 8; # 10.80.<octet>.0
   clusterBaseCidr = "10.80.${toString clusterBaseOctet}.0/21";
-  # Lima vmwan0 deterministic addressing
-  # We adopt the full cluster /21 netmask for the vmnet managed network (255.255.248.0)
-  # while initially constraining DHCP leases to the first /24 slice for stability.
-  limaWanSubnet = "10.80.${toString clusterBaseOctet}.0/21"; # documentation hint only; vmnet infers via gateway+netmask
-  limaWanGateway = "10.80.${toString clusterBaseOctet}.1";    # first host IP of first /24
-  limaWanDhcpEnd = "10.80.${toString clusterBaseOctet}.224";  # restrict DHCP to first /24; expand later by overwrite
-
-  # Feature flag to activate socket_vmnet custom subnet instead of Lima default
-  enableClusterSubnet = cfg.enableClusterSubnet or false;
+  
+  # Cluster network is now managed by Incus bridge (not Lima socket_vmnet)
+  # These variables kept for reference but no longer used for vmwan0
+  limaWanSubnet = "10.80.${toString clusterBaseOctet}.0/21";
+  limaWanGateway = "10.80.${toString clusterBaseOctet}.1";
+  limaWanDhcpEnd = "10.80.${toString clusterBaseOctet}.224";
 
   # Name for deterministic cluster network (managed via networks.yaml) (@codebase)
   clusterNetworkName = "cluster${toString clusterId}";
@@ -84,8 +81,8 @@ let
       ipv6 = true;
       hosts = {
         "guest.lima.internal" = "127.1.1.1";
-        # Note: Incus containers access external services via vmlan0 (home network)
-        # not through Lima VM NAT on vmwan0 (cluster-internal only)
+        # Note: Incus containers access internet via lan0 macvlan (vmlan0 parent -> bond0/en0)
+        # Cluster communication via wan0 macvlan (Incus bridge network 10.80.x.0/21)
       };
     };
 
@@ -199,8 +196,10 @@ let
     #
     # Network architecture (November 2025):
     # - vzNAT: Basic Lima connectivity (not used by Incus containers)
-    # - vmlan0: Bridged to home network (192.168.1.0/24) - EXCLUSIVE internet path for containers
-    # - vmwan0: Cluster network (10.80.x.0/21) - node-to-node communication ONLY, no NAT/routing
+    # - vmlan0: Bridged to bond0 (bioskop) or en0 (other hosts) - EXCLUSIVE internet path for containers
+    #   Containers use macvlan devices attached to vmlan0 parent interface for LAN/internet access
+    # Note: vmwan0 removed - containers now use Incus bridge network (wan/vmnet) via macvlan,
+    #       not Lima socket_vmnet shared networks
     networks = [
       {
         # Keep vzNAT for basic connectivity
@@ -209,18 +208,13 @@ let
         macAddress = "10:66:6a:4c:${hostByteHex}:00";
       }
       {
-        # Bridged LAN access (Headscale server, LoadBalancer IPs)
+        # Bridged LAN access for Incus containers (Headscale server, LoadBalancer IPs)
+        # On bioskop: bridges to bond0 (en0+en8 aggregate)
+        # On other hosts: bridges to en0 (single interface)
+        # Containers attach lan0 macvlan to this vmlan0 parent for internet access
         lima = "bridged";
         interface = "vmlan0";
         macAddress = "10:66:6a:4c:${hostByteHex}:01";
-      }
-      {
-        # Deterministic cluster shared network provided via networks.yaml
-        # Cluster-internal node communication ONLY - no NAT, no internet routing
-        # Incus containers get IPs from this network via DHCP but route internet via vmlan0
-        lima = if enableClusterSubnet then clusterNetworkName else "shared";
-        interface = "vmwan0";
-        macAddress = "10:66:6a:4c:${hostByteHex}:02";
       }
     ];
 
@@ -238,12 +232,11 @@ in {
     };
     enableClusterSubnet = mkOption {
       type = types.bool;
-      default = true; # Deterministic subnet enabled by default (@codebase)
+      default = false; # Deprecated - cluster network now managed by Incus bridge
       description = ''
-        Enable deterministic cluster subnet allocation for Lima vmwan0 using socket_vmnet.
-        When true, vmwan0 is provisioned with a stable /24 carved from a per-host
-        /21 slice of the 10.80.0.0/18 supernet derived from the hostname.
-        Set to false to fall back to Lima's implicit shared 172.16.x subnet.
+        DEPRECATED: No longer used. Cluster network (10.80.x.0/21) is now managed by
+        Incus bridge network (wan/vmnet), not Lima socket_vmnet.
+        Kept for backwards compatibility but has no effect.
       '';
     };
    };
