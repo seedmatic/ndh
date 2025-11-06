@@ -19,6 +19,8 @@ linux-builder.systems = ["aarch64-darwin", "x86_64-darwin"]
 pass.pkg-path = "pass"
 home-manager.pkg-path = "home-manager"
 keychain.pkg-path = "keychain"
+ookla-speedtest.pkg-path = "ookla-speedtest"
+lldpd.pkg-path = "lldpd"
 # hello.pkg-path = "hello"
 # nodejs = { version = "^20.15.1", pkg-path = "nodejs" }
 

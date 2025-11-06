@@ -30,6 +30,15 @@
               darwin = darwinProfile;
             };
 
+            # Network bonding configuration
+            # Combines en0 (built-in) and en8 (OWC hub) for ~1.8 Gbps aggregate bandwidth
+            networking.bond = {
+              enable = true;
+              interfaces = [ "en0" "en8" ];
+              mode = "static"; # Static LAG without LACP protocol
+              disableWiFi = false; # Keep WiFi enabled as backup, just remove its default route
+            };
+
             # Headscale client - connects to server in Lima VM
             # Note: Server must be deployed first at 192.168.5.10:8080
             services.headscale-client = {

@@ -16,6 +16,9 @@
           "x86_64-darwin"
         ]
       },
+      "lldpd": {
+        "pkg-path": "lldpd"
+      },
       "nix-tree": {
         "pkg-path": "nix-tree"
       },
@@ -27,6 +30,9 @@
       },
       "nvfetcher": {
         "pkg-path": "nvfetcher"
+      },
+      "ookla-speedtest": {
+        "pkg-path": "ookla-speedtest"
       },
       "pass": {
         "pkg-path": "pass"
@@ -330,6 +336,138 @@
         "out": "/nix/store/p67kq2sw8s35z6m50mm87vi146c40c3v-create-builder"
       },
       "system": "x86_64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "lldpd",
+      "broken": false,
+      "derivation": "/nix/store/ap4qni09bdfrdznwj67dqs76ykfyhrm4-lldpd-1.0.19.drv",
+      "description": "802.1ab implementation (LLDP) to help you locate neighbors of all your equipments",
+      "install_id": "lldpd",
+      "license": "ISC",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=c23193b943c6c689d70ee98ce3128239ed9e32d1",
+      "name": "lldpd-1.0.19",
+      "pname": "lldpd",
+      "rev": "c23193b943c6c689d70ee98ce3128239ed9e32d1",
+      "rev_count": 861038,
+      "rev_date": "2025-09-13T06:43:22Z",
+      "scrape_date": "2025-09-15T02:01:00.265252Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.0.19",
+      "outputs_to_install": [
+        "man",
+        "out"
+      ],
+      "outputs": {
+        "dev": "/nix/store/1v70xvfsvzg4rbrfj7aj2m1490807ywm-lldpd-1.0.19-dev",
+        "doc": "/nix/store/ahgykaqzrx48kbfr23jid9qjj1qyp8sp-lldpd-1.0.19-doc",
+        "man": "/nix/store/sp1h9a0s4n0xcsq3h224mp5rlln13iyx-lldpd-1.0.19-man",
+        "out": "/nix/store/6dk1az2zz1m6lx94w8rgz9f2vlb4a529-lldpd-1.0.19"
+      },
+      "system": "aarch64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "lldpd",
+      "broken": false,
+      "derivation": "/nix/store/6j65chf7zzk6v5b6pyaiyys2bihzy2xc-lldpd-1.0.19.drv",
+      "description": "802.1ab implementation (LLDP) to help you locate neighbors of all your equipments",
+      "install_id": "lldpd",
+      "license": "ISC",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=c23193b943c6c689d70ee98ce3128239ed9e32d1",
+      "name": "lldpd-1.0.19",
+      "pname": "lldpd",
+      "rev": "c23193b943c6c689d70ee98ce3128239ed9e32d1",
+      "rev_count": 861038,
+      "rev_date": "2025-09-13T06:43:22Z",
+      "scrape_date": "2025-09-15T02:30:10.344738Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.0.19",
+      "outputs_to_install": [
+        "man",
+        "out"
+      ],
+      "outputs": {
+        "dev": "/nix/store/wpgsaag09hpqvzlyrhgcs1sniw0l38rn-lldpd-1.0.19-dev",
+        "doc": "/nix/store/479plj41acqgsf3q0dgvcvmw08jwd389-lldpd-1.0.19-doc",
+        "man": "/nix/store/hgcly4m1lbqafcq02f2dyzr7iy9rjczc-lldpd-1.0.19-man",
+        "out": "/nix/store/ib6jl5yhmcwxzm3zhvi8rdw9x7kb2xjn-lldpd-1.0.19"
+      },
+      "system": "aarch64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "lldpd",
+      "broken": false,
+      "derivation": "/nix/store/igri66jfgnax7ybrhnr5p7nb9wgjs5yq-lldpd-1.0.19.drv",
+      "description": "802.1ab implementation (LLDP) to help you locate neighbors of all your equipments",
+      "install_id": "lldpd",
+      "license": "ISC",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=c23193b943c6c689d70ee98ce3128239ed9e32d1",
+      "name": "lldpd-1.0.19",
+      "pname": "lldpd",
+      "rev": "c23193b943c6c689d70ee98ce3128239ed9e32d1",
+      "rev_count": 861038,
+      "rev_date": "2025-09-13T06:43:22Z",
+      "scrape_date": "2025-09-15T02:56:53.223795Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.0.19",
+      "outputs_to_install": [
+        "man",
+        "out"
+      ],
+      "outputs": {
+        "dev": "/nix/store/a8f4s3salphphbwdymmx64zkd7nwx4hl-lldpd-1.0.19-dev",
+        "doc": "/nix/store/8gyzy1xar11xm9zvis1w68233ildaz1v-lldpd-1.0.19-doc",
+        "man": "/nix/store/lfr2cd6xrmc61g36gir4yb253c5r658g-lldpd-1.0.19-man",
+        "out": "/nix/store/6qmm0jpbsknlq7sb1x56fapq6nv3dwzh-lldpd-1.0.19"
+      },
+      "system": "x86_64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "lldpd",
+      "broken": false,
+      "derivation": "/nix/store/wdd9qlpdrjvaclb1rswmzzj9csp3pgxj-lldpd-1.0.19.drv",
+      "description": "802.1ab implementation (LLDP) to help you locate neighbors of all your equipments",
+      "install_id": "lldpd",
+      "license": "ISC",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=c23193b943c6c689d70ee98ce3128239ed9e32d1",
+      "name": "lldpd-1.0.19",
+      "pname": "lldpd",
+      "rev": "c23193b943c6c689d70ee98ce3128239ed9e32d1",
+      "rev_count": 861038,
+      "rev_date": "2025-09-13T06:43:22Z",
+      "scrape_date": "2025-09-15T03:27:28.753700Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.0.19",
+      "outputs_to_install": [
+        "man",
+        "out"
+      ],
+      "outputs": {
+        "dev": "/nix/store/rccbv8bybr3s6p73jcqap0z6wkxhk6zc-lldpd-1.0.19-dev",
+        "doc": "/nix/store/l6i4241sn64jq9irqhl4knvl94zi1p18-lldpd-1.0.19-doc",
+        "man": "/nix/store/pqmwlzg332vdb1xlivnq1922pdkpi846-lldpd-1.0.19-man",
+        "out": "/nix/store/q3sfxd6v7pyb6qs42igkird8f0fcksvv-lldpd-1.0.19"
+      },
+      "system": "x86_64-linux",
       "group": "toplevel",
       "priority": 5
     },
@@ -792,6 +930,122 @@
       ],
       "outputs": {
         "out": "/nix/store/l565n17ncrwgs7nlh2j344h3743wfv6g-nvfetcher-0.7.0.0"
+      },
+      "system": "x86_64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "ookla-speedtest",
+      "broken": false,
+      "derivation": "/nix/store/y6jd4z6z0gy3mxva94b51xmzval9pz0i-ookla-speedtest-1.2.0.drv",
+      "description": "Command line internet speedtest tool by Ookla",
+      "install_id": "ookla-speedtest",
+      "license": "Unfree",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=c23193b943c6c689d70ee98ce3128239ed9e32d1",
+      "name": "ookla-speedtest-1.2.0",
+      "pname": "ookla-speedtest",
+      "rev": "c23193b943c6c689d70ee98ce3128239ed9e32d1",
+      "rev_count": 861038,
+      "rev_date": "2025-09-13T06:43:22Z",
+      "scrape_date": "2025-09-15T02:01:08.247116Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": true,
+      "version": "1.2.0",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/h2i8bxb2bpxisfsqq9bgwvbgx1xwxxr1-ookla-speedtest-1.2.0"
+      },
+      "system": "aarch64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "ookla-speedtest",
+      "broken": false,
+      "derivation": "/nix/store/ws1jiv6ygbbkrwyf50hb85wjzl7jxh3q-ookla-speedtest-1.2.0.drv",
+      "description": "Command line internet speedtest tool by Ookla",
+      "install_id": "ookla-speedtest",
+      "license": "Unfree",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=c23193b943c6c689d70ee98ce3128239ed9e32d1",
+      "name": "ookla-speedtest-1.2.0",
+      "pname": "ookla-speedtest",
+      "rev": "c23193b943c6c689d70ee98ce3128239ed9e32d1",
+      "rev_count": 861038,
+      "rev_date": "2025-09-13T06:43:22Z",
+      "scrape_date": "2025-09-15T02:30:21.920851Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": true,
+      "version": "1.2.0",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/00qrl4vbnjqvn5pwrhymwa7p6qxql7v6-ookla-speedtest-1.2.0"
+      },
+      "system": "aarch64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "ookla-speedtest",
+      "broken": false,
+      "derivation": "/nix/store/yimajam12kmys37x01yb2jzam5jk0408-ookla-speedtest-1.2.0.drv",
+      "description": "Command line internet speedtest tool by Ookla",
+      "install_id": "ookla-speedtest",
+      "license": "Unfree",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=c23193b943c6c689d70ee98ce3128239ed9e32d1",
+      "name": "ookla-speedtest-1.2.0",
+      "pname": "ookla-speedtest",
+      "rev": "c23193b943c6c689d70ee98ce3128239ed9e32d1",
+      "rev_count": 861038,
+      "rev_date": "2025-09-13T06:43:22Z",
+      "scrape_date": "2025-09-15T02:57:00.726969Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": true,
+      "version": "1.2.0",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/m2ns40wbmkbia38gp5ibgva3pbb1jr1z-ookla-speedtest-1.2.0"
+      },
+      "system": "x86_64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "ookla-speedtest",
+      "broken": false,
+      "derivation": "/nix/store/yg22qa0ymmkc9mdz9kkcs4gc78icl3a1-ookla-speedtest-1.2.0.drv",
+      "description": "Command line internet speedtest tool by Ookla",
+      "install_id": "ookla-speedtest",
+      "license": "Unfree",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=c23193b943c6c689d70ee98ce3128239ed9e32d1",
+      "name": "ookla-speedtest-1.2.0",
+      "pname": "ookla-speedtest",
+      "rev": "c23193b943c6c689d70ee98ce3128239ed9e32d1",
+      "rev_count": 861038,
+      "rev_date": "2025-09-13T06:43:22Z",
+      "scrape_date": "2025-09-15T03:27:40.790371Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": true,
+      "version": "1.2.0",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/56war95j2k02mhcgmvqdm0q73qrzv6nv-ookla-speedtest-1.2.0"
       },
       "system": "x86_64-linux",
       "group": "toplevel",
