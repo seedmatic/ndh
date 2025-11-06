@@ -42,15 +42,6 @@ in {
         Use DHCP for the bonded interface. If false, manual IP configuration required.
       '';
     };
-
-    disableWiFi = mkOption {
-      type = types.bool;
-      default = false;
-      description = ''
-        Disable WiFi when bond is active to prevent routing conflicts.
-        If false, WiFi will be kept as backup but may cause latency issues.
-      '';
-    };
   };
 
   config = mkIf cfg.enable {
@@ -138,25 +129,6 @@ in {
         StandardOutPath = "/var/log/network-bond.log";
       };
     };
-
-    # Optional WiFi management
-    launchd.daemons.network-bond-wifi-manager = mkIf cfg.disableWiFi {
-      script = ''
-        # Disable WiFi when bond is active to prevent routing conflicts
-        if ifconfig bond0 >/dev/null 2>&1 && ipconfig getifaddr bond0 >/dev/null 2>&1; then
-          networksetup -setnetworkserviceenabled "Wi-Fi" off
-          echo "[bond-wifi] WiFi disabled - bond0 is active"
-        fi
-      '';
-      
-      serviceConfig = {
-        RunAtLoad = true;
-        KeepAlive = false;
-        StandardErrorPath = "/var/log/network-bond-wifi.log";
-        StandardOutPath = "/var/log/network-bond-wifi.log";
-      };
-    };
-
 
     # Launchd daemon to reconfigure bond on wake from sleep  
     # Uses a wrapper script that monitors system power events

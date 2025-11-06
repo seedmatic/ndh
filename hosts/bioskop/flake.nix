@@ -32,11 +32,12 @@
 
             # Network bonding configuration
             # Combines en0 (built-in) and en8 (OWC hub) for ~1.8 Gbps aggregate bandwidth
+            # WiFi is kept enabled and manageable via System Preferences
+            # The bond module only removes WiFi's default route to ensure bond0 has priority
             networking.bond = {
               enable = true;
               interfaces = [ "en0" "en8" ];
               mode = "static"; # Static LAG without LACP protocol
-              disableWiFi = false; # Keep WiFi enabled as backup, just remove its default route
             };
 
             # Headscale client - connects to server in Lima VM
