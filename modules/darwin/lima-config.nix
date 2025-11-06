@@ -36,7 +36,7 @@ let
   #
   # Note: vmwan0 removed from Lima config. Incus containers now use:
   # - lan0: macvlan on vmlan0 (bridged to bond0/en0) for internet access
-  # - wan0: macvlan on Incus bridge network (10.80.x.0/21) for cluster-internal communication
+  # - wan0: Incus bridge network (10.80.x.0/21) for cluster-internal communication
   hostClusterMap = {
     bioskop = 1;
     alcide = 2;
@@ -82,7 +82,7 @@ let
       hosts = {
         "guest.lima.internal" = "127.1.1.1";
         # Note: Incus containers access internet via lan0 macvlan (vmlan0 parent -> bond0/en0)
-        # Cluster communication via wan0 macvlan (Incus bridge network 10.80.x.0/21)
+        # Cluster communication via wan0 (Incus bridge network 10.80.x.0/21)
       };
     };
 
@@ -198,7 +198,7 @@ let
     # - vzNAT: Basic Lima connectivity (not used by Incus containers)
     # - vmlan0: Bridged to bond0 (bioskop) or en0 (other hosts) - EXCLUSIVE internet path for containers
     #   Containers use macvlan devices attached to vmlan0 parent interface for LAN/internet access
-    # Note: vmwan0 removed - containers now use Incus bridge network (wan/vmnet) via macvlan,
+    # Note: vmwan0 removed - containers now attach wan0 directly to Incus bridge network (wan/vmnet),
     #       not Lima socket_vmnet shared networks
     networks = [
       {
