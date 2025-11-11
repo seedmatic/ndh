@@ -679,18 +679,113 @@ If a need arises for dynamic supernet sizing or non-linear allocation, a lightwe
 
 === Network Ranges
 
+==== Internal Networks (10.x.x.x)
+
 [options="header"]
 |===
 | Network | Range | Purpose
-| Home LAN | 192.168.1.0/24 | Main network
+| Host Supernet | 10.80.0.0/18 | Cluster network pool
+| Incus (alcide) | 10.80.8.0/21 | alcide cluster supernet
+| Incus (bioskop) | 10.80.0.0/21 | bioskop cluster supernet
 | Lima Shared | 192.168.5.0/24 | Lima VMs
-| Incus (alcide) | 192.168.106.0/24 | RKE cluster
-| Incus (bioskop) | 192.168.107.0/24 | RKE cluster
 | Tailscale Mesh | 100.64.0.0/10 | Tailscale overlay
 | Headscale Mesh | 100.64.0.0/10 | Headscale overlay
 | K8s Pods | 10.42.0.0/16 | Kubernetes pods
 | K8s Services | 10.43.0.0/16 | Kubernetes services
 |===
+
+==== Home LAN Allocation (192.168.1.0/24)
+
+The home LAN is divided into /27 blocks (30 usable IPs per block) for organized IP management:
+
+[options="header"]
+|===
+| Block | CIDR | Range | Allocation | Purpose
+| 0 | 192.168.1.0/27 | .1-.30 | DHCP Pool | General devices, IoT
+| 1 | 192.168.1.32/27 | .33-.62 | alcide Static | alcide cluster infrastructure
+| 2 | 192.168.1.64/27 | .65-.94 | alcide LoadBalancer | alcide Cilium L2 announcements
+| 3 | 192.168.1.96/27 | .97-.126 | Reserved | Future expansion
+| 4 | 192.168.1.128/27 | .129-.158 | bioskop Static | bioskop cluster infrastructure
+| 5 | 192.168.1.160/27 | .161-.190 | Reserved | IoT/smart home
+| 6 | 192.168.1.192/27 | .193-.222 | bioskop LoadBalancer | bioskop Cilium L2 announcements
+| 7 | 192.168.1.224/27 | .225-.254 | Infrastructure | Router (.254), DNS, DHCP
+|===
+
+===== Static IP Assignments
+
+====== bioskop Cluster (Block 4: 192.168.1.128/27)
+
+[options="header"]
+|===
+| Host | MAC Address | IP | Purpose
+| bioskop (bond0) | d0:11:e5:19:1c:9a | 192.168.1.129 | Darwin host
+| bioskop-nixos (vmlan0) | 10:66:6a:4c:27:01 | 192.168.1.130 | Lima NixOS VM
+| bioskop-master-control-node | 10:66:6a:33:3c:42 | 192.168.1.131+ | RKE2 master (DHCP)
+| bioskop-peer1-control-node | TBD | 192.168.1.132+ | RKE2 peer1 (DHCP)
+| bioskop-peer2-control-node | TBD | 192.168.1.133+ | RKE2 peer2 (DHCP)
+| bioskop-peer3-control-node | TBD | 192.168.1.134+ | RKE2 peer3 (DHCP)
+|===
+
+====== alcide Cluster (Block 1: 192.168.1.32/27)
+
+[options="header"]
+|===
+| Host | MAC Address | IP | Purpose
+| alcide (bond0 or en0) | TBD | 192.168.1.33 | Darwin host (MacBook)
+| alcide-nixos (vmlan0) | TBD | 192.168.1.34 | Lima NixOS VM
+| alcide-master-control-node | TBD | 192.168.1.35+ | RKE2 master (DHCP)
+| alcide-peer1-control-node | TBD | 192.168.1.36+ | RKE2 peer1 (DHCP)
+| alcide-peer2-control-node | TBD | 192.168.1.37+ | RKE2 peer2 (DHCP)
+| alcide-peer3-control-node | TBD | 192.168.1.38+ | RKE2 peer3 (DHCP)
+|===
+
+===== LoadBalancer IP Pools
+
+====== bioskop LoadBalancer Pool (Block 6: 192.168.1.192/27)
+
+* **CIDR**: 192.168.1.192/27
+* **Usable Range**: 192.168.1.193-192.168.1.222 (30 IPs)
+* **Gateway**: 192.168.1.254 (home router)
+* **Purpose**: Cilium L2-announced LoadBalancer IPs for bioskop cluster services
+* **Example Services**:
+  - Headscale: 192.168.1.193 (deployed via headscale-operator)
+  - Ingress Controller: 192.168.1.194
+  - Additional services: 192.168.1.195+
+
+====== alcide LoadBalancer Pool (Block 2: 192.168.1.64/27)
+
+* **CIDR**: 192.168.1.64/27
+* **Usable Range**: 192.168.1.65-192.168.1.94 (30 IPs)
+* **Gateway**: 192.168.1.254 (home router)
+* **Purpose**: Cilium L2-announced LoadBalancer IPs for alcide cluster services
+* **Example Services**:
+  - Headscale: 192.168.1.65
+  - Ingress Controller: 192.168.1.66
+  - Additional services: 192.168.1.67+
+
+===== Network Configuration Notes
+
+* **Hostname Strategy**: Cluster nodes register on LAN with cluster-prefixed hostnames (e.g., `bioskop-master-control-node.lan`, `alcide-master-control-node.lan`) to prevent DNS conflicts when both clusters are active on the same home network.
+
+* **System Hostnames**: Internal system hostnames and RKE2 node names remain unprefixed (e.g., `master-control-node`) for consistency across clusters.
+
+* **DHCP Configuration**: Cluster-prefixed hostnames are sent to DHCP via systemd-networkd drop-in on the `lan0` interface:
++
+[source,ini]
+----
+# /etc/systemd/network/10-netplan-lan0.network.d/10-hostname.conf
+[DHCP]
+SendHostname=yes
+Hostname=${CLUSTER_NAME}-${NODE_NAME}-control-node
+----
+
+* **Static Reservations**: Darwin hosts and Lima VMs should have static DHCP reservations configured in the Bbox router to ensure stable IPs across reboots.
+
+* **Block Capacity**: Each /27 block provides 30 usable IPs, sufficient for:
+  - Darwin host (1 IP)
+  - Lima VM (1 IP)
+  - Up to 4 RKE2 control nodes (4 IPs)
+  - Additional infrastructure (24 IPs remaining)
 
 === Port Reference
 
