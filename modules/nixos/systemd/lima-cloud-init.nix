@@ -82,5 +82,10 @@ in {
     "kernel.unprivileged_userns_clone" = 1;
     "net.ipv4.ping_group_range" = "0 2147483647";
     "net.ipv4.ip_unprivileged_port_start" = 0;
+    # Disable bridge netfilter to allow direct L2 communication between Incus containers
+    # Without this, bridge traffic goes through iptables which blocks cross-container traffic
+    "net.bridge.bridge-nf-call-iptables" = 0;
+    "net.bridge.bridge-nf-call-ip6tables" = 0;
+    "net.bridge.bridge-nf-call-arptables" = 0;
   };
 }
