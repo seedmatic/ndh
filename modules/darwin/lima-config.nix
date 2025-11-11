@@ -200,6 +200,7 @@ let
     #   Containers use macvlan devices attached to vmlan0 parent interface for LAN/internet access
     # Note: vmwan0 removed - containers now attach wan0 directly to Incus bridge network (wan/vmnet),
     #       not Lima socket_vmnet shared networks
+    # Note: vzNAT creates bridge interfaces on macOS; network-bond-maintain removes their default routes
     networks = [
       {
         # Keep vzNAT for basic connectivity
