@@ -84,8 +84,9 @@ in {
     "net.ipv4.ip_unprivileged_port_start" = 0;
     # Disable bridge netfilter to allow direct L2 communication between Incus containers
     # Without this, bridge traffic goes through iptables which blocks cross-container traffic
-    "net.bridge.bridge-nf-call-iptables" = 0;
-    "net.bridge.bridge-nf-call-ip6tables" = 0;
-    "net.bridge.bridge-nf-call-arptables" = 0;
+    # Use mkForce to override the default settings in modules/nixos/default.nix
+    "net.bridge.bridge-nf-call-iptables" = lib.mkForce 0;
+    "net.bridge.bridge-nf-call-ip6tables" = lib.mkForce 0;
+    "net.bridge.bridge-nf-call-arptables" = lib.mkForce 0;
   };
 }
