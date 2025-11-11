@@ -217,6 +217,15 @@ let
         interface = "vmlan0";
         macAddress = "10:66:6a:4c:${hostByteHex}:01";
       }
+      {
+        # Bridged LAN access for Incus bridge (lan-br)
+        # On bioskop: bridges to bond0 (en0+en8 aggregate)
+        # On other hosts: bridges to en0 (single interface)
+        # This interface remains unconfigured (no IP) for Incus bridge attachment
+        lima = "bridged";
+        interface = "vmlan1";
+        macAddress = "10:66:6a:4c:${hostByteHex}:02";
+      }
     ];
 
   };
@@ -229,15 +238,6 @@ in {
       description = ''
         Select the virtualization backend for the generated Lima instance.
         "vz" uses Apple Virtualization.framework, "qemu" uses the QEMU driver.
-      '';
-    };
-    enableClusterSubnet = mkOption {
-      type = types.bool;
-      default = false; # Deprecated - cluster network now managed by Incus bridge
-      description = ''
-        DEPRECATED: No longer used. Cluster network (10.80.x.0/21) is now managed by
-        Incus bridge network (wan/vmnet), not Lima socket_vmnet.
-        Kept for backwards compatibility but has no effect.
       '';
     };
    };
