@@ -248,21 +248,29 @@
           };
         };
     in {
-      mkHostOutputs = { hostProfile, profileModule, ... }:
+      mkHostOutputs = { hostProfile, profileModule, darwinExtraModules ? [], nixosExtraModules ? [], ... }:
         let
           mainName = if (hostProfile ? hostAlias && hostProfile.hostAlias != null && hostProfile.hostAlias != "") then
             hostProfile.hostAlias
           else
             hostProfile.hostName;
           darwinOutputs =
-            mkDarwinOutputs { inherit hostProfile profileModule; };
+            mkDarwinOutputs { 
+              inherit hostProfile; 
+              profileModule = { ... }: {
+                imports = [ profileModule ] ++ darwinExtraModules;
+              };
+            };
           darwinConfiguration = darwinOutputs.darwinConfigurations.${mainName};
 
           containerRegistryConfiguration =
             mkContainerRegistryConfig { inherit hostProfile; };
 
           nixosOutputs = mkNixosOutputs {
-            inherit hostProfile containerRegistryConfiguration profileModule;
+            inherit hostProfile containerRegistryConfiguration;
+            profileModule = { ... }: {
+              imports = [ profileModule ] ++ nixosExtraModules;
+            };
           };
           nixosConfiguration =
             nixosOutputs.nixosConfigurations."${mainName}-nixos";

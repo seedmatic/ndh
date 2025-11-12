@@ -269,7 +269,6 @@ fi'') cfg.interfaces}
             fi
           fi
         fi
-        fi
         
         # Remove default routes from Lima bridge interfaces (bridge100, bridge101, etc.)
         for bridge in $(ifconfig -l | tr ' ' '\n' | grep '^bridge'); do
