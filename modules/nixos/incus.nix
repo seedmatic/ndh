@@ -8,7 +8,19 @@ let
   '';
 
 in {
-  environment.systemPackages = with pkgs; [ incus incus-compose skopeo ];
+  environment.systemPackages = with pkgs; [ 
+    incus 
+    incus-compose 
+    skopeo 
+    debootstrap
+    dpkg
+    # Additional tools needed by debootstrap for proper Debian image building
+    gnused
+    gnugrep
+    gnutar
+    gawk
+    util-linux
+  ];
 
   users.users."${user}" = { extraGroups = [ "incus-admin" ]; };
 
