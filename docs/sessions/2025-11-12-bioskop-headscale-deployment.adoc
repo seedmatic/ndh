@@ -1,0 +1,436 @@
+= bioskop Headscale Deployment Plan
+:toc: left
+:toclevels: 3
+:icons: font
+:source-highlighter: rouge
+
+== Session Overview
+
+**Date:** 2025-11-12 +
+**Objective:** Deploy Headscale server on bioskop cluster and migrate alcide to client-only mode
+
+== Context
+
+=== Current State (alcide)
+
+* ✅ Headscale server running in alcide RKE2 at `192.168.1.192:8080` (LoadBalancer)
+* ✅ kpt package configured for bioskop network allocation (`192.168.1.192/27`)
+* ✅ DNS configured to use `.lan` domain from bbox router
+* ✅ 1 node registered: `alcide-master-control-node` (100.64.0.1)
+* ⚠️ alcide is mobile (MacBook) - should be client-only, not server
+
+=== Target State (bioskop)
+
+* 🎯 bioskop becomes permanent Headscale control plane (stationary Mac Mini M4 Pro)
+* 🎯 Headscale LoadBalancer at `192.168.1.193:8080`
+* 🎯 Accessible via `.lan` domain (bbox DHCP auto-registration)
+* 🎯 alcide connects via Tailscale mesh (works mobile + home)
+* 🎯 Both Lima VMs and Darwin hosts join Headscale network
+
+== Network Architecture
+
+=== IP Allocation
+
+[options="header"]
+|===
+| Cluster | Block | Pool CIDR | Headscale LB IP | Status
+| **bioskop** | Block 6 | 192.168.1.192/27 | 192.168.1.193 | 🎯 Target
+| **alcide** | Block 2 | 192.168.1.64/27 | 192.168.1.65 | ⚠️ Currently using bioskop's pool
+|===
+
+=== DNS Strategy
+
+**bbox Router DNS:**
+- Domain: `lan` (via DHCP)
+- Router: `192.168.1.254`
+- Auto-registers: `bioskop.lan` → `192.168.1.129`
+- Auto-registers: `alcide.lan` → `192.168.1.33`
+
+**Headscale MagicDNS:**
+- Base domain: `lan`
+- After joining: `bioskop-headscale.lan`, `bioskop-lima.lan`, etc.
+
+**Tailscale Operator:**
+- External access: `bioskop-headscale.TAILNET.ts.net`
+- TLS termination for mobile clients
+
+== Deployment Plan
+
+=== Prerequisites
+
+==== 1. bioskop Hardware Requirements
+
+* ✅ Mac Mini M4 Pro (stationary, always on)
+* ✅ Network bonding: en0 + en8 (1.8 Gbps aggregate)
+* ✅ Connected to bbox router (192.168.1.254)
+* ⚠️ Lima VM configuration needed
+
+==== 2. Check Current bioskop State
+
+[source,bash]
+----
+# From bioskop Darwin host
+hostname -f
+# Expected: bioskop or bioskop.lan
+
+# Check if Lima VM exists
+limactl list
+# If not, need to create nerd-nixos VM
+----
+
+=== Step 1: Configure bioskop Lima VM
+
+==== 1.1 Create Lima VM Configuration
+
+**Check existing Lima config generator:**
+[source,bash]
+----
+cd /Volumes/GitHub/nxmatic/nix-darwin-home
+darwin-rebuild build --flake .#bioskop
+# This should generate Lima config via modules/darwin/lima-config.nix
+----
+
+**Expected Lima VM spec:**
+- Name: `nerd-nixos`
+- VM Type: VZ (Apple Virtualization.framework)
+- Network: Bridged to bond0 (en0+en8)
+- Interfaces:
+  * `vmlan0`: 192.168.1.130 (Lima VM management)
+  * `vmlan1`: Unconfigured (for Incus lan-br bridge)
+
+==== 1.2 Start Lima VM
+
+[source,bash]
+----
+# Start Lima VM
+limactl start nerd-nixos
+
+# Verify network
+ssh lima-nerd-nixos "ip addr show vmlan0"
+# Should show: 192.168.1.130/24
+
+# Test DNS
+ssh lima-nerd-nixos "nslookup bioskop.lan 192.168.1.254"
+# Should resolve to 192.168.1.129
+----
+
+==== 1.3 Configure NixOS on Lima VM
+
+**Import RKE2 cluster module:**
+[source,bash]
+----
+# Inside Lima VM
+ssh lima-nerd-nixos
+
+# Edit /etc/nixos/configuration.nix to import:
+# - /path/to/nix-darwin-home/modules/nixos/incus.nix
+# - /path/to/nix-darwin-home/modules/nixos/lima-network-interfaces.nix
+
+# Rebuild NixOS
+sudo nixos-rebuild switch
+----
+
+=== Step 2: Deploy RKE2 Cluster on bioskop
+
+==== 2.1 Navigate to Cluster Directory
+
+[source,bash]
+----
+# From bioskop Darwin host
+cd /Volumes/GitHub/nxmatic/nix-darwin-home/modules/nixos/incus-rke2-cluster
+
+# Verify flox environment
+flox activate
+----
+
+==== 2.2 Set Cluster Context
+
+[source,bash]
+----
+# Ensure cluster name is bioskop
+export CLUSTER_NAME=bioskop
+
+# Verify network allocation
+make network@info
+# Expected: Cluster 1 (bioskop) -> 10.80.8.0/21
+----
+
+==== 2.3 Deploy Master Node
+
+[source,bash]
+----
+# Deploy master control node
+make NAME=master start
+
+# Monitor progress
+ssh lima-nerd-nixos "incus exec master -- journalctl -u rke2-server -f"
+
+# Verify cluster
+ssh lima-nerd-nixos "incus exec master -- flox activate --dir /var/lib/rancher/rke2 -- kubectl get nodes"
+----
+
+=== Step 3: Deploy Headscale via kpt
+
+==== 3.1 Mount kpt Package Directory
+
+**Verify mount in master container:**
+[source,bash]
+----
+ssh lima-nerd-nixos "incus exec master -- ls -la /var/lib/incus-rke2-cluster/kpt-packages/mesh/headscale"
+# Should show all kpt files
+----
+
+==== 3.2 Deploy Headscale
+
+[source,bash]
+----
+# From inside master container
+ssh lima-nerd-nixos "incus exec master -- flox activate --dir /var/lib/rancher/rke2 -- kubectl apply -f /var/lib/incus-rke2-cluster/kpt-packages/mesh/headscale/"
+
+# Wait for LoadBalancer IP
+kubectl get svc -n headscale headscale -w
+# Wait until EXTERNAL-IP shows 192.168.1.193
+----
+
+==== 3.3 Verify Bootstrap
+
+[source,bash]
+----
+# Check bootstrap job
+kubectl logs -n headscale job/headscale-bootstrap
+
+# Get authkey
+kubectl get secret -n headscale headscale-client-auth -o jsonpath='{.data.authkey}' | base64 -d
+
+# List registered nodes
+kubectl exec -n headscale deployment/headscale -- headscale nodes list
+# Should show: bioskop-master-control-node
+----
+
+=== Step 4: Join bioskop Hosts to Headscale
+
+==== 4.1 Get Preauth Key
+
+[source,bash]
+----
+AUTHKEY=$(kubectl get secret -n headscale headscale-client-auth -o jsonpath='{.data.authkey}' | base64 -d)
+echo "Preauth key: $AUTHKEY"
+# Save this for Darwin/Lima configuration
+----
+
+==== 4.2 Configure bioskop Darwin Host
+
+**Edit `hosts/bioskop/flake.nix`:**
+[source,nix]
+----
+services.headscale-client = {
+  enable = true;
+  serverUrl = "http://192.168.1.193:8080";
+  hostname = "bioskop";
+  enableSSH = true;
+  # Store authkey securely - options:
+  # 1. authKeyFile = "/run/secrets/headscale-authkey";
+  # 2. Or set via environment after deploy
+};
+----
+
+**Deploy Darwin configuration:**
+[source,bash]
+----
+darwin-rebuild switch --flake .#bioskop
+----
+
+==== 4.3 Configure bioskop Lima VM
+
+**Create NixOS module for headscale-client:**
+[source,nix]
+----
+# In Lima NixOS config
+services.headscale-client = {
+  enable = true;
+  serverUrl = "http://192.168.1.193:8080";
+  hostname = "bioskop-lima";
+  enableSSH = true;
+  authKeyFile = "/run/secrets/headscale-authkey";
+};
+----
+
+**Deploy:**
+[source,bash]
+----
+ssh lima-nerd-nixos "sudo nixos-rebuild switch"
+----
+
+=== Step 5: Update alcide to Client-Only
+
+==== 5.1 Remove Headscale Server from alcide
+
+**Options:**
+
+*Option A: Keep server for transition period*
+- Leave alcide server running temporarily
+- Both clusters operational during testing
+- Remove after confirming bioskop works
+
+*Option B: Immediate removal*
+- Delete headscale namespace: `kubectl delete ns headscale`
+- Update alcide to connect to bioskop
+
+==== 5.2 Configure alcide to Use Tailscale Mesh
+
+**Update `hosts/alcide/flake.nix`:**
+[source,nix]
+----
+services.headscale-client = {
+  enable = true;
+  # Use Tailscale mesh for mobile access
+  serverUrl = "https://bioskop-headscale.YOURTAILNET.ts.net";
+  hostname = "alcide";
+  enableSSH = true;
+};
+----
+
+**Similarly for alcide Lima VM:**
+[source,nix]
+----
+services.headscale-client = {
+  enable = true;
+  serverUrl = "https://bioskop-headscale.YOURTAILNET.ts.net";
+  hostname = "alcide-lima";
+  enableSSH = true;
+};
+----
+
+== Verification
+
+=== 1. Check Headscale Server
+
+[source,bash]
+----
+# From any network location
+ping 192.168.1.193
+
+# Check LoadBalancer
+kubectl get svc -n headscale
+# Should show EXTERNAL-IP: 192.168.1.193
+
+# List nodes
+kubectl exec -n headscale deployment/headscale -- headscale nodes list
+# Expected nodes:
+# - bioskop-master-control-node (100.64.0.1)
+# - bioskop (100.64.0.2)
+# - bioskop-lima (100.64.0.3)
+----
+
+=== 2. Test DNS Resolution
+
+[source,bash]
+----
+# From bioskop Darwin
+nslookup 192.168.1.193 192.168.1.254
+
+# After bbox static DNS entry (optional)
+nslookup bioskop-headscale.lan 192.168.1.254
+----
+
+=== 3. Test Headscale MagicDNS
+
+[source,bash]
+----
+# From any joined node
+ping bioskop-lima.lan
+ping bioskop.lan
+
+# Via Headscale mesh
+tailscale ping bioskop-lima
+----
+
+=== 4. Test Mobile Connectivity (alcide)
+
+[source,bash]
+----
+# From alcide on mobile network (not home LAN)
+# Should work via Tailscale mesh
+ping bioskop-headscale.YOURTAILNET.ts.net
+ssh bioskop-lima.YOURTAILNET.ts.net
+----
+
+== Troubleshooting
+
+=== LoadBalancer Not Getting IP
+
+**Check Cilium L2 announcements:**
+[source,bash]
+----
+kubectl logs -n kube-system -l k8s-app=cilium | grep -i "l2.*announce"
+----
+
+**Verify network configuration:**
+[source,bash]
+----
+kubectl get ciliumloadbalancerippool -A
+kubectl get ciliuml2announcementpolicy -A
+----
+
+**Check interface:**
+[source,bash]
+----
+kubectl exec -n headscale deployment/headscale -- ip link show lan0
+----
+
+=== DNS Not Resolving
+
+**Check bbox DHCP leases:**
+- Access bbox web UI: `http://192.168.1.254`
+- Check DHCP client list
+- Verify hostname registration
+
+**Add static DNS manually:**
+- MAC address: `arp -n | grep 192.168.1.193`
+- Add static reservation: IP + MAC + hostname
+
+=== Nodes Not Joining
+
+**Check authkey:**
+[source,bash]
+----
+kubectl get secret -n headscale headscale-client-auth -o yaml
+----
+
+**Check connectivity:**
+[source,bash]
+----
+# From Darwin host
+curl http://192.168.1.193:8080/health
+----
+
+**Check Headscale logs:**
+[source,bash]
+----
+kubectl logs -n headscale deployment/headscale -f
+----
+
+== Next Steps
+
+=== After bioskop Deployment
+
+1. ✅ bioskop Headscale operational at 192.168.1.193
+2. ✅ bioskop Darwin + Lima joined mesh
+3. 🎯 Update alcide to client-only (remove server)
+4. 🎯 alcide connects via Tailscale mesh
+5. 🎯 Test mobile connectivity
+6. 🎯 Optional: Add bbox static DNS for `bioskop-headscale.lan`
+
+=== Future Enhancements
+
+* Deploy Headscale gateway (advertise routes)
+* Configure ACLs for cross-cluster access
+* Enable SSH via Headscale
+* Set up monitoring/metrics
+
+== References
+
+* link:../network-setup.adoc[Network Setup Documentation]
+* link:../bioskop-deployment.adoc[bioskop Deployment Guide]
+* link:../../modules/nixos/incus-rke2-cluster/kpt-packages/mesh/headscale/README.md[Headscale kpt Package]
+* bbox router configuration: http://192.168.1.254
