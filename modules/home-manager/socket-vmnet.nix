@@ -30,7 +30,6 @@ in {
     # Set up environment variables for socket paths (useful for scripts)
     home.sessionVariables = {
       SOCKET_VMNET_LAN = "${cfg.dataDir}/lan.sock";
-      SOCKET_VMNET_WAN = "${cfg.dataDir}/wan.sock";
       SOCKET_VMNET_DATA_DIR = cfg.dataDir;
     };
   };

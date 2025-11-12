@@ -47,12 +47,6 @@ let
     else builtins.throw "lima-config.nix: host '${hn}' missing in hostClusterMap; add an entry to define deterministic cluster subnet.";
   clusterBaseOctet = clusterId * 8; # 10.80.<octet>.0
   clusterBaseCidr = "10.80.${toString clusterBaseOctet}.0/21";
-  
-  # Cluster network is now managed by Incus bridge (not Lima socket_vmnet)
-  # These variables kept for reference but no longer used for vmwan0
-  limaWanSubnet = "10.80.${toString clusterBaseOctet}.0/21";
-  limaWanGateway = "10.80.${toString clusterBaseOctet}.1";
-  limaWanDhcpEnd = "10.80.${toString clusterBaseOctet}.224";
 
   # Name for deterministic cluster network (managed via networks.yaml) (@codebase)
   clusterNetworkName = "cluster${toString clusterId}";
