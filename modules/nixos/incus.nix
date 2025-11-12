@@ -43,6 +43,10 @@ in {
   networking = {
     useNetworkd = false;
     networkmanager.enable = true;
+    # NetworkManager should not manage vmlan1 - it's dedicated for Incus lan-br bridging
+    networkmanager.unmanaged = [
+      "interface-name:vmlan1"
+    ];
     # bridges.externalbr0.interfaces = [ "enp0s1" ];
     # interfaces.externalbr0.useDHCP = true; # Host gets an IP from LAN DHCP
     # interfaces.enp0s1.useDHCP =
@@ -52,11 +56,6 @@ in {
     ]; # Allow DHCP/DNS/etc. on bridge
     # interfaces.externalbr0.macAddress =
     #   "52:55:55:71:36:47"; # match your lima.yaml
-    # networkmanager.unmanaged = [
-    #   "interface-name:enp0s1"
-    #   "interface-name:internalbr0"
-    #   "interface-name:externalbr0"
-    # ];
   };
 
   systemd.tmpfiles.rules = [ "d /run/incus 0775 root incus-admin -" ];

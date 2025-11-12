@@ -49,19 +49,19 @@ in {
         }
         {
           macAddress = "10:66:6a:4c:${hostByteHex}:01";
-          name = "vmlan0";  # lima vmnet bridge
+          name = "vmlan0";  # lima vmnet bridged (for Lima VM host)
         }
         {
           macAddress = "10:66:6a:4c:${hostByteHex}:02";
-          name = "vmwan0";  # lima vmnet shared
+          name = "vmlan1";  # lima vmnet bridged (for Incus bridge)
         }
       ];
       description = ''
         List of network interfaces to rename based on MAC addresses.
         MAC addresses match the actual Lima VM interface MACs.
         Default mapping (for hostname 'bioskop' -> hash '27'):
-        - 10:66:6a:4c:27:01 -> vmlan0 (matches lima-shared, bridged LAN)
-        - 10:66:6a:4c:27:02 -> vmwan0 (matches lima-bridge, NAT)
+        - 10:66:6a:4c:27:01 -> vmlan0 (Lima VM host LAN interface)
+        - 10:66:6a:4c:27:02 -> vmlan1 (Incus lan-br bridge parent)
         
         Scheme: OUI:LIMA:HOST:IF  
         - OUI: 10:66:6a (local/private)
@@ -96,10 +96,10 @@ in {
 
     # Helpful environment variables
     environment.variables = {
-      LIMA_LAN_IFACE = "vmlan0";          # Bridged interface for home LAN access (udev renamed)
-      LIMA_NAT_IFACE = "vmwan0";          # NAT interface for internet egress (udev renamed)
+      LIMA_LAN_IFACE = "vmlan0";          # Lima VM host LAN interface
+      LIMA_BRIDGE_IFACE = "vmlan1";       # Incus bridge parent interface (unconfigured)
       LIMA_PRIMARY_IFACE = "vmlan0";      # Primary interface (same as LIMA_LAN_IFACE)
-      LIMA_SECONDARY_IFACE = "vmwan0";    # Secondary interface (same as LIMA_NAT_IFACE)
+      LIMA_SECONDARY_IFACE = "vmlan1";    # Secondary interface (same as LIMA_BRIDGE_IFACE)
     };
   };
 }

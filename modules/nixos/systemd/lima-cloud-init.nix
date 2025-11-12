@@ -68,10 +68,9 @@ in {
   networking.nat = {
     enable = true;
     # Internal interfaces carrying container traffic
-    # - vmlan0/vmwan0: Lima interfaces (macvlan parents for Incus)
-    # - wan: Incus-managed bridge for RKE2 cluster WAN network
+    # - vmlan0/vmlan1: Lima bridged interfaces (vmlan1 for Incus lan-br bridge)
     # - podman0: Podman bridge interface
-    internalInterfaces = [ "vmlan0" "vmwan0" "wan" "podman0" ];
+    internalInterfaces = [ "vmlan0" "vmlan1" "podman0" ];
     # External interface with default route (primary Lima network interface)
     externalInterface = "enp0s1";  # Adjust if your primary outbound interface differs
   };
