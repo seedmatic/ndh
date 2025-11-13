@@ -1,7 +1,7 @@
 %everyone ALL=(root:wheel) NOPASSWD:NOSETENV: /bin/mkdir -m 775 -p /private/var/run/lima
 
-# Manage "bridged" network daemons
+# Manage "bond0-bridged" network daemons
 
 %everyone ALL=(root:wheel) NOPASSWD:NOSETENV: \
-    /opt/socket_vmnet/bin/socket_vmnet --pidfile=/private/var/run/lima/bridged_socket_vmnet.pid --socket-group=everyone --vmnet-mode=bridged --vmnet-interface=bond0 /private/var/run/lima/socket_vmnet.bridged,\
-    /usr/bin/pkill -F /private/var/run/lima/bridged_socket_vmnet.pid
+    /opt/socket_vmnet/bin/socket_vmnet --pidfile=/private/var/run/lima/bond0-bridged_socket_vmnet.pid --socket-group=everyone --vmnet-mode=bridged --vmnet-interface=bond0 /private/var/run/lima/socket_vmnet.bond0-bridged, \
+    /usr/bin/pkill -F /private/var/run/lima/bond0-bridged_socket_vmnet.pid
