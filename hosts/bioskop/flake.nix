@@ -42,15 +42,30 @@
         };
       };
       
-      # Darwin-specific module for network bonding
+      # Darwin-specific module for network bonding and monitoring
       darwinModule = { config, lib, ... }: {
         config = {
           # Network bonding configuration (Darwin only)
           # Combines en0 (built-in) and en8 (OWC hub) for ~1.8 Gbps aggregate bandwidth
           networking.bond = {
-            enable = true;
+            enable = false; # Enable when needed
             interfaces = [ "en0" "en8" ];
             mode = "static"; # Static LAG without LACP protocol
+          };
+
+          # Network monitoring service - manages route priorities
+          # Automatically runs in "individual" mode since bond.enable = false
+          networking.monitor = {
+            enable = true;
+            primaryInterface = "en0";      # Built-in Ethernet (highest priority)
+            backupInterface = "en1";       # Wi-Fi (medium priority backup)
+            secondaryInterfaces = ["en8"]; # USB Ethernet (lower priority)
+            checkInterval = 30;            # Check every 30 seconds
+            routeMetrics = {
+              primary = 100;    # en0 gets highest priority (lowest metric)
+              backup = 200;     # en1 gets medium priority  
+              secondary = 300;  # en8 gets lowest priority (highest metric)
+            };
           };
         };
       };

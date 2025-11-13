@@ -32,14 +32,14 @@ let
   # We derive a deterministic clusterId from effectiveHostName so each host
   # gets a stable slice of the 10.80.0.0/18 supernet. Current documented layout:
   #   Cluster 1 (bioskop) -> 10.80.8.0/21
-  #   Cluster 2 (alcide)  -> 10.80.16.0/21
+  #   Future clusters can be added as needed
   #
   # Note: vmwan0 removed from Lima config. Incus containers now use:
   # - lan0: macvlan on vmlan0 (bridged to bond0/en0) for internet access
   # - wan0: Incus bridge network (10.80.x.0/21) for cluster-internal communication
   hostClusterMap = {
     bioskop = 1;
-    alcide = 2;
+    # Future hosts can be added here with different cluster IDs
   };
   # Enforce mapping: explicit error if host not in hostClusterMap (@codebase)
   clusterId = let hn = effectiveHostName; in

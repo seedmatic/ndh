@@ -15,7 +15,7 @@
 #       lima.networks.netmask
 #       lima.networks.overwrite
 #     Falls back to defaults if evaluation fails.
-#   - Deterministic clusterId derived from host name via internal map (bioskop->1, alcide->2).
+#   - Deterministic clusterId derived from host name via internal map (bioskop->1).
 #   - Generates or updates ~/.lima/_config/networks.yaml cluster<id> block with gateway, dhcpEnd, netmask.
 #   - Allows override via CLI flags (highest precedence).
 #
@@ -91,7 +91,7 @@ if ! NIX_JSON=$(nix eval --json "$FLAKE_REF"#"$PRIMARY_ATTR" 2>/dev/null); then
   echo "[regenerate-lima] primary attr missing, trying fallback: $FALLBACK_ATTR" >&2
   if ! NIX_JSON=$(nix eval --json "$FLAKE_REF"#"$FALLBACK_ATTR" 2>/dev/null); then
     echo "Error: nix eval failed for both $PRIMARY_ATTR and $FALLBACK_ATTR" >&2
-    echo "Check host name or flake path; try --host bioskop or --host alcide." >&2
+    echo "Check host name or flake path; try --host bioskop." >&2
     exit 2
   fi
 fi
@@ -139,7 +139,6 @@ if [ "$USE_YQ" -eq 1 ]; then
       # Host cluster map (replicates Nix module logic)
       case "$HOST_REF" in
         bioskop) CLUSTER_ID=1 ;;
-        alcide) CLUSTER_ID=2 ;;
         *) echo "[regenerate-lima][WARN] No clusterId mapping for host '$HOST_REF'; skipping networks.yaml" >&2; CLUSTER_ID=0 ;;
       esac
       if [ $CLUSTER_ID -gt 0 ]; then
