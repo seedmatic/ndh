@@ -151,16 +151,20 @@ if [ "$USE_YQ" -eq 1 ]; then
         NET_FILE="$CFG_DIR/networks.yaml"
         mkdir -p "$CFG_DIR"
         BLOCK_HEADER="  ${NETWORK_NAME}:"
-        DESIRED_BLOCK="  ${NETWORK_NAME}:\n    mode: shared\n    gateway: ${GATEWAY}\n    dhcpEnd: ${DHCP_END}\n    netmask: ${NIX_MASK}"
+        DESIRED_BLOCK="  ${NETWORK_NAME}:
+    mode: shared
+    gateway: ${GATEWAY}
+    dhcpEnd: ${DHCP_END}
+    netmask: ${NIX_MASK}"
         if [ ! -f "$NET_FILE" ]; then
           echo "[regenerate-lima] networks: creating $NET_FILE with ${NETWORK_NAME}" >&2
           cat > "$NET_FILE" <<NETCFG
-  paths:
-    varRun: /private/var/run/lima
-  group: everyone
-  networks:
-  ${DESIRED_BLOCK}
-  NETCFG
+paths:
+  varRun: /private/var/run/lima
+group: everyone
+networks:
+${DESIRED_BLOCK}
+NETCFG
         else
           if grep -q "^${BLOCK_HEADER}" "$NET_FILE"; then
             EXISTING=$(grep -A4 "^${BLOCK_HEADER}" "$NET_FILE" || true)
@@ -176,14 +180,14 @@ if [ "$USE_YQ" -eq 1 ]; then
                   if(skip>0){skip--; next}
                   print
                 }' "$NET_FILE" > "$NET_FILE.tmp" && mv "$NET_FILE.tmp" "$NET_FILE"
-                echo "$DESIRED_BLOCK" >> "$NET_FILE"
+                echo -e "$DESIRED_BLOCK" >> "$NET_FILE"
               else
                 echo "[regenerate-lima][WARN] ${NETWORK_NAME} differs; overwrite disabled" >&2
               fi
             fi
           else
             echo "[regenerate-lima] networks: appending ${NETWORK_NAME}" >&2
-            echo "$DESIRED_BLOCK" >> "$NET_FILE"
+            echo -e "$DESIRED_BLOCK" >> "$NET_FILE"
           fi
         fi
         echo "[regenerate-lima] networks: gateway=${GATEWAY} dhcpEnd=${DHCP_END} netmask=${NIX_MASK}" >&2
