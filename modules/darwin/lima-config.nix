@@ -203,22 +203,13 @@ let
         macAddress = "10:66:6a:4c:${hostByteHex}:00";
       }
       {
-        # Bridged LAN access for Incus containers (Headscale server, LoadBalancer IPs)
+        # Bridged LAN access for VM direct connectivity 
         # On bioskop: bridges to bond0 (en0+en8 aggregate)
         # On other hosts: bridges to en0 (single interface)
-        # Containers attach lan0 macvlan to this vmlan0 parent for internet access
+        # VM gets direct LAN access via this interface
         lima = "bridged";
         interface = "vmlan0";
         macAddress = "10:66:6a:4c:${hostByteHex}:01";
-      }
-      {
-        # Bridged LAN access for Incus bridge (lan-br)
-        # On bioskop: bridges to bond0 (en0+en8 aggregate)
-        # On other hosts: bridges to en0 (single interface)
-        # This interface remains unconfigured (no IP) for Incus bridge attachment
-        lima = "bridged";
-        interface = "vmlan1";
-        macAddress = "10:66:6a:4c:${hostByteHex}:02";
       }
     ];
 
