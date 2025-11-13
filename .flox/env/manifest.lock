@@ -56,27 +56,27 @@
     {
       "attr_path": "home-manager",
       "broken": false,
-      "derivation": "/nix/store/s01v4b22y6cxnp3lrlvsi4kahg6803qq-home-manager-0-unstable-2025-09-04.drv",
+      "derivation": "/nix/store/81wsb4bsm6lk5spznnqdvp133j87dggl-home-manager-0-unstable-2025-10-25.drv",
       "description": "Nix-based user environment configurator",
       "install_id": "home-manager",
       "license": "MIT",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=c23193b943c6c689d70ee98ce3128239ed9e32d1",
-      "name": "home-manager-0-unstable-2025-09-04",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=b3d51a0365f6695e7dd5cdf3e180604530ed33b4",
+      "name": "home-manager-0-unstable-2025-10-25",
       "pname": "home-manager",
-      "rev": "c23193b943c6c689d70ee98ce3128239ed9e32d1",
-      "rev_count": 861038,
-      "rev_date": "2025-09-13T06:43:22Z",
-      "scrape_date": "2025-09-15T02:00:56.771587Z",
+      "rev": "b3d51a0365f6695e7dd5cdf3e180604530ed33b4",
+      "rev_count": 888552,
+      "rev_date": "2025-11-02T19:18:41Z",
+      "scrape_date": "2025-11-04T00:35:32.063615Z",
       "stabilities": [
         "unstable"
       ],
       "unfree": false,
-      "version": "2025-09-04",
+      "version": "2025-10-25",
       "outputs_to_install": [
         "out"
       ],
       "outputs": {
-        "out": "/nix/store/lc1zwzw3vcjbcpjssfq8pr0cwmd0hwiy-home-manager-0-unstable-2025-09-04"
+        "out": "/nix/store/q6gfwawy1pwb7lsk2rcg6q0kv8wx0j47-home-manager-0-unstable-2025-10-25"
       },
       "system": "aarch64-darwin",
       "group": "toplevel",
@@ -85,27 +85,27 @@
     {
       "attr_path": "home-manager",
       "broken": false,
-      "derivation": "/nix/store/v25d9a4km2jcv057jn010q8vkp40k3jw-home-manager-0-unstable-2025-09-04.drv",
+      "derivation": "/nix/store/rprs5igzknaq9krwrrzpxz3smxxlwhl0-home-manager-0-unstable-2025-10-25.drv",
       "description": "Nix-based user environment configurator",
       "install_id": "home-manager",
       "license": "MIT",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=c23193b943c6c689d70ee98ce3128239ed9e32d1",
-      "name": "home-manager-0-unstable-2025-09-04",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=b3d51a0365f6695e7dd5cdf3e180604530ed33b4",
+      "name": "home-manager-0-unstable-2025-10-25",
       "pname": "home-manager",
-      "rev": "c23193b943c6c689d70ee98ce3128239ed9e32d1",
-      "rev_count": 861038,
-      "rev_date": "2025-09-13T06:43:22Z",
-      "scrape_date": "2025-09-15T02:29:59.145738Z",
+      "rev": "b3d51a0365f6695e7dd5cdf3e180604530ed33b4",
+      "rev_count": 888552,
+      "rev_date": "2025-11-02T19:18:41Z",
+      "scrape_date": "2025-11-05T16:29:16.757529Z",
       "stabilities": [
         "unstable"
       ],
       "unfree": false,
-      "version": "2025-09-04",
+      "version": "2025-10-25",
       "outputs_to_install": [
         "out"
       ],
       "outputs": {
-        "out": "/nix/store/ncyaj36wffm7abk03xvs9kk2dkn6vrj1-home-manager-0-unstable-2025-09-04"
+        "out": "/nix/store/360mgfhm7rw9x6kc3r6a51w8qrjmg3zr-home-manager-0-unstable-2025-10-25"
       },
       "system": "aarch64-linux",
       "group": "toplevel",
@@ -114,27 +114,27 @@
     {
       "attr_path": "home-manager",
       "broken": false,
-      "derivation": "/nix/store/xrhlkak089haancgfqf8mnl09q21np61-home-manager-0-unstable-2025-09-04.drv",
+      "derivation": "/nix/store/7gqcc4yxxg0f7rs2v3xm6s22qjrp88sa-home-manager-0-unstable-2025-10-25.drv",
       "description": "Nix-based user environment configurator",
       "install_id": "home-manager",
       "license": "MIT",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=c23193b943c6c689d70ee98ce3128239ed9e32d1",
-      "name": "home-manager-0-unstable-2025-09-04",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=b3d51a0365f6695e7dd5cdf3e180604530ed33b4",
+      "name": "home-manager-0-unstable-2025-10-25",
       "pname": "home-manager",
-      "rev": "c23193b943c6c689d70ee98ce3128239ed9e32d1",
-      "rev_count": 861038,
-      "rev_date": "2025-09-13T06:43:22Z",
-      "scrape_date": "2025-09-15T02:56:49.771212Z",
+      "rev": "b3d51a0365f6695e7dd5cdf3e180604530ed33b4",
+      "rev_count": 888552,
+      "rev_date": "2025-11-02T19:18:41Z",
+      "scrape_date": "2025-11-05T16:55:11.995808Z",
       "stabilities": [
         "unstable"
       ],
       "unfree": false,
-      "version": "2025-09-04",
+      "version": "2025-10-25",
       "outputs_to_install": [
         "out"
       ],
       "outputs": {
-        "out": "/nix/store/50f7kfsmy6pr1zkzyvmavvn34j4al8nz-home-manager-0-unstable-2025-09-04"
+        "out": "/nix/store/zdb595b034l9g2d9yh5zf0wwx5b86dqf-home-manager-0-unstable-2025-10-25"
       },
       "system": "x86_64-darwin",
       "group": "toplevel",
@@ -143,27 +143,27 @@
     {
       "attr_path": "home-manager",
       "broken": false,
-      "derivation": "/nix/store/vbxd4ap87iw87x7q0r8bxyiva7gj0sx6-home-manager-0-unstable-2025-09-04.drv",
+      "derivation": "/nix/store/mylpf2vfpd5qw5j2kkizrqbgsvdsncm2-home-manager-0-unstable-2025-10-25.drv",
       "description": "Nix-based user environment configurator",
       "install_id": "home-manager",
       "license": "MIT",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=c23193b943c6c689d70ee98ce3128239ed9e32d1",
-      "name": "home-manager-0-unstable-2025-09-04",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=b3d51a0365f6695e7dd5cdf3e180604530ed33b4",
+      "name": "home-manager-0-unstable-2025-10-25",
       "pname": "home-manager",
-      "rev": "c23193b943c6c689d70ee98ce3128239ed9e32d1",
-      "rev_count": 861038,
-      "rev_date": "2025-09-13T06:43:22Z",
-      "scrape_date": "2025-09-15T03:27:16.142104Z",
+      "rev": "b3d51a0365f6695e7dd5cdf3e180604530ed33b4",
+      "rev_count": 888552,
+      "rev_date": "2025-11-02T19:18:41Z",
+      "scrape_date": "2025-11-05T17:21:07.286402Z",
       "stabilities": [
         "unstable"
       ],
       "unfree": false,
-      "version": "2025-09-04",
+      "version": "2025-10-25",
       "outputs_to_install": [
         "out"
       ],
       "outputs": {
-        "out": "/nix/store/n61cyiq73czfya2brkj994lyvld52ava-home-manager-0-unstable-2025-09-04"
+        "out": "/nix/store/qk04n85qkblbcyl530vsisb91sw43n86-home-manager-0-unstable-2025-10-25"
       },
       "system": "x86_64-linux",
       "group": "toplevel",
@@ -172,27 +172,27 @@
     {
       "attr_path": "keychain",
       "broken": false,
-      "derivation": "/nix/store/6azrgw1v95wb64wy9v0ac8w3hjc2i78j-keychain-2.9.5.drv",
+      "derivation": "/nix/store/41nkiax919n2klfa6lzbkn89dyy46piq-keychain-2.9.6.drv",
       "description": "Manage SSH and GPG keys in a convenient and secure manner",
       "install_id": "keychain",
       "license": "GPL-2.0-only",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=c23193b943c6c689d70ee98ce3128239ed9e32d1",
-      "name": "keychain-2.9.5",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=b3d51a0365f6695e7dd5cdf3e180604530ed33b4",
+      "name": "keychain-2.9.6",
       "pname": "keychain",
-      "rev": "c23193b943c6c689d70ee98ce3128239ed9e32d1",
-      "rev_count": 861038,
-      "rev_date": "2025-09-13T06:43:22Z",
-      "scrape_date": "2025-09-15T02:00:58.217892Z",
+      "rev": "b3d51a0365f6695e7dd5cdf3e180604530ed33b4",
+      "rev_count": 888552,
+      "rev_date": "2025-11-02T19:18:41Z",
+      "scrape_date": "2025-11-04T00:35:33.589093Z",
       "stabilities": [
         "unstable"
       ],
       "unfree": false,
-      "version": "2.9.5",
+      "version": "2.9.6",
       "outputs_to_install": [
         "out"
       ],
       "outputs": {
-        "out": "/nix/store/0k290wi977n3s4f8aza3xmi2sdrbnh74-keychain-2.9.5"
+        "out": "/nix/store/b3yd4rc2k1ri7ryh5y74h3yvfscz2aal-keychain-2.9.6"
       },
       "system": "aarch64-darwin",
       "group": "toplevel",
@@ -201,27 +201,27 @@
     {
       "attr_path": "keychain",
       "broken": false,
-      "derivation": "/nix/store/4214g52883a4awcmi6b3j5kpqyw8ygj3-keychain-2.9.5.drv",
+      "derivation": "/nix/store/f64clazif18n4w1lvc1av82rxyp1fdv3-keychain-2.9.6.drv",
       "description": "Manage SSH and GPG keys in a convenient and secure manner",
       "install_id": "keychain",
       "license": "GPL-2.0-only",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=c23193b943c6c689d70ee98ce3128239ed9e32d1",
-      "name": "keychain-2.9.5",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=b3d51a0365f6695e7dd5cdf3e180604530ed33b4",
+      "name": "keychain-2.9.6",
       "pname": "keychain",
-      "rev": "c23193b943c6c689d70ee98ce3128239ed9e32d1",
-      "rev_count": 861038,
-      "rev_date": "2025-09-13T06:43:22Z",
-      "scrape_date": "2025-09-15T02:30:02.005597Z",
+      "rev": "b3d51a0365f6695e7dd5cdf3e180604530ed33b4",
+      "rev_count": 888552,
+      "rev_date": "2025-11-02T19:18:41Z",
+      "scrape_date": "2025-11-05T16:29:19.895910Z",
       "stabilities": [
         "unstable"
       ],
       "unfree": false,
-      "version": "2.9.5",
+      "version": "2.9.6",
       "outputs_to_install": [
         "out"
       ],
       "outputs": {
-        "out": "/nix/store/nyafpwy25r63d597ydbk20sksyjvsl8f-keychain-2.9.5"
+        "out": "/nix/store/mmkk2781crfx4lgyk7r9pqqrqzwxs1sy-keychain-2.9.6"
       },
       "system": "aarch64-linux",
       "group": "toplevel",
@@ -230,27 +230,27 @@
     {
       "attr_path": "keychain",
       "broken": false,
-      "derivation": "/nix/store/a7j6s7xap40sy0w3k16rv1zdd4jfq51b-keychain-2.9.5.drv",
+      "derivation": "/nix/store/75az7px2qzvh6dx5ydi6ahf5d5yxd7gh-keychain-2.9.6.drv",
       "description": "Manage SSH and GPG keys in a convenient and secure manner",
       "install_id": "keychain",
       "license": "GPL-2.0-only",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=c23193b943c6c689d70ee98ce3128239ed9e32d1",
-      "name": "keychain-2.9.5",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=b3d51a0365f6695e7dd5cdf3e180604530ed33b4",
+      "name": "keychain-2.9.6",
       "pname": "keychain",
-      "rev": "c23193b943c6c689d70ee98ce3128239ed9e32d1",
-      "rev_count": 861038,
-      "rev_date": "2025-09-13T06:43:22Z",
-      "scrape_date": "2025-09-15T02:56:51.178874Z",
+      "rev": "b3d51a0365f6695e7dd5cdf3e180604530ed33b4",
+      "rev_count": 888552,
+      "rev_date": "2025-11-02T19:18:41Z",
+      "scrape_date": "2025-11-05T16:55:13.454678Z",
       "stabilities": [
         "unstable"
       ],
       "unfree": false,
-      "version": "2.9.5",
+      "version": "2.9.6",
       "outputs_to_install": [
         "out"
       ],
       "outputs": {
-        "out": "/nix/store/k5l4gpca13zdibmznfcfhlb6xn7in85j-keychain-2.9.5"
+        "out": "/nix/store/d0l93g1nr2q7v1bmclr6s023jvr7i1d7-keychain-2.9.6"
       },
       "system": "x86_64-darwin",
       "group": "toplevel",
@@ -259,27 +259,27 @@
     {
       "attr_path": "keychain",
       "broken": false,
-      "derivation": "/nix/store/bjnq3ln9fabl8y5v88893n21rnbajahk-keychain-2.9.5.drv",
+      "derivation": "/nix/store/kgnxb3wap5zsb7qpm2jvff48hvb6rn34-keychain-2.9.6.drv",
       "description": "Manage SSH and GPG keys in a convenient and secure manner",
       "install_id": "keychain",
       "license": "GPL-2.0-only",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=c23193b943c6c689d70ee98ce3128239ed9e32d1",
-      "name": "keychain-2.9.5",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=b3d51a0365f6695e7dd5cdf3e180604530ed33b4",
+      "name": "keychain-2.9.6",
       "pname": "keychain",
-      "rev": "c23193b943c6c689d70ee98ce3128239ed9e32d1",
-      "rev_count": 861038,
-      "rev_date": "2025-09-13T06:43:22Z",
-      "scrape_date": "2025-09-15T03:27:19.070171Z",
+      "rev": "b3d51a0365f6695e7dd5cdf3e180604530ed33b4",
+      "rev_count": 888552,
+      "rev_date": "2025-11-02T19:18:41Z",
+      "scrape_date": "2025-11-05T17:21:10.551755Z",
       "stabilities": [
         "unstable"
       ],
       "unfree": false,
-      "version": "2.9.5",
+      "version": "2.9.6",
       "outputs_to_install": [
         "out"
       ],
       "outputs": {
-        "out": "/nix/store/s9ymks4ygslnkxhii35iffnwc5xxrh8q-keychain-2.9.5"
+        "out": "/nix/store/2j2wvfd2d0pv71ysv32fpdwjb95v4gdx-keychain-2.9.6"
       },
       "system": "x86_64-linux",
       "group": "toplevel",
@@ -288,15 +288,15 @@
     {
       "attr_path": "darwin.linux-builder",
       "broken": false,
-      "derivation": "/nix/store/2mqs3xyrs41iri1zlraby4pm7lf9fn7j-create-builder.drv",
+      "derivation": "/nix/store/g0z6s3abqjhn0bhymzxn5nf5clfl78rd-create-builder.drv",
       "install_id": "linux-builder",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=c23193b943c6c689d70ee98ce3128239ed9e32d1",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=b3d51a0365f6695e7dd5cdf3e180604530ed33b4",
       "name": "create-builder",
       "pname": "linux-builder",
-      "rev": "c23193b943c6c689d70ee98ce3128239ed9e32d1",
-      "rev_count": 861038,
-      "rev_date": "2025-09-13T06:43:22Z",
-      "scrape_date": "2025-09-15T02:00:42.625113Z",
+      "rev": "b3d51a0365f6695e7dd5cdf3e180604530ed33b4",
+      "rev_count": 888552,
+      "rev_date": "2025-11-02T19:18:41Z",
+      "scrape_date": "2025-11-04T00:35:18.527220Z",
       "stabilities": [
         "unstable"
       ],
@@ -306,7 +306,7 @@
         "out"
       ],
       "outputs": {
-        "out": "/nix/store/d06ap5xnr62qbi171wh8wh8riwmr9b4k-create-builder"
+        "out": "/nix/store/1wnhjhc3g01rqg911nbg9j140w34y327-create-builder"
       },
       "system": "aarch64-darwin",
       "group": "toplevel",
@@ -315,15 +315,15 @@
     {
       "attr_path": "darwin.linux-builder",
       "broken": false,
-      "derivation": "/nix/store/zrg3hd06h5jwfzpn737hqkskzz35551f-create-builder.drv",
+      "derivation": "/nix/store/kdrx039h42flgmx26bhl4b6bi2rf46zx-create-builder.drv",
       "install_id": "linux-builder",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=c23193b943c6c689d70ee98ce3128239ed9e32d1",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=b3d51a0365f6695e7dd5cdf3e180604530ed33b4",
       "name": "create-builder",
       "pname": "linux-builder",
-      "rev": "c23193b943c6c689d70ee98ce3128239ed9e32d1",
-      "rev_count": 861038,
-      "rev_date": "2025-09-13T06:43:22Z",
-      "scrape_date": "2025-09-15T02:56:36.052704Z",
+      "rev": "b3d51a0365f6695e7dd5cdf3e180604530ed33b4",
+      "rev_count": 888552,
+      "rev_date": "2025-11-02T19:18:41Z",
+      "scrape_date": "2025-11-05T16:54:57.574273Z",
       "stabilities": [
         "unstable"
       ],
@@ -333,7 +333,7 @@
         "out"
       ],
       "outputs": {
-        "out": "/nix/store/p67kq2sw8s35z6m50mm87vi146c40c3v-create-builder"
+        "out": "/nix/store/88zbkv9f6yh3nrgg6vfdklgp7dq1g419-create-builder"
       },
       "system": "x86_64-darwin",
       "group": "toplevel",
@@ -342,31 +342,31 @@
     {
       "attr_path": "lldpd",
       "broken": false,
-      "derivation": "/nix/store/ap4qni09bdfrdznwj67dqs76ykfyhrm4-lldpd-1.0.19.drv",
+      "derivation": "/nix/store/a0lfdqf3x0ynvkjai1ykmvld3f3j4ail-lldpd-1.0.20.drv",
       "description": "802.1ab implementation (LLDP) to help you locate neighbors of all your equipments",
       "install_id": "lldpd",
       "license": "ISC",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=c23193b943c6c689d70ee98ce3128239ed9e32d1",
-      "name": "lldpd-1.0.19",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=b3d51a0365f6695e7dd5cdf3e180604530ed33b4",
+      "name": "lldpd-1.0.20",
       "pname": "lldpd",
-      "rev": "c23193b943c6c689d70ee98ce3128239ed9e32d1",
-      "rev_count": 861038,
-      "rev_date": "2025-09-13T06:43:22Z",
-      "scrape_date": "2025-09-15T02:01:00.265252Z",
+      "rev": "b3d51a0365f6695e7dd5cdf3e180604530ed33b4",
+      "rev_count": 888552,
+      "rev_date": "2025-11-02T19:18:41Z",
+      "scrape_date": "2025-11-04T00:35:35.698305Z",
       "stabilities": [
         "unstable"
       ],
       "unfree": false,
-      "version": "1.0.19",
+      "version": "1.0.20",
       "outputs_to_install": [
         "man",
         "out"
       ],
       "outputs": {
-        "dev": "/nix/store/1v70xvfsvzg4rbrfj7aj2m1490807ywm-lldpd-1.0.19-dev",
-        "doc": "/nix/store/ahgykaqzrx48kbfr23jid9qjj1qyp8sp-lldpd-1.0.19-doc",
-        "man": "/nix/store/sp1h9a0s4n0xcsq3h224mp5rlln13iyx-lldpd-1.0.19-man",
-        "out": "/nix/store/6dk1az2zz1m6lx94w8rgz9f2vlb4a529-lldpd-1.0.19"
+        "dev": "/nix/store/fiqcrc03siz3zda69mqpmy9nx1a2rz0j-lldpd-1.0.20-dev",
+        "doc": "/nix/store/54mw8dcsl49wzzwzrij6131rwjyk980v-lldpd-1.0.20-doc",
+        "man": "/nix/store/jfgrajjc44dkk23yrah7zcxz51c21h5p-lldpd-1.0.20-man",
+        "out": "/nix/store/f3bxkcslq0hl1ac0ggs512ncnaq3rsa1-lldpd-1.0.20"
       },
       "system": "aarch64-darwin",
       "group": "toplevel",
@@ -375,31 +375,31 @@
     {
       "attr_path": "lldpd",
       "broken": false,
-      "derivation": "/nix/store/6j65chf7zzk6v5b6pyaiyys2bihzy2xc-lldpd-1.0.19.drv",
+      "derivation": "/nix/store/1vajsm0fzjhd6md0f47hqxf61vysvzyy-lldpd-1.0.20.drv",
       "description": "802.1ab implementation (LLDP) to help you locate neighbors of all your equipments",
       "install_id": "lldpd",
       "license": "ISC",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=c23193b943c6c689d70ee98ce3128239ed9e32d1",
-      "name": "lldpd-1.0.19",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=b3d51a0365f6695e7dd5cdf3e180604530ed33b4",
+      "name": "lldpd-1.0.20",
       "pname": "lldpd",
-      "rev": "c23193b943c6c689d70ee98ce3128239ed9e32d1",
-      "rev_count": 861038,
-      "rev_date": "2025-09-13T06:43:22Z",
-      "scrape_date": "2025-09-15T02:30:10.344738Z",
+      "rev": "b3d51a0365f6695e7dd5cdf3e180604530ed33b4",
+      "rev_count": 888552,
+      "rev_date": "2025-11-02T19:18:41Z",
+      "scrape_date": "2025-11-05T16:29:27.364202Z",
       "stabilities": [
         "unstable"
       ],
       "unfree": false,
-      "version": "1.0.19",
+      "version": "1.0.20",
       "outputs_to_install": [
         "man",
         "out"
       ],
       "outputs": {
-        "dev": "/nix/store/wpgsaag09hpqvzlyrhgcs1sniw0l38rn-lldpd-1.0.19-dev",
-        "doc": "/nix/store/479plj41acqgsf3q0dgvcvmw08jwd389-lldpd-1.0.19-doc",
-        "man": "/nix/store/hgcly4m1lbqafcq02f2dyzr7iy9rjczc-lldpd-1.0.19-man",
-        "out": "/nix/store/ib6jl5yhmcwxzm3zhvi8rdw9x7kb2xjn-lldpd-1.0.19"
+        "dev": "/nix/store/r02kpr05916rr6habkivyayvczisf0vq-lldpd-1.0.20-dev",
+        "doc": "/nix/store/7lffrq4w0qwkbcxk6sm3mz0850lg6p65-lldpd-1.0.20-doc",
+        "man": "/nix/store/rqnkzw1v9lxdkcni36dh80w812rnfv01-lldpd-1.0.20-man",
+        "out": "/nix/store/9hpfmi7k99z8wr372nn4gcfxm04bssqh-lldpd-1.0.20"
       },
       "system": "aarch64-linux",
       "group": "toplevel",
@@ -408,31 +408,31 @@
     {
       "attr_path": "lldpd",
       "broken": false,
-      "derivation": "/nix/store/igri66jfgnax7ybrhnr5p7nb9wgjs5yq-lldpd-1.0.19.drv",
+      "derivation": "/nix/store/wk0qa7z326wlvzsh9f36i12b157gpjwl-lldpd-1.0.20.drv",
       "description": "802.1ab implementation (LLDP) to help you locate neighbors of all your equipments",
       "install_id": "lldpd",
       "license": "ISC",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=c23193b943c6c689d70ee98ce3128239ed9e32d1",
-      "name": "lldpd-1.0.19",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=b3d51a0365f6695e7dd5cdf3e180604530ed33b4",
+      "name": "lldpd-1.0.20",
       "pname": "lldpd",
-      "rev": "c23193b943c6c689d70ee98ce3128239ed9e32d1",
-      "rev_count": 861038,
-      "rev_date": "2025-09-13T06:43:22Z",
-      "scrape_date": "2025-09-15T02:56:53.223795Z",
+      "rev": "b3d51a0365f6695e7dd5cdf3e180604530ed33b4",
+      "rev_count": 888552,
+      "rev_date": "2025-11-02T19:18:41Z",
+      "scrape_date": "2025-11-05T16:55:15.508081Z",
       "stabilities": [
         "unstable"
       ],
       "unfree": false,
-      "version": "1.0.19",
+      "version": "1.0.20",
       "outputs_to_install": [
         "man",
         "out"
       ],
       "outputs": {
-        "dev": "/nix/store/a8f4s3salphphbwdymmx64zkd7nwx4hl-lldpd-1.0.19-dev",
-        "doc": "/nix/store/8gyzy1xar11xm9zvis1w68233ildaz1v-lldpd-1.0.19-doc",
-        "man": "/nix/store/lfr2cd6xrmc61g36gir4yb253c5r658g-lldpd-1.0.19-man",
-        "out": "/nix/store/6qmm0jpbsknlq7sb1x56fapq6nv3dwzh-lldpd-1.0.19"
+        "dev": "/nix/store/774qjyh0pfq27idvnj8sv04zcc9wxxhc-lldpd-1.0.20-dev",
+        "doc": "/nix/store/jlp5vykd542234xld34wfnswi8hqj0q9-lldpd-1.0.20-doc",
+        "man": "/nix/store/9bcglz18sc47i99a5qvzkm3n6yashz2c-lldpd-1.0.20-man",
+        "out": "/nix/store/8yflbxwpagp0798az4iriv23agvdwihd-lldpd-1.0.20"
       },
       "system": "x86_64-darwin",
       "group": "toplevel",
@@ -441,31 +441,31 @@
     {
       "attr_path": "lldpd",
       "broken": false,
-      "derivation": "/nix/store/wdd9qlpdrjvaclb1rswmzzj9csp3pgxj-lldpd-1.0.19.drv",
+      "derivation": "/nix/store/xzl9kmc12pbsagb70n26vi1af18avrs0-lldpd-1.0.20.drv",
       "description": "802.1ab implementation (LLDP) to help you locate neighbors of all your equipments",
       "install_id": "lldpd",
       "license": "ISC",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=c23193b943c6c689d70ee98ce3128239ed9e32d1",
-      "name": "lldpd-1.0.19",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=b3d51a0365f6695e7dd5cdf3e180604530ed33b4",
+      "name": "lldpd-1.0.20",
       "pname": "lldpd",
-      "rev": "c23193b943c6c689d70ee98ce3128239ed9e32d1",
-      "rev_count": 861038,
-      "rev_date": "2025-09-13T06:43:22Z",
-      "scrape_date": "2025-09-15T03:27:28.753700Z",
+      "rev": "b3d51a0365f6695e7dd5cdf3e180604530ed33b4",
+      "rev_count": 888552,
+      "rev_date": "2025-11-02T19:18:41Z",
+      "scrape_date": "2025-11-05T17:21:19.614383Z",
       "stabilities": [
         "unstable"
       ],
       "unfree": false,
-      "version": "1.0.19",
+      "version": "1.0.20",
       "outputs_to_install": [
         "man",
         "out"
       ],
       "outputs": {
-        "dev": "/nix/store/rccbv8bybr3s6p73jcqap0z6wkxhk6zc-lldpd-1.0.19-dev",
-        "doc": "/nix/store/l6i4241sn64jq9irqhl4knvl94zi1p18-lldpd-1.0.19-doc",
-        "man": "/nix/store/pqmwlzg332vdb1xlivnq1922pdkpi846-lldpd-1.0.19-man",
-        "out": "/nix/store/q3sfxd6v7pyb6qs42igkird8f0fcksvv-lldpd-1.0.19"
+        "dev": "/nix/store/nqr1j94wfz73jgv4qdln1b0biiacxy6n-lldpd-1.0.20-dev",
+        "doc": "/nix/store/mkspzjwr0n3x83qa6c62f471c91lwfag-lldpd-1.0.20-doc",
+        "man": "/nix/store/8wrfqhzab3g6kbswvj8qaa26kq13cgjk-lldpd-1.0.20-man",
+        "out": "/nix/store/il4rk2lfxb2v2dyvjdrjg0bdqna8f9ij-lldpd-1.0.20"
       },
       "system": "x86_64-linux",
       "group": "toplevel",
@@ -474,17 +474,17 @@
     {
       "attr_path": "nix-tree",
       "broken": false,
-      "derivation": "/nix/store/pw39qdrc604xqkrjn2n7x471yiaycg00-nix-tree-0.6.3.drv",
+      "derivation": "/nix/store/yq9kackdai7by3p4nmrx01zqxqa773hl-nix-tree-0.6.3.drv",
       "description": "Interactively browse a Nix store paths dependencies",
       "install_id": "nix-tree",
       "license": "BSD-3-Clause",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=c23193b943c6c689d70ee98ce3128239ed9e32d1",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=b3d51a0365f6695e7dd5cdf3e180604530ed33b4",
       "name": "nix-tree-0.6.3",
       "pname": "nix-tree",
-      "rev": "c23193b943c6c689d70ee98ce3128239ed9e32d1",
-      "rev_count": 861038,
-      "rev_date": "2025-09-13T06:43:22Z",
-      "scrape_date": "2025-09-15T02:01:04.625613Z",
+      "rev": "b3d51a0365f6695e7dd5cdf3e180604530ed33b4",
+      "rev_count": 888552,
+      "rev_date": "2025-11-02T19:18:41Z",
+      "scrape_date": "2025-11-04T00:35:39.594338Z",
       "stabilities": [
         "unstable"
       ],
@@ -494,7 +494,7 @@
         "out"
       ],
       "outputs": {
-        "out": "/nix/store/qzzj79164gjgsw5y2pzjk5xan1ikygsk-nix-tree-0.6.3"
+        "out": "/nix/store/06g94zdlq91wgybz4g6h6b46qcii2bx5-nix-tree-0.6.3"
       },
       "system": "aarch64-darwin",
       "group": "toplevel",
@@ -503,17 +503,17 @@
     {
       "attr_path": "nix-tree",
       "broken": false,
-      "derivation": "/nix/store/zlaf61pn3gjkkzplm5j2143gsv5nvhhh-nix-tree-0.6.3.drv",
+      "derivation": "/nix/store/jq17srqxkcygjwmwrdakq73jsasjjrbx-nix-tree-0.6.3.drv",
       "description": "Interactively browse a Nix store paths dependencies",
       "install_id": "nix-tree",
       "license": "BSD-3-Clause",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=c23193b943c6c689d70ee98ce3128239ed9e32d1",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=b3d51a0365f6695e7dd5cdf3e180604530ed33b4",
       "name": "nix-tree-0.6.3",
       "pname": "nix-tree",
-      "rev": "c23193b943c6c689d70ee98ce3128239ed9e32d1",
-      "rev_count": 861038,
-      "rev_date": "2025-09-13T06:43:22Z",
-      "scrape_date": "2025-09-15T02:30:17.035018Z",
+      "rev": "b3d51a0365f6695e7dd5cdf3e180604530ed33b4",
+      "rev_count": 888552,
+      "rev_date": "2025-11-02T19:18:41Z",
+      "scrape_date": "2025-11-05T16:29:33.943897Z",
       "stabilities": [
         "unstable"
       ],
@@ -523,7 +523,7 @@
         "out"
       ],
       "outputs": {
-        "out": "/nix/store/w7abnq3bd8av0m0qxn9iq6ndsr8qb9lk-nix-tree-0.6.3"
+        "out": "/nix/store/9w91qim4l75iiipl5bv99pnav67y7qcr-nix-tree-0.6.3"
       },
       "system": "aarch64-linux",
       "group": "toplevel",
@@ -532,17 +532,17 @@
     {
       "attr_path": "nix-tree",
       "broken": false,
-      "derivation": "/nix/store/90hqhw3f9ml6prnfk7mdayk0c27l24ij-nix-tree-0.6.3.drv",
+      "derivation": "/nix/store/88bd31v71rnwapw6i62d1fsbgaaxl4ci-nix-tree-0.6.3.drv",
       "description": "Interactively browse a Nix store paths dependencies",
       "install_id": "nix-tree",
       "license": "BSD-3-Clause",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=c23193b943c6c689d70ee98ce3128239ed9e32d1",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=b3d51a0365f6695e7dd5cdf3e180604530ed33b4",
       "name": "nix-tree-0.6.3",
       "pname": "nix-tree",
-      "rev": "c23193b943c6c689d70ee98ce3128239ed9e32d1",
-      "rev_count": 861038,
-      "rev_date": "2025-09-13T06:43:22Z",
-      "scrape_date": "2025-09-15T02:56:57.198843Z",
+      "rev": "b3d51a0365f6695e7dd5cdf3e180604530ed33b4",
+      "rev_count": 888552,
+      "rev_date": "2025-11-02T19:18:41Z",
+      "scrape_date": "2025-11-05T16:55:19.312790Z",
       "stabilities": [
         "unstable"
       ],
@@ -552,7 +552,7 @@
         "out"
       ],
       "outputs": {
-        "out": "/nix/store/2axklp3skrs94xqsmmvaskcyyrhp4nv2-nix-tree-0.6.3"
+        "out": "/nix/store/w8l801wgscq7s92nhbv8lw1lh6a7f91v-nix-tree-0.6.3"
       },
       "system": "x86_64-darwin",
       "group": "toplevel",
@@ -561,17 +561,17 @@
     {
       "attr_path": "nix-tree",
       "broken": false,
-      "derivation": "/nix/store/h5bvan7sm7xnm8gkj712if3qvpfnhi2b-nix-tree-0.6.3.drv",
+      "derivation": "/nix/store/sg3c9cqdpzr49dvv20xb5zhcdii0ycpx-nix-tree-0.6.3.drv",
       "description": "Interactively browse a Nix store paths dependencies",
       "install_id": "nix-tree",
       "license": "BSD-3-Clause",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=c23193b943c6c689d70ee98ce3128239ed9e32d1",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=b3d51a0365f6695e7dd5cdf3e180604530ed33b4",
       "name": "nix-tree-0.6.3",
       "pname": "nix-tree",
-      "rev": "c23193b943c6c689d70ee98ce3128239ed9e32d1",
-      "rev_count": 861038,
-      "rev_date": "2025-09-13T06:43:22Z",
-      "scrape_date": "2025-09-15T03:27:35.730328Z",
+      "rev": "b3d51a0365f6695e7dd5cdf3e180604530ed33b4",
+      "rev_count": 888552,
+      "rev_date": "2025-11-02T19:18:41Z",
+      "scrape_date": "2025-11-05T17:21:26.732086Z",
       "stabilities": [
         "unstable"
       ],
@@ -581,7 +581,7 @@
         "out"
       ],
       "outputs": {
-        "out": "/nix/store/q40k8mmh2lkcxsmxzx1nd3dnfzcdy23s-nix-tree-0.6.3"
+        "out": "/nix/store/h87q3jlvhj5rflrilj71h8jy96kcms6k-nix-tree-0.6.3"
       },
       "system": "x86_64-linux",
       "group": "toplevel",
@@ -590,27 +590,27 @@
     {
       "attr_path": "nixd",
       "broken": false,
-      "derivation": "/nix/store/04xc1imlf6mlyhvg104zigq2h4zxhz13-nixd-2.6.4.drv",
+      "derivation": "/nix/store/i1zbg7s04zryjwdbwsml1v6nqc2y3wil-nixd-2.7.0.drv",
       "description": "Feature-rich Nix language server interoperating with C++ nix",
       "install_id": "nixd",
       "license": "LGPL-3.0-or-later",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=c23193b943c6c689d70ee98ce3128239ed9e32d1",
-      "name": "nixd-2.6.4",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=b3d51a0365f6695e7dd5cdf3e180604530ed33b4",
+      "name": "nixd-2.7.0",
       "pname": "nixd",
-      "rev": "c23193b943c6c689d70ee98ce3128239ed9e32d1",
-      "rev_count": 861038,
-      "rev_date": "2025-09-13T06:43:22Z",
-      "scrape_date": "2025-09-15T02:01:04.655386Z",
+      "rev": "b3d51a0365f6695e7dd5cdf3e180604530ed33b4",
+      "rev_count": 888552,
+      "rev_date": "2025-11-02T19:18:41Z",
+      "scrape_date": "2025-11-04T00:35:39.622745Z",
       "stabilities": [
         "unstable"
       ],
       "unfree": false,
-      "version": "2.6.4",
+      "version": "2.7.0",
       "outputs_to_install": [
         "out"
       ],
       "outputs": {
-        "out": "/nix/store/ijm5y7hzllv3slln13rw10dcsslgvvbb-nixd-2.6.4"
+        "out": "/nix/store/5k4lsvypc8ym9gryq877bryjp4hs3smf-nixd-2.7.0"
       },
       "system": "aarch64-darwin",
       "group": "toplevel",
@@ -619,27 +619,27 @@
     {
       "attr_path": "nixd",
       "broken": false,
-      "derivation": "/nix/store/9a3v4q19z5vj9lp5gbrxn9kdakip92ix-nixd-2.6.4.drv",
+      "derivation": "/nix/store/np190dncsqdi16v2n4y2nw3687pj5rhm-nixd-2.7.0.drv",
       "description": "Feature-rich Nix language server interoperating with C++ nix",
       "install_id": "nixd",
       "license": "LGPL-3.0-or-later",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=c23193b943c6c689d70ee98ce3128239ed9e32d1",
-      "name": "nixd-2.6.4",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=b3d51a0365f6695e7dd5cdf3e180604530ed33b4",
+      "name": "nixd-2.7.0",
       "pname": "nixd",
-      "rev": "c23193b943c6c689d70ee98ce3128239ed9e32d1",
-      "rev_count": 861038,
-      "rev_date": "2025-09-13T06:43:22Z",
-      "scrape_date": "2025-09-15T02:30:17.074729Z",
+      "rev": "b3d51a0365f6695e7dd5cdf3e180604530ed33b4",
+      "rev_count": 888552,
+      "rev_date": "2025-11-02T19:18:41Z",
+      "scrape_date": "2025-11-05T16:29:33.994771Z",
       "stabilities": [
         "unstable"
       ],
       "unfree": false,
-      "version": "2.6.4",
+      "version": "2.7.0",
       "outputs_to_install": [
         "out"
       ],
       "outputs": {
-        "out": "/nix/store/d7pc1i5hl380s0vbnv90qhx0dmhqan46-nixd-2.6.4"
+        "out": "/nix/store/rygcz7ha1cz0cjq8zvyjahi2dm75cd6h-nixd-2.7.0"
       },
       "system": "aarch64-linux",
       "group": "toplevel",
@@ -648,27 +648,27 @@
     {
       "attr_path": "nixd",
       "broken": false,
-      "derivation": "/nix/store/rv94fkfqf6jlp0yq0sk9rzjqgfpicjr2-nixd-2.6.4.drv",
+      "derivation": "/nix/store/6pqdm4nc3d5sm94y5zm9nz4qf17acmdf-nixd-2.7.0.drv",
       "description": "Feature-rich Nix language server interoperating with C++ nix",
       "install_id": "nixd",
       "license": "LGPL-3.0-or-later",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=c23193b943c6c689d70ee98ce3128239ed9e32d1",
-      "name": "nixd-2.6.4",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=b3d51a0365f6695e7dd5cdf3e180604530ed33b4",
+      "name": "nixd-2.7.0",
       "pname": "nixd",
-      "rev": "c23193b943c6c689d70ee98ce3128239ed9e32d1",
-      "rev_count": 861038,
-      "rev_date": "2025-09-13T06:43:22Z",
-      "scrape_date": "2025-09-15T02:56:57.229675Z",
+      "rev": "b3d51a0365f6695e7dd5cdf3e180604530ed33b4",
+      "rev_count": 888552,
+      "rev_date": "2025-11-02T19:18:41Z",
+      "scrape_date": "2025-11-05T16:55:19.341302Z",
       "stabilities": [
         "unstable"
       ],
       "unfree": false,
-      "version": "2.6.4",
+      "version": "2.7.0",
       "outputs_to_install": [
         "out"
       ],
       "outputs": {
-        "out": "/nix/store/k1s1881yal86p6gfwq9h8fc68z6b7wb1-nixd-2.6.4"
+        "out": "/nix/store/mq2pz0sl6rsrjfs4xwqikdcslyz8ajk4-nixd-2.7.0"
       },
       "system": "x86_64-darwin",
       "group": "toplevel",
@@ -677,27 +677,27 @@
     {
       "attr_path": "nixd",
       "broken": false,
-      "derivation": "/nix/store/pk5s4bqr46d0209qpzqx1wpyb10l23m2-nixd-2.6.4.drv",
+      "derivation": "/nix/store/as31z9f5x20fq5fpknw1ng0127r4ws37-nixd-2.7.0.drv",
       "description": "Feature-rich Nix language server interoperating with C++ nix",
       "install_id": "nixd",
       "license": "LGPL-3.0-or-later",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=c23193b943c6c689d70ee98ce3128239ed9e32d1",
-      "name": "nixd-2.6.4",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=b3d51a0365f6695e7dd5cdf3e180604530ed33b4",
+      "name": "nixd-2.7.0",
       "pname": "nixd",
-      "rev": "c23193b943c6c689d70ee98ce3128239ed9e32d1",
-      "rev_count": 861038,
-      "rev_date": "2025-09-13T06:43:22Z",
-      "scrape_date": "2025-09-15T03:27:35.769388Z",
+      "rev": "b3d51a0365f6695e7dd5cdf3e180604530ed33b4",
+      "rev_count": 888552,
+      "rev_date": "2025-11-02T19:18:41Z",
+      "scrape_date": "2025-11-05T17:21:26.775696Z",
       "stabilities": [
         "unstable"
       ],
       "unfree": false,
-      "version": "2.6.4",
+      "version": "2.7.0",
       "outputs_to_install": [
         "out"
       ],
       "outputs": {
-        "out": "/nix/store/g1xlgk2w7827n00agikwv57448m7aa6j-nixd-2.6.4"
+        "out": "/nix/store/2r9bwbpg29zgvp95y3c22nzjy58wmxhr-nixd-2.7.0"
       },
       "system": "x86_64-linux",
       "group": "toplevel",
@@ -706,17 +706,17 @@
     {
       "attr_path": "nixtract",
       "broken": false,
-      "derivation": "/nix/store/kvwyb3almrfy57rx7fxrv9a80ankwgmx-nixtract-0.3.0.drv",
+      "derivation": "/nix/store/nhlm008sqxgrf7w8hrr1hczf54ga9a8b-nixtract-0.3.0.drv",
       "description": "CLI tool to extract the graph of derivations from a Nix flake",
       "install_id": "nixtract",
       "license": "[ MIT, Apache-2.0 ]",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=c23193b943c6c689d70ee98ce3128239ed9e32d1",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=b3d51a0365f6695e7dd5cdf3e180604530ed33b4",
       "name": "nixtract-0.3.0",
       "pname": "nixtract",
-      "rev": "c23193b943c6c689d70ee98ce3128239ed9e32d1",
-      "rev_count": 861038,
-      "rev_date": "2025-09-13T06:43:22Z",
-      "scrape_date": "2025-09-15T02:01:04.714350Z",
+      "rev": "b3d51a0365f6695e7dd5cdf3e180604530ed33b4",
+      "rev_count": 888552,
+      "rev_date": "2025-11-02T19:18:41Z",
+      "scrape_date": "2025-11-04T00:35:39.728742Z",
       "stabilities": [
         "unstable"
       ],
@@ -726,7 +726,7 @@
         "out"
       ],
       "outputs": {
-        "out": "/nix/store/bg9ly64j2a26vrxq3fc542vs2p9r740i-nixtract-0.3.0"
+        "out": "/nix/store/4jlx7l1a1qr3knbwdjk88xh9x3804fm4-nixtract-0.3.0"
       },
       "system": "aarch64-darwin",
       "group": "toplevel",
@@ -735,17 +735,17 @@
     {
       "attr_path": "nixtract",
       "broken": false,
-      "derivation": "/nix/store/cd5m11fgx8iqq58g2cfvi7879yhknlyw-nixtract-0.3.0.drv",
+      "derivation": "/nix/store/7yzcqg4iqnagzmcamvk1c2v4cpx6372m-nixtract-0.3.0.drv",
       "description": "CLI tool to extract the graph of derivations from a Nix flake",
       "install_id": "nixtract",
       "license": "[ MIT, Apache-2.0 ]",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=c23193b943c6c689d70ee98ce3128239ed9e32d1",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=b3d51a0365f6695e7dd5cdf3e180604530ed33b4",
       "name": "nixtract-0.3.0",
       "pname": "nixtract",
-      "rev": "c23193b943c6c689d70ee98ce3128239ed9e32d1",
-      "rev_count": 861038,
-      "rev_date": "2025-09-13T06:43:22Z",
-      "scrape_date": "2025-09-15T02:30:17.164370Z",
+      "rev": "b3d51a0365f6695e7dd5cdf3e180604530ed33b4",
+      "rev_count": 888552,
+      "rev_date": "2025-11-02T19:18:41Z",
+      "scrape_date": "2025-11-05T16:29:34.168455Z",
       "stabilities": [
         "unstable"
       ],
@@ -755,7 +755,7 @@
         "out"
       ],
       "outputs": {
-        "out": "/nix/store/4xjrij7g4m81gsi804xvwcbjv8gpk56a-nixtract-0.3.0"
+        "out": "/nix/store/kwrivzhycw6sqf603b3jbfcxxzcrq8p9-nixtract-0.3.0"
       },
       "system": "aarch64-linux",
       "group": "toplevel",
@@ -764,17 +764,17 @@
     {
       "attr_path": "nixtract",
       "broken": false,
-      "derivation": "/nix/store/y7hjp918x53jrar8zcf42ckn58bjpqmq-nixtract-0.3.0.drv",
+      "derivation": "/nix/store/s2jz8cwlnbn0k1qi66z9c1c2racfgji3-nixtract-0.3.0.drv",
       "description": "CLI tool to extract the graph of derivations from a Nix flake",
       "install_id": "nixtract",
       "license": "[ MIT, Apache-2.0 ]",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=c23193b943c6c689d70ee98ce3128239ed9e32d1",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=b3d51a0365f6695e7dd5cdf3e180604530ed33b4",
       "name": "nixtract-0.3.0",
       "pname": "nixtract",
-      "rev": "c23193b943c6c689d70ee98ce3128239ed9e32d1",
-      "rev_count": 861038,
-      "rev_date": "2025-09-13T06:43:22Z",
-      "scrape_date": "2025-09-15T02:56:57.289477Z",
+      "rev": "b3d51a0365f6695e7dd5cdf3e180604530ed33b4",
+      "rev_count": 888552,
+      "rev_date": "2025-11-02T19:18:41Z",
+      "scrape_date": "2025-11-05T16:55:19.445778Z",
       "stabilities": [
         "unstable"
       ],
@@ -784,7 +784,7 @@
         "out"
       ],
       "outputs": {
-        "out": "/nix/store/4smii5gg5vlnlr6gsdk90ngpynwwqyvg-nixtract-0.3.0"
+        "out": "/nix/store/q06g5gi6m1bh586n7j5s1bbzwrfynlps-nixtract-0.3.0"
       },
       "system": "x86_64-darwin",
       "group": "toplevel",
@@ -793,17 +793,17 @@
     {
       "attr_path": "nixtract",
       "broken": false,
-      "derivation": "/nix/store/8x46di9n1mxvk55xng2ai8mf4xjb56w8-nixtract-0.3.0.drv",
+      "derivation": "/nix/store/r8fz38qb5sjnchkflgnq3ksq7bq23zvb-nixtract-0.3.0.drv",
       "description": "CLI tool to extract the graph of derivations from a Nix flake",
       "install_id": "nixtract",
       "license": "[ MIT, Apache-2.0 ]",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=c23193b943c6c689d70ee98ce3128239ed9e32d1",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=b3d51a0365f6695e7dd5cdf3e180604530ed33b4",
       "name": "nixtract-0.3.0",
       "pname": "nixtract",
-      "rev": "c23193b943c6c689d70ee98ce3128239ed9e32d1",
-      "rev_count": 861038,
-      "rev_date": "2025-09-13T06:43:22Z",
-      "scrape_date": "2025-09-15T03:27:35.861882Z",
+      "rev": "b3d51a0365f6695e7dd5cdf3e180604530ed33b4",
+      "rev_count": 888552,
+      "rev_date": "2025-11-02T19:18:41Z",
+      "scrape_date": "2025-11-05T17:21:26.944542Z",
       "stabilities": [
         "unstable"
       ],
@@ -813,7 +813,7 @@
         "out"
       ],
       "outputs": {
-        "out": "/nix/store/7hjxbrv8g91mk168wx61h4i4qbq71zms-nixtract-0.3.0"
+        "out": "/nix/store/kq86yjzv3x5gcrwzwgngkq1wbf8mdndr-nixtract-0.3.0"
       },
       "system": "x86_64-linux",
       "group": "toplevel",
@@ -822,17 +822,17 @@
     {
       "attr_path": "nvfetcher",
       "broken": false,
-      "derivation": "/nix/store/9yz6zilws7qf08mqh2z2xx775i9znvf4-nvfetcher-0.7.0.0.drv",
+      "derivation": "/nix/store/z3z2j5kgrmqhj8vyp962pwm9a2qdrpbf-nvfetcher-0.7.0.0.drv",
       "description": "Generate nix sources expr for the latest version of packages",
       "install_id": "nvfetcher",
       "license": "MIT",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=c23193b943c6c689d70ee98ce3128239ed9e32d1",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=b3d51a0365f6695e7dd5cdf3e180604530ed33b4",
       "name": "nvfetcher-0.7.0.0",
       "pname": "nvfetcher",
-      "rev": "c23193b943c6c689d70ee98ce3128239ed9e32d1",
-      "rev_count": 861038,
-      "rev_date": "2025-09-13T06:43:22Z",
-      "scrape_date": "2025-09-15T02:01:06.080827Z",
+      "rev": "b3d51a0365f6695e7dd5cdf3e180604530ed33b4",
+      "rev_count": 888552,
+      "rev_date": "2025-11-02T19:18:41Z",
+      "scrape_date": "2025-11-04T00:35:41.022101Z",
       "stabilities": [
         "unstable"
       ],
@@ -842,7 +842,7 @@
         "out"
       ],
       "outputs": {
-        "out": "/nix/store/pmnkclxp5wgqnhz5ilm7bac6z1c68wn8-nvfetcher-0.7.0.0"
+        "out": "/nix/store/02fw17iimiy2r0hk3vq984l1srfflx15-nvfetcher-0.7.0.0"
       },
       "system": "aarch64-darwin",
       "group": "toplevel",
@@ -851,17 +851,17 @@
     {
       "attr_path": "nvfetcher",
       "broken": false,
-      "derivation": "/nix/store/9fanrfp543b6s3ykym70sdbs5x542lhv-nvfetcher-0.7.0.0.drv",
+      "derivation": "/nix/store/fg2pjmg7nss3ra3dm2c1xrjx5czwdplr-nvfetcher-0.7.0.0.drv",
       "description": "Generate nix sources expr for the latest version of packages",
       "install_id": "nvfetcher",
       "license": "MIT",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=c23193b943c6c689d70ee98ce3128239ed9e32d1",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=b3d51a0365f6695e7dd5cdf3e180604530ed33b4",
       "name": "nvfetcher-0.7.0.0",
       "pname": "nvfetcher",
-      "rev": "c23193b943c6c689d70ee98ce3128239ed9e32d1",
-      "rev_count": 861038,
-      "rev_date": "2025-09-13T06:43:22Z",
-      "scrape_date": "2025-09-15T02:30:19.013673Z",
+      "rev": "b3d51a0365f6695e7dd5cdf3e180604530ed33b4",
+      "rev_count": 888552,
+      "rev_date": "2025-11-02T19:18:41Z",
+      "scrape_date": "2025-11-05T16:29:36.141061Z",
       "stabilities": [
         "unstable"
       ],
@@ -871,7 +871,7 @@
         "out"
       ],
       "outputs": {
-        "out": "/nix/store/3c9fb241ygli7qv1s774wjc3q32srhyj-nvfetcher-0.7.0.0"
+        "out": "/nix/store/9wwfgjwp3rflkfqd33h1zhbig989rfb4-nvfetcher-0.7.0.0"
       },
       "system": "aarch64-linux",
       "group": "toplevel",
@@ -880,17 +880,17 @@
     {
       "attr_path": "nvfetcher",
       "broken": false,
-      "derivation": "/nix/store/h4b4m8q4szpcw74wgspbli72q5v3adnk-nvfetcher-0.7.0.0.drv",
+      "derivation": "/nix/store/ksygdmbbgl78g36izw16rsgkwrzpynq1-nvfetcher-0.7.0.0.drv",
       "description": "Generate nix sources expr for the latest version of packages",
       "install_id": "nvfetcher",
       "license": "MIT",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=c23193b943c6c689d70ee98ce3128239ed9e32d1",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=b3d51a0365f6695e7dd5cdf3e180604530ed33b4",
       "name": "nvfetcher-0.7.0.0",
       "pname": "nvfetcher",
-      "rev": "c23193b943c6c689d70ee98ce3128239ed9e32d1",
-      "rev_count": 861038,
-      "rev_date": "2025-09-13T06:43:22Z",
-      "scrape_date": "2025-09-15T02:56:58.615748Z",
+      "rev": "b3d51a0365f6695e7dd5cdf3e180604530ed33b4",
+      "rev_count": 888552,
+      "rev_date": "2025-11-02T19:18:41Z",
+      "scrape_date": "2025-11-05T16:55:20.709425Z",
       "stabilities": [
         "unstable"
       ],
@@ -900,7 +900,7 @@
         "out"
       ],
       "outputs": {
-        "out": "/nix/store/k678lf0932xl5i6svq65fcb2kxx1xizz-nvfetcher-0.7.0.0"
+        "out": "/nix/store/y8nwrd1abhadcpmfnwz587dwr18h26bs-nvfetcher-0.7.0.0"
       },
       "system": "x86_64-darwin",
       "group": "toplevel",
@@ -909,17 +909,17 @@
     {
       "attr_path": "nvfetcher",
       "broken": false,
-      "derivation": "/nix/store/rg452j72hj4ygjz1gi74yxlpy935mwwl-nvfetcher-0.7.0.0.drv",
+      "derivation": "/nix/store/v5c2yd5lg3ia45sn2rc6xjsvdiszs9my-nvfetcher-0.7.0.0.drv",
       "description": "Generate nix sources expr for the latest version of packages",
       "install_id": "nvfetcher",
       "license": "MIT",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=c23193b943c6c689d70ee98ce3128239ed9e32d1",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=b3d51a0365f6695e7dd5cdf3e180604530ed33b4",
       "name": "nvfetcher-0.7.0.0",
       "pname": "nvfetcher",
-      "rev": "c23193b943c6c689d70ee98ce3128239ed9e32d1",
-      "rev_count": 861038,
-      "rev_date": "2025-09-13T06:43:22Z",
-      "scrape_date": "2025-09-15T03:27:37.705325Z",
+      "rev": "b3d51a0365f6695e7dd5cdf3e180604530ed33b4",
+      "rev_count": 888552,
+      "rev_date": "2025-11-02T19:18:41Z",
+      "scrape_date": "2025-11-05T17:21:28.983613Z",
       "stabilities": [
         "unstable"
       ],
@@ -929,7 +929,7 @@
         "out"
       ],
       "outputs": {
-        "out": "/nix/store/l565n17ncrwgs7nlh2j344h3743wfv6g-nvfetcher-0.7.0.0"
+        "out": "/nix/store/fxd0cm55jwjv5s84kq1dzmragdf11zds-nvfetcher-0.7.0.0"
       },
       "system": "x86_64-linux",
       "group": "toplevel",
@@ -938,17 +938,17 @@
     {
       "attr_path": "ookla-speedtest",
       "broken": false,
-      "derivation": "/nix/store/y6jd4z6z0gy3mxva94b51xmzval9pz0i-ookla-speedtest-1.2.0.drv",
+      "derivation": "/nix/store/1sijh4agmrwiav7n3nglk1dl0dppxvvz-ookla-speedtest-1.2.0.drv",
       "description": "Command line internet speedtest tool by Ookla",
       "install_id": "ookla-speedtest",
       "license": "Unfree",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=c23193b943c6c689d70ee98ce3128239ed9e32d1",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=b3d51a0365f6695e7dd5cdf3e180604530ed33b4",
       "name": "ookla-speedtest-1.2.0",
       "pname": "ookla-speedtest",
-      "rev": "c23193b943c6c689d70ee98ce3128239ed9e32d1",
-      "rev_count": 861038,
-      "rev_date": "2025-09-13T06:43:22Z",
-      "scrape_date": "2025-09-15T02:01:08.247116Z",
+      "rev": "b3d51a0365f6695e7dd5cdf3e180604530ed33b4",
+      "rev_count": 888552,
+      "rev_date": "2025-11-02T19:18:41Z",
+      "scrape_date": "2025-11-04T00:35:43.151098Z",
       "stabilities": [
         "unstable"
       ],
@@ -958,7 +958,7 @@
         "out"
       ],
       "outputs": {
-        "out": "/nix/store/h2i8bxb2bpxisfsqq9bgwvbgx1xwxxr1-ookla-speedtest-1.2.0"
+        "out": "/nix/store/nikmj8vrkm7bl6wdylcdv5n9ambjjblv-ookla-speedtest-1.2.0"
       },
       "system": "aarch64-darwin",
       "group": "toplevel",
@@ -967,17 +967,17 @@
     {
       "attr_path": "ookla-speedtest",
       "broken": false,
-      "derivation": "/nix/store/ws1jiv6ygbbkrwyf50hb85wjzl7jxh3q-ookla-speedtest-1.2.0.drv",
+      "derivation": "/nix/store/y8sjhjywlk204l0mvmb2avs2n6va87lm-ookla-speedtest-1.2.0.drv",
       "description": "Command line internet speedtest tool by Ookla",
       "install_id": "ookla-speedtest",
       "license": "Unfree",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=c23193b943c6c689d70ee98ce3128239ed9e32d1",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=b3d51a0365f6695e7dd5cdf3e180604530ed33b4",
       "name": "ookla-speedtest-1.2.0",
       "pname": "ookla-speedtest",
-      "rev": "c23193b943c6c689d70ee98ce3128239ed9e32d1",
-      "rev_count": 861038,
-      "rev_date": "2025-09-13T06:43:22Z",
-      "scrape_date": "2025-09-15T02:30:21.920851Z",
+      "rev": "b3d51a0365f6695e7dd5cdf3e180604530ed33b4",
+      "rev_count": 888552,
+      "rev_date": "2025-11-02T19:18:41Z",
+      "scrape_date": "2025-11-05T16:29:39.427889Z",
       "stabilities": [
         "unstable"
       ],
@@ -987,7 +987,7 @@
         "out"
       ],
       "outputs": {
-        "out": "/nix/store/00qrl4vbnjqvn5pwrhymwa7p6qxql7v6-ookla-speedtest-1.2.0"
+        "out": "/nix/store/lpqks8gb78d7j8msi9ybf6p1pfbfz895-ookla-speedtest-1.2.0"
       },
       "system": "aarch64-linux",
       "group": "toplevel",
@@ -996,17 +996,17 @@
     {
       "attr_path": "ookla-speedtest",
       "broken": false,
-      "derivation": "/nix/store/yimajam12kmys37x01yb2jzam5jk0408-ookla-speedtest-1.2.0.drv",
+      "derivation": "/nix/store/z86l0iid14ajsw2nrfaqsir9q7a69bd9-ookla-speedtest-1.2.0.drv",
       "description": "Command line internet speedtest tool by Ookla",
       "install_id": "ookla-speedtest",
       "license": "Unfree",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=c23193b943c6c689d70ee98ce3128239ed9e32d1",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=b3d51a0365f6695e7dd5cdf3e180604530ed33b4",
       "name": "ookla-speedtest-1.2.0",
       "pname": "ookla-speedtest",
-      "rev": "c23193b943c6c689d70ee98ce3128239ed9e32d1",
-      "rev_count": 861038,
-      "rev_date": "2025-09-13T06:43:22Z",
-      "scrape_date": "2025-09-15T02:57:00.726969Z",
+      "rev": "b3d51a0365f6695e7dd5cdf3e180604530ed33b4",
+      "rev_count": 888552,
+      "rev_date": "2025-11-02T19:18:41Z",
+      "scrape_date": "2025-11-05T16:55:22.839690Z",
       "stabilities": [
         "unstable"
       ],
@@ -1016,7 +1016,7 @@
         "out"
       ],
       "outputs": {
-        "out": "/nix/store/m2ns40wbmkbia38gp5ibgva3pbb1jr1z-ookla-speedtest-1.2.0"
+        "out": "/nix/store/8plmfg0rag4avgzm777nnijmfiw0hswr-ookla-speedtest-1.2.0"
       },
       "system": "x86_64-darwin",
       "group": "toplevel",
@@ -1025,17 +1025,17 @@
     {
       "attr_path": "ookla-speedtest",
       "broken": false,
-      "derivation": "/nix/store/yg22qa0ymmkc9mdz9kkcs4gc78icl3a1-ookla-speedtest-1.2.0.drv",
+      "derivation": "/nix/store/2vgphn0gk1l6fdc98xhhmzp0ibfbq9zx-ookla-speedtest-1.2.0.drv",
       "description": "Command line internet speedtest tool by Ookla",
       "install_id": "ookla-speedtest",
       "license": "Unfree",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=c23193b943c6c689d70ee98ce3128239ed9e32d1",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=b3d51a0365f6695e7dd5cdf3e180604530ed33b4",
       "name": "ookla-speedtest-1.2.0",
       "pname": "ookla-speedtest",
-      "rev": "c23193b943c6c689d70ee98ce3128239ed9e32d1",
-      "rev_count": 861038,
-      "rev_date": "2025-09-13T06:43:22Z",
-      "scrape_date": "2025-09-15T03:27:40.790371Z",
+      "rev": "b3d51a0365f6695e7dd5cdf3e180604530ed33b4",
+      "rev_count": 888552,
+      "rev_date": "2025-11-02T19:18:41Z",
+      "scrape_date": "2025-11-05T17:21:32.718497Z",
       "stabilities": [
         "unstable"
       ],
@@ -1045,7 +1045,7 @@
         "out"
       ],
       "outputs": {
-        "out": "/nix/store/56war95j2k02mhcgmvqdm0q73qrzv6nv-ookla-speedtest-1.2.0"
+        "out": "/nix/store/j3lih43gad3lfmzjrrg65824ayv1zrgi-ookla-speedtest-1.2.0"
       },
       "system": "x86_64-linux",
       "group": "toplevel",
@@ -1054,17 +1054,17 @@
     {
       "attr_path": "pass",
       "broken": false,
-      "derivation": "/nix/store/sknd0xarzni3k0wa3jxin3jxw9cylk3p-password-store-1.7.4.drv",
+      "derivation": "/nix/store/57pl2wv9wz19zak8qlmndm957595kblv-password-store-1.7.4.drv",
       "description": "Stores, retrieves, generates, and synchronizes passwords securely",
       "install_id": "pass",
       "license": "GPL-2.0-or-later",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=c23193b943c6c689d70ee98ce3128239ed9e32d1",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=b3d51a0365f6695e7dd5cdf3e180604530ed33b4",
       "name": "password-store-1.7.4",
       "pname": "pass",
-      "rev": "c23193b943c6c689d70ee98ce3128239ed9e32d1",
-      "rev_count": 861038,
-      "rev_date": "2025-09-13T06:43:22Z",
-      "scrape_date": "2025-09-15T02:01:09.020835Z",
+      "rev": "b3d51a0365f6695e7dd5cdf3e180604530ed33b4",
+      "rev_count": 888552,
+      "rev_date": "2025-11-02T19:18:41Z",
+      "scrape_date": "2025-11-04T00:35:43.935694Z",
       "stabilities": [
         "unstable"
       ],
@@ -1074,7 +1074,7 @@
         "out"
       ],
       "outputs": {
-        "out": "/nix/store/2zyrnmyaami1x717p1afd0rxhnm27irj-password-store-1.7.4"
+        "out": "/nix/store/gkgwbv775c4zzn47hvbndbmzp0q85m5p-password-store-1.7.4"
       },
       "system": "aarch64-darwin",
       "group": "toplevel",
@@ -1083,17 +1083,17 @@
     {
       "attr_path": "pass",
       "broken": false,
-      "derivation": "/nix/store/3237d6dsym1gjc0bpg9aprzagwqilwzn-password-store-1.7.4.drv",
+      "derivation": "/nix/store/17zcg2z3i23alcb0hx135s0m67iik6g0-password-store-1.7.4.drv",
       "description": "Stores, retrieves, generates, and synchronizes passwords securely",
       "install_id": "pass",
       "license": "GPL-2.0-or-later",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=c23193b943c6c689d70ee98ce3128239ed9e32d1",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=b3d51a0365f6695e7dd5cdf3e180604530ed33b4",
       "name": "password-store-1.7.4",
       "pname": "pass",
-      "rev": "c23193b943c6c689d70ee98ce3128239ed9e32d1",
-      "rev_count": 861038,
-      "rev_date": "2025-09-13T06:43:22Z",
-      "scrape_date": "2025-09-15T02:30:23.499806Z",
+      "rev": "b3d51a0365f6695e7dd5cdf3e180604530ed33b4",
+      "rev_count": 888552,
+      "rev_date": "2025-11-02T19:18:41Z",
+      "scrape_date": "2025-11-05T16:29:41.159461Z",
       "stabilities": [
         "unstable"
       ],
@@ -1103,7 +1103,7 @@
         "out"
       ],
       "outputs": {
-        "out": "/nix/store/lgbja57wrvvrmirbylz8s4xlwgn07cvd-password-store-1.7.4"
+        "out": "/nix/store/6grbrgylxl4ik0hab8rhd5gc500w4g8x-password-store-1.7.4"
       },
       "system": "aarch64-linux",
       "group": "toplevel",
@@ -1112,17 +1112,17 @@
     {
       "attr_path": "pass",
       "broken": false,
-      "derivation": "/nix/store/g5srirn4386bana9kw6n171g882h1ia9-password-store-1.7.4.drv",
+      "derivation": "/nix/store/7l44lpprr55k24hm5jg4zh43bp1fy11c-password-store-1.7.4.drv",
       "description": "Stores, retrieves, generates, and synchronizes passwords securely",
       "install_id": "pass",
       "license": "GPL-2.0-or-later",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=c23193b943c6c689d70ee98ce3128239ed9e32d1",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=b3d51a0365f6695e7dd5cdf3e180604530ed33b4",
       "name": "password-store-1.7.4",
       "pname": "pass",
-      "rev": "c23193b943c6c689d70ee98ce3128239ed9e32d1",
-      "rev_count": 861038,
-      "rev_date": "2025-09-13T06:43:22Z",
-      "scrape_date": "2025-09-15T02:57:01.542775Z",
+      "rev": "b3d51a0365f6695e7dd5cdf3e180604530ed33b4",
+      "rev_count": 888552,
+      "rev_date": "2025-11-02T19:18:41Z",
+      "scrape_date": "2025-11-05T16:55:23.621980Z",
       "stabilities": [
         "unstable"
       ],
@@ -1132,7 +1132,7 @@
         "out"
       ],
       "outputs": {
-        "out": "/nix/store/0rx7fl3f1fqp6m7p7c7cxysvhsmz8wbn-password-store-1.7.4"
+        "out": "/nix/store/0l67fb0awp5nm5136jxvgnj8h2685kcx-password-store-1.7.4"
       },
       "system": "x86_64-darwin",
       "group": "toplevel",
@@ -1141,17 +1141,17 @@
     {
       "attr_path": "pass",
       "broken": false,
-      "derivation": "/nix/store/2cmq73q4ilk32hribz8c0mg9g6xkap6m-password-store-1.7.4.drv",
+      "derivation": "/nix/store/6g2amc368d25x7i6v6p2779i1q8vpcyz-password-store-1.7.4.drv",
       "description": "Stores, retrieves, generates, and synchronizes passwords securely",
       "install_id": "pass",
       "license": "GPL-2.0-or-later",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=c23193b943c6c689d70ee98ce3128239ed9e32d1",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=b3d51a0365f6695e7dd5cdf3e180604530ed33b4",
       "name": "password-store-1.7.4",
       "pname": "pass",
-      "rev": "c23193b943c6c689d70ee98ce3128239ed9e32d1",
-      "rev_count": 861038,
-      "rev_date": "2025-09-13T06:43:22Z",
-      "scrape_date": "2025-09-15T03:27:42.512180Z",
+      "rev": "b3d51a0365f6695e7dd5cdf3e180604530ed33b4",
+      "rev_count": 888552,
+      "rev_date": "2025-11-02T19:18:41Z",
+      "scrape_date": "2025-11-05T17:21:34.614049Z",
       "stabilities": [
         "unstable"
       ],
@@ -1161,7 +1161,7 @@
         "out"
       ],
       "outputs": {
-        "out": "/nix/store/5bi2bnfn7wnjd3hwf1vgam936xs29sha-password-store-1.7.4"
+        "out": "/nix/store/x7sfgvr3v638d9rmv8nd4lqpnf747y4j-password-store-1.7.4"
       },
       "system": "x86_64-linux",
       "group": "toplevel",
@@ -1170,17 +1170,17 @@
     {
       "attr_path": "pstree",
       "broken": false,
-      "derivation": "/nix/store/a1j0v30y5mhfz8ii188ilp5wfyapqnbi-pstree-2.39.drv",
+      "derivation": "/nix/store/ix12vx4n9zy8h3nfzg00w6ym3wgkmkpv-pstree-2.39.drv",
       "description": "Show the set of running processes as a tree",
       "install_id": "pstree",
       "license": "GPL-2.0",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=c23193b943c6c689d70ee98ce3128239ed9e32d1",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=b3d51a0365f6695e7dd5cdf3e180604530ed33b4",
       "name": "pstree-2.39",
       "pname": "pstree",
-      "rev": "c23193b943c6c689d70ee98ce3128239ed9e32d1",
-      "rev_count": 861038,
-      "rev_date": "2025-09-13T06:43:22Z",
-      "scrape_date": "2025-09-15T02:01:21.580721Z",
+      "rev": "b3d51a0365f6695e7dd5cdf3e180604530ed33b4",
+      "rev_count": 888552,
+      "rev_date": "2025-11-02T19:18:41Z",
+      "scrape_date": "2025-11-04T00:35:56.582600Z",
       "stabilities": [
         "unstable"
       ],
@@ -1190,7 +1190,7 @@
         "out"
       ],
       "outputs": {
-        "out": "/nix/store/1jcbvzblpl4clrxsy1h16bj990sxlrg2-pstree-2.39"
+        "out": "/nix/store/17xwnc6yqx6m7rvk2vnvnka7hrxzvn03-pstree-2.39"
       },
       "system": "aarch64-darwin",
       "group": "toplevel",
@@ -1199,17 +1199,17 @@
     {
       "attr_path": "pstree",
       "broken": false,
-      "derivation": "/nix/store/pzf6hr11bqjl4c0b48bzf04n98pm2fd5-pstree-2.39.drv",
+      "derivation": "/nix/store/418c6yj3pw63fwan353lzjcx7xjl7g2i-pstree-2.39.drv",
       "description": "Show the set of running processes as a tree",
       "install_id": "pstree",
       "license": "GPL-2.0",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=c23193b943c6c689d70ee98ce3128239ed9e32d1",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=b3d51a0365f6695e7dd5cdf3e180604530ed33b4",
       "name": "pstree-2.39",
       "pname": "pstree",
-      "rev": "c23193b943c6c689d70ee98ce3128239ed9e32d1",
-      "rev_count": 861038,
-      "rev_date": "2025-09-13T06:43:22Z",
-      "scrape_date": "2025-09-15T02:30:40.153767Z",
+      "rev": "b3d51a0365f6695e7dd5cdf3e180604530ed33b4",
+      "rev_count": 888552,
+      "rev_date": "2025-11-02T19:18:41Z",
+      "scrape_date": "2025-11-05T16:29:58.807529Z",
       "stabilities": [
         "unstable"
       ],
@@ -1219,7 +1219,7 @@
         "out"
       ],
       "outputs": {
-        "out": "/nix/store/7hx79n945iwmm2s11yf9pscbx8xs2xvl-pstree-2.39"
+        "out": "/nix/store/06iaawl3q1rh3sgmc6pgigjsg600bgwl-pstree-2.39"
       },
       "system": "aarch64-linux",
       "group": "toplevel",
@@ -1228,17 +1228,17 @@
     {
       "attr_path": "pstree",
       "broken": false,
-      "derivation": "/nix/store/scf9isixglpilzy5zbpflqi2g2sm4vds-pstree-2.39.drv",
+      "derivation": "/nix/store/l1iqvsbcg11is07fw2fca6hil36pmqhg-pstree-2.39.drv",
       "description": "Show the set of running processes as a tree",
       "install_id": "pstree",
       "license": "GPL-2.0",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=c23193b943c6c689d70ee98ce3128239ed9e32d1",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=b3d51a0365f6695e7dd5cdf3e180604530ed33b4",
       "name": "pstree-2.39",
       "pname": "pstree",
-      "rev": "c23193b943c6c689d70ee98ce3128239ed9e32d1",
-      "rev_count": 861038,
-      "rev_date": "2025-09-13T06:43:22Z",
-      "scrape_date": "2025-09-15T02:57:14.172319Z",
+      "rev": "b3d51a0365f6695e7dd5cdf3e180604530ed33b4",
+      "rev_count": 888552,
+      "rev_date": "2025-11-02T19:18:41Z",
+      "scrape_date": "2025-11-05T16:55:36.163714Z",
       "stabilities": [
         "unstable"
       ],
@@ -1248,7 +1248,7 @@
         "out"
       ],
       "outputs": {
-        "out": "/nix/store/1xycyvyixzvcdx9axr2whqjldxnkhz4w-pstree-2.39"
+        "out": "/nix/store/lv0zfz3gqy3r8zijqi6cpm91pav9qx2z-pstree-2.39"
       },
       "system": "x86_64-darwin",
       "group": "toplevel",
@@ -1257,17 +1257,17 @@
     {
       "attr_path": "pstree",
       "broken": false,
-      "derivation": "/nix/store/i8qih0f2h6n0cb1dzg5pl49n196nnla2-pstree-2.39.drv",
+      "derivation": "/nix/store/khnnmyf7j5r353914nqrq9a2w01l4lwy-pstree-2.39.drv",
       "description": "Show the set of running processes as a tree",
       "install_id": "pstree",
       "license": "GPL-2.0",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=c23193b943c6c689d70ee98ce3128239ed9e32d1",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=b3d51a0365f6695e7dd5cdf3e180604530ed33b4",
       "name": "pstree-2.39",
       "pname": "pstree",
-      "rev": "c23193b943c6c689d70ee98ce3128239ed9e32d1",
-      "rev_count": 861038,
-      "rev_date": "2025-09-13T06:43:22Z",
-      "scrape_date": "2025-09-15T03:28:00.053496Z",
+      "rev": "b3d51a0365f6695e7dd5cdf3e180604530ed33b4",
+      "rev_count": 888552,
+      "rev_date": "2025-11-02T19:18:41Z",
+      "scrape_date": "2025-11-05T17:21:53.688932Z",
       "stabilities": [
         "unstable"
       ],
@@ -1277,7 +1277,7 @@
         "out"
       ],
       "outputs": {
-        "out": "/nix/store/q4ldqp6562w503mq289xhsmsz6xak1p1-pstree-2.39"
+        "out": "/nix/store/zfjyvq1647gx4xp107m6sf7z2c83f8kc-pstree-2.39"
       },
       "system": "x86_64-linux",
       "group": "toplevel",
