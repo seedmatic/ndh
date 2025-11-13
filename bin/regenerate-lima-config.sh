@@ -2,7 +2,7 @@
 # Regenerate Lima config and optionally managed vmnet networks.yaml (@codebase)
 # Usage:
 #   ./bin/regenerate-lima-config.sh [--host <alias-or-hostname>] [--flake <path>] \
-#       [--write-networks] [--no-networks] [--netmask <mask>] [--overwrite-networks]
+#       [--write-networks] [--no-networks]
 #
 # Resolution order for config attrs:
 #   1. --flake explicitly provided (use that flake)
@@ -10,14 +10,11 @@
 #   3. Else use repo root flake and attr darwinConfigurations.$HOST
 #
 # Networks generation logic:
-#   - If enabled (default) tries to evaluate nix options:
-#       lima.networks.enableManagedClusterNetwork
-#       lima.networks.netmask
-#       lima.networks.overwrite
-#     Falls back to defaults if evaluation fails.
-#   - Deterministic clusterId derived from host name via internal map (bioskop->1).
-#   - Generates or updates ~/.lima/_config/networks.yaml cluster<id> block with gateway, dhcpEnd, netmask.
-#   - Allows override via CLI flags (highest precedence).
+#   - Uses lima-yaml-manager.sh for surgical YAML editing of ~/.lima/_config/networks.yaml
+#   - Ensures standard networks are defined: host, bridged, shared
+#   - Preserves existing user-managed networks and comments
+#   - Uses rotating backups (.0, .1, .2) for safety
+#   - Safe to run multiple times - only adds missing networks
 #
 # Safe to run without nix-darwin activation script executing.
 set -euo pipefail
@@ -26,8 +23,6 @@ HOSTNAME="$(hostname -s)"
 REQUESTED_HOST=""
 EXPLICIT_FLAKE=""
 WRITE_NETWORKS=1
-OVERWRITE_FLAG=0
-CLI_NETMASK=""
 
 show_help() {
   sed -n '1,80p' "$0" | grep -v '^#!/';
@@ -43,10 +38,6 @@ while [ $# -gt 0 ]; do
       WRITE_NETWORKS=1; shift ;;
     --no-networks)
       WRITE_NETWORKS=0; shift ;;
-    --overwrite-networks)
-      OVERWRITE_FLAG=1; shift ;;
-    --netmask)
-      CLI_NETMASK="$2"; shift 2 ;;
     -h|--help)
       show_help; exit 0 ;;
     *) echo "Unknown arg: $1" >&2; exit 1 ;;
@@ -106,91 +97,64 @@ if [ "$USE_YQ" -eq 1 ]; then
   echo "Generated $OUT_FILE_YAML" >&2
   grep -E 'subnet|gateway|clusterId' "$OUT_FILE_YAML" || true
 
-  # ---------------- Networks.yaml generation (managed vmnet) ---------------- (@codebase)
+  # ---------------- Networks.yaml generation using lima-yaml-manager.sh ---------------- (@codebase)
   if [ $WRITE_NETWORKS -eq 1 ]; then
-    echo "[regenerate-lima] networks: attempting managed networks.yaml update" >&2
-    # Evaluate nix options if possible (ignore errors)
-    eval_attr() {
-      local attr="$1"
-      nix eval --raw "$FLAKE_REF"#"$attr" 2>/dev/null || true
-    }
-
-    if [ -z "$EXPLICIT_FLAKE" ] && [ ! -d "hosts/$HOST_REF" ]; then
-      NET_BASE="darwinConfigurations.\"$HOST_REF\".config.lima.networks"
+    echo "[regenerate-lima] networks: using lima-yaml-manager.sh for surgical YAML editing" >&2
+    
+    # Check if lima-yaml-manager.sh exists
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    YAML_MANAGER="$SCRIPT_DIR/lima-yaml-manager.sh"
+    
+    if [ ! -f "$YAML_MANAGER" ]; then
+      echo "[regenerate-lima][WARN] lima-yaml-manager.sh not found at $YAML_MANAGER; skipping networks.yaml" >&2
     else
-      NET_BASE="darwinConfiguration.config.lima.networks"
-    fi
-    NIX_ENABLE=$(eval_attr "$NET_BASE.enableManagedClusterNetwork")
-    NIX_MASK=$(eval_attr "$NET_BASE.netmask")
-    NIX_OVERWRITE=$(eval_attr "$NET_BASE.overwrite")
-
-    # Fallback defaults
-    [ -z "$NIX_ENABLE" ] && NIX_ENABLE="true"
-    [ -z "$NIX_MASK" ] && NIX_MASK="255.255.255.0"
-    [ -z "$NIX_OVERWRITE" ] && NIX_OVERWRITE="false"
-
-    # CLI overrides
-    [ -n "$CLI_NETMASK" ] && NIX_MASK="$CLI_NETMASK"
-    [ $OVERWRITE_FLAG -eq 1 ] && NIX_OVERWRITE="true"
-
-    if [ "$NIX_ENABLE" != "true" ]; then
-      echo "[regenerate-lima] networks: nix option enableManagedClusterNetwork=false; skipping." >&2
-    else
-      # Host cluster map (replicates Nix module logic)
-      case "$HOST_REF" in
-        bioskop) CLUSTER_ID=1 ;;
-        *) echo "[regenerate-lima][WARN] No clusterId mapping for host '$HOST_REF'; skipping networks.yaml" >&2; CLUSTER_ID=0 ;;
-      esac
-      if [ $CLUSTER_ID -gt 0 ]; then
-        BASE_OCTET=$((CLUSTER_ID * 8))
-        GATEWAY="10.80.${BASE_OCTET}.1"
-        DHCP_END="10.80.${BASE_OCTET}.224"
-        NETWORK_NAME="cluster${CLUSTER_ID}"
-        CFG_DIR="$HOME/.lima/_config"
-        NET_FILE="$CFG_DIR/networks.yaml"
-        mkdir -p "$CFG_DIR"
-        BLOCK_HEADER="  ${NETWORK_NAME}:"
-        DESIRED_BLOCK="  ${NETWORK_NAME}:
-    mode: shared
-    gateway: ${GATEWAY}
-    dhcpEnd: ${DHCP_END}
-    netmask: ${NIX_MASK}"
-        if [ ! -f "$NET_FILE" ]; then
-          echo "[regenerate-lima] networks: creating $NET_FILE with ${NETWORK_NAME}" >&2
-          cat > "$NET_FILE" <<NETCFG
+      CFG_DIR="$HOME/.lima/_config"
+      NET_FILE="$CFG_DIR/networks.yaml"
+      mkdir -p "$CFG_DIR"
+      
+      # Ensure networks.yaml exists with basic structure if missing
+      if [ ! -f "$NET_FILE" ]; then
+        echo "[regenerate-lima] networks: creating basic $NET_FILE" >&2
+        cat > "$NET_FILE" <<NETCFG
 paths:
   varRun: /private/var/run/lima
 group: everyone
-networks:
-${DESIRED_BLOCK}
+networks: {}
 NETCFG
-        else
-          if grep -q "^${BLOCK_HEADER}" "$NET_FILE"; then
-            EXISTING=$(grep -A4 "^${BLOCK_HEADER}" "$NET_FILE" || true)
-            if echo "$EXISTING" | grep -q "gateway: ${GATEWAY}" && \
-               echo "$EXISTING" | grep -q "dhcpEnd: ${DHCP_END}" && \
-               echo "$EXISTING" | grep -q "netmask: ${NIX_MASK}"; then
-              echo "[regenerate-lima] networks: ${NETWORK_NAME} matches desired" >&2
-            else
-              if [ "$NIX_OVERWRITE" = "true" ]; then
-                echo "[regenerate-lima] networks: overwriting differing ${NETWORK_NAME}" >&2
-                awk -v start="${BLOCK_HEADER}" 'BEGIN{skip=0} {
-                  if($0==start){print; skip=4; next}
-                  if(skip>0){skip--; next}
-                  print
-                }' "$NET_FILE" > "$NET_FILE.tmp" && mv "$NET_FILE.tmp" "$NET_FILE"
-                echo -e "$DESIRED_BLOCK" >> "$NET_FILE"
-              else
-                echo "[regenerate-lima][WARN] ${NETWORK_NAME} differs; overwrite disabled" >&2
-              fi
-            fi
-          else
-            echo "[regenerate-lima] networks: appending ${NETWORK_NAME}" >&2
-            echo -e "$DESIRED_BLOCK" >> "$NET_FILE"
-          fi
-        fi
-        echo "[regenerate-lima] networks: gateway=${GATEWAY} dhcpEnd=${DHCP_END} netmask=${NIX_MASK}" >&2
       fi
+      
+      # Add missing standard networks using lima-yaml-manager.sh
+      # These are the networks that Lima VMs typically reference
+      echo "[regenerate-lima] networks: ensuring standard networks are defined" >&2
+      
+      # Add 'host' network if missing
+      if ! grep -q "^  host:" "$NET_FILE"; then
+        echo "[regenerate-lima] networks: adding 'host' network definition" >&2
+        "$YAML_MANAGER" --file "$NET_FILE" --add-network host --mode host \
+          --gateway 172.16.106.1 --dhcp-end 172.16.106.224 --netmask 255.255.255.0 --verbose || {
+          echo "[regenerate-lima][WARN] Failed to add 'host' network" >&2
+        }
+      fi
+      
+      # Add 'bridged' network if missing  
+      if ! grep -q "^  bridged:" "$NET_FILE"; then
+        echo "[regenerate-lima] networks: adding 'bridged' network definition" >&2
+        "$YAML_MANAGER" --file "$NET_FILE" --add-network bridged --mode bridged \
+          --interface en0 --verbose || {
+          echo "[regenerate-lima][WARN] Failed to add 'bridged' network" >&2
+        }
+      fi
+      
+      # Add 'shared' network if missing
+      if ! grep -q "^  shared:" "$NET_FILE"; then
+        echo "[regenerate-lima] networks: adding 'shared' network definition" >&2
+        "$YAML_MANAGER" --file "$NET_FILE" --add-network shared --mode shared \
+          --gateway 10.80.16.1 --dhcp-end 10.80.16.224 --netmask 255.255.255.0 --verbose || {
+          echo "[regenerate-lima][WARN] Failed to add 'shared' network" >&2
+        }
+      fi
+      
+      echo "[regenerate-lima] networks: standard network definitions ensured" >&2
     fi
   fi
 else
