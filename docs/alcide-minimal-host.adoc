@@ -1,0 +1,410 @@
+= Alcide Minimal Host Architecture
+:toc:
+:toclevels: 3
+
+== Overview
+
+Alcide is a JAMF-managed macOS system with a minimal nix-darwin installation. The design principle is to keep the macOS host as lightweight as possible, with all development work happening in a Lima NixOS VM and Incus containers.
+
+== Architecture
+
+=== Three-Tier Design
+
+[plantuml]
+----
+@startuml
+!define RECTANGLE class
+
+skinparam rectangle {
+    BackgroundColor<<host>> LightYellow
+    BackgroundColor<<vm>> LightBlue
+    BackgroundColor<<cluster>> LightGreen
+    BorderColor Black
+    FontSize 12
+}
+
+rectangle "macOS Host (alcide)\nJAMF-Managed" <<host>> {
+    [Nix Package Manager]
+    [Lima]
+    [Flox]
+    [SSH Client]
+    [Basic Shell Tools]
+    [Tailscale]
+}
+
+rectangle "Lima NixOS VM\n(alcide-nixos)" <<vm>> {
+    [Development Tools]
+    [Git, Editors, IDEs]
+    [Container Tools]
+    [Incus]
+    [Build Environments]
+    [Services]
+}
+
+rectangle "Incus Cluster\n(in VM)" <<cluster>> {
+    [Application Containers]
+    [Microservices]
+    [Databases]
+    [Web Services]
+    [RKE2 Cluster]
+}
+
+[macOS Host (alcide)\nJAMF-Managed] -down-> [Lima NixOS VM\n(alcide-nixos)] : SSH, Lima CLI
+[Lima NixOS VM\n(alcide-nixos)] -down-> [Incus Cluster\n(in VM)] : incus, kubectl
+@enduml
+----
+
+=== Layer Responsibilities
+
+==== Layer 1: macOS Host (Minimal)
+
+*Purpose*: Managed by JAMF, minimal interference with corporate policies
+
+*Installed via nix-darwin*:
+
+* Nix package manager (for VM management)
+* Lima (VM orchestration)
+* Flox (environment management)
+* Basic shell tools (bash, zsh, coreutils)
+* Git (minimal, for flake updates only)
+* SSH client (for VM access)
+* Tailscale/Headscale client (networking)
+* Distributed build configuration
+
+*NOT installed on host*:
+
+* Heavy development tools
+* GUI applications
+* Container runtimes
+* Build environments
+* IDE/editor servers
+* Language toolchains
+
+==== Layer 2: Lima NixOS VM
+
+*Purpose*: Full development environment with all tools and services
+
+*Installed in VM*:
+
+* **Editors**: emacs-nox, vim, VSCode server (if needed)
+* **Container tools**: incus, docker/podman, kubectl, k9s, helm
+* **Build tools**: gcc, make, language-specific toolchains
+* **Development utilities**: ripgrep, fd, fzf, jq, yq
+* **Security tools**: sops, gnupg, ssh-to-age
+* **Network tools**: curl, wget, tcpdump, wireshark
+* **Language environments**: Python, Node.js, Go, Rust (as needed)
+* **Services**: Databases, web servers, message queues
+
+*Access from macOS*:
+
+[source,bash]
+----
+# SSH into VM
+limactl shell nerd-nixos
+
+# Or direct SSH
+ssh nxmatic@192.168.5.X  # IP assigned by Lima
+
+# Use emacs via SSH/TRAMP from macOS
+emacs /ssh:nxmatic@alcide-nixos:/path/to/file
+----
+
+==== Layer 3: Incus Cluster (in VM)
+
+*Purpose*: Application workloads and containerized services
+
+*Running in cluster*:
+
+* RKE2 Kubernetes cluster
+* Application containers
+* Microservices
+* Persistent databases
+* Web applications
+* Development/staging environments
+
+== Configuration Files
+
+=== macOS Host Configuration
+
+.hosts/alcide/flake.nix
+[source,nix]
+----
+{
+  description = "nix system configurations for alcide";
+
+  inputs = { nix-darwin-home.url = "path:../.."; };
+
+  outputs = { self, nix-darwin-home, ... }@inputs:
+    let
+      hostProfile = {
+        hostName = "APL-dk40njhk9h";
+        hostAlias = "alcide";
+        tailnet = { };
+      };
+      darwinProfile = {
+        knownNetworkServices = [ "Wi-Fi" "Thunderbolt Ethernet" ];
+      };
+
+      profileModule = { lib, config, pkgs, ... }: {
+        imports = [ 
+          ../../profiles/work-minimal.nix
+        ];
+        config = {
+          # Minimal host configuration
+          environment.systemPackages = lib.mkForce (
+            import ../../modules/common/system-packages-minimal.nix { 
+              inherit pkgs; 
+            }
+          );
+          
+          lima.configGenerator = {
+            vmType = "vz";
+            enableIncus = true;
+          };
+        };
+      };
+    in nix-darwin-home.mkHostOutputs { 
+      inherit hostProfile profileModule; 
+    };
+}
+----
+
+=== Minimal System Packages
+
+.modules/common/system-packages-minimal.nix
+[source,nix]
+----
+{ pkgs, ... }:
+with pkgs; [
+  bash
+  zsh
+  coreutils-full
+  flox
+  direnv
+  git
+]
+----
+
+=== Lima VM Configuration
+
+The Lima VM is configured automatically by the `lima.configGenerator` in the Darwin configuration. The NixOS system inside the VM is configured with:
+
+.hosts/alcide/nixos-vm-config.nix
+[source,nix]
+----
+{ config, pkgs, lib, ... }:
+
+{
+  # Full development environment
+  environment.systemPackages = with pkgs; [
+    git gh gitflow
+    emacs-nox vim
+    kubectl k9s helm
+    incus docker-compose
+    # ... many more packages
+  ];
+  
+  virtualisation.incus.enable = true;
+}
+----
+
+== Workflows
+
+=== Daily Development Workflow
+
+. Start your day on macOS (alcide)
++
+[source,bash]
+----
+# Ensure VM is running
+limactl list
+limactl start nerd-nixos  # if not running
+----
+
+. SSH into the VM for development work
++
+[source,bash]
+----
+# Option 1: Lima shell
+limactl shell nerd-nixos
+
+# Option 2: Direct SSH
+ssh alcide-nixos  # Add to ~/.ssh/config
+
+# Option 3: Use VS Code Remote SSH
+# Configure VS Code to connect to alcide-nixos
+----
+
+. Work in the VM environment
++
+[source,bash]
+----
+# All your tools are here
+git clone <repo>
+cd <project>
+emacs .
+make build
+kubectl apply -f deployment.yaml
+----
+
+. Deploy to Incus cluster (if needed)
++
+[source,bash]
+----
+# From within the VM
+incus launch ubuntu:22.04 myapp
+incus exec myapp -- bash
+----
+
+. Shut down when done (optional)
++
+[source,bash]
+----
+# From macOS
+limactl stop nerd-nixos
+----
+
+=== Updating the System
+
+==== Update macOS Host Configuration
+
+[source,bash]
+----
+# On macOS (alcide)
+cd ~/Gits/nxmatic/nix-darwin-home/hosts/alcide
+git pull
+darwin-rebuild switch --flake .#alcide
+----
+
+==== Update Lima VM
+
+[source,bash]
+----
+# SSH into VM
+limactl shell nerd-nixos
+
+# Rebuild NixOS configuration
+sudo nixos-rebuild switch --flake /path/to/config
+----
+
+=== Accessing Services in the Cluster
+
+Services running in the Incus cluster can be accessed from:
+
+* **From VM**: Direct container networking
+* **From macOS**: Via port forwarding or Tailscale
+
+[source,bash]
+----
+# Example: Access a web app in cluster from macOS
+ssh -L 8080:container-ip:80 alcide-nixos
+
+# Or use Tailscale to expose services
+----
+
+== Benefits of This Architecture
+
+. **Compliance**: Minimal changes to JAMF-managed macOS
+. **Isolation**: Development work isolated from host system
+. **Flexibility**: Easy to recreate VM if needed
+. **Performance**: VM has direct access to hardware via Lima
+. **Portability**: Same VM config can run on multiple hosts
+. **Security**: Container isolation for application workloads
+. **Scalability**: Incus cluster can scale containers independently
+
+== Troubleshooting
+
+=== VM Won't Start
+
+[source,bash]
+----
+# Check Lima status
+limactl list
+
+# Check Lima logs
+limactl shell nerd-nixos journalctl -xe
+
+# Restart Lima
+limactl stop nerd-nixos
+limactl start nerd-nixos
+----
+
+=== Can't SSH into VM
+
+[source,bash]
+----
+# Check VM IP
+limactl shell nerd-nixos ip addr
+
+# Test SSH
+ssh -v nxmatic@<vm-ip>
+
+# Check SSH config
+cat ~/.ssh/config
+----
+
+=== Incus Containers Not Starting
+
+[source,bash]
+----
+# In VM, check Incus
+sudo incus list
+sudo systemctl status incus
+
+# Check logs
+sudo journalctl -u incus
+----
+
+== Migration Guide
+
+If you have an existing alcide setup with packages installed, here's how to migrate:
+
+. **Backup current configuration**
++
+[source,bash]
+----
+darwin-rebuild --flake .#alcide build
+nix-store --export $(nix-store -qR result) > alcide-backup.nar
+----
+
+. **Document currently installed packages**
++
+[source,bash]
+----
+nix-env -q > installed-packages.txt
+----
+
+. **Switch to minimal configuration**
++
+[source,bash]
+----
+cd ~/Gits/nxmatic/nix-darwin-home
+git pull  # Get latest with work-minimal profile
+darwin-rebuild switch --flake ./hosts/alcide#alcide
+----
+
+. **Set up Lima VM with full environment**
++
+[source,bash]
+----
+limactl start nerd-nixos
+limactl shell nerd-nixos
+
+# In VM, apply configuration
+sudo nixos-rebuild switch --flake /path/to/nixos-vm-config
+----
+
+. **Migrate your data/projects to VM**
++
+[source,bash]
+----
+# From macOS, copy projects to VM
+scp -r ~/Projects alcide-nixos:~/
+----
+
+== See Also
+
+* link:../README.adoc[Main Documentation]
+* link:../lima-yaml-management.md[Lima YAML Management]
+* link:../runtime-layout.adoc[Runtime Layout]
+* link:../network-setup.adoc[Network Setup]
