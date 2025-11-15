@@ -49,25 +49,21 @@ in {
         }
         {
           macAddress = "10:66:6a:4c:${hostByteHex}:01";
-          name = "vmlan0";  # lima vmnet bridged (for Lima VM host)
-        }
-        {
-          macAddress = "10:66:6a:4c:${hostByteHex}:02";
-          name = "vmlan1";  # lima vmnet bridged (for Incus bridge)
+          name = "vmlan0";  # lima vmnet bridged (for Incus lan-br bridge member)
         }
       ];
       description = ''
         List of network interfaces to rename based on MAC addresses.
         MAC addresses match the actual Lima VM interface MACs.
         Default mapping (for hostname 'bioskop' -> hash '27'):
-        - 10:66:6a:4c:27:01 -> vmlan0 (Lima VM host LAN interface)
-        - 10:66:6a:4c:27:02 -> vmlan1 (Incus lan-br bridge parent)
+        - 10:66:6a:4c:27:00 -> vznat0 (Lima vzNAT management)
+        - 10:66:6a:4c:27:01 -> vmlan0 (Incus lan-br bridge member for container LAN access)
         
         Scheme: OUI:LIMA:HOST:IF  
         - OUI: 10:66:6a (local/private)
         - LIMA: 0x4C (76, 'L' for Lima)
         - HOST: Hash-derived unique byte per Darwin host
-        - IF: Interface index (01=primary, 02=secondary)
+        - IF: Interface index (00=vznat0, 01=vmlan0)
       '';
     };
   };
@@ -94,12 +90,26 @@ in {
       }) cfg.interfaces
     );
 
+    # Configure vmlan0 to remain unconfigured (for Incus bridge membership)
+    systemd.network.networks."50-vmlan0" = {
+      matchConfig.Name = "vmlan0";
+      linkConfig = {
+        # Keep interface up but unconfigured
+        Unmanaged = "no";
+        RequiredForOnline = "no";
+      };
+      networkConfig = {
+        # Disable all address configuration
+        DHCP = "no";
+        IPv6AcceptRA = "no";
+        LinkLocalAddressing = "no";
+      };
+    };
+
     # Helpful environment variables
     environment.variables = {
-      LIMA_LAN_IFACE = "vmlan0";          # Lima VM host LAN interface
-      LIMA_BRIDGE_IFACE = "vmlan1";       # Incus bridge parent interface (unconfigured)
-      LIMA_PRIMARY_IFACE = "vmlan0";      # Primary interface (same as LIMA_LAN_IFACE)
-      LIMA_SECONDARY_IFACE = "vmlan1";    # Secondary interface (same as LIMA_BRIDGE_IFACE)
+      LIMA_BRIDGE_IFACE = "vmlan0";       # Incus lan-br bridge member (unmanaged by NetworkManager)
+      # Note: Lima VM SSH management uses enp0s1 (built-in), not vmlan0
     };
   };
 }

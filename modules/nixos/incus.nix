@@ -80,9 +80,9 @@ in {
   networking = {
     useNetworkd = false;
     networkmanager.enable = true;
-    # NetworkManager should not manage vmlan1 - it's dedicated for Incus lan-br bridging
+    # NetworkManager should not manage vmlan0 - it's used as Incus lan-br bridge member
     networkmanager.unmanaged = [
-      "interface-name:vmlan1"
+      "interface-name:vmlan0"
     ];
     # bridges.externalbr0.interfaces = [ "enp0s1" ];
     # interfaces.externalbr0.useDHCP = true; # Host gets an IP from LAN DHCP
