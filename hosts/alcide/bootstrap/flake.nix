@@ -21,6 +21,7 @@
           # Minimal profile configuration (required by linux-builder module)
           profile = {
             name = "work";
+            email = "stephane.lacoin@gmail.com";
             user = {
               name = "stephane.lacoin";
               home = "/Users/stephane.lacoin";
