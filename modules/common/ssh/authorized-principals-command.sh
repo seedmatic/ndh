@@ -16,7 +16,13 @@ if [[ -z "$USER_NAME" ]]; then
   exit 1
 fi
 
-KEYS_FILE="/Users/${USER_NAME}/.ssh/keys.yaml"
+# Try /etc/ssh/keys.yaml first (system-wide, readable by _sshd)
+# Fall back to user's ~/.ssh/keys.yaml if available
+KEYS_FILE="/etc/ssh/keys.yaml"
+if [[ ! -r "$KEYS_FILE" ]]; then
+  KEYS_FILE="/Users/${USER_NAME}/.ssh/keys.yaml"
+fi
+
 if [[ ! -r "$KEYS_FILE" ]]; then
   # Fallback to groups
   {

@@ -32,6 +32,25 @@ in {
     # System packages
     environment.systemPackages = with pkgs; [ rsync yq-go openssh ];
 
+    # Create minimal keys.yaml for certificate principal validation
+    # This is world-readable in /etc so _sshd can access it
+    environment.etc."ssh/keys.yaml".text = ''
+      # Minimal keys.yaml for certificate principal validation
+      # Full version managed by ssh-keys.nix (disabled in favor of Teleport)
+      profiles:
+        committed:
+          host:
+            principals:
+              - committed
+              - work
+        work:
+          host:
+            principals:
+              - committed
+              - alcide
+              - work
+    '';
+
     # SSH daemon configuration
     environment.etc."ssh/sshd_config".text = let
       boolToYesNo = v: if v then "yes" else "no";
