@@ -26,7 +26,7 @@ if [[ ! -r "$KEYS_FILE" ]]; then
   exit 0
 fi
 
-env -S USER_NAME=$USER_NAME yq eval-all --from-file=<( cat <<'EoF' | cut -c 5-
+USER_NAME=$USER_NAME yq eval-all --from-file=<( cat <<'EoF' | cut -c 5-
     [
       .. 
       | select(has("principals")) 

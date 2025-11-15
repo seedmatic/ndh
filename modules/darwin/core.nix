@@ -12,6 +12,11 @@ in {
   # Enable automatic backup of conflicting files during activation
   environment.etc.backup.enable = true;
 
+  # Create symlink to host-specific flake for darwin-rebuild without --flake
+  environment.etc."nix-darwin/flake.nix".source = pkgs.runCommand "darwin-flake-link" {} ''
+    ln -s ${userHome}/Gits/nxmatic/nix-darwin-home/hosts/${config.networking.hostName}/flake.nix $out
+  '';
+
   # auto manage nixbld users with nix darwin
   nix = {
 
