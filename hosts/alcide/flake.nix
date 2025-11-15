@@ -35,6 +35,9 @@
           # Override system packages with minimal set
           environment.systemPackages = lib.mkForce (import ../../modules/common/system-packages-minimal.nix { inherit pkgs; });
           
+          # Configure SSL certificates for JAMF-managed system
+          nix.settings.ssl-cert-file = "/etc/ssl/cert.pem";
+          
           # Disable cross-host distributed builds during bootstrap
           # The local Linux builder will still work, but remote builders via SSH won't
           # Enable this after both hosts are set up with Tailscale mesh networking
