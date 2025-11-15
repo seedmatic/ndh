@@ -35,8 +35,12 @@
           # Override system packages with minimal set
           environment.systemPackages = lib.mkForce (import ../../modules/common/system-packages-minimal.nix { inherit pkgs; });
           
-          # Enable cross-host distributed builds (Darwin only)
-          services.crossHostBuilders.enable = true;
+          # Disable Linux builder during bootstrap - enable after Lima VM is set up
+          nix.linux-builder.enable = lib.mkForce false;
+          
+          # Disable cross-host distributed builds during bootstrap
+          # Enable after Lima VM is set up and activated
+          services.crossHostBuilders.enable = false;
           
           # Lima VM configuration - this is where the real work happens
           lima = {
