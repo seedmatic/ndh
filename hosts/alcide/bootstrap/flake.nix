@@ -25,6 +25,7 @@
             user = {
               name = "stephane.lacoin";
               home = "/Users/stephane.lacoin";
+              description = "Stéphane Lacoin";
             };
             host = {
               hostName = "APL-dk40njhk9h";
