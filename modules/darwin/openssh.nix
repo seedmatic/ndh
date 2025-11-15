@@ -10,6 +10,23 @@ let
   groupKeysScriptStore = pkgs.writeText "ssh-group-authorized-keys-command.sh" (builtins.readFile ../common/ssh/ssh-group-authorized-keys.sh);
   inherit (lib) mkIf optionalString concatStringsSep;
 
+  # Derive principals based on profile and hostname
+  # Server should accept all possible principals from any client
+  # committed profile hosts: accept [committed, work, alcide]
+  # work profile hosts: accept [committed, work, alcide] 
+  hostAlias = if (profile.host ? hostAlias && profile.host.hostAlias != null) 
+    then profile.host.hostAlias 
+    else profile.host.hostName;
+  profileName = profile.name;
+  
+  # All hosts should accept all profile principals to allow cross-host connections
+  # This ensures bioskop (committed) can accept from alcide (work) and vice versa
+  allPrincipals = [ "committed" "work" "alcide" "bioskop" ];
+  
+  # Format principals as YAML list with proper indentation (6 spaces for list items)
+  formatPrincipals = principals: 
+    concatStringsSep "\n" (map (p: "              - ${p}") principals);
+
 in {
   imports = [ ../common/openssh-policy.nix ];
 
@@ -32,23 +49,22 @@ in {
     # System packages
     environment.systemPackages = with pkgs; [ rsync yq-go openssh ];
 
-    # Create minimal keys.yaml for certificate principal validation
+    # Create keys.yaml for certificate principal validation
     # This is world-readable in /etc so _sshd can access it
+    # All hosts accept all profile principals for cross-host connections
     environment.etc."ssh/keys.yaml".text = ''
-      # Minimal keys.yaml for certificate principal validation
-      # Full version managed by ssh-keys.nix (disabled in favor of Teleport)
+      # Certificate principal validation for ${hostAlias} (${profileName} profile)
+      # Managed by modules/darwin/openssh.nix - regenerated on darwin-rebuild
+      # Accepts all profile principals to allow cross-host connections
       profiles:
         committed:
           host:
             principals:
-              - committed
-              - work
+${formatPrincipals allPrincipals}
         work:
           host:
             principals:
-              - committed
-              - alcide
-              - work
+${formatPrincipals allPrincipals}
     '';
 
     # SSH daemon configuration
