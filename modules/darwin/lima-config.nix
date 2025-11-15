@@ -226,6 +226,15 @@ in {
         "vz" uses Apple Virtualization.framework, "qemu" uses the QEMU driver.
       '';
     };
+    
+    enableIncus = mkOption {
+      type = types.bool;
+      default = false;
+      description = ''
+        Enable Incus container runtime in the Lima VM.
+        When true, the VM will include Incus for running containers.
+      '';
+    };
    };
   # Internal, fully rendered configuration exposed for external tooling / scripts (@codebase)
   options.lima.computedConfig = mkOption {
