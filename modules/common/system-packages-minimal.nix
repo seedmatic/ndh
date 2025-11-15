@@ -8,7 +8,7 @@ with pkgs; [
   coreutils-full
   
   # Nix ecosystem (required for VM management)
-  flox
+  # flox removed - must be installed via flox itself before bootstrap
   direnv
   
   # Git (minimal, for flake updates)
