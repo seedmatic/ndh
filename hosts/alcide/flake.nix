@@ -35,8 +35,10 @@
           # Override system packages with minimal set
           environment.systemPackages = lib.mkForce (import ../../modules/common/system-packages-minimal.nix { inherit pkgs; });
           
-          # Enable cross-host distributed builds (Darwin only)
-          services.crossHostBuilders.enable = true;
+          # Disable cross-host distributed builds during bootstrap
+          # The local Linux builder will still work, but remote builders via SSH won't
+          # Enable this after both hosts are set up with Tailscale mesh networking
+          services.crossHostBuilders.enable = false;
           
           # Lima VM configuration - this is where the real work happens
           lima = {
