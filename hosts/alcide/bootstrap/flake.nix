@@ -30,6 +30,10 @@
             host = {
               hostName = "APL-dk40njhk9h";
               hostAlias = "alcide";
+              tailnet = {
+                name = "mammoth-skate";
+                domain = "ts.net";
+              };
             };
             darwin = {
               knownNetworkServices = [ "Wi-Fi" "Thunderbolt Ethernet" ];
