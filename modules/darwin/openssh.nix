@@ -29,39 +29,21 @@ in {
       client.enable = true;
     };
 
-    # Combined environment configuration
-    environment = {
-      systemPackages = with pkgs; [ rsync yq-go openssh ];
+    # System packages
+    environment.systemPackages = with pkgs; [ rsync yq-go openssh ];
 
-      etc."ssh/sshd_config".text = let
-        boolToYesNo = v: if v then "yes" else "no";
-        renderValue = v: if builtins.isBool v then boolToYesNo v else builtins.toString v;
-        policyLines = lib.mapAttrsToList (k: v: "${k} ${renderValue v}") config.opensshPolicy.settings;
-        hostKeyLines = map (p: "HostKey ${p}") config.opensshPolicy.hostKeys;
-        certAlready = lib.any (l: lib.hasPrefix "HostCertificate " l) policyLines;
-        certLine = if (!certAlready && config.opensshPolicy.settings ? HostCertificate)
-          then ["HostCertificate ${config.opensshPolicy.settings.HostCertificate}"] else [];
-        includeLines = builtins.map (g: "Include ${g}") config.opensshPolicy.includeDaemonGlobs;
-        all = hostKeyLines ++ certLine ++ policyLines ++ includeLines;
-      in lib.concatStringsSep "\n" all + "\n";
-    } // (mkIf pkgs.stdenv.isDarwin (let
-      pcfg = config.opensshPolicy.client;
-      rendered = config.opensshPolicy.clientRendered;
-    in mkIf pcfg.enable {
-      etc."ssh/ssh_config".text = rendered.baseConfigText;
-      etc."ssh/ssh_config.d/50-guest.conf" = mkIf (rendered.guestStanzaText != "") {
-        text = ''
-          # Derived guest stanza
-          ${rendered.guestStanzaText}
-        '';
-      };
-      etc."ssh/ssh_config.d/55-extra.conf" = mkIf (rendered.extraStanzasText != "") {
-        text = ''
-          # Extra stanzas
-          ${rendered.extraStanzasText}
-        '';
-      };
-    }));
+    # SSH daemon configuration
+    environment.etc."ssh/sshd_config".text = let
+      boolToYesNo = v: if v then "yes" else "no";
+      renderValue = v: if builtins.isBool v then boolToYesNo v else builtins.toString v;
+      policyLines = lib.mapAttrsToList (k: v: "${k} ${renderValue v}") config.opensshPolicy.settings;
+      hostKeyLines = map (p: "HostKey ${p}") config.opensshPolicy.hostKeys;
+      certAlready = lib.any (l: lib.hasPrefix "HostCertificate " l) policyLines;
+      certLine = if (!certAlready && config.opensshPolicy.settings ? HostCertificate)
+        then ["HostCertificate ${config.opensshPolicy.settings.HostCertificate}"] else [];
+      includeLines = builtins.map (g: "Include ${g}") config.opensshPolicy.includeDaemonGlobs;
+      all = hostKeyLines ++ certLine ++ policyLines ++ includeLines;
+    in lib.concatStringsSep "\n" all + "\n";
 
     services.openssh.enable = true;
 
