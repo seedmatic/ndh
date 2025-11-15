@@ -29,6 +29,9 @@
               hostName = "APL-dk40njhk9h";
               hostAlias = "alcide";
             };
+            darwin = {
+              knownNetworkServices = [ "Wi-Fi" "Thunderbolt Ethernet" ];
+            };
           };
           
           # Minimal system info
