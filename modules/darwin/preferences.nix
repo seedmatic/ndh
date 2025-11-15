@@ -121,7 +121,7 @@
         if networksetup -listallnetworkservices | grep -q "^$iface$"; then
           : "Configuring DNS for interface: $iface"
           networksetup -setdnsservers "$iface" ${builtins.concatStringsSep " " config.networking.dns} 2>/dev/null || true
-          networksetup -setsearchdomains "$iface" "${config.profile.host.tailnet.name}.${config.profile.host.tailnet.domain}" 2>/dev/null || true
+          # Search domains removed - Tailscale/Headscale MagicDNS handles *.ts.net automatically
         else
           : "Interface $iface not found, skipping DNS configuration"
         fi
