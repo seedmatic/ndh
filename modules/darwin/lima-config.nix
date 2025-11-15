@@ -38,6 +38,7 @@ let
   # - lan0: macvlan on vmlan0 (bridged to bond0/en0) for internet access
   # - wan0: Incus bridge network (10.80.x.0/21) for cluster-internal communication
   hostClusterMap = {
+    alcide = 2;
     bioskop = 1;
     # Future hosts can be added here with different cluster IDs
   };
