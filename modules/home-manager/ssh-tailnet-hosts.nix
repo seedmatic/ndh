@@ -19,11 +19,12 @@ in
     # are stabilized via your OpenSSH CA instead of Tailscale SSH rotation.
     ###############################################################################
 
-    Host bioskop bioskop.mammoth-skate.ts.net bioskop-ts
+    Host bioskop bioskop.mammoth-skate.ts.net bioskop-ts bioskop.local
       HostName bioskop.mammoth-skate.ts.net
       User ${userName}
       StrictHostKeyChecking accept-new
       UserKnownHostsFile ~/.ssh/known_hosts
+      IdentityFile ~/.ssh/keys.d/mammoth-skate
       IdentitiesOnly yes
       ServerAliveInterval 30
       ServerAliveCountMax 4
@@ -46,7 +47,7 @@ in
       ServerAliveInterval 30
       ServerAliveCountMax 4
 
-    Host alcide alcide.mammoth-skate.ts.net alcide-ts
+    Host alcide alcide.mammoth-skate.ts.net alcide-ts alcide.local
       HostName alcide.mammoth-skate.ts.net
       User ${userName}
       StrictHostKeyChecking accept-new
