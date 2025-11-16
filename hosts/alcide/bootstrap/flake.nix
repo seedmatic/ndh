@@ -48,8 +48,11 @@
               # Enable experimental features (should already be in /etc/nix/nix.conf)
               nix.settings.experimental-features = [ "nix-command" "flakes" ];
               
-              # Don't enable linux-builder yet - it requires Linux builds to activate
-              # We'll enable it in stage 2 after basic nix-darwin is working
+              # Trusted users prerequisite for linux-builder
+              nix.settings.trusted-users = [ "@admin" ];
+              
+              # Enable default nix-darwin linux-builder
+              nix.linux-builder.enable = true;
             };
           })
         ];
