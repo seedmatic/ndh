@@ -11,11 +11,19 @@ in {
 
   # Enable automatic backup of conflicting files during activation
   environment.etc.backup.enable = true;
+  
+  # Add darwin-rebuild to system packages for easy rebuilds
+  environment.systemPackages = [ self.inputs.darwin.packages.${pkgs.system}.darwin-rebuild ];
 
   # Create symlink to host-specific flake for darwin-rebuild without --flake
-  environment.etc."nix-darwin/flake.nix".source = pkgs.runCommand "darwin-flake-link" {} ''
-    ln -s ${userHome}/Gits/nxmatic/nix-darwin-home/hosts/${config.networking.hostName}/flake.nix $out
-  '';
+  # Use hostAlias if available (e.g., "alcide"), otherwise fall back to hostName
+  environment.etc."nix-darwin/flake.nix".source = 
+    let hostDir = if config.profile.host ? hostAlias && config.profile.host.hostAlias != null && config.profile.host.hostAlias != ""
+                  then config.profile.host.hostAlias
+                  else config.networking.hostName;
+    in pkgs.runCommand "darwin-flake-link" {} ''
+      ln -s ${userHome}/Gits/nxmatic/nix-darwin-home/hosts/${hostDir}/flake.nix $out
+    '';
 
   # auto manage nixbld users with nix darwin
   nix = {
