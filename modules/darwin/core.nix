@@ -16,14 +16,22 @@ in {
   environment.systemPackages = [ self.inputs.darwin.packages.${pkgs.system}.darwin-rebuild ];
 
   # Create symlink to host-specific flake for darwin-rebuild without --flake
+  # Points to GitHub repo (develop branch) - no local clone needed
   # Use hostAlias if available (e.g., "alcide"), otherwise fall back to hostName
   environment.etc."nix-darwin/flake.nix".source = 
-    let hostDir = if config.profile.host ? hostAlias && config.profile.host.hostAlias != null && config.profile.host.hostAlias != ""
-                  then config.profile.host.hostAlias
-                  else config.networking.hostName;
-    in pkgs.runCommand "darwin-flake-link" {} ''
-      ln -s ${userHome}/Gits/nxmatic/nix-darwin-home/hosts/${hostDir}/flake.nix $out
-    '';
+    let 
+      hostDir = if config.profile.host ? hostAlias && config.profile.host.hostAlias != null && config.profile.host.hostAlias != ""
+                then config.profile.host.hostAlias
+                else config.networking.hostName;
+      # Create a flake wrapper that references GitHub
+      flakeContent = ''
+        {
+          description = "nix-darwin configuration for ${hostDir}";
+          inputs.nix-darwin-home.url = "github:nxmatic/nix-darwin-home/develop?dir=hosts/${hostDir}";
+          outputs = { nix-darwin-home, ... }: nix-darwin-home.outputs;
+        }
+      '';
+    in pkgs.writeText "flake.nix" flakeContent;
 
   # auto manage nixbld users with nix darwin
   nix = {
