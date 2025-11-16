@@ -24,7 +24,7 @@ in
 
     # bioskop - Darwin host
     Host bioskop bioskop.lan bioskop.local bioskop-ts bioskop.mammoth-skate.ts.net
-      User ${userName}
+      User nxmatic
       StrictHostKeyChecking accept-new
       UserKnownHostsFile ~/.ssh/known_hosts
       IdentityFile ~/.ssh/keys.d/mammoth-skate
