@@ -1,5 +1,5 @@
 {
-  description = "Bootstrap configuration for alcide - Stage 1: Linux builder only";
+  description = "Bootstrap configuration for alcide - Stage 1: Minimal nix-darwin without linux-builder";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-25.05-darwin";
@@ -17,10 +17,7 @@
         inherit system;
         
         modules = [
-          # Import ONLY the linux-builder module from our repo
-          ../../../modules/darwin/linux-builder.nix
-          
-          # Minimal inline configuration
+          # Minimal inline configuration - use standard nix-darwin linux-builder
           ({ lib, pkgs, config, ... }: {
             # Define profile.name option that linux-builder requires
             options.profile.name = lib.mkOption {
@@ -51,14 +48,11 @@
               # Enable experimental features (should already be in /etc/nix/nix.conf)
               nix.settings.experimental-features = [ "nix-command" "flakes" ];
               
-              # The linux-builder module will automatically enable itself
-              # It reads profile.name and SSH keys from keys.yaml
+              # Don't enable linux-builder yet - it requires Linux builds to activate
+              # We'll enable it in stage 2 after basic nix-darwin is working
             };
           })
         ];
-        
-        # Pass self reference for linux-builder module
-        specialArgs = { self = self; };
       };
     };
 }
