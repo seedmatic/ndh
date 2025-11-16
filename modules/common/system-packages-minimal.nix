@@ -14,9 +14,11 @@ with pkgs; [
   # Git (minimal, for flake updates)
   git
   
+  # Lima VM management
+  lima
+  
   # SSH (for VM access)
   # openssh is provided by macOS, but we may want specific tools
   
-  # Lima VM management happens via flox environment
   # Heavy tools moved to VM
 ]
