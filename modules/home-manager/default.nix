@@ -28,9 +28,9 @@ in {
     ./socket-vmnet.nix
     ./shell.nix
     ./ssh.nix
-    # ./ssh-keys.nix  # Disabled in favor of Teleport
+    ./ssh-keys.nix
     ./ssh-tailnet-hosts.nix
-    # ./ssh-keychain-removal.nix  # Disabled in favor of Teleport
+    ./ssh-keychain-removal.nix
     #   ./teleport.nix
     ./tldr.nix
     ./tmate.nix
