@@ -14,11 +14,9 @@ with pkgs; [
   # Git (minimal, for flake updates)
   git
   
-  # Lima VM management
-  lima
-  
   # SSH (for VM access)
   # openssh is provided by macOS, but we may want specific tools
   
+  # Lima is provided by modules/darwin/lima-config.nix
   # Heavy tools moved to VM
 ]

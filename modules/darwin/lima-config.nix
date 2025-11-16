@@ -274,6 +274,9 @@ in {
     };
   };
   config = {
+    # Add lima to system packages
+    environment.systemPackages = [ pkgs.lima ];
+    
     # Dedicated activation script using postActivation which is actually executed
     # Use mkAfter to run after other postActivation scripts (@codebase)
     system.activationScripts.postActivation.text = lib.mkAfter ''
