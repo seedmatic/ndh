@@ -167,8 +167,8 @@ in {
   config = {
     _module.args.userMapping =
       userMapping; # (@codebase) keep simple to avoid recursion
-  # Dynamic defaults (@codebase): adjust user home path to use the resolved user name
-  # instead of the static placeholder jdoe so Home Manager's activation check matches $HOME.
-  profile.user.home = lib.mkDefault (builtins.toPath "/${defaultUserHome}/${config.profile.user.name}");
+    # Dynamic defaults (@codebase): adjust user home path to use the resolved user name
+    # instead of the static placeholder jdoe so Home Manager's activation check matches $HOME.
+    profile.user.home = lib.mkDefault (builtins.toPath "/${defaultUserHome}/${config.profile.user.name}");
   };
 }

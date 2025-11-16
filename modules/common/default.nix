@@ -1,4 +1,4 @@
-{ config, lib, pkgs, self, ... }:
+{ config, lib, pkgs, self, userMapping, ... }:
 let
 
   cfg = config.profile;
@@ -55,7 +55,7 @@ in {
   # let nix manage home-manager profiles and use global nixpkgs
   home-manager = {
     extraSpecialArgs = {
-      inherit self;
+      inherit self userMapping;
       profile = config.profile;
     };
     useGlobalPkgs = true;
