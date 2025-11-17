@@ -194,7 +194,7 @@ in {
   # Remove or comment out the old networking block to avoid conflicts:
   # networking = { ... }
 
-  environment.systemPackages = with pkgs; [ disko zfs binutils ];
+  environment.systemPackages = with pkgs; [ disko zfs binutils flox incus distrobuilder ];
   
   # Ensure security wrappers are in PATH for all processes
   environment.variables = {
