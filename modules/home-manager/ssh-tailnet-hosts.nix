@@ -25,7 +25,6 @@ in
     Host *
       StrictHostKeyChecking accept-new
       UserKnownHostsFile ~/.ssh/known_hosts
-      IdentitiesOnly yes
       ServerAliveInterval 30
       ServerAliveCountMax 4
 

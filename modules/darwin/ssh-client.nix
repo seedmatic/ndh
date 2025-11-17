@@ -14,7 +14,16 @@ in {
 
     baseConfig = mkOption {
       type = types.lines;
-      default = ''Host *\n  ServerAliveInterval 30\n  ServerAliveCountMax 3\n  ControlMaster auto\n  ControlPersist 5m\n  PreferredAuthentications publickey,keyboard-interactive\nInclude ssh_config.d/*.conf\nInclude /etc/ssh/ssh_config.d/*.conf'';
+      default = ''
+        Host *
+          ServerAliveInterval 30
+          ServerAliveCountMax 3
+          ControlMaster auto
+          ControlPersist 5m
+          PreferredAuthentications publickey,keyboard-interactive
+        Include ssh_config.d/*.conf
+        Include /etc/ssh/ssh_config.d/*.conf
+      '';
       description = "Raw /etc/ssh/ssh_config base contents (may contain Include lines).";
     };
 
