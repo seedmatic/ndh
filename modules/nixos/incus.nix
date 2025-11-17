@@ -7,36 +7,11 @@ let
     find /run/incus -type d -exec chmod g+rwx {} +
   '';
 
-  # Create an FHS environment for distrobuilder/debootstrap to work properly
-  distrobuilderFHS = pkgs.buildFHSUserEnv {
-    name = "distrobuilder-fhs";
-    targetPkgs = pkgs: with pkgs; [
-      distrobuilder
-      debootstrap
-      dpkg
-      gnused
-      gnugrep
-      gnutar
-      gzip
-      gawk
-      util-linux
-      coreutils
-      findutils
-      bash
-      perl
-      wget
-      curl
-      cacert
-    ];
-    runScript = "distrobuilder";
-  };
-
 in {
   environment.systemPackages = with pkgs; [ 
     incus 
     incus-compose 
     skopeo 
-    distrobuilderFHS  # Use FHS-wrapped version instead of bare distrobuilder
     debootstrap
     dpkg
     # Additional tools needed by debootstrap for proper Debian image building
@@ -129,11 +104,4 @@ in {
     serviceConfig.ExecStartPost = [ "${fixIncusSocketPerms}" ];
   };
 
-  security.wrappers.distrobuilder = {
-    source = "${distrobuilderFHS}/bin/distrobuilder-fhs";
-    owner = "root";
-    group = "incus";
-    setuid = true;
-    permissions = "u+rx,g+rx,o+rx";
-  };
 }
