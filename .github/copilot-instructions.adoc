@@ -1,0 +1,340 @@
+= Copilot Instructions for nix-darwin-home
+:toc: left
+:toclevels: 3
+:icons: font
+:source-highlighter: rouge
+
+== Project Overview
+
+This is a **Nix-based infrastructure-as-code** repository managing Darwin (macOS) and NixOS systems with Lima VMs, container orchestration (Incus), and Tailscale/Headscale networking. The architecture bridges macOS hosts (alcide, bioskop) with NixOS Lima VMs running RKE2 Kubernetes clusters.
+
+IMPORTANT: **Key architectural pattern**: Development happens in Lima NixOS VMs (not on the macOS host directly). The Darwin configuration is minimal, delegating heavy workloads to virtualized NixOS.
+
+== Architecture & Critical Components
+
+=== Flake Structure (`flake.nix`)
+
+* **`mkHostOutputs`**: Factory function generating both Darwin and NixOS configurations for a host
+* **Returns**: `darwinConfiguration`, `nixosConfiguration`, `nixosDiskImage`, `homeManagerConfigurations`
+* **Dual-purpose hosts**: Each physical host (alcide, bioskop) has both Darwin config (host OS) and NixOS config (Lima VM)
+* **Module composition**: `mkModulesFor` constructs module lists with `preModules`, `baseModules`, `extraModules` layers
+
+=== Host Configuration Pattern (`hosts/*/flake.nix`)
+
+[source,nix]
+----
+hostProfile = {
+  hostName = "APL-dk40njhk9h";  # Physical hostname
+  hostAlias = "alcide";          # Human-friendly alias (used as Lima hostname)
+  tailnet = { };                 # Tailscale configuration
+};
+----
+
+* **hostAlias becomes Lima hostname**: `limaHost.hostName` defaults to hostAlias if present
+* Profile modules import from `profiles/` (work.nix, committed.nix, common.nix)
+
+=== Module Layering
+
+----
+modules/
+├── common/        # Shared Darwin + NixOS (primary-user, lima-host, flox, dnsmasq)
+├── darwin/        # macOS-specific (lima-config, network-bond, preferences, distributed-builds)
+├── nixos/         # Linux-specific (incus, containers, headscale, tailscale, zfs)
+└── home-manager/  # User environment (shared across systems)
+----
+
+CRITICAL: `modules/common/default.nix` is imported by both Darwin and NixOS. Changes here affect all systems.
+
+=== Lima VM Architecture
+
+* **VM generator**: `modules/darwin/lima-config.nix` creates `~/.lima/<guestName>/lima.yaml`
+* **Network management**: `bin/lima-yaml-manager.sh` for surgical YAML edits (preserves user content)
+* **Standard networks**: `host`, `bridged`, `shared` (see link:../docs/lima-yaml-management.md[Lima YAML Management])
+* **Incus in VM**: NixOS VM runs Incus for container orchestration (not on macOS host)
+* **Rebuild workflow**: `darwin-rebuild switch` regenerates Lima configs → restart VM for changes
+
+=== Networking Stack
+
+* **Tailscale**: External access via WireGuard mesh (manual `tailscale up --ssh` on Darwin)
+* **Headscale**: Self-hosted Tailscale server for LAN (lower latency, see `modules/nixos/headscale-server.nix`)
+* **Gateways**: `incus-tailscale-gateway.nix` advertises subnet routes (e.g., 192.168.106.0/24 for RKE2)
+* **SSH**: Both Tailscale and Headscale provide identity-based SSH (replaced Teleport)
+
+==== Network Ranges
+
+[options="header"]
+|===
+| Network | Range | Purpose
+| Lima shared | 192.168.5.0/24 | Lima VM networking
+| Incus (alcide) | 192.168.106.0/24 | RKE2 cluster
+| Incus (bioskop) | 192.168.107.0/24 | RKE2 cluster
+| RKE2 infrastructure | 10.80.0.0/18 | Hierarchical allocation
+|===
+
+=== RKE2 Cluster Management (`modules/nixos/incus-rke2-cluster/`)
+
+* **Git subtree**: Standalone repo integrated as subtree (see `.git-subtree-sync.sh`)
+* **Makefile-driven**: Hierarchical make targets with layered `rules.mk` files
+* **Runtime artifacts**: `.run.d/` directory (gitignored, deterministic regeneration)
+** `.run.d/network/` - Network arithmetic exports
+** `.run.d/incus/<instance>/` - Cloud-init seeds, preseed YAMLs
+* **Key targets**: `ensure-image@incus`, `instance@incus`, `start@cluster`, `stop@cluster`
+* **Dual-stack**: Always IPv4+IPv6 (ENABLE_IPV6 toggle removed)
+
+== Development Workflows
+
+=== Rebuilding Darwin (macOS)
+
+[source,bash]
+----
+# From host directory
+cd hosts/alcide  # or hosts/bioskop
+darwin-rebuild switch --flake .#alcide
+----
+
+* Regenerates Lima VM configs in `~/.lima/`
+* Use `--no-networks` flag to skip network management (via `regenerate-lima-config.sh`)
+
+=== Rebuilding NixOS (Lima VM)
+
+[source,bash]
+----
+# SSH into VM
+limactl shell nerd-nixos
+
+# Rebuild from host config
+sudo nixos-rebuild switch --flake /Users/username/hosts/alcide#alcide-nixos
+----
+
+=== RKE2 Cluster Operations
+
+[source,bash]
+----
+cd modules/nixos/incus-rke2-cluster
+
+# Deploy cluster
+make start@cluster CLUSTER_NAME=cluster-1
+
+# Check status
+make status@cluster
+
+# Stop cluster
+make stop@cluster
+----
+
+=== Distributed Builds
+
+* **Local Linux builder**: Automatic via `modules/darwin/linux-builder.nix`
+* **Cross-host builds**: `services.crossHostBuilders.enable` (requires Tailscale mesh)
+* **Builder keys**: `keys/builder_ed25519` for SSH authentication
+
+== Code Conventions & Patterns
+
+=== @codebase Comments
+
+Files use `@codebase` tags for architectural context:
+
+[source,nix]
+----
+# NOTE (@codebase): Rollback instructions:
+#   - Remove "ca-derivations" from experimental-features.
+#   - Set auto-optimise-store = true to restore inline dedup.
+----
+
+IMPORTANT: **Purpose**: Mark critical decisions, migration paths, and invariants. Preserve when editing.
+
+=== mkDefault vs mkForce
+
+* **mkDefault**: Allows flake-level overrides (e.g., `limaHost.hostName` in `lima-host.nix`)
+* **mkForce**: Overrides all other priorities (use sparingly, e.g., `networking.hostName`)
+
+=== Profile System
+
+[source,nix]
+----
+# profiles/work.nix
+profile.user.name = "work-username";
+profile.homeSymlinks = [ "committed" ];  # Cross-profile home directory access
+----
+
+* **User mapping**: `userMapping.profileUsers.{work, committed}` in `profiles/common.nix`
+* **UID/GID**: Work profile uses 503:503 (see `profiles/work.nix`)
+
+=== Module Options Pattern
+
+[source,nix]
+----
+options.services.myService = {
+  enable = mkEnableOption "My Service";
+  serverUrl = mkOption { type = types.str; description = "..."; };
+};
+
+config = mkIf cfg.enable {
+  # Implementation
+};
+----
+
+=== Overlays (`overlays/`)
+
+* **Applied in flake.nix**: `pkgsFor` extends basePackages with custom overlays
+* **Convention**: `<name>Overlay = inputs: import ./overlays/<name>.nix inputs;`
+* **Examples**: `qemuOverlay`, `birdOverlay`, `incusComposeOverlay`
+
+== Testing & Validation
+
+=== Nix Build Commands
+
+[source,bash]
+----
+# Check flake
+nix flake check
+
+# Build Darwin config
+nix build .#darwinConfigurations.alcide.system
+
+# Build NixOS disk image
+nix build .#nixosDiskImage
+
+# Validate closure size
+nix path-info -Sh result
+----
+
+=== Pre-commit Validation
+
+* **Format**: Uses `treefmt-nix` (see flake inputs)
+* **Lint**: No explicit linters configured (Nix evaluation catches syntax errors)
+
+=== Makefile Validation (RKE2)
+
+[source,bash]
+----
+# Dry-run
+make --dry-run start@cluster
+
+# Validate includes
+make validate@includes  # (planned target)
+
+# List runtime artifacts
+ls -la .run.d/
+----
+
+== Documentation Standards
+
+=== AsciiDoc Convention
+
+* **Primary format**: `.adoc` files in `docs/` (not Markdown)
+* **Key docs**: `docs/README.adoc`, `docs/modules-reference.adoc`, `docs/runtime-layout.adoc`
+* **Session notes**: `docs/sessions/YYYY-MM-DD.adoc` (see link:../docs/collaboration-guide.adoc[Collaboration Guide])
+
+=== Session Workflow
+
+. **Pre-session**: Update `docs/NEXT-SESSION-TODO.adoc`
+. **During**: Create `docs/sessions/YYYY-MM-DD.adoc` with achievements
+. **Pre-expiration**: AI reminder at T-5m to finalize summary
+. **Closure**: Update `docs/sessions/README.adoc` with latest session link
+
+=== Module Documentation Pattern
+
+See link:../docs/modules-reference.adoc[Modules Reference]:
+
+* Options table with types and defaults
+* Management scripts (`deploy-*`, `*-status`, `*-shell`)
+* Example configurations
+* Troubleshooting section
+
+== Common Pitfalls
+
+=== ❌ Don't: Edit `.run.d/` directly
+
+Generated files - modify source templates or Makefile logic instead.
+
+=== ❌ Don't: Use `mkForce` without justification
+
+Breaks composition. Prefer `mkDefault` and `mkOverride` for priority management.
+
+=== ❌ Don't: Assume Darwin == NixOS
+
+Check `pkgs.stdenvNoCC.isDarwin` for platform-specific logic.
+
+=== ❌ Don't: Mix Markdown in docs/
+
+Use AsciiDoc (`.adoc`) for consistency with existing documentation.
+
+=== ✅ Do: Preserve @codebase comments
+
+These document architectural decisions and migration paths.
+
+=== ✅ Do: Use lima-yaml-manager.sh for network changes
+
+Preserves user customizations (see link:../docs/lima-yaml-management.md[Lima YAML Management]).
+
+=== ✅ Do: Test both Darwin and NixOS builds
+
+Both configurations are generated from same host flake.
+
+== Key Files Reference
+
+[options="header"]
+|===
+| File | Purpose
+| `flake.nix` | Main flake (1000+ lines, factory functions)
+| `hosts/alcide/flake.nix` | Darwin entry for alcide host
+| `hosts/bioskop/flake.nix` | Darwin entry for bioskop host
+| `modules/{darwin,nixos,common}/default.nix` | Module indices
+| `modules/darwin/lima-config.nix` | VM generation logic
+| `modules/nixos/headscale-server.nix` | Self-hosted VPN server
+| `modules/nixos/incus-rke2-cluster/Makefile` | RKE2 cluster orchestration
+| `docs/collaboration-guide.adoc` | AI session protocol
+|===
+
+== Shell Environment
+
+* **Default shell**: `zsh` (configured in `modules/common/default.nix`)
+* **Home Manager**: Manages shell config, user packages (`.zshrc`, `.bashrc`)
+* **Lima VM shell**: `limactl shell <vm-name>` or `ssh lima-<hostname>`
+
+== External Dependencies
+
+[options="header"]
+|===
+| Dependency | Purpose
+| Cachix | Binary cache (`nxmatic.cachix.org`)
+| Flox | Environment management (from `flake-commons`)
+| Socket VMNet | macOS VM networking
+| Incus | Container orchestration (replaces LXD)
+|===
+
+== Quick Reference
+
+=== Common Commands
+
+[source,bash]
+----
+# Darwin rebuild
+cd hosts/alcide && darwin-rebuild switch --flake .#alcide
+
+# NixOS rebuild (in VM)
+sudo nixos-rebuild switch --flake /path/to/config
+
+# Lima VM management
+limactl start nerd-nixos
+limactl shell nerd-nixos
+limactl stop nerd-nixos
+
+# RKE2 cluster
+make start@cluster CLUSTER_NAME=cluster-1
+make status@cluster
+make stop@cluster
+
+# Network diagnostics
+tailscale status
+hs-status
+----
+
+=== Documentation Links
+
+* link:../docs/README.adoc[Documentation Index]
+* link:../docs/modules-reference.adoc[Modules Reference]
+* link:../docs/network-setup.adoc[Network Setup]
+* link:../docs/runtime-layout.adoc[Runtime Layout]
+* link:../docs/collaboration-guide.adoc[Collaboration Guide]
