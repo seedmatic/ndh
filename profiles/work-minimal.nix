@@ -6,7 +6,7 @@ let
 in {
   imports = [ ./common.nix ];
   profile = {
-    name = mkDefault "work-minimal";
+    name = mkDefault "work";
     email = mkDefault workUser.email;
     homeSymlinks = [ committedUser.name ];
     user = {
@@ -19,6 +19,6 @@ in {
   };
   ids.gids.nixbld = lib.mkForce 350;
   
-  # Minimal profile: Override system packages to be truly minimal
+  # Minimal profile for JAMF-managed systems
   # Most work happens in Lima VM, not on macOS host
 }

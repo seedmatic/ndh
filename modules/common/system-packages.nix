@@ -3,7 +3,7 @@ with pkgs; [
   bash
   coreutils-full
   direnv
-  flox
+  # flox installed via flox itself before bootstrap
   git
   gitflow
   emacs-nox

@@ -10,6 +10,7 @@ with pkgs; [
   # Nix ecosystem (required for VM management)
   # flox removed - must be installed via flox itself before bootstrap
   direnv
+  nix-darwin  # For darwin-rebuild command
   
   # Git (minimal, for flake updates)
   git

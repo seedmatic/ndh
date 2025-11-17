@@ -14,34 +14,40 @@
         knownNetworkServices = [ "Wi-Fi" "Thunderbolt Ethernet" ];
       };
 
-      profileModule = { lib, config, pkgs, ... }: {
+      profileModule = { pkgs, lib, config, ... }: {
         imports = [ 
-          ../../profiles/work-minimal.nix
+          ../../profiles/work.nix
           # Teleport removed - using Tailscale for external access
         ];
         config = {
           profile = {
             host = {
               hostName = lib.mkDefault hostProfile.hostName;
-              hostAlias = lib.mkDefault hostProfile.hostAlias;
               tailnet = hostProfile.tailnet;
-            };
+            } // (if hostProfile ? hostAlias then {
+              hostAlias = lib.mkDefault hostProfile.hostAlias;
+            } else {});
             darwin = darwinProfile;
           };
-          
-          # Minimal macOS host configuration for JAMF-managed system
-          # Most development work happens in Lima NixOS VM
-          
-          # Override system packages with minimal set
-          environment.systemPackages = lib.mkForce (import ../../modules/common/system-packages-minimal.nix { inherit pkgs; });
-          
-          # Configure SSL certificates for JAMF-managed system
-          nix.settings.ssl-cert-file = "/etc/ssl/cert.pem";
-          
+
           # Disable cross-host distributed builds during bootstrap
           # The local Linux builder will still work, but remote builders via SSH won't
           # Enable this after both hosts are set up with Tailscale mesh networking
           services.crossHostBuilders.enable = false;
+        };
+      };
+      
+      # Darwin-specific module for Lima and macOS host configuration
+      darwinModule = { config, lib, pkgs, ... }: {
+        config = {
+          # Minimal macOS host configuration for JAMF-managed system
+          # Most development work happens in Lima NixOS VM
+          
+          # Use consolidated system packages (already minimal)
+          environment.systemPackages = lib.mkForce (import ../../modules/common/system-packages.nix { inherit pkgs; });
+          
+          # Configure SSL certificates for JAMF-managed system
+          nix.settings.ssl-cert-file = "/etc/ssl/cert.pem";
           
           # Lima VM configuration - this is where the real work happens
           lima = {
@@ -55,5 +61,8 @@
           # Keep only essential networking and VM management
         };
       };
-    in nix-darwin-home.mkHostOutputs { inherit hostProfile profileModule; };
+    in nix-darwin-home.mkHostOutputs { 
+      inherit hostProfile profileModule; 
+      darwinExtraModules = [ darwinModule ];
+    };
 }
