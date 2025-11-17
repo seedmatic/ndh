@@ -2,7 +2,24 @@
   lib,
   pkgs,
   ...
-}: {
+}:
+let
+  # VS Code shell integration
+  # If VS Code is injecting (VSCODE_INJECTION=1), it will handle integration automatically
+  # Otherwise, we manually source it for proper shell integration features
+  vscodeShellIntegration = shell: ''
+    # Only manually source if VS Code hasn't already injected the integration
+    if [[ "$TERM_PROGRAM" == "vscode" && -z "$VSCODE_INJECTION" ]]; then
+      VSCODE_SHELL_INTEGRATION="$(${lib.meta.getExe pkgs.vscode} --locate-shell-integration-path ${shell} 2>/dev/null)"
+      if [[ -n "$VSCODE_SHELL_INTEGRATION" && -f "$VSCODE_SHELL_INTEGRATION" ]]; then
+        # Set the variable that the integration script expects when manually sourced
+        VSCODE_INJECTION=1
+        USER_ZDOTDIR="$ZDOTDIR"
+        builtin source "$VSCODE_SHELL_INTEGRATION"
+      fi
+    fi
+  '';
+in {
   programs.zsh = {
     enable = true;
 
@@ -13,17 +30,8 @@
     envExtra = builtins.readFile ./shell/zshenv.zsh;
 
     initContent = ''
-      if [[ "$TERM_PROGRAM" == "vscode" ]]; then
-        codepath=/usr/local/bin/code
-        if [[ -x "$codepath" ]]; then
-          source "$($codepath --locate-shell-integration-path zsh)"
-        else
-          "You should run in vscode the command: install 'code' command in path"
-          exit 1
-        fi
-      else
-        source "$ZDOTDIR/rcs/zshrc.zsh"
-      fi
+      ${vscodeShellIntegration "zsh"}
+      source "$ZDOTDIR/rcs/zshrc.zsh"
     '';
   };
 
