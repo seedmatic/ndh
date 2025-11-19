@@ -4,6 +4,7 @@
     ./preferences.nix
     ./security.nix
     ./core.nix
+    ./disable-google-updaters.nix
     ./dnsmasq.nix
     ./headscale-client.nix
     ./internet-sharing.nix

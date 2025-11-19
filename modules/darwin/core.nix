@@ -87,6 +87,9 @@ in {
 
   launchd.user.envVariables = { XDG_RUNTIME_DIR = "${userHome}/.xdg"; };
 
+  # Disable Google update services that trigger notifications
+  services.disable-google-updaters.enable = true;
+
   # Used for backwards compatibility, please read the changelog before changing.
   # $ darwin-rebuild changelog
   system.stateVersion = 5;
