@@ -719,7 +719,8 @@ The home LAN is divided into /27 blocks (30 usable IPs per block) for organized 
 |===
 | Host | MAC Address | IP | Purpose
 | bioskop-darwin | d0:11:e5:19:1c:9a | 192.168.1.129 | Darwin host
-| bioskop-nixos (vmlan0) | 10:66:6a:4c:27:01 | 192.168.1.130 | Lima NixOS VM
+| bioskop-nixos (lan-br) | 10:66:6a:4c:27:fe | 192.168.1.130 | Lima NixOS VM (Incus bridge DHCP)
+| bioskop-nixos (vmlan0) | 10:66:6a:4c:27:01 | (no IP) | Bridge member (enslaved under lan-br)
 | bioskop-master-control-node (lan0) | 10:66:6a:42:15:4a | 192.168.1.131 | RKE2 master (DHCP)
 | bioskop-peer1-control-node | TBD | 192.168.1.132+ | RKE2 peer1 (DHCP)
 | bioskop-wifi | ca:f1:1a:ef:69:9f | 192.168.1.133 | WiFi interface (DHCP)
@@ -733,7 +734,8 @@ The home LAN is divided into /27 blocks (30 usable IPs per block) for organized 
 |===
 | Host | MAC Address | IP | Purpose
 | alcide (en0) | e6:bb:3e:c9:cf:9b | 192.168.1.33 | Darwin host (MacBook)
-| alcide-nixos (vmlan0) | 10:66:6a:4c:6f:01 | 192.168.1.34 | Lima NixOS VM
+| alcide-nixos (lan-br) | 10:66:6a:4c:6f:fe | 192.168.1.34 | Lima NixOS VM (Incus bridge DHCP)
+| alcide-nixos (vmlan0) | 10:66:6a:4c:6f:01 | (no IP) | Bridge member (enslaved under lan-br)
 | alcide-master-control-node (lan0) | 10:66:6a:9e:16:11 | 192.168.1.35 | RKE2 master (DHCP)
 | alcide-peer1-control-node | TBD | 192.168.1.36+ | RKE2 peer1 (DHCP)
 | alcide-peer2-control-node | TBD | 192.168.1.37+ | RKE2 peer2 (DHCP)

@@ -1,6 +1,15 @@
 { config, pkgs, lib, ... }:
 let
   user = config.profile.user.name;
+  hostProfile = config.profile.host;
+  effectiveHostName =
+    if (hostProfile ? hostAlias && hostProfile.hostAlias != null
+        && hostProfile.hostAlias != "")
+    then hostProfile.hostAlias
+    else hostProfile.hostName;
+  hostByteHex = lib.strings.toLower
+    (builtins.substring 0 2 (builtins.hashString "sha256" effectiveHostName));
+  lanBridgeMac = "10:66:6a:4c:${hostByteHex}:fe";
   fixIncusSocketPerms = pkgs.writeShellScript "fix-incus-socket-perms.sh" ''
     set -euxo pipefail
     find /run/incus -type f -exec chmod g+rw {} +
@@ -58,6 +67,7 @@ in {
     # NetworkManager should not manage vmlan0 - it's used as Incus lan-br bridge member
     networkmanager.unmanaged = [
       "interface-name:vmlan0"
+      "interface-name:lan-br"
     ];
     # bridges.externalbr0.interfaces = [ "enp0s1" ];
     # interfaces.externalbr0.useDHCP = true; # Host gets an IP from LAN DHCP
@@ -68,6 +78,18 @@ in {
     ]; # Allow DHCP/DNS/etc. on bridge
     # interfaces.externalbr0.macAddress =
     #   "52:55:55:71:36:47"; # match your lima.yaml
+  };
+
+  systemd.network.networks."40-lan-br" = {
+    matchConfig.Name = "lan-br";
+    linkConfig = {
+      MACAddress = lanBridgeMac;
+    };
+    networkConfig = {
+      DHCP = "yes";
+      IPv6AcceptRA = "yes";
+      LinkLocalAddressing = "no";
+    };
   };
 
   systemd.tmpfiles.rules = [ "d /run/incus 0775 root incus-admin -" ];
