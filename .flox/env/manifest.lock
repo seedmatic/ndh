@@ -18,9 +18,6 @@
       "keychain": {
         "pkg-path": "keychain"
       },
-      "lima": {
-        "pkg-path": "lima"
-      },
       "linux-builder": {
         "pkg-path": "darwin.linux-builder",
         "systems": [
@@ -666,126 +663,6 @@
       ],
       "outputs": {
         "out": "/nix/store/7c5dx4lvbyyran0rhmxxn13r9a89f5vg-keychain-2.9.8"
-      },
-      "system": "x86_64-linux",
-      "group": "toplevel",
-      "priority": 5
-    },
-    {
-      "attr_path": "lima",
-      "broken": false,
-      "derivation": "/nix/store/w7m74c9ma9bzjw423mppnbxkk2i2j1jm-lima-1.2.2.drv",
-      "description": "Linux virtual machines with automatic file sharing and port forwarding",
-      "install_id": "lima",
-      "license": "Apache-2.0",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=c5ae371f1a6a7fd27823bc500d9390b38c05fa55",
-      "name": "lima-1.2.2",
-      "pname": "lima",
-      "rev": "c5ae371f1a6a7fd27823bc500d9390b38c05fa55",
-      "rev_count": 895122,
-      "rev_date": "2025-11-12T20:02:36Z",
-      "scrape_date": "2025-11-14T16:41:33.720628Z",
-      "stabilities": [
-        "staging",
-        "unstable"
-      ],
-      "unfree": false,
-      "version": "1.2.2",
-      "outputs_to_install": [
-        "out"
-      ],
-      "outputs": {
-        "out": "/nix/store/dnjhkphiba2qzy9l3f9390sm1gcn4d73-lima-1.2.2"
-      },
-      "system": "aarch64-darwin",
-      "group": "toplevel",
-      "priority": 5
-    },
-    {
-      "attr_path": "lima",
-      "broken": false,
-      "derivation": "/nix/store/4qb6l8cw2914r3hbx06qwvxz3i9978fr-lima-1.2.2.drv",
-      "description": "Linux virtual machines with automatic file sharing and port forwarding",
-      "install_id": "lima",
-      "license": "Apache-2.0",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=c5ae371f1a6a7fd27823bc500d9390b38c05fa55",
-      "name": "lima-1.2.2",
-      "pname": "lima",
-      "rev": "c5ae371f1a6a7fd27823bc500d9390b38c05fa55",
-      "rev_count": 895122,
-      "rev_date": "2025-11-12T20:02:36Z",
-      "scrape_date": "2025-11-14T17:18:51.038377Z",
-      "stabilities": [
-        "staging",
-        "unstable"
-      ],
-      "unfree": false,
-      "version": "1.2.2",
-      "outputs_to_install": [
-        "out"
-      ],
-      "outputs": {
-        "out": "/nix/store/bjkzx6n5gbhn14hh89mv4z1sv7vacmir-lima-1.2.2"
-      },
-      "system": "aarch64-linux",
-      "group": "toplevel",
-      "priority": 5
-    },
-    {
-      "attr_path": "lima",
-      "broken": false,
-      "derivation": "/nix/store/8imd9357fvgvkl82b9rzkdp6p3x7w4q3-lima-1.2.2.drv",
-      "description": "Linux virtual machines with automatic file sharing and port forwarding",
-      "install_id": "lima",
-      "license": "Apache-2.0",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=c5ae371f1a6a7fd27823bc500d9390b38c05fa55",
-      "name": "lima-1.2.2",
-      "pname": "lima",
-      "rev": "c5ae371f1a6a7fd27823bc500d9390b38c05fa55",
-      "rev_count": 895122,
-      "rev_date": "2025-11-12T20:02:36Z",
-      "scrape_date": "2025-11-14T17:52:34.302579Z",
-      "stabilities": [
-        "staging",
-        "unstable"
-      ],
-      "unfree": false,
-      "version": "1.2.2",
-      "outputs_to_install": [
-        "out"
-      ],
-      "outputs": {
-        "out": "/nix/store/s57as7sxhxvx4wc5j1kxg4rj888nrkm7-lima-1.2.2"
-      },
-      "system": "x86_64-darwin",
-      "group": "toplevel",
-      "priority": 5
-    },
-    {
-      "attr_path": "lima",
-      "broken": false,
-      "derivation": "/nix/store/ihln5izlfw27bywp2a5kwd4b914zzdd0-lima-1.2.2.drv",
-      "description": "Linux virtual machines with automatic file sharing and port forwarding",
-      "install_id": "lima",
-      "license": "Apache-2.0",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=c5ae371f1a6a7fd27823bc500d9390b38c05fa55",
-      "name": "lima-1.2.2",
-      "pname": "lima",
-      "rev": "c5ae371f1a6a7fd27823bc500d9390b38c05fa55",
-      "rev_count": 895122,
-      "rev_date": "2025-11-12T20:02:36Z",
-      "scrape_date": "2025-11-14T18:32:03.474741Z",
-      "stabilities": [
-        "staging",
-        "unstable"
-      ],
-      "unfree": false,
-      "version": "1.2.2",
-      "outputs_to_install": [
-        "out"
-      ],
-      "outputs": {
-        "out": "/nix/store/10n1cv52glxm7vwbmyfrkxrpdw1j0yfd-lima-1.2.2"
       },
       "system": "x86_64-linux",
       "group": "toplevel",
