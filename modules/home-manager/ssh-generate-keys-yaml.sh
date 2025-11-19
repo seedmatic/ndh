@@ -45,6 +45,7 @@ key::authorityHostNames() {
 
     local -A hostNames=()
     hostNames["${hostName}"]=1
+    hostNames["${hostName}.lan"]=1 # bbox gateway domain name
     hostNames["${hostName}.local"]=1
     hostNames["${hostName}.${domain}"]=1
 
