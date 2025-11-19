@@ -44,6 +44,7 @@ in {
     ./incus-headscale-server.nix
     ./incus-headscale-gateway.nix
     ./incus-tailscale-gateway.nix
+    ./nix-ld.nix
     ./podman.nix
     ./systemd
     ./tailscale.nix

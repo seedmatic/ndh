@@ -15,18 +15,42 @@ DEBUG_FLAG=${LIMA_CIDATA_DEBUG:-}
 VIRTIO_PORT=${LIMA_CIDATA_VIRTIO_PORT:-}
 VSOCK_PORT=${LIMA_CIDATA_VSOCK_PORT:-}
 
-cmd="${CIDATA_MNT}/lima-guestagent daemon"
+# Build command as an array to handle arguments properly
+cmd_args=("${CIDATA_MNT}/lima-guestagent" "daemon")
 
 if [[ -n "${DEBUG_FLAG}" ]]; then
-  cmd+=" --debug=${DEBUG_FLAG}"
+  cmd_args+=("--debug=${DEBUG_FLAG}")
 fi
 
 if [[ -n "${VIRTIO_PORT}" && "${VIRTIO_PORT}" != "0" ]]; then
-  cmd+=" --virtio-port=${VIRTIO_PORT}"
+  cmd_args+=("--virtio-port=${VIRTIO_PORT}")
 fi
 
 if [[ -n "${VSOCK_PORT}" && "${VSOCK_PORT}" != "0" && -e /dev/vsock ]]; then
-  cmd+=" --vsock-port=${VSOCK_PORT}"
+  cmd_args+=("--vsock-port=${VSOCK_PORT}")
 fi
 
-exec ${cmd}
+# Use nix-ld to run the dynamically linked binary
+# Detect architecture for the correct dynamic linker
+case "$(uname -m)" in
+  x86_64)
+    NIX_LD_NAME="ld-linux-x86-64.so.2"
+    ;;
+  aarch64)
+    NIX_LD_NAME="ld-linux-aarch64.so.1"
+    ;;
+  *)
+    echo "Unsupported architecture: $(uname -m)" >&2
+    exit 1
+    ;;
+esac
+
+NIX_LD_PATH="/run/current-system/sw/share/nix-ld/lib/${NIX_LD_NAME}"
+
+if [[ -f "${NIX_LD_PATH}" ]]; then
+  export NIX_LD="${NIX_LD_PATH}"
+  export NIX_LD_LIBRARY_PATH=/run/current-system/sw/share/nix-ld/lib
+  exec "${NIX_LD}" "${cmd_args[@]}"
+else
+  exec "${cmd_args[@]}"
+fi

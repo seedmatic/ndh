@@ -27,6 +27,11 @@ in {
       OOMPolicy = "continue";
       OOMScoreAdjust = "-500";
       User = "root";
+      # Ensure nix-ld environment is available for dynamically linked binaries
+      Environment = [
+        "NIX_LD=/run/current-system/sw/share/nix-ld/lib/ld-linux-x86-64.so.2"
+        "NIX_LD_LIBRARY_PATH=/run/current-system/sw/share/nix-ld/lib"
+      ];
     };
   };
 

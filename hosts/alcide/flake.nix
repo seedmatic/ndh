@@ -17,7 +17,6 @@
       profileModule = { pkgs, lib, config, ... }: {
         imports = [ 
           ../../profiles/work.nix
-          # Teleport removed - using Tailscale for external access
         ];
         config = {
           profile = {
@@ -29,11 +28,6 @@
             } else {});
             darwin = darwinProfile;
           };
-
-          # Disable cross-host distributed builds during bootstrap
-          # The local Linux builder will still work, but remote builders via SSH won't
-          # Enable this after both hosts are set up with Tailscale mesh networking
-          services.crossHostBuilders.enable = false;
         };
       };
       
