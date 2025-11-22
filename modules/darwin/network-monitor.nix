@@ -161,21 +161,16 @@ in {
           
           case "$primary_status" in
             "active:1")
-              # Primary is up and has IP - ensure it has default route priority
-              if ! netstat -rn | grep -q "^default.*$primary"; then
-                log "Primary $primary active but no default route, fixing..."
-              # Ensure primary interface has the highest priority route
+              # Primary is up and has IP - always ensure it holds the preferred route
               local primary_gateway=$(netstat -rn | grep "^default.*$primary" | awk '{print $2}' | head -1)
               if [ -n "$primary_gateway" ]; then
-                log "Ensuring primary $primary has highest priority (metric ${toString cfg.routeMetrics.primary})"
-                # Remove existing default route
+                log "Reasserting primary route via $primary (metric ${toString cfg.routeMetrics.primary})"
                 route -n delete default -ifscope "$primary" 2>/dev/null || true
-                # Add primary route with lowest metric (highest priority)
                 route -n add default "$primary_gateway" -ifscope "$primary" -hopcount ${toString cfg.routeMetrics.primary} 2>/dev/null || true
               else
-                # If no gateway, restore DHCP
+                log "Primary $primary active but missing default route, renewing DHCP"
                 ipconfig set "$primary" DHCP
-              fi
+                sleep 2
               fi
               
               # Configure secondary interfaces with lower priority routes
@@ -295,10 +290,10 @@ in {
         '' else ''
           # Individual mode - quick route priority adjustment
           if ifconfig "${cfg.primaryInterface}" >/dev/null 2>&1; then
-            local status=$(ifconfig "${cfg.primaryInterface}" | grep "status:" | awk '{print $2}')
+            status=$(ifconfig "${cfg.primaryInterface}" | grep "status:" | awk '{print $2}')
             if [ "$status" = "active" ]; then
               # Ensure primary has lowest metric route
-              local gateway=$(netstat -rn | grep "^default.*${cfg.primaryInterface}" | awk '{print $2}' | head -1)
+              gateway=$(netstat -rn | grep "^default.*${cfg.primaryInterface}" | awk '{print $2}' | head -1)
               if [ -n "$gateway" ]; then
                 route -n delete default -ifscope ${cfg.primaryInterface} 2>/dev/null || true
                 route -n add default "$gateway" -ifscope ${cfg.primaryInterface} -hopcount ${toString cfg.routeMetrics.primary} 2>/dev/null || true
@@ -306,7 +301,7 @@ in {
               
               # Ensure backup interface has medium priority if active
               if ifconfig "${cfg.backupInterface}" >/dev/null 2>&1; then
-                local backup_gateway=$(netstat -rn | grep "^default.*${cfg.backupInterface}" | awk '{print $2}' | head -1)
+                backup_gateway=$(netstat -rn | grep "^default.*${cfg.backupInterface}" | awk '{print $2}' | head -1)
                 if [ -n "$backup_gateway" ]; then
                   route -n delete default -ifscope ${cfg.backupInterface} 2>/dev/null || true
                   route -n add default "$backup_gateway" -ifscope ${cfg.backupInterface} -hopcount ${toString cfg.routeMetrics.backup} 2>/dev/null || true
