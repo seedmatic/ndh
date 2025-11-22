@@ -117,13 +117,75 @@
     # Workaround for setting DNS servers on macOS
     system.activationScripts.postActivation.text = ''
       : "Set DNS servers - only configure specific interfaces if they exist"
-      for iface in "Wi-Fi" "Ethernet"; do
-        if networksetup -listallnetworkservices | grep -q "^$iface$"; then
+      preferred_dns="${builtins.concatStringsSep " " config.networking.dns}"
+
+      services_list=$(networksetup -listallnetworkservices | sed '1d;s/^\*//')
+
+      get_device_for_service() {
+        service="$1"
+        networksetup -listallhardwareports | awk -v svc="$service" '
+          $0 ~ "^Hardware Port: " svc "$" {
+            getline
+            if ($0 ~ /^Device: /) {
+              sub(/^Device: /, "", $0)
+              print $0
+              exit
+            }
+          }
+        '
+      }
+
+      get_dhcp_dns_servers() {
+        device="$1"
+        if [ -z "$device" ]; then
+          return
+        fi
+        ipconfig getpacket "$device" 2>/dev/null | awk '
+          BEGIN { servers = "" }
+          /domain_name_server/ {
+            sub(/.*= /, "", $0)
+            gsub(/[{}]/, "", $0)
+            gsub(/,/, " ", $0)
+            gsub(/  +/, " ", $0)
+            servers = servers " " $0
+          }
+          END {
+            if (servers != "") {
+              gsub(/^ +| +$/, "", servers)
+              print servers
+            }
+          }
+        '
+      }
+
+      for iface in ${lib.concatMapStringsSep " " lib.escapeShellArg config.networking.knownNetworkServices}; do
+        if printf '%s\n' "$services_list" | grep -Fxq "$iface"; then
           : "Configuring DNS for interface: $iface"
-          networksetup -setdnsservers "$iface" ${builtins.concatStringsSep " " config.networking.dns} 2>/dev/null || true
+          device="$(get_device_for_service "$iface")"
+          if [ -z "$device" ]; then
+            : "No hardware device found for $iface, skipping"
+            continue
+          fi
+          dhcp_servers="$(get_dhcp_dns_servers "$device")"
+          combined=""
+          for srv in $preferred_dns $dhcp_servers; do
+            [ -n "$srv" ] || continue
+            case " $combined " in
+              *" $srv "*) ;;
+              *) combined="$combined $srv" ;;
+            esac
+          done
+          combined="$(printf '%s\n' "$combined" | awk 'NF { $1=$1; print }')"
+          if [ -n "$combined" ]; then
+            # shellcheck disable=SC2086
+            set -- $combined
+            networksetup -setdnsservers "$iface" "$@" 2>/dev/null || true
+          else
+            : "No DNS servers determined for $iface"
+          fi
           # Search domains removed - Tailscale/Headscale MagicDNS handles *.ts.net automatically
         else
-          : "Interface $iface not found, skipping DNS configuration"
+          : "Interface $iface not found or disabled, skipping DNS configuration"
         fi
       done
     '';
