@@ -11,11 +11,6 @@ let
     # Enable CGO for proper Darwin support (use newer format)
     env.CGO_ENABLED = 1;
     
-    buildInputs = prev.lib.optionals prev.stdenv.isDarwin [
-      prev.darwin.apple_sdk.frameworks.AppKit
-      prev.darwin.apple_sdk.frameworks.Cocoa
-    ];
-    
     nativeBuildInputs = [
       prev.git  # Add git for tests
     ] ++ prev.lib.optionals prev.stdenv.isDarwin [
