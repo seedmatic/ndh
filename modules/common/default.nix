@@ -9,7 +9,7 @@ let
 
   # Define systemPackages separately
   systemPackages = import ./system-packages.nix {
-    inherit pkgs;
+    inherit pkgs lib;
     # Pass only necessary parts of config, not the entire config
     inherit (config) programs environment;
   };
@@ -57,6 +57,7 @@ in {
     extraSpecialArgs = {
       inherit self userMapping;
       profile = config.profile;
+      floxEnv = config.programs.floxEnv;
     };
     useGlobalPkgs = true;
     useUserPackages = true;

@@ -1,63 +1,26 @@
 # This is the home configuration of the user.
-{ config, pkgs, lib, ... }:
-let homeDirectory = config.profile.user.home;
-in {
+{ config, pkgs, lib, floxEnv ? null, ... }:
+let
+  homeDirectory = config.profile.user.home;
 
-  imports = [
-    ./avahi.nix
-    ./bat.nix
-    ./cache-tokens.nix
-    ./cachix-agent.nix
-    ./chromium.nix
-    ./dircolors.nix
-    ./direnv.nix
-    ./dotfiles
-    ./emacs.nix
-    # ./firefox.nix
-    ./flox-direnv.nix
-    ./fzf.nix
-    ./git.nix
-    ./gh.nix
-    ./gpg.nix
-    ./java.nix
-    ./keychain.nix
-    ./kitty.nix
-    ./shadow-repositories.nix
-    ./nushell.nix
-    ./password-store.nix
-    ./socket-vmnet.nix
-    ./shell.nix
-    ./ssh.nix
-    ./ssh-keys.nix
-    ./ssh-tailnet-hosts.nix
-    ./ssh-keychain-removal.nix
-    #   ./teleport.nix
-    ./tldr.nix
-    ./tmate.nix
-    ./tmux.nix
-    ./vscode
-    ./xdg.nix
-  ];
+  floxConfig =
+    if floxEnv != null then floxEnv
+    else if config ? programs && config.programs ? floxEnv then config.programs.floxEnv
+    else {
+      packages = [];
+      packageNames = [];
+      projectRoot = config.profile.user.home;
+      manifestFile = null;
+    };
 
-  nix.gc = {
-    automatic = true;
-    frequency = "daily";
-    options = "--delete-older-than 1d";
-  };
+  floxPackageNames =
+    if floxConfig ? packages then map (pkg: pkg.name) floxConfig.packages
+    else if floxConfig ? packageNames then floxConfig.packageNames
+    else [];
 
-  home = {
-    homeDirectory = lib.mkForce homeDirectory; # Ensure home directory is set
+  floxManages = pkg: builtins.elem (lib.getName pkg) floxPackageNames;
 
-    stateVersion = "25.05";
-
-    sessionPath = [
-      "${homeDirectory}/.rd/bin"
-      "${homeDirectory}/.local/bin"
-      "${homeDirectory}/.krew/bin"
-    ];
-
-    # Define package definitions for current user environment
-    packages = with pkgs; [
+  baseHomePackages = with pkgs; [
       aider-chat
       alejandra
       awscli2
@@ -133,6 +96,65 @@ in {
       zsh
     ];
 
+  curatedHomePackages = lib.filter (pkg: !floxManages pkg) baseHomePackages;
+in {
+
+  imports = [
+    ./avahi.nix
+    ./bat.nix
+    ./cache-tokens.nix
+    ./cachix-agent.nix
+    ./chromium.nix
+    ./dircolors.nix
+    ./direnv.nix
+    ./dotfiles
+    ./emacs.nix
+    # ./firefox.nix
+    ./flox-direnv.nix
+    ./fzf.nix
+    ./git.nix
+    ./gh.nix
+    ./gpg.nix
+    ./java.nix
+    ./keychain.nix
+    ./kitty.nix
+    ./shadow-repositories.nix
+    ./nushell.nix
+    ./password-store.nix
+    ./socket-vmnet.nix
+    ./shell.nix
+    ./ssh.nix
+    ./ssh-keys.nix
+    ./ssh-tailnet-hosts.nix
+    ./ssh-keychain-removal.nix
+    #   ./teleport.nix
+    ./tldr.nix
+    ./tmate.nix
+    ./tmux.nix
+    ./vscode
+    ./xdg.nix
+  ];
+
+  nix.gc = {
+    automatic = true;
+    frequency = "daily";
+    options = "--delete-older-than 1d";
+  };
+
+  home = {
+    homeDirectory = lib.mkForce homeDirectory; # Ensure home directory is set
+
+    stateVersion = "25.05";
+
+    sessionPath = [
+      "${homeDirectory}/.rd/bin"
+      "${homeDirectory}/.local/bin"
+      "${homeDirectory}/.krew/bin"
+    ];
+
+    # Define package definitions for current user environment
+    packages = curatedHomePackages;
+
     activation.fixConfigOwnership = let 
       dollar = "$";
     in lib.hm.dag.entryBefore [ "writeBoundary" ] ''
@@ -161,6 +183,10 @@ in {
         SUDO=""
       fi
     '';
+  };
+
+  home.file = lib.mkIf (floxConfig.manifestFile != null) {
+    "${floxConfig.projectRoot}/.flox/env/manifest.toml".source = floxConfig.manifestFile;
   };
 
   targets.genericLinux.enable = false;

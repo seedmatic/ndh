@@ -3,6 +3,8 @@
 let
   inherit (lib) mkDefault;
 
+  mkPkg = name: pkgPath: extra: ({ inherit name; pkg-path = pkgPath; } // extra);
+
   # Use a safe default path that works in both Darwin and Home Manager contexts
   projectRoot =
     if config ? home && config.home ? homeDirectory
@@ -11,48 +13,26 @@ let
 in
 
 {
-  # Configure the flox environment options defined in flox-env.nix
   programs.floxEnv = {
     enable = mkDefault true;
 
     packages = mkDefault [
-      {
-        name = "home-manager";
-        pkg-path = "home-manager";
-      }
-      {
-        name = "keychain";
-        pkg-path = "keychain";
-      }
-      {
-        name = "linux-builder";
-        pkg-path = "darwin.linux-builder";
+      (mkPkg "home-manager" "home-manager" { })
+      (mkPkg "keychain" "keychain" { })
+      (mkPkg "linux-builder" "darwin.linux-builder" {
         systems = [ "aarch64-darwin" "x86_64-darwin" ];
-      }
-      {
-        name = "nix-tree";
-        pkg-path = "nix-tree";
-      }
-      {
-        name = "nixd";
-        pkg-path = "nixd";
-      }
-      {
-        name = "nixtract";
-        pkg-path = "nixtract";
-      }
-      {
-        name = "nvfetcher";
-        pkg-path = "nvfetcher";
-      }
-      {
-        name = "pass";
-        pkg-path = "pass";
-      }
-      {
-        name = "pstree";
-        pkg-path = "pstree";
-      }
+      })
+      (mkPkg "nix-tree" "nix-tree" { })
+      (mkPkg "nixd" "nixd" { })
+      (mkPkg "nixtract" "nixtract" { })
+      (mkPkg "nvfetcher" "nvfetcher" { })
+      (mkPkg "pass" "pass" { })
+      (mkPkg "pstree" "pstree" { })
+      (mkPkg "ookla-speedtest" "ookla-speedtest" { })
+      (mkPkg "lldpd" "lldpd" { })
+      (mkPkg "git" "git" { })
+      (mkPkg "git-town" "git-town" { })
+      (mkPkg "gitflow" "gitflow" { })
     ];
 
     supportedSystems = mkDefault [ "aarch64-darwin" "aarch64-linux" "x86_64-darwin" "x86_64-linux" ];
