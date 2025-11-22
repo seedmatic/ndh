@@ -1,0 +1,31 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: headscale-tailscale
+  namespace: headscale
+  annotations:
+    # Tailscale operator will provision TLS certificates for this ingress
+    tailscale.com/expose: "true"
+    tailscale.com/hostname: "alcide-headscale" # kpt-set: ${darwin-host}-headscale
+    tailscale.com/tailnet-ip: "true"
+spec:
+  ingressClassName: tailscale
+  defaultBackend:
+    service:
+      name: headscale
+      port:
+        number: 8080
+  rules:
+  - host: alcide-headscale # kpt-set: ${darwin-host}-headscale
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: headscale
+            port:
+              number: 8080
+  tls:
+  - hosts:
+    - alcide-headscale # kpt-set: ${darwin-host}-headscale
