@@ -84,9 +84,10 @@ metadata:
   labels:
     app: headscale
     io.cilium/lb-ipam: home-lan
-  annotations:
-    tailscale.com/expose: "true"
-    tailscale.com/hostname: "alcide-headscale" # kpt-set: ${darwin-host}-headscale
+  # Tailscale annotations removed - use Cilium L2 LB for direct LAN exposure
+  # annotations:
+  #   tailscale.com/expose: "true"
+  #   tailscale.com/hostname: "alcide-headscale" # kpt-set: ${darwin-host}-headscale
 spec:
   type: LoadBalancer
   ports:
