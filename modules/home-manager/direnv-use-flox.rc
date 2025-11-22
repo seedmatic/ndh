@@ -2,45 +2,171 @@
 #
 # Usage: use_flox [...]
 #
-# Loads the environment variables from a Flox envrionment
-# By default, uses the ".flox" directory to load the envrionment from
-# You can also specify a remote envrionment as follows
-# 
-# ```
-# use_flox --remote=<owner>/<name>
-# ```
-# or
-# ```
-# use_flox --trust --remote=<owner>/<name>
-# ```
-#
-# Where <owner>/<name> is the name of the remote environment on FloxHub
-#
-# You can also specify another directory to load the environment from
-#
-# ```
-# use_flox --dir=<path>
-# ```
-#
-# Where <path> is the path to a directory containing a ".flox" directory
-#
-# Custom commands aren't supported, since we use the `flox activate` command to dump and load the environment
-#
+# Loads Flox environments with caching so direnv does not re-run the
+# activation unless the manifest changes.
+
 function use_flox() {
-  if [[ ! -d ".flox" ]]; then
-    printf "direnv(use_flox): \`.flox\` directory not found\n" >&2
-    printf "direnv(use_flox): Did you run \`flox init\` in this directory?\n" >&2
+  local flox_args=()
+  local next_dir_arg=false
+  local target_dir="."
+  local remote_requested=false
+
+  local flox_bin
+  if ! flox_bin="$(command -v flox 2>/dev/null)"; then
+    printf "direnv(use_flox): flox executable not found in PATH\n" >&2
     return 1
   fi
 
-  # export FLOX_RC_DEBUG=true &&
-  #   trap 'unset FLOX_RC_DEBUG' RETURN
-
-  direnv_load flox activate "$@" -- "$direnv" dump
-
-  if [[ $# == 0 ]]; then
-    watch_dir ".flox/env/"
-    watch_file ".flox/env.json"
-    watch_file ".flox/env.lock"
+  local direnv_bin="${DIRENV_BIN:-}"
+  if [[ -z "$direnv_bin" ]]; then
+    if ! direnv_bin="$(command -v direnv 2>/dev/null)"; then
+      printf "direnv(use_flox): unable to locate direnv binary\n" >&2
+      return 1
+    fi
   fi
+
+  if ! declare -F direnv_apply_dump >/dev/null; then
+    printf "direnv(use_flox): direnv_apply_dump is not available\n" >&2
+    return 1
+  fi
+
+  local dump_shell="${DIRENV_DUMP_SHELL:-${SHELL##*/}}"
+  if [[ -z "$dump_shell" ]]; then
+    dump_shell="bash"
+  fi
+
+  local layout_root
+  layout_root="$(direnv_layout_dir)/flox"
+  mkdir -p "$layout_root"
+
+  for arg in "$@"; do
+    if $next_dir_arg; then
+      target_dir="$arg"
+      next_dir_arg=false
+      flox_args+=("$arg")
+      continue
+    fi
+
+    case "$arg" in
+      --dir)
+        next_dir_arg=true
+        flox_args+=("$arg")
+        ;;
+      --dir=*)
+        target_dir="${arg#--dir=}"
+        flox_args+=("$arg")
+        ;;
+      --remote|--remote=*)
+        remote_requested=true
+        flox_args+=("$arg")
+        ;;
+      *)
+        flox_args+=("$arg")
+        ;;
+    esac
+  done
+
+  if [[ $next_dir_arg == true ]]; then
+    printf "direnv(use_flox): --dir requires a path\n" >&2
+    return 1
+  fi
+
+  local resolved_dir
+  if [[ "$target_dir" == /* ]]; then
+    resolved_dir="$target_dir"
+  else
+    if ! resolved_dir=$(cd "$target_dir" 2>/dev/null && pwd); then
+      printf "direnv(use_flox): cannot resolve directory %s\n" "$target_dir" >&2
+      return 1
+    fi
+  fi
+
+  if [[ $remote_requested == true ]]; then
+    local remote_dump
+    remote_dump=$(mktemp "${layout_root}/remote-XXXXXX.env") || {
+      printf "direnv(use_flox): unable to create temporary dump file\n" >&2
+      return 1
+    }
+
+    :>"$remote_dump"
+    if ! env DIRENV_DUMP_FILE_PATH="$remote_dump" DIRENV_DUMP_SHELL="$dump_shell" \
+      "$flox_bin" activate "${flox_args[@]}" -- "$direnv_bin" dump; then
+      rm -f "$remote_dump"
+      printf "direnv(use_flox): flox activation failed\n" >&2
+      return 1
+    fi
+
+    if [[ ! -s "$remote_dump" ]]; then
+      rm -f "$remote_dump"
+      printf "direnv(use_flox): flox did not dump environment\n" >&2
+      return 1
+    fi
+
+    direnv_apply_dump "$remote_dump"
+    rm -f "$remote_dump"
+    return 0
+  fi
+
+  if [[ ! -d "${resolved_dir}/.flox" ]]; then
+    printf "direnv(use_flox): %s does not contain a .flox directory\n" "$resolved_dir" >&2
+    return 1
+  fi
+
+  local cache_key
+  cache_key=$(printf "%s" "$resolved_dir" | shasum | cut -d' ' -f1 | head -c 16)
+  local env_cache="${layout_root}/${cache_key}.env"
+  local hash_cache="${layout_root}/${cache_key}.hash"
+
+  local manifest_file="${resolved_dir}/.flox/env/manifest.toml"
+  local lock_file="${resolved_dir}/.flox/env/manifest.lock"
+  local cache_version="use-flox-v2"
+  local hash_input="$cache_version"
+  local manifest_sources=0
+  if [[ -f "$lock_file" ]]; then
+    hash_input+="$(<"$lock_file")"
+    manifest_sources=1
+  fi
+  if [[ -f "$manifest_file" ]]; then
+    hash_input+="$(<"$manifest_file")"
+    manifest_sources=1
+  fi
+  if [[ $manifest_sources -eq 0 ]]; then
+    hash_input+="$resolved_dir"
+  fi
+  local manifest_hash
+  manifest_hash=$(printf "%s" "$hash_input" | shasum | cut -d' ' -f1)
+
+  local refresh=1
+  if [[ -f "$env_cache" && -f "$hash_cache" ]]; then
+    if [[ "$(cat "$hash_cache")" == "$manifest_hash" ]]; then
+      refresh=0
+    fi
+  fi
+
+  if [[ $refresh -eq 1 ]]; then
+    local tmp_dump="${env_cache}.tmp"
+    :>"$tmp_dump"
+    if ! env DIRENV_DUMP_FILE_PATH="$tmp_dump" DIRENV_DUMP_SHELL="$dump_shell" \
+      "$flox_bin" activate "${flox_args[@]}" -- "$direnv_bin" dump; then
+      rm -f "$tmp_dump"
+      printf "direnv(use_flox): flox activation failed\n" >&2
+      return 1
+    fi
+
+    if [[ ! -s "$tmp_dump" ]]; then
+      rm -f "$tmp_dump"
+      printf "direnv(use_flox): flox did not dump environment\n" >&2
+      return 1
+    fi
+
+    mv "$tmp_dump" "$env_cache"
+    printf "%s" "$manifest_hash" >"$hash_cache"
+  fi
+
+  if ! direnv_apply_dump "$env_cache"; then
+    printf "direnv(use_flox): failed to apply cached dump\n" >&2
+    return 1
+  fi
+
+  log_status "flox watcher: auto-reload disabled; run 'direnv reload' after editing $(dirname "$manifest_file")/."
 }
