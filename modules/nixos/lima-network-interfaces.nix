@@ -90,22 +90,8 @@ in {
       }) cfg.interfaces
     );
 
-    # Configure vmlan0 to remain unconfigured (for Incus bridge membership)
-    systemd.network.networks."50-vmlan0" = {
-      matchConfig.Name = "vmlan0";
-      linkConfig = {
-        # Keep interface up but unconfigured
-        Unmanaged = "no";
-        RequiredForOnline = "no";
-      };
-      networkConfig = {
-        # Disable all address configuration
-        DHCP = "no";
-        IPv6AcceptRA = "no";
-        LinkLocalAddressing = "no";
-      };
-    };
-
+    # Note: vmlan0 bridge membership is configured in incus.nix
+    
     # Helpful environment variables
     environment.variables = {
       LIMA_BRIDGE_IFACE = "vmlan0";       # Incus lan-br bridge member (unmanaged by NetworkManager)

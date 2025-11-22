@@ -80,6 +80,28 @@ in {
     #   "52:55:55:71:36:47"; # match your lima.yaml
   };
 
+  # Create the lan-br bridge device
+  systemd.network.netdevs."20-lan-br" = {
+    netdevConfig = {
+      Name = "lan-br";
+      Kind = "bridge";
+      MACAddress = lanBridgeMac;
+    };
+  };
+
+  # Configure vmlan0 as bridge member
+  systemd.network.networks."30-vmlan0" = {
+    matchConfig.Name = "vmlan0";
+    networkConfig = {
+      Bridge = "lan-br";
+      # Don't configure IP on the member interface
+      DHCP = "no";
+      IPv6AcceptRA = "no";
+      LinkLocalAddressing = "no";
+    };
+  };
+
+  # Configure the bridge itself with DHCP
   systemd.network.networks."40-lan-br" = {
     matchConfig.Name = "lan-br";
     linkConfig = {
@@ -89,6 +111,15 @@ in {
       DHCP = "yes";
       IPv6AcceptRA = "yes";
       LinkLocalAddressing = "no";
+    };
+  };
+
+  # Ensure lan-br picks up deterministic MAC via udev instead of polling loops (@codebase)
+  systemd.network.links."10-lan-br" = {
+    matchConfig.OriginalName = "lan-br";
+    linkConfig = {
+      MACAddress = lanBridgeMac;
+      MACAddressPolicy = "none";
     };
   };
 
