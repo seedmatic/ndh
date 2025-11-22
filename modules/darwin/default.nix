@@ -7,6 +7,7 @@
     ./dnsmasq.nix
     ./headscale-client.nix
     ./internet-sharing.nix
+    ./lan-dns-resolver.nix
     ./lima-config.nix
     ./linux-builder.nix
     ./distributed-builds.nix

@@ -43,6 +43,12 @@
           # Configure SSL certificates for JAMF-managed system
           nix.settings.ssl-cert-file = "/etc/ssl/cert.pem";
           
+          # Configure .lan domain resolution using home LAN DNS server
+          networking.lanDnsResolver = {
+            enable = true;
+            nameserver = "192.168.1.254";
+          };
+          
           # Lima VM configuration - this is where the real work happens
           lima = {
             configGenerator = {
