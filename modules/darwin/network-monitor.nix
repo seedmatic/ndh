@@ -8,133 +8,30 @@
 }:
 with lib; let
   cfg = config.networking.monitor;
-  monitorScript = pkgs.writeShellScript "network-monitor-check.sh" ''
-    set -euo pipefail
-    LOG="/var/log/network-monitor.log"
-    {
-      echo "[$(date)] Network monitor check start (mode: ${cfg.mode})"
-
-      check_interface() {
-        local iface="$1"
-        if ifconfig "${iface}" >/dev/null 2>&1; then
-          local status=$(ifconfig "${iface}" | grep "status:" | awk '{print $2}')
-          local has_ip=0
-          if ifconfig "${iface}" | grep -q "inet "; then
-            has_ip=1
+  secondaryRouteStatements =
+    concatMapStringsSep "\n\n" (iface: ''
+        if ifconfig ${iface} >/dev/null 2>&1; then
+          local status=$(ifconfig ${iface} | grep "status:" | awk '{print $2}')
+          if [ "$status" = "active" ] && ifconfig ${iface} | grep -q "inet "; then
+            local gateway=$(netstat -rn | grep "^default.*${iface}" | awk '{print $2}' | head -1)
+            if [ -n "$gateway" ]; then
+              echo "[$(date)] Configuring ${iface} as secondary with metric ${toString cfg.routeMetrics.secondary}"
+              route -n delete default -ifscope ${iface} 2>/dev/null || true
+              route -n add default "$gateway" -ifscope ${iface} -hopcount ${toString cfg.routeMetrics.secondary} 2>/dev/null || true
+            fi
           fi
-          echo "$status:$has_ip"
-        else
-          echo "not_found:0"
         fi
-      }
+    '') cfg.secondaryInterfaces;
 
-      manage_bonded_network() {
-        echo "[$(date)] Checking bonded network (${cfg.bondInterface})"
-
-        if ! ifconfig "${cfg.bondInterface}" >/dev/null 2>&1; then
-          echo "[$(date)] Bond interface ${cfg.bondInterface} not found"
-          return
-        fi
-
-        if ! ipconfig getifaddr "${cfg.bondInterface}" >/dev/null 2>&1; then
-          echo "[$(date)] Bond ${cfg.bondInterface} has no IP, restoring DHCP..."
-          ipconfig set "${cfg.bondInterface}" DHCP
-        fi
-
-        for bridge in $(ifconfig -l | tr ' ' '\n' | grep '^bridge'); do
-          if netstat -rn | grep -q "^default.*$bridge"; then
-            echo "[$(date)] Removing default route from Lima bridge $bridge"
-            route -n delete default -ifscope "$bridge" 2>/dev/null || true
-          fi
-        done
-
-        if netstat -rn | grep -q "^default.*en1"; then
-          echo "[$(date)] Removing Wi-Fi default route (bond takes priority)"
-          route -n delete default -ifscope en1 2>/dev/null || true
-        fi
-      }
-
-      manage_individual_interfaces() {
-        echo "[$(date)] Checking individual interface priorities"
-
-        local primary="${cfg.primaryInterface}"
-        local backup="${cfg.backupInterface}"
-        local primary_status=$(check_interface "$primary")
-        echo "[$(date)] Primary interface $primary status: $primary_status"
-
-        case "$primary_status" in
-          "active:1")
-            local primary_gateway=$(netstat -rn | grep "^default.*$primary" | awk '{print $2}' | head -1)
-            if [ -n "$primary_gateway" ]; then
-              echo "[$(date)] Reasserting primary route via $primary (metric ${toString cfg.routeMetrics.primary})"
-              route -n delete default -ifscope "$primary" 2>/dev/null || true
-              route -n add default "$primary_gateway" -ifscope "$primary" -hopcount ${toString cfg.routeMetrics.primary} 2>/dev/null || true
-            else
-              echo "[$(date)] Primary $primary active but missing default route, renewing DHCP"
-              ipconfig set "$primary" DHCP
-              sleep 2
-            fi
-
-            ${concatMapStringsSep "\n            " (iface: ''
-            if ifconfig ${iface} >/dev/null 2>&1; then
-              local status=$(ifconfig ${iface} | grep "status:" | awk '{print $2}')
-              if [ "$status" = "active" ] && ifconfig ${iface} | grep -q "inet "; then
-                local gateway=$(netstat -rn | grep "^default.*${iface}" | awk '{print $2}' | head -1)
-                if [ -n "$gateway" ]; then
-                  echo "[$(date)] Configuring ${iface} as secondary with metric ${toString cfg.routeMetrics.secondary}"
-                  route -n delete default -ifscope ${iface} 2>/dev/null || true
-                  route -n add default "$gateway" -ifscope ${iface} -hopcount ${toString cfg.routeMetrics.secondary} 2>/dev/null || true
-                fi
-              fi
-            fi
-            '') cfg.secondaryInterfaces}
-
-            if [ "$backup" != "$primary" ] && if ifconfig "$backup" >/dev/null 2>&1; then
-              local backup_gateway=$(netstat -rn | grep "^default.*$backup" | awk '{print $2}' | head -1)
-              if [ -n "$backup_gateway" ]; then
-                echo "[$(date)] Configuring backup $backup with metric ${toString cfg.routeMetrics.backup}"
-                route -n delete default -ifscope "$backup" 2>/dev/null || true
-                route -n add default "$backup_gateway" -ifscope "$backup" -hopcount ${toString cfg.routeMetrics.backup} 2>/dev/null || true
-              fi
-            fi
-            ;;
-
-          "active:0"|"inactive:0")
-            echo "[$(date)] Primary $primary unavailable, promoting backup $backup"
-            if ifconfig "$backup" >/dev/null 2>&1; then
-              ifconfig "$backup" up 2>/dev/null || true
-              local backup_status=$(check_interface "$backup")
-              if [ "$backup_status" != "active:1" ]; then
-                ipconfig set "$backup" DHCP
-                sleep 2
-              fi
-              local backup_gateway=$(netstat -rn | grep "^default.*$backup" | awk '{print $2}' | head -1)
-              if [ -n "$backup_gateway" ]; then
-                echo "[$(date)] Setting $backup as primary route (metric ${toString cfg.routeMetrics.primary})"
-                route -n delete default -ifscope "$backup" 2>/dev/null || true
-                route -n add default "$backup_gateway" -ifscope "$backup" -hopcount ${toString cfg.routeMetrics.primary} 2>/dev/null || true
-              fi
-            fi
-            ;;
-        esac
-
-        for bridge in $(ifconfig -l | tr ' ' '\n' | grep '^bridge'); do
-          if netstat -rn | grep -q "^default.*$bridge"; then
-            echo "[$(date)] Removing default route from Lima bridge $bridge"
-            route -n delete default -ifscope "$bridge" 2>/dev/null || true
-          fi
-        done
-      }
-
-      if [ "${cfg.mode}" = "bonded" ]; then
-        manage_bonded_network
-      else
-        manage_individual_interfaces
-      fi
-
-      echo "[$(date)] Network monitor check complete"
-    } >>"$LOG" 2>&1
-  '';
+  monitorScript = pkgs.substituteAll {
+    name = "network-monitor.sh";
+    src = ./network-monitor.sh;
+    isExecutable = true;
+    inherit (cfg) mode bondInterface primaryInterface backupInterface;
+    routeMetricPrimary = toString cfg.routeMetrics.primary;
+    routeMetricBackup = toString cfg.routeMetrics.backup;
+    inherit secondaryRouteStatements;
+  };
 in {
   options.networking.monitor = {
     enable = mkEnableOption "network interface monitoring and management";
