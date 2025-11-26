@@ -3,98 +3,29 @@
 let
   inherit (lib)
     filterAttrs
+    hasInfix
+    mapAttrs
+    mapAttrsToList
     mkEnableOption
     mkOption
     mkIf
+    mkDefault
     optionalAttrs
     types;
-  cfg = config.programs.floxEnv;
-  dollar = "$";
+  cfg = config.programs.flox;
 
-  defaultProfileCommon = ''
-    flox_env_local="${dollar}{FLOX_ENV_PROJECT}/.local"
-
-    mkdir -p \
-      "${dollar}{flox_env_local}/.config" \
-      "${dollar}{flox_env_local}/.cache" \
-      "${dollar}{flox_env_local}/.local/share" \
-      "${dollar}{flox_env_local}/.local/state" \
-      "${dollar}{flox_env_local}/.local/xdg"
-
-    export XDG_CONFIG_HOME="${dollar}{XDG_CONFIG_HOME:-${dollar}{flox_env_local}/.config}"
-    export XDG_CACHE_HOME="${dollar}{XDG_CACHE_HOME:-${dollar}{flox_env_local}/.cache}"
-    export XDG_DATA_HOME="${dollar}{XDG_DATA_HOME:-${dollar}{flox_env_local}/.local/share}"
-    export XDG_STATE_HOME="${dollar}{XDG_STATE_HOME:-${dollar}{flox_env_local}/.local/state}"
-    export XDG_RUNTIME_DIR="${dollar}{XDG_RUNTIME_DIR:-${dollar}{flox_env_local}/.local/xdg}"
-
-    if [ -d "${dollar}{FLOX_ENV_PROJECT}/.github" ] && command -v gh >/dev/null 2>&1; then
-      gh_login=""
-      if [ -n "${dollar}{GH_TOKEN:-}" ]; then
-        gh_login=$(gh api user --jq '.login' 2>/dev/null || true)
-      elif command -v pass >/dev/null 2>&1; then
-        gh_secret=$(pass show coding/github@work 2>/dev/null | head -n1 || true)
-        if [ -n "${dollar}{gh_secret}" ]; then
-          gh_login=$(env GH_TOKEN="${dollar}{gh_secret}" gh api user --jq '.login' 2>/dev/null || true)
-        fi
-      fi
-
-      if [ -n "${dollar}{gh_login}" ]; then
-        remote=$(git -C "${dollar}{FLOX_ENV_PROJECT}" remote get-url origin 2>/dev/null || true)
-        if [ -n "${dollar}{remote}" ]; then
-          owner=$(printf '%s' "${dollar}{remote}" | cut -d'/' -f4)
-          repo_name=$(printf '%s' "${dollar}{remote}" | cut -d'/' -f5 | cut -d'.' -f1)
-          export GITHUB_LOGIN="${dollar}{gh_login}"
-          export GITHUB_OWNER="${dollar}{owner}"
-          export GITHUB_REPOSITORY="${dollar}{owner}/${dollar}{repo_name}"
-        fi
-      fi
-    fi
-
-    mvnw_path="${dollar}{FLOX_ENV_PROJECT}/mvnw"
-    if [ -x "${dollar}{mvnw_path}" ]; then
-      maven_user_config="${dollar}{FLOX_ENV_PROJECT}/.m2"
-      mkdir -p "${dollar}{maven_user_config}"
-      export MAVEN_USER_CONFIG="${dollar}{maven_user_config}"
-      export MAVEN_SETTINGS="${dollar}{MAVEN_USER_CONFIG}/settings.xml"
-
-      if [ -n "${dollar}{MAVEN_ARGS:-}" ]; then
-        case " ${dollar}{MAVEN_ARGS} " in
-          *"--settings="*) ;;
-          *) export MAVEN_ARGS="${dollar}{MAVEN_ARGS} --settings=${dollar}{MAVEN_SETTINGS}" ;;
-        esac
-      else
-        export MAVEN_ARGS="--settings=${dollar}{MAVEN_SETTINGS}"
-      fi
-
-      if [ -d "${dollar}{FLOX_ENV_PROJECT}/.mvnrepository" ]; then
-        export MAVEN_LOCAL_REPOSITORY="${dollar}{FLOX_ENV_PROJECT}/.mvnrepository"
-      elif [ -d "${dollar}{FLOX_ENV_PROJECT}/.m2/repo" ]; then
-        export MAVEN_LOCAL_REPOSITORY="${dollar}{FLOX_ENV_PROJECT}/.m2/repo"
-      fi
-
-      maven_version_output=$("${dollar}{mvnw_path}" -N -q -DmavenVersion=3.9.9 \
-        -Dexpression=maven.version -Doutput=/dev/stdout help:evaluate 2>/dev/null | grep -v '^\[.*\]' | tail -n1)
-      if [ -n "${dollar}{maven_version_output}" ]; then
-        export MAVEN_VERSION="${dollar}{maven_version_output}"
-      fi
-    fi
-  '';
-
-  # Use a safe default path that works in both Darwin and Home Manager contexts
-  defaultProjectRoot =
-    if config ? home && config.home ? homeDirectory
-    then "${config.home.homeDirectory}/Gits/nxmatic/nix-darwin-home"
-    else "${config.profile.user.home}/Gits/nxmatic/nix-darwin-home";  # use profile-provided user home
+  defaultProfileCommon = builtins.readFile ./flox-env.profile-common.sh;
 
   toml = pkgs.formats.toml { };
+
 in
 {
-  options.programs.floxEnv = {
+  options.programs.flox = {
     enable = mkEnableOption "Declarative flox environment management";
 
     environmentName = mkOption {
       type = types.str;
-      default = "nix-darwin-home";
+      default = "home";
       description = "Name of the flox environment";
     };
 
@@ -174,20 +105,29 @@ in
 
     supportedSystems = mkOption {
       type = types.listOf types.str;
-      default = [ "aarch64-darwin" "aarch64-linux" "x86_64-darwin" "x86_64-linux" ];
+      default = [ "aarch64-darwin" "aarch64-linux" ];
       description = "Supported systems for the flox environment";
     };
 
-    projectRoot = mkOption {
+    envDir = mkOption {
       type = types.str;
-      default = defaultProjectRoot;
-      description = "Root directory where the flox environment should be created";
+      default = null;
+      description = "Directory where the flox environment should be created";
     };
 
-    manifestFile = mkOption {
+    manifestPath = mkOption {
       type = types.nullOr types.path;
       default = null;
-      description = "Generated Flox manifest path";
+      description = "Generated Flox manifest path (stored in the Nix store)";
+    };
+
+    writeManifest = mkOption {
+      type = types.bool;
+      default = true;
+      description = ''
+        If enabled, the Home Manager module installs the generated manifest 
+        in the <envDir>/.flox/env/manifest.toml path.
+      '';
     };
 
     manifestAttrs = mkOption {
@@ -204,13 +144,27 @@ in
   };
 
   config = mkIf cfg.enable {
-    programs.floxEnv = let
+    programs.flox = let
       installEntries = builtins.listToAttrs (map (pkg: {
         name = pkg.name;
         value = filterAttrs (_: v: v != null) (builtins.removeAttrs pkg [ "name" ]);
       }) cfg.packages);
 
       includeEnvs = map (entry: filterAttrs (_: v: v != null) entry) cfg.includeEnvironments;
+
+      placeholderFor = name: "__FLOX_PROFILE_" + name + "__";
+
+      multilineProfileEntries = filterAttrs (_: value: hasInfix "\n" value) cfg.profile;
+
+      profileForToml =
+        if multilineProfileEntries == { } then cfg.profile else
+        mapAttrs (name: value: if hasInfix "\n" value then placeholderFor name else value) cfg.profile;
+
+      profileReplacements =
+        mapAttrsToList (name: value: {
+          placeholder = placeholderFor name;
+          content = value;
+        }) multilineProfileEntries;
 
       manifestBase = {
         version = 1;
@@ -220,19 +174,41 @@ in
 
       manifestWithVars = manifestBase // optionalAttrs (cfg.vars != { }) { vars = cfg.vars; };
 
-      manifestWithProfile = manifestWithVars // optionalAttrs (cfg.profile != { }) { profile = cfg.profile; };
+      manifestWithProfile = profileAttr:
+        manifestWithVars // optionalAttrs (profileAttr != { }) { profile = profileAttr; };
 
-      manifestWithHook = manifestWithProfile // optionalAttrs (cfg.hook != null) {
+      manifestWithHook = profileAttr:
+        manifestWithProfile profileAttr // optionalAttrs (cfg.hook != null) {
         hook.on-activate = cfg.hook;
       };
 
-      manifestWithInclude = manifestWithHook // optionalAttrs (includeEnvs != []) {
-        include.environments = includeEnvs;
-      };
+      manifestWithInclude = profileAttr:
+        manifestWithHook profileAttr // optionalAttrs (includeEnvs != []) {
+          include.environments = includeEnvs;
+        };
 
-      manifest = manifestWithInclude;
+      manifest = manifestWithInclude cfg.profile;
+
+      manifestForToml = manifestWithInclude profileForToml;
+
+      rawManifestFile = toml.generate "flox-manifest.toml" manifestForToml;
+
+      manifestPath =
+        if profileReplacements == [ ] then rawManifestFile else
+        let
+          replacementsJson = builtins.toJSON profileReplacements;
+        in
+          pkgs.runCommand "flox-manifest.toml" { } ''
+          set -euo pipefail
+            cp ${rawManifestFile} $out
+          chmod u+w $out
+            cat <<'JSON' > replacements.json
+${replacementsJson}
+JSON
+            ${pkgs.python3Minimal}/bin/python ${./flox-manifest-replace.py} replacements.json "$out"
+        '';
     in {
-      manifestFile = toml.generate "flox-manifest.toml" manifest;
+      inherit manifestPath;
       manifestAttrs = manifest;
       packageNames = map (pkg: pkg.name) cfg.packages;
     };

@@ -1,16 +1,17 @@
 # This is the home configuration of the user.
-{ config, pkgs, lib, floxEnv ? null, ... }:
+{ config, pkgs, lib, ... }:
 let
   homeDirectory = config.profile.user.home;
 
   floxConfig =
-    if floxEnv != null then floxEnv
-    else if config ? programs && config.programs ? floxEnv then config.programs.floxEnv
+    if config ? programs && config.programs ? flox then config.programs.flox
     else {
       packages = [];
       packageNames = [];
       projectRoot = config.profile.user.home;
       manifestFile = null;
+      manifestResultPath = null;
+      writeManifestToResult = false;
     };
 
   floxPackageNames =
@@ -183,10 +184,21 @@ in {
         SUDO=""
       fi
     '';
-  };
 
-  home.file = lib.mkIf (floxConfig.manifestFile != null) {
-    "${floxConfig.projectRoot}/.flox/env/manifest.toml".source = floxConfig.manifestFile;
+    activation.writeFloxManifestTemplate =
+      let
+        copyManifest = floxConfig.writeManifest && floxConfig.manifestPath != null; 
+      in
+        lib.mkIf copyManifest (
+          let
+            manifestPath = floxConfig.manifestPath;
+          in lib.hm.dag.entryAfter [ "fixConfigOwnership" ] ''
+            [[ ! -d ${homeDirectory}/.flox ]] && 
+              ${pkgs.flox}/bin/flox init --dir ${homeDirectory}
+            [[ ! -f ${homeDirectory}/.flox/env/manifest.toml ]] && 
+              install -D ${lib.escapeShellArg manifestPath} ${lib.escapeShellArg (homeDirectory + "/.flox/env/manifest.toml")}
+          ''
+        );
   };
 
   targets.genericLinux.enable = false;
