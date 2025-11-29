@@ -71,6 +71,13 @@ in {
     # Optimize the store
     # Disable automatic optimise for faster iterative builds; run `nix-store --optimise` manually when idle.
     optimise.automatic = false; # (@codebase) Was true. Manual optimise recommended.
+
+    settings = {
+
+      # Ensure SSL Cert file path located correctly
+      ssl-cert-file = "/etc/ssl/cert.pem";
+
+    };
   };
 
   nixpkgs.config = import ../common/nixpkgs-config.nix;
