@@ -45,6 +45,7 @@
     , disko, socket-vmnet, impermanence, nixpkgs, ... }@inputs:
     let
       inherit (flake-utils.lib) eachSystemMap;
+      nixpkgsConfig = import ./modules/common/nixpkgs-config.nix;
       defaultSystems = [ "aarch64-darwin" "x86_64-darwin" "x86_64-linux" ];
 
       forAllSystems = nixpkgs.lib.genAttrs defaultSystems;
@@ -53,8 +54,7 @@
         let
           basePackages = import nixpkgs {
             inherit system;
-            config = {
-              allowUnfree = true;
+            config = nixpkgsConfig // {
               allowBroken = true;
               checkAllPackages = false;
             };
@@ -316,6 +316,7 @@
         nodejsOverlay = inputs: import ./overlays/nodejs.nix inputs;
         incusComposeOverlay = inputs: import ./overlays/incus-compose.nix inputs;
         lazygitOverlay = inputs: import ./overlays/lazygit.nix inputs;
+        limaOverlay = inputs: import ./overlays/lima.nix inputs;
       };
 
       homeManagerModules = {
