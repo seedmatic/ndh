@@ -120,7 +120,7 @@ in {
     ./keychain.nix
     ./kitty.nix
     ./shadow-repositories.nix
-    ./nushell.nix
+    # ./nushell.nix
     ./password-store.nix
     ./socket-vmnet.nix
     ./shell.nix
