@@ -6,7 +6,7 @@ let
   cfg = config.profile;
   user = cfg.user;
   userName = user.name;
-  userHome = config.home-manager.users.${userName}.home.homeDirectory;
+  userHome = cfg.user.home;
 
   mkPkg = name: pkgPath: extra: ({ inherit name; pkg-path = pkgPath; } // extra);
 
@@ -29,7 +29,29 @@ in
       (mkPkg "gitflow" "gitflow" { })
     ];
 
-    supportedSystems = mkDefault [ "aarch64-darwin" "aarch64-linux" ];
-    envDir = userHome;
+    pullRemotes = mkDefault [
+      {
+        name = "home";
+        remote = "nxmatic/home";
+        dir = userHome;
+      }
+      {
+        name = "git";
+        remote = "nxmatic/git";
+        dir = "${userHome}/Gits";
+      }
+      {
+        name = "lima";
+        remote = "nxmatic/lima";
+        dir = "${userHome}/.lima";
+      }
+      {
+        name = "nix";
+        remote = "nxmatic/nix";
+        dir = "${userHome}/Environments/nix";
+        ensureDir = true;
+        skipIfMissing = false;
+      }
+    ];
   };
 }

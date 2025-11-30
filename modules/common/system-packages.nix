@@ -1,8 +1,8 @@
 { pkgs, lib ? pkgs.lib, programs ? { }, ... }:
 let
   floxNames =
-    if programs ? floxEnv && programs.floxEnv ? packages
-    then map (pkg: pkg.name) programs.floxEnv.packages
+    if programs ? flox && programs.flox ? packages
+    then map (pkg: pkg.name) programs.flox.packages
     else [];
 
   isFloxManaged = pkg: builtins.elem (lib.getName pkg) floxNames;
