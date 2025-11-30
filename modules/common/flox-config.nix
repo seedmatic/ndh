@@ -45,13 +45,6 @@ in
         remote = "nxmatic/lima";
         dir = "${userHome}/.lima";
       }
-      {
-        name = "nix";
-        remote = "nxmatic/nix";
-        dir = "${userHome}/Environments/nix";
-        ensureDir = true;
-        skipIfMissing = false;
-      }
     ];
   };
 }
