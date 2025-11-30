@@ -143,8 +143,8 @@ in
     };
   };
 
-  config = mkIf cfg.enable {
-    programs.flox = let
+  config = mkIf cfg.enable (
+    let
       installEntries = builtins.listToAttrs (map (pkg: {
         name = pkg.name;
         value = filterAttrs (_: v: v != null) (builtins.removeAttrs pkg [ "name" ]);
@@ -199,18 +199,40 @@ in
           replacementsJson = builtins.toJSON profileReplacements;
         in
           pkgs.runCommand "flox-manifest.toml" { } ''
-          set -euo pipefail
-            cp ${rawManifestFile} $out
+          set -exuo pipefail
+          cp ${rawManifestFile} $out
           chmod u+w $out
-            cat <<'JSON' > replacements.json
-${replacementsJson}
-JSON
-            ${pkgs.python3Minimal}/bin/python ${./flox-manifest-replace.py} replacements.json "$out"
+          cat <<'EoF' > replacements.json
+          ${replacementsJson}
+          EoF
+          ${pkgs.python3Minimal}/bin/python ${./flox-manifest-replace.py} replacements.json "$out"
         '';
+
+      shouldInstallManifest =
+        cfg.writeManifest && cfg.envDir != null && manifestPath != null;
     in {
-      inherit manifestPath;
-      manifestAttrs = manifest;
-      packageNames = map (pkg: pkg.name) cfg.packages;
-    };
-  };
+      programs.flox = {
+        inherit manifestPath;
+        manifestAttrs = manifest;
+        packageNames = map (pkg: pkg.name) cfg.packages;
+      };
+
+      home-manager.sharedModules = lib.mkIf shouldInstallManifest [
+        ({ lib, ... }: {
+          home.activation.floxInstallManifest =
+            lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+              env_dir=${lib.escapeShellArg cfg.envDir}
+              flox_dir="$env_dir/.flox"
+              target_manifest="$flox_dir/env/manifest.toml"
+              if [ ! -d "$flox_dir" ]; then
+                ${pkgs.flox}/bin/flox init --dir "$env_dir"
+              fi
+              if [ ! -f "$target_manifest" ] || ! cmp -s ${lib.escapeShellArg manifestPath} "$target_manifest"; then
+                install -D ${lib.escapeShellArg manifestPath} "$target_manifest"
+              fi
+            '';
+        })
+      ];
+    }
+  );
 }
