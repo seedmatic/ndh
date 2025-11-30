@@ -15,6 +15,7 @@
             "repo": "compose",
             "rev": "v2.31.0",
             "sha256": "sha256-l+xSd7eIpEy6A1mtx3WrcPQl7071IdJkbHKXbe4uFdA=",
+            "sparseCheckout": [],
             "type": "github"
         },
         "version": "v2.31.0"
@@ -35,23 +36,69 @@
             "repo": "podman",
             "rev": "v5.4.1",
             "sha256": "sha256-RirMBb45KeBLdBJrRa86WxI4FiXdBar+RnVQ2ezEEYc=",
+            "sparseCheckout": [],
             "type": "github"
         },
         "version": "v5.4.1"
     },
-    "rancher-desktop": {
+    "vscode-insiders-darwin-arm64": {
         "cargoLocks": null,
         "date": null,
         "extract": null,
-        "name": "rancher-desktop",
+        "name": "vscode-insiders-darwin-arm64",
         "passthru": null,
         "pinned": false,
         "src": {
             "name": null,
-            "sha256": "sha256-ss7KnnHysBq422YUVqO2jnf1YQd+prGU/gU17yDm6v0=",
+            "sha256": "sha256-Xqs7aSK2ZPPeunm3tQzp7N4EsfovAy6hiRr/eRSShE0=",
             "type": "url",
-            "url": "https://github.com/rancher-sandbox/rancher-desktop/releases/download/v1.18.2/Rancher.Desktop-1.18.2.aarch64.dmg"
+            "url": "https://update.code.visualstudio.com/latest/darwin-arm64/insider"
         },
-        "version": "v1.18.2"
+        "version": "latest"
+    },
+    "vscode-insiders-darwin-x64": {
+        "cargoLocks": null,
+        "date": null,
+        "extract": null,
+        "name": "vscode-insiders-darwin-x64",
+        "passthru": null,
+        "pinned": false,
+        "src": {
+            "name": null,
+            "sha256": "sha256-sa5nIHhWivKDYJzp6pIrjmLLm7Hah4Or/Muun9n9Zo4=",
+            "type": "url",
+            "url": "https://update.code.visualstudio.com/latest/darwin/insider"
+        },
+        "version": "latest"
+    },
+    "vscode-insiders-linux-arm64": {
+        "cargoLocks": null,
+        "date": null,
+        "extract": null,
+        "name": "vscode-insiders-linux-arm64",
+        "passthru": null,
+        "pinned": false,
+        "src": {
+            "name": null,
+            "sha256": "sha256-oMruXfJ1CPeXeQIGNkr5mSiWGCgNDAUWFMAbNltE7ro=",
+            "type": "url",
+            "url": "https://update.code.visualstudio.com/latest/linux-arm64/insider"
+        },
+        "version": "latest"
+    },
+    "vscode-insiders-linux-x64": {
+        "cargoLocks": null,
+        "date": null,
+        "extract": null,
+        "name": "vscode-insiders-linux-x64",
+        "passthru": null,
+        "pinned": false,
+        "src": {
+            "name": null,
+            "sha256": "sha256-0uNCAUZh4OLrSZ1R5LDjRrKjgjLfbqKXJHeqRcHTJrQ=",
+            "type": "url",
+            "url": "https://update.code.visualstudio.com/latest/linux-x64/insider"
+        },
+        "version": "latest"
     }
 }

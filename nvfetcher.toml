@@ -4,6 +4,23 @@ src.manual = "v2.31.0"
 [podman]
 fetch.github = "containers/podman"
 src.manual = "v5.4.1"
-[rancher-desktop]
-src.github = "rancher-sandbox/rancher-desktop"
-fetch.url = "https://github.com/rancher-sandbox/rancher-desktop/releases/download/v1.18.2/Rancher.Desktop-1.18.2.aarch64.dmg"
+
+[vscode-insiders-linux-x64]
+src.manual = "latest"
+fetch.url = "https://update.code.visualstudio.com/latest/linux-x64/insider"
+fetch.name = "vscode-insiders-linux-x64.tar.gz"
+
+[vscode-insiders-linux-arm64]
+src.manual = "latest"
+fetch.url = "https://update.code.visualstudio.com/latest/linux-arm64/insider"
+fetch.name = "vscode-insiders-linux-arm64.tar.gz"
+
+[vscode-insiders-darwin-x64]
+src.manual = "latest"
+fetch.url = "https://update.code.visualstudio.com/latest/darwin/insider"
+fetch.name = "vscode-insiders-darwin-x64.zip"
+
+[vscode-insiders-darwin-arm64]
+src.manual = "latest"
+fetch.url = "https://update.code.visualstudio.com/latest/darwin-arm64/insider"
+fetch.name = "vscode-insiders-darwin-arm64.zip"

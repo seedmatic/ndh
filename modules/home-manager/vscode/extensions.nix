@@ -2,11 +2,11 @@
   home.packages = with pkgs; [
     nixpkgs-fmt
     #    nix-lsp
-    nil
+    # nil
   ];
 
   programs.vscode.profiles.default.extensions = with pkgs.vscode-extensions; [
-    jnoortheen.nix-ide
+    # sjnoortheen.nix-ide
   ];
 
   # settings = {
