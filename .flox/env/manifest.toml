@@ -16,6 +16,7 @@ version = 1
 ## -------------------------------------------------------------------
 [install]
 remake.pkg-path = "remake"
+speedtest-go.pkg-path = "speedtest-go"
 # gum.pkg-path = "gum"
 # gum.version = "^0.14.5"
 

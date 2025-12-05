@@ -8,6 +8,86 @@
 }:
 with lib; let
   cfg = config.networking.bond;
+
+  networkBondActivationScript = pkgs.writeShellScript "network-bond-activation.sh" ''
+    set -euo pipefail
+    LOG="/var/log/network-bond-activation.log"
+    {
+      echo "[bond] Configuring network bond interface"
+
+      ${concatMapStringsSep "\n" (iface: ''
+      if ! ifconfig ${iface} >/dev/null 2>&1; then
+        echo "[bond] ERROR: Interface ${iface} not found, skipping bond setup"
+        exit 0
+      fi
+      '') cfg.interfaces}
+
+      BOND_EXISTS=0
+      if ifconfig bond0 >/dev/null 2>&1; then
+        BOND_EXISTS=1
+      fi
+
+      if [ "$BOND_EXISTS" -eq 1 ]; then
+        CURRENT_MEMBERS=$(ifconfig bond0 | awk '/bond interfaces:/ {for(i=3;i<=NF;i++) print $i}' | sort | tr '\n' ' ' | xargs)
+        DESIRED_MEMBERS=$(printf '%s\n' ${concatStringsSep " " cfg.interfaces} | sort | tr '\n' ' ' | xargs)
+
+        BOND_HAS_IP=0
+        if ipconfig getifaddr bond0 >/dev/null 2>&1; then
+          BOND_HAS_IP=1
+        fi
+
+        if [ "$CURRENT_MEMBERS" = "$DESIRED_MEMBERS" ] && [ "$BOND_HAS_IP" -eq 1 ]; then
+          echo "[bond] Bond configuration unchanged and has IP, skipping"
+          exit 0
+        else
+          if [ "$CURRENT_MEMBERS" != "$DESIRED_MEMBERS" ]; then
+            echo "[bond] Bond configuration changed, reconfiguring..."
+          else
+            echo "[bond] Bond exists but has no IP, reconfiguring..."
+          fi
+          ${concatMapStringsSep "\n" (iface: "ifconfig bond0 -bonddev ${iface} || true") cfg.interfaces}
+          ifconfig bond0 destroy || true
+        fi
+      fi
+
+      echo "[bond] Creating bond interface with mode ${cfg.mode}"
+
+      ${concatMapStringsSep "\n" (iface: "ipconfig set ${iface} NONE || true") cfg.interfaces}
+
+      ifconfig bond0 create || true
+
+      ${concatMapStringsSep "\n" (iface: "ifconfig bond0 bonddev ${iface}") cfg.interfaces}
+
+      ${concatMapStringsSep "\n" (iface: "ipconfig set ${iface} NONE || true") cfg.interfaces}
+
+      ifconfig bond0 bondmode ${cfg.mode}
+      ifconfig bond0 up
+
+      ${optionalString cfg.dhcp ''
+        echo "[bond] Configuring DHCP on bond0"
+        ipconfig set bond0 DHCP
+        ipconfig set bond0 AUTOMATIC-V6
+        sleep 3
+
+        echo "[bond] Setting network service priority (bond0 > WiFi)"
+        networksetup -listallnetworkservices | grep -v "^An asterisk" | while read -r service; do
+          case "$service" in
+            *"USB"*|*"Ethernet"*)
+              ;;
+            *"Wi-Fi"*)
+              route -n delete default -ifscope en1 2>/dev/null || true
+              ;;
+          esac
+        done
+
+        for bridge in $(ifconfig -l | tr ' ' '\n' | grep '^bridge'); do
+          route -n delete default -ifscope "$bridge" 2>/dev/null || true
+        done
+      ''}
+
+      echo "[bond] Bond interface configured successfully"
+    } >>"$LOG" 2>&1
+  '';
 in {
   options.networking.bond = {
     enable = mkEnableOption "network interface bonding";
@@ -294,97 +374,7 @@ fi'') cfg.interfaces}
 
     # Declarative bond configuration via activation script
     system.activationScripts.postActivation.text = mkAfter ''
-      echo "[bond] Configuring network bond interface" >&2
-
-      # Check if all interfaces exist
-      ${concatMapStringsSep "\n" (iface: ''
-        if ! ifconfig ${iface} >/dev/null 2>&1; then
-          echo "[bond] ERROR: Interface ${iface} not found, skipping bond setup" >&2
-          exit 0
-        fi
-      '') cfg.interfaces}
-
-      # Check current bond status
-      BOND_EXISTS=0
-      if ifconfig bond0 >/dev/null 2>&1; then
-        BOND_EXISTS=1
-      fi
-
-      # Get current bond configuration if it exists
-      if [ "$BOND_EXISTS" -eq 1 ]; then
-        # Extract current members using awk for cleaner parsing
-        CURRENT_MEMBERS=$(ifconfig bond0 | awk '/bond interfaces:/ {for(i=3;i<=NF;i++) print $i}' | sort | tr '\n' ' ' | xargs)
-        DESIRED_MEMBERS=$(printf '%s\n' ${concatStringsSep " " cfg.interfaces} | sort | tr '\n' ' ' | xargs)
-        
-        # Check if bond has IP address
-        BOND_HAS_IP=0
-        if ipconfig getifaddr bond0 >/dev/null 2>&1; then
-          BOND_HAS_IP=1
-        fi
-        
-        if [ "$CURRENT_MEMBERS" = "$DESIRED_MEMBERS" ] && [ "$BOND_HAS_IP" -eq 1 ]; then
-          echo "[bond] Bond configuration unchanged and has IP, skipping" >&2
-          exit 0
-        else
-          if [ "$CURRENT_MEMBERS" != "$DESIRED_MEMBERS" ]; then
-            echo "[bond] Bond configuration changed, reconfiguring..." >&2
-          else
-            echo "[bond] Bond exists but has no IP, reconfiguring..." >&2
-          fi
-          # Remove old bond
-          ${concatMapStringsSep "\n" (iface: "ifconfig bond0 -bonddev ${iface} || true") cfg.interfaces}
-          ifconfig bond0 destroy || true
-        fi
-      fi
-
-      echo "[bond] Creating bond interface with mode ${cfg.mode}" >&2
-
-      # Release DHCP leases on individual interfaces and disable auto-config
-      ${concatMapStringsSep "\n" (iface: "ipconfig set ${iface} NONE || true") cfg.interfaces}
-
-      # Create bond interface
-      ifconfig bond0 create || true
-
-      # Add interfaces to bond first (this should prevent them from getting IPs)
-      ${concatMapStringsSep "\n" (iface: "ifconfig bond0 bonddev ${iface}") cfg.interfaces}
-      
-      # Ensure member interfaces don't get IP addresses after bonding
-      ${concatMapStringsSep "\n" (iface: "ipconfig set ${iface} NONE || true") cfg.interfaces}
-
-      # Set bond mode
-      ifconfig bond0 bondmode ${cfg.mode}
-
-      # Bring bond interface up
-      ifconfig bond0 up
-
-      # Configure DHCP on bond interface
-      ${optionalString cfg.dhcp ''
-        echo "[bond] Configuring DHCP on bond0" >&2
-        ipconfig set bond0 DHCP
-        ipconfig set bond0 AUTOMATIC-V6
-        sleep 3
-        
-        # Ensure bond0 has priority over WiFi by managing service order
-        echo "[bond] Setting network service priority (bond0 > WiFi)" >&2
-        networksetup -listallnetworkservices | grep -v "^An asterisk" | while read -r service; do
-          case "$service" in
-            *"USB"*|*"Ethernet"*) 
-              # These are likely the bond members, skip
-              ;;
-            *"Wi-Fi"*)
-              # Lower WiFi priority by removing default route
-              route -n delete default -ifscope en1 2>/dev/null || true
-              ;;
-          esac
-        done
-        
-        # Remove Lima bridge default routes
-        for bridge in $(ifconfig -l | tr ' ' '\n' | grep '^bridge'); do
-          route -n delete default -ifscope "$bridge" 2>/dev/null || true
-        done
-      ''}
-
-      echo "[bond] Bond interface configured successfully" >&2
+      ${networkBondActivationScript}
     '';
   };
 }

@@ -4,6 +4,18 @@ with lib;
 
 let
   cfg = config.services.headscale-client;
+
+  headscaleActivationScript = pkgs.writeShellScript "headscale-client-activation.sh" ''
+    set -euo pipefail
+    LOG="/var/log/darwin-headscale-client.log"
+    {
+      if ! tailscale status >/dev/null 2>&1; then
+        echo "⚠️  Headscale client is configured but not connected. Run: hs-connect"
+      else
+        echo "[headscale] Client already connected"
+      fi
+    } >>"$LOG" 2>&1
+  '';
 in {
   options.services.headscale-client = {
     enable = mkOption {
@@ -96,12 +108,7 @@ in {
 
     # Note for the user
     system.activationScripts.postActivation.text = mkAfter ''
-      if ! tailscale status >/dev/null 2>&1; then
-        echo ""
-        echo "⚠️  Headscale client is configured but not connected."
-        echo "To connect, run: hs-connect"
-        echo ""
-      fi
+      ${headscaleActivationScript}
     '';
   };
 }

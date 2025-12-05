@@ -66,9 +66,9 @@ LOG="/var/log/network-monitor.log"
           sleep 2
         fi
 
-@secondaryRouteStatements@
+		@secondaryRouteStatements@
 
-        if [ "$backup" != "$primary" ] && if ifconfig "$backup" >/dev/null 2>&1; then
+        if [ "$backup" != "$primary" ] && ifconfig "$backup" >/dev/null 2>&1; then
           local backup_gateway=$(netstat -rn | grep "^default.*$backup" | awk '{print $2}' | head -1)
           if [ -n "$backup_gateway" ]; then
             echo "[$(date)] Configuring backup $backup with metric @routeMetricBackup@"

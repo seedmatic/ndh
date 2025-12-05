@@ -53,6 +53,88 @@ let
             email: "${cfg.acme.email}"
       ''}
   '';
+
+  teleportActivationScript = pkgs.writeShellScript "teleport-activation.sh" ''
+    set -euo pipefail
+    LOG="/var/log/darwin-teleport-activation.log"
+    {
+      echo "[teleport] start $(date)"
+
+      : "Setting up Teleport directories and first-run script"
+
+      mkdir -p ${cfg.dataDir}
+      mkdir -p ${xdgStateHome}/log
+
+      chown -R root:admin ${cfg.dataDir}
+      chmod -R g+rwX ${cfg.dataDir}
+      chmod 770 ${cfg.dataDir}
+
+      chown ${userName}:staff ${xdgStateHome}/log
+
+      mkdir -p /usr/local/bin
+      if [ ! -f "/usr/local/bin/teleport-first-run" ]; then
+        cat > /usr/local/bin/teleport-first-run <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Only run for the primary user
+if [ "$(whoami)" != "${userName}" ]; then
+  exit 0
+fi
+
+: "Waiting for Teleport to start"
+for i in {1..30}; do
+  if ${pkgs.teleport}/bin/tctl status &>/dev/null; then
+    break
+  fi
+  sleep 1
+done
+
+# Check if setup is already done
+if [ -f "${cfg.dataDir}/.initial-setup-done" ]; then
+  exit 0
+fi
+
+: "Importing RBAC roles"
+${pkgs.teleport}/bin/tctl create -f /etc/teleport/roles.yaml 2>/dev/null || true
+
+: "Getting all users in admin or wheel group"
+ADMIN_USERS=$(dscl . -read /Groups/admin GroupMembership 2>/dev/null | sed 's/GroupMembership: //' || echo "")
+WHEEL_USERS=$(dscl . -read /Groups/wheel GroupMembership 2>/dev/null | sed 's/GroupMembership: //' || echo "")
+ALL_ADMINS=$(echo "$ADMIN_USERS $WHEEL_USERS" | tr ' ' '\n' | sort -u | grep -v '^$')
+
+: "Creating Teleport users for admin group members"
+for user in $ALL_ADMINS; do
+  : "Checking user: $user"
+  if ! ${pkgs.teleport}/bin/tctl users ls | grep -q "^$user"; then
+    : "Creating Teleport user for: $user"
+    ${pkgs.teleport}/bin/tctl users add "$user" --roles=admin --logins="$user",root
+    echo ""
+    echo "✅ User '$user' created! Use the signup link above to set password."
+    echo ""
+  fi
+done
+
+touch "${cfg.dataDir}/.initial-setup-done"
+echo "✅ Teleport setup complete!"
+EOF
+        chmod +x /usr/local/bin/teleport-first-run
+      fi
+
+      echo "[teleport] end $(date)"
+    } >>"$LOG" 2>&1
+  '';
+
+  teleportFirstRunActivationScript = pkgs.writeShellScript "teleport-first-run-activation.sh" ''
+    set -euo pipefail
+    LOG="/var/log/darwin-teleport-first-run.log"
+    {
+      if [ ! -f "${cfg.dataDir}/.initial-setup-done" ] && [ -x "$HOME/.local/bin/teleport-first-run" ]; then
+        echo "[teleport] running first-time setup"
+        sudo -u "$USER" "$HOME/.local/bin/teleport-first-run" || true
+      fi
+    } >>"$LOG" 2>&1
+  '';
 in
 {
   options.services.teleport = {
@@ -134,69 +216,7 @@ in
   config = mkIf cfg.enable {
     # Ensure XDG directories exist and set permissions
     system.activationScripts.postActivation.text = ''
-      : "Setting up Teleport directories and first-run script"
-      
-      # Create required directories
-      mkdir -p ${cfg.dataDir}
-      mkdir -p ${xdgStateHome}/log
-      
-      # Set permissions
-      chown -R root:admin ${cfg.dataDir}
-      chmod -R g+rwX ${cfg.dataDir}
-      chmod 770 ${cfg.dataDir}
-      
-      chown ${userName}:staff ${xdgStateHome}/log
-      
-      # Create first-run script in a system location
-      mkdir -p /usr/local/bin
-      if [ ! -f "/usr/local/bin/teleport-first-run" ]; then
-        cat > /usr/local/bin/teleport-first-run <<'EOF'
-#!/usr/bin/env bash
-set -euo pipefail
-
-# Only run for the primary user
-if [ "$(whoami)" != "${userName}" ]; then
-  exit 0
-fi
-
-: "Waiting for Teleport to start"
-for i in {1..30}; do
-  if ${pkgs.teleport}/bin/tctl status &>/dev/null; then
-    break
-  fi
-  sleep 1
-done
-
-# Check if setup is already done
-if [ -f "${cfg.dataDir}/.initial-setup-done" ]; then
-  exit 0
-fi
-
-: "Importing RBAC roles"
-${pkgs.teleport}/bin/tctl create -f /etc/teleport/roles.yaml 2>/dev/null || true
-
-: "Getting all users in admin or wheel group"
-ADMIN_USERS=$(dscl . -read /Groups/admin GroupMembership 2>/dev/null | sed 's/GroupMembership: //' || echo "")
-WHEEL_USERS=$(dscl . -read /Groups/wheel GroupMembership 2>/dev/null | sed 's/GroupMembership: //' || echo "")
-ALL_ADMINS=$(echo "$ADMIN_USERS $WHEEL_USERS" | tr ' ' '\n' | sort -u | grep -v '^$')
-
-: "Creating Teleport users for admin group members"
-for user in $ALL_ADMINS; do
-  : "Checking user: $user"
-  if ! ${pkgs.teleport}/bin/tctl users ls | grep -q "^$user"; then
-    : "Creating Teleport user for: $user"
-    ${pkgs.teleport}/bin/tctl users add "$user" --roles=admin --logins="$user",root
-    echo ""
-    echo "✅ User '$user' created! Use the signup link above to set password."
-    echo ""
-  fi
-done
-
-touch "${cfg.dataDir}/.initial-setup-done"
-echo "✅ Teleport setup complete!"
-EOF
-        chmod +x /usr/local/bin/teleport-first-run
-      fi
+      ${teleportActivationScript}
     '';
     
     # Create a launch agent to run the first-time setup
@@ -228,10 +248,7 @@ EOF
     
     # Ensure the first-run script is run as the current user
     system.activationScripts.teleportFirstRun = ''
-      if [ ! -f "${cfg.dataDir}/.initial-setup-done" ] && [ -x "$HOME/.local/bin/teleport-first-run" ]; then
-        echo "Running Teleport first-time setup..."
-        sudo -u $USER $HOME/.local/bin/teleport-first-run || true
-      fi
+      ${teleportFirstRunActivationScript}
     '';
     
     # Create a system-wide tctl configuration

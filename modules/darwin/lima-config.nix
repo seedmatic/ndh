@@ -216,6 +216,47 @@ let
 
   };
 
+  limaActivationScript = pkgs.writeShellScript "lima-config-activation.sh" ''
+    set -euo pipefail
+    LOG="/var/log/darwin-lima-config.log"
+    {
+      echo "[limaConfig] start $(date) host=${effectiveHostName} user=${profileUser}"
+
+      : "Create Lima configuration directory in profile home"
+      mkdir -p "${profileHome}/.lima/nerd-nixos"
+
+      : "Generate lima.yaml with profile user configuration using yq"
+      cat << 'EOF' | ${pkgs.yq-go}/bin/yq -P -p json -o yaml eval . - > "${profileHome}/.lima/nerd-nixos/lima.yaml"
+${lib.generators.toJSON {} limaConfig}
+EOF
+      chmod 0600 "${profileHome}/.lima/nerd-nixos/lima.yaml"
+
+      : "Create symlinks for alternate profile homes (homeSymlinks)"
+      ${lib.optionalString (profileHomeSymlinks != []) ''
+      # shellcheck disable=SC2043
+      for altUser in ${lib.concatStringsSep " " (map (u: ''"${u}"'') profileHomeSymlinks)}; do
+        altHome="/Users/$altUser"
+        if [ "$altHome" != "${profileHome}" ]; then
+          mkdir -p "$altHome/.lima/nerd-nixos"
+          if [ -f "${profileHome}/.lima/nerd-nixos/lima.yaml" ]; then
+            ln -sf "${profileHome}/.lima/nerd-nixos/lima.yaml" "$altHome/.lima/nerd-nixos/lima.yaml" || true
+          fi
+        fi
+      done
+      ''}
+
+      : "Verify output file"
+      if [ -f "${profileHome}/.lima/nerd-nixos/lima.yaml" ]; then
+        echo "[limaConfig] generated size=$(wc -c < \"${profileHome}/.lima/nerd-nixos/lima.yaml\")"
+        grep -E 'gateway|clusterId' "${profileHome}/.lima/nerd-nixos/lima.yaml" || true
+        touch /var/db/lima-config-generated
+      else
+        echo "[limaConfig][ERROR] lima.yaml missing after generation attempt"
+      fi
+      echo "[limaConfig] end $(date)"
+    } >>"$LOG" 2>&1
+  '';
+
 in {
   options.lima.configGenerator = {
     vmType = mkOption {
@@ -280,42 +321,7 @@ in {
     # Dedicated activation script using postActivation which is actually executed
     # Use mkAfter to run after other postActivation scripts (@codebase)
     system.activationScripts.postActivation.text = lib.mkAfter ''
-      set -euo pipefail
-      LOG="/var/log/darwin-lima-config.log"
-      echo "[limaConfig] start $(date) host=${effectiveHostName} user=${profileUser}" >> "$LOG"
-
-      : "Create Lima configuration directory in profile home"
-      mkdir -p "${profileHome}/.lima/nerd-nixos"
-
-      : "Generate lima.yaml with profile user configuration using yq"
-      cat << 'EOF' | ${pkgs.yq-go}/bin/yq -P -p json -o yaml eval . - > "${profileHome}/.lima/nerd-nixos/lima.yaml"
-${lib.generators.toJSON {} limaConfig}
-EOF
-      chmod 0600 "${profileHome}/.lima/nerd-nixos/lima.yaml"
-
-      : "Create symlinks for alternate profile homes (homeSymlinks)"
-      ${lib.optionalString (profileHomeSymlinks != []) ''
-      # shellcheck disable=SC2043
-      for altUser in ${lib.concatStringsSep " " (map (u: ''"${u}"'') profileHomeSymlinks)}; do
-        altHome="/Users/$altUser"
-        if [ "$altHome" != "${profileHome}" ]; then
-          mkdir -p "$altHome/.lima/nerd-nixos"
-          if [ -f "${profileHome}/.lima/nerd-nixos/lima.yaml" ]; then
-            ln -sf "${profileHome}/.lima/nerd-nixos/lima.yaml" "$altHome/.lima/nerd-nixos/lima.yaml" || true
-          fi
-        fi
-      done
-      ''}
-
-      : "Verify output file"
-      if [ -f "${profileHome}/.lima/nerd-nixos/lima.yaml" ]; then
-        echo "[limaConfig] generated size=$(wc -c < "${profileHome}/.lima/nerd-nixos/lima.yaml")" >> "$LOG"
-        grep -E 'gateway|clusterId' "${profileHome}/.lima/nerd-nixos/lima.yaml" >> "$LOG" || true
-        touch /var/db/lima-config-generated
-      else
-        echo "[limaConfig][ERROR] lima.yaml missing after generation attempt" >> "$LOG"
-      fi
-      echo "[limaConfig] end $(date)" >> "$LOG"
+      ${limaActivationScript}
     '';
     # Expose full rendered configuration for external tooling (@codebase)
     lima.computedConfig = limaConfig;

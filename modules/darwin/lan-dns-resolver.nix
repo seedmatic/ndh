@@ -2,6 +2,27 @@
 
 let
   cfg = config.networking.lanDnsResolver;
+
+  lanDnsActivationScript = pkgs.writeShellScript "lan-dns-resolver-activation.sh" ''
+    set -euo pipefail
+    LOG="/var/log/darwin-lan-dns-resolver.log"
+    {
+      echo "[lanDns] Validating LAN resolver"
+
+      if ping -c 1 -W 1 ${cfg.nameserver} >/dev/null 2>&1; then
+        echo "[lanDns] Gateway ${cfg.nameserver} reachable; verifying resolver file"
+        if [ -f /etc/resolver/lan ]; then
+          echo "[lanDns] /etc/resolver/lan present"
+        else
+          echo "[lanDns][WARN] /etc/resolver/lan missing"
+        fi
+        dscacheutil -flushcache
+        killall -HUP mDNSResponder 2>/dev/null || true
+      else
+        echo "[lanDns] Gateway ${cfg.nameserver} unreachable; skipping resolver refresh"
+      fi
+    } >>"$LOG" 2>&1
+  '';
 in
 {
   options.networking.lanDnsResolver = {
@@ -36,26 +57,7 @@ in
     # Also ensure the network interfaces are configured with the LAN DNS
     # This activation script runs after the main DNS configuration
     system.activationScripts.postActivation.text = lib.mkAfter ''
-      : "Configure LAN DNS resolver for .lan domain"
-      
-      # Check if we're on a network that has the LAN gateway accessible
-      if ping -c 1 -W 1 ${cfg.nameserver} >/dev/null 2>&1; then
-        : "LAN gateway ${cfg.nameserver} is reachable, ensuring resolver is configured"
-        
-        # The /etc/resolver/lan file is already managed by nix-darwin
-        # Just verify it exists
-        if [ -f /etc/resolver/lan ]; then
-          : "Resolver configuration for .lan domain is active"
-        else
-          : "Warning: /etc/resolver/lan file not found"
-        fi
-        
-        # Flush DNS cache to pick up the new resolver configuration
-        dscacheutil -flushcache
-        killall -HUP mDNSResponder 2>/dev/null || true
-      else
-        : "LAN gateway ${cfg.nameserver} not reachable, skipping LAN DNS configuration"
-      fi
+      ${lanDnsActivationScript}
     '';
   };
 }

@@ -101,6 +101,24 @@ let
     echo "[internetSharing] end $(date)" >> "$LOG"
   '';
 
+  activationWrapperScript = pkgs.writeShellScript "internet-sharing-activation.sh" ''
+    set -euo pipefail
+    LOG="/var/log/darwin-internet-sharing-activation.log"
+    {
+      echo "[internetSharing] configuring Internet Sharing NAT"
+      ${configurePlist}
+
+      ${lib.optionalString cfg.verifyAnchors ''
+      if pfctl -s nat 2>/dev/null | grep -q 'nat-anchor "com.apple.internet-sharing"'; then
+        echo "[internetSharing] ✓ NAT anchors active"
+      else
+        echo "[internetSharing][WARN] NAT anchors NOT active - manual toggle required"
+        echo "[internetSharing][WARN] Go to: System Settings → General → Sharing → Internet Sharing"
+      fi
+      ''}
+    } >>"$LOG" 2>&1
+  '';
+
 in {
   options.internetSharing = {
     enable = mkOption {
@@ -165,18 +183,7 @@ in {
   config = mkIf cfg.enable {
     # Run configuration script during system activation
     system.activationScripts.postActivation.text = lib.mkAfter ''
-      echo "[internetSharing] configuring Internet Sharing NAT" >> /var/log/darwin-activation.log
-      ${configurePlist}
-
-      ${lib.optionalString cfg.verifyAnchors ''
-      # Verify pf anchors are active (indicates Internet Sharing is running)
-      if pfctl -s nat 2>/dev/null | grep -q 'nat-anchor "com.apple.internet-sharing"'; then
-        echo "[internetSharing] ✓ NAT anchors active" >> /var/log/darwin-activation.log
-      else
-        echo "[internetSharing][WARN] NAT anchors NOT active - manual toggle required" >> /var/log/darwin-activation.log
-        echo "[internetSharing][WARN] Go to: System Settings → General → Sharing → Internet Sharing" >> /var/log/darwin-activation.log
-      fi
-      ''}
+      ${activationWrapperScript}
     '';
 
     # Document the configuration in system profile

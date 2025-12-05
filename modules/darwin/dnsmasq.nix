@@ -2,6 +2,18 @@
   user = config.profile.user;
   userName = user.name;
   logFile = "/Users/${userName}/Library/Logs/dnsmasq.log";
+
+  dnsmasqActivationScript = pkgs.writeShellScript "dnsmasq-activation.sh" ''
+    set -euo pipefail
+    LOG="/var/log/darwin-dnsmasq-activation.log"
+    {
+      echo "[dnsmasq] Ensuring log path ${logFile}"
+      mkdir -p "$(dirname ${logFile})"
+      touch "${logFile}"
+      chmod 644 "${logFile}"
+      chown ${userName}:staff "${logFile}"
+    } >>"$LOG" 2>&1
+  '';
 in {
   launchd.daemons.dnsmasq = lib.mkForce {
     serviceConfig = {
@@ -18,10 +30,6 @@ in {
   };
 
   system.activationScripts.postActivation.text = ''
-    : "Create dnsmasq log file"
-    mkdir -p "$(dirname ${logFile})"
-    touch "${logFile}"
-    chmod 644 "${logFile}"
-    chown ${userName}:staff "${logFile}"
+    ${dnsmasqActivationScript}
   '';
 }

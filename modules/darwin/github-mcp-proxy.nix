@@ -7,6 +7,17 @@ let
   wrapped = pkgs.writeShellScriptBin "github-mcp-proxy" ''
     exec ${pkgs.python3}/bin/python3 ${pythonSource} "$@"
   '';
+  githubMcpProxyActivationScript = pkgs.writeShellScript "github-mcp-proxy-activation.sh" ''
+    set -euo pipefail
+    LOG="/var/log/darwin-github-mcp-proxy.log"
+    {
+      if command -v github-mcp-proxy >/dev/null 2>&1; then
+        echo "[github-mcp-proxy] installed: $(command -v github-mcp-proxy)"
+      else
+        echo "[github-mcp-proxy][WARN] binary not on PATH"
+      fi
+    } >>"$LOG" 2>&1
+  '';
 in {
   options.programs.githubMcpProxy = {
     # Enable by default when the module is imported; hosts can override with = false.
@@ -51,9 +62,7 @@ in {
 
     # Optional: simple activation health check (non-fatal)
     system.activationScripts.githubMcpProxyHealth.text = ''
-      if command -v github-mcp-proxy >/dev/null 2>&1; then
-        echo "[github-mcp-proxy] installed: $(command -v github-mcp-proxy)" >&2
-      fi
+      ${githubMcpProxyActivationScript}
     '';
   };
 }

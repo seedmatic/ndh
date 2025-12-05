@@ -27,6 +27,34 @@ let
   formatPrincipals = principals: 
     concatStringsSep "\n" (map (p: "              - ${p}") principals);
 
+  opensshActivationScript = pkgs.writeShellScript "openssh-activation.sh" ''
+    set -euo pipefail
+    LOG="/var/log/darwin-openssh-activation.log"
+    {
+      echo "[openssh] start $(date)"
+
+      : "Install builder keys for nix daemon (root) access (Darwin)"
+      install -d -m 755 /etc/nix
+      if [ -f "${hostKeysDir}/linux_builder" ]; then
+        install -m 600 -o root -g wheel "${hostKeysDir}/linux_builder" /etc/nix/builder_ed25519_profile
+      fi
+      if [ -f "${hostKeysDir}/linux_builder.pub" ]; then
+        install -m 644 -o root -g wheel "${hostKeysDir}/linux_builder.pub" /etc/nix/builder_ed25519_profile.pub
+      fi
+
+      : "Install group-based AuthorizedKeysCommand script"
+      install -d -m 755 /etc/ssh
+      install -m 555 ${groupKeysScriptStore} /etc/ssh/${config.opensshPolicy.canonicalGroupKeysCommandName}
+      install -m 555 ${principalsScriptStore} /etc/ssh/${config.opensshPolicy.canonicalPrincipalsCommandName}
+
+      : "Ensure drop-in include directories exist"
+      install -d -m 755 /etc/ssh/sshd_config.d
+      install -d -m 755 /etc/ssh/ssh_config.d
+
+      echo "[openssh] end $(date)"
+    } >>"$LOG" 2>&1
+  '';
+
 in {
   imports = [ ../common/openssh-policy.nix ];
 
@@ -83,23 +111,7 @@ ${formatPrincipals allPrincipals}
     services.openssh.enable = true;
 
     system.activationScripts.postActivation.text = ''
-      : "Install builder keys for nix daemon (root) access (Darwin)"
-      install -d -m 755 /etc/nix
-      if [ -f "${hostKeysDir}/linux_builder" ]; then
-        install -m 600 -o root -g wheel "${hostKeysDir}/linux_builder" /etc/nix/builder_ed25519_profile
-      fi
-      if [ -f "${hostKeysDir}/linux_builder.pub" ]; then
-        install -m 644 -o root -g wheel "${hostKeysDir}/linux_builder.pub" /etc/nix/builder_ed25519_profile.pub
-      fi
-
-      : "Install group-based AuthorizedKeysCommand script"
-      install -d -m 755 /etc/ssh
-      install -m 555 ${groupKeysScriptStore} /etc/ssh/${config.opensshPolicy.canonicalGroupKeysCommandName}
-      install -m 555 ${principalsScriptStore} /etc/ssh/${config.opensshPolicy.canonicalPrincipalsCommandName}
-
-      : "Ensure drop-in include directories exist"
-      install -d -m 755 /etc/ssh/sshd_config.d
-      install -d -m 755 /etc/ssh/ssh_config.d
+      ${opensshActivationScript}
     '';
   };
 }
