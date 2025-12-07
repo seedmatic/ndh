@@ -30,6 +30,7 @@ let
       throw "VS Code Insiders download unsupported for ${system}"
     else
       resolved;
+  # Give the downloaded archive a real extension so Nix knows how to unpack it.
   repackedSrc = pkgs.runCommand "${artifact.source.pname}.${artifact.extension}" { } ''
     cp ${artifact.source.src} $out
   '';
@@ -40,16 +41,12 @@ in {
 
     enable = unfreeAllowed;
 
-    # Snippet to use insiders build
-    # package = pkgs.vscode-fhs;
-    # package = pkgs.vscodium;
-      package =
-       (pkgs.vscode.override {
-         isInsiders = true;
-       }).overrideAttrs (oldAttrs: rec {
-         src = repackedSrc;
-         inherit (artifact.source) version;
-       });
+    package = (pkgs.vscode.override {
+      isInsiders = true;
+    }).overrideAttrs (oldAttrs: {
+      src = repackedSrc;
+      version = artifact.source.version;
+    });
 
     # extensions = with pkgs.vscode-extensions; [
     #  vscodevim.vim
