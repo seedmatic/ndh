@@ -19,7 +19,7 @@
     enable = true;
     instanceName = "headscale-server";
     serverUrl = "http://192.168.5.10:8080";
-    baseDomain = "home.local";
+    baseDomain = "home.arpa";
     listenAddr = "0.0.0.0:8080";
     ipAddress = "192.168.5.10";  # Static IP for easy access
     profile = "default";

@@ -123,7 +123,7 @@ Self-hosted Tailscale control server for internal LAN.
 services.headscale-custom = {
   enable = true;
   serverUrl = "http://headscale.local:8080";
-  baseDomain = "mammoth-skate.local";
+  baseDomain = "mammoth-skate.home.arpa";
   listenAddr = "0.0.0.0:8080";
   metricsListenAddr = "127.0.0.1:9090";
   derp.urls = [ "https://controlplane.tailscale.com/derpmap/default" ];
@@ -134,7 +134,7 @@ services.headscale-custom = {
 
 `enable`:: Enable Headscale server (default: `false`)
 `serverUrl`:: Public URL of server (required)
-`baseDomain`:: MagicDNS base domain (default: `"mammoth-skate.local"`)
+`baseDomain`:: MagicDNS base domain (default: `"mammoth-skate.home.arpa"`)
 `listenAddr`:: HTTP listen address (default: `"0.0.0.0:8080"`)
 `metricsListenAddr`:: Prometheus metrics address (default: `"127.0.0.1:9090"`)
 `derp.urls`:: DERP server URLs (default: Tailscale's servers)
@@ -159,7 +159,7 @@ services.headscale-custom = {
   services.headscale-custom = {
     enable = true;
     serverUrl = "http://192.168.1.10:8080";
-    baseDomain = "home.local";
+    baseDomain = "home.arpa";
   };
 
   networking.firewall.allowedTCPPorts = [ 8080 ];
@@ -167,7 +167,7 @@ services.headscale-custom = {
   # Optional: HTTPS with Caddy
   services.caddy = {
     enable = true;
-    virtualHosts."headscale.home.local" = {
+    virtualHosts."headscale.home.arpa" = {
       extraConfig = ''
         reverse_proxy localhost:8080
         tls internal
@@ -430,7 +430,7 @@ NOTE: This module is deprecated. Use Headscale client instead.
   services.headscale-custom = {
     enable = true;
     serverUrl = "http://192.168.1.10:8080";
-    baseDomain = "home.local";
+    baseDomain = "home.arpa";
   };
 
   networking.firewall.allowedTCPPorts = [ 8080 ];
@@ -621,7 +621,7 @@ tailscale ssh -v hostname  # Verbose output
 
 # Headscale SSH
 hs-status
-ssh -v hostname.home.local
+ssh -v hostname.home.arpa
 
 # Check ACLs on server
 sudo headscale policy check

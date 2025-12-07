@@ -48,7 +48,7 @@ environments = [
 [profile]
 common = '''
   export HEADSCALE_SERVER_URL=${HEADSCALE_SERVER_URL:-http://192.168.5.10:8080}
-  export HEADSCALE_BASE_DOMAIN=${HEADSCALE_BASE_DOMAIN:-home.local}
+  export HEADSCALE_BASE_DOMAIN=${HEADSCALE_BASE_DOMAIN:-home.arpa}
   export GATEWAY_HOSTNAME=${GATEWAY_HOSTNAME:-${CLUSTER_NAME:-bioskop}-hs-gateway}
   export GATEWAY_ROUTES=${GATEWAY_ROUTES:-100.64.0.0/10,192.168.5.0/24}
 '''

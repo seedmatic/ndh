@@ -136,11 +136,13 @@ See: link:network-setup.adoc#step-1-tailscale-gateways-in-lima-vms[Tailscale Gat
 services.headscale-custom = {
   enable = true;
   serverUrl = "http://headscale.local:8080";
-  baseDomain = "home.local";
+  baseDomain = "home.arpa";
 };
 ----
 
 See: link:network-setup.adoc#step-3-optional-headscale-for-internal-lan[Headscale Setup]
+
+NOTE: The reserved `.home.arpa` suffix avoids conflicts with Bonjour/mDNS, so adopt hostnames like `bioskop.home.arpa` for LAN-only MagicDNS.
 
 === Connect to Network
 
@@ -163,7 +165,7 @@ See: link:network-setup.adoc#ssh-access[SSH Access Methods]
 tailscale ssh hostname
 
 # Via Headscale
-ssh hostname.home.local
+ssh hostname.home.arpa
 
 # To RKE nodes (via gateway)
 ssh 192.168.106.10
@@ -204,7 +206,7 @@ services.incus-tailscale-gateway = {
 services.headscale-custom = {
   enable = true;
   serverUrl = "http://192.168.1.10:8080";
-  baseDomain = "home.local";
+  baseDomain = "home.arpa";
 };
 ----
 

@@ -77,7 +77,7 @@ After network configuration section:
 
 ifeq (headscale-server,$(CLUSTER_NODE_NAME))
 	HEADSCALE_SERVER_URL := http://192.168.5.10:8080
-	HEADSCALE_BASE_DOMAIN := home.local
+	HEADSCALE_BASE_DOMAIN := home.arpa
 	# Use headscale cloud-config instead of RKE2 configs
 	CLOUD_CONFIG_FILES := cloud-config.headscale-server.yaml.tmpl
 	# Override RKE2 defaults
@@ -182,7 +182,7 @@ If Makefile extension is complex, we can deploy manually:
 cd /Users/nxmatic/Gits/nxmatic/nix-darwin-home/modules/nixos/incus-rke2-cluster
 
 export HEADSCALE_SERVER_URL="http://192.168.5.10:8080"
-export HEADSCALE_BASE_DOMAIN="home.local"
+export HEADSCALE_BASE_DOMAIN="home.arpa"
 
 # Render template
 envsubst < cloud-config.headscale-server.yaml.tmpl > /tmp/headscale-server.yaml

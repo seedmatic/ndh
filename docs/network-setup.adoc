@@ -329,12 +329,13 @@ Choose an always-on host (NAS, server, or dedicated host):
   services.headscale-custom = {
     enable = true;
     serverUrl = "http://192.168.1.10:8080";
-    baseDomain = "mammoth-skate.local";
+    baseDomain = "mammoth-skate.home.arpa";
   };
 
   networking.firewall.allowedTCPPorts = [ 8080 ];
 }
-----
+
+NOTE: `home.arpa` is reserved for private home networks (RFC 8375), so using a `*.home.arpa` suffix keeps MagicDNS separate from macOS `.local` mDNS traffic.
 
 ==== Initialize Headscale
 
@@ -458,12 +459,12 @@ tailscale status
 [source,bash]
 ----
 # SSH to Darwin hosts
-ssh bioskop.mammoth-skate.local
+ssh bioskop.mammoth-skate.home.arpa
 # or
 hs-ssh bioskop
 
 # SSH to Lima VM
-ssh lima-bioskop.mammoth-skate.local
+ssh lima-bioskop.mammoth-skate.home.arpa
 
 # Check status
 hs-status
@@ -513,7 +514,7 @@ Both Tailscale and Headscale connected.
 [source,bash]
 ----
 # Option 1: Use Headscale (faster)
-ssh bioskop.mammoth-skate.local
+ssh bioskop.mammoth-skate.home.arpa
 
 # Option 2: Use Tailscale
 tailscale ssh bioskop

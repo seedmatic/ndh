@@ -79,7 +79,7 @@ Create `~/.lima/bioskop-nixos/nixos-config.nix`:
     enable = true;
     instanceName = "headscale-server";
     serverUrl = "http://192.168.5.10:8080";
-    baseDomain = "home.local";
+    baseDomain = "home.arpa";
     ipAddress = "192.168.5.10";  # Static IP for the container
   };
 
@@ -294,7 +294,7 @@ tailscale status
 [source,bash]
 ----
 # From bioskop Darwin to Lima VM via Headscale
-ssh bioskop-nixos.home.local
+ssh bioskop-nixos.home.arpa
 
 # Should connect using Headscale SSH (no password/key needed)
 ----
