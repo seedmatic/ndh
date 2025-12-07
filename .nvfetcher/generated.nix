@@ -25,34 +25,34 @@
   };
   vscode-insiders-darwin-arm64 = {
     pname = "vscode-insiders-darwin-arm64";
-    version = "latest";
+    version = "2025-12-07";
     src = fetchurl {
       url = "https://update.code.visualstudio.com/latest/darwin-arm64/insider";
-      sha256 = "sha256-Xqs7aSK2ZPPeunm3tQzp7N4EsfovAy6hiRr/eRSShE0=";
+      sha256 = "sha256-4Y+ykvE9GDtYfW/nEl1kE4jztW2ckyOZ2kHlX15VOXg=";
     };
   };
   vscode-insiders-darwin-x64 = {
     pname = "vscode-insiders-darwin-x64";
-    version = "latest";
+    version = "2025-12-07";
     src = fetchurl {
       url = "https://update.code.visualstudio.com/latest/darwin/insider";
-      sha256 = "sha256-sa5nIHhWivKDYJzp6pIrjmLLm7Hah4Or/Muun9n9Zo4=";
+      sha256 = "sha256-iSZE+BmWnuFYavKVDwbc+7aej17DBxAJoTnXzDS+/fM=";
     };
   };
   vscode-insiders-linux-arm64 = {
     pname = "vscode-insiders-linux-arm64";
-    version = "latest";
+    version = "2025-12-07";
     src = fetchurl {
       url = "https://update.code.visualstudio.com/latest/linux-arm64/insider";
-      sha256 = "sha256-oMruXfJ1CPeXeQIGNkr5mSiWGCgNDAUWFMAbNltE7ro=";
+      sha256 = "sha256-z4j3BQOrContE1O0x+9p37fUIlaVrbhI6dRpTVAF0ns=";
     };
   };
   vscode-insiders-linux-x64 = {
     pname = "vscode-insiders-linux-x64";
-    version = "latest";
+    version = "2025-12-07";
     src = fetchurl {
       url = "https://update.code.visualstudio.com/latest/linux-x64/insider";
-      sha256 = "sha256-0uNCAUZh4OLrSZ1R5LDjRrKjgjLfbqKXJHeqRcHTJrQ=";
+      sha256 = "sha256-h7asIVGss3FZJa1PCNg3Ku6gt4jM7Li2rjysD6E1Olc=";
     };
   };
 }
