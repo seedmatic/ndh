@@ -176,7 +176,7 @@ ssh lima-nerd-nixos "incus exec master -- flox activate --dir /var/lib/rancher/r
 **Verify mount in master container:**
 [source,bash]
 ----
-ssh lima-nerd-nixos "incus exec master -- ls -la /var/lib/incus-rke2-cluster/kpt-packages/mesh/headscale"
+ssh lima-nerd-nixos "incus exec master -- ls -la /var/lib/incus-rke2-cluster/kpt/cluster/mesh/headscale"
 # Should show all kpt files
 ----
 
@@ -185,7 +185,7 @@ ssh lima-nerd-nixos "incus exec master -- ls -la /var/lib/incus-rke2-cluster/kpt
 [source,bash]
 ----
 # From inside master container
-ssh lima-nerd-nixos "incus exec master -- flox activate --dir /var/lib/rancher/rke2 -- kubectl apply -f /var/lib/incus-rke2-cluster/kpt-packages/mesh/headscale/"
+ssh lima-nerd-nixos "incus exec master -- flox activate --dir /var/lib/rancher/rke2 -- kubectl apply -f /var/lib/incus-rke2-cluster/kpt/cluster/mesh/headscale/"
 
 # Wait for LoadBalancer IP
 kubectl get svc -n headscale headscale -w
@@ -432,5 +432,5 @@ kubectl logs -n headscale deployment/headscale -f
 
 * link:../network-setup.adoc[Network Setup Documentation]
 * link:../bioskop-deployment.adoc[bioskop Deployment Guide]
-* link:../../modules/nixos/incus-rke2-cluster/kpt-packages/mesh/headscale/README.md[Headscale kpt Package]
+* link:../../modules/nixos/incus-rke2-cluster/kpt/cluster/mesh/headscale/README.md[Headscale kpt Package]
 * bbox router configuration: http://192.168.1.254
