@@ -26,8 +26,8 @@ in {
 
     baseDomain = mkOption {
       type = types.str;
-      default = "home.local";
-      description = "Base domain for MagicDNS";
+      default = "home.arpa";
+      description = "Base domain for MagicDNS (default uses the reserved .home.arpa suffix)";
     };
 
     listenAddr = mkOption {

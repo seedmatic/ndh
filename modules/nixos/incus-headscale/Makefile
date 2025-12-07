@@ -9,7 +9,7 @@ NAME ?= headscale-server
 
 # Cluster/Network Configuration
 CLUSTER_NAME ?= $(LIMA_HOSTNAME)
-HEADSCALE_BASE_DOMAIN ?= home.local
+HEADSCALE_BASE_DOMAIN ?= home.arpa
 
 # Network Configuration (macvlan on bridged interface for home LAN access)
 NETWORK_NAME := headscale-br

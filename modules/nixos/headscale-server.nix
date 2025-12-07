@@ -32,8 +32,8 @@ in {
 
     baseDomain = mkOption {
       type = types.str;
-      default = "mammoth-skate.local";
-      description = "Base domain for MagicDNS";
+      default = "mammoth-skate.home.arpa";
+      description = "Base domain for MagicDNS (use a reserved .home.arpa suffix to avoid mDNS conflicts)";
     };
 
     derp = {

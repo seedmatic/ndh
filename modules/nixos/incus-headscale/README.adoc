@@ -45,7 +45,7 @@ make NAME=headscale-gateway start
 Environment variables:
 
 - `HEADSCALE_SERVER_URL` - Server URL (default: `http://192.168.5.10:8080`)
-- `HEADSCALE_BASE_DOMAIN` - MagicDNS domain (default: `home.local`)
+- `HEADSCALE_BASE_DOMAIN` - MagicDNS domain (default: `home.arpa`)
 
 === Headscale Gateway
 

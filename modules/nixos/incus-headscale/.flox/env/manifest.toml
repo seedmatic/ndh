@@ -51,7 +51,7 @@ common = '''
   
   # Headscale server configuration
   export HEADSCALE_SERVER_URL=${HEADSCALE_SERVER_URL:-http://192.168.5.10:8080}
-  export HEADSCALE_BASE_DOMAIN=${HEADSCALE_BASE_DOMAIN:-home.local}
+  export HEADSCALE_BASE_DOMAIN=${HEADSCALE_BASE_DOMAIN:-home.arpa}
   
   # Gateway configuration
   export GATEWAY_HOSTNAME=${GATEWAY_HOSTNAME:-${CLUSTER_NAME:-bioskop}-hs-gateway}
