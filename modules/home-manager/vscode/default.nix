@@ -41,12 +41,22 @@ in {
 
     enable = unfreeAllowed;
 
-    package = (pkgs.vscode.override {
-      isInsiders = true;
-    }).overrideAttrs (oldAttrs: {
-      src = repackedSrc;
-      version = artifact.source.version;
-    });
+    package =
+      let
+        insidersPkg = (pkgs.vscode.override {
+          isInsiders = true;
+        }).overrideAttrs (_: {
+          src = repackedSrc;
+          version = artifact.source.version;
+        });
+      in pkgs.symlinkJoin {
+        name = "${artifact.source.pname}-hm";
+        paths = [ insidersPkg ];
+        postBuild = ''
+          ln -sf ${insidersPkg}/bin/code-insiders $out/bin/code
+        '';
+        inherit (insidersPkg) pname version meta;
+      };
 
     # extensions = with pkgs.vscode-extensions; [
     #  vscodevim.vim
