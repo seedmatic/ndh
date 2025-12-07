@@ -27,6 +27,12 @@
             } else {});
             darwin = darwinProfile;
           };
+
+          services.headscale-client = {
+            enable = true;
+            serverUrl = "http://192.168.1.193:8080";
+            enableSSH = true;
+          };
         };
       };
     in nix-darwin-home.mkHostOutputs {
