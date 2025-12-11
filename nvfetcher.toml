@@ -1,26 +1,29 @@
 [docker-compose]
-fetch.github = "docker/compose"
-src.manual = "v2.31.0"
+  [docker-compose.fetch]
+    github = 'docker/compose'
+
+  [docker-compose.src]
+    manual = 'v2.31.0'
+
 [podman]
-fetch.github = "containers/podman"
-src.manual = "v5.4.1"
+  [podman.fetch]
+    github = 'containers/podman'
 
-[vscode-insiders-linux-x64]
-src.manual = "2025-12-07"
-fetch.url = "https://update.code.visualstudio.com/latest/linux-x64/insider"
-fetch.name = "vscode-insiders-linux-x64.tar.gz"
-
-[vscode-insiders-linux-arm64]
-src.manual = "2025-12-07"
-fetch.url = "https://update.code.visualstudio.com/latest/linux-arm64/insider"
-fetch.name = "vscode-insiders-linux-arm64.tar.gz"
-
-[vscode-insiders-darwin-x64]
-src.manual = "2025-12-07"
-fetch.url = "https://update.code.visualstudio.com/latest/darwin/insider"
-fetch.name = "vscode-insiders-darwin-x64.zip"
+  [podman.src]
+    manual = 'v5.4.1'
 
 [vscode-insiders-darwin-arm64]
-src.manual = "2025-12-07"
-fetch.url = "https://update.code.visualstudio.com/latest/darwin-arm64/insider"
-fetch.name = "vscode-insiders-darwin-arm64.zip"
+  [vscode-insiders-darwin-arm64.fetch]
+    name = 'VSCode-darwin-arm64.zip'
+    url = 'https://vscode.download.prss.microsoft.com/dbazure/download/insider/5dab7809de7d46dffea7180dddcde7100f2ab4d6/VSCode-darwin-arm64.zip'
+
+  [vscode-insiders-darwin-arm64.src]
+    manual = '5dab7809de7d46dffea7180dddcde7100f2ab4d6'
+
+[vscode-insiders-linux-arm64]
+  [vscode-insiders-linux-arm64.fetch]
+    name = 'code-insider-arm64-1765430486.tar.gz'
+    url = 'https://vscode.download.prss.microsoft.com/dbazure/download/insider/5dab7809de7d46dffea7180dddcde7100f2ab4d6/code-insider-arm64-1765430486.tar.gz'
+
+  [vscode-insiders-linux-arm64.src]
+    manual = '5dab7809de7d46dffea7180dddcde7100f2ab4d6'
