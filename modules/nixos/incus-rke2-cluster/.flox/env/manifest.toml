@@ -103,37 +103,12 @@ common = '''
   esac
   CLUSTER_SUBNET=${CLUSTER_SUBNET:-1}
   
-  # Find secrets - try current directory first, then FLOX_ENV_DIRS
-  # This works whether this env is used standalone or included
-  SECRETS_DIR=""
-  if [ -d ".secrets.d" ]; then
-    SECRETS_DIR=".secrets.d"
-  elif [ -n "$FLOX_ENV_DIRS" ]; then
-    # Search through all environment directories in the composition
-    for dir in $FLOX_ENV_DIRS; do
-      if [ -d "$dir/.secrets.d" ]; then
-        SECRETS_DIR="$dir/.secrets.d"
-        break
-      fi
-    done
-  fi
-  
-  SECRETS_FILE=""
-  if [ -n "$SECRETS_DIR" ]; then
-    for candidate in .secrets secrets.yaml secrets.yml; do
-      if [ -f "$SECRETS_DIR/$candidate" ]; then
-        SECRETS_FILE="$SECRETS_DIR/$candidate"
-        break
-      fi
-    done
-  fi
-
   secret_from_yaml() {
-    local expr="$1" fallback="$2" value=""
-    if [ -n "$SECRETS_FILE" ] && command -v yq >/dev/null 2>&1; then
-      value=$(yq -r "${expr} // \"\"" "$SECRETS_FILE" 2>/dev/null || true)
+    local expr="$1" fallback="$2" value="" yaml_file="${FLOX_PROJECT}/.secret"
+    if [[ -r "$yaml_file" ]]; then
+      value=$(yq -r "${expr} // \"\"" "$yaml_file" 2>/dev/null || true)
     fi
-    if [ -z "$value" ] && [ -n "$fallback" ] && [ -f "$fallback" ]; then
+    if [[ -z "$value" && -n "$fallback" && -r "$fallback" ]]; then
       value=$(cat "$fallback")
     fi
     printf '%s' "${value:-}"
