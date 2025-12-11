@@ -9,6 +9,9 @@
       "cachix": {
         "pkg-path": "cachix"
       },
+      "dasel": {
+        "pkg-path": "dasel"
+      },
       "deadnix": {
         "pkg-path": "deadnix"
       },
@@ -303,6 +306,122 @@
         "bin": "/nix/store/k77ik2kcv82y2qvv3lg6x4r2cfwjbix2-cachix-1.9.1-bin",
         "doc": "/nix/store/9awygj63wqzqyr6zg0f6kl4v40y0ij08-cachix-1.9.1-doc",
         "out": "/nix/store/8mnlqj7ddxr0w19i8g7mj84s5ss6r3bc-cachix-1.9.1"
+      },
+      "system": "x86_64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "dasel",
+      "broken": false,
+      "derivation": "/nix/store/brxhhbb6m3cc0pb8mzgazqjqxbndxsdy-dasel-2.8.1.drv",
+      "description": "Query and update data structures from the command line",
+      "install_id": "dasel",
+      "license": "MIT",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=2d293cbfa5a793b4c50d17c05ef9e385b90edf6c",
+      "name": "dasel-2.8.1",
+      "pname": "dasel",
+      "rev": "2d293cbfa5a793b4c50d17c05ef9e385b90edf6c",
+      "rev_count": 904649,
+      "rev_date": "2025-11-30T15:51:17Z",
+      "scrape_date": "2025-12-02T02:53:50.452183Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "2.8.1",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/cdyi2m3793s4f2pwk386hmf4mibjc01s-dasel-2.8.1"
+      },
+      "system": "aarch64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "dasel",
+      "broken": false,
+      "derivation": "/nix/store/z022w710xfnahj059qhd359hid94h2zs-dasel-2.8.1.drv",
+      "description": "Query and update data structures from the command line",
+      "install_id": "dasel",
+      "license": "MIT",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=2d293cbfa5a793b4c50d17c05ef9e385b90edf6c",
+      "name": "dasel-2.8.1",
+      "pname": "dasel",
+      "rev": "2d293cbfa5a793b4c50d17c05ef9e385b90edf6c",
+      "rev_count": 904649,
+      "rev_date": "2025-11-30T15:51:17Z",
+      "scrape_date": "2025-12-02T03:02:29.275117Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "2.8.1",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/s8yak46drdhgzjqcfl9cy2s4ybxx0jjf-dasel-2.8.1"
+      },
+      "system": "aarch64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "dasel",
+      "broken": false,
+      "derivation": "/nix/store/3aaxaycbnljzvrd1nlakdbg79zgvmkzq-dasel-2.8.1.drv",
+      "description": "Query and update data structures from the command line",
+      "install_id": "dasel",
+      "license": "MIT",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=2d293cbfa5a793b4c50d17c05ef9e385b90edf6c",
+      "name": "dasel-2.8.1",
+      "pname": "dasel",
+      "rev": "2d293cbfa5a793b4c50d17c05ef9e385b90edf6c",
+      "rev_count": 904649,
+      "rev_date": "2025-11-30T15:51:17Z",
+      "scrape_date": "2025-12-02T03:12:00.267804Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "2.8.1",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/fb860ky944rxlmvwsx9myynd8s82xwjp-dasel-2.8.1"
+      },
+      "system": "x86_64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "dasel",
+      "broken": false,
+      "derivation": "/nix/store/j4rinrhrx652gqk6pvryk49chk65l35p-dasel-2.8.1.drv",
+      "description": "Query and update data structures from the command line",
+      "install_id": "dasel",
+      "license": "MIT",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=2d293cbfa5a793b4c50d17c05ef9e385b90edf6c",
+      "name": "dasel-2.8.1",
+      "pname": "dasel",
+      "rev": "2d293cbfa5a793b4c50d17c05ef9e385b90edf6c",
+      "rev_count": 904649,
+      "rev_date": "2025-11-30T15:51:17Z",
+      "scrape_date": "2025-12-02T03:20:40.872151Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "2.8.1",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/27dy5lbjgshlypkizc6vrhmywczdp5xd-dasel-2.8.1"
       },
       "system": "x86_64-linux",
       "group": "toplevel",
@@ -2293,6 +2412,9 @@
     "composer": {
       "version": 1,
       "install": {
+        "dasel": {
+          "pkg-path": "dasel"
+        },
         "remake": {
           "pkg-path": "remake"
         },
