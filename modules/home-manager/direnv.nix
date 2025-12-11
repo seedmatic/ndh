@@ -38,6 +38,6 @@ in {
 
   home.file."${config.xdg.configHome}/direnv/direnv.toml".text = ''
     [whitelist]
-    prefix = [ "/Volumes/GitHub", "/Volumes/Eclipse", "/Users/nxmatic", "/Users/stephane.lacoin", "/home/stephane.lacoin", "/home/nxmatic" ]
+    prefix = [ "/private/var/lib/gits", "/Volumes/Eclipse", "/Users/nxmatic", "/Users/stephane.lacoin", "/home/stephane.lacoin", "/home/nxmatic" ]
   '';
 }
