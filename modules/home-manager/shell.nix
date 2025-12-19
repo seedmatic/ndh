@@ -16,6 +16,7 @@ let
         VSCODE_INJECTION=1
         USER_ZDOTDIR="$ZDOTDIR"
         builtin source "$VSCODE_SHELL_INTEGRATION"
+        TERM=xterm-256color
       fi
     fi
   '';

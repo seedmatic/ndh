@@ -74,7 +74,7 @@ dasel.pkg-path = "dasel"
 ## ------------------------------------------------------------------
 [include]
 environments = [
- { remote = "nxmatic/nix" }
+ { dir = "/var/lib/git/nxmatic/fleet-manifests/flox/nix" }
 ]
 
 

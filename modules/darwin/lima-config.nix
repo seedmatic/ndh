@@ -83,14 +83,14 @@ let
 
     images = [
       {
-        location = "file:///Users/nxmatic/Gits/nxmatic/nix-darwin-home/result/nixos.img";
+        location = "file:///var/lib/git/nxmatic/nix-darwin-home/result/nixos.img";
         arch = "aarch64";
       }
     ];
 
     mounts = [
       { location = "~"; writable = true; }
-      { location = "/Volumes"; writable = true; }
+      { location = "/var/lib/git"; writable = true; }
       { location = "/tmp/lima"; writable = true; }
     ];
 

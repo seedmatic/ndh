@@ -1,6 +1,0 @@
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: flox-runtime # {"$kpt-set":"flox-namespace"}
-  labels:
-    flox.dev/component: runtime

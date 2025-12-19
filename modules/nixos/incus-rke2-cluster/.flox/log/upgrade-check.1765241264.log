@@ -1,0 +1,13 @@
+2025-12-09T00:47:44.590546Z DEBUG flox::config: reading raw config (initialized: false, reload: false)
+2025-12-09T00:47:44.590878Z DEBUG flox::config: `$FLOX_CONFIG_DIR` set: /Users/nxmatic/.config/flox
+2025-12-09T00:47:44.591105Z DEBUG flox: set _FLOX_PKGDB_VERBOSITY=2
+2025-12-09T00:47:44.591622Z DEBUG flox::config: reading raw config (initialized: true, reload: false)
+2025-12-09T00:47:44.591953Z DEBUG flox::commands: Skipping update check in development mode
+2025-12-09T00:47:44.592044Z DEBUG flox::commands: Metrics collection disabled
+2025-12-09T00:47:44.592096Z DEBUG flox::utils::init::catalog_client: using catalog client with url: https://api.flox.dev
+2025-12-09T00:47:44.593587Z DEBUG flox::commands: feature flags configured=Features { upload: false, qa: false }
+2025-12-09T00:47:44.593642Z DEBUG check-upgrade: flox::utils::metrics: No metrics client setup, skipping record
+2025-12-09T00:47:44.593988Z DEBUG check-upgrade: flox_rust_sdk::models::environment: detected concrete environment type: path
+2025-12-09T00:47:44.594645Z DEBUG check-upgrade: flox_rust_sdk::providers::upgrade_checks: created unlocked upgrade information guard upgrade_information_path="/Users/nxmatic/Gits/nxmatic/nix-darwin-home/modules/nixos/incus-rke2-cluster/.flox/cache/upgrade-checks.json"
+2025-12-09T00:47:44.595173Z DEBUG check-upgrade: flox::commands::check_for_upgrades: Recently checked for upgrades. Skipping.
+2025-12-09T00:47:44.595296Z DEBUG flox::utils::metrics: No metrics client setup, skipping flush

@@ -8,28 +8,6 @@
 
 set -euo pipefail
 
-: "→ ensuring NixOS config working copy linked"
-if [ ! -e /var/lib/nixos/config ]; then
-  mkdir -p /var/lib/nixos
-  USERNAME=$(id -un)
-  HOSTNAME=$(hostname)
-  CANDIDATES=()
-  [ -n "${LIMA_NIXOS_CONFIG_PATH:-}" ] && CANDIDATES+=("$LIMA_NIXOS_CONFIG_PATH")
-  CANDIDATES+=("/Users/$USERNAME/Gits/nxmatic/nix-darwin-home")
-  CANDIDATES+=("/home/$USERNAME/Gits/nxmatic/nix-darwin-home")
-  for cand in "${CANDIDATES[@]}"; do
-    [ -z "$cand" ] && continue
-    if [ -f "$cand/hosts/$HOSTNAME/flake.nix" ]; then
-      ln -sfn "$cand" /var/lib/nixos/config
-      : "→ linked /var/lib/nixos/config -> $cand"
-      break
-    fi
-  done
-  if [ ! -e /var/lib/nixos/config ]; then
-    : "→ no existing working copy found; will attempt lima-nixos-configuration service"
-  fi
-fi
-
 : "→ activating lima-nixos-configuration service (idempotent)"
 if systemctl list-unit-files | grep -q '^lima-nixos-configuration.service'; then
   systemctl start lima-nixos-configuration.service || true
@@ -37,13 +15,16 @@ fi
 
 : "→ ensuring /etc/nixos/flake.nix symlink"
 HOSTNAME=$(hostname)
-if [ ! -e /etc/nixos/flake.nix ]; then
-  if [ -f "/var/lib/nixos/config/hosts/$HOSTNAME/flake.nix" ]; then
+NIX_DARWIN_HOME="/var/lib/git/nxmatic/nix-darwin-home"
+NIXOS_FLAKE_SOURCE="${NIX_DARWIN_HOME}/hosts/${HOSTNAME}/flake.nix"
+DISKO_NIX="${NIX_DARWIN_HOME}/modules/nixos/disko.nix"
+if [ ! -e "/etc/nixos/flake.nix" ]; then
+  if [ -f "${NIXOS_FLAKE_SOURCE}" ]; then
     mkdir -p /etc/nixos
-    ln -fs "/var/lib/nixos/config/hosts/$HOSTNAME/flake.nix" /etc/nixos/flake.nix
-    : "→ linked /etc/nixos/flake.nix"
+    ln -fs "${NIXOS_FLAKE_SOURCE}" /etc/nixos/
+    : "→ linked ${NIXOS_FLAKE_SOURCE} to /etc/nixos"
   else
-    : "→ WARNING: host flake not found in /var/lib/nixos/config/hosts/$HOSTNAME/flake.nix"
+    : "→ WARNING: host flake not found in ${NIXOS_FLAKE_SOURCE}"
   fi
 fi
 
@@ -51,8 +32,8 @@ fi
 nixos-rebuild boot || : "→ WARNING: nixos-rebuild boot failed (continuing)"
 
 : "→ running disko configuration"
-if [ -f /var/lib/nixos/config/modules/nixos/disko.nix ]; then
-  disko --mode format,mount /var/lib/nixos/config/modules/nixos/disko.nix || : "→ WARNING: disko failed"
+if [ -f "${DISKO_NIX}" ]; then
+  disko --mode format,mount "${DISKO_NIX}" || : "→ WARNING: disko failed"
 else
   : "→ WARNING: disko.nix not found at expected path"
 fi
