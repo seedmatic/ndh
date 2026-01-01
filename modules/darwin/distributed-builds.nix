@@ -7,6 +7,10 @@ let
   hostAlias = if (hostProfile ? hostAlias && hostProfile.hostAlias != null && hostProfile.hostAlias != "")
     then hostProfile.hostAlias
     else hostName;
+  hostForcesRemoteBuilds = hostProfile.forceRemoteBuilds;
+  userRemoteBuilders = hostProfile.remoteBuilders;
+  builderCatalog = hostProfile.builderCatalog;
+  catalogRemoteBuilders = map (entry: entry.builder) (lib.filter (entry: entry.builder != null) builderCatalog);
   userName = config.profile.user.name;
   userHome = config.profile.user.home;
   
@@ -14,37 +18,13 @@ let
   builderKeyPath = "/etc/nix/keys.d/builder_ed25519";
   controlMasterPath = "/nix/var/nix/userpool/ssh-builder-%r@%h:%p";
   
-  # Define remote builders based on hostname
-  # alcide no longer hosts a linux builder; delegate to bioskop's exposed builder port
-  bioskopDarwinBuilder = {
-    hostName = "darwin-builder-via-lan";
-    systems = [ "aarch64-darwin" ];
-    maxJobs = 4;
-    speedFactor = 3;
-    supportedFeatures = [ "benchmark" "big-parallel" ];
-    mandatoryFeatures = [ ];
-    protocol = "ssh-ng";
-  };
-
-  bioskopLinuxBuilder = {
-    # Use ssh so the per-host port from ssh_config is honored
-    hostName = "linux-builder-via-lan";
-    systems = [ "aarch64-linux" ];
-    maxJobs = 8;
-    speedFactor = 3;  # bioskop is now the primary linux builder
-    supportedFeatures = [ "kvm" "benchmark" "big-parallel" ];
-    mandatoryFeatures = [ ];
-    protocol = "ssh-ng";
-  };
-
+  # Prefer host-provided builder definitions (already feature-enriched)
   remoteBuilders =
-    # alcide delegates to bioskop for both Darwin and Linux builds
-    (lib.optional (hostAlias == "alcide") bioskopDarwinBuilder)
-    ++ (lib.optional (hostAlias == "alcide") bioskopLinuxBuilder);
+    if userRemoteBuilders != [ ] then userRemoteBuilders else catalogRemoteBuilders;
   
 in {
-  # Only apply the configuration on Darwin systems when enabled
-  config = lib.mkIf (cfg.enable && pkgs.stdenv.isDarwin) {
+  # Only apply the configuration on Darwin systems when enabled and builders are defined
+  config = lib.mkIf (cfg.enable && pkgs.stdenv.isDarwin && hostForcesRemoteBuilds && remoteBuilders != [ ]) {
     # Enable distributed builds
     nix.distributedBuilds = true;
     
@@ -53,10 +33,11 @@ in {
 
     # Force remote-only builds and let builders use caches directly
     nix.settings = {
-      max-jobs = lib.mkForce 0;               # never build locally
       builders-use-substitutes = true;        # allow builders to pull from caches
       fallback = false;                       # fail rather than silently build locally
-    };
+    } // (lib.optionalAttrs hostForcesRemoteBuilds {
+      max-jobs = lib.mkForce 0;               # never build locally when delegating builds
+    });
 
     # Replace inline ssh extraConfig with drop-in file for clarity
     environment.etc."ssh/ssh_config.d/60-builders.conf".text = ''

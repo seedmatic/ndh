@@ -22,14 +22,13 @@
             host = {
               hostName = lib.mkDefault hostProfile.hostName;
               tailnet = hostProfile.tailnet;
+              forceRemoteBuilds = true;
+              preferredBuilderHosts = [ "bioskop" ];
             } // (if hostProfile ? hostAlias then {
               hostAlias = lib.mkDefault hostProfile.hostAlias;
             } else {});
             darwin = darwinProfile;
           };
-
-          # Disable local build jobs on alcide; it now delegates to bioskop's linux builder
-          nix.settings.max-jobs = lib.mkForce 0;
 
           # Enable cross-host builders so ssh_config.d drop-ins are installed
           services.crossHostBuilders.enable = true;
