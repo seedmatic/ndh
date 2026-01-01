@@ -10,52 +10,37 @@ let
   userName = config.profile.user.name;
   userHome = config.profile.user.home;
   
-  # SSH key paths for builders
-  # Keep the original nix-darwin key as default, provide profile copy as alternative
-  defaultBuilderKeyPath = "/etc/nix/builder_ed25519";  # Original nix-darwin key (may have permission issues)
-  profileBuilderKeyPath = "/etc/nix/builder_ed25519_profile";  # Profile copy with proper permissions for nix daemon
-  userBuilderKeyPath = "${userHome}/.ssh/keys.d/linux_builder";  # User-accessible copy for remote connections
+  # SSH key paths for builders (now stored under /etc/nix/keys.d)
+  builderKeyPath = "/etc/nix/keys.d/builder_ed25519";
+  controlMasterPath = "/nix/var/nix/userpool/ssh-builder-%r@%h:%p";
   
   # Define remote builders based on hostname
-  # These use SSH ProxyJump to reach Linux builder VMs through Darwin hosts
-  # Note: bioskop's linux-builder is always preferred (higher speedFactor)
-  remoteBuilders = 
-    # Always include the local darwin-linux-builder (avoid conflict with nix-darwin's linux-builder)
-    [{
-      hostName = "darwin-linux-builder";
-      systems = [ "aarch64-linux" ];
-      maxJobs = 4;
-      # Local builder priority: bioskop local=3, alcide local=2 (fallback)
-      speedFactor = if hostAlias == "bioskop" then 3 else 2;
-      supportedFeatures = [ "kvm" "benchmark" "big-parallel" ];
-      mandatoryFeatures = [ ];
-      sshKey = profileBuilderKeyPath;  # Local builder uses profile key with proper permissions
-      sshUser = "builder";
-      protocol = "ssh-ng";
-    }] ++
-    # Add remote builders based on current host
-    (lib.optional (hostAlias == "bioskop") {
-      hostName = "linux-builder-via-alcide";
-      systems = [ "aarch64-linux" ];
-      maxJobs = 4;
-      speedFactor = 2;  # alcide's linux-builder as secondary for bioskop
-      supportedFeatures = [ "kvm" "benchmark" "big-parallel" ];
-      mandatoryFeatures = [ ];
-      sshKey = userBuilderKeyPath;
-      sshUser = "builder";
-      protocol = "ssh-ng";
-    }) ++ 
-    (lib.optional (hostAlias == "alcide") {
-      hostName = "linux-builder-via-bioskop";
-      systems = [ "aarch64-linux" ];
-      maxJobs = 4;
-      speedFactor = 3;  # bioskop's linux-builder as primary for alcide (remote)
-      supportedFeatures = [ "kvm" "benchmark" "big-parallel" ];
-      mandatoryFeatures = [ ];
-      sshKey = userBuilderKeyPath;
-      sshUser = "builder";
-      protocol = "ssh-ng";
-    });
+  # alcide no longer hosts a linux builder; delegate to bioskop's exposed builder port
+  bioskopDarwinBuilder = {
+    hostName = "darwin-builder-via-lan";
+    systems = [ "aarch64-darwin" ];
+    maxJobs = 4;
+    speedFactor = 3;
+    supportedFeatures = [ "benchmark" "big-parallel" ];
+    mandatoryFeatures = [ ];
+    protocol = "ssh-ng";
+  };
+
+  bioskopLinuxBuilder = {
+    # Use ssh so the per-host port from ssh_config is honored
+    hostName = "linux-builder-via-lan";
+    systems = [ "aarch64-linux" ];
+    maxJobs = 8;
+    speedFactor = 3;  # bioskop is now the primary linux builder
+    supportedFeatures = [ "kvm" "benchmark" "big-parallel" ];
+    mandatoryFeatures = [ ];
+    protocol = "ssh-ng";
+  };
+
+  remoteBuilders =
+    # alcide delegates to bioskop for both Darwin and Linux builds
+    (lib.optional (hostAlias == "alcide") bioskopDarwinBuilder)
+    ++ (lib.optional (hostAlias == "alcide") bioskopLinuxBuilder);
   
 in {
   # Only apply the configuration on Darwin systems when enabled
@@ -66,14 +51,21 @@ in {
     # Override build machines completely - don't let other modules add to it
     nix.buildMachines = lib.mkForce remoteBuilders;
 
+    # Force remote-only builds and let builders use caches directly
+    nix.settings = {
+      max-jobs = lib.mkForce 0;               # never build locally
+      builders-use-substitutes = true;        # allow builders to pull from caches
+      fallback = false;                       # fail rather than silently build locally
+    };
+
     # Replace inline ssh extraConfig with drop-in file for clarity
     environment.etc."ssh/ssh_config.d/60-builders.conf".text = ''
 # Builder host stanzas (@codebase)
-Host darwin-linux-builder
-  HostName localhost
-  Port 31022
+Host darwin-builder-via-lan
+  HostName bioskop.lan
+  Port 22
   User builder
-  IdentityFile ${userHome}/.ssh/keys.d/linux_builder
+  IdentityFile ${builderKeyPath}
   IdentitiesOnly yes
   StrictHostKeyChecking no
   UserKnownHostsFile /dev/null
@@ -82,17 +74,16 @@ Host darwin-linux-builder
   ServerAliveInterval 30
   ServerAliveCountMax 3
   ControlMaster auto
-  ControlPath /tmp/ssh-darwin-builder-%r@%h:%p
+  ControlPath ${controlMasterPath}
   ControlPersist 10m
   Compression yes
   TCPKeepAlive yes
 
-Host linux-builder-via-alcide
-  HostName localhost
+Host linux-builder-via-lan
+  HostName bioskop.lan
   Port 31022
   User builder
-  ProxyJump stephane.lacoin@alcide.mammoth-skate.ts.net
-  IdentityFile ${userHome}/.ssh/keys.d/linux_builder
+  IdentityFile ${builderKeyPath}
   IdentitiesOnly yes
   StrictHostKeyChecking no
   UserKnownHostsFile /dev/null
@@ -101,26 +92,7 @@ Host linux-builder-via-alcide
   ServerAliveInterval 30
   ServerAliveCountMax 3
   ControlMaster auto
-  ControlPath /tmp/ssh-builder-alcide-%r@%h:%p
-  ControlPersist 10m
-  Compression yes
-  TCPKeepAlive yes
-
-Host linux-builder-via-bioskop
-  HostName localhost
-  Port 31022
-  User builder
-  ProxyJump nxmatic@bioskop.mammoth-skate.ts.net
-  IdentityFile ${userHome}/.ssh/keys.d/linux_builder
-  IdentitiesOnly yes
-  StrictHostKeyChecking no
-  UserKnownHostsFile /dev/null
-  LogLevel QUIET
-  ConnectTimeout 10
-  ServerAliveInterval 30
-  ServerAliveCountMax 3
-  ControlMaster auto
-  ControlPath /tmp/ssh-builder-bioskop-%r@%h:%p
+  ControlPath ${controlMasterPath}
   ControlPersist 10m
   Compression yes
   TCPKeepAlive yes

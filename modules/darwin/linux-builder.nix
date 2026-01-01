@@ -86,14 +86,14 @@ in {
         # Configure SSH daemon to also check our profile keys file
         services.openssh.authorizedKeysFiles = [
           "/var/keys/%u_ed25519.pub"           # Original nix-darwin key location  
-          "/etc/ssh/builder_profile_keys.pub"  # Our profile keys location in /etc
+          "/etc/ssh/builder_keys.pub"          # Our profile keys location in /etc
           "%h/.ssh/authorized_keys"            # Standard user location
           "/etc/ssh/authorized_keys.d/%u"      # System location
         ];
         
         # Deploy profile SSH keys to the VM using NixOS environment.etc with mode
         environment.etc = {
-          "ssh/builder_profile_keys.pub" = {
+          "ssh/builder_keys.pub" = {
             text = ''
               ssh-ed25519 ${linuxBuilderCommittedPubKey} committed-profile
               ssh-ed25519 ${linuxBuilderWorkPubKey} work-profile

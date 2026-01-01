@@ -5,12 +5,20 @@ let
   userDescription = user.description;
   userHome = user.home;
   userShell = user.shell;
+  customConfPath = "/etc/nix/custom.conf";
+  customConfInclude = pkgs.lib.optionalString (builtins.pathExists customConfPath) ''      include ${customConfPath}
+'';
 
 in {
   imports = [ ./networking.nix ./cachix.nix ];
 
   # Enable automatic backup of conflicting files during activation
   environment.etc.backup.enable = true;
+
+  # Provide a deterministic CA bundle for both user and daemon contexts
+  # Use the canonical bundle path from pkgs.cacert and expose it at /etc/ssl/cert.pem for compatibility
+  environment.etc."ssl/certs/ca-bundle.crt".source = "${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt";
+  environment.etc."ssl/cert.pem".source = "${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt";
   
   # Add darwin-rebuild to system packages for easy rebuilds
   environment.systemPackages = [ self.inputs.darwin.packages.${pkgs.system}.darwin-rebuild ];
@@ -38,6 +46,7 @@ in {
 
     extraOptions = ''
       include /etc/nix/flox.conf
+${customConfInclude}
       accept-flake-config = true
       always-allow-substitutes = true
       min-free = ${toString (10 * 1024 * 1024 * 1024)}  # 10 GB
@@ -77,9 +86,15 @@ in {
       # Ensure SSL Cert file path located correctly
       ssl-cert-file = "/etc/ssl/cert.pem";
 
+      # Expose CA bundle inside sandboxes for fetchers
+      extra-sandbox-paths = [
+        "/etc/ssl/cert.pem"
+        "/etc/ssl/certs/ca-bundle.crt"
+        "${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
+      ];
+
     };
   };
-
   nixpkgs.config = import ../common/nixpkgs-config.nix;
 
   # nixpkgs.overlays = [

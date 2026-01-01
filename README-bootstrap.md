@@ -234,11 +234,10 @@ The linux-builder VM needs significantly more space than the final disk image be
 
 ### SSH Key Management
 
-The configuration manages SSH keys in multiple locations:
+The configuration uses a single builder key name across the system:
 
-- `/etc/nix/builder_ed25519`: Main key for nix daemon (root-owned)
-- `/etc/nix/builder_ed25519_profile`: Profile-specific copy
-- `~/.ssh/keys.d/linux_builder`: User-accessible copy for remote builds
+- `/etc/nix/keys.d/builder_ed25519`: System key for the nix daemon and remote builders
+- `~/.ssh/keys.d/linux_builder`: User-accessible copy (legacy, optional)
 
 ### Binary Cache Configuration
 

@@ -10,6 +10,22 @@ let
   groupKeysScriptStore = pkgs.writeText "ssh-group-authorized-keys-command.sh" (builtins.readFile ../common/ssh/ssh-group-authorized-keys.sh);
   inherit (lib) mkIf optionalString concatStringsSep;
 
+  # Align builder key provisioning with linux-builder module: pull from keys.yaml
+  keysJson = pkgs.runCommand "keys.json" { buildInputs = [ pkgs.yq-go ]; } ''
+    yq -o=json '.' ${../home-manager/ssh.d/keys.yaml} > $out
+  '';
+  keys = builtins.fromJSON (builtins.readFile keysJson);
+  currentProfile = profile.name;
+  builderProfile = currentProfile;
+  builderPrivKey = keys.profiles.${builderProfile}.linux-builder.private;
+  builderPubKey = keys.profiles.${builderProfile}.linux-builder.public;
+  builderPrivStore = pkgs.writeText "builder_ed25519" builderPrivKey;
+  builderPubStore = pkgs.writeText "builder_ed25519.pub" builderPubKey;
+
+  nixKeyDir = "/etc/nix/keys.d";
+  nixKey = "${nixKeyDir}/builder_ed25519";
+  nixKeyPub = "${nixKeyDir}/builder_ed25519.pub";
+
   # Derive principals based on profile and hostname
   # Server should accept all possible principals from any client
   # committed profile hosts: accept [committed, work, alcide]
@@ -18,7 +34,7 @@ let
     then profile.host.hostAlias 
     else profile.host.hostName;
   profileName = profile.name;
-  
+
   # All hosts should accept all profile principals to allow cross-host connections
   # This ensures bioskop (committed) can accept from alcide (work) and vice versa
   allPrincipals = [ "committed" "work" "alcide" "bioskop" ];
@@ -35,12 +51,10 @@ let
 
       : "Install builder keys for nix daemon (root) access (Darwin)"
       install -d -m 755 /etc/nix
-      if [ -f "${hostKeysDir}/linux_builder" ]; then
-        install -m 600 -o root -g wheel "${hostKeysDir}/linux_builder" /etc/nix/builder_ed25519_profile
-      fi
-      if [ -f "${hostKeysDir}/linux_builder.pub" ]; then
-        install -m 644 -o root -g wheel "${hostKeysDir}/linux_builder.pub" /etc/nix/builder_ed25519_profile.pub
-      fi
+      install -d -m 700 ${nixKeyDir}
+
+      install -m 600 -o root -g wheel ${builderPrivStore} ${nixKey}
+      install -m 644 -o root -g wheel ${builderPubStore} ${nixKeyPub}
 
       : "Install group-based AuthorizedKeysCommand script"
       install -d -m 755 /etc/ssh

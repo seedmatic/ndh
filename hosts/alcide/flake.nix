@@ -6,8 +6,7 @@
   outputs = { self, nix-darwin-home, ... }@inputs:
     let
       hostProfile = {
-        hostName = "APL-dk40njhk9h";
-        hostAlias = "alcide";
+        hostName = "alcide";
         tailnet = { };
       };
       darwinProfile = {
@@ -15,8 +14,8 @@
       };
 
       profileModule = { pkgs, lib, config, ... }: {
-        imports = [ 
-          ../../profiles/work.nix
+        imports = [
+          ../../profiles/committed.nix
         ];
         config = {
           profile = {
@@ -28,41 +27,21 @@
             } else {});
             darwin = darwinProfile;
           };
-        };
-      };
-      
-      # Darwin-specific module for Lima and macOS host configuration
-      darwinModule = { config, lib, pkgs, ... }: {
-        config = {
-          # Minimal macOS host configuration for JAMF-managed system
-          # Most development work happens in Lima NixOS VM
-          
-          # Use consolidated system packages (already minimal)
-          environment.systemPackages = lib.mkForce (import ../../modules/common/system-packages.nix { inherit pkgs; });
-          
-          # Configure SSL certificates for JAMF-managed system
-          nix.settings.ssl-cert-file = "/etc/ssl/cert.pem";
-          
-          # Configure .lan domain resolution using home LAN DNS server
-          networking.lanDnsResolver = {
+
+          # Disable local build jobs on alcide; it now delegates to bioskop's linux builder
+          nix.settings.max-jobs = lib.mkForce 0;
+
+          # Enable cross-host builders so ssh_config.d drop-ins are installed
+          services.crossHostBuilders.enable = true;
+
+          services.headscale-client = {
             enable = true;
-            nameserver = "192.168.1.254";
+            serverUrl = "http://192.168.1.193:8080";
+            enableSSH = true;
           };
-          
-          # Lima VM configuration - this is where the real work happens
-          lima = {
-            configGenerator = {
-              vmType = "vz";
-              enableIncus = true;  # Enable Incus in VM for container workloads
-            };
-          };
-          
-          # Disable heavy services on host (move to VM)
-          # Keep only essential networking and VM management
         };
       };
-    in nix-darwin-home.mkHostOutputs { 
-      inherit hostProfile profileModule; 
-      darwinExtraModules = [ darwinModule ];
+    in nix-darwin-home.mkHostOutputs {
+      inherit hostProfile profileModule;
     };
 }

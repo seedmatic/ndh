@@ -3,6 +3,7 @@ let
   preferredDnsString = builtins.concatStringsSep " " config.networking.dns;
   preferredServicesLiteral =
     lib.concatMapStringsSep " " (svc: lib.escapeShellArg svc) config.networking.knownNetworkServices;
+  wallpaperImage = ../home-manager/pictures.d/WallPaper.jpg;
   networkPreferencesScript = pkgs.writeTextFile {
     name = "darwin-network-preferences.sh";
     executable = true;
@@ -200,7 +201,7 @@ in {
         show-recents = false;
         show-process-indicators = true;
         orientation = "right";
-        mru-spaces = false;
+        mru-spaces = true;
       };
 
       # launcher
@@ -255,6 +256,24 @@ in {
     # Workaround for setting DNS servers and service ordering on macOS
     system.activationScripts.postActivation.text = ''
       ${networkPreferencesScript}
+
+      # Disable Siri and Spotlight shortcuts, and the Ctrl+Space input switcher (@codebase)
+      /usr/bin/defaults write com.apple.assistant.support "Assistant Enabled" -bool false
+      /usr/bin/defaults write com.apple.Siri StatusMenuVisible -bool false
+      /usr/bin/defaults write com.apple.Siri VoiceTriggerUserEnabled -bool false
+      /bin/launchctl disable gui/$UID/com.apple.Siri.agent || true
+
+      # Disable Spotlight search shortcuts (64,65) and input source switchers (60,61)
+      /usr/bin/defaults write com.apple.symbolichotkeys AppleSymbolicHotKeys -dict-add 60 "{enabled = 0;}"
+      /usr/bin/defaults write com.apple.symbolichotkeys AppleSymbolicHotKeys -dict-add 61 "{enabled = 0;}"
+      /usr/bin/defaults write com.apple.symbolichotkeys AppleSymbolicHotKeys -dict-add 64 "{enabled = 0;}"
+      /usr/bin/defaults write com.apple.symbolichotkeys AppleSymbolicHotKeys -dict-add 65 "{enabled = 0;}"
+
+      # Kick cfprefsd so changes are read
+      /usr/bin/killall cfprefsd || true
+
+      # Set desktop wallpaper from repo-managed image (SC2140-safe quoting)
+      /usr/bin/osascript -e "tell application \"System Events\" to set picture of every desktop to POSIX file \"${wallpaperImage}\"" || true
     '';
   };
 }

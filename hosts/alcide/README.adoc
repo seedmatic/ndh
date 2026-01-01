@@ -1,0 +1,65 @@
+= Alcide bootstrap notes
+
+These steps keep SMB handled by ConnectMeNow, store git data on a dedicated APFS volume, and ensure the flox git environment comes up with GitHub auth.
+
+NOTE: Nix no longer manages `/etc/nix/custom.conf`; if you create it manually, Nix will include it automatically.
+
+== ConnectMeNow (SMB)
+- Install ConnectMeNow and create a profile for the bioskop share (server, share name, username/password from macOS Keychain).
+- Set it to auto-mount at login; this replaces the old autofs approach.
+- Mount point can stay under `/Network/Servers/<host>/<share>`; leave the helper running so reconnections are automatic.
+
+== APFS volume for git
+@codebase
+[source,shell]
+----
+# Find the APFS container (note its identifier like disk3s5)
+diskutil list
+# Add a case-sensitive APFS volume and mount it at /private/var/lib/git
+sudo diskutil apfs addVolume <container> APFS GitStore -mountpoint /private/var/lib/git
+sudo chown $USER:staff /private/var/lib/git
+----
+- `/var/lib` is the system symlink to `/private/var/lib`; mounting on the latter keeps the path stable.
+- The APFS volume will auto-mount at boot; use `diskutil info /private/var/lib/git` to confirm.
+
+== Flox + fleet env
+@codebase
+[source,shell]
+----
+# Install flox (official installer)
+curl -S https://flox.dev/install.sh | bash
+----
+- Place the fleet repo on the git volume (symlink your existing checkout from the bioskop disk, or clone if you prefer):
+@codebase
+[source,shell]
+----
+mkdir -p /private/var/lib/git/nxmatic
+# Preferred: symlink from the bioskop-mounted checkout
+ln -s /path/on/bioskop/disk/fleet /private/var/lib/git/nxmatic/fleet
+# Optional: clone fresh instead
+# GIT_SSH_COMMAND="ssh" git clone git@github.com:nxmatic/fleet.git /private/var/lib/git/nxmatic/fleet
+----
+- Activate the flox git environment from that checkout (persists XDG dirs under the project):
+@codebase
+[source,shell]
+----
+cd /private/var/lib/git/nxmatic/fleet
+flox activate git
+----
+
+== GitHub auth and token
+- Inside the activated env, log in once so gh can use the token stored in Keychain:
+@codebase
+[source,shell]
+----
+gh auth login
+----
+- To use a custom token instead of browser auth:
+@codebase
+[source,shell]
+----
+# Export the token for this shell (or read from pass/Keychain) then feed it to gh
+export GH_TOKEN="<personal-access-token>"
+GH_TOKEN="$GH_TOKEN" gh auth login --with-token
+----
+- After auth, `gh auth status` should show the active user; flox env scripts will pick up `GH_TOKEN` if present.
