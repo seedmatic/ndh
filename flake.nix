@@ -4,13 +4,11 @@
   nixConfig = {
     substituters = [
       "https://cache.nixos.org"
-      "https://cache.flox.dev"
       "https://nxmatic.cachix.org"
     ];
 
     trusted-public-keys = [
       "cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY="
-      "flox-cache-public-1:7F4OyH7ZCnFhcze3fJdfyXYLQw/aV7GEed86nQ7IsOs="
       "nxmatic.cachix.org-1:huMghYiwDpPa1PMXHXK4G1Dp4QOZjgsNqxcjf/AjuJ0="
     ];
   };
@@ -27,7 +25,6 @@
     darwin.follows = "flake-commons/darwin";
     home-manager.follows = "flake-commons/home-manager";
     devenv.follows = "flake-commons/devenv";
-    flox.follows = "flake-commons/flox";
     treefmt-nix.url = "github:numtide/treefmt-nix";
     bird.follows = "flake-commons/bird";
     maven-mvnd.follows = "flake-commons/maven-mvnd";
@@ -66,12 +63,6 @@
             else
               throw "Socket VMNet packages not defined for ${system}";
 
-          floxOverlay = final: prev:
-            if inputs.flox.packages ? ${system} then
-              inputs.flox.packages.${system}
-            else
-              throw "Flox packages not defined for ${system}";
-
           ripvcsOverlay = final: prev:
             if inputs.ripvcs.packages ? ${system} then
               inputs.ripvcs.packages.${system}
@@ -88,7 +79,6 @@
             overlays;
         in basePackages.extend (final: prev:
           (vmnetOverlay final prev) // 
-          (floxOverlay final prev) // 
           (ripvcsOverlay final prev) // (applyOverlays final prev));
       pkgsForDarwin = (pkgsFor { system = "aarch64-darwin"; });
       pkgsForLinux = (pkgsFor { system = "aarch64-linux"; });

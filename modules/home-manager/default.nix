@@ -3,25 +3,6 @@
 let
   homeDirectory = config.profile.user.home;
 
-  floxConfig =
-    if floxEnv != null then floxEnv
-    else if config ? programs && config.programs ? flox then config.programs.flox
-    else {
-      packages = [];
-      packageNames = [];
-      projectRoot = config.profile.user.home;
-      manifestFile = null;
-      manifestResultPath = null;
-      writeManifestToResult = false;
-    };
-
-  floxPackageNames =
-    if floxConfig ? packages then map (pkg: pkg.name) floxConfig.packages
-    else if floxConfig ? packageNames then floxConfig.packageNames
-    else [];
-
-  floxManages = pkg: builtins.elem (lib.getName pkg) floxPackageNames;
-
   baseHomePackages = with pkgs; [
       aider-chat
       alejandra
@@ -98,7 +79,6 @@ let
       zsh
     ];
 
-  curatedHomePackages = lib.filter (pkg: !floxManages pkg) baseHomePackages;
 in {
 
   imports = [
@@ -155,7 +135,7 @@ in {
     ];
 
     # Define package definitions for current user environment
-    packages = curatedHomePackages;
+    packages = baseHomePackages;
 
     activation.fixConfigOwnership = let 
       dollar = "$";

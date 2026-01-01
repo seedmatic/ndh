@@ -78,12 +78,10 @@ in {
       # - "https://mirrors.bfsu.edu.cn/nix-channels/store"           # BFSU (China)
       substituters = [ 
         "https://aseipp-nix-cache.freetls.fastly.net"  # Fastly Cache v2 (tried first)
-        "https://cache.flox.dev" 
         "https://nxmatic.cachix.org"  # nxmatic cache
       ];
       trusted-public-keys = [
         "cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY="  # Required for mirrors
-        "flox-cache-public-1:7F4OyH7ZCnFhcze3fJdfyXYLQw/aV7GEed86nQ7IsOs="
         "nxmatic.cachix.org-1:huMghYiwDpPa1PMXHXK4G1Dp4QOZjgsNqxcjf/AjuJ0="  # nxmatic key
       ];
       # NOTE (@codebase): Rollback instructions:
@@ -195,7 +193,7 @@ in {
   # Remove or comment out the old networking block to avoid conflicts:
   # networking = { ... }
 
-  environment.systemPackages = with pkgs; [ disko zfs binutils flox incus distrobuilder ];
+  environment.systemPackages = with pkgs; [ disko zfs binutils incus distrobuilder ];
   
   # Ensure security wrappers are in PATH for all processes
   environment.variables = {

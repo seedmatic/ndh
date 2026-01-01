@@ -157335,11 +157335,6 @@
           "flake-commons",
           "flake-utils"
         ],
-        "flox": [
-          "nix-darwin-home",
-          "flake-commons",
-          "flox"
-        ],
         "home-manager": [
           "nix-darwin-home",
           "flake-commons",

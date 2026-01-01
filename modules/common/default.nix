@@ -25,9 +25,6 @@ in {
     ./dnsmasq.nix
     ./lima-host.nix
     ./distributed-builds-option.nix
-    ./flox-hub.nix
-    ./flox-config.nix
-    # Teleport removed - using Headscale/Tailscale SSH
   ];
 
   programs = {
@@ -57,7 +54,6 @@ in {
     extraSpecialArgs = {
       inherit self userMapping;
       profile = config.profile;
-      floxEnv = config.programs.flox;
     };
     useGlobalPkgs = true;
     useUserPackages = true;
