@@ -1,4 +1,4 @@
-{ self, lib, pkgs, config, ... }:
+{ self, lib, pkgs, config, hostsCatalog ? { }, ... }:
 let
   qemu-pkgdb = self.packages.${pkgs.system}.qemu-pkgdb or pkgs.qemu;
 
@@ -16,24 +16,30 @@ let
   # Also get keys for both profiles for VM authorized_keys
   linuxBuilderCommittedPubKey = keys.profiles.committed.linux-builder.public; 
   linuxBuilderWorkPubKey = keys.profiles.work.linux-builder.public;
+  # Pull builder catalog entries for this host (if present)
+  hostName = config.profile.host.hostName;
+  catalogEntries = if builtins.hasAttr hostName hostsCatalog then hostsCatalog.${hostName} else [ ];
+  linuxBuilderEntries = lib.filter (entry: entry.builder != null && lib.elem "aarch64-linux" entry.builder.systems) catalogEntries;
+  selected = lib.head (linuxBuilderEntries ++ [ null ]);
+
 in {
 
   config = {    
-    nix.linux-builder = {
+    nix.linux-builder = lib.mkIf (selected != null) {
       enable = true;
       ephemeral = true;
       workingDirectory = "/var/lib/linux-builder";
-      maxJobs = 4;
-      systems = [ "aarch64-linux" ];
-      protocol = "ssh-ng";
-      speedFactor = 1;
-      supportedFeatures = [ "nixos-test" "benchmark" "big-parallel" "kvm" ];
-      mandatoryFeatures = [];
+      maxJobs = selected.builder.maxJobs or 4;
+      systems = selected.builder.systems or [ "aarch64-linux" ];
+      protocol = selected.builder.protocol or "ssh-ng";
+      speedFactor = selected.builder.speedFactor or 1;
+      supportedFeatures = selected.builder.supportedFeatures or [ "nixos-test" "benchmark" "big-parallel" "kvm" ];
+      mandatoryFeatures = selected.builder.mandatoryFeatures or [];
       config = {
-        virtualisation.darwin-builder.hostPort = 31022;
+        virtualisation.darwin-builder.hostPort = selected.builder.hostPort or 31022;
         
         # Increase Linux builder VM disk size to handle large disk image builds
-        virtualisation.diskSize = lib.mkForce (150 * 1024);  # 150 GB for building 64GB+ images
+        virtualisation.diskSize = lib.mkForce (selected.builder.diskSize or (150 * 1024));  # 150 GB for building 64GB+ images
         
         # Use the same binary caches and settings as the Darwin configuration
         nix.settings = {
