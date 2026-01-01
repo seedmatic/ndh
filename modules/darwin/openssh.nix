@@ -46,6 +46,7 @@ let
   opensshActivationScript = pkgs.writeShellScript "openssh-activation.sh" ''
     set -euo pipefail
     LOG="/var/log/darwin-openssh-activation.log"
+    install -d -m 755 /var/log
     {
       echo "[openssh] start $(date)"
 
@@ -109,6 +110,14 @@ ${formatPrincipals allPrincipals}
 ${formatPrincipals allPrincipals}
     '';
 
+    # Ensure builder keys are deployed even if activation ordering changes
+    environment.etc."nix/keys.d/builder_ed25519" = {
+      source = builderPrivStore;
+    };
+    environment.etc."nix/keys.d/builder_ed25519.pub" = {
+      source = builderPubStore;
+    };
+
     # SSH daemon configuration
     environment.etc."ssh/sshd_config".text = let
       boolToYesNo = v: if v then "yes" else "no";
@@ -124,8 +133,12 @@ ${formatPrincipals allPrincipals}
 
     services.openssh.enable = true;
 
-    system.activationScripts.postActivation.text = ''
-      ${opensshActivationScript}
-    '';
+    # Dedicated activation script; use a simple name (no hyphen) and depend on etc so /etc exists
+    system.activationScripts.opensshKeys = {
+      deps = [ "etc" ];
+      text = ''
+        ${opensshActivationScript}
+      '';
+    };
   };
 }
