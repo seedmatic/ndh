@@ -5,10 +5,6 @@ let
   userDescription = user.description;
   userHome = user.home;
   userShell = user.shell;
-  customConfPath = "/etc/nix/custom.conf";
-  customConfInclude = pkgs.lib.optionalString (builtins.pathExists customConfPath) ''      include ${customConfPath}
-'';
-
 in {
   imports = [ ./networking.nix ./cachix.nix ];
 
@@ -46,7 +42,7 @@ in {
 
     extraOptions = ''
       include /etc/nix/flox.conf
-${customConfInclude}
+      include /etc/nix/custom.conf
       accept-flake-config = true
       always-allow-substitutes = true
       min-free = ${toString (10 * 1024 * 1024 * 1024)}  # 10 GB
