@@ -281,8 +281,52 @@ in
       # Kick cfprefsd so changes are read
       /usr/bin/killall cfprefsd || true
 
-      # Set desktop wallpaper from repo-managed image (SC2140-safe quoting)
-      /usr/bin/osascript -e "tell application \"System Events\" to set picture of every desktop to POSIX file \"${wallpaperImage}\"" || true
+        # Set desktop wallpaper from repo-managed image using the console user's session; guard and timeout to avoid hangs
+        /usr/bin/python3 - <<'PY'
+    import os
+    import pwd
+    import subprocess
+
+    WALLPAPER = "${wallpaperImage}"
+
+    console_user = subprocess.run(
+      ["/usr/bin/stat", "-f", "%Su", "/dev/console"],
+      capture_output=True,
+      text=True,
+      check=False,
+    ).stdout.strip()
+
+    if not console_user or console_user == "root":
+      raise SystemExit(0)
+
+    try:
+      user_info = pwd.getpwnam(console_user)
+    except KeyError:
+      raise SystemExit(0)
+
+    uid = user_info.pw_uid
+    env = os.environ.copy()
+    env.update({
+      "HOME": user_info.pw_dir,
+      "USER": console_user,
+      "LOGNAME": console_user,
+    })
+
+    cmd = [
+      "/bin/launchctl",
+      "asuser",
+      str(uid),
+      "/usr/bin/osascript",
+      "-e",
+      f"tell application \"System Events\" to set picture of every desktop to POSIX file \"{WALLPAPER}\"",
+    ]
+
+    subprocess.run(cmd, check=False, timeout=10, env=env)
+    PY
+        PY_STATUS=$?
+        if [ "$PY_STATUS" -ne 0 ]; then
+        echo "Skipped wallpaper apply (status $PY_STATUS)" >&2
+        fi
     '';
   };
 }
