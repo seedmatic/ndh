@@ -156,6 +156,11 @@ in
       default = "/etc/ssh";
       description = "Directory into which canonical command scripts are installed.";
     };
+    keysDir = mkOption {
+      type = types.str;
+      default = "/etc/ssh/keys.d";
+      description = "Directory where OpenSSH-related keys (builder, CA) are stored.";
+    };
     canonicalPrincipalsCommandName = mkOption {
       type = types.str;
       default = "ssh-authorized-principals-command";

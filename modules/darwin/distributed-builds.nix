@@ -24,8 +24,9 @@ let
   userName = config.profile.user.name;
   userHome = config.profile.user.home;
 
-  # SSH key paths for builders (now stored under /etc/nix/keys.d)
-  builderKeyPath = "/etc/nix/keys.d/builder_ed25519";
+  # SSH key paths for builders (configurable via opensshPolicy.keysDir)
+  keysDir = config.opensshPolicy.keysDir;
+  builderKeyPath = "${keysDir}/builder_ed25519";
   controlMasterPath = "/nix/var/nix/userpool/ssh-builder-%r@%h:%p";
 
   # Prefer host-provided builder definitions (already feature-enriched)

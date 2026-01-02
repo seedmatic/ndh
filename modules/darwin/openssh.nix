@@ -32,7 +32,9 @@ let
   builderPrivStore = pkgs.writeText "builder_ed25519" builderPrivKey;
   builderPubStore = pkgs.writeText "builder_ed25519.pub" builderPubKey;
 
-  nixKeyDir = "/etc/nix/keys.d";
+  # Store builder keys under SSH-managed keys directory to avoid nix/ static symlinks
+  nixKeyDir = config.opensshPolicy.keysDir;
+  nixKeyDirRel = lib.removePrefix "/" nixKeyDir;
   nixKey = "${nixKeyDir}/builder_ed25519";
   nixKeyPub = "${nixKeyDir}/builder_ed25519.pub";
 
@@ -59,6 +61,42 @@ let
   # Format principals as YAML list with proper indentation (6 spaces for list items)
   formatPrincipals = principals: concatStringsSep "\n" (map (p: "              - ${p}") principals);
 
+  sshKeysYamlText = ''
+          # Certificate principal validation for ${hostAlias} (${profileName} profile)
+          # Managed by modules/darwin/openssh.nix - regenerated on darwin-rebuild
+          # Accepts all profile principals to allow cross-host connections
+          profiles:
+            committed:
+              host:
+                principals:
+    ${formatPrincipals allPrincipals}
+            work:
+              host:
+                principals:
+    ${formatPrincipals allPrincipals}
+  '';
+
+  sshKeysYamlStore = pkgs.writeText "ssh-keys.yaml" sshKeysYamlText;
+
+  sshdConfigText =
+    let
+      boolToYesNo = v: if v then "yes" else "no";
+      renderValue = v: if builtins.isBool v then boolToYesNo v else builtins.toString v;
+      policyLines = lib.mapAttrsToList (k: v: "${k} ${renderValue v}") config.opensshPolicy.settings;
+      hostKeyLines = map (p: "HostKey ${p}") config.opensshPolicy.hostKeys;
+      certAlready = lib.any (l: lib.hasPrefix "HostCertificate " l) policyLines;
+      certLine =
+        if (!certAlready && config.opensshPolicy.settings ? HostCertificate) then
+          [ "HostCertificate ${config.opensshPolicy.settings.HostCertificate}" ]
+        else
+          [ ];
+      includeLines = builtins.map (g: "Include ${g}") config.opensshPolicy.includeDaemonGlobs;
+      all = hostKeyLines ++ certLine ++ policyLines ++ includeLines;
+    in
+    lib.concatStringsSep "\n" all + "\n";
+
+  sshdConfigStore = pkgs.writeText "sshd_config" sshdConfigText;
+
   opensshActivationScript = pkgs.writeShellScript "openssh-activation.sh" ''
     set -euo pipefail
     LOG="/var/log/darwin-openssh-activation.log"
@@ -67,7 +105,7 @@ let
       echo "[openssh] start $(date)"
 
       : "Install builder keys for nix daemon (root) access (Darwin)"
-      install -d -m 755 /etc/nix
+      install -d -m 755 /etc/ssh
       install -d -m 700 ${nixKeyDir}
 
       install -m 600 -o root -g wheel ${builderPrivStore} ${nixKey}
@@ -81,6 +119,31 @@ let
       : "Ensure drop-in include directories exist"
       install -d -m 755 /etc/ssh/sshd_config.d
       install -d -m 755 /etc/ssh/ssh_config.d
+
+      : "Materialize sshd configs as real files (sshd dislikes symlinked includes)"
+      for f in /etc/ssh/sshd_config /etc/ssh/keys.yaml; do
+        if [ -L "$f" ]; then
+          rm "$f"
+        fi
+      done
+      for d in /etc/ssh/sshd_config.d /etc/ssh/ssh_config.d; do
+        if [ -L "$d" ]; then
+          rm "$d"
+        fi
+      done
+      install -d -m 755 /etc/ssh/sshd_config.d /etc/ssh/ssh_config.d
+      install -m 600 -o root -g wheel ${sshdConfigStore} /etc/ssh/sshd_config
+      install -m 644 -o root -g wheel ${sshKeysYamlStore} /etc/ssh/keys.yaml
+
+      SSHD_SRC_DIR=/run/current-system/etc/ssh/sshd_config.d
+      SSH_SRC_DIR=/run/current-system/etc/ssh/ssh_config.d
+
+      if [ -d "$SSHD_SRC_DIR" ]; then
+        ${pkgs.rsync}/bin/rsync --archive --copy-links "$SSHD_SRC_DIR/" /etc/ssh/sshd_config.d/
+      fi
+      if [ -d "$SSH_SRC_DIR" ]; then
+        ${pkgs.rsync}/bin/rsync --archive --copy-links "$SSH_SRC_DIR/" /etc/ssh/ssh_config.d/
+      fi
 
       echo "[openssh] end $(date)"
     } >>"$LOG" 2>&1
@@ -116,55 +179,26 @@ in
     # Create keys.yaml for certificate principal validation
     # This is world-readable in /etc so _sshd can access it
     # All hosts accept all profile principals for cross-host connections
-    environment.etc."ssh/keys.yaml".text = ''
-            # Certificate principal validation for ${hostAlias} (${profileName} profile)
-            # Managed by modules/darwin/openssh.nix - regenerated on darwin-rebuild
-            # Accepts all profile principals to allow cross-host connections
-            profiles:
-              committed:
-                host:
-                  principals:
-      ${formatPrincipals allPrincipals}
-              work:
-                host:
-                  principals:
-      ${formatPrincipals allPrincipals}
-    '';
+    environment.etc."ssh/keys.yaml".text = sshKeysYamlText;
 
     # Ensure builder keys are deployed even if activation ordering changes
-    environment.etc."nix/keys.d/builder_ed25519" = {
+    environment.etc."${nixKeyDirRel}/builder_ed25519" = {
       source = builderPrivStore;
     };
-    environment.etc."nix/keys.d/builder_ed25519.pub" = {
+    environment.etc."${nixKeyDirRel}/builder_ed25519.pub" = {
       source = builderPubStore;
     };
 
     # SSH daemon configuration
-    environment.etc."ssh/sshd_config".text =
-      let
-        boolToYesNo = v: if v then "yes" else "no";
-        renderValue = v: if builtins.isBool v then boolToYesNo v else builtins.toString v;
-        policyLines = lib.mapAttrsToList (k: v: "${k} ${renderValue v}") config.opensshPolicy.settings;
-        hostKeyLines = map (p: "HostKey ${p}") config.opensshPolicy.hostKeys;
-        certAlready = lib.any (l: lib.hasPrefix "HostCertificate " l) policyLines;
-        certLine =
-          if (!certAlready && config.opensshPolicy.settings ? HostCertificate) then
-            [ "HostCertificate ${config.opensshPolicy.settings.HostCertificate}" ]
-          else
-            [ ];
-        includeLines = builtins.map (g: "Include ${g}") config.opensshPolicy.includeDaemonGlobs;
-        all = hostKeyLines ++ certLine ++ policyLines ++ includeLines;
-      in
-      lib.concatStringsSep "\n" all + "\n";
+    environment.etc."ssh/sshd_config".text = sshdConfigText;
 
     services.openssh.enable = true;
 
-    # Dedicated activation script; use a simple name (no hyphen) and depend on etc so /etc exists
-    system.activationScripts.opensshKeys = {
-      deps = [ "etc" ];
-      text = ''
-        ${opensshActivationScript}
-      '';
-    };
+    # Ensure OpenSSH activation runs (post-etc) and installs real files (no symlinks).
+    # Note: this is intentionally in postActivation; previously it was defined but not
+    # hooked, so the script never ran and sshd configs stayed symlinked.
+    system.activationScripts.postActivation.text = lib.mkAfter ''
+      ${opensshActivationScript}
+    '';
   };
 }

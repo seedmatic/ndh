@@ -12,7 +12,8 @@ let
   # Reuse existing host key generated/managed by NixOS (ed25519 preferred)
   hostKeyPath = "/etc/ssh/ssh_host_ed25519_key"; # runtime path consumed by sshd
   hostCertPath = null; # Add signed host cert later if desired
-  caPublicKeyPath = "/etc/ssh/keys.d/mammoth_skate-ca.pub"; # ensure provisioning populates (activation below copies if present)
+  keysDir = config.opensshPolicy.keysDir;
+  caPublicKeyPath = "${keysDir}/mammoth_skate-ca.pub"; # ensure provisioning populates (activation below copies if present)
   principalsScriptStore = pkgs.writeText "ssh-authorized-principals-command.sh" (
     builtins.readFile ../../common/ssh/authorized-principals-command.sh
   );
@@ -71,7 +72,7 @@ in
       install -d -m 755 "$SSH_AUTH_KEYS_DIR"
 
       : "Ensure directory for SSH keys exists (for CA key + any custom keys)"
-      SSH_KEYS_DIR=/etc/ssh/keys.d
+      SSH_KEYS_DIR=${config.opensshPolicy.keysDir}
       install -d -m 755 "$SSH_KEYS_DIR"
 
       : "Generate and symlink a build user key into the authorized keys directory (idempotent)"
