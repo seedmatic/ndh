@@ -10,6 +10,8 @@ let
     svc: lib.escapeShellArg svc
   ) config.networking.knownNetworkServices;
   wallpaperImage = ../home-manager/pictures.d/WallPaper.jpg;
+  timeoutExe = lib.getExe' pkgs.coreutils "timeout";
+  gtimeoutExe = lib.getExe' pkgs.coreutils "gtimeout";
   networkPreferencesScript = pkgs.writeTextFile {
     name = "darwin-network-preferences.sh";
     executable = true;
@@ -282,51 +284,37 @@ in
       /usr/bin/killall cfprefsd || true
 
         # Set desktop wallpaper from repo-managed image using the console user's session; guard and timeout to avoid hangs
-        /usr/bin/python3 - <<'PY'
-    import os
-    import pwd
-    import subprocess
+        set_wallpaper() {
+          local wallpaper="$1"
+          local console_user
+          console_user=$(/usr/bin/stat -f %Su /dev/console 2>/dev/null || true)
+          if [ -z "$console_user" ] || [ "$console_user" = "root" ]; then
+            return 0
+          fi
 
-    WALLPAPER = "${wallpaperImage}"
+          local console_uid
+          console_uid=$(/usr/bin/id -u "$console_user" 2>/dev/null || true)
+          if [ -z "$console_uid" ]; then
+            return 0
+          fi
 
-    console_user = subprocess.run(
-      ["/usr/bin/stat", "-f", "%Su", "/dev/console"],
-      capture_output=True,
-      text=True,
-      check=False,
-    ).stdout.strip()
+          local -a cmd=(
+            /bin/launchctl asuser "$console_uid" /usr/bin/osascript -e
+            "tell application \"System Events\" to set picture of every desktop to POSIX file \"$wallpaper\""
+          )
 
-    if not console_user or console_user == "root":
-      raise SystemExit(0)
+          local timeout_bin="${timeoutExe}"
+          local gtimeout_bin="${gtimeoutExe}"
+          if [ -x "$timeout_bin" ]; then
+            "$timeout_bin" 10 "''${cmd[@]}" || true
+          elif [ -x "$gtimeout_bin" ]; then
+            "$gtimeout_bin" 10 "''${cmd[@]}" || true
+          else
+            /usr/bin/perl -e 'alarm 10; exec @ARGV' "''${cmd[@]}" || true
+          fi
+        }
 
-    try:
-      user_info = pwd.getpwnam(console_user)
-    except KeyError:
-      raise SystemExit(0)
-
-    uid = user_info.pw_uid
-    env = os.environ.copy()
-    env.update({
-      "HOME": user_info.pw_dir,
-      "USER": console_user,
-      "LOGNAME": console_user,
-    })
-
-    cmd = [
-      "/bin/launchctl",
-      "asuser",
-      str(uid),
-      "/usr/bin/osascript",
-      "-e",
-      f"tell application \"System Events\" to set picture of every desktop to POSIX file \"{WALLPAPER}\"",
-    ]
-
-    subprocess.run(cmd, check=False, timeout=10, env=env)
-    PY
-        PY_STATUS=$?
-        if [ "$PY_STATUS" -ne 0 ]; then
-        echo "Skipped wallpaper apply (status $PY_STATUS)" >&2
-        fi
+        set_wallpaper "${wallpaperImage}" || true
     '';
   };
 }
