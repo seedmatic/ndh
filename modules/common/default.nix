@@ -64,6 +64,7 @@ in
   # Use extraActivation which runs early in the activation sequence
   system.activationScripts.extraActivation.text = lib.mkBefore ''
     set -x
+    set +e
     exec 2> >(tee -a /var/log/darwin-activation-trace.log >&2)
     echo "=== Activation started at $(date) ==="
   '';
