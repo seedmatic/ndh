@@ -238,6 +238,11 @@
           };
         };
     in {
+      formatter = forAllSystems (system:
+        let
+          pkgs = pkgsFor { inherit system; };
+        in pkgs.nixpkgs-fmt);
+
       mkHostOutputs = { hostProfile, profileModule, darwinExtraModules ? [], nixosExtraModules ? [], ... }:
         let
           mainName = if (hostProfile ? hostAlias && hostProfile.hostAlias != null && hostProfile.hostAlias != "") then
