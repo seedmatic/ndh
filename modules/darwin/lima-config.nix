@@ -140,7 +140,7 @@ let
     };
 
     env = {
-      PATH = "/run/wrappers/bin:/run/current-system/sw/bin";
+      PATH = "/run/wrappers/bin:/run/current-system/sw/bin:/nix/var/nix/profiles/default/bin";
     };
 
     containerd = {
@@ -162,7 +162,7 @@ let
           : "Set PATH in ssh daemon environment - for non-interactive SSH commands"
           mkdir -p /etc/ssh/sshd_config.d
           cat > /etc/ssh/sshd_config.d/lima-path.conf << 'EOF'
-          SetEnv PATH="/run/wrappers/bin:/run/current-system/sw/bin"
+          SetEnv PATH="/run/wrappers/bin:/run/current-system/sw/bin:/nix/var/nix/profiles/default/bin"
           EOF
 
           : "Ensure main sshd_config includes drop-in directory and permits user environment"
@@ -182,7 +182,7 @@ let
           install -d -m 755 /etc/profile.d
           cat > /etc/profile.d/noninteractive.sh << 'EOF'
           #!/bin/sh
-          export PATH="/run/wrappers/bin:/run/current-system/sw/bin"
+          export PATH="/run/wrappers/bin:/run/current-system/sw/bin:/nix/var/nix/profiles/default/bin"
           EOF
           chmod 0644 /etc/profile.d/noninteractive.sh
 
@@ -199,12 +199,12 @@ let
           : "Install Lima PATH helper script"
           mkdir -p /etc/profile.d
           cat > /etc/profile.d/lima-path.sh << 'EOF'
-          export PATH="/run/wrappers/bin:/run/current-system/sw/bin:$PATH"
+          export PATH="/run/wrappers/bin:/run/current-system/sw/bin:/nix/var/nix/profiles/default/bin:$PATH"
           EOF
           chmod +x /etc/profile.d/lima-path.sh
 
           : "Set systemd environment PATH for consistency"
-          systemctl set-environment PATH="/run/wrappers/bin:/run/current-system/sw/bin"
+          systemctl set-environment PATH="/run/wrappers/bin:/run/current-system/sw/bin:/nix/var/nix/profiles/default/bin"
         '';
       }
       {

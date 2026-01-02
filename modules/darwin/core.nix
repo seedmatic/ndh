@@ -1,5 +1,6 @@
 {
   self,
+  lib,
   config,
   pkgs,
   ...
@@ -27,6 +28,25 @@ in
 
   # Add darwin-rebuild to system packages for easy rebuilds
   environment.systemPackages = [ self.inputs.darwin.packages.${pkgs.system}.darwin-rebuild ];
+
+  # Belt-and-suspenders: ensure /run/current-system/sw/bin and /run/wrappers/bin (sudo wrapper)
+  # are on PATH for login shells so darwin-rebuild and privileged tools are discoverable.
+  environment.shellInit = lib.mkAfter ''
+    prepend_path() {
+      case ":$PATH:" in
+        *":$1:"*) ;; # already present
+        *) PATH="$1:$PATH" ;;
+      esac
+    }
+
+    if [ -d /run/current-system/sw/bin ]; then
+      # Order matters: wrappers first, then current-system, then default profile
+      prepend_path /nix/var/nix/profiles/default/bin
+      prepend_path /run/current-system/sw/bin
+      prepend_path /run/wrappers/bin
+      export PATH
+    fi
+  '';
 
   # Create symlink to host-specific flake for darwin-rebuild without --flake
   # Points to GitHub repo (develop branch) - no local clone needed
