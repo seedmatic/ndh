@@ -116,35 +116,6 @@ let
       install -m 555 ${groupKeysScriptStore} /etc/ssh/${config.opensshPolicy.canonicalGroupKeysCommandName}
       install -m 555 ${principalsScriptStore} /etc/ssh/${config.opensshPolicy.canonicalPrincipalsCommandName}
 
-      : "Ensure drop-in include directories exist"
-      install -d -m 755 /etc/ssh/sshd_config.d
-      install -d -m 755 /etc/ssh/ssh_config.d
-
-      : "Materialize sshd configs as real files (sshd dislikes symlinked includes)"
-      for f in /etc/ssh/sshd_config /etc/ssh/keys.yaml; do
-        if [ -L "$f" ]; then
-          rm "$f"
-        fi
-      done
-      for d in /etc/ssh/sshd_config.d /etc/ssh/ssh_config.d; do
-        if [ -L "$d" ]; then
-          rm "$d"
-        fi
-      done
-      install -d -m 755 /etc/ssh/sshd_config.d /etc/ssh/ssh_config.d
-      install -m 600 -o root -g wheel ${sshdConfigStore} /etc/ssh/sshd_config
-      install -m 644 -o root -g wheel ${sshKeysYamlStore} /etc/ssh/keys.yaml
-
-      SSHD_SRC_DIR=/run/current-system/etc/ssh/sshd_config.d
-      SSH_SRC_DIR=/run/current-system/etc/ssh/ssh_config.d
-
-      if [ -d "$SSHD_SRC_DIR" ]; then
-        ${pkgs.rsync}/bin/rsync --archive --copy-links "$SSHD_SRC_DIR/" /etc/ssh/sshd_config.d/
-      fi
-      if [ -d "$SSH_SRC_DIR" ]; then
-        ${pkgs.rsync}/bin/rsync --archive --copy-links "$SSH_SRC_DIR/" /etc/ssh/ssh_config.d/
-      fi
-
       echo "[openssh] end $(date)"
     } >>"$LOG" 2>&1
   '';
