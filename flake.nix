@@ -345,6 +345,20 @@
         inputs.treefmt-nix.lib.mkWrapper pkgs treefmtConfig
       );
 
+      checks = forAllSystems (
+        system:
+        let
+          pkgs = pkgsFor { inherit system; };
+          treefmtConfig = import ./treefmt.nix {
+            inherit pkgs;
+            projectRootFile = ".git/config";
+          };
+        in
+        {
+          treefmt = inputs.treefmt-nix.lib.mkCheck pkgs treefmtConfig;
+        }
+      );
+
       mkHostOutputs =
         {
           hostProfile,

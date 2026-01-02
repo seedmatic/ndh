@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+cd "$(git rev-parse --show-toplevel)"
+
+if ! command -v nix >/dev/null 2>&1; then
+  echo "nix not found; skipping nix fmt check" >&2
+  exit 0
+fi
+
+echo "Running nix fmt -- --check ..."
+if ! nix fmt -- --check; then
+  cat <<'EOF'
+nix fmt -- --check failed. Please run `nix fmt` to apply formatting.
+EOF
+  exit 1
+fi
