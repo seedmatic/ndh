@@ -12,6 +12,8 @@ let
   user = cfg.user;
   userName = user.name;
   userHome = "${if pkgs.stdenvNoCC.isDarwin then "/Users" else "/home"}/${userName}";
+  hmActivationPackage = lib.attrByPath [ "home-manager" "users" userName "activationPackage" ] null config;
+  hmUserExists = hmActivationPackage != null;
 
   # Define systemPackages separately
   systemPackages = import ./system-packages.nix {
@@ -65,6 +67,17 @@ in
     exec 2> >(tee -a /var/log/darwin-activation-trace.log >&2)
     echo "=== Activation started at $(date) ==="
   '';
+
+  # Run home-manager after all other activation steps so user files see final system state
+  system.activationScripts.postActivation.text = lib.mkOrder 2000 (lib.optionalString (pkgs.stdenvNoCC.isDarwin && hmUserExists) ''
+    HM_ACTIVATE="${hmActivationPackage}/activate"
+    if [ -n "$HM_ACTIVATE" ] && [ -x "$HM_ACTIVATE" ]; then
+      echo "Running home-manager activation last for ${userName} ..."
+      sudo -u ${userName} HOME="${userHome}" XDG_RUNTIME_DIR="${userHome}/.xdg" "$HM_ACTIVATE"
+    else
+      echo "home-manager activation package missing for ${userName}, skipping" >&2
+    fi
+  '');
 
   # let nix manage home-manager profiles and use global nixpkgs
   home-manager = {
