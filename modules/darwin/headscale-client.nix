@@ -1,4 +1,9 @@
-{ config, pkgs, lib, ... }:
+{
+  config,
+  pkgs,
+  lib,
+  ...
+}:
 
 with lib;
 
@@ -16,7 +21,8 @@ let
       fi
     } >>"$LOG" 2>&1
   '';
-in {
+in
+{
   options.services.headscale-client = {
     enable = mkOption {
       type = types.bool;
@@ -44,8 +50,11 @@ in {
 
     tags = mkOption {
       type = types.listOf types.str;
-      default = [];
-      example = [ "darwin" "laptop" ];
+      default = [ ];
+      example = [
+        "darwin"
+        "laptop"
+      ];
       description = "Tags to apply to this node";
     };
 
@@ -69,21 +78,23 @@ in {
       (pkgs.writeScriptBin "hs-connect" ''
         #!/usr/bin/env bash
         set -e
-        
+
         # Check if already connected
         if tailscale status >/dev/null 2>&1; then
           echo "Already connected to Headscale"
           tailscale status
           exit 0
         fi
-        
+
         # Build the connection command
         CMD="tailscale up --login-server=${cfg.serverUrl} --hostname=${cfg.hostname}"
-        
+
         ${optionalString cfg.enableSSH ''CMD="$CMD --ssh"''}
         ${optionalString cfg.acceptRoutes ''CMD="$CMD --accept-routes"''}
-        ${optionalString (cfg.tags != []) ''CMD="$CMD --advertise-tags=${concatStringsSep "," (map (tag: "tag:" + tag) cfg.tags)}"''}
-        
+        ${optionalString (cfg.tags != [ ])
+          ''CMD="$CMD --advertise-tags=${concatStringsSep "," (map (tag: "tag:" + tag) cfg.tags)}"''
+        }
+
         # Prompt for authentication
         echo "Connecting to Headscale at ${cfg.serverUrl}..."
         echo "Running: $CMD"

@@ -1,7 +1,8 @@
 { lib, pkgs, ... }:
 let
   use-flox-rc-path = pkgs.writeScript "direnv-use-flox.rc" (builtins.readFile ./direnv-use-flox.rc);
-in {
+in
+{
   programs.direnv = {
 
     stdlib = lib.mkAfter ''

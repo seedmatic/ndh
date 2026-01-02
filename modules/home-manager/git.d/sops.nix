@@ -1,4 +1,9 @@
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 
 let
   sopsScript = pkgs.stdenvNoCC.mkDerivation {
@@ -15,8 +20,24 @@ let
     '';
   };
 
-  formats = [ "binary" "yaml" "json" "xml" "props" "csv" "tsv" "base64" "uri" "toml" "lua" ];
-  filters = [ "textconv" "clean" "smudge" ];
+  formats = [
+    "binary"
+    "yaml"
+    "json"
+    "xml"
+    "props"
+    "csv"
+    "tsv"
+    "base64"
+    "uri"
+    "toml"
+    "lua"
+  ];
+  filters = [
+    "textconv"
+    "clean"
+    "smudge"
+  ];
 in
 {
   programs.git = {
@@ -39,8 +60,8 @@ in
   };
 
   xdg.configFile."git/sops" = {
-  # Plain include file has no placeholders; no need for replaceVars (@codebase)
-  source = ./sops;
+    # Plain include file has no placeholders; no need for replaceVars (@codebase)
+    source = ./sops;
   };
 
   xdg.configFile."git/sops.sh" = {

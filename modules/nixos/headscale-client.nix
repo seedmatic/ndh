@@ -1,10 +1,16 @@
-{ config, pkgs, lib, ... }:
+{
+  config,
+  pkgs,
+  lib,
+  ...
+}:
 
 with lib;
 
 let
   cfg = config.services.headscale-client;
-in {
+in
+{
   options.services.headscale-client = {
     enable = mkOption {
       type = types.bool;
@@ -38,8 +44,11 @@ in {
 
     tags = mkOption {
       type = types.listOf types.str;
-      default = [];
-      example = [ "server" "production" ];
+      default = [ ];
+      example = [
+        "server"
+        "production"
+      ];
       description = "Tags to apply to this node";
     };
 
@@ -55,17 +64,23 @@ in {
     services.tailscale = {
       enable = true;
       authKeyFile = cfg.authKeyFile;
-      extraUpFlags = let
-        sshFlag = if cfg.enableSSH then [ "--ssh" ] else [];
-        tagFlags = if (cfg.tags != [])
-          then [ "--advertise-tags=${concatStringsSep "," (map (tag: "tag:" + tag) cfg.tags)}" ]
-          else [];
-        acceptRoutesFlag = if cfg.acceptRoutes then [ "--accept-routes" ] else [];
-      in
+      extraUpFlags =
+        let
+          sshFlag = if cfg.enableSSH then [ "--ssh" ] else [ ];
+          tagFlags =
+            if (cfg.tags != [ ]) then
+              [ "--advertise-tags=${concatStringsSep "," (map (tag: "tag:" + tag) cfg.tags)}" ]
+            else
+              [ ];
+          acceptRoutesFlag = if cfg.acceptRoutes then [ "--accept-routes" ] else [ ];
+        in
         [
           "--login-server=${cfg.serverUrl}"
           "--hostname=${cfg.hostname}"
-        ] ++ sshFlag ++ tagFlags ++ acceptRoutesFlag;
+        ]
+        ++ sshFlag
+        ++ tagFlags
+        ++ acceptRoutesFlag;
     };
 
     # Trust Tailscale interface
@@ -73,7 +88,10 @@ in {
 
     # Ensure Tailscale connects at boot
     systemd.services.tailscaled-autoconnect = {
-      after = [ "tailscaled.service" "network-online.target" ];
+      after = [
+        "tailscaled.service"
+        "network-online.target"
+      ];
       wants = [ "network-online.target" ];
       wantedBy = [ "multi-user.target" ];
       serviceConfig = {
@@ -83,13 +101,13 @@ in {
       script = ''
         # Wait for tailscaled to be ready
         sleep 2
-        
+
         # Check if already connected
         if ${pkgs.tailscale}/bin/tailscale status >/dev/null 2>&1; then
           echo "Already connected to Headscale"
           exit 0
         fi
-        
+
         ${optionalString (cfg.authKeyFile != null) ''
           # Connect if we have an auth key
           if [ -f "${cfg.authKeyFile}" ]; then
@@ -99,7 +117,9 @@ in {
               --hostname=${cfg.hostname} \
               ${optionalString cfg.enableSSH "--ssh"} \
               ${optionalString cfg.acceptRoutes "--accept-routes"} \
-              ${optionalString (cfg.tags != []) "--advertise-tags=${concatStringsSep "," (map (tag: "tag:" + tag) cfg.tags)}"}
+              ${optionalString (cfg.tags != [ ])
+                "--advertise-tags=${concatStringsSep "," (map (tag: "tag:" + tag) cfg.tags)}"
+              }
           fi
         ''}
       '';

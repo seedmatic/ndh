@@ -1,10 +1,16 @@
-{ config, pkgs, lib, ... }:
+{
+  config,
+  pkgs,
+  lib,
+  ...
+}:
 
 with lib;
 
 let
   cfg = config.services.headscale-gateway;
-in {
+in
+{
   options.services.headscale-gateway = {
     enable = mkOption {
       type = types.bool;
@@ -32,8 +38,11 @@ in {
 
     routes = mkOption {
       type = types.listOf types.str;
-      default = [];
-      example = [ "192.168.1.0/24" "10.0.0.0/24" ];
+      default = [ ];
+      example = [
+        "192.168.1.0/24"
+        "10.0.0.0/24"
+      ];
       description = "Subnet routes to advertise";
     };
 
@@ -66,24 +75,31 @@ in {
     # Install Tailscale (client compatible with Headscale)
     services.tailscale = {
       enable = true;
-      useRoutingFeatures = "both";  # Enable IP forwarding and routing
+      useRoutingFeatures = "both"; # Enable IP forwarding and routing
       authKeyFile = cfg.authKeyFile;
-      extraUpFlags = let
-        routeFlags = if (cfg.routes != []) 
-          then [ "--advertise-routes=${concatStringsSep "," cfg.routes}" ]
-          else [];
-        exitNodeFlag = if cfg.exitNode then [ "--advertise-exit-node" ] else [];
-        acceptRoutesFlag = if cfg.acceptRoutes then [ "--accept-routes" ] else [];
-        snatFlag = if cfg.snat then [ "--snat-subnet-routes=true" ] else [ "--snat-subnet-routes=false" ];
-        tagFlags = if (cfg.tags != [])
-          then [ "--advertise-tags=${concatStringsSep "," (map (tag: "tag:" + tag) cfg.tags)}" ]
-          else [];
-      in
+      extraUpFlags =
+        let
+          routeFlags =
+            if (cfg.routes != [ ]) then [ "--advertise-routes=${concatStringsSep "," cfg.routes}" ] else [ ];
+          exitNodeFlag = if cfg.exitNode then [ "--advertise-exit-node" ] else [ ];
+          acceptRoutesFlag = if cfg.acceptRoutes then [ "--accept-routes" ] else [ ];
+          snatFlag = if cfg.snat then [ "--snat-subnet-routes=true" ] else [ "--snat-subnet-routes=false" ];
+          tagFlags =
+            if (cfg.tags != [ ]) then
+              [ "--advertise-tags=${concatStringsSep "," (map (tag: "tag:" + tag) cfg.tags)}" ]
+            else
+              [ ];
+        in
         [
           "--login-server=${cfg.serverUrl}"
           "--hostname=${cfg.hostname}"
           "--ssh"
-        ] ++ routeFlags ++ exitNodeFlag ++ acceptRoutesFlag ++ snatFlag ++ tagFlags;
+        ]
+        ++ routeFlags
+        ++ exitNodeFlag
+        ++ acceptRoutesFlag
+        ++ snatFlag
+        ++ tagFlags;
     };
 
     # Enable IP forwarding (required for routing)
@@ -96,13 +112,13 @@ in {
     networking.firewall = {
       enable = true;
       trustedInterfaces = [ "tailscale0" ];
-      
+
       # Allow forwarding from tailscale interface
       extraCommands = ''
         # Allow forwarding for Tailscale subnet routing
         iptables -A FORWARD -i tailscale0 -j ACCEPT
         iptables -A FORWARD -o tailscale0 -j ACCEPT
-        
+
         # NAT for advertised routes (if SNAT is enabled)
         ${optionalString cfg.snat ''
           ${concatMapStringsSep "\n" (route: ''
@@ -110,11 +126,11 @@ in {
           '') cfg.routes}
         ''}
       '';
-      
+
       extraStopCommands = ''
         iptables -D FORWARD -i tailscale0 -j ACCEPT 2>/dev/null || true
         iptables -D FORWARD -o tailscale0 -j ACCEPT 2>/dev/null || true
-        
+
         ${optionalString cfg.snat ''
           ${concatMapStringsSep "\n" (route: ''
             iptables -t nat -D POSTROUTING -s ${route} ! -o tailscale0 -j MASQUERADE 2>/dev/null || true
@@ -142,7 +158,10 @@ in {
 
     # Ensure Tailscale connects at boot
     systemd.services.tailscaled-autoconnect = {
-      after = [ "tailscaled.service" "network-online.target" ];
+      after = [
+        "tailscaled.service"
+        "network-online.target"
+      ];
       wants = [ "network-online.target" ];
       wantedBy = [ "multi-user.target" ];
       serviceConfig = {
@@ -152,13 +171,13 @@ in {
       script = ''
         # Wait for tailscaled to be ready
         sleep 2
-        
+
         # Check if already connected
         if ${pkgs.tailscale}/bin/tailscale status >/dev/null 2>&1; then
           echo "Already connected to Headscale"
           exit 0
         fi
-        
+
         ${optionalString (cfg.authKeyFile != null) ''
           # Connect if we have an auth key
           if [ -f "${cfg.authKeyFile}" ]; then
@@ -166,12 +185,22 @@ in {
               --login-server=${cfg.serverUrl} \
               --authkey="$(cat ${cfg.authKeyFile})" \
               ${concatStringsSep " " (
-                [ "--hostname=${cfg.hostname}" "--ssh" ]
-                ++ (if (cfg.routes != []) then [ "--advertise-routes=${concatStringsSep "," cfg.routes}" ] else [])
-                ++ (if cfg.exitNode then [ "--advertise-exit-node" ] else [])
-                ++ (if cfg.acceptRoutes then [ "--accept-routes" ] else [])
-                ++ (if cfg.snat then [ "--snat-subnet-routes=true" ] else [])
-                ++ (if (cfg.tags != []) then [ "--advertise-tags=${concatStringsSep "," (map (tag: "tag:" + tag) cfg.tags)}" ] else [])
+                [
+                  "--hostname=${cfg.hostname}"
+                  "--ssh"
+                ]
+                ++ (
+                  if (cfg.routes != [ ]) then [ "--advertise-routes=${concatStringsSep "," cfg.routes}" ] else [ ]
+                )
+                ++ (if cfg.exitNode then [ "--advertise-exit-node" ] else [ ])
+                ++ (if cfg.acceptRoutes then [ "--accept-routes" ] else [ ])
+                ++ (if cfg.snat then [ "--snat-subnet-routes=true" ] else [ ])
+                ++ (
+                  if (cfg.tags != [ ]) then
+                    [ "--advertise-tags=${concatStringsSep "," (map (tag: "tag:" + tag) cfg.tags)}" ]
+                  else
+                    [ ]
+                )
               )}
           fi
         ''}

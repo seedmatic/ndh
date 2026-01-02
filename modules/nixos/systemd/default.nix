@@ -1,4 +1,10 @@
-{ config, pkgs, profile, ... }: {
+{
+  config,
+  pkgs,
+  profile,
+  ...
+}:
+{
   imports = [
     ./buildkitd.nix
     ./lima-cloud-init.nix

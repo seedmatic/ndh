@@ -1,85 +1,92 @@
 # This is the home configuration of the user.
-{ config, pkgs, lib, floxEnv ? null, ... }:
+{
+  config,
+  pkgs,
+  lib,
+  floxEnv ? null,
+  ...
+}:
 let
   homeDirectory = config.profile.user.home;
 
   baseHomePackages = with pkgs; [
-      aider-chat
-      alejandra
-      awscli2
-      avahi
-      cachix
-      cirrus-cli
-      comma
-      coreutils-full
-      curl
-      diffutils
-      direnv
-      docker
-      docker-compose
-      ffmpeg
-      findutils
-      flyctl
-      gawk
-      gdu
-      gh
-      git-workspace
-      gnugrep
-      gnupg
-      gnused
-      helm-docs
-      httpie
-      hurl
-      jdk
-      k9s
-      kpt
-      krew
-      kubectl
-      kubectx
-      kubernetes-helm
-      kustomize
-      #     lazydocker
-      luajit
-      minikube
-      mmv
-      neofetch
-      nix
-      nixfmt-classic
-      nixpkgs-fmt
-      nodejs
-      parallel
-      passExtensions.pass-otp
-      passExtensions.pass-audit
-      passExtensions.pass-update
-      passExtensions.pass-import
-      passExtensions.pass-checkup
-      passExtensions.pass-genphrase
-      podman
-      # podman-desktop
-      poetry
-      pnpm
-      pre-commit
-      # rancher-desktop
-      ranger
-      rclone
-      rsync
-      shellcheck
-      sops
-      stylua
-      teleport
-      tig
-      tree
-      treefmt
-      trivy
-      vault-bin
-      yarn
-      yamllint
-      yq-go
-      zellij
-      zsh
-    ];
+    aider-chat
+    alejandra
+    awscli2
+    avahi
+    cachix
+    cirrus-cli
+    comma
+    coreutils-full
+    curl
+    diffutils
+    direnv
+    docker
+    docker-compose
+    ffmpeg
+    findutils
+    flyctl
+    gawk
+    gdu
+    gh
+    git-workspace
+    gnugrep
+    gnupg
+    gnused
+    helm-docs
+    httpie
+    hurl
+    jdk
+    k9s
+    kpt
+    krew
+    kubectl
+    kubectx
+    kubernetes-helm
+    kustomize
+    #     lazydocker
+    luajit
+    minikube
+    mmv
+    neofetch
+    nix
+    nixfmt-classic
+    nixpkgs-fmt
+    nodejs
+    parallel
+    passExtensions.pass-otp
+    passExtensions.pass-audit
+    passExtensions.pass-update
+    passExtensions.pass-import
+    passExtensions.pass-checkup
+    passExtensions.pass-genphrase
+    podman
+    # podman-desktop
+    poetry
+    pnpm
+    pre-commit
+    # rancher-desktop
+    ranger
+    rclone
+    rsync
+    shellcheck
+    sops
+    stylua
+    teleport
+    tig
+    tree
+    treefmt
+    trivy
+    vault-bin
+    yarn
+    yamllint
+    yq-go
+    zellij
+    zsh
+  ];
 
-in {
+in
+{
 
   imports = [
     ./avahi.nix
@@ -137,34 +144,36 @@ in {
     # Define package definitions for current user environment
     packages = baseHomePackages;
 
-    activation.fixConfigOwnership = let 
-      dollar = "$";
-    in lib.hm.dag.entryBefore [ "writeBoundary" ] ''
-      set -xe -o pipefail
-      # Prefer NixOS wrapper location for sudo if present (@codebase)
-      WRAPPERS="/run/wrappers/bin"
-      if [ -d "$WRAPPERS" ]; then
-        case ":$PATH:" in
-          *":$WRAPPERS:"*) ;; # already present
-          *) PATH="$WRAPPERS:$PATH" ;;
-        esac
-      fi
+    activation.fixConfigOwnership =
+      let
+        dollar = "$";
+      in
+      lib.hm.dag.entryBefore [ "writeBoundary" ] ''
+        set -xe -o pipefail
+        # Prefer NixOS wrapper location for sudo if present (@codebase)
+        WRAPPERS="/run/wrappers/bin"
+        if [ -d "$WRAPPERS" ]; then
+          case ":$PATH:" in
+            *":$WRAPPERS:"*) ;; # already present
+            *) PATH="$WRAPPERS:$PATH" ;;
+          esac
+        fi
 
-      if [ "$(id -u)" -ne 0 ]; then
-        # Explicit path first, then generic lookup
-        if [ -x "$WRAPPERS/sudo" ]; then
-          SUDO="$WRAPPERS/sudo -n"
-          $SUDO true 2>/dev/null || SUDO="$WRAPPERS/sudo"
-        elif command -v sudo >/dev/null 2>&1; then
-          SUDO="sudo -n"
-          $SUDO true 2>/dev/null || SUDO="sudo"
+        if [ "$(id -u)" -ne 0 ]; then
+          # Explicit path first, then generic lookup
+          if [ -x "$WRAPPERS/sudo" ]; then
+            SUDO="$WRAPPERS/sudo -n"
+            $SUDO true 2>/dev/null || SUDO="$WRAPPERS/sudo"
+          elif command -v sudo >/dev/null 2>&1; then
+            SUDO="sudo -n"
+            $SUDO true 2>/dev/null || SUDO="sudo"
+          else
+            SUDO=""
+          fi
         else
           SUDO=""
         fi
-      else
-        SUDO=""
-      fi
-    '';
+      '';
 
   };
 
@@ -219,22 +228,31 @@ in {
 
   services = {
     # Enable the emacs daemon
-    emacsDaemon = { enable = true; };
+    emacsDaemon = {
+      enable = true;
+    };
 
     # Enable shadowing folders
     shadowRepositories = {
       enable = false;
 
-      mountPoints =
-        [ "/Volumes/GitHub/HylandSoftware/hxpr" "/Volumes/GitHub/nuxeo/nos" ];
+      mountPoints = [
+        "/Volumes/GitHub/HylandSoftware/hxpr"
+        "/Volumes/GitHub/nuxeo/nos"
+      ];
     };
-  } // (if pkgs.stdenv.isDarwin then {
-    # Disable cachix-agent to avoid conflicts with our cache-tokens module
-    # cachix-agent = {
-    #   enableLaunchdAgent = true;
-    #   name = "nix-community";
-    #   credentialsFile = ./cachix-agent.dhall;
-    # };
-  } else
-    { });
+  }
+  // (
+    if pkgs.stdenv.isDarwin then
+      {
+        # Disable cachix-agent to avoid conflicts with our cache-tokens module
+        # cachix-agent = {
+        #   enableLaunchdAgent = true;
+        #   name = "nix-community";
+        #   credentialsFile = ./cachix-agent.dhall;
+        # };
+      }
+    else
+      { }
+  );
 }

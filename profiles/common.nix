@@ -1,11 +1,16 @@
-{ config, home-manager, pkgs, lib, ... }:
+{
+  config,
+  home-manager,
+  pkgs,
+  lib,
+  ...
+}:
 
 let
   inherit (pkgs) stdenv;
   inherit (lib) mkIf;
   cfg = config.profile;
-  defaultUserHome =
-    if stdenv.isDarwin then "Users" else "${config.users.defaultUserHome}";
+  defaultUserHome = if stdenv.isDarwin then "Users" else "${config.users.defaultUserHome}";
 
   # Shared user profile mapping (@codebase)
   # This defines the mapping between different profiles and their corresponding usernames
@@ -45,7 +50,10 @@ let
       {
         platform = "darwin";
         form = "baremetal";
-        vm = { kind = "qemu"; manager = "nix-darwin"; };
+        vm = {
+          kind = "qemu";
+          manager = "nix-darwin";
+        };
         builder = {
           hostName = "bioskop-linux";
           systems = [ "aarch64-linux" ];
@@ -56,7 +64,10 @@ let
       {
         platform = "darwin";
         form = "baremetal";
-        vm = { kind = "vz"; manager = "lima"; };
+        vm = {
+          kind = "vz";
+          manager = "lima";
+        };
         builder = {
           hostName = "bioskop-nixos";
           systems = [ "aarch64-linux" ];
@@ -71,13 +82,19 @@ let
       {
         platform = "darwin";
         form = "vm";
-        vm = { kind = "vz"; manager = "tart"; };
+        vm = {
+          kind = "vz";
+          manager = "tart";
+        };
         builder = null;
       }
       {
         platform = "darwin";
         form = "vm";
-        vm = { kind = "vz"; manager = "lima"; };
+        vm = {
+          kind = "vz";
+          manager = "lima";
+        };
         builder = {
           hostName = "alcide-nixos";
           systems = [ "aarch64-linux" ];
@@ -87,7 +104,8 @@ let
       }
     ];
   };
-in {
+in
+{
   options = {
     profile = lib.mkOption {
       description = "Profile currently evaluated";
@@ -106,8 +124,7 @@ in {
           };
           homeSymlinks = lib.mkOption {
             type = lib.types.listOf lib.types.str;
-            description =
-              "List of alternative usernames to create symlinks for in /home";
+            description = "List of alternative usernames to create symlinks for in /home";
             default = [ ];
             example = [ "nxmatic" ];
           };
@@ -117,8 +134,11 @@ in {
                 knownNetworkServices = lib.mkOption {
                   type = lib.types.listOf lib.types.str;
                   description = "List of known network services";
-                  default =
-                    [ "Wi-Fi" "Ethernet Adaptor" "Thunderbolt Ethernet" ];
+                  default = [
+                    "Wi-Fi"
+                    "Ethernet Adaptor"
+                    "Thunderbolt Ethernet"
+                  ];
                 };
               };
             };
@@ -146,7 +166,10 @@ in {
                 preferredBuilderHosts = lib.mkOption {
                   type = lib.types.listOf lib.types.str;
                   default = [ ];
-                  example = [ "bioskop" "alcide" ];
+                  example = [
+                    "bioskop"
+                    "alcide"
+                  ];
                   description = "Host keys from hostsCatalog to pull builder endpoints from (e.g., include bioskop so alcide offloads to bioskop's builders). If empty, defaults to the current host only.";
                 };
                 remoteBuilders = lib.mkOption {
@@ -154,11 +177,35 @@ in {
                   default = [ ];
                   example = [
                     # Example: bioskop (darwin host) exporting its darwin builder and linux-builder VM
-                    { hostName = "bioskop-darwin"; systems = [ "aarch64-darwin" ]; maxJobs = 4; protocol = "ssh-ng"; }
-                    { hostName = "bioskop-linux"; systems = [ "aarch64-linux" ]; maxJobs = 8; protocol = "ssh-ng"; supportedFeatures = [ "kvm" "big-parallel" ]; }
+                    {
+                      hostName = "bioskop-darwin";
+                      systems = [ "aarch64-darwin" ];
+                      maxJobs = 4;
+                      protocol = "ssh-ng";
+                    }
+                    {
+                      hostName = "bioskop-linux";
+                      systems = [ "aarch64-linux" ];
+                      maxJobs = 8;
+                      protocol = "ssh-ng";
+                      supportedFeatures = [
+                        "kvm"
+                        "big-parallel"
+                      ];
+                    }
                     # Example: alcide (macbook-pro) exporting its darwin builder and nixos VM
-                    { hostName = "alcide-darwin"; systems = [ "aarch64-darwin" ]; maxJobs = 2; protocol = "ssh-ng"; }
-                    { hostName = "alcide-nixos"; systems = [ "aarch64-linux" ]; maxJobs = 4; protocol = "ssh-ng"; }
+                    {
+                      hostName = "alcide-darwin";
+                      systems = [ "aarch64-darwin" ];
+                      maxJobs = 2;
+                      protocol = "ssh-ng";
+                    }
+                    {
+                      hostName = "alcide-nixos";
+                      systems = [ "aarch64-linux" ];
+                      maxJobs = 4;
+                      protocol = "ssh-ng";
+                    }
                   ];
                   description = "BuildMachines entries for the managed hosts (Darwin builders and their Linux/NixOS VMs). Leave empty to disable remote build enforcement on this host.";
                 };
@@ -168,8 +215,8 @@ in {
                   example = [
                     {
                       host = "bioskop";
-                      platform = "darwin";  # macOS host
-                      form = "baremetal";    # bare metal vs vm
+                      platform = "darwin"; # macOS host
+                      form = "baremetal"; # bare metal vs vm
                       builder = {
                         hostName = "bioskop-darwin";
                         systems = [ "aarch64-darwin" ];
@@ -181,7 +228,10 @@ in {
                       host = "bioskop";
                       platform = "darwin";
                       form = "baremetal";
-                      vm = { kind = "qemu"; manager = "nix-darwin"; };
+                      vm = {
+                        kind = "qemu";
+                        manager = "nix-darwin";
+                      };
                       builder = {
                         hostName = "bioskop-linux";
                         systems = [ "aarch64-linux" ];
@@ -193,7 +243,10 @@ in {
                       host = "bioskop";
                       platform = "darwin";
                       form = "baremetal";
-                      vm = { kind = "vz"; manager = "lima"; };
+                      vm = {
+                        kind = "vz";
+                        manager = "lima";
+                      };
                       builder = {
                         hostName = "bioskop-nixos";
                         systems = [ "aarch64-linux" ];
@@ -203,9 +256,12 @@ in {
                     }
                     {
                       host = "alcide";
-                      platform = "darwin";  # running under tart/vz
+                      platform = "darwin"; # running under tart/vz
                       form = "vm";
-                      vm = { kind = "vz"; manager = "tart"; };
+                      vm = {
+                        kind = "vz";
+                        manager = "tart";
+                      };
                       builder = {
                         hostName = "alcide-darwin";
                         systems = [ "aarch64-darwin" ];
@@ -217,7 +273,10 @@ in {
                       host = "alcide";
                       platform = "darwin";
                       form = "vm";
-                      vm = { kind = "vz"; manager = "lima"; };
+                      vm = {
+                        kind = "vz";
+                        manager = "lima";
+                      };
                       builder = {
                         hostName = "alcide-nixos";
                         systems = [ "aarch64-linux" ];
@@ -271,14 +330,12 @@ in {
                 uid = lib.mkOption {
                   type = lib.types.nullOr lib.types.int;
                   default = null;
-                  description =
-                    "Optional fixed UID to align with host (e.g. macOS UID 501/503).";
+                  description = "Optional fixed UID to align with host (e.g. macOS UID 501/503).";
                 };
                 gid = lib.mkOption {
                   type = lib.types.nullOr lib.types.int;
                   default = null;
-                  description =
-                    "Optional fixed primary GID. Defaults to uid if set and gid is null.";
+                  description = "Optional fixed primary GID. Defaults to uid if set and gid is null.";
                 };
                 isNormalUser = lib.mkOption {
                   type = lib.types.bool;
@@ -292,8 +349,7 @@ in {
                 };
                 group = lib.mkOption {
                   type = lib.types.nullOr lib.types.str;
-                  description =
-                    "Optional primary group name; if null a group matching the username should be created elsewhere";
+                  description = "Optional primary group name; if null a group matching the username should be created elsewhere";
                   default = null;
                 };
                 home = lib.mkOption {
@@ -317,12 +373,13 @@ in {
 
   # Compose config: expose userMapping. Avoid self-reference causing recursion
   config = {
-    _module.args.userMapping =
-      userMapping; # (@codebase) keep simple to avoid recursion
+    _module.args.userMapping = userMapping; # (@codebase) keep simple to avoid recursion
     _module.args.hostsCatalog = hostsCatalog; # (@codebase) expose consolidated host facts
     # Dynamic defaults (@codebase): adjust user home path to use the resolved user name
     # instead of the static placeholder jdoe so Home Manager's activation check matches $HOME.
-    profile.user.home = lib.mkDefault (builtins.toPath "/${defaultUserHome}/${config.profile.user.name}");
+    profile.user.home = lib.mkDefault (
+      builtins.toPath "/${defaultUserHome}/${config.profile.user.name}"
+    );
 
     # Default builder catalog from shared hostsCatalog based on preferredBuilderHosts (fallback: current host only)
     profile.host.preferredBuilderHosts = lib.mkDefault [ config.profile.host.hostName ];
@@ -330,21 +387,26 @@ in {
     profile.host.builderCatalog = lib.mkDefault (
       let
         wanted = config.profile.host.preferredBuilderHosts;
-        addDefaultFeatures = entry:
+        addDefaultFeatures =
+          entry:
           let
             base = entry.builder;
             baseFeatures = base.supportedFeatures or [ ];
             vmKind = if entry ? vm then (entry.vm.kind or null) else null;
             maxJobs = base.maxJobs or 0;
-            defaults =
-              lib.optional (maxJobs >= 8) "big-parallel"
-              ++ lib.optional (vmKind == "qemu") "kvm";
-          in entry // {
-            builder = base // { supportedFeatures = lib.unique (baseFeatures ++ defaults); };
+            defaults = lib.optional (maxJobs >= 8) "big-parallel" ++ lib.optional (vmKind == "qemu") "kvm";
+          in
+          entry
+          // {
+            builder = base // {
+              supportedFeatures = lib.unique (baseFeatures ++ defaults);
+            };
           };
-        entriesFor = host:
+        entriesFor =
+          host:
           if builtins.hasAttr host hostsCatalog then map addDefaultFeatures hostsCatalog.${host} else [ ];
-      in lib.concatMap entriesFor wanted
+      in
+      lib.concatMap entriesFor wanted
     );
   };
 }

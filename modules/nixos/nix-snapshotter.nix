@@ -1,4 +1,9 @@
-{ config, pkgs, nix-snapshotter, ... }:
+{
+  config,
+  pkgs,
+  nix-snapshotter,
+  ...
+}:
 
 {
   imports = [ nix-snapshotter.nixosModules.default ];

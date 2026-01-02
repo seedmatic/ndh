@@ -1,24 +1,37 @@
-{ config, pkgs, lib, ... }:
+{
+  config,
+  pkgs,
+  lib,
+  ...
+}:
 
 let
   LIMA_CIDATA_MNT = "/mnt/lima-cidata";
   # Use writeShellApplication to create a proper executable with dependencies
   startScript = pkgs.writeShellApplication {
     name = "lima-guest-agent-start";
-    runtimeInputs = with pkgs; [ util-linux bash yq-go ];
+    runtimeInputs = with pkgs; [
+      util-linux
+      bash
+      yq-go
+    ];
     text = builtins.readFile ./lima-guest-agent-start.sh;
     # Exclude SC1090 (can't follow dynamic source) as lima.env is provided at runtime
     excludeShellChecks = [ "SC1090" ];
   };
-in {
-  imports = [];
+in
+{
+  imports = [ ];
 
   systemd.services.lima-guestagent = {
     description = "Lima Guest Agent";
     wantedBy = [ "multi-user.target" ];
     after = [ "lima-cloud-init.service" ];
     requires = [ "lima-cloud-init.service" ];
-    path = with pkgs; [ util-linux yq-go ];
+    path = with pkgs; [
+      util-linux
+      yq-go
+    ];
     serviceConfig = {
       Type = "simple";
       EnvironmentFile = "${LIMA_CIDATA_MNT}/lima.env";

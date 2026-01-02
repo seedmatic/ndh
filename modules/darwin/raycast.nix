@@ -4,9 +4,11 @@
   pkgs,
   ...
 }:
-with lib; let
+with lib;
+let
   cfg = config.services.raycast;
-in {
+in
+{
   options = {
     services.raycast = {
       enable = mkOption {
@@ -36,7 +38,7 @@ in {
   };
 
   config = mkIf cfg.enable {
-    environment.systemPackages = [pkgs.raycast];
+    environment.systemPackages = [ pkgs.raycast ];
     launchd.user.agents.raycast = {
       command = "${lib.getExe pkgs.raycast}";
       serviceConfig = {

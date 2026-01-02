@@ -20,7 +20,8 @@ let
       fi
     fi
   '';
-in {
+in
+{
   programs.zsh = {
     enable = true;
 

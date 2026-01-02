@@ -3,23 +3,32 @@
   lib,
   pkgs,
   ...
-}: let
-  inherit (lib) mkEnableOption mkIf mkOption types;
+}:
+let
+  inherit (lib)
+    mkEnableOption
+    mkIf
+    mkOption
+    types
+    ;
 
   cfg = config.services.bird;
 
   birdInterface = cfg.interface;
 
-  getInterfaceIp = interface:
+  getInterfaceIp =
+    interface:
     pkgs.writeShellScript "get-${interface}-ip" ''
       ${pkgs.darwin.network_cmds}/bin/ifconfig ${interface} |
       ${pkgs.gnugrep}/bin/grep -w inet |
       ${pkgs.gawk}/bin/awk '{ print $2 }'
     '';
 
-  routerId = builtins.readFile (pkgs.runCommand "get-router-id" {} ''
-    ${getInterfaceIp birdInterface} > $out
-  '');
+  routerId = builtins.readFile (
+    pkgs.runCommand "get-router-id" { } ''
+      ${getInterfaceIp birdInterface} > $out
+    ''
+  );
 
   birdConfig = pkgs.writeText "bird.conf" ''
     log "/var/log/bird.log" { debug, trace, info, remote, warning, error, auth, fatal, bug };
@@ -102,7 +111,8 @@
     sudo pfctl -f /etc/pf.conf
     echo "pf rules reloaded"
   '';
-in {
+in
+{
   options = {
     services.bird = {
       enable = mkEnableOption "BIRD Internet Routing Daemon";
@@ -112,19 +122,21 @@ in {
         description = "Network interface to use for BIRD";
       };
       protocols = mkOption {
-        type = types.listOf (types.submodule {
-          options = {
-            name = mkOption {
-              type = types.str;
-              description = "Name of the protocol configuration file";
+        type = types.listOf (
+          types.submodule {
+            options = {
+              name = mkOption {
+                type = types.str;
+                description = "Name of the protocol configuration file";
+              };
+              text = mkOption {
+                type = types.lines;
+                description = "Content of the protocol configuration";
+              };
             };
-            text = mkOption {
-              type = types.lines;
-              description = "Content of the protocol configuration";
-            };
-          };
-        });
-        default = [];
+          }
+        );
+        default = [ ];
         description = "List of protocol configurations to include";
       };
       user = mkOption {
@@ -141,19 +153,27 @@ in {
   };
 
   config = mkIf cfg.enable {
-    environment.systemPackages = [pkgs.bird createUserScript reloadPfRules];
+    environment.systemPackages = [
+      pkgs.bird
+      createUserScript
+      reloadPfRules
+    ];
 
-    environment.etc =
-      {
-        "bird/bird.conf".source = birdConfig;
-        "pf.anchors/org.bird.daemon".source = pfRules;
-      }
-      // (builtins.listToAttrs (map (p: {
+    environment.etc = {
+      "bird/bird.conf".source = birdConfig;
+      "pf.anchors/org.bird.daemon".source = pfRules;
+    }
+    // (builtins.listToAttrs (
+      map
+        (p: {
           name = "bird/protocol.d/${p.name}.conf";
-          value = {source = pkgs.writeText "${p.name}.conf" p.text;};
-        }) (
-          if (builtins.any (p: p.name == "device") cfg.protocols)
-          then cfg.protocols
+          value = {
+            source = pkgs.writeText "${p.name}.conf" p.text;
+          };
+        })
+        (
+          if (builtins.any (p: p.name == "device") cfg.protocols) then
+            cfg.protocols
           else
             [
               {
@@ -167,7 +187,8 @@ in {
               }
             ]
             ++ cfg.protocols
-        )));
+        )
+    ));
 
     launchd.daemons.bird = {
       serviceConfig = {

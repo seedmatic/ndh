@@ -2,7 +2,8 @@
   self,
   pkgs,
   ...
-}: {
+}:
+{
   devenv.root = "/tmp";
 
   packages = [

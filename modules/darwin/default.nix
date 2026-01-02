@@ -1,4 +1,12 @@
-{ profile, config, lib, pkgs, self, ... }: {
+{
+  profile,
+  config,
+  lib,
+  pkgs,
+  self,
+  ...
+}:
+{
   imports = [
     ../common
     ./preferences.nix

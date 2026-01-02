@@ -1,14 +1,22 @@
-{ lib, config, pkgs, ... }: {
+{
+  lib,
+  config,
+  pkgs,
+  ...
+}:
+{
   programs.gpg = {
     enable = true;
     homedir = "${config.xdg.dataHome}/gnupg";
-    settings = { use-agent = true; };
+    settings = {
+      use-agent = true;
+    };
   };
 
   services.gpg-agent = {
     enable = true;
     defaultCacheTtl = 1800;
-    enableSshSupport = false;  # Disable SSH support to let keychain handle SSH keys
+    enableSshSupport = false; # Disable SSH support to let keychain handle SSH keys
     extraConfig = ''
       allow-loopback-pinentry
     '';

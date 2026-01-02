@@ -1,6 +1,13 @@
-{ config, lib, pkgs, ... }:
-let dollar = "$";
-in {
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
+let
+  dollar = "$";
+in
+{
   programs.direnv = {
     enable = true;
     nix-direnv.enable = true;

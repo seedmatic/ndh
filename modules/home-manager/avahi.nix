@@ -1,4 +1,5 @@
-{...}: {
+{ ... }:
+{
   home.file.".config/avahi/avahi-daemon.conf".text = ''
     [server]
     host-name=your-hostname

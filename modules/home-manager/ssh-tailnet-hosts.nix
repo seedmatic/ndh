@@ -1,4 +1,9 @@
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 # Modular Tailnet SSH host definitions (@codebase)
 # This module encapsulates per-tailnet host client settings using raw extraConfig
 # blocks (rather than matchBlocks attrset) to preserve ordering and comments.
@@ -9,7 +14,7 @@ let
   # Get username from profile configuration
   userMapping = config._module.specialArgs.userMapping;
   profile = config._module.specialArgs.profile;
-  userName = profile.user.name;  # Use profile-based username (nxmatic for committed profile)
+  userName = profile.user.name; # Use profile-based username (nxmatic for committed profile)
   committedUserName = userMapping.profileUsers.committed.name;
   workUserName = userMapping.profileUsers.work.name;
 in

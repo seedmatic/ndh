@@ -1,5 +1,6 @@
-{ lib, ... }: {
-  
-  disko = import ./disko-config.nix { inherit lib; }; 
+{ lib, ... }:
+{
+
+  disko = import ./disko-config.nix { inherit lib; };
 
 }

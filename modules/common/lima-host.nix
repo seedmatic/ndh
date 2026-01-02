@@ -1,4 +1,9 @@
-{ config, lib, hostProfile ? null, ... }:
+{
+  config,
+  lib,
+  hostProfile ? null,
+  ...
+}:
 let
   inherit (lib) mkOption;
   # Access limaHost after options layer
@@ -7,13 +12,22 @@ let
   # Prefer the injected specialArg hostProfile if provided (flake does this already for NixOS),
   # otherwise fall back to config.profile.host.
   resolvedHostProfile = if hostProfile != null then hostProfile else config.profile.host;
-  derivedHostName = if (resolvedHostProfile ? hostAlias && resolvedHostProfile.hostAlias != null && resolvedHostProfile.hostAlias != "")
-    then resolvedHostProfile.hostAlias
-    else resolvedHostProfile.hostName;
+  derivedHostName =
+    if
+      (
+        resolvedHostProfile ? hostAlias
+        && resolvedHostProfile.hostAlias != null
+        && resolvedHostProfile.hostAlias != ""
+      )
+    then
+      resolvedHostProfile.hostAlias
+    else
+      resolvedHostProfile.hostName;
   hostName = cfg.hostName;
   guestName = cfg.guestName;
   domainName = cfg.domainName;
-in {
+in
+{
   options.limaHost = {
     isGuest = mkOption {
       type = lib.types.bool;

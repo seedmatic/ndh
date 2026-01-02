@@ -2,13 +2,15 @@
   config,
   pkgs,
   ...
-}: let
+}:
+let
 
   user = config.profile.user;
   userName = user.name;
   userHome = user.home;
 
-in {
+in
+{
   services.emacs = {
     enable = true;
     package = pkgs.emacs-nox;

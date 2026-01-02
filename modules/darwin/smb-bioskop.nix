@@ -3,7 +3,8 @@ let
   cfg = config.services.bioskopSmbMount;
   mapFile = "/etc/auto_bioskop";
   autoMaster = "/etc/auto_master";
-in {
+in
+{
   options.services.bioskopSmbMount = {
     enable = lib.mkOption {
       type = lib.types.bool;

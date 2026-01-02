@@ -1,14 +1,20 @@
-{ config, pkgs, lib, ... }:
+{
+  config,
+  pkgs,
+  lib,
+  ...
+}:
 let
   user = config.profile.user.name;
   hostProfile = config.profile.host;
   effectiveHostName =
-    if (hostProfile ? hostAlias && hostProfile.hostAlias != null
-        && hostProfile.hostAlias != "")
-    then hostProfile.hostAlias
-    else hostProfile.hostName;
-  hostByteHex = lib.strings.toLower
-    (builtins.substring 0 2 (builtins.hashString "sha256" effectiveHostName));
+    if (hostProfile ? hostAlias && hostProfile.hostAlias != null && hostProfile.hostAlias != "") then
+      hostProfile.hostAlias
+    else
+      hostProfile.hostName;
+  hostByteHex = lib.strings.toLower (
+    builtins.substring 0 2 (builtins.hashString "sha256" effectiveHostName)
+  );
   lanBridgeMac = "10:66:6a:4c:${hostByteHex}:fe";
   fixIncusSocketPerms = pkgs.writeShellScript "fix-incus-socket-perms.sh" ''
     set -euxo pipefail
@@ -16,11 +22,12 @@ let
     find /run/incus -type d -exec chmod g+rwx {} +
   '';
 
-in {
-  environment.systemPackages = with pkgs; [ 
-    incus 
-    incus-compose 
-    skopeo 
+in
+{
+  environment.systemPackages = with pkgs; [
+    incus
+    incus-compose
+    skopeo
     debootstrap
     dpkg
     # Additional tools needed by debootstrap for proper Debian image building
@@ -31,7 +38,9 @@ in {
     util-linux
   ];
 
-  users.users."${user}" = { extraGroups = [ "incus-admin" ]; };
+  users.users."${user}" = {
+    extraGroups = [ "incus-admin" ];
+  };
 
   virtualisation.incus = {
     enable = true;
@@ -53,11 +62,15 @@ in {
           };
         }
       ];
-      storage_pools = [{
-        name = "default";
-        driver = "zfs";
-        config = { source = "tank/nerd/incus"; };
-      }];
+      storage_pools = [
+        {
+          name = "default";
+          driver = "zfs";
+          config = {
+            source = "tank/nerd/incus";
+          };
+        }
+      ];
     };
   };
 
@@ -126,8 +139,10 @@ in {
   systemd.tmpfiles.rules = [ "d /run/incus 0775 root incus-admin -" ];
 
   system.activationScripts.incusUserConfig =
-    let user = config.profile.user.name;
-    in {
+    let
+      user = config.profile.user.name;
+    in
+    {
       text = ''
         #!/usr/bin/env -S bash -euxo pipefail
 

@@ -1,8 +1,14 @@
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 with lib;
 let
   cfg = config.services.emacsDaemon;
-in {
+in
+{
   options = {
     services.emacsDaemon = {
 
@@ -21,7 +27,10 @@ in {
       enable = true;
       config = {
         Label = "org.nix-community.home.emacs-daemon";
-        ProgramArguments = [ "${pkgs.emacs}/bin/emacs" "--fg-daemon" ];
+        ProgramArguments = [
+          "${pkgs.emacs}/bin/emacs"
+          "--fg-daemon"
+        ];
         RunAtLoad = true;
         KeepAlive = true;
       };

@@ -1,10 +1,16 @@
-{ config, pkgs, lib, ... }:
+{
+  config,
+  pkgs,
+  lib,
+  ...
+}:
 
 with lib;
 
 let
   cfg = config.services.incus-headscale-gateway;
-in {
+in
+{
   options.services.incus-headscale-gateway = {
     enable = mkOption {
       type = types.bool;
@@ -32,8 +38,12 @@ in {
 
     advertiseRoutes = mkOption {
       type = types.listOf types.str;
-      default = [];
-      example = [ "100.64.0.0/10" "192.168.1.0/24" "192.168.5.0/24" ];
+      default = [ ];
+      example = [
+        "100.64.0.0/10"
+        "192.168.1.0/24"
+        "192.168.5.0/24"
+      ];
       description = "Routes to advertise to Tailscale (typically Headscale network + local networks)";
     };
 
@@ -89,12 +99,18 @@ in {
               RemainAfterExit = true;
             };
             script = let
-              routeFlags = ${if (cfg.advertiseRoutes != []) 
-                then ''"--advertise-routes=${concatStringsSep "," cfg.advertiseRoutes}"'' 
-                else ''""''};
-              tagFlags = ${if (cfg.tags != [])
-                then ''"--advertise-tags=${concatStringsSep "," (map (tag: "tag:" + tag) cfg.tags)}"''
-                else ''""''};
+              routeFlags = ${
+                if (cfg.advertiseRoutes != [ ]) then
+                  ''"--advertise-routes=${concatStringsSep "," cfg.advertiseRoutes}"''
+                else
+                  ''""''
+              };
+              tagFlags = ${
+                if (cfg.tags != [ ]) then
+                  ''"--advertise-tags=${concatStringsSep "," (map (tag: "tag:" + tag) cfg.tags)}"''
+                else
+                  ''""''
+              };
             in '''
               sleep 2
               
@@ -193,20 +209,20 @@ in {
       (pkgs.writeScriptBin "headscale-gateway-status" ''
         #!/usr/bin/env bash
         INSTANCE="${cfg.instanceName}"
-        
+
         if ! incus list -c n -f csv | grep -q "^$INSTANCE$"; then
           echo "Instance $INSTANCE does not exist"
           echo "Run: deploy-headscale-gateway"
           exit 1
         fi
-        
+
         echo "=== Headscale Gateway Status ==="
         incus exec "$INSTANCE" -- tailscale status
-        
+
         echo ""
         echo "=== Advertised Routes ==="
         incus exec "$INSTANCE" -- tailscale status --json | incus exec "$INSTANCE" -- jq -r '.Self.AllowedIPs[]'
-        
+
         echo ""
         echo "=== Instance Info ==="
         incus info "$INSTANCE"

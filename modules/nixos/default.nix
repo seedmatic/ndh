@@ -1,4 +1,10 @@
-{ config, pkgs, lib, containerRegistrySystem, ... }:
+{
+  config,
+  pkgs,
+  lib,
+  containerRegistrySystem,
+  ...
+}:
 
 let
   isX86_64 = pkgs.stdenv.hostPlatform.system == "x86_64-linux";
@@ -26,7 +32,8 @@ let
   # Generate a hostId (should be a 4-byte hex string, e.g. from `head -c4 /dev/urandom | od -A none -t x4`)
   cfgUser = config.profile.user;
   cfgUserName = cfgUser.name;
-in {
+in
+{
   imports = [
     ../common
     ./firewall.nix
@@ -53,18 +60,28 @@ in {
     #(import ./remote-nix-store.nix { inherit config pkgs lib; })
     #(import ./nix-snapshotter.nix { inherit config pkgs lib user; })
     # Explicitly disable GPG in NixOS - agent is forwarded from Darwin host
-    ({ config, ... }: {
-      hm.imports = config.hm.imports ++ [ ./enable-gpg-false.nix ];
-    })
+    (
+      { config, ... }:
+      {
+        hm.imports = config.hm.imports ++ [ ./enable-gpg-false.nix ];
+      }
+    )
   ];
 
   nix.settings = lib.mkMerge [
     {
       # Enable content-addressed derivations to reduce rebuild churn for identical outputs.
       # We also disable auto-optimise-store for faster iterative builds; run `nix-store --optimise` manually when idle.
-      experimental-features = [ "nix-command" "flakes" "ca-derivations" ];
+      experimental-features = [
+        "nix-command"
+        "flakes"
+        "ca-derivations"
+      ];
       auto-optimise-store = false; # Manual optimise recommended; improves build latency during development.
-      trusted-users = [ cfgUserName "root" ];
+      trusted-users = [
+        cfgUserName
+        "root"
+      ];
       sandbox = false;
       extra-sandbox-paths = [ "/dev/kvm" ];
 
@@ -76,13 +93,13 @@ in {
       # - "https://mirrors.tuna.tsinghua.edu.cn/nix-channels/store"  # Tsinghua University (China)
       # - "https://mirrors.ustc.edu.cn/nix-channels/store"           # USTC (China)
       # - "https://mirrors.bfsu.edu.cn/nix-channels/store"           # BFSU (China)
-      substituters = [ 
-        "https://aseipp-nix-cache.freetls.fastly.net"  # Fastly Cache v2 (tried first)
-        "https://nxmatic.cachix.org"  # nxmatic cache
+      substituters = [
+        "https://aseipp-nix-cache.freetls.fastly.net" # Fastly Cache v2 (tried first)
+        "https://nxmatic.cachix.org" # nxmatic cache
       ];
       trusted-public-keys = [
-        "cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY="  # Required for mirrors
-        "nxmatic.cachix.org-1:huMghYiwDpPa1PMXHXK4G1Dp4QOZjgsNqxcjf/AjuJ0="  # nxmatic key
+        "cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY=" # Required for mirrors
+        "nxmatic.cachix.org-1:huMghYiwDpPa1PMXHXK4G1Dp4QOZjgsNqxcjf/AjuJ0=" # nxmatic key
       ];
       # NOTE (@codebase): Rollback instructions:
       #   - Remove "ca-derivations" from experimental-features.
@@ -170,12 +187,17 @@ in {
         "errors=remount-ro"
       ];
     };
-  } // lib.mkIf (!config.disko.enableConfig) {
+  }
+  // lib.mkIf (!config.disko.enableConfig) {
     "/" = {
       device = "/dev/disk/by-label/nixos";
       autoResize = true;
       fsType = "ext4";
-      options = [ "noatime" "nodiratime" "discard" ];
+      options = [
+        "noatime"
+        "nodiratime"
+        "discard"
+      ];
     };
     "/tmp" = {
       device = "/var/tmp";
@@ -193,13 +215,19 @@ in {
   # Remove or comment out the old networking block to avoid conflicts:
   # networking = { ... }
 
-  environment.systemPackages = with pkgs; [ disko zfs binutils incus distrobuilder ];
-  
+  environment.systemPackages = with pkgs; [
+    disko
+    zfs
+    binutils
+    incus
+    distrobuilder
+  ];
+
   # Ensure security wrappers are in PATH for all processes
   environment.variables = {
     PATH = lib.mkBefore [ "/run/wrappers/bin" ];
   };
-  
+
   # Also set it in the shell init
   # environment.shellInit = ''
   #   export PATH="/run/wrappers/bin:$PATH"
@@ -234,10 +262,16 @@ in {
   # User configuration: derive flags based on UID threshold (<1000 => system user)
   user = lib.mkForce (
     let
-      base = builtins.removeAttrs cfgUser [ "gid" "group" "isNormalUser" "isSystemUser" ];
+      base = builtins.removeAttrs cfgUser [
+        "gid"
+        "group"
+        "isNormalUser"
+        "isSystemUser"
+      ];
       low = cfgUser.uid != null && cfgUser.uid < 1000;
     in
-    base // {
+    base
+    // {
       isNormalUser = !low;
       isSystemUser = low;
     }
@@ -245,7 +279,10 @@ in {
 
   users.users.${cfgUserName} = {
     group = cfgUserName;
-    extraGroups = [ "wheel" "ssh" ];
+    extraGroups = [
+      "wheel"
+      "ssh"
+    ];
     uid = lib.mkIf (cfgUser.uid != null) cfgUser.uid;
   };
   users.groups.${cfgUserName} = lib.mkIf (cfgUser.gid != null) { gid = cfgUser.gid; };

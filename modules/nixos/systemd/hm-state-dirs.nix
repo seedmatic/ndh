@@ -2,7 +2,7 @@
 let
   user = config.profile.user;
   userName = user.name;
-  homeDir = toString user.home;  # already resolved by profile logic
+  homeDir = toString user.home; # already resolved by profile logic
   # Fallback group: if user.group null, assume same as userName
   group = if (user.group or null) == null then userName else user.group;
   dirs = [
@@ -13,10 +13,10 @@ let
     "${homeDir}/.local/state/home-manager"
     "${homeDir}/.local/state/home-manager/gcroots"
   ];
-in {
+in
+{
   # Use tmpfiles to ensure directory tree exists with correct ownership/mode
-  systemd.tmpfiles.rules =
-    map (d: "d ${d} 0755 ${userName} ${group} -") dirs;
+  systemd.tmpfiles.rules = map (d: "d ${d} 0755 ${userName} ${group} -") dirs;
 
   # Extra activation script (idempotent) to guard against any race where tmpfiles runs late
   system.activationScripts.hmStateDirs = {
@@ -30,4 +30,3 @@ in {
     '';
   };
 }
-

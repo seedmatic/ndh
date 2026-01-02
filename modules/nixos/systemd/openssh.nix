@@ -1,14 +1,24 @@
-{ config, pkgs, lib, ... }:
+{
+  config,
+  pkgs,
+  lib,
+  ...
+}:
 
 let
   dollar = "$";
-  hostname = if config.networking.hostName != "" then config.networking.hostName else "nix-darwin-home";
+  hostname =
+    if config.networking.hostName != "" then config.networking.hostName else "nix-darwin-home";
   # Reuse existing host key generated/managed by NixOS (ed25519 preferred)
   hostKeyPath = "/etc/ssh/ssh_host_ed25519_key"; # runtime path consumed by sshd
   hostCertPath = null; # Add signed host cert later if desired
   caPublicKeyPath = "/etc/ssh/keys.d/mammoth_skate-ca.pub"; # ensure provisioning populates (activation below copies if present)
-  principalsScriptStore = pkgs.writeText "ssh-authorized-principals-command.sh" (builtins.readFile ../../common/ssh/authorized-principals-command.sh);
-  groupKeysScriptStore = pkgs.writeText "ssh-group-authorized-keys-command.sh" (builtins.readFile ../../common/ssh/ssh-group-authorized-keys.sh);
+  principalsScriptStore = pkgs.writeText "ssh-authorized-principals-command.sh" (
+    builtins.readFile ../../common/ssh/authorized-principals-command.sh
+  );
+  groupKeysScriptStore = pkgs.writeText "ssh-group-authorized-keys-command.sh" (
+    builtins.readFile ../../common/ssh/ssh-group-authorized-keys.sh
+  );
 in
 {
   imports = [ ../../common/openssh-policy.nix ];
@@ -30,20 +40,27 @@ in
       GatewayPorts = "clientspecified";
     };
     # Render shared daemon Include globs
-    extraConfig = (let
-      lines = builtins.map (g: "Include ${g}") config.opensshPolicy.includeDaemonGlobs;
-    in lib.concatStringsSep "\n" lines + "\n") + ''
-      # Enable remote forwarding of Unix domain sockets (for GPG agent forwarding)
-      StreamLocalBindUnlink yes
-      AllowStreamLocalForwarding yes
-    '';
+    extraConfig =
+      (
+        let
+          lines = builtins.map (g: "Include ${g}") config.opensshPolicy.includeDaemonGlobs;
+        in
+        lib.concatStringsSep "\n" lines + "\n"
+      )
+      + ''
+        # Enable remote forwarding of Unix domain sockets (for GPG agent forwarding)
+        StreamLocalBindUnlink yes
+        AllowStreamLocalForwarding yes
+      '';
   };
 
   # OpenSSH client configuration: allow includes for drop-ins under /etc/ssh/ssh_config.d
   programs.ssh = {
-    extraConfig = let
-      lines = builtins.map (g: "Include ${g}") config.opensshPolicy.includeClientGlobs;
-    in lib.concatStringsSep "\n" lines + "\n";
+    extraConfig =
+      let
+        lines = builtins.map (g: "Include ${g}") config.opensshPolicy.includeClientGlobs;
+      in
+      lib.concatStringsSep "\n" lines + "\n";
   };
 
   # Ensure the group authorized keys directory exists and create keys

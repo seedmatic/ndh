@@ -6,7 +6,12 @@
 # - Headscale gateway (Incus container - Tailscale bridge)
 # - Headscale client on Lima VM itself
 
-{ config, pkgs, lib, ... }:
+{
+  config,
+  pkgs,
+  lib,
+  ...
+}:
 
 {
   imports = [
@@ -21,7 +26,7 @@
     serverUrl = "http://192.168.5.10:8080";
     baseDomain = "home.arpa";
     listenAddr = "0.0.0.0:8080";
-    ipAddress = "192.168.5.10";  # Static IP for easy access
+    ipAddress = "192.168.5.10"; # Static IP for easy access
     profile = "default";
   };
 
@@ -31,20 +36,23 @@
     enable = true;
     instanceName = "headscale-gateway";
     hostname = "bioskop-hs-gateway";
-    
+
     # Path to Tailscale auth key (create this file manually)
     # Get auth key from: https://login.tailscale.com/admin/settings/keys
     tailscaleAuthKeyFile = "/run/secrets/tailscale-authkey";
-    
+
     # Routes to advertise to Tailscale network
     advertiseRoutes = [
-      "100.64.0.0/10"     # Headscale mesh network
-      "192.168.1.0/24"    # Home LAN (adjust to your network)
-      "192.168.5.0/24"    # Lima shared network
-      "10.80.16.0/20"     # bioskop RKE2 cluster subnet
+      "100.64.0.0/10" # Headscale mesh network
+      "192.168.1.0/24" # Home LAN (adjust to your network)
+      "192.168.5.0/24" # Lima shared network
+      "10.80.16.0/20" # bioskop RKE2 cluster subnet
     ];
-    
-    tags = [ "gateway" "bioskop" ];
+
+    tags = [
+      "gateway"
+      "bioskop"
+    ];
     profile = "default";
   };
 
@@ -53,7 +61,7 @@
     enable = true;
     serverUrl = "http://192.168.5.10:8080";
     enableSSH = true;
-    
+
     # Get auth key from Headscale server:
     # incus exec headscale-server -- headscale preauthkeys create --user <username> --reusable
     authKeyFile = "/run/secrets/headscale-authkey";
@@ -62,7 +70,7 @@
   # === Incus Configuration ===
   virtualisation.incus = {
     enable = true;
-    
+
     # Optional: Configure Incus networking
     # If you need custom network setup for containers
   };
@@ -70,21 +78,24 @@
   # === Networking ===
   networking = {
     hostName = "bioskop-nixos";
-    
+
     firewall = {
       enable = true;
-      
+
       # Trust Incus bridge
       trustedInterfaces = [ "incusbr0" ];
-      
+
       # Open ports for Headscale server access from Darwin host
       allowedTCPPorts = [
         # 8080  # If you want to access Headscale directly (not recommended, use via container)
       ];
     };
-    
+
     # Optional: Custom DNS servers
-    nameservers = [ "1.1.1.1" "1.0.0.1" ];
+    nameservers = [
+      "1.1.1.1"
+      "1.0.0.1"
+    ];
   };
 
   # === System Packages ===
@@ -101,22 +112,32 @@
 
   # === System Configuration ===
   system.stateVersion = "24.05";
-  
+
   nix.settings = {
-    experimental-features = [ "nix-command" "flakes" ];
-    trusted-users = [ "root" "@wheel" ];
+    experimental-features = [
+      "nix-command"
+      "flakes"
+    ];
+    trusted-users = [
+      "root"
+      "@wheel"
+    ];
   };
 
   # === User Configuration ===
   # Ensure your user has access to Incus
-  users.users.nxmatic = {  # Replace with your username
+  users.users.nxmatic = {
+    # Replace with your username
     isNormalUser = true;
-    extraGroups = [ "wheel" "incus-admin" ];
+    extraGroups = [
+      "wheel"
+      "incus-admin"
+    ];
   };
 }
 
 # === Deployment Steps ===
-# 
+#
 # 1. Save Tailscale auth key:
 #    sudo mkdir -p /run/secrets
 #    echo "tskey-auth-..." | sudo tee /run/secrets/tailscale-authkey

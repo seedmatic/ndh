@@ -1,10 +1,16 @@
-{ config, pkgs, lib, ... }:
+{
+  config,
+  pkgs,
+  lib,
+  ...
+}:
 
 with lib;
 
 let
   cfg = config.services.incus-tailscale-gateway;
-in {
+in
+{
   options.services.incus-tailscale-gateway = {
     enable = mkOption {
       type = types.bool;
@@ -32,8 +38,11 @@ in {
 
     routes = mkOption {
       type = types.listOf types.str;
-      default = [];
-      example = [ "192.168.5.0/24" "192.168.106.0/24" ];
+      default = [ ];
+      example = [
+        "192.168.5.0/24"
+        "192.168.106.0/24"
+      ];
       description = "Subnet routes to advertise (Lima VM subnets, Incus subnets)";
     };
 
@@ -95,13 +104,16 @@ in {
               RemainAfterExit = true;
             };
             script = let
-              routeFlags = ${if (cfg.routes != []) 
-                then ''"--advertise-routes=${concatStringsSep "," cfg.routes}"'' 
-                else ''""''};
+              routeFlags = ${
+                if (cfg.routes != [ ]) then ''"--advertise-routes=${concatStringsSep "," cfg.routes}"'' else ''""''
+              };
               exitNodeFlag = ${if cfg.exitNode then ''"--advertise-exit-node"'' else ''""''};
-              tagFlags = ${if (cfg.tags != [])
-                then ''"--advertise-tags=${concatStringsSep "," (map (tag: "tag:" + tag) cfg.tags)}"''
-                else ''""''};
+              tagFlags = ${
+                if (cfg.tags != [ ]) then
+                  ''"--advertise-tags=${concatStringsSep "," (map (tag: "tag:" + tag) cfg.tags)}"''
+                else
+                  ''""''
+              };
             in '''
               sleep 2
               
@@ -196,16 +208,16 @@ in {
       (pkgs.writeScriptBin "tailscale-gateway-status" ''
         #!/usr/bin/env bash
         INSTANCE="${cfg.instanceName}"
-        
+
         if ! incus list -c n -f csv | grep -q "^$INSTANCE$"; then
           echo "Instance $INSTANCE does not exist"
           echo "Run: deploy-tailscale-gateway"
           exit 1
         fi
-        
+
         echo "=== Tailscale Gateway Status ==="
         incus exec "$INSTANCE" -- tailscale status
-        
+
         echo ""
         echo "=== Instance Info ==="
         incus info "$INSTANCE"

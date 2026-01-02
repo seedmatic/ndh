@@ -1,12 +1,21 @@
-{ self, config, pkgs, ... }:
+{
+  self,
+  config,
+  pkgs,
+  ...
+}:
 let
   user = config.profile.user;
   userName = user.name;
   userDescription = user.description;
   userHome = user.home;
   userShell = user.shell;
-in {
-  imports = [ ./networking.nix ./cachix.nix ];
+in
+{
+  imports = [
+    ./networking.nix
+    ./cachix.nix
+  ];
 
   # Enable automatic backup of conflicting files during activation
   environment.etc.backup.enable = true;
@@ -15,18 +24,24 @@ in {
   # Use the canonical bundle path from pkgs.cacert and expose it at /etc/ssl/cert.pem for compatibility
   environment.etc."ssl/certs/ca-bundle.crt".source = "${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt";
   environment.etc."ssl/cert.pem".source = "${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt";
-  
+
   # Add darwin-rebuild to system packages for easy rebuilds
   environment.systemPackages = [ self.inputs.darwin.packages.${pkgs.system}.darwin-rebuild ];
 
   # Create symlink to host-specific flake for darwin-rebuild without --flake
   # Points to GitHub repo (develop branch) - no local clone needed
   # Use hostAlias if available (e.g., "alcide"), otherwise fall back to hostName
-  environment.etc."nix-darwin/flake.nix".source = 
-    let 
-      hostDir = if config.profile.host ? hostAlias && config.profile.host.hostAlias != null && config.profile.host.hostAlias != ""
-                then config.profile.host.hostAlias
-                else config.networking.hostName;
+  environment.etc."nix-darwin/flake.nix".source =
+    let
+      hostDir =
+        if
+          config.profile.host ? hostAlias
+          && config.profile.host.hostAlias != null
+          && config.profile.host.hostAlias != ""
+        then
+          config.profile.host.hostAlias
+        else
+          config.networking.hostName;
       # Create a flake wrapper that references GitHub
       flakeContent = ''
         {
@@ -35,7 +50,8 @@ in {
           outputs = { nix-darwin-home, ... }: nix-darwin-home.outputs;
         }
       '';
-    in pkgs.writeText "flake.nix" flakeContent;
+    in
+    pkgs.writeText "flake.nix" flakeContent;
 
   # auto manage nixbld users with nix darwin
   nix = {
@@ -69,7 +85,7 @@ in {
     # Configure NIX_PATH for legacy nix commands and <nixpkgs> imports
     nixPath = [
       "nixpkgs=${pkgs.path}"
-      "darwin=${self.inputs.darwin}"  
+      "darwin=${self.inputs.darwin}"
       "home-manager=${self.inputs.home-manager}"
     ];
 

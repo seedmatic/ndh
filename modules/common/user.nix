@@ -1,4 +1,11 @@
-{ self, inputs, config, pkgs, ... }: {
+{
+  self,
+  inputs,
+  config,
+  pkgs,
+  ...
+}:
+{
   user = {
 
     # programs.git = {

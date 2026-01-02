@@ -1,4 +1,4 @@
-{ pkgs, lib, ... }: 
+{ pkgs, lib, ... }:
 let
   nixpkgsConfigFile = ../../common/nixpkgs-config.nix;
 in

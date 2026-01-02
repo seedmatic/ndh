@@ -1,8 +1,14 @@
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 let
   preferredDnsString = builtins.concatStringsSep " " config.networking.dns;
-  preferredServicesLiteral =
-    lib.concatMapStringsSep " " (svc: lib.escapeShellArg svc) config.networking.knownNetworkServices;
+  preferredServicesLiteral = lib.concatMapStringsSep " " (
+    svc: lib.escapeShellArg svc
+  ) config.networking.knownNetworkServices;
   wallpaperImage = ../home-manager/pictures.d/WallPaper.jpg;
   networkPreferencesScript = pkgs.writeTextFile {
     name = "darwin-network-preferences.sh";
@@ -137,7 +143,8 @@ let
       } >>"$LOG" 2>&1
     '';
   };
-in {
+in
+{
   config = {
     system.defaults = {
       # login window settings
@@ -211,7 +218,9 @@ in {
       };
 
       # darwin updates
-      SoftwareUpdate = { AutomaticallyInstallMacOSUpdates = true; };
+      SoftwareUpdate = {
+        AutomaticallyInstallMacOSUpdates = true;
+      };
 
       # univesal access
       # should investigate if really needed, error with default write

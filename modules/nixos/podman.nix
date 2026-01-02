@@ -1,7 +1,12 @@
 # Podman engine configuration for Lima NixOS VM (@codebase)
 # This module configures Podman in the VM to act as a remote engine accessible from the host
 
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 
 let
   cfgUser = config.profile.user;
@@ -12,13 +17,13 @@ in
   virtualisation = {
     podman = {
       enable = true;
-      
+
       # Create a `docker` alias for podman, to use it as a drop-in replacement
       dockerCompat = true;
-      
+
       # Required for containers under podman-compose to be able to talk to each other.
       defaultNetwork.settings.dns_enabled = true;
-      
+
       # Enable auto-pruning of old images and containers
       autoPrune = {
         enable = true;
@@ -26,10 +31,10 @@ in
         flags = [ "--all" ];
       };
     };
-    
+
     containers = {
       enable = true;
-      
+
       # Container storage configuration optimized for ZFS
       storage.settings = {
         storage = {
@@ -37,17 +42,21 @@ in
           graphroot = "/var/lib/containers/storage";
           runroot = "/run/containers/storage";
         };
-        
+
         storage.options.zfs = {
           mountopt = "nodev";
           # Use ZFS dataset for container storage
           fsname = "tank/nerd/containers";
         };
       };
-      
+
       # Registry configuration
       registries = {
-        search = [ "docker.io" "quay.io" "registry.fedoraproject.org" ];
+        search = [
+          "docker.io"
+          "quay.io"
+          "registry.fedoraproject.org"
+        ];
         insecure = [ "host.containers.internal:5000" ];
         block = [ ];
       };
@@ -57,7 +66,10 @@ in
   # Create ZFS dataset for container storage
   systemd.services.podman-zfs-setup = {
     description = "Setup ZFS dataset for Podman container storage";
-    before = [ "podman.service" "containers-storage.service" ];
+    before = [
+      "podman.service"
+      "containers-storage.service"
+    ];
     wantedBy = [ "multi-user.target" ];
     serviceConfig = {
       Type = "oneshot";
@@ -71,7 +83,7 @@ in
         ${pkgs.coreutils}/bin/chown root:root /var/lib/containers
         ${pkgs.coreutils}/bin/chmod 755 /var/lib/containers
       fi
-      
+
       # Ensure run directory exists
       ${pkgs.coreutils}/bin/mkdir -p /run/containers/storage
       ${pkgs.coreutils}/bin/mkdir -p /run/podman
@@ -97,7 +109,10 @@ in
   # Open firewall for Podman API
   networking.firewall = {
     allowedTCPPorts = [ 2375 ];
-    trustedInterfaces = [ "podman0" "cni-podman0" ];
+    trustedInterfaces = [
+      "podman0"
+      "cni-podman0"
+    ];
   };
 
   # Add podman-related packages
@@ -121,15 +136,25 @@ in
 
   # User configuration for podman
   users.users.${cfgUserName} = {
-    extraGroups = [ "wheel" "users" "podman" ];
+    extraGroups = [
+      "wheel"
+      "users"
+      "podman"
+    ];
     subUidRanges = [
-      { startUid = 100000; count = 65536; }
+      {
+        startUid = 100000;
+        count = 65536;
+      }
     ];
     subGidRanges = [
-      { startGid = 100000; count = 65536; }
+      {
+        startGid = 100000;
+        count = 65536;
+      }
     ];
   };
 
   # Create podman group
-  users.groups.podman = {};
+  users.groups.podman = { };
 }

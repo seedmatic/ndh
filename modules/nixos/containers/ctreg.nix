@@ -1,9 +1,15 @@
-{ config, lib, containerRegistrySystem, ... }:
+{
+  config,
+  lib,
+  containerRegistrySystem,
+  ...
+}:
 
 let
   containerName = "ctreg";
   pkgs = containerRegistrySystem.pkgs;
-in {
+in
+{
   options.containerHost.ctreg = {
     enable = lib.mkOption {
       type = lib.types.bool;
@@ -35,38 +41,50 @@ in {
           isReadOnly = false;
         };
       };
-      allowedDevices = [{
-        node = "/dev/net/tun";
-        modifier = "rwm";
-      }];
-      config = { config, pkgs, ... }: {
-        imports = [
-          ./../container-host.nix
-          ./../caddy.nix
-          ./../docker-registry.nix
-          ./../tailscale.nix
-          ./../../nixos/networking-mammoth-skate.nix
-          ({ config, ... }: {
-            containerHost = {
-              enable = true;
-              hostName = containerRegistrySystem.config.limaHost.hostName;
-              guestName = containerName;
-            };
-            tailscale.tags = [ "nixos" "container" ];
-            networking = {
-              mammoth-skate.enable = true;
-              networkmanager = { unmanaged = [ "tailscale+" ]; };
-              firewall = {
-                enable = true;
-                trustedInterfaces = [ "tailscale0" ];
-                allowedUDPPorts = [ config.services.tailscale.port ];
-                allowedTCPPorts = [ 22 ];
-              };
-              defaultGateway = "10.233.0.1";
-            };
-          })
-        ];
-      };
+      allowedDevices = [
+        {
+          node = "/dev/net/tun";
+          modifier = "rwm";
+        }
+      ];
+      config =
+        { config, pkgs, ... }:
+        {
+          imports = [
+            ./../container-host.nix
+            ./../caddy.nix
+            ./../docker-registry.nix
+            ./../tailscale.nix
+            ./../../nixos/networking-mammoth-skate.nix
+            (
+              { config, ... }:
+              {
+                containerHost = {
+                  enable = true;
+                  hostName = containerRegistrySystem.config.limaHost.hostName;
+                  guestName = containerName;
+                };
+                tailscale.tags = [
+                  "nixos"
+                  "container"
+                ];
+                networking = {
+                  mammoth-skate.enable = true;
+                  networkmanager = {
+                    unmanaged = [ "tailscale+" ];
+                  };
+                  firewall = {
+                    enable = true;
+                    trustedInterfaces = [ "tailscale0" ];
+                    allowedUDPPorts = [ config.services.tailscale.port ];
+                    allowedTCPPorts = [ 22 ];
+                  };
+                  defaultGateway = "10.233.0.1";
+                };
+              }
+            )
+          ];
+        };
     };
   };
 }

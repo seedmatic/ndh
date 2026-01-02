@@ -1,4 +1,9 @@
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 
 # Teleport RBAC roles that map to your existing SSH principals
 # These can be imported into Teleport using: tctl create -f roles.yaml
@@ -25,7 +30,7 @@ let
         port_forwarding: true
         forward_agent: true
         ssh_file_copy: true
-    
+
     ---
     kind: role
     version: v7
@@ -43,7 +48,7 @@ let
         max_session_ttl: 8h
         port_forwarding: true
         forward_agent: true
-    
+
     ---
     kind: role
     version: v7
@@ -63,7 +68,7 @@ let
         port_forwarding: true
         forward_agent: true
         ssh_file_copy: true
-    
+
     ---
     kind: role
     version: v7
@@ -79,19 +84,19 @@ let
         max_session_ttl: 24h
         port_forwarding: true
   '';
-  
+
   # Script to import roles into Teleport
   importRolesScript = pkgs.writeShellScriptBin "teleport-import-roles" ''
     set -euxo pipefail
-    
+
     if ! command -v tctl &> /dev/null; then
       echo "Error: tctl not found. Make sure Teleport is installed." >&2
       exit 1
     fi
-    
+
     : "Importing Teleport roles"
     ${pkgs.teleport}/bin/tctl create -f ${rolesYaml}
-    
+
     echo ""
     echo "Roles imported successfully!"
     echo ""
@@ -101,7 +106,7 @@ let
 in
 {
   environment.systemPackages = [ importRolesScript ];
-  
+
   # Export the roles file for reference
   # Darwin and NixOS handle etc files differently
   environment.etc."teleport/roles.yaml" = lib.mkMerge [

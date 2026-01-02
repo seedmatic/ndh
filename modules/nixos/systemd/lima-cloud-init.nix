@@ -1,22 +1,46 @@
-{ config, modulesPath, pkgs, lib, ... }:
+{
+  config,
+  modulesPath,
+  pkgs,
+  lib,
+  ...
+}:
 
 let
   LIMA_CIDATA_MNT = "/mnt/lima-cidata";
   LIMA_CIDATA_DEV = "/dev/disk/by-label/cidata";
   limaCloudInit = pkgs.writeShellApplication {
     name = "lima-cloud-init";
-    runtimeInputs = with pkgs; [ bash coreutils util-linux shadow yq-go gnused gnugrep systemd findutils gawk iproute2 ];
+    runtimeInputs = with pkgs; [
+      bash
+      coreutils
+      util-linux
+      shadow
+      yq-go
+      gnused
+      gnugrep
+      systemd
+      findutils
+      gawk
+      iproute2
+    ];
     text = builtins.readFile ./lima-cloud-init.sh;
   };
-in {
+in
+{
   imports = [ ];
 
   systemd.services.lima-cloud-init = {
-    description =
-      "Reconfigure the system from lima-cloud-init userdata on startup";
+    description = "Reconfigure the system from lima-cloud-init userdata on startup";
 
-    after = [ "network-pre.target" "zfs-import.target" ];
-    before = [ "multi-user.target" "replay-virtiofs-udev.service" ];
+    after = [
+      "network-pre.target"
+      "zfs-import.target"
+    ];
+    before = [
+      "multi-user.target"
+      "replay-virtiofs-udev.service"
+    ];
     wantedBy = [ "multi-user.target" ];
 
     restartIfChanged = true;
@@ -32,7 +56,9 @@ in {
       ExecStartPre = [ "${pkgs.coreutils}/bin/mkdir -p /var/log" ];
     };
 
-    unitConfig = { X-StopOnRemoval = false; };
+    unitConfig = {
+      X-StopOnRemoval = false;
+    };
 
     # Create a wrapper script that logs to files as well
     environment = {
@@ -55,8 +81,14 @@ in {
     "${LIMA_CIDATA_MNT}" = {
       device = "${LIMA_CIDATA_DEV}";
       fsType = "auto";
-      options =
-        [ "ro" "mode=0700" "dmode=0700" "overriderockperm" "exec" "uid=0" ];
+      options = [
+        "ro"
+        "mode=0700"
+        "dmode=0700"
+        "overriderockperm"
+        "exec"
+        "uid=0"
+      ];
     };
   };
 
@@ -70,12 +102,22 @@ in {
     # Internal interfaces carrying container traffic
     # - vmlan0/vmlan1: Lima bridged interfaces (vmlan1 for Incus lan-br bridge)
     # - podman0: Podman bridge interface
-    internalInterfaces = [ "vmlan0" "vmlan1" "podman0" ];
+    internalInterfaces = [
+      "vmlan0"
+      "vmlan1"
+      "podman0"
+    ];
     # External interface with default route (primary Lima network interface)
-    externalInterface = "enp0s1";  # Adjust if your primary outbound interface differs
+    externalInterface = "enp0s1"; # Adjust if your primary outbound interface differs
   };
 
-  environment.systemPackages = with pkgs; [ bash sshfs fuse3 git openssh ];
+  environment.systemPackages = with pkgs; [
+    bash
+    sshfs
+    fuse3
+    git
+    openssh
+  ];
 
   boot.kernel.sysctl = {
     "kernel.unprivileged_userns_clone" = 1;

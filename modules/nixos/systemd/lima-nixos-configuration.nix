@@ -1,7 +1,14 @@
-{ config, pkgs, lib, ... }:
+{
+  config,
+  pkgs,
+  lib,
+  ...
+}:
 let
   # Build helper binary from repository script (no inline bash to avoid interpolation issues)
-  limaNixosConfigPkg = pkgs.writeShellScriptBin "lima-nixos-config" (builtins.readFile ./lima-nixos-config.sh);
+  limaNixosConfigPkg = pkgs.writeShellScriptBin "lima-nixos-config" (
+    builtins.readFile ./lima-nixos-config.sh
+  );
 
   # Whether we might need network (only if cloning is allowed at runtime). We can't know env at build
   # so we keep network dependency minimal; remove strict requires.
@@ -10,7 +17,8 @@ let
   baseAfter = [ "lima-cloud-init.service" ];
   afterList = baseAfter ++ lib.optional needsNetwork "network-online.target";
 
-in {
+in
+{
   systemd.services.lima-nixos-configuration = {
     description = "Link (preferred) or optionally clone NixOS configuration repo for Lima host";
 
@@ -21,7 +29,10 @@ in {
     # Don't hard require network or resolvconf anymore; cloning is fallback and user-controlled.
     wantedBy = [ "multi-user.target" ];
 
-    path = with pkgs; [ coreutils git ];
+    path = with pkgs; [
+      coreutils
+      git
+    ];
 
     serviceConfig = {
       Type = "oneshot";

@@ -1,7 +1,12 @@
 # Lima configuration generator (@codebase)
 # Generates lima.yaml with profile-aware user configuration
 
-{ config, pkgs, lib, ... }:
+{
+  config,
+  pkgs,
+  lib,
+  ...
+}:
 
 let
   inherit (lib) mkOption types;
@@ -9,19 +14,23 @@ let
   profileUser = config.profile.user.name;
   profileHome = config.profile.user.home;
   profileHost = config.profile.host;
-  profileHomeSymlinks = config.profile.homeSymlinks or [];
-  
+  profileHomeSymlinks = config.profile.homeSymlinks or [ ];
+
   # Derive effective hostname (use alias if set, otherwise hostName)
-  effectiveHostName = if (profileHost ? hostAlias && profileHost.hostAlias != null && profileHost.hostAlias != "")
-    then profileHost.hostAlias
-    else profileHost.hostName;
-  
+  effectiveHostName =
+    if (profileHost ? hostAlias && profileHost.hostAlias != null && profileHost.hostAlias != "") then
+      profileHost.hostAlias
+    else
+      profileHost.hostName;
+
   # Generate unique host byte from hostname hash (matches existing Lima VM)
   # Takes first byte of SHA256 hash of hostname
-  hostByteHex = let
-    hash = builtins.hashString "sha256" effectiveHostName;
-    # Take first 2 hex chars from hash - already in valid range 00-ff
-  in lib.strings.toLower (builtins.substring 0 2 hash);
+  hostByteHex =
+    let
+      hash = builtins.hashString "sha256" effectiveHostName;
+      # Take first 2 hex chars from hash - already in valid range 00-ff
+    in
+    lib.strings.toLower (builtins.substring 0 2 hash);
 
   cfg = config.lima.configGenerator;
 
@@ -43,15 +52,20 @@ let
     # Future hosts can be added here with different cluster IDs
   };
   # Enforce mapping: explicit error if host not in hostClusterMap (@codebase)
-  clusterId = let hn = effectiveHostName; in
-    if builtins.hasAttr hn hostClusterMap then hostClusterMap.${hn}
-    else builtins.throw "lima-config.nix: host '${hn}' missing in hostClusterMap; add an entry to define deterministic cluster subnet.";
+  clusterId =
+    let
+      hn = effectiveHostName;
+    in
+    if builtins.hasAttr hn hostClusterMap then
+      hostClusterMap.${hn}
+    else
+      builtins.throw "lima-config.nix: host '${hn}' missing in hostClusterMap; add an entry to define deterministic cluster subnet.";
   clusterBaseOctet = clusterId * 8; # 10.80.<octet>.0
   clusterBaseCidr = "10.80.${toString clusterBaseOctet}.0/21";
 
   # Name for deterministic cluster network (managed via networks.yaml) (@codebase)
   clusterNetworkName = "cluster${toString clusterId}";
-  limaNetworksOpts = config.lima.networks or {};
+  limaNetworksOpts = config.lima.networks or { };
 
   limaConfig = {
     cpus = 8;
@@ -65,10 +79,26 @@ let
     };
 
     additionalDisks = [
-      { name = "nerd-nixos-tank1"; format = false; label = "zpool=tank"; }
-      { name = "nerd-nixos-tank2"; format = false; label = "zpool=tank"; }
-      { name = "nerd-nixos-tank3"; format = false; label = "zpool=tank"; }
-      { name = "nerd-nixos-recover"; format = false; label = "zpool=recover"; }
+      {
+        name = "nerd-nixos-tank1";
+        format = false;
+        label = "zpool=tank";
+      }
+      {
+        name = "nerd-nixos-tank2";
+        format = false;
+        label = "zpool=tank";
+      }
+      {
+        name = "nerd-nixos-tank3";
+        format = false;
+        label = "zpool=tank";
+      }
+      {
+        name = "nerd-nixos-recover";
+        format = false;
+        label = "zpool=recover";
+      }
     ];
 
     hostResolver = {
@@ -89,9 +119,18 @@ let
     ];
 
     mounts = [
-      { location = "~"; writable = true; }
-      { location = "/var/lib/git"; writable = true; }
-      { location = "/tmp/lima"; writable = true; }
+      {
+        location = "~";
+        writable = true;
+      }
+      {
+        location = "/var/lib/git";
+        writable = true;
+      }
+      {
+        location = "/tmp/lima";
+        writable = true;
+      }
     ];
 
     mountType = mountType;
@@ -204,7 +243,7 @@ let
         macAddress = "10:66:6a:4c:${hostByteHex}:00";
       }
       {
-        # Bridged LAN access for VM direct connectivity 
+        # Bridged LAN access for VM direct connectivity
         # On bioskop: bridges to bond0 (en0+en8 aggregate)
         # On other hosts: bridges to en0 (single interface)
         # VM gets direct LAN access via this interface
@@ -217,57 +256,61 @@ let
   };
 
   limaActivationScript = pkgs.writeShellScript "lima-config-activation.sh" ''
-    set -euo pipefail
-    LOG="/var/log/darwin-lima-config.log"
-    {
-      echo "[limaConfig] start $(date) host=${effectiveHostName} user=${profileUser}"
+        set -euo pipefail
+        LOG="/var/log/darwin-lima-config.log"
+        {
+          echo "[limaConfig] start $(date) host=${effectiveHostName} user=${profileUser}"
 
-      : "Create Lima configuration directory in profile home"
-      mkdir -p "${profileHome}/.lima/nerd-nixos"
+          : "Create Lima configuration directory in profile home"
+          mkdir -p "${profileHome}/.lima/nerd-nixos"
 
-      : "Generate lima.yaml with profile user configuration using yq"
-      cat << 'EOF' | ${pkgs.yq-go}/bin/yq -P -p json -o yaml eval . - > "${profileHome}/.lima/nerd-nixos/lima.yaml"
-${lib.generators.toJSON {} limaConfig}
-EOF
-      chmod 0600 "${profileHome}/.lima/nerd-nixos/lima.yaml"
+          : "Generate lima.yaml with profile user configuration using yq"
+          cat << 'EOF' | ${pkgs.yq-go}/bin/yq -P -p json -o yaml eval . - > "${profileHome}/.lima/nerd-nixos/lima.yaml"
+    ${lib.generators.toJSON { } limaConfig}
+    EOF
+          chmod 0600 "${profileHome}/.lima/nerd-nixos/lima.yaml"
 
-      : "Create symlinks for alternate profile homes (homeSymlinks)"
-      ${lib.optionalString (profileHomeSymlinks != []) ''
-      # shellcheck disable=SC2043
-      for altUser in ${lib.concatStringsSep " " (map (u: ''"${u}"'') profileHomeSymlinks)}; do
-        altHome="/Users/$altUser"
-        if [ "$altHome" != "${profileHome}" ]; then
-          mkdir -p "$altHome/.lima/nerd-nixos"
+          : "Create symlinks for alternate profile homes (homeSymlinks)"
+          ${lib.optionalString (profileHomeSymlinks != [ ]) ''
+            # shellcheck disable=SC2043
+            for altUser in ${lib.concatStringsSep " " (map (u: ''"${u}"'') profileHomeSymlinks)}; do
+              altHome="/Users/$altUser"
+              if [ "$altHome" != "${profileHome}" ]; then
+                mkdir -p "$altHome/.lima/nerd-nixos"
+                if [ -f "${profileHome}/.lima/nerd-nixos/lima.yaml" ]; then
+                  ln -sf "${profileHome}/.lima/nerd-nixos/lima.yaml" "$altHome/.lima/nerd-nixos/lima.yaml" || true
+                fi
+              fi
+            done
+          ''}
+
+          : "Verify output file"
           if [ -f "${profileHome}/.lima/nerd-nixos/lima.yaml" ]; then
-            ln -sf "${profileHome}/.lima/nerd-nixos/lima.yaml" "$altHome/.lima/nerd-nixos/lima.yaml" || true
+            echo "[limaConfig] generated size=$(wc -c < \"${profileHome}/.lima/nerd-nixos/lima.yaml\")"
+            grep -E 'gateway|clusterId' "${profileHome}/.lima/nerd-nixos/lima.yaml" || true
+            touch /var/db/lima-config-generated
+          else
+            echo "[limaConfig][ERROR] lima.yaml missing after generation attempt"
           fi
-        fi
-      done
-      ''}
-
-      : "Verify output file"
-      if [ -f "${profileHome}/.lima/nerd-nixos/lima.yaml" ]; then
-        echo "[limaConfig] generated size=$(wc -c < \"${profileHome}/.lima/nerd-nixos/lima.yaml\")"
-        grep -E 'gateway|clusterId' "${profileHome}/.lima/nerd-nixos/lima.yaml" || true
-        touch /var/db/lima-config-generated
-      else
-        echo "[limaConfig][ERROR] lima.yaml missing after generation attempt"
-      fi
-      echo "[limaConfig] end $(date)"
-    } >>"$LOG" 2>&1
+          echo "[limaConfig] end $(date)"
+        } >>"$LOG" 2>&1
   '';
 
-in {
+in
+{
   options.lima.configGenerator = {
     vmType = mkOption {
-      type = types.enum [ "vz" "qemu" ];
+      type = types.enum [
+        "vz"
+        "qemu"
+      ];
       default = "vz";
       description = ''
         Select the virtualization backend for the generated Lima instance.
         "vz" uses Apple Virtualization.framework, "qemu" uses the QEMU driver.
       '';
     };
-    
+
     enableIncus = mkOption {
       type = types.bool;
       default = false;
@@ -276,11 +319,11 @@ in {
         When true, the VM will include Incus for running containers.
       '';
     };
-   };
+  };
   # Internal, fully rendered configuration exposed for external tooling / scripts (@codebase)
   options.lima.computedConfig = mkOption {
     type = types.anything; # full limaConfig structure (@codebase)
-    internal = true;       # hide from public option listings
+    internal = true; # hide from public option listings
     description = ''
       Fully rendered Lima configuration derived from module inputs. Internal use only.
       Prefer querying this for downstream tooling instead of re-deriving structure.
@@ -317,7 +360,7 @@ in {
   config = {
     # Add lima to system packages
     environment.systemPackages = [ pkgs.lima ];
-    
+
     # Dedicated activation script using postActivation which is actually executed
     # Use mkAfter to run after other postActivation scripts (@codebase)
     system.activationScripts.postActivation.text = lib.mkAfter ''

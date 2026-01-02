@@ -38,16 +38,33 @@
     incus-compose.follows = "flake-commons/incus-compose";
   };
 
-  outputs = { self, darwin, devenv, flake-utils, nixos-generators, home-manager
-    , disko, socket-vmnet, impermanence, nixpkgs, ... }@inputs:
+  outputs =
+    {
+      self,
+      darwin,
+      devenv,
+      flake-utils,
+      nixos-generators,
+      home-manager,
+      disko,
+      socket-vmnet,
+      impermanence,
+      nixpkgs,
+      ...
+    }@inputs:
     let
       inherit (flake-utils.lib) eachSystemMap;
       nixpkgsConfig = import ./modules/common/nixpkgs-config.nix;
-      defaultSystems = [ "aarch64-darwin" "x86_64-darwin" "x86_64-linux" ];
+      defaultSystems = [
+        "aarch64-darwin"
+        "x86_64-darwin"
+        "x86_64-linux"
+      ];
 
       forAllSystems = nixpkgs.lib.genAttrs defaultSystems;
 
-      pkgsFor = { system, ... }:
+      pkgsFor =
+        { system, ... }:
         let
           basePackages = import nixpkgs {
             inherit system;
@@ -57,70 +74,102 @@
             };
           };
 
-          vmnetOverlay = final: prev:
+          vmnetOverlay =
+            final: prev:
             if inputs.socket-vmnet.packages ? ${system} then
               inputs.socket-vmnet.packages.${system}
             else
               throw "Socket VMNet packages not defined for ${system}";
 
-          ripvcsOverlay = final: prev:
+          ripvcsOverlay =
+            final: prev:
             if inputs.ripvcs.packages ? ${system} then
               inputs.ripvcs.packages.${system}
             else
               throw "Ripvcs packages not defined for ${system}";
 
-          overlays = builtins.map (name:
-            let overlay = self.overlays.${name} inputs;
-            in final: prev: overlay final prev)
-            (builtins.attrNames self.overlays);
+          overlays = builtins.map (
+            name:
+            let
+              overlay = self.overlays.${name} inputs;
+            in
+            final: prev: overlay final prev
+          ) (builtins.attrNames self.overlays);
 
-          applyOverlays = final: prev:
-            builtins.foldl' (acc: overlay: (acc // (overlay final prev))) { }
-            overlays;
-        in basePackages.extend (final: prev:
-          (vmnetOverlay final prev) // 
-          (ripvcsOverlay final prev) // (applyOverlays final prev));
+          applyOverlays =
+            final: prev: builtins.foldl' (acc: overlay: (acc // (overlay final prev))) { } overlays;
+        in
+        basePackages.extend (
+          final: prev: (vmnetOverlay final prev) // (ripvcsOverlay final prev) // (applyOverlays final prev)
+        );
       pkgsForDarwin = (pkgsFor { system = "aarch64-darwin"; });
       pkgsForLinux = (pkgsFor { system = "aarch64-linux"; });
 
-      mkBaseModulesFor = { hostProfile, system }:
-        [{
-          limaHost.hostName = if (hostProfile ? hostAlias && hostProfile.hostAlias != null && hostProfile.hostAlias != "") then
-            hostProfile.hostAlias
+      mkBaseModulesFor =
+        { hostProfile, system }:
+        [
+          {
+            limaHost.hostName =
+              if (hostProfile ? hostAlias && hostProfile.hostAlias != null && hostProfile.hostAlias != "") then
+                hostProfile.hostAlias
+              else
+                hostProfile.hostName;
+          }
+        ]
+        ++ (
+          if system == "nixos" then
+            [
+              disko.nixosModules.disko
+              home-manager.nixosModules.home-manager
+              impermanence.nixosModules.impermanence
+              ./modules/nixos
+            ]
+          else if system == "darwin" then
+            [
+              home-manager.darwinModules.home-manager
+              # Only include impermanence if darwinModules exists
+            ]
+            ++ (if impermanence ? darwinModules then [ impermanence.darwinModules.impermanence ] else [ ])
+            ++ [ ./modules/darwin ]
           else
-            hostProfile.hostName;
-        }] ++ (if system == "nixos" then [
-          disko.nixosModules.disko
-          home-manager.nixosModules.home-manager
-          impermanence.nixosModules.impermanence
-          ./modules/nixos
-        ] else if system == "darwin" then
-          [
-            home-manager.darwinModules.home-manager
-            # Only include impermanence if darwinModules exists
-          ] ++ (if impermanence ? darwinModules then
-            [ impermanence.darwinModules.impermanence ]
-          else
-            [ ]) ++ [ ./modules/darwin ]
-        else
-          [ ]);
+            [ ]
+        );
       mkModulesFor =
-        { hostProfile, system, preModules ? [ ], extraModules ? [ ], ... }:
-        let baseModules = mkBaseModulesFor { inherit hostProfile system; };
-        in preModules ++ baseModules ++ extraModules;
-      mkSpecialArgs = { modules, extraArgs ? { }, ... }:
+        {
+          hostProfile,
+          system,
+          preModules ? [ ],
+          extraModules ? [ ],
+          ...
+        }:
         let
-          lib = inputs.nixpkgs.lib.extend (_: _:
-            inputs.home-manager.lib // {
+          baseModules = mkBaseModulesFor { inherit hostProfile system; };
+        in
+        preModules ++ baseModules ++ extraModules;
+      mkSpecialArgs =
+        {
+          modules,
+          extraArgs ? { },
+          ...
+        }:
+        let
+          lib = inputs.nixpkgs.lib.extend (
+            _: _:
+            inputs.home-manager.lib
+            // {
               # Any additional lib functions you want to include
-            });
-        in {
+            }
+          );
+        in
+        {
           inherit self lib;
           _modules = modules;
           nixpkgsInput = nixpkgs;
-        } // extraArgs;
+        }
+        // extraArgs;
 
-      mkContainerRegistryConfig = { hostProfile, ... }:
+      mkContainerRegistryConfig =
+        { hostProfile, ... }:
         nixpkgs.lib.nixosSystem {
           system = "aarch64-linux";
           pkgs = pkgsForLinux;
@@ -130,51 +179,86 @@
             ./modules/nixos/caddy.nix
             ./modules/nixos/docker-registry.nix
             ./modules/nixos/tailscale.nix
-            ({ config, ... }: {
-              limaHost.hostName = hostProfile.hostName;
-              containerHost.guestName = "ctreg";
-            })
+            (
+              { config, ... }:
+              {
+                limaHost.hostName = hostProfile.hostName;
+                containerHost.guestName = "ctreg";
+              }
+            )
           ];
         };
-      mkDarwinConfig = { hostProfile, profileModule }:
+      mkDarwinConfig =
+        { hostProfile, profileModule }:
         let
-          preModules =
-            [
-              profileModule
-              # socket-vmnet.darwinModules.socket_vmnet
-              ({ lib, ... }: { lima.configGenerator.vmType = "vz"; })
-            ];
+          preModules = [
+            profileModule
+            # socket-vmnet.darwinModules.socket_vmnet
+            (
+              { lib, ... }:
+              {
+                lima.configGenerator.vmType = "vz";
+              }
+            )
+          ];
           modules = mkModulesFor {
             inherit hostProfile preModules;
             system = "darwin";
           };
           specialArgs = mkSpecialArgs { inherit modules; };
-        in inputs.darwin.lib.darwinSystem {
+        in
+        inputs.darwin.lib.darwinSystem {
           inherit specialArgs modules;
           system = "aarch64-darwin";
-          pkgs = pkgsForDarwin.extend (final: prev: {
-            chromium-bin =
-              inputs.chromium-bin.packages."aarch64-darwin".default;
-          });
+          pkgs = pkgsForDarwin.extend (
+            final: prev: {
+              chromium-bin = inputs.chromium-bin.packages."aarch64-darwin".default;
+            }
+          );
         };
-      mkDarwinOutputs = { hostProfile, profileModule, ... }:
+      mkDarwinOutputs =
+        { hostProfile, profileModule, ... }:
         let
-          darwinConfiguration =
-            mkDarwinConfig { inherit hostProfile profileModule; };
+          darwinConfiguration = mkDarwinConfig { inherit hostProfile profileModule; };
           darwinConfigurations = {
             "${hostProfile.hostName}" = darwinConfiguration;
-          } // (if (hostProfile ? hostAlias && hostProfile.hostAlias != null && hostProfile.hostAlias != "") then {
-            "${hostProfile.hostAlias}" = darwinConfiguration;
-          } else { });
-        in { inherit darwinConfigurations; };
+          }
+          // (
+            if (hostProfile ? hostAlias && hostProfile.hostAlias != null && hostProfile.hostAlias != "") then
+              {
+                "${hostProfile.hostAlias}" = darwinConfiguration;
+              }
+            else
+              { }
+          );
+        in
+        {
+          inherit darwinConfigurations;
+        };
 
-      mkNixosConfig = { hostProfile, profileModule, zfsOverlays
-        , containerRegistryConfiguration }:
+      mkNixosConfig =
+        {
+          hostProfile,
+          profileModule,
+          zfsOverlays,
+          containerRegistryConfiguration,
+        }:
         let
-          zfsOverlaysModule = { ... }: { zfsOverlays.override = zfsOverlays; };
-          nixosTailscaleTagModule = { ... }: { tailscale.tags = [ "nixos" ]; };
-          preModules =
-            [ profileModule zfsOverlaysModule nixosTailscaleTagModule ];
+          zfsOverlaysModule =
+            { ... }:
+            {
+              zfsOverlays.override = zfsOverlays;
+            };
+          nixosTailscaleTagModule =
+            { ... }:
+            {
+              tailscale.tags = [ "nixos" ];
+            };
+          preModules = [
+            profileModule
+            zfsOverlaysModule
+            nixosTailscaleTagModule
+          ];
           modules = mkModulesFor {
             inherit hostProfile preModules;
             system = "nixos";
@@ -191,9 +275,14 @@
             system = "aarch64-linux";
             pkgs = pkgsForLinux;
           };
-        in nixosSystem;
+        in
+        nixosSystem;
       mkNixosOutputs =
-        { hostProfile, profileModule, containerRegistryConfiguration }:
+        {
+          hostProfile,
+          profileModule,
+          containerRegistryConfiguration,
+        }:
         let
           ext4 = mkNixosConfig {
             inherit hostProfile profileModule containerRegistryConfiguration;
@@ -216,59 +305,81 @@
             hint = "nix path-info -Sh ${systemPath}";
             note = "closure size should be less than diskSizeBytes";
           };
-          mainName = if (hostProfile ? hostAlias && hostProfile.hostAlias != null && hostProfile.hostAlias != "") then
-            hostProfile.hostAlias
-          else
-            hostProfile.hostName;
-        in {
+          mainName =
+            if (hostProfile ? hostAlias && hostProfile.hostAlias != null && hostProfile.hostAlias != "") then
+              hostProfile.hostAlias
+            else
+              hostProfile.hostName;
+        in
+        {
           inherit diskSizeHint;
           nixosConfigurations = {
             inherit ext4 zfs;
             "${mainName}-nixos" = zfs;
           };
           diskImage = nixos-generators.nixosGenerate {
-            modules = [{
-              nix.registry.nixpkgs.flake = nixpkgs;
-              virtualisation.diskSize = diskSizeMiB;
-            }] ++ ext4._module.specialArgs._modules;
+            modules = [
+              {
+                nix.registry.nixpkgs.flake = nixpkgs;
+                virtualisation.diskSize = diskSizeMiB;
+              }
+            ]
+            ++ ext4._module.specialArgs._modules;
             specialArgs = ext4._module.specialArgs;
             system = "aarch64-linux";
             pkgs = pkgsForLinux;
             format = "raw-efi";
           };
         };
-    in {
-      formatter = forAllSystems (system:
+    in
+    {
+      formatter = forAllSystems (
+        system:
         let
           pkgs = pkgsFor { inherit system; };
-        in pkgs.nixpkgs-fmt);
+          treefmtConfig = import ./treefmt.nix {
+            inherit pkgs;
+            projectRootFile = ".git/config";
+          };
+        in
+        inputs.treefmt-nix.lib.mkWrapper pkgs treefmtConfig
+      );
 
-      mkHostOutputs = { hostProfile, profileModule, darwinExtraModules ? [], nixosExtraModules ? [], ... }:
+      mkHostOutputs =
+        {
+          hostProfile,
+          profileModule,
+          darwinExtraModules ? [ ],
+          nixosExtraModules ? [ ],
+          ...
+        }:
         let
-          mainName = if (hostProfile ? hostAlias && hostProfile.hostAlias != null && hostProfile.hostAlias != "") then
-            hostProfile.hostAlias
-          else
-            hostProfile.hostName;
-          darwinOutputs =
-            mkDarwinOutputs { 
-              inherit hostProfile; 
-              profileModule = { ... }: {
+          mainName =
+            if (hostProfile ? hostAlias && hostProfile.hostAlias != null && hostProfile.hostAlias != "") then
+              hostProfile.hostAlias
+            else
+              hostProfile.hostName;
+          darwinOutputs = mkDarwinOutputs {
+            inherit hostProfile;
+            profileModule =
+              { ... }:
+              {
                 imports = [ profileModule ] ++ darwinExtraModules;
               };
-            };
+          };
           darwinConfiguration = darwinOutputs.darwinConfigurations.${mainName};
 
-          containerRegistryConfiguration =
-            mkContainerRegistryConfig { inherit hostProfile; };
+          containerRegistryConfiguration = mkContainerRegistryConfig { inherit hostProfile; };
 
           nixosOutputs = mkNixosOutputs {
             inherit hostProfile containerRegistryConfiguration;
-            profileModule = { ... }: {
-              imports = [ profileModule ] ++ nixosExtraModules;
-            };
+            profileModule =
+              { ... }:
+              {
+                imports = [ profileModule ] ++ nixosExtraModules;
+              };
           };
-          nixosConfiguration =
-            nixosOutputs.nixosConfigurations."${mainName}-nixos";
+          nixosConfiguration = nixosOutputs.nixosConfigurations."${mainName}-nixos";
           nixosDiskImage = nixosOutputs.diskImage;
           nixosDiskSizeHint = nixosOutputs.diskSizeHint;
 
@@ -281,9 +392,17 @@
               # Optionally, set username and homeDirectory here if needed
             };
           };
-        in nixosOutputs // darwinOutputs // {
-          inherit darwinConfiguration nixosConfiguration nixosDiskImage
-            nixosDiskSizeHint homeManagerConfigurations;
+        in
+        nixosOutputs
+        // darwinOutputs
+        // {
+          inherit
+            darwinConfiguration
+            nixosConfiguration
+            nixosDiskImage
+            nixosDiskSizeHint
+            homeManagerConfigurations
+            ;
           pkgs = {
             darwin = pkgsForDarwin;
             linux = pkgsForLinux;
@@ -325,22 +444,31 @@
       };
 
       # Development shells (add docs environment with diagram support)
-      devShells = flake-utils.lib.eachDefaultSystem (system: let
-        pkgs = import nixpkgs { inherit system; config = { allowUnfree = true; }; };
-      in {
-        docs = pkgs.mkShell {
-          packages = with pkgs; [
-            asciidoctor-with-extensions
-            plantuml
-            graphviz
-            # Optional: dot for Graphviz is already in graphviz
-          ];
-          shellHook = ''
-            echo "Docs dev shell active (system: ${system})."
-            echo "Run: modules/nixos/incus-rke2-cluster/bin/generate-docs.sh"
-          '';
-        };
-      });
+      devShells = flake-utils.lib.eachDefaultSystem (
+        system:
+        let
+          pkgs = import nixpkgs {
+            inherit system;
+            config = {
+              allowUnfree = true;
+            };
+          };
+        in
+        {
+          docs = pkgs.mkShell {
+            packages = with pkgs; [
+              asciidoctor-with-extensions
+              plantuml
+              graphviz
+              # Optional: dot for Graphviz is already in graphviz
+            ];
+            shellHook = ''
+              echo "Docs dev shell active (system: ${system})."
+              echo "Run: modules/nixos/incus-rke2-cluster/bin/generate-docs.sh"
+            '';
+          };
+        }
+      );
 
     };
 }

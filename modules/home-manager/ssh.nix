@@ -1,4 +1,5 @@
-{ config, pkgs, ... }: {
+{ config, pkgs, ... }:
+{
   programs.ssh = {
     enable = true;
     includes = [ "config.d/*" ];
@@ -7,7 +8,7 @@
     controlMaster = "auto";
     controlPersist = "yes";
     controlPath = "${config.home.homeDirectory}/.ssh/master-%C";
-    
+
     # GPG agent forwarding for Lima VMs
     # Forward Darwin's GPG agent to the NixOS VM
     matchBlocks = {

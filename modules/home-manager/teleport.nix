@@ -1,4 +1,5 @@
-{ config, pkgs, ... }: let
+{ config, pkgs, ... }:
+let
   nodeName = "pfouh";
   homeDir = "${config.home.homeDirectory}";
   dataDir = "${homeDir}/.local/var/teleport";
@@ -57,4 +58,3 @@ in
   };
 
 }
-

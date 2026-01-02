@@ -16,7 +16,7 @@ get_subtree_info() {
   local info=${SUBTREES[$name]}
   if [ -z "$info" ]; then
     echo "Error: Unknown subtree '$name'"
-    echo "Available subtrees: ${!SUBTREES[@]}"
+    printf 'Available subtrees: %s\n' "${!SUBTREES[@]}"
     exit 1
   fi
   IFS=':' read -r prefix remote branch <<< "$info"
@@ -45,7 +45,7 @@ case "${1:-help}" in
   push)
     if [ "$SUBTREE_NAME" = "all" ]; then
       echo "Error: Please specify a subtree name for push (safety measure)"
-      echo "Available: ${!SUBTREES[@]}"
+      printf 'Available: %s\n' "${!SUBTREES[@]}"
       exit 1
     fi
     get_subtree_info "$SUBTREE_NAME"

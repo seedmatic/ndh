@@ -1,13 +1,17 @@
-{ config, ... }: 
+{ config, ... }:
 let
   # Use vmlan0 interface in Lima guests, otherwise fall back to enp0s1
   primaryInterface = if config.limaHost.isGuest then "vmlan0" else "enp0s1";
-in {
+in
+{
   services.dnsmasq = {
     enable = false;
     settings = {
       interface = [ primaryInterface ];
-      except-interface = [ "internalbr0" "externalbr0" ];
+      except-interface = [
+        "internalbr0"
+        "externalbr0"
+      ];
     };
   };
 

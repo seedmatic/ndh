@@ -1,6 +1,11 @@
 # NixOS module to enable and configure code-server
 # @codebase
-{ config, pkgs, lib, ... }:
+{
+  config,
+  pkgs,
+  lib,
+  ...
+}:
 {
   options.code-server = {
     port = lib.mkOption {
@@ -14,7 +19,7 @@
     services.code-server = {
       enable = false;
       port = config.code-server.port;
-      host= "0.0.0.0";
+      host = "0.0.0.0";
     };
   };
 }

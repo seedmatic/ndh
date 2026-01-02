@@ -1,11 +1,17 @@
-{ config, lib, pkgs, self, userMapping, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  self,
+  userMapping,
+  ...
+}:
 let
 
   cfg = config.profile;
   user = cfg.user;
   userName = user.name;
-  userHome =
-    "${if pkgs.stdenvNoCC.isDarwin then "/Users" else "/home"}/${userName}";
+  userHome = "${if pkgs.stdenvNoCC.isDarwin then "/Users" else "/home"}/${userName}";
 
   # Define systemPackages separately
   systemPackages = import ./system-packages.nix {
@@ -14,7 +20,8 @@ let
     inherit (config) programs environment;
   };
 
-in {
+in
+{
 
   imports = [
     ../../profiles/common.nix
@@ -29,7 +36,9 @@ in {
 
   programs = {
 
-    bash = { completion.enable = true; };
+    bash = {
+      completion.enable = true;
+    };
 
     zsh = {
       enable = true;
@@ -39,7 +48,15 @@ in {
   };
 
   # bootstrap home manager using system config
-  hm = import ../home-manager { inherit config pkgs lib user self; };
+  hm = import ../home-manager {
+    inherit
+      config
+      pkgs
+      lib
+      user
+      self
+      ;
+  };
 
   # Enable shell tracing early for easier debugging of activation scripts
   # Use extraActivation which runs early in the activation sequence
@@ -71,16 +88,28 @@ in {
 
     inherit systemPackages;
 
-    variables = { XDG_RUNTIME_DIR = "${userHome}/.xdg"; };
+    variables = {
+      XDG_RUNTIME_DIR = "${userHome}/.xdg";
+    };
 
     # list of acceptable shells in /etc/shells
-    shells = with pkgs; [ bash zsh fish ];
+    shells = with pkgs; [
+      bash
+      zsh
+      fish
+    ];
   };
 
-  services.tailscale = { enable = true; };
+  services.tailscale = {
+    enable = true;
+  };
 
-  fonts = { packages = with pkgs; [ powerline-fonts ]; };
+  fonts = {
+    packages = with pkgs; [ powerline-fonts ];
+  };
 
-  limaHost = { guestName = "nixos"; };
+  limaHost = {
+    guestName = "nixos";
+  };
 
 }

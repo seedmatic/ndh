@@ -1,7 +1,17 @@
-{ config, pkgs, lib, ... }:
+{
+  config,
+  pkgs,
+  lib,
+  ...
+}:
 
 let
-  inherit (lib) mkEnableOption mkIf mkOption types;
+  inherit (lib)
+    mkEnableOption
+    mkIf
+    mkOption
+    types
+    ;
   cfg = config.ssh-add-keys;
   homeDir = config.home.homeDirectory;
   keysFileDefault = "${homeDir}/.ssh/keys.yaml";
@@ -30,7 +40,8 @@ in
         Label = "org.nix-community.home.ssh-add-keys";
         Debug = true;
         ProgramArguments = [
-          "${homeDir}/.ssh/ssh-add-keys.sh" "${cfg.keyFile}"
+          "${homeDir}/.ssh/ssh-add-keys.sh"
+          "${cfg.keyFile}"
         ];
         RunAtLoad = true;
         KeepAlive = false;

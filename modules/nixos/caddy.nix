@@ -1,8 +1,14 @@
-{ config, pkgs, ... }: {
+{ config, pkgs, ... }:
+{
   config = {
-    networking.firewall.allowedTCPPorts = [ 80 443 ];
+    networking.firewall.allowedTCPPorts = [
+      80
+      443
+    ];
 
-    systemd.services.tailscaled.environment = { TS_PERMIT_CERT_UID = "caddy"; };
+    systemd.services.tailscaled.environment = {
+      TS_PERMIT_CERT_UID = "caddy";
+    };
 
     services.caddy = {
       enable = true;

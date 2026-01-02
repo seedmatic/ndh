@@ -1,10 +1,16 @@
-{ config, pkgs, lib, ... }:
+{
+  config,
+  pkgs,
+  lib,
+  ...
+}:
 
 with lib;
 
 let
   cfg = config.services.incus-headscale-server;
-in {
+in
+{
   options.services.incus-headscale-server = {
     enable = mkOption {
       type = types.bool;
@@ -217,25 +223,25 @@ in {
       (pkgs.writeScriptBin "headscale-server-status" ''
         #!/usr/bin/env bash
         INSTANCE="${cfg.instanceName}"
-        
+
         if ! incus list -c n -f csv | grep -q "^$INSTANCE$"; then
           echo "Instance $INSTANCE does not exist"
           echo "Run: deploy-headscale-server"
           exit 1
         fi
-        
+
         echo "=== Headscale Server Status ==="
         echo "Instance: $INSTANCE"
         echo "URL: ${cfg.serverUrl}"
         echo ""
-        
+
         echo "=== Registered Nodes ==="
         incus exec "$INSTANCE" -- headscale nodes list
-        
+
         echo ""
         echo "=== Users ==="
         incus exec "$INSTANCE" -- headscale users list
-        
+
         echo ""
         echo "=== Routes ==="
         incus exec "$INSTANCE" -- headscale routes list

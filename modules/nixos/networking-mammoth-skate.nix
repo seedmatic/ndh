@@ -1,24 +1,32 @@
-{ config, lib, ... }: {
+{ config, lib, ... }:
+{
   imports = [ ../common/dns-servers.nix ];
 
   options.networking.mammoth-skate = {
     enable = lib.mkOption {
       type = lib.types.bool;
       default = false;
-      description =
-        "Enable networking configuration for the mammoth-skate tailnet.";
+      description = "Enable networking configuration for the mammoth-skate tailnet.";
     };
   };
 
   config = lib.mkIf config.networking.mammoth-skate.enable {
     networking = {
-      enableIPv6 = true;  # Explicitly enable IPv6
+      enableIPv6 = true; # Explicitly enable IPv6
       firewall = {
         enable = true;
-        allowedTCPPorts = [ 
-          53 22 2222 80 443  # DNS, SSH, HTTP/HTTPS
+        allowedTCPPorts = [
+          53
+          22
+          2222
+          80
+          443 # DNS, SSH, HTTP/HTTPS
         ];
-        allowedUDPPorts = [ 53 67 68 ];
+        allowedUDPPorts = [
+          53
+          67
+          68
+        ];
         # Note: Kubernetes API (6443, 10250) and NodePort range (30000-32767) are NOT exposed
         # to the public internet. Access is via Tailscale (tailscale0 is a trusted interface).
         logRefusedPackets = true;
@@ -35,7 +43,7 @@
     systemd.network.networks.eth0.networkConfig = {
       DHCP = "yes";
       LinkLocalAddressing = "yes";
-      IPv6AcceptRA = true;  # Accept IPv6 Router Advertisements
+      IPv6AcceptRA = true; # Accept IPv6 Router Advertisements
     };
   };
 }

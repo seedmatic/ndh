@@ -1,10 +1,21 @@
 { pkgs, ... }:
 let
-  inherit (pkgs) lib fetchgit fetchurl fetchFromGitHub dockerTools;
+  inherit (pkgs)
+    lib
+    fetchgit
+    fetchurl
+    fetchFromGitHub
+    dockerTools
+    ;
   unfreeAllowed = pkgs.config ? allowUnfree && pkgs.config.allowUnfree == true;
   system = pkgs.stdenv.hostPlatform.system;
   nvSources = import ../../../.nvfetcher/generated.nix {
-    inherit fetchgit fetchurl fetchFromGitHub dockerTools;
+    inherit
+      fetchgit
+      fetchurl
+      fetchFromGitHub
+      dockerTools
+      ;
   };
   insidersArtifacts = {
     "x86_64-linux" = {
@@ -25,16 +36,16 @@ let
     };
   };
   artifact =
-    let resolved = lib.attrByPath [ system ] null insidersArtifacts;
-    in if resolved == null then
-      throw "VS Code Insiders download unsupported for ${system}"
-    else
-      resolved;
+    let
+      resolved = lib.attrByPath [ system ] null insidersArtifacts;
+    in
+    if resolved == null then throw "VS Code Insiders download unsupported for ${system}" else resolved;
   # Give the downloaded archive a real extension so Nix knows how to unpack it.
   repackedSrc = pkgs.runCommand "${artifact.source.pname}.${artifact.extension}" { } ''
     cp ${artifact.source.src} $out
   '';
-in {
+in
+{
   imports = [ ./extensions.nix ];
 
   programs.vscode = {
@@ -43,13 +54,16 @@ in {
 
     package =
       let
-        insidersPkg = (pkgs.vscode.override {
-          isInsiders = true;
-        }).overrideAttrs (_: {
-          src = repackedSrc;
-          version = artifact.source.version;
-        });
-      in pkgs.symlinkJoin {
+        insidersPkg =
+          (pkgs.vscode.override {
+            isInsiders = true;
+          }).overrideAttrs
+            (_: {
+              src = repackedSrc;
+              version = artifact.source.version;
+            });
+      in
+      pkgs.symlinkJoin {
         name = "${artifact.source.pname}-hm";
         paths = [ insidersPkg ];
         postBuild = ''

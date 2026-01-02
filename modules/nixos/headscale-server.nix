@@ -1,10 +1,16 @@
-{ config, pkgs, lib, ... }:
+{
+  config,
+  pkgs,
+  lib,
+  ...
+}:
 
 with lib;
 
 let
   cfg = config.services.headscale-custom;
-in {
+in
+{
   options.services.headscale-custom = {
     enable = mkOption {
       type = types.bool;
@@ -81,16 +87,16 @@ in {
     services.headscale = {
       enable = true;
       address = cfg.listenAddr;
-      
+
       settings = {
         server_url = cfg.serverUrl;
         listen_addr = cfg.listenAddr;
         metrics_listen_addr = cfg.metricsListenAddr;
-        
+
         # gRPC settings
         grpc_listen_addr = "127.0.0.1:50443";
         grpc_allow_insecure = false;
-        
+
         # Database
         database = {
           type = "sqlite3";
@@ -98,12 +104,12 @@ in {
             path = "/var/lib/headscale/db.sqlite";
           };
         };
-        
+
         # Network settings
         ip_prefixes = [
-          "100.64.0.0/10"  # Tailscale-compatible range
+          "100.64.0.0/10" # Tailscale-compatible range
         ];
-        
+
         # DNS configuration
         dns_config = {
           override_local_dns = true;
@@ -114,31 +120,35 @@ in {
             "1.0.0.1"
           ];
         };
-        
+
         # DERP configuration
         derp = {
           server = {
-            enabled = false;  # Don't run embedded DERP
+            enabled = false; # Don't run embedded DERP
           };
           urls = cfg.derp.urls;
           auto_update_enabled = cfg.derp.autoUpdate;
           update_frequency = "24h";
         };
-        
+
         # Disable telemetry
         disable_check_updates = true;
-        
+
         # ACL policy file
         policy = {
           path = "/etc/headscale/policy.json";
         };
-        
+
         # OIDC configuration
         oidc = mkIf cfg.oidc.enable {
           issuer = cfg.oidc.issuer;
           client_id = cfg.oidc.clientId;
           client_secret_path = cfg.oidc.clientSecretFile;
-          scope = [ "openid" "profile" "email" ];
+          scope = [
+            "openid"
+            "profile"
+            "email"
+          ];
         };
       };
     };
@@ -153,14 +163,14 @@ in {
             dst = [ "*:*" ];
           }
         ];
-        
+
         # Define groups for better access control
         groups = {
-          "group:admin" = [];
-          "group:servers" = [];
-          "group:clients" = [];
+          "group:admin" = [ ];
+          "group:servers" = [ ];
+          "group:clients" = [ ];
         };
-        
+
         # Tag owners
         tagOwners = {
           "tag:server" = [ "group:admin" ];
@@ -172,7 +182,10 @@ in {
 
     # Open firewall ports
     networking.firewall = {
-      allowedTCPPorts = [ 8080 50443 ];  # HTTP/gRPC
+      allowedTCPPorts = [
+        8080
+        50443
+      ]; # HTTP/gRPC
       allowedUDPPorts = [ ];
     };
 

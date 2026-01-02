@@ -1,7 +1,8 @@
 {
   config,
   ...
-}: {
+}:
+{
 
   environment.etc."dnsmasq.conf".text = ''
     # Forward .internal queries to the custom DNS proxy

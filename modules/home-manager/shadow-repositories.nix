@@ -1,10 +1,17 @@
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 with lib;
 let
   cfg = config.services.shadowRepositories;
-  script = pkgs.writeScriptBin "mount-shadow-repositories.sh"
-    (builtins.readFile ./shadow-repositories.sh);
-in {
+  script = pkgs.writeScriptBin "mount-shadow-repositories.sh" (
+    builtins.readFile ./shadow-repositories.sh
+  );
+in
+{
   options = {
     services.shadowRepositories = {
       enable = mkOption {

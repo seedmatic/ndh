@@ -1,11 +1,17 @@
-{ nixpkgsInput, config, pkgs, ... }:
+{
+  nixpkgsInput,
+  config,
+  pkgs,
+  ...
+}:
 let
 
   cfg = config.profile;
   user = cfg.user;
   userName = user.name;
 
-in {
+in
+{
 
   nix = {
     package = pkgs.nix;
@@ -17,10 +23,14 @@ in {
     '';
     settings = {
       max-jobs = 4;
-      trusted-users = [ userName "root" "@admin" "@wheel" ];
+      trusted-users = [
+        userName
+        "root"
+        "@admin"
+        "@wheel"
+      ];
       trusted-substituters = [ "https://cache.nixos.org" ];
-      trusted-public-keys =
-        [ "cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY=" ];
+      trusted-public-keys = [ "cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY=" ];
     };
     gc = {
       automatic = true;

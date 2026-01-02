@@ -2,41 +2,57 @@
 # This module configures the Lima NixOS VM to act as a remote builder
 # accessible from Tailscale hosts
 
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 
 {
   # Configure the builder user for remote builds
   users.users.builder = {
     isNormalUser = true;
     group = "builder";
-    extraGroups = [ "wheel" "nixbld" ];
+    extraGroups = [
+      "wheel"
+      "nixbld"
+    ];
     description = "Nix remote builder user";
     openssh.authorizedKeys.keyFiles = [
       ../../keys/builder_ed25519.pub
     ];
   };
 
-  users.groups.builder = {};
+  users.groups.builder = { };
 
   # Configure Nix for remote building
   nix.settings = {
     # Allow the builder user to perform builds
-    trusted-users = [ "builder" "root" ];
-    
+    trusted-users = [
+      "builder"
+      "root"
+    ];
+
     # Optimize for remote builds
     max-jobs = 6;
-    cores = 0;  # Use all available cores
-    
+    cores = 0; # Use all available cores
+
     # Performance optimizations for transfers
     connect-timeout = 20;
     stalled-download-timeout = 300;
     download-attempts = 3;
-    
+
     # Enable compression for faster transfers
     compress-build-log = true;
-    
+
     # Enable features needed for builds
-    system-features = [ "kvm" "nixos-test" "benchmark" "big-parallel" ];
+    system-features = [
+      "kvm"
+      "nixos-test"
+      "benchmark"
+      "big-parallel"
+    ];
   };
 
   # Enable SSH daemon with proper configuration
@@ -44,27 +60,34 @@
     enable = true;
     settings = {
       # Allow the builder user to connect
-      AllowUsers = [ "builder" config.profile.user.name ];
-      AllowGroups = [ "builder" "wheel" "ssh" ];
-      
+      AllowUsers = [
+        "builder"
+        config.profile.user.name
+      ];
+      AllowGroups = [
+        "builder"
+        "wheel"
+        "ssh"
+      ];
+
       # Security settings
       PermitRootLogin = "no";
       PasswordAuthentication = false;
       PubkeyAuthentication = true;
-      
+
       # Performance settings for builds
       Compression = true;
       TCPKeepAlive = true;
       ClientAliveInterval = 60;
       ClientAliveCountMax = 10;
-      
+
       # Optimize for large file transfers (build artifacts)
       MaxSessions = 20;
       MaxStartups = "20:30:100";
       # Enable faster cipher for local network transfers
       Ciphers = "chacha20-poly1305@openssh.com,aes128-gcm@openssh.com,aes256-gcm@openssh.com";
     };
-    
+
     # Authorized keys configuration
     authorizedKeysFiles = [
       "/etc/ssh/authorized_keys.d/%u_ed25519.pub"
@@ -96,19 +119,18 @@
   };
 
   # Install builder keys in authorized_keys directory
-  environment.etc."ssh/authorized_keys.d/builder_ed25519.pub".source = 
-    ../../keys/builder_ed25519.pub;
+  environment.etc."ssh/authorized_keys.d/builder_ed25519.pub".source = ../../keys/builder_ed25519.pub;
 
   # Ensure the nixbld group exists and builder user is part of it
   users.groups.nixbld.members = [ "builder" ];
 
   # Additional packages needed for builds
   environment.systemPackages = with pkgs; [
-    git          # Often needed for builds
-    curl         # For fetchers
-    unzip        # For archives
-    rsync        # For file transfers
-    openssh      # For SSH operations
+    git # Often needed for builds
+    curl # For fetchers
+    unzip # For archives
+    rsync # For file transfers
+    openssh # For SSH operations
   ];
 
   # Performance tuning for builds

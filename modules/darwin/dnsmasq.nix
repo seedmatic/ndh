@@ -1,4 +1,10 @@
-{ config, lib, pkgs, ... }: let
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
+let
   user = config.profile.user;
   userName = user.name;
   logFile = "/Users/${userName}/Library/Logs/dnsmasq.log";
@@ -14,7 +20,8 @@
       chown ${userName}:staff "${logFile}"
     } >>"$LOG" 2>&1
   '';
-in {
+in
+{
   launchd.daemons.dnsmasq = lib.mkForce {
     serviceConfig = {
       Label = "org.nixos.dnsmasq";

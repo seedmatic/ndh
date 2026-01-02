@@ -19,7 +19,7 @@ stdenvNoCC.mkDerivation (finalAttrs: {
   dontBuild = true;
   dontFixup = true;
 
-  nativeBuildInputs = [undmg];
+  nativeBuildInputs = [ undmg ];
 
   sourceRoot = "Raycast.app";
 
@@ -35,9 +35,15 @@ stdenvNoCC.mkDerivation (finalAttrs: {
   meta = with lib; {
     description = "Control your tools with a few keystrokes";
     homepage = "https://raycast.app/";
-    license = with licenses; [unfree];
-    sourceProvenance = with sourceTypes; [binaryNativeCode];
-    maintainers = with maintainers; [lovesegfault stepbrobd];
-    platforms = ["aarch64-darwin" "x86_64-darwin"];
+    license = with licenses; [ unfree ];
+    sourceProvenance = with sourceTypes; [ binaryNativeCode ];
+    maintainers = with maintainers; [
+      lovesegfault
+      stepbrobd
+    ];
+    platforms = [
+      "aarch64-darwin"
+      "x86_64-darwin"
+    ];
   };
 })

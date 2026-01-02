@@ -1,4 +1,9 @@
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 
 let
   cfg = config.networking.lanDnsResolver;
@@ -27,13 +32,13 @@ in
 {
   options.networking.lanDnsResolver = {
     enable = lib.mkEnableOption "Enable .lan domain DNS resolver configuration";
-    
+
     nameserver = lib.mkOption {
       type = lib.types.str;
       default = "192.168.1.254";
       description = "DNS server to use for .lan domain resolution";
     };
-    
+
     searchDomains = lib.mkOption {
       type = lib.types.listOf lib.types.str;
       default = [ "lan" ];

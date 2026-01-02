@@ -1,4 +1,9 @@
-{ config, pkgs, lib, ... }:
+{
+  config,
+  pkgs,
+  lib,
+  ...
+}:
 
 with lib;
 
@@ -6,7 +11,8 @@ let
 
   cfg = config.services.cachix-agent;
 
-in {
+in
+{
   options = {
     services.cachix-agent = {
 
@@ -20,10 +26,12 @@ in {
   };
 
   config = mkIf cfg.enableLaunchdAgent {
-    assertions = [{
-      assertion = pkgs.stdenv.isDarwin;
-      message = "The cachix-agent service is only supported on Darwin.";
-    }];
+    assertions = [
+      {
+        assertion = pkgs.stdenv.isDarwin;
+        message = "The cachix-agent service is only supported on Darwin.";
+      }
+    ];
 
     launchd.agents.cachix-agent = mkIf cfg.enableLaunchdAgent {
       enable = true;
@@ -34,17 +42,15 @@ in {
           "-c"
           ''
             export CACHIX_AGENT_TOKEN="$(cat ${cfg.credentialsFile})"
-            exec ${cfg.package}/bin/cachix deploy agent ${cfg.name} ${
-              optionalString cfg.verbose "--verbose"
-            } ${
+            exec ${cfg.package}/bin/cachix deploy agent ${cfg.name} ${optionalString cfg.verbose "--verbose"} ${
               optionalString (cfg.host != null) "--host ${cfg.host}"
-            } ${
-              optionalString (cfg.profile != null) cfg.profile
-            }
+            } ${optionalString (cfg.profile != null) cfg.profile}
           ''
         ];
         EnvironmentVariables = {
-          PATH = "${if config.nix.enable && config.nix.package != null then config.nix.package else pkgs.nix}/bin";
+          PATH = "${
+            if config.nix.enable && config.nix.package != null then config.nix.package else pkgs.nix
+          }/bin";
         };
         RunAtLoad = true;
         KeepAlive = true;

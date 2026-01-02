@@ -1,7 +1,12 @@
 # Custom socket_vmnet configuration values
 # The options are defined by the external socket-vmnet flake module
 # imported at the flake level in preModules
-{ config, pkgs, lib, ... }:
+{
+  config,
+  pkgs,
+  lib,
+  ...
+}:
 
 {
   config = {

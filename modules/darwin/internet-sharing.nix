@@ -2,10 +2,20 @@
 # Manages macOS Internet Sharing NAT for Lima VM bridge networks
 # This creates the com.apple.internet-sharing pf anchors that provide NAT
 
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 
 let
-  inherit (lib) mkOption mkIf types mkMerge;
+  inherit (lib)
+    mkOption
+    mkIf
+    types
+    mkMerge
+    ;
   cfg = config.internetSharing;
 
   # Plist configuration for Internet Sharing
@@ -29,7 +39,7 @@ let
 
     # Check if configuration needs updating
     NEEDS_UPDATE=0
-    
+
     if [ ! -f "${plistPath}" ]; then
       echo "[internetSharing] plist missing, creating new configuration" >> "$LOG"
       NEEDS_UPDATE=1
@@ -66,19 +76,19 @@ let
 
     # Write new configuration
     echo "[internetSharing] writing new configuration" >> "$LOG"
-    
+
     # Clear existing NAT dict if present
     defaults delete "${plistPath}" NAT 2>/dev/null || true
-    
+
     # Create NAT dictionary with basic settings
     defaults write "${plistPath}" NAT -dict-add Enabled -bool ${if cfg.enable then "true" else "false"}
     defaults write "${plistPath}" NAT -dict-add PrimaryInterface -string "${cfg.primaryInterface}"
-    
+
     # Add sharing devices array using PlistBuddy (defaults can't handle nested arrays properly)
     /usr/libexec/PlistBuddy -c "Delete :NAT:SharingDevices" "${plistPath}" 2>/dev/null || true
     /usr/libexec/PlistBuddy -c "Add :NAT:SharingDevices array" "${plistPath}"
     ${lib.concatMapStringsSep "\n" (device: ''
-    /usr/libexec/PlistBuddy -c "Add :NAT:SharingDevices:$ string ${device}" "${plistPath}"
+      /usr/libexec/PlistBuddy -c "Add :NAT:SharingDevices:$ string ${device}" "${plistPath}"
     '') cfg.sharingDevices}
 
     # Verify written configuration
@@ -86,16 +96,16 @@ let
     defaults read "${plistPath}" NAT >> "$LOG" 2>&1
 
     ${lib.optionalString cfg.autoToggle ''
-    # Attempt to signal NetworkSharing daemon (will fail with SIP, but try anyway)
-    echo "[internetSharing] attempting to signal NetworkSharing daemon" >> "$LOG"
-    if launchctl kickstart -k system/com.apple.NetworkSharing >> "$LOG" 2>&1; then
-      echo "[internetSharing] successfully signaled NetworkSharing daemon" >> "$LOG"
-    else
-      echo "[internetSharing][WARN] cannot restart NetworkSharing (SIP restriction)" >> "$LOG"
-      echo "[internetSharing][ACTION REQUIRED] manually toggle Internet Sharing in System Settings:" >> "$LOG"
-      echo "[internetSharing]   System Settings → General → Sharing → Internet Sharing" >> "$LOG"
-      echo "[internetSharing]   Share from: ${cfg.primaryInterface}, To: ${lib.concatStringsSep ", " cfg.sharingDevices}" >> "$LOG"
-    fi
+      # Attempt to signal NetworkSharing daemon (will fail with SIP, but try anyway)
+      echo "[internetSharing] attempting to signal NetworkSharing daemon" >> "$LOG"
+      if launchctl kickstart -k system/com.apple.NetworkSharing >> "$LOG" 2>&1; then
+        echo "[internetSharing] successfully signaled NetworkSharing daemon" >> "$LOG"
+      else
+        echo "[internetSharing][WARN] cannot restart NetworkSharing (SIP restriction)" >> "$LOG"
+        echo "[internetSharing][ACTION REQUIRED] manually toggle Internet Sharing in System Settings:" >> "$LOG"
+        echo "[internetSharing]   System Settings → General → Sharing → Internet Sharing" >> "$LOG"
+        echo "[internetSharing]   Share from: ${cfg.primaryInterface}, To: ${lib.concatStringsSep ", " cfg.sharingDevices}" >> "$LOG"
+      fi
     ''}
 
     echo "[internetSharing] end $(date)" >> "$LOG"
@@ -109,17 +119,18 @@ let
       ${configurePlist}
 
       ${lib.optionalString cfg.verifyAnchors ''
-      if pfctl -s nat 2>/dev/null | grep -q 'nat-anchor "com.apple.internet-sharing"'; then
-        echo "[internetSharing] ✓ NAT anchors active"
-      else
-        echo "[internetSharing][WARN] NAT anchors NOT active - manual toggle required"
-        echo "[internetSharing][WARN] Go to: System Settings → General → Sharing → Internet Sharing"
-      fi
+        if pfctl -s nat 2>/dev/null | grep -q 'nat-anchor "com.apple.internet-sharing"'; then
+          echo "[internetSharing] ✓ NAT anchors active"
+        else
+          echo "[internetSharing][WARN] NAT anchors NOT active - manual toggle required"
+          echo "[internetSharing][WARN] Go to: System Settings → General → Sharing → Internet Sharing"
+        fi
       ''}
     } >>"$LOG" 2>&1
   '';
 
-in {
+in
+{
   options.internetSharing = {
     enable = mkOption {
       type = types.bool;
@@ -128,12 +139,12 @@ in {
         Enable Internet Sharing NAT for Lima VM bridge networks.
         This configures /Library/Preferences/SystemConfiguration/com.apple.nat.plist
         to enable NAT from the primary interface to the specified sharing devices.
-        
+
         Note: Due to System Integrity Protection (SIP), the NetworkSharing daemon
         cannot be restarted programmatically. After first activation or configuration
         changes, you must manually toggle Internet Sharing in System Settings:
           System Settings → General → Sharing → Internet Sharing
-        
+
         Once toggled, the pf anchors (com.apple.internet-sharing) will be created
         automatically and provide NAT for the configured bridge networks.
       '';

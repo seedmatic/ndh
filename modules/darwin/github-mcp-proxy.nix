@@ -1,4 +1,9 @@
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 with lib;
 let
   cfg = config.programs.githubMcpProxy;
@@ -18,10 +23,15 @@ let
       fi
     } >>"$LOG" 2>&1
   '';
-in {
+in
+{
   options.programs.githubMcpProxy = {
     # Enable by default when the module is imported; hosts can override with = false.
-    enable = (mkEnableOption "Local stdio JSON-RPC proxy for the GitHub Copilot MCP endpoint (no static token).") // { default = true; };
+    enable =
+      (mkEnableOption "Local stdio JSON-RPC proxy for the GitHub Copilot MCP endpoint (no static token).")
+      // {
+        default = true;
+      };
     package = mkOption {
       type = types.package;
       default = wrapped;
@@ -45,20 +55,25 @@ in {
     };
     extraEnvironment = mkOption {
       type = types.attrsOf types.str;
-      default = {};
+      default = { };
       description = "Extra environment variables to export (merged).";
     };
   };
 
   config = mkIf cfg.enable {
-    environment.systemPackages = [ cfg.package pkgs.gh pkgs.python3 ];
+    environment.systemPackages = [
+      cfg.package
+      pkgs.gh
+      pkgs.python3
+    ];
 
     # Provide environment variables so the script can rely on defaults without CLI flags.
     environment.variables = {
       GITHUB_MCP_REMOTE_URL = cfg.remoteUrl;
       GITHUB_MCP_TOKEN_COMMAND = cfg.tokenCommand;
       GITHUB_MCP_TOKEN_TTL = toString cfg.tokenTtlSeconds;
-    } // cfg.extraEnvironment;
+    }
+    // cfg.extraEnvironment;
 
     # Optional: simple activation health check (non-fatal)
     system.activationScripts.githubMcpProxyHealth.text = ''

@@ -1,4 +1,9 @@
-{ config, pkgs, profile, ... }:
+{
+  config,
+  pkgs,
+  profile,
+  ...
+}:
 let
   buildkitdToml = pkgs.writeText "buildkitd.toml" ''
     [worker.cdi]
@@ -22,18 +27,21 @@ let
       # allowedRepositories = [ "docker-registry.wikimedia.org/repos/releng/blubber/buildkit" ]
       allowedRepositories = []
   '';
-in {
+in
+{
   imports = [ ./containerd.nix ];
 
   environment.etc."buildkit/buildkitd.toml".source = buildkitdToml;
 
   systemd.services.buildkitd = {
     description = "BuildKit Daemon";
-    after = [ "network.target" "containerd.service" ];
+    after = [
+      "network.target"
+      "containerd.service"
+    ];
     wantedBy = [ "multi-user.target" ];
     serviceConfig = {
-      ExecStart =
-        "${pkgs.buildkit}/bin/buildkitd --config  /etc/buildkit/buildkitd.toml";
+      ExecStart = "${pkgs.buildkit}/bin/buildkitd --config  /etc/buildkit/buildkitd.toml";
       Restart = "on-failure";
       User = "root";
     };

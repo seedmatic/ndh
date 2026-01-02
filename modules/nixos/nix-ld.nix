@@ -1,4 +1,9 @@
-{ config, pkgs, lib, ... }:
+{
+  config,
+  pkgs,
+  lib,
+  ...
+}:
 
 {
   # Enable nix-ld to run dynamically linked binaries (e.g., Lima guest agent)

@@ -2,7 +2,8 @@
   config,
   pkgs,
   ...
-}: {
+}:
+{
   services = {
     keybase = {
       enable = true;
@@ -12,7 +13,7 @@
       enable = true;
       # FIXME /keybase needs to be owned by user
       mountPoint = "/keybase";
-      extraFlags = ["-label kbfs"];
+      extraFlags = [ "-label kbfs" ];
     };
   };
 }

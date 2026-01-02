@@ -1,19 +1,26 @@
 # Home Manager socket_vmnet configuration
 # Provides XDG-compliant directories and configuration for custom socket_vmnet services
-{ config, pkgs, lib, socket_vmnet,... }:
+{
+  config,
+  pkgs,
+  lib,
+  socket_vmnet,
+  ...
+}:
 
 with lib;
 
 let
   cfg = config.services.socket-vmnet;
-in {
+in
+{
   options.services.socket-vmnet = {
     enable = mkOption {
       type = types.bool;
       default = true;
       description = "Enable socket_vmnet configuration in XDG directories";
     };
-    
+
     dataDir = mkOption {
       type = types.str;
       default = "${config.xdg.dataHome}/nxmatic";

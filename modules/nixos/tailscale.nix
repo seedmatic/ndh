@@ -1,14 +1,19 @@
-{ config, pkgs, lib, ... }:
+{
+  config,
+  pkgs,
+  lib,
+  ...
+}:
 let
   cfg = config.tailscale;
   tailscaleKey = ./tailscale.key;
   tagsString = lib.concatStringsSep "," (map (tag: "tag:" + tag) cfg.tags);
   # Only enable regular Tailscale if headscale-client is not enabled
   useHeadscale = config.services.headscale-client.enable or false;
-in {
+in
+{
   config = lib.mkIf (!useHeadscale) {
-    systemd.tmpfiles.rules =
-      [ "L /run/tailscale/auth.key - root root - ${tailscaleKey}" ];
+    systemd.tmpfiles.rules = [ "L /run/tailscale/auth.key - root root - ${tailscaleKey}" ];
 
     services.tailscale = {
       enable = true;
@@ -41,8 +46,7 @@ in {
     tags = lib.mkOption {
       type = lib.types.listOf lib.types.str;
       default = [ "nixos" ];
-      description =
-        "Tags to use for the Tailscale node, defaults to ['nixos'].";
+      description = "Tags to use for the Tailscale node, defaults to ['nixos'].";
     };
   };
 }

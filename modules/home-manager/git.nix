@@ -3,17 +3,19 @@
   pkgs,
   lib,
   ...
-}: let
+}:
+let
   profile = config._module.specialArgs.profile;
   userName = profile.user.description;
   userEmail = profile.email;
   hostKeysDir = "${config.home.homeDirectory}/.ssh/keys.d";
   stateHome = config.xdg.stateHome or "${config.home.homeDirectory}/.local/state";
   allowedSignersFile = "${config.xdg.configHome}/git/github_allowed_signers";
-in {
-  imports = [./git.d/sops.nix];
+in
+{
+  imports = [ ./git.d/sops.nix ];
 
-  home.packages = [pkgs.github-cli];
+  home.packages = [ pkgs.github-cli ];
 
   programs.git = {
     enable = true;
@@ -30,9 +32,7 @@ in {
     extraConfig = {
       commit.verbose = true;
       credential.helper =
-        if pkgs.stdenvNoCC.isDarwin
-        then "osxkeychain"
-        else "cache --timeout=1000000000";
+        if pkgs.stdenvNoCC.isDarwin then "osxkeychain" else "cache --timeout=1000000000";
       fetch.prune = true;
       http.sslVerify = true;
       http.sslCAInfo = "/etc/ssl/certs/ca-certificates.crt";
@@ -67,10 +67,10 @@ in {
     difftastic.enable = false;
 
     includes = [
-      {path = "config.d/signing";}
-      {path = "dotfiles";}
-      {path = "devcontainer";}
-      {path = "local";}
+      { path = "config.d/signing"; }
+      { path = "dotfiles"; }
+      { path = "devcontainer"; }
+      { path = "local"; }
     ];
 
     lfs.enable = true;
@@ -80,15 +80,15 @@ in {
     "git" = {
       source = lib.fileset.toSource {
         root = ./git.d;
-        fileset =
-          lib.fileset.difference (lib.fileset.fromSource ./git.d)
-          (lib.fileset.unions [
+        fileset = lib.fileset.difference (lib.fileset.fromSource ./git.d) (
+          lib.fileset.unions [
             ./git.d/config.d
             ./git.d/sops
             ./git.d/sops.d
             ./git.d/sops.sh
             ./git.d/sops.nix
-          ]);
+          ]
+        );
       };
       recursive = true;
     };
@@ -116,12 +116,14 @@ in {
     };
   };
 
-  home.activation.generateAllowedSigners = lib.hm.dag.entryAfter ["writeBoundary" "deploySSHKeys"] ''
-    set -euxo pipefail
-    : Generatig github allowed signers configuration file
-    cat <<EoF > "${allowedSignersFile}"
-    stephane.lacoin@gmail.com namespaces="git" $( cat "${hostKeysDir}/github-signing.pub" )
-    stephane.lacoin@hyland.com namespaces="git" $( cat "${hostKeysDir}/github-signing-hyland.pub" )
-    EoF
-  '';
+  home.activation.generateAllowedSigners =
+    lib.hm.dag.entryAfter [ "writeBoundary" "deploySSHKeys" ]
+      ''
+        set -euxo pipefail
+        : Generatig github allowed signers configuration file
+        cat <<EoF > "${allowedSignersFile}"
+        stephane.lacoin@gmail.com namespaces="git" $( cat "${hostKeysDir}/github-signing.pub" )
+        stephane.lacoin@hyland.com namespaces="git" $( cat "${hostKeysDir}/github-signing-hyland.pub" )
+        EoF
+      '';
 }

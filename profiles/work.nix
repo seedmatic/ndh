@@ -1,9 +1,15 @@
-{ pkgs, lib, userMapping, ... }:
+{
+  pkgs,
+  lib,
+  userMapping,
+  ...
+}:
 let
   inherit (lib) mkDefault;
   committedUser = userMapping.profileUsers.committed;
   workUser = userMapping.profileUsers.work;
-in {
+in
+{
   imports = [ ./common.nix ];
   profile = {
     name = mkDefault "work";
