@@ -1,8 +1,29 @@
-{ config, lib, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 let
   cfg = config.services.bioskopSmbMount;
   mapFile = "/etc/auto_bioskop";
   autoMaster = "/etc/auto_master";
+  bioskopFstabScript = pkgs.replaceVars ./smb-bioskop.d/fstab.sh {
+    fstabEnable = lib.toString cfg.fstab.enable;
+    username = cfg.username;
+    host = cfg.host;
+    share = cfg.share;
+    mountPoint = cfg.fstab.mountPoint;
+    options = cfg.fstab.options;
+  };
+  bioskopPostActivation = pkgs.runCommand "bioskop-smb-post-activation.sh" { } ''
+    cp ${
+      pkgs.replaceVars ./smb-bioskop.d/post-activation.sh {
+        inherit bioskopFstabScript;
+      }
+    } "$out"
+    chmod +x "$out"
+  '';
 in
 {
   options.services.bioskopSmbMount = {
@@ -51,22 +72,8 @@ in
 
   config = lib.mkIf cfg.enable {
     # Configure mount via /etc/fstab at /Network/Servers (autofs -fstab map)
-    system.activationScripts.bioskopSmbMount.text = ''
-      set -euo pipefail
-
-      log() { printf '[bioskop-smb] %s\n' "$1"; }
-
-      if [ "${lib.toString cfg.fstab.enable}" = "true" ]; then
-        fstab_line="//${cfg.username}@${cfg.host}/${cfg.share} ${cfg.fstab.mountPoint} url ${cfg.fstab.options},nosuid"
-        log "ensuring ${cfg.fstab.mountPoint} exists"
-        install -d -m 0755 "${cfg.fstab.mountPoint}"
-        if ! grep -q "^//${cfg.username}@${cfg.host}/${cfg.share} ${cfg.fstab.mountPoint} " /etc/fstab 2>/dev/null; then
-          log "adding fstab entry for bioskop SMB"
-          printf '%s\n' "$fstab_line" | /usr/bin/tee -a /etc/fstab >/dev/null
-        else
-          log "fstab entry already present"
-        fi
-      fi
+    system.activationScripts.postActivation.text = lib.mkAfter ''
+      ${bioskopPostActivation}
     '';
   };
 }

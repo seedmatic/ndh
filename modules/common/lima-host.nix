@@ -2,6 +2,7 @@
   config,
   lib,
   hostProfile ? null,
+  networkCatalog ? { },
   ...
 }:
 let
@@ -25,6 +26,11 @@ let
       resolvedHostProfile.hostName;
   hostName = cfg.hostName;
   guestName = cfg.guestName;
+  baseTailnetDomain =
+    if networkCatalog ? tailnet && (networkCatalog.tailnet ? domain) then
+      lib.removePrefix "." networkCatalog.tailnet.domain
+    else
+      "tailnet.local";
   domainName = cfg.domainName;
 in
 {
@@ -47,8 +53,8 @@ in
     };
     domainName = mkOption {
       type = lib.types.str;
-      default = "mammoth-skate.ts.net";
-      description = "The domain for the lima host, defaults to mammoth-skate.ts.net.";
+      default = baseTailnetDomain;
+      description = "The domain for the lima host, defaults to the tailnet domain.";
     };
   };
   config = {

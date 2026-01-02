@@ -2,10 +2,16 @@
   config,
   pkgs,
   lib,
+  networkCatalog,
   ...
 }:
 let
   cfg = config.containerHost;
+  tailnetDomain =
+    if networkCatalog ? tailnet && (networkCatalog.tailnet ? domain) then
+      lib.removePrefix "." networkCatalog.tailnet.domain
+    else
+      "tailnet.local";
 in
 {
 
@@ -26,8 +32,8 @@ in
 
     domainName = lib.mkOption {
       type = lib.types.str;
-      default = "mammoth-skate.ts.net";
-      description = "The domain to use for the lima host, defaults to 'mammoth-skate.ts.net'.";
+      default = tailnetDomain;
+      description = "The domain to use for the lima host, defaults to the tailnet domain.";
     };
 
     tailscaleInterfaceName = lib.mkOption {

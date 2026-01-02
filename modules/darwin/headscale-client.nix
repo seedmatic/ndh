@@ -9,17 +9,11 @@ with lib;
 
 let
   cfg = config.services.headscale-client;
+  defaultHostname = config.networking.hostName or "localhost";
 
-  headscaleActivationScript = pkgs.writeShellScript "headscale-client-activation.sh" ''
-    set -euo pipefail
-    LOG="/var/log/darwin-headscale-client.log"
-    {
-      if ! tailscale status >/dev/null 2>&1; then
-        echo "⚠️  Headscale client is configured but not connected. Run: hs-connect"
-      else
-        echo "[headscale] Client already connected"
-      fi
-    } >>"$LOG" 2>&1
+  headscaleActivationScript = pkgs.runCommand "headscale-client-post-activation.sh" { } ''
+    cp ${pkgs.replaceVars ./headscale-client.d/post-activation.sh { }} "$out"
+    chmod +x "$out"
   '';
 in
 {
@@ -38,7 +32,7 @@ in
 
     hostname = mkOption {
       type = types.str;
-      default = config.networking.hostName or "localhost";
+      default = defaultHostname;
       description = "Hostname to advertise";
     };
 

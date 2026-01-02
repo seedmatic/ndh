@@ -10,40 +10,52 @@
     };
   };
 
-  config = lib.mkIf config.networking.mammoth-skate.enable {
-    networking = {
-      enableIPv6 = true; # Explicitly enable IPv6
-      firewall = {
-        enable = true;
-        allowedTCPPorts = [
-          53
-          22
-          2222
-          80
-          443 # DNS, SSH, HTTP/HTTPS
-        ];
-        allowedUDPPorts = [
-          53
-          67
-          68
-        ];
-        # Note: Kubernetes API (6443, 10250) and NodePort range (30000-32767) are NOT exposed
-        # to the public internet. Access is via Tailscale (tailscale0 is a trusted interface).
-        logRefusedPackets = true;
+  config = lib.mkIf config.networking.mammoth-skate.enable (
+    let
+      tailnetDomain =
+        if
+          config._module.specialArgs ? networkCatalog && (config._module.specialArgs.networkCatalog ? tailnet)
+        then
+          config._module.specialArgs.networkCatalog.tailnet.domain
+        else
+          "";
+      bareDomain = lib.removePrefix "." tailnetDomain;
+    in
+    {
+      networking = {
+        enableIPv6 = true; # Explicitly enable IPv6
+        firewall = {
+          enable = true;
+          allowedTCPPorts = [
+            53
+            22
+            2222
+            80
+            443 # DNS, SSH, HTTP/HTTPS
+          ];
+          allowedUDPPorts = [
+            53
+            67
+            68
+          ];
+          # Note: Kubernetes API (6443, 10250) and NodePort range (30000-32767) are NOT exposed
+          # to the public internet. Access is via Tailscale (tailscale0 is a trusted interface).
+          logRefusedPackets = true;
+        };
+        nftables.enable = true;
+        networkmanager.enable = true;
+        wireless.enable = false;
+        # Use common DNS servers with IPv6 and IPv4 support
+        # Note: Tailscale DNS (100.100.100.100) is added by the Tailscale module
+        nameservers = config.common.dnsServers;
+        fqdn = config.networking.hostName + tailnetDomain;
+        search = lib.optional (bareDomain != "") bareDomain;
       };
-      nftables.enable = true;
-      networkmanager.enable = true;
-      wireless.enable = false;
-      # Use common DNS servers with IPv6 and IPv4 support
-      # Note: Tailscale DNS (100.100.100.100) is added by the Tailscale module
-      nameservers = config.common.dnsServers;
-      fqdn = config.networking.hostName + ".mammoth-skate.ts.net";
-      search = [ "mammoth-skate.ts.net" ];
-    };
-    systemd.network.networks.eth0.networkConfig = {
-      DHCP = "yes";
-      LinkLocalAddressing = "yes";
-      IPv6AcceptRA = true; # Accept IPv6 Router Advertisements
-    };
-  };
+      systemd.network.networks.eth0.networkConfig = {
+        DHCP = "yes";
+        LinkLocalAddressing = "yes";
+        IPv6AcceptRA = true; # Accept IPv6 Router Advertisements
+      };
+    }
+  );
 }

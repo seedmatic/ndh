@@ -72,7 +72,6 @@ let
     shellcheck
     sops
     stylua
-    teleport
     tig
     tree
     treefmt
@@ -116,7 +115,6 @@ in
     ./ssh-keys.nix
     ./ssh-tailnet-hosts.nix
     ./ssh-keychain-removal.nix
-    #   ./teleport.nix
     ./tldr.nix
     ./tmate.nix
     ./tmux.nix
@@ -126,7 +124,7 @@ in
 
   nix.gc = {
     automatic = true;
-    frequency = "daily";
+    dates = "daily";
     options = "--delete-older-than 1d";
   };
 

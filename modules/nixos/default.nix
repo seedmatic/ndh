@@ -47,6 +47,7 @@ in
     ./headscale-server.nix
     ./headscale-client.nix
     ./headscale-gateway.nix
+    ./nfs-autofs.nix
     ./incus.nix
     ./incus-headscale-server.nix
     ./incus-headscale-gateway.nix

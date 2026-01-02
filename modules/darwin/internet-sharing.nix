@@ -28,105 +28,52 @@ let
   };
 
   plistPath = "/Library/Preferences/SystemConfiguration/com.apple.nat.plist";
+  desiredDevices = lib.concatStringsSep "," (lib.sort (a: b: a < b) cfg.sharingDevices);
 
-  # Script to configure Internet Sharing plist
-  # Note: This writes the config but cannot activate it programmatically due to SIP.
-  # User must manually toggle Internet Sharing in System Settings after first activation.
-  configurePlist = pkgs.writeShellScript "configure-internet-sharing" ''
-    set -euo pipefail
-    LOG="/var/log/darwin-internet-sharing.log"
-    echo "[internetSharing] start $(date)" >> "$LOG"
+  sharingDevicesCmds = lib.concatMapStringsSep "\n" (device: ''
+    /usr/libexec/PlistBuddy -c "Add :NAT:SharingDevices:$ string ${device}" "${plistPath}"
+  '') cfg.sharingDevices;
 
-    # Check if configuration needs updating
-    NEEDS_UPDATE=0
-
-    if [ ! -f "${plistPath}" ]; then
-      echo "[internetSharing] plist missing, creating new configuration" >> "$LOG"
-      NEEDS_UPDATE=1
+  autoToggleBlock = lib.optionalString cfg.autoToggle ''
+    echo "[internetSharing] attempting to signal NetworkSharing daemon" >> "$LOG"
+    if launchctl kickstart -k system/com.apple.NetworkSharing >> "$LOG" 2>&1; then
+      echo "[internetSharing] successfully signaled NetworkSharing daemon" >> "$LOG"
     else
-      # Check if enabled state matches
-      CURRENT_ENABLED=$(defaults read "${plistPath}" NAT -dict 2>/dev/null | grep -o 'Enabled = [01]' | cut -d' ' -f3 || echo "")
-      DESIRED_ENABLED="${toString (if cfg.enable then 1 else 0)}"
-      if [ "$CURRENT_ENABLED" != "$DESIRED_ENABLED" ]; then
-        echo "[internetSharing] enabled state differs (current=$CURRENT_ENABLED, desired=$DESIRED_ENABLED)" >> "$LOG"
-        NEEDS_UPDATE=1
-      fi
-
-      # Check if primary interface matches
-      CURRENT_IFACE=$(defaults read "${plistPath}" NAT -dict 2>/dev/null | grep -o 'PrimaryInterface = "[^"]*"' | cut -d'"' -f2 || echo "")
-      if [ "$CURRENT_IFACE" != "${cfg.primaryInterface}" ]; then
-        echo "[internetSharing] primary interface differs (current=$CURRENT_IFACE, desired=${cfg.primaryInterface})" >> "$LOG"
-        NEEDS_UPDATE=1
-      fi
-
-      # Check if sharing devices match
-      CURRENT_DEVICES=$(defaults read "${plistPath}" NAT -dict 2>/dev/null | grep -A10 'SharingDevices' | grep -o 'bridge[0-9]*' | sort | tr '\n' ',' || echo "")
-      DESIRED_DEVICES="${lib.concatStringsSep "," (lib.sort (a: b: a < b) cfg.sharingDevices)}"
-      if [ "$CURRENT_DEVICES" != "$DESIRED_DEVICES," ]; then
-        echo "[internetSharing] sharing devices differ (current=$CURRENT_DEVICES, desired=$DESIRED_DEVICES)" >> "$LOG"
-        NEEDS_UPDATE=1
-      fi
+      echo "[internetSharing][WARN] cannot restart NetworkSharing (SIP restriction)" >> "$LOG"
+      echo "[internetSharing][ACTION REQUIRED] manually toggle Internet Sharing in System Settings:" >> "$LOG"
+      echo "[internetSharing]   System Settings → General → Sharing → Internet Sharing" >> "$LOG"
+      echo "[internetSharing]   Share from: ${cfg.primaryInterface}, To: ${lib.concatStringsSep ", " cfg.sharingDevices}" >> "$LOG"
     fi
-
-    if [ $NEEDS_UPDATE -eq 0 ]; then
-      echo "[internetSharing] configuration already matches desired state" >> "$LOG"
-      echo "[internetSharing] end $(date)" >> "$LOG"
-      exit 0
-    fi
-
-    # Write new configuration
-    echo "[internetSharing] writing new configuration" >> "$LOG"
-
-    # Clear existing NAT dict if present
-    defaults delete "${plistPath}" NAT 2>/dev/null || true
-
-    # Create NAT dictionary with basic settings
-    defaults write "${plistPath}" NAT -dict-add Enabled -bool ${if cfg.enable then "true" else "false"}
-    defaults write "${plistPath}" NAT -dict-add PrimaryInterface -string "${cfg.primaryInterface}"
-
-    # Add sharing devices array using PlistBuddy (defaults can't handle nested arrays properly)
-    /usr/libexec/PlistBuddy -c "Delete :NAT:SharingDevices" "${plistPath}" 2>/dev/null || true
-    /usr/libexec/PlistBuddy -c "Add :NAT:SharingDevices array" "${plistPath}"
-    ${lib.concatMapStringsSep "\n" (device: ''
-      /usr/libexec/PlistBuddy -c "Add :NAT:SharingDevices:$ string ${device}" "${plistPath}"
-    '') cfg.sharingDevices}
-
-    # Verify written configuration
-    echo "[internetSharing] configuration written:" >> "$LOG"
-    defaults read "${plistPath}" NAT >> "$LOG" 2>&1
-
-    ${lib.optionalString cfg.autoToggle ''
-      # Attempt to signal NetworkSharing daemon (will fail with SIP, but try anyway)
-      echo "[internetSharing] attempting to signal NetworkSharing daemon" >> "$LOG"
-      if launchctl kickstart -k system/com.apple.NetworkSharing >> "$LOG" 2>&1; then
-        echo "[internetSharing] successfully signaled NetworkSharing daemon" >> "$LOG"
-      else
-        echo "[internetSharing][WARN] cannot restart NetworkSharing (SIP restriction)" >> "$LOG"
-        echo "[internetSharing][ACTION REQUIRED] manually toggle Internet Sharing in System Settings:" >> "$LOG"
-        echo "[internetSharing]   System Settings → General → Sharing → Internet Sharing" >> "$LOG"
-        echo "[internetSharing]   Share from: ${cfg.primaryInterface}, To: ${lib.concatStringsSep ", " cfg.sharingDevices}" >> "$LOG"
-      fi
-    ''}
-
-    echo "[internetSharing] end $(date)" >> "$LOG"
   '';
 
-  activationWrapperScript = pkgs.writeShellScript "internet-sharing-activation.sh" ''
-    set -euo pipefail
-    LOG="/var/log/darwin-internet-sharing-activation.log"
-    {
-      echo "[internetSharing] configuring Internet Sharing NAT"
-      ${configurePlist}
+  verifyAnchorsBlock = lib.optionalString cfg.verifyAnchors ''
+    if pfctl -s nat 2>/dev/null | grep -q 'nat-anchor "com.apple.internet-sharing"'; then
+      echo "[internetSharing] ✓ NAT anchors active"
+    else
+      echo "[internetSharing][WARN] NAT anchors NOT active - manual toggle required"
+      echo "[internetSharing][WARN] Go to: System Settings → General → Sharing → Internet Sharing"
+    fi
+  '';
 
-      ${lib.optionalString cfg.verifyAnchors ''
-        if pfctl -s nat 2>/dev/null | grep -q 'nat-anchor "com.apple.internet-sharing"'; then
-          echo "[internetSharing] ✓ NAT anchors active"
-        else
-          echo "[internetSharing][WARN] NAT anchors NOT active - manual toggle required"
-          echo "[internetSharing][WARN] Go to: System Settings → General → Sharing → Internet Sharing"
-        fi
-      ''}
-    } >>"$LOG" 2>&1
+  configurePlist = pkgs.replaceVars ./internet-sharing.d/configure-plist.sh {
+    desiredEnabled = lib.toString (if cfg.enable then 1 else 0);
+    enableFlag = if cfg.enable then "true" else "false";
+    primaryInterface = cfg.primaryInterface;
+    inherit
+      plistPath
+      sharingDevicesCmds
+      desiredDevices
+      autoToggleBlock
+      ;
+  };
+
+  activationWrapperScript = pkgs.runCommand "internet-sharing-activation.sh" { } ''
+    cp ${
+      pkgs.replaceVars ./internet-sharing.d/activation-wrapper.sh {
+        inherit configurePlist verifyAnchorsBlock;
+      }
+    } "$out"
+    chmod +x "$out"
   '';
 
 in

@@ -11,7 +11,7 @@
     pkgs.flox
     pkgs.lima
     pkgs.direnv
-    self.packages.${pkgs.system}.pyEnv
+    self.packages.${pkgs.stdenv.hostPlatform.system}.pyEnv
   ];
 
   pre-commit = {

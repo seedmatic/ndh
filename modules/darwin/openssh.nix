@@ -97,27 +97,30 @@ let
 
   sshdConfigStore = pkgs.writeText "sshd_config" sshdConfigText;
 
-  opensshActivationScript = pkgs.writeShellScript "openssh-activation.sh" ''
-    set -euo pipefail
-    LOG="/var/log/darwin-openssh-activation.log"
-    install -d -m 755 /var/log
-    {
-      echo "[openssh] start $(date)"
+  opensshActivationScript = pkgs.runCommand "openssh-activation.sh" { } ''
+    cp ${
+      pkgs.replaceVars ./openssh.d/openssh-activation.sh {
+        nixKeyDir = nixKeyDir;
+        builderPrivStore = builderPrivStore;
+        builderPubStore = builderPubStore;
+        nixKey = nixKey;
+        nixKeyPub = nixKeyPub;
+        groupKeysScriptStore = groupKeysScriptStore;
+        principalsScriptStore = principalsScriptStore;
+        groupKeysCommand = config.opensshPolicy.canonicalGroupKeysCommandName;
+        principalsCommand = config.opensshPolicy.canonicalPrincipalsCommandName;
+      }
+    } "$out"
+    chmod +x "$out"
+  '';
 
-      : "Install builder keys for nix daemon (root) access (Darwin)"
-      install -d -m 755 /etc/ssh
-      install -d -m 700 ${nixKeyDir}
-
-      install -m 600 -o root -g wheel ${builderPrivStore} ${nixKey}
-      install -m 644 -o root -g wheel ${builderPubStore} ${nixKeyPub}
-
-      : "Install group-based AuthorizedKeysCommand script"
-      install -d -m 755 /etc/ssh
-      install -m 555 ${groupKeysScriptStore} /etc/ssh/${config.opensshPolicy.canonicalGroupKeysCommandName}
-      install -m 555 ${principalsScriptStore} /etc/ssh/${config.opensshPolicy.canonicalPrincipalsCommandName}
-
-      echo "[openssh] end $(date)"
-    } >>"$LOG" 2>&1
+  opensshPostActivation = pkgs.runCommand "openssh-post-activation.sh" { } ''
+    cp ${
+      pkgs.replaceVars ./openssh.d/post-activation.sh {
+        inherit opensshActivationScript;
+      }
+    } "$out"
+    chmod +x "$out"
   '';
 
 in
@@ -166,10 +169,10 @@ in
     services.openssh.enable = true;
 
     # Ensure OpenSSH activation runs (post-etc) and installs real files (no symlinks).
-    # Note: this is intentionally in postActivation; previously it was defined but not
-    # hooked, so the script never ran and sshd configs stayed symlinked.
+    # Use a dedicated activation script entry instead of piggybacking on postActivation.
+    # Ensure OpenSSH activation runs in postActivation so it is emitted in the activate script
     system.activationScripts.postActivation.text = lib.mkAfter ''
-      ${opensshActivationScript}
+      ${opensshPostActivation}
     '';
   };
 }

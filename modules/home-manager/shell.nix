@@ -45,14 +45,14 @@ in
     '';
   };
 
-  home.activation.zdotdir = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-    export PATH="${lib.makeBinPath [ pkgs.git ]}:$PATH"
-    if [ ! -d "$HOME/.config/zsh/.git" ]; then
-      git clone --depth=1 https://github.com/nxmatic/zdotdir.git "$HOME/.config/zsh"
-    else
-      git -C "$HOME/.config/zsh" pull --ff-only
-    fi
-  '';
+  home.activation.zdotdir = lib.hm.dag.entryAfter [ "writeBoundary" ] (
+    builtins.readFile (
+      pkgs.replaceVars ./shell.d/zdotdir.sh {
+        gitPath = lib.makeBinPath [ pkgs.git ];
+        gitBin = "${pkgs.git}/bin/git";
+      }
+    )
+  );
 
   home.sessionVariables.ZDOTDIR = "$HOME/.config/zsh";
 

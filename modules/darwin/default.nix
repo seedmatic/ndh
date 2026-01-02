@@ -17,6 +17,7 @@
     ./headscale-client.nix
     ./internet-sharing.nix
     ./lan-dns-resolver.nix
+    ./nfs-autofs.nix
     ./lima-config.nix
     ./linux-builder.nix
     ./distributed-builds.nix

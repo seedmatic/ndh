@@ -173,6 +173,50 @@ ssh 192.168.106.10
 
 See: link:network-setup.adoc#usage[Usage Scenarios]
 
+== Binary Cache Workflow (bioskop builds, others pull)
+
+* Build host (bioskop)
+** Generate a signing key (once):
+[source,bash]
+----
+# @codebase
+nix-store --generate-binary-cache-key bioskop-cache-1 /etc/nix/cache-priv.key /etc/nix/cache-pub.key
+----
+** Run nix-serve and expose the port (e.g., 8080):
+[source,bash]
+----
+# @codebase
+nix-serve -p 8080 -k /etc/nix/cache-priv.key
+----
+
+* Clients (alcide, nikopol)
+** Configure substituters and trusted keys (nix.conf or module settings):
+[source,conf]
+----
+# @codebase
+substituters = https://cache.nixos.org http://bioskop:8080
+trusted-public-keys = cache.nixos.org-1:<nixos-key> bioskop-cache-1:<bioskop-pub-key>
+----
+** Pull and switch directly from GitHub:
+[source,bash]
+----
+# @codebase
+darwin-rebuild switch --flake github:nxmatic/nix-darwin-home#alcide
+----
+
+* Publish closures (run on bioskop before clients pull)
+[source,bash]
+----
+# @codebase
+nix build .#hosts/alcide .#hosts/nikopol
+----
+* Keep built paths alive if needed
+[source,bash]
+----
+# @codebase
+ln -s /nix/store/<path> /nix/var/nix/gcroots/bioskop-cache-keep
+----
+
 == Network Ranges
 
 [options="header"]

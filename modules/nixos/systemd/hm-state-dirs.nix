@@ -21,12 +21,12 @@ in
   # Extra activation script (idempotent) to guard against any race where tmpfiles runs late
   system.activationScripts.hmStateDirs = {
     deps = [ ];
-    text = ''
-      for d in ${builtins.concatStringsSep " " dirs}; do
-        if [ ! -d "$d" ]; then
-          install -d -m 0755 -o ${userName} -g ${group} "$d"
-        fi
-      done
-    '';
+    text = builtins.readFile (
+      pkgs.replaceVars ./hm-state-dirs.d/ensure-dirs.sh {
+        dirs = builtins.concatStringsSep " " dirs;
+        userName = userName;
+        group = group;
+      }
+    );
   };
 }

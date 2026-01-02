@@ -2,6 +2,7 @@
   config,
   pkgs,
   lib,
+  networkCatalog,
   ...
 }:
 
@@ -13,12 +14,13 @@ let
   userName = user.name;
   userHome = user.home;
   hostName = config.networking.hostName or "localhost";
-
-  # XDG directories - use standard paths directly
-  xdgStateHome = "${userHome}/.local/state";
-
-  # Get Tailscale hostname from config or derive from hostname
-  tailscaleHostname = config.services.tailscale.hostname or "${hostName}.mammoth-skate.ts.net";
+  # Get Tailscale hostname from config or derive from hostname using networkCatalog
+  tailnetDomain =
+    if networkCatalog ? tailnet && (networkCatalog.tailnet ? domain) then
+      networkCatalog.tailnet.domain
+    else
+      ".mammoth-skate.ts.net";
+  tailscaleHostname = config.services.tailscale.hostname or "${hostName}${tailnetDomain}";
 
   teleportConfigFile = pkgs.writeText "teleport.yaml" ''
     ---
@@ -59,94 +61,39 @@ let
       ''}
   '';
 
-  teleportActivationScript = pkgs.writeShellScript "teleport-activation.sh" ''
-        set -euo pipefail
-        LOG="/var/log/darwin-teleport-activation.log"
-        {
-          echo "[teleport] start $(date)"
+  teleportFirstRunScript = pkgs.replaceVars ./teleport.d/teleport-first-run.sh {
+    userName = userName;
+    dataDir = cfg.dataDir;
+    tctlBin = "${pkgs.teleport}/bin/tctl";
+  };
 
-          : "Setting up Teleport directories and first-run script"
-
-          mkdir -p ${cfg.dataDir}
-          mkdir -p ${xdgStateHome}/log
-
-          chown -R root:admin ${cfg.dataDir}
-          chmod -R g+rwX ${cfg.dataDir}
-          chmod 770 ${cfg.dataDir}
-
-          chown ${userName}:staff ${xdgStateHome}/log
-
-          mkdir -p /usr/local/bin
-          if [ ! -f "/usr/local/bin/teleport-first-run" ]; then
-            cat > /usr/local/bin/teleport-first-run <<'EOF'
-    #!/usr/bin/env bash
-    set -euo pipefail
-
-    # Only run for the primary user
-    if [ "$(whoami)" != "${userName}" ]; then
-      exit 0
-    fi
-
-    : "Waiting for Teleport to start"
-    for i in {1..30}; do
-      if ${pkgs.teleport}/bin/tctl status &>/dev/null; then
-        break
-      fi
-      sleep 1
-    done
-
-    # Check if setup is already done
-    if [ -f "${cfg.dataDir}/.initial-setup-done" ]; then
-      exit 0
-    fi
-
-    : "Importing RBAC roles"
-    ${pkgs.teleport}/bin/tctl create -f /etc/teleport/roles.yaml 2>/dev/null || true
-
-    : "Getting all users in admin or wheel group"
-    ADMIN_USERS=$(dscl . -read /Groups/admin GroupMembership 2>/dev/null | sed 's/GroupMembership: //' || echo "")
-    WHEEL_USERS=$(dscl . -read /Groups/wheel GroupMembership 2>/dev/null | sed 's/GroupMembership: //' || echo "")
-    ALL_ADMINS=$(echo "$ADMIN_USERS $WHEEL_USERS" | tr ' ' '\n' | sort -u | grep -v '^$')
-
-    : "Creating Teleport users for admin group members"
-    for user in $ALL_ADMINS; do
-      : "Checking user: $user"
-      if ! ${pkgs.teleport}/bin/tctl users ls | grep -q "^$user"; then
-        : "Creating Teleport user for: $user"
-        ${pkgs.teleport}/bin/tctl users add "$user" --roles=admin --logins="$user",root
-        echo ""
-        echo "✅ User '$user' created! Use the signup link above to set password."
-        echo ""
-      fi
-    done
-
-    touch "${cfg.dataDir}/.initial-setup-done"
-    echo "✅ Teleport setup complete!"
-    EOF
-            chmod +x /usr/local/bin/teleport-first-run
-          fi
-
-          echo "[teleport] end $(date)"
-        } >>"$LOG" 2>&1
+  teleportActivationScript = pkgs.runCommand "teleport-post-activation.sh" { } ''
+    cp ${
+      pkgs.replaceVars ./teleport.d/post-activation.sh {
+        dataDir = cfg.dataDir;
+        xdgStateHome = xdgStateHome;
+        userName = userName;
+        teleportFirstRunScript = teleportFirstRunScript;
+      }
+    } "$out"
+    chmod +x "$out"
   '';
 
-  teleportFirstRunActivationScript = pkgs.writeShellScript "teleport-first-run-activation.sh" ''
-    set -euo pipefail
-    LOG="/var/log/darwin-teleport-first-run.log"
-    {
-      if [ ! -f "${cfg.dataDir}/.initial-setup-done" ] && [ -x "$HOME/.local/bin/teleport-first-run" ]; then
-        echo "[teleport] running first-time setup"
-        sudo -u "$USER" "$HOME/.local/bin/teleport-first-run" || true
-      fi
-    } >>"$LOG" 2>&1
+  teleportFirstRunActivationScript = pkgs.runCommand "teleport-first-run-activation.sh" { } ''
+    cp ${
+      pkgs.replaceVars ./teleport.d/first-run-activation.sh {
+        dataDir = cfg.dataDir;
+      }
+    } "$out"
+    chmod +x "$out"
   '';
 in
 {
   options.services.teleport = {
     enable = mkOption {
       type = types.bool;
-      default = true;
-      description = "Enable Teleport auth/proxy server on all Darwin hosts";
+      default = false;
+      description = "Enable Teleport auth/proxy server on Darwin hosts (disabled by default)";
     };
 
     authServer = mkOption {
@@ -224,9 +171,11 @@ in
   };
 
   config = mkIf cfg.enable {
-    # Ensure XDG directories exist and set permissions
-    system.activationScripts.postActivation.text = ''
+    # Run Teleport setup scripts during postActivation so they appear and execute in the generated activate
+    system.activationScripts.postActivation.text = lib.mkAfter ''
       ${teleportActivationScript}
+        ${teleportFirstRunActivationScript}
+        ${teleportFirstRunScript}
     '';
 
     # Create a launch agent to run the first-time setup
@@ -255,11 +204,6 @@ in
         exec ${pkgs.teleport}/bin/tsh --proxy=${tailscaleHostname}:${toString cfg.webPort} "$@"
       '')
     ];
-
-    # Ensure the first-run script is run as the current user
-    system.activationScripts.teleportFirstRun = ''
-      ${teleportFirstRunActivationScript}
-    '';
 
     # Create a system-wide tctl configuration
     environment.etc."teleport.yaml".source = teleportConfigFile;

@@ -20,16 +20,18 @@ in
   programs.git = {
     enable = true;
 
-    userName = userName;
-    userEmail = userEmail;
-
     signing = {
       key = "${hostKeysDir}/github-signing.pub";
       format = "ssh";
       signByDefault = true;
     };
 
-    extraConfig = {
+    settings = {
+      user = {
+        name = userName;
+        email = userEmail;
+      };
+
       commit.verbose = true;
       credential.helper =
         if pkgs.stdenvNoCC.isDarwin then "osxkeychain" else "cache --timeout=1000000000";
@@ -41,30 +43,15 @@ in
       push.followTags = true;
       push.autoSetupRemote = true;
       rebase.autoStash = true;
-      gpg = {
-        ssh = {
-          allowedSignersFile = allowedSignersFile;
-        };
+      gpg.ssh.allowedSignersFile = allowedSignersFile;
+
+      alias = {
+        fix = "commit --amend --no-edit";
+        ignore = "!gi() { curl -sL https://www.toptal.com/developers/gitignore/api/$@ ;}; gi";
+        oops = "reset HEAD~1";
+        sub = "submodule update --init --recursive";
       };
     };
-
-    aliases = {
-      fix = "commit --amend --no-edit";
-      ignore = "!gi() { curl -sL https://www.toptal.com/developers/gitignore/api/$@ ;}; gi";
-      oops = "reset HEAD~1";
-      sub = "submodule update --init --recursive";
-    };
-
-    delta = {
-      enable = true;
-      options = {
-        side-by-side = true;
-        line-numbers = true;
-        light = true;
-      };
-    };
-
-    difftastic.enable = false;
 
     includes = [
       { path = "config.d/signing"; }
@@ -75,6 +62,18 @@ in
 
     lfs.enable = true;
   };
+
+  programs.delta = {
+    enable = true;
+    enableGitIntegration = true;
+    options = {
+      side-by-side = true;
+      line-numbers = true;
+      light = true;
+    };
+  };
+
+  programs.difftastic.enable = false;
 
   xdg.configFile = {
     "git" = {
@@ -116,14 +115,12 @@ in
     };
   };
 
-  home.activation.generateAllowedSigners =
-    lib.hm.dag.entryAfter [ "writeBoundary" "deploySSHKeys" ]
-      ''
-        set -euxo pipefail
-        : Generatig github allowed signers configuration file
-        cat <<EoF > "${allowedSignersFile}"
-        stephane.lacoin@gmail.com namespaces="git" $( cat "${hostKeysDir}/github-signing.pub" )
-        stephane.lacoin@hyland.com namespaces="git" $( cat "${hostKeysDir}/github-signing-hyland.pub" )
-        EoF
-      '';
+  home.activation.generateAllowedSigners = lib.hm.dag.entryAfter [ "writeBoundary" "deploySSHKeys" ] (
+    builtins.readFile (
+      pkgs.replaceVars ./git.d/generate-allowed-signers.sh {
+        allowedSignersFile = allowedSignersFile;
+        hostKeysDir = hostKeysDir;
+      }
+    )
+  );
 }

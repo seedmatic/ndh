@@ -32,6 +32,19 @@ let
     };
   };
 
+  # Shared network catalog (@codebase)
+  # Named networks with CIDR and DNS search domain for use across host definitions and exports
+  networkCatalog = {
+    lan = {
+      cidr = "192.168.1.0/24";
+      domain = ".lan";
+    };
+    tailnet = {
+      cidr = "100.64.0.0/10";
+      domain = ".mammoth-skate.ts.net";
+    };
+  };
+
   # Shared host catalog (@codebase)
   # Consolidated facts about managed hosts and their builder endpoints.
   # Hosts are macOS (baremetal or VM); builders can be darwin or Linux/NixOS VMs.
@@ -40,6 +53,10 @@ let
       {
         platform = "darwin";
         form = "baremetal";
+        networks = [
+          "lan"
+          "tailnet"
+        ];
         builder = {
           hostName = "bioskop-darwin";
           systems = [ "aarch64-darwin" ];
@@ -50,6 +67,10 @@ let
       {
         platform = "darwin";
         form = "baremetal";
+        networks = [
+          "lan"
+          "tailnet"
+        ];
         vm = {
           kind = "qemu";
           manager = "nix-darwin";
@@ -64,6 +85,10 @@ let
       {
         platform = "darwin";
         form = "baremetal";
+        networks = [
+          "lan"
+          "tailnet"
+        ];
         vm = {
           kind = "vz";
           manager = "lima";
@@ -82,6 +107,10 @@ let
       {
         platform = "darwin";
         form = "vm";
+        networks = [
+          "lan"
+          "tailnet"
+        ];
         vm = {
           kind = "vz";
           manager = "tart";
@@ -91,6 +120,10 @@ let
       {
         platform = "darwin";
         form = "vm";
+        networks = [
+          "lan"
+          "tailnet"
+        ];
         vm = {
           kind = "vz";
           manager = "lima";
@@ -217,6 +250,10 @@ in
                       host = "bioskop";
                       platform = "darwin"; # macOS host
                       form = "baremetal"; # bare metal vs vm
+                      networks = [
+                        "lan"
+                        "tailnet"
+                      ];
                       builder = {
                         hostName = "bioskop-darwin";
                         systems = [ "aarch64-darwin" ];
@@ -228,6 +265,10 @@ in
                       host = "bioskop";
                       platform = "darwin";
                       form = "baremetal";
+                      networks = [
+                        "lan"
+                        "tailnet"
+                      ];
                       vm = {
                         kind = "qemu";
                         manager = "nix-darwin";
@@ -243,6 +284,10 @@ in
                       host = "bioskop";
                       platform = "darwin";
                       form = "baremetal";
+                      networks = [
+                        "lan"
+                        "tailnet"
+                      ];
                       vm = {
                         kind = "vz";
                         manager = "lima";
@@ -258,6 +303,10 @@ in
                       host = "alcide";
                       platform = "darwin"; # running under tart/vz
                       form = "vm";
+                      networks = [
+                        "lan"
+                        "tailnet"
+                      ];
                       vm = {
                         kind = "vz";
                         manager = "tart";
@@ -273,6 +322,10 @@ in
                       host = "alcide";
                       platform = "darwin";
                       form = "vm";
+                      networks = [
+                        "lan"
+                        "tailnet"
+                      ];
                       vm = {
                         kind = "vz";
                         manager = "lima";
@@ -375,6 +428,7 @@ in
   config = {
     _module.args.userMapping = userMapping; # (@codebase) keep simple to avoid recursion
     _module.args.hostsCatalog = hostsCatalog; # (@codebase) expose consolidated host facts
+    _module.args.networkCatalog = networkCatalog; # (@codebase) expose named networks (CIDR + domain)
     # Dynamic defaults (@codebase): adjust user home path to use the resolved user name
     # instead of the static placeholder jdoe so Home Manager's activation check matches $HOME.
     profile.user.home = lib.mkDefault (
@@ -400,6 +454,7 @@ in
           // {
             builder = base // {
               supportedFeatures = lib.unique (baseFeatures ++ defaults);
+              networks = entry.networks or [ ];
             };
           };
         entriesFor =

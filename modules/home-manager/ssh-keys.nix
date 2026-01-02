@@ -116,26 +116,19 @@ in
   };
 
   # Deploy keys directly to ~/.ssh/keys.d/ with proper permissions (skip .local/state)
-  home.activation.deploySSHKeys = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-    run install -d -m 700 ~/.ssh/keys.d
-    run ${pkgs.rsync}/bin/rsync -avL \
-      --chmod=u+w,go-r \
-      --chown=$(id -un):$(id -gn) \
-      ${keysDir}/ ~/.ssh/keys.d/ || true
-  '';
+  home.activation.deploySSHKeys = lib.hm.dag.entryAfter [ "writeBoundary" ] (
+    builtins.readFile (
+      pkgs.replaceVars ./ssh-keys.d/deploy-ssh-keys.sh {
+        rsync = "${pkgs.rsync}/bin/rsync";
+        keysDir = keysDir;
+      }
+    )
+  );
 
   # Ensure mutable authorized_keys exists (symlink-free) with strict perms
-  home.activation.ensureAuthorizedKeys = lib.hm.dag.entryAfter [ "deploySSHKeys" ] ''
-    run install -d -m 700 ~/.ssh
-    if [ -L ~/.ssh/authorized_keys ]; then
-      run rm -f ~/.ssh/authorized_keys
-    fi
-    if [ ! -f ~/.ssh/authorized_keys ]; then
-      run install -m 600 /dev/null ~/.ssh/authorized_keys
-    else
-      run chmod 600 ~/.ssh/authorized_keys
-    fi
-  '';
+  home.activation.ensureAuthorizedKeys = lib.hm.dag.entryAfter [ "deploySSHKeys" ] (
+    builtins.readFile (pkgs.replaceVars ./ssh-keys.d/ensure-authorized-keys.sh { })
+  );
 
   programs.ssh.extraConfig = ''
     KnownHostsCommand ${knownHostsScript}

@@ -359,6 +359,43 @@ sudo headscale routes enable --route 192.168.1.0/24 <node-id>
 
 == Other Modules
 
+=== NFS/Autofs (Darwin)
+
+Module: `modules/darwin/nfs-autofs.nix`
+
+Manages NFS exports, autofs maps, and `/etc/synthetic.conf` entries on macOS.
+
+==== Key Options
+
+[source,nix]
+----
+services.nfsDarwin.autofs.synthetic = {
+  requiredEntries = [ "nix" "run\tprivate/var/run" ]; # defaults
+  hostEntries = [ "smb\tprivate/var/smb" ];            # host-specific additions
+  extraEntries = [ "tmp\tprivate/var/tmp" ];           # shared extras
+};
+
+services.nfsDarwin.autofs.mountPoint = "/System/Volumes/Data/net"; # SIP-friendly default
+----
+
+`requiredEntries`:: Baseline lines always written to synthetic.conf (default includes `/nix` and `/run`).
+`hostEntries`:: Host-scoped lines set in each host config (appended after required entries).
+`extraEntries`:: Additional lines, coercible from string or list.
+
+Note: macOS SIP pre-creates `/net`. Using `/System/Volumes/Data/net` as the mount point avoids SIP conflicts; `/net` can then be a symlink to that path after reboot/synthetic rebuild.
+
+Example host usage (e.g., hosts/alcide/flake.nix):
+
+[source,nix]
+----
+{
+  services.nfsDarwin.autofs.synthetic.hostEntries = [
+    "smb\tprivate/var/smb"
+    "tmp\tprivate/var/tmp"
+  ];
+}
+----
+
 === Teleport (Darwin)
 
 Module: `modules/darwin/teleport.nix`

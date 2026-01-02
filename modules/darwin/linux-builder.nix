@@ -7,7 +7,7 @@
   ...
 }:
 let
-  qemu-pkgdb = self.packages.${pkgs.system}.qemu-pkgdb or pkgs.qemu;
+  qemu-pkgdb = self.packages.${pkgs.stdenv.hostPlatform.system}.qemu-pkgdb or pkgs.qemu;
 
   keys = builtins.fromJSON (
     builtins.readFile (

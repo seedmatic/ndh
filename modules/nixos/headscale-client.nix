@@ -9,6 +9,7 @@ with lib;
 
 let
   cfg = config.services.headscale-client;
+  defaultHostname = config.networking.hostName;
 in
 {
   options.services.headscale-client = {
@@ -32,7 +33,7 @@ in
 
     hostname = mkOption {
       type = types.str;
-      default = config.networking.hostName;
+      default = defaultHostname;
       description = "Hostname to advertise";
     };
 

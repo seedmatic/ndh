@@ -27,7 +27,9 @@ in
   environment.etc."ssl/cert.pem".source = "${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt";
 
   # Add darwin-rebuild to system packages for easy rebuilds
-  environment.systemPackages = [ self.inputs.darwin.packages.${pkgs.system}.darwin-rebuild ];
+  environment.systemPackages = [
+    self.inputs.darwin.packages.${pkgs.stdenv.hostPlatform.system}.darwin-rebuild
+  ];
 
   # Belt-and-suspenders: ensure /run/current-system/sw/bin and /run/wrappers/bin (sudo wrapper)
   # are on PATH for login shells so darwin-rebuild and privileged tools are discoverable.
@@ -129,15 +131,18 @@ in
   };
   nixpkgs.config = import ../common/nixpkgs-config.nix;
 
-  # nixpkgs.overlays = [
-  #   (self: super: {
-  #     # Disable checks for all packages
-  #     all = super.all.overrideAttrs (oldAttrs: {
-  #       doCheck = false;
-  #       doInstallCheck = false;
-  #     });
-  #   })
-  # ];
+  nixpkgs.overlays = (config.nixpkgs.overlays or [ ]) ++ [
+    (final: prev: {
+      # Force tailscale to skip checks at the nixpkgs layer so builds never run tests
+      tailscale = prev.tailscale.overrideAttrs (old: {
+        doCheck = false;
+        dontCheck = true;
+        checkPhase = "echo skipping tailscale checkPhase";
+        installCheckPhase = "echo skipping tailscale installCheckPhase";
+        phases = builtins.filter (p: p != "checkPhase") (old.phases or [ ]);
+      });
+    })
+  ];
 
   # launchd.user.envVariables = { XDG_RUNTIME_DIR = "${userHome}/.xdg"; };
 

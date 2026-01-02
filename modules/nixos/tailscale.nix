@@ -2,6 +2,7 @@
   config,
   pkgs,
   lib,
+  networkCatalog,
   ...
 }:
 let
@@ -10,6 +11,16 @@ let
   tagsString = lib.concatStringsSep "," (map (tag: "tag:" + tag) cfg.tags);
   # Only enable regular Tailscale if headscale-client is not enabled
   useHeadscale = config.services.headscale-client.enable or false;
+  tailnetDomain =
+    if networkCatalog ? tailnet && (networkCatalog.tailnet ? domain) then
+      networkCatalog.tailnet.domain
+    else
+      "";
+  tailscaleHostName =
+    let
+      base = config.networking.hostName;
+    in
+    if tailnetDomain != "" then "${base}${tailnetDomain}" else base;
 in
 {
   config = lib.mkIf (!useHeadscale) {
@@ -22,7 +33,7 @@ in
       extraUpFlags = [
         "--ssh"
         "--advertise-tags=${tagsString}"
-        "--hostname=${config.networking.hostName}"
+        "--hostname=${tailscaleHostName}"
       ];
     };
 

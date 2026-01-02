@@ -15,14 +15,16 @@ let
     destination = "/bin/disable-google-updaters";
     text = builtins.readFile ../../bin/disable-google-updaters.sh;
   };
-  disableGoogleUpdatersActivationScript = pkgs.writeShellScript "disable-google-updaters-activation.sh" ''
-    set -euo pipefail
-    LOG="/var/log/darwin-disable-google-updaters.log"
-    {
-      echo "[google-updaters] Disabling Google update services"
-      ${disableGoogleUpdatersScript}/bin/disable-google-updaters
-    } >>"$LOG" 2>&1
-  '';
+  disableGoogleUpdatersActivationScript =
+    pkgs.runCommand "disable-google-updaters-post-activation.sh" { }
+      ''
+        cp ${
+          pkgs.replaceVars ./disable-google-updaters.d/post-activation.sh {
+            disableGoogleUpdatersScript = disableGoogleUpdatersScript;
+          }
+        } "$out"
+        chmod +x "$out"
+      '';
 in
 {
   options.services.disable-google-updaters = {

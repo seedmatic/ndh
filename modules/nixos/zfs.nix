@@ -290,10 +290,9 @@ in
 
       shutdownRamfs.contents."/etc/systemd/system-shutdown/zpool".source = (
         lib.mkForce (
-          pkgs.writeShellScript "zpool-sync-export-shutdown" ''
-            ${pkgs.zfs}/bin/zpool sync
-            ${pkgs.zfs}/bin/zpool export -a
-          ''
+          pkgs.replaceVars ./zfs.d/zpool-sync-export-shutdown.sh {
+            zpool = "${pkgs.zfs}/bin/zpool";
+          }
         )
       );
 

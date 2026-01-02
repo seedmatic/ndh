@@ -3,15 +3,21 @@
   programs.ssh = {
     enable = true;
     includes = [ "config.d/*" ];
-    forwardAgent = true;
-    addKeysToAgent = "no";
-    controlMaster = "auto";
-    controlPersist = "yes";
-    controlPath = "${config.home.homeDirectory}/.ssh/master-%C";
 
-    # GPG agent forwarding for Lima VMs
-    # Forward Darwin's GPG agent to the NixOS VM
+    # Explicitly disable the built-in defaults to avoid future schema removals
+    enableDefaultConfig = false;
+
     matchBlocks = {
+      "*" = {
+        forwardAgent = true;
+        addKeysToAgent = "no";
+        controlMaster = "auto";
+        controlPersist = "yes";
+        controlPath = "${config.home.homeDirectory}/.ssh/master-%C";
+      };
+
+      # GPG agent forwarding for Lima VMs
+      # Forward Darwin's GPG agent to the NixOS VM
       "lima-*" = {
         extraOptions = {
           # Forward GPG agent socket from Darwin to Lima VM

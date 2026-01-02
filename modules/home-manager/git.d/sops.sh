@@ -52,12 +52,11 @@ EOF
     ];
   };
 
-  xdg.configFile."git/sops.d" = {
-    source = pkgs.stdenvNoCC.mkDerivation {
-      name = "sops-filtered-config";
-      src = ./sops.d;
-      
-      # Ensure rsync is available for the build
+  xdg.configFile."git/sops" = {
+    source = pkgs.replaceVars ./sops {
+      sopsConfigHome = "${config.xdg.configHome}/git/sops.d";
+    };
+  };
       nativeBuildInputs = [ pkgs.rsync ];
       buildInputs = [ pkgs.rsync ];
       
@@ -70,9 +69,8 @@ EOF
   };
 
   xdg.configFile."git/sops" = {
-    source = pkgs.substituteAll {
-      src = ./sops;
-      sopsConfigHome = "\${config.xdg.configHome}/git/sops.d";
+    source = pkgs.replaceVars ./sops {
+      sopsConfigHome = "${config.xdg.configHome}/git/sops.d";
     };
   };
 
@@ -80,9 +78,8 @@ $(for fmt in "${formats[@]}"; do
     cat <<EOL
 
   xdg.configFile."git/sops.d/$fmt" = {
-    source = pkgs.substituteAll {
-      src = ./sops.d/$fmt;
-      sopsConfigHome = "\${config.xdg.configHome}/git/sops.d";
+    source = pkgs.replaceVars ./sops.d/$fmt {
+      sopsConfigHome = "${config.xdg.configHome}/git/sops.d";
     };
   };
 EOL

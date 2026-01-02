@@ -34,42 +34,14 @@ in
       };
       script =
         let
-          # Write helper script used for each symlink creation target
-          createScript = pkgs.writeShellScript "create-profile-symlink" ''
-            set -euo pipefail
-            target_home="$1"    # real directory we want to point to
-            link_path="$2"      # symlink we want to create/update
+          createScript = "${pkgs.replaceVars ./profile-home-symlinks.d/create-profile-symlink.sh { }}";
 
-            # Validate target home exists
-            if [ ! -d "$target_home" ]; then
-              echo "[profile-home-symlinks] target '$target_home' not present, skip $link_path" >&2
-              exit 0
-            fi
-            # Disallow nesting symlink inside target (avoid loops)
-            case "$link_path" in
-              "$target_home"/*)
-                echo "[profile-home-symlinks] skip $link_path (would reside inside target)" >&2
-                exit 0 ;;
-            esac
-            # If link path exists and is not a symlink, leave it alone
-            if [ -e "$link_path" ] && [ ! -L "$link_path" ]; then
-              echo "[profile-home-symlinks] $link_path exists (not symlink), skipping" >&2
-              exit 0
-            fi
-            mkdir -p "$(dirname "$link_path")"
-            ln -snf "$target_home" "$link_path"
-            echo "[profile-home-symlinks] $link_path -> $target_home"
-          '';
-
-          # Build command list for /home aliases
           homeAliasCmds = lib.concatMapStringsSep "\n" (
             alias: ''${createScript} "${currentHome}" "${currentHomeBase}/${alias}"''
           ) homeSymlinks;
 
-          # Build command list for /Users aliases (only if /Users exists)
           usersAliasCmds = ''
             if [ -d /Users ]; then
-              # Ensure primary user also linked if real dir not present (optional convenience)
               if [ ! -e "/Users/${cfgUserName}" ]; then
                 ${createScript} "${currentHome}" "/Users/${cfgUserName}"
               fi
@@ -79,11 +51,14 @@ in
             fi
           '';
         in
-        ''
-          echo "[profile-home-symlinks] current user: ${cfgUserName} home: ${currentHome}"
-          ${homeAliasCmds}
-          ${usersAliasCmds}
-        '';
+        builtins.readFile (
+          pkgs.replaceVars ./profile-home-symlinks.d/service.sh {
+            cfgUserName = cfgUserName;
+            currentHome = currentHome;
+            homeAliasCmds = homeAliasCmds;
+            usersAliasCmds = usersAliasCmds;
+          }
+        );
     };
   };
 }

@@ -13,10 +13,7 @@
   };
 
   # Provide a no-op installBootLoader hook so nixos-rebuild doesn't attempt bootspec/systemd-boot operations.
-  system.build.installBootLoader = pkgs.writeShellScript "skip-install-bootloader" ''
-    : "Skipping bootloader install (Lima guest / no real EFI)"
-    exit 0
-  '';
+  system.build.installBootLoader = pkgs.replaceVars ./no-bootloader.d/skip-install-bootloader.sh { };
 
   # Reduce spurious warning: system expects some loader; we deliberately skip.
   # Mark system as virtualized so tooling is less insistent (optional hint; benign if already set elsewhere)

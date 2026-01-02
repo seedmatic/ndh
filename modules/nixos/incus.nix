@@ -16,11 +16,7 @@ let
     builtins.substring 0 2 (builtins.hashString "sha256" effectiveHostName)
   );
   lanBridgeMac = "10:66:6a:4c:${hostByteHex}:fe";
-  fixIncusSocketPerms = pkgs.writeShellScript "fix-incus-socket-perms.sh" ''
-    set -euxo pipefail
-    find /run/incus -type f -exec chmod g+rw {} +
-    find /run/incus -type d -exec chmod g+rwx {} +
-  '';
+  fixIncusSocketPerms = pkgs.replaceVars ./incus.d/fix-incus-socket-perms.sh { };
 
 in
 {
@@ -138,35 +134,21 @@ in
 
   systemd.tmpfiles.rules = [ "d /run/incus 0775 root incus-admin -" ];
 
-  system.activationScripts.incusUserConfig =
-    let
-      user = config.profile.user.name;
-    in
-    {
-      text = ''
-        #!/usr/bin/env -S bash -euxo pipefail
-
-        : "Create the incus user config directory and config file"
-        install -d -m 0775 -o ${user} -g ${user} ~${user}/.config/incus
-        cat  <<EoF > ~root/.config/incus/config.yml| install -Dm 600 -o ${user} -g ${user} /dev/stdin ~${user}/.config/incus/config.yml
-        default-remote: local
-        remotes:
-          docker:
-            addr: https://docker.io
-            protocol: oci
-            public: true
-          images:
-            addr: https://images.linuxcontainers.org
-            protocol: simplestreams
-            public: true
-          ctreg:
-            addr: https://ctreg.mammoth-skate.ts.net
-            protocol: oci
-            public: true
-        aliases: {}
-        EoF
-      '';
-    };
+  system.activationScripts.incusUserConfig = {
+    text = builtins.readFile (
+      pkgs.replaceVars ./incus.d/incus-user-config.sh {
+        user = config.profile.user.name;
+        home = config.profile.user.home;
+        tailnetDomain =
+          if
+            config._module.specialArgs ? networkCatalog && (config._module.specialArgs.networkCatalog ? tailnet)
+          then
+            lib.removePrefix "." config._module.specialArgs.networkCatalog.tailnet.domain
+          else
+            "tailnet.local";
+      }
+    );
+  };
 
   systemd.services.incus = {
     serviceConfig.ExecStartPost = [ "${fixIncusSocketPerms}" ];

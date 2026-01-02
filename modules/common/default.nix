@@ -12,7 +12,12 @@ let
   user = cfg.user;
   userName = user.name;
   userHome = "${if pkgs.stdenvNoCC.isDarwin then "/Users" else "/home"}/${userName}";
-  hmActivationPackage = lib.attrByPath [ "home-manager" "users" userName "activationPackage" ] null config;
+  hmActivationPackage = lib.attrByPath [
+    "home-manager"
+    "users"
+    userName
+    "activationPackage"
+  ] null config;
   hmUserExists = hmActivationPackage != null;
 
   # Define systemPackages separately
@@ -20,6 +25,17 @@ let
     inherit pkgs lib;
     # Pass only necessary parts of config, not the entire config
     inherit (config) programs environment;
+  };
+
+  extraActivationScript = pkgs.runCommand "extra-activation.sh" { } ''
+    cp ${./default.d/extra-activation.sh} "$out"
+    chmod +x "$out"
+  '';
+
+  postActivationScript = pkgs.replaceVars ./default.d/post-activation.sh {
+    hmActivationPackage = toString hmActivationPackage;
+    userName = userName;
+    userHome = userHome;
   };
 
 in
@@ -63,22 +79,15 @@ in
   # Enable shell tracing early for easier debugging of activation scripts
   # Use extraActivation which runs early in the activation sequence
   system.activationScripts.extraActivation.text = lib.mkBefore ''
-    set -x
-    set +e
-    exec 2> >(tee -a /var/log/darwin-activation-trace.log >&2)
-    echo "=== Activation started at $(date) ==="
+    ${extraActivationScript}
   '';
 
   # Run home-manager after all other activation steps so user files see final system state
-  system.activationScripts.postActivation.text = lib.mkOrder 2000 (lib.optionalString (pkgs.stdenvNoCC.isDarwin && hmUserExists) ''
-    HM_ACTIVATE="${hmActivationPackage}/activate"
-    if [ -n "$HM_ACTIVATE" ] && [ -x "$HM_ACTIVATE" ]; then
-      echo "Running home-manager activation last for ${userName} ..."
-      sudo -u ${userName} HOME="${userHome}" XDG_RUNTIME_DIR="${userHome}/.xdg" "$HM_ACTIVATE"
-    else
-      echo "home-manager activation package missing for ${userName}, skipping" >&2
-    fi
-  '');
+  system.activationScripts.postActivation.text = lib.mkOrder 2000 (
+    lib.optionalString (pkgs.stdenvNoCC.isDarwin && hmUserExists) ''
+      ${postActivationScript}
+    ''
+  );
 
   # let nix manage home-manager profiles and use global nixpkgs
   home-manager = {

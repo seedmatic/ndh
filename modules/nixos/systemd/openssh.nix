@@ -66,42 +66,19 @@ in
 
   # Ensure the group authorized keys directory exists and create keys
   system.activationScripts = {
-    sshGroupKeys = ''
-      : "Ensure directory for authorized keys exists"
-      SSH_AUTH_KEYS_DIR=/etc/ssh/authorized_keys.d
-      install -d -m 755 "$SSH_AUTH_KEYS_DIR"
-
-      : "Ensure directory for SSH keys exists (for CA key + any custom keys)"
-      SSH_KEYS_DIR=${config.opensshPolicy.keysDir}
-      install -d -m 755 "$SSH_KEYS_DIR"
-
-      : "Generate and symlink a build user key into the authorized keys directory (idempotent)"
-      SSH_KEY_NIXBLD="$SSH_KEYS_DIR/nixbld"
-      if [ ! -f "$SSH_KEY_NIXBLD" ]; then
-        ${pkgs.openssh}/bin/ssh-keygen -t ed25519 -f "$SSH_KEY_NIXBLD" -N "" -C "nixbld@${hostname}"
-        chmod a+r "${dollar}{SSH_KEY_NIXBLD}".pub
-        ln -sf "${dollar}{SSH_KEY_NIXBLD}.pub" "$SSH_AUTH_KEYS_DIR/nixbld"
-      fi
-
-      : "If a CA public key was staged somewhere (e.g., in /run or a user profile), copy it into place (placeholder logic)"
-      if [ -f "$SSH_KEYS_DIR/mammoth_skate-ca.pub" ]; then
-        chmod 644 "$SSH_KEYS_DIR/mammoth_skate-ca.pub"
-      fi
-
-      : "Install a root-owned copy of AuthorizedKeysCommand (group aggregation) and principals command"
-      install -m 555 ${groupKeysScriptStore} /etc/ssh/${config.opensshPolicy.canonicalGroupKeysCommandName}
-      if [ ! -e /etc/ssh/ssh-group-authorized-keys ]; then
-        ln -s ${config.opensshPolicy.canonicalGroupKeysCommandName} /etc/ssh/ssh-group-authorized-keys
-      fi
-      install -m 555 ${principalsScriptStore} /etc/ssh/${config.opensshPolicy.canonicalPrincipalsCommandName}
-      if [ ! -e /etc/ssh/authorized-principals-command ]; then
-        ln -s ${config.opensshPolicy.canonicalPrincipalsCommandName} /etc/ssh/authorized-principals-command
-      fi
-
-      : "Ensure drop-in include directories exist"
-      install -d -m 755 /etc/ssh/sshd_config.d
-      install -d -m 755 /etc/ssh/ssh_config.d
-    '';
+    sshGroupKeys = {
+      text = builtins.readFile (
+        pkgs.replaceVars ./openssh.d/activation.sh {
+          keysDir = config.opensshPolicy.keysDir;
+          hostname = hostname;
+          sshKeygen = "${pkgs.openssh}/bin/ssh-keygen";
+          principalsCommand = config.opensshPolicy.canonicalPrincipalsCommandName;
+          groupCommand = config.opensshPolicy.canonicalGroupKeysCommandName;
+          principalsScript = principalsScriptStore;
+          groupKeysScript = groupKeysScriptStore;
+        }
+      );
+    };
   };
 
   # ssh non-interactive session finds the setuid sudo via /bin or /usr/bin

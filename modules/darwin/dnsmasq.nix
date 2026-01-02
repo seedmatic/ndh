@@ -9,16 +9,14 @@ let
   userName = user.name;
   logFile = "/Users/${userName}/Library/Logs/dnsmasq.log";
 
-  dnsmasqActivationScript = pkgs.writeShellScript "dnsmasq-activation.sh" ''
-    set -euo pipefail
-    LOG="/var/log/darwin-dnsmasq-activation.log"
-    {
-      echo "[dnsmasq] Ensuring log path ${logFile}"
-      mkdir -p "$(dirname ${logFile})"
-      touch "${logFile}"
-      chmod 644 "${logFile}"
-      chown ${userName}:staff "${logFile}"
-    } >>"$LOG" 2>&1
+  dnsmasqActivationScript = pkgs.runCommand "dnsmasq-post-activation.sh" { } ''
+    cp ${
+      pkgs.replaceVars ./dnsmasq.d/post-activation.sh {
+        logFile = logFile;
+        userName = userName;
+      }
+    } "$out"
+    chmod +x "$out"
   '';
 in
 {
