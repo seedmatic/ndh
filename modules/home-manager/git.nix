@@ -41,6 +41,7 @@ in
       http.sslVerify = true;
       http.sslCAInfo = "/etc/ssl/certs/ca-certificates.crt";
       init.defaultBranch = "main";
+      gh-get.root = "/var/lib/git";
       pull.rebase = true;
       push.followTags = true;
       push.autoSetupRemote = true;
