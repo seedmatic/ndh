@@ -14,6 +14,7 @@ let
       pkgs.replaceVars ./dnsmasq.d/post-activation.sh {
         logFile = logFile;
         userName = userName;
+        activationLogger = ./common/activation-logger.sh;
       }
     } "$out"
     chmod +x "$out"
@@ -34,7 +35,7 @@ in
     };
   };
 
-  system.activationScripts.postActivation.text = ''
+  system.activationScripts.postActivation.text = lib.mkAfter ''
     ${dnsmasqActivationScript}
   '';
 }

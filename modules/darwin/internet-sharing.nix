@@ -65,12 +65,14 @@ let
       desiredDevices
       autoToggleBlock
       ;
+    activationLogger = ./common/activation-logger.sh;
   };
 
   activationWrapperScript = pkgs.runCommand "internet-sharing-activation.sh" { } ''
     cp ${
       pkgs.replaceVars ./internet-sharing.d/activation-wrapper.sh {
         inherit configurePlist verifyAnchorsBlock;
+        activationLogger = ./common/activation-logger.sh;
       }
     } "$out"
     chmod +x "$out"
@@ -139,8 +141,8 @@ in
   };
 
   config = mkIf cfg.enable {
-    # Run configuration script during system activation
-    system.activationScripts.postActivation.text = lib.mkAfter ''
+    # Run configuration script during system activation (networking fragment)
+    system.activationScripts.networking.text = lib.mkAfter ''
       ${activationWrapperScript}
     '';
 

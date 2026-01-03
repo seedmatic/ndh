@@ -20,6 +20,7 @@ let
     cp ${
       pkgs.replaceVars ./smb-bioskop.d/post-activation.sh {
         inherit bioskopFstabScript;
+        activationLogger = ./common/activation-logger.sh;
       }
     } "$out"
     chmod +x "$out"
@@ -72,7 +73,7 @@ in
 
   config = lib.mkIf cfg.enable {
     # Configure mount via /etc/fstab at /Network/Servers (autofs -fstab map)
-    system.activationScripts.postActivation.text = lib.mkAfter ''
+    system.activationScripts.etc.text = lib.mkAfter ''
       ${bioskopPostActivation}
     '';
   };

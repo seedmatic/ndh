@@ -1,6 +1,7 @@
-#!/usr/bin/env -S bash -xeuo pipefail
-LOG="/var/log/darwin-lan-dns-resolver.log"
-{
+#!/usr/bin/env -S bash -euo pipefail
+source @activationLogger@
+
+main() {
   echo "[lanDns] Validating LAN resolver"
 
   if ping -c 1 -W 1 @nameserver@ >/dev/null 2>&1; then
@@ -15,4 +16,6 @@ LOG="/var/log/darwin-lan-dns-resolver.log"
   else
     echo "[lanDns] Gateway @nameserver@ unreachable; skipping resolver refresh"
   fi
-} >>"$LOG" 2>&1
+}
+
+activation_run darwin.activationScripts.networking.lan-dns-resolver main "$@"

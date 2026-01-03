@@ -79,26 +79,13 @@ let
 
   sshdConfigStore = pkgs.writeText "sshd_config" sshdConfigText;
 
-  opensshActivationScript = pkgs.runCommand "openssh-activation.sh" { } ''
-    cp ${
-      pkgs.replaceVars ./openssh.d/openssh-activation.sh {
-        groupKeysScriptStore = groupKeysScriptStore;
-        principalsScriptStore = principalsScriptStore;
-        groupKeysCommand = config.opensshPolicy.canonicalGroupKeysCommandName;
-        principalsCommand = config.opensshPolicy.canonicalPrincipalsCommandName;
-      }
-    } "$out"
-    chmod +x "$out"
-  '';
-
-  opensshPostActivation = pkgs.runCommand "openssh-post-activation.sh" { } ''
-    cp ${
-      pkgs.replaceVars ./openssh.d/post-activation.sh {
-        inherit opensshActivationScript;
-      }
-    } "$out"
-    chmod +x "$out"
-  '';
+  opensshActivationScript = pkgs.replaceVars ./openssh.d/openssh-activation.sh {
+    groupKeysScriptStore = groupKeysScriptStore;
+    principalsScriptStore = principalsScriptStore;
+    groupKeysCommand = config.opensshPolicy.canonicalGroupKeysCommandName;
+    principalsCommand = config.opensshPolicy.canonicalPrincipalsCommandName;
+    activationLogger = ./common/activation-logger.sh;
+  };
 
 in
 {
@@ -137,11 +124,9 @@ in
 
     services.openssh.enable = true;
 
-    # Ensure OpenSSH activation runs (post-etc) and installs real files (no symlinks).
-    # Use a dedicated activation script entry instead of piggybacking on postActivation.
-    # Ensure OpenSSH activation runs in postActivation so it is emitted in the activate script
-    system.activationScripts.postActivation.text = lib.mkAfter ''
-      ${opensshPostActivation}
+    # Ensure OpenSSH activation runs in the etc fragment (installs /etc/ssh helper scripts)
+    system.activationScripts.etc.text = lib.mkAfter ''
+      bash ${opensshActivationScript}
     '';
   };
 }

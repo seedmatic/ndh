@@ -1,6 +1,7 @@
-#!/usr/bin/env -S bash -xeuo pipefail
-LOG="/var/log/darwin-lima-config.log"
-{
+#!/usr/bin/env -S bash -euo pipefail
+source @activationLogger@
+
+main() {
   echo "[limaConfig] start $(date) host=@effectiveHostName@ user=@profileUser@"
 
   : "Create Lima configuration directory in profile home"
@@ -12,7 +13,7 @@ LOG="/var/log/darwin-lima-config.log"
 EOF
   chmod 0600 "@profileHome@/.lima/nerd-nixos/lima.yaml"
 
-@homeSymlinksBlock@
+  @homeSymlinksBlock@
 
   : "Verify output file"
   if [ -f "@profileHome@/.lima/nerd-nixos/lima.yaml" ]; then
@@ -23,4 +24,6 @@ EOF
     echo "[limaConfig][ERROR] lima.yaml missing after generation attempt"
   fi
   echo "[limaConfig] end $(date)"
-} >>"$LOG" 2>&1
+}
+
+activation_run darwin.activationScripts.postActivation.lima-config main "$@"

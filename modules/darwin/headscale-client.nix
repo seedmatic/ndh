@@ -12,7 +12,9 @@ let
   defaultHostname = config.networking.hostName or "localhost";
 
   headscaleActivationScript = pkgs.runCommand "headscale-client-post-activation.sh" { } ''
-    cp ${pkgs.replaceVars ./headscale-client.d/post-activation.sh { }} "$out"
+    cp ${pkgs.replaceVars ./headscale-client.d/post-activation.sh {
+      activationLogger = ./common/activation-logger.sh;
+    }} "$out"
     chmod +x "$out"
   '';
 in

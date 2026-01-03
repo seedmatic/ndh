@@ -1,8 +1,11 @@
-#!/usr/bin/env -S bash -xeuo pipefail
-LOG="/var/log/darwin-internet-sharing-activation.log"
-{
-  echo "[internetSharing] configuring Internet Sharing NAT"
-  @configurePlist@
+#!/usr/bin/env -S bash -euo pipefail
+source @activationLogger@
 
-  @verifyAnchorsBlock@
-} >>"$LOG" 2>&1
+main() {
+	echo "[internetSharing] configuring Internet Sharing NAT"
+	@configurePlist@
+
+	@verifyAnchorsBlock@
+}
+
+activation_run darwin.activationScripts.networking.internet-sharing-activation main "$@"

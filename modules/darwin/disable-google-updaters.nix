@@ -21,6 +21,7 @@ let
         cp ${
           pkgs.replaceVars ./disable-google-updaters.d/post-activation.sh {
             disableGoogleUpdatersScript = disableGoogleUpdatersScript;
+            activationLogger = ./common/activation-logger.sh;
           }
         } "$out"
         chmod +x "$out"

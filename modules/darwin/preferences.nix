@@ -153,6 +153,7 @@ let
         timeoutExe = timeoutExe;
         gtimeoutExe = gtimeoutExe;
         wallpaperImage = wallpaperImage;
+        activationLogger = ./common/activation-logger.sh;
       }
     } "$out"
     chmod +x "$out"
@@ -273,7 +274,7 @@ in
       allowSignedApp = false;
     };
     # Run via postActivation so it appears in the main activation script execution list
-    system.activationScripts.postActivation.text = lib.mkAfter ''
+    system.activationScripts.defaults.text = lib.mkAfter ''
       ${preferencesPostActivation}
     '';
   };

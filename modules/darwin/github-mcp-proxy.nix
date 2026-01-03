@@ -12,9 +12,12 @@ let
   wrapped = pkgs.writeShellScriptBin "github-mcp-proxy" ''
     exec ${pkgs.python3}/bin/python3 ${pythonSource} "$@"
   '';
-  githubMcpProxyActivationScript = pkgs.writeShellScript "github-mcp-proxy-activation.sh" (
-    builtins.readFile ./github-mcp-proxy.d/activation.sh
-  );
+  githubMcpProxyActivationScript = pkgs.runCommand "github-mcp-proxy-activation.sh" { } ''
+    cp ${pkgs.replaceVars ./github-mcp-proxy.d/activation.sh {
+      activationLogger = ./common/activation-logger.sh;
+    }} "$out"
+    chmod +x "$out"
+  '';
 in
 {
   options.programs.githubMcpProxy = {

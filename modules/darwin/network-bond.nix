@@ -94,6 +94,7 @@ let
         bondAttach = bondAttach;
         bondMode = cfg.mode;
         dhcpActivationBlock = dhcpActivationBlock;
+        activationLogger = ./common/activation-logger.sh;
       }
     } "$out"
     chmod +x "$out"
@@ -200,8 +201,8 @@ in
       };
     };
 
-    # Declarative bond configuration via activation script
-    system.activationScripts.postActivation.text = mkAfter ''
+    # Declarative bond configuration via activation script (networking fragment)
+    system.activationScripts.networking.text = mkAfter ''
       ${networkBondActivationScript}
     '';
   };

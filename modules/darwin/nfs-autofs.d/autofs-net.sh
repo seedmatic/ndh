@@ -1,8 +1,12 @@
-#!/usr/bin/env -S bash -xeuo pipefail
-set -euo pipefail
+#!/usr/bin/env -S bash -euo pipefail
+source @activationLogger@
 
-export MOUNT_POINT=@mountPoint@
-export MAP=@map@
-export OPTIONS=@options@
-export MANAGE_AUTO_MASTER=@manageAutoMaster@
-"@autofsRefreshScript@"
+main() {
+	export MOUNT_POINT=@mountPoint@
+	export MAP=@map@
+	export OPTIONS=@options@
+	export MANAGE_AUTO_MASTER=@manageAutoMaster@
+	"@autofsRefreshScript@"
+}
+
+activation_run darwin.activationScripts.etc.nfs-autofs-net main "$@"

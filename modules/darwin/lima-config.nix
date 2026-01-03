@@ -80,6 +80,7 @@ let
         yqBin = yqBin;
         limaConfigJson = limaConfigJson;
         homeSymlinksBlock = homeSymlinksBlock;
+        activationLogger = ./common/activation-logger.sh;
       }
     } "$out"
     chmod +x "$out"

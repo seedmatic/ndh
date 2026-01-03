@@ -1,7 +1,12 @@
-#!/usr/bin/env -S bash -xeuo pipefail
+#!/usr/bin/env -S bash -euo pipefail
+source @activationLogger@
 
-auto_master_target=/etc/static/auto_master
+main() {
+	auto_master_target=/etc/static/auto_master
 
-cat > "$auto_master_target" <<'EOF'
+	cat > "$auto_master_target" <<'EOF'
 @autoMasterText@
 EOF
+}
+
+activation_run darwin.activationScripts.etc.auto-master-write main "$@"

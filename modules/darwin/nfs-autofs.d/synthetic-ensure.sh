@@ -1,16 +1,21 @@
-#!/usr/bin/env -S bash -xeuo pipefail
+#!/usr/bin/env -S bash -euo pipefail
+source @activationLogger@
 
-if [ ! -e /etc/synthetic.conf ]; then
-  cat > /etc/synthetic.conf <<'EOF'
+main() {
+  if [ ! -e /etc/synthetic.conf ]; then
+    cat > /etc/synthetic.conf <<'EOF'
 @syntheticText@
 EOF
-else
-  while IFS= read -r line; do
-    [ -z "$line" ] && continue
-    if ! grep -Fxq "$line" /etc/synthetic.conf; then
-      printf '%s\n' "$line" >> /etc/synthetic.conf
-    fi
-  done <<'EOF'
+  else
+    while IFS= read -r line; do
+      [ -z "$line" ] && continue
+      if ! grep -Fxq "$line" /etc/synthetic.conf; then
+        printf '%s\n' "$line" >> /etc/synthetic.conf
+      fi
+    done <<'EOF'
 @syntheticText@
 EOF
-fi
+  fi
+}
+
+activation_run darwin.activationScripts.etc.nfs-synthetic-ensure main "$@"

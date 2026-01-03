@@ -11,6 +11,7 @@ let
     isExecutable = true;
     name = "lan-dns-resolver-post-activation.sh";
     inherit (cfg) nameserver;
+    activationLogger = ./common/activation-logger.sh;
   };
 
 in
@@ -46,7 +47,7 @@ in
 
     # Also ensure the network interfaces are configured with the LAN DNS
     # This activation script runs after the main DNS configuration
-    system.activationScripts.postActivation.text = lib.mkAfter ''
+    system.activationScripts.networking.text = lib.mkAfter ''
       ${lanDnsActivationScript}
     '';
   };

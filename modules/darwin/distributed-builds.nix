@@ -45,6 +45,7 @@ let
     cp ${
       pkgs.replaceVars ./distributed-builds.d/install-builder-key.sh {
         inherit builderKeyDir builderPrivStore builderPubStore builderKeyPath;
+        activationLogger = ./common/activation-logger.sh;
       }
     } "$out"
     chmod +x "$out"

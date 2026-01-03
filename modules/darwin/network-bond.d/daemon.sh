@@ -1,5 +1,7 @@
-#!/bin/bash
-echo "[bond] Configuring network bond interface (triggered by: ${1:-boot})" >&2
+#!/usr/bin/env bash
+exec > >(logger -t darwin-network-bond-daemon) 2>&1
+
+echo "[bond] Configuring network bond interface (triggered by: ${1:-boot})"
 
 # Wait for network interfaces to be available
 sleep 5

@@ -67,15 +67,21 @@ let
   allowedNetworks = resolveAllowedNetworks cfg.allowedNetworks;
 
   nfsdReloadScript = pkgs.runCommand "nfsd-reload.sh" { } ''
-    cp ${pkgs.replaceVars ./nfs-autofs.d/nfsd-reload.sh { }} "$out"
+    cp ${pkgs.replaceVars ./nfs-autofs.d/nfsd-reload.sh {
+      activationLogger = ./common/activation-logger.sh;
+    }} "$out"
     chmod +x "$out"
   '';
   autofsRefreshScript = pkgs.runCommand "autofs-refresh.sh" { } ''
-    cp ${pkgs.replaceVars ./nfs-autofs.d/autofs-refresh.sh { }} "$out"
+    cp ${pkgs.replaceVars ./nfs-autofs.d/autofs-refresh.sh {
+      activationLogger = ./common/activation-logger.sh;
+    }} "$out"
     chmod +x "$out"
   '';
   syntheticReloadScript = pkgs.runCommand "synthetic-rebuild.sh" { } ''
-    cp ${pkgs.replaceVars ./nfs-autofs.d/synthetic-rebuild.sh { }} "$out"
+    cp ${pkgs.replaceVars ./nfs-autofs.d/synthetic-rebuild.sh {
+      activationLogger = ./common/activation-logger.sh;
+    }} "$out"
     chmod +x "$out"
   '';
 
@@ -114,13 +120,16 @@ let
     cp ${
       pkgs.replaceVars ./nfs-autofs.d/synthetic-ensure.sh {
         inherit syntheticText;
+        activationLogger = ./common/activation-logger.sh;
       }
     } "$out"
     chmod +x "$out"
   '';
 
   autoMasterLinkScript = pkgs.runCommand "auto-master-link.sh" { } ''
-    cp ${pkgs.replaceVars ./nfs-autofs.d/auto-master-link.sh { }} "$out"
+    cp ${pkgs.replaceVars ./nfs-autofs.d/auto-master-link.sh {
+      activationLogger = ./common/activation-logger.sh;
+    }} "$out"
     chmod +x "$out"
   '';
 
@@ -128,6 +137,7 @@ let
     cp ${
       pkgs.replaceVars ./nfs-autofs.d/auto-master-write.sh {
         inherit autoMasterText;
+        activationLogger = ./common/activation-logger.sh;
       }
     } "$out"
     chmod +x "$out"
@@ -141,6 +151,7 @@ let
         options = lib.escapeShellArg autoCfg.options;
         manageAutoMaster = if autoCfg.manageAutoMaster then "1" else "0";
         autofsRefreshScript = autofsRefreshScript;
+        activationLogger = ./common/activation-logger.sh;
       }
     } "$out"
     chmod +x "$out"
@@ -278,7 +289,7 @@ in
       '';
     in
     {
-      system.activationScripts.postActivation.text = lib.mkAfter ''
+      system.activationScripts.etc.text = lib.mkAfter ''
         cat > /etc/exports <<'EOF'
         ${exportsText}
         EOF
