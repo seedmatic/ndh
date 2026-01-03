@@ -20,10 +20,7 @@ let
       specialArgs;
 
   resolvedProfile =
-    if profile != null then
-      profile
-    else
-      lib.attrByPath [ "profile" ] null specialArgsResolved;
+    if profile != null then profile else lib.attrByPath [ "profile" ] null specialArgsResolved;
 
   homeUsernameFallback = lib.attrByPath [ "home" "username" ] null config;
   homeDirectoryFallback = lib.attrByPath [ "home" "homeDirectory" ] null config;
@@ -41,8 +38,10 @@ let
       homeDirectoryFallback;
 
   activationLoggerArgs =
-    if specialArgsResolved ? activationLogger then specialArgsResolved.activationLogger else
-    throw "specialArgs.activationLogger is required";
+    if specialArgsResolved ? activationLogger then
+      specialArgsResolved.activationLogger
+    else
+      throw "specialArgs.activationLogger is required";
   activationLogger = activationLoggerArgs.script;
   activationTagFixConfigOwnership = "home-manager.activationScripts.${userName}.fixConfigOwnership";
 

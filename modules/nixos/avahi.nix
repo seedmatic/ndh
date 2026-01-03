@@ -12,7 +12,10 @@
   services.resolved = {
     enable = lib.mkDefault true;
     dnssec = lib.mkDefault "false";
-    domains = lib.mkDefault [ "lan" "local" ];
+    domains = lib.mkDefault [
+      "lan"
+      "local"
+    ];
     extraConfig = lib.mkDefault ''
       MulticastDNS=yes
       LLMNR=yes

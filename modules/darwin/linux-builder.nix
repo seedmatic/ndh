@@ -31,15 +31,15 @@ let
   # Pull builder catalog entries for this host (if present)
   hostName = config.profile.host.hostName;
   # Consider linux-builder only when running on baremetal hosts
-  isBaremetalHost = ! (config.profile.host ? form) || config.profile.host.form == "baremetal";
+  isBaremetalHost = !(config.profile.host ? form) || config.profile.host.form == "baremetal";
   catalogEntries = if builtins.hasAttr hostName hostsCatalog then hostsCatalog.${hostName} else [ ];
   linuxBuilderEntries = lib.filter (
     entry:
     entry.builder != null
     && lib.elem "aarch64-linux" entry.builder.systems
-    && (! (entry ? form) || entry.form != "vm")
+    && (!(entry ? form) || entry.form != "vm")
   ) catalogEntries;
-  selected = if (! isBaremetalHost) then null else lib.head (linuxBuilderEntries ++ [ null ]);
+  selected = if (!isBaremetalHost) then null else lib.head (linuxBuilderEntries ++ [ null ]);
 
 in
 {
