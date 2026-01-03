@@ -20,24 +20,6 @@ let
   );
   inherit (lib) mkIf optionalString concatStringsSep;
 
-  # Align builder key provisioning with linux-builder module: pull from keys.yaml
-  keysJson = pkgs.runCommand "keys.json" { buildInputs = [ pkgs.yq-go ]; } ''
-    yq -o=json '.' ${../home-manager/ssh.d/keys.yaml} > $out
-  '';
-  keys = builtins.fromJSON (builtins.readFile keysJson);
-  currentProfile = profile.name;
-  builderProfile = currentProfile;
-  builderPrivKey = keys.profiles.${builderProfile}.linux-builder.private;
-  builderPubKey = keys.profiles.${builderProfile}.linux-builder.public;
-  builderPrivStore = pkgs.writeText "builder_ed25519" builderPrivKey;
-  builderPubStore = pkgs.writeText "builder_ed25519.pub" builderPubKey;
-
-  # Store builder keys under SSH-managed keys directory to avoid nix/ static symlinks
-  nixKeyDir = config.opensshPolicy.keysDir;
-  nixKeyDirRel = lib.removePrefix "/" nixKeyDir;
-  nixKey = "${nixKeyDir}/builder_ed25519";
-  nixKeyPub = "${nixKeyDir}/builder_ed25519.pub";
-
   # Derive principals based on profile and hostname
   # Server should accept all possible principals from any client
   # committed profile hosts: accept [committed, work, alcide]
@@ -100,11 +82,6 @@ let
   opensshActivationScript = pkgs.runCommand "openssh-activation.sh" { } ''
     cp ${
       pkgs.replaceVars ./openssh.d/openssh-activation.sh {
-        nixKeyDir = nixKeyDir;
-        builderPrivStore = builderPrivStore;
-        builderPubStore = builderPubStore;
-        nixKey = nixKey;
-        nixKeyPub = nixKeyPub;
         groupKeysScriptStore = groupKeysScriptStore;
         principalsScriptStore = principalsScriptStore;
         groupKeysCommand = config.opensshPolicy.canonicalGroupKeysCommandName;
@@ -154,14 +131,6 @@ in
     # This is world-readable in /etc so _sshd can access it
     # All hosts accept all profile principals for cross-host connections
     environment.etc."ssh/keys.yaml".text = sshKeysYamlText;
-
-    # Ensure builder keys are deployed even if activation ordering changes
-    environment.etc."${nixKeyDirRel}/builder_ed25519" = {
-      source = builderPrivStore;
-    };
-    environment.etc."${nixKeyDirRel}/builder_ed25519.pub" = {
-      source = builderPubStore;
-    };
 
     # SSH daemon configuration
     environment.etc."ssh/sshd_config".text = sshdConfigText;

@@ -25,10 +25,30 @@ let
   userName = config.profile.user.name;
   userHome = config.profile.user.home;
 
-  # SSH key paths for builders (configurable via opensshPolicy.keysDir)
-  keysDir = config.opensshPolicy.keysDir;
-  builderKeyPath = "${keysDir}/builder_ed25519";
+  # Builder key paths (placed in /etc/nix for builders)
+  builderKeyDir = "/etc/nix";
+  builderKeyPath = "${builderKeyDir}/builder_ed25519";
   controlMasterPath = "/nix/var/nix/userpool/ssh-builder-%r@%h:%p";
+
+  # Align builder key provisioning with linux-builder module: pull from keys.yaml
+  keysJson = pkgs.runCommand "keys.json" { buildInputs = [ pkgs.yq-go ]; } ''
+    yq -o=json '.' ${../home-manager/ssh.d/keys.yaml} > $out
+  '';
+  keys = builtins.fromJSON (builtins.readFile keysJson);
+  builderProfile = config.profile.name;
+  builderPrivKey = keys.profiles.${builderProfile}.linux-builder.private;
+  builderPubKey = keys.profiles.${builderProfile}.linux-builder.public;
+  builderPrivStore = pkgs.writeText "builder_ed25519" builderPrivKey;
+  builderPubStore = pkgs.writeText "builder_ed25519.pub" builderPubKey;
+
+  builderKeyInstall = pkgs.runCommand "install-builder-key.sh" { } ''
+    cp ${
+      pkgs.replaceVars ./distributed-builds.d/install-builder-key.sh {
+        inherit builderKeyDir builderPrivStore builderPubStore builderKeyPath;
+      }
+    } "$out"
+    chmod +x "$out"
+  '';
 
   # Prefer host-provided builder definitions (already feature-enriched)
   remoteBuilders = if userRemoteBuilders != [ ] then userRemoteBuilders else catalogRemoteBuilders;
@@ -133,5 +153,13 @@ in
               lib.concatMapStrings renderNet nets;
           in
           lib.concatMapStrings renderBuilder remoteBuildersLanFirst;
+
+        # Ensure builder key is installed with proper permissions in /etc/nix (etc fragment)
+        system.activationScripts.etc.text = lib.mkAfter ''
+          ${builderKeyInstall}
+        '';
+
+        # Ensure the primary user (home-manager user) can read builder key via nixbld
+        users.groups.nixbld.members = lib.mkAfter [ config.profile.user.name ];
       };
 }
