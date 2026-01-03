@@ -30,4 +30,6 @@
     ./shell-keychain.nix
     ./ssh-client.nix
   ];
+
+  activation.loggerCmd = lib.mkDefault "/usr/bin/logger -p notice -t %TAG%";
 }

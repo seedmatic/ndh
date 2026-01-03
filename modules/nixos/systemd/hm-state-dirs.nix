@@ -13,6 +13,8 @@ let
     "${homeDir}/.local/state/home-manager"
     "${homeDir}/.local/state/home-manager/gcroots"
   ];
+  activationLogger = ../../common/activation-logger.sh;
+  activationTag = "nixos.activationScripts.hmStateDirs";
 in
 {
   # Use tmpfiles to ensure directory tree exists with correct ownership/mode
@@ -26,6 +28,8 @@ in
         dirs = builtins.concatStringsSep " " dirs;
         userName = userName;
         group = group;
+        activationLogger = activationLogger;
+        activationTag = activationTag;
       }
     );
   };

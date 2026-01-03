@@ -6,11 +6,13 @@
 }:
 let
   profile = config._module.specialArgs.profile;
-  userName = profile.user.description;
+  userName = profile.user.name;
   userEmail = profile.email;
   hostKeysDir = "${config.home.homeDirectory}/.ssh/keys.d";
   stateHome = config.xdg.stateHome or "${config.home.homeDirectory}/.local/state";
   allowedSignersFile = "${config.xdg.configHome}/git/github_allowed_signers";
+  activationLogger = config._module.specialArgs.activationLogger.script;
+  activationTag = "home-manager.activationScripts.${userName}.generateAllowedSigners";
 in
 {
   imports = [ ./git.d/sops.nix ];
@@ -120,6 +122,8 @@ in
       pkgs.replaceVars ./git.d/generate-allowed-signers.sh {
         allowedSignersFile = allowedSignersFile;
         hostKeysDir = hostKeysDir;
+        activationLogger = activationLogger;
+        activationTag = activationTag;
       }
     )
   );

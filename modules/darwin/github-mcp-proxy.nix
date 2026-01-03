@@ -13,9 +13,14 @@ let
     exec ${pkgs.python3}/bin/python3 ${pythonSource} "$@"
   '';
   githubMcpProxyActivationScript = pkgs.runCommand "github-mcp-proxy-activation.sh" { } ''
-    cp ${pkgs.replaceVars ./github-mcp-proxy.d/activation.sh {
-      activationLogger = ./common/activation-logger.sh;
-    }} "$out"
+    cp ${
+      pkgs.replaceVars ./github-mcp-proxy.d/activation.sh {
+        activationLogger = lib.attrByPath [
+          "activation"
+          "loggerScript"
+        ] ../common/activation-logger.sh config;
+      }
+    } "$out"
     chmod +x "$out"
   '';
 in

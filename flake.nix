@@ -165,6 +165,10 @@
           inherit self lib;
           _modules = modules;
           nixpkgsInput = nixpkgs;
+          activationLogger = {
+            script = ./modules/common/default.d/activation-logger.sh;
+            cmd = "";
+          };
         }
         // extraArgs;
 
@@ -402,7 +406,13 @@
             "${mainName}" = home-manager.lib.homeManagerConfiguration {
               pkgs = pkgsForDarwin;
               modules = [ ./modules/home-manager ];
-              extraSpecialArgs = { inherit hostProfile; };
+              extraSpecialArgs = {
+                inherit hostProfile;
+                activationLogger = {
+                  script = ./modules/common/default.d/activation-logger.sh;
+                  cmd = "";
+                };
+              };
               # Optionally, set username and homeDirectory here if needed
             };
           };

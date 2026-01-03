@@ -4,10 +4,47 @@
   pkgs,
   lib,
   floxEnv ? null,
+  # When imported from the system layer we pass `profile` directly; when
+  # evaluated inside home-manager proper, it is available via
+  # `config._module.specialArgs.profile`.
+  profile ? null,
+  # Allow direct imports to provide specialArgs when _module.specialArgs is absent
+  specialArgs ? { },
   ...
 }:
 let
-  homeDirectory = config.profile.user.home;
+  specialArgsResolved =
+    if config ? _module && config._module ? specialArgs then
+      config._module.specialArgs
+    else
+      specialArgs;
+
+  resolvedProfile =
+    if profile != null then
+      profile
+    else
+      lib.attrByPath [ "profile" ] null specialArgsResolved;
+
+  homeUsernameFallback = lib.attrByPath [ "home" "username" ] null config;
+  homeDirectoryFallback = lib.attrByPath [ "home" "homeDirectory" ] null config;
+
+  userName =
+    if resolvedProfile != null && resolvedProfile ? user && resolvedProfile.user ? name then
+      resolvedProfile.user.name
+    else
+      homeUsernameFallback;
+
+  homeDirectory =
+    if resolvedProfile != null && resolvedProfile ? user && resolvedProfile.user ? home then
+      resolvedProfile.user.home
+    else
+      homeDirectoryFallback;
+
+  activationLoggerArgs =
+    if specialArgsResolved ? activationLogger then specialArgsResolved.activationLogger else
+    throw "specialArgs.activationLogger is required";
+  activationLogger = activationLoggerArgs.script;
+  activationTagFixConfigOwnership = "home-manager.activationScripts.${userName}.fixConfigOwnership";
 
   baseHomePackages = with pkgs; [
     aider-chat
@@ -142,36 +179,14 @@ in
     # Define package definitions for current user environment
     packages = baseHomePackages;
 
-    activation.fixConfigOwnership =
-      let
-        dollar = "$";
-      in
-      lib.hm.dag.entryBefore [ "writeBoundary" ] ''
-        set -xe -o pipefail
-        # Prefer NixOS wrapper location for sudo if present (@codebase)
-        WRAPPERS="/run/wrappers/bin"
-        if [ -d "$WRAPPERS" ]; then
-          case ":$PATH:" in
-            *":$WRAPPERS:"*) ;; # already present
-            *) PATH="$WRAPPERS:$PATH" ;;
-          esac
-        fi
-
-        if [ "$(id -u)" -ne 0 ]; then
-          # Explicit path first, then generic lookup
-          if [ -x "$WRAPPERS/sudo" ]; then
-            SUDO="$WRAPPERS/sudo -n"
-            $SUDO true 2>/dev/null || SUDO="$WRAPPERS/sudo"
-          elif command -v sudo >/dev/null 2>&1; then
-            SUDO="sudo -n"
-            $SUDO true 2>/dev/null || SUDO="sudo"
-          else
-            SUDO=""
-          fi
-        else
-          SUDO=""
-        fi
-      '';
+    activation.fixConfigOwnership = lib.hm.dag.entryBefore [ "writeBoundary" ] (
+      builtins.readFile (
+        pkgs.replaceVars ./default.d/fix-config-ownership.sh {
+          activationLogger = activationLogger;
+          activationTag = activationTagFixConfigOwnership;
+        }
+      )
+    );
 
   };
 

@@ -6,7 +6,11 @@
 }:
 
 let
+  profile = config._module.specialArgs.profile;
   cfg = config.programs.cache-tokens;
+  userName = profile.user.name;
+  activationLogger = config._module.specialArgs.activationLogger.script;
+  activationTag = "home-manager.activationScripts.${userName}.setupCacheTokens";
 
   stateHome = config.xdg.stateHome;
   cacheTokensFile = "${stateHome}/cache-tokens.yaml";
@@ -38,6 +42,8 @@ in
           cacheTokensFile = cacheTokensFile;
           yq = "${pkgs.yq-go}/bin/yq";
           sed = "${pkgs.gnused}/bin/sed";
+          activationLogger = activationLogger;
+          activationTag = activationTag;
         }
       )
     );

@@ -84,7 +84,10 @@ let
     principalsScriptStore = principalsScriptStore;
     groupKeysCommand = config.opensshPolicy.canonicalGroupKeysCommandName;
     principalsCommand = config.opensshPolicy.canonicalPrincipalsCommandName;
-    activationLogger = ./common/activation-logger.sh;
+    activationLogger = lib.attrByPath [
+      "activation"
+      "loggerScript"
+    ] ../common/activation-logger.sh config;
   };
 
 in

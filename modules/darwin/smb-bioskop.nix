@@ -20,7 +20,10 @@ let
     cp ${
       pkgs.replaceVars ./smb-bioskop.d/post-activation.sh {
         inherit bioskopFstabScript;
-        activationLogger = ./common/activation-logger.sh;
+        activationLogger = lib.attrByPath [
+          "activation"
+          "loggerScript"
+        ] ../common/activation-logger.sh config;
       }
     } "$out"
     chmod +x "$out"

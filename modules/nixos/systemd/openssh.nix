@@ -20,6 +20,8 @@ let
   groupKeysScriptStore = pkgs.writeText "ssh-group-authorized-keys-command.sh" (
     builtins.readFile ../../common/ssh/ssh-group-authorized-keys.sh
   );
+  activationLogger = ../../common/activation-logger.sh;
+  activationTag = "nixos.activationScripts.sshGroupKeys";
 in
 {
   imports = [ ../../common/openssh-policy.nix ];
@@ -76,6 +78,8 @@ in
           groupCommand = config.opensshPolicy.canonicalGroupKeysCommandName;
           principalsScript = principalsScriptStore;
           groupKeysScript = groupKeysScriptStore;
+          activationLogger = activationLogger;
+          activationTag = activationTag;
         }
       );
     };

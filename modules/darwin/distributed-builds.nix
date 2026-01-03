@@ -44,8 +44,16 @@ let
   builderKeyInstall = pkgs.runCommand "install-builder-key.sh" { } ''
     cp ${
       pkgs.replaceVars ./distributed-builds.d/install-builder-key.sh {
-        inherit builderKeyDir builderPrivStore builderPubStore builderKeyPath;
-        activationLogger = ./common/activation-logger.sh;
+        inherit
+          builderKeyDir
+          builderPrivStore
+          builderPubStore
+          builderKeyPath
+          ;
+        activationLogger = lib.attrByPath [
+          "activation"
+          "loggerScript"
+        ] ../common/activation-logger.sh config;
       }
     } "$out"
     chmod +x "$out"

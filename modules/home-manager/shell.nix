@@ -1,9 +1,12 @@
 {
+  config,
   lib,
   pkgs,
   ...
 }:
 let
+  profile = config._module.specialArgs.profile;
+  userName = profile.user.name;
   # VS Code shell integration
   # If VS Code is injecting (VSCODE_INJECTION=1), it will handle integration automatically
   # Otherwise, we manually source it for proper shell integration features
@@ -20,6 +23,9 @@ let
       fi
     fi
   '';
+  # Use platform-provided logger script from specialArgs
+  activationLogger = config._module.specialArgs.activationLogger.script;
+  activationTagZdotdir = "home-manager.activationScripts.${userName}.zdotdir";
 in
 {
   programs.zsh = {
@@ -50,6 +56,8 @@ in
       pkgs.replaceVars ./shell.d/zdotdir.sh {
         gitPath = lib.makeBinPath [ pkgs.git ];
         gitBin = "${pkgs.git}/bin/git";
+        activationLogger = activationLogger;
+        activationTag = activationTagZdotdir;
       }
     )
   );

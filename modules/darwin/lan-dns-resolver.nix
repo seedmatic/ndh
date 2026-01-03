@@ -11,7 +11,10 @@ let
     isExecutable = true;
     name = "lan-dns-resolver-post-activation.sh";
     inherit (cfg) nameserver;
-    activationLogger = ./common/activation-logger.sh;
+    activationLogger = lib.attrByPath [
+      "activation"
+      "loggerScript"
+    ] ../common/activation-logger.sh config;
   };
 
 in

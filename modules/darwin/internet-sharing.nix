@@ -65,14 +65,20 @@ let
       desiredDevices
       autoToggleBlock
       ;
-    activationLogger = ./common/activation-logger.sh;
+    activationLogger = lib.attrByPath [
+      "activation"
+      "loggerScript"
+    ] ../common/activation-logger.sh config;
   };
 
   activationWrapperScript = pkgs.runCommand "internet-sharing-activation.sh" { } ''
     cp ${
       pkgs.replaceVars ./internet-sharing.d/activation-wrapper.sh {
         inherit configurePlist verifyAnchorsBlock;
-        activationLogger = ./common/activation-logger.sh;
+        activationLogger = lib.attrByPath [
+          "activation"
+          "loggerScript"
+        ] ../common/activation-logger.sh config;
       }
     } "$out"
     chmod +x "$out"

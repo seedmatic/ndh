@@ -146,6 +146,8 @@ in
             lib.removePrefix "." config._module.specialArgs.networkCatalog.tailnet.domain
           else
             "tailnet.local";
+        activationLogger = ../common/activation-logger.sh;
+        activationTag = "nixos.activationScripts.incusUserConfig";
       }
     );
   };

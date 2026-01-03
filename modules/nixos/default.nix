@@ -69,6 +69,8 @@ in
     )
   ];
 
+  activation.loggerCmd = lib.mkDefault "${pkgs.util-linux}/bin/logger -p notice -t %TAG%";
+
   nix.settings = lib.mkMerge [
     {
       # Enable content-addressed derivations to reduce rebuild churn for identical outputs.

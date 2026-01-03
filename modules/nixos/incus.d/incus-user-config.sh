@@ -1,15 +1,18 @@
 #!/usr/bin/env bash
-set -euxo pipefail
+source @activationLogger@
 
-# @user@ and @home@ substituted at build time
-auto_user="@user@"
-auto_home="@home@"
+main() {
+  set -euxo pipefail
 
-autoconfig_dir="${auto_home}/.config/incus"
+  # @user@ and @home@ substituted at build time
+  auto_user="@user@"
+  auto_home="@home@"
 
-install -d -m 0775 -o "${auto_user}" -g "${auto_user}" "${autoconfig_dir}"
+  autoconfig_dir="${auto_home}/.config/incus"
 
-cat <<'EOF' | install -Dm 600 -o "${auto_user}" -g "${auto_user}" /dev/stdin "${autoconfig_dir}/config.yml"
+  install -d -m 0775 -o "${auto_user}" -g "${auto_user}" "${autoconfig_dir}"
+
+  cat <<'EOF' | install -Dm 600 -o "${auto_user}" -g "${auto_user}" /dev/stdin "${autoconfig_dir}/config.yml"
 default-remote: local
 remotes:
   docker:
@@ -26,3 +29,6 @@ remotes:
     public: true
 aliases: {}
 EOF
+}
+
+activation_run "@activationTag@" main "$@"

@@ -6,17 +6,19 @@
 }:
 
 let
+  profile = config._module.specialArgs.profile;
   # Debug function that both traces and returns its input
   debugTrace = x: builtins.traceVerbose "Debug: profile = ${builtins.toJSON x}" x;
-
-  profile = config._module.specialArgs.profile;
 
   profileName = profile.name;
   hostProfile = profile.host;
   userProfile = profile.user;
-  userName = userProfile.name; # Use profile-based name (nxmatic) instead of description
+  userName = profile.user.name; # Use profile user name for tagging
   userDescription = userProfile.description;
   userHome = userProfile.home;
+  activationLogger = config._module.specialArgs.activationLogger.script;
+  activationTagDeploy = "home-manager.activationScripts.${userName}.deploySSHKeys";
+  activationTagAuthorized = "home-manager.activationScripts.${userName}.ensureAuthorizedKeys";
 
   # Command to filter and sign keys based on profile and host
   # Resolve a stable host identifier; hostAlias is optional by design (@codebase)
@@ -121,13 +123,20 @@ in
       pkgs.replaceVars ./ssh-keys.d/deploy-ssh-keys.sh {
         rsync = "${pkgs.rsync}/bin/rsync";
         keysDir = keysDir;
+        activationLogger = activationLogger;
+        activationTag = activationTagDeploy;
       }
     )
   );
 
   # Ensure mutable authorized_keys exists (symlink-free) with strict perms
   home.activation.ensureAuthorizedKeys = lib.hm.dag.entryAfter [ "deploySSHKeys" ] (
-    builtins.readFile (pkgs.replaceVars ./ssh-keys.d/ensure-authorized-keys.sh { })
+    builtins.readFile (
+      pkgs.replaceVars ./ssh-keys.d/ensure-authorized-keys.sh {
+        activationLogger = activationLogger;
+        activationTag = activationTagAuthorized;
+      }
+    )
   );
 
   programs.ssh.extraConfig = ''

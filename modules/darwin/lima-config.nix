@@ -80,7 +80,10 @@ let
         yqBin = yqBin;
         limaConfigJson = limaConfigJson;
         homeSymlinksBlock = homeSymlinksBlock;
-        activationLogger = ./common/activation-logger.sh;
+        activationLogger = lib.attrByPath [
+          "activation"
+          "loggerScript"
+        ] ../common/activation-logger.sh config;
       }
     } "$out"
     chmod +x "$out"
