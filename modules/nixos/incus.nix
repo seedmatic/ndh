@@ -141,9 +141,9 @@ in
         home = config.profile.user.home;
         tailnetDomain =
           if
-            config._module.specialArgs ? networkCatalog && (config._module.specialArgs.networkCatalog ? tailnet)
+            config._module.specialArgs ? catalog && (config._module.specialArgs.catalog.networks ? tailnet)
           then
-            lib.removePrefix "." config._module.specialArgs.networkCatalog.tailnet.domain
+            lib.removePrefix "." config._module.specialArgs.catalog.networks.tailnet.domain
           else
             "tailnet.local";
         # Use the wrapped activation logger in the store

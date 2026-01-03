@@ -3,10 +3,11 @@
   lib,
   pkgs,
   config,
-  networkCatalog,
+  catalog,
   ...
 }:
 let
+  networkCatalog = catalog.networks or { };
   cfg = config.services.crossHostBuilders;
   hostProfile = config.profile.host;
   hostName = hostProfile.hostName;

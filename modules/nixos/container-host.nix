@@ -2,10 +2,11 @@
   config,
   pkgs,
   lib,
-  networkCatalog,
+  catalog,
   ...
 }:
 let
+  networkCatalog = catalog.networks or { };
   cfg = config.containerHost;
   tailnetDomain =
     if networkCatalog ? tailnet && (networkCatalog.tailnet ? domain) then

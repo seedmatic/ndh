@@ -3,10 +3,11 @@
   lib,
   pkgs,
   config,
-  hostsCatalog ? { },
+  catalog,
   ...
 }:
 let
+  hostsCatalog = catalog.hosts or { };
   qemu-pkgdb = self.packages.${pkgs.stdenv.hostPlatform.system}.qemu-pkgdb or pkgs.qemu;
 
   keys = builtins.fromJSON (
@@ -29,11 +30,16 @@ let
   linuxBuilderWorkPubKey = keys.profiles.work.linux-builder.public;
   # Pull builder catalog entries for this host (if present)
   hostName = config.profile.host.hostName;
+  # Consider linux-builder only when running on baremetal hosts
+  isBaremetalHost = ! (config.profile.host ? form) || config.profile.host.form == "baremetal";
   catalogEntries = if builtins.hasAttr hostName hostsCatalog then hostsCatalog.${hostName} else [ ];
   linuxBuilderEntries = lib.filter (
-    entry: entry.builder != null && lib.elem "aarch64-linux" entry.builder.systems
+    entry:
+    entry.builder != null
+    && lib.elem "aarch64-linux" entry.builder.systems
+    && (! (entry ? form) || entry.form != "vm")
   ) catalogEntries;
-  selected = lib.head (linuxBuilderEntries ++ [ null ]);
+  selected = if (! isBaremetalHost) then null else lib.head (linuxBuilderEntries ++ [ null ]);
 
 in
 {

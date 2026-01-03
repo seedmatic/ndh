@@ -1,13 +1,14 @@
 {
   pkgs,
   lib,
-  userMapping,
+  catalog,
   ...
 }:
 let
   inherit (lib) mkDefault;
-  committedUser = userMapping.profileUsers.committed;
-  workUser = userMapping.profileUsers.work;
+  users = catalog.users;
+  committedUser = users.committed;
+  workUser = users.work;
 in
 {
   imports = [ ./common.nix ];

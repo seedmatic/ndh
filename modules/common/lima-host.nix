@@ -2,10 +2,11 @@
   config,
   lib,
   hostProfile ? null,
-  networkCatalog ? { },
+  catalog ? { },
   ...
 }:
 let
+  networkCatalog = catalog.networks or { };
   inherit (lib) mkOption;
   # Access limaHost after options layer
   cfg = config.limaHost;

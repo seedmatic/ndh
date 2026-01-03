@@ -2,10 +2,11 @@
   config,
   lib,
   pkgs,
-  networkCatalog,
+  catalog,
   ...
 }:
 let
+  networkCatalog = catalog.networks or { };
   cfg = config.services.nfsDarwin;
   autoCfg = cfg.autofs;
 
@@ -211,7 +212,7 @@ in
         "lan"
         "tailnet"
       ];
-      description = "Network names from profile.networkCatalog allowed to mount NFS exports.";
+      description = "Network names from catalog.networks allowed to mount NFS exports.";
     };
 
     exportOptions = lib.mkOption {

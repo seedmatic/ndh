@@ -173,7 +173,7 @@
         // extraArgs;
 
       mkContainerRegistryConfig =
-        { hostProfile, ... }:
+        { hostProfile, catalog, ... }:
         nixpkgs.lib.nixosSystem {
           system = "aarch64-linux";
           pkgs = pkgsForLinux;
@@ -191,9 +191,10 @@
               }
             )
           ];
+          specialArgs = { inherit catalog; };
         };
       mkDarwinConfig =
-        { hostProfile, profileModule }:
+        { hostProfile, profileModule, catalog }:
         let
           preModules = [
             profileModule
@@ -209,7 +210,7 @@
             inherit hostProfile preModules;
             system = "darwin";
           };
-          specialArgs = mkSpecialArgs { inherit modules; };
+          specialArgs = mkSpecialArgs { inherit modules; extraArgs = { inherit catalog; }; };
         in
         inputs.darwin.lib.darwinSystem {
           inherit specialArgs modules;
@@ -221,9 +222,9 @@
           );
         };
       mkDarwinOutputs =
-        { hostProfile, profileModule, ... }:
+        { hostProfile, profileModule, catalog, ... }:
         let
-          darwinConfiguration = mkDarwinConfig { inherit hostProfile profileModule; };
+          darwinConfiguration = mkDarwinConfig { inherit hostProfile profileModule catalog; };
           darwinConfigurations = {
             "${hostProfile.hostName}" = darwinConfiguration;
           }
@@ -246,6 +247,7 @@
           profileModule,
           zfsOverlays,
           containerRegistryConfiguration,
+          catalog,
         }:
         let
           zfsOverlaysModule =
@@ -271,6 +273,7 @@
             inherit modules;
             extraArgs = {
               inherit hostProfile;
+              inherit catalog;
               containerRegistrySystem = containerRegistryConfiguration;
             };
           };
@@ -286,14 +289,15 @@
           hostProfile,
           profileModule,
           containerRegistryConfiguration,
+          catalog,
         }:
         let
           ext4 = mkNixosConfig {
-            inherit hostProfile profileModule containerRegistryConfiguration;
+            inherit hostProfile profileModule containerRegistryConfiguration catalog;
             zfsOverlays = false;
           };
           zfs = mkNixosConfig {
-            inherit hostProfile profileModule containerRegistryConfiguration;
+            inherit hostProfile profileModule containerRegistryConfiguration catalog;
             zfsOverlays = true;
           };
           # Disk size in MiB and bytes
@@ -377,9 +381,8 @@
               hostProfile.hostAlias
             else
               hostProfile.hostName;
-          # Shared data replicas for standalone Home Manager evaluations (@codebase)
-          userMapping = {
-            profileUsers = {
+          catalog = {
+            users = {
               work = {
                 name = "stephane.lacoin";
                 description = "Stephane Lacoin (aka nxmatic)";
@@ -392,103 +395,103 @@
                 email = "stephane.lacoin@gmail.com";
               };
             };
-          };
 
-          networkCatalog = {
-            lan = {
-              cidr = "192.168.1.0/24";
-              domain = ".lan";
+            networks = {
+              lan = {
+                cidr = "192.168.1.0/24";
+                domain = ".lan";
+              };
+              tailnet = {
+                cidr = "100.64.0.0/10";
+                domain = ".mammoth-skate.ts.net";
+              };
             };
-            tailnet = {
-              cidr = "100.64.0.0/10";
-              domain = ".mammoth-skate.ts.net";
+
+            hosts = {
+              bioskop = [
+                {
+                  platform = "darwin";
+                  form = "baremetal";
+                  networks = [ "lan" "tailnet" ];
+                  builder = {
+                    hostName = "bioskop-darwin";
+                    systems = [ "aarch64-darwin" ];
+                    maxJobs = 8;
+                    protocol = "ssh-ng";
+                  };
+                }
+                {
+                  platform = "darwin";
+                  form = "baremetal";
+                  networks = [ "lan" "tailnet" ];
+                  vm = {
+                    kind = "qemu";
+                    manager = "nix-darwin";
+                  };
+                  builder = {
+                    hostName = "bioskop-linux";
+                    systems = [ "aarch64-linux" ];
+                    maxJobs = 8;
+                    protocol = "ssh-ng";
+                  };
+                }
+                {
+                  platform = "darwin";
+                  form = "baremetal";
+                  networks = [ "lan" "tailnet" ];
+                  vm = {
+                    kind = "vz";
+                    manager = "lima";
+                  };
+                  builder = {
+                    hostName = "bioskop-nixos";
+                    systems = [ "aarch64-linux" ];
+                    maxJobs = 8;
+                    protocol = "ssh-ng";
+                  };
+                }
+              ];
+
+              alcide = [
+                {
+                  # alcide runs as a Tart/VZ macOS VM and does NOT serve as a darwin builder itself; it offloads to remote builders
+                  platform = "darwin";
+                  form = "vm";
+                  networks = [ "lan" "tailnet" ];
+                  vm = {
+                    kind = "vz";
+                    manager = "tart";
+                  };
+                  builder = null;
+                }
+                {
+                  platform = "darwin";
+                  form = "vm";
+                  networks = [ "lan" "tailnet" ];
+                  vm = {
+                    kind = "vz";
+                    manager = "lima";
+                  };
+                  builder = {
+                    hostName = "alcide-nixos";
+                    systems = [ "aarch64-linux" ];
+                    maxJobs = 8;
+                    protocol = "ssh-ng";
+                  };
+                }
+              ];
             };
-          };
-
-          hostsCatalog = {
-            bioskop = [
-              {
-                platform = "darwin";
-                form = "baremetal";
-                networks = [ "lan" "tailnet" ];
-                builder = {
-                  hostName = "bioskop-darwin";
-                  systems = [ "aarch64-darwin" ];
-                  maxJobs = 8;
-                  protocol = "ssh-ng";
-                };
-              }
-              {
-                platform = "darwin";
-                form = "baremetal";
-                networks = [ "lan" "tailnet" ];
-                vm = {
-                  kind = "qemu";
-                  manager = "nix-darwin";
-                };
-                builder = {
-                  hostName = "bioskop-linux";
-                  systems = [ "aarch64-linux" ];
-                  maxJobs = 8;
-                  protocol = "ssh-ng";
-                };
-              }
-              {
-                platform = "darwin";
-                form = "baremetal";
-                networks = [ "lan" "tailnet" ];
-                vm = {
-                  kind = "vz";
-                  manager = "lima";
-                };
-                builder = {
-                  hostName = "bioskop-nixos";
-                  systems = [ "aarch64-linux" ];
-                  maxJobs = 8;
-                  protocol = "ssh-ng";
-                };
-              }
-            ];
-
-            alcide = [
-              {
-                # alcide runs as a Tart/VZ macOS VM and does NOT serve as a darwin builder itself; it offloads to remote builders
-                platform = "darwin";
-                form = "vm";
-                networks = [ "lan" "tailnet" ];
-                vm = {
-                  kind = "vz";
-                  manager = "tart";
-                };
-                builder = null;
-              }
-              {
-                platform = "darwin";
-                form = "vm";
-                networks = [ "lan" "tailnet" ];
-                vm = {
-                  kind = "vz";
-                  manager = "lima";
-                };
-                builder = {
-                  hostName = "alcide-nixos";
-                  systems = [ "aarch64-linux" ];
-                  maxJobs = 8;
-                  protocol = "ssh-ng";
-                };
-              }
-            ];
           };
 
           defaultProfile = {
             name = mainName;
             host = hostProfile;
-            user = userMapping.profileUsers.committed // {
-              home = "/Users/${userMapping.profileUsers.committed.name}";
+            user = catalog.users.committed // {
+              home = "/Users/${catalog.users.committed.name}";
             };
           };
           darwinOutputs = mkDarwinOutputs {
-            inherit hostProfile;
+            inherit hostProfile catalog;
             profileModule =
               { ... }:
               {
@@ -497,10 +500,10 @@
           };
           darwinConfiguration = darwinOutputs.darwinConfigurations.${mainName};
 
-          containerRegistryConfiguration = mkContainerRegistryConfig { inherit hostProfile; };
+          containerRegistryConfiguration = mkContainerRegistryConfig { inherit hostProfile catalog; };
 
           nixosOutputs = mkNixosOutputs {
-            inherit hostProfile containerRegistryConfiguration;
+            inherit hostProfile containerRegistryConfiguration catalog;
             profileModule =
               { ... }:
               {
@@ -517,7 +520,7 @@
               pkgs = pkgsForDarwin;
               modules = [ ./modules/home-manager ];
               extraSpecialArgs = {
-                inherit hostProfile userMapping networkCatalog hostsCatalog;
+                inherit hostProfile catalog;
                 profile = defaultProfile;
                 activationLogger = {
                   script = ./modules/common/default.d/activation-logger.sh;

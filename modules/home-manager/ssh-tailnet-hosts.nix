@@ -12,17 +12,16 @@
 
 let
   # Get username from profile configuration
-  userMapping = config._module.specialArgs.userMapping;
+  catalog = config._module.specialArgs.catalog;
   profile = config._module.specialArgs.profile;
   userName = profile.user.name; # Use profile-based username (nxmatic for committed profile)
-  committedUserName = userMapping.profileUsers.committed.name;
-  workUserName = userMapping.profileUsers.work.name;
+  committedUserName = catalog.users.committed.name;
+  workUserName = catalog.users.work.name;
   tailnetDomain =
     if
-      (config._module.specialArgs ? networkCatalog)
-      && (config._module.specialArgs.networkCatalog ? tailnet)
+      (config._module.specialArgs ? catalog) && (config._module.specialArgs.catalog.networks ? tailnet)
     then
-      config._module.specialArgs.networkCatalog.tailnet.domain
+      config._module.specialArgs.catalog.networks.tailnet.domain
     else
       "";
   tailnetAlias = host: if tailnetDomain != "" then "${host}${tailnetDomain}" else null;

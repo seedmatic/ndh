@@ -2,10 +2,11 @@
   config,
   pkgs,
   lib,
-  networkCatalog,
+  catalog,
   ...
 }:
 let
+  networkCatalog = catalog.networks or { };
   cfg = config.tailscale;
   tailscaleKey = ./tailscale.key;
   tagsString = lib.concatStringsSep "," (map (tag: "tag:" + tag) cfg.tags);

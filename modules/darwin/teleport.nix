@@ -2,13 +2,14 @@
   config,
   pkgs,
   lib,
-  networkCatalog,
+  catalog,
   ...
 }:
 
 with lib;
 
 let
+  networkCatalog = catalog.networks or { };
   cfg = config.services.teleport;
   user = config.profile.user;
   userName = user.name;

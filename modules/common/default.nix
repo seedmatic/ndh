@@ -3,10 +3,11 @@
   lib,
   pkgs,
   self,
-  userMapping,
+  catalog,
   ...
 }:
 let
+  userMapping = catalog.users;
 
   cfg = config.profile;
   profile = cfg;
@@ -99,7 +100,7 @@ in
 
       # Provide specialArgs explicitly for direct imports
       specialArgs = {
-        inherit profile userMapping;
+        inherit profile catalog;
         activationLogger = {
           script = activationLoggerScript;
           cmd = config.activation.loggerCmd;
@@ -117,7 +118,7 @@ in
     # let nix manage home-manager profiles and use global nixpkgs
     home-manager = {
       extraSpecialArgs = {
-        inherit self userMapping;
+        inherit self catalog;
         profile = config.profile;
         activationLogger = {
           script = activationLoggerScript;
