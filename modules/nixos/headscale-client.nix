@@ -100,8 +100,19 @@ in
         RemainAfterExit = true;
       };
       script = ''
-        # Wait for tailscaled to be ready
-        sleep 2
+        # Wait for tailscaled to be ready (poll the socket instead of sleeping blindly)
+        wait_for_tailscaled() {
+          for i in $(seq 1 30); do
+            if ${pkgs.tailscale}/bin/tailscale status >/dev/null 2>&1; then
+              return 0
+            fi
+            sleep 1
+          done
+          echo "tailscaled not ready after 30s" >&2
+          return 1
+        }
+
+        wait_for_tailscaled || exit 1
 
         # Check if already connected
         if ${pkgs.tailscale}/bin/tailscale status >/dev/null 2>&1; then

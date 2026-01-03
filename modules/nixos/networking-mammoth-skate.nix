@@ -1,4 +1,9 @@
-{ config, lib, catalog ? { }, ... }:
+{
+  config,
+  lib,
+  catalog ? { },
+  ...
+}:
 {
   imports = [ ../common/dns-servers.nix ];
 
@@ -13,7 +18,9 @@
   config = lib.mkIf config.networking.mammoth-skate.enable (
     let
       tailnetDomain =
-        if config._module.specialArgs ? catalog && (config._module.specialArgs.catalog.networks ? tailnet) then
+        if
+          config._module.specialArgs ? catalog && (config._module.specialArgs.catalog.networks ? tailnet)
+        then
           config._module.specialArgs.catalog.networks.tailnet.domain
         else
           "";

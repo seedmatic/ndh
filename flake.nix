@@ -194,7 +194,11 @@
           specialArgs = { inherit catalog; };
         };
       mkDarwinConfig =
-        { hostProfile, profileModule, catalog }:
+        {
+          hostProfile,
+          profileModule,
+          catalog,
+        }:
         let
           preModules = [
             profileModule
@@ -210,7 +214,10 @@
             inherit hostProfile preModules;
             system = "darwin";
           };
-          specialArgs = mkSpecialArgs { inherit modules; extraArgs = { inherit catalog; }; };
+          specialArgs = mkSpecialArgs {
+            inherit modules;
+            extraArgs = { inherit catalog; };
+          };
         in
         inputs.darwin.lib.darwinSystem {
           inherit specialArgs modules;
@@ -222,7 +229,12 @@
           );
         };
       mkDarwinOutputs =
-        { hostProfile, profileModule, catalog, ... }:
+        {
+          hostProfile,
+          profileModule,
+          catalog,
+          ...
+        }:
         let
           darwinConfiguration = mkDarwinConfig { inherit hostProfile profileModule catalog; };
           darwinConfigurations = {
@@ -293,11 +305,21 @@
         }:
         let
           ext4 = mkNixosConfig {
-            inherit hostProfile profileModule containerRegistryConfiguration catalog;
+            inherit
+              hostProfile
+              profileModule
+              containerRegistryConfiguration
+              catalog
+              ;
             zfsOverlays = false;
           };
           zfs = mkNixosConfig {
-            inherit hostProfile profileModule containerRegistryConfiguration catalog;
+            inherit
+              hostProfile
+              profileModule
+              containerRegistryConfiguration
+              catalog
+              ;
             zfsOverlays = true;
           };
           # Disk size in MiB and bytes
@@ -412,7 +434,10 @@
                 {
                   platform = "darwin";
                   form = "baremetal";
-                  networks = [ "lan" "tailnet" ];
+                  networks = [
+                    "lan"
+                    "tailnet"
+                  ];
                   builder = {
                     hostName = "bioskop-darwin";
                     systems = [ "aarch64-darwin" ];
@@ -423,7 +448,10 @@
                 {
                   platform = "darwin";
                   form = "baremetal";
-                  networks = [ "lan" "tailnet" ];
+                  networks = [
+                    "lan"
+                    "tailnet"
+                  ];
                   vm = {
                     kind = "qemu";
                     manager = "nix-darwin";
@@ -438,7 +466,10 @@
                 {
                   platform = "darwin";
                   form = "baremetal";
-                  networks = [ "lan" "tailnet" ];
+                  networks = [
+                    "lan"
+                    "tailnet"
+                  ];
                   vm = {
                     kind = "vz";
                     manager = "lima";
@@ -457,7 +488,10 @@
                   # alcide runs as a Tart/VZ macOS VM and does NOT serve as a darwin builder itself; it offloads to remote builders
                   platform = "darwin";
                   form = "vm";
-                  networks = [ "lan" "tailnet" ];
+                  networks = [
+                    "lan"
+                    "tailnet"
+                  ];
                   vm = {
                     kind = "vz";
                     manager = "tart";
@@ -467,7 +501,10 @@
                 {
                   platform = "darwin";
                   form = "vm";
-                  networks = [ "lan" "tailnet" ];
+                  networks = [
+                    "lan"
+                    "tailnet"
+                  ];
                   vm = {
                     kind = "vz";
                     manager = "lima";
