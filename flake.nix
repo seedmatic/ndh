@@ -377,6 +377,116 @@
               hostProfile.hostAlias
             else
               hostProfile.hostName;
+          # Shared data replicas for standalone Home Manager evaluations (@codebase)
+          userMapping = {
+            profileUsers = {
+              work = {
+                name = "stephane.lacoin";
+                description = "Stephane Lacoin (aka nxmatic)";
+                email = "stephane.lacoin@hyland.com";
+              };
+
+              committed = {
+                name = "nxmatic";
+                description = "Stephane Lacoin (aka nxmatic)";
+                email = "stephane.lacoin@gmail.com";
+              };
+            };
+          };
+
+          networkCatalog = {
+            lan = {
+              cidr = "192.168.1.0/24";
+              domain = ".lan";
+            };
+            tailnet = {
+              cidr = "100.64.0.0/10";
+              domain = ".mammoth-skate.ts.net";
+            };
+          };
+
+          hostsCatalog = {
+            bioskop = [
+              {
+                platform = "darwin";
+                form = "baremetal";
+                networks = [ "lan" "tailnet" ];
+                builder = {
+                  hostName = "bioskop-darwin";
+                  systems = [ "aarch64-darwin" ];
+                  maxJobs = 8;
+                  protocol = "ssh-ng";
+                };
+              }
+              {
+                platform = "darwin";
+                form = "baremetal";
+                networks = [ "lan" "tailnet" ];
+                vm = {
+                  kind = "qemu";
+                  manager = "nix-darwin";
+                };
+                builder = {
+                  hostName = "bioskop-linux";
+                  systems = [ "aarch64-linux" ];
+                  maxJobs = 8;
+                  protocol = "ssh-ng";
+                };
+              }
+              {
+                platform = "darwin";
+                form = "baremetal";
+                networks = [ "lan" "tailnet" ];
+                vm = {
+                  kind = "vz";
+                  manager = "lima";
+                };
+                builder = {
+                  hostName = "bioskop-nixos";
+                  systems = [ "aarch64-linux" ];
+                  maxJobs = 8;
+                  protocol = "ssh-ng";
+                };
+              }
+            ];
+
+            alcide = [
+              {
+                # alcide runs as a Tart/VZ macOS VM and does NOT serve as a darwin builder itself; it offloads to remote builders
+                platform = "darwin";
+                form = "vm";
+                networks = [ "lan" "tailnet" ];
+                vm = {
+                  kind = "vz";
+                  manager = "tart";
+                };
+                builder = null;
+              }
+              {
+                platform = "darwin";
+                form = "vm";
+                networks = [ "lan" "tailnet" ];
+                vm = {
+                  kind = "vz";
+                  manager = "lima";
+                };
+                builder = {
+                  hostName = "alcide-nixos";
+                  systems = [ "aarch64-linux" ];
+                  maxJobs = 8;
+                  protocol = "ssh-ng";
+                };
+              }
+            ];
+          };
+
+          defaultProfile = {
+            name = mainName;
+            host = hostProfile;
+            user = userMapping.profileUsers.committed // {
+              home = "/Users/${userMapping.profileUsers.committed.name}";
+            };
+          };
           darwinOutputs = mkDarwinOutputs {
             inherit hostProfile;
             profileModule =
@@ -407,7 +517,8 @@
               pkgs = pkgsForDarwin;
               modules = [ ./modules/home-manager ];
               extraSpecialArgs = {
-                inherit hostProfile;
+                inherit hostProfile userMapping networkCatalog hostsCatalog;
+                profile = defaultProfile;
                 activationLogger = {
                   script = ./modules/common/default.d/activation-logger.sh;
                   cmd = "";
