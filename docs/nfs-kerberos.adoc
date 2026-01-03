@@ -1,0 +1,84 @@
+= NFSv4 + Kerberos Plan (Darwin + Nix)
+:toc: left
+:toclevels: 2
+:icons: font
+:source-highlighter: rouge
+:experimental:
+
+== Overview
+
+This note tracks the plan to run NFSv4 with Kerberos-backed identity mapping across Darwin (nix-darwin) and NixOS. First step: ensure the macOS nfsd actually serves and mounts NFSv4.
+
+== Quick status checks (Darwin)
+
+* See what the local server advertises: (@codebase)
++
+[source,bash]
+----
+rpcinfo -T tcp -p localhost | grep 100003  # 100003 = nfs program
+----
+* Inspect existing mounts: (@codebase)
++
+[source,bash]
+----
+mount | grep nfs
+----
+  - If you see `vers=4.x`, the mount is NFSv4; `vers=3` means NFSv3.
+
+== Enable NFSv4 on macOS (server side)
+
+1. Turn on v4 support in `/etc/nfs.conf` (create the file if missing): (@codebase)
++
+[source,ini]
+----
+nfs.server.enable_nfs4 = 1
+# optional: tune threads
+# nfs.server.nfsd_threads = 16
+----
+2. Define a v4 pseudo-root and exports in `/etc/exports` (fsid=0 is required for NFSv4): (@codebase)
++
+[source,conf]
+----
+/exports              -alldirs -maproot=root -sec=sys -network 192.168.1.0 -mask 255.255.255.0 -fsid=0
+/exports/share        -mapall=503 -sec=sys -network 192.168.1.0 -mask 255.255.255.0
+----
+3. Ensure the real data lives at `/exports/share` (bind-mount or symlink if needed).
+4. Restart nfsd: (@codebase)
++
+[source,bash]
+----
+sudo nfsd restart
+----
+5. Verify NFSv4 is now offered: (@codebase)
++
+[source,bash]
+----
+rpcinfo -T tcp -p localhost | grep "100003.*4"
+----
+
+== Client-side v4 probe from macOS
+
+Mount explicitly with v4 to confirm negotiation (adjust server/path): (@codebase)
++
+[source,bash]
+----
+sudo mkdir -p /Volumes/testnfs
+sudo mount -t nfs -o vers=4.1,sec=sys,resvport server:/exports/share /Volumes/testnfs
+mount | grep /Volumes/testnfs  # should show vers=4.1
+----
+Use `sec=krb5i` or `sec=krb5p` once Kerberos is configured.
+
+== Next: Kerberos-backed NFSv4 (plan)
+
+* Shared idmap domain: set the same `Domain` in `/etc/idmapd.conf` (e.g., `example.internal`) on server and clients.
+* Identity source: consistent users/groups across hosts (LDAP/AD/sssd or matched local accounts).
+* KDC: issue host keytabs (`nfs/server@REALM`, `host/client@REALM`), deploy to server/clients.
+* Server (NixOS): enable NFSv4 + Kerberos, export with `sec=krb5i`/`krb5p`, open firewall for 2049/tcp.
+* Clients (macOS, NixOS): install keytabs, enable idmapd with matching domain, mount with `sec=krb5i` (or `krb5p`).
+* Testing: `klist`, then `mount` showing `sec=krb5i,vers=4.x`; create files to confirm correct ownership mapping.
+
+== Troubleshooting crumbs
+
+* No `version 4` in `rpcinfo`: re-check `/etc/nfs.conf`, `/etc/exports`, and restart nfsd.
+* Mount falls back to v3: force `-o vers=4.1` and ensure server advertises v4.
+* UID shows numeric on client: verify `rpc.idmapd` is running and `Domain` matches on both sides.

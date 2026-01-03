@@ -20,7 +20,8 @@ let
   groupKeysScriptStore = pkgs.writeText "ssh-group-authorized-keys-command.sh" (
     builtins.readFile ../../common/ssh/ssh-group-authorized-keys.sh
   );
-  activationLogger = ../../common/activation-logger.sh;
+  # Use the wrapped activation logger packaged into the system closure
+  activationLogger = config.activation.loggerScript;
   activationTag = "nixos.activationScripts.sshGroupKeys";
 in
 {

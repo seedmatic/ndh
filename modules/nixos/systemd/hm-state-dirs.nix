@@ -13,7 +13,8 @@ let
     "${homeDir}/.local/state/home-manager"
     "${homeDir}/.local/state/home-manager/gcroots"
   ];
-  activationLogger = ../../common/activation-logger.sh;
+  # Use the wrapped activation logger placed in the store so it's always available
+  activationLogger = config.activation.loggerScript;
   activationTag = "nixos.activationScripts.hmStateDirs";
 in
 {

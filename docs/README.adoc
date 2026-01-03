@@ -16,6 +16,9 @@ Complete guide covering Tailscale and Headscale deployment, configuration, usage
 link:bioskop-deployment.adoc[bioskop Deployment Guide]::
 Step-by-step guide for deploying the complete Headscale/Tailscale architecture on bioskop (Mac Mini M4 Pro), including Headscale server, gateway, and RKE2 integration.
 
+link:nfs-kerberos.adoc[NFSv4 + Kerberos Plan]::
+Plan and bring-up steps for macOS/NixOS NFSv4 with Kerberos, including enabling NFSv4 on Darwin nfsd and roadmap for Kerberos-backed mounts.
+
 link:modules-reference.adoc[Modules Reference]::
 Reference documentation for all custom NixOS and Darwin modules, including options, examples, and best practices.
 
