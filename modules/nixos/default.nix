@@ -40,6 +40,7 @@ in
     ./lima-network-interfaces.nix
     ./networking-mammoth-skate.nix
     ./dnsmasq.nix
+    ./avahi.nix
     ./code-server.nix
     ./container-host.nix
     ./containers
