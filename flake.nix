@@ -432,21 +432,18 @@
             hosts = {
               bioskop = [
                 {
-                  platform = "darwin";
                   form = "baremetal";
                   networks = [
                     "lan"
                     "tailnet"
                   ];
                   builder = {
-                    hostName = "bioskop-darwin";
                     systems = [ "aarch64-darwin" ];
                     maxJobs = 8;
                     protocol = "ssh-ng";
                   };
                 }
                 {
-                  platform = "darwin";
                   form = "baremetal";
                   networks = [
                     "lan"
@@ -457,14 +454,12 @@
                     manager = "nix-darwin";
                   };
                   builder = {
-                    hostName = "bioskop-linux";
                     systems = [ "aarch64-linux" ];
                     maxJobs = 8;
                     protocol = "ssh-ng";
                   };
                 }
                 {
-                  platform = "darwin";
                   form = "baremetal";
                   networks = [
                     "lan"
@@ -475,7 +470,6 @@
                     manager = "lima";
                   };
                   builder = {
-                    hostName = "bioskop-nixos";
                     systems = [ "aarch64-linux" ];
                     maxJobs = 8;
                     protocol = "ssh-ng";
@@ -486,7 +480,6 @@
               alcide = [
                 {
                   # alcide runs as a Tart/VZ macOS VM and does NOT serve as a darwin builder itself; it offloads to remote builders
-                  platform = "darwin";
                   form = "vm";
                   networks = [
                     "lan"
@@ -499,7 +492,6 @@
                   builder = null;
                 }
                 {
-                  platform = "darwin";
                   form = "vm";
                   networks = [
                     "lan"
@@ -510,7 +502,6 @@
                     manager = "lima";
                   };
                   builder = {
-                    hostName = "alcide-nixos";
                     systems = [ "aarch64-linux" ];
                     maxJobs = 8;
                     protocol = "ssh-ng";

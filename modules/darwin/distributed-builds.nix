@@ -20,9 +20,14 @@ let
   hostForcesRemoteBuilds = hostProfile.forceRemoteBuilds;
   userRemoteBuilders = hostProfile.remoteBuilders;
   builderCatalog = hostProfile.builderCatalog;
-  # Exclude macOS builders that are themselves running inside a VM; they should offload elsewhere.
   builderCatalogFiltered = lib.filter (
-    entry: !(entry.platform == "darwin" && entry.form == "vm")
+    entry:
+    let
+      systems = entry.builder.systems or [ ];
+      isDarwinSystem = lib.any (s: lib.hasInfix "darwin" s) systems;
+      isVm = (entry.builder.form or "") == "vm";
+    in
+    !(isDarwinSystem && isVm)
   ) builderCatalog;
   catalogRemoteBuilders = map (entry: entry.builder) (
     lib.filter (entry: entry.builder != null) builderCatalogFiltered
@@ -34,8 +39,8 @@ let
   builderKeyDir = "/etc/nix";
   builderKeyPath = "${builderKeyDir}/builder_ed25519";
   # Place SSH control sockets in a shared temp dir (nixbld users lack homedirs)
-  controlMasterDir = "/var/tmp/nix-ssh-control";
-  controlMasterPath = "${controlMasterDir}/ssh-builder-%r@%h:%p";
+  controlMasterDir = "/var/tmp/nix-builder-ssh-control";
+  controlMasterPath = "${controlMasterDir}/%r@%h:%p";
 
   # Align builder key provisioning with linux-builder module: pull from keys.yaml
   keysJson = pkgs.runCommand "keys.json" { buildInputs = [ pkgs.yq-go ]; } ''
@@ -66,8 +71,9 @@ let
     chmod +x "$out"
   '';
 
-  # Prefer host-provided builder definitions (already feature-enriched)
-  remoteBuilders = if userRemoteBuilders != [ ] then userRemoteBuilders else catalogRemoteBuilders;
+  # Prefer host-provided builder definitions (already feature-enriched), then dedupe
+  remoteBuildersRaw = if userRemoteBuilders != [ ] then userRemoteBuilders else catalogRemoteBuilders;
+  remoteBuilders = lib.unique remoteBuildersRaw;
 
   # Restrict requested networks to the known catalog and default to lan only
   resolveNetworks =
@@ -98,14 +104,24 @@ let
       );
       baseSpeed = builder.speedFactor or 1;
       speedFor = net: baseSpeed * (if net == "lan" then 100 else 10);
+      hostBase = if builder ? sshHostName then builder.sshHostName else builder.hostName;
       makeEntry =
         net:
+        # Strip non-buildMachines keys before emitting
         (lib.removeAttrs builder [
           "networks"
           "speedFactor"
+          "form"
+          "platformLabel"
+          "hostKey"
+          "host"
+          "hostPort"
+          "user"
+          "sshHostName"
+          "vm"
         ])
         // {
-          hostName = "${builder.hostName}-builder-via-${net}";
+          hostName = "${hostBase}-builder-via-${net}";
           speedFactor = speedFor net;
         };
     in
@@ -138,38 +154,97 @@ in
         # Pattern: <builderHostName>-builder-via-<network>
         environment.etc."ssh/ssh_config.d/60-builders.conf".text =
           let
-            renderBuilder =
+            # Default builder port: 31022; specific builders (e.g., nixos/lima) will emit Port 22 overrides
+            defaultPortForNet = net: 31022;
+
+            commonBlock = ''
+              Host *-builder-via-*
+                User builder
+                Port 31022
+                IdentityFile ${builderKeyPath}
+                IdentitiesOnly yes
+                StrictHostKeyChecking no
+                UserKnownHostsFile /dev/null
+                LogLevel QUIET
+                ServerAliveInterval 30
+                ServerAliveCountMax 3
+                ControlMaster auto
+                ControlPath ${controlMasterPath}
+                ControlPersist 10m
+                Compression yes
+                TCPKeepAlive yes
+            '';
+
+            platformWildcards = ''
+              Host *-nixos-builder-*
+                User ${config.profile.user.name}
+            '';
+
+            networkDefaults = ''
+              Host *-via-lan
+                ConnectTimeout 10
+              Host *-via-tailnet
+                ConnectTimeout 30
+            '';
+
+            renderSpecific =
+              builder: net:
+              let
+                alias = "${builder.hostName}-builder-via-${net}";
+                domain = networkDomain net;
+                hostBase = builder.host or builder.hostName;
+                hostForNet = if domain != "" then "${hostBase}${domain}" else hostBase;
+                portValue =
+                  let
+                    resolvedPort = if builder ? hostPort then builder.hostPort else defaultPortForNet net;
+                  in
+                  if resolvedPort == defaultPortForNet net then null else resolvedPort;
+              in
+              ''
+                Host ${alias}
+                  HostName ${hostForNet}
+              ''
+              + (lib.optionalString (portValue != null) "  Port ${toString portValue}\n");
+
+            # Also provide a plain host stanza for the base builder hostname to pin IPv4 and port
+            renderBaseHost =
               builder:
               let
-                builderHost = builder.hostName;
-                targetHost = builder.sshHostName or builderHost;
-                port = builtins.toString (builder.port or 22);
-                nets = resolveNetworks (if builder ? networks then builder.networks else [ ]);
-                hostForNet = net: "${targetHost}${networkDomain net}";
-                connectTimeout = net: if net == "tailnet" then 30 else 10;
-                renderNet = net: ''
-                  Host ${builderHost}-builder-via-${net}
-                    HostName ${hostForNet net}
-                    Port ${port}
-                    User builder
-                    IdentityFile ${builderKeyPath}
-                    IdentitiesOnly yes
-                    StrictHostKeyChecking no
-                    UserKnownHostsFile /dev/null
-                    LogLevel QUIET
-                    ConnectTimeout ${toString (connectTimeout net)}
-                    ServerAliveInterval 30
-                    ServerAliveCountMax 3
-                    ControlMaster auto
-                    ControlPath ${controlMasterPath}
-                    ControlPersist 10m
-                    Compression yes
-                    TCPKeepAlive yes
-                '';
+                hostBase = builder.host or builder.hostName;
+                domain = networkDomain "lan";
+                hostForLan = if domain != "" then "${hostBase}${domain}" else hostBase;
+                portValue =
+                  let
+                    resolvedPort = if builder ? hostPort then builder.hostPort else defaultPortForNet "lan";
+                  in
+                  toString resolvedPort;
               in
-              lib.concatMapStrings renderNet nets;
+              ''
+                Host ${hostBase} ${hostBase}.lan ${hostBase}.local
+                  HostName ${hostForLan}
+                  Port ${portValue}
+                  User builder
+                  AddressFamily inet
+              '';
+
+            renderedSpecific = lib.concatMap (
+              builder:
+              let
+                nets = resolveNetworks (if builder ? networks then builder.networks else [ ]);
+              in
+              map (net: renderSpecific builder net) nets
+            ) remoteBuildersLanFirst;
+            renderedBaseHosts = map renderBaseHost remoteBuildersLanFirst;
+            uniqueRendered = lib.unique (renderedSpecific ++ renderedBaseHosts);
           in
-          lib.concatMapStrings renderBuilder remoteBuildersLanFirst;
+          lib.concatStrings (
+            [
+              commonBlock
+              platformWildcards
+              networkDefaults
+            ]
+            ++ uniqueRendered
+          );
 
         # Ensure ControlPath directory exists; use sticky bit to avoid cross-user clobbering
         system.activationScripts.builderControlPath = lib.mkAfter ''
@@ -181,6 +256,16 @@ in
         system.activationScripts.etc.text = lib.mkAfter ''
           ${builderKeyInstall}
         '';
+
+        # Authorize the builder public key for the profile user and nixbld group via authorized_keys.d
+        environment.etc = {
+          "ssh/authorized_keys.d/${config.profile.user.name}".text = ''
+            ssh-ed25519 ${builderPubKey} ${builderProfile}-builder
+          '';
+          "ssh/authorized_keys.d/nixbld".text = ''
+            ssh-ed25519 ${builderPubKey} ${builderProfile}-builder
+          '';
+        };
 
         # Ensure the primary user (home-manager user) can read builder key via nixbld
         users.groups.nixbld.members = lib.mkAfter [ config.profile.user.name ];

@@ -34,12 +34,22 @@ let
 
   exportsText =
     let
-      scopes = if cfg.server.clientScopes == [ ] then [ { clients = ""; options = cfg.server.exportOptions; } ] else cfg.server.clientScopes;
+      scopes =
+        if cfg.server.clientScopes == [ ] then
+          [
+            {
+              clients = "";
+              options = cfg.server.exportOptions;
+            }
+          ]
+        else
+          cfg.server.clientScopes;
       scopeStrs = map (s: "${s.clients}(${s.options})") scopes;
     in
     lib.concatStringsSep "\n" (
       lib.map (path: "${path} " + lib.concatStringsSep " " scopeStrs) cfg.server.exports
-    ) + "\n";
+    )
+    + "\n";
 
 in
 {
@@ -91,18 +101,20 @@ in
         description = "Export options applied to every shared path (fallback when clientScopes is empty).";
       };
       clientScopes = lib.mkOption {
-        type = lib.types.listOf (lib.types.submodule {
-          options = {
-            clients = lib.mkOption {
-              type = lib.types.str;
-              description = "Client CIDR or host spec.";
+        type = lib.types.listOf (
+          lib.types.submodule {
+            options = {
+              clients = lib.mkOption {
+                type = lib.types.str;
+                description = "Client CIDR or host spec.";
+              };
+              options = lib.mkOption {
+                type = lib.types.str;
+                description = "Export options for this client scope.";
+              };
             };
-            options = lib.mkOption {
-              type = lib.types.str;
-              description = "Export options for this client scope.";
-            };
-          };
-        });
+          }
+        );
         default = shared.clientScopesDefault;
         description = "Per-scope client/option pairs appended to each export.";
       };
@@ -215,7 +227,9 @@ in
 
     # Feed upstream nfs.nix so it renders /etc/nfs.conf with our defaults
     services.nfs.settings = lib.mkIf cfg.nfsConf.enable (lib.mkDefault nfsSettings);
-    services.nfs.extraConfig = lib.mkIf (cfg.nfsConf.enable && cfg.nfsConf.extraText != "") cfg.nfsConf.extraText;
+    services.nfs.extraConfig = lib.mkIf (
+      cfg.nfsConf.enable && cfg.nfsConf.extraText != ""
+    ) cfg.nfsConf.extraText;
 
     services.nfs.server = lib.mkIf cfg.server.enable {
       enable = true;

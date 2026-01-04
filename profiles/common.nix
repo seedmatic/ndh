@@ -3,6 +3,7 @@
   home-manager,
   pkgs,
   lib,
+  catalog,
   ...
 }:
 
@@ -11,124 +12,13 @@ let
   inherit (lib) mkIf;
   cfg = config.profile;
   defaultUserHome = if stdenv.isDarwin then "Users" else "${config.users.defaultUserHome}";
-
-  # Unified catalog (@codebase) for networks, hosts/builders, and user mappings
-  catalog = {
-    users = {
-      work = {
-        name = "stephane.lacoin";
-        description = "Stephane Lacoin (aka nxmatic)";
-        email = "stephane.lacoin@hyland.com";
-      };
-
-      committed = {
-        name = "nxmatic";
-        description = "Stephane Lacoin (aka nxmatic)";
-        email = "stephane.lacoin@gmail.com";
-      };
-    };
-
-    networks = {
-      lan = {
-        cidr = "192.168.1.0/24";
-        domain = ".lan";
-      };
-      tailnet = {
-        cidr = "100.64.0.0/10";
-        domain = ".mammoth-skate.ts.net";
-      };
-    };
-
-    hosts = {
-      bioskop = [
-        {
-          platform = "darwin";
-          form = "baremetal";
-          networks = [
-            "lan"
-            "tailnet"
-          ];
-          builder = {
-            hostName = "bioskop";
-            systems = [ "aarch64-darwin" ];
-            maxJobs = 8;
-            protocol = "ssh-ng";
-          };
-        }
-        {
-          platform = "darwin";
-          form = "baremetal";
-          networks = [
-            "lan"
-            "tailnet"
-          ];
-          vm = {
-            kind = "qemu";
-            manager = "nix-darwin";
-          };
-          builder = {
-            hostName = "bioskop";
-            systems = [ "aarch64-linux" ];
-            maxJobs = 8;
-            protocol = "ssh-ng";
-          };
-        }
-        {
-          platform = "darwin";
-          form = "baremetal";
-          networks = [
-            "lan"
-            "tailnet"
-          ];
-          vm = {
-            kind = "vz";
-            manager = "lima";
-          };
-          builder = {
-            hostName = "bioskop-nixos";
-            systems = [ "aarch64-linux" ];
-            maxJobs = 8;
-            protocol = "ssh-ng";
-          };
-        }
-      ];
-
-      alcide = [
-        # alcide runs as a Tart/VZ macOS VM and does NOT serve as a darwin builder itself; it offloads to remote builders
-        {
-          platform = "darwin";
-          form = "vm";
-          networks = [
-            "lan"
-            "tailnet"
-          ];
-          vm = {
-            kind = "vz";
-            manager = "tart";
-          };
-          builder = null;
-        }
-        {
-          platform = "darwin";
-          form = "vm";
-          networks = [
-            "lan"
-            "tailnet"
-          ];
-          vm = {
-            kind = "vz";
-            manager = "lima";
-          };
-          builder = {
-            hostName = "alcide-nixos";
-            systems = [ "aarch64-linux" ];
-            maxJobs = 8;
-            protocol = "ssh-ng";
-          };
-        }
-      ];
-    };
-  };
+  # Capture injected catalog in a non-recursive binding, then assert presence (@codebase)
+  catalogResolved =
+    let
+      injected = catalog;
+    in
+    assert injected != null;
+    injected;
 in
 {
   options = {
@@ -240,7 +130,6 @@ in
                   example = [
                     {
                       host = "bioskop";
-                      platform = "darwin"; # macOS host
                       form = "baremetal"; # bare metal vs vm
                       networks = [
                         "lan"
@@ -255,7 +144,6 @@ in
                     }
                     {
                       host = "bioskop";
-                      platform = "darwin";
                       form = "baremetal";
                       networks = [
                         "lan"
@@ -274,7 +162,6 @@ in
                     }
                     {
                       host = "bioskop";
-                      platform = "darwin";
                       form = "baremetal";
                       networks = [
                         "lan"
@@ -293,7 +180,6 @@ in
                     }
                     {
                       host = "alcide";
-                      platform = "darwin"; # running under tart/vz
                       form = "vm";
                       networks = [
                         "lan"
@@ -312,7 +198,6 @@ in
                     }
                     {
                       host = "alcide";
-                      platform = "darwin";
                       form = "vm";
                       networks = [
                         "lan"
@@ -416,40 +301,90 @@ in
     };
   };
 
-  # Compose config: expose catalog. Avoid self-reference causing recursion
+  # Compose config
   config = {
-    _module.args.catalog = catalog; # (@codebase) expose unified catalog (networks + hosts)
     # Dynamic defaults (@codebase): adjust user home path to use the resolved user name
     # instead of the static placeholder jdoe so Home Manager's activation check matches $HOME.
     profile.user.home = lib.mkDefault (
       builtins.toPath "/${defaultUserHome}/${config.profile.user.name}"
     );
 
-    # Default builder catalog from shared hostsCatalog based on preferredBuilderHosts (fallback: current host only)
-    profile.host.preferredBuilderHosts = lib.mkDefault [ config.profile.host.hostName ];
+    # Default builder catalog from all catalog hosts
+    profile.host.preferredBuilderHosts = lib.mkDefault (builtins.attrNames catalogResolved.hosts);
 
     profile.host.builderCatalog = lib.mkDefault (
       let
-        wanted = config.profile.host.preferredBuilderHosts;
+        wanted = builtins.attrNames catalogResolved.hosts;
         addDefaultFeatures =
-          entry:
+          host: entry:
           let
+            hostKey = host;
             base = entry.builder;
             baseFeatures = base.supportedFeatures or [ ];
             vmKind = if entry ? vm then (entry.vm.kind or null) else null;
+            vmManager = if entry ? vm then (entry.vm.manager or null) else null;
             maxJobs = base.maxJobs or 0;
             defaults = lib.optional (maxJobs >= 8) "big-parallel" ++ lib.optional (vmKind == "qemu") "kvm";
+            platformLabel =
+              if base ? systems && lib.any (s: lib.hasInfix "linux" s) base.systems then "linux" else "darwin";
+            hostNameDefault =
+              if platformLabel == "linux" then
+                if vmManager == "nix-darwin" then "${hostKey}-linux" else "${hostKey}-nixos"
+              else
+                "${hostKey}-darwin";
+            sshHostNameDefault = hostNameDefault;
+            # Default port: darwin-hosted Linux builders use 31022; nixos-only (e.g., lima) stays on 22
+            hostPortValue =
+              if base.hostPort or null != null then base.hostPort
+              else if platformLabel == "linux" then
+                if vmManager == "lima" then 22 else 31022
+              else
+                22;
+            hostPortResolved = hostPortValue;
+            hostValue =
+              if vmManager == "nix-darwin" then
+                hostKey
+              else if base ? host then
+                base.host
+              else
+                base.hostName or hostNameDefault;
+            userDefault =
+              if platformLabel == "linux" then
+                if vmManager == "nix-darwin" then "builder" else config.profile.user.name
+              else
+                "builder";
           in
           entry
           // {
             builder = base // {
               supportedFeatures = lib.unique (baseFeatures ++ defaults);
               networks = entry.networks or [ ];
+              hostName = base.hostName or hostNameDefault;
+              sshHostName = base.sshHostName or sshHostNameDefault;
+              user = base.user or userDefault;
+              form = if entry ? vm then "vm" else (entry.form or null);
+              platformLabel = platformLabel;
+              hostKey = hostKey;
+              host = hostValue;
+              hostPort = hostPortResolved;
+              vm = entry.vm or null;
             };
+            hostKey = hostKey;
           };
         entriesFor =
           host:
-          if builtins.hasAttr host catalog.hosts then map addDefaultFeatures catalog.hosts.${host} else [ ];
+          if builtins.hasAttr host catalogResolved.hosts then
+            map (addDefaultFeatures host) (
+              lib.filter (
+                e:
+                let
+                  hasBuilder = e.builder != null;
+                in
+                hasBuilder
+              ) catalogResolved.hosts.${host}
+            )
+          else
+            [ ];
       in
       lib.concatMap entriesFor wanted
     );

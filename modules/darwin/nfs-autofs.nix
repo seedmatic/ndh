@@ -194,43 +194,79 @@ let
     let
       scopes =
         if cfg.clientScopes == [ ] then
-          [ { clients = ""; options = cfg.exportOptions; } ]
+          [
+            {
+              clients = "";
+              options = cfg.exportOptions;
+            }
+          ]
         else
           cfg.clientScopes;
 
-      translateOptions = optsStr:
+      translateOptions =
+        optsStr:
         let
           opts = lib.splitString "," (if optsStr == "" then cfg.exportOptions else optsStr);
-          flagFor = opt:
-            if opt == "rw" then "-rw"
-            else if opt == "ro" then "-ro"
-            else if opt == "sync" then "-sync"
-            else if opt == "async" then "-async"
-            else "";
+          flagFor =
+            opt:
+            if opt == "rw" then
+              "-rw"
+            else if opt == "ro" then
+              "-ro"
+            else if opt == "sync" then
+              "-sync"
+            else if opt == "async" then
+              "-async"
+            else
+              "";
           maprootFlag =
-            if lib.any (o: o == "no_root_squash") opts then "-maproot=root"
-            else if lib.any (o: o == "root_squash") opts then "-maproot=nobody"
-            else "";
+            if lib.any (o: o == "no_root_squash") opts then
+              "-maproot=root"
+            else if lib.any (o: o == "root_squash") opts then
+              "-maproot=nobody"
+            else
+              "";
           baseFlags = lib.filter (f: f != "") (map flagFor opts);
         in
         lib.concatStringsSep " " (baseFlags ++ [ maprootFlag ]);
 
-      cidrToNetworkMask = cidr:
-        let parts = lib.splitString "/" cidr;
-        in if builtins.length parts > 1 then
-          { base = builtins.elemAt parts 0; mask = prefixToMask (builtins.fromJSON (builtins.elemAt parts 1)); }
-          else { base = cidr; mask = ""; };
+      cidrToNetworkMask =
+        cidr:
+        let
+          parts = lib.splitString "/" cidr;
+        in
+        if builtins.length parts > 1 then
+          {
+            base = builtins.elemAt parts 0;
+            mask = prefixToMask (builtins.fromJSON (builtins.elemAt parts 1));
+          }
+        else
+          {
+            base = cidr;
+            mask = "";
+          };
 
-      scopeToFragments = scope:
+      scopeToFragments =
+        scope:
         let
           networks = lib.filter (s: s != "") (lib.splitString " " scope.clients);
-          nmFrags = lib.concatMap (net: let nm = cidrToNetworkMask net; in if nm.mask == "" then ["${nm.base}"] else ["-network ${nm.base} -mask ${nm.mask}"]) networks;
+          nmFrags = lib.concatMap (
+            net:
+            let
+              nm = cidrToNetworkMask net;
+            in
+            if nm.mask == "" then [ "${nm.base}" ] else [ "-network ${nm.base} -mask ${nm.mask}" ]
+          ) networks;
           optFlags = translateOptions scope.options;
-          baseFlags = [ "-alldirs" optFlags ];
+          baseFlags = [
+            "-alldirs"
+            optFlags
+          ];
         in
         lib.filter (s: s != "") (baseFlags ++ nmFrags);
 
-      renderExport = path:
+      renderExport =
+        path:
         let
           perScope = map scopeToFragments scopes;
           merged = map (frags: "${path} " + lib.concatStringsSep " " frags) perScope;
@@ -287,19 +323,21 @@ in
     };
 
     clientScopes = lib.mkOption {
-      type = lib.types.listOf (lib.types.submodule {
-        options = {
-          clients = lib.mkOption {
-            type = lib.types.str;
-            description = "Client CIDR or host spec.";
+      type = lib.types.listOf (
+        lib.types.submodule {
+          options = {
+            clients = lib.mkOption {
+              type = lib.types.str;
+              description = "Client CIDR or host spec.";
+            };
+            options = lib.mkOption {
+              type = lib.types.str;
+              default = "";
+              description = "Extra export options for this client scope.";
+            };
           };
-          options = lib.mkOption {
-            type = lib.types.str;
-            default = "";
-            description = "Extra export options for this client scope.";
-          };
-        };
-      });
+        }
+      );
       default = shared.clientScopesDefault;
       description = "Per-scope client/option pairs appended to each export.";
     };
