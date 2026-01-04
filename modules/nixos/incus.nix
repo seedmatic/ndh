@@ -83,7 +83,7 @@ in
     # interfaces.enp0s1.useDHCP =
     #   lib.mkForce false; # Physical NIC does not get its own IP
     firewall.trustedInterfaces = [
-      "+-br*" # Allow DHCP/DNS/etc. on bridges
+      "lan-br" # Allow DHCP/DNS/etc. on the Incus bridge
     ]; # Allow DHCP/DNS/etc. on bridge
     # interfaces.externalbr0.macAddress =
     #   "52:55:55:71:36:47"; # match your lima.yaml
