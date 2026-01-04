@@ -2,20 +2,80 @@
 :toc: left
 :toclevels: 2
 :icons: font
+ macOS nfsd can export NFSv4 with RPCSEC_GSS (Kerberos) when a keytab and Kerberos realm are configured explicitly.
 :source-highlighter: rouge
 :experimental:
 
 == Overview
 
-This note tracks the plan to run NFSv4 with Kerberos-backed identity mapping across Darwin (nix-darwin) and NixOS. First step: ensure the macOS nfsd actually serves and mounts NFSv4.
 
-== Quick status checks (Darwin)
 
+== Enable Kerberos on macOS nfsd (server side)
+
+1. Kerberos realm and keytab: (@codebase)
++
+[source,bash]
+----
+# Ensure /etc/krb5.conf points to the KDC and realm
+kadmin -q "addprinc -randkey nfs/$(hostname -f)@REALM"
+
+sudo chmod 600 /etc/krb5.keytab
+----
+2. Export with explicit Kerberos security (fsid=0 for v4 pseudo-root): (@codebase)
++
+[source,conf]
+----
+/exports              -alldirs -fsid=0 -sec=krb5p:krb5i:krb5,rw
+/exports/share        -sec=krb5p:krb5i:krb5,rw
+----
+  * Add `-network/-mask` if you want to scope clients; add `no_root_squash` only if you accept root passthrough.
+  * macOS nfsd is effectively NFSv4.0 (no v4.1 sessions/pNFS).
+3. Reload/start nfsd after edits: (@codebase)
++
+[source,bash]
+----
 * See what the local server advertises: (@codebase)
+sudo nfsd restart
+----
+4. Verify Kerberos is usable: (@codebase)
++
+[source,bash]
+----
+rpcinfo -T tcp -p localhost | grep "100003.*4"
+sudo klist -k /etc/krb5.keytab
+# Check Console.app for nfsd GSS errors if mounts fail
+----
++
+[source,bash]
+----
+
+== Roaming client defaults (Darwin laptop)
+
+For laptops (e.g., alcide) that roam between LAN and off-net, prefer resilient mounts:
+
+* `nfs.client.mount.options` in `/etc/nfs.conf` (example): (@codebase)
++
+[source,ini]
+----
+nfs.client.default_nfs4domain = example.internal
+nfs.client.mount.options = vers=4,sec=krb5i,bg,soft,timeo=5,retrans=2,resvport,proto=tcp
+----
+* Autofs map to avoid hangs when disconnected:
++
+[source,conf]
+----
+# /etc/auto_master (fragment)
+/nfs    auto_nfs    -nobrowse
+
+# /etc/auto_nfs
+share   -fstype=nfs,vers=4,sec=krb5i,resvport,bg,soft,timeo=5,retrans=2,proto=tcp   server:/exports/share
+----
+* Apply autofs changes: (@codebase)
 +
 [source,bash]
 ----
 rpcinfo -T tcp -p localhost | grep 100003  # 100003 = nfs program
+----
 ----
 * Inspect existing mounts: (@codebase)
 +

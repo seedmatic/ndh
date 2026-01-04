@@ -224,3 +224,4 @@ incus exec headscale-server -- systemctl status headscale
 - Lima VM has flox environment configured
 - Use `remake` instead of `make`
 - All configuration files are in the subtree at `modules/nixos/incus-rke2-cluster/`
+- Add follow-up subject: verify changes on both hosts after edits and plan deployment automation from the k8s cluster (Tekton pipeline to build, push cache, and trigger host applies)

@@ -208,6 +208,26 @@ The Lima VM is configured automatically by the `lima.configGenerator` in the Dar
 }
 ----
 
+==== NixOS VM image refresh (alcide VM → macOS host)
+
+* Build on alcide-nixos (inside the VM) and keep a stable out-link:
++
+[source,bash]
+----
+cd /var/lib/git/nxmatic/nix-darwin-home
+nix build .#nixosConfigurations.alcide-vm.config.system.build.diskImage --out-link hosts/alcide/nixos/disk.img
+----
+* On macOS (alcide host), pull the image into the local store and update the stable path used by Lima:
++
+[source,bash]
+----
+SRC_PATH=$(ssh alcide readlink -f /var/lib/git/nxmatic/nix-darwin-home/hosts/alcide/nixos/disk.img)
+nix copy --from ssh://alcide "$SRC_PATH"
+ln -sfn "$SRC_PATH" $HOME/.lima/images/nixos.img
+----
+* Lima config now points to `file://$HOME/.lima/images/nixos.img` and the activation script stages the image automatically. On rebuild, rerun the two commands above to refresh.
+* Defaults can be overridden via `lima.configGenerator.imageSourcePath` and `imageTargetPath` if the paths differ.
+
 == Workflows
 
 === Daily Development Workflow
