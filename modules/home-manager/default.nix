@@ -147,6 +147,7 @@ in
     ./password-store.nix
     ./socket-vmnet.nix
     ./shell.nix
+    ./starship.nix
     ./ssh.nix
     ./ssh-keys.nix
     ./ssh-tailnet-hosts.nix
