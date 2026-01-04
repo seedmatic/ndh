@@ -20,8 +20,12 @@ let
   hostForcesRemoteBuilds = hostProfile.forceRemoteBuilds;
   userRemoteBuilders = hostProfile.remoteBuilders;
   builderCatalog = hostProfile.builderCatalog;
+  # Exclude macOS builders that are themselves running inside a VM; they should offload elsewhere.
+  builderCatalogFiltered = lib.filter (
+    entry: !(entry.platform == "darwin" && entry.form == "vm")
+  ) builderCatalog;
   catalogRemoteBuilders = map (entry: entry.builder) (
-    lib.filter (entry: entry.builder != null) builderCatalog
+    lib.filter (entry: entry.builder != null) builderCatalogFiltered
   );
   userName = config.profile.user.name;
   userHome = config.profile.user.home;
