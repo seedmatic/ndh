@@ -144,6 +144,7 @@ in
                 port = builtins.toString (builder.port or 22);
                 nets = resolveNetworks (if builder ? networks then builder.networks else [ ]);
                 hostForNet = net: "${targetHost}${networkDomain net}";
+                connectTimeout = net: if net == "tailnet" then 30 else 10;
                 renderNet = net: ''
                   Host ${builderHost}-builder-via-${net}
                     HostName ${hostForNet net}
@@ -154,7 +155,7 @@ in
                     StrictHostKeyChecking no
                     UserKnownHostsFile /dev/null
                     LogLevel QUIET
-                    ConnectTimeout 10
+                    ConnectTimeout ${toString (connectTimeout net)}
                     ServerAliveInterval 30
                     ServerAliveCountMax 3
                     ControlMaster auto

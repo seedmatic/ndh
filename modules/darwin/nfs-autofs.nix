@@ -7,8 +7,11 @@
 }:
 let
   networkCatalog = catalog.networks or { };
+  shared = import ../common/nfs-shared.nix;
   cfg = config.services.nfsDarwin;
   autoCfg = cfg.autofs;
+
+  bool01 = b: if b then "1" else "0";
 
   pow = base: exp: lib.foldl' (acc: _: acc * base) 1 (lib.genList (_: null) exp);
   prefixToMask =
@@ -188,15 +191,71 @@ let
   '';
 
   exportsText =
-    lib.concatStringsSep "\n" (
-      lib.concatMap (
-        path:
-        map (
-          net: "${path} ${cfg.exportOptions} -network ${net.network} -mask ${net.netmask}"
-        ) allowedNetworks
-      ) cfg.exports
-    )
-    + "\n";
+    let
+      scopes =
+        if cfg.clientScopes == [ ] then
+          [ { clients = ""; options = cfg.exportOptions; } ]
+        else
+          cfg.clientScopes;
+
+      translateOptions = optsStr:
+        let
+          opts = lib.splitString "," (if optsStr == "" then cfg.exportOptions else optsStr);
+          flagFor = opt:
+            if opt == "rw" then "-rw"
+            else if opt == "ro" then "-ro"
+            else if opt == "sync" then "-sync"
+            else if opt == "async" then "-async"
+            else "";
+          maprootFlag =
+            if lib.any (o: o == "no_root_squash") opts then "-maproot=root"
+            else if lib.any (o: o == "root_squash") opts then "-maproot=nobody"
+            else "";
+          baseFlags = lib.filter (f: f != "") (map flagFor opts);
+        in
+        lib.concatStringsSep " " (baseFlags ++ [ maprootFlag ]);
+
+      cidrToNetworkMask = cidr:
+        let parts = lib.splitString "/" cidr;
+        in if builtins.length parts > 1 then
+          { base = builtins.elemAt parts 0; mask = prefixToMask (builtins.fromJSON (builtins.elemAt parts 1)); }
+          else { base = cidr; mask = ""; };
+
+      scopeToFragments = scope:
+        let
+          networks = lib.filter (s: s != "") (lib.splitString " " scope.clients);
+          nmFrags = lib.concatMap (net: let nm = cidrToNetworkMask net; in if nm.mask == "" then ["${nm.base}"] else ["-network ${nm.base} -mask ${nm.mask}"]) networks;
+          optFlags = translateOptions scope.options;
+          baseFlags = [ "-alldirs" optFlags ];
+        in
+        lib.filter (s: s != "") (baseFlags ++ nmFrags);
+
+      renderExport = path:
+        let
+          perScope = map scopeToFragments scopes;
+          merged = map (frags: "${path} " + lib.concatStringsSep " " frags) perScope;
+        in
+        lib.concatStringsSep "\n" merged;
+    in
+    lib.concatStringsSep "\n" (map renderExport cfg.exports) + "\n";
+
+  nfsConfText =
+    if cfg.nfsConf.enable then
+      ''
+        nfs.client.is_mobile = ${bool01 cfg.nfsConf.isMobile}
+        nfs.client.mount.options = ${cfg.nfsConf.mountOptions}
+        nfs.client.mount_timeout = ${toString cfg.nfsConf.mountTimeout}
+        nfs.client.mount_quick_timeout = ${toString cfg.nfsConf.mountQuickTimeout}
+        nfs.client.initialdowndelay = ${toString cfg.nfsConf.initialDownDelay}
+        nfs.client.nextdowndelay = ${toString cfg.nfsConf.nextDownDelay}
+        nfs.client.uninterruptible_pagein = 0
+        nfs.lockd.send_using_tcp = ${bool01 cfg.nfsConf.lockdUseTcp}
+        nfs.lockd.send_using_mnt_transport = ${bool01 cfg.nfsConf.lockdUseMntTransport}
+        nfs.server.mount.regular_files = ${bool01 cfg.nfsConf.allowRegularFileMounts}
+        ${cfg.nfsConf.extraText}
+      ''
+    else
+      "";
 in
 {
   options.services.nfsDarwin = {
@@ -223,13 +282,84 @@ in
 
     exports = lib.mkOption {
       type = lib.types.listOf lib.types.str;
-      default = [
-        "/private"
-        "/private/var/lib/git"
-        "/nix/store"
-        "/Users"
-      ];
+      default = shared.exportsDefault;
       description = "Paths exported over NFS.";
+    };
+
+    clientScopes = lib.mkOption {
+      type = lib.types.listOf (lib.types.submodule {
+        options = {
+          clients = lib.mkOption {
+            type = lib.types.str;
+            description = "Client CIDR or host spec.";
+          };
+          options = lib.mkOption {
+            type = lib.types.str;
+            default = "";
+            description = "Extra export options for this client scope.";
+          };
+        };
+      });
+      default = shared.clientScopesDefault;
+      description = "Per-scope client/option pairs appended to each export.";
+    };
+
+    nfsConf = {
+      enable = lib.mkOption {
+        type = lib.types.bool;
+        default = true;
+        description = "Generate /etc/nfs.conf with mobile-friendly defaults.";
+      };
+      isMobile = lib.mkOption {
+        type = lib.types.bool;
+        default = true;
+        description = "Treat this host as mobile for NFS client behavior.";
+      };
+      mountOptions = lib.mkOption {
+        type = lib.types.str;
+        default = shared.mountOptionsDefault;
+        description = "Default NFS mount options applied by mount_nfs.";
+      };
+      mountTimeout = lib.mkOption {
+        type = lib.types.int;
+        default = shared.timeoutsDefault.mountTimeout;
+        description = "Initial mount timeout (seconds).";
+      };
+      mountQuickTimeout = lib.mkOption {
+        type = lib.types.int;
+        default = shared.timeoutsDefault.mountQuickTimeout;
+        description = "Quick mount timeout for automounts (seconds).";
+      };
+      initialDownDelay = lib.mkOption {
+        type = lib.types.int;
+        default = shared.timeoutsDefault.initialDownDelay;
+        description = "Delay before first not-responding notice (seconds).";
+      };
+      nextDownDelay = lib.mkOption {
+        type = lib.types.int;
+        default = shared.timeoutsDefault.nextDownDelay;
+        description = "Delay between not-responding notices (seconds).";
+      };
+      lockdUseTcp = lib.mkOption {
+        type = lib.types.bool;
+        default = true;
+        description = "Prefer TCP for lockd.";
+      };
+      lockdUseMntTransport = lib.mkOption {
+        type = lib.types.bool;
+        default = true;
+        description = "Use the mount transport for lockd when possible.";
+      };
+      allowRegularFileMounts = lib.mkOption {
+        type = lib.types.bool;
+        default = true;
+        description = "Allow MOUNT requests for non-directory objects (macOS nfs.server.mount.regular_files).";
+      };
+      extraText = lib.mkOption {
+        type = lib.types.str;
+        default = "";
+        description = "Extra nfs.conf lines to append verbatim.";
+      };
     };
 
     autofs = {
@@ -317,13 +447,18 @@ in
       autofsNetBlock = lib.optionalString autoCfg.enable ''
         ${autofsNetScript}
       '';
+      nfsConfBlock = lib.optionalString cfg.nfsConf.enable ''
+        cat > /etc/nfs.conf <<'EOF'
+        ${nfsConfText}
+        EOF
+      '';
     in
     {
       system.activationScripts.etc.text = lib.mkAfter ''
         cat > /etc/exports <<'EOF'
         ${exportsText}
         EOF
-        ${autoMasterWriteBlock}${autoMasterLinkBlock}${syntheticEnsureBlock}${syntheticReloadBlock}${autofsNetBlock}${nfsdReloadScript}
+        ${autoMasterWriteBlock}${autoMasterLinkBlock}${syntheticEnsureBlock}${syntheticReloadBlock}${autofsNetBlock}${nfsConfBlock}${nfsdReloadScript}
       '';
     }
   );

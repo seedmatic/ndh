@@ -49,7 +49,7 @@ let
             "tailnet"
           ];
           builder = {
-            hostName = "bioskop-darwin";
+            hostName = "bioskop";
             systems = [ "aarch64-darwin" ];
             maxJobs = 8;
             protocol = "ssh-ng";
