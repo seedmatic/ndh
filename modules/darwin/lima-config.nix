@@ -34,6 +34,10 @@ let
 
   cfg = config.lima.configGenerator;
 
+  # Stable image staging paths
+  imageSourcePath = cfg.imageSourcePath;
+  imageTargetPath = cfg.imageTargetPath;
+
   mountType = if vmType == "qemu" then "9p" else "virtiofs";
   vmType = cfg.vmType;
 
@@ -80,6 +84,8 @@ let
         yqBin = yqBin;
         limaConfigJson = limaConfigJson;
         homeSymlinksBlock = homeSymlinksBlock;
+        imageSourcePath = imageSourcePath;
+        imageTargetPath = imageTargetPath;
         activationLogger = lib.attrByPath [
           "activation"
           "loggerScript"
@@ -148,7 +154,7 @@ let
 
     images = [
       {
-        location = "file:///var/lib/git/nxmatic/nix-darwin-home/result/nixos.img";
+        location = "file://${imageTargetPath}";
         arch = "aarch64";
       }
     ];
@@ -313,6 +319,23 @@ in
       description = ''
         Enable Incus container runtime in the Lima VM.
         When true, the VM will include Incus for running containers.
+      '';
+    };
+
+    imageSourcePath = mkOption {
+      type = types.str;
+      default = "/var/lib/git/nxmatic/nix-darwin-home/hosts/${effectiveHostName}/nixos/disk.img";
+      description = ''
+        Source path of the built NixOS disk image (typically an out-link in the repo).
+      '';
+    };
+
+    imageTargetPath = mkOption {
+      type = types.str;
+      default = "/var/lib/git/nxmatic/nix-darwin-home/hosts/${effectiveHostName}/nixos/disk.img";
+      description = ''
+        Stable host path for the NixOS disk image that Lima references. If different from imageSourcePath,
+        the activation script copies/reflinks the image; when equal, no copy is performed.
       '';
     };
   };
