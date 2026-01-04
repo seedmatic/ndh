@@ -67,7 +67,7 @@ let
             manager = "nix-darwin";
           };
           builder = {
-            hostName = "bioskop-linux";
+            hostName = "bioskop";
             systems = [ "aarch64-linux" ];
             maxJobs = 8;
             protocol = "ssh-ng";
