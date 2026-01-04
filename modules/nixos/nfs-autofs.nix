@@ -3,39 +3,34 @@ let
   shared = import ../common/nfs-shared.nix;
   cfg = config.services.nfsAutofs;
 
-  bool01 = b: if b then "1" else "0";
-
   autoMasterLines = [
     "${cfg.mountPoint} ${cfg.map} ${cfg.mapOptions}"
   ];
 
   autoMasterText = lib.concatStringsSep "\n" autoMasterLines + "\n";
 
-  nfsConfText = lib.optionalString cfg.nfsConf.enable ''
-    [client]
-    mount_options_default = ${cfg.nfsConf.mountOptions}
-    mount_timeout = ${toString cfg.nfsConf.mountTimeout}
-    mount_quick_timeout = ${toString cfg.nfsConf.mountQuickTimeout}
-    initialdowndelay = ${toString cfg.nfsConf.initialDownDelay}
-    nextdowndelay = ${toString cfg.nfsConf.nextDownDelay}
+  nfsSettings = lib.optionalAttrs cfg.nfsConf.enable {
+    client.mount_options_default = cfg.nfsConf.mountOptions;
+    client.mount_timeout = cfg.nfsConf.mountTimeout;
+    client.mount_quick_timeout = cfg.nfsConf.mountQuickTimeout;
+    client.initialdowndelay = cfg.nfsConf.initialDownDelay;
+    client.nextdowndelay = cfg.nfsConf.nextDownDelay;
 
-    [lockd]
-    port = ${toString cfg.nfsConf.lockdPort}
-    udp = ${bool01 cfg.nfsConf.lockdUdp}
-    tcp = ${bool01 cfg.nfsConf.lockdTcp}
-    send_using_mnt_transport = ${bool01 cfg.nfsConf.lockdUseMntTransport}
+    lockd.port = cfg.nfsConf.lockdPort;
+    lockd.udp = cfg.nfsConf.lockdUdp;
+    lockd.tcp = cfg.nfsConf.lockdTcp;
+    lockd.send_using_mnt_transport = cfg.nfsConf.lockdUseMntTransport;
 
-    [mountd]
-    port = ${toString cfg.nfsConf.mountdPort}
+    mountd.port = cfg.nfsConf.mountdPort;
 
-    [nfsd]
-    threads = ${toString cfg.nfsConf.nfsdThreads}
-    vers3 = ${if cfg.nfsConf.nfsdVers3 then "y" else "n"}
-    vers4 = ${if cfg.nfsConf.nfsdVers4 then "y" else "n"}
-    grace-time = ${toString cfg.nfsConf.graceTime}
-    lease-time = ${toString cfg.nfsConf.leaseTime}
-    ${cfg.nfsConf.extraText}
-  '';
+    nfsd.threads = cfg.nfsConf.nfsdThreads;
+    nfsd.vers3 = cfg.nfsConf.nfsdVers3;
+    nfsd.vers4 = cfg.nfsConf.nfsdVers4;
+    nfsd."grace-time" = cfg.nfsConf.graceTime;
+    nfsd."lease-time" = cfg.nfsConf.leaseTime;
+
+    statd.port = cfg.nfsConf.statdPort;
+  };
 
   exportsText =
     let
@@ -218,7 +213,9 @@ in
       autoMaster = autoMasterText;
     };
 
-    environment.etc."nfs.conf" = lib.mkIf cfg.nfsConf.enable { text = nfsConfText; };
+    # Feed upstream nfs.nix so it renders /etc/nfs.conf with our defaults
+    services.nfs.settings = lib.mkIf cfg.nfsConf.enable (lib.mkDefault nfsSettings);
+    services.nfs.extraConfig = lib.mkIf (cfg.nfsConf.enable && cfg.nfsConf.extraText != "") cfg.nfsConf.extraText;
 
     services.nfs.server = lib.mkIf cfg.server.enable {
       enable = true;
