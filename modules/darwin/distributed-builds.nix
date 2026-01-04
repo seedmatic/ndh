@@ -33,7 +33,9 @@ let
   # Builder key paths (placed in /etc/nix for builders)
   builderKeyDir = "/etc/nix";
   builderKeyPath = "${builderKeyDir}/builder_ed25519";
-  controlMasterPath = "/nix/var/nix/userpool/ssh-builder-%r@%h:%p";
+  # Place SSH control sockets in a shared temp dir (nixbld users lack homedirs)
+  controlMasterDir = "/var/tmp/nix-ssh-control";
+  controlMasterPath = "${controlMasterDir}/ssh-builder-%r@%h:%p";
 
   # Align builder key provisioning with linux-builder module: pull from keys.yaml
   keysJson = pkgs.runCommand "keys.json" { buildInputs = [ pkgs.yq-go ]; } ''
@@ -168,6 +170,12 @@ in
               lib.concatMapStrings renderNet nets;
           in
           lib.concatMapStrings renderBuilder remoteBuildersLanFirst;
+
+        # Ensure ControlPath directory exists; use sticky bit to avoid cross-user clobbering
+        system.activationScripts.builderControlPath = lib.mkAfter ''
+          mkdir -p ${controlMasterDir}
+          chmod 1777 ${controlMasterDir}
+        '';
 
         # Ensure builder key is installed with proper permissions in /etc/nix (etc fragment)
         system.activationScripts.etc.text = lib.mkAfter ''
