@@ -38,23 +38,40 @@ activation_run() {
     exit 1
   fi
 
+  local caller_src
+  caller_src=${BASH_SOURCE[1]:-$0}
+
+  echo "[$1] activation_run starting command: ${*:2} (from ${caller_src})"
+
   local tag="$1"
   shift
 
-  local logger_cmd
-  logger_cmd=$(_activation_logger_cmd "$tag")
+  local logger_cmd_raw
+  logger_cmd_raw=$(_activation_logger_cmd "$tag")
 
-  case "$logger_cmd" in
-    "")
+  # Split LOGGER_CMD into an array so args with spaces become distinct words.
+  local -a logger_cmd=()
+  if [ -n "$logger_cmd_raw" ]; then
+    # shellcheck disable=SC2206
+    logger_cmd=($logger_cmd_raw)
+  fi
+
+  case "${#logger_cmd[@]}" in
+    0)
       exec > >(_tag_lines "$tag" >&2) \
            2> >(_tag_lines "$tag" >&2)
       ;;
     *)
-      exec > >(_tag_lines "$tag" $logger_cmd) \
-           2> >(_tag_lines "$tag" $logger_cmd)
+      exec > >(_tag_lines "$tag" "${logger_cmd[@]}") \
+           2> >(_tag_lines "$tag" "${logger_cmd[@]}")
       ;;
   esac
 
   set -x
-  "$@"
+  if "$@"; then
+    echo "[$tag] activation_run completed successfully"
+  else
+    echo "[$tag] activation_run failed"
+  fi
+  set +x
 }

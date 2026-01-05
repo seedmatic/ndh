@@ -335,7 +335,8 @@ in
             sshHostNameDefault = hostNameDefault;
             # Default port: darwin-hosted Linux builders use 31022; nixos-only (e.g., lima) stays on 22
             hostPortValue =
-              if base.hostPort or null != null then base.hostPort
+              if base.hostPort or null != null then
+                base.hostPort
               else if platformLabel == "linux" then
                 if vmManager == "lima" then 22 else 31022
               else

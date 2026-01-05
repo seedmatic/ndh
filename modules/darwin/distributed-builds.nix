@@ -87,13 +87,28 @@ let
     net:
     let
       info = networkCatalog.${net};
+      fallback = if net == "lan" then ".lan" else "";
     in
-    if info ? domain then info.domain else "";
+    if info ? domain && info.domain != null && info.domain != "" then info.domain else fallback;
 
   # Sort builders so LAN-capable hosts are consulted first
   hasLan =
     builder: lib.elem "lan" (resolveNetworks (if builder ? networks then builder.networks else [ ]));
   remoteBuildersLanFirst = lib.sort (a: b: hasLan a && !(hasLan b)) remoteBuilders;
+
+  normalizeHost =
+    name: if lib.hasSuffix "-darwin" name then lib.removeSuffix "-darwin" name else name;
+
+  baseHostName =
+    builder:
+    if builder ? host then
+      normalizeHost builder.host
+    else if builder ? sshHostName then
+      normalizeHost builder.sshHostName
+    else if builder ? hostName then
+      normalizeHost builder.hostName
+    else
+      "";
 
   # Expand each builder across its declared networks (LAN first) and weight LAN higher
   sanitizeForBuildMachines =
@@ -104,7 +119,7 @@ let
       );
       baseSpeed = builder.speedFactor or 1;
       speedFor = net: baseSpeed * (if net == "lan" then 100 else 10);
-      hostBase = if builder ? sshHostName then builder.sshHostName else builder.hostName;
+      hostBase = baseHostName builder;
       makeEntry =
         net:
         # Strip non-buildMachines keys before emitting
@@ -184,7 +199,7 @@ in
               Host *-via-lan
                 ConnectTimeout 10
               Host *-via-tailnet
-                ConnectTimeout 30
+                ConnectTimeout 1
             '';
 
             renderSpecific =
@@ -192,7 +207,7 @@ in
               let
                 alias = "${builder.hostName}-builder-via-${net}";
                 domain = networkDomain net;
-                hostBase = builder.host or builder.hostName;
+                hostBase = baseHostName builder;
                 hostForNet = if domain != "" then "${hostBase}${domain}" else hostBase;
                 portValue =
                   let
@@ -206,27 +221,6 @@ in
               ''
               + (lib.optionalString (portValue != null) "  Port ${toString portValue}\n");
 
-            # Also provide a plain host stanza for the base builder hostname to pin IPv4 and port
-            renderBaseHost =
-              builder:
-              let
-                hostBase = builder.host or builder.hostName;
-                domain = networkDomain "lan";
-                hostForLan = if domain != "" then "${hostBase}${domain}" else hostBase;
-                portValue =
-                  let
-                    resolvedPort = if builder ? hostPort then builder.hostPort else defaultPortForNet "lan";
-                  in
-                  toString resolvedPort;
-              in
-              ''
-                Host ${hostBase} ${hostBase}.lan ${hostBase}.local
-                  HostName ${hostForLan}
-                  Port ${portValue}
-                  User builder
-                  AddressFamily inet
-              '';
-
             renderedSpecific = lib.concatMap (
               builder:
               let
@@ -234,8 +228,7 @@ in
               in
               map (net: renderSpecific builder net) nets
             ) remoteBuildersLanFirst;
-            renderedBaseHosts = map renderBaseHost remoteBuildersLanFirst;
-            uniqueRendered = lib.unique (renderedSpecific ++ renderedBaseHosts);
+            uniqueRendered = lib.unique renderedSpecific;
           in
           lib.concatStrings (
             [
@@ -257,15 +250,8 @@ in
           ${builderKeyInstall}
         '';
 
-        # Authorize the builder public key for the profile user and nixbld group via authorized_keys.d
-        environment.etc = {
-          "ssh/authorized_keys.d/${config.profile.user.name}".text = ''
-            ssh-ed25519 ${builderPubKey} ${builderProfile}-builder
-          '';
-          "ssh/authorized_keys.d/nixbld".text = ''
-            ssh-ed25519 ${builderPubKey} ${builderProfile}-builder
-          '';
-        };
+        # Authorize builder pubkey via nix-darwin user option (avoids manual /etc/ssh/authorized_keys.d writes)
+        users.users.${config.profile.user.name}.openssh.authorizedKeys.keys = [ builderPubKey ];
 
         # Ensure the primary user (home-manager user) can read builder key via nixbld
         users.groups.nixbld.members = lib.mkAfter [ config.profile.user.name ];

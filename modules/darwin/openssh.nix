@@ -131,5 +131,6 @@ in
     system.activationScripts.etc.text = lib.mkAfter ''
       bash ${opensshActivationScript}
     '';
+
   };
 }
