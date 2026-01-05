@@ -1,5 +1,5 @@
-#!/usr/bin/env bash
-set -euxo pipefail
+#!/usr/bin/env -S bash -euo pipefail
+# Start Lima Guest Agent with configuration from lima.cidata	
 
 CIDATA_MNT=${CIDATA_MNT:-/mnt/lima-cidata}
 

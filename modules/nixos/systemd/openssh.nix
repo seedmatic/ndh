@@ -17,9 +17,9 @@ let
   principalsScriptStore = pkgs.writeText "ssh-authorized-principals-command.sh" (
     builtins.readFile ../../common/ssh/authorized-principals-command.sh
   );
-  groupKeysScriptStore = pkgs.writeText "ssh-group-authorized-keys-command.sh" (
-    builtins.readFile ../../common/ssh/ssh-group-authorized-keys.sh
-  );
+  groupKeysScriptStore = pkgs.replaceVars ../../common/ssh/ssh-group-authorized-keys.sh {
+    authorizedKeysDir = config.opensshPolicy.sshAuthorizedKeysDir;
+  };
   # Use the wrapped activation logger packaged into the system closure
   activationLogger = config.activation.loggerScript;
   activationTag = "nixos.activationScripts.sshGroupKeys";

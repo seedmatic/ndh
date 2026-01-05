@@ -8,7 +8,7 @@ USER_NAME="${1:-}"
 if [[ -z "${USER_NAME}" ]]; then
   exit 1
 fi
-DIR="/etc/ssh/group-authorized_keys.d"
+DIR="@authorizedKeysDir@"
 [[ -d "$DIR" ]] || exit 0
 for group in $USER_NAME $( id -nG "$USER_NAME" ); do
   FILEPATH="${DIR}/${group}"

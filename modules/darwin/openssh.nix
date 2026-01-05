@@ -15,9 +15,9 @@ let
   principalsScriptStore = pkgs.writeText "ssh-authorized-principals-command.sh" (
     builtins.readFile ../common/ssh/authorized-principals-command.sh
   );
-  groupKeysScriptStore = pkgs.writeText "ssh-group-authorized-keys-command.sh" (
-    builtins.readFile ../common/ssh/ssh-group-authorized-keys.sh
-  );
+  groupKeysScriptStore = pkgs.replaceVars ../common/ssh/ssh-group-authorized-keys.sh {
+    authorizedKeysDir = config.opensshPolicy.authorizedKeysDir;
+  };
   inherit (lib) mkIf optionalString concatStringsSep;
 
   # Derive principals based on profile and hostname

@@ -40,7 +40,7 @@ let
   builderKeyPath = "${builderKeyDir}/builder_ed25519";
   # Place SSH control sockets in a shared temp dir (nixbld users lack homedirs)
   controlMasterDir = "/var/tmp/nix-builder-ssh-control";
-  controlMasterPath = "${controlMasterDir}/%r@%h:%p";
+  controlMasterPath = "${controlMasterDir}/%C";
 
   # Align builder key provisioning with linux-builder module: pull from keys.yaml
   keysJson = pkgs.runCommand "keys.json" { buildInputs = [ pkgs.yq-go ]; } ''
@@ -50,8 +50,13 @@ let
   builderProfile = config.profile.name;
   builderPrivKey = keys.profiles.${builderProfile}.linux-builder.private;
   builderPubKey = keys.profiles.${builderProfile}.linux-builder.public;
-  builderPrivStore = pkgs.writeText "builder_ed25519" builderPrivKey;
-  builderPubStore = pkgs.writeText "builder_ed25519.pub" builderPubKey;
+  # Ensure serialized keys always end with a newline to avoid parser quirks when installed by ssh
+  builderPrivStore = pkgs.writeText "builder_ed25519" (builderPrivKey + "\n");
+  builderPubStore = pkgs.writeText "builder_ed25519.pub" (builderPubKey + "\n");
+  activationLogger = lib.attrByPath [ "activation" "loggerScript" ] ../common/activation-logger.sh config;
+  nixbldGroup = config.users.groups.nixbld.name or "nixbld";
+  authorizedKeysDir = config.opensshPolicy.authorizedKeysDir;
+  nixbldAuthorizedKeysPath = "${authorizedKeysDir}/${nixbldGroup}";
 
   builderKeyInstall = pkgs.runCommand "install-builder-key.sh" { } ''
     cp ${
@@ -62,10 +67,41 @@ let
           builderPubStore
           builderKeyPath
           ;
-        activationLogger = lib.attrByPath [
-          "activation"
-          "loggerScript"
-        ] ../common/activation-logger.sh config;
+        activationLogger = activationLogger;
+      }
+    } "$out"
+    chmod +x "$out"
+  '';
+
+  installAuthorizedKeys = pkgs.runCommand "install-builder-authorized-keys.sh" { } ''
+    cp ${
+      pkgs.replaceVars ./distributed-builds.d/install-authorized-keys.sh {
+        authorizedKeysDir = authorizedKeysDir;
+        groupName = nixbldGroup;
+        builderPubKey = builderPubKey;
+        activationLogger = activationLogger;
+      }
+    } "$out"
+    chmod +x "$out"
+  '';
+
+  controlPathScript = pkgs.runCommand "ensure-builder-controlpath.sh" { } ''
+    cp ${
+      pkgs.replaceVars ./distributed-builds.d/ensure-control-path.sh {
+        controlMasterDir = controlMasterDir;
+        activationLogger = activationLogger;
+      }
+    } "$out"
+    chmod +x "$out"
+  '';
+
+  postActivationScript = pkgs.runCommand "distributed-builds-post-activation.sh" { } ''
+    cp ${
+      pkgs.replaceVars ./distributed-builds.d/post-activation.sh {
+        builderKeyInstall = builderKeyInstall;
+        installAuthorizedKeys = installAuthorizedKeys;
+        controlPathScript = controlPathScript;
+        activationLogger = activationLogger;
       }
     } "$out"
     chmod +x "$out"
@@ -239,21 +275,15 @@ in
             ++ uniqueRendered
           );
 
-        # Ensure ControlPath directory exists; use sticky bit to avoid cross-user clobbering
-        system.activationScripts.builderControlPath = lib.mkAfter ''
-          mkdir -p ${controlMasterDir}
-          chmod 1777 ${controlMasterDir}
+        # Install builder key and create ControlPath directory via post-activation script (runs as root)
+        system.activationScripts.postActivation.text = lib.mkAfter ''
+          ${postActivationScript}
         '';
 
-        # Ensure builder key is installed with proper permissions in /etc/nix (etc fragment)
-        system.activationScripts.etc.text = lib.mkAfter ''
-          ${builderKeyInstall}
-        '';
+        # Ensure sshd looks in our unified authorized keys directory and includes the nixbld file
+        opensshPolicy.authorizedKeysFiles = lib.mkAfter [ nixbldAuthorizedKeysPath ];
 
-        # Authorize builder pubkey via nix-darwin user option (avoids manual /etc/ssh/authorized_keys.d writes)
-        users.users.${config.profile.user.name}.openssh.authorizedKeys.keys = [ builderPubKey ];
-
-        # Ensure the primary user (home-manager user) can read builder key via nixbld
+        # Ensure the primary user (home-manager user) is in nixbld for key access
         users.groups.nixbld.members = lib.mkAfter [ config.profile.user.name ];
       };
 }

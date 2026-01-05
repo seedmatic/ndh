@@ -1,9 +1,8 @@
-#!/usr/bin/env bash
+#!/usr/bin/env -S bash -euo pipefail
+# Generate Incus user configuration file
 source @activationLogger@
 
 main() {
-  set -euxo pipefail
-
   # @user@ and @home@ substituted at build time
   auto_user="@user@"
   auto_home="@home@"

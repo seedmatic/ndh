@@ -1,5 +1,5 @@
-#!@bashBin@
-set -euxo pipefail
+#!/usr/bin/env bash
+# Configure network preferences: service order and DNS servers
 
 preferred_dns="@preferredDnsString@"
 

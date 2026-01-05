@@ -15,7 +15,6 @@ let
   networkPreferencesScript = pkgs.runCommand "darwin-network-preferences.sh" { } ''
     cp ${
       pkgs.replaceVars ./preferences.d/network-preferences.sh {
-        bashBin = "${pkgs.bash}/bin/bash";
         preferredDnsString = preferredDnsString;
         preferredServicesLiteral = preferredServicesLiteral;
       }
@@ -104,7 +103,8 @@ in
 
       # darwin updates
       SoftwareUpdate = {
-        AutomaticallyInstallMacOSUpdates = true;
+        # Do not auto-install updates
+        AutomaticallyInstallMacOSUpdates = false;
       };
 
       # univesal access
