@@ -53,7 +53,10 @@ let
   # Ensure serialized keys always end with a newline to avoid parser quirks when installed by ssh
   builderPrivStore = pkgs.writeText "builder_ed25519" (builderPrivKey + "\n");
   builderPubStore = pkgs.writeText "builder_ed25519.pub" (builderPubKey + "\n");
-  activationLogger = lib.attrByPath [ "activation" "loggerScript" ] ../common/activation-logger.sh config;
+  activationLogger = lib.attrByPath [
+    "activation"
+    "loggerScript"
+  ] ../common/activation-logger.sh config;
   nixbldGroup = config.users.groups.nixbld.name or "nixbld";
   authorizedKeysDir = config.opensshPolicy.authorizedKeysDir;
   nixbldAuthorizedKeysPath = "${authorizedKeysDir}/${nixbldGroup}";

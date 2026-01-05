@@ -176,6 +176,42 @@ ssh 192.168.106.10
 
 See: link:network-setup.adoc#usage[Usage Scenarios]
 
+=== Refresh linux-builder After SSH Key Changes
+
+When you rotate or edit the builder SSH keys, remove the cached VM state so the updated keys are baked into the rebuilt image.
+
+[source,bash]
+----
+# @codebase
+sudo rm -rf /var/cache/linux-builder
+darwin-rebuild switch --flake .
+----
+
+Then verify the builder picks up the new keys (e.g., check the updated `builder_keys.pub` inside the VM) before retrying remote builds.
+
+=== Bootstrap Recap (linux-builder)
+
+Minimal sequence to bring up the builder VM from a host checkout:
+
+[source,bash]
+----
+# @codebase (from hosts/<host>)
+nix run nixpkgs#darwin.linux-builder -L -v -v
+
+# Copy generated builder keys into place for the daemon
+sudo cp keys/builder_ed25519 /etc/nix/builder_ed25519
+sudo cp keys/builder_ed25519.pub /etc/nix/builder_ed25519.pub
+sudo chmod 600 /etc/nix/builder_ed25519
+
+# Build and activate the host configuration
+nix build .#darwinConfiguration.system -L -v -v -o darwin 2>&1 | tee /tmp/log
+sudo rm -fr /var/lib/linux-builder
+sudo pkill qemu || true
+sudo ./darwin/activate
+----
+
+This sequence ensures fresh keys are installed, the cached builder VM is cleared, and activation restarts the builder VM with the updated config.
+
 == Binary Cache Workflow (bioskop builds, others pull)
 
 * Build host (bioskop)

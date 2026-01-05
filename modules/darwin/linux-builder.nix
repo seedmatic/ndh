@@ -124,13 +124,22 @@ in
         # Deploy profile SSH keys to the VM using NixOS environment.etc with mode
         environment.etc = {
           "ssh/builder_keys.pub" = {
-            text = ''
-              ssh-ed25519 ${linuxBuilderCommittedPubKey} committed-profile
-              ssh-ed25519 ${linuxBuilderWorkPubKey} work-profile
-            '';
+            text = lib.concatStrings [
+              ''
+                ssh-ed25519 ${linuxBuilderCommittedPubKey} committed-profile
+                ssh-ed25519 ${linuxBuilderWorkPubKey} work-profile
+              ''
+            ];
             mode = "0644";
           };
         };
+
+        # Allow builder to sudo without a password so no password is needed at all.
+        users.users.builder = {
+          isNormalUser = true;
+          extraGroups = [ "wheel" ];
+        };
+        security.sudo.wheelNeedsPassword = lib.mkDefault false;
       };
     };
 
