@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # Shared activation logging wrapper (@codebase)
 # Platform layers (darwin/nixos) must provide LOGGER_CMD="<logger> ... %TAG%".
-set -euo pipefail
 
 _activation_logger_cmd() {
   # Expects LOGGER_CMD from caller with %TAG% placeholder; otherwise no logger.
