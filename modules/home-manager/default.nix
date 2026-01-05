@@ -141,7 +141,7 @@ in
     ./gpg.nix
     ./java.nix
     ./keychain.nix
-    ./kitty.nix
+    # ./kitty.nix
     ./shadow-repositories.nix
     # ./nushell.nix
     ./password-store.nix
