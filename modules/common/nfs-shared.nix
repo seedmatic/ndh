@@ -12,18 +12,22 @@
   exportOptionsDefault = "rw,async,no_subtree_check,no_root_squash";
   clientScopesDefault = [
     {
+      clients = "127.0.0.1/8";
+      options = "no_root_squash";
+    }
+    {
       clients = "192.168.1.0/24";
-      options = "rw,async,no_subtree_check,no_root_squash";
+      options = "no_root_squash";
     }
     {
       clients = "100.64.0.0/10";
-      options = "ro,sync,no_subtree_check,no_root_squash";
+      options = "no_root_squash";
     }
   ];
 
   timeoutsDefault = {
-    mountTimeout = 15;
-    mountQuickTimeout = 5;
+    mountTimeout = 5;
+    mountQuickTimeout = 1;
     initialDownDelay = 8;
     nextDownDelay = 15;
     graceTime = 45;

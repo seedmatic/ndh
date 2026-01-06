@@ -207,18 +207,7 @@ let
         optsStr:
         let
           opts = lib.splitString "," (if optsStr == "" then cfg.exportOptions else optsStr);
-          flagFor =
-            opt:
-            if opt == "rw" then
-              "-rw"
-            else if opt == "ro" then
-              "-ro"
-            else if opt == "sync" then
-              "-sync"
-            else if opt == "async" then
-              "-async"
-            else
-              "";
+          flagFor = opt: if opt == "ro" then "-ro" else "";
           maprootFlag =
             if lib.any (o: o == "no_root_squash") opts then
               "-maproot=root"
@@ -246,34 +235,33 @@ let
             mask = "";
           };
 
-      scopeToFragments =
-        scope:
+      scopeToLines =
+        path: scope:
         let
           networks = lib.filter (s: s != "") (lib.splitString " " scope.clients);
-          nmFrags = lib.concatMap (
+          optFlags = translateOptions scope.options;
+          baseFlags = lib.filter (s: s != "") ([
+            "-alldirs"
+            optFlags
+          ]);
+          renderNetwork =
             net:
             let
               nm = cidrToNetworkMask net;
+              netFrag = if nm.mask == "" then "" else "-network ${nm.base} -mask ${nm.mask}";
+              frags = lib.filter (s: s != "") (baseFlags ++ [ netFrag ]);
+              line = "${path}\t${lib.concatStringsSep " " frags}";
             in
-            if nm.mask == "" then [ "${nm.base}" ] else [ "-network ${nm.base} -mask ${nm.mask}" ]
-          ) networks;
-          optFlags = translateOptions scope.options;
-          baseFlags = [
-            "-alldirs"
-            optFlags
-          ];
+            line;
         in
-        lib.filter (s: s != "") (baseFlags ++ nmFrags);
+        if networks == [ ] then
+          [ "${path}\t${lib.concatStringsSep " " baseFlags}" ]
+        else
+          map renderNetwork networks;
 
-      renderExport =
-        path:
-        let
-          perScope = map scopeToFragments scopes;
-          merged = map (frags: "${path} " + lib.concatStringsSep " " frags) perScope;
-        in
-        lib.concatStringsSep "\n" merged;
+      renderExport = path: lib.concatMap (scopeToLines path) scopes;
     in
-    lib.concatStringsSep "\n" (map renderExport cfg.exports) + "\n";
+    lib.concatStringsSep "\n" (lib.concatMap renderExport cfg.exports) + "\n";
 
   nfsConfText =
     if cfg.nfsConf.enable then
