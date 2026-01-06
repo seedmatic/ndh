@@ -48,7 +48,6 @@ in
       description = "Kernel/console log level (0=emerg, 7=debug).";
     };
   };
-
   imports = [
     ../common
     ./firewall.nix
@@ -85,54 +84,56 @@ in
     )
   ];
 
-  activation.loggerCmd = lib.mkDefault "${pkgs.util-linux}/bin/logger -p notice -t %TAG%";
+  config = {
 
-  nix.settings = lib.mkMerge [
-    {
-      # Enable content-addressed derivations to reduce rebuild churn for identical outputs.
-      # We also disable auto-optimise-store for faster iterative builds; run `nix-store --optimise` manually when idle.
-      experimental-features = [
-        "nix-command"
-        "flakes"
-        "ca-derivations"
-      ];
-      auto-optimise-store = false; # Manual optimise recommended; improves build latency during development.
-      trusted-users = [
-        cfgUserName
-        "root"
-      ];
-      sandbox = false;
-      extra-sandbox-paths = [ "/dev/kvm" ];
+    activation.loggerCmd = lib.mkDefault "${pkgs.util-linux}/bin/logger -p notice -t %TAG%";
 
-      # Cache settings with Fastly CDN for faster downloads
-      # Using 'substituters' (not 'extra-substituters') to control order
-      # Alternative caches (uncomment one to use):
-      # - "https://cache.nixos.org"                                  # Official NixOS cache (default)
-      # - "https://aseipp-nix-cache.freetls.fastly.net"              # Fastly Cache v2 (recommended, faster) - currently active
-      # - "https://mirrors.tuna.tsinghua.edu.cn/nix-channels/store"  # Tsinghua University (China)
-      # - "https://mirrors.ustc.edu.cn/nix-channels/store"           # USTC (China)
-      # - "https://mirrors.bfsu.edu.cn/nix-channels/store"           # BFSU (China)
-      substituters = [
-        "https://aseipp-nix-cache.freetls.fastly.net" # Fastly Cache v2 (tried first)
-        "https://nxmatic.cachix.org" # nxmatic cache
-      ];
-      trusted-public-keys = [
-        "cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY=" # Required for mirrors
-        "nxmatic.cachix.org-1:huMghYiwDpPa1PMXHXK4G1Dp4QOZjgsNqxcjf/AjuJ0=" # nxmatic key
-      ];
-      # NOTE (@codebase): Rollback instructions:
-      #   - Remove "ca-derivations" from experimental-features.
-      #   - Set auto-optimise-store = true to restore inline dedup.
-      # Validation:
-      #   - Check a new build's store path naming stability when spec changes trivially.
-      #   - Run `nix-store --optimise --dry-run` after several builds to assess dedup benefit.
-    }
-    (lib.mkIf isX86_64 {
-      extra-platforms = [ "aarch64-linux" ];
-      extra-sandbox-paths = [ "/run/binfmt" ];
-    })
-    (lib.mkIf isAarch64 { extra-platforms = [ "x86_64-linux" ]; })
-  ];
+    nix.settings = lib.mkMerge [
+      {
+        # Enable content-addressed derivations to reduce rebuild churn for identical outputs.
+        # We also disable auto-optimise-store for faster iterative builds; run `nix-store --optimise` manually when idle.
+        experimental-features = [
+          "nix-command"
+          "flakes"
+          "ca-derivations"
+        ];
+        auto-optimise-store = false; # Manual optimise recommended; improves build latency during development.
+        trusted-users = [
+          cfgUserName
+          "root"
+        ];
+        sandbox = false;
+        extra-sandbox-paths = [ "/dev/kvm" ];
+
+        # Cache settings with Fastly CDN for faster downloads
+        # Using 'substituters' (not 'extra-substituters') to control order
+        # Alternative caches (uncomment one to use):
+        # - "https://cache.nixos.org"                                  # Official NixOS cache (default)
+        # - "https://aseipp-nix-cache.freetls.fastly.net"              # Fastly Cache v2 (recommended, faster) - currently active
+        # - "https://mirrors.tuna.tsinghua.edu.cn/nix-channels/store"  # Tsinghua University (China)
+        # - "https://mirrors.ustc.edu.cn/nix-channels/store"           # USTC (China)
+        # - "https://mirrors.bfsu.edu.cn/nix-channels/store"           # BFSU (China)
+        substituters = [
+          "https://aseipp-nix-cache.freetls.fastly.net" # Fastly Cache v2 (tried first)
+          "https://nxmatic.cachix.org" # nxmatic cache
+        ];
+        trusted-public-keys = [
+          "cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY=" # Required for mirrors
+          "nxmatic.cachix.org-1:huMghYiwDpPa1PMXHXK4G1Dp4QOZjgsNqxcjf/AjuJ0=" # nxmatic key
+        ];
+        # NOTE (@codebase): Rollback instructions:
+        #   - Remove "ca-derivations" from experimental-features.
+        #   - Set auto-optimise-store = true to restore inline dedup.
+        # Validation:
+        #   - Check a new build's store path naming stability when spec changes trivially.
+        #   - Run `nix-store --optimise --dry-run` after several builds to assess dedup benefit.
+      }
+      (lib.mkIf isX86_64 {
+        extra-platforms = [ "aarch64-linux" ];
+        extra-sandbox-paths = [ "/run/binfmt" ];
+      })
+      (lib.mkIf isAarch64 { extra-platforms = [ "x86_64-linux" ]; })
+    ];
 
   # Boot configuration
   boot = {
@@ -335,5 +336,7 @@ in
 
   # Debug convenience: set root password to "root" (insecure; remove when done)
   users.users.root.initialPassword = "root";
+
+  };
 
 }

@@ -304,15 +304,32 @@
           catalog,
         }:
         let
-          ext4 = mkNixosConfig {
-            inherit
-              hostProfile
-              profileModule
-              containerRegistryConfiguration
-              catalog
-              ;
-            zfsOverlays = false;
+          ext4Modules =
+            let
+              zfsOverlaysModule = { ... }: { zfsOverlays.override = false; };
+              nixosTailscaleTagModule = { ... }: { tailscale.tags = [ "nixos" ]; };
+            in
+            mkModulesFor {
+              inherit hostProfile;
+              system = "nixos";
+              preModules = [ profileModule zfsOverlaysModule nixosTailscaleTagModule ];
+            };
+
+          ext4SpecialArgs = mkSpecialArgs {
+            modules = ext4Modules;
+            extraArgs = {
+              inherit hostProfile catalog;
+              containerRegistrySystem = containerRegistryConfiguration;
+            };
           };
+
+          ext4 = nixpkgs.lib.nixosSystem {
+            modules = ext4Modules;
+            specialArgs = ext4SpecialArgs;
+            system = "aarch64-linux";
+            pkgs = pkgsForLinux;
+          };
+
           zfs = mkNixosConfig {
             inherit
               hostProfile
@@ -348,14 +365,13 @@
             "${mainName}-nixos" = zfs;
           };
           diskImage = nixos-generators.nixosGenerate {
-            modules = [
+            modules = ext4Modules ++ [
               {
                 nix.registry.nixpkgs.flake = nixpkgs;
                 virtualisation.diskSize = diskSizeMiB;
               }
-            ]
-            ++ ext4._module.specialArgs._modules;
-            specialArgs = ext4._module.specialArgs;
+            ];
+            specialArgs = ext4SpecialArgs;
             system = "aarch64-linux";
             pkgs = pkgsForLinux;
             format = "raw-efi";
