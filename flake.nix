@@ -543,21 +543,29 @@
           nixosDiskSizeHint = nixosOutputs.diskSizeHint;
 
           # Home Manager configurations for direct use
-          homeManagerConfigurations = {
-            "${mainName}" = home-manager.lib.homeManagerConfiguration {
-              pkgs = pkgsForDarwin;
-              modules = [ ./modules/home-manager ];
-              extraSpecialArgs = {
-                inherit hostProfile catalog;
-                profile = defaultProfile;
-                activationLogger = {
-                  script = ./modules/common/default.d/activation-logger.sh;
-                  cmd = "";
+          homeManagerConfigurations =
+            let
+              activationLoggerScript = pkgsForDarwin.writeText "activation-logger.sh" ''
+                #!/usr/bin/env bash
+                LOGGER_CMD=""
+                source ${./modules/common/default.d/activation-logger.sh}
+              '';
+            in
+            {
+              "${mainName}" = home-manager.lib.homeManagerConfiguration {
+                pkgs = pkgsForDarwin;
+                modules = [ ./modules/home-manager ];
+                extraSpecialArgs = {
+                  inherit hostProfile catalog;
+                  profile = defaultProfile;
+                  activationLogger = {
+                    script = activationLoggerScript;
+                    cmd = "";
+                  };
                 };
+                # Optionally, set username and homeDirectory here if needed
               };
-              # Optionally, set username and homeDirectory here if needed
             };
-          };
         in
         nixosOutputs
         // darwinOutputs
