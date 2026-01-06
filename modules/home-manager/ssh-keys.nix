@@ -118,26 +118,31 @@ in
   };
 
   # Deploy keys directly to ~/.ssh/keys.d/ with proper permissions (skip .local/state)
-  home.activation.deploySSHKeys = lib.hm.dag.entryAfter [ "writeBoundary" ] (
-    builtins.readFile (
-      pkgs.replaceVars ./ssh-keys.d/deploy-ssh-keys.sh {
+  # Externalized activation scripts: keep content in the store and execute via bash
+  home.activation =
+    let
+      deploySSHKeysScript = pkgs.replaceVars ./ssh-keys.d/deploy-ssh-keys.sh {
         rsync = "${pkgs.rsync}/bin/rsync";
         keysDir = keysDir;
         activationLogger = activationLogger;
         activationTag = activationTagDeploy;
-      }
-    )
-  );
+      };
 
-  # Ensure mutable authorized_keys exists (symlink-free) with strict perms
-  home.activation.ensureAuthorizedKeys = lib.hm.dag.entryAfter [ "deploySSHKeys" ] (
-    builtins.readFile (
-      pkgs.replaceVars ./ssh-keys.d/ensure-authorized-keys.sh {
+      ensureAuthorizedKeysScript = pkgs.replaceVars ./ssh-keys.d/ensure-authorized-keys.sh {
         activationLogger = activationLogger;
         activationTag = activationTagAuthorized;
-      }
-    )
-  );
+      };
+    in
+    {
+      deploySSHKeys = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+        ${pkgs.bash}/bin/bash ${deploySSHKeysScript}
+      '';
+
+      # Ensure mutable authorized_keys exists (symlink-free) with strict perms
+      ensureAuthorizedKeys = lib.hm.dag.entryAfter [ "deploySSHKeys" ] ''
+        ${pkgs.bash}/bin/bash ${ensureAuthorizedKeysScript}
+      '';
+    };
 
   programs.ssh.extraConfig = ''
     KnownHostsCommand ${knownHostsScript}

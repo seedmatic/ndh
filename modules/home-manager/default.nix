@@ -179,14 +179,16 @@ in
     # Define package definitions for current user environment
     packages = baseHomePackages;
 
-    activation.fixConfigOwnership = lib.hm.dag.entryBefore [ "writeBoundary" ] (
-      builtins.readFile (
-        pkgs.replaceVars ./default.d/fix-config-ownership.sh {
+    activation.fixConfigOwnership =
+      let
+        fixConfigOwnershipScript = pkgs.replaceVars ./default.d/fix-config-ownership.sh {
           activationLogger = activationLogger;
           activationTag = activationTagFixConfigOwnership;
-        }
-      )
-    );
+        };
+      in
+      lib.hm.dag.entryBefore [ "writeBoundary" ] ''
+        ${pkgs.bash}/bin/bash ${fixConfigOwnershipScript}
+      '';
 
   };
 

@@ -20,13 +20,15 @@ in
 # Pattern: a line consisting solely of optional leading whitespace, 'UseKeychain'
 # one or more spaces, 'yes', optional trailing whitespace or inline comment.
 {
-  home.activation.removeUseKeychain = lib.hm.dag.entryAfter [ "writeBoundary" ] (
-    builtins.readFile (
-      pkgs.replaceVars ./ssh-keychain-removal.d/remove-use-keychain.sh {
+  home.activation.removeUseKeychain =
+    let
+      removeUseKeychainScript = pkgs.replaceVars ./ssh-keychain-removal.d/remove-use-keychain.sh {
         sed = "${pkgs.gnused}/bin/sed";
         activationLogger = activationLogger;
         activationTag = activationTag;
-      }
-    )
-  );
+      };
+    in
+    lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+      ${pkgs.bash}/bin/bash ${removeUseKeychainScript}
+    '';
 }

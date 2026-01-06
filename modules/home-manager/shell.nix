@@ -23,7 +23,7 @@ let
       fi
     fi
   '';
-  # Use platform-provided logger script from specialArgs
+  # Use platform-provided logger script from specialArgs (required)
   activationLogger = config._module.specialArgs.activationLogger.script;
   activationTagZdotdir = "home-manager.activationScripts.${userName}.zdotdir";
 in
@@ -51,16 +51,18 @@ in
     '';
   };
 
-  home.activation.zdotdir = lib.hm.dag.entryAfter [ "writeBoundary" ] (
-    builtins.readFile (
-      pkgs.replaceVars ./shell.d/zdotdir.sh {
+  home.activation.zdotdir =
+    let
+      zdotdirScript = pkgs.replaceVars ./shell.d/zdotdir.sh {
         gitPath = lib.makeBinPath [ pkgs.git ];
         gitBin = "${pkgs.git}/bin/git";
         activationLogger = activationLogger;
         activationTag = activationTagZdotdir;
-      }
-    )
-  );
+      };
+    in
+    lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+      ${pkgs.bash}/bin/bash ${zdotdirScript}
+    '';
 
   home.sessionVariables.ZDOTDIR = "$HOME/.config/zsh";
 

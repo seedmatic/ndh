@@ -36,16 +36,18 @@ in
     home.file."${cacheTokensFile}".source = cfg.tokenFile;
 
     # Make the cache tokens available to nix and setup cachix config without SOPS issues
-    home.activation.setupCacheTokens = lib.hm.dag.entryAfter [ "writeBoundary" ] (
-      builtins.readFile (
-        pkgs.replaceVars ./cache-tokens.d/setup-cache-tokens.sh {
+    home.activation.setupCacheTokens =
+      let
+        setupCacheTokensScript = pkgs.replaceVars ./cache-tokens.d/setup-cache-tokens.sh {
           cacheTokensFile = cacheTokensFile;
           yq = "${pkgs.yq-go}/bin/yq";
           sed = "${pkgs.gnused}/bin/sed";
           activationLogger = activationLogger;
           activationTag = activationTag;
-        }
-      )
-    );
+        };
+      in
+      lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+        ${pkgs.bash}/bin/bash ${setupCacheTokensScript}
+      '';
   };
 }

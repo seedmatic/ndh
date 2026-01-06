@@ -118,14 +118,16 @@ in
     };
   };
 
-  home.activation.generateAllowedSigners = lib.hm.dag.entryAfter [ "writeBoundary" "deploySSHKeys" ] (
-    builtins.readFile (
-      pkgs.replaceVars ./git.d/generate-allowed-signers.sh {
+  home.activation.generateAllowedSigners =
+    let
+      generateAllowedSignersScript = pkgs.replaceVars ./git.d/generate-allowed-signers.sh {
         allowedSignersFile = allowedSignersFile;
         hostKeysDir = hostKeysDir;
         activationLogger = activationLogger;
         activationTag = activationTag;
-      }
-    )
-  );
+      };
+    in
+    lib.hm.dag.entryAfter [ "writeBoundary" "deploySSHKeys" ] ''
+      ${pkgs.bash}/bin/bash ${generateAllowedSignersScript}
+    '';
 }
