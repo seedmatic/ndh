@@ -54,6 +54,9 @@
               darwin = darwinProfile;
             };
 
+            # Enable rescue tooling for this host (default is off)
+            # rescue.enable = true;
+
             # Headscale client - connects to server in Lima VM
             # Note: Server must be deployed first at 192.168.5.10:8080
             services.headscale-client = {
