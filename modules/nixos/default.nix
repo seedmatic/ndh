@@ -141,10 +141,6 @@ in
     kernelParams = [
       "console=hvc0" # Use hvc0 for console output in VZ
       "console=tty1" # Also show console/getty on the graphical console
-      "loglevel=7"
-      "systemd.log_level=debug"
-      "systemd.log_target=console"
-      "udev.log_priority=debug"
       "boot.trace"
     ];
 
@@ -157,8 +153,8 @@ in
 
     loader.systemd-boot.enable = true; # (for UEFI systems only)
 
-    # verbosity
-    consoleLogLevel = 7;
+    # verbosity (default off; override per-host if needed)
+    consoleLogLevel = lib.mkDefault 0;
     initrd = {
       inherit kernelModules supportedFilesystems;
 
@@ -238,10 +234,10 @@ in
   # Services
   services = {
     getty.autologinUser = "root";
+    # Console forwarding off by default; can be enabled per-host
+    journald.forwardToConsole = lib.mkDefault false;
     journald.extraConfig = ''
-      ForwardToConsole=yes
-      TTYPath=/dev/console
-      MaxLevelConsole=debug
+      # Console forwarding disabled by default; override journald.forwardToConsole to enable
     '';
     ntopng = {
       enable = true;
