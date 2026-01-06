@@ -744,6 +744,33 @@ tailscale-gateway-shell
 
 === Module Import Paths
 
+=== Console Logging Controls
+
+Module: `modules/nixos/default.nix`
+
+Options:
+
+[source,nix]
+----
+consoleLogging = {
+  forwardToConsole = false; # If true, set services.journald.console = "/dev/console"
+  logLevel = 0;            # boot.consoleLogLevel (0=emerg … 7=debug)
+};
+----
+
+Per-host override example:
+
+[source,nix]
+----
+{ ... }:
+{
+  consoleLogging = {
+    forwardToConsole = true; # writes logs to /dev/console via services.journald.console
+    logLevel = 4;            # console log level (info)
+  };
+}
+----
+
 [source,nix]
 ----
 # NixOS

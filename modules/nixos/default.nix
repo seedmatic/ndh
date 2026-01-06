@@ -32,8 +32,23 @@ let
   # Generate a hostId (should be a 4-byte hex string, e.g. from `head -c4 /dev/urandom | od -A none -t x4`)
   cfgUser = config.profile.user;
   cfgUserName = cfgUser.name;
+  consoleCfg = config.consoleLogging;
 in
 {
+  options.consoleLogging = {
+    forwardToConsole = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = "Forward journald messages to the console.";
+    };
+
+    logLevel = lib.mkOption {
+      type = lib.types.int;
+      default = 0;
+      description = "Kernel/console log level (0=emerg, 7=debug).";
+    };
+  };
+
   imports = [
     ../common
     ./firewall.nix
@@ -154,7 +169,7 @@ in
     loader.systemd-boot.enable = true; # (for UEFI systems only)
 
     # verbosity (default off; override per-host if needed)
-    consoleLogLevel = lib.mkDefault 0;
+    consoleLogLevel = lib.mkDefault consoleCfg.logLevel;
     initrd = {
       inherit kernelModules supportedFilesystems;
 
@@ -234,11 +249,6 @@ in
   # Services
   services = {
     getty.autologinUser = "root";
-    # Console forwarding off by default; can be enabled per-host
-    journald.forwardToConsole = lib.mkDefault false;
-    journald.extraConfig = ''
-      # Console forwarding disabled by default; override journald.forwardToConsole to enable
-    '';
     ntopng = {
       enable = true;
       interfaces = [ "all" ];
@@ -252,6 +262,14 @@ in
       '';
     };
   };
+
+  # Journald (console logging controls)
+  services.journald.console = lib.mkDefault (
+    if consoleCfg.forwardToConsole then "/dev/console" else ""
+  );
+  services.journald.extraConfig = ''
+    # Console forwarding disabled by default; set consoleLogging.forwardToConsole = true to write to /dev/console
+  '';
 
   # Security
   security.sudo.enable = true;
