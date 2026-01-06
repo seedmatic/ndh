@@ -6,6 +6,25 @@ main() {
 
   : "Create Lima configuration directory in profile home"
   mkdir -p "@profileHome@/.lima/nerd-nixos"
+  mkdir -p "@profileHome@/.lima/_config"
+
+  host_pub="@profileHome@/.ssh/keys.d/host.pub"
+  host_priv="@profileHome@/.ssh/keys.d/host"
+
+  : "Symlink Lima user key material from host-managed keys.d"
+  if [ -f "$host_pub" ]; then
+    ln -sf "$host_pub" "@profileHome@/.lima/_config/user.pub"
+    chmod 0644 "@profileHome@/.lima/_config/user.pub"
+  else
+    echo "[limaConfig][WARN] missing $host_pub; not linking @profileHome@/.lima/_config/user.pub"
+  fi
+
+  if [ -f "$host_priv" ]; then
+    ln -sf "$host_priv" "@profileHome@/.lima/_config/user"
+    chmod 0600 "@profileHome@/.lima/_config/user"
+  else
+    echo "[limaConfig][WARN] missing $host_priv; not linking @profileHome@/.lima/_config/user"
+  fi
 
   : "Stage NixOS disk image to stable path"
   img_src="@imageSourcePath@"

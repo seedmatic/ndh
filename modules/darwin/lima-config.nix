@@ -11,10 +11,15 @@
 let
   inherit (lib) mkOption types;
 
+  dollar = "$"; # escape for shell scripts
+  
   profileUser = config.profile.user.name;
   profileHome = config.profile.user.home;
   profileHost = config.profile.host;
   profileHomeSymlinks = config.profile.homeSymlinks or [ ];
+
+  # Host-side Lima user key (managed by home-manager keys; activation will symlink)
+  hostLimaUserPubPath = "${profileHome}/.lima/_config/user.pub";
 
   # Derive effective hostname (use alias if set, otherwise hostName)
   effectiveHostName =
@@ -23,6 +28,7 @@ let
     else
       profileHost.hostName;
 
+  profileName = config.profile.name;
   # Generate unique host byte from hostname hash (matches existing Lima VM)
   # Takes first byte of SHA256 hash of hostname
   hostByteHex =
@@ -218,6 +224,13 @@ let
           else
             printf 'Include /etc/ssh/sshd_config.d/*\nPermitUserEnvironment yes\n' > /etc/ssh/sshd_config
           fi
+        '';
+      }
+      {
+        mode = "system";
+        script = ''
+          #!/bin/bash
+          set -eux -o pipefail
 
           : "Install profile PATH exports for non-interactive sessions"
           install -d -m 755 /etc/profile.d
@@ -226,16 +239,6 @@ let
           export PATH="/run/wrappers/bin:/run/current-system/sw/bin:/nix/var/nix/profiles/default/bin"
           EOF
           chmod 0644 /etc/profile.d/noninteractive.sh
-
-          : "Ensure SSH environment directory exists for ${profileUser}"
-          install -d -m 700 "/home/${profileUser}/.ssh"
-          cat > "/home/${profileUser}/.ssh/environment" << 'EOF'
-          PATH=/run/wrappers/bin:/run/current-system/sw/bin:/nix/var/nix/profiles/default/bin
-          EOF
-          chown -R "${profileUser}:${profileUser}" "/home/${profileUser}/.ssh"
-
-          : "Reload sshd if available to pick up new configuration"
-          systemctl try-reload-or-restart sshd.service 2>/dev/null || true
 
           : "Install Lima PATH helper script"
           mkdir -p /etc/profile.d
@@ -254,10 +257,60 @@ let
           #!/bin/bash
           set -eux -o pipefail
 
+          : "Ensure SSH environment directory exists for ${profileUser}"
+          install -d -m 700 "/home/${profileUser}/.ssh"
+          cat > "/home/${profileUser}/.ssh/environment" << 'EOF'
+          PATH=/run/wrappers/bin:/run/current-system/sw/bin:/nix/var/nix/profiles/default/bin
+          EOF
+          chown -R "${profileUser}:${profileUser}" "/home/${profileUser}/.ssh"
+
+          : "Reload sshd if available to pick up new configuration"
+          systemctl try-reload-or-restart sshd.service 2>/dev/null || true
+        '';
+      }
+      {
+        mode = "system";
+        script = ''
+          #!/bin/bash
+          set -eux -o pipefail
+
           : "Ensure mount point for lima NixOS disk exists"
           mkdir -p /mnt/lima-nixos
           : "Mount lima NixOS disk"
           mount /dev/disk/by-label/nixos /mnt/lima-nixos
+        '';
+      }
+      {
+        mode = "system";
+        script = ''
+          #!/bin/bash
+          set -eux -o pipefail
+
+          : "Install SSH authorized_keys for Lima user and group-based access"
+          install -d -m 755 /etc/ssh/nix_authorized_keys.d
+          install -d -m 755 /etc/ssh/authorized_keys.d
+
+          : "Ensure lima group exists and add ${profileUser}"
+          if ! getent group lima >/dev/null 2>&1; then
+            groupadd -r lima
+          fi
+          if id "${profileUser}" >/dev/null 2>&1; then
+            usermod -a -G lima "${profileUser}"
+          fi
+
+          : "Read public key from Lima user configuration"
+          user_data_file="${dollar}{LIMA_USERDATA_MNT}/user-data"
+          key=$(yq -r '(.users // [])[0]."ssh-authorized-keys"[0] // ""' "$user_data_file" 2>/dev/null || true)
+
+          : "Install public key for group-based auth"
+          printf '%s\n' "$key" > /etc/ssh/nix_authorized_keys.d/lima
+          chmod 0640 /etc/ssh/nix_authorized_keys.d/lima
+          chown root:lima /etc/ssh/nix_authorized_keys.d/lima
+
+          : "Install public key for user-based auth"
+          printf '%s\n' "$key" > "/etc/ssh/authorized_keys.d/${profileUser}"
+          chmod 0640 "/etc/ssh/authorized_keys.d/${profileUser}"
+          chown root:${profileUser} "/etc/ssh/authorized_keys.d/${profileUser}"
         '';
       }
     ];
@@ -324,7 +377,7 @@ in
 
     imageSourcePath = mkOption {
       type = types.str;
-      default = "/var/lib/git/nxmatic/nix-darwin-home/hosts/${effectiveHostName}/nixos/disk.img";
+      default = "/net/${effectiveHostName}.local/private/var/lib/git/nxmatic/nix-darwin-home/hosts/${effectiveHostName}/nixos/nixos.img";
       description = ''
         Source path of the built NixOS disk image (typically an out-link in the repo).
       '';
@@ -332,7 +385,7 @@ in
 
     imageTargetPath = mkOption {
       type = types.str;
-      default = "/var/lib/git/nxmatic/nix-darwin-home/hosts/${effectiveHostName}/nixos/disk.img";
+      default = "/net/${effectiveHostName}.local/private/var/lib/git/nxmatic/nix-darwin-home/hosts/${effectiveHostName}/nixos-disk-image/nixos.img";
       description = ''
         Stable host path for the NixOS disk image that Lima references. If different from imageSourcePath,
         the activation script copies/reflinks the image; when equal, no copy is performed.
