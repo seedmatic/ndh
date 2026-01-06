@@ -140,14 +140,12 @@ in
 
     kernelParams = [
       "console=hvc0" # Use hvc0 for console output in VZ
-      # "console=tty1" # Use tty1 for console output in qemu
+      "console=tty1" # Also show console/getty on the graphical console
       "loglevel=7"
       "systemd.log_level=debug"
       "systemd.log_target=console"
       "udev.log_priority=debug"
       "boot.trace"
-      "rd.systemd.unit=rescue.target"
-      "rd.systemd.debug_shell=1"
     ];
 
     kernel.sysctl = {
@@ -263,6 +261,36 @@ in
   security.sudo.enable = true;
   security.sudo.wheelNeedsPassword = false;
 
+  # Ensure getties on key consoles, with autologin for rescue/multi-user
+  systemd.services."getty@tty1" = {
+    enable = true;
+    wantedBy = [
+      "rescue.target"
+      "multi-user.target"
+    ];
+    serviceConfig.ExecStart = lib.mkForce "${pkgs.util-linux}/sbin/agetty --autologin root --noclear tty1 linux";
+  };
+
+  systemd.services."serial-getty@hvc0" = {
+    enable = true;
+    wantedBy = [
+      "rescue.target"
+      "multi-user.target"
+    ];
+    unitConfig.ConditionPathExists = "/dev/hvc0";
+    serviceConfig.ExecStart = lib.mkForce "${pkgs.util-linux}/sbin/agetty --autologin root --keep-baud 115200,57600,38400,9600 --noclear hvc0 linux";
+  };
+
+  systemd.services."serial-getty@ttyS0" = {
+    enable = true;
+    wantedBy = [
+      "rescue.target"
+      "multi-user.target"
+    ];
+    unitConfig.ConditionPathExists = "/dev/ttyS0";
+    serviceConfig.ExecStart = lib.mkForce "${pkgs.util-linux}/sbin/agetty --autologin root --keep-baud 115200,57600,38400,9600 --noclear ttyS0 vt220";
+  };
+
   # User configuration: derive flags based on UID threshold (<1000 => system user)
   user = lib.mkForce (
     let
@@ -290,5 +318,8 @@ in
     uid = lib.mkIf (cfgUser.uid != null) cfgUser.uid;
   };
   users.groups.${cfgUserName} = lib.mkIf (cfgUser.gid != null) { gid = cfgUser.gid; };
+
+  # Debug convenience: set root password to "root" (insecure; remove when done)
+  users.users.root.initialPassword = "root";
 
 }

@@ -18,7 +18,7 @@ let
     builtins.readFile ../../common/ssh/authorized-principals-command.sh
   );
   groupKeysScriptStore = pkgs.replaceVars ../../common/ssh/ssh-group-authorized-keys.sh {
-    authorizedKeysDir = config.opensshPolicy.sshAuthorizedKeysDir;
+    authorizedKeysDir = config.opensshPolicy.authorizedKeysDir;
   };
   # Use the wrapped activation logger packaged into the system closure
   activationLogger = config.activation.loggerScript;

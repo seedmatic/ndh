@@ -1,10 +1,21 @@
-{ config, pkgs, ... }:
+{
+  config,
+  pkgs,
+  lib,
+  ...
+}:
 let
 
   dollar = "$";
 
 in
-{
+lib.mkIf config.rescue.enable {
+  boot.kernelParams = [
+    "rd.systemd.unit=rescue.target"
+    "rd.systemd.debug_shell=1"
+    "systemd.unit=rescue.target"
+  ];
+
   environment.systemPackages = with pkgs; [
     # Rescue mode tools
     ddrescue
