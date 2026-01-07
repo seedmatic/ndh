@@ -62,7 +62,7 @@ in
     ''}
 
         Host ${lib.concatStringsSep " " (hostAliases "alcide")}
-          User ${committedUserName}
+          User ${workUserName}
 
         Host alcide alcide.lan
          HostName alcide.local

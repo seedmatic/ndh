@@ -440,7 +440,7 @@
           catalog = {
             users = {
               work = {
-                name = "stephane.lacoin";
+                name = "nxmatic";
                 description = "Stephane Lacoin (aka nxmatic)";
                 email = "stephane.lacoin@hyland.com";
               };
