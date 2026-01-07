@@ -27,6 +27,7 @@ let
     LOGGER_CMD="${config.activation.loggerCmd}"
     source ${activationLoggerBase}
   '';
+  activationLoggerEtcPath = "/etc/activation-logger.sh";
   activationTagHmPost = "common.activationScripts.postActivation.home-manager";
 
   # Define systemPackages separately
@@ -40,7 +41,7 @@ let
     hmActivationPackage = toString hmActivationPackage;
     userName = userName;
     userHome = userHome;
-    activationLogger = activationLoggerScript;
+    activationLogger = activationLoggerEtcPath;
     activationTag = activationTagHmPost;
   };
 
@@ -72,7 +73,9 @@ in
 
   config = {
 
-    activation.loggerScript = activationLoggerScript;
+    activation.loggerScript = activationLoggerEtcPath;
+
+    environment.etc."activation-logger.sh".source = activationLoggerScript;
 
     programs = {
 
@@ -102,7 +105,7 @@ in
       specialArgs = {
         inherit profile catalog;
         activationLogger = {
-          script = activationLoggerScript;
+          script = activationLoggerEtcPath;
           cmd = config.activation.loggerCmd;
         };
       };
@@ -121,7 +124,7 @@ in
         inherit self catalog;
         profile = config.profile;
         activationLogger = {
-          script = activationLoggerScript;
+          script = activationLoggerEtcPath;
           cmd = config.activation.loggerCmd;
         };
       };
