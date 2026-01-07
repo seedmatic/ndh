@@ -37,12 +37,6 @@ in
             # Keep a simple static default; we derive a dynamic one later in config (@codebase)
             default = lib.mkDefault "user@example.com";
           };
-          homeSymlinks = lib.mkOption {
-            type = lib.types.listOf lib.types.str;
-            description = "List of alternative usernames to create symlinks for in /home";
-            default = [ ];
-            example = [ "nxmatic" ];
-          };
           darwin = lib.mkOption {
             type = lib.types.submodule {
               options = {

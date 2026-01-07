@@ -1,3 +1,5 @@
-echo "[profile-home-symlinks] current user: @cfgUserName@ home: @currentHome@"
+#!/usr/bin/env bash
+# Deprecated: profile-home-symlinks feature removed (@codebase)
+exit 0
 @homeAliasCmds@
 @usersAliasCmds@

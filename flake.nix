@@ -160,15 +160,19 @@
               # Any additional lib functions you want to include
             }
           );
+          # Provide activation logger directly from the store (no /etc indirection)
+          activationLoggerScriptLinux = pkgsForLinux.writeText "activation-logger.sh" ''
+            #!/usr/bin/env bash
+            LOGGER_CMD=""
+            source ${./modules/common/default.d/activation-logger.sh}
+          '';
         in
         {
           inherit self lib;
           _modules = modules;
           nixpkgsInput = nixpkgs;
           activationLogger = {
-            # Home-manager activations should source the etc-backed logger to avoid
-            # referencing the repo path at runtime on NixOS.
-            script = "/etc/activation-logger.sh";
+            script = activationLoggerScriptLinux;
             cmd = "";
           };
         }
@@ -616,17 +620,21 @@
 
       overlays = {
         channels = inputs: final: prev: {
-          nixpkgs = import inputs.nixpkgs { system = prev.system; };
+          nixpkgs = import inputs.nixpkgs {
+            system = prev.stdenv.hostPlatform.system;
+          };
         };
 
-        extraPackages = inputs: final: prev: {
-          #inherit (self.packages.${prev.system}) sysdo pyEnv;
-          #inherit (inputs.devenv.packages.${prev.system}) devenv;
+        extraPackages = inputs: final: prev: let
+          hostSystem = prev.stdenv.hostPlatform.system;
+        in {
+          #inherit (self.packages.${hostSystem}) sysdo pyEnv;
+          #inherit (inputs.devenv.packages.${hostSystem}) devenv;
 
           # rancher-desktop = final.callPackage ./pkgs/rancher-desktop.nix {};
-          inherit (inputs.maven-mvnd.packages.${prev.system}) maven-mvnd-m39;
-          inherit (inputs.disko.packages.${prev.system}) disko;
-          inherit (inputs.incus-compose.packages.${prev.system}) incus-compose;
+          inherit (inputs.maven-mvnd.packages.${hostSystem}) maven-mvnd-m39;
+          inherit (inputs.disko.packages.${hostSystem}) disko;
+          inherit (inputs.incus-compose.packages.${hostSystem}) incus-compose;
         };
 
         birdOverlay = inputs: import ./overlays/bird.nix inputs;

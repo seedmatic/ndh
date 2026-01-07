@@ -100,10 +100,12 @@ in
         RemainAfterExit = true;
       };
       script = ''
-        # Wait for tailscaled to be ready (poll the socket instead of sleeping blindly)
+        set -euo pipefail
+
         wait_for_tailscaled() {
           for i in $(seq 1 30); do
-            if ${pkgs.tailscale}/bin/tailscale status >/dev/null 2>&1; then
+            # "tailscale version" talks to the daemon without requiring login
+            if ${pkgs.tailscale}/bin/tailscale version >/dev/null 2>&1; then
               return 0
             fi
             sleep 1
@@ -112,28 +114,35 @@ in
           return 1
         }
 
-        wait_for_tailscaled || exit 1
+        wait_for_tailscaled || exit 0
 
-        # Check if already connected
+        # If already connected, we're done
         if ${pkgs.tailscale}/bin/tailscale status >/dev/null 2>&1; then
           echo "Already connected to Headscale"
           exit 0
         fi
 
-        ${optionalString (cfg.authKeyFile != null) ''
-          # Connect if we have an auth key
-          if [ -f "${cfg.authKeyFile}" ]; then
-            ${pkgs.tailscale}/bin/tailscale up \
-              --login-server=${cfg.serverUrl} \
-              --authkey="$(cat ${cfg.authKeyFile})" \
-              --hostname=${cfg.hostname} \
-              ${optionalString cfg.enableSSH "--ssh"} \
-              ${optionalString cfg.acceptRoutes "--accept-routes"} \
-              ${optionalString (cfg.tags != [ ])
-                "--advertise-tags=${concatStringsSep "," (map (tag: "tag:" + tag) cfg.tags)}"
-              }
-          fi
-        ''}
+        auth_key_file="${if cfg.authKeyFile != null then cfg.authKeyFile else ""}"
+
+        if [ -z "$auth_key_file" ] || [ ! -f "$auth_key_file" ]; then
+          echo "No auth key available; skipping autoconnect"
+          exit 0
+        fi
+
+        ${pkgs.tailscale}/bin/tailscale up \
+          --login-server=${cfg.serverUrl} \
+          --authkey="$(cat "$auth_key_file")" \
+          --hostname=${cfg.hostname} \
+          ${optionalString cfg.enableSSH "--ssh"} \
+          ${optionalString cfg.acceptRoutes "--accept-routes"} \
+          ${optionalString (cfg.tags != [ ])
+            "--advertise-tags=${concatStringsSep "," (map (tag: "tag:" + tag) cfg.tags)}"
+          } || {
+            echo "tailscale up failed" >&2
+            exit 1
+          }
+
+        exit 0
       '';
     };
 

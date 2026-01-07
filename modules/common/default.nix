@@ -74,6 +74,13 @@ in
 
   config = {
 
+    # Provide /etc/activation-logger.sh on Linux so activation scripts that source
+    # an etc-backed logger (as configured in flake extraArgs) can find it.
+    environment.etc."activation-logger.sh" = lib.mkIf pkgs.stdenv.isLinux {
+      source = activationLoggerScript;
+      mode = "0555";
+    };
+
     activation.loggerScript = activationLoggerScript;
 
     programs = {

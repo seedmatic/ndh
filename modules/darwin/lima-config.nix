@@ -16,7 +16,6 @@ let
   profileUser = config.profile.user.name;
   profileHome = config.profile.user.home;
   profileHost = config.profile.host;
-  profileHomeSymlinks = config.profile.homeSymlinks or [ ];
 
   # Host-side Lima user key (managed by home-manager keys; activation will symlink)
   hostLimaUserPubPath = "${profileHome}/.lima/_config/user.pub";
@@ -77,8 +76,6 @@ let
   clusterNetworkName = "cluster${toString clusterId}";
   limaNetworksOpts = config.lima.networks or { };
 
-  altUsers = map (u: ''"${u}"'') profileHomeSymlinks;
-
   yqBin = "${pkgs.yq-go}/bin/yq";
 
   limaActivationScript = pkgs.runCommand "lima-config-activation.sh" { } ''
@@ -89,7 +86,6 @@ let
         profileHome = profileHome;
         yqBin = yqBin;
         limaConfigJson = limaConfigJson;
-        homeSymlinksBlock = homeSymlinksBlock;
         imageSourcePath = imageSourcePath;
         imageTargetPath = imageTargetPath;
         activationLogger = lib.attrByPath [
@@ -99,19 +95,6 @@ let
       }
     } "$out"
     chmod +x "$out"
-  '';
-
-  homeSymlinksBlock = lib.optionalString (profileHomeSymlinks != [ ]) ''
-    # shellcheck disable=SC2043
-    for altUser in ${lib.concatStringsSep " " altUsers}; do
-      altHome="/Users/$altUser"
-      if [ "$altHome" != "${profileHome}" ]; then
-        mkdir -p "$altHome/.lima/nerd-nixos"
-        if [ -f "${profileHome}/.lima/nerd-nixos/lima.yaml" ]; then
-          ln -sf "${profileHome}/.lima/nerd-nixos/lima.yaml" "$altHome/.lima/nerd-nixos/lima.yaml" || true
-        fi
-      fi
-    done
   '';
 
   limaConfig = {

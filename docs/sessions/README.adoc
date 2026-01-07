@@ -101,7 +101,6 @@ link:2025-10-11b.adoc[Guest Bootstrap & Network Alignment]::
 * Externalized bootstrap-zfs logic and ensured legacy mountpoint handling
 * Disabled bootloader install in Lima guest (no-bootloader.nix)
 * Added hm-state-dirs to guarantee Home Manager state path pre-exists
-* Extended profile home symlink handling (/home + /Users) for multi-username workflows
 * Added Darwin ssh-client module (dynamic guest + tailnet patterns) with guarded attribute access
 * Disabled systemd-networkd wait-online (rename-only mode) to eliminate 120s timeout
 * Introduced opt-in example container flag (zfsOverlays.examples.enableCtreg)

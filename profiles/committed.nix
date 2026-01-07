@@ -15,7 +15,6 @@ in
   profile = {
     name = mkDefault "committed";
     email = mkDefault committedUser.email;
-    homeSymlinks = [ workUser.name ];
     user = {
       name = mkDefault committedUser.name;
       description = mkDefault committedUser.description;

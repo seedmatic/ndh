@@ -46,9 +46,6 @@ main() {
 @limaConfigJson@
 EOF
   chmod 0600 "@profileHome@/.lima/nerd-nixos/lima.yaml"
-
-  @homeSymlinksBlock@
-
   : "Verify output file"
   if [ -f "@profileHome@/.lima/nerd-nixos/lima.yaml" ]; then
     echo "[limaConfig] generated size=$(wc -c < "@profileHome@/.lima/nerd-nixos/lima.yaml")"

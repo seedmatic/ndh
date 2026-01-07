@@ -286,26 +286,6 @@ in
       serviceConfig.ExecStart = lib.mkForce "${pkgs.util-linux}/sbin/agetty --autologin root --noclear tty1 linux";
     };
 
-    systemd.services."serial-getty@hvc0" = {
-      enable = true;
-      wantedBy = [
-        "rescue.target"
-        "multi-user.target"
-      ];
-      unitConfig.ConditionPathExists = "/dev/hvc0";
-      serviceConfig.ExecStart = lib.mkForce "${pkgs.util-linux}/sbin/agetty --autologin root --keep-baud 115200,57600,38400,9600 --noclear hvc0 linux";
-    };
-
-    systemd.services."serial-getty@ttyS0" = {
-      enable = true;
-      wantedBy = [
-        "rescue.target"
-        "multi-user.target"
-      ];
-      unitConfig.ConditionPathExists = "/dev/ttyS0";
-      serviceConfig.ExecStart = lib.mkForce "${pkgs.util-linux}/sbin/agetty --autologin root --keep-baud 115200,57600,38400,9600 --noclear ttyS0 vt220";
-    };
-
     # User configuration: derive flags based on UID threshold (<1000 => system user)
     user = lib.mkForce (
       let

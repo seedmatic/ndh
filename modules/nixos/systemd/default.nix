@@ -18,7 +18,6 @@
     ./lima-nixos-configuration.nix
     ./lima-guest-agent.nix
     ./openssh.nix
-    ./profile-home-symlinks.nix
     ./hm-state-dirs.nix
     ./rescue.nix
   ];

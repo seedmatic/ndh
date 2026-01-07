@@ -154,7 +154,6 @@ IMPORTANT: **Purpose**: Mark critical decisions, migration paths, and invariants
 ----
 # profiles/work.nix
 profile.user.name = "work-username";
-profile.homeSymlinks = [ "committed" ];  # Cross-profile home directory access
 ----
 
 * **User mapping**: `userMapping.profileUsers.{work, committed}` in `profiles/common.nix`

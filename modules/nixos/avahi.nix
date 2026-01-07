@@ -4,7 +4,7 @@
   # Enable mDNS/Avahi so .local names resolve inside the VM.
   services.avahi = {
     enable = true;
-    nssmdns = true;
+    nssmdns4 = true;
     openFirewall = true;
   };
 

@@ -169,41 +169,59 @@ in
         RemainAfterExit = true;
       };
       script = ''
-        # Wait for tailscaled to be ready
-        sleep 2
+        set -euo pipefail
 
-        # Check if already connected
+        wait_for_tailscaled() {
+          for i in $(seq 1 30); do
+            if ${pkgs.tailscale}/bin/tailscale version >/dev/null 2>&1; then
+              return 0
+            fi
+            sleep 1
+          done
+          echo "tailscaled not ready after 30s" >&2
+          return 1
+        }
+
+        wait_for_tailscaled || exit 0
+
         if ${pkgs.tailscale}/bin/tailscale status >/dev/null 2>&1; then
           echo "Already connected to Headscale"
           exit 0
         fi
 
-        ${optionalString (cfg.authKeyFile != null) ''
-          # Connect if we have an auth key
-          if [ -f "${cfg.authKeyFile}" ]; then
-            ${pkgs.tailscale}/bin/tailscale up \
-              --login-server=${cfg.serverUrl} \
-              --authkey="$(cat ${cfg.authKeyFile})" \
-              ${concatStringsSep " " (
-                [
-                  "--hostname=${cfg.hostname}"
-                  "--ssh"
-                ]
-                ++ (
-                  if (cfg.routes != [ ]) then [ "--advertise-routes=${concatStringsSep "," cfg.routes}" ] else [ ]
-                )
-                ++ (if cfg.exitNode then [ "--advertise-exit-node" ] else [ ])
-                ++ (if cfg.acceptRoutes then [ "--accept-routes" ] else [ ])
-                ++ (if cfg.snat then [ "--snat-subnet-routes=true" ] else [ ])
-                ++ (
-                  if (cfg.tags != [ ]) then
-                    [ "--advertise-tags=${concatStringsSep "," (map (tag: "tag:" + tag) cfg.tags)}" ]
-                  else
-                    [ ]
-                )
-              )}
-          fi
-        ''}
+        auth_key_file="${if cfg.authKeyFile != null then cfg.authKeyFile else ""}"
+
+        if [ -z "$auth_key_file" ] || [ ! -f "$auth_key_file" ]; then
+          echo "No auth key available; skipping autoconnect"
+          exit 0
+        fi
+
+        ${pkgs.tailscale}/bin/tailscale up \
+          --login-server=${cfg.serverUrl} \
+          --authkey="$(cat "$auth_key_file")" \
+          ${concatStringsSep " " (
+            [
+              "--hostname=${cfg.hostname}"
+              "--ssh"
+            ]
+            ++ (
+              if (cfg.routes != [ ]) then [ "--advertise-routes=${concatStringsSep "," cfg.routes}" ] else [ ]
+            )
+            ++ (if cfg.exitNode then [ "--advertise-exit-node" ] else [ ])
+            ++ (if cfg.acceptRoutes then [ "--accept-routes" ] else [ ])
+            ++ (if cfg.snat then [ "--snat-subnet-routes=true" ] else [ ])
+            ++ (
+              if (cfg.tags != [ ]) then
+                [ "--advertise-tags=${concatStringsSep "," (map (tag: "tag:" + tag) cfg.tags)}" ]
+              else
+                [ ]
+            )
+          )} || {
+            echo "tailscale up failed" >&2
+            exit 1
+          }
+
+        exit 0
       '';
     };
   };

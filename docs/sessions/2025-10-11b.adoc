@@ -45,11 +45,7 @@ This follow-up session (same day, post SSH refactor) focused on stabilizing the 
 * Added guarded `ssh-client.nix` (dynamic derived guest host patterns: base, .local, tailnet FQDN)
 * Recursion-safe design; defensive attribute access for profile host/tailnet fields
 
-=== 9. Profile Home Symlink Enhancements ✅
-* Guest symlink service creates `/home/<alias>` and `/Users/<alias>` pointing to active user home
-* Darwin manual symlink module intentionally not auto-imported (no mismatch)
-
-=== 10. Example Container Strategy ✅
+=== 9. Example Container Strategy ✅
 * Converted `ctreg` to optional example via `zfsOverlays.examples.enableCtreg`
 * Default disabled (clean boot) while preserving a documented pattern for private NAT + Tailscale
 
@@ -94,7 +90,7 @@ This follow-up session (same day, post SSH refactor) focused on stabilizing the 
 
 == Known Trade-offs / Follow-ups
 * No generation diff summary yet (future improvement)
-* No health-check aggregator script (proposed) — would validate symlinks, bootloader disable, network rename success
+* No health-check aggregator script (proposed) — would validate bootloader disable and network rename success
 * Dirty git warning still surfaces (intentional; opt-out not yet implemented)
 
 == Next Session Tasks
