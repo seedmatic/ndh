@@ -85,9 +85,10 @@ ln -fs /run/wrappers/bin/sudo /bin/sudo
 ln -fs /run/wrappers/bin/sudo /usr/bin/sudo || true
 
 # Setup SSH
-install -d -m 755 "/etc/ssh/authorized_keys.d"
-yq eval '.users[].ssh-authorized-keys[]' "${LIMA_CIDATA_MNT}/user-data" > "/etc/ssh/authorized_keys.d/${LIMA_CIDATA_USER}"
-chmod a+r "/etc/ssh/authorized_keys.d/${LIMA_CIDATA_USER}"
+install -d -m 755 "/etc/ssh/nix_authorized_keys.d"
+yq eval '.users[].ssh-authorized-keys[]' "${LIMA_CIDATA_MNT}/user-data" > "/etc/ssh/nix_authorized_keys.d/${LIMA_CIDATA_USER}"
+chown "root:${LIMA_CIDATA_GID}" "/etc/ssh/nix_authorized_keys.d/${LIMA_CIDATA_USER}"
+chmod 640 "/etc/ssh/nix_authorized_keys.d/${LIMA_CIDATA_USER}"
 
 # Fix permissions for Darwin host shared home directory
 DARWIN_HOME="/home/${LIMA_CIDATA_USER}"

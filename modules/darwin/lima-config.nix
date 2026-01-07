@@ -12,7 +12,7 @@ let
   inherit (lib) mkOption types;
 
   dollar = "$"; # escape for shell scripts
-  
+
   profileUser = config.profile.user.name;
   profileHome = config.profile.user.home;
   profileHost = config.profile.host;
@@ -195,125 +195,97 @@ let
       user = false;
     };
 
-    provision = [
-      {
-        mode = "system";
-        script = ''
-          #!/bin/bash
-          set -eux -o pipefail
+    # Provisioning scripts are not executed in this cloud-init setup
+    #
+    #   still have to state about the remaining scripts to be
+    #   defined as systemd one-shot services in lima-cloud-init.nix
+    #
+    # provision = [
+    #   {
+    #     mode = "system";
+    #     script = ''
+    #       #!/bin/bash
+    #       set -eux -o pipefail
 
-          : "Create early symlinks for critical binaries including sudo"
-          mkdir -p /bin
-          ln -sf /run/current-system/sw/bin/bash /bin/bash || true
+    #       : "Create early symlinks for critical binaries including sudo"
+    #       mkdir -p /bin
+    #       ln -sf /run/current-system/sw/bin/bash /bin/bash || true
 
-          : "Set PATH in ssh daemon environment - for non-interactive SSH commands"
-          mkdir -p /etc/ssh/sshd_config.d
-          cat > /etc/ssh/sshd_config.d/lima-path.conf << 'EOF'
-          SetEnv PATH="/run/wrappers/bin:/run/current-system/sw/bin:/nix/var/nix/profiles/default/bin"
-          EOF
+    #       : "Set PATH in ssh daemon environment - for non-interactive SSH commands"
+    #       mkdir -p /etc/ssh/sshd_config.d
+    #       cat > /etc/ssh/sshd_config.d/lima-path.conf << 'EOF'
+    #       SetEnv PATH="/run/wrappers/bin:/run/current-system/sw/bin:/nix/var/nix/profiles/default/bin"
+    #       EOF
 
-          : "Ensure main sshd_config includes drop-in directory and permits user environment"
-          if [ -f /etc/ssh/sshd_config ]; then
-            if ! grep -qE '^\s*Include\s+sshd_config.d/\*' /etc/ssh/sshd_config && \
-               ! grep -qE '^\s*Include\s+/etc/ssh/sshd_config.d/\*' /etc/ssh/sshd_config; then
-              printf '\nInclude /etc/ssh/sshd_config.d/*\n' >> /etc/ssh/sshd_config
-            fi
-            if ! grep -qE '^\s*PermitUserEnvironment\s+yes' /etc/ssh/sshd_config; then
-              printf '\nPermitUserEnvironment yes\n' >> /etc/ssh/sshd_config
-            fi
-          else
-            printf 'Include /etc/ssh/sshd_config.d/*\nPermitUserEnvironment yes\n' > /etc/ssh/sshd_config
-          fi
-        '';
-      }
-      {
-        mode = "system";
-        script = ''
-          #!/bin/bash
-          set -eux -o pipefail
+    #       : "Ensure main sshd_config includes drop-in directory and permits user environment"
+    #       if [ -f /etc/ssh/sshd_config ]; then
+    #         if ! grep -qE '^\s*Include\s+sshd_config.d/\*' /etc/ssh/sshd_config && \
+    #            ! grep -qE '^\s*Include\s+/etc/ssh/sshd_config.d/\*' /etc/ssh/sshd_config; then
+    #           printf '\nInclude /etc/ssh/sshd_config.d/*\n' >> /etc/ssh/sshd_config
+    #         fi
+    #         if ! grep -qE '^\s*PermitUserEnvironment\s+yes' /etc/ssh/sshd_config; then
+    #           printf '\nPermitUserEnvironment yes\n' >> /etc/ssh/sshd_config
+    #         fi
+    #       else
+    #         printf 'Include /etc/ssh/sshd_config.d/*\nPermitUserEnvironment yes\n' > /etc/ssh/sshd_config
+    #       fi
+    #     '';
+    #   }
+    #   {
+    #     mode = "system";
+    #     script = ''
+    #       #!/bin/bash
+    #       set -eux -o pipefail
 
-          : "Install profile PATH exports for non-interactive sessions"
-          install -d -m 755 /etc/profile.d
-          cat > /etc/profile.d/noninteractive.sh << 'EOF'
-          #!/bin/sh
-          export PATH="/run/wrappers/bin:/run/current-system/sw/bin:/nix/var/nix/profiles/default/bin"
-          EOF
-          chmod 0644 /etc/profile.d/noninteractive.sh
+    #       : "Install profile PATH exports for non-interactive sessions"
+    #       install -d -m 755 /etc/profile.d
+    #       cat > /etc/profile.d/noninteractive.sh << 'EOF'
+    #       #!/bin/sh
+    #       export PATH="/run/wrappers/bin:/run/current-system/sw/bin:/nix/var/nix/profiles/default/bin"
+    #       EOF
+    #       chmod 0644 /etc/profile.d/noninteractive.sh
 
-          : "Install Lima PATH helper script"
-          mkdir -p /etc/profile.d
-          cat > /etc/profile.d/lima-path.sh << 'EOF'
-          export PATH="/run/wrappers/bin:/run/current-system/sw/bin:/nix/var/nix/profiles/default/bin:$PATH"
-          EOF
-          chmod +x /etc/profile.d/lima-path.sh
+    #       : "Install Lima PATH helper script"
+    #       mkdir -p /etc/profile.d
+    #       cat > /etc/profile.d/lima-path.sh << 'EOF'
+    #       export PATH="/run/wrappers/bin:/run/current-system/sw/bin:/nix/var/nix/profiles/default/bin:$PATH"
+    #       EOF
+    #       chmod +x /etc/profile.d/lima-path.sh
 
-          : "Set systemd environment PATH for consistency"
-          systemctl set-environment PATH="/run/wrappers/bin:/run/current-system/sw/bin:/nix/var/nix/profiles/default/bin"
-        '';
-      }
-      {
-        mode = "system";
-        script = ''
-          #!/bin/bash
-          set -eux -o pipefail
+    #       : "Set systemd environment PATH for consistency"
+    #       systemctl set-environment PATH="/run/wrappers/bin:/run/current-system/sw/bin:/nix/var/nix/profiles/default/bin"
+    #     '';
+    #   }
+    #   {
+    #     mode = "system";
+    #     script = ''
+    #       #!/bin/bash
+    #       set -eux -o pipefail
 
-          : "Ensure SSH environment directory exists for ${profileUser}"
-          install -d -m 700 "/home/${profileUser}/.ssh"
-          cat > "/home/${profileUser}/.ssh/environment" << 'EOF'
-          PATH=/run/wrappers/bin:/run/current-system/sw/bin:/nix/var/nix/profiles/default/bin
-          EOF
-          chown -R "${profileUser}:${profileUser}" "/home/${profileUser}/.ssh"
+    #       : "Ensure SSH environment directory exists for ${profileUser}"
+    #       install -d -m 700 "/home/${profileUser}/.ssh"
+    #       cat > "/home/${profileUser}/.ssh/environment" << 'EOF'
+    #       PATH=/run/wrappers/bin:/run/current-system/sw/bin:/nix/var/nix/profiles/default/bin
+    #       EOF
+    #       chown -R "${profileUser}:${profileUser}" "/home/${profileUser}/.ssh"
 
-          : "Reload sshd if available to pick up new configuration"
-          systemctl try-reload-or-restart sshd.service 2>/dev/null || true
-        '';
-      }
-      {
-        mode = "system";
-        script = ''
-          #!/bin/bash
-          set -eux -o pipefail
+    #       : "Reload sshd if available to pick up new configuration"
+    #       systemctl try-reload-or-restart sshd.service 2>/dev/null || true
+    #     '';
+    #   }
+    #   {
+    #     mode = "system";
+    #     script = ''
+    #       #!/bin/bash
+    #       set -eux -o pipefail
 
-          : "Ensure mount point for lima NixOS disk exists"
-          mkdir -p /mnt/lima-nixos
-          : "Mount lima NixOS disk"
-          mount /dev/disk/by-label/nixos /mnt/lima-nixos
-        '';
-      }
-      {
-        mode = "system";
-        script = ''
-          #!/bin/bash
-          set -eux -o pipefail
-
-          : "Install SSH authorized_keys for Lima user and group-based access"
-          install -d -m 755 /etc/ssh/nix_authorized_keys.d
-          install -d -m 755 /etc/ssh/authorized_keys.d
-
-          : "Ensure lima group exists and add ${profileUser}"
-          if ! getent group lima >/dev/null 2>&1; then
-            groupadd -r lima
-          fi
-          if id "${profileUser}" >/dev/null 2>&1; then
-            usermod -a -G lima "${profileUser}"
-          fi
-
-          : "Read public key from Lima user configuration"
-          user_data_file="${dollar}{LIMA_USERDATA_MNT}/user-data"
-          key=$(yq -r '(.users // [])[0]."ssh-authorized-keys"[0] // ""' "$user_data_file" 2>/dev/null || true)
-
-          : "Install public key for group-based auth"
-          printf '%s\n' "$key" > /etc/ssh/nix_authorized_keys.d/lima
-          chmod 0640 /etc/ssh/nix_authorized_keys.d/lima
-          chown root:lima /etc/ssh/nix_authorized_keys.d/lima
-
-          : "Install public key for user-based auth"
-          printf '%s\n' "$key" > "/etc/ssh/authorized_keys.d/${profileUser}"
-          chmod 0640 "/etc/ssh/authorized_keys.d/${profileUser}"
-          chown root:${profileUser} "/etc/ssh/authorized_keys.d/${profileUser}"
-        '';
-      }
-    ];
+    #       : "Ensure mount point for lima NixOS disk exists"
+    #       mkdir -p /mnt/lima-nixos
+    #       : "Mount lima NixOS disk"
+    #       mount /dev/disk/by-label/nixos /mnt/lima-nixos
+    #     '';
+    #   }
+    # ];
 
     video = {
       display = "none";

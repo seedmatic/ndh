@@ -34,31 +34,26 @@ in
       };
       script =
         let
-          createScript = "${pkgs.replaceVars ./profile-home-symlinks.d/create-profile-symlink.sh { }}";
+          # Executable helper to create a single symlink safely
+          createScript = pkgs.writeShellScript "create-profile-symlink.sh" (
+            builtins.readFile (pkgs.replaceVars ./profile-home-symlinks.d/create-profile-symlink.sh { })
+          );
 
-          homeAliasCmds = lib.concatMapStringsSep "\n" (
-            alias: ''${createScript} "${currentHome}" "${currentHomeBase}/${alias}"''
-          ) homeSymlinks;
+          symlinkScriptTemplate = pkgs.replaceVars ./profile-home-symlinks.d/run.sh {
+            currentHome = lib.escapeShellArg currentHome;
+            currentHomeBase = lib.escapeShellArg currentHomeBase;
+            cfgUserName = lib.escapeShellArg cfgUserName;
+            createScript = lib.escapeShellArg createScript;
+            homeAliases = lib.concatMapStringsSep " " lib.escapeShellArg homeSymlinks;
+          };
 
-          usersAliasCmds = ''
-            if [ -d /Users ]; then
-              if [ ! -e "/Users/${cfgUserName}" ]; then
-                ${createScript} "${currentHome}" "/Users/${cfgUserName}"
-              fi
-              ${lib.concatMapStringsSep "\n" (
-                alias: ''${createScript} "${currentHome}" "/Users/${alias}"''
-              ) homeSymlinks}
-            fi
-          '';
+          # Main script: handle aliases (if any) on Linux (/home) and Darwin (/Users)
+          symlinkScript = pkgs.writeShellScript "lima-home-symlinks.sh" (
+            builtins.readFile symlinkScriptTemplate
+          );
         in
-        builtins.readFile (
-          pkgs.replaceVars ./profile-home-symlinks.d/service.sh {
-            cfgUserName = cfgUserName;
-            currentHome = currentHome;
-            homeAliasCmds = homeAliasCmds;
-            usersAliasCmds = usersAliasCmds;
-          }
-        );
+        builtins.readFile symlinkScript;
+      };
     };
   };
 }

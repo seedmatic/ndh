@@ -16,7 +16,10 @@ let
     builtins.substring 0 2 (builtins.hashString "sha256" effectiveHostName)
   );
   lanBridgeMac = "10:66:6a:4c:${hostByteHex}:fe";
-  fixIncusSocketPerms = pkgs.replaceVars ./incus.d/fix-incus-socket-perms.sh { };
+  fixIncusSocketPerms = pkgs.runCommand "fix-incus-socket-perms.sh" { } ''
+    cp ${pkgs.replaceVars ./incus.d/fix-incus-socket-perms.sh { }} $out
+    chmod +x $out
+  '';
 
 in
 {

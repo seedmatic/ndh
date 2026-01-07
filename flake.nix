@@ -166,7 +166,9 @@
           _modules = modules;
           nixpkgsInput = nixpkgs;
           activationLogger = {
-            script = ./modules/common/default.d/activation-logger.sh;
+            # Home-manager activations should source the etc-backed logger to avoid
+            # referencing the repo path at runtime on NixOS.
+            script = "/etc/activation-logger.sh";
             cmd = "";
           };
         }
@@ -306,13 +308,25 @@
         let
           ext4Modules =
             let
-              zfsOverlaysModule = { ... }: { zfsOverlays.override = false; };
-              nixosTailscaleTagModule = { ... }: { tailscale.tags = [ "nixos" ]; };
+              zfsOverlaysModule =
+                { ... }:
+                {
+                  zfsOverlays.override = false;
+                };
+              nixosTailscaleTagModule =
+                { ... }:
+                {
+                  tailscale.tags = [ "nixos" ];
+                };
             in
             mkModulesFor {
               inherit hostProfile;
               system = "nixos";
-              preModules = [ profileModule zfsOverlaysModule nixosTailscaleTagModule ];
+              preModules = [
+                profileModule
+                zfsOverlaysModule
+                nixosTailscaleTagModule
+              ];
             };
 
           ext4SpecialArgs = mkSpecialArgs {

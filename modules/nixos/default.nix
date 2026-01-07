@@ -135,207 +135,207 @@ in
       (lib.mkIf isAarch64 { extra-platforms = [ "x86_64-linux" ]; })
     ];
 
-  # Boot configuration
-  boot = {
+    # Boot configuration
+    boot = {
 
-    inherit kernelModules supportedFilesystems;
-
-    binfmt.emulatedSystems = lib.mkMerge [
-      (lib.mkIf isX86_64 [ "aarch64-linux" ])
-      (lib.mkIf isAarch64 [ "x86_64-linux" ])
-    ];
-
-    loader = {
-      grub = {
-        device = "nodev";
-        efiSupport = true;
-        efiInstallAsRemovable = true;
-      };
-      timeout = lib.mkForce 0;
-    };
-
-    kernelParams = [
-      "console=hvc0" # Use hvc0 for console output in VZ
-      "console=tty1" # Also show console/getty on the graphical console
-      "boot.trace"
-    ];
-
-    kernel.sysctl = {
-      "net.bridge.bridge-nf-call-ip6tables" = 1;
-      "net.bridge.bridge-nf-call-iptables" = 1;
-      "net.bridge.bridge-nf-call-arptables" = 1;
-      "net.core.devconf_inherit_init_net" = 1;
-    };
-
-    loader.systemd-boot.enable = true; # (for UEFI systems only)
-
-    # verbosity (default off; override per-host if needed)
-    consoleLogLevel = lib.mkDefault consoleCfg.logLevel;
-    initrd = {
       inherit kernelModules supportedFilesystems;
 
-      enable = true;
-      verbose = true;
-    };
-
-    postBootCommands = ''
-      chmod 755 /boot || true
-      chmod 600 /boot/loader/.#bootctlrandom-seed* 2>/dev/null || true
-    '';
-  };
-
-  system.stateVersion = "25.05"; # Update this when upgrading NixOS
-
-  fileSystems = {
-    "/boot" = {
-      device = "/dev/disk/by-label/ESP";
-      fsType = "vfat";
-      options = [
-        "rw"
-        "relatime"
-        "fmask=0022"
-        "dmask=0022"
-        "codepage=437"
-        "iocharset=iso8859-1"
-        "shortname=mixed"
-        "errors=remount-ro"
+      binfmt.emulatedSystems = lib.mkMerge [
+        (lib.mkIf isX86_64 [ "aarch64-linux" ])
+        (lib.mkIf isAarch64 [ "x86_64-linux" ])
       ];
-    };
-  }
-  // lib.mkIf (!config.disko.enableConfig) {
-    "/" = {
-      device = "/dev/disk/by-label/nixos";
-      autoResize = true;
-      fsType = "ext4";
-      options = [
-        "noatime"
-        "nodiratime"
-        "discard"
+
+      loader = {
+        grub = {
+          device = "nodev";
+          efiSupport = true;
+          efiInstallAsRemovable = true;
+        };
+        timeout = lib.mkForce 0;
+      };
+
+      kernelParams = [
+        "console=hvc0" # Use hvc0 for console output in VZ
+        "console=tty1" # Also show console/getty on the graphical console
+        "boot.trace"
       ];
-    };
-    "/tmp" = {
-      device = "/var/tmp";
-      options = [ "bind" ];
-    };
-  };
 
-  limaHost.isGuest = true;
+      kernel.sysctl = {
+        "net.bridge.bridge-nf-call-ip6tables" = 1;
+        "net.bridge.bridge-nf-call-iptables" = 1;
+        "net.bridge.bridge-nf-call-arptables" = 1;
+        "net.core.devconf_inherit_init_net" = 1;
+      };
 
-  networking = {
-    hostId = "deadbeef";
-    mammoth-skate.enable = true;
-  };
+      loader.systemd-boot.enable = true; # (for UEFI systems only)
 
-  # Remove or comment out the old networking block to avoid conflicts:
-  # networking = { ... }
+      # verbosity (default off; override per-host if needed)
+      consoleLogLevel = lib.mkDefault consoleCfg.logLevel;
+      initrd = {
+        inherit kernelModules supportedFilesystems;
 
-  environment.systemPackages = with pkgs; [
-    disko
-    zfs
-    binutils
-    incus
-    distrobuilder
-  ];
+        enable = true;
+        verbose = true;
+      };
 
-  # Ensure security wrappers are in PATH for all processes
-  environment.variables = {
-    PATH = lib.mkBefore [ "/run/wrappers/bin" ];
-  };
-
-  # Also set it in the shell init
-  # environment.shellInit = ''
-  #   export PATH="/run/wrappers/bin:$PATH"
-  # '';
-
-  # Services
-  services = {
-    getty.autologinUser = "root";
-    ntopng = {
-      enable = true;
-      interfaces = [ "all" ];
-      extraConfig = ''
-        -i all
-        --dns-mode none
-        --http-port 3000
-        --http-interface
-        --http-user admin
-        --http-password admin
+      postBootCommands = ''
+        chmod 755 /boot || true
+        chmod 600 /boot/loader/.#bootctlrandom-seed* 2>/dev/null || true
       '';
     };
-  };
 
-  # Journald (console logging controls)
-  services.journald.console = lib.mkDefault (
-    if consoleCfg.forwardToConsole then "/dev/console" else ""
-  );
-  services.journald.extraConfig = ''
-    # Console forwarding disabled by default; set consoleLogging.forwardToConsole = true to write to /dev/console
-  '';
+    system.stateVersion = "25.05"; # Update this when upgrading NixOS
 
-  # Security
-  security.sudo.enable = true;
-  security.sudo.wheelNeedsPassword = false;
-
-  # Ensure getties on key consoles, with autologin for rescue/multi-user
-  systemd.services."getty@tty1" = {
-    enable = true;
-    wantedBy = [
-      "rescue.target"
-      "multi-user.target"
-    ];
-    serviceConfig.ExecStart = lib.mkForce "${pkgs.util-linux}/sbin/agetty --autologin root --noclear tty1 linux";
-  };
-
-  systemd.services."serial-getty@hvc0" = {
-    enable = true;
-    wantedBy = [
-      "rescue.target"
-      "multi-user.target"
-    ];
-    unitConfig.ConditionPathExists = "/dev/hvc0";
-    serviceConfig.ExecStart = lib.mkForce "${pkgs.util-linux}/sbin/agetty --autologin root --keep-baud 115200,57600,38400,9600 --noclear hvc0 linux";
-  };
-
-  systemd.services."serial-getty@ttyS0" = {
-    enable = true;
-    wantedBy = [
-      "rescue.target"
-      "multi-user.target"
-    ];
-    unitConfig.ConditionPathExists = "/dev/ttyS0";
-    serviceConfig.ExecStart = lib.mkForce "${pkgs.util-linux}/sbin/agetty --autologin root --keep-baud 115200,57600,38400,9600 --noclear ttyS0 vt220";
-  };
-
-  # User configuration: derive flags based on UID threshold (<1000 => system user)
-  user = lib.mkForce (
-    let
-      base = builtins.removeAttrs cfgUser [
-        "gid"
-        "group"
-        "isNormalUser"
-        "isSystemUser"
-      ];
-      low = cfgUser.uid != null && cfgUser.uid < 1000;
-    in
-    base
-    // {
-      isNormalUser = !low;
-      isSystemUser = low;
+    fileSystems = {
+      "/boot" = {
+        device = "/dev/disk/by-label/ESP";
+        fsType = "vfat";
+        options = [
+          "rw"
+          "relatime"
+          "fmask=0022"
+          "dmask=0022"
+          "codepage=437"
+          "iocharset=iso8859-1"
+          "shortname=mixed"
+          "errors=remount-ro"
+        ];
+      };
     }
-  );
+    // lib.mkIf (!config.disko.enableConfig) {
+      "/" = {
+        device = "/dev/disk/by-label/nixos";
+        autoResize = true;
+        fsType = "ext4";
+        options = [
+          "noatime"
+          "nodiratime"
+          "discard"
+        ];
+      };
+      "/tmp" = {
+        device = "/var/tmp";
+        options = [ "bind" ];
+      };
+    };
 
-  users.users.${cfgUserName} = {
-    group = cfgUserName;
-    extraGroups = [
-      "wheel"
-      "ssh"
+    limaHost.isGuest = true;
+
+    networking = {
+      hostId = "deadbeef";
+      mammoth-skate.enable = true;
+    };
+
+    # Remove or comment out the old networking block to avoid conflicts:
+    # networking = { ... }
+
+    environment.systemPackages = with pkgs; [
+      disko
+      zfs
+      binutils
+      incus
+      distrobuilder
     ];
-    uid = lib.mkIf (cfgUser.uid != null) cfgUser.uid;
-  };
-  users.groups.${cfgUserName} = lib.mkIf (cfgUser.gid != null) { gid = cfgUser.gid; };
 
-  # Debug convenience: set root password to "root" (insecure; remove when done)
-  users.users.root.initialPassword = "root";
+    # Ensure security wrappers are in PATH for all processes
+    environment.variables = {
+      PATH = lib.mkBefore [ "/run/wrappers/bin" ];
+    };
+
+    # Also set it in the shell init
+    # environment.shellInit = ''
+    #   export PATH="/run/wrappers/bin:$PATH"
+    # '';
+
+    # Services
+    services = {
+      getty.autologinUser = "root";
+      ntopng = {
+        enable = true;
+        interfaces = [ "all" ];
+        extraConfig = ''
+          -i all
+          --dns-mode none
+          --http-port 3000
+          --http-interface
+          --http-user admin
+          --http-password admin
+        '';
+      };
+    };
+
+    # Journald (console logging controls)
+    services.journald.console = lib.mkDefault (
+      if consoleCfg.forwardToConsole then "/dev/console" else ""
+    );
+    services.journald.extraConfig = ''
+      # Console forwarding disabled by default; set consoleLogging.forwardToConsole = true to write to /dev/console
+    '';
+
+    # Security
+    security.sudo.enable = true;
+    security.sudo.wheelNeedsPassword = false;
+
+    # Ensure getties on key consoles, with autologin for rescue/multi-user
+    systemd.services."getty@tty1" = {
+      enable = true;
+      wantedBy = [
+        "rescue.target"
+        "multi-user.target"
+      ];
+      serviceConfig.ExecStart = lib.mkForce "${pkgs.util-linux}/sbin/agetty --autologin root --noclear tty1 linux";
+    };
+
+    systemd.services."serial-getty@hvc0" = {
+      enable = true;
+      wantedBy = [
+        "rescue.target"
+        "multi-user.target"
+      ];
+      unitConfig.ConditionPathExists = "/dev/hvc0";
+      serviceConfig.ExecStart = lib.mkForce "${pkgs.util-linux}/sbin/agetty --autologin root --keep-baud 115200,57600,38400,9600 --noclear hvc0 linux";
+    };
+
+    systemd.services."serial-getty@ttyS0" = {
+      enable = true;
+      wantedBy = [
+        "rescue.target"
+        "multi-user.target"
+      ];
+      unitConfig.ConditionPathExists = "/dev/ttyS0";
+      serviceConfig.ExecStart = lib.mkForce "${pkgs.util-linux}/sbin/agetty --autologin root --keep-baud 115200,57600,38400,9600 --noclear ttyS0 vt220";
+    };
+
+    # User configuration: derive flags based on UID threshold (<1000 => system user)
+    user = lib.mkForce (
+      let
+        base = builtins.removeAttrs cfgUser [
+          "gid"
+          "group"
+          "isNormalUser"
+          "isSystemUser"
+        ];
+        low = cfgUser.uid != null && cfgUser.uid < 1000;
+      in
+      base
+      // {
+        isNormalUser = !low;
+        isSystemUser = low;
+      }
+    );
+
+    users.users.${cfgUserName} = {
+      group = cfgUserName;
+      extraGroups = [
+        "wheel"
+        "ssh"
+      ];
+      uid = lib.mkIf (cfgUser.uid != null) cfgUser.uid;
+    };
+    users.groups.${cfgUserName} = lib.mkIf (cfgUser.gid != null) { gid = cfgUser.gid; };
+
+    # Debug convenience: set root password to "root" (insecure; remove when done)
+    users.users.root.initialPassword = "root";
 
   };
 
