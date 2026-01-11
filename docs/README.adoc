@@ -361,7 +361,7 @@ NOTE: Consider converting these to AsciiDoc format in the future for consistency
 
 === Git Subtree Integration
 
-The `modules/nixos/incus-rke2-cluster/` directory is managed as a **git subtree**, integrating the standalone `incus-rke2-cluster` repository for RKE2 deployment.
+The `modules/nixos/rke2lab/` directory is managed as a **git subtree**, integrating the standalone `rke2lab` repository for RKE2 deployment.
 
 ==== Working with the Subtree
 
@@ -380,11 +380,11 @@ The `modules/nixos/incus-rke2-cluster/` directory is managed as a **git subtree*
 
 **Development workflow:**
 
-1. **RKE2-specific development** → Work in standalone `../incus-rke2-cluster/` repo
+1. **RKE2-specific development** → Work in standalone `../rke2lab/` repo
 +
 [source,bash]
 ----
-cd ../incus-rke2-cluster
+cd ../rke2lab
 # Make changes, test, commit
 git add .
 git commit -m "Update RKE2 deployment"
@@ -399,11 +399,11 @@ cd ../nix-darwin-home
 ./.git-subtree-sync.sh pull
 ----
 
-3. **Integration changes** → Work in `modules/nixos/incus-rke2-cluster`
+3. **Integration changes** → Work in `modules/nixos/rke2lab`
 +
 [source,bash]
 ----
-cd modules/nixos/incus-rke2-cluster
+cd modules/nixos/rke2lab
 # Modify for integration needs
 # Commit to nix-darwin-home
 git commit -m "Integration update"
@@ -420,20 +420,20 @@ git commit -m "Integration update"
 [source,bash]
 ----
 # Pull from upstream
-git subtree pull --prefix=modules/nixos/incus-rke2-cluster \
-  ../incus-rke2-cluster main --squash
+git subtree pull --prefix=modules/nixos/rke2lab \
+  ../rke2lab main --squash
 
 # Push to upstream
-git subtree push --prefix=modules/nixos/incus-rke2-cluster \
-  ../incus-rke2-cluster main
+git subtree push --prefix=modules/nixos/rke2lab \
+  ../rke2lab main
 ----
 
 NOTE: Both repositories remain active. The standalone repo is ideal for focused RKE2 development, while the subtree provides integration with NixOS modules.
 
 === Secrets & Credentials
 
-* All automation secrets now reside in the SOPS-filtered YAML at `modules/nixos/incus-rke2-cluster/.secrets` (fields for `tailscale.*`, `github.*`, and `docker.configJson` — store the base64-encoded Docker config JSON here). Edit the file in place with `sops` so encrypted data never leaves disk unprotected.
-* Run `modules/nixos/incus-rke2-cluster/bin/migrate-legacy-secrets.sh <legacy-secret-dir>` to import any remaining flat files into the YAML (the helper boots a template if missing, copies current plaintext values, and leaves the original files untouched so you can compare before cleaning up).
+* All automation secrets now reside in the SOPS-filtered YAML at `modules/nixos/rke2lab/.secrets` (fields for `tailscale.*`, `github.*`, and `docker.configJson` — store the base64-encoded Docker config JSON here). Edit the file in place with `sops` so encrypted data never leaves disk unprotected.
+* Run `modules/nixos/rke2lab/bin/migrate-legacy-secrets.sh <legacy-secret-dir>` to import any remaining flat files into the YAML (the helper boots a template if missing, copies current plaintext values, and leaves the original files untouched so you can compare before cleaning up).
 * `rke2-cluster-repo-sync` and `rke2-kpt-package-sync` bootstrap `gh auth login --with-token`/`gh auth setup-git`, so git now leans on `gh auth git-credential` for HTTPS operations (falling back to `GIT_ASKPASS` only if the CLI is unavailable).
 * Porch manifests consume the GitHub PAT (`cluster-github-token`) and image pull secret (`porch-docker-config-json`) via `rke2-kpt-deploy`, so the Kubernetes Secrets materialize from runtime env vars instead of being tracked in git.
 * When rotating credentials, change the `.secrets` YAML, re-run `sops --in-place`, and restart the Incus nodes (or rerun the relevant systemd units) to propagate the refreshed values end-to-end.
@@ -457,7 +457,7 @@ When updating documentation:
 * **2025-01-10**: Organized session summaries in docs/sessions/ with index
 * **2025-01-10**: Cleaned up Teleport-related Markdown files
 * **2025-01-10**: Reorganized documentation index with clear sections
-* **2025-01-09**: Added incus-rke2-cluster as git subtree
+* **2025-01-09**: Added rke2lab as git subtree
 * **2025-01-09**: Created Incus-based Headscale server and gateway modules
 * **2025-01-09**: Consolidated documentation into AsciiDoc format
 * **2025-01-09**: Removed Teleport in favor of Tailscale/Headscale SSH

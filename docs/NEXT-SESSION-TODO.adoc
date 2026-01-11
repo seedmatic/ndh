@@ -4,7 +4,7 @@
 
 == Immediate Goal
 
-Deploy Headscale server and gateway in Lima VM using incus-rke2-cluster.
+Deploy Headscale server and gateway in Lima VM using rke2lab.
 
 == Prerequisites Met ✅
 
@@ -14,7 +14,7 @@ Deploy Headscale server and gateway in Lima VM using incus-rke2-cluster.
 - [x] bioskop Darwin configured with Headscale client
 - [x] Documentation complete
 - [x] RKE2 cluster running in Lima VM
-- [x] Shared directory mounted in Lima VM at `/Users/nxmatic/Gits/nxmatic/nix-darwin-home/modules/nixos/incus-rke2-cluster`
+- [x] Shared directory mounted in Lima VM at `/Users/nxmatic/Gits/nxmatic/nix-darwin-home/modules/nixos/rke2lab`
 
 == Working Directory
 
@@ -25,8 +25,8 @@ IMPORTANT: All operations should be done from the **shared directory** in Lima V
 # Connect to Lima VM
 ssh lima-nerd-nixos
 
-# Change to shared incus-rke2-cluster directory
-cd /Users/nxmatic/Gits/nxmatic/nix-darwin-home/modules/nixos/incus-rke2-cluster
+# Change to shared rke2lab directory
+cd /Users/nxmatic/Gits/nxmatic/nix-darwin-home/modules/nixos/rke2lab
 
 # Now you can run remake commands
 flox activate -- remake NAME=headscale-server start
@@ -39,11 +39,11 @@ This directory is shared between macOS host and Lima VM, so:
 
 == TODO for Deployment
 
-=== 1. Extend Makefile in incus-rke2-cluster
+=== 1. Extend Makefile in rke2lab
 
 The Makefile needs to recognize `headscale-server` and `headscale-gateway` as valid instance names.
 
-**Location:** `modules/nixos/incus-rke2-cluster/Makefile`
+**Location:** `modules/nixos/rke2lab/Makefile`
 
 **Changes needed:**
 
@@ -54,12 +54,12 @@ Around line 67, after the existing RKE2 instance type logic:
 [source,makefile]
 ----
 # Detect headscale instances
-ifneq (,$(findstring headscale-server,$(CLUSTER_NODE_NAME)))
+ifneq (,$(findstring headscale-server,$(RKE2_CLUSTER_RKE2_NODENAME)))
 	INSTANCE_TYPE := headscale-server
 	INSTALL_RKE2_TYPE := none
 endif
 
-ifneq (,$(findstring headscale-gateway,$(CLUSTER_NODE_NAME)))
+ifneq (,$(findstring headscale-gateway,$(RKE2_CLUSTER_RKE2_NODENAME)))
 	INSTANCE_TYPE := headscale-gateway
 	INSTALL_RKE2_TYPE := none
 endif
@@ -75,7 +75,7 @@ After network configuration section:
 # Headscale Configuration
 #-----------------------------
 
-ifeq (headscale-server,$(CLUSTER_NODE_NAME))
+ifeq (headscale-server,$(RKE2_CLUSTER_RKE2_NODENAME))
 	HEADSCALE_SERVER_URL := http://192.168.5.10:8080
 	HEADSCALE_BASE_DOMAIN := home.arpa
 	# Use headscale cloud-config instead of RKE2 configs
@@ -84,9 +84,9 @@ ifeq (headscale-server,$(CLUSTER_NODE_NAME))
 	INSTALL_RKE2_TYPE := none
 endif
 
-ifeq (headscale-gateway,$(CLUSTER_NODE_NAME))
-	GATEWAY_HOSTNAME := $(CLUSTER_NAME)-hs-gateway
-	GATEWAY_ROUTES := 100.64.0.0/10,192.168.5.0/24,$(CLUSTER_V4_BLOCK)
+ifeq (headscale-gateway,$(RKE2_CLUSTER_RKE2_NODENAME))
+	GATEWAY_HOSTNAME := $(RKE2_CLUSTER_NAME)-hs-gateway
+	GATEWAY_ROUTES := 100.64.0.0/10,192.168.5.0/24,$(RKE2_CLUSTER_V4_BLOCK)
 	# Use headscale gateway cloud-config
 	CLOUD_CONFIG_FILES := cloud-config.headscale-gateway.yaml.tmpl
 	# Override RKE2 defaults
@@ -116,7 +116,7 @@ Once Makefile is extended, **from Lima VM in the shared directory**:
 ssh lima-nerd-nixos
 
 # Go to shared directory
-cd /Users/nxmatic/Gits/nxmatic/nix-darwin-home/modules/nixos/incus-rke2-cluster
+cd /Users/nxmatic/Gits/nxmatic/nix-darwin-home/modules/nixos/rke2lab
 
 # Deploy Headscale server
 flox activate -- remake NAME=headscale-server start
@@ -167,7 +167,7 @@ hs-connect
 === 6. Approve Routes in Tailscale
 
 1. Go to https://login.tailscale.com/admin/machines
-2. Find `bioskop-hs-gateway` or `${CLUSTER_NAME}-hs-gateway`
+2. Find `bioskop-hs-gateway` or `${RKE2_CLUSTER_NAME}-hs-gateway`
 3. Approve all advertised routes
 
 == Alternative: Manual Deployment
@@ -179,7 +179,7 @@ If Makefile extension is complex, we can deploy manually:
 [source,bash]
 ----
 # Render cloud-config manually
-cd /Users/nxmatic/Gits/nxmatic/nix-darwin-home/modules/nixos/incus-rke2-cluster
+cd /Users/nxmatic/Gits/nxmatic/nix-darwin-home/modules/nixos/rke2lab
 
 export HEADSCALE_SERVER_URL="http://192.168.5.10:8080"
 export HEADSCALE_BASE_DOMAIN="home.arpa"
@@ -205,10 +205,10 @@ incus exec headscale-server -- systemctl status headscale
 
 == Files to Work With
 
-- `modules/nixos/incus-rke2-cluster/Makefile` - Needs extension
-- `modules/nixos/incus-rke2-cluster/cloud-config.headscale-server.yaml.tmpl` - Ready
-- `modules/nixos/incus-rke2-cluster/cloud-config.headscale-gateway.yaml.tmpl` - Ready
-- `modules/nixos/incus-rke2-cluster/HEADSCALE-INTEGRATION.adoc` - Documentation
+- `modules/nixos/rke2lab/Makefile` - Needs extension
+- `modules/nixos/rke2lab/cloud-config.headscale-server.yaml.tmpl` - Ready
+- `modules/nixos/rke2lab/cloud-config.headscale-gateway.yaml.tmpl` - Ready
+- `modules/nixos/rke2lab/HEADSCALE-INTEGRATION.adoc` - Documentation
 
 == Time Estimate
 
@@ -223,5 +223,5 @@ incus exec headscale-server -- systemctl status headscale
 - RKE2 cluster is already running (master, peer1)
 - Lima VM has flox environment configured
 - Use `remake` instead of `make`
-- All configuration files are in the subtree at `modules/nixos/incus-rke2-cluster/`
+- All configuration files are in the subtree at `modules/nixos/rke2lab/`
 - Add follow-up subject: verify changes on both hosts after edits and plan deployment automation from the k8s cluster (Tekton pipeline to build, push cache, and trigger host applies)

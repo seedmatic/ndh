@@ -146,20 +146,23 @@ in
     };
   };
 
-  config = mkIf cfg.enable {
-    # Run configuration script during system activation (networking fragment)
-    system.activationScripts.networking.text = lib.mkAfter ''
-      ${activationWrapperScript}
-    '';
-
-    # Document the configuration in system profile
-    system.defaults.CustomUserPreferences = {
-      "README-InternetSharing" = {
-        Note = "Internet Sharing configured by nix-darwin";
-        PrimaryInterface = cfg.primaryInterface;
-        SharingDevices = cfg.sharingDevices;
-        ManualToggleRequired = "System Settings → General → Sharing → Internet Sharing";
+  config = mkIf cfg.enable (
+    {
+      # Run configuration script during system activation (networking fragment)
+      system.activationScripts.networking.text = lib.mkAfter ''
+        ${activationWrapperScript}
+      '';
+    }
+    // (lib.optionalAttrs (pkgs.stdenv.isLinux) {
+      # Only define systemd options on Linux/NixOS
+      systemd.defaults.CustomUserPreferences = {
+        "README-InternetSharing" = {
+          Note = "Internet Sharing configured by nix-darwin";
+          PrimaryInterface = cfg.primaryInterface;
+          SharingDevices = cfg.sharingDevices;
+          ManualToggleRequired = "System Settings → General → Sharing → Internet Sharing";
+        };
       };
-    };
-  };
+    })
+  );
 }

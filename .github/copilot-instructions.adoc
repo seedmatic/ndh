@@ -71,7 +71,7 @@ CRITICAL: `modules/common/default.nix` is imported by both Darwin and NixOS. Cha
 | RKE2 infrastructure | 10.80.0.0/18 | Hierarchical allocation
 |===
 
-=== RKE2 Cluster Management (`modules/nixos/incus-rke2-cluster/`)
+=== RKE2 Cluster Management (`modules/nixos/rke2lab/`)
 
 * **Git subtree**: Standalone repo integrated as subtree (see `.git-subtree-sync.sh`)
 * **Makefile-driven**: Hierarchical make targets with layered `rules.mk` files
@@ -110,10 +110,10 @@ sudo nixos-rebuild switch --flake /Users/username/hosts/alcide#alcide-nixos
 
 [source,bash]
 ----
-cd modules/nixos/incus-rke2-cluster
+cd modules/nixos/rke2lab
 
 # Deploy cluster
-make start@cluster CLUSTER_NAME=cluster-1
+make start@cluster RKE2_CLUSTER_NAME=cluster-1
 
 # Check status
 make status@cluster
@@ -282,7 +282,7 @@ Both configurations are generated from same host flake.
 | `modules/{darwin,nixos,common}/default.nix` | Module indices
 | `modules/darwin/lima-config.nix` | VM generation logic
 | `modules/nixos/headscale-server.nix` | Self-hosted VPN server
-| `modules/nixos/incus-rke2-cluster/Makefile` | RKE2 cluster orchestration
+| `modules/nixos/rke2lab/Makefile` | RKE2 cluster orchestration
 | `docs/collaboration-guide.adoc` | AI session protocol
 |===
 
@@ -321,7 +321,7 @@ limactl shell nerd-nixos
 limactl stop nerd-nixos
 
 # RKE2 cluster
-make start@cluster CLUSTER_NAME=cluster-1
+make start@cluster RKE2_CLUSTER_NAME=cluster-1
 make status@cluster
 make stop@cluster
 

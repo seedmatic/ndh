@@ -86,13 +86,13 @@ network:
     wan0:  # WAN (secondary) - Static IP for cluster communication
       dhcp4: false
       addresses:
-        - ${CLUSTER_NODE_INET}/24
+        - ${RKE2_CLUSTER_RKE2_NODEINET}/24
       routes:
         - to: 0.0.0.0/0
-          via: ${CLUSTER_INET_GATEWAY}
+          via: ${RKE2_CLUSTER_INET_GATEWAY}
       nameservers:
         addresses:
-          - ${CLUSTER_INET_GATEWAY}
+          - ${RKE2_CLUSTER_INET_GATEWAY}
           - 1.1.1.1
       optional: true
 ----
@@ -101,20 +101,20 @@ network:
 
 Modified the Makefile to generate unique instance IDs:
 
-**File**: `/Users/nxmatic/Gits/nxmatic/nix-darwin-home/modules/nixos/incus-rke2-cluster/Makefile`
+**File**: `/Users/nxmatic/Gits/nxmatic/nix-darwin-home/modules/nixos/rke2lab/Makefile`
 
 [source,makefile]
 ----
 # BEFORE:
 define METADATA_INLINE :=
-instance-id: $(CLUSTER_NODE_NAME)
-local-hostname: $(CLUSTER_NODE_DN)
+instance-id: $(RKE2_CLUSTER_RKE2_NODENAME)
+local-hostname: $(RKE2_CLUSTER_RKE2_NODEDN)
 endef
 
 # AFTER:
 define METADATA_INLINE :=
-instance-id: $(CLUSTER_NODE_NAME)-$(shell date +%s)
-local-hostname: $(CLUSTER_NODE_DN)
+instance-id: $(RKE2_CLUSTER_RKE2_NODENAME)-$(shell date +%s)
+local-hostname: $(RKE2_CLUSTER_RKE2_NODEDN)
 endef
 ----
 
@@ -188,7 +188,7 @@ default via 192.168.1.254 dev lan0 proto dhcp src 192.168.1.79 metric 100
 [source,bash]
 ----
 # 1. Create new master instance (should have unique instance-id now)
-ssh lima-nerd-nixos "cd /Users/nxmatic/Gits/nxmatic/nix-darwin-home/modules/nixos/incus-rke2-cluster && make NAME=master start"
+ssh lima-nerd-nixos "cd /Users/nxmatic/Gits/nxmatic/nix-darwin-home/modules/nixos/rke2lab && make NAME=master start"
 
 # 2. Check instance-id is unique
 ssh lima-nerd-nixos "incus exec master -- cat /var/lib/cloud/data/instance-id"
@@ -209,8 +209,8 @@ ssh lima-nerd-nixos "incus exec master -- ip route show"
 
 - **Main Config**: `cloud-config.common.yaml` - Contains correct netplan configuration
 - **Makefile**: Modified to generate unique instance-ids  
-- **Generated Metadata**: `.run.d/master/nocloud/metadata.yaml` - Now has timestamp-based instance-id
-- **Generated Userdata**: `.run.d/master/nocloud/userdata.yaml` - Contains merged cloud-config
+- **Generated Metadata**: `.run.d/master/nocloud/meta-data.yaml` - Now has timestamp-based instance-id
+- **Generated Userdata**: `.run.d/master/nocloud/user-data.yaml` - Contains merged cloud-config
 
 === Network Architecture
 

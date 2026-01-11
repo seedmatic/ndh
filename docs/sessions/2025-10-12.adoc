@@ -6,7 +6,7 @@
 
 == Overview
 
-Kickoff session to exercise the full RKE2 (incus-rke2-cluster) startup inside the Lima NixOS guest and deploy the Headscale server + gateway (incus-headscale subtree). Builds on prior guest bootstrap hardening (manual switch tooling, link-first config initialization, wait-online disable, bootloader suppression) to validate end‑to‑end network architecture (Tailscale + optional Headscale hybrid) and establish measurable health criteria.
+Kickoff session to exercise the full RKE2 (rke2lab) startup inside the Lima NixOS guest and deploy the Headscale server + gateway (incus-headscale subtree). Builds on prior guest bootstrap hardening (manual switch tooling, link-first config initialization, wait-online disable, bootloader suppression) to validate end‑to‑end network architecture (Tailscale + optional Headscale hybrid) and establish measurable health criteria.
 
 == Objectives
 
@@ -47,7 +47,7 @@ Out-of-scope (defer):
 
 == Planned Tasks
 
-. RKE2 cluster bring-up: `make NAME=master start` (+ peers) in incus-rke2-cluster subtree
+. RKE2 cluster bring-up: `make NAME=master start` (+ peers) in rke2lab subtree
 . Validate kube-apiserver reachability & node status (`kubectl get nodes -o wide`)
 . Deploy Headscale server: `make NAME=headscale-server start` (incus-headscale)
 . Create Headscale user + reusable auth key (record in secure note)
@@ -129,7 +129,7 @@ Completed comprehensive refactoring of Incus RKE2 network provisioning from brid
 ==== Architecture Decision: Custom socket_vmnet Implementation
 * **Rationale**: Replace Lima's built-in vmnet with controlled subnet allocation
 * **Benefits**: 
-** `CLUSTER_NODE_INET` variables (e.g., `10.80.16.3`) will work as designed
+** `RKE2_CLUSTER_RKE2_NODEINET` variables (e.g., `10.80.16.3`) will work as designed
 ** Hierarchical addressing scheme becomes functional
 ** DHCP reservations possible within controlled range
 * **Implementation path**: 
@@ -187,7 +187,7 @@ Completed comprehensive refactoring of Incus RKE2 network provisioning from brid
 
 ==== Expected Outcome
 * `wan0` interface receives IP from controlled `10.80.16.x` subnet
-* `CLUSTER_NODE_INET := 10.80.16.3` (master) allocation works as designed
+* `RKE2_CLUSTER_RKE2_NODEINET := 10.80.16.3` (master) allocation works as designed
 * Inter-node communication uses predictable, hierarchical addressing
 * VIP and LoadBalancer pools function within planned ranges
 
@@ -238,5 +238,5 @@ This session adopts the standardized process in link:../collaboration-guide.adoc
 * Implement custom socket_vmnet launchd services in Darwin configuration
 * Update Lima configuration to use controlled socket paths  
 * Deploy and validate `10.80.16.x` subnet allocation with RKE2 cluster
-* Verify `CLUSTER_NODE_INET` variables work as designed
+* Verify `RKE2_CLUSTER_RKE2_NODEINET` variables work as designed
 * Complete end-to-end cluster + Headscale deployment validation

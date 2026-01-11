@@ -29,7 +29,7 @@ bioskop (Mac Mini M4 Pro - Stationary)
     │   ├── Advertises: Lima network (192.168.5.0/24)
     │   └── Advertises: RKE2 cluster (10.80.16.0/20)
     │
-    └── RKE2 Cluster (via incus-rke2-cluster)
+    └── RKE2 Cluster (via rke2lab)
         └── Tailscale Operator (exposes K8s services)
 ----
 
@@ -318,12 +318,12 @@ tailscale ssh bioskop
 
 == Step 7: Deploy RKE2 Cluster (Optional)
 
-The integrated `incus-rke2-cluster` deployment can now use the Tailscale operator.
+The integrated `rke2lab` deployment can now use the Tailscale operator.
 
 [source,bash]
 ----
 # In Lima VM, navigate to RKE2 deployment
-cd /path/to/nix-darwin-home/modules/nixos/incus-rke2-cluster
+cd /path/to/nix-darwin-home/modules/nixos/rke2lab
 
 # Deploy master node
 make NAME=master start

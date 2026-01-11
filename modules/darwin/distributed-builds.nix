@@ -138,14 +138,17 @@ let
   normalizeHost =
     name: if lib.hasSuffix "-darwin" name then lib.removeSuffix "-darwin" name else name;
 
+  # Prefer explicit hostName (includes platform suffix like "-linux") over the
+  # generic host value to avoid collapsing linux/darwin builders into the same
+  # base alias (e.g., bioskop-linux-builder instead of bioskop-builder).
   baseHostName =
     builder:
-    if builder ? host then
-      normalizeHost builder.host
+    if builder ? hostName then
+      normalizeHost builder.hostName
     else if builder ? sshHostName then
       normalizeHost builder.sshHostName
-    else if builder ? hostName then
-      normalizeHost builder.hostName
+    else if builder ? host then
+      normalizeHost builder.host
     else
       "";
 
@@ -158,7 +161,9 @@ let
       );
       baseSpeed = builder.speedFactor or 1;
       speedFor = net: baseSpeed * (if net == "lan" then 100 else 10);
-      hostBase = baseHostName builder;
+      # Keep builder.hostName (with platform suffix) for the BuildMachines entry so it
+      # matches the SSH Host alias we render (e.g., bioskop-darwin-builder-via-lan).
+      hostBase = if builder ? hostName then builder.hostName else baseHostName builder;
       makeEntry =
         net:
         # Strip non-buildMachines keys before emitting

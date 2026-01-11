@@ -33,23 +33,23 @@ incus-headscale/
 === 2. Flox Environment Integration ✅
 
 **Shared environment approach:**
-- incus-headscale includes incus-rke2-cluster environment
+- incus-headscale includes rke2lab environment
 - Inherits all tools: `remake`, `envsubst`, `kubectl`, etc.
-- Inherits variables: `CLUSTER_NAME`, `CLUSTER_SUBNET`
+- Inherits variables: `RKE2_CLUSTER_NAME`, `RKE2_CLUSTER_SUBNET`
 - Adds headscale-specific variables
 
 **Configuration:**
 ```toml
 [include]
 environments = [
-    { dir = "../incus-rke2-cluster" }
+    { dir = "../rke2lab" }
 ]
 
 [profile]
 common = '''
   export HEADSCALE_SERVER_URL=${HEADSCALE_SERVER_URL:-http://192.168.5.10:8080}
   export HEADSCALE_BASE_DOMAIN=${HEADSCALE_BASE_DOMAIN:-home.arpa}
-  export GATEWAY_HOSTNAME=${GATEWAY_HOSTNAME:-${CLUSTER_NAME:-bioskop}-hs-gateway}
+  export GATEWAY_HOSTNAME=${GATEWAY_HOSTNAME:-${RKE2_CLUSTER_NAME:-bioskop}-hs-gateway}
   export GATEWAY_ROUTES=${GATEWAY_ROUTES:-100.64.0.0/10,192.168.5.0/24}
 '''
 ```
@@ -60,7 +60,7 @@ common = '''
 ```
 nix-darwin-home/
 └── modules/nixos/
-    ├── incus-rke2-cluster/    # Subtree: Kubernetes deployment
+    ├── rke2lab/    # Subtree: Kubernetes deployment
     └── incus-headscale/       # Subtree: Network infrastructure
 ```
 
@@ -88,7 +88,7 @@ nix-darwin-home/
 **Before:** Mixed Headscale logic in RKE2 Makefile (confusing)
 
 **After:** Clear separation:
-- `incus-rke2-cluster`: Kubernetes deployment only
+- `rke2lab`: Kubernetes deployment only
 - `incus-headscale`: Network/VPN infrastructure only
 - Both share common flox environment
 
@@ -96,7 +96,7 @@ nix-darwin-home/
 
 === Deployment Approach
 
-**incus-rke2-cluster** (complex):
+**rke2lab** (complex):
 - Custom Debian images via distrobuilder
 - Complex networking for Kubernetes
 - ZFS, custom kernels, RKE2-specific packages
@@ -129,7 +129,7 @@ start: $(CLOUD_INIT_FILE)
 		--config=cloud-init.user-data="$$(cat $(CLOUD_INIT_FILE))"
 ```
 
-**incus-rke2-cluster Makefile** (~700 lines):
+**rke2lab Makefile** (~700 lines):
 - Image building with distrobuilder
 - Complex network configuration
 - Multiple cloud-config merging
@@ -139,7 +139,7 @@ start: $(CLOUD_INIT_FILE)
 
 === incus-headscale Repository
 ```
-6ff2475 Configure flox environment with incus-rke2-cluster include
+6ff2475 Configure flox environment with rke2lab include
 86c0476 Initial commit: Incus Headscale deployment system
 ```
 
@@ -214,7 +214,7 @@ hs-connect  # Use auth key from step 2
 === nix-darwin-home
 - `modules/nixos/incus-headscale/` (added as subtree)
 - `.git-subtree-sync.sh` (updated for multiple subtrees)
-- Removed from incus-rke2-cluster:
+- Removed from rke2lab:
   - `cloud-config.headscale-*.yaml.tmpl`
   - `HEADSCALE-INTEGRATION.adoc`
   - Makefile changes (reverted)

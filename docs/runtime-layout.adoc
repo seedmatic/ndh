@@ -129,7 +129,7 @@ The help target can optionally surface runtime stats by reading `.run.d/runtime.
 [source,make]
 ----
 # (Conceptual) inside help recipe
-[ -f .run.d/runtime.auto.mk ] && grep -E '^CLUSTER_|^NODE_' .run.d/runtime.auto.mk || true
+[ -f .run.d/runtime.auto.mk ] && grep -E '^RKE2_CLUSTER_|^RKE2_NODE' .run.d/runtime.auto.mk || true
 ----
 
 == Security Notes
@@ -149,7 +149,7 @@ cat .run.d/network/_assign.mk
 ls .run.d/incus/master/cluster-env
 
 # View merged userdata
-sed -n '1,40p' .run.d/incus/master/nocloud/userdata.yaml
+sed -n '1,40p' .run.d/incus/master/nocloud/user-data.yaml
 
 # Count instances
 find .run.d/incus -maxdepth 1 -type d -not -path '*/incus' | wc -l

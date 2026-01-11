@@ -15,7 +15,6 @@
     ./disable-google-updaters.nix
     ./dnsmasq.nix
     ./headscale-client.nix
-    ./internet-sharing.nix
     ./lan-dns-resolver.nix
     ./nfs-autofs.nix
     ./lima-config.nix
@@ -30,6 +29,10 @@
     ./shell-keychain.nix
     ./ssh-client.nix
   ];
+
+  # Active le résolveur .lan par défaut (modifiable par hôte)
+  networking.lanDnsResolver.enable = true;
+  networking.lanDnsResolver.nameserver = "192.168.1.254";
 
   activation.loggerCmd = lib.mkDefault "/usr/bin/logger -p notice -t %TAG%";
 }

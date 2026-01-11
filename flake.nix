@@ -625,17 +625,20 @@
           };
         };
 
-        extraPackages = inputs: final: prev: let
-          hostSystem = prev.stdenv.hostPlatform.system;
-        in {
-          #inherit (self.packages.${hostSystem}) sysdo pyEnv;
-          #inherit (inputs.devenv.packages.${hostSystem}) devenv;
+        extraPackages =
+          inputs: final: prev:
+          let
+            hostSystem = prev.stdenv.hostPlatform.system;
+          in
+          {
+            #inherit (self.packages.${hostSystem}) sysdo pyEnv;
+            #inherit (inputs.devenv.packages.${hostSystem}) devenv;
 
-          # rancher-desktop = final.callPackage ./pkgs/rancher-desktop.nix {};
-          inherit (inputs.maven-mvnd.packages.${hostSystem}) maven-mvnd-m39;
-          inherit (inputs.disko.packages.${hostSystem}) disko;
-          inherit (inputs.incus-compose.packages.${hostSystem}) incus-compose;
-        };
+            # rancher-desktop = final.callPackage ./pkgs/rancher-desktop.nix {};
+            inherit (inputs.maven-mvnd.packages.${hostSystem}) maven-mvnd-m39;
+            inherit (inputs.disko.packages.${hostSystem}) disko;
+            inherit (inputs.incus-compose.packages.${hostSystem}) incus-compose;
+          };
 
         birdOverlay = inputs: import ./overlays/bird.nix inputs;
         qemuOverlay = inputs: import ./overlays/qemu.nix inputs;
@@ -677,7 +680,7 @@
             ];
             shellHook = ''
               echo "Docs dev shell active (system: ${system})."
-              echo "Run: modules/nixos/incus-rke2-cluster/bin/generate-docs.sh"
+              echo "Run: modules/nixos/rke2lab/bin/generate-docs.sh"
             '';
           };
         }

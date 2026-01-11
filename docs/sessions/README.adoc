@@ -21,7 +21,7 @@ This is a nix-darwin-home configuration managing:
 * **Removed**: Teleport completely (Jan 9, 2025)
 
 ==== Deployment Architecture
-* **incus-rke2-cluster**: Kubernetes deployment (git subtree)
+* **rke2lab**: Kubernetes deployment (git subtree)
 * **incus-headscale**: Network/VPN infrastructure (git subtree)
 * **Lima VM**: Primary deployment environment with shared directories
 * **Flox environments**: Shared tooling and variables across projects
@@ -32,7 +32,7 @@ This is a nix-darwin-home configuration managing:
 * `modules/darwin/` - Darwin-specific modules (Headscale client configured)
 * `modules/home-manager/` - Home Manager configurations
 * `hosts/` - Host-specific configurations (alcide, bioskop)
-* `modules/nixos/incus-rke2-cluster/` - Kubernetes deployment (git subtree)
+* `modules/nixos/rke2lab/` - Kubernetes deployment (git subtree)
 * `modules/nixos/incus-headscale/` - Network infrastructure (git subtree)
 
 === Working Patterns
@@ -40,13 +40,13 @@ This is a nix-darwin-home configuration managing:
 ==== Development Workflow
 * **Git operations**: Done on macOS host
 * **Deployment operations**: Done in Lima VM via `ssh lima-nerd-nixos`
-* **Shared directories**: `/Users/nxmatic/Gits/nxmatic/nix-darwin-home/modules/nixos/incus-rke2-cluster`
+* **Shared directories**: `/Users/nxmatic/Gits/nxmatic/nix-darwin-home/modules/nixos/rke2lab`
 * **Environment**: `flox activate -- remake NAME=headscale-server start`
 
 ==== Git Subtree Management
 * Script: `.git-subtree-sync.sh`
 * Commands: `pull [name]`, `push <name>`, `status [name]`
-* Projects: incus-rke2-cluster, incus-headscale
+* Projects: rke2lab, incus-headscale
 
 === Current Status
 
@@ -61,11 +61,11 @@ This is a nix-darwin-home configuration managing:
 * RKE2 cluster running in Lima VM
 
 ==== Current Goal (NEXT-SESSION-TODO.adoc)
-Deploy Headscale server and gateway in Lima VM using incus-rke2-cluster
+Deploy Headscale server and gateway in Lima VM using rke2lab
 
 **Prerequisites Met**: All cloud-config templates, client configuration, and infrastructure ready
 
-**Remaining Task**: Extend Makefile in incus-rke2-cluster to recognize headscale instance types
+**Remaining Task**: Extend Makefile in rke2lab to recognize headscale instance types
 
 == Session Summaries
 
@@ -132,7 +132,7 @@ link:2025-01-10.adoc[Headscale Deployment Architecture]::
 +
 **Achievements:**
 * Created standalone incus-headscale repository
-* Configured flox environment with incus-rke2-cluster includes
+* Configured flox environment with rke2lab includes
 * Updated git subtree sync script for multiple subtrees
 * Clean separation: RKE2 and Headscale as independent projects
 +
@@ -146,7 +146,7 @@ link:2025-01-09.adoc[Teleport Removal & Headscale Architecture]::
 **Achievements:**
 * Completely removed Teleport from codebase
 * Created Headscale server and gateway modules (Incus-based)
-* Integrated incus-rke2-cluster as git subtree
+* Integrated rke2lab as git subtree
 * Successfully rebuilt bioskop Darwin with Headscale client
 * Created comprehensive deployment documentation
 +
@@ -182,12 +182,12 @@ link:2025-01-09.adoc[Teleport Removal & Headscale Architecture]::
 
 **2025-01-09:**
 - `108892d` Clean up and organize documentation
-- `c0b62ef` Add Headscale integration to incus-rke2-cluster (reverted)
+- `c0b62ef` Add Headscale integration to rke2lab (reverted)
 - `c751db0` Fix duplicate environment.systemPackages
 - `6c224c1` Configure bioskop Darwin with Headscale client
 - `9d9019b` Add bioskop deployment guide
 - `9a91f17` Add git subtree documentation
-- `abf1abf` Merge incus-rke2-cluster subtree
+- `abf1abf` Merge rke2lab subtree
 - `9fc1764` Remove Teleport, add Headscale/Tailscale
 
 == Contributing

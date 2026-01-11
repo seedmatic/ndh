@@ -10,5 +10,9 @@
   networking.firewall = {
     enable = true;
     logRefusedPackets = true;
+    allowedTCPPorts = [
+      22 53 80 443 2222 2375
+      5002 8090 8095 8098 9200 9600 27017 4566 5601
+    ];
   };
 }

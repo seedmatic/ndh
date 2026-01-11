@@ -230,11 +230,13 @@ in
     # networking = { ... }
 
     environment.systemPackages = with pkgs; [
+      autofs5   # Explicitly include autofs utilities @codebase
       disko
       zfs
       binutils
       incus
       distrobuilder
+      nssmdns # Ensure mDNS resolution via NSS @codebase
     ];
 
     # Ensure security wrappers are in PATH for all processes

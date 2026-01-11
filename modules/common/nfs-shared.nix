@@ -7,7 +7,9 @@
     "/Users"
   ];
 
-  mountOptionsDefault = "vers=3,proto=tcp,soft,timeo=60,retrans=2,actimeo=5,rsize=65536,wsize=65536";
+  # Use soft/timeo/retrans to avoid system hangs on network errors
+  # WARNING: Do not mount /net or any autofs path with ZFS datasets or overlays!
+  mountOptionsDefault = "vers=3,proto=tcp,soft,timeo=5,retrans=2,actimeo=5,rsize=65536,wsize=65536";
 
   exportOptionsDefault = "rw,async,no_subtree_check,no_root_squash";
   clientScopesDefault = [

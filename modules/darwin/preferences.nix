@@ -12,18 +12,23 @@ let
   wallpaperImage = ../home-manager/pictures.d/WallPaper.jpg;
   timeoutExe = lib.getExe' pkgs.coreutils "timeout";
   gtimeoutExe = lib.getExe' pkgs.coreutils "gtimeout";
-  networkPreferencesScript = pkgs.runCommand "darwin-network-preferences.sh" { } ''
-    cp ${
+  networkPreferencesScript = pkgs.runCommand "darwin-network-preferences.sh" {
+    preferLocalBuild = true;
+    allowSubstitutes = false;
+  } ''
+    install -Dm755 ${
       pkgs.replaceVars ./preferences.d/network-preferences.sh {
         preferredDnsString = preferredDnsString;
         preferredServicesLiteral = preferredServicesLiteral;
       }
     } "$out"
-    chmod +x "$out"
   '';
 
-  preferencesPostActivation = pkgs.runCommand "preferences-post-activation.sh" { } ''
-    cp ${
+  preferencesPostActivation = pkgs.runCommand "preferences-post-activation.sh" {
+    preferLocalBuild = true;
+    allowSubstitutes = false;
+  } ''
+    install -Dm755 ${
       pkgs.replaceVars ./preferences.d/post-activation.sh {
         networkPreferencesScript = networkPreferencesScript;
         timeoutExe = timeoutExe;
@@ -35,7 +40,6 @@ let
         ] ../common/activation-logger.sh config;
       }
     } "$out"
-    chmod +x "$out"
   '';
 in
 {

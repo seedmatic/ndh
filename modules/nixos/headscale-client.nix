@@ -135,8 +135,9 @@ in
           --hostname=${cfg.hostname} \
           ${optionalString cfg.enableSSH "--ssh"} \
           ${optionalString cfg.acceptRoutes "--accept-routes"} \
-          ${optionalString (cfg.tags != [ ])
-            "--advertise-tags=${concatStringsSep "," (map (tag: "tag:" + tag) cfg.tags)}"
+          ${
+            optionalString (cfg.tags != [ ])
+              "--advertise-tags=${concatStringsSep "," (map (tag: "tag:" + tag) cfg.tags)}"
           } || {
             echo "tailscale up failed" >&2
             exit 1

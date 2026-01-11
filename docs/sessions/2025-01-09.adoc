@@ -58,7 +58,7 @@ Complete refactoring of network architecture, removing Teleport and implementing
 === 4. Git Subtree Integration ✅
 
 **Added:**
-- `modules/nixos/incus-rke2-cluster/` - Complete RKE2 deployment system
+- `modules/nixos/rke2lab/` - Complete RKE2 deployment system
 - `.git-subtree-sync.sh` - Helper script for subtree management
 
 **Workflow:**
@@ -129,7 +129,7 @@ bioskop (Mac Mini M4 Pro - Stationary)
     │   │   - 10.80.16.0/20 (bioskop RKE2 cluster)
     │   └── Bridges: Tailscale ↔ Headscale
     │
-    └── Incus: RKE2 Cluster (via incus-rke2-cluster)
+    └── Incus: RKE2 Cluster (via rke2lab)
         ├── Network: 10.80.16.0/20 (bioskop)
         ├── Pods: 10.42.0.0/16
         ├── Services: 10.43.0.0/16
@@ -165,9 +165,9 @@ Lima VM nerd-nixos
 
 == Pending Work
 
-=== 1. Deploy Headscale via incus-rke2-cluster (NEXT - CORRECT APPROACH)
+=== 1. Deploy Headscale via rke2lab (NEXT - CORRECT APPROACH)
 
-**Decision:** Extend incus-rke2-cluster instead of creating separate NixOS modules
+**Decision:** Extend rke2lab instead of creating separate NixOS modules
 
 **Rationale:**
 - Reuses existing Incus infrastructure (already configured)
@@ -176,12 +176,12 @@ Lima VM nerd-nixos
 - Proven approach (RKE2 deployment works well)
 
 **Files Created:**
-- ✅ `modules/nixos/incus-rke2-cluster/cloud-config.headscale-server.yaml`
-- ✅ `modules/nixos/incus-rke2-cluster/cloud-config.headscale-gateway.yaml`
+- ✅ `modules/nixos/rke2lab/cloud-config.headscale-server.yaml`
+- ✅ `modules/nixos/rke2lab/cloud-config.headscale-gateway.yaml`
 
 **Deployment Pattern:**
 ```bash
-cd modules/nixos/incus-rke2-cluster
+cd modules/nixos/rke2lab
 make NAME=headscale-server start
 make NAME=headscale-gateway start
 make NAME=master start  # Existing RKE2
@@ -227,7 +227,7 @@ hs-connect
 
 === 5. Integrate with RKE2 Deployment
 
-The incus-rke2-cluster already has Tailscale operator configured in `cloud-config.master.base.yaml` (lines 100-139).
+The rke2lab already has Tailscale operator configured in `cloud-config.master.base.yaml` (lines 100-139).
 
 **Integration Points:**
 - RKE2 Tailscale Operator advertises K8s API and LoadBalancer IPs
@@ -236,7 +236,7 @@ The incus-rke2-cluster already has Tailscale operator configured in `cloud-confi
 
 == Technical Details
 
-=== incus-rke2-cluster Integration
+=== rke2lab Integration
 
 **Key Files:**
 - `Makefile` - Sophisticated deployment system
@@ -253,7 +253,7 @@ The incus-rke2-cluster already has Tailscale operator configured in `cloud-confi
 
 **Deployment:**
 ```bash
-cd modules/nixos/incus-rke2-cluster
+cd modules/nixos/rke2lab
 make NAME=master start
 ```
 
@@ -298,7 +298,7 @@ c751db0 Fix duplicate environment.systemPackages in headscale-client.nix
 6c224c1 Configure bioskop Darwin with Headscale client
 9d9019b Add bioskop deployment guide and configuration
 9a91f17 Add git subtree documentation and helper script
-abf1abf Merge commit '...' as 'modules/nixos/incus-rke2-cluster'
+abf1abf Merge commit '...' as 'modules/nixos/rke2lab'
 9fc1764 Remove Teleport, add Headscale/Tailscale architecture
 ```
 
@@ -353,7 +353,7 @@ abf1abf Merge commit '...' as 'modules/nixos/incus-rke2-cluster'
 **External:**
 - https://headscale.net/[Headscale Documentation]
 - https://tailscale.com/kb/[Tailscale Documentation]
-- incus-rke2-cluster README and Makefile
+- rke2lab README and Makefile
 
 == Notes
 

@@ -123,6 +123,8 @@ in
       DHCP = "yes";
       IPv6AcceptRA = "yes";
       LinkLocalAddressing = "no";
+      DNS = "192.168.1.254";
+      Domains = "lan";
     };
   };
 

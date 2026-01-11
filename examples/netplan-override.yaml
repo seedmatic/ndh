@@ -9,10 +9,10 @@ network:
     wan0:
       dhcp4: false
       addresses:
-        - 10.42.0.10/24   # replace with ${CLUSTER_NODE_INET}/24 for templating
+        - 10.42.0.10/24   # replace with ${RKE2_CLUSTER_RKE2_NODEINET}/24 for templating
       routes:
         - to: 0.0.0.0/0
-          via: 10.42.0.1  # replace with ${CLUSTER_INET_GATEWAY}
+          via: 10.42.0.1  # replace with ${RKE2_CLUSTER_INETADDR_GATEWAY}
       nameservers:
         addresses:
           - 10.42.0.1

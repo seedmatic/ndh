@@ -12,7 +12,7 @@ app = typer.Typer()
 class FlakeOutputs(Enum):
     NIXOS = "nixosConfigurations"
     DARWIN = "darwinConfigurations"
-    HOME_MANAGER = "homeConfigurations"
+    RKE2_HOME_MANAGER = "homeConfigurations"
 
 
 class Colors(Enum):
@@ -44,7 +44,7 @@ elif check_darwin.returncode == 0 or UNAME.system.lower() == "darwin":
     PLATFORM = FlakeOutputs.DARWIN
 else:
     # in all other cases of linux
-    PLATFORM = FlakeOutputs.HOME_MANAGER
+    PLATFORM = FlakeOutputs.RKE2_HOME_MANAGER
 
 USERNAME = subprocess.run(["id", "-un"], capture_output=True).stdout.decode().strip()
 SYSTEM_ARCH = "aarch64" if UNAME.machine == "arm64" else UNAME.machine
@@ -83,7 +83,7 @@ def select(nixos: bool, darwin: bool, home_manager: bool):
     elif darwin:
         return FlakeOutputs.DARWIN
     elif home_manager:
-        return FlakeOutputs.HOME_MANAGER
+        return FlakeOutputs.RKE2_HOME_MANAGER
     else:
         return PLATFORM
 
@@ -134,7 +134,7 @@ def bootstrap(
         run_cmd(
             f"./result/sw/bin/darwin-rebuild switch --flake {FLAKE_PATH}#{host}".split()
         )
-    elif cfg == FlakeOutputs.HOME_MANAGER:
+    elif cfg == FlakeOutputs.RKE2_HOME_MANAGER:
         flake = f"{bootstrap_flake}#{host}"
         run_cmd(
             ["nix", "run"]
@@ -178,7 +178,7 @@ def build(
         cmd = ["sudo", "nixos-rebuild", "build", "--flake"]
     elif cfg == FlakeOutputs.DARWIN:
         cmd = ["darwin-rebuild", "build", "--flake"]
-    elif cfg == FlakeOutputs.HOME_MANAGER:
+    elif cfg == FlakeOutputs.RKE2_HOME_MANAGER:
         cmd = ["home-manager", "build", "--flake"]
     else:
         typer.secho("could not infer system type.", fg=Colors.ERROR.value)
@@ -304,7 +304,7 @@ def switch(
         cmd = f"sudo nixos-rebuild switch --flake"
     elif cfg == FlakeOutputs.DARWIN:
         cmd = f"darwin-rebuild switch --flake"
-    elif cfg == FlakeOutputs.HOME_MANAGER:
+    elif cfg == FlakeOutputs.RKE2_HOME_MANAGER:
         cmd = f"home-manager switch --flake"
     else:
         typer.secho("could not infer system type.", fg=Colors.ERROR.value)

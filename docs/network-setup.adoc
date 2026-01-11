@@ -28,15 +28,15 @@ The Incus RKE2 cluster networking inside the Lima NixOS guest was refactored fro
 
 1. Clean old instances (Incus cannot hot‑rename NICs):
   ```
-  make -C modules/nixos/incus-rke2-cluster clean-all
+  make -C modules/nixos/rke2lab clean-all
   ```
 2. Re‑generate preseed & recreate master:
   ```
-  make -C modules/nixos/incus-rke2-cluster preseed@incus NAME=master start
+  make -C modules/nixos/rke2lab preseed@incus NAME=master start
   ```
 3. Launch peers if desired:
   ```
-  make -C modules/nixos/incus-rke2-cluster NAME=peer1 start
+  make -C modules/nixos/rke2lab NAME=peer1 start
   ```
 4. Verify inside container:
   ```
@@ -780,7 +780,7 @@ The home LAN is divided into /27 blocks (30 usable IPs per block) for organized 
 # /etc/systemd/network/10-netplan-lan0.network.d/10-hostname.conf
 [DHCP]
 SendHostname=yes
-Hostname=${CLUSTER_NAME}-${NODE_NAME}-control-node
+Hostname=${RKE2_CLUSTER_NAME}-${RKE2_NODENAME}-control-node
 ----
 
 * **Static Reservations**: Darwin hosts and Lima VMs should have static DHCP reservations configured in the Bbox router to ensure stable IPs across reboots.

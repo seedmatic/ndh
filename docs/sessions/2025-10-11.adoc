@@ -223,7 +223,7 @@ git diff --cached --name-status
 ssh lima-nerd-nixos
 
 # Change to shared directory in Lima VM
-cd /Users/nxmatic/Gits/nxmatic/nix-darwin-home/modules/nixos/incus-rke2-cluster
+cd /Users/nxmatic/Gits/nxmatic/nix-darwin-home/modules/nixos/rke2lab
 
 # Run deployment commands in Lima VM with flox
 flox activate -- remake NAME=headscale-server start

@@ -46,7 +46,6 @@ let
   activationTagFixConfigOwnership = "home-manager.activationScripts.${userName}.fixConfigOwnership";
 
   baseHomePackages = with pkgs; [
-    aider-chat
     alejandra
     awscli2
     avahi

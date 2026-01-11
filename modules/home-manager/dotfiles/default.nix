@@ -25,7 +25,7 @@ in
 
     # npmrc = {
     #   text = ''
-    #     prefix = ${config.home.sessionVariables.NODE_PATH};
+    #     prefix = ${config.home.sessionVariables.RKE2_NODEPATH};
     #   '';
     #   target = "nodejs/.npmrc";
     # };
