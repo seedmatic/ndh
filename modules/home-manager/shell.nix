@@ -37,6 +37,14 @@ in
 
     envExtra = builtins.readFile ./shell/zshenv.zsh;
 
+    # Prevent zsh completion from stat-ing autofs /net mounts, which can hang.
+    initExtra = ''
+      # Avoid autofs trigger on the first-level /net mountpoint, but allow
+      # completion once inside /net/<host>/...
+      zstyle ':completion:*:paths' ignored-patterns '/net'
+      zstyle ':completion:*:(cd|chdir|pushd|popd|ls):*' ignored-patterns '/net'
+    '';
+
     initContent = ''
       ${vscodeShellIntegration "zsh"}
       source "$ZDOTDIR/rcs/zshrc.zsh"
