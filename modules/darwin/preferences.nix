@@ -12,35 +12,41 @@ let
   wallpaperImage = ../home-manager/pictures.d/WallPaper.jpg;
   timeoutExe = lib.getExe' pkgs.coreutils "timeout";
   gtimeoutExe = lib.getExe' pkgs.coreutils "gtimeout";
-  networkPreferencesScript = pkgs.runCommand "darwin-network-preferences.sh" {
-    preferLocalBuild = true;
-    allowSubstitutes = false;
-  } ''
-    install -Dm755 ${
-      pkgs.replaceVars ./preferences.d/network-preferences.sh {
-        preferredDnsString = preferredDnsString;
-        preferredServicesLiteral = preferredServicesLiteral;
+  networkPreferencesScript =
+    pkgs.runCommand "darwin-network-preferences.sh"
+      {
+        preferLocalBuild = true;
+        allowSubstitutes = false;
       }
-    } "$out"
-  '';
+      ''
+        install -Dm755 ${
+          pkgs.replaceVars ./preferences.d/network-preferences.sh {
+            preferredDnsString = preferredDnsString;
+            preferredServicesLiteral = preferredServicesLiteral;
+          }
+        } "$out"
+      '';
 
-  preferencesPostActivation = pkgs.runCommand "preferences-post-activation.sh" {
-    preferLocalBuild = true;
-    allowSubstitutes = false;
-  } ''
-    install -Dm755 ${
-      pkgs.replaceVars ./preferences.d/post-activation.sh {
-        networkPreferencesScript = networkPreferencesScript;
-        timeoutExe = timeoutExe;
-        gtimeoutExe = gtimeoutExe;
-        wallpaperImage = wallpaperImage;
-        activationLogger = lib.attrByPath [
-          "activation"
-          "loggerScript"
-        ] ../common/activation-logger.sh config;
+  preferencesPostActivation =
+    pkgs.runCommand "preferences-post-activation.sh"
+      {
+        preferLocalBuild = true;
+        allowSubstitutes = false;
       }
-    } "$out"
-  '';
+      ''
+        install -Dm755 ${
+          pkgs.replaceVars ./preferences.d/post-activation.sh {
+            networkPreferencesScript = networkPreferencesScript;
+            timeoutExe = timeoutExe;
+            gtimeoutExe = gtimeoutExe;
+            wallpaperImage = wallpaperImage;
+            activationLogger = lib.attrByPath [
+              "activation"
+              "loggerScript"
+            ] ../common/activation-logger.sh config;
+          }
+        } "$out"
+      '';
 in
 {
   config = {

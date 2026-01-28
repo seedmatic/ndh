@@ -1,4 +1,4 @@
-{ 
+{
   # WARNING: Never use /net (autofs) as a ZFS dataset mountpoint or overlay source!
   # This will cause ZFS to hang if NFS/autofs is unavailable. Always exclude /net from ZFS overlays.
   config,

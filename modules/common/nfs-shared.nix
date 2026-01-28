@@ -25,6 +25,10 @@
       clients = "100.64.0.0/10";
       options = "no_root_squash";
     }
+    {
+      clients = "10.80.16.0/24";
+      options = "no_root_squash"; # socket_vmnet shared network (vmhost0)
+    }
   ];
 
   timeoutsDefault = {

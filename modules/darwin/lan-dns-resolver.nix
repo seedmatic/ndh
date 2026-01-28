@@ -7,18 +7,23 @@
 
 let
   cfg = config.networking.lanDnsResolver;
-  lanDnsActivationScript = pkgs.runCommand "lan-dns-resolver-post-activation.sh" {
-    preferLocalBuild = true;
-    allowSubstitutes = false;
-  } ''
-    install -Dm755 ${pkgs.replaceVars ./lan-dns-resolver.d/post-activation.sh {
-      inherit (cfg) nameserver;
-      activationLogger = lib.attrByPath [
-        "activation"
-        "loggerScript"
-      ] ../common/activation-logger.sh config;
-    }} "$out"
-  '';
+  lanDnsActivationScript =
+    pkgs.runCommand "lan-dns-resolver-post-activation.sh"
+      {
+        preferLocalBuild = true;
+        allowSubstitutes = false;
+      }
+      ''
+        install -Dm755 ${
+          pkgs.replaceVars ./lan-dns-resolver.d/post-activation.sh {
+            inherit (cfg) nameserver;
+            activationLogger = lib.attrByPath [
+              "activation"
+              "loggerScript"
+            ] ../common/activation-logger.sh config;
+          }
+        } "$out"
+      '';
 
 in
 {

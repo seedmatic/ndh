@@ -300,6 +300,12 @@ let
         interface = "vmlan0";
         macAddress = "10:66:6a:4c:${hostByteHex}:01";
       }
+      {
+        # Dedicated socket_vmnet shared network for host/guest services (e.g., NFS)
+        lima = "shared";
+        interface = "vmhost0";
+        macAddress = "10:66:6a:4c:${hostByteHex}:02";
+      }
     ];
 
   };

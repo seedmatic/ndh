@@ -71,8 +71,36 @@
             };
           };
         };
+      darwinModule =
+        { ... }:
+        {
+          config = {
+            networking.vlan = {
+              enable = true;
+              id = 2;
+              addressPrefix = "192.168.2";
+              parentInterface = "en0";
+            };
+          };
+        };
+
+      nixosModule =
+        { ... }:
+        {
+          config = {
+            networking.vlan = {
+              enable = true;
+              id = 2;
+              addressPrefix = "192.168.2";
+              parentInterface = "vmlan0";
+              addressSourceInterface = "lan-br";
+            };
+          };
+        };
     in
     nix-darwin-home.mkHostOutputs {
       inherit hostProfile profileModule;
+      darwinExtraModules = [ darwinModule ];
+      nixosExtraModules = [ nixosModule ];
     };
 }

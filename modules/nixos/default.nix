@@ -53,6 +53,8 @@ in
     ./firewall.nix
     ./lima-network-interfaces.nix
     ./networking-mammoth-skate.nix
+    ./vlan.nix
+    ./resolved-lan.nix
     ./dnsmasq.nix
     ./avahi.nix
     ./code-server.nix
@@ -230,7 +232,7 @@ in
     # networking = { ... }
 
     environment.systemPackages = with pkgs; [
-      autofs5   # Explicitly include autofs utilities @codebase
+      autofs5 # Explicitly include autofs utilities @codebase
       disko
       zfs
       binutils

@@ -87,6 +87,13 @@
         { config, lib, ... }:
         {
           config = {
+            networking.vlan = {
+              enable = true;
+              id = 2;
+              addressPrefix = "192.168.2";
+              parentInterface = "en9";
+            };
+
             # Network bonding configuration (Darwin only)
             # Combines en0 (built-in) and en8 (OWC hub) for ~1.8 Gbps aggregate bandwidth
             networking.bond = {

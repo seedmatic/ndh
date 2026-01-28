@@ -21,6 +21,7 @@
     ./linux-builder.nix
     ./distributed-builds.nix
     ./network-bond.nix
+    ./vlan.nix
     ./podman-remote-client.nix
     ./raycast.nix
     # ./socket_vmnet.nix
