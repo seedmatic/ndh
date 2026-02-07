@@ -35,8 +35,8 @@ add_candidate() {
 # 1. Explicit override
 add_candidate "${LIMA_NIXOS_CONFIG_PATH:-}"
 # 2 & 3: Mounted macOS & Linux style homes
-add_candidate "/Users/$USERNAME/Gits/nxmatic/nix-darwin-home"
-add_candidate "/home/$USERNAME/Gits/nxmatic/nix-darwin-home"
+add_candidate "/private/var/lib/git/nxmatic/nix-darwin-home"
+add_candidate "/var/lib/git/nxmatic/nix-darwin-home"
 
 SRC=""
 for cand in "${CANDIDATES[@]:-}"; do
