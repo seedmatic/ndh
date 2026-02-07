@@ -385,7 +385,11 @@ in
       };
       extraText = lib.mkOption {
         type = lib.types.str;
-        default = "";
+        default = ''
+          # Force IPv4 only for NFS server (disable IPv6)
+          nfs.server.nfsv4.tcp6 = 0
+          nfs.server.nfsv3.tcp6 = 0
+        '';
         description = "Extra nfs.conf lines to append verbatim.";
       };
     };

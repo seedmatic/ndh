@@ -106,6 +106,11 @@ in
       hostKeyPaths = [ hostKeyPrivateFile ];
       hostCertificatePath = hostKeyPublicCert;
 
+      # Force IPv4 only for SSH server
+      extraSettings = {
+        AddressFamily = "inet";
+      };
+
       # Enable SSH client policy to generate guest stanzas system-wide
       client.enable = true;
     };

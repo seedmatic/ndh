@@ -255,6 +255,7 @@ in
               type = types.lines;
               default = ''
                 Host *
+                  AddressFamily inet
                   ServerAliveInterval 30
                   ServerAliveCountMax 3
                   ControlMaster auto

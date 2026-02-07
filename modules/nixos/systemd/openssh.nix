@@ -33,6 +33,11 @@ in
     principalsCommandSource = principalsScriptStore;
     groupKeysCommandSource = groupKeysScriptStore;
     hostKeyPaths = [ hostKeyPath ];
+    
+    # Force IPv4 only for SSH server
+    extraSettings = {
+      AddressFamily = "inet";
+    };
   };
 
   services.openssh = {
@@ -61,10 +66,18 @@ in
   # OpenSSH client configuration: allow includes for drop-ins under /etc/ssh/ssh_config.d
   programs.ssh = {
     extraConfig =
-      let
-        lines = builtins.map (g: "Include ${g}") config.opensshPolicy.includeClientGlobs;
-      in
-      lib.concatStringsSep "\n" lines + "\n";
+      ''
+        Host *
+          AddressFamily inet
+          ServerAliveInterval 30
+          ServerAliveCountMax 3
+      ''
+      + (
+        let
+          lines = builtins.map (g: "Include ${g}") config.opensshPolicy.includeClientGlobs;
+        in
+        "\n" + lib.concatStringsSep "\n" lines + "\n"
+      );
   };
 
   # Ensure the group authorized keys directory exists and create keys

@@ -30,6 +30,12 @@ let
     nfsd."lease-time" = cfg.nfsConf.leaseTime;
 
     statd.port = cfg.nfsConf.statdPort;
+    
+    # Force IPv4 only for NFS (disable IPv6)
+    server = {
+      "nfsv3.tcp6" = false;
+      "nfsv4.tcp6" = false;
+    };
   };
 
   exportsText =
@@ -209,7 +215,7 @@ in
       extraText = lib.mkOption {
         type = lib.types.str;
         default = "";
-        description = "Extra nfs.conf lines to append verbatim.";
+        description = "Extra nfs.conf lines to append verbatim (note: cannot be used with nfsSettings).";
       };
     };
 
@@ -226,10 +232,8 @@ in
     };
 
     # Feed upstream nfs.nix so it renders /etc/nfs.conf with our defaults
+      # Note: extraConfig cannot be used together with settings in NixOS
     services.nfs.settings = lib.mkIf cfg.nfsConf.enable (lib.mkDefault nfsSettings);
-    services.nfs.extraConfig = lib.mkIf (
-      cfg.nfsConf.enable && cfg.nfsConf.extraText != ""
-    ) cfg.nfsConf.extraText;
 
     services.nfs.server = lib.mkIf cfg.server.enable {
       enable = true;
