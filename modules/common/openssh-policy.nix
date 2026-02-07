@@ -88,7 +88,7 @@ in
     trustedCAPath = mkOption {
       type = types.nullOr types.str;
       default = null;
-      description = "Path to TrustedUserCAKeys file.";
+      description = "Path to TrustedUserCAKeys file (system-readable, e.g. /etc/ssh/keys.d/... ).";
     };
 
     # Principals file

@@ -9,11 +9,31 @@ let
   dollar = "$";
   hostname =
     if config.networking.hostName != "" then config.networking.hostName else "nix-darwin-home";
+  profile = config.profile or { name = "default"; host = { hostName = hostname; }; };
+  profileName = profile.name;
+  hostIdent = if (profile.host ? hostAlias && profile.host.hostAlias != null && profile.host.hostAlias != "") then profile.host.hostAlias else profile.host.hostName;
   # Reuse existing host key generated/managed by NixOS (ed25519 preferred)
   hostKeyPath = "/etc/ssh/ssh_host_ed25519_key"; # runtime path consumed by sshd
   hostCertPath = null; # Add signed host cert later if desired
   keysDir = config.opensshPolicy.keysDir;
-  caPublicKeyPath = "${keysDir}/mammoth_skate-ca.pub"; # ensure provisioning populates (activation below copies if present)
+  caPublicKeyPath = "${keysDir}/trusted-user-ca.pub"; # generated from all *-ca.pub keys in keysDir
+  caKeysYaml = pkgs.runCommand "ssh-ca-keys.yaml"
+    {
+      buildInputs = [ pkgs.bash pkgs.coreutils-full pkgs.gnugrep pkgs.gnused pkgs.gawk pkgs.openssh pkgs.yq-go pkgs.hostname ];
+    }
+    ''
+      bash ${../../home-manager/ssh-generate-keys-yaml.sh} "${profileName}" "${hostIdent}" "${../../home-manager/ssh.d/keys.yaml}" "$out"
+      yq eval '(.keys | with_entries(select((.value.usage // []) | contains(["ssh-authority"])))) as $k | {"keys": $k}' -i "$out"
+      # Drop any private material for CA keys (public CA only)
+      yq eval '(.keys | with_entries(.value.private = null)) as $k | {"keys": $k}' -i "$out"
+    '';
+  caKeysDir = pkgs.runCommand "ssh-ca-keys.d"
+    {
+      buildInputs = [ pkgs.bash pkgs.coreutils-full pkgs.yq-go pkgs.gnused pkgs.gnugrep pkgs.gawk pkgs.gettext ];
+    }
+    ''
+      ${pkgs.bash}/bin/bash ${../../home-manager/ssh-extract-keys.sh} "${caKeysYaml}" "$out"
+    '';
   principalsScriptStore = pkgs.writeText "ssh-authorized-principals-command.sh" (
     builtins.readFile ../../common/ssh/authorized-principals-command.sh
   );
@@ -94,6 +114,7 @@ in
           groupKeysScript = groupKeysScriptStore;
           activationLogger = activationLogger;
           activationTag = activationTag;
+          caKeysDir = caKeysDir;
         }
       );
     };

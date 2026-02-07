@@ -6,6 +6,7 @@ main() {
 
   SSH_AUTH_KEYS_DIR=/etc/ssh/authorized_keys.d
   SSH_KEYS_DIR=@keysDir@
+  CA_KEYS_DIR=@caKeysDir@
   HOSTNAME=@hostname@
   PRINCIPALS_CMD=@principalsCommand@
   GROUP_CMD=@groupCommand@
@@ -22,9 +23,22 @@ main() {
     ln -sf "${SSH_KEY_NIXBLD}.pub" "$SSH_AUTH_KEYS_DIR/nixbld"
   fi
 
-  if [ -f "$SSH_KEYS_DIR/mammoth_skate-ca.pub" ]; then
-    chmod 644 "$SSH_KEYS_DIR/mammoth_skate-ca.pub"
+  # Install CA public keys from system derivation
+  if [ -d "$CA_KEYS_DIR" ]; then
+    cp -f "$CA_KEYS_DIR"/*-ca.pub "$SSH_KEYS_DIR"/ 2>/dev/null || true
   fi
+  # Normalize CA public keys and build aggregate TrustedUserCAKeys file
+  for ca in "$SSH_KEYS_DIR"/*-ca.pub; do
+    [ -f "$ca" ] || continue
+    chmod 644 "$ca"
+  done
+  : > "$SSH_KEYS_DIR/trusted-user-ca.pub"
+  for ca in "$SSH_KEYS_DIR"/*-ca.pub; do
+    [ -f "$ca" ] || continue
+    cat "$ca" >> "$SSH_KEYS_DIR/trusted-user-ca.pub"
+    printf "\n" >> "$SSH_KEYS_DIR/trusted-user-ca.pub"
+  done
+  chmod 644 "$SSH_KEYS_DIR/trusted-user-ca.pub"
 
   install -m 555 "$GROUP_SRC" /etc/ssh/$GROUP_CMD
   if [ ! -e /etc/ssh/ssh-group-authorized-keys ]; then

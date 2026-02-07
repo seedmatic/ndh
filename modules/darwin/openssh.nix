@@ -11,7 +11,7 @@ let
   hostKeysDir = "${userHome}/.ssh/keys.d";
   hostKeyPrivateFile = "${hostKeysDir}/host";
   hostKeyPublicCert = "${hostKeysDir}/host-mammoth-skate-host-cert.pub";
-  caPublicKeyFile = "${hostKeysDir}/mammoth-skate-ca.pub";
+  caPublicKeyFile = "${config.opensshPolicy.keysDir}/trusted-user-ca.pub";
   principalsScriptStore = pkgs.writeText "ssh-authorized-principals-command.sh" (
     builtins.readFile ../common/ssh/authorized-principals-command.sh
   );
@@ -59,6 +59,26 @@ let
   '';
 
   sshKeysYamlStore = pkgs.writeText "ssh-keys.yaml" sshKeysYamlText;
+
+  # System CA keys derivation (public CA keys only)
+  caKeysYaml = pkgs.runCommand "ssh-ca-keys.yaml"
+    {
+      buildInputs = [ pkgs.bash pkgs.coreutils-full pkgs.gnugrep pkgs.gnused pkgs.gawk pkgs.openssh pkgs.yq-go pkgs.hostname ];
+    }
+    ''
+      bash ${../home-manager/ssh-generate-keys-yaml.sh} "${profileName}" "${hostAlias}" "${../home-manager/ssh.d/keys.yaml}" "$out"
+      yq eval '(.keys | with_entries(select((.value.usage // []) | contains(["ssh-authority"])))) as $k | {"keys": $k}' -i "$out"
+      # Drop any private material for CA keys (public CA only)
+      yq eval '(.keys | with_entries(.value.private = null)) as $k | {"keys": $k}' -i "$out"
+    '';
+
+  caKeysDir = pkgs.runCommand "ssh-ca-keys.d"
+    {
+      buildInputs = [ pkgs.bash pkgs.coreutils-full pkgs.yq-go pkgs.gnused pkgs.gnugrep pkgs.gawk pkgs.gettext ];
+    }
+    ''
+      ${pkgs.bash}/bin/bash ${../home-manager/ssh-extract-keys.sh} "${caKeysYaml}" "$out"
+    '';
 
   sshdConfigText =
     let
@@ -135,6 +155,16 @@ in
     # Ensure OpenSSH activation runs in the etc fragment (installs /etc/ssh helper scripts)
     system.activationScripts.etc.text = lib.mkAfter ''
       bash ${opensshActivationScript}
+      # Install system CA public keys into /etc/ssh/keys.d (single system location)
+      install -d -m 755 "${config.opensshPolicy.keysDir}"
+      rsync -av --chmod=644 "${caKeysDir}/" "${config.opensshPolicy.keysDir}/" >/dev/null || true
+      : > "${config.opensshPolicy.keysDir}/trusted-user-ca.pub"
+      for ca in "${config.opensshPolicy.keysDir}/"*-ca.pub; do
+        [ -f "$ca" ] || continue
+        cat "$ca" >> "${config.opensshPolicy.keysDir}/trusted-user-ca.pub"
+        printf "\n" >> "${config.opensshPolicy.keysDir}/trusted-user-ca.pub"
+      done
+      chmod 644 "${config.opensshPolicy.keysDir}/trusted-user-ca.pub"
     '';
 
   };

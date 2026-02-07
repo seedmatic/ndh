@@ -54,7 +54,8 @@ let
         fi
       '';
 
-  # Script to extract host keys and CA public key from keys.yaml
+  # Script to extract keys from keys.yaml
+  # Full set (used for internal scripts like KnownHostsCommand)
   keysDir =
     pkgs.runCommand "${userName}::ssh-host-keys.d"
       {
@@ -70,6 +71,34 @@ let
       }
       ''
         ${pkgs.bash}/bin/bash ${./ssh-extract-keys.sh} "${yamlHostKeys}" "$out"
+      '';
+
+  # User-only keys: exclude ssh-authority keys (system CA keys live in /etc/ssh/keys.d)
+  userKeysYaml =
+    pkgs.runCommand "${userName}::ssh-user-keys.yaml"
+      {
+        buildInputs = [ pkgs.yq-go ];
+      }
+      ''
+        yq eval '(.keys | with_entries(select((.value.usage // []) | contains(["ssh-authority"]) | not))) as $k | {"keys": $k}' \
+          "${yamlHostKeys}" > "$out"
+      '';
+
+  userKeysDir =
+    pkgs.runCommand "${userName}::ssh-user-keys.d"
+      {
+        buildInputs = [
+          pkgs.bash
+          pkgs.coreutils-full
+          pkgs.yq-go
+          pkgs.gnused
+          pkgs.gnugrep
+          pkgs.gawk
+          pkgs.gettext
+        ];
+      }
+      ''
+        ${pkgs.bash}/bin/bash ${./ssh-extract-keys.sh} "${userKeysYaml}" "$out"
       '';
 
   # Externalized KnownHostsCommand script sourced from repo (templated with keysDir)
@@ -123,7 +152,7 @@ in
     let
       deploySSHKeysScript = pkgs.replaceVars ./ssh-keys.d/deploy-ssh-keys.sh {
         rsync = "${pkgs.rsync}/bin/rsync";
-        keysDir = keysDir;
+        keysDir = userKeysDir;
         activationLogger = activationLogger;
         activationTag = activationTagDeploy;
       };
