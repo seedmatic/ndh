@@ -157,7 +157,9 @@ in
       bash ${opensshActivationScript}
       # Install system CA public keys into /etc/ssh/keys.d (single system location)
       install -d -m 755 "${config.opensshPolicy.keysDir}"
-      rsync -av --chmod=644 "${caKeysDir}/" "${config.opensshPolicy.keysDir}/" >/dev/null || true
+      for key in "${caKeysDir}/"*; do
+        [ -e "$key" ] && install -m 644 "$key" "${config.opensshPolicy.keysDir}/"
+      done
       : > "${config.opensshPolicy.keysDir}/trusted-user-ca.pub"
       for ca in "${config.opensshPolicy.keysDir}/"*-ca.pub; do
         [ -f "$ca" ] || continue
