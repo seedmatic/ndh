@@ -30,13 +30,13 @@ main() {
   # Normalize CA public keys and build aggregate TrustedUserCAKeys file
   for ca in "$SSH_KEYS_DIR"/*-ca.pub; do
     [ -f "$ca" ] || continue
-    [ "$(basename "$ca")" = "trusted-user-ca.pub" ] && continue
+    basename "$ca" | grep -q '^trusted-user-ca\.pub$' && continue
     chmod 644 "$ca"
   done
   : > "$SSH_KEYS_DIR/trusted-user-ca.pub"
   for ca in "$SSH_KEYS_DIR"/*-ca.pub; do
     [ -f "$ca" ] || continue
-    [ "$(basename "$ca")" = "trusted-user-ca.pub" ] && continue
+    basename "$ca" | grep -q '^trusted-user-ca\.pub$' && continue
     cat "$ca" >> "$SSH_KEYS_DIR/trusted-user-ca.pub"
     printf "\n" >> "$SSH_KEYS_DIR/trusted-user-ca.pub"
   done
