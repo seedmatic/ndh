@@ -160,7 +160,9 @@ in
       ${pkgs.rsync}/bin/rsync -av --chmod=u+rw,go=r "${caKeysDir}/" "${config.opensshPolicy.keysDir}/" || true
       : > "${config.opensshPolicy.keysDir}/trusted-user-ca.pub"
       for ca in "${config.opensshPolicy.keysDir}/"*-ca.pub; do
-        [ -f "$ca" ] || continue        [ "$(basename "$ca")" = "trusted-user-ca.pub" ] && continue        cat "$ca" >> "${config.opensshPolicy.keysDir}/trusted-user-ca.pub"
+        [ -f "$ca" ] || continue
+        basename "$ca" | grep -q '^trusted-user-ca\.pub$' && continue
+        cat "$ca" >> "${config.opensshPolicy.keysDir}/trusted-user-ca.pub"
         printf "\n" >> "${config.opensshPolicy.keysDir}/trusted-user-ca.pub"
       done
       chmod 644 "${config.opensshPolicy.keysDir}/trusted-user-ca.pub"
