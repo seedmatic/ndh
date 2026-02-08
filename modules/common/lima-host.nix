@@ -14,6 +14,7 @@ let
   # Prefer the injected specialArg hostProfile if provided (flake does this already for NixOS),
   # otherwise fall back to config.profile.host.
   resolvedHostProfile = if hostProfile != null then hostProfile else config.profile.host;
+  profileUser = config.user.name;
   derivedHostName =
     if
       (
@@ -66,6 +67,7 @@ in
       LIMA_HOSTNAME = hostName;
       LIMA_GUESTNAME = guestName;
       LIMA_DN = domainName;
+      LIMA_USERNAME = profileUser;
     };
     networking.hostName = lib.mkForce (if cfg.isGuest then "${hostName}-${guestName}" else hostName);
   };
