@@ -51,7 +51,8 @@ in
   '';
 
   # Create symlink to host-specific flake for darwin-rebuild without --flake
-  # Points to GitHub repo (develop branch) - no local clone needed
+  # Point to the exact nix-darwin-home source used for this activation (store path),
+  # so /etc/nix-darwin stays reproducible and does not depend on mutable git state.
   # Use hostAlias if available (e.g., "alcide"), otherwise fall back to hostName
   environment.etc."nix-darwin/flake.nix".source =
     let
@@ -64,11 +65,11 @@ in
           config.profile.host.hostAlias
         else
           config.networking.hostName;
-      # Create a flake wrapper that references GitHub
+      # Create a flake wrapper that references the activated nix-darwin-home source
       flakeContent = ''
         {
           description = "nix-darwin configuration for ${hostDir}";
-          inputs.nix-darwin-home.url = "github:nxmatic/nix-darwin-home/develop?dir=hosts/${hostDir}";
+          inputs.nix-darwin-home.url = "path:${self.outPath}?dir=hosts/${hostDir}";
           outputs = { nix-darwin-home, ... }: nix-darwin-home.outputs;
         }
       '';

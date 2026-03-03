@@ -274,6 +274,14 @@ If nix can't find the builder:
 2. Verify the SSH key path in the machines file matches the actual key location
 3. Test SSH connection manually before trying builds
 
+### macOS Bootstrap Recovery Path
+
+If Darwin bootstrap becomes unreliable (for example: repeated activation failures, first-login provisioning drift, or fragile UI-driven setup behavior), use the dedicated macOS image bootstrap workflow from the sibling repository:
+
+- `../macos-image-template@nxmatic/README.adoc`
+
+That project is the preferred fallback to recover a clean, reproducible macOS base image (Tart/Packer + flox tooling) before retrying this `nix-darwin-home` bootstrap.
+
 ## Post-Bootstrap
 
 After successful bootstrap, you can continue to use either:
@@ -285,6 +293,15 @@ nix run nix-darwin -- switch --flake .
 # Or if darwin-rebuild is now in your PATH
 darwin-rebuild switch --flake .
 ```
+
+If `bioskop` already built the same system closure, you can copy it directly instead of rebuilding locally:
+
+```bash
+# Example: copy a prebuilt darwin closure from bioskop
+nix copy --from ssh-ng://nxmatic@bioskop /nix/store/bsxz8jp32k0rapkbrv7mchgxv26g0rch-darwin-system-25.11.688427b.drv
+```
+
+This is useful right after bootstrap to speed up the first `switch` on another Darwin host.
 
 The configuration will automatically:
 
