@@ -190,7 +190,7 @@ in
     # Shared PATH used by sshd SetEnv (override per-host if needed)
     setEnvPath = mkOption {
       type = types.str;
-      default = "/bin:/usr/bin:/run/wrappers/bin:/run/current-system/sw/bin";
+      default = "/run/wrappers/bin:/run/current-system/sw/bin:/bin:/usr/bin";
       description = "PATH value applied via sshd SetEnv for non-interactive SSH sessions.";
     };
 

@@ -64,6 +64,17 @@
               serverUrl = "http://192.168.1.193:8080";
               enableSSH = true;
             };
+
+            # Trust bioskop local signing key for remote closure imports (nix copy --from ssh-ng://nxmatic@bioskop)
+            nix.settings = {
+              extra-trusted-public-keys = [
+                "bioskop-cache:H6oZXzgzujE4+saXVe6LDfzBRUUVCgPYYTFLoxK7IuE="
+              ];
+              trusted-users = [
+                "root"
+                "nxmatic"
+              ];
+            };
           };
         };
     in

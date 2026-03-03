@@ -79,6 +79,16 @@
 
             # Enable cross-host distributed builds (Darwin only)
             services.crossHostBuilders.enable = true;
+
+            # Sign locally produced store paths so peer hosts can trust nix copy --from ssh-ng://bioskop
+            nix.settings = {
+              secret-key-files = [ "/etc/nix/bioskop-cache.key" ];
+              trusted-users = [
+                "root"
+                "builder"
+                "nxmatic"
+              ];
+            };
           };
         };
 

@@ -14,7 +14,10 @@ let
   # Prefer the injected specialArg hostProfile if provided (flake does this already for NixOS),
   # otherwise fall back to config.profile.host.
   resolvedHostProfile = if hostProfile != null then hostProfile else config.profile.host;
-  profileUser = config.user.name;
+  profileUser =
+    lib.attrByPath [ "profile" "user" "name" ]
+      (throw "lima-host: required option profile.user.name is missing")
+      config;
   derivedHostName =
     if
       (

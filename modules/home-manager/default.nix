@@ -37,6 +37,12 @@ let
     else
       homeDirectoryFallback;
 
+  homeDirectoryString = toString homeDirectory;
+  homeDirectorySafe =
+    if pkgs.stdenv.isDarwin && builtins.match ".* .*" homeDirectoryString != null
+    then "/Users/${userName}"
+    else homeDirectoryString;
+
   activationLoggerArgs =
     if specialArgsResolved ? activationLogger then
       specialArgsResolved.activationLogger
@@ -165,14 +171,14 @@ in
   };
 
   home = {
-    homeDirectory = lib.mkForce homeDirectory; # Ensure home directory is set
+    homeDirectory = lib.mkForce homeDirectorySafe; # Ensure home directory is set and avoid space-splitting activation issues on Darwin
 
     stateVersion = "25.05";
 
     sessionPath = [
-      "${homeDirectory}/.rd/bin"
-      "${homeDirectory}/.local/bin"
-      "${homeDirectory}/.krew/bin"
+      "${homeDirectorySafe}/.rd/bin"
+      "${homeDirectorySafe}/.local/bin"
+      "${homeDirectorySafe}/.krew/bin"
     ];
 
     # Define package definitions for current user environment
