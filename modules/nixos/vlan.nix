@@ -67,15 +67,14 @@ in
       serviceConfig = {
         Type = "oneshot";
         RemainAfterExit = false;
-        Environment =
-          [
-            "VLAN_ID=${toString cfg.id}"
-            "VLAN_PARENT=${parentInterface}"
-            "ADDRESS_PREFIX=${addressPrefix}"
-            "NETMASK_PREFIX=${toString netmaskPrefix}"
-            "SOURCE_IFACE=${addressSourceInterface}"
-          ]
-          ++ lib.optionals (vlanName != null) [ "VLAN_NAME=${vlanName}" ];
+        Environment = [
+          "VLAN_ID=${toString cfg.id}"
+          "VLAN_PARENT=${parentInterface}"
+          "ADDRESS_PREFIX=${addressPrefix}"
+          "NETMASK_PREFIX=${toString netmaskPrefix}"
+          "SOURCE_IFACE=${addressSourceInterface}"
+        ]
+        ++ lib.optionals (vlanName != null) [ "VLAN_NAME=${vlanName}" ];
         ExecStart = "${vlanSetupScript}";
       };
       wantedBy = [ "multi-user.target" ];

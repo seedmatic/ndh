@@ -61,24 +61,43 @@ let
   sshKeysYamlStore = pkgs.writeText "ssh-keys.yaml" sshKeysYamlText;
 
   # System CA keys derivation (public CA keys only)
-  caKeysYaml = pkgs.runCommand "ssh-ca-keys.yaml"
-    {
-      buildInputs = [ pkgs.bash pkgs.coreutils-full pkgs.gnugrep pkgs.gnused pkgs.gawk pkgs.openssh pkgs.yq-go pkgs.hostname ];
-    }
-    ''
-      bash ${../home-manager/ssh-generate-keys-yaml.sh} "${profileName}" "${hostAlias}" "${../home-manager/ssh.d/keys.yaml}" "$out"
-      yq eval '(.keys | with_entries(select((.value.usage // []) | contains(["ssh-authority"])))) as $k | {"keys": $k}' -i "$out"
-      # Drop any private material for CA keys (public CA only)
-      yq eval '(.keys | with_entries(.value.private = null)) as $k | {"keys": $k}' -i "$out"
-    '';
+  caKeysYaml =
+    pkgs.runCommand "ssh-ca-keys.yaml"
+      {
+        buildInputs = [
+          pkgs.bash
+          pkgs.coreutils-full
+          pkgs.gnugrep
+          pkgs.gnused
+          pkgs.gawk
+          pkgs.openssh
+          pkgs.yq-go
+          pkgs.hostname
+        ];
+      }
+      ''
+        bash ${../home-manager/ssh-generate-keys-yaml.sh} "${profileName}" "${hostAlias}" "${../home-manager/ssh.d/keys.yaml}" "$out"
+        yq eval '(.keys | with_entries(select((.value.usage // []) | contains(["ssh-authority"])))) as $k | {"keys": $k}' -i "$out"
+        # Drop any private material for CA keys (public CA only)
+        yq eval '(.keys | with_entries(.value.private = null)) as $k | {"keys": $k}' -i "$out"
+      '';
 
-  caKeysDir = pkgs.runCommand "ssh-ca-keys.d"
-    {
-      buildInputs = [ pkgs.bash pkgs.coreutils-full pkgs.yq-go pkgs.gnused pkgs.gnugrep pkgs.gawk pkgs.gettext ];
-    }
-    ''
-      ${pkgs.bash}/bin/bash ${../home-manager/ssh-extract-keys.sh} "${caKeysYaml}" "$out"
-    '';
+  caKeysDir =
+    pkgs.runCommand "ssh-ca-keys.d"
+      {
+        buildInputs = [
+          pkgs.bash
+          pkgs.coreutils-full
+          pkgs.yq-go
+          pkgs.gnused
+          pkgs.gnugrep
+          pkgs.gawk
+          pkgs.gettext
+        ];
+      }
+      ''
+        ${pkgs.bash}/bin/bash ${../home-manager/ssh-extract-keys.sh} "${caKeysYaml}" "$out"
+      '';
 
   sshdConfigText =
     let

@@ -125,7 +125,7 @@ in
     let
       deploySSHKeysScript = pkgs.replaceVars ./ssh-keys.d/deploy-ssh-keys.sh {
         rsync = "${pkgs.rsync}/bin/rsync";
-        keysDir = keysDir;  # Deploy all keys including CA private keys
+        keysDir = keysDir; # Deploy all keys including CA private keys
         activationLogger = activationLogger;
         activationTag = activationTagDeploy;
       };

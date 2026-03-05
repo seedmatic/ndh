@@ -39,9 +39,10 @@ let
 
   homeDirectoryString = toString homeDirectory;
   homeDirectorySafe =
-    if pkgs.stdenv.isDarwin && builtins.match ".* .*" homeDirectoryString != null
-    then "/Users/${userName}"
-    else homeDirectoryString;
+    if pkgs.stdenv.isDarwin && builtins.match ".* .*" homeDirectoryString != null then
+      "/Users/${userName}"
+    else
+      homeDirectoryString;
 
   activationLoggerArgs =
     if specialArgsResolved ? activationLogger then

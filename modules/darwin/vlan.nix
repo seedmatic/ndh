@@ -71,15 +71,14 @@ in
         RunAtLoad = true;
         KeepAlive = false;
         WatchPaths = watchPaths;
-        EnvironmentVariables =
-          {
-            VLAN_ID = toString cfg.id;
-            VLAN_PARENT = parentInterface;
-            ADDRESS_PREFIX = addressPrefix;
-            NETMASK = netmask;
-            SOURCE_IFACE = addressSourceInterface;
-          }
-          // lib.optionalAttrs (vlanName != null) { VLAN_NAME = vlanName; };
+        EnvironmentVariables = {
+          VLAN_ID = toString cfg.id;
+          VLAN_PARENT = parentInterface;
+          ADDRESS_PREFIX = addressPrefix;
+          NETMASK = netmask;
+          SOURCE_IFACE = addressSourceInterface;
+        }
+        // lib.optionalAttrs (vlanName != null) { VLAN_NAME = vlanName; };
         StandardOutPath = "/var/log/vlan-setup.log";
         StandardErrorPath = "/var/log/vlan-setup.log";
       };
