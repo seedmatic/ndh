@@ -7,6 +7,11 @@
 let
   profile = config._module.specialArgs.profile;
   userName = profile.user.name;
+  coreShellPath = [
+    "/run/wrappers/bin"
+    "/run/current-system/sw/bin"
+    "/etc/profiles/per-user/${userName}/bin"
+  ];
   # VS Code shell integration
   # If VS Code is injecting (VSCODE_INJECTION=1), it will handle integration automatically
   # Otherwise, we manually source it for proper shell integration features
@@ -38,23 +43,23 @@ in
     envExtra = builtins.readFile ./shell/zshenv.zsh;
 
     initContent = ''
-            ${vscodeShellIntegration "zsh"}
-            source "$ZDOTDIR/rcs/zshrc.zsh"
-      su
-            # Avoid autofs trigger on the first-level /net mountpoint, but allow
-            # completion once inside /net/<host>/...
-            zstyle ':completion:*:paths' ignored-patterns '/net'
-            zstyle ':completion:*:(cd|chdir|pushd|popd|ls):*' ignored-patterns '/net'
+      ${vscodeShellIntegration "zsh"}
+      source "$ZDOTDIR/rcs/zshrc.zsh"
+
+      # Avoid autofs trigger on the first-level /net mountpoint, but allow
+      # completion once inside /net/<host>/...
+      zstyle ':completion:*:paths' ignored-patterns '/net'
+      zstyle ':completion:*:(cd|chdir|pushd|popd|ls):*' ignored-patterns '/net'
     '';
   };
 
   programs.bash = {
     enable = true;
-
-    bashrcExtra = ''
-      export PATH=/etc/profiles/per-user/$USER/bin:/run/current-system/sw/bin:$PATH
-    '';
   };
+
+  # Ensure all interactive shells (including VS Code terminals) receive the
+  # core NixOS/Nix profile paths in a consistent order.
+  home.sessionPath = coreShellPath;
 
   home.activation.zdotdir =
     let
