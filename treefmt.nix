@@ -1,6 +1,8 @@
 {
   pkgs,
-  projectRootFile ? ".git/config",
+  # Worktree-safe root marker: in split bare/worktree layouts `.git/config`
+  # does not exist in the worktree because `.git` is a file.
+  projectRootFile ? "flake.nix",
 }:
 {
   inherit projectRootFile;

@@ -403,7 +403,7 @@
           pkgs = pkgsFor { inherit system; };
           treefmtConfig = import ./treefmt.nix {
             inherit pkgs;
-            projectRootFile = ".git/config";
+            projectRootFile = "flake.nix";
           };
         in
         inputs.treefmt-nix.lib.mkWrapper pkgs treefmtConfig
