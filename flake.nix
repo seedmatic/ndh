@@ -149,6 +149,7 @@
       mkSpecialArgs =
         {
           modules,
+          system,
           extraArgs ? { },
           ...
         }:
@@ -161,7 +162,9 @@
             }
           );
           # Provide activation logger directly from the store (no /etc indirection)
-          activationLoggerScriptLinux = pkgsForLinux.writeText "activation-logger.sh" ''
+          # and ensure it is built for the current target system.
+          pkgsForSystem = pkgsFor { inherit system; };
+          activationLoggerScript = pkgsForSystem.writeText "activation-logger.sh" ''
             #!/usr/bin/env bash
             LOGGER_CMD=""
             source ${./modules/common/default.d/activation-logger.sh}
@@ -172,7 +175,7 @@
           _modules = modules;
           nixpkgsInput = nixpkgs;
           activationLogger = {
-            script = activationLoggerScriptLinux;
+            script = activationLoggerScript;
             cmd = "";
           };
         }
@@ -222,6 +225,7 @@
           };
           specialArgs = mkSpecialArgs {
             inherit modules;
+            system = "aarch64-darwin";
             extraArgs = { inherit catalog; };
           };
         in
@@ -289,6 +293,7 @@
           };
           specialArgs = mkSpecialArgs {
             inherit modules;
+            system = "aarch64-linux";
             extraArgs = {
               inherit hostProfile;
               inherit catalog;
@@ -335,6 +340,7 @@
 
           ext4SpecialArgs = mkSpecialArgs {
             modules = ext4Modules;
+            system = "aarch64-linux";
             extraArgs = {
               inherit hostProfile catalog;
               containerRegistrySystem = containerRegistryConfiguration;
