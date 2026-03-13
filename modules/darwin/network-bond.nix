@@ -53,9 +53,10 @@ let
       esac
     done
 
-    for bridge in $(ifconfig -l | tr ' ' '\n' | grep '^bridge'); do
-      route -n delete default -ifscope "$bridge" 2>/dev/null || true
-    done
+    # NOTE (@codebase): Do NOT delete default routes on bridge* interfaces here.
+    # Lima VZ/socket_vmnet networking may rely on bridge-scoped routes during
+    # guest bootstrap (e.g. 192.168.5.0/24 reachability for SSH bring-up).
+    # Removing bridge-scoped defaults can cause "no route to host" on limactl start.
   '';
 
   dhcpDaemonBlock = optionalString cfg.dhcp ''

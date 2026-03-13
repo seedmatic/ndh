@@ -79,12 +79,10 @@ if [ -n "$WIFI_SERVICE" ] && [ "${#ORDERED_ARRAY[@]}" -gt 0 ]; then
   fi
 fi
 
-# Remove default routes from Lima bridge interfaces (bridge100, bridge101, etc.)
-for bridge in $(ifconfig -l | tr ' ' '\n' | grep '^bridge'); do
-  if netstat -rn | grep -q "^default.*$bridge"; then
-    echo "[$(date)] Lima bridge $bridge has default route, removing..."
-    route -n delete default -ifscope "$bridge" 2>/dev/null || true
-  fi
-done
+# NOTE (@codebase): Preserve bridge-scoped defaults.
+# Lima startup can temporarily depend on these routes for guest reachability.
+# Deleting them here has been observed to cause intermittent
+# "connect tcp 192.168.5.x:22: no route to host" during limactl start.
+echo "[$(date)] Preserving bridge-scoped default routes (Lima compatibility)"
 
 echo "[$(date)] Bond maintenance complete"
