@@ -158,6 +158,8 @@ in
             lib.removePrefix "." config._module.specialArgs.catalog.networks.tailnet.domain
           else
             "tailnet.local";
+        incusRemoteName = config.networking.hostName;
+        incusRemoteAddress = "https://${config.networking.hostName}.local:8443";
         # Use the wrapped activation logger in the store
         activationLogger = config.activation.loggerScript;
         activationTag = "nixos.activationScripts.incusUserConfig";

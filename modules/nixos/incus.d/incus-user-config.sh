@@ -6,6 +6,8 @@ main() {
   # @user@ and @home@ substituted at build time
   auto_user="@user@"
   auto_home="@home@"
+  remote_name="@incusRemoteName@"
+  remote_address="@incusRemoteAddress@"
 
   autoconfig_dir="${auto_home}/.config/incus"
 
@@ -14,6 +16,10 @@ main() {
   cat <<'EOF' | install -Dm 600 -o "${auto_user}" -g "${auto_user}" /dev/stdin "${autoconfig_dir}/config.yml"
 default-remote: local
 remotes:
+  @incusRemoteName@:
+    addr: @incusRemoteAddress@
+    protocol: incus
+    public: false
   docker:
     addr: https://docker.io
     protocol: oci
@@ -28,6 +34,25 @@ remotes:
     public: true
 aliases: {}
 EOF
+
+  # Ensure the configured remote is actually authenticated for this user.
+  # This is idempotent and only performs bootstrap when remote auth is missing.
+  if runuser -u "${auto_user}" -- env HOME="${auto_home}" XDG_CONFIG_HOME="${auto_home}/.config" \
+    incus info "${remote_name}:" >/dev/null 2>&1; then
+    return 0
+  fi
+
+  token="$(incus --force-local config trust add "${auto_user}-bootstrap-$(date +%s)" | sed -n '2p')"
+  if [[ -z "${token}" ]]; then
+    echo "failed to obtain Incus trust token for remote bootstrap" >&2
+    return 1
+  fi
+
+  runuser -u "${auto_user}" -- env HOME="${auto_home}" XDG_CONFIG_HOME="${auto_home}/.config" \
+    incus remote remove "${remote_name}" >/dev/null 2>&1 || true
+
+  runuser -u "${auto_user}" -- env HOME="${auto_home}" XDG_CONFIG_HOME="${auto_home}/.config" \
+    incus remote add "${remote_name}" "${remote_address}" --accept-certificate --token "${token}"
 }
 
 activation_run "@activationTag@" main "$@"
