@@ -39,7 +39,7 @@ in
         if pkgs.stdenvNoCC.isDarwin then "osxkeychain" else "cache --timeout=1000000000";
       fetch.prune = true;
       http.sslVerify = true;
-      http.sslCAInfo = "/etc/ssl/certs/ca-certificates.crt";
+      http.sslCAInfo = "/etc/ssl/cert.pem";
       init.defaultBranch = "main";
       gh-get.root = "/var/lib/git";
       pull.rebase = true;

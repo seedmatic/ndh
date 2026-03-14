@@ -21,15 +21,34 @@ in
   # Enable automatic backup of conflicting files during activation
   environment.etc.backup.enable = true;
 
-  # Provide a deterministic CA bundle for both user and daemon contexts
-  # Use the canonical bundle path from pkgs.cacert and expose it at /etc/ssl/cert.pem for compatibility
+  # Provide a deterministic CA bundle for both user and daemon contexts.
   environment.etc."ssl/certs/ca-bundle.crt".source = "${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt";
   environment.etc."ssl/cert.pem".source = "${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt";
+  environment.etc."gitconfig".text = ''
+    [http]
+      sslVerify = true
+      sslCAInfo = /etc/ssl/cert.pem
+  '';
 
   # Add darwin-rebuild to system packages for easy rebuilds
   environment.systemPackages = [
     self.inputs.darwin.packages.${pkgs.stdenv.hostPlatform.system}.darwin-rebuild
   ];
+
+  # Export a canonical CA path for CLI tooling (including sudo -H flows)
+  # to avoid OpenSSL/libcurl/git trust-store drift on Darwin.
+  environment.variables = {
+    SSL_CERT_FILE = "/etc/ssl/cert.pem";
+    NIX_SSL_CERT_FILE = "/etc/ssl/cert.pem";
+    GIT_SSL_CAINFO = "/etc/ssl/cert.pem";
+    CURL_CA_BUNDLE = "/etc/ssl/cert.pem";
+  };
+
+  # Preserve TLS/CA environment variables through sudo so privileged nix/git
+  # commands don't require repeating `sudo env ...` on Darwin.
+  security.sudo.extraConfig = ''
+    Defaults env_keep += "SSL_CERT_FILE NIX_SSL_CERT_FILE GIT_SSL_CAINFO CURL_CA_BUNDLE"
+  '';
 
   # Belt-and-suspenders: ensure /run/current-system/sw/bin and /run/wrappers/bin (sudo wrapper)
   # are on PATH for login shells so darwin-rebuild and privileged tools are discoverable.
@@ -125,6 +144,7 @@ in
       extra-sandbox-paths = [
         "/etc/ssl/cert.pem"
         "/etc/ssl/certs/ca-bundle.crt"
+        "/etc/gitconfig"
         "${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
       ];
 
