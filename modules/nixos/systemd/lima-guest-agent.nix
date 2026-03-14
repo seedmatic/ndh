@@ -28,6 +28,9 @@ in
     wantedBy = [ "multi-user.target" ];
     after = [ "lima-cloud-init.service" ];
     requires = [ "lima-cloud-init.service" ];
+    unitConfig = {
+      ConditionPathExists = "${LIMA_CIDATA_MNT}/lima-guestagent";
+    };
     path = with pkgs; [
       util-linux
       yq-go
