@@ -16,19 +16,19 @@
   clientScopesDefault = [
     {
       clients = "127.0.0.1/8";
-      options = "no_root_squash";
+      options = "mapall=0:0";
     }
     {
       clients = "192.168.1.0/24";
-      options = "no_root_squash";
+      options = "mapall=0:0";
     }
     {
       clients = "100.64.0.0/10";
-      options = "no_root_squash";
+      options = "mapall=0:0";
     }
     {
       clients = "10.80.16.0/24";
-      options = "no_root_squash"; # socket_vmnet shared network (vmhost0)
+      options = "mapall=0:0"; # socket_vmnet shared network (vmhost0)
     }
   ];
 

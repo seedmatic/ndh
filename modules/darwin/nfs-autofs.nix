@@ -209,17 +209,30 @@ let
         optsStr:
         let
           opts = lib.splitString "," (if optsStr == "" then cfg.exportOptions else optsStr);
-          flagFor = opt: if opt == "ro" then "-ro" else "";
-          maprootFlag =
-            if lib.any (o: o == "no_root_squash") opts then
+          flagFor =
+            opt:
+            if opt == "ro" then
+              "-ro"
+            else if lib.hasPrefix "mapall=" opt then
+              "-mapall=${lib.removePrefix "mapall=" opt}"
+            else if lib.hasPrefix "maproot=" opt then
+              "-maproot=${lib.removePrefix "maproot=" opt}"
+            else
+              "";
+          explicitMapall = lib.any (o: lib.hasPrefix "mapall=" o) opts;
+          explicitMaproot = lib.any (o: lib.hasPrefix "maproot=" o) opts;
+          maprootFallback =
+            if explicitMapall || explicitMaproot then
+              ""
+            else if lib.any (o: o == "no_root_squash") opts then
               "-maproot=root"
             else if lib.any (o: o == "root_squash") opts then
               "-maproot=nobody"
             else
               "";
-          baseFlags = lib.filter (f: f != "") (map flagFor opts);
+          baseFlags = lib.filter (f: f != "") ((map flagFor opts) ++ [ maprootFallback ]);
         in
-        lib.concatStringsSep " " (baseFlags ++ [ maprootFlag ]);
+        lib.concatStringsSep " " baseFlags;
 
       cidrToNetworkMask =
         cidr:
@@ -302,7 +315,7 @@ in
 
     exportOptions = lib.mkOption {
       type = lib.types.str;
-      default = "-alldirs";
+      default = shared.exportOptionsDefault;
       description = "Common export options applied to every shared path.";
     };
 
