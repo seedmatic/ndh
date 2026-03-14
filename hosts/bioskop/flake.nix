@@ -81,14 +81,30 @@
             services.crossHostBuilders.enable = true;
 
             # Sign locally produced store paths so peer hosts can trust nix copy --from ssh-ng://bioskop
-            nix.settings = {
-              secret-key-files = [ "/etc/nix/bioskop-cache.key" ];
-              trusted-users = [
-                "root"
-                "builder"
-                "nxmatic"
-              ];
-            };
+            nix.settings = lib.mkMerge [
+              {
+                trusted-users = [
+                  "builder"
+                ];
+              }
+              (lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
+                secret-key-files = [ "/etc/nix/bioskop-cache.key" ];
+              })
+            ];
+
+            # Bootstrap cache signing key on NixOS guests if missing.
+            # The secret key remains local at /etc/nix and is not stored in the Nix store.
+            system.activationScripts.ensureBioskopCacheKey = lib.mkIf pkgs.stdenv.hostPlatform.isLinux ''
+              if [ ! -s /etc/nix/bioskop-cache.key ] || [ ! -s /etc/nix/bioskop-cache.pub ]; then
+                install -d -m 0755 /etc/nix
+                ${pkgs.nix}/bin/nix-store --generate-binary-cache-key \
+                  bioskop-cache \
+                  /etc/nix/bioskop-cache.key \
+                  /etc/nix/bioskop-cache.pub
+                chmod 600 /etc/nix/bioskop-cache.key
+                chmod 644 /etc/nix/bioskop-cache.pub
+              fi
+            '';
           };
         };
 
