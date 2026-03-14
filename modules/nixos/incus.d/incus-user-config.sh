@@ -52,7 +52,7 @@ EOF
     incus remote remove "${remote_name}" >/dev/null 2>&1 || true
 
   runuser -u "${auto_user}" -- env HOME="${auto_home}" XDG_CONFIG_HOME="${auto_home}/.config" \
-    incus remote add "${remote_name}" "${remote_address}" --accept-certificate --token "${token}"
+    incus remote add "${remote_name}" "${token}"
 }
 
 activation_run "@activationTag@" main "$@"

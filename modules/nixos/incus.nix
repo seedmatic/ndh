@@ -49,6 +49,8 @@ in
       config = {
         # Expose Incus HTTPS API for remote clients (e.g. Pulumi provider)
         "core.https_address" = "0.0.0.0:8443";
+        # Trust tokens should be short-lived for remote bootstrap auth.
+        "core.remote_token_expiry" = "10M";
       };
       networks = [
       ];
