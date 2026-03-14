@@ -7,8 +7,6 @@
 }:
 
 let
-  isX86_64 = pkgs.stdenv.hostPlatform.system == "x86_64-linux";
-  isAarch64 = pkgs.stdenv.hostPlatform.system == "aarch64-linux";
   kernelModules = [
     "ext4"
     "overlay"
@@ -130,22 +128,16 @@ in
         #   - Check a new build's store path naming stability when spec changes trivially.
         #   - Run `nix-store --optimise --dry-run` after several builds to assess dedup benefit.
       }
-      (lib.mkIf isX86_64 {
-        extra-platforms = [ "aarch64-linux" ];
-        extra-sandbox-paths = [ "/run/binfmt" ];
-      })
-      (lib.mkIf isAarch64 { extra-platforms = [ "x86_64-linux" ]; })
     ];
+
+    nix.extraOptions = ''
+      !include /etc/nix/nix.custom.conf
+    '';
 
     # Boot configuration
     boot = {
 
       inherit kernelModules supportedFilesystems;
-
-      binfmt.emulatedSystems = lib.mkMerge [
-        (lib.mkIf isX86_64 [ "aarch64-linux" ])
-        (lib.mkIf isAarch64 [ "x86_64-linux" ])
-      ];
 
       loader = {
         grub = {

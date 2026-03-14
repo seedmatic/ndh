@@ -57,8 +57,6 @@
       nixpkgsConfig = import ./modules/common/nixpkgs-config.nix;
       defaultSystems = [
         "aarch64-darwin"
-        "x86_64-darwin"
-        "x86_64-linux"
       ];
 
       forAllSystems = nixpkgs.lib.genAttrs defaultSystems;
