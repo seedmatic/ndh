@@ -18,17 +18,9 @@ let
       ;
   };
   insidersArtifacts = {
-    "x86_64-linux" = {
-      source = nvSources.vscode-insiders-linux-x64;
-      extension = "tar.gz";
-    };
     "aarch64-linux" = {
       source = nvSources.vscode-insiders-linux-arm64;
       extension = "tar.gz";
-    };
-    "x86_64-darwin" = {
-      source = nvSources.vscode-insiders-darwin-x64;
-      extension = "zip";
     };
     "aarch64-darwin" = {
       source = nvSources.vscode-insiders-darwin-arm64;
