@@ -46,6 +46,10 @@ in
     ui.enable = true;
     package = pkgs.incus;
     preseed = {
+      config = {
+        # Expose Incus HTTPS API for remote clients (e.g. Pulumi provider)
+        "core.https_address" = "0.0.0.0:8443";
+      };
       networks = [
       ];
       profiles = [
@@ -88,6 +92,9 @@ in
     firewall.trustedInterfaces = [
       "lan-br" # Allow DHCP/DNS/etc. on the Incus bridge
     ]; # Allow DHCP/DNS/etc. on bridge
+    firewall.allowedTCPPorts = [
+      8443 # Incus HTTPS API
+    ];
     # interfaces.externalbr0.macAddress =
     #   "52:55:55:71:36:47"; # match your lima.yaml
   };
