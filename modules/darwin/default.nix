@@ -29,6 +29,7 @@
     ./github-mcp-proxy.nix
     ./shell-keychain.nix
     ./ssh-client.nix
+    ./incus-remote-trust.nix
   ];
 
   # Active le résolveur .lan par défaut (modifiable par hôte)
