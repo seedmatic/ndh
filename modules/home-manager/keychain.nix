@@ -7,7 +7,7 @@
     enableNushellIntegration = true;
     enableFishIntegration = true;
     keys = [
-      "~/.lima/_config/user"
+      "~/.ssh/keys.d/host"
     ];
   };
 }
