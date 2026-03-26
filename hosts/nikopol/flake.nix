@@ -57,6 +57,7 @@
                   { }
               );
               darwin = darwinProfile;
+              user.home = lib.mkForce (builtins.toPath "/Volumes/User-Home-nxmatic");
             };
 
             services.headscale-client = {

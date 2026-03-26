@@ -31,7 +31,6 @@ let
     EOF
   '';
   activationTagHmPost = "common.activationScripts.postActivation.home-manager";
-
   # Define systemPackages separately
   systemPackages = import ./system-packages.nix {
     inherit pkgs lib;

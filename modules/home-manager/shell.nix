@@ -8,6 +8,10 @@ let
   profile = config._module.specialArgs.profile;
   userName = profile.user.name;
   coreShellPath = [
+    "${config.home.homeDirectory}/.local/bin"
+    "${config.home.homeDirectory}/.local/share/pnpm"
+    "${config.home.homeDirectory}/.local/opt/lima-vm/bin"
+    "${config.home.homeDirectory}/.nix-profile/bin"
     "/run/wrappers/bin"
     "/run/current-system/sw/bin"
     "/etc/profiles/per-user/${userName}/bin"
@@ -45,6 +49,22 @@ in
     initContent = ''
       ${vscodeShellIntegration "zsh"}
       source "$ZDOTDIR/rcs/zshrc.zsh"
+
+      # Normalize PATH after external zshrc/plugin mutations.
+      # Keep canonical Nix paths and remove stale foreign-home entries.
+      typeset -U path
+      path=( ''${path:#/Users/stephane.lacoin/*} )
+      path=(
+        "$HOME/.local/bin"
+        "$HOME/.local/share/pnpm"
+        "$HOME/.local/opt/lima-vm/bin"
+        "$HOME/.nix-profile/bin"
+        /run/wrappers/bin
+        /run/current-system/sw/bin
+        "/etc/profiles/per-user/$USER/bin"
+        "''${path[@]}"
+      )
+      export PATH="''${(j/:/)path}"
 
       # Avoid autofs trigger on the first-level /net mountpoint, but allow
       # completion once inside /net/<host>/...
