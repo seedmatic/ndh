@@ -70,10 +70,6 @@
               extra-trusted-public-keys = [
                 "bioskop-cache:H6oZXzgzujE4+saXVe6LDfzBRUUVCgPYYTFLoxK7IuE="
               ];
-              trusted-users = [
-                "root"
-                "nxmatic"
-              ];
             };
           };
         };
