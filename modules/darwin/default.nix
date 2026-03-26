@@ -12,7 +12,9 @@
     ./preferences.nix
     ./security.nix
     ./core.nix
+    ./disable-spotlight.nix
     ./disable-google-updaters.nix
+    ./disable-unwanted-agents.nix
     ./dnsmasq.nix
     ./headscale-client.nix
     ./lan-dns-resolver.nix

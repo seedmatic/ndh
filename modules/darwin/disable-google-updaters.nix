@@ -13,7 +13,7 @@ let
     name = "disable-google-updaters";
     executable = true;
     destination = "/bin/disable-google-updaters";
-    text = builtins.readFile ../../bin/disable-google-updaters.sh;
+    text = builtins.readFile ./disable-google-updaters.d/disable-google-updaters.sh;
   };
   disableGoogleUpdatersActivationScript =
     pkgs.runCommand "disable-google-updaters-post-activation.sh" { }

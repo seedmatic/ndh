@@ -170,6 +170,12 @@ in
   # Disable Google update services that trigger notifications
   services.disable-google-updaters.enable = true;
 
+  # Disable Spotlight indexing and clean stale indexes on mounted volumes
+  services.disable-spotlight.enable = true;
+
+  # Disable optional third-party background agents (Duet, Microsoft AutoUpdate)
+  services.disable-unwanted-agents.enable = true;
+
   # Used for backwards compatibility, please read the changelog before changing.
   # $ darwin-rebuild changelog
   system.stateVersion = 5;
