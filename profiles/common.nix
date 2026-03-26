@@ -49,6 +49,11 @@ in
                     "Thunderbolt Ethernet"
                   ];
                 };
+                wallpaperImage = lib.mkOption {
+                  type = lib.types.path;
+                  description = "Wallpaper image path for Darwin host profile";
+                  default = ../modules/home-manager/pictures.d/WallPaper.jpg;
+                };
               };
             };
           };

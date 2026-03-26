@@ -9,7 +9,7 @@ let
   preferredServicesLiteral = lib.concatMapStringsSep " " (
     svc: lib.escapeShellArg svc
   ) config.networking.knownNetworkServices;
-  wallpaperImage = ../home-manager/pictures.d/WallPaper.jpg;
+  wallpaperImage = config.profile.darwin.wallpaperImage;
   timeoutExe = lib.getExe' pkgs.coreutils "timeout";
   gtimeoutExe = lib.getExe' pkgs.coreutils "gtimeout";
   networkPreferencesScript =

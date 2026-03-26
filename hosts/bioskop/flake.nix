@@ -35,6 +35,7 @@
           "Tailscale 2"
           "Thunderbolt Bridge"
         ];
+        wallpaperImage = ./assets/WallPaper.jpg;
       };
 
       profileModule =

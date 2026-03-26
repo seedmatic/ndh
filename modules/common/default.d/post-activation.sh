@@ -6,7 +6,6 @@ source @activationLogger@
 
 main() {
   HM_ACTIVATE="@hmActivationPackage@/activate"
-  HM_BASH="@bashBin@"
   if [ -n "$HM_ACTIVATE" ] && [ -x "$HM_ACTIVATE" ]; then
     local activation_session_id
     local activation_log_file activation_log_session_file
@@ -28,7 +27,7 @@ main() {
       ACTIVATION_LOG_FILE="$activation_log_file" \
       ACTIVATION_LOG_SESSION_FILE="$activation_log_session_file" \
       ACTIVATION_LOG_SESSION_ID="$activation_session_id" \
-      "$HM_BASH" "$HM_ACTIVATE"
+      "$HM_ACTIVATE"
   else
     echo "home-manager activation package missing for @userName@, skipping" >&2
   fi

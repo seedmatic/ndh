@@ -40,7 +40,6 @@ let
 
   postActivationScript = pkgs.replaceVars ./default.d/post-activation.sh {
     hmActivationPackage = toString hmActivationPackage;
-    bashBin = "${pkgs.bash}/bin/bash";
     userName = userName;
     userHome = userHome;
     activationLogger = activationLoggerScript;
