@@ -106,6 +106,16 @@
                 chmod 644 /etc/nix/bioskop-cache.pub
               fi
             '';
+
+            # Expose system D-Bus over the vmnet-facing address (not loopback)
+            # for lab-only remote control/testing traffic.
+            services.dbusTcpSystemBus = lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
+              enable = true;
+              bindAddress = "10.80.16.2";
+              port = 12434;
+              openFirewall = true;
+              insecureAllowAnonymous = true;
+            };
           };
         };
 
@@ -119,6 +129,18 @@
               id = 2;
               addressPrefix = "192.168.2";
               parentInterface = "en9";
+            };
+
+            networking.staticRoutes = {
+              enable = true;
+              routes = [
+                {
+                  kind = "net";
+                  destination = "10.80.0.0/21";
+                  gateway = "192.168.1.130";
+                  interface = "en9";
+                }
+              ];
             };
 
             # Network bonding configuration (Darwin only)

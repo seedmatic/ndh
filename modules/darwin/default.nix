@@ -23,6 +23,7 @@
     ./linux-builder.nix
     ./distributed-builds.nix
     ./network-bond.nix
+    ./static-routes.nix
     ./vlan.nix
     ./podman-remote-client.nix
     ./raycast.nix

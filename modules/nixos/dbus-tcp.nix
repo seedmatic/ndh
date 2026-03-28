@@ -1,0 +1,84 @@
+# Optional additional D-Bus system bus TCP listener for private lab networking (@codebase)
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
+let
+  cfg = config.services.dbusTcpSystemBus;
+  dbusCfg = config.services.dbus;
+  tcpListenStream = "${cfg.bindAddress}:${toString cfg.port}";
+  baseDbusConfigDir = pkgs.makeDBusConf.override {
+    inherit (dbusCfg) apparmor;
+    dbus = dbusCfg.dbusPackage;
+    suidHelper = "${config.security.wrapperDir}/dbus-daemon-launch-helper";
+    serviceDirectories = dbusCfg.packages;
+  };
+
+  insecureConfigBuilder = pkgs.replaceVars ./dbus-tcp.d/build-insecure-config.sh {
+    bashBin = "${pkgs.bash}/bin/bash";
+    perlBin = "${pkgs.perl}/bin/perl";
+    baseConfigDir = baseDbusConfigDir;
+    patchAuthScript = ./dbus-tcp.d/patch-auth-anonymous.pl;
+    patchPolicyScript = ./dbus-tcp.d/append-permissive-policy.pl;
+  };
+
+  insecureDbusConfigDir = pkgs.runCommand "dbus-1-insecure-config"
+    {
+      preferLocalBuild = true;
+      allowSubstitutes = false;
+    }
+    ''
+      install -Dm755 ${insecureConfigBuilder} "$TMPDIR/build-dbus-insecure-config.sh"
+      "$TMPDIR/build-dbus-insecure-config.sh" "$out"
+    '';
+in
+{
+  options.services.dbusTcpSystemBus = {
+    enable = lib.mkEnableOption "D-Bus system bus TCP listener";
+
+    bindAddress = lib.mkOption {
+      type = lib.types.str;
+      default = "0.0.0.0";
+      description = "IPv4 bind address for the additional D-Bus TCP listener.";
+      example = "10.80.0.1";
+    };
+
+    port = lib.mkOption {
+      type = lib.types.port;
+      default = 12434;
+      description = "TCP port for the additional D-Bus system bus listener.";
+    };
+
+    openFirewall = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = "Open the configured D-Bus TCP port in the NixOS firewall.";
+    };
+
+    insecureAllowAnonymous = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        LAB-ONLY. When enabled, allows anonymous auth and permissive bus policy on
+        the system bus (affects both Unix socket and TCP listener).
+      '';
+    };
+  };
+
+  config = lib.mkIf cfg.enable {
+    # dbus-daemon is started with --address=systemd, so listeners must be
+    # provided by systemd sockets (not dbus XML <listen> snippets).
+    # This appends an extra TCP socket while preserving the default Unix socket
+    # from the base dbus.socket unit.
+    systemd.sockets.dbus.socketConfig.ListenStream = [ tcpListenStream ];
+
+    # IMPORTANT: this NixOS channel does not expose services.dbus.extraConfig.
+    # For lab-only anonymous auth we override the generated dbus-1 config dir
+    # with a patched system.conf that adds ANONYMOUS auth + permissive policy.
+    environment.etc."dbus-1".source = lib.mkIf cfg.insecureAllowAnonymous (lib.mkForce insecureDbusConfigDir);
+
+    networking.firewall.allowedTCPPorts = lib.mkIf cfg.openFirewall [ cfg.port ];
+  };
+}

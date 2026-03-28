@@ -54,6 +54,7 @@ in
     ./vlan.nix
     ./resolved-lan.nix
     ./dnsmasq.nix
+    ./dbus-tcp.nix
     ./avahi.nix
     ./code-server.nix
     ./container-host.nix
