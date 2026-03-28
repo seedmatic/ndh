@@ -48,7 +48,9 @@ in
 
     initContent = ''
       ${vscodeShellIntegration "zsh"}
-      source "$ZDOTDIR/rcs/zshrc.zsh"
+      if [[ -r "$ZDOTDIR/rcs/zshrc.zsh" ]]; then
+        source "$ZDOTDIR/rcs/zshrc.zsh"
+      fi
 
       # Normalize PATH after external zshrc/plugin mutations.
       # Keep canonical Nix paths and remove stale foreign-home entries.
@@ -86,6 +88,7 @@ in
       zdotdirScript = pkgs.replaceVars ./shell.d/zdotdir.sh {
         gitPath = lib.makeBinPath [ pkgs.git ];
         gitBin = "${pkgs.git}/bin/git";
+        caBundle = "${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt";
         activationLogger = activationLogger;
         activationTag = activationTagZdotdir;
       };

@@ -43,6 +43,11 @@ let
       "/Users/${userName}"
     else
       homeDirectoryString;
+  systemCaBundle =
+    if pkgs.stdenvNoCC.isDarwin then
+      "/etc/ssl/cert.pem"
+    else
+      "/etc/ssl/certs/ca-bundle.crt";
 
   activationLoggerArgs =
     if specialArgsResolved ? activationLogger then
@@ -184,6 +189,15 @@ in
 
     # Define package definitions for current user environment
     packages = baseHomePackages;
+
+    # Canonical TLS trust store path for user-space tooling (git, curl, nix,
+    # plugin managers, etc.). Keep one source of truth per platform.
+    sessionVariables = {
+      SSL_CERT_FILE = systemCaBundle;
+      NIX_SSL_CERT_FILE = systemCaBundle;
+      GIT_SSL_CAINFO = systemCaBundle;
+      CURL_CA_BUNDLE = systemCaBundle;
+    };
 
     activation.fixConfigOwnership =
       let

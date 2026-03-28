@@ -1,4 +1,4 @@
-{ config, pkgs, ... }:
+{ config, pkgs, lib, ... }:
 {
   programs.ssh = {
     enable = true;
@@ -34,4 +34,9 @@
       };
     };
   };
+
+  home.activation.cleanupLegacyLimaSshConfig =
+    lib.mkIf (!pkgs.stdenvNoCC.isDarwin) (lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+      rm -f "${config.home.homeDirectory}/.ssh/config.d/lima.conf"
+    '');
 }

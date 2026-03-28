@@ -120,8 +120,14 @@ in
           path: type:
           let
             base = builtins.baseNameOf path;
+            includeLimaConfig = pkgs.stdenv.isDarwin;
           in
-          !(base == "keys.yaml" || base == ".gitattributes" || base == "authorized_keys");
+          !(
+            base == "keys.yaml"
+            || base == ".gitattributes"
+            || base == "authorized_keys"
+            || (!includeLimaConfig && base == "lima.conf")
+          );
       }
     );
     recursive = true;

@@ -4,7 +4,17 @@ main() {
   set -euo pipefail
 
   export PATH="@gitPath@:$PATH"
+  export SSL_CERT_FILE="@caBundle@"
+  export GIT_SSL_CAINFO="@caBundle@"
+  export CURL_CA_BUNDLE="@caBundle@"
+
+  if [ ! -r "$SSL_CERT_FILE" ]; then
+    echo "error: CA bundle not readable: $SSL_CERT_FILE" >&2
+    return 1
+  fi
+
   if [ ! -d "$HOME/.config/zsh/.git" ]; then
+    mkdir -p "$HOME/.config"
     @gitBin@ clone --depth=1 https://github.com/nxmatic/zdotdir.git "$HOME/.config/zsh"
   else
     @gitBin@ -C "$HOME/.config/zsh" pull --ff-only
@@ -25,6 +35,26 @@ main() {
     sed 's|/Users/stephane\.lacoin/.local/share/pnpm|$HOME/.local/share/pnpm|g' "$zshrc_file" > "$tmp_file"
     mv "$tmp_file" "$zshrc_file"
   fi
+
+  # Guard Lima keychain bootstrap on hosts where ~/.lima/_config/user is absent
+  # (e.g. NixOS guest). Keep keychain behavior when the key exists.
+  local zlogin_file
+  for zlogin_file in "$HOME/.config/zsh/rcs/zlogin.zsh" "$HOME/.config/zsh/.zlogin"; do
+    if [ -f "$zlogin_file" ] && grep -qF 'source <( keychain --eval --quiet ~/.lima/_config/user )' "$zlogin_file"; then
+      local tmp_zlogin
+      tmp_zlogin="$(mktemp "${TMPDIR:-/tmp}/zlogin.zsh.XXXXXX")"
+      awk '
+        /source <\( keychain --eval --quiet ~\/\.lima\/_config\/user \)/ {
+          print "if [ -r \"$HOME/.lima/_config/user\" ]; then"
+          print "  source <( keychain --eval --quiet ~/.lima/_config/user )"
+          print "fi"
+          next
+        }
+        { print }
+      ' "$zlogin_file" > "$tmp_zlogin"
+      mv "$tmp_zlogin" "$zlogin_file"
+    fi
+  done
 
   # Keep managed shell customizations in a dedicated part file and source it
   # from zshrc. This avoids reconstructing the entire zshrc and protects prompt
@@ -80,3 +110,8 @@ main() {
 }
 
 activation_run "@activationTag@" main "$@"
+
+if [ ! -r "$HOME/.config/zsh/rcs/zshenv.zsh" ]; then
+  echo "error: zdotdir sync did not produce $HOME/.config/zsh/rcs/zshenv.zsh" >&2
+  exit 1
+fi

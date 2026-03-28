@@ -30,6 +30,11 @@ let
   # Generate a hostId (should be a 4-byte hex string, e.g. from `head -c4 /dev/urandom | od -A none -t x4`)
   cfgUser = config.profile.user;
   cfgUserName = cfgUser.name;
+  cfgUserIsNormal = cfgUser.isNormalUser or true;
+  cfgUidLow = cfgUser.uid != null && cfgUser.uid < 1000;
+  cfgGidLow = cfgUser.gid != null && cfgUser.gid < 1000;
+  nixosUserUid = if cfgUserIsNormal && cfgUidLow then null else cfgUser.uid;
+  nixosUserGid = if cfgUserIsNormal && cfgGidLow then null else cfgUser.gid;
   consoleCfg = config.consoleLogging;
 in
 {
@@ -283,22 +288,17 @@ in
       serviceConfig.ExecStart = lib.mkForce "${pkgs.util-linux}/sbin/agetty --autologin root --noclear tty1 linux";
     };
 
-    # User configuration: derive flags based on UID threshold (<1000 => system user)
+    # Preserve profile-provided user kind flags.
+    # For normal users, do not force low Darwin-style IDs (<1000) on NixOS,
+    # because NixOS asserts that normal users must use UID >= 1000.
+    # We keep the user normal (for Home Manager activation) and let NixOS
+    # allocate a compliant uid/gid when profile ids are below the NixOS range.
     user = lib.mkForce (
-      let
-        base = builtins.removeAttrs cfgUser [
-          "gid"
-          "group"
-          "isNormalUser"
-          "isSystemUser"
-        ];
-        low = cfgUser.uid != null && cfgUser.uid < 1000;
-      in
-      base
-      // {
-        isNormalUser = !low;
-        isSystemUser = low;
-      }
+      builtins.removeAttrs cfgUser [
+        "uid"
+        "gid"
+        "group"
+      ]
     );
 
     users.users.${cfgUserName} = {
@@ -307,9 +307,13 @@ in
         "wheel"
         "ssh"
       ];
-      uid = lib.mkIf (cfgUser.uid != null) cfgUser.uid;
+      uid = lib.mkIf (nixosUserUid != null) nixosUserUid;
     };
-    users.groups.${cfgUserName} = lib.mkIf (cfgUser.gid != null) { gid = cfgUser.gid; };
+    users.groups.${cfgUserName} =
+      if nixosUserGid != null then
+        { gid = nixosUserGid; }
+      else
+        { };
 
     # Debug convenience: set root password to "root" (insecure; remove when done)
     users.users.root.initialPassword = "root";

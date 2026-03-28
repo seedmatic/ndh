@@ -11,6 +11,7 @@ let
   hostKeysDir = "${config.home.homeDirectory}/.ssh/keys.d";
   stateHome = config.xdg.stateHome or "${config.home.homeDirectory}/.local/state";
   allowedSignersFile = "${config.xdg.configHome}/git/github_allowed_signers";
+  systemCaBundle = config.home.sessionVariables.SSL_CERT_FILE;
   activationLogger = config._module.specialArgs.activationLogger.script;
   activationTag = "home-manager.activationScripts.${userName}.generateAllowedSigners";
 in
@@ -39,7 +40,7 @@ in
         if pkgs.stdenvNoCC.isDarwin then "osxkeychain" else "cache --timeout=1000000000";
       fetch.prune = true;
       http.sslVerify = true;
-      http.sslCAInfo = "/etc/ssl/cert.pem";
+      http.sslCAInfo = systemCaBundle;
       init.defaultBranch = "main";
       gh-get.root = "/var/lib/git";
       pull.rebase = true;
