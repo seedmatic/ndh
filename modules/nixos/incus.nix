@@ -161,7 +161,10 @@ in
           else
             "tailnet.local";
         incusRemoteName = config.networking.hostName;
-        incusRemoteAddress = "https://${config.networking.hostName}.local:8443";
+        # Canonical remote endpoint: use host label (no hard-coded domain suffix).
+        # Domain-specific aliases are network policy concerns and should not be
+        # baked into the default Incus remote address.
+        incusRemoteAddress = "https://${config.networking.hostName}:8443";
         # Use the wrapped activation logger in the store
         activationLogger = config.activation.loggerScript;
         activationTag = "nixos.activationScripts.incusUserConfig";
