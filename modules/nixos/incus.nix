@@ -7,11 +7,54 @@
 let
   user = config.profile.user.name;
   hostProfile = config.profile.host;
+  hasCatalogNetworks =
+    config._module.specialArgs ? catalog && (config._module.specialArgs.catalog ? networks);
+  catalogNetworks = if hasCatalogNetworks then config._module.specialArgs.catalog.networks else { };
   effectiveHostName =
     if (hostProfile ? hostAlias && hostProfile.hostAlias != null && hostProfile.hostAlias != "") then
       hostProfile.hostAlias
     else
       hostProfile.hostName;
+  certHostLabels =
+    lib.unique
+      (lib.filter (name: name != null && name != "") [
+        config.networking.hostName
+        effectiveHostName
+      ]);
+  catalogDomainSuffixes =
+    if hasCatalogNetworks then
+      lib.filter (d: d != null && d != "") (map (network: network.domain or "") (builtins.attrValues catalogNetworks))
+    else
+      [ ];
+  certDomainSuffixes =
+    # Keep `.local` as the mDNS suffix and derive LAN/Tailnet domains from catalog.
+    lib.unique
+      (map (
+        domain:
+        let
+          normalized = lib.removePrefix "." domain;
+        in
+        if normalized == "" then "" else ".${normalized}"
+      ) ([ ".local" ] ++ catalogDomainSuffixes));
+  incusServerCertNames =
+    lib.unique
+      (
+        certHostLabels
+        ++ (lib.concatMap (host: map (domain: "${host}${domain}") certDomainSuffixes) certHostLabels)
+      );
+  incusServerCertPrimaryName =
+    if builtins.length certHostLabels > 0 then builtins.head certHostLabels else config.networking.hostName;
+  ensureIncusServerCert = pkgs.runCommand "ensure-incus-server-cert.sh" { } ''
+    cp ${
+      pkgs.replaceVars ./incus.d/ensure-incus-server-cert.sh {
+        opensslBin = "${pkgs.openssl}/bin/openssl";
+        incusServerCertPrimaryName = incusServerCertPrimaryName;
+        incusServerCertNames =
+          lib.concatMapStringsSep " " lib.escapeShellArg incusServerCertNames;
+      }
+    } $out
+    chmod +x $out
+  '';
   hostByteHex = lib.strings.toLower (
     builtins.substring 0 2 (builtins.hashString "sha256" effectiveHostName)
   );
@@ -173,7 +216,11 @@ in
   };
 
   systemd.services.incus = {
-    serviceConfig.ExecStartPost = [ "${fixIncusSocketPerms}" ];
+    restartTriggers = [ ensureIncusServerCert ];
+    serviceConfig = {
+      ExecStartPre = [ "${ensureIncusServerCert}" ];
+      ExecStartPost = [ "${fixIncusSocketPerms}" ];
+    };
   };
 
 }
