@@ -77,6 +77,12 @@ in
       tcpListenStream
     ];
 
+    # Allow binding the TCP listener before the vmnet address is configured.
+    # This avoids early-boot dbus.socket failures such as:
+    #   Cannot assign requested address
+    # when the configured bindAddress appears later in boot.
+    systemd.sockets.dbus.socketConfig.FreeBind = true;
+
     # IMPORTANT: this NixOS channel does not expose services.dbus.extraConfig.
     # For lab-only anonymous auth we override the generated dbus-1 config dir
     # with a patched system.conf that adds ANONYMOUS auth + permissive policy.
