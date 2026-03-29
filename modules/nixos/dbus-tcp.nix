@@ -70,9 +70,12 @@ in
   config = lib.mkIf cfg.enable {
     # dbus-daemon is started with --address=systemd, so listeners must be
     # provided by systemd sockets (not dbus XML <listen> snippets).
-    # This appends an extra TCP socket while preserving the default Unix socket
-    # from the base dbus.socket unit.
-    systemd.sockets.dbus.socketConfig.ListenStream = [ tcpListenStream ];
+    # Declare both listeners explicitly so the generated drop-in always keeps
+    # the local Unix system bus socket and the lab TCP listener.
+    systemd.sockets.dbus.socketConfig.ListenStream = [
+      "/run/dbus/system_bus_socket"
+      tcpListenStream
+    ];
 
     # IMPORTANT: this NixOS channel does not expose services.dbus.extraConfig.
     # For lab-only anonymous auth we override the generated dbus-1 config dir

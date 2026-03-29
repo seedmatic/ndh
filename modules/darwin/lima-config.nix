@@ -5,6 +5,7 @@
   config,
   pkgs,
   lib,
+  catalog,
   ...
 }:
 
@@ -39,6 +40,9 @@ let
 
   cfg = config.lima.configGenerator;
 
+  # Canonical source-of-truth network values from rke2lab netplan catalog (@codebase)
+  netplanCatalog = catalog.networks.rke2labNetplan;
+
   # Stable image staging paths
   imageSourcePath = cfg.imageSourcePath;
   imageTargetPath = cfg.imageTargetPath;
@@ -47,19 +51,12 @@ let
   vmType = cfg.vmType;
 
   # Cluster mapping (@codebase)
-  # We derive a deterministic clusterId from effectiveHostName so each host
-  # gets a stable slice of the 10.80.0.0/18 supernet. Current documented layout:
-  #   Cluster 1 (bioskop) -> 10.80.8.0/21
-  #   Future clusters can be added as needed
+  # Derive host -> cluster index from canonical rke2lab netplan catalog.
   #
   # Note: vmwan0 removed from Lima config. Incus containers now use:
   # - lan0: macvlan on vmlan0 (bridged to bond0/en0) for internet access
   # - wan0: Incus bridge network (10.80.x.0/21) for cluster-internal communication
-  hostClusterMap = {
-    alcide = 2;
-    bioskop = 1;
-    # Future hosts can be added here with different cluster IDs
-  };
+  hostClusterMap = lib.mapAttrs (_: cluster: cluster.index) netplanCatalog.clusters;
   # Enforce mapping: explicit error if host not in hostClusterMap (@codebase)
   clusterId =
     let
@@ -69,8 +66,6 @@ let
       hostClusterMap.${hn}
     else
       builtins.throw "lima-config.nix: host '${hn}' missing in hostClusterMap; add an entry to define deterministic cluster subnet.";
-  clusterBaseOctet = clusterId * 8; # 10.80.<octet>.0
-  clusterBaseCidr = "10.80.${toString clusterBaseOctet}.0/21";
 
   # Name for deterministic cluster network (managed via networks.yaml) (@codebase)
   clusterNetworkName = "cluster${toString clusterId}";

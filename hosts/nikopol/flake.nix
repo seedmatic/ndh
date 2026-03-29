@@ -39,6 +39,11 @@
           config,
           ...
         }:
+        let
+          # Canonical source-of-truth network values from rke2lab netplan catalog (@codebase)
+          netplanCatalog = config._module.specialArgs.catalog.networks.rke2labNetplan;
+          clusterNetwork = netplanCatalog.clusters.nikopol;
+        in
         {
           imports = [
             ../../profiles/committed.nix
@@ -81,6 +86,15 @@
                 "root"
                 "nxmatic"
               ];
+            };
+
+            # Expose system D-Bus over vmnet gateway for lab-only remote control/testing.
+            services.dbusTcpSystemBus = lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
+              enable = true;
+              bindAddress = clusterNetwork.gateway;
+              port = 12434;
+              openFirewall = true;
+              insecureAllowAnonymous = true;
             };
           };
         };

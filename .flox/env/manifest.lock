@@ -26,6 +26,9 @@
         "pkg-path": "keychain",
         "outputs": "all"
       },
+      "lsof": {
+        "pkg-path": "lsof"
+      },
       "nix-eval-jobs": {
         "pkg-path": "nix-eval-jobs",
         "outputs": "all"
@@ -825,6 +828,126 @@
       ],
       "outputs": {
         "out": "/nix/store/zvl118sldc3kx6njsy8dm9fly48g112r-keychain-2.9.8"
+      },
+      "system": "x86_64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "lsof",
+      "broken": false,
+      "derivation": "/nix/store/fdzg6qrd0bi463ifg8lbyzcmn5accliy-lsof-4.99.5.drv",
+      "description": "Tool to list open files",
+      "install_id": "lsof",
+      "license": "lsof",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=46db2e09e1d3f113a13c0d7b81e2f221c63b8ce9",
+      "name": "lsof-4.99.5",
+      "pname": "lsof",
+      "rev": "46db2e09e1d3f113a13c0d7b81e2f221c63b8ce9",
+      "rev_count": 969196,
+      "rev_date": "2026-03-24T21:09:33Z",
+      "scrape_date": "2026-03-27T03:38:43.426062Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "4.99.5",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/62acjqa4jh4ahxjmpg23rk33lbzfhjc8-lsof-4.99.5"
+      },
+      "system": "aarch64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "lsof",
+      "broken": false,
+      "derivation": "/nix/store/j1yahnsj969ji0fbmmql4yx4hasyww37-lsof-4.99.5.drv",
+      "description": "Tool to list open files",
+      "install_id": "lsof",
+      "license": "lsof",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=46db2e09e1d3f113a13c0d7b81e2f221c63b8ce9",
+      "name": "lsof-4.99.5",
+      "pname": "lsof",
+      "rev": "46db2e09e1d3f113a13c0d7b81e2f221c63b8ce9",
+      "rev_count": 969196,
+      "rev_date": "2026-03-24T21:09:33Z",
+      "scrape_date": "2026-03-27T04:14:18.777298Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "4.99.5",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/81b2gqg2l1dsqa78xgysw4b0ph1vw6g9-lsof-4.99.5"
+      },
+      "system": "aarch64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "lsof",
+      "broken": false,
+      "derivation": "/nix/store/804mhbkdvk2hm72k2xdlg5bjhlhvjrbq-lsof-4.99.5.drv",
+      "description": "Tool to list open files",
+      "install_id": "lsof",
+      "license": "lsof",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=46db2e09e1d3f113a13c0d7b81e2f221c63b8ce9",
+      "name": "lsof-4.99.5",
+      "pname": "lsof",
+      "rev": "46db2e09e1d3f113a13c0d7b81e2f221c63b8ce9",
+      "rev_count": 969196,
+      "rev_date": "2026-03-24T21:09:33Z",
+      "scrape_date": "2026-03-27T04:46:46.607638Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "4.99.5",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/9jzx3cnpqrx7wl30fkhiffxqswa8yh8h-lsof-4.99.5"
+      },
+      "system": "x86_64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "lsof",
+      "broken": false,
+      "derivation": "/nix/store/2ipifr7ndi9rvc1js1i92arwnmv9d77h-lsof-4.99.5.drv",
+      "description": "Tool to list open files",
+      "install_id": "lsof",
+      "license": "lsof",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=46db2e09e1d3f113a13c0d7b81e2f221c63b8ce9",
+      "name": "lsof-4.99.5",
+      "pname": "lsof",
+      "rev": "46db2e09e1d3f113a13c0d7b81e2f221c63b8ce9",
+      "rev_count": 969196,
+      "rev_date": "2026-03-24T21:09:33Z",
+      "scrape_date": "2026-03-27T05:25:29.149869Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "4.99.5",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/fvld6vhdnpvqynigaj396s50mvsyv6wf-lsof-4.99.5"
       },
       "system": "x86_64-linux",
       "group": "toplevel",
@@ -2521,10 +2644,13 @@
   ],
   "compose": {
     "composer": {
-      "schema-version": "1.10.0",
+      "schema-version": "1.11.0",
       "install": {
         "dasel": {
           "pkg-path": "dasel"
+        },
+        "lsof": {
+          "pkg-path": "lsof"
         },
         "remake": {
           "pkg-path": "remake"

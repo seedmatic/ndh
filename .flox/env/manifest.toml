@@ -10,6 +10,7 @@ schema-version = "1.10.0"
 remake.pkg-path = "remake"
 speedtest-go.pkg-path = "speedtest-go"
 dasel.pkg-path = "dasel"
+lsof.pkg-path = "lsof"
 # gum.pkg-path = "gum"
 # gum.version = "^0.14.5"
 

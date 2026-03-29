@@ -45,6 +45,11 @@
           config,
           ...
         }:
+        let
+          # Canonical source-of-truth network values from rke2lab netplan catalog (@codebase)
+          netplanCatalog = config._module.specialArgs.catalog.networks.rke2labNetplan;
+          clusterNetwork = netplanCatalog.clusters.bioskop;
+        in
         {
           imports = [
             ../../profiles/committed.nix
@@ -111,7 +116,8 @@
             # for lab-only remote control/testing traffic.
             services.dbusTcpSystemBus = lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
               enable = true;
-              bindAddress = "10.80.16.2";
+              # Netplan catalog-derived vmnet gateway for bioskop cluster slice.
+              bindAddress = clusterNetwork.gateway;
               port = 12434;
               openFirewall = true;
               insecureAllowAnonymous = true;
@@ -122,6 +128,11 @@
       # Darwin-specific module for network bonding and monitoring
       darwinModule =
         { config, lib, ... }:
+        let
+          # Canonical source-of-truth network values from rke2lab netplan catalog (@codebase)
+          netplanCatalog = config._module.specialArgs.catalog.networks.rke2labNetplan;
+          clusterNetwork = netplanCatalog.clusters.bioskop;
+        in
         {
           config = {
             networking.vlan = {
@@ -136,7 +147,7 @@
               routes = [
                 {
                   kind = "net";
-                  destination = "10.80.0.0/21";
+                  destination = clusterNetwork.cidr;
                   gateway = "192.168.1.130";
                   interface = "en9";
                 }

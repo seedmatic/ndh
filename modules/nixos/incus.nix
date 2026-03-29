@@ -95,6 +95,10 @@ in
         # Trust tokens should be short-lived for remote bootstrap auth.
         "core.remote_token_expiry" = "10M";
       };
+      # Canonical ownership split:
+      # - lan-br is host-managed in this module (systemd-networkd)
+      # - vmnet-br is Incus-managed by rke2lab bootstrap/Stage A (not preseeded here)
+      # Keep this list empty to avoid conflicting controllers over vmnet-br.
       networks = [
       ];
       profiles = [
