@@ -36,6 +36,15 @@
 
           ssh-add -l >/dev/null 2>&1
           if [[ $? -eq 1 ]]; then
+            host_key="$HOME/.ssh/keys.d/host"
+            host_cert="$HOME/.ssh/keys.d/host-cert.pub"
+            if [[ -f "$host_key" && -f "$host_cert" ]]; then
+              key_fp="$(ssh-keygen -lf "$host_key" 2>/dev/null | awk '{print $2}' || true)"
+              cert_fp="$(ssh-keygen -Lf "$host_cert" 2>/dev/null | awk '/Public key:/ {print $4; exit}' || true)"
+              if [[ -n "$key_fp" && -n "$cert_fp" && "$key_fp" != "$cert_fp" ]]; then
+                rm -f "$host_cert"
+              fi
+            fi
             ssh-add -q "$HOME/.ssh/keys.d/host" </dev/null >/dev/null 2>&1 || true
           fi
         fi
@@ -68,6 +77,15 @@
 
           ssh-add -l >/dev/null 2>&1
           if [[ $? -eq 1 ]]; then
+            host_key="$HOME/.ssh/keys.d/host"
+            host_cert="$HOME/.ssh/keys.d/host-cert.pub"
+            if [[ -f "$host_key" && -f "$host_cert" ]]; then
+              key_fp="$(ssh-keygen -lf "$host_key" 2>/dev/null | awk '{print $2}' || true)"
+              cert_fp="$(ssh-keygen -Lf "$host_cert" 2>/dev/null | awk '/Public key:/ {print $4; exit}' || true)"
+              if [[ -n "$key_fp" && -n "$cert_fp" && "$key_fp" != "$cert_fp" ]]; then
+                rm -f "$host_cert"
+              fi
+            fi
             ssh-add -q "$HOME/.ssh/keys.d/host" </dev/null >/dev/null 2>&1 || true
           fi
         fi
