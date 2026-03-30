@@ -38,6 +38,7 @@
     impermanence.follows = "flake-commons/impermanence";
     nixos-generators.follows = "flake-commons/nixos-generators";
     incus-compose.follows = "flake-commons/incus-compose";
+    sops-nix.url = "github:Mic92/sops-nix";
   };
 
   outputs =
@@ -120,12 +121,14 @@
           if system == "nixos" then
             [
               disko.nixosModules.disko
+              inputs.sops-nix.nixosModules.sops
               home-manager.nixosModules.home-manager
               impermanence.nixosModules.impermanence
               ./modules/nixos
             ]
           else if system == "darwin" then
             [
+              inputs.sops-nix.darwinModules.sops
               home-manager.darwinModules.home-manager
               # Only include impermanence if darwinModules exists
             ]

@@ -1,2 +1,2 @@
-keys.yaml filter=sops-yaml
-ca filter=sops-binary
+# SOPS Git filters disabled here.
+# Secret sources remain encrypted in git/worktree; sops-nix handles runtime decryption.

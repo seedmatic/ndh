@@ -68,6 +68,7 @@ in
   imports = [
     ../../profiles/common.nix
     ./cachix-watch-store.nix
+    ./sops.nix
     ./primary-user.nix
     ./user.nix
     ./nixpkgs.nix
@@ -119,6 +120,7 @@ in
           script = activationLoggerScript;
           cmd = config.activation.loggerCmd;
         };
+        sshKeysYamlPath = lib.attrByPath [ "sops" "secrets" "nxmatic-ssh-keys-yaml" "path" ] null config;
       };
     };
 
@@ -138,6 +140,7 @@ in
           script = activationLoggerScript;
           cmd = config.activation.loggerCmd;
         };
+        sshKeysYamlPath = lib.attrByPath [ "sops" "secrets" "nxmatic-ssh-keys-yaml" "path" ] null config;
       };
       useGlobalPkgs = true;
       useUserPackages = true;

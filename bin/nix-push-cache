@@ -65,7 +65,7 @@ check_cachix() {
     
     if [[ ! -f "$CACHE_TOKENS_FILE" ]]; then
         print_error "Cache tokens file not found at $CACHE_TOKENS_FILE"
-        print_error "Make sure home-manager has been activated and cache-tokens.enable = true"
+        print_error "Provision the token file through the current sops-nix/runtime secret flow."
         exit 1
     fi
     

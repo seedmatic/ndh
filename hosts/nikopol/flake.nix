@@ -66,6 +66,13 @@
             # Enable cross-host builders so ssh_config.d drop-ins are installed
             services.crossHostBuilders.enable = true;
 
+            # Two-phase SOPS key provisioning: bootstrap once on next activation,
+            # then switch back to "enforce".
+            nxmatic.sopsAgeKeyBootstrap.phase = "bootstrap";
+
+            # Safety valve while exercising fresh SSH/runtime-secret changes.
+            opensshPolicy.passwordAuthentication = true;
+
             services.headscale-client = {
               enable = true;
               serverUrl = "http://192.168.1.193:8080";
