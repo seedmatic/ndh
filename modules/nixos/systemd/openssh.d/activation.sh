@@ -6,7 +6,7 @@ main() {
 
   SSH_AUTH_KEYS_DIR=/etc/ssh/authorized_keys.d
   SSH_KEYS_DIR=@keysDir@
-  CA_KEYS_DIR=@caKeysDir@
+  USER_CA_SOURCE_DIR=@userCaSourceDir@
   HOSTNAME=@hostname@
   PRINCIPALS_CMD=@principalsCommand@
   GROUP_CMD=@groupCommand@
@@ -23,9 +23,9 @@ main() {
     ln -sf "${SSH_KEY_NIXBLD}.pub" "$SSH_AUTH_KEYS_DIR/nixbld"
   fi
 
-  # Install CA public keys from system derivation
-  if [ -d "$CA_KEYS_DIR" ]; then
-    cp -f "$CA_KEYS_DIR"/*-ca.pub "$SSH_KEYS_DIR"/ 2>/dev/null || true
+  # Install CA public keys from runtime user key directory.
+  if [ -d "$USER_CA_SOURCE_DIR" ]; then
+    cp -f "$USER_CA_SOURCE_DIR"/*-ca.pub "$SSH_KEYS_DIR"/ 2>/dev/null || true
   fi
   # Normalize CA public keys and build aggregate TrustedUserCAKeys file
   for ca in "$SSH_KEYS_DIR"/*-ca.pub; do
