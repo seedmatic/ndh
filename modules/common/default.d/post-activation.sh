@@ -13,6 +13,11 @@ main() {
     activation_log_file="@userHome@/.local/state/nix/activation.log"
     activation_log_session_file="${activation_log_file}.session"
 
+    echo "[post-activation] Home Manager activation logger sink: ${LOGGER_CMD:-<stderr-only>}" >&2
+    echo "[post-activation] Home Manager activation log file: $activation_log_file" >&2
+    echo "[post-activation] Home Manager activation session file: $activation_log_session_file" >&2
+    echo "[post-activation] Home Manager activation session id: $activation_session_id" >&2
+
     # Self-heal stale root-owned activation logs from previous root-scoped runs.
     if [ -e "$activation_log_file" ]; then
       chown @userName@ "$activation_log_file" 2>/dev/null || true
