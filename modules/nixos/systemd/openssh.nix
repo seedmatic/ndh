@@ -75,6 +75,26 @@ let
       ''
         ${pkgs.bash}/bin/bash ${../../home-manager/ssh-extract-keys.sh} "${caKeysYaml}" "$out"
       '';
+  principalsKeysYaml =
+    pkgs.runCommand "ssh-principals-keys.yaml"
+      {
+        buildInputs = [
+          pkgs.bash
+          pkgs.coreutils-full
+          pkgs.gnugrep
+          pkgs.gnused
+          pkgs.gawk
+          pkgs.openssh
+          pkgs.yq-go
+          pkgs.hostname
+        ];
+      }
+      ''
+        tmp_yaml="$TMPDIR/all-ssh-keys.yaml"
+        bash ${../../home-manager/ssh-generate-keys-yaml.sh} "${profileName}" "${hostIdent}" "${../../home-manager/ssh.d/keys.yaml}" "$tmp_yaml" "${hostsCatalogCsv}"
+        # Keep only principals metadata for ssh authorized-principals lookup.
+        yq eval '(.keys | with_entries(.value = {"principals": (.value.principals // {})})) as $k | {"keys": $k}' "$tmp_yaml" > "$out"
+      '';
   principalsScriptStore = pkgs.writeText "ssh-authorized-principals-command.sh" (
     builtins.readFile ../../common/ssh/authorized-principals-command.sh
   );
@@ -169,4 +189,8 @@ in
 
   # Ensure all systemd services (including sshd) inherit a wrapper-first PATH
   systemd.globalEnvironment.PATH = config.opensshPolicy.setEnvPath;
+
+  # Provide principals metadata in a system-readable location for
+  # AuthorizedPrincipalsCommand (which runs as an unprivileged user).
+  environment.etc."ssh/keys.yaml".source = principalsKeysYaml;
 }
