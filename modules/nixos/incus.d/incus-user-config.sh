@@ -8,6 +8,8 @@ main() {
   auto_home="@home@"
   remote_name="@incusRemoteName@"
   remote_address="@incusRemoteAddress@"
+  incus_bin="@incusBin@"
+  sed_bin="@sedBin@"
 
   autoconfig_dir="${auto_home}/.config/incus"
 
@@ -38,21 +40,21 @@ EOF
   # Ensure the configured remote is actually authenticated for this user.
   # This is idempotent and only performs bootstrap when remote auth is missing.
   if runuser -u "${auto_user}" -- env HOME="${auto_home}" XDG_CONFIG_HOME="${auto_home}/.config" \
-    incus info "${remote_name}:" >/dev/null 2>&1; then
+    "${incus_bin}" info "${remote_name}:" >/dev/null 2>&1; then
     return 0
   fi
 
-  token="$(incus --force-local config trust add "${auto_user}-bootstrap-$(date +%s)" | sed -n '2p')"
+  token="$("${incus_bin}" --force-local config trust add "${auto_user}-bootstrap-$(date +%s)" | "${sed_bin}" -n '2p')"
   if [[ -z "${token}" ]]; then
     echo "failed to obtain Incus trust token for remote bootstrap" >&2
     return 1
   fi
 
   runuser -u "${auto_user}" -- env HOME="${auto_home}" XDG_CONFIG_HOME="${auto_home}/.config" \
-    incus remote remove "${remote_name}" >/dev/null 2>&1 || true
+    "${incus_bin}" remote remove "${remote_name}" >/dev/null 2>&1 || true
 
   runuser -u "${auto_user}" -- env HOME="${auto_home}" XDG_CONFIG_HOME="${auto_home}/.config" \
-    incus remote add "${remote_name}" "${token}"
+    "${incus_bin}" remote add "${remote_name}" "${token}"
 }
 
 activation_run "@activationTag@" main "$@"

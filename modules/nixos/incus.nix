@@ -215,6 +215,8 @@ in
         # Use the wrapped activation logger in the store
         activationLogger = config.activation.loggerScript;
         activationTag = "nixos.activationScripts.incusUserConfig";
+        incusBin = "${pkgs.incus}/bin/incus";
+        sedBin = "${pkgs.gnused}/bin/sed";
       }
     );
   };
