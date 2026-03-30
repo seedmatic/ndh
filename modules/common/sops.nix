@@ -6,6 +6,12 @@
   ...
 }:
 let
+  sshKeysSopsFile = ../../modules/home-manager/ssh.d/keys.yaml;
+  sshKeysSopsContent = builtins.readFile sshKeysSopsFile;
+  sshKeysSourceLooksEncrypted =
+    lib.hasInfix "sops:" sshKeysSopsContent
+    && !(lib.hasInfix "BEGIN OPENSSH PRIVATE KEY" sshKeysSopsContent);
+
   userHome =
     if config ? profile && config.profile ? user && config.profile.user ? home then
       toString config.profile.user.home
@@ -29,10 +35,21 @@ in
       # Keep decrypted content out of derivation outputs; consume via .path at activation.
       secrets.nxmatic-ssh-keys-yaml = {
         format = "binary";
-        sopsFile = ../../modules/home-manager/ssh.d/keys.yaml;
+        sopsFile = sshKeysSopsFile;
         mode = "0400";
         owner = lib.mkDefault (if config ? profile && config.profile ? user then config.profile.user.name else "root");
       };
     };
+
+    assertions = [
+      {
+        assertion = sshKeysSourceLooksEncrypted;
+        message = ''
+          sops source-of-truth violation: modules/home-manager/ssh.d/keys.yaml appears decrypted in this worktree.
+          Refusing evaluation to prevent accidental plaintext secret ingestion into the Nix store.
+          Re-encrypt the file with sops before rebuild.
+        '';
+      }
+    ];
   };
 }
