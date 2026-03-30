@@ -21,7 +21,7 @@ in
     enable = mkEnableOption "Enable loading private keys from the generated keys.yaml into ssh-agent.";
 
     keyFile = mkOption {
-      type = types.path;
+      type = types.str;
       default = keysFileDefault;
       description = "Path to the decrypted YAML file containing SSH keys.";
     };

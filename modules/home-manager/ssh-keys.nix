@@ -19,6 +19,7 @@ let
   activationLogger = config._module.specialArgs.activationLogger.script;
   activationTagDeploy = "home-manager.activationScripts.${userName}.deploySSHKeys";
   activationTagAuthorized = "home-manager.activationScripts.${userName}.ensureAuthorizedKeys";
+  sshKeysYamlPath = lib.attrByPath [ "_module" "specialArgs" "sshKeysYamlPath" ] null config;
 
   # Command to filter and sign keys based on profile and host
   # Resolve a stable host identifier; hostAlias is optional by design (@codebase)
@@ -39,61 +40,13 @@ let
     lib.attrNames hostDirs;
   hostsCatalogCsv = lib.concatStringsSep "," hostsCatalog;
 
-  yamlHostKeys =
-    pkgs.runCommand "ssh-signed-keys.yaml"
-      {
-        # Provide every binary referenced by ssh-generate-keys-yaml.sh: bash, yq, ssh-keygen, sed, grep, awk, coreutils.
-        buildInputs = [
-          pkgs.bash # bash
-          pkgs.coreutils-full # env, cut, mktemp, etc.
-          pkgs.hostname # hostname
-          pkgs.gawk # awk (robust text processing)
-          pkgs.gnused # sed
-          pkgs.gnugrep # grep -oE
-          pkgs.openssh # ssh-keygen
-          pkgs.yq-go # yq
-        ];
-      }
-      ''
-        bash ${./ssh-generate-keys-yaml.sh} "${profileName}" "${hostIdent}" "${./ssh.d/keys.yaml}" "$out" "${hostsCatalogCsv}"
-
-        # Basic sanity: produced file must start with 'keys:' (or be empty if profile has no keys)
-        if [ -s "$out" ] && ! head -n1 "$out" | grep -q '^keys:'; then
-          echo "ssh-keys generation failed: unexpected output (missing keys: header)" >&2
-          sed -n '1,200p' "$out" >&2 || true
-          exit 1
-        fi
-      '';
-
-  # User keys directory: ALL keys including CA private keys (for signing certificates)
-  # CA private keys are needed by users to sign SSH certificates
-  # System gets only CA public keys (from system activation), so no duplication concern
-  keysDir =
-    pkgs.runCommand "${userName}::ssh-keys.d"
-      {
-        buildInputs = [
-          pkgs.bash
-          pkgs.coreutils-full # mkdir, mv, cut
-          pkgs.openssh # ssh-keygen
-          pkgs.yq-go # yq
-          pkgs.gnused # sed (if needed later)
-          pkgs.gnugrep # grep (if pattern matching added later)
-          pkgs.gawk # awk (robust text processing)
-          pkgs.gettext # envsubst
-        ];
-      }
-      ''
-        ${pkgs.bash}/bin/bash ${./ssh-extract-keys.sh} "${yamlHostKeys}" "$out"
-      '';
-
   # Externalized KnownHostsCommand script sourced from repo (templated with keysDir)
   knownHostsScript =
     let
       scriptTemplate = builtins.readFile ./ssh.d/scripts/ca-known-hosts-command.sh;
-      # Replace placeholder @CA_DIR@ with actual keysDir path (derivation output)
-      # keysDir is a derivation; coerce to its store path string before replacement
+      # Resolve CA keys dynamically from runtime ~/.ssh/keys.d to avoid store-backed private material.
       scriptProcessed =
-        builtins.replaceStrings [ "@CA_DIR@" ] [ (builtins.toString keysDir) ]
+        builtins.replaceStrings [ "@CA_DIR@" ] [ "${config.home.homeDirectory}/.ssh/keys.d" ]
           scriptTemplate;
     in
     pkgs.writeScript "ssh-ca-known-hosts" scriptProcessed;
@@ -104,7 +57,11 @@ in
 
   ssh-add-keys = {
     enable = true;
-    keyFile = yamlHostKeys;
+    keyFile =
+      if sshKeysYamlPath != null then
+        sshKeysYamlPath
+      else
+        "${config.home.homeDirectory}/.ssh/keys.yaml";
   };
 
   home.file.".ssh" = {
@@ -133,17 +90,20 @@ in
     recursive = true;
   };
 
-  home.file.".ssh/keys.yaml" = {
-    source = yamlHostKeys;
-  };
-
   # Deploy keys directly to ~/.ssh/keys.d/ with proper permissions (skip .local/state)
   # Externalized activation scripts: keep content in the store and execute via bash
   home.activation =
     let
       deploySSHKeysScript = pkgs.replaceVars ./ssh-keys.d/deploy-ssh-keys.sh {
+        bash = "${pkgs.bash}/bin/bash";
+        mktemp = "${pkgs.coreutils-full}/bin/mktemp";
         rsync = "${pkgs.rsync}/bin/rsync";
-        keysDir = keysDir; # Deploy all keys including CA private keys
+        sshExtractKeys = "${./ssh-extract-keys.sh}";
+        keysYaml =
+          if sshKeysYamlPath != null then
+            sshKeysYamlPath
+          else
+            "${config.home.homeDirectory}/.ssh/keys.yaml";
         activationLogger = activationLogger;
         activationTag = activationTagDeploy;
       };

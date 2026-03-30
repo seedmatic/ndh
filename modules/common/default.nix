@@ -120,6 +120,7 @@ in
           script = activationLoggerScript;
           cmd = config.activation.loggerCmd;
         };
+        sshKeysYamlPath = lib.attrByPath [ "sops" "secrets" "nxmatic-ssh-keys-yaml" "path" ] null config;
       };
     };
 
@@ -139,6 +140,7 @@ in
           script = activationLoggerScript;
           cmd = config.activation.loggerCmd;
         };
+        sshKeysYamlPath = lib.attrByPath [ "sops" "secrets" "nxmatic-ssh-keys-yaml" "path" ] null config;
       };
       useGlobalPkgs = true;
       useUserPackages = true;
