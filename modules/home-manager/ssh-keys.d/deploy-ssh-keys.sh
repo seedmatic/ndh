@@ -9,6 +9,18 @@ main() {
     --chmod=u+w,go-r \
     --chown=$(id -un):$(id -gn) \
     @keysDir@/ ~/.ssh/keys.d/ || true
+
+  # Defensive cleanup: if host-cert.pub does not match host private key, remove it.
+  # ssh-add auto-loads <key>-cert.pub sidecars; stale mismatches generate warnings.
+  local_host_key="$HOME/.ssh/keys.d/host"
+  local_host_cert="$HOME/.ssh/keys.d/host-cert.pub"
+  if [[ -f "$local_host_key" && -f "$local_host_cert" ]] && command -v ssh-keygen >/dev/null 2>&1; then
+    key_fp="$(ssh-keygen -lf "$local_host_key" 2>/dev/null | awk '{print $2}' || true)"
+    cert_fp="$(ssh-keygen -Lf "$local_host_cert" 2>/dev/null | awk '/Public key:/ {print $4; exit}' || true)"
+    if [[ -n "$key_fp" && -n "$cert_fp" && "$key_fp" != "$cert_fp" ]]; then
+      rm -f "$local_host_cert"
+    fi
+  fi
 }
 
 activation_run "@activationTag@" main "$@"
