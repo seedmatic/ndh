@@ -37,6 +37,7 @@
           pkgs,
           lib,
           config,
+          options,
           ...
         }:
         let
@@ -89,7 +90,9 @@
             };
 
             # Expose system D-Bus over vmnet gateway for lab-only remote control/testing.
-            services.dbusTcpSystemBus = lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
+          }
+          // lib.optionalAttrs (lib.hasAttrByPath [ "services" "dbusTcpSystemBus" ] options) {
+            services.dbusTcpSystemBus = {
               enable = true;
               bindAddress = clusterNetwork.gateway;
               port = 12434;

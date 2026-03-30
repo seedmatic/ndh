@@ -43,6 +43,7 @@
           pkgs,
           lib,
           config,
+          options,
           ...
         }:
         let
@@ -114,7 +115,9 @@
 
             # Expose system D-Bus over the vmnet-facing address (not loopback)
             # for lab-only remote control/testing traffic.
-            services.dbusTcpSystemBus = lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
+          }
+          // lib.optionalAttrs (lib.hasAttrByPath [ "services" "dbusTcpSystemBus" ] options) {
+            services.dbusTcpSystemBus = {
               enable = true;
               # Netplan catalog-derived vmnet gateway for bioskop cluster slice.
               bindAddress = clusterNetwork.gateway;
