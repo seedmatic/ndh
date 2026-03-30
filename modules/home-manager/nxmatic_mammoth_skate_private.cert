@@ -1,10 +1,19 @@
 ---
 filename: nxmatic_mammoth_skate_private.cert
-content: |-
-  -----BEGIN OPENSSH PRIVATE KEY-----
-  b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW
-  QyNTUxOQAAACDJtn7v7lW2mo9TpY4kp2fU9REvcr2xvmOiYci650EAEgAAAJiYDZtRmA2b
-  UQAAAAtzc2gtZWQyNTUxOQAAACDJtn7v7lW2mo9TpY4kp2fU9REvcr2xvmOiYci650EAEg
-  AAAEDkqwy0SqqNYXq+4+htWltyyXdBUWP3tQ/V0zAxOm8a3Mm2fu/uVbaaj1OljiSnZ9T1
-  ES9yvbG+Y6JhyLrnQQASAAAAD254bWF0aWNAYmlvc2tvcAECAwQFBg==
-  -----END OPENSSH PRIVATE KEY-----
+# sops:encrypted
+content: ENC[AES256_GCM,data:1WfTdcQK++SnZfLKgSTdDiKDYJrD5UICQrmfOSax8f18DPdxvAG0OHanVstiUHtlcZhICB5QA/h2AUEqrgt+Smv3AcP/YOm0VOGLiY9R3SRh9KwCgbCkIonR5zXRv4Nc7qazu5ZBbKeARFgZRrQKr5TTZkHtMZK06tK8c/A/g2B3605v8GV1bB138Gp6FzOlt04J4Lu30b2eCBPeZQNxhPt2qNASyvm3LyV77x+F9prAUxLw6HpCR4i5RSBlvLFZ4p6TUEPO/MyywT9eoGgXHT6GVHKj1zlJZj3/KlmXsIyBGToa81qMEULOwQOpGme73WpeM6LvNL1OuGe0ztH9M++XnK/OuoHx+smcG0pNxbBASBmd/EOqCMDr5735oYlL4RcxKFQ+4MIiPIDDLa0suwZMi8mWHmT9SgIMY9dwlB/Uk0PMrKMI7v/J7JYimeGgpI3CGKyJ23L2Y+9UVk8NrQmZh+BxYSD3cVjYffIi0fhS9AjKl05loqIJCuZJKd3t5aG7eD2WTPt8IGO9WShaTHxDpziBu5OtPUU=,iv:oQPlnKXerRnJgNhLd4oHn8mVW8yZtwizGnnCvTbOpVo=,tag:7UZ52+a8/tc5FsRsh0EO8A==,type:str]
+sops:
+  age:
+    - recipient: age10ey0lcup4zpjqcknpxw7enpsagn674nm634f2u75trfr5t62uq5qdjuxzv
+      enc: |
+        -----BEGIN AGE ENCRYPTED FILE-----
+        YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBhUEFrMGwvaHQydm5yZjA5
+        WWNZcitoa2ttWk51UFVRZGRQTzk0VGNsTGswCmd5NHR5SDhVSkhTdkNpbkhvRHJU
+        R04wNjNnR2VTY24yc1NqTjBYbTA2SVUKLS0tIGR6TGpaNDdHdGdXUTBSUTlXbmI4
+        MDVvbXpvdkZGcW5DZlNHTnNvdnViQzgKLvLcsiJ76rICiy6Z7vvTEvvN3lQQ84J3
+        oW+9CW/1ER3uJ8KBjiv7m29FZZrMQ5KB74yl9P8QhEW0rnmLep5rHQ==
+        -----END AGE ENCRYPTED FILE-----
+  lastmodified: "2026-03-30T22:07:47Z"
+  mac: ENC[AES256_GCM,data:JIr+DXRy+Lldkv6t30zX5bK97mQu4qYIJwmhkFTvgA2I7ltFxP465pF1jLeEJZtKEk16vq9Cm/l76QCLosDVJBg1f8nV6Nid2tqbA44M1up1+VMUF0bLpvq/6fKB2auXAoL19ZJbh8xkVGTKi7A546YAE/+YqC/xfu1iP6o0aLc=,iv:01gIbQybd4RhKFnbYE1friqrO4pUI1hTUrYZiGfQ4h4=,tag:LZcT4RoqnRV7kHS2EH3u9g==,type:str]
+  encrypted_comment_regex: sops:encrypted
+  version: 3.12.2

@@ -1,6 +1,6 @@
 creation_rules:
   # Text formats keep the encrypted comment regex for inline markers.
-  - path_regex: '.*\.(ya?ml|json|env|ini|toml)$'
+  - path_regex: '.*\.(ya?ml|json|env|ini|toml|cert)$'
     encrypted_comment_regex: 'sops:encrypted'
     age: 'age10ey0lcup4zpjqcknpxw7enpsagn674nm634f2u75trfr5t62uq5qdjuxzv'
   # Binary/other files skip comment regex to avoid the warning.
