@@ -59,6 +59,7 @@ in
     ./vlan.nix
     ./resolved-lan.nix
     ./dnsmasq.nix
+    ./cachix-watch-store.nix
     ./dbus-tcp.nix
     ./avahi.nix
     ./code-server.nix
@@ -251,6 +252,8 @@ in
 
     # Services
     services = {
+      nxmaticCachixWatchStore.enable = lib.mkDefault true;
+
       getty.autologinUser = "root";
       ntopng = {
         enable = true;

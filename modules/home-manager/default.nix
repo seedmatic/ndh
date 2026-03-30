@@ -218,7 +218,7 @@ in
 
     home-manager.enable = lib.mkDefault true;
 
-    cache-tokens.enable = lib.mkDefault true;
+    cache-tokens.enable = lib.mkDefault false;
 
     zsh.enable = lib.mkDefault true;
 
