@@ -5,6 +5,14 @@
 source @activationLogger@
 
 main() {
+  emit_notice() {
+    local msg="$1"
+    echo "$msg" >&2
+    if { true >&3; } 2>/dev/null; then
+      echo "$msg" >&3
+    fi
+  }
+
   HM_ACTIVATE="@hmActivationPackage@/activate"
   if [ -n "$HM_ACTIVATE" ] && [ -x "$HM_ACTIVATE" ]; then
     local activation_session_id
@@ -18,12 +26,12 @@ main() {
     : > "$activation_log_file"
     printf '%s\n' "$activation_session_id" > "$activation_log_session_file"
 
-    echo "[post-activation] Home Manager activation logger sink: ${LOGGER_CMD:-<stderr-only>}" >&2
-    echo "[post-activation] Home Manager activation log file: $activation_log_file" >&2
-    echo "[post-activation] Home Manager activation session file: $activation_log_session_file" >&2
-    echo "[post-activation] Home Manager activation session id: $activation_session_id" >&2
-    echo "[post-activation] macOS unified log (last 2h): log show --last 2h --style compact --info --debug --predicate 'eventMessage CONTAINS \"darwin.activationScripts\" OR eventMessage CONTAINS \"home-manager.activationScripts\"'" >&2
-    echo "[post-activation] macOS unified log (stream): log stream --style compact --level debug --predicate 'eventMessage CONTAINS \"darwin.activationScripts\" OR eventMessage CONTAINS \"home-manager.activationScripts\"'" >&2
+    emit_notice "[post-activation] Home Manager activation logger sink: ${LOGGER_CMD:-<stderr-only>}"
+    emit_notice "[post-activation] Home Manager activation log file: $activation_log_file"
+    emit_notice "[post-activation] Home Manager activation session file: $activation_log_session_file"
+    emit_notice "[post-activation] Home Manager activation session id: $activation_session_id"
+    emit_notice "[post-activation] macOS unified log (last 2h): log show --last 2h --style compact --info --debug --predicate 'eventMessage CONTAINS \"darwin.activationScripts\" OR eventMessage CONTAINS \"home-manager.activationScripts\"'"
+    emit_notice "[post-activation] macOS unified log (stream): log stream --style compact --level debug --predicate 'eventMessage CONTAINS \"darwin.activationScripts\" OR eventMessage CONTAINS \"home-manager.activationScripts\"'"
 
     # Self-heal stale root-owned activation logs from previous root-scoped runs.
     if [ -e "$activation_log_file" ]; then
