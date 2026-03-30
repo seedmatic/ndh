@@ -16,11 +16,14 @@ if [[ -z "$USER_NAME" ]]; then
   exit 1
 fi
 
-# Try /etc/ssh/keys.yaml first (system-wide, readable by _sshd)
-# Fall back to user's ~/.ssh/keys.yaml if available
+# Try /etc/ssh/keys.yaml first (system-wide, readable by sshd helper user)
+# Fall back to user's ~/.ssh/keys.yaml if available.
 KEYS_FILE="/etc/ssh/keys.yaml"
 if [[ ! -r "$KEYS_FILE" ]]; then
-  KEYS_FILE="/Users/${USER_NAME}/.ssh/keys.yaml"
+  USER_HOME="$(getent passwd "$USER_NAME" 2>/dev/null | awk -F: '{print $6}' || true)"
+  if [[ -n "$USER_HOME" ]]; then
+    KEYS_FILE="${USER_HOME}/.ssh/keys.yaml"
+  fi
 fi
 
 if [[ ! -r "$KEYS_FILE" ]]; then
@@ -34,14 +37,24 @@ fi
 
 USER_NAME=$USER_NAME yq eval-all --from-file=<( cat <<'EoF' | cut -c 5-
     [
-      .. 
-      | select(has("principals")) 
-      | .principals
+      (
+        ..
+        | select(has("principals"))
+        | .principals
+        | select(tag == "!!seq")
+        | .[]
+      ),
+      (
+        ..
+        | select(has("principals"))
+        | .principals
+        | select(tag == "!!map")
+        | .[]
+      )
     ] + [ env(USER_NAME) ]
-    | flatten 
-    | map(select(. != null and . != "")) 
-    | sort 
-    | unique 
+    | map(select(. != null and . != ""))
+    | sort
+    | unique
     | .[]
 EoF
 ) "$KEYS_FILE" || true
