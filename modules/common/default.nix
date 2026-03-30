@@ -38,13 +38,17 @@ let
     inherit (config) programs environment;
   };
 
-  postActivationScript = pkgs.replaceVars ./default.d/post-activation.sh {
+  postActivationScriptSource = pkgs.replaceVars ./default.d/post-activation.sh {
     hmActivationPackage = toString hmActivationPackage;
     userName = userName;
     userHome = userHome;
     activationLogger = activationLoggerScript;
     activationTag = activationTagHmPost;
   };
+
+  postActivationScript = pkgs.runCommand "post-activation.sh" { } ''
+    install -m 0555 ${postActivationScriptSource} "$out"
+  '';
 
 in
 {
@@ -120,7 +124,7 @@ in
     # Run home-manager after all other activation steps so user files see final system state
     system.activationScripts.postActivation.text = lib.mkOrder 2000 (
       lib.optionalString pkgs.stdenvNoCC.isDarwin ''
-        ${pkgs.bash}/bin/bash ${postActivationScript}
+        ${postActivationScript}
       ''
     );
 
