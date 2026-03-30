@@ -74,7 +74,7 @@ if id -u "${LIMA_CIDATA_USER}" &>/dev/null; then
 	LIMA_CIDATA_GID=$(id -g "${LIMA_CIDATA_USER}")
   fi
 else
-  useradd --home-dir "${LIMA_CIDATA_HOMEDIR}" --create-home --uid "${LIMA_CIDATA_UID}" "${LIMA_CIDATA_USER}"
+  useradd --home-dir "${LIMA_CIDATA_HOME}" --create-home --uid "${LIMA_CIDATA_UID}" "${LIMA_CIDATA_USER}"
 fi
 
 usermod -a -G wheel "${LIMA_CIDATA_USER}" || true
