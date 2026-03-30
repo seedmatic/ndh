@@ -10,9 +10,16 @@ if [[ -z "${USER_NAME}" ]]; then
 fi
 DIR="@authorizedKeysDir@"
 [[ -d "$DIR" ]] || exit 0
-for group in $USER_NAME $( id -nG "$USER_NAME" ); do
+
+groups=("$USER_NAME")
+while IFS= read -r group; do
+  [[ -n "$group" ]] || continue
+  groups+=("$group")
+done < <(id -nG "$USER_NAME" | tr ' ' '\n')
+
+for group in "${groups[@]}"; do
   FILEPATH="${DIR}/${group}"
   [[ -f "$FILEPATH" && -r "$FILEPATH" ]] || continue
   cat "$FILEPATH"
-done
+done | awk '!seen[$0]++'
 exit 0
