@@ -25,20 +25,6 @@ in
       '';
     };
 
-    sopsAgeKeyFile = lib.mkOption {
-      type = lib.types.str;
-      default = "/etc/sops/age/keys.txt";
-      description = ''
-        AGE private key file used to decrypt sopsEncryptedTokenFile at runtime.
-      '';
-    };
-
-    tokenFile = lib.mkOption {
-      type = lib.types.str;
-      default = "/var/lib/cachix-watch-store/cachix-token";
-      description = "Path to extracted raw Cachix auth token used by watch-store.";
-    };
-
     jobs = lib.mkOption {
       type = lib.types.nullOr lib.types.int;
       default = 4;
