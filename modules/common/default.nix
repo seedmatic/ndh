@@ -13,7 +13,7 @@ let
   profile = cfg;
   user = cfg.user;
   userName = user.name;
-  userHome = "${if pkgs.stdenvNoCC.isDarwin then "/Users" else "/home"}/${userName}";
+  userHome = toString cfg.user.home;
   activationLogFile = "${userHome}/.local/state/nix/activation.log";
   hmActivationPackage = lib.attrByPath [
     "home-manager"

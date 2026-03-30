@@ -2,6 +2,7 @@
 .vscode/
 **/result
 .git/
+.git.clone.d/
 .devenv/
 .pre-commit-config.yaml
 nixos.qcow2
