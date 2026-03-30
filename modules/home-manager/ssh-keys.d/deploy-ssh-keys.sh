@@ -5,6 +5,7 @@ main() {
 
   install -d -m 700 ~/.ssh/keys.d
   @rsync@ -avL \
+    --checksum \
     --delete \
     --chmod=u+w,go-r \
     --chown=$(id -un):$(id -gn) \
