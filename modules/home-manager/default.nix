@@ -137,7 +137,6 @@ in
   imports = [
     ./avahi.nix
     ./bat.nix
-    ./cache-tokens.nix
     ./chromium.nix
     ./dircolors.nix
     ./direnv.nix
@@ -216,8 +215,6 @@ in
   programs = {
 
     home-manager.enable = lib.mkDefault true;
-
-    cache-tokens.enable = lib.mkDefault false;
 
     zsh.enable = lib.mkDefault true;
 

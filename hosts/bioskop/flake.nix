@@ -104,6 +104,14 @@
         in
         {
           config = {
+            # Two-phase SOPS age key provisioning on Darwin:
+            # phase 1 (bootstrap): install/generate a system-wide key.
+            nxmatic.sopsAgeKeyBootstrap = {
+              phase = "bootstrap";
+              darwinSystemWideKey = true;
+            };
+            sops.age.keyFile = "/etc/sops/age/keys.txt";
+
             services.nxmaticCachixWatchStore = {
               enable = true;
               sopsEncryptedTokenFile = ../../.secrets;

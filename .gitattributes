@@ -1,2 +1,2 @@
-.secrets filter=sops-yaml
-**/.secrets filter=sops-yaml
+# SOPS Git filters disabled:
+# keep encrypted files encrypted in the working tree/repo and decrypt only via sops-nix at runtime.

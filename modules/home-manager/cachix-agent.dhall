@@ -1,4 +1,0 @@
-# sops:encrypted
-key: eyJhbGciOiJIUzI1NiJ9.eyJqdGkiOiJkNTdjZDNhNi1hZDBmLTQ1ODUtYmI3Yi04ZTdkMjY1NTIxNTkiLCJzY29wZXMiOiJjYWNoZSJ9.TLdBqGD4CYYkT8Qh2W50DKA2ArFZsmoR0N7Up00J5Vc
-user: nxmatic
-url: https://app.cachix.org
