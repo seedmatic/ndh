@@ -19,7 +19,7 @@ in
     sops.secrets.${tokenSecretName} = {
       format = "yaml";
       sopsFile = cfg.sopsEncryptedTokenFile;
-      key = "cachix.${cfg.cacheName}.token";
+      key = "cachix/${cfg.cacheName}/token";
     };
 
     services.cachix-watch-store = {

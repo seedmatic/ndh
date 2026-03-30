@@ -48,7 +48,7 @@ in
     sops.secrets.${tokenSecretName} = {
       format = "yaml";
       sopsFile = cfg.sopsEncryptedTokenFile;
-      key = "cachix.${cfg.cacheName}.token";
+      key = "cachix/${cfg.cacheName}/token";
     };
 
     launchd.daemons.nxmatic-cachix-watch-store = {
