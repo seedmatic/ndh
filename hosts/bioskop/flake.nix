@@ -105,9 +105,9 @@
         {
           config = {
             # Two-phase SOPS age key provisioning on Darwin:
-            # phase 1 (bootstrap): install/generate a system-wide key.
+            # phase 2 (enforce): key must already exist.
             nxmatic.sopsAgeKeyBootstrap = {
-              phase = "bootstrap";
+              phase = "enforce";
               darwinSystemWideKey = true;
             };
             sops.age.keyFile = "/etc/sops/age/keys.txt";

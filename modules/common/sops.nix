@@ -35,15 +35,16 @@ let
       set -eu
 
       key_file="${config.sops.age.keyFile}"
-      key_dir="$(dirname "$key_file")"
       public_key_file="${cfg.publicKeyFile}"
       public_key_dir="$(dirname "$public_key_file")"
-      darwin_user_key_file="${cfg.darwinUserKeyFile}"
-      import_existing_user_key_on_bootstrap="${if cfg.importExistingUserKeyOnBootstrap then "1" else "0"}"
       export_public_key_on_activation="${if cfg.exportPublicKeyOnActivation then "1" else "0"}"
     ''
     + (if cfg.phase == "bootstrap" then
         ''
+          key_dir="$(dirname "$key_file")"
+          darwin_user_key_file="${cfg.darwinUserKeyFile}"
+          import_existing_user_key_on_bootstrap="${if cfg.importExistingUserKeyOnBootstrap then "1" else "0"}"
+
           if [ ! -s "$key_file" ]; then
             install -d -m 700 "$key_dir"
             if [ "$import_existing_user_key_on_bootstrap" = "1" ] && [ "$darwin_user_key_file" != "$key_file" ] && [ -s "$darwin_user_key_file" ]; then
