@@ -1,0 +1,8 @@
+--- system.conf	1970-01-01 00:00:00.000000000 +0000
++++ system.conf	1970-01-01 00:00:00.000000000 +0000
+@@ -1 +1,3 @@
+-  <auth>EXTERNAL</auth>
++  <auth>EXTERNAL</auth>
++  <auth>ANONYMOUS</auth>
++  <allow_anonymous/>
+

@@ -8,6 +8,7 @@
 let
   cfg = config.services.dbusTcpSystemBus;
   dbusCfg = config.services.dbus;
+  dbusTcpAssetsDir = ./dbus-tcp.d;
   tcpListenStream = "${cfg.bindAddress}:${toString cfg.port}";
   baseDbusConfigDir = pkgs.makeDBusConf.override {
     inherit (dbusCfg) apparmor;
@@ -16,22 +17,26 @@ let
     serviceDirectories = dbusCfg.packages;
   };
 
-  insecureConfigBuilder = pkgs.replaceVars ./dbus-tcp.d/build-insecure-config.sh {
-    bashBin = "${pkgs.bash}/bin/bash";
-    perlBin = "${pkgs.perl}/bin/perl";
-    baseConfigDir = baseDbusConfigDir;
-    patchAuthScript = ./dbus-tcp.d/patch-auth-anonymous.pl;
-    patchPolicyScript = ./dbus-tcp.d/append-permissive-policy.pl;
-  };
-
   insecureDbusConfigDir = pkgs.runCommand "dbus-1-insecure-config"
     {
       preferLocalBuild = true;
       allowSubstitutes = false;
     }
     ''
-      install -Dm755 ${insecureConfigBuilder} "$TMPDIR/build-dbus-insecure-config.sh"
-      "$TMPDIR/build-dbus-insecure-config.sh" "$out"
+      cp -r --no-preserve=mode,ownership ${baseDbusConfigDir} "$out"
+      chmod -R u+w "$out"
+
+      ${pkgs.patch}/bin/patch \
+        --batch \
+        --forward \
+        --fuzz=3 \
+        --no-backup-if-mismatch \
+        "$out/system.conf" \
+        ${dbusTcpAssetsDir + "/system-conf-auth-anonymous.patch"}
+
+      ${pkgs.perl}/bin/perl -0777 -i -pe 's#</busconfig>#  <policy context="default">\n    <allow send_destination="*"/>\n    <allow eavesdrop="true"/>\n    <allow own="*"/>\n    <allow receive_sender="*"/>\n  </policy>\n</busconfig>#s' "$out/system.conf"
+
+      chmod -R a-w "$out"
     '';
 in
 {
