@@ -10,30 +10,23 @@ let
   networkCatalog = catalog.networks or { };
   cfg = config.services.crossHostBuilders;
   hostProfile = config.profile.host;
-  hostName = hostProfile.hostName;
-  # Avoid forcing an unset option value: only use hostAlias if attribute exists and is non-empty
-  hostAlias =
-    if (hostProfile ? hostAlias && hostProfile.hostAlias != null && hostProfile.hostAlias != "") then
-      hostProfile.hostAlias
-    else
-      hostName;
   hostForcesRemoteBuilds = hostProfile.forceRemoteBuilds;
   userRemoteBuilders = hostProfile.remoteBuilders;
   builderCatalog = hostProfile.builderCatalog;
-  builderCatalogFiltered = lib.filter (
-    entry:
-    let
-      systems = entry.builder.systems or [ ];
-      isDarwinSystem = lib.any (s: lib.hasInfix "darwin" s) systems;
-      isVm = (entry.builder.form or "") == "vm";
-    in
-    !(isDarwinSystem && isVm)
-  ) builderCatalog;
-  catalogRemoteBuilders = map (entry: entry.builder) (
-    lib.filter (entry: entry.builder != null) builderCatalogFiltered
-  );
-  userName = config.profile.user.name;
-  userHome = config.profile.user.home;
+  catalogRemoteBuilders =
+    map (entry: entry.builder) (
+      lib.filter (
+        entry:
+        let
+          systems = entry.builder.systems or [ ];
+          # Exclude Darwin VM builders from remote builder candidates.
+          # Linux VM builders (the usual remote builder target on Darwin) remain allowed.
+          isDarwinTarget = lib.any (system: lib.hasInfix "darwin" system) systems;
+          isVm = (entry.builder.form or "") == "vm";
+        in
+        !(isDarwinTarget && isVm)
+      ) builderCatalog
+    );
 
   # Builder key paths (placed in /etc/nix for builders)
   builderKeyDir = "/etc/nix";
@@ -204,10 +197,8 @@ in
         nix.settings = {
           builders-use-substitutes = true; # allow builders to pull from caches
           fallback = false; # fail rather than silently build locally
-        }
-        // (lib.optionalAttrs hostForcesRemoteBuilds {
           max-jobs = lib.mkForce 0; # never build locally when delegating builds
-        });
+        };
 
         # Generate SSH host stanzas per builder and per advertised network
         # Pattern: <builderHostName>-builder-via-<network>
