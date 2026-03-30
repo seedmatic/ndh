@@ -10,9 +10,12 @@ main() {
   fi
 
   tmp_keys_dir="$(@mktemp@ -d)"
-  trap 'rm -rf "$tmp_keys_dir"' EXIT
+  tmp_profile_yaml="$(@mktemp@)"
+  trap 'rm -rf "$tmp_keys_dir" "$tmp_profile_yaml"' EXIT
 
-  @bash@ @sshExtractKeys@ "$keys_yaml" "$tmp_keys_dir"
+  @yq@ eval '.profiles."@profileName@"' "$keys_yaml" > "$tmp_profile_yaml"
+
+  @bash@ @sshExtractKeys@ "$tmp_profile_yaml" "$tmp_keys_dir"
 
   install -d -m 700 ~/.ssh/keys.d
   @rsync@ -avL \

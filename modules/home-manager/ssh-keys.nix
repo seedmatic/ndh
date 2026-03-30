@@ -98,7 +98,9 @@ in
         bash = "${pkgs.bash}/bin/bash";
         mktemp = "${pkgs.coreutils-full}/bin/mktemp";
         rsync = "${pkgs.rsync}/bin/rsync";
+        yq = "${pkgs.yq-go}/bin/yq";
         sshExtractKeys = "${./ssh-extract-keys.sh}";
+        profileName = profileName;
         keysYaml =
           if sshKeysYamlPath != null then
             sshKeysYamlPath

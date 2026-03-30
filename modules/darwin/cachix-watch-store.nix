@@ -8,7 +8,8 @@
 with lib;
 let
   cfg = config.services.nxmaticCachixWatchStore;
-  tokenSecretName = "nxmatic-cachix-watch-store-token";
+  secretNamespaceDir = "/run/secrets/nix-darwin-home";
+  tokenSecretName = "nxmatic-cachix-watch-store.token";
   tokenSecretPath = config.sops.secrets.${tokenSecretName}.path;
 
   watchStoreScript = pkgs.writeShellScript "nxmatic-cachix-watch-store" ''
@@ -49,6 +50,7 @@ in
       format = "yaml";
       sopsFile = cfg.sopsEncryptedTokenFile;
       key = "cachix/${cfg.cacheName}/token";
+      path = "${secretNamespaceDir}/${tokenSecretName}";
     };
 
     launchd.daemons.nxmatic-cachix-watch-store = {

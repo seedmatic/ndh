@@ -19,6 +19,7 @@ let
     "home-manager"
     "users"
     userName
+    "home"
     "activationPackage"
   ] null config;
   hmUserExists = hmActivationPackage != null;
@@ -120,7 +121,12 @@ in
           script = activationLoggerScript;
           cmd = config.activation.loggerCmd;
         };
-        sshKeysYamlPath = lib.attrByPath [ "sops" "secrets" "nxmatic-ssh-keys-yaml" "path" ] null config;
+        sshKeysYamlPath = lib.attrByPath [
+          "sops"
+          "secrets"
+          "nxmatic-ssh-keys.yaml"
+          "path"
+        ] (toString ../../modules/home-manager/ssh.d/keys.yaml) config;
       };
     };
 
@@ -140,7 +146,12 @@ in
           script = activationLoggerScript;
           cmd = config.activation.loggerCmd;
         };
-        sshKeysYamlPath = lib.attrByPath [ "sops" "secrets" "nxmatic-ssh-keys-yaml" "path" ] null config;
+        sshKeysYamlPath = lib.attrByPath [
+          "sops"
+          "secrets"
+          "nxmatic-ssh-keys.yaml"
+          "path"
+        ] (toString ../../modules/home-manager/ssh.d/keys.yaml) config;
       };
       useGlobalPkgs = true;
       useUserPackages = true;

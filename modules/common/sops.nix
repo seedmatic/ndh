@@ -11,6 +11,7 @@ let
     types
     ;
   cfg = config.nxmatic.sopsAgeKeyBootstrap;
+  secretNamespaceDir = "/run/secrets/nix-darwin-home";
   sshKeysSopsFile = ../../modules/home-manager/ssh.d/keys.yaml;
   sshKeysSopsContent = builtins.readFile sshKeysSopsFile;
   sshKeysSourceLooksEncrypted =
@@ -29,54 +30,51 @@ let
     else
       cfg.systemWideKeyFile;
 
-  sopsAgeBootstrapScript = ''
-    set -eu
+  sopsAgeBootstrapScript =
+    ''
+      set -eu
 
-    key_file="${config.sops.age.keyFile}"
-    key_dir="$(dirname "$key_file")"
-    public_key_file="${cfg.publicKeyFile}"
-    public_key_dir="$(dirname "$public_key_file")"
-    darwin_user_key_file="${cfg.darwinUserKeyFile}"
-    import_existing_user_key_on_bootstrap="${if cfg.importExistingUserKeyOnBootstrap then "1" else "0"}"
-    export_public_key_on_activation="${if cfg.exportPublicKeyOnActivation then "1" else "0"}"
-
-    case "${cfg.phase}" in
-      bootstrap)
-        if [ ! -s "$key_file" ]; then
-          install -d -m 700 "$key_dir"
-          if [ "$import_existing_user_key_on_bootstrap" = "1" ] && [ "$darwin_user_key_file" != "$key_file" ] && [ -s "$darwin_user_key_file" ]; then
-            cp "$darwin_user_key_file" "$key_file"
-            chmod 600 "$key_file"
-            echo "[sops-age-bootstrap] installed existing user age key into $key_file"
+      key_file="${config.sops.age.keyFile}"
+      key_dir="$(dirname "$key_file")"
+      public_key_file="${cfg.publicKeyFile}"
+      public_key_dir="$(dirname "$public_key_file")"
+      darwin_user_key_file="${cfg.darwinUserKeyFile}"
+      import_existing_user_key_on_bootstrap="${if cfg.importExistingUserKeyOnBootstrap then "1" else "0"}"
+      export_public_key_on_activation="${if cfg.exportPublicKeyOnActivation then "1" else "0"}"
+    ''
+    + (if cfg.phase == "bootstrap" then
+        ''
+          if [ ! -s "$key_file" ]; then
+            install -d -m 700 "$key_dir"
+            if [ "$import_existing_user_key_on_bootstrap" = "1" ] && [ "$darwin_user_key_file" != "$key_file" ] && [ -s "$darwin_user_key_file" ]; then
+              cp "$darwin_user_key_file" "$key_file"
+              chmod 600 "$key_file"
+              echo "[sops-age-bootstrap] installed existing user age key into $key_file"
+            else
+              ${pkgs.age}/bin/age-keygen -o "$key_file"
+              chmod 600 "$key_file"
+              echo "[sops-age-bootstrap] generated age key at $key_file"
+            fi
           else
-            ${pkgs.age}/bin/age-keygen -o "$key_file"
-            chmod 600 "$key_file"
-            echo "[sops-age-bootstrap] generated age key at $key_file"
+            echo "[sops-age-bootstrap] existing age key detected at $key_file"
           fi
-        else
-          echo "[sops-age-bootstrap] existing age key detected at $key_file"
-        fi
-        ;;
-      enforce)
-        if [ ! -s "$key_file" ]; then
-          echo "[sops-age-bootstrap] ERROR: missing SOPS age key at $key_file"
-          echo "[sops-age-bootstrap] either provision the key manually or run one activation with nxmatic.sopsAgeKeyBootstrap.phase=\"bootstrap\""
-          exit 1
-        fi
-        ;;
-      *)
-        echo "[sops-age-bootstrap] ERROR: unsupported phase '${cfg.phase}'"
-        exit 1
-        ;;
-    esac
-
-    if [ "$export_public_key_on_activation" = "1" ] && [ -s "$key_file" ]; then
-      install -d -m 755 "$public_key_dir"
-      ${pkgs.age}/bin/age-keygen -y "$key_file" > "$public_key_file"
-      chmod 644 "$public_key_file"
-      echo "[sops-age-bootstrap] published host age recipient to $public_key_file"
-    fi
-  '';
+        ''
+      else
+        ''
+          if [ ! -s "$key_file" ]; then
+            echo "[sops-age-bootstrap] ERROR: missing SOPS age key at $key_file"
+            echo "[sops-age-bootstrap] either provision the key manually or run one activation with nxmatic.sopsAgeKeyBootstrap.phase=\"bootstrap\""
+            exit 1
+          fi
+        '')
+    + ''
+      if [ "$export_public_key_on_activation" = "1" ] && [ -s "$key_file" ]; then
+        install -d -m 755 "$public_key_dir"
+        ${pkgs.age}/bin/age-keygen -y "$key_file" > "$public_key_file"
+        chmod 644 "$public_key_file"
+        echo "[sops-age-bootstrap] published host age recipient to $public_key_file"
+      fi
+    '';
 in
 {
   options.nxmatic.sopsAgeKeyBootstrap = {
@@ -153,16 +151,18 @@ in
       # Canonical encrypted secrets source tracked in this repository.
       defaultSopsFile = lib.mkDefault ../../.secrets;
 
+      secrets."nxmatic-ssh-keys.yaml" = {
+        sopsFile = sshKeysSopsFile;
+        format = "yaml";
+        # Emit the full decrypted YAML document; profile selection happens at runtime.
+        key = "";
+        path = "${secretNamespaceDir}/nxmatic-ssh-keys.yaml";
+        owner = config.profile.user.name;
+        mode = "0400";
+      };
+
       age.keyFile = lib.mkDefault ageKeyFileDefault;
 
-      # Canonical runtime path for SSH key material used by home-manager activation.
-      # Keep decrypted content out of derivation outputs; consume via .path at activation.
-      secrets.nxmatic-ssh-keys-yaml = {
-        format = "binary";
-        sopsFile = sshKeysSopsFile;
-        mode = "0400";
-        owner = lib.mkDefault (if config ? profile && config.profile ? user then config.profile.user.name else "root");
-      };
     };
 
     assertions = [
@@ -178,6 +178,7 @@ in
 
     # Two-phase age-key bootstrap guard:
     # phase=bootstrap provisions once, phase=enforce blocks activation when missing.
-    system.activationScripts.sopsAgeKeyBootstrap.text = lib.mkAfter sopsAgeBootstrapScript;
+    # Use preActivation to guarantee key material exists before sops-install-secrets runs.
+    system.activationScripts.preActivation.text = lib.mkBefore sopsAgeBootstrapScript;
   };
 }

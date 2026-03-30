@@ -8,7 +8,7 @@ outputDir="$2"
 mkdir -p "$outputDir"
 
 exp=$( cat <<'EOE' | cut -c 3-
-  .keys | to_entries[] | 
+  . | to_entries[] | 
   .key as $name |
   # Derive a filesystem filename base where underscores are converted back to hyphens
   ($name | sub("_"; "-")) as $fname |

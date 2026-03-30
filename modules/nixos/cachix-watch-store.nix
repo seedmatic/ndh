@@ -7,7 +7,8 @@
 
 let
   cfg = config.services.nxmaticCachixWatchStore;
-  tokenSecretName = "nxmatic-cachix-watch-store-token";
+  secretNamespaceDir = "/run/secrets/nix-darwin-home";
+  tokenSecretName = "nxmatic-cachix-watch-store.token";
   tokenSecretPath = config.sops.secrets.${tokenSecretName}.path;
 in
 {
@@ -20,6 +21,7 @@ in
       format = "yaml";
       sopsFile = cfg.sopsEncryptedTokenFile;
       key = "cachix/${cfg.cacheName}/token";
+      path = "${secretNamespaceDir}/${tokenSecretName}";
     };
 
     services.cachix-watch-store = {
