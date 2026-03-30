@@ -34,8 +34,11 @@ let
 
     key_file="${config.sops.age.keyFile}"
     key_dir="$(dirname "$key_file")"
+    public_key_file="${cfg.publicKeyFile}"
+    public_key_dir="$(dirname "$public_key_file")"
     darwin_user_key_file="${cfg.darwinUserKeyFile}"
     import_existing_user_key_on_bootstrap="${if cfg.importExistingUserKeyOnBootstrap then "1" else "0"}"
+    export_public_key_on_activation="${if cfg.exportPublicKeyOnActivation then "1" else "0"}"
 
     case "${cfg.phase}" in
       bootstrap)
@@ -66,6 +69,13 @@ let
         exit 1
         ;;
     esac
+
+    if [ "$export_public_key_on_activation" = "1" ] && [ -s "$key_file" ]; then
+      install -d -m 755 "$public_key_dir"
+      ${pkgs.age}/bin/age-keygen -y "$key_file" > "$public_key_file"
+      chmod 644 "$public_key_file"
+      echo "[sops-age-bootstrap] published host age recipient to $public_key_file"
+    fi
   '';
 in
 {
@@ -112,6 +122,28 @@ in
         During bootstrap, if `${config.sops.age.keyFile}` is missing but
         `darwinUserKeyFile` exists, copy it into the target key path before
         generating a new key.
+      '';
+    };
+
+    exportPublicKeyOnActivation = mkOption {
+      type = types.bool;
+      default = true;
+      description = ''
+        Derive and publish the host public age recipient from
+        `${config.sops.age.keyFile}` on each activation.
+      '';
+    };
+
+    publicKeyFile = mkOption {
+      type = types.str;
+      default =
+        if pkgs.stdenv.isDarwin then
+          "/etc/sops/age/keys.pub"
+        else
+          "/etc/sops/age/keys.pub";
+      description = ''
+        Path where the host public age recipient is published.
+        This file is safe to collect into `.sops.yaml` recipient groups.
       '';
     };
   };
