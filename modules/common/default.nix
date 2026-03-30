@@ -46,7 +46,7 @@ let
     activationTag = activationTagHmPost;
   };
 
-  postActivationScript = pkgs.runCommand "post-activation.sh" { } ''
+  postActivationScript = pkgs.runCommand "hm-post-activation.sh" { } ''
     install -m 0555 ${postActivationScriptSource} "$out"
   '';
 
