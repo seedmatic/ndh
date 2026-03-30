@@ -31,6 +31,17 @@ let
       profile.host.hostName;
   profileName = profile.name;
 
+  hostsCatalog =
+    let
+      entries = builtins.readDir ../../hosts;
+      hostDirs = lib.filterAttrs (
+        name: type:
+        type == "directory" && builtins.pathExists (../../hosts + "/${name}/flake.nix")
+      ) entries;
+    in
+    lib.attrNames hostDirs;
+  hostsCatalogCsv = lib.concatStringsSep "," hostsCatalog;
+
   # All hosts should accept all profile principals to allow cross-host connections
   # This ensures bioskop (committed) can accept from alcide (work) and vice versa
   allPrincipals = [
@@ -76,7 +87,7 @@ let
         ];
       }
       ''
-        bash ${../home-manager/ssh-generate-keys-yaml.sh} "${profileName}" "${hostAlias}" "${../home-manager/ssh.d/keys.yaml}" "$out"
+        bash ${../home-manager/ssh-generate-keys-yaml.sh} "${profileName}" "${hostAlias}" "${../home-manager/ssh.d/keys.yaml}" "$out" "${hostsCatalogCsv}"
         yq eval '(.keys | with_entries(select((.value.usage // []) | contains(["ssh-authority"])))) as $k | {"keys": $k}' -i "$out"
         # Drop any private material for CA keys (public CA only)
         yq eval '(.keys | with_entries(.value.private = null)) as $k | {"keys": $k}' -i "$out"
@@ -88,6 +99,7 @@ let
         buildInputs = [
           pkgs.bash
           pkgs.coreutils-full
+          pkgs.openssh
           pkgs.yq-go
           pkgs.gnused
           pkgs.gnugrep

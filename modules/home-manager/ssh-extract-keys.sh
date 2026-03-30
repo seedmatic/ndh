@@ -60,7 +60,8 @@ for file in "$outputDir/"*; do
   yq eval '.content | trim' -i "$file"
 done
 
-# Provide stable symlink names (<key>-cert.pub) pointing to the first user certificate
+# Provide stable symlink names (<key>-cert.pub) pointing to a matching user certificate.
+# Match is validated by comparing key fingerprint and certificate embedded public-key fingerprint.
 for priv in "$outputDir/"*; do
   [[ -f "$priv" ]] || continue
   case "$priv" in
@@ -68,8 +69,27 @@ for priv in "$outputDir/"*; do
   esac
   base="${priv##*/}"
   certs=("$outputDir/${base}"-*-user-cert.pub)
-  if (( ${#certs[@]} > 0 )); then
-    cert_basename="${certs[0]##*/}"
+
+  key_fp="$(ssh-keygen -lf "$priv" 2>/dev/null | awk '{print $2}' || true)"
+  if [[ -z "$key_fp" ]]; then
+    rm -f "$outputDir/${base}-cert.pub"
+    continue
+  fi
+
+  matched_cert=""
+  for cert in "${certs[@]}"; do
+    [[ -f "$cert" ]] || continue
+    cert_fp="$(ssh-keygen -Lf "$cert" 2>/dev/null | awk '/Public key:/ {print $4; exit}' || true)"
+    if [[ -n "$cert_fp" && "$cert_fp" == "$key_fp" ]]; then
+      matched_cert="$cert"
+      break
+    fi
+  done
+
+  if [[ -n "$matched_cert" ]]; then
+    cert_basename="${matched_cert##*/}"
     ln -sf "$cert_basename" "$outputDir/${base}-cert.pub"
+  else
+    rm -f "$outputDir/${base}-cert.pub"
   fi
 done

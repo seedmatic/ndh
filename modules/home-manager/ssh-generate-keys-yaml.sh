@@ -53,6 +53,18 @@ key::authorityHostNames() {
     hostNames[$(hostname -s)]=1
     hostNames[$(hostname -s).${domain}]=1
 
+    if [[ -n "${hostsCatalogCsv:-}" ]]; then
+        local catalogHost
+        IFS=',' read -r -a catalogHosts <<<"${hostsCatalogCsv}"
+        for catalogHost in "${catalogHosts[@]}"; do
+            [[ -n "${catalogHost}" ]] || continue
+            hostNames["${catalogHost}"]=1
+            hostNames["${catalogHost}.lan"]=1
+            hostNames["${catalogHost}.local"]=1
+            hostNames["${catalogHost}.${domain}"]=1
+        done
+    fi
+
     printf '%s\n' "${!hostNames[@]}"
 }
 
@@ -421,6 +433,8 @@ profileName="$1"; shift
 hostName="$1"; shift
 inputFile="$1"; shift
 outputFile="$1"; shift
+declare -g hostsCatalogCsv
+hostsCatalogCsv="${1:-}"
 
 : "Create a temporary directory for signing"
 tmpdir=$(mktemp --directory --suffix=keys.d)

@@ -28,6 +28,17 @@ let
     else
       hostProfile.hostName;
 
+  hostsCatalog =
+    let
+      entries = builtins.readDir ../../hosts;
+      hostDirs = lib.filterAttrs (
+        name: type:
+        type == "directory" && builtins.pathExists (../../hosts + "/${name}/flake.nix")
+      ) entries;
+    in
+    lib.attrNames hostDirs;
+  hostsCatalogCsv = lib.concatStringsSep "," hostsCatalog;
+
   yamlHostKeys =
     pkgs.runCommand "ssh-signed-keys.yaml"
       {
@@ -44,7 +55,7 @@ let
         ];
       }
       ''
-        bash ${./ssh-generate-keys-yaml.sh} "${profileName}" "${hostIdent}" "${./ssh.d/keys.yaml}" "$out"
+        bash ${./ssh-generate-keys-yaml.sh} "${profileName}" "${hostIdent}" "${./ssh.d/keys.yaml}" "$out" "${hostsCatalogCsv}"
 
         # Basic sanity: produced file must start with 'keys:' (or be empty if profile has no keys)
         if [ -s "$out" ] && ! head -n1 "$out" | grep -q '^keys:'; then
@@ -63,6 +74,7 @@ let
         buildInputs = [
           pkgs.bash
           pkgs.coreutils-full # mkdir, mv, cut
+          pkgs.openssh # ssh-keygen
           pkgs.yq-go # yq
           pkgs.gnused # sed (if needed later)
           pkgs.gnugrep # grep (if pattern matching added later)

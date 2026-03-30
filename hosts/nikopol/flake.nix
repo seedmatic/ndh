@@ -48,6 +48,8 @@
               host = {
                 hostName = lib.mkDefault hostProfile.hostName;
                 tailnet = hostProfile.tailnet;
+                forceRemoteBuilds = true;
+                preferredBuilderHosts = [ "bioskop" ];
               }
               // (
                 if hostProfile ? hostAlias then
@@ -60,6 +62,9 @@
               darwin = darwinProfile;
               user.home = lib.mkForce (builtins.toPath "/Volumes/user-home");
             };
+
+            # Enable cross-host builders so ssh_config.d drop-ins are installed
+            services.crossHostBuilders.enable = true;
 
             services.headscale-client = {
               enable = true;
@@ -79,8 +84,37 @@
             };
           };
         };
+
+      darwinModule =
+        { ... }:
+        {
+          config = {
+            networking.vlan = {
+              enable = true;
+              id = 2;
+              addressPrefix = "192.168.2";
+              parentInterface = "en0";
+            };
+          };
+        };
+
+      nixosModule =
+        { ... }:
+        {
+          config = {
+            networking.vlan = {
+              enable = true;
+              id = 2;
+              addressPrefix = "192.168.2";
+              parentInterface = "vmlan0";
+              addressSourceInterface = "lan-br";
+            };
+          };
+        };
     in
     nix-darwin-home.mkHostOutputs {
       inherit hostProfile profileModule;
+      darwinExtraModules = [ darwinModule ];
+      nixosExtraModules = [ nixosModule ];
     };
 }

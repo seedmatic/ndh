@@ -22,6 +22,17 @@ let
       profile.host.hostAlias
     else
       profile.host.hostName;
+
+  hostsCatalog =
+    let
+      entries = builtins.readDir ../../../hosts;
+      hostDirs = lib.filterAttrs (
+        name: type:
+        type == "directory" && builtins.pathExists (../../../hosts + "/${name}/flake.nix")
+      ) entries;
+    in
+    lib.attrNames hostDirs;
+  hostsCatalogCsv = lib.concatStringsSep "," hostsCatalog;
   # Reuse existing host key generated/managed by NixOS (ed25519 preferred)
   hostKeyPath = "/etc/ssh/ssh_host_ed25519_key"; # runtime path consumed by sshd
   hostCertPath = null; # Add signed host cert later if desired
@@ -42,7 +53,7 @@ let
         ];
       }
       ''
-        bash ${../../home-manager/ssh-generate-keys-yaml.sh} "${profileName}" "${hostIdent}" "${../../home-manager/ssh.d/keys.yaml}" "$out"
+        bash ${../../home-manager/ssh-generate-keys-yaml.sh} "${profileName}" "${hostIdent}" "${../../home-manager/ssh.d/keys.yaml}" "$out" "${hostsCatalogCsv}"
         yq eval '(.keys | with_entries(select((.value.usage // []) | contains(["ssh-authority"])))) as $k | {"keys": $k}' -i "$out"
         # Drop any private material for CA keys (public CA only)
         yq eval '(.keys | with_entries(.value.private = null)) as $k | {"keys": $k}' -i "$out"
@@ -53,6 +64,7 @@ let
         buildInputs = [
           pkgs.bash
           pkgs.coreutils-full
+          pkgs.openssh
           pkgs.yq-go
           pkgs.gnused
           pkgs.gnugrep

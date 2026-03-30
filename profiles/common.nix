@@ -82,7 +82,7 @@ in
                   default = [ ];
                   example = [
                     "bioskop"
-                    "alcide"
+                    "nikopol"
                   ];
                   description = "Host keys from catalog.hosts to pull builder endpoints from (e.g., include bioskop so alcide offloads to bioskop's builders). If empty, defaults to the current host only.";
                 };
