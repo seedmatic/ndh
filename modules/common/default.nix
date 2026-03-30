@@ -67,6 +67,7 @@ in
 
   imports = [
     ../../profiles/common.nix
+    ./cachix-watch-store.nix
     ./primary-user.nix
     ./user.nix
     ./nixpkgs.nix

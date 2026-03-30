@@ -138,7 +138,6 @@ in
     ./avahi.nix
     ./bat.nix
     ./cache-tokens.nix
-    ./cachix-agent.nix
     ./chromium.nix
     ./dircolors.nix
     ./direnv.nix
@@ -277,17 +276,5 @@ in
       ];
     };
   }
-  // (
-    if pkgs.stdenv.isDarwin then
-      {
-        # Disable cachix-agent to avoid conflicts with our cache-tokens module
-        # cachix-agent = {
-        #   enableLaunchdAgent = true;
-        #   name = "nix-community";
-        #   credentialsFile = ./cachix-agent.dhall;
-        # };
-      }
-    else
-      { }
-  );
+  ;
 }

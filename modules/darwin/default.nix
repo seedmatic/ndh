@@ -12,6 +12,7 @@
     ./preferences.nix
     ./security.nix
     ./core.nix
+    ./cachix-watch-store.nix
     ./disable-spotlight.nix
     ./disable-google-updaters.nix
     ./disable-unwanted-agents.nix
