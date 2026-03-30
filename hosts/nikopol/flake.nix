@@ -89,6 +89,11 @@
         { ... }:
         {
           config = {
+            services.nxmaticCachixWatchStore = {
+              enable = true;
+              sopsEncryptedTokenFile = ../../.secrets;
+            };
+
             networking.vlan = {
               enable = true;
               id = 2;
@@ -107,6 +112,8 @@
         in
         {
           config = {
+            services.nxmaticCachixWatchStore.sopsEncryptedTokenFile = ../../.secrets;
+
             networking.vlan = {
               enable = true;
               id = 2;

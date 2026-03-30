@@ -104,6 +104,11 @@
         in
         {
           config = {
+            services.nxmaticCachixWatchStore = {
+              enable = true;
+              sopsEncryptedTokenFile = ../../.secrets;
+            };
+
             networking.vlan = {
               enable = true;
               id = 2;
@@ -150,6 +155,8 @@
         in
         {
           config = {
+            services.nxmaticCachixWatchStore.sopsEncryptedTokenFile = ../../.secrets;
+
             # Sign locally produced store paths so peer hosts can trust nix copy --from ssh-ng://bioskop
             nix.settings.secret-key-files = [ "/etc/nix/bioskop-cache.key" ];
 
