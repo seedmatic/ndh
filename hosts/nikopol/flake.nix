@@ -34,17 +34,11 @@
 
       profileModule =
         {
-          pkgs,
           lib,
           config,
           options,
           ...
         }:
-        let
-          # Canonical source-of-truth network values from rke2lab netplan catalog (@codebase)
-          netplanCatalog = config._module.specialArgs.catalog.networks.rke2labNetplan;
-          clusterNetwork = netplanCatalog.clusters.nikopol;
-        in
         {
           imports = [
             ../../profiles/committed.nix
@@ -88,17 +82,6 @@
                 "nxmatic"
               ];
             };
-
-            # Expose system D-Bus over vmnet gateway for lab-only remote control/testing.
-          }
-          // lib.optionalAttrs (lib.hasAttrByPath [ "services" "dbusTcpSystemBus" ] options) {
-            services.dbusTcpSystemBus = {
-              enable = true;
-              bindAddress = clusterNetwork.gateway;
-              port = 12434;
-              openFirewall = true;
-              insecureAllowAnonymous = true;
-            };
           };
         };
 
@@ -116,7 +99,12 @@
         };
 
       nixosModule =
-        { ... }:
+        { config, ... }:
+        let
+          # Canonical source-of-truth network values from rke2lab netplan catalog (@codebase)
+          netplanCatalog = config._module.specialArgs.catalog.networks.rke2labNetplan;
+          clusterNetwork = netplanCatalog.clusters.nikopol;
+        in
         {
           config = {
             networking.vlan = {
@@ -125,6 +113,15 @@
               addressPrefix = "192.168.2";
               parentInterface = "vmlan0";
               addressSourceInterface = "lan-br";
+            };
+
+            # Expose system D-Bus over vmnet gateway for lab-only remote control/testing.
+            services.dbusTcpSystemBus = {
+              enable = true;
+              bindAddress = clusterNetwork.gateway;
+              port = 12434;
+              openFirewall = true;
+              insecureAllowAnonymous = true;
             };
           };
         };

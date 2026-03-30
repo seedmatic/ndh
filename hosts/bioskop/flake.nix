@@ -88,43 +88,9 @@
             services.crossHostBuilders.enable = true;
 
             # Sign locally produced store paths so peer hosts can trust nix copy --from ssh-ng://bioskop
-            nix.settings = lib.mkMerge [
-              {
-                trusted-users = [
-                  "builder"
-                ];
-              }
-              (lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
-                secret-key-files = [ "/etc/nix/bioskop-cache.key" ];
-              })
+            nix.settings.trusted-users = [
+              "builder"
             ];
-
-            # Bootstrap cache signing key on NixOS guests if missing.
-            # The secret key remains local at /etc/nix and is not stored in the Nix store.
-            system.activationScripts.ensureBioskopCacheKey = lib.mkIf pkgs.stdenv.hostPlatform.isLinux ''
-              if [ ! -s /etc/nix/bioskop-cache.key ] || [ ! -s /etc/nix/bioskop-cache.pub ]; then
-                install -d -m 0755 /etc/nix
-                ${pkgs.nix}/bin/nix-store --generate-binary-cache-key \
-                  bioskop-cache \
-                  /etc/nix/bioskop-cache.key \
-                  /etc/nix/bioskop-cache.pub
-                chmod 600 /etc/nix/bioskop-cache.key
-                chmod 644 /etc/nix/bioskop-cache.pub
-              fi
-            '';
-
-            # Expose system D-Bus over the vmnet-facing address (not loopback)
-            # for lab-only remote control/testing traffic.
-          }
-          // lib.optionalAttrs (lib.hasAttrByPath [ "services" "dbusTcpSystemBus" ] options) {
-            services.dbusTcpSystemBus = {
-              enable = true;
-              # Netplan catalog-derived vmnet gateway for bioskop cluster slice.
-              bindAddress = clusterNetwork.gateway;
-              port = 12434;
-              openFirewall = true;
-              insecureAllowAnonymous = true;
-            };
           };
         };
 
@@ -170,9 +136,53 @@
 
           };
         };
+
+      nixosModule =
+        {
+          config,
+          pkgs,
+          ...
+        }:
+        let
+          # Canonical source-of-truth network values from rke2lab netplan catalog (@codebase)
+          netplanCatalog = config._module.specialArgs.catalog.networks.rke2labNetplan;
+          clusterNetwork = netplanCatalog.clusters.bioskop;
+        in
+        {
+          config = {
+            # Sign locally produced store paths so peer hosts can trust nix copy --from ssh-ng://bioskop
+            nix.settings.secret-key-files = [ "/etc/nix/bioskop-cache.key" ];
+
+            # Bootstrap cache signing key on NixOS guests if missing.
+            # The secret key remains local at /etc/nix and is not stored in the Nix store.
+            system.activationScripts.ensureBioskopCacheKey = ''
+              if [ ! -s /etc/nix/bioskop-cache.key ] || [ ! -s /etc/nix/bioskop-cache.pub ]; then
+                install -d -m 0755 /etc/nix
+                ${pkgs.nix}/bin/nix-store --generate-binary-cache-key \
+                  bioskop-cache \
+                  /etc/nix/bioskop-cache.key \
+                  /etc/nix/bioskop-cache.pub
+                chmod 600 /etc/nix/bioskop-cache.key
+                chmod 644 /etc/nix/bioskop-cache.pub
+              fi
+            '';
+
+            # Expose system D-Bus over the vmnet-facing address (not loopback)
+            # for lab-only remote control/testing traffic.
+            services.dbusTcpSystemBus = {
+              enable = true;
+              # Netplan catalog-derived vmnet gateway for bioskop cluster slice.
+              bindAddress = clusterNetwork.gateway;
+              port = 12434;
+              openFirewall = true;
+              insecureAllowAnonymous = true;
+            };
+          };
+        };
     in
     nix-darwin-home.mkHostOutputs {
       inherit hostProfile profileModule;
       darwinExtraModules = [ darwinModule ];
+      nixosExtraModules = [ nixosModule ];
     };
 }
