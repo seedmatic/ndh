@@ -22,7 +22,7 @@ in
       type = lib.types.path;
       description = ''
         Path to the SOPS-encrypted .secrets YAML file containing
-        .cache.<name>.token.
+        .cachix.<name>.token.
       '';
     };
 
@@ -104,7 +104,7 @@ in
         fi
 
         token="$(${pkgs.sops}/bin/sops --decrypt --input-type yaml --output-type yaml "$enc_src" \
-          | ${pkgs.yq-go}/bin/yq -r '.cache.${cfg.cacheName}.token // ""' - 2>/dev/null || true)"
+          | ${pkgs.yq-go}/bin/yq -r '.cachix.${cfg.cacheName}.token // ""' - 2>/dev/null || true)"
 
         if [ -z "$token" ] || [ "$token" = "null" ]; then
           echo "cachix token missing for cache '${cfg.cacheName}'"
