@@ -49,6 +49,8 @@ graph TB
     agent -->|auth| user
 ----
 
+*View full-screen:* link:diagrams/c2-container-architecture.jpeg[📥 Download JPEG]
+
 == C3: Pipeline Architecture (4 Stages)
 
 [mermaid]
@@ -89,6 +91,8 @@ graph LR
     input4 --> perms --> output4
 ----
 
+*View full-screen:* link:diagrams/c3-pipeline-architecture-4-stages.jpeg[📥 Download JPEG]
+
 == Data Flow: Profile YAML through Pipeline
 
 [mermaid]
@@ -118,6 +122,8 @@ graph TD
     
     G -->|auto-loads *.pub| H["✓ Certificate-based<br/>SSH auth ready!"]
 ----
+
+*View full-screen:* link:diagrams/data-flow-profile-yaml-through-pipeline.jpeg[📥 Download JPEG]
 
 == Sequence: home-manager switch → SSH Ready
 
@@ -151,6 +157,8 @@ sequenceDiagram
     Agent-->>User: ✓ SSH auth ready (certs auto-loaded)
 ----
 
+*View full-screen:* link:diagrams/sequence-homemanager-switch-to-ssh-ready.jpeg[📥 Download JPEG]
+
 == Key Decision Points in Pipeline
 
 [mermaid]
@@ -172,6 +180,8 @@ graph TD
     J --> K["~/.local/state/ssh-keys.d/"]
     K --> L["Ready for SSH auth"]
 ----
+
+*View full-screen:* link:diagrams/key-decision-points-in-pipeline.jpeg[📥 Download JPEG]
 
 == Nix Module Wiring Diagram
 
@@ -205,6 +215,8 @@ graph TB
     act2 --> dag
 ----
 
+*View full-screen:* link:diagrams/nix-module-wiring-diagram.jpeg[📥 Download JPEG]
+
 == Runtime File Structure Evolution
 
 [mermaid]
@@ -235,6 +247,8 @@ graph TD
     style C4 fill:#90EE90
     style C5 fill:#87CEEB
 ----
+
+*View full-screen:* link:diagrams/runtime-file-structure-evolution.jpeg[📥 Download JPEG]
 
 == Exporting Diagrams to JPEG
 
