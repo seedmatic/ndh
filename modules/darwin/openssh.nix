@@ -8,9 +8,10 @@
 let
   profile = config.profile;
   userHome = profile.user.home;
-  hostKeysDir = "${userHome}/.local/state/ssh-key.d";
-  hostKeyPrivateFile = "${hostKeysDir}/host";
-  hostKeyPublicCert = "${hostKeysDir}/host-mammoth-skate-host-cert.pub";
+  sshPaths = config.sshPaths;
+  hostKeysDir = sshPaths.stateDir;
+  hostKeyPrivateFile = sshPaths.privKeyFile;
+  hostKeyPublicCert = sshPaths.hostCertPublic;
   caPublicKeyFile = "${config.opensshPolicy.keysDir}/trusted-user-ca.pub";
   principalsScriptStore = pkgs.writeText "ssh-authorized-principals-command.sh" (
     builtins.readFile ../common/ssh/authorized-principals-command.sh
@@ -90,7 +91,7 @@ let
 
 in
 {
-  imports = [ ../common/openssh-policy.nix ];
+  imports = [ ../common/openssh-policy.nix ../common/ssh-paths.nix ];
 
   config = {
     # Server policy wiring

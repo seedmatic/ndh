@@ -20,15 +20,18 @@ let
   activationTagGenerate = "home-manager.activationScripts.${userName}.generateSSHKeysYaml";
   activationTagExtract = "home-manager.activationScripts.${userName}.extractSSHKeys";
   activationTagAuthorized = "home-manager.activationScripts.${userName}.ensureAuthorizedKeys";
-  sshKeysYamlPath = lib.attrByPath [ "_module" "specialArgs" "sshKeysYamlPath" ] null config;
-  canonicalRuntimeKeysYaml = "/run/secrets/nix-darwin-home/nxmatic-ssh-keys.yaml";
-  effectiveSSHKeysYamlPath =
-    if sshKeysYamlPath != null then
-      sshKeysYamlPath
+  sourceSSHKeysYamlPathOverride = lib.attrByPath [ "_module" "specialArgs" "sshKeysYamlPath" ] null config;
+  sshPaths = config.sshPaths;
+  # Source YAML path (SOPS-decrypted profile YAML), used as input to generation.
+  sourceSSHKeysYamlPath =
+    if sourceSSHKeysYamlPathOverride != null then
+      sourceSSHKeysYamlPathOverride
     else
-      canonicalRuntimeKeysYaml;
-  keysStateDir = "${config.xdg.stateHome}/ssh-key.d";
-  generatedSSHKeysYamlPath = "${keysStateDir}/keys.yaml";
+      sshPaths.runtimeSecretsKeysYaml;
+  keysStateDir = sshPaths.stateDir;
+  generatedSSHKeysYamlPath = sshPaths.generatedKeysYamlFile;
+  # Effective YAML path consumed by ssh-add-keys/launchd.
+  effectiveSSHKeysYamlPath = generatedSSHKeysYamlPath;
 
   # Command to filter and sign keys based on profile and host
   # Resolve a stable host identifier; hostAlias is optional by design (@codebase)
@@ -62,7 +65,7 @@ let
 
 in
 {
-  imports = [ ./ssh-add-keys.nix ];
+  imports = [ ./ssh-add-keys.nix ../common/ssh-paths.nix ];
 
   ssh-add-keys = {
     enable = true;
@@ -127,7 +130,7 @@ in
       # Generate the YAML of keys to deploy based on the main keys.yaml and the current host/profile
       generatedSSHKeysYaml = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
         ${pkgs.coreutils}/bin/mkdir -p "${keysStateDir}"
-        ${pkgs.bash}/bin/bash ${sshGenerateKeysYamlScript} "${profileName}" "$(${pkgs.hostname}/bin/hostname -s)" "${effectiveSSHKeysYamlPath}" "${generatedSSHKeysYamlPath}" "${hostsCatalogCsv}"
+        ${pkgs.bash}/bin/bash ${sshGenerateKeysYamlScript} "${profileName}" "$(${pkgs.hostname}/bin/hostname -s)" "${sourceSSHKeysYamlPath}" "${generatedSSHKeysYamlPath}" "${hostsCatalogCsv}"
       '';
 
       # Deploy keys to the filesystem with proper permissions based on the generated YAML

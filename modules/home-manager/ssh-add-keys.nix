@@ -12,8 +12,12 @@ let
     mkOption
     types
     ;
+  user = config.profile.user;
+  userName = user.name;
+  userHome = user.home;    
   cfg = config.ssh-add-keys;
-  keysFileDefault = "/run/secrets/nix-darwin-home/nxmatic-ssh-keys.yaml";
+  sshPaths = config.sshPaths;
+  keysFileDefault = sshPaths.generatedKeysYamlFile;
   sshAddKeysStoreScript = pkgs.writeShellApplication {
     name = "ssh-add-keys";
     runtimeInputs = with pkgs; [
@@ -31,6 +35,8 @@ let
   };
 in
 {
+  imports = [ ../common/ssh-paths.nix ];
+
   options.ssh-add-keys = {
     enable = mkEnableOption "Enable loading private keys from the generated keys.yaml into ssh-agent.";
 
