@@ -11,24 +11,25 @@ main() {
 	exp=$(
 		cat <<'EOE' | cut -c 3-
   .keys | to_entries[] | 
-  .key as $name |
-  # Use key name as filename base directly (YAML key names are already hyphenated)
-  $name as $fname |
+  env(TMPDIR) + "/" as $tmpdir |
+  ( .key | sub("_", "-") ) as $basename |
+  ( $basename + ".yaml" ) as $yamlfile |
+  ( $tmpdir + $yamlfile ) as $yamlfile |
   .value.private as $private | 
   .value.public as $public | 
   .value.usage // [] as $usage |
   [
     {
-      "filename": ("$OUTPUT_DIR/" + $fname), 
+      "yamlfile": $yamlfile, 
       "content": $private
     },
     {
-      "filename": ( "$OUTPUT_DIR/" + $fname + (
+      "yamlfile": ( $tmpdir + $basename + (
         { "suffix": ".pub" } | with( 
             select ( [ "ssh-authority"] - $usage | length == 0 );
             .suffix = "-ca.pub"
           ) | .suffix
-        )
+        ) + ".yaml"
       ),
       "content": $public
     }
@@ -41,7 +42,11 @@ main() {
     $authorityNameRaw as $authorityName |
     .value.public as $authorityPublic |
     select($authorityPublic != null and $authorityPublic != "") |
-    [{"filename": ("$OUTPUT_DIR/" + $fname + "-" + $authorityName + "-ca.pub"), "content": $authorityPublic}]
+    [ 
+      { 
+        "yamlfile": ( $tmpdir + $basename + "-" + $authorityName + "-ca.pub.yaml" ), 
+        "content": $authorityPublic
+      } ]
   ) +
   (
     # Signed certificates are nested under .certificates.<authority>.
@@ -51,31 +56,36 @@ main() {
     .value as $authorityCerts |
     [
       {
-        "filename": ("$OUTPUT_DIR/" + $fname + "-" + $authorityName + "-host-cert.pub"),
+        "yamlfile": ( $tmpdir + $basename + "-" + $authorityName + "-host-cert.pub.yaml"),
         "content": $authorityCerts."ssh-host"
       },
       {
-        "filename": ("$OUTPUT_DIR/" + $fname + "-" + $authorityName + "-user-cert.pub"),
+        "yamlfile": ( $tmpdir + $basename + "-" + $authorityName + "-user-cert.pub.yaml"),
         "content": $authorityCerts."ssh-user"
       }
     ]
   ) // []
-  | (.. | select(tag == "!!str")) |= envsubst
-  | .[] | select(.content != null) | splitdoc
+  | .[] 
+  | select(.content != null)
+  | split_doc
 EOE
 	)
 
-	: Use yq to generate the array, split it into files, and output to the specified directory
-	env OUTPUT_DIR="$outputDir" @yq@ eval "$exp" "$yamlFile" -s '.filename'
+	: "Use yq to generate the array, split it into files, and output to the specified directory"
+	tmpDir="$( mktemp --directory )"
+	trap "rm -fr $tmpDir" EXIT &&
+		env TMPDIR="$tmpDir" @yq@ eval "$exp" "$yamlFile" -s '.yamlfile'
 
-	: Post-process the generated YAML files to extract only the content
+	: "Post-process to extract only the content"
 	# Only touch files created by yq (*.yml split output); leave agent-keys and other non-YAML files untouched.
-	for file in "$outputDir/"*.yml; do
-		[[ -f "$file" ]] || continue
-		newfile="${file%.yml}"
-		mv "$file" "$newfile"
-		@yq@ eval '.content | trim' -i "$newfile"
+	for yamlFile in "$tmpDir"/*; do
+		filename="${yamlFile##*/}"
+		filename="${filename%.yaml}"
+		contentFile="$outputDir/$filename"
+		mv "$yamlFile" "$contentFile"
+		@yq@ --inplace eval '.content | trim' "$contentFile"
 	done
+	rm -fr "tmpDir"
 
 	: "Provide stable symlink names (<key>-cert.pub) pointing to a matching user certificate."
 	# Match is validated by comparing key fingerprint and certificate embedded public-key fingerprint.
