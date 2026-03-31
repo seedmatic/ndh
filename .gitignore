@@ -7,4 +7,4 @@
 .pre-commit-config.yaml
 nixos.qcow2
 .run.d
-.local.d
+.local.d*.cert
