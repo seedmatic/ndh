@@ -21,7 +21,7 @@ let
   activationTagAuthorized = "home-manager.activationScripts.${userName}.ensureAuthorizedKeys";
   sshKeysYamlPath = lib.attrByPath [ "_module" "specialArgs" "sshKeysYamlPath" ] null config;
   canonicalRuntimeKeysYaml = "/run/secrets/nix-darwin-home/nxmatic-ssh-keys.yaml";
-  keysStateDir = "${config.xdg.stateHome}/ssh-keys.d";
+  keysStateDir = "${config.xdg.stateHome}/ssh-key.d";
 
   # Command to filter and sign keys based on profile and host
   # Resolve a stable host identifier; hostAlias is optional by design (@codebase)
@@ -92,7 +92,7 @@ in
     recursive = true;
   };
 
-  # Deploy keys directly to $XDG_STATE_HOME/ssh-keys.d with proper permissions
+  # Deploy keys directly to $XDG_STATE_HOME/ssh-key.d with proper permissions
   # Externalized activation scripts: keep content in the store and execute via bash
   home.activation =
     let
@@ -103,7 +103,7 @@ in
 
       sshGenerateKeysYamlScript = ./ssh-generate-keys-yaml.sh;
 
-      deploySSHKeysScript = pkgs.replaceVars ./ssh-keys.d/deploy-ssh-keys.sh {
+      deploySSHKeysScript = pkgs.replaceVars ./ssh-key.d/deploy-ssh-keys.sh {
         awk = "${pkgs.gawk}/bin/awk";
         bash = "${pkgs.bash}/bin/bash";
         mktemp = "${pkgs.coreutils-full}/bin/mktemp";
@@ -122,7 +122,7 @@ in
         activationTag = activationTagDeploy;
       };
 
-      ensureAuthorizedKeysScript = pkgs.replaceVars ./ssh-keys.d/ensure-authorized-keys.sh {
+      ensureAuthorizedKeysScript = pkgs.replaceVars ./ssh-key.d/ensure-authorized-keys.sh {
         activationLogger = activationLogger;
         activationTag = activationTagAuthorized;
       };

@@ -1,7 +1,7 @@
 # shellcheck shell=bash
 # @codebase
 # Source from interactive bash/zsh shells to attach to a reusable ssh-agent
-# and load the runtime-managed SSH keys selected in ssh-keys.d/agent-keys.
+# and load the runtime-managed SSH keys selected in ssh-key.d/agent-keys.
 
 if [[ -n "${__NXMATIC_SSH_KEYCHAIN_INIT:-}" ]]; then
   return 0
@@ -9,7 +9,7 @@ fi
 __NXMATIC_SSH_KEYCHAIN_INIT=1
 
 [[ -n "${XDG_STATE_HOME:-}" ]] || XDG_STATE_HOME="${HOME}/.local/state"
-state_keys_dir="${XDG_STATE_HOME}/ssh-keys.d"
+state_keys_dir="${XDG_STATE_HOME}/ssh-key.d"
 agent_keys_file="${state_keys_dir}/agent-keys"
 keychain_bin="@keychainBin@"
 ssh_add_bin="@sshAddBin@"

@@ -19,7 +19,7 @@ This document describes the complete SSH key management system including key ext
 
 == Executive Summary
 
-The SSH key management system automates deployment of cryptographic keys and certificates from a SOPS-encrypted source (`keys.yaml`) to a runtime directory (`~/.local/state/ssh-keys.d/`) at activation time. The pipeline ensures:
+The SSH key management system automates deployment of cryptographic keys and certificates from a SOPS-encrypted source (`keys.yaml`) to a runtime directory (`~/.local/state/ssh-key.d/`) at activation time. The pipeline ensures:
 
 * **Fresh certificates** generated on each activation (new serial numbers)
 * **Automatic CA signing** of keys with embedded authorities
@@ -80,13 +80,13 @@ See xref:ssh-keys-diagrams.adoc[SSH Keys Diagrams] for rendered Mermaid diagram 
 |Signs keys with embedded authority CAs using ssh-keygen, generates fresh certificates
 
 |Deploy SSH Keys (Stage 3)
-|Rsyncs keys + certificates to ~/.local/state/ssh-keys.d/, generates agent-keys manifest
+|Rsyncs keys + certificates to ~/.local/state/ssh-key.d/, generates agent-keys manifest
 
 |Ensure Authorized Keys (Stage 4)
 |Creates mutable ~/.ssh/authorized_keys file with proper permissions
 
 |Runtime Directory
-|`~/.local/state/ssh-keys.d/` - Contains keys, certs, symlinks, and manifest
+|`~/.local/state/ssh-key.d/` - Contains keys, certs, symlinks, and manifest
 |===
 
 == C3: Component Architecture (Extract → Regenerate → Deploy)
@@ -151,14 +151,14 @@ h|Aspect|Details
 |* Generate agent-keys manifest
   ** Filter: only keys with private material AND
   ** usage ∈ {agent-signing, user-signing, ssh-user, ...}
-* rsync tmp_keys_dir → ~/.local/state/ssh-keys.d/ with:
+* rsync tmp_keys_dir → ~/.local/state/ssh-key.d/ with:
   ** --delete (clean stale files)
   ** --chmod=u+w,go-r (keys readable only by user)
   ** --chown=$USER:$GROUP (correct ownership)
 * Defensive cleanup: remove certs that don't match keys
 
 |Output
-|Keys + certs + symlinks in ~/.local/state/ssh-keys.d/
+|Keys + certs + symlinks in ~/.local/state/ssh-key.d/
 
 |Script
 |`deploy-ssh-keys.sh`
@@ -204,11 +204,11 @@ Plaintext Profile YAML
 }
       │
       ├─ [STAGE 1: ssh-extract-keys.sh]
-      │  ├─ Extracts ~/.local/state/ssh-keys.d/github-signing (private)
-      │  ├─ Extracts ~/.local/state/ssh-keys.d/github-signing.pub (public)
-      │  ├─ Extracts ~/.local/state/ssh-keys.d/rke2-cluster (private)
-      │  ├─ Extracts ~/.local/state/ssh-keys.d/rke2-cluster.pub (public)
-      │  ├─ Extracts ~/.local/state/ssh-keys.d/rke2-cluster-mammoth-skate-ca.pub (CA authority)
+      │  ├─ Extracts ~/.local/state/ssh-key.d/github-signing (private)
+      │  ├─ Extracts ~/.local/state/ssh-key.d/github-signing.pub (public)
+      │  ├─ Extracts ~/.local/state/ssh-key.d/rke2-cluster (private)
+      │  ├─ Extracts ~/.local/state/ssh-key.d/rke2-cluster.pub (public)
+      │  ├─ Extracts ~/.local/state/ssh-key.d/rke2-cluster-mammoth-skate-ca.pub (CA authority)
       │  └─ ... (same for other keys/authorities)
       │
       ▼
@@ -232,7 +232,7 @@ Keys directory with certificates (Stage 2 output)
       │  └─ rsync with --delete, --chmod, --chown
       │
       ▼
-~/.local/state/ssh-keys.d/
+~/.local/state/ssh-key.d/
 ├─ agent-keys (manifest)
 ├─ github-signing (private)
 ├─ github-signing.pub (public)
@@ -263,7 +263,7 @@ modules/home-manager/
 ├── ssh-keys.nix                          # Main Nix module (wires everything up)
 ├── ssh-extract-keys.sh                   # Stage 1: Extract keys from profile YAML
 ├── ssh-regenerate-certs.sh               # Stage 2: Sign keys with CA authorities
-├── ssh-keys.d/
+├── ssh-key.d/
 │   ├── deploy-ssh-keys.sh               # Stage 3: Deploy to runtime + generate manifest
 │   ├── ensure-authorized-keys.sh        # Stage 4: Ensure authorized_keys file exists
 │   ├── scripts/
@@ -276,7 +276,7 @@ modules/home-manager/
 
 [source]
 ----
-~/.local/state/ssh-keys.d/               # XDG_STATE_HOME/ssh-keys.d
+~/.local/state/ssh-key.d/               # XDG_STATE_HOME/ssh-key.d
 ├── agent-keys                            # Manifest: keys to load in SSH agent
 │
 ├── [Keys loaded at activation]
@@ -398,7 +398,7 @@ home-manager switch
 +
 [source,bash]
 ----
-ls -la ~/.local/state/ssh-keys.d/my-new-key*
+ls -la ~/.local/state/ssh-key.d/my-new-key*
 ssh-add -l | grep my-new-key
 ----
 
@@ -435,8 +435,8 @@ home-manager switch
 +
 [source,bash]
 ----
-ls -la ~/.local/state/ssh-keys.d/rke2-cluster-mammoth-skate-user-cert.pub
-ssh-keygen -L -f ~/.local/state/ssh-keys.d/rke2-cluster-cert.pub
+ls -la ~/.local/state/ssh-key.d/rke2-cluster-mammoth-skate-user-cert.pub
+ssh-keygen -L -f ~/.local/state/ssh-key.d/rke2-cluster-cert.pub
 ----
 
 === Debugging Pipeline
@@ -463,9 +463,9 @@ ssh-keygen -L -f /tmp/extracted/rke2-cluster-cert.pub  # Inspect cert
 [source,bash]
 ----
 # Run activation manually
-bash modules/home-manager/ssh-keys.d/deploy-ssh-keys.sh
-ls -la ~/.local/state/ssh-keys.d/
-cat ~/.local/state/ssh-keys.d/agent-keys  # Should list keys to load
+bash modules/home-manager/ssh-key.d/deploy-ssh-keys.sh
+ls -la ~/.local/state/ssh-key.d/
+cat ~/.local/state/ssh-key.d/agent-keys  # Should list keys to load
 ----
 
 == Architecture Evolution Notes
@@ -525,7 +525,7 @@ h|Script|Purpose|Input|Output|Trigger
 |`deploy-ssh-keys.sh`
 |Deploy to runtime + generate manifest
 |Profile name, secrets path
-|Keys in `~/.local/state/ssh-keys.d/`
+|Keys in `~/.local/state/ssh-key.d/`
 |Stage 3
 
 |`ensure-authorized-keys.sh`

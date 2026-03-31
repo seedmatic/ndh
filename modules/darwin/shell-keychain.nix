@@ -18,7 +18,7 @@ in
   # System-wide shell configuration for keychain initialization
   # This adds keychain support to all interactive shells for all users.
   # Logic is externalized to avoid Nix string interpolation hazards and to
-  # resolve runtime-managed SSH key filenames from ssh-keys.d/agent-keys.
+  # resolve runtime-managed SSH key filenames from ssh-key.d/agent-keys.
   programs.bash = {
     enable = true;
     interactiveShellInit = ''

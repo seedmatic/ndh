@@ -8,8 +8,8 @@ main() {
   mkdir -p "@profileHome@/.lima/nerd-nixos"
   mkdir -p "@profileHome@/.lima/_config"
 
-  host_pub="@profileHome@/.local/state/ssh-keys.d/host.pub"
-  host_priv="@profileHome@/.local/state/ssh-keys.d/host"
+  host_pub="@profileHome@/.local/state/ssh-key.d/host.pub"
+  host_priv="@profileHome@/.local/state/ssh-key.d/host"
 
   : "Symlink Lima user key material from host-managed keys.d"
   if [ -f "$host_pub" ]; then
