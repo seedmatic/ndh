@@ -10,8 +10,8 @@ mkdir -p "$outputDir"
 exp=$( cat <<'EOE' | cut -c 3-
   . | to_entries[] | 
   .key as $name |
-  # Derive a filesystem filename base where underscores are converted back to hyphens
-  ($name | gsub("_"; "-")) as $fname |
+  # Use key name as filename base directly (YAML key names are already hyphenated)
+  $name as $fname |
   .value.private as $private | 
   .value.public as $public | 
   .value.usage // [] as $usage |
@@ -36,7 +36,7 @@ exp=$( cat <<'EOE' | cut -c 3-
     # Emit CA public keys with a deterministic suffix for known-hosts/signing helpers.
     (.value.authorities // {}) | to_entries[] |
     .key as $authorityNameRaw |
-    ($authorityNameRaw | gsub("_"; "-")) as $authorityName |
+    $authorityNameRaw as $authorityName |
     .value.public as $authorityPublic |
     select($authorityPublic != null and $authorityPublic != "") |
     [{"filename": ("$OUTPUT_DIR/" + $fname + "-" + $authorityName + "-ca.pub"), "content": $authorityPublic}]
@@ -50,12 +50,12 @@ EOE
 env OUTPUT_DIR="$outputDir" yq eval "$exp" "$yamlFile" -s '.filename'
 
 : Post-process the generated YAML files to extract only the content
-for file in "$outputDir/"*; do
-  if [[ $file == *.yml ]]; then
-    file=${file%.yml}
-    mv "${file}".yml "${file}"
-  fi
-  yq eval '.content | trim' -i "$file"
+# Only touch files created by yq (*.yml split output); leave agent-keys and other non-YAML files untouched.
+for file in "$outputDir/"*.yml; do
+  [[ -f "$file" ]] || continue
+  newfile="${file%.yml}"
+  mv "$file" "$newfile"
+  yq eval '.content | trim' -i "$newfile"
 done
 
 # Provide stable symlink names (<key>-cert.pub) pointing to a matching user certificate.

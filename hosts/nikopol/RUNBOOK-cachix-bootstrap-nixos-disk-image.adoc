@@ -1,0 +1,87 @@
+= Nikopol Runbook — Fetch `nixos-disk-image` from Cachix
+:toc: left
+
+== Scope
+
+This runbook documents how to fetch the Nikopol NixOS disk image from Cachix on a Darwin host that has Nix (optionally via Flox), but does not yet have a full nix-darwin host configuration applied.
+
+== Canonical image path
+
+Current image path reference in this repo:
+
+[source,bash]
+----
+# @codebase
+cat hosts/nikopol/nixos-disk-image
+----
+
+Example value (changes over time):
+
+[source,text]
+----
+/nix/store/ddxqkzi4lkrcmqmp8z1paybi98qxjwzg-nixos-disk-image
+----
+
+== Option A (exact store path, includes closure)
+
+Use this when you need the *exact* path referenced by `hosts/nikopol/nixos-disk-image`.
+
+[source,bash]
+----
+# @codebase
+flox activate -- bash -lc '
+  img="$(cat hosts/nikopol/nixos-disk-image)"
+  nix copy --from https://nxmatic.cachix.org "$img"
+'
+----
+
+NOTE: `nix copy` is closure-oriented and may pull many referenced store paths.
+
+== Option B (payload-only import, no full closure)
+
+Use this when you only need the disk-image bytes locally (for bootstrap media prep), and do not require preserving the original store path hash/name.
+
+[source,bash]
+----
+# @codebase
+flox activate -- bash -lc '
+  img="$(cat hosts/nikopol/nixos-disk-image)"
+  tmp=$(mktemp /tmp/nikopol-nixos-disk-image.XXXXXX.raw)
+  nix store cat --store https://nxmatic.cachix.org "$img" > "$tmp"
+  nix store add-path "$tmp"
+  rm -f "$tmp"
+'
+----
+
+This creates a local store object for the imported file content only.
+
+== Verify Cachix visibility from CLI
+
+[source,bash]
+----
+# @codebase
+img="$(cat hosts/nikopol/nixos-disk-image)"
+nix path-info --store https://nxmatic.cachix.org "$img"
+----
+
+If this prints the path, the cache object is reachable.
+
+== Quick troubleshooting
+
+* Ensure substituter/key trust is configured:
++
+[source,bash]
+----
+# @codebase
+nix config show | grep -E 'substituters|trusted-public-keys'
+----
+
+* Verify publish activity on producer host:
++
+[source,bash]
+----
+# @codebase
+tail -n 50 /var/log/nxmatic-cachix-watch-store.log
+----
+
+* If `nix copy` is too heavy for bootstrap flow, use Option B.
