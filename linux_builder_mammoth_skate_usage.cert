@@ -1,0 +1,5 @@
+---
+filename: linux_builder_mammoth_skate_usage.cert
+content:
+  - ssh-user
+  - ssh-host
