@@ -14,7 +14,7 @@ main() {
   trap 'rm -rf "$tmp_keys_dir" "$tmp_output_yaml"' EXIT
 
   : "Generate keys & certificates using ssh-generate-keys-yaml.sh"
-  @bash@ @sshGenerateKeysYaml@ "@profileName@" "$(hostname -s)" "$keys_yaml" "$tmp_output_yaml" "@hostsCatalogCsv@" 2>/dev/null || {
+  @bash@ @sshGenerateKeysYaml@ "@profileName@" "$(@hostname@ -s)" "$keys_yaml" "$tmp_output_yaml" "@hostsCatalogCsv@" 2>/dev/null || {
     echo "Failed to generate keys and certificates" >&2
     return 1
   }

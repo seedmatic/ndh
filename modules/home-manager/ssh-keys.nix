@@ -106,6 +106,7 @@ in
       deploySSHKeysScript = pkgs.replaceVars ./ssh-key.d/deploy-ssh-keys.sh {
         awk = "${pkgs.gawk}/bin/awk";
         bash = "${pkgs.bash}/bin/bash";
+        hostname = "${pkgs.hostname}/bin/hostname";
         mktemp = "${pkgs.coreutils-full}/bin/mktemp";
         rsync = "${pkgs.rsync}/bin/rsync";
         yq = "${pkgs.yq-go}/bin/yq";
