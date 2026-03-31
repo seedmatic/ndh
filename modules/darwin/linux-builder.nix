@@ -30,6 +30,7 @@ let
   linuxBuilderWorkPubKey = keys.profiles.work.linux-builder.public;
   # Pull builder catalog entries for this host (if present)
   hostName = config.profile.host.hostName;
+  cacheCatalog = catalog.caches;
   # Consider linux-builder only when running on baremetal hosts
   isBaremetalHost = !(config.profile.host ? form) || config.profile.host.form == "baremetal";
   catalogEntries = if builtins.hasAttr hostName hostsCatalog then hostsCatalog.${hostName} else [ ];
@@ -70,18 +71,18 @@ in
         # Use the same binary caches and settings as the Darwin configuration
         nix.settings = {
           trusted-substituters = [
-            "https://cache.flakehub.com" # Determinate Systems FlakeHub cache
-            "https://nxmatic.cachix.org" # nxmatic cache
+            cacheCatalog.flakehub.substituter # Determinate Systems FlakeHub cache
+            cacheCatalog.nxmatic.substituter # nxmatic cache
           ];
           trusted-public-keys = [
-            "cache.flakehub.com-1:t7S7JjLyIJJLv0a0BqXdFnJvr4P8pAB2Z9xN2lYZXvY=" # Determinate Systems key
-            "nxmatic.cachix.org-1:oWogvXdam3gTxKzPZCDqq8khybQpqRdNpQQrKG3r4xM=" # nxmatic key
+            cacheCatalog.flakehub.publicKey # Determinate Systems key
+            cacheCatalog.nxmatic.publicKey # nxmatic key
           ];
 
           # Additional substituters from flox.conf
           extra-trusted-substituters = [
-            "https://cache.flakehub.com"
-            "https://nxmatic.cachix.org"
+            cacheCatalog.flakehub.substituter
+            cacheCatalog.nxmatic.substituter
           ];
           extra-trusted-public-keys = [
             "floxhub-1:0QOAlcobcEvq1mqEf4qAYCaWnTTOXpyoRv/PmqfSixM="

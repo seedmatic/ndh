@@ -38,6 +38,12 @@ Guide for setting up Podman remote client.
 link:collaboration-guide.adoc[Collaboration & Session Operations Guide]::
 Workflow for running, capturing, and closing collaborative sessions (includes pre-expiration reminder protocol and quality gates).
 
+link:sops-two-phase-rollout.adoc[SOPS Two-Phase Rollout (Shared Flake)]::
+Operational runbook for bootstrap/enforce lifecycle, host-by-host rollout, and onboarding new Darwin/NixOS hosts.
+
+link:security-handling-c4.adoc[Security Handling (C4-Style UML)]::
+Context + container diagrams for SOPS key lifecycle, runtime secret materialization, and Cachix publish/consume flows.
+
 == Quick Start
 
 === For New Users

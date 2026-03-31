@@ -10,7 +10,7 @@
 
     trusted-public-keys = [
       "cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY="
-      "nxmatic.cachix.org-1:huMghYiwDpPa1PMXHXK4G1Dp4QOZjgsNqxcjf/AjuJ0="
+      "nxmatic.cachix.org-1:oWogvXdam3gTxKzPZCDqq8khybQpqRdNpQQrKG3r4xM="
       "flox-cache-public-1:7F4OyH7ZCnFhcze3fJdfyXYLQw/aV7GEed86nQ7IsOs="
     ];
   };
@@ -58,6 +58,7 @@
     let
       inherit (flake-utils.lib) eachSystemMap;
       nixpkgsConfig = import ./modules/common/nixpkgs-config.nix;
+      cacheTrust = import ./catalog/cache-trust.nix;
       defaultSystems = [
         "aarch64-darwin"
       ];
@@ -447,6 +448,8 @@
             else
               hostProfile.hostName;
           catalog = {
+            caches = cacheTrust.caches;
+
             users = {
               work = {
                 name = "nxmatic";

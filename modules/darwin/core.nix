@@ -1,6 +1,7 @@
 {
   self,
   lib,
+  catalog,
   config,
   pkgs,
   ...
@@ -11,6 +12,7 @@ let
   userDescription = user.description;
   userHome = user.home;
   userShell = user.shell;
+  cacheCatalog = catalog.caches;
 in
 {
   imports = [
@@ -111,17 +113,17 @@ in
       extra-experimental-features = nix-command flakes ca-derivations
       extra-platforms = aarch64-darwin
       # Add binary caches for substitution
-      extra-trusted-substituters = https://cache.flakehub.com https://nxmatic.cachix.org https://cache.flox.dev
-      extra-trusted-public-keys = cache.flakehub.com-1:t7S7JjLyIJJLv0a0BqXdFnJvr4P8pAB2Z9xN2lYZXvY= nxmatic.cachix.org-1:oWogvXdam3gTxKzPZCDqq8khybQpqRdNpQQrKG3r4xM= cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY= flox-cache-public-1:7F4OyH7ZCnFhcze3fJdfyXYLQw/aV7GEed86nQ7IsOs=
+      extra-trusted-substituters = ${cacheCatalog.flakehub.substituter} ${cacheCatalog.nxmatic.substituter} ${cacheCatalog.flox.substituter}
+      extra-trusted-public-keys = ${cacheCatalog.flakehub.publicKey} ${cacheCatalog.nxmatic.publicKey} ${cacheCatalog.nixos.publicKey} ${cacheCatalog.flox.publicKey}
       # Increase download buffer size to prevent buffer full warnings
       download-buffer-size = 268435456  # 256 MB (was 64 MB default)
       # Enable pushing to nxmatic cache and use mirror for faster downloads
       # Alternative mirrors (uncomment one to use if cache.nixos.org is slow):
-      # extra-substituters = https://cache.nixos.org https://nxmatic.cachix.org  # Official (default)
-      # extra-substituters = https://mirrors.tuna.tsinghua.edu.cn/nix-channels/store https://nxmatic.cachix.org  # Tsinghua (China)
-      # extra-substituters = https://mirrors.ustc.edu.cn/nix-channels/store https://nxmatic.cachix.org  # USTC (China)
-      # extra-substituters = https://mirrors.bfsu.edu.cn/nix-channels/store https://nxmatic.cachix.org  # BFSU (China)
-      extra-substituters = https://mirrors.tuna.tsinghua.edu.cn/nix-channels/store https://nxmatic.cachix.org https://cache.flox.dev
+      # extra-substituters = ${cacheCatalog.nixos.substituter} ${cacheCatalog.nxmatic.substituter}  # Official (default)
+      # extra-substituters = ${cacheCatalog.tunaMirror.substituter} ${cacheCatalog.nxmatic.substituter}  # Tsinghua (China)
+      # extra-substituters = https://mirrors.ustc.edu.cn/nix-channels/store ${cacheCatalog.nxmatic.substituter}  # USTC (China)
+      # extra-substituters = https://mirrors.bfsu.edu.cn/nix-channels/store ${cacheCatalog.nxmatic.substituter}  # BFSU (China)
+      extra-substituters = ${cacheCatalog.tunaMirror.substituter} ${cacheCatalog.nxmatic.substituter} ${cacheCatalog.flox.substituter}
     '';
 
     # Configure NIX_PATH for legacy nix commands and <nixpkgs> imports

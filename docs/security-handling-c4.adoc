@@ -1,0 +1,112 @@
+= Security Handling (C4-Style UML)
+:toc: left
+
+== Purpose
+
+This document describes secret handling and trust boundaries for the shared `nix-darwin-home` flake using a C4-style model authored in PlantUML.
+
+== Level 1 — System Context
+
+[plantuml]
+----
+@startuml
+left to right direction
+
+actor "Operator" as operator
+cloud "Git Repository\n(nix-darwin-home)" as repo
+cloud "Cachix" as cachix
+
+rectangle "Managed Host\n(Darwin or NixOS)" as host {
+  [nix activation\n(darwin-rebuild / nixos-rebuild)] as activation
+  [sops-install-secrets] as sopsinst
+  [Runtime secrets\n/run/secrets*] as runtimesecrets
+  [Cachix watch-store] as watchstore
+}
+
+operator --> repo : edits flake + encrypted files
+operator --> host : triggers activation
+repo --> activation : flake evaluation
+activation --> sopsinst : manifest + key sources
+sopsinst --> runtimesecrets : decrypt + materialize
+watchstore --> cachix : upload store paths
+
+note right of runtimesecrets
+  Namespaced runtime links:
+  /run/secrets/nix-darwin-home/*
+end note
+@enduml
+----
+
+== Level 2 — Container View (Host internals)
+
+[plantuml]
+----
+@startuml
+top to bottom direction
+
+skinparam rectangle {
+  BorderColor Black
+  FontSize 12
+}
+
+rectangle "Host Security Boundary" {
+  rectangle "Activation Pipeline" as pipeline {
+    [Pre-activation key bootstrap\n(nxmatic.sopsAgeKeyBootstrap)] as bootstrap
+    [sops-install-secrets daemon] as installsecrets
+    [post-activation HM hooks] as hmhooks
+  }
+
+  rectangle "Key Sources" as keysrc {
+    [System age key\n/etc/sops/age/keys.txt] as sysage
+    [SSH host keys\n(optional import)] as sshkeys
+  }
+
+  rectangle "Secret Sources (repo)" as src {
+    [ .secrets ] as dotsecrets
+    [ modules/home-manager/ssh.d/keys.yaml ] as sshyaml
+    [ *.cert encrypted docs ] as certdocs
+  }
+
+  rectangle "Runtime Secret FS" as rtfs {
+    [ /run/secrets.d/<generation> ] as gen
+    [ /run/secrets -> generation ] as symlink
+    [ /run/secrets/nix-darwin-home/* ] as namespaced
+  }
+
+  rectangle "Consumers" as consumers {
+    [Cachix watch-store] as cachixwatch
+    [SSH key deploy scripts] as sshdeploy
+  }
+}
+
+bootstrap --> sysage : create/verify
+bootstrap --> installsecrets : key ready before decrypt
+sshkeys --> installsecrets : optional imported recipients
+sysage --> installsecrets : decryption key input
+
+dotsecrets --> installsecrets : selector-based secrets
+sshyaml --> installsecrets : full-doc secret (key="")
+certdocs --> installsecrets : encrypted cert material
+
+installsecrets --> gen : write files
+gen --> symlink : atomic generation switch
+symlink --> namespaced : namespaced links
+
+namespaced --> cachixwatch : auth token path
+namespaced --> sshdeploy : SSH key YAML path
+
+note right of bootstrap
+  Two-phase rollout:
+  bootstrap -> enforce
+  per-host in shared flake
+end note
+@enduml
+----
+
+== Operational guidance
+
+* Keep hosts on `enforce` by default.
+* Use `bootstrap` only for first activation of a new host.
+* Commit only public age recipients (`age1...`) in `.sops.yaml`.
+* Never commit private keys (`AGE-SECRET-KEY-...`).
+* Rotate/rekey encrypted files after recipient changes.

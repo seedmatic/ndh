@@ -1,0 +1,110 @@
+= SOPS Two-Phase Rollout (Shared Flake)
+:toc: left
+
+== Why this exists
+
+When Darwin and NixOS hosts share one flake, SOPS key bootstrap must be done per host without breaking everyone else.
+
+This note documents the operational pattern for:
+
+* phase 1: `bootstrap`
+* phase 2: `enforce`
+* adding new hosts safely
+
+== Recommended model
+
+Keep the repository in a canonical secure state:
+
+* Default host state should converge to `enforce`.
+* `bootstrap` is temporary and host-specific.
+
+In practice:
+
+1. Enable `bootstrap` only on the host being introduced.
+2. Activate that host once.
+3. Verify key + secrets are present.
+4. Add host public recipient to `.sops.yaml` and rotate/rekey encrypted files.
+5. Move that host back to `enforce`.
+
+== Shared flake strategy
+
+=== Should bootstrap be committed?
+
+Prefer **short-lived commits** over long-lived uncommitted drift.
+
+* Good: commit bootstrap toggle for one host, activate, then commit enforce.
+* Also acceptable for one-off local bring-up: temporary local worktree change (not pushed), but immediately reconcile back to committed `enforce`.
+
+Avoid leaving host phase only in an uncommitted local state for long periods.
+
+=== Does one host in bootstrap affect others?
+
+No, if phase is configured per host module. Bootstrap for host A does not require bootstrap for host B.
+
+== New host checklist
+
+=== 1) Host config (temporary bootstrap)
+
+Set only the new host to:
+
+* `nxmatic.sopsAgeKeyBootstrap.phase = "bootstrap"`
+
+If using system-wide age key on Darwin, keep the host key path explicit.
+
+=== 2) Activate the host
+
+[source,bash]
+----
+# @codebase
+darwin-rebuild switch --flake .#<darwin-host>
+# or
+sudo nixos-rebuild switch --flake .#<nixos-host>
+----
+
+=== 3) Verify runtime key + secrets
+
+[source,bash]
+----
+# @codebase
+ls -l /etc/sops/age/keys.txt
+ls -l /run/secrets /run/secrets.d /run/secrets/nix-darwin-home
+----
+
+=== 4) Export host public recipient
+
+[source,bash]
+----
+# @codebase
+age-keygen -y /etc/sops/age/keys.txt
+----
+
+Commit only the resulting `age1...` recipient (never `AGE-SECRET-KEY-...`).
+
+=== 5) Update recipients + rekey/re-encrypt
+
+* Add the host public recipient to `.sops.yaml` creation rules.
+* Run `sops updatekeys` and `sops rotate` on affected encrypted files.
+
+=== 6) Return host to enforce
+
+Set host phase back to:
+
+* `nxmatic.sopsAgeKeyBootstrap.phase = "enforce"`
+
+Activate again and verify success.
+
+== NixOS hosts next
+
+Yes: after Darwin hosts are stable, repeat the exact same host-by-host process for NixOS hosts.
+
+Keep rollout incremental:
+
+* one host in bootstrap at a time,
+* then enforce,
+* then move to the next host.
+
+== Security reminders
+
+* Never commit private age keys.
+* Rotate immediately if private keys were exposed in logs/chat.
+* Keep runtime secret path namespace (`/run/secrets/nix-darwin-home/*`) to avoid collisions.
