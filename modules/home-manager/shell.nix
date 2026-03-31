@@ -44,10 +44,14 @@ in
       ${lib.optionalString pkgs.stdenvNoCC.isLinux "[[ -e /etc/profile ]] && source /etc/profile"}
     '';
 
-    envExtra = builtins.readFile ./shell/zshenv.zsh;
+    envExtra = builtins.readFile ./shell.d/zshenv.zsh;
 
     initContent = ''
+      : "ssh agent settings"
+      source <( "${pkgs.keychain}/bin/keychain --eval --quiet )" )
+      : "vscode settings"
       ${vscodeShellIntegration "zsh"}
+      : "and my own stuff"
       if [[ -r "$ZDOTDIR/rcs/zshrc.zsh" ]]; then
         source "$ZDOTDIR/rcs/zshrc.zsh"
       fi
