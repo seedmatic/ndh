@@ -17,11 +17,18 @@ let
   userDescription = userProfile.description;
   userHome = userProfile.home;
   activationLogger = config._module.specialArgs.activationLogger.script;
-  activationTagDeploy = "home-manager.activationScripts.${userName}.deploySSHKeys";
+  activationTagGenerate = "home-manager.activationScripts.${userName}.generateSSHKeysYaml";
+  activationTagExtract = "home-manager.activationScripts.${userName}.extractSSHKeys";
   activationTagAuthorized = "home-manager.activationScripts.${userName}.ensureAuthorizedKeys";
   sshKeysYamlPath = lib.attrByPath [ "_module" "specialArgs" "sshKeysYamlPath" ] null config;
   canonicalRuntimeKeysYaml = "/run/secrets/nix-darwin-home/nxmatic-ssh-keys.yaml";
+  effectiveSSHKeysYamlPath =
+    if sshKeysYamlPath != null then
+      sshKeysYamlPath
+    else
+      canonicalRuntimeKeysYaml;
   keysStateDir = "${config.xdg.stateHome}/ssh-key.d";
+  generatedSSHKeysYamlPath = "${keysStateDir}/keys.yaml";
 
   # Command to filter and sign keys based on profile and host
   # Resolve a stable host identifier; hostAlias is optional by design (@codebase)
@@ -59,11 +66,7 @@ in
 
   ssh-add-keys = {
     enable = true;
-    keyFile =
-      if sshKeysYamlPath != null then
-        sshKeysYamlPath
-      else
-        canonicalRuntimeKeysYaml;
+    keyFile = effectiveSSHKeysYamlPath;
   };
 
   home.file.".ssh" = {
@@ -96,45 +99,44 @@ in
   # Externalized activation scripts: keep content in the store and execute via bash
   home.activation =
     let
+
+      sshGenerateKeysYamlScript = pkgs.replaceVars ./ssh-key.d/ssh-generate-keys-yaml.sh {
+        yq = "${pkgs.yq-go}/bin/yq";
+        mktemp = "${pkgs.coreutils-full}/bin/mktemp";
+        sed = "${pkgs.gnused}/bin/sed";
+        hostname = "${pkgs.hostname}/bin/hostname";
+        sshKeygen = "${pkgs.openssh}/bin/ssh-keygen";
+        activationLogger = activationLogger;
+        activationTag = activationTagGenerate;
+      };
+
       sshExtractKeysScript = pkgs.replaceVars ./ssh-key.d/ssh-extract-keys.sh {
         awk = "${pkgs.gawk}/bin/awk";
+        ssh-keygen = "${pkgs.openssh}/bin/ssh-keygen";
         yq = "${pkgs.yq-go}/bin/yq";
-      };
-
-      sshGenerateKeysYamlScript = ./ssh-key.d/ssh-generate-keys-yaml.sh;
-
-      deploySSHKeysScript = pkgs.replaceVars ./ssh-key.d/deploy-ssh-keys.sh {
-        awk = "${pkgs.gawk}/bin/awk";
-        bash = "${pkgs.bash}/bin/bash";
-        hostname = "${pkgs.hostname}/bin/hostname";
-        mktemp = "${pkgs.coreutils-full}/bin/mktemp";
-        rsync = "${pkgs.rsync}/bin/rsync";
-        yq = "${pkgs.yq-go}/bin/yq";
-        sshExtractKeys = "${sshExtractKeysScript}";
-        sshGenerateKeysYaml = "${sshGenerateKeysYamlScript}";
-        profileName = profileName;
-        hostsCatalogCsv = hostsCatalogCsv;
-        keysYaml =
-          if sshKeysYamlPath != null then
-            sshKeysYamlPath
-          else
-            canonicalRuntimeKeysYaml;
         activationLogger = activationLogger;
-        activationTag = activationTagDeploy;
+        activationTag = activationTagExtract;
       };
 
-      ensureAuthorizedKeysScript = pkgs.replaceVars ./ssh-key.d/ensure-authorized-keys.sh {
+      ensureAuthorizedKeysScript = pkgs.replaceVars ./ssh-key.d/ssh-ensure-authorized-keys.sh {
         activationLogger = activationLogger;
         activationTag = activationTagAuthorized;
       };
     in
     {
-      deploySSHKeys = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-        ${pkgs.bash}/bin/bash ${deploySSHKeysScript}
+      # Generate the YAML of keys to deploy based on the main keys.yaml and the current host/profile
+      generatedSSHKeysYaml = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+        ${pkgs.coreutils}/bin/mkdir -p "${keysStateDir}"
+        ${pkgs.bash}/bin/bash ${sshGenerateKeysYamlScript} "${profileName}" "$(${pkgs.hostname}/bin/hostname -s)" "${effectiveSSHKeysYamlPath}" "${generatedSSHKeysYamlPath}" "${hostsCatalogCsv}"
+      '';
+
+      # Deploy keys to the filesystem with proper permissions based on the generated YAML
+      extractSSHKeys = lib.hm.dag.entryAfter [ "generateSSHKeysYaml" ] ''
+        ${pkgs.bash}/bin/bash ${sshExtractKeysScript} "${generatedSSHKeysYamlPath}" "${keysStateDir}"
       '';
 
       # Ensure mutable authorized_keys exists (symlink-free) with strict perms
-      ensureAuthorizedKeys = lib.hm.dag.entryAfter [ "deploySSHKeys" ] ''
+      ensureAuthorizedKeys = lib.hm.dag.entryAfter [ "extractSSHKeys" ] ''
         ${pkgs.bash}/bin/bash ${ensureAuthorizedKeysScript}
       '';
     };

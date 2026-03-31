@@ -49,9 +49,9 @@ key::authorityHostNames() {
     hostNames["${hostName}.local"]=1
     hostNames["${hostName}.${domain}"]=1
 
-    hostNames[$(hostname -f)]=1
-    hostNames[$(hostname -s)]=1
-    hostNames[$(hostname -s).${domain}]=1
+    hostNames[$(@hostname@ -f)]=1
+    hostNames[$(@hostname@ -s)]=1
+    hostNames[$(@hostname@ -s).${domain}]=1
 
     if [[ -n "${hostsCatalogCsv:-}" ]]; then
         local catalogHost
@@ -116,7 +116,7 @@ key::generateKeyPair() {
     comment="${comment:-${keyName}}"
 
     : "Generate the key pair in a temporary directory"
-    if ! ssh-keygen -q -t "$type" -N "" -f "${tmpdir}/${keyName}" -C "$comment"; then
+    if ! @sshKeygen@ -q -t "$type" -N "" -f "${tmpdir}/${keyName}" -C "$comment"; then
         log::trace "Failed to generate key pair for $keyName"
         return 1
     fi
@@ -227,7 +227,7 @@ authority::signKey() {
             : "Get the allowed principals for the key"
             local principals
             readarray -t principals < <(key::principals)
-            if ! ssh-keygen -q -s "$cakeyPrivateTmpFile" -I "${keyNameLocal}" -n "$(
+            if ! @sshKeygen@ -q -s "$cakeyPrivateTmpFile" -I "${keyNameLocal}" -n "$(
                 IFS=',';
                 echo "${principals[*]}"
             )" "$keyPublicTmpFile"; then
@@ -239,7 +239,7 @@ authority::signKey() {
             : "Get the allowed hostnames for the key"
             local authorityHostNames
             readarray -t authorityHostNames < <(key::authorityHostNames "$authorityName")
-            if ! ssh-keygen -q -s "$cakeyPrivateTmpFile" -I "${keyNameLocal}" -h -n "$(
+            if ! @sshKeygen@ -q -s "$cakeyPrivateTmpFile" -I "${keyNameLocal}" -h -n "$(
                 IFS=',';
                 echo "${authorityHostNames[*]}"
             )" "$keyPublicTmpFile"; then
@@ -255,7 +255,7 @@ authority::signKey() {
             ;;
         esac
         keyCertTmpFile="${keyPublicTmpFile%.pub}-cert.pub"
-        ssh-keygen -L -f "$keyCertTmpFile" || log::trace "Could not inspect certificate $keyCertTmpFile"
+        @sshKeygen@ -L -f "$keyCertTmpFile" || log::trace "Could not inspect certificate $keyCertTmpFile"
         keyCertLine="$( cat "${keyCertTmpFile}" )"
         declare -g "$( var::snakeCase "${keyVar}" authorities "$authorityName" "$usage" )=${keyCertLine}"
     done
@@ -330,8 +330,16 @@ key::process() {
     : "Load the private key if it exists"
     keyPrivate=$(key::value "private")
 
-    : "Generate a new key pair if none exists"
-    if [ -z "$keyPublic" ] && [ -z "$keyPrivate" ]; then
+    local hasAuthorities=0
+    for profileVar in "${profileVars[@]}"; do
+        if [[ "$profileVar" =~ ^${keyVar}_authorities_ ]]; then
+            hasAuthorities=1
+            break
+        fi
+    done
+
+    : "Generate a new key pair when authority signing requires complete key material"
+    if (( hasAuthorities )) && { [ -z "$keyPublic" ] || [ -z "$keyPrivate" ]; }; then
     : "Generate new SSH key pair and update global variables"
         key::generateKeyPair "$keyName" "$tmpdir"
     fi
@@ -343,7 +351,7 @@ key::process() {
 : "Function to generate the YAML output file"
 keys::toYAML() {
 
-    cat <<EOF | yq -P eval 'explode(...)'
+    cat <<EOF | @yq@ -P eval 'explode(...)'
 keys:
 $(
         local -a signingKeys otherKeys
@@ -382,12 +390,12 @@ $(
                 echo "[ ${keyUsage[*]} ]"
             )
     private: |-
-$(echo "$keyPrivate" | sed 's/^/      /')
+$( echo "$keyPrivate" | @sed@ 's/^/      /' )
     public: $keyType $keyPublic $keyComment
 $(
     if (( ${#keyPrincipals[@]} > 0 )); then
         printf '    principals: [ '
-        ( IFS=','; echo "${keyPrincipals[*]}" ) | sed 's/,/, /g' | sed 's/$/ ]/'
+        ( IFS=','; echo "${keyPrincipals[*]}" ) | @sed@ 's/,/, /g' | @sed@ 's/$/ ]/'
     fi
 )
 $(
@@ -417,7 +425,7 @@ $(
             local certVar
             certVar="$( var::snakeCase "$authorityVar" "$authorityUsage" )"
             echo "        $authorityUsage: |"
-            echo "${!certVar}" | sed 's/^/          /'
+            echo "${!certVar}" | @sed@ 's/^/          /'
         done
     done
 )
@@ -427,43 +435,48 @@ EOK
 EOF
 }
 
-: "Main script"
-declare -g profileName hostName inputFile outputFile
-profileName="$1"; shift
-hostName="$1"; shift
-inputFile="$1"; shift
-outputFile="$1"; shift
-declare -g hostsCatalogCsv
-hostsCatalogCsv="${1:-}"
+: "Should log as part of the activation scripts"
+source @activationLogger@
 
-: "Create a temporary directory for signing"
-tmpdir=$(mktemp --directory --suffix=keys.d)
-trap 'rm -rf $tmpdir' EXIT
+main() {
+  declare -g profileName hostName inputFile outputFile
+  profileName="$1"; shift
+  hostName="$1"; shift
+  inputFile="$1"; shift
+  outputFile="$1"; shift
+  declare -g hostsCatalogCsv
+  hostsCatalogCsv="${1:-}"
+  
+  : "Create a temporary directory for signing"
+  tmpdir=$(@mktemp@ --directory --suffix=keys.d)
+  trap 'rm -rf $tmpdir' EXIT
+  
+  : "Load the entire YAML file into shell variables"
+  eval "$(env PROFILE="$profileName" @yq@ -o shell eval 'explode(...) | .profiles.[env(PROFILE)] | { "ssh-keys": . }' "$inputFile")"
+  
+  declare -g profileVarPrefix
+  profileVarPrefix=$(var::snakeCase "ssh-keys")
+  
+  : "Collect profile variables"
+  declare -g profileVars
+  declare -p | grep -oE "${profileVarPrefix}_[^=]+" >"${tmpdir}/profileVars"
+  readarray -t profileVars <"${tmpdir}/profileVars"
+  
+  : Process each key entry
+  declare -g processedKeys=()
+  for profileVar in "${profileVars[@]}"; do
+      keyName="$(key::name "$profileVar")"
+      if [[ "${processedKeys[*]}" =~ ${keyName} ]]; then
+          : "Skip already processed keys"
+          continue 
+      fi
+      processedKeys+=("$keyName")
+      key::process "$keyName"
+  done
 
-: "Load the entire YAML file into shell variables"
-eval "$(env PROFILE="$profileName" yq -o shell eval 'explode(...) | .profiles.[env(PROFILE)] | { "ssh-keys": . }' "$inputFile")"
+  : "Output the updated keys in a YAML file"	
+  keys::toYAML | tee /tmp/keys.yaml >"$outputFile"
+}
 
-declare -g profileVarPrefix
-profileVarPrefix=$(var::snakeCase "ssh-keys")
+activation_run "@activationTag@" main "$@"
 
-: "Collect profile variables"
-declare -g profileVars
-declare -p | grep -oE "${profileVarPrefix}_[^=]+" >"${tmpdir}/profileVars"
-readarray -t profileVars <"${tmpdir}/profileVars"
-
-: Process each key entry
-declare -g processedKeys=()
-for profileVar in "${profileVars[@]}"; do
-    keyName="$(key::name "$profileVar")"
-    if [[ "${processedKeys[*]}" =~ ${keyName} ]]; then
-        : "Skip already processed keys"
-        continue 
-    fi
-    processedKeys+=("$keyName")
-    key::process "$keyName"
-done
-
-: "Output the updated keys in a YAML file"
-keys::toYAML >"$outputFile"
-
-exit 0
