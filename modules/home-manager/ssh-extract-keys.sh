@@ -58,7 +58,7 @@ for file in "$outputDir/"*.yml; do
   @yq@ eval '.content | trim' -i "$newfile"
 done
 
-# Provide stable symlink names (<key>-cert.pub) pointing to a matching user certificate.
+: Provide stable symlink names (<key>-cert.pub) pointing to a matching user certificate.
 # Match is validated by comparing key fingerprint and certificate embedded public-key fingerprint.
 for priv in "$outputDir/"*; do
   [[ -f "$priv" ]] || continue

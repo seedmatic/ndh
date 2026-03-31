@@ -100,12 +100,17 @@ in
         yq = "${pkgs.yq-go}/bin/yq";
       };
 
+      sshRegenerateCertsScript = pkgs.replaceVars ./ssh-regenerate-certs.sh {
+        yq = "${pkgs.yq-go}/bin/yq";
+      };
+
       deploySSHKeysScript = pkgs.replaceVars ./ssh-keys.d/deploy-ssh-keys.sh {
         bash = "${pkgs.bash}/bin/bash";
         mktemp = "${pkgs.coreutils-full}/bin/mktemp";
         rsync = "${pkgs.rsync}/bin/rsync";
         yq = "${pkgs.yq-go}/bin/yq";
         sshExtractKeys = "${sshExtractKeysScript}";
+        sshRegenerateCerts = "${sshRegenerateCertsScript}";
         profileName = profileName;
         keysYaml =
           if sshKeysYamlPath != null then

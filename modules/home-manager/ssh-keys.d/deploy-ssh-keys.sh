@@ -17,6 +17,9 @@ main() {
 
   @bash@ @sshExtractKeys@ "$tmp_profile_yaml" "$tmp_keys_dir"
 
+  : "Regenerate certificates by signing keys with embedded authorities"
+  @bash@ @sshRegenerateCerts@ "$tmp_profile_yaml" "$tmp_keys_dir" || true
+
   # Generate agent-keys manifest AFTER extraction so it is never touched by ssh-extract-keys.sh.
   # Only list keys that have their own private key material (guards against cert-only entries like 'host').
   # Include ssh-authority keys: mammoth-skate is both the CA and the personal bioskop identity.
