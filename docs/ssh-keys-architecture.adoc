@@ -446,7 +446,7 @@ ssh-keygen -L -f ~/.local/state/ssh-key.d/rke2-cluster-cert.pub
 ----
 # Manually test extract-keys.sh
 yq eval '.profiles.committed' /run/secrets/.../keys.yaml > /tmp/profile.yml
-bash modules/home-manager/ssh-extract-keys.sh /tmp/profile.yml /tmp/extracted/
+bash modules/home-manager/ssh-key.d/ssh-extract-keys.sh /tmp/profile.yml /tmp/extracted/
 ls -la /tmp/extracted/
 ----
 

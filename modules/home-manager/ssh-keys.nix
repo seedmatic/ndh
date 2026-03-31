@@ -96,12 +96,12 @@ in
   # Externalized activation scripts: keep content in the store and execute via bash
   home.activation =
     let
-      sshExtractKeysScript = pkgs.replaceVars ./ssh-extract-keys.sh {
+      sshExtractKeysScript = pkgs.replaceVars ./ssh-key.d/ssh-extract-keys.sh {
         awk = "${pkgs.gawk}/bin/awk";
         yq = "${pkgs.yq-go}/bin/yq";
       };
 
-      sshGenerateKeysYamlScript = ./ssh-generate-keys-yaml.sh;
+      sshGenerateKeysYamlScript = ./ssh-key.d/ssh-generate-keys-yaml.sh;
 
       deploySSHKeysScript = pkgs.replaceVars ./ssh-key.d/deploy-ssh-keys.sh {
         awk = "${pkgs.gawk}/bin/awk";

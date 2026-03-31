@@ -26,7 +26,7 @@ let
       yq-go
     ];
     text = ''
-      exec ${pkgs.bash}/bin/bash ${./ssh-add-keys.sh} "$@"
+      exec ${pkgs.bash}/bin/bash ${./ssh-key.d/ssh-add-keys.sh} "$@"
     '';
   };
 in

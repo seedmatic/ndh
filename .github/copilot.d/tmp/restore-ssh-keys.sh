@@ -33,7 +33,7 @@ yq eval -r '
 
 echo ""
 echo "=== Extracting key files ==="
-bash "${REPO}/modules/home-manager/ssh-extract-keys.sh" "$tmp_profile" "$tmp_keys"
+bash "${REPO}/modules/home-manager/ssh-key.d/ssh-extract-keys.sh" "$tmp_profile" "$tmp_keys"
 
 echo ""
 echo "=== Files produced ==="
