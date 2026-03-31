@@ -84,8 +84,10 @@ EOE
 		contentFile="$outputDir/$filename"
 		mv "$yamlFile" "$contentFile"
 		@yq@ --inplace eval '.content | trim' "$contentFile"
+		# Only chmod 600 private keys (non-.pub files)
+		[[ "$filename" != *.pub ]] && chmod 600 "$contentFile"
 	done
-	rm -fr "tmpDir"
+	rm -fr "$tmpDir"
 
 	: "Provide stable symlink names (<key>-cert.pub) pointing to a matching user certificate."
 	# Match is validated by comparing key fingerprint and certificate embedded public-key fingerprint.
