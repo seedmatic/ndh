@@ -1,16 +1,13 @@
 #!/usr/bin/env bash
 # @codebase
 # Export SSH keys architecture Mermaid diagrams to SVG images
-# Requires: mermaid-cli available via npm
-# Usage: ./render-ssh-diagrams.sh [output-dir] [theme] [--install]
+# Requires: npx or mmdc (mermaid-cli)
+# Usage: ./render-ssh-diagrams.sh [output-dir] [theme]
+#
+# Recommended: Use Flox environment for seamless execution:
+#   flox activate -d <fleet-path>/flox/asciidoc -- ./render-ssh-diagrams.sh
 
 set -euo pipefail
-
-install_mermaid=false
-if [[ "${1:-}" == "--install" ]]; then
-    install_mermaid=true
-    shift || true
-fi
 
 # Determine script directory to find docs relative to repo root
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -35,16 +32,18 @@ fi
 # Install mermaid-cli if needed
 if ! command -v mmdc >/dev/null 2>&1; then
     if ! command -v npx >/dev/null 2>&1; then
-        echo "Error: Neither mmdc nor npx found."
+        echo "Error: mermaid-cli not found and npx unavailable."
         echo ""
-        echo "Installation options:"
-        echo "  Option 1: Use Flox environment (asciidoc has nodejs/npm):"
-        echo "    flox activate -d <fleet-path>/flox/asciidoc -- $0"
+        echo "Installation options (in recommended order):"
         echo ""
-        echo "  Option 2: Install npm/node locally"
+        echo "  1. Use Flox environment (asciidoc has nodejs/npm):"
+        echo "     flox activate -d <fleet-path>/flox/asciidoc -- $0"
         echo ""
-        echo "  Option 3: Install globally:"
-        echo "    npm install -g @mermaid-js/mermaid-cli"
+        echo "  2. Use this script from a shell with npm/node installed:"
+        echo "     source <(flox activate) && $0"
+        echo ""
+        echo "  3. Install globally:"
+        echo "     npm install -g @mermaid-js/mermaid-cli"
         exit 1
     fi
     # Use npx if mmdc not found
