@@ -1,11 +1,11 @@
 #!/usr/bin/env -S bash -exuo pipefail
 # @codebase
-# Load SSH keys listed in ssh-keys.d/agent-keys into the ssh-agent via keychain,
+# Load SSH keys listed in ssh-key.d/agent-keys into the ssh-agent via keychain,
 # and refresh the managed block of authorized_keys from corresponding .pub files.
 # Key files are extracted by the Home Manager activation deploySSHKeys step.
 # This script is run by the LaunchAgent on login to ensure keys survive reboots.
 
-KEYS_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/ssh-keys.d"
+KEYS_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/ssh-key.d"
 AGENT_KEYS_FILE="${KEYS_DIR}/agent-keys"
 AUTHORIZED_KEYS_FILE="${HOME}/.ssh/authorized_keys"
 MARK_BEGIN="# >>> managed-by: ssh-add-keys BEGIN >>>"

@@ -28,7 +28,7 @@ graph TB
                 stage4["Stage 4: Authorize<br/>ensure-authorized-keys.sh<br/>(perms setup)"]
             end
             
-            runtime["🎯 Runtime Output<br/>~/.local/state/ssh-keys.d/<br/>(keys + certs + manifest)"]
+            runtime["🎯 Runtime Output<br/>~/.local/state/ssh-key.d/<br/>(keys + certs + manifest)"]
         end
     end
     
@@ -72,7 +72,7 @@ graph LR
         input3["Profile YAML<br/>+ Keys+Certs Dir"]
         manifest["Generate agent-keys<br/>manifest (filter)"]
         rsync["rsync --delete<br/>--chmod=u+w,go-r<br/>--chown=$USER:$GROUP"]
-        output3["~/.local/state/ssh-keys.d/<br/>✓ Keys deployed<br/>✓ Certs deployed<br/>✓ Manifest generated"]
+        output3["~/.local/state/ssh-key.d/<br/>✓ Keys deployed<br/>✓ Certs deployed<br/>✓ Manifest generated"]
     end
     
     subgraph "Stage 4: Authorize"
@@ -114,7 +114,7 @@ graph TD
     
     D2 --> D3["Create symlink:<br/>rke2-cluster-cert.pub"]
     
-    C1 & C2 & C3 & C4 & C5 & D2 & D3 -->|Stage 3: rsync| E["~/.local/state/ssh-keys.d/"]
+    C1 & C2 & C3 & C4 & C5 & D2 & D3 -->|Stage 3: rsync| E["~/.local/state/ssh-key.d/"]
     
     E -->|Stage 4: Ensure perms| F["Ready for SSH Agent"]
     
@@ -137,7 +137,7 @@ sequenceDiagram
     participant SOPS as SOPS Decrypt
     participant Stage2 as regenerate-certs.sh
     participant Stage3 as deploy-keys.sh
-    participant RuntimeDir as ~/.local/state/ssh-keys.d/
+    participant RuntimeDir as ~/.local/state/ssh-key.d/
     participant Agent as SSH Agent
 
     User->>hm: home-manager switch
@@ -177,7 +177,7 @@ graph TD
     
     F --> J["Deploy to runtime"]
     I --> J
-    J --> K["~/.local/state/ssh-keys.d/"]
+    J --> K["~/.local/state/ssh-key.d/"]
     K --> L["Ready for SSH auth"]
 ----
 
@@ -234,7 +234,7 @@ graph TD
     B --> B4["rke2-cluster-mammoth-skate-user-cert.pub<br/>(GENERATED ← fresh serial)"]
     B --> B5["rke2-cluster-cert.pub<br/>(SYMLINK)"]
     
-    B -->|Stage 3: rsync| C["~/.local/state/ssh-keys.d/"]
+    B -->|Stage 3: rsync| C["~/.local/state/ssh-key.d/"]
     C --> C1["rke2-cluster"]
     C --> C2["rke2-cluster.pub"]
     C --> C3["mammoth-skate-ca.pub"]

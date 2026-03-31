@@ -37,7 +37,7 @@ main() {
     | .key
   ' "$tmp_output_yaml" > "$tmp_keys_dir/agent-keys"
 
-  keys_state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/ssh-keys.d"
+  keys_state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/ssh-key.d"
   install -d -m 700 "$keys_state_dir"
   @rsync@ -avL \
     --checksum \

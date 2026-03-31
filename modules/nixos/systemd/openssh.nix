@@ -135,7 +135,7 @@ in
           groupKeysScript = groupKeysScriptStore;
           activationLogger = activationLogger;
           activationTag = activationTag;
-          userCaSourceDir = "${userHome}/.local/state/ssh-keys.d";
+          userCaSourceDir = "${userHome}/.local/state/ssh-key.d";
         }
       );
     };
