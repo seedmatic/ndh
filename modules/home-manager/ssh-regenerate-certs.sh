@@ -78,13 +78,28 @@ for priv in "$outputDir/"*; do
   base="${priv##*/}"
   certs=("$outputDir/${base}"-*-cert.pub)
   
-  key_fp="$(ssh-keygen -lf "$priv" 2>/dev/null | awk '{print $2}' || true)"
+  # Extract key fingerprint using ssh-keygen -lf and Bash string manipulation
+  # Output format: "256 SHA256:xxxx... user@host (ssh-ed25519)"
+  key_fp_line=$(ssh-keygen -lf "$priv" 2>/dev/null || true)
+  if [[ $key_fp_line =~ \ ([^ ]+)\ ]]; then
+    key_fp="${BASH_REMATCH[1]}"
+  else
+    key_fp=""
+  fi
   [[ -z "$key_fp" ]] && continue
   
   matched_cert=""
   for cert in "${certs[@]}"; do
     [[ -f "$cert" ]] || continue
-    cert_fp="$(ssh-keygen -Lf "$cert" 2>/dev/null | awk '/Public key:/ {print $4; exit}' || true)"
+    # Extract certificate public key field using ssh-keygen -Lf and Bash string manipulation
+    # Look for line: "        Public key: ..."
+    while IFS= read -r line; do
+      if [[ "$line" =~ Public\ key:\ ([^ ]+) ]]; then
+        cert_fp="${BASH_REMATCH[1]}"
+        break
+      fi
+    done < <(ssh-keygen -Lf "$cert" 2>/dev/null || true)
+    
     if [[ -n "$cert_fp" && "$cert_fp" == "$key_fp" ]]; then
       matched_cert="$cert"
       break
