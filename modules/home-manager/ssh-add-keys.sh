@@ -24,6 +24,9 @@ if [[ ! -f "$AUTHORIZED_KEYS_FILE" ]]; then
   install -m 600 /dev/null "$AUTHORIZED_KEYS_FILE"
 fi
 
+# Ensure private key destination directory exists
+install -d -m 700 "$KEYS_DIR"
+
 # Initialize / attach to agent (keychain handles reuse)
 source <( keychain -q ${KEYCHAIN_FLAGS:---noask --nogui} --eval )
 
@@ -33,27 +36,43 @@ generatedTmp=$(mktemp)
 trap 'rm -f "$generatedTmp" "$AUTHORIZED_KEYS_FILE.tmp" "$AUTHORIZED_KEYS_FILE.new" 2>/dev/null || true' EXIT
 
 ## Always use yq shell output (simpler & faster)
-# Load all keys.* variables: keys_<name>_public / keys_<name>_private / keys_<name>_usage_<n>
+# Load flattened shell variables emitted by yq (e.g., profiles_committed_*).
 # Use process substitution + source instead of eval $(...) to avoid additional quoting expansion tiers.
 # shellcheck disable=SC1090
 source <( yq -o shell '.' "$KEYS_FILE" )
 
 # Build arrays of bases and usages in a single scan
-declare -A KEY_PUBLIC KEY_PRIVATE KEY_USAGES
+declare -A KEY_PUBLIC KEY_PRIVATE KEY_TYPE KEY_COMMENT KEY_USAGES
 while IFS= read -r var; do
   case "$var" in
-    keys_*_public)
-      base="${var#keys_}"; base="${base%_public}"; KEY_PUBLIC["$base"]="${!var}" ;;
-    keys_*_private)
-      base="${var#keys_}"; base="${base%_private}"; KEY_PRIVATE["$base"]="${!var}" ;;
-    keys_*_usage_[0-9]*)
+    *_public)
+      base="${var%_public}"; KEY_PUBLIC["$base"]="${!var}" ;;
+    *_private)
+      base="${var%_private}"; KEY_PRIVATE["$base"]="${!var}" ;;
+    *_type)
+      base="${var%_type}"; KEY_TYPE["$base"]="${!var}" ;;
+    *_comment)
+      base="${var%_comment}"; KEY_COMMENT["$base"]="${!var}" ;;
+    *_usage_[0-9]*)
       # usage vars: accumulate
-      tmp="${var#keys_}"; tmp="${tmp%_usage_*}"; base="$tmp"; KEY_USAGES["$base"]+=" ${!var}" ;;
+      base="${var%_usage_*}"; KEY_USAGES["$base"]+=" ${!var}" ;;
   esac
-done < <( compgen -A variable | grep '^keys_' )
+done < <( compgen -A variable | grep -E '_(public|private|type|comment|usage_[0-9]+)$' )
 
-for base in "${!KEY_PUBLIC[@]}"; do
-  pubLine="${KEY_PUBLIC[$base]}"
+for base in "${!KEY_PRIVATE[@]}"; do
+  pubRaw="${KEY_PUBLIC[$base]:-}"
+  pubType="${KEY_TYPE[$base]:-}"
+  pubComment="${KEY_COMMENT[$base]:-}"
+  if [[ "$pubRaw" =~ ^ssh-(ed25519|rsa|ecdsa|dss)\  ]]; then
+    pubLine="$pubRaw"
+  elif [[ -n "$pubType" && -n "$pubRaw" ]]; then
+    pubLine="$pubType $pubRaw"
+    if [[ -n "$pubComment" ]]; then
+      pubLine+=" $pubComment"
+    fi
+  else
+    pubLine="$pubRaw"
+  fi
   pubLine="${pubLine%%[[:space:]]}"
   privBlock="${KEY_PRIVATE[$base]:-}"
   usagesStr="${KEY_USAGES[$base]:-}"
@@ -66,24 +85,19 @@ for base in "${!KEY_PUBLIC[@]}"; do
   if [[ -n "$privBlock" && "$privBlock" == *"BEGIN OPENSSH PRIVATE KEY"* ]]; then
     fileBase="${base//_/-}"
     keyPath="${KEYS_DIR}/${fileBase}"
-    if [[ -f "$keyPath" ]]; then
-      # If the on-disk key doesn't match the YAML public key, rewrite it from YAML
-      yamlB64=$(printf '%s\n' "$pubLine" | awk '{print $2}')
-      fileB64=$(ssh-keygen -y -f "$keyPath" 2>/dev/null | awk '{print $2}' || true)
-      if [[ -n "$yamlB64" && -n "$fileB64" && "$yamlB64" != "$fileB64" ]]; then
-        printf '%s\n' "$privBlock" > "$keyPath"
-        chmod 600 "$keyPath"
-      fi
-      ssh-add -q -d "$keyPath" 2>/dev/null || true
-      ssh-add "$keyPath" 2>/dev/null || true
-    else
-      tmpKey=$(mktemp)
-      chmod 600 "$tmpKey"
-      printf '%s\n' "$privBlock" > "$tmpKey"
-      ssh-add -q -d "$tmpKey" 2>/dev/null || true
-      ssh-add "$tmpKey" 2>/dev/null || true
-      rm -f "$tmpKey"
+    # If the on-disk key doesn't match the YAML public key (or is missing), rewrite it from YAML
+    yamlB64=$(printf '%s\n' "$pubLine" | awk '{print $2}')
+    if [[ -z "$yamlB64" && -n "$pubRaw" ]]; then
+      yamlB64="$pubRaw"
     fi
+    fileB64=$(ssh-keygen -y -f "$keyPath" 2>/dev/null | awk '{print $2}' || true)
+    if [[ ! -f "$keyPath" || -z "$fileB64" || ( -n "$yamlB64" && "$yamlB64" != "$fileB64" ) ]]; then
+      printf '%s\n' "$privBlock" > "$keyPath"
+      chmod 600 "$keyPath"
+    fi
+
+    ssh-add -q -d "$keyPath" 2>/dev/null || true
+    ssh-add "$keyPath" 2>/dev/null || true
   fi
   if [[ $include_in_authorized -eq 1 && "$pubLine" =~ ^ssh-(ed25519|rsa|ecdsa|dss)\  ]]; then
     printf '%s\n' "$pubLine" >> "$generatedTmp"
