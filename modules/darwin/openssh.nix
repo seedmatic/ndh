@@ -91,7 +91,10 @@ let
 
 in
 {
-  imports = [ ../common/openssh-policy.nix ../common/ssh-paths.nix ];
+  imports = [
+    ../common/openssh-policy.nix
+    ../common/ssh-paths.nix
+  ];
 
   config = {
     # Server policy wiring

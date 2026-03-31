@@ -17,27 +17,28 @@ let
     serviceDirectories = dbusCfg.packages;
   };
 
-  insecureDbusConfigDir = pkgs.runCommand "dbus-1-insecure-config"
-    {
-      preferLocalBuild = true;
-      allowSubstitutes = false;
-    }
-    ''
-      cp -r --no-preserve=mode,ownership ${baseDbusConfigDir} "$out"
-      chmod -R u+w "$out"
+  insecureDbusConfigDir =
+    pkgs.runCommand "dbus-1-insecure-config"
+      {
+        preferLocalBuild = true;
+        allowSubstitutes = false;
+      }
+      ''
+        cp -r --no-preserve=mode,ownership ${baseDbusConfigDir} "$out"
+        chmod -R u+w "$out"
 
-      ${pkgs.patch}/bin/patch \
-        --batch \
-        --forward \
-        --fuzz=3 \
-        --no-backup-if-mismatch \
-        "$out/system.conf" \
-        ${dbusTcpAssetsDir + "/system-conf-auth-anonymous.patch"}
+        ${pkgs.patch}/bin/patch \
+          --batch \
+          --forward \
+          --fuzz=3 \
+          --no-backup-if-mismatch \
+          "$out/system.conf" \
+          ${dbusTcpAssetsDir + "/system-conf-auth-anonymous.patch"}
 
-      ${pkgs.perl}/bin/perl -0777 -i -pe 's#</busconfig>#  <policy context="default">\n    <allow send_destination="*"/>\n    <allow eavesdrop="true"/>\n    <allow own="*"/>\n    <allow receive_sender="*"/>\n  </policy>\n</busconfig>#s' "$out/system.conf"
+        ${pkgs.perl}/bin/perl -0777 -i -pe 's#</busconfig>#  <policy context="default">\n    <allow send_destination="*"/>\n    <allow eavesdrop="true"/>\n    <allow own="*"/>\n    <allow receive_sender="*"/>\n  </policy>\n</busconfig>#s' "$out/system.conf"
 
-      chmod -R a-w "$out"
-    '';
+        chmod -R a-w "$out"
+      '';
 in
 {
   options.services.dbusTcpSystemBus = {
@@ -91,7 +92,9 @@ in
     # IMPORTANT: this NixOS channel does not expose services.dbus.extraConfig.
     # For lab-only anonymous auth we override the generated dbus-1 config dir
     # with a patched system.conf that adds ANONYMOUS auth + permissive policy.
-    environment.etc."dbus-1".source = lib.mkIf cfg.insecureAllowAnonymous (lib.mkForce insecureDbusConfigDir);
+    environment.etc."dbus-1".source = lib.mkIf cfg.insecureAllowAnonymous (
+      lib.mkForce insecureDbusConfigDir
+    );
 
     networking.firewall.allowedTCPPorts = lib.mkIf cfg.openFirewall [ cfg.port ];
   };

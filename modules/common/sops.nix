@@ -30,52 +30,53 @@ let
     else
       cfg.systemWideKeyFile;
 
-  sopsAgeBootstrapScript =
-    ''
-      set -eu
+  sopsAgeBootstrapScript = ''
+    set -eu
 
-      key_file="${config.sops.age.keyFile}"
-      public_key_file="${cfg.publicKeyFile}"
-      public_key_dir="$(dirname "$public_key_file")"
-      export_public_key_on_activation="${if cfg.exportPublicKeyOnActivation then "1" else "0"}"
-    ''
-    + (if cfg.phase == "bootstrap" then
-        ''
-          key_dir="$(dirname "$key_file")"
-          darwin_user_key_file="${cfg.darwinUserKeyFile}"
-          import_existing_user_key_on_bootstrap="${if cfg.importExistingUserKeyOnBootstrap then "1" else "0"}"
+    key_file="${config.sops.age.keyFile}"
+    public_key_file="${cfg.publicKeyFile}"
+    public_key_dir="$(dirname "$public_key_file")"
+    export_public_key_on_activation="${if cfg.exportPublicKeyOnActivation then "1" else "0"}"
+  ''
+  + (
+    if cfg.phase == "bootstrap" then
+      ''
+        key_dir="$(dirname "$key_file")"
+        darwin_user_key_file="${cfg.darwinUserKeyFile}"
+        import_existing_user_key_on_bootstrap="${if cfg.importExistingUserKeyOnBootstrap then "1" else "0"}"
 
-          if [ ! -s "$key_file" ]; then
-            install -d -m 700 "$key_dir"
-            if [ "$import_existing_user_key_on_bootstrap" = "1" ] && [ "$darwin_user_key_file" != "$key_file" ] && [ -s "$darwin_user_key_file" ]; then
-              cp "$darwin_user_key_file" "$key_file"
-              chmod 600 "$key_file"
-              echo "[sops-age-bootstrap] installed existing user age key into $key_file"
-            else
-              ${pkgs.age}/bin/age-keygen -o "$key_file"
-              chmod 600 "$key_file"
-              echo "[sops-age-bootstrap] generated age key at $key_file"
-            fi
+        if [ ! -s "$key_file" ]; then
+          install -d -m 700 "$key_dir"
+          if [ "$import_existing_user_key_on_bootstrap" = "1" ] && [ "$darwin_user_key_file" != "$key_file" ] && [ -s "$darwin_user_key_file" ]; then
+            cp "$darwin_user_key_file" "$key_file"
+            chmod 600 "$key_file"
+            echo "[sops-age-bootstrap] installed existing user age key into $key_file"
           else
-            echo "[sops-age-bootstrap] existing age key detected at $key_file"
+            ${pkgs.age}/bin/age-keygen -o "$key_file"
+            chmod 600 "$key_file"
+            echo "[sops-age-bootstrap] generated age key at $key_file"
           fi
-        ''
-      else
-        ''
-          if [ ! -s "$key_file" ]; then
-            echo "[sops-age-bootstrap] ERROR: missing SOPS age key at $key_file"
-            echo "[sops-age-bootstrap] either provision the key manually or run one activation with nxmatic.sopsAgeKeyBootstrap.phase=\"bootstrap\""
-            exit 1
-          fi
-        '')
-    + ''
-      if [ "$export_public_key_on_activation" = "1" ] && [ -s "$key_file" ]; then
-        install -d -m 755 "$public_key_dir"
-        ${pkgs.age}/bin/age-keygen -y "$key_file" > "$public_key_file"
-        chmod 644 "$public_key_file"
-        echo "[sops-age-bootstrap] published host age recipient to $public_key_file"
-      fi
-    '';
+        else
+          echo "[sops-age-bootstrap] existing age key detected at $key_file"
+        fi
+      ''
+    else
+      ''
+        if [ ! -s "$key_file" ]; then
+          echo "[sops-age-bootstrap] ERROR: missing SOPS age key at $key_file"
+          echo "[sops-age-bootstrap] either provision the key manually or run one activation with nxmatic.sopsAgeKeyBootstrap.phase=\"bootstrap\""
+          exit 1
+        fi
+      ''
+  )
+  + ''
+    if [ "$export_public_key_on_activation" = "1" ] && [ -s "$key_file" ]; then
+      install -d -m 755 "$public_key_dir"
+      ${pkgs.age}/bin/age-keygen -y "$key_file" > "$public_key_file"
+      chmod 644 "$public_key_file"
+      echo "[sops-age-bootstrap] published host age recipient to $public_key_file"
+    fi
+  '';
 in
 {
   options.nxmatic.sopsAgeKeyBootstrap = {
@@ -135,11 +136,7 @@ in
 
     publicKeyFile = mkOption {
       type = types.str;
-      default =
-        if pkgs.stdenv.isDarwin then
-          "/etc/sops/age/keys.pub"
-        else
-          "/etc/sops/age/keys.pub";
+      default = if pkgs.stdenv.isDarwin then "/etc/sops/age/keys.pub" else "/etc/sops/age/keys.pub";
       description = ''
         Path where the host public age recipient is published.
         This file is safe to collect into `.sops.yaml` recipient groups.

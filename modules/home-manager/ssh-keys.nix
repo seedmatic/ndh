@@ -20,7 +20,11 @@ let
   activationTagGenerate = "home-manager.activationScripts.${userName}.generateSSHKeysYaml";
   activationTagExtract = "home-manager.activationScripts.${userName}.extractSSHKeys";
   activationTagAuthorized = "home-manager.activationScripts.${userName}.ensureAuthorizedKeys";
-  sourceSSHKeysYamlPathOverride = lib.attrByPath [ "_module" "specialArgs" "sshKeysYamlPath" ] null config;
+  sourceSSHKeysYamlPathOverride = lib.attrByPath [
+    "_module"
+    "specialArgs"
+    "sshKeysYamlPath"
+  ] null config;
   sshPaths = config.sshPaths;
   # Source YAML path (SOPS-decrypted profile YAML), used as input to generation.
   sourceSSHKeysYamlPath =
@@ -45,8 +49,7 @@ let
     let
       entries = builtins.readDir ../../hosts;
       hostDirs = lib.filterAttrs (
-        name: type:
-        type == "directory" && builtins.pathExists (../../hosts + "/${name}/flake.nix")
+        name: type: type == "directory" && builtins.pathExists (../../hosts + "/${name}/flake.nix")
       ) entries;
     in
     lib.attrNames hostDirs;
@@ -57,15 +60,16 @@ let
     let
       scriptTemplate = builtins.readFile ./ssh.d/scripts/ca-known-hosts-command.sh;
       # Resolve CA keys dynamically from XDG state runtime keys dir to avoid store-backed private material.
-      scriptProcessed =
-        builtins.replaceStrings [ "@CA_DIR@" ] [ keysStateDir ]
-          scriptTemplate;
+      scriptProcessed = builtins.replaceStrings [ "@CA_DIR@" ] [ keysStateDir ] scriptTemplate;
     in
     pkgs.writeScript "ssh-ca-known-hosts" scriptProcessed;
 
 in
 {
-  imports = [ ./ssh-add-keys.nix ../common/ssh-paths.nix ];
+  imports = [
+    ./ssh-add-keys.nix
+    ../common/ssh-paths.nix
+  ];
 
   ssh-add-keys = {
     enable = true;

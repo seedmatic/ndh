@@ -14,7 +14,7 @@ let
     ;
   user = config.profile.user;
   userName = user.name;
-  userHome = user.home;    
+  userHome = user.home;
   cfg = config.ssh-add-keys;
   sshPaths = config.sshPaths;
   keysFileDefault = sshPaths.generatedKeysYamlFile;

@@ -13,20 +13,19 @@ let
   hostForcesRemoteBuilds = hostProfile.forceRemoteBuilds;
   userRemoteBuilders = hostProfile.remoteBuilders;
   builderCatalog = hostProfile.builderCatalog;
-  catalogRemoteBuilders =
-    map (entry: entry.builder) (
-      lib.filter (
-        entry:
-        let
-          systems = entry.builder.systems or [ ];
-          # Exclude Darwin VM builders from remote builder candidates.
-          # Linux VM builders (the usual remote builder target on Darwin) remain allowed.
-          isDarwinTarget = lib.any (system: lib.hasInfix "darwin" system) systems;
-          isVm = (entry.builder.form or "") == "vm";
-        in
-        !(isDarwinTarget && isVm)
-      ) builderCatalog
-    );
+  catalogRemoteBuilders = map (entry: entry.builder) (
+    lib.filter (
+      entry:
+      let
+        systems = entry.builder.systems or [ ];
+        # Exclude Darwin VM builders from remote builder candidates.
+        # Linux VM builders (the usual remote builder target on Darwin) remain allowed.
+        isDarwinTarget = lib.any (system: lib.hasInfix "darwin" system) systems;
+        isVm = (entry.builder.form or "") == "vm";
+      in
+      !(isDarwinTarget && isVm)
+    ) builderCatalog
+  );
 
   # Builder key paths (placed in /etc/nix for builders)
   builderKeyDir = "/etc/nix";

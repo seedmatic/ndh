@@ -44,10 +44,7 @@ let
     else
       homeDirectoryString;
   systemCaBundle =
-    if pkgs.stdenvNoCC.isDarwin then
-      "/etc/ssl/cert.pem"
-    else
-      "/etc/ssl/certs/ca-bundle.crt";
+    if pkgs.stdenvNoCC.isDarwin then "/etc/ssl/cert.pem" else "/etc/ssl/certs/ca-bundle.crt";
 
   activationLoggerArgs =
     if specialArgsResolved ? activationLogger then
@@ -272,6 +269,5 @@ in
         "/Volumes/GitHub/nuxeo/nos"
       ];
     };
-  }
-  ;
+  };
 }

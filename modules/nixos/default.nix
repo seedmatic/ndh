@@ -314,11 +314,7 @@ in
       ];
       uid = lib.mkIf (nixosUserUid != null) nixosUserUid;
     };
-    users.groups.${cfgUserName} =
-      if nixosUserGid != null then
-        { gid = nixosUserGid; }
-      else
-        { };
+    users.groups.${cfgUserName} = if nixosUserGid != null then { gid = nixosUserGid; } else { };
 
     # Debug convenience: set root password to "root" (insecure; remove when done)
     users.users.root.initialPassword = "root";
