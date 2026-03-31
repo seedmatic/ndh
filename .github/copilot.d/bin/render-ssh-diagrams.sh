@@ -8,7 +8,7 @@ set -euo pipefail
 
 output_dir="${1:-.github/copilot.d/ssh-diagrams}"
 theme="${2:-dark}"
-diagram_file="docs/ssh-keys-diagrams.md"
+diagram_file="docs/ssh-keys-diagrams.adoc"
 
 # Check if diagram file exists
 if [[ ! -f "$diagram_file" ]]; then
@@ -24,7 +24,7 @@ fi
 
 mkdir -p "$output_dir"
 
-echo "Rendering SSH diagrams to JPEG..."
+echo "Rendering SSH diagrams to SVG..."
 echo "  Input:  $diagram_file"
 echo "  Output: $output_dir/"
 echo "  Theme:  $theme"
@@ -47,7 +47,7 @@ for diagram_title in "${diagrams[@]}"; do
                sed 's/^[^:]*: //; s/ /-/g; s/(//g; s/)//g; s/→/to/; s/\.//g' | \
                tr '[:upper:]' '[:lower:]')
     
-    output_file="$output_dir/${filename}.jpeg"
+    output_file="$output_dir/${filename}.svg"
     
     # Extract mermaid code block for this diagram
     # Find the heading, extract code block until next heading or EOF
@@ -63,9 +63,7 @@ for diagram_title in "${diagrams[@]}"; do
         mmdc -i "/tmp/mermaid_${filename}.mmd" \
              -o "$output_file" \
              -t "$theme" \
-             --outputFormat jpeg \
-             --width 1920 \
-             --height 1080 \
+             --outputFormat svg \
              2>/dev/null || {
             echo "    ⚠ Warning: Failed to render $(basename "$output_file")"
         }
@@ -79,7 +77,7 @@ done
 echo
 echo "✓ Rendering complete!"
 echo "  Output directory: $output_dir/"
-ls -lh "$output_dir"/*.jpeg 2>/dev/null | awk '{print "    • " $9 " (" $5 ")"}'
+ls -lh "$output_dir"/*.svg 2>/dev/null | awk '{print "    • " $9 " (" $5 ")"}'
 echo
 echo "View diagrams:"
 echo "  • Open in preview: open $output_dir/"

@@ -49,7 +49,7 @@ graph TB
     agent -->|auth| user
 ----
 
-*View full-screen:* link:diagrams/c2-container-architecture.jpeg[📥 Download JPEG]
+*View full-screen:* link:diagrams/c2-container-architecture.svg[🖼️ Open SVG]
 
 == C3: Pipeline Architecture (4 Stages)
 
@@ -91,7 +91,7 @@ graph LR
     input4 --> perms --> output4
 ----
 
-*View full-screen:* link:diagrams/c3-pipeline-architecture-4-stages.jpeg[📥 Download JPEG]
+*View full-screen:* link:diagrams/c3-pipeline-architecture-4-stages.svg[🖼️ Open SVG]
 
 == Data Flow: Profile YAML through Pipeline
 
@@ -123,7 +123,7 @@ graph TD
     G -->|auto-loads *.pub| H["✓ Certificate-based<br/>SSH auth ready!"]
 ----
 
-*View full-screen:* link:diagrams/data-flow-profile-yaml-through-pipeline.jpeg[📥 Download JPEG]
+*View full-screen:* link:diagrams/data-flow-profile-yaml-through-pipeline.svg[🖼️ Open SVG]
 
 == Sequence: home-manager switch → SSH Ready
 
@@ -157,7 +157,7 @@ sequenceDiagram
     Agent-->>User: ✓ SSH auth ready (certs auto-loaded)
 ----
 
-*View full-screen:* link:diagrams/sequence-homemanager-switch-to-ssh-ready.jpeg[📥 Download JPEG]
+*View full-screen:* link:diagrams/sequence-homemanager-switch-to-ssh-ready.svg[🖼️ Open SVG]
 
 == Key Decision Points in Pipeline
 
@@ -181,7 +181,7 @@ graph TD
     K --> L["Ready for SSH auth"]
 ----
 
-*View full-screen:* link:diagrams/key-decision-points-in-pipeline.jpeg[📥 Download JPEG]
+*View full-screen:* link:diagrams/key-decision-points-in-pipeline.svg[🖼️ Open SVG]
 
 == Nix Module Wiring Diagram
 
@@ -215,7 +215,7 @@ graph TB
     act2 --> dag
 ----
 
-*View full-screen:* link:diagrams/nix-module-wiring-diagram.jpeg[📥 Download JPEG]
+*View full-screen:* link:diagrams/nix-module-wiring-diagram.svg[🖼️ Open SVG]
 
 == Runtime File Structure Evolution
 
@@ -248,11 +248,11 @@ graph TD
     style C5 fill:#87CEEB
 ----
 
-*View full-screen:* link:diagrams/runtime-file-structure-evolution.jpeg[📥 Download JPEG]
+*View full-screen:* link:diagrams/runtime-file-structure-evolution.svg[🖼️ Open SVG]
 
 == Exporting Diagrams to JPEG
 
-These Mermaid diagrams can be exported to JPEG images for full-screen viewing and presentation.
+These Mermaid diagrams can be exported to SVG images for scalable full-screen viewing and presentation.
 
 === Option 1: Using Mermaid CLI (Recommended)
 
@@ -261,41 +261,30 @@ These Mermaid diagrams can be exported to JPEG images for full-screen viewing an
 # Install mermaid-cli (if not already installed)
 npm install -g @mermaid-js/mermaid-cli
 
-# Export all diagrams to JPEG
-mmdc -i docs/ssh-keys-diagrams.adoc -o docs/diagrams/ -t dark
+# Export all diagrams to SVG
+mmdc -i docs/ssh-keys-diagrams.adoc -o docs/diagrams/ -t dark --outputFormat svg
 
-# Or specific formats
-mmdc -i docs/ssh-keys-diagrams.adoc -o docs/diagrams/pipeline.jpeg -t dark --outputFormat jpeg
-----
-
-=== Option 2: Using Render Script
-
-[source,bash]
-----
-# Make the script executable
-chmod +x .github/copilot.d/bin/render-ssh-diagrams.sh
-
-# Run the render script
+# Or use the helper script
 .github/copilot.d/bin/render-ssh-diagrams.sh
 ----
 
-=== Option 3: Using VS Code Extension
+=== Option 2: Using VS Code Extension
 
-. Install "Markdown Preview Mermaid Support" extension
+. Install "AsciiDoc" extension by asciidoctor
 . Open `ssh-keys-diagrams.adoc` in VS Code
-. Right-click on diagram → Export as PNG/JPEG
+. Click link under diagram to open SVG (or use render script above)
 
-=== Option 4: Using Online Mermaid Editor
+=== Option 3: Using Online Mermaid Editor
 
 . Copy Mermaid code block
 . Paste into https://mermaid.live/
-. Export → Download JPEG
+. Export → Download SVG
 
 == Notes
 
 NOTE: These Mermaid diagrams are intended as supplements to the ASCII diagrams in `ssh-keys-architecture.md`. Use these rendered versions for full-screen presentation or printing.
 
-TIP: For best results with Mermaid CLI, use `--width 1920 --height 1080` for high-resolution exports suitable for presentations.
+TIP: SVG format provides vector-based scalability. Files remain crisp at any zoom level or screen size.
 
 == Related Documentation
 
