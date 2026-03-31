@@ -96,12 +96,16 @@ in
   # Externalized activation scripts: keep content in the store and execute via bash
   home.activation =
     let
+      sshExtractKeysScript = pkgs.replaceVars ./ssh-extract-keys.sh {
+        yq = "${pkgs.yq-go}/bin/yq";
+      };
+
       deploySSHKeysScript = pkgs.replaceVars ./ssh-keys.d/deploy-ssh-keys.sh {
         bash = "${pkgs.bash}/bin/bash";
         mktemp = "${pkgs.coreutils-full}/bin/mktemp";
         rsync = "${pkgs.rsync}/bin/rsync";
         yq = "${pkgs.yq-go}/bin/yq";
-        sshExtractKeys = "${./ssh-extract-keys.sh}";
+        sshExtractKeys = "${sshExtractKeysScript}";
         profileName = profileName;
         keysYaml =
           if sshKeysYamlPath != null then

@@ -47,7 +47,7 @@ EOE
 )
 
 : Use yq to generate the array, split it into files, and output to the specified directory
-env OUTPUT_DIR="$outputDir" yq eval "$exp" "$yamlFile" -s '.filename'
+env OUTPUT_DIR="$outputDir" @yq@ eval "$exp" "$yamlFile" -s '.filename'
 
 : Post-process the generated YAML files to extract only the content
 # Only touch files created by yq (*.yml split output); leave agent-keys and other non-YAML files untouched.
@@ -55,7 +55,7 @@ for file in "$outputDir/"*.yml; do
   [[ -f "$file" ]] || continue
   newfile="${file%.yml}"
   mv "$file" "$newfile"
-  yq eval '.content | trim' -i "$newfile"
+  @yq@ eval '.content | trim' -i "$newfile"
 done
 
 # Provide stable symlink names (<key>-cert.pub) pointing to a matching user certificate.
