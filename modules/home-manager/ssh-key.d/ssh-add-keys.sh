@@ -5,19 +5,22 @@
 # Key files are extracted by the Home Manager activation deploySSHKeys step.
 # This script is run by the LaunchAgent on login to ensure keys survive reboots.
 
-KEYS_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/ssh-key.d"
-AGENT_KEYS_FILE="${KEYS_DIR}/agent-keys"
+SSH_KEYS_YAML="${1:?SSH keys YAML file required}"
+KEYS_DIR="$( dirname "$SSH_KEYS_YAML")"
 AUTHORIZED_KEYS_FILE="${HOME}/.ssh/authorized_keys"
 MARK_BEGIN="# >>> managed-by: ssh-add-keys BEGIN >>>"
 MARK_END="# <<< managed-by: ssh-add-keys END <<<"
+
+# Extract key names from YAML with underscores replaced by dashes
+keyList=$(yq eval '.keys | keys[] | sub("_", "-")' "$SSH_KEYS_YAML")
 
 # Ensure authorized_keys exists
 if [[ ! -f "$AUTHORIZED_KEYS_FILE" ]]; then
   install -m 600 /dev/null "$AUTHORIZED_KEYS_FILE"
 fi
 
-if [[ ! -s "$AGENT_KEYS_FILE" ]]; then
-  echo "No agent-keys manifest at $AGENT_KEYS_FILE; run home-manager activation first." >&2
+if [[ -z "$keyList" ]]; then
+  echo "No keys found in $SSH_KEYS_YAML; run home-manager activation first." >&2
   exit 0
 fi
 
@@ -41,7 +44,7 @@ while IFS= read -r keyName; do
   if [[ -f "$pubPath" ]]; then
     cat "$pubPath" >> "$generatedTmp"
   fi
-done < "$AGENT_KEYS_FILE"
+done <<< "$keyList"
 
 # Deduplicate gathered public keys
 if [[ -s "$generatedTmp" ]]; then
@@ -63,7 +66,7 @@ fi
 {
   cat "$existingTmp"
   echo "$MARK_BEGIN"
-  echo "# Managed public keys from: $AGENT_KEYS_FILE"
+  echo "# Managed public keys from: $SSH_KEYS_YAML"
   if [[ -s "$generatedTmp" ]]; then
     cat "$generatedTmp"
   else
