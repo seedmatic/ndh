@@ -91,10 +91,12 @@ for priv in "$outputDir/"*; do
   matched_cert=""
   for cert in "${certs[@]}"; do
     [[ -f "$cert" ]] || continue
-    # Extract certificate public key field using ssh-keygen -Lf and Bash string manipulation
-    # Look for line: "        Public key: ..."
+    # Extract certificate public key fingerprint using ssh-keygen -Lf and Bash string manipulation
+    # Look for line like: "        Public key: ED25519-CERT SHA256:xxxx"
+    # We want to extract the SHA256 fingerprint (3rd field on that line)
+    cert_fp=""
     while IFS= read -r line; do
-      if [[ "$line" =~ Public\ key:\ ([^ ]+) ]]; then
+      if [[ "$line" =~ Public\ key:\ .+\ (SHA256:[^ ]+) ]]; then
         cert_fp="${BASH_REMATCH[1]}"
         break
       fi
