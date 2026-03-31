@@ -145,6 +145,6 @@ in
     };
 
     # SSH keys are managed by the home-manager ssh-keys.nix module
-    # Keys are deployed to ~/.ssh/keys.d/ with proper permissions
+    # Keys are deployed to ~/.local/state/ssh-keys.d/ with proper permissions
   };
 }

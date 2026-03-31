@@ -15,14 +15,15 @@
   programs.bash = {
     enable = true;
     interactiveShellInit = ''
-      if command -v keychain >/dev/null 2>&1 && [[ -f "$HOME/.ssh/keys.d/host" ]]; then
-        eval "$(keychain --quiet --eval ~/.ssh/keys.d/host)"
+      state_keys_dir="${XDG_STATE_HOME:-$HOME/.local/state}/ssh-keys.d"
+      if command -v keychain >/dev/null 2>&1 && [[ -f "$state_keys_dir/host" ]]; then
+        eval "$(keychain --quiet --eval "$state_keys_dir/host")"
 
         if command -v ssh-add >/dev/null 2>&1; then
           ssh-add -l >/dev/null 2>&1
           if [[ $? -eq 2 ]]; then
             unset SSH_AUTH_SOCK SSH_AGENT_PID
-            eval "$(keychain --quiet --eval ~/.ssh/keys.d/host)"
+            eval "$(keychain --quiet --eval "$state_keys_dir/host")"
 
             ssh-add -l >/dev/null 2>&1
             if [[ $? -eq 2 ]] && command -v launchctl >/dev/null 2>&1; then
@@ -36,8 +37,8 @@
 
           ssh-add -l >/dev/null 2>&1
           if [[ $? -eq 1 ]]; then
-            host_key="$HOME/.ssh/keys.d/host"
-            host_cert="$HOME/.ssh/keys.d/host-cert.pub"
+            host_key="$state_keys_dir/host"
+            host_cert="$state_keys_dir/host-cert.pub"
             if [[ -f "$host_key" && -f "$host_cert" ]]; then
               key_fp="$(ssh-keygen -lf "$host_key" 2>/dev/null | awk '{print $2}' || true)"
               cert_fp="$(ssh-keygen -Lf "$host_cert" 2>/dev/null | awk '/Public key:/ {print $4; exit}' || true)"
@@ -45,7 +46,7 @@
                 rm -f "$host_cert"
               fi
             fi
-            ssh-add -q "$HOME/.ssh/keys.d/host" </dev/null >/dev/null 2>&1 || true
+            ssh-add -q "$state_keys_dir/host" </dev/null >/dev/null 2>&1 || true
           fi
         fi
       fi
@@ -56,14 +57,15 @@
   programs.zsh = {
     enable = true;
     interactiveShellInit = ''
-      if command -v keychain >/dev/null 2>&1 && [[ -f "$HOME/.ssh/keys.d/host" ]]; then
-        eval "$(keychain --quiet --eval ~/.ssh/keys.d/host)"
+      state_keys_dir="${XDG_STATE_HOME:-$HOME/.local/state}/ssh-keys.d"
+      if command -v keychain >/dev/null 2>&1 && [[ -f "$state_keys_dir/host" ]]; then
+        eval "$(keychain --quiet --eval "$state_keys_dir/host")"
 
         if command -v ssh-add >/dev/null 2>&1; then
           ssh-add -l >/dev/null 2>&1
           if [[ $? -eq 2 ]]; then
             unset SSH_AUTH_SOCK SSH_AGENT_PID
-            eval "$(keychain --quiet --eval ~/.ssh/keys.d/host)"
+            eval "$(keychain --quiet --eval "$state_keys_dir/host")"
 
             ssh-add -l >/dev/null 2>&1
             if [[ $? -eq 2 ]] && command -v launchctl >/dev/null 2>&1; then
@@ -77,8 +79,8 @@
 
           ssh-add -l >/dev/null 2>&1
           if [[ $? -eq 1 ]]; then
-            host_key="$HOME/.ssh/keys.d/host"
-            host_cert="$HOME/.ssh/keys.d/host-cert.pub"
+            host_key="$state_keys_dir/host"
+            host_cert="$state_keys_dir/host-cert.pub"
             if [[ -f "$host_key" && -f "$host_cert" ]]; then
               key_fp="$(ssh-keygen -lf "$host_key" 2>/dev/null | awk '{print $2}' || true)"
               cert_fp="$(ssh-keygen -Lf "$host_cert" 2>/dev/null | awk '/Public key:/ {print $4; exit}' || true)"
@@ -86,7 +88,7 @@
                 rm -f "$host_cert"
               fi
             fi
-            ssh-add -q "$HOME/.ssh/keys.d/host" </dev/null >/dev/null 2>&1 || true
+            ssh-add -q "$state_keys_dir/host" </dev/null >/dev/null 2>&1 || true
           fi
         fi
       fi

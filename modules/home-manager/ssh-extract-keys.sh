@@ -11,7 +11,7 @@ exp=$( cat <<'EOE' | cut -c 3-
   . | to_entries[] | 
   .key as $name |
   # Derive a filesystem filename base where underscores are converted back to hyphens
-  ($name | sub("_"; "-")) as $fname |
+  ($name | gsub("_"; "-")) as $fname |
   .value.private as $private | 
   .value.public as $public | 
   .value.usage // [] as $usage |
@@ -32,16 +32,14 @@ exp=$( cat <<'EOE' | cut -c 3-
     }
   ] +
   (
-    .value.certificates | to_entries[] | 
-    .key as $authorityNameRaw | 
-    ($authorityNameRaw | sub("_"; "-")) as $authorityName |
-    .value | to_entries[] | select(.key | test("^ssh-")) |
-      .value as $certContent |
-      .key | sub("^ssh-(.*)$", "${1}") as $certType |
-      ( 
-        "-" + $authorityName + "-" + $certType + "-cert.pub"
-      ) as $certSuffix |
-    [{"filename": ("$OUTPUT_DIR/" + $fname +  $certSuffix), "content": $certContent}]
+    # Current schema: per-key authorities are nested under .authorities.
+    # Emit CA public keys with a deterministic suffix for known-hosts/signing helpers.
+    (.value.authorities // {}) | to_entries[] |
+    .key as $authorityNameRaw |
+    ($authorityNameRaw | gsub("_"; "-")) as $authorityName |
+    .value.public as $authorityPublic |
+    select($authorityPublic != null and $authorityPublic != "") |
+    [{"filename": ("$OUTPUT_DIR/" + $fname + "-" + $authorityName + "-ca.pub"), "content": $authorityPublic}]
   ) // []
   | (.. | select(tag == "!!str")) |= envsubst
   | .[] | select(.content != null) | splitdoc

@@ -26,7 +26,7 @@ in
     launchd.agents.emacs-daemon = {
       enable = true;
       config = {
-        Label = "org.nix-community.home.emacs-daemon";
+        Label = "io.nxmatic.nix-darwin-home.home.emacs-daemon";
         ProgramArguments = [
           "${pkgs.emacs}/bin/emacs"
           "--fg-daemon"

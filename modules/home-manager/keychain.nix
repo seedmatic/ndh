@@ -7,7 +7,7 @@
     enableNushellIntegration = true;
     enableFishIntegration = true;
     keys = [
-      "~/.ssh/keys.d/host"
+      "~/.local/state/ssh-keys.d/host"
     ];
   };
 }

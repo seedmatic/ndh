@@ -13,8 +13,22 @@ let
     types
     ;
   cfg = config.ssh-add-keys;
-  homeDir = config.home.homeDirectory;
-  keysFileDefault = "${homeDir}/.ssh/keys.yaml";
+  keysFileDefault = "/run/secrets/nix-darwin-home/nxmatic-ssh-keys.yaml";
+  sshAddKeysStoreScript = pkgs.writeShellApplication {
+    name = "ssh-add-keys";
+    runtimeInputs = with pkgs; [
+      bash
+      coreutils
+      gawk
+      gnugrep
+      keychain
+      openssh
+      yq-go
+    ];
+    text = ''
+      exec ${pkgs.bash}/bin/bash ${./ssh-add-keys.sh} "$@"
+    '';
+  };
 in
 {
   options.ssh-add-keys = {
@@ -28,19 +42,13 @@ in
   };
 
   config = mkIf cfg.enable {
-    # Install the external loader script referencing the generated YAML keys file
-    home.file.".ssh/ssh-add-keys.sh" = {
-      source = ./ssh-add-keys.sh;
-      executable = true;
-    };
-
     launchd.agents.ssh-add-keys = {
       enable = true;
       config = {
-        Label = "org.nix-community.home.ssh-add-keys";
+        Label = "io.nxmatic.nix-darwin-home.home.ssh-add-keys";
         Debug = true;
         ProgramArguments = [
-          "${homeDir}/.ssh/ssh-add-keys.sh"
+          "${sshAddKeysStoreScript}/bin/ssh-add-keys"
           "${cfg.keyFile}"
         ];
         RunAtLoad = true;

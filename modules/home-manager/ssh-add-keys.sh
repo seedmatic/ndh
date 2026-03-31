@@ -5,7 +5,7 @@
 
 KEYS_FILE="$1"
 AUTHORIZED_KEYS_FILE="${HOME}/.ssh/authorized_keys"
-KEYS_DIR="${HOME}/.ssh/keys.d"
+KEYS_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/ssh-keys.d"
 MARK_BEGIN="# >>> managed-by: ssh-add-keys BEGIN >>>"
 MARK_END="# <<< managed-by: ssh-add-keys END <<<"
 

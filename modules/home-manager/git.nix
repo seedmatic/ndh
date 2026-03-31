@@ -8,8 +8,8 @@ let
   profile = config._module.specialArgs.profile;
   userName = profile.user.name;
   userEmail = profile.email;
-  hostKeysDir = "${config.home.homeDirectory}/.ssh/keys.d";
   stateHome = config.xdg.stateHome or "${config.home.homeDirectory}/.local/state";
+  hostKeysDir = "${stateHome}/ssh-keys.d";
   allowedSignersFile = "${config.xdg.configHome}/git/github_allowed_signers";
   systemCaBundle = config.home.sessionVariables.SSL_CERT_FILE;
   activationLogger = config._module.specialArgs.activationLogger.script;

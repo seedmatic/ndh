@@ -26,7 +26,7 @@ in
 {
   launchd.daemons.dnsmasq = lib.mkForce {
     serviceConfig = {
-      Label = "org.nixos.dnsmasq";
+      Label = "io.nxmatic.nix-darwin-home.darwin.dnsmasq";
       ProgramArguments = [
         "${pkgs.dnsmasq}/bin/dnsmasq"
         "--conf-file=/etc/dnsmasq.conf"

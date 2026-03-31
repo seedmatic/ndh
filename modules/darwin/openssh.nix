@@ -8,7 +8,7 @@
 let
   profile = config.profile;
   userHome = profile.user.home;
-  hostKeysDir = "${userHome}/.ssh/keys.d";
+  hostKeysDir = "${userHome}/.local/state/ssh-keys.d";
   hostKeyPrivateFile = "${hostKeysDir}/host";
   hostKeyPublicCert = "${hostKeysDir}/host-mammoth-skate-host-cert.pub";
   caPublicKeyFile = "${config.opensshPolicy.keysDir}/trusted-user-ca.pub";

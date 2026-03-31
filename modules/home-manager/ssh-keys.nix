@@ -20,6 +20,8 @@ let
   activationTagDeploy = "home-manager.activationScripts.${userName}.deploySSHKeys";
   activationTagAuthorized = "home-manager.activationScripts.${userName}.ensureAuthorizedKeys";
   sshKeysYamlPath = lib.attrByPath [ "_module" "specialArgs" "sshKeysYamlPath" ] null config;
+  canonicalRuntimeKeysYaml = "/run/secrets/nix-darwin-home/nxmatic-ssh-keys.yaml";
+  keysStateDir = "${config.xdg.stateHome}/ssh-keys.d";
 
   # Command to filter and sign keys based on profile and host
   # Resolve a stable host identifier; hostAlias is optional by design (@codebase)
@@ -44,9 +46,9 @@ let
   knownHostsScript =
     let
       scriptTemplate = builtins.readFile ./ssh.d/scripts/ca-known-hosts-command.sh;
-      # Resolve CA keys dynamically from runtime ~/.ssh/keys.d to avoid store-backed private material.
+      # Resolve CA keys dynamically from XDG state runtime keys dir to avoid store-backed private material.
       scriptProcessed =
-        builtins.replaceStrings [ "@CA_DIR@" ] [ "${config.home.homeDirectory}/.ssh/keys.d" ]
+        builtins.replaceStrings [ "@CA_DIR@" ] [ keysStateDir ]
           scriptTemplate;
     in
     pkgs.writeScript "ssh-ca-known-hosts" scriptProcessed;
@@ -61,7 +63,7 @@ in
       if sshKeysYamlPath != null then
         sshKeysYamlPath
       else
-        "${config.home.homeDirectory}/.ssh/keys.yaml";
+        canonicalRuntimeKeysYaml;
   };
 
   home.file.".ssh" = {
@@ -90,7 +92,7 @@ in
     recursive = true;
   };
 
-  # Deploy keys directly to ~/.ssh/keys.d/ with proper permissions (skip .local/state)
+  # Deploy keys directly to $XDG_STATE_HOME/ssh-keys.d with proper permissions
   # Externalized activation scripts: keep content in the store and execute via bash
   home.activation =
     let
@@ -105,7 +107,7 @@ in
           if sshKeysYamlPath != null then
             sshKeysYamlPath
           else
-            "${config.home.homeDirectory}/.ssh/keys.yaml";
+            canonicalRuntimeKeysYaml;
         activationLogger = activationLogger;
         activationTag = activationTagDeploy;
       };
