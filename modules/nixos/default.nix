@@ -159,9 +159,20 @@ in
 
       kernelParams = [
         "console=hvc0" # Use hvc0 for console output in VZ
+        "console=ttyAMA0" # Keep early serial output visible for aarch64 EFI/QEMU-style consoles
+        "console=ttyS0" # Additional fallback serial console
         "console=tty1" # Also show console/getty on the graphical console
+        "loglevel=7"
+        "ignore_loglevel"
+        "systemd.show_status=1"
+        "rd.systemd.show_status=1"
+        "rd.udev.log_level=debug"
+        "boot.shell_on_fail"
+        "logo.nologo"
         "boot.trace"
       ];
+
+      plymouth.enable = lib.mkForce false;
 
       kernel.sysctl = {
         "net.bridge.bridge-nf-call-ip6tables" = 1;
@@ -170,7 +181,8 @@ in
         "net.core.devconf_inherit_init_net" = 1;
       };
 
-      loader.systemd-boot.enable = true; # (for UEFI systems only)
+      loader.systemd-boot.enable = lib.mkForce false; # Prefer GRUB EFI path for Lima raw-efi guests
+      loader.efi.canTouchEfiVariables = lib.mkForce false;
 
       # verbosity (default off; override per-host if needed)
       consoleLogLevel = lib.mkDefault consoleCfg.logLevel;
@@ -179,6 +191,14 @@ in
 
         enable = true;
         verbose = true;
+        availableKernelModules = [
+          "virtio_pci"
+          "virtio_blk"
+          "virtio_scsi"
+          "virtio_net"
+          "virtio_mmio"
+          "nvme"
+        ];
       };
 
       postBootCommands = ''
@@ -191,7 +211,7 @@ in
 
     fileSystems = {
       "/boot" = {
-        device = "/dev/disk/by-label/ESP";
+        device = lib.mkForce "/dev/vda1"; # /dev/disk/by-label/ESP in nixos-lima upstream
         fsType = "vfat";
         options = [
           "rw"
@@ -292,6 +312,9 @@ in
       ];
       serviceConfig.ExecStart = lib.mkForce "${pkgs.util-linux}/sbin/agetty --autologin root --noclear tty1 linux";
     };
+
+    systemd.services."serial-getty@hvc0".enable = true;
+    systemd.services."serial-getty@ttyAMA0".enable = true;
 
     # Preserve profile-provided user kind flags.
     # For normal users, do not force low Darwin-style IDs (<1000) on NixOS,
