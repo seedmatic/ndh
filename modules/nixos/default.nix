@@ -311,9 +311,7 @@ in
     };
 
     # Journald (console logging controls)
-    services.journald.console = lib.mkDefault (
-      if consoleCfg.forwardToConsole then "/dev/console" else ""
-    );
+    services.journald.console = lib.mkForce "/dev/console";
     services.journald.extraConfig = ''
       # Console forwarding disabled by default; set consoleLogging.forwardToConsole = true to write to /dev/console
     '';
