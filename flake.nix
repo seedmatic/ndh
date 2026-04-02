@@ -109,6 +109,19 @@
 
       mkBaseModulesFor =
         { hostProfile, system }:
+        let
+          hostImageMode =
+            if hostProfile ? nixosImageMode && hostProfile.nixosImageMode != null then
+              hostProfile.nixosImageMode
+            else
+              "full";
+          bootstrapMode = hostImageMode == "bootstrap";
+          homeManagerEnabled =
+            if hostProfile ? enableHomeManager && hostProfile.enableHomeManager != null then
+              hostProfile.enableHomeManager
+            else
+              true;
+        in
         [
           {
             limaHost.hostName =
@@ -123,7 +136,9 @@
             [
               disko.nixosModules.disko
               inputs.sops-nix.nixosModules.sops
-              home-manager.nixosModules.home-manager
+            ]
+            ++ (if homeManagerEnabled then [ home-manager.nixosModules.home-manager ] else [ ])
+            ++ [
               impermanence.nixosModules.impermanence
               ./modules/nixos
             ]
@@ -319,7 +334,20 @@
           catalog,
         }:
         let
-          ext4Modules =
+          hostImageMode =
+            if hostProfile ? nixosImageMode && hostProfile.nixosImageMode != null then
+              hostProfile.nixosImageMode
+            else
+              "full";
+          _ =
+            assert builtins.elem hostImageMode [
+              "full"
+              "bootstrap"
+            ];
+            true;
+
+          mkExt4ModulesFor =
+            hp:
             let
               zfsOverlaysModule =
                 { ... }:
@@ -333,7 +361,7 @@
                 };
             in
             mkModulesFor {
-              inherit hostProfile;
+              hostProfile = hp;
               system = "nixos";
               preModules = [
                 profileModule
@@ -342,14 +370,43 @@
               ];
             };
 
-          ext4SpecialArgs = mkSpecialArgs {
-            modules = ext4Modules;
-            system = "aarch64-linux";
-            extraArgs = {
-              inherit hostProfile catalog;
-              containerRegistrySystem = containerRegistryConfiguration;
+          mkExt4SpecialArgsFor =
+            hp: modules:
+            mkSpecialArgs {
+              inherit modules;
+              system = "aarch64-linux";
+              extraArgs = {
+                hostProfile = hp;
+                inherit catalog;
+                containerRegistrySystem = containerRegistryConfiguration;
+              };
             };
-          };
+
+          selectedHostProfile =
+            hostProfile
+            // {
+              nixosImageMode = hostImageMode;
+            };
+
+          fullHostProfile =
+            hostProfile
+            // {
+              nixosImageMode = "full";
+            };
+
+          bootstrapHostProfile =
+            hostProfile
+            // {
+              nixosImageMode = "bootstrap";
+              bootstrapDebug =
+                if hostProfile ? bootstrapDebug && hostProfile.bootstrapDebug != null then
+                  hostProfile.bootstrapDebug
+                else
+                  false;
+            };
+
+          ext4Modules = mkExt4ModulesFor selectedHostProfile;
+          ext4SpecialArgs = mkExt4SpecialArgsFor selectedHostProfile ext4Modules;
 
           ext4 = nixpkgs.lib.nixosSystem {
             modules = ext4Modules;
@@ -360,13 +417,19 @@
 
           zfs = mkNixosConfig {
             inherit
-              hostProfile
               profileModule
               containerRegistryConfiguration
               catalog
               ;
+            hostProfile = fullHostProfile;
             zfsOverlays = true;
           };
+
+          fullExt4Modules = mkExt4ModulesFor fullHostProfile;
+          fullExt4SpecialArgs = mkExt4SpecialArgsFor fullHostProfile fullExt4Modules;
+          bootstrapExt4Modules = mkExt4ModulesFor bootstrapHostProfile;
+          bootstrapExt4SpecialArgs = mkExt4SpecialArgsFor bootstrapHostProfile bootstrapExt4Modules;
+
           # Disk size in MiB and bytes
           diskSizeMiB = 20 * 1024;
           diskSizeBytes = diskSizeMiB * 1024 * 1024;
@@ -385,6 +448,34 @@
               hostProfile.hostAlias
             else
               hostProfile.hostName;
+
+          diskImageFull = nixos-generators.nixosGenerate {
+            modules = fullExt4Modules ++ [
+              {
+                nix.registry.nixpkgs.flake = nixpkgs;
+                virtualisation.diskSize = diskSizeMiB;
+              }
+            ];
+            specialArgs = fullExt4SpecialArgs;
+            system = "aarch64-linux";
+            pkgs = pkgsForLinux;
+            format = "raw-efi";
+          };
+
+          diskImageBootstrap = nixos-generators.nixosGenerate {
+            modules = bootstrapExt4Modules ++ [
+              {
+                nix.registry.nixpkgs.flake = nixpkgs;
+                virtualisation.diskSize = diskSizeMiB;
+              }
+            ];
+            specialArgs = bootstrapExt4SpecialArgs;
+            system = "aarch64-linux";
+            pkgs = pkgsForLinux;
+            format = "raw-efi";
+          };
+
+          diskImage = if hostImageMode == "bootstrap" then diskImageBootstrap else diskImageFull;
         in
         {
           inherit diskSizeHint;
@@ -392,18 +483,11 @@
             inherit ext4 zfs;
             "${mainName}-nixos" = zfs;
           };
-          diskImage = nixos-generators.nixosGenerate {
-            modules = ext4Modules ++ [
-              {
-                nix.registry.nixpkgs.flake = nixpkgs;
-                virtualisation.diskSize = diskSizeMiB;
-              }
-            ];
-            specialArgs = ext4SpecialArgs;
-            system = "aarch64-linux";
-            pkgs = pkgsForLinux;
-            format = "raw-efi";
-          };
+          inherit
+            diskImage
+            diskImageFull
+            diskImageBootstrap
+            ;
         };
     in
     {
@@ -605,6 +689,8 @@
           };
           nixosConfiguration = nixosOutputs.nixosConfigurations."${mainName}-nixos";
           nixosDiskImage = nixosOutputs.diskImage;
+          nixosDiskImageFull = nixosOutputs.diskImageFull;
+          nixosDiskImageBootstrap = nixosOutputs.diskImageBootstrap;
           nixosDiskSizeHint = nixosOutputs.diskSizeHint;
 
           # Home Manager configurations for direct use
@@ -639,6 +725,8 @@
             darwinConfiguration
             nixosConfiguration
             nixosDiskImage
+            nixosDiskImageFull
+            nixosDiskImageBootstrap
             nixosDiskSizeHint
             homeManagerConfigurations
             ;

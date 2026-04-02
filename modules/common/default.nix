@@ -4,10 +4,16 @@
   pkgs,
   self,
   catalog,
+  hostProfile ? null,
   ...
 }:
 let
   userMapping = catalog.users;
+  homeManagerEnabled =
+    if hostProfile != null && hostProfile ? enableHomeManager && hostProfile.enableHomeManager != null then
+      hostProfile.enableHomeManager
+    else
+      true;
 
   cfg = config.profile;
   profile = cfg;
@@ -104,7 +110,7 @@ in
     };
 
     # bootstrap home manager using system config
-    hm = import ../home-manager {
+    hm = lib.mkIf homeManagerEnabled (import ../home-manager {
       inherit
         config
         pkgs
@@ -128,7 +134,7 @@ in
           "path"
         ] (toString ../../modules/home-manager/ssh.d/keys.yaml) config;
       };
-    };
+    });
 
     # Run home-manager after all other activation steps so user files see final system state
     system.activationScripts.postActivation.text = lib.mkOrder 2000 (
@@ -136,28 +142,6 @@ in
         ${postActivationScript}
       ''
     );
-
-    # let nix manage home-manager profiles and use global nixpkgs
-    home-manager = {
-      extraSpecialArgs = {
-        inherit self catalog;
-        profile = config.profile;
-        activationLogger = {
-          script = activationLoggerScript;
-          cmd = config.activation.loggerCmd;
-        };
-        sshKeysYamlPath = lib.attrByPath [
-          "sops"
-          "secrets"
-          "nxmatic-ssh-keys.yaml"
-          "path"
-        ] (toString ../../modules/home-manager/ssh.d/keys.yaml) config;
-      };
-      useGlobalPkgs = true;
-      useUserPackages = true;
-      verbose = true;
-      backupFileExtension = "nix-backup";
-    };
 
     # zen-browser = {
     #    enable = false;
@@ -192,6 +176,29 @@ in
     limaHost = {
       guestName = "nixos";
     };
-  };
+  }
+  // (lib.optionalAttrs homeManagerEnabled {
+    # let nix manage home-manager profiles and use global nixpkgs
+    home-manager = {
+      extraSpecialArgs = {
+        inherit self catalog;
+        profile = config.profile;
+        activationLogger = {
+          script = activationLoggerScript;
+          cmd = config.activation.loggerCmd;
+        };
+        sshKeysYamlPath = lib.attrByPath [
+          "sops"
+          "secrets"
+          "nxmatic-ssh-keys.yaml"
+          "path"
+        ] (toString ../../modules/home-manager/ssh.d/keys.yaml) config;
+      };
+      useGlobalPkgs = true;
+      useUserPackages = true;
+      verbose = true;
+      backupFileExtension = "nix-backup";
+    };
+  });
 
 }

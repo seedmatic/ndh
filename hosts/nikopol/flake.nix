@@ -23,6 +23,9 @@
       hostProfile = {
         hostName = "nikopol";
         tailnet = { };
+        nixosImageMode = "bootstrap";
+        bootstrapDebug = true;
+        enableHomeManager = false;
       };
       darwinProfile = {
         knownNetworkServices = [
@@ -111,14 +114,25 @@
         };
 
       nixosModule =
-        { config, ... }:
+        {
+          config,
+          lib,
+          ...
+        }:
         let
           # Canonical source-of-truth network values from rke2lab netplan catalog (@codebase)
           netplanCatalog = config._module.specialArgs.catalog.networks.rke2labNetplan;
           clusterNetwork = netplanCatalog.clusters.nikopol;
+          effectiveHostProfile =
+            if config._module.specialArgs ? hostProfile then config._module.specialArgs.hostProfile else hostProfile;
+          bootstrapMode =
+            if effectiveHostProfile ? nixosImageMode && effectiveHostProfile.nixosImageMode != null then
+              effectiveHostProfile.nixosImageMode == "bootstrap"
+            else
+              false;
         in
         {
-          config = {
+          config = lib.mkIf (!bootstrapMode) {
             services.nxmaticCachixWatchStore.sopsEncryptedTokenFile = ../../.secrets;
 
             networking.vlan = {

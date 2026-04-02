@@ -2,6 +2,7 @@
   config,
   pkgs,
   lib,
+  hostProfile ? { },
   containerRegistrySystem,
   catalog,
   ...
@@ -38,6 +39,46 @@ let
   nixosUserGid = if cfgUserIsNormal && cfgGidLow then null else cfgUser.gid;
   consoleCfg = config.consoleLogging;
   cacheCatalog = catalog.caches;
+  hostImageMode =
+    if hostProfile ? nixosImageMode && hostProfile.nixosImageMode != null then
+      hostProfile.nixosImageMode
+    else
+      "full";
+  bootstrapMode = hostImageMode == "bootstrap";
+  bootstrapDebug =
+    bootstrapMode
+    && (if hostProfile ? bootstrapDebug && hostProfile.bootstrapDebug != null then hostProfile.bootstrapDebug else false);
+  baseImports = [
+    ../common
+    ./firewall.nix
+    ./lima-network-interfaces.nix
+    ./networking-mammoth-skate.nix
+    ./vlan.nix
+    ./cachix-watch-store.nix
+    ./container-host.nix
+    ./containers
+    ./disko.nix
+    ./dbus-tcp.nix
+    ./headscale-client.nix
+    ./nix-ld.nix
+    ./systemd
+    ./tailscale.nix
+    ./zfs.nix
+  ];
+  fullOnlyImports = [
+    ./resolved-lan.nix
+    ./dnsmasq.nix
+    ./avahi.nix
+    ./code-server.nix
+    ./headscale-server.nix
+    ./headscale-gateway.nix
+    ./nfs-autofs.nix
+    ./incus.nix
+    ./incus-headscale-server.nix
+    ./incus-headscale-gateway.nix
+    ./incus-tailscale-gateway.nix
+    ./podman.nix
+  ];
 in
 {
   options.consoleLogging = {
@@ -53,35 +94,10 @@ in
       description = "Kernel/console log level (0=emerg, 7=debug).";
     };
   };
-  imports = [
-    ../common
-    ./firewall.nix
-    ./lima-network-interfaces.nix
-    ./networking-mammoth-skate.nix
-    ./vlan.nix
-    ./resolved-lan.nix
-    ./dnsmasq.nix
-    ./cachix-watch-store.nix
-    ./dbus-tcp.nix
-    ./avahi.nix
-    ./code-server.nix
-    ./container-host.nix
-    ./containers
-    ./disko.nix
-    ./headscale-server.nix
-    ./headscale-client.nix
-    ./headscale-gateway.nix
-    ./nfs-autofs.nix
-    ./incus.nix
-    ./incus-headscale-server.nix
-    ./incus-headscale-gateway.nix
-    ./incus-tailscale-gateway.nix
-    ./nix-ld.nix
-    ./podman.nix
-    ./systemd
-    ./tailscale.nix
-    # Teleport removed - using Headscale/Tailscale SSH
-    ./zfs.nix
+  imports =
+    baseImports
+    ++ (lib.optionals (!bootstrapMode) fullOnlyImports)
+    ++ (lib.optionals (!bootstrapMode) [
     #(import ./remote-nix-store.nix { inherit config pkgs lib; })
     #(import ./nix-snapshotter.nix { inherit config pkgs lib user; })
     # Explicitly disable GPG in NixOS - agent is forwarded from Darwin host
@@ -91,7 +107,7 @@ in
         hm.imports = config.hm.imports ++ [ ./enable-gpg-false.nix ];
       }
     )
-  ];
+    ]);
 
   config = {
 
@@ -154,25 +170,30 @@ in
           efiSupport = true;
           efiInstallAsRemovable = true;
         };
-        timeout = lib.mkForce 0;
+        timeout = lib.mkForce (if bootstrapMode then 3 else 0);
       };
 
-      kernelParams = [
-        "console=hvc0" # Use hvc0 for console output in VZ
-        "console=ttyAMA0" # Keep early serial output visible for aarch64 EFI/QEMU-style consoles
-        "console=ttyS0" # Additional fallback serial console
-        "console=tty1" # Also show console/getty on the graphical console
-        "loglevel=7"
-        "ignore_loglevel"
-        "systemd.show_status=1"
-        "rd.systemd.show_status=1"
-        "rd.udev.log_level=debug"
-        "boot.shell_on_fail"
-        "logo.nologo"
-        "boot.trace"
-      ];
+      kernelParams =
+        [
+          "console=hvc0" # Use hvc0 for console output in VZ
+          "console=ttyAMA0" # Keep early serial output visible for aarch64 EFI/QEMU-style consoles
+          "console=ttyS0" # Additional fallback serial console
+          "console=tty1" # Also show console/getty on the graphical console
+          "systemd.show_status=1"
+          "rd.systemd.show_status=1"
+        ]
+        ++ (lib.optionals bootstrapMode [
+          "logo.nologo"
+        ])
+        ++ (lib.optionals bootstrapDebug [
+          "loglevel=7"
+          "ignore_loglevel"
+          "rd.udev.log_level=debug"
+          "boot.shell_on_fail"
+          "boot.trace"
+        ]);
 
-      plymouth.enable = lib.mkForce false;
+      plymouth.enable = lib.mkForce (if bootstrapMode then false else true);
 
       kernel.sysctl = {
         "net.bridge.bridge-nf-call-ip6tables" = 1;
@@ -246,21 +267,22 @@ in
 
     networking = {
       hostId = "deadbeef";
-      mammoth-skate.enable = true;
+      mammoth-skate.enable = lib.mkDefault (!bootstrapMode);
     };
 
     # Remove or comment out the old networking block to avoid conflicts:
     # networking = { ... }
 
-    environment.systemPackages = with pkgs; [
-      autofs5 # Explicitly include autofs utilities @codebase
-      disko
-      zfs
-      binutils
-      incus
-      distrobuilder
-      nssmdns # Ensure mDNS resolution via NSS @codebase
-    ];
+    environment.systemPackages =
+      [ pkgs.binutils ]
+      ++ (lib.optionals (!bootstrapMode) (with pkgs; [
+        autofs5 # Explicitly include autofs utilities @codebase
+        disko
+        zfs
+        incus
+        distrobuilder
+        nssmdns # Ensure mDNS resolution via NSS @codebase
+      ]));
 
     # Ensure security wrappers are in PATH for all processes
     environment.variables = {
@@ -273,22 +295,19 @@ in
     # '';
 
     # Services
-    services = {
-      nxmaticCachixWatchStore.enable = lib.mkDefault true;
-
-      getty.autologinUser = "root";
-      ntopng = {
-        enable = true;
-        interfaces = [ "all" ];
-        extraConfig = ''
-          -i all
-          --dns-mode none
-          --http-port 3000
-          --http-interface
-          --http-user admin
-          --http-password admin
-        '';
-      };
+    services.getty.autologinUser = "root";
+    services.nxmaticCachixWatchStore.enable = lib.mkDefault (!bootstrapMode);
+    services.ntopng = {
+      enable = lib.mkDefault (!bootstrapMode);
+      interfaces = [ "all" ];
+      extraConfig = ''
+        -i all
+        --dns-mode none
+        --http-port 3000
+        --http-interface
+        --http-user admin
+        --http-password admin
+      '';
     };
 
     # Journald (console logging controls)

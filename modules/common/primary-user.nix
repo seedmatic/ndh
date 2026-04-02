@@ -2,6 +2,7 @@
   config,
   lib,
   options,
+  hostProfile ? null,
   ...
 }:
 # module used courtesy of @i077 - https://github.com/i077/system/
@@ -10,6 +11,11 @@ let
 
   cfgUser = config.profile.user;
   cfgUserName = config.profile.user.name;
+  homeManagerEnabled =
+    if hostProfile != null && hostProfile ? enableHomeManager && hostProfile.enableHomeManager != null then
+      hostProfile.enableHomeManager
+    else
+      true;
 in
 {
 
@@ -29,14 +35,20 @@ in
 
   };
 
-  config = {
-
-    # hm -> home-manager.users.<primary user>.hm
-    home-manager.users.${cfgUserName} = mkAliasDefinitions options.hm;
-
-    # user -> users.users.<primary user>.user
-    users.users.${cfgUserName} = mkAliasDefinitions options.user;
-
-  };
+  config = lib.mkMerge [
+    {
+      # user -> users.users.<primary user>.user
+      users.users.${cfgUserName} = mkAliasDefinitions options.user;
+    }
+    (
+      if homeManagerEnabled && options ? home-manager then
+        {
+          # hm -> home-manager.users.<primary user>.hm (only when Home Manager module is loaded)
+          home-manager.users.${cfgUserName} = mkAliasDefinitions options.hm;
+        }
+      else
+        { }
+    )
+  ];
 
 }

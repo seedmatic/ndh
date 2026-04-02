@@ -3,8 +3,17 @@
   pkgs,
   profile,
   lib,
+  hostProfile ? { },
   ...
 }:
+let
+  hostImageMode =
+    if hostProfile ? nixosImageMode && hostProfile.nixosImageMode != null then
+      hostProfile.nixosImageMode
+    else
+      "full";
+  bootstrapMode = hostImageMode == "bootstrap";
+in
 {
   options.rescue.enable = lib.mkOption {
     type = lib.types.bool;
@@ -18,7 +27,6 @@
     ./lima-nixos-configuration.nix
     ./lima-guest-agent.nix
     ./openssh.nix
-    ./hm-state-dirs.nix
     ./rescue.nix
-  ];
+  ] ++ (lib.optionals (!bootstrapMode) [ ./hm-state-dirs.nix ]);
 }
