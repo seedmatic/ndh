@@ -24,59 +24,47 @@ let
     else
       "/var/empty";
 
+  userName =
+    if config ? profile && config.profile ? user && config.profile.user ? name then
+      toString config.profile.user.name
+    else
+      "";
+
   ageKeyFileDefault =
     if pkgs.stdenv.isDarwin then
       (if cfg.darwinSystemWideKey then cfg.systemWideKeyFile else cfg.darwinUserKeyFile)
     else
       cfg.systemWideKeyFile;
 
-  sopsAgeBootstrapScript = ''
-    set -eu
+  nixosHostKeyImportCandidatesDefault =
+    lib.filter (path: path != "") [
+      "${userHome}/.config/sops/age/keys.txt"
+      (if userName != "" then "/home/${userName}/.config/sops/age/keys.txt" else "")
+      (if userName != "" then "/Users/${userName}/.config/sops/age/keys.txt" else "")
+      "/mnt/lima-cidata/sops-age-keys.txt"
+    ];
 
-    key_file="${config.sops.age.keyFile}"
-    public_key_file="${cfg.publicKeyFile}"
-    public_key_dir="$(dirname "$public_key_file")"
-    export_public_key_on_activation="${if cfg.exportPublicKeyOnActivation then "1" else "0"}"
-  ''
-  + (
-    if cfg.phase == "bootstrap" then
-      ''
-        key_dir="$(dirname "$key_file")"
-        darwin_user_key_file="${cfg.darwinUserKeyFile}"
-        import_existing_user_key_on_bootstrap="${if cfg.importExistingUserKeyOnBootstrap then "1" else "0"}"
-
-        if [ ! -s "$key_file" ]; then
-          install -d -m 700 "$key_dir"
-          if [ "$import_existing_user_key_on_bootstrap" = "1" ] && [ "$darwin_user_key_file" != "$key_file" ] && [ -s "$darwin_user_key_file" ]; then
-            cp "$darwin_user_key_file" "$key_file"
-            chmod 600 "$key_file"
-            echo "[sops-age-bootstrap] installed existing user age key into $key_file"
-          else
-            ${pkgs.age}/bin/age-keygen -o "$key_file"
-            chmod 600 "$key_file"
-            echo "[sops-age-bootstrap] generated age key at $key_file"
-          fi
-        else
-          echo "[sops-age-bootstrap] existing age key detected at $key_file"
-        fi
-      ''
-    else
-      ''
-        if [ ! -s "$key_file" ]; then
-          echo "[sops-age-bootstrap] ERROR: missing SOPS age key at $key_file"
-          echo "[sops-age-bootstrap] either provision the key manually or run one activation with nxmatic.sopsAgeKeyBootstrap.phase=\"bootstrap\""
-          exit 1
-        fi
-      ''
-  )
-  + ''
-    if [ "$export_public_key_on_activation" = "1" ] && [ -s "$key_file" ]; then
-      install -d -m 755 "$public_key_dir"
-      ${pkgs.age}/bin/age-keygen -y "$key_file" > "$public_key_file"
-      chmod 644 "$public_key_file"
-      echo "[sops-age-bootstrap] published host age recipient to $public_key_file"
-    fi
-  '';
+  sopsAgeBootstrapScriptSource = pkgs.replaceVars ./sops.d/bootstrap.sh {
+    keyFile = config.sops.age.keyFile;
+    publicKeyFile = cfg.publicKeyFile;
+    exportPublicKeyOnActivation = if cfg.exportPublicKeyOnActivation then "1" else "0";
+    nixosImportFromHost = if cfg.nixosHostKeyImport.enable then "1" else "0";
+    remoteFetchEnable = if cfg.nixosHostKeyImport.remoteFetch.enable then "1" else "0";
+    remoteFetchUser = cfg.nixosHostKeyImport.remoteFetch.user;
+    remoteFetchKeyPath = cfg.nixosHostKeyImport.remoteFetch.keyPath;
+    remoteFetchUseSudo = if cfg.nixosHostKeyImport.remoteFetch.useSudo then "1" else "0";
+    remoteFetchHostnameEnvVar = cfg.nixosHostKeyImport.remoteFetch.hostnameEnvVar;
+    remoteFetchMdnsSuffix = cfg.nixosHostKeyImport.remoteFetch.mdnsSuffix;
+    sshBin = pkgs.openssh;
+    sudoBin = pkgs.sudo;
+    utilLinuxBin = pkgs.util-linux;
+    phase = cfg.phase;
+    darwinUserKeyFile = cfg.darwinUserKeyFile;
+    importExistingUserKeyOnBootstrap = if cfg.importExistingUserKeyOnBootstrap then "1" else "0";
+    ageBin = pkgs.age;
+    nixosHostKeyImportCandidates = lib.concatStringsSep "\n" cfg.nixosHostKeyImport.candidates;
+  };
+  sopsAgeBootstrapScript = builtins.readFile sopsAgeBootstrapScriptSource;
 in
 {
   options.nxmatic.sopsAgeKeyBootstrap = {
@@ -141,6 +129,73 @@ in
         Path where the host public age recipient is published.
         This file is safe to collect into `.sops.yaml` recipient groups.
       '';
+    };
+
+    nixosHostKeyImport = {
+      enable = mkOption {
+        type = types.bool;
+        default = !pkgs.stdenv.isDarwin;
+        description = ''
+          Enable NixOS pre-activation import of an existing host age key into
+          `${config.sops.age.keyFile}` when missing and phase is `enforce`.
+          Intended for Lima/VM guests where a host-mounted path can provide key material.
+        '';
+      };
+
+      candidates = mkOption {
+        type = types.listOf types.str;
+        default = nixosHostKeyImportCandidatesDefault;
+        description = ''
+          Ordered list of candidate file paths to import an existing age key from
+          when `${config.sops.age.keyFile}` is missing in `enforce` mode.
+        '';
+      };
+
+      remoteFetch = {
+        enable = mkOption {
+          type = types.bool;
+          default = !pkgs.stdenv.isDarwin;
+          description = ''
+            Enable best-effort remote key fetch over SSH before local candidate file checks.
+            Hostname is resolved from `hostnameEnvVar` (e.g. `LIMA_HOSTNAME`) and mDNS suffix.
+          '';
+        };
+
+        user = mkOption {
+          type = types.str;
+          default = "root";
+          description = ''
+            Username used for SSH remote fetch. Set to `root` to avoid a user+sudo hop.
+          '';
+        };
+
+        keyPath = mkOption {
+          type = types.str;
+          default = "/etc/sops/age/keys.txt";
+          description = "Remote key path fetched over SSH when remoteFetch is enabled.";
+        };
+
+        useSudo = mkOption {
+          type = types.bool;
+          default = false;
+          description = ''
+            When true and `user` is not root, run remote key reads via `sudo -n`.
+            Keep this false for root-first fetch mode.
+          '';
+        };
+
+        hostnameEnvVar = mkOption {
+          type = types.str;
+          default = "LIMA_HOSTNAME";
+          description = "Environment variable name containing the host identifier used for remote fetch.";
+        };
+
+        mdnsSuffix = mkOption {
+          type = types.str;
+          default = ".local";
+          description = "Suffix appended when hostname from `hostnameEnvVar` has no domain part.";
+        };
+      };
     };
   };
 

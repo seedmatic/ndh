@@ -103,6 +103,27 @@ Keep rollout incremental:
 * then enforce,
 * then move to the next host.
 
+== NixOS Lima guests: enforce + host-key import (@codebase)
+
+For Lima-backed NixOS guests, key material can be sourced from host-accessible mounts at activation time
+without storing private keys in the Nix store.
+
+The shared SOPS module supports this in `enforce` mode:
+
+* if `${config.sops.age.keyFile}` is missing,
+* it tries `nxmatic.sopsAgeKeyBootstrap.nixosHostKeyImport.candidates` in order,
+* copies the first readable key into `${config.sops.age.keyFile}` with `0600`,
+* then continues normal secret installation.
+
+Default candidates include common host-shared paths:
+
+* `${profile.user.home}/.config/sops/age/keys.txt`
+* `/home/<user>/.config/sops/age/keys.txt`
+* `/Users/<user>/.config/sops/age/keys.txt`
+* `/mnt/lima-cidata/sops-age-keys.txt`
+
+This allows keeping host configs on `enforce` while still supporting first guest activation in Lima.
+
 == Security reminders
 
 * Never commit private age keys.
