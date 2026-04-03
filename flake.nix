@@ -458,19 +458,6 @@
             else
               hostProfile.hostName;
 
-          diskImage = nixos-generators.nixosGenerate {
-            modules = runtimeExt4Modules ++ [
-              {
-                nix.registry.nixpkgs.flake = nixpkgs;
-                virtualisation.diskSize = diskSizeFullMiB;
-              }
-            ];
-            specialArgs = runtimeExt4SpecialArgs;
-            system = "aarch64-linux";
-            pkgs = pkgsForLinux;
-            format = "raw-efi";
-          };
-
           diskImageBringupSystemdBoot = nixos-generators.nixosGenerate {
             modules = bringupSystemdBootExt4Modules ++ [
               {
@@ -505,7 +492,6 @@
             "${mainName}-nixos" = zfs;
           };
           inherit
-            diskImage
             diskImageBringupSystemdBoot
             diskImageBringupGrub
             ;
