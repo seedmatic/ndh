@@ -35,7 +35,7 @@ main() {
           | test("(^|,)(ssh-user)(,|$)"))
       )
     | .key
-  ' "$tmp_profile_yaml" > "$tmp_keys_dir/agent-keys"
+  ' "$tmp_output_yaml" > "$tmp_keys_dir/agent-keys"
 
   keys_state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/ssh-keys.d"
   install -d -m 700 "$keys_state_dir"
