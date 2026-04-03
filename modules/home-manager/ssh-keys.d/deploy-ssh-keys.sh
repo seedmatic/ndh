@@ -17,8 +17,8 @@ main() {
 
   @bash@ @sshExtractKeys@ "$tmp_profile_yaml" "$tmp_keys_dir"
 
-  : "Regenerate certificates by signing keys with embedded authorities"
-  @bash@ @sshRegenerateCerts@ "$tmp_profile_yaml" "$tmp_keys_dir" || true
+  # Note: Certificate regeneration is deferred to optional on-demand operation.
+  # Call sshRegenerateCerts separately if cert-based auth is needed.
 
   # Generate agent-keys manifest AFTER extraction so it is never touched by ssh-extract-keys.sh.
   # Only list keys that have their own private key material (guards against cert-only entries like 'host').
