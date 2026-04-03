@@ -332,6 +332,8 @@ in
 
     networking = {
       hostId = "deadbeef";
+      # Canonical policy: firewall disabled on NixOS lab hosts.
+      firewall.enable = lib.mkForce false;
     }
     // (lib.optionalAttrs (!bootstrapMode) {
       mammoth-skate.enable = lib.mkDefault (!bootstrapMode);
