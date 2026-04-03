@@ -341,10 +341,12 @@ in
     # networking = { ... }
 
     environment.systemPackages =
-      [ pkgs.binutils ]
+      [
+        pkgs.binutils
+        pkgs.disko
+      ]
       ++ (lib.optionals (!bootstrapMode) (with pkgs; [
         autofs5 # Explicitly include autofs utilities @codebase
-        disko
         zfs
         incus
         distrobuilder
