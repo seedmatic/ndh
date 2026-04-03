@@ -92,6 +92,13 @@ in
     recursive = true;
   };
 
+  # SSH key generation script available for on-demand certificate signing
+  # (deferred from activation; call manually when cert-based auth is needed)
+  home.file.".local/libexec/ssh-generate-keys-yaml.sh" = {
+    source = ./ssh-generate-keys-yaml.sh;
+    executable = true;
+  };
+
   # Deploy keys directly to $XDG_STATE_HOME/ssh-keys.d with proper permissions
   # Externalized activation scripts: keep content in the store and execute via bash
   home.activation =
