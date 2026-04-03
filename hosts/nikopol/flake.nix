@@ -54,7 +54,6 @@
             )
           ];
           config = {
-            profile.user.home = lib.mkForce (builtins.toPath "/Volumes/user-home");
 
             # Keep experiment/bootstrap mode until boot/login validation is complete.
             # This avoids stage-2 panic when /etc/sops/age/keys.txt is not yet provisioned.
@@ -79,9 +78,11 @@
         };
 
       darwinModule =
-        { ... }:
+        { lib, ... }:
         {
           config = {
+            profile.user.home = lib.mkForce (builtins.toPath "/Volumes/user-home");
+
             services.nxmaticCachixWatchStore = {
               enable = true;
               sopsEncryptedTokenFile = ../../.secrets;
@@ -115,7 +116,10 @@
         in
         {
           config =
-            (lib.optionalAttrs (!bootstrapMode) {
+            {
+              profile.user.home = lib.mkForce "/home/${config.profile.user.name}";
+            }
+            // (lib.optionalAttrs (!bootstrapMode) {
               services.nxmaticCachixWatchStore.sopsEncryptedTokenFile = ../../.secrets;
             })
             // (lib.optionalAttrs (!bootstrapMode) {
