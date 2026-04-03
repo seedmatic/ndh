@@ -17,7 +17,7 @@
     ./disable-google-updaters.nix
     ./disable-unwanted-agents.nix
     ./dnsmasq.nix
-    ./headscale-client.nix
+    ./headscale.nix
     ./lan-dns-resolver.nix
     ./nfs-autofs.nix
     ./lima-config.nix

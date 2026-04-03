@@ -8,11 +8,11 @@
 with lib;
 
 let
-  cfg = config.services.headscale-client;
+  cfg = config.services.headscale;
   defaultHostname = config.networking.hostName;
 in
 {
-  options.services.headscale-client = {
+  options.services.headscale = {
     enable = mkOption {
       type = types.bool;
       default = false;

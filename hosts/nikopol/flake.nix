@@ -82,7 +82,7 @@
             # Safety valve while exercising fresh SSH/runtime-secret changes.
             opensshPolicy.passwordAuthentication = true;
 
-            services.headscale-client = {
+            services.headscale = {
               enable = true;
               serverUrl = "http://192.168.1.193:8080";
               enableSSH = true;

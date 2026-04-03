@@ -8,10 +8,10 @@
 with lib;
 
 let
-  cfg = config.services.headscale-client;
+  cfg = config.services.headscale;
   defaultHostname = config.networking.hostName or "localhost";
 
-  headscaleActivationScript = pkgs.runCommand "headscale-client-post-activation.sh" { } ''
+  headscaleActivationScript = pkgs.runCommand "headscale-post-activation.sh" { } ''
     cp ${
       pkgs.replaceVars ./headscale-client.d/post-activation.sh {
         activationLogger = lib.attrByPath [
@@ -24,7 +24,7 @@ let
   '';
 in
 {
-  options.services.headscale-client = {
+  options.services.headscale = {
     enable = mkOption {
       type = types.bool;
       default = false;

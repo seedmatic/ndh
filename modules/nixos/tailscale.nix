@@ -8,10 +8,11 @@
 let
   networkCatalog = catalog.networks or { };
   cfg = config.tailscale;
-  tailscaleKey = ./tailscale.key;
+  tailscaleAuthSecretName = "tailscale.authKey";
+  tailscaleAuthKeyPath = config.sops.secrets.${tailscaleAuthSecretName}.path;
   tagsString = lib.concatStringsSep "," (map (tag: "tag:" + tag) cfg.tags);
-  # Only enable regular Tailscale if headscale-client is not enabled
-  useHeadscale = config.services.headscale-client.enable or false;
+  # Only enable regular Tailscale if Headscale module is not enabled.
+  useHeadscale = config.services.headscale.enable or false;
   tailnetDomain =
     if networkCatalog ? tailnet && (networkCatalog.tailnet ? domain) then
       networkCatalog.tailnet.domain
@@ -25,11 +26,15 @@ let
 in
 {
   config = lib.mkIf (!useHeadscale) {
-    systemd.tmpfiles.rules = [ "L /run/tailscale/auth.key - root root - ${tailscaleKey}" ];
+    sops.secrets.${tailscaleAuthSecretName} = {
+      format = "yaml";
+      key = cfg.authKeySopsKey;
+      path = "/run/secrets/tailscale/auth.key";
+    };
 
     services.tailscale = {
       enable = true;
-      authKeyFile = "/run/tailscale/auth.key";
+      authKeyFile = tailscaleAuthKeyPath;
       useRoutingFeatures = "both";
       extraUpFlags = [
         "--ssh"
@@ -55,6 +60,12 @@ in
     };
   };
   options.tailscale = {
+    authKeySopsKey = lib.mkOption {
+      type = lib.types.str;
+      default = "tailscale/key";
+      description = "Key path in .secrets used for the Tailscale auth key.";
+    };
+
     tags = lib.mkOption {
       type = lib.types.listOf lib.types.str;
       default = [ "nixos" ];

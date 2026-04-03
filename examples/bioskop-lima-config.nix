@@ -18,7 +18,7 @@
   ];
 
   # === Lima VM as Headscale Client ===
-  services.headscale-client = {
+  services.headscale = {
     enable = true;
     serverUrl = "http://192.168.5.10:8080";
     enableSSH = true;

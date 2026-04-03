@@ -78,7 +78,7 @@
 
             # Headscale client - connects to server in Lima VM
             # Note: Server must be deployed first at 192.168.5.10:8080
-            services.headscale-client = {
+            services.headscale = {
               enable = true;
               serverUrl = "http://192.168.5.10:8080";
               enableSSH = true;

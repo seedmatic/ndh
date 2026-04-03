@@ -64,7 +64,7 @@
             # Enable cross-host builders so ssh_config.d drop-ins are installed
             services.crossHostBuilders.enable = true;
 
-            services.headscale-client = {
+            services.headscale = {
               enable = true;
               serverUrl = "http://192.168.1.193:8080";
               enableSSH = true;

@@ -101,10 +101,10 @@ let
     ./vlan.nix
     ./cachix-watch-store.nix
     ./container-host.nix
-    ./containers
+    # ./containers
     ./disko.nix
     ./dbus-tcp.nix
-    ./headscale-client.nix
+    ./headscale.nix
     ./nix-ld.nix
     ./systemd
     ./tailscale.nix
@@ -115,8 +115,6 @@ let
     ./dnsmasq.nix
     ./avahi.nix
     ./code-server.nix
-    ./headscale-server.nix
-    ./headscale-gateway.nix
     ./nfs-autofs.nix
     ./incus.nix
     ./podman.nix
