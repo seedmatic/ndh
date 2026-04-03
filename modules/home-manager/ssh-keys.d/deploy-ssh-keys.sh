@@ -10,15 +10,17 @@ main() {
   fi
 
   tmp_keys_dir="$(@mktemp@ -d)"
-  tmp_profile_yaml="$(@mktemp@)"
-  trap 'rm -rf "$tmp_keys_dir" "$tmp_profile_yaml"' EXIT
+  tmp_output_yaml="$(@mktemp@)"
+  trap 'rm -rf "$tmp_keys_dir" "$tmp_output_yaml"' EXIT
 
-  @yq@ eval '.profiles."@profileName@"' "$keys_yaml" > "$tmp_profile_yaml"
+  : "Generate keys & certificates using ssh-generate-keys-yaml.sh"
+  @bash@ @sshGenerateKeysYaml@ "@profileName@" "$(hostname -s)" "$keys_yaml" "$tmp_output_yaml" "@hostsCatalogCsv@" 2>/dev/null || {
+    echo "Failed to generate keys and certificates" >&2
+    return 1
+  }
 
-  @bash@ @sshExtractKeys@ "$tmp_profile_yaml" "$tmp_keys_dir"
-
-  : "Regenerate certificates by signing keys with embedded authorities"
-  @bash@ @sshRegenerateCerts@ "$tmp_profile_yaml" "$tmp_keys_dir" || true
+  : "Extract all key/cert files to deployment directory"
+  @bash@ @sshExtractKeys@ "$tmp_output_yaml" "$tmp_keys_dir"
 
   # Generate agent-keys manifest AFTER extraction so it is never touched by ssh-extract-keys.sh.
   # Only list keys that have their own private key material (guards against cert-only entries like 'host').

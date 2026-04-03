@@ -101,20 +101,17 @@ in
         yq = "${pkgs.yq-go}/bin/yq";
       };
 
-      sshRegenerateCertsScript = pkgs.replaceVars ./ssh-regenerate-certs.sh {
-        awk = "${pkgs.gawk}/bin/awk";
-        yq = "${pkgs.yq-go}/bin/yq";
-      };
+      sshGenerateKeysYamlScript = ./ssh-generate-keys-yaml.sh;
 
       deploySSHKeysScript = pkgs.replaceVars ./ssh-keys.d/deploy-ssh-keys.sh {
-        awk = "${pkgs.gawk}/bin/awk";
         bash = "${pkgs.bash}/bin/bash";
         mktemp = "${pkgs.coreutils-full}/bin/mktemp";
         rsync = "${pkgs.rsync}/bin/rsync";
         yq = "${pkgs.yq-go}/bin/yq";
         sshExtractKeys = "${sshExtractKeysScript}";
-        sshRegenerateCerts = "${sshRegenerateCertsScript}";
+        sshGenerateKeysYaml = "${sshGenerateKeysYamlScript}";
         profileName = profileName;
+        hostsCatalogCsv = hostsCatalogCsv;
         keysYaml =
           if sshKeysYamlPath != null then
             sshKeysYamlPath
