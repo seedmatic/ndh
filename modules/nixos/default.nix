@@ -3,7 +3,6 @@
   pkgs,
   lib,
   hostProfile ? { },
-  containerRegistrySystem,
   catalog,
   ...
 }:
@@ -44,6 +43,13 @@ let
       hostProfile.nixosImageMode
     else
       "full";
+  nixosBootLoader =
+    if hostProfile ? nixosBootLoader && hostProfile.nixosBootLoader != null then
+      hostProfile.nixosBootLoader
+    else
+      "grub";
+  useSystemdBoot = nixosBootLoader == "systemd-boot";
+  useGrub = !useSystemdBoot;
   bootstrapMode = hostImageMode == "bootstrap";
   bootstrapDebug =
     bootstrapMode
@@ -93,24 +99,25 @@ let
     terminal_input console serial
     terminal_output console serial
   '';
-  baseImports = [
+  bootstrapRequiredImports = [
     ../common
-    ./firewall.nix
     ./lima-network-interfaces.nix
+    ./disko.nix
+    ./systemd
+    ./zfs.nix
+  ];
+
+  runtimeOnlyImports = [
+    ./firewall.nix
     ./networking-mammoth-skate.nix
     ./vlan.nix
     ./cachix-watch-store.nix
     ./container-host.nix
     # ./containers
-    ./disko.nix
     ./dbus-tcp.nix
     ./headscale.nix
     ./nix-ld.nix
-    ./systemd
     ./tailscale.nix
-    ./zfs.nix
-  ];
-  fullOnlyImports = [
     ./resolved-lan.nix
     ./dnsmasq.nix
     ./avahi.nix
@@ -135,8 +142,8 @@ in
     };
   };
   imports =
-    baseImports
-    ++ (lib.optionals (!bootstrapMode) fullOnlyImports)
+    bootstrapRequiredImports
+    ++ (lib.optionals (!bootstrapMode) runtimeOnlyImports)
     ++ (lib.optionals (!bootstrapMode) [
     #(import ./remote-nix-store.nix { inherit config pkgs lib; })
     #(import ./nix-snapshotter.nix { inherit config pkgs lib user; })
@@ -206,6 +213,7 @@ in
 
       loader = {
         grub = {
+          enable = lib.mkForce useGrub;
           device = "nodev";
           efiSupport = true;
           efiInstallAsRemovable = true;
@@ -228,29 +236,29 @@ in
         );
       };
 
-      kernelParams =
+      kernelParams = lib.mkMerge [
         [
-          "console=hvc0" # Use hvc0 for console output in VZ
+          "console=hvc0" # Keep serial console output in VZ
           "console=ttyAMA0" # Keep early serial output visible for aarch64 EFI/QEMU-style consoles
           "console=ttyS0" # Additional fallback serial console
-          "console=tty1" # Also show console/getty on the graphical console
           "systemd.show_status=1"
           "rd.systemd.show_status=1"
         ]
-        ++ (lib.optionals bootstrapMode [
+        (lib.optionals bootstrapMode [
           "logo.nologo"
           "rootwait"
           "rootdelay=5"
         ])
-        ++ (lib.optionals bootstrapDebug [
+        (lib.optionals bootstrapDebug [
           "loglevel=7"
           "ignore_loglevel"
           "rd.udev.log_level=debug"
           "boot.shell_on_fail"
           "boot.trace"
-        ]);
-
-      plymouth.enable = lib.mkForce (if bootstrapMode then false else true);
+        ])
+        # Keep tty1 last so /dev/console and interactive local login stay on the graphical console.
+        (lib.mkAfter [ "console=tty1" ])
+      ];
 
       kernel.sysctl = {
         "net.bridge.bridge-nf-call-ip6tables" = 1;
@@ -259,7 +267,7 @@ in
         "net.core.devconf_inherit_init_net" = 1;
       };
 
-      loader.systemd-boot.enable = lib.mkForce false; # Prefer GRUB EFI path for Lima raw-efi guests
+      loader.systemd-boot.enable = lib.mkForce useSystemdBoot;
       loader.efi.canTouchEfiVariables = lib.mkForce false;
 
       # verbosity (default off; override per-host if needed)
@@ -285,7 +293,7 @@ in
       '';
     };
 
-    system.stateVersion = "25.05"; # Update this when upgrading NixOS
+    system.stateVersion = "25.11"; # Update this when upgrading NixOS
 
     fileSystems = {
       "/boot" = {
@@ -324,8 +332,10 @@ in
 
     networking = {
       hostId = "deadbeef";
+    }
+    // (lib.optionalAttrs (!bootstrapMode) {
       mammoth-skate.enable = lib.mkDefault (!bootstrapMode);
-    };
+    });
 
     # Remove or comment out the old networking block to avoid conflicts:
     # networking = { ... }

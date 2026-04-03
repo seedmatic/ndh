@@ -24,6 +24,7 @@
         hostName = "nikopol";
         tailnet = { };
         nixosImageMode = "bootstrap";
+        nixosBootLoader = "systemd-boot";
         bootstrapDebug = true;
         enableHomeManager = false;
       };
@@ -39,35 +40,21 @@
         {
           lib,
           config,
-          options,
           ...
         }:
         {
           imports = [
-            ../../profiles/committed.nix
-          ];
-          config = {
-            profile = {
-              host = {
-                hostName = lib.mkDefault hostProfile.hostName;
-                tailnet = hostProfile.tailnet;
+            (
+              import ../.common.d/host-common.nix {
+                inherit hostProfile darwinProfile;
+                headscaleServerUrl = "http://192.168.1.193:8080";
                 forceRemoteBuilds = true;
                 preferredBuilderHosts = [ "bioskop" ];
               }
-              // (
-                if hostProfile ? hostAlias then
-                  {
-                    hostAlias = lib.mkDefault hostProfile.hostAlias;
-                  }
-                else
-                  { }
-              );
-              darwin = darwinProfile;
-              user.home = lib.mkForce (builtins.toPath "/Volumes/user-home");
-            };
-
-            # Enable cross-host builders so ssh_config.d drop-ins are installed
-            services.crossHostBuilders.enable = true;
+            )
+          ];
+          config = {
+            profile.user.home = lib.mkForce (builtins.toPath "/Volumes/user-home");
 
             # Keep experiment/bootstrap mode until boot/login validation is complete.
             # This avoids stage-2 panic when /etc/sops/age/keys.txt is not yet provisioned.
@@ -82,17 +69,7 @@
             # Safety valve while exercising fresh SSH/runtime-secret changes.
             opensshPolicy.passwordAuthentication = true;
 
-            services.headscale = {
-              enable = true;
-              serverUrl = "http://192.168.1.193:8080";
-              enableSSH = true;
-            };
-
-            # Trust bioskop local signing key for remote closure imports (nix copy --from ssh-ng://nxmatic@bioskop)
             nix.settings = {
-              extra-trusted-public-keys = [
-                "bioskop-cache:H6oZXzgzujE4+saXVe6LDfzBRUUVCgPYYTFLoxK7IuE="
-              ];
               trusted-users = [
                 "root"
                 "nxmatic"
@@ -123,41 +100,43 @@
         {
           config,
           lib,
+          hostProfile ? { },
           ...
         }:
         let
           # Canonical source-of-truth network values from rke2lab netplan catalog (@codebase)
           netplanCatalog = config._module.specialArgs.catalog.networks.rke2labNetplan;
           clusterNetwork = netplanCatalog.clusters.nikopol;
-          effectiveHostProfile =
-            if config._module.specialArgs ? hostProfile then config._module.specialArgs.hostProfile else hostProfile;
           bootstrapMode =
-            if effectiveHostProfile ? nixosImageMode && effectiveHostProfile.nixosImageMode != null then
-              effectiveHostProfile.nixosImageMode == "bootstrap"
+            if hostProfile ? nixosImageMode && hostProfile.nixosImageMode != null then
+              hostProfile.nixosImageMode == "bootstrap"
             else
               false;
         in
         {
-          config = lib.mkIf (!bootstrapMode) {
-            services.nxmaticCachixWatchStore.sopsEncryptedTokenFile = ../../.secrets;
-
-            networking.vlan = {
-              enable = true;
-              id = 2;
-              addressPrefix = "192.168.2";
-              parentInterface = "vmlan0";
-              addressSourceInterface = "lan-br";
-            };
-
-            # Expose system D-Bus over vmnet gateway for lab-only remote control/testing.
-            services.dbusTcpSystemBus = {
-              enable = true;
-              bindAddress = clusterNetwork.gateway;
-              port = 12434;
-              openFirewall = true;
-              insecureAllowAnonymous = true;
-            };
-          };
+          config =
+            (lib.optionalAttrs (!bootstrapMode) {
+              services.nxmaticCachixWatchStore.sopsEncryptedTokenFile = ../../.secrets;
+            })
+            // (lib.optionalAttrs (!bootstrapMode) {
+              networking.vlan = {
+                enable = true;
+                id = 2;
+                addressPrefix = "192.168.2";
+                parentInterface = "vmlan0";
+                addressSourceInterface = "lan-br";
+              };
+            })
+            // (lib.optionalAttrs (!bootstrapMode) {
+              # Expose system D-Bus over vmnet gateway for lab-only remote control/testing.
+              services.dbusTcpSystemBus = {
+                enable = true;
+                bindAddress = clusterNetwork.gateway;
+                port = 12434;
+                openFirewall = true;
+                insecureAllowAnonymous = true;
+              };
+            });
         };
     in
     nix-darwin-home.mkHostOutputs {

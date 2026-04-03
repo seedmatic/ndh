@@ -84,6 +84,10 @@ Commit only the resulting `age1...` recipient (never `AGE-SECRET-KEY-...`).
 
 * Add the host public recipient to `.sops.yaml` creation rules.
 * Run `sops updatekeys` and `sops rotate` on affected encrypted files.
+* For extensionless YAML secrets files (for example `.secrets`), pass explicit format flags:
+	`sops updatekeys -y --input-type yaml --output-type yaml --filename-override .secrets .secrets`
+	and
+	`sops rotate -i --input-type yaml --output-type yaml --filename-override .secrets .secrets`.
 
 === 6) Return host to enforce
 

@@ -115,12 +115,17 @@
               hostProfile.nixosImageMode
             else
               "full";
-          bootstrapMode = hostImageMode == "bootstrap";
-          homeManagerEnabled =
+          bringupModeInternal = hostImageMode == "bootstrap";
+          requestedHomeManagerEnabled =
             if hostProfile ? enableHomeManager && hostProfile.enableHomeManager != null then
               hostProfile.enableHomeManager
             else
               true;
+          homeManagerEnabled =
+            if system == "nixos" && bringupModeInternal then
+              false
+            else
+              requestedHomeManagerEnabled;
         in
         [
           {
@@ -200,27 +205,6 @@
         }
         // extraArgs;
 
-      mkContainerRegistryConfig =
-        { hostProfile, catalog, ... }:
-        nixpkgs.lib.nixosSystem {
-          system = "aarch64-linux";
-          pkgs = pkgsForLinux;
-          modules = [
-            ./modules/common/lima-host.nix
-            ./modules/nixos/container-host.nix
-            ./modules/nixos/caddy.nix
-            ./modules/nixos/docker-registry.nix
-            ./modules/nixos/tailscale.nix
-            (
-              { config, ... }:
-              {
-                limaHost.hostName = hostProfile.hostName;
-                containerHost.guestName = "ctreg";
-              }
-            )
-          ];
-          specialArgs = { inherit catalog; };
-        };
       mkDarwinConfig =
         {
           hostProfile,
@@ -245,7 +229,10 @@
           specialArgs = mkSpecialArgs {
             inherit modules;
             system = "aarch64-darwin";
-            extraArgs = { inherit catalog; };
+            extraArgs = {
+              inherit hostProfile;
+              inherit catalog;
+            };
           };
         in
         inputs.darwin.lib.darwinSystem {
@@ -287,10 +274,15 @@
           hostProfile,
           profileModule,
           zfsOverlays,
-          containerRegistryConfiguration,
           catalog,
         }:
         let
+          hostImageMode =
+            if hostProfile ? nixosImageMode && hostProfile.nixosImageMode != null then
+              hostProfile.nixosImageMode
+            else
+              "full";
+          bringupModeInternal = hostImageMode == "bootstrap";
           zfsOverlaysModule =
             { ... }:
             {
@@ -304,8 +296,7 @@
           preModules = [
             profileModule
             zfsOverlaysModule
-            nixosTailscaleTagModule
-          ];
+          ] ++ (if bringupModeInternal then [ ] else [ nixosTailscaleTagModule ]);
           modules = mkModulesFor {
             inherit hostProfile preModules;
             system = "nixos";
@@ -316,7 +307,6 @@
             extraArgs = {
               inherit hostProfile;
               inherit catalog;
-              containerRegistrySystem = containerRegistryConfiguration;
             };
           };
           nixosSystem = nixpkgs.lib.nixosSystem {
@@ -330,7 +320,6 @@
         {
           hostProfile,
           profileModule,
-          containerRegistryConfiguration,
           catalog,
         }:
         let
@@ -349,6 +338,12 @@
           mkExt4ModulesFor =
             hp:
             let
+              hpImageMode =
+                if hp ? nixosImageMode && hp.nixosImageMode != null then
+                  hp.nixosImageMode
+                else
+                  "full";
+              hpBringupModeInternal = hpImageMode == "bootstrap";
               zfsOverlaysModule =
                 { ... }:
                 {
@@ -366,8 +361,7 @@
               preModules = [
                 profileModule
                 zfsOverlaysModule
-                nixosTailscaleTagModule
-              ];
+              ] ++ (if hpBringupModeInternal then [ ] else [ nixosTailscaleTagModule ]);
             };
 
           mkExt4SpecialArgsFor =
@@ -378,7 +372,6 @@
               extraArgs = {
                 hostProfile = hp;
                 inherit catalog;
-                containerRegistrySystem = containerRegistryConfiguration;
               };
             };
 
@@ -388,21 +381,27 @@
               nixosImageMode = hostImageMode;
             };
 
-          fullHostProfile =
+          runtimeHostProfile =
             hostProfile
             // {
               nixosImageMode = "full";
+              nixosBootLoader = "systemd-boot";
             };
 
-          bootstrapHostProfile =
+          bringupSystemdBootHostProfile =
             hostProfile
             // {
               nixosImageMode = "bootstrap";
-              bootstrapDebug =
-                if hostProfile ? bootstrapDebug && hostProfile.bootstrapDebug != null then
-                  hostProfile.bootstrapDebug
-                else
-                  false;
+              bootstrapDebug = true;
+              nixosBootLoader = "systemd-boot";
+            };
+
+          bringupGrubHostProfile =
+            hostProfile
+            // {
+              nixosImageMode = "bootstrap";
+              bootstrapDebug = true;
+              nixosBootLoader = "grub";
             };
 
           ext4Modules = mkExt4ModulesFor selectedHostProfile;
@@ -418,28 +417,38 @@
           zfs = mkNixosConfig {
             inherit
               profileModule
-              containerRegistryConfiguration
               catalog
               ;
-            hostProfile = fullHostProfile;
+            hostProfile = runtimeHostProfile;
             zfsOverlays = true;
           };
 
-          fullExt4Modules = mkExt4ModulesFor fullHostProfile;
-          fullExt4SpecialArgs = mkExt4SpecialArgsFor fullHostProfile fullExt4Modules;
-          bootstrapExt4Modules = mkExt4ModulesFor bootstrapHostProfile;
-          bootstrapExt4SpecialArgs = mkExt4SpecialArgsFor bootstrapHostProfile bootstrapExt4Modules;
+          runtimeExt4Modules = mkExt4ModulesFor runtimeHostProfile;
+          runtimeExt4SpecialArgs = mkExt4SpecialArgsFor runtimeHostProfile runtimeExt4Modules;
+          bringupSystemdBootExt4Modules = mkExt4ModulesFor bringupSystemdBootHostProfile;
+          bringupSystemdBootExt4SpecialArgs =
+            mkExt4SpecialArgsFor bringupSystemdBootHostProfile bringupSystemdBootExt4Modules;
+          bringupGrubExt4Modules = mkExt4ModulesFor bringupGrubHostProfile;
+          bringupGrubExt4SpecialArgs = mkExt4SpecialArgsFor bringupGrubHostProfile bringupGrubExt4Modules;
 
-          # Disk size in MiB and bytes
-          diskSizeMiB = 20 * 1024;
-          diskSizeBytes = diskSizeMiB * 1024 * 1024;
+          # Disk sizes in MiB
+          # - runtime/systemd-boot bringup: safe size for full closure population
+          # - bringup-grub: reduced-size image for fast iteration/debug
+          diskSizeFullMiB = 12 * 1024;
+          diskSizeBringupSystemdBootMiB = 12 * 1024;
+          diskSizeBringupGrubMiB = 8 * 1024;
+          diskSizeBytes = diskSizeFullMiB * 1024 * 1024;
           # System closure path
           systemPath = zfs.config.system.build.toplevel;
           # Output a JSON hint with all relevant info for post-build checks
           diskSizeHint = builtins.toJSON {
             systemPath = systemPath;
             diskSizeBytes = diskSizeBytes;
-            diskSizeMiB = diskSizeMiB;
+            diskSizeMiB = {
+              runtime = diskSizeFullMiB;
+              bringupSystemdBoot = diskSizeBringupSystemdBootMiB;
+              bringupGrub = diskSizeBringupGrubMiB;
+            };
             hint = "nix path-info -Sh ${systemPath}";
             note = "closure size should be less than diskSizeBytes";
           };
@@ -449,33 +458,45 @@
             else
               hostProfile.hostName;
 
-          diskImageFull = nixos-generators.nixosGenerate {
-            modules = fullExt4Modules ++ [
+          diskImage = nixos-generators.nixosGenerate {
+            modules = runtimeExt4Modules ++ [
               {
                 nix.registry.nixpkgs.flake = nixpkgs;
-                virtualisation.diskSize = diskSizeMiB;
+                virtualisation.diskSize = diskSizeFullMiB;
               }
             ];
-            specialArgs = fullExt4SpecialArgs;
+            specialArgs = runtimeExt4SpecialArgs;
             system = "aarch64-linux";
             pkgs = pkgsForLinux;
             format = "raw-efi";
           };
 
-          diskImageBootstrap = nixos-generators.nixosGenerate {
-            modules = bootstrapExt4Modules ++ [
+          diskImageBringupSystemdBoot = nixos-generators.nixosGenerate {
+            modules = bringupSystemdBootExt4Modules ++ [
               {
                 nix.registry.nixpkgs.flake = nixpkgs;
-                virtualisation.diskSize = diskSizeMiB;
+                virtualisation.diskSize = diskSizeBringupSystemdBootMiB;
               }
             ];
-            specialArgs = bootstrapExt4SpecialArgs;
+            specialArgs = bringupSystemdBootExt4SpecialArgs;
             system = "aarch64-linux";
             pkgs = pkgsForLinux;
             format = "raw-efi";
           };
 
-          diskImage = if hostImageMode == "bootstrap" then diskImageBootstrap else diskImageFull;
+          diskImageBringupGrub = nixos-generators.nixosGenerate {
+            modules = bringupGrubExt4Modules ++ [
+              {
+                nix.registry.nixpkgs.flake = nixpkgs;
+                virtualisation.diskSize = diskSizeBringupGrubMiB;
+              }
+            ];
+            specialArgs = bringupGrubExt4SpecialArgs;
+            system = "aarch64-linux";
+            pkgs = pkgsForLinux;
+            format = "raw-efi";
+          };
+
         in
         {
           inherit diskSizeHint;
@@ -485,8 +506,8 @@
           };
           inherit
             diskImage
-            diskImageFull
-            diskImageBootstrap
+            diskImageBringupSystemdBoot
+            diskImageBringupGrub
             ;
         };
     in
@@ -677,10 +698,8 @@
           };
           darwinConfiguration = darwinOutputs.darwinConfigurations.${mainName};
 
-          containerRegistryConfiguration = mkContainerRegistryConfig { inherit hostProfile catalog; };
-
           nixosOutputs = mkNixosOutputs {
-            inherit hostProfile containerRegistryConfiguration catalog;
+            inherit hostProfile catalog;
             profileModule =
               { ... }:
               {
@@ -689,8 +708,8 @@
           };
           nixosConfiguration = nixosOutputs.nixosConfigurations."${mainName}-nixos";
           nixosDiskImage = nixosOutputs.diskImage;
-          nixosDiskImageFull = nixosOutputs.diskImageFull;
-          nixosDiskImageBootstrap = nixosOutputs.diskImageBootstrap;
+          nixosDiskImageBringupSystemdBoot = nixosOutputs.diskImageBringupSystemdBoot;
+          nixosDiskImageBringupGrub = nixosOutputs.diskImageBringupGrub;
           nixosDiskSizeHint = nixosOutputs.diskSizeHint;
 
           # Home Manager configurations for direct use
@@ -725,8 +744,8 @@
             darwinConfiguration
             nixosConfiguration
             nixosDiskImage
-            nixosDiskImageFull
-            nixosDiskImageBootstrap
+            nixosDiskImageBringupSystemdBoot
+            nixosDiskImageBringupGrub
             nixosDiskSizeHint
             homeManagerConfigurations
             ;

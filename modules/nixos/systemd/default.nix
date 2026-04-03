@@ -22,11 +22,14 @@ in
   };
 
   imports = [
-    ./buildkitd.nix
     ./lima-cloud-init.nix
     ./lima-nixos-configuration.nix
     ./lima-guest-agent.nix
     ./openssh.nix
     ./rescue.nix
-  ] ++ (lib.optionals (!bootstrapMode) [ ./hm-state-dirs.nix ]);
+  ]
+  ++ (lib.optionals (!bootstrapMode) [
+    ./buildkitd.nix
+    ./hm-state-dirs.nix
+  ]);
 }

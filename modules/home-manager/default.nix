@@ -174,7 +174,7 @@ in
   home = {
     homeDirectory = lib.mkForce homeDirectorySafe; # Ensure home directory is set and avoid space-splitting activation issues on Darwin
 
-    stateVersion = "25.05";
+    stateVersion = "25.11";
 
     sessionPath = [
       "${homeDirectorySafe}/.rd/bin"

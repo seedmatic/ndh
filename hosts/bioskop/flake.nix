@@ -40,52 +40,22 @@
 
       profileModule =
         {
-          pkgs,
-          lib,
           config,
-          options,
           ...
         }:
-        let
-          # Canonical source-of-truth network values from rke2lab netplan catalog (@codebase)
-          netplanCatalog = config._module.specialArgs.catalog.networks.rke2labNetplan;
-          clusterNetwork = netplanCatalog.clusters.bioskop;
-        in
         {
           imports = [
-            ../../profiles/committed.nix
+            (
+              import ../.common.d/host-common.nix {
+                inherit hostProfile darwinProfile;
+                headscaleServerUrl = "http://192.168.5.10:8080";
+              }
+            )
             # Teleport removed - using Headscale for internal network
           ];
           config = {
-            profile = {
-              host = {
-                hostName = lib.mkDefault hostProfile.hostName;
-                tailnet = hostProfile.tailnet;
-              }
-              // (
-                if hostProfile ? hostAlias then
-                  {
-                    hostAlias = lib.mkDefault hostProfile.hostAlias;
-                  }
-                else
-                  { }
-              );
-              darwin = darwinProfile;
-            };
-
             # Enable rescue tooling for this host (default is off)
             # rescue.enable = true;
-
-            # Headscale client - connects to server in Lima VM
-            # Note: Server must be deployed first at 192.168.5.10:8080
-            services.headscale = {
-              enable = true;
-              serverUrl = "http://192.168.5.10:8080";
-              enableSSH = true;
-            };
-
-            # Enable cross-host distributed builds (Darwin only)
-            services.crossHostBuilders.enable = true;
 
             # Sign locally produced store paths so peer hosts can trust nix copy --from ssh-ng://bioskop
             nix.settings.trusted-users = [

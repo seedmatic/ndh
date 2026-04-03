@@ -8,7 +8,7 @@
 with lib;
 
 let
-  cfg = config.services.headscale;
+  cfg = config.networking.headscale;
   defaultHostname = config.networking.hostName or "localhost";
 
   headscaleActivationScript = pkgs.runCommand "headscale-post-activation.sh" { } ''
@@ -24,7 +24,7 @@ let
   '';
 in
 {
-  options.services.headscale = {
+  options.networking.headscale = {
     enable = mkOption {
       type = types.bool;
       default = false;

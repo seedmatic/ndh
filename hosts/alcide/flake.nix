@@ -33,44 +33,25 @@
 
       profileModule =
         {
-          pkgs,
           lib,
-          config,
           ...
         }:
         {
           imports = [
-            ../../profiles/committed.nix
-          ];
-          config = {
-            profile = {
-              host = {
-                hostName = lib.mkDefault hostProfile.hostName;
-                tailnet = hostProfile.tailnet;
+            (
+              import ../.common.d/host-common.nix {
+                inherit hostProfile darwinProfile;
+                headscaleServerUrl = "http://192.168.1.193:8080";
                 forceRemoteBuilds = true;
                 preferredBuilderHosts = [ "bioskop" ];
               }
-              // (
-                if hostProfile ? hostAlias then
-                  {
-                    hostAlias = lib.mkDefault hostProfile.hostAlias;
-                  }
-                else
-                  { }
-              );
-              darwin = darwinProfile;
-            };
-
-            # Enable cross-host builders so ssh_config.d drop-ins are installed
-            services.crossHostBuilders.enable = true;
-
-            services.headscale = {
-              enable = true;
-              serverUrl = "http://192.168.1.193:8080";
-              enableSSH = true;
-            };
+            )
+          ];
+          config = {
+            # Host-specific profile additions go here.
           };
         };
+
       darwinModule =
         { ... }:
         {

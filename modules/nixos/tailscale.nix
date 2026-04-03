@@ -12,7 +12,7 @@ let
   tailscaleAuthKeyPath = config.sops.secrets.${tailscaleAuthSecretName}.path;
   tagsString = lib.concatStringsSep "," (map (tag: "tag:" + tag) cfg.tags);
   # Only enable regular Tailscale if Headscale module is not enabled.
-  useHeadscale = config.services.headscale.enable or false;
+  useHeadscale = config.networking.headscale.enable or false;
   tailnetDomain =
     if networkCatalog ? tailnet && (networkCatalog.tailnet ? domain) then
       networkCatalog.tailnet.domain

@@ -331,7 +331,7 @@ in
 
     enableIncus = mkOption {
       type = types.bool;
-      default = false;
+      default = true;
       description = ''
         Enable Incus container runtime in the Lima VM.
         When true, the VM will include Incus for running containers.
