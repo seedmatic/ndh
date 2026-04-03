@@ -124,6 +124,8 @@
         {
           config,
           pkgs,
+          lib,
+          options,
           ...
         }:
         let
@@ -152,8 +154,10 @@
               fi
             '';
 
+          }
+          // (lib.optionalAttrs (options ? services && options.services ? dbusTcpSystemBus) {
             # Expose system D-Bus over the vmnet-facing address (not loopback)
-            # for lab-only remote control/testing traffic.
+            # for lab-only remote control/testing traffic (when module is available).
             services.dbusTcpSystemBus = {
               enable = true;
               # Netplan catalog-derived vmnet gateway for bioskop cluster slice.
@@ -162,7 +166,7 @@
               openFirewall = true;
               insecureAllowAnonymous = true;
             };
-          };
+          });
         };
     in
     nix-darwin-home.mkHostOutputs {

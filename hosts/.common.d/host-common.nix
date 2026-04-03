@@ -9,13 +9,11 @@
 }:
 {
   lib,
+  options,
   ...
 }:
 let
-  nixosBootstrapMode =
-    hostProfile ? nixosImageMode
-    && hostProfile.nixosImageMode != null
-    && hostProfile.nixosImageMode == "bootstrap";
+  hasHeadscaleOption = options ? networking && options.networking ? headscale;
 in
 {
   imports = [ ../../profiles/committed.nix ];
@@ -47,7 +45,7 @@ in
       bioskopCachePublicKey
     ];
   }
-  // (lib.optionalAttrs (!nixosBootstrapMode) {
+  // (lib.optionalAttrs hasHeadscaleOption {
     networking.headscale = {
       enable = true;
       serverUrl = headscaleServerUrl;

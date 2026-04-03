@@ -9,11 +9,18 @@
 }:
 let
   userMapping = catalog.users;
-  homeManagerEnabled =
+  hostImageMode =
+    if hostProfile != null && hostProfile ? nixosImageMode && hostProfile.nixosImageMode != null then
+      hostProfile.nixosImageMode
+    else
+      "full";
+  bringupModeInternal = hostImageMode == "bootstrap";
+  requestedHomeManagerEnabled =
     if hostProfile != null && hostProfile ? enableHomeManager && hostProfile.enableHomeManager != null then
       hostProfile.enableHomeManager
     else
       true;
+  homeManagerEnabled = if bringupModeInternal then false else requestedHomeManagerEnabled;
 
   cfg = config.profile;
   profile = cfg;
