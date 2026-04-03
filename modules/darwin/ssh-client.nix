@@ -150,6 +150,29 @@ in
       default = [ ];
       description = "Additional explicit host stanzas.";
     };
+
+    hostIdentityDomains = {
+      enable = mkOption {
+        type = types.bool;
+        default = true;
+        description = "Pin host identity key for selected domain patterns (avoids multi-key agent probing).";
+      };
+
+      patterns = mkOption {
+        type = types.listOf types.str;
+        default = [
+          "*.host"
+          "*.lan"
+        ];
+        description = "Host patterns that should use the profile host identity key by default.";
+      };
+
+      identityRelativePath = mkOption {
+        type = types.str;
+        default = ".local/state/ssh-key.d/host";
+        description = "Path (relative to profile.user.home) to the host identity private key.";
+      };
+    };
   };
 
   config = mkIf (pkgs.stdenv.isDarwin && config.sshClient.enable) (
@@ -187,6 +210,15 @@ in
           hostProfile.tailnet.domain
         else
           null;
+      normalizedTailnetDomain =
+        if (tailnetDomain != null && tailnetDomain != "") then lib.removePrefix "." tailnetDomain else null;
+      hostIdentityTailnetPattern =
+        if (tailnetName != null && tailnetName != "" && normalizedTailnetDomain != null) then
+          "*.${tailnetName}.${normalizedTailnetDomain}"
+        else if (normalizedTailnetDomain != null) then
+          "*.${normalizedTailnetDomain}"
+        else
+          null;
       tailnetFqdn =
         if (cfg.guest.includeTailnet && tailnetName != null && tailnetDomain != null) then
           "${baseHost}.${tailnetName}.${tailnetDomain}"
@@ -213,13 +245,19 @@ in
         in
         "${home}/.lima/_config/user";
       guestIdentity = if cfg.guest.identityFile != null then cfg.guest.identityFile else defaultLimaKey;
+      userHome =
+        if (config ? profile && config.profile ? user && config.profile.user ? home) then
+          config.profile.user.home
+        else
+          "/Users/${userName}";
+      hostIdentityFile = "${userHome}/${cfg.hostIdentityDomains.identityRelativePath}";
 
       renderStanza =
         st:
         let
           pats = concatStringsSep " " st.patterns;
         in
-        ''Host ${pats}\n''
+        "Host ${pats}\n"
         + optionalString (st.user != null) "  User ${st.user}\n"
         + optionalString (st.identityFile != null) "  IdentityFile ${st.identityFile}\n"
         + optionalString (st.identityFile != null && st.identitiesOnly) "  IdentitiesOnly yes\n"
@@ -239,14 +277,28 @@ in
         else
           "";
 
-      extraText = concatStringsSep "\n" (map renderStanza cfg.extraStanzas);
+      hostIdentityStanzas =
+        optional cfg.hostIdentityDomains.enable {
+          patterns =
+            cfg.hostIdentityDomains.patterns
+            ++ lib.optional (hostIdentityTailnetPattern != null) hostIdentityTailnetPattern;
+          user = null;
+          identityFile = hostIdentityFile;
+          identitiesOnly = true;
+          bypassAgent = false;
+          extraConfig = null;
+        };
+
+      allExtraStanzas = hostIdentityStanzas ++ cfg.extraStanzas;
+
+      extraText = concatStringsSep "\n" (map renderStanza allExtraStanzas);
     in
     {
       environment.etc."ssh/ssh_config".text = cfg.baseConfig + "\n";
       environment.etc."ssh/ssh_config.d/50-guest.conf" = mkIf (cfg.guest.enable) {
         text = "# Derived guest stanza\n" + guestStanza;
       };
-      environment.etc."ssh/ssh_config.d/55-extra.conf" = mkIf (cfg.extraStanzas != [ ]) {
+      environment.etc."ssh/ssh_config.d/55-extra.conf" = mkIf (allExtraStanzas != [ ]) {
         text = "# Extra stanzas\n" + extraText + "\n";
       };
     }
