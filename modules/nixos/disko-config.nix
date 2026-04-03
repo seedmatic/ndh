@@ -270,9 +270,17 @@ let
         (dataset.options or { }) ? "nixos:mount-overlay"
         && (dataset.options."nixos:mount-overlay" == "true");
       dsWithOpts = addDatasetOptions dataset;
+      # Overlay-tagged ZFS datasets are mounted explicitly from stage-1 via
+      # fileSystems entries (e.g. /mnt/overlays/*), which requires legacy
+      # mount semantics for `mount` to succeed.
+      dsWithLegacyMountpoint = dsWithOpts // {
+        options = (dsWithOpts.options or { }) // {
+          mountpoint = "legacy";
+        };
+      };
     in
     if overlayEnabled then
-      dsWithOpts
+      dsWithLegacyMountpoint
       // {
         postMountHook = ''
           mkdir -p "/mnt${dataset.mountpoint}/workdir"
