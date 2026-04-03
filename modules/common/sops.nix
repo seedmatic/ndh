@@ -69,6 +69,7 @@ let
     darwinUserKeyFile = cfg.darwinUserKeyFile;
     importExistingUserKeyOnBootstrap = if cfg.importExistingUserKeyOnBootstrap then "1" else "0";
     ageBin = pkgs.age;
+    coreutilsBin = pkgs.coreutils;
     nixosHostKeyImportCandidates = lib.concatStringsSep "\n" cfg.nixosHostKeyImport.candidates;
   };
   sopsAgeBootstrapScript = builtins.readFile sopsAgeBootstrapScriptSource;

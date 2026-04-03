@@ -15,6 +15,7 @@ remote_fetch_mdns_suffix="@remoteFetchMdnsSuffix@"
 ssh_bin="@sshBin@/bin/ssh"
 sudo_bin="@sudoBin@/bin/sudo"
 runuser_bin="@utilLinuxBin@/bin/runuser"
+sha256sum_bin="@coreutilsBin@/bin/sha256sum"
 phase="@phase@"
 
 import_key_from_candidates() {
@@ -22,9 +23,21 @@ import_key_from_candidates() {
     [ -n "$candidate" ] || continue
     if [ -s "$candidate" ]; then
       install -d -m 700 "$key_dir"
-      cp "$candidate" "$key_file"
-      chmod 600 "$key_file"
-      echo "[sops-age-bootstrap] imported host age key from $candidate into $key_file"
+      if [ ! -s "$key_file" ]; then
+        cp "$candidate" "$key_file"
+        chmod 600 "$key_file"
+        echo "[sops-age-bootstrap] imported host age key from $candidate into $key_file"
+      else
+        candidate_sum="$($sha256sum_bin "$candidate" | awk '{print $1}')"
+        key_sum="$($sha256sum_bin "$key_file" | awk '{print $1}')"
+        if [ "$candidate_sum" != "$key_sum" ]; then
+          cp "$candidate" "$key_file"
+          chmod 600 "$key_file"
+          echo "[sops-age-bootstrap] refreshed age key from $candidate into $key_file (checksum changed)"
+        else
+          echo "[sops-age-bootstrap] host key candidate $candidate matches current $key_file"
+        fi
+      fi
       return 0
     fi
   done <<'EOF'
@@ -37,6 +50,10 @@ EOF
 if [ "$phase" = "bootstrap" ]; then
   darwin_user_key_file="@darwinUserKeyFile@"
   import_existing_user_key_on_bootstrap="@importExistingUserKeyOnBootstrap@"
+
+  if [ "$nixos_import_from_host" = "1" ]; then
+    import_key_from_candidates || true
+  fi
 
   if [ ! -s "$key_file" ]; then
     install -d -m 700 "$key_dir"
@@ -103,7 +120,7 @@ else
     fi
   fi
 
-  if [ ! -s "$key_file" ] && [ "$nixos_import_from_host" = "1" ]; then
+  if [ "$nixos_import_from_host" = "1" ]; then
     import_key_from_candidates || true
   fi
 
