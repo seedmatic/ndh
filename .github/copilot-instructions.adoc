@@ -57,7 +57,7 @@ CRITICAL: `modules/common/default.nix` is imported by both Darwin and NixOS. Cha
 
 * **Tailscale**: External access via WireGuard mesh (manual `tailscale up --ssh` on Darwin)
 * **Headscale**: Self-hosted Tailscale server for LAN (lower latency, see `modules/nixos/headscale-server.nix`)
-* **Gateways**: `incus-tailscale-gateway.nix` advertises subnet routes (e.g., 192.168.106.0/24 for RKE2)
+* **Gateways**: Route advertisement for cluster subnets is owned by rke2lab cluster-side mesh components (not local Incus gateway modules)
 * **SSH**: Both Tailscale and Headscale provide identity-based SSH (replaced Teleport)
 
 ==== Network Ranges

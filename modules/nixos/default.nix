@@ -74,9 +74,6 @@ let
     ./headscale-gateway.nix
     ./nfs-autofs.nix
     ./incus.nix
-    ./incus-headscale-server.nix
-    ./incus-headscale-gateway.nix
-    ./incus-tailscale-gateway.nix
     ./podman.nix
   ];
 in

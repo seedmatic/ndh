@@ -276,17 +276,9 @@ ln -s /nix/store/<path> /nix/var/nix/gcroots/bioskop-cache-keep
 
 == Module Quick Reference
 
-=== Tailscale Gateway
+=== Cluster-side Route Advertisement
 
-[source,nix]
-----
-services.incus-tailscale-gateway = {
-  enable = true;
-  authKeyFile = "/run/secrets/tailscale-authkey";
-  hostname = "my-gateway";
-  routes = [ "192.168.5.0/24" "192.168.106.0/24" ];
-};
-----
+Route advertisement for cluster subnets is managed by rke2lab cluster-side mesh components.
 
 === Headscale Server
 

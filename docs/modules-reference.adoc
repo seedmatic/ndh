@@ -10,11 +10,11 @@ This document provides reference documentation for all custom NixOS and Darwin m
 
 == Network Modules
 
-=== Tailscale Gateway (Incus)
+=== Tailscale Gateway (Incus, Legacy)
 
-Module: `modules/nixos/incus-tailscale-gateway.nix`
+Module: `modules/nixos/incus-tailscale-gateway.nix` (removed)
 
-Deploys a Tailscale gateway as an Incus instance to advertise subnet routes.
+This legacy module has been retired. Route advertisement is now managed cluster-side in rke2lab.
 
 ==== Options
 
@@ -437,18 +437,10 @@ NOTE: This module is deprecated. Use Headscale client instead.
 }
 ----
 
-.Lima VMs (Tailscale gateway + Headscale client)
+.Lima VMs (Headscale client)
 [source,nix]
 ----
 {
-  # Tailscale gateway for external access to RKE
-  services.incus-tailscale-gateway = {
-    enable = true;
-    authKeyFile = "/run/secrets/tailscale-authkey";
-    hostname = "alcide-gateway";
-    routes = [ "192.168.5.0/24" "192.168.106.0/24" ];
-  };
-
   # Headscale client for LAN SSH
   services.headscale-client = {
     enable = true;
@@ -775,7 +767,6 @@ Per-host override example:
 ----
 # NixOS
 imports = [
-  ./modules/nixos/incus-tailscale-gateway.nix
   ./modules/nixos/headscale-server.nix
   ./modules/nixos/headscale-client.nix
   ./modules/nixos/headscale-gateway.nix

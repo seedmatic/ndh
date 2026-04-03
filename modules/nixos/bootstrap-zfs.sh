@@ -29,7 +29,10 @@ if [ ! -e "/etc/nixos/flake.nix" ]; then
 fi
 
 : "→ booting the ZFS based system (nixos-rebuild boot)"
-nixos-rebuild boot || : "→ WARNING: nixos-rebuild boot failed (continuing)"
+if [ -n "${NIXOS_INSTALL_BOOTLOADER:-}" ]; then
+  : "→ clearing inherited NIXOS_INSTALL_BOOTLOADER for runtime rebuild"
+fi
+env -u NIXOS_INSTALL_BOOTLOADER nixos-rebuild boot || : "→ WARNING: nixos-rebuild boot failed (continuing)"
 
 : "→ running disko configuration"
 if [ -f "${DISKO_NIX}" ]; then
