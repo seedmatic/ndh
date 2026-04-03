@@ -11,26 +11,8 @@ if systemctl list-unit-files | grep -q '^lima-nixos-config.service'; then
   systemctl start lima-nixos-config.service || true
 fi
 
-: "→ ensuring /etc/nixos/flake.nix symlink"
-HOSTNAME=$(hostname)
-NIX_DARWIN_HOME="/var/lib/git/nxmatic/nix-darwin-home"
-NIXOS_FLAKE_SOURCE="${NIX_DARWIN_HOME}/hosts/${HOSTNAME}/flake.nix"
-DISKO_NIX="${NIX_DARWIN_HOME}/modules/nixos/disko.nix"
-if [ ! -e "/etc/nixos/flake.nix" ]; then
-  if [ -f "${NIXOS_FLAKE_SOURCE}" ]; then
-    mkdir -p /etc/nixos
-    ln -fs "${NIXOS_FLAKE_SOURCE}" /etc/nixos/
-    : "→ linked ${NIXOS_FLAKE_SOURCE} to /etc/nixos"
-  else
-    : "→ WARNING: host flake not found in ${NIXOS_FLAKE_SOURCE}"
-  fi
-fi
-
 : "→ booting the ZFS based system (nixos-rebuild boot)"
-if [ -n "${NIXOS_INSTALL_BOOTLOADER:-}" ]; then
-  : "→ clearing inherited NIXOS_INSTALL_BOOTLOADER for runtime rebuild"
-fi
-env -u NIXOS_INSTALL_BOOTLOADER nixos-rebuild boot || : "→ WARNING: nixos-rebuild boot failed (continuing)"
+nixos-rebuild boot --install-bootloader || : "→ WARNING: nixos-rebuild boot failed (continuing)"
 
 : "→ running disko configuration"
 if [ -f "${DISKO_NIX}" ]; then
