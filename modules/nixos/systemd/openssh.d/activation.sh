@@ -7,6 +7,7 @@ main() {
   SSH_AUTH_KEYS_DIR=/etc/ssh/authorized_keys.d
   SSH_KEYS_DIR=@keysDir@
   USER_CA_SOURCE_DIR=@userCaSourceDir@
+  ROOT_SSH_DIR=/root/.ssh
   HOSTNAME=@hostname@
   PRINCIPALS_CMD=@principalsCommand@
   GROUP_CMD=@groupCommand@
@@ -41,6 +42,16 @@ main() {
     printf "\n" >> "$SSH_KEYS_DIR/trusted-user-ca.pub"
   done
   chmod 644 "$SSH_KEYS_DIR/trusted-user-ca.pub"
+
+  # Keep a root-local client identity available for early boot/activation SSH calls.
+  # Home-manager key extraction is user-scoped, so duplicate the host key for root here.
+  if [ -s "$USER_CA_SOURCE_DIR/host" ]; then
+    install -d -m 700 "$ROOT_SSH_DIR"
+    install -m 600 "$USER_CA_SOURCE_DIR/host" "$ROOT_SSH_DIR/id_ed25519"
+    if [ -s "$USER_CA_SOURCE_DIR/host.pub" ]; then
+      install -m 644 "$USER_CA_SOURCE_DIR/host.pub" "$ROOT_SSH_DIR/id_ed25519.pub"
+    fi
+  fi
 
   install -m 555 "$GROUP_SRC" /etc/ssh/$GROUP_CMD
   if [ ! -e /etc/ssh/ssh-group-authorized-keys ]; then
