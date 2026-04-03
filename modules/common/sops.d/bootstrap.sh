@@ -17,6 +17,23 @@ sudo_bin="@sudoBin@/bin/sudo"
 runuser_bin="@utilLinuxBin@/bin/runuser"
 phase="@phase@"
 
+import_key_from_candidates() {
+  while IFS= read -r candidate; do
+    [ -n "$candidate" ] || continue
+    if [ -s "$candidate" ]; then
+      install -d -m 700 "$key_dir"
+      cp "$candidate" "$key_file"
+      chmod 600 "$key_file"
+      echo "[sops-age-bootstrap] imported host age key from $candidate into $key_file"
+      return 0
+    fi
+  done <<'EOF'
+@nixosHostKeyImportCandidates@
+EOF
+
+  return 1
+}
+
 if [ "$phase" = "bootstrap" ]; then
   darwin_user_key_file="@darwinUserKeyFile@"
   import_existing_user_key_on_bootstrap="@importExistingUserKeyOnBootstrap@"
@@ -27,6 +44,8 @@ if [ "$phase" = "bootstrap" ]; then
       cp "$darwin_user_key_file" "$key_file"
       chmod 600 "$key_file"
       echo "[sops-age-bootstrap] installed existing user age key into $key_file"
+    elif [ "$nixos_import_from_host" = "1" ] && import_key_from_candidates; then
+      : "[sops-age-bootstrap] bootstrap imported host-provided key"
     else
       @ageBin@/bin/age-keygen -o "$key_file"
       chmod 600 "$key_file"
@@ -85,18 +104,7 @@ else
   fi
 
   if [ ! -s "$key_file" ] && [ "$nixos_import_from_host" = "1" ]; then
-    while IFS= read -r candidate; do
-      [ -n "$candidate" ] || continue
-      if [ -s "$candidate" ]; then
-        install -d -m 700 "$key_dir"
-        cp "$candidate" "$key_file"
-        chmod 600 "$key_file"
-        echo "[sops-age-bootstrap] imported host age key from $candidate into $key_file"
-        break
-      fi
-    done <<'EOF'
-@nixosHostKeyImportCandidates@
-EOF
+    import_key_from_candidates || true
   fi
 
   if [ ! -s "$key_file" ]; then
