@@ -104,6 +104,7 @@ in
       sshGenerateKeysYamlScript = ./ssh-generate-keys-yaml.sh;
 
       deploySSHKeysScript = pkgs.replaceVars ./ssh-keys.d/deploy-ssh-keys.sh {
+        awk = "${pkgs.gawk}/bin/awk";
         bash = "${pkgs.bash}/bin/bash";
         mktemp = "${pkgs.coreutils-full}/bin/mktemp";
         rsync = "${pkgs.rsync}/bin/rsync";
