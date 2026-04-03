@@ -4,7 +4,7 @@
 # Optional env vars:
 #   LIMA_NIXOS_CONFIG_PATH  - explicit repo path
 #   LIMA_NIXOS_ALLOW_CLONE=1  - permit fallback clone if no working copy found
-set -euo pipefail
+set -euxo pipefail
 
 HOSTNAME="${1:-}"
 if [ -z "${HOSTNAME}" ]; then
@@ -35,6 +35,7 @@ add_candidate() {
 # 1. Explicit override
 add_candidate "${LIMA_NIXOS_CONFIG_PATH:-}"
 # 2 & 3: Mounted macOS & Linux style homes
+add_candidate "/Volumes/git-worktree-store/nxmatic/nix-darwin-home"
 add_candidate "/private/var/lib/git/nxmatic/nix-darwin-home"
 add_candidate "/var/lib/git/nxmatic/nix-darwin-home"
 
@@ -58,27 +59,8 @@ else
   : "[lima-nixos-config] No existing working copy found among candidates:" >&2
   # Still display list (kept echo for visibility of candidates if needed)
   printf '  %s\n' "${CANDIDATES[@]:-}" >&2
-  if [ "${LIMA_NIXOS_ALLOW_CLONE:-0}" = 1 ]; then
-    : "[lima-nixos-config] Cloning repository (fallback enabled)" >&2
-    retries=5; delay=3; i=1
-    while [ $i -le $retries ]; do
-      if git clone --single-branch --branch develop \
-        https://github.com/nxmatic/nix-darwin-home.git /var/lib/nixos/config; then
-        break
-      fi
-      : "[lima-nixos-config] clone attempt $i failed; retrying in $delay s..." >&2
-      rm -rf /var/lib/nixos/config || true
-      i=$((i+1))
-      sleep $delay
-    done
-    if [ ! -d /var/lib/nixos/config ]; then
-      : "[lima-nixos-config] FATAL: clone failed after $retries attempts" >&2
-      exit 1
-    fi
-  else
-    : "[lima-nixos-config] Skipping clone (LIMA_NIXOS_ALLOW_CLONE != 1). Aborting." >&2
-    exit 1
-  fi
+  : "[lima-nixos-config] Cloning repository config" >&2
+  nix flake clone -f /var/lib/nixos/config github:nxmatic/nix-darwin-home
 fi
 
 : "[lima-nixos-config] Linking host-specific flake into /etc/nixos"

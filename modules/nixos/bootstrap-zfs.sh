@@ -1,16 +1,14 @@
 #!/usr/bin/env bash
 # bootstrap-zfs: prepare and configure ZFS-based NixOS system inside Lima guest
-# - Links existing nix-darwin-home working copy (preferred) into /var/lib/nixos/config
-# - Ensures /etc/nixos/flake.nix points to host-specific flake
-# - Optionally invokes lima-nixos-configuration service (idempotent)
+# - Optionally invokes lima-nixos-config service (idempotent)
 # - Runs nixos-rebuild boot, disko (format+mount), converts mountpoints to legacy, exports pools
 # Logging uses colon-prefixed no-op commands for concise, structured journal lines
 
 set -euo pipefail
 
-: "→ activating lima-nixos-configuration service (idempotent)"
-if systemctl list-unit-files | grep -q '^lima-nixos-configuration.service'; then
-  systemctl start lima-nixos-configuration.service || true
+: "→ activating lima-nixos-config service (idempotent)"
+if systemctl list-unit-files | grep -q '^lima-nixos-config.service'; then
+  systemctl start lima-nixos-config.service || true
 fi
 
 : "→ ensuring /etc/nixos/flake.nix symlink"

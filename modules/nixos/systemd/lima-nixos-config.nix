@@ -19,8 +19,8 @@ let
 
 in
 {
-  systemd.services.lima-nixos-configuration = {
-    description = "Link (preferred) or optionally clone NixOS configuration repo for Lima host";
+  systemd.services.lima-nixos-config = {
+    description = "Link (preferred) or optionally clone NixOS darwin home repo for Lima host";
 
     # Only need cloud-init first (mounts, user home). Network not strictly required for linking.
     after = afterList;

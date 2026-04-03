@@ -23,7 +23,7 @@ in
 
   imports = [
     ./lima-cloud-init.nix
-    ./lima-nixos-configuration.nix
+    ./lima-nixos-config.nix
     ./lima-guest-agent.nix
     ./openssh.nix
     ./rescue.nix
