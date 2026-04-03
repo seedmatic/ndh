@@ -69,9 +69,9 @@
             # Enable cross-host builders so ssh_config.d drop-ins are installed
             services.crossHostBuilders.enable = true;
 
-            # Two-phase SOPS key provisioning:
-            # phase 2 enforces existing key presence.
-            nxmatic.sopsAgeKeyBootstrap.phase = "enforce";
+            # Keep experiment/bootstrap mode until boot/login validation is complete.
+            # This avoids stage-2 panic when /etc/sops/age/keys.txt is not yet provisioned.
+            nxmatic.sopsAgeKeyBootstrap.phase = "bootstrap";
 
             # Safety valve while exercising fresh SSH/runtime-secret changes.
             opensshPolicy.passwordAuthentication = true;
