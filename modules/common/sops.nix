@@ -3,6 +3,7 @@
   config,
   lib,
   pkgs,
+  hostProfile ? { },
   ...
 }:
 let
@@ -35,6 +36,12 @@ let
       (if cfg.darwinSystemWideKey then cfg.systemWideKeyFile else cfg.darwinUserKeyFile)
     else
       cfg.systemWideKeyFile;
+
+  nixosBootstrapMode =
+    (!pkgs.stdenv.isDarwin)
+    && hostProfile ? nixosImageMode
+    && hostProfile.nixosImageMode != null
+    && hostProfile.nixosImageMode == "bootstrap";
 
   nixosHostKeyImportCandidatesDefault =
     lib.filter (path: path != "") [
@@ -204,17 +211,22 @@ in
       # Canonical encrypted secrets source tracked in this repository.
       defaultSopsFile = lib.mkDefault ../../.secrets;
 
-      secrets."nxmatic-ssh-keys.yaml" = {
-        sopsFile = sshKeysSopsFile;
-        format = "yaml";
-        # Emit the full decrypted YAML document; profile selection happens at runtime.
-        key = "";
-        path = "${secretNamespaceDir}/nxmatic-ssh-keys.yaml";
-        owner = config.profile.user.name;
-        mode = "0400";
+      secrets = lib.mkIf (!nixosBootstrapMode) {
+        "nxmatic-ssh-keys.yaml" = {
+          sopsFile = sshKeysSopsFile;
+          format = "yaml";
+          # Emit the full decrypted YAML document; profile selection happens at runtime.
+          key = "";
+          path = "${secretNamespaceDir}/nxmatic-ssh-keys.yaml";
+          owner = config.profile.user.name;
+          mode = "0400";
+        };
       };
 
       age.keyFile = lib.mkDefault ageKeyFileDefault;
+      # In first-boot bootstrap images, avoid host SSH-key based decryption fallback.
+      # Host keys may not exist yet at the point sops-install-secrets is executed.
+      age.sshKeyPaths = lib.mkIf nixosBootstrapMode [ ];
 
     };
 
