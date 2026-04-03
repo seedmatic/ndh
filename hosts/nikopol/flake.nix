@@ -72,6 +72,12 @@
             # Keep experiment/bootstrap mode until boot/login validation is complete.
             # This avoids stage-2 panic when /etc/sops/age/keys.txt is not yet provisioned.
             nxmatic.sopsAgeKeyBootstrap.phase = "bootstrap";
+            nxmatic.sopsAgeKeyBootstrap.nixosHostKeyImport.candidates = [
+              # Preferred: key delivered via Lima cidata payload.
+              "/mnt/lima-cidata/sops-age-keys.txt"
+              # Host-mounted fallback: ~/Private/sops:age:keys.txt on Darwin host.
+              "/Users/nxmatic/Private/sops:age:keys.txt"
+            ];
 
             # Safety valve while exercising fresh SSH/runtime-secret changes.
             opensshPolicy.passwordAuthentication = true;
