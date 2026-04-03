@@ -693,7 +693,6 @@
               };
           };
           nixosConfiguration = nixosOutputs.nixosConfigurations."${mainName}-nixos";
-          nixosDiskImage = nixosOutputs.diskImage;
           nixosDiskImageBringupSystemdBoot = nixosOutputs.diskImageBringupSystemdBoot;
           nixosDiskImageBringupGrub = nixosOutputs.diskImageBringupGrub;
           nixosDiskSizeHint = nixosOutputs.diskSizeHint;
@@ -729,7 +728,6 @@
           inherit
             darwinConfiguration
             nixosConfiguration
-            nixosDiskImage
             nixosDiskImageBringupSystemdBoot
             nixosDiskImageBringupGrub
             nixosDiskSizeHint
