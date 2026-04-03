@@ -13,7 +13,7 @@ remote_fetch_use_sudo="@remoteFetchUseSudo@"
 remote_fetch_hostname_env_var="@remoteFetchHostnameEnvVar@"
 remote_fetch_mdns_suffix="@remoteFetchMdnsSuffix@"
 ssh_bin="@sshBin@/bin/ssh"
-sudo_bin="@sudoBin@/bin/sudo"
+sudo_cmd="@sudoCmd@"
 runuser_bin="@utilLinuxBin@/bin/runuser"
 sha256sum_bin="@coreutilsBin@/bin/sha256sum"
 phase="@phase@"
@@ -93,7 +93,7 @@ else
       chmod 600 "$tmp_key"
 
       if [ "$remote_fetch_use_sudo" = "1" ] && [ "$remote_fetch_user" != "root" ]; then
-        remote_cmd="${sudo_bin} -n test -s '${remote_fetch_key_path}' && ${sudo_bin} -n cat '${remote_fetch_key_path}'"
+        remote_cmd="${sudo_cmd} -n test -s '${remote_fetch_key_path}' && ${sudo_cmd} -n cat '${remote_fetch_key_path}'"
       else
         remote_cmd="test -s '${remote_fetch_key_path}' && cat '${remote_fetch_key_path}'"
       fi

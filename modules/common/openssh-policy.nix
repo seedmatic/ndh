@@ -6,6 +6,16 @@
 }:
 let
   cfg = config.opensshPolicy;
+  defaultSetEnvPath =
+    if pkgs.stdenv.isDarwin then
+      "/run/current-system/sw/bin:/nix/var/nix/profiles/default/bin:/usr/bin:/bin"
+    else
+      "/run/wrappers/bin:/run/current-system/sw/bin:/bin:/usr/bin";
+  nonInteractivePrimaryPath =
+    if pkgs.stdenv.isDarwin then
+      "/run/current-system/sw/bin"
+    else
+      "/run/wrappers/bin";
   inherit (lib)
     mkOption
     mkEnableOption
@@ -190,7 +200,7 @@ in
     # Shared PATH used by sshd SetEnv (override per-host if needed)
     setEnvPath = mkOption {
       type = types.str;
-      default = "/run/wrappers/bin:/run/current-system/sw/bin:/bin:/usr/bin";
+      default = defaultSetEnvPath;
       description = "PATH value applied via sshd SetEnv for non-interactive SSH sessions.";
     };
 
@@ -418,22 +428,22 @@ in
     opensshPolicy.authorizedKeysFileString =
       if pkgs.stdenv.isDarwin then lib.concatStringsSep " " cfg.authorizedKeysFiles else null;
 
-    # Provide  target so non-interactive `/bin/bash -c` launched by sshd
-    # gets the wrapper-first PATH immediately on both NixOS and Darwin.
+    # Ensure non-interactive `/bin/bash -c` launched by sshd gets a canonical
+    # PATH immediately, with a platform-appropriate primary prefix.
     environment.etc."profile.d/noninteractive.sh".source = pkgs.writeText "noninteractive.sh" ''
       #!/bin/sh
       # Only modify PATH for non-interactive shells (bash -c; $- lacks 'i')
       case "$-" in
         *i*) : ;;
         *)
-          WRAP="/run/wrappers/bin"
+          PRIMARY="${nonInteractivePrimaryPath}"
           # Fallback PATH if empty (literal, no Nix interpolation)
           if [ -z "$PATH" ]; then
-            PATH="/bin:/usr/bin:/run/wrappers/bin:/run/current-system/sw/bin"
+            PATH="${defaultSetEnvPath}"
           fi
           first="$(printf %s "$PATH" | cut -d: -f1)"
-          if [ "$first" != "$WRAP" ] && [ -d "$WRAP" ]; then
-            PATH="$WRAP:$PATH"
+          if [ "$first" != "$PRIMARY" ] && [ -d "$PRIMARY" ]; then
+            PATH="$PRIMARY:$PATH"
             export PATH
           fi
           ;;

@@ -161,7 +161,6 @@ in
     ./tldr.nix
     ./tmate.nix
     ./tmux.nix
-    ./vscode
     ./xdg.nix
   ];
 

@@ -63,7 +63,7 @@ let
     remoteFetchHostnameEnvVar = cfg.nixosHostKeyImport.remoteFetch.hostnameEnvVar;
     remoteFetchMdnsSuffix = cfg.nixosHostKeyImport.remoteFetch.mdnsSuffix;
     sshBin = pkgs.openssh;
-    sudoBin = pkgs.sudo;
+    sudoCmd = if pkgs.stdenv.isDarwin then "/usr/bin/sudo" else "${pkgs.sudo}/bin/sudo";
     utilLinuxBin = pkgs.util-linux;
     phase = cfg.phase;
     darwinUserKeyFile = cfg.darwinUserKeyFile;

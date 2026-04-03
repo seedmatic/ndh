@@ -52,8 +52,8 @@ in
     Defaults env_keep += "SSL_CERT_FILE NIX_SSL_CERT_FILE GIT_SSL_CAINFO CURL_CA_BUNDLE"
   '';
 
-  # Belt-and-suspenders: ensure /run/current-system/sw/bin and /run/wrappers/bin (sudo wrapper)
-  # are on PATH for login shells so darwin-rebuild and privileged tools are discoverable.
+  # Belt-and-suspenders: ensure canonical Nix paths are on PATH for login shells
+  # so darwin-rebuild and privileged tools are discoverable.
   environment.shellInit = lib.mkAfter ''
     prepend_path() {
       case ":$PATH:" in
@@ -63,10 +63,12 @@ in
     }
 
     if [ -d /run/current-system/sw/bin ]; then
-      # Order matters: wrappers first, then current-system, then default profile
+      # Order matters: wrappers (when present), then current-system, then default profile
       prepend_path /nix/var/nix/profiles/default/bin
       prepend_path /run/current-system/sw/bin
-      prepend_path /run/wrappers/bin
+      if [ -d /run/wrappers/bin ]; then
+        prepend_path /run/wrappers/bin
+      fi
       export PATH
     fi
   '';

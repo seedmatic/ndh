@@ -12,7 +12,11 @@ let
     "${config.home.homeDirectory}/.local/share/pnpm"
     "${config.home.homeDirectory}/.local/opt/lima-vm/bin"
     "${config.home.homeDirectory}/.nix-profile/bin"
+  ]
+  ++ lib.optionals pkgs.stdenvNoCC.isLinux [
     "/run/wrappers/bin"
+  ]
+  ++ [
     "/run/current-system/sw/bin"
     "/etc/profiles/per-user/${userName}/bin"
   ];
@@ -22,7 +26,12 @@ let
   vscodeShellIntegration = shell: ''
     # Only manually source if VS Code hasn't already injected the integration
     if [[ "$TERM_PROGRAM" == "vscode" && -z "$VSCODE_INJECTION" ]]; then
-      VSCODE_SHELL_INTEGRATION="$(${lib.meta.getExe pkgs.vscode} --locate-shell-integration-path ${shell} 2>/dev/null)"
+      vscode_bin="$(command -v code-insiders || command -v code || true)"
+      if [[ -n "$vscode_bin" ]]; then
+        VSCODE_SHELL_INTEGRATION="$("$vscode_bin" --locate-shell-integration-path ${shell} 2>/dev/null)"
+      else
+        VSCODE_SHELL_INTEGRATION=""
+      fi
       if [[ -n "$VSCODE_SHELL_INTEGRATION" && -f "$VSCODE_SHELL_INTEGRATION" ]]; then
         # Set the variable that the integration script expects when manually sourced
         VSCODE_INJECTION=1
@@ -65,7 +74,7 @@ in
         "$HOME/.local/share/pnpm"
         "$HOME/.local/opt/lima-vm/bin"
         "$HOME/.nix-profile/bin"
-        /run/wrappers/bin
+${lib.optionalString pkgs.stdenvNoCC.isLinux "        /run/wrappers/bin"}
         /run/current-system/sw/bin
         "/etc/profiles/per-user/$USER/bin"
         "''${path[@]}"
