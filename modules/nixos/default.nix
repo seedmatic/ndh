@@ -256,8 +256,15 @@ in
           "boot.shell_on_fail"
           "boot.trace"
         ])
-        # Keep tty1 last so /dev/console and interactive local login stay on the graphical console.
-        (lib.mkAfter [ "console=tty1" ])
+        # Keep tty1 plus runtime debug overrides at the end so they win against
+        # upstream defaults contributed by other modules (e.g. loglevel=0).
+        (lib.mkAfter (
+          [ "console=tty1" ]
+          ++ (lib.optionals (!bootstrapMode) [
+            "loglevel=7"
+            "ignore_loglevel"
+          ])
+        ))
       ];
 
       kernel.sysctl = {
@@ -271,7 +278,13 @@ in
       loader.efi.canTouchEfiVariables = lib.mkForce false;
 
       # verbosity (default off; override per-host if needed)
-      consoleLogLevel = lib.mkDefault consoleCfg.logLevel;
+      consoleLogLevel =
+        if bootstrapDebug then
+          lib.mkForce 7
+        else if bootstrapMode then
+          lib.mkForce 4
+        else
+          lib.mkDefault consoleCfg.logLevel;
       initrd = {
         inherit kernelModules supportedFilesystems;
 
@@ -403,6 +416,7 @@ in
 
     systemd.services."serial-getty@hvc0".enable = true;
     systemd.services."serial-getty@ttyAMA0".enable = true;
+    systemd.services."serial-getty@ttyS0".enable = true;
 
     # Preserve profile-provided user kind flags.
     # For normal users, do not force low Darwin-style IDs (<1000) on NixOS,

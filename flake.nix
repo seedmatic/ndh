@@ -489,7 +489,7 @@
           inherit diskSizeHint;
           nixosConfigurations = {
             inherit ext4 zfs;
-            "${mainName}-nixos" = zfs;
+            "${mainName}-nixos" = if hostImageMode == "bootstrap" then ext4 else zfs;
           };
           inherit
             diskImageBringupSystemdBoot
