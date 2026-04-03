@@ -97,14 +97,17 @@ in
   home.activation =
     let
       sshExtractKeysScript = pkgs.replaceVars ./ssh-extract-keys.sh {
+        awk = "${pkgs.gawk}/bin/awk";
         yq = "${pkgs.yq-go}/bin/yq";
       };
 
       sshRegenerateCertsScript = pkgs.replaceVars ./ssh-regenerate-certs.sh {
+        awk = "${pkgs.gawk}/bin/awk";
         yq = "${pkgs.yq-go}/bin/yq";
       };
 
       deploySSHKeysScript = pkgs.replaceVars ./ssh-keys.d/deploy-ssh-keys.sh {
+        awk = "${pkgs.gawk}/bin/awk";
         bash = "${pkgs.bash}/bin/bash";
         mktemp = "${pkgs.coreutils-full}/bin/mktemp";
         rsync = "${pkgs.rsync}/bin/rsync";

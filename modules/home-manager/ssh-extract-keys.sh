@@ -58,7 +58,7 @@ for file in "$outputDir/"*.yml; do
   @yq@ eval '.content | trim' -i "$newfile"
 done
 
-: Provide stable symlink names (<key>-cert.pub) pointing to a matching user certificate.
+: "Provide stable symlink names (<key>-cert.pub) pointing to a matching user certificate."
 # Match is validated by comparing key fingerprint and certificate embedded public-key fingerprint.
 for priv in "$outputDir/"*; do
   [[ -f "$priv" ]] || continue
@@ -68,7 +68,7 @@ for priv in "$outputDir/"*; do
   base="${priv##*/}"
   certs=("$outputDir/${base}"-*-user-cert.pub)
 
-  key_fp="$(ssh-keygen -lf "$priv" 2>/dev/null | awk '{print $2}' || true)"
+  key_fp="$(ssh-keygen -lf "$priv" 2>/dev/null | @awk@ '{print $2}' || true)"
   if [[ -z "$key_fp" ]]; then
     rm -f "$outputDir/${base}-cert.pub"
     continue
@@ -77,7 +77,7 @@ for priv in "$outputDir/"*; do
   matched_cert=""
   for cert in "${certs[@]}"; do
     [[ -f "$cert" ]] || continue
-    cert_fp="$(ssh-keygen -Lf "$cert" 2>/dev/null | awk '/Public key:/ {print $4; exit}' || true)"
+    cert_fp="$(ssh-keygen -Lf "$cert" 2>/dev/null | @awk@ '/Public key:/ {print $4; exit}' || true)"
     if [[ -n "$cert_fp" && "$cert_fp" == "$key_fp" ]]; then
       matched_cert="$cert"
       break

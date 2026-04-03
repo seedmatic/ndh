@@ -54,8 +54,8 @@ main() {
         local_key="$keys_state_dir/$key_name"
         local_cert="$local_key-cert.pub"
         if [[ -f "$local_key" && -f "$local_cert" ]]; then
-          key_fp="$(ssh-keygen -lf "$local_key" 2>/dev/null | awk '{print $2}' || true)"
-          cert_fp="$(ssh-keygen -Lf "$local_cert" 2>/dev/null | awk '/Public key:/ {print $4; exit}' || true)"
+          key_fp="$(ssh-keygen -lf "$local_key" 2>/dev/null | @awk@ '{print $2}' || true)"
+          cert_fp="$(ssh-keygen -Lf "$local_cert" 2>/dev/null | @awk@ '/Public key:/ {print $4; exit}' || true)"
           if [[ -n "$key_fp" && -n "$cert_fp" && "$key_fp" != "$cert_fp" ]]; then
             rm -f "$local_cert"
           fi
