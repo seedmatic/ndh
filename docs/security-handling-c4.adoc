@@ -53,12 +53,13 @@ rectangle "Host Security Boundary" {
   rectangle "Activation Pipeline" as pipeline {
     [Pre-activation key bootstrap\n(nxmatic.sopsAgeKeyBootstrap)] as bootstrap
     [sops-install-secrets daemon] as installsecrets
+    [OpenSSH host-key installer\n(systemd activation)] as hostkeyinst
     [post-activation HM hooks] as hmhooks
   }
 
   rectangle "Key Sources" as keysrc {
     [System age key\n/etc/sops/age/keys.txt] as sysage
-    [SSH host keys\n(optional import)] as sshkeys
+    [Role-scoped SSH server keys\n(rdp-host, vz-guest-*)] as sshkeys
   }
 
   rectangle "Secret Sources (repo)" as src {
@@ -91,6 +92,8 @@ certdocs --> installsecrets : encrypted cert material
 installsecrets --> gen : write files
 gen --> symlink : atomic generation switch
 symlink --> namespaced : namespaced links
+namespaced --> hostkeyinst : host key material
+hostkeyinst --> consumers : installs /etc/ssh/ssh_host_ed25519_key
 
 namespaced --> cachixwatch : auth token path
 namespaced --> sshdeploy : SSH key YAML path
@@ -99,6 +102,11 @@ note right of bootstrap
   Two-phase rollout:
   bootstrap -> enforce
   per-host in shared flake
+end note
+
+note right of hostkeyinst
+  Canonical server host-key selection:
+  default `rdp-host`, override `vz-guest-${NDH_VZ_GUEST}` when present.
 end note
 @enduml
 ----

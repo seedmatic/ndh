@@ -1,0 +1,53 @@
+= Session Summary: Remote Rebuild Reboot Behavior
+:toc: left
+:toclevels: 3
+:icons: font
+:date: 2026-04-05
+
+== Overview
+
+Validated remote `nixos-rebuild` behavior on `bioskop-nixos` after a VM restart workflow.
+
+Main outcome: remote `switch` can complete activation but still return a false-negative error when SSH is interrupted by service/network restarts during the handoff.
+
+== Findings
+
+=== 1. Misleading failure signal on remote switch
+* `nixos-rebuild` invoked remote sudo correctly (NOPASSWD model is valid)
+* Activation logs showed normal completion phases (`activating`, restarting units)
+* SSH transport dropped near the end (`Connection ... closed by remote host`), producing a non-zero exit and misleading sudo-password hint
+
+=== 2. Practical operator policy
+* Prefer `nixos-rebuild boot --target-host <host> --sudo` for remote updates that may affect networking/session continuity
+* Follow with explicit reboot/power-cycle for deterministic rollout
+* Treat remote `switch` exit code with caution when control connection drops during post-activation restarts
+
+=== 3. Operational validation
+* VM generation after restart reported expected target build (`25.11.20251209.09eb77e`)
+* This confirmed the deployment result despite prior remote `switch` false-negative
+
+== Runtime operation performed
+
+* Issued remote poweroff from host side
+* Restarted Lima instance `nerd-nixos`
+* Encountered and resolved one startup transient: `attach disk ... in use by instance` by force-stop + restart
+* Confirmed VM state `Running` and SSH reachability after restart
+
+== Recommended runbook note
+
+Use this sequence for remote VM upgrades where SSH continuity is fragile:
+
+. Build + set next generation with remote sudo using `boot`
+. Reboot (or poweroff/start)
+. Verify generation/version after boot
+
+== Status
+
+* Remote reboot behavior documented
+* Restart flow validated end-to-end
+* Recommended default updated: remote `boot` + reboot for reliability
+
+---
+**Status:** Confirmed and documented
+**Session Date:** 2026-04-05
+**Key Achievement:** Distinguished false-negative remote `switch` disconnects from actual deployment failure

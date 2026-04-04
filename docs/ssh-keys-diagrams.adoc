@@ -101,7 +101,7 @@ graph LR
 graph TD
     A["nxmatic-ssh-keys.yaml<br/>(SOPS encrypted)"]
     
-    A -->|SOPS decrypt| B["Plaintext Profile YAML<br/>{<br/>  github-signing: {type, public, private},<br/>  rke2-cluster: {type, public, private, authorities:{mammoth-skate:{...}}},<br/>  mammoth-skate: {type, usage, public, private},<br/>  host: {type, usage, authorities:{mammoth-skate:{...}}},<br/>  linux-builder: {type, public, private, authorities:{mammoth-skate:{...}}}<br/>}"]
+    A -->|SOPS decrypt| B["Plaintext Profile YAML<br/>{<br/>  github-signing: {type, public, private},<br/>  rke2-cluster: {type, public, private, authorities:{mammoth-skate:{...}}},<br/>  mammoth-skate: {type, usage, public, private},<br/>  rdp-host: {type, usage, authorities:{mammoth-skate:{...}}},<br/>  vz-guest-<guest>: {type, usage, authorities:{mammoth-skate:{...}}},<br/>  linux-builder: {type, public, private, authorities:{mammoth-skate:{...}}}<br/>}"]
     
     B -->|Stage 1: Extract| C1["github-signing (private)"]
     B -->|Stage 1: Extract| C2["github-signing.pub"]

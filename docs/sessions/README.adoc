@@ -73,10 +73,23 @@ This directory contains detailed session summaries documenting the evolution of 
 
 == Latest Session
 
-link:2025-10-12.adoc[**2025-10-12: Cluster Startup & Headscale Deployment (Planning)**]::
-Initial planning / kickoff for full RKE2 cluster bring-up inside Lima NixOS guest plus Headscale server + gateway deployment. Establishes health criteria, scripts (system-health draft), and pre-expiration documentation capture protocol.
+link:2026-04-05-remote-rebuild-reboot-behavior.adoc[**2026-04-05: Remote Rebuild Reboot Behavior**]::
+Validated that remote `nixos-rebuild switch` can report a false-negative when SSH is interrupted during unit/network restarts; documented reliable operator flow (`boot` + reboot + post-boot generation verification).
 
 == All Sessions
+
+=== 2026-04-05
+
+link:2026-04-05-remote-rebuild-reboot-behavior.adoc[Remote Rebuild Reboot Behavior]::
+**Focus:** Clarify remote rebuild failure semantics and define reliable reboot-oriented execution path
+
+**Achievements:**
+* Confirmed NOPASSWD remote sudo works and was not the failure cause
+* Isolated false-negative to SSH disconnect during post-activation service/network restarts
+* Established preferred operational pattern: `boot` + reboot + post-boot generation verification
+* Executed remote poweroff + Lima restart and verified VM returned to running state
+
+**Status:** Documented and validated
 
 === 2025-10-12 (Planning)
 

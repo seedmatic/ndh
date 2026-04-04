@@ -400,6 +400,7 @@ package "Shared Contracts" {
   [Guest bootstrap step contract\n(cloud-init semantics)] as gueststeps
   [NixOS target ref\n(nixosFlakePath + nixosHostAttr)] as nixosref
   [Role-specific env naming\n(NDH_RDP_HOST, NDH_VZ_HOST)] as envnaming
+  [SSH server host-key provisioning\n(rdp-host default, vz-guest override)] as hostkeycontract
   [Activation logger contract] as actlog
 }
 
@@ -427,6 +428,8 @@ nixosref --> lcrun
 nixosref --> tcrun
 envnaming --> lcrun
 envnaming --> tcrun
+hostkeycontract --> lcact
+hostkeycontract --> tcact
 actlog --> lcact
 actlog --> tcact
 
@@ -442,6 +445,8 @@ note bottom
   Nix model -> activation materialization -> managed run wrapper.
   Shared model first: cloud-config seed + guest bootstrap steps.
   Host naming is role-based (Access/Virtualization/Control), not runtime-branded.
+  SSH server host key provisioning is role-scoped:
+  default `rdp-host`, guest override `vz-guest-${NDH_VZ_GUEST}`.
   Bootstrap substrate differs by adapter:
   Lima uses runtime cloud-init/cidata,
   Tart uses shared qcow2/raw source consumed through NBD bridge.
