@@ -1,0 +1,434 @@
+= VM Configuration Models (Lima + Tart) — C4-Style UML
+:toc: left
+
+== Purpose
+
+This note describes the two VM configuration models currently present in `nix-darwin-home`:
+
+* the active Lima VM configuration model (`lima.configGenerator`), and
+* the Tart VM configuration target architecture (future plan).
+
+It also explains how both models relate to each other and to the host profile model.
+
+IMPORTANT: for Lima, first-boot guest bring-up is primarily cloud-config/cloud-init driven; this note now models that path explicitly.
+
+== Scope and Artifact Boundaries (Do Not Mix)
+
+This document covers three related but distinct concerns:
+
+* **NixOS guest VM boot artifacts** (Lima today, Tart/NixOS adapter in plan):
+  raw/qcow2-style VM disk artifacts + cloud-init/NoCloud seed.
+* **NixOS OCI/container artifacts**:
+  optional container payloads for container runtimes (not canonical VM boot media in this plan).
+
+Cloud-init semantics in this note apply to **NixOS guest paths**.
+
+=== Artifact mapping matrix
+
+* **Lima + NixOS** -> NixOS VM disk image (`nixos.img` raw/qcow2 family) + NoCloud/cidata seed.
+* **Tart + NixOS (planned)** -> same NixOS VM disk artifact, exported/attached through NBD bridge + NoCloud-style seed via Tart adapter.
+* **NixOS OCI** -> optional runtime payload format (non-canonical for VM boot in this plan).
+
+Adapter parity note: Lima and Tart perform the same orchestration role and can share the same canonical disk artifact source (`.qcow2`/raw), with Tart consuming it through NBD.
+
+=== Canonical convergence — single disk artifact via NBD bridge
+
+Canonical convergence model:
+
+* Keep one canonical NixOS disk artifact (`.qcow2`/raw) as source of truth.
+* Reuse that same artifact for Lima directly.
+* Export it via NBD (`qemu-nbd`/`nbdkit`) for Tart adapter attachment path.
+
+This removes `.oci` as canonical Tart bootstrap input and minimizes format translation.
+
+== Shared Model — Cloud-Config Contract (Canonical)
+
+Both runtime paths are defined against one canonical guest bootstrap contract:
+
+* Cloud-init/NoCloud-style seed payload for NixOS guest bootstrap.
+* Shared host/profile-derived identity and topology inputs.
+* Common guest bootstrap steps (user/network/secret bootstrap/reconfigure hooks).
+* Runtime-specific adapters that transport/inject the same contract.
+
+In other words:
+
+* Lima = active adapter implementation of the shared cloud-config model.
+* Tart = planned adapter implementation of the same shared cloud-config model.
+
+=== Shared components
+
+The two models should converge on these shared components:
+
+* **Host profile contract**: `config.profile.*` and host identity derivation.
+* **Seed schema contract**: metadata/user-data/network-config conventions for NixOS guests.
+* **Guest bootstrap executor**: cloud-init-driven systemd path on NixOS.
+* **Post-bootstrap orchestration contract**: remote `nixos-rebuild` / lifecycle commands.
+
+=== Runtime layering architecture (explicit)
+
+To avoid Lima-only coupling while preserving one guest intent model:
+
+* Keep a **common NixOS guest base** module set (runtime-agnostic).
+* Add **exclusive runtime bootstrap modules**:
+** `lima-cloud-init` layer for Lima-specific datasource/mount/service ordering.
+** `tart-cloud-init` layer for Tart-specific datasource/NBD/service ordering.
+* Select one runtime layer through a single runtime selector option (e.g. `nxmatic.vmRuntime`).
+* Enforce exclusivity with assertions so Lima and Tart runtime layers cannot be active simultaneously.
+
+[NOTE]
+====
+Path neutrality rule:
+
+* Guest-side mountpoints and config paths should be either runtime-neutral or explicitly runtime-scoped.
+* Avoid Lima-only hardcoded paths in shared modules (for example, direct `/mnt/lima-cidata/...` assumptions in common guest logic).
+* Runtime-specific path wiring belongs in runtime layers (`lima-cloud-init` vs `tart-cloud-init`).
+====
+
+== Model A — Lima Adapter (Current Implementation)
+
+=== What it is
+
+The Lima model is the currently active and mature path for host-managed VM orchestration.
+The Darwin module `modules/darwin/lima-config.nix` derives host/profile-aware values and generates:
+
+* `~/.lima/_config/lima.yaml` (from the evaluated Nix model), and
+* `~/.lima/run.sh` (managed host orchestration wrapper).
+
+On guest boot, the NixOS side consumes Lima cidata via `lima-cloud-init.service`
+(`modules/nixos/systemd/lima-cloud-init.nix` + `lima-cloud-init.sh`), which is the key bootstrap mechanism.
+
+=== Core inputs and invariants
+
+* Host/profile identity comes from `config.profile.*`.
+* Network topology is sourced from canonical catalog data (`catalog.networks.rke2labNetplan`).
+* Hostname-to-cluster mapping must be explicit (hard failure when missing).
+* Script provisioning is done via activation (`system.activationScripts.postActivation`).
+* Guest bootstrap depends on cidata mount (`/mnt/lima-cidata`) and `lima-cloud-init.service`.
+
+=== Operational role
+
+The Lima model is responsible for:
+
+* VM runtime config materialization,
+* cloud-init/cidata based first-boot guest reconfiguration,
+* remote NixOS activation convenience commands,
+* alignment with existing bootstrap + ZFS workflows.
+
+== Model B — Tart VM Configuration Model (Scaffold)
+
+[NOTE]
+====
+The previously drafted Tart Darwin module and scripts were intentionally removed because they did not match the required target architecture.
+Tart is documented here as a future plan, not as an active module implementation in this repository.
+====
+
+=== What it is
+
+The Tart target model in this plan is a runtime adapter around the same shared NixOS cloud-init contract,
+with an NBD-backed shared qcow2/raw disk artifact as canonical input.
+Unlike the removed draft, the intended design does not start from a bespoke Tart-only wrapper contract.
+
+=== Core inputs and invariants
+
+* Uses the same host/profile inputs as Lima at architecture level.
+* Targets a common NoCloud/cidata payload format for NixOS guests.
+* Keeps runtime-specific host logic in adapters (Lima adapter vs Tart adapter).
+* Uses NBD-exported canonical qcow2/raw artifact as canonical Tart-side disk input.
+
+=== Operational role
+
+The Tart target model should provide:
+
+* a Tart adapter that injects the same cloud-init payload shape used by Lima,
+* an image-build pipeline for base artifacts,
+* parity with shared guest bootstrap semantics.
+
+== Relationship Between Models
+
+=== Architectural relationship
+
+The two models are sibling host modules under the same flake and profile system:
+
+* Both consume shared host/profile configuration.
+* Both should implement the same cloud-config/bootstrap contract for NixOS guests.
+* Lima is the active runtime path today.
+* Tart is a planned runtime adapter path for NixOS guests.
+
+=== Canonical behavior policy
+
+At this stage, canonical runtime behavior remains Lima-first.
+Tart implementation remains deferred until it follows the shared cloud-init-first contract.
+
+== Bootstrap and Disk Attachment Relationship (Lima vs Tart)
+
+=== Lima bootstrap (runtime cloud-config)
+
+* Host activation renders `lima.yaml` + helper scripts.
+* Lima exposes cidata to guest (`/mnt/lima-cidata`).
+* `lima-cloud-init.service` applies runtime bootstrap on guest boot.
+* Post-bootstrap host commands (`~/.lima/run.sh`) drive `nixos-rebuild` + ZFS activation.
+
+=== Tart disk attachment (NBD-backed)
+
+* Host-side adapter exports/attaches NBD from canonical qcow2/raw artifact.
+* Tart runtime receives NBD-backed disk attachment plus shared NoCloud seed contract.
+* Future Tart adapter should also attach/serve NoCloud-style data so guest bootstrap can run common cloud-init steps.
+
+[NOTE]
+====
+TBD — Tart NoCloud seed transport:
+
+The concrete delivery mechanism for NoCloud seed data in Tart still needs to be finalized.
+Candidate options include:
+
+* attaching a seed ISO/cidata-style artifact, or
+* using a native Virtualization.framework-compatible injection path.
+
+Whichever option is selected, the guest-consumed seed schema must stay aligned with the shared cloud-config contract.
+====
+
+== Policy Decision (Current Plan)
+
+For the canonical Tart + NixOS bootstrap path:
+
+* use the same canonical `.qcow2`/raw artifact lineage as Lima,
+* expose it to Tart through NBD bridge,
+* keep shared NoCloud/cloud-init semantics for guest bootstrap,
+* keep runtime-specific NBD wiring in Tart adapter logic.
+
+Packer/IPSW paths are outside this canonical plan.
+
+== Planned Nix -> Tart Input Strategy (NBD + shared disk artifact)
+
+=== Phase 1 — Canonical Nix-produced VM disk artifact
+
+* Build/resolve canonical NixOS `.qcow2`/raw artifact path.
+* Publish deterministic path/reference as canonical adapter disk source.
+
+=== Phase 2 — Adapter NBD bridge
+
+* Tart adapter exposes the canonical artifact via NBD (`qemu-nbd`/`nbdkit`) and attaches it.
+* Adapter also injects shared NoCloud seed for unified guest bootstrap steps.
+
+=== Phase 3 — Contract convergence
+
+* Keep cloud-init bootstrap steps shared across Lima and Tart NixOS paths.
+* Keep NBD bridge concerns isolated to adapter layer.
+
+=== Phase 4 — Runtime-layered module structure
+
+* Refactor guest config into:
+** common runtime-agnostic modules,
+** `lima-cloud-init` runtime layer,
+** `tart-cloud-init` runtime layer.
+* Wire runtime selector to include exactly one runtime layer per build.
+* Keep shared bootstrap semantics in common modules; keep datasource/transport details in runtime layers only.
+
+=== How they relate
+
+* They share host profile and orchestration contracts.
+* They share a target guest bootstrap contract (cloud-init semantics for NixOS).
+* They differ in *where bootstrap logic lives*:
+** Lima: mostly runtime cloud-init/cidata at guest boot.
+** Tart: runtime NBD disk attachment + shared cloud-init seed.
+* Migration intent is to unify guest bootstrap behavior around shared cloud-init steps for NixOS guests.
+
+=== Target convergence rule
+
+For NixOS guests, runtime-specific logic must remain in adapters only.
+Guest bootstrap semantics should be defined once in the shared cloud-config contract and reused by both adapters.
+
+== C4 Diagram — Level 1 (System Context)
+
+[plantuml]
+----
+@startuml
+' @codebase
+left to right direction
+
+actor "Operator" as operator
+cloud "Git Repository\n(nix-darwin-home)" as repo
+
+rectangle "Darwin Host\n(profile + activation)" as host {
+  [Host Flake Model] as flakeModel
+  [Shared Cloud-Config Contract\n(canonical)] as sharedContract
+  [Lima Config Model\n(lima.configGenerator)] as limaModel
+  [Tart Target Model\n(future adapter plan)] as tartModel
+}
+
+node "Lima Runtime" as limaRuntime
+node "Lima cidata + cloud-init\n(lima-cloud-init.service)" as limaCloudInit
+node "Tart Runtime" as tartRuntime
+node "Tart Input Pipeline\n(shared qcow2/raw + NBD adapter)" as tartFactory
+node "NixOS Guest" as nixosGuest
+
+operator --> repo : edits modules/options
+operator --> host : darwin-rebuild switch
+repo --> flakeModel : evaluate
+flakeModel --> sharedContract : define seed schema + bootstrap steps
+flakeModel --> limaModel : active path
+flakeModel --> tartModel : planned path
+
+limaModel --> sharedContract : implement contract
+tartModel --> sharedContract : implement contract
+
+limaModel --> limaRuntime : generates lima.yaml + ~/.lima/run.sh
+limaRuntime --> limaCloudInit : exposes cidata + boots guest
+limaCloudInit --> nixosGuest : runtime bootstrap/reconfigure
+
+tartModel --> tartFactory : base input path (shared qcow2/raw via NBD)
+tartFactory --> tartRuntime : provisioned image artifact
+tartModel --> tartRuntime : future adapter injects NoCloud seed
+tartRuntime --> nixosGuest : starts VM + remote activation
+
+note bottom of tartModel
+  Not implemented here yet.
+  Must align with shared cloud-init contract.
+end note
+@enduml
+----
+
+== C4 Diagram — Level 2 (Container View on Darwin Host)
+
+[plantuml]
+----
+@startuml
+' @codebase
+top to bottom direction
+
+rectangle "nix-darwin-home flake" as flake {
+  [Host Profile Model\n(config.profile.*)] as profile
+  [Shared cloud-config contract\n(seed schema + steps)] as sharedContract
+  [Darwin Module Graph] as darwinGraph
+  [lima-config.nix] as limaNix
+  [Tart adapter contract\n(doc-only, future)] as tartNix
+}
+
+rectangle "Activation Pipeline" as activation {
+  [postActivation scripts] as postActivation
+  [Managed files in home dir] as managedFiles
+}
+
+rectangle "Generated Artifacts" as artifacts {
+  [~/.lima/_config/lima.yaml] as limayaml
+  [~/.lima/run.sh] as limarun
+  [Tart NoCloud seed\n(future)] as tartrun
+}
+
+rectangle "Guest Bootstrap Substrates" as substrates {
+  [Lima cidata mount\n/mnt/lima-cidata] as limacidata
+  [lima-cloud-init.service] as limaci
+  [Tart disk\n(from shared qcow2/raw via NBD)] as tartimage
+}
+
+rectangle "Runtime Adapters" as runtime {
+  [limactl + ssh] as limaAdapter
+  [tart + ssh] as tartAdapter
+}
+
+profile --> darwinGraph
+darwinGraph --> sharedContract
+
+darwinGraph --> limaNix : always imported
+
+darwinGraph --> tartNix : future work (not imported)
+
+sharedContract --> limaNix : adapter binding
+sharedContract --> tartNix : adapter binding (future)
+
+limaNix --> postActivation
+
+tartNix --> postActivation : future implementation step
+
+postActivation --> managedFiles
+managedFiles --> limayaml
+managedFiles --> limarun
+managedFiles --> tartrun
+
+limarun --> limaAdapter
+limaAdapter --> limacidata
+limacidata --> limaci
+
+tartrun --> tartAdapter
+tartimage --> tartAdapter
+
+note right of limarun
+  Active path + runtime cloud-init bootstrap
+end note
+
+note right of tartrun
+  Planned adapter + seed path
+end note
+@enduml
+----
+
+== C4 Diagram — Level 3 (Component Mapping and Shared Contracts)
+
+[plantuml]
+----
+@startuml
+' @codebase
+left to right direction
+
+package "Shared Contracts" {
+  [Host identity\n(effectiveHostName)] as identity
+  [Cloud-config seed schema\n(NoCloud/cidata contract)] as seed
+  [Guest bootstrap step contract\n(cloud-init semantics)] as gueststeps
+  [NixOS target ref\n(nixosFlakePath + nixosHostAttr)] as nixosref
+  [Activation logger contract] as actlog
+}
+
+package "Lima Components" {
+  [lima-config.nix model] as lcmodel
+  [lima activation template] as lcact
+  [lima run template] as lcrun
+}
+
+package "Tart Components" {
+  [Tart adapter model\n(future)] as tcmodel
+  [NoCloud seed generator\n(future)] as tcact
+  [Tart runtime launcher\n(future)] as tcrun
+}
+
+identity --> lcmodel
+identity --> tcmodel
+seed --> lcact
+seed --> tcact
+gueststeps --> lcact
+gueststeps --> tcact
+nixosref --> lcrun
+nixosref --> tcrun
+actlog --> lcact
+actlog --> tcact
+
+lcmodel --> lcact
+lcmodel --> lcrun
+
+tcmodel --> tcact
+
+tcmodel --> tcrun
+
+note bottom
+  Both models follow the same host-driven pattern:
+  Nix model -> activation materialization -> managed run wrapper.
+  Shared model first: cloud-config seed + guest bootstrap steps.
+  Bootstrap substrate differs by adapter:
+  Lima uses runtime cloud-init/cidata,
+  Tart uses shared qcow2/raw source consumed through NBD bridge.
+  Target direction is shared cloud-init guest steps for NixOS.
+  Runtime adapter differs (limactl vs tart), contract shape should converge.
+end note
+@enduml
+----
+
+== Practical Reading Guide
+
+* If you need current production behavior, read Lima model first.
+* If you are planning migration, compare Level 3 component contracts.
+* Treat Tart here as future architecture, not active module behavior.
+
+== Current Status Summary
+
+* Lima model: active and canonical runtime path.
+* Tart model: future plan; drafted module artifacts removed.
+* Relationship: migration target is shared cloud-init semantics for NixOS guests with runtime-specific adapters.

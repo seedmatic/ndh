@@ -44,6 +44,9 @@ Operational runbook for bootstrap/enforce lifecycle, host-by-host rollout, and o
 link:security-handling-c4.adoc[Security Handling (C4-Style UML)]::
 Context + container diagrams for SOPS key lifecycle, runtime secret materialization, and Cachix publish/consume flows.
 
+link:vm-configuration-models-c4.adoc[VM Configuration Models (Lima + Tart) — C4-Style UML]::
+System/context/container/component diagrams describing the Lima model, Tart scaffold model, and their shared host-driven contracts.
+
 == Quick Start
 
 === For New Users
