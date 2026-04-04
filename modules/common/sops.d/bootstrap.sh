@@ -83,7 +83,7 @@ else
     remote_host_raw="$(printenv "$remote_fetch_hostname_env_var" 2>/dev/null || true)"
     if [ -z "$remote_host_raw" ] && [ -r /mnt/lima-cidata/lima.env ]; then
       while IFS='=' read -r key value; do
-        [ "$key" = "LIMA_HOSTNAME" ] || continue
+        [ "$key" = "$remote_fetch_hostname_env_var" ] || continue
         remote_host_raw="$value"
       done < /mnt/lima-cidata/lima.env
     fi

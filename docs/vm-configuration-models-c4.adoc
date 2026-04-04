@@ -24,8 +24,11 @@ A single machine may provide one or multiple roles. For example, one host can be
 
 Environment naming follows the same separation:
 
-* `RKE2LAB_ACCESS_HOST` (role-oriented, runtime-agnostic)
+* `NDH_ACCESS_HOST` (role-oriented, runtime-agnostic in this repository)
+* for `nix-darwin-home`-owned variables, use `NDH_*`.
 * avoid runtime-coupled naming like `LIMA_HOSTNAME` for cross-runtime control paths.
+
+See also link:env-prefix-policy.adoc[Environment Variable Prefix Policy].
 
 == Scope and Artifact Boundaries (Do Not Mix)
 
@@ -393,7 +396,7 @@ package "Shared Contracts" {
   [Cloud-config seed schema\n(NoCloud/cidata contract)] as seed
   [Guest bootstrap step contract\n(cloud-init semantics)] as gueststeps
   [NixOS target ref\n(nixosFlakePath + nixosHostAttr)] as nixosref
-  [Runtime-agnostic env naming\n(RKE2LAB_ACCESS_HOST)] as envnaming
+  [Runtime-agnostic env naming\n(NDH_ACCESS_HOST)] as envnaming
   [Activation logger contract] as actlog
 }
 

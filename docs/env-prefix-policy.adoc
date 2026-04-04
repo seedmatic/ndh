@@ -1,0 +1,61 @@
+= Environment Variable Prefix Policy
+:toc: left
+
+== Purpose
+
+Define one clear naming convention for environment variables across `nix-darwin-home` and `rke2lab` concerns, without introducing compatibility aliases.
+
+== Canonical Prefixes
+
+* `RKE2LAB_*`:
+** Reserved for RKE2 lab domain semantics (cluster/lab lifecycle, lab access model, and existing established lab contracts).
+
+* `NDH_*`:
+** Canonical prefix for `nix-darwin-home`-scoped concerns.
+** Use for variables whose primary ownership/lifecycle is this repository.
+
+== Decision Rules
+
+When introducing a new variable:
+
+. If the meaning is cluster-lab specific and belongs to the established lab contract, use `RKE2LAB_*`.
+. If the meaning is host/bootstrap/module behavior owned by `nix-darwin-home`, use `NDH_*`.
+. Do not define dual names (no aliasing such as `OLD_* || NEW_*`).
+. Keep one canonical variable per concern.
+
+== Boundary Guidance
+
+Use `RKE2LAB_*` when the variable represents:
+
+* lab role semantics shared with cluster operations,
+* cluster access identity contract,
+* behavior tied to rke2lab orchestration expectations.
+
+Use `NDH_*` when the variable represents:
+
+* local Darwin/NixOS module helper behavior in this repo,
+* repository-local path/runtime helper toggles,
+* `nix-darwin-home` operational wiring not required by cluster-lab contracts.
+
+== Change Policy
+
+At the current stage:
+
+* Use `NDH_*` as canonical names for `nix-darwin-home`-owned host/guest/tailnet wiring.
+* Keep `RKE2LAB_*` only for true rke2lab domain contracts.
+* Avoid backward-compatibility aliases unless explicitly requested.
+
+Current canonical mapping for host/guest identity in this repo:
+
+* `NDH_ACCESS_HOST`
+* `NDH_DOMAIN`
+* `NDH_GUEST_NAME`
+* `NDH_USERNAME`
+
+== Examples (naming shape)
+
+* `NDH_SHARE_DIR`
+* `NDH_RUNTIME_DIR`
+* `NDH_<FEATURE>_MODE`
+
+These examples illustrate prefix shape only; choose names that reflect a single, clear ownership domain.
