@@ -40,8 +40,7 @@ let
     lib.filter (path: path != "") [
       "${userHome}/.config/sops/age/keys.txt"
       (if userName != "" then "/home/${userName}/.config/sops/age/keys.txt" else "")
-      (if userName != "" then "/Users/${userName}/.config/sops/age/keys.txt" else "")
-      "/mnt/lima-cidata/sops-age-keys.txt"
+      "/mnt/lima-cidata/.sops.d/keys.txt"
     ];
 
   sopsAgeBootstrapScriptSource = pkgs.replaceVars ./sops.d/bootstrap.sh {
