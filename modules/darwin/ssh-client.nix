@@ -23,6 +23,8 @@ let
 
 in
 {
+  imports = [ ../common/ssh-paths.nix ];
+
   options.sshClient = {
     enable = mkOption {
       type = types.bool;
@@ -40,6 +42,7 @@ in
           ControlMaster auto
           ControlPersist 5m
           PreferredAuthentications publickey,keyboard-interactive
+          StrictHostKeyChecking accept-new
         Include ssh_config.d/*.conf
         Include /etc/ssh/ssh_config.d/*.conf
       '';
@@ -169,8 +172,8 @@ in
 
       identityRelativePath = mkOption {
         type = types.str;
-        default = ".local/state/ssh-key.d/host";
-        description = "Path (relative to profile.user.home) to the host identity private key.";
+        default = "host";
+        description = "Host identity private key path. Relative paths are resolved against sshPaths.perUserSecretsDir; absolute paths are used as-is.";
       };
     };
   };
@@ -244,13 +247,31 @@ in
               "/Users/${userName}";
         in
         "${home}/.lima/_config/user";
+      defaultLimaKnownHosts =
+        let
+          home =
+            if (config ? profile && config.profile ? user && config.profile.user ? home) then
+              config.profile.user.home
+            else
+              "/Users/${userName}";
+        in
+        "${home}/.lima/_config/known_hosts";
+      guestHostKeySafetyConfig = ''
+        UserKnownHostsFile ${defaultLimaKnownHosts}
+        StrictHostKeyChecking accept-new
+        CheckHostIP no
+      '';
       guestIdentity = if cfg.guest.identityFile != null then cfg.guest.identityFile else defaultLimaKey;
       userHome =
         if (config ? profile && config.profile ? user && config.profile.user ? home) then
           config.profile.user.home
         else
           "/Users/${userName}";
-      hostIdentityFile = "${userHome}/${cfg.hostIdentityDomains.identityRelativePath}";
+      hostIdentityFile =
+        if lib.hasPrefix "/" cfg.hostIdentityDomains.identityRelativePath then
+          cfg.hostIdentityDomains.identityRelativePath
+        else
+          "${config.sshPaths.perUserSecretsDir}/${cfg.hostIdentityDomains.identityRelativePath}";
 
       renderStanza =
         st:
@@ -274,7 +295,9 @@ in
             identityFile = guestIdentity;
             identitiesOnly = cfg.guest.identitiesOnly;
             bypassAgent = cfg.guest.bypassAgent;
-            extraConfig = cfg.guest.extraConfig;
+            extraConfig =
+              guestHostKeySafetyConfig
+              + optionalString (cfg.guest.extraConfig != null) cfg.guest.extraConfig;
           }
         else
           "";

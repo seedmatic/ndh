@@ -17,6 +17,7 @@ let
   profileUser = config.profile.user.name;
   profileHome = config.profile.user.home;
   profileHost = config.profile.host;
+  sshPaths = config.sshPaths;
 
   # Host-side Lima user key (managed by home-manager keys; activation will symlink)
   hostLimaUserPubPath = "${profileHome}/.lima/_config/user.pub";
@@ -84,6 +85,8 @@ let
         limaRunScript = limaRunScript;
         imageSourcePath = imageSourcePath;
         imageTargetPath = imageTargetPath;
+        hostPublicKeyPath = "${sshPaths.systemSecretsDir}/host.pub";
+        hostPrivateKeyPath = "${sshPaths.perUserSecretsDir}/host";
         activationLogger = lib.attrByPath [
           "activation"
           "loggerScript"

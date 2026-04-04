@@ -4,9 +4,10 @@ shopt -s nullglob
 
 main() {
 	yamlFile="$1"
-	outputDir="$2"
+  userOutputDir="$2"
+  systemOutputDir="$3"
 
-	mkdir -p "$outputDir"
+  mkdir -p "$userOutputDir" "$systemOutputDir"
 
 	exp=$(
 		cat <<'EOE' | cut -c 3-
@@ -77,31 +78,38 @@ EOE
 		env TMPDIR="$tmpDir" @yq@ eval "$exp" "$yamlFile" -s '.yamlfile'
 
 	: "Post-process to extract only the content"
-	# Only touch files created by yq (*.yml split output); leave agent-keys and other non-YAML files untouched.
+  # Only touch files created by yq (*.yml split output); leave other non-YAML files untouched.
 	for yamlFile in "$tmpDir"/*; do
 		filename="${yamlFile##*/}"
 		filename="${filename%.yaml}"
-		contentFile="$outputDir/$filename"
+    if [[ "$filename" == *.pub ]]; then
+      contentFile="$systemOutputDir/$filename"
+    else
+      contentFile="$userOutputDir/$filename"
+    fi
 		mv "$yamlFile" "$contentFile"
 		@yq@ --inplace eval '.content | trim' "$contentFile"
-		# Only chmod 600 private keys (non-.pub files)
-		[[ "$filename" != *.pub ]] && chmod 600 "$contentFile"
+    if [[ "$filename" == *.pub ]]; then
+      chmod 644 "$contentFile"
+    else
+      chmod 600 "$contentFile"
+    fi
 	done
 	rm -fr "$tmpDir"
 
 	: "Provide stable symlink names (<key>-cert.pub) pointing to a matching user certificate."
 	# Match is validated by comparing key fingerprint and certificate embedded public-key fingerprint.
-	for priv in "$outputDir/"*; do
+  for priv in "$userOutputDir/"*; do
 		[[ -f "$priv" ]] || continue
 		case "$priv" in
 		*.pub) continue ;;
 		esac
 		base="${priv##*/}"
-		certs=("$outputDir/${base}"-*-user-cert.pub)
+    certs=("$systemOutputDir/${base}"-*-user-cert.pub)
 
 		key_fp="$(@ssh-keygen@ -lf "$priv" 2>/dev/null | @awk@ '{print $2}' || true)"
 		if [[ -z "$key_fp" ]]; then
-			rm -f "$outputDir/${base}-cert.pub"
+      rm -f "$userOutputDir/${base}-cert.pub"
 			continue
 		fi
 
@@ -116,10 +124,9 @@ EOE
 		done
 
 		if [[ -n "$matched_cert" ]]; then
-			cert_basename="${matched_cert##*/}"
-			ln -sf "$cert_basename" "$outputDir/${base}-cert.pub"
+      ln -sf "$matched_cert" "$userOutputDir/${base}-cert.pub"
 		else
-			rm -f "$outputDir/${base}-cert.pub"
+      rm -f "$userOutputDir/${base}-cert.pub"
 		fi
 	done
 }

@@ -273,6 +273,7 @@ in
                   ControlMaster auto
                   ControlPersist 5m
                   PreferredAuthentications publickey,keyboard-interactive
+                  StrictHostKeyChecking accept-new
                 Include ssh_config.d/*.conf
                 Include /etc/ssh/ssh_config.d/*.conf
               '';

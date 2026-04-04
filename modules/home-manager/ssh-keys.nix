@@ -32,7 +32,8 @@ let
       sourceSSHKeysYamlPathOverride
     else
       sshPaths.runtimeSecretsKeysYaml;
-  keysStateDir = sshPaths.stateDir;
+  userKeysDir = sshPaths.perUserSecretsDir;
+  systemKeysDir = sshPaths.systemSecretsDir;
   generatedSSHKeysYamlPath = sshPaths.generatedKeysYamlFile;
   # Effective YAML path consumed by ssh-add-keys/launchd.
   effectiveSSHKeysYamlPath = generatedSSHKeysYamlPath;
@@ -59,8 +60,8 @@ let
   knownHostsScript =
     let
       scriptTemplate = builtins.readFile ./ssh.d/scripts/ca-known-hosts-command.sh;
-      # Resolve CA keys dynamically from XDG state runtime keys dir to avoid store-backed private material.
-      scriptProcessed = builtins.replaceStrings [ "@CA_DIR@" ] [ keysStateDir ] scriptTemplate;
+      # Resolve CA keys from canonical system runtime key directory.
+      scriptProcessed = builtins.replaceStrings [ "@CA_DIR@" ] [ systemKeysDir ] scriptTemplate;
     in
     pkgs.writeScript "ssh-ca-known-hosts" scriptProcessed;
 
@@ -102,7 +103,7 @@ in
     recursive = true;
   };
 
-  # Deploy keys directly to $XDG_STATE_HOME/ssh-key.d with proper permissions
+  # Deploy keys to canonical per-user runtime secrets directories with proper permissions
   # Externalized activation scripts: keep content in the store and execute via bash
   home.activation =
     let
@@ -133,13 +134,13 @@ in
     {
       # Generate the YAML of keys to deploy based on the main keys.yaml and the current host/profile
       generatedSSHKeysYaml = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-        ${pkgs.coreutils}/bin/mkdir -p "${keysStateDir}"
+        ${pkgs.coreutils}/bin/mkdir -p "${userKeysDir}" "${systemKeysDir}"
         ${pkgs.bash}/bin/bash ${sshGenerateKeysYamlScript} "${profileName}" "$(${pkgs.hostname}/bin/hostname -s)" "${sourceSSHKeysYamlPath}" "${generatedSSHKeysYamlPath}" "${hostsCatalogCsv}"
       '';
 
       # Deploy keys to the filesystem with proper permissions based on the generated YAML
-      extractSSHKeys = lib.hm.dag.entryAfter [ "generateSSHKeysYaml" ] ''
-        ${pkgs.bash}/bin/bash ${sshExtractKeysScript} "${generatedSSHKeysYamlPath}" "${keysStateDir}"
+      extractSSHKeys = lib.hm.dag.entryAfter [ "generatedSSHKeysYaml" ] ''
+        ${pkgs.bash}/bin/bash ${sshExtractKeysScript} "${generatedSSHKeysYamlPath}" "${userKeysDir}" "${systemKeysDir}"
       '';
 
       # Ensure mutable authorized_keys exists (symlink-free) with strict perms

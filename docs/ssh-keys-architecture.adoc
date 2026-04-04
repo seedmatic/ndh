@@ -8,23 +8,28 @@
 :imagesdir: ./diagrams
 
 **Version:** 1.0 +
-**Last Updated:** 2026-03-31 +
+**Last Updated:** 2026-04-04 +
 **Scope:** nix-darwin-home SSH deployment pipeline +
 **Status:** Production
 
 [NOTE]
 ====
-This document describes the complete SSH key management system including key extraction, certificate regeneration, and deployment to the runtime environment.
+This document describes the current SSH key management system with split runtime outputs:
+
+* per-user private material: `/run/secrets-per-user/<user>/ssh-keys/`
+* per-user public/trust material: `/run/secrets-per-user/<user>/ssh-system-keys/`
+
+`/run/secrets.d` is an internal sops-nix generation path and is not a consumer-facing API.
 ====
 
 == Executive Summary
 
-The SSH key management system automates deployment of cryptographic keys and certificates from a SOPS-encrypted source (`keys.yaml`) to a runtime directory (`~/.local/state/ssh-key.d/`) at activation time. The pipeline ensures:
+The SSH key management system automates deployment of cryptographic keys and certificates from a SOPS-encrypted source (`keys.yaml`) to runtime directories under `/run/secrets-per-user/<user>/` at activation time. The pipeline ensures:
 
-* **Fresh certificates** generated on each activation (new serial numbers)
-* **Automatic CA signing** of keys with embedded authorities
+* **Fresh activation-time extraction** of key material from profile-scoped YAML
+* **Split ownership model** (private vs public/trust outputs)
 * **Minimal manual intervention** (integrated into `home-manager switch`)
-* **Ephemeral certificates** (not stored in git, always regenerated)
+* **Ephemeral runtime files** (not stored in git)
 * **Runtime compatibility** with SSH agent auto-loading
 
 == C1: System Context
@@ -42,9 +47,9 @@ The SSH key management system automates deployment of cryptographic keys and cer
         │  SSH Keys Management System       │
         │  (home-manager activation module) │
         │                                   │
-        │  - Extract keys from SOPS secret  │
-        │  - Regenerate certificates       │
-        │  - Deploy to runtime directory   │
+        │  - Generate profile YAML          │
+        │  - Extract keys to runtime dirs   │
+        │  - Ensure local authorized_keys   │
         └────────────────────┬──────────────┘
                      │
              ┌───────┼───────┐
@@ -73,115 +78,80 @@ See xref:ssh-keys-diagrams.adoc[SSH Keys Diagrams] for rendered Mermaid diagram 
 |ssh-keys.nix
 |Main Nix module that wires up all components and activation scripts
 
-|Extract Keys (Stage 1)
-|Parses profile YAML with yq, outputs raw private/public key files
+|Generate Profile YAML (Stage 1)
+|Selects current profile/host keys from SOPS source and writes generated `keys.yaml`
 
-|Regenerate Certs (Stage 2)
-|Signs keys with embedded authority CAs using ssh-keygen, generates fresh certificates
+|Extract SSH Keys (Stage 2)
+|Parses generated YAML and writes private keys to per-user dir and public/trust files to system dir
 
-|Deploy SSH Keys (Stage 3)
-|Rsyncs keys + certificates to ~/.local/state/ssh-key.d/, generates agent-keys manifest
+|Ensure Authorized Keys (Stage 3)
+|Creates mutable `~/.ssh/authorized_keys` with strict permissions
 
-|Ensure Authorized Keys (Stage 4)
-|Creates mutable ~/.ssh/authorized_keys file with proper permissions
-
-|Runtime Directory
-|`~/.local/state/ssh-key.d/` - Contains keys, certs, symlinks, and manifest
+|Runtime Directories
+|`/run/secrets-per-user/<user>/ssh-keys/` (private) and `/run/secrets-per-user/<user>/ssh-system-keys/` (public/trust)
 |===
 
-== C3: Component Architecture (Extract → Regenerate → Deploy)
+== C3: Component Architecture (Generate → Extract → Authorize)
 
-=== Stage 1: Key Extraction
+=== Stage 1: Generate Profile YAML
 
 [cols="2,3"]
 |===
 h|Aspect|Details
 
 |Input
-|Profile YAML (one profile from keys.yaml)
+|SOPS decrypted source YAML (`/run/secrets/nix-darwin-home/nxmatic-ssh-keys.yaml`)
 
 |Process
-|* Parse YAML with yq (to_entries, select, splitdoc)
-* Extract key fields: private, public, authorities
-* Output temp files: `<key>`, `<key>.pub`, `<key>-<ca>-ca.pub`
+|* Parse source YAML with yq
+* Select active profile + host
+* Write generated profile YAML to `/run/secrets-per-user/<user>/ssh-keys/keys.yaml`
 
 |Output
-|Directory of raw key files
+|Generated profile YAML for extraction
+
+|Script
+|`ssh-generate-keys-yaml.sh`
+|===
+
+=== Stage 2: Key Extraction and Materialization
+
+[cols="2,3"]
+|===
+h|Aspect|Details
+
+|Input
+|Generated profile YAML + output directories
+
+|Process
+|For each key entry:
+* Write private material to `/run/secrets-per-user/<user>/ssh-keys/`
+* Write public/cert/CA material to `/run/secrets-per-user/<user>/ssh-system-keys/`
+* Normalize file modes (private `0600`, public `0644`)
+
+|Output
+|Runtime key material in split per-user directories
 
 |Script
 |`ssh-extract-keys.sh`
 |===
 
-=== Stage 2: Certificate Regeneration
+=== Stage 3: Authorization
 
 [cols="2,3"]
 |===
 h|Aspect|Details
 
 |Input
-|Profile YAML + tmp_keys_dir (from Stage 1)
+|Extracted runtime key material
 
 |Process
-|For each key with embedded authorities:
-* Extract key public, type, comment
-* For each authority CA:
-  ** Extract CA private key
-  ** Write to temp files (secure, 0400)
-  ** ssh-keygen -s `<ca-priv>` → sign key
-  ** Generate `<key>-<authority>-user-cert.pub`
-* Create stable symlinks: `<key>-cert.pub`
+|* Ensure `~/.ssh/authorized_keys` exists and is mutable
+* Enforce strict permissions (`0600`)
 
 |Output
-|Directory with certs added (+ symlinks)
+|Mutable `~/.ssh/authorized_keys`
 
-|Script
-|`ssh-regenerate-certs.sh`
-|===
-
-=== Stage 3: Deployment
-
-[cols="2,3"]
-|===
-h|Aspect|Details
-
-|Input
-|Profile YAML + tmp_keys_dir (from Stage 2)
-
-|Process
-|* Generate agent-keys manifest
-  ** Filter: only keys with private material AND
-  ** usage ∈ {agent-signing, user-signing, ssh-user, ...}
-* rsync tmp_keys_dir → ~/.local/state/ssh-key.d/ with:
-  ** --delete (clean stale files)
-  ** --chmod=u+w,go-r (keys readable only by user)
-  ** --chown=$USER:$GROUP (correct ownership)
-* Defensive cleanup: remove certs that don't match keys
-
-|Output
-|Keys + certs + symlinks in ~/.local/state/ssh-key.d/
-
-|Script
-|`deploy-ssh-keys.sh`
-|===
-
-=== Stage 4: Authorization
-
-[cols="2,3"]
-|===
-h|Aspect|Details
-
-|Input
-|SSH keys from Stage 3
-
-|Process
-|* Ensure ~/.ssh/authorized_keys exists (mutable, no symlink)
-* Set strict permissions (0600)
-* (Optional) Append additional CA principals
-
-|Output
-|Mutable authorized_keys file ready for use
-
-|Script
 |`ensure-authorized-keys.sh`
 |===
 
@@ -203,54 +173,40 @@ Plaintext Profile YAML
   linux-builder: { type, public, private, authorities: { mammoth-skate: { ... } } }
 }
       │
-      ├─ [STAGE 1: ssh-extract-keys.sh]
-      │  ├─ Extracts ~/.local/state/ssh-key.d/github-signing (private)
-      │  ├─ Extracts ~/.local/state/ssh-key.d/github-signing.pub (public)
-      │  ├─ Extracts ~/.local/state/ssh-key.d/rke2-cluster (private)
-      │  ├─ Extracts ~/.local/state/ssh-key.d/rke2-cluster.pub (public)
-      │  ├─ Extracts ~/.local/state/ssh-key.d/rke2-cluster-mammoth-skate-ca.pub (CA authority)
-      │  └─ ... (same for other keys/authorities)
+      ├─ [STAGE 1: ssh-generate-keys-yaml.sh]
+      │  ├─ Select active profile/host from source YAML
+      │  ├─ Write generated keys.yaml
+      │  └─ Output: /run/secrets-per-user/<user>/ssh-keys/keys.yaml
       │
       ▼
-Raw keys directory (Stage 1 output)
+    Generated profile YAML (Stage 1 output)
       │
-      ├─ [STAGE 2: ssh-regenerate-certs.sh]
-      │  ├─ For rke2-cluster + mammoth-skate authority:
-      │  │  └─ ssh-keygen -s mammoth-private -I rke2-cluster → rke2-cluster-mammoth-skate-user-cert.pub
-      │  │
-      │  ├─ For linux-builder + mammoth-skate authority:
-      │  │  └─ ssh-keygen -s mammoth-private -I linux-builder → linux-builder-mammoth-skate-user-cert.pub
-      │  │
-      │  ├─ Create symlink: rke2-cluster-cert.pub → rke2-cluster-mammoth-skate-user-cert.pub
-      │  └─ Create symlink: linux-builder-cert.pub → linux-builder-mammoth-skate-user-cert.pub
+      ├─ [STAGE 2: ssh-extract-keys.sh]
+      │  ├─ Extract private keys → /run/secrets-per-user/<user>/ssh-keys/
+      │  ├─ Extract public/cert/CA files → /run/secrets-per-user/<user>/ssh-system-keys/
+      │  └─ Apply runtime file modes (0600 private, 0644 public)
       │
       ▼
-Keys directory with certificates (Stage 2 output)
+    Split runtime key directories (Stage 2 output)
       │
-      ├─ [STAGE 3: deploy-ssh-keys.sh]
-      │  ├─ Generate agent-keys manifest (list of keys to load)
-      │  └─ rsync with --delete, --chmod, --chown
+      ├─ [STAGE 3: ssh-ensure-authorized-keys.sh]
+      │  ├─ Ensure ~/.ssh/authorized_keys exists (mutable)
+      │  └─ Enforce strict permissions (0600)
       │
       ▼
-~/.local/state/ssh-key.d/
-├─ agent-keys (manifest)
+ /run/secrets-per-user/<user>/ssh-keys/
+├─ keys.yaml (generated profile YAML)
 ├─ github-signing (private)
-├─ github-signing.pub (public)
 ├─ rke2-cluster (private)
-├─ rke2-cluster.pub (public)
-├─ rke2-cluster-mammoth-skate-ca.pub (CA key)
-├─ rke2-cluster-mammoth-skate-user-cert.pub (certificate)
-├─ rke2-cluster-cert.pub → rke2-cluster-mammoth-skate-user-cert.pub (symlink)
 ├─ linux-builder (private)
-├─ linux-builder.pub (public)
-├─ linux-builder-mammoth-skate-ca.pub (CA key)
-├─ linux-builder-mammoth-skate-user-cert.pub (certificate)
-├─ linux-builder-cert.pub → linux-builder-mammoth-skate-user-cert.pub (symlink)
-└─ ... (permissions: u+rw, go-r)
-      │
-      └─► SSH Agent loads agent-keys manifest + auto-loads -cert.pub sidecars
-          ▼
-          Certificate-based SSH auth ready!
+└─ ... (permissions: 0600)
+
+/run/secrets-per-user/<user>/ssh-system-keys/
+├─ github-signing.pub
+├─ rke2-cluster.pub
+├─ mammoth-skate-ca.pub
+├─ host.pub
+└─ ... (permissions: 0644)
 ----
 
 == File Organization
@@ -261,11 +217,11 @@ Keys directory with certificates (Stage 2 output)
 ----
 modules/home-manager/
 ├── ssh-keys.nix                          # Main Nix module (wires everything up)
-├── ssh-extract-keys.sh                   # Stage 1: Extract keys from profile YAML
-├── ssh-regenerate-certs.sh               # Stage 2: Sign keys with CA authorities
 ├── ssh-key.d/
-│   ├── deploy-ssh-keys.sh               # Stage 3: Deploy to runtime + generate manifest
-│   ├── ensure-authorized-keys.sh        # Stage 4: Ensure authorized_keys file exists
+│   ├── ssh-generate-keys-yaml.sh        # Stage 1: Generate profile-specific YAML
+│   ├── ssh-extract-keys.sh              # Stage 2: Extract to split runtime dirs
+│   ├── ssh-ensure-authorized-keys.sh    # Stage 3: Ensure authorized_keys file exists
+│   ├── ssh-add-keys.sh                  # Agent key loading helper
 │   ├── scripts/
 │   │   ├── ca-known-hosts-command.sh    # External helper for known_hosts with CA
 │   │   └── authorized-principals-command.sh
@@ -276,26 +232,19 @@ modules/home-manager/
 
 [source]
 ----
-~/.local/state/ssh-key.d/               # XDG_STATE_HOME/ssh-key.d
-├── agent-keys                            # Manifest: keys to load in SSH agent
-│
-├── [Keys loaded at activation]
-├── github-signing                        # Private key
-├── github-signing.pub                    # Public key
-├── rke2-cluster                          # Private key
-├── rke2-cluster.pub                      # Public key
-├── rke2-cluster-mammoth-skate-ca.pub    # CA authority public key
-├── rke2-cluster-mammoth-skate-user-cert.pub  # ← Generated certificate (fresh each activation)
-├── rke2-cluster-cert.pub                 # → Stable symlink to above cert
-│
-├── linux-builder                         # Private key
-├── linux-builder.pub                     # Public key
-├── linux-builder-mammoth-skate-ca.pub   # CA authority public key
-├── linux-builder-mammoth-skate-user-cert.pub  # ← Generated certificate (fresh each activation)
-├── linux-builder-cert.pub                # → Stable symlink to above cert
-│
-└── mammoth-skate (CA authority for bioskop)
-    └── Public key available for known_hosts validation
+/run/secrets-per-user/<user>/ssh-keys/
+├── keys.yaml
+├── github-signing
+├── rke2-cluster
+├── linux-builder
+└── ...
+
+/run/secrets-per-user/<user>/ssh-system-keys/
+├── github-signing.pub
+├── rke2-cluster.pub
+├── mammoth-skate-ca.pub
+├── host.pub
+└── ...
 ----
 
 === Secrets (encrypted at rest)
@@ -398,7 +347,7 @@ home-manager switch
 +
 [source,bash]
 ----
-ls -la ~/.local/state/ssh-key.d/my-new-key*
+ls -la /run/secrets-per-user/$USER/ssh-keys/my-new-key*
 ssh-add -l | grep my-new-key
 ----
 
@@ -435,8 +384,8 @@ home-manager switch
 +
 [source,bash]
 ----
-ls -la ~/.local/state/ssh-key.d/rke2-cluster-mammoth-skate-user-cert.pub
-ssh-keygen -L -f ~/.local/state/ssh-key.d/rke2-cluster-cert.pub
+ls -la /run/secrets-per-user/$USER/ssh-system-keys/rke2-cluster-mammoth-skate-user-cert.pub
+ssh-keygen -L -f /run/secrets-per-user/$USER/ssh-system-keys/rke2-cluster-cert.pub
 ----
 
 === Debugging Pipeline
@@ -446,26 +395,16 @@ ssh-keygen -L -f ~/.local/state/ssh-key.d/rke2-cluster-cert.pub
 ----
 # Manually test extract-keys.sh
 yq eval '.profiles.committed' /run/secrets/.../keys.yaml > /tmp/profile.yml
-bash modules/home-manager/ssh-key.d/ssh-extract-keys.sh /tmp/profile.yml /tmp/extracted/
-ls -la /tmp/extracted/
+bash modules/home-manager/ssh-key.d/ssh-extract-keys.sh /tmp/profile.yml /tmp/extracted-user /tmp/extracted-system
+ls -la /tmp/extracted-user /tmp/extracted-system
 ----
 
-**Check cert regeneration (Stage 2):**
+**Check generated profile YAML (Stage 1):**
 [source,bash]
 ----
-# Test regenerate-certs.sh
-bash modules/home-manager/ssh-regenerate-certs.sh /tmp/profile.yml /tmp/extracted/
-ls -la /tmp/extracted/rke2-cluster*
-ssh-keygen -L -f /tmp/extracted/rke2-cluster-cert.pub  # Inspect cert
-----
-
-**Check deployment (Stage 3):**
-[source,bash]
-----
-# Run activation manually
-bash modules/home-manager/ssh-key.d/deploy-ssh-keys.sh
-ls -la ~/.local/state/ssh-key.d/
-cat ~/.local/state/ssh-key.d/agent-keys  # Should list keys to load
+# Test generate-keys-yaml.sh
+bash modules/home-manager/ssh-key.d/ssh-generate-keys-yaml.sh committed bioskop /run/secrets/nix-darwin-home/nxmatic-ssh-keys.yaml /tmp/keys.yaml alcide,bioskop,nikopol
+ls -la /tmp/keys.yaml
 ----
 
 == Architecture Evolution Notes
@@ -510,29 +449,23 @@ cat ~/.local/state/ssh-key.d/agent-keys  # Should list keys to load
 |===
 h|Script|Purpose|Input|Output|Trigger
 
-|`ssh-extract-keys.sh`
-|Extract keys from profile YAML
-|Profile YAML path, output dir
-|Key files (private/public)
+|`ssh-generate-keys-yaml.sh`
+|Generate host/profile-scoped keys YAML
+|Profile, host, source YAML, output YAML, host catalog
+|Generated profile YAML
 |Stage 1
 
-|`ssh-regenerate-certs.sh`
-|Generate certificates via CA signing
-|Profile YAML, output dir
-|Certificate files + symlinks
+|`ssh-extract-keys.sh`
+|Extract to split runtime dirs
+|Generated YAML, user output dir, system output dir
+|Private + public/trust files
 |Stage 2
 
-|`deploy-ssh-keys.sh`
-|Deploy to runtime + generate manifest
-|Profile name, secrets path
-|Keys in `~/.local/state/ssh-key.d/`
-|Stage 3
-
-|`ensure-authorized-keys.sh`
+|`ssh-ensure-authorized-keys.sh`
 |Ensure authorized_keys file ready
 |(none, uses defaults)
 |Mutable `~/.ssh/authorized_keys`
-|Stage 4
+|Stage 3
 |===
 
 == Questions for Future Contributors

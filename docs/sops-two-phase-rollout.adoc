@@ -67,8 +67,10 @@ sudo nixos-rebuild switch --flake .#<nixos-host>
 ----
 # @codebase
 ls -l /etc/sops/age/keys.txt
-ls -l /run/secrets /run/secrets.d /run/secrets/nix-darwin-home
+ls -l /run/secrets /run/secrets-per-user /run/secrets/nix-darwin-home
 ----
+
+NOTE: `/run/secrets.d` is internal sops-nix generation storage; consumer paths should use `/run/secrets` and `/run/secrets-per-user`.
 
 === 4) Export host public recipient
 
@@ -132,4 +134,4 @@ This allows keeping host configs on `enforce` while still supporting first guest
 
 * Never commit private age keys.
 * Rotate immediately if private keys were exposed in logs/chat.
-* Keep runtime secret path namespace (`/run/secrets/nix-darwin-home/*`) to avoid collisions.
+* Keep runtime secret path namespaces (`/run/secrets/nix-darwin-home/*`, `/run/secrets-per-user/*`) to avoid collisions.

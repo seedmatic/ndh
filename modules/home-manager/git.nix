@@ -8,15 +8,18 @@ let
   profile = config._module.specialArgs.profile;
   userName = profile.user.name;
   userEmail = profile.email;
-  stateHome = config.xdg.stateHome or "${config.home.homeDirectory}/.local/state";
-  hostKeysDir = "${stateHome}/ssh-key.d";
+  sshPaths = config.sshPaths;
+  hostKeysDir = sshPaths.systemSecretsDir;
   allowedSignersFile = "${config.xdg.configHome}/git/github_allowed_signers";
   systemCaBundle = config.home.sessionVariables.SSL_CERT_FILE;
   activationLogger = config._module.specialArgs.activationLogger.script;
   activationTag = "home-manager.activationScripts.${userName}.generateAllowedSigners";
 in
 {
-  imports = [ ./git.d/sops.nix ];
+  imports = [
+    ./git.d/sops.nix
+    ../common/ssh-paths.nix
+  ];
 
   home.packages = [ pkgs.github-cli ];
 
@@ -128,7 +131,7 @@ in
         activationTag = activationTag;
       };
     in
-    lib.hm.dag.entryAfter [ "writeBoundary" "deploySSHKeys" ] ''
+    lib.hm.dag.entryAfter [ "writeBoundary" "extractSSHKeys" ] ''
       ${pkgs.bash}/bin/bash ${generateAllowedSignersScript}
     '';
 }

@@ -1,16 +1,15 @@
 # shellcheck shell=bash
 # @codebase
 # Source from interactive bash/zsh shells to attach to a reusable ssh-agent
-# and load the runtime-managed SSH keys selected in ssh-key.d/agent-keys.
+# and load runtime-managed SSH private keys from canonical /run secrets paths.
 
 if [[ -n "${__NXMATIC_SSH_KEYCHAIN_INIT:-}" ]]; then
   return 0
 fi
 __NXMATIC_SSH_KEYCHAIN_INIT=1
 
-[[ -n "${XDG_STATE_HOME:-}" ]] || XDG_STATE_HOME="${HOME}/.local/state"
-state_keys_dir="${XDG_STATE_HOME}/ssh-key.d"
-agent_keys_file="${state_keys_dir}/agent-keys"
+state_keys_dir="@userKeysDir@"
+keys_yaml_file="@keysYamlPath@"
 keychain_bin="@keychainBin@"
 ssh_add_bin="@sshAddBin@"
 ssh_keygen_bin="@sshKeygenBin@"
@@ -21,7 +20,7 @@ ssh_keychain_is_private_key() {
   local candidate="$1"
   [[ -f "$candidate" ]] || return 1
   case "$candidate" in
-    *.pub|*-cert.pub|*-ca.pub|*/agent-keys)
+    *.pub|*-cert.pub|*-ca.pub|*/keys.yaml)
       return 1
       ;;
   esac
@@ -39,17 +38,17 @@ ssh_keychain_add_candidate() {
   ssh_keychain_keys+=("$candidate")
 }
 
-ssh_keychain_collect_manifest_keys() {
-  local rel_path
+ssh_keychain_collect_yaml_keys() {
+  local key_name
   local candidate
 
-  [[ -r "$agent_keys_file" ]] || return 0
-  while IFS= read -r rel_path; do
-    [[ -n "$rel_path" ]] || continue
-    [[ "$rel_path" == \#* ]] && continue
-    candidate="${state_keys_dir}/${rel_path}"
+  [[ -r "$keys_yaml_file" ]] || return 0
+  while IFS= read -r key_name; do
+    [[ -n "$key_name" ]] || continue
+    [[ "$key_name" == \#* ]] && continue
+    candidate="${state_keys_dir}/${key_name}"
     ssh_keychain_add_candidate "$candidate" || true
-  done < "$agent_keys_file"
+  done < <(yq eval '.keys | keys[]' "$keys_yaml_file" 2>/dev/null || true)
 }
 
 ssh_keychain_collect_fallback_keys() {
@@ -109,7 +108,7 @@ ssh_keychain_init() {
   [[ -x "$ssh_add_bin" ]] || return 0
   [[ -x "$ssh_keygen_bin" ]] || return 0
 
-  ssh_keychain_collect_manifest_keys
+  ssh_keychain_collect_yaml_keys
   if [[ ${#ssh_keychain_keys[@]} -eq 0 ]]; then
     ssh_keychain_collect_fallback_keys
   fi
@@ -142,11 +141,11 @@ ssh_keychain_init
 unset -f \
   ssh_keychain_is_private_key \
   ssh_keychain_add_candidate \
-  ssh_keychain_collect_manifest_keys \
+  ssh_keychain_collect_yaml_keys \
   ssh_keychain_collect_fallback_keys \
   ssh_keychain_cleanup_cert \
   ssh_keychain_eval \
   ssh_keychain_restore_launchd_socket \
   ssh_keychain_add_missing_keys \
   ssh_keychain_init
-unset agent_keys_file keychain_bin launchctl_bin ssh_add_bin ssh_keygen_bin ssh_keychain_keys state_keys_dir
+unset keychain_bin keys_yaml_file launchctl_bin ssh_add_bin ssh_keygen_bin ssh_keychain_keys state_keys_dir

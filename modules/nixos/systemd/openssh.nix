@@ -67,7 +67,10 @@ ${formatPrincipals allPrincipals}
   activationTag = "nixos.activationScripts.sshGroupKeys";
 in
 {
-  imports = [ ../../common/openssh-policy.nix ];
+  imports = [
+    ../../common/openssh-policy.nix
+    ../../common/ssh-paths.nix
+  ];
 
   opensshPolicy = {
     enable = true;
@@ -82,6 +85,8 @@ in
     # Force IPv4 only for SSH server
     extraSettings = {
       AddressFamily = "inet";
+      # Bootstrap requirement: allow root with key-based auth only.
+      PermitRootLogin = "prohibit-password";
     };
   };
 
@@ -129,6 +134,7 @@ in
     sshGroupKeys = {
       text = builtins.readFile (
         pkgs.replaceVars ./openssh.d/activation.sh {
+          authorizedKeysDir = config.opensshPolicy.authorizedKeysDir;
           keysDir = config.opensshPolicy.keysDir;
           hostname = hostname;
           sshKeygen = "${pkgs.openssh}/bin/ssh-keygen";
@@ -136,9 +142,11 @@ in
           groupCommand = config.opensshPolicy.canonicalGroupKeysCommandName;
           principalsScript = principalsScriptStore;
           groupKeysScript = groupKeysScriptStore;
+          profileUserName = config.profile.user.name;
           activationLogger = activationLogger;
           activationTag = activationTag;
-          userCaSourceDir = "${userHome}/.ssh/keys.d";
+          userPrivateSourceDir = config.sshPaths.perUserSecretsDir;
+          userCaSourceDir = config.sshPaths.systemSecretsDir;
         }
       );
     };
@@ -146,6 +154,10 @@ in
 
   # ssh non-interactive session finds the setuid sudo via /bin or /usr/bin
   systemd.tmpfiles.rules = [
+    "d ${config.sshPaths.perUserSecretsRoot} 0755 root root - -"
+    "d ${config.sshPaths.perUserSecretsDir} 0700 ${config.profile.user.name} ${config.profile.user.name} - -"
+    "d /run/secrets/nix-darwin-home 0755 root root - -"
+    "d ${config.sshPaths.systemSecretsDir} 0755 ${config.profile.user.name} ${config.profile.user.name} - -"
     "L+ /bin/sudo - - - - /run/wrappers/bin/sudo"
     "L+ /usr/bin/sudo - - - - /run/wrappers/bin/sudo"
     "L+ /bin/bash - - - - /run/current-system/sw/bin/bash"

@@ -28,8 +28,10 @@ import_key_from_candidates() {
         chmod 600 "$key_file"
         echo "[sops-age-bootstrap] imported host age key from $candidate into $key_file"
       else
-        candidate_sum="$($sha256sum_bin "$candidate" | awk '{print $1}')"
-        key_sum="$($sha256sum_bin "$key_file" | awk '{print $1}')"
+        candidate_sum="$($sha256sum_bin "$candidate")"
+        candidate_sum="${candidate_sum%% *}"
+        key_sum="$($sha256sum_bin "$key_file")"
+        key_sum="${key_sum%% *}"
         if [ "$candidate_sum" != "$key_sum" ]; then
           cp "$candidate" "$key_file"
           chmod 600 "$key_file"
@@ -80,7 +82,10 @@ else
   if [ ! -s "$key_file" ] && [ "$nixos_import_from_host" = "1" ] && [ "$remote_fetch_enable" = "1" ]; then
     remote_host_raw="$(printenv "$remote_fetch_hostname_env_var" 2>/dev/null || true)"
     if [ -z "$remote_host_raw" ] && [ -r /mnt/lima-cidata/lima.env ]; then
-      remote_host_raw="$(awk -F= '$1=="LIMA_HOSTNAME"{print $2}' /mnt/lima-cidata/lima.env | tail -n1)"
+      while IFS='=' read -r key value; do
+        [ "$key" = "LIMA_HOSTNAME" ] || continue
+        remote_host_raw="$value"
+      done < /mnt/lima-cidata/lima.env
     fi
 
     if [ -n "$remote_host_raw" ]; then

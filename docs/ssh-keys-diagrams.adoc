@@ -7,6 +7,17 @@
 
 These diagrams can be rendered to JPEG/PNG using Mermaid CLI for full-screen viewing.
 
+[NOTE]
+====
+Canonical runtime paths are:
+
+* `/run/secrets/nix-darwin-home/*` (source runtime secrets)
+* `/run/secrets-per-user/<user>/ssh-keys/` (private material)
+* `/run/secrets-per-user/<user>/ssh-system-keys/` (public/trust material)
+
+`/run/secrets.d` remains internal sops-nix generation storage.
+====
+
 == C2: Container Architecture
 
 [mermaid]
@@ -22,13 +33,12 @@ graph TB
             
             subgraph "SSH Keys Deployment Module"
                 nix["📝 ssh-keys.nix<br/>(wires everything up)"]
-                stage1["Stage 1: Extract<br/>ssh-extract-keys.sh<br/>(keys → pub/priv)"]
-                stage2["Stage 2: Regenerate<br/>ssh-regenerate-certs.sh<br/>(sign with CAs)"]
-                stage3["Stage 3: Deploy<br/>deploy-ssh-keys.sh<br/>(rsync + manifest)"]
-                stage4["Stage 4: Authorize<br/>ensure-authorized-keys.sh<br/>(perms setup)"]
+                stage1["Stage 1: Generate YAML<br/>ssh-generate-keys-yaml.sh"]
+                stage2["Stage 2: Extract<br/>ssh-extract-keys.sh<br/>(split private/public)"]
+                stage3["Stage 3: Authorize<br/>ssh-ensure-authorized-keys.sh<br/>(perms setup)"]
             end
             
-            runtime["🎯 Runtime Output<br/>~/.local/state/ssh-key.d/<br/>(keys + certs + manifest)"]
+            runtime["🎯 Runtime Output<br/>/run/secrets-per-user/&lt;user&gt;/{ssh-keys,ssh-system-keys}/"]
         end
     end
     
@@ -41,9 +51,8 @@ graph TB
     nix -->|decrypt| sops
     sops -->|extract| stage1
     stage1 -->|regenerate| stage2
-    stage2 -->|deploy| stage3
-    stage3 -->|authorize| stage4
-    stage4 -->|output| runtime
+    stage2 -->|authorize| stage3
+    stage3 -->|output| runtime
     runtime -->|load| agent
     runtime -->|config| ssh_config
     agent -->|auth| user
@@ -51,7 +60,7 @@ graph TB
 
 *View full-screen:* link:diagrams/c2-container-architecture.svg[🖼️ Open SVG]
 
-== C3: Pipeline Architecture (4 Stages)
+== C3: Pipeline Architecture (3 Stages)
 
 [mermaid]
 ----
@@ -62,23 +71,17 @@ graph LR
         output1["Raw Keys Dir<br/>• key_name<br/>• key_name.pub<br/>• key_name-ca-ca.pub"]
     end
     
-    subgraph "Stage 2: Regenerate"
+    subgraph "Stage 2: Extract"
         input2["Profile YAML<br/>+ Keys Dir"]
-        sign["ssh-keygen -s<br/>Sign keys with CA<br/>authorities"]
-        output2["Keys + Certs Dir<br/>• key_name-ca-user-cert.pub<br/>• key_name-cert.pub<br/>(→ symlink)"]
+        sign["Extract with yq<br/>split private/public"]
+        output2["Split Runtime Dirs<br/>• ssh-keys/* (private)<br/>• ssh-system-keys/* (public)"]
     end
     
-    subgraph "Stage 3: Deploy"
+    subgraph "Stage 3: Authorize"
         input3["Profile YAML<br/>+ Keys+Certs Dir"]
-        manifest["Generate agent-keys<br/>manifest (filter)"]
-        rsync["rsync --delete<br/>--chmod=u+w,go-r<br/>--chown=$USER:$GROUP"]
-        output3["~/.local/state/ssh-key.d/<br/>✓ Keys deployed<br/>✓ Certs deployed<br/>✓ Manifest generated"]
-    end
-    
-    subgraph "Stage 4: Authorize"
-        input4["Keys in runtime dir"]
-        perms["Ensure authorized_keys<br/>0600 permissions"]
-        output4["~/.ssh/authorized_keys<br/>ready for use"]
+        manifest["Ensure ~/.ssh/authorized_keys"]
+        rsync["chmod 0600<br/>mutable file"]
+        output3["~/.ssh/authorized_keys<br/>ready for use"]
     end
     
     input1 --> yq1 --> output1
@@ -87,8 +90,6 @@ graph LR
     output2 --> input3
     input3 --> manifest & rsync
     manifest & rsync --> output3
-    output3 --> input4
-    input4 --> perms --> output4
 ----
 
 *View full-screen:* link:diagrams/c3-pipeline-architecture-4-stages.svg[🖼️ Open SVG]
@@ -114,9 +115,9 @@ graph TD
     
     D2 --> D3["Create symlink:<br/>rke2-cluster-cert.pub"]
     
-    C1 & C2 & C3 & C4 & C5 & D2 & D3 -->|Stage 3: rsync| E["~/.local/state/ssh-key.d/"]
+    C1 & C2 & C3 & C4 & C5 & D2 & D3 -->|Stage 2: extract| E["/run/secrets-per-user/&lt;user&gt;/ssh-{keys,system-keys}/"]
     
-    E -->|Stage 4: Ensure perms| F["Ready for SSH Agent"]
+    E -->|Stage 3: Ensure perms| F["Ready for SSH Agent"]
     
     F -->|manifest: agent-keys| G["SSH Agent loads keys<br/>at next activation"]
     
@@ -135,9 +136,9 @@ sequenceDiagram
     participant Nix as ssh-keys.nix
     participant Stage1 as extract-keys.sh
     participant SOPS as SOPS Decrypt
-    participant Stage2 as regenerate-certs.sh
-    participant Stage3 as deploy-keys.sh
-    participant RuntimeDir as ~/.local/state/ssh-key.d/
+    participant Stage2 as extract-keys.sh
+    participant Stage3 as ensure-authorized-keys.sh
+    participant RuntimeDir as /run/secrets-per-user/&lt;user&gt;/ssh-keys/
     participant Agent as SSH Agent
 
     User->>hm: home-manager switch
@@ -146,14 +147,13 @@ sequenceDiagram
     SOPS-->>Nix: plaintext profile YAML
     Nix->>Stage1: extract keys from profile
     Stage1-->>Nix: tmp_keys_dir (keys only)
-    Nix->>Stage2: regenerate certs from authorities
-    Stage2-->>Nix: tmp_keys_dir (keys + certs)
-    Nix->>Stage3: deploy to runtime + generate manifest
-    Stage3->>RuntimeDir: rsync keys + certs + manifest
+    Nix->>Stage2: extract keys to runtime dirs
+    Stage2-->>Nix: runtime dirs populated
+    Nix->>Stage3: ensure local authorized_keys perms
+    Stage3->>RuntimeDir: runtime keys ready
     RuntimeDir-->>Stage3: ✓ deployment complete
     Stage3-->>Nix: activation complete
-    Nix->>RuntimeDir: agent-keys manifest ready
-    Agent->>RuntimeDir: load from agent-keys manifest
+    Agent->>RuntimeDir: load key files
     Agent-->>User: ✓ SSH auth ready (certs auto-loaded)
 ----
 
@@ -175,9 +175,9 @@ graph TD
     G --> H["<key>-cert.pub →<br/><key>-<ca>-user-cert.pub"]
     H --> I["SSH Agent auto-loads<br/>matching <key>-cert.pub"]
     
-    F --> J["Deploy to runtime"]
+    F --> J["Extract to runtime"]
     I --> J
-    J --> K["~/.local/state/ssh-key.d/"]
+    J --> K["/run/secrets-per-user/&lt;user&gt;/ssh-keys/"]
     K --> L["Ready for SSH auth"]
 ----
 
@@ -190,8 +190,8 @@ graph TD
 graph TB
     subgraph "ssh-keys.nix"
         replaceVars1["pkgs.replaceVars<br/>ssh-extract-keys.sh"]
-        replaceVars2["pkgs.replaceVars<br/>ssh-regenerate-certs.sh"]  
-        replaceVars3["pkgs.replaceVars<br/>deploy-ssh-keys.sh"]
+        replaceVars2["pkgs.replaceVars<br/>ssh-generate-keys-yaml.sh"]
+        replaceVars3["pkgs.replaceVars<br/>ssh-ensure-authorized-keys.sh"]
         
         dag["lib.hm.dag.entryAfter<br/>writeBoundary"]
     end
@@ -202,8 +202,8 @@ graph TB
     end
     
     subgraph "home.activation"
-        act1["deploySSHKeys<br/>bash deploy-ssh-keys.sh"]
-        act2["ensureAuthorizedKeys<br/>bash ensure-authorized-keys.sh"]
+        act1["generatedSSHKeysYaml + extractSSHKeys"]
+        act2["ensureAuthorizedKeys<br/>bash ssh-ensure-authorized-keys.sh"]
     end
     
     replaceVars1 --> subs1
@@ -234,13 +234,13 @@ graph TD
     B --> B4["rke2-cluster-mammoth-skate-user-cert.pub<br/>(GENERATED ← fresh serial)"]
     B --> B5["rke2-cluster-cert.pub<br/>(SYMLINK)"]
     
-    B -->|Stage 3: rsync| C["~/.local/state/ssh-key.d/"]
+    B -->|Stage 2: extract| C["/run/secrets-per-user/&lt;user&gt;/ssh-keys/"]
     C --> C1["rke2-cluster"]
     C --> C2["rke2-cluster.pub"]
     C --> C3["mammoth-skate-ca.pub"]
     C --> C4["rke2-cluster-mammoth-skate-user-cert.pub"]
     C --> C5["rke2-cluster-cert.pub"]
-    C --> C6["agent-keys (manifest)"]
+    C --> C6["keys.yaml"]
     
     style B4 fill:#90EE90
     style B5 fill:#87CEEB

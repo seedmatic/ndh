@@ -1,4 +1,7 @@
 { config, lib, pkgs, ... }:
+let
+  hasManagedSecrets = (config.sops.secrets or { }) != { };
+in
 {
   config = {
     # NixOS policy: systemd-driven sops activation and host key import defaults.
@@ -20,7 +23,7 @@
       };
     };
 
-    systemd.services.sops-install-secrets = lib.mkIf (config.sops.useSystemdActivation or false) {
+    systemd.services.sops-install-secrets = lib.mkIf ((config.sops.useSystemdActivation or false) && hasManagedSecrets) {
       requires = [ "${config.nxmatic.sopsAgeKeyBootstrap.systemdUnitName}.service" ];
       after = [ "${config.nxmatic.sopsAgeKeyBootstrap.systemdUnitName}.service" ];
       unitConfig.ConditionPathExists = config.sops.age.keyFile;

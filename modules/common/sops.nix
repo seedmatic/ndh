@@ -238,7 +238,7 @@ in
       # Canonical encrypted secrets source tracked in this repository.
       defaultSopsFile = lib.mkDefault ../../.secrets;
 
-      secrets = lib.mkIf (!nixosBootstrapMode) {
+      secrets = {
         "nxmatic-ssh-keys.yaml" = {
           sopsFile = sshKeysSopsFile;
           format = "yaml";

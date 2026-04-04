@@ -107,6 +107,7 @@ end note
 
 * Keep hosts on `enforce` by default.
 * Use `bootstrap` only for first activation of a new host.
+* Treat `/run/secrets.d` as internal generation storage; consume secrets via `/run/secrets/*` and `/run/secrets-per-user/*`.
 * Commit only public age recipients (`age1...`) in `.sops.yaml`.
 * Never commit private keys (`AGE-SECRET-KEY-...`).
 * Rotate/rekey encrypted files after recipient changes.

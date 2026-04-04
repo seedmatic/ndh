@@ -8,8 +8,9 @@
 let
   profile = config.profile;
   userHome = profile.user.home;
+  userName = profile.user.name;
   sshPaths = config.sshPaths;
-  hostKeysDir = sshPaths.stateDir;
+  hostKeysDir = sshPaths.systemSecretsDir;
   hostKeyPrivateFile = sshPaths.privKeyFile;
   hostKeyPublicCert = sshPaths.hostCertPublic;
   caPublicKeyFile = "${config.opensshPolicy.keysDir}/trusted-user-ca.pub";
@@ -139,6 +140,13 @@ in
 
     # Ensure OpenSSH activation runs in the etc fragment (installs /etc/ssh helper scripts)
     system.activationScripts.etc.text = lib.mkAfter ''
+      # Provision split SSH key directories.
+      install -d -m 0755 "${sshPaths.perUserSecretsRoot}"
+      install -d -m 0700 "${sshPaths.perUserSecretsDir}"
+      install -d -m 0755 "${sshPaths.systemSecretsDir}"
+      chown "${userName}" "${sshPaths.perUserSecretsDir}"
+      chown "${userName}" "${sshPaths.systemSecretsDir}"
+
       bash ${opensshActivationScript}
       # Install system CA public keys from runtime user keys directory.
       install -d -m 755 "${config.opensshPolicy.keysDir}"

@@ -1,8 +1,8 @@
 #!/usr/bin/env -S bash -exuo pipefail
 # @codebase
-# Load SSH keys listed in ssh-key.d/agent-keys into the ssh-agent via keychain,
+# Load SSH keys listed in generated keys.yaml into the ssh-agent via keychain,
 # and refresh the managed block of authorized_keys from corresponding .pub files.
-# Key files are extracted by the Home Manager activation deploySSHKeys step.
+# Key files are extracted by the Home Manager activation extractSSHKeys step.
 # This script is run by the LaunchAgent on login to ensure keys survive reboots.
 
 SSH_KEYS_YAML="${1:?SSH keys YAML file required}"
