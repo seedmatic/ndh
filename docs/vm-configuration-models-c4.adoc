@@ -12,6 +12,21 @@ It also explains how both models relate to each other and to the host profile mo
 
 IMPORTANT: for Lima, first-boot guest bring-up is primarily cloud-config/cloud-init driven; this note now models that path explicitly.
 
+== Host Role Taxonomy (Runtime-Agnostic)
+
+To avoid overloading a single "host" term in mixed Lima/Tart topologies, this note uses explicit roles:
+
+* **Access Host**: where the operator is currently connected (for example shared screen/auto-login session).
+* **Virtualization Host**: where guest runtime engines execute (Lima/Tart/Virtualization.framework).
+* **Control Host** (optional): where orchestration commands are initiated.
+
+A single machine may provide one or multiple roles. For example, one host can be both Access Host and Virtualization Host, while another host may provide only Access Host.
+
+Environment naming follows the same separation:
+
+* `RKE2LAB_ACCESS_HOST` (role-oriented, runtime-agnostic)
+* avoid runtime-coupled naming like `LIMA_HOSTNAME` for cross-runtime control paths.
+
 == Scope and Artifact Boundaries (Do Not Mix)
 
 This document covers three related but distinct concerns:
@@ -249,8 +264,9 @@ left to right direction
 actor "Operator" as operator
 cloud "Git Repository\n(nix-darwin-home)" as repo
 
-rectangle "Darwin Host\n(profile + activation)" as host {
+rectangle "Darwin Hosts\n(profile + activation)" as host {
   [Host Flake Model] as flakeModel
+  [Role Map\n(Access Host, Virtualization Host)] as roleMap
   [Shared Cloud-Config Contract\n(canonical)] as sharedContract
   [Lima Config Model\n(lima.configGenerator)] as limaModel
   [Tart Target Model\n(future adapter plan)] as tartModel
@@ -265,6 +281,7 @@ node "NixOS Guest" as nixosGuest
 operator --> repo : edits modules/options
 operator --> host : darwin-rebuild switch
 repo --> flakeModel : evaluate
+flakeModel --> roleMap : derive role bindings
 flakeModel --> sharedContract : define seed schema + bootstrap steps
 flakeModel --> limaModel : active path
 flakeModel --> tartModel : planned path
@@ -372,9 +389,11 @@ left to right direction
 
 package "Shared Contracts" {
   [Host identity\n(effectiveHostName)] as identity
+  [Host role mapping\n(access/virtualization/control)] as hostroles
   [Cloud-config seed schema\n(NoCloud/cidata contract)] as seed
   [Guest bootstrap step contract\n(cloud-init semantics)] as gueststeps
   [NixOS target ref\n(nixosFlakePath + nixosHostAttr)] as nixosref
+  [Runtime-agnostic env naming\n(RKE2LAB_ACCESS_HOST)] as envnaming
   [Activation logger contract] as actlog
 }
 
@@ -392,12 +411,16 @@ package "Tart Components" {
 
 identity --> lcmodel
 identity --> tcmodel
+hostroles --> lcmodel
+hostroles --> tcmodel
 seed --> lcact
 seed --> tcact
 gueststeps --> lcact
 gueststeps --> tcact
 nixosref --> lcrun
 nixosref --> tcrun
+envnaming --> lcrun
+envnaming --> tcrun
 actlog --> lcact
 actlog --> tcact
 
@@ -412,6 +435,7 @@ note bottom
   Both models follow the same host-driven pattern:
   Nix model -> activation materialization -> managed run wrapper.
   Shared model first: cloud-config seed + guest bootstrap steps.
+  Host naming is role-based (Access/Virtualization/Control), not runtime-branded.
   Bootstrap substrate differs by adapter:
   Lima uses runtime cloud-init/cidata,
   Tart uses shared qcow2/raw source consumed through NBD bridge.

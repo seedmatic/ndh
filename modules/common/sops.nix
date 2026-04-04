@@ -190,7 +190,7 @@ in
           default = false;
           description = ''
             Enable best-effort remote key fetch over SSH before local candidate file checks.
-            Hostname is resolved from `hostnameEnvVar` (e.g. `LIMA_HOSTNAME`) and mDNS suffix.
+            Hostname is resolved from `hostnameEnvVar` (e.g. `RKE2LAB_ACCESS_HOST`) and mDNS suffix.
           '';
         };
 
@@ -219,7 +219,7 @@ in
 
         hostnameEnvVar = mkOption {
           type = types.str;
-          default = "LIMA_HOSTNAME";
+          default = "RKE2LAB_ACCESS_HOST";
           description = "Environment variable name containing the host identifier used for remote fetch.";
         };
 
