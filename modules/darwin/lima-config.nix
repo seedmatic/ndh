@@ -81,12 +81,25 @@ let
         profileHome = profileHome;
         yqBin = yqBin;
         limaConfigJson = limaConfigJson;
+        limaRunScript = limaRunScript;
         imageSourcePath = imageSourcePath;
         imageTargetPath = imageTargetPath;
         activationLogger = lib.attrByPath [
           "activation"
           "loggerScript"
         ] ../common/activation-logger.sh config;
+      }
+    } "$out"
+    chmod +x "$out"
+  '';
+
+  limaRunScript = pkgs.runCommand "lima-run.sh" { } ''
+    cp ${
+      pkgs.replaceVars ./lima-config.d/run.sh {
+        profileHome = profileHome;
+        effectiveHostName = effectiveHostName;
+        nixosFlakePath = cfg.nixosFlakePath;
+        nixosHostAttr = cfg.nixosHostAttr;
       }
     } "$out"
     chmod +x "$out"
@@ -352,6 +365,22 @@ in
       description = ''
         Stable host path for the NixOS disk image that Lima references. If different from imageSourcePath,
         the activation script copies/reflinks the image; when equal, no copy is performed.
+      '';
+    };
+
+    nixosFlakePath = mkOption {
+      type = types.str;
+      default = "/var/lib/git/nxmatic/nix-darwin-home";
+      description = ''
+        Host-side flake path used by ~/.lima/run.sh for remote NixOS activation.
+      '';
+    };
+
+    nixosHostAttr = mkOption {
+      type = types.str;
+      default = "${effectiveHostName}-nixos";
+      description = ''
+        NixOS flake attribute selected by ~/.lima/run.sh for remote activation.
       '';
     };
   };

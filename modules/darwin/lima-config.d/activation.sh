@@ -8,6 +8,10 @@ main() {
   mkdir -p "@profileHome@/.lima/nerd-nixos"
   mkdir -p "@profileHome@/.lima/_config"
 
+  : "Install managed host-side Lima wrapper"
+  cp "@limaRunScript@" "@profileHome@/.lima/run.sh"
+  chmod 0700 "@profileHome@/.lima/run.sh"
+
   host_pub="@profileHome@/.local/state/ssh-key.d/host.pub"
   host_priv="@profileHome@/.local/state/ssh-key.d/host"
 
