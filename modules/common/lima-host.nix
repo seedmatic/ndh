@@ -68,10 +68,11 @@ in
     limaHost.hostName = lib.mkDefault derivedHostName;
 
     environment.variables = rec {
-      NDH_ACCESS_HOST = hostName;
-      NDH_GUEST_NAME = guestName;
+      NDH_RDP_HOST = hostName;
+      NDH_VZ_HOST = hostName;
+      NDH_VZ_GUEST = guestName;
       NDH_DOMAIN = domainName;
-      NDH_USERNAME = profileUser;
+      NDH_USER = profileUser;
     };
     networking.hostName = lib.mkForce (if cfg.isGuest then "${hostName}-${guestName}" else hostName);
   };
