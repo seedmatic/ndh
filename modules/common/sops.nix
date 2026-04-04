@@ -31,15 +31,8 @@ let
     else
       "";
 
-  ageKeyFileDefault =
-    if pkgs.stdenv.isDarwin then
-      (if cfg.darwinSystemWideKey then cfg.systemWideKeyFile else cfg.darwinUserKeyFile)
-    else
-      cfg.systemWideKeyFile;
-
   nixosBootstrapMode =
-    (!pkgs.stdenv.isDarwin)
-    && hostProfile ? nixosImageMode
+    hostProfile ? nixosImageMode
     && hostProfile.nixosImageMode != null
     && hostProfile.nixosImageMode == "bootstrap";
 
@@ -63,7 +56,7 @@ let
     remoteFetchHostnameEnvVar = cfg.nixosHostKeyImport.remoteFetch.hostnameEnvVar;
     remoteFetchMdnsSuffix = cfg.nixosHostKeyImport.remoteFetch.mdnsSuffix;
     sshBin = pkgs.openssh;
-    sudoCmd = if pkgs.stdenv.isDarwin then "/usr/bin/sudo" else "${pkgs.sudo}/bin/sudo";
+    sudoCmd = cfg.sudoCommand;
     utilLinuxBin = pkgs.util-linux;
     phase = cfg.phase;
     darwinUserKeyFile = cfg.darwinUserKeyFile;
@@ -73,6 +66,9 @@ let
     nixosHostKeyImportCandidates = lib.concatStringsSep "\n" cfg.nixosHostKeyImport.candidates;
   };
   sopsAgeBootstrapScript = builtins.readFile sopsAgeBootstrapScriptSource;
+  sopsAgeBootstrapSystemdScript = pkgs.writeShellScript "sops-age-bootstrap" sopsAgeBootstrapScript;
+  sopsAgeBootstrapUnitName = "sops-age-bootstrap";
+  useSystemdSopsActivation = config.sops.useSystemdActivation or false;
 in
 {
   options.nxmatic.sopsAgeKeyBootstrap = {
@@ -105,6 +101,24 @@ in
       description = "System-wide SOPS age key file path.";
     };
 
+    defaultAgeKeyFile = mkOption {
+      type = types.str;
+      default = cfg.systemWideKeyFile;
+      description = ''
+        Canonical default for `sops.age.keyFile`.
+        Platform modules should set this via `mkDefault`.
+      '';
+    };
+
+    sudoCommand = mkOption {
+      type = types.str;
+      default = "${pkgs.sudo}/bin/sudo";
+      description = ''
+        Absolute sudo command used by SOPS age key bootstrap helper logic.
+        Platform modules may override (for example Darwin `/usr/bin/sudo`).
+      '';
+    };
+
     darwinUserKeyFile = mkOption {
       type = types.str;
       default = "${userHome}/.config/sops/age/keys.txt";
@@ -132,7 +146,7 @@ in
 
     publicKeyFile = mkOption {
       type = types.str;
-      default = if pkgs.stdenv.isDarwin then "/etc/sops/age/keys.pub" else "/etc/sops/age/keys.pub";
+      default = "/etc/sops/age/keys.pub";
       description = ''
         Path where the host public age recipient is published.
         This file is safe to collect into `.sops.yaml` recipient groups.
@@ -142,7 +156,7 @@ in
     nixosHostKeyImport = {
       enable = mkOption {
         type = types.bool;
-        default = !pkgs.stdenv.isDarwin;
+        default = false;
         description = ''
           Enable NixOS pre-activation import of an existing host age key into
           `${config.sops.age.keyFile}` when missing and phase is `enforce`.
@@ -162,7 +176,7 @@ in
       remoteFetch = {
         enable = mkOption {
           type = types.bool;
-          default = !pkgs.stdenv.isDarwin;
+          default = false;
           description = ''
             Enable best-effort remote key fetch over SSH before local candidate file checks.
             Hostname is resolved from `hostnameEnvVar` (e.g. `LIMA_HOSTNAME`) and mDNS suffix.
@@ -224,7 +238,7 @@ in
         };
       };
 
-      age.keyFile = lib.mkDefault ageKeyFileDefault;
+      age.keyFile = lib.mkDefault cfg.defaultAgeKeyFile;
       # In first-boot bootstrap images, avoid host SSH-key based decryption fallback.
       # Host keys may not exist yet at the point sops-install-secrets is executed.
       age.sshKeyPaths = lib.mkIf nixosBootstrapMode [ ];
@@ -244,7 +258,29 @@ in
 
     # Two-phase age-key bootstrap guard:
     # phase=bootstrap provisions once, phase=enforce blocks activation when missing.
-    # Use preActivation to guarantee key material exists before sops-install-secrets runs.
-    system.activationScripts.preActivation.text = lib.mkBefore sopsAgeBootstrapScript;
+    system.activationScripts.preActivation.text = lib.mkBefore (
+      if !useSystemdSopsActivation then
+        sopsAgeBootstrapScript
+      else
+        ""
+    );
+
+    # On Linux/systemd, run key bootstrap as a dedicated ordered oneshot before sops-install-secrets.
+    systemd.services.${sopsAgeBootstrapUnitName} = lib.mkIf useSystemdSopsActivation {
+      description = "Ensure SOPS age key is available before sops-install-secrets (@codebase)";
+      before = [ "sops-install-secrets.service" ];
+      wantedBy = [ "sops-install-secrets.service" ];
+      serviceConfig = {
+        Type = "oneshot";
+        ExecStart = sopsAgeBootstrapSystemdScript;
+      };
+    };
+
+    # If the age key is unavailable, skip the secrets installer unit cleanly.
+    systemd.services.sops-install-secrets = lib.mkIf useSystemdSopsActivation {
+      requires = [ "${sopsAgeBootstrapUnitName}.service" ];
+      after = [ "${sopsAgeBootstrapUnitName}.service" ];
+      unitConfig.ConditionPathExists = config.sops.age.keyFile;
+    };
   };
 }

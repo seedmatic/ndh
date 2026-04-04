@@ -40,5 +40,17 @@
   networking.lanDnsResolver.enable = true;
   networking.lanDnsResolver.nameserver = "192.168.1.254";
 
+  # Darwin policy: keep activation-script path for sops and use system sudo path.
+  sops.useSystemdActivation = lib.mkDefault false;
+  nxmatic.sopsAgeKeyBootstrap = {
+    defaultAgeKeyFile = lib.mkDefault (
+      if config.nxmatic.sopsAgeKeyBootstrap.darwinSystemWideKey then
+        config.nxmatic.sopsAgeKeyBootstrap.systemWideKeyFile
+      else
+        config.nxmatic.sopsAgeKeyBootstrap.darwinUserKeyFile
+    );
+    sudoCommand = lib.mkDefault "/usr/bin/sudo";
+  };
+
   activation.loggerCmd = lib.mkDefault "/usr/bin/logger -p notice -t %TAG%";
 }

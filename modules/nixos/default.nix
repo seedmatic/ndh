@@ -158,6 +158,14 @@ in
 
   config = {
 
+    # NixOS policy: systemd-driven sops activation and host key import defaults.
+    sops.useSystemdActivation = lib.mkDefault true;
+    nxmatic.sopsAgeKeyBootstrap = {
+      defaultAgeKeyFile = lib.mkDefault config.nxmatic.sopsAgeKeyBootstrap.systemWideKeyFile;
+      nixosHostKeyImport.enable = lib.mkDefault true;
+      nixosHostKeyImport.remoteFetch.enable = lib.mkDefault true;
+    };
+
     activation.loggerCmd = lib.mkDefault "${pkgs.util-linux}/bin/logger -p notice -t %TAG%";
 
     nix.settings = lib.mkMerge [
