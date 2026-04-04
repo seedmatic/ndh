@@ -106,6 +106,9 @@ in
   config = mkIf cfg.enable {
     # Use systemd-networkd for predictable interface naming (rename only)
     systemd.network.enable = lib.mkDefault true;
+    # Avoid mixed network managers: with systemd.network enabled, keep legacy
+    # interface-level DHCP scripting disabled unless a profile explicitly opts in.
+    networking.useDHCP = lib.mkDefault false;
 
     # Disable wait-online: we only rename interfaces; they may be configured by other mechanisms (e.g. kernel/Lima DHCP)
     # Prevents 120s timeout because links are 'not managed by networkd'. If later you add .network files, remove this.
