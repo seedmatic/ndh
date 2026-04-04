@@ -79,6 +79,12 @@ in
     description = "Wrapped activation logger script that exports LOGGER_CMD";
   };
 
+  options.activation.homeManagerPostActivationScript = lib.mkOption {
+    type = lib.types.path;
+    readOnly = true;
+    description = "Wrapped Home Manager post-activation script produced by common module logic.";
+  };
+
   imports = [
     ../../profiles/common.nix
     ./cachix-watch-store.nix
@@ -94,14 +100,8 @@ in
 
   config = {
 
-    # Provide /etc/activation-logger.sh on Linux so activation scripts that source
-    # an etc-backed logger (as configured in flake extraArgs) can find it.
-    environment.etc."activation-logger.sh" = lib.mkIf pkgs.stdenv.isLinux {
-      source = activationLoggerScript;
-      mode = "0555";
-    };
-
     activation.loggerScript = activationLoggerScript;
+    activation.homeManagerPostActivationScript = postActivationScript;
 
     programs = {
 
@@ -142,13 +142,6 @@ in
         ] (toString ../../modules/home-manager/ssh.d/keys.yaml) config;
       };
     });
-
-    # Run home-manager after all other activation steps so user files see final system state
-    system.activationScripts.postActivation.text = lib.mkOrder 2000 (
-      lib.optionalString pkgs.stdenvNoCC.isDarwin ''
-        ${postActivationScript}
-      ''
-    );
 
     # zen-browser = {
     #    enable = false;

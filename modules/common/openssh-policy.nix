@@ -6,16 +6,6 @@
 }:
 let
   cfg = config.opensshPolicy;
-  defaultSetEnvPath =
-    if pkgs.stdenv.isDarwin then
-      "/run/current-system/sw/bin:/nix/var/nix/profiles/default/bin:/usr/bin:/bin"
-    else
-      "/run/wrappers/bin:/run/current-system/sw/bin:/bin:/usr/bin";
-  nonInteractivePrimaryPath =
-    if pkgs.stdenv.isDarwin then
-      "/run/current-system/sw/bin"
-    else
-      "/run/wrappers/bin";
   inherit (lib)
     mkOption
     mkEnableOption
@@ -66,9 +56,9 @@ let
             cfg.groupCommandUser
           else
             null;
-        # Darwin auto-fold of AuthorizedKeysFile list; on NixOS we rely on native list option
+        # Platform-specific render toggle for AuthorizedKeysFile list.
         AuthorizedKeysFile =
-          if pkgs.stdenv.isDarwin then lib.concatStringsSep " " cfg.authorizedKeysFiles else null;
+          if cfg.platformRendersAuthorizedKeysFile then lib.concatStringsSep " " cfg.authorizedKeysFiles else null;
         # Allow user environment file by default on both platforms
         PermitUserEnvironment = "yes";
         # Baseline PATH for sshd sessions and ensure non-interactive bash sources our file
@@ -200,8 +190,20 @@ in
     # Shared PATH used by sshd SetEnv (override per-host if needed)
     setEnvPath = mkOption {
       type = types.str;
-      default = defaultSetEnvPath;
+      default = "/run/wrappers/bin:/run/current-system/sw/bin:/bin:/usr/bin";
       description = "PATH value applied via sshd SetEnv for non-interactive SSH sessions.";
+    };
+
+    nonInteractivePrimaryPath = mkOption {
+      type = types.str;
+      default = "/run/wrappers/bin";
+      description = "Primary PATH prefix enforced for non-interactive sshd-launched shells.";
+    };
+
+    platformRendersAuthorizedKeysFile = mkOption {
+      type = types.bool;
+      default = false;
+      description = "Whether this platform renders AuthorizedKeysFile from opensshPolicy.authorizedKeysFiles.";
     };
 
     cleanupLegacyCommandScripts = mkOption {
@@ -426,7 +428,7 @@ in
     # Expose helpers
     opensshPolicy.hostKeys = cfg.hostKeyPaths;
     opensshPolicy.authorizedKeysFileString =
-      if pkgs.stdenv.isDarwin then lib.concatStringsSep " " cfg.authorizedKeysFiles else null;
+      if cfg.platformRendersAuthorizedKeysFile then lib.concatStringsSep " " cfg.authorizedKeysFiles else null;
 
     # Ensure non-interactive `/bin/bash -c` launched by sshd gets a canonical
     # PATH immediately, with a platform-appropriate primary prefix.
@@ -436,10 +438,10 @@ in
       case "$-" in
         *i*) : ;;
         *)
-          PRIMARY="${nonInteractivePrimaryPath}"
+          PRIMARY="${cfg.nonInteractivePrimaryPath}"
           # Fallback PATH if empty (literal, no Nix interpolation)
           if [ -z "$PATH" ]; then
-            PATH="${defaultSetEnvPath}"
+            PATH="${cfg.setEnvPath}"
           fi
           first="$(printf %s "$PATH" | cut -d: -f1)"
           if [ "$first" != "$PRIMARY" ] && [ -d "$PRIMARY" ]; then

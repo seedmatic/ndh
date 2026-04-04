@@ -164,8 +164,8 @@ let
       {
         # Host-provided SOPS age key for first-boot bootstrap import (@codebase)
         # Keep read-only and import it into /etc/sops/age/keys.txt during activation.
-        location = "${profileHome}/Private/sops:age:keys.txt";
-        mountPoint = "/mnt/lima-cidata/sops-age-keys.txt";
+        location = "${profileHome}/.config/sops/age";
+        mountPoint = "/mnt/lima-cidata/.sops.d";
         writable = false;
       }
       {

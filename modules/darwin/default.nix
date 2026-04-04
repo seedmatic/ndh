@@ -18,6 +18,7 @@
     ./disable-unwanted-agents.nix
     ./dnsmasq.nix
     ./headscale.nix
+    ./bird-daemon.nix
     ./lan-dns-resolver.nix
     ./nfs-autofs.nix
     ./lima-config.nix
@@ -39,6 +40,11 @@
   # Active le résolveur .lan par défaut (modifiable par hôte)
   networking.lanDnsResolver.enable = true;
   networking.lanDnsResolver.nameserver = "192.168.1.254";
+
+  # Darwin-specific HM post-activation execution wiring.
+  system.activationScripts.postActivation.text = lib.mkOrder 2000 ''
+    ${config.activation.homeManagerPostActivationScript}
+  '';
 
   # Darwin policy: keep activation-script path for sops and use system sudo path.
   sops.useSystemdActivation = lib.mkDefault false;

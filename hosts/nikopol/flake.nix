@@ -60,9 +60,9 @@
             nxmatic.sopsAgeKeyBootstrap.phase = "bootstrap";
             nxmatic.sopsAgeKeyBootstrap.nixosHostKeyImport.candidates = [
               # Preferred: key delivered via Lima cidata payload.
-              "/mnt/lima-cidata/sops-age-keys.txt"
+              "/mnt/lima-cidata/.sops.d/keys.txt"
               # Host-mounted fallback: ~/Private/sops:age:keys.txt on Darwin host.
-              "/Users/nxmatic/Private/sops:age:keys.txt"
+              "/Users/nxmatic/.config/sops/age/keys.txt"
             ];
 
             # Safety valve while exercising fresh SSH/runtime-secret changes.

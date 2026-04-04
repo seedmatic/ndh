@@ -158,6 +158,12 @@ in
 
   config = {
 
+    # NixOS-specific logger wiring for activation scripts expecting /etc/activation-logger.sh.
+    environment.etc."activation-logger.sh" = {
+      source = config.activation.loggerScript;
+      mode = "0555";
+    };
+
     # NixOS policy: systemd-driven sops activation and host key import defaults.
     sops.useSystemdActivation = lib.mkDefault true;
     nxmatic.sopsAgeKeyBootstrap = {

@@ -71,6 +71,9 @@ in
 
   opensshPolicy = {
     enable = true;
+    platformRendersAuthorizedKeysFile = lib.mkDefault false;
+    setEnvPath = lib.mkDefault "/run/wrappers/bin:/run/current-system/sw/bin:/bin:/usr/bin";
+    nonInteractivePrimaryPath = lib.mkDefault "/run/wrappers/bin";
     trustedCAPath = caPublicKeyPath;
     principalsCommandSource = principalsScriptStore;
     groupKeysCommandSource = groupKeysScriptStore;

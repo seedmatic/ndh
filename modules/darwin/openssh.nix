@@ -100,6 +100,9 @@ in
     # Server policy wiring
     opensshPolicy = {
       enable = true;
+      platformRendersAuthorizedKeysFile = lib.mkDefault true;
+      setEnvPath = lib.mkDefault "/run/current-system/sw/bin:/nix/var/nix/profiles/default/bin:/usr/bin:/bin";
+      nonInteractivePrimaryPath = lib.mkDefault "/run/current-system/sw/bin";
       trustedCAPath = caPublicKeyFile;
       principalsCommandSource = principalsScriptStore;
       principalsCommandUser = "_sshd";
