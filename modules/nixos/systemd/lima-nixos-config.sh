@@ -59,8 +59,14 @@ else
   : "[lima-nixos-config] No existing working copy found among candidates:" >&2
   # Still display list (kept echo for visibility of candidates if needed)
   printf '  %s\n' "${CANDIDATES[@]:-}" >&2
-  : "[lima-nixos-config] Cloning repository config" >&2
-  nix flake clone -f /var/lib/nixos/config github:nxmatic/nix-darwin-home
+  if [ "${LIMA_NIXOS_ALLOW_CLONE:-0}" = "1" ]; then
+    : "[lima-nixos-config] LIMA_NIXOS_ALLOW_CLONE=1 set; cloning repository config" >&2
+    nix flake clone -f /var/lib/nixos/config github:nxmatic/nix-darwin-home
+  else
+    : "[lima-nixos-config] ERROR: no working copy found and clone fallback disabled" >&2
+    : "[lima-nixos-config] Set LIMA_NIXOS_CONFIG_PATH to a mounted checkout or set LIMA_NIXOS_ALLOW_CLONE=1 to permit clone." >&2
+    exit 1
+  fi
 fi
 
 : "[lima-nixos-config] Linking host-specific flake into /etc/nixos"

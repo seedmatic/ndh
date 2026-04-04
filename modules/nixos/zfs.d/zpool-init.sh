@@ -3,7 +3,7 @@
 # - Runs disko (format+mount), converts ZFS mountpoints to legacy, exports pools
 # - System bootloader/switch/rebuild is handled remotely by host workflow
 
-set -euo pipefail
+set -euxo pipefail
 
 DISKO_NIX="${DISKO_NIX:-${DISKO_NIX_DEFAULT:-/etc/nixos/disko.nix}}"
 
@@ -11,7 +11,8 @@ DISKO_NIX="${DISKO_NIX:-${DISKO_NIX_DEFAULT:-/etc/nixos/disko.nix}}"
 if [ -f "${DISKO_NIX}" ]; then
   disko --mode format,mount "${DISKO_NIX}" || : "→ WARNING: disko failed"
 else
-  : "→ WARNING: disko.nix not found at expected path"
+  : "→ ERROR: disko.nix not found at expected path"
+  exit 1
 fi
 zfs umount -a || true
 

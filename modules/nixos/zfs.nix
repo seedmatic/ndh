@@ -149,6 +149,19 @@ let
       ${_json}
       --'' _value);
 
+  diskoModulePinned = pkgs.writeText "disko-module-pinned.nix" ''
+    { lib, ... }:
+    {
+      disko = import ${./disko-config.nix} { inherit lib; };
+    }
+  '';
+
+  zfsProvisionDiskDatastore =
+    pkgs.writeShellScriptBin "zfs-provision-disk-datastore" ''
+      export DISKO_NIX_DEFAULT="${diskoModulePinned}"
+      ${builtins.readFile ./zfs.d/zpool-init.sh}
+    '';
+
 in
 {
 
@@ -275,25 +288,21 @@ in
     # Only add extra scripts and shutdown logic if override is true
     environment.systemPackages = [
       pkgs.zfs
-      (
-        pkgs.writeShellScriptBin "zfs-provision-disk-datastore" ''
-          export DISKO_NIX_DEFAULT="${./disko.nix}"
-          ${builtins.readFile ./zfs.d/provision-disk-zfs-datastore.sh}
-        ''
-      )
+      zfsProvisionDiskDatastore
     ];
 
     systemd = {
-      services.zfs-bootstrap-activation = lib.mkIf config.zfsOverlays.bootstrapActivation.enable {
+      services.zpool-init = lib.mkIf config.zfsOverlays.bootstrapActivation.enable {
         description = "Idempotent one-shot ZFS disk/datastore provisioning (@codebase)";
         wantedBy = [ "multi-user.target" ];
-        after = [ "local-fs.target" "zfs.target" ];
-        wants = [ "zfs.target" ];
+        after = [ "local-fs.target" "zfs.target" "zfs-import.target" ];
+        wants = [ "zfs.target" "zfs-import.target" ];
 
         path = with pkgs; [
           bash
           coreutils
           util-linux
+          gawk
           zfs
           disko
         ];
@@ -301,14 +310,15 @@ in
         serviceConfig = {
           Type = "oneshot";
           RemainAfterExit = true;
-          ExecStart = pkgs.writeShellScript "zfs-bootstrap-activation" ''
-            set -euo pipefail
+          ExecStart = pkgs.writeShellScript "zpool-init" ''
+            set -euxo pipefail
+
             if zpool list -H -o name tank >/dev/null 2>&1; then
-              echo "[zfs-bootstrap-activation] zpool 'tank' already exists, skipping"
+              echo "[zpool-init] zpool 'tank' already exists, skipping"
               exit 0
             fi
 
-            /run/current-system/sw/bin/zfs-provision-disk-datastore
+            exec ${zfsProvisionDiskDatastore}/bin/zpool-init
           '';
           TimeoutStartSec = "30min";
         };
