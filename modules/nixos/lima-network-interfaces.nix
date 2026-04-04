@@ -158,20 +158,43 @@ in
 
     systemd.network.networks."40-mgmt0" = {
       matchConfig.Name = "mgmt0"; # if renamed from enp0s1; adjust if not using rename
+      networkConfig = {
+        DHCP = "ipv4";
+        Domains = [ "" ];
+      };
       dhcpV4Config.UseDNS = false;
-      networkConfig.Domains = [ "" ];
+    };
+
+    # Fallback for rebuilt Lima VMs where the implicit primary NIC did not get
+    # renamed to mgmt0 (e.g. MAC drift). Keep SSH management path alive.
+    systemd.network.networks."40-enp0s1-fallback" = {
+      matchConfig.Name = "enp0s1";
+      networkConfig = {
+        DHCP = "ipv4";
+        Domains = [ "" ];
+      };
+      dhcpV4Config.UseDNS = false;
+      linkConfig = {
+        RequiredForOnline = false;
+      };
     };
 
     systemd.network.networks."40-vznat0" = {
       matchConfig.Name = "vznat0";
+      networkConfig = {
+        DHCP = "ipv4";
+        Domains = [ "" ];
+      };
       dhcpV4Config.UseDNS = false;
-      networkConfig.Domains = [ "" ];
     };
 
     systemd.network.networks."40-vmlan0" = {
       matchConfig.Name = "vmlan0";
+      networkConfig = {
+        DHCP = "ipv4";
+        Domains = [ "" ];
+      };
       dhcpV4Config.UseDNS = false;
-      networkConfig.Domains = [ "" ];
     };
 
     # Enable mDNS (Avahi) and bind it to lan-br and vmhost0 so host backchannel
