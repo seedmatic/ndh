@@ -276,16 +276,16 @@ in
     environment.systemPackages = [
       pkgs.zfs
       (
-        pkgs.writeShellScriptBin "bootstrap-zfs" ''
+        pkgs.writeShellScriptBin "zfs-provision-disk-datastore" ''
           export DISKO_NIX_DEFAULT="${./disko.nix}"
-          ${builtins.readFile ./bootstrap-zfs.sh}
+          ${builtins.readFile ./zfs.d/provision-disk-zfs-datastore.sh}
         ''
       )
     ];
 
     systemd = {
       services.zfs-bootstrap-activation = lib.mkIf config.zfsOverlays.bootstrapActivation.enable {
-        description = "Idempotent one-shot ZFS bootstrap activation (@codebase)";
+        description = "Idempotent one-shot ZFS disk/datastore provisioning (@codebase)";
         wantedBy = [ "multi-user.target" ];
         after = [ "local-fs.target" "zfs.target" ];
         wants = [ "zfs.target" ];
@@ -296,30 +296,24 @@ in
           util-linux
           zfs
           disko
-          nixos-rebuild
         ];
 
         serviceConfig = {
           Type = "oneshot";
           RemainAfterExit = true;
-          Environment = [ "BOOTSTRAP_ZFS_RUN_REBUILD=0" ];
           ExecStart = pkgs.writeShellScript "zfs-bootstrap-activation" ''
             set -euo pipefail
-            marker="/var/lib/nixos/zfs-bootstrap-activation.done"
-            if [ -e "$marker" ]; then
-              echo "[zfs-bootstrap-activation] marker present, skipping"
+            if zpool list -H -o name tank >/dev/null 2>&1; then
+              echo "[zfs-bootstrap-activation] zpool 'tank' already exists, skipping"
               exit 0
             fi
 
-            mkdir -p /var/lib/nixos
-            /run/current-system/sw/bin/bootstrap-zfs
-            touch "$marker"
+            /run/current-system/sw/bin/zfs-provision-disk-datastore
           '';
           TimeoutStartSec = "30min";
         };
 
         unitConfig = {
-          ConditionPathExists = "!/var/lib/nixos/zfs-bootstrap-activation.done";
           X-StopOnRemoval = false;
         };
       };
