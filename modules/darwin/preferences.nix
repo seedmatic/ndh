@@ -47,6 +47,22 @@ let
           }
         } "$out"
       '';
+
+  osOnlyUpdateNotifierScript = pkgs.writeShellScript "darwin-os-only-update-notifier.sh" ''
+    set -euo pipefail
+
+    update_output="$(${lib.escapeShellArg "/usr/sbin/softwareupdate"} --list --product-types macOS 2>&1 || true)"
+    if ! printf '%s\n' "$update_output" | ${lib.escapeShellArg "/usr/bin/grep"} -qE '^\* Label:'; then
+      exit 0
+    fi
+
+    first_label="$(printf '%s\n' "$update_output" | ${lib.escapeShellArg "/usr/bin/sed"} -n 's/^\* Label: //p' | ${lib.escapeShellArg "/usr/bin/head"} -n1)"
+    safe_label="$(printf '%s' "$first_label" | ${lib.escapeShellArg "/usr/bin/tr"} '"' "'")"
+
+    ${lib.escapeShellArg "/usr/bin/osascript"} <<EOF
+display notification "Open System Settings → General → Software Update" with title "macOS updates available" subtitle "$safe_label"
+EOF
+  '';
 in
 {
   config = {
@@ -117,6 +133,13 @@ in
         AutomaticallyInstallMacOSUpdates = false;
       };
 
+      # Keep Software Update quiet; weekly OS-only checks are handled by launchd.
+      CustomUserPreferences."com.apple.SoftwareUpdate" = {
+        AutomaticCheckEnabled = false;
+        AutomaticDownload = false;
+        AutomaticallyInstallMacOSUpdates = false;
+      };
+
       # univesal access
       # should investigate if really needed, error with default write
 
@@ -167,5 +190,19 @@ in
     system.activationScripts.defaults.text = lib.mkAfter ''
       ${preferencesPostActivation}
     '';
+
+    launchd.user.agents.nxmatic-os-only-softwareupdate-notifier = {
+      serviceConfig = {
+        Label = "com.nxmatic.softwareupdate.os-only.notifier";
+        ProgramArguments = [ "${osOnlyUpdateNotifierScript}" ];
+        StartCalendarInterval = {
+          Weekday = 1;
+          Hour = 9;
+          Minute = 0;
+        };
+        ProcessType = "Background";
+        RunAtLoad = false;
+      };
+    };
   };
 }
