@@ -30,6 +30,17 @@ main() {
     echo "[limaConfig][WARN] missing $host_priv; not linking @profileHome@/.lima/_config/user"
   fi
 
+  if { [ ! -f "$host_pub" ] || [ ! -f "$host_priv" ]; } && [ -f "/run/secrets/nix-darwin-home/nxmatic-ssh-keys.yaml" ]; then
+    per_user_keys_dir="$(dirname "$host_priv")"
+    system_keys_dir="$(dirname "$host_pub")"
+    per_user_has_files="$(find "$per_user_keys_dir" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null || true)"
+    system_has_files="$(find "$system_keys_dir" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null || true)"
+    if [ -z "$per_user_has_files" ] && [ -z "$system_has_files" ]; then
+      echo "[limaConfig][HINT] found /run/secrets/nix-darwin-home/nxmatic-ssh-keys.yaml but ${per_user_keys_dir} and ${system_keys_dir} are empty"
+      echo "[limaConfig][HINT] this usually means the Home Manager ssh-keys activation pipeline did not run"
+    fi
+  fi
+
   : "Stage NixOS disk image to stable path"
   img_src="@imageSourcePath@"
   img_dst="@imageTargetPath@"
