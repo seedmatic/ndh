@@ -10,8 +10,18 @@ LOG_DIR="${HOME}/.local/var"
 mkdir -p "${LOG_DIR}"
 exec 2>>"${LOG_DIR}/known-hosts.log"
 
-host="${1:-}"   # Provided by OpenSSH (may be empty)
-ip="${2:-}"     # Second argument (may be empty)
+mode_or_host="${1:-}"
+case "${mode_or_host}" in
+  ORDER|HOSTNAME|ADDRESS)
+    # OpenSSH can invoke KnownHostsCommand with an intent token first.
+    host="${2:-}"
+    ip="${3:-}"
+    ;;
+  *)
+    host="${1:-}"   # Traditional invocation: host [ip]
+    ip="${2:-}"
+    ;;
+esac
 
 CA_DIR="@CA_DIR@"
 
@@ -36,7 +46,15 @@ shopt -s nullglob 2>/dev/null || true
 for f in "${CA_DIR}"/*-ca.pub; do
   [[ -f "${f}" ]] || continue
 
-  key_part="$(sed -n '1p' "${f}")"
+  key_line="$(sed -n '1p' "${f}" || true)"
+  key_type="$(printf '%s\n' "${key_line}" | awk '{print $1}')"
+  key_data="$(printf '%s\n' "${key_line}" | awk '{print $2}')"
+  case "${key_type}" in
+    ssh-*|ecdsa-*|sk-*) ;;
+    *) continue ;;
+  esac
+  [[ -n "${key_data}" ]] || continue
+  key_part="${key_type} ${key_data}"
   base="${f%-ca.pub}"
   domain=""
   if [[ -f "${base}-ca.domain" ]]; then
