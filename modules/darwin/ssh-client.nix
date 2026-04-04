@@ -247,18 +247,16 @@ in
               "/Users/${userName}";
         in
         "${home}/.lima/_config/user";
-      defaultLimaKnownHosts =
-        let
-          home =
-            if (config ? profile && config.profile ? user && config.profile.user ? home) then
-              config.profile.user.home
-            else
-              "/Users/${userName}";
-        in
-        "${home}/.lima/_config/known_hosts";
       guestHostKeySafetyConfig = ''
-        UserKnownHostsFile ${defaultLimaKnownHosts}
-        StrictHostKeyChecking accept-new
+        UserKnownHostsFile /dev/null
+        GlobalKnownHostsFile /dev/null
+        StrictHostKeyChecking no
+        CheckHostIP no
+      '';
+      ownedDomainHostKeyBypassConfig = ''
+        UserKnownHostsFile /dev/null
+        GlobalKnownHostsFile /dev/null
+        StrictHostKeyChecking no
         CheckHostIP no
       '';
       guestIdentity = if cfg.guest.identityFile != null then cfg.guest.identityFile else defaultLimaKey;
@@ -311,7 +309,7 @@ in
           identityFile = hostIdentityFile;
           identitiesOnly = true;
           bypassAgent = false;
-          extraConfig = null;
+          extraConfig = ownedDomainHostKeyBypassConfig;
         };
 
       allExtraStanzas = hostIdentityStanzas ++ cfg.extraStanzas;
