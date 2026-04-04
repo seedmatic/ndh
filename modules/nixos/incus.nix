@@ -134,6 +134,7 @@ in
     networkmanager.enable = true;
     # NetworkManager should not manage vmlan0 - it's used as Incus lan-br bridge member
     networkmanager.unmanaged = [
+      "interface-name:vmhost0"
       "interface-name:vmlan0"
       "interface-name:lan-br"
     ];

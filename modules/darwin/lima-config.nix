@@ -96,7 +96,6 @@ let
   limaRunScript = pkgs.runCommand "lima-run.sh" { } ''
     cp ${
       pkgs.replaceVars ./lima-config.d/run.sh {
-        profileHome = profileHome;
         effectiveHostName = effectiveHostName;
         nixosFlakePath = cfg.nixosFlakePath;
         nixosHostAttr = cfg.nixosHostAttr;

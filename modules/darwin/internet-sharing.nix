@@ -153,9 +153,8 @@ in
         ${activationWrapperScript}
       '';
     }
-    // (lib.optionalAttrs (pkgs.stdenv.isLinux) {
-      # Only define systemd options on Linux/NixOS
-      systemd.defaults.CustomUserPreferences = {
+    // {
+      system.defaults.CustomUserPreferences = {
         "README-InternetSharing" = {
           Note = "Internet Sharing configured by nix-darwin";
           PrimaryInterface = cfg.primaryInterface;
@@ -163,6 +162,6 @@ in
           ManualToggleRequired = "System Settings → General → Sharing → Internet Sharing";
         };
       };
-    })
+    }
   );
 }

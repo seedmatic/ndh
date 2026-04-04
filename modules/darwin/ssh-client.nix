@@ -257,7 +257,9 @@ in
         let
           pats = concatStringsSep " " st.patterns;
         in
-        "Host ${pats}\n"
+        ''
+          Host ${pats}
+        ''
         + optionalString (st.user != null) "  User ${st.user}\n"
         + optionalString (st.identityFile != null) "  IdentityFile ${st.identityFile}\n"
         + optionalString (st.identityFile != null && st.identitiesOnly) "  IdentitiesOnly yes\n"

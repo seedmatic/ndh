@@ -156,8 +156,8 @@ let
     }
   '';
 
-  zfsProvisionDiskDatastore =
-    pkgs.writeShellScriptBin "zfs-provision-disk-datastore" ''
+  zpoolInit =
+    pkgs.writeShellScriptBin "zpool-init" ''
       export DISKO_NIX_DEFAULT="${diskoModulePinned}"
       ${builtins.readFile ./zfs.d/zpool-init.sh}
     '';
@@ -288,7 +288,7 @@ in
     # Only add extra scripts and shutdown logic if override is true
     environment.systemPackages = [
       pkgs.zfs
-      zfsProvisionDiskDatastore
+      zpoolInit
     ];
 
     systemd = {
@@ -318,7 +318,7 @@ in
               exit 0
             fi
 
-            exec ${zfsProvisionDiskDatastore}/bin/zpool-init
+            exec ${zpoolInit}/bin/zpool-init
           '';
           TimeoutStartSec = "30min";
         };

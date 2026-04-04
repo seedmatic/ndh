@@ -35,6 +35,7 @@
     ./shell-keychain.nix
     ./ssh-client.nix
     ./incus-remote-trust.nix
+    ./sops.nix
   ];
 
   # Active le résolveur .lan par défaut (modifiable par hôte)
@@ -46,17 +47,4 @@
     ${config.activation.homeManagerPostActivationScript}
   '';
 
-  # Darwin policy: keep activation-script path for sops and use system sudo path.
-  sops.useSystemdActivation = lib.mkDefault false;
-  nxmatic.sopsAgeKeyBootstrap = {
-    defaultAgeKeyFile = lib.mkDefault (
-      if config.nxmatic.sopsAgeKeyBootstrap.darwinSystemWideKey then
-        config.nxmatic.sopsAgeKeyBootstrap.systemWideKeyFile
-      else
-        config.nxmatic.sopsAgeKeyBootstrap.darwinUserKeyFile
-    );
-    sudoCommand = lib.mkDefault "/usr/bin/sudo";
-  };
-
-  activation.loggerCmd = lib.mkDefault "/usr/bin/logger -p notice -t %TAG%";
 }

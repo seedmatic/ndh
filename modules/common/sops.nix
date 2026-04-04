@@ -67,7 +67,6 @@ let
   };
   sopsAgeBootstrapScript = builtins.readFile sopsAgeBootstrapScriptSource;
   sopsAgeBootstrapSystemdScript = pkgs.writeShellScript "sops-age-bootstrap" sopsAgeBootstrapScript;
-  sopsAgeBootstrapUnitName = "sops-age-bootstrap";
   useSystemdSopsActivation = config.sops.useSystemdActivation or false;
 in
 {
@@ -117,6 +116,19 @@ in
         Absolute sudo command used by SOPS age key bootstrap helper logic.
         Platform modules may override (for example Darwin `/usr/bin/sudo`).
       '';
+    };
+
+    systemdUnitName = mkOption {
+      type = types.str;
+      default = "sops-age-bootstrap";
+      description = "NixOS systemd unit name used for SOPS age bootstrap ordering.";
+    };
+
+    systemdExecStartScript = mkOption {
+      type = types.path;
+      readOnly = true;
+      default = sopsAgeBootstrapSystemdScript;
+      description = "Store path of the generated bootstrap script for systemd ExecStart in NixOS modules.";
     };
 
     darwinUserKeyFile = mkOption {
@@ -265,22 +277,6 @@ in
         ""
     );
 
-    # On Linux/systemd, run key bootstrap as a dedicated ordered oneshot before sops-install-secrets.
-    systemd.services.${sopsAgeBootstrapUnitName} = lib.mkIf useSystemdSopsActivation {
-      description = "Ensure SOPS age key is available before sops-install-secrets (@codebase)";
-      before = [ "sops-install-secrets.service" ];
-      wantedBy = [ "sops-install-secrets.service" ];
-      serviceConfig = {
-        Type = "oneshot";
-        ExecStart = sopsAgeBootstrapSystemdScript;
-      };
-    };
-
-    # If the age key is unavailable, skip the secrets installer unit cleanly.
-    systemd.services.sops-install-secrets = lib.mkIf useSystemdSopsActivation {
-      requires = [ "${sopsAgeBootstrapUnitName}.service" ];
-      after = [ "${sopsAgeBootstrapUnitName}.service" ];
-      unitConfig.ConditionPathExists = config.sops.age.keyFile;
-    };
-  };
+  }
+  ;
 }

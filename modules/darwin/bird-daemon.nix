@@ -218,8 +218,8 @@ in
     system.activationScripts.postActivation.text = ''
       ${birdPostActivationScript}
     '';
-    systemd.defaults.alf.globalstate = 1;
-    systemd.defaults.alf.allowsignedenabled = 1;
-    systemd.defaults.alf.stealthenabled = 1;
+    system.defaults.alf.globalstate = 1;
+    system.defaults.alf.allowsignedenabled = 1;
+    system.defaults.alf.stealthenabled = 1;
   };
 }

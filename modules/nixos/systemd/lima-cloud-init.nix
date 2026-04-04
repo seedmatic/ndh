@@ -35,8 +35,9 @@ in
 
     after = [
       "network-pre.target"
-      "zfs-import.target"
+      "zpool-init.service"
     ];
+    wants = [ "zpool-init.service" ];
     before = [
       "multi-user.target"
       "replay-virtiofs-udev.service"
