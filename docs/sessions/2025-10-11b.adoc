@@ -17,7 +17,7 @@ This follow-up session (same day, post SSH refactor) focused on stabilizing the 
 
 === 2. Link-First Configuration Initialization ✅
 * Replaced implicit git clone with `lima-nixos-config.sh` linking a mounted working copy
-* Optional clone fallback only when `LIMA_NIXOS_ALLOW_CLONE=1`
+* Optional clone fallback only when `RKE2LAB_NIXOS_ALLOW_CLONE=1`
 * Idempotent (ConditionPathExists) + retry logic safe removal of resolvconf hard dependency
 
 === 3. Externalized & Hardened Scripts ✅

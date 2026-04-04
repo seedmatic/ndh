@@ -78,7 +78,8 @@ let
         effectiveHostName = effectiveHostName;
         profileUser = profileUser;
         profileHome = profileHome;
-        limaConfigYaml = limaConfigYaml;
+        limaConfigYamlHeadless = limaConfigYamlHeadless;
+        limaConfigYamlGui = limaConfigYamlGui;
         limaRunScript = limaRunScript;
         imageSourcePath = imageSourcePath;
         imageTargetPath = imageTargetPath;
@@ -329,7 +330,14 @@ let
   };
 
   limaConfigJson = lib.generators.toJSON { } limaConfig;
-  limaConfigYaml = (pkgs.formats.yaml { }).generate "lima.yaml" limaConfig;
+  limaConfigHeadless = limaConfig;
+  limaConfigGui = limaConfig // {
+    video = {
+      display = "default";
+    };
+  };
+  limaConfigYamlHeadless = (pkgs.formats.yaml { }).generate "lima-headless.yaml" limaConfigHeadless;
+  limaConfigYamlGui = (pkgs.formats.yaml { }).generate "lima-gui.yaml" limaConfigGui;
 
 in
 {

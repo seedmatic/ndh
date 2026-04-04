@@ -2,6 +2,13 @@
 # @codebase - restore ssh-keys.d using the fixed extraction pipeline
 set -euo pipefail
 
+: "${COPILOT_XTRACE:=1}"
+if [[ "${COPILOT_XTRACE}" == "1" ]]; then
+  export BASH_XTRACEFD=2
+  export PS4='+ [${BASH_SOURCE##*/}:${LINENO}] '
+  set -x
+fi
+
 KEYS_YAML=/run/secrets/nix-darwin-home/nxmatic-ssh-keys.yaml
 PROFILE=committed
 STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/ssh-keys.d"
