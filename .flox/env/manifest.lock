@@ -53,6 +53,9 @@
         "pkg-path": "nixfmt-rfc-style",
         "outputs": "all"
       },
+      "nixos-rebuild-ng": {
+        "pkg-path": "nixos-rebuild-ng"
+      },
       "nvfetcher": {
         "pkg-path": "nvfetcher",
         "outputs": "all"
@@ -1630,6 +1633,126 @@
       "priority": 5
     },
     {
+      "attr_path": "nixos-rebuild-ng",
+      "broken": false,
+      "derivation": "/nix/store/bshmwn1sqk8787bng1rgq6ggv10iir7v-nixos-rebuild-ng-26.05.drv",
+      "description": "Rebuild your NixOS configuration and switch to it, on local hosts and remote",
+      "install_id": "nixos-rebuild-ng",
+      "license": "MIT",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=6201e203d09599479a3b3450ed24fa81537ebc4e",
+      "name": "nixos-rebuild-ng-26.05",
+      "pname": "nixos-rebuild-ng",
+      "rev": "6201e203d09599479a3b3450ed24fa81537ebc4e",
+      "rev_count": 972949,
+      "rev_date": "2026-04-01T09:47:46Z",
+      "scrape_date": "2026-04-02T18:01:26.729462Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "26.05",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "dist": "/nix/store/i7iysg59cywzkg9c0mzzksq0i40xd3jh-nixos-rebuild-ng-26.05-dist",
+        "out": "/nix/store/lzwpw2ws3971vbpqkyhl6jfxjwa0vxdi-nixos-rebuild-ng-26.05"
+      },
+      "system": "aarch64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "nixos-rebuild-ng",
+      "broken": false,
+      "derivation": "/nix/store/m2pr2mb3y7fvfjrkj9axk7bvw5hqbkqn-nixos-rebuild-ng-26.05.drv",
+      "description": "Rebuild your NixOS configuration and switch to it, on local hosts and remote",
+      "install_id": "nixos-rebuild-ng",
+      "license": "MIT",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=6201e203d09599479a3b3450ed24fa81537ebc4e",
+      "name": "nixos-rebuild-ng-26.05",
+      "pname": "nixos-rebuild-ng",
+      "rev": "6201e203d09599479a3b3450ed24fa81537ebc4e",
+      "rev_count": 972949,
+      "rev_date": "2026-04-01T09:47:46Z",
+      "scrape_date": "2026-04-02T18:33:11.687846Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "26.05",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "dist": "/nix/store/g811pn46hggnbc5r1m4s19sgzynr91fk-nixos-rebuild-ng-26.05-dist",
+        "out": "/nix/store/y3gpcvbqvriidr0dnxr3wr8axarjpg79-nixos-rebuild-ng-26.05"
+      },
+      "system": "aarch64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "nixos-rebuild-ng",
+      "broken": false,
+      "derivation": "/nix/store/w8bm04rjj6yzw84h1slyr5mskpwc11i2-nixos-rebuild-ng-26.05.drv",
+      "description": "Rebuild your NixOS configuration and switch to it, on local hosts and remote",
+      "install_id": "nixos-rebuild-ng",
+      "license": "MIT",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=6201e203d09599479a3b3450ed24fa81537ebc4e",
+      "name": "nixos-rebuild-ng-26.05",
+      "pname": "nixos-rebuild-ng",
+      "rev": "6201e203d09599479a3b3450ed24fa81537ebc4e",
+      "rev_count": 972949,
+      "rev_date": "2026-04-01T09:47:46Z",
+      "scrape_date": "2026-04-02T19:02:41.552023Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "26.05",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "dist": "/nix/store/gxd9gz2y78bq09ljial7mgxwphlisas9-nixos-rebuild-ng-26.05-dist",
+        "out": "/nix/store/vlw1bha9d52rkwmn8snbiynidv7lxzi1-nixos-rebuild-ng-26.05"
+      },
+      "system": "x86_64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "nixos-rebuild-ng",
+      "broken": false,
+      "derivation": "/nix/store/v9sa9sw9ax3l5sk44jp0836xf5v2jnxp-nixos-rebuild-ng-26.05.drv",
+      "description": "Rebuild your NixOS configuration and switch to it, on local hosts and remote",
+      "install_id": "nixos-rebuild-ng",
+      "license": "MIT",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=6201e203d09599479a3b3450ed24fa81537ebc4e",
+      "name": "nixos-rebuild-ng-26.05",
+      "pname": "nixos-rebuild-ng",
+      "rev": "6201e203d09599479a3b3450ed24fa81537ebc4e",
+      "rev_count": 972949,
+      "rev_date": "2026-04-01T09:47:46Z",
+      "scrape_date": "2026-04-02T19:37:11.380062Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "26.05",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "dist": "/nix/store/hicgwn0m44jwrgxp19g5i5pydnxp35bj-nixos-rebuild-ng-26.05-dist",
+        "out": "/nix/store/gvgg5l8z4m4pqhhx9sx065nni0g6rhqy-nixos-rebuild-ng-26.05"
+      },
+      "system": "x86_64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
       "attr_path": "nvfetcher",
       "broken": false,
       "derivation": "/nix/store/izp4b5ni6bsmyz252c2pd3xhf14bm2mi-nvfetcher-0.8.0.0.drv",
@@ -2567,6 +2690,9 @@
         },
         "lsof": {
           "pkg-path": "lsof"
+        },
+        "nixos-rebuild-ng": {
+          "pkg-path": "nixos-rebuild-ng"
         },
         "remake": {
           "pkg-path": "remake"
