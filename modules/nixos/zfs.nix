@@ -229,6 +229,11 @@ in
       To disable snapshots entirely set zfsOverlays.sanoid.enable = false.
     '';
   };
+  options.zfsOverlays.bootstrapActivation.enable = lib.mkOption {
+    type = lib.types.bool;
+    default = true;
+    description = "Run ZFS bootstrap activation once via a dedicated idempotent systemd unit.";
+  };
   config = {
 
     networking.hostId = lib.mkDefault hostId;
@@ -270,10 +275,55 @@ in
     # Only add extra scripts and shutdown logic if override is true
     environment.systemPackages = [
       pkgs.zfs
-      (pkgs.writeShellScriptBin "bootstrap-zfs" (builtins.readFile ./bootstrap-zfs.sh))
+      (
+        pkgs.writeShellScriptBin "bootstrap-zfs" ''
+          export DISKO_NIX_DEFAULT="${./disko.nix}"
+          ${builtins.readFile ./bootstrap-zfs.sh}
+        ''
+      )
     ];
 
     systemd = {
+      services.zfs-bootstrap-activation = lib.mkIf config.zfsOverlays.bootstrapActivation.enable {
+        description = "Idempotent one-shot ZFS bootstrap activation (@codebase)";
+        wantedBy = [ "multi-user.target" ];
+        after = [ "local-fs.target" "zfs.target" ];
+        wants = [ "zfs.target" ];
+
+        path = with pkgs; [
+          bash
+          coreutils
+          util-linux
+          zfs
+          disko
+          nixos-rebuild
+        ];
+
+        serviceConfig = {
+          Type = "oneshot";
+          RemainAfterExit = true;
+          Environment = [ "BOOTSTRAP_ZFS_RUN_REBUILD=0" ];
+          ExecStart = pkgs.writeShellScript "zfs-bootstrap-activation" ''
+            set -euo pipefail
+            marker="/var/lib/nixos/zfs-bootstrap-activation.done"
+            if [ -e "$marker" ]; then
+              echo "[zfs-bootstrap-activation] marker present, skipping"
+              exit 0
+            fi
+
+            mkdir -p /var/lib/nixos
+            /run/current-system/sw/bin/bootstrap-zfs
+            touch "$marker"
+          '';
+          TimeoutStartSec = "30min";
+        };
+
+        unitConfig = {
+          ConditionPathExists = "!/var/lib/nixos/zfs-bootstrap-activation.done";
+          X-StopOnRemoval = false;
+        };
+      };
+
       tmpfiles.rules = [
         # ensure utmp + wtmp exist on the real root under /run
         "f /run/utmp 0664 root utmp -"
