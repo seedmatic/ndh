@@ -83,8 +83,8 @@ let
         limaRunScript = limaRunScript;
         imageSourcePath = imageSourcePath;
         imageTargetPath = imageTargetPath;
-        hostPublicKeyPath = "${sshPaths.systemSecretsDir}/host.pub";
-        hostPrivateKeyPath = "${sshPaths.perUserSecretsDir}/host";
+        hostPublicKeyPath = "${sshPaths.systemSecretsDir}/rdp-host.pub";
+        hostPrivateKeyPath = "${sshPaths.perUserSecretsDir}/rdp-host";
         activationLogger = lib.attrByPath [
           "activation"
           "loggerScript"

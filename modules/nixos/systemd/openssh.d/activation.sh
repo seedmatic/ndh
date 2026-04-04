@@ -49,10 +49,10 @@ main() {
 
   # Canonical host SSH identity: install persisted SOPS-managed key material
   # so renewed VM instances keep a stable host key and known_hosts remains valid.
-  if [ -s "$USER_PRIVATE_SOURCE_DIR/host" ]; then
-    install -m 600 "$USER_PRIVATE_SOURCE_DIR/host" "$SYSTEM_HOST_KEY"
-    if [ -s "$USER_CA_SOURCE_DIR/host.pub" ]; then
-      install -m 644 "$USER_CA_SOURCE_DIR/host.pub" "$SYSTEM_HOST_KEY_PUB"
+  if [ -s "$USER_PRIVATE_SOURCE_DIR/rdp-host" ]; then
+    install -m 600 "$USER_PRIVATE_SOURCE_DIR/rdp-host" "$SYSTEM_HOST_KEY"
+    if [ -s "$USER_CA_SOURCE_DIR/rdp-host.pub" ]; then
+      install -m 644 "$USER_CA_SOURCE_DIR/rdp-host.pub" "$SYSTEM_HOST_KEY_PUB"
     else
       @sshKeygen@ -y -f "$SYSTEM_HOST_KEY" > "$SYSTEM_HOST_KEY_PUB"
       chmod 644 "$SYSTEM_HOST_KEY_PUB"
@@ -61,11 +61,11 @@ main() {
 
   # Keep a root-local client identity available for early boot/activation SSH calls.
   # Home-manager key extraction is user-scoped, so duplicate the host key for root here.
-  if [ -s "$USER_PRIVATE_SOURCE_DIR/host" ]; then
+  if [ -s "$USER_PRIVATE_SOURCE_DIR/rdp-host" ]; then
     install -d -m 700 "$ROOT_SSH_DIR"
-    install -m 600 "$USER_PRIVATE_SOURCE_DIR/host" "$ROOT_SSH_DIR/id_ed25519"
-    if [ -s "$USER_CA_SOURCE_DIR/host.pub" ]; then
-      install -m 644 "$USER_CA_SOURCE_DIR/host.pub" "$ROOT_SSH_DIR/id_ed25519.pub"
+    install -m 600 "$USER_PRIVATE_SOURCE_DIR/rdp-host" "$ROOT_SSH_DIR/id_ed25519"
+    if [ -s "$USER_CA_SOURCE_DIR/rdp-host.pub" ]; then
+      install -m 644 "$USER_CA_SOURCE_DIR/rdp-host.pub" "$ROOT_SSH_DIR/id_ed25519.pub"
     fi
   elif [ -s "$SYSTEM_HOST_KEY" ]; then
     # Bootstrap fallback: use system host key as root client identity until
@@ -78,17 +78,17 @@ main() {
   fi
 
   # Ensure profile user can authenticate with the host identity key.
-  if [ -n "$PROFILE_USER_NAME" ] && [ -s "$USER_CA_SOURCE_DIR/host.pub" ]; then
+  if [ -n "$PROFILE_USER_NAME" ] && [ -s "$USER_CA_SOURCE_DIR/rdp-host.pub" ]; then
     install -d -m 755 "$SSH_AUTH_KEYS_DIR"
-    install -m 644 "$USER_CA_SOURCE_DIR/host.pub" "$SSH_AUTH_KEYS_DIR/$PROFILE_USER_NAME"
+    install -m 644 "$USER_CA_SOURCE_DIR/rdp-host.pub" "$SSH_AUTH_KEYS_DIR/$PROFILE_USER_NAME"
   fi
 
   # Ensure root can authenticate during first-bootstrap remote operations.
   # Primary source: runtime host public key; fallback to profile user's key file
   # if runtime key material is not populated yet.
-  if [ -s "$USER_CA_SOURCE_DIR/host.pub" ]; then
+  if [ -s "$USER_CA_SOURCE_DIR/rdp-host.pub" ]; then
     install -d -m 755 "$SSH_AUTH_KEYS_DIR"
-    install -m 644 "$USER_CA_SOURCE_DIR/host.pub" "$SSH_AUTH_KEYS_DIR/root"
+    install -m 644 "$USER_CA_SOURCE_DIR/rdp-host.pub" "$SSH_AUTH_KEYS_DIR/root"
   elif [ -n "$PROFILE_USER_NAME" ] && [ -s "$SSH_AUTH_KEYS_DIR/$PROFILE_USER_NAME" ]; then
     install -d -m 755 "$SSH_AUTH_KEYS_DIR"
     install -m 644 "$SSH_AUTH_KEYS_DIR/$PROFILE_USER_NAME" "$SSH_AUTH_KEYS_DIR/root"

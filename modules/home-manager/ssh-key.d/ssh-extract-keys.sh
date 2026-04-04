@@ -105,29 +105,48 @@ EOE
 		*.pub) continue ;;
 		esac
 		base="${priv##*/}"
-    certs=("$systemOutputDir/${base}"-*-user-cert.pub)
+    user_certs=("$systemOutputDir/${base}"-*-user-cert.pub)
+    host_certs=("$systemOutputDir/${base}"-*-host-cert.pub)
 
 		key_fp="$(@ssh-keygen@ -lf "$priv" 2>/dev/null | @awk@ '{print $2}' || true)"
 		if [[ -z "$key_fp" ]]; then
       rm -f "$userOutputDir/${base}-cert.pub"
+      rm -f "$systemOutputDir/${base}-server-cert.pub"
 			continue
 		fi
 
-		matched_cert=""
-		for cert in "${certs[@]}"; do
+    matched_user_cert=""
+    for cert in "${user_certs[@]}"; do
 			[[ -f "$cert" ]] || continue
 			cert_fp="$(@ssh-keygen@ -Lf "$cert" 2>/dev/null | @awk@ '/Public key:/ {print $4; exit}' || true)"
 			if [[ -n "$cert_fp" && "$cert_fp" == "$key_fp" ]]; then
-				matched_cert="$cert"
+        matched_user_cert="$cert"
 				break
 			fi
 		done
 
-		if [[ -n "$matched_cert" ]]; then
-      ln -sf "$matched_cert" "$userOutputDir/${base}-cert.pub"
+    if [[ -n "$matched_user_cert" ]]; then
+      ln -sf "$matched_user_cert" "$userOutputDir/${base}-cert.pub"
 		else
       rm -f "$userOutputDir/${base}-cert.pub"
 		fi
+
+    matched_host_cert=""
+    for cert in "${host_certs[@]}"; do
+      [[ -f "$cert" ]] || continue
+      cert_fp="$(@ssh-keygen@ -Lf "$cert" 2>/dev/null | @awk@ '/Public key:/ {print $4; exit}' || true)"
+      cert_type="$(@ssh-keygen@ -Lf "$cert" 2>/dev/null | @awk@ '/Type:/ {print $2; exit}' || true)"
+      if [[ "$cert_type" == "host" && -n "$cert_fp" && "$cert_fp" == "$key_fp" ]]; then
+        matched_host_cert="$cert"
+        break
+      fi
+    done
+
+    if [[ -n "$matched_host_cert" ]]; then
+      ln -sf "$matched_host_cert" "$systemOutputDir/${base}-server-cert.pub"
+    else
+      rm -f "$systemOutputDir/${base}-server-cert.pub"
+    fi
 	done
 }
 
