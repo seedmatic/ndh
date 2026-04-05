@@ -61,15 +61,15 @@ in
         HostName ${tailnetAlias "bioskop"}
     ''}
 
-        Host ${lib.concatStringsSep " " (hostAliases "alcide")}
+        Host ${lib.concatStringsSep " " (hostAliases "nikopol")}
           User ${workUserName}
 
-        Host alcide alcide.lan
-         HostName alcide.local
+        Host nikopol nikopol.lan
+         HostName nikopol.local
 
     ${lib.optionalString (tailnetDomain != "") ''
-      Host alcide-ts
-        HostName ${tailnetAlias "alcide"}
+      Host nikopol-ts
+        HostName ${tailnetAlias "nikopol"}
     ''}
   '';
 }

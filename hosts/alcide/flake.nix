@@ -1,5 +1,5 @@
 {
-  description = "nix system configurations for alcide";
+  description = "nix system configurations for nikopol";
 
   nixConfig = {
     substituters = [
@@ -21,7 +21,7 @@
     { self, nix-darwin-home, ... }@inputs:
     let
       hostProfile = {
-        hostName = "alcide";
+        hostName = "nikopol";
         tailnet = { };
       };
       darwinProfile = {

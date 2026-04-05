@@ -1,5 +1,5 @@
 #!/usr/bin/env -S bash -euo pipefail
-source @activationLogger@
+source @logger@
 
 main() {
   echo "[limaConfig] start $(date) host=@effectiveHostName@ user=@profileUser@"
@@ -87,4 +87,4 @@ main() {
   echo "[limaConfig] end $(date)"
 }
 
-activation_run darwin.activationScripts.postActivation.lima-config main "$@"
+ndh::logger:command:run darwin.activationScripts.postActivation.lima-config main "$@"

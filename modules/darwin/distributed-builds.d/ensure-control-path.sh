@@ -1,6 +1,6 @@
 #!/usr/bin/env -S bash -euo pipefail
 
-source @activationLogger@
+source @logger@
 
 main() {
 	control_dir="@controlMasterDir@"
@@ -9,4 +9,4 @@ main() {
 	chmod 0775 "$control_dir"
 }
 
-activation_run darwin.activationScripts.distributed-builds.ensure-control-path main "$@"
+ndh::logger:command:run darwin.activationScripts.distributed-builds.ensure-control-path main "$@"

@@ -5,6 +5,16 @@
 # Key files are extracted by the Home Manager activation extractSSHKeys step.
 # This script is run by the LaunchAgent on login to ensure keys survive reboots.
 
+# shellcheck disable=SC1091
+source "@bashTrampoline@"
+# shellcheck disable=SC1091
+source "@logger@"
+
+if command -v logger >/dev/null 2>&1; then
+  LOGGER_CMD="${LOGGER_CMD:-logger -t %TAG%}"
+fi
+activation_redirect_streams home-manager.ssh-add-keys
+
 SSH_KEYS_YAML="${1:?SSH keys YAML file required}"
 KEYS_DIR="$( dirname "$SSH_KEYS_YAML")"
 AUTHORIZED_KEYS_FILE="${HOME}/.ssh/authorized_keys"

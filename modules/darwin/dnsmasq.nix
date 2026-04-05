@@ -14,10 +14,10 @@ let
       pkgs.replaceVars ./dnsmasq.d/post-activation.sh {
         logFile = logFile;
         userName = userName;
-        activationLogger = lib.attrByPath [
+        logger = lib.attrByPath [
           "activation"
           "loggerScript"
-        ] ../common/activation-logger.sh config;
+        ] ../common/shell.d/logger.sh config;
       }
     } "$out"
     chmod +x "$out"

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-source @activationLogger@
+source @logger@
 
 main() {
   set -euo pipefail
@@ -121,4 +121,4 @@ main() {
   install -d -m 755 /etc/ssh/ssh_config.d
 }
 
-activation_run "@activationTag@" main "$@"
+ndh::logger:command:run "@activationTag@" main "$@"

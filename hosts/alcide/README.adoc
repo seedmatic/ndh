@@ -1,10 +1,10 @@
-= Alcide macOS VM (tart) bootstrap
+= nikopol macOS VM (tart) bootstrap
 
-Alcide now runs as a macOS VM via tart. Start it from the host with:
+nikopol now runs as a macOS VM via tart. Start it from the host with:
 @codebase
 [source,shell]
 ----
-tart run alcide --net-bridged="Wi-Fi" --vnc-experimental --root-disk-opts="sync=none,caching=cached" --dir="private:~/Private"
+tart run nikopol --net-bridged="Wi-Fi" --vnc-experimental --root-disk-opts="sync=none,caching=cached" --dir="private:~/Private"
 ----
 Inside the guest we still bootstrap Nix via flox. These steps keep SMB handled by ConnectMeNow, store git data on a dedicated APFS volume, and bring up the flox environment with GitHub auth.
 
@@ -16,7 +16,7 @@ NOTE: Nix no longer manages `/etc/nix/custom.conf`; if you create it manually, N
 @codebase
 [source,shell]
 ----
-tart clone ghcr.io/cirruslabs/macos-tahoe-vanilla:latest alcide
+tart clone ghcr.io/cirruslabs/macos-tahoe-vanilla:latest nikopol
 ----
 - Use the tart run command above to launch the VM with bridged Wi-Fi networking and the disk stored under `~/Private`.
 - Keep the session VNC-enabled until SSH is set up if you need console access.
@@ -84,8 +84,8 @@ flox activate git
 [source,shell]
 ----
 # In the flox environment
-nix build .#darwinConfigurations.alcide.system -o ./darwin
-./darwin/sw/bin/darwin-rebuild switch --flake .#alcide
+nix build .#darwinConfigurations.nikopol.system -o ./darwin
+./darwin/sw/bin/darwin-rebuild switch --flake .#nikopol
 # or, if activation script exists
 sudo ./darwin/activate
 ----

@@ -185,9 +185,12 @@ yq -i ".profiles.\"$PROFILE_NAME\".\"$KEY_NAME\".type = strenv(HOST_PUB_TYPE)" "
 yq -i ".profiles.\"$PROFILE_NAME\".\"$KEY_NAME\".public = strenv(HOST_PUB_BASE64)" "$updated_yaml"
 yq -i ".profiles.\"$PROFILE_NAME\".\"$KEY_NAME\".comment = strenv(HOST_PUB_COMMENT)" "$updated_yaml"
 
-# Optional metadata breadcrumbs for auditability
+# Optional metadata breadcrumbs for auditability.
+# Store under annotations.enrollment to avoid colliding with key-field
+# flattening logic used by activation-time key generators.
 now_utc="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-yq -i ".profiles.\"$PROFILE_NAME\".\"$KEY_NAME\".enrollment = {\"fingerprint\": \"$fingerprint\", \"source\": \"$VM_NAME\", \"capturedAt\": \"$now_utc\"}" "$updated_yaml"
+yq -i ".profiles.\"$PROFILE_NAME\".\"$KEY_NAME\".annotations.enrollment = {\"fingerprint\": \"$fingerprint\", \"source\": \"$VM_NAME\", \"capturedAt\": \"$now_utc\"}" "$updated_yaml"
+yq -i "del(.profiles.\"$PROFILE_NAME\".\"$KEY_NAME\".enrollment)" "$updated_yaml"
 
 printf '{"vm":"%s","profile":"%s","keyName":"%s","fingerprint":"%s","capturedAt":"%s"}\n' \
   "$VM_NAME" "$PROFILE_NAME" "$KEY_NAME" "$fingerprint" "$now_utc" > "$meta_json"

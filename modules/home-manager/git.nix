@@ -12,7 +12,7 @@ let
   hostKeysDir = sshPaths.systemSecretsDir;
   allowedSignersFile = "${config.xdg.configHome}/git/github_allowed_signers";
   systemCaBundle = config.home.sessionVariables.SSL_CERT_FILE;
-  activationLogger = config._module.specialArgs.activationLogger.script;
+  logger = config._module.specialArgs.logger.script;
   activationTag = "home-manager.activationScripts.${userName}.generateAllowedSigners";
 in
 {
@@ -127,7 +127,7 @@ in
       generateAllowedSignersScript = pkgs.replaceVars ./git.d/generate-allowed-signers.sh {
         allowedSignersFile = allowedSignersFile;
         hostKeysDir = hostKeysDir;
-        activationLogger = activationLogger;
+        logger = logger;
         activationTag = activationTag;
       };
     in

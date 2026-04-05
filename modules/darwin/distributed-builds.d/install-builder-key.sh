@@ -1,5 +1,5 @@
 #!/usr/bin/env -S bash -euo pipefail
-source @activationLogger@
+source @logger@
 
 main() {
 	install -d -m 750 -o root -g nixbld @builderKeyDir@
@@ -7,4 +7,4 @@ main() {
 	install -m 444 -o root -g nixbld @builderPubStore@ @builderKeyPath@.pub
 }
 
-activation_run darwin.activationScripts.etc.distributed-builds main "$@"
+ndh::logger:command:run darwin.activationScripts.etc.distributed-builds main "$@"

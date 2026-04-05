@@ -1,8 +1,8 @@
 #!/usr/bin/env -S bash -euo pipefail
-source @activationLogger@
+source @logger@
 
 main() {
 	ln -sfn /etc/static/auto_master /etc/auto_master
 }
 
-activation_run darwin.activationScripts.etc.auto-master-link main "$@"
+ndh::logger:command:run darwin.activationScripts.etc.auto-master-link main "$@"

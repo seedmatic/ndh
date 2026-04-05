@@ -1,5 +1,5 @@
 #!/usr/bin/env -S bash -euo pipefail
-source @activationLogger@
+source @logger@
 
 main() {
 	auto_master_target=/etc/static/auto_master
@@ -9,4 +9,4 @@ main() {
 EOF
 }
 
-activation_run darwin.activationScripts.etc.auto-master-write main "$@"
+ndh::logger:command:run darwin.activationScripts.etc.auto-master-write main "$@"

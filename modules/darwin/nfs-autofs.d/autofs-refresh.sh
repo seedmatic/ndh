@@ -1,5 +1,5 @@
 #!/usr/bin/env -S bash -euo pipefail
-source @activationLogger@
+source @logger@
 
 main() {
   manage="${MANAGE_AUTO_MASTER:-1}"
@@ -47,4 +47,4 @@ main() {
   /usr/sbin/automount -cv >/dev/null
 }
 
-activation_run darwin.activationScripts.etc.nfs-autofs-refresh main "$@"
+ndh::logger:command:run darwin.activationScripts.etc.nfs-autofs-refresh main "$@"

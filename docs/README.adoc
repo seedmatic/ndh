@@ -71,7 +71,7 @@ Canonical prefix boundaries for `RKE2LAB_*` (lab domain) and `NDH_*` (`nix-darwi
 === Network Setup Guide
 
 * Overview & Architecture
-* Network Topology (alcide, bioskop, Lima VMs)
+* Network Topology (nikopol, bioskop, Lima VMs)
 * Installation & Configuration
 ** Tailscale Gateways
 ** Tailscale SSH
@@ -116,7 +116,7 @@ Use Tailscale for external access and mobile devices, use Headscale for fast loc
 ----
 External Access (Tailscale)
     ↓
-Darwin Hosts (alcide, bioskop)
+Darwin Hosts (nikopol, bioskop)
     ↓
 Lima VMs (NixOS)
     ↓
@@ -240,7 +240,7 @@ nix-store --generate-binary-cache-key bioskop-cache-1 /etc/nix/cache-priv.key /e
 nix-serve -p 8080 -k /etc/nix/cache-priv.key
 ----
 
-* Clients (alcide, nikopol)
+* Clients (nikopol, nikopol)
 ** Configure substituters and trusted keys (nix.conf or module settings):
 [source,conf]
 ----
@@ -252,14 +252,14 @@ trusted-public-keys = cache.nixos.org-1:<nixos-key> bioskop-cache-1:<bioskop-pub
 [source,bash]
 ----
 # @codebase
-darwin-rebuild switch --flake github:nxmatic/nix-darwin-home#alcide
+darwin-rebuild switch --flake github:nxmatic/nix-darwin-home#nikopol
 ----
 
 * Publish closures (run on bioskop before clients pull)
 [source,bash]
 ----
 # @codebase
-nix build .#hosts/alcide .#hosts/nikopol
+nix build .#hosts/nikopol .#hosts/nikopol
 ----
 * Keep built paths alive if needed
 [source,bash]
@@ -275,7 +275,7 @@ ln -s /nix/store/<path> /nix/var/nix/gcroots/bioskop-cache-keep
 | Network | Range | Purpose
 | Home LAN | 192.168.1.0/24 | Main network
 | Lima Shared | 192.168.5.0/24 | Lima VMs
-| Incus (alcide) | 192.168.106.0/24 | RKE cluster
+| Incus (nikopol) | 192.168.106.0/24 | RKE cluster
 | Incus (bioskop) | 192.168.107.0/24 | RKE cluster
 | Tailscale | 100.64.0.0/10 | Mesh overlay
 |===

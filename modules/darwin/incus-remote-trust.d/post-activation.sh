@@ -1,5 +1,5 @@
 #!/usr/bin/env -S bash -euo pipefail
-source @activationLogger@
+source @logger@
 
 main() {
   remote_host="@remoteHost@"
@@ -51,4 +51,4 @@ main() {
   ssh "${remote_host}" "rm -f '${remote_cert}'" >/dev/null 2>&1 || true
 }
 
-activation_run darwin.activationScripts.postActivation.incus-remote-trust main "$@"
+ndh::logger:command:run darwin.activationScripts.postActivation.incus-remote-trust main "$@"

@@ -21,10 +21,10 @@ let
         cp ${
           pkgs.replaceVars ./disable-google-updaters.d/post-activation.sh {
             disableGoogleUpdatersScript = disableGoogleUpdatersScript;
-            activationLogger = lib.attrByPath [
+            logger = lib.attrByPath [
               "activation"
               "loggerScript"
-            ] ../common/activation-logger.sh config;
+            ] ../common/shell.d/logger.sh config;
           }
         } "$out"
         chmod +x "$out"

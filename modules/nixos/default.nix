@@ -159,8 +159,13 @@ in
 
   config = {
 
-    # NixOS-specific logger wiring for activation scripts expecting /etc/activation-logger.sh.
-    environment.etc."activation-logger.sh" = {
+    # NixOS-specific logger wiring for activation scripts.
+    # Canonical path is /etc/logger.sh; keep /etc/logger.sh for compatibility.
+    environment.etc."logger.sh" = {
+      source = config.activation.loggerScript;
+      mode = "0555";
+    };
+    environment.etc."logger.sh" = {
       source = config.activation.loggerScript;
       mode = "0555";
     };

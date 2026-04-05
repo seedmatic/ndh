@@ -37,7 +37,7 @@ let
   allPrincipals = [
     "committed"
     "work"
-    "alcide"
+    "nikopol"
     "bioskop"
   ];
 
@@ -57,19 +57,18 @@ ${formatPrincipals allPrincipals}
 ${formatPrincipals allPrincipals}
   '';
   principalsScriptStore = pkgs.replaceVars ../../common/ssh/authorized-principals-command.sh {
-    bashBin = "${pkgs.bash}/bin/bash";
-    bashTrampoline = "${../../common/ssh/bash-trampoline.sh}";
-    yqBin = "${pkgs.yq-go}/bin/yq";
+    bashTrampoline = "${../../common/shell.d/nix-bash-trampoline.sh}";
+    logger = logger;
     scriptPath = config.opensshPolicy.setEnvPath;
   };
   groupKeysScriptStore = pkgs.replaceVars ../../common/ssh/ssh-group-authorized-keys.sh {
-    bashBin = "${pkgs.bash}/bin/bash";
-    bashTrampoline = "${../../common/ssh/bash-trampoline.sh}";
+    bashTrampoline = "${../../common/shell.d/nix-bash-trampoline.sh}";
+    logger = logger;
     scriptPath = config.opensshPolicy.setEnvPath;
     authorizedKeysDir = config.opensshPolicy.authorizedKeysDir;
   };
   # Use the wrapped activation logger packaged into the system closure
-  activationLogger = config.activation.loggerScript;
+  logger = config.activation.loggerScript;
   activationTag = "nixos.activationScripts.sshGroupKeys";
   hasSopsInstallSecretsService = builtins.hasAttr "sops-install-secrets" config.systemd.services;
   hostkeyEnrollmentCheckTag = "nixos.services.nxmatic.hostkeyEnrollmentCheck";
@@ -174,7 +173,7 @@ in
           principalsScript = principalsScriptStore;
           groupKeysScript = groupKeysScriptStore;
           profileUserName = config.profile.user.name;
-          activationLogger = activationLogger;
+          logger = logger;
           activationTag = activationTag;
           userPrivateSourceDir = config.sshPaths.perUserSecretsDir;
           userCaSourceDir = config.sshPaths.systemSecretsDir;

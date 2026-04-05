@@ -1,5 +1,5 @@
 #!/usr/bin/env -S bash -euo pipefail
-source @activationLogger@
+source @logger@
 
 main() {
   echo "[lanDns] Validating LAN resolver"
@@ -18,4 +18,4 @@ main() {
   fi
 }
 
-activation_run darwin.activationScripts.networking.lan-dns-resolver main "$@"
+ndh::logger:command:run darwin.activationScripts.networking.lan-dns-resolver main "$@"

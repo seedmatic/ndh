@@ -40,10 +40,10 @@ let
             timeoutExe = timeoutExe;
             gtimeoutExe = gtimeoutExe;
             wallpaperImage = wallpaperImage;
-            activationLogger = lib.attrByPath [
+            logger = lib.attrByPath [
               "activation"
               "loggerScript"
-            ] ../common/activation-logger.sh config;
+            ] ../common/shell.d/logger.sh config;
           }
         } "$out"
       '';

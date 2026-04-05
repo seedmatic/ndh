@@ -1,4 +1,4 @@
-source @activationLogger@
+source @logger@
 
 main() {
   set -euo pipefail
@@ -9,4 +9,4 @@ main() {
   done
 }
 
-activation_run "@activationTag@" main "$@"
+ndh::logger:command:run "@activationTag@" main "$@"

@@ -51,7 +51,7 @@ sudo klist -k /etc/krb5.keytab
 
 == Roaming client defaults (Darwin laptop)
 
-For laptops (e.g., alcide) that roam between LAN and off-net, prefer resilient mounts:
+For laptops (e.g., nikopol) that roam between LAN and off-net, prefer resilient mounts:
 
 * `nfs.client.mount.options` in `/etc/nfs.conf` (example): (@codebase)
 +

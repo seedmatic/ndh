@@ -1,5 +1,5 @@
 #!/usr/bin/env -S bash -euo pipefail
-source @activationLogger@
+source @logger@
 
 main() {
 	export MOUNT_POINT=@mountPoint@
@@ -9,4 +9,4 @@ main() {
 	"@autofsRefreshScript@"
 }
 
-activation_run darwin.activationScripts.etc.nfs-autofs-net main "$@"
+ndh::logger:command:run darwin.activationScripts.etc.nfs-autofs-net main "$@"

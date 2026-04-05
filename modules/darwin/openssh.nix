@@ -10,19 +10,22 @@ let
   userHome = profile.user.home;
   userName = profile.user.name;
   sshPaths = config.sshPaths;
+  loggerScript = lib.attrByPath [
+    "activation"
+    "loggerScript"
+  ] ../common/shell.d/logger.sh config;
   hostKeysDir = sshPaths.systemSecretsDir;
   hostKeyPrivateFile = sshPaths.privKeyFile;
   hostKeyPublicCert = sshPaths.hostCertPublic;
   caPublicKeyFile = "${config.opensshPolicy.keysDir}/trusted-user-ca.pub";
   principalsScriptStore = pkgs.replaceVars ../common/ssh/authorized-principals-command.sh {
-    bashBin = "${pkgs.bash}/bin/bash";
-    bashTrampoline = "${../common/ssh/bash-trampoline.sh}";
-    yqBin = "${pkgs.yq-go}/bin/yq";
+    bashTrampoline = "${../common/shell.d/nix-bash-trampoline.sh}";
+    logger = loggerScript;
     scriptPath = config.opensshPolicy.setEnvPath;
   };
   groupKeysScriptStore = pkgs.replaceVars ../common/ssh/ssh-group-authorized-keys.sh {
-    bashBin = "${pkgs.bash}/bin/bash";
-    bashTrampoline = "${../common/ssh/bash-trampoline.sh}";
+    bashTrampoline = "${../common/shell.d/nix-bash-trampoline.sh}";
+    logger = loggerScript;
     scriptPath = config.opensshPolicy.setEnvPath;
     authorizedKeysDir = config.opensshPolicy.authorizedKeysDir;
   };
@@ -30,8 +33,8 @@ let
 
   # Derive principals based on profile and hostname
   # Server should accept all possible principals from any client
-  # committed profile hosts: accept [committed, work, alcide]
-  # work profile hosts: accept [committed, work, alcide]
+  # committed profile hosts: accept [committed, work, nikopol]
+  # work profile hosts: accept [committed, work, nikopol]
   hostAlias =
     if (profile.host ? hostAlias && profile.host.hostAlias != null) then
       profile.host.hostAlias
@@ -40,11 +43,11 @@ let
   profileName = profile.name;
 
   # All hosts should accept all profile principals to allow cross-host connections
-  # This ensures bioskop (committed) can accept from alcide (work) and vice versa
+  # This ensures bioskop (committed) can accept from nikopol (work) and vice versa
   allPrincipals = [
     "committed"
     "work"
-    "alcide"
+    "nikopol"
     "bioskop"
   ];
 
@@ -90,10 +93,7 @@ let
     principalsScriptStore = principalsScriptStore;
     groupKeysCommand = config.opensshPolicy.canonicalGroupKeysCommandName;
     principalsCommand = config.opensshPolicy.canonicalPrincipalsCommandName;
-    activationLogger = lib.attrByPath [
-      "activation"
-      "loggerScript"
-    ] ../common/activation-logger.sh config;
+    logger = loggerScript;
   };
 
 in

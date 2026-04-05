@@ -6,11 +6,11 @@ This guide covers the manual steps required to bootstrap a new nix-darwin system
 
 This configuration supports multiple Darwin hosts:
 
-- **alcide**: Darwin host (work profile)
+- **nikopol**: Darwin host (work profile)
 - **bioskop**: Darwin host (committed profile)
 
 Each host is defined in the `hosts/` directory:
-- `hosts/alcide/flake.nix` - Configuration for alcide host
+- `hosts/nikopol/flake.nix` - Configuration for nikopol host
 - `hosts/bioskop/flake.nix` - Configuration for bioskop host
 
 The hosts can share linux-builders and perform distributed builds across each other via Tailscale networking.
@@ -34,7 +34,7 @@ The nix-darwin linux-builder provides a NixOS VM that can build Linux packages o
 
 ## Bootstrap Steps
 
-These steps apply to bootstrapping either host (alcide or bioskop). The process is the same, but each host will have its own profile and configuration.
+These steps apply to bootstrapping either host (nikopol or bioskop). The process is the same, but each host will have its own profile and configuration.
 
 ### 0. Activate Flox Environment
 
@@ -99,14 +99,14 @@ sudo chown root:wheel /etc/nix/builder_ed25519
 Now you can perform the first darwin build using `nix run` (since `darwin-rebuild` isn't in PATH yet). The build will use the host-specific configuration:
 
 ```bash
-# For alcide host
-nix run nix-darwin -- switch --flake ./hosts/alcide
+# For nikopol host
+nix run nix-darwin -- switch --flake ./hosts/nikopol
 
 # For bioskop host  
 nix run nix-darwin -- switch --flake ./hosts/bioskop
 
 # Or if building from within a host directory:
-cd hosts/alcide  # or hosts/bioskop
+cd hosts/nikopol  # or hosts/bioskop
 nix run nix-darwin -- switch --flake .
 
 # This may take some time as it:
@@ -172,8 +172,8 @@ Build the disk image for the host you're currently running on:
 # If you're on bioskop, build bioskop's NixOS disk image
 nix build ./hosts/bioskop#nixosDiskImage
 
-# If you're on alcide, build alcide's NixOS disk image  
-nix build ./hosts/alcide#nixosDiskImage
+# If you're on nikopol, build nikopol's NixOS disk image  
+nix build ./hosts/nikopol#nixosDiskImage
 
 # This creates a disk image at ./result/nixos.img
 # The build uses the increased linux-builder disk size to avoid space issues
@@ -317,13 +317,13 @@ The manual steps above are only needed once per new system setup.
 This configuration supports distributed builds between the two Darwin hosts:
 
 ### Host Configuration
-- **alcide** (work profile: stephane.lacoin)
+- **nikopol** (work profile: stephane.lacoin)
   - Primary builder: Local darwin-linux-builder (speedFactor: 2)
   - Secondary builder: bioskop's linux-builder via Tailscale (speedFactor: 3)
   
 - **bioskop** (committed profile: nxmatic)  
   - Primary builder: Local darwin-linux-builder (speedFactor: 3)
-  - Secondary builder: alcide's linux-builder via Tailscale (speedFactor: 2)
+  - Secondary builder: nikopol's linux-builder via Tailscale (speedFactor: 2)
 
 ### Cross-Host Access
 - Uses SSH ProxyJump through Tailscale for secure remote access
@@ -333,8 +333,8 @@ This configuration supports distributed builds between the two Darwin hosts:
 ### Host Directory Structure
 ```
 hosts/
-├── alcide/
-│   ├── flake.nix          # alcide host configuration
+├── nikopol/
+│   ├── flake.nix          # nikopol host configuration
 │   └── flake.lock
 └── bioskop/
     ├── flake.nix          # bioskop host configuration  

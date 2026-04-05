@@ -31,7 +31,7 @@ This is a nix-darwin-home configuration managing:
 * `profiles/` - System profiles (common, work, committed)
 * `modules/darwin/` - Darwin-specific modules (Headscale client configured)
 * `modules/home-manager/` - Home Manager configurations
-* `hosts/` - Host-specific configurations (alcide, bioskop)
+* `hosts/` - Host-specific configurations (nikopol, bioskop)
 * `modules/nixos/rke2lab/` - Kubernetes deployment (git subtree)
 * `modules/nixos/incus-headscale/` - Network infrastructure (git subtree)
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env -S bash -euo pipefail
 
-source @activationLogger@
+source @logger@
 
 main() {
 	: Generating github allowed signers configuration file
@@ -10,4 +10,4 @@ stephane.lacoin@hyland.com namespaces="git" $( cat "@hostKeysDir@/github-signing
 EoF
 }
 
-activation_run "@activationTag@" main "$@"
+ndh::logger:command:run "@activationTag@" main "$@"

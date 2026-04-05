@@ -48,12 +48,12 @@ let
   systemCaBundle =
     if pkgs.stdenvNoCC.isDarwin then "/etc/ssl/cert.pem" else "/etc/ssl/certs/ca-bundle.crt";
 
-  activationLoggerArgs =
-    if specialArgsResolved ? activationLogger then
-      specialArgsResolved.activationLogger
+  loggerArgs =
+    if specialArgsResolved ? logger then
+      specialArgsResolved.logger
     else
-      throw "specialArgs.activationLogger is required";
-  activationLogger = activationLoggerArgs.script;
+      throw "specialArgs.logger is required";
+  logger = loggerArgs.script;
   activationTagFixConfigOwnership = "home-manager.activationScripts.${userName}.fixConfigOwnership";
 
   baseHomePackages = with pkgs; [
@@ -198,7 +198,7 @@ in
     activation.fixConfigOwnership =
       let
         fixConfigOwnershipScript = pkgs.replaceVars ./default.d/fix-config-ownership.sh {
-          activationLogger = activationLogger;
+          logger = logger;
           activationTag = activationTagFixConfigOwnership;
         };
       in

@@ -1,5 +1,5 @@
 #!/usr/bin/env -S bash -euo pipefail
-source @activationLogger@
+source @logger@
 
 main() {
   echo "[internetSharing] start $(date)"
@@ -56,4 +56,4 @@ main() {
   echo "[internetSharing] end $(date)"
 }
 
-activation_run darwin.activationScripts.networking.internet-sharing-configure main "$@"
+ndh::logger:command:run darwin.activationScripts.networking.internet-sharing-configure main "$@"

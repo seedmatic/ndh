@@ -403,7 +403,7 @@ ls -la /tmp/extracted-user /tmp/extracted-system
 [source,bash]
 ----
 # Test generate-keys-yaml.sh
-bash modules/home-manager/ssh-key.d/ssh-generate-keys-yaml.sh committed bioskop /run/secrets/nix-darwin-home/nxmatic-ssh-keys.yaml /tmp/keys.yaml alcide,bioskop,nikopol
+bash modules/home-manager/ssh-key.d/ssh-generate-keys-yaml.sh committed bioskop /run/secrets/nix-darwin-home/nxmatic-ssh-keys.yaml /tmp/keys.yaml nikopol,bioskop,nikopol
 ls -la /tmp/keys.yaml
 ----
 

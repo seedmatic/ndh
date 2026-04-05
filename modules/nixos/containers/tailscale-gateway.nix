@@ -26,7 +26,7 @@ in
     hostname = mkOption {
       type = types.str;
       default = "${config.networking.hostName}-gateway";
-      example = "alcide-gateway";
+      example = "nikopol-gateway";
       description = "Hostname for the gateway";
     };
 

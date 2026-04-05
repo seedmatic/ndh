@@ -1,5 +1,5 @@
 #!/usr/bin/env -S bash -euo pipefail
-source @activationLogger@
+source @logger@
 
 main() {
   @networkPreferencesScript@
@@ -53,4 +53,4 @@ main() {
   set_wallpaper "@wallpaperImage@" || true
 }
 
-activation_run darwin.activationScripts.defaults.preferences main "$@"
+ndh::logger:command:run darwin.activationScripts.defaults.preferences main "$@"

@@ -21,7 +21,7 @@ let
     "/etc/profiles/per-user/${userName}/bin"
   ];
   # Use platform-provided logger script from specialArgs (required)
-  activationLogger = config._module.specialArgs.activationLogger.script;
+  logger = config._module.specialArgs.logger.script;
   activationTagZdotdir = "home-manager.activationScripts.${userName}.zdotdir";
   zshInitContent = pkgs.replaceVars ./shell.d/zsh-init.zsh {
     linuxWrappersLine = lib.optionalString pkgs.stdenvNoCC.isLinux "/run/wrappers/bin";
@@ -54,7 +54,7 @@ in
         gitPath = lib.makeBinPath [ pkgs.git ];
         gitBin = "${pkgs.git}/bin/git";
         caBundle = "${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt";
-        activationLogger = activationLogger;
+        logger = logger;
         activationTag = activationTagZdotdir;
       };
     in

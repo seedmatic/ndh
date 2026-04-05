@@ -40,12 +40,12 @@ let
     "activationPackage"
   ] null config;
   hmUserExists = hmActivationPackage != null;
-  activationLoggerBase = ./default.d/activation-logger.sh;
-  activationLoggerScript = pkgs.runCommand "activation-logger.sh" { } ''
+  loggerBase = ./shell.d/logger.sh;
+  loggerScript = pkgs.runCommand "logger.sh" { } ''
         cat > "$out" <<'EOF'
     #!/usr/bin/env bash
     LOGGER_CMD="${config.activation.loggerCmd}"
-    source ${activationLoggerBase}
+    source ${loggerBase}
     EOF
   '';
   activationTagHmPost = "common.activationScripts.postActivation.home-manager";
@@ -56,11 +56,11 @@ let
     inherit (config) programs environment;
   };
 
-  postActivationScriptSource = pkgs.replaceVars ./default.d/post-activation.sh {
+  postActivationScriptSource = pkgs.replaceVars ./shell.d/post-activation.sh {
     hmActivationPackage = toString hmActivationPackage;
     userName = userName;
     userHome = userHome;
-    activationLogger = activationLoggerScript;
+    logger = loggerScript;
     activationTag = activationTagHmPost;
   };
 
@@ -104,7 +104,7 @@ in
 
   config = {
 
-    activation.loggerScript = activationLoggerScript;
+    activation.loggerScript = loggerScript;
     activation.homeManagerPostActivationScript = postActivationScript;
 
     programs = {
@@ -134,8 +134,8 @@ in
       # Provide specialArgs explicitly for direct imports
       specialArgs = {
         inherit profile catalog;
-        activationLogger = {
-          script = activationLoggerScript;
+        logger = {
+          script = loggerScript;
           cmd = config.activation.loggerCmd;
         };
         sshKeysYamlPath = lib.attrByPath [
@@ -187,8 +187,8 @@ in
       extraSpecialArgs = {
         inherit self catalog;
         profile = config.profile;
-        activationLogger = {
-          script = activationLoggerScript;
+        logger = {
+          script = loggerScript;
           cmd = config.activation.loggerCmd;
         };
         sshKeysYamlPath = lib.attrByPath [
