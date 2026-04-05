@@ -56,27 +56,14 @@ ${formatPrincipals allPrincipals}
           principals:
 ${formatPrincipals allPrincipals}
   '';
-  principalsScriptStore =
-    let
-      principalsScriptTemplate = builtins.readFile ../../common/ssh/authorized-principals-command.sh;
-      principalsScriptProcessed = builtins.replaceStrings
-        [ "#!/usr/bin/env bash" "yq eval-all" ]
-        [ "#!${pkgs.bash}/bin/bash" "${pkgs.yq-go}/bin/yq eval-all" ]
-        principalsScriptTemplate;
-    in
-    pkgs.writeText "ssh-authorized-principals-command.sh" principalsScriptProcessed;
-  groupKeysScriptStore =
-    let
-      groupKeysTemplate = pkgs.writeText "ssh-group-authorized-keys.template.sh" (
-        builtins.replaceStrings
-          [ "#!/usr/bin/env bash" ]
-          [ "#!${pkgs.bash}/bin/bash" ]
-          (builtins.readFile ../../common/ssh/ssh-group-authorized-keys.sh)
-      );
-    in
-    pkgs.replaceVars groupKeysTemplate {
-      authorizedKeysDir = config.opensshPolicy.authorizedKeysDir;
-    };
+  principalsScriptStore = pkgs.replaceVars ../../common/ssh/authorized-principals-command.sh {
+    bashBin = "${pkgs.bash}/bin/bash";
+    yqBin = "${pkgs.yq-go}/bin/yq";
+  };
+  groupKeysScriptStore = pkgs.replaceVars ../../common/ssh/ssh-group-authorized-keys.sh {
+    bashBin = "${pkgs.bash}/bin/bash";
+    authorizedKeysDir = config.opensshPolicy.authorizedKeysDir;
+  };
   # Use the wrapped activation logger packaged into the system closure
   activationLogger = config.activation.loggerScript;
   activationTag = "nixos.activationScripts.sshGroupKeys";

@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!@bashBin@
 # @codebase
 # AuthorizedPrincipalsCommand implementation that derives principals from the
 # generated keys.yaml (produced by ssh-generate-keys-yaml.sh) so that SSH user
@@ -35,7 +35,7 @@ if [[ ! -r "$KEYS_FILE" ]]; then
   exit 0
 fi
 
-USER_NAME=$USER_NAME yq eval-all --from-file=<( cat <<'EoF' | cut -c 5-
+USER_NAME=$USER_NAME @yqBin@ eval-all --from-file=<( cat <<'EoF' | cut -c 5-
     [
       (
         ..

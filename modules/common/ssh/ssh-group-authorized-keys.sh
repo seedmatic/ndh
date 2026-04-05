@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!@bashBin@
 # @codebase
 # Print authorized SSH public keys aggregated from group-based key files.
 # Invoked as: ssh-group-authorized-keys <username>
