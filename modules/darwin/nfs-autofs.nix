@@ -192,6 +192,10 @@ let
     chmod +x "$out"
   '';
 
+  autofsNetMaterializerPackage = pkgs.writeShellScriptBin "nfs-autofs-net-materialize" ''
+    exec ${autofsNetScript} "$@"
+  '';
+
   exportsText =
     let
       scopes =
@@ -468,6 +472,24 @@ in
         default = true;
         description = "When true, replace /etc/auto_master with a generated map that includes /net.";
       };
+
+      installMaterializerPackage = lib.mkOption {
+        type = lib.types.bool;
+        default = false;
+        description = ''
+          Install `nfs-autofs-net-materialize` helper package in system packages.
+          Useful when /net autofs setup is managed manually outside full activation.
+        '';
+      };
+
+      materializerPackage = lib.mkOption {
+        type = lib.types.package;
+        readOnly = true;
+        default = autofsNetMaterializerPackage;
+        description = ''
+          Store package exposing `nfs-autofs-net-materialize` for /net autofs materialization.
+        '';
+      };
     };
   };
 
@@ -499,6 +521,8 @@ in
       '';
     in
     {
+      environment.systemPackages = lib.optionals autoCfg.installMaterializerPackage [ autoCfg.materializerPackage ];
+
       system.activationScripts.etc.text = lib.mkAfter ''
         cat > /etc/exports <<'EOF'
         ${exportsText}

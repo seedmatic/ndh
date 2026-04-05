@@ -83,6 +83,17 @@
           config = {
             profile.user.home = lib.mkForce (builtins.toPath "/Volumes/user-home");
 
+            # Install standalone Lima materializer command on this VZ host.
+            lima.configGenerator.installMaterializerPackage = true;
+
+            # Keep /net autofs explicit for Lima disk-image path prerequisites.
+            services.nfsDarwin = {
+              enable = true;
+              autofs.enable = true;
+              autofs.mountPoint = "/net";
+              autofs.installMaterializerPackage = true;
+            };
+
             services.nxmaticCachixWatchStore = {
               enable = true;
               sopsEncryptedTokenFile = ../../.secrets;
