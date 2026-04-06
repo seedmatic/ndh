@@ -1,3 +1,4 @@
+source @bashTrampoline@
 source @logger@
 
 main() {
@@ -15,9 +16,9 @@ main() {
 
   if [ ! -d "$HOME/.config/zsh/.git" ]; then
     mkdir -p "$HOME/.config"
-    @gitBin@ clone --depth=1 https://github.com/nxmatic/zdotdir.git "$HOME/.config/zsh"
+    git clone --depth=1 https://github.com/nxmatic/zdotdir.git "$HOME/.config/zsh"
   else
-    @gitBin@ -C "$HOME/.config/zsh" pull --ff-only
+    git -C "$HOME/.config/zsh" pull --ff-only
   fi
 
   # Keep PNPM_HOME user-relative even if upstream zdotdir contains a stale
@@ -26,7 +27,7 @@ main() {
 
   # Guardrail: recover zshrc from git if it ever gets accidentally truncated.
   if [ -f "$zshrc_file" ] && [ "$(wc -l < "$zshrc_file")" -lt 40 ]; then
-    @gitBin@ -C "$HOME/.config/zsh" checkout -- rcs/zshrc.zsh || true
+    git -C "$HOME/.config/zsh" checkout -- rcs/zshrc.zsh || true
   fi
 
   if [ -f "$zshrc_file" ] && grep -q '/Users/stephane\.lacoin/.local/share/pnpm' "$zshrc_file"; then

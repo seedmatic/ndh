@@ -44,6 +44,7 @@ let
     ];
 
   sopsAgeBootstrapScriptSource = pkgs.replaceVars ./sops.d/bootstrap.sh {
+    bashTrampoline = "${./shell.d/nix-bash-trampoline.sh}";
     keyFile = config.sops.age.keyFile;
     publicKeyFile = cfg.publicKeyFile;
     exportPublicKeyOnActivation = if cfg.exportPublicKeyOnActivation then "1" else "0";
@@ -54,19 +55,29 @@ let
     remoteFetchUseSudo = if cfg.nixosHostKeyImport.remoteFetch.useSudo then "1" else "0";
     remoteFetchHostnameEnvVar = cfg.nixosHostKeyImport.remoteFetch.hostnameEnvVar;
     remoteFetchMdnsSuffix = cfg.nixosHostKeyImport.remoteFetch.mdnsSuffix;
-    sshBin = pkgs.openssh;
+    ageBin = pkgs.age;
+    coreutilsBin = pkgs.coreutils;
     sudoCmd = cfg.sudoCommand;
-    utilLinuxBin = pkgs.util-linux;
     phase = cfg.phase;
     darwinUserKeyFile = cfg.darwinUserKeyFile;
     importExistingUserKeyOnBootstrap = if cfg.importExistingUserKeyOnBootstrap then "1" else "0";
-    ageBin = pkgs.age;
-    coreutilsBin = pkgs.coreutils;
     nixosHostKeyImportCandidates = lib.concatStringsSep "\n" cfg.nixosHostKeyImport.candidates;
   };
   sopsAgeBootstrapScript = builtins.readFile sopsAgeBootstrapScriptSource;
   sopsAgeBootstrapSystemdScript = pkgs.writeShellScript "sops-age-bootstrap" sopsAgeBootstrapScript;
   useSystemdSopsActivation = config.sops.useSystemdActivation or false;
+  namespaceSecretPaths =
+    let
+      secretAttrs = config.sops.secrets or { };
+      allPaths = lib.mapAttrsToList (_name: secret: toString (secret.path or "")) secretAttrs;
+    in
+    lib.filter (path: path != "" && lib.hasPrefix "${secretNamespaceDir}/" path) allPaths;
+  forbiddenSshLikeNamespacePaths =
+    lib.filter (
+      path:
+      path != "${secretNamespaceDir}/ssh-keys.yaml"
+      && builtins.match ".*(ssh|key).*" (builtins.baseNameOf path) != null
+    ) namespaceSecretPaths;
 in
 {
   options.nxmatic.sopsAgeKeyBootstrap = {
@@ -238,12 +249,12 @@ in
       defaultSopsFile = lib.mkDefault ../../.secrets;
 
       secrets = {
-        "nxmatic-ssh-keys.yaml" = {
+        "ssh-keys.yaml" = {
           sopsFile = sshKeysSopsFile;
           format = "yaml";
           # Emit the full decrypted YAML document; profile selection happens at runtime.
           key = "";
-          path = "${secretNamespaceDir}/nxmatic-ssh-keys.yaml";
+          path = "${secretNamespaceDir}/ssh-keys.yaml";
           owner = config.profile.user.name;
           mode = "0400";
         };
@@ -263,6 +274,14 @@ in
           sops source-of-truth violation: modules/home-manager/ssh.d/keys.yaml appears decrypted in this worktree.
           Refusing evaluation to prevent accidental plaintext secret ingestion into the Nix store.
           Re-encrypt the file with sops before rebuild.
+        '';
+      }
+      {
+        assertion = forbiddenSshLikeNamespacePaths == [ ];
+        message = ''
+          /run/secrets/nix-darwin-home SSH/key policy violation:
+          only ${secretNamespaceDir}/ssh-keys.yaml is allowed for SSH/key-like secret names in this namespace.
+          Forbidden paths: ${lib.concatStringsSep ", " forbiddenSshLikeNamespacePaths}
         '';
       }
     ];

@@ -13,7 +13,7 @@ Canonical runtime paths are:
 
 * `/run/secrets/nix-darwin-home/*` (source runtime secrets)
 * `/run/secrets-per-user/<user>/ssh-keys/` (private material)
-* `/run/secrets-per-user/<user>/ssh-system-keys/` (public/trust material)
+* `/run/secrets-per-user/<user>/ssh-authority/` (public/trust material)
 
 `/run/secrets.d` remains internal sops-nix generation storage.
 ====
@@ -38,7 +38,7 @@ graph TB
                 stage3["Stage 3: Authorize<br/>ssh-ensure-authorized-keys.sh<br/>(perms setup)"]
             end
             
-            runtime["🎯 Runtime Output<br/>/run/secrets-per-user/&lt;user&gt;/{ssh-keys,ssh-system-keys}/"]
+            runtime["🎯 Runtime Output<br/>/run/secrets-per-user/&lt;user&gt;/{ssh-keys,ssh-authority}/"]
         end
     end
     
@@ -74,7 +74,7 @@ graph LR
     subgraph "Stage 2: Extract"
         input2["Profile YAML<br/>+ Keys Dir"]
         sign["Extract with yq<br/>split private/public"]
-        output2["Split Runtime Dirs<br/>• ssh-keys/* (private)<br/>• ssh-system-keys/* (public)"]
+        output2["Split Runtime Dirs<br/>• ssh-keys/* (private)<br/>• ssh-authority/* (public)"]
     end
     
     subgraph "Stage 3: Authorize"

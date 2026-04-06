@@ -15,31 +15,13 @@ main() {
   host_pub="@hostPublicKeyPath@"
   host_priv="@hostPrivateKeyPath@"
 
+  : "Ensure canonical key target directories exist"
+  mkdir -p "$(dirname "$host_pub")"
+  mkdir -p "$(dirname "$host_priv")"
+
   : "Symlink Lima user key material from host-managed keys.d"
-  if [ -f "$host_pub" ]; then
-    ln -sf "$host_pub" "@profileHome@/.lima/_config/user.pub"
-    chmod 0644 "@profileHome@/.lima/_config/user.pub"
-  else
-    echo "[limaConfig][WARN] missing $host_pub; not linking @profileHome@/.lima/_config/user.pub"
-  fi
-
-  if [ -f "$host_priv" ]; then
-    ln -sf "$host_priv" "@profileHome@/.lima/_config/user"
-    chmod 0600 "@profileHome@/.lima/_config/user"
-  else
-    echo "[limaConfig][WARN] missing $host_priv; not linking @profileHome@/.lima/_config/user"
-  fi
-
-  if { [ ! -f "$host_pub" ] || [ ! -f "$host_priv" ]; } && [ -f "/run/secrets/nix-darwin-home/nxmatic-ssh-keys.yaml" ]; then
-    per_user_keys_dir="$(dirname "$host_priv")"
-    system_keys_dir="$(dirname "$host_pub")"
-    per_user_has_files="$(find "$per_user_keys_dir" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null || true)"
-    system_has_files="$(find "$system_keys_dir" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null || true)"
-    if [ -z "$per_user_has_files" ] && [ -z "$system_has_files" ]; then
-      echo "[limaConfig][HINT] found /run/secrets/nix-darwin-home/nxmatic-ssh-keys.yaml but ${per_user_keys_dir} and ${system_keys_dir} are empty"
-      echo "[limaConfig][HINT] this usually means the Home Manager ssh-keys activation pipeline did not run"
-    fi
-  fi
+  ln -sf "$host_pub" "@profileHome@/.lima/_config/user.pub"
+  ln -sf "$host_priv" "@profileHome@/.lima/_config/user"
 
   : "Stage NixOS disk image to stable path"
   img_src="@imageSourcePath@"

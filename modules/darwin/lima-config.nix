@@ -19,9 +19,6 @@ let
   profileHost = config.profile.host;
   sshPaths = config.sshPaths;
 
-  # Host-side Lima user key (managed by home-manager keys; activation will symlink)
-  hostLimaUserPubPath = "${profileHome}/.lima/_config/user.pub";
-
   # Derive effective hostname (use alias if set, otherwise hostName)
   effectiveHostName =
     if (profileHost ? hostAlias && profileHost.hostAlias != null && profileHost.hostAlias != "") then
@@ -83,8 +80,8 @@ let
         limaRunScript = limaRunScript;
         imageSourcePath = imageSourcePath;
         imageTargetPath = imageTargetPath;
-        hostPublicKeyPath = "${sshPaths.systemSecretsDir}/rdp-host.pub";
-        hostPrivateKeyPath = "${sshPaths.perUserSecretsDir}/rdp-host";
+        hostPublicKeyPath = sshPaths.hostPublicKeyFile;
+        hostPrivateKeyPath = sshPaths.privKeyFile;
         logger = lib.attrByPath [
           "activation"
           "loggerScript"

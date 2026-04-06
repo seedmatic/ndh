@@ -1,5 +1,8 @@
 set -eu
 
+# shellcheck disable=SC1091
+source @bashTrampoline@
+
 key_file="@keyFile@"
 key_dir="$(dirname "$key_file")"
 public_key_file="@publicKeyFile@"
@@ -12,9 +15,9 @@ remote_fetch_key_path="@remoteFetchKeyPath@"
 remote_fetch_use_sudo="@remoteFetchUseSudo@"
 remote_fetch_hostname_env_var="@remoteFetchHostnameEnvVar@"
 remote_fetch_mdns_suffix="@remoteFetchMdnsSuffix@"
-ssh_bin="@sshBin@/bin/ssh"
+ssh_bin="ssh"
 sudo_cmd="@sudoCmd@"
-runuser_bin="@utilLinuxBin@/bin/runuser"
+age_keygen_bin="@ageBin@/bin/age-keygen"
 sha256sum_bin="@coreutilsBin@/bin/sha256sum"
 phase="@phase@"
 
@@ -66,7 +69,7 @@ if [ "$phase" = "bootstrap" ]; then
     elif [ "$nixos_import_from_host" = "1" ] && import_key_from_candidates; then
       : "[sops-age-bootstrap] bootstrap imported host-provided key"
     else
-      @ageBin@/bin/age-keygen -o "$key_file"
+      "$age_keygen_bin" -o "$key_file"
       chmod 600 "$key_file"
       echo "[sops-age-bootstrap] generated age key at $key_file"
     fi
@@ -103,8 +106,8 @@ else
         remote_cmd="test -s '${remote_fetch_key_path}' && cat '${remote_fetch_key_path}'"
       fi
 
-      if [ -n "$remote_fetch_user" ] && [ -x "$runuser_bin" ]; then
-        if "$runuser_bin" -u "$remote_fetch_user" -- "$ssh_bin" -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new "$remote_fetch_user@$remote_host" "$remote_cmd" > "$tmp_key" 2>/dev/null; then
+      if [ -n "$remote_fetch_user" ] && command -v runuser >/dev/null 2>&1; then
+        if runuser -u "$remote_fetch_user" -- "$ssh_bin" -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new "$remote_fetch_user@$remote_host" "$remote_cmd" > "$tmp_key" 2>/dev/null; then
           if [ -s "$tmp_key" ]; then
             install -d -m 700 "$key_dir"
             cp "$tmp_key" "$key_file"
@@ -138,7 +141,7 @@ fi
 
 if [ "$export_public_key_on_activation" = "1" ] && [ -s "$key_file" ]; then
   install -d -m 755 "$public_key_dir"
-  @ageBin@/bin/age-keygen -y "$key_file" > "$public_key_file"
+  "$age_keygen_bin" -y "$key_file" > "$public_key_file"
   chmod 644 "$public_key_file"
   echo "[sops-age-bootstrap] published host age recipient to $public_key_file"
 fi

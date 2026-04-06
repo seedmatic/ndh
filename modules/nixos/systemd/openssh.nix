@@ -22,6 +22,7 @@ let
       profile.host.hostAlias
     else
       profile.host.hostName;
+  clientKeyName = builtins.baseNameOf config.sshPaths.privKeyFile;
 
   userHome =
     if config ? profile && config.profile ? user && config.profile.user ? home then
@@ -74,22 +75,18 @@ ${formatPrincipals allPrincipals}
   hostkeyEnrollmentCheckTag = "nixos.services.nxmatic.hostkeyEnrollmentCheck";
   hostkeyEnrollmentSyncTag = "nixos.services.nxmatic.hostkeyEnrollmentSync";
   hostkeyEnrollmentCheckScript = pkgs.replaceVars ./openssh.d/hostkey-enrollment-check.sh {
-    loggerBin = pkgs.util-linux;
-    sshKeygen = "${pkgs.openssh}/bin/ssh-keygen";
+    bashTrampoline = "${../../common/shell.d/nix-bash-trampoline.sh}";
     logTag = hostkeyEnrollmentCheckTag;
-    userPrivateSourceDir = config.sshPaths.perUserSecretsDir;
-    userCaSourceDir = config.sshPaths.systemSecretsDir;
+    userPrivateSourceDir = config.sshPaths.secretsKeysDir;
+    userCaSourceDir = config.sshPaths.authoritySecretsDir;
     systemHostKeyPub = "${hostKeyPath}.pub";
+    clientKeyName = clientKeyName;
   };
   hostkeyEnrollmentSyncScript = pkgs.replaceVars ./openssh.d/hostkey-enrollment-sync.sh {
-    loggerBin = pkgs.util-linux;
-    sshBin = pkgs.openssh;
-    sshKeygen = pkgs.openssh;
-    yqBin = pkgs.yq-go;
+    bashTrampoline = "${../../common/shell.d/nix-bash-trampoline.sh}";
     logTag = hostkeyEnrollmentSyncTag;
-    runtimeSecretsKeysYaml = config.sshPaths.runtimeSecretsKeysYaml;
     clientPrivateSource = config.sshPaths.privKeyFile;
-    clientUserCertSource = "${config.sshPaths.perUserSecretsDir}/rdp-host-cert.pub";
+    clientUserCertSource = config.sshPaths.userCertPublic;
     fallbackHost = config.limaHost.hostName;
     remoteUser = config.profile.user.name;
     remoteRepo = "/var/lib/git/nxmatic/nix-darwin-home";
@@ -175,8 +172,9 @@ in
           profileUserName = config.profile.user.name;
           logger = logger;
           activationTag = activationTag;
-          userPrivateSourceDir = config.sshPaths.perUserSecretsDir;
-          userCaSourceDir = config.sshPaths.systemSecretsDir;
+          userPrivateSourceDir = config.sshPaths.secretsKeysDir;
+          userCaSourceDir = config.sshPaths.authoritySecretsDir;
+          clientKeyName = clientKeyName;
         }
       );
     };
@@ -184,10 +182,10 @@ in
 
   # ssh non-interactive session finds the setuid sudo via /bin or /usr/bin
   systemd.tmpfiles.rules = [
-    "d ${config.sshPaths.perUserSecretsRoot} 0755 root root - -"
-    "d ${config.sshPaths.perUserSecretsDir} 0700 ${config.profile.user.name} ${config.profile.user.name} - -"
+    "d ${config.sshPaths.secretsRootDir} 0755 root root - -"
+    "d ${config.sshPaths.secretsKeysDir} 0700 ${config.profile.user.name} ${config.profile.user.name} - -"
     "d /run/secrets/nix-darwin-home 0755 root root - -"
-    "d ${config.sshPaths.systemSecretsDir} 0755 ${config.profile.user.name} ${config.profile.user.name} - -"
+    "d ${config.sshPaths.authoritySecretsDir} 0755 ${config.profile.user.name} ${config.profile.user.name} - -"
     "L+ /bin/sudo - - - - /run/wrappers/bin/sudo"
     "L+ /usr/bin/sudo - - - - /run/wrappers/bin/sudo"
     "L+ /bin/bash - - - - /run/current-system/sw/bin/bash"

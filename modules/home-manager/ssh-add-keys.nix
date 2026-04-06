@@ -17,7 +17,7 @@ let
   userHome = user.home;
   cfg = config.ssh-add-keys;
   sshPaths = config.sshPaths;
-  keysFileDefault = sshPaths.generatedKeysYamlFile;
+  keysFileDefault = "${sshPaths.secretsKeysDir}.yaml";
   renderedSshAddKeysScript = pkgs.replaceVars ./ssh-key.d/ssh-add-keys.sh {
     bashTrampoline = "${../common/shell.d/nix-bash-trampoline.sh}";
     logger = config._module.specialArgs.logger.script;

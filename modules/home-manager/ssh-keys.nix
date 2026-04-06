@@ -7,9 +7,6 @@
 
 let
   profile = config._module.specialArgs.profile;
-  # Debug function that both traces and returns its input
-  debugTrace = x: builtins.traceVerbose "Debug: profile = ${builtins.toJSON x}" x;
-
   profileName = profile.name;
   hostProfile = profile.host;
   userProfile = profile.user;
@@ -32,11 +29,10 @@ let
       sourceSSHKeysYamlPathOverride
     else
       sshPaths.runtimeSecretsKeysYaml;
-  userKeysDir = sshPaths.perUserSecretsDir;
-  systemKeysDir = sshPaths.systemSecretsDir;
-  generatedSSHKeysYamlPath = sshPaths.generatedKeysYamlFile;
+  perUserKeysDir = sshPaths.secretsKeysDir;
+  authorityKeysDir = sshPaths.authoritySecretsDir;
   # Effective YAML path consumed by ssh-add-keys/launchd.
-  effectiveSSHKeysYamlPath = generatedSSHKeysYamlPath;
+  effectiveSSHKeysYamlPath = "${perUserKeysDir}.yaml";
 
   # Command to filter and sign keys based on profile and host
   # Resolve a stable host identifier; hostAlias is optional by design (@codebase)
@@ -62,7 +58,7 @@ let
       cp ${pkgs.replaceVars ./ssh.d/scripts/ca-known-hosts-command.sh {
         bashTrampoline = "${../common/shell.d/nix-bash-trampoline.sh}";
         logger = logger;
-        caDir = systemKeysDir;
+        caDir = authorityKeysDir;
       }} "$out"
       chmod +x "$out"
     '';
@@ -138,14 +134,13 @@ in
     in
     {
       # Generate the YAML of keys to deploy based on the main keys.yaml and the current host/profile
-      generatedSSHKeysYaml = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-        ${pkgs.coreutils}/bin/mkdir -p "${userKeysDir}" "${systemKeysDir}"
-        ${pkgs.bash}/bin/bash ${sshGenerateKeysYamlScript} "${profileName}" "$(${pkgs.hostname}/bin/hostname -s)" "${sourceSSHKeysYamlPath}" "${generatedSSHKeysYamlPath}" "${hostsCatalogCsv}"
+      generateSSHKeysYaml = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+        ${pkgs.bash}/bin/bash ${sshGenerateKeysYamlScript} "${profileName}" "$(${pkgs.hostname}/bin/hostname -s)" "${sourceSSHKeysYamlPath}" "${effectiveSSHKeysYamlPath}" "${hostsCatalogCsv}"
       '';
 
       # Deploy keys to the filesystem with proper permissions based on the generated YAML
-      extractSSHKeys = lib.hm.dag.entryAfter [ "generatedSSHKeysYaml" ] ''
-        ${pkgs.bash}/bin/bash ${sshExtractKeysScript} "${generatedSSHKeysYamlPath}" "${userKeysDir}" "${systemKeysDir}"
+      extractSSHKeys = lib.hm.dag.entryAfter [ "generateSSHKeysYaml" ] ''
+        ${pkgs.bash}/bin/bash ${sshExtractKeysScript} "${effectiveSSHKeysYamlPath}" "${perUserKeysDir}"
       '';
 
       # Ensure mutable authorized_keys exists (symlink-free) with strict perms

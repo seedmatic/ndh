@@ -62,6 +62,10 @@ let
     userHome = userHome;
     logger = loggerScript;
     activationTag = activationTagHmPost;
+    postActivationLogShowLabel = config.activation.postActivationLogShowLabel;
+    postActivationLogShowCmd = config.activation.postActivationLogShowCmd;
+    postActivationLogStreamLabel = config.activation.postActivationLogStreamLabel;
+    postActivationLogStreamCmd = config.activation.postActivationLogStreamCmd;
   };
 
   postActivationScript = pkgs.runCommand "hm-post-activation.sh" { } ''
@@ -87,6 +91,30 @@ in
     type = lib.types.path;
     readOnly = true;
     description = "Wrapped Home Manager post-activation script produced by common module logic.";
+  };
+
+  options.activation.postActivationLogShowLabel = lib.mkOption {
+    type = lib.types.str;
+    default = "activation logs (recent)";
+    description = "Label shown for post-activation recent-log inspection command.";
+  };
+
+  options.activation.postActivationLogShowCmd = lib.mkOption {
+    type = lib.types.str;
+    default = "";
+    description = "Platform-provided command for inspecting recent activation logs after post-activation.";
+  };
+
+  options.activation.postActivationLogStreamLabel = lib.mkOption {
+    type = lib.types.str;
+    default = "activation logs (stream)";
+    description = "Label shown for post-activation live-log streaming command.";
+  };
+
+  options.activation.postActivationLogStreamCmd = lib.mkOption {
+    type = lib.types.str;
+    default = "";
+    description = "Platform-provided command for streaming activation logs after post-activation.";
   };
 
   imports = [
@@ -141,7 +169,7 @@ in
         sshKeysYamlPath = lib.attrByPath [
           "sops"
           "secrets"
-          "nxmatic-ssh-keys.yaml"
+          "keys.yaml"
           "path"
         ] (toString ../../modules/home-manager/ssh.d/keys.yaml) config;
       };
@@ -194,7 +222,7 @@ in
         sshKeysYamlPath = lib.attrByPath [
           "sops"
           "secrets"
-          "nxmatic-ssh-keys.yaml"
+          "keys.yaml"
           "path"
         ] (toString ../../modules/home-manager/ssh.d/keys.yaml) config;
       };

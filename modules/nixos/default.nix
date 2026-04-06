@@ -159,12 +159,13 @@ in
 
   config = {
 
+    activation.postActivationLogShowLabel = "journald (last 2h)";
+    activation.postActivationLogShowCmd = "journalctl --since '2 hours ago' -o short-precise -t darwin.activationScripts -t home-manager.activationScripts";
+    activation.postActivationLogStreamLabel = "journald (follow)";
+    activation.postActivationLogStreamCmd = "journalctl -f -o short-precise -t darwin.activationScripts -t home-manager.activationScripts";
+
     # NixOS-specific logger wiring for activation scripts.
     # Canonical path is /etc/logger.sh; keep /etc/logger.sh for compatibility.
-    environment.etc."logger.sh" = {
-      source = config.activation.loggerScript;
-      mode = "0555";
-    };
     environment.etc."logger.sh" = {
       source = config.activation.loggerScript;
       mode = "0555";

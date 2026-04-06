@@ -2,8 +2,9 @@
 # @codebase
 set -euo pipefail
 
-LOGGER=@loggerBin@/bin/logger
-SSH_KEYGEN=@sshKeygen@/bin/ssh-keygen
+# shellcheck disable=SC1091
+source @bashTrampoline@
+
 LOG_TAG=@logTag@
 
 USER_PRIVATE_SOURCE_DIR=@userPrivateSourceDir@
@@ -17,21 +18,14 @@ DETAILS_FILE=${STATE_DIR}/hostkey-enrollment-required.details
 mkdir -p "$STATE_DIR"
 rm -f "$MARKER_FILE" "$DETAILS_FILE"
 
-CLIENT_KEY_NAME=rdp-host
+CLIENT_KEY_NAME=@clientKeyName@
 SERVER_KEY_NAME="$CLIENT_KEY_NAME"
-
-if [ -n "${NDH_VZ_GUEST:-}" ]; then
-  guest_key_name="vz-guest-${NDH_VZ_GUEST}"
-  if [ -s "$USER_PRIVATE_SOURCE_DIR/$guest_key_name" ]; then
-    SERVER_KEY_NAME="$guest_key_name"
-  fi
-fi
 
 EXPECTED_PUB="${USER_CA_SOURCE_DIR}/${SERVER_KEY_NAME}.pub"
 reason=""
 
 fingerprint() {
-  "$SSH_KEYGEN" -lf "$1" 2>/dev/null | awk '{print $2}'
+  ssh-keygen -lf "$1" 2>/dev/null | awk '{print $2}'
 }
 
 if [ ! -s "$EXPECTED_PUB" ]; then
@@ -63,7 +57,7 @@ if [ -n "$reason" ]; then
       printf 'system_fingerprint=%s\n' "$(fingerprint "$SYSTEM_HOST_KEY_PUB")"
     fi
   } >"$DETAILS_FILE"
-  "$LOGGER" -p auth.warning -t "$LOG_TAG" "enrollment required: reason=${reason} server_key=${SERVER_KEY_NAME} marker=${MARKER_FILE}"
+  logger -p auth.warning -t "$LOG_TAG" "enrollment required: reason=${reason} server_key=${SERVER_KEY_NAME} marker=${MARKER_FILE}"
 else
-  "$LOGGER" -p auth.info -t "$LOG_TAG" "host key aligned with secret key=${SERVER_KEY_NAME}"
+  logger -p auth.info -t "$LOG_TAG" "host key aligned with secret key=${SERVER_KEY_NAME}"
 fi

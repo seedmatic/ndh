@@ -13,6 +13,22 @@ main() {
     fi
   }
 
+  local platform_log_show_label platform_log_show_cmd
+  local platform_log_stream_label platform_log_stream_cmd
+  platform_log_show_label="@postActivationLogShowLabel@"
+  platform_log_show_cmd="@postActivationLogShowCmd@"
+  platform_log_stream_label="@postActivationLogStreamLabel@"
+  platform_log_stream_cmd="@postActivationLogStreamCmd@"
+
+  emit_platform_log_hints() {
+    if [ -n "$platform_log_show_cmd" ]; then
+      emit_notice "[post-activation] ${platform_log_show_label}: ${platform_log_show_cmd}"
+    fi
+    if [ -n "$platform_log_stream_cmd" ]; then
+      emit_notice "[post-activation] ${platform_log_stream_label}: ${platform_log_stream_cmd}"
+    fi
+  }
+
   HM_ACTIVATE="@hmActivationPackage@/activate"
   if [ -n "$HM_ACTIVATE" ] && [ -x "$HM_ACTIVATE" ]; then
     local activation_session_id
@@ -30,8 +46,7 @@ main() {
     emit_notice "[post-activation] Home Manager activation log file: $activation_log_file"
     emit_notice "[post-activation] Home Manager activation session file: $activation_log_session_file"
     emit_notice "[post-activation] Home Manager activation session id: $activation_session_id"
-    emit_notice "[post-activation] macOS unified log (last 2h): log show --last 2h --style compact --info --debug --predicate 'eventMessage CONTAINS \"darwin.activationScripts\" OR eventMessage CONTAINS \"home-manager.activationScripts\"'"
-    emit_notice "[post-activation] macOS unified log (stream): log stream --style compact --level debug --predicate 'eventMessage CONTAINS \"darwin.activationScripts\" OR eventMessage CONTAINS \"home-manager.activationScripts\"'"
+    emit_platform_log_hints
 
     # Self-heal stale root-owned activation logs from previous root-scoped runs.
     if [ -e "$activation_log_file" ]; then
@@ -48,6 +63,14 @@ main() {
       ACTIVATION_LOG_SESSION_FILE="$activation_log_session_file" \
       ACTIVATION_LOG_SESSION_ID="$activation_session_id" \
       "$HM_ACTIVATE"
+
+    emit_notice "[post-activation] Home Manager activation finished."
+    if [ -n "$platform_log_show_cmd" ]; then
+      emit_notice "[post-activation] To inspect activation logs now, run: ${platform_log_show_cmd}"
+    fi
+    if [ -n "$platform_log_stream_cmd" ]; then
+      emit_notice "[post-activation] To follow activation logs live, run: ${platform_log_stream_cmd}"
+    fi
   else
     echo "home-manager activation package missing for @userName@, skipping" >&2
   fi

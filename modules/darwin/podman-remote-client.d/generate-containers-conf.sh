@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# shellcheck disable=SC1091
+source @bashTrampoline@
+
 LIMA_VM_NAME="@dollar@{LIMA_VM_NAME:-nerd-nixos}"
 LIMA_USER="@dollar@{LIMA_USER:-@profileUser@}"
 LIMA_IDENTITY_FILE="$HOME/.lima/_config/user"
 
 : Check if Lima VM is running
-if ! @limaBin@ list "$LIMA_VM_NAME" --format=yaml | @yqBin@ -e '.instance.status == "Running"' >/dev/null 2>&1; then
+if ! limactl list "$LIMA_VM_NAME" --format=yaml | yq -e '.instance.status == "Running"' >/dev/null 2>&1; then
   cat <<EoMessage >&2
 Lima VM '$LIMA_VM_NAME' is not running - using local Podman
 EoMessage
@@ -18,8 +21,8 @@ EOF
 fi
 
 : Get VM SSH connection details
-SSH_HOST=$(@limaBin@ list "$LIMA_VM_NAME" --format=yaml | @yqBin@ '.instance.sshAddress')
-SSH_PORT=$(@limaBin@ list "$LIMA_VM_NAME" --format=yaml | @yqBin@ '.instance.sshLocalPort')
+SSH_HOST=$(limactl list "$LIMA_VM_NAME" --format=yaml | yq '.instance.sshAddress')
+SSH_PORT=$(limactl list "$LIMA_VM_NAME" --format=yaml | yq '.instance.sshLocalPort')
 
 cat <<EOF
 [engine]

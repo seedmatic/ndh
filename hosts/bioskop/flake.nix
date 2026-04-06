@@ -88,7 +88,7 @@
             };
 
             networking.vlan = {
-              enable = true;
+              enable = false; # Temporarily disabled: VLAN 2 currently causes local resolution/routing issues.
               id = 2;
               addressPrefix = "192.168.2";
               parentInterface = "en9";

@@ -172,8 +172,8 @@ in
 
       identityRelativePath = mkOption {
         type = types.str;
-        default = "host";
-        description = "Host identity private key path. Relative paths are resolved against sshPaths.perUserSecretsDir; absolute paths are used as-is.";
+        default = "rdp-host";
+        description = "Host identity private key path. By default this follows the basename of sshPaths.privKeyFile; relative paths are resolved against sshPaths.secretsKeysDir and absolute paths are used as-is.";
       };
     };
   };
@@ -269,7 +269,7 @@ in
         if lib.hasPrefix "/" cfg.hostIdentityDomains.identityRelativePath then
           cfg.hostIdentityDomains.identityRelativePath
         else
-          "${config.sshPaths.perUserSecretsDir}/${cfg.hostIdentityDomains.identityRelativePath}";
+          "${config.sshPaths.secretsKeysDir}/${cfg.hostIdentityDomains.identityRelativePath}";
 
       renderStanza =
         st:
@@ -317,6 +317,8 @@ in
       extraText = concatStringsSep "\n" (map renderStanza allExtraStanzas);
     in
     {
+      sshClient.hostIdentityDomains.identityRelativePath = lib.mkDefault (builtins.baseNameOf config.sshPaths.privKeyFile);
+
       environment.etc."ssh/ssh_config".text = cfg.baseConfig + "\n";
       environment.etc."ssh/ssh_config.d/50-guest.conf" = mkIf (cfg.guest.enable) {
         text = "# Derived guest stanza\n" + guestStanza;

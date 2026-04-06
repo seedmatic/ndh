@@ -14,14 +14,12 @@ let
 
   generateContainersConf = pkgs.replaceVars ./podman-remote-client.d/generate-containers-conf.sh {
     inherit dollar profileUser;
-    limaBin = "${pkgs.lima}/bin/limactl";
-    yqBin = "${pkgs.yq-go}/bin/yq";
+    bashTrampoline = "${../common/shell.d/nix-bash-trampoline.sh}";
   };
 
   podmanRemoteSetupScript = pkgs.replaceVars ./podman-remote-client.d/podman-remote-setup.sh {
     inherit dollar profileUser generateContainersConf;
-    dockerBin = "${pkgs.docker}/bin/docker";
-    podmanBin = "${pkgs.podman}/bin/podman";
+    bashTrampoline = "${../common/shell.d/nix-bash-trampoline.sh}";
   };
 
   podman-remote-setup = pkgs.runCommand "podman-remote-setup" { } ''

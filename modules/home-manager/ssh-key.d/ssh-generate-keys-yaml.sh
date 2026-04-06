@@ -1,4 +1,4 @@
-#!/usr/bin/env -S bash -exuo pipefail
+#!/usr/bin/env -S bash -euo pipefail
 # @codebase
 # Original name: ssh-add-keys.sh (renamed to clarify purpose: generates consolidated keys.yaml)
 # This script assembles & (re)generates SSH key material for the selected profile, signing it
@@ -8,531 +8,464 @@
 
 shopt -s extglob
 
-declare -g keyFields="type|usage|comment|public|private|authorities|principals|domain|authorized_keys_options|annotations|descriptor"
+declare -g keyFields="type|usage|comment|public|private|authorities|principals|domain|authorized_keys_options|annotations"
 
 : "Function to handle tracing"
 log::trace() {
-    if [[ -z "${TRACE:=}" ]]; then
-        return
-    else
-        echo "TRACE: $*" >&2
-    fi
+	if [[ -z "${TRACE:=}" ]]; then
+		return
+	else
+		echo "TRACE: $*" >&2
+	fi
 }
 
 : "Function to convert a string to snake_case"
 var::snakeCase() {
-    local var="${1//./_}" &&
-        var="${var//-/_}" &&
-        if [[ $# -gt 1 ]]; then
-            shift
-            var+="_$(var::snakeCase "$@")"
-        fi
-    echo "${var,,}"
+	local var="${1//./_}" &&
+		var="${var//-/_}" &&
+		if [[ $# -gt 1 ]]; then
+			shift
+			var+="_$(var::snakeCase "$@")"
+		fi
+	echo "${var,,}"
 }
 
 : "Function to get the private key variable name for an authority"
 var::authorityKey() {
-    var::snakeCase "${profileVarPrefix}" "${@}"
+	var::snakeCase "${profileVarPrefix}" "${@}"
 }
 
 : "Function to get hostnames for an authority"
 key::authorityHostNames() {
-    local authorityName
-    authorityName="$1"
+	local authorityName
+	authorityName="$1"
 
-    local domain
-    domain="$( key::value "authorities" "${authorityName}" "domain" )"
+	local domain
+	domain="$(key::value "authorities" "${authorityName}" "domain")"
 
-    local -A hostNames=()
-    hostNames["${hostName}"]=1
-    hostNames["${hostName}.lan"]=1 # bbox gateway domain name
-    hostNames["${hostName}.local"]=1
-    hostNames["${hostName}.${domain}"]=1
+	local -A hostNames=()
+	hostNames["${hostName}"]=1
+	hostNames["${hostName}.lan"]=1 # bbox gateway domain name
+	hostNames["${hostName}.local"]=1
+	hostNames["${hostName}.${domain}"]=1
 
-    hostNames[$(@hostname@ -f)]=1
-    hostNames[$(@hostname@ -s)]=1
-    hostNames[$(@hostname@ -s).${domain}]=1
+	hostNames[$(@hostname@ -f)]=1
+	hostNames[$(@hostname@ -s)]=1
+	hostNames[$(@hostname@ -s).${domain}]=1
 
-    if [[ -n "${hostsCatalogCsv:-}" ]]; then
-        local catalogHost
-        IFS=',' read -r -a catalogHosts <<<"${hostsCatalogCsv}"
-        for catalogHost in "${catalogHosts[@]}"; do
-            [[ -n "${catalogHost}" ]] || continue
-            hostNames["${catalogHost}"]=1
-            hostNames["${catalogHost}.lan"]=1
-            hostNames["${catalogHost}.local"]=1
-            hostNames["${catalogHost}.${domain}"]=1
-        done
-    fi
+	if [[ -n "${hostsCatalogCsv:-}" ]]; then
+		local catalogHost
+		IFS=',' read -r -a catalogHosts <<<"${hostsCatalogCsv}"
+		for catalogHost in "${catalogHosts[@]}"; do
+			[[ -n "${catalogHost}" ]] || continue
+			hostNames["${catalogHost}"]=1
+			hostNames["${catalogHost}.lan"]=1
+			hostNames["${catalogHost}.local"]=1
+			hostNames["${catalogHost}.${domain}"]=1
+		done
+	fi
 
-    printf '%s\n' "${!hostNames[@]}"
+	printf '%s\n' "${!hostNames[@]}"
 }
 
 # Function to get the allowed principals for a key
 key::principals() {
-    # Loop through profileVars and filter based on the prefix
-    local principalsVar principals
-    principalsVar="$( var::snakeCase "${keyVar}" "principals" )"
-    principals=()
-    for var in "${profileVars[@]}"; do
-        if [[ $var != "${principalsVar}"* ]]; then
-            continue
-        fi
-        # Get the value of the variable using indirect expansion
-        principals+=( "${!var}" )
-    done
-    printf "%s\n" "${principals[@]}"
+	# Loop through profileVars and filter based on the prefix
+	local principalsVar principals
+	principalsVar="$(var::snakeCase "${keyVar}" "principals")"
+	principals=()
+	for var in "${profileVars[@]}"; do
+		if [[ $var != "${principalsVar}"* ]]; then
+			continue
+		fi
+		# Get the value of the variable using indirect expansion
+		principals+=("${!var}")
+	done
+	printf "%s\n" "${principals[@]}"
 }
 
 : "Function to get the key usages"
 key::usage() {
-    local usages=()
-    local index=0
-    while true; do
-        local usageVar
-        usageVar="$(var::snakeCase "$keyVar" "usage" "$index")"
-        local usage="${!usageVar:-}"
-        if [ -z "$usage" ]; then
-            break
-        fi
-        usages+=("$usage")
-        index=$((index + 1))
-    done
-    printf "%s\n" "${usages[@]}"
+	local usages=()
+	local index=0
+	while true; do
+		local usageVar
+		usageVar="$(var::snakeCase "$keyVar" "usage" "$index")"
+		local usage="${!usageVar:-}"
+		if [ -z "$usage" ]; then
+			break
+		fi
+		usages+=("$usage")
+		index=$((index + 1))
+	done
+	printf "%s\n" "${usages[@]}"
 }
 
 : "Function to generate a new SSH key pair"
 key::generateKeyPair() {
-    local keyName
-    keyName="$1"
+	local keyName
+	keyName="$1"
 
-    local type
-    type="$( key::value "type" )"
-    type="${type:-ssh-ed25519}"
-    type="${type/^ssh-//}"
+	local type
+	type="$(key::value "type")"
+	type="${type:-ssh-ed25519}"
+	type="${type/^ssh-//}"
 
-    local comment
-    comment="$( key::value "comment" )"
-    comment="${comment:-${keyName}}"
+	local comment
+	comment="$(key::value "comment")"
+	comment="${comment:-${keyName}}"
 
-    : "Generate the key pair in a temporary directory"
-    if ! @sshKeygen@ -q -t "$type" -N "" -f "${tmpdir}/${keyName}" -C "$comment"; then
-        log::trace "Failed to generate key pair for $keyName"
-        return 1
-    fi
+	: "Generate the key pair in a temporary directory"
+	if ! @sshKeygen@ -q -t "$type" -N "" -f "${tmpdir}/${keyName}" -C "$comment"; then
+		log::trace "Failed to generate key pair for $keyName"
+		return 1
+	fi
 
+	: "Load the generated key pair into global variables"
+	local keyPublic keyPrivate
+	keyPublic="$(cut -d' ' -f2,2 <"${tmpdir}/${keyName}.pub")"
+	keyPrivate="$(<"${tmpdir}/${keyName}")"
 
-    : "Load the generated key pair into global variables"
-    local keyPublic keyPrivate
-    keyPublic="$(cut -d' ' -f2,2 <"${tmpdir}/${keyName}.pub")"
-    keyPrivate="$(<"${tmpdir}/${keyName}")"
-
-    key::update "$keyPublic" "$keyPrivate"
+	key::update "$keyPublic" "$keyPrivate"
 }
 
 : "Function to get the authority usages"
 authority::usage() {
-    local authoritVar="$1"
-    local usages=()
-    local index=0
-    while true; do
-        local usageVar
-        usageVar="$(var::snakeCase "$authoritVar" "usage" "$index")"
-        local usage="${!usageVar:-}"
-        if [ -z "$usage" ]; then
-            break
-        fi
-        usages+=("$usage")
-        index=$((index + 1))
-    done
-    printf "%s\n" "${usages[@]}"
+	local authoritVar="$1"
+	local usages=()
+	local index=0
+	while true; do
+		local usageVar
+		usageVar="$(var::snakeCase "$authoritVar" "usage" "$index")"
+		local usage="${!usageVar:-}"
+		if [ -z "$usage" ]; then
+			break
+		fi
+		usages+=("$usage")
+		index=$((index + 1))
+	done
+	printf "%s\n" "${usages[@]}"
 }
 
 # Function to sign a key with all authorities (deprecated colon style retained intentionally)
 # Function to sign a key with all authorities
 key::signWithAuthorities() {
-    local signedAuthorities=()
- 
-    for profileVar in "${profileVars[@]}"; do
-        if ! [[ "$profileVar" =~ ^${keyVar}_authorities_ ]]; then
-            continue
-        fi
+	local signedAuthorities=()
 
-    # Extract the authority name from the variable
-        local authorityName
-        authorityName=${profileVar##*_authorities_}
-        authorityName=${authorityName%%_@(${keyFields})*}
+	for profileVar in "${profileVars[@]}"; do
+		if ! [[ "$profileVar" =~ ^${keyVar}_authorities_ ]]; then
+			continue
+		fi
 
-    # Check if the authority has already been signed
-        if [[ "${signedAuthorities[*]}" =~ ${authorityName} ]]; then
-            continue
-        fi
+		# Extract the authority name from the variable
+		local authorityName
+		authorityName=${profileVar##*_authorities_}
+		authorityName=${authorityName%%_@(${keyFields})*}
 
-    # Construct the variable names for the authority's keys
-        local authorityPrivateKeyVar="${keyVar}_authorities_${authorityName}_private"
-        local authorityPublicKeyVar="${keyVar}_authorities_${authorityName}_public"
+		# Check if the authority has already been signed
+		if [[ "${signedAuthorities[*]}" =~ ${authorityName} ]]; then
+			continue
+		fi
 
-    # Retrieve the authority's keys
-        local authorityPrivateKey="${!authorityPrivateKeyVar}"
-        local authorityPublicKey="${!authorityPublicKeyVar}"
+		# Construct the variable names for the authority's keys
+		local authorityPrivateKeyVar="${keyVar}_authorities_${authorityName}_private"
+		local authorityPublicKeyVar="${keyVar}_authorities_${authorityName}_public"
 
-    # Ensure the authority's private key is available
-        if [[ -z "${authorityPrivateKey}" ]]; then
-            log::trace "Missing private key for authority: ${authorityName}"
-            continue
-        fi
+		# Retrieve the authority's keys
+		local authorityPrivateKey="${!authorityPrivateKeyVar}"
+		local authorityPublicKey="${!authorityPublicKeyVar}"
 
-    # Sign the key with the authority
-        authority::signKey "${authorityName}" "${authorityPrivateKey}" "${authorityPublicKey}"
+		# Ensure the authority's private key is available
+		if [[ -z "${authorityPrivateKey}" ]]; then
+			log::trace "Missing private key for authority: ${authorityName}"
+			continue
+		fi
 
-    # Add the authority to the list of signed authorities
-        signedAuthorities+=("$authorityName")
-    done
+		# Sign the key with the authority
+		authority::signKey "${authorityName}" "${authorityPrivateKey}" "${authorityPublicKey}"
+
+		# Add the authority to the list of signed authorities
+		signedAuthorities+=("$authorityName")
+	done
 }
 
 : "Function to sign a key with an authority"
 authority::signKey() {
-    local authorityName authorityVar
-    authorityName="$1"
-    authorityVar=$( var::snakeCase "${keyVar}" "authorities" "${authorityName}" )
+	local authorityName authorityVar
+	authorityName="$1"
+	authorityVar=$(var::snakeCase "${keyVar}" "authorities" "${authorityName}")
 
-    local -a tmpfiles
-    trap 'trap - RETURN; rm -f "${tmpfiles[@]}"' RETURN
+	local -a tmpfiles
+	trap 'trap - RETURN; rm -f "${tmpfiles[@]}"' RETURN
 
-    : "Construct the variable names for the authority's key"
-    local cakeyPrivateVar cakeyPrivateTmpFile
-    cakeyPrivateVar="$( var::snakeCase "$keyVar" "authorities" "$authorityName" "private" )"
-    if [ -z "${!cakeyPrivateVar:-}" ]; then
-        return
-    fi
-    cakeyPrivateTmpFile="${tmpdir}/${authorityName}"
-    tmpfiles+=("$cakeyPrivateTmpFile")
-    cat <<<"${!cakeyPrivateVar}" >"$cakeyPrivateTmpFile" &&
-        chmod 400 "$cakeyPrivateTmpFile"
+	: "Construct the variable names for the authority's key"
+	local cakeyPrivateVar cakeyPrivateTmpFile
+	cakeyPrivateVar="$(var::snakeCase "$keyVar" "authorities" "$authorityName" "private")"
+	if [ -z "${!cakeyPrivateVar:-}" ]; then
+		return
+	fi
+	cakeyPrivateTmpFile="${tmpdir}/${authorityName}"
+	tmpfiles+=("$cakeyPrivateTmpFile")
+	cat <<<"${!cakeyPrivateVar}" >"$cakeyPrivateTmpFile" &&
+		chmod 400 "$cakeyPrivateTmpFile"
 
-    : "Construct the variable names for the public's key (derive key name locally to avoid outer-scope reliance)"
-    local keyPublicLine keyPublicTmpFile keyNameLocal
-    keyNameLocal="$( key::name "${keyVar}" )"
-    keyPublicLine="$( key::value "type" ) $( key::value "public" ) $( key::value "comment" )"
-    keyPublicTmpFile="${tmpdir}/${keyNameLocal}.pub"
-    tmpfiles+=("$keyPublicTmpFile")
-    cat <<<"${keyPublicLine}" >"$keyPublicTmpFile"
+	: "Construct the variable names for the public's key (derive key name locally to avoid outer-scope reliance)"
+	local keyPublicLine keyPublicTmpFile keyNameLocal
+	keyNameLocal="$(key::name "${keyVar}")"
+	keyPublicLine="$(key::value "type") $(key::value "public") $(key::value "comment")"
+	keyPublicTmpFile="${tmpdir}/${keyNameLocal}.pub"
+	tmpfiles+=("$keyPublicTmpFile")
+	cat <<<"${keyPublicLine}" >"$keyPublicTmpFile"
 
-    : "Determine the usage of the key (user or host)"
-    local -a authorityUsage
-    readarray -t authorityUsage < <(authority::usage "$authorityVar")
-    for usage in "${authorityUsage[@]}"; do
-        case "$usage" in
-        "ssh-user")
-            : "Get the allowed principals for the key"
-            local principals
-            readarray -t principals < <(key::principals)
-            if ! @sshKeygen@ -q -s "$cakeyPrivateTmpFile" -I "${keyNameLocal}" -n "$(
-                IFS=',';
-                echo "${principals[*]}"
-            )" "$keyPublicTmpFile"; then
-                log::trace "Failed to sign user key with authority $authorityName"
-                return 1
-            fi
-            ;;
-        "ssh-host")
-            : "Get the allowed hostnames for the key"
-            local authorityHostNames
-            readarray -t authorityHostNames < <(key::authorityHostNames "$authorityName")
-            if ! @sshKeygen@ -q -s "$cakeyPrivateTmpFile" -I "${keyNameLocal}" -h -n "$(
-                IFS=',';
-                echo "${authorityHostNames[*]}"
-            )" "$keyPublicTmpFile"; then
-                log::trace "Failed to sign host key with authority $authorityName"
-                return 1
-            fi
-            ;;
-        "ssh-authority"|"github-signing")
-            continue;;
-        *)
-            log::trace "Unknown key usage: $usage"
-            return 1
-            ;;
-        esac
-        keyCertTmpFile="${keyPublicTmpFile%.pub}-cert.pub"
-        @sshKeygen@ -L -f "$keyCertTmpFile" || log::trace "Could not inspect certificate $keyCertTmpFile"
-        keyCertLine="$( cat "${keyCertTmpFile}" )"
-        declare -g "$( var::snakeCase "${keyVar}" authorities "$authorityName" "$usage" )=${keyCertLine}"
-    done
+	: "Determine the usage of the key (user or host)"
+	local -a authorityUsage
+	readarray -t authorityUsage < <(authority::usage "$authorityVar")
+	for usage in "${authorityUsage[@]}"; do
+		case "$usage" in
+		"ssh-user")
+			: "Get the allowed principals for the key"
+			local principals
+			readarray -t principals < <(key::principals)
+			if ! @sshKeygen@ -q -s "$cakeyPrivateTmpFile" -I "${keyNameLocal}" -n "$(
+				IFS=','
+				echo "${principals[*]}"
+			)" "$keyPublicTmpFile"; then
+				log::trace "Failed to sign user key with authority $authorityName"
+				return 1
+			fi
+			;;
+		"ssh-host")
+			: "Get the allowed hostnames for the key"
+			local authorityHostNames
+			readarray -t authorityHostNames < <(key::authorityHostNames "$authorityName")
+			if ! @sshKeygen@ -q -s "$cakeyPrivateTmpFile" -I "${keyNameLocal}" -h -n "$(
+				IFS=','
+				echo "${authorityHostNames[*]}"
+			)" "$keyPublicTmpFile"; then
+				log::trace "Failed to sign host key with authority $authorityName"
+				return 1
+			fi
+			;;
+		"ssh-authority" | "github-signing")
+			continue
+			;;
+		*)
+			log::trace "Unknown key usage: $usage"
+			return 1
+			;;
+		esac
+		keyCertTmpFile="${keyPublicTmpFile%.pub}-cert.pub"
+		@sshKeygen@ -L -f "$keyCertTmpFile" || log::trace "Could not inspect certificate $keyCertTmpFile"
+		keyCertLine="$(cat "${keyCertTmpFile}")"
+		declare -g "$(var::snakeCase "${keyVar}" authorities "$authorityName" "$usage")=${keyCertLine}"
+	done
 }
 
 : "Function to get the key name from the variable name"
 key::name() {
-    local keyVar
-    keyVar="$1"
+	local keyVar
+	keyVar="$1"
 
-    : "Remove the prefix"
-    keyName=${keyVar#"${profileVarPrefix}_"}
+	: "Remove the prefix"
+	keyName=${keyVar#"${profileVarPrefix}_"}
 
-    : "Remove any suffix starting from the specified words"
-    # shellcheck disable=SC2295
-    keyName=${keyName%%_@(${keyFields})*}
+	: "Remove any suffix starting from the specified words"
+	# shellcheck disable=SC2295
+	keyName=${keyName%%_@(${keyFields})*}
 
-    echo "$keyName"
+	echo "$keyName"
 }
 
 : "Function to get the value of a key field"
 key::value() {
-    local var
-    var=$( var::snakeCase "${keyVar}" "${@}" )
-    echo "${!var:-}"
+	local var
+	var=$(var::snakeCase "${keyVar}" "${@}")
+	echo "${!var:-}"
 }
 
 : "Function to get the array values of a key field"
 key::values() {
-    local arrayVar index values
-    
-    arrayVar=$(var::snakeCase "${keyVar}" "${@}")
-    index=0
-    values=()
-    while true; do
-        local valueVar
-        valueVar="$(var::snakeCase "${arrayVar}" "${index}")"
-        local value="${!valueVar:-}"
-        if [ -z "$value" ]; then
-            break
-        fi
-        values+=("$value")
-        index=$((index + 1))
-    done
-    printf "%s\n" "${values[@]}"
-}
+	local arrayVar index values
 
+	arrayVar=$(var::snakeCase "${keyVar}" "${@}")
+	index=0
+	values=()
+	while true; do
+		local valueVar
+		valueVar="$(var::snakeCase "${arrayVar}" "${index}")"
+		local value="${!valueVar:-}"
+		if [ -z "$value" ]; then
+			break
+		fi
+		values+=("$value")
+		index=$((index + 1))
+	done
+	printf "%s\n" "${values[@]}"
+}
 
 key::update() {
-    local keyPublic keyPrivate
-    keyPublic="${1}"
-    keyPrivate="${2}"
+	local keyPublic keyPrivate
+	keyPublic="${1}"
+	keyPrivate="${2}"
 
-    : "Update the backed YAML document variables"
-    declare -g "$( var::snakeCase "${keyVar}" public )=${keyPublic}"
-    declare -g "$( var::snakeCase "${keyVar}" private )=${keyPrivate}"
-}
-
-: "Get annotation value for the current key"
-key::annotation() {
-    key::value "annotations" "$1"
-}
-
-: "Get descriptor value for the current key"
-key::descriptor() {
-    key::value "descriptor" "$1"
+	: "Update the backed YAML document variables"
+	declare -g "$(var::snakeCase "${keyVar}" public)=${keyPublic}"
+	declare -g "$(var::snakeCase "${keyVar}" private)=${keyPrivate}"
 }
 
 : "Default public scope based on key usage"
 key::defaultPublicScope() {
-    local usage
-    readarray -t usage < <(key::usage)
-    if [[ " ${usage[*]} " == *" ssh-authority "* ]]; then
-        echo "system"
-    else
-        echo "user"
-    fi
-}
-
-: "Validate optional key annotations"
-key::validateAnnotations() {
-    local keyName="$1"
-    local annotationFileName annotationPublicScope
-
-    annotationFileName="$(key::annotation file_name)"
-    annotationPublicScope="$(key::annotation public_scope)"
-    if [[ -n "$annotationFileName" && ! "$annotationFileName" =~ ^[A-Za-z0-9._-]+$ ]]; then
-        echo "Invalid annotations.file_name for key '${keyName}': '${annotationFileName}' (allowed: [A-Za-z0-9._-])" >&2
-        return 1
-    fi
-
-    if [[ -n "$annotationPublicScope" && "$annotationPublicScope" != "user" && "$annotationPublicScope" != "system" ]]; then
-        echo "Invalid annotations.public_scope for key '${keyName}': '${annotationPublicScope}' (allowed: user|system)" >&2
-        return 1
-    fi
-}
-
-: "Validate descriptor values"
-key::validateDescriptor() {
-    local keyName="$1"
-    local descriptorExtractFolder
-    descriptorExtractFolder="$(key::descriptor extract_folder)"
-
-    if [[ -n "$descriptorExtractFolder" &&
-        "$descriptorExtractFolder" != "ssh-keys" &&
-        "$descriptorExtractFolder" != "ssh-system-keys" &&
-        "$descriptorExtractFolder" != "user" &&
-        "$descriptorExtractFolder" != "system" ]]; then
-        echo "Invalid descriptor.extract_folder for key '${keyName}': '${descriptorExtractFolder}' (allowed: ssh-keys|ssh-system-keys|user|system)" >&2
-        return 1
-    fi
-}
-
-: "Default extraction folder based on key usage"
-key::defaultExtractFolder() {
-    local scope
-    scope="$(key::defaultPublicScope)"
-    if [[ "$scope" == "system" ]]; then
-        echo "ssh-system-keys"
-    else
-        echo "ssh-keys"
-    fi
+	local usage
+	readarray -t usage < <(key::usage)
+	if [[ " ${usage[*]} " == *" ssh-authority "* ]]; then
+		echo "system"
+	else
+		echo "user"
+	fi
 }
 
 : "Build a normalized SSH key comment with key metadata"
 key::annotatedComment() {
-    local keyName="$1"
-    local baseComment="$2"
-    shift 2
+	local keyName="$1"
+	local baseComment="$2"
+	shift 2
 
-    local usageSummary="none"
-    if (( $# > 0 )); then
-        usageSummary="$(IFS=','; echo "$*")"
-    fi
+	local usageSummary="none"
+	if (($# > 0)); then
+		usageSummary="$(
+			IFS=','
+			echo "$*"
+		)"
+	fi
 
-    if [[ -n "$baseComment" ]]; then
-        echo "${baseComment} [key:${keyName};usage:${usageSummary}]"
-    else
-        echo "${keyName} [key:${keyName};usage:${usageSummary}]"
-    fi
+	if [[ -n "$baseComment" ]]; then
+		echo "${baseComment} [key:${keyName};usage:${usageSummary}]"
+	else
+		echo "${keyName} [key:${keyName};usage:${usageSummary}]"
+	fi
 }
 
 : "Function to process a key entry"
 key::process() {
-    local keyName="$1"
+	local keyName="$1"
 
-    : "required for updating the backed YAML document variables"
-    declare -g keyVar
-    keyVar="$( var::snakeCase "${profileVarPrefix}" "${keyName}" )"
+	: "required for updating the backed YAML document variables"
+	declare -g keyVar
+	keyVar="$(var::snakeCase "${profileVarPrefix}" "${keyName}")"
 
-    declare keyPublic keyPrivate
+	declare keyPublic keyPrivate
 
-    : "Load the public key if it exists"
-    keyPublic=$(key::value "public")
+	: "Load the public key if it exists"
+	keyPublic=$(key::value "public")
 
-    : "Load the private key if it exists"
-    keyPrivate=$(key::value "private")
+	: "Load the private key if it exists"
+	keyPrivate=$(key::value "private")
 
-    : "Validate annotations early so activation fails fast on bad metadata"
-    key::validateAnnotations "$keyName"
-    key::validateDescriptor "$keyName"
+	local hasAuthorities=0
+	for profileVar in "${profileVars[@]}"; do
+		if [[ "$profileVar" =~ ^${keyVar}_authorities_ ]]; then
+			hasAuthorities=1
+			break
+		fi
+	done
 
-    local hasAuthorities=0
-    for profileVar in "${profileVars[@]}"; do
-        if [[ "$profileVar" =~ ^${keyVar}_authorities_ ]]; then
-            hasAuthorities=1
-            break
-        fi
-    done
+	: "Generate a new key pair when authority signing requires complete key material"
+	if ((hasAuthorities)) && { [ -z "$keyPublic" ] || [ -z "$keyPrivate" ]; }; then
+		: "Generate new SSH key pair and update global variables"
+		key::generateKeyPair "$keyName" "$tmpdir"
+	fi
 
-    : "Generate a new key pair when authority signing requires complete key material"
-    if (( hasAuthorities )) && { [ -z "$keyPublic" ] || [ -z "$keyPrivate" ]; }; then
-    : "Generate new SSH key pair and update global variables"
-        key::generateKeyPair "$keyName" "$tmpdir"
-    fi
-
-    : "Sign the key with each authority"
-    key::signWithAuthorities
+	: "Sign the key with each authority"
+	key::signWithAuthorities
 }
 
 : "Function to generate the YAML output file"
 keys::toYAML() {
 
-    cat <<EOF | @yq@ -P eval 'explode(...)'
+	cat <<EOF | yq --prettyPrint --yaml-fix-merge-anchor-to-spec eval 'explode(...)'
 keys:
 $(
-        local -a signingKeys otherKeys
-        declare -g keyVar
-        local profileVar keyName
-        for profileVar in "${profileVars[@]}"; do
-            keyName="$(key::name "$profileVar")"
-            if [[ "${signingKeys[*]}" =~ ${keyName} ||
-                  "${otherKeys[*]}" =~ ${keyName} ]]; then
-                continue
-            fi
-            keyVar="$( var::snakeCase "${profileVarPrefix}" "${keyName}" )"
-            readarray -t keyUsage < <(key::usage)
-            local accumulator="otherKeys"
-            if [[ "${keyUsage[*]}" =~ user-signing  ]]; then
-                accumulator="signingKeys"
-            fi
-            eval "${accumulator}+=(${keyName})"
-        done
-        local -a orderedKeys=("${otherKeys[@]}" "${signingKeys[@]}")
-        for keyName in "${orderedKeys[@]}"; do
-            keyVar="$( var::snakeCase "${profileVarPrefix}" "${keyName}" )"
+		local -a signingKeys otherKeys
+		declare -g keyVar
+		local keyName
+		for keyName in "${processedKeys[@]}"; do
+			keyVar="$(var::snakeCase "${profileVarPrefix}" "${keyName}")"
+			readarray -t keyUsage < <(key::usage)
+			local accumulator="otherKeys"
+			if [[ "${keyUsage[*]}" =~ user-signing ]]; then
+				accumulator="signingKeys"
+			fi
+			if [[ "$accumulator" == "signingKeys" ]]; then
+				signingKeys+=("$keyName")
+			else
+				otherKeys+=("$keyName")
+			fi
+		done
+		local -a orderedKeys=("${otherKeys[@]}" "${signingKeys[@]}")
+		for keyName in "${orderedKeys[@]}"; do
+			keyVar="$(var::snakeCase "${profileVarPrefix}" "${keyName}")"
 
-            local authorityHostNames keyUsage keyType keyComment keyPublic keyPrivate authorityUsage annotatedComment
-            local annotationFileName annotationPublicScope descriptorExtractFolder
-            readarray -t keyUsage < <(key::usage)
-            keyType=$( key::value type )
-            keyComment=$( key::value comment )
-            keyPublic=$( key::value public )
-            keyPrivate=$( key::value private )
-            annotationFileName="$(key::annotation file_name)"
-            annotationFileName="${annotationFileName:-$keyName}"
-            annotationPublicScope="$(key::annotation public_scope)"
-            annotationPublicScope="${annotationPublicScope:-$(key::defaultPublicScope)}"
-            descriptorExtractFolder="$(key::descriptor extract_folder)"
-            descriptorExtractFolder="${descriptorExtractFolder:-$(key::defaultExtractFolder)}"
-            annotatedComment="$(key::annotatedComment "$keyName" "$keyComment" "${keyUsage[@]}")"
-            # Collect principals (for user-signing semantics) so downstream tools (AuthorizedPrincipalsCommand) can align.
-            readarray -t keyPrincipals < <(key::principals)
-            cat <<EOK
+			local authorityHostNames keyUsage keyType keyComment keyPublic keyPrivate authorityUsage annotatedComment
+			readarray -t keyUsage < <(key::usage)
+			keyType=$(key::value type)
+			keyComment=$(key::value comment)
+			keyPublic=$(key::value public)
+			keyPrivate=$(key::value private)
+			annotatedComment="$(key::annotatedComment "$keyName" "$keyComment" "${keyUsage[@]}")"
+			# Collect principals (for user-signing semantics) so downstream tools (AuthorizedPrincipalsCommand) can align.
+			readarray -t keyPrincipals < <(key::principals)
+			cat <<EOK
   $keyName: &${keyName}
     usage: $(
-                IFS=','
-                echo "[ ${keyUsage[*]} ]"
-            )
+				IFS=','
+				echo "[ ${keyUsage[*]} ]"
+			)
     private: |-
-$( echo "$keyPrivate" | @sed@ 's/^/      /' )
-        public: $keyType $keyPublic $annotatedComment
-        annotations:
-            file_name: $annotationFileName
-            public_scope: $annotationPublicScope
-        descriptor:
-            extract_folder: $descriptorExtractFolder
+$(echo "$keyPrivate" | @sed@ 's/^/      /')
+    public: $keyType $keyPublic $annotatedComment
 $(
-    if (( ${#keyPrincipals[@]} > 0 )); then
-        printf '    principals: [ '
-        ( IFS=','; echo "${keyPrincipals[*]}" ) | @sed@ 's/,/, /g' | @sed@ 's/$/ ]/'
-    fi
-)
+				if ((${#keyPrincipals[@]} > 0)); then
+					printf '    principals: [ '
+					(
+						IFS=','
+						echo "${keyPrincipals[*]}"
+					) | @sed@ 's/,/, /g' | @sed@ 's/$/ ]/'
+				fi
+			)
 $(
-    local -a processedAuthorities
-    processAuthorities=()
-    for profileVar in "${profileVars[@]}"; do
-        if ! [[ "$profileVar" =~ ^${keyVar}_authorities_ ]]; then
-            continue
-        fi
-        local authorityName
-        authorityName=${profileVar##*_authorities_}
-        authorityName=${authorityName%%_@(${keyFields})*}
-        if [[ "${processedAuthorities[*]}" =~ ${authorityName} ]]; then
-            continue
-        fi
-        processedAuthorities+=("$authorityName")
-        if (( ${#processedAuthorities[@]} == 1 )); then
-            echo "    certificates:"
-        fi
-        local authorityVar
-        authorityVar="$( var::snakeCase "$keyVar" "authorities" "$authorityName" )"
-        echo "      $authorityName:"
-        echo "        <<: *$authorityName"
-        local authorityUsage
-        readarray -t authorityUsage < <(authority::usage "$authorityVar")
-        for authorityUsage in "${authorityUsage[@]}"; do
-            local certVar
-            certVar="$( var::snakeCase "$authorityVar" "$authorityUsage" )"
-            echo "        $authorityUsage: |"
-            echo "${!certVar}" | @sed@ 's/^/          /'
-        done
-    done
-)
+				local -a processedAuthorities
+				processAuthorities=()
+				for profileVar in "${profileVars[@]}"; do
+					if ! [[ "$profileVar" =~ ^${keyVar}_authorities_ ]]; then
+						continue
+					fi
+					local authorityName
+					authorityName=${profileVar##*_authorities_}
+					authorityName=${authorityName%%_@(${keyFields})*}
+					if [[ "${processedAuthorities[*]}" =~ ${authorityName} ]]; then
+						continue
+					fi
+					processedAuthorities+=("$authorityName")
+					if ((${#processedAuthorities[@]} == 1)); then
+						echo "    certificates:"
+					fi
+					local authorityVar
+					authorityVar="$(var::snakeCase "$keyVar" "authorities" "$authorityName")"
+					echo "      $authorityName:"
+					echo "        <<: *$authorityName"
+					local authorityUsage
+					readarray -t authorityUsage < <(authority::usage "$authorityVar")
+					for authorityUsage in "${authorityUsage[@]}"; do
+						local certVar
+						certVar="$(var::snakeCase "$authorityVar" "$authorityUsage")"
+						echo "        $authorityUsage: |"
+						echo "${!certVar}" | @sed@ 's/^/          /'
+					done
+				done
+			)
 EOK
-        done
-    )
+		done
+	)
 EOF
 }
 
@@ -543,46 +476,51 @@ source @bashTrampoline@
 source @logger@
 
 main() {
-  declare -g profileName hostName inputFile outputFile
-  profileName="$1"; shift
-  hostName="$1"; shift
-  inputFile="$1"; shift
-  outputFile="$1"; shift
-  declare -g hostsCatalogCsv
-  hostsCatalogCsv="${1:-}"
-  
-  : "Create a temporary directory for signing"
-  tmpdir=$(@mktemp@ --directory --suffix=keys.d)
-  trap 'rm -rf $tmpdir' EXIT
-  
-  : "Load the entire YAML file into shell variables"
-  eval "$(env PROFILE="$profileName" @yq@ -o shell eval 'explode(...) | .profiles.[env(PROFILE)] | { "ssh-keys": . }' "$inputFile")"
-  
-  declare -g profileVarPrefix
-  profileVarPrefix=$(var::snakeCase "ssh-keys")
-  
-  : "Collect profile variables"
-  declare -g profileVars
-  declare -p | grep -oE "${profileVarPrefix}_[^=]+" >"${tmpdir}/profileVars"
-  readarray -t profileVars <"${tmpdir}/profileVars"
-  
-  : Process each key entry
-  declare -g processedKeys=()
-  for profileVar in "${profileVars[@]}"; do
-      keyName="$(key::name "$profileVar")"
-      if [[ "${processedKeys[*]}" =~ ${keyName} ]]; then
-          : "Skip already processed keys"
-          continue 
-      fi
-      processedKeys+=("$keyName")
-      key::process "$keyName"
-  done
+	declare -g profileName hostName inputFile outputFile
+	profileName="$1"
+	shift
+	hostName="$1"
+	shift
+	inputFile="$1"
+	shift
+	outputFile="$1"
+	shift
+	declare -g hostsCatalogCsv
+	hostsCatalogCsv="${1:-}"
 
-    : "Output the updated keys in a YAML file" 	
-    keys::toYAML | tee /tmp/keys.yaml >"$outputFile"
-    : "Keep decrypted runtime keys file read-only to discourage direct edits"
-    chmod 0400 "$outputFile"
+	: "Create a temporary directory for signing"
+	tmpdir=$(@mktemp@ --directory --suffix=keys.d)
+	trap 'rm -rf $tmpdir' EXIT
+
+	: "Load the entire YAML file into shell variables"
+	eval "$(env PROFILE="$profileName" yq -o shell eval 'explode(...) | .profiles.[env(PROFILE)] | { "ssh-keys": . }' "$inputFile")"
+
+	declare -g profileVarPrefix
+	profileVarPrefix=$(var::snakeCase "ssh-keys")
+
+	: "Collect profile variables"
+	declare -g profileVars
+	declare -p | grep -oE "${profileVarPrefix}_[^=]+" >"${tmpdir}/profileVars"
+	readarray -t profileVars <"${tmpdir}/profileVars"
+
+	: "Collect original key names from source YAML to preserve dashed names in output"
+	declare -g sourceKeyNames
+	readarray -t sourceKeyNames < <(env PROFILE="$profileName" @yq@ -r 'explode(...) | .profiles.[env(PROFILE)] | keys[]' "$inputFile")
+
+	: Process each key entry
+	declare -g processedKeys=()
+	for keyName in "${sourceKeyNames[@]}"; do
+		[[ -n "$keyName" ]] || continue
+		processedKeys+=("$keyName")
+		key::process "$keyName"
+	done
+
+	: "Output the updated keys in a YAML file"
+	install -o "$USER" -m 0700 -d "$(dirname "$outputFile")"
+	keys::toYAML >"$outputFile"
+
+	: "Keep decrypted runtime keys file read-only to discourage direct edits"
+	chmod 0400 "$outputFile"
 }
 
 ndh::logger:command:run "@activationTag@" main "$@"
-

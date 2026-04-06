@@ -14,7 +14,8 @@ let
     "activation"
     "loggerScript"
   ] ../common/shell.d/logger.sh config;
-  hostKeysDir = sshPaths.systemSecretsDir;
+  hostKeysDir = sshPaths.authoritySecretsDir;
+  clientKeyName = builtins.baseNameOf sshPaths.privKeyFile;
   hostKeyPrivateFile = sshPaths.privKeyFile;
   hostKeyPublicCert = sshPaths.hostCertPublic;
   caPublicKeyFile = "${config.opensshPolicy.keysDir}/trusted-user-ca.pub";
@@ -60,11 +61,11 @@ let
           # Accepts all profile principals to allow cross-host connections
           profiles:
             committed:
-              rdp-host:
+              ${clientKeyName}:
                 principals:
     ${formatPrincipals allPrincipals}
             work:
-              rdp-host:
+              ${clientKeyName}:
                 principals:
     ${formatPrincipals allPrincipals}
   '';
@@ -94,6 +95,13 @@ let
     groupKeysCommand = config.opensshPolicy.canonicalGroupKeysCommandName;
     principalsCommand = config.opensshPolicy.canonicalPrincipalsCommandName;
     logger = loggerScript;
+  };
+
+  opensshPostActivationScript = pkgs.replaceVars ./openssh.d/post-activation.sh {
+    hostKeysDir = hostKeysDir;
+    keysDir = config.opensshPolicy.keysDir;
+    logger = loggerScript;
+    activationTag = "darwin.activationScripts.postActivation.openssh";
   };
 
 in
@@ -144,30 +152,15 @@ in
 
     services.openssh.enable = true;
 
-    # Ensure OpenSSH activation runs in the etc fragment (installs /etc/ssh helper scripts)
+    # Ensure OpenSSH helper scripts are installed during the etc phase.
     system.activationScripts.etc.text = lib.mkAfter ''
-      # Provision split SSH key directories.
-      install -d -m 0755 "${sshPaths.perUserSecretsRoot}"
-      install -d -m 0700 "${sshPaths.perUserSecretsDir}"
-      install -d -m 0755 "${sshPaths.systemSecretsDir}"
-      chown "${userName}" "${sshPaths.perUserSecretsDir}"
-      chown "${userName}" "${sshPaths.systemSecretsDir}"
-
       bash ${opensshActivationScript}
-      # Install system CA public keys from runtime user keys directory.
-      install -d -m 755 "${config.opensshPolicy.keysDir}"
-      for ca in "${hostKeysDir}"/*-ca.pub; do
-        [ -f "$ca" ] || continue
-        install -m 644 "$ca" "${config.opensshPolicy.keysDir}/$(basename "$ca")"
-      done
-      : > "${config.opensshPolicy.keysDir}/trusted-user-ca.pub"
-      for ca in "${config.opensshPolicy.keysDir}/"*-ca.pub; do
-        [ -f "$ca" ] || continue
-        basename "$ca" | grep -q '^trusted-user-ca\.pub$' && continue
-        cat "$ca" >> "${config.opensshPolicy.keysDir}/trusted-user-ca.pub"
-        printf "\n" >> "${config.opensshPolicy.keysDir}/trusted-user-ca.pub"
-      done
-      chmod 644 "${config.opensshPolicy.keysDir}/trusted-user-ca.pub"
+    '';
+
+    # HM post-activation is wired at mkOrder 2000 in modules/darwin/default.nix.
+    # Run CA/trust aggregation after HM extraction so runtime SSH key material exists.
+    system.activationScripts.postActivation.text = lib.mkOrder 2100 ''
+      bash ${opensshPostActivationScript}
     '';
 
   };
