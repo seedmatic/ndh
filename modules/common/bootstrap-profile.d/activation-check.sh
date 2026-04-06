@@ -1,0 +1,70 @@
+set -euo pipefail
+
+profile_bin="@profileBin@"
+nix_bin="@nixBin@"
+auto_install="@autoInstall@"
+required_commands="@requiredCommands@"
+install_hint="@installHint@"
+runtime_package="@runtimePackage@"
+profile_dir="@profileDir@"
+image_build_context="${NIXOS_INSTALL_BOOTLOADER:-0}"
+
+install_profile() {
+  echo "[ndh-bootstrap-profile] installing/refreshing profile ${profile_dir}" >&2
+  "$nix_bin" profile add --profile "${profile_dir}" "${runtime_package}" >&2
+}
+
+if [ "$image_build_context" = "1" ] && [ "$auto_install" = "1" ]; then
+  echo "[ndh-bootstrap-profile] image-build activation context detected; seeding profile ${profile_dir}" >&2
+  install_profile
+fi
+
+check_commands() {
+  missing=""
+  wrong_source=""
+  for cmd in ${required_commands}; do
+    if ! resolved="$(command -v "$cmd" 2>/dev/null)"; then
+      missing="$missing $cmd"
+      continue
+    fi
+
+    case "$resolved" in
+      "$profile_bin"/*) ;;
+      *)
+        wrong_source="$wrong_source $cmd:$resolved"
+        ;;
+    esac
+  done
+}
+
+if [ ! -d "$profile_bin" ]; then
+  if [ "$auto_install" = "1" ]; then
+    install_profile
+  else
+    echo "[ndh-bootstrap-profile][ERROR] required profile bin directory is missing: $profile_bin" >&2
+    echo "[ndh-bootstrap-profile][ERROR] install it first: ${install_hint}" >&2
+    exit 1
+  fi
+fi
+
+export PATH="$profile_bin:$PATH"
+
+check_commands
+
+if { [ -n "$missing" ] || [ -n "$wrong_source" ]; } && [ "$auto_install" = "1" ]; then
+  install_profile
+  export PATH="$profile_bin:$PATH"
+  check_commands
+fi
+
+if [ -n "$missing" ]; then
+  echo "[ndh-bootstrap-profile][ERROR] missing required commands:$missing" >&2
+  echo "[ndh-bootstrap-profile][ERROR] reinstall profile: ${install_hint}" >&2
+  exit 1
+fi
+
+if [ -n "$wrong_source" ]; then
+  echo "[ndh-bootstrap-profile][ERROR] required commands not sourced from profile:$wrong_source" >&2
+  echo "[ndh-bootstrap-profile][ERROR] reinstall/repair profile: ${install_hint}" >&2
+  exit 1
+fi

@@ -29,6 +29,14 @@ let
       profileHost.hostName;
 
   profileName = config.profile.name;
+  hostCatalogEntries = lib.attrByPath [
+    "hosts"
+    effectiveHostName
+  ] [ ] catalog;
+  hostIsVmOnly =
+    hostCatalogEntries != [ ]
+    && lib.all (entry: (entry ? form) && entry.form == "vm") hostCatalogEntries;
+  limaRuntimeSupported = !hostIsVmOnly;
   # Generate unique host byte from hostname hash (matches existing Lima VM)
   # Takes first byte of SHA256 hash of hostname
   hostByteHex =
@@ -503,12 +511,15 @@ in
       }
     ];
 
-    # Add lima to system packages
-    environment.systemPackages = [ pkgs.lima ] ++ lib.optionals cfg.installMaterializerPackage [ cfg.materializerPackage ];
+    # Install Lima runtime tooling only on supported host forms.
+    # Darwin VM hosts (nested environments) are excluded by policy.
+    environment.systemPackages =
+      lib.optionals limaRuntimeSupported [ pkgs.lima ]
+      ++ lib.optionals (limaRuntimeSupported && cfg.installMaterializerPackage) [ cfg.materializerPackage ];
 
     # Dedicated activation script using postActivation which is actually executed
     # Use mkAfter to run after other postActivation scripts (@codebase)
-    system.activationScripts.postActivation.text = lib.mkIf cfg.enableActivationHook (lib.mkAfter ''
+    system.activationScripts.postActivation.text = lib.mkIf (limaRuntimeSupported && cfg.enableActivationHook) (lib.mkAfter ''
       ${limaActivationScript}
     '');
     # Expose full rendered configuration for external tooling (@codebase)

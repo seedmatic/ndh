@@ -473,9 +473,10 @@
           # Disk sizes in MiB
           # - runtime/systemd-boot bringup: safe size for full closure population
           # - bringup-grub: reduced-size image for fast iteration/debug
-          diskSizeFullMiB = 12 * 1024;
-          diskSizeBringupSystemdBootMiB = 12 * 1024;
-          diskSizeBringupGrubMiB = 8 * 1024;
+          # Bumped by +4 GiB to reduce ENOSPC risk during phase-2 boot/switch closure copy.
+          diskSizeFullMiB = 16 * 1024;
+          diskSizeBringupSystemdBootMiB = 16 * 1024;
+          diskSizeBringupGrubMiB = 12 * 1024;
           diskSizeBytes = diskSizeFullMiB * 1024 * 1024;
           # System closure path
           systemPath = zfs.config.system.build.toplevel;

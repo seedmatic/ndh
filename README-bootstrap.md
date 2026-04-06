@@ -212,6 +212,32 @@ limactl start nerd-nixos
 
 **Note**: The Lima configuration should reference the disk image path `./result/nixos.img` created by the nix build command.
 
+### 3. First bootstrap stage shortcut (`run.sh vm:reset`) (@codebase)
+
+For the first bootstrap stage, you can run:
+
+```bash
+run.sh vm:reset
+```
+
+This performs:
+
+1. host disk image build,
+2. Lima config presence check,
+3. Lima factory reset + VM start.
+
+So yes: this is enough to bring the VM up from a clean state for stage-1 bootstrap.
+
+Important scope note:
+
+- `vm:reset` does **not** run remote `nixos-rebuild boot/switch` steps.
+- For full staged flow, use `phase:bootstrap:all` (or run `vm:nixos:boot:ext4` / `vm:nixos:boot:zfs` explicitly).
+
+NDH bootstrap profile note:
+
+- During NixOS image build activation context, the NDH bootstrap profile is now seeded automatically.
+- On first guest activation, enforcement still re-checks command presence and source.
+
 ## Configuration Details
 
 ### Flox Environment Integration

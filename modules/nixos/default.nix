@@ -258,6 +258,8 @@ in
           "ignore_loglevel"
           "rd.udev.log_level=debug"
           "boot.shell_on_fail"
+          # Enables `set -x` in stage-2 init script for exact command tracing.
+          "boot.debugtrace"
           "boot.trace"
         ])
         # Keep tty1 plus runtime debug overrides at the end so they win against
@@ -267,6 +269,8 @@ in
           ++ (lib.optionals (!bootstrapMode) [
             "loglevel=7"
             "ignore_loglevel"
+            # Keep stage-2 command trace enabled while diagnosing PID1 exit 127.
+            "boot.debugtrace"
           ])
         ))
       ];
