@@ -7,6 +7,77 @@
 
 [[ "${NDH_BASH_TRAMPOLINED:-0}" == "1" ]] && return 0
 
+ndh::bootstrap:profile:bin() {
+	local candidate
+	local -a candidates=()
+
+	[[ -n "${NDH_BOOTSTRAP_PROFILE_BIN:-}" ]] && candidates+=("${NDH_BOOTSTRAP_PROFILE_BIN}")
+	[[ -n "${HOME:-}" ]] && candidates+=("${HOME}/.local/state/nix/profiles/ndh-bootstrap-runtime/bin")
+
+	if [[ -n "${SUDO_USER:-}" ]]; then
+		candidates+=("/nix/var/nix/profiles/per-user/${SUDO_USER}/ndh-bootstrap-runtime/bin")
+	fi
+
+	if [[ -n "${USER:-}" ]]; then
+		candidates+=("/nix/var/nix/profiles/per-user/${USER}/ndh-bootstrap-runtime/bin")
+	fi
+
+	for candidate in "${candidates[@]}"; do
+		[[ -n "$candidate" ]] || continue
+		if [[ -d "$candidate" ]]; then
+			echo "$candidate"
+			return 0
+		fi
+	done
+
+	return 1
+}
+
+ndh::bootstrap:runtime:path() {
+	local profile_bin
+	profile_bin="$(ndh::bootstrap:profile:bin || true)"
+	if [[ -n "$profile_bin" ]]; then
+		echo "${profile_bin}:${PATH:-}"
+	else
+		echo "${PATH:-}"
+	fi
+}
+
+ndh::bootstrap:runtime:verify() {
+	local required raw_cmd cmd
+	local -a missing=()
+	read -r -a required <<< "${NDH_BOOTSTRAP_REQUIRED_COMMANDS:-age age-keygen awk sed grep ssh ssh-keygen yq git}"
+
+	for raw_cmd in "${required[@]}"; do
+		cmd="${raw_cmd}"
+		[[ -n "$cmd" ]] || continue
+		if ! command -v "$cmd" >/dev/null 2>&1; then
+			missing+=("$cmd")
+		fi
+	done
+
+	if ((${#missing[@]} > 0)); then
+		echo "[ndh][WARN] bootstrap runtime profile missing commands: ${missing[*]}" >&2
+		return 1
+	fi
+
+	return 0
+}
+
+ndh::bootstrap:runtime:ensure() {
+	if ndh::bootstrap:runtime:verify; then
+		return 0
+	fi
+
+	if [[ "${NDH_BOOTSTRAP_STRICT:-1}" == "1" ]]; then
+		echo "[ndh][ERROR] required NDH bootstrap profile is missing/incomplete" >&2
+		echo "[ndh][ERROR] install hint: ${NDH_BOOTSTRAP_INSTALL_HINT:-nix run .#ndh-bootstrap-profile-installer -- \$HOME/.local/state/nix/profiles/ndh-bootstrap-runtime}" >&2
+		return 1
+	fi
+
+	return 0
+}
+
 ndh::nix:bash:path() {
 	local -a binDirs
 	binDirs=( "/run/current-system/sw/bin" )
@@ -93,7 +164,11 @@ fi
 
 : "Cleanup path"
 PATH="$(ndh::nix:bash:path)"
+PATH="$(ndh::bootstrap:runtime:path)"
 export PATH
+
+: "Verify bootstrap runtime profile"
+ndh::bootstrap:runtime:ensure
 
 : "Re-exec bash is not in the nix store"
 ndh::nix:bash:trampoline "$@"

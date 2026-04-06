@@ -3,6 +3,7 @@
   config,
   lib,
   pkgs,
+  ndh,
   ...
 }:
 with lib;
@@ -20,18 +21,15 @@ let
   ) cfg.routes;
 
   ensureRoutesScript =
-    pkgs.runCommand "darwin-static-routes-ensure.sh"
-      {
-        preferLocalBuild = true;
-        allowSubstitutes = false;
-      }
-      ''
-        install -Dm755 ${
-          pkgs.replaceVars ./static-routes.d/ensure.sh {
-            ensureRoutesCommands = routeEnsureCommands;
-          }
-        } "$out"
-      '';
+    ndh.store.installScript {
+      name = "darwin-static-routes-ensure.sh";
+      source = pkgs.replaceVars ./static-routes.d/ensure.sh {
+        ensureRoutesCommands = routeEnsureCommands;
+      };
+      preferLocalBuild = true;
+      allowSubstitutes = false;
+      mode = "0755";
+    };
 
 in
 {

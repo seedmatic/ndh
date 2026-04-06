@@ -54,6 +54,20 @@ bioskop Darwin / Lima VM / RKE2
 3. **Tailscale account** with auth keys
 4. **Headscale** ready to deploy
 
+Before any host `darwin-rebuild switch`, install NDH prerequisites:
+
+[source,bash]
+----
+cd /path/to/nix-darwin-home/hosts/bioskop
+nix run .#ndh-prerequisites-install
+----
+
+Notes:
+
+- `ndh-prerequisites-install` is the canonical installer to run.
+- `ndh-bootstrap-runtime` is the runtime payload package installed by that installer.
+- `lima-config-materialize` is separate and only for Lima materialization workflows.
+
 == Step 1: Configure Lima VM with Headscale Modules
 
 Create or update bioskop's Lima VM NixOS configuration to include Headscale server and gateway.

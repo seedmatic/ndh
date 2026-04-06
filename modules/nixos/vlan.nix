@@ -3,6 +3,7 @@
   config,
   lib,
   pkgs,
+  ndh,
   ...
 }:
 with lib;
@@ -16,7 +17,7 @@ let
   addressSourceInterface =
     if cfg.addressSourceInterface != null then cfg.addressSourceInterface else parentInterface;
 
-  vlanSetupScript = pkgs.writeShellScript "vlan-setup" (builtins.readFile ./vlan.d/vlan-setup.sh);
+  vlanSetupScript = pkgs.writeShellScript (ndh.store.prefixedName "vlan-setup") (builtins.readFile ./vlan.d/vlan-setup.sh);
 in
 {
   options.networking.vlan = {

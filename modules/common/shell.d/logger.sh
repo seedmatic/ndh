@@ -176,7 +176,7 @@ ndh::logger:command:run() {
 	local tag="$1"
 	shift
 
-	echo "[$tag] ndh::logger:command:run starting command: \"${caller_src} ${*:2}\" with PID $$"
+	echo "[$tag] ndh::logger:command:starting logged command: \"${caller_src} ${*:2}\" with PID $$"
 
 	# Keep a handle to original stderr so we can always emit critical notices to
 	# the invoking console, even after output redirection to logger/file sinks.

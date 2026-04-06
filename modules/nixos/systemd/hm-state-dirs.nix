@@ -19,8 +19,8 @@ let
     "${homeDir}/.local/state/home-manager/gcroots"
   ];
   # Use the wrapped activation logger placed in the store so it's always available
-  logger = config.activation.loggerScript;
-  activationTag = "nixos.activationScripts.hmStateDirs";
+  logger = config.nixBashLogger.script;
+  loggerTag = "nixos.activationScripts.hmStateDirs";
 in
 {
   # Use tmpfiles to ensure directory tree exists with correct ownership/mode
@@ -35,7 +35,7 @@ in
         userName = userName;
         group = group;
         logger = logger;
-        activationTag = activationTag;
+        loggerTag = loggerTag;
       }
     );
   };

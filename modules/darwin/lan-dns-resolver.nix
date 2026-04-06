@@ -2,28 +2,24 @@
   config,
   lib,
   pkgs,
+  ndh,
   ...
 }:
 
 let
   cfg = config.networking.lanDnsResolver;
+  loggerScript = config.nixBashLogger.script;
   lanDnsActivationScript =
-    pkgs.runCommand "lan-dns-resolver-post-activation.sh"
-      {
-        preferLocalBuild = true;
-        allowSubstitutes = false;
-      }
-      ''
-        install -Dm755 ${
-          pkgs.replaceVars ./lan-dns-resolver.d/post-activation.sh {
-            inherit (cfg) nameserver;
-            logger = lib.attrByPath [
-              "activation"
-              "loggerScript"
-            ] ../common/shell.d/logger.sh config;
-          }
-        } "$out"
-      '';
+    ndh.store.installScript {
+      name = "lan-dns-resolver-post-activation.sh";
+      source = pkgs.replaceVars ./lan-dns-resolver.d/post-activation.sh {
+        inherit (cfg) nameserver;
+        logger = loggerScript;
+      };
+      preferLocalBuild = true;
+      allowSubstitutes = false;
+      mode = "0755";
+    };
 
 in
 {

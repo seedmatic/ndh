@@ -3,6 +3,7 @@
   config,
   lib,
   pkgs,
+  ndh,
   ...
 }:
 let
@@ -18,7 +19,7 @@ let
   };
 
   insecureDbusConfigDir =
-    pkgs.runCommand "dbus-1-insecure-config"
+    pkgs.runCommand (ndh.store.prefixedName "dbus-1-insecure-config")
       {
         preferLocalBuild = true;
         allowSubstitutes = false;

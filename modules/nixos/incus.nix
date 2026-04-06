@@ -2,6 +2,7 @@
   config,
   pkgs,
   lib,
+  ndh,
   ...
 }:
 let
@@ -48,7 +49,7 @@ let
       builtins.head certHostLabels
     else
       config.networking.hostName;
-  ensureIncusServerCert = pkgs.runCommand "ensure-incus-server-cert.sh" { } ''
+  ensureIncusServerCert = pkgs.runCommand (ndh.store.prefixedName "ensure-incus-server-cert.sh") { } ''
     cp ${
       pkgs.replaceVars ./incus.d/ensure-incus-server-cert.sh {
         bashTrampoline = "${../common/shell.d/nix-bash-trampoline.sh}";
@@ -62,7 +63,7 @@ let
     builtins.substring 0 2 (builtins.hashString "sha256" effectiveHostName)
   );
   lanBridgeMac = "10:66:6a:4c:${hostByteHex}:fe";
-  fixIncusSocketPerms = pkgs.runCommand "fix-incus-socket-perms.sh" { } ''
+  fixIncusSocketPerms = pkgs.runCommand (ndh.store.prefixedName "fix-incus-socket-perms.sh") { } ''
     cp ${pkgs.replaceVars ./incus.d/fix-incus-socket-perms.sh { }} $out
     chmod +x $out
   '';
@@ -218,8 +219,8 @@ in
         incusRemoteAddress = "https://${config.networking.hostName}:8443";
         # Use the wrapped activation logger in the store
         bashTrampoline = "${../common/shell.d/nix-bash-trampoline.sh}";
-        logger = config.activation.loggerScript;
-        activationTag = "nixos.activationScripts.incusUserConfig";
+        logger = config.nixBashLogger.script;
+        loggerTag = "nixos.activationScripts.incusUserConfig";
       }
     );
   };

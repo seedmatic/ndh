@@ -36,4 +36,4 @@ main() {
 EOF
 }
 
-ndh::logger:command:run "@activationTag@" main "$@"
+ndh::logger:command:run "@loggerTag@" main "$@"

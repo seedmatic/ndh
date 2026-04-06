@@ -3,6 +3,7 @@
   config,
   lib,
   pkgs,
+  ndh,
   ...
 }:
 with lib;
@@ -12,7 +13,7 @@ let
   tokenSecretName = "nxmatic-cachix-watch-store.token";
   tokenSecretPath = config.sops.secrets.${tokenSecretName}.path;
 
-  watchStoreScript = pkgs.writeShellScript "nxmatic-cachix-watch-store" ''
+  watchStoreScript = pkgs.writeShellScript (ndh.store.prefixedName "nxmatic-cachix-watch-store") ''
     set -euo pipefail
 
     token_file="${tokenSecretPath}"

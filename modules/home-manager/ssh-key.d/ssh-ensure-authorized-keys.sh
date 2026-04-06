@@ -17,4 +17,4 @@ main() {
   fi
 }
 
-ndh::logger:command:run "@activationTag@" main "$@"
+ndh::logger:command:run "@loggerTag@" main "$@"

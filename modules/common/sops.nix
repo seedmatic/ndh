@@ -3,6 +3,7 @@
   config,
   lib,
   pkgs,
+  ndh,
   hostProfile ? { },
   ...
 }:
@@ -55,16 +56,13 @@ let
     remoteFetchUseSudo = if cfg.nixosHostKeyImport.remoteFetch.useSudo then "1" else "0";
     remoteFetchHostnameEnvVar = cfg.nixosHostKeyImport.remoteFetch.hostnameEnvVar;
     remoteFetchMdnsSuffix = cfg.nixosHostKeyImport.remoteFetch.mdnsSuffix;
-    ageBin = pkgs.age;
-    coreutilsBin = pkgs.coreutils;
-    sudoCmd = cfg.sudoCommand;
     phase = cfg.phase;
     darwinUserKeyFile = cfg.darwinUserKeyFile;
     importExistingUserKeyOnBootstrap = if cfg.importExistingUserKeyOnBootstrap then "1" else "0";
     nixosHostKeyImportCandidates = lib.concatStringsSep "\n" cfg.nixosHostKeyImport.candidates;
   };
   sopsAgeBootstrapScript = builtins.readFile sopsAgeBootstrapScriptSource;
-  sopsAgeBootstrapSystemdScript = pkgs.writeShellScript "sops-age-bootstrap" sopsAgeBootstrapScript;
+  sopsAgeBootstrapSystemdScript = pkgs.writeShellScript (ndh.store.prefixedName "sops-age-bootstrap") sopsAgeBootstrapScript;
   useSystemdSopsActivation = config.sops.useSystemdActivation or false;
   namespaceSecretPaths =
     let

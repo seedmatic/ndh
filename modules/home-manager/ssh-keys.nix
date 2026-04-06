@@ -7,30 +7,21 @@
 
 let
   profile = config._module.specialArgs.profile;
+  ndh = config._module.specialArgs.ndh;
   profileName = profile.name;
   hostProfile = profile.host;
   userProfile = profile.user;
   userName = profile.user.name; # Use profile user name for tagging
   userDescription = userProfile.description;
   userHome = userProfile.home;
-  logger = config._module.specialArgs.logger.script;
-  activationTagGenerate = "home-manager.activationScripts.${userName}.generateSSHKeysYaml";
-  activationTagExtract = "home-manager.activationScripts.${userName}.extractSSHKeys";
-  activationTagAuthorized = "home-manager.activationScripts.${userName}.ensureAuthorizedKeys";
-  sourceSSHKeysYamlPathOverride = lib.attrByPath [
-    "_module"
-    "specialArgs"
-    "sshKeysYamlPath"
-  ] null config;
   sshPaths = config.sshPaths;
-  # Source YAML path (SOPS-decrypted profile YAML), used as input to generation.
-  sourceSSHKeysYamlPath =
-    if sourceSSHKeysYamlPathOverride != null then
-      sourceSSHKeysYamlPathOverride
-    else
-      sshPaths.runtimeSecretsKeysYaml;
+  logger = config._module.specialArgs.logger.script;
+  loggerTagGenerate = "home-manager.activationScripts.${userName}.generateSSHKeysYaml";
+  loggerTagExtract = "home-manager.activationScripts.${userName}.extractSSHKeys";
+  loggerTagAuthorized = "home-manager.activationScripts.${userName}.ensureAuthorizedKeys";
   perUserKeysDir = sshPaths.secretsKeysDir;
   authorityKeysDir = sshPaths.authoritySecretsDir;
+  decryptedSSHKeysYamlPath = sshPaths.runtimeSecretsKeysYaml;
   # Effective YAML path consumed by ssh-add-keys/launchd.
   effectiveSSHKeysYamlPath = "${perUserKeysDir}.yaml";
 
@@ -54,7 +45,7 @@ let
 
   # Externalized KnownHostsCommand script sourced from repo (templated with keysDir)
   knownHostsScript =
-    pkgs.runCommand "ssh-ca-known-hosts" { } ''
+    pkgs.runCommand (ndh.store.prefixedName "ssh-ca-known-hosts") { } ''
       cp ${pkgs.replaceVars ./ssh.d/scripts/ca-known-hosts-command.sh {
         bashTrampoline = "${../common/shell.d/nix-bash-trampoline.sh}";
         logger = logger;
@@ -108,34 +99,26 @@ in
 
       sshGenerateKeysYamlScript = pkgs.replaceVars ./ssh-key.d/ssh-generate-keys-yaml.sh {
         bashTrampoline = "${../common/shell.d/nix-bash-trampoline.sh}";
-        yq = "${pkgs.yq-go}/bin/yq";
-        mktemp = "${pkgs.coreutils-full}/bin/mktemp";
-        sed = "${pkgs.gnused}/bin/sed";
-        hostname = "${pkgs.hostname}/bin/hostname";
-        sshKeygen = "${pkgs.openssh}/bin/ssh-keygen";
         logger = logger;
-        activationTag = activationTagGenerate;
+        loggerTag = loggerTagGenerate;
       };
 
       sshExtractKeysScript = pkgs.replaceVars ./ssh-key.d/ssh-extract-keys.sh {
         bashTrampoline = "${../common/shell.d/nix-bash-trampoline.sh}";
-        awk = "${pkgs.gawk}/bin/awk";
-        ssh-keygen = "${pkgs.openssh}/bin/ssh-keygen";
-        yq = "${pkgs.yq-go}/bin/yq";
         logger = logger;
-        activationTag = activationTagExtract;
+        loggerTag = loggerTagExtract;
       };
 
       ensureAuthorizedKeysScript = pkgs.replaceVars ./ssh-key.d/ssh-ensure-authorized-keys.sh {
         bashTrampoline = "${../common/shell.d/nix-bash-trampoline.sh}";
         logger = logger;
-        activationTag = activationTagAuthorized;
+        loggerTag = loggerTagAuthorized;
       };
     in
     {
       # Generate the YAML of keys to deploy based on the main keys.yaml and the current host/profile
       generateSSHKeysYaml = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-        ${pkgs.bash}/bin/bash ${sshGenerateKeysYamlScript} "${profileName}" "$(${pkgs.hostname}/bin/hostname -s)" "${sourceSSHKeysYamlPath}" "${effectiveSSHKeysYamlPath}" "${hostsCatalogCsv}"
+        ${pkgs.bash}/bin/bash ${sshGenerateKeysYamlScript} "${profileName}" "$(${pkgs.hostname}/bin/hostname -s)" "${decryptedSSHKeysYamlPath}" "${effectiveSSHKeysYamlPath}" "${hostsCatalogCsv}"
       '';
 
       # Deploy keys to the filesystem with proper permissions based on the generated YAML

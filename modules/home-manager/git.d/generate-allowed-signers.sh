@@ -10,4 +10,4 @@ stephane.lacoin@hyland.com namespaces="git" $( cat "@hostKeysDir@/github-signing
 EoF
 }
 
-ndh::logger:command:run "@activationTag@" main "$@"
+ndh::logger:command:run "@loggerTag@" main "$@"

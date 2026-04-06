@@ -6,6 +6,7 @@
   config,
   lib,
   pkgs,
+  ndh,
   ...
 }:
 
@@ -17,6 +18,7 @@ let
     mkMerge
     ;
   cfg = config.internetSharing;
+  loggerScript = config.nixBashLogger.script;
 
   # Plist configuration for Internet Sharing
   natConfig = {
@@ -65,20 +67,14 @@ let
       desiredDevices
       autoToggleBlock
       ;
-    logger = lib.attrByPath [
-      "activation"
-      "loggerScript"
-    ] ../common/shell.d/logger.sh config;
+    logger = loggerScript;
   };
 
-  activationWrapperScript = pkgs.runCommand "internet-sharing-activation.sh" { } ''
+  activationWrapperScript = pkgs.runCommand (ndh.store.prefixedName "internet-sharing-activation.sh") { } ''
     cp ${
       pkgs.replaceVars ./internet-sharing.d/activation-wrapper.sh {
         inherit configurePlist verifyAnchorsBlock;
-        logger = lib.attrByPath [
-          "activation"
-          "loggerScript"
-        ] ../common/shell.d/logger.sh config;
+        logger = loggerScript;
       }
     } "$out"
     chmod +x "$out"

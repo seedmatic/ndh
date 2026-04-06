@@ -41,6 +41,6 @@ in
       unitConfig.ConditionPathExists = config.sops.age.keyFile;
     };
 
-    activation.loggerCmd = lib.mkDefault "${pkgs.util-linux}/bin/logger -p notice -t %TAG%";
+    nixBashLogger.cmd = lib.mkDefault "${pkgs.util-linux}/bin/logger -p notice -t %TAG%";
   };
 }

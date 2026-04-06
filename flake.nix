@@ -170,6 +170,56 @@
           baseModules = mkBaseModulesFor { inherit hostProfile system; };
         in
         preModules ++ baseModules ++ extraModules;
+
+      mkLoggerSpecialArg =
+        system:
+        let
+          pkgsForSystem = pkgsFor { inherit system; };
+          loggerScript = pkgsForSystem.writeText "logger.sh" ''
+            #!/usr/bin/env bash
+            LOGGER_CMD=""
+            source ${./modules/common/shell.d/logger.sh}
+          '';
+        in
+        {
+          script = loggerScript;
+          cmd = "";
+        };
+
+      mkNdhBootstrapRuntimePackage =
+        system:
+        let
+          pkgsForSystem = pkgsFor { inherit system; };
+        in
+        pkgsForSystem.symlinkJoin {
+          name = "ndh-bootstrap-runtime";
+          paths = with pkgsForSystem; [
+            age
+            coreutils-full
+            findutils
+            gawk
+            git
+            gnugrep
+            gnused
+            keychain
+            openssh
+            yq-go
+          ];
+        };
+
+      mkNdhBootstrapProfileInstaller =
+        system:
+        let
+          pkgsForSystem = pkgsFor { inherit system; };
+          runtimePackage = mkNdhBootstrapRuntimePackage system;
+          scriptSource = pkgsForSystem.replaceVars ./modules/common/bootstrap-profile.d/install-standalone.sh {
+            runtimePackage = runtimePackage;
+            defaultProfileDir = "\${HOME}/.local/state/nix/profiles/ndh-bootstrap-runtime";
+            requiredCommands = "age age-keygen awk sed grep ssh ssh-keygen yq git";
+          };
+        in
+        pkgsForSystem.writeShellScriptBin "ndh-bootstrap-profile-install" (builtins.readFile scriptSource);
+
       mkSpecialArgs =
         {
           modules,
@@ -185,23 +235,12 @@
               # Any additional lib functions you want to include
             }
           );
-          # Provide activation logger directly from the store (no /etc indirection)
-          # and ensure it is built for the current target system.
-          pkgsForSystem = pkgsFor { inherit system; };
-          loggerScript = pkgsForSystem.writeText "logger.sh" ''
-            #!/usr/bin/env bash
-            LOGGER_CMD=""
-            source ${./modules/common/shell.d/logger.sh}
-          '';
         in
         {
           inherit self lib;
           _modules = modules;
           nixpkgsInput = nixpkgs;
-          logger = {
-            script = loggerScript;
-            cmd = "";
-          };
+          logger = mkLoggerSpecialArg system;
         }
         // extraArgs;
 
@@ -524,6 +563,27 @@
         aarch64-linux = pkgsForLinux;
       };
 
+      packages = forAllSystems (system: {
+        ndh-bootstrap-runtime = mkNdhBootstrapRuntimePackage system;
+        ndh-prerequisites-install = mkNdhBootstrapProfileInstaller system;
+      });
+
+      apps = forAllSystems (system:
+        let
+          installer = mkNdhBootstrapProfileInstaller system;
+        in
+        {
+          ndh-prerequisites-install = {
+            type = "app";
+            program = "${installer}/bin/ndh-bootstrap-profile-install";
+          };
+          ndh-bootstrap-runtime = {
+            type = "app";
+            program = "${installer}/bin/ndh-bootstrap-profile-install";
+          };
+        }
+      );
+
       mkHostOutputs =
         {
           hostProfile,
@@ -734,13 +794,24 @@
               ''}"
             else
               limaMaterializerProgram;
+          ndhBootstrapRuntimePackage = mkNdhBootstrapRuntimePackage "aarch64-darwin";
+          ndhBootstrapInstallerPackage = mkNdhBootstrapProfileInstaller "aarch64-darwin";
+          ndhPrerequisitesInstallerPackage =
+            pkgsForDarwin.writeShellScriptBin "ndh-prerequisites-install" ''
+              #!/usr/bin/env bash
+              set -euo pipefail
+
+              ${nixpkgs.lib.optionalString (autofsNetMaterializerProgram != null) "/usr/bin/sudo ${autofsNetMaterializerProgram}"}
+              exec ${ndhBootstrapInstallerPackage}/bin/ndh-bootstrap-profile-install "$@"
+            '';
           hostDarwinPackages =
             (nixpkgs.lib.optionalAttrs (limaMaterializerPackage != null) {
               lima-config-materialize = limaMaterializerPackage;
             })
-            // (nixpkgs.lib.optionalAttrs (autofsNetMaterializerPackage != null) {
-              nfs-autofs-net-materialize = autofsNetMaterializerPackage;
-            });
+            // {
+              ndh-bootstrap-runtime = ndhBootstrapRuntimePackage;
+              ndh-prerequisites-install = ndhPrerequisitesInstallerPackage;
+            };
           hostDarwinApps =
             (nixpkgs.lib.optionalAttrs (limaMaterializerAppProgram != null) {
               lima-config-materialize = {
@@ -748,22 +819,19 @@
                 program = limaMaterializerAppProgram;
               };
             })
-            // (nixpkgs.lib.optionalAttrs (autofsNetMaterializerProgram != null) {
-              nfs-autofs-net-materialize = {
+            // {
+              ndh-prerequisites-install = {
                 type = "app";
-                program = autofsNetMaterializerProgram;
+                program = "${ndhPrerequisitesInstallerPackage}/bin/ndh-prerequisites-install";
               };
-            });
+              ndh-bootstrap-runtime = {
+                type = "app";
+                program = "${ndhPrerequisitesInstallerPackage}/bin/ndh-prerequisites-install";
+              };
+            };
 
           # Home Manager configurations for direct use
           homeManagerConfigurations =
-            let
-              loggerScript = pkgsForDarwin.writeText "logger.sh" ''
-                #!/usr/bin/env bash
-                LOGGER_CMD=""
-                source ${./modules/common/shell.d/logger.sh}
-              '';
-            in
             {
               "${mainName}" = home-manager.lib.homeManagerConfiguration {
                 pkgs = pkgsForDarwin;
@@ -771,10 +839,7 @@
                 extraSpecialArgs = {
                   inherit hostProfile catalog;
                   profile = defaultProfile;
-                  logger = {
-                    script = loggerScript;
-                    cmd = "";
-                  };
+                  logger = mkLoggerSpecialArg "aarch64-darwin";
                 };
                 # Optionally, set username and homeDirectory here if needed
               };

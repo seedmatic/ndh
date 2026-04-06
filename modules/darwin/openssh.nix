@@ -3,6 +3,7 @@
   config,
   pkgs,
   lib,
+  ndh,
   ...
 }:
 let
@@ -10,10 +11,7 @@ let
   userHome = profile.user.home;
   userName = profile.user.name;
   sshPaths = config.sshPaths;
-  loggerScript = lib.attrByPath [
-    "activation"
-    "loggerScript"
-  ] ../common/shell.d/logger.sh config;
+  loggerScript = config.nixBashLogger.script;
   hostKeysDir = sshPaths.authoritySecretsDir;
   clientKeyName = builtins.baseNameOf sshPaths.privKeyFile;
   hostKeyPrivateFile = sshPaths.privKeyFile;
@@ -22,12 +20,10 @@ let
   principalsScriptStore = pkgs.replaceVars ../common/ssh/authorized-principals-command.sh {
     bashTrampoline = "${../common/shell.d/nix-bash-trampoline.sh}";
     logger = loggerScript;
-    scriptPath = config.opensshPolicy.setEnvPath;
   };
   groupKeysScriptStore = pkgs.replaceVars ../common/ssh/ssh-group-authorized-keys.sh {
     bashTrampoline = "${../common/shell.d/nix-bash-trampoline.sh}";
     logger = loggerScript;
-    scriptPath = config.opensshPolicy.setEnvPath;
     authorizedKeysDir = config.opensshPolicy.authorizedKeysDir;
   };
   inherit (lib) mkIf optionalString concatStringsSep;
@@ -87,7 +83,7 @@ let
     in
     lib.concatStringsSep "\n" all + "\n";
 
-  sshdConfigStore = pkgs.writeText "sshd_config" sshdConfigText;
+  sshdConfigStore = pkgs.writeText (ndh.store.prefixedName "sshd_config") sshdConfigText;
 
   opensshActivationScript = pkgs.replaceVars ./openssh.d/openssh-activation.sh {
     groupKeysScriptStore = groupKeysScriptStore;
@@ -101,7 +97,7 @@ let
     hostKeysDir = hostKeysDir;
     keysDir = config.opensshPolicy.keysDir;
     logger = loggerScript;
-    activationTag = "darwin.activationScripts.postActivation.openssh";
+    loggerTag = "darwin.activationScripts.postActivation.openssh";
   };
 
 in

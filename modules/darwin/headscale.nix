@@ -2,6 +2,7 @@
   config,
   pkgs,
   lib,
+  ndh,
   ...
 }:
 
@@ -10,14 +11,12 @@ with lib;
 let
   cfg = config.networking.headscale;
   defaultHostname = config.networking.hostName or "localhost";
+  loggerScript = config.nixBashLogger.script;
 
-  headscaleActivationScript = pkgs.runCommand "headscale-post-activation.sh" { } ''
+  headscaleActivationScript = pkgs.runCommand (ndh.store.prefixedName "headscale-post-activation.sh") { } ''
     cp ${
       pkgs.replaceVars ./headscale-client.d/post-activation.sh {
-        logger = lib.attrByPath [
-          "activation"
-          "loggerScript"
-        ] ../common/shell.d/logger.sh config;
+        logger = loggerScript;
       }
     } "$out"
     chmod +x "$out"

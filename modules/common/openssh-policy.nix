@@ -2,6 +2,7 @@
   lib,
   config,
   pkgs,
+  ndh,
   ...
 }:
 let
@@ -34,12 +35,10 @@ let
         AuthorizedPrincipalsCommand =
           if cfg.principalsCommandSource != null then
             "${cfg.canonicalCommandDir}/${cfg.canonicalPrincipalsCommandName} %u"
-          else if cfg.principalsCommandScript != null then
-            "${cfg.principalsCommandScript} %u"
           else
             null;
         AuthorizedPrincipalsCommandUser =
-          if (cfg.principalsCommandSource != null) || (cfg.principalsCommandScript != null) then
+          if cfg.principalsCommandSource != null then
             cfg.principalsCommandUser
           else
             null;
@@ -47,12 +46,10 @@ let
         AuthorizedKeysCommand =
           if cfg.groupKeysCommandSource != null then
             "${cfg.canonicalCommandDir}/${cfg.canonicalGroupKeysCommandName} %u"
-          else if cfg.groupCommand != null && cfg.groupCommand != "" then
-            cfg.groupCommand
           else
             null;
         AuthorizedKeysCommandUser =
-          if (cfg.groupKeysCommandSource != null) || (cfg.groupCommand != null && cfg.groupCommand != "") then
+          if cfg.groupKeysCommandSource != null then
             cfg.groupCommandUser
           else
             null;
@@ -99,17 +96,10 @@ in
     };
 
     # Principals command
-    principalsCommandScript = mkOption {
-      # Use string instead of path so runtime absolute paths like /etc/ssh/authorized-principals-command
-      # do not trigger pure evaluation path access errors.
-      type = types.nullOr types.str;
-      default = null;
-      description = "Script path for AuthorizedPrincipalsCommand (without %u). If non-null, directives are emitted. Accepts runtime absolute paths.";
-    };
     principalsCommandSource = mkOption {
       type = types.nullOr types.path;
       default = null;
-      description = "Store path (or derivation) of principals command script to be installed at canonical runtime path. Takes precedence over principalsCommandScript.";
+      description = "Store path (or derivation) of principals command script to be installed at canonical runtime path.";
     };
     principalsCommandUser = mkOption {
       type = types.str;
@@ -123,18 +113,10 @@ in
       default = "/etc/ssh/nix_authorized_keys.d";
       description = "Directory containing authorized keys files (both user and group-based).";
     };
-    groupCommand = mkOption {
-      type = types.str;
-      # New unified runtime script name (old name: /etc/ssh/ssh-group-authorized-keys)
-      default = "/etc/ssh/ssh-group-authorized-keys-command %u";
-      description = ''
-        AuthorizedKeysCommand for group-based keys (must include %u).
-                Default changed to /etc/ssh/ssh-group-authorized-keys-command (old path kept via symlink if present).'';
-    };
     groupKeysCommandSource = mkOption {
       type = types.nullOr types.path;
       default = null;
-      description = "Store path (or derivation) of group authorized keys aggregation script to be installed at canonical runtime path. When set, overrides groupCommand path with canonical path.";
+      description = "Store path (or derivation) of group authorized keys aggregation script to be installed at canonical runtime path.";
     };
     groupCommandUser = mkOption {
       type = types.str;
@@ -204,12 +186,6 @@ in
       type = types.bool;
       default = false;
       description = "Whether this platform renders AuthorizedKeysFile from opensshPolicy.authorizedKeysFiles.";
-    };
-
-    cleanupLegacyCommandScripts = mkOption {
-      type = types.bool;
-      default = true;
-      description = "Whether activation should attempt to replace legacy command script copies with symlinks to the canonical names (safe, only when contents match).";
     };
 
     # Host keys / certificate (optional referencing existing files). Not enforced; left for completeness.
@@ -433,7 +409,7 @@ in
 
     # Ensure non-interactive `/bin/bash -c` launched by sshd gets a canonical
     # PATH immediately, with a platform-appropriate primary prefix.
-    environment.etc."profile.d/noninteractive.sh".source = pkgs.writeText "noninteractive.sh" ''
+    environment.etc."profile.d/noninteractive.sh".source = pkgs.writeText (ndh.store.prefixedName "noninteractive.sh") ''
       #!/bin/sh
       # Only modify PATH for non-interactive shells (bash -c; $- lacks 'i')
       case "$-" in

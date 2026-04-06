@@ -2,6 +2,7 @@
   config,
   lib,
   pkgs,
+  ndh,
   ...
 }:
 let
@@ -10,45 +11,37 @@ let
     svc: lib.escapeShellArg svc
   ) config.networking.knownNetworkServices;
   wallpaperImage = config.profile.darwin.wallpaperImage;
+  loggerScript = config.nixBashLogger.script;
   timeoutExe = lib.getExe' pkgs.coreutils "timeout";
   gtimeoutExe = lib.getExe' pkgs.coreutils "gtimeout";
   networkPreferencesScript =
-    pkgs.runCommand "darwin-network-preferences.sh"
-      {
-        preferLocalBuild = true;
-        allowSubstitutes = false;
-      }
-      ''
-        install -Dm755 ${
-          pkgs.replaceVars ./preferences.d/network-preferences.sh {
-            preferredDnsString = preferredDnsString;
-            preferredServicesLiteral = preferredServicesLiteral;
-          }
-        } "$out"
-      '';
+    ndh.store.installScript {
+      name = "darwin-network-preferences.sh";
+      source = pkgs.replaceVars ./preferences.d/network-preferences.sh {
+        preferredDnsString = preferredDnsString;
+        preferredServicesLiteral = preferredServicesLiteral;
+      };
+      preferLocalBuild = true;
+      allowSubstitutes = false;
+      mode = "0755";
+    };
 
   preferencesPostActivation =
-    pkgs.runCommand "preferences-post-activation.sh"
-      {
-        preferLocalBuild = true;
-        allowSubstitutes = false;
-      }
-      ''
-        install -Dm755 ${
-          pkgs.replaceVars ./preferences.d/post-activation.sh {
-            networkPreferencesScript = networkPreferencesScript;
-            timeoutExe = timeoutExe;
-            gtimeoutExe = gtimeoutExe;
-            wallpaperImage = wallpaperImage;
-            logger = lib.attrByPath [
-              "activation"
-              "loggerScript"
-            ] ../common/shell.d/logger.sh config;
-          }
-        } "$out"
-      '';
+    ndh.store.installScript {
+      name = "preferences-post-activation.sh";
+      source = pkgs.replaceVars ./preferences.d/post-activation.sh {
+        networkPreferencesScript = networkPreferencesScript;
+        timeoutExe = timeoutExe;
+        gtimeoutExe = gtimeoutExe;
+        wallpaperImage = wallpaperImage;
+        logger = loggerScript;
+      };
+      preferLocalBuild = true;
+      allowSubstitutes = false;
+      mode = "0755";
+    };
 
-  osOnlyUpdateNotifierScript = pkgs.writeShellScript "darwin-os-only-update-notifier.sh" ''
+  osOnlyUpdateNotifierScript = pkgs.writeShellScript (ndh.store.prefixedName "darwin-os-only-update-notifier.sh") ''
     set -euo pipefail
 
     update_output="$(${lib.escapeShellArg "/usr/sbin/softwareupdate"} --list --product-types macOS 2>&1 || true)"

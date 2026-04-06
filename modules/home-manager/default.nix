@@ -54,7 +54,7 @@ let
     else
       throw "specialArgs.logger is required";
   logger = loggerArgs.script;
-  activationTagFixConfigOwnership = "home-manager.activationScripts.${userName}.fixConfigOwnership";
+  loggerTagFixConfigOwnership = "home-manager.activationScripts.${userName}.fixConfigOwnership";
 
   baseHomePackages = with pkgs; [
     alejandra
@@ -199,7 +199,7 @@ in
       let
         fixConfigOwnershipScript = pkgs.replaceVars ./default.d/fix-config-ownership.sh {
           logger = logger;
-          activationTag = activationTagFixConfigOwnership;
+          loggerTag = loggerTagFixConfigOwnership;
         };
       in
       lib.hm.dag.entryBefore [ "writeBoundary" ] ''

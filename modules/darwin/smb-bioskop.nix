@@ -2,10 +2,12 @@
   config,
   lib,
   pkgs,
+  ndh,
   ...
 }:
 let
   cfg = config.services.bioskopSmbMount;
+  loggerScript = config.nixBashLogger.script;
   mapFile = "/etc/auto_bioskop";
   autoMaster = "/etc/auto_master";
   bioskopFstabScript = pkgs.replaceVars ./smb-bioskop.d/fstab.sh {
@@ -16,14 +18,11 @@ let
     mountPoint = cfg.fstab.mountPoint;
     options = cfg.fstab.options;
   };
-  bioskopPostActivation = pkgs.runCommand "bioskop-smb-post-activation.sh" { } ''
+  bioskopPostActivation = pkgs.runCommand (ndh.store.prefixedName "bioskop-smb-post-activation.sh") { } ''
     cp ${
       pkgs.replaceVars ./smb-bioskop.d/post-activation.sh {
         inherit bioskopFstabScript;
-        logger = lib.attrByPath [
-          "activation"
-          "loggerScript"
-        ] ../common/shell.d/logger.sh config;
+        logger = loggerScript;
       }
     } "$out"
     chmod +x "$out"

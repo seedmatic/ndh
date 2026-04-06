@@ -40,15 +40,19 @@ let
     "activationPackage"
   ] null config;
   hmUserExists = hmActivationPackage != null;
+  storeNamePrefix = "io.nxmatic.nix-darwin-home";
+  prefixStoreName =
+    name:
+    if lib.hasPrefix "${storeNamePrefix}-" name then name else "${storeNamePrefix}-${name}";
   loggerBase = ./shell.d/logger.sh;
-  loggerScript = pkgs.runCommand "logger.sh" { } ''
+  loggerScript = pkgs.runCommand (prefixStoreName "logger.sh") { } ''
         cat > "$out" <<'EOF'
     #!/usr/bin/env bash
-    LOGGER_CMD="${config.activation.loggerCmd}"
+    LOGGER_CMD="${config.nixBashLogger.cmd}"
     source ${loggerBase}
     EOF
   '';
-  activationTagHmPost = "common.activationScripts.postActivation.home-manager";
+  loggerTagHmPost = "common.activationScripts.postActivation.home-manager";
   # Define systemPackages separately
   systemPackages = import ./system-packages.nix {
     inherit pkgs lib;
@@ -61,30 +65,45 @@ let
     userName = userName;
     userHome = userHome;
     logger = loggerScript;
-    activationTag = activationTagHmPost;
+    loggerTag = loggerTagHmPost;
     postActivationLogShowLabel = config.activation.postActivationLogShowLabel;
     postActivationLogShowCmd = config.activation.postActivationLogShowCmd;
     postActivationLogStreamLabel = config.activation.postActivationLogStreamLabel;
     postActivationLogStreamCmd = config.activation.postActivationLogStreamCmd;
   };
 
-  postActivationScript = pkgs.runCommand "hm-post-activation.sh" { } ''
+  postActivationScript = pkgs.runCommand (prefixStoreName "hm-post-activation.sh") { } ''
     install -m 0555 ${postActivationScriptSource} "$out"
   '';
+
+  installStoreScript =
+    {
+      name,
+      source,
+      preferLocalBuild ? null,
+      allowSubstitutes ? null,
+      mode ? "0555",
+    }:
+    pkgs.runCommand (prefixStoreName name) (
+      (lib.optionalAttrs (preferLocalBuild != null) { inherit preferLocalBuild; })
+      // (lib.optionalAttrs (allowSubstitutes != null) { inherit allowSubstitutes; })
+    ) ''
+      install -m ${mode} ${source} "$out"
+    '';
 
 in
 {
 
-  options.activation.loggerCmd = lib.mkOption {
+  options.nixBashLogger.cmd = lib.mkOption {
     type = lib.types.str;
     default = "";
-    description = "Command line (with %TAG% placeholder) to route activation logs";
+    description = "Command line (with %TAG% placeholder) used by the shared nix bash logger wrapper.";
   };
 
-  options.activation.loggerScript = lib.mkOption {
+  options.nixBashLogger.script = lib.mkOption {
     type = lib.types.path;
     readOnly = true;
-    description = "Wrapped activation logger script that exports LOGGER_CMD";
+    description = "Shared nix bash logger wrapper script that exports LOGGER_CMD.";
   };
 
   options.activation.homeManagerPostActivationScript = lib.mkOption {
@@ -124,6 +143,7 @@ in
     ./primary-user.nix
     ./user.nix
     ./nixpkgs.nix
+    ./ndh-bootstrap-profile.nix
     ./dns-servers.nix
     ./dnsmasq.nix
     ./lima-host.nix
@@ -132,7 +152,15 @@ in
 
   config = {
 
-    activation.loggerScript = loggerScript;
+    _module.args.ndh = {
+      store = {
+        prefix = storeNamePrefix;
+        prefixedName = prefixStoreName;
+        installScript = installStoreScript;
+      };
+    };
+
+    nixBashLogger.script = loggerScript;
     activation.homeManagerPostActivationScript = postActivationScript;
 
     programs = {
@@ -162,9 +190,16 @@ in
       # Provide specialArgs explicitly for direct imports
       specialArgs = {
         inherit profile catalog;
+        ndh = {
+          store = {
+            prefix = storeNamePrefix;
+            prefixedName = prefixStoreName;
+            installScript = installStoreScript;
+          };
+        };
         logger = {
           script = loggerScript;
-          cmd = config.activation.loggerCmd;
+          cmd = config.nixBashLogger.cmd;
         };
         sshKeysYamlPath = lib.attrByPath [
           "sops"
@@ -215,9 +250,16 @@ in
       extraSpecialArgs = {
         inherit self catalog;
         profile = config.profile;
+        ndh = {
+          store = {
+            prefix = storeNamePrefix;
+            prefixedName = prefixStoreName;
+            installScript = installStoreScript;
+          };
+        };
         logger = {
           script = loggerScript;
-          cmd = config.activation.loggerCmd;
+          cmd = config.nixBashLogger.cmd;
         };
         sshKeysYamlPath = lib.attrByPath [
           "sops"

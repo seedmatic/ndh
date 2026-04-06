@@ -4,6 +4,7 @@
   catalog,
   config,
   pkgs,
+  ndh,
   ...
 }:
 let
@@ -97,7 +98,7 @@ in
         }
       '';
     in
-    pkgs.writeText "flake.nix" flakeContent;
+    pkgs.writeText (ndh.store.prefixedName "flake.nix") flakeContent;
 
   # auto manage nixbld users with nix darwin
   nix = {
