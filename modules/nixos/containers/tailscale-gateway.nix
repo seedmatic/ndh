@@ -128,7 +128,7 @@ in
           ];
 
           # Auto-connect service
-          systemd.services.tailscale-autoconnect = {
+          systemd.services.ndh-tailscale-autoconnect = {
             after = [
               "tailscaled.service"
               "network-online.target"

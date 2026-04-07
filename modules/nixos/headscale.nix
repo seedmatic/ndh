@@ -88,7 +88,7 @@ in
     networking.firewall.trustedInterfaces = [ "tailscale0" ];
 
     # Ensure Tailscale connects at boot
-    systemd.services.tailscaled-autoconnect = {
+    systemd.services.ndh-tailscaled-autoconnect = {
       after = [
         "tailscaled.service"
         "network-online.target"

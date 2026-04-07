@@ -61,7 +61,7 @@ in
   };
 
   config = mkIf cfg.enable {
-    systemd.services.vlan-setup = {
+    systemd.services.ndh-vlan-setup = {
       description = "Configure VLAN interface";
       after = [ "network-online.target" ];
       wants = [ "network-online.target" ];
