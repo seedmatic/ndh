@@ -115,7 +115,11 @@ ndh::nix:bash:path:deduplicate() {
 		[[ "$already_present" == "1" ]] && continue
 		unique_paths+=("$path")
 	done
-	echo "${unique_paths[*]}"
+	if ((${#unique_paths[@]} == 0)); then
+		echo ""
+		return 0
+	fi
+	echo "${unique_paths[*]-}"
 }
 
 ndh::nix:bash:trampoline() {

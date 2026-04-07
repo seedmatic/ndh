@@ -160,6 +160,7 @@ key::signWithAuthorities() {
 		# Extract the authority name from the variable
 		local authorityName
 		authorityName=${profileVar##*_authorities_}
+		# shellcheck disable=SC2295
 		authorityName=${authorityName%%_@(${keyFields})*}
 
 		# Check if the authority has already been signed
@@ -226,7 +227,9 @@ authority::signKey() {
 			: "Get the allowed principals for the key"
 			local principals
 			readarray -t principals < <(key::principals)
-			if ! ssh-keygen -q -s "$cakeyPrivateTmpFile" -I "${keyNameLocal}" -n "$(
+			local certIdentity
+			certIdentity="$(key::certificateIdentity "${keyNameLocal}" "ssh-user")"
+			if ! ssh-keygen -q -s "$cakeyPrivateTmpFile" -I "${certIdentity}" -n "$(
 				IFS=','
 				echo "${principals[*]}"
 			)" "$keyPublicTmpFile"; then
@@ -238,7 +241,9 @@ authority::signKey() {
 			: "Get the allowed hostnames for the key"
 			local authorityHostNames
 			readarray -t authorityHostNames < <(key::authorityHostNames "$authorityName")
-			if ! ssh-keygen -q -s "$cakeyPrivateTmpFile" -I "${keyNameLocal}" -h -n "$(
+			local certIdentity
+			certIdentity="$(key::certificateIdentity "${keyNameLocal}" "ssh-host")"
+			if ! ssh-keygen -q -s "$cakeyPrivateTmpFile" -I "${certIdentity}" -h -n "$(
 				IFS=','
 				echo "${authorityHostNames[*]}"
 			)" "$keyPublicTmpFile"; then
@@ -313,6 +318,12 @@ key::update() {
 	declare -g "$(var::snakeCase "${keyVar}" private)=${keyPrivate}"
 }
 
+key::certificateIdentity() {
+	local keyName="$1"
+	local certUsage="$2"
+	key::annotationsJson "$keyName" "$certUsage"
+}
+
 : "Default public scope based on key usage"
 key::defaultPublicScope() {
 	local usage
@@ -325,23 +336,32 @@ key::defaultPublicScope() {
 }
 
 : "Build a normalized SSH key comment with key metadata"
+key::annotationsJson() {
+	local KEYNAME="$1"; shift
+	local USAGE_LINES
+	USAGE_LINES="$(printf '%s\n' "$@")"
+	
+	env KEYNAME="$KEYNAME" USAGE_LINES="$USAGE_LINES" yq \
+	  --null-input --indent=0 --output-format=json eval \
+	  --from-file=<( cat <<'EoYaml'
+       {
+         "marker": "ndh-ssh-key-meta-v1",
+         "owner": "home-manager.ssh-add-keys",
+         "key": strenv(KEYNAME),
+	         "usage": ((strenv(USAGE_LINES) | split("\n")) | map(select(length > 0)))
+       }
+EoYaml
+       )	   
+}
+
 key::annotatedComment() {
 	local keyName="$1"
 	local baseComment="$2"
-	shift 2
-
-	local usageSummary="none"
-	if (($# > 0)); then
-		usageSummary="$(
-			IFS=','
-			echo "$*"
-		)"
-	fi
 
 	if [[ -n "$baseComment" ]]; then
-		echo "${baseComment} [key:${keyName};usage:${usageSummary}]"
+		echo "${baseComment}"
 	else
-		echo "${keyName} [key:${keyName};usage:${usageSummary}]"
+		echo "${keyName}"
 	fi
 }
 
@@ -405,14 +425,18 @@ $(
 		for keyName in "${orderedKeys[@]}"; do
 			keyVar="$(var::snakeCase "${profileVarPrefix}" "${keyName}")"
 
+			# shellcheck disable=SC2034
 			local authorityHostNames keyUsage keyType keyComment keyPublic keyPrivate authorityUsage annotatedComment
 			readarray -t keyUsage < <(key::usage)
+			# shellcheck disable=SC2034
 			keyType=$(key::value type)
 			keyComment=$(key::value comment)
 			keyPublic=$(key::value public)
 			keyPrivate=$(key::value private)
+			# shellcheck disable=SC2034
 			annotatedComment="$(key::annotatedComment "$keyName" "$keyComment" "${keyUsage[@]}")"
 			# Collect principals (for user-signing semantics) so downstream tools (AuthorizedPrincipalsCommand) can align.
+			# shellcheck disable=SC2034
 			readarray -t keyPrincipals < <(key::principals)
 			cat <<EOK
   $keyName:
@@ -441,6 +465,7 @@ $(
 					fi
 					local authorityName
 					authorityName=${profileVar##*_authorities_}
+					# shellcheck disable=SC2295
 					authorityName=${authorityName%%_@(${keyFields})*}
 					if [[ "${processedAuthorities[*]}" =~ ${authorityName} ]]; then
 						continue

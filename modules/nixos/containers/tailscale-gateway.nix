@@ -133,7 +133,10 @@ in
               "tailscaled.service"
               "network-online.target"
             ];
-            wants = [ "network-online.target" ];
+            wants = [
+              "tailscaled.service"
+              "network-online.target"
+            ];
             wantedBy = [ "io-nxmatic-nix-darwin-home-contributed.target" ];
             serviceConfig = {
               Type = "oneshot";

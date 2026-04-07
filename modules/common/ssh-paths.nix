@@ -52,7 +52,7 @@ in
 
     keyName = lib.mkOption {
       type = lib.types.str;
-      default = "rdp_host"; # minus translated key name for compatibility with existing conventions (e.g. yq shell output)
+      default = "rdp-host";
       description = "Canonical SSH key basename used by Lima and SSH consumers.";
     };
 

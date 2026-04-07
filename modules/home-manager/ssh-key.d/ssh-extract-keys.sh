@@ -42,7 +42,7 @@ main() {
 	fi
 	exp="$(<@splitExpFile@)"
 	tmpDir="$(mktemp --directory)"
-	trap "rm -fr $tmpDir" EXIT
+	trap 'rm -fr "$tmpDir"' EXIT
 	if ! env TMPDIR="$tmpDir" yq eval "$exp" "$yamlFile" -s '.yamlfile'; then
 		echo "Failed to extract SSH key artifacts from $yamlFile" >&2
 		exit 1
@@ -69,6 +69,11 @@ main() {
 		mv "$contentTmp" "$contentFile"
 		filename="${contentFile##*/}"
 		if [[ "$filename" == *.pub ]]; then
+			# Cert/public key files must be exactly one line; drop any blank padding
+			# introduced by YAML block scalar newline preservation.
+			contentTmp="$(mktemp)"
+			awk 'NF { print; exit }' "$contentFile" >"$contentTmp"
+			mv "$contentTmp" "$contentFile"
 			chmod 644 "$contentFile"
 			if [[ "$filename" == *-cert.pub ]]; then
 				ssh-keygen -Lf "$contentFile" >/dev/null

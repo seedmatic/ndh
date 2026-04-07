@@ -22,7 +22,22 @@ ndh::ssh:keys:tmp:cleanup() {
 
 ndh::ssh:keys:list:extract() {
 	local sshKeysYaml="${1:?SSH keys YAML file required}"
-	yq eval '.keys | keys[]' "$sshKeysYaml"
+	local allowedCsv="@allowedKeyNamesCsv@"
+	if [[ -z "$allowedCsv" ]]; then
+		yq eval '.keys | keys[]' "$sshKeysYaml"
+		return 0
+	fi
+
+	yq eval '.keys | keys[]' "$sshKeysYaml" \
+		| awk -v csv="$allowedCsv" '
+			BEGIN {
+				split(csv, a, ",")
+				for (i in a) {
+					if (a[i] != "") allowed[a[i]] = 1
+				}
+			}
+			{ if ($0 in allowed) print $0 }
+		'
 }
 
 ndh::ssh:keys:authorized:file:ensure() {
@@ -34,7 +49,87 @@ ndh::ssh:keys:authorized:file:ensure() {
 
 ndh::ssh:keys:agent:init() {
 	# Initialize / attach to agent (keychain handles reuse)
-	source <(keychain -q ${KEYCHAIN_FLAGS:---noask --nogui} --eval)
+	# shellcheck disable=SC1090
+	source <(keychain -q "${KEYCHAIN_FLAGS:---noask --nogui}" --eval)
+}
+
+ndh::ssh:keys:certificate:keyid:extract() {
+	local certPath="${1:?certificate path required}"
+	[[ -f "$certPath" ]] || return 1
+	ssh-keygen -Lf "$certPath" 2>/dev/null | awk -F': ' '/Key ID:/ { gsub(/"/, "", $2); print $2; exit }'
+}
+
+ndh::ssh:keys:certificate:is:managed() {
+	local keyId="${1:-}"
+	[[ -n "$keyId" ]] || return 1
+	printf '%s\n' "$keyId" | yq eval -e '.marker == "ndh-ssh-key-meta-v1"' - >/dev/null 2>&1
+}
+
+ndh::ssh:keys:fingerprint:from:public:line() {
+	local publicKeyLine="${1:-}"
+	local tmpDir="${2:?tmp dir required}"
+	local tmpPublicKey
+	[[ -n "$publicKeyLine" ]] || return 1
+
+	tmpPublicKey="$(mktemp "${tmpDir}/fp.XXXXXX.pub")"
+	printf '%s\n' "$publicKeyLine" >"$tmpPublicKey"
+	if ! ssh-keygen -lf "$tmpPublicKey" 2>/dev/null | awk '{print $2}'; then
+		rm -f "$tmpPublicKey"
+		return 1
+	fi
+	rm -f "$tmpPublicKey"
+}
+
+ndh::ssh:keys:managed:fingerprints:collect() {
+	local keyList="${1:?key list required}"
+	local keysDir="${2:?keys dir required}"
+	local tmpDir="${3:?tmp dir required}"
+	local outputFile="${4:?output file required}"
+	: >"$outputFile"
+
+	local keyName keyPath pubPath certPath certKeyId pubLine fingerprint
+	while IFS= read -r keyName; do
+		[[ -n "$keyName" ]] || continue
+		keyPath="${keysDir}/${keyName}"
+		pubPath="${keyPath}.pub"
+		certPath="${keysDir}/${keyName}-cert.pub"
+		[[ -f "$pubPath" ]] || continue
+		[[ -f "$certPath" ]] || continue
+		certKeyId="$(ndh::ssh:keys:certificate:keyid:extract "$certPath" || true)"
+		if ! ndh::ssh:keys:certificate:is:managed "$certKeyId"; then
+			continue
+		fi
+		pubLine="$(<"$pubPath")"
+		fingerprint="$(ndh::ssh:keys:fingerprint:from:public:line "$pubLine" "$tmpDir" || true)"
+		[[ -n "$fingerprint" ]] || continue
+		echo "$fingerprint" >>"$outputFile"
+	done <<<"$keyList"
+
+	if [[ -s "$outputFile" ]]; then
+		sort -u "$outputFile" -o "$outputFile"
+	fi
+}
+
+ndh::ssh:keys:agent:managed:rotate:begin() {
+	local tmpDir="${1:?tmp dir required}"
+	local managedFingerprintsFile="${2:?managed fingerprints file required}"
+	local index=0
+	[[ -s "$managedFingerprintsFile" ]] || return 0
+
+	while IFS= read -r publicKeyLine; do
+		[[ -n "$publicKeyLine" ]] || continue
+		local fingerprint
+		fingerprint="$(ndh::ssh:keys:fingerprint:from:public:line "$publicKeyLine" "$tmpDir" || true)"
+		if [[ -z "$fingerprint" ]] || ! grep -Fxq "$fingerprint" "$managedFingerprintsFile"; then
+			continue
+		fi
+
+		local publicKeyTmp
+		publicKeyTmp="${tmpDir}/agent-managed-${index}.pub"
+		printf '%s\n' "$publicKeyLine" >"$publicKeyTmp"
+		ssh-add -q -d "$publicKeyTmp" 2>/dev/null || true
+		index=$((index + 1))
+	done < <(ssh-add -L 2>/dev/null || true)
 }
 
 ndh::ssh:keys:public:collect() {
@@ -51,11 +146,11 @@ ndh::ssh:keys:public:collect() {
 			echo "Warning: key not found: $keyPath" >&2
 			continue
 		}
+		pubPath="${keyPath}.pub"
 
 		ssh-add -q -d "$keyPath" 2>/dev/null || true
 		ssh-add "$keyPath" 2>/dev/null || true
 
-		pubPath="${keyPath}.pub"
 		if [[ -f "$pubPath" ]]; then
 			cat "$pubPath" >>"$generatedTmp"
 		fi
@@ -133,9 +228,19 @@ main() {
 	tmpDir="$(mktemp -d)"
 	generatedTmp="${tmpDir}/generated.pubkeys"
 	dedupTmp="${tmpDir}/generated.pubkeys.dedup"
+	local managedFingerprintsTmp
+	managedFingerprintsTmp="${tmpDir}/managed.fingerprints"
 	existingTmp="${tmpDir}/existing.authorized_keys"
 	authorizedKeysNew="${tmpDir}/authorized_keys.new"
-	trap "ndh::ssh:keys:tmp:cleanup '$tmpDir'" EXIT
+	trap 'ndh::ssh:keys:tmp:cleanup "$tmpDir"' EXIT
+
+	# Build managed fingerprint set from generated/extracted .pub metadata using
+	# yq JSON marker parsing, then rotate agent keys by fingerprint.
+	ndh::ssh:keys:managed:fingerprints:collect "$keyList" "$keysDir" "$tmpDir" "$managedFingerprintsTmp"
+
+	# Rotate managed keys in the current agent session first, then re-add
+	# keys from the freshly extracted key directory.
+	ndh::ssh:keys:agent:managed:rotate:begin "$tmpDir" "$managedFingerprintsTmp"
 
 	ndh::ssh:keys:public:collect "$keyList" "$keysDir" "$generatedTmp"
 	ndh::ssh:keys:public:dedup "$generatedTmp" "$dedupTmp"

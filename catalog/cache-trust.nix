@@ -7,7 +7,7 @@
 
     nxmatic = {
       substituter = "https://nxmatic.cachix.org";
-      publicKey = "nxmatic.cachix.org-1:oWogvXdam3gTxKzPZCDqq8khybQpqRdNpQQrKG3r4xM=";
+      publicKey = "nxmatic.cachix.org-1:huMghYiwDpPa1PMXHXK4G1Dp4QOZjgsNqxcjf/AjuJ0=";
     };
 
     flakehub = {
