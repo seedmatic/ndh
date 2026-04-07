@@ -36,79 +36,11 @@ main() {
 	fi
 
 	: "Use yq to generate the array, split it into files, and output to the specified directory"
-	exp=$(
-		cat <<'EOE' | cut -c 3-
-  .keys | to_entries[] | 
-  env(TMPDIR) + "/" as $tmpdir |
-  .value.usage // [] as $usage |
-  ( ["user", "system"][(($usage | map(select(. == "ssh-authority")) | length))] ) as $public_scope |
-  .key as $basename |
-  select($basename != "") |
-  ( $tmpdir + .key + ".yaml" ) as $yamlfile |
-  .value.private as $private | 
-  .value.public as $public | 
-  [
-    {
-      "yamlfile": $yamlfile, 
-      "target_dir": $public_scope,
-      "rel_path": $basename,
-      "content": $private
-    },
-    {
-      "yamlfile": ( $tmpdir + .key + "-public.yaml" ),
-      "rel_path": ( $basename + (
-        { "suffix": ".pub" } | with( 
-            select ( [ "ssh-authority"] - $usage | length == 0 );
-            .suffix = "-ca.pub"
-          ) | .suffix
-        )
-      ),
-      "target_dir": $public_scope,
-      "content": $public
-    }
-  ] +
-  (
-    # Current schema: per-key authorities are nested under .authorities.
-    # Emit CA public keys with a deterministic suffix for known-hosts/signing helpers.
-    (.value.authorities // {}) | to_entries[] |
-    .key as $authorityNameRaw |
-    $authorityNameRaw as $authorityName |
-    .value.public as $authorityPublic |
-    select($authorityPublic != null and $authorityPublic != "") |
-    [ 
-      { 
-        "yamlfile": ( $tmpdir + $basename + "-" + $authorityName + "-ca.yaml" ),
-        "rel_path": ( $basename + "-" + $authorityName + "-ca.pub" ),
-        "target_dir": "system",
-        "content": $authorityPublic
-      } ]
-  ) +
-  (
-    # Signed certificates are nested under .certificates.<authority>.
-    # Emit direct host/user certificate files for consumers that reference them by name.
-    (.value.certificates // {}) | to_entries[] |
-    .key as $authorityName |
-    .value as $authorityCerts |
-    [
-      {
-        "yamlfile": ( $tmpdir + $basename + "-" + $authorityName + "-host-cert.yaml"),
-        "rel_path": ( $basename + "-" + $authorityName + "-host-cert.pub" ),
-        "target_dir": "system",
-        "content": $authorityCerts."ssh-host"
-      },
-      {
-        "yamlfile": ( $tmpdir + $basename + "-" + $authorityName + "-user-cert.yaml"),
-        "rel_path": ( $basename + "-" + $authorityName + "-user-cert.pub" ),
-        "target_dir": "system",
-        "content": $authorityCerts."ssh-user"
-      }
-    ]
-  ) // []
-  | .[] 
-  | select(.content != null)
-  | split_doc
-EOE
-	)
+	if [[ ! -r "@splitExpFile@" ]]; then
+		echo "missing yq split expression file: @splitExpFile@" >&2
+		exit 1
+	fi
+	exp="$(<@splitExpFile@)"
 	tmpDir="$(mktemp --directory)"
 	trap "rm -fr $tmpDir" EXIT
 	if ! env TMPDIR="$tmpDir" yq eval "$exp" "$yamlFile" -s '.yamlfile'; then
