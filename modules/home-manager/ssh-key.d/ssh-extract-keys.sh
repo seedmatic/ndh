@@ -5,14 +5,35 @@ shopt -s nullglob
 main() {
 	yamlFile="$1"
 	userOutputDir="$2"
+	targetUser="${3:-${USER:-}}"
 	authorityOutputDir="$userOutputDir/.authority.d"
+	if [[ ! -r "$yamlFile" ]]; then
+		echo "missing or unreadable generated YAML: $yamlFile" >&2
+		exit 1
+	fi
+	if [[ ! -w "$(dirname "$userOutputDir")" ]] || [[ -e "$userOutputDir" && ! -w "$userOutputDir" ]]; then
+		if [[ -x /run/wrappers/bin/sudo ]]; then
+			targetGroup="$(id -gn "$targetUser" 2>/dev/null || echo "$targetUser")"
+			/run/wrappers/bin/sudo -n chown -R "$targetUser:$targetGroup" "$(dirname "$userOutputDir")" 2>/dev/null || true
+		fi
+	fi
+	if [[ "$(id -u)" -eq 0 && -n "$targetUser" && -e "$userOutputDir" ]]; then
+		targetGroup="$(id -gn "$targetUser" 2>/dev/null || echo "$targetUser")"
+		chown -R "$targetUser:$targetGroup" "$userOutputDir" 2>/dev/null || true
+	fi
 
 	: "Prune stale generated artifacts from previous schema/key-name variants."
 	rm -fr "$userOutputDir"
 
 	# Provision split SSH key directories.
-    install -o "$USER" -m 0700 -d "${userOutputDir}"
-    install -o "$USER" -m 0700 -d "${authorityOutputDir}"
+	if [[ "$(id -u)" -eq 0 && -n "$targetUser" ]]; then
+		targetGroup="$(id -gn "$targetUser" 2>/dev/null || echo "$targetUser")"
+		install -o "$targetUser" -g "$targetGroup" -m 0700 -d "${userOutputDir}"
+		install -o "$targetUser" -g "$targetGroup" -m 0700 -d "${authorityOutputDir}"
+	else
+		install -m 0700 -d "${userOutputDir}"
+		install -m 0700 -d "${authorityOutputDir}"
+	fi
 
 	: "Use yq to generate the array, split it into files, and output to the specified directory"
 	exp=$(

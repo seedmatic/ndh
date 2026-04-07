@@ -319,6 +319,11 @@ in
               exit 0
             fi
 
+            if zpool import -N tank >/dev/null 2>&1; then
+              echo "[zpool-init] zpool 'tank' imported, skipping"
+              exit 0
+            fi
+
             exec ${zpoolInit}/bin/zpool-init
           '';
           TimeoutStartSec = "30min";

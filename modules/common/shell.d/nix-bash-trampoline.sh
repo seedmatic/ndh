@@ -154,7 +154,35 @@ ndh::nix:profile:script() {
 	return 1
 }
 
+ndh::env:ensure:home() {
+	[[ -n "${HOME:-}" ]] && return 0
+
+	local effective_user effective_uid passwd_entry resolved_home
+	effective_user="${SUDO_USER:-${USER:-$(id -un 2>/dev/null || true)}}"
+	effective_uid="$(id -u 2>/dev/null || echo 0)"
+	resolved_home=""
+
+	if command -v getent >/dev/null 2>&1 && [[ -n "$effective_user" ]]; then
+		passwd_entry="$(getent passwd "$effective_user" 2>/dev/null || true)"
+		if [[ -n "$passwd_entry" ]]; then
+			resolved_home="$(awk -F: '{print $6}' <<<"$passwd_entry")"
+		fi
+	fi
+
+	if [[ -z "$resolved_home" ]]; then
+		if [[ "$effective_uid" -eq 0 ]]; then
+			resolved_home="/root"
+		else
+			resolved_home="/var/empty"
+		fi
+	fi
+
+	HOME="$resolved_home"
+	export HOME
+}
+
 : "Load nix profile"
+ndh::env:ensure:home
 if nix_daemon_profile_script="$(ndh::nix:profile:script)"; then
 	# shellcheck disable=SC1091
 	source "$nix_daemon_profile_script"

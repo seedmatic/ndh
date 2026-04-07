@@ -11,6 +11,10 @@ let
   kernelModules = [
     "ext4"
     "overlay"
+    "isofs"
+    "sunrpc"
+    "nls_cp437"
+    "nls_iso8859_1"
     "vhost_vsock"
     "vsock"
     "br_netfilter"
@@ -21,12 +25,16 @@ let
     "nf_conntrack"
     "nf_conntrack_netlink"
     "nf_tables"
+    "nft_chain_nat"
+    "nft_masq"
+    "nft_redir"
     "nfnetlink"
     "xt_conntrack"
   ];
   supportedFilesystems = {
     ext4 = true;
     overlay = true;
+    iso9660 = true;
   };
   # Generate a hostId (should be a 4-byte hex string, e.g. from `head -c4 /dev/urandom | od -A none -t x4`)
   cfgUser = config.profile.user;
@@ -213,6 +221,10 @@ in
     # Boot configuration
     boot = {
 
+      # Use an immutable store path for PID1 handoff in stage-2.
+      # This avoids early-boot dependency on /run/current-system being present.
+      systemdExecutable = "${config.systemd.package}/lib/systemd/systemd";
+
       inherit kernelModules supportedFilesystems;
 
       loader = {
@@ -311,6 +323,9 @@ in
       postBootCommands = ''
         chmod 755 /boot || true
         chmod 600 /boot/loader/.#bootctlrandom-seed* 2>/dev/null || true
+        if [ ! -e /run/current-system ] && [ -e /run/booted-system ]; then
+          ln -s /run/booted-system /run/current-system
+        fi
       '';
     };
 

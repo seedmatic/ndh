@@ -179,10 +179,10 @@ in
 
   # ssh non-interactive session finds the setuid sudo via /bin or /usr/bin
   systemd.tmpfiles.rules = [
-    "d ${config.sshPaths.secretsRootDir} 0755 root root - -"
-    "d ${config.sshPaths.secretsKeysDir} 0700 ${config.profile.user.name} ${config.profile.user.name} - -"
+    "z ${config.sshPaths.secretsRootDir} 0700 ${config.profile.user.name} ${config.profile.user.name} - -"
+    "z ${config.sshPaths.secretsKeysDir} 0700 ${config.profile.user.name} ${config.profile.user.name} - -"
     "d /run/secrets/nix-darwin-home 0755 root root - -"
-    "d ${config.sshPaths.authoritySecretsDir} 0755 ${config.profile.user.name} ${config.profile.user.name} - -"
+    "z ${config.sshPaths.authoritySecretsDir} 0755 ${config.profile.user.name} ${config.profile.user.name} - -"
     "L+ /bin/sudo - - - - /run/wrappers/bin/sudo"
     "L+ /usr/bin/sudo - - - - /run/wrappers/bin/sudo"
     "L+ /bin/bash - - - - /run/current-system/sw/bin/bash"

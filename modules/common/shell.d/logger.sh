@@ -184,13 +184,16 @@ ndh::logger:command:run() {
 	ndh::logger:stderr:redirect "$tag"
 
 	set -x
+	local rc=0
 	if "$@"; then
 		echo "[$tag] ndh::logger:command:run completed successfully"
 	else
+		rc=$?
 		echo "[$tag] ndh::logger:command:run failed"
 		if [ -n "${ACTIVATION_LOG_FILE:-}" ]; then
 			printf '[%s] ndh::logger:command:run error details: %s\n' "$tag" "${ACTIVATION_LOG_FILE}" >&3
 		fi
 	fi
 	set +x
+	return "$rc"
 }
