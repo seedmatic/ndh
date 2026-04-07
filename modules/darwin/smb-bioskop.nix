@@ -18,7 +18,7 @@ let
     mountPoint = cfg.fstab.mountPoint;
     options = cfg.fstab.options;
   };
-  bioskopPostActivation = pkgs.runCommand (ndh.store.prefixedName "bioskop-smb-post-activation.sh") { } ''
+  bioskopPostActivation = ndh.store.runCommand "bioskop-smb-post-activation.sh" { } ''
     cp ${
       pkgs.replaceVars ./smb-bioskop.d/post-activation.sh {
         inherit bioskopFstabScript;

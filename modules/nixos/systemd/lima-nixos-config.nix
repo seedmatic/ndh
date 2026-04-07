@@ -14,17 +14,17 @@ let
   # so we keep network dependency minimal; remove strict requires.
   needsNetwork = false; # linking is primary path; cloning optional & user-triggered
 
-  baseAfter = [ "ndh-lima-cloud-init.service" ];
+  baseAfter = [ "io-nxmatic-nix-darwin-home-lima-cloud-init.service" ];
   afterList = baseAfter ++ lib.optional needsNetwork "network-online.target";
 
 in
 {
-  systemd.services.ndh-lima-nixos-config = {
+  systemd.services.io-nxmatic-nix-darwin-home-lima-nixos-config = {
     description = "Link (preferred) or optionally clone NixOS darwin home repo for Lima host";
 
     # Only need cloud-init first (mounts, user home). Network not strictly required for linking.
     after = afterList;
-    wants = [ "ndh-lima-cloud-init.service" ];
+    wants = [ "io-nxmatic-nix-darwin-home-lima-cloud-init.service" ];
 
     # Don't hard require network or resolvconf anymore; cloning is fallback and user-controlled.
     wantedBy = [ "multi-user.target" ];

@@ -79,7 +79,7 @@ let
   clusterNetworkName = "cluster${toString clusterId}";
   limaNetworksOpts = config.lima.networks or { };
 
-  limaActivationScript = pkgs.runCommand (ndh.store.prefixedName "lima-config-activation.sh") { } ''
+  limaActivationScript = ndh.store.runCommand "lima-config-activation.sh" { } ''
     cp ${
       pkgs.replaceVars ./lima-config.d/activation.sh {
         effectiveHostName = effectiveHostName;
@@ -98,7 +98,7 @@ let
     chmod +x "$out"
   '';
 
-  limaRunScript = pkgs.runCommand (ndh.store.prefixedName "lima-run.sh") { } ''
+  limaRunScript = ndh.store.runCommand "lima-run.sh" { } ''
     cp ${
       pkgs.replaceVars ./lima-config.d/run.sh {
         effectiveHostName = effectiveHostName;

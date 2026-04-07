@@ -64,7 +64,7 @@ in
   };
 
   # Create ZFS dataset for container storage
-  systemd.services.ndh-podman-zfs-setup = {
+  systemd.services.io-nxmatic-nix-darwin-home-podman-zfs-setup = {
     description = "Setup ZFS dataset for Podman container storage";
     before = [
       "podman.service"
@@ -90,7 +90,7 @@ in
     '';
   };
 
-  systemd.services.ndh-podman-docker-link = {
+  systemd.services.io-nxmatic-nix-darwin-home-podman-docker-link = {
     description = "Create symlink for docker compatibility";
     after = [ "podman.socket" ];
     wants = [ "podman.socket" ];

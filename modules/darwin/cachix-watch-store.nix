@@ -13,7 +13,7 @@ let
   tokenSecretName = "nxmatic-cachix-watch-store.token";
   tokenSecretPath = config.sops.secrets.${tokenSecretName}.path;
 
-  watchStoreScript = pkgs.writeShellScript (ndh.store.prefixedName "nxmatic-cachix-watch-store") ''
+  watchStoreScript = ndh.store.writeShellScript "nxmatic-cachix-watch-store" ''
     set -euo pipefail
 
     token_file="${tokenSecretPath}"

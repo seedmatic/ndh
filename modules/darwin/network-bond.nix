@@ -87,7 +87,7 @@ let
       ipconfig set ${iface} NONE 2>/dev/null || true
     fi'') cfg.interfaces;
 
-  networkBondActivationScript = pkgs.runCommand (ndh.store.prefixedName "network-bond-post-activation.sh") { } ''
+  networkBondActivationScript = ndh.store.runCommand "network-bond-post-activation.sh" { } ''
     cp ${
       pkgs.replaceVars ./network-bond.d/post-activation.sh {
         activationInterfaceChecks = activationInterfaceChecks;
@@ -113,7 +113,7 @@ let
     dhcpDaemonBlock = dhcpDaemonBlock;
   };
 
-  wakeMonitor = pkgs.writeShellScript (ndh.store.prefixedName "bond-wake-monitor") (
+  wakeMonitor = ndh.store.writeShellScript "bond-wake-monitor" (
     builtins.readFile ./network-bond.d/bond-wake-monitor.sh
   );
 

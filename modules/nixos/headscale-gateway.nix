@@ -157,7 +157,7 @@ in
     ];
 
     # Ensure Tailscale connects at boot
-    systemd.services.ndh-tailscaled-autoconnect = {
+    systemd.services.io-nxmatic-nix-darwin-home-tailscaled-autoconnect = {
       after = [
         "tailscaled.service"
         "network-online.target"

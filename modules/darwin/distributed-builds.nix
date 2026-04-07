@@ -36,7 +36,7 @@ let
   controlMasterPath = "${controlMasterDir}/%C";
 
   # Align builder key provisioning with linux-builder module: pull from keys.yaml
-  keysJson = pkgs.runCommand (ndh.store.prefixedName "keys.json") { buildInputs = [ pkgs.yq-go ]; } ''
+  keysJson = ndh.store.runCommand "keys.json" { buildInputs = [ pkgs.yq-go ]; } ''
     yq -o=json '.' ${../home-manager/ssh.d/keys.yaml} > $out
   '';
   keys = builtins.fromJSON (builtins.readFile keysJson);
@@ -44,14 +44,14 @@ let
   builderPrivKey = keys.profiles.${builderProfile}.linux-builder.private;
   builderPubKey = keys.profiles.${builderProfile}.linux-builder.public;
   # Ensure serialized keys always end with a newline to avoid parser quirks when installed by ssh
-  builderPrivStore = pkgs.writeText (ndh.store.prefixedName "builder_ed25519") (builderPrivKey + "\n");
-  builderPubStore = pkgs.writeText (ndh.store.prefixedName "builder_ed25519.pub") (builderPubKey + "\n");
+  builderPrivStore = ndh.store.writeText "builder_ed25519" (builderPrivKey + "\n");
+  builderPubStore = ndh.store.writeText "builder_ed25519.pub" (builderPubKey + "\n");
   logger = config.nixBashLogger.script;
   nixbldGroup = config.users.groups.nixbld.name or "nixbld";
   authorizedKeysDir = config.opensshPolicy.authorizedKeysDir;
   nixbldAuthorizedKeysPath = "${authorizedKeysDir}/${nixbldGroup}";
 
-  builderKeyInstall = pkgs.runCommand (ndh.store.prefixedName "install-builder-key.sh") { } ''
+  builderKeyInstall = ndh.store.runCommand "install-builder-key.sh" { } ''
     cp ${
       pkgs.replaceVars ./distributed-builds.d/install-builder-key.sh {
         inherit
@@ -66,7 +66,7 @@ let
     chmod +x "$out"
   '';
 
-  installAuthorizedKeys = pkgs.runCommand (ndh.store.prefixedName "install-builder-authorized-keys.sh") { } ''
+  installAuthorizedKeys = ndh.store.runCommand "install-builder-authorized-keys.sh" { } ''
     cp ${
       pkgs.replaceVars ./distributed-builds.d/install-authorized-keys.sh {
         authorizedKeysDir = authorizedKeysDir;
@@ -78,7 +78,7 @@ let
     chmod +x "$out"
   '';
 
-  controlPathScript = pkgs.runCommand (ndh.store.prefixedName "ensure-builder-controlpath.sh") { } ''
+  controlPathScript = ndh.store.runCommand "ensure-builder-controlpath.sh" { } ''
     cp ${
       pkgs.replaceVars ./distributed-builds.d/ensure-control-path.sh {
         controlMasterDir = controlMasterDir;
@@ -88,7 +88,7 @@ let
     chmod +x "$out"
   '';
 
-  postActivationScript = pkgs.runCommand (ndh.store.prefixedName "distributed-builds-post-activation.sh") { } ''
+  postActivationScript = ndh.store.runCommand "distributed-builds-post-activation.sh" { } ''
     cp ${
       pkgs.replaceVars ./distributed-builds.d/post-activation.sh {
         builderKeyInstall = builderKeyInstall;

@@ -29,7 +29,7 @@ lib.mkIf config.rescue.enable {
   ];
 
   # Additional system checks
-  systemd.services.ndh-rescue-checks = {
+  systemd.services.io-nxmatic-nix-darwin-home-rescue-checks = {
     description = "Perform rescue mode system checks";
     wantedBy = [ "rescue.target" ];
     serviceConfig = {

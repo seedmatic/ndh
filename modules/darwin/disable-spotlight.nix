@@ -13,7 +13,7 @@ let
   loggerScript = config.nixBashLogger.script;
 
   disableSpotlightScript =
-    pkgs.runCommand (ndh.store.prefixedName "disable-spotlight")
+    ndh.store.runCommand "disable-spotlight"
       {
         preferLocalBuild = true;
         allowSubstitutes = false;
@@ -22,7 +22,7 @@ let
         install -Dm755 ${./disable-spotlight.d/disable-spotlight.sh} "$out/bin/disable-spotlight"
       '';
 
-  disableSpotlightActivationScript = pkgs.runCommand (ndh.store.prefixedName "disable-spotlight-post-activation.sh") { } ''
+  disableSpotlightActivationScript = ndh.store.runCommand "disable-spotlight-post-activation.sh" { } ''
     cp ${
       pkgs.replaceVars ./disable-spotlight.d/post-activation.sh {
         disableSpotlightScript = disableSpotlightScript;

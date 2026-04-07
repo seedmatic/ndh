@@ -23,11 +23,11 @@ in
 {
   imports = [ ];
 
-  systemd.services.ndh-lima-guestagent = {
+  systemd.services.io-nxmatic-nix-darwin-home-lima-guestagent = {
     description = "Lima Guest Agent";
     wantedBy = [ "multi-user.target" ];
-    after = [ "ndh-lima-cloud-init.service" ];
-    requires = [ "ndh-lima-cloud-init.service" ];
+    after = [ "io-nxmatic-nix-darwin-home-lima-cloud-init.service" ];
+    requires = [ "io-nxmatic-nix-darwin-home-lima-cloud-init.service" ];
     unitConfig = {
       ConditionPathExists = "${LIMA_CIDATA_MNT}/lima-guestagent";
     };

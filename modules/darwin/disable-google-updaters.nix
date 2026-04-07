@@ -11,14 +11,11 @@ with lib;
 let
   cfg = config.services.disable-google-updaters;
   loggerScript = config.nixBashLogger.script;
-  disableGoogleUpdatersScript = pkgs.writeTextFile {
-    name = ndh.store.prefixedName "disable-google-updaters";
-    executable = true;
-    destination = "/bin/disable-google-updaters";
-    text = builtins.readFile ./disable-google-updaters.d/disable-google-updaters.sh;
-  };
+  disableGoogleUpdatersScript = ndh.store.runCommand "disable-google-updaters" { } ''
+    install -Dm755 ${./disable-google-updaters.d/disable-google-updaters.sh} "$out/bin/disable-google-updaters"
+  '';
   disableGoogleUpdatersActivationScript =
-    pkgs.runCommand (ndh.store.prefixedName "disable-google-updaters-post-activation.sh") { }
+    ndh.store.runCommand "disable-google-updaters-post-activation.sh" { }
       ''
         cp ${
           pkgs.replaceVars ./disable-google-updaters.d/post-activation.sh {

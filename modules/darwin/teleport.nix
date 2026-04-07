@@ -24,7 +24,7 @@ let
       ".mammoth-skate.ts.net";
   tailscaleHostname = config.services.tailscale.hostname or "${hostName}${tailnetDomain}";
 
-  teleportConfigFile = pkgs.writeText (ndh.store.prefixedName "teleport.yaml") ''
+  teleportConfigFile = ndh.store.writeText "teleport.yaml" ''
     ---
     version: v3
     teleport:
@@ -69,7 +69,7 @@ let
     tctlBin = "${pkgs.teleport}/bin/tctl";
   };
 
-  teleportActivationScript = pkgs.runCommand (ndh.store.prefixedName "teleport-post-activation.sh") { } ''
+  teleportActivationScript = ndh.store.runCommand "teleport-post-activation.sh" { } ''
     cp ${
       pkgs.replaceVars ./teleport.d/post-activation.sh {
         dataDir = cfg.dataDir;
@@ -81,7 +81,7 @@ let
     chmod +x "$out"
   '';
 
-  teleportFirstRunActivationScript = pkgs.runCommand (ndh.store.prefixedName "teleport-first-run-activation.sh") { } ''
+  teleportFirstRunActivationScript = ndh.store.runCommand "teleport-first-run-activation.sh" { } ''
     cp ${
       pkgs.replaceVars ./teleport.d/first-run-activation.sh {
         dataDir = cfg.dataDir;

@@ -83,7 +83,7 @@ let
     in
     lib.concatStringsSep "\n" all + "\n";
 
-  sshdConfigStore = pkgs.writeText (ndh.store.prefixedName "sshd_config") sshdConfigText;
+  sshdConfigStore = ndh.store.writeText "sshd_config" sshdConfigText;
 
   opensshActivationScript = pkgs.replaceVars ./openssh.d/openssh-activation.sh {
     groupKeysScriptStore = groupKeysScriptStore;

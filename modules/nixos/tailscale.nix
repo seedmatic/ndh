@@ -45,7 +45,7 @@ in
 
     # Trust Tailscale interface (bypass firewall)
     networking.firewall.trustedInterfaces = [ "tailscale0" ];
-    systemd.services.ndh-tailscaled-autoconnect = {
+    systemd.services.io-nxmatic-nix-darwin-home-tailscaled-autoconnect = {
       enable = true;
       after = lib.mkAfter [ "network-online.target" ];
       wants = lib.mkAfter [ "network-online.target" ];

@@ -107,6 +107,25 @@
       pkgsForDarwin = (pkgsFor { system = "aarch64-darwin"; });
       pkgsForLinux = (pkgsFor { system = "aarch64-linux"; });
 
+      mkNdhStoreApiFor =
+        pkgsForSystem:
+        let
+          storeNamePrefix = "io.nxmatic.nix-darwin-home";
+          prefixStoreName =
+            name:
+            if nixpkgs.lib.hasPrefix "${storeNamePrefix}-" name then name else "${storeNamePrefix}-${name}";
+        in
+        rec {
+          prefix = storeNamePrefix;
+          prefixedName = prefixStoreName;
+          runCommand = name: attrs: text: pkgsForSystem.runCommand (prefixedName name) attrs text;
+          writeText = name: text: pkgsForSystem.writeText (prefixedName name) text;
+          writeShellScript = name: text: pkgsForSystem.writeShellScript (prefixedName name) text;
+        };
+
+      ndhStoreApiDarwin = mkNdhStoreApiFor pkgsForDarwin;
+      ndhStoreApiLinux = mkNdhStoreApiFor pkgsForLinux;
+
       mkBaseModulesFor =
         { hostProfile, system }:
         let
@@ -175,7 +194,8 @@
         system:
         let
           pkgsForSystem = pkgsFor { inherit system; };
-          loggerScript = pkgsForSystem.writeText "logger.sh" ''
+          ndhStoreApi = mkNdhStoreApiFor pkgsForSystem;
+          loggerScript = ndhStoreApi.writeText "logger.sh" ''
             #!/usr/bin/env bash
             LOGGER_CMD=""
             source ${./modules/common/shell.d/logger.sh}
@@ -190,9 +210,10 @@
         system:
         let
           pkgsForSystem = pkgsFor { inherit system; };
+          ndhStoreApi = mkNdhStoreApiFor pkgsForSystem;
         in
         pkgsForSystem.symlinkJoin {
-          name = "ndh-bootstrap-runtime";
+          name = ndhStoreApi.prefixedName "bootstrap-runtime";
           paths = with pkgsForSystem; [
             age
             coreutils-full
@@ -211,14 +232,17 @@
         system:
         let
           pkgsForSystem = pkgsFor { inherit system; };
+          ndhStoreApi = mkNdhStoreApiFor pkgsForSystem;
           runtimePackage = mkNdhBootstrapRuntimePackage system;
           scriptSource = pkgsForSystem.replaceVars ./modules/common/bootstrap-profile.d/install-standalone.sh {
             runtimePackage = runtimePackage;
-            defaultProfileDir = "\${HOME}/.local/state/nix/profiles/ndh-bootstrap-runtime";
+            defaultProfileDir = "\${HOME}/.local/state/nix/profiles/io-nxmatic-nix-darwin-home-bootstrap-runtime";
             requiredCommands = "age age-keygen awk sed grep ssh ssh-keygen yq git";
           };
         in
-        pkgsForSystem.writeShellScriptBin "ndh-bootstrap-profile-install" (builtins.readFile scriptSource);
+        ndhStoreApi.runCommand "bootstrap-profile-install" { } ''
+          install -Dm755 ${scriptSource} "$out/bin/io-nxmatic-nix-darwin-home-bootstrap-profile-install"
+        '';
 
       mkSpecialArgs =
         {
@@ -565,8 +589,8 @@
       };
 
       packages = forAllSystems (system: {
-        ndh-bootstrap-runtime = mkNdhBootstrapRuntimePackage system;
-        ndh-prerequisites-install = mkNdhBootstrapProfileInstaller system;
+        io-nxmatic-nix-darwin-home-bootstrap-runtime = mkNdhBootstrapRuntimePackage system;
+        io-nxmatic-nix-darwin-home-prerequisites-install = mkNdhBootstrapProfileInstaller system;
       });
 
       apps = forAllSystems (system:
@@ -574,13 +598,13 @@
           installer = mkNdhBootstrapProfileInstaller system;
         in
         {
-          ndh-prerequisites-install = {
+          io-nxmatic-nix-darwin-home-prerequisites-install = {
             type = "app";
-            program = "${installer}/bin/ndh-bootstrap-profile-install";
+            program = "${installer}/bin/io-nxmatic-nix-darwin-home-bootstrap-profile-install";
           };
-          ndh-bootstrap-runtime = {
+          io-nxmatic-nix-darwin-home-bootstrap-runtime = {
             type = "app";
-            program = "${installer}/bin/ndh-bootstrap-profile-install";
+            program = "${installer}/bin/io-nxmatic-nix-darwin-home-bootstrap-profile-install";
           };
         }
       );
@@ -797,22 +821,40 @@
               limaMaterializerProgram;
           ndhBootstrapRuntimePackage = mkNdhBootstrapRuntimePackage "aarch64-darwin";
           ndhBootstrapInstallerPackage = mkNdhBootstrapProfileInstaller "aarch64-darwin";
+          ndhBootstrapRuntimePackageLinux = mkNdhBootstrapRuntimePackage "aarch64-linux";
+          ndhBootstrapInstallerPackageLinux = mkNdhBootstrapProfileInstaller "aarch64-linux";
           ndhPrerequisitesInstallerPackage =
-            pkgsForDarwin.writeShellScriptBin "ndh-prerequisites-install" ''
+            ndhStoreApiDarwin.runCommand "prerequisites-install" { } ''
+              #!/usr/bin/env bash
+              install -Dm755 /dev/stdin "$out/bin/io-nxmatic-nix-darwin-home-prerequisites-install" <<'EOF'
               #!/usr/bin/env bash
               set -euo pipefail
 
               ${nixpkgs.lib.optionalString (autofsNetMaterializerProgram != null) "/usr/bin/sudo ${autofsNetMaterializerProgram}"}
-              exec ${ndhBootstrapInstallerPackage}/bin/ndh-bootstrap-profile-install "$@"
+              exec ${ndhBootstrapInstallerPackage}/bin/io-nxmatic-nix-darwin-home-bootstrap-profile-install "$@"
+              EOF
+            '';
+          ndhPrerequisitesInstallerPackageLinux =
+            ndhStoreApiLinux.runCommand "prerequisites-install" { } ''
+              install -Dm755 /dev/stdin "$out/bin/io-nxmatic-nix-darwin-home-prerequisites-install" <<'EOF'
+              #!/usr/bin/env bash
+              set -euo pipefail
+
+              exec ${ndhBootstrapInstallerPackageLinux}/bin/io-nxmatic-nix-darwin-home-bootstrap-profile-install "$@"
+              EOF
             '';
           hostDarwinPackages =
             (nixpkgs.lib.optionalAttrs (limaMaterializerPackage != null) {
               lima-config-materialize = limaMaterializerPackage;
             })
             // {
-              ndh-bootstrap-runtime = ndhBootstrapRuntimePackage;
-              ndh-prerequisites-install = ndhPrerequisitesInstallerPackage;
+              io-nxmatic-nix-darwin-home-bootstrap-runtime = ndhBootstrapRuntimePackage;
+              io-nxmatic-nix-darwin-home-prerequisites-install = ndhPrerequisitesInstallerPackage;
             };
+          hostLinuxPackages = {
+            io-nxmatic-nix-darwin-home-bootstrap-runtime = ndhBootstrapRuntimePackageLinux;
+            io-nxmatic-nix-darwin-home-prerequisites-install = ndhPrerequisitesInstallerPackageLinux;
+          };
           hostDarwinApps =
             (nixpkgs.lib.optionalAttrs (limaMaterializerAppProgram != null) {
               lima-config-materialize = {
@@ -821,15 +863,25 @@
               };
             })
             // {
-              ndh-prerequisites-install = {
+              io-nxmatic-nix-darwin-home-prerequisites-install = {
                 type = "app";
-                program = "${ndhPrerequisitesInstallerPackage}/bin/ndh-prerequisites-install";
+                program = "${ndhPrerequisitesInstallerPackage}/bin/io-nxmatic-nix-darwin-home-prerequisites-install";
               };
-              ndh-bootstrap-runtime = {
+              io-nxmatic-nix-darwin-home-bootstrap-runtime = {
                 type = "app";
-                program = "${ndhPrerequisitesInstallerPackage}/bin/ndh-prerequisites-install";
+                program = "${ndhPrerequisitesInstallerPackage}/bin/io-nxmatic-nix-darwin-home-prerequisites-install";
               };
             };
+          hostLinuxApps = {
+            io-nxmatic-nix-darwin-home-prerequisites-install = {
+              type = "app";
+              program = "${ndhPrerequisitesInstallerPackageLinux}/bin/io-nxmatic-nix-darwin-home-prerequisites-install";
+            };
+            io-nxmatic-nix-darwin-home-bootstrap-runtime = {
+              type = "app";
+              program = "${ndhPrerequisitesInstallerPackageLinux}/bin/io-nxmatic-nix-darwin-home-prerequisites-install";
+            };
+          };
 
           # Home Manager configurations for direct use
           homeManagerConfigurations =
@@ -864,10 +916,14 @@
 
           packages = nixpkgs.lib.optionalAttrs (hostDarwinPackages != { }) {
             aarch64-darwin = hostDarwinPackages;
+          } // nixpkgs.lib.optionalAttrs (hostLinuxPackages != { }) {
+            aarch64-linux = hostLinuxPackages;
           };
 
           apps = nixpkgs.lib.optionalAttrs (hostDarwinApps != { }) {
             aarch64-darwin = hostDarwinApps;
+          } // nixpkgs.lib.optionalAttrs (hostLinuxApps != { }) {
+            aarch64-linux = hostLinuxApps;
           };
 
           defaultPackage."aarch64-darwin" = darwinConfiguration.system;
