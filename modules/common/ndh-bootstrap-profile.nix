@@ -109,7 +109,7 @@ in
       before = [
         "sops-age-bootstrap.service"
         "sops-install-secrets.service"
-        "nxmatic-hostkey-enrollment-check.service"
+        "ndh-hostkey-enrollment-check.service"
       ];
       serviceConfig = {
         Type = "oneshot";
