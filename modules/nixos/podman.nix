@@ -11,6 +11,7 @@
 let
   cfgUser = config.profile.user;
   cfgUserName = cfgUser.name;
+  zfsOverlaysEnabled = lib.attrByPath [ "zfsOverlays" "override" ] false config;
 in
 {
   # Enable Podman and containers
@@ -38,15 +39,17 @@ in
       # Container storage configuration optimized for ZFS
       storage.settings = {
         storage = {
-          driver = "zfs";
+          driver = if zfsOverlaysEnabled then "zfs" else "overlay";
           graphroot = "/var/lib/containers/storage";
           runroot = "/run/containers/storage";
         };
 
-        storage.options.zfs = {
-          mountopt = "nodev";
-          # Use ZFS dataset for container storage
-          fsname = "tank/nerd/containers";
+        storage.options = lib.mkIf zfsOverlaysEnabled {
+          zfs = {
+            mountopt = "nodev";
+            # Use ZFS dataset for container storage
+            fsname = "tank/nerd/containers";
+          };
         };
       };
 
@@ -64,18 +67,25 @@ in
   };
 
   # Create ZFS dataset for container storage
-  systemd.services.io-nxmatic-nix-darwin-home-podman-zfs-setup = {
+  systemd.services.io-nxmatic-nix-darwin-home-podman-zfs-setup = lib.mkIf zfsOverlaysEnabled {
     description = "Setup ZFS dataset for Podman container storage";
     before = [
       "podman.service"
       "containers-storage.service"
     ];
-    wantedBy = [ "multi-user.target" ];
+    wantedBy = [ "io-nxmatic-nix-darwin-home-contributed.target" ];
     serviceConfig = {
       Type = "oneshot";
       RemainAfterExit = true;
+      ConditionPathExists = "/dev/zfs";
+      ExecCondition = "${pkgs.zfs}/bin/zpool list -H -o name tank";
     };
     script = ''
+      # Skip if pool is not available yet; do not fail boot orchestration.
+      if ! ${pkgs.zfs}/bin/zpool list -H -o name tank >/dev/null 2>&1; then
+        exit 0
+      fi
+
       # Create ZFS dataset for containers if it doesn't exist
       if ! ${pkgs.zfs}/bin/zfs list tank/nerd/containers >/dev/null 2>&1; then
         ${pkgs.zfs}/bin/zfs create -o mountpoint=/var/lib/containers tank/nerd/containers
@@ -94,7 +104,7 @@ in
     description = "Create symlink for docker compatibility";
     after = [ "podman.socket" ];
     wants = [ "podman.socket" ];
-    wantedBy = [ "multi-user.target" ];
+    wantedBy = [ "io-nxmatic-nix-darwin-home-contributed.target" ];
     serviceConfig = {
       Type = "oneshot";
       RemainAfterExit = true;

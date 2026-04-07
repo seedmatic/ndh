@@ -42,7 +42,7 @@ in
       "multi-user.target"
       "io-nxmatic-nix-darwin-home-replay-virtiofs-udev.service"
     ];
-    wantedBy = [ "multi-user.target" ];
+    wantedBy = [ "io-nxmatic-nix-darwin-home-contributed.target" ];
 
     restartIfChanged = true;
 
@@ -70,7 +70,7 @@ in
 
   systemd.services.io-nxmatic-nix-darwin-home-replay-virtiofs-udev = {
     description = "Replay virtiofs udev events after boot";
-    wantedBy = [ "multi-user.target" ];
+    wantedBy = [ "io-nxmatic-nix-darwin-home-contributed.target" ];
     after = [ "local-fs.target" ];
     serviceConfig = {
       Type = "oneshot";

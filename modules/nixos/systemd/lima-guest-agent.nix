@@ -25,7 +25,7 @@ in
 
   systemd.services.io-nxmatic-nix-darwin-home-lima-guestagent = {
     description = "Lima Guest Agent";
-    wantedBy = [ "multi-user.target" ];
+    wantedBy = [ "io-nxmatic-nix-darwin-home-contributed.target" ];
     after = [ "io-nxmatic-nix-darwin-home-lima-cloud-init.service" ];
     requires = [ "io-nxmatic-nix-darwin-home-lima-cloud-init.service" ];
     unitConfig = {

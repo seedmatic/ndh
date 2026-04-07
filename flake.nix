@@ -522,7 +522,61 @@
             else
               hostProfile.hostName;
 
-          diskImageBringupSystemdBoot = nixos-generators.nixosGenerate {
+          mkDiskImageDescriptorYaml =
+            {
+              attr,
+              imageMode,
+              bootLoader,
+              diskSizeMiB,
+              sourceOutPath,
+            }:
+            ''
+              schemaVersion: 1
+              kind: nixos-disk-image
+              attr: ${attr}
+              imageMode: ${imageMode}
+              bootLoader: ${bootLoader}
+              format: raw-efi
+              imagePath: nixos.img
+              sourceOutPath: ${sourceOutPath}
+              diskSizeMiB: ${toString diskSizeMiB}
+            '';
+
+          mkDiskImageWithDescriptor =
+            {
+              attr,
+              imageMode,
+              bootLoader,
+              diskSizeMiB,
+              source,
+            }:
+            pkgsForLinux.runCommand "nixos-disk-image-with-descriptor-${attr}" { } ''
+              set -euo pipefail
+              mkdir -p "$out"
+
+              if [[ -f "${source}/nixos.img" ]]; then
+                ln -s "${source}/nixos.img" "$out/nixos.img"
+              elif [[ -f "${source}" ]]; then
+                ln -s "${source}" "$out/nixos.img"
+              else
+                echo "[flake][ERROR] unsupported disk image source shape for ${attr}: ${source}" >&2
+                exit 1
+              fi
+
+              cat >"$out/descriptor.yaml" <<'EOF'
+              ${mkDiskImageDescriptorYaml {
+                inherit
+                  attr
+                  imageMode
+                  bootLoader
+                  diskSizeMiB
+                  ;
+                sourceOutPath = source;
+              }}
+              EOF
+            '';
+
+          diskImageBringupSystemdBootRaw = nixos-generators.nixosGenerate {
             modules = bringupSystemdBootExt4Modules ++ [
               {
                 nix.registry.nixpkgs.flake = nixpkgs;
@@ -535,7 +589,7 @@
             format = "raw-efi";
           };
 
-          diskImageBringupGrub = nixos-generators.nixosGenerate {
+          diskImageBringupGrubRaw = nixos-generators.nixosGenerate {
             modules = bringupGrubExt4Modules ++ [
               {
                 nix.registry.nixpkgs.flake = nixpkgs;
@@ -548,6 +602,43 @@
             format = "raw-efi";
           };
 
+          diskImageFullExt4Raw = nixos-generators.nixosGenerate {
+            modules = runtimeExt4Modules ++ [
+              {
+                nix.registry.nixpkgs.flake = nixpkgs;
+                virtualisation.diskSize = diskSizeFullMiB;
+              }
+            ];
+            specialArgs = runtimeExt4SpecialArgs;
+            system = "aarch64-linux";
+            pkgs = pkgsForLinux;
+            format = "raw-efi";
+          };
+
+          diskImageBringupSystemdBoot = mkDiskImageWithDescriptor {
+            attr = "nixosDiskImageBringupSystemdBoot";
+            imageMode = "bootstrap";
+            bootLoader = "systemd-boot";
+            diskSizeMiB = diskSizeBringupSystemdBootMiB;
+            source = diskImageBringupSystemdBootRaw;
+          };
+
+          diskImageBringupGrub = mkDiskImageWithDescriptor {
+            attr = "nixosDiskImageBringupGrub";
+            imageMode = "bootstrap";
+            bootLoader = "grub";
+            diskSizeMiB = diskSizeBringupGrubMiB;
+            source = diskImageBringupGrubRaw;
+          };
+
+          diskImageFullExt4 = mkDiskImageWithDescriptor {
+            attr = "nixosDiskImage";
+            imageMode = "full";
+            bootLoader = "systemd-boot";
+            diskSizeMiB = diskSizeFullMiB;
+            source = diskImageFullExt4Raw;
+          };
+
         in
         {
           inherit diskSizeHint;
@@ -556,6 +647,7 @@
             "${mainName}-nixos" = if hostImageMode == "bootstrap" then ext4 else zfs;
           };
           inherit
+            diskImageFullExt4
             diskImageBringupSystemdBoot
             diskImageBringupGrub
             ;
@@ -778,6 +870,7 @@
               };
           };
           nixosConfiguration = nixosOutputs.nixosConfigurations."${mainName}-nixos";
+          nixosDiskImage = nixosOutputs.diskImageFullExt4;
           nixosDiskImageBringupSystemdBoot = nixosOutputs.diskImageBringupSystemdBoot;
           nixosDiskImageBringupGrub = nixosOutputs.diskImageBringupGrub;
           nixosDiskSizeHint = nixosOutputs.diskSizeHint;
@@ -904,6 +997,7 @@
           inherit
             darwinConfiguration
             nixosConfiguration
+            nixosDiskImage
             nixosDiskImageBringupSystemdBoot
             nixosDiskImageBringupGrub
             nixosDiskSizeHint

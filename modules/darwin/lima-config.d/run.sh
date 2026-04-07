@@ -9,16 +9,20 @@ NDH_VZ_HOST="${NDH_VZ_HOST:-@effectiveHostName@}"
 NIXOS_FLAKE_PATH="${NIXOS_FLAKE_PATH:-@nixosFlakePath@}"
 NIXOS_HOST_ATTR="${NIXOS_HOST_ATTR:-@nixosHostAttr@}"
 NIXOS_REMOTE_HOST="${NIXOS_REMOTE_HOST:-root}"
-LIMA_NIXOS_DISK_IMAGE_ATTR="${LIMA_NIXOS_DISK_IMAGE_ATTR:-nixosDiskImageBringupSystemdBoot}"
+LIMA_VERBOSE="${LIMA_VERBOSE:-0}"
+LIMA_QUIET_BUILD="${LIMA_QUIET_BUILD:-1}"
+DEFAULT_LIMA_NIXOS_DISK_IMAGE_ATTR="${DEFAULT_LIMA_NIXOS_DISK_IMAGE_ATTR:-nixosDiskImageBringupSystemdBoot}"
+LIMA_NIXOS_DISK_IMAGE_ATTR="${LIMA_NIXOS_DISK_IMAGE_ATTR:-}"
 NDH_VZ_HOST_FLAKE_REF="${NDH_VZ_HOST_FLAKE_REF:-}"
 RESOLVED_NDH_VZ_HOST_FLAKE_REF=""
+RESOLVED_LIMA_NIXOS_DISK_IMAGE_ATTR=""
 
 # Allow overriding the flake reference fully while keeping canonical defaults.
 NIXOS_FLAKE_REF="${NIXOS_FLAKE_REF:-${NIXOS_FLAKE_PATH}#${NIXOS_HOST_ATTR}}"
 NIXOS_EXT4_FLAKE_REF="${NIXOS_EXT4_FLAKE_REF:-}"
 NIXOS_ZFS_FLAKE_REF="${NIXOS_ZFS_FLAKE_REF:-}"
 
-resolve:nixos:flake:refs() {
+nixos:flake:refs:resolve() {
   local flake_base="${NIXOS_FLAKE_REF%%#*}"
 
   if [[ -z "${NIXOS_EXT4_FLAKE_REF}" ]]; then
@@ -30,7 +34,7 @@ resolve:nixos:flake:refs() {
   fi
 }
 
-resolve:host:flake:ref() {
+host:flake:ref:resolve() {
   local host_flake_ref="${NDH_VZ_HOST_FLAKE_REF}"
   local git_root
   local remotes
@@ -43,7 +47,7 @@ resolve:host:flake:ref() {
     fi
 
     remotes="$(git -C "$git_root" remote -v 2>/dev/null | awk '{print $2}' | sort -u || true)"
-    if ! printf '%s\n' "$remotes" | grep -Eq '(github\.com[:/]nxmatic/nix-darwin-home(\.git)?|^github:nxmatic/nix-darwin-home(\.git)?)'; then
+    if ! grep -Eq '(github\.com[:/]nxmatic/nix-darwin-home(\.git)?|^github:nxmatic/nix-darwin-home(\.git)?)' <<<"${remotes}"; then
       echo "[lima-run][ERROR] current worktree is not nxmatic/nix-darwin-home: $git_root" >&2
       exit 2
     fi
@@ -68,6 +72,50 @@ resolve:host:flake:ref() {
   fi
 }
 
+host:disk:image:symlink:path() {
+  echo "${RESOLVED_NDH_VZ_HOST_FLAKE_REF}/nixos-disk-image"
+}
+
+host:disk:image:attr:symlink:path() {
+  local attr="${1}"
+  echo "${RESOLVED_NDH_VZ_HOST_FLAKE_REF}/nixos-disk-image.${attr}"
+}
+
+lima:disk:image:descriptor:path() {
+  local out_link
+
+  out_link="$(host:disk:image:symlink:path)"
+  [[ -e "${out_link}/descriptor.yaml" ]] || return 1
+  echo "${out_link}/descriptor.yaml"
+}
+
+lima:disk:image:attr:from:descriptor:resolve() {
+  local descriptor_path descriptor_attr
+
+  descriptor_path="$(lima:disk:image:descriptor:path)" || return 1
+  descriptor_attr="$(awk -F': *' '$1 == "attr" {print $2; exit}' "${descriptor_path}" | tr -d '"[:space:]')"
+  [[ -n "${descriptor_attr}" ]] || return 1
+
+  RESOLVED_LIMA_NIXOS_DISK_IMAGE_ATTR="${descriptor_attr}"
+  : "[lima-run] inferred disk image attr from descriptor: ${RESOLVED_LIMA_NIXOS_DISK_IMAGE_ATTR}"
+  return 0
+}
+
+lima:disk:image:attr:resolve() {
+  if [[ -n "${LIMA_NIXOS_DISK_IMAGE_ATTR}" ]]; then
+    RESOLVED_LIMA_NIXOS_DISK_IMAGE_ATTR="${LIMA_NIXOS_DISK_IMAGE_ATTR}"
+    return
+  fi
+
+  if lima:disk:image:attr:from:descriptor:resolve; then
+    return
+  fi
+
+  echo "[lima-run][ERROR] required metadata descriptor missing or invalid: $(host:disk:image:symlink:path)/descriptor.yaml" >&2
+  echo "[lima-run][ERROR] build a disk image with metadata first (or pass --disk-image-attr explicitly)." >&2
+  exit 2
+}
+
 declare -a NERD_NIXOS_DISKS=(tank1 tank2 tank3 recover)
 declare -a NERD_DEBIAN_DISKS=(tank1 tank2 tank3 recover)
 declare -a NERD_DISKS=(tank1 tank2 tank3 recover)
@@ -79,7 +127,7 @@ VM_DISKS[nerd-debian]=NERD_DEBIAN_DISKS[@]
 declare -A VM
 VM[name]="${LIMA_VM}"
 
-get_vm_disks() {
+vm:disks:list() {
   local vm_name="${VM[name]}"
   local disks_var_name="${VM_DISKS[$vm_name]:-NERD_DISKS[@]}"
   echo "${!disks_var_name}"
@@ -87,7 +135,7 @@ get_vm_disks() {
 
 vm:disk:foreach() {
   local action="$1"
-  local disks=($(get_vm_disks))
+  local disks=($(vm:disks:list))
 
   for disk in "${disks[@]}"; do
     "$action" "$disk"
@@ -140,6 +188,7 @@ vm:config:mode() {
   local active_yaml="${instance_dir}/lima.yaml"
   local headless_yaml="${instance_dir}/lima.headless.yaml"
   local gui_yaml="${instance_dir}/lima.gui.yaml"
+  local active_target
 
   case "${mode}" in
     headless)
@@ -156,7 +205,11 @@ vm:config:mode() {
       ;;
   esac
 
-  echo "[lima-run] active config -> $(readlink "${active_yaml}" || echo "${active_yaml}")"
+  active_target="$(readlink "${active_yaml}" 2>/dev/null || true)"
+  if [[ -z "${active_target}" ]]; then
+    active_target="${active_yaml}"
+  fi
+  : "[lima-run] active config -> ${active_target}"
 }
 
 vm:start:gui() {
@@ -184,7 +237,7 @@ vm:factory:reset() {
 }
 
 vm:reset() {
-  host:disk-image:build
+  host:disk:image:build
   host:lima:config:ensure
   vm:factory:reset
 }
@@ -210,18 +263,28 @@ vm:ssh:ensure-started() {
   fi
 }
 
-host:disk-image:build() {
+host:disk:image:build() {
   local out_link="${RESOLVED_NDH_VZ_HOST_FLAKE_REF}/nixos-disk-image"
+  local attr_out_link
+  local -a nix_build_args
+
   mkdir -p "${RESOLVED_NDH_VZ_HOST_FLAKE_REF}"
-  echo "[lima-run] building disk image from ${RESOLVED_NDH_VZ_HOST_FLAKE_REF}#${LIMA_NIXOS_DISK_IMAGE_ATTR}"
-  nix build --out-link "${out_link}" "${RESOLVED_NDH_VZ_HOST_FLAKE_REF}#${LIMA_NIXOS_DISK_IMAGE_ATTR}"
+  attr_out_link="$(host:disk:image:attr:symlink:path "${RESOLVED_LIMA_NIXOS_DISK_IMAGE_ATTR}")"
+  : "[lima-run] building disk image from ${RESOLVED_NDH_VZ_HOST_FLAKE_REF}#${RESOLVED_LIMA_NIXOS_DISK_IMAGE_ATTR}"
+  nix_build_args=(build --out-link "${attr_out_link}" "${RESOLVED_NDH_VZ_HOST_FLAKE_REF}#${RESOLVED_LIMA_NIXOS_DISK_IMAGE_ATTR}")
+  if [[ "${LIMA_QUIET_BUILD}" == "1" ]]; then
+    nix_build_args=(--quiet "${nix_build_args[@]}")
+  fi
+  nix "${nix_build_args[@]}"
+
+  ln -sfn "$(basename "${attr_out_link}")" "${out_link}"
 }
 
 host:lima:config:ensure() {
   local lima_yaml="${LIMA_HOME}/${VM[name]}/lima.yaml"
 
   if [[ "${LIMA_REFRESH_CONFIG:-0}" == "1" ]]; then
-    echo "[lima-run] refreshing Lima config via darwin activation"
+    : "[lima-run] refreshing Lima config via darwin activation"
     if command -v darwin-rebuild >/dev/null 2>&1; then
       darwin-rebuild switch --flake "${RESOLVED_NDH_VZ_HOST_FLAKE_REF}"
     else
@@ -253,7 +316,7 @@ vm:nixos:rebuild() {
   local ssh_opts
   ssh_opts="-o Port=${port} -o IdentityFile=${identity} -o StrictHostKeyChecking=accept-new"
 
-  echo "[lima-run] nixos-rebuild ${action} --flake ${flake_ref} --build-host ${NIXOS_REMOTE_HOST}@${host} --target-host ${NIXOS_REMOTE_HOST}@${host}"
+  : "[lima-run] nixos-rebuild ${action} --flake ${flake_ref} --build-host ${NIXOS_REMOTE_HOST}@${host} --target-host ${NIXOS_REMOTE_HOST}@${host}"
 
   if command -v nixos-rebuild >/dev/null 2>&1; then
     NIX_SSHOPTS="${ssh_opts}" nixos-rebuild "${action}" \
@@ -272,9 +335,11 @@ vm:nixos:rebuild() {
 
 vm:nixos:zfs-bootstrap() {
   vm:ssh:ensure-started
-  echo "[lima-run] starting zfs-bootstrap-activation.service on ${VM[name]}"
+  : "[lima-run] starting zfs-bootstrap-activation.service on ${VM[name]}"
   limactl shell "${VM[name]}" sudo systemctl start zfs-bootstrap-activation.service
-  limactl shell "${VM[name]}" sudo systemctl --no-pager --full status zfs-bootstrap-activation.service || true
+  if [[ "${LIMA_VERBOSE}" == "1" ]]; then
+    limactl shell "${VM[name]}" sudo systemctl --no-pager --full status zfs-bootstrap-activation.service || true
+  fi
 }
 
 vm:disk:nixos:build() {
@@ -291,38 +356,19 @@ vm:nixos:boot:zfs() {
   vm:nixos:zfs-bootstrap
 }
 
-# Backward-compatibility aliases during transition (@codebase)
-vm:nixos:build() {
-  vm:disk:nixos:build
-}
-
-phase:bootstrap:vm() {
-  vm:disk:nixos:build
-}
-
-phase:bootstrap:zfs() {
-  vm:nixos:boot:zfs
-}
-
-phase:bootstrap:all() {
-  vm:disk:nixos:build
-  vm:nixos:boot:ext4
-  vm:nixos:boot:zfs
-}
-
-usage() {
+cli:usage:print() {
   cat <<EOF
 Usage: $0 <command>
 
 Optional global arguments (before <command>):
   --flake-uri <flake#attr>         Override NIXOS_FLAKE_REF for this invocation
   --host-flake-uri <flake-path>    Override host flake path for this invocation
+  --disk-image-attr <attr>         Override disk image attribute for this invocation
   --vm <instance>                  Override LIMA_VM for this invocation
   --remote-user <user>             Override NIXOS_REMOTE_HOST for this invocation
 
 Commands:
   vm:disk:nixos:build       Build disk image + ensure Lima config + boot VM
-  vm:nixos:build            Alias of vm:disk:nixos:build
   vm:nixos:boot:ext4        Remote nixos-rebuild boot for ext4/bootstrap target
   vm:nixos:boot:zfs         Remote nixos-rebuild boot+switch for zfs target + zfs bootstrap unit
   vm:start                  Start Lima VM
@@ -334,9 +380,6 @@ Commands:
   vm:disk:create [name]     Create one/all additional disks
   vm:disk:unlock [name]     Unlock one/all additional disks
   socket:run                Start socket_vmnet bridge helper
-  phase:bootstrap:vm        Alias of vm:disk:nixos:build
-  phase:bootstrap:zfs       Alias of vm:nixos:boot:zfs
-  phase:bootstrap:all       Alias of vm:disk:nixos:build + boot:ext4 + boot:zfs
   vm:nixos:switch           Remote NixOS switch using nixos-rebuild --build-host/--target-host
   vm:nixos:boot             Remote NixOS boot using nixos-rebuild --build-host/--target-host
   vm:nixos:zfs-bootstrap    Start idempotent zfs bootstrap activation unit remotely
@@ -344,9 +387,12 @@ Commands:
 Environment overrides:
   LIMA_HOME=<path>                  (default: ${HOME}/.lima)
   LIMA_VM=<instance>                (default: nerd-nixos)
+  LIMA_VERBOSE=1                    (optional: enable extra runtime status output)
+  LIMA_QUIET_BUILD=0                (optional: disable quiet nix build output)
   NDH_VZ_HOST=<host>                (default: @effectiveHostName@)
   NDH_VZ_HOST_FLAKE_REF=<flake-path>  (default: derived from current nxmatic/nix-darwin-home worktree as <worktree>/hosts/${NDH_VZ_HOST})
-  LIMA_NIXOS_DISK_IMAGE_ATTR=<attr> (default: nixosDiskImageBringupSystemdBoot)
+  DEFAULT_LIMA_NIXOS_DISK_IMAGE_ATTR=<attr> (default: nixosDiskImageBringupSystemdBoot)
+  LIMA_NIXOS_DISK_IMAGE_ATTR=<attr> (optional explicit attr override for this invocation)
   LIMA_REFRESH_CONFIG=1             (optional: run darwin switch to refresh lima config first)
   NIXOS_FLAKE_PATH=<path>           (default: @nixosFlakePath@)
   NIXOS_HOST_ATTR=<attr>            (default: @nixosHostAttr@)
@@ -357,7 +403,7 @@ Environment overrides:
 EOF
 }
 
-main() {
+cli:main:run() {
   while [[ ${#} -gt 0 ]]; do
     case "${1}" in
       --flake-uri)
@@ -369,6 +415,11 @@ main() {
         shift
         [[ ${#} -gt 0 ]] || { echo "missing value for --host-flake-uri" >&2; exit 2; }
         NDH_VZ_HOST_FLAKE_REF="${1}"
+        ;;
+      --disk-image-attr)
+        shift
+        [[ ${#} -gt 0 ]] || { echo "missing value for --disk-image-attr" >&2; exit 2; }
+        LIMA_NIXOS_DISK_IMAGE_ATTR="${1}"
         ;;
       --vm)
         shift
@@ -396,17 +447,15 @@ main() {
     shift
   done
 
-  resolve:nixos:flake:refs
-  resolve:host:flake:ref
+  nixos:flake:refs:resolve
+  host:flake:ref:resolve
+  lima:disk:image:attr:resolve
 
   local cmd="${1:-help}"
   shift || true
 
   case "${cmd}" in
-    vm:disk:nixos:build|vm:nixos:build|vm:nixos:boot:ext4|vm:nixos:boot:zfs)
-      "${cmd}" "$@"
-      ;;
-    phase:bootstrap:vm|phase:bootstrap:zfs|phase:bootstrap:all)
+    vm:disk:nixos:build|vm:nixos:boot:ext4|vm:nixos:boot:zfs)
       "${cmd}" "$@"
       ;;
     vm:start|vm:start:gui|vm:start:headless|vm:kill|vm:reset|socket:run)
@@ -428,14 +477,14 @@ main() {
       vm:nixos:zfs-bootstrap
       ;;
     help|-h|--help)
-      usage
+      cli:usage:print
       ;;
     *)
       echo "Unknown command: ${cmd}" >&2
-      usage
+      cli:usage:print
       exit 2
       ;;
   esac
 }
 
-main "$@"
+cli:main:run "$@"

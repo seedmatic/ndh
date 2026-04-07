@@ -78,7 +78,7 @@ in
         ++ lib.optionals (vlanName != null) [ "VLAN_NAME=${vlanName}" ];
         ExecStart = "${vlanSetupScript}";
       };
-      wantedBy = [ "multi-user.target" ];
+      wantedBy = [ "io-nxmatic-nix-darwin-home-contributed.target" ];
     };
   };
 }

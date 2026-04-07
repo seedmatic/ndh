@@ -209,7 +209,7 @@ in
 
   systemd.services.io-nxmatic-nix-darwin-home-hostkey-enrollment-sync = {
     description = "Run remote hostkey enrollment sync when drift marker is present (@codebase)";
-    wantedBy = [ "multi-user.target" ];
+    wantedBy = [ "io-nxmatic-nix-darwin-home-contributed.target" ];
     wants = [
       "network-online.target"
       "io-nxmatic-nix-darwin-home-hostkey-enrollment-check.service"

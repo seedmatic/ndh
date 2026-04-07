@@ -94,7 +94,7 @@ in
         "network-online.target"
       ];
       wants = [ "network-online.target" ];
-      wantedBy = [ "multi-user.target" ];
+      wantedBy = [ "io-nxmatic-nix-darwin-home-contributed.target" ];
       serviceConfig = {
         Type = "oneshot";
         RemainAfterExit = true;
