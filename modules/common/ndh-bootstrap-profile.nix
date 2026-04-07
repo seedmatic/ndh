@@ -90,7 +90,7 @@ in
       NDH_BOOTSTRAP_PROFILE_DIR = cfg.profileDir;
       NDH_BOOTSTRAP_PROFILE_BIN = "${cfg.profileDir}/bin";
       NDH_BOOTSTRAP_REQUIRED_COMMANDS = requiredCommandsString;
-      NDH_BOOTSTRAP_STRICT = "1";
+      NDH_BOOTSTRAP_STRICT = if cfg.requireForActivation then "1" else "0";
       NDH_BOOTSTRAP_INSTALL_HINT = installHint;
     };
 
@@ -106,6 +106,10 @@ in
     systemd.services.ndh-bootstrap-profile-install = {
       description = "Install NDH bootstrap runtime profile for root (@codebase)";
       wantedBy = [ "multi-user.target" ];
+      requiredBy = [
+        "sops-install-secrets.service"
+        "ndh-hostkey-enrollment-check.service"
+      ];
       before = [
         "sops-age-bootstrap.service"
         "sops-install-secrets.service"
@@ -118,8 +122,17 @@ in
         set -euo pipefail
 
         profile_dir_root="/nix/var/nix/profiles/per-user/root/${cfg.name}"
+        profile_user="${config.profile.user.name}"
+        profile_dir_user="/nix/var/nix/profiles/per-user/${config.profile.user.name}/${cfg.name}"
+
         mkdir -p /nix/var/nix/profiles/per-user/root
+        mkdir -p "/nix/var/nix/profiles/per-user/${config.profile.user.name}"
+
         ${config.nix.package.out}/bin/nix profile add --profile "$profile_dir_root" "${bootstrapRuntimePackage}"
+
+        if [ "$profile_user" != "root" ]; then
+          ${config.nix.package.out}/bin/nix profile add --profile "$profile_dir_user" "${bootstrapRuntimePackage}"
+        fi
       '';
     };
     }

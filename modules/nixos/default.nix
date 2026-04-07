@@ -167,6 +167,12 @@ in
 
   config = {
 
+    # Explicit NDH bootstrap profile policy by image mode:
+    # - bootstrap images: non-strict runtime (warn) to avoid deadlocks while first boot converges
+    # - full/runtime images: strict contract enforced
+    nxmatic.bootstrapProfile.requireForActivation = lib.mkDefault (!bootstrapMode);
+    nxmatic.bootstrapProfile.autoInstallOnActivation = lib.mkDefault true;
+
     activation.postActivationLogShowLabel = "journald (last 2h)";
     activation.postActivationLogShowCmd = "journalctl --since '2 hours ago' -o short-precise -t darwin.activationScripts -t home-manager.activationScripts";
     activation.postActivationLogStreamLabel = "journald (follow)";
