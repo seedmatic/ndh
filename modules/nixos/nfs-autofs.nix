@@ -93,17 +93,17 @@ in
     server = {
       enable = lib.mkOption {
         type = lib.types.bool;
-        default = false;
+        default = true;
         description = "Enable NFS server with generated exports.";
       };
       exports = lib.mkOption {
         type = lib.types.listOf lib.types.str;
-        default = shared.exportsDefault;
+        default = shared.exportsDefault.nixos;
         description = "Paths exported over NFS.";
       };
       exportOptions = lib.mkOption {
         type = lib.types.str;
-        default = shared.exportOptionsDefault;
+        default = shared.exportOptionsDefault.nixos;
         description = "Export options applied to every shared path (fallback when clientScopes is empty).";
       };
       clientScopes = lib.mkOption {
@@ -121,7 +121,7 @@ in
             };
           }
         );
-        default = shared.clientScopesDefault;
+        default = shared.clientScopesDefault.nixos;
         description = "Per-scope client/option pairs appended to each export.";
       };
     };

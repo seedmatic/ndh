@@ -74,7 +74,7 @@ let
 
   allowedNetworks = resolveAllowedNetworks cfg.allowedNetworks;
 
-  nfsdReloadScript = pkgs.runCommand (ndh.store.prefixedName "nfsd-reload.sh") { } ''
+  nfsdReloadScript = ndh.store.runCommand "nfsd-reload.sh" { } ''
     cp ${
       pkgs.replaceVars ./nfs-autofs.d/nfsd-reload.sh {
         logger = loggerScript;
@@ -82,7 +82,7 @@ let
     } "$out"
     chmod +x "$out"
   '';
-  autofsRefreshScript = pkgs.runCommand (ndh.store.prefixedName "autofs-refresh.sh") { } ''
+  autofsRefreshScript = ndh.store.runCommand "autofs-refresh.sh" { } ''
     cp ${
       pkgs.replaceVars ./nfs-autofs.d/autofs-refresh.sh {
         logger = loggerScript;
@@ -90,7 +90,7 @@ let
     } "$out"
     chmod +x "$out"
   '';
-  syntheticReloadScript = pkgs.runCommand (ndh.store.prefixedName "synthetic-rebuild.sh") { } ''
+  syntheticReloadScript = ndh.store.runCommand "synthetic-rebuild.sh" { } ''
     cp ${
       pkgs.replaceVars ./nfs-autofs.d/synthetic-rebuild.sh {
         logger = loggerScript;
@@ -130,7 +130,7 @@ let
   syntheticText =
     if syntheticEntries == [ ] then "" else lib.concatStringsSep "\n" syntheticEntries + "\n";
 
-  syntheticEnsureScript = pkgs.runCommand (ndh.store.prefixedName "synthetic-ensure.sh") { } ''
+  syntheticEnsureScript = ndh.store.runCommand "synthetic-ensure.sh" { } ''
     cp ${
       pkgs.replaceVars ./nfs-autofs.d/synthetic-ensure.sh {
         inherit syntheticText;
@@ -140,7 +140,7 @@ let
     chmod +x "$out"
   '';
 
-  autoMasterLinkScript = pkgs.runCommand (ndh.store.prefixedName "auto-master-link.sh") { } ''
+  autoMasterLinkScript = ndh.store.runCommand "auto-master-link.sh" { } ''
     cp ${
       pkgs.replaceVars ./nfs-autofs.d/auto-master-link.sh {
         logger = loggerScript;
@@ -149,7 +149,7 @@ let
     chmod +x "$out"
   '';
 
-  autoMasterWriteScript = pkgs.runCommand (ndh.store.prefixedName "auto-master-write.sh") { } ''
+  autoMasterWriteScript = ndh.store.runCommand "auto-master-write.sh" { } ''
     cp ${
       pkgs.replaceVars ./nfs-autofs.d/auto-master-write.sh {
         inherit autoMasterText;
@@ -159,7 +159,7 @@ let
     chmod +x "$out"
   '';
 
-  autofsNetScript = pkgs.runCommand (ndh.store.prefixedName "autofs-net.sh") { } ''
+  autofsNetScript = ndh.store.runCommand "autofs-net.sh" { } ''
     cp ${
       pkgs.replaceVars ./nfs-autofs.d/autofs-net.sh {
         mountPoint = lib.escapeShellArg autoCfg.mountPoint;
@@ -300,13 +300,13 @@ in
 
     exportOptions = lib.mkOption {
       type = lib.types.str;
-      default = shared.exportOptionsDefault;
+      default = shared.exportOptionsDefault.darwin;
       description = "Common export options applied to every shared path.";
     };
 
     exports = lib.mkOption {
       type = lib.types.listOf lib.types.str;
-      default = shared.exportsDefault;
+      default = shared.exportsDefault.darwin;
       description = "Paths exported over NFS.";
     };
 
@@ -326,7 +326,7 @@ in
           };
         }
       );
-      default = shared.clientScopesDefault;
+      default = shared.clientScopesDefault.darwin;
       description = "Per-scope client/option pairs appended to each export.";
     };
 
