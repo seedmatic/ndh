@@ -282,20 +282,24 @@ in
         zellij.enable = lib.mkDefault true;
       };
 
-  services = lib.mkIf (!isMinimalHomeProfile) {
-    # Enable the emacs daemon
-    emacsDaemon = {
-      enable = true;
-    };
+  services =
+    if isMinimalHomeProfile then
+      { }
+    else
+      {
+        # Enable the emacs daemon
+        emacsDaemon = {
+          enable = true;
+        };
 
-    # Enable shadowing folders
-    shadowRepositories = {
-      enable = false;
+        # Enable shadowing folders
+        shadowRepositories = {
+          enable = false;
 
-      mountPoints = [
-        "/Volumes/GitHub/HylandSoftware/hxpr"
-        "/Volumes/GitHub/nuxeo/nos"
-      ];
-    };
-  };
+          mountPoints = [
+            "/Volumes/GitHub/HylandSoftware/hxpr"
+            "/Volumes/GitHub/nuxeo/nos"
+          ];
+        };
+      };
 }
