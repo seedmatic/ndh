@@ -26,6 +26,16 @@ Host vz-host vz-host.nikopol
 EOF
 
   chmod 0600 "${lima_instance_dir}/ssh.config"
+
+  # In HM-only flows (without a full darwin postActivation pass), best-effort
+  # materialize managed Lima configs when the helper is available.
+  if command -v lima-config-materialize >/dev/null 2>&1; then
+    lima-config-materialize || {
+      echo "[lima-rdp-assets][WARN] lima-config-materialize failed; keep existing ~/.lima state" >&2
+    }
+  else
+    echo "[lima-rdp-assets][INFO] lima-config-materialize not found in PATH; skipping full lima config materialization" >&2
+  fi
 }
 
 ndh::logger:command:run @loggerTag@ main "$@"

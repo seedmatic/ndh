@@ -398,17 +398,10 @@ Example host usage (e.g., hosts/nikopol/flake.nix):
 
 === Teleport (Darwin)
 
-Module: `modules/darwin/teleport.nix`
+Module removed: `modules/darwin/teleport.nix`
 
-NOTE: This module is deprecated. Use Tailscale/Headscale SSH instead.
-
-Teleport provides centralized SSH management but is redundant when using Tailscale/Headscale which have built-in identity-based SSH.
-
-To disable Teleport:
-[source,nix]
-----
-services.teleport.enable = false;
-----
+Teleport support has been removed from Darwin modules.
+Use Tailscale/Headscale SSH for identity-based host access.
 
 === Teleport Node (NixOS)
 
@@ -663,14 +656,7 @@ sudo headscale policy check
 1. Keep Teleport running initially
 2. Set up Tailscale/Headscale
 3. Test SSH via new methods
-4. Disable Teleport:
-+
-[source,nix]
-----
-services.teleport.enable = false;
-----
-
-5. Remove Teleport configuration files
+4. Remove Teleport configuration files
 
 === From Standalone Tailscale to Hybrid
 

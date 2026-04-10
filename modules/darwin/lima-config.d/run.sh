@@ -120,16 +120,18 @@ declare -a NERD_NIXOS_DISKS=(tank1 tank2 tank3 recover)
 declare -a NERD_DEBIAN_DISKS=(tank1 tank2 tank3 recover)
 declare -a NERD_DISKS=(tank1 tank2 tank3 recover)
 
-declare -A VM_DISKS
-VM_DISKS[nerd-nixos]=NERD_NIXOS_DISKS[@]
-VM_DISKS[nerd-debian]=NERD_DEBIAN_DISKS[@]
-
-declare -A VM
-VM[name]="${LIMA_VM}"
-
 vm:disks:list() {
-  local vm_name="${VM[name]}"
-  local disks_var_name="${VM_DISKS[$vm_name]:-NERD_DISKS[@]}"
+  local disks_var_name="NERD_DISKS[@]"
+
+  case "${LIMA_VM}" in
+    nerd-nixos)
+      disks_var_name="NERD_NIXOS_DISKS[@]"
+      ;;
+    nerd-debian)
+      disks_var_name="NERD_DEBIAN_DISKS[@]"
+      ;;
+  esac
+
   echo "${!disks_var_name}"
 }
 
@@ -148,7 +150,7 @@ vm:disk:delete() {
     return
   fi
 
-  local name="${VM[name]}-${1}"
+  local name="${LIMA_VM}-${1}"
   local disk="${LIMA_HOME}/_disks/${name}"
 
   [[ -d ${disk} ]] && rm -fr "${disk}"
@@ -161,7 +163,7 @@ vm:disk:create() {
     return
   fi
 
-  local name="${VM[name]}-${1}"
+  local name="${LIMA_VM}-${1}"
   local disk="${LIMA_HOME}/_disks/${name}"
 
   [[ -d ${disk} ]] && rm -fr "${disk}"
@@ -174,17 +176,17 @@ vm:disk:unlock() {
     return
   fi
 
-  local name="${VM[name]}-${1}"
+  local name="${LIMA_VM}-${1}"
   limactl disk unlock "${name}"
 }
 
 vm:kill() {
-  limactl stop -f "${VM[name]}" || true
+  limactl stop -f "${LIMA_VM}" || true
 }
 
 vm:config:mode() {
   local mode="${1:-headless}"
-  local instance_dir="${LIMA_HOME}/${VM[name]}"
+  local instance_dir="${LIMA_HOME}/${LIMA_VM}"
   local active_yaml="${instance_dir}/lima.yaml"
   local headless_yaml="${instance_dir}/lima.headless.yaml"
   local gui_yaml="${instance_dir}/lima.gui.yaml"
@@ -223,15 +225,15 @@ vm:start:headless() {
 }
 
 vm:start() {
-  truncate -s 0 "${LIMA_HOME}/${VM[name]}"/*.log 2>/dev/null || true
-  limactl start "${VM[name]}"
+  truncate -s 0 "${LIMA_HOME}/${LIMA_VM}"/*.log 2>/dev/null || true
+  limactl start "${LIMA_VM}"
   if command -v birdc >/dev/null 2>&1; then
     sudo birdc restart device
   fi
 }
 
 vm:factory:reset() {
-  limactl factory-reset "${VM[name]}"
+  limactl factory-reset "${LIMA_VM}"
   vm:disk:create
   vm:start
 }
@@ -252,12 +254,12 @@ mkdir -p ${rundir:=/private/var/run/lima}
 
 vm:ssh:option() {
   local key="$1"
-  limactl show-ssh --format=options "${VM[name]}" | awk -F= -v key="$key" '$1 == key { gsub(/^"|"$/, "", $2); print $2; exit }'
+  limactl show-ssh --format=options "${LIMA_VM}" | awk -F= -v key="$key" '$1 == key { gsub(/^"|"$/, "", $2); print $2; exit }'
 }
 
 vm:ssh:ensure-started() {
   local status
-  status="$(limactl ls --format '{{.Status}}' "${VM[name]}" 2>/dev/null || true)"
+  status="$(limactl ls --format '{{.Status}}' "${LIMA_VM}" 2>/dev/null || true)"
   if [[ "${status}" != "Running" ]]; then
     vm:start
   fi
@@ -281,7 +283,7 @@ host:disk:image:build() {
 }
 
 host:lima:config:ensure() {
-  local lima_yaml="${LIMA_HOME}/${VM[name]}/lima.yaml"
+  local lima_yaml="${LIMA_HOME}/${LIMA_VM}/lima.yaml"
 
   if [[ "${LIMA_REFRESH_CONFIG:-0}" == "1" ]]; then
     : "[lima-run] refreshing Lima config via darwin activation"
@@ -309,7 +311,7 @@ vm:nixos:rebuild() {
   identity="$(vm:ssh:option IdentityFile)"
 
   if [[ -z "${host}" || -z "${port}" || -z "${identity}" ]]; then
-    echo "[lima-run][ERROR] failed to resolve SSH options for VM ${VM[name]}" >&2
+    echo "[lima-run][ERROR] failed to resolve SSH options for VM ${LIMA_VM}" >&2
     exit 1
   fi
 
@@ -335,10 +337,10 @@ vm:nixos:rebuild() {
 
 vm:nixos:zfs-bootstrap() {
   vm:ssh:ensure-started
-  : "[lima-run] starting zfs-bootstrap-activation.service on ${VM[name]}"
-  limactl shell "${VM[name]}" sudo systemctl start zfs-bootstrap-activation.service
+  : "[lima-run] starting zfs-bootstrap-activation.service on ${LIMA_VM}"
+  limactl shell "${LIMA_VM}" sudo systemctl start zfs-bootstrap-activation.service
   if [[ "${LIMA_VERBOSE}" == "1" ]]; then
-    limactl shell "${VM[name]}" sudo systemctl --no-pager --full status zfs-bootstrap-activation.service || true
+    limactl shell "${LIMA_VM}" sudo systemctl --no-pager --full status zfs-bootstrap-activation.service || true
   fi
 }
 
@@ -390,7 +392,7 @@ Environment overrides:
   LIMA_VERBOSE=1                    (optional: enable extra runtime status output)
   LIMA_QUIET_BUILD=0                (optional: disable quiet nix build output)
   NDH_VZ_HOST=<host>                (default: @effectiveHostName@)
-  NDH_VZ_HOST_FLAKE_REF=<flake-path>  (default: derived from current nxmatic/nix-darwin-home worktree as <worktree>/hosts/${NDH_VZ_HOST})
+  NDH_VZ_HOST_FLAKE_REF=<flake-path>  (required for vm:disk:nixos:build and vm:reset when not run from a nix-darwin-home checkout)
   DEFAULT_LIMA_NIXOS_DISK_IMAGE_ATTR=<attr> (default: nixosDiskImageBringupSystemdBoot)
   LIMA_NIXOS_DISK_IMAGE_ATTR=<attr> (optional explicit attr override for this invocation)
   LIMA_REFRESH_CONFIG=1             (optional: run darwin switch to refresh lima config first)
@@ -404,6 +406,9 @@ EOF
 }
 
 cli:main:run() {
+  local cmd_requires_host_flake=0
+  local cmd_requires_disk_attr=0
+
   while [[ ${#} -gt 0 ]]; do
     case "${1}" in
       --flake-uri)
@@ -425,7 +430,6 @@ cli:main:run() {
         shift
         [[ ${#} -gt 0 ]] || { echo "missing value for --vm" >&2; exit 2; }
         LIMA_VM="${1}"
-        VM[name]="${LIMA_VM}"
         ;;
       --remote-user)
         shift
@@ -447,12 +451,25 @@ cli:main:run() {
     shift
   done
 
-  nixos:flake:refs:resolve
-  host:flake:ref:resolve
-  lima:disk:image:attr:resolve
-
   local cmd="${1:-help}"
   shift || true
+
+  case "${cmd}" in
+    vm:disk:nixos:build|vm:reset)
+      cmd_requires_host_flake=1
+      cmd_requires_disk_attr=1
+      ;;
+  esac
+
+  nixos:flake:refs:resolve
+
+  if [[ "${cmd_requires_host_flake}" == "1" ]]; then
+    host:flake:ref:resolve
+  fi
+
+  if [[ "${cmd_requires_disk_attr}" == "1" ]]; then
+    lima:disk:image:attr:resolve
+  fi
 
   case "${cmd}" in
     vm:disk:nixos:build|vm:nixos:boot:ext4|vm:nixos:boot:zfs)

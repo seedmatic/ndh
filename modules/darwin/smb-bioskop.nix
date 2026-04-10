@@ -7,6 +7,11 @@
 }:
 let
   cfg = config.services.bioskopSmbMount;
+  profileUserName =
+    if config ? profile && config.profile ? user && config.profile.user ? name then
+      config.profile.user.name
+    else
+      "nxmatic";
   loggerScript = config.nixBashLogger.script;
   mapFile = "/etc/auto_bioskop";
   autoMaster = "/etc/auto_master";
@@ -38,7 +43,7 @@ in
 
     username = lib.mkOption {
       type = lib.types.str;
-      default = "nxmatic";
+      default = profileUserName;
       description = "Username for SMB auth (password fetched from macOS Keychain).";
     };
 

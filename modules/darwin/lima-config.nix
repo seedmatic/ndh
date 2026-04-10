@@ -52,8 +52,11 @@ let
   netplanCatalog = catalog.networks.rke2labNetplan;
 
   # Stable image staging paths
+  imageDescriptorPath = if cfg.imageDescriptorPath == null then "" else toString cfg.imageDescriptorPath;
+  imageStorePath = if cfg.imageStorePath == null then "" else toString cfg.imageStorePath;
   imageSourcePath = cfg.imageSourcePath;
   imageTargetPath = cfg.imageTargetPath;
+  imageFlakeAttr = cfg.imageFlakeAttr;
 
   mountType = if vmType == "qemu" then "9p" else "virtiofs";
   vmType = cfg.vmType;
@@ -88,8 +91,12 @@ let
         limaConfigYamlHeadless = limaConfigYamlHeadless;
         limaConfigYamlGui = limaConfigYamlGui;
         limaRunScript = limaRunScript;
+        imageDescriptorPath = imageDescriptorPath;
+        imageStorePath = imageStorePath;
         imageSourcePath = imageSourcePath;
         imageTargetPath = imageTargetPath;
+        imageFlakeAttr = imageFlakeAttr;
+        nixosFlakePath = cfg.nixosFlakePath;
         hostPublicKeyPath = sshPaths.hostPublicKeyFile;
         hostPrivateKeyPath = sshPaths.privKeyFile;
         logger = loggerScript;
@@ -350,6 +357,25 @@ let
 in
 {
   options.lima.configGenerator = {
+    imageDescriptorPath = mkOption {
+      type = types.nullOr types.path;
+      default = null;
+      description = ''
+        Optional path to a disk-image descriptor directory/output containing `descriptor.yaml`.
+        When provided, activation resolves the image using descriptor metadata (`imagePath`) first.
+      '';
+    };
+
+    imageStorePath = mkOption {
+      type = types.nullOr types.path;
+      default = null;
+      description = ''
+        Store-pinned path to a prebuilt `nixos.img` used as first-priority source.
+        This is the preferred mode for hosts like vz-host that should not resolve
+        images from a local flake checkout or remote Git source.
+      '';
+    };
+
     vmType = mkOption {
       type = types.enum [
         "vz"
@@ -373,18 +399,29 @@ in
 
     imageSourcePath = mkOption {
       type = types.str;
-      default = "/net/${effectiveHostName}.local/private/var/lib/git/nxmatic/nix-darwin-home/hosts/${effectiveHostName}/outputs.d/nixos-disk-image/nixos.img";
+      default = "";
       description = ''
-        Source path of the built NixOS disk image (canonical host out-link in the repo).
+        Optional direct source path for the NixOS disk image.
+        Canonical behavior resolves from flake output first; this path is only used as a fallback.
       '';
     };
 
     imageTargetPath = mkOption {
       type = types.str;
-      default = "/net/${effectiveHostName}.local/private/var/lib/git/nxmatic/nix-darwin-home/hosts/${effectiveHostName}/outputs.d/nixos-disk-image/nixos.img";
+      default = "/nix/var/nix/gcroots/per-user/${profileUser}/lima-nixos.img";
       description = ''
-        Stable host path for the NixOS disk image that Lima references. If different from imageSourcePath,
-        the activation script copies/reflinks the image; when equal, no copy is performed.
+        Stable user gcroot symlink path for the NixOS disk image that Lima references.
+        Activation registers this path via `nix-store --add-root --indirect` to prevent GC.
+      '';
+    };
+
+    imageFlakeAttr = mkOption {
+      type = types.str;
+      default = "nixosDiskImageBringupSystemdBoot";
+      description = ''
+        Flake output attribute used as fallback when imageSourcePath is unavailable.
+        The activation script resolves `${cfg.nixosFlakePath}/hosts/${effectiveHostName}#<attr>`
+        and uses `<out>/nixos.img` when present.
       '';
     };
 
@@ -434,10 +471,10 @@ in
 
     requireNetAutomount = mkOption {
       type = types.bool;
-      default = true;
+      default = false;
       description = ''
         Require Darwin autofs `/net` wiring for Lima configuration.
-        This keeps `/net/<host>.local/...` image paths usable and avoids silent runtime failures.
+        Keep disabled unless you intentionally depend on `/net`-based image paths.
       '';
     };
   };

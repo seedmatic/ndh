@@ -19,6 +19,12 @@ let
     else
       specialArgs;
 
+  limaConfigMaterializerPackage =
+    if specialArgsResolved ? limaConfigMaterializerPackage then
+      specialArgsResolved.limaConfigMaterializerPackage
+    else
+      null;
+
   resolvedProfile =
     if profile != null then profile else lib.attrByPath [ "profile" ] null specialArgsResolved;
 
@@ -106,9 +112,10 @@ let
 
   baseHomePackages =
     if isMinimalHomeProfile then
-      lib.optionals pkgs.stdenv.isDarwin [
-        pkgs.lima
-      ]
+      lib.optionals pkgs.stdenv.isDarwin (
+        [ pkgs.lima ]
+        ++ lib.optional (limaConfigMaterializerPackage != null) limaConfigMaterializerPackage
+      )
     else
       with pkgs; [
         alejandra

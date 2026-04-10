@@ -890,6 +890,19 @@
             user = committedHomeManagerUserWithHome;
             email = committedHomeManagerUserWithHome.email;
           };
+          nixosOutputs = mkNixosOutputs {
+            inherit hostProfile catalog;
+            profileModule =
+              { ... }:
+              {
+                imports = [ profileModule ] ++ nixosExtraModules;
+              };
+          };
+          nixosConfiguration = nixosOutputs.nixosConfigurations."${mainName}-nixos";
+          nixosDiskImage = nixosOutputs.diskImageFullExt4;
+          nixosDiskImageBringupSystemdBoot = nixosOutputs.diskImageBringupSystemdBoot;
+          nixosDiskImageBringupGrub = nixosOutputs.diskImageBringupGrub;
+          nixosDiskSizeHint = nixosOutputs.diskSizeHint;
           mkHomeManagerConfig = profile:
             home-manager.lib.homeManagerConfiguration {
               pkgs = pkgsForDarwin;
@@ -906,31 +919,31 @@
                 logger = mkLoggerSpecialArg "aarch64-darwin";
                 ndh = { store = ndhStoreApiDarwin; };
                 sshKeysYamlPath = "${toString profile.user.home}/.local/var/run/secrets/sops/ssh-keys.yaml";
+                limaConfigMaterializerPackage =
+                  darwinOutputs.darwinConfigurations.${mainName}.config.lima.configGenerator.materializerPackage;
               };
             };
           darwinOutputs = mkDarwinOutputs {
             inherit hostProfile catalog;
             profileModule =
-              { ... }:
+              { lib, ... }:
               {
-                imports = [ profileModule ] ++ darwinExtraModules;
+                imports =
+                  [
+                    profileModule
+                    ({ ... }: {
+                      profile.user.name = lib.mkForce workHomeManagerUserWithHome.name;
+                      profile.user.home = lib.mkForce (builtins.toPath workHomeManagerUserWithHome.home);
+                    })
+                    ({ ... }: {
+                      lima.configGenerator.imageDescriptorPath = "${nixosDiskImageBringupSystemdBoot}/descriptor.yaml";
+                      lima.configGenerator.imageStorePath = "${nixosDiskImageBringupSystemdBoot}/nixos.img";
+                    })
+                  ]
+                  ++ darwinExtraModules;
               };
           };
           darwinConfiguration = darwinOutputs.darwinConfigurations.${mainName};
-
-          nixosOutputs = mkNixosOutputs {
-            inherit hostProfile catalog;
-            profileModule =
-              { ... }:
-              {
-                imports = [ profileModule ] ++ nixosExtraModules;
-              };
-          };
-          nixosConfiguration = nixosOutputs.nixosConfigurations."${mainName}-nixos";
-          nixosDiskImage = nixosOutputs.diskImageFullExt4;
-          nixosDiskImageBringupSystemdBoot = nixosOutputs.diskImageBringupSystemdBoot;
-          nixosDiskImageBringupGrub = nixosOutputs.diskImageBringupGrub;
-          nixosDiskSizeHint = nixosOutputs.diskSizeHint;
           autofsNetMaterializerPackage =
             if darwinConfiguration ? config
               && darwinConfiguration.config ? services
