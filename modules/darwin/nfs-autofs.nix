@@ -140,6 +140,15 @@ let
     chmod +x "$out"
   '';
 
+  syntheticPreDedupeScript = ndh.store.runCommand "synthetic-pre-dedupe.sh" { } ''
+    cp ${
+      pkgs.replaceVars ./nfs-autofs.d/synthetic-pre-dedupe.sh {
+        logger = loggerScript;
+      }
+    } "$out"
+    chmod +x "$out"
+  '';
+
   autoMasterLinkScript = ndh.store.runCommand "auto-master-link.sh" { } ''
     cp ${
       pkgs.replaceVars ./nfs-autofs.d/auto-master-link.sh {
@@ -487,6 +496,11 @@ in
           ''
             ${syntheticEnsureScript}
           '';
+      syntheticPreDedupeBlock =
+        lib.optionalString (autoCfg.enable && autoCfg.synthetic.enable && syntheticEntries != [ ])
+          ''
+            ${syntheticPreDedupeScript}
+          '';
       syntheticReloadBlock =
         lib.optionalString (autoCfg.enable && autoCfg.synthetic.enable && syntheticEntries != [ ])
           ''
@@ -503,6 +517,12 @@ in
     in
     {
       environment.systemPackages = lib.optionals autoCfg.installMaterializerPackage [ autoCfg.materializerPackage ];
+
+      # Run before nix-darwin's built-in /run synthetic enforcement so duplicate
+      # run lines never reach its BSD-sed-specific cleanup path.
+      system.activationScripts.preActivation.text = lib.mkBefore ''
+        ${syntheticPreDedupeBlock}
+      '';
 
       system.activationScripts.etc.text = lib.mkAfter ''
         cat > /etc/exports <<'EOF'
