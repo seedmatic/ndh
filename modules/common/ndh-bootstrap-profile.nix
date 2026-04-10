@@ -94,7 +94,7 @@ in
       NDH_BOOTSTRAP_INSTALL_HINT = installHint;
     };
 
-    system.activationScripts.preActivation.text = lib.mkIf cfg.requireForActivation (lib.mkBefore ''
+    system.activationScripts.preActivation.text = lib.mkIf (cfg.requireForActivation || cfg.autoInstallOnActivation) (lib.mkBefore ''
       ${activationCheckScript}
     '');
     }
