@@ -29,46 +29,9 @@ ndh::env:user:home() {
 }
 
 ndh::bootstrap:profile:dir() {
-	local profile_name
-	profile_name="io-nxmatic-nix-darwin-home-bootstrap-runtime"
-
-	if [[ -n "${NDH_BOOTSTRAP_PROFILE_OWNER:-}" ]]; then
-		echo "/nix/var/nix/profiles/per-user/${NDH_BOOTSTRAP_PROFILE_OWNER}/${profile_name}"
-		return 0
-	fi
-
-	# Canonical default when no explicit owner is provided.
-	if [[ -d "/nix/var/nix/profiles/per-user/root" ]]; then
-		echo "/nix/var/nix/profiles/per-user/root/${profile_name}"
-		return 0
-	fi
-
-	if [[ -n "${NDH_BOOTSTRAP_PROFILE_DIR:-}" ]]; then
-		echo "${NDH_BOOTSTRAP_PROFILE_DIR}"
-		return 0
-	fi
-
-	if [[ -n "${NDH_BOOTSTRAP_PROFILE_BIN:-}" ]]; then
-		echo "${NDH_BOOTSTRAP_PROFILE_BIN%/bin}"
-		return 0
-	fi
-
-	if [[ -n "${SUDO_USER:-}" ]]; then
-		echo "/nix/var/nix/profiles/per-user/${SUDO_USER}/${profile_name}"
-		return 0
-	fi
-
-	if [[ -n "${USER:-}" ]]; then
-		echo "/nix/var/nix/profiles/per-user/${USER}/${profile_name}"
-		return 0
-	fi
-
-	if [[ -n "${HOME:-}" ]]; then
-		echo "${HOME}/.local/state/nix/profiles/${profile_name}"
-		return 0
-	fi
-
-	return 1
+	# Canonical policy: always use root-owned dedicated NDH bootstrap profile.
+	echo "/nix/var/nix/profiles/per-user/root/io-nxmatic-nix-darwin-home-bootstrap-runtime"
+	return 0
 }
 
 ndh::bootstrap:profile:bin() {
