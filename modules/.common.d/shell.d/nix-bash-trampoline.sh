@@ -28,18 +28,40 @@ ndh::env:user:home() {
 	echo "$resolved_home"
 }
 
-ndh::bootstrap:profile:bin() {
-	if [[ -n "${NDH_BOOTSTRAP_PROFILE_BIN:-}" ]]; then
-		echo "${NDH_BOOTSTRAP_PROFILE_BIN}"
+ndh::bootstrap:profile:dir() {
+	if [[ -n "${NDH_BOOTSTRAP_PROFILE_DIR:-}" ]]; then
+		echo "${NDH_BOOTSTRAP_PROFILE_DIR}"
 		return 0
 	fi
 
-	if [[ -n "${NDH_BOOTSTRAP_PROFILE_DIR:-}" ]]; then
-		echo "${NDH_BOOTSTRAP_PROFILE_DIR}/bin"
+	if [[ -n "${NDH_BOOTSTRAP_PROFILE_BIN:-}" ]]; then
+		echo "${NDH_BOOTSTRAP_PROFILE_BIN%/bin}"
+		return 0
+	fi
+
+	if [[ -n "${SUDO_USER:-}" ]]; then
+		local sudo_home
+		sudo_home="$(ndh::env:user:home "${SUDO_USER}" || true)"
+		if [[ -n "$sudo_home" ]]; then
+			echo "${sudo_home}/.local/state/nix/profiles/io-nxmatic-nix-darwin-home-bootstrap-runtime"
+			return 0
+		fi
+	fi
+
+	if [[ -n "${HOME:-}" ]]; then
+		echo "${HOME}/.local/state/nix/profiles/io-nxmatic-nix-darwin-home-bootstrap-runtime"
 		return 0
 	fi
 
 	return 1
+}
+
+ndh::bootstrap:profile:bin() {
+	local profile_dir
+	profile_dir="$(ndh::bootstrap:profile:dir || true)"
+	[[ -n "$profile_dir" ]] || return 1
+	echo "${profile_dir}/bin"
+	return 0
 }
 
 ndh::bootstrap:runtime:path() {
@@ -77,10 +99,7 @@ ndh::bootstrap:runtime:install() {
 	local nix_bin profile_dir profile_name runtime_name legacy_runtime_name runtime_spec
 
 	nix_bin="$(command -v nix 2>/dev/null || true)"
-	profile_dir="${NDH_BOOTSTRAP_PROFILE_DIR:-}"
-	if [[ -z "$profile_dir" ]] && [[ -n "${NDH_BOOTSTRAP_PROFILE_BIN:-}" ]]; then
-		profile_dir="${NDH_BOOTSTRAP_PROFILE_BIN%/bin}"
-	fi
+	profile_dir="$(ndh::bootstrap:profile:dir || true)"
 
 	if [[ -z "$nix_bin" || -z "$profile_dir" ]]; then
 		return 1
@@ -106,12 +125,32 @@ ndh::bootstrap:runtime:install() {
 	return 0
 }
 
+ndh::bootstrap:runtime:diagnose() {
+	local profile_dir profile_bin cmd resolved
+	profile_dir="$(ndh::bootstrap:profile:dir || true)"
+	profile_bin="$(ndh::bootstrap:profile:bin || true)"
+
+	echo "[ndh][DIAG] bootstrap profile dir: ${profile_dir:-<unset>}" >&2
+	echo "[ndh][DIAG] bootstrap profile bin: ${profile_bin:-<unset>}" >&2
+	if [[ -n "$profile_bin" ]]; then
+		ls -ld "$profile_bin" >&2 2>/dev/null || true
+		ls -l "$profile_bin"/age "$profile_bin"/age-keygen >&2 2>/dev/null || true
+	fi
+
+	for cmd in age age-keygen; do
+		resolved="$(command -v "$cmd" 2>/dev/null || true)"
+		echo "[ndh][DIAG] command -v ${cmd}: ${resolved:-<missing>}" >&2
+	done
+}
+
 ndh::bootstrap:runtime:ensure() {
 	ndh::bootstrap:runtime:install || true
 
 	if ndh::bootstrap:runtime:verify; then
 		return 0
 	fi
+
+	ndh::bootstrap:runtime:diagnose
 
 	if [[ "${NDH_BOOTSTRAP_STRICT:-1}" == "1" ]]; then
 		echo "[ndh][ERROR] required NDH bootstrap profile is missing/incomplete" >&2
