@@ -9,6 +9,11 @@ let
   profile = config._module.specialArgs.profile;
   ndh = config._module.specialArgs.ndh;
   profileName = profile.name;
+  sshKeyProfileName =
+    if profile ? sshKeyProfileName && profile.sshKeyProfileName != null && profile.sshKeyProfileName != "" then
+      profile.sshKeyProfileName
+    else
+      profileName;
   hostProfile = profile.host;
   userProfile = profile.user;
   userName = profile.user.name; # Use profile user name for tagging
@@ -137,7 +142,7 @@ in
     {
       # Generate the YAML of keys to deploy based on the main keys.yaml and the current host/profile
       generateSSHKeysYaml = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-        ${pkgs.bash}/bin/bash ${sshGenerateKeysYamlScript} "${profileName}" "$(${pkgs.hostname}/bin/hostname -s)" "${decryptedSSHKeysYamlPath}" "${effectiveSSHKeysYamlPath}" "${hostsCatalogCsv}" "${userName}"
+        ${pkgs.bash}/bin/bash ${sshGenerateKeysYamlScript} "${sshKeyProfileName}" "$(${pkgs.hostname}/bin/hostname -s)" "${decryptedSSHKeysYamlPath}" "${effectiveSSHKeysYamlPath}" "${hostsCatalogCsv}" "${userName}"
       '';
 
       # Deploy keys to the filesystem with proper permissions based on the generated YAML

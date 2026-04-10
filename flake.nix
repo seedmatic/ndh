@@ -879,6 +879,7 @@
           };
           workProfile = {
             name = "work";
+            sshKeyProfileName = "committed";
             host = hostProfile;
             user = workHomeManagerUserWithHome;
             email = workHomeManagerUserWithHome.email;
