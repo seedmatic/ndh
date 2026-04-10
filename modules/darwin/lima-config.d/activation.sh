@@ -8,9 +8,9 @@ main() {
   mkdir -p "@profileHome@/.lima/nerd-nixos"
   mkdir -p "@profileHome@/.lima/_config"
 
-  : "Install managed host-side Lima wrapper"
-  cp "@limaRunScript@" "@profileHome@/.lima/run.sh"
-  chmod 0700 "@profileHome@/.lima/run.sh"
+  : "Install managed host-side Lima wrapper as symlink to store path"
+  ln -sfn "@limaRunScript@" "@profileHome@/.lima/run.sh"
+  rm -f "@profileHome@/.lima/run.sh~"
 
   host_pub="@hostPublicKeyPath@"
   host_priv="@hostPrivateKeyPath@"
@@ -45,15 +45,13 @@ main() {
     echo "[limaConfig][WARN] source image missing: $img_src"
   fi
 
-  : "Generate lima.yaml with profile user configuration using yq"
-  cat << 'EOF' | @yqBin@ -P -p json -o yaml eval . - > "@profileHome@/.lima/nerd-nixos/lima.yaml"
-@limaConfigJson@
-EOF
-  chmod 0600 "@profileHome@/.lima/nerd-nixos/lima.yaml"
+  : "Install managed lima.yaml as symlink to store path"
+  ln -sfn "@limaConfigYaml@" "@profileHome@/.lima/nerd-nixos/lima.yaml"
   : "Verify output file"
-  if [ -f "@profileHome@/.lima/nerd-nixos/lima.yaml" ]; then
-    echo "[limaConfig] generated size=$(wc -c < "@profileHome@/.lima/nerd-nixos/lima.yaml")"
-    grep -E 'gateway|clusterId' "@profileHome@/.lima/nerd-nixos/lima.yaml" || true
+  if [ -e "@profileHome@/.lima/nerd-nixos/lima.yaml" ]; then
+    echo "[limaConfig] linked @profileHome@/.lima/nerd-nixos/lima.yaml -> $(readlink "@profileHome@/.lima/nerd-nixos/lima.yaml" || echo '<not-a-symlink>')"
+    echo "[limaConfig] generated size=$(wc -c < "@limaConfigYaml@")"
+    grep -E 'gateway|clusterId' "@limaConfigYaml@" || true
     touch /var/db/lima-config-generated
   else
     echo "[limaConfig][ERROR] lima.yaml missing after generation attempt"

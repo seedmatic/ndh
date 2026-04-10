@@ -72,16 +72,13 @@ let
   clusterNetworkName = "cluster${toString clusterId}";
   limaNetworksOpts = config.lima.networks or { };
 
-  yqBin = "${pkgs.yq-go}/bin/yq";
-
   limaActivationScript = pkgs.runCommand "lima-config-activation.sh" { } ''
     cp ${
       pkgs.replaceVars ./lima-config.d/activation.sh {
         effectiveHostName = effectiveHostName;
         profileUser = profileUser;
         profileHome = profileHome;
-        yqBin = yqBin;
-        limaConfigJson = limaConfigJson;
+        limaConfigYaml = limaConfigYaml;
         limaRunScript = limaRunScript;
         imageSourcePath = imageSourcePath;
         imageTargetPath = imageTargetPath;
@@ -307,6 +304,15 @@ let
         vzNAT = true;
         interface = "vznat0";
         macAddress = "10:66:6a:4c:${hostByteHex}:00";
+        metric = 200;
+      }
+      {
+        # Dedicated socket_vmnet shared network for host/guest services (e.g., NFS)
+        # Keep this before bridged so hostagent SSH prefers a host-routable endpoint.
+        lima = "shared";
+        interface = "vmhost0";
+        macAddress = "10:66:6a:4c:${hostByteHex}:02";
+        metric = 50;
       }
       {
         # Bridged LAN access for VM direct connectivity
@@ -316,18 +322,14 @@ let
         lima = "bridged";
         interface = "vmlan0";
         macAddress = "10:66:6a:4c:${hostByteHex}:01";
-      }
-      {
-        # Dedicated socket_vmnet shared network for host/guest services (e.g., NFS)
-        lima = "shared";
-        interface = "vmhost0";
-        macAddress = "10:66:6a:4c:${hostByteHex}:02";
+        metric = 100;
       }
     ];
 
   };
 
   limaConfigJson = lib.generators.toJSON { } limaConfig;
+  limaConfigYaml = (pkgs.formats.yaml { }).generate "lima.yaml" limaConfig;
 
 in
 {
@@ -355,9 +357,9 @@ in
 
     imageSourcePath = mkOption {
       type = types.str;
-      default = "/net/${effectiveHostName}.local/private/var/lib/git/nxmatic/nix-darwin-home/hosts/${effectiveHostName}/nixos/nixos.img";
+      default = "/net/${effectiveHostName}.local/private/var/lib/git/nxmatic/nix-darwin-home/hosts/${effectiveHostName}/nixos-disk-image/nixos.img";
       description = ''
-        Source path of the built NixOS disk image (typically an out-link in the repo).
+        Source path of the built NixOS disk image (canonical host out-link in the repo).
       '';
     };
 
