@@ -51,11 +51,11 @@ let
           # Accepts all profile principals to allow cross-host connections
           profiles:
             committed:
-              host:
+              rdp-host:
                 principals:
     ${formatPrincipals allPrincipals}
             work:
-              host:
+              rdp-host:
                 principals:
     ${formatPrincipals allPrincipals}
   '';

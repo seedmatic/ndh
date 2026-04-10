@@ -54,7 +54,7 @@ ssh_keychain_collect_yaml_keys() {
 ssh_keychain_collect_fallback_keys() {
   local candidate
 
-  for candidate in "$state_keys_dir"/host "$state_keys_dir"/host-*; do
+  for candidate in "$state_keys_dir"/rdp-host "$state_keys_dir"/rdp-host-*; do
     [[ -e "$candidate" ]] || continue
     ssh_keychain_add_candidate "$candidate" || true
   done

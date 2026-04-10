@@ -43,13 +43,13 @@ in
 
     privKeyFile = lib.mkOption {
       type = lib.types.str;
-      default = "${config.sshPaths.perUserSecretsDir}/host";
+      default = "${config.sshPaths.perUserSecretsDir}/rdp-host";
       description = "Path to the SSH host private key.";
     };
 
     hostCertPublic = lib.mkOption {
       type = lib.types.str;
-      default = "${config.sshPaths.systemSecretsDir}/host-mammoth-skate-host-cert.pub";
+      default = "${config.sshPaths.systemSecretsDir}/rdp-host-server-cert.pub";
       description = "Path to the SSH host public certificate.";
     };
 
