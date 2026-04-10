@@ -3,12 +3,28 @@
   modulesPath,
   pkgs,
   lib,
+  catalog,
   ...
 }:
 
 let
   LIMA_CIDATA_MNT = "/mnt/lima-cidata";
   LIMA_CIDATA_DEV = "/dev/disk/by-label/cidata";
+  committedProfileUserName =
+    if catalog ? users && catalog.users ? committed && catalog.users.committed ? name then
+      catalog.users.committed.name
+    else
+      config.profile.user.name;
+  committedTrustedCaPublicKey = lib.removeSuffix "\n" (builtins.readFile (
+    pkgs.runCommand "committed-trusted-user-ca-public-key" { buildInputs = [ pkgs.yq-go ]; } ''
+      yq -r '.profiles.committed."mammoth-skate".public // ""' ${../../home-manager/ssh.d/keys.yaml} > "$out"
+    ''
+  ));
+  linuxBuilderPublicKey = lib.removeSuffix "\n" (builtins.readFile (
+    pkgs.runCommand "linux-builder-public-key" { buildInputs = [ pkgs.yq-go ]; } ''
+      yq -r '.profiles.committed."linux-builder".public // ""' ${../../home-manager/ssh.d/keys.yaml} > "$out"
+    ''
+  ));
   limaCloudInit = pkgs.writeShellApplication {
     name = "lima-cloud-init";
     runtimeInputs = with pkgs; [
@@ -24,7 +40,11 @@ let
       gawk
       iproute2
     ];
-    text = builtins.readFile ./lima-cloud-init.sh;
+    text = builtins.readFile (pkgs.replaceVars ./lima-cloud-init.sh {
+      profileUserName = committedProfileUserName;
+      linuxBuilderPublicKey = linuxBuilderPublicKey;
+      committedTrustedCaPublicKey = committedTrustedCaPublicKey;
+    });
   };
 in
 {

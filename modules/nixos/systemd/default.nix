@@ -17,6 +17,7 @@ let
   homeManagerServiceName = "home-manager-${profileUserName}";
   keysTargetUnit = "keys.target";
   hasSopsInstallSecretsService = builtins.hasAttr "sops-install-secrets" config.systemd.services;
+  hasSshKeysEnrichmentService = builtins.hasAttr "io-nxmatic-nix-darwin-home-ssh-keys-enrichment" config.systemd.services;
 in
 {
   options.rescue.enable = lib.mkOption {
@@ -30,6 +31,7 @@ in
     ./lima-nixos-config.nix
     ./lima-guest-agent.nix
     ./openssh.nix
+    ./ssh-keys-enrichment.nix
     ./rescue.nix
   ]
   ++ (lib.optionals (!bootstrapMode) [
@@ -46,7 +48,13 @@ in
 
   config.systemd.services.${homeManagerServiceName} = lib.mkIf (!bootstrapMode) {
     wantedBy = [ "io-nxmatic-nix-darwin-home-contributed.target" ];
-    requires = [ keysTargetUnit ] ++ lib.optionals hasSopsInstallSecretsService [ "sops-install-secrets.service" ];
-    after = [ keysTargetUnit ] ++ lib.optionals hasSopsInstallSecretsService [ "sops-install-secrets.service" ];
+    requires =
+      [ keysTargetUnit ]
+      ++ lib.optionals hasSopsInstallSecretsService [ "sops-install-secrets.service" ]
+      ++ lib.optionals hasSshKeysEnrichmentService [ "io-nxmatic-nix-darwin-home-ssh-keys-enrichment.service" ];
+    after =
+      [ keysTargetUnit ]
+      ++ lib.optionals hasSopsInstallSecretsService [ "sops-install-secrets.service" ]
+      ++ lib.optionals hasSshKeysEnrichmentService [ "io-nxmatic-nix-darwin-home-ssh-keys-enrichment.service" ];
   };
 }

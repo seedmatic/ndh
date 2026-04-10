@@ -6,6 +6,9 @@ set -xe -o pipefail
 
 LIMA_CIDATA_MNT="${LIMA_CIDATA_MNT:-/mnt/lima-cidata}"
 LIMA_CIDATA_DEV="${LIMA_CIDATA_DEV:-/dev/disk/by-label/cidata}"
+PROFILE_USER_NAME="@profileUserName@"
+LINUX_BUILDER_PUBLIC_KEY="@linuxBuilderPublicKey@"
+COMMITTED_TRUSTED_CA_PUBLIC_KEY="@committedTrustedCaPublicKey@"
 
 exec 1> >(tee -a "${LIMA_CLOUD_INIT_OUTPUT_LOG:-/var/log/lima-cloud-init-output.log}") \
      2> >(tee -a "${LIMA_CLOUD_INIT_LOG:-/var/log/lima-cloud-init.log}")
@@ -66,6 +69,12 @@ EoE
 # shellcheck disable=SC1090,SC1091
 source <( yq --input-format=props --output-format=shell "${LIMA_CIDATA_MNT}/lima.env" )
 
+# Canonicalize guest home to Linux path.
+# IMPORTANT: the host-provided home path from cidata must NOT become the VM account home.
+# Any non-canonical value (e.g. /Users/<user>) is treated as optional compatibility alias only.
+CANONICAL_HOME="/home/${LIMA_CIDATA_USER}"
+CONFIGURED_HOME="${LIMA_CIDATA_HOME:-${CANONICAL_HOME}}"
+
 if id -u "${LIMA_CIDATA_USER}" &>/dev/null; then
   EXISTING_UID=$(id -u "${LIMA_CIDATA_USER}")
   if [[ "${EXISTING_UID}" != "${LIMA_CIDATA_UID}" ]]; then
@@ -73,8 +82,9 @@ if id -u "${LIMA_CIDATA_USER}" &>/dev/null; then
     LIMA_CIDATA_UID=${EXISTING_UID}
 	LIMA_CIDATA_GID=$(id -g "${LIMA_CIDATA_USER}")
   fi
+  usermod --home "${CANONICAL_HOME}" "${LIMA_CIDATA_USER}" || true
 else
-  useradd --home-dir "${LIMA_CIDATA_HOME}" --create-home --uid "${LIMA_CIDATA_UID}" "${LIMA_CIDATA_USER}"
+  useradd --home-dir "${CANONICAL_HOME}" --create-home --uid "${LIMA_CIDATA_UID}" "${LIMA_CIDATA_USER}"
 fi
 
 usermod -a -G wheel "${LIMA_CIDATA_USER}" || true
@@ -86,19 +96,94 @@ ln -fs /run/wrappers/bin/sudo /usr/bin/sudo || true
 
 # Setup SSH
 install -d -m 755 "/etc/ssh/nix_authorized_keys.d"
-yq eval '.users[].ssh-authorized-keys[]' "${LIMA_CIDATA_MNT}/user-data" > "/etc/ssh/nix_authorized_keys.d/${LIMA_CIDATA_USER}"
-chown "root:${LIMA_CIDATA_GID}" "/etc/ssh/nix_authorized_keys.d/${LIMA_CIDATA_USER}"
-chmod 640 "/etc/ssh/nix_authorized_keys.d/${LIMA_CIDATA_USER}"
 
-# Fix permissions for Darwin host shared home directory
-DARWIN_HOME="/home/${LIMA_CIDATA_USER}"
-if [[ -d "${DARWIN_HOME}" ]]; then
+build_authorized_keys_for_user() {
+  local target_user="$1"
+  local auth_file="/etc/ssh/nix_authorized_keys.d/${target_user}"
+  local tmp_keys
+  local existing_tmp
+
+  tmp_keys="$(mktemp)"
+  existing_tmp="$(mktemp)"
+
+  # 1) Preferred source: user-scoped keys from cidata user-data
+  yq eval -r \
+    ".users[]? | select((.name // \"\") == \"${target_user}\") | (.\"ssh-authorized-keys\" // .ssh_authorized_keys // [])[]?" \
+    "${LIMA_CIDATA_MNT}/user-data" 2>/dev/null >> "${tmp_keys}" || true
+
+  # 2) Compatibility source: unscoped keys if user-scoped extraction is empty
+  if [[ ! -s "${tmp_keys}" ]]; then
+    yq eval -r '.users[]? | (."ssh-authorized-keys" // .ssh_authorized_keys // [])[]?' \
+      "${LIMA_CIDATA_MNT}/user-data" 2>/dev/null >> "${tmp_keys}" || true
+  fi
+
+  # 3) Bootstrap fallback: canonical linux-builder key from store-managed key model
+  if [[ -n "${LINUX_BUILDER_PUBLIC_KEY}" ]]; then
+    printf 'ssh-ed25519 %s %s\n' "${LINUX_BUILDER_PUBLIC_KEY}" "linux-builder@mammoth-skate" >> "${tmp_keys}"
+  fi
+
+  # 4) Preserve previous valid key file if fresh extraction is empty
+  if [[ -s "${auth_file}" ]]; then
+    cat "${auth_file}" > "${existing_tmp}"
+  fi
+
+  awk 'NF > 0 && $1 ~ /^ssh-/ { print }' "${tmp_keys}" | awk '!seen[$0]++' > "${tmp_keys}.clean"
+
+  if [[ -s "${tmp_keys}.clean" ]]; then
+    install -m 644 "${tmp_keys}.clean" "${auth_file}"
+    chown "root:root" "${auth_file}"
+    chmod 644 "${auth_file}"
+    echo "[lima-cloud-init] installed authorized keys for ${target_user}: ${auth_file}"
+  elif [[ -s "${existing_tmp}" ]]; then
+    install -m 644 "${existing_tmp}" "${auth_file}"
+    chown "root:root" "${auth_file}"
+    chmod 644 "${auth_file}"
+    echo "[lima-cloud-init][WARN] no fresh keys for ${target_user}; preserved existing ${auth_file}" >&2
+  else
+    echo "[lima-cloud-init][WARN] no authorized keys materialized for ${target_user}" >&2
+  fi
+
+  rm -f "${tmp_keys}" "${tmp_keys}.clean" "${existing_tmp}"
+}
+
+build_authorized_keys_for_user "${LIMA_CIDATA_USER}"
+if [[ -n "${PROFILE_USER_NAME}" && "${PROFILE_USER_NAME}" != "${LIMA_CIDATA_USER}" ]]; then
+  build_authorized_keys_for_user "${PROFILE_USER_NAME}"
+fi
+
+# Bootstrap certificate-auth trust fallback: keep trusted-user CA available
+# even before runtime secret extraction populates /etc/ssh/keys.d.
+install -d -m 755 "/etc/ssh/keys.d"
+if [[ -n "${COMMITTED_TRUSTED_CA_PUBLIC_KEY}" ]]; then
+  printf 'ssh-ed25519 %s %s\n' "${COMMITTED_TRUSTED_CA_PUBLIC_KEY}" "cert-authority@mammoth-skate" \
+    > "/etc/ssh/keys.d/trusted-user-ca.pub"
+  chown root:root "/etc/ssh/keys.d/trusted-user-ca.pub"
+  chmod 644 "/etc/ssh/keys.d/trusted-user-ca.pub"
+  echo "[lima-cloud-init] installed bootstrap trusted user CA: /etc/ssh/keys.d/trusted-user-ca.pub"
+fi
+
+# Optional compatibility alias for non-canonical home paths coming from cidata
+# (e.g. /Users/<user>): reverse-link alias to canonical VM home when safe.
+if [[ "${CONFIGURED_HOME}" != "${CANONICAL_HOME}" ]]; then
+  echo "[lima-cloud-init] keeping canonical VM home ${CANONICAL_HOME}; treating configured home as alias: ${CONFIGURED_HOME}"
+  if [[ -e "${CONFIGURED_HOME}" && ! -L "${CONFIGURED_HOME}" ]]; then
+    echo "[lima-cloud-init] INFO: configured home exists and is not a symlink, keeping as-is: ${CONFIGURED_HOME}" >&2
+  else
+    mkdir -p "$(dirname "${CONFIGURED_HOME}")"
+    ln -sfn "${CANONICAL_HOME}" "${CONFIGURED_HOME}"
+    echo "[lima-cloud-init] configured home alias: ${CONFIGURED_HOME} -> ${CANONICAL_HOME}"
+  fi
+fi
+
+# Fix permissions for canonical VM home directory
+VM_HOME="${CANONICAL_HOME}"
+if [[ -d "${VM_HOME}" ]]; then
   # shellcheck disable=SC2153
-  chown "${LIMA_CIDATA_UID}:${LIMA_CIDATA_GID}" "${DARWIN_HOME}" || true
+  chown "${LIMA_CIDATA_UID}:${LIMA_CIDATA_GID}" "${VM_HOME}" || true
   for subdir in .config .xdg .cache .local .local/share; do
-    mkdir -p "${DARWIN_HOME}/${subdir}"
-    chown "${LIMA_CIDATA_UID}:${LIMA_CIDATA_GID}" "${DARWIN_HOME}/${subdir}"
-    chmod 755 "${DARWIN_HOME}/${subdir}"
+    mkdir -p "${VM_HOME}/${subdir}"
+    chown "${LIMA_CIDATA_UID}:${LIMA_CIDATA_GID}" "${VM_HOME}/${subdir}"
+    chmod 755 "${VM_HOME}/${subdir}"
   done
 fi
 
