@@ -950,23 +950,26 @@
           ndhBootstrapInstallerPackageLinux = mkNdhBootstrapProfileInstaller "aarch64-linux";
           ndhPrerequisitesInstallerPackage =
             ndhStoreApiDarwin.runCommand "prerequisites-install" { } ''
-              #!/usr/bin/env bash
-              install -Dm755 /dev/stdin "$out/bin/io-nxmatic-nix-darwin-home-prerequisites-install" <<'EOF'
+              mkdir -p "$out/bin"
+              cat > "$out/bin/io-nxmatic-nix-darwin-home-prerequisites-install" <<'EOF'
               #!/usr/bin/env bash
               set -euo pipefail
 
               ${nixpkgs.lib.optionalString (autofsNetMaterializerProgram != null) "/usr/bin/sudo ${autofsNetMaterializerProgram}"}
               exec ${ndhBootstrapInstallerPackage}/bin/io-nxmatic-nix-darwin-home-bootstrap-profile-install "$@"
               EOF
+              chmod 0555 "$out/bin/io-nxmatic-nix-darwin-home-prerequisites-install"
             '';
           ndhPrerequisitesInstallerPackageLinux =
             ndhStoreApiLinux.runCommand "prerequisites-install" { } ''
-              install -Dm755 /dev/stdin "$out/bin/io-nxmatic-nix-darwin-home-prerequisites-install" <<'EOF'
+              mkdir -p "$out/bin"
+              cat > "$out/bin/io-nxmatic-nix-darwin-home-prerequisites-install" <<'EOF'
               #!/usr/bin/env bash
               set -euo pipefail
 
               exec ${ndhBootstrapInstallerPackageLinux}/bin/io-nxmatic-nix-darwin-home-bootstrap-profile-install "$@"
               EOF
+              chmod 0555 "$out/bin/io-nxmatic-nix-darwin-home-prerequisites-install"
             '';
           hostDarwinPackages = {
             io-nxmatic-nix-darwin-home-bootstrap-runtime = ndhBootstrapRuntimePackage;
