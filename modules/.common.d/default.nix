@@ -292,6 +292,7 @@ in
       useUserPackages = true;
       verbose = true;
       backupFileExtension = "nix-backup";
+      overwriteBackup = true;
     };
   });
 

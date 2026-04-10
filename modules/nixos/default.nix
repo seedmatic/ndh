@@ -101,6 +101,7 @@ let
   '';
   bootstrapRequiredImports = [
     ../.common.d
+    ./etc-backup.nix
     ./lima-network-interfaces.nix
     ./disko.nix
     ./systemd
