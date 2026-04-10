@@ -250,7 +250,7 @@
           runtimePackage = mkNdhBootstrapRuntimePackage system;
           scriptSource = pkgsForSystem.replaceVars ./modules/.common.d/bootstrap-profile.d/install-standalone.sh {
             runtimePackage = runtimePackage;
-            defaultProfileDir = "\${HOME}/.local/state/nix/profiles/io-nxmatic-nix-darwin-home-bootstrap-runtime";
+            defaultProfileDir = "/nix/var/nix/profiles/per-user/root/io-nxmatic-nix-darwin-home-bootstrap-runtime";
             requiredCommands = "age age-keygen awk sed grep ssh ssh-keygen yq git";
           };
         in
