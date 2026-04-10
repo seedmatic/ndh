@@ -1,6 +1,6 @@
 #!/usr/bin/env -S bash -euo pipefail
 # Generate Incus user configuration file
-source @activationLogger@
+source @logger@
 
 main() {
   # @user@ and @home@ substituted at build time
@@ -57,4 +57,4 @@ EOF
     "${incus_bin}" remote add "${remote_name}" "${token}"
 }
 
-activation_run "@activationTag@" main "$@"
+ndh::logger:command:run "@activationTag@" main "$@"

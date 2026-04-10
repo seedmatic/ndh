@@ -13,7 +13,13 @@ main() {
 		cat <<'EOE' | cut -c 3-
   .keys | to_entries[] | 
   env(TMPDIR) + "/" as $tmpdir |
-  ( .key | gsub("_", "-") ) as $basename |
+  ( .value.annotations.file_name // ( .key | gsub("_", "-") ) ) as $basename |
+  ( .value.descriptor.extract_folder //
+    ( .value.annotations.public_scope // (
+      if (([ "ssh-authority"] - (.value.usage // []) | length) == 0) then "system" else "user" end
+    )
+  ) ) as $public_target |
+  ( if ($public_target == "ssh-system-keys" or $public_target == "system") then "system" else "user" end ) as $public_scope |
   ( $basename + ".yaml" ) as $yamlfile |
   ( $tmpdir + $yamlfile ) as $yamlfile |
   .value.private as $private | 
@@ -22,6 +28,7 @@ main() {
   [
     {
       "yamlfile": $yamlfile, 
+      "target_dir": "user",
       "content": $private
     },
     {
@@ -32,6 +39,7 @@ main() {
           ) | .suffix
         ) + ".yaml"
       ),
+      "target_dir": $public_scope,
       "content": $public
     }
   ] +
@@ -46,6 +54,7 @@ main() {
     [ 
       { 
         "yamlfile": ( $tmpdir + $basename + "-" + $authorityName + "-ca.pub.yaml" ), 
+        "target_dir": "system",
         "content": $authorityPublic
       } ]
   ) +
@@ -58,10 +67,12 @@ main() {
     [
       {
         "yamlfile": ( $tmpdir + $basename + "-" + $authorityName + "-host-cert.pub.yaml"),
+        "target_dir": "system",
         "content": $authorityCerts."ssh-host"
       },
       {
         "yamlfile": ( $tmpdir + $basename + "-" + $authorityName + "-user-cert.pub.yaml"),
+        "target_dir": "system",
         "content": $authorityCerts."ssh-user"
       }
     ]
@@ -82,12 +93,13 @@ EOE
 	for yamlFile in "$tmpDir"/*; do
 		filename="${yamlFile##*/}"
 		filename="${filename%.yaml}"
-    if [[ "$filename" == *.pub ]]; then
+    targetDir="$(@yq@ eval -r '.target_dir // "user"' "$yamlFile")"
+    if [[ "$targetDir" == "system" ]]; then
       contentFile="$systemOutputDir/$filename"
     else
       contentFile="$userOutputDir/$filename"
     fi
-		mv "$yamlFile" "$contentFile"
+    mv "$yamlFile" "$contentFile"
 		contentTmp="$(mktemp)"
 		@yq@ eval -r '.content' "$contentFile" > "$contentTmp"
 		mv "$contentTmp" "$contentFile"
@@ -101,6 +113,12 @@ EOE
     else
       chmod 600 "$contentFile"
     fi
+
+    # Keep canonical public key next to its private key while preserving
+    # backward compatibility for consumers reading from systemOutputDir.
+    if [[ "$filename" == *.pub && "$filename" != *-cert.pub && "$filename" != *-ca.pub ]]; then
+      ln -sf "$contentFile" "$systemOutputDir/$filename"
+    fi
 	done
 	rm -fr "$tmpDir"
 
@@ -110,6 +128,7 @@ EOE
 		[[ -f "$priv" ]] || continue
 		case "$priv" in
 		*.pub) continue ;;
+    */keys.yaml) continue ;;
 		esac
 		base="${priv##*/}"
     user_certs=("$systemOutputDir/${base}"-*-user-cert.pub)
@@ -157,5 +176,8 @@ EOE
 	done
 }
 
-source @activationLogger@
-activation_run "@activationTag@" main "$@"
+# shellcheck disable=SC1091
+source @bashTrampoline@
+# shellcheck disable=SC1091
+source @logger@
+ndh::logger:command:run "@activationTag@" main "$@"

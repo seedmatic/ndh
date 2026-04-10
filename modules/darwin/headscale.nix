@@ -14,10 +14,10 @@ let
   headscaleActivationScript = pkgs.runCommand "headscale-post-activation.sh" { } ''
     cp ${
       pkgs.replaceVars ./headscale-client.d/post-activation.sh {
-        activationLogger = lib.attrByPath [
+        logger = lib.attrByPath [
           "activation"
           "loggerScript"
-        ] ../common/activation-logger.sh config;
+        ] ../common/shell.d/logger.sh config;
       }
     } "$out"
     chmod +x "$out"

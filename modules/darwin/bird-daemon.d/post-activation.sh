@@ -1,4 +1,4 @@
-source @activationLogger@
+source @logger@
 
 main() {
 	set -e
@@ -36,4 +36,4 @@ main() {
 EOF
 }
 
-activation_run "@activationTag@" main "$@"
+ndh::logger:command:run "@activationTag@" main "$@"

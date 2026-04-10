@@ -1,5 +1,5 @@
 #!/usr/bin/env -S bash -euo pipefail
-source @activationLogger@
+source @logger@
 
 main() {
   echo "[bond] Configuring network bond interface"
@@ -49,4 +49,4 @@ main() {
   echo "[bond] Bond interface configured successfully"
 }
 
-activation_run darwin.activationScripts.networking.network-bond main "$@"
+ndh::logger:command:run darwin.activationScripts.networking.network-bond main "$@"

@@ -6,7 +6,7 @@
 
 == Project Overview
 
-This is a **Nix-based infrastructure-as-code** repository managing Darwin (macOS) and NixOS systems with Lima VMs, container orchestration (Incus), and Tailscale/Headscale networking. The architecture bridges macOS hosts (alcide, bioskop) with NixOS Lima VMs running RKE2 Kubernetes clusters.
+This is a **Nix-based infrastructure-as-code** repository managing Darwin (macOS) and NixOS systems with Lima VMs, container orchestration (Incus), and Tailscale/Headscale networking. The architecture bridges macOS hosts (nikopol, bioskop) with NixOS Lima VMs running RKE2 Kubernetes clusters.
 
 IMPORTANT: **Key architectural pattern**: Development happens in Lima NixOS VMs (not on the macOS host directly). The Darwin configuration is minimal, delegating heavy workloads to virtualized NixOS.
 
@@ -16,7 +16,7 @@ IMPORTANT: **Key architectural pattern**: Development happens in Lima NixOS VMs 
 
 * **`mkHostOutputs`**: Factory function generating both Darwin and NixOS configurations for a host
 * **Returns**: `darwinConfiguration`, `nixosConfiguration`, `nixosDiskImage`, `homeManagerConfigurations`
-* **Dual-purpose hosts**: Each physical host (alcide, bioskop) has both Darwin config (host OS) and NixOS config (Lima VM)
+* **Dual-purpose hosts**: Each physical host (nikopol, bioskop) has both Darwin config (host OS) and NixOS config (Lima VM)
 * **Module composition**: `mkModulesFor` constructs module lists with `preModules`, `baseModules`, `extraModules` layers
 
 === Host Configuration Pattern (`hosts/*/flake.nix`)
@@ -25,7 +25,7 @@ IMPORTANT: **Key architectural pattern**: Development happens in Lima NixOS VMs 
 ----
 hostProfile = {
   hostName = "APL-dk40njhk9h";  # Physical hostname
-  hostAlias = "alcide";          # Human-friendly alias (used as Lima hostname)
+  hostAlias = "nikopol";          # Human-friendly alias (used as Lima hostname)
   tailnet = { };                 # Tailscale configuration
 };
 ----
@@ -66,7 +66,7 @@ CRITICAL: `modules/common/default.nix` is imported by both Darwin and NixOS. Cha
 |===
 | Network | Range | Purpose
 | Lima shared | 192.168.5.0/24 | Lima VM networking
-| Incus (alcide) | 192.168.106.0/24 | RKE2 cluster
+| Incus (nikopol) | 192.168.106.0/24 | RKE2 cluster
 | Incus (bioskop) | 192.168.107.0/24 | RKE2 cluster
 | RKE2 infrastructure | 10.80.0.0/18 | Hierarchical allocation
 |===
@@ -88,8 +88,8 @@ CRITICAL: `modules/common/default.nix` is imported by both Darwin and NixOS. Cha
 [source,bash]
 ----
 # From host directory
-cd hosts/alcide  # or hosts/bioskop
-darwin-rebuild switch --flake .#alcide
+cd hosts/nikopol  # or hosts/bioskop
+darwin-rebuild switch --flake .#nikopol
 ----
 
 * Regenerates Lima VM configs in `~/.lima/`
@@ -103,7 +103,7 @@ darwin-rebuild switch --flake .#alcide
 limactl shell nerd-nixos
 
 # Rebuild from host config
-sudo nixos-rebuild switch --flake /Users/username/hosts/alcide#alcide-nixos
+sudo nixos-rebuild switch --flake /Users/username/hosts/nikopol#nikopol-nixos
 ----
 
 === RKE2 Cluster Operations
@@ -189,7 +189,7 @@ config = mkIf cfg.enable {
 nix flake check
 
 # Build Darwin config
-nix build .#darwinConfigurations.alcide.system
+nix build .#darwinConfigurations.nikopol.system
 
 # Build NixOS disk image
 nix build .#nixosDiskImage
@@ -277,7 +277,7 @@ Both configurations are generated from same host flake.
 |===
 | File | Purpose
 | `flake.nix` | Main flake (1000+ lines, factory functions)
-| `hosts/alcide/flake.nix` | Darwin entry for alcide host
+| `hosts/nikopol/flake.nix` | Darwin entry for nikopol host
 | `hosts/bioskop/flake.nix` | Darwin entry for bioskop host
 | `modules/{darwin,nixos,common}/default.nix` | Module indices
 | `modules/darwin/lima-config.nix` | VM generation logic
@@ -310,7 +310,7 @@ Both configurations are generated from same host flake.
 [source,bash]
 ----
 # Darwin rebuild
-cd hosts/alcide && darwin-rebuild switch --flake .#alcide
+cd hosts/nikopol && darwin-rebuild switch --flake .#nikopol
 
 # NixOS rebuild (in VM)
 sudo nixos-rebuild switch --flake /path/to/config

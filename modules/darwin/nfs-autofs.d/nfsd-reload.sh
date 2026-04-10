@@ -1,5 +1,5 @@
 #!/usr/bin/env -S bash -euo pipefail
-source @activationLogger@
+source @logger@
 
 main() {
   /sbin/nfsd enable || true
@@ -10,4 +10,4 @@ main() {
   fi
 }
 
-activation_run darwin.activationScripts.etc.nfsd-reload main "$@"
+ndh::logger:command:run darwin.activationScripts.etc.nfsd-reload main "$@"

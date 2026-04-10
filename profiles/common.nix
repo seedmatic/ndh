@@ -84,7 +84,7 @@ in
                     "bioskop"
                     "nikopol"
                   ];
-                  description = "Host keys from catalog.hosts to pull builder endpoints from (e.g., include bioskop so alcide offloads to bioskop's builders). If empty, defaults to the current host only.";
+                  description = "Host keys from catalog.hosts to pull builder endpoints from (e.g., include bioskop so nikopol offloads to bioskop's builders). If empty, defaults to the current host only.";
                 };
                 remoteBuilders = lib.mkOption {
                   type = lib.types.listOf lib.types.attrs;
@@ -107,15 +107,15 @@ in
                         "big-parallel"
                       ];
                     }
-                    # Example: alcide (macbook-pro) exporting its darwin builder and nixos VM
+                    # Example: nikopol (macbook-pro) exporting its darwin builder and nixos VM
                     {
-                      hostName = "alcide-darwin";
+                      hostName = "nikopol-darwin";
                       systems = [ "aarch64-darwin" ];
                       maxJobs = 2;
                       protocol = "ssh-ng";
                     }
                     {
-                      hostName = "alcide-nixos";
+                      hostName = "nikopol-nixos";
                       systems = [ "aarch64-linux" ];
                       maxJobs = 4;
                       protocol = "ssh-ng";
@@ -178,7 +178,7 @@ in
                       };
                     }
                     {
-                      host = "alcide";
+                      host = "nikopol";
                       form = "vm";
                       networks = [
                         "lan"
@@ -189,14 +189,14 @@ in
                         manager = "tart";
                       };
                       builder = {
-                        hostName = "alcide-darwin";
+                        hostName = "nikopol-darwin";
                         systems = [ "aarch64-darwin" ];
                         maxJobs = 8;
                         protocol = "ssh-ng";
                       };
                     }
                     {
-                      host = "alcide";
+                      host = "nikopol";
                       form = "vm";
                       networks = [
                         "lan"
@@ -207,7 +207,7 @@ in
                         manager = "lima";
                       };
                       builder = {
-                        hostName = "alcide-nixos";
+                        hostName = "nikopol-nixos";
                         systems = [ "aarch64-linux" ];
                         maxJobs = 8;
                         protocol = "ssh-ng";

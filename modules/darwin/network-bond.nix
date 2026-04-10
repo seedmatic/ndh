@@ -95,10 +95,10 @@ let
         bondAttach = bondAttach;
         bondMode = cfg.mode;
         dhcpActivationBlock = dhcpActivationBlock;
-        activationLogger = lib.attrByPath [
+        logger = lib.attrByPath [
           "activation"
           "loggerScript"
-        ] ../common/activation-logger.sh config;
+        ] ../common/shell.d/logger.sh config;
       }
     } "$out"
     chmod +x "$out"

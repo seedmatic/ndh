@@ -24,7 +24,7 @@ services.incus-tailscale-gateway = {
   enable = true;
   instanceName = "tailscale-gateway";
   authKeyFile = "/run/secrets/tailscale-authkey";
-  hostname = "alcide-gateway";
+  hostname = "nikopol-gateway";
   routes = [ "192.168.5.0/24" "192.168.106.0/24" ];
   exitNode = false;
   tags = [ "gateway" ];
@@ -384,7 +384,7 @@ services.nfsDarwin.autofs.mountPoint = "/System/Volumes/Data/net"; # SIP-friendl
 
 Note: macOS SIP pre-creates `/net`. Using `/System/Volumes/Data/net` as the mount point avoids SIP conflicts; `/net` can then be a symlink to that path after reboot/synthetic rebuild.
 
-Example host usage (e.g., hosts/alcide/flake.nix):
+Example host usage (e.g., hosts/nikopol/flake.nix):
 
 [source,nix]
 ----
@@ -420,7 +420,7 @@ NOTE: This module is deprecated. Use Headscale client instead.
 
 === Recommended Setup: Hybrid Tailscale + Headscale
 
-.Darwin Hosts (alcide, bioskop)
+.Darwin Hosts (nikopol, bioskop)
 [source,nix]
 ----
 {
@@ -446,7 +446,7 @@ NOTE: This module is deprecated. Use Headscale client instead.
     enable = true;
     serverUrl = "http://192.168.1.10:8080";
     authKeyFile = "/run/secrets/headscale-authkey";
-    hostname = "lima-alcide";
+    hostname = "lima-nikopol";
     enableSSH = true;
   };
 }
@@ -486,7 +486,7 @@ If you don't need Headscale:
   services.incus-tailscale-gateway = {
     enable = true;
     authKeyFile = "/run/secrets/tailscale-authkey";
-    hostname = "alcide-gateway";
+    hostname = "nikopol-gateway";
     routes = [ "192.168.5.0/24" "192.168.106.0/24" ];
   };
 }

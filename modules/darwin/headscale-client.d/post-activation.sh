@@ -1,5 +1,5 @@
 #!/usr/bin/env -S bash -euo pipefail
-source @activationLogger@
+source @logger@
 
 main() {
   if ! tailscale status >/dev/null 2>&1; then
@@ -9,4 +9,4 @@ main() {
   fi
 }
 
-activation_run darwin.activationScripts.postActivation.headscale-client main "$@"
+ndh::logger:command:run darwin.activationScripts.postActivation.headscale-client main "$@"

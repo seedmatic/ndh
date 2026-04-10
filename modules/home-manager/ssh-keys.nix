@@ -16,7 +16,7 @@ let
   userName = profile.user.name; # Use profile user name for tagging
   userDescription = userProfile.description;
   userHome = userProfile.home;
-  activationLogger = config._module.specialArgs.activationLogger.script;
+  logger = config._module.specialArgs.logger.script;
   activationTagGenerate = "home-manager.activationScripts.${userName}.generateSSHKeysYaml";
   activationTagExtract = "home-manager.activationScripts.${userName}.extractSSHKeys";
   activationTagAuthorized = "home-manager.activationScripts.${userName}.ensureAuthorizedKeys";
@@ -60,8 +60,8 @@ let
   knownHostsScript =
     pkgs.runCommand "ssh-ca-known-hosts" { } ''
       cp ${pkgs.replaceVars ./ssh.d/scripts/ca-known-hosts-command.sh {
-        bashBin = "${pkgs.bash}/bin/bash";
-        bashTrampoline = "${../common/ssh/bash-trampoline.sh}";
+        bashTrampoline = "${../common/shell.d/nix-bash-trampoline.sh}";
+        logger = logger;
         caDir = systemKeysDir;
       }} "$out"
       chmod +x "$out"
@@ -111,25 +111,28 @@ in
     let
 
       sshGenerateKeysYamlScript = pkgs.replaceVars ./ssh-key.d/ssh-generate-keys-yaml.sh {
+        bashTrampoline = "${../common/shell.d/nix-bash-trampoline.sh}";
         yq = "${pkgs.yq-go}/bin/yq";
         mktemp = "${pkgs.coreutils-full}/bin/mktemp";
         sed = "${pkgs.gnused}/bin/sed";
         hostname = "${pkgs.hostname}/bin/hostname";
         sshKeygen = "${pkgs.openssh}/bin/ssh-keygen";
-        activationLogger = activationLogger;
+        logger = logger;
         activationTag = activationTagGenerate;
       };
 
       sshExtractKeysScript = pkgs.replaceVars ./ssh-key.d/ssh-extract-keys.sh {
+        bashTrampoline = "${../common/shell.d/nix-bash-trampoline.sh}";
         awk = "${pkgs.gawk}/bin/awk";
         ssh-keygen = "${pkgs.openssh}/bin/ssh-keygen";
         yq = "${pkgs.yq-go}/bin/yq";
-        activationLogger = activationLogger;
+        logger = logger;
         activationTag = activationTagExtract;
       };
 
       ensureAuthorizedKeysScript = pkgs.replaceVars ./ssh-key.d/ssh-ensure-authorized-keys.sh {
-        activationLogger = activationLogger;
+        bashTrampoline = "${../common/shell.d/nix-bash-trampoline.sh}";
+        logger = logger;
         activationTag = activationTagAuthorized;
       };
     in

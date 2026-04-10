@@ -1,7 +1,7 @@
 #!/usr/bin/env -S bash -euo pipefail
 
 # Home-manager activation: prepare sudo wrapper path resolution (@codebase)
-source @activationLogger@
+source @logger@
 
 main() {
   set -euo pipefail
@@ -31,4 +31,4 @@ main() {
   fi
 }
 
-activation_run "@activationTag@" main "$@"
+ndh::logger:command:run "@activationTag@" main "$@"

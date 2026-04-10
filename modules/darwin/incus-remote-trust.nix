@@ -22,10 +22,10 @@ let
   incusRemoteTrustActivationScript = pkgs.runCommand "incus-remote-trust-post-activation.sh" { } ''
     cp ${
       pkgs.replaceVars ./incus-remote-trust.d/post-activation.sh {
-        activationLogger = lib.attrByPath [
+        logger = lib.attrByPath [
           "activation"
           "loggerScript"
-        ] ../common/activation-logger.sh config;
+        ] ../common/shell.d/logger.sh config;
         remoteHost = cfg.remoteHost;
         localClientCert = cfg.localClientCert;
         trustEntryName = cfg.trustEntryName;

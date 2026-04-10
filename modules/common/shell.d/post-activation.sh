@@ -1,8 +1,8 @@
 #!/usr/bin/env -S bash -euo pipefail
 # Shared post-activation wrapper (@codebase)
-# Platform layers (darwin/nixos) must provide activation-logger.sh.
+# Platform layers (darwin/nixos) must provide logger.sh.
 
-source @activationLogger@
+source @logger@
 
 main() {
   emit_notice() {
@@ -75,4 +75,4 @@ main() {
   fi
 }
 
-activation_run "@activationTag@" main "$@"
+ndh::logger:command:run "@activationTag@" main "$@"

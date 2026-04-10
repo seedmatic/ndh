@@ -217,7 +217,7 @@ in
         # baked into the default Incus remote address.
         incusRemoteAddress = "https://${config.networking.hostName}:8443";
         # Use the wrapped activation logger in the store
-        activationLogger = config.activation.loggerScript;
+        logger = config.activation.loggerScript;
         activationTag = "nixos.activationScripts.incusUserConfig";
         incusBin = "${pkgs.incus}/bin/incus";
         sedBin = "${pkgs.gnused}/bin/sed";

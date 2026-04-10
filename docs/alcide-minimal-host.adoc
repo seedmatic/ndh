@@ -1,10 +1,10 @@
-= Alcide Minimal Host Architecture
+= nikopol Minimal Host Architecture
 :toc:
 :toclevels: 3
 
 == Overview
 
-Alcide is a JAMF-managed macOS system with a minimal nix-darwin installation. The design principle is to keep the macOS host as lightweight as possible, with all development work happening in a Lima NixOS VM and Incus containers.
+nikopol is a JAMF-managed macOS system with a minimal nix-darwin installation. The design principle is to keep the macOS host as lightweight as possible, with all development work happening in a Lima NixOS VM and Incus containers.
 
 == Architecture
 
@@ -23,7 +23,7 @@ skinparam rectangle {
     FontSize 12
 }
 
-rectangle "macOS Host (alcide)\nJAMF-Managed" <<host>> {
+rectangle "macOS Host (nikopol)\nJAMF-Managed" <<host>> {
     [Nix Package Manager]
     [Lima]
     [Flox]
@@ -32,7 +32,7 @@ rectangle "macOS Host (alcide)\nJAMF-Managed" <<host>> {
     [Tailscale]
 }
 
-rectangle "Lima NixOS VM\n(alcide-nixos)" <<vm>> {
+rectangle "Lima NixOS VM\n(nikopol-nixos)" <<vm>> {
     [Development Tools]
     [Git, Editors, IDEs]
     [Container Tools]
@@ -49,8 +49,8 @@ rectangle "Incus Cluster\n(in VM)" <<cluster>> {
     [RKE2 Cluster]
 }
 
-[macOS Host (alcide)\nJAMF-Managed] -down-> [Lima NixOS VM\n(alcide-nixos)] : SSH, Lima CLI
-[Lima NixOS VM\n(alcide-nixos)] -down-> [Incus Cluster\n(in VM)] : incus, kubectl
+[macOS Host (nikopol)\nJAMF-Managed] -down-> [Lima NixOS VM\n(nikopol-nixos)] : SSH, Lima CLI
+[Lima NixOS VM\n(nikopol-nixos)] -down-> [Incus Cluster\n(in VM)] : incus, kubectl
 @enduml
 ----
 
@@ -106,7 +106,7 @@ limactl shell nerd-nixos
 ssh nxmatic@192.168.5.X  # IP assigned by Lima
 
 # Use emacs via SSH/TRAMP from macOS
-emacs /ssh:nxmatic@alcide-nixos:/path/to/file
+emacs /ssh:nxmatic@nikopol-nixos:/path/to/file
 ----
 
 ==== Layer 3: Incus Cluster (in VM)
@@ -126,11 +126,11 @@ emacs /ssh:nxmatic@alcide-nixos:/path/to/file
 
 === macOS Host Configuration
 
-.hosts/alcide/flake.nix
+.hosts/nikopol/flake.nix
 [source,nix]
 ----
 {
-  description = "nix system configurations for alcide";
+  description = "nix system configurations for nikopol";
 
   inputs = { nix-darwin-home.url = "path:../.."; };
 
@@ -138,7 +138,7 @@ emacs /ssh:nxmatic@alcide-nixos:/path/to/file
     let
       hostProfile = {
         hostName = "APL-dk40njhk9h";
-        hostAlias = "alcide";
+        hostAlias = "nikopol";
         tailnet = { };
       };
       darwinProfile = {
@@ -189,7 +189,7 @@ with pkgs; [
 
 The Lima VM is configured automatically by the `lima.configGenerator` in the Darwin configuration. The NixOS system inside the VM is configured with:
 
-.hosts/alcide/nixos-vm-config.nix
+.hosts/nikopol/nixos-vm-config.nix
 [source,nix]
 ----
 { config, pkgs, lib, ... }:
@@ -208,21 +208,21 @@ The Lima VM is configured automatically by the `lima.configGenerator` in the Dar
 }
 ----
 
-==== NixOS VM image refresh (alcide VM → macOS host)
+==== NixOS VM image refresh (nikopol VM → macOS host)
 
-* Build on alcide-nixos (inside the VM) and keep a stable out-link:
+* Build on nikopol-nixos (inside the VM) and keep a stable out-link:
 +
 [source,bash]
 ----
 cd /var/lib/git/nxmatic/nix-darwin-home
-nix build .#nixosConfigurations.alcide-vm.config.system.build.diskImage --out-link hosts/alcide/nixos/disk.img
+nix build .#nixosConfigurations.nikopol-vm.config.system.build.diskImage --out-link hosts/nikopol/nixos/disk.img
 ----
-* On macOS (alcide host), pull the image into the local store and update the stable path used by Lima:
+* On macOS (nikopol host), pull the image into the local store and update the stable path used by Lima:
 +
 [source,bash]
 ----
-SRC_PATH=$(ssh alcide readlink -f /var/lib/git/nxmatic/nix-darwin-home/hosts/alcide/nixos/disk.img)
-nix copy --from ssh://alcide "$SRC_PATH"
+SRC_PATH=$(ssh nikopol readlink -f /var/lib/git/nxmatic/nix-darwin-home/hosts/nikopol/nixos/disk.img)
+nix copy --from ssh://nikopol "$SRC_PATH"
 ln -sfn "$SRC_PATH" $HOME/.lima/images/nixos.img
 ----
 * Lima config now points to `file://$HOME/.lima/images/nixos.img` and the activation script stages the image automatically. On rebuild, rerun the two commands above to refresh.
@@ -232,7 +232,7 @@ ln -sfn "$SRC_PATH" $HOME/.lima/images/nixos.img
 
 === Daily Development Workflow
 
-. Start your day on macOS (alcide)
+. Start your day on macOS (nikopol)
 +
 [source,bash]
 ----
@@ -249,10 +249,10 @@ limactl start nerd-nixos  # if not running
 limactl shell nerd-nixos
 
 # Option 2: Direct SSH
-ssh alcide-nixos  # Add to ~/.ssh/config
+ssh nikopol-nixos  # Add to ~/.ssh/config
 
 # Option 3: Use VS Code Remote SSH
-# Configure VS Code to connect to alcide-nixos
+# Configure VS Code to connect to nikopol-nixos
 ----
 
 . Work in the VM environment
@@ -290,10 +290,10 @@ limactl stop nerd-nixos
 
 [source,bash]
 ----
-# On macOS (alcide)
-cd ~/Gits/nxmatic/nix-darwin-home/hosts/alcide
+# On macOS (nikopol)
+cd ~/Gits/nxmatic/nix-darwin-home/hosts/nikopol
 git pull
-darwin-rebuild switch --flake .#alcide
+darwin-rebuild switch --flake .#nikopol
 ----
 
 ==== Update Lima VM
@@ -317,7 +317,7 @@ Services running in the Incus cluster can be accessed from:
 [source,bash]
 ----
 # Example: Access a web app in cluster from macOS
-ssh -L 8080:container-ip:80 alcide-nixos
+ssh -L 8080:container-ip:80 nikopol-nixos
 
 # Or use Tailscale to expose services
 ----
@@ -377,14 +377,14 @@ sudo journalctl -u incus
 
 == Migration Guide
 
-If you have an existing alcide setup with packages installed, here's how to migrate:
+If you have an existing nikopol setup with packages installed, here's how to migrate:
 
 . **Backup current configuration**
 +
 [source,bash]
 ----
-darwin-rebuild --flake .#alcide build
-nix-store --export $(nix-store -qR result) > alcide-backup.nar
+darwin-rebuild --flake .#nikopol build
+nix-store --export $(nix-store -qR result) > nikopol-backup.nar
 ----
 
 . **Document currently installed packages**
@@ -400,7 +400,7 @@ nix-env -q > installed-packages.txt
 ----
 cd ~/Gits/nxmatic/nix-darwin-home
 git pull  # Get latest with work-minimal profile
-darwin-rebuild switch --flake ./hosts/alcide#alcide
+darwin-rebuild switch --flake ./hosts/nikopol#nikopol
 ----
 
 . **Set up Lima VM with full environment**
@@ -419,7 +419,7 @@ sudo nixos-rebuild switch --flake /path/to/nixos-vm-config
 [source,bash]
 ----
 # From macOS, copy projects to VM
-scp -r ~/Projects alcide-nixos:~/
+scp -r ~/Projects nikopol-nixos:~/
 ----
 
 == See Also

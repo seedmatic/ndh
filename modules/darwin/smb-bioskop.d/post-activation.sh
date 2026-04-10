@@ -1,8 +1,8 @@
 #!/usr/bin/env -S bash -euo pipefail
-source @activationLogger@
+source @logger@
 
 main() {
 	@bioskopFstabScript@
 }
 
-activation_run darwin.activationScripts.etc.smb-bioskop main "$@"
+ndh::logger:command:run darwin.activationScripts.etc.smb-bioskop main "$@"

@@ -75,10 +75,10 @@ let
   nfsdReloadScript = pkgs.runCommand "nfsd-reload.sh" { } ''
     cp ${
       pkgs.replaceVars ./nfs-autofs.d/nfsd-reload.sh {
-        activationLogger = lib.attrByPath [
+        logger = lib.attrByPath [
           "activation"
           "loggerScript"
-        ] ../common/activation-logger.sh config;
+        ] ../common/shell.d/logger.sh config;
       }
     } "$out"
     chmod +x "$out"
@@ -86,10 +86,10 @@ let
   autofsRefreshScript = pkgs.runCommand "autofs-refresh.sh" { } ''
     cp ${
       pkgs.replaceVars ./nfs-autofs.d/autofs-refresh.sh {
-        activationLogger = lib.attrByPath [
+        logger = lib.attrByPath [
           "activation"
           "loggerScript"
-        ] ../common/activation-logger.sh config;
+        ] ../common/shell.d/logger.sh config;
       }
     } "$out"
     chmod +x "$out"
@@ -97,10 +97,10 @@ let
   syntheticReloadScript = pkgs.runCommand "synthetic-rebuild.sh" { } ''
     cp ${
       pkgs.replaceVars ./nfs-autofs.d/synthetic-rebuild.sh {
-        activationLogger = lib.attrByPath [
+        logger = lib.attrByPath [
           "activation"
           "loggerScript"
-        ] ../common/activation-logger.sh config;
+        ] ../common/shell.d/logger.sh config;
       }
     } "$out"
     chmod +x "$out"
@@ -141,10 +141,10 @@ let
     cp ${
       pkgs.replaceVars ./nfs-autofs.d/synthetic-ensure.sh {
         inherit syntheticText;
-        activationLogger = lib.attrByPath [
+        logger = lib.attrByPath [
           "activation"
           "loggerScript"
-        ] ../common/activation-logger.sh config;
+        ] ../common/shell.d/logger.sh config;
       }
     } "$out"
     chmod +x "$out"
@@ -153,10 +153,10 @@ let
   autoMasterLinkScript = pkgs.runCommand "auto-master-link.sh" { } ''
     cp ${
       pkgs.replaceVars ./nfs-autofs.d/auto-master-link.sh {
-        activationLogger = lib.attrByPath [
+        logger = lib.attrByPath [
           "activation"
           "loggerScript"
-        ] ../common/activation-logger.sh config;
+        ] ../common/shell.d/logger.sh config;
       }
     } "$out"
     chmod +x "$out"
@@ -166,10 +166,10 @@ let
     cp ${
       pkgs.replaceVars ./nfs-autofs.d/auto-master-write.sh {
         inherit autoMasterText;
-        activationLogger = lib.attrByPath [
+        logger = lib.attrByPath [
           "activation"
           "loggerScript"
-        ] ../common/activation-logger.sh config;
+        ] ../common/shell.d/logger.sh config;
       }
     } "$out"
     chmod +x "$out"
@@ -183,10 +183,10 @@ let
         options = lib.escapeShellArg autoCfg.options;
         manageAutoMaster = if autoCfg.manageAutoMaster then "1" else "0";
         autofsRefreshScript = autofsRefreshScript;
-        activationLogger = lib.attrByPath [
+        logger = lib.attrByPath [
           "activation"
           "loggerScript"
-        ] ../common/activation-logger.sh config;
+        ] ../common/shell.d/logger.sh config;
       }
     } "$out"
     chmod +x "$out"

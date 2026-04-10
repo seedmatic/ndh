@@ -1,6 +1,6 @@
 #!/usr/bin/env -S bash -euo pipefail
 
-source @activationLogger@
+source @logger@
 
 main() {
   builder_pubkey="@builderPubKey@"
@@ -20,4 +20,4 @@ main() {
   rm -f "$tmpfile"
 }
 
-activation_run darwin.activationScripts.distributed-builds.install-authorized-keys main "$@"
+ndh::logger:command:run darwin.activationScripts.distributed-builds.install-authorized-keys main "$@"

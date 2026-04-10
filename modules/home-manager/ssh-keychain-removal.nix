@@ -7,12 +7,12 @@
 let
   profile = config._module.specialArgs.profile;
   userName = profile.user.name;
-  activationLogger = lib.attrByPath [
+  logger = lib.attrByPath [
     "_module"
     "specialArgs"
-    "activationLogger"
+    "logger"
     "script"
-  ] ../common/default.d/activation-logger.sh config;
+  ] ../common/shell.d/logger.sh config;
   activationTag = "home-manager.activationScripts.${userName}.removeUseKeychain";
 in
 # Remove any UseKeychain directive from ~/.ssh/config (@codebase)
@@ -24,7 +24,7 @@ in
     let
       removeUseKeychainScript = pkgs.replaceVars ./ssh-keychain-removal.d/remove-use-keychain.sh {
         sed = "${pkgs.gnused}/bin/sed";
-        activationLogger = activationLogger;
+        logger = logger;
         activationTag = activationTag;
       };
     in

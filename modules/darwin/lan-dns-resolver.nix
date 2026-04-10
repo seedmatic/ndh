@@ -17,10 +17,10 @@ let
         install -Dm755 ${
           pkgs.replaceVars ./lan-dns-resolver.d/post-activation.sh {
             inherit (cfg) nameserver;
-            activationLogger = lib.attrByPath [
+            logger = lib.attrByPath [
               "activation"
               "loggerScript"
-            ] ../common/activation-logger.sh config;
+            ] ../common/shell.d/logger.sh config;
           }
         } "$out"
       '';

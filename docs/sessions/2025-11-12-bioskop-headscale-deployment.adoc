@@ -7,24 +7,24 @@
 == Session Overview
 
 **Date:** 2025-11-12 +
-**Objective:** Deploy Headscale server on bioskop cluster and migrate alcide to client-only mode
+**Objective:** Deploy Headscale server on bioskop cluster and migrate nikopol to client-only mode
 
 == Context
 
-=== Current State (alcide)
+=== Current State (nikopol)
 
-* ✅ Headscale server running in alcide RKE2 at `192.168.1.192:8080` (LoadBalancer)
+* ✅ Headscale server running in nikopol RKE2 at `192.168.1.192:8080` (LoadBalancer)
 * ✅ kpt package configured for bioskop network allocation (`192.168.1.192/27`)
 * ✅ DNS configured to use `.lan` domain from bbox router
-* ✅ 1 node registered: `alcide-master-control-node` (100.64.0.1)
-* ⚠️ alcide is mobile (MacBook) - should be client-only, not server
+* ✅ 1 node registered: `nikopol-master-control-node` (100.64.0.1)
+* ⚠️ nikopol is mobile (MacBook) - should be client-only, not server
 
 === Target State (bioskop)
 
 * 🎯 bioskop becomes permanent Headscale control plane (stationary Mac Mini M4 Pro)
 * 🎯 Headscale LoadBalancer at `192.168.1.193:8080`
 * 🎯 Accessible via `.lan` domain (bbox DHCP auto-registration)
-* 🎯 alcide connects via Tailscale mesh (works mobile + home)
+* 🎯 nikopol connects via Tailscale mesh (works mobile + home)
 * 🎯 Both Lima VMs and Darwin hosts join Headscale network
 
 == Network Architecture
@@ -35,7 +35,7 @@
 |===
 | Cluster | Block | Pool CIDR | Headscale LB IP | Status
 | **bioskop** | Block 6 | 192.168.1.192/27 | 192.168.1.193 | 🎯 Target
-| **alcide** | Block 2 | 192.168.1.64/27 | 192.168.1.65 | ⚠️ Currently using bioskop's pool
+| **nikopol** | Block 2 | 192.168.1.64/27 | 192.168.1.65 | ⚠️ Currently using bioskop's pool
 |===
 
 === DNS Strategy
@@ -44,7 +44,7 @@
 - Domain: `lan` (via DHCP)
 - Router: `192.168.1.254`
 - Auto-registers: `bioskop.lan` → `192.168.1.129`
-- Auto-registers: `alcide.lan` → `192.168.1.33`
+- Auto-registers: `nikopol.lan` → `192.168.1.33`
 
 **Headscale MagicDNS:**
 - Base domain: `lan`
@@ -261,42 +261,42 @@ services.headscale-client = {
 ssh lima-nerd-nixos "sudo nixos-rebuild switch"
 ----
 
-=== Step 5: Update alcide to Client-Only
+=== Step 5: Update nikopol to Client-Only
 
-==== 5.1 Remove Headscale Server from alcide
+==== 5.1 Remove Headscale Server from nikopol
 
 **Options:**
 
 *Option A: Keep server for transition period*
-- Leave alcide server running temporarily
+- Leave nikopol server running temporarily
 - Both clusters operational during testing
 - Remove after confirming bioskop works
 
 *Option B: Immediate removal*
 - Delete headscale namespace: `kubectl delete ns headscale`
-- Update alcide to connect to bioskop
+- Update nikopol to connect to bioskop
 
-==== 5.2 Configure alcide to Use Tailscale Mesh
+==== 5.2 Configure nikopol to Use Tailscale Mesh
 
-**Update `hosts/alcide/flake.nix`:**
+**Update `hosts/nikopol/flake.nix`:**
 [source,nix]
 ----
 services.headscale-client = {
   enable = true;
   # Use Tailscale mesh for mobile access
   serverUrl = "https://bioskop-headscale.YOURTAILNET.ts.net";
-  hostname = "alcide";
+  hostname = "nikopol";
   enableSSH = true;
 };
 ----
 
-**Similarly for alcide Lima VM:**
+**Similarly for nikopol Lima VM:**
 [source,nix]
 ----
 services.headscale-client = {
   enable = true;
   serverUrl = "https://bioskop-headscale.YOURTAILNET.ts.net";
-  hostname = "alcide-lima";
+  hostname = "nikopol-lima";
   enableSSH = true;
 };
 ----
@@ -345,11 +345,11 @@ ping bioskop.lan
 tailscale ping bioskop-lima
 ----
 
-=== 4. Test Mobile Connectivity (alcide)
+=== 4. Test Mobile Connectivity (nikopol)
 
 [source,bash]
 ----
-# From alcide on mobile network (not home LAN)
+# From nikopol on mobile network (not home LAN)
 # Should work via Tailscale mesh
 ping bioskop-headscale.YOURTAILNET.ts.net
 ssh bioskop-lima.YOURTAILNET.ts.net
@@ -416,8 +416,8 @@ kubectl logs -n headscale deployment/headscale -f
 
 1. ✅ bioskop Headscale operational at 192.168.1.193
 2. ✅ bioskop Darwin + Lima joined mesh
-3. 🎯 Update alcide to client-only (remove server)
-4. 🎯 alcide connects via Tailscale mesh
+3. 🎯 Update nikopol to client-only (remove server)
+4. 🎯 nikopol connects via Tailscale mesh
 5. 🎯 Test mobile connectivity
 6. 🎯 Optional: Add bbox static DNS for `bioskop-headscale.lan`
 

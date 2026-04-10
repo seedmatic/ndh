@@ -18,6 +18,10 @@ let
   cfg = config.ssh-add-keys;
   sshPaths = config.sshPaths;
   keysFileDefault = sshPaths.generatedKeysYamlFile;
+  renderedSshAddKeysScript = pkgs.replaceVars ./ssh-key.d/ssh-add-keys.sh {
+    bashTrampoline = "${../common/shell.d/nix-bash-trampoline.sh}";
+    logger = config._module.specialArgs.logger.script;
+  };
   sshAddKeysStoreScript = pkgs.writeShellApplication {
     name = "ssh-add-keys";
     runtimeInputs = with pkgs; [
@@ -30,7 +34,7 @@ let
       yq-go
     ];
     text = ''
-      exec ${pkgs.bash}/bin/bash ${./ssh-key.d/ssh-add-keys.sh} "$@"
+      exec ${pkgs.bash}/bin/bash ${renderedSshAddKeysScript} "$@"
     '';
   };
 in

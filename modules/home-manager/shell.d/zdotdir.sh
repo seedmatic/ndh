@@ -1,4 +1,4 @@
-source @activationLogger@
+source @logger@
 
 main() {
   set -euo pipefail
@@ -93,9 +93,16 @@ export PATH="${(j/:/)path}"
 # ensure this hook runs after theme hooks (e.g. powerlevel10k).
 # Keep the user's regular interactive terminals on their preferred prompt.
 if [[ "${TERM_PROGRAM:-}" == "vscode" ]] && {
-  [[ "${VSCODE_PREVENT_SHELL_HISTORY:-}" == "1" ]] ||
-  [[ ":${PATH}:" == *":$HOME/Library/Application Support/Code - InsidersP/User/globalStorage/github.copilot-chat/debugCommand:"* ]];
+  [[ "${VSCODE_PREVENT_SHELL_HISTORY:-}" == "1" ]] &&
+  [[ ":${PATH}:" == *":$HOME/Library/Application Support/Code - Insiders/User/globalStorage/github.copilot-chat/debugCommand:"* ]];
 }; then
+  # Reattach stdout/stderr early for agent terminals before prompt hooks.
+  if [[ -w /dev/fd/10 ]]; then
+    exec >/dev/fd/10 2>&1
+  elif [[ -w /dev/tty ]]; then
+    exec >/dev/tty 2>&1
+  fi
+
   # Disable powerlevel10k prompt rendering in agent-owned terminals.
   precmd_functions=(${precmd_functions:#_p9k_precmd})
   if typeset -f _p9k_precmd >/dev/null 2>&1; then
@@ -108,10 +115,23 @@ if [[ "${TERM_PROGRAM:-}" == "vscode" ]] && {
   }
   precmd_functions=(${precmd_functions:#nxmatic_safe_prompt} nxmatic_safe_prompt)
   nxmatic_safe_prompt
-fi
 
-# Keep powerlevel10k instant prompt happy when active in user terminals.
-(( ! ${+functions[p10k]} )) || p10k finalize
+  # Safety net: if stdout/stderr still point at p10k instant prompt temp
+  # file, reattach both streams to a live terminal descriptor.
+  __nxmatic_fd1_target="$(/bin/readlink /dev/fd/1 2>/dev/null || true)"
+  __nxmatic_fd2_target="$(/bin/readlink /dev/fd/2 2>/dev/null || true)"
+  if [[ "$__nxmatic_fd1_target" == *p10k-instant-prompt-output* || "$__nxmatic_fd2_target" == *p10k-instant-prompt-output* ]]; then
+    if [[ -w /dev/fd/10 ]]; then
+      exec >/dev/fd/10 2>&1
+    elif [[ -w /dev/tty ]]; then
+      exec >/dev/tty 2>&1
+    fi
+  fi
+  unset __nxmatic_fd1_target __nxmatic_fd2_target
+else
+  # Keep powerlevel10k instant prompt happy when active in user terminals.
+  (( ! ${+functions[p10k]} )) || p10k finalize
+fi
 true
 EOF
     mv "$tmp_part_file" "$zshrc_part_file"
@@ -135,7 +155,7 @@ EOF
   fi
 }
 
-activation_run "@activationTag@" main "$@"
+ndh::logger:command:run "@activationTag@" main "$@"
 
 if [ ! -r "$HOME/.config/zsh/rcs/zshenv.zsh" ]; then
   echo "error: zdotdir sync did not produce $HOME/.config/zsh/rcs/zshenv.zsh" >&2

@@ -1,5 +1,5 @@
 #!/usr/bin/env -S bash -euo pipefail
-source @activationLogger@
+source @logger@
 
 main() {
   if [ ! -e /etc/synthetic.conf ]; then
@@ -18,4 +18,4 @@ EOF
   fi
 }
 
-activation_run darwin.activationScripts.etc.nfs-synthetic-ensure main "$@"
+ndh::logger:command:run darwin.activationScripts.etc.nfs-synthetic-ensure main "$@"

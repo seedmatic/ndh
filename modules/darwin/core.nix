@@ -76,7 +76,7 @@ in
   # Create symlink to host-specific flake for darwin-rebuild without --flake
   # Point to the exact nix-darwin-home source used for this activation (store path),
   # so /etc/nix-darwin stays reproducible and does not depend on mutable git state.
-  # Use hostAlias if available (e.g., "alcide"), otherwise fall back to hostName
+  # Use hostAlias if available (e.g., "nikopol"), otherwise fall back to hostName
   environment.etc."nix-darwin/flake.nix".source =
     let
       hostDir =

@@ -8,7 +8,7 @@
 
 shopt -s extglob
 
-declare -g keyFields="type|usage|comment|public|private|authorities|principals|domain|authorized_keys_options"
+declare -g keyFields="type|usage|comment|public|private|authorities|principals|domain|authorized_keys_options|annotations|descriptor"
 
 : "Function to handle tracing"
 log::trace() {
@@ -314,6 +314,90 @@ key::update() {
     declare -g "$( var::snakeCase "${keyVar}" private )=${keyPrivate}"
 }
 
+: "Get annotation value for the current key"
+key::annotation() {
+    key::value "annotations" "$1"
+}
+
+: "Get descriptor value for the current key"
+key::descriptor() {
+    key::value "descriptor" "$1"
+}
+
+: "Default public scope based on key usage"
+key::defaultPublicScope() {
+    local usage
+    readarray -t usage < <(key::usage)
+    if [[ " ${usage[*]} " == *" ssh-authority "* ]]; then
+        echo "system"
+    else
+        echo "user"
+    fi
+}
+
+: "Validate optional key annotations"
+key::validateAnnotations() {
+    local keyName="$1"
+    local annotationFileName annotationPublicScope
+
+    annotationFileName="$(key::annotation file_name)"
+    annotationPublicScope="$(key::annotation public_scope)"
+    if [[ -n "$annotationFileName" && ! "$annotationFileName" =~ ^[A-Za-z0-9._-]+$ ]]; then
+        echo "Invalid annotations.file_name for key '${keyName}': '${annotationFileName}' (allowed: [A-Za-z0-9._-])" >&2
+        return 1
+    fi
+
+    if [[ -n "$annotationPublicScope" && "$annotationPublicScope" != "user" && "$annotationPublicScope" != "system" ]]; then
+        echo "Invalid annotations.public_scope for key '${keyName}': '${annotationPublicScope}' (allowed: user|system)" >&2
+        return 1
+    fi
+}
+
+: "Validate descriptor values"
+key::validateDescriptor() {
+    local keyName="$1"
+    local descriptorExtractFolder
+    descriptorExtractFolder="$(key::descriptor extract_folder)"
+
+    if [[ -n "$descriptorExtractFolder" &&
+        "$descriptorExtractFolder" != "ssh-keys" &&
+        "$descriptorExtractFolder" != "ssh-system-keys" &&
+        "$descriptorExtractFolder" != "user" &&
+        "$descriptorExtractFolder" != "system" ]]; then
+        echo "Invalid descriptor.extract_folder for key '${keyName}': '${descriptorExtractFolder}' (allowed: ssh-keys|ssh-system-keys|user|system)" >&2
+        return 1
+    fi
+}
+
+: "Default extraction folder based on key usage"
+key::defaultExtractFolder() {
+    local scope
+    scope="$(key::defaultPublicScope)"
+    if [[ "$scope" == "system" ]]; then
+        echo "ssh-system-keys"
+    else
+        echo "ssh-keys"
+    fi
+}
+
+: "Build a normalized SSH key comment with key metadata"
+key::annotatedComment() {
+    local keyName="$1"
+    local baseComment="$2"
+    shift 2
+
+    local usageSummary="none"
+    if (( $# > 0 )); then
+        usageSummary="$(IFS=','; echo "$*")"
+    fi
+
+    if [[ -n "$baseComment" ]]; then
+        echo "${baseComment} [key:${keyName};usage:${usageSummary}]"
+    else
+        echo "${keyName} [key:${keyName};usage:${usageSummary}]"
+    fi
+}
+
 : "Function to process a key entry"
 key::process() {
     local keyName="$1"
@@ -329,6 +413,10 @@ key::process() {
 
     : "Load the private key if it exists"
     keyPrivate=$(key::value "private")
+
+    : "Validate annotations early so activation fails fast on bad metadata"
+    key::validateAnnotations "$keyName"
+    key::validateDescriptor "$keyName"
 
     local hasAuthorities=0
     for profileVar in "${profileVars[@]}"; do
@@ -375,12 +463,20 @@ $(
         for keyName in "${orderedKeys[@]}"; do
             keyVar="$( var::snakeCase "${profileVarPrefix}" "${keyName}" )"
 
-            local authorityHostNames keyUsage  keyType keyComment keyPublic keyPrivate authorityUsage
+            local authorityHostNames keyUsage keyType keyComment keyPublic keyPrivate authorityUsage annotatedComment
+            local annotationFileName annotationPublicScope descriptorExtractFolder
             readarray -t keyUsage < <(key::usage)
             keyType=$( key::value type )
             keyComment=$( key::value comment )
             keyPublic=$( key::value public )
             keyPrivate=$( key::value private )
+            annotationFileName="$(key::annotation file_name)"
+            annotationFileName="${annotationFileName:-$keyName}"
+            annotationPublicScope="$(key::annotation public_scope)"
+            annotationPublicScope="${annotationPublicScope:-$(key::defaultPublicScope)}"
+            descriptorExtractFolder="$(key::descriptor extract_folder)"
+            descriptorExtractFolder="${descriptorExtractFolder:-$(key::defaultExtractFolder)}"
+            annotatedComment="$(key::annotatedComment "$keyName" "$keyComment" "${keyUsage[@]}")"
             # Collect principals (for user-signing semantics) so downstream tools (AuthorizedPrincipalsCommand) can align.
             readarray -t keyPrincipals < <(key::principals)
             cat <<EOK
@@ -391,7 +487,12 @@ $(
             )
     private: |-
 $( echo "$keyPrivate" | @sed@ 's/^/      /' )
-    public: $keyType $keyPublic $keyComment
+        public: $keyType $keyPublic $annotatedComment
+        annotations:
+            file_name: $annotationFileName
+            public_scope: $annotationPublicScope
+        descriptor:
+            extract_folder: $descriptorExtractFolder
 $(
     if (( ${#keyPrincipals[@]} > 0 )); then
         printf '    principals: [ '
@@ -436,7 +537,10 @@ EOF
 }
 
 : "Should log as part of the activation scripts"
-source @activationLogger@
+# shellcheck disable=SC1091
+source @bashTrampoline@
+# shellcheck disable=SC1091
+source @logger@
 
 main() {
   declare -g profileName hostName inputFile outputFile
@@ -480,5 +584,5 @@ main() {
     chmod 0400 "$outputFile"
 }
 
-activation_run "@activationTag@" main "$@"
+ndh::logger:command:run "@activationTag@" main "$@"
 

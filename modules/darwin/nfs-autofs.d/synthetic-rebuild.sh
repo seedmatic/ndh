@@ -1,5 +1,5 @@
 #!/usr/bin/env -S bash -euo pipefail
-source @activationLogger@
+source @logger@
 
 main() {
   if [ -x /System/Library/Filesystems/apfs.fs/Contents/Resources/apfs.util ]; then
@@ -8,4 +8,4 @@ main() {
   fi
 }
 
-activation_run darwin.activationScripts.etc.nfs-synthetic-rebuild main "$@"
+ndh::logger:command:run darwin.activationScripts.etc.nfs-synthetic-rebuild main "$@"

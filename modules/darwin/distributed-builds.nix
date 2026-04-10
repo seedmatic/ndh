@@ -45,10 +45,10 @@ let
   # Ensure serialized keys always end with a newline to avoid parser quirks when installed by ssh
   builderPrivStore = pkgs.writeText "builder_ed25519" (builderPrivKey + "\n");
   builderPubStore = pkgs.writeText "builder_ed25519.pub" (builderPubKey + "\n");
-  activationLogger = lib.attrByPath [
+  logger = lib.attrByPath [
     "activation"
     "loggerScript"
-  ] ../common/activation-logger.sh config;
+  ] ../common/shell.d/logger.sh config;
   nixbldGroup = config.users.groups.nixbld.name or "nixbld";
   authorizedKeysDir = config.opensshPolicy.authorizedKeysDir;
   nixbldAuthorizedKeysPath = "${authorizedKeysDir}/${nixbldGroup}";
@@ -62,7 +62,7 @@ let
           builderPubStore
           builderKeyPath
           ;
-        activationLogger = activationLogger;
+        logger = logger;
       }
     } "$out"
     chmod +x "$out"
@@ -74,7 +74,7 @@ let
         authorizedKeysDir = authorizedKeysDir;
         groupName = nixbldGroup;
         builderPubKey = builderPubKey;
-        activationLogger = activationLogger;
+        logger = logger;
       }
     } "$out"
     chmod +x "$out"
@@ -84,7 +84,7 @@ let
     cp ${
       pkgs.replaceVars ./distributed-builds.d/ensure-control-path.sh {
         controlMasterDir = controlMasterDir;
-        activationLogger = activationLogger;
+        logger = logger;
       }
     } "$out"
     chmod +x "$out"
@@ -96,7 +96,7 @@ let
         builderKeyInstall = builderKeyInstall;
         installAuthorizedKeys = installAuthorizedKeys;
         controlPathScript = controlPathScript;
-        activationLogger = activationLogger;
+        logger = logger;
       }
     } "$out"
     chmod +x "$out"

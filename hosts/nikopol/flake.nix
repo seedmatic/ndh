@@ -26,7 +26,6 @@
         nixosImageMode = "bootstrap";
         nixosBootLoader = "systemd-boot";
         bootstrapDebug = true;
-        enableHomeManager = false;
       };
       darwinProfile = {
         knownNetworkServices = [

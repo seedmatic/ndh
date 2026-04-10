@@ -1,5 +1,5 @@
 #!/usr/bin/env -S bash -euo pipefail
-source @activationLogger@
+source @logger@
 
 main() {
 	echo "[openssh] start $(date)"
@@ -12,4 +12,4 @@ main() {
 	echo "[openssh] end $(date)"
 }
 
-activation_run darwin.activationScripts.etc.openssh main "$@"
+ndh::logger:command:run darwin.activationScripts.etc.openssh main "$@"

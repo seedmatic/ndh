@@ -5,9 +5,38 @@
 # block status-safe here to avoid rc startup leaking non-zero status.
 true
 
+__nxmatic_is_agent_vscode_terminal=0
+if [[ "${TERM_PROGRAM:-}" == "vscode" ]] && {
+  [[ "${VSCODE_PREVENT_SHELL_HISTORY:-}" == "1" ]] &&
+  [[ ":${PATH}:" == *":$HOME/Library/Application Support/Code - Insiders/User/globalStorage/github.copilot-chat/debugCommand:"* ]];
+}; then
+  __nxmatic_is_agent_vscode_terminal=1
+fi
+
+__nxmatic_use_minimal_startup=0
+if [[ "$__nxmatic_is_agent_vscode_terminal" == "1" ]]; then
+  __nxmatic_use_minimal_startup=1
+fi
+
+# Reattach stdout/stderr early in Copilot-owned terminals before any prompt
+# or plugin code can emit to stale instant-prompt descriptors.
+if [[ -o interactive && "$__nxmatic_is_agent_vscode_terminal" == "1" ]]; then
+  if [[ -w /dev/fd/10 ]]; then
+    exec >/dev/fd/10 2>&1
+  elif [[ -w /dev/tty ]]; then
+    exec >/dev/tty 2>&1
+  fi
+fi
+
 : "vscode settings"
 # Only manually source if VS Code hasn't already injected the integration.
 if [[ "$TERM_PROGRAM" == "vscode" && -z "$VSCODE_INJECTION" ]]; then
+  # Agent-owned terminals (used by Copilot debug/hidden command execution)
+  # are sensitive to duplicate/manual integration sourcing. Skip manual
+  # sourcing there and let VS Code manage integration itself.
+  if [[ "$__nxmatic_is_agent_vscode_terminal" == "1" ]]; then
+    true
+  else
   vscode_bin="$(command -v code-insiders || command -v code || true)"
   if [[ -n "$vscode_bin" ]]; then
     VSCODE_SHELL_INTEGRATION="$($vscode_bin --locate-shell-integration-path zsh 2>/dev/null)"
@@ -21,21 +50,41 @@ if [[ "$TERM_PROGRAM" == "vscode" && -z "$VSCODE_INJECTION" ]]; then
     builtin source "$VSCODE_SHELL_INTEGRATION"
     TERM=xterm-256color
   fi
+  fi
 fi
 
 : "and my own stuff"
+# Agent-owned hidden terminals are prone to p10k instant-prompt FD leaks
+# (stdout/stderr left on p10k temp file). Disable instant prompt here and let
+# normal prompt init run after startup.
+if [[ "$__nxmatic_is_agent_vscode_terminal" == "1" ]]; then
+  typeset -g POWERLEVEL9K_INSTANT_PROMPT=off
+fi
+
 __nxmatic_zshrc_status=0
-if [[ -r "$ZDOTDIR/rcs/zshrc.zsh" ]]; then
+if [[ "$__nxmatic_use_minimal_startup" == "0" && -r "$ZDOTDIR/rcs/zshrc.zsh" ]]; then
   source "$ZDOTDIR/rcs/zshrc.zsh" || __nxmatic_zshrc_status=$?
+fi
+
+# Safety net: if stdout/stderr are still redirected to p10k instant prompt
+# temp file after zshrc startup, reattach both streams to the active TTY.
+if [[ -o interactive && "$__nxmatic_is_agent_vscode_terminal" == "1" ]]; then
+  __nxmatic_fd1_target="$(/bin/readlink /dev/fd/1 2>/dev/null || true)"
+  __nxmatic_fd2_target="$(/bin/readlink /dev/fd/2 2>/dev/null || true)"
+  if [[ "$__nxmatic_fd1_target" == *p10k-instant-prompt-output* || "$__nxmatic_fd2_target" == *p10k-instant-prompt-output* ]]; then
+    if [[ -w /dev/fd/10 ]]; then
+      exec >/dev/fd/10 2>&1
+    elif [[ -w /dev/tty ]]; then
+      exec >/dev/tty 2>&1
+    fi
+  fi
+  unset __nxmatic_fd1_target __nxmatic_fd2_target
 fi
 
 # In Copilot/agent-owned VS Code terminals, force a simple stable prompt and
 # ensure this hook runs after theme hooks (e.g. powerlevel10k).
 # Keep the user's regular interactive terminals on their preferred prompt.
-if [[ "${TERM_PROGRAM:-}" == "vscode" ]] && {
-  [[ "${VSCODE_PREVENT_SHELL_HISTORY:-}" == "1" ]] ||
-  [[ ":${PATH}:" == *":$HOME/Library/Application Support/Code - Insiders/User/globalStorage/github.copilot-chat/debugCommand:"* ]];
-}; then
+if [[ "$__nxmatic_is_agent_vscode_terminal" == "1" ]]; then
   # Disable powerlevel10k prompt rendering in agent-owned terminals.
   precmd_functions=(${precmd_functions:#_p9k_precmd})
   if typeset -f _p9k_precmd >/dev/null 2>&1; then
@@ -79,4 +128,6 @@ zstyle ':completion:*:paths' ignored-patterns '/net'
 zstyle ':completion:*:(cd|chdir|pushd|popd|ls):*' ignored-patterns '/net'
 
 unset __nxmatic_zshrc_status
+unset __nxmatic_use_minimal_startup
+unset __nxmatic_is_agent_vscode_terminal
 true

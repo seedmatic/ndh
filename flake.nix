@@ -188,18 +188,18 @@
           # Provide activation logger directly from the store (no /etc indirection)
           # and ensure it is built for the current target system.
           pkgsForSystem = pkgsFor { inherit system; };
-          activationLoggerScript = pkgsForSystem.writeText "activation-logger.sh" ''
+          loggerScript = pkgsForSystem.writeText "logger.sh" ''
             #!/usr/bin/env bash
             LOGGER_CMD=""
-            source ${./modules/common/default.d/activation-logger.sh}
+            source ${./modules/common/shell.d/logger.sh}
           '';
         in
         {
           inherit self lib;
           _modules = modules;
           nixpkgsInput = nixpkgs;
-          activationLogger = {
-            script = activationLoggerScript;
+          logger = {
+            script = loggerScript;
             cmd = "";
           };
         }
@@ -633,9 +633,9 @@
                 }
               ];
 
-              alcide = [
+              nikopol = [
                 {
-                  # alcide runs as a Tart/VZ macOS VM and does NOT serve as a darwin builder itself; it offloads to remote builders
+                  # nikopol runs as a Tart/VZ macOS VM and does NOT serve as a darwin builder itself; it offloads to remote builders
                   form = "vm";
                   networks = [
                     "lan"
@@ -758,10 +758,10 @@
           # Home Manager configurations for direct use
           homeManagerConfigurations =
             let
-              activationLoggerScript = pkgsForDarwin.writeText "activation-logger.sh" ''
+              loggerScript = pkgsForDarwin.writeText "logger.sh" ''
                 #!/usr/bin/env bash
                 LOGGER_CMD=""
-                source ${./modules/common/default.d/activation-logger.sh}
+                source ${./modules/common/shell.d/logger.sh}
               '';
             in
             {
@@ -771,8 +771,8 @@
                 extraSpecialArgs = {
                   inherit hostProfile catalog;
                   profile = defaultProfile;
-                  activationLogger = {
-                    script = activationLoggerScript;
+                  logger = {
+                    script = loggerScript;
                     cmd = "";
                   };
                 };

@@ -6,14 +6,14 @@
 
 == Overview
 
-Complete refactoring of network architecture, removing Teleport and implementing Headscale/Tailscale infrastructure for bioskop (Mac Mini M4 Pro) and alcide (MacBook Pro).
+Complete refactoring of network architecture, removing Teleport and implementing Headscale/Tailscale infrastructure for bioskop (Mac Mini M4 Pro) and nikopol (MacBook Pro).
 
 == Completed Work
 
 === 1. Teleport Removal ✅
 
 **Files Modified:**
-- `hosts/alcide/flake.nix` - Removed Teleport import
+- `hosts/nikopol/flake.nix` - Removed Teleport import
 - `hosts/bioskop/flake.nix` - Removed Teleport import  
 - `modules/darwin/default.nix` - Removed Teleport, re-enabled OpenSSH
 - `modules/nixos/default.nix` - Removed Teleport
@@ -137,7 +137,7 @@ bioskop (Mac Mini M4 Pro - Stationary)
         ├── LoadBalancer pool: 10.80.16.128/26
         └── Tailscale Operator (exposes K8s services)
 
-alcide (MacBook Pro - Mobile)
+nikopol (MacBook Pro - Mobile)
 └── Tailscale Client ONLY
     ↓
     Connects via Tailscale to everything
@@ -145,9 +145,9 @@ alcide (MacBook Pro - Mobile)
 
 === Access Patterns
 
-**alcide (mobile) → bioskop infrastructure:**
+**nikopol (mobile) → bioskop infrastructure:**
 ```
-alcide (anywhere)
+nikopol (anywhere)
     ↓ Tailscale (100.x.x.x)
 headscale-gateway (in bioskop Lima VM)
     ↓ Bridge
@@ -216,14 +216,14 @@ Once Headscale server is running:
 hs-connect
 ```
 
-=== 4. Configure alcide with Tailscale
+=== 4. Configure nikopol with Tailscale
 
 **Status:** Not yet configured
 
 **What's Needed:**
-- Enable Tailscale service on alcide Darwin
+- Enable Tailscale service on nikopol Darwin
 - Configure to connect to official Tailscale network
-- alcide will access Headscale network via gateway
+- nikopol will access Headscale network via gateway
 
 === 5. Integrate with RKE2 Deployment
 
@@ -249,7 +249,7 @@ The rke2lab already has Tailscale operator configured in `cloud-config.master.ba
   - Master: 10.80.16.0/24
   - Peer1: 10.80.17.0/24
   - Peer2: 10.80.18.0/24
-- alcide cluster: 10.80.32.0/20
+- nikopol cluster: 10.80.32.0/20
 
 **Deployment:**
 ```bash
@@ -332,7 +332,7 @@ abf1abf Merge commit '...' as 'modules/nixos/rke2lab'
 
 === Medium Term
 
-8. **Configure alcide** with Tailscale client
+8. **Configure nikopol** with Tailscale client
 9. **Test mobile access** to bioskop infrastructure
 10. **Deploy RKE2 cluster** with Tailscale operator
 11. **Test end-to-end** K8s service access

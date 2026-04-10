@@ -104,11 +104,11 @@ This eliminates the need for a separate authentication layer like Teleport.
 
 == Network Topology
 
-=== alcide (MacBook Pro - Mobile)
+=== nikopol (MacBook Pro - Mobile)
 
 [source]
 ----
-alcide (Darwin/macOS)
+nikopol (Darwin/macOS)
 ├── Tailscale (external access)
 ├── Headscale Client (optional, LAN SSH)
 ├── en0: 192.168.1.x/24 or external network
@@ -154,7 +154,7 @@ bioskop (Darwin/macOS)
 
 Edit `/etc/nixos/configuration.nix` in each Lima VM:
 
-.alcide's Lima VM
+.nikopol's Lima VM
 [source,nix]
 ----
 { config, pkgs, lib, ... }:
@@ -174,15 +174,15 @@ Edit `/etc/nixos/configuration.nix` in each Lima VM:
     enable = true;
     instanceName = "tailscale-gateway";
     authKeyFile = "/run/secrets/tailscale-authkey";
-    hostname = "alcide-gateway";
+    hostname = "nikopol-gateway";
     
-    # Advertise alcide's subnets
+    # Advertise nikopol's subnets
     routes = [
       "192.168.5.0/24"    # Lima shared network
       "192.168.106.0/24"  # Incus bridge (RKE cluster)
     ];
     
-    tags = [ "gateway" "lima" "alcide" ];
+    tags = [ "gateway" "lima" "nikopol" ];
     exitNode = false;
   };
 
@@ -193,7 +193,7 @@ Edit `/etc/nixos/configuration.nix` in each Lima VM:
   };
 
   networking = {
-    hostName = "lima-alcide";
+    hostName = "lima-nikopol";
     firewall = {
       enable = true;
       trustedInterfaces = [ "incusbr0" ];
@@ -226,7 +226,7 @@ Edit `/etc/nixos/configuration.nix` in each Lima VM:
     ];
     tags = [ "gateway" "lima" "bioskop" ];
   };
-  # ... rest of config similar to alcide
+  # ... rest of config similar to nikopol
 }
 ----
 
@@ -234,11 +234,11 @@ Edit `/etc/nixos/configuration.nix` in each Lima VM:
 
 [source,bash]
 ----
-# On alcide
+# On nikopol
 limactl shell default
 
 # Store Tailscale auth key
-echo "tskey-auth-xxxxx-alcide" | sudo tee /run/secrets/tailscale-authkey
+echo "tskey-auth-xxxxx-nikopol" | sudo tee /run/secrets/tailscale-authkey
 sudo chmod 600 /run/secrets/tailscale-authkey
 
 # Rebuild NixOS
@@ -257,13 +257,13 @@ Repeat for bioskop with its auth key.
 
 In Tailscale admin console (https://login.tailscale.com/admin/machines):
 
-1. Find `alcide-gateway` → Approve routes: `192.168.5.0/24`, `192.168.106.0/24`
+1. Find `nikopol-gateway` → Approve routes: `192.168.5.0/24`, `192.168.106.0/24`
 2. Find `bioskop-gateway` → Approve routes: `192.168.5.0/24`, `192.168.107.0/24`
 
 Or via CLI:
 [source,bash]
 ----
-tailscale set --advertise-routes=192.168.5.0/24,192.168.106.0/24 alcide-gateway
+tailscale set --advertise-routes=192.168.5.0/24,192.168.106.0/24 nikopol-gateway
 tailscale set --advertise-routes=192.168.5.0/24,192.168.107.0/24 bioskop-gateway
 ----
 
@@ -308,7 +308,7 @@ Edit ACLs in Tailscale admin console:
 
 [source,bash]
 ----
-# On alcide and bioskop
+# On nikopol and bioskop
 sudo tailscale up --ssh
 ----
 
@@ -351,7 +351,7 @@ sudo headscale-preauth default > /tmp/client-key.txt
 
 ==== Connect Clients
 
-.Darwin Hosts (alcide, bioskop)
+.Darwin Hosts (nikopol, bioskop)
 [source,nix]
 ----
 { config, pkgs, ... }:
@@ -363,7 +363,7 @@ sudo headscale-preauth default > /tmp/client-key.txt
   services.headscale-client = {
     enable = true;
     serverUrl = "http://192.168.1.10:8080";
-    hostname = "alcide";  # or "bioskop"
+    hostname = "nikopol";  # or "bioskop"
     enableSSH = true;
     tags = [ "darwin" "laptop" ];
   };
@@ -373,7 +373,7 @@ sudo headscale-preauth default > /tmp/client-key.txt
 [source,bash]
 ----
 # After rebuilding
-darwin-rebuild switch --flake .#alcide
+darwin-rebuild switch --flake .#nikopol
 
 # Connect to Headscale
 hs-connect
@@ -386,7 +386,7 @@ services.headscale-client = {
   enable = true;
   serverUrl = "http://192.168.1.10:8080";
   authKeyFile = "/run/secrets/headscale-authkey";
-  hostname = "lima-alcide";
+  hostname = "lima-nikopol";
   enableSSH = true;
   tags = [ "nixos" "lima" ];
 };
@@ -495,7 +495,7 @@ ssh 192.168.106.10
 
 [source,bash]
 ----
-# From alcide, access bioskop's RKE
+# From nikopol, access bioskop's RKE
 kubectl --server=https://192.168.107.10:6443 get nodes
 
 # SSH to nodes
@@ -507,7 +507,7 @@ ssh -L 6443:192.168.107.10:6443 lima-bioskop
 
 === Usage Scenarios
 
-==== Scenario 1: alcide at Home
+==== Scenario 1: nikopol at Home
 
 Both Tailscale and Headscale connected.
 
@@ -526,7 +526,7 @@ kubectl --server=https://192.168.107.10:6443 get nodes
 
 **Best choice**: Headscale for Darwin-to-Darwin SSH (lower latency), Tailscale for RKE access.
 
-==== Scenario 2: alcide External (Coffee Shop)
+==== Scenario 2: nikopol External (Coffee Shop)
 
 Only Tailscale available.
 
@@ -538,7 +538,7 @@ tailscale ssh lima-bioskop
 
 # Access RKE clusters
 ssh 192.168.107.10  # Routes through bioskop-gateway
-ssh 192.168.106.10  # Routes through alcide-gateway (loopback)
+ssh 192.168.106.10  # Routes through nikopol-gateway (loopback)
 
 # Kubernetes
 kubectl --server=https://192.168.107.10:6443 get nodes
@@ -585,7 +585,7 @@ tailscale status
 netstat -rn | grep 192.168.106
 
 # Test gateway connectivity
-tailscale ping alcide-gateway
+tailscale ping nikopol-gateway
 
 # Test from Lima VM
 limactl shell default
@@ -636,7 +636,7 @@ tailscale netcheck
 
 # Check latency
 tailscale ping bioskop-gateway
-tailscale ping alcide-gateway
+tailscale ping nikopol-gateway
 
 # Monitor traffic
 incus exec tailscale-gateway -- tcpdump -i any -n
@@ -686,7 +686,7 @@ If a need arises for dynamic supernet sizing or non-linear allocation, a lightwe
 |===
 | Network | Range | Purpose
 | Host Supernet | 10.80.0.0/18 | Cluster network pool
-| Incus (alcide) | 10.80.8.0/21 | alcide cluster supernet
+| Incus (nikopol) | 10.80.8.0/21 | nikopol cluster supernet
 | Incus (bioskop) | 10.80.0.0/21 | bioskop cluster supernet
 | Lima Shared | 192.168.5.0/24 | Lima VMs
 | Tailscale Mesh | 100.64.0.0/10 | Tailscale overlay
@@ -703,8 +703,8 @@ The home LAN is divided into /27 blocks (30 usable IPs per block) for organized 
 |===
 | Block | CIDR | Range | Allocation | Purpose
 | 0 | 192.168.1.0/27 | .1-.30 | DHCP Pool | General devices, IoT
-| 1 | 192.168.1.32/27 | .33-.62 | alcide Static | alcide cluster infrastructure
-| 2 | 192.168.1.64/27 | .65-.94 | alcide LoadBalancer | alcide Cilium L2 announcements
+| 1 | 192.168.1.32/27 | .33-.62 | nikopol Static | nikopol cluster infrastructure
+| 2 | 192.168.1.64/27 | .65-.94 | nikopol LoadBalancer | nikopol Cilium L2 announcements
 | 3 | 192.168.1.96/27 | .97-.126 | Reserved | Future expansion
 | 4 | 192.168.1.128/27 | .129-.158 | bioskop Static | bioskop cluster infrastructure
 | 5 | 192.168.1.160/27 | .161-.190 | Reserved | IoT/smart home
@@ -729,18 +729,18 @@ The home LAN is divided into /27 blocks (30 usable IPs per block) for organized 
 | bioskop-peer3-control-node | TBD | 192.168.1.135+ | RKE2 peer3 (DHCP)
 |===
 
-====== alcide Cluster (Block 1: 192.168.1.32/27)
+====== nikopol Cluster (Block 1: 192.168.1.32/27)
 
 [options="header"]
 |===
 | Host | MAC Address | IP | Purpose
-| alcide (en0) | e6:bb:3e:c9:cf:9b | 192.168.1.33 | Darwin host (MacBook)
-| alcide-nixos (lan-br) | 10:66:6a:4c:6f:fe | 192.168.1.34 | Lima NixOS VM (Incus bridge DHCP)
-| alcide-nixos (vmlan0) | 10:66:6a:4c:6f:01 | (no IP) | Bridge member (enslaved under lan-br)
-| alcide-master-control-node (lan0) | 10:66:6a:9e:16:11 | 192.168.1.35 | RKE2 master (DHCP)
-| alcide-peer1-control-node | TBD | 192.168.1.36+ | RKE2 peer1 (DHCP)
-| alcide-peer2-control-node | TBD | 192.168.1.37+ | RKE2 peer2 (DHCP)
-| alcide-peer3-control-node | TBD | 192.168.1.38+ | RKE2 peer3 (DHCP)
+| nikopol (en0) | e6:bb:3e:c9:cf:9b | 192.168.1.33 | Darwin host (MacBook)
+| nikopol-nixos (lan-br) | 10:66:6a:4c:6f:fe | 192.168.1.34 | Lima NixOS VM (Incus bridge DHCP)
+| nikopol-nixos (vmlan0) | 10:66:6a:4c:6f:01 | (no IP) | Bridge member (enslaved under lan-br)
+| nikopol-master-control-node (lan0) | 10:66:6a:9e:16:11 | 192.168.1.35 | RKE2 master (DHCP)
+| nikopol-peer1-control-node | TBD | 192.168.1.36+ | RKE2 peer1 (DHCP)
+| nikopol-peer2-control-node | TBD | 192.168.1.37+ | RKE2 peer2 (DHCP)
+| nikopol-peer3-control-node | TBD | 192.168.1.38+ | RKE2 peer3 (DHCP)
 |===
 
 ===== LoadBalancer IP Pools
@@ -756,12 +756,12 @@ The home LAN is divided into /27 blocks (30 usable IPs per block) for organized 
   - Ingress Controller: 192.168.1.194
   - Additional services: 192.168.1.195+
 
-====== alcide LoadBalancer Pool (Block 2: 192.168.1.64/27)
+====== nikopol LoadBalancer Pool (Block 2: 192.168.1.64/27)
 
 * **CIDR**: 192.168.1.64/27
 * **Usable Range**: 192.168.1.65-192.168.1.94 (30 IPs)
 * **Gateway**: 192.168.1.254 (home router)
-* **Purpose**: Cilium L2-announced LoadBalancer IPs for alcide cluster services
+* **Purpose**: Cilium L2-announced LoadBalancer IPs for nikopol cluster services
 * **Example Services**:
   - Headscale: 192.168.1.65
   - Ingress Controller: 192.168.1.66
@@ -769,7 +769,7 @@ The home LAN is divided into /27 blocks (30 usable IPs per block) for organized 
 
 ===== Network Configuration Notes
 
-* **Hostname Strategy**: Cluster nodes register on LAN with cluster-prefixed hostnames (e.g., `bioskop-master-control-node.lan`, `alcide-master-control-node.lan`) to prevent DNS conflicts when both clusters are active on the same home network.
+* **Hostname Strategy**: Cluster nodes register on LAN with cluster-prefixed hostnames (e.g., `bioskop-master-control-node.lan`, `nikopol-master-control-node.lan`) to prevent DNS conflicts when both clusters are active on the same home network.
 
 * **System Hostnames**: Internal system hostnames and RKE2 node names remain unprefixed (e.g., `master-control-node`) for consistency across clusters.
 

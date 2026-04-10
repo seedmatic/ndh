@@ -1,5 +1,5 @@
 #!/usr/bin/env -S bash -euo pipefail
-source @activationLogger@
+source @logger@
 
 main() {
 	echo "[dnsmasq] Ensuring log path @logFile@"
@@ -9,4 +9,4 @@ main() {
 	chown @userName@:staff "@logFile@"
 }
 
-activation_run darwin.activationScripts.postActivation.dnsmasq main "$@"
+ndh::logger:command:run darwin.activationScripts.postActivation.dnsmasq main "$@"

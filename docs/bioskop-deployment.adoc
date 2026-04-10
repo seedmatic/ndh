@@ -35,10 +35,10 @@ bioskop (Mac Mini M4 Pro - Stationary)
 
 === Network Flow
 
-**alcide (mobile) accessing bioskop infrastructure:**
+**nikopol (mobile) accessing bioskop infrastructure:**
 [source]
 ----
-alcide (anywhere)
+nikopol (anywhere)
     ↓ Tailscale (100.x.x.x)
 headscale-gateway (bioskop Lima)
     ↓ Bridge
@@ -303,7 +303,7 @@ ssh bioskop-nixos.home.arpa
 
 [source,bash]
 ----
-# From alcide (via Tailscale)
+# From nikopol (via Tailscale)
 tailscale status
 
 # Should show bioskop-hs-gateway
@@ -441,7 +441,7 @@ sudo headscale-gateway-shell
 
 == Next Steps
 
-1. **Configure alcide** with Tailscale client only
+1. **Configure nikopol** with Tailscale client only
 2. **Add more Headscale clients** (other Darwin/NixOS hosts)
 3. **Deploy RKE2 clusters** with Tailscale operator
 4. **Set up monitoring** for Headscale server and gateway
