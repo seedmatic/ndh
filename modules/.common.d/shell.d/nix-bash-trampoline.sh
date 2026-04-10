@@ -135,9 +135,27 @@ ndh::bootstrap:runtime:install() {
 }
 
 ndh::bootstrap:runtime:diagnose() {
-	local profile_dir profile_bin cmd resolved
+	local profile_dir profile_bin required raw_cmd
+	local -a required_cmds=()
+
+	diag_command() {
+		local cmd="$1"
+		local resolved
+		resolved="$(command -v "$cmd" 2>/dev/null || true)"
+		echo "[ndh][DIAG] command -v ${cmd}: ${resolved:-<missing>}" >&2
+		if [[ -n "$profile_bin" ]]; then
+			if [[ -e "$profile_bin/$cmd" || -L "$profile_bin/$cmd" ]]; then
+				ls -l "$profile_bin/$cmd" >&2 || true
+			else
+				echo "[ndh][DIAG] missing file: $profile_bin/$cmd" >&2
+			fi
+		fi
+	}
+
 	profile_dir="$(ndh::bootstrap:profile:dir || true)"
 	profile_bin="$(ndh::bootstrap:profile:bin || true)"
+	required="${NDH_BOOTSTRAP_REQUIRED_COMMANDS:-age age-keygen awk sed grep ssh ssh-keygen yq git}"
+	read -r -a required_cmds <<< "$required"
 
 	echo "[ndh][DIAG] bootstrap profile dir: ${profile_dir:-<unset>}" >&2
 	echo "[ndh][DIAG] bootstrap profile bin: ${profile_bin:-<unset>}" >&2
@@ -147,24 +165,14 @@ ndh::bootstrap:runtime:diagnose() {
 	if [[ -n "$profile_bin" ]]; then
 		if [[ -d "$profile_bin" ]]; then
 			ls -ld "$profile_bin" >&2 || true
-			if [[ -e "$profile_bin/age" || -L "$profile_bin/age" ]]; then
-				ls -l "$profile_bin"/age >&2 || true
-			else
-				echo "[ndh][DIAG] missing file: $profile_bin/age" >&2
-			fi
-			if [[ -e "$profile_bin/age-keygen" || -L "$profile_bin/age-keygen" ]]; then
-				ls -l "$profile_bin"/age-keygen >&2 || true
-			else
-				echo "[ndh][DIAG] missing file: $profile_bin/age-keygen" >&2
-			fi
 		else
 			echo "[ndh][DIAG] missing directory: $profile_bin" >&2
 		fi
 	fi
 
-	for cmd in age age-keygen; do
-		resolved="$(command -v "$cmd" 2>/dev/null || true)"
-		echo "[ndh][DIAG] command -v ${cmd}: ${resolved:-<missing>}" >&2
+	for raw_cmd in "${required_cmds[@]}"; do
+		[[ -n "$raw_cmd" ]] || continue
+		diag_command "$raw_cmd"
 	done
 }
 
