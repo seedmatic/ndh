@@ -29,34 +29,15 @@ ndh::env:user:home() {
 }
 
 ndh::bootstrap:profile:bin() {
-	local candidate
-	local sudo_user_home
-	local -a candidates=()
-
-	[[ -n "${NDH_BOOTSTRAP_PROFILE_BIN:-}" ]] && candidates+=("${NDH_BOOTSTRAP_PROFILE_BIN}")
-	[[ -n "${HOME:-}" ]] && candidates+=("${HOME}/.local/state/nix/profiles/io-nxmatic-nix-darwin-home-bootstrap-runtime/bin")
-
-	if [[ -n "${SUDO_USER:-}" ]]; then
-		candidates+=("/nix/var/nix/profiles/per-user/${SUDO_USER}/io-nxmatic-nix-darwin-home-bootstrap-runtime/bin")
-		sudo_user_home="$(ndh::env:user:home "${SUDO_USER}" || true)"
-		if [[ -n "$sudo_user_home" ]]; then
-			candidates+=("${sudo_user_home}/.local/state/nix/profiles/io-nxmatic-nix-darwin-home-bootstrap-runtime/bin")
-		fi
+	if [[ -n "${NDH_BOOTSTRAP_PROFILE_BIN:-}" ]]; then
+		echo "${NDH_BOOTSTRAP_PROFILE_BIN}"
+		return 0
 	fi
 
-	if [[ -n "${USER:-}" ]]; then
-		candidates+=("/nix/var/nix/profiles/per-user/${USER}/io-nxmatic-nix-darwin-home-bootstrap-runtime/bin")
+	if [[ -n "${NDH_BOOTSTRAP_PROFILE_DIR:-}" ]]; then
+		echo "${NDH_BOOTSTRAP_PROFILE_DIR}/bin"
+		return 0
 	fi
-
-	candidates+=("/nix/var/nix/profiles/per-user/root/io-nxmatic-nix-darwin-home-bootstrap-runtime/bin")
-
-	for candidate in "${candidates[@]}"; do
-		[[ -n "$candidate" ]] || continue
-		if [[ -d "$candidate" ]]; then
-			echo "$candidate"
-			return 0
-		fi
-	done
 
 	return 1
 }
@@ -92,7 +73,42 @@ ndh::bootstrap:runtime:verify() {
 	return 0
 }
 
+ndh::bootstrap:runtime:install() {
+	local nix_bin profile_dir profile_name runtime_name legacy_runtime_name runtime_spec
+
+	nix_bin="$(command -v nix 2>/dev/null || true)"
+	profile_dir="${NDH_BOOTSTRAP_PROFILE_DIR:-}"
+	if [[ -z "$profile_dir" ]] && [[ -n "${NDH_BOOTSTRAP_PROFILE_BIN:-}" ]]; then
+		profile_dir="${NDH_BOOTSTRAP_PROFILE_BIN%/bin}"
+	fi
+
+	if [[ -z "$nix_bin" || -z "$profile_dir" ]]; then
+		return 1
+	fi
+
+	profile_name="io-nxmatic-nix-darwin-home-bootstrap-runtime"
+	runtime_name="io.nxmatic.nix-darwin-home-bootstrap-runtime-activation"
+	legacy_runtime_name="io.nxmatic.nix-darwin-home-bootstrap-runtime"
+	runtime_spec="${NDH_BOOTSTRAP_RUNTIME_PACKAGE:-}"
+	[[ -n "$runtime_spec" ]] || runtime_spec=".#io-nxmatic-nix-darwin-home-prerequisites-install"
+
+	install -d -m 0755 "$(dirname "$profile_dir")"
+	"$nix_bin" profile remove --profile "$profile_dir" "$runtime_name" >/dev/null 2>&1 || true
+	"$nix_bin" profile remove --profile "$profile_dir" "$legacy_runtime_name" >/dev/null 2>&1 || true
+
+	if [[ "$runtime_spec" == .#* ]]; then
+		"$nix_bin" run "$runtime_spec" -- "$profile_dir" >/dev/null 2>&1 || return 1
+	else
+		"$nix_bin" profile add --profile "$profile_dir" "$runtime_spec" >/dev/null 2>&1 || return 1
+	fi
+
+	"$nix_bin" profile remove --profile "$profile_dir" "$profile_name" >/dev/null 2>&1 || true
+	return 0
+}
+
 ndh::bootstrap:runtime:ensure() {
+	ndh::bootstrap:runtime:install || true
+
 	if ndh::bootstrap:runtime:verify; then
 		return 0
 	fi

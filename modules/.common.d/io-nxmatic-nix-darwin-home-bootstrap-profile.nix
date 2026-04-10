@@ -105,6 +105,7 @@ in
     environment.variables = {
       NDH_BOOTSTRAP_PROFILE_DIR = cfg.profileDir;
       NDH_BOOTSTRAP_PROFILE_BIN = "${cfg.profileDir}/bin";
+      NDH_BOOTSTRAP_RUNTIME_PACKAGE = "${bootstrapRuntimePackage}";
       NDH_BOOTSTRAP_REQUIRED_COMMANDS = requiredCommandsString;
       NDH_BOOTSTRAP_STRICT = if cfg.requireForActivation then "1" else "0";
       NDH_BOOTSTRAP_INSTALL_HINT = installHint;
