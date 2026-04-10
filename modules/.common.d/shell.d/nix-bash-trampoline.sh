@@ -29,11 +29,14 @@ ndh::env:user:home() {
 }
 
 ndh::bootstrap:profile:dir() {
+	local profile_name
+	profile_name="io-nxmatic-nix-darwin-home-bootstrap-runtime"
+
 	if [[ -n "${NDH_BOOTSTRAP_PROFILE_OWNER:-}" ]]; then
 		local owner_home
 		owner_home="$(ndh::env:user:home "${NDH_BOOTSTRAP_PROFILE_OWNER}" || true)"
 		if [[ -n "$owner_home" ]]; then
-			echo "${owner_home}/.local/state/nix/profiles/io-nxmatic-nix-darwin-home-bootstrap-runtime"
+			echo "/nix/var/nix/profiles/per-user/${NDH_BOOTSTRAP_PROFILE_OWNER}/${profile_name}"
 			return 0
 		fi
 	fi
@@ -49,16 +52,22 @@ ndh::bootstrap:profile:dir() {
 	fi
 
 	if [[ -n "${SUDO_USER:-}" ]]; then
-		local sudo_home
-		sudo_home="$(ndh::env:user:home "${SUDO_USER}" || true)"
-		if [[ -n "$sudo_home" ]]; then
-			echo "${sudo_home}/.local/state/nix/profiles/io-nxmatic-nix-darwin-home-bootstrap-runtime"
-			return 0
-		fi
+		echo "/nix/var/nix/profiles/per-user/${SUDO_USER}/${profile_name}"
+		return 0
+	fi
+
+	if [[ -n "${USER:-}" ]]; then
+		echo "/nix/var/nix/profiles/per-user/${USER}/${profile_name}"
+		return 0
+	fi
+
+	if [[ -d "/nix/var/nix/profiles/per-user/root" ]]; then
+		echo "/nix/var/nix/profiles/per-user/root/${profile_name}"
+		return 0
 	fi
 
 	if [[ -n "${HOME:-}" ]]; then
-		echo "${HOME}/.local/state/nix/profiles/io-nxmatic-nix-darwin-home-bootstrap-runtime"
+		echo "${HOME}/.local/state/nix/profiles/${profile_name}"
 		return 0
 	fi
 
@@ -177,6 +186,14 @@ ndh::bootstrap:runtime:diagnose() {
 }
 
 ndh::bootstrap:runtime:ensure() {
+	local profile_dir install_hint
+	profile_dir="$(ndh::bootstrap:profile:dir || true)"
+	if [[ -n "$profile_dir" ]]; then
+		install_hint="nix run .#io-nxmatic-nix-darwin-home-prerequisites-install -- ${profile_dir}"
+	else
+		install_hint="nix run .#io-nxmatic-nix-darwin-home-prerequisites-install -- /nix/var/nix/profiles/per-user/root/io-nxmatic-nix-darwin-home-bootstrap-runtime"
+	fi
+
 	ndh::bootstrap:runtime:install || true
 
 	if ndh::bootstrap:runtime:verify; then
@@ -187,7 +204,7 @@ ndh::bootstrap:runtime:ensure() {
 
 	if [[ "${NDH_BOOTSTRAP_STRICT:-1}" == "1" ]]; then
 		echo "[ndh][ERROR] required NDH bootstrap profile is missing/incomplete" >&2
-		echo "[ndh][ERROR] install hint: ${NDH_BOOTSTRAP_INSTALL_HINT:-nix run .#io-nxmatic-nix-darwin-home-prerequisites-install -- \$HOME/.local/state/nix/profiles/io-nxmatic-nix-darwin-home-bootstrap-runtime}" >&2
+		echo "[ndh][ERROR] install hint: ${NDH_BOOTSTRAP_INSTALL_HINT:-$install_hint}" >&2
 		return 1
 	fi
 
