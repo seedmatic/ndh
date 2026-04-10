@@ -5,6 +5,8 @@
   ...
 }:
 let
+  cacheTrust = import ../../catalog/cache-trust.nix;
+  cacheCatalog = cacheTrust.caches;
 
   cfg = config.profile;
   user = cfg.user;
@@ -30,12 +32,12 @@ in
         "@wheel"
       ];
       trusted-substituters = [
-        "https://cache.nixos.org"
-        "https://nxmatic.cachix.org"
+        cacheCatalog.nixos.substituter
+        cacheCatalog.nxmatic.substituter
       ];
       trusted-public-keys = [
-        "cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY="
-        "nxmatic.cachix.org-1:huMghYiwDpPa1PMXHXK4G1Dp4QOZjgsNqxcjf/AjuJ0="
+        cacheCatalog.nixos.publicKey
+        cacheCatalog.nxmatic.publicKey
       ];
     };
     gc = {

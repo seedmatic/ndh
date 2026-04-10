@@ -14,6 +14,9 @@ let
   userHome = user.home;
   userShell = user.shell;
   cacheCatalog = catalog.caches;
+  flakehubPublicKeys =
+    if cacheCatalog.flakehub ? publicKeys then cacheCatalog.flakehub.publicKeys else [ cacheCatalog.flakehub.publicKey ];
+  flakehubPublicKeysJoined = lib.concatStringsSep " " flakehubPublicKeys;
 in
 {
   imports = [
@@ -117,7 +120,7 @@ in
       extra-platforms = aarch64-darwin
       # Add binary caches for substitution
       extra-trusted-substituters = ${cacheCatalog.flakehub.substituter} ${cacheCatalog.nxmatic.substituter} ${cacheCatalog.flox.substituter}
-      extra-trusted-public-keys = ${cacheCatalog.flakehub.publicKey} ${cacheCatalog.nxmatic.publicKey} ${cacheCatalog.nixos.publicKey} ${cacheCatalog.flox.publicKey}
+      extra-trusted-public-keys = ${flakehubPublicKeysJoined} ${cacheCatalog.nxmatic.publicKey} ${cacheCatalog.nixos.publicKey} ${cacheCatalog.flox.publicKey}
       # Increase download buffer size to prevent buffer full warnings
       download-buffer-size = 268435456  # 256 MB (was 64 MB default)
       # Enable pushing to nxmatic cache and use mirror for faster downloads
