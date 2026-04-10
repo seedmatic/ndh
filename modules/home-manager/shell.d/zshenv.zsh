@@ -7,10 +7,6 @@ path=( "$HOME/.local/bin" "$HOME/.local/share/pnpm" "$HOME/.local/opt/lima-vm/bi
 : ensure we always have a TERM
 declare -g TERM=xterm-256color
 
-: migration guard: drop legacy cross-runtime LIMA_* identity vars if inherited
-: from long-lived parent processes (e.g. GUI apps started before activation).
-unset LIMA_DN LIMA_GUESTNAME LIMA_HOSTNAME LIMA_USERNAME 2>/dev/null || true
-
 : canonical TLS variables are set via Home Manager sessionVariables.
 : fallback only if session vars are unavailable in this shell invocation.
 if [[ -z "${SSL_CERT_FILE:-}" ]]; then
