@@ -63,7 +63,7 @@ in
 
     profileDir = lib.mkOption {
       type = lib.types.str;
-      default = "${config.profile.user.home}/.local/state/nix/profiles/${cfg.name}";
+      default = "/nix/var/nix/profiles/per-user/root/${cfg.name}";
       description = "Absolute Nix profile path used by NDH bootstrap runtime scripts.";
     };
 
@@ -103,7 +103,7 @@ in
     nxmatic.bootstrapProfile.autoInstallOnActivation = lib.mkForce true;
 
     environment.variables = {
-      NDH_BOOTSTRAP_PROFILE_OWNER = config.profile.user.name;
+      NDH_BOOTSTRAP_PROFILE_OWNER = "root";
       NDH_BOOTSTRAP_PROFILE_DIR = cfg.profileDir;
       NDH_BOOTSTRAP_PROFILE_BIN = "${cfg.profileDir}/bin";
       NDH_BOOTSTRAP_RUNTIME_PACKAGE = "${bootstrapRuntimePackage}";
