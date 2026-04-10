@@ -494,21 +494,29 @@
 
           # Canonical disk size in MiB shared by all disk-image profiles.
           # Keep one source of truth to avoid host/guest sizing drift.
-          diskSizeMiB = 20 * 1024; # 4GiB base + 16Gib headroom for stage2 switching and closure growth during activation
+          diskSizeMiB = (4 + 2) * 1024; # 4GiB base + 2GiB buffer for growth and closure size uncertainty
           diskSizeBytes = diskSizeMiB * 1024 * 1024;
-          # System closure path
-          systemPath = zfsRuntime.config.system.build.toplevel;
+          # Bringup closure paths used for stage-1/2 bootstrap sizing checks.
+          bringupExt4SystemPath = ext4.config.system.build.toplevel;
+          bringupZfsSystemPath = zfsBringup.config.system.build.toplevel;
           # Output a JSON hint with all relevant info for post-build checks
           diskSizeHint = builtins.toJSON {
-            systemPath = systemPath;
+            systemPath = bringupZfsSystemPath;
+            bringupSystemPaths = {
+              ext4 = bringupExt4SystemPath;
+              zfs = bringupZfsSystemPath;
+            };
             diskSizeBytes = diskSizeBytes;
             diskSizeMiB = {
               runtime = diskSizeMiB;
               bringupSystemdBoot = diskSizeMiB;
               bringupGrub = diskSizeMiB;
             };
-            hint = "nix path-info -Sh ${systemPath}";
-            note = "closure size should be less than diskSizeBytes";
+            hint = {
+              ext4Bringup = "nix path-info -Sh ${bringupExt4SystemPath}";
+              zfsBringup = "nix path-info -Sh ${bringupZfsSystemPath}";
+            };
+            note = "bringup closure sizes should be less than diskSizeBytes";
           };
           mainName =
             if (hostProfile ? hostAlias && hostProfile.hostAlias != null && hostProfile.hostAlias != "") then

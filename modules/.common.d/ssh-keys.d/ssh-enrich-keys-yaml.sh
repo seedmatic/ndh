@@ -7,15 +7,6 @@ shopt -s extglob
 
 declare -g keyFields="type|usage|comment|public|private|authorities|principals|domain|authorized_keys_options|annotations"
 
-: "Function to handle tracing"
-log::trace() {
-	if [[ -z "${TRACE:=}" ]]; then
-		return
-	else
-		echo "TRACE: $*" >&2
-	fi
-}
-
 : "Function to convert a string to snake_case"
 var::snakeCase() {
 	local var="${1//./_}" &&
@@ -108,7 +99,7 @@ key::generateKeyPair() {
 	comment="${comment:-${keyName}}"
 
 	if ! ssh-keygen -q -t "$type" -N "" -f "${tmpdir}/${keyName}" -C "$comment"; then
-		log::trace "Failed to generate key pair for $keyName"
+		: "Failed to generate key pair for $keyName"
 		return 1
 	fi
 
@@ -158,7 +149,7 @@ key::signWithAuthorities() {
 		local authorityPublicKey="${!authorityPublicKeyVar}"
 
 		if [[ -z "${authorityPrivateKey}" ]]; then
-			log::trace "Missing private key for authority: ${authorityName}"
+			: "Missing private key for authority: ${authorityName}"
 			continue
 		fi
 
@@ -204,7 +195,7 @@ authority::signKey() {
 			local certIdentity
 			certIdentity="$(key::certificateIdentity "${keyNameLocal}" "ssh-user")"
 			if ! ssh-keygen -q -s "$cakeyPrivateTmpFile" -I "${certIdentity}" -n "$(IFS=','; echo "${principals[*]}")" "$keyPublicTmpFile"; then
-				log::trace "Failed to sign user key with authority $authorityName"
+				: "Failed to sign user key with authority $authorityName"
 				return 1
 			fi
 			;;
@@ -214,7 +205,7 @@ authority::signKey() {
 			local certIdentity
 			certIdentity="$(key::certificateIdentity "${keyNameLocal}" "ssh-host")"
 			if ! ssh-keygen -q -s "$cakeyPrivateTmpFile" -I "${certIdentity}" -h -n "$(IFS=','; echo "${authorityHostNames[*]}")" "$keyPublicTmpFile"; then
-				log::trace "Failed to sign host key with authority $authorityName"
+				: "Failed to sign host key with authority $authorityName"
 				return 1
 			fi
 			;;
@@ -222,12 +213,12 @@ authority::signKey() {
 			continue
 			;;
 		*)
-			log::trace "Unknown key usage: $usage"
+			: "Unknown key usage: $usage"
 			return 1
 			;;
 		esac
 		keyCertTmpFile="${keyPublicTmpFile%.pub}-cert.pub"
-		ssh-keygen -L -f "$keyCertTmpFile" || log::trace "Could not inspect certificate $keyCertTmpFile"
+		ssh-keygen -L -f "$keyCertTmpFile" || : "Could not inspect certificate $keyCertTmpFile"
 		keyCertLine="$(cat "${keyCertTmpFile}")"
 		declare -g "$(var::snakeCase "${keyVar}" authorities "$authorityName" "$usage")=${keyCertLine}"
 	done

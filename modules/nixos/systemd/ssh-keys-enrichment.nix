@@ -28,7 +28,7 @@ let
   splitKeysDir = "/run/secrets/nix-darwin-home/ssh-keys-split.d";
   generatedKeysYamlPath = "${splitKeysDir}/keys.generated.yaml";
   generatedSystemKeysYamlPath = "${splitKeysDir}/system.yaml";
-  generatedProfileKeysYamlPath = "${splitKeysDir}/profiles/${profileName}.yaml";
+  generatedProfileKeysYamlPath = "${splitKeysDir}/profiles/${sshKeyProfileName}.yaml";
 
   hostsCatalog =
     let

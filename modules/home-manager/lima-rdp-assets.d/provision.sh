@@ -38,4 +38,4 @@ EOF
   fi
 }
 
-ndh::logger:command:run @loggerTag@ main "$@"
+ndh::logger:command:run "@loggerTag@" main "$@"

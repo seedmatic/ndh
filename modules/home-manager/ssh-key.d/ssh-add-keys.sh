@@ -272,4 +272,4 @@ main() {
 		"$markEnd"
 }
 
-ndh::logger:command:run home-manager.ssh-add-keys main "$@"
+ndh::logger:command:run "@loggerTag@" main "$@"

@@ -9,6 +9,7 @@ let
   profile = config._module.specialArgs.profile;
   ndh = config._module.specialArgs.ndh;
   profileName = profile.name;
+  sshKeyProfileName = if profile ? sshKeyProfileName && profile.sshKeyProfileName != null then profile.sshKeyProfileName else profileName;
   userProfile = profile.user;
   userName = profile.user.name; # Use profile user name for tagging
   sshPaths = config.sshPaths;
@@ -19,7 +20,7 @@ let
   perUserKeysDir = sshPaths.secretsKeysDir;
   authorityKeysDir = sshPaths.authoritySecretsDir;
   systemManagedSshKeysPipeline = pkgs.stdenv.isLinux || pkgs.stdenv.isDarwin;
-  systemSplitProfileKeysYamlPath = "/run/secrets/nix-darwin-home/ssh-keys-split.d/profiles/${profileName}.yaml";
+  systemSplitProfileKeysYamlPath = "/run/secrets/nix-darwin-home/ssh-keys-split.d/profiles/${sshKeyProfileName}.yaml";
   # Effective YAML path consumed by ssh-add-keys/launchd.
   effectiveSSHKeysYamlPath = "${perUserKeysDir}.yaml";
 
@@ -122,6 +123,7 @@ in
       prepareGeneratedSSHKeysYaml = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
         if [[ ! -r "${systemSplitProfileKeysYamlPath}" ]]; then
           echo "missing system-generated profile keys YAML: ${systemSplitProfileKeysYamlPath}" >&2
+          echo "profile.name=${profileName} sshKeyProfileName=${sshKeyProfileName}" >&2
           exit 1
         fi
 

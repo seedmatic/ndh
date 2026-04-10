@@ -12,11 +12,7 @@ declare -g keyFields="type|usage|comment|public|private|authorities|principals|d
 
 : "Function to handle tracing"
 log::trace() {
-	if [[ -z "${TRACE:=}" ]]; then
-		return
-	else
-		echo "TRACE: $*" >&2
-	fi
+	: "${*}"
 }
 
 : "Function to convert a string to snake_case"

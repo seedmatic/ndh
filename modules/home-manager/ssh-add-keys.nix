@@ -17,12 +17,14 @@ let
   userHome = user.home;
   cfg = config.ssh-add-keys;
   sshPaths = config.sshPaths;
+  loggerTag = "home-manager.ssh-add-keys";
   keysFileDefault = "${sshPaths.secretsKeysDir}.yaml";
   allowedKeyNamesDefault = [ sshPaths.keyName ];
   allowedKeyNamesCsv = lib.concatStringsSep "," cfg.allowedKeyNames;
   renderedSshAddKeysScript = pkgs.replaceVars ./ssh-key.d/ssh-add-keys.sh {
     bashTrampoline = "${../.common.d/shell.d/nix-bash-trampoline.sh}";
     logger = config._module.specialArgs.logger.script;
+    loggerTag = loggerTag;
     allowedKeyNamesCsv = allowedKeyNamesCsv;
   };
   sshAddKeysStoreScript = pkgs.writeShellApplication {
