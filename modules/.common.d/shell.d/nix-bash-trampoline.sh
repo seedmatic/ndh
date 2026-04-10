@@ -7,8 +7,30 @@
 
 [[ "${NDH_BASH_TRAMPOLINED:-0}" == "1" ]] && return 0
 
+ndh::env:user:home() {
+	local user="$1"
+	local passwd_entry resolved_home
+
+	[[ -n "$user" ]] || return 1
+
+	if command -v getent >/dev/null 2>&1; then
+		passwd_entry="$(getent passwd "$user" 2>/dev/null || true)"
+		if [[ -n "$passwd_entry" ]]; then
+			resolved_home="$(awk -F: '{print $6}' <<<"$passwd_entry")"
+		fi
+	fi
+
+	if [[ -z "${resolved_home:-}" ]] && command -v dscl >/dev/null 2>&1; then
+		resolved_home="$(dscl . -read "/Users/${user}" NFSHomeDirectory 2>/dev/null | awk '/NFSHomeDirectory:/ {print $2}')"
+	fi
+
+	[[ -n "${resolved_home:-}" ]] || return 1
+	echo "$resolved_home"
+}
+
 ndh::bootstrap:profile:bin() {
 	local candidate
+	local sudo_user_home
 	local -a candidates=()
 
 	[[ -n "${NDH_BOOTSTRAP_PROFILE_BIN:-}" ]] && candidates+=("${NDH_BOOTSTRAP_PROFILE_BIN}")
@@ -16,6 +38,10 @@ ndh::bootstrap:profile:bin() {
 
 	if [[ -n "${SUDO_USER:-}" ]]; then
 		candidates+=("/nix/var/nix/profiles/per-user/${SUDO_USER}/io-nxmatic-nix-darwin-home-bootstrap-runtime/bin")
+		sudo_user_home="$(ndh::env:user:home "${SUDO_USER}" || true)"
+		if [[ -n "$sudo_user_home" ]]; then
+			candidates+=("${sudo_user_home}/.local/state/nix/profiles/io-nxmatic-nix-darwin-home-bootstrap-runtime/bin")
+		fi
 	fi
 
 	if [[ -n "${USER:-}" ]]; then
