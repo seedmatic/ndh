@@ -51,6 +51,11 @@ ndh::bootstrap:profile:dir() {
 		return 0
 	fi
 
+	if [[ -d "/nix/var/nix/profiles/per-user/root" ]]; then
+		echo "/nix/var/nix/profiles/per-user/root/${profile_name}"
+		return 0
+	fi
+
 	if [[ -n "${SUDO_USER:-}" ]]; then
 		echo "/nix/var/nix/profiles/per-user/${SUDO_USER}/${profile_name}"
 		return 0
@@ -58,11 +63,6 @@ ndh::bootstrap:profile:dir() {
 
 	if [[ -n "${USER:-}" ]]; then
 		echo "/nix/var/nix/profiles/per-user/${USER}/${profile_name}"
-		return 0
-	fi
-
-	if [[ -d "/nix/var/nix/profiles/per-user/root" ]]; then
-		echo "/nix/var/nix/profiles/per-user/root/${profile_name}"
 		return 0
 	fi
 
@@ -115,6 +115,7 @@ ndh::bootstrap:runtime:verify() {
 
 ndh::bootstrap:runtime:install() {
 	local nix_bin profile_dir profile_name runtime_name runtime_spec installer
+	local profile_parent
 	local try_add_success
 
 	nix_bin="$(command -v nix 2>/dev/null || true)"
@@ -130,7 +131,20 @@ ndh::bootstrap:runtime:install() {
 	installer="${NDH_BOOTSTRAP_INSTALLER:-}"
 	[[ -n "$runtime_spec" ]] || runtime_spec=".#io-nxmatic-nix-darwin-home-prerequisites-install"
 
-	install -d -m 0755 "$(dirname "$profile_dir")"
+	profile_parent="$(dirname "$profile_dir")"
+	# In non-root contexts (e.g., KnownHostsCommand), avoid noisy permission
+	# failures by skipping auto-install when profile parent is not writable.
+	if [[ ! -d "$profile_parent" ]]; then
+		if [[ ! -w "$(dirname "$profile_parent")" ]]; then
+			return 1
+		fi
+	else
+		if [[ ! -w "$profile_parent" ]]; then
+			return 1
+		fi
+	fi
+
+	install -d -m 0755 "$profile_parent"
 	if [[ -n "$installer" && -x "$installer" ]]; then
 		"$installer" "$profile_dir" >/dev/null 2>&1 || return 1
 		return 0
