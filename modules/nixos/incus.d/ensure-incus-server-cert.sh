@@ -1,12 +1,14 @@
 #!/usr/bin/env -S bash -euo pipefail
 
+# shellcheck disable=SC1091
+source @bashTrampoline@
+
 incus_state_dir="/var/lib/incus"
 server_cert="${incus_state_dir}/server.crt"
 server_key="${incus_state_dir}/server.key"
 primary_name="@incusServerCertPrimaryName@"
 # shellcheck disable=SC2206
 desired_names=( @incusServerCertNames@ )
-openssl_bin="@opensslBin@"
 
 if [[ ${#desired_names[@]} -eq 0 ]]; then
   echo "[incus-cert] no desired SAN names resolved; skipping" >&2
@@ -18,7 +20,7 @@ install -d -m 0711 "${incus_state_dir}"
 existing_names=()
 if [[ -s "${server_cert}" ]]; then
   mapfile -t existing_names < <(
-    "${openssl_bin}" x509 -in "${server_cert}" -noout -ext subjectAltName 2>/dev/null \
+    openssl x509 -in "${server_cert}" -noout -ext subjectAltName 2>/dev/null \
       | tr ',' '\n' \
       | sed -n 's/^[[:space:]]*DNS://p' \
       | sed '/^$/d' \
@@ -60,7 +62,7 @@ O = Linux Containers
 subjectAltName = ${san_entries}
 EOF
 
-"${openssl_bin}" req -x509 -newkey rsa:4096 -sha256 -nodes \
+openssl req -x509 -newkey rsa:4096 -sha256 -nodes \
   -days 825 \
   -keyout "${tmp_dir}/server.key" \
   -out "${tmp_dir}/server.crt" \

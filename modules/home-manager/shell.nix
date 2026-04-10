@@ -51,8 +51,8 @@ in
   home.activation.zdotdir =
     let
       zdotdirScript = pkgs.replaceVars ./shell.d/zdotdir.sh {
+        bashTrampoline = "${../common/shell.d/nix-bash-trampoline.sh}";
         gitPath = lib.makeBinPath [ pkgs.git ];
-        gitBin = "${pkgs.git}/bin/git";
         caBundle = "${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt";
         logger = logger;
         activationTag = activationTagZdotdir;

@@ -51,7 +51,7 @@ let
   ensureIncusServerCert = pkgs.runCommand "ensure-incus-server-cert.sh" { } ''
     cp ${
       pkgs.replaceVars ./incus.d/ensure-incus-server-cert.sh {
-        opensslBin = "${pkgs.openssl}/bin/openssl";
+        bashTrampoline = "${../common/shell.d/nix-bash-trampoline.sh}";
         incusServerCertPrimaryName = incusServerCertPrimaryName;
         incusServerCertNames = lib.concatMapStringsSep " " lib.escapeShellArg incusServerCertNames;
       }
@@ -217,10 +217,9 @@ in
         # baked into the default Incus remote address.
         incusRemoteAddress = "https://${config.networking.hostName}:8443";
         # Use the wrapped activation logger in the store
+        bashTrampoline = "${../common/shell.d/nix-bash-trampoline.sh}";
         logger = config.activation.loggerScript;
         activationTag = "nixos.activationScripts.incusUserConfig";
-        incusBin = "${pkgs.incus}/bin/incus";
-        sedBin = "${pkgs.gnused}/bin/sed";
       }
     );
   };

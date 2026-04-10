@@ -9,7 +9,7 @@ let
   userName = profile.user.name;
   userEmail = profile.email;
   sshPaths = config.sshPaths;
-  hostKeysDir = sshPaths.systemSecretsDir;
+  hostKeysDir = sshPaths.authoritySecretsDir;
   allowedSignersFile = "${config.xdg.configHome}/git/github_allowed_signers";
   systemCaBundle = config.home.sessionVariables.SSL_CERT_FILE;
   logger = config._module.specialArgs.logger.script;

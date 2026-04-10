@@ -56,17 +56,40 @@ ndh::nix:bash:trampoline() {
 	exec "$(command -v bash)" "$0" "${@}"
 }
 
-ndh::nix:profile() {
-	local profile="/nix/var/nix/profiles/default"
-	if [[ -d "/etc/profiles/per-user/$USER" ]]; then
-	    profile="/etc/profiles/per-user/$USER"
+ndh::nix:profile:script() {
+	local candidate
+	local -a candidates=()
+
+	if [[ -n "${SUDO_USER:-}" && -d "/etc/profiles/per-user/${SUDO_USER}" ]]; then
+		candidates+=("/etc/profiles/per-user/${SUDO_USER}/etc/profile.d/nix-daemon.sh")
 	fi
-	echo "$profile"
+
+	if [[ -n "${USER:-}" && -d "/etc/profiles/per-user/${USER}" ]]; then
+		candidates+=("/etc/profiles/per-user/${USER}/etc/profile.d/nix-daemon.sh")
+	fi
+
+	candidates+=(
+		"/nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh"
+		"/run/current-system/sw/etc/profile.d/nix-daemon.sh"
+	)
+
+	for candidate in "${candidates[@]}"; do
+		if [[ -r "$candidate" ]]; then
+			echo "$candidate"
+			return 0
+		fi
+	done
+
+	return 1
 }
 
 : "Load nix profile"
-# shellcheck disable=SC1091
-source "$(ndh::nix:profile)/etc/profile.d/nix-daemon.sh"
+if nix_daemon_profile_script="$(ndh::nix:profile:script)"; then
+	# shellcheck disable=SC1091
+	source "$nix_daemon_profile_script"
+else
+	echo "[ndh][WARN] unable to find nix-daemon profile script; continuing with PATH bootstrap only" >&2
+fi
 
 : "Cleanup path"
 PATH="$(ndh::nix:bash:path)"

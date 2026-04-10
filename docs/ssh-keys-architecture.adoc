@@ -17,7 +17,7 @@
 This document describes the current SSH key management system with split runtime outputs:
 
 * per-user private material: `/run/secrets-per-user/<user>/ssh-keys/`
-* per-user public/trust material: `/run/secrets-per-user/<user>/ssh-system-keys/`
+* per-user public/trust material: `/run/secrets-per-user/<user>/ssh-authority/`
 
 `/run/secrets.d` is an internal sops-nix generation path and is not a consumer-facing API.
 ====
@@ -88,7 +88,7 @@ See xref:ssh-keys-diagrams.adoc[SSH Keys Diagrams] for rendered Mermaid diagram 
 |Creates mutable `~/.ssh/authorized_keys` with strict permissions
 
 |Runtime Directories
-|`/run/secrets-per-user/<user>/ssh-keys/` (private) and `/run/secrets-per-user/<user>/ssh-system-keys/` (public/trust)
+|`/run/secrets-per-user/<user>/ssh-keys/` (private) and `/run/secrets-per-user/<user>/ssh-authority/` (public/trust)
 |===
 
 == C3: Component Architecture (Generate → Extract → Authorize)
@@ -126,7 +126,7 @@ h|Aspect|Details
 |Process
 |For each key entry:
 * Write private material to `/run/secrets-per-user/<user>/ssh-keys/`
-* Write public/cert/CA material to `/run/secrets-per-user/<user>/ssh-system-keys/`
+* Write public/cert/CA material to `/run/secrets-per-user/<user>/ssh-authority/`
 * Normalize file modes (private `0600`, public `0644`)
 
 |Output
@@ -183,7 +183,7 @@ Plaintext Profile YAML
       │
       ├─ [STAGE 2: ssh-extract-keys.sh]
       │  ├─ Extract private keys → /run/secrets-per-user/<user>/ssh-keys/
-      │  ├─ Extract public/cert/CA files → /run/secrets-per-user/<user>/ssh-system-keys/
+      │  ├─ Extract public/cert/CA files → /run/secrets-per-user/<user>/ssh-authority/
       │  └─ Apply runtime file modes (0600 private, 0644 public)
       │
       ▼
@@ -201,7 +201,7 @@ Plaintext Profile YAML
 ├─ linux-builder (private)
 └─ ... (permissions: 0600)
 
-/run/secrets-per-user/<user>/ssh-system-keys/
+/run/secrets-per-user/<user>/ssh-authority/
 ├─ github-signing.pub
 ├─ rke2-cluster.pub
 ├─ mammoth-skate-ca.pub
@@ -239,7 +239,7 @@ modules/home-manager/
 ├── linux-builder
 └── ...
 
-/run/secrets-per-user/<user>/ssh-system-keys/
+/run/secrets-per-user/<user>/ssh-authority/
 ├── github-signing.pub
 ├── rke2-cluster.pub
 ├── mammoth-skate-ca.pub
@@ -384,8 +384,8 @@ home-manager switch
 +
 [source,bash]
 ----
-ls -la /run/secrets-per-user/$USER/ssh-system-keys/rke2-cluster-mammoth-skate-user-cert.pub
-ssh-keygen -L -f /run/secrets-per-user/$USER/ssh-system-keys/rke2-cluster-cert.pub
+ls -la /run/secrets-per-user/$USER/ssh-authority/rke2-cluster-mammoth-skate-user-cert.pub
+ssh-keygen -L -f /run/secrets-per-user/$USER/ssh-authority/rke2-cluster-cert.pub
 ----
 
 === Debugging Pipeline

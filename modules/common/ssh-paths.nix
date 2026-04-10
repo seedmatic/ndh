@@ -18,59 +18,75 @@ let
       config.home.username
     else
       "user";
+
+  userHome =
+    if profile ? user && profile.user ? home && profile.user.home != null then
+      toString profile.user.home
+    else if config ? home && config.home ? homeDirectory && config.home.homeDirectory != null then
+      toString config.home.homeDirectory
+    else
+      "/tmp/${userName}";
 in
 {
   options.sshPaths = {
-    # Canonical system-scoped SSH material path (public/trust artifacts)
-    systemSecretsDir = lib.mkOption {
-      type = lib.types.str;
-      default = "${config.sshPaths.perUserSecretsRoot}/${userName}/ssh-system-keys";
-      description = "Base directory for system-owned SSH material (public keys/certs/CA metadata).";
-    };
+
 
     # Canonical per-user SSH material root
-    perUserSecretsRoot = lib.mkOption {
+    secretsRootDir = lib.mkOption {
       type = lib.types.str;
-      default = "/run/secrets-per-user";
+      default = "${userHome}/.local/var/run/secrets";
       description = "Root directory for per-user SSH material in runtime secrets namespace.";
     };
 
-    perUserSecretsDir = lib.mkOption {
+    secretsKeysDir = lib.mkOption {
       type = lib.types.str;
-      default = "${config.sshPaths.perUserSecretsRoot}/${userName}/ssh-keys";
+      default = "${config.sshPaths.secretsRootDir}/ssh-keys";
       description = "Base directory for user-owned SSH material (private identities and user-local metadata).";
+    };
+
+    authoritySecretsDir = lib.mkOption {
+      type = lib.types.str;
+      default = "${config.sshPaths.secretsRootDir}/ssh-keys/.authority.d";
+      description = "Base directory for system-owned SSH material (public keys/certs/CA metadata).";
+    };
+
+    keyName = lib.mkOption {
+      type = lib.types.str;
+      default = "rdp_host"; # minus translated key name for compatibility with existing conventions (e.g. yq shell output)
+      description = "Canonical SSH key basename used by Lima and SSH consumers.";
     };
 
     privKeyFile = lib.mkOption {
       type = lib.types.str;
-      default = "${config.sshPaths.perUserSecretsDir}/rdp-host";
+      default = "${config.sshPaths.secretsKeysDir}/${config.sshPaths.keyName}";
       description = "Path to the SSH host private key.";
+    };
+
+    hostPublicKeyFile = lib.mkOption {
+      type = lib.types.str;
+      default = "${config.sshPaths.authoritySecretsDir}/${config.sshPaths.keyName}.pub";
+      description = "Path to the canonical SSH host public key used by Lima and enrollment checks.";
     };
 
     hostCertPublic = lib.mkOption {
       type = lib.types.str;
-      default = "${config.sshPaths.systemSecretsDir}/rdp-host-server-cert.pub";
+      default = "${config.sshPaths.authoritySecretsDir}/${config.sshPaths.keyName}-server-cert.pub";
       description = "Path to the SSH host public certificate.";
     };
 
-    etcKeysYamlFile = lib.mkOption {
+    userCertPublic = lib.mkOption {
       type = lib.types.str;
-      default = "/etc/ssh/keys.yaml";
-      description = "Path to the system SSH certificate principal validation YAML file (for sshd).";
+      default = "${config.sshPaths.secretsKeysDir}/${config.sshPaths.keyName}-cert.pub";
+      description = "Path to the canonical SSH user certificate corresponding to privKeyFile.";
     };
 
     # Home-manager SSH keys workflow paths
     runtimeSecretsKeysYaml = lib.mkOption {
       type = lib.types.str;
-      default = "/run/secrets/nix-darwin-home/nxmatic-ssh-keys.yaml";
+      default = "/run/secrets/nix-darwin-home/ssh-keys.yaml";
       description = "Path to SOPS-decrypted runtime SSH keys YAML (from specialArgs.sshKeysYamlPath or default).";
     };
 
-    generatedKeysYamlFile = lib.mkOption {
-      type = lib.types.str;
-      default = "${config.sshPaths.perUserSecretsDir}/keys.yaml";
-      description = "Path to the generated/extracted SSH keys YAML file (used by ssh-add-keys).";
-    };
   };
 
   config = {

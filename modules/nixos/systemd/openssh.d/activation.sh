@@ -17,15 +17,8 @@ main() {
   GROUP_CMD=@groupCommand@
   PRINCIPALS_SRC=@principalsScript@
   GROUP_SRC=@groupKeysScript@
-  CLIENT_KEY_NAME=rdp-host
+  CLIENT_KEY_NAME=@clientKeyName@
   SERVER_KEY_NAME="$CLIENT_KEY_NAME"
-
-  if [ -n "${NDH_VZ_GUEST:-}" ]; then
-    guest_key_name="vz-guest-${NDH_VZ_GUEST}"
-    if [ -s "$USER_PRIVATE_SOURCE_DIR/$guest_key_name" ]; then
-      SERVER_KEY_NAME="$guest_key_name"
-    fi
-  fi
 
   SERVER_PRIVATE_SOURCE="$USER_PRIVATE_SOURCE_DIR/$SERVER_KEY_NAME"
   SERVER_PUBLIC_SOURCE="$USER_CA_SOURCE_DIR/$SERVER_KEY_NAME.pub"
