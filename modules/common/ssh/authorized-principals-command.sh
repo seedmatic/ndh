@@ -9,7 +9,7 @@
 #
 # Usage: authorized-principals-command <user>
 set -euo pipefail
-PATH="/run/wrappers/bin:/run/current-system/sw/bin"
+PATH="@scriptPath@"
 USER_NAME="${1:-}"
 if [[ -z "$USER_NAME" ]]; then
   echo "missing user" >&2

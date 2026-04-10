@@ -17,9 +17,11 @@ let
   principalsScriptStore = pkgs.replaceVars ../common/ssh/authorized-principals-command.sh {
     bashBin = "${pkgs.bash}/bin/bash";
     yqBin = "${pkgs.yq-go}/bin/yq";
+    scriptPath = config.opensshPolicy.setEnvPath;
   };
   groupKeysScriptStore = pkgs.replaceVars ../common/ssh/ssh-group-authorized-keys.sh {
     bashBin = "${pkgs.bash}/bin/bash";
+    scriptPath = config.opensshPolicy.setEnvPath;
     authorizedKeysDir = config.opensshPolicy.authorizedKeysDir;
   };
   inherit (lib) mkIf optionalString concatStringsSep;
