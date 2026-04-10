@@ -83,7 +83,17 @@ in
     # Home-manager SSH keys workflow paths
     runtimeSecretsKeysYaml = lib.mkOption {
       type = lib.types.str;
-      default = lib.attrByPath [ "_module" "specialArgs" "sshKeysYamlPath" ] "/run/secrets/nix-darwin-home/ssh-keys.yaml" config;
+      default =
+        let
+          hmSopsPath = lib.attrByPath [ "sops" "secrets" "ssh-keys.yaml" "path" ] null config;
+          specialArgPath = lib.attrByPath [ "_module" "specialArgs" "sshKeysYamlPath" ] null config;
+        in
+        if hmSopsPath != null then
+          hmSopsPath
+        else if specialArgPath != null then
+          specialArgPath
+        else
+          "/run/secrets/nix-darwin-home/ssh-keys.yaml";
       description = "Path to SOPS-decrypted runtime SSH keys YAML (from specialArgs.sshKeysYamlPath or default).";
     };
 

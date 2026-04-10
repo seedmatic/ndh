@@ -22,11 +22,13 @@ let
   sshPaths = config.sshPaths;
   logger = config._module.specialArgs.logger.script;
   loggerTagGenerate = "home-manager.activationScripts.${userName}.generateSSHKeysYaml";
+  loggerTagDecrypt = "home-manager.activationScripts.${userName}.decryptSSHKeysYaml";
   loggerTagExtract = "home-manager.activationScripts.${userName}.extractSSHKeys";
   loggerTagAuthorized = "home-manager.activationScripts.${userName}.ensureAuthorizedKeys";
   perUserKeysDir = sshPaths.secretsKeysDir;
   authorityKeysDir = sshPaths.authoritySecretsDir;
   decryptedSSHKeysYamlPath = sshPaths.runtimeSecretsKeysYaml;
+  encryptedSSHKeysYamlSource = ./ssh.d/keys.yaml;
   # Effective YAML path consumed by ssh-add-keys/launchd.
   effectiveSSHKeysYamlPath = "${perUserKeysDir}.yaml";
 
@@ -61,6 +63,18 @@ let
 
 in
 {
+  assertions = [
+    {
+      assertion = decryptedSSHKeysYamlPath != effectiveSSHKeysYamlPath;
+      message = ''
+        ssh-keys activation path conflict: decrypted source YAML path equals generated output YAML path.
+        Keep them separate to preserve the flow:
+        - source (decrypted full profile YAML)
+        - output (generated/filtered runtime YAML)
+      '';
+    }
+  ];
+
   imports = [
     ./ssh-add-keys.nix
     ../.common.d/ssh-paths.nix
@@ -116,6 +130,17 @@ in
         source = sshGenerateKeysYamlScriptSource;
       };
 
+      decryptSSHKeysYamlScriptSource = pkgs.replaceVars ./ssh-key.d/ssh-decrypt-keys-yaml.sh {
+        bashTrampoline = "${../.common.d/shell.d/nix-bash-trampoline.sh}";
+        logger = logger;
+        loggerTag = loggerTagDecrypt;
+        sopsBin = "${pkgs.sops}/bin/sops";
+      };
+      decryptSSHKeysYamlScript = ndh.store.installScript {
+        name = "ssh-decrypt-keys-yaml.sh";
+        source = decryptSSHKeysYamlScriptSource;
+      };
+
       sshExtractKeysSplitExpFile = ndh.store.installScript {
         name = "ssh-extract-keys.split-exp.yq";
         source = ./ssh-key.d/ssh-extract-keys.split-exp.yq;
@@ -144,9 +169,14 @@ in
       };
     in
     {
+      # Decrypt source YAML (full profiles) to a user-scoped runtime path first.
+      decryptSSHKeysYaml = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+        ${pkgs.bash}/bin/bash ${decryptSSHKeysYamlScript} "${encryptedSSHKeysYamlSource}" "${decryptedSSHKeysYamlPath}" "${userName}"
+      '';
+
       # Generate the YAML of keys to deploy based on the main keys.yaml and the current host/profile
-      generateSSHKeysYaml = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-        ${pkgs.bash}/bin/bash ${sshGenerateKeysYamlScript} "${sshKeyProfileName}" "$(${pkgs.hostname}/bin/hostname -s)" "${decryptedSSHKeysYamlPath}" "${effectiveSSHKeysYamlPath}" "${hostsCatalogCsv}" "${userName}"
+      generateSSHKeysYaml = lib.hm.dag.entryAfter [ "decryptSSHKeysYaml" ] ''
+        ${pkgs.bash}/bin/bash ${sshGenerateKeysYamlScript} "${sshKeyProfileName}" "${hostIdent}" "${decryptedSSHKeysYamlPath}" "${effectiveSSHKeysYamlPath}" "${hostsCatalogCsv}" "${userName}"
       '';
 
       # Deploy keys to the filesystem with proper permissions based on the generated YAML

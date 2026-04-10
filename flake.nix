@@ -905,6 +905,7 @@
                 inherit profile;
                 logger = mkLoggerSpecialArg "aarch64-darwin";
                 ndh = { store = ndhStoreApiDarwin; };
+                sshKeysYamlPath = "${toString profile.user.home}/.local/var/run/secrets/sops/ssh-keys.yaml";
               };
             };
           darwinOutputs = mkDarwinOutputs {

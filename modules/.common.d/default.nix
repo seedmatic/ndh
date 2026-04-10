@@ -230,7 +230,7 @@ in
         sshKeysYamlPath = lib.attrByPath [
           "sops"
           "secrets"
-          "keys.yaml"
+          "ssh-keys.yaml"
           "path"
         ] "/run/secrets/nix-darwin-home/ssh-keys.yaml" config;
       };
@@ -284,7 +284,7 @@ in
         sshKeysYamlPath = lib.attrByPath [
           "sops"
           "secrets"
-          "keys.yaml"
+          "ssh-keys.yaml"
           "path"
         ] "/run/secrets/nix-darwin-home/ssh-keys.yaml" config;
       };
