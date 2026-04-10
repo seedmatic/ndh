@@ -18,9 +18,12 @@ let
   cfg = config.ssh-add-keys;
   sshPaths = config.sshPaths;
   keysFileDefault = "${sshPaths.secretsKeysDir}.yaml";
+  allowedKeyNamesDefault = [ sshPaths.keyName ];
+  allowedKeyNamesCsv = lib.concatStringsSep "," cfg.allowedKeyNames;
   renderedSshAddKeysScript = pkgs.replaceVars ./ssh-key.d/ssh-add-keys.sh {
     bashTrampoline = "${../common/shell.d/nix-bash-trampoline.sh}";
     logger = config._module.specialArgs.logger.script;
+    allowedKeyNamesCsv = allowedKeyNamesCsv;
   };
   sshAddKeysStoreScript = pkgs.writeShellApplication {
     name = "ssh-add-keys";
@@ -48,6 +51,12 @@ in
       type = types.str;
       default = keysFileDefault;
       description = "Path to the decrypted YAML file containing SSH keys.";
+    };
+
+    allowedKeyNames = mkOption {
+      type = types.listOf types.str;
+      default = allowedKeyNamesDefault;
+      description = "SSH key names from keys.yaml allowed to be loaded into agent and managed authorized_keys block.";
     };
   };
 

@@ -230,8 +230,8 @@ in
     restartTriggers = [ ensureIncusServerCert ];
     path = with pkgs; [ openssl ];
     serviceConfig = {
-      ExecStartPre = [ "${ensureIncusServerCert}" ];
-      ExecStartPost = [ "${fixIncusSocketPerms}" ];
+      ExecStartPre = [ "${pkgs.bash}/bin/bash ${ensureIncusServerCert}" ];
+      ExecStartPost = [ "${pkgs.bash}/bin/bash ${fixIncusSocketPerms}" ];
     };
   };
 

@@ -70,9 +70,13 @@ ${formatPrincipals allPrincipals}
   logger = config.nixBashLogger.script;
   loggerTag = "nixos.activationScripts.sshGroupKeys";
   hasSopsInstallSecretsService = builtins.hasAttr "sops-install-secrets" config.systemd.services;
+  homeManagerServiceName = "home-manager-${config.profile.user.name}";
+  hasHomeManagerService = builtins.hasAttr homeManagerServiceName config.systemd.services;
   hostkeyEnrollmentCheckTag = "nixos.services.ndh.hostkeyEnrollmentCheck";
   hostkeyEnrollmentSyncTag = "nixos.services.ndh.hostkeyEnrollmentSync";
   hostkeyEnrollmentCheckScript = pkgs.replaceVars ./openssh.d/hostkey-enrollment-check.sh {
+    bashTrampoline = "${../../common/shell.d/nix-bash-trampoline.sh}";
+    logger = logger;
     logTag = hostkeyEnrollmentCheckTag;
     userPrivateSourceDir = config.sshPaths.secretsKeysDir;
     userCaSourceDir = config.sshPaths.authoritySecretsDir;
@@ -80,6 +84,8 @@ ${formatPrincipals allPrincipals}
     clientKeyName = clientKeyName;
   };
   hostkeyEnrollmentSyncScript = pkgs.replaceVars ./openssh.d/hostkey-enrollment-sync.sh {
+    bashTrampoline = "${../../common/shell.d/nix-bash-trampoline.sh}";
+    logger = logger;
     logTag = hostkeyEnrollmentSyncTag;
     clientPrivateSource = config.sshPaths.privKeyFile;
     clientUserCertSource = config.sshPaths.userCertPublic;
@@ -184,6 +190,7 @@ in
     "L+ /bin/sudo - - - - /run/wrappers/bin/sudo"
     "L+ /usr/bin/sudo - - - - /run/wrappers/bin/sudo"
     "L+ /bin/bash - - - - /run/current-system/sw/bin/bash"
+    "d /run/ndh/ssh 0775 ${config.profile.user.name} ${config.profile.user.name} - -"
   ];
 
   # Ensure all systemd services (including sshd) inherit a wrapper-first PATH
@@ -200,9 +207,13 @@ in
       gawk
       openssh
       util-linux
+      yq-go
     ];
     serviceConfig = {
       Type = "oneshot";
+      User = config.profile.user.name;
+      Group = config.profile.user.name;
+      Environment = [ "HOME=${userHome}" ];
       ExecStart = "${pkgs.bash}/bin/bash ${hostkeyEnrollmentCheckScript}";
     };
   };
@@ -213,20 +224,24 @@ in
     wants = [
       "network-online.target"
       "io-nxmatic-nix-darwin-home-hostkey-enrollment-check.service"
-    ];
+    ] ++ lib.optionals hasHomeManagerService [ "${homeManagerServiceName}.service" ];
     after = [
       "network-online.target"
       "io-nxmatic-nix-darwin-home-hostkey-enrollment-check.service"
-    ];
-    unitConfig.ConditionPathExists = "/run/ndh/ssh/hostkey-enrollment-required";
+    ] ++ lib.optionals hasHomeManagerService [ "${homeManagerServiceName}.service" ];
+    unitConfig.ConditionPathExists = "/run/ndh/ssh/hostkey-enrollment-state.yaml";
     path = with pkgs; [
       coreutils
       gawk
       openssh
       util-linux
+      yq-go
     ];
     serviceConfig = {
       Type = "oneshot";
+      User = config.profile.user.name;
+      Group = config.profile.user.name;
+      Environment = [ "HOME=${userHome}" ];
       ExecStart = "${pkgs.bash}/bin/bash ${hostkeyEnrollmentSyncScript}";
     };
   };

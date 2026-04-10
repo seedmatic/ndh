@@ -40,6 +40,8 @@ in
       "network.target"
       "containerd.service"
     ];
+    wants = [ "containerd.service" ];
+    requires = [ "containerd.service" ];
     wantedBy = [ "io-nxmatic-nix-darwin-home-contributed.target" ];
     serviceConfig = {
       ExecStart = "${pkgs.buildkit}/bin/buildkitd --config  /etc/buildkit/buildkitd.toml";

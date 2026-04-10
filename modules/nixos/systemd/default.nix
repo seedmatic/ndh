@@ -1,7 +1,6 @@
 {
   config,
   pkgs,
-  profile,
   lib,
   hostProfile ? { },
   ...
@@ -13,6 +12,11 @@ let
     else
       "full";
   bootstrapMode = hostImageMode == "bootstrap";
+  profileUserName =
+    if config ? profile && config.profile ? user && config.profile.user ? name then config.profile.user.name else "root";
+  homeManagerServiceName = "home-manager-${profileUserName}";
+  keysTargetUnit = "keys.target";
+  hasSopsInstallSecretsService = builtins.hasAttr "sops-install-secrets" config.systemd.services;
 in
 {
   options.rescue.enable = lib.mkOption {
@@ -35,6 +39,14 @@ in
 
   config.systemd.targets.io-nxmatic-nix-darwin-home-contributed = {
     description = "Nix Darwin Home contributed units (@codebase)";
+    requires = [ keysTargetUnit ];
+    after = [ keysTargetUnit ];
     wantedBy = [ "multi-user.target" ];
+  };
+
+  config.systemd.services.${homeManagerServiceName} = lib.mkIf (!bootstrapMode) {
+    wantedBy = [ "io-nxmatic-nix-darwin-home-contributed.target" ];
+    requires = [ keysTargetUnit ] ++ lib.optionals hasSopsInstallSecretsService [ "sops-install-secrets.service" ];
+    after = [ keysTargetUnit ] ++ lib.optionals hasSopsInstallSecretsService [ "sops-install-secrets.service" ];
   };
 }
