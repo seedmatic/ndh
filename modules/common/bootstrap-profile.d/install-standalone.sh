@@ -22,11 +22,11 @@ main() {
   done
 
   if ((${#missing[@]} > 0)); then
-    echo "[ndh-bootstrap-profile][WARN] missing commands after install: ${missing[*]}" >&2
+    echo "[io-nxmatic-nix-darwin-home-bootstrap-profile][WARN] missing commands after install: ${missing[*]}" >&2
     return 1
   fi
 
-  echo "[ndh-bootstrap-profile] installed runtime profile at ${profile_dir}"
+  echo "[io-nxmatic-nix-darwin-home-bootstrap-profile] installed runtime profile at ${profile_dir}"
 }
 
 main "$@"

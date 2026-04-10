@@ -19,25 +19,25 @@ let
 
   getInterfaceIp =
     interface:
-    pkgs.writeShellScript (ndh.store.prefixedName "get-${interface}-ip") ''
+    ndh.store.writeShellScript "get-${interface}-ip" ''
       ${pkgs.darwin.network_cmds}/bin/ifconfig ${interface} |
       ${pkgs.gnugrep}/bin/grep -w inet |
       ${pkgs.gawk}/bin/awk '{ print $2 }'
     '';
 
   routerId = builtins.readFile (
-    pkgs.runCommand (ndh.store.prefixedName "get-router-id") { } ''
+    ndh.store.runCommand "get-router-id" { } ''
       ${getInterfaceIp birdInterface} > $out
     ''
   );
 
-  birdConfig = pkgs.writeText (ndh.store.prefixedName "bird.conf") ''
+  birdConfig = ndh.store.writeText "bird.conf" ''
     log "/var/log/bird.log" { debug, trace, info, remote, warning, error, auth, fatal, bug };
     router id ${routerId};
     include "/etc/bird/protocol.d/*.conf";
   '';
 
-  pfRules = pkgs.writeText (ndh.store.prefixedName "bird.rules") ''
+  pfRules = ndh.store.writeText "bird.rules" ''
     table <podman_networks> { 172.16.106.0/24, 10.88.0.0/16, 10.89.0.0/16, 10.90.0.0/15, 10.92.0.0/14, 10.96.0.0/11, 10.128.0.0/9 }
     pass quick on bridge100 proto udp from any to 224.0.0.9 port 520
     pass quick on bridge100 proto udp from (bridge100) to 224.0.0.9 port 520
@@ -179,7 +179,7 @@ in
         (p: {
           name = "bird/protocol.d/${p.name}.conf";
           value = {
-            source = pkgs.writeText (ndh.store.prefixedName "${p.name}.conf") p.text;
+            source = ndh.store.writeText "${p.name}.conf" p.text;
           };
         })
         (

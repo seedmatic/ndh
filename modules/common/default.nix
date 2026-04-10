@@ -54,11 +54,13 @@ let
   '';
   loggerTagHmPost = "common.activationScripts.postActivation.home-manager";
   # Define systemPackages separately
-  systemPackages = import ./system-packages.nix {
-    inherit pkgs lib;
-    # Pass only necessary parts of config, not the entire config
-    inherit (config) programs environment;
-  };
+  systemPackages =
+    (import ./system-packages.nix {
+      inherit pkgs lib;
+      # Pass only necessary parts of config, not the entire config
+      inherit (config) programs environment;
+    })
+    ++ [ ndhStoreAssetLookupPackage ];
 
   postActivationScriptSource = pkgs.replaceVars ./shell.d/post-activation.sh {
     hmActivationPackage = toString hmActivationPackage;
@@ -90,6 +92,40 @@ let
     ) ''
       install -m ${mode} ${source} "$out"
     '';
+
+  ndhStoreAssetLookupSource = pkgs.replaceVars ./shell.d/store-asset-lookup.sh {
+    bash = toString pkgs.bash;
+    nix = toString pkgs.nix;
+    gnugrep = toString pkgs.gnugrep;
+    coreutils = toString pkgs.coreutils;
+    defaultStorePrefix = storeNamePrefix;
+  };
+
+  ndhStoreAssetLookupScript = installStoreScript {
+    name = "store-asset-lookup.sh";
+    source = ndhStoreAssetLookupSource;
+  };
+
+  ndhStoreAssetLookupPackage = pkgs.writeShellApplication {
+    name = "io.nxmatic.nix-darwin-home-store-asset-lookup";
+    runtimeInputs = with pkgs; [ bash coreutils gnugrep nix ];
+    text = ''
+      export NDH_STORE_PREFIX='${ndhStore.prefix}'
+      exec ${pkgs.bash}/bin/bash ${ndhStoreAssetLookupScript} "$@"
+    '';
+  };
+
+  ndhStore = rec {
+    prefix = storeNamePrefix;
+    prefixedName = prefixStoreName;
+    installScript = installStoreScript;
+    runCommand = name: attrs: text: pkgs.runCommand (prefixedName name) attrs text;
+    writeText = name: text: pkgs.writeText (prefixedName name) text;
+    writeShellScript = name: text: pkgs.writeShellScript (prefixedName name) text;
+    lookupScript = ndhStoreAssetLookupScript;
+    lookupPackage = ndhStoreAssetLookupPackage;
+    lookupQuery = name: "^${lib.escapeRegex (prefixedName name)}$";
+  };
 
 in
 {
@@ -143,7 +179,7 @@ in
     ./primary-user.nix
     ./user.nix
     ./nixpkgs.nix
-    ./ndh-bootstrap-profile.nix
+    ./io-nxmatic-nix-darwin-home-bootstrap-profile.nix
     ./dns-servers.nix
     ./dnsmasq.nix
     ./lima-host.nix
@@ -153,11 +189,7 @@ in
   config = {
 
     _module.args.ndh = {
-      store = {
-        prefix = storeNamePrefix;
-        prefixedName = prefixStoreName;
-        installScript = installStoreScript;
-      };
+      store = ndhStore;
     };
 
     nixBashLogger.script = loggerScript;
@@ -190,13 +222,7 @@ in
       # Provide specialArgs explicitly for direct imports
       specialArgs = {
         inherit profile catalog;
-        ndh = {
-          store = {
-            prefix = storeNamePrefix;
-            prefixedName = prefixStoreName;
-            installScript = installStoreScript;
-          };
-        };
+        ndh = { store = ndhStore; };
         logger = {
           script = loggerScript;
           cmd = config.nixBashLogger.cmd;
@@ -206,7 +232,7 @@ in
           "secrets"
           "keys.yaml"
           "path"
-        ] (toString ../../modules/home-manager/ssh.d/keys.yaml) config;
+        ] "/run/secrets/nix-darwin-home/ssh-keys.yaml" config;
       };
     });
 
@@ -250,13 +276,7 @@ in
       extraSpecialArgs = {
         inherit self catalog;
         profile = config.profile;
-        ndh = {
-          store = {
-            prefix = storeNamePrefix;
-            prefixedName = prefixStoreName;
-            installScript = installStoreScript;
-          };
-        };
+        ndh = { store = ndhStore; };
         logger = {
           script = loggerScript;
           cmd = config.nixBashLogger.cmd;
@@ -266,7 +286,7 @@ in
           "secrets"
           "keys.yaml"
           "path"
-        ] (toString ../../modules/home-manager/ssh.d/keys.yaml) config;
+        ] "/run/secrets/nix-darwin-home/ssh-keys.yaml" config;
       };
       useGlobalPkgs = true;
       useUserPackages = true;

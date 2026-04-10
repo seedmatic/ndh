@@ -7,10 +7,14 @@
 }:
 let
   cfg = config.nxmatic.bootstrapProfile;
+  storeNamePrefix = "io.nxmatic.nix-darwin-home";
+  prefixStoreName =
+    name:
+    if lib.hasPrefix "${storeNamePrefix}-" name then name else "${storeNamePrefix}-${name}";
   requiredCommandsString = lib.concatStringsSep " " cfg.requiredCommands;
-  installHint = "nix run .#ndh-prerequisites-install -- ${cfg.profileDir}";
+  installHint = "nix run .#io-nxmatic-nix-darwin-home-prerequisites-install -- ${cfg.profileDir}";
   bootstrapRuntimePackage = pkgs.symlinkJoin {
-    name = "ndh-bootstrap-runtime-activation";
+    name = prefixStoreName "bootstrap-runtime-activation";
     paths = with pkgs; [
       age
       coreutils-full
@@ -33,7 +37,15 @@ let
     runtimePackage = bootstrapRuntimePackage;
     profileDir = cfg.profileDir;
   };
-  activationCheckScript = pkgs.writeShellScript "ndh-bootstrap-profile-activation-check" (builtins.readFile activationCheckSource);
+  activationCheckScript = pkgs.writeShellScript (prefixStoreName "bootstrap-profile-activation-check") (builtins.readFile activationCheckSource);
+  standaloneInstallSource = pkgs.replaceVars ./bootstrap-profile.d/install-standalone.sh {
+    runtimePackage = bootstrapRuntimePackage;
+    defaultProfileDir = cfg.profileDir;
+    requiredCommands = requiredCommandsString;
+  };
+  ndhPrerequisitesInstallerPackage = pkgs.runCommand (prefixStoreName "prerequisites-install") { } ''
+    install -Dm755 ${standaloneInstallSource} "$out/bin/io-nxmatic-nix-darwin-home-prerequisites-install"
+  '';
 in
 {
   options.nxmatic.bootstrapProfile = {
@@ -45,7 +57,7 @@ in
 
     name = lib.mkOption {
       type = lib.types.str;
-      default = "ndh-bootstrap-runtime";
+      default = "io-nxmatic-nix-darwin-home-bootstrap-runtime";
       description = "Dedicated Nix profile name for NDH bootstrap runtime tools.";
     };
 
@@ -86,6 +98,10 @@ in
 
   config = lib.mkIf cfg.enable (
     {
+    # Canonical policy (@codebase): always install/refresh NDH bootstrap
+    # prerequisites during activation.
+    nxmatic.bootstrapProfile.autoInstallOnActivation = lib.mkForce true;
+
     environment.variables = {
       NDH_BOOTSTRAP_PROFILE_DIR = cfg.profileDir;
       NDH_BOOTSTRAP_PROFILE_BIN = "${cfg.profileDir}/bin";
@@ -94,26 +110,30 @@ in
       NDH_BOOTSTRAP_INSTALL_HINT = installHint;
     };
 
-    system.activationScripts.preActivation.text = lib.mkIf (cfg.requireForActivation || cfg.autoInstallOnActivation) (lib.mkBefore ''
+    system.activationScripts.preActivation.text = lib.mkOrder 0 ''
       ${activationCheckScript}
-    '');
+    '';
     }
     // lib.optionalAttrs (options ? systemd) {
+
+    # Keep installer command available in the NixOS system closure, including
+    # bootstrap images where we need explicit/manual profile installation.
+    environment.systemPackages = [ ndhPrerequisitesInstallerPackage ];
 
     # `nixos-rebuild boot` does not run activation on the currently running system.
     # Ensure the bootstrap runtime profile is provisioned at next boot before
     # services that rely on the bootstrap command contract.
-    systemd.services.ndh-bootstrap-profile-install = {
+    systemd.services.io-nxmatic-nix-darwin-home-bootstrap-profile-install = {
       description = "Install NDH bootstrap runtime profile for root (@codebase)";
       wantedBy = [ "multi-user.target" ];
       requiredBy = [
         "sops-install-secrets.service"
-        "ndh-hostkey-enrollment-check.service"
+        "io-nxmatic-nix-darwin-home-hostkey-enrollment-check.service"
       ];
       before = [
         "sops-age-bootstrap.service"
         "sops-install-secrets.service"
-        "ndh-hostkey-enrollment-check.service"
+        "io-nxmatic-nix-darwin-home-hostkey-enrollment-check.service"
       ];
       serviceConfig = {
         Type = "oneshot";

@@ -409,7 +409,7 @@ in
 
     # Ensure non-interactive `/bin/bash -c` launched by sshd gets a canonical
     # PATH immediately, with a platform-appropriate primary prefix.
-    environment.etc."profile.d/noninteractive.sh".source = pkgs.writeText (ndh.store.prefixedName "noninteractive.sh") ''
+    environment.etc."profile.d/noninteractive.sh".source = ndh.store.writeText "noninteractive.sh" ''
       #!/bin/sh
       # Only modify PATH for non-interactive shells (bash -c; $- lacks 'i')
       case "$-" in

@@ -13,7 +13,7 @@ let
   loggerScript = config.nixBashLogger.script;
 
   disableUnwantedAgentsScript =
-    pkgs.runCommand (ndh.store.prefixedName "disable-unwanted-agents")
+    ndh.store.runCommand "disable-unwanted-agents"
       {
         preferLocalBuild = true;
         allowSubstitutes = false;
@@ -23,7 +23,7 @@ let
       '';
 
   disableUnwantedAgentsActivationScript =
-    pkgs.runCommand (ndh.store.prefixedName "disable-unwanted-agents-post-activation.sh") { }
+    ndh.store.runCommand "disable-unwanted-agents-post-activation.sh" { }
       ''
         cp ${
           pkgs.replaceVars ./disable-unwanted-agents.d/post-activation.sh {

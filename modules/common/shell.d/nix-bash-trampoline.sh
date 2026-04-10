@@ -12,17 +12,17 @@ ndh::bootstrap:profile:bin() {
 	local -a candidates=()
 
 	[[ -n "${NDH_BOOTSTRAP_PROFILE_BIN:-}" ]] && candidates+=("${NDH_BOOTSTRAP_PROFILE_BIN}")
-	[[ -n "${HOME:-}" ]] && candidates+=("${HOME}/.local/state/nix/profiles/ndh-bootstrap-runtime/bin")
+	[[ -n "${HOME:-}" ]] && candidates+=("${HOME}/.local/state/nix/profiles/io-nxmatic-nix-darwin-home-bootstrap-runtime/bin")
 
 	if [[ -n "${SUDO_USER:-}" ]]; then
-		candidates+=("/nix/var/nix/profiles/per-user/${SUDO_USER}/ndh-bootstrap-runtime/bin")
+		candidates+=("/nix/var/nix/profiles/per-user/${SUDO_USER}/io-nxmatic-nix-darwin-home-bootstrap-runtime/bin")
 	fi
 
 	if [[ -n "${USER:-}" ]]; then
-		candidates+=("/nix/var/nix/profiles/per-user/${USER}/ndh-bootstrap-runtime/bin")
+		candidates+=("/nix/var/nix/profiles/per-user/${USER}/io-nxmatic-nix-darwin-home-bootstrap-runtime/bin")
 	fi
 
-	candidates+=("/nix/var/nix/profiles/per-user/root/ndh-bootstrap-runtime/bin")
+	candidates+=("/nix/var/nix/profiles/per-user/root/io-nxmatic-nix-darwin-home-bootstrap-runtime/bin")
 
 	for candidate in "${candidates[@]}"; do
 		[[ -n "$candidate" ]] || continue
@@ -73,7 +73,7 @@ ndh::bootstrap:runtime:ensure() {
 
 	if [[ "${NDH_BOOTSTRAP_STRICT:-1}" == "1" ]]; then
 		echo "[ndh][ERROR] required NDH bootstrap profile is missing/incomplete" >&2
-		echo "[ndh][ERROR] install hint: ${NDH_BOOTSTRAP_INSTALL_HINT:-nix run .#ndh-bootstrap-profile-installer -- \$HOME/.local/state/nix/profiles/ndh-bootstrap-runtime}" >&2
+		echo "[ndh][ERROR] install hint: ${NDH_BOOTSTRAP_INSTALL_HINT:-nix run .#io-nxmatic-nix-darwin-home-prerequisites-install -- \$HOME/.local/state/nix/profiles/io-nxmatic-nix-darwin-home-bootstrap-runtime}" >&2
 		return 1
 	fi
 

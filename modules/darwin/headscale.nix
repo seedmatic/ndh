@@ -13,7 +13,7 @@ let
   defaultHostname = config.networking.hostName or "localhost";
   loggerScript = config.nixBashLogger.script;
 
-  headscaleActivationScript = pkgs.runCommand (ndh.store.prefixedName "headscale-post-activation.sh") { } ''
+  headscaleActivationScript = ndh.store.runCommand "headscale-post-activation.sh" { } ''
     cp ${
       pkgs.replaceVars ./headscale-client.d/post-activation.sh {
         logger = loggerScript;

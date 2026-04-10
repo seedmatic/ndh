@@ -150,7 +150,7 @@ let
       ${_json}
       --'' _value);
 
-  diskoModulePinned = pkgs.writeText (ndh.store.prefixedName "disko-module-pinned.nix") ''
+  diskoModulePinned = ndh.store.writeText "disko-module-pinned.nix" ''
     { lib, ... }:
     {
       disko = import ${./disko-config.nix} { inherit lib; };
@@ -311,7 +311,7 @@ in
         serviceConfig = {
           Type = "oneshot";
           RemainAfterExit = true;
-          ExecStart = pkgs.writeShellScript (ndh.store.prefixedName "zpool-init") ''
+          ExecStart = ndh.store.writeShellScript "zpool-init" ''
             set -euxo pipefail
 
             if zpool list -H -o name tank >/dev/null 2>&1; then

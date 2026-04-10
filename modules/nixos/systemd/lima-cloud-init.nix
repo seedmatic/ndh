@@ -30,7 +30,7 @@ in
 {
   imports = [ ];
 
-  systemd.services.ndh-lima-cloud-init = {
+  systemd.services.io-nxmatic-nix-darwin-home-lima-cloud-init = {
     description = "Reconfigure the system from lima-cloud-init userdata on startup";
 
     after = [
@@ -40,7 +40,7 @@ in
     wants = [ "zpool-init.service" ];
     before = [
       "multi-user.target"
-      "ndh-replay-virtiofs-udev.service"
+      "io-nxmatic-nix-darwin-home-replay-virtiofs-udev.service"
     ];
     wantedBy = [ "multi-user.target" ];
 
@@ -68,7 +68,7 @@ in
     };
   };
 
-  systemd.services.ndh-replay-virtiofs-udev = {
+  systemd.services.io-nxmatic-nix-darwin-home-replay-virtiofs-udev = {
     description = "Replay virtiofs udev events after boot";
     wantedBy = [ "multi-user.target" ];
     after = [ "local-fs.target" ];

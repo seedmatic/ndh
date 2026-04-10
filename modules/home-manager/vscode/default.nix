@@ -34,7 +34,7 @@ let
     in
     if resolved == null then throw "VS Code Insiders download unsupported for ${system}" else resolved;
   # Give the downloaded archive a real extension so Nix knows how to unpack it.
-  repackedSrc = pkgs.runCommand (ndh.store.prefixedName "${artifact.source.pname}.${artifact.extension}") { } ''
+  repackedSrc = ndh.store.runCommand "${artifact.source.pname}.${artifact.extension}" { } ''
     cp ${artifact.source.src} $out
   '';
 in

@@ -11,7 +11,7 @@ let
   logFile = "/Users/${userName}/Library/Logs/dnsmasq.log";
   loggerScript = config.nixBashLogger.script;
 
-  dnsmasqActivationScript = pkgs.runCommand (ndh.store.prefixedName "dnsmasq-post-activation.sh") { } ''
+  dnsmasqActivationScript = ndh.store.runCommand "dnsmasq-post-activation.sh" { } ''
     cp ${
       pkgs.replaceVars ./dnsmasq.d/post-activation.sh {
         logFile = logFile;

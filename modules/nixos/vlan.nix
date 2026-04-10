@@ -17,7 +17,7 @@ let
   addressSourceInterface =
     if cfg.addressSourceInterface != null then cfg.addressSourceInterface else parentInterface;
 
-  vlanSetupScript = pkgs.writeShellScript (ndh.store.prefixedName "vlan-setup") (builtins.readFile ./vlan.d/vlan-setup.sh);
+  vlanSetupScript = ndh.store.writeShellScript "vlan-setup" (builtins.readFile ./vlan.d/vlan-setup.sh);
 in
 {
   options.networking.vlan = {
@@ -61,7 +61,7 @@ in
   };
 
   config = mkIf cfg.enable {
-    systemd.services.ndh-vlan-setup = {
+    systemd.services.io-nxmatic-nix-darwin-home-vlan-setup = {
       description = "Configure VLAN interface";
       after = [ "network-online.target" ];
       wants = [ "network-online.target" ];

@@ -70,7 +70,7 @@ let
     logger = loggerScript;
   };
 
-  activationWrapperScript = pkgs.runCommand (ndh.store.prefixedName "internet-sharing-activation.sh") { } ''
+  activationWrapperScript = ndh.store.runCommand "internet-sharing-activation.sh" { } ''
     cp ${
       pkgs.replaceVars ./internet-sharing.d/activation-wrapper.sh {
         inherit configurePlist verifyAnchorsBlock;

@@ -2,8 +2,8 @@
 let
   hasManagedSecrets = (config.sops.secrets or { }) != { };
   bootstrapCfg = config.nxmatic.sopsAgeKeyBootstrap;
-  hasLimaCloudInitService = builtins.hasAttr "ndh-lima-cloud-init" config.systemd.services;
-  limaCloudInitUnitDeps = lib.optionals hasLimaCloudInitService [ "ndh-lima-cloud-init.service" ];
+  hasLimaCloudInitService = builtins.hasAttr "io-nxmatic-nix-darwin-home-lima-cloud-init" config.systemd.services;
+  limaCloudInitUnitDeps = lib.optionals hasLimaCloudInitService [ "io-nxmatic-nix-darwin-home-lima-cloud-init.service" ];
   importCandidateDirs = lib.unique (
     map builtins.dirOf (lib.filter (path: path != "") bootstrapCfg.nixosHostKeyImport.candidates)
   );

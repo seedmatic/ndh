@@ -128,7 +128,7 @@ in
           ];
 
           # Auto-connect service
-          systemd.services.ndh-tailscale-autoconnect = {
+          systemd.services.io-nxmatic-nix-darwin-home-tailscale-autoconnect = {
             after = [
               "tailscaled.service"
               "network-online.target"

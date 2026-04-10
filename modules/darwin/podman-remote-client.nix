@@ -23,7 +23,7 @@ let
     bashTrampoline = "${../common/shell.d/nix-bash-trampoline.sh}";
   };
 
-  podman-remote-setup = pkgs.runCommand (ndh.store.prefixedName "podman-remote-setup") { } ''
+  podman-remote-setup = ndh.store.runCommand "podman-remote-setup" { } ''
     mkdir -p $out/bin
     cp ${podmanRemoteSetupScript} $out/bin/podman-remote-setup
     chmod +x $out/bin/podman-remote-setup

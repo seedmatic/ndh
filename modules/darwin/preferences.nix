@@ -41,7 +41,7 @@ let
       mode = "0755";
     };
 
-  osOnlyUpdateNotifierScript = pkgs.writeShellScript (ndh.store.prefixedName "darwin-os-only-update-notifier.sh") ''
+  osOnlyUpdateNotifierScript = ndh.store.writeShellScript "darwin-os-only-update-notifier.sh" ''
     set -euo pipefail
 
     update_output="$(${lib.escapeShellArg "/usr/sbin/softwareupdate"} --list --product-types macOS 2>&1 || true)"

@@ -10,12 +10,12 @@ profile_dir="@profileDir@"
 image_build_context="${NIXOS_INSTALL_BOOTLOADER:-0}"
 
 install_profile() {
-  echo "[ndh-bootstrap-profile] installing/refreshing profile ${profile_dir}" >&2
+  echo "[io-nxmatic-nix-darwin-home-bootstrap-profile] installing/refreshing profile ${profile_dir}" >&2
   "$nix_bin" profile add --profile "${profile_dir}" "${runtime_package}" >&2
 }
 
 if [ "$image_build_context" = "1" ] && [ "$auto_install" = "1" ]; then
-  echo "[ndh-bootstrap-profile] image-build activation context detected; seeding profile ${profile_dir}" >&2
+  echo "[io-nxmatic-nix-darwin-home-bootstrap-profile] image-build activation context detected; seeding profile ${profile_dir}" >&2
   install_profile
 fi
 
@@ -41,8 +41,8 @@ if [ ! -d "$profile_bin" ]; then
   if [ "$auto_install" = "1" ]; then
     install_profile
   else
-    echo "[ndh-bootstrap-profile][ERROR] required profile bin directory is missing: $profile_bin" >&2
-    echo "[ndh-bootstrap-profile][ERROR] install it first: ${install_hint}" >&2
+    echo "[io-nxmatic-nix-darwin-home-bootstrap-profile][ERROR] required profile bin directory is missing: $profile_bin" >&2
+    echo "[io-nxmatic-nix-darwin-home-bootstrap-profile][ERROR] install it first: ${install_hint}" >&2
     exit 1
   fi
 fi
@@ -58,13 +58,13 @@ if { [ -n "$missing" ] || [ -n "$wrong_source" ]; } && [ "$auto_install" = "1" ]
 fi
 
 if [ -n "$missing" ]; then
-  echo "[ndh-bootstrap-profile][ERROR] missing required commands:$missing" >&2
-  echo "[ndh-bootstrap-profile][ERROR] reinstall profile: ${install_hint}" >&2
+  echo "[io-nxmatic-nix-darwin-home-bootstrap-profile][ERROR] missing required commands:$missing" >&2
+  echo "[io-nxmatic-nix-darwin-home-bootstrap-profile][ERROR] reinstall profile: ${install_hint}" >&2
   exit 1
 fi
 
 if [ -n "$wrong_source" ]; then
-  echo "[ndh-bootstrap-profile][ERROR] required commands not sourced from profile:$wrong_source" >&2
-  echo "[ndh-bootstrap-profile][ERROR] reinstall/repair profile: ${install_hint}" >&2
+  echo "[io-nxmatic-nix-darwin-home-bootstrap-profile][ERROR] required commands not sourced from profile:$wrong_source" >&2
+  echo "[io-nxmatic-nix-darwin-home-bootstrap-profile][ERROR] reinstall/repair profile: ${install_hint}" >&2
   exit 1
 fi

@@ -62,7 +62,7 @@ let
     nixosHostKeyImportCandidates = lib.concatStringsSep "\n" cfg.nixosHostKeyImport.candidates;
   };
   sopsAgeBootstrapScript = builtins.readFile sopsAgeBootstrapScriptSource;
-  sopsAgeBootstrapSystemdScript = pkgs.writeShellScript (ndh.store.prefixedName "sops-age-bootstrap") sopsAgeBootstrapScript;
+  sopsAgeBootstrapSystemdScript = ndh.store.writeShellScript "sops-age-bootstrap" sopsAgeBootstrapScript;
   useSystemdSopsActivation = config.sops.useSystemdActivation or false;
   namespaceSecretPaths =
     let

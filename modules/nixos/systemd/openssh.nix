@@ -189,7 +189,7 @@ in
   # Ensure all systemd services (including sshd) inherit a wrapper-first PATH
   systemd.globalEnvironment.PATH = config.opensshPolicy.setEnvPath;
 
-  systemd.services.ndh-hostkey-enrollment-check = {
+  systemd.services.io-nxmatic-nix-darwin-home-hostkey-enrollment-check = {
     description = "Check whether host key enrollment into encrypted secrets is required (@codebase)";
     wantedBy = [ "sshd.service" ];
     before = [ "sshd.service" ];
@@ -197,6 +197,7 @@ in
     after = lib.optionals hasSopsInstallSecretsService [ "sops-install-secrets.service" ];
     path = with pkgs; [
       coreutils
+      gawk
       openssh
       util-linux
     ];
@@ -206,20 +207,21 @@ in
     };
   };
 
-  systemd.services.ndh-hostkey-enrollment-sync = {
+  systemd.services.io-nxmatic-nix-darwin-home-hostkey-enrollment-sync = {
     description = "Run remote hostkey enrollment sync when drift marker is present (@codebase)";
     wantedBy = [ "multi-user.target" ];
     wants = [
       "network-online.target"
-      "ndh-hostkey-enrollment-check.service"
+      "io-nxmatic-nix-darwin-home-hostkey-enrollment-check.service"
     ];
     after = [
       "network-online.target"
-      "ndh-hostkey-enrollment-check.service"
+      "io-nxmatic-nix-darwin-home-hostkey-enrollment-check.service"
     ];
     unitConfig.ConditionPathExists = "/run/ndh/ssh/hostkey-enrollment-required";
     path = with pkgs; [
       coreutils
+      gawk
       openssh
       util-linux
     ];

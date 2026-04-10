@@ -13,7 +13,7 @@ let
 
   keys = builtins.fromJSON (
     builtins.readFile (
-      pkgs.runCommand (ndh.store.prefixedName "keys.json") { buildInputs = [ pkgs.yq-go ]; } ''
+      ndh.store.runCommand "keys.json" { buildInputs = [ pkgs.yq-go ]; } ''
         yq -o=json '.' ${../home-manager/ssh.d/keys.yaml} > $out
       ''
     )

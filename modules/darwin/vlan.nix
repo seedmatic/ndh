@@ -17,7 +17,7 @@ let
   addressSourceInterface =
     if cfg.addressSourceInterface != null then cfg.addressSourceInterface else parentInterface;
 
-  vlanSetupScript = pkgs.writeShellScript (ndh.store.prefixedName "vlan-setup") (builtins.readFile ./vlan.d/vlan-setup.sh);
+  vlanSetupScript = ndh.store.writeShellScript "vlan-setup" (builtins.readFile ./vlan.d/vlan-setup.sh);
 
   watchPaths = [
     "/Library/Preferences/SystemConfiguration/NetworkInterfaces.plist"
