@@ -2,6 +2,7 @@
   config,
   lib,
   pkgs,
+  options,
   ...
 }:
 let
@@ -23,67 +24,16 @@ let
       yq-go
     ];
   };
-  activationCheckScript = pkgs.writeShellScript "ndh-bootstrap-profile-activation-check" ''
-    set -euo pipefail
-
-    profile_bin="${cfg.profileDir}/bin"
-    auto_install="${if cfg.autoInstallOnActivation then "1" else "0"}"
-
-    install_profile() {
-      echo "[ndh-bootstrap-profile] installing/refreshing profile ${cfg.profileDir}" >&2
-      nix profile add --profile "${cfg.profileDir}" "${bootstrapRuntimePackage}" >&2
-    }
-
-    check_commands() {
-      missing=""
-      wrong_source=""
-      for cmd in ${requiredCommandsString}; do
-        if ! resolved="$(command -v "$cmd" 2>/dev/null)"; then
-          missing="$missing $cmd"
-          continue
-        fi
-
-        case "$resolved" in
-          "$profile_bin"/*) ;;
-          *)
-            wrong_source="$wrong_source $cmd:$resolved"
-            ;;
-        esac
-      done
-    }
-
-    if [ ! -d "$profile_bin" ]; then
-      if [ "$auto_install" = "1" ]; then
-        install_profile
-      else
-        echo "[ndh-bootstrap-profile][ERROR] required profile bin directory is missing: $profile_bin" >&2
-        echo "[ndh-bootstrap-profile][ERROR] install it first: ${installHint}" >&2
-        exit 1
-      fi
-    fi
-
-    export PATH="$profile_bin:$PATH"
-
-    check_commands
-
-    if { [ -n "$missing" ] || [ -n "$wrong_source" ]; } && [ "$auto_install" = "1" ]; then
-      install_profile
-      export PATH="$profile_bin:$PATH"
-      check_commands
-    fi
-
-    if [ -n "$missing" ]; then
-      echo "[ndh-bootstrap-profile][ERROR] missing required commands:$missing" >&2
-      echo "[ndh-bootstrap-profile][ERROR] reinstall profile: ${installHint}" >&2
-      exit 1
-    fi
-
-    if [ -n "$wrong_source" ]; then
-      echo "[ndh-bootstrap-profile][ERROR] required commands not sourced from profile:$wrong_source" >&2
-      echo "[ndh-bootstrap-profile][ERROR] reinstall/repair profile: ${installHint}" >&2
-      exit 1
-    fi
-  '';
+  activationCheckSource = pkgs.replaceVars ./bootstrap-profile.d/activation-check.sh {
+    profileBin = "${cfg.profileDir}/bin";
+    nixBin = "${config.nix.package.out}/bin/nix";
+    autoInstall = if cfg.autoInstallOnActivation then "1" else "0";
+    requiredCommands = requiredCommandsString;
+    installHint = installHint;
+    runtimePackage = bootstrapRuntimePackage;
+    profileDir = cfg.profileDir;
+  };
+  activationCheckScript = pkgs.writeShellScript "ndh-bootstrap-profile-activation-check" (builtins.readFile activationCheckSource);
 in
 {
   options.nxmatic.bootstrapProfile = {
@@ -134,7 +84,8 @@ in
     };
   };
 
-  config = lib.mkIf cfg.enable {
+  config = lib.mkIf cfg.enable (
+    {
     environment.variables = {
       NDH_BOOTSTRAP_PROFILE_DIR = cfg.profileDir;
       NDH_BOOTSTRAP_PROFILE_BIN = "${cfg.profileDir}/bin";
@@ -146,5 +97,31 @@ in
     system.activationScripts.preActivation.text = lib.mkIf cfg.requireForActivation (lib.mkBefore ''
       ${activationCheckScript}
     '');
-  };
+    }
+    // lib.optionalAttrs (options ? systemd) {
+
+    # `nixos-rebuild boot` does not run activation on the currently running system.
+    # Ensure the bootstrap runtime profile is provisioned at next boot before
+    # services that rely on the bootstrap command contract.
+    systemd.services.ndh-bootstrap-profile-install = {
+      description = "Install NDH bootstrap runtime profile for root (@codebase)";
+      wantedBy = [ "multi-user.target" ];
+      before = [
+        "sops-age-bootstrap.service"
+        "sops-install-secrets.service"
+        "nxmatic-hostkey-enrollment-check.service"
+      ];
+      serviceConfig = {
+        Type = "oneshot";
+      };
+      script = ''
+        set -euo pipefail
+
+        profile_dir_root="/nix/var/nix/profiles/per-user/root/${cfg.name}"
+        mkdir -p /nix/var/nix/profiles/per-user/root
+        ${config.nix.package.out}/bin/nix profile add --profile "$profile_dir_root" "${bootstrapRuntimePackage}"
+      '';
+    };
+    }
+  );
 }

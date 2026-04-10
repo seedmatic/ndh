@@ -253,16 +253,18 @@ vm:nixos:rebuild() {
   local ssh_opts
   ssh_opts="-o Port=${port} -o IdentityFile=${identity} -o StrictHostKeyChecking=accept-new"
 
-  echo "[lima-run] nixos-rebuild ${action} --flake ${flake_ref} --target-host ${NIXOS_REMOTE_HOST}@${host}"
+  echo "[lima-run] nixos-rebuild ${action} --flake ${flake_ref} --build-host ${NIXOS_REMOTE_HOST}@${host} --target-host ${NIXOS_REMOTE_HOST}@${host}"
 
   if command -v nixos-rebuild >/dev/null 2>&1; then
     NIX_SSHOPTS="${ssh_opts}" nixos-rebuild "${action}" \
       --flake "${flake_ref}" \
+      --build-host "${NIXOS_REMOTE_HOST}@${host}" \
       --target-host "${NIXOS_REMOTE_HOST}@${host}" \
       --use-remote-sudo
   else
     NIX_SSHOPTS="${ssh_opts}" nix run nixpkgs#nixos-rebuild -- "${action}" \
       --flake "${flake_ref}" \
+      --build-host "${NIXOS_REMOTE_HOST}@${host}" \
       --target-host "${NIXOS_REMOTE_HOST}@${host}" \
       --use-remote-sudo
   fi
@@ -335,8 +337,8 @@ Commands:
   phase:bootstrap:vm        Alias of vm:disk:nixos:build
   phase:bootstrap:zfs       Alias of vm:nixos:boot:zfs
   phase:bootstrap:all       Alias of vm:disk:nixos:build + boot:ext4 + boot:zfs
-  vm:nixos:switch           Remote NixOS switch using nixos-rebuild --target-host
-  vm:nixos:boot             Remote NixOS boot using nixos-rebuild --target-host
+  vm:nixos:switch           Remote NixOS switch using nixos-rebuild --build-host/--target-host
+  vm:nixos:boot             Remote NixOS boot using nixos-rebuild --build-host/--target-host
   vm:nixos:zfs-bootstrap    Start idempotent zfs bootstrap activation unit remotely
 
 Environment overrides:
