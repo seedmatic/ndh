@@ -17,7 +17,7 @@ Complete refactoring of network architecture, removing Teleport and implementing
 - `hosts/bioskop/flake.nix` - Removed Teleport import  
 - `modules/darwin/default.nix` - Removed Teleport, re-enabled OpenSSH
 - `modules/nixos/default.nix` - Removed Teleport
-- `modules/common/default.nix` - Removed Teleport
+- `modules/.common.d/default.nix` - Removed Teleport
 
 **Result:** Clean codebase ready for Headscale/Tailscale
 

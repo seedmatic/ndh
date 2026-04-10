@@ -73,12 +73,12 @@ host:flake:ref:resolve() {
 }
 
 host:disk:image:symlink:path() {
-  echo "${RESOLVED_NDH_VZ_HOST_FLAKE_REF}/nixos-disk-image"
+  echo "${RESOLVED_NDH_VZ_HOST_FLAKE_REF}/outputs.d/nixos-disk-image"
 }
 
 host:disk:image:attr:symlink:path() {
   local attr="${1}"
-  echo "${RESOLVED_NDH_VZ_HOST_FLAKE_REF}/nixos-disk-image.${attr}"
+  echo "${RESOLVED_NDH_VZ_HOST_FLAKE_REF}/outputs.d/nixos-disk-image.${attr}"
 }
 
 lima:disk:image:descriptor:path() {
@@ -264,7 +264,7 @@ vm:ssh:ensure-started() {
 }
 
 host:disk:image:build() {
-  local out_link="${RESOLVED_NDH_VZ_HOST_FLAKE_REF}/nixos-disk-image"
+  local out_link="${RESOLVED_NDH_VZ_HOST_FLAKE_REF}/outputs.d/nixos-disk-image"
   local attr_out_link
   local -a nix_build_args
 

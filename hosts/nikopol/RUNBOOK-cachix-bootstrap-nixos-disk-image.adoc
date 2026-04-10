@@ -12,7 +12,7 @@ Current image path reference in this repo:
 [source,bash]
 ----
 # @codebase
-cat hosts/nikopol/nixos-disk-image
+cat hosts/nikopoloutputs.d/nixos-disk-image
 ----
 
 Example value (changes over time):
@@ -24,13 +24,13 @@ Example value (changes over time):
 
 == Option A (exact store path, includes closure)
 
-Use this when you need the *exact* path referenced by `hosts/nikopol/nixos-disk-image`.
+Use this when you need the *exact* path referenced by `hosts/nikopoloutputs.d/nixos-disk-image`.
 
 [source,bash]
 ----
 # @codebase
 flox activate -- bash -lc '
-  img="$(cat hosts/nikopol/nixos-disk-image)"
+  img="$(cat hosts/nikopol/outputs.d/nixos-disk-image)"
   nix copy --from https://nxmatic.cachix.org "$img"
 '
 ----
@@ -45,7 +45,7 @@ Use this when you only need the disk-image bytes locally (for bootstrap media pr
 ----
 # @codebase
 flox activate -- bash -lc '
-  img="$(cat hosts/nikopol/nixos-disk-image)"
+  img="$(cat hosts/nikopoloutputs.d/nixos-disk-image)"
   tmp=$(mktemp /tmp/nikopol-nixos-disk-image.XXXXXX.raw)
   nix store cat --store https://nxmatic.cachix.org "$img" > "$tmp"
   nix store add-path "$tmp"
@@ -60,7 +60,7 @@ This creates a local store object for the imported file content only.
 [source,bash]
 ----
 # @codebase
-img="$(cat hosts/nikopol/nixos-disk-image)"
+img="$(cat hosts/nikopoloutputs.d/nixos-disk-image)"
 nix path-info --store https://nxmatic.cachix.org "$img"
 ----
 

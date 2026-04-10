@@ -27,7 +27,7 @@ This is a nix-darwin-home configuration managing:
 * **Flox environments**: Shared tooling and variables across projects
 
 === Key Configuration Files
-* `modules/common/default.nix` - Main common module configuration
+* `modules/.common.d/default.nix` - Main common module configuration
 * `profiles/` - System profiles (common, work, committed)
 * `modules/darwin/` - Darwin-specific modules (Headscale client configured)
 * `modules/home-manager/` - Home Manager configurations

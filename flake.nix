@@ -57,7 +57,7 @@
     }@inputs:
     let
       inherit (flake-utils.lib) eachSystemMap;
-      nixpkgsConfig = import ./modules/common/nixpkgs-config.nix;
+      nixpkgsConfig = import ./modules/.common.d/nixpkgs-config.nix;
       cacheTrust = import ./catalog/cache-trust.nix;
       defaultSystems = [
         "aarch64-darwin"
@@ -212,7 +212,7 @@
           loggerScript = ndhStoreApi.writeText "logger.sh" ''
             #!/usr/bin/env bash
             LOGGER_CMD=""
-            source ${./modules/common/shell.d/logger.sh}
+            source ${./modules/.common.d/shell.d/logger.sh}
           '';
         in
         {
@@ -248,7 +248,7 @@
           pkgsForSystem = pkgsFor { inherit system; };
           ndhStoreApi = mkNdhStoreApiFor pkgsForSystem;
           runtimePackage = mkNdhBootstrapRuntimePackage system;
-          scriptSource = pkgsForSystem.replaceVars ./modules/common/bootstrap-profile.d/install-standalone.sh {
+          scriptSource = pkgsForSystem.replaceVars ./modules/.common.d/bootstrap-profile.d/install-standalone.sh {
             runtimePackage = runtimePackage;
             defaultProfileDir = "\${HOME}/.local/state/nix/profiles/io-nxmatic-nix-darwin-home-bootstrap-runtime";
             requiredCommands = "age age-keygen awk sed grep ssh ssh-keygen yq git";
@@ -1068,7 +1068,7 @@
       };
 
       homeManagerModules = {
-        primaryUser = import ./modules/common/primary-user.nix;
+        primaryUser = import ./modules/.common.d/primary-user.nix;
         manager = import ./modules/home-manager;
         profiles = {
           # Optionally, expose profiles as modules if they are home-manager compatible

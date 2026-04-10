@@ -152,7 +152,7 @@ emacs /ssh:nxmatic@nikopol-nixos:/path/to/file
         config = {
           # Minimal host configuration
           environment.systemPackages = lib.mkForce (
-            import ../../modules/common/system-packages-minimal.nix { 
+            import ../../modules/.common.d/system-packages-minimal.nix { 
               inherit pkgs; 
             }
           );
@@ -171,7 +171,7 @@ emacs /ssh:nxmatic@nikopol-nixos:/path/to/file
 
 === Minimal System Packages
 
-.modules/common/system-packages-minimal.nix
+.modules/.common.d/system-packages-minimal.nix
 [source,nix]
 ----
 { pkgs, ... }:

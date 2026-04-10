@@ -373,7 +373,7 @@ in
 
     imageSourcePath = mkOption {
       type = types.str;
-      default = "/net/${effectiveHostName}.local/private/var/lib/git/nxmatic/nix-darwin-home/hosts/${effectiveHostName}/nixos-disk-image/nixos.img";
+      default = "/net/${effectiveHostName}.local/private/var/lib/git/nxmatic/nix-darwin-home/hosts/${effectiveHostName}/outputs.d/nixos-disk-image/nixos.img";
       description = ''
         Source path of the built NixOS disk image (canonical host out-link in the repo).
       '';
@@ -381,7 +381,7 @@ in
 
     imageTargetPath = mkOption {
       type = types.str;
-      default = "/net/${effectiveHostName}.local/private/var/lib/git/nxmatic/nix-darwin-home/hosts/${effectiveHostName}/nixos-disk-image/nixos.img";
+      default = "/net/${effectiveHostName}.local/private/var/lib/git/nxmatic/nix-darwin-home/hosts/${effectiveHostName}/outputs.d/nixos-disk-image/nixos.img";
       description = ''
         Stable host path for the NixOS disk image that Lima references. If different from imageSourcePath,
         the activation script copies/reflinks the image; when equal, no copy is performed.

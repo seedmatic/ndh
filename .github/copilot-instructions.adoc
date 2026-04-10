@@ -43,7 +43,7 @@ modules/
 └── home-manager/  # User environment (shared across systems)
 ----
 
-CRITICAL: `modules/common/default.nix` is imported by both Darwin and NixOS. Changes here affect all systems.
+CRITICAL: `modules/.common.d/default.nix` is imported by both Darwin and NixOS. Changes here affect all systems.
 
 === Lima VM Architecture
 
@@ -288,7 +288,7 @@ Both configurations are generated from same host flake.
 
 == Shell Environment
 
-* **Default shell**: `zsh` (configured in `modules/common/default.nix`)
+* **Default shell**: `zsh` (configured in `modules/.common.d/default.nix`)
 * **Home Manager**: Manages shell config, user packages (`.zshrc`, `.bashrc`)
 * **Lima VM shell**: `limactl shell <vm-name>` or `ssh lima-<hostname>`
 

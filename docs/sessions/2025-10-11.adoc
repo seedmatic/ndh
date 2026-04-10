@@ -12,7 +12,7 @@ Major refactoring of SSH client configuration architecture, introducing modular,
 
 === 1. Created Comprehensive SSH Policy Framework ✅
 
-**New Module:** `modules/common/openssh-policy.nix` (109+ lines)
+**New Module:** `modules/.common.d/openssh-policy.nix` (109+ lines)
 
 **Key Features:**
 - Platform-agnostic SSH policy definitions
@@ -58,7 +58,7 @@ Major refactoring of SSH client configuration architecture, introducing modular,
 
 === 4. Enhanced Flox Environment ✅
 
-**New Module:** `modules/common/flox-env.nix`
+**New Module:** `modules/.common.d/flox-env.nix`
 
 **Integration:**
 - Consolidated flox environment configuration
@@ -132,12 +132,12 @@ Major refactoring of SSH client configuration architecture, introducing modular,
 **Net Change:** +475 lines
 
 **New Files Added:**
-- `modules/common/flox-env.nix`
+- `modules/.common.d/flox-env.nix`
 - `modules/darwin/shell-keychain.nix`
 - `modules/darwin/ssh-client.nix`
 
 **Major Refactoring:**
-- `modules/common/openssh-policy.nix` (complete rewrite)
+- `modules/.common.d/openssh-policy.nix` (complete rewrite)
 - `modules/darwin/distributed-builds.nix` (architectural changes)
 - `modules/darwin/openssh.nix` (integration updates)
 
