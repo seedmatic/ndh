@@ -22,6 +22,8 @@ ndh::bootstrap:profile:bin() {
 		candidates+=("/nix/var/nix/profiles/per-user/${USER}/ndh-bootstrap-runtime/bin")
 	fi
 
+	candidates+=("/nix/var/nix/profiles/per-user/root/ndh-bootstrap-runtime/bin")
+
 	for candidate in "${candidates[@]}"; do
 		[[ -n "$candidate" ]] || continue
 		if [[ -d "$candidate" ]]; then
