@@ -81,6 +81,12 @@ let
     in
     lib.concatStringsSep "\n" all + "\n";
 
+  baseSshdConfigText = ''
+    # Managed by nix-darwin (modules/darwin/openssh.nix)
+    # Keep a canonical base file so sshd always has an entrypoint.
+    Include /etc/ssh/sshd_config.d/*.conf
+  '';
+
   opensshActivationScript = pkgs.replaceVars ./openssh.d/openssh-activation.sh {
     groupKeysScriptStore = groupKeysScriptStore;
     principalsScriptStore = principalsScriptStore;
@@ -141,6 +147,7 @@ in
 
     # Keep NDH policy in a dedicated late drop-in so precedence is explicit.
     # nix-darwin still manages service enablement and host key lifecycle.
+    environment.etc."ssh/sshd_config".text = baseSshdConfigText;
     environment.etc."ssh/sshd_config.d/999-ndh.conf".text = ndhSshdConfigText;
 
     # Darwin option surface for OpenSSH is intentionally small
