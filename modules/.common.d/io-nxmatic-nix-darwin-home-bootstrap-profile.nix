@@ -13,6 +13,16 @@ let
     if lib.hasPrefix "${storeNamePrefix}-" name then name else "${storeNamePrefix}-${name}";
   requiredCommandsString = lib.concatStringsSep " " cfg.requiredCommands;
   installHint = "nix run .#io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer -- ${cfg.profileDir}";
+  loggerShim = pkgs.writeShellScriptBin "logger" ''
+    if [[ -x /usr/bin/logger ]]; then
+      exec /usr/bin/logger "$@"
+    fi
+    if [[ -x /run/current-system/sw/bin/logger ]]; then
+      exec /run/current-system/sw/bin/logger "$@"
+    fi
+    echo "[ndh][WARN] logger binary unavailable; message was: $*" >&2
+    exit 0
+  '';
   bootstrapRuntimePackage = pkgs.symlinkJoin {
     name = prefixStoreName "bringup-runtime-profile-holder";
     paths = with pkgs; [
@@ -26,6 +36,7 @@ let
       gnugrep
       gnused
       keychain
+      loggerShim
       openssh
       yq-go
     ];
@@ -84,6 +95,7 @@ in
         "ssh-keygen"
         "yq"
         "git"
+        "logger"
       ];
       description = "Command contract that must be present in the dedicated bootstrap profile.";
     };

@@ -50,7 +50,9 @@ let
       profileUserName;
 
   logger = config.nixBashLogger.script;
+  loggerTagOrchestrate = "darwin.activationScripts.ssh-keys-enrichment.orchestrate";
   loggerTagEnrich = "darwin.activationScripts.ssh-keys-enrichment.enrichSSHKeysYaml";
+  loggerTagSplit = "darwin.activationScripts.ssh-keys-enrichment.splitSSHKeysYaml";
   sshEnrichKeysYamlScriptSource = pkgs.replaceVars ../.common.d/ssh-keys.d/ssh-enrich-keys-yaml.sh {
     bashTrampoline = "${../.common.d/shell.d/nix-bash-trampoline.sh}";
     logger = logger;
@@ -59,54 +61,38 @@ let
   sshEnrichKeysYamlScript = pkgs.runCommand "ndh-ssh-enrich-keys-yaml-darwin.sh" { } ''
     install -m 0555 ${sshEnrichKeysYamlScriptSource} "$out"
   '';
+  sshSplitKeysYamlScriptSource = pkgs.replaceVars ../.common.d/ssh-keys.d/ssh-split-keys-yaml.sh {
+    bashTrampoline = "${../.common.d/shell.d/nix-bash-trampoline.sh}";
+    logger = logger;
+    loggerTag = loggerTagSplit;
+  };
+  sshSplitKeysYamlScript = pkgs.runCommand "ndh-ssh-split-keys-yaml-darwin.sh" { } ''
+    install -m 0555 ${sshSplitKeysYamlScriptSource} "$out"
+  '';
+  sshEnrichAndSplitKeysYamlScriptSource = pkgs.replaceVars ../.common.d/ssh-keys.d/ssh-enrich-split-runtime-keys.sh {
+    bashTrampoline = "${../.common.d/shell.d/nix-bash-trampoline.sh}";
+    logger = logger;
+    loggerTag = loggerTagOrchestrate;
+  };
+  sshEnrichAndSplitKeysYamlScript = pkgs.runCommand "ndh-ssh-enrich-and-split-keys-yaml-darwin.sh" { } ''
+    install -m 0555 ${sshEnrichAndSplitKeysYamlScriptSource} "$out"
+  '';
 in
 {
   config.system.activationScripts.preActivation.text = lib.mkAfter ''
     set -euo pipefail
-
-    if [[ ! -r "${decryptedSSHKeysYamlPath}" ]]; then
-      echo "[ssh-keys-enrichment] missing decrypted SSH keys YAML: ${decryptedSSHKeysYamlPath}" >&2
-      exit 1
-    fi
-
-    split_dir="${splitKeysDir}"
-    profiles_dir="$split_dir/profiles"
-    install -d -m 0755 "$split_dir" "$profiles_dir"
-
-    ${pkgs.bash}/bin/bash ${sshEnrichKeysYamlScript} \
+    ${pkgs.bash}/bin/bash ${sshEnrichAndSplitKeysYamlScript} \
+      "${pkgs.bash}/bin/bash" \
+      "${sshEnrichKeysYamlScript}" \
+      "${sshSplitKeysYamlScript}" \
       "${sshKeyProfileName}" \
       "${hostIdent}" \
       "${decryptedSSHKeysYamlPath}" \
       "${generatedKeysYamlPath}" \
       "${hostsCatalogCsv}" \
-      "${profileOwnerName}"
-
-    # System split: keep host/system-signing material.
-    ${pkgs.yq-go}/bin/yq eval -o=yaml '
-      .keys |= with_entries(
-        select(
-          ((.value.usage // []) | any(. == "ssh-authority" or . == "ssh-host" or . == "host-signing"))
-        )
-      )
-    ' "${generatedKeysYamlPath}" > "${generatedSystemKeysYamlPath}"
-    install -m 0400 "${generatedSystemKeysYamlPath}" "${generatedSystemKeysYamlPath}.tmp"
-    mv "${generatedSystemKeysYamlPath}.tmp" "${generatedSystemKeysYamlPath}"
-    chown root:wheel "${generatedSystemKeysYamlPath}" 2>/dev/null || chown root:root "${generatedSystemKeysYamlPath}" || true
-
-    # User split: keep user signing material (and default non-system keys).
-    ${pkgs.yq-go}/bin/yq eval -o=yaml '
-      .keys |= with_entries(
-        select(
-          ((.value.usage // []) as $u | ($u | any(. == "ssh-authority" or . == "ssh-host" or . == "host-signing")) | not)
-        )
-      )
-    ' "${generatedKeysYamlPath}" > "${generatedProfileKeysYamlPath}"
-    install -m 0440 "${generatedProfileKeysYamlPath}" "${generatedProfileKeysYamlPath}.tmp"
-    mv "${generatedProfileKeysYamlPath}.tmp" "${generatedProfileKeysYamlPath}"
-    chown "${profileOwnerName}:staff" "${generatedProfileKeysYamlPath}" 2>/dev/null || chown "${profileOwnerName}:wheel" "${generatedProfileKeysYamlPath}" 2>/dev/null || true
-
-    echo "[ssh-keys-enrichment] generated runtime keys YAML: ${generatedKeysYamlPath}"
-    echo "[ssh-keys-enrichment] split system keys YAML: ${generatedSystemKeysYamlPath}"
-    echo "[ssh-keys-enrichment] split profile keys YAML: ${generatedProfileKeysYamlPath}"
+      "${profileOwnerName}" \
+      "${splitKeysDir}" \
+      "${generatedSystemKeysYamlPath}" \
+      "${generatedProfileKeysYamlPath}"
   '';
 }

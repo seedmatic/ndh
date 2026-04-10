@@ -74,10 +74,12 @@ in
       "containers-storage.service"
     ];
     wantedBy = [ "io-nxmatic-nix-darwin-home-contributed.target" ];
+    unitConfig = {
+      ConditionPathExists = "/dev/zfs";
+    };
     serviceConfig = {
       Type = "oneshot";
       RemainAfterExit = true;
-      ConditionPathExists = "/dev/zfs";
       ExecCondition = "${pkgs.zfs}/bin/zpool list -H -o name tank";
     };
     script = ''
