@@ -225,7 +225,7 @@
           nixPackage = pkgsForSystem.lib.getBin pkgsForSystem.nix;
         in
         pkgsForSystem.symlinkJoin {
-          name = ndhStoreApi.prefixedName "bootstrap-runtime";
+          name = ndhStoreApi.prefixedName "bringup-runtime-profile-holder";
           paths = with pkgsForSystem; [
             bashPackage
             nixPackage
@@ -250,12 +250,12 @@
           runtimePackage = mkNdhBootstrapRuntimePackage system;
           scriptSource = pkgsForSystem.replaceVars ./modules/.common.d/bootstrap-profile.d/install-standalone.sh {
             runtimePackage = runtimePackage;
-            defaultProfileDir = "/nix/var/nix/profiles/per-user/root/io-nxmatic-nix-darwin-home-bootstrap-runtime";
+            defaultProfileDir = "/nix/var/nix/profiles/per-user/root/io-nxmatic-nix-darwin-home-bringup-runtime-profile-holder";
             requiredCommands = "bash nix age age-keygen awk sed grep ssh ssh-keygen yq git";
           };
         in
-        ndhStoreApi.runCommand "bootstrap-profile-install" { } ''
-          install -Dm755 ${scriptSource} "$out/bin/io-nxmatic-nix-darwin-home-bootstrap-profile-install"
+        ndhStoreApi.runCommand "bringup-runtime-profile-installer" { } ''
+          install -Dm755 ${scriptSource} "$out/bin/io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer"
         '';
 
       mkSpecialArgs =
@@ -466,7 +466,16 @@
             pkgs = pkgsForLinux;
           };
 
-          zfs = mkNixosConfig {
+          zfsBringup = mkNixosConfig {
+            inherit
+              profileModule
+              catalog
+              ;
+            hostProfile = bootstrapSystemdBootHostProfile;
+            zfsOverlays = true;
+          };
+
+          zfsRuntime = mkNixosConfig {
             inherit
               profileModule
               catalog
@@ -488,7 +497,7 @@
           diskSizeMiB = 20 * 1024; # 4GiB base + 16Gib headroom for stage2 switching and closure growth during activation
           diskSizeBytes = diskSizeMiB * 1024 * 1024;
           # System closure path
-          systemPath = zfs.config.system.build.toplevel;
+          systemPath = zfsRuntime.config.system.build.toplevel;
           # Output a JSON hint with all relevant info for post-build checks
           diskSizeHint = builtins.toJSON {
             systemPath = systemPath;
@@ -629,8 +638,9 @@
           inherit diskSizeHint;
           inherit diskSizeMiB;
           nixosConfigurations = {
-            inherit ext4 zfs;
-            "${mainName}-nixos" = zfs;
+            ext4Bringup = ext4;
+            zfsBringup = zfsBringup;
+            "${mainName}-nixos" = zfsRuntime;
           };
           inherit
             diskImageFullExt4
@@ -667,8 +677,8 @@
       };
 
       packages = forAllSystems (system: {
-        io-nxmatic-nix-darwin-home-bootstrap-runtime = mkNdhBootstrapRuntimePackage system;
-        io-nxmatic-nix-darwin-home-prerequisites-install = mkNdhBootstrapProfileInstaller system;
+        io-nxmatic-nix-darwin-home-bringup-runtime-profile-holder = mkNdhBootstrapRuntimePackage system;
+        io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer = mkNdhBootstrapProfileInstaller system;
       });
 
       apps = forAllSystems (system:
@@ -676,13 +686,9 @@
           installer = mkNdhBootstrapProfileInstaller system;
         in
         {
-          io-nxmatic-nix-darwin-home-prerequisites-install = {
+          io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer = {
             type = "app";
-            program = "${installer}/bin/io-nxmatic-nix-darwin-home-bootstrap-profile-install";
-          };
-          io-nxmatic-nix-darwin-home-bootstrap-runtime = {
-            type = "app";
-            program = "${installer}/bin/io-nxmatic-nix-darwin-home-bootstrap-profile-install";
+            program = "${installer}/bin/io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer";
           };
         }
       );
@@ -939,58 +945,51 @@
           ndhPrerequisitesInstallerPackage =
             ndhStoreApiDarwin.runCommand "prerequisites-install" { } ''
               mkdir -p "$out/bin"
-              cat > "$out/bin/io-nxmatic-nix-darwin-home-prerequisites-install" <<'EOF'
+              cat > "$out/bin/io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer" <<'EOF'
               #!/usr/bin/env bash
               set -euo pipefail
 
               ${nixpkgs.lib.optionalString (autofsNetMaterializerProgram != null) "/usr/bin/sudo ${autofsNetMaterializerProgram}"}
-              exec ${ndhBootstrapInstallerPackage}/bin/io-nxmatic-nix-darwin-home-bootstrap-profile-install "$@"
+              exec ${ndhBootstrapInstallerPackage}/bin/io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer "$@"
               EOF
-              chmod 0555 "$out/bin/io-nxmatic-nix-darwin-home-prerequisites-install"
+              chmod 0555 "$out/bin/io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer"
             '';
           ndhPrerequisitesInstallerPackageLinux =
             ndhStoreApiLinux.runCommand "prerequisites-install" { } ''
               mkdir -p "$out/bin"
-              cat > "$out/bin/io-nxmatic-nix-darwin-home-prerequisites-install" <<'EOF'
+              cat > "$out/bin/io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer" <<'EOF'
               #!/usr/bin/env bash
               set -euo pipefail
 
-              exec ${ndhBootstrapInstallerPackageLinux}/bin/io-nxmatic-nix-darwin-home-bootstrap-profile-install "$@"
+              exec ${ndhBootstrapInstallerPackageLinux}/bin/io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer "$@"
               EOF
-              chmod 0555 "$out/bin/io-nxmatic-nix-darwin-home-prerequisites-install"
+              chmod 0555 "$out/bin/io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer"
             '';
           hostDarwinPackages = {
-            io-nxmatic-nix-darwin-home-bootstrap-runtime = ndhBootstrapRuntimePackage;
-            io-nxmatic-nix-darwin-home-prerequisites-install = ndhPrerequisitesInstallerPackage;
+            io-nxmatic-nix-darwin-home-bringup-runtime-profile-holder = ndhBootstrapRuntimePackage;
+            io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer = ndhPrerequisitesInstallerPackage;
           };
           hostLinuxPackages = {
-            io-nxmatic-nix-darwin-home-bootstrap-runtime = ndhBootstrapRuntimePackageLinux;
-            io-nxmatic-nix-darwin-home-prerequisites-install = ndhPrerequisitesInstallerPackageLinux;
+            io-nxmatic-nix-darwin-home-bringup-runtime-profile-holder = ndhBootstrapRuntimePackageLinux;
+            io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer = ndhPrerequisitesInstallerPackageLinux;
           };
           hostDarwinApps = {
-            io-nxmatic-nix-darwin-home-prerequisites-install = {
+            io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer = {
               type = "app";
-              program = "${ndhPrerequisitesInstallerPackage}/bin/io-nxmatic-nix-darwin-home-prerequisites-install";
-            };
-            io-nxmatic-nix-darwin-home-bootstrap-runtime = {
-              type = "app";
-              program = "${ndhPrerequisitesInstallerPackage}/bin/io-nxmatic-nix-darwin-home-prerequisites-install";
+              program = "${ndhPrerequisitesInstallerPackage}/bin/io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer";
             };
           };
           hostLinuxApps = {
-            io-nxmatic-nix-darwin-home-prerequisites-install = {
+            io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer = {
               type = "app";
-              program = "${ndhPrerequisitesInstallerPackageLinux}/bin/io-nxmatic-nix-darwin-home-prerequisites-install";
-            };
-            io-nxmatic-nix-darwin-home-bootstrap-runtime = {
-              type = "app";
-              program = "${ndhPrerequisitesInstallerPackageLinux}/bin/io-nxmatic-nix-darwin-home-prerequisites-install";
+              program = "${ndhPrerequisitesInstallerPackageLinux}/bin/io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer";
             };
           };
 
           # Home Manager configurations are explicitly profile-keyed.
           homeManagerConfigurations = {
             work = mkHomeManagerConfig workProfile;
+            bringup = mkHomeManagerConfig workProfile;
             committed = mkHomeManagerConfig committedProfile;
           };
         in

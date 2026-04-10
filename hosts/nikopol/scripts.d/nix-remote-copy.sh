@@ -1,6 +1,6 @@
 #!/usr/bin/env -S bash -euo pipefail
 
-attr=${1:-homeManagerConfigurations.work.activationPackage}
+attr=${1:-homeManagerConfigurations.bringup.activationPackage}
 mode=${2:-copy}
 
 build_attr="${attr}"

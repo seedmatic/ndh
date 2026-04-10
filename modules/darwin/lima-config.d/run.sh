@@ -26,11 +26,11 @@ nixos:flake:refs:resolve() {
   local flake_base="${NIXOS_FLAKE_REF%%#*}"
 
   if [[ -z "${NIXOS_EXT4_FLAKE_REF}" ]]; then
-    NIXOS_EXT4_FLAKE_REF="${flake_base}#ext4"
+    NIXOS_EXT4_FLAKE_REF="${flake_base}#ext4Bringup"
   fi
 
   if [[ -z "${NIXOS_ZFS_FLAKE_REF}" ]]; then
-    NIXOS_ZFS_FLAKE_REF="${flake_base}#zfs"
+    NIXOS_ZFS_FLAKE_REF="${flake_base}#zfsBringup"
   fi
 }
 
@@ -399,8 +399,8 @@ Environment overrides:
   NIXOS_FLAKE_PATH=<path>           (default: @nixosFlakePath@)
   NIXOS_HOST_ATTR=<attr>            (default: @nixosHostAttr@)
   NIXOS_FLAKE_REF=<flake#attr>      (overrides path+attr composition)
-  NIXOS_EXT4_FLAKE_REF=<flake#attr> (default: <NIXOS_FLAKE_REF base>#ext4)
-  NIXOS_ZFS_FLAKE_REF=<flake#attr>  (default: <NIXOS_FLAKE_REF base>#zfs)
+  NIXOS_EXT4_FLAKE_REF=<flake#attr> (default: <NIXOS_FLAKE_REF base>#ext4Bringup)
+  NIXOS_ZFS_FLAKE_REF=<flake#attr>  (default: <NIXOS_FLAKE_REF base>#zfsBringup)
   NIXOS_REMOTE_HOST=<user>          (default: root)
 EOF
 }

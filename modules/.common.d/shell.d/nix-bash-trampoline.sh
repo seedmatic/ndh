@@ -29,8 +29,12 @@ ndh::env:user:home() {
 }
 
 ndh::bootstrap:profile:dir() {
-	# Canonical policy: always use root-owned dedicated NDH bootstrap profile.
-	echo "/nix/var/nix/profiles/per-user/root/io-nxmatic-nix-darwin-home-bootstrap-runtime"
+	# Canonical policy: root-owned dedicated NDH bringup profile.
+	if [[ -n "${NDH_BOOTSTRAP_PROFILE_DIR:-}" ]]; then
+		echo "${NDH_BOOTSTRAP_PROFILE_DIR}"
+		return 0
+	fi
+	echo "/nix/var/nix/profiles/per-user/root/io-nxmatic-nix-darwin-home-bringup-runtime-profile-holder"
 	return 0
 }
 
@@ -101,12 +105,12 @@ ndh::bootstrap:runtime:install() {
 		return 1
 	fi
 
-	profile_name="io-nxmatic-nix-darwin-home-bootstrap-runtime"
-	runtime_name="io.nxmatic.nix-darwin-home-bootstrap-runtime-activation"
+	profile_name="io-nxmatic-nix-darwin-home-bringup-runtime-profile-holder"
+	runtime_name="io.nxmatic.nix-darwin-home-bringup-runtime-profile-holder"
 	runtime_spec="${NDH_BOOTSTRAP_RUNTIME_PACKAGE:-}"
 	installer="${NDH_BOOTSTRAP_INSTALLER:-}"
-	[[ -n "$runtime_spec" ]] || runtime_spec=".#io-nxmatic-nix-darwin-home-prerequisites-install"
-	discovered_installer="$(command -v io-nxmatic-nix-darwin-home-prerequisites-install 2>/dev/null || true)"
+	[[ -n "$runtime_spec" ]] || runtime_spec=".#io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer"
+	discovered_installer="$(command -v io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer 2>/dev/null || true)"
 	if [[ -z "$installer" && -n "$discovered_installer" ]]; then
 		installer="$discovered_installer"
 	fi
@@ -195,18 +199,18 @@ ndh::bootstrap:runtime:diagnose() {
 ndh::bootstrap:runtime:ensure() {
 	local profile_dir install_hint installer_hint
 	profile_dir="$(ndh::bootstrap:profile:dir || true)"
-	installer_hint="${NDH_BOOTSTRAP_INSTALLER:-$(command -v io-nxmatic-nix-darwin-home-prerequisites-install 2>/dev/null || true)}"
+	installer_hint="${NDH_BOOTSTRAP_INSTALLER:-$(command -v io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer 2>/dev/null || true)}"
 	if [[ -n "$profile_dir" ]]; then
 		if [[ -n "$installer_hint" ]]; then
 			install_hint="${installer_hint} ${profile_dir}"
 		else
-			install_hint="nix run .#io-nxmatic-nix-darwin-home-prerequisites-install -- ${profile_dir}"
+			install_hint="nix run .#io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer -- ${profile_dir}"
 		fi
 	else
 		if [[ -n "$installer_hint" ]]; then
-			install_hint="${installer_hint} /nix/var/nix/profiles/per-user/root/io-nxmatic-nix-darwin-home-bootstrap-runtime"
+			install_hint="${installer_hint} /nix/var/nix/profiles/per-user/root/io-nxmatic-nix-darwin-home-bringup-runtime-profile-holder"
 		else
-			install_hint="nix run .#io-nxmatic-nix-darwin-home-prerequisites-install -- /nix/var/nix/profiles/per-user/root/io-nxmatic-nix-darwin-home-bootstrap-runtime"
+			install_hint="nix run .#io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer -- /nix/var/nix/profiles/per-user/root/io-nxmatic-nix-darwin-home-bringup-runtime-profile-holder"
 		fi
 	fi
 

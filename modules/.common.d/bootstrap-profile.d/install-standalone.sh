@@ -5,7 +5,7 @@ main() {
   local profile_dir="${1:-@defaultProfileDir@}"
   local profile_bin="${profile_dir}/bin"
   local runtime_pkg="@runtimePackage@"
-  local runtime_name="io.nxmatic.nix-darwin-home-bootstrap-runtime-activation"
+  local runtime_name="io.nxmatic.nix-darwin-home-bringup-runtime-profile-holder"
   local required="@requiredCommands@"
   local cmd
   local -a missing=()

@@ -12,9 +12,9 @@ let
     name:
     if lib.hasPrefix "${storeNamePrefix}-" name then name else "${storeNamePrefix}-${name}";
   requiredCommandsString = lib.concatStringsSep " " cfg.requiredCommands;
-  installHint = "nix run .#io-nxmatic-nix-darwin-home-prerequisites-install -- ${cfg.profileDir}";
+  installHint = "nix run .#io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer -- ${cfg.profileDir}";
   bootstrapRuntimePackage = pkgs.symlinkJoin {
-    name = prefixStoreName "bootstrap-runtime-activation";
+    name = prefixStoreName "bringup-runtime-profile-holder";
     paths = with pkgs; [
       (lib.getBin bashInteractive)
       (lib.getBin config.nix.package)
@@ -37,7 +37,7 @@ let
     requiredCommands = requiredCommandsString;
     installHint = installHint;
     runtimePackage = bootstrapRuntimePackage;
-    bootstrapInstaller = "${ndhPrerequisitesInstallerPackage}/bin/io-nxmatic-nix-darwin-home-prerequisites-install";
+    bootstrapInstaller = "${ndhPrerequisitesInstallerPackage}/bin/io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer";
     profileDir = cfg.profileDir;
   };
   activationCheckScript = pkgs.writeShellScript (prefixStoreName "bootstrap-profile-activation-check") (builtins.readFile activationCheckSource);
@@ -46,8 +46,8 @@ let
     defaultProfileDir = cfg.profileDir;
     requiredCommands = requiredCommandsString;
   };
-  ndhPrerequisitesInstallerPackage = pkgs.runCommand (prefixStoreName "prerequisites-install") { } ''
-    install -Dm755 ${standaloneInstallSource} "$out/bin/io-nxmatic-nix-darwin-home-prerequisites-install"
+  ndhPrerequisitesInstallerPackage = pkgs.runCommand (prefixStoreName "bringup-runtime-profile-installer") { } ''
+    install -Dm755 ${standaloneInstallSource} "$out/bin/io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer"
   '';
 in
 {
@@ -60,7 +60,7 @@ in
 
     name = lib.mkOption {
       type = lib.types.str;
-      default = "io-nxmatic-nix-darwin-home-bootstrap-runtime";
+      default = "io-nxmatic-nix-darwin-home-bringup-runtime-profile-holder";
       description = "Dedicated Nix profile name for NDH bootstrap runtime tools.";
     };
 
@@ -112,7 +112,7 @@ in
       NDH_BOOTSTRAP_PROFILE_DIR = cfg.profileDir;
       NDH_BOOTSTRAP_PROFILE_BIN = "${cfg.profileDir}/bin";
       NDH_BOOTSTRAP_RUNTIME_PACKAGE = "${bootstrapRuntimePackage}";
-      NDH_BOOTSTRAP_INSTALLER = "${ndhPrerequisitesInstallerPackage}/bin/io-nxmatic-nix-darwin-home-prerequisites-install";
+      NDH_BOOTSTRAP_INSTALLER = "${ndhPrerequisitesInstallerPackage}/bin/io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer";
       NDH_BOOTSTRAP_REQUIRED_COMMANDS = requiredCommandsString;
       NDH_BOOTSTRAP_STRICT = if cfg.requireForActivation then "1" else "0";
       NDH_BOOTSTRAP_INSTALL_HINT = installHint;
@@ -160,10 +160,10 @@ in
         mkdir -p /nix/var/nix/profiles/per-user/root
         mkdir -p "/nix/var/nix/profiles/per-user/${config.profile.user.name}"
 
-        ${ndhPrerequisitesInstallerPackage}/bin/io-nxmatic-nix-darwin-home-prerequisites-install "$profile_dir_root"
+        ${ndhPrerequisitesInstallerPackage}/bin/io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer "$profile_dir_root"
 
         if [ "$profile_user" != "root" ]; then
-          ${ndhPrerequisitesInstallerPackage}/bin/io-nxmatic-nix-darwin-home-prerequisites-install "$profile_dir_user"
+          ${ndhPrerequisitesInstallerPackage}/bin/io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer "$profile_dir_user"
         fi
       '';
     };
