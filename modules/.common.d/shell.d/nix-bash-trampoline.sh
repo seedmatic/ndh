@@ -92,7 +92,7 @@ ndh::bootstrap:runtime:path() {
 ndh::bootstrap:runtime:verify() {
 	local required raw_cmd cmd
 	local -a missing=()
-	read -r -a required <<< "${NDH_BOOTSTRAP_REQUIRED_COMMANDS:-age age-keygen awk sed grep ssh ssh-keygen yq git}"
+	read -r -a required <<< "${NDH_BOOTSTRAP_REQUIRED_COMMANDS:-bash nix age age-keygen awk sed grep ssh ssh-keygen yq git}"
 
 	for raw_cmd in "${required[@]}"; do
 		cmd="${raw_cmd}"
@@ -159,7 +159,6 @@ ndh::bootstrap:runtime:install() {
 	fi
 
 	if [[ "$try_add_success" == "1" ]]; then
-		"$nix_bin" profile remove --profile "$profile_dir" "$profile_name" >/dev/null 2>&1 || true
 		return 0
 	fi
 
@@ -196,7 +195,7 @@ ndh::bootstrap:runtime:diagnose() {
 
 	profile_dir="$(ndh::bootstrap:profile:dir || true)"
 	profile_bin="$(ndh::bootstrap:profile:bin || true)"
-	required="${NDH_BOOTSTRAP_REQUIRED_COMMANDS:-age age-keygen awk sed grep ssh ssh-keygen yq git}"
+	required="${NDH_BOOTSTRAP_REQUIRED_COMMANDS:-bash nix age age-keygen awk sed grep ssh ssh-keygen yq git}"
 	read -r -a required_cmds <<< "$required"
 
 	echo "[ndh][DIAG] bootstrap profile dir: ${profile_dir:-<unset>}" >&2
@@ -227,7 +226,18 @@ ndh::bootstrap:runtime:ensure() {
 		install_hint="nix run .#io-nxmatic-nix-darwin-home-prerequisites-install -- /nix/var/nix/profiles/per-user/root/io-nxmatic-nix-darwin-home-bootstrap-runtime"
 	fi
 
+	# Keep this function self-contained: ensure caller-independent PATH priming
+	# before any install/verify attempt.
+	PATH="$(ndh::nix:bash:path)"
+	PATH="$(ndh::bootstrap:runtime:path)"
+	hash -r 2>/dev/null || true
+
 	ndh::bootstrap:runtime:install || true
+
+	# Refresh runtime PATH after a potential install so newly provisioned
+	# profile binaries are immediately discoverable in this shell process.
+	PATH="$(ndh::bootstrap:runtime:path)"
+	hash -r 2>/dev/null || true
 
 	if ndh::bootstrap:runtime:verify; then
 		return 0

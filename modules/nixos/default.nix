@@ -47,22 +47,13 @@ let
   nixosUserGid = if cfgUserIsNormal && cfgGidLow then null else cfgUser.gid;
   consoleCfg = config.consoleLogging;
   cacheCatalog = catalog.caches;
-  hostImageMode =
-    if hostProfile ? nixosImageMode && hostProfile.nixosImageMode != null then
-      hostProfile.nixosImageMode
-    else
-      "full";
-  nixosBootLoader =
-    if hostProfile ? nixosBootLoader && hostProfile.nixosBootLoader != null then
-      hostProfile.nixosBootLoader
-    else
-      "grub";
+  hostImageMode = hostProfile.nixosImageMode or "full";
+  nixosBootLoader = hostProfile.nixosBootLoader or "grub";
   useSystemdBoot = nixosBootLoader == "systemd-boot";
   useGrub = !useSystemdBoot;
   bootstrapMode = hostImageMode == "bootstrap";
-  bootstrapDebug =
-    bootstrapMode
-    && (if hostProfile ? bootstrapDebug && hostProfile.bootstrapDebug != null then hostProfile.bootstrapDebug else false);
+  # Canonical behavior: bootstrap image mode implies bootstrap debug profile.
+  bootstrapDebug = bootstrapMode;
   grubDebugKernelParams = lib.concatStringsSep " " (
     [
       "init=/nix/var/nix/profiles/system/init"

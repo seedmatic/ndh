@@ -16,6 +16,8 @@ let
   bootstrapRuntimePackage = pkgs.symlinkJoin {
     name = prefixStoreName "bootstrap-runtime-activation";
     paths = with pkgs; [
+      bash
+      nix
       age
       coreutils-full
       findutils
@@ -71,6 +73,8 @@ in
     requiredCommands = lib.mkOption {
       type = lib.types.listOf lib.types.str;
       default = [
+        "bash"
+        "nix"
         "age"
         "age-keygen"
         "awk"
@@ -138,6 +142,10 @@ in
         "sops-age-bootstrap.service"
         "sops-install-secrets.service"
         "io-nxmatic-nix-darwin-home-hostkey-enrollment-check.service"
+      ];
+      path = [
+        pkgs.bash
+        config.nix.package
       ];
       serviceConfig = {
         Type = "oneshot";

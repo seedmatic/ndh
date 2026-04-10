@@ -143,11 +143,7 @@
       mkBaseModulesFor =
         { hostProfile, system }:
         let
-          hostImageMode =
-            if hostProfile ? nixosImageMode && hostProfile.nixosImageMode != null then
-              hostProfile.nixosImageMode
-            else
-              "full";
+          hostImageMode = hostProfile.nixosImageMode or "full";
           bringupModeInternal = hostImageMode == "bootstrap";
           requestedHomeManagerEnabled =
             if hostProfile ? enableHomeManager && hostProfile.enableHomeManager != null then
@@ -229,6 +225,8 @@
         pkgsForSystem.symlinkJoin {
           name = ndhStoreApi.prefixedName "bootstrap-runtime";
           paths = with pkgsForSystem; [
+            bash
+            nix
             age
             coreutils-full
             findutils
@@ -251,7 +249,7 @@
           scriptSource = pkgsForSystem.replaceVars ./modules/.common.d/bootstrap-profile.d/install-standalone.sh {
             runtimePackage = runtimePackage;
             defaultProfileDir = "/nix/var/nix/profiles/per-user/root/io-nxmatic-nix-darwin-home-bootstrap-runtime";
-            requiredCommands = "age age-keygen awk sed grep ssh ssh-keygen yq git";
+            requiredCommands = "bash nix age age-keygen awk sed grep ssh ssh-keygen yq git";
           };
         in
         ndhStoreApi.runCommand "bootstrap-profile-install" { } ''
@@ -354,11 +352,7 @@
           catalog,
         }:
         let
-          hostImageMode =
-            if hostProfile ? nixosImageMode && hostProfile.nixosImageMode != null then
-              hostProfile.nixosImageMode
-            else
-              "full";
+          hostImageMode = hostProfile.nixosImageMode or "full";
           bringupModeInternal = hostImageMode == "bootstrap";
           zfsOverlaysModule =
             { ... }:
@@ -400,11 +394,7 @@
           catalog,
         }:
         let
-          hostImageMode =
-            if hostProfile ? nixosImageMode && hostProfile.nixosImageMode != null then
-              hostProfile.nixosImageMode
-            else
-              "full";
+          hostImageMode = hostProfile.nixosImageMode or "full";
           _ =
             assert builtins.elem hostImageMode [
               "full"
@@ -415,11 +405,7 @@
           mkExt4ModulesFor =
             hp:
             let
-              hpImageMode =
-                if hp ? nixosImageMode && hp.nixosImageMode != null then
-                  hp.nixosImageMode
-                else
-                  "full";
+              hpImageMode = hp.nixosImageMode or "full";
               hpBringupModeInternal = hpImageMode == "bootstrap";
               zfsOverlaysModule =
                 { ... }:
@@ -469,7 +455,6 @@
             hostProfile
             // {
               nixosImageMode = "bootstrap";
-              bootstrapDebug = true;
               nixosBootLoader = "systemd-boot";
             };
 
@@ -477,7 +462,6 @@
             hostProfile
             // {
               nixosImageMode = "bootstrap";
-              bootstrapDebug = true;
               nixosBootLoader = "grub";
             };
 

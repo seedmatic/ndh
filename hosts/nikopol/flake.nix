@@ -32,7 +32,6 @@
         };
         nixosImageMode = "bootstrap";
         nixosBootLoader = "systemd-boot";
-        bootstrapDebug = true;
       };
       darwinProfile = {
         knownNetworkServices = [
@@ -121,11 +120,7 @@
           # Canonical source-of-truth network values from rke2lab netplan catalog (@codebase)
           netplanCatalog = config._module.specialArgs.catalog.networks.rke2labNetplan;
           clusterNetwork = netplanCatalog.clusters.nikopol;
-          bootstrapMode =
-            if hostProfile ? nixosImageMode && hostProfile.nixosImageMode != null then
-              hostProfile.nixosImageMode == "bootstrap"
-            else
-              false;
+          bootstrapMode = (hostProfile.nixosImageMode or "full") == "bootstrap";
         in
         {
           config =
