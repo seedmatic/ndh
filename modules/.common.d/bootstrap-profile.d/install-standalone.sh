@@ -12,9 +12,11 @@ main() {
 
   install -d -m 0755 "$(dirname "$profile_dir")"
 
-  nix profile remove --profile "$profile_dir" "$runtime_name" >/dev/null 2>&1 || true
-  nix profile remove --profile "$profile_dir" "$legacy_runtime_name" >/dev/null 2>&1 || true
-  nix profile add --profile "$profile_dir" "$runtime_pkg"
+  if ! nix profile add --profile "$profile_dir" "$runtime_pkg"; then
+    nix profile remove --profile "$profile_dir" "$runtime_name" >/dev/null 2>&1 || true
+    nix profile remove --profile "$profile_dir" "$legacy_runtime_name" >/dev/null 2>&1 || true
+    nix profile add --profile "$profile_dir" "$runtime_pkg"
+  fi
 
   export PATH="${profile_dir}/bin:${PATH}"
 

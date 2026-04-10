@@ -13,9 +13,11 @@ image_build_context="${NIXOS_INSTALL_BOOTLOADER:-0}"
 
 install_profile() {
   echo "[io-nxmatic-nix-darwin-home-bootstrap-profile] installing/refreshing profile ${profile_dir}" >&2
-  "$nix_bin" profile remove --profile "${profile_dir}" "$runtime_name" >/dev/null 2>&1 || true
-  "$nix_bin" profile remove --profile "${profile_dir}" "$legacy_runtime_name" >/dev/null 2>&1 || true
-  "$nix_bin" profile add --profile "${profile_dir}" "${runtime_package}" >&2
+  if ! "$nix_bin" profile add --profile "${profile_dir}" "${runtime_package}" >&2; then
+    "$nix_bin" profile remove --profile "${profile_dir}" "$runtime_name" >/dev/null 2>&1 || true
+    "$nix_bin" profile remove --profile "${profile_dir}" "$legacy_runtime_name" >/dev/null 2>&1 || true
+    "$nix_bin" profile add --profile "${profile_dir}" "${runtime_package}" >&2
+  fi
 }
 
 if [ "$image_build_context" = "1" ] && [ "$auto_install" = "1" ]; then
