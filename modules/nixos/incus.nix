@@ -52,7 +52,7 @@ let
   ensureIncusServerCert = ndh.store.runCommand "ensure-incus-server-cert.sh" { } ''
     cp ${
       pkgs.replaceVars ./incus.d/ensure-incus-server-cert.sh {
-        bashTrampoline = "${../common/shell.d/nix-bash-trampoline.sh}";
+        bashTrampoline = "${../.common.d/shell.d/nix-bash-trampoline.sh}";
         openssl = "${pkgs.openssl}/bin/openssl";
         incusServerCertPrimaryName = incusServerCertPrimaryName;
         incusServerCertNames = lib.concatMapStringsSep " " lib.escapeShellArg incusServerCertNames;
@@ -219,7 +219,7 @@ in
         # baked into the default Incus remote address.
         incusRemoteAddress = "https://${config.networking.hostName}:8443";
         # Use the wrapped activation logger in the store
-        bashTrampoline = "${../common/shell.d/nix-bash-trampoline.sh}";
+        bashTrampoline = "${../.common.d/shell.d/nix-bash-trampoline.sh}";
         logger = config.nixBashLogger.script;
         loggerTag = "nixos.activationScripts.incusUserConfig";
       }

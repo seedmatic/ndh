@@ -109,7 +109,7 @@ let
     terminal_output console serial
   '';
   bootstrapRequiredImports = [
-    ../common
+    ../.common.d
     ./lima-network-interfaces.nix
     ./disko.nix
     ./systemd

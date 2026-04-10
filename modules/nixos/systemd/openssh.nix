@@ -57,12 +57,12 @@ ${formatPrincipals allPrincipals}
           principals:
 ${formatPrincipals allPrincipals}
   '';
-  principalsScriptStore = pkgs.replaceVars ../../common/ssh/authorized-principals-command.sh {
-    bashTrampoline = "${../../common/shell.d/nix-bash-trampoline.sh}";
+  principalsScriptStore = pkgs.replaceVars ../../.common.d/ssh/authorized-principals-command.sh {
+    bashTrampoline = "${../../.common.d/shell.d/nix-bash-trampoline.sh}";
     logger = logger;
   };
-  groupKeysScriptStore = pkgs.replaceVars ../../common/ssh/ssh-group-authorized-keys.sh {
-    bashTrampoline = "${../../common/shell.d/nix-bash-trampoline.sh}";
+  groupKeysScriptStore = pkgs.replaceVars ../../.common.d/ssh/ssh-group-authorized-keys.sh {
+    bashTrampoline = "${../../.common.d/shell.d/nix-bash-trampoline.sh}";
     logger = logger;
     authorizedKeysDir = config.opensshPolicy.authorizedKeysDir;
   };
@@ -75,7 +75,7 @@ ${formatPrincipals allPrincipals}
   hostkeyEnrollmentCheckTag = "nixos.services.ndh.hostkeyEnrollmentCheck";
   hostkeyEnrollmentSyncTag = "nixos.services.ndh.hostkeyEnrollmentSync";
   hostkeyEnrollmentCheckScript = pkgs.replaceVars ./openssh.d/hostkey-enrollment-check.sh {
-    bashTrampoline = "${../../common/shell.d/nix-bash-trampoline.sh}";
+    bashTrampoline = "${../../.common.d/shell.d/nix-bash-trampoline.sh}";
     logger = logger;
     logTag = hostkeyEnrollmentCheckTag;
     userPrivateSourceDir = config.sshPaths.secretsKeysDir;
@@ -84,7 +84,7 @@ ${formatPrincipals allPrincipals}
     clientKeyName = clientKeyName;
   };
   hostkeyEnrollmentSyncScript = pkgs.replaceVars ./openssh.d/hostkey-enrollment-sync.sh {
-    bashTrampoline = "${../../common/shell.d/nix-bash-trampoline.sh}";
+    bashTrampoline = "${../../.common.d/shell.d/nix-bash-trampoline.sh}";
     logger = logger;
     logTag = hostkeyEnrollmentSyncTag;
     clientPrivateSource = config.sshPaths.privKeyFile;
@@ -97,8 +97,8 @@ ${formatPrincipals allPrincipals}
 in
 {
   imports = [
-    ../../common/openssh-policy.nix
-    ../../common/ssh-paths.nix
+    ../../.common.d/openssh-policy.nix
+    ../../.common.d/ssh-paths.nix
   ];
 
   opensshPolicy = {

@@ -5,7 +5,7 @@
   ...
 }:
 {
-  imports = [ ../common/dns-servers.nix ];
+  imports = [ ../.common.d/dns-servers.nix ];
 
   options.networking.mammoth-skate = {
     enable = lib.mkOption {
