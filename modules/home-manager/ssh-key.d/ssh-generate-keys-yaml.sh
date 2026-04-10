@@ -382,7 +382,7 @@ key::process() {
 : "Function to generate the YAML output file"
 keys::toYAML() {
 
-	cat <<EOF | yq --prettyPrint --yaml-fix-merge-anchor-to-spec eval 'explode(...)'
+	cat <<EOF | yq --prettyPrint eval '.'
 keys:
 $(
 		local -a signingKeys otherKeys
@@ -415,7 +415,7 @@ $(
 			# Collect principals (for user-signing semantics) so downstream tools (AuthorizedPrincipalsCommand) can align.
 			readarray -t keyPrincipals < <(key::principals)
 			cat <<EOK
-  $keyName: &${keyName}
+  $keyName:
     usage: $(
 				IFS=','
 				echo "[ ${keyUsage[*]} ]"
@@ -452,7 +452,6 @@ $(
 					local authorityVar
 					authorityVar="$(var::snakeCase "$keyVar" "authorities" "$authorityName")"
 					echo "      $authorityName:"
-					echo "        <<: *$authorityName"
 					local authorityUsage
 					readarray -t authorityUsage < <(authority::usage "$authorityVar")
 					for authorityUsage in "${authorityUsage[@]}"; do
@@ -501,7 +500,7 @@ main() {
 	trap 'rm -rf $tmpdir' EXIT
 
 	: "Load the entire YAML file into shell variables"
-	eval "$(env PROFILE="$profileName" yq -o shell eval 'explode(...) | .profiles.[env(PROFILE)] | { "ssh-keys": . }' "$inputFile")"
+	eval "$(env PROFILE="$profileName" yq -o shell eval 'explode(...) | .profiles.[env(PROFILE)] | { "ssh-keys": . }' - <"$inputFile")"
 
 	declare -g profileVarPrefix
 	profileVarPrefix=$(var::snakeCase "ssh-keys")
@@ -535,13 +534,28 @@ main() {
 	fi
 	local tmpOutput
 	tmpOutput="$(mktemp)"
-	keys::toYAML >"$tmpOutput"
-	rm -f "$outputFile"
-	install -m 0400 "$tmpOutput" "$outputFile"
+	if ! keys::toYAML >"$tmpOutput"; then
+		echo "failed to render SSH keys YAML to temporary file: $tmpOutput" >&2
+		rm -f "$tmpOutput"
+		return 1
+	fi
+	if ! rm -f "$outputFile"; then
+		echo "failed to remove previous output file: $outputFile" >&2
+		rm -f "$tmpOutput"
+		return 1
+	fi
+	if ! install -m 0400 "$tmpOutput" "$outputFile"; then
+		echo "failed to install generated SSH keys YAML to output path: $outputFile" >&2
+		rm -f "$tmpOutput"
+		return 1
+	fi
 	rm -f "$tmpOutput"
 
 	: "Keep decrypted runtime keys file read-only to discourage direct edits"
-	chmod 0400 "$outputFile"
+	if ! chmod 0400 "$outputFile"; then
+		echo "failed to enforce read-only mode on output file: $outputFile" >&2
+		return 1
+	fi
 	if [[ "$(id -u)" -eq 0 && -n "$targetUser" ]]; then
 		chown "$targetUser" "$outputFile" 2>/dev/null || true
 	fi

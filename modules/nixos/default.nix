@@ -9,6 +9,7 @@
 
 let
   kernelModules = [
+    "nfsd"
     "ext4"
     "overlay"
     "isofs"
@@ -301,6 +302,7 @@ in
       };
 
       loader.systemd-boot.enable = lib.mkForce useSystemdBoot;
+      loader.systemd-boot.configurationLimit = lib.mkIf useSystemdBoot (lib.mkDefault 8);
       loader.efi.canTouchEfiVariables = lib.mkForce false;
 
       # verbosity (default off; override per-host if needed)
@@ -463,6 +465,7 @@ in
     users.users.${cfgUserName} = {
       group = cfgUserName;
       extraGroups = [
+        "keys"
         "wheel"
         "ssh"
       ];
