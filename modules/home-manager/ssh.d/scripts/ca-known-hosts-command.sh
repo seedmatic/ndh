@@ -1,7 +1,7 @@
-#!/usr/bin/env bash
+#!@bashBin@
 # KnownHostsCommand script (@codebase)
 # Emits host CA certificate lines for dynamic known hosts resolution.
-# Template variable @CA_DIR@ is replaced by Nix with the derivation output directory
+# Template variable @caDir@ is replaced by Nix with the derivation output directory
 # holding extracted CA public keys (files matching *-ca.pub).
 
 set -euo pipefail
@@ -23,7 +23,7 @@ case "${mode_or_host}" in
     ;;
 esac
 
-CA_DIR="@CA_DIR@"
+CA_DIR="@caDir@"
 
 declare -A seen=()
 

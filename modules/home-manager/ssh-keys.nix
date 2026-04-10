@@ -58,16 +58,13 @@ let
 
   # Externalized KnownHostsCommand script sourced from repo (templated with keysDir)
   knownHostsScript =
-    let
-      scriptTemplate = builtins.readFile ./ssh.d/scripts/ca-known-hosts-command.sh;
-      # Resolve CA keys from canonical system runtime key directory and
-      # force execution under Nix bash (avoid legacy /bin/bash on macOS).
-      scriptProcessed = builtins.replaceStrings
-        [ "#!/usr/bin/env bash" "@CA_DIR@" ]
-        [ "#!${pkgs.bash}/bin/bash" systemKeysDir ]
-        scriptTemplate;
-    in
-    pkgs.writeScript "ssh-ca-known-hosts" scriptProcessed;
+    pkgs.runCommand "ssh-ca-known-hosts" { } ''
+      cp ${pkgs.replaceVars ./ssh.d/scripts/ca-known-hosts-command.sh {
+        bashBin = "${pkgs.bash}/bin/bash";
+        caDir = systemKeysDir;
+      }} "$out"
+      chmod +x "$out"
+    '';
 
 in
 {
