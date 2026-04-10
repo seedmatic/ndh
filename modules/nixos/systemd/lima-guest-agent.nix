@@ -23,11 +23,11 @@ in
 {
   imports = [ ];
 
-  systemd.services.lima-guestagent = {
+  systemd.services.ndh-lima-guestagent = {
     description = "Lima Guest Agent";
     wantedBy = [ "multi-user.target" ];
-    after = [ "lima-cloud-init.service" ];
-    requires = [ "lima-cloud-init.service" ];
+    after = [ "ndh-lima-cloud-init.service" ];
+    requires = [ "ndh-lima-cloud-init.service" ];
     unitConfig = {
       ConditionPathExists = "${LIMA_CIDATA_MNT}/lima-guestagent";
     };
