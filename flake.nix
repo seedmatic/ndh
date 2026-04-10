@@ -492,14 +492,10 @@
           bringupGrubExt4Modules = mkExt4ModulesFor bringupGrubHostProfile;
           bringupGrubExt4SpecialArgs = mkExt4SpecialArgsFor bringupGrubHostProfile bringupGrubExt4Modules;
 
-          # Disk sizes in MiB
-          # - runtime/systemd-boot bringup: safe size for full closure population
-          # - bringup-grub: reduced-size image for fast iteration/debug
-          # Bumped by +4 GiB to reduce ENOSPC risk during phase-2 boot/switch closure copy.
-          diskSizeFullMiB = 16 * 1024;
-          diskSizeBringupSystemdBootMiB = 16 * 1024;
-          diskSizeBringupGrubMiB = 12 * 1024;
-          diskSizeBytes = diskSizeFullMiB * 1024 * 1024;
+          # Canonical disk size in MiB shared by all disk-image profiles.
+          # Keep one source of truth to avoid host/guest sizing drift.
+          diskSizeMiB = 8 * 1024;
+          diskSizeBytes = diskSizeMiB * 1024 * 1024;
           # System closure path
           systemPath = zfs.config.system.build.toplevel;
           # Output a JSON hint with all relevant info for post-build checks
@@ -507,9 +503,9 @@
             systemPath = systemPath;
             diskSizeBytes = diskSizeBytes;
             diskSizeMiB = {
-              runtime = diskSizeFullMiB;
-              bringupSystemdBoot = diskSizeBringupSystemdBootMiB;
-              bringupGrub = diskSizeBringupGrubMiB;
+              runtime = diskSizeMiB;
+              bringupSystemdBoot = diskSizeMiB;
+              bringupGrub = diskSizeMiB;
             };
             hint = "nix path-info -Sh ${systemPath}";
             note = "closure size should be less than diskSizeBytes";
@@ -578,7 +574,7 @@
             modules = bringupSystemdBootExt4Modules ++ [
               {
                 nix.registry.nixpkgs.flake = nixpkgs;
-                virtualisation.diskSize = diskSizeBringupSystemdBootMiB;
+                virtualisation.diskSize = diskSizeMiB;
               }
             ];
             specialArgs = bringupSystemdBootExt4SpecialArgs;
@@ -591,7 +587,7 @@
             modules = bringupGrubExt4Modules ++ [
               {
                 nix.registry.nixpkgs.flake = nixpkgs;
-                virtualisation.diskSize = diskSizeBringupGrubMiB;
+                virtualisation.diskSize = diskSizeMiB;
               }
             ];
             specialArgs = bringupGrubExt4SpecialArgs;
@@ -604,7 +600,7 @@
             modules = runtimeExt4Modules ++ [
               {
                 nix.registry.nixpkgs.flake = nixpkgs;
-                virtualisation.diskSize = diskSizeFullMiB;
+                virtualisation.diskSize = diskSizeMiB;
               }
             ];
             specialArgs = runtimeExt4SpecialArgs;
@@ -617,7 +613,7 @@
             attr = "nixosDiskImageBringupSystemdBoot";
             imageMode = "bootstrap";
             bootLoader = "systemd-boot";
-            diskSizeMiB = diskSizeBringupSystemdBootMiB;
+            diskSizeMiB = diskSizeMiB;
             source = diskImageBringupSystemdBootRaw;
           };
 
@@ -625,7 +621,7 @@
             attr = "nixosDiskImageBringupGrub";
             imageMode = "bootstrap";
             bootLoader = "grub";
-            diskSizeMiB = diskSizeBringupGrubMiB;
+            diskSizeMiB = diskSizeMiB;
             source = diskImageBringupGrubRaw;
           };
 
@@ -633,13 +629,14 @@
             attr = "nixosDiskImage";
             imageMode = "full";
             bootLoader = "systemd-boot";
-            diskSizeMiB = diskSizeFullMiB;
+            diskSizeMiB = diskSizeMiB;
             source = diskImageFullExt4Raw;
           };
 
         in
         {
           inherit diskSizeHint;
+          inherit diskSizeMiB;
           nixosConfigurations = {
             inherit ext4 zfs;
             "${mainName}-nixos" = if hostImageMode == "bootstrap" then ext4 else zfs;
@@ -887,6 +884,7 @@
           nixosDiskImageBringupSystemdBoot = nixosOutputs.diskImageBringupSystemdBoot;
           nixosDiskImageBringupGrub = nixosOutputs.diskImageBringupGrub;
           nixosDiskSizeHint = nixosOutputs.diskSizeHint;
+          nixosDiskSizeMiB = nixosOutputs.diskSizeMiB;
           mkHomeManagerConfig = profile:
             home-manager.lib.homeManagerConfiguration {
               pkgs = pkgsForDarwin;
@@ -922,6 +920,7 @@
                     ({ ... }: {
                       lima.configGenerator.imageDescriptorPath = "${nixosDiskImageBringupSystemdBoot}/descriptor.yaml";
                       lima.configGenerator.imageStorePath = "${nixosDiskImageBringupSystemdBoot}/nixos.img";
+                      lima.configGenerator.diskSizeGiB = builtins.div nixosDiskSizeMiB 1024;
                     })
                   ]
                   ++ darwinExtraModules;

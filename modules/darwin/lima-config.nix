@@ -16,6 +16,16 @@ let
   dollar = "$"; # escape for shell scripts
 
   profileUser = config.profile.user.name;
+  vmGuestUser =
+    if catalog ? users && catalog.users ? committed && catalog.users.committed ? name then
+      catalog.users.committed.name
+    else
+      builtins.throw "lima-config.nix: catalog.users.committed.name is required for canonical NixOS VM guest user";
+  committedHostHome =
+    if catalog ? users && catalog.users ? committed && catalog.users.committed ? home then
+      catalog.users.committed.home
+    else
+      "/Users/${vmGuestUser}";
   profileHome = config.profile.user.home;
   profileHost = config.profile.host;
   sshPaths = config.sshPaths;
@@ -122,13 +132,13 @@ let
 
   limaConfig = {
     cpus = 8;
-    disk = "24GiB";
+    disk = "${toString cfg.diskSizeGiB}GiB";
     memory = "24GiB";
     plain = false;
     vmType = vmType;
 
     user = {
-      name = profileUser;
+      name = vmGuestUser;
     };
 
     additionalDisks = [
@@ -173,7 +183,11 @@ let
 
     mounts = [
       {
-        location = "~";
+        # Explicit host home source; avoid '~' resolution against vm guest user name
+        # (which can point to non-existent /Users/<committed-user> on the host).
+        location = "${profileHome}";
+        # Keep the same path layout as host inside the guest.
+        mountPoint = "${profileHome}";
         writable = true;
       }
       {
@@ -422,6 +436,16 @@ in
         Flake output attribute used as fallback when imageSourcePath is unavailable.
         The activation script resolves `${cfg.nixosFlakePath}/hosts/${effectiveHostName}#<attr>`
         and uses `<out>/nixos.img` when present.
+      '';
+    };
+
+    diskSizeGiB = mkOption {
+      type = types.int;
+      default = 24;
+      description = ''
+        Root disk size in GiB exposed by Lima to the guest for the primary VM disk.
+        Keep this aligned with the selected NixOS disk-image profile size to avoid
+        host/guest disk-size drift.
       '';
     };
 
