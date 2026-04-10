@@ -33,6 +33,7 @@
     ./openssh.nix
     ./github-mcp-proxy.nix
     ./shell-keychain.nix
+    ./ssh-keys-enrichment.nix
     ./ssh-client.nix
     ./incus-remote-trust.nix
     ./sops.nix

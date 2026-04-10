@@ -48,14 +48,14 @@ let
       profileUserName;
 
   logger = config.nixBashLogger.script;
-  loggerTagGenerate = "nixos.services.ssh-keys-enrichment.generateSSHKeysYaml";
-  sshGenerateKeysYamlScriptSource = pkgs.replaceVars ../../home-manager/ssh-key.d/ssh-generate-keys-yaml.sh {
+  loggerTagEnrich = "nixos.services.ssh-keys-enrichment.enrichSSHKeysYaml";
+  sshEnrichKeysYamlScriptSource = pkgs.replaceVars ../../.common.d/ssh-keys.d/ssh-enrich-keys-yaml.sh {
     bashTrampoline = "${../../.common.d/shell.d/nix-bash-trampoline.sh}";
     logger = logger;
-    loggerTag = loggerTagGenerate;
+    loggerTag = loggerTagEnrich;
   };
-  sshGenerateKeysYamlScript = pkgs.runCommand "ndh-ssh-generate-keys-yaml-systemd.sh" { } ''
-    install -m 0555 ${sshGenerateKeysYamlScriptSource} "$out"
+  sshEnrichKeysYamlScript = pkgs.runCommand "ndh-ssh-enrich-keys-yaml-systemd.sh" { } ''
+    install -m 0555 ${sshEnrichKeysYamlScriptSource} "$out"
   '';
 in
 {
@@ -96,7 +96,7 @@ in
       profiles_dir="$split_dir/profiles"
       install -d -m 0755 "$split_dir" "$profiles_dir"
 
-      ${pkgs.bash}/bin/bash ${sshGenerateKeysYamlScript} \
+      ${pkgs.bash}/bin/bash ${sshEnrichKeysYamlScript} \
         "${sshKeyProfileName}" \
         "${hostIdent}" \
         "${decryptedSSHKeysYamlPath}" \
