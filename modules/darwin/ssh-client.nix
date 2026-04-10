@@ -270,6 +270,8 @@ in
           cfg.hostIdentityDomains.identityRelativePath
         else
           "${config.sshPaths.secretsKeysDir}/${cfg.hostIdentityDomains.identityRelativePath}";
+      vzHostAlias = if rawHost != "" then "vz-host.${rawHost}" else null;
+      vzHostName = if rawHost != "" then "${rawHost}-vz.lan" else null;
 
       renderStanza =
         st:
@@ -312,7 +314,24 @@ in
           extraConfig = ownedDomainHostKeyBypassConfig;
         };
 
-      allExtraStanzas = hostIdentityStanzas ++ cfg.extraStanzas;
+      # Canonical VZ host aliases derived from profile host/user metadata.
+      # This ensures daemon/nixbld SSH behavior does not rely on per-user ~/.ssh/config.
+      vzHostStanzas = optional (vzHostAlias != null && vzHostName != null) {
+        patterns = [
+          vzHostAlias
+          "vz-host"
+        ];
+        user = userName;
+        identityFile = hostIdentityFile;
+        identitiesOnly = true;
+        bypassAgent = true;
+        extraConfig = ''
+          HostName ${vzHostName}
+          PreferredAuthentications publickey
+        '';
+      };
+
+      allExtraStanzas = hostIdentityStanzas ++ vzHostStanzas ++ cfg.extraStanzas;
 
       extraText = concatStringsSep "\n" (map renderStanza allExtraStanzas);
     in

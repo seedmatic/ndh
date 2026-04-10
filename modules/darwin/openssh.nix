@@ -66,24 +66,20 @@ let
     ${formatPrincipals allPrincipals}
   '';
 
-  sshdConfigText =
+  ndhSshdConfigText =
     let
       boolToYesNo = v: if v then "yes" else "no";
       renderValue = v: if builtins.isBool v then boolToYesNo v else builtins.toString v;
       policyLines = lib.mapAttrsToList (k: v: "${k} ${renderValue v}") config.opensshPolicy.settings;
-      hostKeyLines = map (p: "HostKey ${p}") config.opensshPolicy.hostKeys;
       certAlready = lib.any (l: lib.hasPrefix "HostCertificate " l) policyLines;
       certLine =
         if (!certAlready && config.opensshPolicy.settings ? HostCertificate) then
           [ "HostCertificate ${config.opensshPolicy.settings.HostCertificate}" ]
         else
           [ ];
-      includeLines = builtins.map (g: "Include ${g}") config.opensshPolicy.includeDaemonGlobs;
-      all = hostKeyLines ++ certLine ++ policyLines ++ includeLines;
+      all = certLine ++ policyLines;
     in
     lib.concatStringsSep "\n" all + "\n";
-
-  sshdConfigStore = ndh.store.writeText "sshd_config" sshdConfigText;
 
   opensshActivationScript = pkgs.replaceVars ./openssh.d/openssh-activation.sh {
     groupKeysScriptStore = groupKeysScriptStore;
@@ -143,10 +139,16 @@ in
     # All hosts accept all profile principals for cross-host connections
     environment.etc."ssh/keys.yaml".text = sshKeysYamlText;
 
-    # SSH daemon configuration
-    environment.etc."ssh/sshd_config".text = sshdConfigText;
+    # Keep NDH policy in a dedicated late drop-in so precedence is explicit.
+    # nix-darwin still manages service enablement and host key lifecycle.
+    environment.etc."ssh/sshd_config.d/999-ndh.conf".text = ndhSshdConfigText;
 
-    services.openssh.enable = true;
+    # Darwin option surface for OpenSSH is intentionally small
+    # (enable + extraConfig in the currently pinned nix-darwin). Keep NDH
+    # policy in 999-ndh.conf for explicit ordering.
+    services.openssh = {
+      enable = true;
+    };
 
     # Ensure OpenSSH helper scripts are installed during the etc phase.
     system.activationScripts.etc.text = lib.mkAfter ''

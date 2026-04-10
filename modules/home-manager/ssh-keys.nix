@@ -69,6 +69,10 @@ in
   ssh-add-keys = {
     enable = true;
     keyFile = effectiveSSHKeysYamlPath;
+    allowedKeyNames = [
+      sshPaths.keyName
+      "linux-builder"
+    ];
   };
 
   home.file.".ssh" = {
