@@ -23,12 +23,15 @@ let
   logger = config._module.specialArgs.logger.script;
   loggerTagGenerate = "home-manager.activationScripts.${userName}.generateSSHKeysYaml";
   loggerTagDecrypt = "home-manager.activationScripts.${userName}.decryptSSHKeysYaml";
+  loggerTagPrepareGenerated = "home-manager.activationScripts.${userName}.prepareGeneratedSSHKeysYaml";
   loggerTagExtract = "home-manager.activationScripts.${userName}.extractSSHKeys";
   loggerTagAuthorized = "home-manager.activationScripts.${userName}.ensureAuthorizedKeys";
   perUserKeysDir = sshPaths.secretsKeysDir;
   authorityKeysDir = sshPaths.authoritySecretsDir;
   decryptedSSHKeysYamlPath = sshPaths.runtimeSecretsKeysYaml;
   encryptedSSHKeysYamlSource = ./ssh.d/keys.yaml;
+  systemManagedSshKeysPipeline = pkgs.stdenv.isLinux;
+  systemSplitProfileKeysYamlPath = "/run/secrets/nix-darwin-home/ssh-keys-split.d/profiles/${profileName}.yaml";
   # Effective YAML path consumed by ssh-add-keys/launchd.
   effectiveSSHKeysYamlPath = "${perUserKeysDir}.yaml";
 
@@ -168,27 +171,47 @@ in
         source = ensureAuthorizedKeysScriptSource;
       };
     in
-    {
-      # Decrypt source YAML (full profiles) to a user-scoped runtime path first.
-      decryptSSHKeysYaml = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-        ${pkgs.bash}/bin/bash ${decryptSSHKeysYamlScript} "${encryptedSSHKeysYamlSource}" "${decryptedSSHKeysYamlPath}" "${userName}"
-      '';
+    (lib.mkMerge [
+      (if systemManagedSshKeysPipeline then
+        {
+          # NixOS path: consume profile-specific generated YAML from system service.
+          prepareGeneratedSSHKeysYaml = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+            if [[ ! -r "${systemSplitProfileKeysYamlPath}" ]]; then
+              echo "missing system-generated profile keys YAML: ${systemSplitProfileKeysYamlPath}" >&2
+              exit 1
+            fi
 
-      # Generate the YAML of keys to deploy based on the main keys.yaml and the current host/profile
-      generateSSHKeysYaml = lib.hm.dag.entryAfter [ "decryptSSHKeysYaml" ] ''
-        ${pkgs.bash}/bin/bash ${sshGenerateKeysYamlScript} "${sshKeyProfileName}" "${hostIdent}" "${decryptedSSHKeysYamlPath}" "${effectiveSSHKeysYamlPath}" "${hostsCatalogCsv}" "${userName}"
-      '';
+            install -m 0700 -d "$(dirname "${effectiveSSHKeysYamlPath}")"
+            install -m 0400 "${systemSplitProfileKeysYamlPath}" "${effectiveSSHKeysYamlPath}"
+            chown "${userName}:$(id -gn "${userName}" 2>/dev/null || echo "${userName}")" "${effectiveSSHKeysYamlPath}" 2>/dev/null || true
+          '';
 
-      # Deploy keys to the filesystem with proper permissions based on the generated YAML
-      extractSSHKeys = lib.hm.dag.entryAfter [ "generateSSHKeysYaml" ] ''
-        ${pkgs.bash}/bin/bash ${sshExtractKeysScript} "${effectiveSSHKeysYamlPath}" "${perUserKeysDir}" "${userName}"
-      '';
+          extractSSHKeys = lib.hm.dag.entryAfter [ "prepareGeneratedSSHKeysYaml" ] ''
+            ${pkgs.bash}/bin/bash ${sshExtractKeysScript} "${effectiveSSHKeysYamlPath}" "${perUserKeysDir}" "${userName}"
+          '';
+        }
+      else
+        {
+          # Darwin path: decrypt and generate in Home Manager as before.
+          decryptSSHKeysYaml = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+            ${pkgs.bash}/bin/bash ${decryptSSHKeysYamlScript} "${encryptedSSHKeysYamlSource}" "${decryptedSSHKeysYamlPath}" "${userName}"
+          '';
 
-      # Ensure mutable authorized_keys exists (symlink-free) with strict perms
-      ensureAuthorizedKeys = lib.hm.dag.entryAfter [ "extractSSHKeys" ] ''
-        ${pkgs.bash}/bin/bash ${ensureAuthorizedKeysScript}
-      '';
-    };
+          generateSSHKeysYaml = lib.hm.dag.entryAfter [ "decryptSSHKeysYaml" ] ''
+            ${pkgs.bash}/bin/bash ${sshGenerateKeysYamlScript} "${sshKeyProfileName}" "${hostIdent}" "${decryptedSSHKeysYamlPath}" "${effectiveSSHKeysYamlPath}" "${hostsCatalogCsv}" "${userName}"
+          '';
+
+          extractSSHKeys = lib.hm.dag.entryAfter [ "generateSSHKeysYaml" ] ''
+            ${pkgs.bash}/bin/bash ${sshExtractKeysScript} "${effectiveSSHKeysYamlPath}" "${perUserKeysDir}" "${userName}"
+          '';
+        })
+      {
+        # Ensure mutable authorized_keys exists (symlink-free) with strict perms
+        ensureAuthorizedKeys = lib.hm.dag.entryAfter [ "extractSSHKeys" ] ''
+          ${pkgs.bash}/bin/bash ${ensureAuthorizedKeysScript}
+        '';
+      }
+    ]);
 
   programs.ssh.extraConfig = ''
     KnownHostsCommand ${knownHostsScript}

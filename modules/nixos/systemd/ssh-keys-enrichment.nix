@@ -2,6 +2,7 @@
   config,
   pkgs,
   lib,
+  catalog,
   ...
 }:
 let
@@ -24,7 +25,10 @@ let
     else
       "nixos";
   decryptedSSHKeysYamlPath = config.sshPaths.runtimeSecretsKeysYaml;
-  effectiveSSHKeysYamlPath = "${config.sshPaths.secretsKeysDir}.yaml";
+  splitKeysDir = "/run/secrets/nix-darwin-home/ssh-keys-split.d";
+  generatedKeysYamlPath = "${splitKeysDir}/keys.generated.yaml";
+  generatedSystemKeysYamlPath = "${splitKeysDir}/system.yaml";
+  generatedProfileKeysYamlPath = "${splitKeysDir}/profiles/${profileName}.yaml";
 
   hostsCatalog =
     let
@@ -36,10 +40,15 @@ let
     lib.attrNames hostDirs;
   hostsCatalogCsv = lib.concatStringsSep "," hostsCatalog;
 
+  catalogUsers = if catalog ? users then catalog.users else { };
+  profileOwnerName =
+    if builtins.hasAttr profileName catalogUsers && catalogUsers.${profileName} ? name && catalogUsers.${profileName}.name != null then
+      catalogUsers.${profileName}.name
+    else
+      profileUserName;
+
   logger = config.nixBashLogger.script;
   loggerTagGenerate = "nixos.services.ssh-keys-enrichment.generateSSHKeysYaml";
-  loggerTagExtract = "nixos.services.ssh-keys-enrichment.extractSSHKeys";
-
   sshGenerateKeysYamlScriptSource = pkgs.replaceVars ../../home-manager/ssh-key.d/ssh-generate-keys-yaml.sh {
     bashTrampoline = "${../../.common.d/shell.d/nix-bash-trampoline.sh}";
     logger = logger;
@@ -48,24 +57,10 @@ let
   sshGenerateKeysYamlScript = pkgs.runCommand "ndh-ssh-generate-keys-yaml-systemd.sh" { } ''
     install -m 0555 ${sshGenerateKeysYamlScriptSource} "$out"
   '';
-
-  sshExtractKeysSplitExpFile = pkgs.runCommand "ndh-ssh-extract-keys-systemd.split-exp.yq" { } ''
-    install -m 0444 ${../../home-manager/ssh-key.d/ssh-extract-keys.split-exp.yq} "$out"
-  '';
-
-  sshExtractKeysScriptSource = pkgs.replaceVars ../../home-manager/ssh-key.d/ssh-extract-keys.sh {
-    bashTrampoline = "${../../.common.d/shell.d/nix-bash-trampoline.sh}";
-    logger = logger;
-    loggerTag = loggerTagExtract;
-    splitExpFile = sshExtractKeysSplitExpFile;
-  };
-  sshExtractKeysScript = pkgs.runCommand "ndh-ssh-extract-keys-systemd.sh" { } ''
-    install -m 0555 ${sshExtractKeysScriptSource} "$out"
-  '';
 in
 {
   config.systemd.services.io-nxmatic-nix-darwin-home-ssh-keys-enrichment = {
-    description = "Enrich and materialize SSH keys from decrypted system secrets (@codebase)";
+    description = "Provision system linux-builder key from decrypted secrets (@codebase)";
     wantedBy = [ "io-nxmatic-nix-darwin-home-contributed.target" ];
     requires = [ keysTargetUnit ] ++ lib.optionals hasSopsInstallSecretsService [ "sops-install-secrets.service" ];
     after =
@@ -81,6 +76,7 @@ in
       gnugrep
       gnused
       openssh
+      inetutils
       yq-go
     ];
     serviceConfig = {
@@ -96,18 +92,80 @@ in
         exit 1
       fi
 
+      split_dir="${splitKeysDir}"
+      profiles_dir="$split_dir/profiles"
+      install -d -m 0755 "$split_dir" "$profiles_dir"
+
       ${pkgs.bash}/bin/bash ${sshGenerateKeysYamlScript} \
         "${sshKeyProfileName}" \
         "${hostIdent}" \
         "${decryptedSSHKeysYamlPath}" \
-        "${effectiveSSHKeysYamlPath}" \
+        "${generatedKeysYamlPath}" \
         "${hostsCatalogCsv}" \
-        "${profileUserName}"
+        "${profileOwnerName}"
 
-      ${pkgs.bash}/bin/bash ${sshExtractKeysScript} \
-        "${effectiveSSHKeysYamlPath}" \
-        "${config.sshPaths.secretsKeysDir}" \
-        "${profileUserName}"
+      # System split: keep host/system-signing material.
+      yq eval -o=yaml '
+        .keys |= with_entries(
+          select(
+            ((.value.usage // []) | any(. == "ssh-authority" or . == "ssh-host" or . == "host-signing"))
+          )
+        )
+      ' "${generatedKeysYamlPath}" > "${generatedSystemKeysYamlPath}"
+      install -m 0400 "${generatedSystemKeysYamlPath}" "${generatedSystemKeysYamlPath}.tmp"
+      mv "${generatedSystemKeysYamlPath}.tmp" "${generatedSystemKeysYamlPath}"
+      chown root:root "${generatedSystemKeysYamlPath}"
+
+      # User split: keep user signing material (and default non-system keys).
+      yq eval -o=yaml '
+        .keys |= with_entries(
+          select(
+            ((.value.usage // []) as $u | ($u | any(. == "ssh-authority" or . == "ssh-host" or . == "host-signing")) | not)
+          )
+        )
+      ' "${generatedKeysYamlPath}" > "${generatedProfileKeysYamlPath}"
+      install -m 0440 "${generatedProfileKeysYamlPath}" "${generatedProfileKeysYamlPath}.tmp"
+      mv "${generatedProfileKeysYamlPath}.tmp" "${generatedProfileKeysYamlPath}"
+      chown "${profileOwnerName}:${profileOwnerName}" "${generatedProfileKeysYamlPath}" || chown "${profileOwnerName}:users" "${generatedProfileKeysYamlPath}" || true
+
+      key_type="$(yq -r '.keys."linux-builder".public // "" | split(" ") | .[0] // ""' "${generatedKeysYamlPath}")"
+      key_public="$(yq -r '.keys."linux-builder".public // "" | split(" ") | .[1] // ""' "${generatedKeysYamlPath}")"
+      key_comment="$(yq -r '.keys."linux-builder".public // "" | split(" ") | .[2] // ""' "${generatedKeysYamlPath}")"
+
+      if [[ -z "$key_type" ]]; then
+        key_type="ssh-ed25519"
+      fi
+      if [[ -z "$key_comment" ]]; then
+        key_comment="linux-builder@mammoth-skate"
+      fi
+
+      if [[ -z "$key_public" ]]; then
+        echo "[ssh-keys-enrichment][ERROR] missing linux-builder public key in ${generatedKeysYamlPath}" >&2
+        exit 1
+      fi
+
+      auth_dir="${config.opensshPolicy.authorizedKeysDir}"
+      auth_file="$auth_dir/${profileUserName}"
+      install -d -m 0755 "$auth_dir"
+
+      touch "$auth_file"
+      chmod 0644 "$auth_file"
+      chown root:root "$auth_file"
+
+      line="$key_type $key_public $key_comment"
+      if ! grep -Fqx "$line" "$auth_file"; then
+        printf '%s\n' "$line" >> "$auth_file"
+      fi
+
+      awk 'NF > 0' "$auth_file" | awk '!seen[$0]++' > "$auth_file.tmp"
+      install -m 0644 "$auth_file.tmp" "$auth_file"
+      chown root:root "$auth_file"
+      rm -f "$auth_file.tmp"
+
+      echo "[ssh-keys-enrichment] generated runtime keys YAML: ${generatedKeysYamlPath}"
+      echo "[ssh-keys-enrichment] split system keys YAML: ${generatedSystemKeysYamlPath}"
+      echo "[ssh-keys-enrichment] split profile keys YAML: ${generatedProfileKeysYamlPath}"
+      echo "[ssh-keys-enrichment] ensured linux-builder key in $auth_file"
     '';
   };
 }
