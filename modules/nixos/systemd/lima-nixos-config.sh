@@ -2,8 +2,8 @@
 # lima-nixos-config: Link (preferred) or optionally clone the nix-darwin-home repo
 # Usage: lima-nixos-config <HOSTNAME>
 # Optional env vars:
-#   LIMA_NIXOS_CONFIG_PATH  - explicit repo path
-#   LIMA_NIXOS_ALLOW_CLONE=1  - permit fallback clone if no working copy found
+#   RKE2LAB_NIXOS_CONFIG_PATH  - explicit repo path
+#   RKE2LAB_NIXOS_ALLOW_CLONE=1  - permit fallback clone if no working copy found
 set -euxo pipefail
 
 HOSTNAME="${1:-}"
@@ -33,7 +33,7 @@ add_candidate() {
 }
 
 # 1. Explicit override
-add_candidate "${LIMA_NIXOS_CONFIG_PATH:-}"
+add_candidate "${RKE2LAB_NIXOS_CONFIG_PATH:-}"
 # 2 & 3: Mounted macOS & Linux style homes
 add_candidate "/Volumes/git-worktree-store/nxmatic/nix-darwin-home"
 add_candidate "/private/var/lib/git/nxmatic/nix-darwin-home"
@@ -59,12 +59,12 @@ else
   : "[lima-nixos-config] No existing working copy found among candidates:" >&2
   # Still display list (kept echo for visibility of candidates if needed)
   printf '  %s\n' "${CANDIDATES[@]:-}" >&2
-  if [ "${LIMA_NIXOS_ALLOW_CLONE:-0}" = "1" ]; then
-    : "[lima-nixos-config] LIMA_NIXOS_ALLOW_CLONE=1 set; cloning repository config" >&2
+  if [ "${RKE2LAB_NIXOS_ALLOW_CLONE:-0}" = "1" ]; then
+    : "[lima-nixos-config] RKE2LAB_NIXOS_ALLOW_CLONE=1 set; cloning repository config" >&2
     nix flake clone -f /var/lib/nixos/config github:nxmatic/nix-darwin-home
   else
     : "[lima-nixos-config] ERROR: no working copy found and clone fallback disabled" >&2
-    : "[lima-nixos-config] Set LIMA_NIXOS_CONFIG_PATH to a mounted checkout or set LIMA_NIXOS_ALLOW_CLONE=1 to permit clone." >&2
+    : "[lima-nixos-config] Set RKE2LAB_NIXOS_CONFIG_PATH to a mounted checkout or set RKE2LAB_NIXOS_ALLOW_CLONE=1 to permit clone." >&2
     exit 1
   fi
 fi
