@@ -33,12 +33,14 @@ ndh::bootstrap:profile:dir() {
 	profile_name="io-nxmatic-nix-darwin-home-bootstrap-runtime"
 
 	if [[ -n "${NDH_BOOTSTRAP_PROFILE_OWNER:-}" ]]; then
-		local owner_home
-		owner_home="$(ndh::env:user:home "${NDH_BOOTSTRAP_PROFILE_OWNER}" || true)"
-		if [[ -n "$owner_home" ]]; then
-			echo "/nix/var/nix/profiles/per-user/${NDH_BOOTSTRAP_PROFILE_OWNER}/${profile_name}"
-			return 0
-		fi
+		echo "/nix/var/nix/profiles/per-user/${NDH_BOOTSTRAP_PROFILE_OWNER}/${profile_name}"
+		return 0
+	fi
+
+	# Canonical default when no explicit owner is provided.
+	if [[ -d "/nix/var/nix/profiles/per-user/root" ]]; then
+		echo "/nix/var/nix/profiles/per-user/root/${profile_name}"
+		return 0
 	fi
 
 	if [[ -n "${NDH_BOOTSTRAP_PROFILE_DIR:-}" ]]; then
@@ -48,11 +50,6 @@ ndh::bootstrap:profile:dir() {
 
 	if [[ -n "${NDH_BOOTSTRAP_PROFILE_BIN:-}" ]]; then
 		echo "${NDH_BOOTSTRAP_PROFILE_BIN%/bin}"
-		return 0
-	fi
-
-	if [[ -d "/nix/var/nix/profiles/per-user/root" ]]; then
-		echo "/nix/var/nix/profiles/per-user/root/${profile_name}"
 		return 0
 	fi
 
