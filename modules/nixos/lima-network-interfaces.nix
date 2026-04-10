@@ -162,7 +162,11 @@ in
         DHCP = "ipv4";
         Domains = [ "" ];
       };
-      dhcpV4Config.UseDNS = false;
+      dhcpV4Config = {
+        UseDNS = false;
+        # Keep default route available as backup only.
+        RouteMetric = 2000;
+      };
     };
 
     # Fallback for rebuilt Lima VMs where the implicit primary NIC did not get
@@ -173,7 +177,11 @@ in
         DHCP = "ipv4";
         Domains = [ "" ];
       };
-      dhcpV4Config.UseDNS = false;
+      dhcpV4Config = {
+        UseDNS = false;
+        # Match mgmt0 policy in fallback mode.
+        RouteMetric = 2000;
+      };
       linkConfig = {
         RequiredForOnline = false;
       };
@@ -185,7 +193,11 @@ in
         DHCP = "ipv4";
         Domains = [ "" ];
       };
-      dhcpV4Config.UseDNS = false;
+      dhcpV4Config = {
+        UseDNS = false;
+        # Keep gateway but de-prioritize versus bridged LAN.
+        RouteMetric = 3000;
+      };
     };
 
     systemd.network.networks."40-vmlan0" = {
@@ -194,7 +206,11 @@ in
         DHCP = "ipv4";
         Domains = [ "" ];
       };
-      dhcpV4Config.UseDNS = false;
+      dhcpV4Config = {
+        UseDNS = false;
+        # Preferred default egress path (non-NAT bridged LAN).
+        RouteMetric = 100;
+      };
     };
 
     # Enable mDNS (Avahi) and bind it to lan-br and vmhost0 so host backchannel

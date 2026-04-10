@@ -394,13 +394,8 @@
           catalog,
         }:
         let
-          hostImageMode = hostProfile.nixosImageMode or "full";
-          _ =
-            assert builtins.elem hostImageMode [
-              "full"
-              "bootstrap"
-            ];
-            true;
+          # Canonical behavior (@codebase): runtime nixos output is always full.
+          # Bootstrap remains an explicit disk-image path only.
 
           mkExt4ModulesFor =
             hp:
@@ -438,23 +433,17 @@
               };
             };
 
-          selectedHostProfile =
+          bootstrapSystemdBootHostProfile =
             hostProfile
             // {
-              nixosImageMode = hostImageMode;
+              nixosImageMode = "bootstrap";
+              nixosBootLoader = "systemd-boot";
             };
 
           runtimeHostProfile =
             hostProfile
             // {
               nixosImageMode = "full";
-              nixosBootLoader = "systemd-boot";
-            };
-
-          bringupSystemdBootHostProfile =
-            hostProfile
-            // {
-              nixosImageMode = "bootstrap";
               nixosBootLoader = "systemd-boot";
             };
 
@@ -465,8 +454,8 @@
               nixosBootLoader = "grub";
             };
 
-          ext4Modules = mkExt4ModulesFor selectedHostProfile;
-          ext4SpecialArgs = mkExt4SpecialArgsFor selectedHostProfile ext4Modules;
+          ext4Modules = mkExt4ModulesFor bootstrapSystemdBootHostProfile;
+          ext4SpecialArgs = mkExt4SpecialArgsFor bootstrapSystemdBootHostProfile ext4Modules;
 
           ext4 = nixpkgs.lib.nixosSystem {
             modules = ext4Modules;
@@ -486,9 +475,9 @@
 
           runtimeExt4Modules = mkExt4ModulesFor runtimeHostProfile;
           runtimeExt4SpecialArgs = mkExt4SpecialArgsFor runtimeHostProfile runtimeExt4Modules;
-          bringupSystemdBootExt4Modules = mkExt4ModulesFor bringupSystemdBootHostProfile;
+          bringupSystemdBootExt4Modules = mkExt4ModulesFor bootstrapSystemdBootHostProfile;
           bringupSystemdBootExt4SpecialArgs =
-            mkExt4SpecialArgsFor bringupSystemdBootHostProfile bringupSystemdBootExt4Modules;
+            mkExt4SpecialArgsFor bootstrapSystemdBootHostProfile bringupSystemdBootExt4Modules;
           bringupGrubExt4Modules = mkExt4ModulesFor bringupGrubHostProfile;
           bringupGrubExt4SpecialArgs = mkExt4SpecialArgsFor bringupGrubHostProfile bringupGrubExt4Modules;
 
@@ -639,7 +628,7 @@
           inherit diskSizeMiB;
           nixosConfigurations = {
             inherit ext4 zfs;
-            "${mainName}-nixos" = if hostImageMode == "bootstrap" then ext4 else zfs;
+            "${mainName}-nixos" = zfs;
           };
           inherit
             diskImageFullExt4
