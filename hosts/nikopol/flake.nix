@@ -78,6 +78,7 @@
               trusted-users = [
                 "root"
                 "nxmatic"
+                "stephane.lacoin"
               ];
             };
           };
