@@ -70,10 +70,9 @@ ${formatPrincipals allPrincipals}
   logger = config.nixBashLogger.script;
   loggerTag = "nixos.activationScripts.sshGroupKeys";
   hasSopsInstallSecretsService = builtins.hasAttr "sops-install-secrets" config.systemd.services;
-  hostkeyEnrollmentCheckTag = "nixos.services.nxmatic.hostkeyEnrollmentCheck";
-  hostkeyEnrollmentSyncTag = "nixos.services.nxmatic.hostkeyEnrollmentSync";
+  hostkeyEnrollmentCheckTag = "nixos.services.ndh.hostkeyEnrollmentCheck";
+  hostkeyEnrollmentSyncTag = "nixos.services.ndh.hostkeyEnrollmentSync";
   hostkeyEnrollmentCheckScript = pkgs.replaceVars ./openssh.d/hostkey-enrollment-check.sh {
-    bashTrampoline = "${../../common/shell.d/nix-bash-trampoline.sh}";
     logTag = hostkeyEnrollmentCheckTag;
     userPrivateSourceDir = config.sshPaths.secretsKeysDir;
     userCaSourceDir = config.sshPaths.authoritySecretsDir;
@@ -81,7 +80,6 @@ ${formatPrincipals allPrincipals}
     clientKeyName = clientKeyName;
   };
   hostkeyEnrollmentSyncScript = pkgs.replaceVars ./openssh.d/hostkey-enrollment-sync.sh {
-    bashTrampoline = "${../../common/shell.d/nix-bash-trampoline.sh}";
     logTag = hostkeyEnrollmentSyncTag;
     clientPrivateSource = config.sshPaths.privKeyFile;
     clientUserCertSource = config.sshPaths.userCertPublic;
@@ -191,30 +189,40 @@ in
   # Ensure all systemd services (including sshd) inherit a wrapper-first PATH
   systemd.globalEnvironment.PATH = config.opensshPolicy.setEnvPath;
 
-  systemd.services.nxmatic-hostkey-enrollment-check = {
+  systemd.services.ndh-hostkey-enrollment-check = {
     description = "Check whether host key enrollment into encrypted secrets is required (@codebase)";
     wantedBy = [ "sshd.service" ];
     before = [ "sshd.service" ];
     wants = lib.optionals hasSopsInstallSecretsService [ "sops-install-secrets.service" ];
     after = lib.optionals hasSopsInstallSecretsService [ "sops-install-secrets.service" ];
+    path = with pkgs; [
+      coreutils
+      openssh
+      util-linux
+    ];
     serviceConfig = {
       Type = "oneshot";
       ExecStart = "${pkgs.bash}/bin/bash ${hostkeyEnrollmentCheckScript}";
     };
   };
 
-  systemd.services.nxmatic-hostkey-enrollment-sync = {
+  systemd.services.ndh-hostkey-enrollment-sync = {
     description = "Run remote hostkey enrollment sync when drift marker is present (@codebase)";
     wantedBy = [ "multi-user.target" ];
     wants = [
       "network-online.target"
-      "nxmatic-hostkey-enrollment-check.service"
+      "ndh-hostkey-enrollment-check.service"
     ];
     after = [
       "network-online.target"
-      "nxmatic-hostkey-enrollment-check.service"
+      "ndh-hostkey-enrollment-check.service"
     ];
-    unitConfig.ConditionPathExists = "/run/nxmatic/ssh/hostkey-enrollment-required";
+    unitConfig.ConditionPathExists = "/run/ndh/ssh/hostkey-enrollment-required";
+    path = with pkgs; [
+      coreutils
+      openssh
+      util-linux
+    ];
     serviceConfig = {
       Type = "oneshot";
       ExecStart = "${pkgs.bash}/bin/bash ${hostkeyEnrollmentSyncScript}";

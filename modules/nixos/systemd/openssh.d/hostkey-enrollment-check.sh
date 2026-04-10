@@ -2,16 +2,13 @@
 # @codebase
 set -euo pipefail
 
-# shellcheck disable=SC1091
-source @bashTrampoline@
-
 LOG_TAG=@logTag@
 
 USER_PRIVATE_SOURCE_DIR=@userPrivateSourceDir@
 USER_CA_SOURCE_DIR=@userCaSourceDir@
 SYSTEM_HOST_KEY_PUB=@systemHostKeyPub@
 
-STATE_DIR=/run/nxmatic/ssh
+STATE_DIR=/run/ndh/ssh
 MARKER_FILE=${STATE_DIR}/hostkey-enrollment-required
 DETAILS_FILE=${STATE_DIR}/hostkey-enrollment-required.details
 
