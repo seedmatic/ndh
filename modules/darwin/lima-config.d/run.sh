@@ -5,13 +5,13 @@ set -euo pipefail
 LIMA_HOME="${LIMA_HOME:-${HOME}/.lima}"
 
 LIMA_VM="${LIMA_VM:-nerd-nixos}"
-LIMA_HOST_NAME="${LIMA_HOST_NAME:-@effectiveHostName@}"
+NDH_ACCESS_HOST="${NDH_ACCESS_HOST:-@effectiveHostName@}"
 NIXOS_FLAKE_PATH="${NIXOS_FLAKE_PATH:-@nixosFlakePath@}"
 NIXOS_HOST_ATTR="${NIXOS_HOST_ATTR:-@nixosHostAttr@}"
 NIXOS_REMOTE_HOST="${NIXOS_REMOTE_HOST:-root}"
 LIMA_NIXOS_DISK_IMAGE_ATTR="${LIMA_NIXOS_DISK_IMAGE_ATTR:-nixosDiskImageBringupSystemdBoot}"
-LIMA_HOST_FLAKE_REF="${LIMA_HOST_FLAKE_REF:-}"
-RESOLVED_LIMA_HOST_FLAKE_REF=""
+NDH_ACCESS_HOST_FLAKE_REF="${NDH_ACCESS_HOST_FLAKE_REF:-}"
+RESOLVED_NDH_ACCESS_HOST_FLAKE_REF=""
 
 # Allow overriding the flake reference fully while keeping canonical defaults.
 NIXOS_FLAKE_REF="${NIXOS_FLAKE_REF:-${NIXOS_FLAKE_PATH}#${NIXOS_HOST_ATTR}}"
@@ -31,7 +31,7 @@ resolve:nixos:flake:refs() {
 }
 
 resolve:host:flake:ref() {
-  local host_flake_ref="${LIMA_HOST_FLAKE_REF}"
+  local host_flake_ref="${NDH_ACCESS_HOST_FLAKE_REF}"
   local git_root
   local remotes
 
@@ -48,22 +48,22 @@ resolve:host:flake:ref() {
       exit 2
     fi
 
-    host_flake_ref="${git_root}/hosts/${LIMA_HOST_NAME}"
+    host_flake_ref="${git_root}/hosts/${NDH_ACCESS_HOST}"
   fi
 
   if [[ "${host_flake_ref}" == *"#"* ]]; then
-    echo "[lima-run][ERROR] LIMA_HOST_FLAKE_REF must be a host flake path (no #attr): ${host_flake_ref}" >&2
+    echo "[lima-run][ERROR] NDH_ACCESS_HOST_FLAKE_REF must be a host flake path (no #attr): ${host_flake_ref}" >&2
     exit 2
   fi
 
   if [[ "${host_flake_ref}" != */hosts/* ]]; then
-    host_flake_ref="${host_flake_ref%/}/hosts/${LIMA_HOST_NAME}"
+    host_flake_ref="${host_flake_ref%/}/hosts/${NDH_ACCESS_HOST}"
   fi
 
-  RESOLVED_LIMA_HOST_FLAKE_REF="${host_flake_ref}"
+  RESOLVED_NDH_ACCESS_HOST_FLAKE_REF="${host_flake_ref}"
 
-  if [[ ! -f "${RESOLVED_LIMA_HOST_FLAKE_REF}/flake.nix" ]]; then
-    echo "[lima-run][ERROR] expected host flake not found: ${RESOLVED_LIMA_HOST_FLAKE_REF}/flake.nix" >&2
+  if [[ ! -f "${RESOLVED_NDH_ACCESS_HOST_FLAKE_REF}/flake.nix" ]]; then
+    echo "[lima-run][ERROR] expected host flake not found: ${RESOLVED_NDH_ACCESS_HOST_FLAKE_REF}/flake.nix" >&2
     exit 2
   fi
 }
@@ -134,6 +134,41 @@ vm:kill() {
   limactl stop -f "${VM[name]}" || true
 }
 
+vm:config:mode() {
+  local mode="${1:-headless}"
+  local instance_dir="${LIMA_HOME}/${VM[name]}"
+  local active_yaml="${instance_dir}/lima.yaml"
+  local headless_yaml="${instance_dir}/lima.headless.yaml"
+  local gui_yaml="${instance_dir}/lima.gui.yaml"
+
+  case "${mode}" in
+    headless)
+      [[ -e "${headless_yaml}" ]] || { echo "[lima-run][ERROR] missing ${headless_yaml}" >&2; exit 1; }
+      ln -sfn "${headless_yaml}" "${active_yaml}"
+      ;;
+    gui|graphic|graphics)
+      [[ -e "${gui_yaml}" ]] || { echo "[lima-run][ERROR] missing ${gui_yaml}" >&2; exit 1; }
+      ln -sfn "${gui_yaml}" "${active_yaml}"
+      ;;
+    *)
+      echo "[lima-run][ERROR] unknown mode: ${mode} (expected: headless|gui)" >&2
+      exit 2
+      ;;
+  esac
+
+  echo "[lima-run] active config -> $(readlink "${active_yaml}" || echo "${active_yaml}")"
+}
+
+vm:start:gui() {
+  vm:config:mode gui
+  vm:start
+}
+
+vm:start:headless() {
+  vm:config:mode headless
+  vm:start
+}
+
 vm:start() {
   truncate -s 0 "${LIMA_HOME}/${VM[name]}"/*.log 2>/dev/null || true
   limactl start "${VM[name]}"
@@ -176,10 +211,10 @@ vm:ssh:ensure-started() {
 }
 
 host:disk-image:build() {
-  local out_link="${RESOLVED_LIMA_HOST_FLAKE_REF}/nixos-disk-image"
-  mkdir -p "${RESOLVED_LIMA_HOST_FLAKE_REF}"
-  echo "[lima-run] building disk image from ${RESOLVED_LIMA_HOST_FLAKE_REF}#${LIMA_NIXOS_DISK_IMAGE_ATTR}"
-  nix build --out-link "${out_link}" "${RESOLVED_LIMA_HOST_FLAKE_REF}#${LIMA_NIXOS_DISK_IMAGE_ATTR}"
+  local out_link="${RESOLVED_NDH_ACCESS_HOST_FLAKE_REF}/nixos-disk-image"
+  mkdir -p "${RESOLVED_NDH_ACCESS_HOST_FLAKE_REF}"
+  echo "[lima-run] building disk image from ${RESOLVED_NDH_ACCESS_HOST_FLAKE_REF}#${LIMA_NIXOS_DISK_IMAGE_ATTR}"
+  nix build --out-link "${out_link}" "${RESOLVED_NDH_ACCESS_HOST_FLAKE_REF}#${LIMA_NIXOS_DISK_IMAGE_ATTR}"
 }
 
 host:lima:config:ensure() {
@@ -188,9 +223,9 @@ host:lima:config:ensure() {
   if [[ "${LIMA_REFRESH_CONFIG:-0}" == "1" ]]; then
     echo "[lima-run] refreshing Lima config via darwin activation"
     if command -v darwin-rebuild >/dev/null 2>&1; then
-      darwin-rebuild switch --flake "${RESOLVED_LIMA_HOST_FLAKE_REF}"
+      darwin-rebuild switch --flake "${RESOLVED_NDH_ACCESS_HOST_FLAKE_REF}"
     else
-      nix run nix-darwin -- switch --flake "${RESOLVED_LIMA_HOST_FLAKE_REF}"
+      nix run nix-darwin -- switch --flake "${RESOLVED_NDH_ACCESS_HOST_FLAKE_REF}"
     fi
   fi
 
@@ -289,6 +324,9 @@ Commands:
   vm:nixos:boot:ext4        Remote nixos-rebuild boot for ext4/bootstrap target
   vm:nixos:boot:zfs         Remote nixos-rebuild boot+switch for zfs target + zfs bootstrap unit
   vm:start                  Start Lima VM
+  vm:start:gui              Switch active config to GUI and start Lima VM
+  vm:start:headless         Switch active config to headless and start Lima VM
+  vm:config:mode <mode>     Set active config symlink (headless|gui)
   vm:kill                   Terminate limactl process and clear stale lock/pid files
   vm:reset                  Build image + ensure Lima config + factory-reset VM + start
   vm:disk:create [name]     Create one/all additional disks
@@ -304,8 +342,8 @@ Commands:
 Environment overrides:
   LIMA_HOME=<path>                  (default: ${HOME}/.lima)
   LIMA_VM=<instance>                (default: nerd-nixos)
-  LIMA_HOST_NAME=<host>             (default: @effectiveHostName@)
-  LIMA_HOST_FLAKE_REF=<flake-path>  (default: derived from current nxmatic/nix-darwin-home worktree as <worktree>/hosts/${LIMA_HOST_NAME>)
+  NDH_ACCESS_HOST=<host>            (default: @effectiveHostName@)
+  NDH_ACCESS_HOST_FLAKE_REF=<flake-path>  (default: derived from current nxmatic/nix-darwin-home worktree as <worktree>/hosts/${NDH_ACCESS_HOST})
   LIMA_NIXOS_DISK_IMAGE_ATTR=<attr> (default: nixosDiskImageBringupSystemdBoot)
   LIMA_REFRESH_CONFIG=1             (optional: run darwin switch to refresh lima config first)
   NIXOS_FLAKE_PATH=<path>           (default: @nixosFlakePath@)
@@ -328,7 +366,7 @@ main() {
       --host-flake-uri)
         shift
         [[ ${#} -gt 0 ]] || { echo "missing value for --host-flake-uri" >&2; exit 2; }
-        LIMA_HOST_FLAKE_REF="${1}"
+        NDH_ACCESS_HOST_FLAKE_REF="${1}"
         ;;
       --vm)
         shift
@@ -369,7 +407,10 @@ main() {
     phase:bootstrap:vm|phase:bootstrap:zfs|phase:bootstrap:all)
       "${cmd}" "$@"
       ;;
-    vm:start|vm:kill|vm:reset|socket:run)
+    vm:start|vm:start:gui|vm:start:headless|vm:kill|vm:reset|socket:run)
+      "${cmd}" "$@"
+      ;;
+    vm:config:mode)
       "${cmd}" "$@"
       ;;
     vm:disk:create|vm:disk:unlock)

@@ -47,6 +47,9 @@ Context + container diagrams for SOPS key lifecycle, runtime secret materializat
 link:vm-configuration-models-c4.adoc[VM Configuration Models (Lima + Tart) — C4-Style UML]::
 System/context/container/component diagrams describing the Lima model, Tart scaffold model, and their shared host-driven contracts.
 
+link:env-prefix-policy.adoc[Environment Variable Prefix Policy]::
+Canonical prefix boundaries for `RKE2LAB_*` (lab domain) and `NDH_*` (`nix-darwin-home` domain), with a single-name/no-alias policy.
+
 == Quick Start
 
 === For New Users
