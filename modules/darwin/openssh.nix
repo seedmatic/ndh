@@ -14,12 +14,27 @@ let
   hostKeyPrivateFile = sshPaths.privKeyFile;
   hostKeyPublicCert = sshPaths.hostCertPublic;
   caPublicKeyFile = "${config.opensshPolicy.keysDir}/trusted-user-ca.pub";
-  principalsScriptStore = pkgs.writeText "ssh-authorized-principals-command.sh" (
-    builtins.readFile ../common/ssh/authorized-principals-command.sh
-  );
-  groupKeysScriptStore = pkgs.replaceVars ../common/ssh/ssh-group-authorized-keys.sh {
-    authorizedKeysDir = config.opensshPolicy.authorizedKeysDir;
-  };
+  principalsScriptStore =
+    let
+      principalsScriptTemplate = builtins.readFile ../common/ssh/authorized-principals-command.sh;
+      principalsScriptProcessed = builtins.replaceStrings
+        [ "#!/usr/bin/env bash" "yq eval-all" ]
+        [ "#!${pkgs.bash}/bin/bash" "${pkgs.yq-go}/bin/yq eval-all" ]
+        principalsScriptTemplate;
+    in
+    pkgs.writeText "ssh-authorized-principals-command.sh" principalsScriptProcessed;
+  groupKeysScriptStore =
+    let
+      groupKeysTemplate = pkgs.writeText "ssh-group-authorized-keys.template.sh" (
+        builtins.replaceStrings
+          [ "#!/usr/bin/env bash" ]
+          [ "#!${pkgs.bash}/bin/bash" ]
+          (builtins.readFile ../common/ssh/ssh-group-authorized-keys.sh)
+      );
+    in
+    pkgs.replaceVars groupKeysTemplate {
+      authorizedKeysDir = config.opensshPolicy.authorizedKeysDir;
+    };
   inherit (lib) mkIf optionalString concatStringsSep;
 
   # Derive principals based on profile and hostname

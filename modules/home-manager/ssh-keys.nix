@@ -60,8 +60,12 @@ let
   knownHostsScript =
     let
       scriptTemplate = builtins.readFile ./ssh.d/scripts/ca-known-hosts-command.sh;
-      # Resolve CA keys from canonical system runtime key directory.
-      scriptProcessed = builtins.replaceStrings [ "@CA_DIR@" ] [ systemKeysDir ] scriptTemplate;
+      # Resolve CA keys from canonical system runtime key directory and
+      # force execution under Nix bash (avoid legacy /bin/bash on macOS).
+      scriptProcessed = builtins.replaceStrings
+        [ "#!/usr/bin/env bash" "@CA_DIR@" ]
+        [ "#!${pkgs.bash}/bin/bash" systemKeysDir ]
+        scriptTemplate;
     in
     pkgs.writeScript "ssh-ca-known-hosts" scriptProcessed;
 
