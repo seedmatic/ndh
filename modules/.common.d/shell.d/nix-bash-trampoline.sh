@@ -90,17 +90,33 @@ ndh::bootstrap:runtime:path() {
 }
 
 ndh::bootstrap:runtime:verify() {
-	local required raw_cmd cmd
+	local required raw_cmd cmd profile_bin
 	local -a missing=()
+	local -a missing_profile_bin=()
+	profile_bin="$(ndh::bootstrap:profile:bin || true)"
+
+	if [[ -z "$profile_bin" || ! -d "$profile_bin" ]]; then
+		echo "[ndh][WARN] bootstrap runtime profile bin directory missing: ${profile_bin:-<unset>}" >&2
+		return 1
+	fi
+
 	read -r -a required <<< "${NDH_BOOTSTRAP_REQUIRED_COMMANDS:-bash nix age age-keygen awk sed grep ssh ssh-keygen yq git}"
 
 	for raw_cmd in "${required[@]}"; do
 		cmd="${raw_cmd}"
 		[[ -n "$cmd" ]] || continue
+		if [[ ! -e "$profile_bin/$cmd" && ! -L "$profile_bin/$cmd" ]]; then
+			missing_profile_bin+=("$cmd")
+		fi
 		if ! command -v "$cmd" >/dev/null 2>&1; then
 			missing+=("$cmd")
 		fi
 	done
+
+	if ((${#missing_profile_bin[@]} > 0)); then
+		echo "[ndh][WARN] bootstrap runtime profile bin missing commands: ${missing_profile_bin[*]}" >&2
+		return 1
+	fi
 
 	if ((${#missing[@]} > 0)); then
 		echo "[ndh][WARN] bootstrap runtime profile missing commands: ${missing[*]}" >&2
@@ -113,7 +129,7 @@ ndh::bootstrap:runtime:verify() {
 ndh::bootstrap:runtime:install() {
 	local nix_bin profile_dir profile_name runtime_name runtime_spec installer
 	local profile_parent
-	local try_add_success
+	local discovered_installer
 
 	nix_bin="$(command -v nix 2>/dev/null || true)"
 	profile_dir="$(ndh::bootstrap:profile:dir || true)"
@@ -127,6 +143,10 @@ ndh::bootstrap:runtime:install() {
 	runtime_spec="${NDH_BOOTSTRAP_RUNTIME_PACKAGE:-}"
 	installer="${NDH_BOOTSTRAP_INSTALLER:-}"
 	[[ -n "$runtime_spec" ]] || runtime_spec=".#io-nxmatic-nix-darwin-home-prerequisites-install"
+	discovered_installer="$(command -v io-nxmatic-nix-darwin-home-prerequisites-install 2>/dev/null || true)"
+	if [[ -z "$installer" && -n "$discovered_installer" ]]; then
+		installer="$discovered_installer"
+	fi
 
 	profile_parent="$(dirname "$profile_dir")"
 	# In non-root contexts (e.g., KnownHostsCommand), avoid noisy permission
@@ -147,18 +167,14 @@ ndh::bootstrap:runtime:install() {
 		return 0
 	fi
 
-	try_add_success=0
 	if [[ "$runtime_spec" == .#* ]]; then
-		if "$nix_bin" run "$runtime_spec" -- "$profile_dir" >/dev/null 2>&1; then
-			try_add_success=1
-		fi
-	else
-		if "$nix_bin" profile add --profile "$profile_dir" "$runtime_spec" >/dev/null 2>&1; then
-			try_add_success=1
-		fi
+		# Flake-relative runtime spec can fail outside a checkout; never mutate an
+		# existing profile on this fallback path.
+		"$nix_bin" run "$runtime_spec" -- "$profile_dir" >/dev/null 2>&1 || return 1
+		return 0
 	fi
 
-	if [[ "$try_add_success" == "1" ]]; then
+	if "$nix_bin" profile add --profile "$profile_dir" "$runtime_spec" >/dev/null 2>&1; then
 		return 0
 	fi
 
@@ -166,11 +182,7 @@ ndh::bootstrap:runtime:install() {
 	"$nix_bin" profile remove --profile "$profile_dir" "$runtime_name" >/dev/null 2>&1 || true
 	"$nix_bin" profile remove --profile "$profile_dir" "$profile_name" >/dev/null 2>&1 || true
 
-	if [[ "$runtime_spec" == .#* ]]; then
-		"$nix_bin" run "$runtime_spec" -- "$profile_dir" >/dev/null 2>&1 || return 1
-	else
-		"$nix_bin" profile add --profile "$profile_dir" "$runtime_spec" >/dev/null 2>&1 || return 1
-	fi
+	"$nix_bin" profile add --profile "$profile_dir" "$runtime_spec" >/dev/null 2>&1 || return 1
 
 	return 0
 }
@@ -218,12 +230,21 @@ ndh::bootstrap:runtime:diagnose() {
 }
 
 ndh::bootstrap:runtime:ensure() {
-	local profile_dir install_hint
+	local profile_dir install_hint installer_hint
 	profile_dir="$(ndh::bootstrap:profile:dir || true)"
+	installer_hint="${NDH_BOOTSTRAP_INSTALLER:-$(command -v io-nxmatic-nix-darwin-home-prerequisites-install 2>/dev/null || true)}"
 	if [[ -n "$profile_dir" ]]; then
-		install_hint="nix run .#io-nxmatic-nix-darwin-home-prerequisites-install -- ${profile_dir}"
+		if [[ -n "$installer_hint" ]]; then
+			install_hint="${installer_hint} ${profile_dir}"
+		else
+			install_hint="nix run .#io-nxmatic-nix-darwin-home-prerequisites-install -- ${profile_dir}"
+		fi
 	else
-		install_hint="nix run .#io-nxmatic-nix-darwin-home-prerequisites-install -- /nix/var/nix/profiles/per-user/root/io-nxmatic-nix-darwin-home-bootstrap-runtime"
+		if [[ -n "$installer_hint" ]]; then
+			install_hint="${installer_hint} /nix/var/nix/profiles/per-user/root/io-nxmatic-nix-darwin-home-bootstrap-runtime"
+		else
+			install_hint="nix run .#io-nxmatic-nix-darwin-home-prerequisites-install -- /nix/var/nix/profiles/per-user/root/io-nxmatic-nix-darwin-home-bootstrap-runtime"
+		fi
 	fi
 
 	# Keep this function self-contained: ensure caller-independent PATH priming
