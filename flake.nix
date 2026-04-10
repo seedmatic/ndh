@@ -221,12 +221,14 @@
         let
           pkgsForSystem = pkgsFor { inherit system; };
           ndhStoreApi = mkNdhStoreApiFor pkgsForSystem;
+          bashPackage = pkgsForSystem.lib.getBin pkgsForSystem.bashInteractive;
+          nixPackage = pkgsForSystem.lib.getBin pkgsForSystem.nix;
         in
         pkgsForSystem.symlinkJoin {
           name = ndhStoreApi.prefixedName "bootstrap-runtime";
           paths = with pkgsForSystem; [
-            bash
-            nix
+            bashPackage
+            nixPackage
             age
             coreutils-full
             findutils
@@ -483,7 +485,7 @@
 
           # Canonical disk size in MiB shared by all disk-image profiles.
           # Keep one source of truth to avoid host/guest sizing drift.
-          diskSizeMiB = 8 * 1024;
+          diskSizeMiB = 20 * 1024; # 4GiB base + 16Gib headroom for stage2 switching and closure growth during activation
           diskSizeBytes = diskSizeMiB * 1024 * 1024;
           # System closure path
           systemPath = zfs.config.system.build.toplevel;

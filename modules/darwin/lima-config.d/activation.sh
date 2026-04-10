@@ -104,11 +104,6 @@ main() {
     fi
   fi
 
-  if command -v nix >/dev/null 2>&1; then
-    resolved_out="$(nix build "$resolved_ref" --no-link --print-out-paths 2>/dev/null | tail -n 1 || true)"
-    resolved_img="${resolved_out}/nixos.img"
-  fi
-
   if [ -n "$descriptor_img" ] && [ -f "$descriptor_img" ]; then
     echo "[limaConfig] resolved image via descriptor: $img_descriptor -> $descriptor_img"
     selected_img="$descriptor_img"
@@ -117,17 +112,27 @@ main() {
     echo "[limaConfig] using store-pinned image: $img_store"
     selected_img="$img_store"
     selected_source="store"
-  elif [ -n "$resolved_out" ] && [ -f "$resolved_img" ]; then
-    echo "[limaConfig] resolved image via $resolved_ref -> $resolved_img"
-    selected_img="$resolved_img"
-    selected_source="flake"
   elif [ -n "$img_src" ] && [ -f "$img_src" ]; then
     echo "[limaConfig][WARN] flake image resolution failed; using configured source fallback: $img_src"
     selected_img="$img_src"
     selected_source="source"
-  elif [ -L "$img_dst" ] || [ -f "$img_dst" ]; then
-    echo "[limaConfig][INFO] keeping existing image target at $img_dst"
   else
+    # Expensive fallback only when no local descriptor/store/source image is usable.
+    if command -v nix >/dev/null 2>&1; then
+      resolved_out="$(nix build "$resolved_ref" --no-link --print-out-paths 2>/dev/null | tail -n 1 || true)"
+      resolved_img="${resolved_out}/nixos.img"
+    fi
+
+    if [ -n "$resolved_out" ] && [ -f "$resolved_img" ]; then
+      echo "[limaConfig] resolved image via $resolved_ref -> $resolved_img"
+      selected_img="$resolved_img"
+      selected_source="flake"
+    fi
+  fi
+
+  if [ -z "$selected_img" ] && ([ -L "$img_dst" ] || [ -f "$img_dst" ]); then
+    echo "[limaConfig][INFO] keeping existing image target at $img_dst"
+  elif [ -z "$selected_img" ]; then
     echo "[limaConfig][ERROR] unable to resolve disk image (descriptor=$img_descriptor, store=$img_store, ref=$resolved_ref, source=$img_src)"
   fi
 

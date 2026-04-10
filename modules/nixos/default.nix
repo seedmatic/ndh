@@ -171,6 +171,19 @@ in
     activation.postActivationLogStreamLabel = "journald (follow)";
     activation.postActivationLogStreamCmd = "journalctl -f -o short-precise -t darwin.activationScripts -t home-manager.activationScripts";
 
+    # Provide POSIX-style compatibility path for scripts that expect /usr/bin/env.
+    # Run as early as possible in activation to unblock downstream script shebangs.
+    system.activationScripts."00nxmaticUsrBinEnv" = {
+      deps = [ "specialfs" ];
+      supportsDryActivation = false;
+      text = ''
+        set -eu
+
+        install -d -m 0755 /usr/bin
+        ln -sfn ${pkgs.coreutils}/bin/env /usr/bin/env
+      '';
+    };
+
     nix.settings = lib.mkMerge [
       {
         # Enable content-addressed derivations to reduce rebuild churn for identical outputs.

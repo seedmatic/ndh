@@ -16,8 +16,8 @@ let
   bootstrapRuntimePackage = pkgs.symlinkJoin {
     name = prefixStoreName "bootstrap-runtime-activation";
     paths = with pkgs; [
-      bash
-      nix
+      (lib.getBin bashInteractive)
+      (lib.getBin config.nix.package)
       age
       coreutils-full
       findutils
