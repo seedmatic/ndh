@@ -118,6 +118,20 @@
         rec {
           prefix = storeNamePrefix;
           prefixedName = prefixStoreName;
+          installScript =
+            {
+              name,
+              source,
+              preferLocalBuild ? null,
+              allowSubstitutes ? null,
+              mode ? "0555",
+            }:
+            pkgsForSystem.runCommand (prefixedName name) (
+              (nixpkgs.lib.optionalAttrs (preferLocalBuild != null) { inherit preferLocalBuild; })
+              // (nixpkgs.lib.optionalAttrs (allowSubstitutes != null) { inherit allowSubstitutes; })
+            ) ''
+              install -m ${mode} ${source} "$out"
+            '';
           runCommand = name: attrs: text: pkgsForSystem.runCommand (prefixedName name) attrs text;
           writeText = name: text: pkgsForSystem.writeText (prefixedName name) text;
           writeShellScript = name: text: pkgsForSystem.writeShellScript (prefixedName name) text;
@@ -844,13 +858,54 @@
             };
           };
 
-          defaultProfile = {
-            name = mainName;
-            host = hostProfile;
-            user = catalog.users.committed // {
-              home = "/Users/${catalog.users.committed.name}";
-            };
+          workHomeManagerUser =
+            if hostProfile ? homeManagerUser && hostProfile.homeManagerUser != null then
+              hostProfile.homeManagerUser
+            else
+              catalog.users.work;
+          workHomeManagerUserWithHome = workHomeManagerUser // {
+            home =
+              if workHomeManagerUser ? home && workHomeManagerUser.home != null then
+                workHomeManagerUser.home
+              else
+                "/Users/${workHomeManagerUser.name}";
           };
+          committedHomeManagerUserWithHome = catalog.users.committed // {
+            home =
+              if catalog.users.committed ? home && catalog.users.committed.home != null then
+                catalog.users.committed.home
+              else
+                "/Users/${catalog.users.committed.name}";
+          };
+          workProfile = {
+            name = "work";
+            host = hostProfile;
+            user = workHomeManagerUserWithHome;
+            email = workHomeManagerUserWithHome.email;
+          };
+          committedProfile = {
+            name = "committed";
+            host = hostProfile;
+            user = committedHomeManagerUserWithHome;
+            email = committedHomeManagerUserWithHome.email;
+          };
+          mkHomeManagerConfig = profile:
+            home-manager.lib.homeManagerConfiguration {
+              pkgs = pkgsForDarwin;
+              modules = [
+                ./modules/home-manager
+                ({ lib, ... }: {
+                  home.username = lib.mkDefault profile.user.name;
+                  home.homeDirectory = lib.mkDefault (toString profile.user.home);
+                })
+              ];
+              extraSpecialArgs = {
+                inherit hostProfile catalog;
+                inherit profile;
+                logger = mkLoggerSpecialArg "aarch64-darwin";
+                ndh = { store = ndhStoreApiDarwin; };
+              };
+            };
           darwinOutputs = mkDarwinOutputs {
             inherit hostProfile catalog;
             profileModule =
@@ -874,19 +929,6 @@
           nixosDiskImageBringupSystemdBoot = nixosOutputs.diskImageBringupSystemdBoot;
           nixosDiskImageBringupGrub = nixosOutputs.diskImageBringupGrub;
           nixosDiskSizeHint = nixosOutputs.diskSizeHint;
-          limaMaterializerPackage =
-            if darwinConfiguration ? config
-              && darwinConfiguration.config ? lima
-              && darwinConfiguration.config.lima ? configGenerator
-              && darwinConfiguration.config.lima.configGenerator ? materializerPackage then
-              darwinConfiguration.config.lima.configGenerator.materializerPackage
-            else
-              null;
-          limaMaterializerProgram =
-            if limaMaterializerPackage != null then
-              "${limaMaterializerPackage}/bin/lima-config-materialize"
-            else
-              null;
           autofsNetMaterializerPackage =
             if darwinConfiguration ? config
               && darwinConfiguration.config ? services
@@ -901,17 +943,6 @@
               "${autofsNetMaterializerPackage}/bin/nfs-autofs-net-materialize"
             else
               null;
-          limaMaterializerAppProgram =
-            if limaMaterializerProgram != null && autofsNetMaterializerProgram != null then
-              "${pkgsForDarwin.writeShellScript "lima-config-materialize-app" ''
-                #!/usr/bin/env bash
-                set -euo pipefail
-
-                /usr/bin/sudo ${autofsNetMaterializerProgram}
-                exec ${limaMaterializerProgram} "$@"
-              ''}"
-            else
-              limaMaterializerProgram;
           ndhBootstrapRuntimePackage = mkNdhBootstrapRuntimePackage "aarch64-darwin";
           ndhBootstrapInstallerPackage = mkNdhBootstrapProfileInstaller "aarch64-darwin";
           ndhBootstrapRuntimePackageLinux = mkNdhBootstrapRuntimePackage "aarch64-linux";
@@ -936,35 +967,24 @@
               exec ${ndhBootstrapInstallerPackageLinux}/bin/io-nxmatic-nix-darwin-home-bootstrap-profile-install "$@"
               EOF
             '';
-          hostDarwinPackages =
-            (nixpkgs.lib.optionalAttrs (limaMaterializerPackage != null) {
-              lima-config-materialize = limaMaterializerPackage;
-            })
-            // {
-              io-nxmatic-nix-darwin-home-bootstrap-runtime = ndhBootstrapRuntimePackage;
-              io-nxmatic-nix-darwin-home-prerequisites-install = ndhPrerequisitesInstallerPackage;
-            };
+          hostDarwinPackages = {
+            io-nxmatic-nix-darwin-home-bootstrap-runtime = ndhBootstrapRuntimePackage;
+            io-nxmatic-nix-darwin-home-prerequisites-install = ndhPrerequisitesInstallerPackage;
+          };
           hostLinuxPackages = {
             io-nxmatic-nix-darwin-home-bootstrap-runtime = ndhBootstrapRuntimePackageLinux;
             io-nxmatic-nix-darwin-home-prerequisites-install = ndhPrerequisitesInstallerPackageLinux;
           };
-          hostDarwinApps =
-            (nixpkgs.lib.optionalAttrs (limaMaterializerAppProgram != null) {
-              lima-config-materialize = {
-                type = "app";
-                program = limaMaterializerAppProgram;
-              };
-            })
-            // {
-              io-nxmatic-nix-darwin-home-prerequisites-install = {
-                type = "app";
-                program = "${ndhPrerequisitesInstallerPackage}/bin/io-nxmatic-nix-darwin-home-prerequisites-install";
-              };
-              io-nxmatic-nix-darwin-home-bootstrap-runtime = {
-                type = "app";
-                program = "${ndhPrerequisitesInstallerPackage}/bin/io-nxmatic-nix-darwin-home-prerequisites-install";
-              };
+          hostDarwinApps = {
+            io-nxmatic-nix-darwin-home-prerequisites-install = {
+              type = "app";
+              program = "${ndhPrerequisitesInstallerPackage}/bin/io-nxmatic-nix-darwin-home-prerequisites-install";
             };
+            io-nxmatic-nix-darwin-home-bootstrap-runtime = {
+              type = "app";
+              program = "${ndhPrerequisitesInstallerPackage}/bin/io-nxmatic-nix-darwin-home-prerequisites-install";
+            };
+          };
           hostLinuxApps = {
             io-nxmatic-nix-darwin-home-prerequisites-install = {
               type = "app";
@@ -976,20 +996,11 @@
             };
           };
 
-          # Home Manager configurations for direct use
-          homeManagerConfigurations =
-            {
-              "${mainName}" = home-manager.lib.homeManagerConfiguration {
-                pkgs = pkgsForDarwin;
-                modules = [ ./modules/home-manager ];
-                extraSpecialArgs = {
-                  inherit hostProfile catalog;
-                  profile = defaultProfile;
-                  logger = mkLoggerSpecialArg "aarch64-darwin";
-                };
-                # Optionally, set username and homeDirectory here if needed
-              };
-            };
+          # Home Manager configurations are explicitly profile-keyed.
+          homeManagerConfigurations = {
+            work = mkHomeManagerConfig workProfile;
+            committed = mkHomeManagerConfig committedProfile;
+          };
         in
         nixosOutputs
         // darwinOutputs
@@ -1003,6 +1014,7 @@
             nixosDiskSizeHint
             homeManagerConfigurations
             ;
+          homeManagerConfiguration = homeManagerConfigurations.committed;
           pkgs = {
             darwin = pkgsForDarwin;
             linux = pkgsForLinux;
