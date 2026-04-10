@@ -53,6 +53,7 @@ let
     cp ${
       pkgs.replaceVars ./incus.d/ensure-incus-server-cert.sh {
         bashTrampoline = "${../common/shell.d/nix-bash-trampoline.sh}";
+        openssl = "${pkgs.openssl}/bin/openssl";
         incusServerCertPrimaryName = incusServerCertPrimaryName;
         incusServerCertNames = lib.concatMapStringsSep " " lib.escapeShellArg incusServerCertNames;
       }
@@ -227,6 +228,7 @@ in
 
   systemd.services.incus = {
     restartTriggers = [ ensureIncusServerCert ];
+    path = with pkgs; [ openssl ];
     serviceConfig = {
       ExecStartPre = [ "${ensureIncusServerCert}" ];
       ExecStartPost = [ "${fixIncusSocketPerms}" ];

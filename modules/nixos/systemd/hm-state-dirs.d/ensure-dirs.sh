@@ -2,11 +2,18 @@ source @logger@
 
 main() {
   set -euo pipefail
-  for d in @dirs@; do
-    if [ ! -d "$d" ]; then
-      install -d -m 0755 -o @userName@ -g @group@ "$d"
-    fi
+  for entry in @dirsWithModes@; do
+    d="${entry%%|*}"
+    mode="${entry##*|}"
+
+    install -d -m "$mode" -o @userName@ -g @group@ "$d"
+    chown @userName@:@group@ "$d" || true
+    chmod "$mode" "$d" || true
   done
+
+  if [ -d "@secretsRootDir@" ]; then
+    chown -R @userName@:@group@ "@secretsRootDir@" || true
+  fi
 }
 
 ndh::logger:command:run "@loggerTag@" main "$@"

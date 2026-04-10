@@ -487,6 +487,14 @@ main() {
 	shift
 	declare -g hostsCatalogCsv
 	hostsCatalogCsv="${1:-}"
+	shift || true
+	local targetUser
+	targetUser="${1:-${USER:-}}"
+
+	if [[ ! -r "$inputFile" ]]; then
+		echo "missing or unreadable input YAML: $inputFile" >&2
+		return 1
+	fi
 
 	: "Create a temporary directory for signing"
 	tmpdir=$(mktemp --directory --suffix=keys.d)
@@ -516,11 +524,27 @@ main() {
 	done
 
 	: "Output the updated keys in a YAML file"
-	install -o "$USER" -m 0700 -d "$(dirname "$outputFile")"
-	keys::toYAML >"$outputFile"
+	local outputDir
+	outputDir="$(dirname "$outputFile")"
+	if [[ "$(id -u)" -eq 0 && -n "$targetUser" ]]; then
+		local targetGroup
+		targetGroup="$(id -gn "$targetUser" 2>/dev/null || echo "$targetUser")"
+		install -o "$targetUser" -g "$targetGroup" -m 0700 -d "$outputDir"
+	else
+		install -m 0700 -d "$outputDir"
+	fi
+	local tmpOutput
+	tmpOutput="$(mktemp)"
+	keys::toYAML >"$tmpOutput"
+	rm -f "$outputFile"
+	install -m 0400 "$tmpOutput" "$outputFile"
+	rm -f "$tmpOutput"
 
 	: "Keep decrypted runtime keys file read-only to discourage direct edits"
 	chmod 0400 "$outputFile"
+	if [[ "$(id -u)" -eq 0 && -n "$targetUser" ]]; then
+		chown "$targetUser" "$outputFile" 2>/dev/null || true
+	fi
 }
 
 ndh::logger:command:run "@loggerTag@" main "$@"
