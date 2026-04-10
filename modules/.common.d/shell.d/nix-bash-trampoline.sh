@@ -114,7 +114,7 @@ ndh::bootstrap:runtime:verify() {
 }
 
 ndh::bootstrap:runtime:install() {
-	local nix_bin profile_dir profile_name runtime_name legacy_runtime_name runtime_spec
+	local nix_bin profile_dir profile_name runtime_name runtime_spec installer
 	local try_add_success
 
 	nix_bin="$(command -v nix 2>/dev/null || true)"
@@ -126,11 +126,16 @@ ndh::bootstrap:runtime:install() {
 
 	profile_name="io-nxmatic-nix-darwin-home-bootstrap-runtime"
 	runtime_name="io.nxmatic.nix-darwin-home-bootstrap-runtime-activation"
-	legacy_runtime_name="io.nxmatic.nix-darwin-home-bootstrap-runtime"
 	runtime_spec="${NDH_BOOTSTRAP_RUNTIME_PACKAGE:-}"
+	installer="${NDH_BOOTSTRAP_INSTALLER:-}"
 	[[ -n "$runtime_spec" ]] || runtime_spec=".#io-nxmatic-nix-darwin-home-prerequisites-install"
 
 	install -d -m 0755 "$(dirname "$profile_dir")"
+	if [[ -n "$installer" && -x "$installer" ]]; then
+		"$installer" "$profile_dir" >/dev/null 2>&1 || return 1
+		return 0
+	fi
+
 	try_add_success=0
 	if [[ "$runtime_spec" == .#* ]]; then
 		if "$nix_bin" run "$runtime_spec" -- "$profile_dir" >/dev/null 2>&1; then
@@ -149,7 +154,6 @@ ndh::bootstrap:runtime:install() {
 
 	# Retry once after clearing known legacy/runtime entries to handle file conflicts.
 	"$nix_bin" profile remove --profile "$profile_dir" "$runtime_name" >/dev/null 2>&1 || true
-	"$nix_bin" profile remove --profile "$profile_dir" "$legacy_runtime_name" >/dev/null 2>&1 || true
 	"$nix_bin" profile remove --profile "$profile_dir" "$profile_name" >/dev/null 2>&1 || true
 
 	if [[ "$runtime_spec" == .#* ]]; then

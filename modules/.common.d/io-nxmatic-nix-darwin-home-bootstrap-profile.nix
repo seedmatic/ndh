@@ -35,6 +35,7 @@ let
     requiredCommands = requiredCommandsString;
     installHint = installHint;
     runtimePackage = bootstrapRuntimePackage;
+    bootstrapInstaller = "${ndhPrerequisitesInstallerPackage}/bin/io-nxmatic-nix-darwin-home-prerequisites-install";
     profileDir = cfg.profileDir;
   };
   activationCheckScript = pkgs.writeShellScript (prefixStoreName "bootstrap-profile-activation-check") (builtins.readFile activationCheckSource);
@@ -107,6 +108,7 @@ in
       NDH_BOOTSTRAP_PROFILE_DIR = cfg.profileDir;
       NDH_BOOTSTRAP_PROFILE_BIN = "${cfg.profileDir}/bin";
       NDH_BOOTSTRAP_RUNTIME_PACKAGE = "${bootstrapRuntimePackage}";
+      NDH_BOOTSTRAP_INSTALLER = "${ndhPrerequisitesInstallerPackage}/bin/io-nxmatic-nix-darwin-home-prerequisites-install";
       NDH_BOOTSTRAP_REQUIRED_COMMANDS = requiredCommandsString;
       NDH_BOOTSTRAP_STRICT = if cfg.requireForActivation then "1" else "0";
       NDH_BOOTSTRAP_INSTALL_HINT = installHint;
@@ -146,20 +148,14 @@ in
         profile_dir_root="/nix/var/nix/profiles/per-user/root/${cfg.name}"
         profile_user="${config.profile.user.name}"
         profile_dir_user="/nix/var/nix/profiles/per-user/${config.profile.user.name}/${cfg.name}"
-        runtime_name="io.nxmatic.nix-darwin-home-bootstrap-runtime-activation"
-        legacy_runtime_name="io.nxmatic.nix-darwin-home-bootstrap-runtime"
 
         mkdir -p /nix/var/nix/profiles/per-user/root
         mkdir -p "/nix/var/nix/profiles/per-user/${config.profile.user.name}"
 
-        ${config.nix.package.out}/bin/nix profile remove --profile "$profile_dir_root" "$runtime_name" >/dev/null 2>&1 || true
-        ${config.nix.package.out}/bin/nix profile remove --profile "$profile_dir_root" "$legacy_runtime_name" >/dev/null 2>&1 || true
-        ${config.nix.package.out}/bin/nix profile add --profile "$profile_dir_root" "${bootstrapRuntimePackage}"
+        ${ndhPrerequisitesInstallerPackage}/bin/io-nxmatic-nix-darwin-home-prerequisites-install "$profile_dir_root"
 
         if [ "$profile_user" != "root" ]; then
-          ${config.nix.package.out}/bin/nix profile remove --profile "$profile_dir_user" "$runtime_name" >/dev/null 2>&1 || true
-          ${config.nix.package.out}/bin/nix profile remove --profile "$profile_dir_user" "$legacy_runtime_name" >/dev/null 2>&1 || true
-          ${config.nix.package.out}/bin/nix profile add --profile "$profile_dir_user" "${bootstrapRuntimePackage}"
+          ${ndhPrerequisitesInstallerPackage}/bin/io-nxmatic-nix-darwin-home-prerequisites-install "$profile_dir_user"
         fi
       '';
     };

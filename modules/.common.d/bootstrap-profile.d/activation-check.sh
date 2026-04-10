@@ -6,16 +6,15 @@ auto_install="@autoInstall@"
 required_commands="@requiredCommands@"
 install_hint="@installHint@"
 runtime_package="@runtimePackage@"
-runtime_name="io.nxmatic.nix-darwin-home-bootstrap-runtime-activation"
-legacy_runtime_name="io.nxmatic.nix-darwin-home-bootstrap-runtime"
+bootstrap_installer="@bootstrapInstaller@"
 profile_dir="@profileDir@"
 image_build_context="${NIXOS_INSTALL_BOOTLOADER:-0}"
 
 install_profile() {
   echo "[io-nxmatic-nix-darwin-home-bootstrap-profile] installing/refreshing profile ${profile_dir}" >&2
-  if ! "$nix_bin" profile add --profile "${profile_dir}" "${runtime_package}" >&2; then
-    "$nix_bin" profile remove --profile "${profile_dir}" "$runtime_name" >/dev/null 2>&1 || true
-    "$nix_bin" profile remove --profile "${profile_dir}" "$legacy_runtime_name" >/dev/null 2>&1 || true
+  if [ -x "$bootstrap_installer" ]; then
+    "$bootstrap_installer" "$profile_dir" >&2
+  else
     "$nix_bin" profile add --profile "${profile_dir}" "${runtime_package}" >&2
   fi
 }
