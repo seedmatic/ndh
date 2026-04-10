@@ -24,7 +24,10 @@ A single machine may provide one or multiple roles. For example, one host can be
 
 Environment naming follows the same separation:
 
-* `NDH_ACCESS_HOST` (role-oriented, runtime-agnostic in this repository)
+* `NDH_RDP_HOST` (Access Host for RDP/screen-sharing access path)
+* `NDH_VZ_HOST` (Virtualization Host for VM runtime orchestration path)
+* `NDH_VZ_GUEST` (guest identity for virtualization runtime path)
+* `NDH_USER` (operator/user identity for NDH helpers)
 * for `nix-darwin-home`-owned variables, use `NDH_*`.
 * avoid runtime-coupled naming like `LIMA_HOSTNAME` for cross-runtime control paths.
 
@@ -396,7 +399,7 @@ package "Shared Contracts" {
   [Cloud-config seed schema\n(NoCloud/cidata contract)] as seed
   [Guest bootstrap step contract\n(cloud-init semantics)] as gueststeps
   [NixOS target ref\n(nixosFlakePath + nixosHostAttr)] as nixosref
-  [Runtime-agnostic env naming\n(NDH_ACCESS_HOST)] as envnaming
+  [Role-specific env naming\n(NDH_RDP_HOST, NDH_VZ_HOST)] as envnaming
   [Activation logger contract] as actlog
 }
 

@@ -190,7 +190,7 @@ in
           default = false;
           description = ''
             Enable best-effort remote key fetch over SSH before local candidate file checks.
-            Hostname is resolved from `hostnameEnvVar` (e.g. `NDH_ACCESS_HOST`) and mDNS suffix.
+            Hostname is resolved from `hostnameEnvVar` (e.g. `NDH_VZ_HOST`) and mDNS suffix.
           '';
         };
 
@@ -219,7 +219,7 @@ in
 
         hostnameEnvVar = mkOption {
           type = types.str;
-          default = "NDH_ACCESS_HOST";
+          default = "NDH_VZ_HOST";
           description = "Environment variable name containing the host identifier used for remote fetch.";
         };
 
