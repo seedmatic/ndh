@@ -13,7 +13,7 @@ let
   allowedSignersFile = "${config.xdg.configHome}/git/github_allowed_signers";
   systemCaBundle = config.home.sessionVariables.SSL_CERT_FILE;
   logger = config._module.specialArgs.logger.script;
-  activationTag = "home-manager.activationScripts.${userName}.generateAllowedSigners";
+  loggerTag = "home-manager.activationScripts.${userName}.generateAllowedSigners";
 in
 {
   imports = [
@@ -128,7 +128,7 @@ in
         allowedSignersFile = allowedSignersFile;
         hostKeysDir = hostKeysDir;
         logger = logger;
-        activationTag = activationTag;
+        loggerTag = loggerTag;
       };
     in
     lib.hm.dag.entryAfter [ "writeBoundary" "extractSSHKeys" ] ''

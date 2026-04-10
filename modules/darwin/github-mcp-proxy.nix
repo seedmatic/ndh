@@ -2,23 +2,22 @@
   config,
   lib,
   pkgs,
+  ndh,
   ...
 }:
 with lib;
 let
   cfg = config.programs.githubMcpProxy;
+  loggerScript = config.nixBashLogger.script;
   # Store the python source separately and wrap with a shell launcher so we don't duplicate shebangs.
-  pythonSource = pkgs.writeText "github-mcp-proxy.py" (builtins.readFile ./github-mcp-proxy.py);
+  pythonSource = pkgs.writeText (ndh.store.prefixedName "github-mcp-proxy.py") (builtins.readFile ./github-mcp-proxy.py);
   wrapped = pkgs.writeShellScriptBin "github-mcp-proxy" ''
     exec ${pkgs.python3}/bin/python3 ${pythonSource} "$@"
   '';
-  githubMcpProxyActivationScript = pkgs.runCommand "github-mcp-proxy-activation.sh" { } ''
+  githubMcpProxyActivationScript = pkgs.runCommand (ndh.store.prefixedName "github-mcp-proxy-activation.sh") { } ''
     cp ${
       pkgs.replaceVars ./github-mcp-proxy.d/activation.sh {
-        logger = lib.attrByPath [
-          "activation"
-          "loggerScript"
-        ] ../common/shell.d/logger.sh config;
+        logger = loggerScript;
       }
     } "$out"
     chmod +x "$out"

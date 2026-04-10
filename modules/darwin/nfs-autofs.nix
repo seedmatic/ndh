@@ -3,6 +3,7 @@
   lib,
   pkgs,
   catalog,
+  ndh,
   ...
 }:
 let
@@ -12,6 +13,7 @@ let
   # This prevents ZFS from hanging on network errors or unavailable NFS hosts.
   cfg = config.services.nfsDarwin;
   autoCfg = cfg.autofs;
+  loggerScript = config.nixBashLogger.script;
 
   bool01 = b: if b then "1" else "0";
 
@@ -72,35 +74,26 @@ let
 
   allowedNetworks = resolveAllowedNetworks cfg.allowedNetworks;
 
-  nfsdReloadScript = pkgs.runCommand "nfsd-reload.sh" { } ''
+  nfsdReloadScript = pkgs.runCommand (ndh.store.prefixedName "nfsd-reload.sh") { } ''
     cp ${
       pkgs.replaceVars ./nfs-autofs.d/nfsd-reload.sh {
-        logger = lib.attrByPath [
-          "activation"
-          "loggerScript"
-        ] ../common/shell.d/logger.sh config;
+        logger = loggerScript;
       }
     } "$out"
     chmod +x "$out"
   '';
-  autofsRefreshScript = pkgs.runCommand "autofs-refresh.sh" { } ''
+  autofsRefreshScript = pkgs.runCommand (ndh.store.prefixedName "autofs-refresh.sh") { } ''
     cp ${
       pkgs.replaceVars ./nfs-autofs.d/autofs-refresh.sh {
-        logger = lib.attrByPath [
-          "activation"
-          "loggerScript"
-        ] ../common/shell.d/logger.sh config;
+        logger = loggerScript;
       }
     } "$out"
     chmod +x "$out"
   '';
-  syntheticReloadScript = pkgs.runCommand "synthetic-rebuild.sh" { } ''
+  syntheticReloadScript = pkgs.runCommand (ndh.store.prefixedName "synthetic-rebuild.sh") { } ''
     cp ${
       pkgs.replaceVars ./nfs-autofs.d/synthetic-rebuild.sh {
-        logger = lib.attrByPath [
-          "activation"
-          "loggerScript"
-        ] ../common/shell.d/logger.sh config;
+        logger = loggerScript;
       }
     } "$out"
     chmod +x "$out"
@@ -137,45 +130,36 @@ let
   syntheticText =
     if syntheticEntries == [ ] then "" else lib.concatStringsSep "\n" syntheticEntries + "\n";
 
-  syntheticEnsureScript = pkgs.runCommand "synthetic-ensure.sh" { } ''
+  syntheticEnsureScript = pkgs.runCommand (ndh.store.prefixedName "synthetic-ensure.sh") { } ''
     cp ${
       pkgs.replaceVars ./nfs-autofs.d/synthetic-ensure.sh {
         inherit syntheticText;
-        logger = lib.attrByPath [
-          "activation"
-          "loggerScript"
-        ] ../common/shell.d/logger.sh config;
+        logger = loggerScript;
       }
     } "$out"
     chmod +x "$out"
   '';
 
-  autoMasterLinkScript = pkgs.runCommand "auto-master-link.sh" { } ''
+  autoMasterLinkScript = pkgs.runCommand (ndh.store.prefixedName "auto-master-link.sh") { } ''
     cp ${
       pkgs.replaceVars ./nfs-autofs.d/auto-master-link.sh {
-        logger = lib.attrByPath [
-          "activation"
-          "loggerScript"
-        ] ../common/shell.d/logger.sh config;
+        logger = loggerScript;
       }
     } "$out"
     chmod +x "$out"
   '';
 
-  autoMasterWriteScript = pkgs.runCommand "auto-master-write.sh" { } ''
+  autoMasterWriteScript = pkgs.runCommand (ndh.store.prefixedName "auto-master-write.sh") { } ''
     cp ${
       pkgs.replaceVars ./nfs-autofs.d/auto-master-write.sh {
         inherit autoMasterText;
-        logger = lib.attrByPath [
-          "activation"
-          "loggerScript"
-        ] ../common/shell.d/logger.sh config;
+        logger = loggerScript;
       }
     } "$out"
     chmod +x "$out"
   '';
 
-  autofsNetScript = pkgs.runCommand "autofs-net.sh" { } ''
+  autofsNetScript = pkgs.runCommand (ndh.store.prefixedName "autofs-net.sh") { } ''
     cp ${
       pkgs.replaceVars ./nfs-autofs.d/autofs-net.sh {
         mountPoint = lib.escapeShellArg autoCfg.mountPoint;
@@ -183,10 +167,7 @@ let
         options = lib.escapeShellArg autoCfg.options;
         manageAutoMaster = if autoCfg.manageAutoMaster then "1" else "0";
         autofsRefreshScript = autofsRefreshScript;
-        logger = lib.attrByPath [
-          "activation"
-          "loggerScript"
-        ] ../common/shell.d/logger.sh config;
+        logger = loggerScript;
       }
     } "$out"
     chmod +x "$out"

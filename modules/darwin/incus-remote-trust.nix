@@ -2,6 +2,7 @@
   config,
   pkgs,
   lib,
+  ndh,
   ...
 }:
 
@@ -9,6 +10,7 @@ with lib;
 
 let
   cfg = config.services.incusRemoteTrust;
+  loggerScript = config.nixBashLogger.script;
   hostProfile = config.profile.host;
   effectiveHostName =
     if (hostProfile ? hostAlias && hostProfile.hostAlias != null && hostProfile.hostAlias != "") then
@@ -19,13 +21,10 @@ let
   remoteHostDefault = "${effectiveHostName}-nixos.local";
   userHome = config.profile.user.home;
 
-  incusRemoteTrustActivationScript = pkgs.runCommand "incus-remote-trust-post-activation.sh" { } ''
+  incusRemoteTrustActivationScript = pkgs.runCommand (ndh.store.prefixedName "incus-remote-trust-post-activation.sh") { } ''
     cp ${
       pkgs.replaceVars ./incus-remote-trust.d/post-activation.sh {
-        logger = lib.attrByPath [
-          "activation"
-          "loggerScript"
-        ] ../common/shell.d/logger.sh config;
+        logger = loggerScript;
         remoteHost = cfg.remoteHost;
         localClientCert = cfg.localClientCert;
         trustEntryName = cfg.trustEntryName;

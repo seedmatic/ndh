@@ -4,7 +4,6 @@ source @logger@
 main() {
   set -euo pipefail
 
-  export PATH="@gitPath@:$PATH"
   export SSL_CERT_FILE="@caBundle@"
   export GIT_SSL_CAINFO="@caBundle@"
   export CURL_CA_BUNDLE="@caBundle@"
@@ -156,7 +155,7 @@ EOF
   fi
 }
 
-ndh::logger:command:run "@activationTag@" main "$@"
+ndh::logger:command:run "@loggerTag@" main "$@"
 
 if [ ! -r "$HOME/.config/zsh/rcs/zshenv.zsh" ]; then
   echo "error: zdotdir sync did not produce $HOME/.config/zsh/rcs/zshenv.zsh" >&2

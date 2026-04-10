@@ -22,7 +22,7 @@ let
   ];
   # Use platform-provided logger script from specialArgs (required)
   logger = config._module.specialArgs.logger.script;
-  activationTagZdotdir = "home-manager.activationScripts.${userName}.zdotdir";
+  loggerTagZdotdir = "home-manager.activationScripts.${userName}.zdotdir";
   zshInitContent = pkgs.replaceVars ./shell.d/zsh-init.zsh {
     linuxWrappersLine = lib.optionalString pkgs.stdenvNoCC.isLinux "/run/wrappers/bin";
   };
@@ -52,10 +52,9 @@ in
     let
       zdotdirScript = pkgs.replaceVars ./shell.d/zdotdir.sh {
         bashTrampoline = "${../common/shell.d/nix-bash-trampoline.sh}";
-        gitPath = lib.makeBinPath [ pkgs.git ];
         caBundle = "${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt";
         logger = logger;
-        activationTag = activationTagZdotdir;
+        loggerTag = loggerTagZdotdir;
       };
     in
     lib.hm.dag.entryAfter [ "writeBoundary" ] ''

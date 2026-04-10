@@ -28,6 +28,15 @@ if [[ -o interactive && "$__nxmatic_is_agent_vscode_terminal" == "1" ]]; then
   fi
 fi
 
+# zsh defines a `log` builtin (math function helper namespace) that can shadow
+# user commands/aliases named `log`. Disable it when present so `log` can be
+# used as a normal command name in interactive shells.
+__nxmatic_log_whence="$(whence -w log 2>/dev/null || true)"
+if [[ "$__nxmatic_log_whence" == *builtin* ]]; then
+  disable log >/dev/null 2>&1 || true
+fi
+unset __nxmatic_log_whence
+
 : "vscode settings"
 # Only manually source if VS Code hasn't already injected the integration.
 if [[ "$TERM_PROGRAM" == "vscode" && -z "$VSCODE_INJECTION" ]]; then

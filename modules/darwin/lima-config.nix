@@ -6,6 +6,7 @@
   pkgs,
   lib,
   catalog,
+  ndh,
   ...
 }:
 
@@ -18,6 +19,7 @@ let
   profileHome = config.profile.user.home;
   profileHost = config.profile.host;
   sshPaths = config.sshPaths;
+  loggerScript = config.nixBashLogger.script;
 
   # Derive effective hostname (use alias if set, otherwise hostName)
   effectiveHostName =
@@ -69,7 +71,7 @@ let
   clusterNetworkName = "cluster${toString clusterId}";
   limaNetworksOpts = config.lima.networks or { };
 
-  limaActivationScript = pkgs.runCommand "lima-config-activation.sh" { } ''
+  limaActivationScript = pkgs.runCommand (ndh.store.prefixedName "lima-config-activation.sh") { } ''
     cp ${
       pkgs.replaceVars ./lima-config.d/activation.sh {
         effectiveHostName = effectiveHostName;
@@ -82,16 +84,13 @@ let
         imageTargetPath = imageTargetPath;
         hostPublicKeyPath = sshPaths.hostPublicKeyFile;
         hostPrivateKeyPath = sshPaths.privKeyFile;
-        logger = lib.attrByPath [
-          "activation"
-          "loggerScript"
-        ] ../common/shell.d/logger.sh config;
+        logger = loggerScript;
       }
     } "$out"
     chmod +x "$out"
   '';
 
-  limaRunScript = pkgs.runCommand "lima-run.sh" { } ''
+  limaRunScript = pkgs.runCommand (ndh.store.prefixedName "lima-run.sh") { } ''
     cp ${
       pkgs.replaceVars ./lima-config.d/run.sh {
         effectiveHostName = effectiveHostName;

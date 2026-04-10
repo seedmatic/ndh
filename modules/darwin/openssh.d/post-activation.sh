@@ -19,4 +19,4 @@ main() {
 	chmod 644 "@keysDir@/trusted-user-ca.pub"
 }
 
-ndh::logger:command:run "@activationTag@" main "$@"
+ndh::logger:command:run "@loggerTag@" main "$@"

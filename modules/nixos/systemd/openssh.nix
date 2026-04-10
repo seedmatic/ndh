@@ -60,17 +60,15 @@ ${formatPrincipals allPrincipals}
   principalsScriptStore = pkgs.replaceVars ../../common/ssh/authorized-principals-command.sh {
     bashTrampoline = "${../../common/shell.d/nix-bash-trampoline.sh}";
     logger = logger;
-    scriptPath = config.opensshPolicy.setEnvPath;
   };
   groupKeysScriptStore = pkgs.replaceVars ../../common/ssh/ssh-group-authorized-keys.sh {
     bashTrampoline = "${../../common/shell.d/nix-bash-trampoline.sh}";
     logger = logger;
-    scriptPath = config.opensshPolicy.setEnvPath;
     authorizedKeysDir = config.opensshPolicy.authorizedKeysDir;
   };
   # Use the wrapped activation logger packaged into the system closure
-  logger = config.activation.loggerScript;
-  activationTag = "nixos.activationScripts.sshGroupKeys";
+  logger = config.nixBashLogger.script;
+  loggerTag = "nixos.activationScripts.sshGroupKeys";
   hasSopsInstallSecretsService = builtins.hasAttr "sops-install-secrets" config.systemd.services;
   hostkeyEnrollmentCheckTag = "nixos.services.nxmatic.hostkeyEnrollmentCheck";
   hostkeyEnrollmentSyncTag = "nixos.services.nxmatic.hostkeyEnrollmentSync";
@@ -164,14 +162,13 @@ in
           authorizedKeysDir = config.opensshPolicy.authorizedKeysDir;
           keysDir = config.opensshPolicy.keysDir;
           hostname = hostname;
-          sshKeygen = "${pkgs.openssh}/bin/ssh-keygen";
           principalsCommand = config.opensshPolicy.canonicalPrincipalsCommandName;
           groupCommand = config.opensshPolicy.canonicalGroupKeysCommandName;
           principalsScript = principalsScriptStore;
           groupKeysScript = groupKeysScriptStore;
           profileUserName = config.profile.user.name;
           logger = logger;
-          activationTag = activationTag;
+          loggerTag = loggerTag;
           userPrivateSourceDir = config.sshPaths.secretsKeysDir;
           userCaSourceDir = config.sshPaths.authoritySecretsDir;
           clientKeyName = clientKeyName;

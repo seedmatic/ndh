@@ -2,6 +2,7 @@
   config,
   lib,
   pkgs,
+  ndh,
   ...
 }:
 
@@ -9,9 +10,10 @@ with lib;
 
 let
   cfg = config.services.disable-unwanted-agents;
+  loggerScript = config.nixBashLogger.script;
 
   disableUnwantedAgentsScript =
-    pkgs.runCommand "disable-unwanted-agents"
+    pkgs.runCommand (ndh.store.prefixedName "disable-unwanted-agents")
       {
         preferLocalBuild = true;
         allowSubstitutes = false;
@@ -21,15 +23,12 @@ let
       '';
 
   disableUnwantedAgentsActivationScript =
-    pkgs.runCommand "disable-unwanted-agents-post-activation.sh" { }
+    pkgs.runCommand (ndh.store.prefixedName "disable-unwanted-agents-post-activation.sh") { }
       ''
         cp ${
           pkgs.replaceVars ./disable-unwanted-agents.d/post-activation.sh {
             disableUnwantedAgentsScript = disableUnwantedAgentsScript;
-            logger = lib.attrByPath [
-              "activation"
-              "loggerScript"
-            ] ../common/shell.d/logger.sh config;
+            logger = loggerScript;
           }
         } "$out"
         chmod +x "$out"

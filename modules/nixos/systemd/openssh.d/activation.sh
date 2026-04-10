@@ -30,7 +30,7 @@ main() {
 
   SSH_KEY_NIXBLD="$SSH_KEYS_DIR/nixbld"
   if [ ! -f "$SSH_KEY_NIXBLD" ]; then
-    @sshKeygen@ -t ed25519 -f "$SSH_KEY_NIXBLD" -N "" -C "nixbld@$HOSTNAME"
+    ssh-keygen -t ed25519 -f "$SSH_KEY_NIXBLD" -N "" -C "nixbld@$HOSTNAME"
     chmod a+r "${SSH_KEY_NIXBLD}.pub"
     ln -sf "${SSH_KEY_NIXBLD}.pub" "$SSH_AUTH_KEYS_DIR/nixbld"
   fi
@@ -61,7 +61,7 @@ main() {
     if [ -s "$SERVER_PUBLIC_SOURCE" ]; then
       install -m 644 "$SERVER_PUBLIC_SOURCE" "$SYSTEM_HOST_KEY_PUB"
     else
-      @sshKeygen@ -y -f "$SYSTEM_HOST_KEY" > "$SYSTEM_HOST_KEY_PUB"
+      ssh-keygen -y -f "$SYSTEM_HOST_KEY" > "$SYSTEM_HOST_KEY_PUB"
       chmod 644 "$SYSTEM_HOST_KEY_PUB"
     fi
   fi
@@ -114,4 +114,4 @@ main() {
   install -d -m 755 /etc/ssh/ssh_config.d
 }
 
-ndh::logger:command:run "@activationTag@" main "$@"
+ndh::logger:command:run "@loggerTag@" main "$@"

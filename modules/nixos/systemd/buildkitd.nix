@@ -1,11 +1,12 @@
 {
   config,
   pkgs,
+  ndh,
   profile,
   ...
 }:
 let
-  buildkitdToml = pkgs.writeText "buildkitd.toml" ''
+  buildkitdToml = pkgs.writeText (ndh.store.prefixedName "buildkitd.toml") ''
     [worker.cdi]
     enabled = false
 

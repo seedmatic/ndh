@@ -4,11 +4,13 @@
   config,
   lib,
   pkgs,
+  ndh,
   ...
 }:
 with lib;
 let
   cfg = config.networking.bond;
+  loggerScript = config.nixBashLogger.script;
 
   bondInterfaces = concatStringsSep " " cfg.interfaces;
 
@@ -85,7 +87,7 @@ let
       ipconfig set ${iface} NONE 2>/dev/null || true
     fi'') cfg.interfaces;
 
-  networkBondActivationScript = pkgs.runCommand "network-bond-post-activation.sh" { } ''
+  networkBondActivationScript = pkgs.runCommand (ndh.store.prefixedName "network-bond-post-activation.sh") { } ''
     cp ${
       pkgs.replaceVars ./network-bond.d/post-activation.sh {
         activationInterfaceChecks = activationInterfaceChecks;
@@ -95,10 +97,7 @@ let
         bondAttach = bondAttach;
         bondMode = cfg.mode;
         dhcpActivationBlock = dhcpActivationBlock;
-        logger = lib.attrByPath [
-          "activation"
-          "loggerScript"
-        ] ../common/shell.d/logger.sh config;
+        logger = loggerScript;
       }
     } "$out"
     chmod +x "$out"
@@ -114,7 +113,7 @@ let
     dhcpDaemonBlock = dhcpDaemonBlock;
   };
 
-  wakeMonitor = pkgs.writeShellScript "bond-wake-monitor" (
+  wakeMonitor = pkgs.writeShellScript (ndh.store.prefixedName "bond-wake-monitor") (
     builtins.readFile ./network-bond.d/bond-wake-monitor.sh
   );
 

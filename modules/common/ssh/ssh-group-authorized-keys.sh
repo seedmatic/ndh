@@ -10,7 +10,6 @@ source "@bashTrampoline@"
 source "@logger@"
 
 main() {
-  PATH="@scriptPath@"
   USER_NAME="${1:-}"
   if [[ -z "${USER_NAME}" ]]; then
     exit 1

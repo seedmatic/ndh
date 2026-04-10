@@ -58,4 +58,4 @@ EOF
     incus remote add "${remote_name}" "${token}"
 }
 
-ndh::logger:command:run "@activationTag@" main "$@"
+ndh::logger:command:run "@loggerTag@" main "$@"

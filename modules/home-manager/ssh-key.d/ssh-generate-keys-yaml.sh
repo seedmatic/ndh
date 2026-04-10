@@ -49,9 +49,9 @@ key::authorityHostNames() {
 	hostNames["${hostName}.local"]=1
 	hostNames["${hostName}.${domain}"]=1
 
-	hostNames[$(@hostname@ -f)]=1
-	hostNames[$(@hostname@ -s)]=1
-	hostNames[$(@hostname@ -s).${domain}]=1
+	hostNames[$(hostname -f)]=1
+	hostNames[$(hostname -s)]=1
+	hostNames[$(hostname -s).${domain}]=1
 
 	if [[ -n "${hostsCatalogCsv:-}" ]]; then
 		local catalogHost
@@ -116,7 +116,7 @@ key::generateKeyPair() {
 	comment="${comment:-${keyName}}"
 
 	: "Generate the key pair in a temporary directory"
-	if ! @sshKeygen@ -q -t "$type" -N "" -f "${tmpdir}/${keyName}" -C "$comment"; then
+	if ! ssh-keygen -q -t "$type" -N "" -f "${tmpdir}/${keyName}" -C "$comment"; then
 		log::trace "Failed to generate key pair for $keyName"
 		return 1
 	fi
@@ -226,7 +226,7 @@ authority::signKey() {
 			: "Get the allowed principals for the key"
 			local principals
 			readarray -t principals < <(key::principals)
-			if ! @sshKeygen@ -q -s "$cakeyPrivateTmpFile" -I "${keyNameLocal}" -n "$(
+			if ! ssh-keygen -q -s "$cakeyPrivateTmpFile" -I "${keyNameLocal}" -n "$(
 				IFS=','
 				echo "${principals[*]}"
 			)" "$keyPublicTmpFile"; then
@@ -238,7 +238,7 @@ authority::signKey() {
 			: "Get the allowed hostnames for the key"
 			local authorityHostNames
 			readarray -t authorityHostNames < <(key::authorityHostNames "$authorityName")
-			if ! @sshKeygen@ -q -s "$cakeyPrivateTmpFile" -I "${keyNameLocal}" -h -n "$(
+			if ! ssh-keygen -q -s "$cakeyPrivateTmpFile" -I "${keyNameLocal}" -h -n "$(
 				IFS=','
 				echo "${authorityHostNames[*]}"
 			)" "$keyPublicTmpFile"; then
@@ -255,7 +255,7 @@ authority::signKey() {
 			;;
 		esac
 		keyCertTmpFile="${keyPublicTmpFile%.pub}-cert.pub"
-		@sshKeygen@ -L -f "$keyCertTmpFile" || log::trace "Could not inspect certificate $keyCertTmpFile"
+		ssh-keygen -L -f "$keyCertTmpFile" || log::trace "Could not inspect certificate $keyCertTmpFile"
 		keyCertLine="$(cat "${keyCertTmpFile}")"
 		declare -g "$(var::snakeCase "${keyVar}" authorities "$authorityName" "$usage")=${keyCertLine}"
 	done
@@ -421,7 +421,7 @@ $(
 				echo "[ ${keyUsage[*]} ]"
 			)
     private: |-
-$(echo "$keyPrivate" | @sed@ 's/^/      /')
+$(echo "$keyPrivate" | sed 's/^/      /')
     public: $keyType $keyPublic $annotatedComment
 $(
 				if ((${#keyPrincipals[@]} > 0)); then
@@ -429,7 +429,7 @@ $(
 					(
 						IFS=','
 						echo "${keyPrincipals[*]}"
-					) | @sed@ 's/,/, /g' | @sed@ 's/$/ ]/'
+					) | sed 's/,/, /g' | sed 's/$/ ]/'
 				fi
 			)
 $(
@@ -459,7 +459,7 @@ $(
 						local certVar
 						certVar="$(var::snakeCase "$authorityVar" "$authorityUsage")"
 						echo "        $authorityUsage: |"
-						echo "${!certVar}" | @sed@ 's/^/          /'
+						echo "${!certVar}" | sed 's/^/          /'
 					done
 				done
 			)
@@ -489,7 +489,7 @@ main() {
 	hostsCatalogCsv="${1:-}"
 
 	: "Create a temporary directory for signing"
-	tmpdir=$(@mktemp@ --directory --suffix=keys.d)
+	tmpdir=$(mktemp --directory --suffix=keys.d)
 	trap 'rm -rf $tmpdir' EXIT
 
 	: "Load the entire YAML file into shell variables"
@@ -505,7 +505,7 @@ main() {
 
 	: "Collect original key names from source YAML to preserve dashed names in output"
 	declare -g sourceKeyNames
-	readarray -t sourceKeyNames < <(env PROFILE="$profileName" @yq@ -r 'explode(...) | .profiles.[env(PROFILE)] | keys[]' "$inputFile")
+	readarray -t sourceKeyNames < <(env PROFILE="$profileName" yq -r 'explode(...) | .profiles.[env(PROFILE)] | keys[]' "$inputFile")
 
 	: Process each key entry
 	declare -g processedKeys=()
@@ -523,4 +523,4 @@ main() {
 	chmod 0400 "$outputFile"
 }
 
-ndh::logger:command:run "@activationTag@" main "$@"
+ndh::logger:command:run "@loggerTag@" main "$@"

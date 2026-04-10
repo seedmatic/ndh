@@ -44,6 +44,14 @@ in
         # are stabilized via your OpenSSH CA instead of Tailscale SSH rotation.
         ###############################################################################
 
+        # NixOS guest hosts are ephemeral and can rotate host keys; keep them
+        # out of persistent known_hosts checks to avoid rebuild interruption.
+        Host *-nixos *-nixos.local
+          StrictHostKeyChecking no
+          UserKnownHostsFile /dev/null
+          GlobalKnownHostsFile /dev/null
+          CheckHostIP no
+
         Host *
           StrictHostKeyChecking accept-new
           UserKnownHostsFile ~/.ssh/known_hosts

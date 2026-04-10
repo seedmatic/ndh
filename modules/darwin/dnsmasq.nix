@@ -2,22 +2,21 @@
   config,
   lib,
   pkgs,
+  ndh,
   ...
 }:
 let
   user = config.profile.user;
   userName = user.name;
   logFile = "/Users/${userName}/Library/Logs/dnsmasq.log";
+  loggerScript = config.nixBashLogger.script;
 
-  dnsmasqActivationScript = pkgs.runCommand "dnsmasq-post-activation.sh" { } ''
+  dnsmasqActivationScript = pkgs.runCommand (ndh.store.prefixedName "dnsmasq-post-activation.sh") { } ''
     cp ${
       pkgs.replaceVars ./dnsmasq.d/post-activation.sh {
         logFile = logFile;
         userName = userName;
-        logger = lib.attrByPath [
-          "activation"
-          "loggerScript"
-        ] ../common/shell.d/logger.sh config;
+        logger = loggerScript;
       }
     } "$out"
     chmod +x "$out"

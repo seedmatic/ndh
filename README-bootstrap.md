@@ -27,31 +27,42 @@ The nix-darwin linux-builder provides a NixOS VM that can build Linux packages o
 
 - Nix with flakes support installed
 - This flake configuration available
-- flox installed (for `source <( flox activate )` at bootstrap)
 - Admin access to modify `/etc/nix/machines`
 
-**Note**: After installation, direnv will automatically load the flox environment when you enter the project directory.
+=== Required installer package (@codebase)
+
+When host outputs expose these packages:
+
+- `ndh-prerequisites-install`
+- `ndh-bootstrap-runtime`
+- `lima-config-materialize`
+
+Use this mapping:
+
+- **Run first:** `ndh-prerequisites-install` (canonical prerequisite installer)
+- **Do not run directly:** `ndh-bootstrap-runtime` (payload package installed into the dedicated profile)
+- **Separate concern:** `lima-config-materialize` (Lima config generation/materialization)
 
 ## Bootstrap Steps
 
 These steps apply to bootstrapping either host (nikopol or bioskop). The process is the same, but each host will have its own profile and configuration.
 
-### 0. Activate Flox Environment
+### 0. Install NDH prerequisites profile
 
-At bootstrap time, you need to manually activate the flox environment since direnv isn't configured yet:
+At bootstrap time, install the dedicated NDH runtime profile before any `darwin-rebuild switch`:
 
 ```bash
 # Navigate to the flake directory
 cd /path/to/nix-darwin-home
 
-# Manually activate flox environment at bootstrap (before direnv is set up)
-source <( flox activate )
-
-# You should now have access to create-builder command
-which create-builder
+# Install host prerequisites (autofs + dedicated NDH runtime profile)
+nix run .#ndh-prerequisites-install
 ```
 
-**Note**: After installation, the flox environment will be automatically loaded using direnv when you `cd` into the project directory.
+This is mandatory for deterministic activation and script runtime command resolution.
+
+If you skip this step, `darwin-rebuild switch` will now attempt to install/refresh
+the dedicated NDH bootstrap profile automatically during activation.
 
 ### 1. Generate SSH Keys for Builder
 
