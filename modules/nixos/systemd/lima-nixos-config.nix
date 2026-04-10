@@ -27,7 +27,7 @@ in
     wants = [ "io-nxmatic-nix-darwin-home-lima-cloud-init.service" ];
 
     # Don't hard require network or resolvconf anymore; cloning is fallback and user-controlled.
-    wantedBy = [ "multi-user.target" ];
+    wantedBy = [ "io-nxmatic-nix-darwin-home-contributed.target" ];
 
     path = with pkgs; [
       coreutils

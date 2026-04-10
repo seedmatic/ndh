@@ -295,7 +295,7 @@ in
     systemd = {
       services.zpool-init = lib.mkIf config.zfsOverlays.bootstrapActivation.enable {
         description = "Idempotent one-shot ZFS disk/datastore provisioning (@codebase)";
-        wantedBy = [ "multi-user.target" ];
+        wantedBy = [ "io-nxmatic-nix-darwin-home-contributed.target" ];
         after = [ "local-fs.target" "zfs.target" "zfs-import.target" ];
         wants = [ "zfs.target" "zfs-import.target" ];
 

@@ -32,4 +32,9 @@ in
     ./buildkitd.nix
     ./hm-state-dirs.nix
   ]);
+
+  config.systemd.targets.io-nxmatic-nix-darwin-home-contributed = {
+    description = "Nix Darwin Home contributed units (@codebase)";
+    wantedBy = [ "multi-user.target" ];
+  };
 }
