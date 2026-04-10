@@ -4,12 +4,16 @@ set -euo pipefail
 main() {
   local profile_dir="${1:-@defaultProfileDir@}"
   local runtime_pkg="@runtimePackage@"
+  local runtime_name="io.nxmatic.nix-darwin-home-bootstrap-runtime-activation"
+  local legacy_runtime_name="io.nxmatic.nix-darwin-home-bootstrap-runtime"
   local required="@requiredCommands@"
   local cmd
   local -a missing=()
 
   install -d -m 0755 "$(dirname "$profile_dir")"
 
+  nix profile remove --profile "$profile_dir" "$runtime_name" >/dev/null 2>&1 || true
+  nix profile remove --profile "$profile_dir" "$legacy_runtime_name" >/dev/null 2>&1 || true
   nix profile add --profile "$profile_dir" "$runtime_pkg"
 
   export PATH="${profile_dir}/bin:${PATH}"

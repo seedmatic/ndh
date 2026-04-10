@@ -144,13 +144,19 @@ in
         profile_dir_root="/nix/var/nix/profiles/per-user/root/${cfg.name}"
         profile_user="${config.profile.user.name}"
         profile_dir_user="/nix/var/nix/profiles/per-user/${config.profile.user.name}/${cfg.name}"
+        runtime_name="io.nxmatic.nix-darwin-home-bootstrap-runtime-activation"
+        legacy_runtime_name="io.nxmatic.nix-darwin-home-bootstrap-runtime"
 
         mkdir -p /nix/var/nix/profiles/per-user/root
         mkdir -p "/nix/var/nix/profiles/per-user/${config.profile.user.name}"
 
+        ${config.nix.package.out}/bin/nix profile remove --profile "$profile_dir_root" "$runtime_name" >/dev/null 2>&1 || true
+        ${config.nix.package.out}/bin/nix profile remove --profile "$profile_dir_root" "$legacy_runtime_name" >/dev/null 2>&1 || true
         ${config.nix.package.out}/bin/nix profile add --profile "$profile_dir_root" "${bootstrapRuntimePackage}"
 
         if [ "$profile_user" != "root" ]; then
+          ${config.nix.package.out}/bin/nix profile remove --profile "$profile_dir_user" "$runtime_name" >/dev/null 2>&1 || true
+          ${config.nix.package.out}/bin/nix profile remove --profile "$profile_dir_user" "$legacy_runtime_name" >/dev/null 2>&1 || true
           ${config.nix.package.out}/bin/nix profile add --profile "$profile_dir_user" "${bootstrapRuntimePackage}"
         fi
       '';
