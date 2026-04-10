@@ -5,7 +5,6 @@ main() {
   local profile_dir="${1:-@defaultProfileDir@}"
   local runtime_pkg="@runtimePackage@"
   local runtime_name="io.nxmatic.nix-darwin-home-bootstrap-runtime-activation"
-  local legacy_runtime_name="io.nxmatic.nix-darwin-home-bootstrap-runtime"
   local required="@requiredCommands@"
   local cmd
   local -a missing=()
@@ -14,7 +13,6 @@ main() {
 
   if ! nix profile add --profile "$profile_dir" "$runtime_pkg"; then
     nix profile remove --profile "$profile_dir" "$runtime_name" >/dev/null 2>&1 || true
-    nix profile remove --profile "$profile_dir" "$legacy_runtime_name" >/dev/null 2>&1 || true
     nix profile add --profile "$profile_dir" "$runtime_pkg"
   fi
 
