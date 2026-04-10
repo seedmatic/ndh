@@ -419,7 +419,7 @@ in
       serviceConfig.ExecStart = lib.mkForce "${pkgs.util-linux}/sbin/agetty --autologin root --noclear tty1 linux";
     };
 
-    systemd.services."serial-getty@hvc0".enable = true;
+    systemd.services."serial-getty@hvc0".enable = lib.mkForce false;
     systemd.services."serial-getty@ttyAMA0".enable = true;
     systemd.services."serial-getty@ttyS0".enable = true;
 
