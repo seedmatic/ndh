@@ -103,6 +103,7 @@ in
     nxmatic.bootstrapProfile.autoInstallOnActivation = lib.mkForce true;
 
     environment.variables = {
+      NDH_BOOTSTRAP_PROFILE_OWNER = config.profile.user.name;
       NDH_BOOTSTRAP_PROFILE_DIR = cfg.profileDir;
       NDH_BOOTSTRAP_PROFILE_BIN = "${cfg.profileDir}/bin";
       NDH_BOOTSTRAP_RUNTIME_PACKAGE = "${bootstrapRuntimePackage}";

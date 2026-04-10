@@ -29,6 +29,15 @@ ndh::env:user:home() {
 }
 
 ndh::bootstrap:profile:dir() {
+	if [[ -n "${NDH_BOOTSTRAP_PROFILE_OWNER:-}" ]]; then
+		local owner_home
+		owner_home="$(ndh::env:user:home "${NDH_BOOTSTRAP_PROFILE_OWNER}" || true)"
+		if [[ -n "$owner_home" ]]; then
+			echo "${owner_home}/.local/state/nix/profiles/io-nxmatic-nix-darwin-home-bootstrap-runtime"
+			return 0
+		fi
+	fi
+
 	if [[ -n "${NDH_BOOTSTRAP_PROFILE_DIR:-}" ]]; then
 		echo "${NDH_BOOTSTRAP_PROFILE_DIR}"
 		return 0
@@ -132,9 +141,25 @@ ndh::bootstrap:runtime:diagnose() {
 
 	echo "[ndh][DIAG] bootstrap profile dir: ${profile_dir:-<unset>}" >&2
 	echo "[ndh][DIAG] bootstrap profile bin: ${profile_bin:-<unset>}" >&2
+	echo "[ndh][DIAG] NDH_BOOTSTRAP_PROFILE_OWNER: ${NDH_BOOTSTRAP_PROFILE_OWNER:-<unset>}" >&2
+	echo "[ndh][DIAG] SUDO_USER: ${SUDO_USER:-<unset>}" >&2
+	echo "[ndh][DIAG] HOME: ${HOME:-<unset>}" >&2
 	if [[ -n "$profile_bin" ]]; then
-		ls -ld "$profile_bin" >&2 2>/dev/null || true
-		ls -l "$profile_bin"/age "$profile_bin"/age-keygen >&2 2>/dev/null || true
+		if [[ -d "$profile_bin" ]]; then
+			ls -ld "$profile_bin" >&2 || true
+			if [[ -e "$profile_bin/age" || -L "$profile_bin/age" ]]; then
+				ls -l "$profile_bin"/age >&2 || true
+			else
+				echo "[ndh][DIAG] missing file: $profile_bin/age" >&2
+			fi
+			if [[ -e "$profile_bin/age-keygen" || -L "$profile_bin/age-keygen" ]]; then
+				ls -l "$profile_bin"/age-keygen >&2 || true
+			else
+				echo "[ndh][DIAG] missing file: $profile_bin/age-keygen" >&2
+			fi
+		else
+			echo "[ndh][DIAG] missing directory: $profile_bin" >&2
+		fi
 	fi
 
 	for cmd in age age-keygen; do
