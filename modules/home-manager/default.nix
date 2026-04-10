@@ -106,7 +106,9 @@ let
 
   baseHomePackages =
     if isMinimalHomeProfile then
-      [ ]
+      lib.optionals pkgs.stdenv.isDarwin [
+        pkgs.lima
+      ]
     else
       with pkgs; [
         alejandra
