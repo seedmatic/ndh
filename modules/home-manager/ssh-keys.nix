@@ -45,7 +45,7 @@ let
 
   # Externalized KnownHostsCommand script sourced from repo (templated with keysDir)
   knownHostsScript =
-    pkgs.runCommand (ndh.store.prefixedName "ssh-ca-known-hosts") { } ''
+    ndh.store.runCommand "ssh-ca-known-hosts" { } ''
       cp ${pkgs.replaceVars ./ssh.d/scripts/ca-known-hosts-command.sh {
         bashTrampoline = "${../common/shell.d/nix-bash-trampoline.sh}";
         logger = logger;
@@ -97,22 +97,41 @@ in
   home.activation =
     let
 
-      sshGenerateKeysYamlScript = pkgs.replaceVars ./ssh-key.d/ssh-generate-keys-yaml.sh {
+      sshGenerateKeysYamlScriptSource = pkgs.replaceVars ./ssh-key.d/ssh-generate-keys-yaml.sh {
         bashTrampoline = "${../common/shell.d/nix-bash-trampoline.sh}";
         logger = logger;
         loggerTag = loggerTagGenerate;
       };
+      sshGenerateKeysYamlScript = ndh.store.installScript {
+        name = "ssh-generate-keys-yaml.sh";
+        source = sshGenerateKeysYamlScriptSource;
+      };
 
-      sshExtractKeysScript = pkgs.replaceVars ./ssh-key.d/ssh-extract-keys.sh {
+      sshExtractKeysSplitExpFile = ndh.store.installScript {
+        name = "ssh-extract-keys.split-exp.yq";
+        source = ./ssh-key.d/ssh-extract-keys.split-exp.yq;
+        mode = "0444";
+      };
+
+      sshExtractKeysScriptSource = pkgs.replaceVars ./ssh-key.d/ssh-extract-keys.sh {
         bashTrampoline = "${../common/shell.d/nix-bash-trampoline.sh}";
         logger = logger;
         loggerTag = loggerTagExtract;
+        splitExpFile = sshExtractKeysSplitExpFile;
+      };
+      sshExtractKeysScript = ndh.store.installScript {
+        name = "ssh-extract-keys.sh";
+        source = sshExtractKeysScriptSource;
       };
 
-      ensureAuthorizedKeysScript = pkgs.replaceVars ./ssh-key.d/ssh-ensure-authorized-keys.sh {
+      ensureAuthorizedKeysScriptSource = pkgs.replaceVars ./ssh-key.d/ssh-ensure-authorized-keys.sh {
         bashTrampoline = "${../common/shell.d/nix-bash-trampoline.sh}";
         logger = logger;
         loggerTag = loggerTagAuthorized;
+      };
+      ensureAuthorizedKeysScript = ndh.store.installScript {
+        name = "ssh-ensure-authorized-keys.sh";
+        source = ensureAuthorizedKeysScriptSource;
       };
     in
     {
