@@ -1,4 +1,4 @@
-#!/usr/bin/env -S bash -exuo pipefail
+#!/usr/bin/env -S bash -euo pipefail
 
 attr=${1:-homeManagerConfigurations.work.activationPackage}
 mode=${2:-copy}
@@ -21,4 +21,6 @@ if [[ "${mode}" == "print" || "${mode}" == "--print-out-path" ]]; then
        exit 0
 fi
 
+printf '[nix-remote-copy] copying output of attr "%s" (build attr "%s") to remote host...\n' "${attr}" "${build_attr}" >&2
+printf '%s\n' "${out}"
 exec nix copy --no-check-sigs --to "ssh-ng://vz-host.nikopol?remote-program=/nix/var/nix/profiles/default/bin/nix-daemon" "${out}"
