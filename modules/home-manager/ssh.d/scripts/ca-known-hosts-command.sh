@@ -6,6 +6,10 @@
 
 set -euo pipefail
 
+# shellcheck disable=SC1091
+source "@bashTrampoline@"
+nxmatic_ensure_nix_bash "$@"
+
 LOG_DIR="${HOME}/.local/var"
 mkdir -p "${LOG_DIR}"
 exec 2>>"${LOG_DIR}/known-hosts.log"

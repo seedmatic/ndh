@@ -9,6 +9,11 @@
 #
 # Usage: authorized-principals-command <user>
 set -euo pipefail
+
+# shellcheck disable=SC1091
+source "@bashTrampoline@"
+nxmatic_ensure_nix_bash "$@"
+
 PATH="@scriptPath@"
 USER_NAME="${1:-}"
 if [[ -z "$USER_NAME" ]]; then

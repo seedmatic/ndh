@@ -3,6 +3,11 @@
 # Print authorized SSH public keys aggregated from group-based key files.
 # Invoked as: ssh-group-authorized-keys <username>
 set -euo pipefail
+
+# shellcheck disable=SC1091
+source "@bashTrampoline@"
+nxmatic_ensure_nix_bash "$@"
+
 PATH="@scriptPath@"
 USER_NAME="${1:-}"
 if [[ -z "${USER_NAME}" ]]; then

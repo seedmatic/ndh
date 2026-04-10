@@ -61,6 +61,7 @@ let
     pkgs.runCommand "ssh-ca-known-hosts" { } ''
       cp ${pkgs.replaceVars ./ssh.d/scripts/ca-known-hosts-command.sh {
         bashBin = "${pkgs.bash}/bin/bash";
+        bashTrampoline = "${../common/ssh/bash-trampoline.sh}";
         caDir = systemKeysDir;
       }} "$out"
       chmod +x "$out"
