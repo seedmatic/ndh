@@ -105,6 +105,10 @@ let
     chmod +x "$out"
   '';
 
+  limaMaterializerPackage = pkgs.writeShellScriptBin "lima-config-materialize" ''
+    exec ${limaActivationScript} "$@"
+  '';
+
   limaConfig = {
     cpus = 8;
     disk = "24GiB";
@@ -395,6 +399,43 @@ in
         NixOS flake attribute selected by ~/.lima/run.sh for remote activation.
       '';
     };
+
+    enableActivationHook = mkOption {
+      type = types.bool;
+      default = true;
+      description = ''
+        Run Lima materialization during darwin activation (`postActivation`).
+        Disable when you want manual host-scoped execution through `lima-config-materialize` only.
+      '';
+    };
+
+    installMaterializerPackage = mkOption {
+      type = types.bool;
+      default = false;
+      description = ''
+        Install the `lima-config-materialize` helper package in system packages.
+        Useful on selected VZ hosts where only ~/.lima materialization tooling is needed.
+      '';
+    };
+
+    materializerPackage = mkOption {
+      type = types.package;
+      readOnly = true;
+      default = limaMaterializerPackage;
+      description = ''
+        Store package exposing the `lima-config-materialize` command for host-side
+        ~/.lima materialization.
+      '';
+    };
+
+    requireNetAutomount = mkOption {
+      type = types.bool;
+      default = true;
+      description = ''
+        Require Darwin autofs `/net` wiring for Lima configuration.
+        This keeps `/net/<host>.local/...` image paths usable and avoids silent runtime failures.
+      '';
+    };
   };
   # Internal, fully rendered configuration exposed for external tooling / scripts (@codebase)
   options.lima.computedConfig = mkOption {
@@ -434,14 +475,46 @@ in
     };
   };
   config = {
+    assertions = lib.optionals cfg.requireNetAutomount [
+      {
+        assertion =
+          (lib.attrByPath [
+            "services"
+            "nfsDarwin"
+            "enable"
+          ] false config)
+          && (lib.attrByPath [
+            "services"
+            "nfsDarwin"
+            "autofs"
+            "enable"
+          ] false config)
+          && (lib.attrByPath [
+            "services"
+            "nfsDarwin"
+            "autofs"
+            "mountPoint"
+          ] "" config) == "/net";
+        message = ''
+          lima.configGenerator requires Darwin autofs `/net` but current nfsDarwin settings do not provide it.
+          Enable:
+            services.nfsDarwin.enable = true;
+            services.nfsDarwin.autofs.enable = true;
+            services.nfsDarwin.autofs.mountPoint = "/net";
+          Or explicitly set:
+            lima.configGenerator.requireNetAutomount = false;
+        '';
+      }
+    ];
+
     # Add lima to system packages
-    environment.systemPackages = [ pkgs.lima ];
+    environment.systemPackages = [ pkgs.lima ] ++ lib.optionals cfg.installMaterializerPackage [ cfg.materializerPackage ];
 
     # Dedicated activation script using postActivation which is actually executed
     # Use mkAfter to run after other postActivation scripts (@codebase)
-    system.activationScripts.postActivation.text = lib.mkAfter ''
+    system.activationScripts.postActivation.text = lib.mkIf cfg.enableActivationHook (lib.mkAfter ''
       ${limaActivationScript}
-    '';
+    '');
     # Expose full rendered configuration for external tooling (@codebase)
     lima.computedConfig = limaConfig;
   };

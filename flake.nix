@@ -696,6 +696,64 @@
           nixosDiskImageBringupSystemdBoot = nixosOutputs.diskImageBringupSystemdBoot;
           nixosDiskImageBringupGrub = nixosOutputs.diskImageBringupGrub;
           nixosDiskSizeHint = nixosOutputs.diskSizeHint;
+          limaMaterializerPackage =
+            if darwinConfiguration ? config
+              && darwinConfiguration.config ? lima
+              && darwinConfiguration.config.lima ? configGenerator
+              && darwinConfiguration.config.lima.configGenerator ? materializerPackage then
+              darwinConfiguration.config.lima.configGenerator.materializerPackage
+            else
+              null;
+          limaMaterializerProgram =
+            if limaMaterializerPackage != null then
+              "${limaMaterializerPackage}/bin/lima-config-materialize"
+            else
+              null;
+          autofsNetMaterializerPackage =
+            if darwinConfiguration ? config
+              && darwinConfiguration.config ? services
+              && darwinConfiguration.config.services ? nfsDarwin
+              && darwinConfiguration.config.services.nfsDarwin ? autofs
+              && darwinConfiguration.config.services.nfsDarwin.autofs ? materializerPackage then
+              darwinConfiguration.config.services.nfsDarwin.autofs.materializerPackage
+            else
+              null;
+          autofsNetMaterializerProgram =
+            if autofsNetMaterializerPackage != null then
+              "${autofsNetMaterializerPackage}/bin/nfs-autofs-net-materialize"
+            else
+              null;
+          limaMaterializerAppProgram =
+            if limaMaterializerProgram != null && autofsNetMaterializerProgram != null then
+              "${pkgsForDarwin.writeShellScript "lima-config-materialize-app" ''
+                #!/usr/bin/env bash
+                set -euo pipefail
+
+                /usr/bin/sudo ${autofsNetMaterializerProgram}
+                exec ${limaMaterializerProgram} "$@"
+              ''}"
+            else
+              limaMaterializerProgram;
+          hostDarwinPackages =
+            (nixpkgs.lib.optionalAttrs (limaMaterializerPackage != null) {
+              lima-config-materialize = limaMaterializerPackage;
+            })
+            // (nixpkgs.lib.optionalAttrs (autofsNetMaterializerPackage != null) {
+              nfs-autofs-net-materialize = autofsNetMaterializerPackage;
+            });
+          hostDarwinApps =
+            (nixpkgs.lib.optionalAttrs (limaMaterializerAppProgram != null) {
+              lima-config-materialize = {
+                type = "app";
+                program = limaMaterializerAppProgram;
+              };
+            })
+            // (nixpkgs.lib.optionalAttrs (autofsNetMaterializerProgram != null) {
+              nfs-autofs-net-materialize = {
+                type = "app";
+                program = autofsNetMaterializerProgram;
+              };
+            });
 
           # Home Manager configurations for direct use
           homeManagerConfigurations =
@@ -737,6 +795,15 @@
             darwin = pkgsForDarwin;
             linux = pkgsForLinux;
           };
+
+          packages = nixpkgs.lib.optionalAttrs (hostDarwinPackages != { }) {
+            aarch64-darwin = hostDarwinPackages;
+          };
+
+          apps = nixpkgs.lib.optionalAttrs (hostDarwinApps != { }) {
+            aarch64-darwin = hostDarwinApps;
+          };
+
           defaultPackage."aarch64-darwin" = darwinConfiguration.system;
         };
 

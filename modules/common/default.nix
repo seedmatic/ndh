@@ -1,6 +1,7 @@
 {
   config,
   lib,
+  options,
   pkgs,
   self,
   catalog,
@@ -9,6 +10,7 @@
 }:
 let
   userMapping = catalog.users;
+  isNixosPlatform = options ? systemd;
   hostImageMode =
     if hostProfile != null && hostProfile ? nixosImageMode && hostProfile.nixosImageMode != null then
       hostProfile.nixosImageMode
@@ -16,7 +18,7 @@ let
       "full";
   # Bootstrap image mode is a NixOS guest concern. Keep Home Manager enabled on
   # Darwin hosts even when they orchestrate bootstrap guest flows.
-  bringupModeInternal = pkgs.stdenv.isLinux && hostImageMode == "bootstrap";
+  bringupModeInternal = isNixosPlatform && hostImageMode == "bootstrap";
   requestedHomeManagerEnabled =
     if hostProfile != null && hostProfile ? enableHomeManager && hostProfile.enableHomeManager != null then
       hostProfile.enableHomeManager

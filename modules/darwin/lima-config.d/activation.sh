@@ -44,6 +44,14 @@ main() {
   : "Stage NixOS disk image to stable path"
   img_src="@imageSourcePath@"
   img_dst="@imageTargetPath@"
+
+  if [[ "$img_src" == /net/* || "$img_dst" == /net/* ]]; then
+    if [ ! -d /net ]; then
+      echo "[limaConfig][WARN] /net is missing but image paths use /net (autofs prerequisite not met)"
+      echo "[limaConfig][HINT] enable services.nfsDarwin.autofs for mountPoint=/net, then rerun lima-config-materialize"
+    fi
+  fi
+
   mkdir -p "$(dirname "$img_dst")"
   if [ -f "$img_src" ]; then
     if [ "$img_src" = "$img_dst" ]; then
@@ -68,7 +76,11 @@ main() {
     echo "[limaConfig] headless size=$(wc -c < "@limaConfigYamlHeadless@")"
     echo "[limaConfig] gui size=$(wc -c < "@limaConfigYamlGui@")"
     grep -E 'gateway|clusterId|display' "@limaConfigYamlHeadless@" || true
-    touch /var/db/lima-config-generated
+    if [ -w /var/db ]; then
+      touch /var/db/lima-config-generated
+    else
+      echo "[limaConfig][INFO] skipping /var/db/lima-config-generated marker (insufficient privileges)"
+    fi
   else
     echo "[limaConfig][ERROR] lima.yaml missing after generation attempt"
   fi
