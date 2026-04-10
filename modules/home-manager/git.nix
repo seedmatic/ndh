@@ -18,7 +18,7 @@ in
 {
   imports = [
     ./git.d/sops.nix
-    ../common/ssh-paths.nix
+    ../.common.d/ssh-paths.nix
   ];
 
   home.packages = [ pkgs.github-cli ];

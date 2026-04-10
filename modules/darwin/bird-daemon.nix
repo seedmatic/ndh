@@ -119,7 +119,7 @@ let
     inherit createUserScript;
     user = cfg.user;
     group = cfg.group;
-    logger = ../common/shell.d/logger.sh;
+    logger = ../.common.d/shell.d/logger.sh;
     loggerTag = "darwin.activationScripts.postActivation.bird";
   };
 in

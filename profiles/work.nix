@@ -11,7 +11,7 @@ let
   workUser = users.work;
 in
 {
-  imports = [ ./common.nix ];
+  imports = [ ./.common.nix ];
   profile = {
     name = mkDefault "work";
     email = mkDefault workUser.email;

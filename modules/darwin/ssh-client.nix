@@ -23,7 +23,7 @@ let
 
 in
 {
-  imports = [ ../common/ssh-paths.nix ];
+  imports = [ ../.common.d/ssh-paths.nix ];
 
   options.sshClient = {
     enable = mkOption {

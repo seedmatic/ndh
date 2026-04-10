@@ -8,7 +8,7 @@
 }:
 {
   imports = [
-    ../common
+    ../.common.d
     ./preferences.nix
     ./security.nix
     ./core.nix

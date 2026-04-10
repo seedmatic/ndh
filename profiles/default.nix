@@ -1,7 +1,7 @@
 { ... }:
 {
   imports = [
-    ./common.nix
+    ./.common.nix
     ./committed.nix
     ./work.nix
   ];

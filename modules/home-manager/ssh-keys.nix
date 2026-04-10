@@ -52,7 +52,7 @@ let
   knownHostsScript =
     ndh.store.runCommand "ssh-ca-known-hosts" { } ''
       cp ${pkgs.replaceVars ./ssh.d/scripts/ca-known-hosts-command.sh {
-        bashTrampoline = "${../common/shell.d/nix-bash-trampoline.sh}";
+        bashTrampoline = "${../.common.d/shell.d/nix-bash-trampoline.sh}";
         logger = logger;
         caDir = authorityKeysDir;
       }} "$out"
@@ -63,7 +63,7 @@ in
 {
   imports = [
     ./ssh-add-keys.nix
-    ../common/ssh-paths.nix
+    ../.common.d/ssh-paths.nix
   ];
 
   ssh-add-keys = {
@@ -107,7 +107,7 @@ in
     let
 
       sshGenerateKeysYamlScriptSource = pkgs.replaceVars ./ssh-key.d/ssh-generate-keys-yaml.sh {
-        bashTrampoline = "${../common/shell.d/nix-bash-trampoline.sh}";
+        bashTrampoline = "${../.common.d/shell.d/nix-bash-trampoline.sh}";
         logger = logger;
         loggerTag = loggerTagGenerate;
       };
@@ -123,7 +123,7 @@ in
       };
 
       sshExtractKeysScriptSource = pkgs.replaceVars ./ssh-key.d/ssh-extract-keys.sh {
-        bashTrampoline = "${../common/shell.d/nix-bash-trampoline.sh}";
+        bashTrampoline = "${../.common.d/shell.d/nix-bash-trampoline.sh}";
         logger = logger;
         loggerTag = loggerTagExtract;
         splitExpFile = sshExtractKeysSplitExpFile;
@@ -134,7 +134,7 @@ in
       };
 
       ensureAuthorizedKeysScriptSource = pkgs.replaceVars ./ssh-key.d/ssh-ensure-authorized-keys.sh {
-        bashTrampoline = "${../common/shell.d/nix-bash-trampoline.sh}";
+        bashTrampoline = "${../.common.d/shell.d/nix-bash-trampoline.sh}";
         logger = logger;
         loggerTag = loggerTagAuthorized;
       };

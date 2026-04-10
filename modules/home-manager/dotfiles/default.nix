@@ -1,6 +1,6 @@
 { pkgs, lib, ... }:
 let
-  nixpkgsConfigFile = ../../common/nixpkgs-config.nix;
+  nixpkgsConfigFile = ../../.common.d/nixpkgs-config.nix;
 in
 {
   xdg.dataFile = {

@@ -13,7 +13,7 @@ let
 in
 
 {
-  imports = [ ../common/ssh-paths.nix ];
+  imports = [ ../.common.d/ssh-paths.nix ];
 
   # System-wide shell configuration for keychain initialization
   # This adds keychain support to all interactive shells for all users.

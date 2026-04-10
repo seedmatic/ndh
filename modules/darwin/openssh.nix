@@ -17,12 +17,12 @@ let
   hostKeyPrivateFile = sshPaths.privKeyFile;
   hostKeyPublicCert = sshPaths.hostCertPublic;
   caPublicKeyFile = "${config.opensshPolicy.keysDir}/trusted-user-ca.pub";
-  principalsScriptStore = pkgs.replaceVars ../common/ssh/authorized-principals-command.sh {
-    bashTrampoline = "${../common/shell.d/nix-bash-trampoline.sh}";
+  principalsScriptStore = pkgs.replaceVars ../.common.d/ssh/authorized-principals-command.sh {
+    bashTrampoline = "${../.common.d/shell.d/nix-bash-trampoline.sh}";
     logger = loggerScript;
   };
-  groupKeysScriptStore = pkgs.replaceVars ../common/ssh/ssh-group-authorized-keys.sh {
-    bashTrampoline = "${../common/shell.d/nix-bash-trampoline.sh}";
+  groupKeysScriptStore = pkgs.replaceVars ../.common.d/ssh/ssh-group-authorized-keys.sh {
+    bashTrampoline = "${../.common.d/shell.d/nix-bash-trampoline.sh}";
     logger = loggerScript;
     authorizedKeysDir = config.opensshPolicy.authorizedKeysDir;
   };
@@ -99,8 +99,8 @@ let
 in
 {
   imports = [
-    ../common/openssh-policy.nix
-    ../common/ssh-paths.nix
+    ../.common.d/openssh-policy.nix
+    ../.common.d/ssh-paths.nix
   ];
 
   config = {

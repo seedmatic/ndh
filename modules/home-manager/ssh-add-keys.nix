@@ -21,7 +21,7 @@ let
   allowedKeyNamesDefault = [ sshPaths.keyName ];
   allowedKeyNamesCsv = lib.concatStringsSep "," cfg.allowedKeyNames;
   renderedSshAddKeysScript = pkgs.replaceVars ./ssh-key.d/ssh-add-keys.sh {
-    bashTrampoline = "${../common/shell.d/nix-bash-trampoline.sh}";
+    bashTrampoline = "${../.common.d/shell.d/nix-bash-trampoline.sh}";
     logger = config._module.specialArgs.logger.script;
     allowedKeyNamesCsv = allowedKeyNamesCsv;
   };
@@ -42,7 +42,7 @@ let
   };
 in
 {
-  imports = [ ../common/ssh-paths.nix ];
+  imports = [ ../.common.d/ssh-paths.nix ];
 
   options.ssh-add-keys = {
     enable = mkEnableOption "Enable loading private keys from the generated keys.yaml into ssh-agent.";

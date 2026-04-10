@@ -173,7 +173,7 @@ in
   };
 
   imports = [
-    ../../profiles/common.nix
+    ../../profiles/.common.nix
     ./cachix-watch-store.nix
     ./sops.nix
     ./primary-user.nix

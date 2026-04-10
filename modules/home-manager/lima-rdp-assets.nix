@@ -13,7 +13,7 @@ let
   loggerTag = "home-manager.activationScripts.${userName}.provisionLimaRdpAssets";
 
   provisionLimaAssetsScript = pkgs.replaceVars ./lima-rdp-assets.d/provision.sh {
-    bashTrampoline = "${../common/shell.d/nix-bash-trampoline.sh}";
+    bashTrampoline = "${../.common.d/shell.d/nix-bash-trampoline.sh}";
     logger = logger;
     loggerTag = loggerTag;
     homeDir = homeDir;
@@ -22,7 +22,7 @@ let
   };
 in
 {
-  imports = [ ../common/ssh-paths.nix ];
+  imports = [ ../.common.d/ssh-paths.nix ];
 
   home.activation.provisionLimaRdpAssets =
     lib.hm.dag.entryAfter [ "extractSSHKeys" ] ''

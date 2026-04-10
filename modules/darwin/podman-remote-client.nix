@@ -15,12 +15,12 @@ let
 
   generateContainersConf = pkgs.replaceVars ./podman-remote-client.d/generate-containers-conf.sh {
     inherit dollar profileUser;
-    bashTrampoline = "${../common/shell.d/nix-bash-trampoline.sh}";
+    bashTrampoline = "${../.common.d/shell.d/nix-bash-trampoline.sh}";
   };
 
   podmanRemoteSetupScript = pkgs.replaceVars ./podman-remote-client.d/podman-remote-setup.sh {
     inherit dollar profileUser generateContainersConf;
-    bashTrampoline = "${../common/shell.d/nix-bash-trampoline.sh}";
+    bashTrampoline = "${../.common.d/shell.d/nix-bash-trampoline.sh}";
   };
 
   podman-remote-setup = ndh.store.runCommand "podman-remote-setup" { } ''

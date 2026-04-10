@@ -51,7 +51,7 @@ in
   home.activation.zdotdir =
     let
       zdotdirScript = pkgs.replaceVars ./shell.d/zdotdir.sh {
-        bashTrampoline = "${../common/shell.d/nix-bash-trampoline.sh}";
+        bashTrampoline = "${../.common.d/shell.d/nix-bash-trampoline.sh}";
         caBundle = "${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt";
         logger = logger;
         loggerTag = loggerTagZdotdir;

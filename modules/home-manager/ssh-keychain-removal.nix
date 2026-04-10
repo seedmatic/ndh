@@ -12,7 +12,7 @@ let
     "specialArgs"
     "logger"
     "script"
-  ] ../common/shell.d/logger.sh config;
+  ] ../.common.d/shell.d/logger.sh config;
   loggerTag = "home-manager.activationScripts.${userName}.removeUseKeychain";
 in
 # Remove any UseKeychain directive from ~/.ssh/config (@codebase)

@@ -8,7 +8,7 @@
 }:
 let
   networkCatalog = catalog.networks or { };
-  shared = import ../common/nfs-shared.nix;
+  shared = import ../.common.d/nfs-shared.nix;
   # WARNING: Never let ZFS datasets or overlays mount or traverse /net (autofs)!
   # This prevents ZFS from hanging on network errors or unavailable NFS hosts.
   cfg = config.services.nfsDarwin;
