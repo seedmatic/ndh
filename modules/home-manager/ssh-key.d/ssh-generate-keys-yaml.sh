@@ -213,7 +213,10 @@ authority::signKey() {
 	: "Construct the variable names for the public's key (derive key name locally to avoid outer-scope reliance)"
 	local keyPublicLine keyPublicTmpFile keyNameLocal
 	keyNameLocal="$(key::name "${keyVar}")"
-	keyPublicLine="$(key::value "type") $(key::value "public") $(key::value "comment")"
+	local keyPublicRaw keyPublicBlob
+	keyPublicRaw="$(key::value "public")"
+	keyPublicBlob="$(key::publicBlob "$keyPublicRaw")"
+	keyPublicLine="$(key::value "type") ${keyPublicBlob} $(key::value "comment")"
 	keyPublicTmpFile="${tmpdir}/${keyNameLocal}.pub"
 	tmpfiles+=("$keyPublicTmpFile")
 	cat <<<"${keyPublicLine}" >"$keyPublicTmpFile"
@@ -286,6 +289,20 @@ key::value() {
 	local var
 	var=$(var::snakeCase "${keyVar}" "${@}")
 	echo "${!var:-}"
+}
+
+: "Normalize public key material to base64 blob (accept both raw blob and full SSH public line)."
+key::publicBlob() {
+	local publicRaw="${1:-}"
+	[[ -n "$publicRaw" ]] || return 1
+
+	local first second
+	read -r first second _ <<<"$publicRaw"
+	if [[ "$first" == ssh-* && -n "$second" ]]; then
+		echo "$second"
+	else
+		echo "$first"
+	fi
 }
 
 : "Function to get the array values of a key field"
@@ -426,12 +443,13 @@ $(
 			keyVar="$(var::snakeCase "${profileVarPrefix}" "${keyName}")"
 
 			# shellcheck disable=SC2034
-			local authorityHostNames keyUsage keyType keyComment keyPublic keyPrivate authorityUsage annotatedComment
+			local authorityHostNames keyUsage keyType keyComment keyPublic keyPrivate authorityUsage annotatedComment keyPublicRaw
 			readarray -t keyUsage < <(key::usage)
 			# shellcheck disable=SC2034
 			keyType=$(key::value type)
 			keyComment=$(key::value comment)
-			keyPublic=$(key::value public)
+			keyPublicRaw="$(key::value public)"
+			keyPublic="$(key::publicBlob "$keyPublicRaw")"
 			keyPrivate=$(key::value private)
 			# shellcheck disable=SC2034
 			annotatedComment="$(key::annotatedComment "$keyName" "$keyComment" "${keyUsage[@]}")"

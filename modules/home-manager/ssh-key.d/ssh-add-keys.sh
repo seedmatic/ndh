@@ -132,6 +132,20 @@ ndh::ssh:keys:agent:managed:rotate:begin() {
 	done < <(ssh-add -L 2>/dev/null || true)
 }
 
+ndh::ssh:keys:public:line:normalize() {
+	local line="${1:-}"
+	[[ -n "$line" ]] || return 1
+
+	local f1 f2 rest
+	read -r f1 f2 rest <<<"$line"
+	if [[ "$f1" == ssh-* && "$f2" == ssh-* ]]; then
+		printf '%s %s\n' "$f1" "$rest"
+		return 0
+	fi
+
+	printf '%s\n' "$line"
+}
+
 ndh::ssh:keys:public:collect() {
 	local keyList="${1:?key list required}"
 	local keysDir="${2:?keys dir required}"
@@ -152,7 +166,10 @@ ndh::ssh:keys:public:collect() {
 		ssh-add "$keyPath" 2>/dev/null || true
 
 		if [[ -f "$pubPath" ]]; then
-			cat "$pubPath" >>"$generatedTmp"
+			while IFS= read -r pubLine; do
+				[[ -n "$pubLine" ]] || continue
+				ndh::ssh:keys:public:line:normalize "$pubLine" >>"$generatedTmp"
+			done <"$pubPath"
 		fi
 	done <<<"$keyList"
 }
