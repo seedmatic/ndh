@@ -9,3 +9,4 @@ nixos.qcow2
 .run.d
 .local.d
 tmp/
+.zsh_history.copilot.hidden

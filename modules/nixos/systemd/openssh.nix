@@ -65,6 +65,31 @@ ${formatPrincipals allPrincipals}
   # Use the wrapped activation logger packaged into the system closure
   activationLogger = config.activation.loggerScript;
   activationTag = "nixos.activationScripts.sshGroupKeys";
+  hasSopsInstallSecretsService = builtins.hasAttr "sops-install-secrets" config.systemd.services;
+  hostkeyEnrollmentCheckTag = "nixos.services.nxmatic.hostkeyEnrollmentCheck";
+  hostkeyEnrollmentSyncTag = "nixos.services.nxmatic.hostkeyEnrollmentSync";
+  hostkeyEnrollmentCheckScript = pkgs.replaceVars ./openssh.d/hostkey-enrollment-check.sh {
+    loggerBin = pkgs.util-linux;
+    sshKeygen = "${pkgs.openssh}/bin/ssh-keygen";
+    logTag = hostkeyEnrollmentCheckTag;
+    userPrivateSourceDir = config.sshPaths.perUserSecretsDir;
+    userCaSourceDir = config.sshPaths.systemSecretsDir;
+    systemHostKeyPub = "${hostKeyPath}.pub";
+  };
+  hostkeyEnrollmentSyncScript = pkgs.replaceVars ./openssh.d/hostkey-enrollment-sync.sh {
+    loggerBin = pkgs.util-linux;
+    sshBin = pkgs.openssh;
+    sshKeygen = pkgs.openssh;
+    yqBin = pkgs.yq-go;
+    logTag = hostkeyEnrollmentSyncTag;
+    runtimeSecretsKeysYaml = config.sshPaths.runtimeSecretsKeysYaml;
+    clientPrivateSource = config.sshPaths.privKeyFile;
+    clientUserCertSource = "${config.sshPaths.perUserSecretsDir}/rdp-host-cert.pub";
+    fallbackHost = config.limaHost.hostName;
+    remoteUser = config.profile.user.name;
+    remoteRepo = "/var/lib/git/nxmatic/nix-darwin-home";
+    guestName = config.limaHost.guestName;
+  };
 in
 {
   imports = [
@@ -165,6 +190,36 @@ in
 
   # Ensure all systemd services (including sshd) inherit a wrapper-first PATH
   systemd.globalEnvironment.PATH = config.opensshPolicy.setEnvPath;
+
+  systemd.services.nxmatic-hostkey-enrollment-check = {
+    description = "Check whether host key enrollment into encrypted secrets is required (@codebase)";
+    wantedBy = [ "sshd.service" ];
+    before = [ "sshd.service" ];
+    wants = lib.optionals hasSopsInstallSecretsService [ "sops-install-secrets.service" ];
+    after = lib.optionals hasSopsInstallSecretsService [ "sops-install-secrets.service" ];
+    serviceConfig = {
+      Type = "oneshot";
+      ExecStart = "${pkgs.bash}/bin/bash ${hostkeyEnrollmentCheckScript}";
+    };
+  };
+
+  systemd.services.nxmatic-hostkey-enrollment-sync = {
+    description = "Run remote hostkey enrollment sync when drift marker is present (@codebase)";
+    wantedBy = [ "multi-user.target" ];
+    wants = [
+      "network-online.target"
+      "nxmatic-hostkey-enrollment-check.service"
+    ];
+    after = [
+      "network-online.target"
+      "nxmatic-hostkey-enrollment-check.service"
+    ];
+    unitConfig.ConditionPathExists = "/run/nxmatic/ssh/hostkey-enrollment-required";
+    serviceConfig = {
+      Type = "oneshot";
+      ExecStart = "${pkgs.bash}/bin/bash ${hostkeyEnrollmentSyncScript}";
+    };
+  };
 
   # Provide principals metadata in a system-readable location for
   # AuthorizedPrincipalsCommand (which runs as an unprivileged user).

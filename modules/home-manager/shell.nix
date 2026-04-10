@@ -20,30 +20,12 @@ let
     "/run/current-system/sw/bin"
     "/etc/profiles/per-user/${userName}/bin"
   ];
-  # VS Code shell integration
-  # If VS Code is injecting (VSCODE_INJECTION=1), it will handle integration automatically
-  # Otherwise, we manually source it for proper shell integration features
-  vscodeShellIntegration = shell: ''
-    # Only manually source if VS Code hasn't already injected the integration
-    if [[ "$TERM_PROGRAM" == "vscode" && -z "$VSCODE_INJECTION" ]]; then
-      vscode_bin="$(command -v code-insiders || command -v code || true)"
-      if [[ -n "$vscode_bin" ]]; then
-        VSCODE_SHELL_INTEGRATION="$("$vscode_bin" --locate-shell-integration-path ${shell} 2>/dev/null)"
-      else
-        VSCODE_SHELL_INTEGRATION=""
-      fi
-      if [[ -n "$VSCODE_SHELL_INTEGRATION" && -f "$VSCODE_SHELL_INTEGRATION" ]]; then
-        # Set the variable that the integration script expects when manually sourced
-        VSCODE_INJECTION=1
-        USER_ZDOTDIR="$ZDOTDIR"
-        builtin source "$VSCODE_SHELL_INTEGRATION"
-        TERM=xterm-256color
-      fi
-    fi
-  '';
   # Use platform-provided logger script from specialArgs (required)
   activationLogger = config._module.specialArgs.activationLogger.script;
   activationTagZdotdir = "home-manager.activationScripts.${userName}.zdotdir";
+  zshInitContent = pkgs.replaceVars ./shell.d/zsh-init.zsh {
+    linuxWrappersLine = lib.optionalString pkgs.stdenvNoCC.isLinux "/run/wrappers/bin";
+  };
 in
 {
   programs.zsh = {
@@ -55,37 +37,7 @@ in
 
     envExtra = builtins.readFile ./shell.d/zshenv.zsh;
 
-    initContent = ''
-      : "ssh agent settings"
-      source <( "${pkgs.keychain}/bin/keychain --eval --quiet )" )
-      : "vscode settings"
-      ${vscodeShellIntegration "zsh"}
-      : "and my own stuff"
-      if [[ -r "$ZDOTDIR/rcs/zshrc.zsh" ]]; then
-        source "$ZDOTDIR/rcs/zshrc.zsh"
-      fi
-
-      # Normalize PATH after external zshrc/plugin mutations.
-      # Keep canonical Nix paths and remove stale foreign-home entries.
-      typeset -U path
-      path=( ''${path:#/Users/stephane.lacoin/*} )
-      path=(
-        "$HOME/.local/bin"
-        "$HOME/.local/share/pnpm"
-        "$HOME/.local/opt/lima-vm/bin"
-        "$HOME/.nix-profile/bin"
-${lib.optionalString pkgs.stdenvNoCC.isLinux "        /run/wrappers/bin"}
-        /run/current-system/sw/bin
-        "/etc/profiles/per-user/$USER/bin"
-        "''${path[@]}"
-      )
-      export PATH="''${(j/:/)path}"
-
-      # Avoid autofs trigger on the first-level /net mountpoint, but allow
-      # completion once inside /net/<host>/...
-      zstyle ':completion:*:paths' ignored-patterns '/net'
-      zstyle ':completion:*:(cd|chdir|pushd|popd|ls):*' ignored-patterns '/net'
-    '';
+    initContent = builtins.readFile zshInitContent;
   };
 
   programs.bash = {

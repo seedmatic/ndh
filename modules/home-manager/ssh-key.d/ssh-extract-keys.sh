@@ -13,7 +13,7 @@ main() {
 		cat <<'EOE' | cut -c 3-
   .keys | to_entries[] | 
   env(TMPDIR) + "/" as $tmpdir |
-  ( .key | sub("_", "-") ) as $basename |
+  ( .key | gsub("_", "-") ) as $basename |
   ( $basename + ".yaml" ) as $yamlfile |
   ( $tmpdir + $yamlfile ) as $yamlfile |
   .value.private as $private | 
@@ -88,9 +88,16 @@ EOE
       contentFile="$userOutputDir/$filename"
     fi
 		mv "$yamlFile" "$contentFile"
-		@yq@ --inplace eval '.content | trim' "$contentFile"
+		contentTmp="$(mktemp)"
+		@yq@ eval -r '.content' "$contentFile" > "$contentTmp"
+		mv "$contentTmp" "$contentFile"
     if [[ "$filename" == *.pub ]]; then
       chmod 644 "$contentFile"
+      if [[ "$filename" == *-cert.pub ]]; then
+        @ssh-keygen@ -Lf "$contentFile" >/dev/null
+      else
+        @ssh-keygen@ -lf "$contentFile" >/dev/null
+      fi
     else
       chmod 600 "$contentFile"
     fi

@@ -68,27 +68,52 @@ main() {
 
     local tmp_part_file
     tmp_part_file="$(mktemp "${TMPDIR:-/tmp}/zshrc.part.zsh.XXXXXX")"
-    {
-      printf '%s\n' '# Managed by nix-darwin-home (do not edit manually).'
-      printf '%s\n' ''
-      printf '%s\n' '# Load home Flox environment early for interactive workflows.'
-      printf '%s\n' 'if command -v flox >/dev/null 2>&1 && [ -z "${NIX_DARWIN_HOME_FLOX_LOADED:-}" ]; then'
-      printf '%s\n' '  typeset -g NIX_DARWIN_HOME_FLOX_LOADED=1'
-      printf '%s\n' '  if [ -n "${NIX_DARWIN_HOME_FLOX_ENV_DIR:-}" ] && [ -d "${NIX_DARWIN_HOME_FLOX_ENV_DIR}/.flox" ]; then'
-      printf '%s\n' '    source <(flox activate --dir "${NIX_DARWIN_HOME_FLOX_ENV_DIR}") || true'
-      printf '%s\n' '  elif [ -d "/var/lib/git/nxmatic/nix-darwin-home/.flox" ]; then'
-      printf '%s\n' '    source <(flox activate --dir "/var/lib/git/nxmatic/nix-darwin-home") || true'
-      printf '%s\n' '  elif [ -d "/Volumes/Git Worktree Store/nxmatic/nix-darwin-home/.flox" ]; then'
-      printf '%s\n' '    source <(flox activate --dir "/Volumes/Git Worktree Store/nxmatic/nix-darwin-home") || true'
-      printf '%s\n' '  fi'
-      printf '%s\n' 'fi'
-      printf '%s\n' ''
-      printf '%s\n' '# Normalize PATH after plugin mutations.'
-      printf '%s\n' 'typeset -U path'
-      printf '%s\n' 'path=( ${path:#/Users/stephane.lacoin/*} )'
-      printf '%s\n' 'path=( "$HOME/.local/bin" "$HOME/.local/share/pnpm" "$HOME/.local/opt/lima-vm/bin" "$HOME/.nix-profile/bin" /run/wrappers/bin /run/current-system/sw/bin "/etc/profiles/per-user/$USER/bin" "${path[@]}" )'
-      printf '%s\n' 'export PATH="${(j/:/)path}"'
-    } > "$tmp_part_file"
+    cat > "$tmp_part_file" <<'EOF'
+# Managed by nix-darwin-home (do not edit manually).
+
+# Load home Flox environment early for interactive workflows.
+if command -v flox >/dev/null 2>&1 && [ -z "${NIX_DARWIN_HOME_FLOX_LOADED:-}" ]; then
+  typeset -g NIX_DARWIN_HOME_FLOX_LOADED=1
+  if [ -n "${NIX_DARWIN_HOME_FLOX_ENV_DIR:-}" ] && [ -d "${NIX_DARWIN_HOME_FLOX_ENV_DIR}/.flox" ]; then
+    source <(flox activate --dir "${NIX_DARWIN_HOME_FLOX_ENV_DIR}") || true
+  elif [ -d "/var/lib/git/nxmatic/nix-darwin-home/.flox" ]; then
+    source <(flox activate --dir "/var/lib/git/nxmatic/nix-darwin-home") || true
+  elif [ -d "/Volumes/Git Worktree Store/nxmatic/nix-darwin-home/.flox" ]; then
+    source <(flox activate --dir "/Volumes/Git Worktree Store/nxmatic/nix-darwin-home") || true
+  fi
+fi
+
+# Normalize PATH after plugin mutations.
+typeset -U path
+path=( ${path:#/Users/stephane.lacoin/*} )
+path=( "$HOME/.local/bin" "$HOME/.local/share/pnpm" "$HOME/.local/opt/lima-vm/bin" "$HOME/.nix-profile/bin" /run/wrappers/bin /run/current-system/sw/bin "/etc/profiles/per-user/$USER/bin" "${path[@]}" )
+export PATH="${(j/:/)path}"
+
+# In Copilot/agent-owned VS Code terminals, force a simple stable prompt and
+# ensure this hook runs after theme hooks (e.g. powerlevel10k).
+# Keep the user's regular interactive terminals on their preferred prompt.
+if [[ "${TERM_PROGRAM:-}" == "vscode" ]] && {
+  [[ "${VSCODE_PREVENT_SHELL_HISTORY:-}" == "1" ]] ||
+  [[ ":${PATH}:" == *":$HOME/Library/Application Support/Code - InsidersP/User/globalStorage/github.copilot-chat/debugCommand:"* ]];
+}; then
+  # Disable powerlevel10k prompt rendering in agent-owned terminals.
+  precmd_functions=(${precmd_functions:#_p9k_precmd})
+  if typeset -f _p9k_precmd >/dev/null 2>&1; then
+    functions[_p9k_precmd]='return 0'
+  fi
+
+  nxmatic_safe_prompt() {
+    PROMPT="%n@%m:%~ %# "
+    RPROMPT=""
+  }
+  precmd_functions=(${precmd_functions:#nxmatic_safe_prompt} nxmatic_safe_prompt)
+  nxmatic_safe_prompt
+fi
+
+# Keep powerlevel10k instant prompt happy when active in user terminals.
+(( ! ${+functions[p10k]} )) || p10k finalize
+true
+EOF
     mv "$tmp_part_file" "$zshrc_part_file"
 
     source_begin_count="$(grep -cF "$source_begin_marker" "$zshrc_file" || true)"
@@ -100,11 +125,12 @@ main() {
     fi
 
     if [ "$source_begin_count" -eq 0 ]; then
-      {
-        printf '\n%s\n' "$source_begin_marker"
-        printf '%s\n' '[[ -f "$HOME/.config/zsh/.zshrc.part.zsh" ]] && source "$HOME/.config/zsh/.zshrc.part.zsh"'
-        printf '%s\n' "$source_end_marker"
-      } >> "$zshrc_file"
+      echo >> "$zshrc_file"
+      cat >> "$zshrc_file" <<'EOF'
+# BEGIN nix-darwin-home sourced part
+[[ -f "$HOME/.config/zsh/.zshrc.part.zsh" ]] && source "$HOME/.config/zsh/.zshrc.part.zsh"
+# END nix-darwin-home sourced part
+EOF
     fi
   fi
 }

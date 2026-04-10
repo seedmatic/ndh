@@ -474,8 +474,10 @@ main() {
       key::process "$keyName"
   done
 
-  : "Output the updated keys in a YAML file"	
-  keys::toYAML | tee /tmp/keys.yaml >"$outputFile"
+    : "Output the updated keys in a YAML file" 	
+    keys::toYAML | tee /tmp/keys.yaml >"$outputFile"
+    : "Keep decrypted runtime keys file read-only to discourage direct edits"
+    chmod 0400 "$outputFile"
 }
 
 activation_run "@activationTag@" main "$@"
