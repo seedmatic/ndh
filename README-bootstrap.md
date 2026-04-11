@@ -182,10 +182,10 @@ Build the disk image for the host you're currently running on:
 
 ```bash
 # If you're on bioskop, build bioskop's NixOS disk image
-nix build ./hosts/bioskop#nixosDiskImage
+nix build .#nixosDiskImages.bioskop.full
 
 # If you're on nikopol, build nikopol's NixOS disk image  
-nix build ./hosts/nikopol#nixosDiskImage
+nix build .#nixosDiskImages.nikopol.full
 
 # This creates a disk image at ./result/nixos.img
 # The build uses the increased linux-builder disk size to avoid space issues
