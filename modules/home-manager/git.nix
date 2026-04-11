@@ -101,15 +101,16 @@ in
 
     # Only the includeIf block here
     "git/config.d/signing" = {
+      # Use absolute path so includeIf resolution is independent of current file location.
       text = ''
         [includeIf "gitdir/i:**/HylandExperience/**"]
-          path = "signing@hyland"
+          path = "${config.xdg.configHome}/git/config.d/signing@hyland"
         [includeIf "gitdir/i:**/HylandSoftware/**"]
-          path = "signing@hyland"
+          path = "${config.xdg.configHome}/git/config.d/signing@hyland"
         [includeIf "gitdir/i:**/HylandPlatformConfiguration/**"]
-          path = "signing@hyland"
+          path = "${config.xdg.configHome}/git/config.d/signing@hyland"
         [includeIf "gitdir/i:**/Alfresco/**"]
-          path = "signing@hyland"
+          path = "${config.xdg.configHome}/git/config.d/signing@hyland"
       '';
     };
 
