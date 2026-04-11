@@ -83,6 +83,9 @@
         { lib, ... }:
         {
           config = {
+            # Keep Darwin user home aligned with vm-mounted persistent volume.
+            profile.user.home = lib.mkForce (builtins.toPath "/Volumes/user-home");
+
             # Keep /net autofs explicit for Lima disk-image path prerequisites.
             services.nfsDarwin = {
               enable = true;

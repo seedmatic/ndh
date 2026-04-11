@@ -102,14 +102,14 @@ in
     # Only the includeIf block here
     "git/config.d/signing" = {
       text = ''
-        [includeIf "gitdir:*/HylandExperience/*"]
-            path = "config.d/signing@hyland"
-        [includeIf "gitdir:*/HylandSoftware/*"]
-            path = "config.d/signing@hyland"  
-        [includeIf "gitdir:*/HylandPlatformConfiguration/*"]
-            path = "config.d/signing@hyland"
-        [includeIf "gitdir:*/Alfresco/*"]
-            path = "config.d/signing@hyland"                     
+        [includeIf "gitdir/i:**/HylandExperience/**"]
+          path = "signing@hyland"
+        [includeIf "gitdir/i:**/HylandSoftware/**"]
+          path = "signing@hyland"
+        [includeIf "gitdir/i:**/HylandPlatformConfiguration/**"]
+          path = "signing@hyland"
+        [includeIf "gitdir/i:**/Alfresco/**"]
+          path = "signing@hyland"
       '';
     };
 

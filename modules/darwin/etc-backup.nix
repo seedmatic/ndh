@@ -1,28 +1,31 @@
 { config, lib, ... }:
 let
-  cfg = config.nxmatic.etcBackup;
+  cfg = config.nxmatic.darwinEtcBackup;
   etcTargets = builtins.attrNames config.environment.etc;
   etcBackupLib = import ../.common.d/etc-backup-lib.nix { inherit lib; };
   backupScript = etcBackupLib.mkEtcBackupScript {
     inherit etcTargets;
     extension = cfg.extension;
     overwrite = cfg.overwrite;
-    managedPrefixes = [ "/nix/store/" ];
+    managedPrefixes = [
+      "/etc/static/"
+      "/nix/store/"
+    ];
     moveConflicts = true;
   };
 in
 {
-  options.nxmatic.etcBackup = {
+  options.nxmatic.darwinEtcBackup = {
     enable = lib.mkOption {
       type = lib.types.bool;
       default = true;
-      description = "Back up existing /etc targets before NixOS etc activation.";
+      description = "Back up conflicting /etc targets before nix-darwin etc reconciliation.";
     };
 
     extension = lib.mkOption {
       type = lib.types.str;
-      default = "nix-backup";
-      description = "Backup extension appended to /etc paths when preserving conflicts.";
+      default = "before-nix-darwin";
+      description = "Backup extension appended to conflicting /etc paths.";
     };
 
     overwrite = lib.mkOption {
@@ -33,10 +36,6 @@ in
   };
 
   config = lib.mkIf cfg.enable {
-    system.activationScripts.nxmaticEtcBackup = {
-      deps = [ "specialfs" ];
-      supportsDryActivation = false;
-      text = backupScript;
-    };
+    system.activationScripts.preActivation.text = lib.mkOrder 5 backupScript;
   };
 }
