@@ -661,7 +661,7 @@
             ;
         };
     in
-    {
+    rec {
       formatter = forAllSystems (
         system:
         let
@@ -1053,6 +1053,42 @@
 
           defaultPackage."aarch64-darwin" = darwinConfiguration.system;
         };
+
+      hostOutputs =
+        let
+          bioskopSpec = import ./hosts/bioskop;
+          nikopolSpec = import ./hosts/nikopol;
+        in
+        {
+          bioskop = mkHostOutputs bioskopSpec;
+          nikopol = mkHostOutputs nikopolSpec;
+        };
+
+      darwinConfigurations =
+        hostOutputs.bioskop.darwinConfigurations
+        // hostOutputs.nikopol.darwinConfigurations;
+
+      nixosConfigurations =
+        hostOutputs.bioskop.nixosConfigurations
+        // hostOutputs.nikopol.nixosConfigurations;
+
+      homeManagerConfigurations = {
+        bioskop = hostOutputs.bioskop.homeManagerConfigurations;
+        nikopol = hostOutputs.nikopol.homeManagerConfigurations;
+      };
+
+      nixosDiskImages = {
+        bioskop = {
+          full = hostOutputs.bioskop.nixosDiskImage;
+          bringupSystemdBoot = hostOutputs.bioskop.nixosDiskImageBringupSystemdBoot;
+          bringupGrub = hostOutputs.bioskop.nixosDiskImageBringupGrub;
+        };
+        nikopol = {
+          full = hostOutputs.nikopol.nixosDiskImage;
+          bringupSystemdBoot = hostOutputs.nikopol.nixosDiskImageBringupSystemdBoot;
+          bringupGrub = hostOutputs.nikopol.nixosDiskImageBringupGrub;
+        };
+      };
 
       overlays = {
         channels = inputs: final: prev: {
