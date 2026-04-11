@@ -23,8 +23,12 @@ main() {
   fi
 
   # Try /etc/ssh/keys.yaml first (system-wide, readable by sshd helper user)
-  # Fall back to user's ~/.ssh/keys.yaml if available.
-  KEYS_FILE="/run/secrets/${USER_NAME}-ssh-keys.yaml"
+  # Fall back to per-user runtime secret when available.
+  KEYS_FILE="/etc/ssh/keys.yaml"
+
+  if [[ ! -r "$KEYS_FILE" ]]; then
+    KEYS_FILE="/run/secrets/${USER_NAME}-ssh-keys.yaml"
+  fi
 
   if [[ ! -r "$KEYS_FILE" ]]; then
     # Fallback to groups

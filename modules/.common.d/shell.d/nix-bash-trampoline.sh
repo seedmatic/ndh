@@ -289,11 +289,11 @@ ndh::nix:bash:path:deduplicate() {
 	local IFS=:
 
 	read -r -a paths <<< "${1:-}"
-	for path in "${paths[@]}"; do
+	for path in "${paths[@]-}"; do
 		[[ -n "$path" ]] || continue
 
 		already_present=0
-		for kept in "${unique_paths[@]}"; do
+		for kept in "${unique_paths[@]-}"; do
 			if [[ "$kept" == "$path" ]]; then
 				already_present=1
 				break

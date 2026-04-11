@@ -70,14 +70,9 @@ let
     let
       boolToYesNo = v: if v then "yes" else "no";
       renderValue = v: if builtins.isBool v then boolToYesNo v else builtins.toString v;
+      hostKeyLines = map (p: "HostKey ${p}") config.opensshPolicy.hostKeys;
       policyLines = lib.mapAttrsToList (k: v: "${k} ${renderValue v}") config.opensshPolicy.settings;
-      certAlready = lib.any (l: lib.hasPrefix "HostCertificate " l) policyLines;
-      certLine =
-        if (!certAlready && config.opensshPolicy.settings ? HostCertificate) then
-          [ "HostCertificate ${config.opensshPolicy.settings.HostCertificate}" ]
-        else
-          [ ];
-      all = certLine ++ policyLines;
+      all = hostKeyLines ++ policyLines;
     in
     lib.concatStringsSep "\n" all + "\n";
 
@@ -85,6 +80,13 @@ let
     # Managed by nix-darwin (modules/darwin/openssh.nix)
     # Keep a canonical base file so sshd always has an entrypoint.
     Include /etc/ssh/sshd_config.d/*.conf
+  '';
+
+  canonicalAuthorizedKeysDropIn = ''
+    # Managed by modules/darwin/openssh.nix
+    # Keep AuthorizedKeysCommand canonical and consistent with NDH policy.
+    AuthorizedKeysCommand ${config.opensshPolicy.canonicalCommandDir}/${config.opensshPolicy.canonicalGroupKeysCommandName} %u
+    AuthorizedKeysCommandUser ${config.opensshPolicy.groupCommandUser}
   '';
 
   opensshActivationScript = pkgs.replaceVars ./openssh.d/openssh-activation.sh {
@@ -148,6 +150,9 @@ in
     # Keep NDH policy in a dedicated late drop-in so precedence is explicit.
     # nix-darwin still manages service enablement and host key lifecycle.
     environment.etc."ssh/sshd_config".text = baseSshdConfigText;
+    # Canonicalize legacy 101 drop-in emitted by nix-darwin to avoid /bin/cat
+    # probing per-user files (e.g. /etc/ssh/nix_authorized_keys.d/%u).
+    environment.etc."ssh/sshd_config.d/101-authorized-keys.conf".text = canonicalAuthorizedKeysDropIn;
     environment.etc."ssh/sshd_config.d/999-ndh.conf".text = ndhSshdConfigText;
 
     # Darwin option surface for OpenSSH is intentionally small
