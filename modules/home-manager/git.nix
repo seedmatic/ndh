@@ -10,6 +10,7 @@ let
   userEmail = profile.email;
   sshPaths = config.sshPaths;
   hostKeysDir = sshPaths.authoritySecretsDir;
+  signingKeysDir = sshPaths.secretsKeysDir;
   allowedSignersFile = "${config.xdg.configHome}/git/github_allowed_signers";
   systemCaBundle = config.home.sessionVariables.SSL_CERT_FILE;
   logger = config._module.specialArgs.logger.script;
@@ -27,7 +28,7 @@ in
     enable = true;
 
     signing = {
-      key = "${hostKeysDir}/github-signing.pub";
+      key = "${signingKeysDir}/github-signing.pub";
       format = "ssh";
       signByDefault = true;
     };
@@ -118,7 +119,7 @@ in
       text = ''
         [user]
             email = stephane.lacoin@hyland.com
-            signingkey = ${hostKeysDir}/github-signing-hyland.pub
+            signingkey = ${signingKeysDir}/github-signing-hyland.pub
       '';
     };
   };
