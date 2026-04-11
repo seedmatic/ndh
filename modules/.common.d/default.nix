@@ -20,7 +20,9 @@ let
   # Darwin hosts even when they orchestrate bootstrap guest flows.
   bringupModeInternal = isNixosPlatform && hostImageMode == "bootstrap";
   requestedHomeManagerEnabled =
-    if hostProfile != null && hostProfile ? enableHomeManager && hostProfile.enableHomeManager != null then
+    if
+      hostProfile != null && hostProfile ? enableHomeManager && hostProfile.enableHomeManager != null
+    then
       hostProfile.enableHomeManager
     else
       true;
@@ -42,8 +44,7 @@ let
   hmUserExists = hmActivationPackage != null;
   storeNamePrefix = "io.nxmatic.nix-darwin-home";
   prefixStoreName =
-    name:
-    if lib.hasPrefix "${storeNamePrefix}-" name then name else "${storeNamePrefix}-${name}";
+    name: if lib.hasPrefix "${storeNamePrefix}-" name then name else "${storeNamePrefix}-${name}";
   loggerBase = ./shell.d/logger.sh;
   loggerScript = pkgs.runCommand (prefixStoreName "logger.sh") { } ''
         cat > "$out" <<'EOF'
@@ -86,12 +87,14 @@ let
       allowSubstitutes ? null,
       mode ? "0555",
     }:
-    pkgs.runCommand (prefixStoreName name) (
-      (lib.optionalAttrs (preferLocalBuild != null) { inherit preferLocalBuild; })
-      // (lib.optionalAttrs (allowSubstitutes != null) { inherit allowSubstitutes; })
-    ) ''
-      install -m ${mode} ${source} "$out"
-    '';
+    pkgs.runCommand (prefixStoreName name)
+      (
+        (lib.optionalAttrs (preferLocalBuild != null) { inherit preferLocalBuild; })
+        // (lib.optionalAttrs (allowSubstitutes != null) { inherit allowSubstitutes; })
+      )
+      ''
+        install -m ${mode} ${source} "$out"
+      '';
 
   ndhStoreAssetLookupSource = pkgs.replaceVars ./shell.d/store-asset-lookup.sh {
     bash = toString pkgs.bash;
@@ -108,7 +111,12 @@ let
 
   ndhStoreAssetLookupPackage = pkgs.writeShellApplication {
     name = "io.nxmatic.nix-darwin-home-store-asset-lookup";
-    runtimeInputs = with pkgs; [ bash coreutils gnugrep nix ];
+    runtimeInputs = with pkgs; [
+      bash
+      coreutils
+      gnugrep
+      nix
+    ];
     text = ''
       export NDH_STORE_PREFIX='${ndhStore.prefix}'
       exec ${pkgs.bash}/bin/bash ${ndhStoreAssetLookupScript} "$@"
@@ -119,7 +127,9 @@ let
     prefix = storeNamePrefix;
     prefixedName = prefixStoreName;
     installScript = installStoreScript;
-    runCommand = name: attrs: text: pkgs.runCommand (prefixedName name) attrs text;
+    runCommand =
+      name: attrs: text:
+      pkgs.runCommand (prefixedName name) attrs text;
     writeText = name: text: pkgs.writeText (prefixedName name) text;
     writeShellScript = name: text: pkgs.writeShellScript (prefixedName name) text;
     lookupScript = ndhStoreAssetLookupScript;
@@ -209,32 +219,36 @@ in
     };
 
     # bootstrap home manager using system config
-    hm = lib.mkIf homeManagerEnabled (import ../home-manager {
-      inherit
-        config
-        pkgs
-        lib
-        user
-        self
-        profile
-        ;
+    hm = lib.mkIf homeManagerEnabled (
+      import ../home-manager {
+        inherit
+          config
+          pkgs
+          lib
+          user
+          self
+          profile
+          ;
 
-      # Provide specialArgs explicitly for direct imports
-      specialArgs = {
-        inherit profile catalog;
-        ndh = { store = ndhStore; };
-        logger = {
-          script = loggerScript;
-          cmd = config.nixBashLogger.cmd;
+        # Provide specialArgs explicitly for direct imports
+        specialArgs = {
+          inherit profile catalog;
+          ndh = {
+            store = ndhStore;
+          };
+          logger = {
+            script = loggerScript;
+            cmd = config.nixBashLogger.cmd;
+          };
+          sshKeysYamlPath = lib.attrByPath [
+            "sops"
+            "secrets"
+            "ssh-keys.yaml"
+            "path"
+          ] "/run/secrets/nix-darwin-home/ssh-keys.yaml" config;
         };
-        sshKeysYamlPath = lib.attrByPath [
-          "sops"
-          "secrets"
-          "ssh-keys.yaml"
-          "path"
-        ] "/run/secrets/nix-darwin-home/ssh-keys.yaml" config;
-      };
-    });
+      }
+    );
 
     # zen-browser = {
     #    enable = false;
@@ -276,7 +290,9 @@ in
       extraSpecialArgs = {
         inherit self catalog;
         profile = config.profile;
-        ndh = { store = ndhStore; };
+        ndh = {
+          store = ndhStore;
+        };
         logger = {
           script = loggerScript;
           cmd = config.nixBashLogger.cmd;

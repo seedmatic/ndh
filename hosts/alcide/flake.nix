@@ -38,14 +38,12 @@
         }:
         {
           imports = [
-            (
-              import ../.common.d/host-common.nix {
-                inherit hostProfile darwinProfile;
-                headscaleServerUrl = "http://192.168.1.193:8080";
-                forceRemoteBuilds = true;
-                preferredBuilderHosts = [ "bioskop" ];
-              }
-            )
+            (import ../.common.d/host-common.nix {
+              inherit hostProfile darwinProfile;
+              headscaleServerUrl = "http://192.168.1.193:8080";
+              forceRemoteBuilds = true;
+              preferredBuilderHosts = [ "bioskop" ];
+            })
           ];
           config = {
             # Host-specific profile additions go here.

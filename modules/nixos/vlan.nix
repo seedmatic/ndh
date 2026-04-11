@@ -17,7 +17,9 @@ let
   addressSourceInterface =
     if cfg.addressSourceInterface != null then cfg.addressSourceInterface else parentInterface;
 
-  vlanSetupScript = ndh.store.writeShellScript "vlan-setup" (builtins.readFile ./vlan.d/vlan-setup.sh);
+  vlanSetupScript = ndh.store.writeShellScript "vlan-setup" (
+    builtins.readFile ./vlan.d/vlan-setup.sh
+  );
 in
 {
   options.networking.vlan = {

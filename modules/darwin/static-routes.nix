@@ -20,16 +20,15 @@ let
     "ensure_route ${escapeShellArg kind} ${destination} ${gateway} ${ifscope}"
   ) cfg.routes;
 
-  ensureRoutesScript =
-    ndh.store.installScript {
-      name = "darwin-static-routes-ensure.sh";
-      source = pkgs.replaceVars ./static-routes.d/ensure.sh {
-        ensureRoutesCommands = routeEnsureCommands;
-      };
-      preferLocalBuild = true;
-      allowSubstitutes = false;
-      mode = "0755";
+  ensureRoutesScript = ndh.store.installScript {
+    name = "darwin-static-routes-ensure.sh";
+    source = pkgs.replaceVars ./static-routes.d/ensure.sh {
+      ensureRoutesCommands = routeEnsureCommands;
     };
+    preferLocalBuild = true;
+    allowSubstitutes = false;
+    mode = "0755";
+  };
 
 in
 {

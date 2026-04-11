@@ -6,10 +6,7 @@
 let
   profileFromSpecialArgs = lib.attrByPath [ "_module" "specialArgs" "profile" ] { } config;
   profile =
-    if config ? profile && config.profile != null then
-      config.profile
-    else
-      profileFromSpecialArgs;
+    if config ? profile && config.profile != null then config.profile else profileFromSpecialArgs;
 
   userName =
     if profile ? user && profile.user ? name && profile.user.name != null then
@@ -29,7 +26,6 @@ let
 in
 {
   options.sshPaths = {
-
 
     # Canonical per-user SSH material root
     secretsRootDir = lib.mkOption {

@@ -126,13 +126,17 @@
               allowSubstitutes ? null,
               mode ? "0555",
             }:
-            pkgsForSystem.runCommand (prefixedName name) (
-              (nixpkgs.lib.optionalAttrs (preferLocalBuild != null) { inherit preferLocalBuild; })
-              // (nixpkgs.lib.optionalAttrs (allowSubstitutes != null) { inherit allowSubstitutes; })
-            ) ''
-              install -m ${mode} ${source} "$out"
-            '';
-          runCommand = name: attrs: text: pkgsForSystem.runCommand (prefixedName name) attrs text;
+            pkgsForSystem.runCommand (prefixedName name)
+              (
+                (nixpkgs.lib.optionalAttrs (preferLocalBuild != null) { inherit preferLocalBuild; })
+                // (nixpkgs.lib.optionalAttrs (allowSubstitutes != null) { inherit allowSubstitutes; })
+              )
+              ''
+                install -m ${mode} ${source} "$out"
+              '';
+          runCommand =
+            name: attrs: text:
+            pkgsForSystem.runCommand (prefixedName name) attrs text;
           writeText = name: text: pkgsForSystem.writeText (prefixedName name) text;
           writeShellScript = name: text: pkgsForSystem.writeShellScript (prefixedName name) text;
         };
@@ -151,10 +155,7 @@
             else
               true;
           homeManagerEnabled =
-            if system == "nixos" && bringupModeInternal then
-              false
-            else
-              requestedHomeManagerEnabled;
+            if system == "nixos" && bringupModeInternal then false else requestedHomeManagerEnabled;
         in
         [
           {
@@ -248,11 +249,13 @@
           pkgsForSystem = pkgsFor { inherit system; };
           ndhStoreApi = mkNdhStoreApiFor pkgsForSystem;
           runtimePackage = mkNdhBootstrapRuntimePackage system;
-          scriptSource = pkgsForSystem.replaceVars ./modules/.common.d/bootstrap-profile.d/install-standalone.sh {
-            runtimePackage = runtimePackage;
-            defaultProfileDir = "/nix/var/nix/profiles/per-user/root/io-nxmatic-nix-darwin-home-bringup-runtime-profile-holder";
-            requiredCommands = "bash nix age age-keygen awk sed grep ssh ssh-keygen yq git";
-          };
+          scriptSource =
+            pkgsForSystem.replaceVars ./modules/.common.d/bootstrap-profile.d/install-standalone.sh
+              {
+                runtimePackage = runtimePackage;
+                defaultProfileDir = "/nix/var/nix/profiles/per-user/root/io-nxmatic-nix-darwin-home-bringup-runtime-profile-holder";
+                requiredCommands = "bash nix age age-keygen awk sed grep ssh ssh-keygen yq git";
+              };
         in
         ndhStoreApi.runCommand "bringup-runtime-profile-installer" { } ''
           install -Dm755 ${scriptSource} "$out/bin/io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer"
@@ -369,7 +372,8 @@
           preModules = [
             profileModule
             zfsOverlaysModule
-          ] ++ (if bringupModeInternal then [ ] else [ nixosTailscaleTagModule ]);
+          ]
+          ++ (if bringupModeInternal then [ ] else [ nixosTailscaleTagModule ]);
           modules = mkModulesFor {
             inherit hostProfile preModules;
             system = "nixos";
@@ -421,7 +425,8 @@
               preModules = [
                 profileModule
                 zfsOverlaysModule
-              ] ++ (if hpBringupModeInternal then [ ] else [ nixosTailscaleTagModule ]);
+              ]
+              ++ (if hpBringupModeInternal then [ ] else [ nixosTailscaleTagModule ]);
             };
 
           mkExt4SpecialArgsFor =
@@ -435,26 +440,20 @@
               };
             };
 
-          bootstrapSystemdBootHostProfile =
-            hostProfile
-            // {
-              nixosImageMode = "bootstrap";
-              nixosBootLoader = "systemd-boot";
-            };
+          bootstrapSystemdBootHostProfile = hostProfile // {
+            nixosImageMode = "bootstrap";
+            nixosBootLoader = "systemd-boot";
+          };
 
-          runtimeHostProfile =
-            hostProfile
-            // {
-              nixosImageMode = "full";
-              nixosBootLoader = "systemd-boot";
-            };
+          runtimeHostProfile = hostProfile // {
+            nixosImageMode = "full";
+            nixosBootLoader = "systemd-boot";
+          };
 
-          bringupGrubHostProfile =
-            hostProfile
-            // {
-              nixosImageMode = "bootstrap";
-              nixosBootLoader = "grub";
-            };
+          bringupGrubHostProfile = hostProfile // {
+            nixosImageMode = "bootstrap";
+            nixosBootLoader = "grub";
+          };
 
           ext4Modules = mkExt4ModulesFor bootstrapSystemdBootHostProfile;
           ext4SpecialArgs = mkExt4SpecialArgsFor bootstrapSystemdBootHostProfile ext4Modules;
@@ -487,8 +486,7 @@
           runtimeExt4Modules = mkExt4ModulesFor runtimeHostProfile;
           runtimeExt4SpecialArgs = mkExt4SpecialArgsFor runtimeHostProfile runtimeExt4Modules;
           bringupSystemdBootExt4Modules = mkExt4ModulesFor bootstrapSystemdBootHostProfile;
-          bringupSystemdBootExt4SpecialArgs =
-            mkExt4SpecialArgsFor bootstrapSystemdBootHostProfile bringupSystemdBootExt4Modules;
+          bringupSystemdBootExt4SpecialArgs = mkExt4SpecialArgsFor bootstrapSystemdBootHostProfile bringupSystemdBootExt4Modules;
           bringupGrubExt4Modules = mkExt4ModulesFor bringupGrubHostProfile;
           bringupGrubExt4SpecialArgs = mkExt4SpecialArgsFor bringupGrubHostProfile bringupGrubExt4Modules;
 
@@ -689,7 +687,8 @@
         io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer = mkNdhBootstrapProfileInstaller system;
       });
 
-      apps = forAllSystems (system:
+      apps = forAllSystems (
+        system:
         let
           installer = mkNdhBootstrapProfileInstaller system;
         in
@@ -890,21 +889,27 @@
           nixosDiskImageBringupGrub = nixosOutputs.diskImageBringupGrub;
           nixosDiskSizeHint = nixosOutputs.diskSizeHint;
           nixosDiskSizeMiB = nixosOutputs.diskSizeMiB;
-          mkHomeManagerConfig = profile:
+          mkHomeManagerConfig =
+            profile:
             home-manager.lib.homeManagerConfiguration {
               pkgs = pkgsForDarwin;
               modules = [
                 ./modules/home-manager
-                ({ lib, ... }: {
-                  home.username = lib.mkDefault profile.user.name;
-                  home.homeDirectory = lib.mkDefault (toString profile.user.home);
-                })
+                (
+                  { lib, ... }:
+                  {
+                    home.username = lib.mkDefault profile.user.name;
+                    home.homeDirectory = lib.mkDefault (toString profile.user.home);
+                  }
+                )
               ];
               extraSpecialArgs = {
                 inherit hostProfile catalog;
                 inherit profile;
                 logger = mkLoggerSpecialArg "aarch64-darwin";
-                ndh = { store = ndhStoreApiDarwin; };
+                ndh = {
+                  store = ndhStoreApiDarwin;
+                };
                 sshKeysYamlPath = "${toString profile.user.home}/.local/var/run/secrets/sops/ssh-keys.yaml";
                 limaConfigMaterializerPackage =
                   darwinOutputs.darwinConfigurations.${mainName}.config.lima.configGenerator.materializerPackage;
@@ -915,25 +920,29 @@
             profileModule =
               { lib, ... }:
               {
-                imports =
-                  [
-                    profileModule
-                    ({ ... }: {
+                imports = [
+                  profileModule
+                  (
+                    { ... }:
+                    {
                       lima.configGenerator.imageDescriptorPath = "${nixosDiskImageBringupSystemdBoot}/descriptor.yaml";
                       lima.configGenerator.imageStorePath = "${nixosDiskImageBringupSystemdBoot}/nixos.img";
                       lima.configGenerator.diskSizeGiB = builtins.div nixosDiskSizeMiB 1024;
-                    })
-                  ]
-                  ++ darwinExtraModules;
+                    }
+                  )
+                ]
+                ++ darwinExtraModules;
               };
           };
           darwinConfiguration = darwinOutputs.darwinConfigurations.${mainName};
           autofsNetMaterializerPackage =
-            if darwinConfiguration ? config
+            if
+              darwinConfiguration ? config
               && darwinConfiguration.config ? services
               && darwinConfiguration.config.services ? nfsDarwin
               && darwinConfiguration.config.services.nfsDarwin ? autofs
-              && darwinConfiguration.config.services.nfsDarwin.autofs ? materializerPackage then
+              && darwinConfiguration.config.services.nfsDarwin.autofs ? materializerPackage
+            then
               darwinConfiguration.config.services.nfsDarwin.autofs.materializerPackage
             else
               null;
@@ -946,36 +955,37 @@
           ndhBootstrapInstallerPackage = mkNdhBootstrapProfileInstaller "aarch64-darwin";
           ndhBootstrapRuntimePackageLinux = mkNdhBootstrapRuntimePackage "aarch64-linux";
           ndhBootstrapInstallerPackageLinux = mkNdhBootstrapProfileInstaller "aarch64-linux";
-          ndhPrerequisitesInstallerPackage =
-            ndhStoreApiDarwin.runCommand "prerequisites-install" { } ''
-              mkdir -p "$out/bin"
-              cat > "$out/bin/io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer" <<'EOF'
-              #!/usr/bin/env bash
-              set -euo pipefail
+          ndhPrerequisitesInstallerPackage = ndhStoreApiDarwin.runCommand "prerequisites-install" { } ''
+            mkdir -p "$out/bin"
+            cat > "$out/bin/io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer" <<'EOF'
+            #!/usr/bin/env bash
+            set -euo pipefail
 
-              ${nixpkgs.lib.optionalString (autofsNetMaterializerProgram != null) "/usr/bin/sudo ${autofsNetMaterializerProgram}"}
-              exec ${ndhBootstrapInstallerPackage}/bin/io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer "$@"
-              EOF
-              chmod 0555 "$out/bin/io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer"
-            '';
-          ndhPrerequisitesInstallerPackageLinux =
-            ndhStoreApiLinux.runCommand "prerequisites-install" { } ''
-              mkdir -p "$out/bin"
-              cat > "$out/bin/io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer" <<'EOF'
-              #!/usr/bin/env bash
-              set -euo pipefail
+            ${nixpkgs.lib.optionalString (
+              autofsNetMaterializerProgram != null
+            ) "/usr/bin/sudo ${autofsNetMaterializerProgram}"}
+            exec ${ndhBootstrapInstallerPackage}/bin/io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer "$@"
+            EOF
+            chmod 0555 "$out/bin/io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer"
+          '';
+          ndhPrerequisitesInstallerPackageLinux = ndhStoreApiLinux.runCommand "prerequisites-install" { } ''
+            mkdir -p "$out/bin"
+            cat > "$out/bin/io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer" <<'EOF'
+            #!/usr/bin/env bash
+            set -euo pipefail
 
-              exec ${ndhBootstrapInstallerPackageLinux}/bin/io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer "$@"
-              EOF
-              chmod 0555 "$out/bin/io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer"
-            '';
+            exec ${ndhBootstrapInstallerPackageLinux}/bin/io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer "$@"
+            EOF
+            chmod 0555 "$out/bin/io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer"
+          '';
           hostDarwinPackages = {
             io-nxmatic-nix-darwin-home-bringup-runtime-profile-holder = ndhBootstrapRuntimePackage;
             io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer = ndhPrerequisitesInstallerPackage;
           };
           hostLinuxPackages = {
             io-nxmatic-nix-darwin-home-bringup-runtime-profile-holder = ndhBootstrapRuntimePackageLinux;
-            io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer = ndhPrerequisitesInstallerPackageLinux;
+            io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer =
+              ndhPrerequisitesInstallerPackageLinux;
           };
           hostDarwinApps = {
             io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer = {
@@ -1015,17 +1025,21 @@
             linux = pkgsForLinux;
           };
 
-          packages = nixpkgs.lib.optionalAttrs (hostDarwinPackages != { }) {
-            aarch64-darwin = hostDarwinPackages;
-          } // nixpkgs.lib.optionalAttrs (hostLinuxPackages != { }) {
-            aarch64-linux = hostLinuxPackages;
-          };
+          packages =
+            nixpkgs.lib.optionalAttrs (hostDarwinPackages != { }) {
+              aarch64-darwin = hostDarwinPackages;
+            }
+            // nixpkgs.lib.optionalAttrs (hostLinuxPackages != { }) {
+              aarch64-linux = hostLinuxPackages;
+            };
 
-          apps = nixpkgs.lib.optionalAttrs (hostDarwinApps != { }) {
-            aarch64-darwin = hostDarwinApps;
-          } // nixpkgs.lib.optionalAttrs (hostLinuxApps != { }) {
-            aarch64-linux = hostLinuxApps;
-          };
+          apps =
+            nixpkgs.lib.optionalAttrs (hostDarwinApps != { }) {
+              aarch64-darwin = hostDarwinApps;
+            }
+            // nixpkgs.lib.optionalAttrs (hostLinuxApps != { }) {
+              aarch64-linux = hostLinuxApps;
+            };
 
           defaultPackage."aarch64-darwin" = darwinConfiguration.system;
         };

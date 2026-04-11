@@ -113,11 +113,11 @@ let
   baseHomePackages =
     if isMinimalHomeProfile then
       lib.optionals pkgs.stdenv.isDarwin (
-        [ pkgs.lima ]
-        ++ lib.optional (limaConfigMaterializerPackage != null) limaConfigMaterializerPackage
+        [ pkgs.lima ] ++ lib.optional (limaConfigMaterializerPackage != null) limaConfigMaterializerPackage
       )
     else
-      with pkgs; [
+      with pkgs;
+      [
         alejandra
         awscli2
         avahi

@@ -61,7 +61,9 @@ in
     deps = [ ];
     text = builtins.readFile (
       pkgs.replaceVars ./hm-state-dirs.d/ensure-dirs.sh {
-        dirsWithModes = builtins.concatStringsSep " " (map (e: lib.escapeShellArg "${e.path}|${e.mode}") dirEntries);
+        dirsWithModes = builtins.concatStringsSep " " (
+          map (e: lib.escapeShellArg "${e.path}|${e.mode}") dirEntries
+        );
         userName = userName;
         group = group;
         secretsRootDir = config.sshPaths.secretsRootDir;

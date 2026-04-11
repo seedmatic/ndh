@@ -42,14 +42,12 @@
         }:
         {
           imports = [
-            (
-              import ../.common.d/host-common.nix {
-                inherit hostProfile darwinProfile;
-                headscaleServerUrl = "http://192.168.1.193:8080";
-                forceRemoteBuilds = true;
-                preferredBuilderHosts = [ "bioskop" ];
-              }
-            )
+            (import ../.common.d/host-common.nix {
+              inherit hostProfile darwinProfile;
+              headscaleServerUrl = "http://192.168.1.193:8080";
+              forceRemoteBuilds = true;
+              preferredBuilderHosts = [ "bioskop" ];
+            })
           ];
           config = {
 
@@ -122,32 +120,31 @@
           bootstrapMode = (hostProfile.nixosImageMode or "full") == "bootstrap";
         in
         {
-          config =
-            {
-              profile.user.home = lib.mkForce "/home/${config.profile.user.name}";
-            }
-            // (lib.optionalAttrs (!bootstrapMode) {
-              services.nxmaticCachixWatchStore.sopsEncryptedTokenFile = ../../.secrets;
-            })
-            // (lib.optionalAttrs (!bootstrapMode) {
-              networking.vlan = {
-                enable = true;
-                id = 2;
-                addressPrefix = "192.168.2";
-                parentInterface = "vmlan0";
-                addressSourceInterface = "lan-br";
-              };
-            })
-            // (lib.optionalAttrs (!bootstrapMode) {
-              # Expose system D-Bus over vmnet gateway for lab-only remote control/testing.
-              services.dbusTcpSystemBus = {
-                enable = true;
-                bindAddress = clusterNetwork.gateway;
-                port = 12434;
-                openFirewall = true;
-                insecureAllowAnonymous = true;
-              };
-            });
+          config = {
+            profile.user.home = lib.mkForce "/home/${config.profile.user.name}";
+          }
+          // (lib.optionalAttrs (!bootstrapMode) {
+            services.nxmaticCachixWatchStore.sopsEncryptedTokenFile = ../../.secrets;
+          })
+          // (lib.optionalAttrs (!bootstrapMode) {
+            networking.vlan = {
+              enable = true;
+              id = 2;
+              addressPrefix = "192.168.2";
+              parentInterface = "vmlan0";
+              addressSourceInterface = "lan-br";
+            };
+          })
+          // (lib.optionalAttrs (!bootstrapMode) {
+            # Expose system D-Bus over vmnet gateway for lab-only remote control/testing.
+            services.dbusTcpSystemBus = {
+              enable = true;
+              bindAddress = clusterNetwork.gateway;
+              port = 12434;
+              openFirewall = true;
+              insecureAllowAnonymous = true;
+            };
+          });
         };
     in
     nix-darwin-home.mkHostOutputs {

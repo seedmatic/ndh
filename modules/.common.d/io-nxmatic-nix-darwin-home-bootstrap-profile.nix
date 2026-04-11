@@ -9,8 +9,7 @@ let
   cfg = config.nxmatic.bootstrapProfile;
   storeNamePrefix = "io.nxmatic.nix-darwin-home";
   prefixStoreName =
-    name:
-    if lib.hasPrefix "${storeNamePrefix}-" name then name else "${storeNamePrefix}-${name}";
+    name: if lib.hasPrefix "${storeNamePrefix}-" name then name else "${storeNamePrefix}-${name}";
   requiredCommandsString = lib.concatStringsSep " " cfg.requiredCommands;
   installHint = "nix run .#io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer -- ${cfg.profileDir}";
   loggerShim = pkgs.writeShellScriptBin "logger" ''
@@ -51,15 +50,19 @@ let
     bootstrapInstaller = "${ndhPrerequisitesInstallerPackage}/bin/io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer";
     profileDir = cfg.profileDir;
   };
-  activationCheckScript = pkgs.writeShellScript (prefixStoreName "bootstrap-profile-activation-check") (builtins.readFile activationCheckSource);
+  activationCheckScript = pkgs.writeShellScript (prefixStoreName "bootstrap-profile-activation-check") (
+    builtins.readFile activationCheckSource
+  );
   standaloneInstallSource = pkgs.replaceVars ./bootstrap-profile.d/install-standalone.sh {
     runtimePackage = bootstrapRuntimePackage;
     defaultProfileDir = cfg.profileDir;
     requiredCommands = requiredCommandsString;
   };
-  ndhPrerequisitesInstallerPackage = pkgs.runCommand (prefixStoreName "bringup-runtime-profile-installer") { } ''
-    install -Dm755 ${standaloneInstallSource} "$out/bin/io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer"
-  '';
+  ndhPrerequisitesInstallerPackage =
+    pkgs.runCommand (prefixStoreName "bringup-runtime-profile-installer") { }
+      ''
+        install -Dm755 ${standaloneInstallSource} "$out/bin/io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer"
+      '';
 in
 {
   options.nxmatic.bootstrapProfile = {
@@ -115,70 +118,70 @@ in
 
   config = lib.mkIf cfg.enable (
     {
-    # Canonical policy (@codebase): always install/refresh NDH bootstrap
-    # prerequisites during activation.
-    nxmatic.bootstrapProfile.autoInstallOnActivation = lib.mkForce true;
+      # Canonical policy (@codebase): always install/refresh NDH bootstrap
+      # prerequisites during activation.
+      nxmatic.bootstrapProfile.autoInstallOnActivation = lib.mkForce true;
 
-    environment.variables = {
-      NDH_BOOTSTRAP_PROFILE_OWNER = "root";
-      NDH_BOOTSTRAP_PROFILE_DIR = cfg.profileDir;
-      NDH_BOOTSTRAP_PROFILE_BIN = "${cfg.profileDir}/bin";
-      NDH_BOOTSTRAP_RUNTIME_PACKAGE = "${bootstrapRuntimePackage}";
-      NDH_BOOTSTRAP_INSTALLER = "${ndhPrerequisitesInstallerPackage}/bin/io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer";
-      NDH_BOOTSTRAP_REQUIRED_COMMANDS = requiredCommandsString;
-      NDH_BOOTSTRAP_STRICT = if cfg.requireForActivation then "1" else "0";
-      NDH_BOOTSTRAP_INSTALL_HINT = installHint;
-    };
+      environment.variables = {
+        NDH_BOOTSTRAP_PROFILE_OWNER = "root";
+        NDH_BOOTSTRAP_PROFILE_DIR = cfg.profileDir;
+        NDH_BOOTSTRAP_PROFILE_BIN = "${cfg.profileDir}/bin";
+        NDH_BOOTSTRAP_RUNTIME_PACKAGE = "${bootstrapRuntimePackage}";
+        NDH_BOOTSTRAP_INSTALLER = "${ndhPrerequisitesInstallerPackage}/bin/io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer";
+        NDH_BOOTSTRAP_REQUIRED_COMMANDS = requiredCommandsString;
+        NDH_BOOTSTRAP_STRICT = if cfg.requireForActivation then "1" else "0";
+        NDH_BOOTSTRAP_INSTALL_HINT = installHint;
+      };
 
-    system.activationScripts.preActivation.text = lib.mkOrder 0 ''
-      ${activationCheckScript}
-    '';
+      system.activationScripts.preActivation.text = lib.mkOrder 0 ''
+        ${activationCheckScript}
+      '';
     }
     // lib.optionalAttrs (options ? systemd) {
 
-    # Keep installer command available in the NixOS system closure, including
-    # bootstrap images where we need explicit/manual profile installation.
-    environment.systemPackages = [ ndhPrerequisitesInstallerPackage ];
+      # Keep installer command available in the NixOS system closure, including
+      # bootstrap images where we need explicit/manual profile installation.
+      environment.systemPackages = [ ndhPrerequisitesInstallerPackage ];
 
-    # `nixos-rebuild boot` does not run activation on the currently running system.
-    # Ensure the bootstrap runtime profile is provisioned at next boot before
-    # services that rely on the bootstrap command contract.
-    systemd.services.io-nxmatic-nix-darwin-home-bootstrap-profile-install = {
-      description = "Install NDH bootstrap runtime profile for root (@codebase)";
-      wantedBy = [ "multi-user.target" ];
-      requiredBy = [
-        "sops-install-secrets.service"
-        "io-nxmatic-nix-darwin-home-hostkey-enrollment-check.service"
-      ];
-      before = [
-        "sops-age-bootstrap.service"
-        "sops-install-secrets.service"
-        "io-nxmatic-nix-darwin-home-hostkey-enrollment-check.service"
-      ];
-      path = [
-        pkgs.bash
-        config.nix.package
-      ];
-      serviceConfig = {
-        Type = "oneshot";
+      # `nixos-rebuild boot` does not run activation on the currently running system.
+      # Ensure the bootstrap runtime profile is provisioned at next boot before
+      # services that rely on the bootstrap command contract.
+      systemd.services.io-nxmatic-nix-darwin-home-bootstrap-profile-install = {
+        description = "Install NDH bootstrap runtime profile for root (@codebase)";
+        wantedBy = [ "multi-user.target" ];
+        requiredBy = [
+          "sops-install-secrets.service"
+          "io-nxmatic-nix-darwin-home-hostkey-enrollment-check.service"
+        ];
+        before = [
+          "sops-age-bootstrap.service"
+          "sops-install-secrets.service"
+          "io-nxmatic-nix-darwin-home-hostkey-enrollment-check.service"
+        ];
+        path = [
+          pkgs.bash
+          config.nix.package
+        ];
+        serviceConfig = {
+          Type = "oneshot";
+        };
+        script = ''
+          set -euo pipefail
+
+          profile_dir_root="/nix/var/nix/profiles/per-user/root/${cfg.name}"
+          profile_user="${config.profile.user.name}"
+          profile_dir_user="/nix/var/nix/profiles/per-user/${config.profile.user.name}/${cfg.name}"
+
+          mkdir -p /nix/var/nix/profiles/per-user/root
+          mkdir -p "/nix/var/nix/profiles/per-user/${config.profile.user.name}"
+
+          ${ndhPrerequisitesInstallerPackage}/bin/io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer "$profile_dir_root"
+
+          if [ "$profile_user" != "root" ]; then
+            ${ndhPrerequisitesInstallerPackage}/bin/io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer "$profile_dir_user"
+          fi
+        '';
       };
-      script = ''
-        set -euo pipefail
-
-        profile_dir_root="/nix/var/nix/profiles/per-user/root/${cfg.name}"
-        profile_user="${config.profile.user.name}"
-        profile_dir_user="/nix/var/nix/profiles/per-user/${config.profile.user.name}/${cfg.name}"
-
-        mkdir -p /nix/var/nix/profiles/per-user/root
-        mkdir -p "/nix/var/nix/profiles/per-user/${config.profile.user.name}"
-
-        ${ndhPrerequisitesInstallerPackage}/bin/io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer "$profile_dir_root"
-
-        if [ "$profile_user" != "root" ]; then
-          ${ndhPrerequisitesInstallerPackage}/bin/io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer "$profile_dir_user"
-        fi
-      '';
-    };
     }
   );
 }

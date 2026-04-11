@@ -516,7 +516,9 @@ in
       '';
     in
     {
-      environment.systemPackages = lib.optionals autoCfg.installMaterializerPackage [ autoCfg.materializerPackage ];
+      environment.systemPackages = lib.optionals autoCfg.installMaterializerPackage [
+        autoCfg.materializerPackage
+      ];
 
       # Run before nix-darwin's built-in /run synthetic enforcement so duplicate
       # run lines never reach its BSD-sed-specific cleanup path.

@@ -54,24 +54,22 @@ let
   bootstrapMode = hostImageMode == "bootstrap";
   # Canonical behavior: bootstrap image mode implies bootstrap debug profile.
   bootstrapDebug = bootstrapMode;
-  grubDebugKernelParams = lib.concatStringsSep " " (
-    [
-      "init=/nix/var/nix/profiles/system/init"
-      "console=hvc0"
-      "console=ttyAMA0"
-      "console=ttyS0"
-      "console=tty1"
-      "systemd.show_status=1"
-      "rd.systemd.show_status=1"
-      "logo.nologo"
-      "rootwait"
-      "rootdelay=5"
-      "loglevel=7"
-      "ignore_loglevel"
-      "rd.udev.log_level=debug"
-      "boot.trace"
-    ]
-  );
+  grubDebugKernelParams = lib.concatStringsSep " " ([
+    "init=/nix/var/nix/profiles/system/init"
+    "console=hvc0"
+    "console=ttyAMA0"
+    "console=ttyS0"
+    "console=tty1"
+    "systemd.show_status=1"
+    "rd.systemd.show_status=1"
+    "logo.nologo"
+    "rootwait"
+    "rootdelay=5"
+    "loglevel=7"
+    "ignore_loglevel"
+    "rd.udev.log_level=debug"
+    "boot.trace"
+  ]);
   grubExerciseEntries = lib.optionalString bootstrapDebug ''
     submenu "NixOS boot exercises (@codebase)" {
       menuentry "Exercise: root=LABEL=nixos" {
@@ -147,15 +145,15 @@ in
     bootstrapRequiredImports
     ++ (lib.optionals (!bootstrapMode) runtimeOnlyImports)
     ++ (lib.optionals (!bootstrapMode) [
-    #(import ./remote-nix-store.nix { inherit config pkgs lib; })
-    #(import ./nix-snapshotter.nix { inherit config pkgs lib user; })
-    # Explicitly disable GPG in NixOS - agent is forwarded from Darwin host
-    (
-      { config, ... }:
-      {
-        hm.imports = config.hm.imports ++ [ ./enable-gpg-false.nix ];
-      }
-    )
+      #(import ./remote-nix-store.nix { inherit config pkgs lib; })
+      #(import ./nix-snapshotter.nix { inherit config pkgs lib user; })
+      # Explicitly disable GPG in NixOS - agent is forwarded from Darwin host
+      (
+        { config, ... }:
+        {
+          hm.imports = config.hm.imports ++ [ ./enable-gpg-false.nix ];
+        }
+      )
     ]);
 
   config = {
@@ -391,18 +389,20 @@ in
     # Remove or comment out the old networking block to avoid conflicts:
     # networking = { ... }
 
-    environment.systemPackages =
+    environment.systemPackages = [
+      pkgs.binutils
+      pkgs.disko
+    ]
+    ++ (lib.optionals (!bootstrapMode) (
+      with pkgs;
       [
-        pkgs.binutils
-        pkgs.disko
-      ]
-      ++ (lib.optionals (!bootstrapMode) (with pkgs; [
         autofs5 # Explicitly include autofs utilities @codebase
         zfs
         incus
         distrobuilder
         nssmdns # Ensure mDNS resolution via NSS @codebase
-      ]));
+      ]
+    ));
 
     # Ensure security wrappers are in PATH for all processes
     environment.variables = {

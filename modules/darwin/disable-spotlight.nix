@@ -22,15 +22,17 @@ let
         install -Dm755 ${./disable-spotlight.d/disable-spotlight.sh} "$out/bin/disable-spotlight"
       '';
 
-  disableSpotlightActivationScript = ndh.store.runCommand "disable-spotlight-post-activation.sh" { } ''
-    cp ${
-      pkgs.replaceVars ./disable-spotlight.d/post-activation.sh {
-        disableSpotlightScript = disableSpotlightScript;
-        logger = loggerScript;
-      }
-    } "$out"
-    chmod +x "$out"
-  '';
+  disableSpotlightActivationScript =
+    ndh.store.runCommand "disable-spotlight-post-activation.sh" { }
+      ''
+        cp ${
+          pkgs.replaceVars ./disable-spotlight.d/post-activation.sh {
+            disableSpotlightScript = disableSpotlightScript;
+            logger = loggerScript;
+          }
+        } "$out"
+        chmod +x "$out"
+      '';
 in
 {
   options.services.disable-spotlight = {

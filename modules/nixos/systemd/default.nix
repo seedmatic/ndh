@@ -13,7 +13,10 @@ let
       "full";
   bootstrapMode = hostImageMode == "bootstrap";
   profileUserName =
-    if config ? profile && config.profile ? user && config.profile.user ? name then config.profile.user.name else "root";
+    if config ? profile && config.profile ? user && config.profile.user ? name then
+      config.profile.user.name
+    else
+      "root";
   homeManagerServiceName = "home-manager-${profileUserName}";
   keysTargetUnit = "keys.target";
   hasSopsInstallSecretsService = builtins.hasAttr "sops-install-secrets" config.systemd.services;
@@ -48,13 +51,19 @@ in
 
   config.systemd.services.${homeManagerServiceName} = lib.mkIf (!bootstrapMode) {
     wantedBy = [ "io-nxmatic-nix-darwin-home-contributed.target" ];
-    requires =
-      [ keysTargetUnit ]
-      ++ lib.optionals hasSopsInstallSecretsService [ "sops-install-secrets.service" ]
-      ++ lib.optionals hasSshKeysEnrichmentService [ "io-nxmatic-nix-darwin-home-ssh-keys-enrichment.service" ];
-    after =
-      [ keysTargetUnit ]
-      ++ lib.optionals hasSopsInstallSecretsService [ "sops-install-secrets.service" ]
-      ++ lib.optionals hasSshKeysEnrichmentService [ "io-nxmatic-nix-darwin-home-ssh-keys-enrichment.service" ];
+    requires = [
+      keysTargetUnit
+    ]
+    ++ lib.optionals hasSopsInstallSecretsService [ "sops-install-secrets.service" ]
+    ++ lib.optionals hasSshKeysEnrichmentService [
+      "io-nxmatic-nix-darwin-home-ssh-keys-enrichment.service"
+    ];
+    after = [
+      keysTargetUnit
+    ]
+    ++ lib.optionals hasSopsInstallSecretsService [ "sops-install-secrets.service" ]
+    ++ lib.optionals hasSshKeysEnrichmentService [
+      "io-nxmatic-nix-darwin-home-ssh-keys-enrichment.service"
+    ];
   };
 }

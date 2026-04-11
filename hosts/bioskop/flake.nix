@@ -45,12 +45,10 @@
         }:
         {
           imports = [
-            (
-              import ../.common.d/host-common.nix {
-                inherit hostProfile darwinProfile;
-                headscaleServerUrl = "http://192.168.5.10:8080";
-              }
-            )
+            (import ../.common.d/host-common.nix {
+              inherit hostProfile darwinProfile;
+              headscaleServerUrl = "http://192.168.5.10:8080";
+            })
             # Teleport removed - using Headscale for internal network
           ];
           config = {

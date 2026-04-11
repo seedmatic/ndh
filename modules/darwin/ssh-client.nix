@@ -296,23 +296,21 @@ in
             identitiesOnly = cfg.guest.identitiesOnly;
             bypassAgent = cfg.guest.bypassAgent;
             extraConfig =
-              guestHostKeySafetyConfig
-              + optionalString (cfg.guest.extraConfig != null) cfg.guest.extraConfig;
+              guestHostKeySafetyConfig + optionalString (cfg.guest.extraConfig != null) cfg.guest.extraConfig;
           }
         else
           "";
 
-      hostIdentityStanzas =
-        optional cfg.hostIdentityDomains.enable {
-          patterns =
-            cfg.hostIdentityDomains.patterns
-            ++ lib.optional (hostIdentityTailnetPattern != null) hostIdentityTailnetPattern;
-          user = null;
-          identityFile = hostIdentityFile;
-          identitiesOnly = true;
-          bypassAgent = false;
-          extraConfig = ownedDomainHostKeyBypassConfig;
-        };
+      hostIdentityStanzas = optional cfg.hostIdentityDomains.enable {
+        patterns =
+          cfg.hostIdentityDomains.patterns
+          ++ lib.optional (hostIdentityTailnetPattern != null) hostIdentityTailnetPattern;
+        user = null;
+        identityFile = hostIdentityFile;
+        identitiesOnly = true;
+        bypassAgent = false;
+        extraConfig = ownedDomainHostKeyBypassConfig;
+      };
 
       # Canonical VZ host aliases derived from profile host/user metadata.
       # This ensures daemon/nixbld SSH behavior does not rely on per-user ~/.ssh/config.
@@ -336,7 +334,9 @@ in
       extraText = concatStringsSep "\n" (map renderStanza allExtraStanzas);
     in
     {
-      sshClient.hostIdentityDomains.identityRelativePath = lib.mkDefault (builtins.baseNameOf config.sshPaths.privKeyFile);
+      sshClient.hostIdentityDomains.identityRelativePath = lib.mkDefault (
+        builtins.baseNameOf config.sshPaths.privKeyFile
+      );
 
       environment.etc."ssh/ssh_config".text = cfg.baseConfig + "\n";
       environment.etc."ssh/ssh_config.d/50-guest.conf" = mkIf (cfg.guest.enable) {

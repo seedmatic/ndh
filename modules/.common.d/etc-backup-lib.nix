@@ -1,14 +1,13 @@
 { lib }:
 let
-  mkManagedSymlinkCase = managedPrefixes:
+  mkManagedSymlinkCase =
+    managedPrefixes:
     lib.concatStringsSep "\n" (
-      map (
-        prefix: ''
-                      ${prefix}*)
-                        continue
-                        ;;
-        ''
-      ) managedPrefixes
+      map (prefix: ''
+        ${prefix}*)
+          continue
+          ;;
+      '') managedPrefixes
     );
 in
 {
@@ -22,7 +21,8 @@ in
     }:
     let
       etcTargetsLines = lib.concatStringsSep "\n" etcTargets;
-      writeAction = if moveConflicts then "mv \"$target\" \"$backup\"" else "cp -a \"$target\" \"$backup\"";
+      writeAction =
+        if moveConflicts then "mv \"$target\" \"$backup\"" else "cp -a \"$target\" \"$backup\"";
     in
     ''
       set -eu

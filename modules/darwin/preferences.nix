@@ -14,47 +14,45 @@ let
   loggerScript = config.nixBashLogger.script;
   timeoutExe = lib.getExe' pkgs.coreutils "timeout";
   gtimeoutExe = lib.getExe' pkgs.coreutils "gtimeout";
-  networkPreferencesScript =
-    ndh.store.installScript {
-      name = "darwin-network-preferences.sh";
-      source = pkgs.replaceVars ./preferences.d/network-preferences.sh {
-        preferredDnsString = preferredDnsString;
-        preferredServicesLiteral = preferredServicesLiteral;
-      };
-      preferLocalBuild = true;
-      allowSubstitutes = false;
-      mode = "0755";
+  networkPreferencesScript = ndh.store.installScript {
+    name = "darwin-network-preferences.sh";
+    source = pkgs.replaceVars ./preferences.d/network-preferences.sh {
+      preferredDnsString = preferredDnsString;
+      preferredServicesLiteral = preferredServicesLiteral;
     };
+    preferLocalBuild = true;
+    allowSubstitutes = false;
+    mode = "0755";
+  };
 
-  preferencesPostActivation =
-    ndh.store.installScript {
-      name = "preferences-post-activation.sh";
-      source = pkgs.replaceVars ./preferences.d/post-activation.sh {
-        networkPreferencesScript = networkPreferencesScript;
-        timeoutExe = timeoutExe;
-        gtimeoutExe = gtimeoutExe;
-        wallpaperImage = wallpaperImage;
-        logger = loggerScript;
-      };
-      preferLocalBuild = true;
-      allowSubstitutes = false;
-      mode = "0755";
+  preferencesPostActivation = ndh.store.installScript {
+    name = "preferences-post-activation.sh";
+    source = pkgs.replaceVars ./preferences.d/post-activation.sh {
+      networkPreferencesScript = networkPreferencesScript;
+      timeoutExe = timeoutExe;
+      gtimeoutExe = gtimeoutExe;
+      wallpaperImage = wallpaperImage;
+      logger = loggerScript;
     };
+    preferLocalBuild = true;
+    allowSubstitutes = false;
+    mode = "0755";
+  };
 
   osOnlyUpdateNotifierScript = ndh.store.writeShellScript "darwin-os-only-update-notifier.sh" ''
-    set -euo pipefail
+        set -euo pipefail
 
-    update_output="$(${lib.escapeShellArg "/usr/sbin/softwareupdate"} --list --product-types macOS 2>&1 || true)"
-    if ! printf '%s\n' "$update_output" | ${lib.escapeShellArg "/usr/bin/grep"} -qE '^\* Label:'; then
-      exit 0
-    fi
+        update_output="$(${lib.escapeShellArg "/usr/sbin/softwareupdate"} --list --product-types macOS 2>&1 || true)"
+        if ! printf '%s\n' "$update_output" | ${lib.escapeShellArg "/usr/bin/grep"} -qE '^\* Label:'; then
+          exit 0
+        fi
 
-    first_label="$(printf '%s\n' "$update_output" | ${lib.escapeShellArg "/usr/bin/sed"} -n 's/^\* Label: //p' | ${lib.escapeShellArg "/usr/bin/head"} -n1)"
-    safe_label="$(printf '%s' "$first_label" | ${lib.escapeShellArg "/usr/bin/tr"} '"' "'")"
+        first_label="$(printf '%s\n' "$update_output" | ${lib.escapeShellArg "/usr/bin/sed"} -n 's/^\* Label: //p' | ${lib.escapeShellArg "/usr/bin/head"} -n1)"
+        safe_label="$(printf '%s' "$first_label" | ${lib.escapeShellArg "/usr/bin/tr"} '"' "'")"
 
-    ${lib.escapeShellArg "/usr/bin/osascript"} <<EOF
-display notification "Open System Settings → General → Software Update" with title "macOS updates available" subtitle "$safe_label"
-EOF
+        ${lib.escapeShellArg "/usr/bin/osascript"} <<EOF
+    display notification "Open System Settings → General → Software Update" with title "macOS updates available" subtitle "$safe_label"
+    EOF
   '';
 in
 {

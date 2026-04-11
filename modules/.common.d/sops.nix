@@ -37,12 +37,11 @@ let
     && hostProfile.nixosImageMode != null
     && hostProfile.nixosImageMode == "bootstrap";
 
-  nixosHostKeyImportCandidatesDefault =
-    lib.filter (path: path != "") [
-      "${userHome}/.config/sops/age/keys.txt"
-      (if userName != "" then "/home/${userName}/.config/sops/age/keys.txt" else "")
-      "/mnt/lima-cidata/.sops.d/keys.txt"
-    ];
+  nixosHostKeyImportCandidatesDefault = lib.filter (path: path != "") [
+    "${userHome}/.config/sops/age/keys.txt"
+    (if userName != "" then "/home/${userName}/.config/sops/age/keys.txt" else "")
+    "/mnt/lima-cidata/.sops.d/keys.txt"
+  ];
 
   sopsAgeBootstrapScriptSource = pkgs.replaceVars ./sops.d/bootstrap.sh {
     bashTrampoline = "${./shell.d/nix-bash-trampoline.sh}";
@@ -70,12 +69,11 @@ let
       allPaths = lib.mapAttrsToList (_name: secret: toString (secret.path or "")) secretAttrs;
     in
     lib.filter (path: path != "" && lib.hasPrefix "${secretNamespaceDir}/" path) allPaths;
-  forbiddenSshLikeNamespacePaths =
-    lib.filter (
-      path:
-      path != "${secretNamespaceDir}/ssh-keys.yaml"
-      && builtins.match ".*(ssh|key).*" (builtins.baseNameOf path) != null
-    ) namespaceSecretPaths;
+  forbiddenSshLikeNamespacePaths = lib.filter (
+    path:
+    path != "${secretNamespaceDir}/ssh-keys.yaml"
+    && builtins.match ".*(ssh|key).*" (builtins.baseNameOf path) != null
+  ) namespaceSecretPaths;
 in
 {
   options.nxmatic.sopsAgeKeyBootstrap = {
@@ -287,12 +285,8 @@ in
     # Two-phase age-key bootstrap guard:
     # phase=bootstrap provisions once, phase=enforce blocks activation when missing.
     system.activationScripts.preActivation.text = lib.mkBefore (
-      if !useSystemdSopsActivation then
-        sopsAgeBootstrapScript
-      else
-        ""
+      if !useSystemdSopsActivation then sopsAgeBootstrapScript else ""
     );
 
-  }
-  ;
+  };
 }

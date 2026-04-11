@@ -15,16 +15,20 @@ let
       catalog.users.committed.name
     else
       config.profile.user.name;
-  committedTrustedCaPublicKey = lib.removeSuffix "\n" (builtins.readFile (
-    pkgs.runCommand "committed-trusted-user-ca-public-key" { buildInputs = [ pkgs.yq-go ]; } ''
-      yq -r '.profiles.committed."mammoth-skate".public // ""' ${../../home-manager/ssh.d/keys.yaml} > "$out"
-    ''
-  ));
-  linuxBuilderPublicKey = lib.removeSuffix "\n" (builtins.readFile (
-    pkgs.runCommand "linux-builder-public-key" { buildInputs = [ pkgs.yq-go ]; } ''
-      yq -r '.profiles.committed."linux-builder".public // ""' ${../../home-manager/ssh.d/keys.yaml} > "$out"
-    ''
-  ));
+  committedTrustedCaPublicKey = lib.removeSuffix "\n" (
+    builtins.readFile (
+      pkgs.runCommand "committed-trusted-user-ca-public-key" { buildInputs = [ pkgs.yq-go ]; } ''
+        yq -r '.profiles.committed."mammoth-skate".public // ""' ${../../home-manager/ssh.d/keys.yaml} > "$out"
+      ''
+    )
+  );
+  linuxBuilderPublicKey = lib.removeSuffix "\n" (
+    builtins.readFile (
+      pkgs.runCommand "linux-builder-public-key" { buildInputs = [ pkgs.yq-go ]; } ''
+        yq -r '.profiles.committed."linux-builder".public // ""' ${../../home-manager/ssh.d/keys.yaml} > "$out"
+      ''
+    )
+  );
   limaCloudInit = pkgs.writeShellApplication {
     name = "lima-cloud-init";
     runtimeInputs = with pkgs; [
@@ -40,11 +44,13 @@ let
       gawk
       iproute2
     ];
-    text = builtins.readFile (pkgs.replaceVars ./lima-cloud-init.sh {
-      profileUserName = committedProfileUserName;
-      linuxBuilderPublicKey = linuxBuilderPublicKey;
-      committedTrustedCaPublicKey = committedTrustedCaPublicKey;
-    });
+    text = builtins.readFile (
+      pkgs.replaceVars ./lima-cloud-init.sh {
+        profileUserName = committedProfileUserName;
+        linuxBuilderPublicKey = linuxBuilderPublicKey;
+        committedTrustedCaPublicKey = committedTrustedCaPublicKey;
+      }
+    );
   };
 in
 {

@@ -33,7 +33,10 @@ let
   hostName = config.profile.host.hostName;
   cacheCatalog = catalog.caches;
   flakehubPublicKeys =
-    if cacheCatalog.flakehub ? publicKeys then cacheCatalog.flakehub.publicKeys else [ cacheCatalog.flakehub.publicKey ];
+    if cacheCatalog.flakehub ? publicKeys then
+      cacheCatalog.flakehub.publicKeys
+    else
+      [ cacheCatalog.flakehub.publicKey ];
   # Consider linux-builder only when running on baremetal hosts
   isBaremetalHost = !(config.profile.host ? form) || config.profile.host.form == "baremetal";
   catalogEntries = if builtins.hasAttr hostName hostsCatalog then hostsCatalog.${hostName} else [ ];
@@ -78,7 +81,9 @@ in
             cacheCatalog.nxmatic.substituter # nxmatic cache
           ];
           trusted-public-keys = [
-          ] ++ flakehubPublicKeys ++ [
+          ]
+          ++ flakehubPublicKeys
+          ++ [
             cacheCatalog.nxmatic.publicKey # nxmatic key
           ];
 
@@ -89,7 +94,8 @@ in
           ];
           extra-trusted-public-keys = [
             "floxhub-1:0QOAlcobcEvq1mqEf4qAYCaWnTTOXpyoRv/PmqfSixM="
-          ] ++ flakehubPublicKeys;
+          ]
+          ++ flakehubPublicKeys;
 
           # Connection and performance settings from flox.conf
           connect-timeout = lib.mkDefault 10;

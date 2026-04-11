@@ -1,6 +1,6 @@
 { pkgs, config, ... }:
 let
-    ndh = config._module.specialArgs.ndh;
+  ndh = config._module.specialArgs.ndh;
   inherit (pkgs)
     lib
     fetchgit

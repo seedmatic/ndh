@@ -24,8 +24,7 @@ in
 {
   imports = [ ../.common.d/ssh-paths.nix ];
 
-  home.activation.provisionLimaRdpAssets =
-    lib.hm.dag.entryAfter [ "extractSSHKeys" ] ''
-      ${pkgs.bash}/bin/bash ${provisionLimaAssetsScript}
-    '';
+  home.activation.provisionLimaRdpAssets = lib.hm.dag.entryAfter [ "extractSSHKeys" ] ''
+    ${pkgs.bash}/bin/bash ${provisionLimaAssetsScript}
+  '';
 }

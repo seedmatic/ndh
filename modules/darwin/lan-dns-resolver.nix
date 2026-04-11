@@ -9,17 +9,16 @@
 let
   cfg = config.networking.lanDnsResolver;
   loggerScript = config.nixBashLogger.script;
-  lanDnsActivationScript =
-    ndh.store.installScript {
-      name = "lan-dns-resolver-post-activation.sh";
-      source = pkgs.replaceVars ./lan-dns-resolver.d/post-activation.sh {
-        inherit (cfg) nameserver;
-        logger = loggerScript;
-      };
-      preferLocalBuild = true;
-      allowSubstitutes = false;
-      mode = "0755";
+  lanDnsActivationScript = ndh.store.installScript {
+    name = "lan-dns-resolver-post-activation.sh";
+    source = pkgs.replaceVars ./lan-dns-resolver.d/post-activation.sh {
+      inherit (cfg) nameserver;
+      logger = loggerScript;
     };
+    preferLocalBuild = true;
+    allowSubstitutes = false;
+    mode = "0755";
+  };
 
 in
 {

@@ -6,16 +6,30 @@
   ...
 }:
 let
-  profileName = if config ? profile && config.profile ? name then config.profile.name else "committed";
+  profileName =
+    if config ? profile && config.profile ? name then config.profile.name else "committed";
   sshKeyProfileName =
-    if config ? profile && config.profile ? sshKeyProfileName && config.profile.sshKeyProfileName != null then
+    if
+      config ? profile && config.profile ? sshKeyProfileName && config.profile.sshKeyProfileName != null
+    then
       config.profile.sshKeyProfileName
     else
       profileName;
   hostIdent =
-    if config ? profile && config.profile ? host && config.profile.host ? hostAlias && config.profile.host.hostAlias != null && config.profile.host.hostAlias != "" then
+    if
+      config ? profile
+      && config.profile ? host
+      && config.profile.host ? hostAlias
+      && config.profile.host.hostAlias != null
+      && config.profile.host.hostAlias != ""
+    then
       config.profile.host.hostAlias
-    else if config ? profile && config.profile ? host && config.profile.host ? hostName && config.profile.host.hostName != null then
+    else if
+      config ? profile
+      && config.profile ? host
+      && config.profile.host ? hostName
+      && config.profile.host.hostName != null
+    then
       config.profile.host.hostName
     else if config.networking.hostName != "" then
       config.networking.hostName
@@ -44,7 +58,11 @@ let
 
   catalogUsers = if catalog ? users then catalog.users else { };
   profileOwnerName =
-    if builtins.hasAttr profileName catalogUsers && catalogUsers.${profileName} ? name && catalogUsers.${profileName}.name != null then
+    if
+      builtins.hasAttr profileName catalogUsers
+      && catalogUsers.${profileName} ? name
+      && catalogUsers.${profileName}.name != null
+    then
       catalogUsers.${profileName}.name
     else
       profileUserName;
@@ -69,14 +87,18 @@ let
   sshSplitKeysYamlScript = pkgs.runCommand "ndh-ssh-split-keys-yaml-darwin.sh" { } ''
     install -m 0555 ${sshSplitKeysYamlScriptSource} "$out"
   '';
-  sshEnrichAndSplitKeysYamlScriptSource = pkgs.replaceVars ../.common.d/ssh-keys.d/ssh-enrich-split-runtime-keys.sh {
-    bashTrampoline = "${../.common.d/shell.d/nix-bash-trampoline.sh}";
-    logger = logger;
-    loggerTag = loggerTagOrchestrate;
-  };
-  sshEnrichAndSplitKeysYamlScript = pkgs.runCommand "ndh-ssh-enrich-and-split-keys-yaml-darwin.sh" { } ''
-    install -m 0555 ${sshEnrichAndSplitKeysYamlScriptSource} "$out"
-  '';
+  sshEnrichAndSplitKeysYamlScriptSource =
+    pkgs.replaceVars ../.common.d/ssh-keys.d/ssh-enrich-split-runtime-keys.sh
+      {
+        bashTrampoline = "${../.common.d/shell.d/nix-bash-trampoline.sh}";
+        logger = logger;
+        loggerTag = loggerTagOrchestrate;
+      };
+  sshEnrichAndSplitKeysYamlScript =
+    pkgs.runCommand "ndh-ssh-enrich-and-split-keys-yaml-darwin.sh" { }
+      ''
+        install -m 0555 ${sshEnrichAndSplitKeysYamlScriptSource} "$out"
+      '';
 in
 {
   config.system.activationScripts.preActivation.text = lib.mkAfter ''

@@ -39,10 +39,14 @@ let
       profileHost.hostName;
 
   profileName = config.profile.name;
-  hostCatalogEntries = lib.attrByPath [
-    "hosts"
-    effectiveHostName
-  ] [ ] catalog;
+  hostCatalogEntries =
+    lib.attrByPath
+      [
+        "hosts"
+        effectiveHostName
+      ]
+      [ ]
+      catalog;
   hostIsVmOnly =
     hostCatalogEntries != [ ]
     && lib.all (entry: (entry ? form) && entry.form == "vm") hostCatalogEntries;
@@ -62,7 +66,8 @@ let
   netplanCatalog = catalog.networks.rke2labNetplan;
 
   # Stable image staging paths
-  imageDescriptorPath = if cfg.imageDescriptorPath == null then "" else toString cfg.imageDescriptorPath;
+  imageDescriptorPath =
+    if cfg.imageDescriptorPath == null then "" else toString cfg.imageDescriptorPath;
   imageStorePath = if cfg.imageStorePath == null then "" else toString cfg.imageStorePath;
   imageSourcePath = cfg.imageSourcePath;
   imageTargetPath = cfg.imageTargetPath;
@@ -554,12 +559,13 @@ in
             "autofs"
             "enable"
           ] false config)
-          && (lib.attrByPath [
-            "services"
-            "nfsDarwin"
-            "autofs"
-            "mountPoint"
-          ] "" config) == "/net";
+          &&
+            (lib.attrByPath [
+              "services"
+              "nfsDarwin"
+              "autofs"
+              "mountPoint"
+            ] "" config) == "/net";
         message = ''
           lima.configGenerator requires Darwin autofs `/net` but current nfsDarwin settings do not provide it.
           Enable:
@@ -576,13 +582,19 @@ in
     # Darwin VM hosts (nested environments) are excluded by policy.
     environment.systemPackages =
       lib.optionals limaRuntimeSupported [ pkgs.lima ]
-      ++ lib.optionals (limaRuntimeSupported && cfg.installMaterializerPackage) [ cfg.materializerPackage ];
+      ++ lib.optionals (limaRuntimeSupported && cfg.installMaterializerPackage) [
+        cfg.materializerPackage
+      ];
 
     # Dedicated activation script using postActivation which is actually executed
     # Use mkAfter to run after other postActivation scripts (@codebase)
-    system.activationScripts.postActivation.text = lib.mkIf (limaRuntimeSupported && cfg.enableActivationHook) (lib.mkAfter ''
-      ${limaActivationScript}
-    '');
+    system.activationScripts.postActivation.text =
+      lib.mkIf (limaRuntimeSupported && cfg.enableActivationHook)
+        (
+          lib.mkAfter ''
+            ${limaActivationScript}
+          ''
+        );
     # Expose full rendered configuration for external tooling (@codebase)
     lima.computedConfig = limaConfig;
   };

@@ -15,7 +15,10 @@ let
   userShell = user.shell;
   cacheCatalog = catalog.caches;
   flakehubPublicKeys =
-    if cacheCatalog.flakehub ? publicKeys then cacheCatalog.flakehub.publicKeys else [ cacheCatalog.flakehub.publicKey ];
+    if cacheCatalog.flakehub ? publicKeys then
+      cacheCatalog.flakehub.publicKeys
+    else
+      [ cacheCatalog.flakehub.publicKey ];
   flakehubPublicKeysJoined = lib.concatStringsSep " " flakehubPublicKeys;
 in
 {

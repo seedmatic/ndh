@@ -9,7 +9,11 @@ let
   profile = config._module.specialArgs.profile;
   ndh = config._module.specialArgs.ndh;
   profileName = profile.name;
-  sshKeyProfileName = if profile ? sshKeyProfileName && profile.sshKeyProfileName != null then profile.sshKeyProfileName else profileName;
+  sshKeyProfileName =
+    if profile ? sshKeyProfileName && profile.sshKeyProfileName != null then
+      profile.sshKeyProfileName
+    else
+      profileName;
   userProfile = profile.user;
   userName = profile.user.name; # Use profile user name for tagging
   sshPaths = config.sshPaths;
@@ -25,15 +29,16 @@ let
   effectiveSSHKeysYamlPath = "${perUserKeysDir}.yaml";
 
   # Externalized KnownHostsCommand script sourced from repo (templated with keysDir)
-  knownHostsScript =
-    ndh.store.runCommand "ssh-ca-known-hosts" { } ''
-      cp ${pkgs.replaceVars ./ssh.d/scripts/ca-known-hosts-command.sh {
+  knownHostsScript = ndh.store.runCommand "ssh-ca-known-hosts" { } ''
+    cp ${
+      pkgs.replaceVars ./ssh.d/scripts/ca-known-hosts-command.sh {
         bashTrampoline = "${../.common.d/shell.d/nix-bash-trampoline.sh}";
         logger = logger;
         caDir = authorityKeysDir;
-      }} "$out"
-      chmod +x "$out"
-    '';
+      }
+    } "$out"
+    chmod +x "$out"
+  '';
 
 in
 {

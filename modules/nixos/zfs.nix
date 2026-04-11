@@ -157,11 +157,10 @@ let
     }
   '';
 
-  zpoolInit =
-    pkgs.writeShellScriptBin "zpool-init" ''
-      export DISKO_NIX_DEFAULT="${diskoModulePinned}"
-      ${builtins.readFile ./zfs.d/zpool-init.sh}
-    '';
+  zpoolInit = pkgs.writeShellScriptBin "zpool-init" ''
+    export DISKO_NIX_DEFAULT="${diskoModulePinned}"
+    ${builtins.readFile ./zfs.d/zpool-init.sh}
+  '';
 
 in
 {
@@ -296,8 +295,15 @@ in
       services.zpool-init = lib.mkIf config.zfsOverlays.bootstrapActivation.enable {
         description = "Idempotent one-shot ZFS disk/datastore provisioning (@codebase)";
         wantedBy = [ "io-nxmatic-nix-darwin-home-contributed.target" ];
-        after = [ "local-fs.target" "zfs.target" "zfs-import.target" ];
-        wants = [ "zfs.target" "zfs-import.target" ];
+        after = [
+          "local-fs.target"
+          "zfs.target"
+          "zfs-import.target"
+        ];
+        wants = [
+          "zfs.target"
+          "zfs-import.target"
+        ];
 
         path = with pkgs; [
           bash

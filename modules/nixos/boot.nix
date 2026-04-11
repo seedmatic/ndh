@@ -34,24 +34,22 @@ let
   # Canonical behavior: bootstrap image mode implies bootstrap debug profile.
   bootstrapDebug = bootstrapMode;
   consoleCfg = config.consoleLogging;
-  grubDebugKernelParams = lib.concatStringsSep " " (
-    [
-      "init=/nix/var/nix/profiles/system/init"
-      "console=hvc0"
-      "console=ttyAMA0"
-      "console=ttyS0"
-      "console=tty1"
-      "systemd.show_status=1"
-      "rd.systemd.show_status=1"
-      "logo.nologo"
-      "rootwait"
-      "rootdelay=5"
-      "loglevel=7"
-      "ignore_loglevel"
-      "rd.udev.log_level=debug"
-      "boot.trace"
-    ]
-  );
+  grubDebugKernelParams = lib.concatStringsSep " " ([
+    "init=/nix/var/nix/profiles/system/init"
+    "console=hvc0"
+    "console=ttyAMA0"
+    "console=ttyS0"
+    "console=tty1"
+    "systemd.show_status=1"
+    "rd.systemd.show_status=1"
+    "logo.nologo"
+    "rootwait"
+    "rootdelay=5"
+    "loglevel=7"
+    "ignore_loglevel"
+    "rd.udev.log_level=debug"
+    "boot.trace"
+  ]);
   grubExerciseEntries = lib.optionalString bootstrapDebug ''
     submenu "NixOS boot exercises (@codebase)" {
       menuentry "Exercise: root=LABEL=nixos" {

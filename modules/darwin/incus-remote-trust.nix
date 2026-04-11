@@ -21,17 +21,19 @@ let
   remoteHostDefault = "${effectiveHostName}-nixos.local";
   userHome = config.profile.user.home;
 
-  incusRemoteTrustActivationScript = ndh.store.runCommand "incus-remote-trust-post-activation.sh" { } ''
-    cp ${
-      pkgs.replaceVars ./incus-remote-trust.d/post-activation.sh {
-        logger = loggerScript;
-        remoteHost = cfg.remoteHost;
-        localClientCert = cfg.localClientCert;
-        trustEntryName = cfg.trustEntryName;
-      }
-    } "$out"
-    chmod +x "$out"
-  '';
+  incusRemoteTrustActivationScript =
+    ndh.store.runCommand "incus-remote-trust-post-activation.sh" { }
+      ''
+        cp ${
+          pkgs.replaceVars ./incus-remote-trust.d/post-activation.sh {
+            logger = loggerScript;
+            remoteHost = cfg.remoteHost;
+            localClientCert = cfg.localClientCert;
+            trustEntryName = cfg.trustEntryName;
+          }
+        } "$out"
+        chmod +x "$out"
+      '';
 in
 {
   options.services.incusRemoteTrust = {

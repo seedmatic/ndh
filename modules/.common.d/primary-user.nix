@@ -12,7 +12,9 @@ let
   cfgUser = config.profile.user;
   cfgUserName = config.profile.user.name;
   homeManagerEnabled =
-    if hostProfile != null && hostProfile ? enableHomeManager && hostProfile.enableHomeManager != null then
+    if
+      hostProfile != null && hostProfile ? enableHomeManager && hostProfile.enableHomeManager != null
+    then
       hostProfile.enableHomeManager
     else
       true;

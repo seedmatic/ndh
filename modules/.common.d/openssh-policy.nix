@@ -38,10 +38,7 @@ let
           else
             null;
         AuthorizedPrincipalsCommandUser =
-          if cfg.principalsCommandSource != null then
-            cfg.principalsCommandUser
-          else
-            null;
+          if cfg.principalsCommandSource != null then cfg.principalsCommandUser else null;
         # Group keys command directives (only if enabled)
         AuthorizedKeysCommand =
           if cfg.groupKeysCommandSource != null then
@@ -49,13 +46,13 @@ let
           else
             null;
         AuthorizedKeysCommandUser =
-          if cfg.groupKeysCommandSource != null then
-            cfg.groupCommandUser
-          else
-            null;
+          if cfg.groupKeysCommandSource != null then cfg.groupCommandUser else null;
         # Platform-specific render toggle for AuthorizedKeysFile list.
         AuthorizedKeysFile =
-          if cfg.platformRendersAuthorizedKeysFile then lib.concatStringsSep " " cfg.authorizedKeysFiles else null;
+          if cfg.platformRendersAuthorizedKeysFile then
+            lib.concatStringsSep " " cfg.authorizedKeysFiles
+          else
+            null;
         # Allow user environment file by default on both platforms
         PermitUserEnvironment = "yes";
         # Baseline PATH for sshd sessions and ensure non-interactive bash sources our file
@@ -405,7 +402,10 @@ in
     # Expose helpers
     opensshPolicy.hostKeys = cfg.hostKeyPaths;
     opensshPolicy.authorizedKeysFileString =
-      if cfg.platformRendersAuthorizedKeysFile then lib.concatStringsSep " " cfg.authorizedKeysFiles else null;
+      if cfg.platformRendersAuthorizedKeysFile then
+        lib.concatStringsSep " " cfg.authorizedKeysFiles
+      else
+        null;
 
     # Ensure non-interactive `/bin/bash -c` launched by sshd gets a canonical
     # PATH immediately, with a platform-appropriate primary prefix.
