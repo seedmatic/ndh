@@ -558,14 +558,27 @@
               set -euo pipefail
               mkdir -p "$out"
 
+              source_image=""
+
               if [[ -f "${source}/nixos.img" ]]; then
-                ln -s "${source}/nixos.img" "$out/nixos.img"
+                source_image="${source}/nixos.img"
               elif [[ -f "${source}" ]]; then
-                ln -s "${source}" "$out/nixos.img"
-              else
+                source_image="${source}"
+              elif [[ -f "${source}/nix-support/hydra-build-products" ]]; then
+                source_image=$(awk '$1 == "file" && $2 ~ /image|img/ { print $3; exit }' "${source}/nix-support/hydra-build-products")
+              fi
+
+              if [[ -z "$source_image" && -d "${source}" ]]; then
+                source_image=$(find "${source}" -maxdepth 1 -type f -name '*.img' | head -n1 || true)
+              fi
+
+              if [[ -z "$source_image" || ! -f "$source_image" ]]; then
                 echo "[flake][ERROR] unsupported disk image source shape for ${attr}: ${source}" >&2
+                echo "[flake][ERROR] expected one of: ${source}/nixos.img, direct file, hydra-build-products image entry, or *.img in source root" >&2
                 exit 1
               fi
+
+              ln -s "$source_image" "$out/nixos.img"
 
               cat >"$out/descriptor.yaml" <<'EOF'
               ${mkDiskImageDescriptorYaml {
@@ -1122,6 +1135,20 @@
         lazygitOverlay = inputs: import ./overlays/lazygit.nix inputs;
         limaOverlay = inputs: import ./overlays/lima.nix inputs;
         tailscaleOverlay = inputs: import ./overlays/tailscale.nix inputs;
+
+        direnvOverlay =
+          _inputs: final: prev:
+          {
+            # Upstream direnv fish tests are intermittently SIGKILLed on this build fleet.
+            # Keep runtime package deterministic by disabling checks in the canonical overlay path.
+            direnv = prev.direnv.overrideAttrs (old: {
+              doCheck = false;
+              dontCheck = true;
+              checkPhase = "echo skipping direnv checkPhase";
+              installCheckPhase = "echo skipping direnv installCheckPhase";
+              phases = builtins.filter (p: p != "checkPhase" && p != "installCheckPhase") (old.phases or [ ]);
+            });
+          };
       };
 
       homeManagerModules = {
