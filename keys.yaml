@@ -257,5 +257,5 @@ sops:
         -----END AGE ENCRYPTED FILE-----
   lastmodified: "2026-04-08T09:31:56Z"
   mac: ENC[AES256_GCM,data:7nCrJ3XjKy6FfM1E3D/2S6t9xTzWU63mn+EwVqH0Siova1VH/2R8Hlxx8RjUTb/RTpJcZWv4uLY9obyazLdiMhBgu1B8aIGmGH2U1MYfhwuTFvACSnS8yjhhSI/vmFcIEcj7SMTQbRvDj0VX4ltwcw6qkA5qeIKj0ApT2PUMqOI=,iv:JFYpyYnPFbIkU6JEqXdw6yNB9iZR1QwMa80yMxzFwO8=,tag:qeOCcKSAA/0U3wywRlFTdw==,type:str]
-gi  encrypted_comment_regex: sops:encrypted
+  encrypted_comment_regex: sops:encrypted
   version: 3.11.0
