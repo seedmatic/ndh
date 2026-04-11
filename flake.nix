@@ -876,6 +876,11 @@
             user = committedHomeManagerUserWithHome;
             email = committedHomeManagerUserWithHome.email;
           };
+          selectedHomeManagerProfileName =
+            if hostProfile ? homeManagerProfileName && hostProfile.homeManagerProfileName != null then
+              hostProfile.homeManagerProfileName
+            else
+              "committed";
           nixosOutputs = mkNixosOutputs {
             inherit hostProfile catalog;
             profileModule =
@@ -1013,7 +1018,7 @@
             nixosDiskSizeHint
             homeManagerConfigurations
             ;
-          homeManagerConfiguration = homeManagerConfigurations.committed;
+          homeManagerConfiguration = homeManagerConfigurations.${selectedHomeManagerProfileName};
           pkgs = {
             darwin = pkgsForDarwin;
             linux = pkgsForLinux;

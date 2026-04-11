@@ -60,6 +60,10 @@
           ];
           config = {
 
+            # Explicitly select committed profile for full Home Manager environment
+            # on the Darwin VM host.
+            profile.name = lib.mkForce "committed";
+
             # Keep experiment/bootstrap mode until boot/login validation is complete.
             # This avoids stage-2 panic when /etc/sops/age/keys.txt is not yet provisioned.
             nxmatic.sopsAgeKeyBootstrap.phase = "bootstrap";
