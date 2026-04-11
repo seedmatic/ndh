@@ -36,7 +36,6 @@
     chromium-bin.follows = "flake-commons/chromium-bin";
     disko.follows = "flake-commons/disko";
     impermanence.follows = "flake-commons/impermanence";
-    nixos-generators.follows = "flake-commons/nixos-generators";
     incus-compose.follows = "flake-commons/incus-compose";
     sops-nix.url = "github:Mic92/sops-nix";
   };
@@ -47,7 +46,6 @@
       darwin,
       devenv,
       flake-utils,
-      nixos-generators,
       home-manager,
       disko,
       socket-vmnet,
@@ -582,7 +580,21 @@
               EOF
             '';
 
-          diskImageBringupSystemdBootRaw = nixos-generators.nixosGenerate {
+          mkRawEfiImage =
+            {
+              modules,
+              specialArgs,
+            }:
+            let
+              imageNixosSystem = nixpkgs.lib.nixosSystem {
+                inherit modules specialArgs;
+                system = "aarch64-linux";
+                pkgs = pkgsForLinux;
+              };
+            in
+            imageNixosSystem.config.system.build.images."raw-efi";
+
+          diskImageBringupSystemdBootRaw = mkRawEfiImage {
             modules = bringupSystemdBootExt4Modules ++ [
               {
                 nix.registry.nixpkgs.flake = nixpkgs;
@@ -590,12 +602,9 @@
               }
             ];
             specialArgs = bringupSystemdBootExt4SpecialArgs;
-            system = "aarch64-linux";
-            pkgs = pkgsForLinux;
-            format = "raw-efi";
           };
 
-          diskImageBringupGrubRaw = nixos-generators.nixosGenerate {
+          diskImageBringupGrubRaw = mkRawEfiImage {
             modules = bringupGrubExt4Modules ++ [
               {
                 nix.registry.nixpkgs.flake = nixpkgs;
@@ -603,12 +612,9 @@
               }
             ];
             specialArgs = bringupGrubExt4SpecialArgs;
-            system = "aarch64-linux";
-            pkgs = pkgsForLinux;
-            format = "raw-efi";
           };
 
-          diskImageFullExt4Raw = nixos-generators.nixosGenerate {
+          diskImageFullExt4Raw = mkRawEfiImage {
             modules = runtimeExt4Modules ++ [
               {
                 nix.registry.nixpkgs.flake = nixpkgs;
@@ -616,9 +622,6 @@
               }
             ];
             specialArgs = runtimeExt4SpecialArgs;
-            system = "aarch64-linux";
-            pkgs = pkgsForLinux;
-            format = "raw-efi";
           };
 
           diskImageBringupSystemdBoot = mkDiskImageWithDescriptor {

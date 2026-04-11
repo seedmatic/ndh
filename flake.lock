@@ -282773,10 +282773,6 @@
           "flake-commons",
           "nix"
         ],
-        "nixos-generators": [
-          "flake-commons",
-          "nixos-generators"
-        ],
         "nixos-hardware": [
           "flake-commons",
           "nixos-hardware"
