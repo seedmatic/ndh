@@ -97,7 +97,6 @@ let
       '';
 
   ndhStoreAssetLookupSource = pkgs.replaceVars ./shell.d/store-asset-lookup.sh {
-    bash = toString pkgs.bash;
     nix = toString pkgs.nix;
     gnugrep = toString pkgs.gnugrep;
     coreutils = toString pkgs.coreutils;
