@@ -720,7 +720,7 @@
 
             users = {
               work = {
-                name = "nxmatic";
+                name = "stephane.lacoin";
                 description = "Stephane Lacoin (aka nxmatic)";
                 email = "stephane.lacoin@hyland.com";
               };
@@ -876,11 +876,6 @@
             user = committedHomeManagerUserWithHome;
             email = committedHomeManagerUserWithHome.email;
           };
-          selectedHomeManagerProfileName =
-            if hostProfile ? homeManagerProfileName && hostProfile.homeManagerProfileName != null then
-              hostProfile.homeManagerProfileName
-            else
-              "committed";
           nixosOutputs = mkNixosOutputs {
             inherit hostProfile catalog;
             profileModule =
@@ -923,10 +918,6 @@
                 imports =
                   [
                     profileModule
-                    ({ ... }: {
-                      profile.user.name = lib.mkForce workHomeManagerUserWithHome.name;
-                      profile.user.home = lib.mkForce (builtins.toPath workHomeManagerUserWithHome.home);
-                    })
                     ({ ... }: {
                       lima.configGenerator.imageDescriptorPath = "${nixosDiskImageBringupSystemdBoot}/descriptor.yaml";
                       lima.configGenerator.imageStorePath = "${nixosDiskImageBringupSystemdBoot}/nixos.img";
@@ -1018,7 +1009,7 @@
             nixosDiskSizeHint
             homeManagerConfigurations
             ;
-          homeManagerConfiguration = homeManagerConfigurations.${selectedHomeManagerProfileName};
+          homeManagerConfiguration = homeManagerConfigurations.committed;
           pkgs = {
             darwin = pkgsForDarwin;
             linux = pkgsForLinux;

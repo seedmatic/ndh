@@ -23,13 +23,6 @@
       hostProfile = {
         hostName = "nikopol";
         tailnet = { };
-        homeManagerProfileName = "work";
-        homeManagerUser = {
-          name = "stephane.lacoin";
-          description = "Stephane Lacoin (work)";
-          email = "stephane.lacoin@hyland.com";
-          home = "/Users/stephane.lacoin";
-        };
         nixosImageMode = "bootstrap";
         nixosBootLoader = "systemd-boot";
       };
@@ -81,7 +74,6 @@
               trusted-users = [
                 "root"
                 "nxmatic"
-                "stephane.lacoin"
               ];
             };
           };
