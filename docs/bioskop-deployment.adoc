@@ -65,7 +65,8 @@ nix run .#ndh-prerequisites-install
 Notes:
 
 - `ndh-prerequisites-install` is the canonical installer to run.
-- `ndh-bootstrap-runtime` is the runtime payload package installed by that installer.
+- Runtime profile target: `/nix/var/nix/profiles/per-user/root/io-nxmatic-nix-darwin-home-bringup-runtime-profile-holder`.
+- `io-nxmatic-nix-darwin-home-bringup-runtime-profile-holder` is the runtime payload package installed by that installer.
 - `lima-config-materialize` is separate and only for Lima materialization workflows.
 
 == Step 1: Configure Lima VM with Headscale Modules

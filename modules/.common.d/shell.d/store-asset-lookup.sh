@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# shellcheck disable=SC1091
+source "@bashTrampoline@"
+# shellcheck disable=SC1091
+source "@logger@"
+
 usage() {
   cat <<'EOF'
 Usage: io.nxmatic.nix-darwin-home-store-asset-lookup <name-or-regex> [--all] [--literal]

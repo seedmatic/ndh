@@ -95,15 +95,10 @@ ndh::bootstrap:runtime:verify() {
 
 ndh::bootstrap:runtime:install() {
 	local nix_bin profile_dir profile_name runtime_name runtime_spec installer
+	local nix_cli_args_raw
+	local -a nix_cli_args=()
 	local profile_parent
 	local discovered_installer
-
-	nix_bin="$(command -v nix 2>/dev/null || true)"
-	profile_dir="$(ndh::bootstrap:profile:dir || true)"
-
-	if [[ -z "$nix_bin" || -z "$profile_dir" ]]; then
-		return 1
-	fi
 
 	profile_name="io-nxmatic-nix-darwin-home-bringup-runtime-profile-holder"
 	runtime_name="io.nxmatic.nix-darwin-home-bringup-runtime-profile-holder"
@@ -113,6 +108,17 @@ ndh::bootstrap:runtime:install() {
 	discovered_installer="$(command -v io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer 2>/dev/null || true)"
 	if [[ -z "$installer" && -n "$discovered_installer" ]]; then
 		installer="$discovered_installer"
+	fi
+
+	nix_bin="$(command -v nix 2>/dev/null || true)"
+	nix_cli_args_raw="${NDH_NIX_CLI_ARGS:--L -v -v}"
+	if [[ -n "$nix_cli_args_raw" ]]; then
+		read -r -a nix_cli_args <<< "$nix_cli_args_raw"
+	fi
+	profile_dir="$(ndh::bootstrap:profile:dir || true)"
+
+	if [[ -z "$profile_dir" ]]; then
+		return 1
 	fi
 
 	profile_parent="$(dirname "$profile_dir")"
@@ -129,6 +135,26 @@ ndh::bootstrap:runtime:install() {
 	fi
 
 	install -d -m 0755 "$profile_parent"
+
+	# Bootstrap fallback for early image-build contexts: if nix is not yet
+	# available but the runtime package path is already in the environment,
+	# seed the canonical profile path directly from the store.
+	if [[ -z "$nix_bin" && "$runtime_spec" == /nix/store/* && -d "$runtime_spec/bin" ]]; then
+		if [[ ! -e "$profile_dir" || -L "$profile_dir" ]]; then
+			ln -sfn "$runtime_spec" "$profile_dir"
+			return 0
+		fi
+
+		if [[ -d "$profile_dir" && ! -e "$profile_dir/bin" ]]; then
+			ln -sfn "$runtime_spec/bin" "$profile_dir/bin"
+			return 0
+		fi
+	fi
+
+	if [[ -z "$nix_bin" ]]; then
+		return 1
+	fi
+
 	if [[ -n "$installer" && -x "$installer" ]]; then
 		"$installer" "$profile_dir" >/dev/null 2>&1 || return 1
 		return 0
@@ -137,19 +163,19 @@ ndh::bootstrap:runtime:install() {
 	if [[ "$runtime_spec" == .#* ]]; then
 		# Flake-relative runtime spec can fail outside a checkout; never mutate an
 		# existing profile on this fallback path.
-		"$nix_bin" run "$runtime_spec" -- "$profile_dir" >/dev/null 2>&1 || return 1
+		"$nix_bin" "${nix_cli_args[@]}" run "$runtime_spec" -- "$profile_dir" >/dev/null 2>&1 || return 1
 		return 0
 	fi
 
-	if "$nix_bin" profile add --profile "$profile_dir" "$runtime_spec" >/dev/null 2>&1; then
+	if "$nix_bin" "${nix_cli_args[@]}" profile add --profile "$profile_dir" "$runtime_spec" >/dev/null 2>&1; then
 		return 0
 	fi
 
 	# Retry once after clearing known legacy/runtime entries to handle file conflicts.
-	"$nix_bin" profile remove --profile "$profile_dir" "$runtime_name" >/dev/null 2>&1 || true
-	"$nix_bin" profile remove --profile "$profile_dir" "$profile_name" >/dev/null 2>&1 || true
+	"$nix_bin" "${nix_cli_args[@]}" profile remove --profile "$profile_dir" "$runtime_name" >/dev/null 2>&1 || true
+	"$nix_bin" "${nix_cli_args[@]}" profile remove --profile "$profile_dir" "$profile_name" >/dev/null 2>&1 || true
 
-	"$nix_bin" profile add --profile "$profile_dir" "$runtime_spec" >/dev/null 2>&1 || return 1
+	"$nix_bin" "${nix_cli_args[@]}" profile add --profile "$profile_dir" "$runtime_spec" >/dev/null 2>&1 || return 1
 
 	return 0
 }

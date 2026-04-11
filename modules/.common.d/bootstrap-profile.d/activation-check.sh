@@ -10,12 +10,29 @@ bootstrap_installer="@bootstrapInstaller@"
 profile_dir="@profileDir@"
 image_build_context="${NIXOS_INSTALL_BOOTLOADER:-0}"
 
+install_profile_from_runtime_path() {
+  if [ -d "${runtime_package}/bin" ]; then
+    mkdir -p "$(dirname "${profile_dir}")"
+    ln -sfn "${runtime_package}" "${profile_dir}"
+    return 0
+  fi
+
+  return 1
+}
+
 install_profile() {
   echo "[io-nxmatic-nix-darwin-home-bootstrap-profile] installing/refreshing profile ${profile_dir}" >&2
+
+  # In early image-build activation, prefer direct store-path seeding to avoid
+  # relying on nix profile plumbing before the runtime is fully initialized.
+  if [ "$image_build_context" = "1" ] && install_profile_from_runtime_path; then
+    return 0
+  fi
+
   if [ -x "$bootstrap_installer" ]; then
-    "$bootstrap_installer" "$profile_dir" >&2
+    "$bootstrap_installer" "$profile_dir" >&2 || install_profile_from_runtime_path
   else
-    "$nix_bin" profile add --profile "${profile_dir}" "${runtime_package}" >&2
+    "$nix_bin" profile add --profile "${profile_dir}" "${runtime_package}" >&2 || install_profile_from_runtime_path
   fi
 }
 

@@ -249,9 +249,15 @@
           pkgsForSystem = pkgsFor { inherit system; };
           ndhStoreApi = mkNdhStoreApiFor pkgsForSystem;
           runtimePackage = mkNdhBootstrapRuntimePackage system;
+          loggerScript = (mkLoggerSpecialArg system).script;
           scriptSource =
             pkgsForSystem.replaceVars ./modules/.common.d/bootstrap-profile.d/install-standalone.sh
               {
+                bash = "${pkgsForSystem.bash}/bin/bash";
+                nix = "${pkgsForSystem.nix}/bin/nix";
+                bashTrampoline = "${./modules/.common.d/shell.d/nix-bash-trampoline.sh}";
+                logger = loggerScript;
+                loggerTag = "ndh.bootstrap-profile.install-standalone";
                 runtimePackage = runtimePackage;
                 defaultProfileDir = "/nix/var/nix/profiles/per-user/root/io-nxmatic-nix-darwin-home-bringup-runtime-profile-holder";
                 requiredCommands = "bash nix age age-keygen awk sed grep ssh ssh-keygen yq git";
@@ -955,28 +961,32 @@
           ndhBootstrapInstallerPackage = mkNdhBootstrapProfileInstaller "aarch64-darwin";
           ndhBootstrapRuntimePackageLinux = mkNdhBootstrapRuntimePackage "aarch64-linux";
           ndhBootstrapInstallerPackageLinux = mkNdhBootstrapProfileInstaller "aarch64-linux";
+          ndhPrerequisitesInstallerScriptSource =
+            pkgsForDarwin.replaceVars ./modules/.common.d/bootstrap-profile.d/prerequisites-install-wrapper.sh
+              {
+                bash = "${pkgsForDarwin.bash}/bin/bash";
+                bashTrampoline = "${./modules/.common.d/shell.d/nix-bash-trampoline.sh}";
+                logger = (mkLoggerSpecialArg "aarch64-darwin").script;
+                loggerTag = "ndh.bootstrap-profile.prerequisites-install.darwin";
+                autofsMaterializerProgram =
+                  if autofsNetMaterializerProgram != null then autofsNetMaterializerProgram else "";
+                standaloneInstaller = "${ndhBootstrapInstallerPackage}/bin/io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer";
+              };
+          ndhPrerequisitesInstallerScriptSourceLinux =
+            pkgsForLinux.replaceVars ./modules/.common.d/bootstrap-profile.d/prerequisites-install-wrapper.sh
+              {
+                bash = "${pkgsForLinux.bash}/bin/bash";
+                bashTrampoline = "${./modules/.common.d/shell.d/nix-bash-trampoline.sh}";
+                logger = (mkLoggerSpecialArg "aarch64-linux").script;
+                loggerTag = "ndh.bootstrap-profile.prerequisites-install.linux";
+                autofsMaterializerProgram = "";
+                standaloneInstaller = "${ndhBootstrapInstallerPackageLinux}/bin/io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer";
+              };
           ndhPrerequisitesInstallerPackage = ndhStoreApiDarwin.runCommand "prerequisites-install" { } ''
-            mkdir -p "$out/bin"
-            cat > "$out/bin/io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer" <<'EOF'
-            #!/usr/bin/env bash
-            set -euo pipefail
-
-            ${nixpkgs.lib.optionalString (
-              autofsNetMaterializerProgram != null
-            ) "/usr/bin/sudo ${autofsNetMaterializerProgram}"}
-            exec ${ndhBootstrapInstallerPackage}/bin/io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer "$@"
-            EOF
-            chmod 0555 "$out/bin/io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer"
+            install -Dm755 ${ndhPrerequisitesInstallerScriptSource} "$out/bin/io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer"
           '';
           ndhPrerequisitesInstallerPackageLinux = ndhStoreApiLinux.runCommand "prerequisites-install" { } ''
-            mkdir -p "$out/bin"
-            cat > "$out/bin/io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer" <<'EOF'
-            #!/usr/bin/env bash
-            set -euo pipefail
-
-            exec ${ndhBootstrapInstallerPackageLinux}/bin/io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer "$@"
-            EOF
-            chmod 0555 "$out/bin/io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer"
+            install -Dm755 ${ndhPrerequisitesInstallerScriptSourceLinux} "$out/bin/io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer"
           '';
           hostDarwinPackages = {
             io-nxmatic-nix-darwin-home-bringup-runtime-profile-holder = ndhBootstrapRuntimePackage;

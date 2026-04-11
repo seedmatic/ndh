@@ -34,13 +34,14 @@ The nix-darwin linux-builder provides a NixOS VM that can build Linux packages o
 When host outputs expose these packages:
 
 - `ndh-prerequisites-install`
-- `ndh-bootstrap-runtime`
+- `io-nxmatic-nix-darwin-home-bringup-runtime-profile-holder`
 - `lima-config-materialize`
 
 Use this mapping:
 
 - **Run first:** `ndh-prerequisites-install` (canonical prerequisite installer)
-- **Do not run directly:** `ndh-bootstrap-runtime` (payload package installed into the dedicated profile)
+- **Profile target:** `/nix/var/nix/profiles/per-user/root/io-nxmatic-nix-darwin-home-bringup-runtime-profile-holder`
+- **Do not run directly:** `io-nxmatic-nix-darwin-home-bringup-runtime-profile-holder` (payload package installed into the dedicated profile)
 - **Separate concern:** `lima-config-materialize` (Lima config generation/materialization)
 
 ## Bootstrap Steps

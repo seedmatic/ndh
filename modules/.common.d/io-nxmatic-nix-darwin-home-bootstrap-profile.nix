@@ -12,6 +12,15 @@ let
     name: if lib.hasPrefix "${storeNamePrefix}-" name then name else "${storeNamePrefix}-${name}";
   requiredCommandsString = lib.concatStringsSep " " cfg.requiredCommands;
   installHint = "nix run .#io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer -- ${cfg.profileDir}";
+  loggerScript =
+    if config ? nixBashLogger && config.nixBashLogger ? script then
+      config.nixBashLogger.script
+    else
+      pkgs.writeText (prefixStoreName "logger.sh") ''
+        #!${pkgs.bash}/bin/bash
+        LOGGER_CMD=""
+        source ${./shell.d/logger.sh}
+      '';
   loggerShim = pkgs.writeShellScriptBin "logger" ''
     if [[ -x /usr/bin/logger ]]; then
       exec /usr/bin/logger "$@"
@@ -54,6 +63,11 @@ let
     builtins.readFile activationCheckSource
   );
   standaloneInstallSource = pkgs.replaceVars ./bootstrap-profile.d/install-standalone.sh {
+    bash = "${pkgs.bash}/bin/bash";
+    nix = "${config.nix.package.out}/bin/nix";
+    bashTrampoline = "${./shell.d/nix-bash-trampoline.sh}";
+    logger = loggerScript;
+    loggerTag = "ndh.bootstrap-profile.install-standalone";
     runtimePackage = bootstrapRuntimePackage;
     defaultProfileDir = cfg.profileDir;
     requiredCommands = requiredCommandsString;

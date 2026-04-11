@@ -7,7 +7,6 @@ let
     inherit etcTargets;
     extension = cfg.extension;
     overwrite = cfg.overwrite;
-    managedPrefixes = [ "/nix/store/" ];
     moveConflicts = true;
   };
 in

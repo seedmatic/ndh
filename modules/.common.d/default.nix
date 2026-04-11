@@ -97,6 +97,8 @@ let
       '';
 
   ndhStoreAssetLookupSource = pkgs.replaceVars ./shell.d/store-asset-lookup.sh {
+    bashTrampoline = "${./shell.d/nix-bash-trampoline.sh}";
+    logger = loggerScript;
     nix = toString pkgs.nix;
     gnugrep = toString pkgs.gnugrep;
     coreutils = toString pkgs.coreutils;

@@ -163,6 +163,8 @@ in
     sshGroupKeys = {
       text = builtins.readFile (
         pkgs.replaceVars ./openssh.d/activation.sh {
+          bash = "${pkgs.bash}/bin/bash";
+          bashTrampoline = "${../../.common.d/shell.d/nix-bash-trampoline.sh}";
           authorizedKeysDir = config.opensshPolicy.authorizedKeysDir;
           keysDir = config.opensshPolicy.keysDir;
           hostname = hostname;

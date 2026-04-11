@@ -5,6 +5,15 @@
 #   RKE2LAB_NIXOS_CONFIG_PATH  - explicit repo path
 #   RKE2LAB_NIXOS_ALLOW_CLONE=1  - permit fallback clone if no working copy found
 set -euxo pipefail
+NDH_NIX_CLI_ARGS="${NDH_NIX_CLI_ARGS:--L -v -v}"
+
+ndh:nix:run() {
+  local -a ndh_nix_cli_args=()
+  if [[ -n "${NDH_NIX_CLI_ARGS}" ]]; then
+    read -r -a ndh_nix_cli_args <<< "${NDH_NIX_CLI_ARGS}"
+  fi
+  nix "${ndh_nix_cli_args[@]}" "$@"
+}
 
 HOSTNAME="${1:-}"
 if [ -z "${HOSTNAME}" ]; then
@@ -61,7 +70,7 @@ else
   printf '  %s\n' "${CANDIDATES[@]:-}" >&2
   if [ "${RKE2LAB_NIXOS_ALLOW_CLONE:-0}" = "1" ]; then
     : "[lima-nixos-config] RKE2LAB_NIXOS_ALLOW_CLONE=1 set; cloning repository config" >&2
-    nix flake clone -f /var/lib/nixos/config github:nxmatic/nix-darwin-home
+    ndh:nix:run flake clone -f /var/lib/nixos/config github:nxmatic/nix-darwin-home
   else
     : "[lima-nixos-config] ERROR: no working copy found and clone fallback disabled" >&2
     : "[lima-nixos-config] Set RKE2LAB_NIXOS_CONFIG_PATH to a mounted checkout or set RKE2LAB_NIXOS_ALLOW_CLONE=1 to permit clone." >&2

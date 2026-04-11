@@ -2,6 +2,11 @@
 # Host-side Lima wrapper with remote NixOS activation support (@codebase)
 set -euo pipefail
 
+# shellcheck disable=SC1091
+source "@bashTrampoline@"
+# shellcheck disable=SC1091
+source "@logger@"
+
 LIMA_HOME="${LIMA_HOME:-${HOME}/.lima}"
 
 LIMA_VM="${LIMA_VM:-nerd-nixos}"
@@ -21,6 +26,7 @@ RESOLVED_LIMA_NIXOS_DISK_IMAGE_ATTR=""
 NIXOS_FLAKE_REF="${NIXOS_FLAKE_REF:-${NIXOS_FLAKE_PATH}#${NIXOS_HOST_ATTR}}"
 NIXOS_EXT4_FLAKE_REF="${NIXOS_EXT4_FLAKE_REF:-}"
 NIXOS_ZFS_FLAKE_REF="${NIXOS_ZFS_FLAKE_REF:-}"
+NDH_NIX_CLI_ARGS="${NDH_NIX_CLI_ARGS:--L -v -v}"
 
 nixos:flake:refs:resolve() {
   local flake_base="${NIXOS_FLAKE_REF%%#*}"
@@ -269,6 +275,11 @@ host:disk:image:build() {
   local out_link="${RESOLVED_NDH_VZ_HOST_FLAKE_REF}/outputs.d/nixos-disk-image"
   local attr_out_link
   local -a nix_build_args
+  local -a ndh_nix_cli_args=()
+
+  if [[ -n "${NDH_NIX_CLI_ARGS}" ]]; then
+    read -r -a ndh_nix_cli_args <<< "${NDH_NIX_CLI_ARGS}"
+  fi
 
   mkdir -p "${RESOLVED_NDH_VZ_HOST_FLAKE_REF}"
   attr_out_link="$(host:disk:image:attr:symlink:path "${RESOLVED_LIMA_NIXOS_DISK_IMAGE_ATTR}")"
@@ -277,20 +288,25 @@ host:disk:image:build() {
   if [[ "${LIMA_QUIET_BUILD}" == "1" ]]; then
     nix_build_args=(--quiet "${nix_build_args[@]}")
   fi
-  nix "${nix_build_args[@]}"
+  nix "${ndh_nix_cli_args[@]}" "${nix_build_args[@]}"
 
   ln -sfn "$(basename "${attr_out_link}")" "${out_link}"
 }
 
 host:lima:config:ensure() {
   local lima_yaml="${LIMA_HOME}/${LIMA_VM}/lima.yaml"
+  local -a ndh_nix_cli_args=()
+
+  if [[ -n "${NDH_NIX_CLI_ARGS}" ]]; then
+    read -r -a ndh_nix_cli_args <<< "${NDH_NIX_CLI_ARGS}"
+  fi
 
   if [[ "${LIMA_REFRESH_CONFIG:-0}" == "1" ]]; then
     : "[lima-run] refreshing Lima config via darwin activation"
     if command -v darwin-rebuild >/dev/null 2>&1; then
       darwin-rebuild switch --flake "${RESOLVED_NDH_VZ_HOST_FLAKE_REF}"
     else
-      nix run nix-darwin -- switch --flake "${RESOLVED_NDH_VZ_HOST_FLAKE_REF}"
+      nix "${ndh_nix_cli_args[@]}" run nix-darwin -- switch --flake "${RESOLVED_NDH_VZ_HOST_FLAKE_REF}"
     fi
   fi
 
@@ -303,6 +319,12 @@ host:lima:config:ensure() {
 vm:nixos:rebuild() {
   local action="${1:-switch}"
   local flake_ref="${2:-${NIXOS_FLAKE_REF}}"
+  local -a ndh_nix_cli_args=()
+
+  if [[ -n "${NDH_NIX_CLI_ARGS}" ]]; then
+    read -r -a ndh_nix_cli_args <<< "${NDH_NIX_CLI_ARGS}"
+  fi
+
   vm:ssh:ensure-started
 
   local host port identity
@@ -327,7 +349,7 @@ vm:nixos:rebuild() {
       --target-host "${NIXOS_REMOTE_HOST}@${host}" \
       --use-remote-sudo
   else
-    NIX_SSHOPTS="${ssh_opts}" nix run nixpkgs#nixos-rebuild -- "${action}" \
+    NIX_SSHOPTS="${ssh_opts}" nix "${ndh_nix_cli_args[@]}" run nixpkgs#nixos-rebuild -- "${action}" \
       --flake "${flake_ref}" \
       --build-host "${NIXOS_REMOTE_HOST}@${host}" \
       --target-host "${NIXOS_REMOTE_HOST}@${host}" \
@@ -391,6 +413,7 @@ Environment overrides:
   LIMA_VM=<instance>                (default: nerd-nixos)
   LIMA_VERBOSE=1                    (optional: enable extra runtime status output)
   LIMA_QUIET_BUILD=0                (optional: disable quiet nix build output)
+  NDH_NIX_CLI_ARGS='-L -v -v'       (optional: global extra nix CLI args for managed nix calls)
   NDH_VZ_HOST=<host>                (default: @effectiveHostName@)
   NDH_VZ_HOST_FLAKE_REF=<flake-path>  (required for vm:disk:nixos:build and vm:reset when not run from a nix-darwin-home checkout)
   DEFAULT_LIMA_NIXOS_DISK_IMAGE_ATTR=<attr> (default: nixosDiskImageBringupSystemdBoot)

@@ -39,6 +39,18 @@ in
 
         if [ -L "$target" ]; then
           resolved="$(readlink "$target" || true)"
+          if [ -n "$resolved" ]; then
+            resolved_abs="$resolved"
+            case "$resolved_abs" in
+              /*) ;;
+              *) resolved_abs="$(dirname "$target")/$resolved_abs" ;;
+            esac
+
+            resolved_real="$(realpath -m "$resolved_abs" 2>/dev/null || realpath "$resolved_abs" 2>/dev/null || true)"
+            if [ -n "$resolved_real" ]; then
+              resolved="$resolved_real"
+            fi
+          fi
           case "$resolved" in
       ${mkManagedSymlinkCase managedPrefixes}
           esac

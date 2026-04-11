@@ -2,6 +2,13 @@
 source @logger@
 
 main() {
+  local ndh_nix_cli_args_raw="${NDH_NIX_CLI_ARGS:--L -v -v}"
+  local -a ndh_nix_cli_args=()
+
+  if [[ -n "${ndh_nix_cli_args_raw}" ]]; then
+    read -r -a ndh_nix_cli_args <<< "${ndh_nix_cli_args_raw}"
+  fi
+
   relink_path() {
     local src="$1"
     local dst="$2"
@@ -119,7 +126,7 @@ main() {
   else
     # Expensive fallback only when no local descriptor/store/source image is usable.
     if command -v nix >/dev/null 2>&1; then
-      resolved_out="$(nix build "$resolved_ref" --no-link --print-out-paths 2>/dev/null | tail -n 1 || true)"
+      resolved_out="$(nix "${ndh_nix_cli_args[@]}" build "$resolved_ref" --no-link --print-out-paths 2>/dev/null | tail -n 1 || true)"
       resolved_img="${resolved_out}/nixos.img"
     fi
 

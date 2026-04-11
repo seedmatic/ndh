@@ -218,7 +218,12 @@ authority::signKey() {
 			;;
 		esac
 		keyCertTmpFile="${keyPublicTmpFile%.pub}-cert.pub"
-		ssh-keygen -L -f "$keyCertTmpFile" || : "Could not inspect certificate $keyCertTmpFile"
+		if [[ "${NDH_SSH_ENRICH_LOG_CERT_DETAILS:-0}" == "1" ]]; then
+			{
+				echo "[ssh-keys-enrichment] certificate details for key=${keyNameLocal} usage=${usage} authority=${authorityName}" 
+				ssh-keygen -L -f "$keyCertTmpFile"
+			} >&2 || echo "[ssh-keys-enrichment][WARN] Could not inspect certificate for key=${keyNameLocal} usage=${usage} authority=${authorityName}" >&2
+		fi
 		keyCertLine="$(cat "${keyCertTmpFile}")"
 		declare -g "$(var::snakeCase "${keyVar}" authorities "$authorityName" "$usage")=${keyCertLine}"
 	done

@@ -123,6 +123,8 @@ let
   limaRunScript = ndh.store.runCommand "lima-run.sh" { } ''
     cp ${
       pkgs.replaceVars ./lima-config.d/run.sh {
+        bashTrampoline = "${../.common.d/shell.d/nix-bash-trampoline.sh}";
+        logger = loggerScript;
         effectiveHostName = effectiveHostName;
         nixosFlakePath = cfg.nixosFlakePath;
         nixosHostAttr = cfg.nixosHostAttr;
