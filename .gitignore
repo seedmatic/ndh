@@ -10,3 +10,4 @@ nixos.qcow2
 .local.d
 tmp/
 .zsh_history.copilot.hidden
+sandbox/zfs-raidz1-lab/.tart
