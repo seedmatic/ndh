@@ -85,6 +85,19 @@ main() {
     img_dst="$runtime_img_dst"
   fi
 
+  # When this script is executed from Home Manager activation, runtime user can
+  # differ from the system profile user baked at package build-time. Keep one
+  # canonical gcroot target for the runtime user to avoid stale user-scoped links.
+  if [[ "$img_dst" =~ ^/nix/var/nix/gcroots/per-user/([^/]+)/(.+)$ ]]; then
+    img_dst_user="${BASH_REMATCH[1]}"
+    img_dst_tail="${BASH_REMATCH[2]}"
+    if [[ -n "$runtime_user" && "$img_dst_user" != "$runtime_user" ]]; then
+      runtime_user_img_dst="/nix/var/nix/gcroots/per-user/${runtime_user}/${img_dst_tail}"
+      echo "[limaConfig][WARN] rewriting image target for runtime user ${runtime_user}: $img_dst -> $runtime_user_img_dst"
+      img_dst="$runtime_user_img_dst"
+    fi
+  fi
+
   mkdir -p "$(dirname "$img_dst")"
   resolved_ref="${image_flake_path}/hosts/@effectiveHostName@#${image_flake_attr}"
   resolved_out=""
@@ -145,6 +158,10 @@ main() {
 
   if [ -n "$selected_img" ] && [ -f "$selected_img" ]; then
     img_dst_parent="$(dirname "$img_dst")"
+    if [ ! -d "$img_dst_parent" ]; then
+      mkdir -p "$img_dst_parent" 2>/dev/null || true
+    fi
+
     if [ ! -d "$img_dst_parent" ]; then
       echo "[limaConfig][ERROR] image target parent directory missing: $img_dst_parent"
       echo "[limaConfig][HINT] create it manually, then rerun activation: mkdir -p '$img_dst_parent'"
