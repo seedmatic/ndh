@@ -1,4 +1,5 @@
 # shellcheck disable=SC1091
+export NDH_BOOTSTRAP_STRICT=0
 source @bashTrampoline@
 # shellcheck disable=SC1091
 source @logger@

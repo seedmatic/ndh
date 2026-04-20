@@ -5,6 +5,9 @@
 # Key files are extracted by the Home Manager activation extractSSHKeys step.
 # This script is run by the LaunchAgent on login to ensure keys survive reboots.
 
+# User-space HM launchd context: skip hard bootstrap profile enforcement.
+export NDH_BOOTSTRAP_STRICT=0
+
 # shellcheck disable=SC1091
 source "@bashTrampoline@"
 # shellcheck disable=SC1091
