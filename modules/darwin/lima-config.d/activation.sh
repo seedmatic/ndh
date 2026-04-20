@@ -31,6 +31,30 @@ main() {
     return 1
   }
 
+  materialize_lima_yaml_with_image_path() {
+    local src="$1"
+    local dst="$2"
+    local image_path="$3"
+    local label="$4"
+    local tmp
+
+    tmp="$(mktemp "${dst}.XXXXXX")"
+    awk -v newLocation="file://${image_path}" '
+      BEGIN { done = 0 }
+      {
+        if (!done && $0 ~ /^[[:space:]]*location:[[:space:]]*"?file:\/\//) {
+          sub(/file:\/\/[^"[:space:]]+/, newLocation)
+          done = 1
+        }
+        print
+      }
+    ' "$src" > "$tmp"
+
+    mv "$tmp" "$dst"
+    chmod 0644 "$dst"
+    echo "[limaConfig] ${label}: $dst (image=file://${image_path})"
+  }
+
   echo "[limaConfig] start $(date) host=@effectiveHostName@ user=@profileUser@"
 
   configured_home="@profileHome@"
@@ -62,6 +86,18 @@ main() {
 
   host_pub="@hostPublicKeyPath@"
   host_priv="@hostPrivateKeyPath@"
+
+  if [[ "$host_pub" == "${configured_home}/"* ]] && [[ "$effective_home" != "$configured_home" ]]; then
+    runtime_host_pub="${effective_home}${host_pub#${configured_home}}"
+    echo "[limaConfig][WARN] rewriting host public key path for runtime home ${runtime_user}: $host_pub -> $runtime_host_pub"
+    host_pub="$runtime_host_pub"
+  fi
+
+  if [[ "$host_priv" == "${configured_home}/"* ]] && [[ "$effective_home" != "$configured_home" ]]; then
+    runtime_host_priv="${effective_home}${host_priv#${configured_home}}"
+    echo "[limaConfig][WARN] rewriting host private key path for runtime home ${runtime_user}: $host_priv -> $runtime_host_priv"
+    host_priv="$runtime_host_priv"
+  fi
 
   : "Ensure canonical key target directories exist"
   mkdir -p "$(dirname "$host_pub")"
@@ -173,12 +209,19 @@ main() {
 
   : "Install managed Lima config variants (headless + gui)"
   lima_dir="${effective_home}/.lima/nerd-nixos"
+  lima_runtime_dir="${lima_dir}/.generated"
+  lima_headless_runtime="${lima_runtime_dir}/lima.headless.yaml"
+  lima_gui_runtime="${lima_runtime_dir}/lima.gui.yaml"
   lima_headless_link="${lima_dir}/lima.headless.yaml"
   lima_gui_link="${lima_dir}/lima.gui.yaml"
   lima_active="${lima_dir}/lima.yaml"
 
-  relink_path "@limaConfigYamlHeadless@" "$lima_headless_link" "headless config link"
-  relink_path "@limaConfigYamlGui@" "$lima_gui_link" "gui config link"
+  mkdir -p "$lima_runtime_dir"
+  materialize_lima_yaml_with_image_path "@limaConfigYamlHeadless@" "$lima_headless_runtime" "$img_dst" "headless runtime config"
+  materialize_lima_yaml_with_image_path "@limaConfigYamlGui@" "$lima_gui_runtime" "$img_dst" "gui runtime config"
+
+  relink_path "$lima_headless_runtime" "$lima_headless_link" "headless config link"
+  relink_path "$lima_gui_runtime" "$lima_gui_link" "gui config link"
 
   : "Keep active lima.yaml on headless profile by default"
   relink_path "$lima_headless_link" "$lima_active" "active lima config link"
@@ -186,11 +229,11 @@ main() {
   # Defensive repair path for filesystems/environments where symlink checks can
   # behave unexpectedly during activation (keep non-fatal).
   if [ ! -e "$lima_active" ] && [ ! -L "$lima_active" ]; then
-    ln -sfn "@limaConfigYamlHeadless@" "$lima_active" 2>/dev/null || true
+    ln -sfn "$lima_headless_runtime" "$lima_active" 2>/dev/null || true
   fi
 
   if [ ! -e "$lima_active" ] && [ ! -L "$lima_active" ]; then
-    cp -f "@limaConfigYamlHeadless@" "$lima_active" 2>/dev/null || true
+    cp -f "$lima_headless_runtime" "$lima_active" 2>/dev/null || true
   fi
 
   : "Verify output file"
