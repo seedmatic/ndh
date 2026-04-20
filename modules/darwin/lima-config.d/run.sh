@@ -15,7 +15,7 @@ NIXOS_FLAKE_PATH="${NIXOS_FLAKE_PATH:-@nixosFlakePath@}"
 NIXOS_HOST_ATTR="${NIXOS_HOST_ATTR:-@nixosHostAttr@}"
 NIXOS_REMOTE_HOST="${NIXOS_REMOTE_HOST:-root}"
 LIMA_VERBOSE="${LIMA_VERBOSE:-0}"
-LIMA_QUIET_BUILD="${LIMA_QUIET_BUILD:-1}"
+LIMA_QUIET_BUILD="${LIMA_QUIET_BUILD:-0}"
 DEFAULT_LIMA_NIXOS_DISK_IMAGE_ATTR="${DEFAULT_LIMA_NIXOS_DISK_IMAGE_ATTR:-nixosDiskImageBringupSystemdBoot}"
 LIMA_NIXOS_DISK_IMAGE_ATTR="${LIMA_NIXOS_DISK_IMAGE_ATTR:-}"
 NDH_VZ_HOST_FLAKE_REF="${NDH_VZ_HOST_FLAKE_REF:-}"
@@ -304,7 +304,7 @@ host:lima:config:ensure() {
   if [[ "${LIMA_REFRESH_CONFIG:-0}" == "1" ]]; then
     : "[lima-run] refreshing Lima config via darwin activation"
     if command -v darwin-rebuild >/dev/null 2>&1; then
-      darwin-rebuild switch --flake "${RESOLVED_NDH_VZ_HOST_FLAKE_REF}"
+      darwin-rebuild --print-build-logs switch --flake "${RESOLVED_NDH_VZ_HOST_FLAKE_REF}"
     else
       nix "${ndh_nix_cli_args[@]}" run nix-darwin -- switch --flake "${RESOLVED_NDH_VZ_HOST_FLAKE_REF}"
     fi
@@ -412,7 +412,7 @@ Environment overrides:
   LIMA_HOME=<path>                  (default: ${HOME}/.lima)
   LIMA_VM=<instance>                (default: nerd-nixos)
   LIMA_VERBOSE=1                    (optional: enable extra runtime status output)
-  LIMA_QUIET_BUILD=0                (optional: disable quiet nix build output)
+  LIMA_QUIET_BUILD=1                (optional: force quiet nix build output)
   NDH_NIX_CLI_ARGS='-L -v -v'       (optional: global extra nix CLI args for managed nix calls)
   NDH_VZ_HOST=<host>                (default: @effectiveHostName@)
   NDH_VZ_HOST_FLAKE_REF=<flake-path>  (required for vm:disk:nixos:build and vm:reset when not run from a nix-darwin-home checkout)
