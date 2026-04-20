@@ -25,6 +25,8 @@ let
   authorityKeysDir = sshPaths.authoritySecretsDir;
   systemManagedSshKeysPipeline = pkgs.stdenv.isLinux || pkgs.stdenv.isDarwin;
   systemSplitProfileKeysYamlPath = "/run/secrets/nix-darwin-home/ssh-keys-split.d/profiles/${sshKeyProfileName}.yaml";
+  allowSystemSplitFallback = profileName == "work";
+  sourceProfileKeysYamlPath = "${./ssh.d/keys.yaml}";
   # Effective YAML path consumed by ssh-add-keys/launchd.
   effectiveSSHKeysYamlPath = "${perUserKeysDir}.yaml";
 
@@ -126,14 +128,28 @@ in
     {
       # System-managed path (NixOS + Darwin): consume profile-specific generated YAML.
       prepareGeneratedSSHKeysYaml = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-        if [[ ! -r "${systemSplitProfileKeysYamlPath}" ]]; then
-          echo "missing system-generated profile keys YAML: ${systemSplitProfileKeysYamlPath}" >&2
-          echo "profile.name=${profileName} sshKeyProfileName=${sshKeyProfileName}" >&2
-          exit 1
+        install -m 0700 -d "$(dirname "${effectiveSSHKeysYamlPath}")"
+
+        if [[ -r "${systemSplitProfileKeysYamlPath}" ]]; then
+          install -m 0400 "${systemSplitProfileKeysYamlPath}" "${effectiveSSHKeysYamlPath}"
+        else
+          ${lib.optionalString allowSystemSplitFallback ''
+            echo "missing system-generated profile keys YAML: ${systemSplitProfileKeysYamlPath}" >&2
+            echo "profile.name=${profileName} sshKeyProfileName=${sshKeyProfileName}" >&2
+            echo "[ssh-keys][WARN] falling back to source profile public keys for work activation" >&2
+
+            tmp_yaml="$(mktemp)"
+            ${pkgs.yq-go}/bin/yq eval -o=yaml '.profiles."${sshKeyProfileName}" | { keys: . }' "${sourceProfileKeysYamlPath}" > "$tmp_yaml"
+            install -m 0400 "$tmp_yaml" "${effectiveSSHKeysYamlPath}"
+            rm -f "$tmp_yaml"
+          ''}
+          ${lib.optionalString (!allowSystemSplitFallback) ''
+            echo "missing system-generated profile keys YAML: ${systemSplitProfileKeysYamlPath}" >&2
+            echo "profile.name=${profileName} sshKeyProfileName=${sshKeyProfileName}" >&2
+            exit 1
+          ''}
         fi
 
-        install -m 0700 -d "$(dirname "${effectiveSSHKeysYamlPath}")"
-        install -m 0400 "${systemSplitProfileKeysYamlPath}" "${effectiveSSHKeysYamlPath}"
         chown "${userName}:$(id -gn "${userName}" 2>/dev/null || echo "${userName}")" "${effectiveSSHKeysYamlPath}" 2>/dev/null || true
       '';
 
