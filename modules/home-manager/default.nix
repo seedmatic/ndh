@@ -240,6 +240,29 @@ in
 
   targets.genericLinux.enable = false;
 
+  assertions = lib.optionals (pkgs.stdenvNoCC.isDarwin && isMinimalHomeProfile) [
+    {
+      assertion = limaConfigMaterializerPackage != null;
+      message = ''
+        Home Manager work profile on Darwin requires `limaConfigMaterializerPackage`.
+        This ensures HM activation can materialize ~/.lima assets and refresh the user gcroot image.
+      '';
+    }
+  ];
+
+  home.activation.materializeLima = lib.mkIf (pkgs.stdenvNoCC.isDarwin && isMinimalHomeProfile) (
+    lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+      materializer="${limaConfigMaterializerPackage}/bin/lima-config-materialize"
+      if [[ ! -x "$materializer" ]]; then
+        echo "[limaConfig][ERROR] missing Home Manager materializer executable: $materializer" >&2
+        exit 1
+      fi
+
+      echo "[limaConfig] Home Manager activation: materializing ~/.lima assets and gcroot image"
+      "${pkgs.bash}/bin/bash" "$materializer"
+    ''
+  );
+
   programs =
     if isMinimalHomeProfile then
       {
