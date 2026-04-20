@@ -30,13 +30,21 @@ NDH_NIX_CLI_ARGS="${NDH_NIX_CLI_ARGS:--L -v -v}"
 
 nixos:flake:refs:resolve() {
   local flake_base="${NIXOS_FLAKE_REF%%#*}"
+  local host_attr="${NIXOS_HOST_ATTR}"
+  local bringup_prefix
+
+  if [[ "${host_attr}" == *-nixos ]]; then
+    bringup_prefix="${host_attr%-nixos}"
+  else
+    bringup_prefix="${host_attr}"
+  fi
 
   if [[ -z "${NIXOS_EXT4_FLAKE_REF}" ]]; then
-    NIXOS_EXT4_FLAKE_REF="${flake_base}#ext4Bringup"
+    NIXOS_EXT4_FLAKE_REF="${flake_base}#${bringup_prefix}-bringup-ext4"
   fi
 
   if [[ -z "${NIXOS_ZFS_FLAKE_REF}" ]]; then
-    NIXOS_ZFS_FLAKE_REF="${flake_base}#zfsBringup"
+    NIXOS_ZFS_FLAKE_REF="${flake_base}#${bringup_prefix}-bringup-zfs"
   fi
 }
 
@@ -376,8 +384,12 @@ vm:nixos:boot:ext4() {
 
 vm:nixos:boot:zfs() {
   vm:nixos:rebuild boot "${NIXOS_ZFS_FLAKE_REF}"
-  vm:nixos:rebuild switch "${NIXOS_ZFS_FLAKE_REF}"
-  vm:nixos:zfs-bootstrap
+  cat <<'EOF'
+[lima-run] boot:zfs completed (boot generation updated only).
+[lima-run] runtime switch is operator-driven:
+  1) run.sh vm:nixos:switch
+  2) run.sh vm:nixos:zfs-bootstrap
+EOF
 }
 
 cli:usage:print() {
@@ -394,7 +406,7 @@ Optional global arguments (before <command>):
 Commands:
   vm:disk:nixos:build       Build disk image + ensure Lima config + boot VM
   vm:nixos:boot:ext4        Remote nixos-rebuild boot for ext4/bootstrap target
-  vm:nixos:boot:zfs         Remote nixos-rebuild boot+switch for zfs target + zfs bootstrap unit
+  vm:nixos:boot:zfs         Remote nixos-rebuild boot for zfs target (operator runs switch/bootstrap later)
   vm:start                  Start Lima VM
   vm:start:gui              Switch active config to GUI and start Lima VM
   vm:start:headless         Switch active config to headless and start Lima VM
@@ -422,8 +434,8 @@ Environment overrides:
   NIXOS_FLAKE_PATH=<path>           (default: @nixosFlakePath@)
   NIXOS_HOST_ATTR=<attr>            (default: @nixosHostAttr@)
   NIXOS_FLAKE_REF=<flake#attr>      (overrides path+attr composition)
-  NIXOS_EXT4_FLAKE_REF=<flake#attr> (default: <NIXOS_FLAKE_REF base>#ext4Bringup)
-  NIXOS_ZFS_FLAKE_REF=<flake#attr>  (default: <NIXOS_FLAKE_REF base>#zfsBringup)
+  NIXOS_EXT4_FLAKE_REF=<flake#attr> (default: <NIXOS_FLAKE_REF base>#<NIXOS_HOST_ATTR%-nixos>-bringup-ext4)
+  NIXOS_ZFS_FLAKE_REF=<flake#attr>  (default: <NIXOS_FLAKE_REF base>#<NIXOS_HOST_ATTR%-nixos>-bringup-zfs)
   NIXOS_REMOTE_HOST=<user>          (default: root)
 EOF
 }

@@ -130,7 +130,7 @@ else
 
   if [ ! -s "$key_file" ]; then
     echo "[sops-age-bootstrap] ERROR: missing SOPS age key at $key_file"
-    echo "[sops-age-bootstrap] either provision the key manually or run one activation with nxmatic.sopsAgeKeyBootstrap.phase=\"bootstrap\""
+    echo "[sops-age-bootstrap] either provision the key manually or run one activation with ndh.sopsAgeKeyBootstrap.phase=\"bootstrap\""
     exit 1
   fi
 fi

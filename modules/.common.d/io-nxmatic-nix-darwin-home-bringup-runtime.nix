@@ -6,7 +6,7 @@
   ...
 }:
 let
-  cfg = config.nxmatic.bootstrapProfile;
+  cfg = config.ndh.bringupRuntime;
   storeNamePrefix = "io.nxmatic.nix-darwin-home";
   prefixStoreName =
     name: if lib.hasPrefix "${storeNamePrefix}-" name then name else "${storeNamePrefix}-${name}";
@@ -49,7 +49,7 @@ let
       yq-go
     ];
   };
-  activationCheckSource = pkgs.replaceVars ./bootstrap-profile.d/activation-check.sh {
+  activationCheckSource = pkgs.replaceVars ./bringup-runtime.d/activation-check.sh {
     profileBin = "${cfg.profileDir}/bin";
     nixBin = "${config.nix.package.out}/bin/nix";
     autoInstall = if cfg.autoInstallOnActivation then "1" else "0";
@@ -59,15 +59,14 @@ let
     bootstrapInstaller = "${ndhPrerequisitesInstallerPackage}/bin/io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer";
     profileDir = cfg.profileDir;
   };
-  activationCheckScript = pkgs.writeShellScript (prefixStoreName "bootstrap-profile-activation-check") (
+  activationCheckScript = pkgs.writeShellScript (prefixStoreName "bringup-runtime-activation-check") (
     builtins.readFile activationCheckSource
   );
-  standaloneInstallSource = pkgs.replaceVars ./bootstrap-profile.d/install-standalone.sh {
+  standaloneInstallSource = pkgs.replaceVars ./bringup-runtime.d/install-standalone.sh {
     bash = "${pkgs.bash}/bin/bash";
     nix = "${config.nix.package.out}/bin/nix";
-    bashTrampoline = "${./shell.d/nix-bash-trampoline.sh}";
     logger = loggerScript;
-    loggerTag = "ndh.bootstrap-profile.install-standalone";
+    loggerTag = "ndh.bringup-runtime.install-standalone";
     runtimePackage = bootstrapRuntimePackage;
     defaultProfileDir = cfg.profileDir;
     requiredCommands = requiredCommandsString;
@@ -79,23 +78,23 @@ let
       '';
 in
 {
-  options.nxmatic.bootstrapProfile = {
+  options.ndh.bringupRuntime = {
     enable = lib.mkOption {
       type = lib.types.bool;
       default = true;
-      description = "Enable dedicated Nix profile contract for NDH bootstrap runtime tools.";
+      description = "Enable dedicated Nix profile contract for NDH bringup runtime tools.";
     };
 
     name = lib.mkOption {
       type = lib.types.str;
-      default = "io-nxmatic-nix-darwin-home-bringup-runtime-profile-holder";
-      description = "Dedicated Nix profile name for NDH bootstrap runtime tools.";
+      default = "io-nxmatic-nix-darwin-home-bringup-runtime";
+      description = "Dedicated Nix profile name for NDH bringup runtime tools.";
     };
 
     profileDir = lib.mkOption {
       type = lib.types.str;
       default = "/nix/var/nix/profiles/per-user/root/${cfg.name}";
-      description = "Absolute Nix profile path used by NDH bootstrap runtime scripts.";
+      description = "Absolute Nix profile path used by NDH bringup runtime scripts.";
     };
 
     requiredCommands = lib.mkOption {
@@ -114,27 +113,27 @@ in
         "git"
         "logger"
       ];
-      description = "Command contract that must be present in the dedicated bootstrap profile.";
+      description = "Command contract that must be present in the dedicated bringup runtime profile.";
     };
 
     autoInstallOnActivation = lib.mkOption {
       type = lib.types.bool;
       default = true;
-      description = "When true, activation installs/refreshes the dedicated bootstrap profile before enforcing command checks.";
+      description = "When true, activation installs/refreshes the dedicated bringup runtime profile before enforcing command checks.";
     };
 
     requireForActivation = lib.mkOption {
       type = lib.types.bool;
       default = true;
-      description = "Fail activation if dedicated bootstrap profile is missing/incomplete.";
+      description = "Fail activation if dedicated bringup runtime profile is missing/incomplete.";
     };
   };
 
   config = lib.mkIf cfg.enable (
     {
-      # Canonical policy (@codebase): always install/refresh NDH bootstrap
+      # Canonical policy (@codebase): always install/refresh NDH bringup
       # prerequisites during activation.
-      nxmatic.bootstrapProfile.autoInstallOnActivation = lib.mkForce true;
+      ndh.bringupRuntime.autoInstallOnActivation = lib.mkForce true;
 
       environment.variables = {
         NDH_BOOTSTRAP_PROFILE_OWNER = "root";
@@ -157,11 +156,23 @@ in
       # bootstrap images where we need explicit/manual profile installation.
       environment.systemPackages = [ ndhPrerequisitesInstallerPackage ];
 
+      # Seed canonical runtime profile links as declarative host policy so
+      # scripts do not need to mutate profile state via shell trampoline.
+      systemd.tmpfiles.rules =
+        [
+          "d /nix/var/nix/profiles/per-user/root 0755 root root -"
+          "L+ ${cfg.profileDir} - - - - ${bootstrapRuntimePackage}"
+        ]
+        ++ lib.optionals (config.profile.user.name != "root") [
+          "d /nix/var/nix/profiles/per-user/${config.profile.user.name} 0755 root root -"
+          "L+ /nix/var/nix/profiles/per-user/${config.profile.user.name}/${cfg.name} - - - - ${bootstrapRuntimePackage}"
+        ];
+
       # `nixos-rebuild boot` does not run activation on the currently running system.
-      # Ensure the bootstrap runtime profile is provisioned at next boot before
-      # services that rely on the bootstrap command contract.
-      systemd.services.io-nxmatic-nix-darwin-home-bootstrap-profile-install = {
-        description = "Install NDH bootstrap runtime profile for root (@codebase)";
+      # Ensure the bringup runtime profile is provisioned at next boot before
+      # services that rely on the command contract.
+      systemd.services.io-nxmatic-nix-darwin-home-bringup-runtime-install = {
+        description = "Install NDH bringup runtime profile for root (@codebase)";
         wantedBy = [ "multi-user.target" ];
         requiredBy = [
           "sops-install-secrets.service"

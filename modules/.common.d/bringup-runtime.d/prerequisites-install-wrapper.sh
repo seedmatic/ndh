@@ -3,9 +3,6 @@ set -euo pipefail
 
 # Installer bootstrap mode: profile may not exist yet.
 export NDH_BOOTSTRAP_STRICT=0
-
-# shellcheck disable=SC1091
-source "@bashTrampoline@"
 # shellcheck disable=SC1091
 source "@logger@"
 

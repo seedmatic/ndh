@@ -190,7 +190,7 @@ in
     ./primary-user.nix
     ./user.nix
     ./nixpkgs.nix
-    ./io-nxmatic-nix-darwin-home-bootstrap-profile.nix
+    ./io-nxmatic-nix-darwin-home-bringup-runtime.nix
     ./dns-servers.nix
     ./dnsmasq.nix
     ./lima-host.nix

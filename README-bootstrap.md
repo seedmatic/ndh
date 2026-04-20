@@ -40,7 +40,7 @@ When host outputs expose these packages:
 Use this mapping:
 
 - **Run first:** `ndh-prerequisites-install` (canonical prerequisite installer)
-- **Profile target:** `/nix/var/nix/profiles/per-user/root/io-nxmatic-nix-darwin-home-bringup-runtime-profile-holder`
+- **Profile target:** `/nix/var/nix/profiles/per-user/root/io-nxmatic-nix-darwin-home-bringup-runtime`
 - **Do not run directly:** `io-nxmatic-nix-darwin-home-bringup-runtime-profile-holder` (payload package installed into the dedicated profile)
 - **Separate concern:** `lima-config-materialize` (Lima config generation/materialization)
 
@@ -82,7 +82,7 @@ nix copy --no-check-sigs \
 # Install/update the root profile on vz-host (requires sudo on remote host)
 ssh -t vz-host.nikopol \
   "sudo /nix/var/nix/profiles/default/bin/nix profile add \
-    --profile /nix/var/nix/profiles/per-user/root/io-nxmatic-nix-darwin-home-bringup-runtime-profile-holder \
+    --profile /nix/var/nix/profiles/per-user/root/io-nxmatic-nix-darwin-home-bringup-runtime \
     $holder_out"
 ```
 
@@ -90,7 +90,7 @@ Verification on `vz-host`:
 
 ```bash
 ssh vz-host.nikopol \
-  'ls -la /nix/var/nix/profiles/per-user/root/io-nxmatic-nix-darwin-home-bringup-runtime-profile-holder/bin'
+  'ls -la /nix/var/nix/profiles/per-user/root/io-nxmatic-nix-darwin-home-bringup-runtime/bin'
 ```
 
 ### 1. Generate SSH Keys for Builder
@@ -261,6 +261,7 @@ Important scope note:
 
 - `vm:reset` does **not** run remote `nixos-rebuild boot/switch` steps.
 - For full staged flow, use `phase:bootstrap:all` (or run `vm:nixos:boot:ext4` / `vm:nixos:boot:zfs` explicitly).
+- `vm:nixos:boot:zfs` now updates only the next boot generation; runtime `switch` is intentionally manual/operator-driven.
 
 NDH bootstrap profile note:
 

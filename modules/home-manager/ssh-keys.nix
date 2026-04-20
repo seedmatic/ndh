@@ -41,7 +41,7 @@ let
       "darwin";
   catalogHostNames = if catalog ? hosts then builtins.attrNames catalog.hosts else [ ];
   hostsCatalogCsv = lib.concatStringsSep "," catalogHostNames;
-  rootBringupProfileDir = "/nix/var/nix/profiles/per-user/root/io-nxmatic-nix-darwin-home-bringup-runtime-profile-holder";
+  rootBringupProfileDir = "/nix/var/nix/profiles/per-user/root/io-nxmatic-nix-darwin-home-bringup-runtime";
   # Effective YAML path consumed by ssh-add-keys/launchd.
   effectiveSSHKeysYamlPath = "${perUserKeysDir}.yaml";
 
@@ -201,7 +201,7 @@ nix copy --no-check-sigs \
   "$holder_out"
 ssh -t <target-host> \
   "sudo /nix/var/nix/profiles/default/bin/nix profile add \
-    --profile /nix/var/nix/profiles/per-user/root/io-nxmatic-nix-darwin-home-bringup-runtime-profile-holder \
+    --profile /nix/var/nix/profiles/per-user/root/io-nxmatic-nix-darwin-home-bringup-runtime \
     $holder_out"
 EOF
             echo "[ssh-keys][HINT] Replace <target-host> with: $runtime_target_host" >&2

@@ -1,6 +1,6 @@
 { config, lib, ... }:
 let
-  cfg = config.nxmatic.darwinEtcBackup;
+  cfg = config.ndh.darwinEtcBackup;
   etcTargets = builtins.attrNames config.environment.etc;
   etcBackupLib = import ../.common.d/etc-backup-lib.nix { inherit lib; };
   backupScript = etcBackupLib.mkEtcBackupScript {
@@ -15,7 +15,7 @@ let
   };
 in
 {
-  options.nxmatic.darwinEtcBackup = {
+  options.ndh.darwinEtcBackup = {
     enable = lib.mkOption {
       type = lib.types.bool;
       default = true;

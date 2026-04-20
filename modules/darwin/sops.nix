@@ -2,12 +2,12 @@
 {
   config = {
     # Darwin policy: keep activation-script path for sops and use system sudo path.
-    nxmatic.sopsAgeKeyBootstrap = {
+    ndh.sopsAgeKeyBootstrap = {
       defaultAgeKeyFile = lib.mkDefault (
-        if config.nxmatic.sopsAgeKeyBootstrap.darwinSystemWideKey then
-          config.nxmatic.sopsAgeKeyBootstrap.systemWideKeyFile
+        if config.ndh.sopsAgeKeyBootstrap.darwinSystemWideKey then
+          config.ndh.sopsAgeKeyBootstrap.systemWideKeyFile
         else
-          config.nxmatic.sopsAgeKeyBootstrap.darwinUserKeyFile
+          config.ndh.sopsAgeKeyBootstrap.darwinUserKeyFile
       );
       sudoCommand = lib.mkDefault "/usr/bin/sudo";
     };

@@ -47,7 +47,7 @@ No, if phase is configured per host module. Bootstrap for host A does not requir
 
 Set only the new host to:
 
-* `nxmatic.sopsAgeKeyBootstrap.phase = "bootstrap"`
+* `ndh.sopsAgeKeyBootstrap.phase = "bootstrap"`
 
 If using system-wide age key on Darwin, keep the host key path explicit.
 
@@ -95,7 +95,7 @@ Commit only the resulting `age1...` recipient (never `AGE-SECRET-KEY-...`).
 
 Set host phase back to:
 
-* `nxmatic.sopsAgeKeyBootstrap.phase = "enforce"`
+* `ndh.sopsAgeKeyBootstrap.phase = "enforce"`
 
 Activate again and verify success.
 
@@ -117,7 +117,7 @@ without storing private keys in the Nix store.
 The shared SOPS module supports this in `enforce` mode:
 
 * if `${config.sops.age.keyFile}` is missing,
-* it tries `nxmatic.sopsAgeKeyBootstrap.nixosHostKeyImport.candidates` in order,
+* it tries `ndh.sopsAgeKeyBootstrap.nixosHostKeyImport.candidates` in order,
 * copies the first readable key into `${config.sops.age.keyFile}` with `0600`,
 * then continues normal secret installation.
 

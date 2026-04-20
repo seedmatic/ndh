@@ -67,7 +67,8 @@ let
     "rootdelay=5"
     "loglevel=7"
     "ignore_loglevel"
-    "rd.udev.log_level=debug"
+    "rd.udev.log_level=err"
+    "udev.log_level=err"
     "boot.trace"
   ]);
   grubExerciseEntries = lib.optionalString bootstrapDebug ''
@@ -161,8 +162,12 @@ in
     # Explicit NDH bootstrap profile policy by image mode:
     # - bootstrap images: non-strict runtime (warn) to avoid deadlocks while first boot converges
     # - full/runtime images: strict contract enforced
-    nxmatic.bootstrapProfile.requireForActivation = lib.mkDefault (!bootstrapMode);
-    nxmatic.bootstrapProfile.autoInstallOnActivation = lib.mkDefault true;
+    ndh.bringupRuntime.requireForActivation = lib.mkDefault (!bootstrapMode);
+    ndh.bringupRuntime.autoInstallOnActivation = lib.mkDefault true;
+
+    # Temporary troubleshooting toggle: disable /etc backup activation script
+    # to isolate boot/login issues from activation-time backup behavior.
+    ndh.etcBackup.enable = lib.mkForce false;
 
     activation.postActivationLogShowLabel = "journald (last 2h)";
     activation.postActivationLogShowCmd = "journalctl --since '2 hours ago' -o short-precise -t darwin.activationScripts -t home-manager.activationScripts";
@@ -278,16 +283,22 @@ in
         (lib.optionals bootstrapDebug [
           "loglevel=7"
           "ignore_loglevel"
-          "rd.udev.log_level=debug"
+          "rd.udev.log_level=err"
+          "udev.log_level=err"
           "boot.shell_on_fail"
           # Enables `set -x` in stage-2 init script for exact command tracing.
           "boot.debugtrace"
           "boot.trace"
         ])
-        # Keep tty1 plus runtime debug overrides at the end so they win against
+        # Keep tty1 visible, but make hvc0 the effective final console so
+        # stage-2/systemd status output is captured in serial logs.
+        # Also keep runtime debug overrides at the end so they win against
         # upstream defaults contributed by other modules (e.g. loglevel=0).
         (lib.mkAfter (
-          [ "console=tty1" ]
+          [
+            "console=tty1"
+            "console=hvc0"
+          ]
           ++ (lib.optionals (!bootstrapMode) [
             "loglevel=7"
             "ignore_loglevel"
@@ -341,6 +352,12 @@ in
     };
 
     system.stateVersion = "25.11"; # Update this when upgrading NixOS
+
+    # Keep switch-to-configuration available in bootstrap images as well.
+    # Disk-image bringup/activation paths may invoke:
+    #   /nix/var/nix/profiles/system/bin/switch-to-configuration
+    # and disabling system.switch causes hard boot failure (PID1 exit 127).
+    system.switch.enable = lib.mkDefault true;
 
     fileSystems = {
       "/boot" = {
@@ -409,13 +426,16 @@ in
       PATH = lib.mkBefore [ "/run/wrappers/bin" ];
     };
 
-    # Also set it in the shell init
-    # environment.shellInit = ''
-    #   export PATH="/run/wrappers/bin:$PATH"
-    # '';
-
     # Services
     services.getty.autologinUser = "root";
+    # Bootstrap recovery path: avoid nsncd/nscd startup failures from cascading
+    # into nss-* target dependency failures that break tty login/getty.
+    services.nscd.enable = lib.mkForce (!bootstrapMode);
+    services.nscd.enableNsncd = lib.mkForce (!bootstrapMode);
+    # NixOS asserts that non-empty system.nssModules requires nscd.
+    # While troubleshooting bootstrap console recovery with nscd disabled,
+    # clear NSS module loading only for bootstrap mode.
+    system.nssModules = lib.mkIf bootstrapMode (lib.mkForce [ ]);
     services.nxmaticCachixWatchStore.enable = lib.mkDefault (!bootstrapMode);
     services.ntopng = {
       enable = lib.mkDefault (!bootstrapMode);
@@ -440,17 +460,9 @@ in
     security.sudo.enable = true;
     security.sudo.wheelNeedsPassword = false;
 
-    # Ensure getties on key consoles, with autologin for rescue/multi-user
-    systemd.services."getty@tty1" = {
-      enable = true;
-      wantedBy = [
-        "rescue.target"
-        "multi-user.target"
-      ];
-      serviceConfig.ExecStart = lib.mkForce "${pkgs.util-linux}/sbin/agetty --autologin root --noclear tty1 linux";
-    };
-
-    systemd.services."serial-getty@hvc0".enable = lib.mkForce false;
+    # Keep serial getty available on primary VZ console.
+    # Let NixOS' native getty/autovt wiring manage tty1 to avoid unit collisions.
+    systemd.services."serial-getty@hvc0".enable = lib.mkForce true;
     systemd.services."serial-getty@ttyAMA0".enable = true;
     systemd.services."serial-getty@ttyS0".enable = true;
 

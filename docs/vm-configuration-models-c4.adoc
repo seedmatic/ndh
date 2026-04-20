@@ -93,7 +93,7 @@ To avoid Lima-only coupling while preserving one guest intent model:
 * Add **exclusive runtime bootstrap modules**:
 ** `lima-cloud-init` layer for Lima-specific datasource/mount/service ordering.
 ** `tart-cloud-init` layer for Tart-specific datasource/NBD/service ordering.
-* Select one runtime layer through a single runtime selector option (e.g. `nxmatic.vmRuntime`).
+* Select one runtime layer through a single runtime selector option (e.g. `ndh.vmRuntime`).
 * Enforce exclusivity with assertions so Lima and Tart runtime layers cannot be active simultaneously.
 
 [NOTE]

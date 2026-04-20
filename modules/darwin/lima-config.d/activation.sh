@@ -35,17 +35,45 @@ main() {
     local src="$1"
     local dst="$2"
     local image_path="$3"
-    local label="$4"
+    local configured_home_path="$4"
+    local effective_home_path="$5"
+    local label="$6"
     local tmp
 
     tmp="$(mktemp "${dst}.XXXXXX")"
-    awk -v newLocation="file://${image_path}" '
+    awk \
+      -v newLocation="file://${image_path}" \
+      -v configuredHome="${configured_home_path}" \
+      -v effectiveHome="${effective_home_path}" '
       BEGIN { done = 0 }
       {
         if (!done && $0 ~ /^[[:space:]]*location:[[:space:]]*"?file:\/\//) {
           sub(/file:\/\/[^"[:space:]]+/, newLocation)
           done = 1
         }
+
+        if (configuredHome != "" && effectiveHome != "" && configuredHome != effectiveHome) {
+          if ($0 ~ /^[[:space:]]*-?[[:space:]]*location:[[:space:]]*"?\//) {
+            if (match($0, /location:[[:space:]]*"?([^"[:space:]]+)/, m)) {
+              oldPath = m[1]
+              if (oldPath == configuredHome || index(oldPath, configuredHome "/") == 1) {
+                newPath = effectiveHome substr(oldPath, length(configuredHome) + 1)
+                sub(oldPath, newPath)
+              }
+            }
+          }
+
+          if ($0 ~ /^[[:space:]]*mountPoint:[[:space:]]*"?\//) {
+            if (match($0, /mountPoint:[[:space:]]*"?([^"[:space:]]+)/, m)) {
+              oldMount = m[1]
+              if (oldMount == configuredHome || index(oldMount, configuredHome "/") == 1) {
+                newMount = effectiveHome substr(oldMount, length(configuredHome) + 1)
+                sub(oldMount, newMount)
+              }
+            }
+          }
+        }
+
         print
       }
     ' "$src" > "$tmp"
@@ -217,8 +245,8 @@ main() {
   lima_active="${lima_dir}/lima.yaml"
 
   mkdir -p "$lima_runtime_dir"
-  materialize_lima_yaml_with_image_path "@limaConfigYamlHeadless@" "$lima_headless_runtime" "$img_dst" "headless runtime config"
-  materialize_lima_yaml_with_image_path "@limaConfigYamlGui@" "$lima_gui_runtime" "$img_dst" "gui runtime config"
+  materialize_lima_yaml_with_image_path "@limaConfigYamlHeadless@" "$lima_headless_runtime" "$img_dst" "$configured_home" "$effective_home" "headless runtime config"
+  materialize_lima_yaml_with_image_path "@limaConfigYamlGui@" "$lima_gui_runtime" "$img_dst" "$configured_home" "$effective_home" "gui runtime config"
 
   relink_path "$lima_headless_runtime" "$lima_headless_link" "headless config link"
   relink_path "$lima_gui_runtime" "$lima_gui_link" "gui config link"

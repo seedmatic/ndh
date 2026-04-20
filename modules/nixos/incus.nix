@@ -134,8 +134,11 @@ in
   networking = {
     useNetworkd = false;
     networkmanager.enable = true;
-    # NetworkManager should not manage vmlan0 - it's used as Incus lan-br bridge member
+    # NetworkManager should not manage interfaces that are explicitly
+    # configured by systemd-networkd in Lima guest mode.
     networkmanager.unmanaged = [
+      "interface-name:mgmt0"
+      "interface-name:vznat0"
       "interface-name:vmhost0"
       "interface-name:vmlan0"
       "interface-name:lan-br"
@@ -187,6 +190,13 @@ in
       LinkLocalAddressing = "no";
       DNS = "192.168.1.254";
       Domains = "lan";
+    };
+    dhcpV4Config = {
+      # Make DHCP reservations keyed by MAC address deterministic.
+      # Without this, some DHCP servers prefer DUID/IAID client identity.
+      ClientIdentifier = "mac";
+      # Prefer bridged LAN egress over management/NAT fallback links.
+      RouteMetric = 90;
     };
   };
 

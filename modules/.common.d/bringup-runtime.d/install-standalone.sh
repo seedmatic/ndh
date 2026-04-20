@@ -4,9 +4,6 @@ set -euo pipefail
 # Installer bootstrap mode: profile may not exist yet.
 export NDH_BOOTSTRAP_STRICT=0
 export NDH_BOOTSTRAP_INSTALLER_MODE=1
-
-# shellcheck disable=SC1091
-source "@bashTrampoline@"
 # shellcheck disable=SC1091
 source "@logger@"
 
@@ -50,7 +47,7 @@ main() {
   export PATH="${profile_dir}/bin:${PATH}"
 
   if [[ ! -d "$profile_bin" ]]; then
-    echo "[io-nxmatic-nix-darwin-home-bootstrap-profile][WARN] missing profile bin directory after install: ${profile_bin}" >&2
+    echo "[io-nxmatic-nix-darwin-home-bringup-runtime][WARN] missing profile bin directory after install: ${profile_bin}" >&2
     return 1
   fi
 
@@ -65,16 +62,16 @@ main() {
   done
 
   if ((${#missing_profile_bin[@]} > 0)); then
-    echo "[io-nxmatic-nix-darwin-home-bootstrap-profile][WARN] profile bin is missing commands after install: ${missing_profile_bin[*]}" >&2
+    echo "[io-nxmatic-nix-darwin-home-bringup-runtime][WARN] profile bin is missing commands after install: ${missing_profile_bin[*]}" >&2
     return 1
   fi
 
   if ((${#missing[@]} > 0)); then
-    echo "[io-nxmatic-nix-darwin-home-bootstrap-profile][WARN] missing commands after install: ${missing[*]}" >&2
+    echo "[io-nxmatic-nix-darwin-home-bringup-runtime][WARN] missing commands after install: ${missing[*]}" >&2
     return 1
   fi
 
-  echo "[io-nxmatic-nix-darwin-home-bootstrap-profile] installed runtime profile at ${profile_dir}"
+  echo "[io-nxmatic-nix-darwin-home-bringup-runtime] installed runtime profile at ${profile_dir}"
 }
 
 ndh::logger:command:run "@loggerTag@" main "$@"

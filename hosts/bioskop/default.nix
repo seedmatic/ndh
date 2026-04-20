@@ -53,7 +53,7 @@ let
       config = {
         # Two-phase SOPS age key provisioning on Darwin:
         # phase 2 (enforce): key must already exist.
-        nxmatic.sopsAgeKeyBootstrap = {
+        ndh.sopsAgeKeyBootstrap = {
           phase = "enforce";
           darwinSystemWideKey = true;
         };

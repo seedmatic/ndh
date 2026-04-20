@@ -34,7 +34,7 @@ ndh::bootstrap:profile:dir() {
 		echo "${NDH_BOOTSTRAP_PROFILE_DIR}"
 		return 0
 	fi
-	echo "/nix/var/nix/profiles/per-user/root/io-nxmatic-nix-darwin-home-bringup-runtime-profile-holder"
+	echo "/nix/var/nix/profiles/per-user/root/io-nxmatic-nix-darwin-home-bringup-runtime"
 	return 0
 }
 
@@ -100,7 +100,7 @@ ndh::bootstrap:runtime:install() {
 	local profile_parent
 	local discovered_installer
 
-	profile_name="io-nxmatic-nix-darwin-home-bringup-runtime-profile-holder"
+	runtime_attr_name="io-nxmatic-nix-darwin-home-bringup-runtime-profile-holder"
 	runtime_name="io.nxmatic.nix-darwin-home-bringup-runtime-profile-holder"
 	runtime_spec="${NDH_BOOTSTRAP_RUNTIME_PACKAGE:-}"
 	installer="${NDH_BOOTSTRAP_INSTALLER:-}"
@@ -173,7 +173,7 @@ ndh::bootstrap:runtime:install() {
 
 	# Retry once after clearing known legacy/runtime entries to handle file conflicts.
 	"$nix_bin" "${nix_cli_args[@]}" profile remove --profile "$profile_dir" "$runtime_name" >/dev/null 2>&1 || true
-	"$nix_bin" "${nix_cli_args[@]}" profile remove --profile "$profile_dir" "$profile_name" >/dev/null 2>&1 || true
+	"$nix_bin" "${nix_cli_args[@]}" profile remove --profile "$profile_dir" "$runtime_attr_name" >/dev/null 2>&1 || true
 
 	"$nix_bin" "${nix_cli_args[@]}" profile add --profile "$profile_dir" "$runtime_spec" >/dev/null 2>&1 || return 1
 
@@ -234,22 +234,15 @@ ndh::bootstrap:runtime:ensure() {
 		fi
 	else
 		if [[ -n "$installer_hint" ]]; then
-			install_hint="${installer_hint} /nix/var/nix/profiles/per-user/root/io-nxmatic-nix-darwin-home-bringup-runtime-profile-holder"
+			install_hint="${installer_hint} /nix/var/nix/profiles/per-user/root/io-nxmatic-nix-darwin-home-bringup-runtime"
 		else
-			install_hint="nix run .#io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer -- /nix/var/nix/profiles/per-user/root/io-nxmatic-nix-darwin-home-bringup-runtime-profile-holder"
+			install_hint="nix run .#io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer -- /nix/var/nix/profiles/per-user/root/io-nxmatic-nix-darwin-home-bringup-runtime"
 		fi
 	fi
 
 	# Keep this function self-contained: ensure caller-independent PATH priming
 	# before any install/verify attempt.
 	PATH="$(ndh::nix:bash:path)"
-	PATH="$(ndh::bootstrap:runtime:path)"
-	hash -r 2>/dev/null || true
-
-	ndh::bootstrap:runtime:install || true
-
-	# Refresh runtime PATH after a potential install so newly provisioned
-	# profile binaries are immediately discoverable in this shell process.
 	PATH="$(ndh::bootstrap:runtime:path)"
 	hash -r 2>/dev/null || true
 

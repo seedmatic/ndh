@@ -241,7 +241,7 @@
           ];
         };
 
-      mkNdhBootstrapProfileInstaller =
+      mkNdhBringupRuntimeInstaller =
         system:
         let
           pkgsForSystem = pkgsFor { inherit system; };
@@ -249,15 +249,14 @@
           runtimePackage = mkNdhBootstrapRuntimePackage system;
           loggerScript = (mkLoggerSpecialArg system).script;
           scriptSource =
-            pkgsForSystem.replaceVars ./modules/.common.d/bootstrap-profile.d/install-standalone.sh
+            pkgsForSystem.replaceVars ./modules/.common.d/bringup-runtime.d/install-standalone.sh
               {
                 bash = "${pkgsForSystem.bash}/bin/bash";
                 nix = "${pkgsForSystem.nix}/bin/nix";
-                bashTrampoline = "${./modules/.common.d/shell.d/nix-bash-trampoline.sh}";
                 logger = loggerScript;
-                loggerTag = "ndh.bootstrap-profile.install-standalone";
+                loggerTag = "ndh.bringup-runtime.install-standalone";
                 runtimePackage = runtimePackage;
-                defaultProfileDir = "/nix/var/nix/profiles/per-user/root/io-nxmatic-nix-darwin-home-bringup-runtime-profile-holder";
+                defaultProfileDir = "/nix/var/nix/profiles/per-user/root/io-nxmatic-nix-darwin-home-bringup-runtime";
                 requiredCommands = "bash nix age age-keygen awk sed grep ssh ssh-keygen yq git";
               };
         in
@@ -666,8 +665,8 @@
           inherit diskSizeHint;
           inherit diskSizeMiB;
           nixosConfigurations = {
-            ext4Bringup = ext4;
-            zfsBringup = zfsBringup;
+            "${mainName}-bringup-ext4" = ext4;
+            "${mainName}-bringup-zfs" = zfsBringup;
             "${mainName}-nixos" = zfsRuntime;
           };
           inherit
@@ -706,13 +705,13 @@
 
       packages = forAllSystems (system: {
         io-nxmatic-nix-darwin-home-bringup-runtime-profile-holder = mkNdhBootstrapRuntimePackage system;
-        io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer = mkNdhBootstrapProfileInstaller system;
+        io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer = mkNdhBringupRuntimeInstaller system;
       });
 
       apps = forAllSystems (
         system:
         let
-          installer = mkNdhBootstrapProfileInstaller system;
+          installer = mkNdhBringupRuntimeInstaller system;
         in
         {
           io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer = {
@@ -974,27 +973,25 @@
             else
               null;
           ndhBootstrapRuntimePackage = mkNdhBootstrapRuntimePackage "aarch64-darwin";
-          ndhBootstrapInstallerPackage = mkNdhBootstrapProfileInstaller "aarch64-darwin";
+          ndhBootstrapInstallerPackage = mkNdhBringupRuntimeInstaller "aarch64-darwin";
           ndhBootstrapRuntimePackageLinux = mkNdhBootstrapRuntimePackage "aarch64-linux";
-          ndhBootstrapInstallerPackageLinux = mkNdhBootstrapProfileInstaller "aarch64-linux";
+          ndhBootstrapInstallerPackageLinux = mkNdhBringupRuntimeInstaller "aarch64-linux";
           ndhPrerequisitesInstallerScriptSource =
-            pkgsForDarwin.replaceVars ./modules/.common.d/bootstrap-profile.d/prerequisites-install-wrapper.sh
+            pkgsForDarwin.replaceVars ./modules/.common.d/bringup-runtime.d/prerequisites-install-wrapper.sh
               {
                 bash = "${pkgsForDarwin.bash}/bin/bash";
-                bashTrampoline = "${./modules/.common.d/shell.d/nix-bash-trampoline.sh}";
                 logger = (mkLoggerSpecialArg "aarch64-darwin").script;
-                loggerTag = "ndh.bootstrap-profile.prerequisites-install.darwin";
+                loggerTag = "ndh.bringup-runtime.prerequisites-install.darwin";
                 autofsMaterializerProgram =
                   if autofsNetMaterializerProgram != null then autofsNetMaterializerProgram else "";
                 standaloneInstaller = "${ndhBootstrapInstallerPackage}/bin/io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer";
               };
           ndhPrerequisitesInstallerScriptSourceLinux =
-            pkgsForLinux.replaceVars ./modules/.common.d/bootstrap-profile.d/prerequisites-install-wrapper.sh
+            pkgsForLinux.replaceVars ./modules/.common.d/bringup-runtime.d/prerequisites-install-wrapper.sh
               {
                 bash = "${pkgsForLinux.bash}/bin/bash";
-                bashTrampoline = "${./modules/.common.d/shell.d/nix-bash-trampoline.sh}";
                 logger = (mkLoggerSpecialArg "aarch64-linux").script;
-                loggerTag = "ndh.bootstrap-profile.prerequisites-install.linux";
+                loggerTag = "ndh.bringup-runtime.prerequisites-install.linux";
                 autofsMaterializerProgram = "";
                 standaloneInstaller = "${ndhBootstrapInstallerPackageLinux}/bin/io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer";
               };

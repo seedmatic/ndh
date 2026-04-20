@@ -51,7 +51,7 @@ skinparam rectangle {
 
 rectangle "Host Security Boundary" {
   rectangle "Activation Pipeline" as pipeline {
-    [Pre-activation key bootstrap\n(nxmatic.sopsAgeKeyBootstrap)] as bootstrap
+    [Pre-activation key bootstrap\n(ndh.sopsAgeKeyBootstrap)] as bootstrap
     [sops-install-secrets daemon] as installsecrets
     [OpenSSH host-key installer\n(systemd activation)] as hostkeyinst
     [post-activation HM hooks] as hmhooks

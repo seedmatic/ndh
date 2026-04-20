@@ -11,7 +11,7 @@
 # Environment override:
 #   NIX_REMOTE_COPY_TARGET
 
-attr="${1:-homeManagerConfigurations.bringup.activationPackage}"
+attr="${1:-homeManagerConfigurations.nikopol.bringup.activationPackage}"
 mode="${2:-copy}"
 target="${3:-${NIX_REMOTE_COPY_TARGET:-vz-host.nikopol}}"
 

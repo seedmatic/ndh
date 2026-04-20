@@ -12,7 +12,7 @@ let
     mkOption
     types
     ;
-  cfg = config.nxmatic.sopsAgeKeyBootstrap;
+  cfg = config.ndh.sopsAgeKeyBootstrap;
   secretNamespaceDir = "/run/secrets/nix-darwin-home";
   sshKeysSopsFile = ../../modules/home-manager/ssh.d/keys.yaml;
   sshKeysSopsContent = builtins.readFile sshKeysSopsFile;
@@ -76,7 +76,7 @@ let
   ) namespaceSecretPaths;
 in
 {
-  options.nxmatic.sopsAgeKeyBootstrap = {
+  options.ndh.sopsAgeKeyBootstrap = {
     phase = mkOption {
       type = types.enum [
         "bootstrap"

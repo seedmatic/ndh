@@ -6,7 +6,7 @@
 }:
 let
   hasManagedSecrets = (config.sops.secrets or { }) != { };
-  bootstrapCfg = config.nxmatic.sopsAgeKeyBootstrap;
+  bootstrapCfg = config.ndh.sopsAgeKeyBootstrap;
   keysTargetUnit = "keys.target";
   hasLimaCloudInitService = builtins.hasAttr "io-nxmatic-nix-darwin-home-lima-cloud-init" config.systemd.services;
   limaCloudInitUnitDeps = lib.optionals hasLimaCloudInitService [
@@ -21,14 +21,14 @@ in
   config = {
     # NixOS policy: systemd-driven sops activation and host key import defaults.
     sops.useSystemdActivation = lib.mkDefault true;
-    nxmatic.sopsAgeKeyBootstrap = {
-      defaultAgeKeyFile = lib.mkDefault config.nxmatic.sopsAgeKeyBootstrap.systemWideKeyFile;
+    ndh.sopsAgeKeyBootstrap = {
+      defaultAgeKeyFile = lib.mkDefault config.ndh.sopsAgeKeyBootstrap.systemWideKeyFile;
       nixosHostKeyImport.enable = lib.mkDefault true;
       nixosHostKeyImport.remoteFetch.enable = lib.mkDefault true;
     };
 
     # NixOS-only systemd ordering for SOPS key bootstrap before secret installation.
-    systemd.services.${config.nxmatic.sopsAgeKeyBootstrap.systemdUnitName} =
+    systemd.services.${config.ndh.sopsAgeKeyBootstrap.systemdUnitName} =
       lib.mkIf (config.sops.useSystemdActivation or false)
         {
           description = "Ensure SOPS age key is available before sops-install-secrets (@codebase)";
@@ -41,7 +41,7 @@ in
           };
           serviceConfig = {
             Type = "oneshot";
-            ExecStart = config.nxmatic.sopsAgeKeyBootstrap.systemdExecStartScript;
+            ExecStart = config.ndh.sopsAgeKeyBootstrap.systemdExecStartScript;
           };
         };
 
@@ -50,11 +50,11 @@ in
         {
           requires = [
             keysTargetUnit
-            "${config.nxmatic.sopsAgeKeyBootstrap.systemdUnitName}.service"
+            "${config.ndh.sopsAgeKeyBootstrap.systemdUnitName}.service"
           ];
           after = [
             keysTargetUnit
-            "${config.nxmatic.sopsAgeKeyBootstrap.systemdUnitName}.service"
+            "${config.ndh.sopsAgeKeyBootstrap.systemdUnitName}.service"
           ];
           unitConfig.ConditionPathExists = config.sops.age.keyFile;
         };
