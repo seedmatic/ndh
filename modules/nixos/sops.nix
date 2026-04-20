@@ -2,16 +2,17 @@
   config,
   lib,
   pkgs,
+  ndhSystemd,
   ...
 }:
 let
   hasManagedSecrets = (config.sops.secrets or { }) != { };
   bootstrapCfg = config.ndh.sopsAgeKeyBootstrap;
   keysTargetUnit = "keys.target";
-  hasLimaCloudInitService = builtins.hasAttr "io-nxmatic-nix-darwin-home-lima-cloud-init" config.systemd.services;
+  hasLimaCloudInitService = builtins.hasAttr (ndhSystemd.mkUnitName "lima-cloud-init") config.systemd.services;
   localFsUnitDeps = [ "local-fs.target" ];
   limaCloudInitUnitDeps = lib.optionals hasLimaCloudInitService [
-    "io-nxmatic-nix-darwin-home-lima-cloud-init.service"
+    (ndhSystemd.mkServiceName "lima-cloud-init")
   ];
   importCandidateDirs = lib.unique (
     map builtins.dirOf (lib.filter (path: path != "") bootstrapCfg.nixosHostKeyImport.candidates)

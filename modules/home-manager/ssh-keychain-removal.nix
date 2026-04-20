@@ -5,14 +5,17 @@
   ...
 }:
 let
+  specialArgs =
+    if config ? _module && config._module ? specialArgs then config._module.specialArgs else { };
+  nixBashTrampoline =
+    if
+      specialArgs ? ndh && specialArgs.ndh ? context && specialArgs.ndh.context ? nixBashTrampoline
+    then
+      "${specialArgs.ndh.context.nixBashTrampoline}"
+    else
+      "${../.common.d/shell.d/nix-bash-trampoline.sh}";
   profile = config._module.specialArgs.profile;
   userName = profile.user.name;
-  logger = lib.attrByPath [
-    "_module"
-    "specialArgs"
-    "logger"
-    "script"
-  ] ../.common.d/shell.d/logger.sh config;
   loggerTag = "home-manager.activationScripts.${userName}.removeUseKeychain";
 in
 # Remove any UseKeychain directive from ~/.ssh/config (@codebase)
@@ -23,7 +26,7 @@ in
   home.activation.removeUseKeychain =
     let
       removeUseKeychainScript = pkgs.replaceVars ./ssh-keychain-removal.d/remove-use-keychain.sh {
-        logger = logger;
+        nixBashTrampoline = nixBashTrampoline;
         loggerTag = loggerTag;
       };
     in

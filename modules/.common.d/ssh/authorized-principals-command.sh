@@ -11,9 +11,7 @@
 set -euo pipefail
 
 # shellcheck disable=SC1091
-source "@bashTrampoline@"
-# shellcheck disable=SC1091
-source "@logger@"
+source "@nixBashTrampoline@"
 
 main() {
   USER_NAME="${1:-}"

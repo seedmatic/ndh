@@ -1,9 +1,13 @@
 let
   hostProfile = {
     hostName = "bioskop";
-    tailnet = { };
     vmProvider = "tart";
+    nixosBootLoader = "systemd-boot";
     nixosBootstrapDebug = false;
+    # Keep explicit host defaults for image-build VM resources.
+    # These match canonical defaults from modules/nixos/outputs.nix.
+    nixosDiskImageVmMemSizeMiB = 6144;
+    nixosDiskImageVmCpuCores = 6;
   };
 
   darwinProfile = {
@@ -45,11 +49,17 @@ let
     };
 
   darwinModule =
-    { config, lib, ... }:
+    {
+      config,
+      lib,
+      ndh,
+      ...
+    }:
     let
+      ndhContext = ndh.context;
       # Canonical source-of-truth network values from rke2lab netplan catalog (@codebase)
-      netplanCatalog = config._module.specialArgs.catalog.networks.rke2labNetplan;
-      clusterNetwork = netplanCatalog.clusters.bioskop;
+      rke2labNetplan = ndhContext.catalog.netplan.rke2lab;
+      clusterNetwork = rke2labNetplan.clusters.bioskop;
     in
     {
       config = {
@@ -101,14 +111,18 @@ let
         lima.configGenerator = {
           enableActivationHook = false;
           installMaterializerPackage = false;
+          vmType = "qemu"; # Use QEMU for having a prompt in emergency mode, which is useful for debugging. VZ doesn't support interactive prompt on boot.
+          # vmMemoryMiB = 8192;
+          # vmCpuCores = 6;
         };
 
         tart.configGenerator = {
           forceEnable = false;
           enableActivationHook = false;
           installMaterializerPackage = false;
+          # vmMemoryMiB = 8192;
+          # vmCpuCores = 6;
           vmRunBridgeInterface = "Thunderbolt Ethernet Slot 1";
-          vmRunSopsAgeTag = "ndh-sops-age";
         };
 
       };
@@ -119,23 +133,14 @@ let
       config,
       pkgs,
       lib,
-      options,
       ...
     }:
-    let
-      # Canonical source-of-truth network values from rke2lab netplan catalog (@codebase)
-      netplanCatalog = config._module.specialArgs.catalog.networks.rke2labNetplan;
-      clusterNetwork = netplanCatalog.clusters.bioskop;
-    in
     {
       config = {
-        services.nxmaticCachixWatchStore.sopsEncryptedTokenFile = ../../.secrets;
-
-        # Sign locally produced store paths so peer hosts can trust nix copy --from ssh-ng://bioskop
-        nix.settings.secret-key-files = [ "/etc/nix/bioskop-cache.key" ];
-
         # Bootstrap cache signing key on NixOS guests if missing.
         # The secret key remains local at /etc/nix and is not stored in the Nix store.
+        services.nxmaticCachixWatchStore.sopsEncryptedTokenFile = ../../.secrets;
+        nix.settings.secret-key-files = [ "/etc/nix/bioskop-cache.key" ];
         system.activationScripts.ensureBioskopCacheKey = ''
           if [ ! -s /etc/nix/bioskop-cache.key ] || [ ! -s /etc/nix/bioskop-cache.pub ]; then
             install -d -m 0755 /etc/nix
@@ -147,20 +152,7 @@ let
             chmod 644 /etc/nix/bioskop-cache.pub
           fi
         '';
-
-      }
-      // (lib.optionalAttrs (options ? services && options.services ? dbusTcpSystemBus) {
-        # Expose system D-Bus over the vmnet-facing address (not loopback)
-        # for lab-only remote control/testing traffic (when module is available).
-        services.dbusTcpSystemBus = {
-          enable = true;
-          # Netplan catalog-derived vmnet gateway for bioskop cluster slice.
-          bindAddress = clusterNetwork.gateway;
-          port = 12434;
-          openFirewall = true;
-          insecureAllowAnonymous = true;
-        };
-      });
+      };
     };
 in
 {

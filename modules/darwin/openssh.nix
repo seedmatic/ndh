@@ -7,23 +7,22 @@
   ...
 }:
 let
+  ndhContext = ndh.context;
   profile = config.profile;
   userHome = profile.user.home;
   userName = profile.user.name;
   sshPaths = config.sshPaths;
-  loggerScript = config.nixBashLogger.script;
   hostKeysDir = sshPaths.authoritySecretsDir;
   clientKeyName = builtins.baseNameOf sshPaths.privKeyFile;
   hostKeyPrivateFile = sshPaths.privKeyFile;
   hostKeyPublicCert = sshPaths.hostCertPublic;
   caPublicKeyFile = "${config.opensshPolicy.keysDir}/trusted-user-ca.pub";
+  nixBashTrampoline = "${ndhContext.nixBashTrampoline}";
   principalsScriptStore = pkgs.replaceVars ../.common.d/ssh/authorized-principals-command.sh {
-    bashTrampoline = "${../.common.d/shell.d/nix-bash-trampoline.sh}";
-    logger = loggerScript;
+    nixBashTrampoline = nixBashTrampoline;
   };
   groupKeysScriptStore = pkgs.replaceVars ../.common.d/ssh/ssh-group-authorized-keys.sh {
-    bashTrampoline = "${../.common.d/shell.d/nix-bash-trampoline.sh}";
-    logger = loggerScript;
+    nixBashTrampoline = nixBashTrampoline;
     authorizedKeysDir = config.opensshPolicy.authorizedKeysDir;
   };
   inherit (lib) mkIf optionalString concatStringsSep;
@@ -90,17 +89,17 @@ let
   '';
 
   opensshActivationScript = pkgs.replaceVars ./openssh.d/openssh-activation.sh {
+    nixBashTrampoline = nixBashTrampoline;
     groupKeysScriptStore = groupKeysScriptStore;
     principalsScriptStore = principalsScriptStore;
     groupKeysCommand = config.opensshPolicy.canonicalGroupKeysCommandName;
     principalsCommand = config.opensshPolicy.canonicalPrincipalsCommandName;
-    logger = loggerScript;
   };
 
   opensshPostActivationScript = pkgs.replaceVars ./openssh.d/post-activation.sh {
+    nixBashTrampoline = nixBashTrampoline;
     hostKeysDir = hostKeysDir;
     keysDir = config.opensshPolicy.keysDir;
-    logger = loggerScript;
     loggerTag = "darwin.activationScripts.postActivation.openssh";
   };
 

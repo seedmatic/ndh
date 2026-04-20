@@ -2,12 +2,14 @@
   config,
   pkgs,
   lib,
+  ndhSystemd,
   ...
 }:
 
 let
   LIMA_CIDATA_MNT = "/mnt/lima-cidata";
   isLimaProvider = config.ndh.vm.provider == "lima";
+  contributedTargetName = ndhSystemd.contributedTargetName;
   # Use writeShellApplication to create a proper executable with dependencies
   startScript = pkgs.writeShellApplication {
     name = "lima-guest-agent-start";
@@ -25,11 +27,11 @@ in
   imports = [ ];
 
   config = lib.mkIf isLimaProvider {
-    systemd.services.io-nxmatic-nix-darwin-home-lima-guestagent = {
+    systemd.services.${ndhSystemd.mkUnitName "lima-guestagent"} = {
       description = "Lima Guest Agent";
-      wantedBy = [ "io-nxmatic-nix-darwin-home-contributed.target" ];
-      after = [ "io-nxmatic-nix-darwin-home-lima-cloud-init.service" ];
-      requires = [ "io-nxmatic-nix-darwin-home-lima-cloud-init.service" ];
+      wantedBy = [ contributedTargetName ];
+      after = [ (ndhSystemd.mkServiceName "lima-cloud-init") ];
+      requires = [ (ndhSystemd.mkServiceName "lima-cloud-init") ];
       unitConfig = {
         ConditionPathExists = "${LIMA_CIDATA_MNT}/lima-guestagent";
       };

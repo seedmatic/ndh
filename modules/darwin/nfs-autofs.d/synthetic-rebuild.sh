@@ -1,5 +1,5 @@
 #!/usr/bin/env -S bash -euo pipefail
-source @logger@
+source @nixBashTrampoline@
 
 main() {
   if [ -x /System/Library/Filesystems/apfs.fs/Contents/Resources/apfs.util ]; then

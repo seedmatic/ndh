@@ -4,6 +4,7 @@
   lib,
   pkgs,
   ndh,
+  ndhSystemd,
   ...
 }:
 with lib;
@@ -20,6 +21,8 @@ let
   vlanSetupScript = ndh.store.writeShellScript "vlan-setup" (
     builtins.readFile ./vlan.d/vlan-setup.sh
   );
+  contributedTargetName = ndhSystemd.contributedTargetName;
+  vlanSetupUnitName = ndhSystemd.mkUnitName "vlan-setup";
 in
 {
   options.networking.vlan = {
@@ -63,7 +66,7 @@ in
   };
 
   config = mkIf cfg.enable {
-    systemd.services.io-nxmatic-nix-darwin-home-vlan-setup = {
+    systemd.services.${vlanSetupUnitName} = {
       description = "Configure VLAN interface";
       after = [ "network-online.target" ];
       wants = [ "network-online.target" ];
@@ -80,7 +83,7 @@ in
         ++ lib.optionals (vlanName != null) [ "VLAN_NAME=${vlanName}" ];
         ExecStart = "${vlanSetupScript}";
       };
-      wantedBy = [ "io-nxmatic-nix-darwin-home-contributed.target" ];
+      wantedBy = [ contributedTargetName ];
     };
   };
 }

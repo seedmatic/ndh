@@ -26,9 +26,10 @@ IMPORTANT: **Key architectural pattern**: Development happens in Lima NixOS VMs 
 hostProfile = {
   hostName = "APL-dk40njhk9h";  # Physical hostname
   hostAlias = "nikopol";          # Human-friendly alias (used as Lima hostname)
-  tailnet = { };                 # Tailscale configuration
 };
 ----
+
+Tailnet metadata is sourced canonically from `catalog.netplan.tailnet` (not from `hostProfile`).
 
 * **hostAlias becomes Lima hostname**: `limaHost.hostName` defaults to hostAlias if present
 * Profile modules import from `profiles/` (work.nix, committed.nix, common.nix)

@@ -6,11 +6,11 @@
   ...
 }:
 let
+  ndhContext = ndh.context;
   user = config.profile.user.name;
+  nixBashTrampoline = "${ndhContext.nixBashTrampoline}";
   hostProfile = config.profile.host;
-  hasCatalogNetworks =
-    config._module.specialArgs ? catalog && (config._module.specialArgs.catalog ? networks);
-  catalogNetworks = if hasCatalogNetworks then config._module.specialArgs.catalog.networks else { };
+  netplan = ndhContext.catalog.netplan or { };
   effectiveHostName =
     if (hostProfile ? hostAlias && hostProfile.hostAlias != null && hostProfile.hostAlias != "") then
       hostProfile.hostAlias
@@ -22,13 +22,9 @@ let
       effectiveHostName
     ]
   );
-  catalogDomainSuffixes =
-    if hasCatalogNetworks then
-      lib.filter (d: d != null && d != "") (
-        map (network: network.domain or "") (builtins.attrValues catalogNetworks)
-      )
-    else
-      [ ];
+  catalogDomainSuffixes = lib.filter (d: d != null && d != "") (
+    map (network: network.domain or "") (builtins.attrValues netplan)
+  );
   certDomainSuffixes =
     # Keep `.local` as the mDNS suffix and derive LAN/Tailnet domains from catalog.
     lib.unique (
@@ -52,7 +48,7 @@ let
   ensureIncusServerCert = ndh.store.runCommand "ensure-incus-server-cert.sh" { } ''
     cp ${
       pkgs.replaceVars ./incus.d/ensure-incus-server-cert.sh {
-        bashTrampoline = "${../.common.d/shell.d/nix-bash-trampoline.sh}";
+        nixBashTrampoline = nixBashTrampoline;
         openssl = "${pkgs.openssl}/bin/openssl";
         incusServerCertPrimaryName = incusServerCertPrimaryName;
         incusServerCertNames = lib.concatMapStringsSep " " lib.escapeShellArg incusServerCertNames;
@@ -63,7 +59,7 @@ let
   hostByteHex = lib.strings.toLower (
     builtins.substring 0 2 (builtins.hashString "sha256" effectiveHostName)
   );
-  lanBridgeMac = "10:66:6a:4c:${hostByteHex}:fe";
+  lanBridgeMac = "10:66:6a:4c:${hostByteHex}:01";
   fixIncusSocketPerms = ndh.store.runCommand "fix-incus-socket-perms.sh" { } ''
     cp ${pkgs.replaceVars ./incus.d/fix-incus-socket-perms.sh { }} $out
     chmod +x $out
@@ -217,20 +213,14 @@ in
         user = config.profile.user.name;
         home = config.profile.user.home;
         tailnetDomain =
-          if
-            config._module.specialArgs ? catalog && (config._module.specialArgs.catalog.networks ? tailnet)
-          then
-            lib.removePrefix "." config._module.specialArgs.catalog.networks.tailnet.domain
-          else
-            "tailnet.local";
+          if netplan ? tailnet then lib.removePrefix "." netplan.tailnet.domain else "tailnet.local";
         incusRemoteName = config.networking.hostName;
         # Canonical remote endpoint: use host label (no hard-coded domain suffix).
         # Domain-specific aliases are network policy concerns and should not be
         # baked into the default Incus remote address.
         incusRemoteAddress = "https://${config.networking.hostName}:8443";
         # Use the wrapped activation logger in the store
-        bashTrampoline = "${../.common.d/shell.d/nix-bash-trampoline.sh}";
-        logger = config.nixBashLogger.script;
+        nixBashTrampoline = nixBashTrampoline;
         loggerTag = "nixos.activationScripts.incusUserConfig";
       }
     );

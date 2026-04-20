@@ -6,6 +6,8 @@
   ...
 }:
 let
+  ndhContext = ndh.context;
+  nixBashTrampoline = "${ndhContext.nixBashTrampoline}";
   cfg = config.services.bioskopSmbMount;
   profileUserName =
     if config ? profile && config.profile ? user && config.profile.user ? name then
@@ -26,8 +28,8 @@ let
   bioskopPostActivation = ndh.store.runCommand "bioskop-smb-post-activation.sh" { } ''
     cp ${
       pkgs.replaceVars ./smb-bioskop.d/post-activation.sh {
+        nixBashTrampoline = nixBashTrampoline;
         inherit bioskopFstabScript;
-        logger = loggerScript;
       }
     } "$out"
     chmod +x "$out"

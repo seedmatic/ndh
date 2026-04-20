@@ -2,12 +2,14 @@
   config,
   lib,
   pkgs,
+  ndhSystemd,
   ...
 }:
 
 let
   isTartProvider = config.ndh.vm.provider == "tart";
   cfg = config.ndh.vm.tart.guestAgent;
+  contributedTargetName = ndhSystemd.contributedTargetName;
   resolvedPackage = if cfg.package != null then cfg.package else null;
   resolvedBinaryPath =
     if resolvedPackage != null then "${resolvedPackage}/bin/tart-guest-agent" else cfg.binaryPath;
@@ -67,27 +69,27 @@ in
       environment.systemPackages = [ resolvedPackage ];
     })
     (lib.mkIf (isTartProvider && cfg.enable && resolvedBinaryPath != null) {
-    systemd.services.io-nxmatic-nix-darwin-home-tart-guestagent = {
-      description = "Tart Guest Agent";
-      wantedBy = [ "io-nxmatic-nix-darwin-home-contributed.target" ];
-      after = [ "local-fs.target" ];
+      systemd.services.${ndhSystemd.mkUnitName "tart-guestagent"} = {
+        description = "Tart Guest Agent";
+        wantedBy = [ contributedTargetName ];
+        after = [ "local-fs.target" ];
 
-      unitConfig = {
-        ConditionPathIsExecutable = resolvedBinaryPath;
-      };
+        unitConfig = {
+          ConditionPathIsExecutable = resolvedBinaryPath;
+        };
 
-      serviceConfig = {
-        Type = "simple";
-        ExecStart = resolvedExecStart;
-        Environment = [
-          "PATH=/run/wrappers/bin:/run/current-system/sw/bin:/bin:/usr/bin"
-        ];
-        Restart = "on-failure";
-        OOMPolicy = "continue";
-        OOMScoreAdjust = "-500";
-        User = "root";
+        serviceConfig = {
+          Type = "simple";
+          ExecStart = resolvedExecStart;
+          Environment = [
+            "PATH=/run/wrappers/bin:/run/current-system/sw/bin:/bin:/usr/bin"
+          ];
+          Restart = "on-failure";
+          OOMPolicy = "continue";
+          OOMScoreAdjust = "-500";
+          User = "root";
+        };
       };
-    };
     })
   ];
 }

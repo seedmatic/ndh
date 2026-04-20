@@ -1,5 +1,5 @@
 #!/usr/bin/env -S bash -euo pipefail
-source @logger@
+source @nixBashTrampoline@
 
 main() {
   local synthetic_conf="/etc/synthetic.conf"

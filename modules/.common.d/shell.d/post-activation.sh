@@ -2,7 +2,7 @@
 # Shared post-activation wrapper (@codebase)
 # Platform layers (darwin/nixos) must provide logger.sh.
 
-source @logger@
+source @nixBashTrampoline@
 
 main() {
   emit_notice() {

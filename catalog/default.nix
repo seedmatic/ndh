@@ -16,7 +16,7 @@
     };
   };
 
-  networks = {
+  netplan = {
     lan = {
       cidr = "192.168.1.0/24";
       domain = ".lan";
@@ -27,7 +27,7 @@
     };
     # Canonical cluster underlay contract from rke2lab netplan (@codebase)
     # Source of truth: rke2lab/netplan (ClusterNetworkBlueprint semantics)
-    rke2labNetplan = {
+    rke2lab = {
       supernetCidr = "10.80.0.0/18";
       clusterPrefixLength = 21;
       vmnetNetworkName = "vmnet-br";

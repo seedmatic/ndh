@@ -3,14 +3,19 @@
   modulesPath,
   pkgs,
   lib,
-  catalog,
+  ndh,
+  ndhSystemd,
   ...
 }:
 
 let
+  ndhContext = ndh.context;
+  catalog = ndhContext.catalog;
   LIMA_CIDATA_MNT = "/mnt/lima-cidata";
   LIMA_CIDATA_DEV = "/dev/disk/by-label/cidata";
   isLimaProvider = config.ndh.vm.provider == "lima";
+  contributedTargetName = ndhSystemd.contributedTargetName;
+  zpoolInitServiceName = ndhSystemd.mkServiceName "zpool-init";
   committedProfileUserName =
     if catalog ? users && catalog.users ? committed && catalog.users.committed ? name then
       catalog.users.committed.name
@@ -45,32 +50,38 @@ let
       gawk
       iproute2
     ];
-    text = builtins.readFile (
-      pkgs.replaceVars ./lima-cloud-init.sh {
-        profileUserName = committedProfileUserName;
-        linuxBuilderPublicKey = linuxBuilderPublicKey;
-        committedTrustedCaPublicKey = committedTrustedCaPublicKey;
-      }
-    );
+    text =
+      builtins.replaceStrings
+        [
+          "@profileUserName@"
+          "@linuxBuilderPublicKey@"
+          "@committedTrustedCaPublicKey@"
+        ]
+        [
+          committedProfileUserName
+          linuxBuilderPublicKey
+          committedTrustedCaPublicKey
+        ]
+        (builtins.readFile ./lima-cloud-init.sh);
   };
 in
 {
   imports = [ ];
 
   config = lib.mkIf isLimaProvider {
-    systemd.services.io-nxmatic-nix-darwin-home-lima-cloud-init = {
+    systemd.services.${ndhSystemd.mkUnitName "lima-cloud-init"} = {
       description = "Reconfigure the system from lima-cloud-init userdata on startup";
 
       after = [
         "network-pre.target"
-        "io-nxmatic-nix-darwin-home-zpool-init.service"
+        zpoolInitServiceName
       ];
-      wants = [ "io-nxmatic-nix-darwin-home-zpool-init.service" ];
+      wants = [ zpoolInitServiceName ];
       before = [
         "multi-user.target"
-        "io-nxmatic-nix-darwin-home-replay-virtiofs-udev.service"
+        (ndhSystemd.mkServiceName "replay-virtiofs-udev")
       ];
-      wantedBy = [ "io-nxmatic-nix-darwin-home-contributed.target" ];
+      wantedBy = [ contributedTargetName ];
 
       restartIfChanged = true;
 
@@ -96,9 +107,9 @@ in
       };
     };
 
-    systemd.services.io-nxmatic-nix-darwin-home-replay-virtiofs-udev = {
+    systemd.services.${ndhSystemd.mkUnitName "replay-virtiofs-udev"} = {
       description = "Replay virtiofs udev events after boot";
-      wantedBy = [ "io-nxmatic-nix-darwin-home-contributed.target" ];
+      wantedBy = [ contributedTargetName ];
       after = [ "local-fs.target" ];
       serviceConfig = {
         Type = "oneshot";

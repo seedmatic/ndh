@@ -2,22 +2,25 @@
   config,
   pkgs,
   lib,
-  catalog,
+  ndh,
+  ndhSystemd,
   ...
 }:
 let
-  networkCatalog = catalog.networks or { };
+  ndhContext = ndh.context;
+  catalog = ndhContext.catalog;
+  netplan = catalog.netplan or { };
   cfg = config.tailscale;
+  autoconnectUnitName = ndhSystemd.tailscaleAutoconnectUnitName;
   tailscaleAuthSecretName = "tailscale.authKey";
+  tailscaleAuthSecretCanonicalPath = "/run/secrets/${tailscaleAuthSecretName}";
   tailscaleAuthKeyPath = config.sops.secrets.${tailscaleAuthSecretName}.path;
+  secretDeps = [ "sops-install-secrets.service" ];
   tagsString = lib.concatStringsSep "," (map (tag: "tag:" + tag) cfg.tags);
   # Only enable regular Tailscale if Headscale module is not enabled.
   useHeadscale = config.networking.headscale.enable or false;
   tailnetDomain =
-    if networkCatalog ? tailnet && (networkCatalog.tailnet ? domain) then
-      networkCatalog.tailnet.domain
-    else
-      "";
+    if netplan ? tailnet && (netplan.tailnet ? domain) then netplan.tailnet.domain else "";
   tailscaleHostName =
     let
       base = config.networking.hostName;
@@ -29,7 +32,8 @@ in
     sops.secrets.${tailscaleAuthSecretName} = {
       format = "yaml";
       key = cfg.authKeySopsKey;
-      path = "/run/secrets/tailscale/auth.key";
+      # Canonical sops-nix path: avoid alias/symlink indirection under /run/secrets.
+      path = tailscaleAuthSecretCanonicalPath;
     };
 
     services.tailscale = {
@@ -45,18 +49,13 @@ in
 
     # Trust Tailscale interface (bypass firewall)
     networking.firewall.trustedInterfaces = [ "tailscale0" ];
-    systemd.services.io-nxmatic-nix-darwin-home-tailscaled-autoconnect = {
-      enable = true;
-      after = lib.mkAfter [ "network-online.target" ];
-      wants = lib.mkAfter [ "network-online.target" ];
-      serviceConfig = {
-        Restart = "on-failure";
-        Type = lib.mkForce "simple";
-        # Do not block boot: do not set WantedBy or RequiredBy to multi-user.target
-        # Remove Install section so systemd does not wait for this service at boot
-      };
-      wantedBy = lib.mkForce [ ];
-      requiredBy = lib.mkForce [ ];
+
+    # Harden canonical autoconnect unit ordering and secret gating.
+    systemd.services.${autoconnectUnitName} = {
+      wants = lib.mkAfter secretDeps;
+      requires = lib.mkAfter secretDeps;
+      after = lib.mkAfter secretDeps;
+      unitConfig.ConditionPathExists = lib.mkForce tailscaleAuthKeyPath;
     };
   };
   options.tailscale = {

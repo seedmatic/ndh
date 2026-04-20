@@ -1,6 +1,7 @@
 {
   config,
   lib,
+  ndh,
   pkgs,
   ...
 }:
@@ -181,6 +182,9 @@ in
   config = mkIf (pkgs.stdenv.isDarwin && config.sshClient.enable) (
     let
       cfg = config.sshClient;
+      ndhContext = ndh.context;
+      catalog = ndhContext.catalog;
+      netplan = catalog.netplan or { };
       hostProfile = if (config ? profile && config.profile ? host) then config.profile.host else { };
       userProfile = if (config ? profile && config.profile ? user) then config.profile.user else { };
       userName = if (userProfile ? name && userProfile.name != null) then userProfile.name else "";
@@ -205,14 +209,10 @@ in
           );
       baseHost = rawHost + cfg.guest.nameSuffix;
 
-      # Tailnet info guarded
-      tailnetName =
-        if (hostProfile ? tailnet && hostProfile.tailnet ? name) then hostProfile.tailnet.name else null;
+      # Tailnet info sourced from canonical netplan catalog
+      tailnetName = if netplan ? tailnet && netplan.tailnet ? name then netplan.tailnet.name else null;
       tailnetDomain =
-        if (hostProfile ? tailnet && hostProfile.tailnet ? domain) then
-          hostProfile.tailnet.domain
-        else
-          null;
+        if netplan ? tailnet && netplan.tailnet ? domain then netplan.tailnet.domain else null;
       normalizedTailnetDomain =
         if (tailnetDomain != null && tailnetDomain != "") then lib.removePrefix "." tailnetDomain else null;
       hostIdentityTailnetPattern =

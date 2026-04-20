@@ -6,6 +6,8 @@
   ...
 }:
 let
+  ndhContext = ndh.context;
+  nixBashTrampoline = "${ndhContext.nixBashTrampoline}";
   user = config.profile.user;
   userName = user.name;
   logFile = "/Users/${userName}/Library/Logs/dnsmasq.log";
@@ -14,9 +16,9 @@ let
   dnsmasqActivationScript = ndh.store.runCommand "dnsmasq-post-activation.sh" { } ''
     cp ${
       pkgs.replaceVars ./dnsmasq.d/post-activation.sh {
+        nixBashTrampoline = nixBashTrampoline;
         logFile = logFile;
         userName = userName;
-        logger = loggerScript;
       }
     } "$out"
     chmod +x "$out"

@@ -40,7 +40,10 @@ let
       [ cacheCatalog.flakehub.publicKey ];
   # Consider linux-builder only when running on baremetal hosts
   isBaremetalHost = !(config.profile.host ? form) || config.profile.host.form == "baremetal";
-  inventoryEntries = if builtins.hasAttr hostName hostsInventory then hostsInventory.${hostName} else [ ];
+  linuxBuilderMode = config.profile.host.linuxBuilderMode or "embedded";
+  useEmbeddedLinuxBuilder = linuxBuilderMode == "embedded";
+  inventoryEntries =
+    if builtins.hasAttr hostName hostsInventory then hostsInventory.${hostName} else [ ];
   linuxBuilderEntries = lib.filter (
     entry:
     entry.builder != null
@@ -48,12 +51,28 @@ let
     && (!(entry ? form) || entry.form != "vm")
   ) inventoryEntries;
   selected = if (!isBaremetalHost) then null else lib.head (linuxBuilderEntries ++ [ null ]);
+  requestedLinuxBuilderVmCpuCores =
+    if selected != null then (selected.builder.vmCpuCores or 8) else 8;
+  effectiveLinuxBuilderVmCpuCores = lib.min requestedLinuxBuilderVmCpuCores 8;
 
 in
 {
 
   config = {
-    nix.linux-builder = lib.mkIf (selected != null) {
+    warnings =
+      lib.optional (!useEmbeddedLinuxBuilder) ''
+        profile.host.linuxBuilderMode = "remote": embedded nix.linux-builder VM is disabled.
+        Ensure remote builders are reachable and profile.host.forceRemoteBuilds is enabled
+        if you want strict remote-only build behavior.
+      ''
+      ++
+        lib.optional (selected != null && useEmbeddedLinuxBuilder && requestedLinuxBuilderVmCpuCores > 8)
+          ''
+            linux-builder requested ${toString requestedLinuxBuilderVmCpuCores} vCPUs, but qemu mach-virt supports up to 8 here.
+            Clamping linux-builder VM vCPUs to 8.
+          '';
+
+    nix.linux-builder = lib.mkIf (selected != null && useEmbeddedLinuxBuilder) {
       enable = true;
       ephemeral = true;
       workingDirectory = "/var/lib/linux-builder";
@@ -74,6 +93,10 @@ in
 
         # Increase Linux builder VM disk size to handle large disk image builds
         virtualisation.diskSize = lib.mkForce (selected.builder.diskSize or (150 * 1024)); # 150 GB for building 64GB+ images
+        # Size the Linux builder VM itself (host for nested runInLinuxVM/QEMU image builds)
+        # to reduce long install/copy phases during disk-image generation.
+        virtualisation.cores = lib.mkForce effectiveLinuxBuilderVmCpuCores;
+        virtualisation.memorySize = lib.mkForce (selected.builder.vmMemoryMiB or 16384);
 
         # Use the same binary caches and settings as the Darwin configuration
         nix.settings = {
@@ -130,6 +153,21 @@ in
           "%h/.ssh/authorized_keys" # Standard user location
           "/etc/ssh/authorized_keys.d/%u" # System location
         ];
+
+        # Default observability endpoint for embedded linux-builder guest.
+        # Keep policy consistent with nested bringup VM diagnostics.
+        services.monit = {
+          enable = true;
+          config = ''
+            set daemon 10
+            set logfile syslog
+
+            set httpd port 2812 and
+              use address 0.0.0.0
+              allow localhost
+              allow 10.0.2.2
+          '';
+        };
 
         # Deploy profile SSH keys to the VM using NixOS environment.etc with mode
         environment.etc = {

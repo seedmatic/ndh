@@ -2,14 +2,21 @@
   config,
   pkgs,
   lib,
-  catalog,
-  inventory,
+  ndh,
+  ndhSystemd,
   ...
 }:
 let
+  ndhContext = ndh.context;
+  nixBashTrampoline = "${ndhContext.nixBashTrampoline}";
+  catalog = ndhContext.catalog;
+  inventory = ndhContext.inventory;
   keysTargetUnit = "keys.target";
   hasSopsInstallSecretsService = builtins.hasAttr "sops-install-secrets" config.systemd.services;
-  hasLimaCloudInitService = builtins.hasAttr "io-nxmatic-nix-darwin-home-lima-cloud-init" config.systemd.services;
+  hasLimaCloudInitService = builtins.hasAttr (ndhSystemd.mkUnitName "lima-cloud-init") config.systemd.services;
+  contributedTargetName = ndhSystemd.contributedTargetName;
+  limaCloudInitServiceName = ndhSystemd.mkServiceName "lima-cloud-init";
+  hostkeyEnrollmentCheckServiceName = ndhSystemd.mkServiceName "hostkey-enrollment-check";
   profileUserName =
     if config ? profile && config.profile ? user && config.profile.user ? name then
       config.profile.user.name
@@ -51,7 +58,6 @@ let
     else
       profileUserName;
 
-  logger = config.nixBashLogger.script;
   loggerTagOrchestrate = "nixos.services.ssh-keys-enrichment.orchestrate";
   loggerTagEnrich = "nixos.services.ssh-keys-enrichment.enrichSSHKeysYaml";
   loggerTagSplit = "nixos.services.ssh-keys-enrichment.splitSSHKeysYaml";
@@ -59,16 +65,14 @@ let
   sshEnrichKeysYamlScriptSource =
     pkgs.replaceVars ../../.common.d/ssh-keys.d/ssh-enrich-keys-yaml.sh
       {
-        bashTrampoline = "${../../.common.d/shell.d/nix-bash-trampoline.sh}";
-        logger = logger;
+        nixBashTrampoline = nixBashTrampoline;
         loggerTag = loggerTagEnrich;
       };
   sshEnrichKeysYamlScript = pkgs.runCommand "ndh-ssh-enrich-keys-yaml-systemd.sh" { } ''
     install -m 0555 ${sshEnrichKeysYamlScriptSource} "$out"
   '';
   sshSplitKeysYamlScriptSource = pkgs.replaceVars ../../.common.d/ssh-keys.d/ssh-split-keys-yaml.sh {
-    bashTrampoline = "${../../.common.d/shell.d/nix-bash-trampoline.sh}";
-    logger = logger;
+    nixBashTrampoline = nixBashTrampoline;
     loggerTag = loggerTagSplit;
   };
   sshSplitKeysYamlScript = pkgs.runCommand "ndh-ssh-split-keys-yaml-systemd.sh" { } ''
@@ -77,8 +81,7 @@ let
   sshEnrichSplitAndAuthorizeScriptSource =
     pkgs.replaceVars ../../.common.d/ssh-keys.d/ssh-enrich-split-runtime-keys.sh
       {
-        bashTrampoline = "${../../.common.d/shell.d/nix-bash-trampoline.sh}";
-        logger = logger;
+        nixBashTrampoline = nixBashTrampoline;
         loggerTag = loggerTagOrchestrate;
       };
   sshEnrichSplitAndAuthorizeScript =
@@ -89,21 +92,19 @@ let
   sshExtractKeysSplitExpFile = pkgs.runCommand "ndh-ssh-extract-keys.split-exp.yq" { } ''
     install -m 0444 ${../../home-manager/ssh-key.d/ssh-extract-keys.split-exp.yq} "$out"
   '';
-  sshExtractKeysScriptSource =
-    pkgs.replaceVars ../../home-manager/ssh-key.d/ssh-extract-keys.sh {
-      bashTrampoline = "${../../.common.d/shell.d/nix-bash-trampoline.sh}";
-      logger = logger;
-      loggerTag = loggerTagExtract;
-      splitExpFile = sshExtractKeysSplitExpFile;
-    };
+  sshExtractKeysScriptSource = pkgs.replaceVars ../../home-manager/ssh-key.d/ssh-extract-keys.sh {
+    nixBashTrampoline = nixBashTrampoline;
+    loggerTag = loggerTagExtract;
+    splitExpFile = sshExtractKeysSplitExpFile;
+  };
   sshExtractKeysScript = pkgs.runCommand "ndh-ssh-extract-keys-systemd.sh" { } ''
     install -m 0555 ${sshExtractKeysScriptSource} "$out"
   '';
 in
 {
-  config.systemd.services.io-nxmatic-nix-darwin-home-ssh-keys-enrichment = {
+  config.systemd.services.${ndhSystemd.mkUnitName "ssh-keys-enrichment"} = {
     description = "Provision system linux-builder key from decrypted secrets (@codebase)";
-    wantedBy = [ "io-nxmatic-nix-darwin-home-contributed.target" ];
+    wantedBy = [ contributedTargetName ];
     requires = [
       keysTargetUnit
     ]
@@ -111,11 +112,11 @@ in
     after = [
       keysTargetUnit
     ]
-    ++ lib.optionals hasLimaCloudInitService [ "io-nxmatic-nix-darwin-home-lima-cloud-init.service" ]
+    ++ lib.optionals hasLimaCloudInitService [ limaCloudInitServiceName ]
     ++ lib.optionals hasSopsInstallSecretsService [ "sops-install-secrets.service" ];
     before = [
       "sshd.service"
-      "io-nxmatic-nix-darwin-home-hostkey-enrollment-check.service"
+      hostkeyEnrollmentCheckServiceName
     ];
     path = with pkgs; [
       bash

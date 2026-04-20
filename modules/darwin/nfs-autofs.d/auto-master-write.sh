@@ -1,5 +1,5 @@
 #!/usr/bin/env -S bash -euo pipefail
-source @logger@
+source @nixBashTrampoline@
 
 main() {
 	auto_master_target=/etc/static/auto_master

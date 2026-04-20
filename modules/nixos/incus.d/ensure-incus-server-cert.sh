@@ -1,7 +1,7 @@
 #!/usr/bin/env -S bash -euo pipefail
 
 # shellcheck disable=SC1091
-source @bashTrampoline@
+source @nixBashTrampoline@
 
 openssl_cmd='@openssl@'
 

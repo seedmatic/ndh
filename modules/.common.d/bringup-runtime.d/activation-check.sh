@@ -21,7 +21,7 @@ install_profile_from_runtime_path() {
 }
 
 install_profile() {
-  echo "[io-nxmatic-nix-darwin-home-bringup-runtime] installing/refreshing profile ${profile_dir}" >&2
+  echo "[nerd-nixos-bringup-runtime] installing/refreshing profile ${profile_dir}" >&2
 
   # In early image-build activation, prefer direct store-path seeding to avoid
   # relying on nix profile plumbing before the runtime is fully initialized.
@@ -37,7 +37,7 @@ install_profile() {
 }
 
 if [ "$image_build_context" = "1" ] && [ "$auto_install" = "1" ]; then
-  echo "[io-nxmatic-nix-darwin-home-bringup-runtime] image-build activation context detected; seeding profile ${profile_dir}" >&2
+  echo "[nerd-nixos-bringup-runtime] image-build activation context detected; seeding profile ${profile_dir}" >&2
   install_profile
 fi
 
@@ -63,8 +63,8 @@ if [ ! -d "$profile_bin" ]; then
   if [ "$auto_install" = "1" ]; then
     install_profile
   else
-    echo "[io-nxmatic-nix-darwin-home-bringup-runtime][ERROR] required profile bin directory is missing: $profile_bin" >&2
-    echo "[io-nxmatic-nix-darwin-home-bringup-runtime][ERROR] install it first: ${install_hint}" >&2
+    echo "[nerd-nixos-bringup-runtime][ERROR] required profile bin directory is missing: $profile_bin" >&2
+    echo "[nerd-nixos-bringup-runtime][ERROR] install it first: ${install_hint}" >&2
     exit 1
   fi
 fi
@@ -80,13 +80,13 @@ if { [ -n "$missing" ] || [ -n "$wrong_source" ]; } && [ "$auto_install" = "1" ]
 fi
 
 if [ -n "$missing" ]; then
-  echo "[io-nxmatic-nix-darwin-home-bringup-runtime][ERROR] missing required commands:$missing" >&2
-  echo "[io-nxmatic-nix-darwin-home-bringup-runtime][ERROR] reinstall profile: ${install_hint}" >&2
+  echo "[nerd-nixos-bringup-runtime][ERROR] missing required commands:$missing" >&2
+  echo "[nerd-nixos-bringup-runtime][ERROR] reinstall profile: ${install_hint}" >&2
   exit 1
 fi
 
 if [ -n "$wrong_source" ]; then
-  echo "[io-nxmatic-nix-darwin-home-bringup-runtime][ERROR] required commands not sourced from profile:$wrong_source" >&2
-  echo "[io-nxmatic-nix-darwin-home-bringup-runtime][ERROR] reinstall/repair profile: ${install_hint}" >&2
+  echo "[nerd-nixos-bringup-runtime][ERROR] required commands not sourced from profile:$wrong_source" >&2
+  echo "[nerd-nixos-bringup-runtime][ERROR] reinstall/repair profile: ${install_hint}" >&2
   exit 1
 fi

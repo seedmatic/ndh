@@ -1,40 +1,31 @@
 {
   config,
   lib,
-  hostProfile ? null,
-  catalog ? { },
+  ndh,
   ...
 }:
 let
-  networkCatalog = catalog.networks or { };
   inherit (lib) mkOption;
+  ndhContext = ndh.context;
+  hostProfile = ndhContext.hostProfile;
+  catalog = ndhContext.catalog;
   # Access limaHost after options layer
   cfg = config.limaHost;
-  # Resolve profile host data without creating a recursive dependency on limaHost itself.
-  # Prefer the injected specialArg hostProfile if provided (flake does this already for NixOS),
-  # otherwise fall back to config.profile.host.
-  resolvedHostProfile = if hostProfile != null then hostProfile else config.profile.host;
   profileUser = lib.attrByPath [
     "profile"
     "user"
     "name"
   ] (throw "lima-host: required option profile.user.name is missing") config;
   derivedHostName =
-    if
-      (
-        resolvedHostProfile ? hostAlias
-        && resolvedHostProfile.hostAlias != null
-        && resolvedHostProfile.hostAlias != ""
-      )
-    then
-      resolvedHostProfile.hostAlias
+    if (hostProfile ? hostAlias && hostProfile.hostAlias != null && hostProfile.hostAlias != "") then
+      hostProfile.hostAlias
     else
-      resolvedHostProfile.hostName;
+      hostProfile.hostName;
   hostName = cfg.hostName;
   guestName = cfg.guestName;
   baseTailnetDomain =
-    if networkCatalog ? tailnet && (networkCatalog.tailnet ? domain) then
-      lib.removePrefix "." networkCatalog.tailnet.domain
+    if catalog.netplan ? tailnet && (catalog.netplan.tailnet ? domain) then
+      lib.removePrefix "." catalog.netplan.tailnet.domain
     else
       "tailnet.local";
   domainName = cfg.domainName;

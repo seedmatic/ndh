@@ -5,7 +5,6 @@ shopt -s nullglob
 # Home Manager user-space activation context: do not hard-fail on missing
 # root bootstrap runtime profile holder. The script's own runtime inputs are
 # provided via activation wrapper/store paths.
-export NDH_BOOTSTRAP_STRICT=0
 
 main() {
 	yamlFile="$1"
@@ -153,7 +152,5 @@ main() {
 }
 
 # shellcheck disable=SC1091
-source @bashTrampoline@
-# shellcheck disable=SC1091
-source @logger@
+source @nixBashTrampoline@
 ndh::logger:command:run "@loggerTag@" main "$@"

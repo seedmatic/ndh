@@ -48,7 +48,6 @@
 
     # Enable features needed for builds
     system-features = [
-      "kvm"
       "nixos-test"
       "benchmark"
       "big-parallel"

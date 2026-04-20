@@ -5,15 +5,27 @@
   config,
   lib,
   pkgs,
+  ndhSystemd,
   ...
 }:
 
 let
   cfgUser = config.profile.user;
   cfgUserName = cfgUser.name;
-  zfsOverlaysEnabled = lib.attrByPath [ "zfsOverlays" "override" ] false config;
+  zfsOverlaysEnabled = lib.attrByPath [ "zfsOverlays" "enable" ] false config;
+  contributedTargetName = ndhSystemd.contributedTargetName;
+  podmanZfsSetupUnitName = ndhSystemd.mkUnitName "podman-zfs-setup";
+  podmanDockerLinkUnitName = ndhSystemd.mkUnitName "podman-docker-link";
 in
 {
+  # Kernel modules required by netavark nftables firewall driver:
+  # - nft_ct: connection tracking expressions (ct state)
+  # - nft_fib_ipv4: FIB expressions (fib saddr . iif oif)
+  boot.kernelModules = [
+    "nft_ct"
+    "nft_fib_ipv4"
+  ];
+
   # Enable Podman and containers
   virtualisation = {
     podman = {
@@ -67,13 +79,13 @@ in
   };
 
   # Create ZFS dataset for container storage
-  systemd.services.io-nxmatic-nix-darwin-home-podman-zfs-setup = lib.mkIf zfsOverlaysEnabled {
+  systemd.services.${podmanZfsSetupUnitName} = lib.mkIf zfsOverlaysEnabled {
     description = "Setup ZFS dataset for Podman container storage";
     before = [
       "podman.service"
       "containers-storage.service"
     ];
-    wantedBy = [ "io-nxmatic-nix-darwin-home-contributed.target" ];
+    wantedBy = [ contributedTargetName ];
     unitConfig = {
       ConditionPathExists = "/dev/zfs";
     };
@@ -102,11 +114,11 @@ in
     '';
   };
 
-  systemd.services.io-nxmatic-nix-darwin-home-podman-docker-link = {
+  systemd.services.${podmanDockerLinkUnitName} = {
     description = "Create symlink for docker compatibility";
     after = [ "podman.socket" ];
     wants = [ "podman.socket" ];
-    wantedBy = [ "io-nxmatic-nix-darwin-home-contributed.target" ];
+    wantedBy = [ contributedTargetName ];
     serviceConfig = {
       Type = "oneshot";
       RemainAfterExit = true;

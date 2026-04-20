@@ -2,8 +2,7 @@
 # @codebase
 # Decrypt SOPS-encrypted SSH keys YAML into runtime path for Home Manager activation.
 
-source @bashTrampoline@
-source @logger@
+source @nixBashTrampoline@
 
 main() {
   local encrypted_yaml="$1"

@@ -429,8 +429,7 @@ EOK
 EOF
 }
 
-source @bashTrampoline@
-source @logger@
+source @nixBashTrampoline@
 
 main() {
 	declare -g profileName hostName inputFile outputFile

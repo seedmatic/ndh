@@ -143,13 +143,41 @@
 
       ndhStoreApiDarwin = mkNdhStoreApiFor pkgsForDarwin;
       ndhStoreApiLinux = mkNdhStoreApiFor pkgsForLinux;
-      ndhBringupRuntimeAttr = "ndh-bringup-runtime";
-      ndhBringupInstallerAttr = "ndh-bringup-install";
-      ndhBringupInstallerCommand = "ndh-bringup-install";
-      ndhVmLimaMaterializeAttr = "ndh-vm-lima-materialize";
-      ndhVmTartMaterializeAttr = "ndh-vm-tart-materialize";
-      ndhLogCaptureAttr = "ndh-log-capture";
-      ndhLogCaptureCommand = "ndh-log-capture";
+      mkNdhNixBashTrampoline =
+        {
+          pkgsForSystem,
+          loggerCmd,
+        }:
+        let
+          ndhStoreApi = mkNdhStoreApiFor pkgsForSystem;
+          loggerScript = ndhStoreApi.writeText "logger.sh" ''
+            #!/usr/bin/env bash
+            LOGGER_CMD="${loggerCmd}"
+            source ${./modules/.common.d/shell.d/logger.sh}
+          '';
+          trampolineDir = ndhStoreApi.runCommand "trampoline-dir" { } ''
+            mkdir -p "$out"
+            install -m 0644 ${loggerScript} "$out/logger.sh"
+            install -m 0755 ${./modules/.common.d/shell.d/nix-bash-trampoline.sh} "$out/nix-bash-trampoline.sh"
+          '';
+        in
+        "${trampolineDir}/nix-bash-trampoline.sh";
+      ndhNixBashTrampolineDarwin = mkNdhNixBashTrampoline {
+        pkgsForSystem = pkgsForDarwin;
+        loggerCmd = "/usr/bin/logger -p notice -t %TAG%";
+      };
+      ndhNixBashTrampolineLinux = mkNdhNixBashTrampoline {
+        pkgsForSystem = pkgsForLinux;
+        loggerCmd = "${pkgsForLinux.util-linux}/bin/logger -p notice -t %TAG%";
+      };
+      ndhBringupRuntimeAttr = "nerd-nixos-bringup-runtime";
+      ndhBringupInstallerAttr = "nerd-nixos-bringup-install";
+      ndhBringupInstallerCommand = "nerd-nixos-bringup-install";
+      ndhVmLimaMaterializeAttr = "nerd-nixos-lima-vm-materialize";
+      ndhVmTartMaterializeAttr = "nerd-nixos-tart-vm-materialize";
+      ndhVmTartBootstrapInstallerAttr = "nerd-nixos-tart-vm-bootstrap-installer";
+      ndhLogCaptureAttr = "nerd-nixos-log-capture";
+      ndhLogCaptureCommand = "nerd-nixos-log-capture";
       hostCatalog = builtins.mapAttrs (
         hostName: _: import (./hosts + "/${hostName}")
       ) inventoryData.hosts;
@@ -162,10 +190,13 @@
       forAllHosts = f: nixpkgs.lib.mapAttrs f hostCatalog;
 
       mkBaseModulesFor =
-        { hostProfile, system }:
+        {
+          hostProfile,
+          system,
+          generationMode ? "full",
+        }:
         let
-          hostImageMode = hostProfile.nixosImageMode or "full";
-          bringupModeInternal = hostImageMode == "bootstrap";
+          bringupModeInternal = generationMode == "bringup";
           requestedHomeManagerEnabled =
             if hostProfile ? enableHomeManager && hostProfile.enableHomeManager != null then
               hostProfile.enableHomeManager
@@ -209,12 +240,19 @@
         {
           hostProfile,
           system,
+          generationMode ? "full",
           preModules ? [ ],
           extraModules ? [ ],
           ...
         }:
         let
-          baseModules = mkBaseModulesFor { inherit hostProfile system; };
+          baseModules = mkBaseModulesFor {
+            inherit
+              hostProfile
+              system
+              generationMode
+              ;
+          };
         in
         preModules ++ baseModules ++ extraModules;
 
@@ -243,7 +281,7 @@
           nixPackage = pkgsForSystem.lib.getBin pkgsForSystem.nix;
         in
         pkgsForSystem.symlinkJoin {
-          name = ndhStoreApi.prefixedName "bringup-runtime-profile-holder";
+          name = ndhBringupRuntimeAttr;
           paths = with pkgsForSystem; [
             bashPackage
             nixPackage
@@ -264,7 +302,6 @@
         system:
         let
           pkgsForSystem = pkgsFor { inherit system; };
-          ndhStoreApi = mkNdhStoreApiFor pkgsForSystem;
           runtimePackage = mkNdhBootstrapRuntimePackage system;
           loggerScript = (mkLoggerSpecialArg system).script;
           scriptSource =
@@ -272,14 +309,13 @@
               {
                 bash = "${pkgsForSystem.bash}/bin/bash";
                 nix = "${pkgsForSystem.nix}/bin/nix";
-                logger = loggerScript;
                 loggerTag = "ndh.bringup-runtime.install-standalone";
                 runtimePackage = runtimePackage;
-                defaultProfileDir = "/nix/var/nix/profiles/per-user/root/io-nxmatic-nix-darwin-home-bringup-runtime";
+                defaultProfileDir = "/nix/var/nix/profiles/per-user/root/nerd-nixos-bringup-runtime";
                 requiredCommands = "bash nix age age-keygen awk sed grep ssh ssh-keygen yq git";
               };
         in
-        ndhStoreApi.runCommand "bringup-runtime-profile-installer" { } ''
+        pkgsForSystem.runCommand ndhBringupInstallerAttr { } ''
           install -Dm755 ${scriptSource} "$out/bin/${ndhBringupInstallerCommand}"
         '';
 
@@ -290,13 +326,16 @@
         in
         pkgsForSystem.writeShellApplication {
           name = ndhLogCaptureCommand;
-          runtimeInputs = with pkgsForSystem; [ coreutils gnused ];
+          runtimeInputs = with pkgsForSystem; [
+            coreutils
+            gnused
+          ];
           text = ''
             set -euo pipefail
 
             usage() {
               cat >&2 <<'EOF'
-            Usage: ndh-log-capture [--name NAME] [--dir DIR] -- <command> [args...]
+            Usage: nerd-nixos-log-capture [--name NAME] [--dir DIR] -- <command> [args...]
 
             Environment:
               NDH_CAPTURE_DIR   Default log directory (default: /tmp)
@@ -311,12 +350,12 @@
               case "$1" in
                 --name)
                   shift
-                  [[ $# -gt 0 ]] || { echo "[ndh-log-capture][ERROR] --name requires a value" >&2; usage; exit 2; }
+                  [[ $# -gt 0 ]] || { echo "[nerd-nixos-log-capture][ERROR] --name requires a value" >&2; usage; exit 2; }
                   log_name="$1"
                   ;;
                 --dir)
                   shift
-                  [[ $# -gt 0 ]] || { echo "[ndh-log-capture][ERROR] --dir requires a value" >&2; usage; exit 2; }
+                  [[ $# -gt 0 ]] || { echo "[nerd-nixos-log-capture][ERROR] --dir requires a value" >&2; usage; exit 2; }
                   log_dir="$1"
                   ;;
                 --help|-h)
@@ -335,7 +374,7 @@
             done
 
             if (($# == 0)); then
-              echo "[ndh-log-capture][ERROR] missing command" >&2
+              echo "[nerd-nixos-log-capture][ERROR] missing command" >&2
               usage
               exit 2
             fi
@@ -351,11 +390,11 @@
 
             timestamp="$(date +%Y%m%d-%H%M%S)"
             mkdir -p "$log_dir"
-            log_file="$log_dir/ndh-$log_name-$timestamp.log"
+            log_file="$log_dir/nerd-nixos-$log_name-$timestamp.log"
 
             cmd_pretty="$(printf '%q ' "$@")"
             {
-              echo "# ndh-log-capture"
+              echo "# nerd-nixos-log-capture"
               echo "# timestamp: $(date -Is)"
               echo "# cwd: $PWD"
               echo "# command: $cmd_pretty"
@@ -367,10 +406,166 @@
             cmd_rc=''${PIPESTATUS[0]}
             set -e
 
-            echo "[ndh-log-capture] log file: $log_file" >&2
+            echo "[nerd-nixos-log-capture] log file: $log_file" >&2
             exit "$cmd_rc"
           '';
         };
+
+      mkNdhVmTartBootstrapInstallerPackage =
+        system:
+        let
+          pkgsForSystem = pkgsFor { inherit system; };
+        in
+        pkgsForSystem.writeShellApplication {
+          name = ndhVmTartBootstrapInstallerAttr;
+          runtimeInputs = with pkgsForSystem; [
+            coreutils
+            findutils
+            gnugrep
+            git
+          ];
+          text = ''
+            set -euo pipefail
+
+            usage() {
+              cat >&2 <<'EOF'
+            Usage: nerd-nixos-tart-vm-bootstrap-installer [--vm NAME] [--repo PATH] [--iso PATH] [--tag TAG]
+
+            Launches Tart VM in installer bootstrap mode using the existing run wrapper:
+              - recovery boot enabled
+              - installer ISO attached read-only
+              - repo mounted via virtiofs
+
+            Options:
+              --vm NAME     VM name (default: nerd-nixos)
+              --repo PATH   Git checkout to mount as virtiofs (default: auto-detect)
+              --iso PATH    Installer ISO path (default: auto-detect)
+              --tag TAG     Virtiofs tag for repo mount (default: ndh)
+
+            Environment overrides:
+              VM_NAME
+              BOOTSTRAP_REPO
+              INSTALLER_ISO_PATH
+              BOOTSTRAP_SHARE_TAG
+              RUN_EXTRA_ARGS (preserved and appended)
+            EOF
+            }
+
+            vm_name="''${VM_NAME:-nerd-nixos}"
+            repo_root="''${BOOTSTRAP_REPO:-}"
+            iso_path="''${INSTALLER_ISO_PATH:-}"
+            share_tag="''${BOOTSTRAP_SHARE_TAG:-ndh}"
+
+            while (($#)); do
+              case "$1" in
+                --vm)
+                  shift
+                  [[ $# -gt 0 ]] || { echo "[nerd-nixos-tart-vm-bootstrap-installer][ERROR] --vm requires a value" >&2; usage; exit 2; }
+                  vm_name="$1"
+                  ;;
+                --repo)
+                  shift
+                  [[ $# -gt 0 ]] || { echo "[nerd-nixos-tart-vm-bootstrap-installer][ERROR] --repo requires a value" >&2; usage; exit 2; }
+                  repo_root="$1"
+                  ;;
+                --iso)
+                  shift
+                  [[ $# -gt 0 ]] || { echo "[nerd-nixos-tart-vm-bootstrap-installer][ERROR] --iso requires a value" >&2; usage; exit 2; }
+                  iso_path="$1"
+                  ;;
+                --tag)
+                  shift
+                  [[ $# -gt 0 ]] || { echo "[nerd-nixos-tart-vm-bootstrap-installer][ERROR] --tag requires a value" >&2; usage; exit 2; }
+                  share_tag="$1"
+                  ;;
+                --help|-h)
+                  usage
+                  exit 0
+                  ;;
+                *)
+                  echo "[nerd-nixos-tart-vm-bootstrap-installer][ERROR] unknown argument: $1" >&2
+                  usage
+                  exit 2
+                  ;;
+              esac
+              shift
+            done
+
+            if [[ -z "$repo_root" ]]; then
+              if repo_candidate="$(git -C "$PWD" rev-parse --show-toplevel 2>/dev/null || true)" && [[ -n "$repo_candidate" ]]; then
+                repo_root="$repo_candidate"
+              elif [[ -d "/private/var/lib/git/nxmatic/nix-darwin-home" ]]; then
+                repo_root="/private/var/lib/git/nxmatic/nix-darwin-home"
+              else
+                echo "[nerd-nixos-tart-vm-bootstrap-installer][ERROR] unable to detect repo root; pass --repo PATH" >&2
+                exit 1
+              fi
+            fi
+
+            if [[ ! -d "$repo_root" ]]; then
+              echo "[nerd-nixos-tart-vm-bootstrap-installer][ERROR] repo path does not exist: $repo_root" >&2
+              exit 1
+            fi
+
+            if [[ -z "$iso_path" ]]; then
+              iso_path="$(find "$repo_root/sandbox/zfs-raidz1-lab/.tart/opt/lib" -maxdepth 1 -type f -name '*nixos*.iso' 2>/dev/null | sort | tail -n 1 || true)"
+            fi
+
+            if [[ -z "$iso_path" ]]; then
+              iso_path="$(find "$HOME/.tart" "$repo_root" -type f -name '*nixos*.iso' 2>/dev/null | sort | tail -n 1 || true)"
+            fi
+
+            if [[ -z "$iso_path" || ! -f "$iso_path" ]]; then
+              echo "[nerd-nixos-tart-vm-bootstrap-installer][ERROR] installer ISO not found; pass --iso PATH" >&2
+              exit 1
+            fi
+
+            wrapper="$HOME/.tart/vms/$vm_name.sh"
+            if [[ ! -x "$wrapper" ]]; then
+              echo "[nerd-nixos-tart-vm-bootstrap-installer][ERROR] VM run wrapper missing or not executable: $wrapper" >&2
+              echo "[nerd-nixos-tart-vm-bootstrap-installer][ERROR] run nerd-nixos-tart-vm-materialize first" >&2
+              exit 1
+            fi
+
+            extra_args=(
+              "--recovery"
+              "--disk=$iso_path:ro"
+              "--dir=$repo_root:rw,tag=$share_tag"
+            )
+
+            if [[ -n "''${RUN_EXTRA_ARGS:-}" ]]; then
+              read -r -a user_extra_args <<<"$RUN_EXTRA_ARGS"
+              extra_args=("''${user_extra_args[@]}" "''${extra_args[@]}")
+            fi
+
+            joined_extra_args="$(printf '%q ' "''${extra_args[@]}")"
+            joined_extra_args="''${joined_extra_args% }"
+
+            echo "[nerd-nixos-tart-vm-bootstrap-installer] vm=$vm_name"
+            echo "[nerd-nixos-tart-vm-bootstrap-installer] repo=$repo_root"
+            echo "[nerd-nixos-tart-vm-bootstrap-installer] iso=$iso_path"
+            echo "[nerd-nixos-tart-vm-bootstrap-installer] tag=$share_tag"
+
+            export RUN_EXTRA_ARGS="$joined_extra_args"
+            exec "$wrapper"
+          '';
+        };
+
+      mkNdhDiskoPinnedModule =
+        system:
+        let
+          ndhStoreApi = mkNdhStoreApiFor (pkgsFor {
+            inherit system;
+          });
+        in
+        ndhStoreApi.writeText "disko-module-pinned.nix" ''
+          { lib, ... }:
+          {
+            disko = import ${./modules/nixos/zfs-disko-config.nix} {
+              inherit lib;
+            };
+          }
+        '';
 
       mkSpecialArgs =
         {
@@ -392,14 +587,16 @@
           inherit self lib;
           _modules = modules;
           nixpkgsInput = nixpkgs;
-          logger = mkLoggerSpecialArg system;
         }
         // extraArgs;
+      mkNdhHomeManagerSpecialArgs = import ./modules/.common.d/ndh-home-manager-special-args.nix;
 
       darwinOutputsApi = import ./modules/darwin/outputs.nix {
         inherit
           inputs
           pkgsForDarwin
+          ndhStoreApiDarwin
+          ndhNixBashTrampolineDarwin
           mkModulesFor
           mkSpecialArgs
           ;
@@ -409,6 +606,8 @@
         inherit
           nixpkgs
           pkgsForLinux
+          ndhStoreApiLinux
+          ndhNixBashTrampolineLinux
           mkModulesFor
           mkSpecialArgs
           ;
@@ -440,6 +639,15 @@
       # Disable flake checks to avoid treefmt-nix API mismatch during evaluation
       checks = forAllSystems (_: { });
 
+      diskoConfigurations = {
+        default = import ./modules/nixos/zfs-disko-config.nix { lib = nixpkgs.lib; };
+      };
+
+      diskoModules = {
+        default = ./modules/nixos/disko.nix;
+        pinned = forAllSystems (system: mkNdhDiskoPinnedModule system);
+      };
+
       # Expose package sets with all overlays applied for both platforms we build
       pkgs = {
         aarch64-darwin = pkgsForDarwin;
@@ -453,28 +661,64 @@
 
       packages = nixpkgs.lib.genAttrs [ "aarch64-darwin" "aarch64-linux" ] (
         system:
+        let
+          ndhStoreApi = mkNdhStoreApiFor (pkgsFor {
+            inherit system;
+          });
+        in
         {
           ${ndhBringupRuntimeAttr} = mkNdhBootstrapRuntimePackage system;
-          ${ndhBringupInstallerAttr} = mkNdhBringupRuntimeInstaller system;
-          ${ndhLogCaptureAttr} = mkNdhLogCapturePackage system;
+          ndh-disko-module-pinned = mkNdhDiskoPinnedModule system;
+          ndh-disko-config = ndhStoreApi.writeText "zfs-disko-config.nix" (
+            builtins.readFile ./modules/nixos/zfs-disko-config.nix
+          );
         }
+        // builtins.foldl' (
+          acc: hostName:
+          let
+            hostSpec = hostCatalog.${hostName};
+            mainName = hostMainNameForProfile hostSpec.hostProfile;
+          in
+          acc
+          // {
+            "${mainName}-nixos-bringup-install" = mkNdhBringupRuntimeInstaller system;
+            "${mainName}-nixos-log-capture" = mkNdhLogCapturePackage system;
+            "${mainName}-nixos-tart-vm-bootstrap-installer" = mkNdhVmTartBootstrapInstallerPackage system;
+          }
+        ) { } (builtins.attrNames hostCatalog)
+        // nixpkgs.lib.optionalAttrs (system == "aarch64-darwin") (
+          builtins.foldl' (
+            acc: hostName:
+            let
+              hostSpec = hostCatalog.${hostName};
+              mainName = hostMainNameForProfile hostSpec.hostProfile;
+              hostOutput = hostOutputs.${hostName};
+            in
+            acc
+            // {
+              "${mainName}-nixos-lima-vm-materialize" =
+                hostOutput.darwinConfiguration.config.lima.configGenerator.materializerPackage;
+              "${mainName}-nixos-tart-vm-materialize" =
+                hostOutput.darwinConfiguration.config.tart.configGenerator.materializerPackage;
+            }
+          ) { } (builtins.attrNames hostCatalog)
+        )
         // nixpkgs.lib.optionalAttrs (system == "aarch64-linux") (
-          builtins.foldl'
-            (
-              acc: hostName:
-              let
-                hostSpec = hostCatalog.${hostName};
-                mainName = hostMainNameForProfile hostSpec.hostProfile;
-                hostOutput = hostOutputs.${hostName};
-              in
-              acc
-              // {
-                "nixos-${mainName}-bringup-lima-vm-disk" = hostOutput.limaNixosDiskImageBringupSystemdExt4;
-                "nixos-${mainName}-bringup-tart-disk" = hostOutput.tartNixosDiskImageBringupGrubExt4;
-              }
-            )
-            { }
-            (builtins.attrNames hostCatalog)
+          builtins.foldl' (
+            acc: hostName:
+            let
+              hostSpec = hostCatalog.${hostName};
+              mainName = hostMainNameForProfile hostSpec.hostProfile;
+              bringupRootFsName = hostSpec.hostProfile.nixosBringupRootFs or "btrfs";
+              hostOutput = hostOutputs.${hostName};
+            in
+            acc
+            // {
+              "nixos-${mainName}-bringup-${bringupRootFsName}-systemd-disk" =
+                hostOutput.nixosDiskImageBringupSystemd;
+              "nixos-${mainName}-bringup-zfs-systemd-disk" = hostOutput.nixosDiskImageBringupSystemdZfs;
+            }
+          ) { } (builtins.attrNames hostCatalog)
         )
       );
 
@@ -483,29 +727,57 @@
         let
           installer = mkNdhBringupRuntimeInstaller system;
           logCapture = mkNdhLogCapturePackage system;
-          limaMaterializer =
-            hostOutputs.bioskop.darwinConfigurations.bioskop.config.lima.configGenerator.materializerPackage;
-          tartMaterializer =
-            hostOutputs.bioskop.darwinConfigurations.bioskop.config.tart.configGenerator.materializerPackage;
+          tartBootstrapInstaller = mkNdhVmTartBootstrapInstallerPackage system;
+          hostMaterializerApps = builtins.foldl' (
+            acc: hostName:
+            let
+              hostSpec = hostCatalog.${hostName};
+              mainName = hostMainNameForProfile hostSpec.hostProfile;
+              hostOutput = hostOutputs.${hostName};
+              limaMaterializerPackage =
+                hostOutput.darwinConfiguration.config.lima.configGenerator.materializerPackage;
+              tartMaterializerPackage =
+                hostOutput.darwinConfiguration.config.tart.configGenerator.materializerPackage;
+            in
+            acc
+            // {
+              "${mainName}-nixos-lima-vm-materialize" = {
+                type = "app";
+                program = "${limaMaterializerPackage}/bin/${ndhVmLimaMaterializeAttr}";
+              };
+              "${mainName}-nixos-tart-vm-materialize" = {
+                type = "app";
+                program = "${tartMaterializerPackage}/bin/${ndhVmTartMaterializeAttr}";
+              };
+            }
+          ) { } (builtins.attrNames hostCatalog);
+          hostBootstrapInstallerApps = builtins.foldl' (
+            acc: hostName:
+            let
+              hostSpec = hostCatalog.${hostName};
+              mainName = hostMainNameForProfile hostSpec.hostProfile;
+            in
+            acc
+            // {
+              "${mainName}-nixos-bringup-install" = {
+                type = "app";
+                program = "${installer}/bin/${ndhBringupInstallerCommand}";
+              };
+              "${mainName}-nixos-log-capture" = {
+                type = "app";
+                program = "${logCapture}/bin/${ndhLogCaptureCommand}";
+              };
+              "${mainName}-nixos-tart-vm-bootstrap-installer" = {
+                type = "app";
+                program = "${tartBootstrapInstaller}/bin/${ndhVmTartBootstrapInstallerAttr}";
+              };
+            }
+          ) { } (builtins.attrNames hostCatalog);
         in
         {
-          ${ndhBringupInstallerAttr} = {
-            type = "app";
-            program = "${installer}/bin/${ndhBringupInstallerCommand}";
-          };
-          ${ndhLogCaptureAttr} = {
-            type = "app";
-            program = "${logCapture}/bin/${ndhLogCaptureCommand}";
-          };
-          ${ndhVmLimaMaterializeAttr} = {
-            type = "app";
-            program = "${limaMaterializer}/bin/${ndhVmLimaMaterializeAttr}";
-          };
-          ${ndhVmTartMaterializeAttr} = {
-            type = "app";
-            program = "${tartMaterializer}/bin/${ndhVmTartMaterializeAttr}";
-          };
         }
+        // hostMaterializerApps
+        // hostBootstrapInstallerApps
       );
 
       mkHostOutputs =
@@ -567,14 +839,21 @@
           };
           nixosConfiguration = nixosOutputs.nixosConfigurations."${mainName}-nixos";
           nixosDiskImage = nixosOutputs.diskImageFull;
-          limaNixosDiskImageBringupSystemdExt4 = nixosOutputs.diskImageBringupSystemdExt4Boot;
-          tartNixosDiskImageBringupSystemdExt4 = nixosOutputs.diskImageBringupSystemdExt4Boot;
-          tartNixosDiskImageBringupSystemdZfs = nixosOutputs.diskImageBringupZfsSystemdBoot;
-          tartNixosDiskImageBringupGrubExt4 = nixosOutputs.diskImageBringupGrub;
+          nixosDiskImageBringupSystemd = nixosOutputs.diskImageBringupSystemdBoot;
+          nixosDiskImageBringupSystemdZfs = nixosOutputs.diskImageBringupZfsSystemdBoot;
+          nixosDiskImageBringupGrub = nixosOutputs.diskImageBringupGrub;
           nixosDiskSizeHint = nixosOutputs.diskSizeHint;
           nixosDiskSizeMiB = nixosOutputs.diskSizeMiB;
+          nixosDiskSizeGiB = nixosOutputs.diskSizeGiB;
           mkHomeManagerConfig =
             profile:
+            let
+              vmConfigMaterializerPackage =
+                if (hostProfile.vmProvider or "lima") == "tart" then
+                  darwinOutputs.darwinConfigurations.${mainName}.config.tart.configGenerator.materializerPackage
+                else
+                  darwinOutputs.darwinConfigurations.${mainName}.config.lima.configGenerator.materializerPackage;
+            in
             home-manager.lib.homeManagerConfiguration {
               pkgs = pkgsForDarwin;
               modules = [
@@ -587,25 +866,23 @@
                   }
                 )
               ];
-              extraSpecialArgs = {
-                inherit profile;
-                ndh = {
-                  store = ndhStoreApiDarwin;
-                  inherit catalog;
+              extraSpecialArgs = mkNdhHomeManagerSpecialArgs {
+                inherit
+                  profile
+                  vmConfigMaterializerPackage
+                  ;
+                ndhContext = {
+                  inherit
+                    hostProfile
+                    catalog
+                    ;
                   inventory = inventoryData;
-                  vm = {
-                    provider = hostProfile.vmProvider or "lima";
-                    configMaterializerPackage =
-                      if (hostProfile.vmProvider or "lima") == "tart" then
-                        darwinOutputs.darwinConfigurations.${mainName}.config.tart.configGenerator.materializerPackage
-                      else
-                        darwinOutputs.darwinConfigurations.${mainName}.config.lima.configGenerator.materializerPackage;
-                  };
-                  logger = mkLoggerSpecialArg "aarch64-darwin";
-                  ssh = {
-                    keysYamlPath = "${toString profile.user.home}/.local/var/run/secrets/sops/ssh-keys.yaml";
-                  };
+                  generationMode = "full";
+                  vmProvider = hostProfile.vmProvider or "lima";
+                  nixBashTrampoline = ndhNixBashTrampolineDarwin;
                 };
+                ndhStore = ndhStoreApiDarwin;
+                keysYamlPath = "${toString profile.user.home}/.local/var/run/secrets/sops/ssh-keys.yaml";
               };
             };
           darwinOutputs = mkDarwinOutputs {
@@ -619,12 +896,14 @@
                   (
                     { ... }:
                     {
-                      lima.configGenerator.imageManifestPath = "${limaNixosDiskImageBringupSystemdExt4}/manifest.yaml";
-                      lima.configGenerator.imageStorePath = "${limaNixosDiskImageBringupSystemdExt4}/nixos.img";
-                      lima.configGenerator.diskSizeGiB = builtins.div nixosDiskSizeMiB 1024;
+                      lima.configGenerator.imageManifestPath = "${nixosDiskImageBringupSystemdZfs}/manifest.yaml";
+                      lima.configGenerator.imageStorePath = "${nixosDiskImageBringupSystemdZfs}/boot.img";
+                      lima.configGenerator.diskSizeGiB = nixosDiskSizeGiB;
 
-                      tart.configGenerator.rawImageManifestPath = "${tartNixosDiskImageBringupSystemdZfs}/manifest.yaml";
-                      tart.configGenerator.rawImageStorePath = "${tartNixosDiskImageBringupSystemdZfs}/nixos.img";
+                      tart.configGenerator.rawImageManifestPath = "${nixosDiskImageBringupSystemdZfs}/manifest.yaml";
+                      tart.configGenerator.rawImageStorePath = "${nixosDiskImageBringupSystemdZfs}/boot.img";
+                      tart.configGenerator.vmRunFirstBootAttachDiskManifestPath = null;
+                      tart.configGenerator.vmRunFirstBootAttachDiskPath = "";
                     }
                   )
                 ]
@@ -658,7 +937,6 @@
             pkgsForDarwin.replaceVars ./modules/.common.d/bringup-runtime.d/prerequisites-install-wrapper.sh
               {
                 bash = "${pkgsForDarwin.bash}/bin/bash";
-                logger = (mkLoggerSpecialArg "aarch64-darwin").script;
                 loggerTag = "ndh.bringup-runtime.prerequisites-install.darwin";
                 autofsMaterializerProgram =
                   if autofsNetMaterializerProgram != null then autofsNetMaterializerProgram else "";
@@ -668,15 +946,14 @@
             pkgsForLinux.replaceVars ./modules/.common.d/bringup-runtime.d/prerequisites-install-wrapper.sh
               {
                 bash = "${pkgsForLinux.bash}/bin/bash";
-                logger = (mkLoggerSpecialArg "aarch64-linux").script;
                 loggerTag = "ndh.bringup-runtime.prerequisites-install.linux";
                 autofsMaterializerProgram = "";
                 standaloneInstaller = "${ndhBootstrapInstallerPackageLinux}/bin/${ndhBringupInstallerCommand}";
               };
-          ndhPrerequisitesInstallerPackage = ndhStoreApiDarwin.runCommand "prerequisites-install" { } ''
+          ndhPrerequisitesInstallerPackage = pkgsForDarwin.runCommand ndhBringupInstallerAttr { } ''
             install -Dm755 ${ndhPrerequisitesInstallerScriptSource} "$out/bin/${ndhBringupInstallerCommand}"
           '';
-          ndhPrerequisitesInstallerPackageLinux = ndhStoreApiLinux.runCommand "prerequisites-install" { } ''
+          ndhPrerequisitesInstallerPackageLinux = pkgsForLinux.runCommand ndhBringupInstallerAttr { } ''
             install -Dm755 ${ndhPrerequisitesInstallerScriptSourceLinux} "$out/bin/${ndhBringupInstallerCommand}"
           '';
           hostDarwinPackages = {
@@ -684,6 +961,7 @@
             ${ndhBringupInstallerAttr} = ndhPrerequisitesInstallerPackage;
             ${ndhVmLimaMaterializeAttr} = limaMaterializerPackage;
             ${ndhVmTartMaterializeAttr} = tartMaterializerPackage;
+            ${ndhVmTartBootstrapInstallerAttr} = mkNdhVmTartBootstrapInstallerPackage "aarch64-darwin";
           };
           hostLinuxPackages = {
             ${ndhBringupRuntimeAttr} = ndhBootstrapRuntimePackageLinux;
@@ -702,6 +980,10 @@
               type = "app";
               program = "${tartMaterializerPackage}/bin/${ndhVmTartMaterializeAttr}";
             };
+            ${ndhVmTartBootstrapInstallerAttr} = {
+              type = "app";
+              program = "${(mkNdhVmTartBootstrapInstallerPackage "aarch64-darwin")}/bin/${ndhVmTartBootstrapInstallerAttr}";
+            };
           };
           hostLinuxApps = {
             ${ndhBringupInstallerAttr} = {
@@ -713,7 +995,6 @@
           # Home Manager configurations are explicitly profile-keyed.
           homeManagerConfigurations = {
             work = mkHomeManagerConfig workProfile;
-            bringup = mkHomeManagerConfig workProfile;
             committed = mkHomeManagerConfig committedProfile;
           };
         in
@@ -724,10 +1005,9 @@
             darwinConfiguration
             nixosConfiguration
             nixosDiskImage
-            limaNixosDiskImageBringupSystemdExt4
-            tartNixosDiskImageBringupSystemdExt4
-            tartNixosDiskImageBringupSystemdZfs
-            tartNixosDiskImageBringupGrubExt4
+            nixosDiskImageBringupSystemd
+            nixosDiskImageBringupSystemdZfs
+            nixosDiskImageBringupGrub
             nixosDiskSizeHint
             homeManagerConfigurations
             ;
@@ -762,9 +1042,9 @@
         acc: hostOutput: acc // hostOutput.darwinConfigurations
       ) { } (builtins.attrValues hostOutputs);
 
-      nixosConfigurations = builtins.foldl' (
-        acc: hostOutput: acc // hostOutput.nixosConfigurations
-      ) { } (builtins.attrValues hostOutputs);
+      nixosConfigurations = builtins.foldl' (acc: hostOutput: acc // hostOutput.nixosConfigurations) { } (
+        builtins.attrValues hostOutputs
+      );
 
       # Provider-scoped VM configuration aliases.
       # Keep canonical behavior unchanged; expose stable provider names for operators.
@@ -774,22 +1054,22 @@
             hostName: hostSpec:
             let
               mainName = hostMainNameForProfile hostSpec.hostProfile;
+              bringupRootFsName = hostSpec.hostProfile.nixosBringupRootFs or "btrfs";
               hostNixosConfigurations = hostOutputs.${hostName}.nixosConfigurations;
             in
             {
               lima = {
-                bringup = hostNixosConfigurations."lima-${mainName}-bringup-systemd-ext4";
+                bringup = hostNixosConfigurations."${mainName}-nixos-lima-bringup-systemd-${bringupRootFsName}";
                 runtime = hostNixosConfigurations."${mainName}-nixos-lima";
               };
               tart = {
-                bringupExt4 = hostNixosConfigurations."tart-${mainName}-bringup-systemd-ext4";
-                bringupZfs = hostNixosConfigurations."tart-${mainName}-bringup-systemd-zfs";
-                bringupZfsGrub = hostNixosConfigurations."tart-${mainName}-bringup-grub-zfs";
-                bringup = hostNixosConfigurations."tart-${mainName}-bringup-grub-zfs";
+                bringup = hostNixosConfigurations."${mainName}-nixos-tart-bringup-systemd-${bringupRootFsName}";
+                bringupZfs = hostNixosConfigurations."${mainName}-nixos-tart-bringup-systemd-zfs";
+                bringupZfsGrub = hostNixosConfigurations."${mainName}-nixos-tart-bringup-grub-zfs";
                 runtime = hostNixosConfigurations."${mainName}-nixos-tart";
               };
               selected = {
-                bringup = hostNixosConfigurations."lima-${mainName}-bringup-systemd-ext4";
+                bringup = hostNixosConfigurations."${mainName}-nixos-lima-bringup-systemd-${bringupRootFsName}";
                 runtime = hostNixosConfigurations."${mainName}-nixos";
               };
             };
@@ -806,16 +1086,14 @@
         _: hostOutput: hostOutput.homeManagerConfigurations
       ) hostOutputs;
 
-      nixosDiskImages = builtins.mapAttrs (
-        _: hostOutput:
-        {
-          full = hostOutput.nixosDiskImage;
-          limaSystemdExt4 = hostOutput.limaNixosDiskImageBringupSystemdExt4;
-          tartSystemdExt4 = hostOutput.tartNixosDiskImageBringupSystemdExt4;
-          tartSystemdZfs = hostOutput.tartNixosDiskImageBringupSystemdZfs;
-          tartGrubExt4 = hostOutput.tartNixosDiskImageBringupGrubExt4;
-        }
-      ) hostOutputs;
+      nixosDiskImages = builtins.mapAttrs (_: hostOutput: {
+        full = hostOutput.nixosDiskImage;
+        bringup = {
+          btrfsSystemd = hostOutput.nixosDiskImageBringupSystemd;
+          btrfsGrub = hostOutput.nixosDiskImageBringupGrub;
+          zfsSystemd = hostOutput.nixosDiskImageBringupSystemdZfs;
+        };
+      }) hostOutputs;
 
       overlays = {
         channels = inputs: final: prev: {
@@ -847,6 +1125,7 @@
         lazygitOverlay = inputs: import ./overlays/lazygit.nix inputs;
         limaOverlay = inputs: import ./overlays/lima.nix inputs;
         tailscaleOverlay = inputs: import ./overlays/tailscale.nix inputs;
+        vmToolsDeterministicOverlay = inputs: import ./overlays/vm-tools-deterministic.nix inputs;
 
         direnvOverlay = _inputs: final: prev: {
           # Upstream direnv fish tests are intermittently SIGKILLed on this build fleet.

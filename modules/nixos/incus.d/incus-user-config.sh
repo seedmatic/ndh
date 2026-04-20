@@ -1,9 +1,7 @@
 #!/usr/bin/env -S bash -euo pipefail
 # Generate Incus user configuration file
 # shellcheck disable=SC1091
-source @bashTrampoline@
-
-source @logger@
+source @nixBashTrampoline@
 
 main() {
   # @user@ and @home@ substituted at build time

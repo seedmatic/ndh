@@ -2,15 +2,17 @@
   config,
   lib,
   options,
-  hostProfile ? null,
+  ndh,
   ...
 }:
 # module used courtesy of @i077 - https://github.com/i077/system/
 let
   inherit (lib) mkAliasDefinitions mkOption types;
 
+  ndhContext = ndh.context;
   cfgUser = config.profile.user;
   cfgUserName = config.profile.user.name;
+  hostProfile = ndhContext.hostProfile;
   homeManagerEnabled =
     if
       hostProfile != null && hostProfile ? enableHomeManager && hostProfile.enableHomeManager != null

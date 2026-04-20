@@ -121,7 +121,7 @@ On guest boot, the NixOS side consumes Lima cidata via `lima-cloud-init.service`
 === Core inputs and invariants
 
 * Host/profile identity comes from `config.profile.*`.
-* Network topology is sourced from canonical catalog data (`catalog.networks.rke2labNetplan`).
+* Network topology is sourced from canonical catalog data (`catalog.netplan.rke2labNetplan`).
 * Hostname-to-cluster mapping must be explicit (hard failure when missing).
 * Script provisioning is done via activation (`system.activationScripts.postActivation`).
 * Guest bootstrap depends on cidata mount (`/mnt/lima-cidata`) and `lima-cloud-init.service`.

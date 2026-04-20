@@ -4,9 +4,12 @@
   lib,
   catalog,
   inventory,
+  ndh,
   ...
 }:
 let
+  ndhContext = ndh.context;
+  nixBashTrampoline = "${ndhContext.nixBashTrampoline}";
   profileName =
     if config ? profile && config.profile ? name then config.profile.name else "committed";
   sshKeyProfileName =
@@ -61,21 +64,18 @@ let
     else
       profileUserName;
 
-  logger = config.nixBashLogger.script;
   loggerTagOrchestrate = "darwin.activationScripts.ssh-keys-enrichment.orchestrate";
   loggerTagEnrich = "darwin.activationScripts.ssh-keys-enrichment.enrichSSHKeysYaml";
   loggerTagSplit = "darwin.activationScripts.ssh-keys-enrichment.splitSSHKeysYaml";
   sshEnrichKeysYamlScriptSource = pkgs.replaceVars ../.common.d/ssh-keys.d/ssh-enrich-keys-yaml.sh {
-    bashTrampoline = "${../.common.d/shell.d/nix-bash-trampoline.sh}";
-    logger = logger;
+    nixBashTrampoline = nixBashTrampoline;
     loggerTag = loggerTagEnrich;
   };
   sshEnrichKeysYamlScript = pkgs.runCommand "ndh-ssh-enrich-keys-yaml-darwin.sh" { } ''
     install -m 0555 ${sshEnrichKeysYamlScriptSource} "$out"
   '';
   sshSplitKeysYamlScriptSource = pkgs.replaceVars ../.common.d/ssh-keys.d/ssh-split-keys-yaml.sh {
-    bashTrampoline = "${../.common.d/shell.d/nix-bash-trampoline.sh}";
-    logger = logger;
+    nixBashTrampoline = nixBashTrampoline;
     loggerTag = loggerTagSplit;
   };
   sshSplitKeysYamlScript = pkgs.runCommand "ndh-ssh-split-keys-yaml-darwin.sh" { } ''
@@ -84,8 +84,7 @@ let
   sshEnrichAndSplitKeysYamlScriptSource =
     pkgs.replaceVars ../.common.d/ssh-keys.d/ssh-enrich-split-runtime-keys.sh
       {
-        bashTrampoline = "${../.common.d/shell.d/nix-bash-trampoline.sh}";
-        logger = logger;
+        nixBashTrampoline = nixBashTrampoline;
         loggerTag = loggerTagOrchestrate;
       };
   sshEnrichAndSplitKeysYamlScript =

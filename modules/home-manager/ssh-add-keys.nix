@@ -12,6 +12,15 @@ let
     mkOption
     types
     ;
+  specialArgs =
+    if config ? _module && config._module ? specialArgs then config._module.specialArgs else { };
+  nixBashTrampoline =
+    if
+      specialArgs ? ndh && specialArgs.ndh ? context && specialArgs.ndh.context ? nixBashTrampoline
+    then
+      "${specialArgs.ndh.context.nixBashTrampoline}"
+    else
+      "${../.common.d/shell.d/nix-bash-trampoline.sh}";
   user = config.profile.user;
   userName = user.name;
   userHome = user.home;
@@ -22,8 +31,7 @@ let
   allowedKeyNamesDefault = [ sshPaths.keyName ];
   allowedKeyNamesCsv = lib.concatStringsSep "," cfg.allowedKeyNames;
   renderedSshAddKeysScript = pkgs.replaceVars ./ssh-key.d/ssh-add-keys.sh {
-    bashTrampoline = "${../.common.d/shell.d/nix-bash-trampoline.sh}";
-    logger = config._module.specialArgs.ndh.logger.script;
+    nixBashTrampoline = nixBashTrampoline;
     loggerTag = loggerTag;
     allowedKeyNamesCsv = allowedKeyNamesCsv;
   };

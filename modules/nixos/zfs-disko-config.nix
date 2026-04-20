@@ -1,6 +1,18 @@
 {
   lib,
+  hostProfile ? { },
+  installRootMountPoint ? "/mnt/zfs-root",
+  diskImageSize ? "100G",
+  # Dedicated EFI-only boot disk — holds systemd-boot + kernel + initrd only.
+  # All ZFS data lives on the tank disks, keeping them uniform and seedable.
+  bootDiskImageSize ? "600M",
+  espStartMiB ? 1,
+  espSizeMiB ? 512,
+  zfsStartMiB ? 514,
   disks ? {
+    # boot: dedicated EFI boot disk (vda). ZFS data disks start at vdb.
+    # This keeps all tank disks uniform — no dual boot+data role on tank1.
+    nixos = "/dev/vda";
     tank1 = "/dev/vdb";
     tank2 = "/dev/vdc";
     tank3 = "/dev/vdd";
@@ -9,79 +21,143 @@
   ...
 }:
 let
-  config = {
-    enableConfig = false;
-    devices = {
-      disk = {
-        tank1 = {
-          type = "disk";
-          device = disks.tank1;
-          content = {
-            type = "gpt";
-            partitions = {
-              zfs = {
-                size = "100%";
-                label = "tank1";
-                content = {
-                  type = "zfs";
-                  pool = "tank";
-                };
-              };
-            };
+  zstdLevel = hostProfile.nixosZstdCompressionLevel or 1;
+  zfsCompression = "zstd-${toString zstdLevel}";
+  espEndMiB = espStartMiB + espSizeMiB;
+  # GPT type code BF01 shorthand expanded to canonical Solaris/ZFS GUID.
+  zfsPartitionType = "6A898CC3-1DD2-11B2-99A6-080020736631";
+
+  mkEspPartition =
+    {
+      label,
+      mountpoint ? null,
+    }:
+    {
+      start = "${toString espStartMiB}MiB";
+      end = "${toString espEndMiB}MiB";
+      inherit label;
+      type = "EF00";
+      content = {
+        type = "filesystem";
+        format = "vfat";
+      }
+      // lib.optionalAttrs (mountpoint != null) {
+        inherit mountpoint;
+      };
+    };
+
+  # Dedicated EFI-only boot disk. Holds systemd-boot + kernel + initrd.
+  # No ZFS partition — all data lives on the uniform tank disks.
+  mkBootDisk =
+    { device }:
+    {
+      type = "disk";
+      inherit device;
+      imageSize = bootDiskImageSize;
+      content = {
+        type = "gpt";
+        partitions = {
+          esp = mkEspPartition {
+            label = "esp-boot";
+            mountpoint = "/boot";
           };
         };
-        tank2 = {
-          type = "disk";
-          device = disks.tank2;
-          content = {
-            type = "gpt";
-            partitions = {
-              zfs = {
-                size = "100%";
-                label = "tank2";
-                content = {
-                  type = "zfs";
-                  pool = "tank";
-                };
-              };
-            };
+      };
+    };
+
+  mkTankDisk =
+    {
+      name,
+      device,
+      espLabel,
+      espMountpoint ? null,
+    }:
+    {
+      type = "disk";
+      inherit device;
+      imageSize = diskImageSize;
+      content = {
+        type = "gpt";
+        partitions = {
+          esp = mkEspPartition {
+            label = espLabel;
+            mountpoint = espMountpoint;
           };
-        };
-        tank3 = {
-          type = "disk";
-          device = disks.tank3;
-          content = {
-            type = "gpt";
-            partitions = {
-              zfs = {
-                size = "100%";
-                label = "tank3";
-                content = {
-                  type = "zfs";
-                  pool = "tank";
-                };
-              };
-            };
-          };
-        };
-        recover = {
-          type = "disk";
-          device = disks.recover;
-          content = {
-            type = "gpt";
-            partitions = {
-              zfs = {
-                size = "100%";
-                label = "recover";
-                content = {
-                  type = "zfs";
-                  pool = "recover";
-                };
-              };
+          zfs = {
+            start = "${toString zfsStartMiB}MiB";
+            end = "-1MiB";
+            label = name;
+            type = zfsPartitionType;
+            content = {
+              type = "zfs";
+              pool = "tank";
             };
           };
         };
       };
+    };
+
+  tankDisks = lib.listToAttrs (
+    map
+      (spec: {
+        name = spec.name;
+        value = mkTankDisk {
+          inherit (spec) name espLabel;
+          device = disks.${spec.name};
+          espMountpoint = spec.espMountpoint or null;
+        };
+      })
+      [
+        {
+          name = "tank1";
+          espLabel = "esp-tank1";
+          # No espMountpoint — bootloader lives on the dedicated nixos disk.
+        }
+        {
+          name = "tank2";
+          espLabel = "esp-tank2";
+        }
+        {
+          name = "tank3";
+          espLabel = "esp-tank3";
+        }
+      ]
+  );
+
+  config = {
+    enableConfig = false;
+    devices = {
+      disk =
+        tankDisks
+        # Include dedicated boot disk only when provided in disks attrset.
+        // lib.optionalAttrs (disks ? nixos) {
+          nixos = mkBootDisk { device = disks.nixos; };
+        }
+        // {
+          recover = {
+            type = "disk";
+            device = disks.recover;
+            imageSize = diskImageSize;
+            content = {
+              type = "gpt";
+              partitions = {
+                esp = mkEspPartition {
+                  label = "esp-recover";
+                };
+                zfs = {
+                  start = "${toString zfsStartMiB}MiB";
+                  end = "-1MiB";
+                  label = "recover";
+                  type = zfsPartitionType;
+                  content = {
+                    type = "zfs";
+                    pool = "recover";
+                  };
+                };
+              };
+            };
+          };
+        };
 
       zpool = {
         tank = {
@@ -90,7 +166,7 @@ let
           rootFsOptions = {
             acltype = "posixacl";
             atime = "off";
-            compression = "zstd";
+            compression = zfsCompression;
             xattr = "sa";
           };
           options = {
@@ -108,8 +184,9 @@ let
             };
             "rke2/control-nodes/master/containerd" = {
               type = "zfs_fs";
+              # Owned by the incus guest, not the nerd host — legacy ZFS property
+              # prevents auto-mount; no disko mountpoint so it never enters host fstab.
               options.mountpoint = "legacy";
-              mountpoint = "/var/lib/rancher/rke2/agent/containerd/io.containerd.snapshotter.v1.zfs";
             };
             "rke2/control-nodes/peer1" = {
               type = "zfs_fs";
@@ -117,7 +194,6 @@ let
             "rke2/control-nodes/peer1/containerd" = {
               type = "zfs_fs";
               options.mountpoint = "legacy";
-              mountpoint = "/var/lib/rancher/rke2/agent/containerd/io.containerd.snapshotter.v1.zfs";
             };
             "rke2/control-nodes/peer2" = {
               type = "zfs_fs";
@@ -125,7 +201,6 @@ let
             "rke2/control-nodes/peer2/containerd" = {
               type = "zfs_fs";
               options.mountpoint = "legacy";
-              mountpoint = "/var/lib/rancher/rke2/agent/containerd/io.containerd.snapshotter.v1.zfs";
             };
             "rke2/control-nodes/peer3" = {
               type = "zfs_fs";
@@ -133,10 +208,16 @@ let
             "rke2/control-nodes/peer3/containerd" = {
               type = "zfs_fs";
               options.mountpoint = "legacy";
-              mountpoint = "/var/lib/rancher/rke2/agent/containerd/io.containerd.snapshotter.v1.zfs";
             };
             "nerd" = {
               type = "zfs_fs";
+            };
+            "nerd/root" = {
+              type = "zfs_fs";
+              mountpoint = "/";
+              options = {
+                "nixos:mount-overlay" = "false";
+              };
             };
             "nerd/nix" = {
               type = "zfs_fs";
@@ -226,6 +307,13 @@ let
                 "nixos:mount-overlay" = "false";
               };
             };
+            "nerd/srv" = {
+              type = "zfs_fs";
+              mountpoint = "/srv";
+              options = {
+                "nixos:mount-overlay" = "false";
+              };
+            };
           };
         };
         recover = {
@@ -234,7 +322,7 @@ let
           rootFsOptions = {
             acltype = "posixacl";
             atime = "off";
-            compression = "zstd";
+            compression = zfsCompression;
             xattr = "sa";
           };
           options = {
@@ -271,25 +359,13 @@ let
         (dataset.options or { }) ? "nixos:mount-overlay"
         && (dataset.options."nixos:mount-overlay" == "true");
       dsWithOpts = addDatasetOptions dataset;
-      # Canonical behavior (@codebase): datasets with explicit mountpoints are
-      # mounted via generated fileSystems entries and therefore must use legacy
-      # mount semantics for `mount` to succeed.
-      dsWithLegacyMountpoint =
-        if hasExplicitMountpoint then
-          dsWithOpts // {
-            options = (dsWithOpts.options or { }) // {
-              mountpoint = "legacy";
-            };
-          }
-        else
-          dsWithOpts;
     in
     if overlayEnabled then
-      dsWithLegacyMountpoint
+      dsWithOpts
       // {
         postMountHook = ''
-          mkdir -p "/mnt${dataset.mountpoint}/workdir"
-          mkdir -p "/mnt${dataset.mountpoint}/upper"
+          mkdir -p "${installRootMountPoint}${dataset.mountpoint}/workdir"
+          mkdir -p "${installRootMountPoint}${dataset.mountpoint}/upper"
         '';
       }
     else

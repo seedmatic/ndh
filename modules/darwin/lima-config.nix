@@ -13,6 +13,8 @@
 
 let
   inherit (lib) mkOption types;
+  ndhContext = ndh.context;
+  nixBashTrampoline = "${ndhContext.nixBashTrampoline}";
 
   dollar = "$"; # escape for shell scripts
 
@@ -64,11 +66,10 @@ let
   cfg = config.lima.configGenerator;
 
   # Canonical source-of-truth network values from rke2lab netplan catalog (@codebase)
-  netplanCatalog = catalog.networks.rke2labNetplan;
+  rke2labNetplan = catalog.netplan.rke2lab;
 
   # Stable image staging paths
-  imageManifestPath =
-    if cfg.imageManifestPath == null then "" else toString cfg.imageManifestPath;
+  imageManifestPath = if cfg.imageManifestPath == null then "" else toString cfg.imageManifestPath;
   imageStorePath = if cfg.imageStorePath == null then "" else toString cfg.imageStorePath;
   imageSourcePath = cfg.imageSourcePath;
   imageTargetPath = cfg.imageTargetPath;
@@ -76,6 +77,55 @@ let
 
   mountType = if vmType == "qemu" then "9p" else "virtiofs";
   vmType = cfg.vmType;
+  networks =
+    if vmType == "qemu" then
+      [
+        {
+          # Dedicated socket_vmnet shared network for host/guest services (e.g., NFS).
+          # Keep this before bridged so hostagent SSH prefers a host-routable endpoint.
+          lima = "shared";
+          interface = "vmhost0";
+          macAddress = "10:66:6a:4c:${hostByteHex}:02";
+          metric = 50;
+        }
+        {
+          # Bridged LAN access for VM direct connectivity.
+          # On bioskop: bridges to bond0 (en0+en8 aggregate)
+          # On other hosts: bridges to en0 (single interface)
+          lima = "bridged";
+          interface = "vmlan0";
+          macAddress = "10:66:6a:4c:${hostByteHex}:01";
+          metric = 100;
+        }
+      ]
+    else
+      [
+        {
+          # Keep vzNAT for basic connectivity
+          vzNAT = true;
+          interface = "vznat0";
+          macAddress = "10:66:6a:4c:${hostByteHex}:00";
+          metric = 200;
+        }
+        {
+          # Dedicated socket_vmnet shared network for host/guest services (e.g., NFS)
+          # Keep this before bridged so hostagent SSH prefers a host-routable endpoint.
+          lima = "shared";
+          interface = "vmhost0";
+          macAddress = "10:66:6a:4c:${hostByteHex}:02";
+          metric = 50;
+        }
+        {
+          # Bridged LAN access for VM direct connectivity
+          # On bioskop: bridges to bond0 (en0+en8 aggregate)
+          # On other hosts: bridges to en0 (single interface)
+          # VM gets direct LAN access via this interface
+          lima = "bridged";
+          interface = "vmlan0";
+          macAddress = "10:66:6a:4c:${hostByteHex}:01";
+          metric = 100;
+        }
+      ];
 
   # Cluster mapping (@codebase)
   # Derive host -> cluster index from canonical rke2lab netplan catalog.
@@ -83,7 +133,7 @@ let
   # Note: vmwan0 removed from Lima config. Incus containers now use:
   # - lan0: macvlan on vmlan0 (bridged to bond0/en0) for internet access
   # - wan0: Incus bridge network (10.80.x.0/21) for cluster-internal communication
-  hostClusterMap = lib.mapAttrs (_: cluster: cluster.index) netplanCatalog.clusters;
+  hostClusterMap = lib.mapAttrs (_: cluster: cluster.index) rke2labNetplan.clusters;
   # Enforce mapping: explicit error if host not in hostClusterMap (@codebase)
   clusterId =
     let
@@ -101,11 +151,11 @@ let
   limaActivationScript = ndh.store.runCommand "lima-config-activation.sh" { } ''
     cp ${
       pkgs.replaceVars ./lima-config.d/activation.sh {
+        nixBashTrampoline = nixBashTrampoline;
         effectiveHostName = effectiveHostName;
         profileUser = profileUser;
         profileHome = profileHome;
-        limaConfigYamlHeadless = limaConfigYamlHeadless;
-        limaConfigYamlGui = limaConfigYamlGui;
+        limaConfigYaml = limaConfigYaml;
         limaRunScript = limaRunScript;
         imageManifestPath = imageManifestPath;
         imageStorePath = imageStorePath;
@@ -115,7 +165,6 @@ let
         nixosFlakePath = cfg.nixosFlakePath;
         hostPublicKeyPath = sshPaths.hostPublicKeyFile;
         hostPrivateKeyPath = sshPaths.privKeyFile;
-        logger = loggerScript;
       }
     } "$out"
     chmod +x "$out"
@@ -124,8 +173,7 @@ let
   limaRunScript = ndh.store.runCommand "lima-run.sh" { } ''
     cp ${
       pkgs.replaceVars ./lima-config.d/run.sh {
-        bashTrampoline = "${../.common.d/shell.d/nix-bash-trampoline.sh}";
-        logger = loggerScript;
+        nixBashTrampoline = nixBashTrampoline;
         effectiveHostName = effectiveHostName;
         nixosFlakePath = cfg.nixosFlakePath;
         nixosHostAttr = cfg.nixosHostAttr;
@@ -134,7 +182,17 @@ let
     chmod +x "$out"
   '';
 
-  limaMaterializerPackage = pkgs.writeShellScriptBin "ndh-vm-lima-materialize" ''
+  limaMaterializerPackage = pkgs.writeShellScriptBin "nerd-nixos-lima-vm-materialize" ''
+    set -euo pipefail
+
+    gcroot_user="''${SUDO_USER:-$(id -un)}"
+    materializer_out="$(cd "$(dirname "$0")/.." && pwd -P)"
+    gcroot_dir="/nix/var/nix/gcroots/per-user/''${gcroot_user}"
+    gcroot_link="''${gcroot_dir}/nerd-nixos-lima-vm-materialize"
+
+    mkdir -p "''${gcroot_dir}"
+    ${pkgs.nix}/bin/nix-store --realise --add-root "''${gcroot_link}" --indirect "''${materializer_out}" >/dev/null
+
     exec ${limaActivationScript} "$@"
   '';
 
@@ -150,11 +208,6 @@ let
     };
 
     additionalDisks = [
-      {
-        name = "nerd-nixos-tank1";
-        format = false;
-        label = "zpool=tank";
-      }
       {
         name = "nerd-nixos-tank2";
         format = false;
@@ -206,8 +259,12 @@ let
         writable = false;
       }
       {
-        location = "/var/lib/git";
-        writable = true;
+        # Export NDH top-level flake checkout to guest runtime.
+        # NOTE: Lima assigns virtiofs tags as mount{N}; do not rely on static tag names.
+        # Consumers should use this stable mountpoint path instead.
+        location = "${cfg.nixosFlakePath}";
+        mountPoint = "/run/ndh/host-shares/ndh-toplevel";
+        writable = false;
       }
       {
         location = "/tmp/lima";
@@ -336,45 +393,12 @@ let
     # Note: vmwan0 removed - containers now attach wan0 directly to Incus bridge network (wan/vmnet),
     #       not Lima socket_vmnet shared networks
     # Note: vzNAT creates bridge interfaces on macOS; network-bond-maintain removes their default routes
-    networks = [
-      {
-        # Keep vzNAT for basic connectivity
-        vzNAT = true;
-        interface = "vznat0";
-        macAddress = "10:66:6a:4c:${hostByteHex}:00";
-        metric = 200;
-      }
-      {
-        # Dedicated socket_vmnet shared network for host/guest services (e.g., NFS)
-        # Keep this before bridged so hostagent SSH prefers a host-routable endpoint.
-        lima = "shared";
-        interface = "vmhost0";
-        macAddress = "10:66:6a:4c:${hostByteHex}:02";
-        metric = 50;
-      }
-      {
-        # Bridged LAN access for VM direct connectivity
-        # On bioskop: bridges to bond0 (en0+en8 aggregate)
-        # On other hosts: bridges to en0 (single interface)
-        # VM gets direct LAN access via this interface
-        lima = "bridged";
-        interface = "vmlan0";
-        macAddress = "10:66:6a:4c:${hostByteHex}:01";
-        metric = 100;
-      }
-    ];
+    networks = networks;
 
   };
 
   limaConfigJson = lib.generators.toJSON { } limaConfig;
-  limaConfigHeadless = limaConfig;
-  limaConfigGui = limaConfig // {
-    video = {
-      display = "default";
-    };
-  };
-  limaConfigYamlHeadless = (pkgs.formats.yaml { }).generate "lima-headless.yaml" limaConfigHeadless;
-  limaConfigYamlGui = (pkgs.formats.yaml { }).generate "lima-gui.yaml" limaConfigGui;
+  limaConfigYaml = (pkgs.formats.yaml { }).generate "lima.yaml" limaConfig;
 
 in
 {
@@ -439,11 +463,11 @@ in
 
     imageFlakeAttr = mkOption {
       type = types.str;
-      default = "nixosDiskImageBringupSystemdBoot";
+      default = "nixosDiskImages.${effectiveHostName}.bringup.zfsSystemd";
       description = ''
-        Flake output attribute used as fallback when imageSourcePath is unavailable.
-        The activation script resolves `${cfg.nixosFlakePath}/hosts/${effectiveHostName}#<attr>`
-        and uses `<out>/nixos.img` when present.
+        Flake output attribute for the NixOS ZFS bringup disk image.
+        The root flake exposes disk images under `nixosDiskImages.<host>.bringup.*`.
+        Used as a reference label in activation.sh; the actual image path comes from imageManifestPath.
       '';
     };
 
@@ -478,7 +502,7 @@ in
       default = true;
       description = ''
         Run Lima materialization during darwin activation (`postActivation`).
-        Disable when you want manual host-scoped execution through `ndh-vm-lima-materialize` only.
+        Disable when you want manual host-scoped execution through `nerd-nixos-lima-vm-materialize` only.
       '';
     };
 
@@ -486,7 +510,7 @@ in
       type = types.bool;
       default = false;
       description = ''
-        Install the `ndh-vm-lima-materialize` helper package in system packages.
+        Install the `nerd-nixos-lima-vm-materialize` helper package in system packages.
         Useful on selected VZ hosts where only ~/.lima materialization tooling is needed.
       '';
     };
@@ -496,7 +520,7 @@ in
       readOnly = true;
       default = limaMaterializerPackage;
       description = ''
-        Store package exposing the `ndh-vm-lima-materialize` command for host-side
+        Store package exposing the `nerd-nixos-lima-vm-materialize` command for host-side
         ~/.lima materialization.
       '';
     };

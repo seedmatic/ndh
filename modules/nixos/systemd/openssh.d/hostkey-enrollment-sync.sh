@@ -3,9 +3,7 @@
 set -euo pipefail
 
 # shellcheck disable=SC1091
-source @bashTrampoline@
-# shellcheck disable=SC1091
-source @logger@
+source @nixBashTrampoline@
 
 LOG_TAG=@logTag@
 
@@ -36,11 +34,58 @@ main() {
   guest_name="${NDH_VZ_GUEST:-@guestName@}"
   vm_name="${NDH_ENROLL_VM_NAME:-nerd-${guest_name}}"
 
-  if [[ "$remote_host" != *.* ]]; then
-    remote_host="${remote_host}.local"
-  fi
-
   is_managed_domain_host=0
+
+  resolve_remote_host() {
+    local base_host="$1"
+    local domain_hint="${NDH_DOMAIN:-}"
+    local cand=""
+    local -a candidates=()
+
+    # Already an FQDN (or explicit dotted host): keep as-is.
+    if [[ "$base_host" == *.* ]]; then
+      printf '%s\n' "$base_host"
+      return 0
+    fi
+
+    if [[ -n "${NDH_RDP_HOST_FQDN:-}" ]]; then
+      candidates+=("${NDH_RDP_HOST_FQDN}")
+    fi
+
+    # Catalog/profile domain hint (e.g. tailnet.local) if provided.
+    if [[ -n "$domain_hint" ]]; then
+      domain_hint="${domain_hint#.}"
+      candidates+=("${base_host}.${domain_hint}")
+    fi
+
+    # Canonical local LAN/mDNS candidates used in this codebase.
+    candidates+=(
+      "${base_host}.local"
+      "${base_host}.lan"
+    )
+
+    for cand in "${candidates[@]}"; do
+      if command -v getent >/dev/null 2>&1; then
+        if getent ahostsv4 "$cand" >/dev/null 2>&1 || getent hosts "$cand" >/dev/null 2>&1; then
+          printf '%s\n' "$cand"
+          return 0
+        fi
+      fi
+
+      # Fallback resolver probe when getent is unavailable/non-functional.
+      if ssh-keyscan -T 3 -t ed25519 "$cand" >/dev/null 2>&1; then
+        printf '%s\n' "$cand"
+        return 0
+      fi
+    done
+
+    # Final fallback: preserve caller-provided value.
+    printf '%s\n' "$base_host"
+    return 0
+  }
+
+  remote_host="$(resolve_remote_host "$remote_host")"
+
   if [[ "$remote_host" == *"${MANAGED_HOST_DOMAIN}" ]]; then
     is_managed_domain_host=1
   fi
@@ -115,7 +160,38 @@ main() {
 
   remote_cmd="set -euo pipefail; cd '$remote_repo'; chmod +x modules/nixos/ssh-keys.d/sync-vm-hostkey-keys-yaml.sh modules/nixos/ssh-keys.d/verify-vm-hostkey-from-sops.sh modules/nixos/ssh-keys.d/enroll-vm-hostkey-into-sops.sh; COPILOT_XTRACE=0 modules/nixos/ssh-keys.d/sync-vm-hostkey-keys-yaml.sh --vm '$vm_name' --guest '$guest_name' --profile committed --secrets-file modules/home-manager/ssh.d/keys.yaml"
 
-  if ssh "${ssh_opts[@]}" "${remote_user}@${remote_host}" "$remote_cmd"; then
+  ssh_max_attempts="${NDH_ENROLL_SSH_RETRY_MAX_ATTEMPTS:-6}"
+  ssh_retry_delay_seconds="${NDH_ENROLL_SSH_RETRY_DELAY_SECONDS:-3}"
+  ssh_attempt=1
+  ssh_last_rc=1
+  ssh_last_error=""
+
+  while [ "$ssh_attempt" -le "$ssh_max_attempts" ]; do
+    ssh_err_file="$(mktemp)"
+    if ssh "${ssh_opts[@]}" "${remote_user}@${remote_host}" "$remote_cmd" 2>"$ssh_err_file"; then
+      rm -f "$ssh_err_file"
+      ssh_last_rc=0
+      break
+    fi
+
+    ssh_last_rc=$?
+    ssh_last_error="$(cat "$ssh_err_file")"
+    rm -f "$ssh_err_file"
+
+    if [ "$ssh_attempt" -lt "$ssh_max_attempts" ]
+    then
+      if printf '%s' "$ssh_last_error" | grep -Eqi 'Could not resolve hostname|Temporary failure in name resolution|Name or service not known|Device or resource busy'; then
+        logger -p auth.warning -t "$LOG_TAG" "remote host lookup/connect transient failure (attempt ${ssh_attempt}/${ssh_max_attempts}) for ${remote_host}; retrying in ${ssh_retry_delay_seconds}s"
+        sleep "$ssh_retry_delay_seconds"
+        ssh_attempt=$((ssh_attempt + 1))
+        continue
+      fi
+    fi
+
+    break
+  done
+
+  if [ "$ssh_last_rc" -eq 0 ]; then
     env \
       NOW="$(date -Iseconds)" \
       REMOTE_HOST="$remote_host" \
@@ -135,6 +211,10 @@ main() {
       ' "$STATE_FILE"
     logger -p auth.notice -t "$LOG_TAG" "remote hostkey enrollment sync succeeded via ${remote_user}@${remote_host} vm=${vm_name} guest=${guest_name}"
     exit 0
+  fi
+
+  if [ -n "$ssh_last_error" ]; then
+    logger -p auth.err -t "$LOG_TAG" "remote hostkey enrollment sync ssh error: ${ssh_last_error}"
   fi
 
   env \

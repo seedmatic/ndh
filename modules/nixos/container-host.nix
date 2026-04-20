@@ -2,15 +2,17 @@
   config,
   pkgs,
   lib,
-  catalog,
+  ndh,
   ...
 }:
 let
-  networkCatalog = catalog.networks or { };
+  ndhContext = ndh.context;
+  catalog = ndhContext.catalog;
+  netplan = catalog.netplan or { };
   cfg = config.containerHost;
   tailnetDomain =
-    if networkCatalog ? tailnet && (networkCatalog.tailnet ? domain) then
-      lib.removePrefix "." networkCatalog.tailnet.domain
+    if netplan ? tailnet && (netplan.tailnet ? domain) then
+      lib.removePrefix "." netplan.tailnet.domain
     else
       "tailnet.local";
 in

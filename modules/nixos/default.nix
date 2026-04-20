@@ -1,12 +1,23 @@
-{ config, pkgs, lib, hostProfile ? { }, catalog, ... }:
+{
+  config,
+  pkgs,
+  lib,
+  options,
+  ndh,
+  ...
+}:
 
 let
+  # Boot/runtime kernel capabilities shared by stage1+stage2.
   kernelModules = [
-    "nfsd"
+    "nfs"
     "ext4"
+    "btrfs"
     "overlay"
     "isofs"
     "sunrpc"
+    "lockd"
+    "nfsd"
     "nls_cp437"
     "nls_iso8859_1"
     "vhost_vsock"
@@ -25,12 +36,16 @@ let
     "nfnetlink"
     "xt_conntrack"
   ];
-  supportedFilesystems = {
-    ext4 = true;
-    overlay = true;
-    iso9660 = true;
-  };
-  # Generate a hostId (should be a 4-byte hex string, e.g. from `head -c4 /dev/urandom | od -A none -t x4`)
+  supportedFilesystems = [
+    "ext4"
+    "btrfs"
+    "overlay"
+    "iso9660"
+    "nfs"
+    "nfs4"
+  ];
+
+  # Profile/user identity normalization for NixOS constraints.
   cfgUser = config.profile.user;
   cfgUserName = cfgUser.name;
   cfgUserIsNormal = cfgUser.isNormalUser or true;
@@ -38,36 +53,122 @@ let
   cfgGidLow = cfgUser.gid != null && cfgUser.gid < 1000;
   nixosUserUid = if cfgUserIsNormal && cfgUidLow then null else cfgUser.uid;
   nixosUserGid = if cfgUserIsNormal && cfgGidLow then null else cfgUser.gid;
+  ndhContext = ndh.context;
   consoleCfg = config.consoleLogging;
+  hostProfile = ndhContext.hostProfile;
+  generationMode = ndhContext.generationMode;
+  catalog = ndhContext.catalog;
   cacheCatalog = catalog.caches;
-  hostImageMode = hostProfile.nixosImageMode or "full";
+  rke2labNetplan = lib.attrByPath [ "netplan" "rke2lab" ] { } catalog;
+  clusterName = hostProfile.hostName or null;
+  clusterNetwork =
+    if clusterName != null then lib.attrByPath [ "clusters" clusterName ] null rke2labNetplan else null;
+
+  # Boot mode selection.
   nixosBootLoader = hostProfile.nixosBootLoader or "grub";
   useSystemdBoot = nixosBootLoader == "systemd-boot";
   useGrub = !useSystemdBoot;
-  isTartProvider = (lib.attrByPath [ "ndh" "vm" "provider" ] "lima" config)
-    == "tart";
-  bootstrapModeByImage = hostImageMode == "bootstrap";
+  isTartProvider = (lib.attrByPath [ "ndh" "vm" "provider" ] "lima" config) == "tart";
   # Optional host override for debug verbosity.
-  bootDebug = hostProfile.nixosBootstrapDebug or bootstrapModeByImage;
-  # Canonical rule: bootstrap debug implies bootstrap mode.
-  bootstrapMode = bootstrapModeByImage || bootDebug;
-  grubDebugKernelParams = lib.concatStringsSep " " ([
-    "init=/nix/var/nix/profiles/system/init"
-    "console=hvc0"
-    "console=ttyAMA0"
-    "console=ttyS0"
-    "console=tty1"
-    "systemd.show_status=1"
-    "rd.systemd.show_status=1"
-    "logo.nologo"
-    "rootwait"
-    "rootdelay=5"
-    "loglevel=7"
-    "ignore_loglevel"
-    "rd.udev.log_level=err"
-    "udev.log_level=err"
-    "boot.trace"
-  ]);
+  # Canonical default: bringup images are interactive-first (tty prompt usable)
+  # unless debug is explicitly requested.
+  bootDebug = hostProfile.nixosBootstrapDebug or false;
+  # Canonical rule: generationMode controls bringup/runtime behavior.
+  bringupMode = generationMode == "bringup";
+  runtimeMode = !bringupMode;
+
+  rootUserName = "root";
+  virtualSerialConsole = "hvc0";
+  videoDisplayConsole = "tty0";
+  journaldConsoleDevice = "/dev/console"; # if bringupMode then "/dev/${virtualSerialConsole}" else "/dev/console";
+  journaldConsoleLevel = if bootDebug then "debug" else "info";
+  systemdManagerShowStatusNo = {
+    # Don't clobber the console with duplicate systemd messages.
+    ShowStatus = "no";
+  };
+  mkBringupOverride = value: if bringupMode then lib.mkForce value else value;
+
+  # Root filesystem/mount policy.
+  bringupRootFsType = config.profile.host.nixosBringupRootFs;
+  ext4RootMountOptions = [
+    "noatime"
+    "nodiratime"
+    "discard"
+    "x-systemd.growfs"
+  ];
+  zstdLevel = hostProfile.nixosZstdCompressionLevel or 1;
+  btrfsRootMountOptions = [
+    "noatime"
+    "compress=zstd:${toString zstdLevel}"
+    "space_cache=v2"
+    "discard=async"
+    "x-systemd.growfs"
+  ];
+  rootFsType = if bringupMode then bringupRootFsType else "ext4";
+  rootFsMountOptions = if rootFsType == "btrfs" then btrfsRootMountOptions else ext4RootMountOptions;
+  builderKeys = builtins.fromJSON (
+    builtins.readFile (
+      pkgs.runCommand "ndh-linux-builder-keys.json" { buildInputs = [ pkgs.yq-go ]; } ''
+        yq -o=json '.' ${../home-manager/ssh.d/keys.yaml} > "$out"
+      ''
+    )
+  );
+  initrdRescueAuthorizedKeys = lib.unique (
+    lib.filter (key: key != "") (
+      [
+        (
+          if
+            builderKeys ? profiles
+            && builderKeys.profiles ? committed
+            && builderKeys.profiles.committed ? linux-builder
+            && builderKeys.profiles.committed.linux-builder ? public
+          then
+            "ssh-ed25519 ${builderKeys.profiles.committed.linux-builder.public} committed-linux-builder"
+          else
+            ""
+        )
+        (
+          if
+            builderKeys ? profiles
+            && builderKeys.profiles ? work
+            && builderKeys.profiles.work ? linux-builder
+            && builderKeys.profiles.work.linux-builder ? public
+          then
+            "ssh-ed25519 ${builderKeys.profiles.work.linux-builder.public} work-linux-builder"
+          else
+            ""
+        )
+      ]
+      ++ (config.users.users.root.openssh.authorizedKeys.keys or [ ])
+      ++ (config.users.users.${cfgUserName}.openssh.authorizedKeys.keys or [ ])
+    )
+  );
+  initrdRescueSshHostKey =
+    pkgs.runCommand "ndh-initrd-rescue-ssh-hostkey" { nativeBuildInputs = [ pkgs.openssh ]; }
+      ''
+        install -d "$out"
+        ssh-keygen -q -t ed25519 -N "" -C "initrd-rescue@${cfgUserName}" -f "$out/ssh_host_ed25519_key" >/dev/null
+      '';
+  initrdRescueSshHostKeyInInitrd = "/etc/secrets/initrd/ssh_host_ed25519_key";
+  initrdRescueSshHostKeyStorePath = initrdRescueSshHostKey + "/ssh_host_ed25519_key";
+  kernelConsoleParams = [
+    "console=${videoDisplayConsole}"
+    "console=${virtualSerialConsole}"
+  ];
+
+  # GRUB exercise/debug menu fragments.
+  grubDebugKernelParams = lib.concatStringsSep " " (
+    [
+      "init=/nix/var/nix/profiles/system/init"
+      "logo.nologo"
+      "rootwait"
+      "rootdelay=5"
+      "consoleLoglevel=7"
+      "udev.log_level=err"
+      "boot.trace"
+    ]
+    ++ kernelConsoleParams
+  );
   grubExerciseEntries = lib.optionalString bootDebug ''
     submenu "NixOS boot exercises (@codebase)" {
       menuentry "Exercise: root=LABEL=nixos" {
@@ -103,19 +204,18 @@ let
     ./systemd
     ./zfs.nix
     ./sops.nix
+    ./dbus-tcp.nix
+    ./vlan.nix
+    ./tailscale.nix
   ];
 
   runtimeOnlyImports = [
-    ./firewall.nix
+    ./nixos-reduction.nix
     ./networking-mammoth-skate.nix
-    ./vlan.nix
     ./cachix-watch-store.nix
     ./container-host.nix
-    # ./containers
-    ./dbus-tcp.nix
     ./headscale.nix
     ./nix-ld.nix
-    ./tailscale.nix
     ./resolved-lan.nix
     ./dnsmasq.nix
     ./avahi.nix
@@ -124,7 +224,20 @@ let
     ./incus.nix
     ./podman.nix
   ];
-in {
+  runtimeExtraSystemPackages = with pkgs; [
+    autofs5 # Explicitly include autofs utilities @codebase
+    zfs
+    incus
+    distrobuilder
+    nssmdns # Ensure mDNS resolution via NSS @codebase
+  ];
+  nixosUserExtraGroups = [
+    "keys"
+    "wheel"
+    "ssh"
+  ];
+in
+{
   options.consoleLogging = {
     forwardToConsole = lib.mkOption {
       type = lib.types.bool;
@@ -138,15 +251,19 @@ in {
       description = "Kernel/console log level (0=emerg, 7=debug).";
     };
   };
-  imports = bootstrapRequiredImports
-    ++ (lib.optionals (!bootstrapMode) runtimeOnlyImports)
-    ++ (lib.optionals (!bootstrapMode) [
+  imports =
+    bootstrapRequiredImports
+    ++ (lib.optionals runtimeMode runtimeOnlyImports)
+    ++ (lib.optionals runtimeMode [
       #(import ./remote-nix-store.nix { inherit config pkgs lib; })
       #(import ./nix-snapshotter.nix { inherit config pkgs lib user; })
       # Explicitly disable GPG in NixOS - agent is forwarded from Darwin host
-      ({ config, ... }: {
-        hm.imports = config.hm.imports ++ [ ./enable-gpg-false.nix ];
-      })
+      (
+        { lib, ... }:
+        {
+          home-manager.users.${cfgUserName}.imports = [ ./enable-gpg-false.nix ];
+        }
+      )
     ]);
 
   config = {
@@ -154,7 +271,7 @@ in {
     # Explicit NDH bootstrap profile policy by image mode:
     # - bootstrap images: non-strict runtime (warn) to avoid deadlocks while first boot converges
     # - full/runtime images: strict contract enforced
-    ndh.bringupRuntime.requireForActivation = lib.mkDefault (!bootstrapMode);
+    ndh.bringupRuntime.requireForActivation = lib.mkDefault runtimeMode;
     ndh.bringupRuntime.autoInstallOnActivation = lib.mkDefault true;
 
     # Temporary troubleshooting toggle: disable /etc backup activation script
@@ -162,11 +279,9 @@ in {
     ndh.etcBackup.enable = lib.mkForce false;
 
     activation.postActivationLogShowLabel = "journald (last 2h)";
-    activation.postActivationLogShowCmd =
-      "journalctl --since '2 hours ago' -o short-precise -t darwin.activationScripts -t home-manager.activationScripts";
+    activation.postActivationLogShowCmd = "journalctl --since '2 hours ago' -o short-precise -t darwin.activationScripts -t home-manager.activationScripts";
     activation.postActivationLogStreamLabel = "journald (follow)";
-    activation.postActivationLogStreamCmd =
-      "journalctl -f -o short-precise -t darwin.activationScripts -t home-manager.activationScripts";
+    activation.postActivationLogStreamCmd = "journalctl -f -o short-precise -t darwin.activationScripts -t home-manager.activationScripts";
 
     # Provide POSIX-style compatibility path for scripts that expect /usr/bin/env.
     # Run as early as possible in activation to unblock downstream script shebangs.
@@ -181,15 +296,23 @@ in {
       '';
     };
 
-    nix.settings = lib.mkMerge [{
+    nix.settings = {
       # Enable content-addressed derivations to reduce rebuild churn for identical outputs.
       # We also disable auto-optimise-store for faster iterative builds; run `nix-store --optimise` manually when idle.
-      experimental-features = [ "nix-command" "flakes" "ca-derivations" ];
-      auto-optimise-store =
-        false; # Manual optimise recommended; improves build latency during development.
-      trusted-users = [ cfgUserName "root" ];
+      experimental-features = [
+        "nix-command"
+        "flakes"
+        "ca-derivations"
+      ];
+      auto-optimise-store = false; # Manual optimise recommended; improves build latency during development.
+      trusted-users = [
+        cfgUserName
+        rootUserName
+      ];
       sandbox = false;
-      extra-sandbox-paths = [ "/dev/kvm" ];
+      # Keep sandbox disabled for this profile set; do not force host-local
+      # device paths (e.g. /dev/kvm) into evaluated settings, as that breaks
+      # evaluation on non-KVM bringup/runtime hosts.
 
       # Cache settings with Fastly CDN for faster downloads
       # Using 'substituters' (not 'extra-substituters') to control order
@@ -213,7 +336,7 @@ in {
       # Validation:
       #   - Check a new build's store path naming stability when spec changes trivially.
       #   - Run `nix-store --optimise --dry-run` after several builds to assess dedup benefit.
-    }];
+    };
 
     nix.extraOptions = ''
       !include /etc/nix/nix.custom.conf
@@ -221,6 +344,14 @@ in {
 
     # Boot configuration
     boot = {
+
+      plymouth = {
+        enable = true;
+        theme = "rings";
+        themePackages = with pkgs; [
+          (adi1090x-plymouth-themes.override { selected_themes = [ "rings" ]; })
+        ];
+      };
 
       # Use an immutable store path for PID1 handoff in stage-2.
       # This avoids early-boot dependency on /run/current-system being present.
@@ -234,57 +365,54 @@ in {
           device = "nodev";
           efiSupport = true;
           efiInstallAsRemovable = true;
-          timeoutStyle = if bootstrapMode then "menu" else "countdown";
-          extraConfig = grubSerialConsoleConfig
+          timeoutStyle = if bootDebug then "menu" else "countdown";
+          extraConfig =
+            grubSerialConsoleConfig
             + lib.optionalString bootDebug ''
               # Pause in GRUB until an operator selects an entry.
               set timeout=-1
             '';
           extraEntries = grubExerciseEntries;
         };
-        timeout = lib.mkForce
-          (if bootDebug then 15 else if bootstrapMode then 3 else 0);
+        timeout = lib.mkForce (
+          if bringupMode then
+            0
+          else if bootDebug then
+            15
+          else
+            5
+        );
       };
 
       kernelParams = lib.mkMerge [
-        [
-          "console=hvc0" # Keep serial console output in VZ
-          "console=ttyAMA0" # Keep early serial output visible for aarch64 EFI/QEMU-style consoles
-          "console=ttyS0" # Additional fallback serial console
-          "systemd.show_status=1"
-          "rd.systemd.show_status=1"
-        ]
-        (lib.optionals bootstrapMode [
-          "logo.nologo"
+        (
+          [
+            # Kernel cmdline journald routing:
+            # - rd.systemd.* applies in initrd (early boot stage before switch_root)
+            # - systemd.* applies in stage-2 (real root userspace)
+            # Keep both for consistent serial visibility across bootstrap.
+            "rd.systemd.journald.forward_to_console=1"
+            # "rd.systemd.journald.console=/dev/${virtualSerialConsole}"
+            "systemd.journald.forward_to_console=1"
+            # "systemd.journald.console=/dev/${virtualSerialConsole}"
+          ]
+          ++ kernelConsoleParams
+        )
+        (lib.optionals (!bringupMode || bootDebug) [
           "rootwait"
           "rootdelay=5"
-          # Keep userspace status visible in bootstrap debugging sessions.
-          # /dev/console remains graphical (tty1), while journald forwarding
-          # mirrors logs to hvc0 for serial capture.
-          "systemd.log_target=console"
-          "systemd.log_level=info"
-          "systemd.journald.forward_to_console=1"
-          "systemd.journald.console=/dev/hvc0"
         ])
         (lib.optionals bootDebug [
           "loglevel=7"
-          "ignore_loglevel"
           "rd.udev.log_level=err"
           "udev.log_level=err"
-          #"boot.shell_on_fail"
+          "boot.shell_on_fail"
           "boot.debugtrace"
           "boot.trace"
           #"boot.debug1"
           #"boot.debug1mounts"
           "systemd.log_level=debug"
-          "systemd.log_target=console"
         ])
-        # Keep tty1 visible and final so /dev/console + on-screen boot/login
-        # stay on the graphical console. Keep hvc0 enabled for serial access.
-        # For non-Tart providers, keep the same ordering for consistency.
-        # Also keep runtime debug overrides at the end so they win against
-        # upstream defaults contributed by other modules (e.g. loglevel=0).
-        (lib.mkAfter ([ "console=hvc0" "console=tty1" ]))
       ];
 
       kernel.sysctl = {
@@ -295,19 +423,36 @@ in {
       };
 
       loader.systemd-boot.enable = lib.mkForce useSystemdBoot;
-      loader.systemd-boot.configurationLimit =
-        lib.mkIf useSystemdBoot (lib.mkDefault 8);
+      loader.systemd-boot.configurationLimit = lib.mkIf useSystemdBoot (lib.mkDefault 3);
       loader.efi.canTouchEfiVariables = lib.mkForce false;
 
       # verbosity (default off; override per-host if needed)
-      consoleLogLevel = if bootDebug then
-        lib.mkForce 7
-      else if bootstrapMode then
-        lib.mkForce 4
-      else
-        lib.mkDefault consoleCfg.logLevel;
+      consoleLogLevel =
+        if bootDebug then
+          lib.mkForce 7
+        else if bringupMode then
+          lib.mkForce 4
+        else
+          lib.mkDefault consoleCfg.logLevel;
+
       initrd = {
         inherit kernelModules supportedFilesystems;
+
+        network = lib.mkIf bringupMode {
+          enable = true;
+          ssh = {
+            enable = initrdRescueAuthorizedKeys != [ ];
+            port = 22;
+            hostKeys = [ initrdRescueSshHostKeyInInitrd ];
+            authorizedKeys = initrdRescueAuthorizedKeys;
+          };
+        };
+
+        secrets = lib.mkIf bringupMode {
+          # initrd-ssh.nix also defines this key as a self-map (path -> same path).
+          # We intentionally override with (initrd path -> generated store key path).
+          "${initrdRescueSshHostKeyInInitrd}" = lib.mkForce initrdRescueSshHostKeyStorePath;
+        };
 
         enable = true;
         verbose = true;
@@ -319,7 +464,53 @@ in {
           "virtio_mmio"
           "nvme"
         ];
+        systemd = {
+          enable = true;
+          # gpt-auto root discovery is needed for non-ZFS bringup (Discoverable
+          # Partitions Spec). ZFS uses zfs-import instead — gpt-auto causes a 90s
+          # initrd timeout waiting for /dev/gpt-auto-root on ZFS roots.
+          root = lib.mkIf (rootFsType != "zfs") (lib.mkForce "gpt-auto");
+          network.enable = lib.mkDefault bringupMode;
+          emergencyAccess = true;
+          extraBin = lib.mkIf bringupMode {
+            # Recovery/forensics toolset for stage-1 shell while debugging
+            # GPT auto-discovery and ZFS multi-disk bringup issues.
+            sgdisk = "${pkgs.gptfdisk}/bin/sgdisk";
+            hexdump = "${pkgs.util-linux}/bin/hexdump";
+            lsblk = "${pkgs.util-linux}/bin/lsblk";
+            blkid = "${pkgs.util-linux}/bin/blkid";
+            partx = "${pkgs.util-linux}/bin/partx";
+            fdisk = "${pkgs.util-linux}/bin/fdisk";
+            zdb = "${pkgs.zfs}/bin/zdb";
+          };
+          services = {
+            emergency.environment.SYSTEMD_SULOGIN_FORCE = "1";
+            rescue.environment.SYSTEMD_SULOGIN_FORCE = "1";
+            # Reduce initrd dependency-noise from kbd tooling (setfont/loadkeys)
+            # in headless/serial bringup flows.
+            "systemd-vconsole-setup".enable = lib.mkForce false;
+          };
+          contents."/etc/systemd/journald.conf".text = ''
+            [Journal]
+            ForwardToConsole=yes
+            MaxLevelConsole=debug
+          '';
+          settings.Manager = systemdManagerShowStatusNo;
+        }
+        // (lib.optionalAttrs (bringupMode && rootFsType != "zfs") {
+          # initrd repart: grow the root partition on /dev/vda for btrfs/ext4 bringup.
+          # Not applicable for ZFS — the boot disk is EFI-only; ZFS pools handle their own layout.
+          repart = {
+            enable = false;
+            device = "/dev/vda";
+            empty = "allow";
+          };
+        });
       };
+
+      # Keep /tmp volatile (tmpfs) and /var/tmp persistent, matching modern
+      # systemd-oriented layout guidance for mutable temporary data.
+      tmp.useTmpfs = lib.mkDefault true;
 
       postBootCommands = ''
         chmod 755 /boot || true
@@ -330,40 +521,27 @@ in {
       '';
     };
 
-    system.stateVersion = "25.11"; # Update this when upgrading NixOS
+    system = {
+      stateVersion = "25.11"; # Update this when upgrading NixOS
 
-    # Keep switch-to-configuration available in bootstrap images as well.
-    # Disk-image bringup/activation paths may invoke:
-    #   /nix/var/nix/profiles/system/bin/switch-to-configuration
-    # and disabling system.switch causes hard boot failure (PID1 exit 127).
-    system.switch.enable = lib.mkDefault true;
+      # Keep switch-to-configuration available in bootstrap images as well.
+      # Disk-image bringup/activation paths may invoke:
+      #   /nix/var/nix/profiles/system/bin/switch-to-configuration
+      # and disabling system.switch causes hard boot failure (PID1 exit 127).
+      switch.enable = lib.mkDefault true;
 
-    fileSystems = {
-      "/boot" = {
-        device = lib.mkForce
-          "/dev/vda1"; # /dev/disk/by-label/ESP in nixos-lima upstream
-        fsType = "vfat";
-        options = [
-          "rw"
-          "relatime"
-          "fmask=0022"
-          "dmask=0022"
-          "codepage=437"
-          "iocharset=iso8859-1"
-          "shortname=mixed"
-          "errors=remount-ro"
-        ];
-      };
-    } // lib.mkIf (!config.disko.enableConfig) {
+      # NixOS asserts that non-empty system.nssModules requires nscd.
+      # While troubleshooting bootstrap console recovery with nscd disabled,
+      # clear NSS module loading only for bootstrap mode.
+      nssModules = lib.mkIf bringupMode (lib.mkForce [ ]);
+    };
+
+    fileSystems = lib.mkIf (!config.disko.enableConfig) {
       "/" = {
         device = "/dev/disk/by-label/nixos";
         autoResize = true;
-        fsType = "ext4";
-        options = [ "noatime" "nodiratime" "discard" ];
-      };
-      "/tmp" = {
-        device = "/var/tmp";
-        options = [ "bind" ];
+        fsType = mkBringupOverride rootFsType;
+        options = mkBringupOverride rootFsMountOptions;
       };
     };
 
@@ -373,88 +551,118 @@ in {
       hostId = "deadbeef";
       # Canonical policy: firewall disabled on NixOS lab hosts.
       firewall.enable = lib.mkForce false;
-    } // (lib.optionalAttrs (!bootstrapMode) {
-      mammoth-skate.enable = lib.mkDefault (!bootstrapMode);
+    }
+    // (lib.optionalAttrs runtimeMode {
+      mammoth-skate.enable = lib.mkDefault runtimeMode;
     });
 
-    # Remove or comment out the old networking block to avoid conflicts:
-    # networking = { ... }
+    environment = {
+      systemPackages = [
+        pkgs.binutils
+        pkgs.disko
+        pkgs.plymouth
+        pkgs.btrfs-progs
+      ]
+      ++ (lib.optionals runtimeMode runtimeExtraSystemPackages);
 
-    environment.systemPackages = [ pkgs.binutils pkgs.disko ]
-      ++ (lib.optionals (!bootstrapMode) (with pkgs; [
-        autofs5 # Explicitly include autofs utilities @codebase
-        zfs
-        incus
-        distrobuilder
-        nssmdns # Ensure mDNS resolution via NSS @codebase
-      ]));
-
-    # Ensure security wrappers are in PATH for all processes
-    environment.variables = { PATH = lib.mkBefore [ "/run/wrappers/bin" ]; };
-
-    # Services
-    services.getty.autologinUser = "root";
-    # Bootstrap recovery path: avoid nsncd/nscd startup failures from cascading
-    # into nss-* target dependency failures that break tty login/getty.
-    services.nscd.enable = lib.mkForce (!bootstrapMode);
-    services.nscd.enableNsncd = lib.mkForce (!bootstrapMode);
-    # NixOS asserts that non-empty system.nssModules requires nscd.
-    # While troubleshooting bootstrap console recovery with nscd disabled,
-    # clear NSS module loading only for bootstrap mode.
-    system.nssModules = lib.mkIf bootstrapMode (lib.mkForce [ ]);
-    services.nxmaticCachixWatchStore.enable = lib.mkDefault (!bootstrapMode);
-    services.ntopng = {
-      enable = lib.mkDefault (!bootstrapMode);
-      interfaces = [ "all" ];
-      extraConfig = ''
-        -i all
-        --dns-mode none
-        --http-port 3000
-        --http-interface
-        --http-user admin
-        --http-password admin
-      '';
+      # Ensure security wrappers are in PATH for all processes
+      variables = {
+        PATH = lib.mkBefore [ "/run/wrappers/bin" ];
+      };
     };
 
-    # Journald (console logging controls)
-    services.journald.console = lib.mkForce "/dev/console";
-    services.journald.extraConfig = if bootstrapMode then ''
-      # Bootstrap mode: mirror journald to serial while keeping /dev/console.
-      ForwardToConsole=yes
-      MaxLevelConsole=info
-    '' else ''
-      # Console forwarding disabled by default; set consoleLogging.forwardToConsole = true to write to /dev/console
-    '';
+    services = {
+      getty.autologinUser = rootUserName;
 
-    # Security
-    security.sudo.enable = true;
-    security.sudo.wheelNeedsPassword = false;
+      # Bootstrap recovery path: avoid nsncd/nscd startup failures from cascading
+      # into nss-* target dependency failures that break tty login/getty.
+      nscd.enable = lib.mkForce runtimeMode;
+      nscd.enableNsncd = lib.mkForce runtimeMode;
 
-    # Keep serial getty available on primary VZ console.
-    # Let NixOS' native getty/autovt wiring manage tty1 to avoid unit collisions.
-    systemd.services."serial-getty@hvc0".enable = lib.mkForce true;
-    systemd.services."serial-getty@ttyAMA0".enable =
-      lib.mkForce (!isTartProvider);
-    systemd.services."serial-getty@ttyS0".enable =
-      lib.mkForce (!isTartProvider);
+      nxmaticCachixWatchStore.enable = lib.mkDefault runtimeMode;
+      ntopng = {
+        enable = lib.mkDefault runtimeMode;
+        interfaces = [ "all" ];
+        extraConfig = ''
+          -i all
+          --dns-mode none
+          --http-port 3000
+          --http-interface
+          --http-user admin
+          --http-password admin
+        '';
+      };
+
+      # Journald (console logging controls)
+      journald = {
+        console = lib.mkForce journaldConsoleDevice;
+        extraConfig = ''
+          # Bootstrap mode: mirror journald to serial console.
+          ForwardToConsole=yes
+          MaxLevelConsole=${journaldConsoleLevel}
+        '';
+      };
+    }
+    // (lib.optionalAttrs
+      (runtimeMode && clusterNetwork != null && options ? services && options.services ? dbusTcpSystemBus)
+      {
+        # Expose system D-Bus over vmnet gateway for lab-only remote control/testing.
+        dbusTcpSystemBus = {
+          enable = true;
+          bindAddress = clusterNetwork.gateway;
+          port = 12434;
+          openFirewall = true;
+          insecureAllowAnonymous = true;
+        };
+      }
+    );
+
+    security.sudo = {
+      enable = true;
+      wheelNeedsPassword = false;
+    };
+
+    boot.growPartition = lib.mkIf bringupMode (lib.mkForce false);
+
+    systemd = {
+      settings.Manager = systemdManagerShowStatusNo;
+      services = {
+        # Rescue/emergency shell policy (@codebase): enforce sulogin behavior
+        # via the same variable used by systemd service drop-ins.
+        emergency.environment.SYSTEMD_SULOGIN_FORCE = "1";
+        rescue.environment.SYSTEMD_SULOGIN_FORCE = "1";
+      };
+      # Grow the root partition (btrfs/ext4 bringup only).
+      # For ZFS bringup the boot disk is EFI-only — no root partition exists on it.
+      # ZFS pool expansion is handled by zpool:expand() in zpool-init.sh instead.
+      repart.partitions = lib.mkIf (bringupMode && rootFsType != "zfs") {
+        "50-nixos-root" = {
+          Type = "root";
+          Label = "nixos";
+          GrowFileSystem = true;
+        };
+      };
+    };
 
     # Preserve profile-provided user kind flags.
     # For normal users, do not force low Darwin-style IDs (<1000) on NixOS,
     # because NixOS asserts that normal users must use UID >= 1000.
     # We keep the user normal (for Home Manager activation) and let NixOS
     # allocate a compliant uid/gid when profile ids are below the NixOS range.
-    user = lib.mkForce (builtins.removeAttrs cfgUser [ "uid" "gid" "group" ]);
+    user = lib.mkForce (
+      builtins.removeAttrs cfgUser [
+        "uid"
+        "gid"
+        "group"
+      ]
+    );
 
     users.users.${cfgUserName} = {
       group = cfgUserName;
-      extraGroups = [ "keys" "wheel" "ssh" ];
+      extraGroups = nixosUserExtraGroups;
       uid = lib.mkIf (nixosUserUid != null) nixosUserUid;
     };
-    users.groups.${cfgUserName} =
-      if nixosUserGid != null then { gid = nixosUserGid; } else { };
-
-    # Debug convenience: set root password to "root" (insecure; remove when done)
-    users.users.root.initialPassword = "root";
+    users.groups.${cfgUserName} = if nixosUserGid != null then { gid = nixosUserGid; } else { };
 
   };
 

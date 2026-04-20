@@ -1,11 +1,11 @@
-#!@bash@
+#!/usr/bin/env bash
 set -euo pipefail
 
 # Installer bootstrap mode: profile may not exist yet.
-export NDH_BOOTSTRAP_STRICT=0
 export NDH_BOOTSTRAP_INSTALLER_MODE=1
+
 # shellcheck disable=SC1091
-source "@logger@"
+source "@nixBashTrampoline@"
 
 main() {
   local profile_dir="${1:-@defaultProfileDir@}"
@@ -14,7 +14,7 @@ main() {
   local nix_cli_args_raw="${NDH_NIX_CLI_ARGS:--L -v -v}"
   local -a nix_cli_args=()
   local runtime_pkg="@runtimePackage@"
-  local runtime_name="io.nxmatic.nix-darwin-home-bringup-runtime-profile-holder"
+  local runtime_name="nerd-nixos-bringup-runtime"
   local required="@requiredCommands@"
   local cmd
   local -a missing=()
@@ -47,7 +47,7 @@ main() {
   export PATH="${profile_dir}/bin:${PATH}"
 
   if [[ ! -d "$profile_bin" ]]; then
-    echo "[io-nxmatic-nix-darwin-home-bringup-runtime][WARN] missing profile bin directory after install: ${profile_bin}" >&2
+    echo "[nerd-nixos-bringup-runtime][WARN] missing profile bin directory after install: ${profile_bin}" >&2
     return 1
   fi
 
@@ -62,16 +62,16 @@ main() {
   done
 
   if ((${#missing_profile_bin[@]} > 0)); then
-    echo "[io-nxmatic-nix-darwin-home-bringup-runtime][WARN] profile bin is missing commands after install: ${missing_profile_bin[*]}" >&2
+    echo "[nerd-nixos-bringup-runtime][WARN] profile bin is missing commands after install: ${missing_profile_bin[*]}" >&2
     return 1
   fi
 
   if ((${#missing[@]} > 0)); then
-    echo "[io-nxmatic-nix-darwin-home-bringup-runtime][WARN] missing commands after install: ${missing[*]}" >&2
+    echo "[nerd-nixos-bringup-runtime][WARN] missing commands after install: ${missing[*]}" >&2
     return 1
   fi
 
-  echo "[io-nxmatic-nix-darwin-home-bringup-runtime] installed runtime profile at ${profile_dir}"
+  echo "[nerd-nixos-bringup-runtime] installed runtime profile at ${profile_dir}"
 }
 
 ndh::logger:command:run "@loggerTag@" main "$@"

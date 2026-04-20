@@ -1,7 +1,18 @@
 # @codebase
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 let
-  inherit (lib) concatStringsSep mkDefault mkIf mkOption types;
+  inherit (lib)
+    concatStringsSep
+    mkDefault
+    mkIf
+    mkOption
+    types
+    ;
   zfsBin = "${config.boot.zfs.package}/bin/zfs";
 in
 {

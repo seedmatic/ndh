@@ -8,9 +8,14 @@
   ...
 }:
 let
-  networkCatalog = catalog.networks or { };
+  ndhContext = ndh.context;
+  nixBashTrampoline = "${ndhContext.nixBashTrampoline}";
+  netplan = catalog.netplan or { };
   cfg = config.services.crossHostBuilders;
   hostProfile = config.profile.host;
+  localHostName = hostProfile.hostName;
+  linuxBuilderMode = hostProfile.linuxBuilderMode or "embedded";
+  useRemoteLinuxBuilder = linuxBuilderMode == "remote";
   hostForcesRemoteBuilds = hostProfile.forceRemoteBuilds;
   userRemoteBuilders = hostProfile.remoteBuilders;
   builderCatalog = hostProfile.builderCatalog;
@@ -23,8 +28,14 @@ let
         # Linux VM builders (the usual remote builder target on Darwin) remain allowed.
         isDarwinTarget = lib.any (system: lib.hasInfix "darwin" system) systems;
         isVm = (entry.builder.form or "") == "vm";
+        isLocalEmbeddedLinuxBuilder =
+          useRemoteLinuxBuilder
+          && (entry.builder.hostKey or "") == localHostName
+          && (entry.builder.platformLabel or "") == "linux"
+          && (entry.builder.vm or { }) ? manager
+          && entry.builder.vm.manager == "nix-darwin";
       in
-      !(isDarwinTarget && isVm)
+      !(isDarwinTarget && isVm) && !isLocalEmbeddedLinuxBuilder
     ) builderCatalog
   );
 
@@ -46,7 +57,6 @@ let
   # Ensure serialized keys always end with a newline to avoid parser quirks when installed by ssh
   builderPrivStore = ndh.store.writeText "builder_ed25519" (builderPrivKey + "\n");
   builderPubStore = ndh.store.writeText "builder_ed25519.pub" (builderPubKey + "\n");
-  logger = config.nixBashLogger.script;
   nixbldGroup = config.users.groups.nixbld.name or "nixbld";
   authorizedKeysDir = config.opensshPolicy.authorizedKeysDir;
   nixbldAuthorizedKeysPath = "${authorizedKeysDir}/${nixbldGroup}";
@@ -54,13 +64,13 @@ let
   builderKeyInstall = ndh.store.runCommand "install-builder-key.sh" { } ''
     cp ${
       pkgs.replaceVars ./distributed-builds.d/install-builder-key.sh {
+        nixBashTrampoline = nixBashTrampoline;
         inherit
           builderKeyDir
           builderPrivStore
           builderPubStore
           builderKeyPath
           ;
-        logger = logger;
       }
     } "$out"
     chmod +x "$out"
@@ -69,10 +79,10 @@ let
   installAuthorizedKeys = ndh.store.runCommand "install-builder-authorized-keys.sh" { } ''
     cp ${
       pkgs.replaceVars ./distributed-builds.d/install-authorized-keys.sh {
+        nixBashTrampoline = nixBashTrampoline;
         authorizedKeysDir = authorizedKeysDir;
         groupName = nixbldGroup;
         builderPubKey = builderPubKey;
-        logger = logger;
       }
     } "$out"
     chmod +x "$out"
@@ -81,8 +91,8 @@ let
   controlPathScript = ndh.store.runCommand "ensure-builder-controlpath.sh" { } ''
     cp ${
       pkgs.replaceVars ./distributed-builds.d/ensure-control-path.sh {
+        nixBashTrampoline = nixBashTrampoline;
         controlMasterDir = controlMasterDir;
-        logger = logger;
       }
     } "$out"
     chmod +x "$out"
@@ -91,10 +101,10 @@ let
   postActivationScript = ndh.store.runCommand "distributed-builds-post-activation.sh" { } ''
     cp ${
       pkgs.replaceVars ./distributed-builds.d/post-activation.sh {
+        nixBashTrampoline = nixBashTrampoline;
         builderKeyInstall = builderKeyInstall;
         installAuthorizedKeys = installAuthorizedKeys;
         controlPathScript = controlPathScript;
-        logger = logger;
       }
     } "$out"
     chmod +x "$out"
@@ -110,12 +120,12 @@ let
     let
       requested = if nets != [ ] then nets else [ "lan" ];
     in
-    lib.filter (net: builtins.hasAttr net networkCatalog) (lib.unique requested);
+    lib.filter (net: builtins.hasAttr net netplan) (lib.unique requested);
 
   networkDomain =
     net:
     let
-      info = networkCatalog.${net};
+      info = netplan.${net};
       fallback = if net == "lan" then ".lan" else "";
     in
     if info ? domain && info.domain != null && info.domain != "" then info.domain else fallback;

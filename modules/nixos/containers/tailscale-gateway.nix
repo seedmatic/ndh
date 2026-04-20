@@ -2,6 +2,7 @@
   config,
   pkgs,
   lib,
+  ndhSystemd,
   ...
 }:
 
@@ -9,6 +10,8 @@ with lib;
 
 let
   cfg = config.containers.tailscale-gateway;
+  tailscaleAutoconnectUnitName = ndhSystemd.mkUnitName "tailscaled-autoconnect";
+  contributedTargetName = ndhSystemd.contributedTargetName;
 in
 {
   options.containers.tailscale-gateway = {
@@ -128,7 +131,7 @@ in
           ];
 
           # Auto-connect service
-          systemd.services.io-nxmatic-nix-darwin-home-tailscale-autoconnect = {
+          systemd.services.${tailscaleAutoconnectUnitName} = {
             after = [
               "tailscaled.service"
               "network-online.target"
@@ -137,7 +140,7 @@ in
               "tailscaled.service"
               "network-online.target"
             ];
-            wantedBy = [ "io-nxmatic-nix-darwin-home-contributed.target" ];
+            wantedBy = [ contributedTargetName ];
             serviceConfig = {
               Type = "oneshot";
               RemainAfterExit = true;

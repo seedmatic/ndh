@@ -509,9 +509,7 @@ EOF
 
 : "Should log as part of the activation scripts"
 # shellcheck disable=SC1091
-source @bashTrampoline@
-# shellcheck disable=SC1091
-source @logger@
+source @nixBashTrampoline@
 
 main() {
 	declare -g profileName hostName inputFile outputFile

@@ -1,36 +1,304 @@
 #!/usr/bin/env -S bash -euo pipefail
 # shellcheck source=/dev/null
-source @bashTrampoline@
-# shellcheck source=/dev/null
-source @logger@
+source @nixBashTrampoline@
+
+tart:bool:is-true() {
+	local value="${1:-}"
+	value="${value,,}"
+	[[ "$value" == "1" || "$value" == "true" || "$value" == "yes" || "$value" == "on" ]]
+}
+
+tart:image:virtual-size-bytes() {
+	local image_path="$1"
+	local total_bytes=""
+
+	if [[ ! -f "$image_path" ]]; then
+		return 1
+	fi
+
+	if [[ -z "${diskutil_bin:-}" ]]; then
+		diskutil_bin="/usr/sbin/diskutil"
+	fi
+
+	total_bytes="$(
+		"$diskutil_bin" image info --plist "$image_path" 2>/dev/null |
+			yq -p=xml -r '
+				.plist.dict.dict[] |
+				select((.key? | type) == "!!seq") |
+				(.key | to_entries[] | select(.value == "Total Bytes") | .key) as $k |
+				.integer[$k]
+			'
+	)"
+
+	if [[ ! "$total_bytes" =~ ^[0-9]+$ ]]; then
+		return 1
+	fi
+
+	printf '%s\n' "$total_bytes"
+}
+
+tart:image:size:matches-source() {
+	# tart:image:size:matches-source <source_img> <target_img>
+	local source_img="$1"
+	local target_img="$2"
+	local source_bytes=""
+	local target_bytes=""
+
+	[[ -f "$source_img" && -f "$target_img" ]] || return 1
+
+	source_bytes="$(tart:image:virtual-size-bytes "$source_img" 2>/dev/null || true)"
+	target_bytes="$(tart:image:virtual-size-bytes "$target_img" 2>/dev/null || true)"
+
+	[[ "$source_bytes" =~ ^[0-9]+$ ]] || return 1
+	[[ "$target_bytes" =~ ^[0-9]+$ ]] || return 1
+
+	[[ "$source_bytes" == "$target_bytes" ]]
+}
+
+tart:image:resize-if-smaller() {
+	# tart:image:resize-if-smaller <image_path> <target_gib> [log_label]
+	local image_path="$1"
+	local target_gib="$2"
+	local log_label="${3:-disk}"
+	local desired_bytes=0
+	local current_bytes=""
+	local log_prefix="${TART_LOG_PREFIX:-[tart]}"
+
+	if [[ ! -f "$image_path" ]]; then
+		echo "${log_prefix}[ERROR] cannot resize missing image: $image_path" >&2
+		return 1
+	fi
+
+	if [[ ! "$target_gib" =~ ^[0-9]+$ ]] || ((target_gib <= 0)); then
+		echo "${log_prefix}[ERROR] invalid target size (GiB) for ${log_label}: $target_gib" >&2
+		return 1
+	fi
+
+	# diskutil `--size <N>g` uses decimal gigabytes (10^9 bytes), not GiB.
+	desired_bytes=$((target_gib * 1000 * 1000 * 1000))
+	current_bytes="$(tart:image:virtual-size-bytes "$image_path" 2>/dev/null || true)"
+
+	if [[ ! "$current_bytes" =~ ^[0-9]+$ ]]; then
+		echo "${log_prefix}[ERROR] unable to read current size for ${log_label}: $image_path" >&2
+		return 1
+	fi
+
+	if ((current_bytes < desired_bytes)); then
+		echo "${log_prefix}[INFO] expanding ${log_label} to ${target_gib}GiB: $image_path (currentBytes=$current_bytes targetBytes=$desired_bytes)" >&2
+		if ! sudo "$diskutil_bin" image resize --plist --size "${target_gib}g" "$image_path" >&2; then
+			echo "${log_prefix}[ERROR] failed to resize ${log_label} to ${target_gib}GiB: $image_path" >&2
+			return 1
+		fi
+	elif ((current_bytes > desired_bytes)); then
+		echo "${log_prefix}[INFO] ${log_label} already larger than target; keeping existing size: $image_path (currentBytes=$current_bytes targetBytes=$desired_bytes)" >&2
+	else
+		echo "${log_prefix}[INFO] ${log_label} already at target size; no resize needed: $image_path (currentBytes=$current_bytes targetBytes=$desired_bytes)" >&2
+	fi
+
+	chmod 0644 "$image_path" 2>/dev/null || true
+	if [[ "$(id -u)" -eq 0 ]] && [[ -n "${profile_group:-}" ]] && [[ "$image_path" == "${effective_home:-}/"* ]]; then
+		chown "${profile_user}:${profile_group}" "$image_path" 2>/dev/null || true
+	fi
+
+	return 0
+}
+
+tart:root-disk:zfs:contains() {
+	local disk="$1"
+	local partition_hints=""
+	local partition_names=""
+	local hint=""
+	local part_name=""
+	local zfs_label_regex="${TART_ROOT_DISK_ZFS_LABEL_REGEX:-^(tank1|tank2|tank3|recover)$}"
+	local log_prefix="${TART_LOG_PREFIX:-[tart]}"
+
+	if [[ ! -f "$disk" ]]; then
+		echo "${log_prefix}[WARN] root disk missing for ZFS introspection: ${disk}" >&2
+		return 1
+	fi
+
+	if [[ -z "${diskutil_bin:-}" ]]; then
+		diskutil_bin="/usr/sbin/diskutil"
+	fi
+
+	partition_hints="$({
+		"$diskutil_bin" image info --plist "$disk" 2>/dev/null |
+			yq -p=xml '
+				.plist.dict.array.dict[] |
+				select(.key[] == "content-hint") |
+				(.key | to_entries[] | select(.value == "content-hint") | .key) as $k |
+				.string[$k]
+			' 2>/dev/null
+	} || true)"
+
+	partition_names="$({
+		"$diskutil_bin" image info --plist "$disk" 2>/dev/null |
+			yq -p=xml '
+				.plist.dict.array.dict[] |
+				select(.key[] == "name") |
+				(.key | to_entries[] | select(.value == "name") | .key) as $k |
+				.string[$k]
+			' 2>/dev/null
+	} || true)"
+
+	if [[ -z "$partition_hints" && -z "$partition_names" ]]; then
+		return 1
+	fi
+
+	while IFS= read -r hint; do
+		hint="${hint,,}"
+		if [[ "$hint" == *"zfs"* || "$hint" == *"solaris"* ]]; then
+			return 0
+		fi
+	done <<< "$partition_hints"
+
+	while IFS= read -r part_name; do
+		part_name="${part_name,,}"
+		if [[ "$part_name" =~ $zfs_label_regex ]]; then
+			echo "${log_prefix}[INFO] root disk ZFS signature detected from partition label: ${part_name}" >&2
+			return 0
+		fi
+	done <<< "$partition_names"
+
+	return 1
+}
+
+tart:bootstrap:manifest:bootloader:validate() {
+	# tart:bootstrap:manifest:bootloader:validate <manifest_path> <expected_boot_loader>
+	local manifest_path="${1:-}"
+	local expected_boot_loader="${2:-}"
+	local actual_boot_loader=""
+	local log_prefix="${TART_LOG_PREFIX:-[tart]}"
+
+	if [[ -z "$manifest_path" || -z "$expected_boot_loader" ]]; then
+		return 0
+	fi
+
+	if [[ ! -r "$manifest_path" ]]; then
+		echo "${log_prefix}[ERROR] configured bootstrap disk manifest missing/unreadable: $manifest_path" >&2
+		return 1
+	fi
+
+	actual_boot_loader="$(yq -p=yaml -r '.bootLoader // ""' "$manifest_path" 2>/dev/null || true)"
+	if [[ -z "$actual_boot_loader" ]]; then
+		echo "${log_prefix}[ERROR] unable to resolve bootLoader from bootstrap disk manifest: $manifest_path" >&2
+		return 1
+	fi
+
+	if [[ "$actual_boot_loader" != "$expected_boot_loader" ]]; then
+		echo "${log_prefix}[ERROR] bootstrap disk bootLoader mismatch: expected=$expected_boot_loader actual=$actual_boot_loader manifest=$manifest_path" >&2
+		return 1
+	fi
+
+	echo "${log_prefix}[INFO] bootstrap disk manifest bootLoader validated: ${actual_boot_loader} (${manifest_path})" >&2
+	return 0
+}
+
+tart:bootstrap:disk:sync-from-source() {
+	# tart:bootstrap:disk:sync-from-source <source_img> <target_img> [size_gib] [owner_user] [owner_group] [owner_home]
+	local source_path="${1:-}"
+	local target_path="${2:-}"
+	local size_gib="${3:-24}"
+	local owner_user="${4:-}"
+	local owner_group="${5:-}"
+	local owner_home="${6:-}"
+	local desired_bytes=0
+	local current_bytes=""
+	local log_prefix="${TART_LOG_PREFIX:-[tart]}"
+
+	if [[ -z "$source_path" || -z "$target_path" ]]; then
+		echo "${log_prefix}[ERROR] bootstrap disk sync requires source and target paths" >&2
+		return 1
+	fi
+
+	if [[ ! -f "$source_path" ]]; then
+		echo "${log_prefix}[ERROR] configured bootstrap source image missing/unreadable: $source_path" >&2
+		return 1
+	fi
+
+	if [[ ! "$size_gib" =~ ^[0-9]+$ ]] || ((size_gib <= 0)); then
+		echo "${log_prefix}[ERROR] invalid bootstrap disk size (GiB): $size_gib" >&2
+		return 1
+	fi
+
+	mkdir -p "$(dirname "$target_path")"
+
+	if [[ ! -f "$target_path" ]] || ! cmp -s "$source_path" "$target_path"; then
+		echo "${log_prefix}[INFO] syncing VM-local bootstrap disk from source image: $source_path -> $target_path" >&2
+		cp -f "$source_path" "$target_path"
+	fi
+
+	# diskutil `--size <N>g` uses decimal gigabytes (10^9 bytes), not GiB.
+	desired_bytes=$((size_gib * 1000 * 1000 * 1000))
+	current_bytes="$(tart:image:virtual-size-bytes "$target_path" 2>/dev/null || true)"
+	if [[ ! "$current_bytes" =~ ^[0-9]+$ ]]; then
+		echo "${log_prefix}[ERROR] unable to read VM-local bootstrap disk size: $target_path" >&2
+		return 1
+	fi
+
+	if ((current_bytes < desired_bytes)); then
+		echo "${log_prefix}[INFO] expanding VM-local bootstrap disk to ${size_gib}GiB: $target_path (currentBytes=$current_bytes targetBytes=$desired_bytes)" >&2
+		if ! sudo diskutil image resize --plist --size "${size_gib}g" "$target_path" >&2; then
+			echo "${log_prefix}[ERROR] failed to resize VM-local bootstrap disk to ${size_gib}GiB: $target_path" >&2
+			return 1
+		fi
+	else
+		echo "${log_prefix}[INFO] VM-local bootstrap disk already at target size; no resize needed: $target_path (currentBytes=$current_bytes targetBytes=$desired_bytes)" >&2
+	fi
+
+	chmod 0644 "$target_path" 2>/dev/null || true
+	if [[ "$(id -u)" -eq 0 ]] && [[ -n "$owner_user" ]] && [[ -n "$owner_group" ]] && [[ -n "$owner_home" ]] && [[ "$target_path" == "${owner_home}/"* ]]; then
+		chown "${owner_user}:${owner_group}" "$target_path" 2>/dev/null || true
+	fi
+
+	return 0
+}
 
 main() {
 	set -euo pipefail
 
-	local ndh_nix_cli_args_raw="${NDH_NIX_CLI_ARGS:--L -v -v}"
-	local ndh_tart_factory_reset_raw="${NDH_TART_FACTORY_RESET:-0}"
-	local -a ndh_nix_cli_args=()
-	local profile_user="@profileUser@"
+	local manifest_path=""
+	local tart_nix_cli_args_raw=""
+	local tart_factory_reset_raw=""
+	local -a tart_nix_cli_args
+	local profile_user=""
 	local profile_group=""
+	local gcroot_user=""
+	local gcroot_group=""
 	local factory_reset=0
+	local bootstrap_disk_regenerate=0
+	local configured_home=""
+	local effective_host_name=""
 
-	if id -u "$profile_user" >/dev/null 2>&1; then
-		profile_group="$(id -gn "$profile_user" 2>/dev/null || true)"
-	fi
-
-	if [[ -n "${ndh_nix_cli_args_raw}" ]]; then
-		read -r -a ndh_nix_cli_args <<<"${ndh_nix_cli_args_raw}"
-	fi
-
-	tart:bool:is-true() {
-		local value="${1:-}"
-		value="${value,,}"
-		[[ "$value" == "1" || "$value" == "true" || "$value" == "yes" || "$value" == "on" ]]
+	tart:state:init() {
+		manifest_path="@manifestPath@"
+		tart_nix_cli_args_raw="${NIX_CLI_ARGS:--L -v -v}"
+		tart_factory_reset_raw="${FACTORY_RESET:-0}"
+		tart_nix_cli_args=()
+		profile_user=""
+		profile_group=""
+		gcroot_user=""
+		gcroot_group=""
+		factory_reset=0
+		bootstrap_disk_regenerate=0
+		configured_home=""
+		effective_host_name=""
 	}
 
-	if tart:bool:is-true "$ndh_tart_factory_reset_raw"; then
-		factory_reset=1
-	fi
+	tart:manifest:load() {
+		if [[ ! -r "$manifest_path" ]]; then
+			: "[tartConfig][ERROR] activation manifest missing/unreadable: ${manifest_path}"
+			exit 1
+		fi
+
+		if ! command -v yq >/dev/null 2>&1; then
+			: "[tartConfig][ERROR] yq is required to parse activation manifest: ${manifest_path}"
+			exit 1
+		fi
+
+		# shellcheck disable=SC1090
+		source <(yq -p=yaml -o=shell '.' "$manifest_path")
+	}
 
 	tart:fs:path:relink() {
 		local src="$1"
@@ -46,8 +314,8 @@ main() {
 		ln -s "$src" "$dst"
 
 		if [ -L "$dst" ]; then
-			if [[ "$dst" == "/nix/var/nix/gcroots/per-user/${profile_user}/"* ]] && [[ "$(id -u)" -eq 0 ]] && [[ -n "$profile_group" ]]; then
-				chown -h "${profile_user}:${profile_group}" "$dst" 2>/dev/null || true
+			if [[ "$dst" == "/nix/var/nix/gcroots/per-user/${gcroot_user}/"* ]] && [[ "$(id -u)" -eq 0 ]] && [[ -n "$gcroot_group" ]]; then
+				chown -h "${gcroot_user}:${gcroot_group}" "$dst" 2>/dev/null || true
 			fi
 			: "${label}: $dst -> $(readlink "$dst" || echo '<not-a-symlink>')"
 			return 0
@@ -61,15 +329,14 @@ main() {
 		local dir="$1"
 		local mode="${2:-0755}"
 
-		if [[ "$(id -u)" -eq 0 ]] && [[ -n "$profile_group" ]] && [[ "$dir" == "/nix/var/nix/gcroots/per-user/${profile_user}"* ]]; then
-			install -d -m "$mode" -o "$profile_user" -g "$profile_group" "$dir"
+		if [[ "$(id -u)" -eq 0 ]] && [[ -n "$gcroot_group" ]] && [[ "$dir" == "/nix/var/nix/gcroots/per-user/${gcroot_user}"* ]]; then
+			install -d -m "$mode" -o "$gcroot_user" -g "$gcroot_group" "$dir"
 		else
 			install -d -m "$mode" "$dir"
 		fi
 	}
 
 	tart:runtime:home:resolve() {
-		configured_home="@profileHome@"
 		effective_home="$configured_home"
 		runtime_user="$(id -un)"
 		runtime_home="${HOME:-}"
@@ -95,29 +362,9 @@ main() {
 	}
 
 	tart:runtime:tooling:validate() {
-		tart_bin=""
-		if [ -n "$tart_binary_hint" ]; then
-			tart_bin="$tart_binary_hint"
-		fi
-
-		if [ -z "$tart_bin" ] || [ ! -x "$tart_bin" ]; then
-			: "[tartConfig][ERROR] tart CLI is not executable at configured path; cannot materialize VM"
+		if ! command -v tart >/dev/null 2>&1; then
+			: "[tartConfig][ERROR] tart CLI is not available in PATH; cannot materialize VM"
 			: "[tartConfig][ERROR] tartBinaryPath hint=$tart_binary_hint"
-			exit 1
-		fi
-
-		if [ ! -x "$nix_bin" ]; then
-			: "[tartConfig][ERROR] nix CLI is not executable at configured path: $nix_bin"
-			exit 1
-		fi
-
-		if [ ! -x "$diskutil_bin" ]; then
-			: "[tartConfig][ERROR] diskutil is not executable at configured path: $diskutil_bin"
-			exit 1
-		fi
-
-		if [ ! -x "$truncate_bin" ]; then
-			: "[tartConfig][ERROR] truncate is not executable at configured path: $truncate_bin"
 			exit 1
 		fi
 
@@ -128,45 +375,230 @@ main() {
 	}
 
 	tart:runtime:path:setup() {
-		tart_env_path="$(dirname "$diskutil_bin"):$(dirname "$hdiutil_bin"):/usr/bin:/bin:/usr/sbin:/sbin"
+		PATH="$(dirname "$tart_binary_hint"):$(dirname "$diskutil_bin"):/usr/bin:/bin:/usr/sbin:/sbin:${PATH:-}"
+		export PATH
 	}
 
-	tart:diskutil:run() {
-		PATH="$tart_env_path" "$diskutil_bin" "$@" 1>&2
+	tart:gcroot:path:rewrite-user() {
+		local path="$1"
+		if [[ "$path" =~ ^/nix/var/nix/gcroots/per-user/([^/]+)/(.+)$ ]]; then
+			local path_user="${BASH_REMATCH[1]}"
+			local path_tail="${BASH_REMATCH[2]}"
+			if [[ -n "$gcroot_user" && "$path_user" != "$gcroot_user" ]]; then
+				echo "/nix/var/nix/gcroots/per-user/${gcroot_user}/${path_tail}"
+				return 0
+			fi
+		fi
+		echo "$path"
 	}
 
-	: "start $(date) host=@effectiveHostName@ user=@profileUser@"
+	tart:raw-image:resolve-from-manifest() {
+		# tart:raw-image:resolve-from-manifest <manifest_path>
+		# stdout lines: <name>\t<resolved_abs_path>\t<role>
+		local manifest_path="$1"
+		local manifest_dir=""
+		local source_out=""
+		local image_name=""
+		local image_path=""
+		local image_role=""
+		local resolved=""
 
-	tart:runtime:home:resolve
+		[[ -n "$manifest_path" && -r "$manifest_path" ]] || return 0
 
-	raw_manifest="@rawImageManifestPath@"
-	raw_store="@rawImageStorePath@"
-	raw_source="@rawImageSourcePath@"
-	raw_target="@rawImageTargetPath@"
-	asif_target="@asifImageTargetPath@"
-	vm_name="@vmName@"
-	vm_disk_format="@vmDiskFormat@"
-	vm_disk_size_gib="@vmDiskSizeGiB@"
-	vm_cpu_count="@vmCpuCount@"
-	vm_memory_mib="@vmMemoryMiB@"
-	vm_display_width="@vmDisplayWidth@"
-	vm_display_height="@vmDisplayHeight@"
-	vm_mac_address="@vmMacAddress@"
-	vm_data_disk_size_gib="@vmDataDiskSizeGiB@"
-	tart_binary_hint="@tartBinaryPath@"
-	nix_bin="@nixBinaryPath@"
-	diskutil_bin="@diskutilBinaryPath@"
-	hdiutil_bin="@hdiutilBinaryPath@"
-	truncate_bin="@truncateBinaryPath@"
-	tart_run_script_store="@tartRunScript@"
-	image_flake_attr="@imageFlakeAttr@"
-	image_flake_path="@nixosFlakePath@"
+		manifest_dir="$(dirname "$manifest_path")"
+		source_out="$(yq -p=yaml -r '.sourceOutPath // ""' "$manifest_path" 2>/dev/null || true)"
 
-	tart:runtime:tooling:validate
-	tart:runtime:path:setup
+		while IFS=$'\t' read -r image_name image_path image_role; do
+			[[ -n "$image_path" ]] || continue
+			resolved=""
+			if [[ "$image_path" = /* ]]; then
+				resolved="$image_path"
+			elif [[ -f "${manifest_dir}/${image_path}" ]]; then
+				resolved="${manifest_dir}/${image_path}"
+			elif [[ -n "$source_out" && -f "${source_out}/${image_path}" ]]; then
+				resolved="${source_out}/${image_path}"
+			fi
+
+			if [[ -n "$resolved" && -f "$resolved" ]]; then
+				printf '%s\t%s\t%s\n' "$image_name" "$resolved" "$image_role"
+			fi
+		done < <(yq -p=yaml -r '.images[]? | [(.name // ""), (.path // ""), (.role // "")] | @tsv' "$manifest_path" 2>/dev/null || true)
+	}
+
+	tart:raw-images:gcroot:materialize() {
+		local manifest_path="${raw_image_manifest_path:-}"
+		local store_path="${raw_image_store_path:-}"
+		local source_path="${raw_image_source_path:-}"
+		local target_path="${raw_image_target_path:-}"
+		local selected_primary=""
+		local manifest_primary_rel=""
+		local image_name=""
+		local image_src=""
+		local image_role=""
+		local image_target=""
+		local base=""
+		local ext=""
+
+		[[ -n "$target_path" ]] || return 0
+
+		target_path="$(tart:gcroot:path:rewrite-user "$target_path")"
+		tart:fs:dir:ensure "$(dirname "$target_path")" 0755
+
+		if [[ -n "$manifest_path" && -r "$manifest_path" ]]; then
+			manifest_primary_rel="$(yq -p=yaml -r '.imagePath // ""' "$manifest_path" 2>/dev/null || true)"
+		fi
+
+		while IFS=$'\t' read -r image_name image_src image_role; do
+			[[ -n "$image_src" ]] || continue
+
+			if [[ "$image_role" == "primary" ]] || [[ -n "$manifest_primary_rel" && ("$image_src" == "$manifest_primary_rel" || "$image_src" == */"$manifest_primary_rel") ]]; then
+				image_target="$target_path"
+				selected_primary="$image_src"
+			else
+				if [[ -z "$image_name" ]]; then
+					image_name="$(basename "$image_src" .img)"
+				fi
+				base="$target_path"
+				ext=""
+				if [[ "$base" == *.img ]]; then
+					ext=".img"
+					base="${base%.img}"
+				fi
+				if [[ "$base" == *.raw ]]; then
+					base="${base%.raw}"
+				fi
+				image_target="${base}.${image_name}.raw${ext}"
+				image_target="$(tart:gcroot:path:rewrite-user "$image_target")"
+				tart:fs:dir:ensure "$(dirname "$image_target")" 0755
+			fi
+
+			tart:fs:path:relink "$image_src" "$image_target" "raw image gcroot (${image_name:-$(basename "$image_src")})"
+		done < <(tart:raw-image:resolve-from-manifest "$manifest_path")
+
+		if [[ -n "$selected_primary" ]]; then
+			return 0
+		fi
+
+		if [[ -n "$store_path" && -f "$store_path" ]]; then
+			tart:fs:path:relink "$store_path" "$target_path" "raw image gcroot (store)"
+			return 0
+		fi
+
+		if [[ -n "$source_path" && -f "$source_path" ]]; then
+			tart:fs:path:relink "$source_path" "$target_path" "raw image gcroot (source)"
+			return 0
+		fi
+
+		if [[ -L "$target_path" || -f "$target_path" ]]; then
+			: "[tartConfig][INFO] keeping existing raw image gcroot target: $target_path"
+			return 0
+		fi
+
+		: "[tartConfig][WARN] unable to resolve raw image source for gcroot materialization (manifest=$manifest_path store=$store_path source=$source_path target=$target_path)"
+	}
+
+	tart:raw-image:path:from-manifest() {
+		# tart:raw-image:path:from-manifest <image_name|primary>
+		local wanted="$1"
+		local manifest_path="${raw_image_manifest_path:-}"
+		local image_name=""
+		local image_src=""
+		local image_role=""
+
+		[[ -n "$manifest_path" && -r "$manifest_path" ]] || return 1
+
+		while IFS=$'\t' read -r image_name image_src image_role; do
+			[[ -n "$image_src" ]] || continue
+			if [[ "$wanted" == "primary" ]]; then
+				if [[ "$image_role" == "primary" ]]; then
+					printf '%s\n' "$image_src"
+					return 0
+				fi
+			elif [[ "$image_name" == "$wanted" ]]; then
+				printf '%s\n' "$image_src"
+				return 0
+			fi
+		done < <(tart:raw-image:resolve-from-manifest "$manifest_path")
+
+		return 1
+	}
+
+	tart:raw-image:manifest:auto-resolve() {
+		# If manifest path is not explicitly configured, infer it from raw image store/source paths.
+		local candidate=""
+
+		if [[ -n "${raw_image_manifest_path:-}" && -r "${raw_image_manifest_path:-}" ]]; then
+			return 0
+		fi
+
+		if [[ -n "${raw_image_store_path:-}" && -f "${raw_image_store_path:-}" ]]; then
+			candidate="$(dirname "${raw_image_store_path}")/manifest.yaml"
+			if [[ -r "$candidate" ]]; then
+				raw_image_manifest_path="$candidate"
+				: "[tartConfig][INFO] auto-resolved raw image manifest from store path: $raw_image_manifest_path"
+				return 0
+			fi
+		fi
+
+		if [[ -n "${raw_image_source_path:-}" && -f "${raw_image_source_path:-}" ]]; then
+			candidate="$(dirname "${raw_image_source_path}")/manifest.yaml"
+			if [[ -r "$candidate" ]]; then
+				raw_image_manifest_path="$candidate"
+				: "[tartConfig][INFO] auto-resolved raw image manifest from source path: $raw_image_manifest_path"
+				return 0
+			fi
+		fi
+	}
+
+	tart:disk:image:materialize-from-source() {
+		# tart:disk:image:materialize-from-source <source_img> <target_img> <label>
+		local source_img="$1"
+		local target_img="$2"
+		local label="${3:-disk}"
+
+		if [[ -z "$source_img" || -z "$target_img" ]]; then
+			: "[tartConfig][ERROR] image materialization requires source and target paths"
+			exit 1
+		fi
+
+		if [[ ! -f "$source_img" ]]; then
+			: "[tartConfig][ERROR] image materialization source is missing: $source_img"
+			exit 1
+		fi
+
+		if [[ -f "$target_img" ]] && cmp -s "$source_img" "$target_img"; then
+			: "[tartConfig][INFO] ${label} already matches source image; keeping target: $target_img"
+			return 0
+		fi
+
+		mkdir -p "$(dirname "$target_img")"
+		rm -f "$target_img" >/dev/null 2>&1 || true
+
+		if [[ "${vm_disk_format:-asif}" == "asif" ]]; then
+			: "[tartConfig][INFO] materializing ${label} from manifest image via ASIF conversion: $source_img -> $target_img"
+			diskutil image create from --format ASIF "$source_img" "$target_img" >/dev/null
+		else
+			: "[tartConfig][INFO] materializing ${label} from manifest image via raw copy: $source_img -> $target_img"
+			cp -f "$source_img" "$target_img"
+		fi
+
+		chmod 0644 "$target_img" 2>/dev/null || true
+		if [[ "$(id -u)" -eq 0 ]] && [[ -n "$profile_group" ]] && [[ "$target_img" == "${effective_home}/"* ]]; then
+			chown "${profile_user}:${profile_group}" "$target_img" 2>/dev/null || true
+		fi
+	}
+
+	tart:bootstrap:manifest:bootloader:validate:config() {
+		TART_LOG_PREFIX="[tartConfig]"
+		if ! tart:bootstrap:manifest:bootloader:validate \
+			"${first_boot_attach_disk_manifest_path:-}" \
+			"${first_boot_attach_disk_boot_loader_expected:-}"; then
+			exit 1
+		fi
+	}
 
 	tart:vm:run() {
-		PATH="$tart_env_path" "$tart_bin" "$@"
+		tart "$@"
 	}
 
 	tart:vm:exists() {
@@ -187,69 +619,53 @@ main() {
 
 		if tart:vm:exists "$vm"; then
 			: "tart VM already exists: $vm"
-		else
-			: "creating tart VM: $vm (os=linux disk-size=${disk_size}GiB disk-format=${disk_format})"
-			tart:vm:run create "$vm" --linux --disk-size "$disk_size" --disk-format "$disk_format"
+			return 0
 		fi
+		
+		: "creating tart VM: $vm (os=linux disk-size=${disk_size}GiB disk-format=${disk_format})"
+		tart:vm:run create "$vm" --linux --disk-size "$disk_size" --disk-format "$disk_format"
+		tart:vm:disks:ensure:blank
 	}
-	tart_vm_dir="${effective_home}/.tart/vms/${vm_name}"
-	tart_vm_disk="${tart_vm_dir}/disk.img"
-	tart_vm_config="${tart_vm_dir}/config.json"
-	tart_vm_run_wrapper="${effective_home}/.tart/vms/${vm_name}.sh"
-	tart_data_disk_dir="${effective_home}/.tart/disks/${vm_name}"
-	tart_data_disks=(
-		"${tart_data_disk_dir}/tank1.asif"
-		"${tart_data_disk_dir}/tank2.asif"
-		"${tart_data_disk_dir}/tank3.asif"
-		"${tart_data_disk_dir}/recover.asif"
-	)
+
+	tart:vm:recreate() {
+		local vm="$1"
+		local disk_size="$2"
+		local disk_format="$3"
+
+		tart:vm:run stop "$vm" >/dev/null 2>&1 || true
+
+		if tart:vm:exists "$vm"; then
+			: "recreating tart VM: $vm"
+			tart:vm:run delete "$vm" >/dev/null 2>&1 || true
+		fi
+
+		rm -rf "${effective_home}/.tart/vms/${vm}" 2>/dev/null || true
+
+		: "creating tart VM: $vm (os=linux disk-size=${disk_size}GiB disk-format=${disk_format})"
+		tart:vm:run create "$vm" --linux --disk-size "$disk_size" --disk-format "$disk_format"
+	}
 
 	tart:vm:data-disk:create-asif() {
 		local disk="$1"
 		local size_gib="$2"
-		local bootstrap_raw="${3:-}"
-		local bootstrap_size_gib=1
-		local initial_size_gib="$bootstrap_size_gib"
-		local tmp_raw
-		local own_tmp_raw=0
+		local created_output=""
 
-		if [ -n "$bootstrap_raw" ]; then
-			tmp_raw="$bootstrap_raw"
-		else
-			tmp_raw="$(mktemp "${disk}.raw.XXXXXX")"
-			own_tmp_raw=1
-			cleanup_tmp_raw() {
-				trap - RETURN
-				rm -f "$tmp_raw" 2>/dev/null || true
-			}
-			trap cleanup_tmp_raw RETURN
-
-			rm -f "$tmp_raw"
+		if [[ ! "$size_gib" =~ ^[0-9]+$ ]] || ((size_gib <= 0)); then
+			: "[tartConfig][ERROR] invalid data disk size (GiB): $size_gib"
+			exit 1
 		fi
 
-		if [[ "$size_gib" =~ ^[0-9]+$ ]] && ((size_gib < bootstrap_size_gib)); then
-			initial_size_gib="$size_gib"
-		fi
+		rm -f "${disk}" >/dev/null 2>&1 || true
 
-		if ((own_tmp_raw == 1)); then
-			: "creating data disk bootstrap image: $disk (${initial_size_gib}GiB raw -> ASIF, then resize to ${size_gib}GiB)"
-			"$truncate_bin" -s "${initial_size_gib}g" "$tmp_raw"
-		else
-			: "using shared bootstrap raw image for data disk creation: $disk"
-		fi
-		tart:diskutil:run image create from --format ASIF "$tmp_raw" "$disk"
+		: "creating blank ASIF data disk: $disk (${size_gib}GiB)"
+		diskutil image create blank --plist --fs None --size "${size_gib}g" --format ASIF "$disk" >&2 || { 
+			: "[tartConfig][ERROR] diskutil failed to create ASIF data disk: $disk"; exit 1; 
+		}
 
-		if [[ "$size_gib" =~ ^[0-9]+$ ]] && ((size_gib > initial_size_gib)); then
-			: "resizing data disk ASIF to target size: $disk (${size_gib}GiB)"
-			if ! tart:diskutil:run image resize --size "${size_gib}g" "$disk"; then
-				: "[tartConfig][ERROR] failed to resize ASIF data disk to ${size_gib}GiB: $disk"
-				exit 1
-			fi
-		fi
 
-		if ((own_tmp_raw == 1)); then
-			cleanup_tmp_raw
-			trap - RETURN
+		if [ -z "$disk" ]; then
+			: "[tartConfig][ERROR] diskutil produced no ASIF data disk output for: $disk"
+			exit 1
 		fi
 
 		if [ ! -f "$disk" ]; then
@@ -263,71 +679,106 @@ main() {
 		fi
 	}
 
-	tart:image:targets:normalize() {
-		if [[ "$raw_target" == "${configured_home}/"* ]] && [[ "$effective_home" != "$configured_home" ]]; then
-			runtime_raw_target="${effective_home}${raw_target#"${configured_home}"}"
-			: "[tartConfig][WARN] rewriting raw target for runtime home ${runtime_user}: $raw_target -> $runtime_raw_target"
-			raw_target="$runtime_raw_target"
-		fi
 
-		if [[ "$asif_target" == "${configured_home}/"* ]] && [[ "$effective_home" != "$configured_home" ]]; then
-			runtime_asif_target="${effective_home}${asif_target#"${configured_home}"}"
-			: "[tartConfig][WARN] rewriting asif target for runtime home ${runtime_user}: $asif_target -> $runtime_asif_target"
-			asif_target="$runtime_asif_target"
-		fi
-
-		if [[ "$raw_target" =~ ^/nix/var/nix/gcroots/per-user/([^/]+)/(.+)$ ]]; then
-			raw_target_user="${BASH_REMATCH[1]}"
-			if [[ -n "$runtime_user" && "$raw_target_user" != "$runtime_user" ]]; then
-				: "[tartConfig][INFO] keeping configured raw target user ${raw_target_user} (runtime user is ${runtime_user})"
-			fi
-		fi
-
-		if [[ "$asif_target" =~ ^/nix/var/nix/gcroots/per-user/([^/]+)/(.+)$ ]]; then
-			asif_target_user="${BASH_REMATCH[1]}"
-			if [[ -n "$runtime_user" && "$asif_target_user" != "$runtime_user" ]]; then
-				: "[tartConfig][INFO] keeping configured asif target user ${asif_target_user} (runtime user is ${runtime_user})"
-			fi
-		fi
+	tart:vm:disks:ensure:blank() {
+		tart:fs:dir:ensure "$tart_vm_dir" 0755
+		for disk in "${tart_vm_data_disks[@]}"; do
+			: "creating blank data disk during activation: $disk (${data_disk_size_gib}GiB, ASIF)"
+			tart:vm:data-disk:create-asif "$disk" "$data_disk_size_gib"
+		done
 	}
 
-	tart:image:targets:ensure-gcroot() {
-		tart:fs:dir:ensure "$(dirname "$asif_target")" 0755
+	tart:vm:data-disks:size:enforce() {
+		local disk=""
+		local manifest_image_name=""
+		local manifest_source=""
 
-		if [[ "$(id -u)" -eq 0 ]] && [[ -n "$profile_group" ]]; then
-			if [[ "$asif_target" == "/nix/var/nix/gcroots/per-user/${profile_user}/"* ]]; then
-				chown "${profile_user}:${profile_group}" "$(dirname "$asif_target")" 2>/dev/null || true
+		for disk in "${tart_vm_data_disks[@]}"; do
+			manifest_image_name=""
+			manifest_source=""
+			case "$(basename "$disk")" in
+				disk2.img)
+					manifest_image_name="tank2"
+					;;
+				disk3.img)
+					manifest_image_name="tank3"
+					;;
+				recover.img)
+					manifest_image_name="recover"
+					;;
+			esac
+
+			if [[ -n "$manifest_image_name" ]]; then
+				manifest_source="$(tart:raw-image:path:from-manifest "$manifest_image_name" 2>/dev/null || true)"
 			fi
-		fi
-	}
 
-	tart:vm:data-disks:ensure() {
-		local shared_bootstrap_raw=""
-		local shared_bootstrap_size_gib=1
-		cleanup_shared_bootstrap_raw() {
-			trap - RETURN
-			if [ -n "$shared_bootstrap_raw" ]; then
-				rm -f "$shared_bootstrap_raw" 2>/dev/null || true
-			fi
-		}
-
-		tart:fs:dir:ensure "$tart_data_disk_dir" 0755
-		trap cleanup_shared_bootstrap_raw RETURN
-		for disk in "${tart_data_disks[@]}"; do
-			if [ ! -f "$disk" ]; then
-				if [ -z "$shared_bootstrap_raw" ] && [[ "$vm_data_disk_size_gib" =~ ^[0-9]+$ ]] && ((vm_data_disk_size_gib >= shared_bootstrap_size_gib)); then
-					shared_bootstrap_raw="$(mktemp "${tart_data_disk_dir}/.bootstrap.raw.XXXXXX")"
-					rm -f "$shared_bootstrap_raw"
-					"$truncate_bin" -s "${shared_bootstrap_size_gib}g" "$shared_bootstrap_raw"
-					: "prepared shared bootstrap raw image for data disks: $shared_bootstrap_raw (${shared_bootstrap_size_gib}GiB)"
+			if [[ -n "$manifest_source" ]]; then
+				if [[ ! -f "$disk" ]] || ! tart:root-disk:zfs:contains "$disk"; then
+					tart:disk:image:materialize-from-source "$manifest_source" "$disk" "${manifest_image_name} data disk"
+				elif ! tart:image:size:matches-source "$manifest_source" "$disk"; then
+					: "[tartConfig][WARN] ZFS ${manifest_image_name} data disk size mismatch vs manifest source; rematerializing from source"
+					tart:disk:image:materialize-from-source "$manifest_source" "$disk" "${manifest_image_name} data disk"
+				else
+					: "[tartConfig][INFO] preserving existing ZFS ${manifest_image_name} data disk: $disk"
 				fi
+				continue
+			fi
 
-				: "creating missing data disk during activation: $disk (${vm_data_disk_size_gib}GiB, ASIF)"
-				tart:vm:data-disk:create-asif "$disk" "$vm_data_disk_size_gib" "$shared_bootstrap_raw"
+			if [[ ! -f "$disk" ]]; then
+				: "[tartConfig][WARN] missing data disk; creating canonical blank ASIF (${data_disk_size_gib}GiB): $disk"
+				tart:vm:data-disk:create-asif "$disk" "$data_disk_size_gib"
+				continue
+			fi
+
+			TART_LOG_PREFIX="[tartConfig]"
+			if ! tart:image:resize-if-smaller "$disk" "$data_disk_size_gib" "data disk"; then
+				: "[tartConfig][WARN] data disk resize failed; recreating canonical blank ASIF (${data_disk_size_gib}GiB): $disk"
+				tart:vm:data-disk:create-asif "$disk" "$data_disk_size_gib"
 			fi
 		done
-		cleanup_shared_bootstrap_raw
-		trap - RETURN
+	}
+
+	tart:vm:bootstrap-disk:ensure() {
+		local zfs_root_detected=0
+
+		if [[ -z "$first_boot_attach_disk_path" ]]; then
+			return 0
+		fi
+
+		if tart:root-disk:zfs:contains "$tart_vm_disk"; then
+			zfs_root_detected=1
+			if [[ -f "$tart_vm_bootstrap_disk" ]]; then
+				rm -f "$tart_vm_bootstrap_disk"
+				: "[tartConfig][INFO] root disk already contains ZFS; removed stale VM-local bootstrap disk: $tart_vm_bootstrap_disk"
+			fi
+
+			if ((bootstrap_disk_regenerate == 0)); then
+				: "[tartConfig][INFO] root disk already contains ZFS; skipping local bootstrap disk sync"
+				return 0
+			fi
+
+			: "[tartConfig][WARN] BOOTSTRAP_DISK_REGENERATE enabled; regenerating VM-local bootstrap disk despite detected ZFS root"
+		fi
+
+		if [[ ! -f "$first_boot_attach_disk_path" ]]; then
+			if ((zfs_root_detected == 1)); then
+				: "[tartConfig][WARN] configured bootstrap source image missing; cannot regenerate VM-local boot.img: $first_boot_attach_disk_path"
+			else
+				: "[tartConfig][WARN] configured bootstrap source image missing; skipping local nixos.img sync: $first_boot_attach_disk_path"
+			fi
+			return 0
+		fi
+
+		TART_LOG_PREFIX="[tartConfig]"
+		if ! tart:bootstrap:disk:sync-from-source \
+			"$first_boot_attach_disk_path" \
+			"$tart_vm_bootstrap_disk" \
+			"${first_boot_attach_disk_size_gib:-24}" \
+			"$profile_user" \
+			"$profile_group" \
+			"$effective_home"; then
+			exit 1
+		fi
 	}
 
 	tart:vm:factory-reset:apply() {
@@ -335,129 +786,89 @@ main() {
 			return 0
 		fi
 
-		: "[tartConfig][WARN] factory reset requested (NDH_TART_FACTORY_RESET=${ndh_tart_factory_reset_raw})"
-		: "[tartConfig][WARN] removing existing Tart root/data images before rematerialization"
+		: "[tartConfig][WARN] factory reset requested (FACTORY_RESET=${tart_factory_reset_raw})"
+		: "[tartConfig][WARN] removing existing Tart root/data images before recreation"
 
 		tart:vm:run stop "$vm_name" >/dev/null 2>&1 || true
-
-		rm -f "$tart_vm_disk" 2>/dev/null || true
-		rm -f "$asif_target" 2>/dev/null || true
-		rm -f "$raw_target" 2>/dev/null || true
-
-		for disk in "${tart_data_disks[@]}"; do
-			rm -f "$disk" 2>/dev/null || true
-		done
+		if tart:vm:exists "$vm_name"; then
+			: "[tartConfig][INFO] deleting existing VM definition to force root disk recreation via tart create"
+			tart:vm:run delete "$vm_name" >/dev/null 2>&1 || true
+		fi
+		rm -rf "$tart_vm_dir" 2>/dev/null || true
 
 		: "[tartConfig][INFO] factory reset cleanup completed for vm=$vm_name"
 	}
 
-	tart:image:raw:resolve() {
-		resolved_ref="${image_flake_path}/hosts/@effectiveHostName@#${image_flake_attr}"
-		selected_raw=""
-		selected_source=""
-		manifest_img=""
-		manifest_image_path=""
-		manifest_source_out=""
+	tart:vm:root-disk:ensure() {
+		local expected_root_bytes=0
+		local observed_root_bytes=""
+		local primary_source=""
 
-		if [ -n "$raw_manifest" ] && [ -f "$raw_manifest" ]; then
-			manifest_dir="$(dirname "$raw_manifest")"
-			# shellcheck disable=SC1090
-			source <(
-				yq -p=yaml -o=shell '
-          {
-            manifest_image_path: (.imagePath // ""),
-            manifest_source_out: (.sourceOutPath // "")
-          }
-        ' "$raw_manifest" 2>/dev/null || true
-			)
-
-			if [ -n "${manifest_image_path:-}" ]; then
-				if [[ "$manifest_image_path" = /* ]]; then
-					manifest_img="$manifest_image_path"
-				else
-					manifest_img="${manifest_dir}/${manifest_image_path}"
-				fi
-
-				if [ ! -f "$manifest_img" ] && [ -n "${manifest_source_out:-}" ] && [ -f "${manifest_source_out}/${manifest_image_path}" ]; then
-					manifest_img="${manifest_source_out}/${manifest_image_path}"
-				fi
-			fi
-		fi
-
-		if [ -n "$manifest_img" ] && [ -f "$manifest_img" ]; then
-			: "resolved raw image via manifest: $raw_manifest -> $manifest_img"
-			selected_raw="$manifest_img"
-			selected_source="manifest"
-		elif [ -n "$raw_store" ] && [ -f "$raw_store" ]; then
-			: "using store-pinned raw image: $raw_store"
-			selected_raw="$raw_store"
-			selected_source="store"
-		elif [ -n "$raw_source" ] && [ -f "$raw_source" ]; then
-			: "[tartConfig][WARN] flake image resolution failed; using configured source fallback: $raw_source"
-			selected_raw="$raw_source"
-			selected_source="source"
-		elif [ -x "$nix_bin" ]; then
-			resolved_out="$($nix_bin "${ndh_nix_cli_args[@]}" build "$resolved_ref" --no-link --json 2>/dev/null | yq -p=json -r '.[0].outputs.out // ""' 2>/dev/null || true)"
-			resolved_img="${resolved_out}/nixos.img"
-			if [ -n "$resolved_out" ] && [ -f "$resolved_img" ]; then
-				: "resolved raw image via $resolved_ref -> $resolved_img"
-				selected_raw="$resolved_img"
-				selected_source="flake"
-			fi
-		fi
-
-		if [ -z "$selected_raw" ] && { [ -L "$raw_target" ] || [ -f "$raw_target" ]; }; then
-			: "[tartConfig][INFO] using existing raw image fallback target at $raw_target"
-			selected_raw="$raw_target"
-			selected_source="existing-target"
-		elif [ -z "$selected_raw" ]; then
-			: "[tartConfig][ERROR] unable to resolve raw disk image (manifest=$raw_manifest, store=$raw_store, ref=$resolved_ref, source=$raw_source)"
-			exit 1
-		fi
-
-		if [ -n "$selected_raw" ] && [ -f "$selected_raw" ]; then
-			if [[ "$raw_target" == "/nix/var/nix/gcroots/per-user/"* ]] && { [ -L "$raw_target" ] || [ -f "$raw_target" ]; }; then
-				rm -f "$raw_target"
-				: "removed stale raw gcroot target: $raw_target"
-			fi
-			: "using raw conversion source ($selected_source): $selected_raw"
-		fi
-	}
-
-	tart:vm:root-disk:materialize-from-raw() {
 		tart:vm:ensure "$vm_name" "$vm_disk_size_gib" "$vm_disk_format"
 		tart:vm:run stop "$vm_name" >/dev/null 2>&1 || true
+
+		if [ ! -f "$tart_vm_disk" ]; then
+			: "[tartConfig][WARN] tart VM root disk missing after ensure; recreating VM to restore canonical empty root disk layout"
+			tart:vm:recreate "$vm_name" "$vm_disk_size_gib" "$vm_disk_format"
+			tart:vm:disks:ensure:blank
+			tart:vm:run stop "$vm_name" >/dev/null 2>&1 || true
+		fi
 
 		if [ ! -d "$tart_vm_dir" ]; then
 			: "[tartConfig][ERROR] tart VM directory missing after ensure/create: $tart_vm_dir"
 			exit 1
 		fi
 
-		working_asif="$tart_vm_disk"
-		rm -f "$working_asif"
-
-		: "converting raw -> ASIF with diskutil image create (single-file mode, bin=$diskutil_bin, output=$working_asif)"
-		tart:diskutil:run image create from --format ASIF "$selected_raw" "$working_asif"
-
-		asif_output=""
-		for candidate in "$working_asif" "${working_asif}.asif" "${working_asif}.dmg"; do
-			if [ -f "$candidate" ]; then
-				asif_output="$candidate"
-				break
+		primary_source="$(
+			tart:raw-image:path:from-manifest primary 2>/dev/null \
+				|| tart:raw-image:path:from-manifest tank1 2>/dev/null \
+				|| { [[ -n "${raw_image_store_path:-}" && -f "${raw_image_store_path:-}" ]] && printf '%s\n' "$raw_image_store_path"; } \
+				|| { [[ -n "${raw_image_source_path:-}" && -f "${raw_image_source_path:-}" ]] && printf '%s\n' "$raw_image_source_path"; } \
+				|| { [[ -n "${raw_image_target_path:-}" && -f "${raw_image_target_path:-}" ]] && printf '%s\n' "$raw_image_target_path"; } \
+				|| true
+		)"
+		if [[ -n "$primary_source" ]]; then
+			if ! tart:root-disk:zfs:contains "$tart_vm_disk"; then
+				tart:disk:image:materialize-from-source "$primary_source" "$tart_vm_disk" "root disk (primary image)"
+			elif ! tart:image:size:matches-source "$primary_source" "$tart_vm_disk"; then
+				: "[tartConfig][WARN] ZFS root disk size mismatch vs manifest source; rematerializing from source"
+				tart:disk:image:materialize-from-source "$primary_source" "$tart_vm_disk" "root disk (primary image)"
+			else
+				: "[tartConfig][INFO] preserving existing ZFS root disk content: $tart_vm_disk"
 			fi
-		done
-
-		if [ -z "$asif_output" ]; then
-			: "[tartConfig][ERROR] diskutil did not produce an ASIF output file for target: $working_asif"
-			ls -la "$(dirname "$working_asif")" 2>/dev/null || true
-			exit 1
+			asif_output="$tart_vm_disk"
+			chmod 0644 "$asif_output" 2>/dev/null || true
+			if [[ "$(id -u)" -eq 0 ]] && [[ -n "$profile_group" ]] && [[ "$asif_output" == "${effective_home}/"* ]]; then
+				chown "${profile_user}:${profile_group}" "$asif_output" 2>/dev/null || true
+			fi
+			if [ ! -e "$asif_output" ]; then
+				: "[tartConfig][ERROR] root disk missing after manifest materialization: $asif_output"
+				exit 1
+			fi
+			return 0
 		fi
 
-		if [ "$asif_output" != "$working_asif" ]; then
-			mv -f "$asif_output" "$working_asif"
+		expected_root_bytes=$((vm_disk_size_gib * 1000 * 1000 * 1000))
+		observed_root_bytes="$(tart:image:virtual-size-bytes "$tart_vm_disk" 2>/dev/null || true)"
+		if [[ ! "$observed_root_bytes" =~ ^[0-9]+$ ]]; then
+			: "[tartConfig][WARN] unable to read root disk virtual size; recreating VM with canonical size (${vm_disk_size_gib}GiB)"
+			tart:vm:recreate "$vm_name" "$vm_disk_size_gib" "$vm_disk_format"
+			tart:vm:disks:ensure:blank
+			tart:vm:run stop "$vm_name" >/dev/null 2>&1 || true
+		elif ((observed_root_bytes < expected_root_bytes)); then
+			TART_LOG_PREFIX="[tartConfig]"
+			if ! tart:image:resize-if-smaller "$tart_vm_disk" "$vm_disk_size_gib" "root disk"; then
+				: "[tartConfig][WARN] root disk resize failed; recreating VM with canonical size (${vm_disk_size_gib}GiB)"
+				tart:vm:recreate "$vm_name" "$vm_disk_size_gib" "$vm_disk_format"
+				tart:vm:disks:ensure:blank
+				tart:vm:run stop "$vm_name" >/dev/null 2>&1 || true
+			fi
+		elif ((observed_root_bytes > expected_root_bytes)); then
+			: "[tartConfig][INFO] root disk already larger than configured target; keeping existing size (observedBytes=$observed_root_bytes targetBytes=$expected_root_bytes)"
 		fi
 
-		asif_output="$working_asif"
+		asif_output="$tart_vm_disk"
+		: "preserving existing root disk content at: $asif_output"
 
 		chmod 0644 "$asif_output" 2>/dev/null || true
 		if [[ "$(id -u)" -eq 0 ]] && [[ -n "$profile_group" ]] && [[ "$asif_output" == "${effective_home}/"* ]]; then
@@ -465,49 +876,39 @@ main() {
 		fi
 
 		if [ ! -e "$asif_output" ]; then
-			: "[tartConfig][ERROR] ASIF output missing after diskutil conversion: $asif_output"
+			: "[tartConfig][ERROR] root disk missing after VM ensure/recreate: $asif_output"
 			exit 1
 		fi
 	}
 
-	tart:vm:root-disk:resize() {
-		if [[ -n "$vm_disk_size_gib" ]]; then
-			local target_disk_bytes current_disk_bytes
-			target_disk_size="${vm_disk_size_gib}g"
-			target_disk_bytes="$((vm_disk_size_gib * 1024 * 1024 * 1024))"
+	tart:vm:zfs:pool-size:validate() {
+		local tank_disks=("$tart_vm_disk" "$tart_vm_disk2" "$tart_vm_disk3")
+		local disk=""
+		local expected_bytes=""
+		local current_bytes=""
 
-			current_disk_bytes="$(
-				"$diskutil_bin" image info --plist "$asif_output" 2>/dev/null |
-					yq -p=xml -r --from-file=<(
-cat <<'EOF'
-.plist.dict.dict[]
-| ((.key | [.] | flatten | to_entries | map(select(.value == "Total Bytes").key))[0]) as $idx
-| select($idx != null)
-| ((.integer // .string // "" | [.] | flatten)[$idx] // "")
-EOF
-					)
-				)" 2>/dev/null || true					
-
-			if [[ -n "$current_disk_bytes" ]] && [[ "$current_disk_bytes" =~ ^[0-9]+$ ]] && ((current_disk_bytes >= target_disk_bytes)); then
-				: "root ASIF already at or above target size (${current_disk_bytes}B >= ${target_disk_bytes}B); skipping resize"
+		for disk in "${tank_disks[@]}"; do
+			if ! tart:root-disk:zfs:contains "$disk"; then
 				return 0
 			fi
+		done
 
-			: "resizing ASIF root image to ${target_disk_size}: ${asif_output}"
-			if ! tart:diskutil:run image resize --size "$target_disk_size" "$asif_output"; then
-				: "[tartConfig][ERROR] failed to resize ASIF image with diskutil to ${target_disk_size}: ${asif_output}"
+		for disk in "${tank_disks[@]}"; do
+			current_bytes="$(tart:image:virtual-size-bytes "$disk" 2>/dev/null || true)"
+			if [[ ! "$current_bytes" =~ ^[0-9]+$ ]]; then
+				: "[tartConfig][ERROR] unable to resolve ZFS tank disk size for consistency check: $disk"
 				exit 1
 			fi
-		fi
-	}
 
-	tart:vm:root-disk:publish-asif() {
-		tart:fs:path:relink "$asif_output" "$asif_target" "updated ASIF image target"
+			if [[ -z "$expected_bytes" ]]; then
+				expected_bytes="$current_bytes"
+			elif [[ "$current_bytes" != "$expected_bytes" ]]; then
+				: "[tartConfig][ERROR] ZFS tank disk sizes diverge (expected=${expected_bytes} got=${current_bytes} disk=${disk}); rematerialize from bringup manifest"
+				exit 1
+			fi
+		done
 
-		if [ ! -f "$tart_vm_disk" ]; then
-			: "[tartConfig][ERROR] tart VM disk missing: $tart_vm_disk"
-			exit 1
-		fi
+		: "[tartConfig][INFO] ZFS tank disk size consistency validated (tank1/tank2/tank3 bytes=${expected_bytes})"
 	}
 
 	tart:vm:config:patch() {
@@ -534,22 +935,122 @@ EOF
 		tart:fs:path:relink "$tart_run_script_store" "$tart_vm_run_wrapper" "tart run wrapper link"
 	}
 
-	tart:image:targets:normalize
+	tart:config:resolve() {
+		profile_user="${PROFILE_USER:-${profile_user_default:-}}"
+		configured_home="${PROFILE_HOME:-${profile_home_default:-${HOME:-}}}"
+		effective_host_name="${effective_host_name_default:-unknown}"
+
+		if [[ -z "$profile_user" ]]; then
+			: "[tartConfig][ERROR] profile_user is not set (PROFILE_USER or profile_user_default)"
+			exit 1
+		fi
+
+		if [[ -z "$configured_home" ]]; then
+			: "[tartConfig][ERROR] profile_home is not set (PROFILE_HOME or profile_home_default)"
+			exit 1
+		fi
+
+		if id -u "$profile_user" >/dev/null 2>&1; then
+			profile_group="$(id -gn "$profile_user" 2>/dev/null || true)"
+		fi
+
+		if [[ "$(id -u)" -eq 0 ]] && [[ -n "${SUDO_USER:-}" ]] && id -u "${SUDO_USER}" >/dev/null 2>&1; then
+			gcroot_user="${SUDO_USER}"
+		else
+			gcroot_user="$(id -un)"
+		fi
+
+		if [[ -n "$gcroot_user" ]] && id -u "$gcroot_user" >/dev/null 2>&1; then
+			gcroot_group="$(id -gn "$gcroot_user" 2>/dev/null || true)"
+		fi
+
+		if [[ -n "${tart_nix_cli_args_raw}" ]]; then
+			read -r -a tart_nix_cli_args <<<"${tart_nix_cli_args_raw}"
+		fi
+
+		if tart:bool:is-true "$tart_factory_reset_raw"; then
+			factory_reset=1
+		fi
+
+		if tart:bool:is-true "${BOOTSTRAP_DISK_REGENERATE:-0}"; then
+			bootstrap_disk_regenerate=1
+		fi
+
+		: "start $(date) host=${effective_host_name} user=${profile_user}"
+
+		tart:runtime:home:resolve
+
+		vm_name="${vm_name:-}"
+		vm_disk_format="${vm_disk_format:-asif}"
+		vm_disk_size_gib="${VM_DISK_SIZE_GIB:-${vm_disk_size_gib:-}}"
+		vm_cpu_count="${vm_cpu_count:-}"
+		vm_memory_mib="${vm_memory_mib:-}"
+		vm_display_width="${vm_display_width:-}"
+		vm_display_height="${vm_display_height:-}"
+		vm_mac_address="${vm_mac_address:-}"
+		# NOTE: this is only for additional VM-local data disks (disk2/disk3/recover),
+		# not for root/bringup image sizing.
+		data_disk_size_gib="${VM_DATA_DISK_SIZE_GIB:-${data_disk_size_gib:-}}"
+		first_boot_attach_disk_path="${first_boot_attach_disk_path_default:-}"
+		first_boot_attach_disk_manifest_path="${first_boot_attach_disk_manifest_path_default:-}"
+		first_boot_attach_disk_boot_loader_expected="${first_boot_attach_disk_boot_loader_expected:-}"
+		first_boot_attach_disk_size_gib="${first_boot_attach_disk_size_gib:-24}"
+		tart_binary_hint="${tart_bin:-}"
+		diskutil_bin="${diskutil_bin:-/usr/sbin/diskutil}"
+		raw_image_manifest_path="${raw_image_manifest_path_default:-}"
+		raw_image_store_path="${raw_image_store_path_default:-}"
+		raw_image_source_path="${raw_image_source_path_default:-}"
+		raw_image_target_path="${raw_image_target_path_default:-}"
+		asif_image_target_path="${asif_image_target_path_default:-}"
+		tart_run_script_store="${tart_run_script_store:-@tartRunScript@}"
+
+		tart:raw-image:manifest:auto-resolve
+
+		if [[ -z "$vm_name" || -z "$vm_disk_size_gib" || -z "$vm_cpu_count" || -z "$vm_memory_mib" || -z "$data_disk_size_gib" || -z "$tart_run_script_store" ]]; then
+			: "[tartConfig][ERROR] activation config missing required fields (vm_name/vm_disk_size_gib/vm_cpu_count/vm_memory_mib/data_disk_size_gib/tart_run_script_store)"
+			exit 1
+		fi
+
+		tart:runtime:path:setup
+		tart:runtime:tooling:validate
+		tart:bootstrap:manifest:bootloader:validate:config
+
+		tart_vm_dir="${effective_home}/.tart/vms/${vm_name}"
+		tart_vm_disk="${tart_vm_dir}/disk.img"
+		tart_vm_disk2="${tart_vm_dir}/disk2.img"
+		tart_vm_disk3="${tart_vm_dir}/disk3.img"
+		tart_vm_recover_disk="${tart_vm_dir}/recover.img"
+		tart_vm_bootstrap_disk="${tart_vm_dir}/boot.img"
+		tart_vm_config="${tart_vm_dir}/config.json"
+		tart_vm_run_wrapper="${effective_home}/.tart/vms/${vm_name}.sh"
+		tart_vm_data_disks=(
+			"${tart_vm_disk2}"
+			"${tart_vm_disk3}"
+			"${tart_vm_recover_disk}"
+		)
+	}
+
+	# ---- execution area (no function definitions below) ----
+	tart:state:init
+	tart:manifest:load
+	tart:config:resolve
+	tart:raw-images:gcroot:materialize
+
 	tart:vm:factory-reset:apply
-	tart:image:targets:ensure-gcroot
-	tart:vm:data-disks:ensure
-	tart:image:raw:resolve
-	tart:vm:root-disk:materialize-from-raw
-	tart:vm:root-disk:resize
-	tart:vm:root-disk:publish-asif
+	tart:vm:root-disk:ensure
+	tart:vm:data-disks:size:enforce
+	tart:vm:zfs:pool-size:validate
+	tart:vm:bootstrap-disk:ensure
 	tart:vm:config:patch
 	tart:vm:finalize
 
 	: "tart VM materialized vm=$vm_name diskFormat=$vm_disk_format mac=$vm_mac_address cpu=$vm_cpu_count memoryMiB=$vm_memory_mib"
 	: "tart run wrapper installed: $tart_vm_run_wrapper"
 
-	: "done rawSource=$selected_raw asif=$asif_target"
+	: "done rootDisk=$tart_vm_disk"
 	: "end $(date)"
 }
 
-ndh::logger:command:run "darwin.activationScripts.postActivation.tart-config.@vmName@" main "$@"
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+	ndh::logger:command:run "darwin.activationScripts.postActivation.tart-config" main "$@"
+fi

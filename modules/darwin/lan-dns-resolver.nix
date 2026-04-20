@@ -8,12 +8,14 @@
 
 let
   cfg = config.networking.lanDnsResolver;
+  ndhContext = ndh.context;
+  nixBashTrampoline = "${ndhContext.nixBashTrampoline}";
   loggerScript = config.nixBashLogger.script;
   lanDnsActivationScript = ndh.store.installScript {
     name = "lan-dns-resolver-post-activation.sh";
     source = pkgs.replaceVars ./lan-dns-resolver.d/post-activation.sh {
+      nixBashTrampoline = nixBashTrampoline;
       inherit (cfg) nameserver;
-      logger = loggerScript;
     };
     preferLocalBuild = true;
     allowSubstitutes = false;

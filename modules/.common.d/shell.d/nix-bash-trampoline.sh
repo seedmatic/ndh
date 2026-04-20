@@ -5,6 +5,32 @@
 #  1) Load baseline Nix profile environment when available.
 #  2) Re-exec under a Nix-managed bash when current bash is non-Nix.
 
+ndh::logger:bootstrap:load() {
+	local trampoline_dir=""
+	local logger_script=""
+	local source_path=""
+
+	source_path="${BASH_SOURCE[0]}"
+	if [[ "$source_path" == */* ]]; then
+		trampoline_dir="$(cd "${source_path%/*}" && pwd -P)"
+	else
+		trampoline_dir="$(pwd -P)"
+	fi
+	logger_script="${trampoline_dir}/logger.sh"
+
+	if [[ ! -r "$logger_script" ]]; then
+		echo "[ndh][ERROR] required nix bash logger missing/unreadable: $logger_script" >&2
+		return 1
+	fi
+
+	# shellcheck disable=SC1090
+	source "$logger_script"
+}
+
+if ! ndh::logger:bootstrap:load; then
+	return 1 2>/dev/null || exit 1
+fi
+
 [[ "${NDH_BASH_TRAMPOLINED:-0}" == "1" ]] && return 0
 
 ndh::env:user:home() {
@@ -99,13 +125,28 @@ ndh::bootstrap:runtime:install() {
 	local -a nix_cli_args=()
 	local profile_parent
 	local discovered_installer
+	local install_attr host_short
 
-	runtime_name="io.nxmatic.nix-darwin-home-bringup-runtime-profile-holder"
-	runtime_attr_name="ndh-bringup-runtime"
+	profile_dir="$(ndh::bootstrap:profile:dir || true)"
+	runtime_name="$(basename "${profile_dir:-/nix/var/nix/profiles/per-user/root/io-nxmatic-nix-darwin-home-bringup-runtime}")"
+	runtime_attr_name="$runtime_name"
+	install_attr="${NDH_BOOTSTRAP_INSTALL_ATTR:-}"
+	if [[ -z "$install_attr" ]]; then
+		host_short="$(hostname -s 2>/dev/null || true)"
+		if [[ -n "$host_short" ]]; then
+			install_attr="${host_short}-nixos-bringup-install"
+		fi
+	fi
 	runtime_spec="${NDH_BOOTSTRAP_RUNTIME_PACKAGE:-}"
 	installer="${NDH_BOOTSTRAP_INSTALLER:-}"
-	[[ -n "$runtime_spec" ]] || runtime_spec=".#ndh-bringup-install"
-	discovered_installer="$(command -v ndh-bringup-install 2>/dev/null || true)"
+	if [[ -z "$runtime_spec" ]]; then
+		if [[ -n "$install_attr" ]]; then
+			runtime_spec=".#${install_attr}"
+		else
+			runtime_spec=".#$(hostname -s 2>/dev/null || echo host)-nixos-bringup-install"
+		fi
+	fi
+	discovered_installer="$(command -v nerd-nixos-bringup-install 2>/dev/null || true)"
 	if [[ -z "$installer" && -n "$discovered_installer" ]]; then
 		installer="$discovered_installer"
 	fi
@@ -115,8 +156,6 @@ ndh::bootstrap:runtime:install() {
 	if [[ -n "$nix_cli_args_raw" ]]; then
 		read -r -a nix_cli_args <<< "$nix_cli_args_raw"
 	fi
-	profile_dir="$(ndh::bootstrap:profile:dir || true)"
-
 	if [[ -z "$profile_dir" ]]; then
 		return 1
 	fi
@@ -223,20 +262,36 @@ ndh::bootstrap:runtime:diagnose() {
 }
 
 ndh::bootstrap:runtime:ensure() {
-	local profile_dir install_hint installer_hint
+	local profile_dir install_hint installer_hint install_attr host_short
 	profile_dir="$(ndh::bootstrap:profile:dir || true)"
-	installer_hint="${NDH_BOOTSTRAP_INSTALLER:-$(command -v ndh-bringup-install 2>/dev/null || true)}"
+	install_attr="${NDH_BOOTSTRAP_INSTALL_ATTR:-}"
+	if [[ -z "$install_attr" ]]; then
+		host_short="$(hostname -s 2>/dev/null || true)"
+		if [[ -n "$host_short" ]]; then
+			install_attr="${host_short}-nixos-bringup-install"
+		fi
+	fi
+	installer_hint="${NDH_BOOTSTRAP_INSTALLER:-$(command -v nerd-nixos-bringup-install 2>/dev/null || true)}"
 	if [[ -n "$profile_dir" ]]; then
 		if [[ -n "$installer_hint" ]]; then
 			install_hint="${installer_hint} ${profile_dir}"
 		else
-			install_hint="nix run .#ndh-bringup-install -- ${profile_dir}"
+			if [[ -n "$install_attr" ]]; then
+				install_hint="nix run .#${install_attr} -- ${profile_dir}"
+			else
+				install_hint="nix run .#$(hostname -s 2>/dev/null || echo host)-nixos-bringup-install -- ${profile_dir}"
+			fi
 		fi
 	else
+		local profile_fallback="/nix/var/nix/profiles/per-user/root/io-nxmatic-nix-darwin-home-bringup-runtime"
 		if [[ -n "$installer_hint" ]]; then
-			install_hint="${installer_hint} /nix/var/nix/profiles/per-user/root/io-nxmatic-nix-darwin-home-bringup-runtime"
+			install_hint="${installer_hint} ${profile_fallback}"
 		else
-			install_hint="nix run .#ndh-bringup-install -- /nix/var/nix/profiles/per-user/root/io-nxmatic-nix-darwin-home-bringup-runtime"
+			if [[ -n "$install_attr" ]]; then
+				install_hint="nix run .#${install_attr} -- ${profile_fallback}"
+			else
+				install_hint="nix run .#$(hostname -s 2>/dev/null || echo host)-nixos-bringup-install -- ${profile_fallback}"
+			fi
 		fi
 	fi
 
@@ -311,7 +366,7 @@ ndh::nix:bash:trampoline() {
 	esac
 	NDH_BASH_TRAMPOLINED=1
 	export NDH_BASH_TRAMPOLINED
-	exec "$(command -v bash)" "$0" "${@}"
+	exec "$(command -v bash)" "$0" "$@"
 }
 
 ndh::nix:profile:script() {

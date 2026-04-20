@@ -3,9 +3,7 @@
 # Split generated SSH keys YAML into system and profile scopes.
 
 # shellcheck disable=SC1091
-source @bashTrampoline@
-# shellcheck disable=SC1091
-source @logger@
+source @nixBashTrampoline@
 
 main() {
 	local generatedKeysYamlPath="${1:?generated keys yaml path required}"

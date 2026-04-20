@@ -5,6 +5,15 @@
   ...
 }:
 let
+  specialArgs =
+    if config ? _module && config._module ? specialArgs then config._module.specialArgs else { };
+  nixBashTrampoline =
+    if
+      specialArgs ? ndh && specialArgs.ndh ? context && specialArgs.ndh.context ? nixBashTrampoline
+    then
+      "${specialArgs.ndh.context.nixBashTrampoline}"
+    else
+      "${../.common.d/shell.d/nix-bash-trampoline.sh}";
   profile = config._module.specialArgs.profile;
   userName = profile.user.name;
   coreShellPath = [
@@ -21,11 +30,14 @@ let
     "/etc/profiles/per-user/${userName}/bin"
   ];
   # Use platform-provided logger script from specialArgs (required)
-  logger = config._module.specialArgs.ndh.logger.script;
   loggerTagZdotdir = "home-manager.activationScripts.${userName}.zdotdir";
-  zshInitContent = pkgs.replaceVars ./shell.d/zsh-init.zsh {
-    linuxWrappersLine = lib.optionalString pkgs.stdenvNoCC.isLinux "/run/wrappers/bin";
-  };
+  zshInitContent =
+    builtins.replaceStrings
+      [ "@linuxWrappersLine@" ]
+      [
+        (lib.optionalString pkgs.stdenvNoCC.isLinux "/run/wrappers/bin")
+      ]
+      (builtins.readFile ./shell.d/zsh-init.zsh);
 in
 {
   programs.zsh = {
@@ -37,7 +49,7 @@ in
 
     envExtra = builtins.readFile ./shell.d/zshenv.zsh;
 
-    initContent = builtins.readFile zshInitContent;
+    initContent = zshInitContent;
   };
 
   programs.bash = {
@@ -51,9 +63,8 @@ in
   home.activation.zdotdir =
     let
       zdotdirScript = pkgs.replaceVars ./shell.d/zdotdir.sh {
-        bashTrampoline = "${../.common.d/shell.d/nix-bash-trampoline.sh}";
+        nixBashTrampoline = nixBashTrampoline;
         caBundle = "${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt";
-        logger = logger;
         loggerTag = loggerTagZdotdir;
       };
     in

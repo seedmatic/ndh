@@ -29,11 +29,17 @@ Detailed session summaries documenting the evolution of the network infrastructu
 
 === Other Documentation
 
-link:github-mcp-proxy.md[GitHub MCP Proxy] (Markdown)::
+link:github-mcp-proxy.adoc[GitHub MCP Proxy]::
 Documentation for GitHub MCP proxy configuration.
 
-link:podman-remote-setup.md[Podman Remote Setup] (Markdown)::
+link:podman-remote-setup.adoc[Podman Remote Setup]::
 Guide for setting up Podman remote client.
+
+link:operator-commands.adoc[Operator Commands]::
+Canonical operator command surface and usage patterns.
+
+link:lima-yaml-management.adoc[Lima YAML Management]::
+Flexible Lima network YAML management with surgical updates and backup rotation.
 
 link:collaboration-guide.adoc[Collaboration & Session Operations Guide]::
 Workflow for running, capturing, and closing collaborative sessions (includes pre-expiration reminder protocol and quality gates).
@@ -356,8 +362,10 @@ The following files have been removed as their content was consolidated into Asc
 
 The following Markdown files are kept for specific topics outside the main network infrastructure:
 
-* `github-mcp-proxy.md` - GitHub MCP proxy configuration
-* `podman-remote-setup.md` - Podman remote client setup
+* `github-mcp-proxy.adoc` - GitHub MCP proxy configuration
+* `podman-remote-setup.adoc` - Podman remote client setup
+* `operator-commands.adoc` - Canonical operator command model
+* `lima-yaml-management.adoc` - Lima network YAML management workflow
 
 NOTE: Consider converting these to AsciiDoc format in the future for consistency.
 

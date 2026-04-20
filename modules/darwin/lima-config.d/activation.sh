@@ -1,14 +1,21 @@
 #!/usr/bin/env -S bash -euo pipefail
-source @logger@
+# shellcheck source=/dev/null
+source @nixBashTrampoline@
 
 main() {
   local ndh_nix_cli_args_raw="${NDH_NIX_CLI_ARGS:--L -v -v}"
   local -a ndh_nix_cli_args=()
-  local profile_user="@profileUser@"
-  local profile_group=""
+  local gcroot_user=""
+  local gcroot_group=""
 
-  if id -u "$profile_user" >/dev/null 2>&1; then
-    profile_group="$(id -gn "$profile_user" 2>/dev/null || true)"
+  if [[ "$(id -u)" -eq 0 ]] && [[ -n "${SUDO_USER:-}" ]] && id -u "${SUDO_USER}" >/dev/null 2>&1; then
+    gcroot_user="${SUDO_USER}"
+  else
+    gcroot_user="$(id -un)"
+  fi
+
+  if [[ -n "$gcroot_user" ]] && id -u "$gcroot_user" >/dev/null 2>&1; then
+    gcroot_group="$(id -gn "$gcroot_user" 2>/dev/null || true)"
   fi
 
   if [[ -n "${ndh_nix_cli_args_raw}" ]]; then
@@ -29,8 +36,8 @@ main() {
     ln -s "$src" "$dst"
 
     if [ -L "$dst" ]; then
-      if [[ "$dst" == "/nix/var/nix/gcroots/per-user/${profile_user}/"* ]] && [[ "$(id -u)" -eq 0 ]] && [[ -n "$profile_group" ]]; then
-        chown -h "${profile_user}:${profile_group}" "$dst" 2>/dev/null || true
+      if [[ "$dst" == "/nix/var/nix/gcroots/per-user/${gcroot_user}/"* ]] && [[ "$(id -u)" -eq 0 ]] && [[ -n "$gcroot_group" ]]; then
+        chown -h "${gcroot_user}:${gcroot_group}" "$dst" 2>/dev/null || true
       fi
       echo "[limaConfig] ${label}: $dst -> $(readlink "$dst" || echo '<not-a-symlink>')"
       return 0
@@ -38,6 +45,72 @@ main() {
 
     echo "[limaConfig][ERROR] ${label} destination is not a symlink after update: $dst"
     return 1
+  }
+
+  resolve_manifest_image_candidate() {
+    local manifest_dir="$1"
+    local manifest_source_out="$2"
+    local image_rel="$3"
+
+    local candidate=""
+    if [[ -n "$manifest_dir" && -f "$manifest_dir/$image_rel" ]]; then
+      candidate="$manifest_dir/$image_rel"
+    elif [[ -n "$manifest_source_out" && -f "$manifest_source_out/$image_rel" ]]; then
+      candidate="$manifest_source_out/$image_rel"
+    fi
+
+    printf '%s\n' "$candidate"
+  }
+
+  lima_disk_import_if_available() {
+    local disk_name="$1"
+    local disk_image_path="$2"
+    local runtime_lima_home="${effective_home}/.lima"
+    local import_error=""
+
+    limactl_as_runtime_user() {
+      if [[ "$(id -u)" -eq 0 ]]; then
+        if [[ -z "${gcroot_user}" ]]; then
+          echo "[limaConfig][WARN] cannot run limactl as root without a runtime user"
+          return 1
+        fi
+        sudo -u "${gcroot_user}" env HOME="${effective_home}" LIMA_HOME="${runtime_lima_home}" limactl "$@"
+        return $?
+      fi
+
+      HOME="${effective_home}" LIMA_HOME="${runtime_lima_home}" limactl "$@"
+    }
+
+    if [[ -z "$disk_image_path" || ! -f "$disk_image_path" ]]; then
+      echo "[limaConfig][INFO] skip disk import for $disk_name (image missing)"
+      return 0
+    fi
+
+    if ! command -v limactl >/dev/null 2>&1; then
+      echo "[limaConfig][WARN] limactl not found; cannot import disk $disk_name from $disk_image_path"
+      return 0
+    fi
+
+    local in_use
+    in_use=$(limactl_as_runtime_user disk list --json 2>/dev/null \
+      | jq -r --arg name "$disk_name" 'select(.name == $name) | .instance // empty')
+    if [[ -n "$in_use" ]]; then
+      echo "[limaConfig][INFO] skip disk import for $disk_name (in use by VM: $in_use)"
+      return 0
+    fi
+
+    limactl_as_runtime_user disk delete "$disk_name" >/dev/null 2>&1 || true
+    if import_error="$(limactl_as_runtime_user disk import "$disk_name" "$disk_image_path" 2>&1 >/dev/null)"; then
+      echo "[limaConfig] imported disk $disk_name from $disk_image_path"
+      return 0
+    fi
+
+    if [[ -n "${import_error}" ]]; then
+      echo "[limaConfig][WARN] failed to import disk $disk_name from $disk_image_path: ${import_error}"
+    else
+      echo "[limaConfig][WARN] failed to import disk $disk_name from $disk_image_path"
+    fi
+    return 0
   }
 
   materialize_lima_yaml_with_image_path() {
@@ -125,13 +198,13 @@ main() {
   host_priv="@hostPrivateKeyPath@"
 
   if [[ "$host_pub" == "${configured_home}/"* ]] && [[ "$effective_home" != "$configured_home" ]]; then
-    runtime_host_pub="${effective_home}${host_pub#${configured_home}}"
+    runtime_host_pub="${effective_home}${host_pub#"${configured_home}"}"
     echo "[limaConfig][WARN] rewriting host public key path for runtime home ${runtime_user}: $host_pub -> $runtime_host_pub"
     host_pub="$runtime_host_pub"
   fi
 
   if [[ "$host_priv" == "${configured_home}/"* ]] && [[ "$effective_home" != "$configured_home" ]]; then
-    runtime_host_priv="${effective_home}${host_priv#${configured_home}}"
+    runtime_host_priv="${effective_home}${host_priv#"${configured_home}"}"
     echo "[limaConfig][WARN] rewriting host private key path for runtime home ${runtime_user}: $host_priv -> $runtime_host_priv"
     host_priv="$runtime_host_priv"
   fi
@@ -153,28 +226,32 @@ main() {
   image_flake_path="@nixosFlakePath@"
 
   if [[ "$img_dst" == "${configured_home}/"* ]] && [[ "$effective_home" != "$configured_home" ]]; then
-    runtime_img_dst="${effective_home}${img_dst#${configured_home}}"
+    runtime_img_dst="${effective_home}${img_dst#"${configured_home}"}"
     echo "[limaConfig][WARN] rewriting image target for runtime home ${runtime_user}: $img_dst -> $runtime_img_dst"
     img_dst="$runtime_img_dst"
   fi
 
-  # Keep gcroot target pinned to configured profile user even when activation
-  # runs as root via darwin-rebuild.
+  # Canonical runtime policy: per-user gcroot follows the effective invoking user
+  # (SUDO_USER when running as root via sudo, otherwise current user).
   if [[ "$img_dst" =~ ^/nix/var/nix/gcroots/per-user/([^/]+)/(.+)$ ]]; then
     img_dst_user="${BASH_REMATCH[1]}"
-    if [[ -n "$runtime_user" && "$img_dst_user" != "$runtime_user" ]]; then
-      echo "[limaConfig][INFO] keeping configured image target user ${img_dst_user} (runtime user is ${runtime_user})"
+    img_dst_tail="${BASH_REMATCH[2]}"
+    if [[ -n "$gcroot_user" && "$img_dst_user" != "$gcroot_user" ]]; then
+      runtime_img_dst="/nix/var/nix/gcroots/per-user/${gcroot_user}/${img_dst_tail}"
+      echo "[limaConfig][INFO] rewriting image target gcroot user: $img_dst -> $runtime_img_dst"
+      img_dst="$runtime_img_dst"
     fi
   fi
 
   mkdir -p "$(dirname "$img_dst")"
-  if [[ "$(id -u)" -eq 0 ]] && [[ -n "$profile_group" ]] && [[ "$img_dst" == "/nix/var/nix/gcroots/per-user/${profile_user}/"* ]]; then
-    chown "${profile_user}:${profile_group}" "$(dirname "$img_dst")" 2>/dev/null || true
+  if [[ "$(id -u)" -eq 0 ]] && [[ -n "$gcroot_group" ]] && [[ "$img_dst" == "/nix/var/nix/gcroots/per-user/${gcroot_user}/"* ]]; then
+    chown "${gcroot_user}:${gcroot_group}" "$(dirname "$img_dst")" 2>/dev/null || true
   fi
   resolved_ref="${image_flake_path}/hosts/@effectiveHostName@#${image_flake_attr}"
   resolved_out=""
   resolved_img=""
   manifest_img=""
+  manifest_source_out=""
   selected_img=""
   selected_source=""
 
@@ -212,7 +289,24 @@ main() {
     # Expensive fallback only when no local descriptor/store/source image is usable.
     if command -v nix >/dev/null 2>&1; then
       resolved_out="$(nix "${ndh_nix_cli_args[@]}" build "$resolved_ref" --no-link --print-out-paths 2>/dev/null | tail -n 1 || true)"
-      resolved_img="${resolved_out}/nixos.img"
+      if [ -n "$resolved_out" ] && [ -f "${resolved_out}/manifest.yaml" ]; then
+        resolved_image_rel="$(awk -F': *' '$1 == "imagePath" { print $2; exit }' "${resolved_out}/manifest.yaml" | sed -e 's/^"//' -e 's/"$//')"
+        if [ -n "$resolved_image_rel" ] && [ -f "${resolved_out}/${resolved_image_rel}" ]; then
+          resolved_img="${resolved_out}/${resolved_image_rel}"
+        fi
+      fi
+
+      if [ -z "$resolved_img" ] && [ -f "${resolved_out}/boot.img" ]; then
+        resolved_img="${resolved_out}/boot.img"
+      fi
+
+      if [ -z "$resolved_img" ] && [ -f "${resolved_out}/nixos.img" ]; then
+        resolved_img="${resolved_out}/nixos.img"
+      fi
+
+      if [ -z "$resolved_img" ] && [ -f "${resolved_out}/tank1.img" ]; then
+        resolved_img="${resolved_out}/tank1.img"
+      fi
     fi
 
     if [ -n "$resolved_out" ] && [ -f "$resolved_img" ]; then
@@ -222,7 +316,7 @@ main() {
     fi
   fi
 
-  if [ -z "$selected_img" ] && ([ -L "$img_dst" ] || [ -f "$img_dst" ]); then
+  if [ -z "$selected_img" ] && { [ -L "$img_dst" ] || [ -f "$img_dst" ]; }; then
     echo "[limaConfig][INFO] keeping existing image target at $img_dst"
   elif [ -z "$selected_img" ]; then
     echo "[limaConfig][ERROR] unable to resolve disk image (manifest=$img_manifest, store=$img_store, ref=$resolved_ref, source=$img_src)"
@@ -243,41 +337,43 @@ main() {
     relink_path "$selected_img" "$img_dst" "updated image target ($selected_source)"
   fi
 
-  : "Install managed Lima config variants (headless + gui)"
+  # When using bringup ZFS artifact sets, import canonical external pool disks.
+  # Root disk is provided by the primary image (tank1) through lima.yaml.images.
+  if [ -n "$img_manifest" ] && [ -f "$img_manifest" ]; then
+    manifest_dir="$(dirname "$img_manifest")"
+    tank2_img="$(resolve_manifest_image_candidate "$manifest_dir" "$manifest_source_out" "tank2.img")"
+    tank3_img="$(resolve_manifest_image_candidate "$manifest_dir" "$manifest_source_out" "tank3.img")"
+
+    lima_disk_import_if_available "nerd-nixos-tank2" "$tank2_img"
+    lima_disk_import_if_available "nerd-nixos-tank3" "$tank3_img"
+  fi
+
+  : "Install managed Lima config"
   lima_dir="${effective_home}/.lima/nerd-nixos"
   lima_runtime_dir="${lima_dir}/.generated"
-  lima_headless_runtime="${lima_runtime_dir}/lima.headless.yaml"
-  lima_gui_runtime="${lima_runtime_dir}/lima.gui.yaml"
-  lima_headless_link="${lima_dir}/lima.headless.yaml"
-  lima_gui_link="${lima_dir}/lima.gui.yaml"
+  lima_runtime="${lima_runtime_dir}/lima.yaml"
   lima_active="${lima_dir}/lima.yaml"
 
   mkdir -p "$lima_runtime_dir"
-  materialize_lima_yaml_with_image_path "@limaConfigYamlHeadless@" "$lima_headless_runtime" "$img_dst" "$configured_home" "$effective_home" "headless runtime config"
-  materialize_lima_yaml_with_image_path "@limaConfigYamlGui@" "$lima_gui_runtime" "$img_dst" "$configured_home" "$effective_home" "gui runtime config"
+  materialize_lima_yaml_with_image_path "@limaConfigYaml@" "$lima_runtime" "$img_dst" "$configured_home" "$effective_home" "runtime config"
 
-  relink_path "$lima_headless_runtime" "$lima_headless_link" "headless config link"
-  relink_path "$lima_gui_runtime" "$lima_gui_link" "gui config link"
-
-  : "Keep active lima.yaml on headless profile by default"
-  relink_path "$lima_headless_link" "$lima_active" "active lima config link"
+  relink_path "$lima_runtime" "$lima_active" "active lima config link"
 
   # Defensive repair path for filesystems/environments where symlink checks can
   # behave unexpectedly during activation (keep non-fatal).
   if [ ! -e "$lima_active" ] && [ ! -L "$lima_active" ]; then
-    ln -sfn "$lima_headless_runtime" "$lima_active" 2>/dev/null || true
+    ln -sfn "$lima_runtime" "$lima_active" 2>/dev/null || true
   fi
 
   if [ ! -e "$lima_active" ] && [ ! -L "$lima_active" ]; then
-    cp -f "$lima_headless_runtime" "$lima_active" 2>/dev/null || true
+    cp -f "$lima_runtime" "$lima_active" 2>/dev/null || true
   fi
 
   : "Verify output file"
   if [ -e "$lima_active" ] || [ -L "$lima_active" ]; then
     echo "[limaConfig] active lima config: $lima_active -> $(readlink "$lima_active" || echo '<regular-file>')"
-    echo "[limaConfig] headless size=$(wc -c < "@limaConfigYamlHeadless@")"
-    echo "[limaConfig] gui size=$(wc -c < "@limaConfigYamlGui@")"
-    grep -E 'gateway|clusterId|display' "@limaConfigYamlHeadless@" || true
+    echo "[limaConfig] config size=$(wc -c < "@limaConfigYaml@")"
+    grep -E 'gateway|clusterId|display' "@limaConfigYaml@" || true
     user_marker_dir="${effective_home}/.local/var/db"
     user_marker_path="${user_marker_dir}/lima-config-generated"
     mkdir -p "$user_marker_dir"

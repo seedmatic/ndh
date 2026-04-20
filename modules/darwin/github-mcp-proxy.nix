@@ -8,6 +8,8 @@
 with lib;
 let
   cfg = config.programs.githubMcpProxy;
+  ndhContext = ndh.context;
+  nixBashTrampoline = "${ndhContext.nixBashTrampoline}";
   loggerScript = config.nixBashLogger.script;
   # Store the python source separately and wrap with a shell launcher so we don't duplicate shebangs.
   pythonSource = ndh.store.writeText "github-mcp-proxy.py" (builtins.readFile ./github-mcp-proxy.py);
@@ -17,7 +19,7 @@ let
   githubMcpProxyActivationScript = ndh.store.runCommand "github-mcp-proxy-activation.sh" { } ''
     cp ${
       pkgs.replaceVars ./github-mcp-proxy.d/activation.sh {
-        logger = loggerScript;
+        nixBashTrampoline = nixBashTrampoline;
       }
     } "$out"
     chmod +x "$out"

@@ -11,16 +11,18 @@
 
 let
   dollar = "$";
+  ndhContext = ndh.context;
+  nixBashTrampoline = "${ndhContext.nixBashTrampoline}";
   profileUser = config.profile.user.name; # Use profile-configured username
 
   generateContainersConf = pkgs.replaceVars ./podman-remote-client.d/generate-containers-conf.sh {
     inherit dollar profileUser;
-    bashTrampoline = "${../.common.d/shell.d/nix-bash-trampoline.sh}";
+    nixBashTrampoline = nixBashTrampoline;
   };
 
   podmanRemoteSetupScript = pkgs.replaceVars ./podman-remote-client.d/podman-remote-setup.sh {
     inherit dollar profileUser generateContainersConf;
-    bashTrampoline = "${../.common.d/shell.d/nix-bash-trampoline.sh}";
+    nixBashTrampoline = nixBashTrampoline;
   };
 
   podman-remote-setup = ndh.store.runCommand "podman-remote-setup" { } ''

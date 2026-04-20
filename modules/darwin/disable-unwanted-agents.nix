@@ -10,6 +10,8 @@ with lib;
 
 let
   cfg = config.services.disable-unwanted-agents;
+  ndhContext = ndh.context;
+  nixBashTrampoline = "${ndhContext.nixBashTrampoline}";
   loggerScript = config.nixBashLogger.script;
 
   disableUnwantedAgentsScript =
@@ -27,8 +29,8 @@ let
       ''
         cp ${
           pkgs.replaceVars ./disable-unwanted-agents.d/post-activation.sh {
+            nixBashTrampoline = nixBashTrampoline;
             disableUnwantedAgentsScript = disableUnwantedAgentsScript;
-            logger = loggerScript;
           }
         } "$out"
         chmod +x "$out"

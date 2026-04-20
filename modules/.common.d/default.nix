@@ -4,33 +4,44 @@
   options,
   pkgs,
   self,
-  catalog,
-  hostProfile ? null,
+  ndh,
   ...
 }:
 let
-  userMapping = catalog.users;
+  ndhContext = ndh.context;
+  userMapping = ndhContext.catalog.users;
   isNixosPlatform = options ? systemd;
-  hostImageMode =
-    if hostProfile != null && hostProfile ? nixosImageMode && hostProfile.nixosImageMode != null then
-      hostProfile.nixosImageMode
-    else
-      "full";
+  effectiveHostProfile = ndhContext.hostProfile;
+  effectiveGenerationMode = ndhContext.generationMode;
+  effectiveCatalog = ndhContext.catalog;
+  effectiveInventory = ndhContext.inventory;
+  effectiveVmProviderFromContext = ndhContext.vmProvider;
   # Bootstrap image mode is a NixOS guest concern. Keep Home Manager enabled on
   # Darwin hosts even when they orchestrate bootstrap guest flows.
-  bringupModeInternal = isNixosPlatform && hostImageMode == "bootstrap";
+  bringupModeInternal = isNixosPlatform && effectiveGenerationMode == "bringup";
   requestedHomeManagerEnabled =
     if
-      hostProfile != null && hostProfile ? enableHomeManager && hostProfile.enableHomeManager != null
+      effectiveHostProfile != null
+      && effectiveHostProfile ? enableHomeManager
+      && effectiveHostProfile.enableHomeManager != null
     then
-      hostProfile.enableHomeManager
+      effectiveHostProfile.enableHomeManager
     else
       true;
   homeManagerEnabled = if bringupModeInternal then false else requestedHomeManagerEnabled;
+  hasHomeManagerOption = builtins.hasAttr "home-manager" options;
   selectedVmProvider =
-    if hostProfile != null && hostProfile ? vmProvider && hostProfile.vmProvider != null then
-      hostProfile.vmProvider
-    else if (lib.attrByPath [ "profile" "host" "vmProvider" ] null config) != null then
+    if
+      effectiveHostProfile != null
+      && effectiveHostProfile ? vmProvider
+      && effectiveHostProfile.vmProvider != null
+    then
+      effectiveHostProfile.vmProvider
+    else if effectiveVmProviderFromContext != null then
+      effectiveVmProviderFromContext
+    else if
+      (!isNixosPlatform) && (lib.attrByPath [ "profile" "host" "vmProvider" ] null config) != null
+    then
       lib.attrByPath [ "profile" "host" "vmProvider" ] null config
     else
       "lima";
@@ -38,17 +49,33 @@ let
     "lima"
     "configGenerator"
     "materializerPackage"
-  ] null config;
+  ] null (if isNixosPlatform then { } else config);
   tartConfigMaterializerPackage = lib.attrByPath [
     "tart"
     "configGenerator"
     "materializerPackage"
-  ] null config;
+  ] null (if isNixosPlatform then { } else config);
   vmConfigMaterializerPackage =
     if selectedVmProvider == "tart" then
       tartConfigMaterializerPackage
     else
       limaConfigMaterializerPackage;
+  mkNdhHomeManagerSpecialArgs = import ./ndh-home-manager-special-args.nix;
+  sopsSshKeysYamlPath = lib.attrByPath [
+    "sops"
+    "secrets"
+    "ssh-keys.yaml"
+    "path"
+  ] "/run/secrets/nix-darwin-home/ssh-keys.yaml" config;
+  hmSpecialArgs = mkNdhHomeManagerSpecialArgs {
+    inherit
+      profile
+      ndhContext
+      ndhStore
+      vmConfigMaterializerPackage
+      ;
+    keysYamlPath = sopsSshKeysYamlPath;
+  };
 
   cfg = config.profile;
   profile = cfg;
@@ -62,8 +89,7 @@ let
     userName
     "home"
     "activationPackage"
-  ] null config;
-  hmUserExists = hmActivationPackage != null;
+  ] null (if isNixosPlatform then { } else config);
   storeNamePrefix = "io.nxmatic.nix-darwin-home";
   prefixStoreName =
     name: if lib.hasPrefix "${storeNamePrefix}-" name then name else "${storeNamePrefix}-${name}";
@@ -71,7 +97,7 @@ let
   loggerScript = pkgs.runCommand (prefixStoreName "logger.sh") { } ''
         cat > "$out" <<'EOF'
     #!/usr/bin/env bash
-    LOGGER_CMD="${config.nixBashLogger.cmd}"
+    LOGGER_CMD=""
     source ${loggerBase}
     EOF
   '';
@@ -80,16 +106,14 @@ let
   systemPackages =
     (import ./system-packages.nix {
       inherit pkgs lib;
-      # Pass only necessary parts of config, not the entire config
-      inherit (config) programs environment;
     })
     ++ [ ndhStoreAssetLookupPackage ];
 
   postActivationScriptSource = pkgs.replaceVars ./shell.d/post-activation.sh {
+    nixBashTrampoline = "${trampolineDir}/nix-bash-trampoline.sh";
     hmActivationPackage = toString hmActivationPackage;
     userName = userName;
     userHome = userHome;
-    logger = loggerScript;
     loggerTag = loggerTagHmPost;
   };
 
@@ -114,9 +138,13 @@ let
         install -m ${mode} ${source} "$out"
       '';
 
+  trampolineDir = pkgs.runCommand (prefixStoreName "trampoline-dir") { } ''
+    mkdir -p "$out"
+    install -m 0644 ${loggerBase} "$out/logger.sh"
+    install -m 0755 ${./shell.d/nix-bash-trampoline.sh} "$out/nix-bash-trampoline.sh"
+  '';
   ndhStoreAssetLookupSource = pkgs.replaceVars ./shell.d/store-asset-lookup.sh {
-    bashTrampoline = "${./shell.d/nix-bash-trampoline.sh}";
-    logger = loggerScript;
+    nixBashTrampoline = "${trampolineDir}/nix-bash-trampoline.sh";
     nix = toString pkgs.nix;
     gnugrep = toString pkgs.gnugrep;
     coreutils = toString pkgs.coreutils;
@@ -241,38 +269,16 @@ in
     hm = lib.mkIf homeManagerEnabled (
       import ../home-manager {
         inherit
-          config
           pkgs
           lib
           user
           self
           profile
           ;
+        config = { };
 
         # Provide specialArgs explicitly for direct imports
-        specialArgs = {
-          inherit profile;
-          ndh = {
-            store = ndhStore;
-            inherit catalog;
-            vm = {
-              provider = selectedVmProvider;
-              configMaterializerPackage = vmConfigMaterializerPackage;
-            };
-            logger = {
-              script = loggerScript;
-              cmd = config.nixBashLogger.cmd;
-            };
-            ssh = {
-              keysYamlPath = lib.attrByPath [
-                "sops"
-                "secrets"
-                "ssh-keys.yaml"
-                "path"
-              ] "/run/secrets/nix-darwin-home/ssh-keys.yaml" config;
-            };
-          };
-        };
+        specialArgs = hmSpecialArgs;
       }
     );
 
@@ -310,33 +316,10 @@ in
       guestName = "nixos";
     };
   }
-  // (lib.optionalAttrs homeManagerEnabled {
+  // (lib.optionalAttrs (homeManagerEnabled && hasHomeManagerOption) {
     # let nix manage home-manager profiles and use global nixpkgs
     home-manager = {
-      extraSpecialArgs = {
-        inherit self;
-        profile = config.profile;
-        ndh = {
-          store = ndhStore;
-          inherit catalog;
-          vm = {
-            provider = selectedVmProvider;
-            configMaterializerPackage = vmConfigMaterializerPackage;
-          };
-          logger = {
-            script = loggerScript;
-            cmd = config.nixBashLogger.cmd;
-          };
-          ssh = {
-            keysYamlPath = lib.attrByPath [
-              "sops"
-              "secrets"
-              "ssh-keys.yaml"
-              "path"
-            ] "/run/secrets/nix-darwin-home/ssh-keys.yaml" config;
-          };
-        };
-      };
+      extraSpecialArgs = hmSpecialArgs;
       useGlobalPkgs = true;
       useUserPackages = true;
       verbose = true;

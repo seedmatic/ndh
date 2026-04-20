@@ -10,6 +10,8 @@
 with lib;
 let
   cfg = config.networking.bond;
+  ndhContext = ndh.context;
+  nixBashTrampoline = "${ndhContext.nixBashTrampoline}";
   loggerScript = config.nixBashLogger.script;
 
   bondInterfaces = concatStringsSep " " cfg.interfaces;
@@ -90,6 +92,7 @@ let
   networkBondActivationScript = ndh.store.runCommand "network-bond-post-activation.sh" { } ''
     cp ${
       pkgs.replaceVars ./network-bond.d/post-activation.sh {
+        nixBashTrampoline = nixBashTrampoline;
         activationInterfaceChecks = activationInterfaceChecks;
         bondInterfaces = bondInterfaces;
         bondDetach = bondDetach;
@@ -97,7 +100,6 @@ let
         bondAttach = bondAttach;
         bondMode = cfg.mode;
         dhcpActivationBlock = dhcpActivationBlock;
-        logger = loggerScript;
       }
     } "$out"
     chmod +x "$out"

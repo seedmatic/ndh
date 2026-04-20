@@ -1,10 +1,9 @@
-#!@bash@
+#!/usr/bin/env bash
 set -euo pipefail
 
 # Installer bootstrap mode: profile may not exist yet.
-export NDH_BOOTSTRAP_STRICT=0
 # shellcheck disable=SC1091
-source "@logger@"
+source "@nixBashTrampoline@"
 
 main() {
   local autofs_materializer="@autofsMaterializerProgram@"

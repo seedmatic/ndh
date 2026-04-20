@@ -7,22 +7,37 @@
 }:
 let
   cfg = config.ndh.bringupRuntime;
-  installerCommand = "ndh-bringup-install";
-  installerAttr = "ndh-bringup-install";
+  installerCommand = "nerd-nixos-bringup-install";
+  installerAttrDefault = "nerd-nixos-bringup-install";
+  hostNameForAttr =
+    if
+      config ? profile
+      && config.profile ? host
+      && config.profile.host ? hostAlias
+      && config.profile.host.hostAlias != null
+      && config.profile.host.hostAlias != ""
+    then
+      config.profile.host.hostAlias
+    else if
+      config ? profile
+      && config.profile ? host
+      && config.profile.host ? hostName
+      && config.profile.host.hostName != null
+      && config.profile.host.hostName != ""
+    then
+      config.profile.host.hostName
+    else
+      null;
+  installerAttr =
+    if hostNameForAttr != null then
+      "${hostNameForAttr}-nixos-bringup-install"
+    else
+      installerAttrDefault;
   storeNamePrefix = "io.nxmatic.nix-darwin-home";
   prefixStoreName =
     name: if lib.hasPrefix "${storeNamePrefix}-" name then name else "${storeNamePrefix}-${name}";
   requiredCommandsString = lib.concatStringsSep " " cfg.requiredCommands;
   installHint = "nix run .#${installerAttr} -- ${cfg.profileDir}";
-  loggerScript =
-    if config ? nixBashLogger && config.nixBashLogger ? script then
-      config.nixBashLogger.script
-    else
-      pkgs.writeText (prefixStoreName "logger.sh") ''
-        #!${pkgs.bash}/bin/bash
-        LOGGER_CMD=""
-        source ${./shell.d/logger.sh}
-      '';
   loggerShim = pkgs.writeShellScriptBin "logger" ''
     if [[ -x /usr/bin/logger ]]; then
       exec /usr/bin/logger "$@"
@@ -51,32 +66,61 @@ let
       yq-go
     ];
   };
-  activationCheckSource = pkgs.replaceVars ./bringup-runtime.d/activation-check.sh {
-    profileBin = "${cfg.profileDir}/bin";
-    nixBin = "${config.nix.package.out}/bin/nix";
-    autoInstall = if cfg.autoInstallOnActivation then "1" else "0";
-    requiredCommands = requiredCommandsString;
-    installHint = installHint;
-    runtimePackage = bootstrapRuntimePackage;
-    bootstrapInstaller = "${ndhPrerequisitesInstallerPackage}/bin/${installerCommand}";
-    profileDir = cfg.profileDir;
-  };
-  activationCheckScript = pkgs.writeShellScript (prefixStoreName "bringup-runtime-activation-check") (
-    builtins.readFile activationCheckSource
-  );
-  standaloneInstallSource = pkgs.replaceVars ./bringup-runtime.d/install-standalone.sh {
-    bash = "${pkgs.bash}/bin/bash";
-    nix = "${config.nix.package.out}/bin/nix";
-    logger = loggerScript;
-    loggerTag = "ndh.bringup-runtime.install-standalone";
-    runtimePackage = bootstrapRuntimePackage;
-    defaultProfileDir = cfg.profileDir;
-    requiredCommands = requiredCommandsString;
-  };
+  activationCheckSource =
+    builtins.replaceStrings
+      [
+        "@profileBin@"
+        "@nixBin@"
+        "@autoInstall@"
+        "@requiredCommands@"
+        "@installHint@"
+        "@runtimePackage@"
+        "@bootstrapInstaller@"
+        "@profileDir@"
+      ]
+      [
+        "${cfg.profileDir}/bin"
+        "${config.nix.package.out}/bin/nix"
+        (if cfg.autoInstallOnActivation then "1" else "0")
+        requiredCommandsString
+        installHint
+        "${bootstrapRuntimePackage}"
+        "${ndhPrerequisitesInstallerPackage}/bin/${installerCommand}"
+        cfg.profileDir
+      ]
+      (builtins.readFile ./bringup-runtime.d/activation-check.sh);
+  activationCheckScript = pkgs.writeShellScript (prefixStoreName "bringup-runtime-activation-check") activationCheckSource;
+  # Package trampoline and logger.sh together so the trampoline can locate
+  # logger.sh via dirname "${BASH_SOURCE[0]}" at runtime.
+  trampolineDir = pkgs.runCommand (prefixStoreName "trampoline-dir") { } ''
+    mkdir -p "$out"
+    install -m 0644 ${./shell.d/logger.sh} "$out/logger.sh"
+    install -m 0755 ${./shell.d/nix-bash-trampoline.sh} "$out/nix-bash-trampoline.sh"
+  '';
+  standaloneInstallSource =
+    builtins.replaceStrings
+      [
+        "@nixBashTrampoline@"
+        "@nix@"
+        "@loggerTag@"
+        "@runtimePackage@"
+        "@defaultProfileDir@"
+        "@requiredCommands@"
+      ]
+      [
+        "${trampolineDir}/nix-bash-trampoline.sh"
+        "${config.nix.package.out}/bin/nix"
+        "ndh.bringup-runtime.install-standalone"
+        "${bootstrapRuntimePackage}"
+        cfg.profileDir
+        requiredCommandsString
+      ]
+      (builtins.readFile ./bringup-runtime.d/install-standalone.sh);
+  standaloneInstallScript = pkgs.writeShellScript (prefixStoreName "bringup-runtime-install-standalone") standaloneInstallSource;
   ndhPrerequisitesInstallerPackage =
     pkgs.runCommand (prefixStoreName "bringup-runtime-profile-installer") { }
       ''
-        install -Dm755 ${standaloneInstallSource} "$out/bin/${installerCommand}"
+        install -Dm755 ${standaloneInstallScript} "$out/bin/${installerCommand}"
       '';
 in
 {
@@ -141,6 +185,7 @@ in
         NDH_BOOTSTRAP_PROFILE_OWNER = "root";
         NDH_BOOTSTRAP_PROFILE_DIR = cfg.profileDir;
         NDH_BOOTSTRAP_PROFILE_BIN = "${cfg.profileDir}/bin";
+        NDH_BOOTSTRAP_INSTALL_ATTR = installerAttr;
         NDH_BOOTSTRAP_RUNTIME_PACKAGE = "${bootstrapRuntimePackage}";
         NDH_BOOTSTRAP_INSTALLER = "${ndhPrerequisitesInstallerPackage}/bin/${installerCommand}";
         NDH_BOOTSTRAP_REQUIRED_COMMANDS = requiredCommandsString;

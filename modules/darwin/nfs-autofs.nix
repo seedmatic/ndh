@@ -7,7 +7,9 @@
   ...
 }:
 let
-  networkCatalog = catalog.networks or { };
+  ndhContext = ndh.context;
+  nixBashTrampoline = "${ndhContext.nixBashTrampoline}";
+  netplan = catalog.netplan or { };
   shared = import ../.common.d/nfs-shared.nix;
   # WARNING: Never let ZFS datasets or overlays mount or traverse /net (autofs)!
   # This prevents ZFS from hanging on network errors or unavailable NFS hosts.
@@ -58,9 +60,9 @@ let
       requested = if names == [ ] then [ "lan" ] else names;
       resolveName =
         name:
-        if builtins.hasAttr name networkCatalog then
+        if builtins.hasAttr name netplan then
           let
-            entry = networkCatalog.${name};
+            entry = netplan.${name};
             cidr = entry.cidr or null;
           in
           if cidr != null then
@@ -77,7 +79,7 @@ let
   nfsdReloadScript = ndh.store.runCommand "nfsd-reload.sh" { } ''
     cp ${
       pkgs.replaceVars ./nfs-autofs.d/nfsd-reload.sh {
-        logger = loggerScript;
+        nixBashTrampoline = nixBashTrampoline;
       }
     } "$out"
     chmod +x "$out"
@@ -85,7 +87,7 @@ let
   autofsRefreshScript = ndh.store.runCommand "autofs-refresh.sh" { } ''
     cp ${
       pkgs.replaceVars ./nfs-autofs.d/autofs-refresh.sh {
-        logger = loggerScript;
+        nixBashTrampoline = nixBashTrampoline;
       }
     } "$out"
     chmod +x "$out"
@@ -93,7 +95,7 @@ let
   syntheticReloadScript = ndh.store.runCommand "synthetic-rebuild.sh" { } ''
     cp ${
       pkgs.replaceVars ./nfs-autofs.d/synthetic-rebuild.sh {
-        logger = loggerScript;
+        nixBashTrampoline = nixBashTrampoline;
       }
     } "$out"
     chmod +x "$out"
@@ -133,8 +135,8 @@ let
   syntheticEnsureScript = ndh.store.runCommand "synthetic-ensure.sh" { } ''
     cp ${
       pkgs.replaceVars ./nfs-autofs.d/synthetic-ensure.sh {
+        nixBashTrampoline = nixBashTrampoline;
         inherit syntheticText;
-        logger = loggerScript;
       }
     } "$out"
     chmod +x "$out"
@@ -143,7 +145,7 @@ let
   syntheticPreDedupeScript = ndh.store.runCommand "synthetic-pre-dedupe.sh" { } ''
     cp ${
       pkgs.replaceVars ./nfs-autofs.d/synthetic-pre-dedupe.sh {
-        logger = loggerScript;
+        nixBashTrampoline = nixBashTrampoline;
       }
     } "$out"
     chmod +x "$out"
@@ -152,7 +154,7 @@ let
   autoMasterLinkScript = ndh.store.runCommand "auto-master-link.sh" { } ''
     cp ${
       pkgs.replaceVars ./nfs-autofs.d/auto-master-link.sh {
-        logger = loggerScript;
+        nixBashTrampoline = nixBashTrampoline;
       }
     } "$out"
     chmod +x "$out"
@@ -161,8 +163,8 @@ let
   autoMasterWriteScript = ndh.store.runCommand "auto-master-write.sh" { } ''
     cp ${
       pkgs.replaceVars ./nfs-autofs.d/auto-master-write.sh {
+        nixBashTrampoline = nixBashTrampoline;
         inherit autoMasterText;
-        logger = loggerScript;
       }
     } "$out"
     chmod +x "$out"
@@ -171,12 +173,12 @@ let
   autofsNetScript = ndh.store.runCommand "autofs-net.sh" { } ''
     cp ${
       pkgs.replaceVars ./nfs-autofs.d/autofs-net.sh {
+        nixBashTrampoline = nixBashTrampoline;
         mountPoint = lib.escapeShellArg autoCfg.mountPoint;
         map = lib.escapeShellArg autoCfg.map;
         options = lib.escapeShellArg autoCfg.options;
         manageAutoMaster = if autoCfg.manageAutoMaster then "1" else "0";
         autofsRefreshScript = autofsRefreshScript;
-        logger = loggerScript;
       }
     } "$out"
     chmod +x "$out"
@@ -304,7 +306,7 @@ in
         "lan"
         "tailnet"
       ];
-      description = "Network names from catalog.networks allowed to mount NFS exports.";
+      description = "Network names from catalog.netplan allowed to mount NFS exports.";
     };
 
     exportOptions = lib.mkOption {

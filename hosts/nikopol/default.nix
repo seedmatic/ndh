@@ -1,10 +1,16 @@
 let
   hostProfile = {
     hostName = "nikopol";
-    tailnet = { };
-    vmProvider = "tart";
-    nixosImageMode = "bootstrap";
+    vmProvider = "lima";
     nixosBootLoader = "systemd-boot";
+    nixosBootstrapDebug = false;
+    nixosBringupRootFs = "btrfs";
+    # Keep explicit host defaults for image-build VM resources.
+    # These match canonical defaults from modules/nixos/outputs.nix.
+    nixosDiskImageVmMemSizeMiB = 6144;
+    nixosDiskImageVmCpuCores = 6;
+    # Enlarge per-disk ZFS bringup pool members to evaluate occupancy with full runtime image install.
+    nixosZfsBootstrapPoolDiskSizeMiB = 8192;
   };
 
   darwinProfile = {
@@ -104,39 +110,25 @@ let
     {
       config,
       lib,
-      hostProfile ? { },
+      ndh,
       ...
     }:
     let
-      # Canonical source-of-truth network values from rke2lab netplan catalog (@codebase)
-      netplanCatalog = config._module.specialArgs.catalog.networks.rke2labNetplan;
-      clusterNetwork = netplanCatalog.clusters.nikopol;
-      bootstrapMode = (hostProfile.nixosImageMode or "full") == "bootstrap";
+      ndhContext = ndh.context;
+      hostProfile = ndhContext.hostProfile;
+      bringupMode = ndhContext.generationMode == "bringup";
     in
     {
       config = {
         profile.user.home = lib.mkForce "/home/${config.profile.user.name}";
       }
-      // (lib.optionalAttrs (!bootstrapMode) {
-        services.nxmaticCachixWatchStore.sopsEncryptedTokenFile = ../../.secrets;
-      })
-      // (lib.optionalAttrs (!bootstrapMode) {
+      // (lib.optionalAttrs (!bringupMode) {
         networking.vlan = {
           enable = true;
           id = 2;
           addressPrefix = "192.168.2";
           parentInterface = "vmlan0";
           addressSourceInterface = "lan-br";
-        };
-      })
-      // (lib.optionalAttrs (!bootstrapMode) {
-        # Expose system D-Bus over vmnet gateway for lab-only remote control/testing.
-        services.dbusTcpSystemBus = {
-          enable = true;
-          bindAddress = clusterNetwork.gateway;
-          port = 12434;
-          openFirewall = true;
-          insecureAllowAnonymous = true;
         };
       });
     };

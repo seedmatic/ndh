@@ -6,6 +6,7 @@
 #   RKE2LAB_NIXOS_ALLOW_CLONE=1  - permit fallback clone if no working copy found
 set -euxo pipefail
 NDH_NIX_CLI_ARGS="${NDH_NIX_CLI_ARGS:--L -v -v}"
+RKE2LAB_NIXOS_CONFIG_DISCOVERY_MAX_ATTEMPTS="${RKE2LAB_NIXOS_CONFIG_DISCOVERY_MAX_ATTEMPTS:-30}"
 
 ndh:nix:run() {
   local -a ndh_nix_cli_args=()
@@ -44,17 +45,35 @@ add_candidate() {
 # 1. Explicit override
 add_candidate "${RKE2LAB_NIXOS_CONFIG_PATH:-}"
 # 2 & 3: Mounted macOS & Linux style homes
+add_candidate "/run/ndh/host-shares/ndh-toplevel"
 add_candidate "/Volumes/git-worktree-store/nxmatic/nix-darwin-home"
 add_candidate "/private/var/lib/git/nxmatic/nix-darwin-home"
 add_candidate "/var/lib/git/nxmatic/nix-darwin-home"
 
 SRC=""
-for cand in "${CANDIDATES[@]:-}"; do
-  [ -z "$cand" ] && continue
-  if [ -f "$cand/hosts/$HOSTNAME/flake.nix" ]; then
-    SRC="$cand"
+discover_repo_source() {
+  local cand=""
+  for cand in "${CANDIDATES[@]:-}"; do
+    [ -z "$cand" ] && continue
+    if [ -f "$cand/hosts/$HOSTNAME/flake.nix" ]; then
+      printf '%s' "$cand"
+      return 0
+    fi
+  done
+  return 1
+}
+
+attempt=1
+while [ "$attempt" -le "$RKE2LAB_NIXOS_CONFIG_DISCOVERY_MAX_ATTEMPTS" ]; do
+  if SRC="$(discover_repo_source)"; then
     break
   fi
+
+  # On Lima bringup, virtiofs mounts may arrive shortly after this unit starts.
+  if [ "$attempt" -lt "$RKE2LAB_NIXOS_CONFIG_DISCOVERY_MAX_ATTEMPTS" ]; then
+    sleep 1
+  fi
+  attempt=$((attempt + 1))
 done
 
 if [ -n "$SRC" ]; then
@@ -68,6 +87,7 @@ else
   : "[lima-nixos-config] No existing working copy found among candidates:" >&2
   # Still display list (kept echo for visibility of candidates if needed)
   printf '  %s\n' "${CANDIDATES[@]:-}" >&2
+  : "[lima-nixos-config] waited ${RKE2LAB_NIXOS_CONFIG_DISCOVERY_MAX_ATTEMPTS}s for mounted working copy discovery" >&2
   if [ "${RKE2LAB_NIXOS_ALLOW_CLONE:-0}" = "1" ]; then
     : "[lima-nixos-config] RKE2LAB_NIXOS_ALLOW_CLONE=1 set; cloning repository config" >&2
     ndh:nix:run flake clone -f /var/lib/nixos/config github:nxmatic/nix-darwin-home

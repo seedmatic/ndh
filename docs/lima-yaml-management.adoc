@@ -8,6 +8,122 @@ This document explains the new flexible approach to managing Lima network config
 
 The system now uses `lima-yaml-manager.sh` for precise YAML editing instead of wholesale replacement, providing these benefits:
 
+* Preserves user content: Existing networks and comments are maintained
+* Safe operations: Rotating backups (`.0`, `.1`, `.2`) protect against errors
+* Surgical editing: Only modifies specific sections while preserving the rest
+* Flexible integration: Can be used standalone or via `regenerate-lima-config.sh`
+
+== Components
+
+=== `lima-yaml-manager.sh`
+
+Provides surgical YAML editing with these key features:
+
+* Comment-based regions: Uses head/foot comment markers for managed sections
+* Network operations: Add/remove/update network definitions safely
+* YAML validation: Ensures valid syntax before committing changes
+* Backup rotation: Configurable backup retention (default: 3 files)
+
+=== `lima-network-namer.sh`
+
+Generates consistent network names:
+
+* Direct naming: `bridged`, `shared`, `host` (matches Lima modes)
+* Host-aware: Considers bonding configuration per host
+* Extensible: Easy to add new network types
+
+=== Integration with `regenerate-lima-config.sh`
+
+The regenerate script now:
+
+. Generates Lima VM config as before (`lima.yaml`)
+. Ensures standard networks exist using `lima-yaml-manager.sh`:
+** `host` network for direct host networking
+** `bridged` network for LAN access via host bridge
+** `shared` network for NAT/shared networking
+. Preserves existing networks that don't conflict
+
+== Usage Examples
+
+=== Standalone Network Management
+
+[source,bash]
+----
+# Add a custom network
+./bin/lima-yaml-manager.sh --file ~/.lima/_config/networks.yaml \
+  --add-network my-custom --mode shared --gateway 10.20.1.1 --verbose
+
+# Remove a network (only if in managed section)
+./bin/lima-yaml-manager.sh --file ~/.lima/_config/networks.yaml \
+  --remove-network my-custom --verbose
+
+# Initialize managed sections with comment markers
+./bin/lima-yaml-manager.sh --file ~/.lima/nerd-nixos/lima.yaml \
+  --init-managed-section networks
+----
+
+=== Via Regenerate Script
+
+[source,bash]
+----
+# Regenerate config and ensure standard networks exist
+./bin/regenerate-lima-config.sh --host bioskop
+
+# Skip network management
+./bin/regenerate-lima-config.sh --host bioskop --no-networks
+----
+
+=== Network Name Generation
+
+[source,bash]
+----
+# Get appropriate network name for host
+./bin/lima-network-namer.sh --host bioskop --type bridged
+# Output: bridged
+
+# List all available networks for a host
+./bin/lima-network-namer.sh --host bioskop --list-all
+----
+
+== Migration from Old Approach
+
+The previous cluster-based approach has been replaced.
+
+Before::
+Complex cluster mapping with inline `awk` manipulation.
+
+* Generated `cluster1`, `cluster2` networks
+* Wholesale file replacement
+* Lost user customizations
+
+After::
+Direct network names with surgical editing.
+
+* Standard `host`, `bridged`, `shared` networks
+* Preserves user content and comments
+* Safe, incremental updates
+
+== Benefits for Configuration Switching
+
+When switching between configurations:
+
+. VM configs regenerated with current settings
+. Missing networks added automatically (`host`, `bridged`, `shared`)
+. User networks preserved (custom networks remain intact)
+. Comments maintained (documentation and structure kept)
+. Safe rollback (backups available if issues occur)
+
+This approach provides the flexibility you mentioned—much more adaptive than the previous rigid cluster system while ensuring the standard networks Lima VMs expect are always available.
+= Lima YAML Management
+:toc: left
+:icons: font
+
+This document explains the new flexible approach to managing Lima network configurations using surgical YAML editing.
+
+== Overview
+
+The system now uses `lima-yaml-manager.sh` for precise YAML editing instead of wholesale replacement, providing these benefits:
+
 * **Preserves user content**: Existing networks and comments are maintained
 * **Safe operations**: Rotating backups (.0, .1, .2) protect against errors  
 * **Surgical editing**: Only modifies specific sections while preserving the rest

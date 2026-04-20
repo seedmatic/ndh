@@ -1,11 +1,13 @@
 {
   pkgs,
   lib,
-  catalog,
+  ndh,
   ...
 }:
 let
   inherit (lib) mkDefault;
+  ndhContext = ndh.context;
+  catalog = ndhContext.catalog;
   users = catalog.users;
   committedUser = users.committed;
   workUser = users.work;

@@ -10,6 +10,8 @@ with lib;
 
 let
   cfg = config.services.disable-google-updaters;
+  ndhContext = ndh.context;
+  nixBashTrampoline = "${ndhContext.nixBashTrampoline}";
   loggerScript = config.nixBashLogger.script;
   disableGoogleUpdatersScript = ndh.store.runCommand "disable-google-updaters" { } ''
     install -Dm755 ${./disable-google-updaters.d/disable-google-updaters.sh} "$out/bin/disable-google-updaters"
@@ -19,8 +21,8 @@ let
       ''
         cp ${
           pkgs.replaceVars ./disable-google-updaters.d/post-activation.sh {
+            nixBashTrampoline = nixBashTrampoline;
             disableGoogleUpdatersScript = disableGoogleUpdatersScript;
-            logger = loggerScript;
           }
         } "$out"
         chmod +x "$out"

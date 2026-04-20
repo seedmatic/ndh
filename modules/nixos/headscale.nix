@@ -2,6 +2,7 @@
   config,
   pkgs,
   lib,
+  ndhSystemd,
   ...
 }:
 
@@ -10,6 +11,8 @@ with lib;
 let
   cfg = config.networking.headscale;
   defaultHostname = config.networking.hostName;
+  tailscaleAutoconnectUnitName = ndhSystemd.mkUnitName "tailscaled-autoconnect";
+  contributedTargetName = ndhSystemd.contributedTargetName;
 in
 {
   options.networking.headscale = {
@@ -88,7 +91,7 @@ in
     networking.firewall.trustedInterfaces = [ "tailscale0" ];
 
     # Ensure Tailscale connects at boot
-    systemd.services.io-nxmatic-nix-darwin-home-tailscaled-autoconnect = {
+    systemd.services.${tailscaleAutoconnectUnitName} = {
       after = [
         "tailscaled.service"
         "network-online.target"
@@ -97,7 +100,7 @@ in
         "tailscaled.service"
         "network-online.target"
       ];
-      wantedBy = [ "io-nxmatic-nix-darwin-home-contributed.target" ];
+      wantedBy = [ contributedTargetName ];
       serviceConfig = {
         Type = "oneshot";
         RemainAfterExit = true;

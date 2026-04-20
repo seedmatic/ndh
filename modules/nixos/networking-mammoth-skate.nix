@@ -1,7 +1,7 @@
 {
   config,
   lib,
-  catalog ? { },
+  ndh,
   ...
 }:
 {
@@ -17,13 +17,9 @@
 
   config = lib.mkIf config.networking.mammoth-skate.enable (
     let
+      ndhContext = ndh.context;
       tailnetDomain =
-        if
-          config._module.specialArgs ? catalog && (config._module.specialArgs.catalog.networks ? tailnet)
-        then
-          config._module.specialArgs.catalog.networks.tailnet.domain
-        else
-          "";
+        if ndhContext.catalog.netplan ? tailnet then ndhContext.catalog.netplan.tailnet.domain else "";
       bareDomain = lib.removePrefix "." tailnetDomain;
     in
     {

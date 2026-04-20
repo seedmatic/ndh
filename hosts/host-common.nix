@@ -37,13 +37,15 @@ in
     profile = {
       host = {
         hostName = lib.mkDefault hostProfile.hostName;
-        tailnet = hostProfile.tailnet;
       }
       // (lib.optionalAttrs (hostProfile ? hostAlias) {
         hostAlias = lib.mkDefault hostProfile.hostAlias;
       })
       // (lib.optionalAttrs (forceRemoteBuilds != null) {
         forceRemoteBuilds = forceRemoteBuilds;
+      })
+      // (lib.optionalAttrs (hostProfile ? linuxBuilderMode) {
+        linuxBuilderMode = hostProfile.linuxBuilderMode;
       })
       // (lib.optionalAttrs (preferredBuilderHosts != null) {
         preferredBuilderHosts = preferredBuilderHosts;

@@ -17,6 +17,23 @@ let
     (if config ? _module && config._module ? specialArgs then config._module.specialArgs else { })
     // specialArgs;
 
+  ndhContext =
+    if
+      specialArgsResolved ? ndh
+      && specialArgsResolved.ndh != null
+      && specialArgsResolved.ndh ? context
+      && specialArgsResolved.ndh.context != null
+    then
+      specialArgsResolved.ndh.context
+    else
+      null;
+
+  nixBashTrampoline =
+    if ndhContext != null && ndhContext ? nixBashTrampoline then
+      "${ndhContext.nixBashTrampoline}"
+    else
+      "${../.common.d/shell.d/nix-bash-trampoline.sh}";
+
   ndhArgs =
     if specialArgsResolved ? ndh && specialArgsResolved.ndh != null then
       specialArgsResolved.ndh
@@ -42,8 +59,8 @@ let
   selectedVmProvider =
     if resolvedProfile != null && resolvedProfile ? host && resolvedProfile.host ? vmProvider then
       resolvedProfile.host.vmProvider
-    else if ndhVmArgs ? provider && ndhVmArgs.provider != null then
-      ndhVmArgs.provider
+    else if ndhContext != null && ndhContext ? vmProvider && ndhContext.vmProvider != null then
+      ndhContext.vmProvider
     else
       "lima";
 
@@ -62,8 +79,13 @@ let
       null;
 
   hostCatalogEntries =
-    if ndhArgs ? inventory && ndhArgs.inventory ? hosts && effectiveHostName != null then
-      lib.attrByPath [ effectiveHostName ] [ ] ndhArgs.inventory.hosts
+    if
+      ndhContext != null
+      && ndhContext ? inventory
+      && ndhContext.inventory ? hosts
+      && effectiveHostName != null
+    then
+      lib.attrByPath [ effectiveHostName ] [ ] ndhContext.inventory.hosts
     else
       [ ];
 
@@ -107,7 +129,6 @@ let
 
   loggerArgs =
     if ndhLoggerArgs != { } then ndhLoggerArgs else throw "specialArgs.ndh.logger is required";
-  logger = loggerArgs.script;
   loggerTagFixConfigOwnership = "home-manager.activationScripts.${userName}.fixConfigOwnership";
   isMinimalHomeProfile = profileName == "work";
   hmVmMaterializationEnabled =
@@ -278,7 +299,7 @@ in
     activation.fixConfigOwnership =
       let
         fixConfigOwnershipScript = pkgs.replaceVars ./default.d/fix-config-ownership.sh {
-          logger = logger;
+          nixBashTrampoline = nixBashTrampoline;
           loggerTag = loggerTagFixConfigOwnership;
         };
       in
@@ -319,10 +340,10 @@ in
       vm_provider="${selectedVmProvider}"
       case "$vm_provider" in
         lima)
-          materializer_binary="ndh-vm-lima-materialize"
+          materializer_binary="nerd-nixos-lima-vm-materialize"
           ;;
         tart)
-          materializer_binary="ndh-vm-tart-materialize"
+          materializer_binary="nerd-nixos-tart-vm-materialize"
           ;;
         *)
           echo "[vmConfig][ERROR] unsupported vm provider for HM materialization: $vm_provider" >&2

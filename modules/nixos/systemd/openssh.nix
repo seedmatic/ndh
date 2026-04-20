@@ -2,10 +2,13 @@
   config,
   pkgs,
   lib,
+  ndh,
+  ndhSystemd,
   ...
 }:
 
 let
+  ndhContext = ndh.context;
   dollar = "$";
   hostname =
     if config.networking.hostName != "" then config.networking.hostName else "nix-darwin-home";
@@ -29,6 +32,7 @@ let
       toString config.profile.user.home
     else
       "/root";
+  nixBashTrampoline = "${ndhContext.nixBashTrampoline}";
   # Reuse existing host key generated/managed by NixOS (ed25519 preferred)
   hostKeyPath = "/etc/ssh/ssh_host_ed25519_key"; # runtime path consumed by sshd
   hostCertPath = null; # Add signed host cert later if desired
@@ -58,19 +62,19 @@ let
     ${formatPrincipals allPrincipals}
   '';
   principalsScriptStore = pkgs.replaceVars ../../.common.d/ssh/authorized-principals-command.sh {
-    bashTrampoline = "${../../.common.d/shell.d/nix-bash-trampoline.sh}";
-    logger = logger;
+    nixBashTrampoline = nixBashTrampoline;
   };
   groupKeysScriptStore = pkgs.replaceVars ../../.common.d/ssh/ssh-group-authorized-keys.sh {
-    bashTrampoline = "${../../.common.d/shell.d/nix-bash-trampoline.sh}";
-    logger = logger;
+    nixBashTrampoline = nixBashTrampoline;
     authorizedKeysDir = config.opensshPolicy.authorizedKeysDir;
   };
   # Use the wrapped activation logger packaged into the system closure
-  logger = config.nixBashLogger.script;
   loggerTag = "nixos.activationScripts.sshGroupKeys";
   hasSopsInstallSecretsService = builtins.hasAttr "sops-install-secrets" config.systemd.services;
-  hasSshKeysEnrichmentService = builtins.hasAttr "io-nxmatic-nix-darwin-home-ssh-keys-enrichment" config.systemd.services;
+  sshKeysEnrichmentServiceName = ndhSystemd.mkServiceName "ssh-keys-enrichment";
+  hostkeyEnrollmentCheckServiceName = ndhSystemd.mkServiceName "hostkey-enrollment-check";
+  contributedTargetName = ndhSystemd.contributedTargetName;
+  hasSshKeysEnrichmentService = builtins.hasAttr (ndhSystemd.mkUnitName "ssh-keys-enrichment") config.systemd.services;
   homeManagerServiceName = "home-manager-${config.profile.user.name}";
   hasHomeManagerService = builtins.hasAttr homeManagerServiceName config.systemd.services;
   hostkeyEnrollmentCheckTag = "nixos.services.ndh.hostkeyEnrollmentCheck";
@@ -78,8 +82,7 @@ let
   authorizedKeysCheckTag = "nixos.services.ndh.authorizedKeysCheck";
   sshdAutostartCheckTag = "nixos.services.ndh.sshdAutostartCheck";
   hostkeyEnrollmentCheckScript = pkgs.replaceVars ./openssh.d/hostkey-enrollment-check.sh {
-    bashTrampoline = "${../../.common.d/shell.d/nix-bash-trampoline.sh}";
-    logger = logger;
+    nixBashTrampoline = nixBashTrampoline;
     logTag = hostkeyEnrollmentCheckTag;
     userPrivateSourceDir = config.sshPaths.secretsKeysDir;
     userCaSourceDir = config.sshPaths.authoritySecretsDir;
@@ -87,8 +90,7 @@ let
     clientKeyName = clientKeyName;
   };
   hostkeyEnrollmentSyncScript = pkgs.replaceVars ./openssh.d/hostkey-enrollment-sync.sh {
-    bashTrampoline = "${../../.common.d/shell.d/nix-bash-trampoline.sh}";
-    logger = logger;
+    nixBashTrampoline = nixBashTrampoline;
     logTag = hostkeyEnrollmentSyncTag;
     clientPrivateSource = config.sshPaths.privKeyFile;
     clientUserCertSource = config.sshPaths.userCertPublic;
@@ -98,16 +100,14 @@ let
     guestName = config.limaHost.guestName;
   };
   authorizedKeysCheckScript = pkgs.replaceVars ./openssh.d/authorized-keys-check.sh {
-    bashTrampoline = "${../../.common.d/shell.d/nix-bash-trampoline.sh}";
-    logger = logger;
+    nixBashTrampoline = nixBashTrampoline;
     logTag = authorizedKeysCheckTag;
     authorizedKeysFile = "${config.opensshPolicy.authorizedKeysDir}/${config.profile.user.name}";
     expectedPublicKeyFile = config.sshPaths.hostPublicKeyFile;
     profileUserName = config.profile.user.name;
   };
   sshdAutostartCheckScript = pkgs.replaceVars ./openssh.d/sshd-autostart-check.sh {
-    bashTrampoline = "${../../.common.d/shell.d/nix-bash-trampoline.sh}";
-    logger = logger;
+    nixBashTrampoline = nixBashTrampoline;
     logTag = sshdAutostartCheckTag;
   };
 in
@@ -182,25 +182,39 @@ in
   # Ensure the group authorized keys directory exists and create keys
   system.activationScripts = {
     sshGroupKeys = {
-      text = builtins.readFile (
-        pkgs.replaceVars ./openssh.d/activation.sh {
-          bash = "${pkgs.bash}/bin/bash";
-          bashTrampoline = "${../../.common.d/shell.d/nix-bash-trampoline.sh}";
-          authorizedKeysDir = config.opensshPolicy.authorizedKeysDir;
-          keysDir = config.opensshPolicy.keysDir;
-          hostname = hostname;
-          principalsCommand = config.opensshPolicy.canonicalPrincipalsCommandName;
-          groupCommand = config.opensshPolicy.canonicalGroupKeysCommandName;
-          principalsScript = principalsScriptStore;
-          groupKeysScript = groupKeysScriptStore;
-          profileUserName = config.profile.user.name;
-          logger = logger;
-          loggerTag = loggerTag;
-          userPrivateSourceDir = config.sshPaths.secretsKeysDir;
-          userCaSourceDir = config.sshPaths.authoritySecretsDir;
-          clientKeyName = clientKeyName;
-        }
-      );
+      text =
+        builtins.replaceStrings
+          [
+            "@nixBashTrampoline@"
+            "@authorizedKeysDir@"
+            "@keysDir@"
+            "@hostname@"
+            "@principalsCommand@"
+            "@groupCommand@"
+            "@principalsScript@"
+            "@groupKeysScript@"
+            "@profileUserName@"
+            "@loggerTag@"
+            "@userPrivateSourceDir@"
+            "@userCaSourceDir@"
+            "@clientKeyName@"
+          ]
+          [
+            nixBashTrampoline
+            config.opensshPolicy.authorizedKeysDir
+            config.opensshPolicy.keysDir
+            hostname
+            config.opensshPolicy.canonicalPrincipalsCommandName
+            config.opensshPolicy.canonicalGroupKeysCommandName
+            "${principalsScriptStore}"
+            "${groupKeysScriptStore}"
+            config.profile.user.name
+            loggerTag
+            config.sshPaths.secretsKeysDir
+            config.sshPaths.authoritySecretsDir
+            clientKeyName
+          ]
+          (builtins.readFile ./openssh.d/activation.sh);
     };
   };
 
@@ -219,7 +233,7 @@ in
   # Ensure all systemd services (including sshd) inherit a wrapper-first PATH
   systemd.globalEnvironment.PATH = config.opensshPolicy.setEnvPath;
 
-  systemd.services.io-nxmatic-nix-darwin-home-hostkey-enrollment-check = {
+  systemd.services.${ndhSystemd.mkUnitName "hostkey-enrollment-check"} = {
     description = "Check whether host key enrollment into encrypted secrets is required (@codebase)";
     wantedBy = [ "sshd.service" ];
     before = [ "sshd.service" ];
@@ -241,12 +255,16 @@ in
     };
   };
 
-  systemd.services.io-nxmatic-nix-darwin-home-authorized-keys-check = {
+  systemd.services.${ndhSystemd.mkUnitName "authorized-keys-check"} = {
     description = "Verify expected system authorized key is installed before sshd (@codebase)";
     requiredBy = [ "sshd.service" ];
     before = [ "sshd.service" ];
-    requires = lib.optionals hasSshKeysEnrichmentService [ "io-nxmatic-nix-darwin-home-ssh-keys-enrichment.service" ];
-    after = lib.optionals hasSshKeysEnrichmentService [ "io-nxmatic-nix-darwin-home-ssh-keys-enrichment.service" ];
+    requires = lib.optionals hasSshKeysEnrichmentService [
+      sshKeysEnrichmentServiceName
+    ];
+    after = lib.optionals hasSshKeysEnrichmentService [
+      sshKeysEnrichmentServiceName
+    ];
     path = with pkgs; [
       coreutils
       gnugrep
@@ -260,17 +278,21 @@ in
     };
   };
 
-  systemd.services.io-nxmatic-nix-darwin-home-hostkey-enrollment-sync = {
+  systemd.services.${ndhSystemd.mkUnitName "hostkey-enrollment-sync"} = {
     description = "Run remote hostkey enrollment sync when drift marker is present (@codebase)";
-    wantedBy = [ "io-nxmatic-nix-darwin-home-contributed.target" ];
+    wantedBy = [ contributedTargetName ];
     wants = [
       "network-online.target"
-      "io-nxmatic-nix-darwin-home-hostkey-enrollment-check.service"
+      "nss-lookup.target"
+      "systemd-resolved.service"
+      hostkeyEnrollmentCheckServiceName
     ]
     ++ lib.optionals hasHomeManagerService [ "${homeManagerServiceName}.service" ];
     after = [
       "network-online.target"
-      "io-nxmatic-nix-darwin-home-hostkey-enrollment-check.service"
+      "nss-lookup.target"
+      "systemd-resolved.service"
+      hostkeyEnrollmentCheckServiceName
     ]
     ++ lib.optionals hasHomeManagerService [ "${homeManagerServiceName}.service" ];
     unitConfig.ConditionPathExists = "/run/ndh/ssh/hostkey-enrollment-state.yaml";
@@ -290,9 +312,9 @@ in
     };
   };
 
-  systemd.services.io-nxmatic-nix-darwin-home-sshd-autostart-check = {
+  systemd.services.${ndhSystemd.mkUnitName "sshd-autostart-check"} = {
     description = "Validate sshd autostart state after contributed target activation (@codebase)";
-    wantedBy = [ "io-nxmatic-nix-darwin-home-contributed.target" ];
+    wantedBy = [ contributedTargetName ];
     after = [ "sshd.service" ];
     path = with pkgs; [
       coreutils
@@ -309,7 +331,7 @@ in
   # Keep sshd start robust across boot ordering by binding it to both
   # canonical multi-user and NDH contributed targets.
   systemd.services.sshd.wantedBy = lib.mkAfter [
-    "io-nxmatic-nix-darwin-home-contributed.target"
+    contributedTargetName
   ];
 
   # Provide principals metadata in a system-readable location for

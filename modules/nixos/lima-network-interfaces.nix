@@ -1,7 +1,7 @@
 {
   config,
   lib,
-  hostProfile ? null,
+  ndh,
   ...
 }:
 
@@ -23,8 +23,9 @@ let
     else
       null;
 
-  # Resolve host profile - prefer injected specialArg, fall back to config
-  resolvedHostProfile = if hostProfile != null then hostProfile else config.profile.host;
+  # Canonical host profile from bundled special args.
+  ndhContext = ndh.context;
+  resolvedHostProfile = ndhContext.hostProfile;
 
   # Derive effective hostname (use alias if set, otherwise hostName)
   effectiveHostName =
@@ -80,6 +81,7 @@ in
           name = "mgmt0"; # rename from enp0s1; update MAC if the Lima VM is rebuilt
         }
         {
+          # Canonical bridged LAN NIC in Lima config (see darwin/lima-config.nix).
           macAddress = "10:66:6a:4c:${hostByteHex}:01";
           name = "vmlan0"; # lima vmnet bridged (for Incus lan-br bridge member)
         }
@@ -107,7 +109,7 @@ in
         - OUI: 10:66:6a (local/private)
         - LIMA: 0x4C (76, 'L' for Lima)
         - HOST: Hash-derived unique byte per Darwin host
-        - IF: Interface index (00=vznat0, 01=vmlan0, 02=vmhost0)
+        - IF: Interface code (00=vznat0, 01=vmlan0, 02=vmhost0)
       '';
     };
   };
@@ -125,8 +127,9 @@ in
 
     # Create .link files for each interface to rename based on MAC address
     systemd.network.links = builtins.listToAttrs (
-      map (iface: {
-        name = "10-${iface.name}";
+      lib.imap0 (idx: iface: {
+        # Include index to allow multiple MAC matches to the same target Name.
+        name = "10-${toString idx}-${iface.name}";
         value = {
           matchConfig = {
             MACAddress = iface.macAddress;
@@ -214,6 +217,7 @@ in
       networkConfig = {
         DHCP = "ipv4";
         Domains = [ "" ];
+        MulticastDNS = true;
       };
       dhcpV4Config = {
         UseDNS = false;
@@ -260,6 +264,7 @@ in
       enable = true;
       nssmdns4 = true;
       allowInterfaces = [
+        "vmlan0"
         "lan-br"
       ]
       ++ lib.optionals includeHostAndNatInterfaces [ "vmhost0" ]

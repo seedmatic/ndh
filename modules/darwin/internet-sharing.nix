@@ -18,6 +18,8 @@ let
     mkMerge
     ;
   cfg = config.internetSharing;
+  ndhContext = ndh.context;
+  nixBashTrampoline = "${ndhContext.nixBashTrampoline}";
   loggerScript = config.nixBashLogger.script;
 
   # Plist configuration for Internet Sharing
@@ -58,6 +60,7 @@ let
   '';
 
   configurePlist = pkgs.replaceVars ./internet-sharing.d/configure-plist.sh {
+    nixBashTrampoline = nixBashTrampoline;
     desiredEnabled = lib.toString (if cfg.enable then 1 else 0);
     enableFlag = if cfg.enable then "true" else "false";
     primaryInterface = cfg.primaryInterface;
@@ -67,14 +70,13 @@ let
       desiredDevices
       autoToggleBlock
       ;
-    logger = loggerScript;
   };
 
   activationWrapperScript = ndh.store.runCommand "internet-sharing-activation.sh" { } ''
     cp ${
       pkgs.replaceVars ./internet-sharing.d/activation-wrapper.sh {
+        nixBashTrampoline = nixBashTrampoline;
         inherit configurePlist verifyAnchorsBlock;
-        logger = loggerScript;
       }
     } "$out"
     chmod +x "$out"

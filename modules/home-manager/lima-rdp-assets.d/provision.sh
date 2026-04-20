@@ -1,7 +1,6 @@
 #!/usr/bin/env -S bash -euo pipefail
 
-source @bashTrampoline@
-source @logger@
+source @nixBashTrampoline@
 
 main() {
   local home_dir="@homeDir@"
@@ -29,12 +28,12 @@ EOF
 
   # In HM-only flows (without a full darwin postActivation pass), best-effort
   # materialize managed Lima configs when the helper is available.
-  if command -v ndh-vm-lima-materialize >/dev/null 2>&1; then
-    ndh-vm-lima-materialize || {
-      echo "[lima-rdp-assets][WARN] ndh-vm-lima-materialize failed; keep existing ~/.lima state" >&2
+  if command -v nerd-nixos-lima-vm-materialize >/dev/null 2>&1; then
+    nerd-nixos-lima-vm-materialize || {
+      echo "[lima-rdp-assets][WARN] nerd-nixos-lima-vm-materialize failed; keep existing ~/.lima state" >&2
     }
   else
-    echo "[lima-rdp-assets][INFO] ndh-vm-lima-materialize not found in PATH; skipping full lima config materialization" >&2
+    echo "[lima-rdp-assets][INFO] nerd-nixos-lima-vm-materialize not found in PATH; skipping full lima config materialization" >&2
   fi
 }
 

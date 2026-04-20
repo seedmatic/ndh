@@ -1,7 +1,7 @@
 set -eu
 
 # shellcheck disable=SC1091
-source @bashTrampoline@
+source @nixBashTrampoline@
 
 key_file="@keyFile@"
 key_dir="$(dirname "$key_file")"

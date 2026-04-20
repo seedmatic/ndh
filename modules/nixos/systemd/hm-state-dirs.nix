@@ -1,10 +1,12 @@
 {
   config,
   lib,
+  ndh,
   pkgs,
   ...
 }:
 let
+  nixBashTrampoline = "${ndh.context.nixBashTrampoline}";
   user = config.profile.user;
   userName = user.name;
   homeDir = toString user.home; # already resolved by profile logic
@@ -49,27 +51,32 @@ let
     }
   ];
   # Use the wrapped activation logger placed in the store so it's always available
-  logger = config.nixBashLogger.script;
   loggerTag = "nixos.activationScripts.hmStateDirs";
 in
 {
-  # Use tmpfiles to ensure directory tree exists with correct ownership/mode
   systemd.tmpfiles.rules = map (e: "z ${e.path} ${e.mode} ${userName} ${group} - -") dirEntries;
 
   # Extra activation script (idempotent) to guard against any race where tmpfiles runs late
   system.activationScripts.hmStateDirs = {
     deps = [ ];
-    text = builtins.readFile (
-      pkgs.replaceVars ./hm-state-dirs.d/ensure-dirs.sh {
-        dirsWithModes = builtins.concatStringsSep " " (
-          map (e: lib.escapeShellArg "${e.path}|${e.mode}") dirEntries
-        );
-        userName = userName;
-        group = group;
-        secretsRootDir = config.sshPaths.secretsRootDir;
-        logger = logger;
-        loggerTag = loggerTag;
-      }
-    );
+    text =
+      builtins.replaceStrings
+        [
+          "@nixBashTrampoline@"
+          "@dirsWithModes@"
+          "@userName@"
+          "@group@"
+          "@secretsRootDir@"
+          "@loggerTag@"
+        ]
+        [
+          nixBashTrampoline
+          (builtins.concatStringsSep " " (map (e: lib.escapeShellArg "${e.path}|${e.mode}") dirEntries))
+          userName
+          group
+          config.sshPaths.secretsRootDir
+          loggerTag
+        ]
+        (builtins.readFile ./hm-state-dirs.d/ensure-dirs.sh);
   };
 }

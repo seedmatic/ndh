@@ -2,25 +2,14 @@
   config,
   pkgs,
   lib,
-  hostProfile ? { },
-  vmProvider ? null,
+  ndh,
   ...
 }:
 let
-  effectiveVmProvider =
-    if vmProvider != null then
-      vmProvider
-    else if hostProfile ? vmProvider && hostProfile.vmProvider != null then
-      hostProfile.vmProvider
-    else
-      "lima";
-
-  hostImageMode =
-    if hostProfile ? nixosImageMode && hostProfile.nixosImageMode != null then
-      hostProfile.nixosImageMode
-    else
-      "full";
-  bootstrapMode = hostImageMode == "bootstrap";
+  ndhContext = ndh.context;
+  hostProfile = ndhContext.hostProfile;
+  effectiveVmProvider = ndhContext.vmProvider;
+  bringupMode = ndhContext.generationMode == "bringup";
   profileUserName =
     if config ? profile && config.profile ? user && config.profile.user ? name then
       config.profile.user.name
@@ -28,8 +17,19 @@ let
       "root";
   homeManagerServiceName = "home-manager-${profileUserName}";
   keysTargetUnit = "keys.target";
-  hasSopsInstallSecretsService = builtins.hasAttr "sops-install-secrets" config.systemd.services;
-  hasSshKeysEnrichmentService = builtins.hasAttr "io-nxmatic-nix-darwin-home-ssh-keys-enrichment" config.systemd.services;
+  ndhUnitPrefix = "io-nxmatic-nix-darwin-home";
+  mkNdhUnitName =
+    suffix: if lib.hasPrefix "${ndhUnitPrefix}-" suffix then suffix else "${ndhUnitPrefix}-${suffix}";
+  mkNdhServiceName = suffix: "${mkNdhUnitName suffix}.service";
+  mkNdhTargetName = suffix: "${mkNdhUnitName suffix}.target";
+  contributedTargetName = mkNdhTargetName "contributed";
+  sshKeysEnrichmentServiceName = mkNdhServiceName "ssh-keys-enrichment";
+  attachToContributedTarget =
+    serviceAttrs:
+    serviceAttrs
+    // {
+      wantedBy = lib.unique ((serviceAttrs.wantedBy or [ ]) ++ [ contributedTargetName ]);
+    };
 in
 {
   options.ndh.vm.provider = lib.mkOption {
@@ -57,6 +57,7 @@ in
     ./openssh.nix
     ./ssh-keys-enrichment.nix
     ./rescue.nix
+    ./tart-host-shares.nix
   ]
   ++ (lib.optionals (effectiveVmProvider == "lima") [
     ./lima-cloud-init.nix
@@ -64,34 +65,44 @@ in
     ./lima-guest-agent.nix
   ])
   ++ (lib.optionals (effectiveVmProvider == "tart") [ ./tart-guest-agent.nix ])
-  ++ (lib.optionals (effectiveVmProvider == "tart") [ ./tart-host-shares.nix ])
-  ++ (lib.optionals (!bootstrapMode) [
+  ++ (lib.optionals bringupMode [ ./zfs-nixos-install.nix ])
+  ++ (lib.optionals (!bringupMode) [
     ./buildkitd.nix
     ./hm-state-dirs.nix
   ]);
 
-  config.systemd.targets.io-nxmatic-nix-darwin-home-contributed = {
+  config.systemd.targets.${mkNdhUnitName "contributed"} = {
     description = "Nix Darwin Home contributed units (@codebase)";
     requires = [ keysTargetUnit ];
     after = [ keysTargetUnit ];
     wantedBy = [ "multi-user.target" ];
   };
 
-  config.systemd.services.${homeManagerServiceName} = lib.mkIf (!bootstrapMode) {
-    wantedBy = [ "io-nxmatic-nix-darwin-home-contributed.target" ];
+  config.systemd.services.${homeManagerServiceName} = lib.mkIf (!bringupMode) {
+    wantedBy = [ contributedTargetName ];
     requires = [
       keysTargetUnit
     ]
-    ++ lib.optionals hasSopsInstallSecretsService [ "sops-install-secrets.service" ]
-    ++ lib.optionals hasSshKeysEnrichmentService [
-      "io-nxmatic-nix-darwin-home-ssh-keys-enrichment.service"
+    ++ [ "sops-install-secrets.service" ]
+    ++ [
+      sshKeysEnrichmentServiceName
     ];
     after = [
       keysTargetUnit
     ]
-    ++ lib.optionals hasSopsInstallSecretsService [ "sops-install-secrets.service" ]
-    ++ lib.optionals hasSshKeysEnrichmentService [
-      "io-nxmatic-nix-darwin-home-ssh-keys-enrichment.service"
+    ++ [ "sops-install-secrets.service" ]
+    ++ [
+      sshKeysEnrichmentServiceName
     ];
+  };
+
+  config._module.args.ndhSystemd = {
+    unitPrefix = ndhUnitPrefix;
+    mkUnitName = mkNdhUnitName;
+    mkServiceName = mkNdhServiceName;
+    mkTargetName = mkNdhTargetName;
+    contributedTargetName = contributedTargetName;
+    attachToContributedTarget = attachToContributedTarget;
+    tailscaleAutoconnectUnitName = mkNdhUnitName "tailscaled-autoconnect";
   };
 }

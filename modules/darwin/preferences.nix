@@ -6,6 +6,8 @@
   ...
 }:
 let
+  ndhContext = ndh.context;
+  nixBashTrampoline = "${ndhContext.nixBashTrampoline}";
   preferredDnsString = builtins.concatStringsSep " " config.networking.dns;
   preferredServicesLiteral = lib.concatMapStringsSep " " (
     svc: lib.escapeShellArg svc
@@ -28,11 +30,11 @@ let
   preferencesPostActivation = ndh.store.installScript {
     name = "preferences-post-activation.sh";
     source = pkgs.replaceVars ./preferences.d/post-activation.sh {
+      nixBashTrampoline = nixBashTrampoline;
       networkPreferencesScript = networkPreferencesScript;
       timeoutExe = timeoutExe;
       gtimeoutExe = gtimeoutExe;
       wallpaperImage = wallpaperImage;
-      logger = loggerScript;
     };
     preferLocalBuild = true;
     allowSubstitutes = false;

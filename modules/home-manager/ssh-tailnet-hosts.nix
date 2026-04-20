@@ -12,8 +12,9 @@
 
 let
   # Get username from profile configuration
-  catalog = config._module.specialArgs.ndh.catalog;
-  inventory = config._module.specialArgs.ndh.inventory;
+  ndhContext = config._module.specialArgs.ndh.context;
+  catalog = ndhContext.catalog;
+  inventory = ndhContext.inventory;
   profile = config._module.specialArgs.profile;
   userName = profile.user.name; # Use profile-based username (nxmatic for committed profile)
   committedUserName = catalog.users.committed.name;
@@ -40,12 +41,8 @@ let
       HostName ${host}-nixos.local
   '';
   tailnetDomain =
-    if
-      (config._module.specialArgs ? ndh)
-      && (config._module.specialArgs.ndh ? catalog)
-      && (config._module.specialArgs.ndh.catalog.networks ? tailnet)
-    then
-      config._module.specialArgs.ndh.catalog.networks.tailnet.domain
+    if ndhContext ? catalog && ndhContext.catalog.netplan ? tailnet then
+      ndhContext.catalog.netplan.tailnet.domain
     else
       "";
   tailnetAlias = host: if tailnetDomain != "" then "${host}${tailnetDomain}" else null;

@@ -1,7 +1,6 @@
-#!@bash@
+#!/usr/bin/env bash
 # shellcheck disable=SC1091
-source "@bashTrampoline@"
-source @logger@
+source "@nixBashTrampoline@"
 
 main() {
   set -euo pipefail

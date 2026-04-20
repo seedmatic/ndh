@@ -9,8 +9,13 @@ let
   profile = config._module.specialArgs.profile;
   specialArgs = config._module.specialArgs;
   ndh = config._module.specialArgs.ndh;
-  catalog = lib.attrByPath [ "catalog" ] { } ndh;
-  inventory = lib.attrByPath [ "inventory" ] { } ndh;
+  ndhContext = if ndh ? context then ndh.context else null;
+  nixBashTrampoline =
+    if ndhContext != null && ndhContext ? nixBashTrampoline then
+      "${ndhContext.nixBashTrampoline}"
+    else
+      "${../.common.d/shell.d/nix-bash-trampoline.sh}";
+  inventory = if ndhContext != null && ndhContext ? inventory then ndhContext.inventory else { };
   profileName = profile.name;
   sshKeyProfileName =
     if profile ? sshKeyProfileName && profile.sshKeyProfileName != null then
@@ -20,7 +25,6 @@ let
   userProfile = profile.user;
   userName = profile.user.name; # Use profile user name for tagging
   sshPaths = config.sshPaths;
-  logger = config._module.specialArgs.ndh.logger.script;
   loggerTagPrepareGenerated = "home-manager.activationScripts.${userName}.prepareGeneratedSSHKeysYaml";
   loggerTagExtract = "home-manager.activationScripts.${userName}.extractSSHKeys";
   loggerTagAuthorized = "home-manager.activationScripts.${userName}.ensureAuthorizedKeys";
@@ -47,7 +51,7 @@ let
       "darwin";
   inventoryHostNames = if inventory ? hosts then builtins.attrNames inventory.hosts else [ ];
   inventoryHostsCsv = lib.concatStringsSep "," inventoryHostNames;
-  rootBringupProfileDir = "/nix/var/nix/profiles/per-user/root/io-nxmatic-nix-darwin-home-bringup-runtime";
+  rootBringupProfileDir = "/nix/var/nix/profiles/per-user/root/nerd-nixos-bringup-runtime";
   # Effective YAML path consumed by ssh-add-keys/launchd.
   effectiveSSHKeysYamlPath = "${perUserKeysDir}.yaml";
 
@@ -55,8 +59,7 @@ let
   knownHostsScript = ndh.store.runCommand "ssh-ca-known-hosts" { } ''
     cp ${
       pkgs.replaceVars ./ssh.d/scripts/ca-known-hosts-command.sh {
-        bashTrampoline = "${../.common.d/shell.d/nix-bash-trampoline.sh}";
-        logger = logger;
+        nixBashTrampoline = nixBashTrampoline;
         caDir = authorityKeysDir;
       }
     } "$out"
@@ -126,8 +129,7 @@ in
       };
 
       sshExtractKeysScriptSource = pkgs.replaceVars ./ssh-key.d/ssh-extract-keys.sh {
-        bashTrampoline = "${../.common.d/shell.d/nix-bash-trampoline.sh}";
-        logger = logger;
+        nixBashTrampoline = nixBashTrampoline;
         loggerTag = loggerTagExtract;
         splitExpFile = sshExtractKeysSplitExpFile;
       };
@@ -137,8 +139,7 @@ in
       };
 
       sshEnrichKeysYamlScriptSource = pkgs.replaceVars ../.common.d/ssh-keys.d/ssh-enrich-keys-yaml.sh {
-        bashTrampoline = "${../.common.d/shell.d/nix-bash-trampoline.sh}";
-        logger = logger;
+        nixBashTrampoline = nixBashTrampoline;
         loggerTag = "home-manager.activationScripts.${userName}.enrichSSHKeysYaml";
       };
       sshEnrichKeysYamlScript = ndh.store.installScript {
@@ -147,8 +148,7 @@ in
       };
 
       sshSplitKeysYamlScriptSource = pkgs.replaceVars ../.common.d/ssh-keys.d/ssh-split-keys-yaml.sh {
-        bashTrampoline = "${../.common.d/shell.d/nix-bash-trampoline.sh}";
-        logger = logger;
+        nixBashTrampoline = nixBashTrampoline;
         loggerTag = "home-manager.activationScripts.${userName}.splitSSHKeysYaml";
       };
       sshSplitKeysYamlScript = ndh.store.installScript {
@@ -159,8 +159,7 @@ in
       prepareGeneratedSSHKeysYamlScriptSource =
         pkgs.replaceVars ./ssh-key.d/ssh-prepare-generated-keys-yaml.sh
           {
-            bashTrampoline = "${../.common.d/shell.d/nix-bash-trampoline.sh}";
-            logger = logger;
+            nixBashTrampoline = nixBashTrampoline;
             loggerTag = loggerTagPrepareGenerated;
             bash = "${pkgs.bash}/bin/bash";
             sops = "${pkgs.sops}/bin/sops";
@@ -184,8 +183,7 @@ in
       };
 
       ensureAuthorizedKeysScriptSource = pkgs.replaceVars ./ssh-key.d/ssh-ensure-authorized-keys.sh {
-        bashTrampoline = "${../.common.d/shell.d/nix-bash-trampoline.sh}";
-        logger = logger;
+        nixBashTrampoline = nixBashTrampoline;
         loggerTag = loggerTagAuthorized;
       };
       ensureAuthorizedKeysScript = ndh.store.installScript {
@@ -203,13 +201,13 @@ in
                       cat >&2 <<'EOF'
           [ssh-keys][HINT] On operator host (with nix-darwin-home checkout):
 
-          holder_out="$(nix build --no-link --print-out-paths .#io-nxmatic-nix-darwin-home-bringup-runtime-profile-holder)"
+          holder_out="$(nix build --no-link --print-out-paths .#nerd-nixos-bringup-runtime)"
           nix copy --no-check-sigs \
             --to 'ssh-ng://<target-host>?remote-program=/nix/var/nix/profiles/default/bin/nix-daemon' \
             "$holder_out"
           ssh -t <target-host> \
             "sudo /nix/var/nix/profiles/default/bin/nix profile add \
-              --profile /nix/var/nix/profiles/per-user/root/io-nxmatic-nix-darwin-home-bringup-runtime \
+              --profile /nix/var/nix/profiles/per-user/root/nerd-nixos-bringup-runtime \
               $holder_out"
           EOF
                       echo "[ssh-keys][HINT] Replace <target-host> with: $runtime_target_host" >&2

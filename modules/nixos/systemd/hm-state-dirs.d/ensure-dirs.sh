@@ -1,4 +1,4 @@
-source @logger@
+source @nixBashTrampoline@
 
 main() {
   set -euo pipefail

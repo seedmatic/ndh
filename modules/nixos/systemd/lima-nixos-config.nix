@@ -2,6 +2,7 @@
   config,
   pkgs,
   lib,
+  ndhSystemd,
   ...
 }:
 let
@@ -14,22 +15,26 @@ let
   # so we keep network dependency minimal; remove strict requires.
   needsNetwork = false; # linking is primary path; cloning optional & user-triggered
 
-  baseAfter = [ "io-nxmatic-nix-darwin-home-lima-cloud-init.service" ];
+  baseAfter = [
+    "local-fs.target"
+    (ndhSystemd.mkServiceName "lima-cloud-init")
+  ];
   afterList = baseAfter ++ lib.optional needsNetwork "network-online.target";
   isLimaProvider = config.ndh.vm.provider == "lima";
+  contributedTargetName = ndhSystemd.contributedTargetName;
 
 in
 {
   config = lib.mkIf isLimaProvider {
-    systemd.services.io-nxmatic-nix-darwin-home-lima-nixos-config = {
+    systemd.services.${ndhSystemd.mkUnitName "lima-nixos-config"} = {
       description = "Link (preferred) or optionally clone NixOS darwin home repo for Lima host";
 
       # Only need cloud-init first (mounts, user home). Network not strictly required for linking.
       after = afterList;
-      wants = [ "io-nxmatic-nix-darwin-home-lima-cloud-init.service" ];
+      wants = [ (ndhSystemd.mkServiceName "lima-cloud-init") ];
 
       # Don't hard require network or resolvconf anymore; cloning is fallback and user-controlled.
-      wantedBy = [ "io-nxmatic-nix-darwin-home-contributed.target" ];
+      wantedBy = [ contributedTargetName ];
 
       path = with pkgs; [
         coreutils
@@ -46,6 +51,9 @@ in
       # Skip running if flake already linked (negative condition prevents re-run each boot)
       unitConfig = {
         X-StopOnRemoval = false;
+        RequiresMountsFor = [
+          "/var/lib/git"
+        ];
         ConditionPathExists = "!/etc/nixos/flake.nix"; # run only if missing
       };
     };

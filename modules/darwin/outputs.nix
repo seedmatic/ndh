@@ -1,10 +1,14 @@
 {
   inputs,
   pkgsForDarwin,
+  ndhStoreApiDarwin,
+  ndhNixBashTrampolineDarwin,
   mkModulesFor,
   mkSpecialArgs,
 }:
 let
+  ndhNixBashTrampoline = ndhNixBashTrampolineDarwin;
+
   hostMainNameForProfile =
     hostProfile:
     if (hostProfile ? hostAlias && hostProfile.hostAlias != null && hostProfile.hostAlias != "") then
@@ -24,12 +28,12 @@ let
       preModules = [
         profileModule
         # socket-vmnet.darwinModules.socket_vmnet
-        (
-          { lib, ... }:
-          {
-            lima.configGenerator.vmType = "vz";
-          }
-        )
+        # (
+        #   { lib, ... }:
+        #   {
+        #     lima.configGenerator.vmType = "vz";
+        #   }
+        # )
       ]
       ++ extraModules;
       modules = mkModulesFor {
@@ -40,9 +44,24 @@ let
         inherit modules;
         system = "aarch64-darwin";
         extraArgs = {
-          inherit hostProfile;
-          inherit catalog;
-          inherit inventory;
+          inherit
+            hostProfile
+            catalog
+            inventory
+            ;
+          ndh = {
+            context = {
+              inherit
+                hostProfile
+                catalog
+                inventory
+                ;
+              generationMode = "full";
+              vmProvider = hostProfile.vmProvider or "lima";
+              nixBashTrampoline = ndhNixBashTrampoline;
+            };
+            store = ndhStoreApiDarwin;
+          };
         };
       };
     in

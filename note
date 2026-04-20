@@ -1,0 +1,1 @@
+and we're using a raidz1 which provide reduce also the size of disk space usable. having the nixos required size, we should also compute what's required in the pool. so a raidz1 factor and zstd compression factor. I think we should have a final factor of 1. ie: the raidz1 reduce the usable space, but the zstd compression enlarge it. 

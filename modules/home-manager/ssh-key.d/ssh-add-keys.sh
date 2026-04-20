@@ -6,12 +6,9 @@
 # This script is run by the LaunchAgent on login to ensure keys survive reboots.
 
 # User-space HM launchd context: skip hard bootstrap profile enforcement.
-export NDH_BOOTSTRAP_STRICT=0
 
 # shellcheck disable=SC1091
-source "@bashTrampoline@"
-# shellcheck disable=SC1091
-source "@logger@"
+source "@nixBashTrampoline@"
 
 if command -v logger >/dev/null 2>&1; then
 	LOGGER_CMD="${LOGGER_CMD:-logger -t %TAG%}"

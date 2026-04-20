@@ -5,6 +5,15 @@
   ...
 }:
 let
+  specialArgs =
+    if config ? _module && config._module ? specialArgs then config._module.specialArgs else { };
+  nixBashTrampoline =
+    if
+      specialArgs ? ndh && specialArgs.ndh ? context && specialArgs.ndh.context ? nixBashTrampoline
+    then
+      "${specialArgs.ndh.context.nixBashTrampoline}"
+    else
+      "${../.common.d/shell.d/nix-bash-trampoline.sh}";
   profile = config._module.specialArgs.profile;
   userName = profile.user.name;
   userEmail = profile.email;
@@ -13,7 +22,6 @@ let
   signingKeysDir = sshPaths.secretsKeysDir;
   allowedSignersFile = "${config.xdg.configHome}/git/github_allowed_signers";
   systemCaBundle = config.home.sessionVariables.SSL_CERT_FILE;
-  logger = config._module.specialArgs.ndh.logger.script;
   loggerTag = "home-manager.activationScripts.${userName}.generateAllowedSigners";
 in
 {
@@ -127,9 +135,9 @@ in
   home.activation.generateAllowedSigners =
     let
       generateAllowedSignersScript = pkgs.replaceVars ./git.d/generate-allowed-signers.sh {
+        nixBashTrampoline = nixBashTrampoline;
         allowedSignersFile = allowedSignersFile;
         hostKeysDir = hostKeysDir;
-        logger = logger;
         loggerTag = loggerTag;
       };
     in

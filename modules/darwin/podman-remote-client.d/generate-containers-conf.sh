@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # shellcheck disable=SC1091
-source @bashTrampoline@
+source @nixBashTrampoline@
 
 LIMA_VM_NAME="@dollar@{LIMA_VM_NAME:-nerd-nixos}"
 LIMA_USER="@dollar@{LIMA_USER:-@profileUser@}"

@@ -6,10 +6,8 @@
 true
 
 __nxmatic_is_agent_vscode_terminal=0
-if [[ "${TERM_PROGRAM:-}" == "vscode" ]] && {
-  [[ "${VSCODE_PREVENT_SHELL_HISTORY:-}" == "1" ]] &&
-  [[ ":${PATH}:" == *":$HOME/Library/Application Support/Code - Insiders/User/globalStorage/github.copilot-chat/debugCommand:"* ]];
-}; then
+if [[ "${TERM_PROGRAM:-}" == "vscode" ]] && \
+   [[ "${VSCODE_PREVENT_SHELL_HISTORY:-}" == "1" ]]; then
   __nxmatic_is_agent_vscode_terminal=1
 fi
 

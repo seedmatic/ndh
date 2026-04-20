@@ -5,12 +5,32 @@
   pkgs,
   lib,
   ndh,
+  ndhSystemd,
   ...
 }:
 
 let
+  ndhContext = ndh.context;
+  nixBashTrampoline = "${ndhContext.nixBashTrampoline}";
   cfg = config.zfsOverlays;
+  vmProvider = lib.attrByPath [ "ndh" "vm" "provider" ] "lima" config;
+  overlayModeEnabled = cfg.overlayMode.enable && vmProvider == "tart";
+  providerDataDisks = {
+    # Canonical disk layout: boot disk on vda, ZFS data disks on vdb–vde.
+    # Identical for both Lima and Tart — both use the same disk images.
+    tank1 = "/dev/vdb";
+    tank2 = "/dev/vdc";
+    tank3 = "/dev/vdd";
+    recover = "/dev/vde";
+  };
   hostId = config.networking.hostId;
+  installRootMountPoint = cfg.bootstrapActivation.installRootMountPoint;
+  secondaryEspPartLabelsEnv = lib.concatStringsSep " " cfg.espSync.secondaryEspPartLabels;
+  contributedTargetName = ndhSystemd.contributedTargetName;
+  zpoolInitUnitName = ndhSystemd.mkUnitName "zpool-init";
+  zpoolInitServiceName = ndhSystemd.mkServiceName "zpool-init";
+  zfsNixosInstallServiceName = ndhSystemd.mkServiceName "zfs-nixos-install";
+  espSyncUnitName = ndhSystemd.mkUnitName "esp-sync";
 
   joinMountPoints =
     prefix: point:
@@ -60,10 +80,7 @@ let
     }) mountpointList
   );
 
-  mountpointMap = builtins.traceVerbose ''
-    -- mountpointMap --
-    ${builtins.toJSON _mountpointMap}
-    --'' _mountpointMap;
+  mountpointMap = _mountpointMap;
 
   mountPoints = lib.attrNames mountpointMap;
 
@@ -75,10 +92,7 @@ let
     ds.options ? "nixos:mount-overlay" && ds.options."nixos:mount-overlay" == "true"
   ) mountPoints;
 
-  overlayMountPoints = builtins.traceVerbose ''
-    -- overlayMountPoints --
-    ${builtins.toJSON _overlayMountPoints}
-    --'' _overlayMountPoints;
+  overlayMountPoints = if overlayModeEnabled then _overlayMountPoints else [ ];
 
   _zfsMountPoints = lib.filter (
     mp:
@@ -88,10 +102,8 @@ let
     !(ds.options ? "nixos:mount-overlay" && ds.options."nixos:mount-overlay" == "true")
   ) mountPoints;
 
-  zfsMountPoints = builtins.traceVerbose ''
-    -- zfsMountPoints --
-    ${builtins.toJSON _zfsMountPoints}
-    --'' _zfsMountPoints;
+  # Overlay mode off => mount all datasets directly as ZFS.
+  zfsMountPoints = if overlayModeEnabled then _zfsMountPoints else mountPoints;
 
   fileSystemsMap = lib.foldl' (a: b: a // b) { } config.disko.devices._config.fileSystems.contents;
 
@@ -141,35 +153,78 @@ let
     }) overlayMountPoints
   );
 
-  fileSystems =
-    let
-      _value = zfsOverlayFileSystems // overlayFileSystems;
-      _json = (builtins.toJSON _value);
-    in
-    (builtins.traceVerbose ''
-      -- config.fileSystems --
-      ${_json}
-      --'' _value);
+  fileSystems = zfsLegacyFileSystems // zfsOverlayFileSystems // overlayFileSystems;
 
-  diskoModulePinned = ndh.store.writeText "disko-module-pinned.nix" ''
-    { lib, ... }:
-    {
-      disko = import ${./disko-config.nix} { inherit lib; };
-    }
+  # Extracted so it can be referenced in both ExecCondition and storePaths.
+  # NixOS initrd systemd auto-closes ExecStart but not always ExecCondition.
+  initrdDevicesCheckScript = ndh.store.writeShellScript "initrd-zpool-init-devices-check" ''
+    set -eu
+
+    if ! "${if cfg.bootstrapActivation.autoStart then "true" else "false"}"; then
+      echo "[initrd-zpool-init] autoStart=false; skipping"
+      exit 1
+    fi
+
+    for dev in ${lib.escapeShellArgs cfg.bootstrapActivation.requiredDevices}; do
+      if [ ! -b "$dev" ]; then
+        echo "[initrd-zpool-init] skip: required device missing: $dev"
+        exit 1
+      fi
+    done
+
+    exit 0
   '';
 
-  zpoolInit = pkgs.writeShellScriptBin "zpool-init" ''
-    export DISKO_NIX_DEFAULT="${diskoModulePinned}"
-    ${builtins.readFile ./zfs.d/zpool-init.sh}
+  zpoolInitText = ''
+    export ZFS_DISK_TANK1="${cfg.bootstrapActivation.dataDisks.tank1}"
+    export ZFS_DISK_TANK2="${cfg.bootstrapActivation.dataDisks.tank2}"
+    export ZFS_DISK_TANK3="${cfg.bootstrapActivation.dataDisks.tank3}"
+    export ZFS_DISK_RECOVER="${cfg.bootstrapActivation.dataDisks.recover}"
+    ${builtins.replaceStrings [ "@nixBashTrampoline@" ] [ nixBashTrampoline ] (
+      builtins.readFile ./zfs.d/zpool-init.sh
+    )}
   '';
+
+  zpoolInit =
+    ndh.store.runCommand "zpool-init"
+      {
+        passAsFile = [ "text" ];
+        text = zpoolInitText;
+      }
+      ''
+        mkdir -p "$out/bin"
+        install -m 0555 "$textPath" "$out/bin/zpool-init"
+      '';
+
+  espSyncScriptText = builtins.replaceStrings [ "@nixBashTrampoline@" ] [ nixBashTrampoline ] (
+    builtins.readFile ./zfs.d/esp-sync.sh
+  );
+
+  espSyncScript =
+    ndh.store.runCommand "esp-sync"
+      {
+        passAsFile = [ "text" ];
+        text = espSyncScriptText;
+      }
+      ''
+        install -Dm0555 "$textPath" "$out"
+      '';
 
 in
 {
 
-  options.zfsOverlays.override = lib.mkOption {
+  options.zfsOverlays.enable = lib.mkOption {
     type = lib.types.bool;
     default = false;
-    description = "Whether to override fileSystems definitions at initial boot.";
+    description = "Enable ZFS-backed filesystem definitions and boot integration.";
+  };
+  options.zfsOverlays.overlayMode.enable = lib.mkOption {
+    type = lib.types.bool;
+    default = false;
+    description = ''
+      Enable overlayfs composition for datasets marked with nixos:mount-overlay=true.
+      This mode is only active for Tart providers.
+    '';
   };
   options.zfsOverlays.sanoid.enable = lib.mkOption {
     type = lib.types.bool;
@@ -248,30 +303,94 @@ in
     default = true;
     description = "Run ZFS bootstrap activation once via a dedicated idempotent systemd unit.";
   };
+  options.zfsOverlays.bootstrapActivation.dataDisks = lib.mkOption {
+    type = lib.types.submodule {
+      options = {
+        tank1 = lib.mkOption {
+          type = lib.types.str;
+          default = providerDataDisks.tank1;
+          description = "Block device path for primary tank member disk.";
+        };
+        tank2 = lib.mkOption {
+          type = lib.types.str;
+          default = providerDataDisks.tank2;
+          description = "Block device path for secondary tank member disk.";
+        };
+        tank3 = lib.mkOption {
+          type = lib.types.str;
+          default = providerDataDisks.tank3;
+          description = "Block device path for tertiary tank member disk.";
+        };
+        recover = lib.mkOption {
+          type = lib.types.str;
+          default = providerDataDisks.recover;
+          description = "Block device path for recover pool disk.";
+        };
+      };
+    };
+    default = { };
+    description = ''
+      Canonical block-device mapping used by disko bootstrap provisioning.
+      Defaults are provider-specific and can be overridden per host/profile.
+    '';
+  };
+  options.zfsOverlays.bootstrapActivation.autoStart = lib.mkOption {
+    type = lib.types.bool;
+    default = true;
+    description = ''
+      Auto-start ZFS bootstrap activation by wiring the zpool-init service to systemd boot targets.
+      Set to false for temporary inspect/debug boots where zpool-init must not run automatically.
+    '';
+  };
   options.zfsOverlays.bootstrapActivation.requiredDevices = lib.mkOption {
     type = lib.types.listOf lib.types.str;
     default = [
-      "/dev/vdb"
-      "/dev/vdc"
-      "/dev/vdd"
-      "/dev/vde"
+      providerDataDisks.tank1
+      providerDataDisks.tank2
+      providerDataDisks.tank3
+      providerDataDisks.recover
     ];
     description = ''
       Block devices that must be present before running bootstrap datastore provisioning.
       This keeps first boot safe for Tart/Lima when extra data disks are not yet attached.
     '';
   };
+  options.zfsOverlays.bootstrapActivation.installRootMountPoint = lib.mkOption {
+    type = lib.types.str;
+    default = "/mnt/zfs-root";
+    description = ''
+      Canonical target root mountpoint used by disko and bootstrap NixOS install flow.
+    '';
+  };
+  options.zfsOverlays.espSync.secondaryEspPartLabels = lib.mkOption {
+    type = lib.types.listOf lib.types.str;
+    default = [
+      "esp-tank1"
+      "esp-tank2"
+      "esp-tank3"
+      "esp-recover"
+    ];
+    description = ''
+      Canonical ordered list of secondary ESP partition labels mirrored from primary ESP.
+      These labels are exported to esp-sync via SECONDARY_ESP_PART_LABELS.
+    '';
+  };
   config = {
+
+    # Keep disko root mountpoint aligned with the canonical bootstrap target.
+    # This makes flake-based disko invocations deterministic and consistent
+    # with zpool-init/zfs-install scripts.
+    disko.rootMountPoint = lib.mkDefault installRootMountPoint;
 
     networking.hostId = lib.mkDefault hostId;
 
     boot = {
-      supportedFilesystems = (lib.mkAfter { zfs = lib.mkForce true; });
+      supportedFilesystems = lib.mkAfter [ "zfs" ];
       initrd = {
-        supportedFilesystems = lib.mkAfter { zfs = (lib.mkForce config.zfsOverlays.override); };
+        supportedFilesystems = lib.mkAfter (lib.optional config.zfsOverlays.enable "zfs");
       };
       zfs = (
-        lib.mkIf config.zfsOverlays.override {
+        lib.mkIf config.zfsOverlays.enable {
           forceImportRoot = false;
           devNodes = lib.mkForce "/dev/disk/by-partlabel";
           extraPools = [
@@ -280,9 +399,16 @@ in
           ];
         }
       );
+
+      loader.systemd-boot.extraInstallCommands = lib.mkIf config.boot.loader.systemd-boot.enable (
+        lib.mkAfter ''
+          export SECONDARY_ESP_PART_LABELS=${lib.escapeShellArg secondaryEspPartLabelsEnv}
+          ${espSyncScript}
+        ''
+      );
     };
 
-    # Only enable services and mount filesystems if override is true
+    # ZFS runtime services
     services.zfs = {
       autoScrub.enable = true;
       trim.enable = true;
@@ -294,69 +420,227 @@ in
     };
 
     fileSystems = (
-      lib.mkIf config.zfsOverlays.override (
+      lib.mkIf config.zfsOverlays.enable (
         lib.mkMerge [ (lib.mapAttrs (_: fs: lib.mkForce fs) fileSystems) ]
       )
     );
 
-    # Only add extra scripts and shutdown logic if override is true
+    # Runtime tooling
     environment.systemPackages = [
       pkgs.zfs
       zpoolInit
     ];
 
-    systemd = {
-      services."io-nxmatic-nix-darwin-home-zpool-init" = lib.mkIf config.zfsOverlays.bootstrapActivation.enable {
-        description = "Idempotent one-shot ZFS disk/datastore provisioning (@codebase)";
-        wantedBy = [ "zfs-import.target" ];
-        wants = [ "systemd-udev-settle.service" ];
-        before = [
-          "zfs-import.target"
-          "zfs-import-cache.service"
-          "zfs-import-scan.service"
-          "zfs-mount.service"
-        ];
-        after = [
-          "systemd-udev-settle.service"
-        ];
+    # Explicitly include ExecCondition script in the initrd store.
+    # NixOS auto-closes ExecStart paths but not always ExecCondition.
+    boot.initrd.systemd.storePaths = lib.mkIf (
+      config.zfsOverlays.bootstrapActivation.enable && config.zfsOverlays.enable && (!overlayModeEnabled)
+    ) [ initrdDevicesCheckScript ];
 
+    boot.initrd.systemd.services.${zpoolInitUnitName} =
+      lib.mkIf
+        (
+          config.zfsOverlays.bootstrapActivation.enable && config.zfsOverlays.enable && (!overlayModeEnabled)
+        )
+        {
+          description = "Stage1 idempotent ZFS disko provisioning (@codebase)";
+          wantedBy = [ "initrd.target" ];
+          after = [
+            "systemd-udevd.service"
+            "systemd-udev-settle.service"
+          ];
+          before = [
+            "initrd-root-fs.target"
+            "sysroot.mount"
+          ];
+          path = with pkgs; [
+            bash
+            coreutils
+            util-linux
+            gawk
+            systemd
+            zfs
+            disko
+          ];
+          serviceConfig = {
+            Type = "oneshot";
+            RemainAfterExit = true;
+            StandardOutput = "journal+console";
+            StandardError = "journal+console";
+            ExecCondition = initrdDevicesCheckScript;
+            ExecStart = ndh.store.writeShellScript "initrd-zpool-init" ''
+              set -euxo pipefail
+
+              # Some bootstrap images may accidentally contain /homeless-shelter,
+              # which makes nix/disko refuse impurity-prone builds.
+              if [ -d /homeless-shelter ]; then
+                rm -rf /homeless-shelter
+              fi
+
+              export NDH_BOOTSTRAP_INSTALLER_MODE=1
+              export NDH_BOOTSTRAP_STRICT=0
+              exec ${zpoolInit}/bin/zpool-init
+            '';
+            TimeoutStartSec = "30min";
+          };
+        };
+
+    systemd = {
+      services.${zpoolInitUnitName} = lib.mkMerge [
+        (lib.mkIf (config.zfsOverlays.bootstrapActivation.enable && overlayModeEnabled) {
+          description = "Idempotent one-shot ZFS disk/datastore provisioning (@codebase)";
+          wantedBy = [ "zfs-import.target" ];
+          before = [
+            "zfs-import.target"
+            "zfs-import-cache.service"
+            "zfs-import-scan.service"
+            "zfs-mount.service"
+          ];
+
+          path = with pkgs; [
+            bash
+            coreutils
+            util-linux
+            gawk
+            systemd
+            zfs
+            disko
+          ];
+
+          serviceConfig = {
+            Type = "oneshot";
+            RemainAfterExit = true;
+            ExecCondition = ndh.store.writeShellScript "zpool-init-devices-check" ''
+              set -eu
+
+              if ! "${if config.zfsOverlays.bootstrapActivation.autoStart then "true" else "false"}"; then
+                echo "[zpool-init] autoStart is false; skipping device check and zpool-init execution"
+                exit 1
+              fi
+
+              for dev in ${lib.escapeShellArgs config.zfsOverlays.bootstrapActivation.requiredDevices}; do
+                if [ ! -b "$dev" ]; then
+                  echo "[zpool-init] skip: required device missing: $dev"
+                  exit 1
+                fi
+              done
+
+              exit 0
+            '';
+            ExecStart = ndh.store.writeShellScript "zpool-init" ''
+              set -euxo pipefail
+
+              # Some bootstrap images may accidentally contain /homeless-shelter,
+              # which makes nix/disko refuse impurity-prone builds.
+              if [ -d /homeless-shelter ]; then
+                rm -rf /homeless-shelter
+              fi
+
+              # This early-boot service runs with explicit systemd path inputs;
+              # skip NDH bootstrap profile strict checks to avoid a noisy pre-flight
+              # failure phase before the actual zpool-init execution.
+              export NDH_BOOTSTRAP_INSTALLER_MODE=1
+              export NDH_BOOTSTRAP_STRICT=0
+
+              exec ${zpoolInit}/bin/zpool-init
+            '';
+            TimeoutStartSec = "30min";
+          };
+
+          unitConfig = {
+            X-StopOnRemoval = false;
+          };
+        })
+
+        # Non-overlay mode (e.g., Lima bootstrap ext4 -> prepare ZFS for next boot)
+        # runs in stage-2 after local filesystems are available.
+        (lib.mkIf (config.zfsOverlays.bootstrapActivation.enable && (!overlayModeEnabled)) {
+          description = "Stage2 idempotent ZFS disk/datastore provisioning (@codebase)";
+          wantedBy = [ contributedTargetName ];
+          after = [
+            "local-fs.target"
+            "systemd-udevd.service"
+            "systemd-udev-settle.service"
+          ];
+          before = [ zfsNixosInstallServiceName ];
+
+          path = with pkgs; [
+            bash
+            coreutils
+            util-linux
+            gawk
+            systemd
+            zfs
+            disko
+          ];
+
+          serviceConfig = {
+            Type = "oneshot";
+            RemainAfterExit = true;
+            StandardOutput = "journal+console";
+            StandardError = "journal+console";
+            ExecCondition = ndh.store.writeShellScript "zpool-init-devices-check" ''
+              set -eu
+
+              if ! "${if config.zfsOverlays.bootstrapActivation.autoStart then "true" else "false"}"; then
+                echo "[zpool-init] autoStart is false; skipping device check and zpool-init execution"
+                exit 1
+              fi
+
+              for dev in ${lib.escapeShellArgs config.zfsOverlays.bootstrapActivation.requiredDevices}; do
+                if [ ! -b "$dev" ]; then
+                  echo "[zpool-init] skip: required device missing: $dev"
+                  exit 1
+                fi
+              done
+
+              exit 0
+            '';
+            ExecStart = ndh.store.writeShellScript "zpool-init" ''
+              set -euxo pipefail
+
+              # Some bootstrap images may accidentally contain /homeless-shelter,
+              # which makes nix/disko refuse impurity-prone builds.
+              if [ -d /homeless-shelter ]; then
+                rm -rf /homeless-shelter
+              fi
+
+              export NDH_BOOTSTRAP_INSTALLER_MODE=1
+              export NDH_BOOTSTRAP_STRICT=0
+              exec ${zpoolInit}/bin/zpool-init
+            '';
+            TimeoutStartSec = "30min";
+          };
+
+          unitConfig = {
+            X-StopOnRemoval = false;
+          };
+        })
+      ];
+
+      services.${espSyncUnitName} = {
+        description = "Mirror primary ESP to additional ESP partitions (@codebase)";
+        wantedBy = [ "multi-user.target" ];
+        after = [
+          "local-fs.target"
+          "boot.mount"
+        ];
+        wants = [ "boot.mount" ];
         path = with pkgs; [
           bash
           coreutils
           util-linux
-          gawk
-          zfs
-          disko
+          dosfstools
         ];
-
         serviceConfig = {
           Type = "oneshot";
-          RemainAfterExit = true;
-          ExecCondition = ndh.store.writeShellScript "zpool-init-devices-check" ''
+          ExecStart = ndh.store.writeShellScript "esp-sync-service" ''
             set -eu
-
-            for dev in ${lib.escapeShellArgs config.zfsOverlays.bootstrapActivation.requiredDevices}; do
-              if [ ! -b "$dev" ]; then
-                echo "[zpool-init] skip: required device missing: $dev"
-                exit 1
-              fi
-            done
-
-            exit 0
+            export SECONDARY_ESP_PART_LABELS=${lib.escapeShellArg secondaryEspPartLabelsEnv}
+            exec ${espSyncScript}
           '';
-          ExecStart = ndh.store.writeShellScript "zpool-init" ''
-            set -euxo pipefail
-
-            exec ${zpoolInit}/bin/zpool-init
-          '';
-          TimeoutStartSec = "30min";
-        };
-
-        unitConfig = {
-          X-StopOnRemoval = false;
         };
       };
-
       tmpfiles.rules = [
         # ensure utmp + wtmp exist on the real root under /run
         "f /run/utmp 0664 root utmp -"

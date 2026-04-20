@@ -1,5 +1,4 @@
-source @bashTrampoline@
-source @logger@
+source @nixBashTrampoline@
 
 main() {
   set -euo pipefail
@@ -92,10 +91,8 @@ export PATH="${(j/:/)path}"
 # In Copilot/agent-owned VS Code terminals, force a simple stable prompt and
 # ensure this hook runs after theme hooks (e.g. powerlevel10k).
 # Keep the user's regular interactive terminals on their preferred prompt.
-if [[ "${TERM_PROGRAM:-}" == "vscode" ]] && {
-  [[ "${VSCODE_PREVENT_SHELL_HISTORY:-}" == "1" ]] &&
-  [[ ":${PATH}:" == *":$HOME/Library/Application Support/Code - Insiders/User/globalStorage/github.copilot-chat/debugCommand:"* ]];
-}; then
+if [[ "${TERM_PROGRAM:-}" == "vscode" ]] && \
+   [[ "${VSCODE_PREVENT_SHELL_HISTORY:-}" == "1" ]]; then
   # Reattach stdout/stderr early for agent terminals before prompt hooks.
   if [[ -w /dev/fd/10 ]]; then
     exec >/dev/fd/10 2>&1

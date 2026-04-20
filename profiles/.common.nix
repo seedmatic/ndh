@@ -3,12 +3,12 @@
   home-manager,
   pkgs,
   lib,
-  catalog,
-  inventory,
+  ndh,
   ...
 }:
 
 let
+  ndhContext = ndh.context;
   inherit (pkgs) stdenv;
   inherit (lib) mkIf;
   cfg = config.profile;
@@ -16,14 +16,14 @@ let
   # Capture injected catalog in a non-recursive binding, then assert presence (@codebase)
   catalogResolved =
     let
-      injected = catalog;
+      injected = ndhContext.catalog;
     in
     assert injected != null;
     injected;
   # Capture injected inventory in a non-recursive binding, then assert presence (@codebase)
   inventoryResolved =
     let
-      injected = inventory;
+      injected = ndhContext.inventory;
     in
     assert injected != null;
     injected;
@@ -79,11 +79,33 @@ in
                   description = "Optional alias for the host (null means none).";
                   example = "my-mac";
                 };
+                nixosBringupRootFs = lib.mkOption {
+                  type = lib.types.enum [
+                    "ext4"
+                    "btrfs"
+                  ];
+                  default = ndhContext.hostProfile.nixosBringupRootFs or "btrfs";
+                  description = "Filesystem type for NixOS bringup root disk image generation.";
+                  example = "ext4";
+                };
                 forceRemoteBuilds = lib.mkOption {
                   type = lib.types.bool;
                   description = "Force this host to offload builds to remote builders (set max-jobs = 0 and configure remote builders).";
                   default = false;
                   example = true;
+                };
+                linuxBuilderMode = lib.mkOption {
+                  type = lib.types.enum [
+                    "embedded"
+                    "remote"
+                  ];
+                  default = "embedded";
+                  description = ''
+                    Selects how aarch64-linux build capacity is provided on Darwin hosts.
+                    - "embedded": enable nix-darwin's local `nix.linux-builder` VM (canonical current behavior)
+                    - "remote": disable embedded linux-builder and rely on remote builders (e.g., Lima/Tart NixOS VM)
+                  '';
+                  example = "remote";
                 };
                 preferredBuilderHosts = lib.mkOption {
                   type = lib.types.listOf lib.types.str;
@@ -224,22 +246,6 @@ in
                   ];
                   description = "Inventory-derived list of managed hosts and their builder endpoints with physical characteristics (platform/form) and VM details (kind/manager). When set and remoteBuilders is empty, the distributed-builds module will use this list; features are derived automatically.";
                 };
-                tailnet = lib.mkOption {
-                  type = lib.types.submodule {
-                    options = {
-                      name = lib.mkOption {
-                        type = lib.types.str;
-                        description = "The name of the tailnet";
-                        default = "mammoth-skate";
-                      };
-                      domain = lib.mkOption {
-                        type = lib.types.str;
-                        description = "The domain of the tailnet";
-                        default = "ts.net";
-                      };
-                    };
-                  };
-                };
               };
             };
           };
@@ -331,7 +337,7 @@ in
             vmKind = if entry ? vm then (entry.vm.kind or null) else null;
             vmManager = if entry ? vm then (entry.vm.manager or null) else null;
             maxJobs = base.maxJobs or 0;
-            defaults = lib.optional (maxJobs >= 8) "big-parallel" ++ lib.optional (vmKind == "qemu") "kvm";
+            defaults = lib.optional (maxJobs >= 8) "big-parallel";
             platformLabel =
               if base ? systems && lib.any (s: lib.hasInfix "linux" s) base.systems then "linux" else "darwin";
             hostNameDefault =

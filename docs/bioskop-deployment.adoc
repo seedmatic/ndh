@@ -59,15 +59,15 @@ Before any host `darwin-rebuild switch`, install NDH prerequisites:
 [source,bash]
 ----
 cd /path/to/nix-darwin-home/hosts/bioskop
-nix run .#ndh-prerequisites-install
+nix run .#bioskop-nixos-bringup-install
 ----
 
 Notes:
 
-- `ndh-prerequisites-install` is the canonical installer to run.
-- Runtime profile target: `/nix/var/nix/profiles/per-user/root/io-nxmatic-nix-darwin-home-bringup-runtime-profile-holder`.
-- `io-nxmatic-nix-darwin-home-bringup-runtime-profile-holder` is the runtime payload package installed by that installer.
-- `ndh-vm-lima-materialize` is separate and only for Lima materialization workflows.
+- `bioskop-nixos-bringup-install` is the host-scoped installer to run on bioskop.
+- Runtime profile target: `/nix/var/nix/profiles/per-user/root/nerd-nixos-bringup-runtime`.
+- `nerd-nixos-bringup-runtime` is runtime payload package installed by that installer.
+- `nerd-nixos-lima-vm-materialize` is separate and only for Lima materialization workflows.
 
 == Step 1: Configure Lima VM with Headscale Modules
 

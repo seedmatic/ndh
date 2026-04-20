@@ -101,7 +101,5 @@ main() {
 }
 
 # shellcheck disable=SC1091
-source @bashTrampoline@
-# shellcheck disable=SC1091
-source @logger@
+source @nixBashTrampoline@
 ndh::logger:command:run "@loggerTag@" main "$@"

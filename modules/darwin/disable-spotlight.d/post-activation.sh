@@ -1,5 +1,5 @@
 #!/usr/bin/env -S bash -euo pipefail
-source @logger@
+source @nixBashTrampoline@
 
 main() {
   echo "[spotlight] Disabling Spotlight indexing and cleaning stale indexes"

@@ -1,7 +1,7 @@
 #!/usr/bin/env -S bash -euo pipefail
 
 # Home-manager activation: prepare sudo wrapper path resolution (@codebase)
-source @logger@
+source @nixBashTrampoline@
 
 main() {
   set -euo pipefail

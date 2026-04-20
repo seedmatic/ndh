@@ -4,7 +4,6 @@
   lib,
   pkgs,
   ndh,
-  hostProfile ? { },
   ...
 }:
 let
@@ -12,6 +11,7 @@ let
     mkOption
     types
     ;
+  ndhContext = ndh.context;
   cfg = config.ndh.sopsAgeKeyBootstrap;
   secretNamespaceDir = "/run/secrets/nix-darwin-home";
   sshKeysSopsFile = ../../modules/home-manager/ssh.d/keys.yaml;
@@ -20,6 +20,8 @@ let
     lib.hasInfix "sops:" sshKeysSopsContent
     && !(lib.hasInfix "BEGIN OPENSSH PRIVATE KEY" sshKeysSopsContent);
 
+  effectiveHostProfile = ndhContext.hostProfile;
+  effectiveGenerationMode = ndhContext.generationMode;
   userHome =
     if config ? profile && config.profile ? user && config.profile.user ? home then
       toString config.profile.user.home
@@ -32,16 +34,13 @@ let
     else
       "";
 
-  nixosBootstrapMode =
-    hostProfile ? nixosImageMode
-    && hostProfile.nixosImageMode != null
-    && hostProfile.nixosImageMode == "bootstrap";
+  nixosbringupMode = effectiveGenerationMode == "bringup";
 
   vmProvider =
     if config ? ndh && config.ndh ? vm && config.ndh.vm ? provider then
       config.ndh.vm.provider
-    else if hostProfile ? vmProvider && hostProfile.vmProvider != null then
-      hostProfile.vmProvider
+    else if effectiveHostProfile ? vmProvider && effectiveHostProfile.vmProvider != null then
+      effectiveHostProfile.vmProvider
     else
       "lima";
 
@@ -64,25 +63,61 @@ let
     "${hostSopsKeyShareMountPoint}/keys.txt"
   ];
 
-  sopsAgeBootstrapScriptSource = pkgs.replaceVars ./sops.d/bootstrap.sh {
-    bashTrampoline = "${./shell.d/nix-bash-trampoline.sh}";
-    keyFile = config.sops.age.keyFile;
-    publicKeyFile = cfg.publicKeyFile;
-    exportPublicKeyOnActivation = if cfg.exportPublicKeyOnActivation then "1" else "0";
-    nixosImportFromHost = if cfg.nixosHostKeyImport.enable then "1" else "0";
-    remoteFetchEnable = if cfg.nixosHostKeyImport.remoteFetch.enable then "1" else "0";
-    remoteFetchUser = cfg.nixosHostKeyImport.remoteFetch.user;
-    remoteFetchKeyPath = cfg.nixosHostKeyImport.remoteFetch.keyPath;
-    remoteFetchUseSudo = if cfg.nixosHostKeyImport.remoteFetch.useSudo then "1" else "0";
-    remoteFetchHostnameEnvVar = cfg.nixosHostKeyImport.remoteFetch.hostnameEnvVar;
-    remoteFetchMdnsSuffix = cfg.nixosHostKeyImport.remoteFetch.mdnsSuffix;
-    phase = cfg.phase;
-    darwinUserKeyFile = cfg.darwinUserKeyFile;
-    importExistingUserKeyOnBootstrap = if cfg.importExistingUserKeyOnBootstrap then "1" else "0";
-    nixosHostKeyImportCandidates = lib.concatStringsSep "\n" cfg.nixosHostKeyImport.candidates;
-  };
-  sopsAgeBootstrapScript = builtins.readFile sopsAgeBootstrapScriptSource;
-  sopsAgeBootstrapSystemdScript = ndh.store.writeShellScript "sops-age-bootstrap" sopsAgeBootstrapScript;
+  trampolineDir = pkgs.runCommand "io.nxmatic.nix-darwin-home-trampoline-dir" { } ''
+    mkdir -p "$out"
+    install -m 0644 ${./shell.d/logger.sh} "$out/logger.sh"
+    install -m 0755 ${./shell.d/nix-bash-trampoline.sh} "$out/nix-bash-trampoline.sh"
+  '';
+  sopsAgeBootstrapScript =
+    builtins.replaceStrings
+      [
+        "@nixBashTrampoline@"
+        "@keyFile@"
+        "@publicKeyFile@"
+        "@exportPublicKeyOnActivation@"
+        "@nixosImportFromHost@"
+        "@remoteFetchEnable@"
+        "@remoteFetchUser@"
+        "@remoteFetchKeyPath@"
+        "@remoteFetchUseSudo@"
+        "@remoteFetchHostnameEnvVar@"
+        "@remoteFetchMdnsSuffix@"
+        "@phase@"
+        "@darwinUserKeyFile@"
+        "@importExistingUserKeyOnBootstrap@"
+        "@nixosHostKeyImportCandidates@"
+      ]
+      [
+        "${trampolineDir}/nix-bash-trampoline.sh"
+        (toString config.sops.age.keyFile)
+        (toString cfg.publicKeyFile)
+        (if cfg.exportPublicKeyOnActivation then "1" else "0")
+        (if cfg.nixosHostKeyImport.enable then "1" else "0")
+        (if cfg.nixosHostKeyImport.remoteFetch.enable then "1" else "0")
+        (toString cfg.nixosHostKeyImport.remoteFetch.user)
+        (toString cfg.nixosHostKeyImport.remoteFetch.keyPath)
+        (if cfg.nixosHostKeyImport.remoteFetch.useSudo then "1" else "0")
+        (toString cfg.nixosHostKeyImport.remoteFetch.hostnameEnvVar)
+        (toString cfg.nixosHostKeyImport.remoteFetch.mdnsSuffix)
+        (toString cfg.phase)
+        (toString cfg.darwinUserKeyFile)
+        (if cfg.importExistingUserKeyOnBootstrap then "1" else "0")
+        (lib.concatStringsSep "\n" cfg.nixosHostKeyImport.candidates)
+      ]
+      (builtins.readFile ./sops.d/bootstrap.sh);
+  sopsAgeBootstrapSystemdScript =
+    ndh.store.runCommand "sops-age-bootstrap"
+      {
+        passAsFile = [ "text" ];
+        text = sopsAgeBootstrapScript;
+      }
+      ''
+        {
+          printf '%s\n' '#!${pkgs.bash}/bin/bash'
+          cat "$textPath"
+        } > "$out"
+        chmod 0555 "$out"
+      '';
   useSystemdSopsActivation = config.sops.useSystemdActivation or false;
   namespaceSecretPaths =
     let
@@ -280,7 +315,7 @@ in
       age.keyFile = lib.mkDefault cfg.defaultAgeKeyFile;
       # In first-boot bootstrap images, avoid host SSH-key based decryption fallback.
       # Host keys may not exist yet at the point sops-install-secrets is executed.
-      age.sshKeyPaths = lib.mkIf nixosBootstrapMode [ ];
+      age.sshKeyPaths = lib.mkIf nixosbringupMode [ ];
 
     };
 

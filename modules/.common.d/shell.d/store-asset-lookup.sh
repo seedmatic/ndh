@@ -2,9 +2,7 @@
 set -euo pipefail
 
 # shellcheck disable=SC1091
-source "@bashTrampoline@"
-# shellcheck disable=SC1091
-source "@logger@"
+source "@nixBashTrampoline@"
 
 usage() {
   cat <<'EOF'

@@ -2,10 +2,8 @@
 # Host-side Lima wrapper with remote NixOS activation support (@codebase)
 set -euo pipefail
 
-# shellcheck disable=SC1091
-source "@bashTrampoline@"
-# shellcheck disable=SC1091
-source "@logger@"
+# shellcheck source=/dev/null
+source "@nixBashTrampoline@"
 
 LIMA_HOME="${LIMA_HOME:-${HOME}/.lima}"
 
@@ -16,14 +14,17 @@ NIXOS_HOST_ATTR="${NIXOS_HOST_ATTR:-@nixosHostAttr@}"
 NIXOS_REMOTE_HOST="${NIXOS_REMOTE_HOST:-root}"
 LIMA_VERBOSE="${LIMA_VERBOSE:-0}"
 LIMA_QUIET_BUILD="${LIMA_QUIET_BUILD:-0}"
-DEFAULT_LIMA_NIXOS_DISK_IMAGE_ATTR="${DEFAULT_LIMA_NIXOS_DISK_IMAGE_ATTR:-nixosDiskImageBringupSystemdBoot}"
+LIMA_EXTERNAL_DISK_SIZE="${LIMA_EXTERNAL_DISK_SIZE:-100G}"
+DEFAULT_LIMA_NIXOS_DISK_IMAGE_ATTR="${DEFAULT_LIMA_NIXOS_DISK_IMAGE_ATTR:-nixosDiskImages.@effectiveHostName@.bringup.zfsSystemd}"
 LIMA_NIXOS_DISK_IMAGE_ATTR="${LIMA_NIXOS_DISK_IMAGE_ATTR:-}"
 NDH_VZ_HOST_FLAKE_REF="${NDH_VZ_HOST_FLAKE_REF:-}"
 RESOLVED_NDH_VZ_HOST_FLAKE_REF=""
 RESOLVED_LIMA_NIXOS_DISK_IMAGE_ATTR=""
+RESOLVED_DISK_IMAGE_STORE_PATH=""
 
 # Allow overriding the flake reference fully while keeping canonical defaults.
 NIXOS_FLAKE_REF="${NIXOS_FLAKE_REF:-${NIXOS_FLAKE_PATH}#${NIXOS_HOST_ATTR}}"
+NIXOS_BRINGUP_ROOT_FS="${NIXOS_BRINGUP_ROOT_FS:-btrfs}"
 NIXOS_EXT4_FLAKE_REF="${NIXOS_EXT4_FLAKE_REF:-}"
 NIXOS_ZFS_FLAKE_REF="${NIXOS_ZFS_FLAKE_REF:-}"
 NDH_NIX_CLI_ARGS="${NDH_NIX_CLI_ARGS:--L -v -v}"
@@ -31,20 +32,20 @@ NDH_NIX_CLI_ARGS="${NDH_NIX_CLI_ARGS:--L -v -v}"
 nixos:flake:refs:resolve() {
   local flake_base="${NIXOS_FLAKE_REF%%#*}"
   local host_attr="${NIXOS_HOST_ATTR}"
-  local bringup_prefix
+  local host_name
 
   if [[ "${host_attr}" == *-nixos ]]; then
-    bringup_prefix="${host_attr%-nixos}"
+    host_name="${host_attr%-nixos}"
   else
-    bringup_prefix="${host_attr}"
+    host_name="${host_attr}"
   fi
 
   if [[ -z "${NIXOS_EXT4_FLAKE_REF}" ]]; then
-    NIXOS_EXT4_FLAKE_REF="${flake_base}#${bringup_prefix}-bringup-ext4"
+    NIXOS_EXT4_FLAKE_REF="${flake_base}#${host_name}-nixos-lima-bringup-systemd-${NIXOS_BRINGUP_ROOT_FS}"
   fi
 
   if [[ -z "${NIXOS_ZFS_FLAKE_REF}" ]]; then
-    NIXOS_ZFS_FLAKE_REF="${flake_base}#${bringup_prefix}-bringup-zfs"
+    NIXOS_ZFS_FLAKE_REF="${flake_base}#${host_name}-nixos-tart-bringup-systemd-zfs"
   fi
 }
 
@@ -52,6 +53,7 @@ host:flake:ref:resolve() {
   local host_flake_ref="${NDH_VZ_HOST_FLAKE_REF}"
   local git_root
   local remotes
+  local legacy_root=""
 
   if [[ -z "${host_flake_ref}" ]]; then
     git_root="$(git -C "$PWD" rev-parse --show-toplevel 2>/dev/null || true)"
@@ -66,53 +68,27 @@ host:flake:ref:resolve() {
       exit 2
     fi
 
-    host_flake_ref="${git_root}/hosts/${NDH_VZ_HOST}"
+    host_flake_ref="${git_root}"
   fi
 
   if [[ "${host_flake_ref}" == *"#"* ]]; then
-    echo "[lima-run][ERROR] NDH_VZ_HOST_FLAKE_REF must be a host flake path (no #attr): ${host_flake_ref}" >&2
+    echo "[lima-run][ERROR] NDH_VZ_HOST_FLAKE_REF must be a flake path (no #attr): ${host_flake_ref}" >&2
     exit 2
   fi
 
-  if [[ "${host_flake_ref}" != */hosts/* ]]; then
-    host_flake_ref="${host_flake_ref%/}/hosts/${NDH_VZ_HOST}"
+  if [[ ! -f "${host_flake_ref}/flake.nix" && "${host_flake_ref}" == */hosts/* ]]; then
+    legacy_root="${host_flake_ref%/hosts/*}"
+    if [[ -f "${legacy_root}/flake.nix" ]]; then
+      host_flake_ref="${legacy_root}"
+    fi
   fi
 
   RESOLVED_NDH_VZ_HOST_FLAKE_REF="${host_flake_ref}"
 
   if [[ ! -f "${RESOLVED_NDH_VZ_HOST_FLAKE_REF}/flake.nix" ]]; then
-    echo "[lima-run][ERROR] expected host flake not found: ${RESOLVED_NDH_VZ_HOST_FLAKE_REF}/flake.nix" >&2
+    echo "[lima-run][ERROR] expected flake not found: ${RESOLVED_NDH_VZ_HOST_FLAKE_REF}/flake.nix" >&2
     exit 2
   fi
-}
-
-host:disk:image:symlink:path() {
-  echo "${RESOLVED_NDH_VZ_HOST_FLAKE_REF}/outputs.d/nixos-disk-image"
-}
-
-host:disk:image:attr:symlink:path() {
-  local attr="${1}"
-  echo "${RESOLVED_NDH_VZ_HOST_FLAKE_REF}/outputs.d/nixos-disk-image.${attr}"
-}
-
-lima:disk:image:manifest:path() {
-  local out_link
-
-  out_link="$(host:disk:image:symlink:path)"
-  [[ -e "${out_link}/manifest.yaml" ]] || return 1
-  echo "${out_link}/manifest.yaml"
-}
-
-lima:disk:image:attr:from:manifest:resolve() {
-  local manifest_path manifest_attr
-
-  manifest_path="$(lima:disk:image:manifest:path)" || return 1
-  manifest_attr="$(awk -F': *' '$1 == "attr" {print $2; exit}' "${manifest_path}" | tr -d '"[:space:]')"
-  [[ -n "${manifest_attr}" ]] || return 1
-
-  RESOLVED_LIMA_NIXOS_DISK_IMAGE_ATTR="${manifest_attr}"
-  : "[lima-run] inferred disk image attr from manifest: ${RESOLVED_LIMA_NIXOS_DISK_IMAGE_ATTR}"
-  return 0
 }
 
 lima:disk:image:attr:resolve() {
@@ -121,18 +97,16 @@ lima:disk:image:attr:resolve() {
     return
   fi
 
-  if lima:disk:image:attr:from:manifest:resolve; then
-    return
-  fi
-
-  echo "[lima-run][ERROR] required metadata manifest missing or invalid: $(host:disk:image:symlink:path)/manifest.yaml" >&2
-  echo "[lima-run][ERROR] build a disk image with metadata first (or pass --disk-image-attr explicitly)." >&2
-  exit 2
+  : "[lima-run] using default disk image attr: ${DEFAULT_LIMA_NIXOS_DISK_IMAGE_ATTR}"
+  RESOLVED_LIMA_NIXOS_DISK_IMAGE_ATTR="${DEFAULT_LIMA_NIXOS_DISK_IMAGE_ATTR}"
 }
 
+# shellcheck disable=SC2034
 declare -a NERD_NIXOS_DISKS=(tank1 tank2 tank3 recover)
-declare -a NERD_DEBIAN_DISKS=(tank1 tank2 tank3 recover)
-declare -a NERD_DISKS=(tank1 tank2 tank3 recover)
+# shellcheck disable=SC2034
+declare -a NERD_DEBIAN_DISKS=(tank2 tank3)
+# shellcheck disable=SC2034
+declare -a NERD_DISKS=(tank2 tank3)
 
 vm:disks:list() {
   local disks_var_name="NERD_DISKS[@]"
@@ -146,16 +120,25 @@ vm:disks:list() {
       ;;
   esac
 
-  echo "${!disks_var_name}"
+  printf '%s\n' "${!disks_var_name}"
 }
 
 vm:disk:foreach() {
   local action="$1"
-  local disks=($(vm:disks:list))
+  local -a disks=()
+  mapfile -t disks < <(vm:disks:list)
 
   for disk in "${disks[@]}"; do
     "$action" "$disk"
   done
+}
+
+vm:disk:create:all() {
+  vm:disk:foreach vm:disk:create
+}
+
+vm:disk:unlock:all() {
+  vm:disk:foreach vm:disk:unlock
 }
 
 vm:disk:delete() {
@@ -173,7 +156,7 @@ vm:disk:delete() {
 
 vm:disk:create() {
   if [[ ${#} -eq 0 ]]; then
-    vm:disk:foreach vm:disk:create
+    vm:disk:create:all
     return
   fi
 
@@ -186,7 +169,7 @@ vm:disk:create() {
 
 vm:disk:unlock() {
   if [[ ${#} -eq 0 ]]; then
-    vm:disk:foreach vm:disk:unlock
+    vm:disk:unlock:all
     return
   fi
 
@@ -198,44 +181,10 @@ vm:kill() {
   limactl stop -f "${LIMA_VM}" || true
 }
 
-vm:config:mode() {
-  local mode="${1:-headless}"
-  local instance_dir="${LIMA_HOME}/${LIMA_VM}"
-  local active_yaml="${instance_dir}/lima.yaml"
-  local headless_yaml="${instance_dir}/lima.headless.yaml"
-  local gui_yaml="${instance_dir}/lima.gui.yaml"
-  local active_target
-
-  case "${mode}" in
-    headless)
-      [[ -e "${headless_yaml}" ]] || { echo "[lima-run][ERROR] missing ${headless_yaml}" >&2; exit 1; }
-      ln -sfn "${headless_yaml}" "${active_yaml}"
-      ;;
-    gui|graphic|graphics)
-      [[ -e "${gui_yaml}" ]] || { echo "[lima-run][ERROR] missing ${gui_yaml}" >&2; exit 1; }
-      ln -sfn "${gui_yaml}" "${active_yaml}"
-      ;;
-    *)
-      echo "[lima-run][ERROR] unknown mode: ${mode} (expected: headless|gui)" >&2
-      exit 2
-      ;;
-  esac
-
-  active_target="$(readlink "${active_yaml}" 2>/dev/null || true)"
-  if [[ -z "${active_target}" ]]; then
-    active_target="${active_yaml}"
-  fi
-  : "[lima-run] active config -> ${active_target}"
-}
-
-vm:start:gui() {
-  vm:config:mode gui
-  vm:start
-}
-
-vm:start:headless() {
-  vm:config:mode headless
-  vm:start
+vm:external:disks:should:reset() {
+  # Canonical policy: nerd-nixos external disks carry ZFS pool members from the
+  # current bringup artifact set; do not recreate them during factory reset.
+  [[ "${LIMA_VM}" != "nerd-nixos" ]]
 }
 
 vm:start() {
@@ -248,18 +197,24 @@ vm:start() {
 
 vm:factory:reset() {
   limactl factory-reset "${LIMA_VM}"
-  vm:disk:create
+  if vm:external:disks:should:reset; then
+    vm:disk:create:all
+  else
+    : "[lima-run] preserving external disks for ${LIMA_VM} (tank2/tank3/recover)"
+  fi
   vm:start
 }
 
 vm:reset() {
+  vm:kill
   host:disk:image:build
+  host:lima:tank:disks:import
   host:lima:config:ensure
   vm:factory:reset
 }
 
 socket:run() {
-  vm:disk:unlock
+  vm:disk:unlock:all
   cat <<! | cut -c 3- | sudo bash -xe -o pipefail
 mkdir -p ${rundir:=/private/var/run/lima}
 /opt/homebrew/opt/socket_vmnet/bin/socket_vmnet --vmnet-mode=bridged --vmnet-interface=en0 ${rundir}/socket_vmnet.bridged
@@ -271,17 +226,19 @@ vm:ssh:option() {
   limactl show-ssh --format=options "${LIMA_VM}" | awk -F= -v key="$key" '$1 == key { gsub(/^"|"$/, "", $2); print $2; exit }'
 }
 
-vm:ssh:ensure-started() {
+vm:is:running() {
   local status
   status="$(limactl ls --format '{{.Status}}' "${LIMA_VM}" 2>/dev/null || true)"
-  if [[ "${status}" != "Running" ]]; then
+  [[ "${status}" == "Running" ]]
+}
+
+vm:ssh:ensure-started() {
+  if ! vm:is:running; then
     vm:start
   fi
 }
 
 host:disk:image:build() {
-  local out_link="${RESOLVED_NDH_VZ_HOST_FLAKE_REF}/outputs.d/nixos-disk-image"
-  local attr_out_link
   local -a nix_build_args
   local -a ndh_nix_cli_args=()
 
@@ -289,37 +246,56 @@ host:disk:image:build() {
     read -r -a ndh_nix_cli_args <<< "${NDH_NIX_CLI_ARGS}"
   fi
 
-  mkdir -p "${RESOLVED_NDH_VZ_HOST_FLAKE_REF}"
-  attr_out_link="$(host:disk:image:attr:symlink:path "${RESOLVED_LIMA_NIXOS_DISK_IMAGE_ATTR}")"
-  : "[lima-run] building disk image from ${RESOLVED_NDH_VZ_HOST_FLAKE_REF}#${RESOLVED_LIMA_NIXOS_DISK_IMAGE_ATTR}"
-  nix_build_args=(build --out-link "${attr_out_link}" "${RESOLVED_NDH_VZ_HOST_FLAKE_REF}#${RESOLVED_LIMA_NIXOS_DISK_IMAGE_ATTR}")
+  nix_build_args=(build --no-link --print-out-paths "${RESOLVED_NDH_VZ_HOST_FLAKE_REF}#${RESOLVED_LIMA_NIXOS_DISK_IMAGE_ATTR}")
   if [[ "${LIMA_QUIET_BUILD}" == "1" ]]; then
     nix_build_args=(--quiet "${nix_build_args[@]}")
   fi
-  nix "${ndh_nix_cli_args[@]}" "${nix_build_args[@]}"
 
-  ln -sfn "$(basename "${attr_out_link}")" "${out_link}"
+  : "[lima-run] building disk image from ${RESOLVED_NDH_VZ_HOST_FLAKE_REF}#${RESOLVED_LIMA_NIXOS_DISK_IMAGE_ATTR}"
+  RESOLVED_DISK_IMAGE_STORE_PATH="$(nix "${ndh_nix_cli_args[@]}" "${nix_build_args[@]}")"
+}
+
+host:lima:tank:disks:import() {
+  [[ -n "${RESOLVED_DISK_IMAGE_STORE_PATH}" ]] || {
+    : "[lima-run] no resolved disk image store path; skipping tank disk import"
+    return 0
+  }
+
+  if vm:is:running; then
+    echo "[lima-run][WARN] VM ${LIMA_VM} is still running; skipping tank disk import" >&2
+    return 0
+  fi
+
+  for disk in tank1 tank2 tank3 recover; do
+    local img="${RESOLVED_DISK_IMAGE_STORE_PATH}/${disk}.img"
+    [[ -f "${img}" ]] || { : "[lima-run] ${disk}.img not in store path; skipping"; continue; }
+
+    local disk_name="nerd-nixos-${disk}"
+    local datadisk="${LIMA_HOME}/_disks/${disk_name}/datadisk"
+
+    if [[ -f "${datadisk}" ]]; then
+      # Overwrite existing disk image directly — limactl lock/unlock is unreliable
+      # when the instance directory exists (even if VM is stopped).
+      echo "[lima-run] overwriting ${disk_name} datadisk from store (seed: $(du -sh "${img}" | cut -f1), target: ${LIMA_EXTERNAL_DISK_SIZE})"
+      cp "${img}" "${datadisk}"
+      truncate -s "${LIMA_EXTERNAL_DISK_SIZE}" "${datadisk}"
+    else
+      # Disk not yet registered with limactl — import then extend.
+      if limactl disk import "${disk_name}" "${img}" 2>/dev/null; then
+        echo "[lima-run] imported ${disk_name} from store"
+        truncate -s "${LIMA_EXTERNAL_DISK_SIZE}" "${LIMA_HOME}/_disks/${disk_name}/datadisk"
+      else
+        echo "[lima-run][WARN] failed to import ${disk_name} from store" >&2
+      fi
+    fi
+  done
 }
 
 host:lima:config:ensure() {
   local lima_yaml="${LIMA_HOME}/${LIMA_VM}/lima.yaml"
-  local -a ndh_nix_cli_args=()
-
-  if [[ -n "${NDH_NIX_CLI_ARGS}" ]]; then
-    read -r -a ndh_nix_cli_args <<< "${NDH_NIX_CLI_ARGS}"
-  fi
-
-  if [[ "${LIMA_REFRESH_CONFIG:-0}" == "1" ]]; then
-    : "[lima-run] refreshing Lima config via darwin activation"
-    if command -v darwin-rebuild >/dev/null 2>&1; then
-      darwin-rebuild --print-build-logs switch --flake "${RESOLVED_NDH_VZ_HOST_FLAKE_REF}"
-    else
-      nix "${ndh_nix_cli_args[@]}" run nix-darwin -- switch --flake "${RESOLVED_NDH_VZ_HOST_FLAKE_REF}"
-    fi
-  fi
 
   if [[ ! -f "${lima_yaml}" ]]; then
-    echo "[lima-run][ERROR] missing ${lima_yaml}. Run darwin activation or set LIMA_REFRESH_CONFIG=1." >&2
+    echo "[lima-run][ERROR] missing ${lima_yaml}. Run Lima materializer activation first." >&2
     exit 1
   fi
 }
@@ -398,7 +374,7 @@ Usage: $0 <command>
 
 Optional global arguments (before <command>):
   --flake-uri <flake#attr>         Override NIXOS_FLAKE_REF for this invocation
-  --host-flake-uri <flake-path>    Override host flake path for this invocation
+  --host-flake-uri <flake-path>    Override nix-darwin-home flake path for this invocation
   --disk-image-attr <attr>         Override disk image attribute for this invocation
   --vm <instance>                  Override LIMA_VM for this invocation
   --remote-user <user>             Override NIXOS_REMOTE_HOST for this invocation
@@ -408,11 +384,8 @@ Commands:
   vm:nixos:boot:ext4        Remote nixos-rebuild boot for ext4/bootstrap target
   vm:nixos:boot:zfs         Remote nixos-rebuild boot for zfs target (operator runs switch/bootstrap later)
   vm:start                  Start Lima VM
-  vm:start:gui              Switch active config to GUI and start Lima VM
-  vm:start:headless         Switch active config to headless and start Lima VM
-  vm:config:mode <mode>     Set active config symlink (headless|gui)
   vm:kill                   Terminate limactl process and clear stale lock/pid files
-  vm:reset                  Build image + ensure Lima config + factory-reset VM + start
+  vm:reset                  Stop VM + build image + import tank disks + check lima config + factory-reset + start
   vm:disk:create [name]     Create one/all additional disks
   vm:disk:unlock [name]     Unlock one/all additional disks
   socket:run                Start socket_vmnet bridge helper
@@ -425,17 +398,19 @@ Environment overrides:
   LIMA_VM=<instance>                (default: nerd-nixos)
   LIMA_VERBOSE=1                    (optional: enable extra runtime status output)
   LIMA_QUIET_BUILD=1                (optional: force quiet nix build output)
+  LIMA_EXTERNAL_DISK_SIZE=<size>    (default: 100G; size for tank2/tank3/recover after seeding from store)
   NDH_NIX_CLI_ARGS='-L -v -v'       (optional: global extra nix CLI args for managed nix calls)
   NDH_VZ_HOST=<host>                (default: @effectiveHostName@)
   NDH_VZ_HOST_FLAKE_REF=<flake-path>  (required for vm:disk:nixos:build and vm:reset when not run from a nix-darwin-home checkout)
-  DEFAULT_LIMA_NIXOS_DISK_IMAGE_ATTR=<attr> (default: nixosDiskImageBringupSystemdBoot)
+  DEFAULT_LIMA_NIXOS_DISK_IMAGE_ATTR=<attr> (default: nixosDiskImages.<host>.bringup.zfsSystemd)
   LIMA_NIXOS_DISK_IMAGE_ATTR=<attr> (optional explicit attr override for this invocation)
-  LIMA_REFRESH_CONFIG=1             (optional: run darwin switch to refresh lima config first)
   NIXOS_FLAKE_PATH=<path>           (default: @nixosFlakePath@)
   NIXOS_HOST_ATTR=<attr>            (default: @nixosHostAttr@)
   NIXOS_FLAKE_REF=<flake#attr>      (overrides path+attr composition)
-  NIXOS_EXT4_FLAKE_REF=<flake#attr> (default: <NIXOS_FLAKE_REF base>#<NIXOS_HOST_ATTR%-nixos>-bringup-ext4)
-  NIXOS_ZFS_FLAKE_REF=<flake#attr>  (default: <NIXOS_FLAKE_REF base>#<NIXOS_HOST_ATTR%-nixos>-bringup-zfs)
+  NIXOS_EXT4_FLAKE_REF=<flake#attr> (default: <NIXOS_FLAKE_REF base>#<NIXOS_HOST_ATTR%-nixos>-nixos-lima-bringup-systemd-
+                                     \\${NIXOS_BRINGUP_ROOT_FS}, default btrfs)
+  NIXOS_ZFS_FLAKE_REF=<flake#attr>  (default: <NIXOS_FLAKE_REF base>#<NIXOS_HOST_ATTR%-nixos>-nixos-tart-bringup-systemd-zfs)
+  NIXOS_BRINGUP_ROOT_FS=<fs>        (default: btrfs)
   NIXOS_REMOTE_HOST=<user>          (default: root)
 EOF
 }
@@ -510,14 +485,14 @@ cli:main:run() {
     vm:disk:nixos:build|vm:nixos:boot:ext4|vm:nixos:boot:zfs)
       "${cmd}" "$@"
       ;;
-    vm:start|vm:start:gui|vm:start:headless|vm:kill|vm:reset|socket:run)
+    vm:start|vm:kill|vm:reset|socket:run)
       "${cmd}" "$@"
       ;;
-    vm:config:mode)
-      "${cmd}" "$@"
+    vm:disk:create)
+      vm:disk:create "$@"
       ;;
-    vm:disk:create|vm:disk:unlock)
-      "${cmd}" "$@"
+    vm:disk:unlock)
+      vm:disk:unlock "$@"
       ;;
     vm:nixos:switch)
       vm:nixos:rebuild switch

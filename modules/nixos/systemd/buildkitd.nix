@@ -3,6 +3,7 @@
   pkgs,
   ndh,
   profile,
+  ndhSystemd,
   ...
 }:
 let
@@ -28,6 +29,7 @@ let
       # allowedRepositories = [ "docker-registry.wikimedia.org/repos/releng/blubber/buildkit" ]
       allowedRepositories = []
   '';
+  contributedTargetName = ndhSystemd.contributedTargetName;
 in
 {
   imports = [ ./containerd.nix ];
@@ -42,7 +44,7 @@ in
     ];
     wants = [ "containerd.service" ];
     requires = [ "containerd.service" ];
-    wantedBy = [ "io-nxmatic-nix-darwin-home-contributed.target" ];
+    wantedBy = [ contributedTargetName ];
     serviceConfig = {
       ExecStart = "${pkgs.buildkit}/bin/buildkitd --config  /etc/buildkit/buildkitd.toml";
       Restart = "on-failure";

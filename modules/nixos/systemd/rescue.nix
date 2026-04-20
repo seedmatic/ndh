@@ -2,11 +2,12 @@
   config,
   pkgs,
   lib,
+  ndhSystemd,
   ...
 }:
 let
-
   dollar = "$";
+  rescueChecksUnitName = ndhSystemd.mkUnitName "rescue-checks";
 
 in
 lib.mkIf config.rescue.enable {
@@ -29,7 +30,7 @@ lib.mkIf config.rescue.enable {
   ];
 
   # Additional system checks
-  systemd.services.io-nxmatic-nix-darwin-home-rescue-checks = {
+  systemd.services.${rescueChecksUnitName} = {
     description = "Perform rescue mode system checks";
     wantedBy = [ "rescue.target" ];
     serviceConfig = {

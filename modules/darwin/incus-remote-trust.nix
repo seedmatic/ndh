@@ -10,6 +10,8 @@ with lib;
 
 let
   cfg = config.services.incusRemoteTrust;
+  ndhContext = ndh.context;
+  nixBashTrampoline = "${ndhContext.nixBashTrampoline}";
   loggerScript = config.nixBashLogger.script;
   hostProfile = config.profile.host;
   effectiveHostName =
@@ -26,7 +28,7 @@ let
       ''
         cp ${
           pkgs.replaceVars ./incus-remote-trust.d/post-activation.sh {
-            logger = loggerScript;
+            nixBashTrampoline = nixBashTrampoline;
             remoteHost = cfg.remoteHost;
             localClientCert = cfg.localClientCert;
             trustEntryName = cfg.trustEntryName;

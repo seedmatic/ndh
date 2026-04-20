@@ -14,6 +14,7 @@ TART_HOME="${TART_HOME:-$HOME/.tart}"
 VM_DIR="${VM_DIR:-$TART_HOME/vms/$VM_NAME}"
 FACTORY_RESET="${FACTORY_RESET:-1}"
 WRAPPER_TEMPLATE="@WRAPPER_TEMPLATE_PATH@"
+TARGET_DISK_SIZE_GIB="${TARGET_DISK_SIZE_GIB:-24}"
 
 raw_out="$(nix build -L -v -v --no-link --print-out-paths .#@IMAGE_ATTR@)"
 raw_img="$raw_out/nixos.img"
@@ -24,22 +25,51 @@ convert_one() {
   local input="$1"
   local output="$2"
   local base
+  local desired_bytes
+  local total_bytes
+  local sector_count
+  local resize_ok=0
   base="$output"
 
   rm -f "$output" "$base.asif" "$base.dmg"
   diskutil image create from "$input" --format ASIF "$base" >/dev/null
 
-  if [[ -e "$base.asif" ]]; then
-    mv -f "$base.asif" "$output"
-  elif [[ -e "$base.dmg" ]]; then
-    mv -f "$base.dmg" "$output"
-  elif [[ ! -e "$output" ]]; then
-    echo "[bootstrap-lab][ERROR] diskutil produced no ASIF output for $input" >&2
-    exit 1
+  if [[ -n "$TARGET_DISK_SIZE_GIB" ]]; then
+    if [[ ! "$TARGET_DISK_SIZE_GIB" =~ ^[0-9]+$ ]] || (( TARGET_DISK_SIZE_GIB <= 0 )); then
+      echo "[bootstrap-lab][ERROR] TARGET_DISK_SIZE_GIB must be a positive integer; got '$TARGET_DISK_SIZE_GIB'" >&2
+      exit 1
+    fi
+
+    desired_bytes=$(( TARGET_DISK_SIZE_GIB * 1024 * 1024 * 1024 ))
+    echo "[bootstrap-lab] resizing ASIF disk to ${TARGET_DISK_SIZE_GIB}GiB (${desired_bytes} bytes): $output"
+
+    if diskutil image resize "$output" --size "${TARGET_DISK_SIZE_GIB}g" >/dev/null 2>&1; then
+      resize_ok=1
+    elif diskutil image resize "$output" --sectors "$(( TARGET_DISK_SIZE_GIB * 1024 * 1024 * 1024 / 512 ))" >/dev/null 2>&1; then
+      resize_ok=1
+    elif command -v hdiutil >/dev/null 2>&1 && hdiutil resize -size "${TARGET_DISK_SIZE_GIB}g" "$output" >/dev/null 2>&1; then
+      resize_ok=1
+    fi
+
+    if [[ "$resize_ok" != "1" ]]; then
+      echo "[bootstrap-lab][ERROR] failed to resize ASIF image to ${TARGET_DISK_SIZE_GIB}GiB: $output" >&2
+      exit 1
+    fi
+
+    total_bytes="$(diskutil image info --plist "$output" | yq -p=xml -r '.plist.dict[] | select(has("key") and .key == "Size Info") | .dict.integer[3] // "0"' 2>/dev/null || echo 0)"
+    sector_count="$(diskutil image info --plist "$output" | yq -p=xml -r '.plist.dict[] | select(has("key") and .key == "Size Info") | .dict.integer[2] // "0"' 2>/dev/null || echo 0)"
+
+    if [[ "$total_bytes" =~ ^[0-9]+$ ]] && (( total_bytes > 0 )); then
+      echo "[bootstrap-lab] ASIF size report: total_bytes=${total_bytes} sector_count=${sector_count} file=${output}"
+      if (( total_bytes < desired_bytes )); then
+        echo "[bootstrap-lab][ERROR] ASIF size verification failed: expected >= ${desired_bytes} bytes, got ${total_bytes}" >&2
+        exit 1
+      fi
+    else
+      echo "[bootstrap-lab][WARN] unable to parse ASIF size info after resize; continuing" >&2
+    fi
   fi
 
-  chmod 0644 "$output" || true
-  chmod u+w "$output" || true
   echo "[bootstrap-lab] wrote $output"
 }
 

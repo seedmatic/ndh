@@ -1,27 +1,31 @@
 {
   nixpkgs,
   pkgsForLinux,
+  ndhStoreApiLinux,
+  ndhNixBashTrampolineLinux,
   mkModulesFor,
   mkSpecialArgs,
 }:
 let
+  ndhNixBashTrampoline = ndhNixBashTrampolineLinux;
+
   mkNixosConfig =
     {
       hostProfile,
       profileModule,
+      generationMode,
       zfsOverlays,
       catalog,
       inventory,
       vmProvider ? null,
     }:
     let
-      hostImageMode = hostProfile.nixosImageMode or "full";
-      bringupModeInternal = hostImageMode == "bootstrap";
+      bringupModeInternal = generationMode == "bringup";
       effectiveVmProvider = if vmProvider != null then vmProvider else (hostProfile.vmProvider or "lima");
       zfsOverlaysModule =
         { ... }:
         {
-          zfsOverlays.override = zfsOverlays;
+          zfsOverlays.enable = zfsOverlays;
         };
       nixosTailscaleTagModule =
         { ... }:
@@ -37,17 +41,26 @@ let
       ]
       ++ (if bringupModeInternal then [ ] else [ nixosTailscaleTagModule ]);
       modules = mkModulesFor {
-        inherit hostProfile preModules;
+        inherit hostProfile preModules generationMode;
         system = "nixos";
       };
       specialArgs = mkSpecialArgs {
         inherit modules;
         system = "aarch64-linux";
         extraArgs = {
-          inherit hostProfile;
-          inherit catalog;
-          inherit inventory;
-          vmProvider = effectiveVmProvider;
+          ndh = {
+            context = {
+              inherit
+                hostProfile
+                generationMode
+                catalog
+                inventory
+                ;
+              vmProvider = effectiveVmProvider;
+              nixBashTrampoline = ndhNixBashTrampoline;
+            };
+            store = ndhStoreApiLinux;
+          };
         };
       };
       nixosSystem = nixpkgs.lib.nixosSystem {
@@ -66,19 +79,18 @@ let
       inventory,
     }:
     let
-      # Canonical behavior (@codebase): runtime nixos output is always full.
-      # Bootstrap remains an explicit disk-image path only.
-
-      mkExt4ModulesFor =
-        hp:
+      mkImageModulesFor =
+        {
+          hp,
+          generationMode,
+        }:
         let
-          hpImageMode = hp.nixosImageMode or "full";
-          hpBringupModeInternal = hpImageMode == "bootstrap";
+          hpBringupModeInternal = generationMode == "bringup";
           hpVmProvider = hp.vmProvider or "lima";
           zfsOverlaysModule =
             { ... }:
             {
-              zfsOverlays.override = false;
+              zfsOverlays.enable = false;
             };
           nixosTailscaleTagModule =
             { ... }:
@@ -88,6 +100,7 @@ let
         in
         mkModulesFor {
           hostProfile = hp;
+          inherit generationMode;
           system = "nixos";
           preModules = [
             profileModule
@@ -99,35 +112,50 @@ let
           ++ (if hpBringupModeInternal then [ ] else [ nixosTailscaleTagModule ]);
         };
 
-      mkExt4SpecialArgsFor =
-        hp: modules:
+      mkImageSpecialArgsFor =
+        hp: generationMode: modules:
         mkSpecialArgs {
           inherit modules;
           system = "aarch64-linux";
           extraArgs = {
-            hostProfile = hp;
-            inherit catalog;
-            inherit inventory;
-            vmProvider = hp.vmProvider or "lima";
+            ndh = {
+              context = {
+                hostProfile = hp;
+                inherit
+                  generationMode
+                  catalog
+                  inventory
+                  ;
+                vmProvider = hp.vmProvider or "lima";
+                nixBashTrampoline = ndhNixBashTrampoline;
+              };
+              store = ndhStoreApiLinux;
+            };
           };
         };
 
       bringupSystemdHostProfileBase = hostProfile // {
-        nixosImageMode = "bootstrap";
         nixosBootLoader = "systemd-boot";
+        nixosBringupRootFs = selectedBringupRootFs;
       };
 
       runtimeSystemdHostProfile = hostProfile // {
-        nixosImageMode = "full";
         nixosBootLoader = "systemd-boot";
       };
 
       selectedVmProvider = hostProfile.vmProvider or "lima";
+      selectedBringupRootFs = hostProfile.nixosBringupRootFs or "btrfs";
 
       bringupGrubHostProfileBase = hostProfile // {
-        nixosImageMode = "bootstrap";
         nixosBootLoader = "grub";
+        nixosBringupRootFs = selectedBringupRootFs;
       };
+
+      rootFsOverrideModule =
+        { lib, ... }:
+        {
+          fileSystems."/".fsType = lib.mkForce selectedBringupRootFs;
+        };
 
       limaBringupSystemdHostProfile = bringupSystemdHostProfileBase // {
         vmProvider = "lima";
@@ -145,42 +173,62 @@ let
         vmProvider = "tart";
       };
 
-      limaBringupSystemdExt4Modules = mkExt4ModulesFor limaBringupSystemdHostProfile;
-      limaBringupSystemdExt4SpecialArgs = mkExt4SpecialArgsFor limaBringupSystemdHostProfile limaBringupSystemdExt4Modules;
+      limaBringupSystemdModules = mkImageModulesFor {
+        hp = limaBringupSystemdHostProfile;
+        generationMode = "bringup";
+      };
+      limaBringupSystemdSpecialArgs =
+        mkImageSpecialArgsFor limaBringupSystemdHostProfile "bringup"
+          limaBringupSystemdModules;
 
-      limaBringupSystemdExt4 = nixpkgs.lib.nixosSystem {
-        modules = limaBringupSystemdExt4Modules;
-        specialArgs = limaBringupSystemdExt4SpecialArgs;
+      limaBringupSystemd = nixpkgs.lib.nixosSystem {
+        modules = limaBringupSystemdModules;
+        specialArgs = limaBringupSystemdSpecialArgs;
         system = "aarch64-linux";
         pkgs = pkgsForLinux;
       };
 
-      tartBringupSystemdExt4Modules = mkExt4ModulesFor tartBringupSystemdHostProfile;
-      tartBringupSystemdExt4SpecialArgs = mkExt4SpecialArgsFor tartBringupSystemdHostProfile tartBringupSystemdExt4Modules;
+      tartBringupSystemdModules = mkImageModulesFor {
+        hp = tartBringupSystemdHostProfile;
+        generationMode = "bringup";
+      };
+      tartBringupSystemdSpecialArgs =
+        mkImageSpecialArgsFor tartBringupSystemdHostProfile "bringup"
+          tartBringupSystemdModules;
 
-      tartBringupSystemdExt4 = nixpkgs.lib.nixosSystem {
-        modules = tartBringupSystemdExt4Modules;
-        specialArgs = tartBringupSystemdExt4SpecialArgs;
+      tartBringupSystemd = nixpkgs.lib.nixosSystem {
+        modules = tartBringupSystemdModules;
+        specialArgs = tartBringupSystemdSpecialArgs;
         system = "aarch64-linux";
         pkgs = pkgsForLinux;
       };
 
-      limaBringupGrubExt4Modules = mkExt4ModulesFor limaBringupGrubHostProfile;
-      limaBringupGrubExt4SpecialArgs = mkExt4SpecialArgsFor limaBringupGrubHostProfile limaBringupGrubExt4Modules;
+      limaBringupGrubModules = mkImageModulesFor {
+        hp = limaBringupGrubHostProfile;
+        generationMode = "bringup";
+      };
+      limaBringupGrubSpecialArgs =
+        mkImageSpecialArgsFor limaBringupGrubHostProfile "bringup"
+          limaBringupGrubModules;
 
-      limaBringupGrubExt4 = nixpkgs.lib.nixosSystem {
-        modules = limaBringupGrubExt4Modules;
-        specialArgs = limaBringupGrubExt4SpecialArgs;
+      limaBringupGrub = nixpkgs.lib.nixosSystem {
+        modules = limaBringupGrubModules;
+        specialArgs = limaBringupGrubSpecialArgs;
         system = "aarch64-linux";
         pkgs = pkgsForLinux;
       };
 
-      tartBringupGrubExt4Modules = mkExt4ModulesFor tartBringupGrubHostProfile;
-      tartBringupGrubExt4SpecialArgs = mkExt4SpecialArgsFor tartBringupGrubHostProfile tartBringupGrubExt4Modules;
+      tartBringupGrubModules = mkImageModulesFor {
+        hp = tartBringupGrubHostProfile;
+        generationMode = "bringup";
+      };
+      tartBringupGrubSpecialArgs =
+        mkImageSpecialArgsFor tartBringupGrubHostProfile "bringup"
+          tartBringupGrubModules;
 
-      tartBringupGrubExt4 = nixpkgs.lib.nixosSystem {
-        modules = tartBringupGrubExt4Modules;
-        specialArgs = tartBringupGrubExt4SpecialArgs;
+      tartBringupGrub = nixpkgs.lib.nixosSystem {
+        modules = tartBringupGrubModules;
+        specialArgs = tartBringupGrubSpecialArgs;
         system = "aarch64-linux";
         pkgs = pkgsForLinux;
       };
@@ -191,7 +239,9 @@ let
           catalog
           inventory
           ;
+        generationMode = "bringup";
         hostProfile = bringupSystemdHostProfileBase;
+        # ZFS bringup path: enable ZFS-backed filesystem definitions/boot integration.
         zfsOverlays = true;
         vmProvider = "lima";
       };
@@ -202,7 +252,9 @@ let
           catalog
           inventory
           ;
+        generationMode = "bringup";
         hostProfile = bringupSystemdHostProfileBase;
+        # ZFS bringup path: enable ZFS-backed filesystem definitions/boot integration.
         zfsOverlays = true;
         vmProvider = "tart";
       };
@@ -213,7 +265,9 @@ let
           catalog
           inventory
           ;
+        generationMode = "bringup";
         hostProfile = bringupGrubHostProfileBase;
+        # ZFS bringup path: enable ZFS-backed filesystem definitions/boot integration.
         zfsOverlays = true;
         vmProvider = "lima";
       };
@@ -224,7 +278,9 @@ let
           catalog
           inventory
           ;
+        generationMode = "bringup";
         hostProfile = bringupGrubHostProfileBase;
+        # ZFS bringup path: enable ZFS-backed filesystem definitions/boot integration.
         zfsOverlays = true;
         vmProvider = "tart";
       };
@@ -235,7 +291,9 @@ let
           catalog
           inventory
           ;
+        generationMode = "full";
         hostProfile = runtimeSystemdHostProfile;
+        # Lima runtime: ZFS root + stage1 disko provisioning path.
         zfsOverlays = true;
         vmProvider = "lima";
       };
@@ -246,45 +304,95 @@ let
           catalog
           inventory
           ;
+        generationMode = "full";
         hostProfile = runtimeSystemdHostProfile;
+        # Tart runtime with ZFS-backed filesystem definitions/boot integration enabled.
         zfsOverlays = true;
         vmProvider = "tart";
       };
 
       selectedRuntime = if selectedVmProvider == "tart" then zfsRuntimeTart else zfsRuntimeLima;
 
-      runtimeExt4Modules = mkExt4ModulesFor runtimeSystemdHostProfile;
-      runtimeExt4SpecialArgs = mkExt4SpecialArgsFor runtimeSystemdHostProfile runtimeExt4Modules;
-      bringupSystemdImageExt4Modules = mkExt4ModulesFor bringupSystemdHostProfileBase;
-      bringupSystemdImageExt4SpecialArgs = mkExt4SpecialArgsFor bringupSystemdHostProfileBase bringupSystemdImageExt4Modules;
-      bringupGrubImageExt4Modules = mkExt4ModulesFor bringupGrubHostProfileBase;
-      bringupGrubImageExt4SpecialArgs = mkExt4SpecialArgsFor bringupGrubHostProfileBase bringupGrubImageExt4Modules;
+      runtimeImageModules = mkImageModulesFor {
+        hp = runtimeSystemdHostProfile;
+        generationMode = "full";
+      };
+      runtimeImageSpecialArgs =
+        mkImageSpecialArgsFor runtimeSystemdHostProfile "full"
+          runtimeImageModules;
+      bringupSystemdImageModules = mkImageModulesFor {
+        hp = bringupSystemdHostProfileBase;
+        generationMode = "bringup";
+      };
+      bringupSystemdImageSpecialArgs =
+        mkImageSpecialArgsFor bringupSystemdHostProfileBase "bringup"
+          bringupSystemdImageModules;
+      bringupGrubImageModules = mkImageModulesFor {
+        hp = bringupGrubHostProfileBase;
+        generationMode = "bringup";
+      };
+      bringupGrubImageSpecialArgs =
+        mkImageSpecialArgsFor bringupGrubHostProfileBase "bringup"
+          bringupGrubImageModules;
 
-      # Canonical disk size in MiB shared by all disk-image profiles.
-      # Keep one source of truth to avoid host/guest sizing drift.
-      diskSizeMiB = (4 + 2) * 1024; # 4GiB base + 2GiB buffer for growth and closure size uncertainty
-      diskSizeBytes = diskSizeMiB * 1024 * 1024;
-      # Bringup closure paths used for stage-1/2 bootstrap sizing checks.
-      bringupExt4SystemPath = tartBringupSystemdExt4.config.system.build.toplevel;
+      # Canonical raw build image size policy.
+      # - `uncompressedDiskSizeGiB` is the baseline required without compression.
+      # - A single compression factor is currently used.
+      # - For zstd level 1, we model a 0.5 factor (2:1 compression).
+      # - Future per-filesystem factors may override rootFsCompressionFactor,
+      #   but should default to zstdCompressionFactor.
+      uncompressedDiskSizeGiB = hostProfile.nixosDiskImageSizeGiB or 10;
+      selectedZstdCompressionLevel = hostProfile.nixosZstdCompressionLevel or 1;
+      zstdCompressionFactor = if selectedZstdCompressionLevel == 1 then 0.5 else 1.0;
+      rootFsCompressionFactor = hostProfile.nixosRootFsCompressionFactor or zstdCompressionFactor;
+      diskSizeGiB =
+        let
+          # Always round up, including decimal GiB inputs (e.g. 10.1 -> 11).
+          scaledDiskSizeGiB = builtins.ceil (uncompressedDiskSizeGiB * rootFsCompressionFactor);
+        in
+        if scaledDiskSizeGiB < 1 then 1 else scaledDiskSizeGiB;
+      diskSizeMiB = diskSizeGiB * (1024);
+      diskSizeBytes = diskSizeMiB * (1024 * 1024);
+      efiSystemPartitionSizeMiB = hostProfile.nixosEfiSystemPartitionSizeMiB or 512;
+      diskImageVmMemSizeMiB = hostProfile.nixosDiskImageVmMemSizeMiB or 6144;
+      diskImageVmCpuCores = hostProfile.nixosDiskImageVmCpuCores or 6;
+      zfsBootstrapPoolDiskSizeMiB = hostProfile.nixosZfsBootstrapPoolDiskSizeMiB or 2048;
+      # Bringup closure paths used for stage-1/2 bringup sizing checks.
+      bringupRootFsType = selectedBringupRootFs;
+      bringupRootFsName = bringupRootFsType;
+      bringupSystemPath = tartBringupSystemd.config.system.build.toplevel;
       bringupZfsSystemPath = tartBringupSystemdZfs.config.system.build.toplevel;
       # Output a JSON hint with all relevant info for post-build checks
       diskSizeHint = builtins.toJSON {
         systemPath = bringupZfsSystemPath;
         bringupSystemPaths = {
-          ext4 = bringupExt4SystemPath;
+          bringup = bringupSystemPath;
           zfs = bringupZfsSystemPath;
         };
         diskSizeBytes = diskSizeBytes;
+        diskSizing = {
+          uncompressedDiskSizeGiB = uncompressedDiskSizeGiB;
+          selectedBringupRootFs = selectedBringupRootFs;
+          zstdCompressionLevel = selectedZstdCompressionLevel;
+          zstdCompressionFactor = zstdCompressionFactor;
+          rootFsCompressionFactor = rootFsCompressionFactor;
+          finalDiskSizeGiB = diskSizeGiB;
+        };
         diskSizeMiB = {
           runtime = diskSizeMiB;
           bringupSystemdBoot = diskSizeMiB;
           bringupGrub = diskSizeMiB;
         };
+        diskImageVmResources = {
+          memSizeMiB = diskImageVmMemSizeMiB;
+          cpuCores = diskImageVmCpuCores;
+        };
+        efiSystemPartitionSizeMiB = efiSystemPartitionSizeMiB;
         hint = {
-          ext4Bringup = "nix path-info -Sh ${bringupExt4SystemPath}";
+          bringup = "nix path-info -Sh ${bringupSystemPath}";
           zfsBringup = "nix path-info -Sh ${bringupZfsSystemPath}";
         };
-        note = "bringup closure sizes should be less than diskSizeBytes";
+        note = "bringup closure sizes should be less than diskSizeBytes; inspect boot-size-hint.yaml in image outputs to tune ESP size from measured single-generation usage";
       };
       mainName =
         if (hostProfile ? hostAlias && hostProfile.hostAlias != null && hostProfile.hostAlias != "") then
@@ -292,27 +400,36 @@ let
         else
           hostProfile.hostName;
 
-      mkDiskImageManifestYaml =
+      mkDiskImageManifestAttrs =
         {
           attr,
           imageMode,
           bootLoader,
           diskSizeMiB,
+          efiSystemPartitionSizeMiB,
           sourceOutPath,
           nixosConfiguration,
+          primaryImagePath ? "boot.img",
         }:
-        ''
-          schemaVersion: 1
-          kind: nixos-disk-image
-          attr: ${attr}
-          nixosConfiguration: ${nixosConfiguration}
-          imageMode: ${imageMode}
-          bootLoader: ${bootLoader}
-          format: raw-efi
-          imagePath: nixos.img
-          sourceOutPath: ${sourceOutPath}
-          diskSizeMiB: ${toString diskSizeMiB}
-        '';
+        {
+          schemaVersion = 1;
+          kind = "nixos-disk-image";
+          inherit
+            attr
+            nixosConfiguration
+            imageMode
+            bootLoader
+            sourceOutPath
+            ;
+          format = "raw-efi";
+          imagePath = primaryImagePath;
+          inherit
+            diskSizeMiB
+            efiSystemPartitionSizeMiB
+            ;
+          images = [ ];
+          zfsPools = [ ];
+        };
 
       mkDiskImageWithManifest =
         {
@@ -320,119 +437,138 @@ let
           imageMode,
           bootLoader,
           diskSizeMiB,
+          efiSystemPartitionSizeMiB,
           nixosConfiguration,
           source,
-        }:
-        pkgsForLinux.runCommand "nixos-disk-image-with-manifest-${attr}" { } ''
-          set -euo pipefail
-          mkdir -p "$out"
-
-          source_image=""
-
-          if [[ -f "${source}/nixos.img" ]]; then
-            source_image="${source}/nixos.img"
-          elif [[ -f "${source}" ]]; then
-            source_image="${source}"
-          elif [[ -f "${source}/nix-support/hydra-build-products" ]]; then
-            source_image=$(awk '$1 == "file" && $2 ~ /image|img/ { print $3; exit }' "${source}/nix-support/hydra-build-products")
-          fi
-
-          if [[ -z "$source_image" && -d "${source}" ]]; then
-            source_image=$(find "${source}" -maxdepth 1 -type f -name '*.img' | head -n1 || true)
-          fi
-
-          if [[ -z "$source_image" || ! -f "$source_image" ]]; then
-            echo "[flake][ERROR] unsupported disk image source shape for ${attr}: ${source}" >&2
-            echo "[flake][ERROR] expected one of: ${source}/nixos.img, direct file, hydra-build-products image entry, or *.img in source root" >&2
-            exit 1
-          fi
-
-          ln -s "$source_image" "$out/nixos.img"
-
-          cat >"$out/manifest.yaml" <<'EOF'
-          ${mkDiskImageManifestYaml {
-            inherit
-              attr
-              imageMode
-              bootLoader
-              diskSizeMiB
-              nixosConfiguration
-              ;
-            sourceOutPath = source;
-          }}
-          EOF
-        '';
-
-      mkRawEfiImage =
-        {
-          modules,
-          specialArgs,
+          primaryImagePath ? "boot.img",
+          extraImages ? [ ],
         }:
         let
-          imageNixosSystem = nixpkgs.lib.nixosSystem {
-            inherit modules specialArgs;
-            system = "aarch64-linux";
-            pkgs = pkgsForLinux;
+          manifestBaseYamlFile = pkgsForLinux.writeText "nixos-disk-image-manifest-base-${attr}.yaml" (
+            nixpkgs.lib.generators.toYAML { } (mkDiskImageManifestAttrs {
+              inherit
+                attr
+                imageMode
+                bootLoader
+                diskSizeMiB
+                efiSystemPartitionSizeMiB
+                nixosConfiguration
+                ;
+              sourceOutPath = source;
+              inherit primaryImagePath;
+            })
+          );
+          extraImagesSpecYamlFile = pkgsForLinux.writeText "nixos-disk-image-extra-images-${attr}.yaml" (
+            nixpkgs.lib.generators.toYAML { } extraImages
+          );
+          manifestAssemblyScript = pkgsForLinux.replaceVars ./mk-disk-image-with-manifest.sh {
+            nixBashTrampoline = "${ndhNixBashTrampoline}";
+            loggerTag = "nixos.outputs.mkDiskImageWithManifest.${attr}";
           };
         in
-        imageNixosSystem.config.system.build.images."raw-efi";
-
-      diskImageBringupSystemdExt4BootRaw = mkRawEfiImage {
-        modules = bringupSystemdImageExt4Modules ++ [
+        pkgsForLinux.runCommand "nixos-disk-image-with-manifest-${attr}"
           {
-            nix.registry.nixpkgs.flake = nixpkgs;
-            virtualisation.diskSize = diskSizeMiB;
+            nativeBuildInputs = [ pkgsForLinux.yq-go ];
+            NDH_PRIMARY_IMAGE_PATH = primaryImagePath;
+            NDH_MANIFEST_BASE_YAML_FILE = manifestBaseYamlFile;
+            NDH_EXTRA_IMAGES_SPEC_YAML_FILE = extraImagesSpecYamlFile;
           }
-        ];
-        specialArgs = bringupSystemdImageExt4SpecialArgs;
+          ''
+            set -euo pipefail
+
+            ${pkgsForLinux.bash}/bin/bash ${manifestAssemblyScript} "$out" "${source}"
+          '';
+
+      mkBringupRawImage =
+        {
+          nixosSystem,
+          name,
+        }:
+        import ./bringup-btrfs-disk-image.nix {
+          lib = nixpkgs.lib;
+          pkgs = pkgsForLinux;
+          config = nixosSystem.config;
+          diskSize = diskSizeMiB;
+          memSize = diskImageVmMemSizeMiB;
+          vmCpuCores = diskImageVmCpuCores;
+          includeChannel = false;
+          useQemuImg = false;
+          qemuFallbackInVm = true;
+          efiSystemPartitionSizeMiB = efiSystemPartitionSizeMiB;
+          inherit name;
+          rootFsType = "${bringupRootFsType}";
+          rootFsLabel = "nixos";
+        };
+
+      mkBringupZfsDiskImages =
+        {
+          nixosSystem,
+          name,
+        }:
+        import ./bringup-zfs-disk-image.nix {
+          lib = nixpkgs.lib;
+          pkgs = pkgsForLinux;
+          config = nixosSystem.config;
+          # Use the host bringup configuration closure directly for nested installs.
+          installSystemPath = nixosSystem.config.system.build.toplevel;
+          zpoolDiskSize = 2048; # around 6GiB in the raidz1 pool with zsdt compression level 1 enabled
+          memSize = diskImageVmMemSizeMiB;
+          vmCpuCores = diskImageVmCpuCores;
+          includeChannel = false;
+          useQemuImg = false;
+          qemuFallbackInVm = true;
+          inherit name;
+        };
+
+      diskImageBringupSystemdBootRaw = mkBringupRawImage {
+        nixosSystem = limaBringupSystemd;
+        name = "nixos-disk-image-bringup-systemd-${bringupRootFsType}";
       };
 
-      diskImageBringupZfsSystemdBootRaw = tartBringupSystemdZfs.config.system.build.images."raw-efi";
-
-      diskImageBringupGrubRaw = mkRawEfiImage {
-        modules = bringupGrubImageExt4Modules ++ [
-          {
-            nix.registry.nixpkgs.flake = nixpkgs;
-            virtualisation.diskSize = diskSizeMiB;
-          }
-        ];
-        specialArgs = bringupGrubImageExt4SpecialArgs;
+      # Single ZFS bringup build — Lima and Tart use identical disk layouts.
+      diskImageBringupZfsSystemdBootRaw = mkBringupZfsDiskImages {
+        nixosSystem = limaBringupSystemdZfs;
+        name = "nixos-disk-image-bringup-systemd-zfs";
       };
 
-      diskImageFullRaw = mkRawEfiImage {
-        modules = runtimeExt4Modules ++ [
-          {
-            nix.registry.nixpkgs.flake = nixpkgs;
-            virtualisation.diskSize = diskSizeMiB;
-          }
-        ];
-        specialArgs = runtimeExt4SpecialArgs;
+      diskImageBringupGrubRaw = mkBringupRawImage {
+        nixosSystem = limaBringupGrub;
+        name = "nixos-disk-image-bringup-grub-${bringupRootFsType}";
       };
 
-      diskImageBringupSystemdExt4Boot = mkDiskImageWithManifest {
-        attr = "nixosdiskImageBringupSystemdExt4Boot";
-        nixosConfiguration = "lima-${mainName}-bringup-systemd-ext4";
-        imageMode = "bootstrap";
+      diskImageFullRaw = mkBringupRawImage {
+        nixosSystem = selectedRuntime;
+        name = "nixos-disk-image-full-${bringupRootFsType}";
+      };
+
+      diskImageBringupSystemdBoot = mkDiskImageWithManifest {
+        attr = "nixosDiskImageBringupSystemdBoot";
+        nixosConfiguration = "${mainName}-nixos-lima-bringup-systemd-${bringupRootFsName}";
+        imageMode = "bringup";
         bootLoader = "systemd-boot";
         diskSizeMiB = diskSizeMiB;
-        source = diskImageBringupSystemdExt4BootRaw;
+        efiSystemPartitionSizeMiB = efiSystemPartitionSizeMiB;
+        source = diskImageBringupSystemdBootRaw;
       };
 
       diskImageBringupZfsSystemdBoot = mkDiskImageWithManifest {
         attr = "nixosDiskImageBringupZfsSystemdBoot";
-        nixosConfiguration = "tart-${mainName}-bringup-systemd-zfs";
-        imageMode = "bootstrap";
+        nixosConfiguration = "${mainName}-nixos-lima";
+        imageMode = "bringup";
         bootLoader = "systemd-boot";
         diskSizeMiB = diskSizeMiB;
+        efiSystemPartitionSizeMiB = efiSystemPartitionSizeMiB;
         source = diskImageBringupZfsSystemdBootRaw;
+        # primaryImagePath defaults to "boot.img" — dedicated EFI boot disk
       };
 
       diskImageBringupGrub = mkDiskImageWithManifest {
         attr = "nixosDiskImageBringupGrub";
-        nixosConfiguration = "lima-${mainName}-bringup-grub-ext4";
-        imageMode = "bootstrap";
+        nixosConfiguration = "${mainName}-nixos-lima-bringup-grub-${bringupRootFsName}";
+        imageMode = "bringup";
         bootLoader = "grub";
         diskSizeMiB = diskSizeMiB;
+        efiSystemPartitionSizeMiB = efiSystemPartitionSizeMiB;
         source = diskImageBringupGrubRaw;
       };
 
@@ -442,29 +578,31 @@ let
         imageMode = "full";
         bootLoader = "systemd-boot";
         diskSizeMiB = diskSizeMiB;
+        efiSystemPartitionSizeMiB = efiSystemPartitionSizeMiB;
         source = diskImageFullRaw;
       };
 
     in
     {
       inherit diskSizeHint;
+      inherit diskSizeGiB;
       inherit diskSizeMiB;
       nixosConfigurations = {
-        "lima-${mainName}-bringup-systemd-ext4" = limaBringupSystemdExt4;
-        "tart-${mainName}-bringup-systemd-ext4" = tartBringupSystemdExt4;
-        "lima-${mainName}-bringup-systemd-zfs" = limaBringupSystemdZfs;
-        "tart-${mainName}-bringup-systemd-zfs" = tartBringupSystemdZfs;
-        "lima-${mainName}-bringup-grub-ext4" = limaBringupGrubExt4;
-        "tart-${mainName}-bringup-grub-ext4" = tartBringupGrubExt4;
-        "lima-${mainName}-bringup-grub-zfs" = limaBringupGrubZfs;
-        "tart-${mainName}-bringup-grub-zfs" = tartBringupGrubZfs;
+        "${mainName}-nixos-lima-bringup-systemd-${bringupRootFsName}" = limaBringupSystemd;
+        "${mainName}-nixos-tart-bringup-systemd-${bringupRootFsName}" = tartBringupSystemd;
+        "${mainName}-nixos-lima-bringup-systemd-zfs" = limaBringupSystemdZfs;
+        "${mainName}-nixos-tart-bringup-systemd-zfs" = tartBringupSystemdZfs;
+        "${mainName}-nixos-lima-bringup-grub-${bringupRootFsName}" = limaBringupGrub;
+        "${mainName}-nixos-tart-bringup-grub-${bringupRootFsName}" = tartBringupGrub;
+        "${mainName}-nixos-lima-bringup-grub-zfs" = limaBringupGrubZfs;
+        "${mainName}-nixos-tart-bringup-grub-zfs" = tartBringupGrubZfs;
         "${mainName}-nixos-lima" = zfsRuntimeLima;
         "${mainName}-nixos-tart" = zfsRuntimeTart;
         "${mainName}-nixos" = selectedRuntime;
       };
       inherit
         diskImageFull
-        diskImageBringupSystemdExt4Boot
+        diskImageBringupSystemdBoot
         diskImageBringupZfsSystemdBoot
         diskImageBringupGrub
         ;

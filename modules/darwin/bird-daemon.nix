@@ -6,6 +6,8 @@
   ...
 }:
 let
+  ndhContext = ndh.context;
+  nixBashTrampoline = "${ndhContext.nixBashTrampoline}";
   inherit (lib)
     mkEnableOption
     mkIf
@@ -114,12 +116,12 @@ let
   '';
 
   birdPostActivationScript = pkgs.replaceVars ./bird-daemon.d/post-activation.sh {
+    nixBashTrampoline = nixBashTrampoline;
     isExecutable = true;
     name = "bird-post-activation.sh";
     inherit createUserScript;
     user = cfg.user;
     group = cfg.group;
-    logger = ../.common.d/shell.d/logger.sh;
     loggerTag = "darwin.activationScripts.postActivation.bird";
   };
 in

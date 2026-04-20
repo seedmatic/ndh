@@ -1,6 +1,6 @@
 #!/usr/bin/env -S bash -euo pipefail
 
-source @logger@
+source @nixBashTrampoline@
 
 main() {
 	: Generating github allowed signers configuration file

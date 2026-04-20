@@ -22,7 +22,9 @@
     xattr = "sa";
   },
   datasets ? {
-    "tank/root" = { mount = "/"; };
+    "tank/root" = {
+      mount = "/";
+    };
   },
   # Keep memory modest for local lab hosts; increase when needed.
   memSize ? 1536,
@@ -35,8 +37,16 @@
   postVM ? "",
 }:
 let
-  rootDevices = [ "/dev/vdb" "/dev/vdc" "/dev/vdd" ];
-  rootDiskFiles = [ "root-1.raw" "root-2.raw" "root-3.raw" ];
+  rootDevices = [
+    "/dev/vdb"
+    "/dev/vdc"
+    "/dev/vdd"
+  ];
+  rootDiskFiles = [
+    "root-1.raw"
+    "root-2.raw"
+    "root-3.raw"
+  ];
 
   channelSources =
     let
@@ -95,7 +105,9 @@ let
   createDatasets =
     let
       datasetList = lib.mapAttrsToList lib.nameValuePair datasets;
-      sorted = lib.sort (left: right: (lib.stringLength left.name) < (lib.stringLength right.name)) datasetList;
+      sorted = lib.sort (
+        left: right: (lib.stringLength left.name) < (lib.stringLength right.name)
+      ) datasetList;
       cmd =
         { name, value }:
         let
@@ -109,7 +121,9 @@ let
     let
       datasetList = lib.mapAttrsToList lib.nameValuePair datasets;
       mounts = lib.filter ({ value, ... }: hasDefinedMount value) datasetList;
-      sorted = lib.sort (left: right: (lib.stringLength left.value.mount) < (lib.stringLength right.value.mount)) mounts;
+      sorted = lib.sort (
+        left: right: (lib.stringLength left.value.mount) < (lib.stringLength right.value.mount)
+      ) mounts;
       cmd =
         { name, value }:
         ''
@@ -123,7 +137,9 @@ let
     let
       datasetList = lib.mapAttrsToList lib.nameValuePair datasets;
       mounts = lib.filter ({ value, ... }: hasDefinedMount value) datasetList;
-      sorted = lib.sort (left: right: (lib.stringLength left.value.mount) > (lib.stringLength right.value.mount)) mounts;
+      sorted = lib.sort (
+        left: right: (lib.stringLength left.value.mount) > (lib.stringLength right.value.mount)
+      ) mounts;
       cmd =
         { value, ... }:
         ''
@@ -138,7 +154,10 @@ let
     in
     pkgs.runCommand "filesystem-config.nix"
       {
-        buildInputs = with pkgs; [ jq nixpkgs-fmt ];
+        buildInputs = with pkgs; [
+          jq
+          nixpkgs-fmt
+        ];
         filesystems = builtins.toJSON {
           fileSystems = lib.mapAttrs' (dataset: attrs: {
             name = attrs.mount;
@@ -173,98 +192,96 @@ let
         "zfs"
       ];
       kernel = modulesTree;
-    }).runInLinuxVM (
-      pkgs.runCommand name
-        {
-          QEMU_OPTS =
-            "-drive file=$bootDiskImage,if=virtio,format=raw,cache=unsafe,werror=report"
-            + " -drive file=$rootDiskImage1,if=virtio,format=raw,cache=unsafe,werror=report"
-            + " -drive file=$rootDiskImage2,if=virtio,format=raw,cache=unsafe,werror=report"
-            + " -drive file=$rootDiskImage3,if=virtio,format=raw,cache=unsafe,werror=report";
+    }).runInLinuxVM
+      (
+        pkgs.runCommand name
+          {
+            QEMU_OPTS =
+              "-drive file=$bootDiskImage,if=virtio,format=raw,cache=unsafe,werror=report"
+              + " -drive file=$rootDiskImage1,if=virtio,format=raw,cache=unsafe,werror=report"
+              + " -drive file=$rootDiskImage2,if=virtio,format=raw,cache=unsafe,werror=report"
+              + " -drive file=$rootDiskImage3,if=virtio,format=raw,cache=unsafe,werror=report";
 
-          inherit memSize;
+            inherit memSize;
 
-          preVM = ''
-            PATH="$PATH:${pkgs.qemu_kvm}/bin"
-            mkdir "$out"
+            preVM = ''
+              PATH="$PATH:${pkgs.qemu_kvm}/bin"
+              mkdir "$out"
 
-            create_raw_disk() {
-              local file="$1"
-              local size_mib="$2"
-              if ${if useQemuImg then "true" else "false"}; then
-                qemu-img create -f raw "$file" ''${size_mib}M
-              else
-                truncate -s ''${size_mib}M "$file"
-              fi
-            }
+              create_raw_disk() {
+                local file="$1"
+                local size_mib="$2"
+                if ${if useQemuImg then "true" else "false"}; then
+                  qemu-img create -f raw "$file" ''${size_mib}M
+                else
+                  truncate -s ''${size_mib}M "$file"
+                fi
+              }
 
-            bootDiskImage=boot.raw
-            create_raw_disk "$bootDiskImage" ${toString bootSize}
+              bootDiskImage=boot.raw
+              create_raw_disk "$bootDiskImage" ${toString bootSize}
 
-            rootDiskImage1=${builtins.elemAt rootDiskFiles 0}
-            rootDiskImage2=${builtins.elemAt rootDiskFiles 1}
-            rootDiskImage3=${builtins.elemAt rootDiskFiles 2}
-            create_raw_disk "$rootDiskImage1" ${toString rootDiskSize}
-            create_raw_disk "$rootDiskImage2" ${toString rootDiskSize}
-            create_raw_disk "$rootDiskImage3" ${toString rootDiskSize}
-          '';
+              rootDiskImage1=${builtins.elemAt rootDiskFiles 0}
+              rootDiskImage2=${builtins.elemAt rootDiskFiles 1}
+              rootDiskImage3=${builtins.elemAt rootDiskFiles 2}
+              create_raw_disk "$rootDiskImage1" ${toString rootDiskSize}
+              create_raw_disk "$rootDiskImage2" ${toString rootDiskSize}
+              create_raw_disk "$rootDiskImage3" ${toString rootDiskSize}
+            '';
 
-          postVM = ''
-            mv "$bootDiskImage" "$out/nixos.boot.img"
-            mv "$rootDiskImage1" "$out/nixos.root-1.img"
-            mv "$rootDiskImage2" "$out/nixos.root-2.img"
-            mv "$rootDiskImage3" "$out/nixos.root-3.img"
+            postVM = ''
+              mv "$bootDiskImage" "$out/nixos.boot.img"
+              mv "$rootDiskImage1" "$out/nixos.root-1.img"
+              mv "$rootDiskImage2" "$out/nixos.root-2.img"
+              mv "$rootDiskImage3" "$out/nixos.root-3.img"
 
+              set -x
+              ${postVM}
+            '';
+          }
+          ''
+            export PATH=${tools}:$PATH
             set -x
-            ${postVM}
-          '';
-        }
-        ''
-          export PATH=${tools}:$PATH
-          set -x
 
-          cp -sv /dev/vda /dev/sda
-          cp -sv /dev/vda /dev/xvda
+            cp -sv /dev/vda /dev/sda
+            cp -sv /dev/vda /dev/xvda
 
-          parted --script /dev/vda -- \
-            mklabel gpt \
-            mkpart no-fs 1MiB 2MiB \
-            set 1 bios_grub on \
-            align-check optimal 1 \
-            mkpart ESP fat32 2MiB -1MiB \
-            align-check optimal 2 \
-            print
+            parted --script /dev/vda -- \
+              mklabel gpt \
+              mkpart ESP fat32 1MiB -1MiB \
+              align-check optimal 1 \
+              print
 
-          zpool create \
-            ${stringifyProperties "  -o" rootPoolProperties} \
-            ${stringifyProperties "  -O" rootPoolFilesystemProperties} \
-            ${rootPoolName} ${zpoolVdevSpec}
+            zpool create \
+              ${stringifyProperties "  -o" rootPoolProperties} \
+              ${stringifyProperties "  -O" rootPoolFilesystemProperties} \
+              ${rootPoolName} ${zpoolVdevSpec}
 
-          ${createDatasets}
-          ${mountDatasets}
+            ${createDatasets}
+            ${mountDatasets}
 
-          mkdir -p /mnt/boot
-          mkfs.vfat -n ESP /dev/vda2
-          mount /dev/vda2 /mnt/boot
+            mkdir -p /mnt/boot
+            mkfs.vfat -n ESP /dev/vda1
+            mount /dev/vda1 /mnt/boot
 
-          mkdir -p /mnt/etc/nixos
-          cat ${fileSystemsCfgFile} > /mnt/etc/nixos/configuration.nix
+            mkdir -p /mnt/etc/nixos
+            cat ${fileSystemsCfgFile} > /mnt/etc/nixos/configuration.nix
 
-          export NIX_STATE_DIR=$TMPDIR/state
-          nix-store --load-db < ${closureInfo}/registration
+            export NIX_STATE_DIR=$TMPDIR/state
+            nix-store --load-db < ${closureInfo}/registration
 
-          nixos-install \
-            --root /mnt \
-            --no-root-passwd \
-            --system ${config.system.build.toplevel} \
-            --substituters "" \
-            ${lib.optionalString includeChannel "--channel ${channelSources}"}
+            nixos-install \
+              --root /mnt \
+              --no-root-passwd \
+              --system ${config.system.build.toplevel} \
+              --substituters "" \
+              ${lib.optionalString includeChannel "--channel ${channelSources}"}
 
-          umount /mnt/boot
-          ${unmountDatasets}
+            umount /mnt/boot
+            ${unmountDatasets}
 
-          zpool export ${rootPoolName}
-        ''
-    );
+            zpool export ${rootPoolName}
+          ''
+      );
 in
 image

@@ -1,6 +1,6 @@
 #!/usr/bin/env -S bash -euo pipefail
 
-source @logger@
+source @nixBashTrampoline@
 
 main() {
   builder_pubkey="@builderPubKey@"

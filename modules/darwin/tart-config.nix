@@ -13,11 +13,12 @@
 
 let
   inherit (lib) mkOption types;
+  ndhContext = ndh.context;
+  nixBashTrampoline = "${ndhContext.nixBashTrampoline}";
 
   profileUser = config.profile.user.name;
   profileHome = config.profile.user.home;
   profileHost = config.profile.host;
-  loggerScript = config.nixBashLogger.script;
 
   effectiveHostName =
     if (profileHost ? hostAlias && profileHost.hostAlias != null && profileHost.hostAlias != "") then
@@ -48,70 +49,97 @@ let
 
   cfg = config.tart.configGenerator;
   tartPackageAvailable = pkgs ? tart;
-  limaDiskSizeGiB =
-    if config ? lima && config.lima ? configGenerator && config.lima.configGenerator ? diskSizeGiB then
-      config.lima.configGenerator.diskSizeGiB
-    else
-      24;
 
   rawImageManifestPath =
     if cfg.rawImageManifestPath == null then "" else toString cfg.rawImageManifestPath;
   rawImageStorePath = if cfg.rawImageStorePath == null then "" else toString cfg.rawImageStorePath;
+  firstBootAttachDiskManifestPath =
+    if cfg.vmRunFirstBootAttachDiskManifestPath == null then
+      ""
+    else
+      toString cfg.vmRunFirstBootAttachDiskManifestPath;
 
-  tartActivationScript = ndh.store.runCommand "tart-${cfg.vmName}-activation.sh" { } ''
+  # Helper-only activation function library for run.sh recovery/bootstrap logic.
+  # Intentionally does not depend on tartRunScript to avoid derivation cycles.
+  tartActivationHelperLib = ndh.store.runCommand "tart-${cfg.vmName}-activation-lib.sh" { } ''
     cp ${
       pkgs.replaceVars ./tart-config.d/activation.sh {
-        bashTrampoline = "${../.common.d/shell.d/nix-bash-trampoline.sh}";
-        effectiveHostName = effectiveHostName;
-        profileUser = profileUser;
-        profileHome = profileHome;
-        vmName = cfg.vmName;
-        vmDiskFormat = cfg.vmDiskFormat;
-        vmDiskSizeGiB = toString cfg.vmDiskSizeGiB;
-        vmCpuCount = toString cfg.vmCpuCount;
-        vmMemoryMiB = toString cfg.vmMemoryMiB;
-        vmDisplayWidth = toString cfg.vmDisplayWidth;
-        vmDisplayHeight = toString cfg.vmDisplayHeight;
-        vmMacAddress = cfg.vmMacAddress;
-        vmDataDiskSizeGiB = toString cfg.vmDataDiskSizeGiB;
-        tartBinaryPath = cfg.tartBinaryPath;
-        nixBinaryPath = cfg.nixBinaryPath;
-        diskutilBinaryPath = cfg.diskutilBinaryPath;
-        hdiutilBinaryPath = cfg.hdiutilBinaryPath;
-        truncateBinaryPath = "${pkgs.coreutils}/bin/truncate";
-        tartRunScript = tartRunScript;
-        rawImageManifestPath = rawImageManifestPath;
-        rawImageStorePath = rawImageStorePath;
-        rawImageSourcePath = cfg.rawImageSourcePath;
-        rawImageTargetPath = cfg.rawImageTargetPath;
-        asifImageTargetPath = cfg.asifImageTargetPath;
-        imageFlakeAttr = cfg.imageFlakeAttr;
-        nixosFlakePath = cfg.nixosFlakePath;
-        logger = loggerScript;
+        nixBashTrampoline = nixBashTrampoline;
+        manifestPath = tartRunManifest;
+        tartRunScript = "";
       }
     } "$out"
     chmod +x "$out"
   '';
 
-  tartMaterializerPackage = pkgs.writeShellScriptBin "ndh-vm-tart-materialize" ''
+  tartActivationScript = ndh.store.runCommand "tart-${cfg.vmName}-activation.sh" { } ''
+    cp ${
+      pkgs.replaceVars ./tart-config.d/activation.sh {
+        nixBashTrampoline = nixBashTrampoline;
+        manifestPath = tartRunManifest;
+        tartRunScript = tartRunScript;
+      }
+    } "$out"
+    chmod +x "$out"
+  '';
+
+  tartMaterializerPackage = pkgs.writeShellScriptBin "nerd-nixos-tart-vm-materialize" ''
+    if [[ "''${NDH_LINUX_BUILDER_GC_BEFORE_BUILD:-1}" == "1" ]]; then
+      builder_target="''${NDH_LINUX_BUILDER_GC_TARGET:-builder@linux-builder}"
+      builder_gc_cmd="''${NDH_LINUX_BUILDER_GC_COMMAND:-sudo nix-collect-garbage -d}"
+      echo "[tart-materialize][INFO] running pre-build GC on ''${builder_target}: ''${builder_gc_cmd}" >&2
+      if ! ssh -o BatchMode=yes "$builder_target" "$builder_gc_cmd"; then
+        echo "[tart-materialize][WARN] pre-build GC on ''${builder_target} failed; continuing" >&2
+      fi
+    fi
+
     exec ${tartActivationScript} "$@"
+  '';
+
+  tartRunManifest = pkgs.writeText "tart-${cfg.vmName}-run-manifest.yaml" ''
+    # Generated Tart run manifest (@codebase)
+    effective_host_name_default: ${builtins.toJSON effectiveHostName}
+    profile_user_default: ${builtins.toJSON profileUser}
+    profile_home_default: ${builtins.toJSON profileHome}
+    vm_name: ${builtins.toJSON cfg.vmName}
+    vm_disk_format: ${builtins.toJSON cfg.vmDiskFormat}
+    vm_disk_size_gib: ${builtins.toJSON cfg.vmDiskSizeGiB}
+    vm_cpu_count: ${builtins.toJSON cfg.vmCpuCount}
+    vm_memory_mib: ${builtins.toJSON cfg.vmMemoryMiB}
+    vm_display_width: ${builtins.toJSON cfg.vmDisplayWidth}
+    vm_display_height: ${builtins.toJSON cfg.vmDisplayHeight}
+    vm_mac_address: ${builtins.toJSON cfg.vmMacAddress}
+    data_disk_size_gib: ${builtins.toJSON cfg.vmDataDiskSizeGiB}
+    bridge_interface: ${builtins.toJSON cfg.vmRunBridgeInterface}
+    use_vnc_experimental: ${builtins.toJSON cfg.vmRunUseVncExperimental}
+    serial_enable_default: ${builtins.toJSON cfg.vmRunSerialEnable}
+    serial_path_default: ${builtins.toJSON cfg.vmRunSerialPath}
+    serial_bridge_enable_default: ${builtins.toJSON cfg.vmRunSerialBridgeEnable}
+    serial_bridge_dir_default: ${builtins.toJSON cfg.vmRunSerialBridgeDir}
+    first_boot_attach_disk_path_default: ${builtins.toJSON cfg.vmRunFirstBootAttachDiskPath}
+    first_boot_attach_disk_manifest_path_default: ${builtins.toJSON firstBootAttachDiskManifestPath}
+    first_boot_attach_disk_boot_loader_expected: ${builtins.toJSON cfg.vmRunFirstBootAttachDiskExpectedBootLoader}
+    first_boot_attach_disk_size_gib: ${builtins.toJSON cfg.vmRunFirstBootAttachDiskSizeGiB}
+    first_boot_marker_file_default: ${builtins.toJSON cfg.vmRunFirstBootMarkerFile}
+    raw_image_manifest_path_default: ${builtins.toJSON rawImageManifestPath}
+    raw_image_store_path_default: ${builtins.toJSON rawImageStorePath}
+    raw_image_source_path_default: ${builtins.toJSON cfg.rawImageSourcePath}
+    raw_image_target_path_default: ${builtins.toJSON cfg.rawImageTargetPath}
+    asif_image_target_path_default: ${builtins.toJSON cfg.asifImageTargetPath}
+    sops_age_host_dir_default: ${builtins.toJSON cfg.vmRunSopsAgeHostDir}
+    sops_age_tag: ${builtins.toJSON cfg.vmRunSopsAgeTag}
+    ndh_toplevel_host_dir_default: ${builtins.toJSON cfg.vmRunNdhTopLevelHostDir}
+    ndh_toplevel_tag: ${builtins.toJSON cfg.vmRunNdhTopLevelTag}
+    tart_bin: ${builtins.toJSON cfg.tartBinaryPath}
+    diskutil_bin: ${builtins.toJSON cfg.diskutilBinaryPath}
   '';
 
   tartRunScript = ndh.store.runCommand "tart-${cfg.vmName}-run.sh" { } ''
     cp ${
       pkgs.replaceVars ./tart-config.d/run.sh {
-        bashTrampoline = "${../.common.d/shell.d/nix-bash-trampoline.sh}";
-        vmName = cfg.vmName;
-        vmRunBridgeInterface = cfg.vmRunBridgeInterface;
-        vmRunUseVncExperimental = if cfg.vmRunUseVncExperimental then "1" else "0";
-        vmRunSerialEnable = if cfg.vmRunSerialEnable then "1" else "0";
-        vmRunSerialPath = cfg.vmRunSerialPath;
-        vmRunSerialBridgeEnable = if cfg.vmRunSerialBridgeEnable then "1" else "0";
-        vmRunSerialBridgeDir = cfg.vmRunSerialBridgeDir;
-        vmRunSopsAgeShareEnable = if cfg.vmRunSopsAgeShareEnable then "1" else "0";
-        vmRunSopsAgeHostDir = cfg.vmRunSopsAgeHostDir;
-        vmRunSopsAgeTag = cfg.vmRunSopsAgeTag;
-        tartBinaryPath = cfg.tartBinaryPath;
+        nixBashTrampoline = nixBashTrampoline;
+        manifestPath = tartRunManifest;
+        tartActivationScript = tartActivationHelperLib;
       }
     } "$out"
     chmod +x "$out"
@@ -141,11 +169,11 @@ in
 
     vmDiskSizeGiB = mkOption {
       type = types.int;
-      default = limaDiskSizeGiB;
+      default = 100;
       description = ''
         Target VM disk size in GiB for Tart root disk.
-        Defaults to Lima nerd-nixos disk size to keep provider parity.
-        Materialization expands the converted ASIF root image to this size.
+        Canonical default is 100 GiB for Tart ZFS lab capacity.
+        Activation enforces this target size by recreating stale root disks.
       '';
     };
 
@@ -210,11 +238,11 @@ in
 
     vmRunSerialEnable = mkOption {
       type = types.bool;
-      default = true;
+      default = false;
       description = ''
-        Whether generated run wrapper enables Tart serial console support.
-        When enabled, wrapper prefers `--serial-path` when a configured path exists;
-        otherwise it falls back to `--serial`.
+        Temporary flag for Tart serial console support.
+        Canonical behavior is currently disabled in the generated run wrapper
+        while serial-path stability issues are under investigation.
       '';
     };
 
@@ -223,7 +251,7 @@ in
       default = "";
       description = ''
         Optional externally managed serial endpoint path for Tart `--serial-path`.
-        Can be overridden at runtime with `NDH_TART_SERIAL_PATH`.
+        Can be overridden at runtime with `SERIAL_PATH`.
       '';
     };
 
@@ -232,13 +260,13 @@ in
       default = false;
       description = ''
         Whether generated run wrapper auto-creates a stable PTY pair via `socat`
-        when no explicit `NDH_TART_SERIAL_PATH` is provided.
+        when no explicit `SERIAL_PATH` is provided.
       '';
     };
 
     vmRunSerialBridgeDir = mkOption {
       type = types.str;
-      default = "${profileHome}/.tart/serial";
+      default = "${profileHome}/.tart/vms/${cfg.vmName}/serial";
       description = ''
         Directory used by generated run wrapper for stable serial PTY symlinks.
         Wrapper creates `<vm>.tart` for Tart `--serial-path` and `<vm>.screen`
@@ -246,12 +274,50 @@ in
       '';
     };
 
-    vmRunSopsAgeShareEnable = mkOption {
-      type = types.bool;
-      default = true;
+    vmRunFirstBootAttachDiskPath = mkOption {
+      type = types.str;
+      default = "";
       description = ''
-        Whether generated run wrapper attaches the host SOPS age directory
-        as a read-only Tart directory share.
+        Optional bootstrap disk image path attached as the last Tart external disk
+        when root `disk.img` does not contain a detectable ZFS partition.
+        Intended for bringup disk images used to run disko and install full NixOS
+        onto target datasets.
+      '';
+    };
+
+    vmRunFirstBootAttachDiskManifestPath = mkOption {
+      type = types.nullOr types.path;
+      default = null;
+      description = ''
+        Optional manifest path for `vmRunFirstBootAttachDiskPath` image.
+        When set, activation/run validate manifest `bootLoader` against
+        `vmRunFirstBootAttachDiskExpectedBootLoader`.
+      '';
+    };
+
+    vmRunFirstBootAttachDiskExpectedBootLoader = mkOption {
+      type = types.str;
+      default = "systemd-boot";
+      description = ''
+        Expected bootloader value for first-boot attach disk manifest metadata.
+      '';
+    };
+
+    vmRunFirstBootAttachDiskSizeGiB = mkOption {
+      type = types.int;
+      default = 24;
+      description = ''
+        Target size in GiB for VM-local copy of first-boot bootstrap disk (`nixos.img`).
+        Keep this independent from `vmDiskSizeGiB`; bootstrap image should remain small
+        (typically 16-24 GiB) while root VM disk can be larger.
+      '';
+    };
+
+    vmRunFirstBootMarkerFile = mkOption {
+      type = types.str;
+      default = "${profileHome}/.tart/vms/${cfg.vmName}/.first-boot-bootstrap-disk.done";
+      description = ''
+        Reserved marker file path for bootstrap workflows.
       '';
     };
 
@@ -259,8 +325,8 @@ in
       type = types.str;
       default = "${profileHome}/.config/sops/age";
       description = ''
-        Host directory containing `keys.txt` to be exposed to the Tart VM via
-        `--dir` for SOPS age key bootstrap import.
+        Host directory containing `keys.txt` exported to Tart VM via virtiofs.
+        Canonical behavior requires this share for in-guest SOPS bootstrap decryption.
       '';
     };
 
@@ -268,8 +334,25 @@ in
       type = types.str;
       default = "ndh-sops-age";
       description = ''
-        Virtiofs mount tag used for the SOPS age host directory share.
-        Guest mounts this tag at `/mnt/tart-cidata/.sops.d`.
+        Virtiofs mount tag used for the mandatory SOPS age host directory share.
+      '';
+    };
+
+    vmRunNdhTopLevelHostDir = mkOption {
+      type = types.str;
+      default = cfg.nixosFlakePath;
+      description = ''
+        Host NDH repository top-level directory optionally exported to Tart guest
+        during bootstrap detection (blank/non-ZFS root disk path).
+      '';
+    };
+
+    vmRunNdhTopLevelTag = mkOption {
+      type = types.str;
+      default = "ndh-toplevel";
+      description = ''
+        Virtiofs mount tag used for NDH top-level host directory export.
+        Keep this aligned with guest mount expectations.
       '';
     };
 
@@ -277,8 +360,8 @@ in
       type = types.int;
       default = 100;
       description = ''
-        Size in GiB for auto-created Tart data disks (tank1/tank2/tank3/recover)
-        when missing in the generated run wrapper.
+        Size in GiB for auto-created VM-local Tart data disks (`disk2`/`disk3`/`recover`)
+        when missing in activation/materialization.
       '';
     };
 
@@ -304,14 +387,6 @@ in
       default = "/usr/sbin/diskutil";
       description = ''
         Absolute diskutil path used for ASIF conversion/resizing on Darwin.
-      '';
-    };
-
-    hdiutilBinaryPath = mkOption {
-      type = types.str;
-      default = "/usr/bin/hdiutil";
-      description = ''
-        Absolute hdiutil path used as deterministic resize fallback on Darwin.
       '';
     };
 
@@ -342,7 +417,7 @@ in
 
     rawImageTargetPath = mkOption {
       type = types.str;
-      default = "/nix/var/nix/gcroots/per-user/${profileUser}/tart-nixos.raw.img";
+      default = "/nix/var/nix/gcroots/per-user/${profileUser}/tart-${cfg.vmName}.raw.img";
       description = ''
         Stable user gcroot symlink path for raw NixOS disk image used for ASIF conversion.
       '';
@@ -350,7 +425,7 @@ in
 
     asifImageTargetPath = mkOption {
       type = types.str;
-      default = "/nix/var/nix/gcroots/per-user/${profileUser}/tart-nixos.asif";
+      default = "/nix/var/nix/gcroots/per-user/${profileUser}/tart-${cfg.vmName}.asif";
       description = ''
         Stable user gcroot symlink path for the generated ASIF image.
         The materializer also installs this ASIF image into `${config.tart.configGenerator.vmName}` VM disk.
@@ -394,7 +469,7 @@ in
       type = types.bool;
       default = false;
       description = ''
-        Install the `ndh-vm-tart-materialize` helper package in system packages.
+        Install the `nerd-nixos-tart-vm-materialize` helper package in system packages.
       '';
     };
 
@@ -411,7 +486,7 @@ in
       readOnly = true;
       default = tartMaterializerPackage;
       description = ''
-        Store package exposing `ndh-vm-tart-materialize` for host-side Tart VM materialization.
+        Store package exposing `nerd-nixos-tart-vm-materialize` for host-side Tart VM materialization.
       '';
     };
   };

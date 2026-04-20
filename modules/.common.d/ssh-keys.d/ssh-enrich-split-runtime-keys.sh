@@ -6,9 +6,7 @@
 # 3) optionally ensure linux-builder authorized_keys entry (NixOS)
 
 # shellcheck disable=SC1091
-source @bashTrampoline@
-# shellcheck disable=SC1091
-source @logger@
+source @nixBashTrampoline@
 
 main() {
 	local bashBin="${1:?bash binary path required}"

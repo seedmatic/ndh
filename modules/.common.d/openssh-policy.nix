@@ -431,6 +431,9 @@ in
     opensshPolicy.clientRendered =
       let
         pcfg = cfg.client;
+        ndhContext = ndh.context;
+        catalog = ndhContext.catalog;
+        netplan = catalog.netplan or { };
         hostProfile = (config.profile.host or { });
         userProfile = (config.profile.user or { });
         userName = userProfile.name or "";
@@ -449,8 +452,9 @@ in
           else
             (hostProfile.hostName or "host");
         baseHost = baseRaw + pcfg.guest.nameSuffix;
-        tailnetName = hostProfile.tailnet.name or null;
-        tailnetDomain = hostProfile.tailnet.domain or null;
+        tailnetName = if netplan ? tailnet && netplan.tailnet ? name then netplan.tailnet.name else null;
+        tailnetDomain =
+          if netplan ? tailnet && netplan.tailnet ? domain then netplan.tailnet.domain else null;
         tailnetFqdn =
           if (pcfg.guest.includeTailnet && tailnetName != null && tailnetDomain != null) then
             "${baseHost}.${tailnetName}.${tailnetDomain}"

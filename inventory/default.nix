@@ -27,6 +27,8 @@
           systems = [ "aarch64-linux" ];
           maxJobs = 8;
           protocol = "ssh-ng";
+          vmCpuCores = 8;
+          vmMemoryMiB = 24576;
         };
       }
       {
@@ -43,6 +45,8 @@
           systems = [ "aarch64-linux" ];
           maxJobs = 8;
           protocol = "ssh-ng";
+          vmCpuCores = 8;
+          vmMemoryMiB = 24576;
         };
       }
     ];

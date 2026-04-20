@@ -10,6 +10,8 @@ with lib;
 
 let
   cfg = config.services.disable-spotlight;
+  ndhContext = ndh.context;
+  nixBashTrampoline = "${ndhContext.nixBashTrampoline}";
   loggerScript = config.nixBashLogger.script;
 
   disableSpotlightScript =
@@ -27,8 +29,8 @@ let
       ''
         cp ${
           pkgs.replaceVars ./disable-spotlight.d/post-activation.sh {
+            nixBashTrampoline = nixBashTrampoline;
             disableSpotlightScript = disableSpotlightScript;
-            logger = loggerScript;
           }
         } "$out"
         chmod +x "$out"
