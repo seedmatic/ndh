@@ -27,6 +27,8 @@ let
   systemSplitProfileKeysYamlPath = "/run/secrets/nix-darwin-home/ssh-keys-split.d/profiles/${sshKeyProfileName}.yaml";
   allowSystemSplitFallback = profileName == "work";
   sourceProfileKeysYamlPath = "${./ssh.d/keys.yaml}";
+  rootBringupProfileDir = "/nix/var/nix/profiles/per-user/root/io-nxmatic-nix-darwin-home-bringup-runtime-profile-holder";
+  rootBringupInstallerName = "io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer";
   # Effective YAML path consumed by ssh-add-keys/launchd.
   effectiveSSHKeysYamlPath = "${perUserKeysDir}.yaml";
 
@@ -126,8 +128,33 @@ in
       };
     in
     {
+      ensureRootBringupRuntimeProfile = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+        ${lib.optionalString allowSystemSplitFallback ''
+          installer_path=""
+          if command -v ${rootBringupInstallerName} >/dev/null 2>&1; then
+            installer_path="$(command -v ${rootBringupInstallerName})"
+          elif [[ -x "/run/current-system/sw/bin/${rootBringupInstallerName}" ]]; then
+            installer_path="/run/current-system/sw/bin/${rootBringupInstallerName}"
+          elif [[ -x "/nix/var/nix/profiles/default/bin/${rootBringupInstallerName}" ]]; then
+            installer_path="/nix/var/nix/profiles/default/bin/${rootBringupInstallerName}"
+          fi
+
+          if [[ -z "$installer_path" ]]; then
+            echo "[ssh-keys][WARN] runtime profile installer not found: ${rootBringupInstallerName}" >&2
+          elif ! command -v sudo >/dev/null 2>&1; then
+            echo "[ssh-keys][WARN] sudo not available; cannot install root bringup runtime profile" >&2
+          elif ! sudo -n true >/dev/null 2>&1; then
+            echo "[ssh-keys][WARN] passwordless sudo unavailable; skipping root runtime profile install" >&2
+          else
+            if ! sudo -n "$installer_path" "${rootBringupProfileDir}"; then
+              echo "[ssh-keys][WARN] failed to install root bringup runtime profile via $installer_path" >&2
+            fi
+          fi
+        ''}
+      '';
+
       # System-managed path (NixOS + Darwin): consume profile-specific generated YAML.
-      prepareGeneratedSSHKeysYaml = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+      prepareGeneratedSSHKeysYaml = lib.hm.dag.entryAfter [ "ensureRootBringupRuntimeProfile" ] ''
         install -m 0700 -d "$(dirname "${effectiveSSHKeysYamlPath}")"
 
         if [[ -r "${systemSplitProfileKeysYamlPath}" ]]; then
