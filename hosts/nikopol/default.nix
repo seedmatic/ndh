@@ -2,6 +2,7 @@ let
   hostProfile = {
     hostName = "nikopol";
     tailnet = { };
+    vmProvider = "tart";
     nixosImageMode = "bootstrap";
     nixosBootLoader = "systemd-boot";
   };
@@ -82,6 +83,19 @@ let
           id = 2;
           addressPrefix = "192.168.2";
           parentInterface = "en0";
+        };
+
+        # VM config materialization is handled by Home Manager activation only
+        # for user-scoped assets/gcroots on VZ hosts.
+        lima.configGenerator = {
+          enableActivationHook = false;
+          installMaterializerPackage = false;
+        };
+
+        tart.configGenerator = {
+          forceEnable = false;
+          enableActivationHook = false;
+          installMaterializerPackage = false;
         };
       };
     };

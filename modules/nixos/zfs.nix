@@ -117,6 +117,7 @@ let
         options = [
           "defaults"
           "X-mount.mkdir"
+          "zfsutil"
         ];
       };
     }) overlayMountPoints
@@ -129,13 +130,13 @@ let
         fsType = "overlay";
         device = "overlay";
         neededForBoot = true;
-        depends = [ "/mnt/overlays/${mount}" ];
-        options = [ "defaults" ];
-        overlay = {
-          lowerdir = [ mount ];
-          upperdir = (joinMountPoints "/mnt/overlays" mount) + "/upper";
-          workdir = (joinMountPoints "/mnt/overlays" mount) + "/workdir";
-        };
+        depends = [ (joinMountPoints "/mnt/overlays" mount) ];
+        options = [
+          "lowerdir=${mount}"
+          "upperdir=${(joinMountPoints "/mnt/overlays" mount) + "/upper"}"
+          "workdir=${(joinMountPoints "/mnt/overlays" mount) + "/workdir"}"
+          "defaults"
+        ];
       };
     }) overlayMountPoints
   );
@@ -247,6 +248,19 @@ in
     default = true;
     description = "Run ZFS bootstrap activation once via a dedicated idempotent systemd unit.";
   };
+  options.zfsOverlays.bootstrapActivation.requiredDevices = lib.mkOption {
+    type = lib.types.listOf lib.types.str;
+    default = [
+      "/dev/vdb"
+      "/dev/vdc"
+      "/dev/vdd"
+      "/dev/vde"
+    ];
+    description = ''
+      Block devices that must be present before running bootstrap datastore provisioning.
+      This keeps first boot safe for Tart/Lima when extra data disks are not yet attached.
+    '';
+  };
   config = {
 
     networking.hostId = lib.mkDefault hostId;
@@ -292,17 +306,18 @@ in
     ];
 
     systemd = {
-      services.zpool-init = lib.mkIf config.zfsOverlays.bootstrapActivation.enable {
+      services."io-nxmatic-nix-darwin-home-zpool-init" = lib.mkIf config.zfsOverlays.bootstrapActivation.enable {
         description = "Idempotent one-shot ZFS disk/datastore provisioning (@codebase)";
-        wantedBy = [ "io-nxmatic-nix-darwin-home-contributed.target" ];
-        after = [
-          "local-fs.target"
-          "zfs.target"
+        wantedBy = [ "zfs-import.target" ];
+        wants = [ "systemd-udev-settle.service" ];
+        before = [
           "zfs-import.target"
+          "zfs-import-cache.service"
+          "zfs-import-scan.service"
+          "zfs-mount.service"
         ];
-        wants = [
-          "zfs.target"
-          "zfs-import.target"
+        after = [
+          "systemd-udev-settle.service"
         ];
 
         path = with pkgs; [
@@ -317,18 +332,20 @@ in
         serviceConfig = {
           Type = "oneshot";
           RemainAfterExit = true;
+          ExecCondition = ndh.store.writeShellScript "zpool-init-devices-check" ''
+            set -eu
+
+            for dev in ${lib.escapeShellArgs config.zfsOverlays.bootstrapActivation.requiredDevices}; do
+              if [ ! -b "$dev" ]; then
+                echo "[zpool-init] skip: required device missing: $dev"
+                exit 1
+              fi
+            done
+
+            exit 0
+          '';
           ExecStart = ndh.store.writeShellScript "zpool-init" ''
             set -euxo pipefail
-
-            if zpool list -H -o name tank >/dev/null 2>&1; then
-              echo "[zpool-init] zpool 'tank' already exists, skipping"
-              exit 0
-            fi
-
-            if zpool import -N tank >/dev/null 2>&1; then
-              echo "[zpool-init] zpool 'tank' imported, skipping"
-              exit 0
-            fi
 
             exec ${zpoolInit}/bin/zpool-init
           '';

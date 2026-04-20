@@ -141,6 +141,11 @@
 
       ndhStoreApiDarwin = mkNdhStoreApiFor pkgsForDarwin;
       ndhStoreApiLinux = mkNdhStoreApiFor pkgsForLinux;
+      ndhBringupRuntimeAttr = "ndh-bringup-runtime";
+      ndhBringupInstallerAttr = "ndh-bringup-install";
+      ndhBringupInstallerCommand = "ndh-bringup-install";
+      ndhVmLimaMaterializeAttr = "ndh-vm-lima-materialize";
+      ndhVmTartMaterializeAttr = "ndh-vm-tart-materialize";
 
       mkBaseModulesFor =
         { hostProfile, system }:
@@ -261,7 +266,7 @@
               };
         in
         ndhStoreApi.runCommand "bringup-runtime-profile-installer" { } ''
-          install -Dm755 ${scriptSource} "$out/bin/io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer"
+          install -Dm755 ${scriptSource} "$out/bin/${ndhBringupInstallerCommand}"
         '';
 
       mkSpecialArgs =
@@ -293,6 +298,7 @@
           hostProfile,
           profileModule,
           catalog,
+          extraModules ? [ ],
         }:
         let
           preModules = [
@@ -304,7 +310,8 @@
                 lima.configGenerator.vmType = "vz";
               }
             )
-          ];
+          ]
+          ++ extraModules;
           modules = mkModulesFor {
             inherit hostProfile preModules;
             system = "darwin";
@@ -335,9 +342,33 @@
           ...
         }:
         let
-          darwinConfiguration = mkDarwinConfig { inherit hostProfile profileModule catalog; };
+          mainName =
+            if (hostProfile ? hostAlias && hostProfile.hostAlias != null && hostProfile.hostAlias != "") then
+              hostProfile.hostAlias
+            else
+              hostProfile.hostName;
+
+          mkDarwinVmVariant =
+            vmProvider:
+            mkDarwinConfig {
+              hostProfile = hostProfile // {
+                inherit vmProvider;
+              };
+              inherit profileModule catalog;
+              extraModules = [
+                {
+                  lima.configGenerator.nixosHostAttr = "${mainName}-nixos-${vmProvider}";
+                }
+              ];
+            };
+
+          darwinConfiguration = mkDarwinVmVariant (hostProfile.vmProvider or "lima");
+          darwinConfigurationLima = mkDarwinVmVariant "lima";
+          darwinConfigurationTart = mkDarwinVmVariant "tart";
           darwinConfigurations = {
             "${hostProfile.hostName}" = darwinConfiguration;
+            "${mainName}-lima" = darwinConfigurationLima;
+            "${mainName}-tart" = darwinConfigurationTart;
           }
           // (
             if (hostProfile ? hostAlias && hostProfile.hostAlias != null && hostProfile.hostAlias != "") then
@@ -358,10 +389,12 @@
           profileModule,
           zfsOverlays,
           catalog,
+          vmProvider ? null,
         }:
         let
           hostImageMode = hostProfile.nixosImageMode or "full";
           bringupModeInternal = hostImageMode == "bootstrap";
+          effectiveVmProvider = if vmProvider != null then vmProvider else (hostProfile.vmProvider or "lima");
           zfsOverlaysModule =
             { ... }:
             {
@@ -375,6 +408,9 @@
           preModules = [
             profileModule
             zfsOverlaysModule
+            {
+              ndh.vm.provider = effectiveVmProvider;
+            }
           ]
           ++ (if bringupModeInternal then [ ] else [ nixosTailscaleTagModule ]);
           modules = mkModulesFor {
@@ -387,6 +423,7 @@
             extraArgs = {
               inherit hostProfile;
               inherit catalog;
+              vmProvider = effectiveVmProvider;
             };
           };
           nixosSystem = nixpkgs.lib.nixosSystem {
@@ -411,6 +448,7 @@
             let
               hpImageMode = hp.nixosImageMode or "full";
               hpBringupModeInternal = hpImageMode == "bootstrap";
+              hpVmProvider = hp.vmProvider or "lima";
               zfsOverlaysModule =
                 { ... }:
                 {
@@ -428,6 +466,9 @@
               preModules = [
                 profileModule
                 zfsOverlaysModule
+                {
+                  ndh.vm.provider = hpVmProvider;
+                }
               ]
               ++ (if hpBringupModeInternal then [ ] else [ nixosTailscaleTagModule ]);
             };
@@ -440,6 +481,7 @@
               extraArgs = {
                 hostProfile = hp;
                 inherit catalog;
+                vmProvider = hp.vmProvider or "lima";
               };
             };
 
@@ -452,6 +494,8 @@
             nixosImageMode = "full";
             nixosBootLoader = "systemd-boot";
           };
+
+          selectedVmProvider = hostProfile.vmProvider or "lima";
 
           bringupGrubHostProfile = hostProfile // {
             nixosImageMode = "bootstrap";
@@ -477,14 +521,27 @@
             zfsOverlays = true;
           };
 
-          zfsRuntime = mkNixosConfig {
+          zfsRuntimeLima = mkNixosConfig {
             inherit
               profileModule
               catalog
               ;
             hostProfile = runtimeHostProfile;
             zfsOverlays = true;
+            vmProvider = "lima";
           };
+
+          zfsRuntimeTart = mkNixosConfig {
+            inherit
+              profileModule
+              catalog
+              ;
+            hostProfile = runtimeHostProfile;
+            zfsOverlays = true;
+            vmProvider = "tart";
+          };
+
+          selectedRuntime = if selectedVmProvider == "tart" then zfsRuntimeTart else zfsRuntimeLima;
 
           runtimeExt4Modules = mkExt4ModulesFor runtimeHostProfile;
           runtimeExt4SpecialArgs = mkExt4SpecialArgsFor runtimeHostProfile runtimeExt4Modules;
@@ -616,6 +673,8 @@
             specialArgs = bringupSystemdBootExt4SpecialArgs;
           };
 
+          diskImageBringupZfsSystemdBootRaw = zfsBringup.config.system.build.images."raw-efi";
+
           diskImageBringupGrubRaw = mkRawEfiImage {
             modules = bringupGrubExt4Modules ++ [
               {
@@ -644,6 +703,14 @@
             source = diskImageBringupSystemdBootRaw;
           };
 
+          diskImageBringupZfsSystemdBoot = mkDiskImageWithDescriptor {
+            attr = "nixosDiskImageBringupZfsSystemdBoot";
+            imageMode = "bootstrap";
+            bootLoader = "systemd-boot";
+            diskSizeMiB = diskSizeMiB;
+            source = diskImageBringupZfsSystemdBootRaw;
+          };
+
           diskImageBringupGrub = mkDiskImageWithDescriptor {
             attr = "nixosDiskImageBringupGrub";
             imageMode = "bootstrap";
@@ -665,13 +732,18 @@
           inherit diskSizeHint;
           inherit diskSizeMiB;
           nixosConfigurations = {
-            "${mainName}-bringup-ext4" = ext4;
-            "${mainName}-bringup-zfs" = zfsBringup;
-            "${mainName}-nixos" = zfsRuntime;
+            "${mainName}-bringup-ext4-lima" = ext4;
+            "${mainName}-bringup-ext4-tart" = ext4;
+            "${mainName}-bringup-zfs-lima" = zfsBringup;
+            "${mainName}-bringup-zfs-tart" = zfsBringup;
+            "${mainName}-nixos-lima" = zfsRuntimeLima;
+            "${mainName}-nixos-tart" = zfsRuntimeTart;
+            "${mainName}-nixos" = selectedRuntime;
           };
           inherit
             diskImageFullExt4
             diskImageBringupSystemdBoot
+            diskImageBringupZfsSystemdBoot
             diskImageBringupGrub
             ;
         };
@@ -706,8 +778,8 @@
       packages = nixpkgs.lib.genAttrs [ "aarch64-darwin" "aarch64-linux" ] (
         system:
         {
-          io-nxmatic-nix-darwin-home-bringup-runtime-profile-holder = mkNdhBootstrapRuntimePackage system;
-          io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer = mkNdhBringupRuntimeInstaller system;
+          ${ndhBringupRuntimeAttr} = mkNdhBootstrapRuntimePackage system;
+          ${ndhBringupInstallerAttr} = mkNdhBringupRuntimeInstaller system;
         }
         // nixpkgs.lib.optionalAttrs (system == "aarch64-linux") {
           nixos-bioskop-bringup-lima-vm-disk = hostOutputs.bioskop.nixosDiskImageBringupSystemdBoot;
@@ -721,11 +793,23 @@
         system:
         let
           installer = mkNdhBringupRuntimeInstaller system;
+          limaMaterializer =
+            hostOutputs.bioskop.darwinConfigurations.bioskop.config.lima.configGenerator.materializerPackage;
+          tartMaterializer =
+            hostOutputs.bioskop.darwinConfigurations.bioskop.config.tart.configGenerator.materializerPackage;
         in
         {
-          io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer = {
+          ${ndhBringupInstallerAttr} = {
             type = "app";
-            program = "${installer}/bin/io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer";
+            program = "${installer}/bin/${ndhBringupInstallerCommand}";
+          };
+          ${ndhVmLimaMaterializeAttr} = {
+            type = "app";
+            program = "${limaMaterializer}/bin/${ndhVmLimaMaterializeAttr}";
+          };
+          ${ndhVmTartMaterializeAttr} = {
+            type = "app";
+            program = "${tartMaterializer}/bin/${ndhVmTartMaterializeAttr}";
           };
         }
       );
@@ -916,6 +1000,7 @@
           nixosConfiguration = nixosOutputs.nixosConfigurations."${mainName}-nixos";
           nixosDiskImage = nixosOutputs.diskImageFullExt4;
           nixosDiskImageBringupSystemdBoot = nixosOutputs.diskImageBringupSystemdBoot;
+          nixosDiskImageBringupZfsSystemdBoot = nixosOutputs.diskImageBringupZfsSystemdBoot;
           nixosDiskImageBringupGrub = nixosOutputs.diskImageBringupGrub;
           nixosDiskSizeHint = nixosOutputs.diskSizeHint;
           nixosDiskSizeMiB = nixosOutputs.diskSizeMiB;
@@ -934,15 +1019,23 @@
                 )
               ];
               extraSpecialArgs = {
-                inherit hostProfile catalog;
                 inherit profile;
-                logger = mkLoggerSpecialArg "aarch64-darwin";
                 ndh = {
                   store = ndhStoreApiDarwin;
+                  inherit catalog;
+                  vm = {
+                    provider = hostProfile.vmProvider or "lima";
+                    configMaterializerPackage =
+                      if (hostProfile.vmProvider or "lima") == "tart" then
+                        darwinOutputs.darwinConfigurations.${mainName}.config.tart.configGenerator.materializerPackage
+                      else
+                        darwinOutputs.darwinConfigurations.${mainName}.config.lima.configGenerator.materializerPackage;
+                  };
+                  logger = mkLoggerSpecialArg "aarch64-darwin";
+                  ssh = {
+                    keysYamlPath = "${toString profile.user.home}/.local/var/run/secrets/sops/ssh-keys.yaml";
+                  };
                 };
-                sshKeysYamlPath = "${toString profile.user.home}/.local/var/run/secrets/sops/ssh-keys.yaml";
-                limaConfigMaterializerPackage =
-                  darwinOutputs.darwinConfigurations.${mainName}.config.lima.configGenerator.materializerPackage;
               };
             };
           darwinOutputs = mkDarwinOutputs {
@@ -958,6 +1051,9 @@
                       lima.configGenerator.imageDescriptorPath = "${nixosDiskImageBringupSystemdBoot}/descriptor.yaml";
                       lima.configGenerator.imageStorePath = "${nixosDiskImageBringupSystemdBoot}/nixos.img";
                       lima.configGenerator.diskSizeGiB = builtins.div nixosDiskSizeMiB 1024;
+
+                      tart.configGenerator.rawImageDescriptorPath = "${nixosDiskImageBringupSystemdBoot}/descriptor.yaml";
+                      tart.configGenerator.rawImageStorePath = "${nixosDiskImageBringupSystemdBoot}/nixos.img";
                     }
                   )
                 ]
@@ -965,6 +1061,8 @@
               };
           };
           darwinConfiguration = darwinOutputs.darwinConfigurations.${mainName};
+          limaMaterializerPackage = darwinConfiguration.config.lima.configGenerator.materializerPackage;
+          tartMaterializerPackage = darwinConfiguration.config.tart.configGenerator.materializerPackage;
           autofsNetMaterializerPackage =
             if
               darwinConfiguration ? config
@@ -993,7 +1091,7 @@
                 loggerTag = "ndh.bringup-runtime.prerequisites-install.darwin";
                 autofsMaterializerProgram =
                   if autofsNetMaterializerProgram != null then autofsNetMaterializerProgram else "";
-                standaloneInstaller = "${ndhBootstrapInstallerPackage}/bin/io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer";
+                standaloneInstaller = "${ndhBootstrapInstallerPackage}/bin/${ndhBringupInstallerCommand}";
               };
           ndhPrerequisitesInstallerScriptSourceLinux =
             pkgsForLinux.replaceVars ./modules/.common.d/bringup-runtime.d/prerequisites-install-wrapper.sh
@@ -1002,33 +1100,42 @@
                 logger = (mkLoggerSpecialArg "aarch64-linux").script;
                 loggerTag = "ndh.bringup-runtime.prerequisites-install.linux";
                 autofsMaterializerProgram = "";
-                standaloneInstaller = "${ndhBootstrapInstallerPackageLinux}/bin/io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer";
+                standaloneInstaller = "${ndhBootstrapInstallerPackageLinux}/bin/${ndhBringupInstallerCommand}";
               };
           ndhPrerequisitesInstallerPackage = ndhStoreApiDarwin.runCommand "prerequisites-install" { } ''
-            install -Dm755 ${ndhPrerequisitesInstallerScriptSource} "$out/bin/io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer"
+            install -Dm755 ${ndhPrerequisitesInstallerScriptSource} "$out/bin/${ndhBringupInstallerCommand}"
           '';
           ndhPrerequisitesInstallerPackageLinux = ndhStoreApiLinux.runCommand "prerequisites-install" { } ''
-            install -Dm755 ${ndhPrerequisitesInstallerScriptSourceLinux} "$out/bin/io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer"
+            install -Dm755 ${ndhPrerequisitesInstallerScriptSourceLinux} "$out/bin/${ndhBringupInstallerCommand}"
           '';
           hostDarwinPackages = {
-            io-nxmatic-nix-darwin-home-bringup-runtime-profile-holder = ndhBootstrapRuntimePackage;
-            io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer = ndhPrerequisitesInstallerPackage;
+            ${ndhBringupRuntimeAttr} = ndhBootstrapRuntimePackage;
+            ${ndhBringupInstallerAttr} = ndhPrerequisitesInstallerPackage;
+            ${ndhVmLimaMaterializeAttr} = limaMaterializerPackage;
+            ${ndhVmTartMaterializeAttr} = tartMaterializerPackage;
           };
           hostLinuxPackages = {
-            io-nxmatic-nix-darwin-home-bringup-runtime-profile-holder = ndhBootstrapRuntimePackageLinux;
-            io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer =
-              ndhPrerequisitesInstallerPackageLinux;
+            ${ndhBringupRuntimeAttr} = ndhBootstrapRuntimePackageLinux;
+            ${ndhBringupInstallerAttr} = ndhPrerequisitesInstallerPackageLinux;
           };
           hostDarwinApps = {
-            io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer = {
+            ${ndhBringupInstallerAttr} = {
               type = "app";
-              program = "${ndhPrerequisitesInstallerPackage}/bin/io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer";
+              program = "${ndhPrerequisitesInstallerPackage}/bin/${ndhBringupInstallerCommand}";
+            };
+            ${ndhVmLimaMaterializeAttr} = {
+              type = "app";
+              program = "${limaMaterializerPackage}/bin/${ndhVmLimaMaterializeAttr}";
+            };
+            ${ndhVmTartMaterializeAttr} = {
+              type = "app";
+              program = "${tartMaterializerPackage}/bin/${ndhVmTartMaterializeAttr}";
             };
           };
           hostLinuxApps = {
-            io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer = {
+            ${ndhBringupInstallerAttr} = {
               type = "app";
-              program = "${ndhPrerequisitesInstallerPackageLinux}/bin/io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer";
+              program = "${ndhPrerequisitesInstallerPackageLinux}/bin/${ndhBringupInstallerCommand}";
             };
           };
 
@@ -1047,6 +1154,7 @@
             nixosConfiguration
             nixosDiskImage
             nixosDiskImageBringupSystemdBoot
+            nixosDiskImageBringupZfsSystemdBoot
             nixosDiskImageBringupGrub
             nixosDiskSizeHint
             homeManagerConfigurations
@@ -1087,23 +1195,45 @@
         };
 
       darwinConfigurations =
-        hostOutputs.bioskop.darwinConfigurations
-        // hostOutputs.nikopol.darwinConfigurations;
+        hostOutputs.bioskop.darwinConfigurations // hostOutputs.nikopol.darwinConfigurations;
 
       nixosConfigurations =
-        hostOutputs.bioskop.nixosConfigurations
-        // hostOutputs.nikopol.nixosConfigurations;
+        hostOutputs.bioskop.nixosConfigurations // hostOutputs.nikopol.nixosConfigurations;
 
       # Provider-scoped VM configuration aliases.
       # Keep canonical behavior unchanged; expose stable provider names for operators.
       vmConfigurations = {
         lima = {
           bioskop = {
-            bringup = hostOutputs.bioskop.nixosConfigurations."bioskop-bringup-ext4";
+            bringup = hostOutputs.bioskop.nixosConfigurations."bioskop-bringup-ext4-lima";
+            runtime = hostOutputs.bioskop.nixosConfigurations."bioskop-nixos-lima";
+          };
+          nikopol = {
+            bringup = hostOutputs.nikopol.nixosConfigurations."nikopol-bringup-ext4-lima";
+            runtime = hostOutputs.nikopol.nixosConfigurations."nikopol-nixos-lima";
+          };
+        };
+        tart = {
+          bioskop = {
+            bringupExt4 = hostOutputs.bioskop.nixosConfigurations."bioskop-bringup-ext4-tart";
+            bringupZfs = hostOutputs.bioskop.nixosConfigurations."bioskop-bringup-zfs-tart";
+            bringup = hostOutputs.bioskop.nixosConfigurations."bioskop-bringup-zfs-tart";
+            runtime = hostOutputs.bioskop.nixosConfigurations."bioskop-nixos-tart";
+          };
+          nikopol = {
+            bringupExt4 = hostOutputs.nikopol.nixosConfigurations."nikopol-bringup-ext4-tart";
+            bringupZfs = hostOutputs.nikopol.nixosConfigurations."nikopol-bringup-zfs-tart";
+            bringup = hostOutputs.nikopol.nixosConfigurations."nikopol-bringup-zfs-tart";
+            runtime = hostOutputs.nikopol.nixosConfigurations."nikopol-nixos-tart";
+          };
+        };
+        selected = {
+          bioskop = {
+            bringup = hostOutputs.bioskop.nixosConfigurations."bioskop-bringup-ext4-lima";
             runtime = hostOutputs.bioskop.nixosConfigurations."bioskop-nixos";
           };
           nikopol = {
-            bringup = hostOutputs.nikopol.nixosConfigurations."nikopol-bringup-ext4";
+            bringup = hostOutputs.nikopol.nixosConfigurations."nikopol-bringup-ext4-lima";
             runtime = hostOutputs.nikopol.nixosConfigurations."nikopol-nixos";
           };
         };
@@ -1119,14 +1249,14 @@
           full = hostOutputs.bioskop.nixosDiskImage;
           bringupSystemdBoot = hostOutputs.bioskop.nixosDiskImageBringupSystemdBoot;
           bringupLimaVm = hostOutputs.bioskop.nixosDiskImageBringupSystemdBoot;
-          bringupTart = hostOutputs.bioskop.nixosDiskImageBringupSystemdBoot;
+          bringupTartVm = hostOutputs.bioskop.nixosDiskImageBringupSystemdBoot;
           bringupGrub = hostOutputs.bioskop.nixosDiskImageBringupGrub;
         };
         nikopol = {
           full = hostOutputs.nikopol.nixosDiskImage;
           bringupSystemdBoot = hostOutputs.nikopol.nixosDiskImageBringupSystemdBoot;
           bringupLimaVm = hostOutputs.nikopol.nixosDiskImageBringupSystemdBoot;
-          bringupTart = hostOutputs.nikopol.nixosDiskImageBringupSystemdBoot;
+          bringupTartVm = hostOutputs.nikopol.nixosDiskImageBringupSystemdBoot;
           bringupGrub = hostOutputs.nikopol.nixosDiskImageBringupGrub;
         };
       };
@@ -1148,6 +1278,7 @@
             #inherit (inputs.devenv.packages.${hostSystem}) devenv;
 
             # rancher-desktop = final.callPackage ./pkgs/rancher-desktop.nix {};
+            tart-guest-agent = final.callPackage ./pkgs/tart-guest-agent.nix { };
             inherit (inputs.maven-mvnd.packages.${hostSystem}) maven-mvnd-m39;
             inherit (inputs.disko.packages.${hostSystem}) disko;
             inherit (inputs.incus-compose.packages.${hostSystem}) incus-compose;
@@ -1161,19 +1292,17 @@
         limaOverlay = inputs: import ./overlays/lima.nix inputs;
         tailscaleOverlay = inputs: import ./overlays/tailscale.nix inputs;
 
-        direnvOverlay =
-          _inputs: final: prev:
-          {
-            # Upstream direnv fish tests are intermittently SIGKILLed on this build fleet.
-            # Keep runtime package deterministic by disabling checks in the canonical overlay path.
-            direnv = prev.direnv.overrideAttrs (old: {
-              doCheck = false;
-              dontCheck = true;
-              checkPhase = "echo skipping direnv checkPhase";
-              installCheckPhase = "echo skipping direnv installCheckPhase";
-              phases = builtins.filter (p: p != "checkPhase" && p != "installCheckPhase") (old.phases or [ ]);
-            });
-          };
+        direnvOverlay = _inputs: final: prev: {
+          # Upstream direnv fish tests are intermittently SIGKILLed on this build fleet.
+          # Keep runtime package deterministic by disabling checks in the canonical overlay path.
+          direnv = prev.direnv.overrideAttrs (old: {
+            doCheck = false;
+            dontCheck = true;
+            checkPhase = "echo skipping direnv checkPhase";
+            installCheckPhase = "echo skipping direnv installCheckPhase";
+            phases = builtins.filter (p: p != "checkPhase" && p != "installCheckPhase") (old.phases or [ ]);
+          });
+        };
       };
 
       homeManagerModules = {

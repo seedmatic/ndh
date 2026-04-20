@@ -16,35 +16,38 @@ let
 
   baseAfter = [ "io-nxmatic-nix-darwin-home-lima-cloud-init.service" ];
   afterList = baseAfter ++ lib.optional needsNetwork "network-online.target";
+  isLimaProvider = config.ndh.vm.provider == "lima";
 
 in
 {
-  systemd.services.io-nxmatic-nix-darwin-home-lima-nixos-config = {
-    description = "Link (preferred) or optionally clone NixOS darwin home repo for Lima host";
+  config = lib.mkIf isLimaProvider {
+    systemd.services.io-nxmatic-nix-darwin-home-lima-nixos-config = {
+      description = "Link (preferred) or optionally clone NixOS darwin home repo for Lima host";
 
-    # Only need cloud-init first (mounts, user home). Network not strictly required for linking.
-    after = afterList;
-    wants = [ "io-nxmatic-nix-darwin-home-lima-cloud-init.service" ];
+      # Only need cloud-init first (mounts, user home). Network not strictly required for linking.
+      after = afterList;
+      wants = [ "io-nxmatic-nix-darwin-home-lima-cloud-init.service" ];
 
-    # Don't hard require network or resolvconf anymore; cloning is fallback and user-controlled.
-    wantedBy = [ "io-nxmatic-nix-darwin-home-contributed.target" ];
+      # Don't hard require network or resolvconf anymore; cloning is fallback and user-controlled.
+      wantedBy = [ "io-nxmatic-nix-darwin-home-contributed.target" ];
 
-    path = with pkgs; [
-      coreutils
-      git
-    ];
+      path = with pkgs; [
+        coreutils
+        git
+      ];
 
-    serviceConfig = {
-      Type = "oneshot";
-      RemainAfterExit = true;
-      ExecStart = "${limaNixosConfigPkg}/bin/lima-nixos-config ${config.limaHost.hostName}";
-      TimeoutStartSec = 60;
-    };
+      serviceConfig = {
+        Type = "oneshot";
+        RemainAfterExit = true;
+        ExecStart = "${limaNixosConfigPkg}/bin/lima-nixos-config ${config.limaHost.hostName}";
+        TimeoutStartSec = 60;
+      };
 
-    # Skip running if flake already linked (negative condition prevents re-run each boot)
-    unitConfig = {
-      X-StopOnRemoval = false;
-      ConditionPathExists = "!/etc/nixos/flake.nix"; # run only if missing
+      # Skip running if flake already linked (negative condition prevents re-run each boot)
+      unitConfig = {
+        X-StopOnRemoval = false;
+        ConditionPathExists = "!/etc/nixos/flake.nix"; # run only if missing
+      };
     };
   };
 }

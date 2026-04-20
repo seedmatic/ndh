@@ -70,10 +70,13 @@ let
   logger = config.nixBashLogger.script;
   loggerTag = "nixos.activationScripts.sshGroupKeys";
   hasSopsInstallSecretsService = builtins.hasAttr "sops-install-secrets" config.systemd.services;
+  hasSshKeysEnrichmentService = builtins.hasAttr "io-nxmatic-nix-darwin-home-ssh-keys-enrichment" config.systemd.services;
   homeManagerServiceName = "home-manager-${config.profile.user.name}";
   hasHomeManagerService = builtins.hasAttr homeManagerServiceName config.systemd.services;
   hostkeyEnrollmentCheckTag = "nixos.services.ndh.hostkeyEnrollmentCheck";
   hostkeyEnrollmentSyncTag = "nixos.services.ndh.hostkeyEnrollmentSync";
+  authorizedKeysCheckTag = "nixos.services.ndh.authorizedKeysCheck";
+  sshdAutostartCheckTag = "nixos.services.ndh.sshdAutostartCheck";
   hostkeyEnrollmentCheckScript = pkgs.replaceVars ./openssh.d/hostkey-enrollment-check.sh {
     bashTrampoline = "${../../.common.d/shell.d/nix-bash-trampoline.sh}";
     logger = logger;
@@ -94,6 +97,19 @@ let
     remoteRepo = "/var/lib/git/nxmatic/nix-darwin-home";
     guestName = config.limaHost.guestName;
   };
+  authorizedKeysCheckScript = pkgs.replaceVars ./openssh.d/authorized-keys-check.sh {
+    bashTrampoline = "${../../.common.d/shell.d/nix-bash-trampoline.sh}";
+    logger = logger;
+    logTag = authorizedKeysCheckTag;
+    authorizedKeysFile = "${config.opensshPolicy.authorizedKeysDir}/${config.profile.user.name}";
+    expectedPublicKeyFile = config.sshPaths.hostPublicKeyFile;
+    profileUserName = config.profile.user.name;
+  };
+  sshdAutostartCheckScript = pkgs.replaceVars ./openssh.d/sshd-autostart-check.sh {
+    bashTrampoline = "${../../.common.d/shell.d/nix-bash-trampoline.sh}";
+    logger = logger;
+    logTag = sshdAutostartCheckTag;
+  };
 in
 {
   imports = [
@@ -104,6 +120,11 @@ in
   opensshPolicy = {
     enable = true;
     platformRendersAuthorizedKeysFile = lib.mkDefault false;
+    # NixOS guest policy: authorize via system-managed key files only.
+    # Do not read per-user ~/.ssh/authorized_keys for server authentication.
+    authorizedKeysFiles = [
+      "${config.opensshPolicy.authorizedKeysDir}/%u"
+    ];
     setEnvPath = lib.mkDefault "/run/wrappers/bin:/run/current-system/sw/bin:/bin:/usr/bin";
     nonInteractivePrimaryPath = lib.mkDefault "/run/wrappers/bin";
     trustedCAPath = caPublicKeyPath;
@@ -220,6 +241,25 @@ in
     };
   };
 
+  systemd.services.io-nxmatic-nix-darwin-home-authorized-keys-check = {
+    description = "Verify expected system authorized key is installed before sshd (@codebase)";
+    requiredBy = [ "sshd.service" ];
+    before = [ "sshd.service" ];
+    requires = lib.optionals hasSshKeysEnrichmentService [ "io-nxmatic-nix-darwin-home-ssh-keys-enrichment.service" ];
+    after = lib.optionals hasSshKeysEnrichmentService [ "io-nxmatic-nix-darwin-home-ssh-keys-enrichment.service" ];
+    path = with pkgs; [
+      coreutils
+      gnugrep
+      gawk
+    ];
+    serviceConfig = {
+      Type = "oneshot";
+      User = "root";
+      Group = "root";
+      ExecStart = "${pkgs.bash}/bin/bash ${authorizedKeysCheckScript}";
+    };
+  };
+
   systemd.services.io-nxmatic-nix-darwin-home-hostkey-enrollment-sync = {
     description = "Run remote hostkey enrollment sync when drift marker is present (@codebase)";
     wantedBy = [ "io-nxmatic-nix-darwin-home-contributed.target" ];
@@ -249,6 +289,28 @@ in
       ExecStart = "${pkgs.bash}/bin/bash ${hostkeyEnrollmentSyncScript}";
     };
   };
+
+  systemd.services.io-nxmatic-nix-darwin-home-sshd-autostart-check = {
+    description = "Validate sshd autostart state after contributed target activation (@codebase)";
+    wantedBy = [ "io-nxmatic-nix-darwin-home-contributed.target" ];
+    after = [ "sshd.service" ];
+    path = with pkgs; [
+      coreutils
+      systemd
+    ];
+    serviceConfig = {
+      Type = "oneshot";
+      User = "root";
+      Group = "root";
+      ExecStart = "${pkgs.bash}/bin/bash ${sshdAutostartCheckScript}";
+    };
+  };
+
+  # Keep sshd start robust across boot ordering by binding it to both
+  # canonical multi-user and NDH contributed targets.
+  systemd.services.sshd.wantedBy = lib.mkAfter [
+    "io-nxmatic-nix-darwin-home-contributed.target"
+  ];
 
   # Provide principals metadata in a system-readable location for
   # AuthorizedPrincipalsCommand (which runs as an unprivileged user).

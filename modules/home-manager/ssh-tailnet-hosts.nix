@@ -12,16 +12,39 @@
 
 let
   # Get username from profile configuration
-  catalog = config._module.specialArgs.catalog;
+  catalog = config._module.specialArgs.ndh.catalog;
   profile = config._module.specialArgs.profile;
   userName = profile.user.name; # Use profile-based username (nxmatic for committed profile)
   committedUserName = catalog.users.committed.name;
   workUserName = catalog.users.work.name;
+  catalogHostNames = builtins.attrNames (catalog.hosts or { });
+  sshUserOverrides = {
+    bioskop = committedUserName;
+    nikopol = workUserName;
+  };
+  sshUserForHost = host: sshUserOverrides.${host} or committedUserName;
+  operatorAliasesForHost = host: ''
+    Host rdp-host.${host}
+      HostName ${host}.local
+
+    Host vz-host.${host}
+      HostName ${host}-vz.lan
+      User ${sshUserForHost host}
+      IdentityFile ${config.sshPaths.privKeyFile}
+      IdentitiesOnly yes
+      IdentityAgent none
+      PreferredAuthentications publickey
+
+    Host nixos.${host}
+      HostName ${host}-nixos.local
+  '';
   tailnetDomain =
     if
-      (config._module.specialArgs ? catalog) && (config._module.specialArgs.catalog.networks ? tailnet)
+      (config._module.specialArgs ? ndh)
+      && (config._module.specialArgs.ndh ? catalog)
+      && (config._module.specialArgs.ndh.catalog.networks ? tailnet)
     then
-      config._module.specialArgs.catalog.networks.tailnet.domain
+      config._module.specialArgs.ndh.catalog.networks.tailnet.domain
     else
       "";
   tailnetAlias = host: if tailnetDomain != "" then "${host}${tailnetDomain}" else null;
@@ -58,26 +81,22 @@ in
           ServerAliveInterval 30
           ServerAliveCountMax 4
 
-        Host ${lib.concatStringsSep " " (hostAliases "bioskop")}
-          User ${committedUserName}
+    ${lib.concatMapStringsSep "\n" (
+      host:
+      ''
+        ${operatorAliasesForHost host}
 
-        Host bioskop bioskop.lan
-         HostName bioskop.local
+        Host ${lib.concatStringsSep " " (hostAliases host)}
+          User ${sshUserForHost host}
 
-    ${lib.optionalString (tailnetDomain != "") ''
-      Host bioskop-ts
-        HostName ${tailnetAlias "bioskop"}
-    ''}
+        Host ${host} ${host}.lan
+          HostName ${host}.local
 
-        Host ${lib.concatStringsSep " " (hostAliases "nikopol")}
-          User ${workUserName}
-
-        Host nikopol nikopol.lan
-         HostName nikopol.local
-
-    ${lib.optionalString (tailnetDomain != "") ''
-      Host nikopol-ts
-        HostName ${tailnetAlias "nikopol"}
-    ''}
+      ''
+      + lib.optionalString (tailnetDomain != "") ''
+        Host ${host}-ts
+          HostName ${tailnetAlias host}
+      ''
+    ) catalogHostNames}
   '';
 }

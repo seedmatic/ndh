@@ -7,11 +7,13 @@
 }:
 let
   cfg = config.ndh.bringupRuntime;
+  installerCommand = "ndh-bringup-install";
+  installerAttr = "ndh-bringup-install";
   storeNamePrefix = "io.nxmatic.nix-darwin-home";
   prefixStoreName =
     name: if lib.hasPrefix "${storeNamePrefix}-" name then name else "${storeNamePrefix}-${name}";
   requiredCommandsString = lib.concatStringsSep " " cfg.requiredCommands;
-  installHint = "nix run .#io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer -- ${cfg.profileDir}";
+  installHint = "nix run .#${installerAttr} -- ${cfg.profileDir}";
   loggerScript =
     if config ? nixBashLogger && config.nixBashLogger ? script then
       config.nixBashLogger.script
@@ -56,7 +58,7 @@ let
     requiredCommands = requiredCommandsString;
     installHint = installHint;
     runtimePackage = bootstrapRuntimePackage;
-    bootstrapInstaller = "${ndhPrerequisitesInstallerPackage}/bin/io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer";
+    bootstrapInstaller = "${ndhPrerequisitesInstallerPackage}/bin/${installerCommand}";
     profileDir = cfg.profileDir;
   };
   activationCheckScript = pkgs.writeShellScript (prefixStoreName "bringup-runtime-activation-check") (
@@ -74,7 +76,7 @@ let
   ndhPrerequisitesInstallerPackage =
     pkgs.runCommand (prefixStoreName "bringup-runtime-profile-installer") { }
       ''
-        install -Dm755 ${standaloneInstallSource} "$out/bin/io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer"
+        install -Dm755 ${standaloneInstallSource} "$out/bin/${installerCommand}"
       '';
 in
 {
@@ -140,7 +142,7 @@ in
         NDH_BOOTSTRAP_PROFILE_DIR = cfg.profileDir;
         NDH_BOOTSTRAP_PROFILE_BIN = "${cfg.profileDir}/bin";
         NDH_BOOTSTRAP_RUNTIME_PACKAGE = "${bootstrapRuntimePackage}";
-        NDH_BOOTSTRAP_INSTALLER = "${ndhPrerequisitesInstallerPackage}/bin/io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer";
+        NDH_BOOTSTRAP_INSTALLER = "${ndhPrerequisitesInstallerPackage}/bin/${installerCommand}";
         NDH_BOOTSTRAP_REQUIRED_COMMANDS = requiredCommandsString;
         NDH_BOOTSTRAP_STRICT = if cfg.requireForActivation then "1" else "0";
         NDH_BOOTSTRAP_INSTALL_HINT = installHint;
@@ -158,15 +160,14 @@ in
 
       # Seed canonical runtime profile links as declarative host policy so
       # scripts do not need to mutate profile state via shell trampoline.
-      systemd.tmpfiles.rules =
-        [
-          "d /nix/var/nix/profiles/per-user/root 0755 root root -"
-          "L+ ${cfg.profileDir} - - - - ${bootstrapRuntimePackage}"
-        ]
-        ++ lib.optionals (config.profile.user.name != "root") [
-          "d /nix/var/nix/profiles/per-user/${config.profile.user.name} 0755 root root -"
-          "L+ /nix/var/nix/profiles/per-user/${config.profile.user.name}/${cfg.name} - - - - ${bootstrapRuntimePackage}"
-        ];
+      systemd.tmpfiles.rules = [
+        "d /nix/var/nix/profiles/per-user/root 0755 root root -"
+        "L+ ${cfg.profileDir} - - - - ${bootstrapRuntimePackage}"
+      ]
+      ++ lib.optionals (config.profile.user.name != "root") [
+        "d /nix/var/nix/profiles/per-user/${config.profile.user.name} 0755 root root -"
+        "L+ /nix/var/nix/profiles/per-user/${config.profile.user.name}/${cfg.name} - - - - ${bootstrapRuntimePackage}"
+      ];
 
       # `nixos-rebuild boot` does not run activation on the currently running system.
       # Ensure the bringup runtime profile is provisioned at next boot before
@@ -200,10 +201,10 @@ in
           mkdir -p /nix/var/nix/profiles/per-user/root
           mkdir -p "/nix/var/nix/profiles/per-user/${config.profile.user.name}"
 
-          ${ndhPrerequisitesInstallerPackage}/bin/io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer "$profile_dir_root"
+          ${ndhPrerequisitesInstallerPackage}/bin/${installerCommand} "$profile_dir_root"
 
           if [ "$profile_user" != "root" ]; then
-            ${ndhPrerequisitesInstallerPackage}/bin/io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer "$profile_dir_user"
+            ${ndhPrerequisitesInstallerPackage}/bin/${installerCommand} "$profile_dir_user"
           fi
         '';
       };

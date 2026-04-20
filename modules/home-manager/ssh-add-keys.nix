@@ -23,7 +23,7 @@ let
   allowedKeyNamesCsv = lib.concatStringsSep "," cfg.allowedKeyNames;
   renderedSshAddKeysScript = pkgs.replaceVars ./ssh-key.d/ssh-add-keys.sh {
     bashTrampoline = "${../.common.d/shell.d/nix-bash-trampoline.sh}";
-    logger = config._module.specialArgs.logger.script;
+    logger = config._module.specialArgs.ndh.logger.script;
     loggerTag = loggerTag;
     allowedKeyNamesCsv = allowedKeyNamesCsv;
   };

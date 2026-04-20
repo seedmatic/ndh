@@ -68,7 +68,10 @@ nixos-rebuild-ng.pkg-path = "nixos-rebuild-ng"
 ## ------------------------------------------------------------------
 [include]
 environments = [
- { dir = "/var/lib/git/nxmatic/fleet-manifests/flox/nix" }
+ { dir = "/var/lib/git/nxmatic/fleet/flox/lima" },
+ { dir = "/var/lib/git/nxmatic/fleet/flox/nix" },
+ { dir = "/var/lib/git/nxmatic/fleet/flox/shell" },
+ { dir = "/var/lib/git/nxmatic/fleet/flox/tart" }
 ]
 
 

@@ -100,12 +100,12 @@ ndh::bootstrap:runtime:install() {
 	local profile_parent
 	local discovered_installer
 
-	runtime_attr_name="io-nxmatic-nix-darwin-home-bringup-runtime-profile-holder"
 	runtime_name="io.nxmatic.nix-darwin-home-bringup-runtime-profile-holder"
+	runtime_attr_name="ndh-bringup-runtime"
 	runtime_spec="${NDH_BOOTSTRAP_RUNTIME_PACKAGE:-}"
 	installer="${NDH_BOOTSTRAP_INSTALLER:-}"
-	[[ -n "$runtime_spec" ]] || runtime_spec=".#io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer"
-	discovered_installer="$(command -v io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer 2>/dev/null || true)"
+	[[ -n "$runtime_spec" ]] || runtime_spec=".#ndh-bringup-install"
+	discovered_installer="$(command -v ndh-bringup-install 2>/dev/null || true)"
 	if [[ -z "$installer" && -n "$discovered_installer" ]]; then
 		installer="$discovered_installer"
 	fi
@@ -225,18 +225,18 @@ ndh::bootstrap:runtime:diagnose() {
 ndh::bootstrap:runtime:ensure() {
 	local profile_dir install_hint installer_hint
 	profile_dir="$(ndh::bootstrap:profile:dir || true)"
-	installer_hint="${NDH_BOOTSTRAP_INSTALLER:-$(command -v io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer 2>/dev/null || true)}"
+	installer_hint="${NDH_BOOTSTRAP_INSTALLER:-$(command -v ndh-bringup-install 2>/dev/null || true)}"
 	if [[ -n "$profile_dir" ]]; then
 		if [[ -n "$installer_hint" ]]; then
 			install_hint="${installer_hint} ${profile_dir}"
 		else
-			install_hint="nix run .#io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer -- ${profile_dir}"
+			install_hint="nix run .#ndh-bringup-install -- ${profile_dir}"
 		fi
 	else
 		if [[ -n "$installer_hint" ]]; then
 			install_hint="${installer_hint} /nix/var/nix/profiles/per-user/root/io-nxmatic-nix-darwin-home-bringup-runtime"
 		else
-			install_hint="nix run .#io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer -- /nix/var/nix/profiles/per-user/root/io-nxmatic-nix-darwin-home-bringup-runtime"
+			install_hint="nix run .#ndh-bringup-install -- /nix/var/nix/profiles/per-user/root/io-nxmatic-nix-darwin-home-bringup-runtime"
 		fi
 	fi
 

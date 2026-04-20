@@ -9,7 +9,7 @@ let
   userName = profile.user.name;
   homeDir = config.home.homeDirectory;
   sshPaths = config.sshPaths;
-  logger = config._module.specialArgs.logger.script;
+  logger = config._module.specialArgs.ndh.logger.script;
   loggerTag = "home-manager.activationScripts.${userName}.provisionLimaRdpAssets";
 
   provisionLimaAssetsScript = pkgs.replaceVars ./lima-rdp-assets.d/provision.sh {

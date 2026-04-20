@@ -67,6 +67,17 @@ fi
 # (stdout/stderr left on p10k temp file). Disable instant prompt here and let
 # normal prompt init run after startup.
 if [[ "$__nxmatic_is_agent_vscode_terminal" == "1" ]]; then
+  # Agent terminal safety: avoid parent-shell exit on non-zero status when
+  # command exercises intentionally probe failures.
+  unsetopt ERR_EXIT NO_UNSET PIPE_FAIL 2>/dev/null || true
+  set +e +u 2>/dev/null || true
+
+  # Optional diagnostics for troubleshooting hidden terminal state.
+  if [[ "${NDH_AGENT_TERMINAL_DEBUG:-0}" == "1" ]]; then
+    echo 'agent-terminal strict opts now:'
+    (setopt | grep -E '^(err_exit|no_unset|pipe_fail)$' || echo 'none')
+  fi
+
   typeset -g POWERLEVEL9K_INSTANT_PROMPT=off
 fi
 

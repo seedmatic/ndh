@@ -2,6 +2,7 @@ let
   hostProfile = {
     hostName = "bioskop";
     tailnet = { };
+    vmProvider = "tart";
   };
 
   darwinProfile = {
@@ -89,9 +90,24 @@ let
           enable = false; # Enable when needed
           interfaces = [
             "en0"
-            "en8"
+            "en9"
           ];
           mode = "static"; # Static LAG without LACP protocol
+        };
+
+        # VM config materialization is handled by Home Manager activation only
+        # for user-scoped assets/gcroots on VZ hosts.
+        lima.configGenerator = {
+          enableActivationHook = false;
+          installMaterializerPackage = false;
+        };
+
+        tart.configGenerator = {
+          forceEnable = false;
+          enableActivationHook = false;
+          installMaterializerPackage = false;
+          vmRunBridgeInterface = "Thunderbolt Ethernet Slot 1";
+          vmRunSopsAgeTag = "ndh-sops-age";
         };
 
       };

@@ -9,6 +9,7 @@ let
   bootstrapCfg = config.ndh.sopsAgeKeyBootstrap;
   keysTargetUnit = "keys.target";
   hasLimaCloudInitService = builtins.hasAttr "io-nxmatic-nix-darwin-home-lima-cloud-init" config.systemd.services;
+  localFsUnitDeps = [ "local-fs.target" ];
   limaCloudInitUnitDeps = lib.optionals hasLimaCloudInitService [
     "io-nxmatic-nix-darwin-home-lima-cloud-init.service"
   ];
@@ -32,8 +33,8 @@ in
       lib.mkIf (config.sops.useSystemdActivation or false)
         {
           description = "Ensure SOPS age key is available before sops-install-secrets (@codebase)";
-          requires = [ keysTargetUnit ] ++ limaCloudInitUnitDeps;
-          after = [ keysTargetUnit ] ++ limaCloudInitUnitDeps;
+          requires = [ keysTargetUnit ] ++ localFsUnitDeps ++ limaCloudInitUnitDeps;
+          after = [ keysTargetUnit ] ++ localFsUnitDeps ++ limaCloudInitUnitDeps;
           before = [ "sops-install-secrets.service" ];
           wantedBy = [ "sops-install-secrets.service" ];
           unitConfig = lib.mkIf bootstrapCfg.nixosHostKeyImport.enable {
@@ -56,7 +57,8 @@ in
             keysTargetUnit
             "${config.ndh.sopsAgeKeyBootstrap.systemdUnitName}.service"
           ];
-          unitConfig.ConditionPathExists = config.sops.age.keyFile;
+          # Do not gate this unit on key-file existence: bootstrap is responsible
+          # for creating/importing the key before install runs.
         };
 
     nixBashLogger.cmd = lib.mkDefault "${pkgs.util-linux}/bin/logger -p notice -t %TAG%";

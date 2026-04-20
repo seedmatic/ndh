@@ -27,6 +27,28 @@ let
     else
       true;
   homeManagerEnabled = if bringupModeInternal then false else requestedHomeManagerEnabled;
+  selectedVmProvider =
+    if hostProfile != null && hostProfile ? vmProvider && hostProfile.vmProvider != null then
+      hostProfile.vmProvider
+    else if (lib.attrByPath [ "profile" "host" "vmProvider" ] null config) != null then
+      lib.attrByPath [ "profile" "host" "vmProvider" ] null config
+    else
+      "lima";
+  limaConfigMaterializerPackage = lib.attrByPath [
+    "lima"
+    "configGenerator"
+    "materializerPackage"
+  ] null config;
+  tartConfigMaterializerPackage = lib.attrByPath [
+    "tart"
+    "configGenerator"
+    "materializerPackage"
+  ] null config;
+  vmConfigMaterializerPackage =
+    if selectedVmProvider == "tart" then
+      tartConfigMaterializerPackage
+    else
+      limaConfigMaterializerPackage;
 
   cfg = config.profile;
   profile = cfg;
@@ -233,20 +255,27 @@ in
 
         # Provide specialArgs explicitly for direct imports
         specialArgs = {
-          inherit profile catalog;
+          inherit profile;
           ndh = {
             store = ndhStore;
+            inherit catalog;
+            vm = {
+              provider = selectedVmProvider;
+              configMaterializerPackage = vmConfigMaterializerPackage;
+            };
+            logger = {
+              script = loggerScript;
+              cmd = config.nixBashLogger.cmd;
+            };
+            ssh = {
+              keysYamlPath = lib.attrByPath [
+                "sops"
+                "secrets"
+                "ssh-keys.yaml"
+                "path"
+              ] "/run/secrets/nix-darwin-home/ssh-keys.yaml" config;
+            };
           };
-          logger = {
-            script = loggerScript;
-            cmd = config.nixBashLogger.cmd;
-          };
-          sshKeysYamlPath = lib.attrByPath [
-            "sops"
-            "secrets"
-            "ssh-keys.yaml"
-            "path"
-          ] "/run/secrets/nix-darwin-home/ssh-keys.yaml" config;
         };
       }
     );
@@ -289,21 +318,28 @@ in
     # let nix manage home-manager profiles and use global nixpkgs
     home-manager = {
       extraSpecialArgs = {
-        inherit self catalog;
+        inherit self;
         profile = config.profile;
         ndh = {
           store = ndhStore;
+          inherit catalog;
+          vm = {
+            provider = selectedVmProvider;
+            configMaterializerPackage = vmConfigMaterializerPackage;
+          };
+          logger = {
+            script = loggerScript;
+            cmd = config.nixBashLogger.cmd;
+          };
+          ssh = {
+            keysYamlPath = lib.attrByPath [
+              "sops"
+              "secrets"
+              "ssh-keys.yaml"
+              "path"
+            ] "/run/secrets/nix-darwin-home/ssh-keys.yaml" config;
+          };
         };
-        logger = {
-          script = loggerScript;
-          cmd = config.nixBashLogger.cmd;
-        };
-        sshKeysYamlPath = lib.attrByPath [
-          "sops"
-          "secrets"
-          "ssh-keys.yaml"
-          "path"
-        ] "/run/secrets/nix-darwin-home/ssh-keys.yaml" config;
       };
       useGlobalPkgs = true;
       useUserPackages = true;

@@ -133,7 +133,7 @@ let
     chmod +x "$out"
   '';
 
-  limaMaterializerPackage = pkgs.writeShellScriptBin "lima-config-materialize" ''
+  limaMaterializerPackage = pkgs.writeShellScriptBin "ndh-vm-lima-materialize" ''
     exec ${limaActivationScript} "$@"
   '';
 
@@ -477,7 +477,7 @@ in
       default = true;
       description = ''
         Run Lima materialization during darwin activation (`postActivation`).
-        Disable when you want manual host-scoped execution through `lima-config-materialize` only.
+        Disable when you want manual host-scoped execution through `ndh-vm-lima-materialize` only.
       '';
     };
 
@@ -485,7 +485,7 @@ in
       type = types.bool;
       default = false;
       description = ''
-        Install the `lima-config-materialize` helper package in system packages.
+        Install the `ndh-vm-lima-materialize` helper package in system packages.
         Useful on selected VZ hosts where only ~/.lima materialization tooling is needed.
       '';
     };
@@ -495,7 +495,7 @@ in
       readOnly = true;
       default = limaMaterializerPackage;
       description = ''
-        Store package exposing the `lima-config-materialize` command for host-side
+        Store package exposing the `ndh-vm-lima-materialize` command for host-side
         ~/.lima materialization.
       '';
     };

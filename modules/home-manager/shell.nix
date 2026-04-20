@@ -21,7 +21,7 @@ let
     "/etc/profiles/per-user/${userName}/bin"
   ];
   # Use platform-provided logger script from specialArgs (required)
-  logger = config._module.specialArgs.logger.script;
+  logger = config._module.specialArgs.ndh.logger.script;
   loggerTagZdotdir = "home-manager.activationScripts.${userName}.zdotdir";
   zshInitContent = pkgs.replaceVars ./shell.d/zsh-init.zsh {
     linuxWrappersLine = lib.optionalString pkgs.stdenvNoCC.isLinux "/run/wrappers/bin";

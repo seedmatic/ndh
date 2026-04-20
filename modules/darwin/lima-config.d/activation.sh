@@ -4,6 +4,12 @@ source @logger@
 main() {
   local ndh_nix_cli_args_raw="${NDH_NIX_CLI_ARGS:--L -v -v}"
   local -a ndh_nix_cli_args=()
+  local profile_user="@profileUser@"
+  local profile_group=""
+
+  if id -u "$profile_user" >/dev/null 2>&1; then
+    profile_group="$(id -gn "$profile_user" 2>/dev/null || true)"
+  fi
 
   if [[ -n "${ndh_nix_cli_args_raw}" ]]; then
     read -r -a ndh_nix_cli_args <<< "${ndh_nix_cli_args_raw}"
@@ -23,6 +29,9 @@ main() {
     ln -s "$src" "$dst"
 
     if [ -L "$dst" ]; then
+      if [[ "$dst" == "/nix/var/nix/gcroots/per-user/${profile_user}/"* ]] && [[ "$(id -u)" -eq 0 ]] && [[ -n "$profile_group" ]]; then
+        chown -h "${profile_user}:${profile_group}" "$dst" 2>/dev/null || true
+      fi
       echo "[limaConfig] ${label}: $dst -> $(readlink "$dst" || echo '<not-a-symlink>')"
       return 0
     fi
@@ -149,20 +158,19 @@ main() {
     img_dst="$runtime_img_dst"
   fi
 
-  # When this script is executed from Home Manager activation, runtime user can
-  # differ from the system profile user baked at package build-time. Keep one
-  # canonical gcroot target for the runtime user to avoid stale user-scoped links.
+  # Keep gcroot target pinned to configured profile user even when activation
+  # runs as root via darwin-rebuild.
   if [[ "$img_dst" =~ ^/nix/var/nix/gcroots/per-user/([^/]+)/(.+)$ ]]; then
     img_dst_user="${BASH_REMATCH[1]}"
-    img_dst_tail="${BASH_REMATCH[2]}"
     if [[ -n "$runtime_user" && "$img_dst_user" != "$runtime_user" ]]; then
-      runtime_user_img_dst="/nix/var/nix/gcroots/per-user/${runtime_user}/${img_dst_tail}"
-      echo "[limaConfig][WARN] rewriting image target for runtime user ${runtime_user}: $img_dst -> $runtime_user_img_dst"
-      img_dst="$runtime_user_img_dst"
+      echo "[limaConfig][INFO] keeping configured image target user ${img_dst_user} (runtime user is ${runtime_user})"
     fi
   fi
 
   mkdir -p "$(dirname "$img_dst")"
+  if [[ "$(id -u)" -eq 0 ]] && [[ -n "$profile_group" ]] && [[ "$img_dst" == "/nix/var/nix/gcroots/per-user/${profile_user}/"* ]]; then
+    chown "${profile_user}:${profile_group}" "$(dirname "$img_dst")" 2>/dev/null || true
+  fi
   resolved_ref="${image_flake_path}/hosts/@effectiveHostName@#${image_flake_attr}"
   resolved_out=""
   resolved_img=""

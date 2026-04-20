@@ -35,14 +35,14 @@ When host outputs expose these packages:
 
 - `ndh-prerequisites-install`
 - `io-nxmatic-nix-darwin-home-bringup-runtime-profile-holder`
-- `lima-config-materialize`
+- `ndh-vm-lima-materialize`
 
 Use this mapping:
 
 - **Run first:** `ndh-prerequisites-install` (canonical prerequisite installer)
 - **Profile target:** `/nix/var/nix/profiles/per-user/root/io-nxmatic-nix-darwin-home-bringup-runtime`
 - **Do not run directly:** `io-nxmatic-nix-darwin-home-bringup-runtime-profile-holder` (payload package installed into the dedicated profile)
-- **Separate concern:** `lima-config-materialize` (Lima config generation/materialization)
+- **Separate concern:** `ndh-vm-lima-materialize` (Lima config generation/materialization)
 
 ## Bootstrap Steps
 
@@ -137,6 +137,12 @@ sudo chown root:wheel /etc/nix/builder_ed25519
 ### 4. Initial Darwin Build
 
 Now you can perform the first darwin build using `nix run` (since `darwin-rebuild` isn't in PATH yet). The build will use the host-specific configuration:
+
+You can select an explicit VM flavor Darwin output when needed (@codebase):
+
+- `.#<host>`: selected default from `hostProfile.vmProvider`
+- `.#<host>-lima`: explicit Lima flavor
+- `.#<host>-tart`: explicit Tart flavor
 
 ```bash
 # For nikopol host

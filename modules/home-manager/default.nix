@@ -14,16 +14,21 @@
 }:
 let
   specialArgsResolved =
-    if config ? _module && config._module ? specialArgs then
-      config._module.specialArgs
-    else
-      specialArgs;
+    (if config ? _module && config._module ? specialArgs then config._module.specialArgs else { })
+    // specialArgs;
 
-  limaConfigMaterializerPackage =
-    if specialArgsResolved ? limaConfigMaterializerPackage then
-      specialArgsResolved.limaConfigMaterializerPackage
+  ndhArgs =
+    if specialArgsResolved ? ndh && specialArgsResolved.ndh != null then
+      specialArgsResolved.ndh
     else
-      null;
+      { };
+
+  ndhVmArgs = if ndhArgs ? vm && ndhArgs.vm != null then ndhArgs.vm else { };
+
+  ndhLoggerArgs = if ndhArgs ? logger && ndhArgs.logger != null then ndhArgs.logger else { };
+
+  vmConfigMaterializerPackage =
+    if ndhVmArgs ? configMaterializerPackage then ndhVmArgs.configMaterializerPackage else null;
 
   resolvedProfile =
     if profile != null then profile else lib.attrByPath [ "profile" ] null specialArgsResolved;
@@ -33,6 +38,46 @@ let
       resolvedProfile.name
     else
       null;
+
+  selectedVmProvider =
+    if resolvedProfile != null && resolvedProfile ? host && resolvedProfile.host ? vmProvider then
+      resolvedProfile.host.vmProvider
+    else if ndhVmArgs ? provider && ndhVmArgs.provider != null then
+      ndhVmArgs.provider
+    else
+      "lima";
+
+  effectiveHostName =
+    if
+      resolvedProfile != null
+      && resolvedProfile ? host
+      && resolvedProfile.host ? hostAlias
+      && resolvedProfile.host.hostAlias != null
+      && resolvedProfile.host.hostAlias != ""
+    then
+      resolvedProfile.host.hostAlias
+    else if resolvedProfile != null && resolvedProfile ? host && resolvedProfile.host ? hostName then
+      resolvedProfile.host.hostName
+    else
+      null;
+
+  hostCatalogEntries =
+    if ndhArgs ? catalog && ndhArgs.catalog ? hosts && effectiveHostName != null then
+      lib.attrByPath [ effectiveHostName ] [ ] ndhArgs.catalog.hosts
+    else
+      [ ];
+
+  activatingOnVzHost = lib.any (
+    entry:
+    (entry ? form)
+    && entry.form == "baremetal"
+    && (entry ? vm)
+    && (entry.vm ? kind)
+    && entry.vm.kind == "vz"
+  ) hostCatalogEntries;
+
+  usingLimaProvider = selectedVmProvider == "lima";
+  usingTartProvider = selectedVmProvider == "tart";
 
   homeUsernameFallback = lib.attrByPath [ "home" "username" ] null config;
   homeDirectoryFallback = lib.attrByPath [ "home" "homeDirectory" ] null config;
@@ -61,18 +106,22 @@ let
     if pkgs.stdenvNoCC.isDarwin then "/etc/ssl/cert.pem" else "/etc/ssl/certs/ca-bundle.crt";
 
   loggerArgs =
-    if specialArgsResolved ? logger then
-      specialArgsResolved.logger
-    else
-      throw "specialArgs.logger is required";
+    if ndhLoggerArgs != { } then ndhLoggerArgs else throw "specialArgs.ndh.logger is required";
   logger = loggerArgs.script;
   loggerTagFixConfigOwnership = "home-manager.activationScripts.${userName}.fixConfigOwnership";
   isMinimalHomeProfile = profileName == "work";
+  hmVmMaterializationEnabled =
+    pkgs.stdenvNoCC.isDarwin
+    && activatingOnVzHost
+    && builtins.elem selectedVmProvider [
+      "lima"
+      "tart"
+    ];
 
   resolvedImports =
     if isMinimalHomeProfile then
-      [
-        ./lima-rdp-assets.nix
+      (lib.optionals usingLimaProvider [ ./lima-rdp-assets.nix ])
+      ++ [
         ./ssh.nix
         ./ssh-keys.nix
       ]
@@ -113,7 +162,8 @@ let
   baseHomePackages =
     if isMinimalHomeProfile then
       lib.optionals pkgs.stdenv.isDarwin (
-        [ pkgs.lima ] ++ lib.optional (limaConfigMaterializerPackage != null) limaConfigMaterializerPackage
+        (lib.optionals usingLimaProvider [ pkgs.lima ])
+        ++ lib.optional (vmConfigMaterializerPackage != null) vmConfigMaterializerPackage
       )
     else
       with pkgs;
@@ -240,25 +290,54 @@ in
 
   targets.genericLinux.enable = false;
 
-  assertions = lib.optionals (pkgs.stdenvNoCC.isDarwin && isMinimalHomeProfile) [
-    {
-      assertion = limaConfigMaterializerPackage != null;
-      message = ''
-        Home Manager work profile on Darwin requires `limaConfigMaterializerPackage`.
-        This ensures HM activation can materialize ~/.lima assets and refresh the user gcroot image.
-      '';
-    }
-  ];
+  assertions = lib.optionals hmVmMaterializationEnabled (
+    [
+      {
+        assertion = builtins.elem selectedVmProvider [
+          "lima"
+          "tart"
+        ];
+        message = ''
+          Home Manager on Darwin requires a supported `vmProvider` for VM materialization.
+          Supported values: "lima" or "tart".
+        '';
+      }
+    ]
+    ++ [
+      {
+        assertion = vmConfigMaterializerPackage != null;
+        message = ''
+          Home Manager on Darwin with vmProvider=${selectedVmProvider} requires `vmConfigMaterializerPackage`.
+          This ensures HM activation can materialize provider assets and refresh user gcroot images.
+        '';
+      }
+    ]
+  );
 
-  home.activation.materializeLima = lib.mkIf (pkgs.stdenvNoCC.isDarwin && isMinimalHomeProfile) (
+  home.activation.materializeVm = lib.mkIf hmVmMaterializationEnabled (
     lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-      materializer="${limaConfigMaterializerPackage}/bin/lima-config-materialize"
+      vm_provider="${selectedVmProvider}"
+      case "$vm_provider" in
+        lima)
+          materializer_binary="ndh-vm-lima-materialize"
+          ;;
+        tart)
+          materializer_binary="ndh-vm-tart-materialize"
+          ;;
+        *)
+          echo "[vmConfig][ERROR] unsupported vm provider for HM materialization: $vm_provider" >&2
+          exit 1
+          ;;
+      esac
+
+      materializer="${vmConfigMaterializerPackage}/bin/$materializer_binary"
+
       if [[ ! -x "$materializer" ]]; then
-        echo "[limaConfig][ERROR] missing Home Manager materializer executable: $materializer" >&2
+        echo "[vmConfig][ERROR] missing Home Manager materializer executable: $materializer" >&2
         exit 1
       fi
 
-      echo "[limaConfig] Home Manager activation: materializing ~/.lima assets and gcroot image"
+      echo "[vmConfig] Home Manager activation: materializing $vm_provider assets and gcroot image"
       "${pkgs.bash}/bin/bash" "$materializer"
     ''
   );

@@ -266,18 +266,23 @@ let
   addPostMountHook =
     dataset:
     let
+      hasExplicitMountpoint = dataset ? mountpoint && dataset.mountpoint != null;
       overlayEnabled =
         (dataset.options or { }) ? "nixos:mount-overlay"
         && (dataset.options."nixos:mount-overlay" == "true");
       dsWithOpts = addDatasetOptions dataset;
-      # Overlay-tagged ZFS datasets are mounted explicitly from stage-1 via
-      # fileSystems entries (e.g. /mnt/overlays/*), which requires legacy
+      # Canonical behavior (@codebase): datasets with explicit mountpoints are
+      # mounted via generated fileSystems entries and therefore must use legacy
       # mount semantics for `mount` to succeed.
-      dsWithLegacyMountpoint = dsWithOpts // {
-        options = (dsWithOpts.options or { }) // {
-          mountpoint = "legacy";
-        };
-      };
+      dsWithLegacyMountpoint =
+        if hasExplicitMountpoint then
+          dsWithOpts // {
+            options = (dsWithOpts.options or { }) // {
+              mountpoint = "legacy";
+            };
+          }
+        else
+          dsWithOpts;
     in
     if overlayEnabled then
       dsWithLegacyMountpoint

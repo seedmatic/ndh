@@ -7,6 +7,7 @@
 
 let
   LIMA_CIDATA_MNT = "/mnt/lima-cidata";
+  isLimaProvider = config.ndh.vm.provider == "lima";
   # Use writeShellApplication to create a proper executable with dependencies
   startScript = pkgs.writeShellApplication {
     name = "lima-guest-agent-start";
@@ -23,31 +24,33 @@ in
 {
   imports = [ ];
 
-  systemd.services.io-nxmatic-nix-darwin-home-lima-guestagent = {
-    description = "Lima Guest Agent";
-    wantedBy = [ "io-nxmatic-nix-darwin-home-contributed.target" ];
-    after = [ "io-nxmatic-nix-darwin-home-lima-cloud-init.service" ];
-    requires = [ "io-nxmatic-nix-darwin-home-lima-cloud-init.service" ];
-    unitConfig = {
-      ConditionPathExists = "${LIMA_CIDATA_MNT}/lima-guestagent";
-    };
-    path = with pkgs; [
-      util-linux
-      yq-go
-    ];
-    serviceConfig = {
-      Type = "simple";
-      EnvironmentFile = "${LIMA_CIDATA_MNT}/lima.env";
-      ExecStart = "${startScript}/bin/lima-guest-agent-start";
-      Restart = "on-failure";
-      OOMPolicy = "continue";
-      OOMScoreAdjust = "-500";
-      User = "root";
-      # Ensure nix-ld environment is available for dynamically linked binaries
-      Environment = [
-        "NIX_LD=/run/current-system/sw/share/nix-ld/lib/ld-linux-x86-64.so.2"
-        "NIX_LD_LIBRARY_PATH=/run/current-system/sw/share/nix-ld/lib"
+  config = lib.mkIf isLimaProvider {
+    systemd.services.io-nxmatic-nix-darwin-home-lima-guestagent = {
+      description = "Lima Guest Agent";
+      wantedBy = [ "io-nxmatic-nix-darwin-home-contributed.target" ];
+      after = [ "io-nxmatic-nix-darwin-home-lima-cloud-init.service" ];
+      requires = [ "io-nxmatic-nix-darwin-home-lima-cloud-init.service" ];
+      unitConfig = {
+        ConditionPathExists = "${LIMA_CIDATA_MNT}/lima-guestagent";
+      };
+      path = with pkgs; [
+        util-linux
+        yq-go
       ];
+      serviceConfig = {
+        Type = "simple";
+        EnvironmentFile = "${LIMA_CIDATA_MNT}/lima.env";
+        ExecStart = "${startScript}/bin/lima-guest-agent-start";
+        Restart = "on-failure";
+        OOMPolicy = "continue";
+        OOMScoreAdjust = "-500";
+        User = "root";
+        # Ensure nix-ld environment is available for dynamically linked binaries
+        Environment = [
+          "NIX_LD=/run/current-system/sw/share/nix-ld/lib/ld-linux-x86-64.so.2"
+          "NIX_LD_LIBRARY_PATH=/run/current-system/sw/share/nix-ld/lib"
+        ];
+      };
     };
   };
 

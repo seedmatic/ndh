@@ -23,6 +23,7 @@
     ./lan-dns-resolver.nix
     ./nfs-autofs.nix
     ./lima-config.nix
+    ./tart-config.nix
     ./linux-builder.nix
     ./distributed-builds.nix
     ./network-bond.nix

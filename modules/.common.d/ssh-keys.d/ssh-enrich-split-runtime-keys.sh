@@ -25,6 +25,7 @@ main() {
 	local generatedProfileKeysYamlPath="${12:?generated profile keys yaml path required}"
 	local authorizedKeysDir="${13:-}"
 	local profileUserName="${14:-}"
+	local profileAuthKeyName="${15:-rdp-host}"
 
 	if [[ ! -x "$bashBin" ]]; then
 		echo "missing executable bash binary: $bashBin" >&2
@@ -60,21 +61,32 @@ main() {
 
 	# Optional NixOS-specific authorized_keys sync.
 	if [[ -n "$authorizedKeysDir" && -n "$profileUserName" ]]; then
-		local key_type key_public key_comment
-		key_type="$(yq -r '.keys."linux-builder".public // "" | split(" ") | .[0] // ""' "$generatedKeysYamlPath")"
-		key_public="$(yq -r '.keys."linux-builder".public // "" | split(" ") | .[1] // ""' "$generatedKeysYamlPath")"
-		key_comment="$(yq -r '.keys."linux-builder".public // "" | split(" ") | .[2] // ""' "$generatedKeysYamlPath")"
+		local ensure_key_line
+		ensure_key_line() {
+			local key_name="${1:?key name required}"
+			local default_comment="${2:-$key_name}"
+			local key_type key_public key_comment
+			key_type="$(yq -r ".keys.\"${key_name}\".public // \"\" | split(\" \") | .[0] // \"\"" "$generatedKeysYamlPath")"
+			key_public="$(yq -r ".keys.\"${key_name}\".public // \"\" | split(\" \") | .[1] // \"\"" "$generatedKeysYamlPath")"
+			key_comment="$(yq -r ".keys.\"${key_name}\".public // \"\" | split(\" \") | .[2] // \"\"" "$generatedKeysYamlPath")"
 
-		if [[ -z "$key_type" ]]; then
-			key_type="ssh-ed25519"
-		fi
-		if [[ -z "$key_comment" ]]; then
-			key_comment="linux-builder@mammoth-skate"
-		fi
-		if [[ -z "$key_public" ]]; then
-			echo "[ssh-keys-enrichment][ERROR] missing linux-builder public key in $generatedKeysYamlPath" >&2
-			return 1
-		fi
+			if [[ -z "$key_type" ]]; then
+				key_type="ssh-ed25519"
+			fi
+			if [[ -z "$key_comment" ]]; then
+				key_comment="$default_comment"
+			fi
+			if [[ -z "$key_public" ]]; then
+				echo "[ssh-keys-enrichment][ERROR] missing ${key_name} public key in $generatedKeysYamlPath" >&2
+				return 1
+			fi
+
+			local line
+			line="$key_type $key_public $key_comment"
+			if ! grep -Fqx "$line" "$auth_file"; then
+				printf '%s\n' "$line" >>"$auth_file"
+			fi
+		}
 
 		local auth_file line
 		auth_file="$authorizedKeysDir/$profileUserName"
@@ -83,9 +95,9 @@ main() {
 		chmod 0644 "$auth_file"
 		chown root:root "$auth_file"
 
-		line="$key_type $key_public $key_comment"
-		if ! grep -Fqx "$line" "$auth_file"; then
-			printf '%s\n' "$line" >>"$auth_file"
+		ensure_key_line "linux-builder" "linux-builder@mammoth-skate"
+		if [[ "$profileAuthKeyName" != "linux-builder" ]]; then
+			ensure_key_line "$profileAuthKeyName" "$profileAuthKeyName"
 		fi
 
 		awk 'NF > 0' "$auth_file" | awk '!seen[$0]++' >"$auth_file.tmp"
@@ -93,7 +105,7 @@ main() {
 		chown root:root "$auth_file"
 		rm -f "$auth_file.tmp"
 
-		echo "[ssh-keys-enrichment] ensured linux-builder key in $auth_file"
+		echo "[ssh-keys-enrichment] ensured linux-builder and ${profileAuthKeyName} keys in $auth_file"
 	fi
 }
 

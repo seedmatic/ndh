@@ -13,7 +13,7 @@ let
   signingKeysDir = sshPaths.secretsKeysDir;
   allowedSignersFile = "${config.xdg.configHome}/git/github_allowed_signers";
   systemCaBundle = config.home.sessionVariables.SSL_CERT_FILE;
-  logger = config._module.specialArgs.logger.script;
+  logger = config._module.specialArgs.ndh.logger.script;
   loggerTag = "home-manager.activationScripts.${userName}.generateAllowedSigners";
 in
 {

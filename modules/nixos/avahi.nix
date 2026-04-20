@@ -4,6 +4,7 @@
   # Enable mDNS/Avahi so .local names resolve inside the VM.
   services.avahi = {
     enable = true;
+    # Provide NSS bridge for *.local lookups via libc/getaddrinfo.
     nssmdns4 = true;
     openFirewall = true;
 
@@ -20,7 +21,8 @@
     };
   };
 
-  # Ensure systemd-resolved handles mDNS/LLMNR; keep DNSSEC permissive for LAN.
+  # Keep systemd-resolved for unicast DNS only.
+  # mDNS/LLMNR must be disabled here to avoid duplicate mDNS stacks with Avahi.
   services.resolved = {
     enable = lib.mkDefault true;
     dnssec = lib.mkDefault "false";
@@ -29,8 +31,8 @@
       "local"
     ];
     extraConfig = lib.mkDefault ''
-      MulticastDNS=yes
-      LLMNR=yes
+      MulticastDNS=no
+      LLMNR=no
     '';
   };
 }

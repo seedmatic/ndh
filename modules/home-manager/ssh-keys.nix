@@ -9,7 +9,7 @@ let
   profile = config._module.specialArgs.profile;
   specialArgs = config._module.specialArgs;
   ndh = config._module.specialArgs.ndh;
-  catalog = lib.attrByPath [ "catalog" ] { } specialArgs;
+  catalog = lib.attrByPath [ "catalog" ] { } ndh;
   profileName = profile.name;
   sshKeyProfileName =
     if profile ? sshKeyProfileName && profile.sshKeyProfileName != null then
@@ -19,7 +19,7 @@ let
   userProfile = profile.user;
   userName = profile.user.name; # Use profile user name for tagging
   sshPaths = config.sshPaths;
-  logger = config._module.specialArgs.logger.script;
+  logger = config._module.specialArgs.ndh.logger.script;
   loggerTagPrepareGenerated = "home-manager.activationScripts.${userName}.prepareGeneratedSSHKeysYaml";
   loggerTagExtract = "home-manager.activationScripts.${userName}.extractSSHKeys";
   loggerTagAuthorized = "home-manager.activationScripts.${userName}.ensureAuthorizedKeys";
@@ -33,7 +33,12 @@ let
   alternateRuntimeSSHKeysYamlPath = "${sshPaths.systemNamespaceDir}/ssh-keys.yaml";
   sourceProfileKeysYamlPath = "${./ssh.d/keys.yaml}";
   hostIdent =
-    if profile ? host && profile.host ? hostAlias && profile.host.hostAlias != null && profile.host.hostAlias != "" then
+    if
+      profile ? host
+      && profile.host ? hostAlias
+      && profile.host.hostAlias != null
+      && profile.host.hostAlias != ""
+    then
       profile.host.hostAlias
     else if profile ? host && profile.host ? hostName && profile.host.hostName != null then
       profile.host.hostName
@@ -150,26 +155,28 @@ in
         source = sshSplitKeysYamlScriptSource;
       };
 
-      prepareGeneratedSSHKeysYamlScriptSource = pkgs.replaceVars ./ssh-key.d/ssh-prepare-generated-keys-yaml.sh {
-        bashTrampoline = "${../.common.d/shell.d/nix-bash-trampoline.sh}";
-        logger = logger;
-        loggerTag = loggerTagPrepareGenerated;
-        bash = "${pkgs.bash}/bin/bash";
-        sops = "${pkgs.sops}/bin/sops";
-        sshEnrichKeysYamlScript = sshEnrichKeysYamlScript;
-        sshSplitKeysYamlScript = sshSplitKeysYamlScript;
-        effectiveSSHKeysYamlPath = effectiveSSHKeysYamlPath;
-        systemNamespaceDir = sshPaths.systemNamespaceDir;
-        systemSplitProfileKeysYamlPath = systemSplitProfileKeysYamlPath;
-        alternateSystemSplitProfileKeysYamlPath = alternateSystemSplitProfileKeysYamlPath;
-        runtimeSSHKeysYamlPath = runtimeSSHKeysYamlPath;
-        alternateRuntimeSSHKeysYamlPath = alternateRuntimeSSHKeysYamlPath;
-        sshKeyProfileName = sshKeyProfileName;
-        hostIdent = hostIdent;
-        hostsCatalogCsv = hostsCatalogCsv;
-        userName = userName;
-        sourceProfileKeysYamlPath = sourceProfileKeysYamlPath;
-      };
+      prepareGeneratedSSHKeysYamlScriptSource =
+        pkgs.replaceVars ./ssh-key.d/ssh-prepare-generated-keys-yaml.sh
+          {
+            bashTrampoline = "${../.common.d/shell.d/nix-bash-trampoline.sh}";
+            logger = logger;
+            loggerTag = loggerTagPrepareGenerated;
+            bash = "${pkgs.bash}/bin/bash";
+            sops = "${pkgs.sops}/bin/sops";
+            sshEnrichKeysYamlScript = sshEnrichKeysYamlScript;
+            sshSplitKeysYamlScript = sshSplitKeysYamlScript;
+            effectiveSSHKeysYamlPath = effectiveSSHKeysYamlPath;
+            systemNamespaceDir = sshPaths.systemNamespaceDir;
+            systemSplitProfileKeysYamlPath = systemSplitProfileKeysYamlPath;
+            alternateSystemSplitProfileKeysYamlPath = alternateSystemSplitProfileKeysYamlPath;
+            runtimeSSHKeysYamlPath = runtimeSSHKeysYamlPath;
+            alternateRuntimeSSHKeysYamlPath = alternateRuntimeSSHKeysYamlPath;
+            sshKeyProfileName = sshKeyProfileName;
+            hostIdent = hostIdent;
+            hostsCatalogCsv = hostsCatalogCsv;
+            userName = userName;
+            sourceProfileKeysYamlPath = sourceProfileKeysYamlPath;
+          };
       prepareGeneratedSSHKeysYamlScript = ndh.store.installScript {
         name = "ssh-prepare-generated-keys-yaml.sh";
         source = prepareGeneratedSSHKeysYamlScriptSource;
@@ -188,25 +195,25 @@ in
     {
       ensureRootBringupRuntimeProfile = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
         ${lib.optionalString allowSystemSplitFallback ''
-          if [[ ! -x "${rootBringupProfileDir}/bin/nix" || ! -x "${rootBringupProfileDir}/bin/bash" ]]; then
-            runtime_target_host="$(hostname -f 2>/dev/null || hostname 2>/dev/null || echo "<target-host>")"
-            echo "[ssh-keys][ERROR] required root runtime profile missing or incomplete: ${rootBringupProfileDir}" >&2
-            echo "[ssh-keys][ERROR] install/update it before running Home Manager activation" >&2
-            cat >&2 <<'EOF'
-[ssh-keys][HINT] On operator host (with nix-darwin-home checkout):
+                    if [[ ! -x "${rootBringupProfileDir}/bin/nix" || ! -x "${rootBringupProfileDir}/bin/bash" ]]; then
+                      runtime_target_host="$(hostname -f 2>/dev/null || hostname 2>/dev/null || echo "<target-host>")"
+                      echo "[ssh-keys][ERROR] required root runtime profile missing or incomplete: ${rootBringupProfileDir}" >&2
+                      echo "[ssh-keys][ERROR] install/update it before running Home Manager activation" >&2
+                      cat >&2 <<'EOF'
+          [ssh-keys][HINT] On operator host (with nix-darwin-home checkout):
 
-holder_out="$(nix build --no-link --print-out-paths .#io-nxmatic-nix-darwin-home-bringup-runtime-profile-holder)"
-nix copy --no-check-sigs \
-  --to 'ssh-ng://<target-host>?remote-program=/nix/var/nix/profiles/default/bin/nix-daemon' \
-  "$holder_out"
-ssh -t <target-host> \
-  "sudo /nix/var/nix/profiles/default/bin/nix profile add \
-    --profile /nix/var/nix/profiles/per-user/root/io-nxmatic-nix-darwin-home-bringup-runtime \
-    $holder_out"
-EOF
-            echo "[ssh-keys][HINT] Replace <target-host> with: $runtime_target_host" >&2
-            exit 1
-          fi
+          holder_out="$(nix build --no-link --print-out-paths .#io-nxmatic-nix-darwin-home-bringup-runtime-profile-holder)"
+          nix copy --no-check-sigs \
+            --to 'ssh-ng://<target-host>?remote-program=/nix/var/nix/profiles/default/bin/nix-daemon' \
+            "$holder_out"
+          ssh -t <target-host> \
+            "sudo /nix/var/nix/profiles/default/bin/nix profile add \
+              --profile /nix/var/nix/profiles/per-user/root/io-nxmatic-nix-darwin-home-bringup-runtime \
+              $holder_out"
+          EOF
+                      echo "[ssh-keys][HINT] Replace <target-host> with: $runtime_target_host" >&2
+                      exit 1
+                    fi
         ''}
       '';
 

@@ -51,6 +51,7 @@ let
   nixosBootLoader = hostProfile.nixosBootLoader or "grub";
   useSystemdBoot = nixosBootLoader == "systemd-boot";
   useGrub = !useSystemdBoot;
+  isTartProvider = (lib.attrByPath [ "ndh" "vm" "provider" ] "lima" config) == "tart";
   bootstrapMode = hostImageMode == "bootstrap";
   # Canonical behavior: bootstrap image mode implies bootstrap debug profile.
   bootstrapDebug = bootstrapMode;
@@ -290,15 +291,23 @@ in
           "boot.debugtrace"
           "boot.trace"
         ])
-        # Keep tty1 visible, but make hvc0 the effective final console so
-        # stage-2/systemd status output is captured in serial logs.
+        # Keep tty1 visible. For Tart provider, make ttyAMA0 the effective final
+        # console so `tart run --serial` PTY gets stage-2/systemd logs.
+        # For non-Tart providers, keep hvc0 as final console.
         # Also keep runtime debug overrides at the end so they win against
         # upstream defaults contributed by other modules (e.g. loglevel=0).
         (lib.mkAfter (
-          [
-            "console=tty1"
-            "console=hvc0"
-          ]
+          (if isTartProvider then
+            [
+              "console=tty1"
+              "console=hvc0"
+              "console=ttyAMA0,115200n8"
+            ]
+          else
+            [
+              "console=tty1"
+              "console=hvc0"
+            ])
           ++ (lib.optionals (!bootstrapMode) [
             "loglevel=7"
             "ignore_loglevel"
@@ -463,8 +472,8 @@ in
     # Keep serial getty available on primary VZ console.
     # Let NixOS' native getty/autovt wiring manage tty1 to avoid unit collisions.
     systemd.services."serial-getty@hvc0".enable = lib.mkForce true;
-    systemd.services."serial-getty@ttyAMA0".enable = true;
-    systemd.services."serial-getty@ttyS0".enable = true;
+    systemd.services."serial-getty@ttyAMA0".enable = lib.mkForce true;
+    systemd.services."serial-getty@ttyS0".enable = lib.mkForce (!isTartProvider);
 
     # Preserve profile-provided user kind flags.
     # For normal users, do not force low Darwin-style IDs (<1000) on NixOS,

@@ -37,10 +37,31 @@ let
     && hostProfile.nixosImageMode != null
     && hostProfile.nixosImageMode == "bootstrap";
 
+  vmProvider =
+    if config ? ndh && config.ndh ? vm && config.ndh.vm ? provider then
+      config.ndh.vm.provider
+    else if hostProfile ? vmProvider && hostProfile.vmProvider != null then
+      hostProfile.vmProvider
+    else
+      "lima";
+
+  hostSopsKeyShareMountPoint =
+    if vmProvider == "tart" then
+      lib.attrByPath [
+        "ndh"
+        "vm"
+        "tart"
+        "hostShares"
+        "sopsAge"
+        "mountPoint"
+      ] "/mnt/tart-cidata/.sops.d" config
+    else
+      "/mnt/lima-cidata/.sops.d";
+
   nixosHostKeyImportCandidatesDefault = lib.filter (path: path != "") [
     "${userHome}/.config/sops/age/keys.txt"
     (if userName != "" then "/home/${userName}/.config/sops/age/keys.txt" else "")
-    "/mnt/lima-cidata/.sops.d/keys.txt"
+    "${hostSopsKeyShareMountPoint}/keys.txt"
   ];
 
   sopsAgeBootstrapScriptSource = pkgs.replaceVars ./sops.d/bootstrap.sh {

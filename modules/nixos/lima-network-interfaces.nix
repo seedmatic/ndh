@@ -8,6 +8,13 @@
 let
   inherit (lib) mkOption types mkIf;
   cfg = config.lima.networkInterfaces;
+  vmProvider =
+    if config ? ndh && config.ndh ? vm && config.ndh.vm ? provider then
+      config.ndh.vm.provider
+    else
+      "lima";
+  isTartProvider = vmProvider == "tart";
+  includeHostAndNatInterfaces = vmProvider == "lima";
   vlanCfg = config.networking.vlan or { };
   vlanEnabled = vlanCfg.enable or false;
   vlanName =
@@ -73,12 +80,14 @@ in
           name = "mgmt0"; # rename from enp0s1; update MAC if the Lima VM is rebuilt
         }
         {
-          macAddress = "10:66:6a:4c:${hostByteHex}:00";
-          name = "vznat0"; # lima vzNAT
-        }
-        {
           macAddress = "10:66:6a:4c:${hostByteHex}:01";
           name = "vmlan0"; # lima vmnet bridged (for Incus lan-br bridge member)
+        }
+      ]
+      ++ lib.optionals includeHostAndNatInterfaces [
+        {
+          macAddress = "10:66:6a:4c:${hostByteHex}:00";
+          name = "vznat0"; # lima vzNAT
         }
         {
           macAddress = "10:66:6a:4c:${hostByteHex}:02";
@@ -133,7 +142,7 @@ in
     # Pin the socket_vmnet backchannel to a static address with no default route
     # to avoid accidental gateway selection from DHCP on the shared network.
     # Update Address if you change the vmhost0 assignment.
-    systemd.network.networks."40-vmhost0" = {
+    systemd.network.networks."40-vmhost0" = lib.mkIf includeHostAndNatInterfaces {
       matchConfig.Name = "vmhost0";
       networkConfig = {
         DHCP = "no";
@@ -187,7 +196,7 @@ in
       };
     };
 
-    systemd.network.networks."40-vznat0" = {
+    systemd.network.networks."40-vznat0" = lib.mkIf includeHostAndNatInterfaces {
       matchConfig.Name = "vznat0";
       networkConfig = {
         DHCP = "ipv4";
@@ -213,6 +222,38 @@ in
       };
     };
 
+    # Tart provider fallback: interface naming may vary (e.g. enp0s2/enp1s0)
+    # if MAC-based renaming does not apply. Ensure at least one uplink gets DHCP.
+    systemd.network.networks."40-tart-en-fallback" = lib.mkIf isTartProvider {
+      matchConfig.Name = "en*";
+      networkConfig = {
+        DHCP = "ipv4";
+        Domains = [ "" ];
+      };
+      dhcpV4Config = {
+        UseDNS = false;
+        RouteMetric = 500;
+      };
+      linkConfig = {
+        RequiredForOnline = false;
+      };
+    };
+
+    systemd.network.networks."40-tart-eth-fallback" = lib.mkIf isTartProvider {
+      matchConfig.Name = "eth*";
+      networkConfig = {
+        DHCP = "ipv4";
+        Domains = [ "" ];
+      };
+      dhcpV4Config = {
+        UseDNS = false;
+        RouteMetric = 500;
+      };
+      linkConfig = {
+        RequiredForOnline = false;
+      };
+    };
+
     # Enable mDNS (Avahi) and bind it to lan-br and vmhost0 so host backchannel
     # mDNS works without leaking onto other links.
     services.avahi = {
@@ -220,8 +261,8 @@ in
       nssmdns4 = true;
       allowInterfaces = [
         "lan-br"
-        "vmhost0"
       ]
+      ++ lib.optionals includeHostAndNatInterfaces [ "vmhost0" ]
       ++ lib.optional vlanEnabled vlanName;
       publish = {
         enable = true;

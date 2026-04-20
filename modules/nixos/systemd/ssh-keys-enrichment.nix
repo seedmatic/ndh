@@ -61,6 +61,7 @@ let
   loggerTagOrchestrate = "nixos.services.ssh-keys-enrichment.orchestrate";
   loggerTagEnrich = "nixos.services.ssh-keys-enrichment.enrichSSHKeysYaml";
   loggerTagSplit = "nixos.services.ssh-keys-enrichment.splitSSHKeysYaml";
+  loggerTagExtract = "nixos.services.ssh-keys-enrichment.extractSSHKeys";
   sshEnrichKeysYamlScriptSource =
     pkgs.replaceVars ../../.common.d/ssh-keys.d/ssh-enrich-keys-yaml.sh
       {
@@ -91,6 +92,19 @@ let
       ''
         install -m 0555 ${sshEnrichSplitAndAuthorizeScriptSource} "$out"
       '';
+  sshExtractKeysSplitExpFile = pkgs.runCommand "ndh-ssh-extract-keys.split-exp.yq" { } ''
+    install -m 0444 ${../../home-manager/ssh-key.d/ssh-extract-keys.split-exp.yq} "$out"
+  '';
+  sshExtractKeysScriptSource =
+    pkgs.replaceVars ../../home-manager/ssh-key.d/ssh-extract-keys.sh {
+      bashTrampoline = "${../../.common.d/shell.d/nix-bash-trampoline.sh}";
+      logger = logger;
+      loggerTag = loggerTagExtract;
+      splitExpFile = sshExtractKeysSplitExpFile;
+    };
+  sshExtractKeysScript = pkgs.runCommand "ndh-ssh-extract-keys-systemd.sh" { } ''
+    install -m 0555 ${sshExtractKeysScriptSource} "$out"
+  '';
 in
 {
   config.systemd.services.io-nxmatic-nix-darwin-home-ssh-keys-enrichment = {
@@ -142,7 +156,16 @@ in
         "${generatedSystemKeysYamlPath}" \
         "${generatedProfileKeysYamlPath}" \
         "${config.opensshPolicy.authorizedKeysDir}" \
-        "${profileUserName}"
+        "${profileUserName}" \
+        "${config.sshPaths.keyName}"
+
+      # Materialize file-based SSH key artifacts expected by OpenSSH activation
+      # and hostkey enrollment scripts in both bootstrap and full runtime modes.
+      # Use the full enriched keyset so host/system key material is included.
+      ${pkgs.bash}/bin/bash ${sshExtractKeysScript} \
+        "${generatedKeysYamlPath}" \
+        "${config.sshPaths.secretsKeysDir}" \
+        "${profileOwnerName}"
     '';
   };
 }
