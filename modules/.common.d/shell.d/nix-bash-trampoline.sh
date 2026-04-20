@@ -390,7 +390,9 @@ PATH="$(ndh::bootstrap:runtime:path)"
 export PATH
 
 : "Verify bootstrap runtime profile"
-ndh::bootstrap:runtime:ensure
+if [[ "${NDH_BOOTSTRAP_INSTALLER_MODE:-0}" != "1" ]]; then
+	ndh::bootstrap:runtime:ensure
+fi
 
 : "Re-exec bash is not in the nix store"
 ndh::nix:bash:trampoline "$@"
