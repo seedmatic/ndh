@@ -27,6 +27,27 @@ in
 {
   options.sshPaths = {
 
+    # Canonical user-owned mirror of system runtime namespace.
+    # On fully managed systems this can be a symlink to /var/run; on work-only
+    # HM hosts it remains user-writable under $HOME.
+    systemRuntimeDir = lib.mkOption {
+      type = lib.types.str;
+      default = "${userHome}/var/run/system";
+      description = "User-scoped system runtime root used as a writable fallback for /run-backed namespaces.";
+    };
+
+    systemSecretsRootDir = lib.mkOption {
+      type = lib.types.str;
+      default = "${config.sshPaths.systemRuntimeDir}/secrets";
+      description = "User-scoped system secrets root mirroring /run/secrets layout when direct /run writes are unavailable.";
+    };
+
+    systemNamespaceDir = lib.mkOption {
+      type = lib.types.str;
+      default = "${config.sshPaths.systemSecretsRootDir}/nix-darwin-home";
+      description = "Namespace directory for nix-darwin-home secrets in system-style runtime layout.";
+    };
+
     # Canonical per-user SSH material root
     secretsRootDir = lib.mkOption {
       type = lib.types.str;
@@ -89,7 +110,7 @@ in
         else if specialArgPath != null then
           specialArgPath
         else
-          "/run/secrets/nix-darwin-home/ssh-keys.yaml";
+          "${config.sshPaths.systemNamespaceDir}/ssh-keys.yaml";
       description = "Path to SOPS-decrypted runtime SSH keys YAML (from specialArgs.sshKeysYamlPath or default).";
     };
 
