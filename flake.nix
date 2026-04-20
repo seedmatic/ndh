@@ -703,10 +703,19 @@
         aarch64-linux = pkgsForLinux;
       };
 
-      packages = forAllSystems (system: {
-        io-nxmatic-nix-darwin-home-bringup-runtime-profile-holder = mkNdhBootstrapRuntimePackage system;
-        io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer = mkNdhBringupRuntimeInstaller system;
-      });
+      packages = nixpkgs.lib.genAttrs [ "aarch64-darwin" "aarch64-linux" ] (
+        system:
+        {
+          io-nxmatic-nix-darwin-home-bringup-runtime-profile-holder = mkNdhBootstrapRuntimePackage system;
+          io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer = mkNdhBringupRuntimeInstaller system;
+        }
+        // nixpkgs.lib.optionalAttrs (system == "aarch64-linux") {
+          nixos-bioskop-bringup-lima-vm-disk = hostOutputs.bioskop.nixosDiskImageBringupSystemdBoot;
+          nixos-nikopol-bringup-lima-vm-disk = hostOutputs.nikopol.nixosDiskImageBringupSystemdBoot;
+          nixos-bioskop-bringup-tart-disk = hostOutputs.bioskop.nixosDiskImageBringupSystemdBoot;
+          nixos-nikopol-bringup-tart-disk = hostOutputs.nikopol.nixosDiskImageBringupSystemdBoot;
+        }
+      );
 
       apps = forAllSystems (
         system:
@@ -1085,6 +1094,21 @@
         hostOutputs.bioskop.nixosConfigurations
         // hostOutputs.nikopol.nixosConfigurations;
 
+      # Provider-scoped VM configuration aliases.
+      # Keep canonical behavior unchanged; expose stable provider names for operators.
+      vmConfigurations = {
+        lima = {
+          bioskop = {
+            bringup = hostOutputs.bioskop.nixosConfigurations."bioskop-bringup-ext4";
+            runtime = hostOutputs.bioskop.nixosConfigurations."bioskop-nixos";
+          };
+          nikopol = {
+            bringup = hostOutputs.nikopol.nixosConfigurations."nikopol-bringup-ext4";
+            runtime = hostOutputs.nikopol.nixosConfigurations."nikopol-nixos";
+          };
+        };
+      };
+
       homeManagerConfigurations = {
         bioskop = hostOutputs.bioskop.homeManagerConfigurations;
         nikopol = hostOutputs.nikopol.homeManagerConfigurations;
@@ -1094,11 +1118,15 @@
         bioskop = {
           full = hostOutputs.bioskop.nixosDiskImage;
           bringupSystemdBoot = hostOutputs.bioskop.nixosDiskImageBringupSystemdBoot;
+          bringupLimaVm = hostOutputs.bioskop.nixosDiskImageBringupSystemdBoot;
+          bringupTart = hostOutputs.bioskop.nixosDiskImageBringupSystemdBoot;
           bringupGrub = hostOutputs.bioskop.nixosDiskImageBringupGrub;
         };
         nikopol = {
           full = hostOutputs.nikopol.nixosDiskImage;
           bringupSystemdBoot = hostOutputs.nikopol.nixosDiskImageBringupSystemdBoot;
+          bringupLimaVm = hostOutputs.nikopol.nixosDiskImageBringupSystemdBoot;
+          bringupTart = hostOutputs.nikopol.nixosDiskImageBringupSystemdBoot;
           bringupGrub = hostOutputs.nikopol.nixosDiskImageBringupGrub;
         };
       };
