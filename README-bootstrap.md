@@ -65,6 +65,34 @@ This is mandatory for deterministic activation and script runtime command resolu
 If you skip this step, `darwin-rebuild switch` will now attempt to install/refresh
 the dedicated NDH bootstrap profile automatically during activation.
 
+### 0b. Install / update runtime profile holder on `vz-host` (@codebase)
+
+When activating Home Manager remotely on `vz-host`, you can install (or refresh)
+the root-owned runtime profile holder explicitly with these commands:
+
+```bash
+# Build holder package locally and keep resulting store path
+holder_out="$(nix build --no-link --print-out-paths .#io-nxmatic-nix-darwin-home-bringup-runtime-profile-holder)"
+
+# Copy holder closure to the remote host daemon store
+nix copy --no-check-sigs \
+  --to 'ssh-ng://vz-host.nikopol?remote-program=/nix/var/nix/profiles/default/bin/nix-daemon' \
+  "$holder_out"
+
+# Install/update the root profile on vz-host (requires sudo on remote host)
+ssh -t vz-host.nikopol \
+  "sudo /nix/var/nix/profiles/default/bin/nix profile add \
+    --profile /nix/var/nix/profiles/per-user/root/io-nxmatic-nix-darwin-home-bringup-runtime-profile-holder \
+    $holder_out"
+```
+
+Verification on `vz-host`:
+
+```bash
+ssh vz-host.nikopol \
+  'ls -la /nix/var/nix/profiles/per-user/root/io-nxmatic-nix-darwin-home-bringup-runtime-profile-holder/bin'
+```
+
 ### 1. Generate SSH Keys for Builder
 
 First, generate SSH keys that will be used for builder authentication:
