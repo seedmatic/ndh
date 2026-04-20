@@ -7,9 +7,7 @@
 set -euo pipefail
 
 # shellcheck disable=SC1091
-source "@bashTrampoline@"
-# shellcheck disable=SC1091
-source "@logger@"
+source "@nixBashTrampoline@"
 
 main() {
   mode_or_host="${1:-}"
