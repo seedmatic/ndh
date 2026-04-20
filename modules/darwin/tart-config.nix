@@ -6,6 +6,7 @@
   pkgs,
   lib,
   catalog,
+  inventory,
   ndh,
   ...
 }:
@@ -31,18 +32,18 @@ let
     in
     lib.strings.toLower (builtins.substring 0 2 hash);
 
-  hostCatalogEntries =
+  hostInventoryEntries =
     lib.attrByPath
       [
         "hosts"
         effectiveHostName
       ]
       [ ]
-      catalog;
+      inventory;
 
   tartRuntimeSupported = lib.any (
     entry: (entry ? vm) && (entry.vm ? manager) && entry.vm.manager == "tart"
-  ) hostCatalogEntries;
+  ) hostInventoryEntries;
   tartMaterializationEnabled = tartRuntimeSupported || cfg.forceEnable;
 
   cfg = config.tart.configGenerator;
@@ -53,8 +54,8 @@ let
     else
       24;
 
-  rawImageDescriptorPath =
-    if cfg.rawImageDescriptorPath == null then "" else toString cfg.rawImageDescriptorPath;
+  rawImageManifestPath =
+    if cfg.rawImageManifestPath == null then "" else toString cfg.rawImageManifestPath;
   rawImageStorePath = if cfg.rawImageStorePath == null then "" else toString cfg.rawImageStorePath;
 
   tartActivationScript = ndh.store.runCommand "tart-${cfg.vmName}-activation.sh" { } ''
@@ -79,7 +80,7 @@ let
         hdiutilBinaryPath = cfg.hdiutilBinaryPath;
         truncateBinaryPath = "${pkgs.coreutils}/bin/truncate";
         tartRunScript = tartRunScript;
-        rawImageDescriptorPath = rawImageDescriptorPath;
+        rawImageManifestPath = rawImageManifestPath;
         rawImageStorePath = rawImageStorePath;
         rawImageSourcePath = cfg.rawImageSourcePath;
         rawImageTargetPath = cfg.rawImageTargetPath;
@@ -103,6 +104,10 @@ let
         vmName = cfg.vmName;
         vmRunBridgeInterface = cfg.vmRunBridgeInterface;
         vmRunUseVncExperimental = if cfg.vmRunUseVncExperimental then "1" else "0";
+        vmRunSerialEnable = if cfg.vmRunSerialEnable then "1" else "0";
+        vmRunSerialPath = cfg.vmRunSerialPath;
+        vmRunSerialBridgeEnable = if cfg.vmRunSerialBridgeEnable then "1" else "0";
+        vmRunSerialBridgeDir = cfg.vmRunSerialBridgeDir;
         vmRunSopsAgeShareEnable = if cfg.vmRunSopsAgeShareEnable then "1" else "0";
         vmRunSopsAgeHostDir = cfg.vmRunSopsAgeHostDir;
         vmRunSopsAgeTag = cfg.vmRunSopsAgeTag;
@@ -203,6 +208,44 @@ in
       '';
     };
 
+    vmRunSerialEnable = mkOption {
+      type = types.bool;
+      default = true;
+      description = ''
+        Whether generated run wrapper enables Tart serial console support.
+        When enabled, wrapper prefers `--serial-path` when a configured path exists;
+        otherwise it falls back to `--serial`.
+      '';
+    };
+
+    vmRunSerialPath = mkOption {
+      type = types.str;
+      default = "";
+      description = ''
+        Optional externally managed serial endpoint path for Tart `--serial-path`.
+        Can be overridden at runtime with `NDH_TART_SERIAL_PATH`.
+      '';
+    };
+
+    vmRunSerialBridgeEnable = mkOption {
+      type = types.bool;
+      default = false;
+      description = ''
+        Whether generated run wrapper auto-creates a stable PTY pair via `socat`
+        when no explicit `NDH_TART_SERIAL_PATH` is provided.
+      '';
+    };
+
+    vmRunSerialBridgeDir = mkOption {
+      type = types.str;
+      default = "${profileHome}/.tart/serial";
+      description = ''
+        Directory used by generated run wrapper for stable serial PTY symlinks.
+        Wrapper creates `<vm>.tart` for Tart `--serial-path` and `<vm>.screen`
+        for operator `screen` attachment.
+      '';
+    };
+
     vmRunSopsAgeShareEnable = mkOption {
       type = types.bool;
       default = true;
@@ -272,12 +315,12 @@ in
       '';
     };
 
-    rawImageDescriptorPath = mkOption {
+    rawImageManifestPath = mkOption {
       type = types.nullOr types.path;
       default = null;
       description = ''
-        Optional path to disk-image descriptor output containing `descriptor.yaml`.
-        When provided, activation resolves the raw image through descriptor metadata first.
+        Optional path to disk-image manifest output containing `manifest.yaml`.
+        When provided, activation resolves the raw image through manifest metadata first.
       '';
     };
 
@@ -342,7 +385,7 @@ in
       type = types.bool;
       default = false;
       description = ''
-        Force-enable Tart materialization on this Darwin host even when catalog host
+        Force-enable Tart materialization on this Darwin host even when inventory host
         VM manager metadata does not declare `tart` runtime support.
       '';
     };
@@ -387,6 +430,9 @@ in
     environment.systemPackages =
       lib.optionals (tartMaterializationEnabled && cfg.installTartPackage && tartPackageAvailable) [
         pkgs.tart
+      ]
+      ++ lib.optionals (tartMaterializationEnabled && cfg.vmRunSerialBridgeEnable) [
+        pkgs.socat
       ]
       ++ lib.optionals (tartMaterializationEnabled && cfg.installMaterializerPackage) [
         cfg.materializerPackage

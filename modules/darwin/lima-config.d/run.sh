@@ -95,23 +95,23 @@ host:disk:image:attr:symlink:path() {
   echo "${RESOLVED_NDH_VZ_HOST_FLAKE_REF}/outputs.d/nixos-disk-image.${attr}"
 }
 
-lima:disk:image:descriptor:path() {
+lima:disk:image:manifest:path() {
   local out_link
 
   out_link="$(host:disk:image:symlink:path)"
-  [[ -e "${out_link}/descriptor.yaml" ]] || return 1
-  echo "${out_link}/descriptor.yaml"
+  [[ -e "${out_link}/manifest.yaml" ]] || return 1
+  echo "${out_link}/manifest.yaml"
 }
 
-lima:disk:image:attr:from:descriptor:resolve() {
-  local descriptor_path descriptor_attr
+lima:disk:image:attr:from:manifest:resolve() {
+  local manifest_path manifest_attr
 
-  descriptor_path="$(lima:disk:image:descriptor:path)" || return 1
-  descriptor_attr="$(awk -F': *' '$1 == "attr" {print $2; exit}' "${descriptor_path}" | tr -d '"[:space:]')"
-  [[ -n "${descriptor_attr}" ]] || return 1
+  manifest_path="$(lima:disk:image:manifest:path)" || return 1
+  manifest_attr="$(awk -F': *' '$1 == "attr" {print $2; exit}' "${manifest_path}" | tr -d '"[:space:]')"
+  [[ -n "${manifest_attr}" ]] || return 1
 
-  RESOLVED_LIMA_NIXOS_DISK_IMAGE_ATTR="${descriptor_attr}"
-  : "[lima-run] inferred disk image attr from descriptor: ${RESOLVED_LIMA_NIXOS_DISK_IMAGE_ATTR}"
+  RESOLVED_LIMA_NIXOS_DISK_IMAGE_ATTR="${manifest_attr}"
+  : "[lima-run] inferred disk image attr from manifest: ${RESOLVED_LIMA_NIXOS_DISK_IMAGE_ATTR}"
   return 0
 }
 
@@ -121,11 +121,11 @@ lima:disk:image:attr:resolve() {
     return
   fi
 
-  if lima:disk:image:attr:from:descriptor:resolve; then
+  if lima:disk:image:attr:from:manifest:resolve; then
     return
   fi
 
-  echo "[lima-run][ERROR] required metadata descriptor missing or invalid: $(host:disk:image:symlink:path)/descriptor.yaml" >&2
+  echo "[lima-run][ERROR] required metadata manifest missing or invalid: $(host:disk:image:symlink:path)/manifest.yaml" >&2
   echo "[lima-run][ERROR] build a disk image with metadata first (or pass --disk-image-attr explicitly)." >&2
   exit 2
 }

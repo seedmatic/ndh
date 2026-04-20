@@ -70,6 +70,38 @@ ndh::logger:lines:tag() {
 	fi
 }
 
+ndh::logger:hints:resolve() {
+	# ndh::logger:hints:resolve <tag>
+	# Populates:
+	# - NDH_LOG_HINT_SHOW_LABEL
+	# - NDH_LOG_HINT_SHOW_CMD
+	# - NDH_LOG_HINT_STREAM_LABEL
+	# - NDH_LOG_HINT_STREAM_CMD
+	if [ "$#" -ne 1 ]; then
+		echo "[ndh::logger:hints:resolve] usage: ndh::logger:hints:resolve <tag>" >&2
+		return 1
+	fi
+
+	local tag="$1"
+	local os_name
+	os_name="$(uname -s 2>/dev/null || echo unknown)"
+
+	case "$os_name" in
+	Darwin)
+		NDH_LOG_HINT_SHOW_LABEL="macOS unified log (recent)"
+		NDH_LOG_HINT_STREAM_LABEL="macOS unified log (follow)"
+		NDH_LOG_HINT_SHOW_CMD="log show --style compact --last 15m --predicate 'eventMessage CONTAINS \"[$tag]\"'"
+		NDH_LOG_HINT_STREAM_CMD="log stream --style compact --predicate 'eventMessage CONTAINS \"[$tag]\"'"
+		;;
+	*)
+		NDH_LOG_HINT_SHOW_LABEL="journald (recent)"
+		NDH_LOG_HINT_STREAM_LABEL="journald (follow)"
+		NDH_LOG_HINT_SHOW_CMD="journalctl -t '$tag' --since '15 min ago' -o short-precise --no-pager"
+		NDH_LOG_HINT_STREAM_CMD="journalctl -t '$tag' -f -o short-precise"
+		;;
+	esac
+}
+
 ndh::logger:streams:configure-redirect() {
 	local tag="$1"
 
@@ -176,7 +208,11 @@ ndh::logger:command:run() {
 	local tag="$1"
 	shift
 
+	ndh::logger:hints:resolve "$tag"
+
 	echo "[$tag] ndh::logger:command:starting logged command: \"${caller_src} ${*:2}\" with PID $$"
+	echo "[$tag] ndh::logger:command:${NDH_LOG_HINT_SHOW_LABEL}: ${NDH_LOG_HINT_SHOW_CMD}"
+	echo "[$tag] ndh::logger:command:${NDH_LOG_HINT_STREAM_LABEL}: ${NDH_LOG_HINT_STREAM_CMD}"
 
 	# Keep a handle to original stderr so we can always emit critical notices to
 	# the invoking console, even after output redirection to logger/file sinks.

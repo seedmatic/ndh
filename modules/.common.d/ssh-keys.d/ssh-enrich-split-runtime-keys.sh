@@ -18,7 +18,7 @@ main() {
 	local hostIdent="${5:?host ident required}"
 	local decryptedSSHKeysYamlPath="${6:?decrypted ssh keys yaml path required}"
 	local generatedKeysYamlPath="${7:?generated keys yaml path required}"
-	local hostsCatalogCsv="${8:-}"
+	local inventoryHostsCsv="${8:-}"
 	local profileOwnerName="${9:?profile owner name required}"
 	local splitKeysDir="${10:?split keys dir required}"
 	local generatedSystemKeysYamlPath="${11:?generated system keys yaml path required}"
@@ -46,7 +46,7 @@ main() {
 		"$hostIdent" \
 		"$decryptedSSHKeysYamlPath" \
 		"$generatedKeysYamlPath" \
-		"$hostsCatalogCsv" \
+		"$inventoryHostsCsv" \
 		"$profileOwnerName"
 
 	"$bashBin" "$splitScript" \

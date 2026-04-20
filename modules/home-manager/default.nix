@@ -62,8 +62,8 @@ let
       null;
 
   hostCatalogEntries =
-    if ndhArgs ? catalog && ndhArgs.catalog ? hosts && effectiveHostName != null then
-      lib.attrByPath [ effectiveHostName ] [ ] ndhArgs.catalog.hosts
+    if ndhArgs ? inventory && ndhArgs.inventory ? hosts && effectiveHostName != null then
+      lib.attrByPath [ effectiveHostName ] [ ] ndhArgs.inventory.hosts
     else
       [ ];
 

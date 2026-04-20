@@ -74,14 +74,14 @@ main() {
     UPDATED_AT="$updated_at" \
     yq --null-input eval '
       {
-        required: (strenv(REQUIRED) == "true"),
-        reason: strenv(REASON),
-        server_key_name: strenv(SERVER_KEY_NAME),
-        expected_pub: strenv(EXPECTED_PUB),
-        system_host_key_pub: strenv(SYSTEM_HOST_KEY_PUB),
-        expected_fingerprint: strenv(EXPECTED_FP),
-        system_fingerprint: strenv(SYSTEM_FP),
-        updated_at: strenv(UPDATED_AT)
+        "required": (strenv(REQUIRED) == "true"),
+        "reason": strenv(REASON),
+        "server_key_name": strenv(SERVER_KEY_NAME),
+        "expected_pub": strenv(EXPECTED_PUB),
+        "system_host_key_pub": strenv(SYSTEM_HOST_KEY_PUB),
+        "expected_fingerprint": strenv(EXPECTED_FP),
+        "system_fingerprint": strenv(SYSTEM_FP),
+        "updated_at": strenv(UPDATED_AT)
       }
     ' >"$tmp_state"
 

@@ -3,6 +3,7 @@
   pkgs,
   lib,
   catalog,
+  inventory,
   ...
 }:
 let
@@ -46,15 +47,8 @@ let
   generatedSystemKeysYamlPath = "${splitKeysDir}/system.yaml";
   generatedProfileKeysYamlPath = "${splitKeysDir}/profiles/${sshKeyProfileName}.yaml";
 
-  hostsCatalog =
-    let
-      entries = builtins.readDir ../../hosts;
-      hostDirs = lib.filterAttrs (
-        name: type: type == "directory" && builtins.pathExists (../../hosts + "/${name}/flake.nix")
-      ) entries;
-    in
-    lib.attrNames hostDirs;
-  hostsCatalogCsv = lib.concatStringsSep "," hostsCatalog;
+  inventoryHostNames = builtins.attrNames (inventory.hosts or { });
+  inventoryHostsCsv = lib.concatStringsSep "," inventoryHostNames;
 
   catalogUsers = if catalog ? users then catalog.users else { };
   profileOwnerName =
@@ -111,7 +105,7 @@ in
       "${hostIdent}" \
       "${decryptedSSHKeysYamlPath}" \
       "${generatedKeysYamlPath}" \
-      "${hostsCatalogCsv}" \
+      "${inventoryHostsCsv}" \
       "${profileOwnerName}" \
       "${splitKeysDir}" \
       "${generatedSystemKeysYamlPath}" \

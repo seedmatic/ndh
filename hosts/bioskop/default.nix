@@ -3,6 +3,7 @@ let
     hostName = "bioskop";
     tailnet = { };
     vmProvider = "tart";
+    nixosBootstrapDebug = false;
   };
 
   darwinProfile = {
@@ -33,7 +34,7 @@ let
         # Teleport removed - using Headscale for internal network
       ];
       config = {
-        # Enable rescue tooling for this host (default is off)
+        # Enable rescue tooling for this host when needed (default is off)
         # rescue.enable = true;
 
         # Sign locally produced store paths so peer hosts can trust nix copy --from ssh-ng://bioskop

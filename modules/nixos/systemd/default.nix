@@ -50,7 +50,7 @@ in
   options.rescue.enable = lib.mkOption {
     type = lib.types.bool;
     default = false;
-    description = "Enable rescue-mode tooling and units (off by default; enable per-host).";
+    description = "Enable rescue-mode tooling and units (off by default; enable per-host if needed).";
   };
 
   imports = [

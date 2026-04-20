@@ -145,7 +145,7 @@ main() {
   ln -sf "$host_priv" "${effective_home}/.lima/_config/user"
 
   : "Resolve NixOS disk image and update GC-root link"
-  img_descriptor="@imageDescriptorPath@"
+  img_manifest="@imageManifestPath@"
   img_store="@imageStorePath@"
   img_src="@imageSourcePath@"
   img_dst="@imageTargetPath@"
@@ -174,32 +174,32 @@ main() {
   resolved_ref="${image_flake_path}/hosts/@effectiveHostName@#${image_flake_attr}"
   resolved_out=""
   resolved_img=""
-  descriptor_img=""
+  manifest_img=""
   selected_img=""
   selected_source=""
 
-  if [ -n "$img_descriptor" ] && [ -f "$img_descriptor" ]; then
-    descriptor_dir="$(dirname "$img_descriptor")"
-    descriptor_image_path="$(awk -F': *' '$1 == "imagePath" { print $2; exit }' "$img_descriptor" | sed -e 's/^"//' -e 's/"$//')"
-    descriptor_source_out="$(awk -F': *' '$1 == "sourceOutPath" { print $2; exit }' "$img_descriptor" | sed -e 's/^"//' -e 's/"$//')"
+  if [ -n "$img_manifest" ] && [ -f "$img_manifest" ]; then
+    manifest_dir="$(dirname "$img_manifest")"
+    manifest_image_path="$(awk -F': *' '$1 == "imagePath" { print $2; exit }' "$img_manifest" | sed -e 's/^"//' -e 's/"$//')"
+    manifest_source_out="$(awk -F': *' '$1 == "sourceOutPath" { print $2; exit }' "$img_manifest" | sed -e 's/^"//' -e 's/"$//')"
 
-    if [ -n "$descriptor_image_path" ]; then
-      if [[ "$descriptor_image_path" = /* ]]; then
-        descriptor_img="$descriptor_image_path"
+    if [ -n "$manifest_image_path" ]; then
+      if [[ "$manifest_image_path" = /* ]]; then
+        manifest_img="$manifest_image_path"
       else
-        descriptor_img="${descriptor_dir}/${descriptor_image_path}"
+        manifest_img="${manifest_dir}/${manifest_image_path}"
       fi
 
-      if [ ! -f "$descriptor_img" ] && [ -n "$descriptor_source_out" ] && [ -f "${descriptor_source_out}/${descriptor_image_path}" ]; then
-        descriptor_img="${descriptor_source_out}/${descriptor_image_path}"
+      if [ ! -f "$manifest_img" ] && [ -n "$manifest_source_out" ] && [ -f "${manifest_source_out}/${manifest_image_path}" ]; then
+        manifest_img="${manifest_source_out}/${manifest_image_path}"
       fi
     fi
   fi
 
-  if [ -n "$descriptor_img" ] && [ -f "$descriptor_img" ]; then
-    echo "[limaConfig] resolved image via descriptor: $img_descriptor -> $descriptor_img"
-    selected_img="$descriptor_img"
-    selected_source="descriptor"
+  if [ -n "$manifest_img" ] && [ -f "$manifest_img" ]; then
+    echo "[limaConfig] resolved image via manifest: $img_manifest -> $manifest_img"
+    selected_img="$manifest_img"
+    selected_source="manifest"
   elif [ -n "$img_store" ] && [ -f "$img_store" ]; then
     echo "[limaConfig] using store-pinned image: $img_store"
     selected_img="$img_store"
@@ -225,7 +225,7 @@ main() {
   if [ -z "$selected_img" ] && ([ -L "$img_dst" ] || [ -f "$img_dst" ]); then
     echo "[limaConfig][INFO] keeping existing image target at $img_dst"
   elif [ -z "$selected_img" ]; then
-    echo "[limaConfig][ERROR] unable to resolve disk image (descriptor=$img_descriptor, store=$img_store, ref=$resolved_ref, source=$img_src)"
+    echo "[limaConfig][ERROR] unable to resolve disk image (manifest=$img_manifest, store=$img_store, ref=$resolved_ref, source=$img_src)"
   fi
 
   if [ -n "$selected_img" ] && [ -f "$selected_img" ]; then

@@ -13,19 +13,16 @@ main() {
     fi
   }
 
-  local platform_log_show_label platform_log_show_cmd
-  local platform_log_stream_label platform_log_stream_cmd
-  platform_log_show_label="@postActivationLogShowLabel@"
-  platform_log_show_cmd="@postActivationLogShowCmd@"
-  platform_log_stream_label="@postActivationLogStreamLabel@"
-  platform_log_stream_cmd="@postActivationLogStreamCmd@"
+  local logger_tag
+  logger_tag="@loggerTag@"
 
   emit_platform_log_hints() {
-    if [ -n "$platform_log_show_cmd" ]; then
-      emit_notice "[post-activation] ${platform_log_show_label}: ${platform_log_show_cmd}"
+    ndh::logger:hints:resolve "$logger_tag"
+    if [ -n "${NDH_LOG_HINT_SHOW_CMD:-}" ]; then
+      emit_notice "[post-activation] ${NDH_LOG_HINT_SHOW_LABEL}: ${NDH_LOG_HINT_SHOW_CMD}"
     fi
-    if [ -n "$platform_log_stream_cmd" ]; then
-      emit_notice "[post-activation] ${platform_log_stream_label}: ${platform_log_stream_cmd}"
+    if [ -n "${NDH_LOG_HINT_STREAM_CMD:-}" ]; then
+      emit_notice "[post-activation] ${NDH_LOG_HINT_STREAM_LABEL}: ${NDH_LOG_HINT_STREAM_CMD}"
     fi
   }
 
@@ -65,11 +62,11 @@ main() {
       "$HM_ACTIVATE"
 
     emit_notice "[post-activation] Home Manager activation finished."
-    if [ -n "$platform_log_show_cmd" ]; then
-      emit_notice "[post-activation] To inspect activation logs now, run: ${platform_log_show_cmd}"
+    if [ -n "${NDH_LOG_HINT_SHOW_CMD:-}" ]; then
+      emit_notice "[post-activation] To inspect activation logs now, run: ${NDH_LOG_HINT_SHOW_CMD}"
     fi
-    if [ -n "$platform_log_stream_cmd" ]; then
-      emit_notice "[post-activation] To follow activation logs live, run: ${platform_log_stream_cmd}"
+    if [ -n "${NDH_LOG_HINT_STREAM_CMD:-}" ]; then
+      emit_notice "[post-activation] To follow activation logs live, run: ${NDH_LOG_HINT_STREAM_CMD}"
     fi
   else
     echo "home-manager activation package missing for @userName@, skipping" >&2

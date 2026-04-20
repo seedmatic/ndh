@@ -41,15 +41,15 @@ key::authorityHostNames() {
 	hostNames[$(hostname -s)]=1
 	hostNames[$(hostname -s).${domain}]=1
 
-	if [[ -n "${hostsCatalogCsv:-}" ]]; then
-		local catalogHost
-		IFS=',' read -r -a catalogHosts <<<"${hostsCatalogCsv}"
-		for catalogHost in "${catalogHosts[@]}"; do
-			[[ -n "${catalogHost}" ]] || continue
-			hostNames["${catalogHost}"]=1
-			hostNames["${catalogHost}.lan"]=1
-			hostNames["${catalogHost}.local"]=1
-			hostNames["${catalogHost}.${domain}"]=1
+	if [[ -n "${inventoryHostsCsv:-}" ]]; then
+		local inventoryHost
+		IFS=',' read -r -a inventoryHosts <<<"${inventoryHostsCsv}"
+		for inventoryHost in "${inventoryHosts[@]}"; do
+			[[ -n "${inventoryHost}" ]] || continue
+			hostNames["${inventoryHost}"]=1
+			hostNames["${inventoryHost}.lan"]=1
+			hostNames["${inventoryHost}.local"]=1
+			hostNames["${inventoryHost}.${domain}"]=1
 		done
 	fi
 
@@ -442,8 +442,8 @@ main() {
 	shift
 	outputFile="$1"
 	shift
-	declare -g hostsCatalogCsv
-	hostsCatalogCsv="${1:-}"
+	declare -g inventoryHostsCsv
+	inventoryHostsCsv="${1:-}"
 	shift || true
 	local targetUser
 	targetUser="${1:-${USER:-}}"

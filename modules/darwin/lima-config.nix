@@ -6,6 +6,7 @@
   pkgs,
   lib,
   catalog,
+  inventory,
   ndh,
   ...
 }:
@@ -39,17 +40,17 @@ let
       profileHost.hostName;
 
   profileName = config.profile.name;
-  hostCatalogEntries =
+  hostInventoryEntries =
     lib.attrByPath
       [
         "hosts"
         effectiveHostName
       ]
       [ ]
-      catalog;
+      inventory;
   hostIsVmOnly =
-    hostCatalogEntries != [ ]
-    && lib.all (entry: (entry ? form) && entry.form == "vm") hostCatalogEntries;
+    hostInventoryEntries != [ ]
+    && lib.all (entry: (entry ? form) && entry.form == "vm") hostInventoryEntries;
   limaRuntimeSupported = !hostIsVmOnly;
   # Generate unique host byte from hostname hash (matches existing Lima VM)
   # Takes first byte of SHA256 hash of hostname
@@ -66,8 +67,8 @@ let
   netplanCatalog = catalog.networks.rke2labNetplan;
 
   # Stable image staging paths
-  imageDescriptorPath =
-    if cfg.imageDescriptorPath == null then "" else toString cfg.imageDescriptorPath;
+  imageManifestPath =
+    if cfg.imageManifestPath == null then "" else toString cfg.imageManifestPath;
   imageStorePath = if cfg.imageStorePath == null then "" else toString cfg.imageStorePath;
   imageSourcePath = cfg.imageSourcePath;
   imageTargetPath = cfg.imageTargetPath;
@@ -106,7 +107,7 @@ let
         limaConfigYamlHeadless = limaConfigYamlHeadless;
         limaConfigYamlGui = limaConfigYamlGui;
         limaRunScript = limaRunScript;
-        imageDescriptorPath = imageDescriptorPath;
+        imageManifestPath = imageManifestPath;
         imageStorePath = imageStorePath;
         imageSourcePath = imageSourcePath;
         imageTargetPath = imageTargetPath;
@@ -378,12 +379,12 @@ let
 in
 {
   options.lima.configGenerator = {
-    imageDescriptorPath = mkOption {
+    imageManifestPath = mkOption {
       type = types.nullOr types.path;
       default = null;
       description = ''
-        Optional path to a disk-image descriptor directory/output containing `descriptor.yaml`.
-        When provided, activation resolves the image using descriptor metadata (`imagePath`) first.
+        Optional path to a disk-image manifest output containing `manifest.yaml`.
+        When provided, activation resolves the image using manifest metadata (`imagePath`) first.
       '';
     };
 

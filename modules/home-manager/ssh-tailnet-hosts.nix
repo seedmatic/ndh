@@ -13,11 +13,12 @@
 let
   # Get username from profile configuration
   catalog = config._module.specialArgs.ndh.catalog;
+  inventory = config._module.specialArgs.ndh.inventory;
   profile = config._module.specialArgs.profile;
   userName = profile.user.name; # Use profile-based username (nxmatic for committed profile)
   committedUserName = catalog.users.committed.name;
   workUserName = catalog.users.work.name;
-  catalogHostNames = builtins.attrNames (catalog.hosts or { });
+  inventoryHostNames = builtins.attrNames (inventory.hosts or { });
   sshUserOverrides = {
     bioskop = committedUserName;
     nikopol = workUserName;
@@ -97,6 +98,6 @@ in
         Host ${host}-ts
           HostName ${tailnetAlias host}
       ''
-    ) catalogHostNames}
+    ) inventoryHostNames}
   '';
 }

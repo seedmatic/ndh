@@ -8,9 +8,11 @@ main() {
 	set -euo pipefail
 
 	local ndh_nix_cli_args_raw="${NDH_NIX_CLI_ARGS:--L -v -v}"
+	local ndh_tart_factory_reset_raw="${NDH_TART_FACTORY_RESET:-0}"
 	local -a ndh_nix_cli_args=()
 	local profile_user="@profileUser@"
 	local profile_group=""
+	local factory_reset=0
 
 	if id -u "$profile_user" >/dev/null 2>&1; then
 		profile_group="$(id -gn "$profile_user" 2>/dev/null || true)"
@@ -18,6 +20,16 @@ main() {
 
 	if [[ -n "${ndh_nix_cli_args_raw}" ]]; then
 		read -r -a ndh_nix_cli_args <<<"${ndh_nix_cli_args_raw}"
+	fi
+
+	tart:bool:is-true() {
+		local value="${1:-}"
+		value="${value,,}"
+		[[ "$value" == "1" || "$value" == "true" || "$value" == "yes" || "$value" == "on" ]]
+	}
+
+	if tart:bool:is-true "$ndh_tart_factory_reset_raw"; then
+		factory_reset=1
 	fi
 
 	tart:fs:path:relink() {
@@ -119,11 +131,15 @@ main() {
 		tart_env_path="$(dirname "$diskutil_bin"):$(dirname "$hdiutil_bin"):/usr/bin:/bin:/usr/sbin:/sbin"
 	}
 
+	tart:diskutil:run() {
+		PATH="$tart_env_path" "$diskutil_bin" "$@" 1>&2
+	}
+
 	: "start $(date) host=@effectiveHostName@ user=@profileUser@"
 
 	tart:runtime:home:resolve
 
-	raw_descriptor="@rawImageDescriptorPath@"
+	raw_manifest="@rawImageManifestPath@"
 	raw_store="@rawImageStorePath@"
 	raw_source="@rawImageSourcePath@"
 	raw_target="@rawImageTargetPath@"
@@ -221,11 +237,11 @@ main() {
 		else
 			: "using shared bootstrap raw image for data disk creation: $disk"
 		fi
-		"$diskutil_bin" image create from --format ASIF "$tmp_raw" "$disk"
+		tart:diskutil:run image create from --format ASIF "$tmp_raw" "$disk"
 
 		if [[ "$size_gib" =~ ^[0-9]+$ ]] && ((size_gib > initial_size_gib)); then
 			: "resizing data disk ASIF to target size: $disk (${size_gib}GiB)"
-			if ! "$diskutil_bin" image resize --size "${size_gib}g" "$disk"; then
+			if ! tart:diskutil:run image resize --size "${size_gib}g" "$disk"; then
 				: "[tartConfig][ERROR] failed to resize ASIF data disk to ${size_gib}GiB: $disk"
 				exit 1
 			fi
@@ -314,43 +330,64 @@ main() {
 		trap - RETURN
 	}
 
+	tart:vm:factory-reset:apply() {
+		if ((factory_reset == 0)); then
+			return 0
+		fi
+
+		: "[tartConfig][WARN] factory reset requested (NDH_TART_FACTORY_RESET=${ndh_tart_factory_reset_raw})"
+		: "[tartConfig][WARN] removing existing Tart root/data images before rematerialization"
+
+		tart:vm:run stop "$vm_name" >/dev/null 2>&1 || true
+
+		rm -f "$tart_vm_disk" 2>/dev/null || true
+		rm -f "$asif_target" 2>/dev/null || true
+		rm -f "$raw_target" 2>/dev/null || true
+
+		for disk in "${tart_data_disks[@]}"; do
+			rm -f "$disk" 2>/dev/null || true
+		done
+
+		: "[tartConfig][INFO] factory reset cleanup completed for vm=$vm_name"
+	}
+
 	tart:image:raw:resolve() {
 		resolved_ref="${image_flake_path}/hosts/@effectiveHostName@#${image_flake_attr}"
 		selected_raw=""
 		selected_source=""
-		descriptor_img=""
-		descriptor_image_path=""
-		descriptor_source_out=""
+		manifest_img=""
+		manifest_image_path=""
+		manifest_source_out=""
 
-		if [ -n "$raw_descriptor" ] && [ -f "$raw_descriptor" ]; then
-			descriptor_dir="$(dirname "$raw_descriptor")"
+		if [ -n "$raw_manifest" ] && [ -f "$raw_manifest" ]; then
+			manifest_dir="$(dirname "$raw_manifest")"
 			# shellcheck disable=SC1090
 			source <(
 				yq -p=yaml -o=shell '
           {
-            descriptor_image_path: (.imagePath // ""),
-            descriptor_source_out: (.sourceOutPath // "")
+            manifest_image_path: (.imagePath // ""),
+            manifest_source_out: (.sourceOutPath // "")
           }
-        ' "$raw_descriptor" 2>/dev/null || true
+        ' "$raw_manifest" 2>/dev/null || true
 			)
 
-			if [ -n "${descriptor_image_path:-}" ]; then
-				if [[ "$descriptor_image_path" = /* ]]; then
-					descriptor_img="$descriptor_image_path"
+			if [ -n "${manifest_image_path:-}" ]; then
+				if [[ "$manifest_image_path" = /* ]]; then
+					manifest_img="$manifest_image_path"
 				else
-					descriptor_img="${descriptor_dir}/${descriptor_image_path}"
+					manifest_img="${manifest_dir}/${manifest_image_path}"
 				fi
 
-				if [ ! -f "$descriptor_img" ] && [ -n "${descriptor_source_out:-}" ] && [ -f "${descriptor_source_out}/${descriptor_image_path}" ]; then
-					descriptor_img="${descriptor_source_out}/${descriptor_image_path}"
+				if [ ! -f "$manifest_img" ] && [ -n "${manifest_source_out:-}" ] && [ -f "${manifest_source_out}/${manifest_image_path}" ]; then
+					manifest_img="${manifest_source_out}/${manifest_image_path}"
 				fi
 			fi
 		fi
 
-		if [ -n "$descriptor_img" ] && [ -f "$descriptor_img" ]; then
-			: "resolved raw image via descriptor: $raw_descriptor -> $descriptor_img"
-			selected_raw="$descriptor_img"
-			selected_source="descriptor"
+		if [ -n "$manifest_img" ] && [ -f "$manifest_img" ]; then
+			: "resolved raw image via manifest: $raw_manifest -> $manifest_img"
+			selected_raw="$manifest_img"
+			selected_source="manifest"
 		elif [ -n "$raw_store" ] && [ -f "$raw_store" ]; then
 			: "using store-pinned raw image: $raw_store"
 			selected_raw="$raw_store"
@@ -374,7 +411,7 @@ main() {
 			selected_raw="$raw_target"
 			selected_source="existing-target"
 		elif [ -z "$selected_raw" ]; then
-			: "[tartConfig][ERROR] unable to resolve raw disk image (descriptor=$raw_descriptor, store=$raw_store, ref=$resolved_ref, source=$raw_source)"
+			: "[tartConfig][ERROR] unable to resolve raw disk image (manifest=$raw_manifest, store=$raw_store, ref=$resolved_ref, source=$raw_source)"
 			exit 1
 		fi
 
@@ -400,7 +437,7 @@ main() {
 		rm -f "$working_asif"
 
 		: "converting raw -> ASIF with diskutil image create (single-file mode, bin=$diskutil_bin, output=$working_asif)"
-		"$diskutil_bin" image create from --format ASIF "$selected_raw" "$working_asif"
+		tart:diskutil:run image create from --format ASIF "$selected_raw" "$working_asif"
 
 		asif_output=""
 		for candidate in "$working_asif" "${working_asif}.asif" "${working_asif}.dmg"; do
@@ -457,7 +494,7 @@ EOF
 			fi
 
 			: "resizing ASIF root image to ${target_disk_size}: ${asif_output}"
-			if ! "$diskutil_bin" image resize --size "$target_disk_size" "$asif_output"; then
+			if ! tart:diskutil:run image resize --size "$target_disk_size" "$asif_output"; then
 				: "[tartConfig][ERROR] failed to resize ASIF image with diskutil to ${target_disk_size}: ${asif_output}"
 				exit 1
 			fi
@@ -498,6 +535,7 @@ EOF
 	}
 
 	tart:image:targets:normalize
+	tart:vm:factory-reset:apply
 	tart:image:targets:ensure-gcroot
 	tart:vm:data-disks:ensure
 	tart:image:raw:resolve

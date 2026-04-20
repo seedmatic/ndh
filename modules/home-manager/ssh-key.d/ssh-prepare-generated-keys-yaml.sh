@@ -9,7 +9,7 @@ main() {
 	alternateRuntimeSSHKeysYamlPath="@alternateRuntimeSSHKeysYamlPath@"
 	sshKeyProfileName="@sshKeyProfileName@"
 	hostIdent="@hostIdent@"
-	hostsCatalogCsv="@hostsCatalogCsv@"
+	inventoryHostsCsv="@inventoryHostsCsv@"
 	userName="@userName@"
 	sourceProfileKeysYamlPath="@sourceProfileKeysYamlPath@"
 
@@ -83,7 +83,7 @@ main() {
 			"$hostIdent" \
 			"$selected_runtime_yaml" \
 			"$generated_keys_yaml" \
-			"$hostsCatalogCsv" \
+			"$inventoryHostsCsv" \
 			"$userName"
 
 		"@bash@" "@sshSplitKeysYamlScript@" \

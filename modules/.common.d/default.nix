@@ -91,10 +91,6 @@ let
     userHome = userHome;
     logger = loggerScript;
     loggerTag = loggerTagHmPost;
-    postActivationLogShowLabel = config.activation.postActivationLogShowLabel;
-    postActivationLogShowCmd = config.activation.postActivationLogShowCmd;
-    postActivationLogStreamLabel = config.activation.postActivationLogStreamLabel;
-    postActivationLogStreamCmd = config.activation.postActivationLogStreamCmd;
   };
 
   postActivationScript = pkgs.runCommand (prefixStoreName "hm-post-activation.sh") { } ''

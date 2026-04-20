@@ -10,6 +10,7 @@ let
   specialArgs = config._module.specialArgs;
   ndh = config._module.specialArgs.ndh;
   catalog = lib.attrByPath [ "catalog" ] { } ndh;
+  inventory = lib.attrByPath [ "inventory" ] { } ndh;
   profileName = profile.name;
   sshKeyProfileName =
     if profile ? sshKeyProfileName && profile.sshKeyProfileName != null then
@@ -44,8 +45,8 @@ let
       profile.host.hostName
     else
       "darwin";
-  catalogHostNames = if catalog ? hosts then builtins.attrNames catalog.hosts else [ ];
-  hostsCatalogCsv = lib.concatStringsSep "," catalogHostNames;
+  inventoryHostNames = if inventory ? hosts then builtins.attrNames inventory.hosts else [ ];
+  inventoryHostsCsv = lib.concatStringsSep "," inventoryHostNames;
   rootBringupProfileDir = "/nix/var/nix/profiles/per-user/root/io-nxmatic-nix-darwin-home-bringup-runtime";
   # Effective YAML path consumed by ssh-add-keys/launchd.
   effectiveSSHKeysYamlPath = "${perUserKeysDir}.yaml";
@@ -173,7 +174,7 @@ in
             alternateRuntimeSSHKeysYamlPath = alternateRuntimeSSHKeysYamlPath;
             sshKeyProfileName = sshKeyProfileName;
             hostIdent = hostIdent;
-            hostsCatalogCsv = hostsCatalogCsv;
+            inventoryHostsCsv = inventoryHostsCsv;
             userName = userName;
             sourceProfileKeysYamlPath = sourceProfileKeysYamlPath;
           };

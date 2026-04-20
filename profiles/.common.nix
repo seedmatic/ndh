@@ -4,6 +4,7 @@
   pkgs,
   lib,
   catalog,
+  inventory,
   ...
 }:
 
@@ -16,6 +17,13 @@ let
   catalogResolved =
     let
       injected = catalog;
+    in
+    assert injected != null;
+    injected;
+  # Capture injected inventory in a non-recursive binding, then assert presence (@codebase)
+  inventoryResolved =
+    let
+      injected = inventory;
     in
     assert injected != null;
     injected;
@@ -84,7 +92,7 @@ in
                     "bioskop"
                     "nikopol"
                   ];
-                  description = "Host keys from catalog.hosts to pull builder endpoints from (e.g., include bioskop so nikopol offloads to bioskop's builders). If empty, defaults to the current host only.";
+                  description = "Host keys from inventory.hosts to pull builder endpoints from (e.g., include bioskop so nikopol offloads to bioskop's builders). If empty, defaults to the current host only.";
                 };
                 remoteBuilders = lib.mkOption {
                   type = lib.types.listOf lib.types.attrs;
@@ -214,7 +222,7 @@ in
                       };
                     }
                   ];
-                  description = "Catalog of managed hosts and their builder endpoints with physical characteristics (platform/form) and VM details (kind/manager). When set and remoteBuilders is empty, the distributed-builds module will use this catalog; features are derived automatically.";
+                  description = "Inventory-derived list of managed hosts and their builder endpoints with physical characteristics (platform/form) and VM details (kind/manager). When set and remoteBuilders is empty, the distributed-builds module will use this list; features are derived automatically.";
                 };
                 tailnet = lib.mkOption {
                   type = lib.types.submodule {
@@ -308,12 +316,12 @@ in
       builtins.toPath "/${defaultUserHome}/${config.profile.user.name}"
     );
 
-    # Default builder catalog from all catalog hosts
-    profile.host.preferredBuilderHosts = lib.mkDefault (builtins.attrNames catalogResolved.hosts);
+    # Default builder catalog from all inventory hosts
+    profile.host.preferredBuilderHosts = lib.mkDefault (builtins.attrNames inventoryResolved.hosts);
 
     profile.host.builderCatalog = lib.mkDefault (
       let
-        wanted = builtins.attrNames catalogResolved.hosts;
+        wanted = builtins.attrNames inventoryResolved.hosts;
         addDefaultFeatures =
           host: entry:
           let
@@ -373,7 +381,7 @@ in
           };
         entriesFor =
           host:
-          if builtins.hasAttr host catalogResolved.hosts then
+          if builtins.hasAttr host inventoryResolved.hosts then
             map (addDefaultFeatures host) (
               lib.filter (
                 e:
@@ -381,7 +389,7 @@ in
                   hasBuilder = e.builder != null;
                 in
                 hasBuilder
-              ) catalogResolved.hosts.${host}
+              ) inventoryResolved.hosts.${host}
             )
           else
             [ ];

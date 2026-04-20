@@ -1,11 +1,4 @@
-{
-  config,
-  pkgs,
-  lib,
-  hostProfile ? { },
-  catalog,
-  ...
-}:
+{ config, pkgs, lib, hostProfile ? { }, catalog, ... }:
 
 let
   kernelModules = [
@@ -51,10 +44,13 @@ let
   nixosBootLoader = hostProfile.nixosBootLoader or "grub";
   useSystemdBoot = nixosBootLoader == "systemd-boot";
   useGrub = !useSystemdBoot;
-  isTartProvider = (lib.attrByPath [ "ndh" "vm" "provider" ] "lima" config) == "tart";
-  bootstrapMode = hostImageMode == "bootstrap";
-  # Canonical behavior: bootstrap image mode implies bootstrap debug profile.
-  bootstrapDebug = bootstrapMode;
+  isTartProvider = (lib.attrByPath [ "ndh" "vm" "provider" ] "lima" config)
+    == "tart";
+  bootstrapModeByImage = hostImageMode == "bootstrap";
+  # Optional host override for debug verbosity.
+  bootDebug = hostProfile.nixosBootstrapDebug or bootstrapModeByImage;
+  # Canonical rule: bootstrap debug implies bootstrap mode.
+  bootstrapMode = bootstrapModeByImage || bootDebug;
   grubDebugKernelParams = lib.concatStringsSep " " ([
     "init=/nix/var/nix/profiles/system/init"
     "console=hvc0"
@@ -72,7 +68,7 @@ let
     "udev.log_level=err"
     "boot.trace"
   ]);
-  grubExerciseEntries = lib.optionalString bootstrapDebug ''
+  grubExerciseEntries = lib.optionalString bootDebug ''
     submenu "NixOS boot exercises (@codebase)" {
       menuentry "Exercise: root=LABEL=nixos" {
         search --set=rootfs --label nixos
@@ -128,8 +124,7 @@ let
     ./incus.nix
     ./podman.nix
   ];
-in
-{
+in {
   options.consoleLogging = {
     forwardToConsole = lib.mkOption {
       type = lib.types.bool;
@@ -143,19 +138,15 @@ in
       description = "Kernel/console log level (0=emerg, 7=debug).";
     };
   };
-  imports =
-    bootstrapRequiredImports
+  imports = bootstrapRequiredImports
     ++ (lib.optionals (!bootstrapMode) runtimeOnlyImports)
     ++ (lib.optionals (!bootstrapMode) [
       #(import ./remote-nix-store.nix { inherit config pkgs lib; })
       #(import ./nix-snapshotter.nix { inherit config pkgs lib user; })
       # Explicitly disable GPG in NixOS - agent is forwarded from Darwin host
-      (
-        { config, ... }:
-        {
-          hm.imports = config.hm.imports ++ [ ./enable-gpg-false.nix ];
-        }
-      )
+      ({ config, ... }: {
+        hm.imports = config.hm.imports ++ [ ./enable-gpg-false.nix ];
+      })
     ]);
 
   config = {
@@ -171,9 +162,11 @@ in
     ndh.etcBackup.enable = lib.mkForce false;
 
     activation.postActivationLogShowLabel = "journald (last 2h)";
-    activation.postActivationLogShowCmd = "journalctl --since '2 hours ago' -o short-precise -t darwin.activationScripts -t home-manager.activationScripts";
+    activation.postActivationLogShowCmd =
+      "journalctl --since '2 hours ago' -o short-precise -t darwin.activationScripts -t home-manager.activationScripts";
     activation.postActivationLogStreamLabel = "journald (follow)";
-    activation.postActivationLogStreamCmd = "journalctl -f -o short-precise -t darwin.activationScripts -t home-manager.activationScripts";
+    activation.postActivationLogStreamCmd =
+      "journalctl -f -o short-precise -t darwin.activationScripts -t home-manager.activationScripts";
 
     # Provide POSIX-style compatibility path for scripts that expect /usr/bin/env.
     # Run as early as possible in activation to unblock downstream script shebangs.
@@ -188,47 +181,39 @@ in
       '';
     };
 
-    nix.settings = lib.mkMerge [
-      {
-        # Enable content-addressed derivations to reduce rebuild churn for identical outputs.
-        # We also disable auto-optimise-store for faster iterative builds; run `nix-store --optimise` manually when idle.
-        experimental-features = [
-          "nix-command"
-          "flakes"
-          "ca-derivations"
-        ];
-        auto-optimise-store = false; # Manual optimise recommended; improves build latency during development.
-        trusted-users = [
-          cfgUserName
-          "root"
-        ];
-        sandbox = false;
-        extra-sandbox-paths = [ "/dev/kvm" ];
+    nix.settings = lib.mkMerge [{
+      # Enable content-addressed derivations to reduce rebuild churn for identical outputs.
+      # We also disable auto-optimise-store for faster iterative builds; run `nix-store --optimise` manually when idle.
+      experimental-features = [ "nix-command" "flakes" "ca-derivations" ];
+      auto-optimise-store =
+        false; # Manual optimise recommended; improves build latency during development.
+      trusted-users = [ cfgUserName "root" ];
+      sandbox = false;
+      extra-sandbox-paths = [ "/dev/kvm" ];
 
-        # Cache settings with Fastly CDN for faster downloads
-        # Using 'substituters' (not 'extra-substituters') to control order
-        # Alternative caches (uncomment one to use):
-        # - "${cacheCatalog.nixos.substituter}"                                  # Official NixOS cache (default)
-        # - "${cacheCatalog.aseippFastly.substituter}"              # Fastly Cache v2 (recommended, faster) - currently active
-        # - "https://mirrors.tuna.tsinghua.edu.cn/nix-channels/store"  # Tsinghua University (China)
-        # - "https://mirrors.ustc.edu.cn/nix-channels/store"           # USTC (China)
-        # - "https://mirrors.bfsu.edu.cn/nix-channels/store"           # BFSU (China)
-        substituters = [
-          cacheCatalog.aseippFastly.substituter # Fastly Cache v2 (tried first)
-          cacheCatalog.nxmatic.substituter # nxmatic cache
-        ];
-        trusted-public-keys = [
-          cacheCatalog.nixos.publicKey # Required for mirrors
-          cacheCatalog.nxmatic.publicKey # nxmatic key
-        ];
-        # NOTE (@codebase): Rollback instructions:
-        #   - Remove "ca-derivations" from experimental-features.
-        #   - Set auto-optimise-store = true to restore inline dedup.
-        # Validation:
-        #   - Check a new build's store path naming stability when spec changes trivially.
-        #   - Run `nix-store --optimise --dry-run` after several builds to assess dedup benefit.
-      }
-    ];
+      # Cache settings with Fastly CDN for faster downloads
+      # Using 'substituters' (not 'extra-substituters') to control order
+      # Alternative caches (uncomment one to use):
+      # - "${cacheCatalog.nixos.substituter}"                                  # Official NixOS cache (default)
+      # - "${cacheCatalog.aseippFastly.substituter}"              # Fastly Cache v2 (recommended, faster) - currently active
+      # - "https://mirrors.tuna.tsinghua.edu.cn/nix-channels/store"  # Tsinghua University (China)
+      # - "https://mirrors.ustc.edu.cn/nix-channels/store"           # USTC (China)
+      # - "https://mirrors.bfsu.edu.cn/nix-channels/store"           # BFSU (China)
+      substituters = [
+        cacheCatalog.aseippFastly.substituter # Fastly Cache v2 (tried first)
+        cacheCatalog.nxmatic.substituter # nxmatic cache
+      ];
+      trusted-public-keys = [
+        cacheCatalog.nixos.publicKey # Required for mirrors
+        cacheCatalog.nxmatic.publicKey # nxmatic key
+      ];
+      # NOTE (@codebase): Rollback instructions:
+      #   - Remove "ca-derivations" from experimental-features.
+      #   - Set auto-optimise-store = true to restore inline dedup.
+      # Validation:
+      #   - Check a new build's store path naming stability when spec changes trivially.
+      #   - Run `nix-store --optimise --dry-run` after several builds to assess dedup benefit.
+    }];
 
     nix.extraOptions = ''
       !include /etc/nix/nix.custom.conf
@@ -250,22 +235,15 @@ in
           efiSupport = true;
           efiInstallAsRemovable = true;
           timeoutStyle = if bootstrapMode then "menu" else "countdown";
-          extraConfig =
-            grubSerialConsoleConfig
-            + lib.optionalString bootstrapDebug ''
+          extraConfig = grubSerialConsoleConfig
+            + lib.optionalString bootDebug ''
               # Pause in GRUB until an operator selects an entry.
               set timeout=-1
             '';
           extraEntries = grubExerciseEntries;
         };
-        timeout = lib.mkForce (
-          if bootstrapDebug then
-            15
-          else if bootstrapMode then
-            3
-          else
-            0
-        );
+        timeout = lib.mkForce
+          (if bootDebug then 15 else if bootstrapMode then 3 else 0);
       };
 
       kernelParams = lib.mkMerge [
@@ -280,41 +258,33 @@ in
           "logo.nologo"
           "rootwait"
           "rootdelay=5"
+          # Keep userspace status visible in bootstrap debugging sessions.
+          # /dev/console remains graphical (tty1), while journald forwarding
+          # mirrors logs to hvc0 for serial capture.
+          "systemd.log_target=console"
+          "systemd.log_level=info"
+          "systemd.journald.forward_to_console=1"
+          "systemd.journald.console=/dev/hvc0"
         ])
-        (lib.optionals bootstrapDebug [
+        (lib.optionals bootDebug [
           "loglevel=7"
           "ignore_loglevel"
           "rd.udev.log_level=err"
           "udev.log_level=err"
-          "boot.shell_on_fail"
-          # Enables `set -x` in stage-2 init script for exact command tracing.
+          #"boot.shell_on_fail"
           "boot.debugtrace"
           "boot.trace"
+          #"boot.debug1"
+          #"boot.debug1mounts"
+          "systemd.log_level=debug"
+          "systemd.log_target=console"
         ])
-        # Keep tty1 visible. For Tart provider, make ttyAMA0 the effective final
-        # console so `tart run --serial` PTY gets stage-2/systemd logs.
-        # For non-Tart providers, keep hvc0 as final console.
+        # Keep tty1 visible and final so /dev/console + on-screen boot/login
+        # stay on the graphical console. Keep hvc0 enabled for serial access.
+        # For non-Tart providers, keep the same ordering for consistency.
         # Also keep runtime debug overrides at the end so they win against
         # upstream defaults contributed by other modules (e.g. loglevel=0).
-        (lib.mkAfter (
-          (if isTartProvider then
-            [
-              "console=tty1"
-              "console=hvc0"
-              "console=ttyAMA0,115200n8"
-            ]
-          else
-            [
-              "console=tty1"
-              "console=hvc0"
-            ])
-          ++ (lib.optionals (!bootstrapMode) [
-            "loglevel=7"
-            "ignore_loglevel"
-            # Keep stage-2 command trace enabled while diagnosing PID1 exit 127.
-            "boot.debugtrace"
-          ])
-        ))
+        (lib.mkAfter ([ "console=hvc0" "console=tty1" ]))
       ];
 
       kernel.sysctl = {
@@ -325,17 +295,17 @@ in
       };
 
       loader.systemd-boot.enable = lib.mkForce useSystemdBoot;
-      loader.systemd-boot.configurationLimit = lib.mkIf useSystemdBoot (lib.mkDefault 8);
+      loader.systemd-boot.configurationLimit =
+        lib.mkIf useSystemdBoot (lib.mkDefault 8);
       loader.efi.canTouchEfiVariables = lib.mkForce false;
 
       # verbosity (default off; override per-host if needed)
-      consoleLogLevel =
-        if bootstrapDebug then
-          lib.mkForce 7
-        else if bootstrapMode then
-          lib.mkForce 4
-        else
-          lib.mkDefault consoleCfg.logLevel;
+      consoleLogLevel = if bootDebug then
+        lib.mkForce 7
+      else if bootstrapMode then
+        lib.mkForce 4
+      else
+        lib.mkDefault consoleCfg.logLevel;
       initrd = {
         inherit kernelModules supportedFilesystems;
 
@@ -370,7 +340,8 @@ in
 
     fileSystems = {
       "/boot" = {
-        device = lib.mkForce "/dev/vda1"; # /dev/disk/by-label/ESP in nixos-lima upstream
+        device = lib.mkForce
+          "/dev/vda1"; # /dev/disk/by-label/ESP in nixos-lima upstream
         fsType = "vfat";
         options = [
           "rw"
@@ -383,17 +354,12 @@ in
           "errors=remount-ro"
         ];
       };
-    }
-    // lib.mkIf (!config.disko.enableConfig) {
+    } // lib.mkIf (!config.disko.enableConfig) {
       "/" = {
         device = "/dev/disk/by-label/nixos";
         autoResize = true;
         fsType = "ext4";
-        options = [
-          "noatime"
-          "nodiratime"
-          "discard"
-        ];
+        options = [ "noatime" "nodiratime" "discard" ];
       };
       "/tmp" = {
         device = "/var/tmp";
@@ -407,33 +373,24 @@ in
       hostId = "deadbeef";
       # Canonical policy: firewall disabled on NixOS lab hosts.
       firewall.enable = lib.mkForce false;
-    }
-    // (lib.optionalAttrs (!bootstrapMode) {
+    } // (lib.optionalAttrs (!bootstrapMode) {
       mammoth-skate.enable = lib.mkDefault (!bootstrapMode);
     });
 
     # Remove or comment out the old networking block to avoid conflicts:
     # networking = { ... }
 
-    environment.systemPackages = [
-      pkgs.binutils
-      pkgs.disko
-    ]
-    ++ (lib.optionals (!bootstrapMode) (
-      with pkgs;
-      [
+    environment.systemPackages = [ pkgs.binutils pkgs.disko ]
+      ++ (lib.optionals (!bootstrapMode) (with pkgs; [
         autofs5 # Explicitly include autofs utilities @codebase
         zfs
         incus
         distrobuilder
         nssmdns # Ensure mDNS resolution via NSS @codebase
-      ]
-    ));
+      ]));
 
     # Ensure security wrappers are in PATH for all processes
-    environment.variables = {
-      PATH = lib.mkBefore [ "/run/wrappers/bin" ];
-    };
+    environment.variables = { PATH = lib.mkBefore [ "/run/wrappers/bin" ]; };
 
     # Services
     services.getty.autologinUser = "root";
@@ -461,7 +418,11 @@ in
 
     # Journald (console logging controls)
     services.journald.console = lib.mkForce "/dev/console";
-    services.journald.extraConfig = ''
+    services.journald.extraConfig = if bootstrapMode then ''
+      # Bootstrap mode: mirror journald to serial while keeping /dev/console.
+      ForwardToConsole=yes
+      MaxLevelConsole=info
+    '' else ''
       # Console forwarding disabled by default; set consoleLogging.forwardToConsole = true to write to /dev/console
     '';
 
@@ -472,32 +433,25 @@ in
     # Keep serial getty available on primary VZ console.
     # Let NixOS' native getty/autovt wiring manage tty1 to avoid unit collisions.
     systemd.services."serial-getty@hvc0".enable = lib.mkForce true;
-    systemd.services."serial-getty@ttyAMA0".enable = lib.mkForce true;
-    systemd.services."serial-getty@ttyS0".enable = lib.mkForce (!isTartProvider);
+    systemd.services."serial-getty@ttyAMA0".enable =
+      lib.mkForce (!isTartProvider);
+    systemd.services."serial-getty@ttyS0".enable =
+      lib.mkForce (!isTartProvider);
 
     # Preserve profile-provided user kind flags.
     # For normal users, do not force low Darwin-style IDs (<1000) on NixOS,
     # because NixOS asserts that normal users must use UID >= 1000.
     # We keep the user normal (for Home Manager activation) and let NixOS
     # allocate a compliant uid/gid when profile ids are below the NixOS range.
-    user = lib.mkForce (
-      builtins.removeAttrs cfgUser [
-        "uid"
-        "gid"
-        "group"
-      ]
-    );
+    user = lib.mkForce (builtins.removeAttrs cfgUser [ "uid" "gid" "group" ]);
 
     users.users.${cfgUserName} = {
       group = cfgUserName;
-      extraGroups = [
-        "keys"
-        "wheel"
-        "ssh"
-      ];
+      extraGroups = [ "keys" "wheel" "ssh" ];
       uid = lib.mkIf (nixosUserUid != null) nixosUserUid;
     };
-    users.groups.${cfgUserName} = if nixosUserGid != null then { gid = nixosUserGid; } else { };
+    users.groups.${cfgUserName} =
+      if nixosUserGid != null then { gid = nixosUserGid; } else { };
 
     # Debug convenience: set root password to "root" (insecure; remove when done)
     users.users.root.initialPassword = "root";

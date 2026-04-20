@@ -57,6 +57,8 @@
       inherit (flake-utils.lib) eachSystemMap;
       nixpkgsConfig = import ./modules/.common.d/nixpkgs-config.nix;
       cacheTrust = import ./catalog/cache-trust.nix;
+      inventoryData = import ./inventory/default.nix;
+      catalogData = import ./catalog/default.nix { inherit cacheTrust; };
       defaultSystems = [
         "aarch64-darwin"
       ];
@@ -146,6 +148,18 @@
       ndhBringupInstallerCommand = "ndh-bringup-install";
       ndhVmLimaMaterializeAttr = "ndh-vm-lima-materialize";
       ndhVmTartMaterializeAttr = "ndh-vm-tart-materialize";
+      ndhLogCaptureAttr = "ndh-log-capture";
+      ndhLogCaptureCommand = "ndh-log-capture";
+      hostCatalog = builtins.mapAttrs (
+        hostName: _: import (./hosts + "/${hostName}")
+      ) inventoryData.hosts;
+      hostMainNameForProfile =
+        hostProfile:
+        if (hostProfile ? hostAlias && hostProfile.hostAlias != null && hostProfile.hostAlias != "") then
+          hostProfile.hostAlias
+        else
+          hostProfile.hostName;
+      forAllHosts = f: nixpkgs.lib.mapAttrs f hostCatalog;
 
       mkBaseModulesFor =
         { hostProfile, system }:
@@ -269,6 +283,95 @@
           install -Dm755 ${scriptSource} "$out/bin/${ndhBringupInstallerCommand}"
         '';
 
+      mkNdhLogCapturePackage =
+        system:
+        let
+          pkgsForSystem = pkgsFor { inherit system; };
+        in
+        pkgsForSystem.writeShellApplication {
+          name = ndhLogCaptureCommand;
+          runtimeInputs = with pkgsForSystem; [ coreutils gnused ];
+          text = ''
+            set -euo pipefail
+
+            usage() {
+              cat >&2 <<'EOF'
+            Usage: ndh-log-capture [--name NAME] [--dir DIR] -- <command> [args...]
+
+            Environment:
+              NDH_CAPTURE_DIR   Default log directory (default: /tmp)
+              NDH_CAPTURE_NAME  Default log name prefix when --name is omitted
+            EOF
+            }
+
+            log_dir="''${NDH_CAPTURE_DIR:-/tmp}"
+            log_name="''${NDH_CAPTURE_NAME:-}"
+
+            while (($#)); do
+              case "$1" in
+                --name)
+                  shift
+                  [[ $# -gt 0 ]] || { echo "[ndh-log-capture][ERROR] --name requires a value" >&2; usage; exit 2; }
+                  log_name="$1"
+                  ;;
+                --dir)
+                  shift
+                  [[ $# -gt 0 ]] || { echo "[ndh-log-capture][ERROR] --dir requires a value" >&2; usage; exit 2; }
+                  log_dir="$1"
+                  ;;
+                --help|-h)
+                  usage
+                  exit 0
+                  ;;
+                --)
+                  shift
+                  break
+                  ;;
+                *)
+                  break
+                  ;;
+              esac
+              shift
+            done
+
+            if (($# == 0)); then
+              echo "[ndh-log-capture][ERROR] missing command" >&2
+              usage
+              exit 2
+            fi
+
+            if [[ -z "$log_name" ]]; then
+              log_name="$(basename "$1")"
+            fi
+
+            log_name="$(printf '%s' "$log_name" | tr -cs '[:alnum:]._- ' '-' | tr ' ' '-' | sed 's/^-*//; s/-*$//')"
+            if [[ -z "$log_name" ]]; then
+              log_name="command"
+            fi
+
+            timestamp="$(date +%Y%m%d-%H%M%S)"
+            mkdir -p "$log_dir"
+            log_file="$log_dir/ndh-$log_name-$timestamp.log"
+
+            cmd_pretty="$(printf '%q ' "$@")"
+            {
+              echo "# ndh-log-capture"
+              echo "# timestamp: $(date -Is)"
+              echo "# cwd: $PWD"
+              echo "# command: $cmd_pretty"
+              echo
+            } > "$log_file"
+
+            set +e
+            "$@" 2>&1 | tee -a "$log_file"
+            cmd_rc=''${PIPESTATUS[0]}
+            set -e
+
+            echo "[ndh-log-capture] log file: $log_file" >&2
+            exit "$cmd_rc"
+          '';
+        };
+
       mkSpecialArgs =
         {
           modules,
@@ -293,460 +396,33 @@
         }
         // extraArgs;
 
-      mkDarwinConfig =
-        {
-          hostProfile,
-          profileModule,
-          catalog,
-          extraModules ? [ ],
-        }:
-        let
-          preModules = [
-            profileModule
-            # socket-vmnet.darwinModules.socket_vmnet
-            (
-              { lib, ... }:
-              {
-                lima.configGenerator.vmType = "vz";
-              }
-            )
-          ]
-          ++ extraModules;
-          modules = mkModulesFor {
-            inherit hostProfile preModules;
-            system = "darwin";
-          };
-          specialArgs = mkSpecialArgs {
-            inherit modules;
-            system = "aarch64-darwin";
-            extraArgs = {
-              inherit hostProfile;
-              inherit catalog;
-            };
-          };
-        in
-        inputs.darwin.lib.darwinSystem {
-          inherit specialArgs modules;
-          system = "aarch64-darwin";
-          pkgs = pkgsForDarwin.extend (
-            final: prev: {
-              chromium-bin = inputs.chromium-bin.packages."aarch64-darwin".default;
-            }
-          );
-        };
-      mkDarwinOutputs =
-        {
-          hostProfile,
-          profileModule,
-          catalog,
-          ...
-        }:
-        let
-          mainName =
-            if (hostProfile ? hostAlias && hostProfile.hostAlias != null && hostProfile.hostAlias != "") then
-              hostProfile.hostAlias
-            else
-              hostProfile.hostName;
+      darwinOutputsApi = import ./modules/darwin/outputs.nix {
+        inherit
+          inputs
+          pkgsForDarwin
+          mkModulesFor
+          mkSpecialArgs
+          ;
+      };
 
-          mkDarwinVmVariant =
-            vmProvider:
-            mkDarwinConfig {
-              hostProfile = hostProfile // {
-                inherit vmProvider;
-              };
-              inherit profileModule catalog;
-              extraModules = [
-                {
-                  lima.configGenerator.nixosHostAttr = "${mainName}-nixos-${vmProvider}";
-                }
-              ];
-            };
+      nixosOutputsApi = import ./modules/nixos/outputs.nix {
+        inherit
+          nixpkgs
+          pkgsForLinux
+          mkModulesFor
+          mkSpecialArgs
+          ;
+      };
 
-          darwinConfiguration = mkDarwinVmVariant (hostProfile.vmProvider or "lima");
-          darwinConfigurationLima = mkDarwinVmVariant "lima";
-          darwinConfigurationTart = mkDarwinVmVariant "tart";
-          darwinConfigurations = {
-            "${hostProfile.hostName}" = darwinConfiguration;
-            "${mainName}-lima" = darwinConfigurationLima;
-            "${mainName}-tart" = darwinConfigurationTart;
-          }
-          // (
-            if (hostProfile ? hostAlias && hostProfile.hostAlias != null && hostProfile.hostAlias != "") then
-              {
-                "${hostProfile.hostAlias}" = darwinConfiguration;
-              }
-            else
-              { }
-          );
-        in
-        {
-          inherit darwinConfigurations;
-        };
+      inherit (darwinOutputsApi)
+        mkDarwinConfig
+        mkDarwinOutputs
+        ;
 
-      mkNixosConfig =
-        {
-          hostProfile,
-          profileModule,
-          zfsOverlays,
-          catalog,
-          vmProvider ? null,
-        }:
-        let
-          hostImageMode = hostProfile.nixosImageMode or "full";
-          bringupModeInternal = hostImageMode == "bootstrap";
-          effectiveVmProvider = if vmProvider != null then vmProvider else (hostProfile.vmProvider or "lima");
-          zfsOverlaysModule =
-            { ... }:
-            {
-              zfsOverlays.override = zfsOverlays;
-            };
-          nixosTailscaleTagModule =
-            { ... }:
-            {
-              tailscale.tags = [ "nixos" ];
-            };
-          preModules = [
-            profileModule
-            zfsOverlaysModule
-            {
-              ndh.vm.provider = effectiveVmProvider;
-            }
-          ]
-          ++ (if bringupModeInternal then [ ] else [ nixosTailscaleTagModule ]);
-          modules = mkModulesFor {
-            inherit hostProfile preModules;
-            system = "nixos";
-          };
-          specialArgs = mkSpecialArgs {
-            inherit modules;
-            system = "aarch64-linux";
-            extraArgs = {
-              inherit hostProfile;
-              inherit catalog;
-              vmProvider = effectiveVmProvider;
-            };
-          };
-          nixosSystem = nixpkgs.lib.nixosSystem {
-            inherit modules specialArgs;
-            system = "aarch64-linux";
-            pkgs = pkgsForLinux;
-          };
-        in
-        nixosSystem;
-      mkNixosOutputs =
-        {
-          hostProfile,
-          profileModule,
-          catalog,
-        }:
-        let
-          # Canonical behavior (@codebase): runtime nixos output is always full.
-          # Bootstrap remains an explicit disk-image path only.
-
-          mkExt4ModulesFor =
-            hp:
-            let
-              hpImageMode = hp.nixosImageMode or "full";
-              hpBringupModeInternal = hpImageMode == "bootstrap";
-              hpVmProvider = hp.vmProvider or "lima";
-              zfsOverlaysModule =
-                { ... }:
-                {
-                  zfsOverlays.override = false;
-                };
-              nixosTailscaleTagModule =
-                { ... }:
-                {
-                  tailscale.tags = [ "nixos" ];
-                };
-            in
-            mkModulesFor {
-              hostProfile = hp;
-              system = "nixos";
-              preModules = [
-                profileModule
-                zfsOverlaysModule
-                {
-                  ndh.vm.provider = hpVmProvider;
-                }
-              ]
-              ++ (if hpBringupModeInternal then [ ] else [ nixosTailscaleTagModule ]);
-            };
-
-          mkExt4SpecialArgsFor =
-            hp: modules:
-            mkSpecialArgs {
-              inherit modules;
-              system = "aarch64-linux";
-              extraArgs = {
-                hostProfile = hp;
-                inherit catalog;
-                vmProvider = hp.vmProvider or "lima";
-              };
-            };
-
-          bootstrapSystemdBootHostProfile = hostProfile // {
-            nixosImageMode = "bootstrap";
-            nixosBootLoader = "systemd-boot";
-          };
-
-          runtimeHostProfile = hostProfile // {
-            nixosImageMode = "full";
-            nixosBootLoader = "systemd-boot";
-          };
-
-          selectedVmProvider = hostProfile.vmProvider or "lima";
-
-          bringupGrubHostProfile = hostProfile // {
-            nixosImageMode = "bootstrap";
-            nixosBootLoader = "grub";
-          };
-
-          ext4Modules = mkExt4ModulesFor bootstrapSystemdBootHostProfile;
-          ext4SpecialArgs = mkExt4SpecialArgsFor bootstrapSystemdBootHostProfile ext4Modules;
-
-          ext4 = nixpkgs.lib.nixosSystem {
-            modules = ext4Modules;
-            specialArgs = ext4SpecialArgs;
-            system = "aarch64-linux";
-            pkgs = pkgsForLinux;
-          };
-
-          zfsBringup = mkNixosConfig {
-            inherit
-              profileModule
-              catalog
-              ;
-            hostProfile = bootstrapSystemdBootHostProfile;
-            zfsOverlays = true;
-          };
-
-          zfsRuntimeLima = mkNixosConfig {
-            inherit
-              profileModule
-              catalog
-              ;
-            hostProfile = runtimeHostProfile;
-            zfsOverlays = true;
-            vmProvider = "lima";
-          };
-
-          zfsRuntimeTart = mkNixosConfig {
-            inherit
-              profileModule
-              catalog
-              ;
-            hostProfile = runtimeHostProfile;
-            zfsOverlays = true;
-            vmProvider = "tart";
-          };
-
-          selectedRuntime = if selectedVmProvider == "tart" then zfsRuntimeTart else zfsRuntimeLima;
-
-          runtimeExt4Modules = mkExt4ModulesFor runtimeHostProfile;
-          runtimeExt4SpecialArgs = mkExt4SpecialArgsFor runtimeHostProfile runtimeExt4Modules;
-          bringupSystemdBootExt4Modules = mkExt4ModulesFor bootstrapSystemdBootHostProfile;
-          bringupSystemdBootExt4SpecialArgs = mkExt4SpecialArgsFor bootstrapSystemdBootHostProfile bringupSystemdBootExt4Modules;
-          bringupGrubExt4Modules = mkExt4ModulesFor bringupGrubHostProfile;
-          bringupGrubExt4SpecialArgs = mkExt4SpecialArgsFor bringupGrubHostProfile bringupGrubExt4Modules;
-
-          # Canonical disk size in MiB shared by all disk-image profiles.
-          # Keep one source of truth to avoid host/guest sizing drift.
-          diskSizeMiB = (4 + 2) * 1024; # 4GiB base + 2GiB buffer for growth and closure size uncertainty
-          diskSizeBytes = diskSizeMiB * 1024 * 1024;
-          # Bringup closure paths used for stage-1/2 bootstrap sizing checks.
-          bringupExt4SystemPath = ext4.config.system.build.toplevel;
-          bringupZfsSystemPath = zfsBringup.config.system.build.toplevel;
-          # Output a JSON hint with all relevant info for post-build checks
-          diskSizeHint = builtins.toJSON {
-            systemPath = bringupZfsSystemPath;
-            bringupSystemPaths = {
-              ext4 = bringupExt4SystemPath;
-              zfs = bringupZfsSystemPath;
-            };
-            diskSizeBytes = diskSizeBytes;
-            diskSizeMiB = {
-              runtime = diskSizeMiB;
-              bringupSystemdBoot = diskSizeMiB;
-              bringupGrub = diskSizeMiB;
-            };
-            hint = {
-              ext4Bringup = "nix path-info -Sh ${bringupExt4SystemPath}";
-              zfsBringup = "nix path-info -Sh ${bringupZfsSystemPath}";
-            };
-            note = "bringup closure sizes should be less than diskSizeBytes";
-          };
-          mainName =
-            if (hostProfile ? hostAlias && hostProfile.hostAlias != null && hostProfile.hostAlias != "") then
-              hostProfile.hostAlias
-            else
-              hostProfile.hostName;
-
-          mkDiskImageDescriptorYaml =
-            {
-              attr,
-              imageMode,
-              bootLoader,
-              diskSizeMiB,
-              sourceOutPath,
-            }:
-            ''
-              schemaVersion: 1
-              kind: nixos-disk-image
-              attr: ${attr}
-              imageMode: ${imageMode}
-              bootLoader: ${bootLoader}
-              format: raw-efi
-              imagePath: nixos.img
-              sourceOutPath: ${sourceOutPath}
-              diskSizeMiB: ${toString diskSizeMiB}
-            '';
-
-          mkDiskImageWithDescriptor =
-            {
-              attr,
-              imageMode,
-              bootLoader,
-              diskSizeMiB,
-              source,
-            }:
-            pkgsForLinux.runCommand "nixos-disk-image-with-descriptor-${attr}" { } ''
-              set -euo pipefail
-              mkdir -p "$out"
-
-              source_image=""
-
-              if [[ -f "${source}/nixos.img" ]]; then
-                source_image="${source}/nixos.img"
-              elif [[ -f "${source}" ]]; then
-                source_image="${source}"
-              elif [[ -f "${source}/nix-support/hydra-build-products" ]]; then
-                source_image=$(awk '$1 == "file" && $2 ~ /image|img/ { print $3; exit }' "${source}/nix-support/hydra-build-products")
-              fi
-
-              if [[ -z "$source_image" && -d "${source}" ]]; then
-                source_image=$(find "${source}" -maxdepth 1 -type f -name '*.img' | head -n1 || true)
-              fi
-
-              if [[ -z "$source_image" || ! -f "$source_image" ]]; then
-                echo "[flake][ERROR] unsupported disk image source shape for ${attr}: ${source}" >&2
-                echo "[flake][ERROR] expected one of: ${source}/nixos.img, direct file, hydra-build-products image entry, or *.img in source root" >&2
-                exit 1
-              fi
-
-              ln -s "$source_image" "$out/nixos.img"
-
-              cat >"$out/descriptor.yaml" <<'EOF'
-              ${mkDiskImageDescriptorYaml {
-                inherit
-                  attr
-                  imageMode
-                  bootLoader
-                  diskSizeMiB
-                  ;
-                sourceOutPath = source;
-              }}
-              EOF
-            '';
-
-          mkRawEfiImage =
-            {
-              modules,
-              specialArgs,
-            }:
-            let
-              imageNixosSystem = nixpkgs.lib.nixosSystem {
-                inherit modules specialArgs;
-                system = "aarch64-linux";
-                pkgs = pkgsForLinux;
-              };
-            in
-            imageNixosSystem.config.system.build.images."raw-efi";
-
-          diskImageBringupSystemdBootRaw = mkRawEfiImage {
-            modules = bringupSystemdBootExt4Modules ++ [
-              {
-                nix.registry.nixpkgs.flake = nixpkgs;
-                virtualisation.diskSize = diskSizeMiB;
-              }
-            ];
-            specialArgs = bringupSystemdBootExt4SpecialArgs;
-          };
-
-          diskImageBringupZfsSystemdBootRaw = zfsBringup.config.system.build.images."raw-efi";
-
-          diskImageBringupGrubRaw = mkRawEfiImage {
-            modules = bringupGrubExt4Modules ++ [
-              {
-                nix.registry.nixpkgs.flake = nixpkgs;
-                virtualisation.diskSize = diskSizeMiB;
-              }
-            ];
-            specialArgs = bringupGrubExt4SpecialArgs;
-          };
-
-          diskImageFullExt4Raw = mkRawEfiImage {
-            modules = runtimeExt4Modules ++ [
-              {
-                nix.registry.nixpkgs.flake = nixpkgs;
-                virtualisation.diskSize = diskSizeMiB;
-              }
-            ];
-            specialArgs = runtimeExt4SpecialArgs;
-          };
-
-          diskImageBringupSystemdBoot = mkDiskImageWithDescriptor {
-            attr = "nixosDiskImageBringupSystemdBoot";
-            imageMode = "bootstrap";
-            bootLoader = "systemd-boot";
-            diskSizeMiB = diskSizeMiB;
-            source = diskImageBringupSystemdBootRaw;
-          };
-
-          diskImageBringupZfsSystemdBoot = mkDiskImageWithDescriptor {
-            attr = "nixosDiskImageBringupZfsSystemdBoot";
-            imageMode = "bootstrap";
-            bootLoader = "systemd-boot";
-            diskSizeMiB = diskSizeMiB;
-            source = diskImageBringupZfsSystemdBootRaw;
-          };
-
-          diskImageBringupGrub = mkDiskImageWithDescriptor {
-            attr = "nixosDiskImageBringupGrub";
-            imageMode = "bootstrap";
-            bootLoader = "grub";
-            diskSizeMiB = diskSizeMiB;
-            source = diskImageBringupGrubRaw;
-          };
-
-          diskImageFullExt4 = mkDiskImageWithDescriptor {
-            attr = "nixosDiskImage";
-            imageMode = "full";
-            bootLoader = "systemd-boot";
-            diskSizeMiB = diskSizeMiB;
-            source = diskImageFullExt4Raw;
-          };
-
-        in
-        {
-          inherit diskSizeHint;
-          inherit diskSizeMiB;
-          nixosConfigurations = {
-            "${mainName}-bringup-ext4-lima" = ext4;
-            "${mainName}-bringup-ext4-tart" = ext4;
-            "${mainName}-bringup-zfs-lima" = zfsBringup;
-            "${mainName}-bringup-zfs-tart" = zfsBringup;
-            "${mainName}-nixos-lima" = zfsRuntimeLima;
-            "${mainName}-nixos-tart" = zfsRuntimeTart;
-            "${mainName}-nixos" = selectedRuntime;
-          };
-          inherit
-            diskImageFullExt4
-            diskImageBringupSystemdBoot
-            diskImageBringupZfsSystemdBoot
-            diskImageBringupGrub
-            ;
-        };
+      inherit (nixosOutputsApi)
+        mkNixosConfig
+        mkNixosOutputs
+        ;
     in
     rec {
       formatter = forAllSystems (
@@ -780,19 +456,33 @@
         {
           ${ndhBringupRuntimeAttr} = mkNdhBootstrapRuntimePackage system;
           ${ndhBringupInstallerAttr} = mkNdhBringupRuntimeInstaller system;
+          ${ndhLogCaptureAttr} = mkNdhLogCapturePackage system;
         }
-        // nixpkgs.lib.optionalAttrs (system == "aarch64-linux") {
-          nixos-bioskop-bringup-lima-vm-disk = hostOutputs.bioskop.nixosDiskImageBringupSystemdBoot;
-          nixos-nikopol-bringup-lima-vm-disk = hostOutputs.nikopol.nixosDiskImageBringupSystemdBoot;
-          nixos-bioskop-bringup-tart-disk = hostOutputs.bioskop.nixosDiskImageBringupSystemdBoot;
-          nixos-nikopol-bringup-tart-disk = hostOutputs.nikopol.nixosDiskImageBringupSystemdBoot;
-        }
+        // nixpkgs.lib.optionalAttrs (system == "aarch64-linux") (
+          builtins.foldl'
+            (
+              acc: hostName:
+              let
+                hostSpec = hostCatalog.${hostName};
+                mainName = hostMainNameForProfile hostSpec.hostProfile;
+                hostOutput = hostOutputs.${hostName};
+              in
+              acc
+              // {
+                "nixos-${mainName}-bringup-lima-vm-disk" = hostOutput.limaNixosDiskImageBringupSystemdExt4;
+                "nixos-${mainName}-bringup-tart-disk" = hostOutput.tartNixosDiskImageBringupGrubExt4;
+              }
+            )
+            { }
+            (builtins.attrNames hostCatalog)
+        )
       );
 
       apps = forAllSystems (
         system:
         let
           installer = mkNdhBringupRuntimeInstaller system;
+          logCapture = mkNdhLogCapturePackage system;
           limaMaterializer =
             hostOutputs.bioskop.darwinConfigurations.bioskop.config.lima.configGenerator.materializerPackage;
           tartMaterializer =
@@ -802,6 +492,10 @@
           ${ndhBringupInstallerAttr} = {
             type = "app";
             program = "${installer}/bin/${ndhBringupInstallerCommand}";
+          };
+          ${ndhLogCaptureAttr} = {
+            type = "app";
+            program = "${logCapture}/bin/${ndhLogCaptureCommand}";
           };
           ${ndhVmLimaMaterializeAttr} = {
             type = "app";
@@ -828,134 +522,7 @@
               hostProfile.hostAlias
             else
               hostProfile.hostName;
-          catalog = {
-            caches = cacheTrust.caches;
-
-            users = {
-              work = {
-                name = "stephane.lacoin";
-                description = "Stephane Lacoin (aka nxmatic)";
-                email = "stephane.lacoin@hyland.com";
-              };
-
-              committed = {
-                name = "nxmatic";
-                description = "Stephane Lacoin (aka nxmatic)";
-                email = "stephane.lacoin@gmail.com";
-              };
-            };
-
-            networks = {
-              lan = {
-                cidr = "192.168.1.0/24";
-                domain = ".lan";
-              };
-              tailnet = {
-                cidr = "100.64.0.0/10";
-                domain = ".mammoth-skate.ts.net";
-              };
-              # Canonical cluster underlay contract from rke2lab netplan (@codebase)
-              # Source of truth: rke2lab/netplan (ClusterNetworkBlueprint semantics)
-              rke2labNetplan = {
-                supernetCidr = "10.80.0.0/18";
-                clusterPrefixLength = 21;
-                vmnetNetworkName = "vmnet-br";
-                clusters = {
-                  bioskop = {
-                    index = 0;
-                    cidr = "10.80.0.0/21";
-                    gateway = "10.80.0.1";
-                  };
-                  nikopol = {
-                    index = 2;
-                    cidr = "10.80.16.0/21";
-                    gateway = "10.80.16.1";
-                  };
-                };
-              };
-            };
-
-            hosts = {
-              bioskop = [
-                {
-                  form = "baremetal";
-                  networks = [
-                    "lan"
-                    "tailnet"
-                  ];
-                  builder = {
-                    systems = [ "aarch64-darwin" ];
-                    maxJobs = 8;
-                    protocol = "ssh-ng";
-                  };
-                }
-                {
-                  form = "baremetal";
-                  networks = [
-                    "lan"
-                    "tailnet"
-                  ];
-                  vm = {
-                    kind = "qemu";
-                    manager = "nix-darwin";
-                  };
-                  builder = {
-                    systems = [ "aarch64-linux" ];
-                    maxJobs = 8;
-                    protocol = "ssh-ng";
-                  };
-                }
-                {
-                  form = "baremetal";
-                  networks = [
-                    "lan"
-                    "tailnet"
-                  ];
-                  vm = {
-                    kind = "vz";
-                    manager = "lima";
-                  };
-                  builder = {
-                    systems = [ "aarch64-linux" ];
-                    maxJobs = 8;
-                    protocol = "ssh-ng";
-                  };
-                }
-              ];
-
-              nikopol = [
-                {
-                  # nikopol runs as a Tart/VZ macOS VM and does NOT serve as a darwin builder itself; it offloads to remote builders
-                  form = "vm";
-                  networks = [
-                    "lan"
-                    "tailnet"
-                  ];
-                  vm = {
-                    kind = "vz";
-                    manager = "tart";
-                  };
-                  builder = null;
-                }
-                {
-                  form = "vm";
-                  networks = [
-                    "lan"
-                    "tailnet"
-                  ];
-                  vm = {
-                    kind = "vz";
-                    manager = "lima";
-                  };
-                  builder = {
-                    systems = [ "aarch64-linux" ];
-                    maxJobs = 8;
-                    protocol = "ssh-ng";
-                  };
-                }
-              ];
-            };
-          };
+          catalog = catalogData;
 
           workHomeManagerUser =
             if hostProfile ? homeManagerUser && hostProfile.homeManagerUser != null then
@@ -991,6 +558,7 @@
           };
           nixosOutputs = mkNixosOutputs {
             inherit hostProfile catalog;
+            inventory = inventoryData;
             profileModule =
               { ... }:
               {
@@ -998,10 +566,11 @@
               };
           };
           nixosConfiguration = nixosOutputs.nixosConfigurations."${mainName}-nixos";
-          nixosDiskImage = nixosOutputs.diskImageFullExt4;
-          nixosDiskImageBringupSystemdBoot = nixosOutputs.diskImageBringupSystemdBoot;
-          nixosDiskImageBringupZfsSystemdBoot = nixosOutputs.diskImageBringupZfsSystemdBoot;
-          nixosDiskImageBringupGrub = nixosOutputs.diskImageBringupGrub;
+          nixosDiskImage = nixosOutputs.diskImageFull;
+          limaNixosDiskImageBringupSystemdExt4 = nixosOutputs.diskImageBringupSystemdExt4Boot;
+          tartNixosDiskImageBringupSystemdExt4 = nixosOutputs.diskImageBringupSystemdExt4Boot;
+          tartNixosDiskImageBringupSystemdZfs = nixosOutputs.diskImageBringupZfsSystemdBoot;
+          tartNixosDiskImageBringupGrubExt4 = nixosOutputs.diskImageBringupGrub;
           nixosDiskSizeHint = nixosOutputs.diskSizeHint;
           nixosDiskSizeMiB = nixosOutputs.diskSizeMiB;
           mkHomeManagerConfig =
@@ -1023,6 +592,7 @@
                 ndh = {
                   store = ndhStoreApiDarwin;
                   inherit catalog;
+                  inventory = inventoryData;
                   vm = {
                     provider = hostProfile.vmProvider or "lima";
                     configMaterializerPackage =
@@ -1040,6 +610,7 @@
             };
           darwinOutputs = mkDarwinOutputs {
             inherit hostProfile catalog;
+            inventory = inventoryData;
             profileModule =
               { lib, ... }:
               {
@@ -1048,12 +619,12 @@
                   (
                     { ... }:
                     {
-                      lima.configGenerator.imageDescriptorPath = "${nixosDiskImageBringupSystemdBoot}/descriptor.yaml";
-                      lima.configGenerator.imageStorePath = "${nixosDiskImageBringupSystemdBoot}/nixos.img";
+                      lima.configGenerator.imageManifestPath = "${limaNixosDiskImageBringupSystemdExt4}/manifest.yaml";
+                      lima.configGenerator.imageStorePath = "${limaNixosDiskImageBringupSystemdExt4}/nixos.img";
                       lima.configGenerator.diskSizeGiB = builtins.div nixosDiskSizeMiB 1024;
 
-                      tart.configGenerator.rawImageDescriptorPath = "${nixosDiskImageBringupSystemdBoot}/descriptor.yaml";
-                      tart.configGenerator.rawImageStorePath = "${nixosDiskImageBringupSystemdBoot}/nixos.img";
+                      tart.configGenerator.rawImageManifestPath = "${tartNixosDiskImageBringupSystemdZfs}/manifest.yaml";
+                      tart.configGenerator.rawImageStorePath = "${tartNixosDiskImageBringupSystemdZfs}/nixos.img";
                     }
                   )
                 ]
@@ -1153,9 +724,10 @@
             darwinConfiguration
             nixosConfiguration
             nixosDiskImage
-            nixosDiskImageBringupSystemdBoot
-            nixosDiskImageBringupZfsSystemdBoot
-            nixosDiskImageBringupGrub
+            limaNixosDiskImageBringupSystemdExt4
+            tartNixosDiskImageBringupSystemdExt4
+            tartNixosDiskImageBringupSystemdZfs
+            tartNixosDiskImageBringupGrubExt4
             nixosDiskSizeHint
             homeManagerConfigurations
             ;
@@ -1184,82 +756,66 @@
           defaultPackage."aarch64-darwin" = darwinConfiguration.system;
         };
 
-      hostOutputs =
-        let
-          bioskopSpec = import ./hosts/bioskop;
-          nikopolSpec = import ./hosts/nikopol;
-        in
-        {
-          bioskop = mkHostOutputs bioskopSpec;
-          nikopol = mkHostOutputs nikopolSpec;
-        };
+      hostOutputs = forAllHosts (_: hostSpec: mkHostOutputs hostSpec);
 
-      darwinConfigurations =
-        hostOutputs.bioskop.darwinConfigurations // hostOutputs.nikopol.darwinConfigurations;
+      darwinConfigurations = builtins.foldl' (
+        acc: hostOutput: acc // hostOutput.darwinConfigurations
+      ) { } (builtins.attrValues hostOutputs);
 
-      nixosConfigurations =
-        hostOutputs.bioskop.nixosConfigurations // hostOutputs.nikopol.nixosConfigurations;
+      nixosConfigurations = builtins.foldl' (
+        acc: hostOutput: acc // hostOutput.nixosConfigurations
+      ) { } (builtins.attrValues hostOutputs);
 
       # Provider-scoped VM configuration aliases.
       # Keep canonical behavior unchanged; expose stable provider names for operators.
-      vmConfigurations = {
-        lima = {
-          bioskop = {
-            bringup = hostOutputs.bioskop.nixosConfigurations."bioskop-bringup-ext4-lima";
-            runtime = hostOutputs.bioskop.nixosConfigurations."bioskop-nixos-lima";
-          };
-          nikopol = {
-            bringup = hostOutputs.nikopol.nixosConfigurations."nikopol-bringup-ext4-lima";
-            runtime = hostOutputs.nikopol.nixosConfigurations."nikopol-nixos-lima";
-          };
-        };
-        tart = {
-          bioskop = {
-            bringupExt4 = hostOutputs.bioskop.nixosConfigurations."bioskop-bringup-ext4-tart";
-            bringupZfs = hostOutputs.bioskop.nixosConfigurations."bioskop-bringup-zfs-tart";
-            bringup = hostOutputs.bioskop.nixosConfigurations."bioskop-bringup-zfs-tart";
-            runtime = hostOutputs.bioskop.nixosConfigurations."bioskop-nixos-tart";
-          };
-          nikopol = {
-            bringupExt4 = hostOutputs.nikopol.nixosConfigurations."nikopol-bringup-ext4-tart";
-            bringupZfs = hostOutputs.nikopol.nixosConfigurations."nikopol-bringup-zfs-tart";
-            bringup = hostOutputs.nikopol.nixosConfigurations."nikopol-bringup-zfs-tart";
-            runtime = hostOutputs.nikopol.nixosConfigurations."nikopol-nixos-tart";
-          };
-        };
-        selected = {
-          bioskop = {
-            bringup = hostOutputs.bioskop.nixosConfigurations."bioskop-bringup-ext4-lima";
-            runtime = hostOutputs.bioskop.nixosConfigurations."bioskop-nixos";
-          };
-          nikopol = {
-            bringup = hostOutputs.nikopol.nixosConfigurations."nikopol-bringup-ext4-lima";
-            runtime = hostOutputs.nikopol.nixosConfigurations."nikopol-nixos";
-          };
-        };
-      };
+      vmConfigurations =
+        let
+          mkVmHostAliases =
+            hostName: hostSpec:
+            let
+              mainName = hostMainNameForProfile hostSpec.hostProfile;
+              hostNixosConfigurations = hostOutputs.${hostName}.nixosConfigurations;
+            in
+            {
+              lima = {
+                bringup = hostNixosConfigurations."lima-${mainName}-bringup-systemd-ext4";
+                runtime = hostNixosConfigurations."${mainName}-nixos-lima";
+              };
+              tart = {
+                bringupExt4 = hostNixosConfigurations."tart-${mainName}-bringup-systemd-ext4";
+                bringupZfs = hostNixosConfigurations."tart-${mainName}-bringup-systemd-zfs";
+                bringupZfsGrub = hostNixosConfigurations."tart-${mainName}-bringup-grub-zfs";
+                bringup = hostNixosConfigurations."tart-${mainName}-bringup-grub-zfs";
+                runtime = hostNixosConfigurations."${mainName}-nixos-tart";
+              };
+              selected = {
+                bringup = hostNixosConfigurations."lima-${mainName}-bringup-systemd-ext4";
+                runtime = hostNixosConfigurations."${mainName}-nixos";
+              };
+            };
 
-      homeManagerConfigurations = {
-        bioskop = hostOutputs.bioskop.homeManagerConfigurations;
-        nikopol = hostOutputs.nikopol.homeManagerConfigurations;
-      };
+          vmAliasesByHost = forAllHosts mkVmHostAliases;
+        in
+        {
+          lima = builtins.mapAttrs (_: hostAliases: hostAliases.lima) vmAliasesByHost;
+          tart = builtins.mapAttrs (_: hostAliases: hostAliases.tart) vmAliasesByHost;
+          selected = builtins.mapAttrs (_: hostAliases: hostAliases.selected) vmAliasesByHost;
+        };
 
-      nixosDiskImages = {
-        bioskop = {
-          full = hostOutputs.bioskop.nixosDiskImage;
-          bringupSystemdBoot = hostOutputs.bioskop.nixosDiskImageBringupSystemdBoot;
-          bringupLimaVm = hostOutputs.bioskop.nixosDiskImageBringupSystemdBoot;
-          bringupTartVm = hostOutputs.bioskop.nixosDiskImageBringupSystemdBoot;
-          bringupGrub = hostOutputs.bioskop.nixosDiskImageBringupGrub;
-        };
-        nikopol = {
-          full = hostOutputs.nikopol.nixosDiskImage;
-          bringupSystemdBoot = hostOutputs.nikopol.nixosDiskImageBringupSystemdBoot;
-          bringupLimaVm = hostOutputs.nikopol.nixosDiskImageBringupSystemdBoot;
-          bringupTartVm = hostOutputs.nikopol.nixosDiskImageBringupSystemdBoot;
-          bringupGrub = hostOutputs.nikopol.nixosDiskImageBringupGrub;
-        };
-      };
+      homeManagerConfigurations = builtins.mapAttrs (
+        _: hostOutput: hostOutput.homeManagerConfigurations
+      ) hostOutputs;
+
+      nixosDiskImages = builtins.mapAttrs (
+        _: hostOutput:
+        {
+          full = hostOutput.nixosDiskImage;
+          limaSystemdExt4 = hostOutput.limaNixosDiskImageBringupSystemdExt4;
+          tartSystemdExt4 = hostOutput.tartNixosDiskImageBringupSystemdExt4;
+          tartSystemdZfs = hostOutput.tartNixosDiskImageBringupSystemdZfs;
+          tartGrubExt4 = hostOutput.tartNixosDiskImageBringupGrubExt4;
+        }
+      ) hostOutputs;
 
       overlays = {
         channels = inputs: final: prev: {

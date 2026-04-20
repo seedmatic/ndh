@@ -4,11 +4,12 @@
   pkgs,
   config,
   catalog,
+  inventory,
   ndh,
   ...
 }:
 let
-  hostsCatalog = catalog.hosts or { };
+  hostsInventory = inventory.hosts or { };
   qemu-pkgdb = self.packages.${pkgs.stdenv.hostPlatform.system}.qemu-pkgdb or pkgs.qemu;
 
   keys = builtins.fromJSON (
@@ -29,7 +30,7 @@ let
   # Also get keys for both profiles for VM authorized_keys
   linuxBuilderCommittedPubKey = keys.profiles.committed.linux-builder.public;
   linuxBuilderWorkPubKey = keys.profiles.work.linux-builder.public;
-  # Pull builder catalog entries for this host (if present)
+  # Pull builder inventory entries for this host (if present)
   hostName = config.profile.host.hostName;
   cacheCatalog = catalog.caches;
   flakehubPublicKeys =
@@ -39,13 +40,13 @@ let
       [ cacheCatalog.flakehub.publicKey ];
   # Consider linux-builder only when running on baremetal hosts
   isBaremetalHost = !(config.profile.host ? form) || config.profile.host.form == "baremetal";
-  catalogEntries = if builtins.hasAttr hostName hostsCatalog then hostsCatalog.${hostName} else [ ];
+  inventoryEntries = if builtins.hasAttr hostName hostsInventory then hostsInventory.${hostName} else [ ];
   linuxBuilderEntries = lib.filter (
     entry:
     entry.builder != null
     && lib.elem "aarch64-linux" entry.builder.systems
     && (!(entry ? form) || entry.form != "vm")
-  ) catalogEntries;
+  ) inventoryEntries;
   selected = if (!isBaremetalHost) then null else lib.head (linuxBuilderEntries ++ [ null ]);
 
 in
