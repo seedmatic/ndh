@@ -28,7 +28,6 @@ let
   allowSystemSplitFallback = profileName == "work";
   sourceProfileKeysYamlPath = "${./ssh.d/keys.yaml}";
   rootBringupProfileDir = "/nix/var/nix/profiles/per-user/root/io-nxmatic-nix-darwin-home-bringup-runtime-profile-holder";
-  rootBringupInstallerName = "io-nxmatic-nix-darwin-home-bringup-runtime-profile-installer";
   # Effective YAML path consumed by ssh-add-keys/launchd.
   effectiveSSHKeysYamlPath = "${perUserKeysDir}.yaml";
 
@@ -130,25 +129,24 @@ in
     {
       ensureRootBringupRuntimeProfile = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
         ${lib.optionalString allowSystemSplitFallback ''
-          installer_path=""
-          if command -v ${rootBringupInstallerName} >/dev/null 2>&1; then
-            installer_path="$(command -v ${rootBringupInstallerName})"
-          elif [[ -x "/run/current-system/sw/bin/${rootBringupInstallerName}" ]]; then
-            installer_path="/run/current-system/sw/bin/${rootBringupInstallerName}"
-          elif [[ -x "/nix/var/nix/profiles/default/bin/${rootBringupInstallerName}" ]]; then
-            installer_path="/nix/var/nix/profiles/default/bin/${rootBringupInstallerName}"
-          fi
+          if [[ ! -x "${rootBringupProfileDir}/bin/nix" || ! -x "${rootBringupProfileDir}/bin/bash" ]]; then
+            runtime_target_host="$(hostname -f 2>/dev/null || hostname 2>/dev/null || echo "<target-host>")"
+            echo "[ssh-keys][ERROR] required root runtime profile missing or incomplete: ${rootBringupProfileDir}" >&2
+            echo "[ssh-keys][ERROR] install/update it before running Home Manager activation" >&2
+            cat >&2 <<'EOF'
+[ssh-keys][HINT] On operator host (with nix-darwin-home checkout):
 
-          if [[ -z "$installer_path" ]]; then
-            echo "[ssh-keys][WARN] runtime profile installer not found: ${rootBringupInstallerName}" >&2
-          elif ! command -v sudo >/dev/null 2>&1; then
-            echo "[ssh-keys][WARN] sudo not available; cannot install root bringup runtime profile" >&2
-          elif ! sudo -n true >/dev/null 2>&1; then
-            echo "[ssh-keys][WARN] passwordless sudo unavailable; skipping root runtime profile install" >&2
-          else
-            if ! sudo -n "$installer_path" "${rootBringupProfileDir}"; then
-              echo "[ssh-keys][WARN] failed to install root bringup runtime profile via $installer_path" >&2
-            fi
+holder_out="$(nix build --no-link --print-out-paths .#io-nxmatic-nix-darwin-home-bringup-runtime-profile-holder)"
+nix copy --no-check-sigs \
+  --to 'ssh-ng://<target-host>?remote-program=/nix/var/nix/profiles/default/bin/nix-daemon' \
+  "$holder_out"
+ssh -t <target-host> \
+  "sudo /nix/var/nix/profiles/default/bin/nix profile add \
+    --profile /nix/var/nix/profiles/per-user/root/io-nxmatic-nix-darwin-home-bringup-runtime-profile-holder \
+    $holder_out"
+EOF
+            echo "[ssh-keys][HINT] Replace <target-host> with: $runtime_target_host" >&2
+            exit 1
           fi
         ''}
       '';
