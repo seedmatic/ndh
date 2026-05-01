@@ -414,14 +414,6 @@ in
       trim.enable = true;
     };
 
-    # Disable systemd-gpt-auto-generator on ZFS roots.
-    # The generator tries to auto-mount partitions by GPT type code. On ZFS roots
-    # this causes /dev/gpt-auto-root races and may try to mount the ESP partitions
-    # on the tank data disks. ZFS pool import is handled by zfs-import-* units.
-    boot.kernelParams = lib.mkIf config.zfsOverlays.enable [
-      "systemd.gpt_auto=0"
-    ];
-
     services.sanoid = lib.mkIf config.zfsOverlays.sanoid.enable {
       enable = true;
       datasets = config.zfsOverlays.sanoid.datasets;
