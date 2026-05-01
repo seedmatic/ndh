@@ -29,6 +29,8 @@ let
   contributedTargetName = ndhSystemd.contributedTargetName;
   zpoolInitUnitName = ndhSystemd.mkUnitName "zpool-init";
   zpoolInitServiceName = ndhSystemd.mkServiceName "zpool-init";
+  bootReconcileUnitName = ndhSystemd.mkUnitName "boot-entry-reconcile";
+  bootReconcileServiceName = ndhSystemd.mkServiceName "boot-entry-reconcile";
   zfsNixosInstallServiceName = ndhSystemd.mkServiceName "zfs-nixos-install";
   espSyncUnitName = ndhSystemd.mkUnitName "esp-sync";
 
@@ -484,6 +486,108 @@ in
             TimeoutStartSec = "30min";
           };
         };
+
+    # Boot-entry reconcile service: runs in the initrd after /sysroot/nix/store
+    # is mounted, before initrd-find-nixos-closure. When the ZFS tank disks are
+    # provisioned from a newer bringup image than what wrote the ESP boot entries,
+    # the init= path in the boot entry may reference a system closure that no
+    # longer exists in the ZFS store. This service detects the mismatch and
+    # rewrites the systemd-boot .conf entries to point at the system closure
+    # that is actually present.
+    boot.initrd.systemd.services.${bootReconcileUnitName} =
+      lib.mkIf (config.zfsOverlays.enable && (!overlayModeEnabled)) {
+        description = "Reconcile EFI boot entry with ZFS store system closure";
+        unitConfig = {
+          RequiresMountsFor = [
+            "/sysroot/nix/store"
+            "/sysroot/boot"
+          ];
+          DefaultDependencies = false;
+        };
+        after = [
+          "sysroot.mount"
+          "sysroot-boot.mount"
+        ];
+        before = [
+          "initrd-find-nixos-closure.service"
+          "initrd.target"
+        ];
+        wantedBy = [ "initrd.target" ];
+        path = with pkgs; [
+          bash
+          coreutils
+          gnugrep
+          gnused
+          findutils
+        ];
+        serviceConfig = {
+          Type = "oneshot";
+          RemainAfterExit = true;
+          StandardOutput = "journal+console";
+          StandardError = "journal+console";
+          ExecStart = pkgs.writeShellScript "boot-entry-reconcile" ''
+            set -euo pipefail
+
+            sysroot=/sysroot
+            boot_dir="$sysroot/boot"
+
+            # Parse init= from kernel cmdline
+            cmdline_init=""
+            for o in $(cat /proc/cmdline); do
+              case "$o" in
+                init=*) cmdline_init="''${o#init=}" ;;
+              esac
+            done
+
+            if [[ -z "$cmdline_init" ]]; then
+              echo "[boot-reconcile] no init= in cmdline, skipping" >&2
+              exit 0
+            fi
+
+            cmdline_system="$(dirname "$cmdline_init")"
+
+            if [[ -d "$sysroot$cmdline_system" ]]; then
+              echo "[boot-reconcile] boot entry matches sysroot — OK" >&2
+              exit 0
+            fi
+
+            echo "[boot-reconcile] WARN: boot entry points to missing system: $cmdline_system" >&2
+
+            # Find the newest nixos-system in the sysroot store
+            actual_system="$(find "$sysroot/nix/store" -maxdepth 1 -name '*-nixos-system-*' -type d 2>/dev/null | sort | tail -1)"
+
+            if [[ -z "$actual_system" ]]; then
+              echo "[boot-reconcile] WARN: no nixos-system in $sysroot/nix/store — cannot reconcile" >&2
+              exit 0
+            fi
+
+            actual_system_rel="''${actual_system#"$sysroot"}"
+            echo "[boot-reconcile] reconciling boot entries to: $actual_system_rel" >&2
+
+            if [[ ! -d "$boot_dir/loader/entries" ]]; then
+              echo "[boot-reconcile] WARN: no systemd-boot entries at $boot_dir — skipping" >&2
+              exit 0
+            fi
+
+            old_init="$cmdline_system/init"
+            new_init="$actual_system_rel/init"
+            updated=0
+
+            for entry in "$boot_dir/loader/entries/"*.conf; do
+              [[ -f "$entry" ]] || continue
+              if grep -q "$old_init" "$entry"; then
+                sed -i "s|$old_init|$new_init|g" "$entry"
+                echo "[boot-reconcile] updated: $(basename "$entry")" >&2
+                updated=1
+              fi
+            done
+
+            if [[ "$updated" -eq 0 ]]; then
+              echo "[boot-reconcile] WARN: no entries contained old init path" >&2
+            fi
+          '';
+        };
+      };
 
     systemd = {
       services.${zpoolInitUnitName} = lib.mkMerge [
