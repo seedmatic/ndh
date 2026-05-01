@@ -39,7 +39,7 @@ Tailnet metadata is sourced canonically from `catalog.netplan.tailnet` (not from
 ----
 modules/
 ├── common/        # Shared Darwin + NixOS (primary-user, lima-host, flox, dnsmasq)
-├── darwin/        # macOS-specific (lima-config, network-bond, preferences, distributed-builds)
+├── darwin/        # macOS-specific (lima-config, network-bond, preferences)
 ├── nixos/         # Linux-specific (incus, containers, headscale, tailscale, zfs)
 └── home-manager/  # User environment (shared across systems)
 ----

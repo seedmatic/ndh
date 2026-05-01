@@ -17,15 +17,15 @@ and emergency-mode debugging via the virtio-serial debug shell.
 macOS host (bioskop / nxmatic-mbp)
 └── lima / tart runtime
     └── nerd-nixos (NixOS Lima VM)
-        ├── /dev/vda  → boot.img    (EFI, ~600 MiB)
-        ├── /dev/vdb  → tank1.img   (ZFS raidz1 member, 100 GiB)
-        ├── /dev/vdc  → tank2.img   (ZFS raidz1 member, 100 GiB)
-        ├── /dev/vdd  → tank3.img   (ZFS raidz1 member, 100 GiB)
-        └── /dev/vde  → recover.img (ZFS single-disk recovery pool, 100 GiB)
+        ├── /dev/vda  → boot.img    (Lima primary image — EFI only, ~600 MiB)
+        ├── /dev/vdb  → tank1.img   (Lima additionalDisk — ZFS raidz1 member, 100 GiB)
+        ├── /dev/vdc  → tank2.img   (Lima additionalDisk — ZFS raidz1 member, 100 GiB)
+        ├── /dev/vdd  → tank3.img   (Lima additionalDisk — ZFS raidz1 member, 100 GiB)
+        └── /dev/vde  → recover.img (Lima additionalDisk — ZFS single-disk recovery pool, 100 GiB)
 
-Disk images are built by a nested QEMU VM (linux-builder) running inside a
-Nix derivation.  The resulting store path seeds the Lima external disks on
-first import, then is expanded to the full 100 GiB target size.
+vda (boot.img) holds only the EFI System Partition + systemd-boot.
+All ZFS data lives on the uniform tank disks (vdb/vdc/vdd), keeping them
+seedable and identical — no dual boot+data role on any tank disk.
 ----
 
 == Prerequisites
@@ -52,6 +52,57 @@ disks (`nerd-nixos-tank1` … `nerd-nixos-recover`) with `limactl disk create`.
 
 NOTE: The materialiser must run at least once before `vm:reset` or `vm:start`
 will work.  If `lima.yaml` is missing, `run.sh` will exit with an error.
+
+== Nested QEMU CPU Architecture
+
+Understanding the CPU stack is important for tuning the bringup build:
+
+[source]
+----
+Apple M4 Pro (12 cores, bare metal, macOS)
+  └── linux-builder (outer QEMU, accel=tcg, 8 vCPUs)
+        └── nixos-install nested QEMU (accel=tcg, 2 vCPUs)
+----
+
+* **Outer QEMU** (`nix.linux-builder`): 8 vCPUs, each a macOS thread scheduled
+  natively on the M4 Pro cores.  Uses TCG because macOS has no Linux hypervisor.
+  Configured via `inventory.builder.vmCpuCores = 8` (clamped at 8 by mach-virt limit).
+
+* **Nested QEMU** (bringup disk image build): 2 vCPUs (MTTCG threads), running
+  inside the linux-builder guest.  More vCPUs = more TCG lock contention with no
+  throughput benefit — the workload is I/O-bound (ZFS virtio writes), not CPU-bound.
+  Overridable per host via `nixosDiskImageVmCpuCores` in `hostProfile`.
+
+* **Real parallelism**: 8 outer vCPUs × macOS scheduler → 12 bare-metal cores.
+  The 2 nested TCG threads get ~2/8 of those 8 outer vCPUs, leaving 6 for the
+  linux-builder kernel, virtiofsd, ZFS I/O path.
+
+=== Future: nerd-nixos on Tart as the build machine
+
+Once nerd-nixos runs inside Tart (Apple Virtualization framework), the build
+stack changes fundamentally:
+
+[source]
+----
+Apple M4 Pro (12 cores, bare metal)
+  └── nerd-nixos (Tart/VZ — native aarch64, KVM available)
+        └── nested QEMU (accel=kvm — real hardware vCPUs, no TCG)
+              └── nixos-install
+----
+
+With KVM, nested QEMU vCPUs execute natively — the 2-vCPU limit no longer
+applies.  `nixosDiskImageVmCpuCores` should be revisited upward (4-6) and
+`nixosDiskImageVmMemSizeMiB` can be increased to use nerd-nixos's larger
+memory allocation.
+
+linux-builder becomes redundant for `aarch64-linux` once nerd-nixos is
+stable on Tart.  The migration path:
+
+. nerd-nixos boots on Tart (current work)
+. Add nerd-nixos as a remote builder in `distributed-builds.nix`
+. Verify bringup disk image builds succeed via nerd-nixos builder
+. Set `linuxBuilderMode = "remote"` in bioskop host profile
+. Disable embedded linux-builder (`nix.linux-builder.enable = false`)
 
 == Phase 2 — Full VM Reset / First Boot
 
