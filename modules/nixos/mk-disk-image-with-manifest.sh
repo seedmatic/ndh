@@ -89,8 +89,8 @@ main() {
 
   if [[ -f "$out_dir/boot-size-hint.yaml" ]]; then
     export HINT_FILE="$out_dir/boot-size-hint.yaml"
-    if yq -e 'load(strenv(HINT_FILE)).zfsPools != null and (load(strenv(HINT_FILE)).zfsPools | type == "!!seq")' /dev/null >/dev/null; then
-      yq -i '.zfsPools = (load(strenv(HINT_FILE)).zfsPools // [])' "$out_dir/manifest.yaml"
+    if yq -e 'load(strenv(HINT_FILE)).zpools != null and (load(strenv(HINT_FILE)).zpools | type == "!!seq")' /dev/null >/dev/null; then
+      yq -i '.zpools = (load(strenv(HINT_FILE)).zpools // [])' "$out_dir/manifest.yaml"
     fi
   fi
 }

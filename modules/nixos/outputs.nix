@@ -404,6 +404,8 @@ let
         else
           hostProfile.hostName;
 
+      zfsPoolDiskMap = import ./zfs-pool-disk-map.nix;
+
       mkDiskImageManifestAttrs =
         {
           attr,
@@ -414,6 +416,7 @@ let
           sourceOutPath,
           nixosConfiguration,
           primaryImagePath ? "boot.img",
+          zpools ? [ ],
         }:
         {
           schemaVersion = 1;
@@ -432,7 +435,7 @@ let
             efiSystemPartitionSizeMiB
             ;
           images = [ ];
-          zfsPools = [ ];
+          inherit zpools;
         };
 
       mkDiskImageWithManifest =
@@ -446,25 +449,32 @@ let
           source,
           primaryImagePath ? "boot.img",
           extraImages ? [ ],
+          zpools ? [ ],
         }:
         let
-          manifestBaseYamlFile = pkgsForLinux.writeText "nixos-disk-image-manifest-base-${attr}.yaml" (
-            nixpkgs.lib.generators.toYAML { } (mkDiskImageManifestAttrs {
-              inherit
-                attr
-                imageMode
-                bootLoader
-                diskSizeMiB
-                efiSystemPartitionSizeMiB
-                nixosConfiguration
-                ;
-              sourceOutPath = source;
-              inherit primaryImagePath;
-            })
-          );
-          extraImagesSpecYamlFile = pkgsForLinux.writeText "nixos-disk-image-extra-images-${attr}.yaml" (
-            nixpkgs.lib.generators.toYAML { } extraImages
-          );
+          manifestAttrsJson = builtins.toJSON (mkDiskImageManifestAttrs {
+            inherit
+              attr
+              imageMode
+              bootLoader
+              diskSizeMiB
+              efiSystemPartitionSizeMiB
+              nixosConfiguration
+              zpools
+              ;
+            sourceOutPath = source;
+            inherit primaryImagePath;
+          });
+          manifestBaseYamlFile = pkgsForLinux.runCommand "nixos-disk-image-manifest-base-${attr}.yaml" {
+            nativeBuildInputs = [ pkgsForLinux.yq-go ];
+            passAsFile = [ "manifestAttrsJson" ];
+            inherit manifestAttrsJson;
+          } ''yq -p json -o yaml "$manifestAttrsJsonPath" > "$out"'';
+          extraImagesSpecYamlFile = pkgsForLinux.runCommand "nixos-disk-image-extra-images-${attr}.yaml" {
+            nativeBuildInputs = [ pkgsForLinux.yq-go ];
+            passAsFile = [ "extraImagesJson" ];
+            extraImagesJson = builtins.toJSON extraImages;
+          } ''yq -p json -o yaml "$extraImagesJsonPath" > "$out"'';
           manifestAssemblyScript = pkgsForLinux.replaceVars ./mk-disk-image-with-manifest.sh {
             nixBashTrampoline = "${ndhNixBashTrampoline}";
             loggerTag = "nixos.outputs.mkDiskImageWithManifest.${attr}";
@@ -562,6 +572,7 @@ let
         efiSystemPartitionSizeMiB = efiSystemPartitionSizeMiB;
         source = diskImageBringupZfsSystemdBootRaw;
         # primaryImagePath defaults to "boot.img" — dedicated EFI boot disk
+        zpools = nixpkgs.lib.unique (map (e: e.pool) zfsPoolDiskMap);
       };
 
       diskImageBringupGrub = mkDiskImageWithManifest {
