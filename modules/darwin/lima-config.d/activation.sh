@@ -338,12 +338,15 @@ main() {
   fi
 
   # When using bringup ZFS artifact sets, import canonical external pool disks.
-  # Root disk is provided by the primary image (tank1) through lima.yaml.images.
+  # boot.img is the Lima primary image (EFI boot, vda). tank1/2/3/recover are
+  # all additional disks (vdb/vdc/vdd/vde) forming the ZFS raidz1 pool.
   if [ -n "$img_manifest" ] && [ -f "$img_manifest" ]; then
     manifest_dir="$(dirname "$img_manifest")"
+    tank1_img="$(resolve_manifest_image_candidate "$manifest_dir" "$manifest_source_out" "tank1.img")"
     tank2_img="$(resolve_manifest_image_candidate "$manifest_dir" "$manifest_source_out" "tank2.img")"
     tank3_img="$(resolve_manifest_image_candidate "$manifest_dir" "$manifest_source_out" "tank3.img")"
 
+    lima_disk_import_if_available "nerd-nixos-tank1" "$tank1_img"
     lima_disk_import_if_available "nerd-nixos-tank2" "$tank2_img"
     lima_disk_import_if_available "nerd-nixos-tank3" "$tank3_img"
   fi

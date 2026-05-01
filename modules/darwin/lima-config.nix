@@ -209,6 +209,11 @@ let
 
     additionalDisks = [
       {
+        name = "nerd-nixos-tank1";
+        format = false;
+        label = "zpool=tank";
+      }
+      {
         name = "nerd-nixos-tank2";
         format = false;
         label = "zpool=tank";
