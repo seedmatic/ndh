@@ -510,7 +510,7 @@ let
           config = nixosSystem.config;
           # Use the host bringup configuration closure directly for nested installs.
           installSystemPath = nixosSystem.config.system.build.toplevel;
-          zpoolDiskSize = 2048; # around 6GiB in the raidz1 pool with zsdt compression level 1 enabled
+          zpoolDiskSize = 4096; # ~8 GiB usable in raidz1 (3×4GiB, 1/3 parity); 2GiB was too small for full system closure + nixpkgs source
           memSize = diskImageVmMemSizeMiB;
           vmCpuCores = diskImageVmCpuCores;
           includeChannel = false;
