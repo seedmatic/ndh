@@ -139,6 +139,18 @@ let
         nixosBringupRootFs = selectedBringupRootFs;
       };
 
+      # ZFS bringup always uses "zfs" as the root FS type regardless of the
+      # host's default selectedBringupRootFs (which defaults to "btrfs").
+      # Without this, boot.initrd.systemd.root would be "gpt-auto" (the
+      # NixOS default for non-ZFS roots), causing a 90s initrd timeout.
+      bringupSystemdZfsHostProfileBase = bringupSystemdHostProfileBase // {
+        nixosBringupRootFs = "zfs";
+      };
+
+      bringupGrubZfsHostProfileBase = bringupGrubHostProfileBase // {
+        nixosBringupRootFs = "zfs";
+      };
+
       runtimeSystemdHostProfile = hostProfile // {
         nixosBootLoader = "systemd-boot";
       };
@@ -240,7 +252,7 @@ let
           inventory
           ;
         generationMode = "bringup";
-        hostProfile = bringupSystemdHostProfileBase;
+        hostProfile = bringupSystemdZfsHostProfileBase;
         # ZFS bringup path: enable ZFS-backed filesystem definitions/boot integration.
         zfsOverlays = true;
         vmProvider = "lima";
@@ -253,7 +265,7 @@ let
           inventory
           ;
         generationMode = "bringup";
-        hostProfile = bringupSystemdHostProfileBase;
+        hostProfile = bringupSystemdZfsHostProfileBase;
         # ZFS bringup path: enable ZFS-backed filesystem definitions/boot integration.
         zfsOverlays = true;
         vmProvider = "tart";
@@ -266,7 +278,7 @@ let
           inventory
           ;
         generationMode = "bringup";
-        hostProfile = bringupGrubHostProfileBase;
+        hostProfile = bringupGrubZfsHostProfileBase;
         # ZFS bringup path: enable ZFS-backed filesystem definitions/boot integration.
         zfsOverlays = true;
         vmProvider = "lima";
@@ -279,7 +291,7 @@ let
           inventory
           ;
         generationMode = "bringup";
-        hostProfile = bringupGrubHostProfileBase;
+        hostProfile = bringupGrubZfsHostProfileBase;
         # ZFS bringup path: enable ZFS-backed filesystem definitions/boot integration.
         zfsOverlays = true;
         vmProvider = "tart";
