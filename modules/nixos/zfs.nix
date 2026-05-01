@@ -157,8 +157,9 @@ let
 
   fileSystems = zfsLegacyFileSystems // zfsOverlayFileSystems // overlayFileSystems;
 
-  # Extracted so it can be referenced in both ExecCondition and storePaths.
-  # NixOS initrd systemd auto-closes ExecStart but not always ExecCondition.
+  # Extracted so it can be referenced in both ExecCondition/ExecStart and storePaths.
+  # NixOS initrd systemd does NOT auto-close ExecStart or ExecCondition store paths —
+  # both must be explicitly listed in boot.initrd.systemd.storePaths.
   initrdDevicesCheckScript = ndh.store.writeShellScript "initrd-zpool-init-devices-check" ''
     set -eu
 
@@ -197,6 +198,84 @@ let
         mkdir -p "$out/bin"
         install -m 0555 "$textPath" "$out/bin/zpool-init"
       '';
+
+  # Extracted so it can be referenced in both ExecStart and storePaths.
+  initrdZpoolInitScript = ndh.store.writeShellScript "initrd-zpool-init" ''
+    set -euxo pipefail
+
+    # Some bootstrap images may accidentally contain /homeless-shelter,
+    # which makes nix/disko refuse impurity-prone builds.
+    if [ -d /homeless-shelter ]; then
+      rm -rf /homeless-shelter
+    fi
+
+    export NDH_BOOTSTRAP_INSTALLER_MODE=1
+    export NDH_BOOTSTRAP_STRICT=0
+    exec ${zpoolInit}/bin/zpool-init
+  '';
+
+  # Extracted so it can be referenced in both ExecStart and storePaths.
+  initrdBootEntryReconcileScript = pkgs.writeShellScript "boot-entry-reconcile" ''
+    set -euo pipefail
+
+    sysroot=/sysroot
+    boot_dir="$sysroot/boot"
+
+    # Parse init= from kernel cmdline
+    cmdline_init=""
+    for o in $(cat /proc/cmdline); do
+      case "$o" in
+        init=*) cmdline_init="''${o#init=}" ;;
+      esac
+    done
+
+    if [[ -z "$cmdline_init" ]]; then
+      echo "[boot-reconcile] no init= in cmdline, skipping" >&2
+      exit 0
+    fi
+
+    cmdline_system="$(dirname "$cmdline_init")"
+
+    if [[ -d "$sysroot$cmdline_system" ]]; then
+      echo "[boot-reconcile] boot entry matches sysroot — OK" >&2
+      exit 0
+    fi
+
+    echo "[boot-reconcile] WARN: boot entry points to missing system: $cmdline_system" >&2
+
+    # Find the newest nixos-system in the sysroot store
+    actual_system="$(find "$sysroot/nix/store" -maxdepth 1 -name '*-nixos-system-*' -type d 2>/dev/null | sort | tail -1)"
+
+    if [[ -z "$actual_system" ]]; then
+      echo "[boot-reconcile] WARN: no nixos-system in $sysroot/nix/store — cannot reconcile" >&2
+      exit 0
+    fi
+
+    actual_system_rel="''${actual_system#"$sysroot"}"
+    echo "[boot-reconcile] reconciling boot entries to: $actual_system_rel" >&2
+
+    if [[ ! -d "$boot_dir/loader/entries" ]]; then
+      echo "[boot-reconcile] WARN: no systemd-boot entries at $boot_dir — skipping" >&2
+      exit 0
+    fi
+
+    old_init="$cmdline_system/init"
+    new_init="$actual_system_rel/init"
+    updated=0
+
+    for entry in "$boot_dir/loader/entries/"*.conf; do
+      [[ -f "$entry" ]] || continue
+      if grep -q "$old_init" "$entry"; then
+        sed -i "s|$old_init|$new_init|g" "$entry"
+        echo "[boot-reconcile] updated: $(basename "$entry")" >&2
+        updated=1
+      fi
+    done
+
+    if [[ "$updated" -eq 0 ]]; then
+      echo "[boot-reconcile] WARN: no entries contained old init path" >&2
+    fi
+  '';
 
   espSyncScriptText = builtins.replaceStrings [ "@nixBashTrampoline@" ] [ nixBashTrampoline ] (
     builtins.readFile ./zfs.d/esp-sync.sh
@@ -433,11 +512,14 @@ in
       zpoolInit
     ];
 
-    # Explicitly include ExecCondition script in the initrd store.
-    # NixOS auto-closes ExecStart paths but not always ExecCondition.
-    boot.initrd.systemd.storePaths = lib.mkIf (
-      config.zfsOverlays.bootstrapActivation.enable && config.zfsOverlays.enable && (!overlayModeEnabled)
-    ) [ initrdDevicesCheckScript ];
+    # Explicitly include both ExecCondition and ExecStart scripts in the initrd store.
+    # NixOS does NOT auto-close either — both must be listed explicitly.
+    boot.initrd.systemd.storePaths = lib.mkMerge [
+      (lib.mkIf (
+        config.zfsOverlays.bootstrapActivation.enable && config.zfsOverlays.enable && (!overlayModeEnabled)
+      ) [ initrdDevicesCheckScript initrdZpoolInitScript ])
+      (lib.mkIf (config.zfsOverlays.enable && (!overlayModeEnabled)) [ initrdBootEntryReconcileScript ])
+    ];
 
     boot.initrd.systemd.services.${zpoolInitUnitName} =
       lib.mkIf
@@ -470,19 +552,7 @@ in
             StandardOutput = "journal+console";
             StandardError = "journal+console";
             ExecCondition = initrdDevicesCheckScript;
-            ExecStart = ndh.store.writeShellScript "initrd-zpool-init" ''
-              set -euxo pipefail
-
-              # Some bootstrap images may accidentally contain /homeless-shelter,
-              # which makes nix/disko refuse impurity-prone builds.
-              if [ -d /homeless-shelter ]; then
-                rm -rf /homeless-shelter
-              fi
-
-              export NDH_BOOTSTRAP_INSTALLER_MODE=1
-              export NDH_BOOTSTRAP_STRICT=0
-              exec ${zpoolInit}/bin/zpool-init
-            '';
+            ExecStart = initrdZpoolInitScript;
             TimeoutStartSec = "30min";
           };
         };
@@ -525,67 +595,7 @@ in
           RemainAfterExit = true;
           StandardOutput = "journal+console";
           StandardError = "journal+console";
-          ExecStart = pkgs.writeShellScript "boot-entry-reconcile" ''
-            set -euo pipefail
-
-            sysroot=/sysroot
-            boot_dir="$sysroot/boot"
-
-            # Parse init= from kernel cmdline
-            cmdline_init=""
-            for o in $(cat /proc/cmdline); do
-              case "$o" in
-                init=*) cmdline_init="''${o#init=}" ;;
-              esac
-            done
-
-            if [[ -z "$cmdline_init" ]]; then
-              echo "[boot-reconcile] no init= in cmdline, skipping" >&2
-              exit 0
-            fi
-
-            cmdline_system="$(dirname "$cmdline_init")"
-
-            if [[ -d "$sysroot$cmdline_system" ]]; then
-              echo "[boot-reconcile] boot entry matches sysroot — OK" >&2
-              exit 0
-            fi
-
-            echo "[boot-reconcile] WARN: boot entry points to missing system: $cmdline_system" >&2
-
-            # Find the newest nixos-system in the sysroot store
-            actual_system="$(find "$sysroot/nix/store" -maxdepth 1 -name '*-nixos-system-*' -type d 2>/dev/null | sort | tail -1)"
-
-            if [[ -z "$actual_system" ]]; then
-              echo "[boot-reconcile] WARN: no nixos-system in $sysroot/nix/store — cannot reconcile" >&2
-              exit 0
-            fi
-
-            actual_system_rel="''${actual_system#"$sysroot"}"
-            echo "[boot-reconcile] reconciling boot entries to: $actual_system_rel" >&2
-
-            if [[ ! -d "$boot_dir/loader/entries" ]]; then
-              echo "[boot-reconcile] WARN: no systemd-boot entries at $boot_dir — skipping" >&2
-              exit 0
-            fi
-
-            old_init="$cmdline_system/init"
-            new_init="$actual_system_rel/init"
-            updated=0
-
-            for entry in "$boot_dir/loader/entries/"*.conf; do
-              [[ -f "$entry" ]] || continue
-              if grep -q "$old_init" "$entry"; then
-                sed -i "s|$old_init|$new_init|g" "$entry"
-                echo "[boot-reconcile] updated: $(basename "$entry")" >&2
-                updated=1
-              fi
-            done
-
-            if [[ "$updated" -eq 0 ]]; then
-              echo "[boot-reconcile] WARN: no entries contained old init path" >&2
-            fi
-          '';
+          ExecStart = initrdBootEntryReconcileScript;
         };
       };
 
