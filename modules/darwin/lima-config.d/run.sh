@@ -17,6 +17,7 @@ LIMA_QUIET_BUILD="${LIMA_QUIET_BUILD:-0}"
 LIMA_EXTERNAL_DISK_SIZE="${LIMA_EXTERNAL_DISK_SIZE:-3G}"
 DEFAULT_LIMA_NIXOS_DISK_IMAGE_ATTR="${DEFAULT_LIMA_NIXOS_DISK_IMAGE_ATTR:-nixosDiskImages.@effectiveHostName@.bringup.zfsSystemd}"
 LIMA_NIXOS_DISK_IMAGE_ATTR="${LIMA_NIXOS_DISK_IMAGE_ATTR:-}"
+LIMA_NIXOS_IMAGE_TARGET="${LIMA_NIXOS_IMAGE_TARGET:-@imageTargetPath@}"
 NDH_VZ_HOST_FLAKE_REF="${NDH_VZ_HOST_FLAKE_REF:-}"
 RESOLVED_NDH_VZ_HOST_FLAKE_REF=""
 RESOLVED_LIMA_NIXOS_DISK_IMAGE_ATTR=""
@@ -207,6 +208,7 @@ vm:factory:reset() {
 vm:reset() {
   vm:kill
   host:disk:image:build
+  host:lima:boot:image:update
   host:lima:tank:disks:import
   host:lima:config:ensure
   vm:factory:reset
@@ -252,6 +254,39 @@ host:disk:image:build() {
 
   : "[lima-run] building disk image from ${RESOLVED_NDH_VZ_HOST_FLAKE_REF}#${RESOLVED_LIMA_NIXOS_DISK_IMAGE_ATTR}"
   RESOLVED_DISK_IMAGE_STORE_PATH="$(nix "${ndh_nix_cli_args[@]}" "${nix_build_args[@]}")"
+}
+
+host:lima:boot:image:update() {
+  [[ -n "${RESOLVED_DISK_IMAGE_STORE_PATH}" ]] || {
+    : "[lima-run] no resolved disk image store path; skipping boot image update"
+    return 0
+  }
+
+  local boot_img=""
+  # Prefer manifest-declared imagePath, fall back to well-known filenames.
+  if [[ -f "${RESOLVED_DISK_IMAGE_STORE_PATH}/manifest.yaml" ]]; then
+    local rel
+    rel="$(yq -r '.imagePath // ""' "${RESOLVED_DISK_IMAGE_STORE_PATH}/manifest.yaml" 2>/dev/null || true)"
+    [[ -n "${rel}" && -f "${RESOLVED_DISK_IMAGE_STORE_PATH}/${rel}" ]] && boot_img="${RESOLVED_DISK_IMAGE_STORE_PATH}/${rel}"
+  fi
+  [[ -z "${boot_img}" && -f "${RESOLVED_DISK_IMAGE_STORE_PATH}/boot.img" ]] && boot_img="${RESOLVED_DISK_IMAGE_STORE_PATH}/boot.img"
+  [[ -z "${boot_img}" && -f "${RESOLVED_DISK_IMAGE_STORE_PATH}/nixos.img" ]] && boot_img="${RESOLVED_DISK_IMAGE_STORE_PATH}/nixos.img"
+
+  if [[ -z "${boot_img}" ]]; then
+    echo "[lima-run][WARN] no boot image found in ${RESOLVED_DISK_IMAGE_STORE_PATH}; skipping boot image update" >&2
+    return 0
+  fi
+
+  local target="${LIMA_NIXOS_IMAGE_TARGET}"
+  if [[ -z "${target}" ]]; then
+    echo "[lima-run][WARN] LIMA_NIXOS_IMAGE_TARGET not set; skipping boot image update" >&2
+    return 0
+  fi
+
+  mkdir -p "$(dirname "${target}")"
+  # Update the gcroot symlink to point to the new boot image.
+  ln -sfn "${boot_img}" "${target}"
+  echo "[lima-run] updated boot image gcroot: ${target} -> ${boot_img}"
 }
 
 host:lima:tank:disks:import() {

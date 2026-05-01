@@ -186,6 +186,7 @@ let
         effectiveHostName = effectiveHostName;
         nixosFlakePath = cfg.nixosFlakePath;
         nixosHostAttr = cfg.nixosHostAttr;
+        imageTargetPath = imageTargetPath;
       }
     } "$out"
     chmod +x "$out"
