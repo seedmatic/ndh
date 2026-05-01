@@ -198,6 +198,20 @@ in
           # Connect to debug shell (Ctrl+] to disconnect):
           #   qpid=$(pgrep --newest qemu)
           #   sudo socat UNIX-CONNECT:/proc/$qpid/root/build/shell.sock -,raw,echo=0,escape=0x1d
+          #
+          # First thing after connecting — fix terminal size:
+          #   resize
+          #
+          # Perf / debug tools available in the shell:
+          #   iostat -x 1              — per-disk utilisation, await, queue depth
+          #   mpstat -P ALL 1          — per-CPU breakdown
+          #   pidstat -d 1             — per-process I/O rates
+          #   iotop-c                  — live top-style I/O monitor
+          #   htop                     — CPU/mem/process overview
+          #   vmstat 1                 — memory pressure + block I/O summary
+          #   zpool iostat -v 1        — ZFS pool throughput
+          #   lsof                     — open files, sockets, ZFS handles
+          #   strace -p <pid>          — syscall trace on any process
           QEMU_OPTS="$QEMU_OPTS -device virtio-serial -chardev socket,id=shell-sock,path=$PWD/shell.sock,server=on,wait=off -device virtconsole,chardev=shell-sock,name=shell"
 
           source ${bringupCommonScript}
