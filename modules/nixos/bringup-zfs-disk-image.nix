@@ -19,9 +19,34 @@
   postVM ? "",
 }:
 let
+  zfsPoolDiskMap = import ./zfs-pool-disk-map.nix;
   espStartMiB = 1;
   espSizeMiB = 512;
   zfsStartMiB = espStartMiB + espSizeMiB + 1;
+  virtioDeviceNameAt = index: "vd${lib.substring index 1 "bcdefghijklmnopqrstuvwxyz"}";
+  zfsDiskDeviceMap = lib.listToAttrs (lib.imap0 (index: entry: {
+    name = entry.disk;
+    value = "/dev/${virtioDeviceNameAt index}";
+  }) zfsPoolDiskMap);
+  zfsPoolDiskMapJson = builtins.toJSON zfsPoolDiskMap;
+  zfsPoolDiskMapJsonFile = pkgs.writeText "zfs-pool-disk-map.json" zfsPoolDiskMapJson;
+  diskoDisksAttrLines = lib.concatStringsSep "\n          " (
+    map (entry: "${entry.disk} = \"${zfsDiskDeviceMap.${entry.disk}}\";") zfsPoolDiskMap
+  );
+  qemuAdditionalDriveOpts = lib.concatStringsSep " " (
+    map
+      (entry: "-drive file=${entry.disk}DiskImage,if=virtio,format=raw,cache=unsafe,werror=report")
+      zfsPoolDiskMap
+  );
+  preVmDiskImageVars = lib.concatStringsSep "\n          " (
+    map (entry: "${entry.disk}DiskImage=${entry.disk}.raw") zfsPoolDiskMap
+  );
+  preVmCreateRawDisks = lib.concatStringsSep "\n          " (
+    map (entry: "bringup::create_raw_disk \"${entry.disk}DiskImage\" ${toString zpoolDiskSize}") zfsPoolDiskMap
+  );
+  postVmMoveDiskImages = lib.concatStringsSep "\n          " (
+    map (entry: "mv \"${entry.disk}DiskImage\" \"$out/${entry.disk}.img\"") zfsPoolDiskMap
+  );
   bringupCommon = import ./bringup-disk-image-common.nix {
     inherit
       lib
@@ -100,6 +125,7 @@ let
     let
       cfg = import ${./zfs-disko-config.nix} {
         inherit lib;
+        zfsPoolDiskMap = builtins.fromJSON (builtins.readFile ${zfsPoolDiskMapJsonFile});
         installRootMountPoint = "/mnt/zfs-root";
         diskImageSize = "${toString zpoolDiskSize}M";
         bootDiskImageSize = "${toString bootDiskSize}M";
@@ -108,10 +134,7 @@ let
         zfsStartMiB = ${toString zfsStartMiB};
         disks = {
           nixos = "/dev/vda";
-          tank1 = "/dev/vdb";
-          tank2 = "/dev/vdc";
-          tank3 = "/dev/vdd";
-          recover = "/dev/vde";
+          ${diskoDisksAttrLines}
         };
       };
     in
@@ -158,7 +181,7 @@ let
     systemToplevel = "${installSystemPath}";
     systemdLibUdevd = "${pkgs.systemd}/lib/systemd/systemd-udevd";
     channelFlag = if includeChannel then "--channel ${channelSources}" else "";
-    bootSizePolicyNote = builtins.toJSON "ZFS bringup artifacts generated as tank1/tank2/tank3/recover images.";
+    bootSizePolicyNote = builtins.toJSON "ZFS bringup artifacts generated from canonical zfs-pool-disk-map definitions.";
   };
 
   nestedQemuNetOpts = bringupCommon.nestedQemuNetOpts;
@@ -181,10 +204,7 @@ in
       {
         QEMU_OPTS = lib.concatStringsSep " " [
           "-drive file=$bootDiskImage,if=virtio,format=raw,cache=unsafe,werror=report"
-          "-drive file=$tank1DiskImage,if=virtio,format=raw,cache=unsafe,werror=report"
-          "-drive file=$tank2DiskImage,if=virtio,format=raw,cache=unsafe,werror=report"
-          "-drive file=$tank3DiskImage,if=virtio,format=raw,cache=unsafe,werror=report"
-          "-drive file=$recoverDiskImage,if=virtio,format=raw,cache=unsafe,werror=report"
+          qemuAdditionalDriveOpts
           nestedQemuNetOpts
         ];
         NIX_BUILD_CORES = toString vmCpuCores;
@@ -200,8 +220,7 @@ in
           # Do NOT add -serial here — it would steal ttyAMA0 from stdio, silencing the build log.
           #
           # Connect to debug shell (Ctrl+] to disconnect):
-          #   qpid=$(pgrep --newest qemu)
-          #   sudo socat UNIX-CONNECT:/proc/$qpid/root/build/shell.sock -,raw,echo=0,escape=0x1d
+          #   sudo socat UNIX-CONNECT:/proc/$(pgrep --newest qemu)/root/build/shell.sock -,raw,echo=0,escape=0x1d
           #
           # First thing after connecting — fix terminal size:
           #   resize
@@ -221,16 +240,10 @@ in
           source ${bringupCommonScript}
 
           bootDiskImage=boot.raw
-          tank1DiskImage=tank1.raw
-          tank2DiskImage=tank2.raw
-          tank3DiskImage=tank3.raw
-          recoverDiskImage=recover.raw
+          ${preVmDiskImageVars}
 
           bringup::create_raw_disk "$bootDiskImage" ${toString bootDiskSize}
-          bringup::create_raw_disk "$tank1DiskImage" ${toString zpoolDiskSize}
-          bringup::create_raw_disk "$tank2DiskImage" ${toString zpoolDiskSize}
-          bringup::create_raw_disk "$tank3DiskImage" ${toString zpoolDiskSize}
-          bringup::create_raw_disk "$recoverDiskImage" ${toString zpoolDiskSize}
+          ${preVmCreateRawDisks}
 
           : 'qemu pid: qpid=$(pgrep --newest qemu)'
           : 'build log (Ctrl+] to exit): sudo socat UNIX-CONNECT:/proc/$qpid/root/build/console.sock -,raw,echo=0,escape=0x1d'
@@ -239,10 +252,7 @@ in
 
         postVM = ''
           mv "$bootDiskImage" "$out/boot.img"
-          mv "$tank1DiskImage" "$out/tank1.img"
-          mv "$tank2DiskImage" "$out/tank2.img"
-          mv "$tank3DiskImage" "$out/tank3.img"
-          mv "$recoverDiskImage" "$out/recover.img"
+          ${postVmMoveDiskImages}
 
           if [[ -f boot-size-hint.yaml ]]; then
             mv boot-size-hint.yaml "$out/boot-size-hint.yaml"

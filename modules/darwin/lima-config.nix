@@ -68,6 +68,15 @@ let
   # Canonical source-of-truth network values from rke2lab netplan catalog (@codebase)
   rke2labNetplan = catalog.netplan.rke2lab;
 
+  # Canonical disk → ZFS pool membership (shared with bringup config)
+  limaVmName = "nerd-nixos";
+  zfsPoolDiskMap = import ../nixos/zfs-pool-disk-map.nix;
+  limaAdditionalDisks = map (entry: {
+    name = "${limaVmName}-${entry.disk}";
+    format = false;
+    label = "zpool=${entry.pool}";
+  }) zfsPoolDiskMap;
+
   # Stable image staging paths
   imageManifestPath = if cfg.imageManifestPath == null then "" else toString cfg.imageManifestPath;
   imageStorePath = if cfg.imageStorePath == null then "" else toString cfg.imageStorePath;
@@ -207,28 +216,7 @@ let
       name = vmGuestUser;
     };
 
-    additionalDisks = [
-      {
-        name = "nerd-nixos-tank1";
-        format = false;
-        label = "zpool=tank";
-      }
-      {
-        name = "nerd-nixos-tank2";
-        format = false;
-        label = "zpool=tank";
-      }
-      {
-        name = "nerd-nixos-tank3";
-        format = false;
-        label = "zpool=tank";
-      }
-      {
-        name = "nerd-nixos-recover";
-        format = false;
-        label = "zpool=recover";
-      }
-    ];
+    additionalDisks = limaAdditionalDisks;
 
     hostResolver = {
       enabled = true;

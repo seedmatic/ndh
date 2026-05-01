@@ -249,7 +249,6 @@ in
           Compression yes
           TCPKeepAlive yes
       '';
-      mode = "0644";
     };
 
     # Deploy linux-builder private key for nix daemon (runs as root).

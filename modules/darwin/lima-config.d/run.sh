@@ -102,25 +102,24 @@ lima:disk:image:attr:resolve() {
 }
 
 # shellcheck disable=SC2034
-declare -a NERD_NIXOS_DISKS=(tank1 tank2 tank3 recover)
-# shellcheck disable=SC2034
-declare -a NERD_DEBIAN_DISKS=(tank2 tank3)
-# shellcheck disable=SC2034
-declare -a NERD_DISKS=(tank2 tank3)
-
 vm:disks:list() {
-  local disks_var_name="NERD_DISKS[@]"
+  # When a disk image store path is resolved, derive disk list from its manifest
+  # (non-primary images — those are the zpool member disks).
+  # Fall back to limactl for operations where the store path isn't set yet.
+  if [[ -n "${RESOLVED_DISK_IMAGE_STORE_PATH}" && \
+        -f "${RESOLVED_DISK_IMAGE_STORE_PATH}/manifest.yaml" ]]; then
+    local primary_img
+    primary_img="$(yq -r '.imagePath' "${RESOLVED_DISK_IMAGE_STORE_PATH}/manifest.yaml")"
+    export PRIMARY_IMG="${primary_img}"
+    yq -r '.images[] | select(.path != env(PRIMARY_IMG)) | .name' \
+        "${RESOLVED_DISK_IMAGE_STORE_PATH}/manifest.yaml"
+    return
+  fi
 
-  case "${LIMA_VM}" in
-    nerd-nixos)
-      disks_var_name="NERD_NIXOS_DISKS[@]"
-      ;;
-    nerd-debian)
-      disks_var_name="NERD_DEBIAN_DISKS[@]"
-      ;;
-  esac
-
-  printf '%s\n' "${!disks_var_name}"
+  # Derive disk list from limactl — strips the "${LIMA_VM}-" prefix from registered disks.
+  limactl disk list --json 2>/dev/null \
+    | PREFIX="${LIMA_VM}-" yq -p json -o tsv \
+        '.name | select(test("^" + env(PREFIX))) | sub("^" + env(PREFIX), "")'
 }
 
 vm:disk:foreach() {
@@ -266,11 +265,14 @@ host:lima:tank:disks:import() {
     return 0
   fi
 
-  for disk in tank1 tank2 tank3 recover; do
-    local img="${RESOLVED_DISK_IMAGE_STORE_PATH}/${disk}.img"
-    [[ -f "${img}" ]] || { : "[lima-run] ${disk}.img not in store path; skipping"; continue; }
+  for img in "${RESOLVED_DISK_IMAGE_STORE_PATH}"/*.img; do
+    [[ -f "${img}" ]] || continue
+    local img_file="${img##*/}"
+    # Skip the primary boot/OS image — only import additional pool disks
+    [[ "${img_file}" == "boot.img" || "${img_file}" == "nixos.img" ]] && continue
 
-    local disk_name="nerd-nixos-${disk}"
+    local disk="${img_file%.img}"
+    local disk_name="${LIMA_VM}-${disk}"
     local datadisk="${LIMA_HOME}/_disks/${disk_name}/datadisk"
 
     if [[ -f "${datadisk}" ]]; then

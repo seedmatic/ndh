@@ -9,6 +9,7 @@
   espStartMiB ? 1,
   espSizeMiB ? 512,
   zfsStartMiB ? 514,
+  zfsPoolDiskMap ? null,
   disks ? {
     # boot: dedicated EFI boot disk (vda). ZFS data disks start at vdb.
     # This keeps all tank disks uniform — no dual boot+data role on tank1.
@@ -21,6 +22,11 @@
   ...
 }:
 let
+  zfsPoolDiskMapEffective =
+    if zfsPoolDiskMap != null then
+      zfsPoolDiskMap
+    else
+      import ./zfs-pool-disk-map.nix;
   zstdLevel = hostProfile.nixosZstdCompressionLevel or 1;
   zfsCompression = "zstd-${toString zstdLevel}";
   espEndMiB = espStartMiB + espSizeMiB;
@@ -65,11 +71,12 @@ let
       };
     };
 
-  mkTankDisk =
+  mkPoolDisk =
     {
       name,
       device,
       espLabel,
+      pool,
       espMountpoint ? null,
     }:
     {
@@ -90,73 +97,35 @@ let
             type = zfsPartitionType;
             content = {
               type = "zfs";
-              pool = "tank";
+              inherit pool;
             };
           };
         };
       };
     };
 
-  tankDisks = lib.listToAttrs (
+  zfsPoolDisks = lib.listToAttrs (
     map
       (spec: {
-        name = spec.name;
-        value = mkTankDisk {
-          inherit (spec) name espLabel;
-          device = disks.${spec.name};
-          espMountpoint = spec.espMountpoint or null;
+        name = spec.disk;
+        value = mkPoolDisk {
+          name = spec.disk;
+          espLabel = "esp-${spec.disk}";
+          device = disks.${spec.disk};
+          pool = spec.pool;
         };
       })
-      [
-        {
-          name = "tank1";
-          espLabel = "esp-tank1";
-          # No espMountpoint — bootloader lives on the dedicated nixos disk.
-        }
-        {
-          name = "tank2";
-          espLabel = "esp-tank2";
-        }
-        {
-          name = "tank3";
-          espLabel = "esp-tank3";
-        }
-      ]
+      zfsPoolDiskMapEffective
   );
 
   config = {
     enableConfig = false;
     devices = {
       disk =
-        tankDisks
+        zfsPoolDisks
         # Include dedicated boot disk only when provided in disks attrset.
         // lib.optionalAttrs (disks ? nixos) {
           nixos = mkBootDisk { device = disks.nixos; };
-        }
-        // {
-          recover = {
-            type = "disk";
-            device = disks.recover;
-            imageSize = diskImageSize;
-            content = {
-              type = "gpt";
-              partitions = {
-                esp = mkEspPartition {
-                  label = "esp-recover";
-                };
-                zfs = {
-                  start = "${toString zfsStartMiB}MiB";
-                  end = "-1MiB";
-                  label = "recover";
-                  type = zfsPartitionType;
-                  content = {
-                    type = "zfs";
-                    pool = "recover";
-                  };
-                };
-              };
-            };
-          };
         };
 
       zpool = {

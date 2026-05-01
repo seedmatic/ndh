@@ -470,7 +470,9 @@ in
           # gpt-auto root discovery is needed for non-ZFS bringup (Discoverable
           # Partitions Spec). ZFS uses zfs-import instead — gpt-auto causes a 90s
           # initrd timeout waiting for /dev/gpt-auto-root on ZFS roots.
-          root = lib.mkIf (rootFsType != "zfs") (lib.mkForce "gpt-auto");
+          # Must be mkForce in both branches: the NixOS default is "gpt-auto",
+          # so omitting the ZFS case silently re-enables it.
+          root = lib.mkForce (if rootFsType != "zfs" then "gpt-auto" else "fstab");
           network.enable = lib.mkDefault bringupMode;
           emergencyAccess = true;
           # Recovery/forensics toolset always present in the initrd emergency shell.
@@ -529,6 +531,18 @@ in
       # While troubleshooting bootstrap console recovery with nscd disabled,
       # clear NSS module loading only for bootstrap mode.
       nssModules = lib.mkIf bringupMode (lib.mkForce [ ]);
+    };
+
+    # Disable man pages and other documentation across all configurations.
+    # nerd-nixos is a headless server; man pages add thousands of symlinks to the
+    # system closure and significantly slow down `nixos-install` during bringup.
+    # Use the host's man pages or https://man.archlinux.org instead.
+    documentation = {
+      enable = false;
+      man.enable = false;
+      doc.enable = false;
+      info.enable = false;
+      nixos.enable = false;
     };
 
     fileSystems = lib.mkIf (!config.disko.enableConfig) {
