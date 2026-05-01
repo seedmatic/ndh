@@ -355,7 +355,11 @@ let
       diskSizeBytes = diskSizeMiB * (1024 * 1024);
       efiSystemPartitionSizeMiB = hostProfile.nixosEfiSystemPartitionSizeMiB or 512;
       diskImageVmMemSizeMiB = hostProfile.nixosDiskImageVmMemSizeMiB or 6144;
-      diskImageVmCpuCores = hostProfile.nixosDiskImageVmCpuCores or 6;
+      # Nested QEMU runs under TCG (no KVM in linux-builder) — each vCPU is a
+      # software-emulated host thread with lock contention. nixos-install is I/O-bound
+      # (ZFS writes), not CPU-bound. 2 vCPUs reduces TCG overhead vs 6 while still
+      # allowing nix-store and the install to interleave. Overridable per host.
+      diskImageVmCpuCores = hostProfile.nixosDiskImageVmCpuCores or 2;
       zfsBootstrapPoolDiskSizeMiB = hostProfile.nixosZfsBootstrapPoolDiskSizeMiB or 2048;
       # Bringup closure paths used for stage-1/2 bringup sizing checks.
       bringupRootFsType = selectedBringupRootFs;
