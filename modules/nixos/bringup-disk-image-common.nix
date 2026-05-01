@@ -19,13 +19,34 @@ let
     builtins.replaceStrings [ "accel=kvm:tcg" "accel=hvf:tcg" ] [ "accel=tcg" "accel=tcg" ]
       defaultQemuCommand;
 
+  # Wrap virtiofsd so the /nix/store mount gets UID/GID mapping:
+  #   --uid-map :0:<host-uid>:1: → host build-user uid appears as root in guest
+  #   --gid-map :0:<host-gid>:1: → host build-user gid appears as root in guest
+  # The xchg mount is left unmapped (only carries exit codes).
+  virtiofsdWithStoreUidMap = pkgs.writeShellScriptBin "virtiofsd" ''
+    is_store_mount=0
+    for arg in "$@"; do
+      [[ "$arg" == "${builtins.storeDir}" ]] && is_store_mount=1 && break
+    done
+    if [[ "$is_store_mount" == 1 ]]; then
+      exec ${lib.getExe pkgs.virtiofsd} \
+        --uid-map ":0:$(id -u):1:" \
+        --gid-map ":0:$(id -g):1:" \
+        "$@"
+    fi
+    exec ${lib.getExe pkgs.virtiofsd} "$@"
+  '';
+
+  # Extend pkgs so vmTools picks up our wrapper — pkgs is a direct vmTools parameter.
+  pkgsWithMappedVirtiofsd = pkgs.extend (_: _: { virtiofsd = virtiofsdWithStoreUidMap; });
+
   vmToolsBase =
     if qemuFallbackInVm then
-      pkgs.vmTools.override {
+      pkgsWithMappedVirtiofsd.vmTools.override {
         customQemu = fallbackQemuCommand;
       }
     else
-      pkgs.vmTools;
+      pkgsWithMappedVirtiofsd.vmTools;
 
   # Basic slirp network — gives DHCP and internet access to the guest.
   # No SSH/monit port-forwards: use the serial console socket instead.
