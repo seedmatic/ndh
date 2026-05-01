@@ -25,6 +25,7 @@ let
   };
   hostId = config.networking.hostId;
   installRootMountPoint = cfg.bootstrapActivation.installRootMountPoint;
+  primaryEspPartLabelEnv = cfg.espSync.primaryEspPartLabel;
   secondaryEspPartLabelsEnv = lib.concatStringsSep " " cfg.espSync.secondaryEspPartLabels;
   contributedTargetName = ndhSystemd.contributedTargetName;
   zpoolInitUnitName = ndhSystemd.mkUnitName "zpool-init";
@@ -489,6 +490,15 @@ in
       Canonical target root mountpoint used by disko and bootstrap NixOS install flow.
     '';
   };
+  options.zfsOverlays.espSync.primaryEspPartLabel = lib.mkOption {
+    type = lib.types.str;
+    default = "esp-boot";
+    description = ''
+      Partition label of the primary ESP — the one mounted at /boot where
+      systemd-boot installs itself. Content is mirrored FROM this partition
+      to all secondaryEspPartLabels.
+    '';
+  };
   options.zfsOverlays.espSync.secondaryEspPartLabels = lib.mkOption {
     type = lib.types.listOf lib.types.str;
     default = [
@@ -529,6 +539,7 @@ in
 
       loader.systemd-boot.extraInstallCommands = lib.mkIf config.boot.loader.systemd-boot.enable (
         lib.mkAfter ''
+          export PRIMARY_ESP_PART_LABEL=${lib.escapeShellArg primaryEspPartLabelEnv}
           export SECONDARY_ESP_PART_LABELS=${lib.escapeShellArg secondaryEspPartLabelsEnv}
           ${espSyncScript}
         ''
@@ -798,6 +809,7 @@ in
           Type = "oneshot";
           ExecStart = ndh.store.writeShellScript "esp-sync-service" ''
             set -eu
+            export PRIMARY_ESP_PART_LABEL=${lib.escapeShellArg primaryEspPartLabelEnv}
             export SECONDARY_ESP_PART_LABELS=${lib.escapeShellArg secondaryEspPartLabelsEnv}
             exec ${espSyncScript}
           '';

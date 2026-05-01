@@ -12,9 +12,9 @@ main() {
     exit 0
   fi
 
-  primary_esp_part_label="${PRIMARY_ESP_PART_LABEL:-esp-tank1}"
+  primary_esp_part_label="${PRIMARY_ESP_PART_LABEL:-esp-boot}"
   primary_esp="${PRIMARY_ESP_MOUNT:-/boot}"
-  secondary_esp_part_labels="${SECONDARY_ESP_PART_LABELS:-esp-tank2 esp-tank3 esp-recover}"
+  secondary_esp_part_labels="${SECONDARY_ESP_PART_LABELS:-esp-tank1 esp-tank2 esp-tank3 esp-recover}"
   esp_parts=()
 
   if [[ ! -d "$primary_esp" ]]; then
