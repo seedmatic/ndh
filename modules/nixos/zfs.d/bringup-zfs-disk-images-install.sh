@@ -113,7 +113,7 @@ env ZPOOLS_FILE="$zpools_file" yq -n \
   '{
     "zpools": load(strenv(ZPOOLS_FILE)),
     "policyNote": @bootSizePolicyNote@
-  }' > boot-size-hint.yaml
+  }' > /tmp/xchg/boot-size-hint.yaml
 
 # ── Reset ZFS install-time tuning before pool export ─────────────────────────
 # Drain remaining dirty TXGs first while sync=disabled (no ZIL overhead).

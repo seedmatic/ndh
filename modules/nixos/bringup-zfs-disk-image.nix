@@ -215,26 +215,22 @@ in
           PATH="$PATH:${pkgs.qemu_kvm}/bin"
           mkdir "$out"
 
-          # shell.sock: dedicated interactive root shell via virtio-serial (hvc0).
-          # The nix build log receives all VM output naturally via -nographic stdio (ttyAMA0).
-          # Do NOT add -serial here — it would steal ttyAMA0 from stdio, silencing the build log.
-          #
-          # Connect to debug shell (Ctrl+] to disconnect):
-          #   sudo socat UNIX-CONNECT:/proc/$(pgrep --newest qemu)/root/build/shell.sock -,raw,echo=0,escape=0x1d
-          #
-          # First thing after connecting — fix terminal size:
-          #   resize
-          #
-          # Perf / debug tools available in the shell:
-          #   iostat -x 1              — per-disk utilisation, await, queue depth
-          #   mpstat -P ALL 1          — per-CPU breakdown
-          #   pidstat -d 1             — per-process I/O rates
-          #   iotop-c                  — live top-style I/O monitor
-          #   htop                     — CPU/mem/process overview
-          #   vmstat 1                 — memory pressure + block I/O summary
-          #   zpool iostat -v 1        — ZFS pool throughput
-          #   lsof                     — open files, sockets, ZFS handles
-          #   strace -p <pid>          — syscall trace on any process
+          : 'Connect to debug shell (Ctrl+] to disconnect):'
+          : '  sudo socat UNIX-CONNECT:/proc/$(pgrep --newest qemu)/root/build/shell.sock -,raw,echo=0,escape=0x1d'
+          :
+          : 'First thing after connecting — fix terminal size:'
+          : '  resize'
+          :
+          : 'Perf / debug tools available in the shell:'
+          : '  iostat -x 1              — per-disk utilisation, await, queue depth'
+          : '  mpstat -P ALL 1          — per-CPU breakdown'
+          : '  pidstat -d 1             — per-process I/O rates'
+          : '  iotop-c                  — live top-style I/O monitor'
+          : '  htop                     — CPU/mem/process overview'
+          : '  vmstat 1                 — memory pressure + block I/O summary'
+          : '  zpool iostat -v 1        — ZFS pool throughput'
+          : '  lsof                     — open files, sockets, ZFS handles'
+          : '  strace -p <pid>          — syscall trace on any process'
           QEMU_OPTS="$QEMU_OPTS -device virtio-serial -chardev socket,id=shell-sock,path=$PWD/shell.sock,server=on,wait=off -device virtconsole,chardev=shell-sock,name=shell"
 
           source ${bringupCommonScript}
@@ -245,17 +241,15 @@ in
           bringup::create_raw_disk "$bootDiskImage" ${toString bootDiskSize}
           ${preVmCreateRawDisks}
 
-          : 'qemu pid: qpid=$(pgrep --newest qemu)'
-          : 'build log (Ctrl+] to exit): sudo socat UNIX-CONNECT:/proc/$qpid/root/build/console.sock -,raw,echo=0,escape=0x1d'
-          : 'debug shell (Ctrl+] to exit): sudo socat UNIX-CONNECT:/proc/$qpid/root/build/shell.sock -,raw,echo=0,escape=0x1d'
+          : 'debug shell (Ctrl+] to exit): sudo socat UNIX-CONNECT:/proc/$(pgrep --newest qemu)/root/build/shell.sock -,raw,echo=0,escape=0x1d'
         '';
 
         postVM = ''
           mv "$bootDiskImage" "$out/boot.img"
           ${postVmMoveDiskImages}
 
-          if [[ -f boot-size-hint.yaml ]]; then
-            mv boot-size-hint.yaml "$out/boot-size-hint.yaml"
+          if [[ -f xchg/boot-size-hint.yaml ]]; then
+            mv xchg/boot-size-hint.yaml "$out/boot-size-hint.yaml"
           fi
 
           set -x
