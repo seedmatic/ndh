@@ -112,6 +112,7 @@ let
           enableActivationHook = false;
           installMaterializerPackage = false;
           vmType = "qemu"; # Use QEMU for having a prompt in emergency mode, which is useful for debugging. VZ doesn't support interactive prompt on boot.
+          sshLocalPort = 61022; # Fixed port so nix daemon can reach nerd-nixos as a remote builder.
           # vmMemoryMiB = 8192;
           # vmCpuCores = 6;
         };

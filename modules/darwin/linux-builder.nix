@@ -38,41 +38,55 @@ let
       cacheCatalog.flakehub.publicKeys
     else
       [ cacheCatalog.flakehub.publicKey ];
-  # Consider linux-builder only when running on baremetal hosts
-  isBaremetalHost = !(config.profile.host ? form) || config.profile.host.form == "baremetal";
-  linuxBuilderMode = config.profile.host.linuxBuilderMode or "embedded";
-  useEmbeddedLinuxBuilder = linuxBuilderMode == "embedded";
+  # Consider linux-builder only when running on baremetal hosts.
+  # VM hosts (e.g. nikopol running as a Tart VZ VM) cannot run nested QEMU efficiently.
+  isBaremetalHost =
+    let
+      form = config.profile.host.form or null;
+    in
+    form == null || form == "baremetal";
   inventoryEntries =
     if builtins.hasAttr hostName hostsInventory then hostsInventory.${hostName} else [ ];
+  # Embedded linux-builder: nix-darwin managed QEMU VM (vm.manager == "nix-darwin")
   linuxBuilderEntries = lib.filter (
     entry:
     entry.builder != null
     && lib.elem "aarch64-linux" entry.builder.systems
-    && (!(entry ? form) || entry.form != "vm")
+    && (entry ? vm)
+    && (entry.vm.manager or "") == "nix-darwin"
+  ) inventoryEntries;
+  # nerd-nixos Lima builder: Lima managed VM (vm.manager == "lima")
+  limaBuilderEntries = lib.filter (
+    entry:
+    entry.builder != null
+    && lib.elem "aarch64-linux" entry.builder.systems
+    && (entry ? vm)
+    && (entry.vm.manager or "") == "lima"
   ) inventoryEntries;
   selected = if (!isBaremetalHost) then null else lib.head (linuxBuilderEntries ++ [ null ]);
+  selectedLimaBuilder = if (!isBaremetalHost) then null else lib.head (limaBuilderEntries ++ [ null ]);
   requestedLinuxBuilderVmCpuCores =
     if selected != null then (selected.builder.vmCpuCores or 8) else 8;
   effectiveLinuxBuilderVmCpuCores = lib.min requestedLinuxBuilderVmCpuCores 8;
+  # Lima nerd-nixos SSH port configured via lima.configGenerator.sshLocalPort
+  nerdNixosSshPort = config.lima.configGenerator.sshLocalPort or 0;
+  nerdNixosBuilderEnabled = selectedLimaBuilder != null && nerdNixosSshPort != 0;
+  # Key path shared by both embedded linux-builder (as fallback) and nerd-nixos builder
+  builderKeyDir = "/etc/nix";
+  builderKeyPath = "${builderKeyDir}/builder_ed25519";
 
 in
 {
 
   config = {
     warnings =
-      lib.optional (!useEmbeddedLinuxBuilder) ''
-        profile.host.linuxBuilderMode = "remote": embedded nix.linux-builder VM is disabled.
-        Ensure remote builders are reachable and profile.host.forceRemoteBuilds is enabled
-        if you want strict remote-only build behavior.
-      ''
-      ++
-        lib.optional (selected != null && useEmbeddedLinuxBuilder && requestedLinuxBuilderVmCpuCores > 8)
-          ''
-            linux-builder requested ${toString requestedLinuxBuilderVmCpuCores} vCPUs, but qemu mach-virt supports up to 8 here.
-            Clamping linux-builder VM vCPUs to 8.
-          '';
+      lib.optional (selected != null && requestedLinuxBuilderVmCpuCores > 8)
+        ''
+          linux-builder requested ${toString requestedLinuxBuilderVmCpuCores} vCPUs, but qemu mach-virt supports up to 8 here.
+          Clamping linux-builder VM vCPUs to 8.
+        '';
 
-    nix.linux-builder = lib.mkIf (selected != null && useEmbeddedLinuxBuilder) {
+    nix.linux-builder = lib.mkIf (selected != null) {
       enable = true;
       ephemeral = true;
       workingDirectory = "/var/lib/linux-builder";
@@ -193,5 +207,70 @@ in
 
     # SSH keys are managed by the home-manager ssh-keys.nix module
     # Keys are deployed to canonical split runtime paths via sshPaths (system/public + per-user/private)
+
+    # nerd-nixos Lima VM remote builder (when sshLocalPort is set)
+    nix.distributedBuilds = lib.mkIf nerdNixosBuilderEnabled true;
+
+    nix.buildMachines = lib.optionals nerdNixosBuilderEnabled [
+      {
+        hostName = "nerd-nixos-builder";
+        systems = selectedLimaBuilder.builder.systems or [ "aarch64-linux" ];
+        maxJobs = selectedLimaBuilder.builder.maxJobs or 8;
+        protocol = "ssh-ng";
+        sshUser = "builder";
+        sshKey = builderKeyPath;
+        supportedFeatures = [
+          "nixos-test"
+          "benchmark"
+          "big-parallel"
+          "kvm"
+        ];
+        speedFactor = 4; # Prefer nerd-nixos over embedded linux-builder
+      }
+    ];
+
+    # System SSH config so the nix daemon can reach nerd-nixos on the fixed Lima port
+    environment.etc."ssh/ssh_config.d/70-nerd-nixos-builder.conf" = lib.mkIf nerdNixosBuilderEnabled {
+      text = ''
+        Host nerd-nixos-builder
+          HostName 127.0.0.1
+          Port ${toString nerdNixosSshPort}
+          User builder
+          IdentityFile ${builderKeyPath}
+          IdentitiesOnly yes
+          StrictHostKeyChecking no
+          UserKnownHostsFile /dev/null
+          LogLevel QUIET
+          ServerAliveInterval 30
+          ServerAliveCountMax 3
+          ControlMaster auto
+          ControlPath /var/tmp/nix-builder-ssh-control/%C
+          ControlPersist 10m
+          Compression yes
+          TCPKeepAlive yes
+      '';
+      mode = "0644";
+    };
+
+    # Deploy linux-builder private key for nix daemon (runs as root).
+    # The key is extracted from the per-user SSH keys directory after SOPS decryption.
+    # Source: ~/.local/var/run/secrets/ssh-keys/linux-builder (deployed by ssh-keys HM module).
+    system.activationScripts.nerdNixosBuilderKey = lib.mkIf nerdNixosBuilderEnabled {
+      text = ''
+        user_key="${config.sshPaths.secretsKeysDir}/linux-builder"
+        dest="${builderKeyPath}"
+        key_dir="${builderKeyDir}"
+
+        install -d -m 0755 "$key_dir"
+        install -d -m 0700 /var/tmp/nix-builder-ssh-control
+
+        if [ -f "$user_key" ]; then
+          install -m 0600 -o root -g wheel "$user_key" "$dest"
+        else
+          echo "nerd-nixos-builder: linux-builder key not yet deployed at $user_key (run ssh-keys activation first)" >&2
+        fi
+      '';
+      deps = [ "setupActivationScript" ];
+    };
   };
 }

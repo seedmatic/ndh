@@ -25,7 +25,6 @@
     ./lima-config.nix
     ./tart-config.nix
     ./linux-builder.nix
-    ./distributed-builds.nix
     ./network-bond.nix
     ./static-routes.nix
     ./vlan.nix

@@ -10,23 +10,8 @@
 let
   ndhContext = ndh.context;
   inherit (pkgs) stdenv;
-  inherit (lib) mkIf;
   cfg = config.profile;
   defaultUserHome = if stdenv.isDarwin then "Users" else "${config.users.defaultUserHome}";
-  # Capture injected catalog in a non-recursive binding, then assert presence (@codebase)
-  catalogResolved =
-    let
-      injected = ndhContext.catalog;
-    in
-    assert injected != null;
-    injected;
-  # Capture injected inventory in a non-recursive binding, then assert presence (@codebase)
-  inventoryResolved =
-    let
-      injected = ndhContext.inventory;
-    in
-    assert injected != null;
-    injected;
 in
 {
   options = {
@@ -79,6 +64,15 @@ in
                   description = "Optional alias for the host (null means none).";
                   example = "my-mac";
                 };
+                form = lib.mkOption {
+                  type = lib.types.nullOr (lib.types.enum [
+                    "baremetal"
+                    "vm"
+                  ]);
+                  default = null;
+                  description = "Hardware form factor: 'baremetal' for physical machines, 'vm' for virtual machines. Affects which services (e.g. linux-builder) can be enabled.";
+                  example = "vm";
+                };
                 nixosBringupRootFs = lib.mkOption {
                   type = lib.types.enum [
                     "ext4"
@@ -87,164 +81,6 @@ in
                   default = ndhContext.hostProfile.nixosBringupRootFs or "btrfs";
                   description = "Filesystem type for NixOS bringup root disk image generation.";
                   example = "ext4";
-                };
-                forceRemoteBuilds = lib.mkOption {
-                  type = lib.types.bool;
-                  description = "Force this host to offload builds to remote builders (set max-jobs = 0 and configure remote builders).";
-                  default = false;
-                  example = true;
-                };
-                linuxBuilderMode = lib.mkOption {
-                  type = lib.types.enum [
-                    "embedded"
-                    "remote"
-                  ];
-                  default = "embedded";
-                  description = ''
-                    Selects how aarch64-linux build capacity is provided on Darwin hosts.
-                    - "embedded": enable nix-darwin's local `nix.linux-builder` VM (canonical current behavior)
-                    - "remote": disable embedded linux-builder and rely on remote builders (e.g., Lima/Tart NixOS VM)
-                  '';
-                  example = "remote";
-                };
-                preferredBuilderHosts = lib.mkOption {
-                  type = lib.types.listOf lib.types.str;
-                  default = [ ];
-                  example = [
-                    "bioskop"
-                    "nikopol"
-                  ];
-                  description = "Host keys from inventory.hosts to pull builder endpoints from (e.g., include bioskop so nikopol offloads to bioskop's builders). If empty, defaults to the current host only.";
-                };
-                remoteBuilders = lib.mkOption {
-                  type = lib.types.listOf lib.types.attrs;
-                  default = [ ];
-                  example = [
-                    # Example: bioskop (darwin host) exporting its darwin builder and linux-builder VM
-                    {
-                      hostName = "bioskop-darwin";
-                      systems = [ "aarch64-darwin" ];
-                      maxJobs = 4;
-                      protocol = "ssh-ng";
-                    }
-                    {
-                      hostName = "bioskop-linux";
-                      systems = [ "aarch64-linux" ];
-                      maxJobs = 8;
-                      protocol = "ssh-ng";
-                      supportedFeatures = [
-                        "kvm"
-                        "big-parallel"
-                      ];
-                    }
-                    # Example: nikopol (macbook-pro) exporting its darwin builder and nixos VM
-                    {
-                      hostName = "nikopol-darwin";
-                      systems = [ "aarch64-darwin" ];
-                      maxJobs = 2;
-                      protocol = "ssh-ng";
-                    }
-                    {
-                      hostName = "nikopol-nixos";
-                      systems = [ "aarch64-linux" ];
-                      maxJobs = 4;
-                      protocol = "ssh-ng";
-                    }
-                  ];
-                  description = "BuildMachines entries for the managed hosts (Darwin builders and their Linux/NixOS VMs). Leave empty to disable remote build enforcement on this host.";
-                };
-                builderCatalog = lib.mkOption {
-                  type = lib.types.listOf lib.types.attrs;
-                  default = [ ];
-                  example = [
-                    {
-                      host = "bioskop";
-                      form = "baremetal"; # bare metal vs vm
-                      networks = [
-                        "lan"
-                        "tailnet"
-                      ];
-                      builder = {
-                        hostName = "bioskop-darwin";
-                        systems = [ "aarch64-darwin" ];
-                        maxJobs = 8;
-                        protocol = "ssh-ng";
-                      };
-                    }
-                    {
-                      host = "bioskop";
-                      form = "baremetal";
-                      networks = [
-                        "lan"
-                        "tailnet"
-                      ];
-                      vm = {
-                        kind = "qemu";
-                        manager = "nix-darwin";
-                      };
-                      builder = {
-                        hostName = "bioskop-linux";
-                        systems = [ "aarch64-linux" ];
-                        maxJobs = 8;
-                        protocol = "ssh-ng";
-                      };
-                    }
-                    {
-                      host = "bioskop";
-                      form = "baremetal";
-                      networks = [
-                        "lan"
-                        "tailnet"
-                      ];
-                      vm = {
-                        kind = "vz";
-                        manager = "lima";
-                      };
-                      builder = {
-                        hostName = "bioskop-nixos";
-                        systems = [ "aarch64-linux" ];
-                        maxJobs = 8;
-                        protocol = "ssh-ng";
-                      };
-                    }
-                    {
-                      host = "nikopol";
-                      form = "vm";
-                      networks = [
-                        "lan"
-                        "tailnet"
-                      ];
-                      vm = {
-                        kind = "vz";
-                        manager = "tart";
-                      };
-                      builder = {
-                        hostName = "nikopol-darwin";
-                        systems = [ "aarch64-darwin" ];
-                        maxJobs = 8;
-                        protocol = "ssh-ng";
-                      };
-                    }
-                    {
-                      host = "nikopol";
-                      form = "vm";
-                      networks = [
-                        "lan"
-                        "tailnet"
-                      ];
-                      vm = {
-                        kind = "vz";
-                        manager = "lima";
-                      };
-                      builder = {
-                        hostName = "nikopol-nixos";
-                        systems = [ "aarch64-linux" ];
-                        maxJobs = 8;
-                        protocol = "ssh-ng";
-                      };
-                    }
-                  ];
-                  description = "Inventory-derived list of managed hosts and their builder endpoints with physical characteristics (platform/form) and VM details (kind/manager). When set and remoteBuilders is empty, the distributed-builds module will use this list; features are derived automatically.";
                 };
               };
             };
@@ -320,87 +156,6 @@ in
     # instead of the static placeholder jdoe so Home Manager's activation check matches $HOME.
     profile.user.home = lib.mkDefault (
       builtins.toPath "/${defaultUserHome}/${config.profile.user.name}"
-    );
-
-    # Default builder catalog from all inventory hosts
-    profile.host.preferredBuilderHosts = lib.mkDefault (builtins.attrNames inventoryResolved.hosts);
-
-    profile.host.builderCatalog = lib.mkDefault (
-      let
-        wanted = builtins.attrNames inventoryResolved.hosts;
-        addDefaultFeatures =
-          host: entry:
-          let
-            hostKey = host;
-            base = entry.builder;
-            baseFeatures = base.supportedFeatures or [ ];
-            vmKind = if entry ? vm then (entry.vm.kind or null) else null;
-            vmManager = if entry ? vm then (entry.vm.manager or null) else null;
-            maxJobs = base.maxJobs or 0;
-            defaults = lib.optional (maxJobs >= 8) "big-parallel";
-            platformLabel =
-              if base ? systems && lib.any (s: lib.hasInfix "linux" s) base.systems then "linux" else "darwin";
-            hostNameDefault =
-              if platformLabel == "linux" then
-                if vmManager == "nix-darwin" then "${hostKey}-linux" else "${hostKey}-nixos"
-              else
-                "${hostKey}-darwin";
-            sshHostNameDefault = hostNameDefault;
-            # Default port: darwin-hosted Linux builders use 31022; nixos-only (e.g., lima) stays on 22
-            hostPortValue =
-              if base.hostPort or null != null then
-                base.hostPort
-              else if platformLabel == "linux" then
-                if vmManager == "lima" then 22 else 31022
-              else
-                22;
-            hostPortResolved = hostPortValue;
-            hostValue =
-              if vmManager == "nix-darwin" then
-                hostKey
-              else if base ? host then
-                base.host
-              else
-                base.hostName or hostNameDefault;
-            userDefault =
-              if platformLabel == "linux" then
-                if vmManager == "nix-darwin" then "builder" else config.profile.user.name
-              else
-                "builder";
-          in
-          entry
-          // {
-            builder = base // {
-              supportedFeatures = lib.unique (baseFeatures ++ defaults);
-              networks = entry.networks or [ ];
-              hostName = base.hostName or hostNameDefault;
-              sshHostName = base.sshHostName or sshHostNameDefault;
-              user = base.user or userDefault;
-              form = if entry ? vm then "vm" else (entry.form or null);
-              platformLabel = platformLabel;
-              hostKey = hostKey;
-              host = hostValue;
-              hostPort = hostPortResolved;
-              vm = entry.vm or null;
-            };
-            hostKey = hostKey;
-          };
-        entriesFor =
-          host:
-          if builtins.hasAttr host inventoryResolved.hosts then
-            map (addDefaultFeatures host) (
-              lib.filter (
-                e:
-                let
-                  hasBuilder = e.builder != null;
-                in
-                hasBuilder
-              ) inventoryResolved.hosts.${host}
-            )
-          else
-            [ ];
-      in
-      lib.concatMap entriesFor wanted
     );
   };
 }

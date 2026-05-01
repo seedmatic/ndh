@@ -14,7 +14,7 @@ NIXOS_HOST_ATTR="${NIXOS_HOST_ATTR:-@nixosHostAttr@}"
 NIXOS_REMOTE_HOST="${NIXOS_REMOTE_HOST:-root}"
 LIMA_VERBOSE="${LIMA_VERBOSE:-0}"
 LIMA_QUIET_BUILD="${LIMA_QUIET_BUILD:-0}"
-LIMA_EXTERNAL_DISK_SIZE="${LIMA_EXTERNAL_DISK_SIZE:-100G}"
+LIMA_EXTERNAL_DISK_SIZE="${LIMA_EXTERNAL_DISK_SIZE:-3G}"
 DEFAULT_LIMA_NIXOS_DISK_IMAGE_ATTR="${DEFAULT_LIMA_NIXOS_DISK_IMAGE_ATTR:-nixosDiskImages.@effectiveHostName@.bringup.zfsSystemd}"
 LIMA_NIXOS_DISK_IMAGE_ATTR="${LIMA_NIXOS_DISK_IMAGE_ATTR:-}"
 NDH_VZ_HOST_FLAKE_REF="${NDH_VZ_HOST_FLAKE_REF:-}"
@@ -398,7 +398,7 @@ Environment overrides:
   LIMA_VM=<instance>                (default: nerd-nixos)
   LIMA_VERBOSE=1                    (optional: enable extra runtime status output)
   LIMA_QUIET_BUILD=1                (optional: force quiet nix build output)
-  LIMA_EXTERNAL_DISK_SIZE=<size>    (default: 100G; size for tank2/tank3/recover after seeding from store)
+  LIMA_EXTERNAL_DISK_SIZE=<size>    (default: 3G; per-disk size for tank1/tank2/tank3/recover after seeding from store — 3G × 3 disks gives ~6G usable in raidz1)
   NDH_NIX_CLI_ARGS='-L -v -v'       (optional: global extra nix CLI args for managed nix calls)
   NDH_VZ_HOST=<host>                (default: @effectiveHostName@)
   NDH_VZ_HOST_FLAKE_REF=<flake-path>  (required for vm:disk:nixos:build and vm:reset when not run from a nix-darwin-home checkout)

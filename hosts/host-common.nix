@@ -3,8 +3,6 @@
   darwinProfile,
   headscaleServerUrl,
   headscaleEnableSSH ? true,
-  forceRemoteBuilds ? null,
-  preferredBuilderHosts ? null,
   bioskopCachePublicKey ? "bioskop-cache:H6oZXzgzujE4+saXVe6LDfzBRUUVCgPYYTFLoxK7IuE=",
 }:
 {
@@ -41,21 +39,12 @@ in
       // (lib.optionalAttrs (hostProfile ? hostAlias) {
         hostAlias = lib.mkDefault hostProfile.hostAlias;
       })
-      // (lib.optionalAttrs (forceRemoteBuilds != null) {
-        forceRemoteBuilds = forceRemoteBuilds;
-      })
-      // (lib.optionalAttrs (hostProfile ? linuxBuilderMode) {
-        linuxBuilderMode = hostProfile.linuxBuilderMode;
-      })
-      // (lib.optionalAttrs (preferredBuilderHosts != null) {
-        preferredBuilderHosts = preferredBuilderHosts;
+      // (lib.optionalAttrs (hostProfile ? form) {
+        form = hostProfile.form;
       });
 
       darwin = darwinProfile;
     };
-
-    # Enable cross-host builders so ssh_config.d drop-ins are installed
-    services.crossHostBuilders.enable = true;
 
     # Trust bioskop local signing key on non-bioskop hosts for nix copy --from ssh-ng://...@bioskop
     nix.settings.extra-trusted-public-keys = lib.mkIf (hostProfile.hostName != "bioskop") [

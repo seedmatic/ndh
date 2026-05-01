@@ -1,6 +1,7 @@
 let
   hostProfile = {
     hostName = "nikopol";
+    form = "vm";
     vmProvider = "lima";
     nixosBootLoader = "systemd-boot";
     nixosBootstrapDebug = false;
@@ -32,8 +33,6 @@ let
         (import ../host-common.nix {
           inherit hostProfile darwinProfile;
           headscaleServerUrl = "http://192.168.1.193:8080";
-          forceRemoteBuilds = true;
-          preferredBuilderHosts = [ "bioskop" ];
         })
       ];
       config = {

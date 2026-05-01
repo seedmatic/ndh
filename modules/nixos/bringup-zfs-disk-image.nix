@@ -64,31 +64,35 @@ let
     ]
   );
 
+  # Packages for the bringup shell PATH. The forensic/disk tools are sourced from
+  # the shared initrd-emergency-tools.nix to stay in sync with what the initrd
+  # emergency shell provides at runtime.
+  initrdEmergencyTools = import ./initrd-emergency-tools.nix pkgs;
+  initrdEmergencyPackages = lib.unique (
+    map (p: builtins.dirOf (builtins.dirOf p)) (builtins.attrValues initrdEmergencyTools)
+  );
+
   tools = lib.makeBinPath (
     with pkgs;
     [
       coreutils
       disko
-      jq
       yq-go
       nixos-enter
       config.system.build.nixos-install
       dosfstools
-      gptfdisk
       nix
       parted
-      procps   # ps, top, free, vmstat
+      procps # ps, top, free, vmstat
       htop
-      iotop-c  # per-process I/O monitor (C rewrite, works without Python)
-      sysstat  # iostat, mpstat, pidstat, sar
+      iotop-c # per-process I/O monitor (C rewrite, works without Python)
+      sysstat # iostat, mpstat, pidstat, sar
       lsof
-      xterm  # provides `resize` to auto-set terminal dimensions after socat connect
       shadow
       strace
       systemd
-      util-linux
-      zfs
     ]
+    ++ initrdEmergencyPackages
   );
 
   diskoConfigFile = pkgs.writeText "bringup-zfs-disko.nix" ''

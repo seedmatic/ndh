@@ -281,7 +281,9 @@ let
 
     ssh = {
       forwardAgent = true;
-    };
+    } // (lib.optionalAttrs (cfg.sshLocalPort != 0) {
+      localPort = cfg.sshLocalPort;
+    });
 
     env = {
       PATH = "/run/wrappers/bin:/run/current-system/sw/bin:/nix/var/nix/profiles/default/bin";
@@ -536,6 +538,17 @@ in
       description = ''
         Require Darwin autofs `/net` wiring for Lima configuration.
         Keep disabled unless you intentionally depend on `/net`-based image paths.
+      '';
+    };
+
+    sshLocalPort = mkOption {
+      type = types.int;
+      default = 0;
+      description = ''
+        Fixed SSH listen port on the host side for this Lima VM (0 = auto-assign by Lima).
+        Set a non-zero value to use this VM as a stable Nix remote builder without relying
+        on the dynamically generated Lima SSH config. The nix daemon will SSH to
+        127.0.0.1:<sshLocalPort> as the builder user.
       '';
     };
   };
