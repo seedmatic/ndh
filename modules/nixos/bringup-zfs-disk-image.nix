@@ -77,7 +77,11 @@ let
       gptfdisk
       nix
       parted
-      procps   # ps, top, free, vmstat — debug shell essentials
+      procps   # ps, top, free, vmstat
+      htop
+      iotop-c  # per-process I/O monitor (C rewrite, works without Python)
+      sysstat  # iostat, mpstat, pidstat, sar
+      lsof
       shadow
       strace
       systemd
