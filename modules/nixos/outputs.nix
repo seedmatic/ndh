@@ -492,7 +492,6 @@ let
           memSize = diskImageVmMemSizeMiB;
           vmCpuCores = diskImageVmCpuCores;
           includeChannel = false;
-          useQemuImg = false;
           qemuFallbackInVm = true;
           efiSystemPartitionSizeMiB = efiSystemPartitionSizeMiB;
           inherit name;
@@ -515,7 +514,6 @@ let
           memSize = diskImageVmMemSizeMiB;
           vmCpuCores = diskImageVmCpuCores;
           includeChannel = false;
-          useQemuImg = false;
           qemuFallbackInVm = true;
           inherit name;
         };

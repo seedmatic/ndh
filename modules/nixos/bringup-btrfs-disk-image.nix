@@ -8,7 +8,7 @@
   memSize ? 1536,
   vmCpuCores ? 4,
   includeChannel ? false,
-  useQemuImg ? false,
+
   qemuFallbackInVm ? true,
   name ? "nixos-bringup-image",
   efiSystemPartitionSizeMiB ? 512,
@@ -215,9 +215,7 @@ in
           source ${bringupCommonScript}
 
           bringupDiskImage=disk.raw
-          bringup::create_raw_disk "$bringupDiskImage" ${toString diskSize} ${
-            if useQemuImg then "true" else "false"
-          }
+          bringup::create_raw_disk "$bringupDiskImage" ${toString diskSize}
         '';
 
         postVM = ''

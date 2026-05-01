@@ -1,20 +1,9 @@
 #!/usr/bin/env bash
 
-bringup::bool_is_true() {
-  local value="${1:-false}"
-  [[ "$value" == "1" || "$value" == "true" || "$value" == "yes" ]]
-}
-
 bringup::create_raw_disk() {
   local file="$1"
   local size_mib="$2"
-  local use_qemu_img="${3:-false}"
-
-  if bringup::bool_is_true "$use_qemu_img"; then
-    create -f raw "$file" "${size_mib}M"
-  else
-    truncate -s "${size_mib}M" "$file"
-  fi
+  truncate -s "${size_mib}M" "$file"
 }
 
 bringup::link_legacy_block_devices() {

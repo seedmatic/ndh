@@ -11,7 +11,7 @@
   memSize ? 1536,
   vmCpuCores ? 4,
   includeChannel ? false,
-  useQemuImg ? false,
+
   qemuFallbackInVm ? true,
   name ? "nixos-bringup-zfs-disk-images",
   # When false, the nested QEMU guest has no network at all.
@@ -77,7 +77,9 @@ let
       gptfdisk
       nix
       parted
+      procps   # ps, top, free, vmstat — debug shell essentials
       shadow
+      strace
       systemd
       util-linux
       zfs
@@ -160,6 +162,7 @@ in
     "9pnet_virtio"
     "virtio_blk"
     "virtio_pci"
+    "virtio_console"
     "virtiofs"
   ];
   kernel = modulesTree;
@@ -179,16 +182,18 @@ in
         inherit memSize;
 
         preVM = ''
+          set -x
           PATH="$PATH:${pkgs.qemu_kvm}/bin"
           mkdir "$out"
 
-          # Expose the nested guest's serial console via a Unix-domain socket so
-          # the build can be introspected from linux-builder even in emergency mode.
-          # Connect (Ctrl+] to disconnect):
-          #   qpid=$(pgrep -f "qemu-system.*nixos-disk-image-bringup" | head -1)
-          #   sudo socat UNIX-CONNECT:/proc/$qpid/root/build/console.sock -,raw,echo=0,icanon=0,escape=0x1d
-          QEMU_OPTS="$QEMU_OPTS -chardev socket,id=console-sock,path=$PWD/console.sock,server=on,wait=off -serial chardev:console-sock"
-          echo "[bringup-image] debug shell on ttyS1 — connect: sudo socat UNIX-CONNECT:/proc/\$qpid/root/build/console.sock -,raw,echo=0,icanon=0,escape=0x1d  (Ctrl+] to disconnect)" >&2
+          # shell.sock: dedicated interactive root shell via virtio-serial (hvc0).
+          # The nix build log receives all VM output naturally via -nographic stdio (ttyAMA0).
+          # Do NOT add -serial here — it would steal ttyAMA0 from stdio, silencing the build log.
+          #
+          # Connect to debug shell (Ctrl+] to disconnect):
+          #   qpid=$(pgrep --newest qemu)
+          #   sudo socat UNIX-CONNECT:/proc/$qpid/root/build/shell.sock -,raw,echo=0,escape=0x1d
+          QEMU_OPTS="$QEMU_OPTS -device virtio-serial -chardev socket,id=shell-sock,path=$PWD/shell.sock,server=on,wait=off -device virtconsole,chardev=shell-sock,name=shell"
 
           source ${bringupCommonScript}
 
@@ -198,21 +203,15 @@ in
           tank3DiskImage=tank3.raw
           recoverDiskImage=recover.raw
 
-          bringup::create_raw_disk "$bootDiskImage" ${toString bootDiskSize} ${
-            if useQemuImg then "true" else "false"
-          }
-          bringup::create_raw_disk "$tank1DiskImage" ${toString zpoolDiskSize} ${
-            if useQemuImg then "true" else "false"
-          }
-          bringup::create_raw_disk "$tank2DiskImage" ${toString zpoolDiskSize} ${
-            if useQemuImg then "true" else "false"
-          }
-          bringup::create_raw_disk "$tank3DiskImage" ${toString zpoolDiskSize} ${
-            if useQemuImg then "true" else "false"
-          }
-          bringup::create_raw_disk "$recoverDiskImage" ${toString zpoolDiskSize} ${
-            if useQemuImg then "true" else "false"
-          }
+          bringup::create_raw_disk "$bootDiskImage" ${toString bootDiskSize}
+          bringup::create_raw_disk "$tank1DiskImage" ${toString zpoolDiskSize}
+          bringup::create_raw_disk "$tank2DiskImage" ${toString zpoolDiskSize}
+          bringup::create_raw_disk "$tank3DiskImage" ${toString zpoolDiskSize}
+          bringup::create_raw_disk "$recoverDiskImage" ${toString zpoolDiskSize}
+
+          : 'qemu pid: qpid=$(pgrep --newest qemu)'
+          : 'build log (Ctrl+] to exit): sudo socat UNIX-CONNECT:/proc/$qpid/root/build/console.sock -,raw,echo=0,escape=0x1d'
+          : 'debug shell (Ctrl+] to exit): sudo socat UNIX-CONNECT:/proc/$qpid/root/build/shell.sock -,raw,echo=0,escape=0x1d'
         '';
 
         postVM = ''
@@ -231,22 +230,17 @@ in
         '';
       }
       ''
-        # Redirect this script's stdout/stderr to ttyS1 (host build log).
-        # ttyS0 (console.sock socket) becomes the clean interactive shell channel.
-        exec 1>/dev/ttyS1 2>&1
+          set -x
+          export PATH=${tools}:$PATH
 
-        export PATH=${tools}:$PATH
-        set -x
+          : 'shell.sock → /dev/hvc0 (first virtio-serial port we add).'
+          : 'Use hvc0 directly — the /dev/virtio-ports/ symlink needs udev'
+          : 'and may not exist yet; hvc0 is created by the kernel in devtmpfs.'
+          : '-i: interactive (job control + prompt); skip -l to avoid /etc/profile.'
+          while [[ ! -c /dev/hvc0 ]]; do sleep 0.1; done
+          setsid --ctty ${pkgs.bash}/bin/bash -i 0<>/dev/hvc0 1>&0 2>&0 &
 
-        source ${bringupCommonScript}
-        bringup::link_legacy_block_devices
-
-        # Root shell on ttyS0 (console.sock) — clean channel, no install noise.
-        # Connect from linux-builder (Ctrl+] to disconnect):
-        #   qpid=$(pgrep -f "qemu-system.*nixos-disk-image-bringup" | head -1)
-        #   sudo socat UNIX-CONNECT:/proc/$qpid/root/build/console.sock -,raw,echo=0,icanon=0,escape=0x1d
-        setsid ${pkgs.bash}/bin/bash --login <>/dev/ttyS0 >&0 2>&1 &
-
-        ${pkgs.bash}/bin/bash ${zfsBringupInstallScript}
+          : 'execute the ZFS bringup install script, which formats the disks and installs NixOS onto them'
+          exec ${pkgs.bash}/bin/bash ${zfsBringupInstallScript}
       ''
   )

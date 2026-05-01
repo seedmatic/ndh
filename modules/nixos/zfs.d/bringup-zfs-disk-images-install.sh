@@ -6,6 +6,7 @@ source @bringupCommonScript@
 
 bringup::ensure_usr_bin_env
 bringup::ensure_nixbld_group
+bringup::link_legacy_block_devices
 
 mkdir -p /mnt/zfs-root
 
