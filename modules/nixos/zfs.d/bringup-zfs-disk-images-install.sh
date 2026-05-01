@@ -100,113 +100,34 @@ else
     --substituters ""
 fi
 
-: "[bringup-zfs][INFO] post-install zpool capacity summary" >&2
-zpool iostat -vH -p >&2 || true
+: "[bringup-zfs][INFO] post-install zpool status" >&2
+zpool status >&2 || true
 
 zpools_file="$(mktemp)"
-zpool_iostat_file="$(mktemp)"
-trap 'rm -f "$zpools_file" "$zpool_iostat_file"' EXIT
+trap 'rm -f "$zpools_file"' EXIT
 
-yq -n '[]' > "$zpools_file"
-zpool iostat -vH -p > "$zpool_iostat_file"
-
-# bringup::zpool_vdevs — parse 'zpool status' config section into a YAML list.
-# Output per vdev group: { type, health, members: [{name, health}] }
-# Handles raidz1/raidz2/mirror/stripe (single disk = type "disk").
-bringup::zpool_vdevs() {
-  local pool_name="$1"
-  zpool status -v "$pool_name" | awk '
-    /^[[:space:]]*config:/ { in_config=1; next }
-    /^[[:space:]]*errors:/ { in_config=0 }
-    !in_config { next }
-
-    {
-      # Count leading tab-stops (each \t = 1 indent level in zpool status)
-      line=$0
-      gsub(/\t/, "  ", line)   # normalise tabs → 2-space indent
-      match(line, /^[[:space:]]+/)
-      indent=RLENGTH
-      name=$1; health=$2
-    }
-
-    # indent==2: pool name line — skip
-    indent==2 { next }
-
-    # indent==4: vdev group (raidz1-0, mirror-0, etc.) or lone disk
-    indent==4 {
-      if (cur_type != "") {
-        # flush previous vdev group
-        printf "- type: %s\n  health: %s\n  members:\n", cur_type, cur_health
-        for (i=0; i<nm; i++) printf "  - {name: %s, health: %s}\n", mname[i], mhealth[i]
-      }
-      cur_type=name; sub(/-[0-9]+$/, "", cur_type)
-      cur_health=health; nm=0
-      next
-    }
-
-    # indent==6: member disk
-    indent==6 {
-      mname[nm]=name; mhealth[nm]=health; nm++
-      next
-    }
-
-    END {
-      if (cur_type != "") {
-        printf "- type: %s\n  health: %s\n  members:\n", cur_type, cur_health
-        for (i=0; i<nm; i++) printf "  - {name: %s, health: %s}\n", mname[i], mhealth[i]
-      }
-    }
-  '
-}
-
-zpool list -H -o name | while IFS= read -r pool_name; do
-  [[ -z "$pool_name" ]] && continue
-
-  pool_row="$(awk -v p="$pool_name" '$1 == p { print; exit }' "$zpool_iostat_file")"
-  [[ -z "$pool_row" ]] && continue
-
-  alloc_bytes="$(awk '{print $2}' <<<"$pool_row")"
-  free_bytes="$(awk '{print $3}' <<<"$pool_row")"
-
-  size_bytes=$(( alloc_bytes + free_bytes ))
-  size_mb=$(( (size_bytes + 999999) / 1000000 ))
-  alloc_mb=$(( (alloc_bytes + 999999) / 1000000 ))
-  free_mb=$(( (free_bytes + 999999) / 1000000 ))
-
-  if [[ "$size_bytes" -gt 0 ]]; then
-    capacity_percent=$(( (alloc_bytes * 100) / size_bytes ))
-  else
-    capacity_percent=0
-  fi
-
-  pool_health="$(zpool list -H -o health "$pool_name" 2>/dev/null || echo UNKNOWN)"
-
-  vdevs_yaml="$(bringup::zpool_vdevs "$pool_name")"
-  vdevs_file="$(mktemp)"
-  echo "$vdevs_yaml" > "$vdevs_file"
-
-  env \
-    POOL_NAME="$pool_name" \
-    POOL_HEALTH="$pool_health" \
-    SIZE_MB="$size_mb" \
-    ALLOC_MB="$alloc_mb" \
-    FREE_MB="$free_mb" \
-    CAPACITY_PERCENT="$capacity_percent" \
-    VDEVS_FILE="$vdevs_file" \
-    yq -i '
-      . += [{
-        "name": strenv(POOL_NAME),
-        "health": strenv(POOL_HEALTH),
-        "sizeMB": (strenv(SIZE_MB) | tonumber),
-        "allocMB": (strenv(ALLOC_MB) | tonumber),
-        "freeMB": (strenv(FREE_MB) | tonumber),
-        "capacityPercent": (strenv(CAPACITY_PERCENT) | tonumber),
-        "vdevs": load(strenv(VDEVS_FILE))
+# Use zpool's native JSON output (--json-int avoids scientific notation for byte values).
+# Transform the nested pools→vdevs→members structure into a flat list for the manifest.
+zpool status --json --json-int \
+  | yq -p json -o yaml '
+      [.pools | to_entries[] | {
+        "name": .key,
+        "state": .value.state,
+        "alloc_space": .value.alloc_space,
+        "total_space": .value.total_space,
+        "vdevs": [.value.vdevs | to_entries[] | {
+          "name": .key,
+          "vdev_type": .value.vdev_type,
+          "state": .value.state,
+          "members": [.value.vdevs | to_entries[] | {
+            "name": .key,
+            "vdev_type": .value.vdev_type,
+            "state": .value.state,
+            "path": .value.path
+          }]
+        }]
       }]
-    ' "$zpools_file"
-
-  rm -f "$vdevs_file"
-done
+    ' > "$zpools_file"
 
 env ZPOOLS_FILE="$zpools_file" yq -n \
   '{
