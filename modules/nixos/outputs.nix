@@ -572,7 +572,7 @@ let
         efiSystemPartitionSizeMiB = efiSystemPartitionSizeMiB;
         source = diskImageBringupZfsSystemdBootRaw;
         # primaryImagePath defaults to "boot.img" — dedicated EFI boot disk
-        zpools = nixpkgs.lib.unique (map (e: e.pool) zfsPoolDiskMap);
+        # zpools is populated at runtime from boot-size-hint.yaml (zpool status inside QEMU)
       };
 
       diskImageBringupGrub = mkDiskImageWithManifest {

@@ -103,12 +103,61 @@ fi
 : "[bringup-zfs][INFO] post-install zpool capacity summary" >&2
 zpool iostat -vH -p >&2 || true
 
-zfs_pools_file="$(mktemp)"
+zpools_file="$(mktemp)"
 zpool_iostat_file="$(mktemp)"
-trap 'rm -f "$zfs_pools_file" "$zpool_iostat_file"' EXIT
+trap 'rm -f "$zpools_file" "$zpool_iostat_file"' EXIT
 
-yq -n '[]' > "$zfs_pools_file"
+yq -n '[]' > "$zpools_file"
 zpool iostat -vH -p > "$zpool_iostat_file"
+
+# bringup::zpool_vdevs — parse 'zpool status' config section into a YAML list.
+# Output per vdev group: { type, health, members: [{name, health}] }
+# Handles raidz1/raidz2/mirror/stripe (single disk = type "disk").
+bringup::zpool_vdevs() {
+  local pool_name="$1"
+  zpool status -v "$pool_name" | awk '
+    /^[[:space:]]*config:/ { in_config=1; next }
+    /^[[:space:]]*errors:/ { in_config=0 }
+    !in_config { next }
+
+    {
+      # Count leading tab-stops (each \t = 1 indent level in zpool status)
+      line=$0
+      gsub(/\t/, "  ", line)   # normalise tabs → 2-space indent
+      match(line, /^[[:space:]]+/)
+      indent=RLENGTH
+      name=$1; health=$2
+    }
+
+    # indent==2: pool name line — skip
+    indent==2 { next }
+
+    # indent==4: vdev group (raidz1-0, mirror-0, etc.) or lone disk
+    indent==4 {
+      if (cur_type != "") {
+        # flush previous vdev group
+        printf "- type: %s\n  health: %s\n  members:\n", cur_type, cur_health
+        for (i=0; i<nm; i++) printf "  - {name: %s, health: %s}\n", mname[i], mhealth[i]
+      }
+      cur_type=name; sub(/-[0-9]+$/, "", cur_type)
+      cur_health=health; nm=0
+      next
+    }
+
+    # indent==6: member disk
+    indent==6 {
+      mname[nm]=name; mhealth[nm]=health; nm++
+      next
+    }
+
+    END {
+      if (cur_type != "") {
+        printf "- type: %s\n  health: %s\n  members:\n", cur_type, cur_health
+        for (i=0; i<nm; i++) printf "  - {name: %s, health: %s}\n", mname[i], mhealth[i]
+      }
+    }
+  '
+}
 
 zpool list -H -o name | while IFS= read -r pool_name; do
   [[ -z "$pool_name" ]] && continue
@@ -130,26 +179,38 @@ zpool list -H -o name | while IFS= read -r pool_name; do
     capacity_percent=0
   fi
 
+  pool_health="$(zpool list -H -o health "$pool_name" 2>/dev/null || echo UNKNOWN)"
+
+  vdevs_yaml="$(bringup::zpool_vdevs "$pool_name")"
+  vdevs_file="$(mktemp)"
+  echo "$vdevs_yaml" > "$vdevs_file"
+
   env \
     POOL_NAME="$pool_name" \
+    POOL_HEALTH="$pool_health" \
     SIZE_MB="$size_mb" \
     ALLOC_MB="$alloc_mb" \
     FREE_MB="$free_mb" \
     CAPACITY_PERCENT="$capacity_percent" \
+    VDEVS_FILE="$vdevs_file" \
     yq -i '
       . += [{
         "name": strenv(POOL_NAME),
+        "health": strenv(POOL_HEALTH),
         "sizeMB": (strenv(SIZE_MB) | tonumber),
         "allocMB": (strenv(ALLOC_MB) | tonumber),
         "freeMB": (strenv(FREE_MB) | tonumber),
-        "capacityPercent": (strenv(CAPACITY_PERCENT) | tonumber)
+        "capacityPercent": (strenv(CAPACITY_PERCENT) | tonumber),
+        "vdevs": load(strenv(VDEVS_FILE))
       }]
-    ' "$zfs_pools_file"
+    ' "$zpools_file"
+
+  rm -f "$vdevs_file"
 done
 
-env ZFS_POOLS_FILE="$zfs_pools_file" yq -n \
+env ZPOOLS_FILE="$zpools_file" yq -n \
   '{
-	"zfsPools": load(strenv(ZFS_POOLS_FILE)),
+    "zpools": load(strenv(ZPOOLS_FILE)),
     "policyNote": @bootSizePolicyNote@
   }' > boot-size-hint.yaml
 
