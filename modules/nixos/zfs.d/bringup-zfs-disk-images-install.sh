@@ -38,6 +38,12 @@ total_kb=$(awk '/MemTotal/ { print $2 }' /proc/meminfo)
 arc_max_bytes=$(( total_kb * 2 / 3 * 1024 ))
 echo "[bringup-zfs][INFO] zfs_arc_max → ${arc_max_bytes} bytes (2/3 of ${total_kb} kB)" >&2
 echo "${arc_max_bytes}" > /sys/module/zfs/parameters/zfs_arc_max
+
+# txg_timeout=30s: allow larger transaction groups to accumulate before flush.
+# Default is 5s; with sync=disabled nothing forces early commits, so larger
+# TXGs mean more write coalescing and fewer small random IOs on virtio disks.
+echo "[bringup-zfs][INFO] zfs_txg_timeout → 30s" >&2
+echo 30 > /sys/module/zfs/parameters/zfs_txg_timeout
 # ─────────────────────────────────────────────────────────────────────────────
 
 require_partlabel() {
@@ -153,6 +159,7 @@ zfs set sync=standard tank   || true
 zfs set sync=standard recover || true
 zfs set logbias=latency tank   || true
 zfs set logbias=latency recover || true
+echo 5 > /sys/module/zfs/parameters/zfs_txg_timeout
 # ─────────────────────────────────────────────────────────────────────────────
 
 "@diskoUnmountExe@"
