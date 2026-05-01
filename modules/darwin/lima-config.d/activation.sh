@@ -218,8 +218,8 @@ main() {
   ln -sf "$host_priv" "${effective_home}/.lima/_config/user"
 
   : "Resolve NixOS disk image and update GC-root link"
-  img_manifest="@imageManifestPath@"
-  img_store="@imageStorePath@"
+  img_manifest="${NDH_IMAGE_MANIFEST_OVERRIDE:-@imageManifestPath@}"
+  img_store="${NDH_IMAGE_STORE_OVERRIDE:-@imageStorePath@}"
   img_src="@imageSourcePath@"
   img_dst="@imageTargetPath@"
   image_flake_attr="@imageFlakeAttr@"
@@ -247,7 +247,7 @@ main() {
   if [[ "$(id -u)" -eq 0 ]] && [[ -n "$gcroot_group" ]] && [[ "$img_dst" == "/nix/var/nix/gcroots/per-user/${gcroot_user}/"* ]]; then
     chown "${gcroot_user}:${gcroot_group}" "$(dirname "$img_dst")" 2>/dev/null || true
   fi
-  resolved_ref="${image_flake_path}/hosts/@effectiveHostName@#${image_flake_attr}"
+  resolved_ref="${image_flake_path}#${image_flake_attr}"
   resolved_out=""
   resolved_img=""
   manifest_img=""

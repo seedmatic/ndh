@@ -17,7 +17,6 @@ LIMA_QUIET_BUILD="${LIMA_QUIET_BUILD:-0}"
 LIMA_EXTERNAL_DISK_SIZE="${LIMA_EXTERNAL_DISK_SIZE:-3G}"
 DEFAULT_LIMA_NIXOS_DISK_IMAGE_ATTR="${DEFAULT_LIMA_NIXOS_DISK_IMAGE_ATTR:-nixosDiskImages.@effectiveHostName@.bringup.zfsSystemd}"
 LIMA_NIXOS_DISK_IMAGE_ATTR="${LIMA_NIXOS_DISK_IMAGE_ATTR:-}"
-LIMA_NIXOS_IMAGE_TARGET="${LIMA_NIXOS_IMAGE_TARGET:-@imageTargetPath@}"
 NDH_VZ_HOST_FLAKE_REF="${NDH_VZ_HOST_FLAKE_REF:-}"
 RESOLVED_NDH_VZ_HOST_FLAKE_REF=""
 RESOLVED_LIMA_NIXOS_DISK_IMAGE_ATTR=""
@@ -262,31 +261,17 @@ host:lima:boot:image:update() {
     return 0
   }
 
-  local boot_img=""
-  # Prefer manifest-declared imagePath, fall back to well-known filenames.
-  if [[ -f "${RESOLVED_DISK_IMAGE_STORE_PATH}/manifest.yaml" ]]; then
-    local rel
-    rel="$(yq -r '.imagePath // ""' "${RESOLVED_DISK_IMAGE_STORE_PATH}/manifest.yaml" 2>/dev/null || true)"
-    [[ -n "${rel}" && -f "${RESOLVED_DISK_IMAGE_STORE_PATH}/${rel}" ]] && boot_img="${RESOLVED_DISK_IMAGE_STORE_PATH}/${rel}"
-  fi
-  [[ -z "${boot_img}" && -f "${RESOLVED_DISK_IMAGE_STORE_PATH}/boot.img" ]] && boot_img="${RESOLVED_DISK_IMAGE_STORE_PATH}/boot.img"
-  [[ -z "${boot_img}" && -f "${RESOLVED_DISK_IMAGE_STORE_PATH}/nixos.img" ]] && boot_img="${RESOLVED_DISK_IMAGE_STORE_PATH}/nixos.img"
-
-  if [[ -z "${boot_img}" ]]; then
-    echo "[lima-run][WARN] no boot image found in ${RESOLVED_DISK_IMAGE_STORE_PATH}; skipping boot image update" >&2
+  local manifest="${RESOLVED_DISK_IMAGE_STORE_PATH}/manifest.yaml"
+  if [[ ! -f "${manifest}" ]]; then
+    echo "[lima-run][WARN] no manifest.yaml in ${RESOLVED_DISK_IMAGE_STORE_PATH}; skipping boot image update" >&2
     return 0
   fi
 
-  local target="${LIMA_NIXOS_IMAGE_TARGET}"
-  if [[ -z "${target}" ]]; then
-    echo "[lima-run][WARN] LIMA_NIXOS_IMAGE_TARGET not set; skipping boot image update" >&2
-    return 0
-  fi
-
-  mkdir -p "$(dirname "${target}")"
-  # Update the gcroot symlink to point to the new boot image.
-  ln -sfn "${boot_img}" "${target}"
-  echo "[lima-run] updated boot image gcroot: ${target} -> ${boot_img}"
+  # Delegate gcroot update to the activation script, overriding the baked-in
+  # image manifest path with the freshly-built store path. This avoids
+  # duplicating gcroot update logic and ensures proper ownership/chown handling.
+  echo "[lima-run] delegating boot image gcroot update to activation (manifest: ${manifest})"
+  NDH_IMAGE_MANIFEST_OVERRIDE="${manifest}" @limaActivationScript@
 }
 
 host:lima:tank:disks:import() {

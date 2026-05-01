@@ -186,7 +186,7 @@ let
         effectiveHostName = effectiveHostName;
         nixosFlakePath = cfg.nixosFlakePath;
         nixosHostAttr = cfg.nixosHostAttr;
-        imageTargetPath = imageTargetPath;
+        limaActivationScript = limaActivationScript;
       }
     } "$out"
     chmod +x "$out"
