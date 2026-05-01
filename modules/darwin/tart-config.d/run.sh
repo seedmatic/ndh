@@ -37,6 +37,7 @@ tart:runtime:configure() {
 	required_disks=(
 		"${vm_disk_dir}/disk2.img"
 		"${vm_disk_dir}/disk3.img"
+		"${vm_disk_dir}/disk4.img"
 		"${vm_disk_dir}/recover.img"
 	)
 }

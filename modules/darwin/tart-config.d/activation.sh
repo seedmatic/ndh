@@ -698,9 +698,12 @@ main() {
 			manifest_source=""
 			case "$(basename "$disk")" in
 				disk2.img)
-					manifest_image_name="tank2"
+					manifest_image_name="tank1"
 					;;
 				disk3.img)
+					manifest_image_name="tank2"
+					;;
+				disk4.img)
 					manifest_image_name="tank3"
 					;;
 				recover.img)
@@ -882,7 +885,7 @@ main() {
 	}
 
 	tart:vm:zfs:pool-size:validate() {
-		local tank_disks=("$tart_vm_disk" "$tart_vm_disk2" "$tart_vm_disk3")
+		local tank_disks=("$tart_vm_disk2" "$tart_vm_disk3" "$tart_vm_disk4")
 		local disk=""
 		local expected_bytes=""
 		local current_bytes=""
@@ -997,8 +1000,8 @@ main() {
 		first_boot_attach_disk_size_gib="${first_boot_attach_disk_size_gib:-24}"
 		tart_binary_hint="${tart_bin:-}"
 		diskutil_bin="${diskutil_bin:-/usr/sbin/diskutil}"
-		raw_image_manifest_path="${raw_image_manifest_path_default:-}"
-		raw_image_store_path="${raw_image_store_path_default:-}"
+		raw_image_manifest_path="${NDH_IMAGE_MANIFEST_OVERRIDE:-${raw_image_manifest_path_default:-}}"
+		raw_image_store_path="${NDH_IMAGE_STORE_OVERRIDE:-${raw_image_store_path_default:-}}"
 		raw_image_source_path="${raw_image_source_path_default:-}"
 		raw_image_target_path="${raw_image_target_path_default:-}"
 		asif_image_target_path="${asif_image_target_path_default:-}"
@@ -1019,6 +1022,7 @@ main() {
 		tart_vm_disk="${tart_vm_dir}/disk.img"
 		tart_vm_disk2="${tart_vm_dir}/disk2.img"
 		tart_vm_disk3="${tart_vm_dir}/disk3.img"
+		tart_vm_disk4="${tart_vm_dir}/disk4.img"
 		tart_vm_recover_disk="${tart_vm_dir}/recover.img"
 		tart_vm_bootstrap_disk="${tart_vm_dir}/boot.img"
 		tart_vm_config="${tart_vm_dir}/config.json"
@@ -1026,6 +1030,7 @@ main() {
 		tart_vm_data_disks=(
 			"${tart_vm_disk2}"
 			"${tart_vm_disk3}"
+			"${tart_vm_disk4}"
 			"${tart_vm_recover_disk}"
 		)
 	}
