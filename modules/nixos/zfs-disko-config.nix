@@ -224,6 +224,12 @@ let
               mountpoint = "/nix";
               options = {
                 "nixos:mount-overlay" = "true";
+                # Nix store files are typically small (<64K) and write-once.
+                # 16K recordsize reduces write amplification vs the 128K default.
+                # primarycache=metadata keeps ARC free of data blocks that are
+                # never re-read during install (only metadata lookups matter).
+                recordsize = "16K";
+                primarycache = "metadata";
               };
             };
             "nerd/var" = {
