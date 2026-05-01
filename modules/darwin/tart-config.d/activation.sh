@@ -300,6 +300,57 @@ main() {
 		source <(yq -p=yaml -o=shell '.' "$manifest_path")
 	}
 
+	tart:manifest:images:enumerate() {
+		# Yields: <name>\t<role> for every disk image in the bringup manifest.
+		# Tries .images[] first; falls back to scanning the manifest directory when the
+		# array is empty (e.g. cached builds from before the images loop was added).
+		local manifest_path="${raw_image_manifest_path:-${raw_image_manifest_path_default:-}}"
+		local primary_img primary_name manifest_dir image_count img_file img_name img_role
+		[[ -n "$manifest_path" && -r "$manifest_path" ]] || return 0
+
+		primary_img="$(yq -p=yaml -r '.imagePath // ""' "$manifest_path" 2>/dev/null || true)"
+		primary_name="${primary_img%.img}"
+		manifest_dir="$(dirname "$manifest_path")"
+		image_count="$(yq -p=yaml -r '.images | length' "$manifest_path" 2>/dev/null || echo 0)"
+
+		if ((image_count > 0)); then
+			yq -p=yaml -r '.images[]? | [(.name // ""), (.role // "")] | @tsv' "$manifest_path"
+			return
+		fi
+
+		# Fallback: scan manifest directory for *.img files (symlinks or regular files)
+		while IFS= read -r img_file; do
+			img_name="$(basename "$img_file" .img)"
+			if [[ -n "$primary_name" && "$img_name" == "$primary_name" ]]; then
+				img_role="primary"
+			else
+				img_role=""
+			fi
+			printf '%s\t%s\n' "$img_name" "$img_role"
+		done < <(find "$manifest_dir" -maxdepth 1 \( -type f -o -type l \) -name '*.img' 2>/dev/null | LC_ALL=C sort)
+	}
+
+	tart:disks:from-manifest:init() {
+		local image_name image_role
+		tart_vm_data_disks=()
+
+		while IFS=$'\t' read -r image_name image_role; do
+			[[ -n "$image_name" ]] || continue
+			[[ "$image_role" != "primary" ]] || continue
+			tart_vm_data_disks+=("${tart_vm_dir}/${image_name}.img")
+		done < <(tart:manifest:images:enumerate)
+
+		if [[ ${#tart_vm_data_disks[@]} -eq 0 ]]; then
+			: "[tartConfig][WARN] no data disks resolved from manifest; using default ZFS disk layout"
+			tart_vm_data_disks=(
+				"${tart_vm_dir}/tank1.img"
+				"${tart_vm_dir}/tank2.img"
+				"${tart_vm_dir}/tank3.img"
+				"${tart_vm_dir}/recover.img"
+			)
+		fi
+	}
+
 	tart:fs:path:relink() {
 		local src="$1"
 		local dst="$2"
@@ -694,22 +745,8 @@ main() {
 		local manifest_source=""
 
 		for disk in "${tart_vm_data_disks[@]}"; do
-			manifest_image_name=""
+			manifest_image_name="$(basename "$disk" .img)"
 			manifest_source=""
-			case "$(basename "$disk")" in
-				disk2.img)
-					manifest_image_name="tank1"
-					;;
-				disk3.img)
-					manifest_image_name="tank2"
-					;;
-				disk4.img)
-					manifest_image_name="tank3"
-					;;
-				recover.img)
-					manifest_image_name="recover"
-					;;
-			esac
 
 			if [[ -n "$manifest_image_name" ]]; then
 				manifest_source="$(tart:raw-image:path:from-manifest "$manifest_image_name" 2>/dev/null || true)"
@@ -748,15 +785,16 @@ main() {
 			return 0
 		fi
 
-		if tart:root-disk:zfs:contains "$tart_vm_disk"; then
+		# ZFS lives on data disks (tank1.img is first); disk.img is EFI-only
+		if tart:root-disk:zfs:contains "${tart_vm_data_disks[0]:-${tart_vm_dir}/tank1.img}"; then
 			zfs_root_detected=1
 			if [[ -f "$tart_vm_bootstrap_disk" ]]; then
 				rm -f "$tart_vm_bootstrap_disk"
-				: "[tartConfig][INFO] root disk already contains ZFS; removed stale VM-local bootstrap disk: $tart_vm_bootstrap_disk"
+				: "[tartConfig][INFO] data disk already contains ZFS; removed stale VM-local bootstrap disk: $tart_vm_bootstrap_disk"
 			fi
 
 			if ((bootstrap_disk_regenerate == 0)); then
-				: "[tartConfig][INFO] root disk already contains ZFS; skipping local bootstrap disk sync"
+				: "[tartConfig][INFO] data disk already contains ZFS; skipping local bootstrap disk sync"
 				return 0
 			fi
 
@@ -824,20 +862,16 @@ main() {
 
 		primary_source="$(
 			tart:raw-image:path:from-manifest primary 2>/dev/null \
-				|| tart:raw-image:path:from-manifest tank1 2>/dev/null \
 				|| { [[ -n "${raw_image_store_path:-}" && -f "${raw_image_store_path:-}" ]] && printf '%s\n' "$raw_image_store_path"; } \
 				|| { [[ -n "${raw_image_source_path:-}" && -f "${raw_image_source_path:-}" ]] && printf '%s\n' "$raw_image_source_path"; } \
 				|| { [[ -n "${raw_image_target_path:-}" && -f "${raw_image_target_path:-}" ]] && printf '%s\n' "$raw_image_target_path"; } \
 				|| true
 		)"
 		if [[ -n "$primary_source" ]]; then
-			if ! tart:root-disk:zfs:contains "$tart_vm_disk"; then
-				tart:disk:image:materialize-from-source "$primary_source" "$tart_vm_disk" "root disk (primary image)"
-			elif ! tart:image:size:matches-source "$primary_source" "$tart_vm_disk"; then
-				: "[tartConfig][WARN] ZFS root disk size mismatch vs manifest source; rematerializing from source"
+			if ! tart:image:size:matches-source "$primary_source" "$tart_vm_disk"; then
 				tart:disk:image:materialize-from-source "$primary_source" "$tart_vm_disk" "root disk (primary image)"
 			else
-				: "[tartConfig][INFO] preserving existing ZFS root disk content: $tart_vm_disk"
+				: "[tartConfig][INFO] preserving existing EFI root disk content (size matches source): $tart_vm_disk"
 			fi
 			asif_output="$tart_vm_disk"
 			chmod 0644 "$asif_output" 2>/dev/null || true
@@ -885,10 +919,15 @@ main() {
 	}
 
 	tart:vm:zfs:pool-size:validate() {
-		local tank_disks=("$tart_vm_disk2" "$tart_vm_disk3" "$tart_vm_disk4")
+		local tank_disks=()
 		local disk=""
 		local expected_bytes=""
 		local current_bytes=""
+
+		for disk in "${tart_vm_data_disks[@]}"; do
+			[[ "$(basename "$disk" .img)" =~ ^tank ]] || continue
+			tank_disks+=("$disk")
+		done
 
 		for disk in "${tank_disks[@]}"; do
 			if ! tart:root-disk:zfs:contains "$disk"; then
@@ -1020,19 +1059,10 @@ main() {
 
 		tart_vm_dir="${effective_home}/.tart/vms/${vm_name}"
 		tart_vm_disk="${tart_vm_dir}/disk.img"
-		tart_vm_disk2="${tart_vm_dir}/disk2.img"
-		tart_vm_disk3="${tart_vm_dir}/disk3.img"
-		tart_vm_disk4="${tart_vm_dir}/disk4.img"
-		tart_vm_recover_disk="${tart_vm_dir}/recover.img"
 		tart_vm_bootstrap_disk="${tart_vm_dir}/boot.img"
 		tart_vm_config="${tart_vm_dir}/config.json"
 		tart_vm_run_wrapper="${effective_home}/.tart/vms/${vm_name}.sh"
-		tart_vm_data_disks=(
-			"${tart_vm_disk2}"
-			"${tart_vm_disk3}"
-			"${tart_vm_disk4}"
-			"${tart_vm_recover_disk}"
-		)
+		tart:disks:from-manifest:init
 	}
 
 	# ---- execution area (no function definitions below) ----

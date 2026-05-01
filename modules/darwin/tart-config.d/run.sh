@@ -34,12 +34,24 @@ tart:runtime:configure() {
 	sops_age_host_dir="${SOPS_AGE_HOST_DIR:-$sops_age_host_dir_default}"
 	sops_age_key_file="${sops_age_host_dir}/keys.txt"
 	ndh_toplevel_host_dir="${TOPLEVEL_HOST_DIR:-$ndh_toplevel_host_dir_default}"
-	required_disks=(
-		"${vm_disk_dir}/disk2.img"
-		"${vm_disk_dir}/disk3.img"
-		"${vm_disk_dir}/disk4.img"
-		"${vm_disk_dir}/recover.img"
-	)
+	# Make manifest path visible to shared functions (e.g. tart:manifest:images:enumerate)
+	raw_image_manifest_path="${raw_image_manifest_path_default:-}"
+
+	required_disks=()
+	local image_name image_role
+	while IFS=$'\t' read -r image_name image_role; do
+		[[ -n "$image_name" && "$image_role" != "primary" ]] || continue
+		required_disks+=("${vm_disk_dir}/${image_name}.img")
+	done < <(tart:manifest:images:enumerate)
+
+	if [[ ${#required_disks[@]} -eq 0 ]]; then
+		required_disks=(
+			"${vm_disk_dir}/tank1.img"
+			"${vm_disk_dir}/tank2.img"
+			"${vm_disk_dir}/tank3.img"
+			"${vm_disk_dir}/recover.img"
+		)
+	fi
 }
 
 tart:state:init() {
@@ -136,7 +148,15 @@ tart:run-args:init() {
 tart:root-disk:zfs:detect() {
 	# shellcheck disable=SC2034  # consumed by activation functions loaded via dynamic source
 	TART_LOG_PREFIX=""
-	if tart:root-disk:zfs:contains "${vm_disk_dir}/disk.img"; then
+	# ZFS lives on data disks (tank1.img is first in manifest order); disk.img is EFI-only
+	local first_tank_disk="${vm_disk_dir}/tank1.img"
+	local image_name image_role
+	while IFS=$'\t' read -r image_name image_role; do
+		[[ -n "$image_name" && "$image_role" != "primary" ]] || continue
+		first_tank_disk="${vm_disk_dir}/${image_name}.img"
+		break
+	done < <(tart:manifest:images:enumerate)
+	if tart:root-disk:zfs:contains "$first_tank_disk"; then
 		root_disk_has_zfs_partition=1
 	fi
 }
