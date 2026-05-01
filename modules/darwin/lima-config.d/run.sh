@@ -267,11 +267,18 @@ host:lima:boot:image:update() {
     return 0
   fi
 
+  local activation_script="${NDH_LIMA_ACTIVATION_SCRIPT:-}"
+  if [[ -z "${activation_script}" || ! -x "${activation_script}" ]]; then
+    echo "[lima-run][WARN] NDH_LIMA_ACTIVATION_SCRIPT not set or not executable; skipping boot image gcroot update" >&2
+    echo "[lima-run][HINT] run via nerd-nixos-lima-vm-materialize to enable automatic gcroot update" >&2
+    return 0
+  fi
+
   # Delegate gcroot update to the activation script, overriding the baked-in
   # image manifest path with the freshly-built store path. This avoids
   # duplicating gcroot update logic and ensures proper ownership/chown handling.
   echo "[lima-run] delegating boot image gcroot update to activation (manifest: ${manifest})"
-  NDH_IMAGE_MANIFEST_OVERRIDE="${manifest}" @limaActivationScript@
+  NDH_IMAGE_MANIFEST_OVERRIDE="${manifest}" "${activation_script}"
 }
 
 host:lima:tank:disks:import() {

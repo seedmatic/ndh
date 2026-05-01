@@ -186,7 +186,6 @@ let
         effectiveHostName = effectiveHostName;
         nixosFlakePath = cfg.nixosFlakePath;
         nixosHostAttr = cfg.nixosHostAttr;
-        limaActivationScript = limaActivationScript;
       }
     } "$out"
     chmod +x "$out"
@@ -203,6 +202,7 @@ let
     mkdir -p "''${gcroot_dir}"
     ${pkgs.nix}/bin/nix-store --realise --add-root "''${gcroot_link}" --indirect "''${materializer_out}" >/dev/null
 
+    export NDH_LIMA_ACTIVATION_SCRIPT="${limaActivationScript}"
     exec ${limaActivationScript} "$@"
   '';
 
