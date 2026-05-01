@@ -304,9 +304,9 @@ main() {
         resolved_img="${resolved_out}/nixos.img"
       fi
 
-      if [ -z "$resolved_img" ] && [ -f "${resolved_out}/tank1.img" ]; then
-        resolved_img="${resolved_out}/tank1.img"
-      fi
+      # tank1.img is a ZFS pool member disk — it is an additionalDisk, not the
+      # primary Lima image. The primary image is boot.img (EFI-only, vda).
+      # Do NOT fall back to tank1.img here.
     fi
 
     if [ -n "$resolved_out" ] && [ -f "$resolved_img" ]; then
