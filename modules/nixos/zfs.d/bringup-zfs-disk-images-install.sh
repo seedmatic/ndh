@@ -20,6 +20,26 @@ bringup::udev_block_sync
 
 bringup::udev_block_sync
 
+# ── ZFS install-time throughput tuning ──────────────────────────────────────
+# These settings trade durability for speed — safe because these are fresh raw
+# disk images written once; real pool config is applied at first boot.
+echo "[bringup-zfs][INFO] tuning ZFS for bulk write throughput" >&2
+
+# sync=disabled: skip ZIL flush on every write — biggest throughput win.
+zfs set sync=disabled tank
+zfs set sync=disabled recover
+
+# logbias=throughput: avoid indirect ZIL writes for large sequential blocks.
+zfs set logbias=throughput tank
+zfs set logbias=throughput recover
+
+# Grow ARC to 2/3 of available RAM (kernel default cap is ~1/2 physical RAM).
+total_kb=$(awk '/MemTotal/ { print $2 }' /proc/meminfo)
+arc_max_bytes=$(( total_kb * 2 / 3 * 1024 ))
+echo "[bringup-zfs][INFO] zfs_arc_max → ${arc_max_bytes} bytes (2/3 of ${total_kb} kB)" >&2
+echo "${arc_max_bytes}" > /sys/module/zfs/parameters/zfs_arc_max
+# ─────────────────────────────────────────────────────────────────────────────
+
 require_partlabel() {
   local label="$1"
   local dev="/dev/disk/by-partlabel/${label}"
@@ -125,5 +145,14 @@ env ZFS_POOLS_FILE="$zfs_pools_file" yq -n \
 	"zfsPools": load(strenv(ZFS_POOLS_FILE)),
     "policyNote": @bootSizePolicyNote@
   }' > boot-size-hint.yaml
+
+# ── Reset ZFS install-time tuning before pool export ─────────────────────────
+# Restore sync=standard so the pool is durable when imported on real hardware.
+echo "[bringup-zfs][INFO] restoring ZFS sync policy before export" >&2
+zfs set sync=standard tank   || true
+zfs set sync=standard recover || true
+zfs set logbias=latency tank   || true
+zfs set logbias=latency recover || true
+# ─────────────────────────────────────────────────────────────────────────────
 
 "@diskoUnmountExe@"
