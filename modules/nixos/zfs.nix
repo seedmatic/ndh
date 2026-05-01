@@ -219,9 +219,44 @@ let
     set -euo pipefail
 
     sysroot=/sysroot
-    boot_dir="$sysroot/boot"
 
-    # Parse init= from kernel cmdline
+    # ── Detect the ESP via the EFI variable set by systemd-boot ──────────────
+    # LoaderDevicePartUUID contains the UUID of the partition the bootloader
+    # loaded from. This is authoritative — don't assume /dev/vda1 or /boot.
+    LOADER_EFI_VAR=/sys/firmware/efi/efivars/LoaderDevicePartUUID-4a67b082-0a4c-41cf-b6c7-440b29bb8c4f
+    esp_dev=""
+    if [[ -r "$LOADER_EFI_VAR" ]]; then
+      # EFI variable has a 4-byte attribute header, then the UTF-16LE value.
+      # `strings` strips both safely.
+      esp_uuid="$(strings "$LOADER_EFI_VAR" | tr '[:upper:]' '[:lower:]' | tr -d '\n')"
+      if [[ -n "$esp_uuid" ]]; then
+        esp_dev="$(blkid -t "PARTUUID=$esp_uuid" -o device 2>/dev/null || true)"
+        echo "[boot-reconcile] ESP PARTUUID=$esp_uuid → $esp_dev" >&2
+      fi
+    fi
+
+    if [[ -z "$esp_dev" ]]; then
+      echo "[boot-reconcile] WARN: cannot detect ESP via EFI var — falling back to sysroot/boot" >&2
+      boot_dir="$sysroot/boot"
+    else
+      boot_dir="$(mktemp -d /run/boot-reconcile-esp.XXXXXX)"
+      mount -t vfat -o ro,noatime "$esp_dev" "$boot_dir" 2>/dev/null || {
+        echo "[boot-reconcile] WARN: failed to mount $esp_dev — falling back to sysroot/boot" >&2
+        rmdir "$boot_dir" 2>/dev/null || true
+        boot_dir="$sysroot/boot"
+        esp_dev=""
+      }
+    fi
+
+    cleanup() {
+      if [[ -n "$esp_dev" ]] && mountpoint -q "$boot_dir" 2>/dev/null; then
+        # Remount rw only if we need to write
+        :
+      fi
+    }
+    trap cleanup EXIT
+
+    # ── Parse init= from kernel cmdline ──────────────────────────────────────
     cmdline_init=""
     for o in $(cat /proc/cmdline); do
       case "$o" in
@@ -243,7 +278,7 @@ let
 
     echo "[boot-reconcile] WARN: boot entry points to missing system: $cmdline_system" >&2
 
-    # Find the newest nixos-system in the sysroot store
+    # ── Find the actual system in the ZFS sysroot store ──────────────────────
     actual_system="$(find "$sysroot/nix/store" -maxdepth 1 -name '*-nixos-system-*' -type d 2>/dev/null | sort | tail -1)"
 
     if [[ -z "$actual_system" ]]; then
@@ -257,6 +292,11 @@ let
     if [[ ! -d "$boot_dir/loader/entries" ]]; then
       echo "[boot-reconcile] WARN: no systemd-boot entries at $boot_dir — skipping" >&2
       exit 0
+    fi
+
+    # Remount rw for writing if we mounted the ESP ourselves
+    if [[ -n "$esp_dev" ]] && mountpoint -q "$boot_dir" 2>/dev/null; then
+      mount -o remount,rw "$boot_dir"
     fi
 
     old_init="$cmdline_system/init"
@@ -274,6 +314,12 @@ let
 
     if [[ "$updated" -eq 0 ]]; then
       echo "[boot-reconcile] WARN: no entries contained old init path" >&2
+    fi
+
+    # Unmount the ESP if we mounted it ourselves
+    if [[ -n "$esp_dev" ]] && mountpoint -q "$boot_dir" 2>/dev/null; then
+      umount "$boot_dir"
+      rmdir "$boot_dir" 2>/dev/null || true
     fi
   '';
 
@@ -568,15 +614,16 @@ in
       lib.mkIf (config.zfsOverlays.enable && (!overlayModeEnabled)) {
         description = "Reconcile EFI boot entry with ZFS store system closure";
         unitConfig = {
-          RequiresMountsFor = [
-            "/sysroot/nix/store"
-            "/sysroot/boot"
-          ];
+          # Only need the ZFS store mounted to find the actual system closure.
+          # The ESP is detected via LoaderDevicePartUUID EFI variable and mounted
+          # by the script itself — /sysroot/boot may not exist on all layouts.
+          RequiresMountsFor = [ "/sysroot/nix/store" ];
           DefaultDependencies = false;
         };
         after = [
           "sysroot.mount"
-          "sysroot-boot.mount"
+          "systemd-udevd.service"
+          "systemd-udev-settle.service"
         ];
         before = [
           "initrd-find-nixos-closure.service"
@@ -589,6 +636,7 @@ in
           gnugrep
           gnused
           findutils
+          util-linux
         ];
         serviceConfig = {
           Type = "oneshot";
