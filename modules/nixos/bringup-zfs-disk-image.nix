@@ -82,6 +82,7 @@ let
       iotop-c  # per-process I/O monitor (C rewrite, works without Python)
       sysstat  # iostat, mpstat, pidstat, sar
       lsof
+      xterm  # provides `resize` to auto-set terminal dimensions after socat connect
       shadow
       strace
       systemd
