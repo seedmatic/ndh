@@ -88,6 +88,12 @@ let
   };
   mkBringupOverride = value: if bringupMode then lib.mkForce value else value;
 
+  # Forensic/recovery tools for the initrd emergency shell.
+  # Returns { extraBin, storePaths } — both are needed: extraBin creates /bin
+  # symlinks in the initrd cpio, storePaths embeds the store closures so the
+  # symlink targets actually exist when /nix/store is not yet mounted.
+  initrdEmergencyTools = import ./initrd-emergency-tools.nix pkgs;
+
   # Root filesystem/mount policy.
   bringupRootFsType = config.profile.host.nixosBringupRootFs;
   ext4RootMountOptions = [
@@ -479,7 +485,10 @@ in
           # Available in both bringup and runtime modes so any host can be debugged
           # when dropped to stage-1 via `rd.break`, `emergency.target`, or a boot failure.
           # Canonical list defined in ./initrd-emergency-tools.nix (shared with bringup-zfs-disk-image.nix).
-          extraBin = import ./initrd-emergency-tools.nix pkgs;
+          # storePaths embeds the closures so /bin symlinks are not dangling when
+          # /nix/store is not yet mounted (early-boot emergency shell).
+          extraBin = initrdEmergencyTools.extraBin;
+          storePaths = initrdEmergencyTools.storePaths;
           services = {
             emergency.environment.SYSTEMD_SULOGIN_FORCE = "1";
             rescue.environment.SYSTEMD_SULOGIN_FORCE = "1";

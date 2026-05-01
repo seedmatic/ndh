@@ -1,31 +1,49 @@
 # Single source of truth for the forensic/disk-recovery toolset that must be
 # present in the initrd emergency shell across ALL NixOS configurations.
 #
-# Returns an attrset suitable for `boot.initrd.systemd.extraBin`.
+# Returns an attrset with two keys:
+#   extraBin   — attrset for boot.initrd.systemd.extraBin (creates /bin symlinks)
+#   storePaths — list for boot.initrd.systemd.storePaths  (embeds closures in cpio)
+#
+# IMPORTANT: both are required. extraBin creates the /bin/<name> symlinks inside
+# the initrd, but the symlink targets (/nix/store/...) are dangling until their
+# closures are also embedded via storePaths. Without storePaths, the tools are
+# present as broken symlinks and "command not found" at runtime.
+#
 # The same packages are also referenced in bringup-zfs-disk-image.nix to keep
 # the bringup shell PATH consistent with what is available in stage-1 recovery.
-#
-# NOTE: all binaries here are embedded in the initrd cpio itself (via storePaths),
-# so they are available even when /nix/store is not yet mounted (e.g. early boot
-# failure dropping to emergency.target).
-pkgs: {
-  # ── Text search / stream processing ─────────────────────────────────────────
-  grep = "${pkgs.gnugrep}/bin/grep";
-  egrep = "${pkgs.gnugrep}/bin/egrep";
-  sed = "${pkgs.gnused}/bin/sed";
-  awk = "${pkgs.gawk}/bin/awk";
+pkgs:
+let
+  # Each entry: { bin = "name"; pkg = pkgs.foo; path = "bin/foo"; }
+  # path defaults to "bin/<name>" if omitted.
+  entries = [
+    # ── Text search / stream processing ─────────────────────────────────────
+    { bin = "grep";    pkg = pkgs.gnugrep;    path = "bin/grep"; }
+    { bin = "egrep";   pkg = pkgs.gnugrep;    path = "bin/egrep"; }
+    { bin = "sed";     pkg = pkgs.gnused;     path = "bin/sed"; }
+    { bin = "awk";     pkg = pkgs.gawk;       path = "bin/awk"; }
 
-  # ── Disk / partition tooling ─────────────────────────────────────────────────
-  sgdisk = "${pkgs.gptfdisk}/bin/sgdisk"; # GPT partition editing
-  hexdump = "${pkgs.util-linux}/bin/hexdump"; # raw binary inspection
-  lsblk = "${pkgs.util-linux}/bin/lsblk"; # block device enumeration
-  blkid = "${pkgs.util-linux}/bin/blkid"; # filesystem/partition UUID probing
-  partx = "${pkgs.util-linux}/bin/partx"; # kernel partition table refresh
-  fdisk = "${pkgs.util-linux}/bin/fdisk"; # MBR/GPT editing fallback
+    # ── Disk / partition tooling ─────────────────────────────────────────────
+    { bin = "sgdisk";  pkg = pkgs.gptfdisk;   path = "bin/sgdisk"; }
+    { bin = "hexdump"; pkg = pkgs.util-linux; path = "bin/hexdump"; }
+    { bin = "lsblk";   pkg = pkgs.util-linux; path = "bin/lsblk"; }
+    { bin = "blkid";   pkg = pkgs.util-linux; path = "bin/blkid"; }
+    { bin = "partx";   pkg = pkgs.util-linux; path = "bin/partx"; }
+    { bin = "fdisk";   pkg = pkgs.util-linux; path = "bin/fdisk"; }
 
-  # ── ZFS ──────────────────────────────────────────────────────────────────────
-  zdb = "${pkgs.zfs}/bin/zdb"; # ZFS pool low-level diagnostics
+    # ── ZFS ──────────────────────────────────────────────────────────────────
+    { bin = "zdb";     pkg = pkgs.zfs;        path = "bin/zdb"; }
 
-  # ── Terminal helpers ──────────────────────────────────────────────────────────
-  xterm = "${pkgs.xterm}/bin/xterm"; # provides `resize` for socat terminal sizing
-}
+    # ── Terminal helpers ──────────────────────────────────────────────────────
+    # xterm provides `resize` — needed to fix terminal geometry after socat attach.
+    { bin = "resize";  pkg = pkgs.xterm;      path = "bin/resize"; }
+  ];
+
+  extraBin = builtins.listToAttrs (
+    map (e: { name = e.bin; value = "${e.pkg}/${e.path}"; }) entries
+  );
+
+  # Deduplicate packages — util-linux appears multiple times.
+  storePaths = pkgs.lib.unique (map (e: e.pkg) entries);
+in
+{ inherit extraBin storePaths; }

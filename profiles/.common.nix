@@ -77,6 +77,7 @@ in
                   type = lib.types.enum [
                     "ext4"
                     "btrfs"
+                    "zfs"
                   ];
                   default = ndhContext.hostProfile.nixosBringupRootFs or "btrfs";
                   description = "Filesystem type for NixOS bringup root disk image generation.";

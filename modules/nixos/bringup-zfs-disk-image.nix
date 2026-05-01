@@ -93,9 +93,7 @@ let
   # the shared initrd-emergency-tools.nix to stay in sync with what the initrd
   # emergency shell provides at runtime.
   initrdEmergencyTools = import ./initrd-emergency-tools.nix pkgs;
-  initrdEmergencyPackages = lib.unique (
-    map (p: builtins.dirOf (builtins.dirOf p)) (builtins.attrValues initrdEmergencyTools)
-  );
+  initrdEmergencyPackages = initrdEmergencyTools.storePaths;
 
   tools = lib.makeBinPath (
     with pkgs;
