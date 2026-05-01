@@ -225,9 +225,17 @@ all reset to production values before pool export:
 |More metadata cached → fewer re-reads during install
 
 |`zfs_txg_timeout`
-|`30` s
+|`5` s (default)
 |`5` s
-|Larger TXGs accumulate before flush → more write coalescing
+|Keep at default — extending to 30s defers all dirty data into a massive
+end-of-install flush; `txg_sync` dominates iotop and install appears stuck.
+`sync=disabled` is the real throughput win; frequent 5s flushes spread I/O evenly.
+
+|`zfs sync` (explicit drain)
+|before property reset
+|—
+|Drain remaining dirty TXGs while `sync=disabled` is still active.
+Without this, restoring `sync=standard` triggers an uncontrolled final flush.
 
 |`recordsize` (nerd/nix)
 |`16K` (permanent)
@@ -288,6 +296,17 @@ iotop-c             # live I/O breakdown
 zpool iostat -v 1   # ZFS throughput per vdev
 iostat -x 1         # raw virtio disk stats
 ----
+
+==== txg_sync dominates at end of install
+
+If `iotop-c` shows `txg_sync` with high IO% but 0 B/s current write after
+`nixos-install` completes, this is ZFS flushing deferred dirty TXGs before
+pool export.  Normal duration is ~30-60s.
+
+*Root cause*: the tuning script sets `zfs_txg_timeout=5s` and calls
+`zfs sync` explicitly before restoring `sync=standard`, which drains dirty
+data while optimisations are still active.  If this stall recurs, check
+that the `zfs sync` drain step ran before `zfs set sync=standard`.
 
 === Stuck build — find the nested QEMU PID
 
