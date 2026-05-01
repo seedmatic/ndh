@@ -39,11 +39,12 @@ arc_max_bytes=$(( total_kb * 2 / 3 * 1024 ))
 echo "[bringup-zfs][INFO] zfs_arc_max → ${arc_max_bytes} bytes (2/3 of ${total_kb} kB)" >&2
 echo "${arc_max_bytes}" > /sys/module/zfs/parameters/zfs_arc_max
 
-# txg_timeout=30s: allow larger transaction groups to accumulate before flush.
-# Default is 5s; with sync=disabled nothing forces early commits, so larger
-# TXGs mean more write coalescing and fewer small random IOs on virtio disks.
-echo "[bringup-zfs][INFO] zfs_txg_timeout → 30s" >&2
-echo 30 > /sys/module/zfs/parameters/zfs_txg_timeout
+# txg_timeout=5s (keep default): with sync=disabled already eliminating per-write
+# ZIL latency, extending the timeout only defers dirty data into a massive final
+# flush at unmount time — txg_sync dominates iotop and the install appears stuck.
+# Frequent small flushes (5s) spread the I/O evenly across the install duration.
+echo "[bringup-zfs][INFO] zfs_txg_timeout → 5s (default, avoids deferred final flush)" >&2
+echo 5 > /sys/module/zfs/parameters/zfs_txg_timeout
 # ─────────────────────────────────────────────────────────────────────────────
 
 require_partlabel() {
@@ -153,13 +154,18 @@ env ZFS_POOLS_FILE="$zfs_pools_file" yq -n \
   }' > boot-size-hint.yaml
 
 # ── Reset ZFS install-time tuning before pool export ─────────────────────────
-# Restore sync=standard so the pool is durable when imported on real hardware.
+# Drain remaining dirty TXGs first while sync=disabled (no ZIL overhead).
+# Without this, restoring sync=standard triggers an uncontrolled final flush.
+echo "[bringup-zfs][INFO] draining dirty TXGs before property reset" >&2
+zfs sync tank    || true
+zfs sync recover || true
+
+# Restore production pool properties so the exported pool is safe on real hardware.
 echo "[bringup-zfs][INFO] restoring ZFS sync policy before export" >&2
-zfs set sync=standard tank   || true
+zfs set sync=standard tank    || true
 zfs set sync=standard recover || true
 zfs set logbias=latency tank   || true
 zfs set logbias=latency recover || true
-echo 5 > /sys/module/zfs/parameters/zfs_txg_timeout
 # ─────────────────────────────────────────────────────────────────────────────
 
 "@diskoUnmountExe@"
