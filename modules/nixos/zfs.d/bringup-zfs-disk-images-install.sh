@@ -106,28 +106,8 @@ zpool status >&2 || true
 zpools_file="$(mktemp)"
 trap 'rm -f "$zpools_file"' EXIT
 
-# Use zpool's native JSON output (--json-int avoids scientific notation for byte values).
-# Transform the nested pools→vdevs→members structure into a flat list for the manifest.
-zpool status --json --json-int \
-  | yq -p json -o yaml '
-      [.pools | to_entries[] | {
-        "name": .key,
-        "state": .value.state,
-        "alloc_space": .value.alloc_space,
-        "total_space": .value.total_space,
-        "vdevs": [.value.vdevs | to_entries[] | {
-          "name": .key,
-          "vdev_type": .value.vdev_type,
-          "state": .value.state,
-          "members": [.value.vdevs | to_entries[] | {
-            "name": .key,
-            "vdev_type": .value.vdev_type,
-            "state": .value.state,
-            "path": .value.path
-          }]
-        }]
-      }]
-    ' > "$zpools_file"
+# Capture full zpool status as YAML (--json-int avoids scientific notation for byte values).
+zpool status --json --json-int | yq -p json -o yaml > "$zpools_file"
 
 env ZPOOLS_FILE="$zpools_file" yq -n \
   '{
