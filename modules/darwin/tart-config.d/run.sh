@@ -26,16 +26,20 @@ tart:runtime:configure() {
 	serial_enable="${SERIAL_ENABLE:-$serial_enable_default}"
 	serial_path="${SERIAL_PATH:-$serial_path_default}"
 	serial_bridge_enable="${SERIAL_BRIDGE_ENABLE:-$serial_bridge_enable_default}"
-	first_boot_attach_disk_path="${vm_disk_dir}/boot.img"
-	first_boot_attach_disk_source_path="${FIRST_BOOT_ATTACH_DISK_SOURCE_PATH:-${first_boot_attach_disk_path_default:-}}"
+	# Make manifest path visible to shared functions (e.g. tart:manifest:images:enumerate)
+	raw_image_manifest_path="${raw_image_manifest_path_default:-}"
+	# Derive bootstrap disk name from bringup manifest rather than hardcoding
+	local _boot_img_name
+	_boot_img_name="$(yq -p=yaml -r '.imagePath // "boot.img"' "$raw_image_manifest_path" 2>/dev/null || echo "boot.img")"
+	first_boot_attach_disk_path="${vm_disk_dir}/${_boot_img_name}"
+	# Fall back to the nix-store source image when no explicit override is provided
+	first_boot_attach_disk_source_path="${FIRST_BOOT_ATTACH_DISK_SOURCE_PATH:-${first_boot_attach_disk_path_default:-${raw_image_store_path_default:-}}}"
 	first_boot_attach_disk_manifest_path="${FIRST_BOOT_ATTACH_DISK_MANIFEST_PATH:-$first_boot_attach_disk_manifest_path_default}"
 	first_boot_attach_disk_boot_loader_expected="${FIRST_BOOT_ATTACH_DISK_BOOT_LOADER_EXPECTED:-$first_boot_attach_disk_boot_loader_expected}"
 	first_boot_attach_disk_size_gib="${FIRST_BOOT_ATTACH_DISK_SIZE_GIB:-$first_boot_attach_disk_size_gib}"
 	sops_age_host_dir="${SOPS_AGE_HOST_DIR:-$sops_age_host_dir_default}"
 	sops_age_key_file="${sops_age_host_dir}/keys.txt"
 	ndh_toplevel_host_dir="${TOPLEVEL_HOST_DIR:-$ndh_toplevel_host_dir_default}"
-	# Make manifest path visible to shared functions (e.g. tart:manifest:images:enumerate)
-	raw_image_manifest_path="${raw_image_manifest_path_default:-}"
 
 	required_disks=()
 	local image_name image_role
@@ -228,8 +232,21 @@ tart:bootstrap:disk-attach:plan() {
 	fi
 
 	if [[ ! -f "$first_boot_attach_disk_path" ]]; then
-		echo "[ERROR] configured bootstrap disk missing: ${first_boot_attach_disk_path}" >&2
-		exit 1
+		if [[ -z "$first_boot_attach_disk_source_path" ]]; then
+			echo "[ERROR] configured bootstrap disk missing and no source path available: ${first_boot_attach_disk_path}" >&2
+			exit 1
+		fi
+		echo "[INFO] first boot: bootstrap disk missing; materializing from source: ${first_boot_attach_disk_source_path}" >&2
+		# shellcheck disable=SC2034  # consumed by activation functions loaded via dynamic source
+		TART_LOG_PREFIX=""
+		if ! tart:bootstrap:disk:sync-from-source \
+			"$first_boot_attach_disk_source_path" \
+			"$first_boot_attach_disk_path" \
+			"$first_boot_attach_disk_size_gib"; then
+			echo "[ERROR] failed to materialize bootstrap disk: ${first_boot_attach_disk_path} (source=${first_boot_attach_disk_source_path})" >&2
+			exit 1
+		fi
+		echo "[INFO] bootstrap disk materialized: ${first_boot_attach_disk_path}" >&2
 	fi
 
 	pending_bootstrap_disk_arg="--disk=${first_boot_attach_disk_path}"
