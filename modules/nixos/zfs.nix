@@ -692,6 +692,7 @@ in
         wantedBy = [ "initrd.target" ];
         path = with pkgs; [
           bash
+          binutils   # provides `strings` for EFI variable UTF-16LE parsing
           coreutils
           gnugrep
           gnused
