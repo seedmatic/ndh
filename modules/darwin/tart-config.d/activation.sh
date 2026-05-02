@@ -765,6 +765,15 @@ main() {
 				continue
 			fi
 
+			# If disk exists but has no ZFS, it's either blank or has a corrupt/partial partition
+			# table from a previous failed bringup. Reset to a clean blank ASIF so the next
+			# bringup starts from a known-good state.
+			if ! tart:root-disk:zfs:contains "$disk"; then
+				: "[tartConfig][INFO] data disk has no ZFS (blank or failed bringup); recreating as clean blank ASIF (${data_disk_size_gib}GiB): $disk"
+				tart:vm:data-disk:create-asif "$disk" "$data_disk_size_gib"
+				continue
+			fi
+
 			TART_LOG_PREFIX="[tartConfig]"
 			if ! tart:image:resize-if-smaller "$disk" "$data_disk_size_gib" "data disk"; then
 				: "[tartConfig][WARN] data disk resize failed; recreating canonical blank ASIF (${data_disk_size_gib}GiB): $disk"
