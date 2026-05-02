@@ -451,27 +451,56 @@ main() {
 		local image_path=""
 		local image_role=""
 		local resolved=""
+		local primary_img=""
+		local primary_name=""
+		local image_count=0
 
 		[[ -n "$manifest_path" && -r "$manifest_path" ]] || return 0
 
 		manifest_dir="$(dirname "$manifest_path")"
 		source_out="$(yq -p=yaml -r '.sourceOutPath // ""' "$manifest_path" 2>/dev/null || true)"
+		primary_img="$(yq -p=yaml -r '.imagePath // ""' "$manifest_path" 2>/dev/null || true)"
+		primary_name="${primary_img%.img}"
+		image_count="$(yq -p=yaml -r '.images | length' "$manifest_path" 2>/dev/null || echo 0)"
 
-		while IFS=$'\t' read -r image_name image_path image_role; do
-			[[ -n "$image_path" ]] || continue
-			resolved=""
-			if [[ "$image_path" = /* ]]; then
-				resolved="$image_path"
-			elif [[ -f "${manifest_dir}/${image_path}" ]]; then
-				resolved="${manifest_dir}/${image_path}"
-			elif [[ -n "$source_out" && -f "${source_out}/${image_path}" ]]; then
-				resolved="${source_out}/${image_path}"
-			fi
+		if ((image_count > 0)); then
+			while IFS=$'\t' read -r image_name image_path image_role; do
+				[[ -n "$image_path" ]] || continue
+				resolved=""
+				if [[ "$image_path" = /* ]]; then
+					resolved="$image_path"
+				elif [[ -f "${manifest_dir}/${image_path}" ]]; then
+					resolved="${manifest_dir}/${image_path}"
+				elif [[ -n "$source_out" && -f "${source_out}/${image_path}" ]]; then
+					resolved="${source_out}/${image_path}"
+				fi
+				if [[ -n "$resolved" && -f "$resolved" ]]; then
+					printf '%s\t%s\t%s\n' "$image_name" "$resolved" "$image_role"
+				fi
+			done < <(yq -p=yaml -r '.images[]? | [(.name // ""), (.path // ""), (.role // "")] | @tsv' "$manifest_path" 2>/dev/null || true)
+			return 0
+		fi
 
-			if [[ -n "$resolved" && -f "$resolved" ]]; then
-				printf '%s\t%s\t%s\n' "$image_name" "$resolved" "$image_role"
+		# Fallback: images[] is empty (old manifest build) — scan the manifest directory
+		# and sourceOutPath for *.img files. Use .imagePath to identify the primary.
+		local img_file img_basename img_name img_role_out
+		while IFS= read -r img_file; do
+			img_basename="$(basename "$img_file")"
+			img_name="${img_basename%.img}"
+			if [[ -n "$primary_name" && "$img_name" == "$primary_name" ]]; then
+				img_role_out="primary"
+			else
+				img_role_out=""
 			fi
-		done < <(yq -p=yaml -r '.images[]? | [(.name // ""), (.path // ""), (.role // "")] | @tsv' "$manifest_path" 2>/dev/null || true)
+			printf '%s\t%s\t%s\n' "$img_name" "$img_file" "$img_role_out"
+		done < <(
+			{
+				find "$manifest_dir" -maxdepth 1 \( -type f -o -type l \) -name '*.img' 2>/dev/null
+				if [[ -n "$source_out" && -d "$source_out" ]]; then
+					find "$source_out" -maxdepth 1 \( -type f -o -type l \) -name '*.img' 2>/dev/null
+				fi
+			} | LC_ALL=C sort -u
+		)
 	}
 
 	tart:raw-images:gcroot:materialize() {
