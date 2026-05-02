@@ -266,18 +266,60 @@ tart:bootstrap:ndh-share:plan() {
 	echo "[INFO] blank/bootstrap root detected; exporting NDH top-level dir: ${ndh_toplevel_host_dir} (tag=${ndh_toplevel_tag})" >&2
 }
 
+tart:serial:bridge:start() {
+	# tart --serial-path requires a real PTY character device (not a Unix socket).
+	# socat bridges two PTYs: tart opens one end, the user attaches to the other.
+	local bridge_dir="$1"
+	local tart_pty="${bridge_dir}/${vm_name}.tart"
+	local user_pty="${bridge_dir}/${vm_name}.screen"
+
+	if ! command -v socat >/dev/null 2>&1; then
+		echo "[ERROR] socat is required for serial bridge mode but was not found in PATH" >&2
+		return 1
+	fi
+
+	mkdir -p "$bridge_dir"
+
+	# Remove stale symlinks from a prior run
+	rm -f "$tart_pty" "$user_pty"
+
+	socat \
+		PTY,link="${tart_pty}",raw,echo=0,wait-slave \
+		PTY,link="${user_pty}",raw,echo=0,wait-slave \
+		&
+	local socat_pid=$!
+
+	# Wait until both symlinks appear (up to 3 s)
+	local i=0
+	while [[ ! -e "$tart_pty" || ! -e "$user_pty" ]] && ((i < 30)); do
+		sleep 0.1
+		((i++))
+	done
+
+	if [[ ! -e "$tart_pty" || ! -e "$user_pty" ]]; then
+		echo "[ERROR] socat PTY bridge did not start in time (pid=${socat_pid})" >&2
+		kill "$socat_pid" 2>/dev/null || true
+		return 1
+	fi
+
+	echo "[INFO] serial bridge ready — attach with: screen ${user_pty}" >&2
+	echo "[INFO]   tart PTY : ${tart_pty}" >&2
+	echo "[INFO]   user PTY : ${user_pty}" >&2
+}
+
 tart:serial:run-arg:add() {
 	if tart:bool:is-true "${serial_bridge_enable:-0}"; then
-		# Bridge mode: socat manages a stable PTY symlink; pass the path to tart.
+		# Bridge mode: socat creates a PTY pair; tart opens one end, user attaches to the other.
 		local bridge_dir="${serial_bridge_dir:-${HOME}/.tart/vms/${vm_name}/serial}"
-		local tart_socket="${bridge_dir}/${vm_name}.tart"
-		mkdir -p "$bridge_dir"
-		run_args+=("--serial-path=${tart_socket}")
-		echo "[INFO] serial bridge enabled; tart socket: ${tart_socket}" >&2
+		local tart_pty="${bridge_dir}/${vm_name}.tart"
+		tart:serial:bridge:start "$bridge_dir"
+		run_args+=("--serial-path=${tart_pty}")
 	elif [[ -n "${serial_path:-}" ]]; then
+		# Caller manages the PTY; just pass it through.
 		run_args+=("--serial-path=${serial_path}")
 		echo "[INFO] serial path: ${serial_path}" >&2
 	elif tart:bool:is-true "${serial_enable:-0}"; then
+		# Let tart allocate its own PTY and print the path.
 		run_args+=("--serial")
 		echo "[INFO] serial console enabled (--serial)" >&2
 	fi
