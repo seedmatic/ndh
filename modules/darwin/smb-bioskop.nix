@@ -17,22 +17,24 @@ let
   loggerScript = config.nixBashLogger.script;
   mapFile = "/etc/auto_bioskop";
   autoMaster = "/etc/auto_master";
-  bioskopFstabScript = pkgs.replaceVars ./smb-bioskop.d/fstab.sh {
-    fstabEnable = lib.toString cfg.fstab.enable;
-    username = cfg.username;
-    host = cfg.host;
-    share = cfg.share;
-    mountPoint = cfg.fstab.mountPoint;
-    options = cfg.fstab.options;
-  };
-  bioskopPostActivation = ndh.store.runCommand "bioskop-smb-post-activation.sh" { } ''
-    cp ${
+  bioskopFstabPkg = ndh.store.installBinScript "bioskop-fstab" (
+    pkgs.replaceVars ./smb-bioskop.d/fstab.sh {
+      fstabEnable = lib.toString cfg.fstab.enable;
+      username = cfg.username;
+      host = cfg.host;
+      share = cfg.share;
+      mountPoint = cfg.fstab.mountPoint;
+      options = cfg.fstab.options;
+    }
+  );
+  bioskopFstabScript = "${bioskopFstabPkg}/bin/bioskop-fstab";
+  bioskopPostActivation = ndh.store.runCommand "bioskop-smb-post-activation" { } ''
+    install -Dm755 ${
       pkgs.replaceVars ./smb-bioskop.d/post-activation.sh {
         nixBashTrampoline = nixBashTrampoline;
         inherit bioskopFstabScript;
       }
-    } "$out"
-    chmod +x "$out"
+    } "$out/bin/bioskop-post-activation"
   '';
 in
 {
@@ -83,7 +85,7 @@ in
   config = lib.mkIf cfg.enable {
     # Configure mount via /etc/fstab at /Network/Servers (autofs -fstab map)
     system.activationScripts.etc.text = lib.mkAfter ''
-      ${bioskopPostActivation}
+      ${bioskopPostActivation}/bin/bioskop-post-activation
     '';
   };
 }

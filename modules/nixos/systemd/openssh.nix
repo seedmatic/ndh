@@ -61,13 +61,19 @@ let
               principals:
     ${formatPrincipals allPrincipals}
   '';
-  principalsScriptStore = pkgs.replaceVars ../../.common.d/ssh/authorized-principals-command.sh {
-    nixBashTrampoline = nixBashTrampoline;
-  };
-  groupKeysScriptStore = pkgs.replaceVars ../../.common.d/ssh/ssh-group-authorized-keys.sh {
-    nixBashTrampoline = nixBashTrampoline;
-    authorizedKeysDir = config.opensshPolicy.authorizedKeysDir;
-  };
+  principalsScriptPkg = ndh.store.installBinScript "openssh-principals-command" (
+    pkgs.replaceVars ../../.common.d/ssh/authorized-principals-command.sh {
+      nixBashTrampoline = nixBashTrampoline;
+    }
+  );
+  principalsScriptStore = "${principalsScriptPkg}/bin/openssh-principals-command";
+  groupKeysScriptPkg = ndh.store.installBinScript "openssh-group-authorized-keys" (
+    pkgs.replaceVars ../../.common.d/ssh/ssh-group-authorized-keys.sh {
+      nixBashTrampoline = nixBashTrampoline;
+      authorizedKeysDir = config.opensshPolicy.authorizedKeysDir;
+    }
+  );
+  groupKeysScriptStore = "${groupKeysScriptPkg}/bin/openssh-group-authorized-keys";
   # Use the wrapped activation logger packaged into the system closure
   loggerTag = "nixos.activationScripts.sshGroupKeys";
   hasSopsInstallSecretsService = builtins.hasAttr "sops-install-secrets" config.systemd.services;
@@ -81,35 +87,43 @@ let
   hostkeyEnrollmentSyncTag = "nixos.services.ndh.hostkeyEnrollmentSync";
   authorizedKeysCheckTag = "nixos.services.ndh.authorizedKeysCheck";
   sshdAutostartCheckTag = "nixos.services.ndh.sshdAutostartCheck";
-  hostkeyEnrollmentCheckScript = pkgs.replaceVars ./openssh.d/hostkey-enrollment-check.sh {
-    nixBashTrampoline = nixBashTrampoline;
-    logTag = hostkeyEnrollmentCheckTag;
-    userPrivateSourceDir = config.sshPaths.secretsKeysDir;
-    userCaSourceDir = config.sshPaths.authoritySecretsDir;
-    systemHostKeyPub = "${hostKeyPath}.pub";
-    clientKeyName = clientKeyName;
-  };
-  hostkeyEnrollmentSyncScript = pkgs.replaceVars ./openssh.d/hostkey-enrollment-sync.sh {
-    nixBashTrampoline = nixBashTrampoline;
-    logTag = hostkeyEnrollmentSyncTag;
-    clientPrivateSource = config.sshPaths.privKeyFile;
-    clientUserCertSource = config.sshPaths.userCertPublic;
-    fallbackHost = config.limaHost.hostName;
-    remoteUser = config.profile.user.name;
-    remoteRepo = "/var/lib/git/nxmatic/nix-darwin-home";
-    guestName = config.limaHost.guestName;
-  };
-  authorizedKeysCheckScript = pkgs.replaceVars ./openssh.d/authorized-keys-check.sh {
-    nixBashTrampoline = nixBashTrampoline;
-    logTag = authorizedKeysCheckTag;
-    authorizedKeysFile = "${config.opensshPolicy.authorizedKeysDir}/${config.profile.user.name}";
-    expectedPublicKeyFile = config.sshPaths.hostPublicKeyFile;
-    profileUserName = config.profile.user.name;
-  };
-  sshdAutostartCheckScript = pkgs.replaceVars ./openssh.d/sshd-autostart-check.sh {
-    nixBashTrampoline = nixBashTrampoline;
-    logTag = sshdAutostartCheckTag;
-  };
+  hostkeyEnrollmentCheckScript = ndh.store.installBinScript "openssh-hostkey-enrollment-check" (
+    pkgs.replaceVars ./openssh.d/hostkey-enrollment-check.sh {
+      nixBashTrampoline = nixBashTrampoline;
+      logTag = hostkeyEnrollmentCheckTag;
+      userPrivateSourceDir = config.sshPaths.secretsKeysDir;
+      userCaSourceDir = config.sshPaths.authoritySecretsDir;
+      systemHostKeyPub = "${hostKeyPath}.pub";
+      clientKeyName = clientKeyName;
+    }
+  );
+  hostkeyEnrollmentSyncScript = ndh.store.installBinScript "openssh-hostkey-enrollment-sync" (
+    pkgs.replaceVars ./openssh.d/hostkey-enrollment-sync.sh {
+      nixBashTrampoline = nixBashTrampoline;
+      logTag = hostkeyEnrollmentSyncTag;
+      clientPrivateSource = config.sshPaths.privKeyFile;
+      clientUserCertSource = config.sshPaths.userCertPublic;
+      fallbackHost = config.limaHost.hostName;
+      remoteUser = config.profile.user.name;
+      remoteRepo = "/var/lib/git/nxmatic/nix-darwin-home";
+      guestName = config.limaHost.guestName;
+    }
+  );
+  authorizedKeysCheckScript = ndh.store.installBinScript "openssh-authorized-keys-check" (
+    pkgs.replaceVars ./openssh.d/authorized-keys-check.sh {
+      nixBashTrampoline = nixBashTrampoline;
+      logTag = authorizedKeysCheckTag;
+      authorizedKeysFile = "${config.opensshPolicy.authorizedKeysDir}/${config.profile.user.name}";
+      expectedPublicKeyFile = config.sshPaths.hostPublicKeyFile;
+      profileUserName = config.profile.user.name;
+    }
+  );
+  sshdAutostartCheckScript = ndh.store.installBinScript "openssh-sshd-autostart-check" (
+    pkgs.replaceVars ./openssh.d/sshd-autostart-check.sh {
+      nixBashTrampoline = nixBashTrampoline;
+      logTag = sshdAutostartCheckTag;
+    }
+  );
 in
 {
   imports = [
@@ -251,7 +265,7 @@ in
       User = config.profile.user.name;
       Group = config.profile.user.name;
       Environment = [ "HOME=${userHome}" ];
-      ExecStart = "${pkgs.bash}/bin/bash ${hostkeyEnrollmentCheckScript}";
+      ExecStart = "${pkgs.bash}/bin/bash ${hostkeyEnrollmentCheckScript}/bin/openssh-hostkey-enrollment-check";
     };
   };
 
@@ -274,7 +288,7 @@ in
       Type = "oneshot";
       User = "root";
       Group = "root";
-      ExecStart = "${pkgs.bash}/bin/bash ${authorizedKeysCheckScript}";
+      ExecStart = "${pkgs.bash}/bin/bash ${authorizedKeysCheckScript}/bin/openssh-authorized-keys-check";
     };
   };
 
@@ -308,7 +322,7 @@ in
       User = config.profile.user.name;
       Group = config.profile.user.name;
       Environment = [ "HOME=${userHome}" ];
-      ExecStart = "${pkgs.bash}/bin/bash ${hostkeyEnrollmentSyncScript}";
+      ExecStart = "${pkgs.bash}/bin/bash ${hostkeyEnrollmentSyncScript}/bin/openssh-hostkey-enrollment-sync";
     };
   };
 
@@ -324,7 +338,7 @@ in
       Type = "oneshot";
       User = "root";
       Group = "root";
-      ExecStart = "${pkgs.bash}/bin/bash ${sshdAutostartCheckScript}";
+      ExecStart = "${pkgs.bash}/bin/bash ${sshdAutostartCheckScript}/bin/openssh-sshd-autostart-check";
     };
   };
 

@@ -16,13 +16,12 @@ let
   wrapped = pkgs.writeShellScriptBin "github-mcp-proxy" ''
     exec ${pkgs.python3}/bin/python3 ${pythonSource} "$@"
   '';
-  githubMcpProxyActivationScript = ndh.store.runCommand "github-mcp-proxy-activation.sh" { } ''
-    cp ${
+  githubMcpProxyActivationScript = ndh.store.runCommand "github-mcp-proxy-activation" { } ''
+    install -Dm755 ${
       pkgs.replaceVars ./github-mcp-proxy.d/activation.sh {
         nixBashTrampoline = nixBashTrampoline;
       }
-    } "$out"
-    chmod +x "$out"
+    } "$out/bin/github-mcp-proxy-activation"
   '';
 in
 {
@@ -78,7 +77,7 @@ in
 
     # Optional: simple activation health check (non-fatal)
     system.activationScripts.postActivation.text = lib.mkAfter ''
-      ${githubMcpProxyActivationScript}
+      ${githubMcpProxyActivationScript}/bin/github-mcp-proxy-activation
     '';
   };
 }

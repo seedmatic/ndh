@@ -45,24 +45,22 @@ let
       builtins.head certHostLabels
     else
       config.networking.hostName;
-  ensureIncusServerCert = ndh.store.runCommand "ensure-incus-server-cert.sh" { } ''
-    cp ${
+  ensureIncusServerCert = ndh.store.runCommand "ensure-incus-server-cert" { } ''
+    install -Dm755 ${
       pkgs.replaceVars ./incus.d/ensure-incus-server-cert.sh {
         nixBashTrampoline = nixBashTrampoline;
         openssl = "${pkgs.openssl}/bin/openssl";
         incusServerCertPrimaryName = incusServerCertPrimaryName;
         incusServerCertNames = lib.concatMapStringsSep " " lib.escapeShellArg incusServerCertNames;
       }
-    } $out
-    chmod +x $out
+    } "$out/bin/ensure-incus-server-cert"
   '';
   hostByteHex = lib.strings.toLower (
     builtins.substring 0 2 (builtins.hashString "sha256" effectiveHostName)
   );
   lanBridgeMac = "10:66:6a:4c:${hostByteHex}:01";
-  fixIncusSocketPerms = ndh.store.runCommand "fix-incus-socket-perms.sh" { } ''
-    cp ${pkgs.replaceVars ./incus.d/fix-incus-socket-perms.sh { }} $out
-    chmod +x $out
+  fixIncusSocketPerms = ndh.store.runCommand "fix-incus-socket-perms" { } ''
+    install -Dm755 ${pkgs.replaceVars ./incus.d/fix-incus-socket-perms.sh { }} "$out/bin/fix-incus-socket-perms"
   '';
 
 in
@@ -230,8 +228,8 @@ in
     restartTriggers = [ ensureIncusServerCert ];
     path = with pkgs; [ openssl ];
     serviceConfig = {
-      ExecStartPre = [ "${pkgs.bash}/bin/bash ${ensureIncusServerCert}" ];
-      ExecStartPost = [ "${pkgs.bash}/bin/bash ${fixIncusSocketPerms}" ];
+      ExecStartPre = [ "${pkgs.bash}/bin/bash ${ensureIncusServerCert}/bin/ensure-incus-server-cert" ];
+      ExecStartPost = [ "${pkgs.bash}/bin/bash ${fixIncusSocketPerms}/bin/fix-incus-socket-perms" ];
     };
   };
 

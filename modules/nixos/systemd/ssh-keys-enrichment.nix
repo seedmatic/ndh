@@ -62,44 +62,34 @@ let
   loggerTagEnrich = "nixos.services.ssh-keys-enrichment.enrichSSHKeysYaml";
   loggerTagSplit = "nixos.services.ssh-keys-enrichment.splitSSHKeysYaml";
   loggerTagExtract = "nixos.services.ssh-keys-enrichment.extractSSHKeys";
-  sshEnrichKeysYamlScriptSource =
-    pkgs.replaceVars ../../.common.d/ssh-keys.d/ssh-enrich-keys-yaml.sh
-      {
-        nixBashTrampoline = nixBashTrampoline;
-        loggerTag = loggerTagEnrich;
-      };
-  sshEnrichKeysYamlScript = pkgs.runCommand "ndh-ssh-enrich-keys-yaml-systemd.sh" { } ''
-    install -m 0555 ${sshEnrichKeysYamlScriptSource} "$out"
-  '';
-  sshSplitKeysYamlScriptSource = pkgs.replaceVars ../../.common.d/ssh-keys.d/ssh-split-keys-yaml.sh {
-    nixBashTrampoline = nixBashTrampoline;
-    loggerTag = loggerTagSplit;
-  };
-  sshSplitKeysYamlScript = pkgs.runCommand "ndh-ssh-split-keys-yaml-systemd.sh" { } ''
-    install -m 0555 ${sshSplitKeysYamlScriptSource} "$out"
-  '';
-  sshEnrichSplitAndAuthorizeScriptSource =
-    pkgs.replaceVars ../../.common.d/ssh-keys.d/ssh-enrich-split-runtime-keys.sh
-      {
-        nixBashTrampoline = nixBashTrampoline;
-        loggerTag = loggerTagOrchestrate;
-      };
-  sshEnrichSplitAndAuthorizeScript =
-    pkgs.runCommand "ndh-ssh-enrich-split-and-authorize-linux-builder-systemd.sh" { }
-      ''
-        install -m 0555 ${sshEnrichSplitAndAuthorizeScriptSource} "$out"
-      '';
-  sshExtractKeysSplitExpFile = pkgs.runCommand "ndh-ssh-extract-keys.split-exp.yq" { } ''
+  sshEnrichKeysYamlScript = ndh.store.installBinScript "ssh-enrich-keys-yaml" (
+    pkgs.replaceVars ../../.common.d/ssh-keys.d/ssh-enrich-keys-yaml.sh {
+      nixBashTrampoline = nixBashTrampoline;
+      loggerTag = loggerTagEnrich;
+    }
+  );
+  sshSplitKeysYamlScript = ndh.store.installBinScript "ssh-split-keys-yaml" (
+    pkgs.replaceVars ../../.common.d/ssh-keys.d/ssh-split-keys-yaml.sh {
+      nixBashTrampoline = nixBashTrampoline;
+      loggerTag = loggerTagSplit;
+    }
+  );
+  sshEnrichSplitAndAuthorizeScript = ndh.store.installBinScript "ssh-enrich-split-and-authorize" (
+    pkgs.replaceVars ../../.common.d/ssh-keys.d/ssh-enrich-split-runtime-keys.sh {
+      nixBashTrampoline = nixBashTrampoline;
+      loggerTag = loggerTagOrchestrate;
+    }
+  );
+  sshExtractKeysSplitExpFile = ndh.store.runCommand "ssh-extract-keys.split-exp.yq" { } ''
     install -m 0444 ${../../home-manager/ssh-key.d/ssh-extract-keys.split-exp.yq} "$out"
   '';
-  sshExtractKeysScriptSource = pkgs.replaceVars ../../home-manager/ssh-key.d/ssh-extract-keys.sh {
-    nixBashTrampoline = nixBashTrampoline;
-    loggerTag = loggerTagExtract;
-    splitExpFile = sshExtractKeysSplitExpFile;
-  };
-  sshExtractKeysScript = pkgs.runCommand "ndh-ssh-extract-keys-systemd.sh" { } ''
-    install -m 0555 ${sshExtractKeysScriptSource} "$out"
-  '';
+  sshExtractKeysScript = ndh.store.installBinScript "ssh-extract-keys" (
+    pkgs.replaceVars ../../home-manager/ssh-key.d/ssh-extract-keys.sh {
+      nixBashTrampoline = nixBashTrampoline;
+      loggerTag = loggerTagExtract;
+      splitExpFile = sshExtractKeysSplitExpFile;
+    }
+  );
 in
 {
   config.systemd.services.${ndhSystemd.mkUnitName "ssh-keys-enrichment"} = {
@@ -137,10 +127,10 @@ in
     script = ''
       set -euo pipefail
 
-      ${pkgs.bash}/bin/bash ${sshEnrichSplitAndAuthorizeScript} \
+      ${pkgs.bash}/bin/bash ${sshEnrichSplitAndAuthorizeScript}/bin/ssh-enrich-split-and-authorize \
         "${pkgs.bash}/bin/bash" \
-        "${sshEnrichKeysYamlScript}" \
-        "${sshSplitKeysYamlScript}" \
+        "${sshEnrichKeysYamlScript}/bin/ssh-enrich-keys-yaml" \
+        "${sshSplitKeysYamlScript}/bin/ssh-split-keys-yaml" \
         "${sshKeyProfileName}" \
         "${hostIdent}" \
         "${decryptedSSHKeysYamlPath}" \
@@ -157,7 +147,7 @@ in
       # Materialize file-based SSH key artifacts expected by OpenSSH activation
       # and hostkey enrollment scripts in both bootstrap and full runtime modes.
       # Use the full enriched keyset so host/system key material is included.
-      ${pkgs.bash}/bin/bash ${sshExtractKeysScript} \
+      ${pkgs.bash}/bin/bash ${sshExtractKeysScript}/bin/ssh-extract-keys \
         "${generatedKeysYamlPath}" \
         "${config.sshPaths.secretsKeysDir}" \
         "${profileOwnerName}"

@@ -186,6 +186,13 @@ let
       pkgs.runCommand (prefixedName name) { } ''
         install -Dm755 ${pkgs.writeShellScript name text} "$out/bin/${name}"
       '';
+    # Wrap a pre-built source (e.g. replaceVars output) in a bin/ package.
+    # Store drv uses the ndh-prefixed name; executable is at $out/bin/<name>.
+    installBinScript =
+      name: source:
+      pkgs.runCommand (prefixedName name) { } ''
+        install -Dm755 ${source} "$out/bin/${name}"
+      '';
     lookupScript = ndhStoreAssetLookupScript;
     lookupPackage = ndhStoreAssetLookupPackage;
     lookupQuery = name: "^${lib.escapeRegex (prefixedName name)}$";

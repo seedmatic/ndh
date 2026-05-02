@@ -115,15 +115,19 @@ let
     echo "pf rules reloaded"
   '';
 
-  birdPostActivationScript = pkgs.replaceVars ./bird-daemon.d/post-activation.sh {
-    nixBashTrampoline = nixBashTrampoline;
-    isExecutable = true;
-    name = "bird-post-activation.sh";
-    inherit createUserScript;
-    user = cfg.user;
-    group = cfg.group;
-    loggerTag = "darwin.activationScripts.postActivation.bird";
-  };
+  birdPostActivationScript = ndh.store.runCommand "bird-post-activation" { } ''
+    install -Dm755 ${
+      pkgs.replaceVars ./bird-daemon.d/post-activation.sh {
+        nixBashTrampoline = nixBashTrampoline;
+        isExecutable = true;
+        name = "bird-post-activation.sh";
+        inherit createUserScript;
+        user = cfg.user;
+        group = cfg.group;
+        loggerTag = "darwin.activationScripts.postActivation.bird";
+      }
+    } "$out/bin/bird-post-activation"
+  '';
 in
 {
   options = {
@@ -219,7 +223,7 @@ in
     };
 
     system.activationScripts.postActivation.text = ''
-      ${birdPostActivationScript}
+      ${birdPostActivationScript}/bin/bird-post-activation
     '';
     system.defaults.alf.globalstate = 1;
     system.defaults.alf.allowsignedenabled = 1;

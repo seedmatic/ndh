@@ -18,13 +18,19 @@ let
   hostKeyPublicCert = sshPaths.hostCertPublic;
   caPublicKeyFile = "${config.opensshPolicy.keysDir}/trusted-user-ca.pub";
   nixBashTrampoline = "${ndhContext.nixBashTrampoline}";
-  principalsScriptStore = pkgs.replaceVars ../.common.d/ssh/authorized-principals-command.sh {
-    nixBashTrampoline = nixBashTrampoline;
-  };
-  groupKeysScriptStore = pkgs.replaceVars ../.common.d/ssh/ssh-group-authorized-keys.sh {
-    nixBashTrampoline = nixBashTrampoline;
-    authorizedKeysDir = config.opensshPolicy.authorizedKeysDir;
-  };
+  principalsScriptPkg = ndh.store.installBinScript "openssh-principals-command" (
+    pkgs.replaceVars ../.common.d/ssh/authorized-principals-command.sh {
+      nixBashTrampoline = nixBashTrampoline;
+    }
+  );
+  principalsScriptStore = "${principalsScriptPkg}/bin/openssh-principals-command";
+  groupKeysScriptPkg = ndh.store.installBinScript "openssh-group-authorized-keys" (
+    pkgs.replaceVars ../.common.d/ssh/ssh-group-authorized-keys.sh {
+      nixBashTrampoline = nixBashTrampoline;
+      authorizedKeysDir = config.opensshPolicy.authorizedKeysDir;
+    }
+  );
+  groupKeysScriptStore = "${groupKeysScriptPkg}/bin/openssh-group-authorized-keys";
   inherit (lib) mkIf optionalString concatStringsSep;
 
   # Derive principals based on profile and hostname
@@ -88,20 +94,24 @@ let
     AuthorizedKeysCommandUser ${config.opensshPolicy.groupCommandUser}
   '';
 
-  opensshActivationScript = pkgs.replaceVars ./openssh.d/openssh-activation.sh {
-    nixBashTrampoline = nixBashTrampoline;
-    groupKeysScriptStore = groupKeysScriptStore;
-    principalsScriptStore = principalsScriptStore;
-    groupKeysCommand = config.opensshPolicy.canonicalGroupKeysCommandName;
-    principalsCommand = config.opensshPolicy.canonicalPrincipalsCommandName;
-  };
+  opensshActivationScript = ndh.store.installBinScript "openssh-activation" (
+    pkgs.replaceVars ./openssh.d/openssh-activation.sh {
+      nixBashTrampoline = nixBashTrampoline;
+      groupKeysScriptStore = groupKeysScriptStore;
+      principalsScriptStore = principalsScriptStore;
+      groupKeysCommand = config.opensshPolicy.canonicalGroupKeysCommandName;
+      principalsCommand = config.opensshPolicy.canonicalPrincipalsCommandName;
+    }
+  );
 
-  opensshPostActivationScript = pkgs.replaceVars ./openssh.d/post-activation.sh {
-    nixBashTrampoline = nixBashTrampoline;
-    hostKeysDir = hostKeysDir;
-    keysDir = config.opensshPolicy.keysDir;
-    loggerTag = "darwin.activationScripts.postActivation.openssh";
-  };
+  opensshPostActivationScript = ndh.store.installBinScript "openssh-post-activation" (
+    pkgs.replaceVars ./openssh.d/post-activation.sh {
+      nixBashTrampoline = nixBashTrampoline;
+      hostKeysDir = hostKeysDir;
+      keysDir = config.opensshPolicy.keysDir;
+      loggerTag = "darwin.activationScripts.postActivation.openssh";
+    }
+  );
 
 in
 {
@@ -163,13 +173,13 @@ in
 
     # Ensure OpenSSH helper scripts are installed during the etc phase.
     system.activationScripts.etc.text = lib.mkAfter ''
-      bash ${opensshActivationScript}
+      bash ${opensshActivationScript}/bin/openssh-activation
     '';
 
     # HM post-activation is wired at mkOrder 2000 in modules/darwin/default.nix.
     # Run CA/trust aggregation after HM extraction so runtime SSH key material exists.
     system.activationScripts.postActivation.text = lib.mkOrder 2100 ''
-      bash ${opensshPostActivationScript}
+      bash ${opensshPostActivationScript}/bin/openssh-post-activation
     '';
 
   };

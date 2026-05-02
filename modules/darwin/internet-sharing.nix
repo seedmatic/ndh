@@ -59,27 +59,29 @@ let
     fi
   '';
 
-  configurePlist = pkgs.replaceVars ./internet-sharing.d/configure-plist.sh {
-    nixBashTrampoline = nixBashTrampoline;
-    desiredEnabled = lib.toString (if cfg.enable then 1 else 0);
-    enableFlag = if cfg.enable then "true" else "false";
-    primaryInterface = cfg.primaryInterface;
-    inherit
-      plistPath
-      sharingDevicesCmds
-      desiredDevices
-      autoToggleBlock
-      ;
-  };
+  configurePlistPkg = ndh.store.installBinScript "internet-sharing-configure-plist" (
+    pkgs.replaceVars ./internet-sharing.d/configure-plist.sh {
+      nixBashTrampoline = nixBashTrampoline;
+      desiredEnabled = lib.toString (if cfg.enable then 1 else 0);
+      enableFlag = if cfg.enable then "true" else "false";
+      primaryInterface = cfg.primaryInterface;
+      inherit
+        plistPath
+        sharingDevicesCmds
+        desiredDevices
+        autoToggleBlock
+        ;
+    }
+  );
+  configurePlist = "${configurePlistPkg}/bin/internet-sharing-configure-plist";
 
-  activationWrapperScript = ndh.store.runCommand "internet-sharing-activation.sh" { } ''
-    cp ${
+  activationWrapperScript = ndh.store.runCommand "internet-sharing-activation" { } ''
+    install -Dm755 ${
       pkgs.replaceVars ./internet-sharing.d/activation-wrapper.sh {
         nixBashTrampoline = nixBashTrampoline;
         inherit configurePlist verifyAnchorsBlock;
       }
-    } "$out"
-    chmod +x "$out"
+    } "$out/bin/internet-sharing-activation"
   '';
 
 in
@@ -148,7 +150,7 @@ in
     {
       # Run configuration script during system activation (networking fragment)
       system.activationScripts.networking.text = lib.mkAfter ''
-        ${activationWrapperScript}
+        ${activationWrapperScript}/bin/internet-sharing-activation
       '';
     }
     // {

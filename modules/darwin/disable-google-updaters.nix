@@ -17,15 +17,14 @@ let
     install -Dm755 ${./disable-google-updaters.d/disable-google-updaters.sh} "$out/bin/disable-google-updaters"
   '';
   disableGoogleUpdatersActivationScript =
-    ndh.store.runCommand "disable-google-updaters-post-activation.sh" { }
+    ndh.store.runCommand "disable-google-updaters-post-activation" { }
       ''
-        cp ${
+        install -Dm755 ${
           pkgs.replaceVars ./disable-google-updaters.d/post-activation.sh {
             nixBashTrampoline = nixBashTrampoline;
             disableGoogleUpdatersScript = disableGoogleUpdatersScript;
           }
-        } "$out"
-        chmod +x "$out"
+        } "$out/bin/disable-google-updaters-post-activation"
       '';
 in
 {
@@ -39,7 +38,7 @@ in
 
     # Automatically disable Google update daemons on each activation (@codebase)
     system.activationScripts.postActivation.text = mkAfter ''
-      ${disableGoogleUpdatersActivationScript}
+      ${disableGoogleUpdatersActivationScript}/bin/disable-google-updaters-post-activation
     '';
   };
 }

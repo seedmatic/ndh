@@ -169,18 +169,22 @@ let
   diskoMountExe = lib.getExe diskoMountScript;
   diskoUnmountExe = lib.getExe diskoUnmountScript;
 
-  zfsBringupInstallScript = pkgs.replaceVars ./zfs.d/bringup-zfs-disk-images-install.sh {
-    bringupCommonScript = "${bringupCommonScript}";
-    diskoFormatExe = "${diskoFormatExe}";
-    diskoMountExe = "${diskoMountExe}";
-    diskoUnmountExe = "${diskoUnmountExe}";
-    closureRegistration = "${closureInfo}/registration";
-    nixosInstall = "${config.system.build.nixos-install}/bin/nixos-install";
-    systemToplevel = "${installSystemPath}";
-    systemdLibUdevd = "${pkgs.systemd}/lib/systemd/systemd-udevd";
-    channelFlag = if includeChannel then "--channel ${channelSources}" else "";
-    bootSizePolicyNote = builtins.toJSON "ZFS bringup artifacts generated from canonical zfs-pool-disk-map definitions.";
-  };
+  zfsBringupInstallScript = pkgs.runCommand "io.nxmatic.nix-darwin-home-bringup-zfs-disk-images-install" { } ''
+    install -Dm755 ${
+      pkgs.replaceVars ./zfs.d/bringup-zfs-disk-images-install.sh {
+        bringupCommonScript = "${bringupCommonScript}";
+        diskoFormatExe = "${diskoFormatExe}";
+        diskoMountExe = "${diskoMountExe}";
+        diskoUnmountExe = "${diskoUnmountExe}";
+        closureRegistration = "${closureInfo}/registration";
+        nixosInstall = "${config.system.build.nixos-install}/bin/nixos-install";
+        systemToplevel = "${installSystemPath}";
+        systemdLibUdevd = "${pkgs.systemd}/lib/systemd/systemd-udevd";
+        channelFlag = if includeChannel then "--channel ${channelSources}" else "";
+        bootSizePolicyNote = builtins.toJSON "ZFS bringup artifacts generated from canonical zfs-pool-disk-map definitions.";
+      }
+    } "$out/bin/bringup-zfs-disk-images-install"
+  '';
 
   nestedQemuNetOpts = bringupCommon.nestedQemuNetOpts;
 in
@@ -266,6 +270,6 @@ in
           setsid --ctty ${pkgs.bash}/bin/bash -i 0<>/dev/hvc0 1>&0 2>&0 &
 
           : 'execute the ZFS bringup install script, which formats the disks and installs NixOS onto them'
-          exec ${pkgs.bash}/bin/bash ${zfsBringupInstallScript}
+          exec ${pkgs.bash}/bin/bash ${zfsBringupInstallScript}/bin/bringup-zfs-disk-images-install
       ''
   )

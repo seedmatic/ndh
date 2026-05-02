@@ -216,7 +216,7 @@ let
   '';
 
   # Extracted so it can be referenced in both ExecStart and storePaths.
-  initrdBootEntryReconcileScript = pkgs.writeShellScript "boot-entry-reconcile" ''
+  initrdBootEntryReconcileScript = ndh.store.writeShellScript "initrd-boot-entry-reconcile" ''
     set -euo pipefail
 
     sysroot=/sysroot
@@ -337,6 +337,55 @@ let
       ''
         install -Dm0555 "$textPath" "$out"
       '';
+
+  # Stage-2 packages shared by overlay-mode and non-overlay-mode bootstrap services.
+  stage2ZpoolInitDevicesCheckPackage = ndh.store.writeShellScriptBin "zpool-init-devices-check" ''
+    set -eu
+
+    if ! "${if cfg.bootstrapActivation.autoStart then "true" else "false"}"; then
+      echo "[zpool-init] autoStart is false; skipping device check and zpool-init execution"
+      exit 1
+    fi
+
+    for dev in ${lib.escapeShellArgs cfg.bootstrapActivation.requiredDevices}; do
+      if [ ! -b "$dev" ]; then
+        echo "[zpool-init] skip: required device missing: $dev"
+        exit 1
+      fi
+    done
+
+    exit 0
+  '';
+
+  stage2ZpoolInitPackage = ndh.store.writeShellScriptBin "zpool-init" ''
+    set -euxo pipefail
+
+    # Some bootstrap images may accidentally contain /homeless-shelter,
+    # which makes nix/disko refuse impurity-prone builds.
+    if [ -d /homeless-shelter ]; then
+      rm -rf /homeless-shelter
+    fi
+
+    export NDH_BOOTSTRAP_INSTALLER_MODE=1
+    export NDH_BOOTSTRAP_STRICT=0
+
+    exec ${zpoolInit}/bin/zpool-init
+  '';
+
+  espSyncServicePackage = ndh.store.writeShellScriptBin "esp-sync-service" ''
+    set -eu
+    export PRIMARY_ESP_PART_LABEL=${lib.escapeShellArg primaryEspPartLabelEnv}
+    export SECONDARY_ESP_PART_LABELS=${lib.escapeShellArg secondaryEspPartLabelsEnv}
+    exec ${espSyncScript}
+  '';
+
+  zpoolSyncExportShutdownScript = ndh.store.installScript {
+    name = "zpool-sync-export-shutdown";
+    source = pkgs.replaceVars ./zfs.d/zpool-sync-export-shutdown.sh {
+      zpool = "${pkgs.zfs}/bin/zpool";
+    };
+    mode = "0755";
+  };
 
 in
 {
@@ -683,40 +732,8 @@ in
           serviceConfig = {
             Type = "oneshot";
             RemainAfterExit = true;
-            ExecCondition = ndh.store.writeShellScript "zpool-init-devices-check" ''
-              set -eu
-
-              if ! "${if config.zfsOverlays.bootstrapActivation.autoStart then "true" else "false"}"; then
-                echo "[zpool-init] autoStart is false; skipping device check and zpool-init execution"
-                exit 1
-              fi
-
-              for dev in ${lib.escapeShellArgs config.zfsOverlays.bootstrapActivation.requiredDevices}; do
-                if [ ! -b "$dev" ]; then
-                  echo "[zpool-init] skip: required device missing: $dev"
-                  exit 1
-                fi
-              done
-
-              exit 0
-            '';
-            ExecStart = ndh.store.writeShellScript "zpool-init" ''
-              set -euxo pipefail
-
-              # Some bootstrap images may accidentally contain /homeless-shelter,
-              # which makes nix/disko refuse impurity-prone builds.
-              if [ -d /homeless-shelter ]; then
-                rm -rf /homeless-shelter
-              fi
-
-              # This early-boot service runs with explicit systemd path inputs;
-              # skip NDH bootstrap profile strict checks to avoid a noisy pre-flight
-              # failure phase before the actual zpool-init execution.
-              export NDH_BOOTSTRAP_INSTALLER_MODE=1
-              export NDH_BOOTSTRAP_STRICT=0
-
-              exec ${zpoolInit}/bin/zpool-init
-            '';
+            ExecCondition = "${stage2ZpoolInitDevicesCheckPackage}/bin/zpool-init-devices-check";
+            ExecStart = "${stage2ZpoolInitPackage}/bin/zpool-init";
             TimeoutStartSec = "30min";
           };
 
@@ -752,36 +769,8 @@ in
             RemainAfterExit = true;
             StandardOutput = "journal+console";
             StandardError = "journal+console";
-            ExecCondition = ndh.store.writeShellScript "zpool-init-devices-check" ''
-              set -eu
-
-              if ! "${if config.zfsOverlays.bootstrapActivation.autoStart then "true" else "false"}"; then
-                echo "[zpool-init] autoStart is false; skipping device check and zpool-init execution"
-                exit 1
-              fi
-
-              for dev in ${lib.escapeShellArgs config.zfsOverlays.bootstrapActivation.requiredDevices}; do
-                if [ ! -b "$dev" ]; then
-                  echo "[zpool-init] skip: required device missing: $dev"
-                  exit 1
-                fi
-              done
-
-              exit 0
-            '';
-            ExecStart = ndh.store.writeShellScript "zpool-init" ''
-              set -euxo pipefail
-
-              # Some bootstrap images may accidentally contain /homeless-shelter,
-              # which makes nix/disko refuse impurity-prone builds.
-              if [ -d /homeless-shelter ]; then
-                rm -rf /homeless-shelter
-              fi
-
-              export NDH_BOOTSTRAP_INSTALLER_MODE=1
-              export NDH_BOOTSTRAP_STRICT=0
-              exec ${zpoolInit}/bin/zpool-init
-            '';
+            ExecCondition = "${stage2ZpoolInitDevicesCheckPackage}/bin/zpool-init-devices-check";
+            ExecStart = "${stage2ZpoolInitPackage}/bin/zpool-init";
             TimeoutStartSec = "30min";
           };
 
@@ -807,12 +796,7 @@ in
         ];
         serviceConfig = {
           Type = "oneshot";
-          ExecStart = ndh.store.writeShellScript "esp-sync-service" ''
-            set -eu
-            export PRIMARY_ESP_PART_LABEL=${lib.escapeShellArg primaryEspPartLabelEnv}
-            export SECONDARY_ESP_PART_LABELS=${lib.escapeShellArg secondaryEspPartLabelsEnv}
-            exec ${espSyncScript}
-          '';
+          ExecStart = "${espSyncServicePackage}/bin/esp-sync-service";
         };
       };
       tmpfiles.rules = [
@@ -822,11 +806,7 @@ in
       ];
 
       shutdownRamfs.contents."/etc/systemd/system-shutdown/zpool".source = (
-        lib.mkForce (
-          pkgs.replaceVars ./zfs.d/zpool-sync-export-shutdown.sh {
-            zpool = "${pkgs.zfs}/bin/zpool";
-          }
-        )
+        lib.mkForce zpoolSyncExportShutdownScript
       );
 
       shutdownRamfs.storePaths = [ "${pkgs.zfs}/bin/zpool" ];

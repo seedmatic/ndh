@@ -139,6 +139,16 @@
             pkgsForSystem.runCommand (prefixedName name) attrs text;
           writeText = name: text: pkgsForSystem.writeText (prefixedName name) text;
           writeShellScript = name: text: pkgsForSystem.writeShellScript (prefixedName name) text;
+          writeShellScriptBin =
+            name: text:
+            pkgsForSystem.runCommand (prefixedName name) { } ''
+              install -Dm755 ${pkgsForSystem.writeShellScript name text} "$out/bin/${name}"
+            '';
+          installBinScript =
+            name: source:
+            pkgsForSystem.runCommand (prefixedName name) { } ''
+              install -Dm755 ${source} "$out/bin/${name}"
+            '';
         };
 
       ndhStoreApiDarwin = mkNdhStoreApiFor pkgsForDarwin;
