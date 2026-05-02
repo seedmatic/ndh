@@ -473,75 +473,50 @@ main() {
 	}
 
 	tart:raw-images:gcroot:materialize() {
+		# Pin the entire nix store output directory with a single gcroot symlink.
+		# Linking the directory (not individual files) keeps all images alive with
+		# one link and avoids cluttering the gcroots directory.
 		local manifest_path="${raw_image_manifest_path:-}"
 		local store_path="${raw_image_store_path:-}"
 		local source_path="${raw_image_source_path:-}"
 		local target_path="${raw_image_target_path:-}"
-		local selected_primary=""
-		local manifest_primary_rel=""
-		local image_name=""
-		local image_src=""
-		local image_role=""
-		local image_target=""
-		local base=""
-		local ext=""
+		local store_dir=""
 
 		[[ -n "$target_path" ]] || return 0
 
 		target_path="$(tart:gcroot:path:rewrite-user "$target_path")"
 		tart:fs:dir:ensure "$(dirname "$target_path")" 0755
 
+		# Resolve the store directory to link: prefer manifest dir, then store path dir.
 		if [[ -n "$manifest_path" && -r "$manifest_path" ]]; then
-			manifest_primary_rel="$(yq -p=yaml -r '.imagePath // ""' "$manifest_path" 2>/dev/null || true)"
+			store_dir="$(dirname "$manifest_path")"
+		elif [[ -n "$store_path" && -e "$store_path" ]]; then
+			store_dir="$(dirname "$store_path")"
+		elif [[ -n "$source_path" && -e "$source_path" ]]; then
+			store_dir="$(dirname "$source_path")"
 		fi
 
-		while IFS=$'\t' read -r image_name image_src image_role; do
-			[[ -n "$image_src" ]] || continue
-
-			if [[ "$image_role" == "primary" ]] || [[ -n "$manifest_primary_rel" && ("$image_src" == "$manifest_primary_rel" || "$image_src" == */"$manifest_primary_rel") ]]; then
-				image_target="$target_path"
-				selected_primary="$image_src"
-			else
-				if [[ -z "$image_name" ]]; then
-					image_name="$(basename "$image_src" .img)"
-				fi
-				base="$target_path"
-				ext=""
-				if [[ "$base" == *.img ]]; then
-					ext=".img"
-					base="${base%.img}"
-				fi
-				if [[ "$base" == *.raw ]]; then
-					base="${base%.raw}"
-				fi
-				image_target="${base}.${image_name}.raw${ext}"
-				image_target="$(tart:gcroot:path:rewrite-user "$image_target")"
-				tart:fs:dir:ensure "$(dirname "$image_target")" 0755
+		if [[ -z "$store_dir" ]]; then
+			if [[ -L "$target_path" || -f "$target_path" ]]; then
+				: "[tartConfig][INFO] keeping existing raw image gcroot target: $target_path"
+				return 0
 			fi
-
-			tart:fs:path:relink "$image_src" "$image_target" "raw image gcroot (${image_name:-$(basename "$image_src")})"
-		done < <(tart:raw-image:resolve-from-manifest "$manifest_path")
-
-		if [[ -n "$selected_primary" ]]; then
+			: "[tartConfig][WARN] unable to resolve nix store dir for gcroot (manifest=$manifest_path store=$store_path source=$source_path target=$target_path)"
 			return 0
 		fi
 
-		if [[ -n "$store_path" && -f "$store_path" ]]; then
-			tart:fs:path:relink "$store_path" "$target_path" "raw image gcroot (store)"
-			return 0
-		fi
+		tart:fs:path:relink "$store_dir" "$target_path" "raw image store gcroot"
 
-		if [[ -n "$source_path" && -f "$source_path" ]]; then
-			tart:fs:path:relink "$source_path" "$target_path" "raw image gcroot (source)"
-			return 0
-		fi
-
-		if [[ -L "$target_path" || -f "$target_path" ]]; then
-			: "[tartConfig][INFO] keeping existing raw image gcroot target: $target_path"
-			return 0
-		fi
-
-		: "[tartConfig][WARN] unable to resolve raw image source for gcroot materialization (manifest=$manifest_path store=$store_path source=$source_path target=$target_path)"
+		# Remove stale per-image sibling links that the old per-file strategy created
+		# alongside the primary gcroot (e.g. tart-nerd-nixos.tank1.raw.img, …).
+		local gcroot_dir sibling_base
+		gcroot_dir="$(dirname "$target_path")"
+		sibling_base="${target_path%.img}"
+		sibling_base="${sibling_base%.raw}"
+		while IFS= read -r -d '' stale; do
+			: "[tartConfig][INFO] removing stale per-image gcroot: $stale"
+			rm -f "$stale"
+		done < <(find "$gcroot_dir" -maxdepth 1 -name "$(basename "$sibling_base").*.raw.img" -print0 2>/dev/null || true)
 	}
 
 	tart:raw-image:path:from-manifest() {

@@ -125,7 +125,6 @@ let
     raw_image_store_path_default: ${builtins.toJSON rawImageStorePath}
     raw_image_source_path_default: ${builtins.toJSON cfg.rawImageSourcePath}
     raw_image_target_path_default: ${builtins.toJSON cfg.rawImageTargetPath}
-    asif_image_target_path_default: ${builtins.toJSON cfg.asifImageTargetPath}
     sops_age_host_dir_default: ${builtins.toJSON cfg.vmRunSopsAgeHostDir}
     sops_age_tag: ${builtins.toJSON cfg.vmRunSopsAgeTag}
     ndh_toplevel_host_dir_default: ${builtins.toJSON cfg.vmRunNdhTopLevelHostDir}
@@ -417,18 +416,11 @@ in
 
     rawImageTargetPath = mkOption {
       type = types.str;
-      default = "/nix/var/nix/gcroots/per-user/${profileUser}/tart-${cfg.vmName}.raw.img";
+      default = "/nix/var/nix/gcroots/per-user/${profileUser}/tart-${cfg.vmName}";
       description = ''
-        Stable user gcroot symlink path for raw NixOS disk image used for ASIF conversion.
-      '';
-    };
-
-    asifImageTargetPath = mkOption {
-      type = types.str;
-      default = "/nix/var/nix/gcroots/per-user/${profileUser}/tart-${cfg.vmName}.asif";
-      description = ''
-        Stable user gcroot symlink path for the generated ASIF image.
-        The materializer also installs this ASIF image into `${config.tart.configGenerator.vmName}` VM disk.
+        Stable user gcroot symlink path pointing to the nix store output directory
+        containing the bringup disk images. A single directory link keeps all images
+        in the store path alive and avoids per-file gcroot clutter.
       '';
     };
 
