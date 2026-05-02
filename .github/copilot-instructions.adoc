@@ -38,13 +38,16 @@ Tailnet metadata is sourced canonically from `catalog.netplan.tailnet` (not from
 
 ----
 modules/
-├── common/        # Shared Darwin + NixOS (primary-user, lima-host, flox, dnsmasq)
-├── darwin/        # macOS-specific (lima-config, network-bond, preferences)
-├── nixos/         # Linux-specific (incus, containers, headscale, tailscale, zfs)
+├── .common.d/     # Shared Darwin + NixOS; defines ndh.store API, logger, trampoline
+├── darwin/        # macOS-specific (lima-config, tart-config, network-bond, preferences)
+├── nixos/         # Linux-specific (zfs, incus, systemd/, bringup images)
 └── home-manager/  # User environment (shared across systems)
 ----
 
 CRITICAL: `modules/.common.d/default.nix` is imported by both Darwin and NixOS. Changes here affect all systems.
+
+IMPORTANT: All externalized shell scripts must use `ndh.store.*` helpers (not bare `pkgs.writeShellScript`).
+See the link:.github/skills/nix-darwin-home/SKILL.md[nix-darwin-home skill] for full conventions.
 
 === Lima VM Architecture
 
