@@ -17,7 +17,7 @@ let
   addressSourceInterface =
     if cfg.addressSourceInterface != null then cfg.addressSourceInterface else parentInterface;
 
-  vlanSetupScript = ndh.store.writeShellScript "vlan-setup" (
+  vlanSetupScript = ndh.store.writeShellScriptBin "vlan-setup" (
     builtins.readFile ./vlan.d/vlan-setup.sh
   );
 
@@ -69,7 +69,7 @@ in
 
   config = mkIf cfg.enable {
     launchd.daemons.vlan-setup = {
-      script = "${vlanSetupScript}";
+      script = "${vlanSetupScript}/bin/vlan-setup";
       serviceConfig = {
         RunAtLoad = true;
         KeepAlive = false;

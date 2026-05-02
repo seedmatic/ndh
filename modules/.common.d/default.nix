@@ -179,6 +179,13 @@ let
       pkgs.runCommand (prefixedName name) attrs text;
     writeText = name: text: pkgs.writeText (prefixedName name) text;
     writeShellScript = name: text: pkgs.writeShellScript (prefixedName name) text;
+    # Like writeShellScript but produces a bin/ directory package.
+    # Store drv has the prefixed name; the executable inside is just <name>.
+    writeShellScriptBin =
+      name: text:
+      pkgs.runCommand (prefixedName name) { } ''
+        install -Dm755 ${pkgs.writeShellScript name text} "$out/bin/${name}"
+      '';
     lookupScript = ndhStoreAssetLookupScript;
     lookupPackage = ndhStoreAssetLookupPackage;
     lookupQuery = name: "^${lib.escapeRegex (prefixedName name)}$";

@@ -18,7 +18,7 @@ let
   addressSourceInterface =
     if cfg.addressSourceInterface != null then cfg.addressSourceInterface else parentInterface;
 
-  vlanSetupScript = ndh.store.writeShellScript "vlan-setup" (
+  vlanSetupScript = ndh.store.writeShellScriptBin "vlan-setup" (
     builtins.readFile ./vlan.d/vlan-setup.sh
   );
   contributedTargetName = ndhSystemd.contributedTargetName;
@@ -81,7 +81,7 @@ in
           "SOURCE_IFACE=${addressSourceInterface}"
         ]
         ++ lib.optionals (vlanName != null) [ "VLAN_NAME=${vlanName}" ];
-        ExecStart = "${vlanSetupScript}";
+        ExecStart = "${vlanSetupScript}/bin/vlan-setup";
       };
       wantedBy = [ contributedTargetName ];
     };

@@ -13,7 +13,7 @@ let
   tokenSecretName = "nxmatic-cachix-watch-store.token";
   tokenSecretPath = config.sops.secrets.${tokenSecretName}.path;
 
-  watchStoreScript = ndh.store.writeShellScript "nxmatic-cachix-watch-store" ''
+  watchStoreScript = ndh.store.writeShellScriptBin "nxmatic-cachix-watch-store" ''
     set -euo pipefail
 
     token_file="${tokenSecretPath}"
@@ -55,7 +55,7 @@ in
     };
 
     launchd.daemons.nxmatic-cachix-watch-store = {
-      script = "${watchStoreScript}";
+      script = "${watchStoreScript}/bin/nxmatic-cachix-watch-store";
       serviceConfig = {
         RunAtLoad = true;
         KeepAlive = true;

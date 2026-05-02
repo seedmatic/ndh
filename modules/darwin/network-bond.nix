@@ -115,7 +115,7 @@ let
     dhcpDaemonBlock = dhcpDaemonBlock;
   };
 
-  wakeMonitor = ndh.store.writeShellScript "bond-wake-monitor" (
+  wakeMonitor = ndh.store.writeShellScriptBin "bond-wake-monitor" (
     builtins.readFile ./network-bond.d/bond-wake-monitor.sh
   );
 
@@ -181,7 +181,7 @@ in
     # Launchd daemon to reconfigure bond on wake from sleep
     # Uses a wrapper script that monitors system power events
     launchd.daemons.network-bond-wake = {
-      script = "${wakeMonitor}";
+      script = "${wakeMonitor}/bin/bond-wake-monitor";
 
       serviceConfig = {
         RunAtLoad = true;

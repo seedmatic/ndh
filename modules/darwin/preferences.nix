@@ -41,7 +41,7 @@ let
     mode = "0755";
   };
 
-  osOnlyUpdateNotifierScript = ndh.store.writeShellScript "darwin-os-only-update-notifier.sh" ''
+  osOnlyUpdateNotifierScript = ndh.store.writeShellScriptBin "darwin-os-only-update-notifier" ''
         set -euo pipefail
 
         update_output="$(${lib.escapeShellArg "/usr/sbin/softwareupdate"} --list --product-types macOS 2>&1 || true)"
@@ -187,7 +187,7 @@ in
     launchd.user.agents.nxmatic-os-only-softwareupdate-notifier = {
       serviceConfig = {
         Label = "com.nxmatic.softwareupdate.os-only.notifier";
-        ProgramArguments = [ "${osOnlyUpdateNotifierScript}" ];
+        ProgramArguments = [ "${osOnlyUpdateNotifierScript}/bin/darwin-os-only-update-notifier" ];
         StartCalendarInterval = {
           Weekday = 1;
           Hour = 9;
