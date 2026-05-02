@@ -53,24 +53,6 @@ let
   rawImageManifestPath =
     if cfg.rawImageManifestPath == null then "" else toString cfg.rawImageManifestPath;
   rawImageStorePath = if cfg.rawImageStorePath == null then "" else toString cfg.rawImageStorePath;
-  firstBootAttachDiskManifestPath =
-    if cfg.vmRunFirstBootAttachDiskManifestPath == null then
-      ""
-    else
-      toString cfg.vmRunFirstBootAttachDiskManifestPath;
-
-  # Helper-only activation function library for run.sh recovery/bootstrap logic.
-  # Intentionally does not depend on tartRunScript to avoid derivation cycles.
-  tartActivationHelperLib = ndh.store.runCommand "tart-${cfg.vmName}-activation-lib.sh" { } ''
-    cp ${
-      pkgs.replaceVars ./tart-config.d/activation.sh {
-        nixBashTrampoline = nixBashTrampoline;
-        manifestPath = tartRunManifest;
-        tartRunScript = "";
-      }
-    } "$out"
-    chmod +x "$out"
-  '';
 
   tartActivationScript = ndh.store.runCommand "tart-${cfg.vmName}-activation.sh" { } ''
     cp ${
@@ -116,11 +98,6 @@ let
     serial_path_default: ${builtins.toJSON cfg.vmRunSerialPath}
     serial_bridge_enable_default: ${builtins.toJSON cfg.vmRunSerialBridgeEnable}
     serial_bridge_dir_default: ${builtins.toJSON cfg.vmRunSerialBridgeDir}
-    first_boot_attach_disk_path_default: ${builtins.toJSON cfg.vmRunFirstBootAttachDiskPath}
-    first_boot_attach_disk_manifest_path_default: ${builtins.toJSON firstBootAttachDiskManifestPath}
-    first_boot_attach_disk_boot_loader_expected: ${builtins.toJSON cfg.vmRunFirstBootAttachDiskExpectedBootLoader}
-    first_boot_attach_disk_size_gib: ${builtins.toJSON cfg.vmRunFirstBootAttachDiskSizeGiB}
-    first_boot_marker_file_default: ${builtins.toJSON cfg.vmRunFirstBootMarkerFile}
     raw_image_manifest_path_default: ${builtins.toJSON rawImageManifestPath}
     raw_image_store_path_default: ${builtins.toJSON rawImageStorePath}
     raw_image_source_path_default: ${builtins.toJSON cfg.rawImageSourcePath}
@@ -138,7 +115,6 @@ let
       pkgs.replaceVars ./tart-config.d/run.sh {
         nixBashTrampoline = nixBashTrampoline;
         manifestPath = tartRunManifest;
-        tartActivationScript = tartActivationHelperLib;
       }
     } "$out"
     chmod +x "$out"
@@ -416,11 +392,12 @@ in
 
     rawImageTargetPath = mkOption {
       type = types.str;
-      default = "/nix/var/nix/gcroots/per-user/${profileUser}/tart-${cfg.vmName}";
+      default = "/nix/var/nix/gcroots/per-user/${profileUser}/tart-${cfg.vmName}-materialize";
       description = ''
-        Stable user gcroot symlink path pointing to the nix store output directory
-        containing the bringup disk images. A single directory link keeps all images
-        in the store path alive and avoids per-file gcroot clutter.
+        Stable user gcroot symlink path pointing to the activation script store path.
+        Because the activation script's Nix closure transitively includes the run
+        manifest (which embeds disk image store paths), this single link keeps all
+        bringup disk images alive without per-file or per-directory gcroot clutter.
       '';
     };
 

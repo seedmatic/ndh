@@ -1,5 +1,7 @@
 #!/usr/bin/env -S bash -euo pipefail
 # shellcheck source=/dev/null
+# shellcheck disable=SC2016
+# SC2016: yq expressions use single quotes intentionally (not bash variable expansion)
 source @nixBashTrampoline@
 
 tart:bool:is-true() {
@@ -473,39 +475,18 @@ main() {
 	}
 
 	tart:raw-images:gcroot:materialize() {
-		# Pin the entire nix store output directory with a single gcroot symlink.
-		# Linking the directory (not individual files) keeps all images alive with
-		# one link and avoids cluttering the gcroots directory.
-		local manifest_path="${raw_image_manifest_path:-}"
-		local store_path="${raw_image_store_path:-}"
-		local source_path="${raw_image_source_path:-}"
+		# Create a single gcroot symlink pointing to this activation script.
+		# The activation script's Nix closure transitively includes the run manifest
+		# (which embeds disk image store paths), so all bringup disk images are kept
+		# alive without needing separate per-image or per-directory gcroot links.
 		local target_path="${raw_image_target_path:-}"
-		local store_dir=""
 
 		[[ -n "$target_path" ]] || return 0
 
 		target_path="$(tart:gcroot:path:rewrite-user "$target_path")"
 		tart:fs:dir:ensure "$(dirname "$target_path")" 0755
 
-		# Resolve the store directory to link: prefer manifest dir, then store path dir.
-		if [[ -n "$manifest_path" && -r "$manifest_path" ]]; then
-			store_dir="$(dirname "$manifest_path")"
-		elif [[ -n "$store_path" && -e "$store_path" ]]; then
-			store_dir="$(dirname "$store_path")"
-		elif [[ -n "$source_path" && -e "$source_path" ]]; then
-			store_dir="$(dirname "$source_path")"
-		fi
-
-		if [[ -z "$store_dir" ]]; then
-			if [[ -L "$target_path" || -f "$target_path" ]]; then
-				: "[tartConfig][INFO] keeping existing raw image gcroot target: $target_path"
-				return 0
-			fi
-			: "[tartConfig][WARN] unable to resolve nix store dir for gcroot (manifest=$manifest_path store=$store_path source=$source_path target=$target_path)"
-			return 0
-		fi
-
-		tart:fs:path:relink "$store_dir" "$target_path" "raw image store gcroot"
+		tart:fs:path:relink "${BASH_SOURCE[0]}" "$target_path" "materialize app gcroot"
 
 		# Remove stale per-image sibling links that the old per-file strategy created
 		# alongside the primary gcroot (e.g. tart-nerd-nixos.tank1.raw.img, …).
@@ -607,15 +588,6 @@ main() {
 		chmod 0644 "$target_img" 2>/dev/null || true
 		if [[ "$(id -u)" -eq 0 ]] && [[ -n "$profile_group" ]] && [[ "$target_img" == "${effective_home}/"* ]]; then
 			chown "${profile_user}:${profile_group}" "$target_img" 2>/dev/null || true
-		fi
-	}
-
-	tart:bootstrap:manifest:bootloader:validate:config() {
-		TART_LOG_PREFIX="[tartConfig]"
-		if ! tart:bootstrap:manifest:bootloader:validate \
-			"${first_boot_attach_disk_manifest_path:-}" \
-			"${first_boot_attach_disk_boot_loader_expected:-}"; then
-			exit 1
 		fi
 	}
 
@@ -931,7 +903,9 @@ main() {
 			profile_group="$(id -gn "$profile_user" 2>/dev/null || true)"
 		fi
 
-		if [[ "$(id -u)" -eq 0 ]] && [[ -n "${SUDO_USER:-}" ]] && id -u "${SUDO_USER}" >/dev/null 2>&1; then
+		if [[ -n "${NDH_GCROOT_USER:-}" ]] && id -u "${NDH_GCROOT_USER}" >/dev/null 2>&1; then
+			gcroot_user="${NDH_GCROOT_USER}"
+		elif [[ "$(id -u)" -eq 0 ]] && [[ -n "${SUDO_USER:-}" ]] && id -u "${SUDO_USER}" >/dev/null 2>&1; then
 			gcroot_user="${SUDO_USER}"
 		else
 			gcroot_user="$(id -un)"

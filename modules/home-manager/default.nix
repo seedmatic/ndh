@@ -359,7 +359,7 @@ in
       fi
 
       echo "[vmConfig] Home Manager activation: materializing $vm_provider assets and gcroot image"
-      "${pkgs.bash}/bin/bash" "$materializer"
+      NDH_GCROOT_USER="${userName}" "${pkgs.bash}/bin/bash" "$materializer"
     ''
   );
 

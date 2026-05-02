@@ -194,13 +194,13 @@ let
   limaMaterializerPackage = pkgs.writeShellScriptBin "nerd-nixos-lima-vm-materialize" ''
     set -euo pipefail
 
-    gcroot_user="''${SUDO_USER:-$(id -un)}"
+    gcroot_user="''${NDH_GCROOT_USER:-''${SUDO_USER:-$(id -un)}}"
     materializer_out="$(cd "$(dirname "$0")/.." && pwd -P)"
     gcroot_dir="/nix/var/nix/gcroots/per-user/''${gcroot_user}"
     gcroot_link="''${gcroot_dir}/nerd-nixos-lima-vm-materialize"
 
     mkdir -p "''${gcroot_dir}"
-    ${pkgs.nix}/bin/nix-store --realise --add-root "''${gcroot_link}" --indirect "''${materializer_out}" >/dev/null
+    ln -sfn "''${materializer_out}" "''${gcroot_link}"
 
     export NDH_LIMA_ACTIVATION_SCRIPT="${limaActivationScript}"
     exec ${limaActivationScript} "$@"
