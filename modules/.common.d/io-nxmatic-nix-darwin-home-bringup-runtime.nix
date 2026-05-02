@@ -89,7 +89,12 @@ let
         cfg.profileDir
       ]
       (builtins.readFile ./bringup-runtime.d/activation-check.sh);
-  activationCheckScript = pkgs.writeShellScript (prefixStoreName "bringup-runtime-activation-check") activationCheckSource;
+  # Activation check as a proper directory package — script lives in share/, not at the store root.
+  # Defined after ndhPrerequisitesInstallerPackage due to @bootstrapInstaller@ reference.
+  ndhActivationCheckPackage = pkgs.runCommand (prefixStoreName "bringup-runtime-activation-check") { } ''
+    install -Dm755 ${pkgs.writeShellScript "activation-check" activationCheckSource} \
+      "$out/share/activation-check.sh"
+  '';
   # Package trampoline and logger.sh together so the trampoline can locate
   # logger.sh via dirname "${BASH_SOURCE[0]}" at runtime.
   trampolineDir = pkgs.runCommand (prefixStoreName "trampoline-dir") { } ''
@@ -116,12 +121,14 @@ let
         requiredCommandsString
       ]
       (builtins.readFile ./bringup-runtime.d/install-standalone.sh);
-  standaloneInstallScript = pkgs.writeShellScript (prefixStoreName "bringup-runtime-install-standalone") standaloneInstallSource;
-  ndhPrerequisitesInstallerPackage =
-    pkgs.runCommand (prefixStoreName "bringup-runtime-profile-installer") { }
-      ''
-        install -Dm755 ${standaloneInstallScript} "$out/bin/${installerCommand}"
-      '';
+  # Installer as a proper directory package — script lives in bin/, not at the store root.
+  # standaloneInstallSource already has #!/usr/bin/env bash so writeTextFile is sufficient.
+  ndhPrerequisitesInstallerPackage = pkgs.writeTextFile {
+    name = prefixStoreName "bringup-runtime-profile-installer";
+    text = standaloneInstallSource;
+    executable = true;
+    destination = "/bin/${installerCommand}";
+  };
 in
 {
   options.ndh.bringupRuntime = {
@@ -194,7 +201,7 @@ in
       };
 
       system.activationScripts.preActivation.text = lib.mkOrder 0 ''
-        ${activationCheckScript}
+        ${ndhActivationCheckPackage}/share/activation-check.sh
       '';
     }
     // lib.optionalAttrs (options ? systemd) {
