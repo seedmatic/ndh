@@ -260,7 +260,6 @@ main() {
 	local manifest_path=""
 	local tart_nix_cli_args_raw=""
 	local tart_factory_reset_raw=""
-	local -a tart_nix_cli_args
 	local profile_user=""
 	local profile_group=""
 	local gcroot_user=""
@@ -273,7 +272,6 @@ main() {
 		manifest_path="@manifestPath@"
 		tart_nix_cli_args_raw="${NIX_CLI_ARGS:--L -v -v}"
 		tart_factory_reset_raw="${FACTORY_RESET:-0}"
-		tart_nix_cli_args=()
 		profile_user=""
 		profile_group=""
 		gcroot_user=""
@@ -697,7 +695,6 @@ main() {
 	tart:vm:data-disk:create-asif() {
 		local disk="$1"
 		local size_gib="$2"
-		local created_output=""
 
 		if [[ ! "$size_gib" =~ ^[0-9]+$ ]] || ((size_gib <= 0)); then
 			: "[tartConfig][ERROR] invalid data disk size (GiB): $size_gib"
@@ -961,7 +958,7 @@ main() {
 		fi
 
 		if [[ -n "${tart_nix_cli_args_raw}" ]]; then
-			read -r -a tart_nix_cli_args <<<"${tart_nix_cli_args_raw}"
+			: "NIX_CLI_ARGS is set but not consumed by activation: ${tart_nix_cli_args_raw}"
 		fi
 
 		if tart:bool:is-true "$tart_factory_reset_raw"; then
@@ -989,7 +986,6 @@ main() {
 		raw_image_store_path="${NDH_IMAGE_STORE_OVERRIDE:-${raw_image_store_path_default:-}}"
 		raw_image_source_path="${raw_image_source_path_default:-}"
 		raw_image_target_path="${raw_image_target_path_default:-}"
-		asif_image_target_path="${asif_image_target_path_default:-}"
 		tart_run_script_store="${tart_run_script_store:-@tartRunScript@}"
 
 		tart:raw-image:manifest:auto-resolve
