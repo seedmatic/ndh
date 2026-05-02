@@ -2,7 +2,7 @@ let
   hostProfile = {
     hostName = "nikopol";
     form = "vm";
-    vmProvider = "lima";
+    vmProvider = "tart";
     nixosBootLoader = "systemd-boot";
     nixosBootstrapDebug = false;
     nixosBringupRootFs = "btrfs";
@@ -45,8 +45,8 @@ let
         # This avoids stage-2 panic when /etc/sops/age/keys.txt is not yet provisioned.
         ndh.sopsAgeKeyBootstrap.phase = "bootstrap";
         ndh.sopsAgeKeyBootstrap.nixosHostKeyImport.candidates = [
-          # Preferred: key delivered via Lima cidata payload.
-          "/mnt/lima-cidata/.sops.d/keys.txt"
+          # Preferred: key delivered via Tart host share.
+          "/mnt/tart-cidata/.sops.d/keys.txt"
           # Host-mounted fallback: ~/Private/sops:age:keys.txt on Darwin host.
           "/Users/nxmatic/.config/sops/age/keys.txt"
         ];
