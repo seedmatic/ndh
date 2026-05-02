@@ -504,10 +504,11 @@ main() {
 	}
 
 	tart:raw-images:gcroot:materialize() {
-		# Create a single gcroot symlink pointing to this activation script.
-		# The activation script's Nix closure transitively includes the run manifest
-		# (which embeds disk image store paths), so all bringup disk images are kept
-		# alive without needing separate per-image or per-directory gcroot links.
+		# Create a single gcroot symlink pointing to the materialize bundle directory.
+		# The bundle (bin/activate.sh + bringup-manifest → bringup images store dir)
+		# keeps the entire disk-image closure alive through one gcroot link.
+		# Both run.sh and activation.sh resolve bringup images via
+		# ${gcroot}/bringup-manifest/manifest.yaml at runtime.
 		local target_path="${raw_image_target_path:-}"
 
 		[[ -n "$target_path" ]] || return 0
@@ -515,7 +516,10 @@ main() {
 		target_path="$(tart:gcroot:path:rewrite-user "$target_path")"
 		tart:fs:dir:ensure "$(dirname "$target_path")" 0755
 
-		tart:fs:path:relink "${BASH_SOURCE[0]}" "$target_path" "materialize app gcroot"
+		# BASH_SOURCE[0] = /nix/store/hash.../bin/activate.sh inside the bundle dir.
+		local bundle_dir
+		bundle_dir="$(dirname "$(dirname "${BASH_SOURCE[0]}")")"
+		tart:fs:path:relink "$bundle_dir" "$target_path" "materialize app gcroot"
 
 		# Remove stale per-image sibling links that the old per-file strategy created
 		# alongside the primary gcroot (e.g. tart-nerd-nixos.tank1.raw.img, …).
@@ -556,10 +560,21 @@ main() {
 	}
 
 	tart:raw-image:manifest:auto-resolve() {
-		# If manifest path is not explicitly configured, infer it from raw image store/source paths.
+		# If manifest path is not explicitly configured, infer it from the gcroot bundle or
+		# from raw image store/source paths.
 		local candidate=""
 
 		if [[ -n "${raw_image_manifest_path:-}" && -r "${raw_image_manifest_path:-}" ]]; then
+			return 0
+		fi
+
+		# Primary: follow the gcroot bundle (bin/activate.sh lives two levels deep inside it).
+		local bundle_dir
+		bundle_dir="$(dirname "$(dirname "${BASH_SOURCE[0]}")")"
+		candidate="${bundle_dir}/bringup-manifest/manifest.yaml"
+		if [[ -r "$candidate" ]]; then
+			raw_image_manifest_path="$candidate"
+			: "[tartConfig][INFO] auto-resolved raw image manifest from bundle: $raw_image_manifest_path"
 			return 0
 		fi
 

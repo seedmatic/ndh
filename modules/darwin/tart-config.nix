@@ -54,16 +54,35 @@ let
     if cfg.rawImageManifestPath == null then "" else toString cfg.rawImageManifestPath;
   rawImageStorePath = if cfg.rawImageStorePath == null then "" else toString cfg.rawImageStorePath;
 
-  tartActivationScript = ndh.store.runCommand "tart-${cfg.vmName}-activation.sh" { } ''
+  # Directory in the bringup images store that contains manifest.yaml + *.img files.
+  # Prefer rawImageManifestPath's parent; fall back to rawImageStorePath's parent.
+  bringupImagesDir =
+    if rawImageManifestPath != "" then
+      builtins.dirOf rawImageManifestPath
+    else if rawImageStorePath != "" then
+      builtins.dirOf rawImageStorePath
+    else
+      "";
+
+  # Bundle directory: bin/activate.sh + bringup-manifest → bringup images store dir.
+  # The gcroot points here so one symlink keeps the entire disk-image closure alive.
+  tartActivationBundle = ndh.store.runCommand "tart-${cfg.vmName}-materialize" { } ''
+    mkdir -p "$out/bin"
     cp ${
       pkgs.replaceVars ./tart-config.d/activation.sh {
         nixBashTrampoline = nixBashTrampoline;
         manifestPath = tartRunManifest;
         tartRunScript = tartRunScript;
       }
-    } "$out"
-    chmod +x "$out"
+    } "$out/bin/activate.sh"
+    chmod +x "$out/bin/activate.sh"
+    ${lib.optionalString (bringupImagesDir != "") ''
+      ln -s ${lib.escapeShellArg bringupImagesDir} "$out/bringup-manifest"
+    ''}
   '';
+
+  # Convenience alias: the activation script file inside the bundle.
+  tartActivationScript = "${tartActivationBundle}/bin/activate.sh";
 
   tartMaterializerPackage = pkgs.writeShellScriptBin "nerd-nixos-tart-vm-materialize" ''
     if [[ "''${NDH_LINUX_BUILDER_GC_BEFORE_BUILD:-1}" == "1" ]]; then

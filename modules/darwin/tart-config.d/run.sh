@@ -129,15 +129,26 @@ tart:runtime:configure() {
 	sops_age_key_file="${sops_age_host_dir}/keys.txt"
 	ndh_toplevel_host_dir="${TOPLEVEL_HOST_DIR:-$ndh_toplevel_host_dir_default}"
 
-	# Derive the bringup manifest from the store path baked into the run manifest at build time.
-	# This is a direct /nix/store/... reference — no gcroot dir traversal needed.
+	# Derive the bringup manifest: first follow the gcroot bundle (stable, GC-safe),
+	# then fall back to the store path baked into the run manifest.
 	raw_image_manifest_path=""
-	local store_path="${raw_image_store_path_default:-}"
-	if [[ -n "$store_path" && -f "$store_path" ]]; then
-		local candidate
-		candidate="$(dirname "$store_path")/manifest.yaml"
-		if [[ -r "$candidate" ]]; then
-			raw_image_manifest_path="$candidate"
+	local gcroot_path="${raw_image_target_path_default:-}"
+	if [[ -n "$gcroot_path" && -L "$gcroot_path" ]]; then
+		local bundle_dir
+		bundle_dir="$(readlink -f "$gcroot_path" 2>/dev/null || true)"
+		local bundle_manifest="${bundle_dir}/bringup-manifest/manifest.yaml"
+		if [[ -r "$bundle_manifest" ]]; then
+			raw_image_manifest_path="$bundle_manifest"
+		fi
+	fi
+	if [[ -z "$raw_image_manifest_path" ]]; then
+		local store_path="${raw_image_store_path_default:-}"
+		if [[ -n "$store_path" && -f "$store_path" ]]; then
+			local candidate
+			candidate="$(dirname "$store_path")/manifest.yaml"
+			if [[ -r "$candidate" ]]; then
+				raw_image_manifest_path="$candidate"
+			fi
 		fi
 	fi
 
