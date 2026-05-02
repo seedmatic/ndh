@@ -577,7 +577,7 @@ let
 
       diskImageBringupZfsSystemdBoot = mkDiskImageWithManifest {
         attr = "nixosDiskImageBringupZfsSystemdBoot";
-        nixosConfiguration = "${mainName}-nixos-lima";
+        nixosConfiguration = "${mainName}-nixos-${selectedVmProvider}";
         imageMode = "bringup";
         bootLoader = "systemd-boot";
         diskSizeMiB = diskSizeMiB;
