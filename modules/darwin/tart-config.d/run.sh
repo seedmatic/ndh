@@ -267,8 +267,19 @@ tart:bootstrap:ndh-share:plan() {
 }
 
 tart:serial:run-arg:add() {
-	if tart:bool:is-true "${serial_enable:-0}" || [[ -n "${serial_path:-}" ]] || tart:bool:is-true "${serial_bridge_enable:-0}"; then
-		echo "[WARN] serial handling is temporarily disabled; ignoring serial flags/paths" >&2
+	if tart:bool:is-true "${serial_bridge_enable:-0}"; then
+		# Bridge mode: socat manages a stable PTY symlink; pass the path to tart.
+		local bridge_dir="${serial_bridge_dir:-${HOME}/.tart/vms/${vm_name}/serial}"
+		local tart_socket="${bridge_dir}/${vm_name}.tart"
+		mkdir -p "$bridge_dir"
+		run_args+=("--serial-path=${tart_socket}")
+		echo "[INFO] serial bridge enabled; tart socket: ${tart_socket}" >&2
+	elif [[ -n "${serial_path:-}" ]]; then
+		run_args+=("--serial-path=${serial_path}")
+		echo "[INFO] serial path: ${serial_path}" >&2
+	elif tart:bool:is-true "${serial_enable:-0}"; then
+		run_args+=("--serial")
+		echo "[INFO] serial console enabled (--serial)" >&2
 	fi
 }
 
