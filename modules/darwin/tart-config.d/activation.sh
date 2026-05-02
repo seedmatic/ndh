@@ -266,7 +266,6 @@ main() {
 	local gcroot_user=""
 	local gcroot_group=""
 	local factory_reset=0
-	local bootstrap_disk_regenerate=0
 	local configured_home=""
 	local effective_host_name=""
 
@@ -280,7 +279,6 @@ main() {
 		gcroot_user=""
 		gcroot_group=""
 		factory_reset=0
-		bootstrap_disk_regenerate=0
 		configured_home=""
 		effective_host_name=""
 	}
@@ -778,50 +776,6 @@ main() {
 		done
 	}
 
-	tart:vm:bootstrap-disk:ensure() {
-		local zfs_root_detected=0
-
-		if [[ -z "$first_boot_attach_disk_path" ]]; then
-			return 0
-		fi
-
-		# ZFS lives on data disks (tank1.img is first); disk.img is EFI-only
-		if tart:root-disk:zfs:contains "${tart_vm_data_disks[0]:-${tart_vm_dir}/tank1.img}"; then
-			zfs_root_detected=1
-			if [[ -f "$tart_vm_bootstrap_disk" ]]; then
-				rm -f "$tart_vm_bootstrap_disk"
-				: "[tartConfig][INFO] data disk already contains ZFS; removed stale VM-local bootstrap disk: $tart_vm_bootstrap_disk"
-			fi
-
-			if ((bootstrap_disk_regenerate == 0)); then
-				: "[tartConfig][INFO] data disk already contains ZFS; skipping local bootstrap disk sync"
-				return 0
-			fi
-
-			: "[tartConfig][WARN] BOOTSTRAP_DISK_REGENERATE enabled; regenerating VM-local bootstrap disk despite detected ZFS root"
-		fi
-
-		if [[ ! -f "$first_boot_attach_disk_path" ]]; then
-			if ((zfs_root_detected == 1)); then
-				: "[tartConfig][WARN] configured bootstrap source image missing; cannot regenerate VM-local boot.img: $first_boot_attach_disk_path"
-			else
-				: "[tartConfig][WARN] configured bootstrap source image missing; skipping local nixos.img sync: $first_boot_attach_disk_path"
-			fi
-			return 0
-		fi
-
-		TART_LOG_PREFIX="[tartConfig]"
-		if ! tart:bootstrap:disk:sync-from-source \
-			"$first_boot_attach_disk_path" \
-			"$tart_vm_bootstrap_disk" \
-			"${first_boot_attach_disk_size_gib:-24}" \
-			"$profile_user" \
-			"$profile_group" \
-			"$effective_home"; then
-			exit 1
-		fi
-	}
-
 	tart:vm:factory-reset:apply() {
 		if ((factory_reset == 0)); then
 			return 0
@@ -1014,10 +968,6 @@ main() {
 			factory_reset=1
 		fi
 
-		if tart:bool:is-true "${BOOTSTRAP_DISK_REGENERATE:-0}"; then
-			bootstrap_disk_regenerate=1
-		fi
-
 		: "start $(date) host=${effective_host_name} user=${profile_user}"
 
 		tart:runtime:home:resolve
@@ -1033,10 +983,6 @@ main() {
 		# NOTE: this is only for additional VM-local data disks (disk2/disk3/recover),
 		# not for root/bringup image sizing.
 		data_disk_size_gib="${VM_DATA_DISK_SIZE_GIB:-${data_disk_size_gib:-}}"
-		first_boot_attach_disk_path="${first_boot_attach_disk_path_default:-}"
-		first_boot_attach_disk_manifest_path="${first_boot_attach_disk_manifest_path_default:-}"
-		first_boot_attach_disk_boot_loader_expected="${first_boot_attach_disk_boot_loader_expected:-}"
-		first_boot_attach_disk_size_gib="${first_boot_attach_disk_size_gib:-24}"
 		tart_binary_hint="${tart_bin:-}"
 		diskutil_bin="${diskutil_bin:-/usr/sbin/diskutil}"
 		raw_image_manifest_path="${NDH_IMAGE_MANIFEST_OVERRIDE:-${raw_image_manifest_path_default:-}}"
@@ -1055,11 +1001,9 @@ main() {
 
 		tart:runtime:path:setup
 		tart:runtime:tooling:validate
-		tart:bootstrap:manifest:bootloader:validate:config
 
 		tart_vm_dir="${effective_home}/.tart/vms/${vm_name}"
 		tart_vm_disk="${tart_vm_dir}/disk.img"
-		tart_vm_bootstrap_disk="${tart_vm_dir}/boot.img"
 		tart_vm_config="${tart_vm_dir}/config.json"
 		tart_vm_run_wrapper="${effective_home}/.tart/vms/${vm_name}.sh"
 		tart:disks:from-manifest:init
@@ -1075,7 +1019,6 @@ main() {
 	tart:vm:root-disk:ensure
 	tart:vm:data-disks:size:enforce
 	tart:vm:zfs:pool-size:validate
-	tart:vm:bootstrap-disk:ensure
 	tart:vm:config:patch
 	tart:vm:finalize
 
