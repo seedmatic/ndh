@@ -93,10 +93,10 @@
           overlays = builtins.map (
             name:
             let
-              overlay = self.overlays.${name} inputs;
+              overlay = self.overlayFactories.${name} inputs;
             in
             final: prev: overlay final prev
-          ) (builtins.attrNames self.overlays);
+          ) (builtins.attrNames self.overlayFactories);
 
           applyOverlays =
             final: prev: builtins.foldl' (acc: overlay: (acc // (overlay final prev))) { } overlays;
@@ -1095,7 +1095,8 @@
         };
       }) hostOutputs;
 
-      overlays = {
+      # Overlay factories (curried: inputs: final: prev:) — used internally via overlayFactories.
+      overlayFactories = {
         channels = inputs: final: prev: {
           nixpkgs = import inputs.nixpkgs {
             system = prev.stdenv.hostPlatform.system;
@@ -1139,6 +1140,9 @@
           });
         };
       };
+
+      # Standard nixpkgs overlays with inputs pre-applied — correct type for the flake overlays output.
+      overlays = nixpkgs.lib.mapAttrs (_: f: f inputs) overlayFactories;
 
       homeManagerModules = {
         primaryUser = import ./modules/.common.d/primary-user.nix;

@@ -105,23 +105,31 @@ let
     chmod +x "$out"
   '';
 
-  networkBondDaemonScript = pkgs.replaceVars ./network-bond.d/daemon.sh {
-    daemonInterfaceChecks = daemonInterfaceChecks;
-    bondInterfaces = bondInterfaces;
-    bondDetach = bondDetach;
-    releaseInterfaces = releaseInterfaces;
-    bondAttach = bondAttach;
-    bondMode = cfg.mode;
-    dhcpDaemonBlock = dhcpDaemonBlock;
-  };
+  networkBondDaemonScript = pkgs.runCommand (ndh.store.prefixedName "bond-daemon") { } ''
+    install -Dm755 ${
+      pkgs.replaceVars ./network-bond.d/daemon.sh {
+        daemonInterfaceChecks = daemonInterfaceChecks;
+        bondInterfaces = bondInterfaces;
+        bondDetach = bondDetach;
+        releaseInterfaces = releaseInterfaces;
+        bondAttach = bondAttach;
+        bondMode = cfg.mode;
+        dhcpDaemonBlock = dhcpDaemonBlock;
+      }
+    } "$out/bin/bond-daemon"
+  '';
 
   wakeMonitor = ndh.store.writeShellScriptBin "bond-wake-monitor" (
     builtins.readFile ./network-bond.d/bond-wake-monitor.sh
   );
 
-  networkBondMaintainScript = pkgs.replaceVars ./network-bond.d/maintain.sh {
-    clearMemberIps = clearMemberIps;
-  };
+  networkBondMaintainScript = pkgs.runCommand (ndh.store.prefixedName "bond-maintain") { } ''
+    install -Dm755 ${
+      pkgs.replaceVars ./network-bond.d/maintain.sh {
+        clearMemberIps = clearMemberIps;
+      }
+    } "$out/bin/bond-maintain"
+  '';
 in
 {
   options.networking.bond = {
@@ -168,7 +176,7 @@ in
   config = mkIf cfg.enable {
     # Launchd daemon to configure bond at boot and on wake
     launchd.daemons.network-bond = {
-      script = networkBondDaemonScript;
+      script = "${networkBondDaemonScript}/bin/bond-daemon";
 
       serviceConfig = {
         RunAtLoad = true;
@@ -193,7 +201,7 @@ in
 
     # Event-driven daemon to maintain bond priority when network state changes
     launchd.daemons.network-bond-maintain = {
-      script = networkBondMaintainScript;
+      script = "${networkBondMaintainScript}/bin/bond-maintain";
 
       serviceConfig = {
         RunAtLoad = true;
