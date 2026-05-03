@@ -6,7 +6,8 @@ let
     # Keep explicit host defaults for image-build VM resources.
     # These match canonical defaults from modules/nixos/outputs.nix.
     nixosDiskImageVmMemSizeMiB = 6144;
-    nixosDiskImageVmCpuCores = 6;
+    # Capped at 4: nested KVM inside Tart VZ recommends ≤4 vCPUs.
+    nixosDiskImageVmCpuCores = 4;
   };
 
   darwinProfile = {
