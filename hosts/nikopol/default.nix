@@ -90,16 +90,12 @@ let
           parentInterface = "en0";
         };
 
-        # VM config materialization is handled by Home Manager activation only
-        # for user-scoped assets/gcroots on VZ hosts.
         lima.configGenerator = {
-          enableActivationHook = false;
           installMaterializerPackage = false;
         };
 
         tart.configGenerator = {
           forceEnable = false;
-          enableActivationHook = false;
           installMaterializerPackage = false;
         };
       };

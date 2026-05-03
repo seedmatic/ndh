@@ -418,9 +418,10 @@ in
 
     enableActivationHook = mkOption {
       type = types.bool;
-      default = true;
+      default = false;
       description = ''
         Run Tart raw->ASIF materialization during darwin activation (`postActivation`).
+        Disabled by default; run the materializer manually via the generated wrapper script.
       '';
     };
 

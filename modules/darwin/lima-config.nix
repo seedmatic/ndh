@@ -495,10 +495,10 @@ in
 
     enableActivationHook = mkOption {
       type = types.bool;
-      default = true;
+      default = false;
       description = ''
         Run Lima materialization during darwin activation (`postActivation`).
-        Disable when you want manual host-scoped execution through `nerd-nixos-lima-vm-materialize` only.
+        Disabled by default; run the materializer manually via `nerd-nixos-lima-vm-materialize`.
       '';
     };
 
