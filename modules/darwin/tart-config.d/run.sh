@@ -244,16 +244,32 @@ tart:serial:screen:start() {
 	cat > "$relay_script" << 'RELAY_EOF'
 #!/usr/bin/env bash
 # Serial-console relay: bridges screen window ↔ socat PTY pair and propagates
-# terminal resize events (SIGWINCH) to the VM-facing PTY.
+# terminal resize events to the VM-facing PTY via a background poll loop.
 tart_pty="${1:?tart_pty required}"
 user_pty="${2:?user_pty required}"
 
 pty_resize() {
-	local rows cols
-	IFS=' ' read -r rows cols < <(stty size 2>/dev/null) || { rows=24; cols=80; }
+	local rows cols cur
+	cur=$(stty size 2>/dev/null) || return
+	IFS=' ' read -r rows cols <<< "$cur"
 	stty rows "$rows" cols "$cols" < "$tart_pty" 2>/dev/null || true
 }
-trap pty_resize WINCH
+
+# Background monitor: poll for outer terminal resize every 0.5 s and apply
+# to the VM PTY.  Avoids SIGWINCH delivery issues with foreground cat.
+(
+	prev=""
+	while true; do
+		cur=$(stty size 2>/dev/null) || { sleep 0.5; continue; }
+		if [[ "$cur" != "$prev" ]]; then
+			IFS=' ' read -r rows cols <<< "$cur"
+			stty rows "$rows" cols "$cols" < "$tart_pty" 2>/dev/null || true
+			prev="$cur"
+		fi
+		sleep 0.5
+	done
+) &
+monitor_pid=$!
 
 # Raw mode: bytes flow through the relay unmodified; screen handles display.
 stty raw -echo 2>/dev/null || true
@@ -264,19 +280,14 @@ pty_resize
 # Open the socat bridge PTY bidirectionally on fd 3.
 exec 3<>"$user_pty"
 
-# Both I/O directions as background jobs so bash keeps control of the
-# process group and can deliver SIGWINCH to our trap handler.
+# Background: VM output → screen window (reads fd 3, not controlling terminal → no SIGTTIN).
 cat <&3 &
-relay_cat_pid=$!
-cat >&3 &
-input_cat_pid=$!
+output_cat_pid=$!
 
-# wait is interruptible: SIGWINCH fires pty_resize, then we loop back.
-while kill -0 "$relay_cat_pid" 2>/dev/null || kill -0 "$input_cat_pid" 2>/dev/null; do
-	wait 2>/dev/null || true
-done
+# Foreground: screen keyboard input → VM (foreground avoids SIGTTIN).
+cat >&3 || true
 
-kill "$relay_cat_pid" "$input_cat_pid" 2>/dev/null || true
+kill "$output_cat_pid" "$monitor_pid" 2>/dev/null || true
 exec 3>&-
 RELAY_EOF
 
