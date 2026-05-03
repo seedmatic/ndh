@@ -670,6 +670,7 @@ in
       group = cfgUserName;
       extraGroups = nixosUserExtraGroups;
       uid = lib.mkIf (nixosUserUid != null) nixosUserUid;
+      linger = true;
     };
     users.groups.${cfgUserName} = if nixosUserGid != null then { gid = nixosUserGid; } else { };
 

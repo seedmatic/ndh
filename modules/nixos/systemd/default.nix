@@ -93,7 +93,11 @@ in
     ++ [ "sops-install-secrets.service" ]
     ++ [
       sshKeysEnrichmentServiceName
-    ];
+    ]
+    ++ [ "systemd-logind.service" ];
+    # Expose the user's systemd runtime directory so reloadSystemd can reach
+    # the user D-Bus session (required for `systemctl --user` during activation).
+    serviceConfig.Environment = "XDG_RUNTIME_DIR=/run/user/%U";
   };
 
   config._module.args.ndhSystemd = {
