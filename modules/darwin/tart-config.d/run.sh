@@ -264,14 +264,19 @@ pty_resize
 # Open the socat bridge PTY bidirectionally on fd 3.
 exec 3<>"$user_pty"
 
-# Background: copy serial output → screen window.
+# Both I/O directions as background jobs so bash keeps control of the
+# process group and can deliver SIGWINCH to our trap handler.
 cat <&3 &
 relay_cat_pid=$!
+cat >&3 &
+input_cat_pid=$!
 
-# Foreground: copy keyboard input → serial (exits when screen closes the window).
-cat >&3 || true
+# wait is interruptible: SIGWINCH fires pty_resize, then we loop back.
+while kill -0 "$relay_cat_pid" 2>/dev/null || kill -0 "$input_cat_pid" 2>/dev/null; do
+	wait 2>/dev/null || true
+done
 
-kill "$relay_cat_pid" 2>/dev/null || true
+kill "$relay_cat_pid" "$input_cat_pid" 2>/dev/null || true
 exec 3>&-
 RELAY_EOF
 
