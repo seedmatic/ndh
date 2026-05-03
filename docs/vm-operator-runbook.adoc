@@ -369,6 +369,220 @@ ps aux | grep qemu
 pgrep -a qemu-system
 ----
 
+== Tart Rescue: Inspect a Non-Booting VM via Debian Live
+
+Use this procedure whenever `nerd-nixos` fails to boot (bad bootloader,
+missing EFI entry, ZFS import failure, kernel panic before serial is up).
+A Debian Tart VM is used as the rescue environment because its EFI firmware
+and tools (efibootmgr, chroot, ZFS DKMS) are available without touching the
+broken guest.
+
+=== Why Debian, not another NixOS VM?
+
+`efibootmgr` manipulates the host-side EFI NVRAM variables of the _guest_.
+A Debian VM image pulled from the Tart registry already has ZFS DKMS,
+`zfsutils-linux`, and `efibootmgr` packaged and ready — no Nix build
+required.  The EFI variables of the target VM are stored inside Tart's
+`.nvram` file, not in macOS firmware, so we can manipulate them from any
+VM that mounts the same virtual disk.
+
+=== Step 1 — Clone a Debian Tart image
+
+[source,bash]
+----
+# Pull a ready-made Debian ARM64 image (first time only):
+tart pull ghcr.io/cirruslabs/debian:latest
+
+# Clone it to a disposable rescue VM:
+tart clone ghcr.io/cirruslabs/debian:latest debian-rescue
+----
+
+=== Step 2 — Start the rescue VM with the target's data disks attached
+
+Serial console + VNC must both be available for this procedure: VNC gives
+access to the EFI shell / bootloader menu; serial gives a login prompt once
+Debian userspace is up.
+
+[source,bash]
+----
+VM_DIR="${HOME}/.tart/vms/nerd-nixos"
+RESCUE_VM="debian-rescue"
+
+# Start rescue VM with graphics (VNC) + serial bridge + all nerd-nixos data disks
+NO_GRAPHICS=0 \
+tart run "${RESCUE_VM}" \
+  --vnc-experimental \
+  --serial \
+  --disk "${VM_DIR}/disk.img" \
+  --disk "${VM_DIR}/tank1.img" \
+  --disk "${VM_DIR}/tank2.img" \
+  --disk "${VM_DIR}/tank3.img" \
+  --disk "${VM_DIR}/recover.img"
+----
+
+NOTE: `--disk` attachments are read-write by default.  Add `:ro` to any
+disk to mount it read-only: `--disk "${VM_DIR}/disk.img:ro"`.
+
+[WARNING]
+====
+Never attach `nerd-nixos` disks to the rescue VM while `nerd-nixos` itself
+is running — simultaneous writes from two VMs will corrupt the ZFS pools.
+====
+
+=== Step 3 — Connect the serial console
+
+Open a second terminal and attach the screen session (Debian will log in
+automatically on the serial getty):
+
+[source,bash]
+----
+# Tart allocates the PTY and prints it on start; or use screen directly:
+screen /dev/ttySXX     # replace with the PTY path tart printed at startup
+----
+
+TIP: Resize the terminal immediately after connecting: `resize && reset`
+
+=== Step 4 — Identify the attached disks
+
+[source,bash]
+----
+lsblk -f
+# Expected layout (ARM64 virtio):
+# vda  → disk.img    (nerd-nixos boot disk — EFI + systemd-boot)
+# vdb  → tank1.img
+# vdc  → tank2.img
+# vdd  → tank3.img
+# vde  → recover.img
+# vdf  → debian rescue root (last disk)
+----
+
+=== Step 5 — Force-import the ZFS pools
+
+[source,bash]
+----
+# Install ZFS if not already present in the image:
+apt-get install -y zfsutils-linux   # only if missing
+
+# Force-import tank pool, mounting to alternate root /mnt:
+zpool import -f -R /mnt tank
+
+# Force-import recover pool (optional):
+zpool import -f -R /mnt recover
+
+# Confirm:
+zpool status -v
+zfs list -r tank
+----
+
+NOTE: `-R /mnt` re-roots all dataset mountpoints under `/mnt` so the
+rescue environment's own root is not affected.
+
+=== Step 6 — Inspect the ZFS system
+
+[source,bash]
+----
+# Explore the NixOS root:
+ls /mnt                         # should show bin → nix/store, boot, etc, …
+ls /mnt/boot                    # EFI + loader entries
+cat /mnt/boot/loader/loader.conf
+
+# Check which generation is the default:
+ls -la /mnt/nix/var/nix/profiles/system*
+
+# Read last boot log (if journal is on ZFS):
+journalctl --directory=/mnt/var/log/journal -b -1 -p err
+----
+
+=== Step 7 — chroot into the NixOS system
+
+[source,bash]
+----
+# Bind the virtual filesystems:
+mount --bind /dev  /mnt/dev
+mount --bind /proc /mnt/proc
+mount --bind /sys  /mnt/sys
+
+# Mount the EFI partition from disk.img (vda):
+mount /dev/vda1 /mnt/boot   # vda1 is the EFI System Partition
+
+# Enter chroot:
+chroot /mnt /bin/bash
+
+# Inside the chroot — verify nix store is intact:
+ls /nix/store | head
+# Check current system:
+readlink /run/current-system   # may not resolve inside chroot
+ls -la /nix/var/nix/profiles/system
+----
+
+=== Step 8 — Repair the EFI boot entries with efibootmgr
+
+Run from the _Debian rescue_ shell (outside the chroot), since `efibootmgr`
+needs to write to the guest EFI NVRAM.
+
+[source,bash]
+----
+apt-get install -y efibootmgr dosfstools
+
+# List existing entries:
+efibootmgr -v
+
+# Delete a stale/broken entry (e.g. Boot0001):
+efibootmgr -b 0001 -B
+
+# Add a new entry pointing to systemd-boot on vda (the boot disk):
+# Disk: /dev/vda  Partition: 1 (EFI)  Loader: \EFI\systemd\systemd-bootaa64.efi
+efibootmgr \
+  --disk /dev/vda \
+  --part 1 \
+  --create \
+  --label "Linux Boot Manager" \
+  --loader '\EFI\systemd\systemd-bootaa64.efi'
+
+# Verify order:
+efibootmgr -v
+
+# Set explicit boot order (put the new entry first, e.g. Boot0002):
+efibootmgr --bootorder 0002,0001,0000
+----
+
+NOTE: Changes take effect on the next boot of `nerd-nixos` because Tart
+stores NVRAM in `~/.tart/vms/nerd-nixos/.nvram`.
+
+=== Step 9 — Teardown
+
+[source,bash]
+----
+# Exit chroot if open:
+exit
+
+# Unmount and export pools cleanly:
+umount /mnt/boot /mnt/sys /mnt/proc /mnt/dev
+zpool export tank
+zpool export recover   # if imported
+
+# Stop the rescue VM (from macOS host):
+tart stop debian-rescue
+----
+
+=== Step 10 — Boot the repaired nerd-nixos VM
+
+[source,bash]
+----
+# Use the standard headless+serial launch:
+nerd-nixos-tart-vm-run
+
+# Then attach screen to watch the console output:
+screen -r nerd-nixos-serial
+----
+
+=== Cleanup — remove the rescue VM when no longer needed
+
+[source,bash]
+----
+tart delete debian-rescue
+----
+
 == Reference: run.sh Commands
 
 [source]
