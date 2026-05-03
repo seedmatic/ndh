@@ -71,6 +71,10 @@ in
           }
         ];
 
+        # Tart exposes host directories via virtio-fs; load the kernel module so
+        # the mount unit succeeds early in boot (before sops-age-bootstrap runs).
+        boot.kernelModules = [ "virtiofs" ];
+
         fileSystems."${config.ndh.vm.tart.hostShares.sopsAge.mountPoint}" = {
           device = config.ndh.vm.tart.hostShares.sopsAge.mountTag;
           fsType = "virtiofs";
