@@ -39,21 +39,21 @@ EOF
   # Ensure the configured remote is actually authenticated for this user.
   # This is idempotent and only performs bootstrap when remote auth is missing.
   if runuser -u "${auto_user}" -- env HOME="${auto_home}" XDG_CONFIG_HOME="${auto_home}/.config" \
-    incus info "${remote_name}:" >/dev/null 2>&1; then
+    @incusBin@ info "${remote_name}:" >/dev/null 2>&1; then
     return 0
   fi
 
-  token="$(incus --force-local config trust add "${auto_user}-bootstrap-$(date +%s)" | sed -n '2p')"
+  token="$(@incusBin@ --force-local config trust add "${auto_user}-bootstrap-$(date +%s)" | sed -n '2p')"
   if [[ -z "${token}" ]]; then
     echo "failed to obtain Incus trust token for remote bootstrap" >&2
     return 1
   fi
 
   runuser -u "${auto_user}" -- env HOME="${auto_home}" XDG_CONFIG_HOME="${auto_home}/.config" \
-    incus remote remove "${remote_name}" >/dev/null 2>&1 || true
+    @incusBin@ remote remove "${remote_name}" >/dev/null 2>&1 || true
 
   runuser -u "${auto_user}" -- env HOME="${auto_home}" XDG_CONFIG_HOME="${auto_home}/.config" \
-    incus remote add "${remote_name}" "${token}"
+    @incusBin@ remote add "${remote_name}" "${token}"
 }
 
 ndh::logger:command:run "@loggerTag@" main "$@"

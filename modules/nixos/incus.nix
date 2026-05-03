@@ -219,6 +219,7 @@ in
         incusRemoteAddress = "https://${config.networking.hostName}:8443";
         # Use the wrapped activation logger in the store
         nixBashTrampoline = nixBashTrampoline;
+        incusBin = "${pkgs.incus}/bin/incus";
         loggerTag = "nixos.activationScripts.incusUserConfig";
       }
     );
