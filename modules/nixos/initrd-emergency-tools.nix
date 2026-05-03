@@ -40,6 +40,11 @@ let
 
     # ── ZFS ──────────────────────────────────────────────────────────────────
     { bin = "zdb";     pkg = pkgs.zfs;        path = "bin/zdb"; }
+
+    # ── Terminal ─────────────────────────────────────────────────────────────
+    { bin = "tput";    pkg = pkgs.ncurses;    path = "bin/tput"; }
+    { bin = "reset";   pkg = pkgs.ncurses;    path = "bin/reset"; }
+    { bin = "infocmp"; pkg = pkgs.ncurses;    path = "bin/infocmp"; }
   ];
 
   # resize: fix terminal geometry after socat/serial attach.
