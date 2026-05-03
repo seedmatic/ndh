@@ -447,10 +447,12 @@ in
 
     enableActivationHook = mkOption {
       type = types.bool;
-      default = false;
+      default = true;
       description = ''
-        Run Tart raw->ASIF materialization during darwin activation (`postActivation`).
-        Disabled by default; run the materializer manually via the generated wrapper script.
+        Run Tart VM materialization during darwin activation (`postActivation`).
+        Enabled by default so `darwin-rebuild switch` keeps the VM configuration
+        in sync. Existing disks are never overwritten — only missing disks are
+        created and undersized disks produce a warning.
       '';
     };
 

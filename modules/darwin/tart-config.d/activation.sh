@@ -730,6 +730,8 @@ main() {
 		local disk=""
 		local manifest_image_name=""
 		local manifest_source=""
+		local current_bytes=""
+		local expected_bytes=0
 
 		for disk in "${tart_vm_data_disks[@]}"; do
 			manifest_image_name="$(basename "$disk" .img)"
@@ -739,41 +741,31 @@ main() {
 				manifest_source="$(tart:raw-image:path:from-manifest "$manifest_image_name" 2>/dev/null || true)"
 			fi
 
-			if [[ -n "$manifest_source" ]]; then
-				if [[ ! -f "$disk" ]] || ! tart:root-disk:zfs:contains "$disk"; then
-					tart:disk:image:materialize-from-source "$manifest_source" "$disk" "${manifest_image_name} data disk"
-				elif ! tart:image:size:matches-source "$manifest_source" "$disk"; then
-					: "[tartConfig][WARN] ZFS ${manifest_image_name} data disk size mismatch vs manifest source; rematerializing from source"
-					tart:disk:image:materialize-from-source "$manifest_source" "$disk" "${manifest_image_name} data disk"
+			# Existing disk — never overwrite; only warn if undersized relative to
+			# the configured vmDataDiskSizeGiB target so the operator knows to
+			# re-materialise manually when a resize is desired.
+			if [[ -f "$disk" ]]; then
+				current_bytes="$(tart:image:virtual-size-bytes "$disk" 2>/dev/null || true)"
+				expected_bytes=$(( data_disk_size_gib * 1000 * 1000 * 1000 ))
+				if [[ "$current_bytes" =~ ^[0-9]+$ ]] && (( current_bytes < expected_bytes )); then
+					: "[tartConfig][WARN] ${manifest_image_name} data disk is smaller than vmDataDiskSizeGiB=${data_disk_size_gib} (currentBytes=${current_bytes} expectedBytes=${expected_bytes}); re-materialize manually to resize"
 				else
-					: "[tartConfig][INFO] preserving existing ZFS ${manifest_image_name} data disk: $disk"
+					: "[tartConfig][INFO] preserving existing ${manifest_image_name} data disk: $disk"
 				fi
-				# Always try to grow to data_disk_size_gib even when source was used —
+				continue
+			fi
+
+			# Disk is missing — materialize from source image or create blank.
+			if [[ -n "$manifest_source" ]]; then
+				: "[tartConfig][INFO] ${manifest_image_name} data disk missing; materializing from source: $manifest_source"
+				tart:disk:image:materialize-from-source "$manifest_source" "$disk" "${manifest_image_name} data disk"
+				# Grow to the configured size immediately after initial materialization —
 				# the bringup image is baked at build-time size which may be smaller
-				# than the desired runtime size.
+				# than the desired runtime vmDataDiskSizeGiB.
 				TART_LOG_PREFIX="[tartConfig]"
 				tart:image:resize-if-smaller "$disk" "$data_disk_size_gib" "${manifest_image_name} data disk" || true
-				continue
-			fi
-
-			if [[ ! -f "$disk" ]]; then
-				: "[tartConfig][WARN] missing data disk; creating canonical blank ASIF (${data_disk_size_gib}GiB): $disk"
-				tart:vm:data-disk:create-asif "$disk" "$data_disk_size_gib"
-				continue
-			fi
-
-			# If disk exists but has no ZFS, it's either blank or has a corrupt/partial partition
-			# table from a previous failed bringup. Reset to a clean blank ASIF so the next
-			# bringup starts from a known-good state.
-			if ! tart:root-disk:zfs:contains "$disk"; then
-				: "[tartConfig][INFO] data disk has no ZFS (blank or failed bringup); recreating as clean blank ASIF (${data_disk_size_gib}GiB): $disk"
-				tart:vm:data-disk:create-asif "$disk" "$data_disk_size_gib"
-				continue
-			fi
-
-			TART_LOG_PREFIX="[tartConfig]"
-			if ! tart:image:resize-if-smaller "$disk" "$data_disk_size_gib" "data disk"; then
-				: "[tartConfig][WARN] data disk resize failed; recreating canonical blank ASIF (${data_disk_size_gib}GiB): $disk"
+			else
+				: "[tartConfig][WARN] ${manifest_image_name} data disk missing; creating blank ASIF (${data_disk_size_gib}GiB): $disk"
 				tart:vm:data-disk:create-asif "$disk" "$data_disk_size_gib"
 			fi
 		done
