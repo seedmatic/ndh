@@ -71,6 +71,16 @@ in
     ./hm-state-dirs.nix
   ]);
 
+  # Ensure the systemd manager's own PATH includes NixOS system paths.
+  # Without this, systemd-run transient units (e.g. nixos-rebuild switch-to-configuration)
+  # inherit only the minimal systemd bootstrap PATH, causing "bash: not found" errors
+  # when the bootloader installer or activation scripts invoke bash.
+  config.systemd.globalEnvironment.PATH = lib.concatStringsSep ":" [
+    "/run/current-system/sw/bin"
+    "/run/wrappers/bin"
+    "/nix/var/nix/profiles/default/bin"
+  ];
+
   config.systemd.targets.${mkNdhUnitName "contributed"} = {
     description = "Nix Darwin Home contributed units (@codebase)";
     requires = [ keysTargetUnit ];
