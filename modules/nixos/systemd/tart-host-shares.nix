@@ -9,8 +9,8 @@ let
   isTartProvider = config.ndh.vm.provider == "tart";
   ndhContext = ndh.context;
   ndhRuntimeRoot = "/run/ndh";
-  tartCiDataRoot = "/mnt/tart-cidata";
-  sopsAgeMountPointDefault = "${tartCiDataRoot}/.sops.d";
+  srvHostRoot = "/srv/host";
+  sopsAgeMountPointDefault = "${srvHostRoot}/.sops.d";
   ndhHostSharesRoot = "${ndhRuntimeRoot}/host-shares";
   ndhTopLevelMountPointDefault = "${ndhHostSharesRoot}/ndh-top-level";
   generationMode = ndhContext.generationMode;
@@ -104,7 +104,7 @@ in
         ];
 
         systemd.tmpfiles.rules = [
-          "d ${tartCiDataRoot} 0755 root root -"
+          "d ${srvHostRoot} 0755 root root -"
           "d ${ndhRuntimeRoot} 0755 root root -"
           "d ${ndhHostSharesRoot} 0755 root root -"
         ];

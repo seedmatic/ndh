@@ -53,7 +53,7 @@ let
         "hostShares"
         "sopsAge"
         "mountPoint"
-      ] "/mnt/tart-cidata/.sops.d" config
+      ] "/srv/host/.sops.d" config
     else
       "/mnt/lima-cidata/.sops.d";
 
