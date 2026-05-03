@@ -112,6 +112,7 @@ let
     vm_mac_address: ${builtins.toJSON cfg.vmMacAddress}
     data_disk_size_gib: ${builtins.toJSON cfg.vmDataDiskSizeGiB}
     bridge_interface: ${builtins.toJSON cfg.vmRunBridgeInterface}
+    no_graphics_default: ${builtins.toJSON cfg.vmRunNoGraphics}
     use_vnc_experimental: ${builtins.toJSON cfg.vmRunUseVncExperimental}
     serial_enable_default: ${builtins.toJSON cfg.vmRunSerialEnable}
     serial_path_default: ${builtins.toJSON cfg.vmRunSerialPath}
@@ -218,6 +219,17 @@ in
         Bridged host network interface used by generated run wrapper.
         Set to a non-empty interface name (e.g. `en0`) to force bridged mode.
         Empty default keeps Tart's default networking mode.
+      '';
+    };
+
+    vmRunNoGraphics = mkOption {
+      type = types.bool;
+      default = true;
+      description = ''
+        Pass `--no-graphics` to `tart run` so the VM starts headless (no UI
+        window).  Combine with `vmRunSerialBridgeEnable` to get a fully
+        automated headless boot with serial console access.
+        Override at runtime with `NO_GRAPHICS=0`.
       '';
     };
 

@@ -66,6 +66,7 @@ tart:runtime:configure() {
 	serial_path="${SERIAL_PATH:-$serial_path_default}"
 	serial_bridge_enable="${SERIAL_BRIDGE_ENABLE:-$serial_bridge_enable_default}"
 	serial_bridge_auto_screen="${SERIAL_BRIDGE_AUTO_SCREEN:-$serial_bridge_auto_screen_default}"
+	no_graphics="${NO_GRAPHICS:-$no_graphics_default}"
 	sops_age_host_dir="${SOPS_AGE_HOST_DIR:-$sops_age_host_dir_default}"
 	sops_age_key_file="${sops_age_host_dir}/keys.txt"
 
@@ -170,6 +171,10 @@ tart:disk:required:validate() {
 
 tart:run-args:init() {
 	run_args=(run "${vm_name}")
+
+	if tart:bool:is-true "$no_graphics"; then
+		run_args+=(--no-graphics)
+	fi
 
 	if tart:bool:is-true "$use_vnc_experimental"; then
 		run_args+=(--vnc-experimental)
