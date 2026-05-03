@@ -216,7 +216,7 @@ let
   ];
 
   runtimeOnlyImports = [
-    ./nixos-reduction.nix
+    # ./nixos-reduction.nix
     ./networking-mammoth-skate.nix
     ./cachix-watch-store.nix
     ./container-host.nix
@@ -351,14 +351,6 @@ in
 
     # Boot configuration
     boot = {
-
-      plymouth = {
-        enable = true;
-        theme = "rings";
-        themePackages = with pkgs; [
-          (adi1090x-plymouth-themes.override { selected_themes = [ "rings" ]; })
-        ];
-      };
 
       # Use an immutable store path for PID1 handoff in stage-2.
       # This avoids early-boot dependency on /run/current-system being present.
@@ -578,7 +570,6 @@ in
       systemPackages = [
         pkgs.binutils
         pkgs.disko
-        pkgs.plymouth
         pkgs.btrfs-progs
       ]
       ++ (lib.optionals runtimeMode runtimeExtraSystemPackages);

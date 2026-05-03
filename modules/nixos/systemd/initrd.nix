@@ -24,14 +24,5 @@
     };
   };
 
-  boot.plymouth = {
-    enable = false;
-    theme = "rings";
-    themePackages = with pkgs; [
-      # By default we would install all themes
-      (adi1090x-plymouth-themes.override { selected_themes = [ "rings" ]; })
-    ];
-  };
-
   # You can add more initrd systemd units here as needed
 }
