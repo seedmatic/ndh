@@ -300,13 +300,7 @@ kill "$output_cat_pid" "$monitor_pid" 2>/dev/null || true
 exec 3>&-
 RELAY_EOF
 
-	# macOS ships screen 4.00.03 which lacks -Logfile; use a temp screenrc instead.
-	local screenrc
-	screenrc=$(mktemp "${TMPDIR:-/tmp}/ndh-screenrc-XXXXXX")
-	printf 'logfile %s\n' "${serial_log}" > "$screenrc"
-	(sleep 5 && rm -f "$screenrc") &
-
-	screen -dmS "${screen_session}" -L -c "$screenrc" "$relay_script" "$tart_pty" "$user_pty"
+	screen -dmS "${screen_session}" -L -Logfile "${serial_log}" "$relay_script" "$tart_pty" "$user_pty"
 
 	# Remove the relay script once screen has had time to exec it.
 	(sleep 2 && rm -f "$relay_script") &
