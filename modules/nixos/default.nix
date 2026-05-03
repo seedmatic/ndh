@@ -534,13 +534,12 @@ in
       nssModules = lib.mkIf bringupMode (lib.mkForce [ ]);
     };
 
-    # Disable man pages and other documentation across all configurations.
-    # nerd-nixos is a headless server; man pages add thousands of symlinks to the
-    # system closure and significantly slow down `nixos-install` during bringup.
-    # Use the host's man pages or https://man.archlinux.org instead.
+    # Man pages are enabled; doc/info/nixos remain off to keep closure small.
+    # nerd-nixos is headless — doc/info add no value; nixos options docs are
+    # generated per-rebuild and slow bringup significantly.
     documentation = {
-      enable = false;
-      man.enable = false;
+      enable = true;
+      man.enable = true;
       doc.enable = false;
       info.enable = false;
       nixos.enable = false;
