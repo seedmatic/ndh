@@ -227,9 +227,11 @@ let
     LOADER_EFI_VAR=/sys/firmware/efi/efivars/LoaderDevicePartUUID-4a67b082-0a4c-41cf-b6c7-440b29bb8c4f
     esp_dev=""
     if [[ -r "$LOADER_EFI_VAR" ]]; then
-      # EFI variable has a 4-byte attribute header, then the UTF-16LE value.
-      # `strings` strips both safely.
-      esp_uuid="$(${pkgs.binutils}/bin/strings "$LOADER_EFI_VAR" | tr '[:upper:]' '[:lower:]' | tr -d '\n')"
+      # EFI variable: 4-byte attribute header + UTF-16LE UUID value.
+      # Skip the header with dd, then keep only UUID-valid chars (the null
+      # bytes from UTF-16LE encoding and the header are silently dropped).
+      esp_uuid="$(dd if="$LOADER_EFI_VAR" bs=1 skip=4 2>/dev/null \
+        | tr -cd 'a-fA-F0-9-' | tr '[:upper:]' '[:lower:]')" || esp_uuid=""
       if [[ -n "$esp_uuid" ]]; then
         esp_dev="$(blkid -t "PARTUUID=$esp_uuid" -o device 2>/dev/null || true)"
         echo "[boot-reconcile] ESP PARTUUID=$esp_uuid → $esp_dev" >&2
