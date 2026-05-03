@@ -53,9 +53,9 @@ let
         "hostShares"
         "sopsAge"
         "mountPoint"
-      ] "/srv/host/.sops.d" config
+      ] "/srv/host/sops.d" config
     else
-      "/mnt/lima-cidata/.sops.d";
+      "/mnt/lima-cidata/sops.d";
 
   nixosHostKeyImportCandidatesDefault = lib.filter (path: path != "") [
     "${userHome}/.config/sops/age/keys.txt"

@@ -9,7 +9,7 @@ let
   isTartProvider = config.ndh.vm.provider == "tart";
   ndhContext = ndh.context;
   srvHostRoot = "/srv/host";
-  sopsAgeMountPointDefault = "${srvHostRoot}/.sops.d";
+  sopsAgeMountPointDefault = "${srvHostRoot}/sops.d";
   generationMode = ndhContext.generationMode;
   bringupMode = generationMode == "bringup";
 in
