@@ -27,6 +27,7 @@ tart:image:virtual-size-bytes() {
 			yq -p=xml -r '
 				.plist.dict.dict[] |
 				select((.key? | type) == "!!seq") |
+				select(.key[] == "Total Bytes") |
 				(.key | to_entries[] | select(.value == "Total Bytes") | .key) as $k |
 				.integer[$k]
 			'
