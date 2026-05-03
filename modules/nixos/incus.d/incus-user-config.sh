@@ -1,5 +1,9 @@
 #!/usr/bin/env -S bash -euo pipefail
 # Generate Incus user configuration file
+# Activation scripts run under the systemd manager's minimal PATH.
+# NDH_BOOTSTRAP_INSTALLER_MODE skips the bootstrap runtime presence check.
+export NDH_BOOTSTRAP_INSTALLER_MODE=1
+export NDH_BOOTSTRAP_STRICT=0
 # shellcheck disable=SC1091
 source @nixBashTrampoline@
 

@@ -1,5 +1,8 @@
 #!/usr/bin/env -S bash -euo pipefail
 
+# Runs as a systemd ExecStartPre — bootstrap runtime may not be present.
+export NDH_BOOTSTRAP_INSTALLER_MODE=1
+export NDH_BOOTSTRAP_STRICT=0
 # shellcheck disable=SC1091
 source @nixBashTrampoline@
 
