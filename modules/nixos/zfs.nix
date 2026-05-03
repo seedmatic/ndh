@@ -30,7 +30,6 @@ let
   contributedTargetName = ndhSystemd.contributedTargetName;
   zpoolInitUnitName = ndhSystemd.mkUnitName "zpool-init";
   zpoolInitServiceName = ndhSystemd.mkServiceName "zpool-init";
-  zpoolExpandUnitName = ndhSystemd.mkUnitName "zpool-expand";
   bootReconcileUnitName = ndhSystemd.mkUnitName "boot-entry-reconcile";
   bootReconcileServiceName = ndhSystemd.mkServiceName "boot-entry-reconcile";
   zfsNixosInstallServiceName = ndhSystemd.mkServiceName "zfs-nixos-install";
@@ -815,37 +814,6 @@ in
         };
       };
 
-      # Run zpool online -e on leaf vdevs after the system is fully up.
-      # This is intentionally NOT blocking boot — raidz expansion rewrites all
-      # data blocks and can take minutes on large pools. autoexpand=on (set in
-      # the initrd zpool-init) ensures the pool already sees the new capacity;
-      # this service triggers the actual block-level expansion in the background.
-      services.${zpoolExpandUnitName} = lib.mkIf (config.zfsOverlays.enable && overlayModeEnabled) {
-        description = "Non-blocking ZFS pool online expansion after boot (@codebase)";
-        wantedBy = [ "multi-user.target" ];
-        after = [
-          "multi-user.target"
-          "zfs-mount.service"
-          zpoolInitServiceName
-        ];
-        path = with pkgs; [
-          bash
-          coreutils
-          gawk
-          zfs
-        ];
-        serviceConfig = {
-          Type = "oneshot";
-          RemainAfterExit = true;
-          StandardOutput = "journal+console";
-          StandardError = "journal+console";
-          ExecStart = "${stage2ZpoolInitPackage}/bin/zpool-init expand-online";
-          TimeoutStartSec = "60min";
-        };
-        unitConfig = {
-          X-StopOnRemoval = false;
-        };
-      };
       tmpfiles.rules = [
         # ensure utmp + wtmp exist on the real root under /run
         "f /run/utmp 0664 root utmp -"
