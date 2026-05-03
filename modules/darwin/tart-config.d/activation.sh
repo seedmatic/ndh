@@ -99,9 +99,6 @@ tart:image:resize-if-smaller() {
 	fi
 
 	chmod 0644 "$image_path" 2>/dev/null || true
-	if [[ "$(id -u)" -eq 0 ]] && [[ -n "${profile_group:-}" ]] && [[ "$image_path" == "${effective_home:-}/"* ]]; then
-		chown "${profile_user}:${profile_group}" "$image_path" 2>/dev/null || true
-	fi
 
 	return 0
 }
@@ -250,9 +247,6 @@ tart:bootstrap:disk:sync-from-source() {
 	fi
 
 	chmod 0644 "$target_path" 2>/dev/null || true
-	if [[ "$(id -u)" -eq 0 ]] && [[ -n "$owner_user" ]] && [[ -n "$owner_group" ]] && [[ -n "$owner_home" ]] && [[ "$target_path" == "${owner_home}/"* ]]; then
-		chown "${owner_user}:${owner_group}" "$target_path" 2>/dev/null || true
-	fi
 
 	return 0
 }
@@ -264,9 +258,6 @@ main() {
 	local tart_nix_cli_args_raw=""
 	local tart_factory_reset_raw=""
 	local profile_user=""
-	local profile_group=""
-	local gcroot_user=""
-	local gcroot_group=""
 	local factory_reset=0
 	local configured_home=""
 	local effective_host_name=""
@@ -276,9 +267,6 @@ main() {
 		tart_nix_cli_args_raw="${NIX_CLI_ARGS:--L -v -v}"
 		tart_factory_reset_raw="${FACTORY_RESET:-0}"
 		profile_user=""
-		profile_group=""
-		gcroot_user=""
-		gcroot_group=""
 		factory_reset=0
 		configured_home=""
 		effective_host_name=""
@@ -364,9 +352,6 @@ main() {
 		ln -s "$src" "$dst"
 
 		if [ -L "$dst" ]; then
-			if [[ "$dst" == "/nix/var/nix/gcroots/per-user/${gcroot_user}/"* ]] && [[ "$(id -u)" -eq 0 ]] && [[ -n "$gcroot_group" ]]; then
-				chown -h "${gcroot_user}:${gcroot_group}" "$dst" 2>/dev/null || true
-			fi
 			: "${label}: $dst -> $(readlink "$dst" || echo '<not-a-symlink>')"
 			return 0
 		fi
@@ -378,14 +363,7 @@ main() {
 	tart:fs:dir:ensure() {
 		local dir="$1"
 		local mode="${2:-0755}"
-
-		if [[ "$(id -u)" -eq 0 ]] && [[ -n "$gcroot_group" ]] && [[ "$dir" == "/nix/var/nix/gcroots/per-user/${gcroot_user}"* ]]; then
-			install -d -m "$mode" -o "$gcroot_user" -g "$gcroot_group" "$dir"
-		elif [[ "$(id -u)" -eq 0 ]] && [[ -n "$profile_user" ]] && [[ -n "$profile_group" ]] && [[ "$dir" == "${effective_home}/"* ]]; then
-			install -d -m "$mode" -o "$profile_user" -g "$profile_group" "$dir"
-		else
-			install -d -m "$mode" "$dir"
-		fi
+		install -d -m "$mode" "$dir"
 	}
 
 	tart:runtime:home:resolve() {
@@ -429,19 +407,6 @@ main() {
 	tart:runtime:path:setup() {
 		PATH="$(dirname "$tart_binary_hint"):$(dirname "$diskutil_bin"):/usr/bin:/bin:/usr/sbin:/sbin:${PATH:-}"
 		export PATH
-	}
-
-	tart:gcroot:path:rewrite-user() {
-		local path="$1"
-		if [[ "$path" =~ ^/nix/var/nix/gcroots/per-user/([^/]+)/(.+)$ ]]; then
-			local path_user="${BASH_REMATCH[1]}"
-			local path_tail="${BASH_REMATCH[2]}"
-			if [[ -n "$gcroot_user" && "$path_user" != "$gcroot_user" ]]; then
-				echo "/nix/var/nix/gcroots/per-user/${gcroot_user}/${path_tail}"
-				return 0
-			fi
-		fi
-		echo "$path"
 	}
 
 	tart:raw-image:resolve-from-manifest() {
@@ -516,7 +481,6 @@ main() {
 
 		[[ -n "$target_path" ]] || return 0
 
-		target_path="$(tart:gcroot:path:rewrite-user "$target_path")"
 		tart:fs:dir:ensure "$(dirname "$target_path")" 0755
 
 		# BASH_SOURCE[0] = /nix/store/hash.../bin/activate.sh inside the bundle dir.
@@ -633,9 +597,6 @@ main() {
 		fi
 
 		chmod 0644 "$target_img" 2>/dev/null || true
-		if [[ "$(id -u)" -eq 0 ]] && [[ -n "$profile_group" ]] && [[ "$target_img" == "${effective_home}/"* ]]; then
-			chown "${profile_user}:${profile_group}" "$target_img" 2>/dev/null || true
-		fi
 	}
 
 	tart:vm:run() {
@@ -728,9 +689,6 @@ main() {
 		fi
 
 		chmod 0644 "$disk" 2>/dev/null || true
-		if [[ "$(id -u)" -eq 0 ]] && [[ -n "$profile_group" ]] && [[ "$disk" == "${effective_home}/"* ]]; then
-			chown "${profile_user}:${profile_group}" "$disk" 2>/dev/null || true
-		fi
 	}
 
 
@@ -840,9 +798,6 @@ main() {
 			fi
 			asif_output="$tart_vm_disk"
 			chmod 0644 "$asif_output" 2>/dev/null || true
-			if [[ "$(id -u)" -eq 0 ]] && [[ -n "$profile_group" ]] && [[ "$asif_output" == "${effective_home}/"* ]]; then
-				chown "${profile_user}:${profile_group}" "$asif_output" 2>/dev/null || true
-			fi
 			if [ ! -e "$asif_output" ]; then
 				: "[tartConfig][ERROR] root disk missing after manifest materialization: $asif_output"
 				exit 1
@@ -873,9 +828,6 @@ main() {
 		: "preserving existing root disk content at: $asif_output"
 
 		chmod 0644 "$asif_output" 2>/dev/null || true
-		if [[ "$(id -u)" -eq 0 ]] && [[ -n "$profile_group" ]] && [[ "$asif_output" == "${effective_home}/"* ]]; then
-			chown "${profile_user}:${profile_group}" "$asif_output" 2>/dev/null || true
-		fi
 
 		if [ ! -e "$asif_output" ]; then
 			: "[tartConfig][ERROR] root disk missing after VM ensure/recreate: $asif_output"
@@ -934,9 +886,6 @@ main() {
 
 	tart:vm:finalize() {
 		chmod 0644 "$tart_vm_disk" 2>/dev/null || true
-		if [[ "$(id -u)" -eq 0 ]] && [[ -n "$profile_group" ]] && [[ "$tart_vm_disk" == "${effective_home}/"* ]]; then
-			chown "${profile_user}:${profile_group}" "$tart_vm_disk" 2>/dev/null || true
-		fi
 
 		tart:vm:run set "$vm_name" --cpu "$vm_cpu_count" --memory "$vm_memory_mib"
 		tart:fs:path:relink "$tart_run_script_store" "$tart_vm_run_wrapper" "tart run wrapper link"
@@ -955,22 +904,6 @@ main() {
 		if [[ -z "$configured_home" ]]; then
 			: "[tartConfig][ERROR] profile_home is not set (PROFILE_HOME or profile_home_default)"
 			exit 1
-		fi
-
-		if id -u "$profile_user" >/dev/null 2>&1; then
-			profile_group="$(id -gn "$profile_user" 2>/dev/null || true)"
-		fi
-
-		if [[ -n "${NDH_GCROOT_USER:-}" ]] && id -u "${NDH_GCROOT_USER}" >/dev/null 2>&1; then
-			gcroot_user="${NDH_GCROOT_USER}"
-		elif [[ "$(id -u)" -eq 0 ]] && [[ -n "${SUDO_USER:-}" ]] && id -u "${SUDO_USER}" >/dev/null 2>&1; then
-			gcroot_user="${SUDO_USER}"
-		else
-			gcroot_user="$(id -un)"
-		fi
-
-		if [[ -n "$gcroot_user" ]] && id -u "$gcroot_user" >/dev/null 2>&1; then
-			gcroot_group="$(id -gn "$gcroot_user" 2>/dev/null || true)"
 		fi
 
 		if [[ -n "${tart_nix_cli_args_raw}" ]]; then
@@ -1032,15 +965,18 @@ main() {
 	# (disk images, gcroots, serial dirs) are naturally owned by profile_user
 	# without per-operation chown/sudo wrappers.
 	#
-	# The gcroots directory per-user/<user>/ is owned by profile_user so the
-	# re-execed process can write gcroots directly.
+	# Before re-execing, ensure the gcroot directory exists and is owned by the
+	# profile_user — this requires root and must happen here while we still have it.
 	if [[ "$(id -u)" -eq 0 && -n "$profile_user" && "$profile_user" != "root" ]]; then
+		local _gcroot_dir="/nix/var/nix/gcroots/per-user/${profile_user}"
+		local _gcroot_group
+		_gcroot_group="$(id -gn "$profile_user" 2>/dev/null || true)"
+		install -d -m 0755 -o "$profile_user" -g "$_gcroot_group" "$_gcroot_dir"
 		: "[tartConfig][INFO] activation running as root; re-execing as ${profile_user}"
 		exec sudo -u "$profile_user" \
 			HOME="$effective_home" \
 			PROFILE_USER="$profile_user" \
 			PROFILE_HOME="$effective_home" \
-			NDH_GCROOT_USER="$profile_user" \
 			-- "$0" "$@"
 	fi
 
