@@ -75,11 +75,14 @@ in
   # Without this, systemd-run transient units (e.g. nixos-rebuild switch-to-configuration)
   # inherit only the minimal systemd bootstrap PATH, causing "bash: not found" errors
   # when the bootloader installer or activation scripts invoke bash.
-  config.systemd.globalEnvironment.PATH = lib.concatStringsSep ":" [
-    "/run/current-system/sw/bin"
+  # lib.mkForce overrides the lib.mkDefault in openssh.nix, which sets a narrower PATH.
+  config.systemd.globalEnvironment.PATH = lib.mkForce (lib.concatStringsSep ":" [
     "/run/wrappers/bin"
+    "/run/current-system/sw/bin"
     "/nix/var/nix/profiles/default/bin"
-  ];
+    "/bin"
+    "/usr/bin"
+  ]);
 
   config.systemd.targets.${mkNdhUnitName "contributed"} = {
     description = "Nix Darwin Home contributed units (@codebase)";
