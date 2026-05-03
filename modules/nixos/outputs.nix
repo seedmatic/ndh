@@ -525,7 +525,6 @@ let
           memSize = diskImageVmMemSizeMiB;
           vmCpuCores = diskImageVmCpuCores;
           includeChannel = false;
-          qemuFallbackInVm = true;
           efiSystemPartitionSizeMiB = efiSystemPartitionSizeMiB;
           inherit name;
           rootFsType = "${bringupRootFsType}";
@@ -547,11 +546,10 @@ let
           # Include the production runtime closure so zfs-nixos-install can use
           # the prebuilt path without network access at first boot.
           inherit runtimeSystemPath;
-          zpoolDiskSize = 3072; # ~6 GiB usable in raidz1 (3×3GiB, 1/3 parity); 2GiB was too small for full system closure + nixpkgs source
+          zpoolDiskSize = 3072;
           memSize = diskImageVmMemSizeMiB;
           vmCpuCores = diskImageVmCpuCores;
           includeChannel = false;
-          qemuFallbackInVm = true;
           inherit name;
         };
 

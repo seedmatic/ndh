@@ -14,7 +14,7 @@
   vmCpuCores ? 4,
   includeChannel ? false,
 
-  qemuFallbackInVm ? true,
+  qemuFallbackInVm ? null, # deprecated, no-op — accel detected at build time via /dev/kvm
   name ? "nixos-bringup-zfs-disk-images",
   # When false, the nested QEMU guest has no network at all.
   nestedQemuNetworkEnable ? true,
@@ -53,7 +53,6 @@ let
     inherit
       lib
       pkgs
-      qemuFallbackInVm
       nestedQemuNetworkEnable
       ;
   };

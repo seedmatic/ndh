@@ -9,7 +9,7 @@
   vmCpuCores ? 4,
   includeChannel ? false,
 
-  qemuFallbackInVm ? true,
+  qemuFallbackInVm ? null, # deprecated, no-op — accel detected at build time via /dev/kvm
   name ? "nixos-bringup-image",
   efiSystemPartitionSizeMiB ? 512,
   rootFsType ? "btrfs",
@@ -38,7 +38,6 @@ let
     inherit
       lib
       pkgs
-      qemuFallbackInVm
       nestedQemuForwardEnable
       nestedQemuForwardSshHostPort
       nestedQemuForwardMetricsHostPort
