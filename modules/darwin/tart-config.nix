@@ -66,6 +66,7 @@ let
 
   # Bundle directory: bin/activate.sh + bringup-manifest → bringup images store dir.
   # The gcroot points here so one symlink keeps the entire disk-image closure alive.
+  # manifest.yaml is linked here too so run.sh can resolve it via the stable gcroot path.
   tartActivationBundle = ndh.store.runCommand "tart-${cfg.vmName}-materialize" { } ''
     mkdir -p "$out/bin"
     cp ${
@@ -76,6 +77,7 @@ let
       }
     } "$out/bin/activate.sh"
     chmod +x "$out/bin/activate.sh"
+    ln -s ${lib.escapeShellArg (toString tartRunManifest)} "$out/manifest.yaml"
     ${lib.optionalString (bringupImagesDir != "") ''
       ln -s ${lib.escapeShellArg bringupImagesDir} "$out/bringup-manifest"
     ''}
@@ -133,7 +135,7 @@ let
     cp ${
       pkgs.replaceVars ./tart-config.d/run.sh {
         nixBashTrampoline = nixBashTrampoline;
-        manifestPath = tartRunManifest;
+        rawImageTargetPath = cfg.rawImageTargetPath;
       }
     } "$out"
     chmod +x "$out"

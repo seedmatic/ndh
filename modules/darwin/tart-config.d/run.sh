@@ -5,7 +5,7 @@
 #         diskutil_bin, etc. are loaded dynamically from the run manifest via tart:manifest:load
 source "@nixBashTrampoline@"
 
-manifest_path="@manifestPath@"
+manifest_path="@rawImageTargetPath@/manifest.yaml"
 extra_run_args_raw="${RUN_EXTRA_ARGS:-}"
 
 tart:bool:is-true() {
