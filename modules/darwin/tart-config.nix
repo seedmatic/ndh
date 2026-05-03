@@ -74,8 +74,12 @@ let
         nixBashTrampoline = nixBashTrampoline;
         manifestPath = tartRunManifest;
         tartRunScript = tartRunScript;
+        tartActivationBundlePlaceholder = "PLACEHOLDER";
       }
     } "$out/bin/activate.sh"
+    # Patch the self-referential placeholder with the real output store path.
+    # replaceVars cannot self-reference $out, so we substitute after the copy.
+    sed -i "s|PLACEHOLDER|$out|g" "$out/bin/activate.sh"
     chmod +x "$out/bin/activate.sh"
     ln -s ${lib.escapeShellArg (toString tartRunManifest)} "$out/manifest.yaml"
     ${lib.optionalString (bringupImagesDir != "") ''
@@ -165,10 +169,10 @@ in
 
     vmDiskSizeGiB = mkOption {
       type = types.int;
-      default = 100;
+      default = 16;
       description = ''
         Target VM disk size in GiB for Tart root disk.
-        Canonical default is 100 GiB for Tart ZFS lab capacity.
+        Canonical default is 16 GiB for Tart ZFS lab capacity.
         Activation enforces this target size by recreating stale root disks.
       '';
     };
