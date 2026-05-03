@@ -49,6 +49,19 @@
           vmMemoryMiB = 24576;
         };
       }
+      {
+        # nerd-nixos: NixOS VM running as a Tart/VZ VM on bioskop
+        form = "baremetal";
+        networks = [
+          "lan"
+          "tailnet"
+        ];
+        vm = {
+          kind = "vz";
+          manager = "tart";
+        };
+        builder = null;
+      }
     ];
 
     nikopol = [
