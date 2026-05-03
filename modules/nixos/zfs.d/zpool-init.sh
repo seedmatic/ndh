@@ -32,6 +32,62 @@ zpool:import() {
 	zpool import -N "$pool" >/dev/null 2>&1
 }
 
+disk:partition:grow-last() {
+	# Grow the last partition on a disk to fill all available space.
+	# This is needed when the .asif disk image has been resized on the host
+	# but the partition table still reflects the original bringup size.
+	#
+	# Uses sgdisk:
+	#   -e  : move backup GPT header to end of disk (fix after disk resize)
+	#   -d N: delete last partition (preserving its start sector and type)
+	#   -n N:start:end : recreate from same start to end-of-disk (-1)
+	#   -c N:label     : restore original partition name
+	#   -t N:typeGUID  : restore original type GUID
+	local disk="$1"
+	local sgdisk="${SGDISK_BIN:-sgdisk}"
+	local blockdev="${BLOCKDEV_BIN:-blockdev}"
+
+	[[ -b "$disk" ]] || return 0
+
+	# Find last partition number
+	local last_part_num
+	last_part_num="$("$sgdisk" --print "$disk" 2>/dev/null | awk '/^Number/{found=1; next} found && /^[[:space:]]*[0-9]/{last=$1} END{print last}')"
+	[[ -n "$last_part_num" ]] || return 0
+
+	# Get current last sector and disk's last usable sector
+	local part_start part_end disk_last_usable part_name part_type
+	part_start="$("$sgdisk" --info="$last_part_num" "$disk" 2>/dev/null | awk '/First sector:/{print $3}')"
+	part_end="$("$sgdisk" --info="$last_part_num" "$disk" 2>/dev/null | awk '/Last sector:/{print $3}')"
+	disk_last_usable="$("$sgdisk" --print "$disk" 2>/dev/null | awk '/last usable sector is/{print $NF}')"
+	part_name="$("$sgdisk" --info="$last_part_num" "$disk" 2>/dev/null | awk -F': ' '/Partition name:/{gsub(/'\''/, "", $2); print $2}')"
+	part_type="$("$sgdisk" --info="$last_part_num" "$disk" 2>/dev/null | awk '/Partition GUID code:/{print $4}')"
+
+	if [[ -z "$part_start" || -z "$part_end" || -z "$disk_last_usable" ]]; then
+		: "[zpool-init][WARN] could not read partition info for $disk part $last_part_num; skipping grow"
+		return 0
+	fi
+
+	if [[ "$part_end" -ge "$disk_last_usable" ]]; then
+		: "[zpool-init][INFO] $disk part $last_part_num already at end of disk; no grow needed"
+		return 0
+	fi
+
+	: "[zpool-init][INFO] growing $disk part $last_part_num from sector $part_end to $disk_last_usable"
+
+	# Move backup GPT to end of enlarged disk, then extend partition
+	"$sgdisk" -e "$disk" 2>/dev/null || true
+	"$sgdisk" \
+		-d "$last_part_num" \
+		-n "${last_part_num}:${part_start}:-1" \
+		-c "${last_part_num}:${part_name}" \
+		-t "${last_part_num}:${part_type}" \
+		"$disk"
+
+	# Inform the kernel of the new partition table
+	"$blockdev" --rereadpt "$disk" 2>/dev/null || true
+	udevadm settle --timeout=10 2>/dev/null || true
+}
+
 zpool:expand() {
 	local pool="$1"
 	local -a vdevs=()
@@ -122,6 +178,13 @@ zpool:init:main() {
 		: "[zpool-init][ERROR] expected ZFS partition labels missing — was the bringup disk image used?"
 		exit 1
 	fi
+
+	# Grow last partition on each data disk to fill any extra space added when
+	# the host expanded the .asif disk image. Must happen before ZFS import so
+	# that zpool online -e can actually claim the new sectors.
+	for disk in "$ZFS_DISK_TANK1" "$ZFS_DISK_TANK2" "$ZFS_DISK_TANK3" "$ZFS_DISK_RECOVER"; do
+		[[ -b "$disk" ]] && disk:partition:grow-last "$disk" || true
+	done
 
 	# Import all expected pools and expand them to claim any grown disk space
 	import_failures=0

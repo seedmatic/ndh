@@ -184,6 +184,8 @@ let
     export ZFS_DISK_TANK2="${cfg.bootstrapActivation.dataDisks.tank2}"
     export ZFS_DISK_TANK3="${cfg.bootstrapActivation.dataDisks.tank3}"
     export ZFS_DISK_RECOVER="${cfg.bootstrapActivation.dataDisks.recover}"
+    export SGDISK_BIN="${pkgs.gptfdisk}/bin/sgdisk"
+    export BLOCKDEV_BIN="${pkgs.util-linux}/bin/blockdev"
     ${builtins.replaceStrings [ "@nixBashTrampoline@" ] [ nixBashTrampoline ] (
       builtins.readFile ./zfs.d/zpool-init.sh
     )}
