@@ -55,13 +55,23 @@ in
               src = repackedSrc;
               version = artifact.source.version;
               postInstall = (old.postInstall or "") + ''
-                # Replace the bundled ripgrep with the Nix-built one.
+                # Replace all bundled ripgrep binaries with the Nix-built one.
                 # The bundled rg has a hardened-runtime entitlement but no matching
                 # MDM provisioning profile, causing AMFI to kill it on managed Macs.
-                rg_bin="$out/Applications/Visual Studio Code - Insiders.app/Contents/Resources/app/node_modules/@vscode/ripgrep/bin/rg"
+                vscode_base="$out/Applications/Visual Studio Code - Insiders.app/Contents/Resources/app"
+
+                # @vscode/ripgrep — main editor search
+                rg_bin="$vscode_base/node_modules/@vscode/ripgrep/bin/rg"
                 if [[ -e "$rg_bin" ]]; then
                   rm -f "$rg_bin"
                   ln -sf ${pkgs.ripgrep}/bin/rg "$rg_bin"
+                fi
+
+                # @github/copilot/sdk/ripgrep — Copilot extension search
+                copilot_rg="$vscode_base/extensions/copilot/node_modules/@github/copilot/sdk/ripgrep/bin/darwin-arm64/rg"
+                if [[ -e "$copilot_rg" ]]; then
+                  rm -f "$copilot_rg"
+                  ln -sf ${pkgs.ripgrep}/bin/rg "$copilot_rg"
                 fi
               '';
             });
