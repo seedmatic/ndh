@@ -639,7 +639,14 @@ main() {
 	}
 
 	tart:vm:run() {
-		tart "$@"
+		# When activation runs as root, tart must be invoked as profile_user so
+		# that VM registration and lookups happen under the user's ~/.tart, not
+		# /var/root/.tart.
+		if [[ "$(id -u)" == "0" && -n "${profile_user:-}" && "$profile_user" != "root" ]]; then
+			sudo -u "$profile_user" -- "$tart_bin" "$@"
+		else
+			"$tart_bin" "$@"
+		fi
 	}
 
 	tart:vm:exists() {
