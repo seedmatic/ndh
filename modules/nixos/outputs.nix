@@ -18,6 +18,10 @@ let
       catalog,
       inventory,
       vmProvider ? null,
+      # Prebuilt production system store path baked into bringup image.
+      # Set for bringup configs so zfs-nixos-install.service can use the
+      # pre-downloaded closure instead of building from the flake at runtime.
+      runtimeSystemPath ? null,
     }:
     let
       bringupModeInternal = generationMode == "bringup";
@@ -58,6 +62,8 @@ let
                 ;
               vmProvider = effectiveVmProvider;
               nixBashTrampoline = ndhNixBashTrampoline;
+              # Empty string when unset; zfs-nixos-install.nix asserts non-empty in bringup mode.
+              runtimeSystemPath = if runtimeSystemPath != null then builtins.toString runtimeSystemPath else "";
             };
             store = ndhStoreApiLinux;
           };
@@ -253,9 +259,10 @@ let
           ;
         generationMode = "bringup";
         hostProfile = bringupSystemdZfsHostProfileBase;
-        # ZFS bringup path: enable ZFS-backed filesystem definitions/boot integration.
         zfsOverlays = true;
         vmProvider = "lima";
+        # Thread production system closure so zfs-nixos-install can use prebuilt path.
+        runtimeSystemPath = selectedRuntime.config.system.build.toplevel;
       };
 
       tartBringupSystemdZfs = mkNixosConfig {
@@ -266,9 +273,9 @@ let
           ;
         generationMode = "bringup";
         hostProfile = bringupSystemdZfsHostProfileBase;
-        # ZFS bringup path: enable ZFS-backed filesystem definitions/boot integration.
         zfsOverlays = true;
         vmProvider = "tart";
+        runtimeSystemPath = selectedRuntime.config.system.build.toplevel;
       };
 
       limaBringupGrubZfs = mkNixosConfig {
@@ -529,13 +536,17 @@ let
         {
           nixosSystem,
           name,
+          runtimeSystemPath ? null,
         }:
         import ./bringup-zfs-disk-image.nix {
           lib = nixpkgs.lib;
           pkgs = pkgsForLinux;
           config = nixosSystem.config;
-          # Use the host bringup configuration closure directly for nested installs.
+          # Use the bringup configuration closure for the bootstrap stage.
           installSystemPath = nixosSystem.config.system.build.toplevel;
+          # Include the production runtime closure so zfs-nixos-install can use
+          # the prebuilt path without network access at first boot.
+          inherit runtimeSystemPath;
           zpoolDiskSize = 3072; # ~6 GiB usable in raidz1 (3×3GiB, 1/3 parity); 2GiB was too small for full system closure + nixpkgs source
           memSize = diskImageVmMemSizeMiB;
           vmCpuCores = diskImageVmCpuCores;
@@ -553,6 +564,7 @@ let
       diskImageBringupZfsSystemdBootRaw = mkBringupZfsDiskImages {
         nixosSystem = limaBringupSystemdZfs;
         name = "nixos-disk-image-bringup-systemd-zfs";
+        runtimeSystemPath = selectedRuntime.config.system.build.toplevel;
       };
 
       diskImageBringupGrubRaw = mkBringupRawImage {

@@ -12,38 +12,20 @@ let
   generationMode = ndhContext.generationMode;
   nixBashTrampoline = "${ndhContext.nixBashTrampoline}";
   bringupMode = generationMode == "bringup";
-  hostProfile = ndhContext.hostProfile;
-  mainName =
-    if (hostProfile ? hostAlias && hostProfile.hostAlias != null && hostProfile.hostAlias != "") then
-      hostProfile.hostAlias
-    else
-      hostProfile.hostName;
-  nixosConfigName = "${mainName}-nixos";
-  isLimaProvider = config.ndh.vm.provider == "lima";
-  isTartProvider = config.ndh.vm.provider == "tart";
-  ndhTopLevelMountPoint =
-    if isLimaProvider then
-      "/run/ndh/host-shares/ndh-toplevel"
-    else
-      "/srv/host/nixos.d";
+  # Production runtime system store path — must be non-empty for bringup mode.
+  runtimeSystemPath = ndhContext.runtimeSystemPath or "";
   installRootMountPoint = config.zfsOverlays.bootstrapActivation.installRootMountPoint;
   contributedTargetName = ndhSystemd.contributedTargetName;
   zpoolInitServiceName = ndhSystemd.mkServiceName "zpool-init";
-  limaCloudInitServiceName = ndhSystemd.mkServiceName "lima-cloud-init";
-  limaNixosConfigServiceName = ndhSystemd.mkServiceName "lima-nixos-config";
 
   zfsNixosInstallScriptText =
     builtins.replaceStrings
       [
         "@nixBashTrampoline@"
-        "@nixosConfigName@"
-        "@ndhTopLevelMountPoint@"
         "@installRootMountPoint@"
       ]
       [
         nixBashTrampoline
-        nixosConfigName
-        ndhTopLevelMountPoint
         installRootMountPoint
       ]
       (builtins.readFile ./zfs-nixos-install.sh);
@@ -65,46 +47,39 @@ let
 in
 {
   config = lib.mkIf bringupMode {
+    assertions = [
+      {
+        assertion = runtimeSystemPath != "";
+        message = ''
+          zfs-nixos-install.service requires ndh.context.runtimeSystemPath to be set.
+          Pass runtimeSystemPath = selectedRuntime.config.system.build.toplevel when
+          calling mkNixosConfig for bringup configurations.
+        '';
+      }
+    ];
+
     systemd.services.${ndhSystemd.mkUnitName "zfs-nixos-install"} = {
       description = "Install full NixOS onto ZFS datasets during bootstrap and reboot (@codebase)";
 
       wantedBy = [ contributedTargetName ];
       requires = [ zpoolInitServiceName ];
-      wants = [
-        zpoolInitServiceName
-      ]
-      ++ lib.optionals isLimaProvider [
-        limaCloudInitServiceName
-        limaNixosConfigServiceName
-      ];
+      wants = [ zpoolInitServiceName ];
       after = [
         "local-fs.target"
         zpoolInitServiceName
-      ]
-      ++ lib.optionals isLimaProvider [
-        limaCloudInitServiceName
-        limaNixosConfigServiceName
       ];
 
-      unitConfig = lib.mkMerge [
-        {
-          X-StopOnRemoval = false;
-          RequiresMountsFor = [
-            installRootMountPoint
-          ]
-          ++ lib.optionals (isTartProvider || isLimaProvider) [ ndhTopLevelMountPoint ];
-        }
-        (lib.mkIf (isTartProvider || isLimaProvider) {
-          ConditionPathIsMountPoint = ndhTopLevelMountPoint;
-          ConditionPathExists = "${ndhTopLevelMountPoint}/flake.nix";
-        })
-      ];
+      unitConfig = {
+        X-StopOnRemoval = false;
+        RequiresMountsFor = [ installRootMountPoint ];
+      };
 
       serviceConfig = {
         Type = "oneshot";
         Environment = [
           "NDH_BOOTSTRAP_INSTALLER_MODE=1"
           "NDH_BOOTSTRAP_STRICT=0"
+          "NDH_NIXOS_INSTALL_SYSTEM_PATH=${runtimeSystemPath}"
         ];
         ExecStart = "${zfsNixosInstallScript}/bin/ndh-zfs-nixos-install-and-reboot";
         TimeoutStartSec = "90min";

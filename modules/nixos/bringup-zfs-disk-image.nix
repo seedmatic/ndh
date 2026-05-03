@@ -1,10 +1,12 @@
-# @codebase
-# Build canonical ZFS bringup disk-set artifacts (tank1/tank2/tank3/recover).
 {
   lib,
   pkgs,
   config,
   installSystemPath ? config.system.build.toplevel,
+  # Production runtime system closure to include in the bringup image store.
+  # zfs-nixos-install.service uses this as NDH_NIXOS_INSTALL_SYSTEM_PATH to
+  # install the full system without network access at first boot.
+  runtimeSystemPath ? null,
   zpoolDiskSize ? 1536, # 1.5GiB
   # Dedicated EFI boot disk size — holds only systemd-boot + kernel + initrd.
   bootDiskSize ? 600, # 600MiB (512MiB ESP + GPT overhead)
@@ -73,7 +75,10 @@ let
     '';
 
   closureInfo = pkgs.closureInfo {
-    rootPaths = [ installSystemPath ] ++ (lib.optional includeChannel channelSources);
+    rootPaths =
+      [ installSystemPath ]
+      ++ (lib.optional (runtimeSystemPath != null) runtimeSystemPath)
+      ++ (lib.optional includeChannel channelSources);
   };
 
   # boot.zfs.package is userspace (zfs-user-*). The kernel module package must
