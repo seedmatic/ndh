@@ -223,7 +223,7 @@ tart:serial:bridge:start() {
 tart:serial:screen:start() {
 	local user_pty="$1"
 	local tart_pty="$2"
-	local screen_session="${vm_name}-serial"
+	local screen_session="${vm_name}"
 	local serial_log="${vm_disk_dir}/serial.log"
 
 	if ! command -v screen >/dev/null 2>&1; then
