@@ -110,7 +110,7 @@ let
     profile_home_default: ${builtins.toJSON profileHome}
     vm_name: ${builtins.toJSON cfg.vmName}
     vm_disk_format: ${builtins.toJSON cfg.vmDiskFormat}
-    vm_disk_size_gib: ${builtins.toJSON cfg.vmDiskSizeGiB}
+    vm_boot_disk_size_gib: ${builtins.toJSON cfg.vmBootDiskSizeGiB}
     vm_cpu_count: ${builtins.toJSON cfg.vmCpuCount}
     vm_memory_mib: ${builtins.toJSON cfg.vmMemoryMiB}
     vm_display_width: ${builtins.toJSON cfg.vmDisplayWidth}
@@ -167,13 +167,14 @@ in
       '';
     };
 
-    vmDiskSizeGiB = mkOption {
+    vmBootDiskSizeGiB = mkOption {
       type = types.int;
       default = 16;
       description = ''
-        Target VM disk size in GiB for Tart root disk.
-        Canonical default is 16 GiB for Tart ZFS lab capacity.
-        Activation enforces this target size by recreating stale root disks.
+        Target VM boot disk size in GiB (EFI-only disk: ESP + kernel + initrd).
+        In the ZFS layout /dev/vda holds only the boot partition — no root filesystem.
+        All data lives on the ZFS data disks (vmDataDiskSizeGiB).
+        Activation enforces this target size by recreating stale boot disks.
       '';
     };
 
@@ -332,7 +333,7 @@ in
       default = 24;
       description = ''
         Target size in GiB for VM-local copy of first-boot bootstrap disk (`nixos.img`).
-        Keep this independent from `vmDiskSizeGiB`; bootstrap image should remain small
+        Keep this independent from `vmBootDiskSizeGiB`; bootstrap image should remain small
         (typically 16-24 GiB) while root VM disk can be larger.
       '';
     };

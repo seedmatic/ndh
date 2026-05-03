@@ -791,12 +791,12 @@ main() {
 		local observed_root_bytes=""
 		local primary_source=""
 
-		tart:vm:ensure "$vm_name" "$vm_disk_size_gib" "$vm_disk_format"
+		tart:vm:ensure "$vm_name" "$vm_boot_disk_size_gib" "$vm_disk_format"
 		tart:vm:run stop "$vm_name" >/dev/null 2>&1 || true
 
 		if [ ! -f "$tart_vm_disk" ]; then
 			: "[tartConfig][WARN] tart VM root disk missing after ensure; recreating VM to restore canonical empty root disk layout"
-			tart:vm:recreate "$vm_name" "$vm_disk_size_gib" "$vm_disk_format"
+			tart:vm:recreate "$vm_name" "$vm_boot_disk_size_gib" "$vm_disk_format"
 			tart:vm:disks:ensure:blank
 			tart:vm:run stop "$vm_name" >/dev/null 2>&1 || true
 		fi
@@ -828,18 +828,18 @@ main() {
 			return 0
 		fi
 
-		expected_root_bytes=$((vm_disk_size_gib * 1000 * 1000 * 1000))
+		expected_root_bytes=$((vm_boot_disk_size_gib * 1000 * 1000 * 1000))
 		observed_root_bytes="$(tart:image:virtual-size-bytes "$tart_vm_disk" 2>/dev/null || true)"
 		if [[ ! "$observed_root_bytes" =~ ^[0-9]+$ ]]; then
-			: "[tartConfig][WARN] unable to read root disk virtual size; recreating VM with canonical size (${vm_disk_size_gib}GiB)"
-			tart:vm:recreate "$vm_name" "$vm_disk_size_gib" "$vm_disk_format"
+			: "[tartConfig][WARN] unable to read root disk virtual size; recreating VM with canonical size (${vm_boot_disk_size_gib}GiB)"
+			tart:vm:recreate "$vm_name" "$vm_boot_disk_size_gib" "$vm_disk_format"
 			tart:vm:disks:ensure:blank
 			tart:vm:run stop "$vm_name" >/dev/null 2>&1 || true
 		elif ((observed_root_bytes < expected_root_bytes)); then
 			TART_LOG_PREFIX="[tartConfig]"
-			if ! tart:image:resize-if-smaller "$tart_vm_disk" "$vm_disk_size_gib" "root disk"; then
-				: "[tartConfig][WARN] root disk resize failed; recreating VM with canonical size (${vm_disk_size_gib}GiB)"
-				tart:vm:recreate "$vm_name" "$vm_disk_size_gib" "$vm_disk_format"
+			if ! tart:image:resize-if-smaller "$tart_vm_disk" "$vm_boot_disk_size_gib" "root disk"; then
+				: "[tartConfig][WARN] root disk resize failed; recreating VM with canonical size (${vm_boot_disk_size_gib}GiB)"
+				tart:vm:recreate "$vm_name" "$vm_boot_disk_size_gib" "$vm_disk_format"
 				tart:vm:disks:ensure:blank
 				tart:vm:run stop "$vm_name" >/dev/null 2>&1 || true
 			fi
@@ -943,7 +943,7 @@ main() {
 
 		vm_name="${vm_name:-}"
 		vm_disk_format="${vm_disk_format:-asif}"
-		vm_disk_size_gib="${VM_DISK_SIZE_GIB:-${vm_disk_size_gib:-}}"
+		vm_boot_disk_size_gib="${VM_BOOT_DISK_SIZE_GIB:-${vm_boot_disk_size_gib:-}}"
 		vm_cpu_count="${vm_cpu_count:-}"
 		vm_memory_mib="${vm_memory_mib:-}"
 		vm_display_width="${vm_display_width:-}"
@@ -962,8 +962,8 @@ main() {
 
 		tart:raw-image:manifest:auto-resolve
 
-		if [[ -z "$vm_name" || -z "$vm_disk_size_gib" || -z "$vm_cpu_count" || -z "$vm_memory_mib" || -z "$data_disk_size_gib" || -z "$tart_run_script_store" ]]; then
-			: "[tartConfig][ERROR] activation config missing required fields (vm_name/vm_disk_size_gib/vm_cpu_count/vm_memory_mib/data_disk_size_gib/tart_run_script_store)"
+		if [[ -z "$vm_name" || -z "$vm_boot_disk_size_gib" || -z "$vm_cpu_count" || -z "$vm_memory_mib" || -z "$data_disk_size_gib" || -z "$tart_run_script_store" ]]; then
+			: "[tartConfig][ERROR] activation config missing required fields (vm_name/vm_boot_disk_size_gib/vm_cpu_count/vm_memory_mib/data_disk_size_gib/tart_run_script_store)"
 			exit 1
 		fi
 
