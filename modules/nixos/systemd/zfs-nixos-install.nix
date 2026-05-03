@@ -22,10 +22,10 @@ let
   isLimaProvider = config.ndh.vm.provider == "lima";
   isTartProvider = config.ndh.vm.provider == "tart";
   ndhTopLevelMountPoint =
-    if isTartProvider then
-      config.ndh.vm.tart.hostShares.ndhTopLevel.mountPoint
+    if isLimaProvider then
+      "/run/ndh/host-shares/ndh-toplevel"
     else
-      "/run/ndh/host-shares/ndh-toplevel";
+      "/srv/host/nixos.d";
   installRootMountPoint = config.zfsOverlays.bootstrapActivation.installRootMountPoint;
   contributedTargetName = ndhSystemd.contributedTargetName;
   zpoolInitServiceName = ndhSystemd.mkServiceName "zpool-init";

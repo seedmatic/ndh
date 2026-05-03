@@ -10,10 +10,8 @@ let
   ndhContext = ndh.context;
   srvHostRoot = "/srv/host";
   sopsAgeMountPointDefault = "${srvHostRoot}/.sops.d";
-  ndhTopLevelMountPointDefault = "${srvHostRoot}/nixos.d";
   generationMode = ndhContext.generationMode;
   bringupMode = generationMode == "bringup";
-  ndhTopLevelShareEnabled = config.ndh.vm.tart.hostShares.ndhTopLevel.enable;
 in
 {
   options.ndh.vm.tart.hostShares.sopsAge = {
@@ -52,55 +50,9 @@ in
     };
   };
 
-  options.ndh.vm.tart.hostShares.ndhTopLevel = {
-    enable = lib.mkOption {
-      type = lib.types.bool;
-      default = bringupMode;
-      description = ''
-        Mount host NDH repository top-level share for Tart bootstrap guests.
-      '';
-    };
-
-    mountTag = lib.mkOption {
-      type = lib.types.str;
-      default = "ndh-toplevel";
-      description = ''
-        Virtiofs tag used by Tart `--dir ...:tag=<tag>` for NDH top-level share.
-      '';
-    };
-
-    expectedRunTag = lib.mkOption {
-      type = lib.types.str;
-      default = "ndh-toplevel";
-      description = ''
-        Expected Tart run share tag for NDH top-level directory export.
-        Keep this aligned with host Tart run wrapper configuration.
-      '';
-    };
-
-    mountPoint = lib.mkOption {
-      type = lib.types.str;
-      default = ndhTopLevelMountPointDefault;
-      description = ''
-        Guest mount point for host-exported NDH repository top-level directory.
-      '';
-    };
-  };
-
   config = lib.mkIf isTartProvider (
     lib.mkMerge [
       {
-        assertions = [
-          {
-            assertion = bringupMode || (!ndhTopLevelShareEnabled);
-            message = ''
-              ndh.vm.tart.hostShares.ndhTopLevel.enable is bootstrap-only.
-              Set ndh.nixos.generation.mode = "bringup" for bringup images,
-              or disable ndh.vm.tart.hostShares.ndhTopLevel for full/runtime images.
-            '';
-          }
-        ];
-
         systemd.tmpfiles.rules = [
           "d ${srvHostRoot} 0755 root root -"
         ];
@@ -124,29 +76,6 @@ in
           fsType = "virtiofs";
           options = [
             "ro"
-            "nofail"
-          ];
-        };
-      })
-
-      (lib.mkIf (bringupMode && ndhTopLevelShareEnabled) {
-        assertions = [
-          {
-            assertion =
-              config.ndh.vm.tart.hostShares.ndhTopLevel.mountTag
-              == config.ndh.vm.tart.hostShares.ndhTopLevel.expectedRunTag;
-            message = ''
-              ndh.vm.tart.hostShares.ndhTopLevel.mountTag must match ndh.vm.tart.hostShares.ndhTopLevel.expectedRunTag.
-              This guards against host/guest Tart NDH top-level share tag drift.
-            '';
-          }
-        ];
-
-        fileSystems."${config.ndh.vm.tart.hostShares.ndhTopLevel.mountPoint}" = {
-          device = config.ndh.vm.tart.hostShares.ndhTopLevel.mountTag;
-          fsType = "virtiofs";
-          options = [
-            "rw"
             "nofail"
           ];
         };

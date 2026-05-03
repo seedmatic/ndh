@@ -123,8 +123,6 @@ let
     raw_image_target_path_default: ${builtins.toJSON cfg.rawImageTargetPath}
     sops_age_host_dir_default: ${builtins.toJSON cfg.vmRunSopsAgeHostDir}
     sops_age_tag: ${builtins.toJSON cfg.vmRunSopsAgeTag}
-    ndh_toplevel_host_dir_default: ${builtins.toJSON cfg.vmRunNdhTopLevelHostDir}
-    ndh_toplevel_tag: ${builtins.toJSON cfg.vmRunNdhTopLevelTag}
     tart_bin: ${builtins.toJSON cfg.tartBinaryPath}
     diskutil_bin: ${builtins.toJSON cfg.diskutilBinaryPath}
   '';
@@ -329,24 +327,6 @@ in
       default = "ndh-sops-age";
       description = ''
         Virtiofs mount tag used for the mandatory SOPS age host directory share.
-      '';
-    };
-
-    vmRunNdhTopLevelHostDir = mkOption {
-      type = types.str;
-      default = cfg.nixosFlakePath;
-      description = ''
-        Host NDH repository top-level directory optionally exported to Tart guest
-        during bootstrap detection (blank/non-ZFS root disk path).
-      '';
-    };
-
-    vmRunNdhTopLevelTag = mkOption {
-      type = types.str;
-      default = "ndh-toplevel";
-      description = ''
-        Virtiofs mount tag used for NDH top-level host directory export.
-        Keep this aligned with guest mount expectations.
       '';
     };
 
