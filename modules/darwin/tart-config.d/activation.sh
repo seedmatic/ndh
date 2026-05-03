@@ -10,7 +10,21 @@ tart:bool:is-true() {
 	[[ "$value" == "1" || "$value" == "true" || "$value" == "yes" || "$value" == "on" ]]
 }
 
-tart:image:virtual-size-bytes() {
+tart:image:format() {
+	local image_path="$1"
+
+	if [[ ! -f "$image_path" ]]; then
+		return 1
+	fi
+
+	if [[ -z "${diskutil_bin:-}" ]]; then
+		diskutil_bin="/usr/sbin/diskutil"
+	fi
+
+	"$diskutil_bin" image info --plist "$image_path" 2>/dev/null |
+		plutil -convert json -o - - 2>/dev/null |
+		yq -p=json -r '.["Image Format"]'
+}
 	local image_path="$1"
 	local total_bytes=""
 
@@ -706,6 +720,7 @@ main() {
 		local manifest_source=""
 		local current_bytes=""
 		local expected_bytes=0
+		local disk_format=""
 
 		for disk in "${tart_vm_data_disks[@]}"; do
 			manifest_image_name="$(basename "$disk" .img)"
@@ -715,18 +730,25 @@ main() {
 				manifest_source="$(tart:raw-image:path:from-manifest "$manifest_image_name" 2>/dev/null || true)"
 			fi
 
-			# Existing disk — never overwrite; only warn if undersized relative to
-			# the configured vmDataDiskSizeGiB target so the operator knows to
-			# re-materialise manually when a resize is desired.
 			if [[ -f "$disk" ]]; then
-				current_bytes="$(tart:image:virtual-size-bytes "$disk" 2>/dev/null || true)"
-				expected_bytes=$(( data_disk_size_gib * 1000 * 1000 * 1000 ))
-				if [[ "$current_bytes" =~ ^[0-9]+$ ]] && (( current_bytes < expected_bytes )); then
-					: "[tartConfig][WARN] ${manifest_image_name} data disk is smaller than vmDataDiskSizeGiB=${data_disk_size_gib} (currentBytes=${current_bytes} expectedBytes=${expected_bytes}); re-materialize manually to resize"
+				# Detect blank placeholder disks: ASIF format means the disk was
+				# created by tart:vm:disks:ensure:blank and has no real data.
+				# RAW format means a bringup image was properly materialized from the
+				# manifest. Re-materialize ASIF disks when a manifest source exists.
+				disk_format="$(tart:image:format "$disk" 2>/dev/null || true)"
+				if [[ "$disk_format" == "ASIF" && -n "$manifest_source" ]]; then
+					: "[tartConfig][INFO] ${manifest_image_name} data disk is blank ASIF placeholder; re-materializing from source: $manifest_source"
+					rm -f "$disk"
 				else
-					: "[tartConfig][INFO] preserving existing ${manifest_image_name} data disk: $disk"
+					current_bytes="$(tart:image:virtual-size-bytes "$disk" 2>/dev/null || true)"
+					expected_bytes=$(( data_disk_size_gib * 1000 * 1000 * 1000 ))
+					if [[ "$current_bytes" =~ ^[0-9]+$ ]] && (( current_bytes < expected_bytes )); then
+						: "[tartConfig][WARN] ${manifest_image_name} data disk is smaller than vmDataDiskSizeGiB=${data_disk_size_gib} (currentBytes=${current_bytes} expectedBytes=${expected_bytes}); re-materialize manually to resize"
+					else
+						: "[tartConfig][INFO] preserving existing ${manifest_image_name} data disk: $disk"
+					fi
+					continue
 				fi
-				continue
 			fi
 
 			# Disk is missing — materialize from source image or create blank.
