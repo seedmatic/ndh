@@ -381,6 +381,8 @@ main() {
 
 		if [[ "$(id -u)" -eq 0 ]] && [[ -n "$gcroot_group" ]] && [[ "$dir" == "/nix/var/nix/gcroots/per-user/${gcroot_user}"* ]]; then
 			install -d -m "$mode" -o "$gcroot_user" -g "$gcroot_group" "$dir"
+		elif [[ "$(id -u)" -eq 0 ]] && [[ -n "$profile_user" ]] && [[ -n "$profile_group" ]] && [[ "$dir" == "${effective_home}/"* ]]; then
+			install -d -m "$mode" -o "$profile_user" -g "$profile_group" "$dir"
 		else
 			install -d -m "$mode" "$dir"
 		fi

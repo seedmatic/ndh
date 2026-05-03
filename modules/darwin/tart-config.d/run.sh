@@ -160,11 +160,19 @@ tart:runtime:validate() {
 
 tart:disk:required:validate() {
 	local disk=""
+	local current_bytes=""
+	local expected_bytes=$(( data_disk_size_gib * 1000 * 1000 * 1000 ))
 	for disk in "${required_disks[@]}"; do
 		if [[ ! -f "${disk}" ]]; then
 			echo "[ERROR] missing required data disk: ${disk}" >&2
 			echo "[ERROR] run activation/materializer first to provision VM-local required disks (disk2/disk3/recover)" >&2
 			exit 1
+		fi
+		current_bytes="$(/usr/sbin/diskutil image info --plist "${disk}" 2>/dev/null \
+			| /usr/bin/plutil -extract 'Size Info.Sector Count' raw - 2>/dev/null \
+			| awk '{print $1 * 512}' 2>/dev/null || true)"
+		if [[ "$current_bytes" =~ ^[0-9]+$ ]] && (( current_bytes < expected_bytes )); then
+			echo "[WARN] $(basename "${disk}") is smaller than vmDataDiskSizeGiB=${data_disk_size_gib} (currentBytes=${current_bytes} expectedBytes=${expected_bytes}); re-run darwin-rebuild switch or the materializer to resize" >&2
 		fi
 	done
 }
