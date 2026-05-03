@@ -8,11 +8,9 @@
 let
   isTartProvider = config.ndh.vm.provider == "tart";
   ndhContext = ndh.context;
-  ndhRuntimeRoot = "/run/ndh";
   srvHostRoot = "/srv/host";
   sopsAgeMountPointDefault = "${srvHostRoot}/.sops.d";
-  ndhHostSharesRoot = "${ndhRuntimeRoot}/host-shares";
-  ndhTopLevelMountPointDefault = "${ndhHostSharesRoot}/ndh-top-level";
+  ndhTopLevelMountPointDefault = "${srvHostRoot}/nixos.d";
   generationMode = ndhContext.generationMode;
   bringupMode = generationMode == "bringup";
   ndhTopLevelShareEnabled = config.ndh.vm.tart.hostShares.ndhTopLevel.enable;
@@ -105,8 +103,6 @@ in
 
         systemd.tmpfiles.rules = [
           "d ${srvHostRoot} 0755 root root -"
-          "d ${ndhRuntimeRoot} 0755 root root -"
-          "d ${ndhHostSharesRoot} 0755 root root -"
         ];
       }
 
