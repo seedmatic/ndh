@@ -1,6 +1,7 @@
 let
   hostProfile = {
     hostName = "bioskop";
+    vmProvider = "tart";
     nixosBootLoader = "systemd-boot";
     nixosBootstrapDebug = false;
     # Keep explicit host defaults for image-build VM resources.
