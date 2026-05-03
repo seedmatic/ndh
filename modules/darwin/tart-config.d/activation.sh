@@ -662,10 +662,24 @@ main() {
 			: "tart VM already exists: $vm"
 			return 0
 		fi
-		
+
 		: "creating tart VM: $vm (os=linux disk-size=${disk_size}GiB disk-format=${disk_format})"
 		tart:vm:run create "$vm" --linux --disk-size "$disk_size" --disk-format "$disk_format"
-		tart:vm:disks:ensure:blank
+
+		# Only create blank data disks if the VM directory had no pre-existing disk
+		# images (e.g. from a previous activation that materialized bringup images
+		# before tart create was called). Preserving existing disks here avoids
+		# wiping freshly-materialized bringup ZFS images.
+		local any_existing=0
+		local _d
+		for _d in "${tart_vm_data_disks[@]}"; do
+			[[ -f "$_d" ]] && { any_existing=1; break; }
+		done
+		if ((any_existing == 0)); then
+			tart:vm:disks:ensure:blank
+		else
+			: "[tartConfig][INFO] tart VM registered; preserving existing data disk images"
+		fi
 	}
 
 	tart:vm:recreate() {
