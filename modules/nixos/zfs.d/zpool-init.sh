@@ -90,16 +90,31 @@ disk:partition:grow-last() {
 
 zpool:expand() {
 	local pool="$1"
+	# Enable autoexpand so ZFS claims new space on the next import/scrub.
+	# The actual online -e (raidz block rewrite) is deferred to stage2 to
+	# avoid blocking the initrd for minutes on large pools.
+	zpool set autoexpand=on "$pool" 2>/dev/null || true
+}
+
+zpool:expand:online() {
+	local pool="$1"
 	local -a vdevs=()
-	# After disk images are grown, tell ZFS to claim the new space.
-	# autoexpand persists across reboots; online -e triggers immediate expansion.
 	# Only pass leaf vdevs (double-indent in zpool list -vH output) — passing
 	# virtual vdev names like raidz1-0 causes zpool online to block indefinitely.
-	zpool set autoexpand=on "$pool" 2>/dev/null || true
 	mapfile -t vdevs < <(zpool list -vH "$pool" 2>/dev/null | awk '/^\t\t[^\t]/ {print $1}')
 	if [[ ${#vdevs[@]} -gt 0 ]]; then
+		: "[zpool-init][INFO] expanding pool $pool vdevs: ${vdevs[*]}"
 		zpool online -e "$pool" "${vdevs[@]}" 2>/dev/null || true
 	fi
+}
+
+zpool:init:expand:online:main() {
+	zpool:init:configure
+	for pool in "${EXPECTED_POOLS[@]}"; do
+		if zpool:is_imported "$pool"; then
+			zpool:expand:online "$pool"
+		fi
+	done
 }
 
 zpool:zfs:set_legacy_mountpoints_for_rke2_paths() {
@@ -230,6 +245,8 @@ zpool:init:main() {
 if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
 	zpool:init:configure
 	: "[zpool-init][INFO] sourced mode; helper functions loaded"
+elif [[ "${1:-}" == "expand-online" ]]; then
+	ndh::logger:command:run "nixos.zfs.zpool-expand" zpool:init:expand:online:main
 else
 	ndh::logger:command:run "nixos.zfs.zpool-init" zpool:init:main "$@"
 fi
