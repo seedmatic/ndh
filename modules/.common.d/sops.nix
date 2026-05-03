@@ -60,7 +60,7 @@ let
   nixosHostKeyImportCandidatesDefault = lib.filter (path: path != "") [
     "${userHome}/.config/sops/age/keys.txt"
     (if userName != "" then "/home/${userName}/.config/sops/age/keys.txt" else "")
-    "${hostSopsKeyShareMountPoint}/keys.txt"
+    "${hostSopsKeyShareMountPoint}/age/keys.txt"
   ];
 
   trampolineDir = pkgs.runCommand "io.nxmatic.nix-darwin-home-trampoline-dir" { } ''

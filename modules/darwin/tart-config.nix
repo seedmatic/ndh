@@ -341,9 +341,10 @@ in
 
     vmRunSopsAgeHostDir = mkOption {
       type = types.str;
-      default = "${profileHome}/.config/sops/age";
+      default = "${profileHome}/.config/sops";
       description = ''
-        Host directory containing `keys.txt` exported to Tart VM via virtiofs.
+        Host directory shared into the Tart VM via virtiofs as the SOPS config root.
+        The age key is expected at `<mountPoint>/age/keys.txt` inside the guest.
         Canonical behavior requires this share for in-guest SOPS bootstrap decryption.
       '';
     };

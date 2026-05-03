@@ -68,7 +68,7 @@ tart:runtime:configure() {
 	serial_bridge_auto_screen="${SERIAL_BRIDGE_AUTO_SCREEN:-$serial_bridge_auto_screen_default}"
 	no_graphics="${NO_GRAPHICS:-$no_graphics_default}"
 	sops_age_host_dir="${SOPS_AGE_HOST_DIR:-$sops_age_host_dir_default}"
-	sops_age_key_file="${sops_age_host_dir}/keys.txt"
+	sops_age_key_file="${sops_age_host_dir}/age/keys.txt"
 
 	# Derive the bringup manifest: first follow the gcroot bundle (stable, GC-safe),
 	# then fall back to the store path baked into the run manifest.

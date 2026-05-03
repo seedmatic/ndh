@@ -45,7 +45,7 @@ let
         ndh.sopsAgeKeyBootstrap.phase = "bootstrap";
         ndh.sopsAgeKeyBootstrap.nixosHostKeyImport.candidates = [
           # Preferred: key delivered via Tart host share.
-          "/mnt/tart-cidata/sops.d/keys.txt"
+          "/mnt/tart-cidata/sops.d/age/keys.txt"
           # Host-mounted fallback: ~/Private/sops:age:keys.txt on Darwin host.
           "/Users/nxmatic/.config/sops/age/keys.txt"
         ];
