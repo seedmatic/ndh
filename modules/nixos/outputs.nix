@@ -360,7 +360,7 @@ let
       # - For zstd level 1, we model a 0.5 factor (2:1 compression).
       # - Future per-filesystem factors may override rootFsCompressionFactor,
       #   but should default to zstdCompressionFactor.
-      uncompressedDiskSizeGiB = hostProfile.nixosDiskImageSizeGiB or 10;
+      uncompressedDiskSizeGiB = hostProfile.nixosDiskImageSizeGiB or 16;
       selectedZstdCompressionLevel = hostProfile.nixosZstdCompressionLevel or 1;
       zstdCompressionFactor = if selectedZstdCompressionLevel == 1 then 0.5 else 1.0;
       rootFsCompressionFactor = hostProfile.nixosRootFsCompressionFactor or zstdCompressionFactor;
@@ -380,6 +380,14 @@ let
       # allowing nix-store and the install to interleave. Overridable per host.
       diskImageVmCpuCores = hostProfile.nixosDiskImageVmCpuCores or 2;
       zfsBootstrapPoolDiskSizeMiB = hostProfile.nixosZfsBootstrapPoolDiskSizeMiB or 2048;
+      # ZFS vdev disk size for the bringup QEMU build VM.
+      # Derived from uncompressedDiskSizeGiB (no compression factor — ZFS handles
+      # compression internally per-dataset). Accounts for raidz1 overhead (3 disks,
+      # 1 parity: usable = 2 × zfs_partition_size) and per-disk EFI/GPT overhead
+      # (espStart=1 MiB + efiSystemPartitionSizeMiB + 1 MiB GPT backup = +2 beyond EFI).
+      zpoolVdevDiskSizeMiB = hostProfile.nixosZpoolVdevDiskSizeMiB or (
+        builtins.ceil (uncompressedDiskSizeGiB * 512.0) + efiSystemPartitionSizeMiB + 2
+      );
       # Bringup closure paths used for stage-1/2 bringup sizing checks.
       bringupRootFsType = selectedBringupRootFs;
       bringupRootFsName = bringupRootFsType;
@@ -405,6 +413,7 @@ let
           runtime = diskSizeMiB;
           bringupSystemdBoot = diskSizeMiB;
           bringupGrub = diskSizeMiB;
+          zpoolVdevDisk = zpoolVdevDiskSizeMiB;
         };
         diskImageVmResources = {
           memSizeMiB = diskImageVmMemSizeMiB;
@@ -546,7 +555,7 @@ let
           # Include the production runtime closure so zfs-nixos-install can use
           # the prebuilt path without network access at first boot.
           inherit runtimeSystemPath;
-          zpoolDiskSize = 3072;
+          zpoolDiskSize = zpoolVdevDiskSizeMiB;
           memSize = diskImageVmMemSizeMiB;
           vmCpuCores = diskImageVmCpuCores;
           includeChannel = false;
