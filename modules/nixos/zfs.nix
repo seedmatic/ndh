@@ -624,10 +624,19 @@ in
 
     # Explicitly include both ExecCondition and ExecStart scripts in the initrd store.
     # NixOS does NOT auto-close either — both must be listed explicitly.
+    # zpoolInit and its runtime deps (gptfdisk, util-linux) are also required because
+    # initrdZpoolInitScript does `exec ${zpoolInit}/bin/zpool-init` which embeds
+    # absolute store paths that must exist in the initrd /nix/store.
     boot.initrd.systemd.storePaths = lib.mkMerge [
       (lib.mkIf (
         config.zfsOverlays.bootstrapActivation.enable && config.zfsOverlays.enable && (!overlayModeEnabled)
-      ) [ initrdDevicesCheckScript initrdZpoolInitScript ])
+      ) [
+        initrdDevicesCheckScript
+        initrdZpoolInitScript
+        zpoolInit
+        pkgs.gptfdisk
+        pkgs.util-linux
+      ])
       (lib.mkIf (config.zfsOverlays.enable && (!overlayModeEnabled)) [ initrdBootEntryReconcileScript ])
     ];
 
@@ -652,6 +661,7 @@ in
             coreutils
             util-linux
             gawk
+            gptfdisk
             systemd
             zfs
             disko
