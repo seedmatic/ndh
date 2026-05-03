@@ -748,6 +748,11 @@ main() {
 				else
 					: "[tartConfig][INFO] preserving existing ZFS ${manifest_image_name} data disk: $disk"
 				fi
+				# Always try to grow to data_disk_size_gib even when source was used —
+				# the bringup image is baked at build-time size which may be smaller
+				# than the desired runtime size.
+				TART_LOG_PREFIX="[tartConfig]"
+				tart:image:resize-if-smaller "$disk" "$data_disk_size_gib" "${manifest_image_name} data disk" || true
 				continue
 			fi
 
