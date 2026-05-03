@@ -47,7 +47,17 @@ EOF
     return 0
   fi
 
-  token="$(@incusBin@ --force-local config trust add "${auto_user}-bootstrap-$(date +%s)" | sed -n '2p')"
+  # Incus daemon may not be started yet during activation (e.g. first boot).
+  # Skip the trust bootstrap here — the socket-activated incus.service will
+  # start on first use; re-running switch-to-configuration or the dedicated
+  # systemd service will complete auth once the daemon is up.
+  if [[ ! -S /var/lib/incus/unix.socket ]]; then
+    echo "incus socket not available yet; skipping trust bootstrap (will retry at runtime)" >&2
+    return 0
+  fi
+
+  # --quiet outputs only the raw token (no TTY masking / ┅ characters)
+  token="$(@incusBin@ --force-local config trust add "${auto_user}-bootstrap-$(date +%s)" --quiet)"
   if [[ -z "${token}" ]]; then
     echo "failed to obtain Incus trust token for remote bootstrap" >&2
     return 1
