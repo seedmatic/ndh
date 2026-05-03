@@ -25,6 +25,8 @@ tart:image:format() {
 		plutil -convert json -o - - 2>/dev/null |
 		yq -p=json -r '.["Image Format"]'
 }
+
+tart:image:virtual-size-bytes() {
 	local image_path="$1"
 	local total_bytes=""
 
