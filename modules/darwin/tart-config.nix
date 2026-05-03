@@ -117,6 +117,7 @@ let
     serial_path_default: ${builtins.toJSON cfg.vmRunSerialPath}
     serial_bridge_enable_default: ${builtins.toJSON cfg.vmRunSerialBridgeEnable}
     serial_bridge_dir_default: ${builtins.toJSON cfg.vmRunSerialBridgeDir}
+    serial_bridge_auto_screen_default: ${builtins.toJSON cfg.vmRunSerialBridgeAutoScreen}
     raw_image_manifest_path_default: ${builtins.toJSON rawImageManifestPath}
     raw_image_store_path_default: ${builtins.toJSON rawImageStorePath}
     raw_image_source_path_default: ${builtins.toJSON cfg.rawImageSourcePath}
@@ -263,6 +264,18 @@ in
         Directory used by generated run wrapper for stable serial PTY symlinks.
         Wrapper creates `<vm>.tart` for Tart `--serial-path` and `<vm>.screen`
         for operator `screen` attachment.
+      '';
+    };
+
+    vmRunSerialBridgeAutoScreen = mkOption {
+      type = types.bool;
+      default = false;
+      description = ''
+        When `vmRunSerialBridgeEnable` is true, automatically start a detached
+        `screen(1)` session that logs serial console output to
+        `<vm_disk_dir>/serial.log`.  Reattach with:
+          screen -r <vm_name>-serial
+        Override at runtime with `SERIAL_BRIDGE_AUTO_SCREEN=1`.
       '';
     };
 

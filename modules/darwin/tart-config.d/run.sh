@@ -65,6 +65,7 @@ tart:runtime:configure() {
 	serial_enable="${SERIAL_ENABLE:-$serial_enable_default}"
 	serial_path="${SERIAL_PATH:-$serial_path_default}"
 	serial_bridge_enable="${SERIAL_BRIDGE_ENABLE:-$serial_bridge_enable_default}"
+	serial_bridge_auto_screen="${SERIAL_BRIDGE_AUTO_SCREEN:-$serial_bridge_auto_screen_default}"
 	sops_age_host_dir="${SOPS_AGE_HOST_DIR:-$sops_age_host_dir_default}"
 	sops_age_key_file="${sops_age_host_dir}/keys.txt"
 
@@ -216,13 +217,35 @@ tart:serial:bridge:start() {
 	echo "[INFO]   user PTY : ${user_pty}" >&2
 }
 
+tart:serial:screen:start() {
+	local user_pty="$1"
+	local screen_session="${vm_name}-serial"
+	local serial_log="${vm_disk_dir}/serial.log"
+
+	if ! command -v screen >/dev/null 2>&1; then
+		echo "[WARN] screen not found in PATH; attach manually: screen ${user_pty}" >&2
+		return 0
+	fi
+
+	# Quit any stale session with the same name
+	screen -S "${screen_session}" -X quit 2>/dev/null || true
+
+	screen -dmS "${screen_session}" -L -Logfile "${serial_log}" "${user_pty}"
+	echo "[INFO] serial screen session '${screen_session}' started → logging to ${serial_log}" >&2
+	echo "[INFO]   reattach with: screen -r ${screen_session}" >&2
+}
+
 tart:serial:run-arg:add() {
 	if tart:bool:is-true "${serial_bridge_enable:-0}"; then
 		# Bridge mode: socat creates a PTY pair; tart opens one end, user attaches to the other.
 		local bridge_dir="${serial_bridge_dir:-${HOME}/.tart/vms/${vm_name}/serial}"
 		local tart_pty="${bridge_dir}/${vm_name}.tart"
+		local user_pty="${bridge_dir}/${vm_name}.screen"
 		tart:serial:bridge:start "$bridge_dir"
 		run_args+=("--serial-path=${tart_pty}")
+		if tart:bool:is-true "${serial_bridge_auto_screen:-0}"; then
+			tart:serial:screen:start "${user_pty}"
+		fi
 	elif [[ -n "${serial_path:-}" ]]; then
 		# Caller manages the PTY; just pass it through.
 		run_args+=("--serial-path=${serial_path}")

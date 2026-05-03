@@ -119,6 +119,8 @@ let
           # vmMemoryMiB = 8192;
           # vmCpuCores = 6;
           vmRunBridgeInterface = "Thunderbolt Ethernet Slot 1";
+          vmRunSerialBridgeEnable = true;
+          vmRunSerialBridgeAutoScreen = true;
         };
 
       };
