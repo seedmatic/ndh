@@ -636,6 +636,7 @@ in
         zpoolInit
         pkgs.gptfdisk
         pkgs.util-linux
+        pkgs.yq-go
       ])
       (lib.mkIf (config.zfsOverlays.enable && (!overlayModeEnabled)) [ initrdBootEntryReconcileScript ])
     ];
@@ -664,6 +665,7 @@ in
             gptfdisk
             systemd
             zfs
+            yq-go
             disko
           ];
           serviceConfig = {

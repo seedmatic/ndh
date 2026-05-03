@@ -90,11 +90,22 @@ disk:partition:grow-last() {
 
 zpool:expand() {
 	local pool="$1"
-	# autoexpand=on makes ZFS automatically claim new space when the underlying
-	# device grows. Since disk:partition:grow-last runs before pool import,
-	# ZFS sees the full partition size at import time and expands automatically.
-	# No explicit zpool online -e needed.
+	# Enable autoexpand so ZFS persists the new capacity across reboots.
 	zpool set autoexpand=on "$pool" 2>/dev/null || true
+
+	# Generate and execute zpool online -e for each top-level vdev group.
+	# Uses zpool status --json + yq to discover leaf vdevs dynamically.
+	# After disk:partition:grow-last, this is a fast metadata update — not
+	# a raidz block rewrite — because we're notifying ZFS of a larger vdev,
+	# not adding a new vdev to the raidz group.
+	pool="$pool" zpool status --json 2>/dev/null \
+		| yq -p=json -r \
+			'.pools[env(pool)].config.vdevs[]
+			 | (if has("vdevs") then [.vdevs[].name] else [.name] end)
+			 | "zpool online -e " + env(pool) + " " + join(" ")' \
+		2>/dev/null \
+		| bash -x \
+		2>/dev/null || true
 }
 
 zpool:zfs:set_legacy_mountpoints_for_rke2_paths() {
