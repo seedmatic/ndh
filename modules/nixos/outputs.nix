@@ -567,9 +567,11 @@ let
         name = "nixos-disk-image-bringup-systemd-${bringupRootFsType}";
       };
 
-      # Single ZFS bringup build — Lima and Tart use identical disk layouts.
+      # ZFS bringup image selected by vmProvider — Lima and Tart differ in guest-side units.
+      selectedBringupSystemdZfs = if selectedVmProvider == "tart" then tartBringupSystemdZfs else limaBringupSystemdZfs;
+
       diskImageBringupZfsSystemdBootRaw = mkBringupZfsDiskImages {
-        nixosSystem = limaBringupSystemdZfs;
+        nixosSystem = selectedBringupSystemdZfs;
         name = "nixos-disk-image-bringup-systemd-zfs";
         runtimeSystemPath = selectedRuntime.config.system.build.toplevel;
       };
