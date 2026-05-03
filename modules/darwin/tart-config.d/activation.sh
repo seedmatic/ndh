@@ -639,14 +639,7 @@ main() {
 	}
 
 	tart:vm:run() {
-		# When activation runs as root, tart must be invoked as profile_user so
-		# that VM registration and lookups happen under the user's ~/.tart, not
-		# /var/root/.tart.
-		if [[ "$(id -u)" == "0" && -n "${profile_user:-}" && "$profile_user" != "root" ]]; then
-			sudo -u "$profile_user" -- "$tart_bin" "$@"
-		else
-			"$tart_bin" "$@"
-		fi
+		"$tart_bin" "$@"
 	}
 
 	tart:vm:exists() {
@@ -1032,6 +1025,25 @@ main() {
 	tart:state:init
 	tart:manifest:load
 	tart:config:resolve
+
+	# If running as root but the target profile is a regular user, re-exec the
+	# entire script as that user. This ensures tart VM registry lookups and
+	# creations happen under the correct user's ~/.tart, and all file operations
+	# (disk images, gcroots, serial dirs) are naturally owned by profile_user
+	# without per-operation chown/sudo wrappers.
+	#
+	# The gcroots directory per-user/<user>/ is owned by profile_user so the
+	# re-execed process can write gcroots directly.
+	if [[ "$(id -u)" -eq 0 && -n "$profile_user" && "$profile_user" != "root" ]]; then
+		: "[tartConfig][INFO] activation running as root; re-execing as ${profile_user}"
+		exec sudo -u "$profile_user" \
+			HOME="$effective_home" \
+			PROFILE_USER="$profile_user" \
+			PROFILE_HOME="$effective_home" \
+			NDH_GCROOT_USER="$profile_user" \
+			-- "$0" "$@"
+	fi
+
 	tart:raw-images:gcroot:materialize
 
 	tart:vm:factory-reset:apply
