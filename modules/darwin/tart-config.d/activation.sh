@@ -499,9 +499,12 @@ main() {
 
 		tart:fs:dir:ensure "$(dirname "$target_path")" 0755
 
-		# BASH_SOURCE[0] = /nix/store/hash.../bin/activate.sh inside the bundle dir.
-		local bundle_dir
-		bundle_dir="$(dirname "$(dirname "${BASH_SOURCE[0]}")")"
+		# Resolve BASH_SOURCE[0] to its real store path before computing bundle_dir.
+		# When the script is sourced via a symlink (e.g. the gcroot itself), BASH_SOURCE[0]
+		# reflects the symlink path — dirname of that would produce a self-referential link.
+		local script_real bundle_dir
+		script_real="$(readlink -f "${BASH_SOURCE[0]}")"
+		bundle_dir="$(dirname "$(dirname "$script_real")")"
 		tart:fs:path:relink "$bundle_dir" "$target_path" "materialize app gcroot"
 
 		# Remove stale per-image sibling links that the old per-file strategy created
@@ -552,8 +555,9 @@ main() {
 		fi
 
 		# Primary: follow the gcroot bundle (bin/activate.sh lives two levels deep inside it).
-		local bundle_dir
-		bundle_dir="$(dirname "$(dirname "${BASH_SOURCE[0]}")")"
+		local script_real bundle_dir
+		script_real="$(readlink -f "${BASH_SOURCE[0]}")"
+		bundle_dir="$(dirname "$(dirname "$script_real")")"
 		candidate="${bundle_dir}/bringup-manifest/manifest.yaml"
 		if [[ -r "$candidate" ]]; then
 			raw_image_manifest_path="$candidate"
