@@ -235,9 +235,10 @@ in
 
     vmRunUseVncExperimental = mkOption {
       type = types.bool;
-      default = true;
+      default = false;
       description = ''
         Whether generated run wrapper uses `--vnc-experimental`.
+        Mutually exclusive with `vmRunNoGraphics`; enabling both is an error.
       '';
     };
 
@@ -492,6 +493,13 @@ in
         message = ''
           tart.configGenerator.tartBinaryPath must be set when Tart materialization is enabled.
           Prefer Nix-provided path, e.g. "${pkgs.tart}/bin/tart".
+        '';
+      }
+      {
+        assertion = !(cfg.vmRunNoGraphics && cfg.vmRunUseVncExperimental);
+        message = ''
+          tart.configGenerator: vmRunNoGraphics and vmRunUseVncExperimental are mutually exclusive.
+          Tart's --no-graphics and --vnc-experimental cannot be passed together.
         '';
       }
     ];

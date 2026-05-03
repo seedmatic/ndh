@@ -174,9 +174,8 @@ tart:run-args:init() {
 
 	if tart:bool:is-true "$no_graphics"; then
 		run_args+=(--no-graphics)
-	fi
-
-	if tart:bool:is-true "$use_vnc_experimental"; then
+	elif tart:bool:is-true "$use_vnc_experimental"; then
+		# --vnc-experimental and --no-graphics are mutually exclusive
 		run_args+=(--vnc-experimental)
 	fi
 }
