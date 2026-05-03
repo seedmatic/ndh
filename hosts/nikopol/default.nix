@@ -2,7 +2,6 @@ let
   hostProfile = {
     hostName = "nikopol";
     form = "vm";
-    vmProvider = "tart";
     nixosBootLoader = "systemd-boot";
     nixosBootstrapDebug = false;
     nixosBringupRootFs = "btrfs";

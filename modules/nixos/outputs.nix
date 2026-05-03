@@ -25,7 +25,7 @@ let
     }:
     let
       bringupModeInternal = generationMode == "bringup";
-      effectiveVmProvider = if vmProvider != null then vmProvider else (hostProfile.vmProvider or "lima");
+      effectiveVmProvider = if vmProvider != null then vmProvider else (hostProfile.vmProvider or "tart");
       zfsOverlaysModule =
         { ... }:
         {
@@ -92,7 +92,7 @@ let
         }:
         let
           hpBringupModeInternal = generationMode == "bringup";
-          hpVmProvider = hp.vmProvider or "lima";
+          hpVmProvider = hp.vmProvider or "tart";
           zfsOverlaysModule =
             { ... }:
             {
@@ -132,7 +132,7 @@ let
                   catalog
                   inventory
                   ;
-                vmProvider = hp.vmProvider or "lima";
+                vmProvider = hp.vmProvider or "tart";
                 nixBashTrampoline = ndhNixBashTrampoline;
               };
               store = ndhStoreApiLinux;
@@ -161,7 +161,7 @@ let
         nixosBootLoader = "systemd-boot";
       };
 
-      selectedVmProvider = hostProfile.vmProvider or "lima";
+      selectedVmProvider = hostProfile.vmProvider or "tart";
       selectedBringupRootFs = hostProfile.nixosBringupRootFs or "btrfs";
 
       bringupGrubHostProfileBase = hostProfile // {
