@@ -93,8 +93,10 @@ zpool:expand() {
 	local -a vdevs=()
 	# After disk images are grown, tell ZFS to claim the new space.
 	# autoexpand persists across reboots; online -e triggers immediate expansion.
+	# Only pass leaf vdevs (double-indent in zpool list -vH output) — passing
+	# virtual vdev names like raidz1-0 causes zpool online to block indefinitely.
 	zpool set autoexpand=on "$pool" 2>/dev/null || true
-	mapfile -t vdevs < <(zpool list -vH "$pool" 2>/dev/null | awk 'NR>1 && /^\t[^\t]/ {print $1}')
+	mapfile -t vdevs < <(zpool list -vH "$pool" 2>/dev/null | awk '/^\t\t[^\t]/ {print $1}')
 	if [[ ${#vdevs[@]} -gt 0 ]]; then
 		zpool online -e "$pool" "${vdevs[@]}" 2>/dev/null || true
 	fi
