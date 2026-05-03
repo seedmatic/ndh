@@ -98,6 +98,10 @@ in
 
       unitConfig = {
         X-StopOnRemoval = false;
+        # No-op gracefully when running under a VM engine that does not provide
+        # a cidata disk (e.g. Tart).  systemd treats an unmet Condition as a
+        # clean success (exit 0) — dependents that use Wants= still start.
+        ConditionPathExists = LIMA_CIDATA_DEV;
       };
 
       # Create a wrapper script that logs to files as well
@@ -128,12 +132,18 @@ in
           "overriderockperm"
           "exec"
           "uid=0"
+          # Don't stall boot when running under Tart (no cidata disk attached).
+          "nofail"
+          "x-systemd.device-timeout=5"
         ];
       };
     };
 
     environment.etc = {
-      environment.source = "${LIMA_CIDATA_MNT}/etc_environment";
+      # Empty fallback so /etc/environment is never a broken symlink when the
+      # cidata disk is absent (e.g. Tart engine).  Lima's cloud-init service
+      # writes Lima-specific env overrides to /etc/environment.d/ at runtime.
+      environment.text = lib.mkDefault "";
     };
 
     # Enable NAT for Incus containers to reach internet via host

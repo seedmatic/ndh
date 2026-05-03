@@ -31,7 +31,9 @@ in
       description = "Lima Guest Agent";
       wantedBy = [ contributedTargetName ];
       after = [ (ndhSystemd.mkServiceName "lima-cloud-init") ];
-      requires = [ (ndhSystemd.mkServiceName "lima-cloud-init") ];
+      # Wants= (not Requires=) so the agent still starts when cloud-init exits
+      # cleanly via an unmet ConditionPathExists (cidata absent under Tart).
+      wants = [ (ndhSystemd.mkServiceName "lima-cloud-init") ];
       unitConfig = {
         ConditionPathExists = "${LIMA_CIDATA_MNT}/lima-guestagent";
       };
