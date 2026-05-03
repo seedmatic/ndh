@@ -251,6 +251,27 @@ in
       '';
     };
 
+    # User-level SSH config so the primary user can SSH to nerd-nixos as builder
+    # (mirrors the system-level config above, which only the nix daemon / root sees).
+    hm.programs.ssh.matchBlocks."nerd-nixos-builder" = lib.mkIf nerdNixosBuilderEnabled {
+      hostname = "127.0.0.1";
+      port = nerdNixosSshPort;
+      user = "builder";
+      identityFile = "${config.sshPaths.secretsKeysDir}/linux-builder";
+      extraOptions = {
+        IdentitiesOnly = "yes";
+        StrictHostKeyChecking = "no";
+        UserKnownHostsFile = "/dev/null";
+        LogLevel = "QUIET";
+        ServerAliveInterval = "30";
+        ServerAliveCountMax = "3";
+        ControlMaster = "auto";
+        ControlPersist = "10m";
+        Compression = "yes";
+        TCPKeepAlive = "yes";
+      };
+    };
+
     # Deploy linux-builder private key for nix daemon (runs as root).
     # The key is extracted from the per-user SSH keys directory after SOPS decryption.
     # Source: ~/.local/var/run/secrets/ssh-keys/linux-builder (deployed by ssh-keys HM module).
