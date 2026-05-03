@@ -229,7 +229,7 @@ let
     if [[ -r "$LOADER_EFI_VAR" ]]; then
       # EFI variable has a 4-byte attribute header, then the UTF-16LE value.
       # `strings` strips both safely.
-      esp_uuid="$(strings "$LOADER_EFI_VAR" | tr '[:upper:]' '[:lower:]' | tr -d '\n')"
+      esp_uuid="$(${pkgs.binutils}/bin/strings "$LOADER_EFI_VAR" | tr '[:upper:]' '[:lower:]' | tr -d '\n')"
       if [[ -n "$esp_uuid" ]]; then
         esp_dev="$(blkid -t "PARTUUID=$esp_uuid" -o device 2>/dev/null || true)"
         echo "[boot-reconcile] ESP PARTUUID=$esp_uuid → $esp_dev" >&2
@@ -692,7 +692,6 @@ in
         wantedBy = [ "initrd.target" ];
         path = with pkgs; [
           bash
-          binutils   # provides `strings` for EFI variable UTF-16LE parsing
           coreutils
           gnugrep
           gnused

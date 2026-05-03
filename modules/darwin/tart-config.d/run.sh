@@ -198,16 +198,15 @@ tart:serial:bridge:start() {
 	rm -f "$tart_pty" "$user_pty"
 
 	socat \
-		PTY,link="${tart_pty}",raw,echo=0,wait-slave \
-		PTY,link="${user_pty}",raw,echo=0,wait-slave \
+		PTY,link="${tart_pty}",raw,echo=0 \
+		PTY,link="${user_pty}",raw,echo=0 \
 		&
 	local socat_pid=$!
 
 	# Wait until both symlinks appear (up to 3 s)
 	local i=0
-	while [[ ! -e "$tart_pty" || ! -e "$user_pty" ]] && ((i < 30)); do
+	while [[ ! -e "$tart_pty" || ! -e "$user_pty" ]] && ((i++ < 30)); do
 		sleep 0.1
-		((i++))
 	done
 
 	if [[ ! -e "$tart_pty" || ! -e "$user_pty" ]]; then
@@ -223,6 +222,7 @@ tart:serial:bridge:start() {
 
 tart:serial:screen:start() {
 	local user_pty="$1"
+	local tart_pty="$2"
 	local screen_session="${vm_name}-serial"
 	local serial_log="${vm_disk_dir}/serial.log"
 
@@ -234,9 +234,55 @@ tart:serial:screen:start() {
 	# Quit any stale session with the same name
 	screen -S "${screen_session}" -X quit 2>/dev/null || true
 
-	screen -dmS "${screen_session}" -L -Logfile "${serial_log}" "${user_pty}"
+	# Write a relay script that bridges I/O between the screen window and the
+	# serial PTY pair.  Running as the screen window process means it receives
+	# SIGWINCH whenever the outer terminal resizes, so it can propagate the new
+	# dimensions to the VM-facing PTY (tart_pty).
+	local relay_script
+	relay_script=$(mktemp "${TMPDIR:-/tmp}/ndh-relay-XXXXXX.sh")
+	chmod +x "$relay_script"
+	cat > "$relay_script" << 'RELAY_EOF'
+#!/usr/bin/env bash
+# Serial-console relay: bridges screen window ↔ socat PTY pair and propagates
+# terminal resize events (SIGWINCH) to the VM-facing PTY.
+tart_pty="${1:?tart_pty required}"
+user_pty="${2:?user_pty required}"
+
+pty_resize() {
+	local rows cols
+	IFS=' ' read -r rows cols < <(stty size 2>/dev/null) || { rows=24; cols=80; }
+	stty rows "$rows" cols "$cols" < "$tart_pty" 2>/dev/null || true
+}
+trap pty_resize WINCH
+
+# Raw mode: bytes flow through the relay unmodified; screen handles display.
+stty raw -echo 2>/dev/null || true
+
+# Apply the current screen window size to the VM PTY immediately.
+pty_resize
+
+# Open the socat bridge PTY bidirectionally on fd 3.
+exec 3<>"$user_pty"
+
+# Background: copy serial output → screen window.
+cat <&3 &
+relay_cat_pid=$!
+
+# Foreground: copy keyboard input → serial (exits when screen closes the window).
+cat >&3 || true
+
+kill "$relay_cat_pid" 2>/dev/null || true
+exec 3>&-
+RELAY_EOF
+
+	screen -dmS "${screen_session}" -L -Logfile "${serial_log}" "$relay_script" "$tart_pty" "$user_pty"
+
+	# Remove the relay script once screen has had time to exec it.
+	(sleep 2 && rm -f "$relay_script") &
+
 	echo "[INFO] serial screen session '${screen_session}' started → logging to ${serial_log}" >&2
 	echo "[INFO]   reattach with: screen -r ${screen_session}" >&2
+	echo "[INFO]   terminal resize is propagated automatically via SIGWINCH" >&2
 }
 
 tart:serial:run-arg:add() {
@@ -248,7 +294,7 @@ tart:serial:run-arg:add() {
 		tart:serial:bridge:start "$bridge_dir"
 		run_args+=("--serial-path=${tart_pty}")
 		if tart:bool:is-true "${serial_bridge_auto_screen:-0}"; then
-			tart:serial:screen:start "${user_pty}"
+			tart:serial:screen:start "${user_pty}" "${tart_pty}"
 		fi
 	elif [[ -n "${serial_path:-}" ]]; then
 		# Caller manages the PTY; just pass it through.
