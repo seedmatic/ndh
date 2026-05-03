@@ -42,7 +42,7 @@ ndh::env:user:home() {
 	if command -v getent >/dev/null 2>&1; then
 		passwd_entry="$(getent passwd "$user" 2>/dev/null || true)"
 		if [[ -n "$passwd_entry" ]]; then
-			resolved_home="$(awk -F: '{print $6}' <<<"$passwd_entry")"
+			IFS=: read -r _ _ _ _ _ resolved_home _ <<<"$passwd_entry"
 		fi
 	fi
 
@@ -407,7 +407,9 @@ ndh::env:ensure:home() {
 	if command -v getent >/dev/null 2>&1 && [[ -n "$effective_user" ]]; then
 		passwd_entry="$(getent passwd "$effective_user" 2>/dev/null || true)"
 		if [[ -n "$passwd_entry" ]]; then
-			resolved_home="$(awk -F: '{print $6}' <<<"$passwd_entry")"
+			# Parse field 6 (home dir) with pure bash — avoids awk dependency
+			# in restricted PATH environments (e.g. systemd activation).
+			IFS=: read -r _ _ _ _ _ resolved_home _ <<<"$passwd_entry"
 		fi
 	fi
 
