@@ -67,6 +67,7 @@ tart:runtime:configure() {
 	serial_bridge_enable="${SERIAL_BRIDGE_ENABLE:-$serial_bridge_enable_default}"
 	serial_bridge_auto_screen="${SERIAL_BRIDGE_AUTO_SCREEN:-$serial_bridge_auto_screen_default}"
 	no_graphics="${NO_GRAPHICS:-$no_graphics_default}"
+	nested_virt="${NESTED_VIRT:-$nested_virt_default}"
 	sops_age_host_dir="${SOPS_AGE_HOST_DIR:-$sops_age_host_dir_default}"
 	sops_age_key_file="${sops_age_host_dir}/age/keys.txt"
 
@@ -299,7 +300,13 @@ kill "$output_cat_pid" "$monitor_pid" 2>/dev/null || true
 exec 3>&-
 RELAY_EOF
 
-	screen -dmS "${screen_session}" -L -Logfile "${serial_log}" "$relay_script" "$tart_pty" "$user_pty"
+	# macOS ships screen 4.00.03 which lacks -Logfile; use a temp screenrc instead.
+	local screenrc
+	screenrc=$(mktemp "${TMPDIR:-/tmp}/ndh-screenrc-XXXXXX")
+	printf 'logfile %s\n' "${serial_log}" > "$screenrc"
+	(sleep 5 && rm -f "$screenrc") &
+
+	screen -dmS "${screen_session}" -L -c "$screenrc" "$relay_script" "$tart_pty" "$user_pty"
 
 	# Remove the relay script once screen has had time to exec it.
 	(sleep 2 && rm -f "$relay_script") &
@@ -348,6 +355,12 @@ tart:run-args:bridge-network:add() {
 	fi
 }
 
+tart:run-args:nested:add() {
+	if tart:bool:is-true "${nested_virt:-0}"; then
+		run_args+=(--nested)
+	fi
+}
+
 tart:share:sops:validate() {
 	if [[ ! -d "$sops_age_host_dir" ]]; then
 		echo "[ERROR] required SOPS age share directory missing: ${sops_age_host_dir}" >&2
@@ -388,6 +401,7 @@ tart:run:main() {
 	tart:serial:run-arg:add
 	tart:run-args:extra:add
 	tart:run-args:bridge-network:add
+	tart:run-args:nested:add
 	tart:share:sops:validate
 	tart:run-args:host-shares:add
 	tart:run-args:required-disks:add

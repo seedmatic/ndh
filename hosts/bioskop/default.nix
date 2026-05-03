@@ -121,6 +121,7 @@ let
           vmRunBridgeInterface = "Thunderbolt Ethernet Slot 1";
           vmRunSerialBridgeEnable = true;
           vmRunSerialBridgeAutoScreen = true;
+          vmRunNestedVirt = true;
         };
 
       };

@@ -125,6 +125,7 @@ let
     serial_bridge_enable_default: ${builtins.toJSON cfg.vmRunSerialBridgeEnable}
     serial_bridge_dir_default: ${builtins.toJSON cfg.vmRunSerialBridgeDir}
     serial_bridge_auto_screen_default: ${builtins.toJSON cfg.vmRunSerialBridgeAutoScreen}
+    nested_virt_default: ${builtins.toJSON cfg.vmRunNestedVirt}
     raw_image_manifest_path_default: ${builtins.toJSON rawImageManifestPath}
     raw_image_store_path_default: ${builtins.toJSON rawImageStorePath}
     raw_image_source_path_default: ${builtins.toJSON cfg.rawImageSourcePath}
@@ -296,6 +297,17 @@ in
         `<vm_disk_dir>/serial.log`.  Reattach with:
           screen -r <vm_name>-serial
         Override at runtime with `SERIAL_BRIDGE_AUTO_SCREEN=1`.
+      '';
+    };
+
+    vmRunNestedVirt = mkOption {
+      type = types.bool;
+      default = false;
+      description = ''
+        Pass `--nested` to `tart run` to enable nested virtualization
+        (Apple Virtualization.framework nested VMs, macOS 15+).
+        Required when the guest runs QEMU or other hypervisors.
+        Override at runtime with `NESTED_VIRT=1`.
       '';
     };
 
