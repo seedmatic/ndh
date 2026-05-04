@@ -1,8 +1,16 @@
 let
+  hardware = {
+    ramGiB = 64; # Apple M3 Max, 64 GB unified memory
+    cpuCores = 14; # 10 performance + 4 efficiency
+  };
+
+  halfRamMiB = hardware.ramGiB * 512; # half of physical RAM in MiB
+
   hostProfile = {
     hostName = "bioskop";
     nixosBootLoader = "systemd-boot";
     nixosBootstrapDebug = false;
+    nixosDiskImageVmMemSizeMiB = halfRamMiB;
     # Capped at 4: nested KVM inside Tart VZ recommends ≤4 vCPUs.
     nixosDiskImageVmCpuCores = 4;
   };
@@ -114,6 +122,7 @@ let
         tart.configGenerator = {
           forceEnable = false;
           installMaterializerPackage = false;
+          vmMemoryMiB = halfRamMiB;
           vmRunBridgeInterface = "Thunderbolt Ethernet Slot 1";
           vmRunSerialBridgeEnable = true;
           vmRunSerialBridgeAutoScreen = true;

@@ -1,13 +1,18 @@
 let
+  hardware = {
+    ramGiB = 48; # Apple M4 Pro, 48 GB unified memory
+    cpuCores = 14; # 10 performance + 4 efficiency
+  };
+
+  halfRamMiB = hardware.ramGiB * 512; # half of physical RAM in MiB
+
   hostProfile = {
     hostName = "nikopol";
     form = "vm";
     nixosBootLoader = "systemd-boot";
     nixosBootstrapDebug = false;
     nixosBringupRootFs = "btrfs";
-    # Keep explicit host defaults for image-build VM resources.
-    # These match canonical defaults from modules/nixos/outputs.nix.
-    nixosDiskImageVmMemSizeMiB = 8192;
+    nixosDiskImageVmMemSizeMiB = halfRamMiB;
     nixosDiskImageVmCpuCores = 4;
     # Enlarge per-disk ZFS bringup pool members to evaluate occupancy with full runtime image install.
     nixosZfsBootstrapPoolDiskSizeMiB = 8192;
@@ -96,6 +101,7 @@ let
         tart.configGenerator = {
           forceEnable = false;
           installMaterializerPackage = false;
+          vmMemoryMiB = halfRamMiB;
         };
       };
     };
