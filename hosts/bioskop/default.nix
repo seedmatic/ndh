@@ -13,6 +13,9 @@ let
     nixosDiskImageVmMemSizeMiB = halfRamMiB;
     # Capped at 4: nested KVM inside Tart VZ recommends ≤4 vCPUs.
     nixosDiskImageVmCpuCores = 4;
+    # The full committed profile closure (emacs, nix, etc.) exceeds 16 GiB.
+    # 32 GiB gives the raidz1 bringup pool ~64 GiB usable (2 × vdev).
+    nixosDiskImageSizeGiB = 32;
   };
 
   darwinProfile = {
