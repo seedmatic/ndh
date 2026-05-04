@@ -13,9 +13,12 @@ let
     nixosDiskImageVmMemSizeMiB = halfRamMiB;
     # Capped at 4: nested KVM inside Tart VZ recommends ≤4 vCPUs.
     nixosDiskImageVmCpuCores = 4;
-    # The full committed profile closure (emacs, nix, etc.) exceeds 16 GiB.
-    # 32 GiB gives the raidz1 bringup pool ~64 GiB usable (2 × vdev).
-    nixosDiskImageSizeGiB = 32;
+    # Bringup pool sizing: df on previous run showed ~6.8 GiB final usage
+    # (9193.5 MiB NAR data compressed at ~1.4:1 by ZFS lz4).
+    # 10 GiB gives raidz1 usable = 2 × 5120 MiB = 10 GiB → 68% usage.
+    # Host build artifacts: 4 × 5634 MiB ≈ 22 GiB on nerd-nixos ZFS pool.
+    # After first boot, zpool-init expands vdevs to full vmDataDiskSizeGiB.
+    nixosDiskImageSizeGiB = 10;
   };
 
   darwinProfile = {
