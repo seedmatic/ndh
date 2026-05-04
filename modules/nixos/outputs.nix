@@ -378,7 +378,7 @@ let
       # software-emulated host thread with lock contention. nixos-install is I/O-bound
       # (ZFS writes), not CPU-bound. 2 vCPUs reduces TCG overhead vs 6 while still
       # allowing nix-store and the install to interleave. Overridable per host.
-      diskImageVmCpuCores = hostProfile.nixosDiskImageVmCpuCores or 2;
+      diskImageVmCpuCores = hostProfile.nixosDiskImageVmCpuCores or 4;
       zfsBootstrapPoolDiskSizeMiB = hostProfile.nixosZfsBootstrapPoolDiskSizeMiB or 2048;
       # ZFS vdev disk size for the bringup QEMU build VM.
       # Derived from uncompressedDiskSizeGiB (no compression factor — ZFS handles

@@ -12,8 +12,9 @@
   bootDiskSize ? 600, # 600MiB (512MiB ESP + GPT overhead)
   memSize ? 1536,
   # Bringup is I/O-bound (nix-store --load-db + nix copy → ZFS virtio-blk).
-  # 2 vCPUs gives ZFS background threads without excess nested hypervisor overhead.
-  vmCpuCores ? 2,
+  # 4 vCPUs balances ZFS checksum/compression threads with nested hypervisor
+  # overhead — max safe value for nested KVM on Apple Virtualization.framework.
+  vmCpuCores ? 4,
   includeChannel ? false,
 
   qemuFallbackInVm ? null, # deprecated, no-op — accel detected at build time via /dev/kvm
