@@ -11,7 +11,9 @@
   # Dedicated EFI boot disk size — holds only systemd-boot + kernel + initrd.
   bootDiskSize ? 600, # 600MiB (512MiB ESP + GPT overhead)
   memSize ? 1536,
-  vmCpuCores ? 4,
+  # Bringup is I/O-bound (nix-store --load-db + nix copy → ZFS virtio-blk).
+  # 2 vCPUs gives ZFS background threads without excess nested hypervisor overhead.
+  vmCpuCores ? 2,
   includeChannel ? false,
 
   qemuFallbackInVm ? null, # deprecated, no-op — accel detected at build time via /dev/kvm

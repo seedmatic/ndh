@@ -13,7 +13,7 @@ let
     nixosBootstrapDebug = false;
     nixosBringupRootFs = "btrfs";
     nixosDiskImageVmMemSizeMiB = halfRamMiB;
-    nixosDiskImageVmCpuCores = 4;
+
     # Enlarge per-disk ZFS bringup pool members to evaluate occupancy with full runtime image install.
     nixosZfsBootstrapPoolDiskSizeMiB = 8192;
   };

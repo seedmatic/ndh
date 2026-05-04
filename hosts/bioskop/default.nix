@@ -11,8 +11,6 @@ let
     nixosBootLoader = "systemd-boot";
     nixosBootstrapDebug = false;
     nixosDiskImageVmMemSizeMiB = halfRamMiB;
-    # Capped at 4: nested KVM inside Tart VZ recommends ≤4 vCPUs.
-    nixosDiskImageVmCpuCores = 4;
     # Bringup pool sizing: df on previous run showed ~6.8 GiB final usage
     # (9193.5 MiB NAR data compressed at ~1.4:1 by ZFS lz4).
     # 10 GiB gives raidz1 usable = 2 × 5120 MiB = 10 GiB → 68% usage.
