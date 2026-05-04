@@ -734,10 +734,15 @@ main() {
 			if [[ -f "$disk" ]]; then
 				# Detect blank placeholder disks: ASIF format means the disk was
 				# created by tart:vm:disks:ensure:blank and has no real data.
-				# RAW format means a bringup image was properly materialized from the
-				# manifest. Re-materialize ASIF disks when a manifest source exists.
+				# EXCEPTION: after initial bringup materialization, the disk is ASIF
+				# format but contains live ZFS data — detect this via partition labels
+				# and preserve it unconditionally.
 				disk_format="$(tart:image:format "$disk" 2>/dev/null || true)"
 				if [[ "$disk_format" == "ASIF" && -n "$manifest_source" ]]; then
+					if tart:root-disk:zfs:contains "$disk"; then
+						: "[tartConfig][INFO] ${manifest_image_name} ASIF data disk has live ZFS data; preserving: $disk"
+						continue
+					fi
 					: "[tartConfig][INFO] ${manifest_image_name} data disk is blank ASIF placeholder; re-materializing from source: $manifest_source"
 					rm -f "$disk"
 				else
