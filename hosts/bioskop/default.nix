@@ -117,8 +117,9 @@ let
         tart.configGenerator = {
           forceEnable = false;
           installMaterializerPackage = false;
-          # vmMemoryMiB = 8192;
-          # vmCpuCores = 6;
+          # Nested QEMU bringup needs 6 GiB inside the VM + guest OS overhead.
+          # Keep at least 8 GiB so OOM killer doesn't kill the nested QEMU.
+          vmMemoryMiB = 8192;
           vmRunBridgeInterface = "Thunderbolt Ethernet Slot 1";
           vmRunSerialBridgeEnable = true;
           vmRunSerialBridgeAutoScreen = true;
