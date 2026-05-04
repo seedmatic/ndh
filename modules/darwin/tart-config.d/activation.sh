@@ -900,15 +900,20 @@ main() {
 
 	tart:vm:config:patch() {
 		if [ -f "$tart_vm_config" ]; then
+			# memorySizeMin is set to memorySizeMax so Apple VZ gives the full
+			# allocation immediately rather than ballooning up from the 4 GiB default.
+			local vm_memory_bytes=$(( vm_memory_mib * 1024 * 1024 ))
 			VM_DISK_FORMAT="$vm_disk_format" \
 				VM_DISPLAY_WIDTH="$vm_display_width" \
 				VM_DISPLAY_HEIGHT="$vm_display_height" \
 				VM_MAC_ADDRESS="$vm_mac_address" \
+				VM_MEMORY_BYTES="$vm_memory_bytes" \
 				yq -o=json -I=2 -i '.diskFormat = strenv(VM_DISK_FORMAT) |
                            .display = (.display // {}) |
                            .display.width = (strenv(VM_DISPLAY_WIDTH) | tonumber) |
                            .display.height = (strenv(VM_DISPLAY_HEIGHT) | tonumber) |
-                           .macAddress = strenv(VM_MAC_ADDRESS)' "$tart_vm_config"
+                           .macAddress = strenv(VM_MAC_ADDRESS) |
+                           .memorySizeMin = (strenv(VM_MEMORY_BYTES) | tonumber)' "$tart_vm_config"
 		fi
 	}
 
