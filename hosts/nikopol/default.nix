@@ -7,8 +7,8 @@ let
     nixosBringupRootFs = "btrfs";
     # Keep explicit host defaults for image-build VM resources.
     # These match canonical defaults from modules/nixos/outputs.nix.
-    nixosDiskImageVmMemSizeMiB = 6144;
-    nixosDiskImageVmCpuCores = 6;
+    nixosDiskImageVmMemSizeMiB = 8192;
+    nixosDiskImageVmCpuCores = 4;
     # Enlarge per-disk ZFS bringup pool members to evaluate occupancy with full runtime image install.
     nixosZfsBootstrapPoolDiskSizeMiB = 8192;
   };

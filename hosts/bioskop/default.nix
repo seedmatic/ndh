@@ -3,9 +3,6 @@ let
     hostName = "bioskop";
     nixosBootLoader = "systemd-boot";
     nixosBootstrapDebug = false;
-    # Keep explicit host defaults for image-build VM resources.
-    # These match canonical defaults from modules/nixos/outputs.nix.
-    nixosDiskImageVmMemSizeMiB = 6144;
     # Capped at 4: nested KVM inside Tart VZ recommends ≤4 vCPUs.
     nixosDiskImageVmCpuCores = 4;
   };
@@ -117,9 +114,6 @@ let
         tart.configGenerator = {
           forceEnable = false;
           installMaterializerPackage = false;
-          # Nested QEMU bringup needs 6 GiB inside the VM + guest OS overhead.
-          # Keep at least 8 GiB so OOM killer doesn't kill the nested QEMU.
-          vmMemoryMiB = 8192;
           vmRunBridgeInterface = "Thunderbolt Ethernet Slot 1";
           vmRunSerialBridgeEnable = true;
           vmRunSerialBridgeAutoScreen = true;

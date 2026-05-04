@@ -189,7 +189,7 @@ in
 
     vmMemoryMiB = mkOption {
       type = types.int;
-      default = 4096;
+      default = 8192;
       description = ''
         Memory size in MiB enforced via `tart set` during materialization.
       '';
