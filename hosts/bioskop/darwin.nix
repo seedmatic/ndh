@@ -1,0 +1,77 @@
+{ halfRamMiB }:
+{
+  config,
+  lib,
+  ndh,
+  ...
+}:
+let
+  ndhContext = ndh.context;
+  # Canonical source-of-truth network values from rke2lab netplan catalog (@codebase)
+  rke2labNetplan = ndhContext.catalog.netplan.rke2lab;
+  clusterNetwork = rke2labNetplan.clusters.bioskop;
+in
+{
+  config = {
+    # Two-phase SOPS age key provisioning on Darwin:
+    # phase 2 (enforce): key must already exist.
+    ndh.sopsAgeKeyBootstrap = {
+      phase = "enforce";
+      darwinSystemWideKey = true;
+    };
+    sops.age.keyFile = "/etc/sops/age/keys.txt";
+
+    services.nxmaticCachixWatchStore = {
+      enable = true;
+      sopsEncryptedTokenFile = ../../.secrets;
+    };
+
+    networking.vlan = {
+      enable = false; # Temporarily disabled: VLAN 2 currently causes local resolution/routing issues.
+      id = 2;
+      addressPrefix = "192.168.2";
+      parentInterface = "en9";
+    };
+
+    networking.staticRoutes = {
+      enable = true;
+      routes = [
+        {
+          kind = "net";
+          destination = clusterNetwork.cidr;
+          gateway = "192.168.1.130";
+          interface = "en9";
+        }
+      ];
+    };
+
+    # Network bonding configuration (Darwin only)
+    # Combines en0 (built-in) and en8 (OWC hub) for ~1.8 Gbps aggregate bandwidth
+    networking.bond = {
+      enable = false; # Enable when needed
+      interfaces = [
+        "en0"
+        "en9"
+      ];
+      mode = "static"; # Static LAG without LACP protocol
+    };
+
+    lima.configGenerator = {
+      installMaterializerPackage = false;
+      vmType = "qemu"; # Use QEMU for having a prompt in emergency mode, which is useful for debugging. VZ doesn't support interactive prompt on boot.
+      sshLocalPort = 61022; # Fixed port so nix daemon can reach nerd-nixos as a remote builder.
+      # vmMemoryMiB = 8192;
+      # vmCpuCores = 6;
+    };
+
+    tart.configGenerator = {
+      forceEnable = false;
+      installMaterializerPackage = false;
+      vmMemoryMiB = halfRamMiB;
+      vmRunBridgeInterface = "Thunderbolt Ethernet Slot 1";
+      vmRunSerialBridgeEnable = true;
+      vmRunSerialBridgeAutoScreen = true;
+      vmRunNestedVirt = true;
+    };
+  };
+}
