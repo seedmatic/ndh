@@ -360,7 +360,7 @@ let
       # - For zstd level 1, we model a 0.5 factor (2:1 compression).
       # - Future per-filesystem factors may override rootFsCompressionFactor,
       #   but should default to zstdCompressionFactor.
-      uncompressedDiskSizeGiB = hostProfile.nixosDiskImageSizeGiB or 16;
+      uncompressedDiskSizeGiB = hostProfile.nixosDiskImageSizeGiB or 12;
       selectedZstdCompressionLevel = hostProfile.nixosZstdCompressionLevel or 1;
       zstdCompressionFactor = if selectedZstdCompressionLevel == 1 then 0.5 else 1.0;
       rootFsCompressionFactor = hostProfile.nixosRootFsCompressionFactor or zstdCompressionFactor;
@@ -562,6 +562,8 @@ let
           vmCpuCores = diskImageVmCpuCores;
           includeChannel = false;
           inherit name;
+          # Pass pre-computed disko config to avoid a second evaluation of zfs-disko-config.nix.
+          inherit diskoConfiguration;
         };
 
       diskImageBringupSystemdBootRaw = mkBringupRawImage {
@@ -637,7 +639,8 @@ let
         inherit hostProfile;
         diskImageSize = "${toString zpoolVdevDiskSizeMiB}M";
         espSizeMiB = efiSystemPartitionSizeMiB;
-        zfsStartMiB = 1 + efiSystemPartitionSizeMiB;
+        # espStart(1) + espSize + 1 MiB alignment gap — matches bringup-zfs-disk-image.nix.
+        zfsStartMiB = 2 + efiSystemPartitionSizeMiB;
       };
 
     in

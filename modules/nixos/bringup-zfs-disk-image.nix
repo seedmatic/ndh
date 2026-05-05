@@ -22,6 +22,9 @@
   # When false, the nested QEMU guest has no network at all.
   nestedQemuNetworkEnable ? true,
   postVM ? "",
+  # Pre-computed disko configuration attrset — when provided, used directly to
+  # generate the disko config file instead of re-evaluating zfs-disko-config.nix.
+  diskoConfiguration ? null,
 }:
 let
   zfsPoolDiskMap = import ./zfs-pool-disk-map.nix;
@@ -125,28 +128,36 @@ let
     ++ initrdEmergencyPackages
   );
 
-  diskoConfigFile = pkgs.writeText "bringup-zfs-disko.nix" ''
-    { lib, ... }:
-    let
-      cfg = import ${./zfs-disko-config.nix} {
-        inherit lib;
-        zfsPoolDiskMap = builtins.fromJSON (builtins.readFile ${zfsPoolDiskMapJsonFile});
-        installRootMountPoint = "/mnt/zfs-root";
-        diskImageSize = "${toString zpoolDiskSize}M";
-        bootDiskImageSize = "${toString bootDiskSize}M";
-        espStartMiB = ${toString espStartMiB};
-        espSizeMiB = ${toString espSizeMiB};
-        zfsStartMiB = ${toString zfsStartMiB};
-        disks = {
-          boot = "/dev/vda";
-          ${diskoDisksAttrLines}
-        };
-      };
-    in
-    {
-      disko.devices = cfg.devices;
-    }
-  '';
+  diskoConfigFile =
+    if diskoConfiguration != null then
+      # Serialize the pre-computed config into a disko NixOS module file.
+      # Avoids a second evaluation of zfs-disko-config.nix with identical args.
+      pkgs.writeText "bringup-zfs-disko.nix" (
+        "{ lib, ... }:\n" + lib.generators.toPretty { } { disko.devices = diskoConfiguration.devices; }
+      )
+    else
+      pkgs.writeText "bringup-zfs-disko.nix" ''
+        { lib, ... }:
+        let
+          cfg = import ${./zfs-disko-config.nix} {
+            inherit lib;
+            zfsPoolDiskMap = builtins.fromJSON (builtins.readFile ${zfsPoolDiskMapJsonFile});
+            installRootMountPoint = "/mnt/zfs-root";
+            diskImageSize = "${toString zpoolDiskSize}M";
+            bootDiskImageSize = "${toString bootDiskSize}M";
+            espStartMiB = ${toString espStartMiB};
+            espSizeMiB = ${toString espSizeMiB};
+            zfsStartMiB = ${toString zfsStartMiB};
+            disks = {
+              boot = "/dev/vda";
+              ${diskoDisksAttrLines}
+            };
+          };
+        in
+        {
+          disko.devices = cfg.devices;
+        }
+      '';
 
   diskoFormatScript = pkgs.callPackage "${pkgs.disko}/share/disko/cli.nix" {
     inherit lib;
