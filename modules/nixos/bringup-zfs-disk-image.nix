@@ -40,7 +40,7 @@ let
   );
   qemuAdditionalDriveOpts = lib.concatStringsSep " " (
     map
-      (entry: "-drive file=${entry.disk}DiskImage,if=virtio,format=raw,cache=unsafe,werror=report")
+      (entry: "-drive file=${entry.disk}DiskImage,if=virtio,format=raw,cache=unsafe,aio=io_uring,werror=report")
       zfsPoolDiskMap
   );
   preVmDiskImageVars = lib.concatStringsSep "\n          " (
@@ -212,7 +212,7 @@ in
     pkgs.runCommand name
       {
         QEMU_OPTS = lib.concatStringsSep " " [
-          "-drive file=$bootDiskImage,if=virtio,format=raw,cache=unsafe,werror=report"
+          "-drive file=$bootDiskImage,if=virtio,format=raw,cache=unsafe,aio=io_uring,werror=report"
           qemuAdditionalDriveOpts
           nestedQemuNetOpts
         ];
@@ -224,18 +224,30 @@ in
           PATH="$PATH:${pkgs.qemu_kvm}/bin"
           mkdir "$out"
 
-          QEMU_OPTS="$QEMU_OPTS -device virtio-serial -chardev socket,id=shell-sock,path=$PWD/shell.sock,server=on,wait=off -device virtconsole,chardev=shell-sock,name=shell"
 
-          echo >&2 "[bringup] debug shell ready once QEMU starts:"
-          echo >&2 "[bringup]   sudo socat UNIX-CONNECT:$PWD/shell.sock -,raw,echo=0,escape=0x1d"
-          echo >&2 "[bringup] first command after connecting: resize"
-          echo >&2 "[bringup] tools: iostat -x 1 | mpstat -P ALL 1 | htop | zpool iostat -v 1 | strace -p <pid>"
+          : 'Connect to debug shell (Ctrl+] to disconnect):'
+          : '  sudo socat UNIX-CONNECT:/proc/$(pgrep --newest qemu)/shell.sock -,raw,echo=0,escape=0x1d'
+          :
+          : 'First thing after connecting — fix terminal size:'
+          : '  resize'
+          :
+          : 'Perf / debug tools available in the shell:'
+          : '  iostat -x 1              — per-disk utilisation, await, queue depth'
+          : '  mpstat -P ALL 1          — per-CPU breakdown'
+          : '  pidstat -d 1             — per-process I/O rates'
+          : '  iotop-c                  — live top-style I/O monitor'
+          : '  htop                     — CPU/mem/process overview'
+          : '  vmstat 1                 — memory pressure + block I/O summary'
+          : '  zpool iostat -v 1        — ZFS pool throughput'
+          : '  lsof                     — open files, sockets, ZFS handles'
+          : '  strace -p <pid>          — syscall trace on any process'
+
+          QEMU_OPTS="$QEMU_OPTS -device virtio-serial -chardev socket,id=shell-sock,path=$PWD/shell.sock,server=on,wait=off -device virtconsole,chardev=shell-sock,name=shell"
 
           source ${bringupCommonScript}
 
           bootDiskImage=boot.raw
           ${preVmDiskImageVars}
-
           bringup::create_raw_disk "$bootDiskImage" ${toString bootDiskSize}
           ${preVmCreateRawDisks}
         '';

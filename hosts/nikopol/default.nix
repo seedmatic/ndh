@@ -8,9 +8,9 @@ let
     form = "vm";
     nixosBootLoader = "systemd-boot";
     nixosBootstrapDebug = false;
-    nixosDiskImageVmMemSizeMiB = halfRamMiB;
     # raidz1 usable = 2 × vdev: 12 GiB → vdev = 6144 MiB → zpoolVdevDiskSizeMiB = 6658M
     nixosDiskImageSizeGiB = 12;
+    # nixos-install inside nested QEMU only uses ~3.5 GiB RSS; default 8 GiB is sufficient.
   };
 
   darwinProfile = {
