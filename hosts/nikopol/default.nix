@@ -8,6 +8,8 @@ let
     form = "vm";
     nixosBootLoader = "systemd-boot";
     nixosBootstrapDebug = false;
+    nixosDiskImageVmCpuCores = 6; # 6 vCPUs for nested QEMU (nerd-nixos has 8 total)
+    nixosDiskImageVmMemSizeMiB = 12288; # 12 GB for nested QEMU (nerd-nixos has 32 GB)
   };
 
   darwinProfile = {
