@@ -1072,19 +1072,9 @@
               hostNixosConfigurations = hostOutputs.${hostName}.nixosConfigurations;
             in
             {
-              lima = {
-                bringupZfs = hostNixosConfigurations."${mainName}-nixos-lima-bringup-systemd-zfs";
-                runtime = hostNixosConfigurations."${mainName}-nixos-lima";
-              };
-              tart = {
-                bringupZfs = hostNixosConfigurations."${mainName}-nixos-tart-bringup-systemd-zfs";
-                bringupZfsGrub = hostNixosConfigurations."${mainName}-nixos-tart-bringup-grub-zfs";
-                runtime = hostNixosConfigurations."${mainName}-nixos-tart";
-              };
-              selected = {
-                bringupZfs = hostNixosConfigurations."${mainName}-nixos-tart-bringup-systemd-zfs";
-                runtime = hostNixosConfigurations."${mainName}-nixos";
-              };
+              lima.system = hostNixosConfigurations."${mainName}-nixos-lima";
+              tart.system = hostNixosConfigurations."${mainName}-nixos-tart";
+              selected.system = hostNixosConfigurations."${mainName}-nixos";
             };
 
           vmAliasesByHost = forAllHosts mkVmHostAliases;

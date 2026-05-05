@@ -145,21 +145,11 @@ let
         nixosBringupRootFs = "zfs";
       };
 
-      bringupSystemdZfsHostProfileBase = bringupSystemdHostProfileBase;
-
-      bringupGrubZfsHostProfileBase = bringupGrubHostProfileBase;
-
       runtimeSystemdHostProfile = hostProfile // {
         nixosBootLoader = "systemd-boot";
       };
 
       selectedVmProvider = hostProfile.vmProvider or "tart";
-
-      bringupGrubHostProfileBase = hostProfile // {
-        nixosBootLoader = "grub";
-        nixosBringupRootFs = "zfs";
-      };
-
 
       limaBringupSystemdZfs = mkNixosConfig {
         inherit
@@ -168,7 +158,7 @@ let
           inventory
           ;
         generationMode = "bringup";
-        hostProfile = bringupSystemdZfsHostProfileBase;
+        hostProfile = bringupSystemdHostProfileBase;
         zfsOverlays = true;
         vmProvider = "lima";
         # Thread production system closure so zfs-nixos-install can use prebuilt path.
@@ -182,36 +172,10 @@ let
           inventory
           ;
         generationMode = "bringup";
-        hostProfile = bringupSystemdZfsHostProfileBase;
+        hostProfile = bringupSystemdHostProfileBase;
         zfsOverlays = true;
         vmProvider = "tart";
         runtimeSystemPath = selectedRuntime.config.system.build.toplevel;
-      };
-
-      limaBringupGrubZfs = mkNixosConfig {
-        inherit
-          profileModule
-          catalog
-          inventory
-          ;
-        generationMode = "bringup";
-        hostProfile = bringupGrubZfsHostProfileBase;
-        # ZFS bringup path: enable ZFS-backed filesystem definitions/boot integration.
-        zfsOverlays = true;
-        vmProvider = "lima";
-      };
-
-      tartBringupGrubZfs = mkNixosConfig {
-        inherit
-          profileModule
-          catalog
-          inventory
-          ;
-        generationMode = "bringup";
-        hostProfile = bringupGrubZfsHostProfileBase;
-        # ZFS bringup path: enable ZFS-backed filesystem definitions/boot integration.
-        zfsOverlays = true;
-        vmProvider = "tart";
       };
 
       zfsRuntimeLima = mkNixosConfig {
@@ -241,14 +205,6 @@ let
       };
 
       selectedRuntime = if selectedVmProvider == "tart" then zfsRuntimeTart else zfsRuntimeLima;
-
-      runtimeImageModules = mkImageModulesFor {
-        hp = runtimeSystemdHostProfile;
-        generationMode = "full";
-      };
-      runtimeImageSpecialArgs =
-        mkImageSpecialArgsFor runtimeSystemdHostProfile "full"
-          runtimeImageModules;
 
       # Canonical raw build image size policy.
       # - `uncompressedDiskSizeGiB` is the baseline required without compression.
@@ -474,12 +430,8 @@ let
       inherit diskSizeMiB;
       inherit diskoConfiguration;
       nixosConfigurations = {
-        "${mainName}-nixos-lima-bringup-systemd-zfs" = limaBringupSystemdZfs;
-        "${mainName}-nixos-tart-bringup-systemd-zfs" = tartBringupSystemdZfs;
-        "${mainName}-nixos-lima-bringup-grub-zfs" = limaBringupGrubZfs;
-        "${mainName}-nixos-tart-bringup-grub-zfs" = tartBringupGrubZfs;
-        "${mainName}-nixos-lima" = zfsRuntimeLima;
-        "${mainName}-nixos-tart" = zfsRuntimeTart;
+        "${mainName}-nixos-lima" = limaBringupSystemdZfs;
+        "${mainName}-nixos-tart" = tartBringupSystemdZfs;
         "${mainName}-nixos" = selectedRuntime;
       };
       inherit
