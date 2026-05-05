@@ -649,9 +649,13 @@
       # Disable flake checks to avoid treefmt-nix API mismatch during evaluation
       checks = forAllSystems (_: { });
 
-      diskoConfigurations = {
-        default = import ./modules/nixos/zfs-disko-config.nix { lib = nixpkgs.lib; };
-      };
+      diskoConfigurations =
+        {
+          default = import ./modules/nixos/zfs-disko-config.nix { lib = nixpkgs.lib; };
+        }
+        // builtins.foldl' (
+          acc: hostOutput: acc // hostOutput.diskoConfigurations
+        ) { } (builtins.attrValues hostOutputs);
 
       diskoModules = {
         default = ./modules/nixos/disko.nix;
@@ -855,6 +859,7 @@
           nixosDiskSizeHint = nixosOutputs.diskSizeHint;
           nixosDiskSizeMiB = nixosOutputs.diskSizeMiB;
           nixosDiskSizeGiB = nixosOutputs.diskSizeGiB;
+          nixosDiskoConfiguration = nixosOutputs.diskoConfiguration;
           mkHomeManagerConfig =
             profile:
             let
@@ -1022,6 +1027,9 @@
             homeManagerConfigurations
             ;
           homeManagerConfiguration = homeManagerConfigurations.committed;
+          diskoConfigurations = {
+            "${mainName}-nixos" = nixosDiskoConfiguration;
+          };
           pkgs = {
             darwin = pkgsForDarwin;
             linux = pkgsForLinux;

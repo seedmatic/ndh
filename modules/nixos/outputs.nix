@@ -629,11 +629,22 @@ let
         source = diskImageFullRaw;
       };
 
+      # Per-host disko configuration with computed disk sizes.
+      # Exposed as diskoConfigurations."${mainName}-nixos" in the flake.
+      diskoConfiguration = import ./zfs-disko-config.nix {
+        lib = nixpkgs.lib;
+        inherit hostProfile;
+        diskImageSize = "${toString zpoolVdevDiskSizeMiB}M";
+        espSizeMiB = efiSystemPartitionSizeMiB;
+        zfsStartMiB = 1 + efiSystemPartitionSizeMiB;
+      };
+
     in
     {
       inherit diskSizeHint;
       inherit diskSizeGiB;
       inherit diskSizeMiB;
+      inherit diskoConfiguration;
       nixosConfigurations = {
         "${mainName}-nixos-lima-bringup-systemd-${bringupRootFsName}" = limaBringupSystemd;
         "${mainName}-nixos-tart-bringup-systemd-${bringupRootFsName}" = tartBringupSystemd;
