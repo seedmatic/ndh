@@ -1,8 +1,5 @@
 let
-  hardware = {
-    ramGiB = 48; # Apple M4 Pro, 48 GB unified memory
-    cpuCores = 14; # 10 performance + 4 efficiency
-  };
+  hardware = import ./hardware.nix;
 
   halfRamMiB = hardware.ramGiB * 512; # half of physical RAM in MiB
 
@@ -12,122 +9,18 @@ let
     nixosBootLoader = "systemd-boot";
     nixosBootstrapDebug = false;
     nixosDiskImageVmMemSizeMiB = halfRamMiB;
+    # raidz1 usable = 2 × vdev: 12 GiB → vdev = 6144 MiB → zpoolVdevDiskSizeMiB = 6658M
+    nixosDiskImageSizeGiB = 12;
   };
 
   darwinProfile = {
-    knownNetworkServices = [
-      "Wi-Fi"
-      "Thunderbolt Ethernet"
-    ];
+    knownNetworkServices = hardware.knownNetworkServices;
     wallpaperImage = ./assets.d/Scavengers-Reign.jpg;
   };
 
-  profileModule =
-    {
-      lib,
-      config,
-      ...
-    }:
-    {
-      imports = [
-        (import ../host-common.nix {
-          inherit hostProfile darwinProfile;
-          headscaleServerUrl = "http://192.168.1.193:8080";
-        })
-      ];
-      config = {
-
-        # Explicitly select committed profile for full Home Manager environment
-        # on the Darwin VM host.
-        profile.name = lib.mkForce "committed";
-
-        # Keep experiment/bootstrap mode until boot/login validation is complete.
-        # This avoids stage-2 panic when /etc/sops/age/keys.txt is not yet provisioned.
-        ndh.sopsAgeKeyBootstrap.phase = "bootstrap";
-        ndh.sopsAgeKeyBootstrap.nixosHostKeyImport.candidates = [
-          # Preferred: key delivered via Tart host share.
-          "/mnt/tart-cidata/sops.d/age/keys.txt"
-          # Host-mounted fallback: ~/Private/sops:age:keys.txt on Darwin host.
-          "/Users/nxmatic/.config/sops/age/keys.txt"
-        ];
-
-        # Safety valve while exercising fresh SSH/runtime-secret changes.
-        opensshPolicy.passwordAuthentication = true;
-
-        nix.settings = {
-          trusted-users = [
-            "root"
-            "nxmatic"
-          ];
-        };
-      };
-    };
-
-  darwinModule =
-    { lib, ... }:
-    {
-      config = {
-        # Keep Darwin user home aligned with vm-mounted persistent volume.
-        profile.user.home = lib.mkForce (builtins.toPath "/Volumes/user-home");
-
-        # Keep /net autofs explicit for Lima disk-image path prerequisites.
-        services.nfsDarwin = {
-          enable = true;
-          autofs.enable = true;
-          autofs.mountPoint = "/net";
-          autofs.installMaterializerPackage = true;
-        };
-
-        services.nxmaticCachixWatchStore = {
-          enable = true;
-          sopsEncryptedTokenFile = ../../.secrets;
-        };
-
-        networking.vlan = {
-          enable = true;
-          id = 2;
-          addressPrefix = "192.168.2";
-          parentInterface = "en0";
-        };
-
-        lima.configGenerator = {
-          installMaterializerPackage = false;
-        };
-
-        tart.configGenerator = {
-          forceEnable = false;
-          installMaterializerPackage = false;
-          vmMemoryMiB = halfRamMiB;
-        };
-      };
-    };
-
-  nixosModule =
-    {
-      config,
-      lib,
-      ndh,
-      ...
-    }:
-    let
-      ndhContext = ndh.context;
-      hostProfile = ndhContext.hostProfile;
-      bringupMode = ndhContext.generationMode == "bringup";
-    in
-    {
-      config = {
-        profile.user.home = lib.mkForce "/home/${config.profile.user.name}";
-      }
-      // (lib.optionalAttrs (!bringupMode) {
-        networking.vlan = {
-          enable = true;
-          id = 2;
-          addressPrefix = "192.168.2";
-          parentInterface = "vmlan0";
-          addressSourceInterface = "lan-br";
-        };
-      });
-    };
+  profileModule = import ./profile.nix { inherit hostProfile darwinProfile; };
+  darwinModule = import ./darwin.nix { inherit halfRamMiB; };
+  nixosModule = import ./nixos.nix;
 in
 {
   inherit hostProfile profileModule;
