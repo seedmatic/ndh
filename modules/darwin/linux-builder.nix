@@ -68,9 +68,9 @@ let
   requestedLinuxBuilderVmCpuCores =
     if selected != null then (selected.builder.vmCpuCores or 8) else 8;
   effectiveLinuxBuilderVmCpuCores = lib.min requestedLinuxBuilderVmCpuCores 8;
-  # Lima nerd-nixos SSH port configured via lima.configGenerator.sshLocalPort
+  # Lima nerd-nixos SSH port configured via lima.configGenerator.sshLocalPort (kept for reference)
   nerdNixosSshPort = config.lima.configGenerator.sshLocalPort or 0;
-  nerdNixosBuilderEnabled = selectedLimaBuilder != null && nerdNixosSshPort != 0;
+  nerdNixosBuilderEnabled = selectedLimaBuilder != null;
   # Key path shared by both embedded linux-builder (as fallback) and nerd-nixos builder
   builderKeyDir = "/etc/nix";
   builderKeyPath = "${builderKeyDir}/builder_ed25519";
@@ -208,16 +208,16 @@ in
     # SSH keys are managed by the home-manager ssh-keys.nix module
     # Keys are deployed to canonical split runtime paths via sshPaths (system/public + per-user/private)
 
-    # nerd-nixos Lima VM remote builder (when sshLocalPort is set)
+    # nerd-nixos remote builder — connects directly over LAN
     nix.distributedBuilds = lib.mkIf nerdNixosBuilderEnabled true;
 
     nix.buildMachines = lib.optionals nerdNixosBuilderEnabled [
       {
-        hostName = "nerd-nixos-builder";
+        hostName = "bioskop-nixos.lan";
         systems = selectedLimaBuilder.builder.systems or [ "aarch64-linux" ];
         maxJobs = selectedLimaBuilder.builder.maxJobs or 8;
         protocol = "ssh-ng";
-        sshUser = "builder";
+        sshUser = "nxmatic";
         sshKey = builderKeyPath;
         supportedFeatures = [
           "nixos-test"
@@ -225,19 +225,18 @@ in
           "big-parallel"
           "kvm"
         ];
-        speedFactor = 4; # Prefer nerd-nixos over embedded linux-builder
+        speedFactor = 2;
       }
     ];
 
-    # System SSH config so the nix daemon can reach nerd-nixos on the fixed Lima port
+    # SSH config so the nix daemon can reach bioskop-nixos directly over LAN
     environment.etc."ssh/ssh_config.d/70-nerd-nixos-builder.conf" = lib.mkIf nerdNixosBuilderEnabled {
       text = ''
-        Host nerd-nixos-builder
-          HostName 127.0.0.1
-          Port ${toString nerdNixosSshPort}
-          User builder
+        Host bioskop-nixos.lan
+          User nxmatic
           IdentityFile ${builderKeyPath}
           IdentitiesOnly yes
+          AddKeysToAgent yes
           StrictHostKeyChecking no
           UserKnownHostsFile /dev/null
           LogLevel QUIET
