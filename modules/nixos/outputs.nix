@@ -381,12 +381,13 @@ let
       diskImageVmCpuCores = hostProfile.nixosDiskImageVmCpuCores or 4;
       zfsBringupPoolDiskSizeMiB = hostProfile.nixosZfsBringupPoolDiskSizeMiB or 12288;
       # ZFS vdev disk size for the bringup QEMU build VM.
-      # Derived from uncompressedDiskSizeGiB (no compression factor — ZFS handles
-      # compression internally per-dataset). Accounts for raidz1 overhead (3 disks,
-      # 1 parity: usable = 2 × zfs_partition_size) and per-disk EFI/GPT overhead
-      # (espStart=1 MiB + efiSystemPartitionSizeMiB + 1 MiB GPT backup = +2 beyond EFI).
+      # Applies rootFsCompressionFactor so physical disk images reflect compressed
+      # on-disk size (e.g. zstd level 1 ≈ 0.5 factor → 2:1 compression).
+      # raidz1 usable = 2 × zpoolVdevPartitionSizeMiB (3 disks, 1 parity).
+      # Accounts for per-disk EFI/GPT overhead:
+      # espStart=1 MiB + efiSystemPartitionSizeMiB + 1 MiB GPT backup = +2 beyond EFI.
       zpoolVdevDiskSizeMiB = hostProfile.nixosZpoolVdevDiskSizeMiB or (
-        builtins.ceil (uncompressedDiskSizeGiB * 512.0) + efiSystemPartitionSizeMiB + 2
+        builtins.ceil (uncompressedDiskSizeGiB * rootFsCompressionFactor * 512.0) + efiSystemPartitionSizeMiB + 2
       );
       # Bringup closure paths used for stage-1/2 bringup sizing checks.
       bringupRootFsType = selectedBringupRootFs;
