@@ -13,7 +13,7 @@
   disks ? {
     # boot: dedicated EFI boot disk (vda). ZFS data disks start at vdb.
     # This keeps all tank disks uniform — no dual boot+data role on tank1.
-    nixos = "/dev/vda";
+    boot = "/dev/vda";
     tank1 = "/dev/vdb";
     tank2 = "/dev/vdc";
     tank3 = "/dev/vdd";
@@ -124,8 +124,8 @@ let
       disk =
         zfsPoolDisks
         # Include dedicated boot disk only when provided in disks attrset.
-        // lib.optionalAttrs (disks ? nixos) {
-          nixos = mkBootDisk { device = disks.nixos; };
+        // lib.optionalAttrs (disks ? boot) {
+          boot = mkBootDisk { device = disks.boot; };
         };
 
       zpool = {

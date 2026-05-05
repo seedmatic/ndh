@@ -138,7 +138,7 @@ let
         espSizeMiB = ${toString espSizeMiB};
         zfsStartMiB = ${toString zfsStartMiB};
         disks = {
-          nixos = "/dev/vda";
+          boot = "/dev/vda";
           ${diskoDisksAttrLines}
         };
       };
