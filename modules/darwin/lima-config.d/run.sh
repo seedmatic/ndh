@@ -24,7 +24,6 @@ RESOLVED_DISK_IMAGE_STORE_PATH=""
 
 # Allow overriding the flake reference fully while keeping canonical defaults.
 NIXOS_FLAKE_REF="${NIXOS_FLAKE_REF:-${NIXOS_FLAKE_PATH}#${NIXOS_HOST_ATTR}}"
-NIXOS_BRINGUP_ROOT_FS="${NIXOS_BRINGUP_ROOT_FS:-btrfs}"
 NIXOS_EXT4_FLAKE_REF="${NIXOS_EXT4_FLAKE_REF:-}"
 NIXOS_ZFS_FLAKE_REF="${NIXOS_ZFS_FLAKE_REF:-}"
 NDH_NIX_CLI_ARGS="${NDH_NIX_CLI_ARGS:--L -v -v}"
@@ -40,9 +39,6 @@ nixos:flake:refs:resolve() {
     host_name="${host_attr}"
   fi
 
-  if [[ -z "${NIXOS_EXT4_FLAKE_REF}" ]]; then
-    NIXOS_EXT4_FLAKE_REF="${flake_base}#${host_name}-nixos-lima-bringup-systemd-${NIXOS_BRINGUP_ROOT_FS}"
-  fi
 
   if [[ -z "${NIXOS_ZFS_FLAKE_REF}" ]]; then
     NIXOS_ZFS_FLAKE_REF="${flake_base}#${host_name}-nixos-tart-bringup-systemd-zfs"
@@ -436,10 +432,7 @@ Environment overrides:
   NIXOS_FLAKE_PATH=<path>           (default: @nixosFlakePath@)
   NIXOS_HOST_ATTR=<attr>            (default: @nixosHostAttr@)
   NIXOS_FLAKE_REF=<flake#attr>      (overrides path+attr composition)
-  NIXOS_EXT4_FLAKE_REF=<flake#attr> (default: <NIXOS_FLAKE_REF base>#<NIXOS_HOST_ATTR%-nixos>-nixos-lima-bringup-systemd-
-                                     \\${NIXOS_BRINGUP_ROOT_FS}, default btrfs)
   NIXOS_ZFS_FLAKE_REF=<flake#attr>  (default: <NIXOS_FLAKE_REF base>#<NIXOS_HOST_ATTR%-nixos>-nixos-tart-bringup-systemd-zfs)
-  NIXOS_BRINGUP_ROOT_FS=<fs>        (default: btrfs)
   NIXOS_REMOTE_HOST=<user>          (default: root)
 EOF
 }

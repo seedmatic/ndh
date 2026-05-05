@@ -74,14 +74,9 @@ in
                   example = "vm";
                 };
                 nixosBringupRootFs = lib.mkOption {
-                  type = lib.types.enum [
-                    "ext4"
-                    "btrfs"
-                    "zfs"
-                  ];
-                  default = ndhContext.hostProfile.nixosBringupRootFs or "btrfs";
+                  type = lib.types.enum [ "zfs" ];
+                  default = "zfs";
                   description = "Filesystem type for NixOS bringup root disk image generation.";
-                  example = "ext4";
                 };
               };
             };

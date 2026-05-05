@@ -12,7 +12,6 @@ let
   kernelModules = [
     "nfs"
     "ext4"
-    "btrfs"
     "overlay"
     "isofs"
     "sunrpc"
@@ -38,7 +37,6 @@ let
   ];
   supportedFilesystems = [
     "ext4"
-    "btrfs"
     "overlay"
     "iso9660"
     "nfs"

@@ -723,13 +723,10 @@
             let
               hostSpec = hostCatalog.${hostName};
               mainName = hostMainNameForProfile hostSpec.hostProfile;
-              bringupRootFsName = hostSpec.hostProfile.nixosBringupRootFs or "btrfs";
               hostOutput = hostOutputs.${hostName};
             in
             acc
             // {
-              "nixos-${mainName}-bringup-${bringupRootFsName}-systemd-disk" =
-                hostOutput.nixosDiskImageBringupSystemd;
               "nixos-${mainName}-bringup-zfs-systemd-disk" = hostOutput.nixosDiskImageBringupSystemdZfs;
             }
           ) { } (builtins.attrNames hostCatalog)
@@ -1072,22 +1069,20 @@
             hostName: hostSpec:
             let
               mainName = hostMainNameForProfile hostSpec.hostProfile;
-              bringupRootFsName = hostSpec.hostProfile.nixosBringupRootFs or "btrfs";
               hostNixosConfigurations = hostOutputs.${hostName}.nixosConfigurations;
             in
             {
               lima = {
-                bringup = hostNixosConfigurations."${mainName}-nixos-lima-bringup-systemd-${bringupRootFsName}";
+                bringupZfs = hostNixosConfigurations."${mainName}-nixos-lima-bringup-systemd-zfs";
                 runtime = hostNixosConfigurations."${mainName}-nixos-lima";
               };
               tart = {
-                bringup = hostNixosConfigurations."${mainName}-nixos-tart-bringup-systemd-${bringupRootFsName}";
                 bringupZfs = hostNixosConfigurations."${mainName}-nixos-tart-bringup-systemd-zfs";
                 bringupZfsGrub = hostNixosConfigurations."${mainName}-nixos-tart-bringup-grub-zfs";
                 runtime = hostNixosConfigurations."${mainName}-nixos-tart";
               };
               selected = {
-                bringup = hostNixosConfigurations."${mainName}-nixos-lima-bringup-systemd-${bringupRootFsName}";
+                bringupZfs = hostNixosConfigurations."${mainName}-nixos-tart-bringup-systemd-zfs";
                 runtime = hostNixosConfigurations."${mainName}-nixos";
               };
             };
@@ -1105,12 +1100,7 @@
       ) hostOutputs;
 
       nixosDiskImages = builtins.mapAttrs (_: hostOutput: {
-        full = hostOutput.nixosDiskImage;
-        bringup = {
-          btrfsSystemd = hostOutput.nixosDiskImageBringupSystemd;
-          btrfsGrub = hostOutput.nixosDiskImageBringupGrub;
-          zfsSystemd = hostOutput.nixosDiskImageBringupSystemdZfs;
-        };
+        bringup.zfsSystemd = hostOutput.nixosDiskImageBringupSystemdZfs;
       }) hostOutputs;
 
       # Overlay factories (curried: inputs: final: prev:) — used internally via overlayFactories.
