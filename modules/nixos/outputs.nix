@@ -379,7 +379,7 @@ let
       # (ZFS writes), not CPU-bound. 2 vCPUs reduces TCG overhead vs 6 while still
       # allowing nix-store and the install to interleave. Overridable per host.
       diskImageVmCpuCores = hostProfile.nixosDiskImageVmCpuCores or 4;
-      zfsBootstrapPoolDiskSizeMiB = hostProfile.nixosZfsBootstrapPoolDiskSizeMiB or 2048;
+      zfsBringupPoolDiskSizeMiB = hostProfile.nixosZfsBringupPoolDiskSizeMiB or 12288;
       # ZFS vdev disk size for the bringup QEMU build VM.
       # Derived from uncompressedDiskSizeGiB (no compression factor — ZFS handles
       # compression internally per-dataset). Accounts for raidz1 overhead (3 disks,
@@ -414,6 +414,7 @@ let
           bringupSystemdBoot = diskSizeMiB;
           bringupGrub = diskSizeMiB;
           zpoolVdevDisk = zpoolVdevDiskSizeMiB;
+          zfsBringupPool = zfsBringupPoolDiskSizeMiB;
         };
         diskImageVmResources = {
           memSizeMiB = diskImageVmMemSizeMiB;

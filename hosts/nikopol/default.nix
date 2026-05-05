@@ -11,11 +11,7 @@ let
     form = "vm";
     nixosBootLoader = "systemd-boot";
     nixosBootstrapDebug = false;
-    nixosBringupRootFs = "btrfs";
     nixosDiskImageVmMemSizeMiB = halfRamMiB;
-
-    # Enlarge per-disk ZFS bringup pool members to evaluate occupancy with full runtime image install.
-    nixosZfsBootstrapPoolDiskSizeMiB = 8192;
   };
 
   darwinProfile = {
