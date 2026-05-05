@@ -201,6 +201,22 @@ let
                 primarycache = "metadata";
               };
             };
+            "nerd/nix/builds" = {
+              type = "zfs_fs";
+              mountpoint = "/nix/var/nix/builds";
+              options = {
+                # Build dirs hold large sparse raw QEMU disk images (3-4G per vdev).
+                # 1M recordsize aligns with QEMU virtio-blk sequential write patterns.
+                # compression=off: guest ZFS already compresses; double-zstd is pure waste.
+                # sync=disabled: build dirs are ephemeral — losing them on crash is fine.
+                # primarycache=none: these files are never re-read; keep ARC free.
+                recordsize = "1M";
+                compression = "off";
+                sync = "disabled";
+                primarycache = "none";
+                "nixos:mount-overlay" = "false";
+              };
+            };
             "nerd/var" = {
               type = "zfs_fs";
             };

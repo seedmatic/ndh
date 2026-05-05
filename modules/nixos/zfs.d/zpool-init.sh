@@ -139,6 +139,7 @@ zpool:zfs:reconcile_nerd_mountpoints() {
 	done <<'EOF'
 tank/nerd/root /
 tank/nerd/nix /nix
+tank/nerd/nix/builds /nix/var/nix/builds
 tank/nerd/var/cache /var/cache
 tank/nerd/var/log /var/log
 tank/nerd/var/lib/buildkit /var/lib/buildkit
