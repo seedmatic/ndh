@@ -180,6 +180,12 @@ VCFG
 }
 
 obs::vector:start() {
+  # If the LaunchAgent Vector is already healthy, reuse it — no lifecycle management needed.
+  if curl -sf "http://127.0.0.1:${OBS_API_PORT}/health" &>/dev/null; then
+    echo "[nix-build-observe][INFO] using persistent LaunchAgent Vector on port ${OBS_API_PORT}" >&2
+    return 0
+  fi
+
   OBS_TMPDIR="$(mktemp -d)"
 
   obs::vector:config > "${OBS_TMPDIR}/vector.yaml"
@@ -230,7 +236,7 @@ obs::stop() {
   [[ -n "${OBS_SAMPLER_PID:-}" ]] && kill "${OBS_SAMPLER_PID}" 2>/dev/null || true
   obs::vector:send "$(vz::phase "vz-build-done")" || true
 
-  # Kill Vector and wait for it to flush+exit.
+  # Only kill Vector if we started it ourselves (LaunchAgent instances are left running).
   [[ -n "${OBS_VECTOR_PID:-}" ]] && kill "${OBS_VECTOR_PID}" 2>/dev/null || true
   [[ -n "${OBS_VECTOR_PID:-}" ]] && wait "${OBS_VECTOR_PID}" 2>/dev/null || true
   [[ -n "${OBS_TMPDIR:-}" ]]     && rm -rf "${OBS_TMPDIR}" || true
@@ -267,11 +273,11 @@ obs::build:run() {
 OBS_ATTR="$(obs::attr:parse "$@")"
 OBS_SAFE_ATTR="${OBS_ATTR//[^a-zA-Z0-9._-]/_}"
 OBS_HOST="${OBS_ATTR##*.}"                         # last component: bioskop
-OBS_SESSION="$(date -u +%Y%m%dT%H%M%SZ)-$$"
+OBS_SESSION="$(date -u +%Y%m%dT%H%M%SZ)-$$-${OBS_SAFE_ATTR}"
 OBS_DIR="${NDH_BUILD_OBSERVE_DIR:-.local.d}"
 mkdir -p "${OBS_DIR}"
 OBS_DIR="$(cd "${OBS_DIR}" && pwd -P)"
-OBS_OUT_FILE="${OBS_DIR}/${OBS_SESSION}-${OBS_SAFE_ATTR}.ndjson"
+OBS_OUT_FILE="${OBS_DIR}/${OBS_SESSION}.ndjson"    # matches Vector {{ session }}.ndjson
 
 obs::start
 trap 'obs::stop'              EXIT

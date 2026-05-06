@@ -48,5 +48,17 @@ with lib;
         Example for nerd-nixos Lima: "http://192.168.5.2:9001" (vzNAT gateway).
       '';
     };
+
+    outputDir = mkOption {
+      type = types.str;
+      default = "";
+      description = ''
+        Directory where the Vector aggregator writes NDJSON observation files.
+        Each build session gets its own file named ``<session>.ndjson`` via
+        Vector path templating on the ``session`` event field.
+        Empty string means the default ``~/.local/share/nix-build-observe`` is used
+        (resolved at module evaluation time from `profile.user.home` on Darwin).
+      '';
+    };
   };
 }
