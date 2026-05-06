@@ -25,6 +25,20 @@ let
   resolvedOutputDir =
     if cfg.outputDir != "" then cfg.outputDir else "${profileHome}/.local/share/nix-build-observe";
 
+  # The aggregator needs Vector ≥ 0.55 for gRPC API support (vector tap, grpcurl).
+  # Pull it directly from nixpkgs-unstable so the overlay is not needed and Linux
+  # agents can stay on the stable version.
+  vectorPkg =
+    let
+      unstable = import self.inputs.nixpkgs-unstable {
+        system = pkgs.stdenv.hostPlatform.system;
+        config = pkgs.config;
+      };
+    in
+    if lib.versionAtLeast (unstable.vector.version or "0.0.0") "0.55.0"
+    then unstable.vector
+    else pkgs.vector;
+
   vectorConfigLib = import "${self}/modules/.common.d/vector-config.nix" { inherit lib; };
   vectorSettings = vectorConfigLib.mkAggregatorConfig {
     apiPort = cfg.apiPort;
@@ -91,7 +105,7 @@ in
 {
   config = mkIf cfg.enable {
     environment.systemPackages = [
-      pkgs.vector
+      vectorPkg
       nixBuildObservePackage
     ];
 
@@ -105,7 +119,7 @@ in
       serviceConfig = {
         Label = "io.nxmatic.nix-darwin-home-bringup-observe-vector";
         ProgramArguments = [
-          "${pkgs.vector}/bin/vector"
+          "${vectorPkg}/bin/vector"
           "--config-yaml"
           "${vectorConfigFile}"
         ];

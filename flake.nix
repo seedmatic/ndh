@@ -1177,7 +1177,6 @@
         lazygitOverlay = inputs: import ./overlays/lazygit.nix inputs;
         limaOverlay = inputs: import ./overlays/lima.nix inputs;
         tailscaleOverlay = inputs: import ./overlays/tailscale.nix inputs;
-        vectorOverlay = inputs: import ./overlays/vector.nix inputs;
         vmToolsDeterministicOverlay = inputs: import ./overlays/vm-tools-deterministic.nix inputs;
 
         direnvOverlay = _inputs: final: prev: {
