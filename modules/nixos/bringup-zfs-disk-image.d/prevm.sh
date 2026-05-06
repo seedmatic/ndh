@@ -7,7 +7,7 @@
 #   - Boot and ZFS disk images (create new or copy from base)
 #
 # ENVIRONMENT:
-#   NDH_VECTOR_ENDPOINT     — Vector endpoint (default: http://10.0.2.2:9001)
+#   NDH_VECTOR_ENDPOINT     — Vector endpoint (baked in: http://10.0.2.2:9001)
 #   baseImagePath           — If set, copy existing disk images instead of creating new ones
 #   bootDiskImage           — Boot disk filename
 #   preVmDiskImageVars      — Shell assignments for ZFS disk image filenames
@@ -29,7 +29,7 @@ mkdir "$out"
 # ── Vector relay ──────────────────────────────────────────────────────────────
 # Nested QEMU uses SLIRP user-net: 10.0.2.2 = linux-builder, not macOS.
 # Relay: nested QEMU → linux-builder socat → linux-builder Vector agent → macOS aggregator.
-# NDH_VECTOR_ENDPOINT injected via --impure-env; fallback to hardcoded default for testing.
+# Endpoint is topology-fixed; baked in as default (no impure-env needed).
 export NDH_VECTOR_ENDPOINT="${NDH_VECTOR_ENDPOINT:-http://10.0.2.2:9001}"
 
 : 'Connect to debug shell (Ctrl+] to disconnect):'

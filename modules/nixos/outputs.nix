@@ -89,7 +89,7 @@ let
       includeRuntimeClosure ? true,
       # When true, the QEMU build VM pauses after nixos-install completes.
       # Remove /tmp/xchg/pause.lock from the debug shell to resume.
-      # Set NDH_BRINGUP_PAUSE=1 in the environment and pass --impure to nix build.
+      # Set NDH_ZFS_INSTALL_PAUSE=1 in the environment and pass --impure to nix build.
       pauseAfterInstall ? false,
     }:
     let

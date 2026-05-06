@@ -10,7 +10,7 @@
 #
 # USAGE:
 #   nix run .#nix-build-observe -- .#nixosDiskImages.bioskop -L
-#   env NDH_ZFS_INSTALL_OBSERVE=1 NDH_BRINGUP_PAUSE=1 nix run .#nix-build-observe -- .#nixosDiskImages.bioskop -L
+#   env NDH_ZFS_INSTALL_OBSERVE=1 NDH_ZFS_INSTALL_PAUSE=1 nix run .#nix-build-observe -- .#nixosDiskImages.bioskop -L
 #
 # ENVIRONMENT:
 #   NDH_BUILD_OBSERVE_INTERVAL=5    — macOS sample interval in seconds (default: 5)
@@ -19,8 +19,8 @@
 #   NDH_VECTOR_API_PORT=8686        — Vector API/health port (default: 8686)
 #
 # Build environment (passed through to nested builds):
-#   NDH_BRINGUP_PAUSE               — if set, pause at key points in bringup
-#   NDH_ZFS_INSTALL_OBSERVE         — if set, enable detailed ZFS install observation
+#   NDH_ZFS_INSTALL_PAUSE           — if set, pause after ZFS install for inspection
+#   NDH_ZFS_INSTALL_OBSERVE         — if set to 0, disable detailed ZFS install observation (default: 1)
 #
 # OUTPUT:
 #   .local.d/<iso8601>-<attr>.ndjson   — NDJSON stream, one JSON event per line
@@ -43,7 +43,6 @@ OBS_HTTP_PORT="${NDH_VECTOR_HTTP_PORT:-9001}"
 OBS_API_PORT="${NDH_VECTOR_API_PORT:-8686}"
 OBS_VECTOR_PID=""
 OBS_SAMPLER_PID=""
-NDH_VECTOR_ENDPOINT=""
 _OBS_CLEANUP_DONE=0
 
 # ── shared helpers ────────────────────────────────────────────────────────────
@@ -225,13 +224,6 @@ obs::start() {
   obs::vector:start
   obs::vector:send "$(vz::phase "vz-build-start")"
 
-  # Set endpoint for explicit passing to nix build via env prefix below.
-  # Prefer existing NDH_VECTOR_ENDPOINT (set by VM modules to use local agents).
-  # Default to Darwin aggregator via VM gateway if not already set.
-  if [[ -z "${NDH_VECTOR_ENDPOINT:-}" ]]; then
-    NDH_VECTOR_ENDPOINT="http://10.0.2.2:${OBS_HTTP_PORT}"
-  fi
-
   local interval="${NDH_BUILD_OBSERVE_INTERVAL:-5}"
   (
     set +x
@@ -271,8 +263,8 @@ obs::build:run() {
   local -a impure_env_args=()
 
   # Pass through user-controllable environment variables
-  if [[ -n "${NDH_BRINGUP_PAUSE:-}" ]]; then
-    impure_env_args+=(--impure-env "NDH_BRINGUP_PAUSE=${NDH_BRINGUP_PAUSE}")
+  if [[ -n "${NDH_ZFS_INSTALL_PAUSE:-}" ]]; then
+    impure_env_args+=(--impure-env "NDH_ZFS_INSTALL_PAUSE=${NDH_ZFS_INSTALL_PAUSE}")
   fi
   if [[ -n "${NDH_ZFS_INSTALL_OBSERVE:-}" ]]; then
     impure_env_args+=(--impure-env "NDH_ZFS_INSTALL_OBSERVE=${NDH_ZFS_INSTALL_OBSERVE}")
@@ -280,7 +272,6 @@ obs::build:run() {
 
   # Always pass these
   impure_env_args+=(--impure-env NDH_BUILD_OBSERVE=1)
-  impure_env_args+=(--impure-env "NDH_VECTOR_ENDPOINT=${NDH_VECTOR_ENDPOINT}")
 
   nix build \
       --extra-experimental-features "nix-command flakes configurable-impure-env" \

@@ -125,11 +125,11 @@ fi
 zpool status >&2 || true
 
 # ── Post-install inspection pause ────────────────────────────────────────────
-# When @pauseAfterInstall@ is set or NDH_BRINGUP_PAUSE is set, block here until
+# When @pauseAfterInstall@ is set or NDH_ZFS_INSTALL_PAUSE is set, block here until
 # the operator removes the lock file.  Connect to the debug shell and inspect
 # /mnt/zfs-root, then:
 #   rm /tmp/xchg/pause.lock
-if [[ "@pauseAfterInstall@" == "1" ]] || [[ "${NDH_BRINGUP_PAUSE:-}" == "1" ]]; then
+if [[ "@pauseAfterInstall@" == "1" ]] || [[ "${NDH_ZFS_INSTALL_PAUSE:-}" == "1" ]]; then
   lock=/tmp/xchg/pause.lock
   touch "$lock"
   echo '[bringup-zfs] *** PAUSED for inspection ***'

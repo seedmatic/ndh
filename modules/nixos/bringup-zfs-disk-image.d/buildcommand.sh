@@ -11,8 +11,8 @@
 #   NDH_BUILD_OBSERVE                   — Enable build observability
 #   NDH_ZFS_INSTALL_OBSERVE             — Enable ZFS install observability (default: 1)
 #   NDH_ZFS_INSTALL_OBSERVE_INTERVAL    — Sample interval in seconds (default: 5)
-#   NDH_BRINGUP_PAUSE                   — Pause after install for inspection
-#   NDH_VECTOR_ENDPOINT                 — Vector endpoint (default: http://10.0.2.2:9001)
+#   NDH_ZFS_INSTALL_PAUSE               — Pause after ZFS install for inspection
+#   NDH_VECTOR_ENDPOINT                 — Vector endpoint (baked in: http://10.0.2.2:9001)
 #
 # SUBSTITUTIONS (from Nix):
 #   @tools@                 — Path to tools directory
@@ -32,7 +32,7 @@ export PATH=@tools@:$PATH
 export NDH_BUILD_OBSERVE="${NDH_BUILD_OBSERVE:-}"
 export NDH_ZFS_INSTALL_OBSERVE="${NDH_ZFS_INSTALL_OBSERVE:-1}"
 export NDH_ZFS_INSTALL_OBSERVE_INTERVAL="${NDH_ZFS_INSTALL_OBSERVE_INTERVAL:-5}"
-export NDH_BRINGUP_PAUSE="${NDH_BRINGUP_PAUSE:-}"
+export NDH_ZFS_INSTALL_PAUSE="${NDH_ZFS_INSTALL_PAUSE:-}"
 
 : 'shell.sock → /dev/hvc0 (first virtio-serial port we add).'
 : 'Use hvc0 directly — the /dev/virtio-ports/ symlink needs udev'
