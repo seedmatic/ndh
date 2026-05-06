@@ -29,6 +29,6 @@ fi
 
 [[ -n "${_NDH_VECTOR_RELAY_PID:-}" ]] && kill "${_NDH_VECTOR_RELAY_PID}" 2>/dev/null || true
 
-PS4='[bringup-postVM:${LINENO}] '
+PS4='[@nixosName@:bringup-postVM:${LINENO}] '
 set -x
 @postVmUserCommands@

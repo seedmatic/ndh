@@ -266,6 +266,7 @@ let
     bringupCommon = "${./bringup-disk-image-common.sh}";
     preVmDiskImageVars = preVmDiskImageVars;
     baseImageLogic = baseImageLogic;
+    nixosName = name;
   };
 
   buildCommandScript = pkgs.replaceVars ./bringup-zfs-disk-image.d/buildcommand.sh {
@@ -275,11 +276,13 @@ let
     curl = "${pkgs.curl}/bin/curl";
     iostat = "${pkgs.sysstat}/bin/iostat";
     installScript = "${zfsBringupInstallScript}/bin/bringup-zfs-disk-images-install";
+    nixosName = name;
   };
 
   postVmScript = pkgs.replaceVars ./bringup-zfs-disk-image.d/postvm.sh {
     postVmMoveDiskImages = postVmMoveDiskImages;
     postVmUserCommands = postVM;
+    nixosName = name;
   };
 
 in

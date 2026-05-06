@@ -21,7 +21,7 @@
 
 set -eo pipefail
 
-PS4='[bringup-preVM:${LINENO}] '
+PS4='[@nixosName@:bringup-preVM:${LINENO}] '
 set -x
 PATH="$PATH:@qemuBin@"
 mkdir "$out"

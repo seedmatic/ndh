@@ -24,7 +24,7 @@
 
 set -eo pipefail
 
-PS4='[bringup-vm:${LINENO}] '
+PS4='[@nixosName@:bringup-vm:${LINENO}] '
 set -x
 export PATH=@tools@:$PATH
 
