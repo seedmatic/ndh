@@ -171,4 +171,12 @@ zfs set logbias=latency tank   || true
 zfs set logbias=latency recover || true
 # ─────────────────────────────────────────────────────────────────────────────
 
+# ── Kill processes holding /mnt/zfs-root before unmount ──────────────────────
+# nixos-install may leave behind nix-daemon workers or chroot'd build processes
+# with open fds or CWDs inside /mnt/zfs-root, causing "target is busy" on umount.
+: '[bringup-zfs] killing processes holding /mnt/zfs-root busy'
+fuser -km /mnt/zfs-root 2>/dev/null || true
+sleep 1
+# ─────────────────────────────────────────────────────────────────────────────
+
 "@diskoUnmountExe@"
