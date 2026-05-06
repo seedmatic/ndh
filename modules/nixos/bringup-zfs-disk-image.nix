@@ -19,6 +19,9 @@
 
   qemuFallbackInVm ? null, # deprecated, no-op — accel detected at build time via /dev/kvm
   name ? "nixos-bringup-zfs-disk-images",
+  # Short host name shown in PS4 log prefix (e.g. "nerd", "bioskop", "nikopol").
+  # Defaults to name so callers that don't set it still get a useful label.
+  hostLabel ? name,
   # When false, the nested QEMU guest has no network at all.
   nestedQemuNetworkEnable ? true,
   postVM ? "",
@@ -266,7 +269,7 @@ let
     bringupCommon = "${./bringup-disk-image-common.sh}";
     preVmDiskImageVars = preVmDiskImageVars;
     baseImageLogic = baseImageLogic;
-    nixosName = name;
+    nixosName = hostLabel;
   };
 
   buildCommandScript = pkgs.replaceVars ./bringup-zfs-disk-image.d/buildcommand.sh {
@@ -276,13 +279,13 @@ let
     curl = "${pkgs.curl}/bin/curl";
     iostat = "${pkgs.sysstat}/bin/iostat";
     installScript = "${zfsBringupInstallScript}/bin/bringup-zfs-disk-images-install";
-    nixosName = name;
+    nixosName = hostLabel;
   };
 
   postVmScript = pkgs.replaceVars ./bringup-zfs-disk-image.d/postvm.sh {
     postVmMoveDiskImages = postVmMoveDiskImages;
     postVmUserCommands = postVM;
-    nixosName = name;
+    nixosName = hostLabel;
   };
 
 in

@@ -378,6 +378,7 @@ let
         {
           nixosSystem,
           name,
+          hostLabel ? mainName,
           runtimeSystemPath ? null,
           baseImagePath ? null,
           pauseAfterInstall ? false,
@@ -393,6 +394,7 @@ let
           inherit runtimeSystemPath;
           inherit baseImagePath;
           inherit pauseAfterInstall;
+          inherit hostLabel;
           zpoolDiskSize = zpoolVdevDiskSizeMiB;
           memSize = diskImageVmMemSizeMiB;
           vmCpuCores = diskImageVmCpuCores;
