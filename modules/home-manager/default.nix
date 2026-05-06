@@ -340,10 +340,10 @@ in
       vm_provider="${selectedVmProvider}"
       case "$vm_provider" in
         lima)
-          materializer_binary="nerd-nixos-lima-vm-materialize"
+          materializer_binary="nerd-lima-vm-materialize"
           ;;
         tart)
-          materializer_binary="nerd-nixos-tart-vm-materialize"
+          materializer_binary="nerd-tart-vm-materialize"
           ;;
         *)
           echo "[vmConfig][ERROR] unsupported vm provider for HM materialization: $vm_provider" >&2

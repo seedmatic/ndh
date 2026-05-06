@@ -119,7 +119,7 @@ in
       ssl-cert-file = /etc/ssl/cert.pem
       # Enable content-addressed derivations on Darwin for improved cache sharing and reduced churn of identical outputs.
       # Rollback: remove ca-derivations from this list and re-enable automatic optimise if desired.
-      extra-experimental-features = nix-command flakes ca-derivations
+      extra-experimental-features = nix-command flakes ca-derivations configurable-impure-env
       extra-platforms = aarch64-darwin
       # Add binary caches for substitution
       extra-trusted-substituters = ${cacheCatalog.flakehub.substituter} ${cacheCatalog.nxmatic.substituter} ${cacheCatalog.flox.substituter}

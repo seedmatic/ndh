@@ -21,7 +21,7 @@ in
       keep-outputs = false
       keep-derivations = false
       keep-failed = false
-      experimental-features = nix-command flakes
+      experimental-features = nix-command flakes configurable-impure-env
     '';
     settings = {
       max-jobs = 4;

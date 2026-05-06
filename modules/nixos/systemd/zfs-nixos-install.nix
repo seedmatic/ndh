@@ -23,10 +23,12 @@ let
       [
         "@nixBashTrampoline@"
         "@installRootMountPoint@"
+        "@yq@"
       ]
       [
         nixBashTrampoline
         installRootMountPoint
+        "${pkgs.yq-go}/bin/yq"
       ]
       (builtins.readFile ./zfs-nixos-install.sh);
 

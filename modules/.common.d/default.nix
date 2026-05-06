@@ -254,6 +254,7 @@ in
     ./dns-servers.nix
     ./dnsmasq.nix
     ./lima-host.nix
+    ./bringup-observe.nix
   ];
 
   config = {

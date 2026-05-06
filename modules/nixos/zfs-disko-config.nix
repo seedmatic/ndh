@@ -192,6 +192,10 @@ let
                 # 16K recordsize reduces write amplification vs the 128K default.
                 # primarycache=metadata keeps ARC free of data blocks that are
                 # never re-read during install (only metadata lookups matter).
+                # sync intentionally inherits from pool: the install script sets
+                # sync=disabled on the pool during bringup and restores
+                # sync=standard before export — a local property here would
+                # survive the pool-level restore and stay disabled at runtime.
                 recordsize = "16K";
                 primarycache = "metadata";
               };

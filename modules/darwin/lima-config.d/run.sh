@@ -266,7 +266,7 @@ host:lima:boot:image:update() {
   local activation_script="${NDH_LIMA_ACTIVATION_SCRIPT:-}"
   if [[ -z "${activation_script}" || ! -x "${activation_script}" ]]; then
     echo "[lima-run][WARN] NDH_LIMA_ACTIVATION_SCRIPT not set or not executable; skipping boot image gcroot update" >&2
-    echo "[lima-run][HINT] run via nerd-nixos-lima-vm-materialize to enable automatic gcroot update" >&2
+    echo "[lima-run][HINT] run via nerd-lima-vm-materialize to enable automatic gcroot update" >&2
     return 0
   fi
 

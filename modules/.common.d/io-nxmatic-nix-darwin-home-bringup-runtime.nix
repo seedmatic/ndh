@@ -7,8 +7,8 @@
 }:
 let
   cfg = config.ndh.bringupRuntime;
-  installerCommand = "nerd-nixos-bringup-install";
-  installerAttrDefault = "nerd-nixos-bringup-install";
+  installerCommand = "nerd-bringup-install";
+  installerAttrDefault = "nerd-bringup-install";
   hostNameForAttr =
     if
       config ? profile

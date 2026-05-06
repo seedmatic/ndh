@@ -18,16 +18,16 @@ target="${3:-${NIX_REMOTE_COPY_TARGET:-vz-host.${host}}}"
 
 # Normalize legacy generic materializer attrs to host-scoped names.
 case "${attr}" in
-  apps.aarch64-darwin.nerd-nixos-lima-vm-materialize)
+  apps.aarch64-darwin.nerd-lima-vm-materialize)
     attr="apps.aarch64-darwin.${host}-nixos-lima-vm-materialize"
     ;;
-  apps.aarch64-darwin.nerd-nixos-tart-vm-materialize)
+  apps.aarch64-darwin.nerd-tart-vm-materialize)
     attr="apps.aarch64-darwin.${host}-nixos-tart-vm-materialize"
     ;;
-  packages.aarch64-darwin.nerd-nixos-lima-vm-materialize)
+  packages.aarch64-darwin.nerd-lima-vm-materialize)
     attr="packages.aarch64-darwin.${host}-nixos-lima-vm-materialize"
     ;;
-  packages.aarch64-darwin.nerd-nixos-tart-vm-materialize)
+  packages.aarch64-darwin.nerd-tart-vm-materialize)
     attr="packages.aarch64-darwin.${host}-nixos-tart-vm-materialize"
     ;;
 esac

@@ -28,12 +28,12 @@ EOF
 
   # In HM-only flows (without a full darwin postActivation pass), best-effort
   # materialize managed Lima configs when the helper is available.
-  if command -v nerd-nixos-lima-vm-materialize >/dev/null 2>&1; then
-    nerd-nixos-lima-vm-materialize || {
-      echo "[lima-rdp-assets][WARN] nerd-nixos-lima-vm-materialize failed; keep existing ~/.lima state" >&2
+  if command -v nerd-lima-vm-materialize >/dev/null 2>&1; then
+    nerd-lima-vm-materialize || {
+      echo "[lima-rdp-assets][WARN] nerd-lima-vm-materialize failed; keep existing ~/.lima state" >&2
     }
   else
-    echo "[lima-rdp-assets][INFO] nerd-nixos-lima-vm-materialize not found in PATH; skipping full lima config materialization" >&2
+    echo "[lima-rdp-assets][INFO] nerd-lima-vm-materialize not found in PATH; skipping full lima config materialization" >&2
   fi
 }
 

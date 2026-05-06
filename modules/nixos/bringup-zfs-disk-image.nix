@@ -143,6 +143,7 @@ let
     with pkgs;
     [
       coreutils
+      curl
       disko
       yq-go
       nixos-enter
@@ -268,10 +269,37 @@ in
         NIX_BUILD_CORES = toString vmCpuCores;
         inherit memSize;
 
+        # Allow the macOS caller to inject runtime-only knobs without breaking
+        # the derivation's content-address.  Values are read from the nix-build
+        # caller's environment (macOS side) and forwarded to the linux-builder
+        # sandbox by the Nix protocol.
+        impureEnvVars = [
+          "NDH_BUILD_OBSERVE"
+          "NDH_ZFS_INSTALL_OBSERVE"
+          "NDH_ZFS_INSTALL_OBSERVE_INTERVAL"
+          "NDH_BRINGUP_PAUSE"
+          "NDH_VECTOR_ENDPOINT"
+        ];
+
         preVM = ''
+          PS4='[bringup-preVM:''${LINENO}] '
           set -x
           PATH="$PATH:${pkgs.qemu_kvm}/bin"
           mkdir "$out"
+
+          # ── Vector relay ────────────────────────────────────────────────────
+          # Nested QEMU uses SLIRP user-net: 10.0.2.2 = linux-builder, not macOS.
+          # Relay: nested QEMU → linux-builder:PORT → macOS Vector (same PORT).
+          # NDH_VECTOR_ENDPOINT injected via --impure-env; fallback to hardcoded default for testing.
+          NDH_VECTOR_ENDPOINT="''${NDH_VECTOR_ENDPOINT:-http://10.0.2.2:9001}"
+          _NDH_VECTOR_RELAY_PID=""
+          if [[ -n "''${NDH_VECTOR_ENDPOINT:-}" ]]; then
+            _ndh_relay_port="''${NDH_VECTOR_ENDPOINT##*:}"
+            ${pkgs.socat}/bin/socat \
+              TCP-LISTEN:"''${_ndh_relay_port}",fork,reuseaddr,bind=0.0.0.0 \
+              TCP:10.0.2.2:"''${_ndh_relay_port}" &
+            _NDH_VECTOR_RELAY_PID="$!"
+          fi
 
 
           : 'Connect to debug shell (Ctrl+] to disconnect):'
@@ -304,6 +332,7 @@ in
                 ${lib.concatStringsSep "\n          " (
                   map (entry: "cp \"${baseImagePath}/${entry.disk}.img\" \"${entry.disk}DiskImage\"") zfsPoolDiskMap
                 )}
+                chmod +w "$bootDiskImage" ${lib.concatStringsSep " " (map (e: "\"${e.disk}DiskImage\"") zfsPoolDiskMap)}
               ''
             else
               ''
@@ -321,11 +350,23 @@ in
             mv xchg/boot-size-hint.yaml "$out/boot-size-hint.yaml"
           fi
 
+          if [[ -f xchg/zfs-nixos-install-observe.yaml ]]; then
+            mv xchg/zfs-nixos-install-observe.yaml "$out/zfs-nixos-install-observe.yaml"
+          fi
+
+          if [[ -f xchg/builder-observe.yaml ]]; then
+            mv xchg/builder-observe.yaml "$out/builder-observe.yaml"
+          fi
+
+          [[ -n "''${_NDH_VECTOR_RELAY_PID:-}" ]] && kill "''${_NDH_VECTOR_RELAY_PID}" 2>/dev/null || true
+
+          PS4='[bringup-postVM:''${LINENO}] '
           set -x
           ${postVM}
         '';
       }
       ''
+        PS4='[bringup-vm:''${LINENO}] '
         set -x
         export PATH=${tools}:$PATH
 
@@ -336,7 +377,124 @@ in
         while [[ ! -c /dev/hvc0 ]]; do sleep 0.1; done
         setsid --ctty ${pkgs.bash}/bin/bash -i 0<>/dev/hvc0 1>&0 2>&0 &
 
+        # ── builder-side observer ────────────────────────────────────────────
+        # One background yq writer reads JSON lines from a named pipe and emits
+        # a YAML stream to builder-observe.yaml (picked up by postVM → $out).
+        # Samplers use yq heredocs to produce correct JSON — no manual escaping.
+        _ndh_bld_obs_enabled() { [[ "''${NDH_ZFS_INSTALL_OBSERVE:-1}" == "1" ]]; }
+
+        _ndh_bld_obs_sample() {
+          local ts qemu_pid qemu_cpu qemu_rss dirty wb avail diskio
+          ts=$(date -Iseconds)
+
+          # QEMU process stats (CPU%, RSS in MB)
+          qemu_pid=$(pgrep -n qemu 2>/dev/null || echo "")
+          if [[ -n "$qemu_pid" ]]; then
+            read -r qemu_cpu qemu_rss < <(
+              ps -p "$qemu_pid" -o %cpu=,rss= 2>/dev/null \
+                | awk '{printf "%s %d", $1, int($2/1024)}'
+            )
+          else
+            qemu_cpu="0" qemu_rss="0"
+          fi
+
+          # Host memory pressure
+          dirty=$(awk '$1=="Dirty:"        {print $2}' /proc/meminfo 2>/dev/null || echo 0)
+          wb=$(awk    '$1=="Writeback:"    {print $2}' /proc/meminfo 2>/dev/null || echo 0)
+          avail=$(awk '$1=="MemAvailable:" {print $2}' /proc/meminfo 2>/dev/null || echo 0)
+
+          # Per-disk I/O on the build device (virtio or loop backing the .raw files)
+          diskio=$(iostat -dxz 1 1 2>/dev/null \
+            | awk 'NF>=16 && $1!~/Device|^$/{
+                printf "{\"dev\":\"%s\",\"r_s\":%s,\"w_s\":%s,\"w_await_ms\":%s,\"util_pct\":%s},",
+                  $1,$2,$3,$11,$NF
+              }' \
+            | sed 's/,$//' | awk '{print "["$0"]"}')
+          [[ -n "$diskio" ]] || diskio="[]"
+
+          yq -p yaml -o json -I0 - <<EOJ >&"''${_NDH_BLD_OBS_FD}" 2>/dev/null || true
+type: builder-sample
+source_layer: builder
+ts: "''${ts}"
+qemu:
+  pid: "''${qemu_pid:-}"
+  cpu_pct: ''${qemu_cpu:-0}
+  rss_mb: ''${qemu_rss:-0}
+mem:
+  dirty_kb: ''${dirty}
+  writeback_kb: ''${wb}
+  avail_mb: $(( avail / 1024 ))
+diskio: ''${diskio}
+EOJ
+        }
+
+        _ndh_bld_obs_mark() {
+          [[ -n "''${_NDH_BLD_OBS_FD:-}" ]] || return 0
+          yq -p yaml -o json -I0 - <<EOJ >&"''${_NDH_BLD_OBS_FD}" 2>/dev/null || true
+type: builder-phase
+source_layer: builder
+label: "''${1}"
+ts: "$(date -Iseconds)"
+EOJ
+        }
+
+        # Push a JSON event to Vector on the VZ host.
+        # NDH_VECTOR_ENDPOINT injected via --impure-env; fallback to hardcoded default for testing.
+        _ndh_bld_obs_push_vector() {
+          local endpoint="''${NDH_VECTOR_ENDPOINT:-http://10.0.2.2:9001}"
+          ${pkgs.curl}/bin/curl -sf -X POST "''${endpoint}" \
+            -H "Content-Type: application/json" \
+            -d "$1" 2>/dev/null || true
+        }
+
+        _ndh_bld_obs_start() {
+          _ndh_bld_obs_enabled || return 0
+          local interval="''${NDH_ZFS_INSTALL_OBSERVE_INTERVAL:-5}"
+          local pipe out_file="/tmp/xchg/builder-observe.yaml"
+          pipe="$(mktemp -d)/bld-obs.fifo"
+          mkfifo "$pipe"
+          _NDH_BLD_OBS_PIPE="$pipe"
+
+          # Writer: one long-lived yq process, reads until EOF.
+          # Also relays each event to Vector (VZ host) when NDH_VECTOR_ENDPOINT is set.
+          ( while IFS= read -r line; do
+              printf '%s\n' "$line" | yq -p json -o yaml
+              printf -- '---\n'
+              _ndh_bld_obs_push_vector "$line"
+            done < "$pipe"
+          ) >> "$out_file" &
+          _NDH_BLD_OBS_WRITER_PID="$!"
+
+          exec {_NDH_BLD_OBS_FD}>"$pipe"
+          export _NDH_BLD_OBS_FD _NDH_BLD_OBS_WRITER_PID _NDH_BLD_OBS_PIPE
+
+          # Send header
+          printf '%s\n' '{"type":"builder-meta","started":"'"$(date -Iseconds)"'"}' \
+            >&"$_NDH_BLD_OBS_FD" 2>/dev/null || true
+
+          # Sampler loop
+          ( while true; do _ndh_bld_obs_sample; sleep "$interval"; done ) &
+          _NDH_BLD_OBS_SAMPLER_PID="$!"
+          export _NDH_BLD_OBS_SAMPLER_PID
+        }
+
+        _ndh_bld_obs_stop() {
+          _ndh_bld_obs_enabled || return 0
+          [[ -n "''${_NDH_BLD_OBS_SAMPLER_PID:-}" ]] && \
+            kill "''${_NDH_BLD_OBS_SAMPLER_PID}" 2>/dev/null || true
+          _ndh_bld_obs_mark "builder-stop"
+          [[ -n "''${_NDH_BLD_OBS_FD:-}" ]] && exec {_NDH_BLD_OBS_FD}>&-
+          [[ -n "''${_NDH_BLD_OBS_WRITER_PID:-}" ]] && \
+            wait "''${_NDH_BLD_OBS_WRITER_PID}" 2>/dev/null || true
+          [[ -n "''${_NDH_BLD_OBS_PIPE:-}" ]] && rm -f "''${_NDH_BLD_OBS_PIPE}" || true
+        }
+
+        _ndh_bld_obs_start
+        trap '_ndh_bld_obs_stop' EXIT
+        _ndh_bld_obs_mark "qemu-start"
+
         : 'execute the ZFS bringup install script, which formats the disks and installs NixOS onto them'
-        exec ${pkgs.bash}/bin/bash ${zfsBringupInstallScript}/bin/bringup-zfs-disk-images-install
+        ${pkgs.bash}/bin/bash ${zfsBringupInstallScript}/bin/bringup-zfs-disk-images-install
+        _ndh_bld_obs_mark "qemu-done"
       ''
   )

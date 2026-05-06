@@ -8,6 +8,10 @@ let
     nixosBootLoader = "systemd-boot";
     nixosBootstrapDebug = false;
     form = "baremetal";
+    # Nested QEMU build VM memory: 12 GiB gives the guest ZFS ARC ~8 GiB (2/3),
+    # leaving ~12 GiB for the linux-builder host itself (OS + ZFS ARC + QEMU overhead).
+    # Requires linux-builder vmMemoryMiB ≥ 24576 (set in inventory/default.nix).
+    nixosDiskImageVmMemSizeMiB = 12288;
   };
 
   darwinProfile = {
@@ -23,4 +27,5 @@ in
   inherit hostProfile profileModule;
   darwinExtraModules = [ darwinModule ];
   nixosExtraModules = [ nixosModule ];
+  withBringupImages = false;
 }

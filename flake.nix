@@ -13,6 +13,13 @@
       "nxmatic.cachix.org-1:huMghYiwDpPa1PMXHXK4G1Dp4QOZjgsNqxcjf/AjuJ0="
       "flox-cache-public-1:7F4OyH7ZCnFhcze3fJdfyXYLQw/aV7GEed86nQ7IsOs="
     ];
+
+    extra-experimental-features = [
+      "nix-command"
+      "flakes"
+      "ca-derivations"
+      "configurable-impure-env"
+    ];
   };
 
   inputs = {
@@ -180,14 +187,14 @@
         pkgsForSystem = pkgsForLinux;
         loggerCmd = "${pkgsForLinux.util-linux}/bin/logger -p notice -t %TAG%";
       };
-      ndhBringupRuntimeAttr = "nerd-nixos-bringup-runtime";
-      ndhBringupInstallerAttr = "nerd-nixos-bringup-install";
-      ndhBringupInstallerCommand = "nerd-nixos-bringup-install";
-      ndhVmLimaMaterializeAttr = "nerd-nixos-lima-vm-materialize";
-      ndhVmTartMaterializeAttr = "nerd-nixos-tart-vm-materialize";
-      ndhVmTartBootstrapInstallerAttr = "nerd-nixos-tart-vm-bootstrap-installer";
-      ndhLogCaptureAttr = "nerd-nixos-log-capture";
-      ndhLogCaptureCommand = "nerd-nixos-log-capture";
+      ndhBringupRuntimeAttr = "nerd-bringup-runtime";
+      ndhBringupInstallerAttr = "nerd-bringup-install";
+      ndhBringupInstallerCommand = "nerd-bringup-install";
+      ndhVmLimaMaterializeAttr = "nerd-lima-vm-materialize";
+      ndhVmTartMaterializeAttr = "nerd-tart-vm-materialize";
+      ndhVmTartBootstrapInstallerAttr = "nerd-tart-vm-bootstrap-installer";
+      ndhLogCaptureAttr = "nerd-log-capture";
+      ndhLogCaptureCommand = "nerd-log-capture";
       hostCatalog = builtins.mapAttrs (
         hostName: _: import (./hosts + "/${hostName}")
       ) inventoryData.hosts;
@@ -321,7 +328,7 @@
                 nix = "${pkgsForSystem.nix}/bin/nix";
                 loggerTag = "ndh.bringup-runtime.install-standalone";
                 runtimePackage = runtimePackage;
-                defaultProfileDir = "/nix/var/nix/profiles/per-user/root/nerd-nixos-bringup-runtime";
+                defaultProfileDir = "/nix/var/nix/profiles/per-user/root/nerd-bringup-runtime";
                 requiredCommands = "bash nix age age-keygen awk sed grep ssh ssh-keygen yq git";
               };
         in
@@ -345,7 +352,7 @@
 
             usage() {
               cat >&2 <<'EOF'
-            Usage: nerd-nixos-log-capture [--name NAME] [--dir DIR] -- <command> [args...]
+            Usage: nerd-log-capture [--name NAME] [--dir DIR] -- <command> [args...]
 
             Environment:
               NDH_CAPTURE_DIR   Default log directory (default: /tmp)
@@ -360,12 +367,12 @@
               case "$1" in
                 --name)
                   shift
-                  [[ $# -gt 0 ]] || { echo "[nerd-nixos-log-capture][ERROR] --name requires a value" >&2; usage; exit 2; }
+                  [[ $# -gt 0 ]] || { echo "[nerd-log-capture][ERROR] --name requires a value" >&2; usage; exit 2; }
                   log_name="$1"
                   ;;
                 --dir)
                   shift
-                  [[ $# -gt 0 ]] || { echo "[nerd-nixos-log-capture][ERROR] --dir requires a value" >&2; usage; exit 2; }
+                  [[ $# -gt 0 ]] || { echo "[nerd-log-capture][ERROR] --dir requires a value" >&2; usage; exit 2; }
                   log_dir="$1"
                   ;;
                 --help|-h)
@@ -384,7 +391,7 @@
             done
 
             if (($# == 0)); then
-              echo "[nerd-nixos-log-capture][ERROR] missing command" >&2
+              echo "[nerd-log-capture][ERROR] missing command" >&2
               usage
               exit 2
             fi
@@ -400,11 +407,11 @@
 
             timestamp="$(date +%Y%m%d-%H%M%S)"
             mkdir -p "$log_dir"
-            log_file="$log_dir/nerd-nixos-$log_name-$timestamp.log"
+            log_file="$log_dir/nerd-$log_name-$timestamp.log"
 
             cmd_pretty="$(printf '%q ' "$@")"
             {
-              echo "# nerd-nixos-log-capture"
+              echo "# nerd-log-capture"
               echo "# timestamp: $(date -Is)"
               echo "# cwd: $PWD"
               echo "# command: $cmd_pretty"
@@ -416,7 +423,7 @@
             cmd_rc=''${PIPESTATUS[0]}
             set -e
 
-            echo "[nerd-nixos-log-capture] log file: $log_file" >&2
+            echo "[nerd-log-capture] log file: $log_file" >&2
             exit "$cmd_rc"
           '';
         };
@@ -439,7 +446,7 @@
 
             usage() {
               cat >&2 <<'EOF'
-            Usage: nerd-nixos-tart-vm-bootstrap-installer [--vm NAME] [--repo PATH] [--iso PATH] [--tag TAG]
+            Usage: nerd-tart-vm-bootstrap-installer [--vm NAME] [--repo PATH] [--iso PATH] [--tag TAG]
 
             Launches Tart VM in installer bootstrap mode using the existing run wrapper:
               - recovery boot enabled
@@ -470,22 +477,22 @@
               case "$1" in
                 --vm)
                   shift
-                  [[ $# -gt 0 ]] || { echo "[nerd-nixos-tart-vm-bootstrap-installer][ERROR] --vm requires a value" >&2; usage; exit 2; }
+                  [[ $# -gt 0 ]] || { echo "[nerd-tart-vm-bootstrap-installer][ERROR] --vm requires a value" >&2; usage; exit 2; }
                   vm_name="$1"
                   ;;
                 --repo)
                   shift
-                  [[ $# -gt 0 ]] || { echo "[nerd-nixos-tart-vm-bootstrap-installer][ERROR] --repo requires a value" >&2; usage; exit 2; }
+                  [[ $# -gt 0 ]] || { echo "[nerd-tart-vm-bootstrap-installer][ERROR] --repo requires a value" >&2; usage; exit 2; }
                   repo_root="$1"
                   ;;
                 --iso)
                   shift
-                  [[ $# -gt 0 ]] || { echo "[nerd-nixos-tart-vm-bootstrap-installer][ERROR] --iso requires a value" >&2; usage; exit 2; }
+                  [[ $# -gt 0 ]] || { echo "[nerd-tart-vm-bootstrap-installer][ERROR] --iso requires a value" >&2; usage; exit 2; }
                   iso_path="$1"
                   ;;
                 --tag)
                   shift
-                  [[ $# -gt 0 ]] || { echo "[nerd-nixos-tart-vm-bootstrap-installer][ERROR] --tag requires a value" >&2; usage; exit 2; }
+                  [[ $# -gt 0 ]] || { echo "[nerd-tart-vm-bootstrap-installer][ERROR] --tag requires a value" >&2; usage; exit 2; }
                   share_tag="$1"
                   ;;
                 --help|-h)
@@ -493,7 +500,7 @@
                   exit 0
                   ;;
                 *)
-                  echo "[nerd-nixos-tart-vm-bootstrap-installer][ERROR] unknown argument: $1" >&2
+                  echo "[nerd-tart-vm-bootstrap-installer][ERROR] unknown argument: $1" >&2
                   usage
                   exit 2
                   ;;
@@ -507,13 +514,13 @@
               elif [[ -d "/private/var/lib/git/nxmatic/nix-darwin-home" ]]; then
                 repo_root="/private/var/lib/git/nxmatic/nix-darwin-home"
               else
-                echo "[nerd-nixos-tart-vm-bootstrap-installer][ERROR] unable to detect repo root; pass --repo PATH" >&2
+                echo "[nerd-tart-vm-bootstrap-installer][ERROR] unable to detect repo root; pass --repo PATH" >&2
                 exit 1
               fi
             fi
 
             if [[ ! -d "$repo_root" ]]; then
-              echo "[nerd-nixos-tart-vm-bootstrap-installer][ERROR] repo path does not exist: $repo_root" >&2
+              echo "[nerd-tart-vm-bootstrap-installer][ERROR] repo path does not exist: $repo_root" >&2
               exit 1
             fi
 
@@ -526,14 +533,14 @@
             fi
 
             if [[ -z "$iso_path" || ! -f "$iso_path" ]]; then
-              echo "[nerd-nixos-tart-vm-bootstrap-installer][ERROR] installer ISO not found; pass --iso PATH" >&2
+              echo "[nerd-tart-vm-bootstrap-installer][ERROR] installer ISO not found; pass --iso PATH" >&2
               exit 1
             fi
 
             wrapper="$HOME/.tart/vms/$vm_name.sh"
             if [[ ! -x "$wrapper" ]]; then
-              echo "[nerd-nixos-tart-vm-bootstrap-installer][ERROR] VM run wrapper missing or not executable: $wrapper" >&2
-              echo "[nerd-nixos-tart-vm-bootstrap-installer][ERROR] run nerd-nixos-tart-vm-materialize first" >&2
+              echo "[nerd-tart-vm-bootstrap-installer][ERROR] VM run wrapper missing or not executable: $wrapper" >&2
+              echo "[nerd-tart-vm-bootstrap-installer][ERROR] run nerd-tart-vm-materialize first" >&2
               exit 1
             fi
 
@@ -551,10 +558,10 @@
             joined_extra_args="$(printf '%q ' "''${extra_args[@]}")"
             joined_extra_args="''${joined_extra_args% }"
 
-            echo "[nerd-nixos-tart-vm-bootstrap-installer] vm=$vm_name"
-            echo "[nerd-nixos-tart-vm-bootstrap-installer] repo=$repo_root"
-            echo "[nerd-nixos-tart-vm-bootstrap-installer] iso=$iso_path"
-            echo "[nerd-nixos-tart-vm-bootstrap-installer] tag=$share_tag"
+            echo "[nerd-tart-vm-bootstrap-installer] vm=$vm_name"
+            echo "[nerd-tart-vm-bootstrap-installer] repo=$repo_root"
+            echo "[nerd-tart-vm-bootstrap-installer] iso=$iso_path"
+            echo "[nerd-tart-vm-bootstrap-installer] tag=$share_tag"
 
             export RUN_EXTRA_ARGS="$joined_extra_args"
             exec "$wrapper"
@@ -816,6 +823,7 @@
           darwinExtraModules ? [ ],
           nixosExtraModules ? [ ],
           baseImagePath ? null,
+          withBringupImages ? true,
           ...
         }:
         let
@@ -925,11 +933,11 @@
                 imports = [
                   profileModule
                   (
-                    { ... }:
-                    {
+                    { lib, ... }:
+                    { lima.configGenerator.diskSizeGiB = nixosDiskSizeGiB; }
+                    // lib.optionalAttrs withBringupImages {
                       lima.configGenerator.imageManifestPath = "${nixosDiskImageBringupSystemdZfs}/manifest.yaml";
                       lima.configGenerator.imageStorePath = "${nixosDiskImageBringupSystemdZfs}/boot.img";
-                      lima.configGenerator.diskSizeGiB = nixosDiskSizeGiB;
 
                       tart.configGenerator.rawImageManifestPath = "${nixosDiskImageBringupSystemdZfs}/manifest.yaml";
                       tart.configGenerator.rawImageStorePath = "${nixosDiskImageBringupSystemdZfs}/boot.img";
@@ -1113,7 +1121,7 @@
       nixosDiskImages =
         builtins.mapAttrs (_: hostOutput: hostOutput.nixosDiskImageBringupSystemdZfs) hostOutputs
         // {
-          "nerd-nixos" = nerdNixosDiskImage;
+          "nerd" = nerdNixosDiskImage;
         };
 
       # Overlay factories (curried: inputs: final: prev:) — used internally via overlayFactories.

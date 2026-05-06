@@ -78,6 +78,13 @@ let
       path = "bin/fdisk";
     }
 
+    # --─ Kernel module introspection (for ZFS troubleshooting) ─────────────────────
+    {
+      bin = "modinfo";
+      pkg = pkgs.kmod;
+      path = "bin/modinfo";
+    }
+
     # ── ZFS ──────────────────────────────────────────────────────────────────
     {
       bin = "zdb";

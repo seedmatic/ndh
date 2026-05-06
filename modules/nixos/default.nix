@@ -227,6 +227,7 @@ let
     ./nfs-autofs.nix
     ./incus.nix
     ./podman.nix
+    ./bringup-observe.nix
   ];
   runtimeExtraSystemPackages = with pkgs; [
     autofs5 # Explicitly include autofs utilities @codebase

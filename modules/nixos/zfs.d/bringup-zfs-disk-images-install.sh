@@ -37,17 +37,34 @@ zfs set sync=disabled recover
 zfs set logbias=throughput tank
 zfs set logbias=throughput recover
 
-# Grow ARC to 2/3 of available RAM (kernel default cap is ~1/2 physical RAM).
+# Grow ARC to 2/3 of available RAM.  The kernel's default cap is ~1/2 physical
+# RAM; raising it lets the guest cache all metadata in RAM for the install phase.
 total_kb=$(awk '/MemTotal/ { print $2 }' /proc/meminfo)
 arc_max_bytes=$(( total_kb * 2 / 3 * 1024 ))
 : '[bringup-zfs] zfs_arc_max → ${arc_max_bytes} bytes (2/3 of ${total_kb} kB)'
 echo "${arc_max_bytes}" > /sys/module/zfs/parameters/zfs_arc_max
 
-# txg_timeout=5s (keep default): with sync=disabled already eliminating per-write
-# ZIL latency, extending the timeout only defers dirty data into a massive final
-# flush at unmount time — txg_sync dominates iotop and the install appears stuck.
-# Frequent small flushes (5s) spread the I/O evenly across the install duration.
-: '[bringup-zfs] zfs_txg_timeout → 5s (default, avoids deferred final flush)'
+# ARC min = 1/4 of RAM: prevents the kernel from collapsing the ARC under brief
+# memory spikes (e.g. nix-store decompression), avoiding cold-start latency.
+arc_min_bytes=$(( total_kb / 4 * 1024 ))
+: '[bringup-zfs] zfs_arc_min → ${arc_min_bytes} bytes (1/4 of ${total_kb} kB)'
+echo "${arc_min_bytes}" > /sys/module/zfs/parameters/zfs_arc_min
+
+# Disable speculative prefetch.  nixos-install writes sequentially but reads
+# metadata in random order — prefetch wastes ARC space and adds CPU overhead.
+: '[bringup-zfs] zfs_prefetch_disable → 1 (install is write-dominated)'
+echo 1 > /sys/module/zfs/parameters/zfs_prefetch_disable
+
+# Limit dirty data buffer to 20 % of ARC max.  Default is 10 % of physical RAM;
+# with sync=disabled and a large ARC, dirty data can accumulate into one giant
+# final TXG flush that makes the build appear stuck.  A smaller cap spreads I/O.
+dirty_max_bytes=$(( arc_max_bytes / 5 ))
+: '[bringup-zfs] zfs_dirty_data_max → ${dirty_max_bytes} bytes (20% of arc_max)'
+echo "${dirty_max_bytes}" > /sys/module/zfs/parameters/zfs_dirty_data_max
+
+# txg_timeout=5s (keep default): frequent small flushes spread I/O evenly across
+# the install — a longer timeout defers everything into one massive final sync.
+: '[bringup-zfs] zfs_txg_timeout → 5s (avoids deferred final flush)'
 echo 5 > /sys/module/zfs/parameters/zfs_txg_timeout
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -75,7 +92,7 @@ require_partlabel recover
 nix-store --option build-users-group "" --load-db < @closureRegistration@
 
 target_bootstrap_profile="/mnt/zfs-root/nix/var/nix/profiles/per-user/root/io-nxmatic-nix-darwin-home-bringup-runtime"
-target_bootstrap_installer="@systemToplevel@/sw/bin/nerd-nixos-bringup-install"
+target_bootstrap_installer="@systemToplevel@/sw/bin/nerd-bringup-install"
 
 mkdir -p "$(dirname "$target_bootstrap_profile")"
 if [[ -x "$target_bootstrap_installer" ]]; then

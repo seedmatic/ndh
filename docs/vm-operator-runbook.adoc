@@ -176,25 +176,118 @@ the ZFS system:
 
 == Monitoring the Nested QEMU Build
 
-During `nix build` of the disk image, the nested QEMU VM writes all output
-to the nix build log via `-nographic` stdio.  Watch it with:
+=== Prerequisites
+
+Enable Vector on your Darwin host (one-time, then `darwin-rebuild switch`):
+
+[source,nix]
+----
+# In your bioskop host profile:
+bringupObserve.enable = true;
+----
+
+This installs `vector` and exports `NDH_VECTOR_HTTP_PORT` / `NDH_VECTOR_API_PORT`
+into the user session.
+
+=== Running a Monitored Build
+
+Use `bin/nix-build-observe.sh` instead of bare `nix build`.  It starts an
+ephemeral Vector instance, collects macOS VZ-host metrics in real-time, and
+ingests builder + guest YAML telemetry after the build completes.
 
 [source,bash]
 ----
-nix build .#nixosDiskImages.bioskop.bringup.zfsSystemd -L
-# or via log-capture helper:
-nix run .#bioskop-nixos-log-capture -- --name bringup-zfs -- \
-  nix build .#nixosDiskImages.bioskop.bringup.zfsSystemd -L
+cd /path/to/nix-darwin-home
+
+# Standard monitored build:
+bin/nix-build-observe.sh .#nixosDiskImages.bioskop -L -v -v
+
+# With post-install pause (see section below) and verbose nix output:
+env NDH_BRINGUP_PAUSE=1 --impure \
+  bin/nix-build-observe.sh .#nixosDiskImages.bioskop -L -v -v
 ----
 
-=== Connecting to the Debug Shell
+NOTE: `NDH_BRINGUP_PAUSE=1` requires `--impure` because `builtins.getEnv` is
+used to pass the flag into the Nix sandbox evaluation.
+
+==== What the observer collects
+
+[cols="1,2,3"]
+|===
+|Layer |Source |Metrics
+
+|`vz-host`
+|macOS, real-time every 5 s
+|`vm_stat` (free/wired/compressed pages), BSD `iostat` per disk, nix-daemon cpu%/RSS
+
+|`builder`
+|linux-builder, written to `result/builder-observe.yaml`, ingested post-build
+|QEMU pid cpu%/RSS, host `iostat`, host dirty/writeback/avail memory
+
+|`guest`
+|nested QEMU, written to `result/zfs-nixos-install-observe.yaml`, ingested post-build
+|ZFS ARC hit%, vdev latency, disk I/O, memory pressure, install phase markers
+|===
+
+==== Output
+
+[source]
+----
+~/.local/share/nix-darwin-home/build-obs/
+  <iso8601>-<attr>.ndjson   ← NDJSON stream (one JSON event per line)
+  latest.ndjson             ← symlink to most recent session
+----
+
+==== Environment overrides
+
+[cols="2,1,3"]
+|===
+|Variable |Default |Description
+
+|`NDH_BUILD_OBSERVE`
+|`1`
+|Set to `0` to disable observability and run bare `nix build`.
+
+|`NDH_BUILD_OBSERVE_INTERVAL`
+|`5`
+|macOS VZ-host sample interval in seconds.
+
+|`NDH_BUILD_OBSERVE_DIR`
+|`~/.local/share/nix-darwin-home/build-obs`
+|Override the NDJSON output directory.
+
+|`NDH_VECTOR_HTTP_PORT`
+|`9001`
+|Vector HTTP source port.
+
+|`NDH_VECTOR_API_PORT`
+|`8687`
+|Vector API / health-check port.
+
+|`NDH_BRINGUP_PAUSE`
+|unset
+|If `1` (and `--impure` passed to nix), pause the nested QEMU after install.
+
+|`NDH_ZFS_INSTALL_OBSERVE`
+|`1`
+|Controls guest-side observer (default enabled; set `0` to disable).
+|===
+
+=== Post-Install Pause — Inspecting the Nested QEMU Guest
+
+When `NDH_BRINGUP_PAUSE=1`, the bringup install script creates a lock file
+inside the shared `xchg/` virtiofs volume after `nixos-install` completes.
+The QEMU VM blocks until the operator removes the lock — `/mnt/zfs-root` remains
+mounted for inspection.
+
+==== Connecting to the Debug Shell
 
 The nested QEMU guest exposes an interactive root shell via a virtio-serial
-Unix socket (`shell.sock`).  Connect from the linux-builder host:
+Unix socket.  Connect from inside the linux-builder (not from macOS):
 
 [source,bash]
 ----
-# Find the QEMU PID (run on linux-builder, not macOS):
+# Find the QEMU PID (run on linux-builder):
 qpid=$(pgrep --newest qemu)
 
 # Connect (Ctrl+] to disconnect):
@@ -202,9 +295,8 @@ sudo socat UNIX-CONNECT:/proc/$qpid/root/build/shell.sock \
   -,raw,echo=0,escape=0x1d
 ----
 
-NOTE: The socket is inside the linux-builder's nix sandbox
-(`/proc/<qpid>/root/build/shell.sock`).  You need `sudo` to enter the build
-sandbox namespace.
+NOTE: The socket lives inside the linux-builder's Nix sandbox namespace
+(`/proc/<qpid>/root/build/shell.sock`).  `sudo` is required to enter it.
 
 ==== First thing after connecting — fix terminal size
 
@@ -213,10 +305,32 @@ sandbox namespace.
 resize
 ----
 
-This sends an escape sequence to auto-detect the VS Code terminal dimensions
-and calls `stty` to match them inside the guest.
+==== Inspecting the installed system
 
-=== Perf / Debug Tools Available in the Shell
+[source,bash]
+----
+# The ZFS root is still mounted at /mnt/zfs-root:
+ls /mnt/zfs-root
+zpool status -v
+zfs list -r tank
+
+# Check what nixos-install wrote:
+ls /mnt/zfs-root/nix/var/nix/profiles/
+cat /mnt/zfs-root/boot/loader/loader.conf
+----
+
+==== Resuming the build
+
+[source,bash]
+----
+# From inside the debug shell:
+rm /tmp/xchg/pause.lock
+----
+
+The build resumes, calls `zfs sync`, restores production pool properties, exports
+the pools, and the QEMU VM exits normally.
+
+=== Perf / Debug Tools Available in the Debug Shell
 
 [cols="2,3"]
 |===
@@ -249,6 +363,28 @@ and calls `stty` to match them inside the guest.
 |`strace -p <pid>`
 |Syscall trace on any guest process
 |===
+
+=== Reading the Observation Output
+
+[source,bash]
+----
+# Tail the latest NDJSON stream as it's written:
+tail -f ~/.local/share/nix-darwin-home/build-obs/latest.ndjson | \
+  yq -p json -o yaml
+
+# Filter by layer:
+yq 'select(.source_layer == "vz-host")' -p json -o yaml \
+  ~/.local/share/nix-darwin-home/build-obs/latest.ndjson
+
+# Show only phase markers (build milestones):
+yq 'select(.type == "vz-phase" or .type == "builder-phase")' -p json -o yaml \
+  ~/.local/share/nix-darwin-home/build-obs/latest.ndjson
+
+# Memory pressure summary across all layers:
+yq 'select(.mem != null) | {layer: .source_layer, ts: .ts, mem: .mem}' \
+  -p json -o yaml \
+  ~/.local/share/nix-darwin-home/build-obs/latest.ndjson
+----
 
 == ZFS Install-Time Tuning
 
@@ -346,6 +482,20 @@ pidstat -d 1        # which process is doing I/O?
 iotop-c             # live I/O breakdown
 zpool iostat -v 1   # ZFS throughput per vdev
 iostat -x 1         # raw virtio disk stats
+----
+
+Check the observer output on the macOS host for a macro view:
+
+[source,bash]
+----
+# Last 20 events across all layers:
+tail -n 20 ~/.local/share/nix-darwin-home/build-obs/latest.ndjson | \
+  yq -p json '{ts: .ts, layer: .source_layer, type: .type}' -o yaml
+
+# Builder memory pressure (from the linux-builder layer):
+yq 'select(.source_layer == "builder" and .mem != null) | .mem' \
+  -p json -o yaml \
+  ~/.local/share/nix-darwin-home/build-obs/latest.ndjson
 ----
 
 ==== txg_sync dominates at end of install

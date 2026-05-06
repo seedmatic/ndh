@@ -90,7 +90,7 @@ let
   # Convenience alias: the activation script file inside the bundle.
   tartActivationScript = "${tartActivationBundle}/bin/activate.sh";
 
-  tartMaterializerPackage = pkgs.writeShellScriptBin "nerd-nixos-tart-vm-materialize" ''
+  tartMaterializerPackage = pkgs.writeShellScriptBin "nerd-tart-vm-materialize" ''
     if [[ "''${NDH_LINUX_BUILDER_GC_BEFORE_BUILD:-1}" == "1" ]]; then
       builder_target="''${NDH_LINUX_BUILDER_GC_TARGET:-builder@linux-builder}"
       builder_gc_cmd="''${NDH_LINUX_BUILDER_GC_COMMAND:-sudo nix-collect-garbage -d}"
@@ -100,7 +100,110 @@ let
       fi
     fi
 
-    exec ${tartActivationScript} "$@"
+    # ── Darwin VZ-host observer ──────────────────────────────────────────────
+    # Runs in background, collects macOS-side metrics (memory pressure, disk I/O,
+    # nix process CPU/RSS) during the entire materialize phase.
+    # Output: NDH_DARWIN_OBS_OUTPUT (default ~/Library/Logs/nix-darwin-home/darwin-observe.yaml)
+    _ndh_darwin_obs_enabled() { [[ "''${NDH_ZFS_INSTALL_OBSERVE:-1}" == "1" ]]; }
+
+    _ndh_darwin_obs_sample() {
+      local ts nix_pid nix_cpu nix_rss
+      ts=$(date -Iseconds)
+
+      # Memory pressure via vm_stat (macOS; values in pages, page = 16 KiB on Apple Silicon)
+      local pages_free pages_active pages_inactive pages_wired pages_compressed page_size
+      page_size=$(pagesize 2>/dev/null || echo 16384)
+      eval "$(vm_stat 2>/dev/null | awk '
+        /Pages free:/        {gsub(/\./,"",$NF); printf "pages_free=%s\n",       $NF}
+        /Pages active:/      {gsub(/\./,"",$NF); printf "pages_active=%s\n",     $NF}
+        /Pages inactive:/    {gsub(/\./,"",$NF); printf "pages_inactive=%s\n",   $NF}
+        /Pages wired down:/  {gsub(/\./,"",$NF); printf "pages_wired=%s\n",      $NF}
+        /Pages occupied.*compressor:/{gsub(/\./,"",$NF); printf "pages_compressed=%s\n", $NF}
+      ')"
+      local free_mb=$(( (''${pages_free:-0} * page_size) / 1048576 ))
+      local wired_mb=$(( (''${pages_wired:-0} * page_size) / 1048576 ))
+      local compressed_mb=$(( (''${pages_compressed:-0} * page_size) / 1048576 ))
+
+      # Disk I/O snapshot (BSD iostat: 1 sample, all disks, KB units)
+      local diskio
+      diskio=$(iostat -d -K 2>/dev/null \
+        | awk 'NR>2 && $1!="" {
+            printf "{\"dev\":\"%s\",\"kb_per_t\":%s,\"tps\":%s,\"mb_s\":%s},",
+              $1, $2, $3, $4
+          }' \
+        | sed 's/,$//' | awk '{print "["$0"]"}')
+      [[ -n "$diskio" ]] || diskio="[]"
+
+      # nix process stats (heaviest nix-daemon or nix build subprocess)
+      nix_pid=$(pgrep -n "nix-daemon\|nix build" 2>/dev/null || echo "")
+      if [[ -n "$nix_pid" ]]; then
+        read -r nix_cpu nix_rss < <(
+          ps -p "$nix_pid" -o %cpu=,rss= 2>/dev/null \
+            | awk '{printf "%s %d", $1, int($2/1024)}'
+        )
+      else
+        nix_cpu="0" nix_rss="0"
+      fi
+
+      printf '%s\n' \
+        '{"type":"darwin-sample","ts":"'"$ts"'","mem":{"free_mb":'"$free_mb"',"wired_mb":'"$wired_mb"',"compressed_mb":'"$compressed_mb"'},"diskio":'"$diskio"',"nix":{"pid":"'"$nix_pid"'","cpu_pct":'"''${nix_cpu:-0}"',"rss_mb":'"''${nix_rss:-0}"'}}' \
+        >&"$_NDH_DARWIN_OBS_FD" 2>/dev/null || true
+    }
+
+    _ndh_darwin_obs_mark() {
+      [[ -n "''${_NDH_DARWIN_OBS_FD:-}" ]] || return 0
+      printf '%s\n' '{"type":"darwin-phase","label":"'"$1"'","ts":"'"$(date -Iseconds)"'"}' \
+        >&"$_NDH_DARWIN_OBS_FD" 2>/dev/null || true
+    }
+
+    _ndh_darwin_obs_start() {
+      _ndh_darwin_obs_enabled || return 0
+      local interval="''${NDH_ZFS_INSTALL_OBSERVE_INTERVAL:-5}"
+      local out_file="''${NDH_DARWIN_OBS_OUTPUT:-$HOME/Library/Logs/nix-darwin-home/darwin-observe.yaml}"
+      local pipe
+      mkdir -p "$(dirname "$out_file")"
+      pipe="$(mktemp -d)/darwin-obs.fifo"
+      mkfifo "$pipe"
+      _NDH_DARWIN_OBS_PIPE="$pipe"
+
+      # Writer: one long-lived yq process converting JSON lines → YAML stream
+      ( while IFS= read -r line; do
+          printf '%s\n---\n' "$line" | ${pkgs.yq-go}/bin/yq -p json -o yaml
+        done < "$pipe"
+      ) >> "$out_file" &
+      _NDH_DARWIN_OBS_WRITER_PID="$!"
+
+      exec {_NDH_DARWIN_OBS_FD}>"$pipe"
+      export _NDH_DARWIN_OBS_FD _NDH_DARWIN_OBS_WRITER_PID _NDH_DARWIN_OBS_PIPE
+
+      printf '%s\n' '{"type":"darwin-meta","started":"'"$(date -Iseconds)"'","out_file":"'"$out_file"'"}' \
+        >&"$_NDH_DARWIN_OBS_FD" 2>/dev/null || true
+
+      ( while true; do _ndh_darwin_obs_sample; sleep "$interval"; done ) &
+      _NDH_DARWIN_OBS_SAMPLER_PID="$!"
+      export _NDH_DARWIN_OBS_SAMPLER_PID
+    }
+
+    _ndh_darwin_obs_stop() {
+      _ndh_darwin_obs_enabled || return 0
+      [[ -n "''${_NDH_DARWIN_OBS_SAMPLER_PID:-}" ]] && \
+        kill "''${_NDH_DARWIN_OBS_SAMPLER_PID}" 2>/dev/null || true
+      _ndh_darwin_obs_mark "darwin-stop"
+      [[ -n "''${_NDH_DARWIN_OBS_FD:-}" ]] && exec {_NDH_DARWIN_OBS_FD}>&-
+      [[ -n "''${_NDH_DARWIN_OBS_WRITER_PID:-}" ]] && \
+        wait "''${_NDH_DARWIN_OBS_WRITER_PID}" 2>/dev/null || true
+      [[ -n "''${_NDH_DARWIN_OBS_PIPE:-}" ]] && rm -f "''${_NDH_DARWIN_OBS_PIPE}" || true
+    }
+
+    _ndh_darwin_obs_start
+    trap '_ndh_darwin_obs_stop' EXIT
+    _ndh_darwin_obs_mark "materialize-start"
+
+    ${tartActivationScript} "$@"
+    _exit=$?
+
+    _ndh_darwin_obs_mark "materialize-done"
+    exit $_exit
   '';
 
   tartRunManifest = pkgs.writeText "tart-${cfg.vmName}-run-manifest.yaml" ''
@@ -486,7 +589,7 @@ in
       type = types.bool;
       default = false;
       description = ''
-        Install the `nerd-nixos-tart-vm-materialize` helper package in system packages.
+        Install the `nerd-tart-vm-materialize` helper package in system packages.
       '';
     };
 
@@ -503,7 +606,7 @@ in
       readOnly = true;
       default = tartMaterializerPackage;
       description = ''
-        Store package exposing `nerd-nixos-tart-vm-materialize` for host-side Tart VM materialization.
+        Store package exposing `nerd-tart-vm-materialize` for host-side Tart VM materialization.
       '';
     };
   };

@@ -191,13 +191,13 @@ let
     chmod +x "$out"
   '';
 
-  limaMaterializerPackage = pkgs.writeShellScriptBin "nerd-nixos-lima-vm-materialize" ''
+  limaMaterializerPackage = pkgs.writeShellScriptBin "nerd-lima-vm-materialize" ''
     set -euo pipefail
 
     gcroot_user="''${NDH_GCROOT_USER:-''${SUDO_USER:-$(id -un)}}"
     materializer_out="$(cd "$(dirname "$0")/.." && pwd -P)"
     gcroot_dir="/nix/var/nix/gcroots/per-user/''${gcroot_user}"
-    gcroot_link="''${gcroot_dir}/nerd-nixos-lima-vm-materialize"
+    gcroot_link="''${gcroot_dir}/nerd-lima-vm-materialize"
 
     mkdir -p "''${gcroot_dir}"
     ln -sfn "''${materializer_out}" "''${gcroot_link}"
@@ -500,7 +500,7 @@ in
       default = false;
       description = ''
         Run Lima materialization during darwin activation (`postActivation`).
-        Disabled by default; run the materializer manually via `nerd-nixos-lima-vm-materialize`.
+        Disabled by default; run the materializer manually via `nerd-lima-vm-materialize`.
       '';
     };
 
@@ -508,7 +508,7 @@ in
       type = types.bool;
       default = false;
       description = ''
-        Install the `nerd-nixos-lima-vm-materialize` helper package in system packages.
+        Install the `nerd-lima-vm-materialize` helper package in system packages.
         Useful on selected VZ hosts where only ~/.lima materialization tooling is needed.
       '';
     };
@@ -518,7 +518,7 @@ in
       readOnly = true;
       default = limaMaterializerPackage;
       description = ''
-        Store package exposing the `nerd-nixos-lima-vm-materialize` command for host-side
+        Store package exposing the `nerd-lima-vm-materialize` command for host-side
         ~/.lima materialization.
       '';
     };

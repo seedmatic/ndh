@@ -51,7 +51,7 @@ let
       "darwin";
   inventoryHostNames = if inventory ? hosts then builtins.attrNames inventory.hosts else [ ];
   inventoryHostsCsv = lib.concatStringsSep "," inventoryHostNames;
-  rootBringupProfileDir = "/nix/var/nix/profiles/per-user/root/nerd-nixos-bringup-runtime";
+  rootBringupProfileDir = "/nix/var/nix/profiles/per-user/root/nerd-bringup-runtime";
   # Effective YAML path consumed by ssh-add-keys/launchd.
   effectiveSSHKeysYamlPath = "${perUserKeysDir}.yaml";
 
@@ -201,13 +201,13 @@ in
                       cat >&2 <<'EOF'
           [ssh-keys][HINT] On operator host (with nix-darwin-home checkout):
 
-          holder_out="$(nix build --no-link --print-out-paths .#nerd-nixos-bringup-runtime)"
+          holder_out="$(nix build --no-link --print-out-paths .#nerd-bringup-runtime)"
           nix copy --no-check-sigs \
             --to 'ssh-ng://<target-host>?remote-program=/nix/var/nix/profiles/default/bin/nix-daemon' \
             "$holder_out"
           ssh -t <target-host> \
             "sudo /nix/var/nix/profiles/default/bin/nix profile add \
-              --profile /nix/var/nix/profiles/per-user/root/nerd-nixos-bringup-runtime \
+              --profile /nix/var/nix/profiles/per-user/root/nerd-bringup-runtime \
               $holder_out"
           EOF
                       echo "[ssh-keys][HINT] Replace <target-host> with: $runtime_target_host" >&2

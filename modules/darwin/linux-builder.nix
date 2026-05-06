@@ -111,6 +111,24 @@ in
         virtualisation.cores = lib.mkForce effectiveLinuxBuilderVmCpuCores;
         virtualisation.memorySize = lib.mkForce (selected.builder.vmMemoryMiB or 16384);
 
+        # Cap ZFS ARC so the linux-builder's own metadata cache doesn't crowd out pages
+        # needed by the nested QEMU build VM. Formula: reserve half of vmMemoryMiB for
+        # the QEMU process; give ARC the other half (min 2 GiB, max 12 GiB).
+        # Example at 24 GiB: ARC max = 12 GiB, leaving 12 GiB for QEMU + OS overhead.
+        boot.extraModprobeConfig =
+          let
+            vmMem = selected.builder.vmMemoryMiB or 16384;
+            arcMaxMiB = lib.min 12288 (lib.max 2048 (vmMem / 2));
+            arcMaxBytes = arcMaxMiB * 1024 * 1024;
+            # Floor: keep at least 1 GiB in ARC even under memory pressure so
+            # repeated store-path metadata lookups don't stall on cold-cache reads.
+            arcMinBytes = 1073741824; # 1 GiB
+          in
+          ''
+            options zfs zfs_arc_max=${toString arcMaxBytes}
+            options zfs zfs_arc_min=${toString arcMinBytes}
+          '';
+
         # Use the same binary caches and settings as the Darwin configuration
         nix.settings = {
           trusted-substituters = [

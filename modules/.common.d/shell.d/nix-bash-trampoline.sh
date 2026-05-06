@@ -146,7 +146,7 @@ ndh::bootstrap:runtime:install() {
 			runtime_spec=".#$(hostname -s 2>/dev/null || echo host)-nixos-bringup-install"
 		fi
 	fi
-	discovered_installer="$(command -v nerd-nixos-bringup-install 2>/dev/null || true)"
+	discovered_installer="$(command -v nerd-bringup-install 2>/dev/null || true)"
 	if [[ -z "$installer" && -n "$discovered_installer" ]]; then
 		installer="$discovered_installer"
 	fi
@@ -271,7 +271,7 @@ ndh::bootstrap:runtime:ensure() {
 			install_attr="${host_short}-nixos-bringup-install"
 		fi
 	fi
-	installer_hint="${NDH_BOOTSTRAP_INSTALLER:-$(command -v nerd-nixos-bringup-install 2>/dev/null || true)}"
+	installer_hint="${NDH_BOOTSTRAP_INSTALLER:-$(command -v nerd-bringup-install 2>/dev/null || true)}"
 	if [[ -n "$profile_dir" ]]; then
 		if [[ -n "$installer_hint" ]]; then
 			install_hint="${installer_hint} ${profile_dir}"
