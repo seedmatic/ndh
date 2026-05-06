@@ -1,6 +1,11 @@
-{ config, lib, ... }:
+{
+  config,
+  lib,
+  self,
+  ...
+}:
 let
-  shared = import ../.common.d/nfs-shared.nix;
+  shared = import "${self}/modules/.common.d/nfs-shared.nix";
   cfg = config.services.nfsAutofs;
 
   autoMasterLines = [

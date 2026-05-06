@@ -1,8 +1,13 @@
-{ config, lib, ... }:
+{
+  config,
+  lib,
+  self,
+  ...
+}:
 let
   cfg = config.ndh.etcBackup;
   etcTargets = builtins.attrNames config.environment.etc;
-  etcBackupLib = import ../.common.d/etc-backup-lib.nix { inherit lib; };
+  etcBackupLib = import "${self}/modules/.common.d/etc-backup-lib.nix" { inherit lib; };
   backupScript = etcBackupLib.mkEtcBackupScript {
     inherit etcTargets;
     extension = cfg.extension;

@@ -161,7 +161,7 @@ in
 
     };
   };
-  nixpkgs.config = import ../.common.d/nixpkgs-config.nix;
+  nixpkgs.config = import "${self}/modules/.common.d/nixpkgs-config.nix";
 
   nixpkgs.overlays = (config.nixpkgs.overlays or [ ]) ++ [
     (final: prev: {

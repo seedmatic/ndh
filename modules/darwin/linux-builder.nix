@@ -200,6 +200,27 @@ in
           '';
         };
 
+        # Vector agent: relays build telemetry from nested QEMU → macOS VZ aggregator.
+        # 10.0.2.2 = macOS host (SLIRP gateway from linux-builder perspective).
+        services.vector =
+          let
+            vectorConfigLib = import "${self}/modules/.common.d/vector-config.nix" { inherit lib; };
+          in
+          {
+            enable = true;
+            settings = vectorConfigLib.mkAgentConfig {
+              apiPort = 8686;
+              httpPort = 9001;
+              upstreamEndpoint = "http://10.0.2.2:9001";
+            };
+          };
+
+        environment.variables = {
+          NDH_VECTOR_HTTP_PORT = "9001";
+          NDH_VECTOR_API_PORT  = "8686";
+          NDH_VECTOR_ENDPOINT  = "http://127.0.0.1:9001";
+        };
+
         # Deploy profile SSH keys to the VM using NixOS environment.etc with mode
         environment.etc = {
           "ssh/builder_keys.pub" = {

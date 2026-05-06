@@ -125,16 +125,17 @@ fi
 zpool status >&2 || true
 
 # ── Post-install inspection pause ────────────────────────────────────────────
-# When @pauseAfterInstall@ is set, block here until the operator removes the
-# lock file.  Connect to the debug shell and inspect /mnt/zfs-root, then:
+# When @pauseAfterInstall@ is set or NDH_BRINGUP_PAUSE is set, block here until
+# the operator removes the lock file.  Connect to the debug shell and inspect
+# /mnt/zfs-root, then:
 #   rm /tmp/xchg/pause.lock
-if [[ "@pauseAfterInstall@" == "1" ]]; then
+if [[ "@pauseAfterInstall@" == "1" ]] || [[ "${NDH_BRINGUP_PAUSE:-}" == "1" ]]; then
   lock=/tmp/xchg/pause.lock
   touch "$lock"
   echo '[bringup-zfs] *** PAUSED for inspection ***'
   echo '[bringup-zfs]   /mnt/zfs-root is still mounted — inspect freely.'
   echo '[bringup-zfs]   Connect via the debug shell:'
-  echo '[bringup-zfs]     sudo socat UNIX-CONNECT:/proc/$(pgrep --newest qemu)/shell.sock -,raw,echo=0,escape=0x1d'
+  echo '[bringup-zfs]     sudo socat UNIX-CONNECT:/proc/$(pgrep --newest qemu)/cwd/shell.sock -,raw,echo=0,escape=0x1d'
   echo '[bringup-zfs]   When done, resume with:'
   echo '[bringup-zfs]     rm /tmp/xchg/pause.lock'
   inotifywait -q -e delete_self "$lock"

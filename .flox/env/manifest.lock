@@ -30,6 +30,9 @@
         "pkg-group": "keyhole",
         "outputs": "all"
       },
+      "grpcurl": {
+        "pkg-path": "grpcurl"
+      },
       "keychain": {
         "pkg-path": "keychain",
         "pkg-group": "keyhole",
@@ -144,6 +147,9 @@
           "x86_64-darwin",
           "aarch64-darwin"
         ]
+      },
+      "vector": {
+        "pkg-path": "vector"
       },
       "vmnet": {
         "pkg-path": "darwin.apple_sdk.frameworks.vmnet",
@@ -1469,6 +1475,7 @@
       "version": "5.3p9",
       "outputs_to_install": [
         "man",
+        "out",
         "out"
       ],
       "outputs": {
@@ -1503,6 +1510,7 @@
       "version": "5.3p9",
       "outputs_to_install": [
         "man",
+        "out",
         "out"
       ],
       "outputs": {
@@ -1569,6 +1577,64 @@
       ],
       "outputs": {
         "out": "/nix/store/ardp293lam8gmnhprabq4y7ljzq7198h-dasel-3.8.0"
+      },
+      "system": "x86_64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "grpcurl",
+      "broken": false,
+      "derivation": "/nix/store/17mynrlxy8p5pv3nvhk19asv3dgyhfrm-grpcurl-1.9.3.drv",
+      "description": "Like cURL, but for gRPC: Command-line tool for interacting with gRPC servers",
+      "install_id": "grpcurl",
+      "license": "MIT",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=15f4ee454b1dce334612fa6843b3e05cf546efab",
+      "name": "grpcurl-1.9.3",
+      "pname": "grpcurl",
+      "rev": "15f4ee454b1dce334612fa6843b3e05cf546efab",
+      "rev_count": 990025,
+      "rev_date": "2026-04-30T19:45:37Z",
+      "scrape_date": "2026-05-03T08:10:23.605683Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.9.3",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/ia7h5kmck06qv1mmg9sfa9hs7960yf8k-grpcurl-1.9.3"
+      },
+      "system": "aarch64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "grpcurl",
+      "broken": false,
+      "derivation": "/nix/store/bx9w8l3x07cizl3a82xqk3433cwgvgkw-grpcurl-1.9.3.drv",
+      "description": "Like cURL, but for gRPC: Command-line tool for interacting with gRPC servers",
+      "install_id": "grpcurl",
+      "license": "MIT",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=15f4ee454b1dce334612fa6843b3e05cf546efab",
+      "name": "grpcurl-1.9.3",
+      "pname": "grpcurl",
+      "rev": "15f4ee454b1dce334612fa6843b3e05cf546efab",
+      "rev_count": 990025,
+      "rev_date": "2026-04-30T19:45:37Z",
+      "scrape_date": "2026-05-03T09:15:56.573149Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.9.3",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/1rh0qzdqzj3hkkx4g62m2ynjya915527-grpcurl-1.9.3"
       },
       "system": "x86_64-darwin",
       "group": "toplevel",
@@ -2109,6 +2175,64 @@
       "priority": 5
     },
     {
+      "attr_path": "vector",
+      "broken": false,
+      "derivation": "/nix/store/5nnw826ym24jdi3n1i1gmlh49js708gn-vector-0.55.0.drv",
+      "description": "High-performance observability data pipeline",
+      "install_id": "vector",
+      "license": "MPL-2.0",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=15f4ee454b1dce334612fa6843b3e05cf546efab",
+      "name": "vector-0.55.0",
+      "pname": "vector",
+      "rev": "15f4ee454b1dce334612fa6843b3e05cf546efab",
+      "rev_count": 990025,
+      "rev_date": "2026-04-30T19:45:37Z",
+      "scrape_date": "2026-05-03T08:13:05.929858Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "0.55.0",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/vksqci8x03di18fg1ir119qdr4wcy3q4-vector-0.55.0"
+      },
+      "system": "aarch64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "vector",
+      "broken": false,
+      "derivation": "/nix/store/gx1n02lyk1msm1qliygffiryakasjqi6-vector-0.55.0.drv",
+      "description": "High-performance observability data pipeline",
+      "install_id": "vector",
+      "license": "MPL-2.0",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=15f4ee454b1dce334612fa6843b3e05cf546efab",
+      "name": "vector-0.55.0",
+      "pname": "vector",
+      "rev": "15f4ee454b1dce334612fa6843b3e05cf546efab",
+      "rev_count": 990025,
+      "rev_date": "2026-04-30T19:45:37Z",
+      "scrape_date": "2026-05-03T09:18:27.900049Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "0.55.0",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/2lnp6ih90ydxrbaf618nv7ysxr19y92a-vector-0.55.0"
+      },
+      "system": "x86_64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
       "attr_path": "zsh",
       "broken": false,
       "derivation": "/nix/store/wbzb82bmf6m24gj1gxf2b66zaicbkg4r-zsh-5.9.drv",
@@ -2182,6 +2306,9 @@
         "dasel": {
           "pkg-path": "dasel"
         },
+        "grpcurl": {
+          "pkg-path": "grpcurl"
+        },
         "lsof": {
           "pkg-path": "lsof"
         },
@@ -2193,6 +2320,9 @@
         },
         "speedtest-go": {
           "pkg-path": "speedtest-go"
+        },
+        "vector": {
+          "pkg-path": "vector"
         }
       },
       "hook": {},

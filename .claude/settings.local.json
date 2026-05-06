@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(launchctl list *)",
+      "Read(//Users/nxmatic/.local/share/nix-build-observe/**)",
+      "Bash(rm ~/.local/share/nix-build-observe/test-session.ndjson)",
+      "Bash(/usr/bin/log show *)",
+      "Bash(nix eval *)",
+      "Bash(nix-store --query --requisites /nix/store/hpajsrfpvvxdv890hhaw6kfac3mb0j0r-prevm.sh.drv)",
+      "Bash(nix-store --realise /nix/store/hpajsrfpvvxdv890hhaw6kfac3mb0j0r-prevm.sh.drv)",
+      "Bash(nix log *)",
+      "WebFetch(domain:vector.dev)",
+      "Bash(grpcurl -plaintext localhost:8686 list)",
+      "Bash(vector --version)",
+      "Bash(vector --help)",
+      "Bash(vector tap *)"
+    ],
+    "additionalDirectories": [
+      "/Users/nxmatic/.local/share/nix-build-observe"
+    ]
+  }
+}

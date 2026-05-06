@@ -34,5 +34,12 @@
       installMaterializerPackage = false;
       vmMemoryMiB = halfRamMiB;
     };
+
+    # Vector observability aggregator for NixOS disk image builds
+    bringupObserve = {
+      enable = true;
+      # Darwin host acts as the aggregator (no upstream endpoint)
+      # NixOS VMs forward to this via upstreamEndpoint in their configs
+    };
   };
 }

@@ -142,7 +142,7 @@ ndh::logger:hints:resolve() {
 				NDH_LOG_HINT_SHOW_LABEL="macOS unified log (from run marker)"
 				;;
 			esac
-			NDH_LOG_HINT_SHOW_CMD="/usr/bin/log show --style compact --last 24h --predicate 'eventMessage CONTAINS \"[$tag]\"' | awk '/${marker}/{seen=1} seen'"
+			NDH_LOG_HINT_SHOW_CMD="/usr/bin/log show --style compact --last 15m --predicate 'eventMessage CONTAINS \"[$tag]\"' | awk '/${marker}/{seen=1} seen'"
 		else
 			NDH_LOG_HINT_SHOW_LABEL="macOS unified log (recent)"
 			NDH_LOG_HINT_SHOW_CMD="/usr/bin/log show --style compact --last 15m --predicate 'eventMessage CONTAINS \"[$tag]\"'"

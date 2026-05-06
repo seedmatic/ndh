@@ -24,7 +24,18 @@ let
   resolvedOutputDir =
     if cfg.outputDir != "" then cfg.outputDir else "${profileHome}/.local/share/nix-build-observe";
 
-  vectorConfigFile = ndh.store.writeText "bringup-observe-vector-config" ''
+  vectorConfigLib = import "${self}/modules/.common.d/vector-config.nix" { inherit lib; };
+  vectorSettings = vectorConfigLib.mkAggregatorConfig {
+    apiPort = cfg.apiPort;
+    httpPort = cfg.httpPort;
+    outputDir = resolvedOutputDir;
+  };
+
+  vectorConfigFile = ndh.store.writeText "bringup-observe-vector-config" (
+    lib.generators.toYAML { } vectorSettings
+  );
+
+  vectorConfigFileOld = ndh.store.writeText "bringup-observe-vector-config-old" ''
     api:
       enabled: true
       address: "127.0.0.1:${toString cfg.apiPort}"
@@ -35,6 +46,10 @@ let
         address: "0.0.0.0:${toString cfg.httpPort}"
         decoding:
           codec: json
+      vector_logs:
+        type: internal_logs
+      vector_metrics:
+        type: internal_metrics
 
     sinks:
       ndjson_file:
@@ -48,11 +63,32 @@ let
           type: memory
           max_events: 1
           when_full: block
+      vector_logs_file:
+        type: file
+        inputs:
+          - vector_logs
+        path: "${resolvedOutputDir}/vector-aggregator.log"
+        encoding:
+          codec: text
+      vector_metrics_file:
+        type: file
+        inputs:
+          - vector_metrics
+        path: "${resolvedOutputDir}/vector-aggregator-metrics.ndjson"
+        encoding:
+          codec: json
+  '';
+  nixBuildObservePackage = pkgs.writeShellScriptBin "nix-build-observe" ''
+    export NDH_NIX_BASH_TRAMPOLINE="${ndh.context.nixBashTrampoline}"
+    ${builtins.readFile ./bringup-observe.d/nix-build-observe.sh}
   '';
 in
 {
   config = mkIf cfg.enable {
-    environment.systemPackages = [ pkgs.vector ];
+    environment.systemPackages = [
+      pkgs.vector
+      nixBuildObservePackage
+    ];
 
     environment.variables = {
       NDH_VECTOR_HTTP_PORT = toString cfg.httpPort;
@@ -65,7 +101,7 @@ in
         Label = "io.nxmatic.nix-darwin-home-bringup-observe-vector";
         ProgramArguments = [
           "${pkgs.vector}/bin/vector"
-          "--config"
+          "--config-yaml"
           "${vectorConfigFile}"
         ];
         RunAtLoad = true;

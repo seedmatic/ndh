@@ -5,7 +5,7 @@
 
   bringupObserve = {
     enable = true;
-    # macOS VZ Lima vzNAT gateway — Vector aggregator on the host
+    # VM network gateway — Vector aggregator on the macOS host
     upstreamEndpoint = "http://192.168.5.2:9001";
   };
 }

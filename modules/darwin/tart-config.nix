@@ -183,7 +183,8 @@ let
 
       # Writer: one long-lived yq process converting JSON lines → YAML stream
       ( while IFS= read -r line; do
-          printf '%s\n---\n' "$line" | ${pkgs.yq-go}/bin/yq -p json -o yaml
+          printf '%s\n' "$line" | ${pkgs.yq-go}/bin/yq -p json -o yaml
+          printf -- '---\n'
         done < "$pipe"
       ) >> "$out_file" &
       _NDH_DARWIN_OBS_WRITER_PID="$!"
@@ -671,7 +672,12 @@ in
     };
 
     system.activationScripts.postActivation.text =
-      lib.mkIf (tartMaterializationEnabled && cfg.enableActivationHook && cfg.rawImageManifestPath != null)
+      lib.mkIf (
+        config.vmMaterializer.enableActivationHook
+        && tartMaterializationEnabled
+        && cfg.enableActivationHook
+        && cfg.rawImageManifestPath != null
+      )
         (
           lib.mkAfter ''
             ${tartActivationScript}

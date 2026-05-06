@@ -8,6 +8,7 @@
   catalog,
   inventory,
   ndh,
+  self,
   ...
 }:
 
@@ -76,7 +77,7 @@ let
 
   # Canonical disk → ZFS pool membership (shared with bringup config)
   limaVmName = "nerd-nixos";
-  zfsPoolDiskMap = import ../nixos/zfs-pool-disk-map.nix;
+  zfsPoolDiskMap = import "${self}/modules/nixos/zfs-pool-disk-map.nix";
   limaAdditionalDisks = map (entry: {
     name = "${limaVmName}-${entry.disk}";
     format = false;
@@ -631,7 +632,13 @@ in
     # Dedicated activation script using postActivation which is actually executed
     # Use mkAfter to run after other postActivation scripts (@codebase)
     system.activationScripts.postActivation.text =
-      lib.mkIf (limaRuntimeSupported && limaProviderSelected && cfg.enableActivationHook && cfg.rawImageManifestPath != null)
+      lib.mkIf (
+        config.vmMaterializer.enableActivationHook
+        && limaRuntimeSupported
+        && limaProviderSelected
+        && cfg.enableActivationHook
+        && cfg.rawImageManifestPath != null
+      )
         (
           lib.mkAfter ''
             ${limaActivationScript}

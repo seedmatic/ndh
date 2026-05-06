@@ -35,7 +35,7 @@ with lib;
 
     apiPort = mkOption {
       type = types.port;
-      default = 8687;
+      default = 8686;
       description = "Vector API / health-check port (GET /health).";
     };
 
@@ -45,7 +45,7 @@ with lib;
       description = ''
         On NixOS agents: HTTP endpoint of the upstream Vector aggregator.
         Empty string on Darwin (it is the aggregator — no upstream).
-        Example for nerd-nixos Lima: "http://192.168.5.2:9001" (vzNAT gateway).
+        Example for nerd-nixos VM: "http://192.168.5.2:9001" (VM NAT gateway).
       '';
     };
 

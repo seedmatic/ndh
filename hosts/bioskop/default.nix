@@ -6,6 +6,7 @@ let
   hostProfile = {
     hostName = "bioskop";
     vmProvider = "tart";
+    vmMaterializerEnableActivationHook = false;
     nixosBootLoader = "systemd-boot";
     nixosBootstrapDebug = false;
     form = "baremetal";
@@ -13,6 +14,7 @@ let
     # leaving ~12 GiB for the linux-builder host itself (OS + ZFS ARC + QEMU overhead).
     # Requires linux-builder vmMemoryMiB ≥ 24576 (set in inventory/default.nix).
     nixosDiskImageVmMemSizeMiB = 12288;
+
   };
 
   darwinProfile = {

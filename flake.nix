@@ -30,6 +30,7 @@
     lix-module.follows = "flake-commons/lix-module";
     nixos-hardware.follows = "flake-commons/nixos-hardware";
     nixpkgs.follows = "flake-commons/nixpkgs";
+    nixpkgs-unstable.url = "github:NixOS/nixpkgs/nixos-unstable";
     cachix.follows = "flake-commons/cachix";
     darwin.follows = "flake-commons/darwin";
     home-manager.follows = "flake-commons/home-manager";
@@ -698,6 +699,19 @@
         aarch64-linux = pkgsForLinux;
       };
 
+      mkNixBuildObservePackage =
+        system:
+        let
+          pkgs = pkgsFor { inherit system; };
+          nixBashTrampoline = if system == "aarch64-darwin"
+            then ndhNixBashTrampolineDarwin
+            else ndhNixBashTrampolineLinux;
+        in
+        pkgs.writeShellScriptBin "nix-build-observe" ''
+          export NDH_NIX_BASH_TRAMPOLINE="${nixBashTrampoline}"
+          ${builtins.readFile ./modules/darwin/bringup-observe.d/nix-build-observe.sh}
+        '';
+
       packages = nixpkgs.lib.genAttrs [ "aarch64-darwin" "aarch64-linux" ] (
         system:
         let
@@ -711,6 +725,7 @@
           ndh-disko-config = ndhStoreApi.writeText "zfs-disko-config.nix" (
             builtins.readFile ./modules/nixos/zfs-disko-config.nix
           );
+          nix-build-observe = mkNixBuildObservePackage system;
         }
         // builtins.foldl' (
           acc: hostName:
@@ -809,8 +824,13 @@
               };
             }
           ) { } (builtins.attrNames hostCatalog);
+          nixBuildObservePackage = mkNixBuildObservePackage system;
         in
         {
+          nix-build-observe = {
+            type = "app";
+            program = "${nixBuildObservePackage}/bin/nix-build-observe";
+          };
         }
         // hostMaterializerApps
         // hostBootstrapInstallerApps
@@ -1157,6 +1177,7 @@
         lazygitOverlay = inputs: import ./overlays/lazygit.nix inputs;
         limaOverlay = inputs: import ./overlays/lima.nix inputs;
         tailscaleOverlay = inputs: import ./overlays/tailscale.nix inputs;
+        vectorOverlay = inputs: import ./overlays/vector.nix inputs;
         vmToolsDeterministicOverlay = inputs: import ./overlays/vm-tools-deterministic.nix inputs;
 
         direnvOverlay = _inputs: final: prev: {

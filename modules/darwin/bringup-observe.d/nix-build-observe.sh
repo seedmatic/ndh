@@ -1,28 +1,35 @@
-#!/usr/bin/env -S bash -euxo pipefail
-# nix-build-observe.sh — wrap any `nix build` with multi-layer observability.
-PS4='[${BASH_SOURCE[0]##*/}:${LINENO}] '
+# shellcheck shell=bash disable=SC1091
+# nix-build-observe — wrap any `nix build` with multi-layer observability.
 #
 # Collects metrics from three layers during a NixOS disk-image bringup build:
 #   macOS VZ host   — real-time (vm_stat, iostat, nix-daemon cpu/rss)
-#   linux-builder   — post-build ingestion of result/builder-observe.yaml
-#   QEMU guest      — post-build ingestion of result/zfs-nixos-install-observe.yaml
+#   linux-builder   — real-time event forwarding via Vector agent
+#   QEMU guest      — real-time event forwarding via nested Vector relay
 #
-# Requires: vector (installed via bringupObserve.enable = true in your darwin config)
+# Requires: vector, yq-go (provided via bootstrap runtime profile)
 #
 # USAGE:
-#   bin/nix-build-observe.sh .#nixosDiskImages.bioskop -L
+#   nix run .#nix-build-observe -- .#nixosDiskImages.bioskop -L
+#   env NDH_ZFS_INSTALL_OBSERVE=1 NDH_BRINGUP_PAUSE=1 nix run .#nix-build-observe -- .#nixosDiskImages.bioskop -L
 #
 # ENVIRONMENT:
 #   NDH_BUILD_OBSERVE_INTERVAL=5    — macOS sample interval in seconds (default: 5)
 #   NDH_BUILD_OBSERVE_DIR           — output dir (default: .local.d relative to CWD)
 #   NDH_VECTOR_HTTP_PORT=9001       — Vector HTTP source port (default: 9001)
-#   NDH_VECTOR_API_PORT=8687        — Vector API/health port (default: 8687)
+#   NDH_VECTOR_API_PORT=8686        — Vector API/health port (default: 8686)
+#
+# Build environment (passed through to nested builds):
+#   NDH_BRINGUP_PAUSE               — if set, pause at key points in bringup
+#   NDH_ZFS_INSTALL_OBSERVE         — if set, enable detailed ZFS install observation
 #
 # OUTPUT:
 #   .local.d/<iso8601>-<attr>.ndjson   — NDJSON stream, one JSON event per line
 #   .local.d/latest.ndjson             — symlink to most recent
 
-source <( flox activate )
+# Load bash trampoline for logging and bootstrap runtime
+source "${NDH_NIX_BASH_TRAMPOLINE}"
+
+set -euo pipefail
 
 # ── globals (defaults; functions fill in the rest) ────────────────────────────
 OBS_TMPDIR=""
@@ -33,7 +40,7 @@ OBS_SESSION=""
 OBS_DIR="${NDH_BUILD_OBSERVE_DIR:-.local.d}"
 OBS_OUT_FILE=""
 OBS_HTTP_PORT="${NDH_VECTOR_HTTP_PORT:-9001}"
-OBS_API_PORT="${NDH_VECTOR_API_PORT:-8687}"
+OBS_API_PORT="${NDH_VECTOR_API_PORT:-8686}"
 OBS_VECTOR_PID=""
 OBS_SAMPLER_PID=""
 NDH_VECTOR_ENDPOINT=""
@@ -125,10 +132,10 @@ EOF
 obs::vector:send() {
   local body="$1"
   local http_code
-  http_code=$(curl -s -o /dev/null -w "%{http_code}" \
+  http_code=$(printf '%s' "${body}" | curl -s -o /dev/null -w "%{http_code}" \
     -X POST "http://127.0.0.1:${OBS_HTTP_PORT}" \
     -H "Content-Type: application/json" \
-    -d "${body}" 2>/dev/null) || {
+    -d @- 2>/dev/null) || {
     echo "[nix-build-observe][WARN] Vector curl failed (connection refused?)" >&2
     return 0
   }
@@ -190,7 +197,7 @@ obs::vector:start() {
 
   obs::vector:config > "${OBS_TMPDIR}/vector.yaml"
 
-  vector --config "${OBS_TMPDIR}/vector.yaml" \
+  vector --config-yaml "${OBS_TMPDIR}/vector.yaml" \
     --log-format text \
     2>"${OBS_TMPDIR}/vector.log" &
   OBS_VECTOR_PID="$!"
@@ -210,16 +217,21 @@ obs::vector:start() {
 
 obs::start() {
   OBS_HTTP_PORT="${NDH_VECTOR_HTTP_PORT:-9001}"
-  OBS_API_PORT="${NDH_VECTOR_API_PORT:-8687}"
+  OBS_API_PORT="${NDH_VECTOR_API_PORT:-8686}"
 
   obs::vector:start
   obs::vector:send "$(vz::phase "vz-build-start")"
 
   # Set endpoint for explicit passing to nix build via env prefix below.
-  NDH_VECTOR_ENDPOINT="http://10.0.2.2:${OBS_HTTP_PORT}"
+  # Prefer existing NDH_VECTOR_ENDPOINT (set by VM modules to use local agents).
+  # Default to Darwin aggregator via VM gateway if not already set.
+  if [[ -z "${NDH_VECTOR_ENDPOINT:-}" ]]; then
+    NDH_VECTOR_ENDPOINT="http://10.0.2.2:${OBS_HTTP_PORT}"
+  fi
 
   local interval="${NDH_BUILD_OBSERVE_INTERVAL:-5}"
   (
+    set +x
     while true; do
       obs::vector:send "$(vz::sample)"
       sleep "$interval"
@@ -253,13 +265,24 @@ obs::on_signal() {
 }
 
 obs::build:run() {
+  local -a impure_env_args=()
+
+  # Pass through user-controllable environment variables
+  if [[ -n "${NDH_BRINGUP_PAUSE:-}" ]]; then
+    impure_env_args+=(--impure-env "NDH_BRINGUP_PAUSE=${NDH_BRINGUP_PAUSE}")
+  fi
+  if [[ -n "${NDH_ZFS_INSTALL_OBSERVE:-}" ]]; then
+    impure_env_args+=(--impure-env "NDH_ZFS_INSTALL_OBSERVE=${NDH_ZFS_INSTALL_OBSERVE}")
+  fi
+
+  # Always pass these
+  impure_env_args+=(--impure-env NDH_BUILD_OBSERVE=1)
+  impure_env_args+=(--impure-env "NDH_VECTOR_ENDPOINT=${NDH_VECTOR_ENDPOINT}")
+
   nix build \
       --extra-experimental-features "nix-command flakes configurable-impure-env" \
       --impure \
-      --impure-env NDH_BRINGUP_PAUSE=1 \
-      --impure-env NDH_BUILD_OBSERVE=1 \
-      --impure-env NDH_ZFS_INSTALL_OBSERVE=1 \
-      --impure-env "NDH_VECTOR_ENDPOINT=${NDH_VECTOR_ENDPOINT}" \
+      "${impure_env_args[@]}" \
       --out-link result \
       --json "$@" \
     | env OBS_SESSION="${OBS_SESSION}" OBS_HOST="${OBS_HOST}" yq -p json -o yaml \
@@ -270,18 +293,22 @@ obs::build:run() {
 
 # ── main ──────────────────────────────────────────────────────────────────────
 
-OBS_ATTR="$(obs::attr:parse "$@")"
-OBS_SAFE_ATTR="${OBS_ATTR//[^a-zA-Z0-9._-]/_}"
-OBS_HOST="${OBS_ATTR##*.}"                         # last component: bioskop
-OBS_SESSION="$(date -u +%Y%m%dT%H%M%SZ)-$$-${OBS_SAFE_ATTR}"
-OBS_DIR="${NDH_BUILD_OBSERVE_DIR:-.local.d}"
-mkdir -p "${OBS_DIR}"
-OBS_DIR="$(cd "${OBS_DIR}" && pwd -P)"
-OBS_OUT_FILE="${OBS_DIR}/${OBS_SESSION}.ndjson"    # matches Vector {{ session }}.ndjson
+main() {
+  OBS_ATTR="$(obs::attr:parse "$@")"
+  OBS_SAFE_ATTR="${OBS_ATTR//[^a-zA-Z0-9._-]/_}"
+  OBS_HOST="${OBS_ATTR##*.}"                         # last component: bioskop
+  OBS_SESSION="$(date -u +%Y%m%dT%H%M%SZ)-$$-${OBS_SAFE_ATTR}"
+  OBS_DIR="${NDH_BUILD_OBSERVE_DIR:-.local.d}"
+  mkdir -p "${OBS_DIR}"
+  OBS_DIR="$(cd "${OBS_DIR}" && pwd -P)"
+  OBS_OUT_FILE="${OBS_DIR}/${OBS_SESSION}.ndjson"    # matches Vector {{ session }}.ndjson
 
-obs::start
-trap 'obs::stop'              EXIT
-trap 'obs::on_signal INT'     INT
-trap 'obs::on_signal TERM'    TERM
+  obs::start
+  trap 'obs::stop'              EXIT
+  trap 'obs::on_signal INT'     INT
+  trap 'obs::on_signal TERM'    TERM
 
-obs::build:run "$@"
+  obs::build:run "$@"
+}
+
+ndh::logger:command:run "nix-build-observe" main "$@"

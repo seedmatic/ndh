@@ -5,7 +5,7 @@ echo "[$(date)] Bond wake monitor started"
 
 # Monitor kernel power management events for wake from sleep
 # Filter for actual wake events using predicate to avoid false positives
-log stream --level info --predicate 'subsystem == "com.apple.iokit.power" AND eventMessage CONTAINS "Wake from"' --style compact 2>/dev/null | \
+/usr/bin/log stream --level info --predicate 'subsystem == "com.apple.iokit.power" AND eventMessage CONTAINS "Wake from"' --style compact 2>/dev/null | \
 while read -r line; do
   echo "[$(date)] System woke from sleep"
   

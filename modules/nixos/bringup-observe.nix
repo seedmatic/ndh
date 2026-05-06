@@ -9,6 +9,7 @@
 {
   config,
   lib,
+  self,
   ...
 }:
 with lib;
@@ -16,41 +17,25 @@ let
   cfg = config.bringupObserve;
 in
 {
-  config = mkIf cfg.enable {
-    services.vector = {
-      enable = true;
-      settings = {
-        api = {
-          enabled = true;
-          address = "127.0.0.1:${toString cfg.apiPort}";
-        };
-
-        sources.nix_bld_http = {
-          type = "http_server";
-          address = "0.0.0.0:${toString cfg.httpPort}";
-          decoding.codec = "json";
-        };
-
-        sinks.forward_to_vz = {
-          type = "http";
-          inputs = [ "nix_bld_http" ];
-          uri = cfg.upstreamEndpoint;
-          method = "post";
-          encoding.codec = "json";
-          request.headers."Content-Type" = "application/json";
-          buffer = {
-            type = "memory";
-            max_events = 1;
-            when_full = "block";
-          };
+  config = mkIf cfg.enable (
+    let
+      vectorConfigLib = import "${self}/modules/.common.d/vector-config.nix" { inherit lib; };
+    in
+    {
+      services.vector = {
+        enable = true;
+        settings = vectorConfigLib.mkAgentConfig {
+          apiPort = cfg.apiPort;
+          httpPort = cfg.httpPort;
+          upstreamEndpoint = cfg.upstreamEndpoint;
         };
       };
-    };
 
-    environment.variables = {
-      NDH_VECTOR_HTTP_PORT = toString cfg.httpPort;
-      NDH_VECTOR_API_PORT  = toString cfg.apiPort;
-      NDH_VECTOR_ENDPOINT  = "http://127.0.0.1:${toString cfg.httpPort}";
-    };
-  };
+      environment.variables = {
+        NDH_VECTOR_HTTP_PORT = toString cfg.httpPort;
+        NDH_VECTOR_API_PORT  = toString cfg.apiPort;
+        NDH_VECTOR_ENDPOINT  = "http://127.0.0.1:${toString cfg.httpPort}";
+      };
+    }
+  );
 }

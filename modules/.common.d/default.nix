@@ -255,6 +255,7 @@ in
     ./dnsmasq.nix
     ./lima-host.nix
     ./bringup-observe.nix
+    ./vm-materializer.nix
   ];
 
   config = {

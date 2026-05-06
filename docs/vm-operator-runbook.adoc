@@ -221,11 +221,11 @@ used to pass the flag into the Nix sandbox evaluation.
 |`vm_stat` (free/wired/compressed pages), BSD `iostat` per disk, nix-daemon cpu%/RSS
 
 |`builder`
-|linux-builder, written to `result/builder-observe.yaml`, ingested post-build
+|linux-builder, real-time via Vector agent forwarding
 |QEMU pid cpu%/RSS, host `iostat`, host dirty/writeback/avail memory
 
 |`guest`
-|nested QEMU, written to `result/zfs-nixos-install-observe.yaml`, ingested post-build
+|nested QEMU, real-time via socat relay to Vector agent
 |ZFS ARC hit%, vdev latency, disk I/O, memory pressure, install phase markers
 |===
 
@@ -236,6 +236,56 @@ used to pass the flag into the Nix sandbox evaluation.
 ~/.local/share/nix-darwin-home/build-obs/
   <iso8601>-<attr>.ndjson   ← NDJSON stream (one JSON event per line)
   latest.ndjson             ← symlink to most recent session
+----
+
+==== Real-time event streaming
+
+The Vector LaunchAgent exposes a GraphQL API for live event inspection via the `vector tap` command.
+
+First, verify the Vector API is reachable:
+
+[source,bash]
+----
+# Check Vector is running and API is responding
+curl -s http://127.0.0.1:8686/graphql -X POST \
+  -H "Content-Type: application/json" \
+  -d '{"query": "{ health }"}' | jq
+
+# Expected output: {"data": {"health": true}}
+----
+
+If the API isn't reachable, ensure the LaunchAgent is running and has the correct config:
+
+[source,bash]
+----
+# Check LaunchAgent status
+launchctl list | grep bringup-observe-vector
+
+# Restart if needed
+launchctl kickstart -k gui/$(id -u)/io.nxmatic.nix-darwin-home-bringup-observe-vector
+
+# Verify config has API enabled (should show: enabled = true)
+grep -A2 "^\[api\]" ~/.local/share/nix-build-observe/vector-config.toml
+----
+
+Stream events in real-time:
+
+[source,bash]
+----
+# Stream events from the HTTP source (all incoming events)
+vector tap --url http://127.0.0.1:8686/graphql \
+  --outputs-of 'nix_bld_http' --format json --meta
+
+# Monitor what's being written to the NDJSON file
+vector tap --url http://127.0.0.1:8686/graphql \
+  --inputs-of 'ndjson_file' --format json --meta
+
+# Tail all components with quiet output (events only)
+vector tap --url http://127.0.0.1:8686/graphql '*' \
+  --format json --quiet
+
+# Or tail the NDJSON file directly
+tail -f ~/.local/share/nix-build-observe/latest.ndjson | jq -c .
 ----
 
 ==== Environment overrides
@@ -261,7 +311,7 @@ used to pass the flag into the Nix sandbox evaluation.
 |Vector HTTP source port.
 
 |`NDH_VECTOR_API_PORT`
-|`8687`
+|`8686`
 |Vector API / health-check port.
 
 |`NDH_BRINGUP_PAUSE`

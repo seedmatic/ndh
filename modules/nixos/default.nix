@@ -211,6 +211,7 @@ let
     ./dbus-tcp.nix
     ./vlan.nix
     ./tailscale.nix
+    ./bringup-xchg-mount.nix
   ];
 
   runtimeOnlyImports = [
