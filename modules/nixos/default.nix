@@ -309,6 +309,7 @@ in
         "nix-command"
         "flakes"
         "ca-derivations"
+        "configurable-impure-env"
       ];
       auto-optimise-store = false; # Manual optimise recommended; improves build latency during development.
       trusted-users = [

@@ -305,18 +305,6 @@ in
     NIX_BUILD_CORES = toString vmCpuCores;
     inherit memSize;
 
-    # Allow the macOS caller to inject runtime-only knobs without breaking
-    # the derivation's content-address.  Values are read from the nix-build
-    # caller's environment (macOS side) and forwarded to the linux-builder
-    # sandbox by the Nix protocol.
-    impureEnvVars = [
-      "NDH_BUILD_OBSERVE"
-      "NDH_ZFS_INSTALL_OBSERVE"
-      "NDH_ZFS_INSTALL_OBSERVE_INTERVAL"
-      "NDH_BRINGUP_PAUSE"
-      "NDH_VECTOR_ENDPOINT"
-    ];
-
     preVM = ''
       source ${preVmScript}
     '';
