@@ -88,7 +88,10 @@ vz::sample() {
   [[ -n "$diskio" ]] || diskio="[]"
 
   local nix_pid nix_cpu nix_rss
-  nix_pid=$(pgrep -n "nix-daemon" 2>/dev/null || pgrep -n "^nix$" 2>/dev/null || echo "")
+  # On macOS the daemon COMM is truncated to "nix"; use launchctl to get the authoritative PID.
+  nix_pid=$(launchctl print system/org.nixos.nix-daemon 2>/dev/null \
+              | awk '/^\s*pid\s*=/ {print $3; exit}') \
+    || nix_pid=""
   if [[ -n "$nix_pid" ]]; then
     read -r nix_cpu nix_rss < <(
       ps -p "$nix_pid" -o %cpu=,rss= 2>/dev/null \

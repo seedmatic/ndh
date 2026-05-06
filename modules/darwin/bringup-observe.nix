@@ -14,6 +14,7 @@
   lib,
   pkgs,
   ndh,
+  self,
   ...
 }:
 with lib;
@@ -80,6 +81,10 @@ let
   '';
   nixBuildObservePackage = pkgs.writeShellScriptBin "nix-build-observe" ''
     export NDH_NIX_BASH_TRAMPOLINE="${ndh.context.nixBashTrampoline}"
+    # Bake the resolved outputDir so `nix run` picks it up even without a login shell.
+    export NDH_BUILD_OBSERVE_DIR="${resolvedOutputDir}"
+    export NDH_VECTOR_HTTP_PORT="${toString cfg.httpPort}"
+    export NDH_VECTOR_API_PORT="${toString cfg.apiPort}"
     ${builtins.readFile ./bringup-observe.d/nix-build-observe.sh}
   '';
 in
