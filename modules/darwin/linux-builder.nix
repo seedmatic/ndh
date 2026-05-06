@@ -64,7 +64,8 @@ let
     && (entry.vm.manager or "") == "lima"
   ) inventoryEntries;
   selected = if (!isBaremetalHost) then null else lib.head (linuxBuilderEntries ++ [ null ]);
-  selectedLimaBuilder = if (!isBaremetalHost) then null else lib.head (limaBuilderEntries ++ [ null ]);
+  selectedLimaBuilder =
+    if (!isBaremetalHost) then null else lib.head (limaBuilderEntries ++ [ null ]);
   requestedLinuxBuilderVmCpuCores =
     if selected != null then (selected.builder.vmCpuCores or 8) else 8;
   effectiveLinuxBuilderVmCpuCores = lib.min requestedLinuxBuilderVmCpuCores 8;
@@ -79,12 +80,10 @@ in
 {
 
   config = {
-    warnings =
-      lib.optional (selected != null && requestedLinuxBuilderVmCpuCores > 8)
-        ''
-          linux-builder requested ${toString requestedLinuxBuilderVmCpuCores} vCPUs, but qemu mach-virt supports up to 8 here.
-          Clamping linux-builder VM vCPUs to 8.
-        '';
+    warnings = lib.optional (selected != null && requestedLinuxBuilderVmCpuCores > 8) ''
+      linux-builder requested ${toString requestedLinuxBuilderVmCpuCores} vCPUs, but qemu mach-virt supports up to 8 here.
+      Clamping linux-builder VM vCPUs to 8.
+    '';
 
     nix.linux-builder = lib.mkIf (selected != null) {
       enable = true;
@@ -249,7 +248,6 @@ in
           TCPKeepAlive yes
       '';
     };
-
 
     # Deploy linux-builder private key for nix daemon (runs as root).
     # The key is extracted from the per-user SSH keys directory after SOPS decryption.

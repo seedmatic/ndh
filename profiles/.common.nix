@@ -64,10 +64,12 @@ in
                   example = "my-mac";
                 };
                 form = lib.mkOption {
-                  type = lib.types.nullOr (lib.types.enum [
-                    "baremetal"
-                    "vm"
-                  ]);
+                  type = lib.types.nullOr (
+                    lib.types.enum [
+                      "baremetal"
+                      "vm"
+                    ]
+                  );
                   default = null;
                   description = "Hardware form factor: 'baremetal' for physical machines, 'vm' for virtual machines. Affects which services (e.g. linux-builder) can be enabled.";
                   example = "vm";

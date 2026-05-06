@@ -91,10 +91,12 @@ let
       (builtins.readFile ./bringup-runtime.d/activation-check.sh);
   # Activation check as a proper directory package — script lives in share/, not at the store root.
   # Defined after ndhPrerequisitesInstallerPackage due to @bootstrapInstaller@ reference.
-  ndhActivationCheckPackage = pkgs.runCommand (prefixStoreName "bringup-runtime-activation-check") { } ''
-    install -Dm755 ${pkgs.writeShellScript "activation-check" activationCheckSource} \
-      "$out/share/activation-check.sh"
-  '';
+  ndhActivationCheckPackage =
+    pkgs.runCommand (prefixStoreName "bringup-runtime-activation-check") { }
+      ''
+        install -Dm755 ${pkgs.writeShellScript "activation-check" activationCheckSource} \
+          "$out/share/activation-check.sh"
+      '';
   # Package trampoline and logger.sh together so the trampoline can locate
   # logger.sh via dirname "${BASH_SOURCE[0]}" at runtime.
   trampolineDir = pkgs.runCommand (prefixStoreName "trampoline-dir") { } ''

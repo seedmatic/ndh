@@ -23,10 +23,7 @@
 }:
 let
   zfsPoolDiskMapEffective =
-    if zfsPoolDiskMap != null then
-      zfsPoolDiskMap
-    else
-      import ./zfs-pool-disk-map.nix;
+    if zfsPoolDiskMap != null then zfsPoolDiskMap else import ./zfs-pool-disk-map.nix;
   zstdLevel = hostProfile.nixosZstdCompressionLevel or 1;
   zfsCompression = "zstd-${toString zstdLevel}";
   espEndMiB = espStartMiB + espSizeMiB;
@@ -105,17 +102,15 @@ let
     };
 
   zfsPoolDisks = lib.listToAttrs (
-    map
-      (spec: {
+    map (spec: {
+      name = spec.disk;
+      value = mkPoolDisk {
         name = spec.disk;
-        value = mkPoolDisk {
-          name = spec.disk;
-          espLabel = "esp-${spec.disk}";
-          device = disks.${spec.disk};
-          pool = spec.pool;
-        };
-      })
-      zfsPoolDiskMapEffective
+        espLabel = "esp-${spec.disk}";
+        device = disks.${spec.disk};
+        pool = spec.pool;
+      };
+    }) zfsPoolDiskMapEffective
   );
 
   config = {

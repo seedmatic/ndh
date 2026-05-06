@@ -271,7 +271,8 @@ let
 
     ssh = {
       forwardAgent = true;
-    } // (lib.optionalAttrs (cfg.sshLocalPort != 0) {
+    }
+    // (lib.optionalAttrs (cfg.sshLocalPort != 0) {
       localPort = cfg.sshLocalPort;
     });
 

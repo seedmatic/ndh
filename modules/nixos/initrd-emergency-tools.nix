@@ -25,26 +25,82 @@ let
   # Each entry: { bin = "name"; pkg = pkgs.foo; path = "bin/foo"; }
   entries = [
     # ── Text search / stream processing ─────────────────────────────────────
-    { bin = "grep";    pkg = pkgs.gnugrep;    path = "bin/grep"; }
-    { bin = "egrep";   pkg = pkgs.gnugrep;    path = "bin/egrep"; }
-    { bin = "sed";     pkg = pkgs.gnused;     path = "bin/sed"; }
-    { bin = "awk";     pkg = pkgs.gawk;       path = "bin/awk"; }
+    {
+      bin = "grep";
+      pkg = pkgs.gnugrep;
+      path = "bin/grep";
+    }
+    {
+      bin = "egrep";
+      pkg = pkgs.gnugrep;
+      path = "bin/egrep";
+    }
+    {
+      bin = "sed";
+      pkg = pkgs.gnused;
+      path = "bin/sed";
+    }
+    {
+      bin = "awk";
+      pkg = pkgs.gawk;
+      path = "bin/awk";
+    }
 
     # ── Disk / partition tooling ─────────────────────────────────────────────
-    { bin = "sgdisk";  pkg = pkgs.gptfdisk;   path = "bin/sgdisk"; }
-    { bin = "hexdump"; pkg = pkgs.util-linux; path = "bin/hexdump"; }
-    { bin = "lsblk";   pkg = pkgs.util-linux; path = "bin/lsblk"; }
-    { bin = "blkid";   pkg = pkgs.util-linux; path = "bin/blkid"; }
-    { bin = "partx";   pkg = pkgs.util-linux; path = "bin/partx"; }
-    { bin = "fdisk";   pkg = pkgs.util-linux; path = "bin/fdisk"; }
+    {
+      bin = "sgdisk";
+      pkg = pkgs.gptfdisk;
+      path = "bin/sgdisk";
+    }
+    {
+      bin = "hexdump";
+      pkg = pkgs.util-linux;
+      path = "bin/hexdump";
+    }
+    {
+      bin = "lsblk";
+      pkg = pkgs.util-linux;
+      path = "bin/lsblk";
+    }
+    {
+      bin = "blkid";
+      pkg = pkgs.util-linux;
+      path = "bin/blkid";
+    }
+    {
+      bin = "partx";
+      pkg = pkgs.util-linux;
+      path = "bin/partx";
+    }
+    {
+      bin = "fdisk";
+      pkg = pkgs.util-linux;
+      path = "bin/fdisk";
+    }
 
     # ── ZFS ──────────────────────────────────────────────────────────────────
-    { bin = "zdb";     pkg = pkgs.zfs;        path = "bin/zdb"; }
+    {
+      bin = "zdb";
+      pkg = pkgs.zfs;
+      path = "bin/zdb";
+    }
 
     # ── Terminal ─────────────────────────────────────────────────────────────
-    { bin = "tput";    pkg = pkgs.ncurses;    path = "bin/tput"; }
-    { bin = "reset";   pkg = pkgs.ncurses;    path = "bin/reset"; }
-    { bin = "infocmp"; pkg = pkgs.ncurses;    path = "bin/infocmp"; }
+    {
+      bin = "tput";
+      pkg = pkgs.ncurses;
+      path = "bin/tput";
+    }
+    {
+      bin = "reset";
+      pkg = pkgs.ncurses;
+      path = "bin/reset";
+    }
+    {
+      bin = "infocmp";
+      pkg = pkgs.ncurses;
+      path = "bin/infocmp";
+    }
   ];
 
   # resize: fix terminal geometry after socat/serial attach.
@@ -60,20 +116,26 @@ let
     printf 'COLUMNS=%d;\nLINES=%d;\nexport COLUMNS LINES;\n' "$cols" "$rows"
   '';
 
-  extraBin = builtins.listToAttrs (
-    map (e: { name = e.bin; value = "${e.pkg}/${e.path}"; }) entries
-  ) // {
-    resize = "${resizeScript}/bin/resize";
-  };
+  extraBin =
+    builtins.listToAttrs (
+      map (e: {
+        name = e.bin;
+        value = "${e.pkg}/${e.path}";
+      }) entries
+    )
+    // {
+      resize = "${resizeScript}/bin/resize";
+    };
 
   # storePaths must list specific binary paths, not whole package derivations.
   # make-initrd-ng traces ELF rpaths from each listed path — this is how shared
   # library deps (glibc, pcre2, etc.) get embedded in the initrd cpio.
-  storePaths = pkgs.lib.unique (map (e: "${e.pkg}/${e.path}") entries)
-    ++ [ resizeScript ];
+  storePaths = pkgs.lib.unique (map (e: "${e.pkg}/${e.path}") entries) ++ [ resizeScript ];
 
   # packages: deduplicated package derivations for use with lib.makeBinPath.
   # Used by bringup-zfs-disk-image.nix to build the bringup shell PATH.
   packages = pkgs.lib.unique (map (e: e.pkg) entries) ++ [ resizeScript ];
 in
-{ inherit extraBin storePaths packages; }
+{
+  inherit extraBin storePaths packages;
+}

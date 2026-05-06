@@ -643,8 +643,13 @@
           inherit (spec) hostProfile;
           catalog = catalogData;
           inventory = inventoryData;
-          profileModule = { ... }: { imports = [ spec.profileModule ] ++ spec.nixosExtraModules; };
+          profileModule =
+            { ... }:
+            {
+              imports = [ spec.profileModule ] ++ spec.nixosExtraModules;
+            };
           includeRuntimeClosure = false;
+          pauseAfterInstall = builtins.getEnv "NDH_BRINGUP_PAUSE" == "1";
         }).diskImageBringupZfsSystemdBoot;
     in
     rec {
@@ -663,13 +668,12 @@
       # Disable flake checks to avoid treefmt-nix API mismatch during evaluation
       checks = forAllSystems (_: { });
 
-      diskoConfigurations =
-        {
-          default = import ./modules/nixos/zfs-disko-config.nix { lib = nixpkgs.lib; };
-        }
-        // builtins.foldl' (
-          acc: hostOutput: acc // hostOutput.diskoConfigurations
-        ) { } (builtins.attrValues hostOutputs);
+      diskoConfigurations = {
+        default = import ./modules/nixos/zfs-disko-config.nix { lib = nixpkgs.lib; };
+      }
+      // builtins.foldl' (acc: hostOutput: acc // hostOutput.diskoConfigurations) { } (
+        builtins.attrValues hostOutputs
+      );
 
       diskoModules = {
         default = ./modules/nixos/disko.nix;
@@ -1066,7 +1070,9 @@
           defaultPackage."aarch64-darwin" = darwinConfiguration.system;
         };
 
-      hostOutputs = forAllHosts (_: hostSpec: mkHostOutputs (hostSpec // { baseImagePath = nerdNixosDiskImage; }));
+      hostOutputs = forAllHosts (
+        _: hostSpec: mkHostOutputs (hostSpec // { baseImagePath = nerdNixosDiskImage; })
+      );
 
       darwinConfigurations = builtins.foldl' (
         acc: hostOutput: acc // hostOutput.darwinConfigurations
@@ -1105,10 +1111,10 @@
       ) hostOutputs;
 
       nixosDiskImages =
-        builtins.mapAttrs (
-          _: hostOutput: hostOutput.nixosDiskImageBringupSystemdZfs
-        ) hostOutputs
-        // { "nerd-nixos" = nerdNixosDiskImage; };
+        builtins.mapAttrs (_: hostOutput: hostOutput.nixosDiskImageBringupSystemdZfs) hostOutputs
+        // {
+          "nerd-nixos" = nerdNixosDiskImage;
+        };
 
       # Overlay factories (curried: inputs: final: prev:) — used internally via overlayFactories.
       overlayFactories = {

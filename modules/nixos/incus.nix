@@ -60,7 +60,9 @@ let
   );
   lanBridgeMac = "10:66:6a:4c:${hostByteHex}:01";
   fixIncusSocketPerms = ndh.store.runCommand "fix-incus-socket-perms" { } ''
-    install -Dm755 ${pkgs.replaceVars ./incus.d/fix-incus-socket-perms.sh { }} "$out/bin/fix-incus-socket-perms"
+    install -Dm755 ${
+      pkgs.replaceVars ./incus.d/fix-incus-socket-perms.sh { }
+    } "$out/bin/fix-incus-socket-perms"
   '';
 
 in

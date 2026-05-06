@@ -628,16 +628,19 @@ in
     # initrdZpoolInitScript does `exec ${zpoolInit}/bin/zpool-init` which embeds
     # absolute store paths that must exist in the initrd /nix/store.
     boot.initrd.systemd.storePaths = lib.mkMerge [
-      (lib.mkIf (
-        config.zfsOverlays.bootstrapActivation.enable && config.zfsOverlays.enable && (!overlayModeEnabled)
-      ) [
-        initrdDevicesCheckScript
-        initrdZpoolInitScript
-        zpoolInit
-        pkgs.gptfdisk
-        pkgs.util-linux
-        pkgs.yq-go
-      ])
+      (lib.mkIf
+        (
+          config.zfsOverlays.bootstrapActivation.enable && config.zfsOverlays.enable && (!overlayModeEnabled)
+        )
+        [
+          initrdDevicesCheckScript
+          initrdZpoolInitScript
+          zpoolInit
+          pkgs.gptfdisk
+          pkgs.util-linux
+          pkgs.yq-go
+        ]
+      )
       (lib.mkIf (config.zfsOverlays.enable && (!overlayModeEnabled)) [ initrdBootEntryReconcileScript ])
     ];
 
@@ -687,41 +690,42 @@ in
     # rewrites the systemd-boot .conf entries to point at the system closure
     # that is actually present.
     boot.initrd.systemd.services.${bootReconcileUnitName} =
-      lib.mkIf (config.zfsOverlays.enable && (!overlayModeEnabled)) {
-        description = "Reconcile EFI boot entry with ZFS store system closure";
-        unitConfig = {
-          # Only need the ZFS store mounted to find the actual system closure.
-          # The ESP is detected via LoaderDevicePartUUID EFI variable and mounted
-          # by the script itself — /sysroot/boot may not exist on all layouts.
-          RequiresMountsFor = [ "/sysroot/nix/store" ];
-          DefaultDependencies = false;
+      lib.mkIf (config.zfsOverlays.enable && (!overlayModeEnabled))
+        {
+          description = "Reconcile EFI boot entry with ZFS store system closure";
+          unitConfig = {
+            # Only need the ZFS store mounted to find the actual system closure.
+            # The ESP is detected via LoaderDevicePartUUID EFI variable and mounted
+            # by the script itself — /sysroot/boot may not exist on all layouts.
+            RequiresMountsFor = [ "/sysroot/nix/store" ];
+            DefaultDependencies = false;
+          };
+          after = [
+            "sysroot.mount"
+            "systemd-udevd.service"
+            "systemd-udev-settle.service"
+          ];
+          before = [
+            "initrd-find-nixos-closure.service"
+            "initrd.target"
+          ];
+          wantedBy = [ "initrd.target" ];
+          path = with pkgs; [
+            bash
+            coreutils
+            gnugrep
+            gnused
+            findutils
+            util-linux
+          ];
+          serviceConfig = {
+            Type = "oneshot";
+            RemainAfterExit = true;
+            StandardOutput = "journal+console";
+            StandardError = "journal+console";
+            ExecStart = initrdBootEntryReconcileScript;
+          };
         };
-        after = [
-          "sysroot.mount"
-          "systemd-udevd.service"
-          "systemd-udev-settle.service"
-        ];
-        before = [
-          "initrd-find-nixos-closure.service"
-          "initrd.target"
-        ];
-        wantedBy = [ "initrd.target" ];
-        path = with pkgs; [
-          bash
-          coreutils
-          gnugrep
-          gnused
-          findutils
-          util-linux
-        ];
-        serviceConfig = {
-          Type = "oneshot";
-          RemainAfterExit = true;
-          StandardOutput = "journal+console";
-          StandardError = "journal+console";
-          ExecStart = initrdBootEntryReconcileScript;
-        };
-      };
 
     systemd = {
       services.${zpoolInitUnitName} = lib.mkMerge [

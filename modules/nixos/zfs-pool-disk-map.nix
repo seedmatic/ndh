@@ -8,8 +8,20 @@
 #   disk  — Lima disk suffix (appended after "${limaVm}-", e.g. "tank1" → "nerd-nixos-tank1")
 #   pool  — ZFS pool the disk is a member of
 [
-  { disk = "tank1";   pool = "tank"; }
-  { disk = "tank2";   pool = "tank"; }
-  { disk = "tank3";   pool = "tank"; }
-  { disk = "recover"; pool = "recover"; }
+  {
+    disk = "tank1";
+    pool = "tank";
+  }
+  {
+    disk = "tank2";
+    pool = "tank";
+  }
+  {
+    disk = "tank3";
+    pool = "tank";
+  }
+  {
+    disk = "recover";
+    pool = "recover";
+  }
 ]

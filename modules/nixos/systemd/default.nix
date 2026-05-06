@@ -76,13 +76,15 @@ in
   # inherit only the minimal systemd bootstrap PATH, causing "bash: not found" errors
   # when the bootloader installer or activation scripts invoke bash.
   # lib.mkForce overrides the lib.mkDefault in openssh.nix, which sets a narrower PATH.
-  config.systemd.globalEnvironment.PATH = lib.mkForce (lib.concatStringsSep ":" [
-    "/run/wrappers/bin"
-    "/run/current-system/sw/bin"
-    "/nix/var/nix/profiles/default/bin"
-    "/bin"
-    "/usr/bin"
-  ]);
+  config.systemd.globalEnvironment.PATH = lib.mkForce (
+    lib.concatStringsSep ":" [
+      "/run/wrappers/bin"
+      "/run/current-system/sw/bin"
+      "/nix/var/nix/profiles/default/bin"
+      "/bin"
+      "/usr/bin"
+    ]
+  );
 
   config.systemd.targets.${mkNdhUnitName "contributed"} = {
     description = "Nix Darwin Home contributed units (@codebase)";

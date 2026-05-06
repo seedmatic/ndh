@@ -87,6 +87,10 @@ let
       # When false, the bringup image omits the production runtime closure.
       # Use for base/template images (e.g. nerd-nixos) that carry no runtime deployment.
       includeRuntimeClosure ? true,
+      # When true, the QEMU build VM pauses after nixos-install completes.
+      # Remove /tmp/xchg/pause.lock from the debug shell to resume.
+      # Set NDH_BRINGUP_PAUSE=1 in the environment and pass --impure to nix build.
+      pauseAfterInstall ? false,
     }:
     let
       mkImageModulesFor =
@@ -242,9 +246,12 @@ let
       # raidz1 usable = 2 × zpoolVdevPartitionSizeMiB (3 disks, 1 parity).
       # Accounts for per-disk EFI/GPT overhead:
       # espStart=1 MiB + efiSystemPartitionSizeMiB + 1 MiB GPT backup = +2 beyond EFI.
-      zpoolVdevDiskSizeMiB = hostProfile.nixosZpoolVdevDiskSizeMiB or (
-        builtins.ceil (uncompressedDiskSizeGiB * rootFsCompressionFactor * 512.0) + efiSystemPartitionSizeMiB + 2
-      );
+      zpoolVdevDiskSizeMiB =
+        hostProfile.nixosZpoolVdevDiskSizeMiB or (
+          builtins.ceil (uncompressedDiskSizeGiB * rootFsCompressionFactor * 512.0)
+          + efiSystemPartitionSizeMiB
+          + 2
+        );
       bringupZfsSystemPath = tartBringupSystemdZfs.config.system.build.toplevel;
       # Output a JSON hint with all relevant info for post-build checks
       diskSizeHint = builtins.toJSON {
@@ -367,13 +374,13 @@ let
             ${pkgsForLinux.bash}/bin/bash ${manifestAssemblyScript} "$out" "${source}"
           '';
 
-
       mkBringupZfsDiskImages =
         {
           nixosSystem,
           name,
           runtimeSystemPath ? null,
           baseImagePath ? null,
+          pauseAfterInstall ? false,
         }:
         import ./bringup-zfs-disk-image.nix {
           lib = nixpkgs.lib;
@@ -385,6 +392,7 @@ let
           # the prebuilt path without network access at first boot.
           inherit runtimeSystemPath;
           inherit baseImagePath;
+          inherit pauseAfterInstall;
           zpoolDiskSize = zpoolVdevDiskSizeMiB;
           memSize = diskImageVmMemSizeMiB;
           vmCpuCores = diskImageVmCpuCores;
@@ -394,17 +402,18 @@ let
           inherit diskoConfiguration;
         };
 
-
       # ZFS bringup image selected by vmProvider — Lima and Tart differ in guest-side units.
-      selectedBringupSystemdZfs = if selectedVmProvider == "tart" then tartBringupSystemdZfs else limaBringupSystemdZfs;
+      selectedBringupSystemdZfs =
+        if selectedVmProvider == "tart" then tartBringupSystemdZfs else limaBringupSystemdZfs;
 
       diskImageBringupZfsSystemdBootRaw = mkBringupZfsDiskImages {
         nixosSystem = selectedBringupSystemdZfs;
         name = "nixos-disk-image-bringup-systemd-zfs";
-        runtimeSystemPath = if includeRuntimeClosure then selectedRuntime.config.system.build.toplevel else null;
+        runtimeSystemPath =
+          if includeRuntimeClosure then selectedRuntime.config.system.build.toplevel else null;
         inherit baseImagePath;
+        inherit pauseAfterInstall;
       };
-
 
       diskImageBringupZfsSystemdBoot = mkDiskImageWithManifest {
         attr = "nixosDiskImageBringupZfsSystemdBoot";
@@ -417,7 +426,6 @@ let
         # primaryImagePath defaults to "boot.img" — dedicated EFI boot disk
         # zpools is populated at runtime from boot-size-hint.yaml (zpool status inside QEMU)
       };
-
 
       # Per-host disko configuration with computed disk sizes.
       # Exposed as diskoConfigurations."${mainName}-nixos" in the flake.
