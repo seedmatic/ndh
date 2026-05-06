@@ -50,10 +50,11 @@ arc_min_bytes=$(( total_kb / 4 * 1024 ))
 : '[bringup-zfs] zfs_arc_min → ${arc_min_bytes} bytes (1/4 of ${total_kb} kB)'
 echo "${arc_min_bytes}" > /sys/module/zfs/parameters/zfs_arc_min
 
-# Disable speculative prefetch.  nixos-install writes sequentially but reads
-# metadata in random order — prefetch wastes ARC space and adds CPU overhead.
-: '[bringup-zfs] zfs_prefetch_disable → 1 (install is write-dominated)'
-echo 1 > /sys/module/zfs/parameters/zfs_prefetch_disable
+# Re-enable speculative prefetch.  nixos-install unpacks many store paths
+# sequentially — prefetch reduces ARC miss latency on the read phase.
+# With 7.7 GiB RAM there is no memory pressure to justify disabling it.
+: '[bringup-zfs] zfs_prefetch_disable → 0 (re-enabled for sequential reads)'
+echo 0 > /sys/module/zfs/parameters/zfs_prefetch_disable
 
 # Limit dirty data buffer to 20 % of ARC max.  Default is 10 % of physical RAM;
 # with sync=disabled and a large ARC, dirty data can accumulate into one giant
