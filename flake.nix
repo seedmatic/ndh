@@ -632,6 +632,20 @@
         mkNixosConfig
         mkNixosOutputs
         ;
+
+      # nerd-nixos base disk image — built once, shared as baseImagePath for all target hosts.
+      # Pools are pre-formatted so target host builds skip the expensive disko format step.
+      nerdNixosDiskImage =
+        let
+          spec = import ./hosts/nerd-nixos;
+        in
+        (mkNixosOutputs {
+          inherit (spec) hostProfile;
+          catalog = catalogData;
+          inventory = inventoryData;
+          profileModule = { ... }: { imports = [ spec.profileModule ] ++ spec.nixosExtraModules; };
+          includeRuntimeClosure = false;
+        }).diskImageBringupZfsSystemdBoot;
     in
     rec {
       formatter = forAllSystems (
@@ -797,6 +811,7 @@
           profileModule,
           darwinExtraModules ? [ ],
           nixosExtraModules ? [ ],
+          baseImagePath ? null,
           ...
         }:
         let
@@ -840,7 +855,7 @@
             email = committedHomeManagerUserWithHome.email;
           };
           nixosOutputs = mkNixosOutputs {
-            inherit hostProfile catalog;
+            inherit hostProfile catalog baseImagePath;
             inventory = inventoryData;
             profileModule =
               { ... }:
@@ -1051,7 +1066,7 @@
           defaultPackage."aarch64-darwin" = darwinConfiguration.system;
         };
 
-      hostOutputs = forAllHosts (_: hostSpec: mkHostOutputs hostSpec);
+      hostOutputs = forAllHosts (_: hostSpec: mkHostOutputs (hostSpec // { baseImagePath = nerdNixosDiskImage; }));
 
       darwinConfigurations = builtins.foldl' (
         acc: hostOutput: acc // hostOutput.darwinConfigurations
@@ -1089,9 +1104,11 @@
         _: hostOutput: hostOutput.homeManagerConfigurations
       ) hostOutputs;
 
-      nixosDiskImages = builtins.mapAttrs (_: hostOutput: {
-        bringup.zfsSystemd = hostOutput.nixosDiskImageBringupSystemdZfs;
-      }) hostOutputs;
+      nixosDiskImages =
+        builtins.mapAttrs (
+          _: hostOutput: hostOutput.nixosDiskImageBringupSystemdZfs
+        ) hostOutputs
+        // { "nerd-nixos" = nerdNixosDiskImage; };
 
       # Overlay factories (curried: inputs: final: prev:) — used internally via overlayFactories.
       overlayFactories = {

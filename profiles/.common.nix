@@ -27,8 +27,7 @@ in
           email = lib.mkOption {
             type = lib.types.str;
             description = "The email of the user";
-            # Keep a simple static default; we derive a dynamic one later in config (@codebase)
-            default = lib.mkDefault "user@example.com";
+            default = "user@example.com";
           };
           darwin = lib.mkOption {
             type = lib.types.submodule {
@@ -93,8 +92,7 @@ in
                 description = lib.mkOption {
                   type = lib.types.str;
                   description = "The description of the user";
-                  # Simple default; dynamic form applied later (@codebase)
-                  default = lib.mkDefault "Default user";
+                  default = "Default user";
                 };
                 shell = lib.mkOption {
                   type = lib.types.package;

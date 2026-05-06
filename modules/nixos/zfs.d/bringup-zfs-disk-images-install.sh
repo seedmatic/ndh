@@ -12,9 +12,13 @@ mkdir -p /mnt/zfs-root
 
 bringup::udev_block_sync @systemdLibUdevd@
 
-"@diskoFormatExe@"
+if [[ "@baseImageMode@" == "1" ]]; then
+  : '[bringup-zfs] base image mode: skipping disko format, importing existing pools'
+else
+  "@diskoFormatExe@"
 
-bringup::udev_block_sync
+  bringup::udev_block_sync
+fi
 
 "@diskoMountExe@"
 

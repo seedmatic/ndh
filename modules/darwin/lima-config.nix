@@ -460,10 +460,10 @@ in
 
     imageFlakeAttr = mkOption {
       type = types.str;
-      default = "nixosDiskImages.${effectiveHostName}.bringup.zfsSystemd";
+      default = "nixosDiskImages.${effectiveHostName}";
       description = ''
         Flake output attribute for the NixOS ZFS bringup disk image.
-        The root flake exposes disk images under `nixosDiskImages.<host>.bringup.*`.
+        The root flake exposes disk images directly as `nixosDiskImages.<host>`.
         Used as a reference label in activation.sh; the actual image path comes from imageManifestPath.
       '';
     };

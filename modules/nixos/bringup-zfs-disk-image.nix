@@ -25,6 +25,10 @@
   # Pre-computed disko configuration attrset — when provided, used directly to
   # generate the disko config file instead of re-evaluating zfs-disko-config.nix.
   diskoConfiguration ? null,
+  # When set to a nixosDiskImages derivation (e.g. nerd-nixos), its tank/recover
+  # disk images are copied into the build instead of creating blank disks.
+  # disko format is skipped; existing ZFS pools are imported via disko mount.
+  baseImagePath ? null,
 }:
 let
   zfsPoolDiskMap = import ./zfs-pool-disk-map.nix;
@@ -200,6 +204,7 @@ let
         systemdLibUdevd = "${pkgs.systemd}/lib/systemd/systemd-udevd";
         channelFlag = if includeChannel then "--channel ${channelSources}" else "";
         bootSizePolicyNote = builtins.toJSON "ZFS bringup artifacts generated from canonical zfs-pool-disk-map definitions.";
+        baseImageMode = if baseImagePath != null then "1" else "0";
       }
     } "$out/bin/bringup-zfs-disk-images-install"
   '';
@@ -259,8 +264,13 @@ in
 
           bootDiskImage=boot.raw
           ${preVmDiskImageVars}
-          bringup::create_raw_disk "$bootDiskImage" ${toString bootDiskSize}
-          ${preVmCreateRawDisks}
+          ${if baseImagePath != null then ''
+            cp "${baseImagePath}/boot.img" "$bootDiskImage"
+            ${lib.concatStringsSep "\n          " (map (entry: "cp \"${baseImagePath}/${entry.disk}.img\" \"${entry.disk}DiskImage\"") zfsPoolDiskMap)}
+          '' else ''
+            bringup::create_raw_disk "$bootDiskImage" ${toString bootDiskSize}
+            ${preVmCreateRawDisks}
+          ''}
         '';
 
         postVM = ''

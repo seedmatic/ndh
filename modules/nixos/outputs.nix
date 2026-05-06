@@ -83,6 +83,10 @@ let
       profileModule,
       catalog,
       inventory,
+      baseImagePath ? null,
+      # When false, the bringup image omits the production runtime closure.
+      # Use for base/template images (e.g. nerd-nixos) that carry no runtime deployment.
+      includeRuntimeClosure ? true,
     }:
     let
       mkImageModulesFor =
@@ -212,7 +216,7 @@ let
       # - For zstd level 1, we model a 0.5 factor (2:1 compression).
       # - Future per-filesystem factors may override rootFsCompressionFactor,
       #   but should default to zstdCompressionFactor.
-      uncompressedDiskSizeGiB = hostProfile.nixosDiskImageSizeGiB or 12;
+      uncompressedDiskSizeGiB = hostProfile.nixosDiskImageSizeGiB or 16;
       selectedZstdCompressionLevel = hostProfile.nixosZstdCompressionLevel or 1;
       zstdCompressionFactor = if selectedZstdCompressionLevel == 1 then 0.5 else 1.0;
       rootFsCompressionFactor = hostProfile.nixosRootFsCompressionFactor or zstdCompressionFactor;
@@ -369,6 +373,7 @@ let
           nixosSystem,
           name,
           runtimeSystemPath ? null,
+          baseImagePath ? null,
         }:
         import ./bringup-zfs-disk-image.nix {
           lib = nixpkgs.lib;
@@ -379,6 +384,7 @@ let
           # Include the production runtime closure so zfs-nixos-install can use
           # the prebuilt path without network access at first boot.
           inherit runtimeSystemPath;
+          inherit baseImagePath;
           zpoolDiskSize = zpoolVdevDiskSizeMiB;
           memSize = diskImageVmMemSizeMiB;
           vmCpuCores = diskImageVmCpuCores;
@@ -395,7 +401,8 @@ let
       diskImageBringupZfsSystemdBootRaw = mkBringupZfsDiskImages {
         nixosSystem = selectedBringupSystemdZfs;
         name = "nixos-disk-image-bringup-systemd-zfs";
-        runtimeSystemPath = selectedRuntime.config.system.build.toplevel;
+        runtimeSystemPath = if includeRuntimeClosure then selectedRuntime.config.system.build.toplevel else null;
+        inherit baseImagePath;
       };
 
 

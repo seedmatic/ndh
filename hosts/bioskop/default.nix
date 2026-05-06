@@ -7,7 +7,7 @@ let
     hostName = "bioskop";
     nixosBootLoader = "systemd-boot";
     nixosBootstrapDebug = false;
-    form = "bare-metal";
+    form = "baremetal";
   };
 
   darwinProfile = {
