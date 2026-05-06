@@ -29,6 +29,11 @@
   # disk images are copied into the build instead of creating blank disks.
   # disko format is skipped; existing ZFS pools are imported via disko mount.
   baseImagePath ? null,
+  # When true, create a lock file in xchg/ after nixos-install completes.
+  # The build pauses until the operator removes it, allowing inspection of
+  # /mnt/zfs-root via the debug shell (socat → /proc/<qemu-pid>/shell.sock).
+  # Remove with:  rm /tmp/xchg/pause.lock   (from inside the debug shell)
+  pauseAfterInstall ? false,
 }:
 let
   zfsPoolDiskMap = import ./zfs-pool-disk-map.nix;
@@ -128,6 +133,7 @@ let
       shadow
       strace
       systemd
+      inotify-tools
     ]
     ++ initrdEmergencyPackages
   );
@@ -205,6 +211,7 @@ let
         channelFlag = if includeChannel then "--channel ${channelSources}" else "";
         bootSizePolicyNote = builtins.toJSON "ZFS bringup artifacts generated from canonical zfs-pool-disk-map definitions.";
         baseImageMode = if baseImagePath != null then "1" else "0";
+        pauseAfterInstall = if pauseAfterInstall then "1" else "0";
       }
     } "$out/bin/bringup-zfs-disk-images-install"
   '';
