@@ -631,7 +631,7 @@ in
     # Dedicated activation script using postActivation which is actually executed
     # Use mkAfter to run after other postActivation scripts (@codebase)
     system.activationScripts.postActivation.text =
-      lib.mkIf (limaRuntimeSupported && limaProviderSelected && cfg.enableActivationHook)
+      lib.mkIf (limaRuntimeSupported && limaProviderSelected && cfg.enableActivationHook && cfg.rawImageManifestPath != null)
         (
           lib.mkAfter ''
             ${limaActivationScript}

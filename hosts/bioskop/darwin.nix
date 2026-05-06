@@ -67,7 +67,6 @@ in
     tart.configGenerator = {
       forceEnable = false;
       installMaterializerPackage = false;
-      enableActivationHook = false;
       vmCpuCount = 8; # 8 of 14 cores (10P+4E) reserved for nerd-nixos; 6 remain for macOS
       vmMemoryMiB = halfRamMiB;
       vmRunBridgeInterface = "Thunderbolt Ethernet Slot 1";

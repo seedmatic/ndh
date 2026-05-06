@@ -134,6 +134,7 @@ let
   hmVmMaterializationEnabled =
     pkgs.stdenvNoCC.isDarwin
     && activatingOnVzHost
+    && vmConfigMaterializerPackage != null
     && builtins.elem selectedVmProvider [
       "lima"
       "tart"
@@ -321,15 +322,6 @@ in
         message = ''
           Home Manager on Darwin requires a supported `vmProvider` for VM materialization.
           Supported values: "lima" or "tart".
-        '';
-      }
-    ]
-    ++ [
-      {
-        assertion = vmConfigMaterializerPackage != null;
-        message = ''
-          Home Manager on Darwin with vmProvider=${selectedVmProvider} requires `vmConfigMaterializerPackage`.
-          This ensures HM activation can materialize provider assets and refresh user gcroot images.
         '';
       }
     ]

@@ -45,7 +45,10 @@ let
   tartRuntimeSupported = lib.any (
     entry: (entry ? vm) && (entry.vm ? manager) && entry.vm.manager == "tart"
   ) hostInventoryEntries;
-  tartMaterializationEnabled = tartRuntimeSupported || cfg.forceEnable;
+  selectedVmProvider =
+    if profileHost ? vmProvider && profileHost.vmProvider != null then profileHost.vmProvider else "lima";
+  tartProviderSelected = selectedVmProvider == "tart";
+  tartMaterializationEnabled = tartProviderSelected && (tartRuntimeSupported || cfg.forceEnable);
 
   cfg = config.tart.configGenerator;
   tartPackageAvailable = pkgs ? tart;
@@ -668,7 +671,7 @@ in
     };
 
     system.activationScripts.postActivation.text =
-      lib.mkIf (tartMaterializationEnabled && cfg.enableActivationHook)
+      lib.mkIf (tartMaterializationEnabled && cfg.enableActivationHook && cfg.rawImageManifestPath != null)
         (
           lib.mkAfter ''
             ${tartActivationScript}
