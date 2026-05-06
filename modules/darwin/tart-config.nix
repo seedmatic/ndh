@@ -91,11 +91,23 @@ let
   tartActivationScript = "${tartActivationBundle}/bin/activate.sh";
 
   tartMaterializerPackage = pkgs.writeShellScriptBin "nerd-tart-vm-materialize" ''
+    export PATH="${lib.makeBinPath [
+      pkgs.openssh
+      pkgs.gawk
+      pkgs.gnused
+      pkgs.coreutils
+      pkgs.findutils
+      pkgs.procps
+      pkgs.yq-go
+      pkgs.util-linux
+      pkgs.bash
+    ]}:/usr/bin:/bin:/usr/sbin:/sbin"
+
     if [[ "''${NDH_LINUX_BUILDER_GC_BEFORE_BUILD:-1}" == "1" ]]; then
       builder_target="''${NDH_LINUX_BUILDER_GC_TARGET:-builder@linux-builder}"
       builder_gc_cmd="''${NDH_LINUX_BUILDER_GC_COMMAND:-sudo nix-collect-garbage -d}"
       echo "[tart-materialize][INFO] running pre-build GC on ''${builder_target}: ''${builder_gc_cmd}" >&2
-      if ! ssh -o BatchMode=yes "$builder_target" "$builder_gc_cmd"; then
+      if ! ${pkgs.openssh}/bin/ssh -o BatchMode=yes "$builder_target" "$builder_gc_cmd"; then
         echo "[tart-materialize][WARN] pre-build GC on ''${builder_target} failed; continuing" >&2
       fi
     fi
@@ -113,7 +125,7 @@ let
       # Memory pressure via vm_stat (macOS; values in pages, page = 16 KiB on Apple Silicon)
       local pages_free pages_active pages_inactive pages_wired pages_compressed page_size
       page_size=$(pagesize 2>/dev/null || echo 16384)
-      eval "$(vm_stat 2>/dev/null | awk '
+      eval "$(vm_stat 2>/dev/null | ${pkgs.gawk}/bin/awk '
         /Pages free:/        {gsub(/\./,"",$NF); printf "pages_free=%s\n",       $NF}
         /Pages active:/      {gsub(/\./,"",$NF); printf "pages_active=%s\n",     $NF}
         /Pages inactive:/    {gsub(/\./,"",$NF); printf "pages_inactive=%s\n",   $NF}
@@ -127,11 +139,11 @@ let
       # Disk I/O snapshot (BSD iostat: 1 sample, all disks, KB units)
       local diskio
       diskio=$(iostat -d -K 2>/dev/null \
-        | awk 'NR>2 && $1!="" {
+        | ${pkgs.gawk}/bin/awk 'NR>2 && $1!="" {
             printf "{\"dev\":\"%s\",\"kb_per_t\":%s,\"tps\":%s,\"mb_s\":%s},",
               $1, $2, $3, $4
           }' \
-        | sed 's/,$//' | awk '{print "["$0"]"}')
+        | sed 's/,$//' | ${pkgs.gawk}/bin/awk '{print "["$0"]"}')
       [[ -n "$diskio" ]] || diskio="[]"
 
       # nix process stats (heaviest nix-daemon or nix build subprocess)
@@ -139,7 +151,7 @@ let
       if [[ -n "$nix_pid" ]]; then
         read -r nix_cpu nix_rss < <(
           ps -p "$nix_pid" -o %cpu=,rss= 2>/dev/null \
-            | awk '{printf "%s %d", $1, int($2/1024)}'
+            | ${pkgs.gawk}/bin/awk '{printf "%s %d", $1, int($2/1024)}'
         )
       else
         nix_cpu="0" nix_rss="0"

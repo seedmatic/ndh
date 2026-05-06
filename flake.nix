@@ -888,7 +888,9 @@
             profile:
             let
               vmConfigMaterializerPackage =
-                if (hostProfile.vmProvider or "lima") == "tart" then
+                if !withBringupImages then
+                  null
+                else if (hostProfile.vmProvider or "lima") == "tart" then
                   darwinOutputs.darwinConfigurations.${mainName}.config.tart.configGenerator.materializerPackage
                 else
                   darwinOutputs.darwinConfigurations.${mainName}.config.lima.configGenerator.materializerPackage;

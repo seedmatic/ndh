@@ -64,6 +64,19 @@ let
       pkgs.replaceVars ./incus.d/fix-incus-socket-perms.sh { }
     } "$out/bin/fix-incus-socket-perms"
   '';
+  incusUserConfigScript = ndh.store.installBinScript "incus-user-config" (
+    pkgs.replaceVars ./incus.d/incus-user-config.sh {
+      user = config.profile.user.name;
+      home = config.profile.user.home;
+      tailnetDomain =
+        if netplan ? tailnet then lib.removePrefix "." netplan.tailnet.domain else "tailnet.local";
+      incusRemoteName = config.networking.hostName;
+      incusRemoteAddress = "https://${config.networking.hostName}:8443";
+      nixBashTrampoline = nixBashTrampoline;
+      incusBin = "${pkgs.incus}/bin/incus";
+      loggerTag = "nixos.activationScripts.incusUserConfig";
+    }
+  );
 
 in
 {
@@ -208,23 +221,7 @@ in
   systemd.tmpfiles.rules = [ "d /run/incus 0775 root incus-admin -" ];
 
   system.activationScripts.incusUserConfig = {
-    text = builtins.readFile (
-      pkgs.replaceVars ./incus.d/incus-user-config.sh {
-        user = config.profile.user.name;
-        home = config.profile.user.home;
-        tailnetDomain =
-          if netplan ? tailnet then lib.removePrefix "." netplan.tailnet.domain else "tailnet.local";
-        incusRemoteName = config.networking.hostName;
-        # Canonical remote endpoint: use host label (no hard-coded domain suffix).
-        # Domain-specific aliases are network policy concerns and should not be
-        # baked into the default Incus remote address.
-        incusRemoteAddress = "https://${config.networking.hostName}:8443";
-        # Use the wrapped activation logger in the store
-        nixBashTrampoline = nixBashTrampoline;
-        incusBin = "${pkgs.incus}/bin/incus";
-        loggerTag = "nixos.activationScripts.incusUserConfig";
-      }
-    );
+    text = "${incusUserConfigScript}/bin/incus-user-config";
   };
 
   systemd.services.incus = {

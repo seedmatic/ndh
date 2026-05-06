@@ -5,6 +5,7 @@ let
 
   hostProfile = {
     hostName = "bioskop";
+    vmProvider = "tart";
     nixosBootLoader = "systemd-boot";
     nixosBootstrapDebug = false;
     form = "baremetal";

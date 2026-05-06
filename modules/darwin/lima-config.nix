@@ -42,6 +42,12 @@ let
       profileHost.hostName;
 
   profileName = config.profile.name;
+  selectedVmProvider =
+    if profileHost ? vmProvider && profileHost.vmProvider != null then
+      profileHost.vmProvider
+    else
+      "lima";
+  limaProviderSelected = selectedVmProvider == "lima";
   hostInventoryEntries =
     lib.attrByPath
       [
@@ -617,15 +623,15 @@ in
     # Install Lima runtime tooling only on supported host forms.
     # Darwin VM hosts (nested environments) are excluded by policy.
     environment.systemPackages =
-      lib.optionals limaRuntimeSupported [ pkgs.lima ]
-      ++ lib.optionals (limaRuntimeSupported && cfg.installMaterializerPackage) [
+      lib.optionals (limaRuntimeSupported && limaProviderSelected) [ pkgs.lima ]
+      ++ lib.optionals (limaRuntimeSupported && limaProviderSelected && cfg.installMaterializerPackage) [
         cfg.materializerPackage
       ];
 
     # Dedicated activation script using postActivation which is actually executed
     # Use mkAfter to run after other postActivation scripts (@codebase)
     system.activationScripts.postActivation.text =
-      lib.mkIf (limaRuntimeSupported && cfg.enableActivationHook)
+      lib.mkIf (limaRuntimeSupported && limaProviderSelected && cfg.enableActivationHook)
         (
           lib.mkAfter ''
             ${limaActivationScript}
