@@ -41,37 +41,61 @@ let
   espSizeMiB = 512;
   zfsStartMiB = espStartMiB + espSizeMiB + 1;
   virtioDeviceNameAt = index: "vd${lib.substring index 1 "bcdefghijklmnopqrstuvwxyz"}";
-  zfsDiskDeviceMap = lib.listToAttrs (lib.imap0 (index: entry: {
-    name = entry.disk;
-    value = "/dev/${virtioDeviceNameAt index}";
-  }) zfsPoolDiskMap);
+  zfsDiskDeviceMap = lib.listToAttrs (
+    lib.imap0 (index: entry: {
+      name = entry.disk;
+      value = "/dev/${virtioDeviceNameAt index}";
+    }) zfsPoolDiskMap
+  );
   zfsPoolDiskMapJson = builtins.toJSON zfsPoolDiskMap;
   zfsPoolDiskMapJsonFile = pkgs.writeText "zfs-pool-disk-map.json" zfsPoolDiskMapJson;
   diskoDisksAttrLines = lib.concatStringsSep "\n          " (
     map (entry: "${entry.disk} = \"${zfsDiskDeviceMap.${entry.disk}}\";") zfsPoolDiskMap
   );
   qemuAdditionalDriveOpts = lib.concatStringsSep " " (
-    map
-      (entry: "-drive file=${entry.disk}DiskImage,if=virtio,format=raw,cache=unsafe,aio=io_uring,werror=report")
-      zfsPoolDiskMap
+    map (
+      entry:
+      "-drive file=${entry.disk}DiskImage,if=virtio,format=raw,cache=unsafe,aio=io_uring,werror=report"
+    ) zfsPoolDiskMap
   );
   preVmDiskImageVars = lib.concatStringsSep "\n          " (
     map (entry: "${entry.disk}DiskImage=${entry.disk}.raw") zfsPoolDiskMap
   );
   preVmCreateRawDisks = lib.concatStringsSep "\n          " (
-    map (entry: "bringup::create_raw_disk \"${entry.disk}DiskImage\" ${toString zpoolDiskSize}") zfsPoolDiskMap
+    map (
+      entry: "bringup::create_raw_disk \"${entry.disk}DiskImage\" ${toString zpoolDiskSize}"
+    ) zfsPoolDiskMap
   );
   postVmMoveDiskImages = lib.concatStringsSep "\n          " (
     map (entry: "mv \"${entry.disk}DiskImage\" \"$out/${entry.disk}.img\"") zfsPoolDiskMap
   );
-  bringupCommon = import ./bringup-disk-image-common.nix {
-    inherit
-      lib
-      pkgs
-      nestedQemuNetworkEnable
-      ;
+  qemuBin = "${pkgs.qemu_kvm}/bin/qemu-system-aarch64";
+
+  # Wrapper that detects /dev/kvm at build time and selects the right accelerator.
+  # - On linux-builder (macOS NixOS builder): no /dev/kvm → accel=tcg (software)
+  # - On nerd-nixos (Tart VM with nested virt): /dev/kvm present → accel=kvm:tcg
+  # vmTools embeds customQemu verbatim into a shell script; any args it appends
+  # become positional args ($@) to this wrapper.
+  kvmDetectQemu = pkgs.writeShellScript "qemu-kvm-detect" ''
+    if [ -e /dev/kvm ]; then
+      accel="kvm:tcg"
+    else
+      accel="tcg"
+    fi
+    exec ${qemuBin} -machine virt,gic-version=max,accel=$accel -cpu max "$@"
+  '';
+
+  vmToolsBase = pkgs.vmTools.override {
+    customQemu = "${kvmDetectQemu}";
   };
-  bringupCommonScript = ./bringup-disk-image-common.sh;
+
+  # Basic slirp network — gives DHCP and internet access to the guest.
+  # No SSH/monit port-forwards: use the serial console socket instead.
+  nestedQemuNetOpts =
+    if nestedQemuNetworkEnable then
+      "-netdev user,id=ndhnet0 -device virtio-net-pci,netdev=ndhnet0"
+    else
+      "";
 
   channelSources =
     let
@@ -89,10 +113,11 @@ let
     '';
 
   closureInfo = pkgs.closureInfo {
-    rootPaths =
-      [ installSystemPath ]
-      ++ (lib.optional (runtimeSystemPath != null) runtimeSystemPath)
-      ++ (lib.optional includeChannel channelSources);
+    rootPaths = [
+      installSystemPath
+    ]
+    ++ (lib.optional (runtimeSystemPath != null) runtimeSystemPath)
+    ++ (lib.optional includeChannel channelSources);
   };
 
   # boot.zfs.package is userspace (zfs-user-*). The kernel module package must
@@ -197,28 +222,29 @@ let
   diskoMountExe = lib.getExe diskoMountScript;
   diskoUnmountExe = lib.getExe diskoUnmountScript;
 
-  zfsBringupInstallScript = pkgs.runCommand "io.nxmatic.nix-darwin-home-bringup-zfs-disk-images-install" { } ''
-    install -Dm755 ${
-      pkgs.replaceVars ./zfs.d/bringup-zfs-disk-images-install.sh {
-        bringupCommonScript = "${bringupCommonScript}";
-        diskoFormatExe = "${diskoFormatExe}";
-        diskoMountExe = "${diskoMountExe}";
-        diskoUnmountExe = "${diskoUnmountExe}";
-        closureRegistration = "${closureInfo}/registration";
-        nixosInstall = "${config.system.build.nixos-install}/bin/nixos-install";
-        systemToplevel = "${installSystemPath}";
-        systemdLibUdevd = "${pkgs.systemd}/lib/systemd/systemd-udevd";
-        channelFlag = if includeChannel then "--channel ${channelSources}" else "";
-        bootSizePolicyNote = builtins.toJSON "ZFS bringup artifacts generated from canonical zfs-pool-disk-map definitions.";
-        baseImageMode = if baseImagePath != null then "1" else "0";
-        pauseAfterInstall = if pauseAfterInstall then "1" else "0";
-      }
-    } "$out/bin/bringup-zfs-disk-images-install"
-  '';
+  zfsBringupInstallScript =
+    pkgs.runCommand "io.nxmatic.nix-darwin-home-bringup-zfs-disk-images-install" { }
+      ''
+        install -Dm755 ${
+          pkgs.replaceVars ./zfs.d/bringup-zfs-disk-images-install.sh {
+            bringupCommonScript = "${./bringup-disk-image-common.sh}";
+            diskoFormatExe = "${diskoFormatExe}";
+            diskoMountExe = "${diskoMountExe}";
+            diskoUnmountExe = "${diskoUnmountExe}";
+            closureRegistration = "${closureInfo}/registration";
+            nixosInstall = "${config.system.build.nixos-install}/bin/nixos-install";
+            systemToplevel = "${installSystemPath}";
+            systemdLibUdevd = "${pkgs.systemd}/lib/systemd/systemd-udevd";
+            channelFlag = if includeChannel then "--channel ${channelSources}" else "";
+            bootSizePolicyNote = builtins.toJSON "ZFS bringup artifacts generated from canonical zfs-pool-disk-map definitions.";
+            baseImageMode = if baseImagePath != null then "1" else "0";
+            pauseAfterInstall = if pauseAfterInstall then "1" else "0";
+          }
+        } "$out/bin/bringup-zfs-disk-images-install"
+      '';
 
-  nestedQemuNetOpts = bringupCommon.nestedQemuNetOpts;
 in
-(bringupCommon.vmToolsBase.override {
+(vmToolsBase.override {
   rootModules = [
     "zfs"
     "fuse"
@@ -267,17 +293,24 @@ in
 
           QEMU_OPTS="$QEMU_OPTS -device virtio-serial -chardev socket,id=shell-sock,path=$PWD/shell.sock,server=on,wait=off -device virtconsole,chardev=shell-sock,name=shell"
 
-          source ${bringupCommonScript}
+          source ${./bringup-disk-image-common.sh}
 
           bootDiskImage=boot.raw
           ${preVmDiskImageVars}
-          ${if baseImagePath != null then ''
-            cp "${baseImagePath}/boot.img" "$bootDiskImage"
-            ${lib.concatStringsSep "\n          " (map (entry: "cp \"${baseImagePath}/${entry.disk}.img\" \"${entry.disk}DiskImage\"") zfsPoolDiskMap)}
-          '' else ''
-            bringup::create_raw_disk "$bootDiskImage" ${toString bootDiskSize}
-            ${preVmCreateRawDisks}
-          ''}
+          ${
+            if baseImagePath != null then
+              ''
+                cp "${baseImagePath}/boot.img" "$bootDiskImage"
+                ${lib.concatStringsSep "\n          " (
+                  map (entry: "cp \"${baseImagePath}/${entry.disk}.img\" \"${entry.disk}DiskImage\"") zfsPoolDiskMap
+                )}
+              ''
+            else
+              ''
+                bringup::create_raw_disk "$bootDiskImage" ${toString bootDiskSize}
+                ${preVmCreateRawDisks}
+              ''
+          }
         '';
 
         postVM = ''
@@ -293,17 +326,17 @@ in
         '';
       }
       ''
-          set -x
-          export PATH=${tools}:$PATH
+        set -x
+        export PATH=${tools}:$PATH
 
-          : 'shell.sock → /dev/hvc0 (first virtio-serial port we add).'
-          : 'Use hvc0 directly — the /dev/virtio-ports/ symlink needs udev'
-          : 'and may not exist yet; hvc0 is created by the kernel in devtmpfs.'
-          : '-i: interactive (job control + prompt); skip -l to avoid /etc/profile.'
-          while [[ ! -c /dev/hvc0 ]]; do sleep 0.1; done
-          setsid --ctty ${pkgs.bash}/bin/bash -i 0<>/dev/hvc0 1>&0 2>&0 &
+        : 'shell.sock → /dev/hvc0 (first virtio-serial port we add).'
+        : 'Use hvc0 directly — the /dev/virtio-ports/ symlink needs udev'
+        : 'and may not exist yet; hvc0 is created by the kernel in devtmpfs.'
+        : '-i: interactive (job control + prompt); skip -l to avoid /etc/profile.'
+        while [[ ! -c /dev/hvc0 ]]; do sleep 0.1; done
+        setsid --ctty ${pkgs.bash}/bin/bash -i 0<>/dev/hvc0 1>&0 2>&0 &
 
-          : 'execute the ZFS bringup install script, which formats the disks and installs NixOS onto them'
-          exec ${pkgs.bash}/bin/bash ${zfsBringupInstallScript}/bin/bringup-zfs-disk-images-install
+        : 'execute the ZFS bringup install script, which formats the disks and installs NixOS onto them'
+        exec ${pkgs.bash}/bin/bash ${zfsBringupInstallScript}/bin/bringup-zfs-disk-images-install
       ''
   )
