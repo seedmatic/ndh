@@ -1,4 +1,4 @@
-# shellcheck shell=bash disable=SC1091
+# shellcheck shell=bash
 # nix-build-observe — wrap any `nix build` with multi-layer observability.
 #
 # Collects metrics from three layers during a NixOS disk-image bringup build:
@@ -25,9 +25,6 @@
 # OUTPUT:
 #   .local.d/<iso8601>-<attr>.ndjson   — NDJSON stream, one JSON event per line
 #   .local.d/latest.ndjson             — symlink to most recent
-
-# Load bash trampoline for logging and bootstrap runtime
-source "${NDH_NIX_BASH_TRAMPOLINE}"
 
 set -euo pipefail
 
@@ -305,4 +302,4 @@ main() {
   obs::build:run "$@"
 }
 
-ndh::logger:command:run "nix-build-observe" main "$@"
+main "$@"
