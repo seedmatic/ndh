@@ -71,18 +71,25 @@
   # For minimal bringup, we don't have a runtime system — activation is deferred to cloud-init.
   assertions = lib.mkForce [ ];
 
-  # Minimal filesystems for bringup — no ZFS datasets, just boot disk
-  fileSystems = lib.mkForce {
-    "/" = {
-      device = "/dev/vda1";
-      fsType = "ext4";
-    };
+  # ZFS root filesystem - installed by bringup-zfs-disk-images-install
+  # The actual ZFS pool topology and datasets are defined in zfs-disko-config.nix
+  fileSystems."/" = {
+    device = "tank/nerd/root";
+    fsType = "zfs";
+  };
+
+  fileSystems."/boot" = {
+    device = "/dev/disk/by-partlabel/esp-boot";
+    fsType = "vfat";
   };
 
   # Essential ZFS support for pool operations
   boot.supportedFilesystems = [ "zfs" ];
-  boot.zfs.forceImportRoot = lib.mkForce false;
+  boot.zfs.forceImportRoot = false;
   boot.zfs.devNodes = "/dev/disk/by-id";
+
+  # Import ZFS pools at boot
+  boot.zfs.extraPools = [ "tank" "recover" ];
 
   # Network for cloud-init to fetch full system
   networking.useNetworkd = lib.mkForce true;
