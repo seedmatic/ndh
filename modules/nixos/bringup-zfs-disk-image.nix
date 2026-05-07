@@ -296,6 +296,10 @@ let
     text = ''
       export NDH_NIXOS_NAME="${hostLabel}"
 
+      # Variables from vmTools environment and preVM phase
+      # shellcheck disable=SC2154
+      # (bootDiskImage, tankDiskImage, recoverDiskImage, out, _NDH_VECTOR_RELAY_PID)
+
       # Move disk images to $out
       mv "$bootDiskImage" "$out/boot.img"
       ${postVmMoveDiskImages}
