@@ -129,9 +129,6 @@
   programs.less.enable = lib.mkForce false;
   programs.nano.enable = lib.mkForce false;
 
-  # Minimal boot requirements - no grub since we use systemd-boot
-  boot.loader.grub.enable = lib.mkForce false;
-
   # Disable fonts (no X11/GUI)
   fonts.fontconfig.enable = lib.mkForce false;
 }
