@@ -2,23 +2,6 @@
 let
   ndhContext = ndh.context;
 
-  # Full system store path to activate (set by mkNixosOutputs)
-  fullSystemPath = ndhContext.fullSystemPath or "";
-
-  # Remote store URL to fetch from (darwin host)
-  remoteStoreUrl = ndhContext.remoteStoreUrl or "ssh://builder@bioskop.local";
-
-  # Extract hostname from SSH URL for ping test
-  extractHostname = url:
-    let
-      matches = builtins.match "ssh://([^@]+@)?([^/:]+)(:[0-9]+)?(/.*)?|.*" url;
-    in
-      if matches != null && builtins.length matches > 1
-      then builtins.elemAt matches 1
-      else url;
-
-  storeHostname = extractHostname remoteStoreUrl;
-
   # Cloud-init user-data for first-boot activation
   cloudInitUserData = pkgs.writeText "cloud-init-user-data.yaml" ''
     #cloud-config
@@ -28,27 +11,33 @@ let
       - |
         set -euxo pipefail
 
+        # Read full system path and remote store URL from kernel cmdline
+        FULL_SYSTEM=$(grep -oP 'ndh\.fullsystem=\K[^ ]+' /proc/cmdline || echo "")
+        STORE_HOST=$(grep -oP 'ndh\.remotestore=\K[^ ]+' /proc/cmdline || echo "")
+
+        if [ -z "$FULL_SYSTEM" ]; then
+          echo "[cloud-init] WARN: No full system path in kernel params, staying on minimal system" >&2
+          exit 0
+        fi
+
+        if [ -z "$STORE_HOST" ]; then
+          echo "[cloud-init] ERROR: No remote store URL in kernel params" >&2
+          exit 1
+        fi
+
+        # Extract hostname from SSH URL for ping test (ssh://user@host -> host)
+        STORE_HOSTNAME=$(echo "$STORE_HOST" | sed -E 's|ssh://([^@]+@)?([^/:]+).*|\2|')
+
         # Wait for network
         timeout=60
-        while ! ping -c 1 ${storeHostname} >/dev/null 2>&1; do
+        while ! ping -c 1 "$STORE_HOSTNAME" >/dev/null 2>&1; do
           sleep 1
           timeout=$((timeout - 1))
           if [ $timeout -le 0 ]; then
-            echo "[cloud-init] ERROR: network timeout waiting for ${storeHostname}" >&2
+            echo "[cloud-init] ERROR: network timeout waiting for $STORE_HOSTNAME" >&2
             exit 1
           fi
         done
-
-        # Remote store URL
-        STORE_HOST="${remoteStoreUrl}"
-
-        # Full system store path
-        FULL_SYSTEM="${fullSystemPath}"
-
-        if [ -z "$FULL_SYSTEM" ]; then
-          echo "[cloud-init] WARN: No full system path configured, staying on minimal system" >&2
-          exit 0
-        fi
 
         # Wait for SSH key extraction service
         timeout=30
@@ -105,11 +94,16 @@ in
           seedfrom: file:///var/lib/cloud/seed/nocloud/
     '';
 
-    # Seed directory with user-data
-    systemd.tmpfiles.rules = [
-      "d /var/lib/cloud/seed 0755 root root -"
-      "d /var/lib/cloud/seed/nocloud 0755 root root -"
-      "L+ /var/lib/cloud/seed/nocloud/user-data - - - - ${cloudInitUserData}"
-    ];
+    # Mount xchg (shared via virtio-9p from preVM) as cloud-init seed directory.
+    # preVM places user-data there before the VM starts.
+    fileSystems."/var/lib/cloud/seed/nocloud" = {
+      device = "xchg";
+      fsType = "9p";
+      options = [ "trans=virtio" "version=9p2000.L" "msize=16384" ];
+      neededForBoot = true;
+    };
+
+    # Export cloud-init user-data via system.build for mkBringupZfsDiskImages
+    system.build.cloudInitUserData = cloudInitUserData;
   };
 }

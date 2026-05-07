@@ -218,7 +218,7 @@ let
             networking.hostName = hostProfile.hostName;
             system.stateVersion = "24.11";
 
-            # Pass minimal ndh context with full system path for cloud-init
+            # Pass minimal ndh context (no fullSystemPath to avoid closure dependency)
             _module.args.ndh = {
               context = {
                 hostProfile = bringupSystemdHostProfileBase;
@@ -228,13 +228,16 @@ let
                 vmProvider = selectedVmProvider;
                 nixBashTrampoline = ndhNixBashTrampoline;
                 runtimeSystemPath = "";
-                # Full system path for cloud-init to fetch and activate
-                fullSystemPath = builtins.toString fullSystemPath;
-                # Remote store URL (darwin host)
-                remoteStoreUrl = "ssh://builder@${hostProfile.hostName}.local";
               };
               store = ndhStoreApiLinux;
             };
+
+            # Pass full system path and remote store as kernel parameters
+            # Cloud-init reads these from /proc/cmdline at boot time
+            boot.kernelParams = [
+              "ndh.fullsystem=${builtins.toString fullSystemPath}"
+              "ndh.remotestore=ssh://builder@${hostProfile.hostName}.local"
+            ];
           }
         ];
       };
@@ -416,6 +419,7 @@ let
           pauseAfterInstall ? false,
           enableInstallObserve ? true,
           installObserveInterval ? 5,
+          cloudInitUserData ? null,
         }:
         import ./bringup-zfs-disk-image.nix {
           lib = nixpkgs.lib;
@@ -430,6 +434,7 @@ let
           inherit enableInstallObserve;
           inherit installObserveInterval;
           inherit hostLabel;
+          inherit cloudInitUserData;
           zpoolDiskSize = zpoolVdevDiskSizeMiB;
           memSize = diskImageVmMemSizeMiB;
           vmCpuCores = diskImageVmCpuCores;
@@ -451,6 +456,8 @@ let
         inherit pauseAfterInstall;
         inherit enableInstallObserve;
         inherit installObserveInterval;
+        # Pass cloud-init user-data for minimal bringup
+        cloudInitUserData = selectedBringupSystemdZfs.config.system.build.cloudInitUserData or null;
       };
 
       diskImageBringupZfsSystemdBoot = mkDiskImageWithManifest {

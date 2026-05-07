@@ -38,6 +38,8 @@
   enableInstallObserve ? true,
   # Observability sample interval in seconds.
   installObserveInterval ? 5,
+  # Cloud-init user-data file (for minimal bringup systems)
+  cloudInitUserData ? null,
 }:
 let
   postVmUserCommands = postVM;  # Rename to avoid shadowing in derivation
@@ -310,6 +312,13 @@ in
       # Run the main preVM script (it will use the exported variables and set up QEMU_OPTS)
       # shellcheck disable=SC1090,SC1091
       source ${./bringup-zfs-disk-image.d/prevm.sh}
+
+      # Place cloud-init seed data in xchg/ for the VM (before QEMU starts).
+      # The minimal system mounts xchg at /var/lib/cloud/seed/nocloud via 9p.
+      ${lib.optionalString (cloudInitUserData != null) ''
+        cp ${cloudInitUserData} "$PWD/xchg/user-data"
+        echo "instance-id: ${hostLabel}-$(date +%s)" > "$PWD/xchg/meta-data"
+      ''}
     '';
 
     postVM = ''

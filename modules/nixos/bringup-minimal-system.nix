@@ -6,7 +6,7 @@
   imports = [
     (modulesPath + "/installer/scan/not-detected.nix")
     (modulesPath + "/profiles/qemu-guest.nix")
-    ./cloud-init-bringup.nix
+    ./bringup-cloud-init.nix
   ];
 
   # SSH key management for cloud-init store access
