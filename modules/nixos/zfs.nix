@@ -4,14 +4,17 @@
   config,
   pkgs,
   lib,
-  ndh,
-  ndhSystemd,
+  ndh ? null,
+  ndhSystemd ? null,
   ...
 }:
 
 let
-  ndhContext = ndh.context;
+  # Safe defaults for minimal systems where ndh/ndhSystemd are not available
+  ndhContext = if ndh != null then ndh.context else { nixBashTrampoline = "${pkgs.bash}/bin/bash"; };
   nixBashTrampoline = "${ndhContext.nixBashTrampoline}";
+  # Fallback to pkgs for store operations when ndh.store is not available
+  ndhStore = if ndh != null then ndh.store else pkgs;
   cfg = config.zfsOverlays;
   vmProvider = lib.attrByPath [ "ndh" "vm" "provider" ] "lima" config;
   overlayModeEnabled = cfg.overlayMode.enable && vmProvider == "tart";
@@ -27,13 +30,17 @@ let
   installRootMountPoint = cfg.bootstrapActivation.installRootMountPoint;
   primaryEspPartLabelEnv = cfg.espSync.primaryEspPartLabel;
   secondaryEspPartLabelsEnv = lib.concatStringsSep " " cfg.espSync.secondaryEspPartLabels;
-  contributedTargetName = ndhSystemd.contributedTargetName;
-  zpoolInitUnitName = ndhSystemd.mkUnitName "zpool-init";
-  zpoolInitServiceName = ndhSystemd.mkServiceName "zpool-init";
-  bootReconcileUnitName = ndhSystemd.mkUnitName "boot-entry-reconcile";
-  bootReconcileServiceName = ndhSystemd.mkServiceName "boot-entry-reconcile";
-  zfsNixosInstallServiceName = ndhSystemd.mkServiceName "zfs-nixos-install";
-  espSyncUnitName = ndhSystemd.mkUnitName "esp-sync";
+
+  # Fallback unit naming when ndhSystemd is not available (minimal systems)
+  mkUnitNameFallback = name: "${name}";
+  mkServiceNameFallback = name: "${name}.service";
+  contributedTargetName = if ndhSystemd != null then ndhSystemd.contributedTargetName else "multi-user.target";
+  zpoolInitUnitName = if ndhSystemd != null then ndhSystemd.mkUnitName "zpool-init" else mkUnitNameFallback "zpool-init";
+  zpoolInitServiceName = if ndhSystemd != null then ndhSystemd.mkServiceName "zpool-init" else mkServiceNameFallback "zpool-init";
+  bootReconcileUnitName = if ndhSystemd != null then ndhSystemd.mkUnitName "boot-entry-reconcile" else mkUnitNameFallback "boot-entry-reconcile";
+  bootReconcileServiceName = if ndhSystemd != null then ndhSystemd.mkServiceName "boot-entry-reconcile" else mkServiceNameFallback "boot-entry-reconcile";
+  zfsNixosInstallServiceName = if ndhSystemd != null then ndhSystemd.mkServiceName "zfs-nixos-install" else mkServiceNameFallback "zfs-nixos-install";
+  espSyncUnitName = if ndhSystemd != null then ndhSystemd.mkUnitName "esp-sync" else mkUnitNameFallback "esp-sync";
 
   joinMountPoints =
     prefix: point:
@@ -161,7 +168,7 @@ let
   # Extracted so it can be referenced in both ExecCondition/ExecStart and storePaths.
   # NixOS initrd systemd does NOT auto-close ExecStart or ExecCondition store paths —
   # both must be explicitly listed in boot.initrd.systemd.storePaths.
-  initrdDevicesCheckScript = ndh.store.writeShellScript "initrd-zpool-init-devices-check" ''
+  initrdDevicesCheckScript = ndhStore.writeShellScript "initrd-zpool-init-devices-check" ''
     set -eu
 
     if ! "${if cfg.bootstrapActivation.autoStart then "true" else "false"}"; then
@@ -192,7 +199,7 @@ let
   '';
 
   zpoolInit =
-    ndh.store.runCommand "zpool-init"
+    ndhStore.runCommand "zpool-init"
       {
         passAsFile = [ "text" ];
         text = zpoolInitText;
@@ -203,7 +210,7 @@ let
       '';
 
   # Extracted so it can be referenced in both ExecStart and storePaths.
-  initrdZpoolInitScript = ndh.store.writeShellScript "initrd-zpool-init" ''
+  initrdZpoolInitScript = ndhStore.writeShellScript "initrd-zpool-init" ''
     set -euxo pipefail
 
     # Some bootstrap images may accidentally contain /homeless-shelter,
@@ -218,7 +225,7 @@ let
   '';
 
   # Extracted so it can be referenced in both ExecStart and storePaths.
-  initrdBootEntryReconcileScript = ndh.store.writeShellScript "initrd-boot-entry-reconcile" ''
+  initrdBootEntryReconcileScript = ndhStore.writeShellScript "initrd-boot-entry-reconcile" ''
     set -euo pipefail
 
     sysroot=/sysroot
@@ -333,7 +340,7 @@ let
   );
 
   espSyncScript =
-    ndh.store.runCommand "esp-sync"
+    ndhStore.runCommand "esp-sync"
       {
         passAsFile = [ "text" ];
         text = espSyncScriptText;
@@ -343,7 +350,7 @@ let
       '';
 
   # Stage-2 packages shared by overlay-mode and non-overlay-mode bootstrap services.
-  stage2ZpoolInitDevicesCheckPackage = ndh.store.writeShellScriptBin "zpool-init-devices-check" ''
+  stage2ZpoolInitDevicesCheckPackage = ndhStore.writeShellScriptBin "zpool-init-devices-check" ''
     set -eu
 
     if ! "${if cfg.bootstrapActivation.autoStart then "true" else "false"}"; then
@@ -361,7 +368,7 @@ let
     exit 0
   '';
 
-  stage2ZpoolInitPackage = ndh.store.writeShellScriptBin "zpool-init" ''
+  stage2ZpoolInitPackage = ndhStore.writeShellScriptBin "zpool-init" ''
     set -euxo pipefail
 
     # Some bootstrap images may accidentally contain /homeless-shelter,
@@ -376,14 +383,14 @@ let
     exec ${zpoolInit}/bin/zpool-init
   '';
 
-  espSyncServicePackage = ndh.store.writeShellScriptBin "esp-sync-service" ''
+  espSyncServicePackage = ndhStore.writeShellScriptBin "esp-sync-service" ''
     set -eu
     export PRIMARY_ESP_PART_LABEL=${lib.escapeShellArg primaryEspPartLabelEnv}
     export SECONDARY_ESP_PART_LABELS=${lib.escapeShellArg secondaryEspPartLabelsEnv}
     exec ${espSyncScript}
   '';
 
-  zpoolSyncExportShutdownScript = ndh.store.installScript {
+  zpoolSyncExportShutdownScript = ndhStore.installScript {
     name = "zpool-sync-export-shutdown";
     source = pkgs.replaceVars ./zfs.d/zpool-sync-export-shutdown.sh {
       zpool = "${pkgs.zfs}/bin/zpool";
@@ -581,8 +588,8 @@ in
       };
       zfs = (
         lib.mkIf config.zfsOverlays.enable {
-          forceImportRoot = false;
-          devNodes = lib.mkForce "/dev/disk/by-partlabel";
+          forceImportRoot = true;
+          devNodes = lib.mkForce "/dev";
           extraPools = [
             "tank"
             "recover"

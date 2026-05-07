@@ -9,9 +9,18 @@
     ./bringup-cloud-init.nix
     ./initrd-emergency.nix
     ./console-serial.nix
-    ./boot-zfs.nix
     ./boot-loader.nix
+    ./zfs.nix
   ];
+
+  # Provide stub ndhSystemd for zfs.nix module compatibility
+  _module.args.ndhSystemd = {
+    unitPrefix = "";
+    mkUnitName = name: name;
+    mkServiceName = name: "${name}.service";
+    mkTargetName = name: "${name}.target";
+    contributedTargetName = "multi-user.target";
+  };
 
   # SSH key management for cloud-init store access
   # The system decrypts the full ssh-keys.yaml via sops (defined in .common.d/sops.nix),
@@ -87,8 +96,10 @@
     fsType = "vfat";
   };
 
-  # ZFS boot configuration (supportedFilesystems, forceImportRoot, devNodes, extraPools)
-  # configured via ./boot-zfs.nix
+  # Enable ZFS boot configuration from ./zfs.nix module
+  zfsOverlays.enable = true;
+  # Disable bootstrap activation in minimal system (no data disks present)
+  zfsOverlays.bootstrapActivation.enable = false;
 
   # Network for cloud-init to fetch full system
   networking.useNetworkd = lib.mkForce true;
