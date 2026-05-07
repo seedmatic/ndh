@@ -257,7 +257,7 @@ let
       bootDiskImage=boot.raw
       ${preVmDiskImageVars}
 
-      # shellcheck disable=SC1090
+      # shellcheck disable=SC1090,SC1091
       source "${./bringup-disk-image-common.sh}"
 
       # Create fresh blank disk images
@@ -269,7 +269,7 @@ let
       ${lib.concatStringsSep "\n      " (map (entry: "export ${entry.disk}DiskImage") zfsPoolDiskMap)}
 
       # Run the main preVM script (it will use the exported variables and set up QEMU_OPTS)
-      # shellcheck disable=SC1090
+      # shellcheck disable=SC1090,SC1091
       source ${./bringup-zfs-disk-image.d/prevm.sh}
     '';
   };
@@ -284,7 +284,7 @@ let
       export NDH_ZFS_INSTALL_OBSERVE_INTERVAL="${toString installObserveInterval}"
       export NDH_INSTALL_SCRIPT="${zfsBringupInstallScript}/bin/bringup-zfs-disk-images-install"
 
-      # shellcheck disable=SC1090
+      # shellcheck disable=SC1090,SC1091
       source ${./bringup-zfs-disk-image.d/buildcommand.sh}
     '';
   };
