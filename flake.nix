@@ -718,9 +718,9 @@
           in
           acc
           // {
-            "${mainName}-nixos-bringup-install" = mkNdhBringupRuntimeInstaller system;
-            "${mainName}-nixos-log-capture" = mkNdhLogCapturePackage system;
-            "${mainName}-nixos-tart-vm-bootstrap-installer" = mkNdhVmTartBootstrapInstallerPackage system;
+            "${mainName}-bringup-install" = mkNdhBringupRuntimeInstaller system;
+            "${mainName}-log-capture" = mkNdhLogCapturePackage system;
+            "${mainName}-tart-vm-bootstrap-installer" = mkNdhVmTartBootstrapInstallerPackage system;
           }
         ) { } (builtins.attrNames hostCatalog)
         // nixpkgs.lib.optionalAttrs (system == "aarch64-darwin") (
@@ -733,9 +733,9 @@
             in
             acc
             // {
-              "${mainName}-nixos-lima-vm-materialize" =
+              "${mainName}-lima-vm-materialize" =
                 hostOutput.darwinConfiguration.config.lima.configGenerator.materializerPackage;
-              "${mainName}-nixos-tart-vm-materialize" =
+              "${mainName}-tart-vm-materialize" =
                 hostOutput.darwinConfiguration.config.tart.configGenerator.materializerPackage;
             }
           ) { } (builtins.attrNames hostCatalog)
@@ -750,7 +750,7 @@
             in
             acc
             // {
-              "nixos-${mainName}-bringup-zfs-systemd-disk" = hostOutput.nixosDiskImageBringupSystemdZfs;
+              "${mainName}-bringup-zfs-systemd-disk" = hostOutput.nixosDiskImageBringupSystemdZfs;
             }
           ) { } (builtins.attrNames hostCatalog)
         )
@@ -775,11 +775,11 @@
             in
             acc
             // {
-              "${mainName}-nixos-lima-vm-materialize" = {
+              "${mainName}-lima-vm-materialize" = {
                 type = "app";
                 program = "${limaMaterializerPackage}/bin/${ndhVmLimaMaterializeAttr}";
               };
-              "${mainName}-nixos-tart-vm-materialize" = {
+              "${mainName}-tart-vm-materialize" = {
                 type = "app";
                 program = "${tartMaterializerPackage}/bin/${ndhVmTartMaterializeAttr}";
               };
@@ -793,15 +793,15 @@
             in
             acc
             // {
-              "${mainName}-nixos-bringup-install" = {
+              "${mainName}-bringup-install" = {
                 type = "app";
                 program = "${installer}/bin/${ndhBringupInstallerCommand}";
               };
-              "${mainName}-nixos-log-capture" = {
+              "${mainName}-log-capture" = {
                 type = "app";
                 program = "${logCapture}/bin/${ndhLogCaptureCommand}";
               };
-              "${mainName}-nixos-tart-vm-bootstrap-installer" = {
+              "${mainName}-tart-vm-bootstrap-installer" = {
                 type = "app";
                 program = "${tartBootstrapInstaller}/bin/${ndhVmTartBootstrapInstallerAttr}";
               };

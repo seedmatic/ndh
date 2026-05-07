@@ -30,7 +30,7 @@ let
       null;
   installerAttr =
     if hostNameForAttr != null then
-      "${hostNameForAttr}-nixos-bringup-install"
+      "${hostNameForAttr}-bringup-install"
     else
       installerAttrDefault;
   storeNamePrefix = "io.nxmatic.nix-darwin-home";
