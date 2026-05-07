@@ -7,7 +7,7 @@
   # zfs-nixos-install.service uses this as NDH_NIXOS_INSTALL_SYSTEM_PATH to
   # install the full system without network access at first boot.
   runtimeSystemPath ? null,
-  zpoolDiskSize ? 1536, # 1.5GiB
+  zpoolDiskSize ? 4096, # 4GiB (temporary - minimal system still has large closure)
   # Dedicated EFI boot disk size — holds only systemd-boot + kernel + initrd.
   bootDiskSize ? 600, # 600MiB (512MiB ESP + GPT overhead)
   memSize ? 1536,
