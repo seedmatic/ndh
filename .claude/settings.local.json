@@ -13,7 +13,9 @@
       "Bash(grpcurl -plaintext localhost:8686 list)",
       "Bash(vector --version)",
       "Bash(vector --help)",
-      "Bash(vector tap *)"
+      "Bash(vector tap *)",
+      "Bash(git -C /private/var/lib/git/nxmatic/nix-darwin-home diff modules/nixos/outputs.nix)",
+      "Bash(git commit -m ' *)"
     ],
     "additionalDirectories": [
       "/Users/nxmatic/.local/share/nix-build-observe"

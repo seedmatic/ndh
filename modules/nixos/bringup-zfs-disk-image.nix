@@ -28,15 +28,15 @@
   # Pre-computed disko configuration attrset — when provided, used directly to
   # generate the disko config file instead of re-evaluating zfs-disko-config.nix.
   diskoConfiguration ? null,
-  # When set to a nixosDiskImages derivation (e.g. nerd-nixos), its tank/recover
-  # disk images are copied into the build instead of creating blank disks.
-  # disko format is skipped; existing ZFS pools are imported via disko mount.
-  baseImagePath ? null,
   # When true, create a lock file in xchg/ after nixos-install completes.
   # The build pauses until the operator removes it, allowing inspection of
   # /mnt/zfs-root via the debug shell (socat → /proc/<qemu-pid>/shell.sock).
   # Remove with:  rm /tmp/xchg/pause.lock   (from inside the debug shell)
   pauseAfterInstall ? false,
+  # When true, enable ZFS install observability (iostat, zpool monitoring).
+  enableInstallObserve ? true,
+  # Observability sample interval in seconds.
+  installObserveInterval ? 5,
 }:
 let
   zfsPoolDiskMap = import ./zfs-pool-disk-map.nix;
@@ -142,30 +142,28 @@ let
   initrdEmergencyTools = import ./initrd-emergency-tools.nix pkgs;
   initrdEmergencyPackages = initrdEmergencyTools.packages;
 
-  tools = lib.makeBinPath (
-    with pkgs;
-    [
-      coreutils
-      curl
-      disko
-      yq-go
-      nixos-enter
-      config.system.build.nixos-install
-      dosfstools
-      nix
-      parted
-      procps # ps, top, free, vmstat
-      htop
-      iotop-c # per-process I/O monitor (C rewrite, works without Python)
-      sysstat # iostat, mpstat, pidstat, sar
-      lsof
-      shadow
-      strace
-      systemd
-      inotify-tools
-    ]
-    ++ initrdEmergencyPackages
-  );
+  toolsPackages = with pkgs; [
+    coreutils
+    curl
+    disko
+    yq-go
+    nixos-enter
+    config.system.build.nixos-install
+    dosfstools
+    nix
+    parted
+    procps # ps, top, free, vmstat
+    htop
+    iotop-c # per-process I/O monitor (C rewrite, works without Python)
+    sysstat # iostat, mpstat, pidstat, sar
+    lsof
+    shadow
+    strace
+    systemd
+    inotify-tools
+  ] ++ initrdEmergencyPackages;
+
+  tools = lib.makeBinPath toolsPackages;
 
   diskoConfigFile =
     if diskoConfiguration != null then
@@ -242,52 +240,77 @@ let
             systemdLibUdevd = "${pkgs.systemd}/lib/systemd/systemd-udevd";
             channelFlag = if includeChannel then "--channel ${channelSources}" else "";
             bootSizePolicyNote = builtins.toJSON "ZFS bringup artifacts generated from canonical zfs-pool-disk-map definitions.";
-            baseImageMode = if baseImagePath != null then "1" else "0";
             pauseAfterInstall = if pauseAfterInstall then "1" else "0";
           }
         } "$out/bin/bringup-zfs-disk-images-install"
       '';
 
-  # Base image copy/create logic for preVM
-  baseImageLogic =
-    if baseImagePath != null then
-      ''
-        cp "${baseImagePath}/boot.img" "$bootDiskImage"
-        ${lib.concatStringsSep "\n" (
-          map (entry: "cp \"${baseImagePath}/${entry.disk}.img\" \"${entry.disk}DiskImage\"") zfsPoolDiskMap
-        )}
-        chmod +w "$bootDiskImage" ${lib.concatStringsSep " " (map (e: "\"${e.disk}DiskImage\"") zfsPoolDiskMap)}
-      ''
-    else
-      ''
-        bringup::create_raw_disk "$bootDiskImage" ${toString bootDiskSize}
-        ${preVmCreateRawDisks}
-      '';
+  preVmScriptApp = pkgs.writeShellApplication {
+    name = "bringup-zfs-prevm";
+    runtimeInputs = [ pkgs.socat pkgs.qemu_kvm pkgs.coreutils ];
+    text = ''
+      export NDH_NIXOS_NAME="${hostLabel}"
+      export NDH_BRINGUP_COMMON_SCRIPT="${./bringup-disk-image-common.sh}"
+      export NDH_BOOT_DISK_SIZE="${toString bootDiskSize}"
 
-  preVmScript = pkgs.replaceVars ./bringup-zfs-disk-image.d/prevm.sh {
-    socat = "${pkgs.socat}/bin/socat";
-    qemuBin = "${pkgs.qemu_kvm}/bin";
-    bringupCommon = "${./bringup-disk-image-common.sh}";
-    preVmDiskImageVars = preVmDiskImageVars;
-    baseImageLogic = baseImageLogic;
-    nixosName = hostLabel;
-  };
+      # Set up disk image variables
+      bootDiskImage=boot.raw
+      ${preVmDiskImageVars}
 
-  buildCommandScript = pkgs.replaceVars ./bringup-zfs-disk-image.d/buildcommand.sh {
-    tools = "${tools}";
-    bash = "${pkgs.bash}/bin/bash";
-    yq = "${pkgs.yq-go}/bin/yq";
-    curl = "${pkgs.curl}/bin/curl";
-    iostat = "${pkgs.sysstat}/bin/iostat";
-    installScript = "${zfsBringupInstallScript}/bin/bringup-zfs-disk-images-install";
-    nixosName = hostLabel;
-  };
+      # shellcheck disable=SC1090
+      source "${./bringup-disk-image-common.sh}"
 
-  postVmScript = pkgs.replaceVars ./bringup-zfs-disk-image.d/postvm.sh {
-    postVmMoveDiskImages = postVmMoveDiskImages;
-    postVmUserCommands = postVM;
-    nixosName = hostLabel;
+      # Create fresh blank disk images
+      bringup::create_raw_disk "$bootDiskImage" "${toString bootDiskSize}"
+      ${preVmCreateRawDisks}
+
+      # Export disk image variables so prevm.sh can reference them
+      export bootDiskImage
+      ${lib.concatStringsSep "\n      " (map (entry: "export ${entry.disk}DiskImage") zfsPoolDiskMap)}
+
+      # Run the main preVM script (it will use the exported variables and set up QEMU_OPTS)
+      # shellcheck disable=SC1090
+      source ${./bringup-zfs-disk-image.d/prevm.sh}
+    '';
   };
+  preVmScript = "${preVmScriptApp}/bin/bringup-zfs-prevm";
+
+  buildCommandScriptApp = pkgs.writeShellApplication {
+    name = "bringup-zfs-buildcommand";
+    runtimeInputs = toolsPackages;
+    text = ''
+      export NDH_NIXOS_NAME="${hostLabel}"
+      export NDH_ZFS_INSTALL_OBSERVE="${if enableInstallObserve then "1" else "0"}"
+      export NDH_ZFS_INSTALL_OBSERVE_INTERVAL="${toString installObserveInterval}"
+      export NDH_INSTALL_SCRIPT="${zfsBringupInstallScript}/bin/bringup-zfs-disk-images-install"
+
+      # shellcheck disable=SC1090
+      source ${./bringup-zfs-disk-image.d/buildcommand.sh}
+    '';
+  };
+  buildCommandScript = "${buildCommandScriptApp}/bin/bringup-zfs-buildcommand";
+
+  postVmScriptApp = pkgs.writeShellApplication {
+    name = "bringup-zfs-postvm";
+    runtimeInputs = [ pkgs.coreutils pkgs.util-linux ];
+    text = ''
+      export NDH_NIXOS_NAME="${hostLabel}"
+
+      # Move disk images to $out
+      mv "$bootDiskImage" "$out/boot.img"
+      ${postVmMoveDiskImages}
+
+      if [[ -f xchg/boot-size-hint.yaml ]]; then
+        mv xchg/boot-size-hint.yaml "$out/boot-size-hint.yaml"
+      fi
+
+      [[ -n "''${_NDH_VECTOR_RELAY_PID:-}" ]] && kill "''${_NDH_VECTOR_RELAY_PID}" 2>/dev/null || true
+
+      # User-provided postVM commands
+      ${postVM}
+    '';
+  };
+  postVmScript = "${postVmScriptApp}/bin/bringup-zfs-postvm";
 
 in
 (vmToolsBase.override {

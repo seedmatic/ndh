@@ -188,6 +188,12 @@ let
               mountpoint = "/nix";
               options = {
                 "nixos:mount-overlay" = "true";
+              };
+            };
+            "nerd/nix/store" = {
+              type = "zfs_fs";
+              mountpoint = "/nix/store";
+              options = {
                 # Nix store files are typically small (<64K) and write-once.
                 # 16K recordsize reduces write amplification vs the 128K default.
                 # primarycache=metadata keeps ARC free of data blocks that are
@@ -198,6 +204,56 @@ let
                 # survive the pool-level restore and stay disabled at runtime.
                 recordsize = "16K";
                 primarycache = "metadata";
+                "nixos:mount-overlay" = "false";
+              };
+            };
+            "nerd/nix/var" = {
+              type = "zfs_fs";
+              mountpoint = "/nix/var";
+              options = {
+                "nixos:mount-overlay" = "false";
+              };
+            };
+            "nerd/nix/var/nix" = {
+              type = "zfs_fs";
+              mountpoint = "/nix/var/nix";
+              options = {
+                "nixos:mount-overlay" = "false";
+              };
+            };
+            "nerd/nix/var/nix/db" = {
+              type = "zfs_fs";
+              mountpoint = "/nix/var/nix/db";
+              options = {
+                # Nix database: SQLite with frequent small random writes.
+                # 8K recordsize matches SQLite page size (default 4K-8K).
+                # sync=standard: database integrity is critical, keep ZIL enabled.
+                # logbias=latency: prioritize consistency over throughput.
+                # primarycache=all: hot database pages benefit from ARC caching.
+                recordsize = "8K";
+                sync = "standard";
+                logbias = "latency";
+                primarycache = "all";
+                "nixos:mount-overlay" = "false";
+              };
+            };
+            "nerd/nix/var/nix/profiles" = {
+              type = "zfs_fs";
+              mountpoint = "/nix/var/nix/profiles";
+              options = {
+                # Profiles: mostly symlinks and small metadata operations.
+                # Inherit pool defaults; keep it simple.
+                "nixos:mount-overlay" = "false";
+              };
+            };
+            "nerd/nix/var/nix/gcroots" = {
+              type = "zfs_fs";
+              mountpoint = "/nix/var/nix/gcroots";
+              options = {
+                # GC roots: thousands of symlinks, metadata-heavy workload.
+                # Smaller recordsize reduces overhead for tiny symlink targets.
+                recordsize = "8K";
+                "nixos:mount-overlay" = "false";
               };
             };
             "nerd/nix/builds" = {

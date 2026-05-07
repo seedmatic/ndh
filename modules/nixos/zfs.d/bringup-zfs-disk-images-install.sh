@@ -14,24 +14,21 @@ mkdir -p /mnt/zfs-root
 
 bringup::udev_block_sync @systemdLibUdevd@
 
-if [[ "@baseImageMode@" == "1" ]]; then
-  : '[bringup-zfs] base image mode: skipping disko format, importing existing pools'
-else
-  "@diskoFormatExe@"
+# Always format fresh - no more base image mode
+"@diskoFormatExe@"
 
-  bringup::udev_block_sync
-fi
+bringup::udev_block_sync
 
 "@diskoMountExe@"
 
 bringup::udev_block_sync
 
-# ── ZFS install-time throughput tuning ──────────────────────────────────────
-# These settings trade durability for speed — safe because these are fresh raw
+# -- ZFS install-time throughput tuning --
+# These settings trade durability for speed - safe because these are fresh raw
 # disk images written once; real pool config is applied at first boot.
 : '[bringup-zfs] tuning ZFS for bulk write throughput'
 
-# sync=disabled: skip ZIL flush on every write — biggest throughput win.
+# sync=disabled: skip ZIL flush on every write - biggest throughput win.
 zfs set sync=disabled tank
 zfs set sync=disabled recover
 
@@ -53,7 +50,7 @@ arc_min_bytes=$(( total_kb / 4 * 1024 ))
 echo "${arc_min_bytes}" > /sys/module/zfs/parameters/zfs_arc_min
 
 # Re-enable speculative prefetch.  nixos-install unpacks many store paths
-# sequentially — prefetch reduces ARC miss latency on the read phase.
+# sequentially - prefetch reduces ARC miss latency on the read phase.
 # With 7.7 GiB RAM there is no memory pressure to justify disabling it.
 : '[bringup-zfs] zfs_prefetch_disable → 0 (re-enabled for sequential reads)'
 echo 0 > /sys/module/zfs/parameters/zfs_prefetch_disable
@@ -66,10 +63,10 @@ dirty_max_bytes=$(( arc_max_bytes / 5 ))
 echo "${dirty_max_bytes}" > /sys/module/zfs/parameters/zfs_dirty_data_max
 
 # txg_timeout=5s (keep default): frequent small flushes spread I/O evenly across
-# the install — a longer timeout defers everything into one massive final sync.
+# the install - a longer timeout defers everything into one massive final sync.
 : '[bringup-zfs] zfs_txg_timeout → 5s (avoids deferred final flush)'
 echo 5 > /sys/module/zfs/parameters/zfs_txg_timeout
-# ─────────────────────────────────────────────────────────────────────────────
+# --------------------------------------─
 
 require_partlabel() {
   local label="$1"
@@ -127,24 +124,24 @@ fi
 : '[bringup-zfs] post-install zpool status'
 zpool status >&2 || true
 
-# ── Post-install inspection pause ────────────────────────────────────────────
-# When @pauseAfterInstall@ is set or NDH_ZFS_INSTALL_PAUSE is set, block here until
-# the operator removes the lock file.  Connect to the debug shell and inspect
-# /mnt/zfs-root, then:
+# - Post-install inspection pause ----------------------
+# When @pauseAfterInstall@ is "1", block here until the operator removes the lock.
+# Set via: env NDH_BRINGUP_PAUSE=1 nix build .#nixosDiskImages.HOST
+# Connect to the debug shell and inspect /mnt/zfs-root, then:
 #   rm /tmp/xchg/pause.lock
-if [[ "@pauseAfterInstall@" == "1" ]] || [[ "${NDH_ZFS_INSTALL_PAUSE:-}" == "1" ]]; then
+if [[ "@pauseAfterInstall@" == "1" ]]; then
   lock=/tmp/xchg/pause.lock
   touch "$lock"
   echo '[bringup-zfs] *** PAUSED for inspection ***'
-  echo '[bringup-zfs]   /mnt/zfs-root is still mounted — inspect freely.'
+  echo '[bringup-zfs]   /mnt/zfs-root is still mounted - inspect freely.'
   echo '[bringup-zfs]   Connect via the debug shell:'
   echo '[bringup-zfs]     sudo socat UNIX-CONNECT:/proc/$(pgrep --newest qemu)/cwd/shell.sock -,raw,echo=0,escape=0x1d'
   echo '[bringup-zfs]   When done, resume with:'
   echo '[bringup-zfs]     rm /tmp/xchg/pause.lock'
   inotifywait -q -e delete_self "$lock"
-  echo '[bringup-zfs] lock removed — resuming'
+  echo '[bringup-zfs] lock removed - resuming'
 fi
-# ─────────────────────────────────────────────────────────────────────────────
+# --------------------------------------─
 
 zpools_file="$(mktemp)"
 trap 'rm -f "$zpools_file"' EXIT
@@ -158,7 +155,7 @@ env ZPOOLS_FILE="$zpools_file" yq -n \
     "policyNote": @bootSizePolicyNote@
   }' > /tmp/xchg/boot-size-hint.yaml
 
-# ── Reset ZFS install-time tuning before pool export ─────────────────────────
+# - Reset ZFS install-time tuning before pool export ------------─
 # Drain remaining dirty TXGs first while sync=disabled (no ZIL overhead).
 # Without this, restoring sync=standard triggers an uncontrolled final flush.
 : '[bringup-zfs] draining dirty TXGs before property reset'
@@ -171,14 +168,14 @@ zfs set sync=standard tank    || true
 zfs set sync=standard recover || true
 zfs set logbias=latency tank   || true
 zfs set logbias=latency recover || true
-# ─────────────────────────────────────────────────────────────────────────────
+# --------------------------------------─
 
-# ── Kill processes holding /mnt/zfs-root before unmount ──────────────────────
+# - Kill processes holding /mnt/zfs-root before unmount -----------
 # nixos-install may leave behind nix-daemon workers or chroot'd build processes
 # with open fds or CWDs inside /mnt/zfs-root, causing "target is busy" on umount.
 : '[bringup-zfs] killing processes holding /mnt/zfs-root busy'
 fuser -km /mnt/zfs-root 2>/dev/null || true
 sleep 1
-# ─────────────────────────────────────────────────────────────────────────────
+# --------------------------------------─
 
 "@diskoUnmountExe@"

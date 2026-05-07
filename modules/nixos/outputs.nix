@@ -5,6 +5,8 @@
   ndhNixBashTrampolineLinux,
   mkModulesFor,
   mkSpecialArgs,
+  disko,
+  sops-nix,
 }:
 let
   ndhNixBashTrampoline = ndhNixBashTrampolineLinux;
@@ -83,14 +85,19 @@ let
       profileModule,
       catalog,
       inventory,
-      baseImagePath ? null,
       # When false, the bringup image omits the production runtime closure.
       # Use for base/template images (e.g. nerd-nixos) that carry no runtime deployment.
       includeRuntimeClosure ? true,
       # When true, the QEMU build VM pauses after nixos-install completes.
       # Remove /tmp/xchg/pause.lock from the debug shell to resume.
-      # Set NDH_ZFS_INSTALL_PAUSE=1 in the environment and pass --impure to nix build.
+      # Set NDH_BRINGUP_PAUSE=1 in the environment and pass --impure to nix build.
       pauseAfterInstall ? false,
+      # When true, enable ZFS install observability (iostat, zpool monitoring).
+      # Set NDH_ZFS_INSTALL_OBSERVE=0 to disable.
+      enableInstallObserve ? true,
+      # Observability sample interval in seconds.
+      # Set NDH_ZFS_INSTALL_OBSERVE_INTERVAL=N to customize.
+      installObserveInterval ? 5,
     }:
     let
       mkImageModulesFor =
@@ -159,31 +166,18 @@ let
 
       selectedVmProvider = hostProfile.vmProvider or "tart";
 
-      limaBringupSystemdZfs = mkNixosConfig {
+      # Full runtime systems (for cloud-init to fetch and activate)
+      zfsRuntimeTart = mkNixosConfig {
         inherit
           profileModule
           catalog
           inventory
           ;
-        generationMode = "bringup";
-        hostProfile = bringupSystemdHostProfileBase;
-        zfsOverlays = true;
-        vmProvider = "lima";
-        # Thread production system closure so zfs-nixos-install can use prebuilt path.
-        runtimeSystemPath = selectedRuntime.config.system.build.toplevel;
-      };
-
-      tartBringupSystemdZfs = mkNixosConfig {
-        inherit
-          profileModule
-          catalog
-          inventory
-          ;
-        generationMode = "bringup";
-        hostProfile = bringupSystemdHostProfileBase;
+        generationMode = "full";
+        hostProfile = runtimeSystemdHostProfile;
         zfsOverlays = true;
         vmProvider = "tart";
-        runtimeSystemPath = selectedRuntime.config.system.build.toplevel;
+        runtimeSystemPath = null; # No nested reference
       };
 
       zfsRuntimeLima = mkNixosConfig {
@@ -194,25 +188,61 @@ let
           ;
         generationMode = "full";
         hostProfile = runtimeSystemdHostProfile;
-        # Lima runtime: ZFS root + stage1 disko provisioning path.
         zfsOverlays = true;
         vmProvider = "lima";
-      };
-
-      zfsRuntimeTart = mkNixosConfig {
-        inherit
-          profileModule
-          catalog
-          inventory
-          ;
-        generationMode = "full";
-        hostProfile = runtimeSystemdHostProfile;
-        # Tart runtime with ZFS-backed filesystem definitions/boot integration enabled.
-        zfsOverlays = true;
-        vmProvider = "tart";
+        runtimeSystemPath = null;
       };
 
       selectedRuntime = if selectedVmProvider == "tart" then zfsRuntimeTart else zfsRuntimeLima;
+      fullSystemPath = selectedRuntime.config.system.build.toplevel;
+
+      # Minimal bringup system — ZFS + network + cloud-init only.
+      # Completely standalone, no host profile or modules imported.
+      # Generate a deterministic hostId from hostname for ZFS.
+      minimalHostId =
+        let
+          hash = builtins.hashString "sha256" hostProfile.hostName;
+          # Take first 8 hex chars from hash for ZFS hostId
+        in
+        builtins.substring 0 8 hash;
+
+      minimalBringupSystemBase = nixpkgs.lib.nixosSystem {
+        system = "aarch64-linux";
+        pkgs = pkgsForLinux;
+        modules = [
+          disko.nixosModules.disko
+          sops-nix.nixosModules.sops
+          ./bringup-minimal-system.nix
+          {
+            networking.hostId = minimalHostId;
+            networking.hostName = hostProfile.hostName;
+            system.stateVersion = "24.11";
+
+            # Pass minimal ndh context with full system path for cloud-init
+            _module.args.ndh = {
+              context = {
+                hostProfile = bringupSystemdHostProfileBase;
+                generationMode = "bringup";
+                catalog = catalog;
+                inventory = inventory;
+                vmProvider = selectedVmProvider;
+                nixBashTrampoline = ndhNixBashTrampoline;
+                runtimeSystemPath = "";
+                # Full system path for cloud-init to fetch and activate
+                fullSystemPath = builtins.toString fullSystemPath;
+                # Remote store URL (darwin host)
+                remoteStoreUrl = "ssh://builder@${hostProfile.hostName}.local";
+              };
+              store = ndhStoreApiLinux;
+            };
+          }
+        ];
+      };
+
+      # Minimal system uses selected VM provider from host profile
+      # No need for separate Lima/Tart variants since vmProvider is already set
+      limaBringupSystemdZfs = minimalBringupSystemBase;
+      tartBringupSystemdZfs = minimalBringupSystemBase;
 
       # Canonical raw build image size policy.
       # - `uncompressedDiskSizeGiB` is the baseline required without compression.
@@ -252,7 +282,8 @@ let
           + efiSystemPartitionSizeMiB
           + 2
         );
-      bringupZfsSystemPath = tartBringupSystemdZfs.config.system.build.toplevel;
+      # Compute bringupZfsSystemPath after selectedBringupSystemdZfs is defined
+      bringupZfsSystemPath = selectedBringupSystemdZfs.config.system.build.toplevel;
       # Output a JSON hint with all relevant info for post-build checks
       diskSizeHint = builtins.toJSON {
         systemPath = bringupZfsSystemPath;
@@ -277,7 +308,7 @@ let
         hint = {
           zfsBringup = "nix path-info -Sh ${bringupZfsSystemPath}";
         };
-        note = "bringup closure sizes should be less than diskSizeBytes; inspect boot-size-hint.yaml in image outputs to tune ESP size from measured single-generation usage";
+        note = "minimal bringup closure sizes should be less than diskSizeBytes; inspect boot-size-hint.yaml in image outputs to tune ESP size from measured single-generation usage";
       };
       mainName =
         if (hostProfile ? hostAlias && hostProfile.hostAlias != null && hostProfile.hostAlias != "") then
@@ -367,6 +398,8 @@ let
             NDH_PRIMARY_IMAGE_PATH = primaryImagePath;
             NDH_MANIFEST_BASE_YAML_FILE = manifestBaseYamlFile;
             NDH_EXTRA_IMAGES_SPEC_YAML_FILE = extraImagesSpecYamlFile;
+            # Disable strict bootstrap profile check for minimal bringup images
+            NDH_BOOTSTRAP_STRICT = "0";
           }
           ''
             set -euo pipefail
@@ -380,8 +413,9 @@ let
           name,
           hostLabel ? mainName,
           runtimeSystemPath ? null,
-          baseImagePath ? null,
           pauseAfterInstall ? false,
+          enableInstallObserve ? true,
+          installObserveInterval ? 5,
         }:
         import ./bringup-zfs-disk-image.nix {
           lib = nixpkgs.lib;
@@ -392,8 +426,9 @@ let
           # Include the production runtime closure so zfs-nixos-install can use
           # the prebuilt path without network access at first boot.
           inherit runtimeSystemPath;
-          inherit baseImagePath;
           inherit pauseAfterInstall;
+          inherit enableInstallObserve;
+          inherit installObserveInterval;
           inherit hostLabel;
           zpoolDiskSize = zpoolVdevDiskSizeMiB;
           memSize = diskImageVmMemSizeMiB;
@@ -410,15 +445,16 @@ let
 
       diskImageBringupZfsSystemdBootRaw = mkBringupZfsDiskImages {
         nixosSystem = selectedBringupSystemdZfs;
-        name = "nixos-disk-image-bringup-systemd-zfs";
-        runtimeSystemPath =
-          if includeRuntimeClosure then selectedRuntime.config.system.build.toplevel else null;
-        inherit baseImagePath;
+        name = "${mainName}-zfs-disk-images-raw";
+        # No runtime system closure — minimal bringup only
+        runtimeSystemPath = null;
         inherit pauseAfterInstall;
+        inherit enableInstallObserve;
+        inherit installObserveInterval;
       };
 
       diskImageBringupZfsSystemdBoot = mkDiskImageWithManifest {
-        attr = "nixosDiskImageBringupZfsSystemdBoot";
+        attr = "${mainName}-zfs-disk-images";
         nixosConfiguration = "${mainName}-nixos-${selectedVmProvider}";
         imageMode = "bringup";
         bootLoader = "systemd-boot";
@@ -449,7 +485,7 @@ let
       nixosConfigurations = {
         "${mainName}-nixos-lima" = limaBringupSystemdZfs;
         "${mainName}-nixos-tart" = tartBringupSystemdZfs;
-        "${mainName}-nixos" = selectedRuntime;
+        # No runtime system — minimal bringup only
       };
       inherit
         diskImageBringupZfsSystemdBoot

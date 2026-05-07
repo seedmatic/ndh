@@ -629,6 +629,7 @@
           mkModulesFor
           mkSpecialArgs
           ;
+        inherit (inputs) disko sops-nix;
       };
 
       inherit (darwinOutputsApi)
@@ -641,24 +642,6 @@
         mkNixosOutputs
         ;
 
-      # nerd-nixos base disk image — built once, shared as baseImagePath for all target hosts.
-      # Pools are pre-formatted so target host builds skip the expensive disko format step.
-      nerdNixosDiskImage =
-        let
-          spec = import ./hosts/nerd-nixos;
-        in
-        (mkNixosOutputs {
-          inherit (spec) hostProfile;
-          catalog = catalogData;
-          inventory = inventoryData;
-          profileModule =
-            { ... }:
-            {
-              imports = [ spec.profileModule ] ++ spec.nixosExtraModules;
-            };
-          includeRuntimeClosure = false;
-          pauseAfterInstall = builtins.getEnv "NDH_BRINGUP_PAUSE" == "1";
-        }).diskImageBringupZfsSystemdBoot;
     in
     rec {
       formatter = forAllSystems (
@@ -842,7 +825,6 @@
           profileModule,
           darwinExtraModules ? [ ],
           nixosExtraModules ? [ ],
-          baseImagePath ? null,
           withBringupImages ? true,
           ...
         }:
@@ -887,7 +869,7 @@
             email = committedHomeManagerUserWithHome.email;
           };
           nixosOutputs = mkNixosOutputs {
-            inherit hostProfile catalog baseImagePath;
+            inherit hostProfile catalog;
             inventory = inventoryData;
             profileModule =
               { ... }:
@@ -1101,7 +1083,17 @@
         };
 
       hostOutputs = forAllHosts (
-        _: hostSpec: mkHostOutputs (hostSpec // { baseImagePath = nerdNixosDiskImage; })
+        _: hostSpec:
+        let
+          envObserve = builtins.getEnv "NDH_ZFS_INSTALL_OBSERVE";
+          envInterval = builtins.getEnv "NDH_ZFS_INSTALL_OBSERVE_INTERVAL";
+        in
+        mkHostOutputs (hostSpec // {
+          pauseAfterInstall = builtins.getEnv "NDH_BRINGUP_PAUSE" == "1";
+          enableInstallObserve = if envObserve == "0" then false else true;
+          installObserveInterval = if envInterval != "" then
+            (builtins.fromJSON envInterval) else 5;
+        })
       );
 
       darwinConfigurations = builtins.foldl' (
@@ -1113,7 +1105,7 @@
       );
 
       # Provider-scoped VM configuration aliases.
-      # Keep canonical behavior unchanged; expose stable provider names for operators.
+      # Only expose minimal bringup systems (lima/tart variants).
       vmConfigurations =
         let
           mkVmHostAliases =
@@ -1125,7 +1117,6 @@
             {
               lima.system = hostNixosConfigurations."${mainName}-nixos-lima";
               tart.system = hostNixosConfigurations."${mainName}-nixos-tart";
-              selected.system = hostNixosConfigurations."${mainName}-nixos";
             };
 
           vmAliasesByHost = forAllHosts mkVmHostAliases;
@@ -1133,7 +1124,6 @@
         {
           lima = builtins.mapAttrs (_: hostAliases: hostAliases.lima) vmAliasesByHost;
           tart = builtins.mapAttrs (_: hostAliases: hostAliases.tart) vmAliasesByHost;
-          selected = builtins.mapAttrs (_: hostAliases: hostAliases.selected) vmAliasesByHost;
         };
 
       homeManagerConfigurations = builtins.mapAttrs (
@@ -1141,10 +1131,7 @@
       ) hostOutputs;
 
       nixosDiskImages =
-        builtins.mapAttrs (_: hostOutput: hostOutput.nixosDiskImageBringupSystemdZfs) hostOutputs
-        // {
-          "nerd" = nerdNixosDiskImage;
-        };
+        builtins.mapAttrs (_: hostOutput: hostOutput.nixosDiskImageBringupSystemdZfs) hostOutputs;
 
       # Overlay factories (curried: inputs: final: prev:) — used internally via overlayFactories.
       overlayFactories = {
