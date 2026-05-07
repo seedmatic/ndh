@@ -63,9 +63,8 @@ let
     if clusterName != null then lib.attrByPath [ "clusters" clusterName ] null rke2labNetplan else null;
 
   # Boot mode selection.
-  nixosBootLoader = hostProfile.nixosBootLoader or "grub";
-  useSystemdBoot = nixosBootLoader == "systemd-boot";
-  useGrub = !useSystemdBoot;
+  # Always use systemd-boot (GRUB removed)
+  useSystemdBoot = true;
   isTartProvider = (lib.attrByPath [ "ndh" "vm" "provider" ] "lima" config) == "tart";
   # Optional host override for debug verbosity.
   # Canonical default: bringup images are interactive-first (tty prompt usable)
@@ -154,51 +153,6 @@ let
       '';
   initrdRescueSshHostKeyInInitrd = "/etc/secrets/initrd/ssh_host_ed25519_key";
   initrdRescueSshHostKeyStorePath = initrdRescueSshHostKey + "/ssh_host_ed25519_key";
-  kernelConsoleParams = [
-    "console=${videoDisplayConsole}"
-    "console=${virtualSerialConsole}"
-  ];
-
-  # GRUB exercise/debug menu fragments.
-  grubDebugKernelParams = lib.concatStringsSep " " (
-    [
-      "init=/nix/var/nix/profiles/system/init"
-      "logo.nologo"
-      "rootwait"
-      "rootdelay=5"
-      "consoleLoglevel=7"
-      "udev.log_level=err"
-      "boot.trace"
-    ]
-    ++ kernelConsoleParams
-  );
-  grubExerciseEntries = lib.optionalString bootDebug ''
-    submenu "NixOS boot exercises (@codebase)" {
-      menuentry "Exercise: root=LABEL=nixos" {
-        search --set=rootfs --label nixos
-        linux ($rootfs)/nix/var/nix/profiles/system/kernel ${grubDebugKernelParams} root=LABEL=nixos
-        initrd ($rootfs)/nix/var/nix/profiles/system/initrd
-      }
-
-      menuentry "Exercise: root=/dev/vda2" {
-        search --set=rootfs --label nixos
-        linux ($rootfs)/nix/var/nix/profiles/system/kernel ${grubDebugKernelParams} root=/dev/vda2
-        initrd ($rootfs)/nix/var/nix/profiles/system/initrd
-      }
-
-      menuentry "Exercise: initrd break (rd.break=mount)" {
-        search --set=rootfs --label nixos
-        linux ($rootfs)/nix/var/nix/profiles/system/kernel ${grubDebugKernelParams} root=LABEL=nixos rd.debug rd.shell rd.break=mount
-        initrd ($rootfs)/nix/var/nix/profiles/system/initrd
-      }
-    }
-  '';
-  grubSerialConsoleConfig = ''
-    # Keep GRUB output visible on both local console and serial capture.
-    serial --unit=0 --speed=115200 --word=8 --parity=no --stop=1
-    terminal_input console serial
-    terminal_output console serial
-  '';
   bootstrapRequiredImports = [
     ../.common.d
     ./etc-backup.nix
@@ -259,6 +213,7 @@ in
   imports =
     [
       ./initrd-emergency.nix
+      ./console-serial.nix
     ]
     ++ bootstrapRequiredImports
     ++ (lib.optionals runtimeMode runtimeOnlyImports)
@@ -362,20 +317,7 @@ in
       inherit kernelModules supportedFilesystems;
 
       loader = {
-        grub = {
-          enable = lib.mkForce useGrub;
-          device = "nodev";
-          efiSupport = true;
-          efiInstallAsRemovable = true;
-          timeoutStyle = if bootDebug then "menu" else "countdown";
-          extraConfig =
-            grubSerialConsoleConfig
-            + lib.optionalString bootDebug ''
-              # Pause in GRUB until an operator selects an entry.
-              set timeout=-1
-            '';
-          extraEntries = grubExerciseEntries;
-        };
+        grub.enable = lib.mkForce false;
         timeout = lib.mkForce (
           if bringupMode then
             0
@@ -397,8 +339,8 @@ in
             # "rd.systemd.journald.console=/dev/${virtualSerialConsole}"
             "systemd.journald.forward_to_console=1"
             # "systemd.journald.console=/dev/${virtualSerialConsole}"
+            # Console kernel params (console=tty0 console=hvc0) configured via ./console-serial.nix
           ]
-          ++ kernelConsoleParams
         )
         (lib.optionals (!bringupMode || bootDebug) [
           "rootwait"
@@ -565,7 +507,7 @@ in
     };
 
     services = {
-      getty.autologinUser = rootUserName;
+      # getty.autologinUser configured via ./console-serial.nix
 
       # Bootstrap recovery path: avoid nsncd/nscd startup failures from cascading
       # into nss-* target dependency failures that break tty login/getty.

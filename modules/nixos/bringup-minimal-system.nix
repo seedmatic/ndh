@@ -8,6 +8,7 @@
     (modulesPath + "/profiles/qemu-guest.nix")
     ./bringup-cloud-init.nix
     ./initrd-emergency.nix
+    ./console-serial.nix
   ];
 
   # SSH key management for cloud-init store access
