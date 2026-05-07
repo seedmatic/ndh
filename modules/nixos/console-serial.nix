@@ -17,4 +17,19 @@
 
   # Auto-login root on all gettys for emergency/bringup access
   services.getty.autologinUser = lib.mkDefault "root";
+
+  # Ensure proper terminal environment for serial console
+  # Set TERM to support line editing in bash/readline
+  environment.variables = {
+    TERM = lib.mkDefault "linux";
+  };
+
+  # Configure bash as interactive shell with emacs mode
+  programs.bash.interactiveShellInit = lib.mkAfter ''
+    # Enable emacs line editing mode for serial console
+    set -o emacs
+
+    # Ensure proper terminal settings
+    stty sane 2>/dev/null || true
+  '';
 }
