@@ -58,8 +58,6 @@ let
     if clusterName != null then lib.attrByPath [ "clusters" clusterName ] null rke2labNetplan else null;
 
   # Boot mode selection.
-  # Always use systemd-boot (GRUB removed)
-  useSystemdBoot = true;
   isTartProvider = (lib.attrByPath [ "ndh" "vm" "provider" ] "lima" config) == "tart";
   # Optional host override for debug verbosity.
   # Canonical default: bringup images are interactive-first (tty prompt usable)
@@ -212,6 +210,7 @@ in
       ./nix-settings.nix
       ./users.nix
       ./boot-zfs.nix
+      ./boot-loader.nix
     ]
     ++ bootstrapRequiredImports
     ++ (lib.optionals runtimeMode runtimeOnlyImports)
@@ -268,17 +267,7 @@ in
 
       inherit kernelModules supportedFilesystems;
 
-      loader = {
-        grub.enable = lib.mkForce false;
-        timeout = lib.mkForce (
-          if bringupMode then
-            0
-          else if bootDebug then
-            15
-          else
-            5
-        );
-      };
+      # Boot loader configuration (systemd-boot, EFI, timeout, grub) via ./boot-loader.nix
 
       kernelParams = lib.mkMerge [
         (
@@ -318,9 +307,6 @@ in
         "net.core.devconf_inherit_init_net" = 1;
       };
 
-      loader.systemd-boot.enable = lib.mkForce useSystemdBoot;
-      loader.systemd-boot.configurationLimit = lib.mkIf useSystemdBoot (lib.mkDefault 3);
-      loader.efi.canTouchEfiVariables = lib.mkForce false;
 
       # verbosity (default off; override per-host if needed)
       consoleLogLevel =
