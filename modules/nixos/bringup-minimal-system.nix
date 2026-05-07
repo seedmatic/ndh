@@ -88,7 +88,8 @@
   # Essential ZFS support for pool operations
   boot.supportedFilesystems = [ "zfs" ];
   boot.zfs.forceImportRoot = false;
-  boot.zfs.devNodes = "/dev/disk/by-id";
+  # Use /dev for virtio devices - /dev/disk/by-id doesn't exist in QEMU VMs
+  boot.zfs.devNodes = "/dev";
 
   # Import ZFS pools at boot
   boot.zfs.extraPools = [ "tank" "recover" ];
