@@ -241,7 +241,7 @@ let
                 runtimeSystemPath = builtins.unsafeDiscardStringContext (builtins.toString fullSystemPath);
                 remoteStore = "ssh://builder@${hostProfile.hostName}.local";
                 bringupRuntimePackage = ndhBootstrapRuntimePackageLinux;
-                bringupRuntimeProfilePath = "/nix/var/nix/profiles/per-user/root/${hostProfile.name}-bringup-runtime";
+                bringupRuntimeProfilePath = "/nix/var/nix/profiles/per-user/root/${hostProfile.hostName}-bringup-runtime";
               };
               store = ndhStoreApiLinux;
             };
