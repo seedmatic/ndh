@@ -46,11 +46,6 @@ let
   # Profile/user identity normalization for NixOS constraints.
   cfgUser = config.profile.user;
   cfgUserName = cfgUser.name;
-  cfgUserIsNormal = cfgUser.isNormalUser or true;
-  cfgUidLow = cfgUser.uid != null && cfgUser.uid < 1000;
-  cfgGidLow = cfgUser.gid != null && cfgUser.gid < 1000;
-  nixosUserUid = if cfgUserIsNormal && cfgUidLow then null else cfgUser.uid;
-  nixosUserGid = if cfgUserIsNormal && cfgGidLow then null else cfgUser.gid;
   ndhContext = ndh.context;
   consoleCfg = config.consoleLogging;
   hostProfile = ndhContext.hostProfile;
@@ -214,6 +209,8 @@ in
     [
       ./initrd-emergency.nix
       ./console-serial.nix
+      ./nix-settings.nix
+      ./users.nix
     ]
     ++ bootstrapRequiredImports
     ++ (lib.optionals runtimeMode runtimeOnlyImports)
@@ -259,53 +256,7 @@ in
       '';
     };
 
-    nix.settings = {
-      # Enable content-addressed derivations to reduce rebuild churn for identical outputs.
-      # We also disable auto-optimise-store for faster iterative builds; run `nix-store --optimise` manually when idle.
-      experimental-features = [
-        "nix-command"
-        "flakes"
-        "ca-derivations"
-        "configurable-impure-env"
-      ];
-      auto-optimise-store = false; # Manual optimise recommended; improves build latency during development.
-      trusted-users = [
-        cfgUserName
-        rootUserName
-        "builder" # remote builder user (nerd-nixos Lima VM)
-      ];
-      sandbox = false;
-      # Keep sandbox disabled for this profile set; do not force host-local
-      # device paths (e.g. /dev/kvm) into evaluated settings, as that breaks
-      # evaluation on non-KVM bringup/runtime hosts.
-
-      # Cache settings with Fastly CDN for faster downloads
-      # Using 'substituters' (not 'extra-substituters') to control order
-      # Alternative caches (uncomment one to use):
-      # - "${cacheCatalog.nixos.substituter}"                                  # Official NixOS cache (default)
-      # - "${cacheCatalog.aseippFastly.substituter}"              # Fastly Cache v2 (recommended, faster) - currently active
-      # - "https://mirrors.tuna.tsinghua.edu.cn/nix-channels/store"  # Tsinghua University (China)
-      # - "https://mirrors.ustc.edu.cn/nix-channels/store"           # USTC (China)
-      # - "https://mirrors.bfsu.edu.cn/nix-channels/store"           # BFSU (China)
-      substituters = [
-        cacheCatalog.aseippFastly.substituter # Fastly Cache v2 (tried first)
-        cacheCatalog.nxmatic.substituter # nxmatic cache
-      ];
-      trusted-public-keys = [
-        cacheCatalog.nixos.publicKey # Required for mirrors
-        cacheCatalog.nxmatic.publicKey # nxmatic key
-      ];
-      # NOTE (@codebase): Rollback instructions:
-      #   - Remove "ca-derivations" from experimental-features.
-      #   - Set auto-optimise-store = true to restore inline dedup.
-      # Validation:
-      #   - Check a new build's store path naming stability when spec changes trivially.
-      #   - Run `nix-store --optimise --dry-run` after several builds to assess dedup benefit.
-    };
-
-    nix.extraOptions = ''
-      !include /etc/nix/nix.custom.conf
-    '';
+    # Nix daemon configuration (nix.settings, nix.extraOptions) in ./nix-settings.nix
 
     # Boot configuration
     boot = {
@@ -592,78 +543,7 @@ in
       ]
     );
 
-    users.users.${cfgUserName} = {
-      group = cfgUserName;
-      extraGroups = nixosUserExtraGroups;
-      uid = lib.mkIf (nixosUserUid != null) nixosUserUid;
-      linger = true;
-    };
-    users.groups.${cfgUserName} = if nixosUserGid != null then { gid = nixosUserGid; } else { };
-
-    # builder user: accepts linux-builder key from all Darwin profiles for remote builds.
-    # The public keys are baked in at build time from keys.yaml (not SOPS-encrypted).
-    users.users.builder = lib.mkIf runtimeMode {
-      isNormalUser = true;
-      group = "builder";
-      extraGroups = [
-        "wheel"
-        "nixbld"
-      ];
-      description = "Nix remote builder";
-      openssh.authorizedKeys.keys = lib.filter (k: k != "") [
-        (
-          if
-            builderKeys ? profiles
-            && builderKeys.profiles ? committed
-            && builderKeys.profiles.committed ? linux-builder
-            && builderKeys.profiles.committed.linux-builder ? public
-          then
-            "ssh-ed25519 ${builderKeys.profiles.committed.linux-builder.public} committed-linux-builder"
-          else
-            ""
-        )
-        (
-          if
-            builderKeys ? profiles
-            && builderKeys.profiles ? work
-            && builderKeys.profiles.work ? linux-builder
-            && builderKeys.profiles.work.linux-builder ? public
-          then
-            "ssh-ed25519 ${builderKeys.profiles.work.linux-builder.public} work-linux-builder"
-          else
-            ""
-        )
-      ];
-    };
-    users.groups.builder = lib.mkIf runtimeMode { };
-
-    # root: also accepts linux-builder key for builds that require root-level operations.
-    users.users.root.openssh.authorizedKeys.keys = lib.mkIf runtimeMode (
-      lib.filter (k: k != "") [
-        (
-          if
-            builderKeys ? profiles
-            && builderKeys.profiles ? committed
-            && builderKeys.profiles.committed ? linux-builder
-            && builderKeys.profiles.committed.linux-builder ? public
-          then
-            "ssh-ed25519 ${builderKeys.profiles.committed.linux-builder.public} committed-linux-builder"
-          else
-            ""
-        )
-        (
-          if
-            builderKeys ? profiles
-            && builderKeys.profiles ? work
-            && builderKeys.profiles.work ? linux-builder
-            && builderKeys.profiles.work.linux-builder ? public
-          then
-            "ssh-ed25519 ${builderKeys.profiles.work.linux-builder.public} work-linux-builder"
-          else
-            ""
-        )
-      ]
-    );
+    # User configuration (users.users.*, users.groups.*) in ./users.nix
 
   };
 
