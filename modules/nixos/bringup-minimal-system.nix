@@ -129,6 +129,13 @@
   programs.less.enable = lib.mkForce false;
   programs.nano.enable = lib.mkForce false;
 
+  # Boot loader — systemd-boot for EFI boot on Tart/QEMU VZ guests.
+  # canTouchEfiVariables=false: QEMU/Tart EFI runtime vars are not persistent.
+  # configurationLimit=1: bringup is a single-generation disposable install.
+  boot.loader.systemd-boot.enable = true;
+  boot.loader.systemd-boot.configurationLimit = 1;
+  boot.loader.efi.canTouchEfiVariables = false;
+
   # Disable fonts (no X11/GUI)
   fonts.fontconfig.enable = lib.mkForce false;
 }

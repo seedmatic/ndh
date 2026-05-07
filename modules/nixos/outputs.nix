@@ -218,12 +218,6 @@ let
             networking.hostName = hostProfile.hostName;
             system.stateVersion = "24.11";
 
-            # systemd-boot: required for EFI boot on Tart/QEMU VZ guests.
-            # canTouchEfiVariables=false: QEMU/Tart EFI runtime vars are not persistent.
-            boot.loader.systemd-boot.enable = true;
-            boot.loader.systemd-boot.configurationLimit = 1;
-            boot.loader.efi.canTouchEfiVariables = false;
-
             # Pass full system path as a plain string (unsafeDiscardStringContext strips
             # the derivation edge so the runtime closure is NOT pulled into the bringup
             # image). Cloud-init userdata is seeded via nocloud xchg virtio-9p share and
