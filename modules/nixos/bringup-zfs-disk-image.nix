@@ -247,76 +247,21 @@ let
         } "$out/bin/bringup-zfs-disk-images-install"
       '';
 
-  preVmScriptApp = pkgs.writeShellApplication {
-    name = "bringup-zfs-prevm";
-    runtimeInputs = [ pkgs.socat pkgs.qemu_kvm pkgs.coreutils ];
-    text = ''
-      export NDH_NIXOS_NAME="${hostLabel}"
-      export NDH_BRINGUP_COMMON_SCRIPT="${./bringup-disk-image-common.sh}"
-      export NDH_BOOT_DISK_SIZE="${toString bootDiskSize}"
-
-      # Set up disk image variables
-      bootDiskImage=boot.raw
-      ${preVmDiskImageVars}
-
-      # shellcheck disable=SC1090,SC1091
-      source "${./bringup-disk-image-common.sh}"
-
-      # Create fresh blank disk images
-      bringup::create_raw_disk "$bootDiskImage" "${toString bootDiskSize}"
-      ${preVmCreateRawDisks}
-
-      # Export disk image variables so prevm.sh can reference them
-      export bootDiskImage
-      ${lib.concatStringsSep "\n      " (map (entry: "export ${entry.disk}DiskImage") zfsPoolDiskMap)}
-
-      # Run the main preVM script (it will use the exported variables and set up QEMU_OPTS)
-      # shellcheck disable=SC1090,SC1091
-      source ${./bringup-zfs-disk-image.d/prevm.sh}
-    '';
-  };
-  preVmScript = "${preVmScriptApp}/bin/bringup-zfs-prevm";
-
+  # buildCommandScript runs inside the VM
   buildCommandScriptApp = pkgs.writeShellApplication {
     name = "bringup-zfs-buildcommand";
     runtimeInputs = toolsPackages;
+    # Read the buildcommand.sh source and inline it here
     text = ''
       export NDH_NIXOS_NAME="${hostLabel}"
       export NDH_ZFS_INSTALL_OBSERVE="${if enableInstallObserve then "1" else "0"}"
       export NDH_ZFS_INSTALL_OBSERVE_INTERVAL="${toString installObserveInterval}"
       export NDH_INSTALL_SCRIPT="${zfsBringupInstallScript}/bin/bringup-zfs-disk-images-install"
 
-      # shellcheck disable=SC1090,SC1091
-      source ${./bringup-zfs-disk-image.d/buildcommand.sh}
+      ${builtins.readFile ./bringup-zfs-disk-image.d/buildcommand.sh}
     '';
   };
-  buildCommandScript = "${buildCommandScriptApp}/bin/bringup-zfs-buildcommand";
-
-  postVmScriptApp = pkgs.writeShellApplication {
-    name = "bringup-zfs-postvm";
-    runtimeInputs = [ pkgs.coreutils pkgs.util-linux ];
-    text = ''
-      export NDH_NIXOS_NAME="${hostLabel}"
-
-      # Variables from vmTools environment and preVM phase
-      # shellcheck disable=SC2154
-      # (bootDiskImage, tankDiskImage, recoverDiskImage, out, _NDH_VECTOR_RELAY_PID)
-
-      # Move disk images to $out
-      mv "$bootDiskImage" "$out/boot.img"
-      ${postVmMoveDiskImages}
-
-      if [[ -f xchg/boot-size-hint.yaml ]]; then
-        mv xchg/boot-size-hint.yaml "$out/boot-size-hint.yaml"
-      fi
-
-      [[ -n "''${_NDH_VECTOR_RELAY_PID:-}" ]] && kill "''${_NDH_VECTOR_RELAY_PID}" 2>/dev/null || true
-
-      # User-provided postVM commands
-      ${postVmUserCommands}
-    '';
-  };
-  postVmScript = "${postVmScriptApp}/bin/bringup-zfs-postvm";
+  buildCommandScript = lib.getExe buildCommandScriptApp;
 
 in
 (vmToolsBase.override {
