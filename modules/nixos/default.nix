@@ -348,15 +348,8 @@ in
         ];
         systemd = {
           enable = true;
-          # gpt-auto root discovery is needed for non-ZFS bringup (Discoverable
-          # Partitions Spec). ZFS uses zfs-import instead — gpt-auto causes a 90s
-          # initrd timeout waiting for /dev/gpt-auto-root on ZFS roots.
-          # Must be mkForce in both branches: the NixOS default is "gpt-auto",
-          # so omitting the ZFS case silently re-enables it.
-          root = lib.mkForce (if rootFsType != "zfs" then "gpt-auto" else "fstab");
           network.enable = lib.mkDefault bringupMode;
-          emergencyAccess = true;
-          # Emergency tools (extraBin, storePaths, services, journald) are configured
+          # Emergency tools, emergencyAccess, and root discovery mode configured
           # via ./initrd-emergency.nix imported above.
           settings.Manager = systemdManagerShowStatusNo;
         }

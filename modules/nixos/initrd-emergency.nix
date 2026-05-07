@@ -3,15 +3,20 @@
 # emergency/rescue services, journald for boot troubleshooting.
 #
 # Import this module in any NixOS config that needs emergency shell capabilities.
-# Other initrd.systemd settings (network, emergencyAccess, root discovery) can be
-# configured by the caller - this module only handles the emergency tools and
-# emergency/rescue service environment.
 { lib, pkgs, ... }:
 let
   initrdEmergencyTools = import ./initrd-emergency-tools.nix pkgs;
 in
 {
   boot.initrd.systemd = {
+    # Enable emergency shell access on boot failures
+    emergencyAccess = true;
+
+    # Root discovery mode: use fstab for ZFS root
+    # gpt-auto (Discoverable Partitions Spec) causes 90s timeout on ZFS roots
+    # waiting for /dev/gpt-auto-root that never appears. ZFS uses zfs-import.
+    root = lib.mkForce "fstab";
+
     # Emergency tools: grep, sed, awk, sgdisk, lsblk, zdb, etc.
     # Canonical list defined in ./initrd-emergency-tools.nix.
     # storePaths embeds the closures so /bin symlinks are not dangling when
