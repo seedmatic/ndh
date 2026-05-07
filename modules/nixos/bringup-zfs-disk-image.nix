@@ -231,6 +231,7 @@ let
       ''
         install -Dm755 ${
           pkgs.replaceVars ./zfs.d/bringup-zfs-disk-images-install.sh {
+            nixosName = hostLabel;
             bringupCommonScript = "${./bringup-disk-image-common.sh}";
             diskoFormatExe = "${diskoFormatExe}";
             diskoMountExe = "${diskoMountExe}";

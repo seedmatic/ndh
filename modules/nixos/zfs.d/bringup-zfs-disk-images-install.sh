@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euxo pipefail
 
+PS4='[@nixosName@:bringup-install:${LINENO}] '
+
 # shellcheck source=/dev/null
 source @bringupCommonScript@
 

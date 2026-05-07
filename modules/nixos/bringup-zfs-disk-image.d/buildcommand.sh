@@ -43,13 +43,13 @@ setsid --ctty @bash@ -i 0<>/dev/hvc0 1>&0 2>&0 &
 
 # ── builder-side observer ─────────────────────────────────────────────────────
 # Collects metrics from the linux-builder during the nested QEMU build.
-# Events are sent to Vector via _ndh_bld_obs_push_vector() for real-time aggregation.
+# Events are sent to Vector via obs::vector:push() for real-time aggregation.
 
-_ndh_bld_obs_enabled() {
+obs::enabled() {
   [[ "${NDH_ZFS_INSTALL_OBSERVE:-1}" == "1" ]]
 }
 
-_ndh_bld_obs_sample() {
+obs::sample() {
   local ts qemu_pid qemu_cpu qemu_rss dirty wb avail diskio
   ts=$(date -Iseconds)
 
@@ -95,10 +95,10 @@ diskio: ${diskio}
 EOJ
 }
 
-_ndh_bld_obs_mark() {
-  _ndh_bld_obs_enabled || return 0
+obs::mark() {
+  obs::enabled || return 0
   local label="$1"
-  _ndh_bld_obs_push_vector "$(@yq@ -p yaml -o json -I0 - <<EOJ
+  obs::vector:push "$(@yq@ -p yaml -o json -I0 - <<EOJ
 type: builder-phase
 source_layer: builder
 label: "${label}"
@@ -109,41 +109,42 @@ EOJ
 
 # Push a JSON event to Vector on the VZ host.
 # NDH_VECTOR_ENDPOINT injected via --impure-env; fallback to hardcoded default for testing.
-_ndh_bld_obs_push_vector() {
+obs::vector:push() {
   local endpoint="${NDH_VECTOR_ENDPOINT:-http://10.0.2.2:9001}"
   @curl@ -sf -X POST "${endpoint}" \
     -H "Content-Type: application/json" \
     -d "$1" 2>/dev/null || true
 }
 
-_ndh_bld_obs_start() {
-  _ndh_bld_obs_enabled || return 0
+obs::start() {
+  obs::enabled || return 0
   local interval="${NDH_ZFS_INSTALL_OBSERVE_INTERVAL:-5}"
 
   # Send header
-  _ndh_bld_obs_push_vector '{"type":"builder-meta","started":"'"$(date -Iseconds)"'"}'
+  obs::vector:push '{"type":"builder-meta","started":"'"$(date -Iseconds)"'"}'
 
   # Sampler loop
   ( set +x
     while true; do
-      _ndh_bld_obs_push_vector "$(_ndh_bld_obs_sample)"
+      obs::vector:push "$(obs::sample)"
       sleep "$interval"
     done ) &
-  _NDH_BLD_OBS_SAMPLER_PID="$!"
-  export _NDH_BLD_OBS_SAMPLER_PID
+  OBS_SAMPLER_PID="$!"
+  export OBS_SAMPLER_PID
 }
 
-_ndh_bld_obs_stop() {
-  _ndh_bld_obs_enabled || return 0
-  [[ -n "${_NDH_BLD_OBS_SAMPLER_PID:-}" ]] && \
-    kill "${_NDH_BLD_OBS_SAMPLER_PID}" 2>/dev/null || true
-  _ndh_bld_obs_mark "builder-stop"
+obs::stop() {
+  obs::enabled || return 0
+  [[ -n "${OBS_SAMPLER_PID:-}" ]] && \
+    kill "${OBS_SAMPLER_PID}" 2>/dev/null || true
+  obs::mark "builder-stop"
 }
 
-_ndh_bld_obs_start
-trap '_ndh_bld_obs_stop' EXIT
-_ndh_bld_obs_mark "qemu-start"
+obs::start
+trap 'obs::stop' EXIT
+obs::mark "qemu-start"
 
 : 'execute the ZFS bringup install script, which formats the disks and installs NixOS onto them'
 @bash@ @installScript@
-_ndh_bld_obs_mark "qemu-done"
+
+obs::mark "qemu-done"
