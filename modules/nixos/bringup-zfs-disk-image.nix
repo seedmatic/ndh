@@ -25,6 +25,7 @@
   # When false, the nested QEMU guest has no network at all.
   nestedQemuNetworkEnable ? true,
   postVM ? "",
+  # User-provided postVM commands (kept as parameter for future extensibility)
   # Pre-computed disko configuration attrset — when provided, used directly to
   # generate the disko config file instead of re-evaluating zfs-disko-config.nix.
   diskoConfiguration ? null,
@@ -39,6 +40,7 @@
   installObserveInterval ? 5,
 }:
 let
+  postVmUserCommands = postVM;  # Rename to avoid shadowing in derivation
   zfsPoolDiskMap = import ./zfs-pool-disk-map.nix;
   espStartMiB = 1;
   espSizeMiB = 512;
@@ -311,7 +313,7 @@ let
       [[ -n "''${_NDH_VECTOR_RELAY_PID:-}" ]] && kill "''${_NDH_VECTOR_RELAY_PID}" 2>/dev/null || true
 
       # User-provided postVM commands
-      ${postVM}
+      ${postVmUserCommands}
     '';
   };
   postVmScript = "${postVmScriptApp}/bin/bringup-zfs-postvm";
@@ -340,11 +342,46 @@ in
     inherit memSize;
 
     preVM = ''
-      source ${preVmScript}
+      export NDH_NIXOS_NAME="${hostLabel}"
+      export NDH_BRINGUP_COMMON_SCRIPT="${./bringup-disk-image-common.sh}"
+      export NDH_BOOT_DISK_SIZE="${toString bootDiskSize}"
+      export PATH="${lib.makeBinPath [ pkgs.socat pkgs.qemu_kvm ]}:$PATH"
+
+      # Set up disk image variables
+      bootDiskImage=boot.raw
+      ${preVmDiskImageVars}
+
+      # shellcheck disable=SC1090,SC1091
+      source "${./bringup-disk-image-common.sh}"
+
+      # Create fresh blank disk images
+      bringup::create_raw_disk "$bootDiskImage" "${toString bootDiskSize}"
+      ${preVmCreateRawDisks}
+
+      # Export disk image variables so prevm.sh can reference them
+      export bootDiskImage
+      ${lib.concatStringsSep "\n      " (map (entry: "export ${entry.disk}DiskImage") zfsPoolDiskMap)}
+
+      # Run the main preVM script (it will use the exported variables and set up QEMU_OPTS)
+      # shellcheck disable=SC1090,SC1091
+      source ${./bringup-zfs-disk-image.d/prevm.sh}
     '';
 
     postVM = ''
-      source ${postVmScript}
+      export NDH_NIXOS_NAME="${hostLabel}"
+
+      # Move disk images to $out
+      mv "$bootDiskImage" "$out/boot.img"
+      ${postVmMoveDiskImages}
+
+      if [[ -f xchg/boot-size-hint.yaml ]]; then
+        mv xchg/boot-size-hint.yaml "$out/boot-size-hint.yaml"
+      fi
+
+      [[ -n "''${_NDH_VECTOR_RELAY_PID:-}" ]] && kill "''${_NDH_VECTOR_RELAY_PID}" 2>/dev/null || true
+
+      # User-provided postVM commands
+      ${postVmUserCommands}
     '';
   } ''
     source ${buildCommandScript}
