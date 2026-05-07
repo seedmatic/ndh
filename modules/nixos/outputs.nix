@@ -217,7 +217,10 @@ let
           {
             networking.hostId = minimalHostId;
             networking.hostName = hostProfile.hostName;
-            system.stateVersion = "24.11";
+            system.stateVersion = "25.11";
+
+            # Disko configuration - needed for zfs.nix to generate fileSystems
+            disko.devices = diskoConfiguration.devices;
 
             # Pass full system path as a plain string (unsafeDiscardStringContext strips
             # the derivation edge so the runtime closure is NOT pulled into the bringup
