@@ -218,7 +218,10 @@ let
             networking.hostName = hostProfile.hostName;
             system.stateVersion = "24.11";
 
-            # Pass minimal ndh context (no fullSystemPath to avoid closure dependency)
+            # Pass full system path as a plain string (unsafeDiscardStringContext strips
+            # the derivation edge so the runtime closure is NOT pulled into the bringup
+            # image). Cloud-init userdata is seeded via nocloud xchg virtio-9p share and
+            # bakes these values at eval time — no kernel params needed.
             _module.args.ndh = {
               context = {
                 hostProfile = bringupSystemdHostProfileBase;
@@ -227,19 +230,11 @@ let
                 inventory = inventory;
                 vmProvider = selectedVmProvider;
                 nixBashTrampoline = ndhNixBashTrampoline;
-                runtimeSystemPath = "";
+                runtimeSystemPath = builtins.unsafeDiscardStringContext (builtins.toString fullSystemPath);
+                remoteStore = "ssh://builder@${hostProfile.hostName}.local";
               };
               store = ndhStoreApiLinux;
             };
-
-            # Pass full system path and remote store as kernel parameters
-            # Cloud-init reads these from /proc/cmdline at boot time
-            # builtins.unsafeDiscardStringContext strips the derivation dep so the
-            # full runtime system is NOT pulled into the minimal bringup closure.
-            boot.kernelParams = [
-              "ndh.fullsystem=${builtins.unsafeDiscardStringContext (builtins.toString fullSystemPath)}"
-              "ndh.remotestore=ssh://builder@${hostProfile.hostName}.local"
-            ];
           }
         ];
       };

@@ -2,6 +2,11 @@
 let
   ndhContext = ndh.context;
 
+  # Full system path and remote store are baked in at eval time from ndh.context.
+  # No /proc/cmdline parsing needed — values arrive via nocloud xchg seed.
+  fullSystem = ndhContext.runtimeSystemPath or "";
+  remoteStore = ndhContext.remoteStore or "";
+
   # Cloud-init user-data for first-boot activation
   cloudInitUserData = pkgs.writeText "cloud-init-user-data.yaml" ''
     #cloud-config
@@ -11,17 +16,16 @@ let
       - |
         set -euxo pipefail
 
-        # Read full system path and remote store URL from kernel cmdline
-        FULL_SYSTEM=$(grep -oP 'ndh\.fullsystem=\K[^ ]+' /proc/cmdline || echo "")
-        STORE_HOST=$(grep -oP 'ndh\.remotestore=\K[^ ]+' /proc/cmdline || echo "")
+        FULL_SYSTEM="${fullSystem}"
+        STORE_HOST="${remoteStore}"
 
         if [ -z "$FULL_SYSTEM" ]; then
-          echo "[cloud-init] WARN: No full system path in kernel params, staying on minimal system" >&2
+          echo "[cloud-init] WARN: No full system path configured, staying on minimal system" >&2
           exit 0
         fi
 
         if [ -z "$STORE_HOST" ]; then
-          echo "[cloud-init] ERROR: No remote store URL in kernel params" >&2
+          echo "[cloud-init] ERROR: No remote store URL configured" >&2
           exit 1
         fi
 
