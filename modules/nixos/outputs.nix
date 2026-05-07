@@ -224,12 +224,18 @@ let
             # bakes these values at eval time — no kernel params needed.
             _module.args.ndh = {
               context = {
-                hostProfile = bringupSystemdHostProfileBase;
+                # Only fields actually consumed by bringup-minimal-system.nix / bringup-cloud-init.nix:
+                # - generationMode: gate on lib.mkIf (generationMode == "bringup")
+                # - runtimeSystemPath/remoteStore: baked into cloud-init userdata
+                # - vmProvider: provider-specific guest-side unit selection
+                # - nixBashTrampoline: script sourcing in bringup services
+                # catalog/inventory/hostProfile are NOT used and intentionally omitted
+                # to keep the bringup ndh context minimal.
                 generationMode = "bringup";
-                catalog = catalog;
-                inventory = inventory;
                 vmProvider = selectedVmProvider;
                 nixBashTrampoline = ndhNixBashTrampoline;
+                # runtimeSystemPath: unsafeDiscardStringContext strips the derivation edge
+                # so the full runtime system is NOT pulled into the bringup closure.
                 runtimeSystemPath = builtins.unsafeDiscardStringContext (builtins.toString fullSystemPath);
                 remoteStore = "ssh://builder@${hostProfile.hostName}.local";
               };
