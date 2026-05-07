@@ -234,8 +234,10 @@ let
 
             # Pass full system path and remote store as kernel parameters
             # Cloud-init reads these from /proc/cmdline at boot time
+            # builtins.unsafeDiscardStringContext strips the derivation dep so the
+            # full runtime system is NOT pulled into the minimal bringup closure.
             boot.kernelParams = [
-              "ndh.fullsystem=${builtins.toString fullSystemPath}"
+              "ndh.fullsystem=${builtins.unsafeDiscardStringContext (builtins.toString fullSystemPath)}"
               "ndh.remotestore=ssh://builder@${hostProfile.hostName}.local"
             ];
           }
