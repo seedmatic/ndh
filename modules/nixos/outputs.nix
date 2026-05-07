@@ -380,12 +380,12 @@ let
             sourceOutPath = source;
             inherit primaryImagePath;
           });
-          manifestBaseYamlFile = pkgsForLinux.runCommand "nixos-disk-image-manifest-base-${attr}.yaml" {
+          manifestBaseYamlFile = ndhStoreApiLinux.runCommand "manifest-base-${attr}.yaml" {
             nativeBuildInputs = [ pkgsForLinux.yq-go ];
             passAsFile = [ "manifestAttrsJson" ];
             inherit manifestAttrsJson;
           } ''yq -p json -o yaml "$manifestAttrsJsonPath" > "$out"'';
-          extraImagesSpecYamlFile = pkgsForLinux.runCommand "nixos-disk-image-extra-images-${attr}.yaml" {
+          extraImagesSpecYamlFile = ndhStoreApiLinux.runCommand "manifest-extra-images-${attr}.yaml" {
             nativeBuildInputs = [ pkgsForLinux.yq-go ];
             passAsFile = [ "extraImagesJson" ];
             extraImagesJson = builtins.toJSON extraImages;
@@ -395,7 +395,7 @@ let
             loggerTag = "nixos.outputs.mkDiskImageWithManifest.${attr}";
           };
         in
-        pkgsForLinux.runCommand "nixos-disk-image-with-manifest-${attr}"
+        ndhStoreApiLinux.runCommand "${attr}"
           {
             nativeBuildInputs = [ pkgsForLinux.yq-go ];
             NDH_PRIMARY_IMAGE_PATH = primaryImagePath;
