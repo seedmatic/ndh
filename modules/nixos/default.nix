@@ -211,6 +211,7 @@ in
       ./console-serial.nix
       ./nix-settings.nix
       ./users.nix
+      ./boot-zfs.nix
     ]
     ++ bootstrapRequiredImports
     ++ (lib.optionals runtimeMode runtimeOnlyImports)

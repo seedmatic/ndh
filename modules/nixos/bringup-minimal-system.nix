@@ -9,6 +9,7 @@
     ./bringup-cloud-init.nix
     ./initrd-emergency.nix
     ./console-serial.nix
+    ./boot-zfs.nix
   ];
 
   # SSH key management for cloud-init store access
@@ -85,14 +86,8 @@
     fsType = "vfat";
   };
 
-  # Essential ZFS support for pool operations
-  boot.supportedFilesystems = [ "zfs" ];
-  boot.zfs.forceImportRoot = false;
-  # Use /dev for virtio devices - /dev/disk/by-id doesn't exist in QEMU VMs
-  boot.zfs.devNodes = "/dev";
-
-  # Import ZFS pools at boot
-  boot.zfs.extraPools = [ "tank" "recover" ];
+  # ZFS boot configuration (supportedFilesystems, forceImportRoot, devNodes, extraPools)
+  # configured via ./boot-zfs.nix
 
   # Network for cloud-init to fetch full system
   networking.useNetworkd = lib.mkForce true;
