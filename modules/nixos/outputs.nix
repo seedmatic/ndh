@@ -247,12 +247,13 @@ let
       # Canonical raw build image size policy.
       # - `uncompressedDiskSizeGiB` is the baseline required without compression.
       # - A single compression factor is currently used.
-      # - For zstd level 1, we model a 0.5 factor (2:1 compression).
+      # - For zstd level 1, actual measured compressratio on NixOS store data is ~1.38x
+      #   (factor = 1/1.38 ≈ 0.725). The old 0.5 (2:1) assumption was too optimistic.
       # - Future per-filesystem factors may override rootFsCompressionFactor,
       #   but should default to zstdCompressionFactor.
-      uncompressedDiskSizeGiB = hostProfile.nixosDiskImageSizeGiB or 16;
+      uncompressedDiskSizeGiB = hostProfile.nixosDiskImageSizeGiB or 6;
       selectedZstdCompressionLevel = hostProfile.nixosZstdCompressionLevel or 1;
-      zstdCompressionFactor = if selectedZstdCompressionLevel == 1 then 0.5 else 1.0;
+      zstdCompressionFactor = if selectedZstdCompressionLevel == 1 then 0.7246 else 1.0;
       rootFsCompressionFactor = hostProfile.nixosRootFsCompressionFactor or zstdCompressionFactor;
       diskSizeGiB =
         let
@@ -272,7 +273,7 @@ let
       zfsBringupPoolDiskSizeMiB = hostProfile.nixosZfsBringupPoolDiskSizeMiB or 12288;
       # ZFS vdev disk size for the bringup QEMU build VM.
       # Applies rootFsCompressionFactor so physical disk images reflect compressed
-      # on-disk size (e.g. zstd level 1 ≈ 0.5 factor → 2:1 compression).
+      # on-disk size (measured zstd-1 ratio: 1.38x → factor 0.7246).
       # raidz1 usable = 2 × zpoolVdevPartitionSizeMiB (3 disks, 1 parity).
       # Accounts for per-disk EFI/GPT overhead:
       # espStart=1 MiB + efiSystemPartitionSizeMiB + 1 MiB GPT backup = +2 beyond EFI.
