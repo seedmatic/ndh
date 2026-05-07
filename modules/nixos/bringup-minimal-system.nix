@@ -121,6 +121,22 @@
     sops     # For secrets decryption
   ];
 
+  # Install bringup runtime profile that nixBashTrampoline expects
+  # The profile path must match what's configured in the ndh context
+  system.activationScripts.bringupProfile = lib.mkIf (ndh != null) (
+    let
+      ndhContext = ndh.context;
+      profilePath = ndhContext.bringupRuntimeProfilePath or null;
+      runtimePackage = ndhContext.bringupRuntimePackage or null;
+    in
+    lib.mkIf (profilePath != null && runtimePackage != null) (
+      lib.stringAfter [ "users" ] ''
+        mkdir -p "$(dirname "${profilePath}")"
+        ln -sfn ${runtimePackage} "${profilePath}"
+      ''
+    )
+  );
+
   # Disable default packages to minimize closure size
   environment.defaultPackages = lib.mkForce [ ];
 

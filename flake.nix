@@ -188,6 +188,7 @@
         pkgsForSystem = pkgsForLinux;
         loggerCmd = "${pkgsForLinux.util-linux}/bin/logger -p notice -t %TAG%";
       };
+      ndhBootstrapRuntimePackageLinux = mkNdhBootstrapRuntimePackage "aarch64-linux";
       ndhBringupRuntimeAttr = "nerd-bringup-runtime";
       ndhBringupInstallerAttr = "nerd-bringup-install";
       ndhBringupInstallerCommand = "nerd-bringup-install";
@@ -626,6 +627,7 @@
           pkgsForLinux
           ndhStoreApiLinux
           ndhNixBashTrampolineLinux
+          ndhBootstrapRuntimePackageLinux
           mkModulesFor
           mkSpecialArgs
           ;

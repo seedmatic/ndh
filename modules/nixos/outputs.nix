@@ -3,6 +3,7 @@
   pkgsForLinux,
   ndhStoreApiLinux,
   ndhNixBashTrampolineLinux,
+  ndhBootstrapRuntimePackageLinux,
   mkModulesFor,
   mkSpecialArgs,
   disko,
@@ -229,6 +230,7 @@ let
                 # - runtimeSystemPath/remoteStore: baked into cloud-init userdata
                 # - vmProvider: provider-specific guest-side unit selection
                 # - nixBashTrampoline: script sourcing in bringup services
+                # - bringupRuntimePackage: needed for profile installation
                 # catalog/inventory/hostProfile are NOT used and intentionally omitted
                 # to keep the bringup ndh context minimal.
                 generationMode = "bringup";
@@ -238,6 +240,8 @@ let
                 # so the full runtime system is NOT pulled into the bringup closure.
                 runtimeSystemPath = builtins.unsafeDiscardStringContext (builtins.toString fullSystemPath);
                 remoteStore = "ssh://builder@${hostProfile.hostName}.local";
+                bringupRuntimePackage = ndhBootstrapRuntimePackageLinux;
+                bringupRuntimeProfilePath = "/nix/var/nix/profiles/per-user/root/${hostProfile.name}-bringup-runtime";
               };
               store = ndhStoreApiLinux;
             };

@@ -11,8 +11,10 @@
 
 let
   # Safe defaults for minimal systems where ndh/ndhSystemd are not available
-  ndhContext = if ndh != null then ndh.context else { nixBashTrampoline = "${pkgs.bash}/bin/bash"; };
+  ndhContext = if ndh != null then ndh.context else { nixBashTrampoline = "${pkgs.bash}/bin/bash"; generationMode = "full"; };
   nixBashTrampoline = "${ndhContext.nixBashTrampoline}";
+  generationMode = ndhContext.generationMode or "full";
+  bringupMode = generationMode == "bringup";
   # Fallback to pkgs for store operations when ndh.store is not available
   ndhStore = if ndh != null then ndh.store else pkgs;
   cfg = config.zfsOverlays;
@@ -597,7 +599,7 @@ in
         }
       );
 
-      loader.systemd-boot.extraInstallCommands = lib.mkIf config.boot.loader.systemd-boot.enable (
+      loader.systemd-boot.extraInstallCommands = lib.mkIf (config.boot.loader.systemd-boot.enable && !bringupMode) (
         lib.mkAfter ''
           export PRIMARY_ESP_PART_LABEL=${lib.escapeShellArg primaryEspPartLabelEnv}
           export SECONDARY_ESP_PART_LABELS=${lib.escapeShellArg secondaryEspPartLabelsEnv}
