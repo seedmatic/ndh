@@ -248,10 +248,13 @@ let
       # - `uncompressedDiskSizeGiB` is the baseline required without compression.
       # - A single compression factor is currently used.
       # - For zstd level 1, actual measured compressratio on NixOS store data is ~1.38x
-      #   (factor = 1/1.38 ≈ 0.725). The old 0.5 (2:1) assumption was too optimistic.
+      #   (factor = 1/1.38 ≈ 0.7246). The old 0.5 (2:1) assumption was too optimistic.
+      # - Default uncompressedDiskSizeGiB=4 is calibrated to produce ~2.0G vdev disks
+      #   (same ballpark as the old formula: unc=6 × factor=0.5). Tune per host via
+      #   nixosDiskImageSizeGiB to match the actual uncompressed runtime closure size.
       # - Future per-filesystem factors may override rootFsCompressionFactor,
       #   but should default to zstdCompressionFactor.
-      uncompressedDiskSizeGiB = hostProfile.nixosDiskImageSizeGiB or 6;
+      uncompressedDiskSizeGiB = hostProfile.nixosDiskImageSizeGiB or 4;
       selectedZstdCompressionLevel = hostProfile.nixosZstdCompressionLevel or 1;
       zstdCompressionFactor = if selectedZstdCompressionLevel == 1 then 0.7246 else 1.0;
       rootFsCompressionFactor = hostProfile.nixosRootFsCompressionFactor or zstdCompressionFactor;
