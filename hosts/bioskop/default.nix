@@ -30,5 +30,5 @@ in
   inherit hostProfile profileModule;
   darwinExtraModules = [ darwinModule ];
   nixosExtraModules = [ nixosModule ];
-  withBringupImages = false;
+  withBringupImages = true;
 }
