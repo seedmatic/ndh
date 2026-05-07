@@ -462,7 +462,7 @@ let
 
       diskImageBringupZfsSystemdBoot = mkDiskImageWithManifest {
         attr = "${mainName}-zfs-disk-images";
-        nixosConfiguration = "${mainName}-nixos-${selectedVmProvider}";
+        nixosConfiguration = "${mainName}-bringup";
         imageMode = "bringup";
         bootLoader = "systemd-boot";
         diskSizeMiB = diskSizeMiB;
@@ -490,9 +490,11 @@ let
       inherit diskSizeMiB;
       inherit diskoConfiguration;
       nixosConfigurations = {
-        "${mainName}-nixos-lima" = limaBringupSystemdZfs;
-        "${mainName}-nixos-tart" = tartBringupSystemdZfs;
-        # No runtime system — minimal bringup only
+        # Minimal bringup installer VM (what gets installed onto ZFS disks as the bootstrap OS)
+        "${mainName}-bringup" = minimalBringupSystemBase;
+        # Full runtime systems (what cloud-init activates after first boot)
+        "${mainName}-lima" = zfsRuntimeLima;
+        "${mainName}-tart" = zfsRuntimeTart;
       };
       inherit
         diskImageBringupZfsSystemdBoot

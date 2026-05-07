@@ -877,7 +877,7 @@
                 imports = [ profileModule ] ++ nixosExtraModules;
               };
           };
-          nixosConfiguration = nixosOutputs.nixosConfigurations."${mainName}-nixos";
+          nixosConfiguration = nixosOutputs.nixosConfigurations."${mainName}-bringup";
           nixosDiskImage = nixosOutputs.diskImageFull;
           nixosDiskImageBringupSystemd = nixosOutputs.diskImageBringupSystemdBoot;
           nixosDiskImageBringupSystemdZfs = nixosOutputs.diskImageBringupZfsSystemdBoot;
@@ -1104,8 +1104,7 @@
         builtins.attrValues hostOutputs
       );
 
-      # Provider-scoped VM configuration aliases.
-      # Only expose minimal bringup systems (lima/tart variants).
+      # Provider-scoped VM configuration aliases (full runtime systems, not bringup).
       vmConfigurations =
         let
           mkVmHostAliases =
@@ -1115,8 +1114,8 @@
               hostNixosConfigurations = hostOutputs.${hostName}.nixosConfigurations;
             in
             {
-              lima.system = hostNixosConfigurations."${mainName}-nixos-lima";
-              tart.system = hostNixosConfigurations."${mainName}-nixos-tart";
+              lima.system = hostNixosConfigurations."${mainName}-lima";
+              tart.system = hostNixosConfigurations."${mainName}-tart";
             };
 
           vmAliasesByHost = forAllHosts mkVmHostAliases;
