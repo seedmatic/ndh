@@ -87,9 +87,8 @@ let
   mkBringupOverride = value: if bringupMode then lib.mkForce value else value;
 
   # Forensic/recovery tools for the initrd emergency shell.
-  # Returns { extraBin, storePaths } — both are needed: extraBin creates /bin
-  # symlinks in the initrd cpio, storePaths embeds the store closures so the
-  # symlink targets actually exist when /nix/store is not yet mounted.
+  # Emergency tools for bringup VM shell (outside initrd).
+  # The initrd emergency tools are configured via ./initrd-emergency.nix.
   initrdEmergencyTools = import ./initrd-emergency-tools.nix pkgs;
 
   # Root filesystem/mount policy.
@@ -258,7 +257,10 @@ in
     };
   };
   imports =
-    bootstrapRequiredImports
+    [
+      ./initrd-emergency.nix
+    ]
+    ++ bootstrapRequiredImports
     ++ (lib.optionals runtimeMode runtimeOnlyImports)
     ++ (lib.optionals runtimeMode [
       #(import ./remote-nix-store.nix { inherit config pkgs lib; })
@@ -474,26 +476,8 @@ in
           root = lib.mkForce (if rootFsType != "zfs" then "gpt-auto" else "fstab");
           network.enable = lib.mkDefault bringupMode;
           emergencyAccess = true;
-          # Recovery/forensics toolset always present in the initrd emergency shell.
-          # Available in both bringup and runtime modes so any host can be debugged
-          # when dropped to stage-1 via `rd.break`, `emergency.target`, or a boot failure.
-          # Canonical list defined in ./initrd-emergency-tools.nix (shared with bringup-zfs-disk-image.nix).
-          # storePaths embeds the closures so /bin symlinks are not dangling when
-          # /nix/store is not yet mounted (early-boot emergency shell).
-          extraBin = initrdEmergencyTools.extraBin;
-          storePaths = initrdEmergencyTools.storePaths;
-          services = {
-            emergency.environment.SYSTEMD_SULOGIN_FORCE = "1";
-            rescue.environment.SYSTEMD_SULOGIN_FORCE = "1";
-            # Reduce initrd dependency-noise from kbd tooling (setfont/loadkeys)
-            # in headless/serial bringup flows.
-            "systemd-vconsole-setup".enable = lib.mkForce false;
-          };
-          contents."/etc/systemd/journald.conf".text = ''
-            [Journal]
-            ForwardToConsole=yes
-            MaxLevelConsole=debug
-          '';
+          # Emergency tools (extraBin, storePaths, services, journald) are configured
+          # via ./initrd-emergency.nix imported above.
           settings.Manager = systemdManagerShowStatusNo;
         }
         // (lib.optionalAttrs (bringupMode && rootFsType != "zfs") {
