@@ -21,6 +21,12 @@ let
   bootstrapRequiredMountPaths = lib.unique ([ config.sops.age.keyFile ] ++ importCandidateDirs);
 in
 {
+  # The age-bootstrap service imports keys from the host-provided virtiofs
+  # mount (/srv/host/sops.d) when running under Tart. Pull that mount unit in
+  # here so bringup-minimal picks it up transitively from sops.nix, without
+  # needing to import the full systemd/ aggregator.
+  imports = [ ./systemd/tart-host-shares.nix ];
+
   config = {
     # NixOS policy: systemd-driven sops activation and host key import defaults.
     sops.useSystemdActivation = lib.mkDefault true;

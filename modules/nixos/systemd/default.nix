@@ -24,20 +24,9 @@ let
   sshKeysEnrichmentServiceName = mkNdhServiceName "ssh-keys-enrichment";
 in
 {
-  options.ndh.vm.provider = lib.mkOption {
-    type = lib.types.enum [
-      "lima"
-      "tart"
-      "none"
-    ];
-    default = effectiveVmProvider;
-    description = ''
-      VM provider mode for guest-side systemd wiring.
-      - lima: enable Lima cidata/cloud-init + guest agent units.
-      - tart: disable Lima-specific units (Tart-specific units can be layered separately).
-      - none: disable provider-specific VM units.
-    '';
-  };
+  # Note: `options.ndh.vm.provider` is declared in ./tart-host-shares.nix so
+  # that modules outside the systemd aggregator (e.g. bringup-minimal via
+  # ../sops.nix) can import host-shares without pulling the full aggregator.
 
   options.rescue.enable = lib.mkOption {
     type = lib.types.bool;
