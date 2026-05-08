@@ -133,6 +133,11 @@ ndh::bootstrap:runtime:install() {
 	install_attr="${NDH_BOOTSTRAP_INSTALL_ATTR:-}"
 	if [[ -z "$install_attr" ]]; then
 		host_short="$(hostname -s 2>/dev/null || true)"
+		# Bringup guests use the composite hostname "<host>-nixos" (see
+		# modules/.common.d/lima-host.nix); strip the guest suffix so the
+		# installer attribute resolves to "<host>-bringup-install" (the
+		# canonical form in flake.nix after commit 1cc5d647).
+		host_short="${host_short%-nixos}"
 		if [[ -n "$host_short" ]]; then
 			install_attr="${host_short}-bringup-install"
 		fi
@@ -143,7 +148,7 @@ ndh::bootstrap:runtime:install() {
 		if [[ -n "$install_attr" ]]; then
 			runtime_spec=".#${install_attr}"
 		else
-			runtime_spec=".#$(hostname -s 2>/dev/null || echo host)-bringup-install"
+			runtime_spec=".#$(hostname -s 2>/dev/null | sed 's/-nixos$//' || echo host)-bringup-install"
 		fi
 	fi
 	discovered_installer="$(command -v nerd-bringup-install 2>/dev/null || true)"
@@ -267,6 +272,9 @@ ndh::bootstrap:runtime:ensure() {
 	install_attr="${NDH_BOOTSTRAP_INSTALL_ATTR:-}"
 	if [[ -z "$install_attr" ]]; then
 		host_short="$(hostname -s 2>/dev/null || true)"
+		# See runtime:install: strip the "-nixos" guest suffix before building
+		# the flake attribute name.
+		host_short="${host_short%-nixos}"
 		if [[ -n "$host_short" ]]; then
 			install_attr="${host_short}-bringup-install"
 		fi
@@ -279,7 +287,7 @@ ndh::bootstrap:runtime:ensure() {
 			if [[ -n "$install_attr" ]]; then
 				install_hint="nix run .#${install_attr} -- ${profile_dir}"
 			else
-				install_hint="nix run .#$(hostname -s 2>/dev/null || echo host)-bringup-install -- ${profile_dir}"
+				install_hint="nix run .#$(hostname -s 2>/dev/null | sed 's/-nixos$//' || echo host)-bringup-install -- ${profile_dir}"
 			fi
 		fi
 	else
@@ -290,7 +298,7 @@ ndh::bootstrap:runtime:ensure() {
 			if [[ -n "$install_attr" ]]; then
 				install_hint="nix run .#${install_attr} -- ${profile_fallback}"
 			else
-				install_hint="nix run .#$(hostname -s 2>/dev/null || echo host)-bringup-install -- ${profile_fallback}"
+				install_hint="nix run .#$(hostname -s 2>/dev/null | sed 's/-nixos$//' || echo host)-bringup-install -- ${profile_fallback}"
 			fi
 		fi
 	fi

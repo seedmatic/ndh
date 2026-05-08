@@ -1,4 +1,13 @@
 { config, lib, pkgs, modulesPath, ndh ? null, ndhSystemd, self, ... }:
+let
+  ndhContext = if ndh != null then ndh.context else { };
+  baseHostName = ndhContext.hostProfile.hostName or "host";
+  # Compose the guest identity to match the runtime convention
+  # (modules/.common.d/lima-host.nix: "${hostName}-${guestName}", guestName = "nixos").
+  # Keeping the suffix here rather than importing lima-host.nix preserves the
+  # minimal image's small module surface.
+  guestHostName = "${baseHostName}-nixos";
+in
 {
   # Minimal NixOS system for bringup — installs into ZFS pools, boots, then
   # cloud-init fetches and activates the full system at first boot.
@@ -17,6 +26,8 @@
     ./zfs.nix
     ./zfs-recovery-chroot.nix
   ];
+
+  networking.hostName = guestHostName;
 
   # Bringup has no login user; the shared sops.nix defaults the ssh-keys secret
   # owner to config.profile.user.name. Override to root for the minimal image.

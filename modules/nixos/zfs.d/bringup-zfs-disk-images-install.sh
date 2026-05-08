@@ -132,7 +132,12 @@ if [[ -n "@cloudInitUserData@" ]]; then
   seed_dir=/mnt/zfs-root/var/lib/cloud/seed/nocloud
   mkdir -p "$seed_dir"
   cp @cloudInitUserData@ "$seed_dir/user-data"
-  echo "instance-id: @nixosName@-$(date +%s)" > "$seed_dir/meta-data"
+  # local-hostname mirrors networking.hostName composed in bringup-minimal-system.nix
+  # (always "${hostProfile.hostName}-nixos") so nocloud seed + NixOS config agree.
+  {
+    echo "instance-id: @nixosName@-$(date +%s)"
+    echo "local-hostname: @nixosName@-nixos"
+  } > "$seed_dir/meta-data"
 fi
 
 # - Post-install inspection pause ----------------------

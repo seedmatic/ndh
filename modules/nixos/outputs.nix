@@ -218,7 +218,9 @@ let
           ./bringup-minimal-system.nix
           {
             networking.hostId = minimalHostId;
-            networking.hostName = hostProfile.hostName;
+            # networking.hostName is composed inside bringup-minimal-system.nix
+            # as "${hostProfile.hostName}-nixos" so the bringup guest carries
+            # the same composite identity the runtime uses (via lima-host.nix).
             system.stateVersion = "25.11";
 
             # Disko configuration - needed for zfs.nix to generate fileSystems
@@ -244,7 +246,12 @@ let
                 runtimeSystemPath = builtins.unsafeDiscardStringContext (builtins.toString fullSystemPath);
                 remoteStore = "ssh://builder@${hostProfile.hostName}.local";
                 bringupRuntimePackage = ndhBootstrapRuntimePackageLinux;
-                bringupRuntimeProfilePath = "/nix/var/nix/profiles/per-user/root/${hostProfile.hostName}-bringup-runtime";
+                # Must match the path the bootstrap trampoline reads in
+                # modules/.common.d/shell.d/nix-bash-trampoline.sh (`ndh::bootstrap:profile:dir`)
+                # and the module default in
+                # modules/.common.d/io-nxmatic-nix-darwin-home-bringup-runtime.nix:151.
+                bringupRuntimeProfilePath =
+                  "/nix/var/nix/profiles/per-user/root/io-nxmatic-nix-darwin-home-bringup-runtime";
               };
               store = ndhStoreApiLinux;
             };
