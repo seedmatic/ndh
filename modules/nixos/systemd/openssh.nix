@@ -45,6 +45,10 @@ let
     "committed"
     "nikopol"
     "bioskop"
+    # nix-store: see modules/darwin/openssh.nix for the same rationale —
+    # bringup guest cloud-init presents a nix-store-principal cert and needs
+    # the remote to authorize it for the logged-in user.
+    "nix-store"
   ];
 
   formatPrincipals = principals: lib.concatStringsSep "\n" (map (p: "          - ${p}") principals);
