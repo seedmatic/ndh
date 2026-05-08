@@ -7,7 +7,14 @@ env(TMPDIR) + "/" as $tmpdir |
 #   ssh-authority -> system for both (CA material)
 #   otherwise     -> user for both
 ( ["user", "system"][(($usage | map(select(. == "ssh-authority")) | length))] ) as $public_scope |
-( if ($usage | any(. == "ssh-host")) then "system-private" else $public_scope end ) as $private_scope |
+# Start private_scope at $public_scope, then override to "system-private" when
+# ssh-host appears in $usage. yq-go doesn't support jq's `if/then/else/end`,
+# so we use the same `with(select(...); assign)` idiom as the -ca.pub logic
+# below.
+( { "scope": $public_scope } | with(
+    select( [ "ssh-host" ] - $usage | length == 0 );
+    .scope = "system-private"
+  ) | .scope ) as $private_scope |
 .key as $basename |
 select($basename != "") |
 ( $tmpdir + .key + ".yaml" ) as $yamlfile |
