@@ -234,7 +234,9 @@ in
           "io-nxmatic-nix-darwin-home-hostkey-enrollment-check.service"
         ];
         before = [
-          "sops-age-bootstrap.service"
+          # Read the configured name so NDH-prefixed (or otherwise overridden)
+          # unit names are honored.
+          "${config.ndh.sopsAgeKeyBootstrap.systemdUnitName}.service"
           "sops-install-secrets.service"
           "io-nxmatic-nix-darwin-home-hostkey-enrollment-check.service"
         ];
