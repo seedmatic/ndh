@@ -1,1 +1,0 @@
-# SOPS Git filters disabled; runtime decryption should use sops-nix secret paths.

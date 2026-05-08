@@ -1,2 +1,11 @@
-# SOPS Git filters disabled:
-# keep encrypted files encrypted in the working tree/repo and decrypt only via sops-nix at runtime.
+# SOPS Git filters are intentionally disabled across this repo.
+#
+# Why: sops-nix and the guard at modules/.common.d/sops.nix use `builtins.readFile`
+# on sources like modules/home-manager/ssh.d/keys.yaml at Nix evaluation time.
+# If smudge decrypted those files in the worktree, eval would ingest plaintext
+# secrets into /nix/store. The worktree MUST hold the encrypted form; runtime
+# decryption is sops-nix's job at activation/service start, not git's.
+#
+# A source-of-truth assertion in modules/.common.d/sops.nix will fail evaluation
+# if keys.yaml is found decrypted — treat that as a signal that filters were
+# re-enabled by accident. Do not add `filter=sops-*` entries here.

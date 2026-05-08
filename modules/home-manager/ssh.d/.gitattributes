@@ -1,2 +1,0 @@
-# SOPS Git filters disabled here.
-# Secret sources remain encrypted in git/worktree; sops-nix handles runtime decryption.

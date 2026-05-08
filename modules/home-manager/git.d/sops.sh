@@ -294,12 +294,18 @@ case "${OP}" in
 "smudge")
   # Just decrypt the stdin contents.
   TMP=$(mktemp)
-  DECRYPTED=$(git::sops decrypt </dev/stdin 2>"$TMP")
+  decrypt_rc=0
+  DECRYPTED=$(git::sops decrypt </dev/stdin 2>"$TMP") || decrypt_rc=$?
   err=$(cat "$TMP")
   rm "$TMP"
   wrong_key_error_message="age: no identity matched any of the recipients"
   if [[ $err == *"${wrong_key_error_message}"* ]]; then
+    # Host has no matching age identity — leave worktree empty rather than
+    # writing stale ciphertext. Expected on machines without the key.
     :
+  elif (( decrypt_rc != 0 )); then
+    echo >&2 "sops smudge filter: decryption failed for ${META[filePath]} (rc=${decrypt_rc}): ${err}"
+    exit "${decrypt_rc}"
   else
     git::sops show "${DECRYPTED}"
   fi
@@ -315,7 +321,22 @@ case "${OP}" in
   INPUT="$(cat /dev/stdin)"
 
   if [[ -z "${ENCRYPTED_HEAD_CONTENTS}" || "${DECRYPTED_HEAD_CONTENTS}" != "${INPUT}" ]]; then
-    OUTPUT=$( git::sops encrypt <<<"${INPUT}" )
+    # Refuse to encrypt content that already looks encrypted — otherwise a
+    # never-smudged worktree file gets passed through and sops exits non-zero,
+    # which without this guard would silently stage empty output.
+    if [[ "${META[fileFormat]}" != "binary" ]] \
+        && printf '%s' "${INPUT}" | grep -qE '^sops:|^sops_version:'; then
+      echo >&2 "sops ${OP} filter: ${META[filePath]} already contains sops metadata — worktree likely not smudged; refusing to stage."
+      exit 1
+    fi
+    OUTPUT=$( git::sops encrypt <<<"${INPUT}" ) || {
+      echo >&2 "sops ${OP} filter: encryption failed for ${META[filePath]} — refusing to stage."
+      exit 1
+    }
+    if [[ -z "${OUTPUT}" ]]; then
+      echo >&2 "sops ${OP} filter: produced empty output for ${META[filePath]} — refusing to stage."
+      exit 1
+    fi
   else
     OUTPUT="${ENCRYPTED_HEAD_CONTENTS}"
   fi
