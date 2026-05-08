@@ -99,6 +99,13 @@ let
     && entry.vm.kind == "vz"
   ) hostCatalogEntries;
 
+  # Operator opt-out: hostProfile.vmMaterializerEnableActivationHook = false
+  # skips the HM materializeVm activation entirely so that `darwin-rebuild
+  # switch` does not drag the nixos bringup disk image into its closure.
+  # Default true preserves prior behavior on hosts that rely on the hook.
+  hostVmMaterializerActivationHook = lib.attrByPath
+    [ "host" "vmMaterializerEnableActivationHook" ] true resolvedProfile;
+
   homeUsernameFallback = lib.attrByPath [ "home" "username" ] null config;
   homeDirectoryFallback = lib.attrByPath [ "home" "homeDirectory" ] null config;
 
@@ -131,6 +138,7 @@ let
   hmVmMaterializationEnabled =
     pkgs.stdenvNoCC.isDarwin
     && activatingOnVzHost
+    && hostVmMaterializerActivationHook
     && vmConfigMaterializerPackage != null
     && builtins.elem selectedVmProvider [
       "lima"
