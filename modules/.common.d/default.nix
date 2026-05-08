@@ -194,6 +194,21 @@ let
       pkgs.runCommand (prefixedName name) { } ''
         install -Dm755 ${source} "$out/bin/${name}"
       '';
+    # Mirror of flake.nix's mkNdhStoreApiFor.installBinScriptBundle — this
+    # variant of ndh.store is consumed by home-manager via the specialArgs
+    # constructed at ndh-home-manager-special-args.nix.
+    installBinScriptBundle =
+      name: scripts:
+      pkgs.runCommand (prefixedName name) { } (
+        "mkdir -p $out/bin\n"
+        + lib.concatStrings (
+          lib.mapAttrsToList (
+            binName: src: ''
+              install -Dm755 ${src} "$out/bin/${binName}"
+            ''
+          ) scripts
+        )
+      );
     lookupScript = ndhStoreAssetLookupScript;
     lookupPackage = ndhStoreAssetLookupPackage;
     lookupQuery = name: "^${lib.escapeRegex (prefixedName name)}$";

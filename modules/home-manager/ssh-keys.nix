@@ -103,23 +103,16 @@ in
         mode = "0444";
       };
 
-      sshExtractKeysScriptSource = pkgs.replaceVars ./ssh-key.d/ssh-extract-keys.sh {
-        nixBashTrampoline = nixBashTrampoline;
-        loggerTag = loggerTagExtract;
-        splitExpFile = sshExtractKeysSplitExpFile;
-      };
-      sshExtractKeysScript = ndh.store.installScript {
-        name = "ssh-extract-keys.sh";
-        source = sshExtractKeysScriptSource;
-      };
-
-      ensureAuthorizedKeysScriptSource = pkgs.replaceVars ./ssh-key.d/ssh-ensure-authorized-keys.sh {
-        nixBashTrampoline = nixBashTrampoline;
-        loggerTag = loggerTagAuthorized;
-      };
-      ensureAuthorizedKeysScript = ndh.store.installScript {
-        name = "ssh-ensure-authorized-keys.sh";
-        source = ensureAuthorizedKeysScriptSource;
+      sshKeyLifecycleTools = ndh.store.installBinScriptBundle "ssh-key-lifecycle-tools" {
+        ssh-extract-keys = pkgs.replaceVars ./ssh-key.d/ssh-extract-keys.sh {
+          nixBashTrampoline = nixBashTrampoline;
+          loggerTag = loggerTagExtract;
+          splitExpFile = sshExtractKeysSplitExpFile;
+        };
+        ssh-ensure-authorized-keys = pkgs.replaceVars ./ssh-key.d/ssh-ensure-authorized-keys.sh {
+          nixBashTrampoline = nixBashTrampoline;
+          loggerTag = loggerTagAuthorized;
+        };
       };
     in
     {
@@ -137,12 +130,12 @@ in
       '';
 
       extractSSHKeys = lib.hm.dag.entryAfter [ "prepareGeneratedSSHKeysYaml" ] ''
-        ${pkgs.bash}/bin/bash ${sshExtractKeysScript} "${effectiveSSHKeysYamlPath}" "${perUserKeysDir}" "${userName}"
+        ${pkgs.bash}/bin/bash ${sshKeyLifecycleTools}/bin/ssh-extract-keys "${effectiveSSHKeysYamlPath}" "${perUserKeysDir}" "${userName}"
       '';
 
       # Ensure mutable authorized_keys exists (symlink-free) with strict perms
       ensureAuthorizedKeys = lib.hm.dag.entryAfter [ "extractSSHKeys" ] ''
-        ${pkgs.bash}/bin/bash ${ensureAuthorizedKeysScript}
+        ${pkgs.bash}/bin/bash ${sshKeyLifecycleTools}/bin/ssh-ensure-authorized-keys
       '';
     };
 
