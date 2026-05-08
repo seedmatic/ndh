@@ -45,11 +45,6 @@ let
     "committed"
     "nikopol"
     "bioskop"
-    # nix-store: cert principal of the nix-store identity in keys.yaml. Used
-    # by the bringup guest's cloud-init to authenticate `nix copy --from
-    # ssh://`. Granting it broadly on the profile user is fine: access is
-    # still gated by TrustedUserCAKeys + the cert's validity.
-    "nix-store"
   ];
 
   # Format principals as YAML list with proper indentation (6 spaces for list items)

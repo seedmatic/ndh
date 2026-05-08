@@ -247,12 +247,7 @@ let
                 # runtimeSystemPath: unsafeDiscardStringContext strips the derivation edge
                 # so the full runtime system is NOT pulled into the bringup closure.
                 runtimeSystemPath = builtins.unsafeDiscardStringContext (builtins.toString fullSystemPath);
-                # Connect as the committed user on the remote (Darwin host
-                # running the Tart VM). That user's sshd principals now
-                # include `nix-store` (see modules/darwin/openssh.nix and
-                # modules/nixos/systemd/openssh.nix) so the nix-store cert
-                # issued to the bringup guest is accepted.
-                remoteStore = "ssh://${catalog.users.committed.name}@${hostProfile.hostName}.local";
+                remoteStore = "ssh://builder@${hostProfile.hostName}.local";
                 bringupRuntimePackage = ndhBootstrapRuntimePackageLinux;
                 # Must match the path the bootstrap trampoline reads in
                 # modules/.common.d/shell.d/nix-bash-trampoline.sh (`ndh::bootstrap:profile:dir`)
