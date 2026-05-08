@@ -45,6 +45,11 @@ let
     "committed"
     "nikopol"
     "bioskop"
+    # nix-store: see modules/darwin/openssh.nix for rationale. The local
+    # `nix-store` user is provisioned by nix-store-identity.nix on both
+    # platforms; its principals list must include the cert principal
+    # so the cert-signed login is accepted.
+    "nix-store"
   ];
 
   formatPrincipals = principals: lib.concatStringsSep "\n" (map (p: "          - ${p}") principals);

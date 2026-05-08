@@ -45,6 +45,11 @@ let
     "committed"
     "nikopol"
     "bioskop"
+    # nix-store: cert principal carried by the identity provisioned via
+    # modules/.common.d/nix-store-identity.nix. The matching user account
+    # exists locally on this host, and its AuthorizedPrincipalsCommand needs
+    # to emit `nix-store` so sshd accepts the cert-signed login.
+    "nix-store"
   ];
 
   # Format principals as YAML list with proper indentation (6 spaces for list items)

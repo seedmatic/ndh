@@ -247,7 +247,12 @@ let
                 # runtimeSystemPath: unsafeDiscardStringContext strips the derivation edge
                 # so the full runtime system is NOT pulled into the bringup closure.
                 runtimeSystemPath = builtins.unsafeDiscardStringContext (builtins.toString fullSystemPath);
-                remoteStore = "ssh://builder@${hostProfile.hostName}.local";
+                # Connect as the `nix-store` user: a system user provisioned
+                # symmetrically on NixOS and Darwin via
+                # modules/.common.d/nix-store-identity.nix. Its login shell
+                # execs `nix-daemon --stdio`, and its cert (principal
+                # `nix-store`) is matched by sshd.
+                remoteStore = "ssh://nix-store@${hostProfile.hostName}.local";
                 bringupRuntimePackage = ndhBootstrapRuntimePackageLinux;
                 # Must match the path the bootstrap trampoline reads in
                 # modules/.common.d/shell.d/nix-bash-trampoline.sh (`ndh::bootstrap:profile:dir`)
