@@ -10,6 +10,9 @@
 let
   ndhContext = ndh.context;
   inherit (pkgs) stdenv;
+  inherit (lib) mkDefault;
+  catalog = ndhContext.catalog;
+  committedUser = catalog.users.committed;
   cfg = config.profile;
   defaultUserHome = if stdenv.isDarwin then "Users" else "${config.users.defaultUserHome}";
 in
@@ -44,7 +47,7 @@ in
                 wallpaperImage = lib.mkOption {
                   type = lib.types.path;
                   description = "Wallpaper image path for Darwin host profile";
-                  default = ../modules/home-manager/pictures.d/WallPaper.jpg;
+                  default = ./modules/home-manager/pictures.d/WallPaper.jpg;
                 };
               };
             };
@@ -148,7 +151,22 @@ in
 
   # Compose config
   config = {
-    # Dynamic defaults (@codebase): adjust user home path to use the resolved user name
+    # Profile defaults for the sole profile (committed).
+    profile = {
+      name = mkDefault "committed";
+      email = mkDefault committedUser.email;
+      user = {
+        name = mkDefault committedUser.name;
+        description = mkDefault committedUser.description;
+        shell = mkDefault pkgs.zsh;
+        uid = 501;
+        gid = 501;
+      };
+    };
+
+    ids.gids.nixbld = lib.mkForce 350;
+
+    # Dynamic defaults (@codebase): resolve user home path from the resolved user name
     # instead of the static placeholder jdoe so Home Manager's activation check matches $HOME.
     profile.user.home = lib.mkDefault (
       builtins.toPath "/${defaultUserHome}/${config.profile.user.name}"

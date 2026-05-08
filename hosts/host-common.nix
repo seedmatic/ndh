@@ -18,7 +18,7 @@ let
     && hostProfile.enableHomeManager == false;
 in
 {
-  imports = [ ../profiles/committed.nix ];
+  imports = [ ../profile.nix ];
 
   config = {
     assertions = [

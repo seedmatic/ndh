@@ -1204,10 +1204,7 @@
       homeManagerModules = {
         primaryUser = import ./modules/.common.d/primary-user.nix;
         manager = import ./modules/home-manager;
-        profiles = {
-          # Optionally, expose profiles as modules if they are home-manager compatible
-          committed = import ./profiles/committed.nix;
-        };
+        profile = import ./profile.nix;
       };
 
       # Development shells (add docs environment with diagram support)

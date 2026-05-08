@@ -252,8 +252,8 @@ Add Headscale client configuration to bioskop's Darwin flake.
 [source,nix]
 ----
 profileModule = { pkgs, lib, ... }: {
-  imports = [ 
-    ../../profiles/committed.nix
+  imports = [
+    ../../profile.nix
     # Add Headscale client import (if not already in common)
   ];
   config = {

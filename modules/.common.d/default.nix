@@ -245,7 +245,7 @@ in
   };
 
   imports = [
-    "${self}/profiles/.common.nix"
+    "${self}/profile.nix"
     ./cachix-watch-store.nix
     ./sops.nix
     ./primary-user.nix
