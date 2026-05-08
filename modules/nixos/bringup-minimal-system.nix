@@ -38,6 +38,16 @@ in
 
   networking.hostName = guestHostName;
 
+  # Nix experimental features required by cloud-init's `nix copy`. Kept
+  # minimal (no substituters, no trusted-users) since the bringup image's
+  # only nix invocation is a single copy from the remote store into the
+  # local daemon; the full runtime reconfigures nix wholesale on first
+  # switch via modules/nixos/nix-settings.nix.
+  nix.settings.experimental-features = [
+    "nix-command"
+    "flakes"
+  ];
+
   # mDNS resolution via systemd-resolved. cloud-init's runcmd resolves the
   # remote store hostname (e.g. bioskop.local) via standard NSS + resolved,
   # so enable MulticastDNS both globally (resolver side) and per-link (sender
