@@ -44,7 +44,19 @@ let
           fi
         done
 
-        # Wait for SSH key extraction service
+        # Wait for sops-install-secrets so /run/secrets/.../ssh-keys.yaml is on disk.
+        # bringup-extract-ssh-key depends on it and materializes the nix-store key,
+        # so waiting for the extraction service covers both.
+        timeout=60
+        while ! systemctl is-active --quiet sops-install-secrets.service; do
+          sleep 1
+          timeout=$((timeout - 1))
+          if [ $timeout -le 0 ]; then
+            echo "[cloud-init] ERROR: sops-install-secrets did not become active" >&2
+            exit 1
+          fi
+        done
+
         timeout=30
         while ! systemctl is-active --quiet ${extractSshKeyServiceName}; do
           sleep 1
@@ -55,10 +67,11 @@ let
           fi
         done
 
-        # Verify SSH key exists
-        SSH_KEY="/root/.ssh/rke2-cluster"
+        # The nix-store identity (see modules/home-manager/ssh.d/keys.yaml) is the
+        # purpose-built key for `nix copy --from ssh://` against the remote store.
+        SSH_KEY="/root/.ssh/nix-store"
         if [ ! -r "$SSH_KEY" ]; then
-          echo "[cloud-init] ERROR: SSH key not found at $SSH_KEY" >&2
+          echo "[cloud-init] ERROR: nix-store SSH key not found at $SSH_KEY" >&2
           exit 1
         fi
 

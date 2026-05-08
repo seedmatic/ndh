@@ -241,6 +241,9 @@ let
                 # catalog: profile.nix reads catalog.users.committed. Pass only the
                 # users sub-tree to avoid pulling the full inventory.
                 catalog = { inherit (catalog) users; };
+                # inventory: ssh-keys-enrichment reads inventory.hosts for the
+                # comma-separated host list that seeds authorized_principals.
+                inherit inventory;
                 # runtimeSystemPath: unsafeDiscardStringContext strips the derivation edge
                 # so the full runtime system is NOT pulled into the bringup closure.
                 runtimeSystemPath = builtins.unsafeDiscardStringContext (builtins.toString fullSystemPath);

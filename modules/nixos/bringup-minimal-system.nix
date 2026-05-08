@@ -19,6 +19,14 @@ in
     ./systemd/naming.nix
     ./sops.nix
     "${self}/modules/.common.d/sops.nix"
+    # ssh-keys-enrichment signs the cert-only keys (like `nix-store`) from
+    # ssh-keys.yaml using the mammoth-skate authority, materializing a usable
+    # top-level `.private` + cert pair that bringup-extract-ssh-key picks up.
+    # Pull in the option modules it consumes so bringup doesn't need the full
+    # systemd/ aggregator.
+    "${self}/modules/.common.d/ssh-paths.nix"
+    "${self}/modules/.common.d/openssh-policy.nix"
+    ./systemd/ssh-keys-enrichment.nix
     ./bringup-cloud-init.nix
     ./initrd-emergency.nix
     ./console-serial.nix
@@ -33,16 +41,16 @@ in
   # owner to config.profile.user.name. Override to root for the minimal image.
   sops.secrets."ssh-keys.yaml".owner = lib.mkForce "root";
 
-  # SSH key management for cloud-init store access
-  # The system decrypts the full ssh-keys.yaml via sops (defined in .common.d/sops.nix),
-  # then we extract the rke2-cluster key for cloud-init to use for nix copy --from ssh://
-
-  # Extract SSH key from decrypted keys.yaml for cloud-init
+  # SSH key material for cloud-init remote-store access.
+  # Chain: sops-install-secrets → ssh-keys-enrichment → bringup-extract-ssh-key.
+  # The enrichment service signs the `nix-store` identity with the
+  # mammoth-skate authority and emits the usable keypair into
+  # keys.generated.yaml; we extract the top-level `.private` from there.
   systemd.services.${ndhSystemd.mkUnitName "bringup-extract-ssh-key"} = {
-    description = "Extract SSH key for cloud-init remote store access";
+    description = "Extract nix-store SSH key for cloud-init remote store access";
     wantedBy = [ "multi-user.target" ];
-    after = [ "sops-install-secrets.service" ];
-    requires = [ "sops-install-secrets.service" ];
+    after = [ (ndhSystemd.mkServiceName "ssh-keys-enrichment") ];
+    requires = [ (ndhSystemd.mkServiceName "ssh-keys-enrichment") ];
 
     serviceConfig = {
       Type = "oneshot";
@@ -52,19 +60,21 @@ in
     script = ''
       set -euo pipefail
 
-      KEYS_YAML="/run/secrets/nix-darwin-home/ssh-keys.yaml"
+      # keys.generated.yaml is the enriched output (top-level .private for every
+      # identity, including cert-signed ones). Path mirrors
+      # modules/nixos/systemd/ssh-keys-enrichment.nix (generatedKeysYamlPath).
+      KEYS_YAML="/run/secrets/nix-darwin-home/ssh-keys-split.d/keys.generated.yaml"
       SSH_DIR="/root/.ssh"
-      KEY_NAME="rke2-cluster"
+      KEY_NAME="nix-store"
 
       if [[ ! -r "$KEYS_YAML" ]]; then
-        echo "[bringup-extract-ssh-key] ERROR: ssh-keys.yaml not found at $KEYS_YAML" >&2
+        echo "[bringup-extract-ssh-key] ERROR: enriched keys.generated.yaml not found at $KEYS_YAML" >&2
         exit 1
       fi
 
       mkdir -p "$SSH_DIR"
       chmod 700 "$SSH_DIR"
 
-      # Extract the private key using yq
       if ! ${pkgs.yq-go}/bin/yq eval '."'"$KEY_NAME"'".private' "$KEYS_YAML" > "$SSH_DIR/$KEY_NAME"; then
         echo "[bringup-extract-ssh-key] ERROR: Failed to extract $KEY_NAME from $KEYS_YAML" >&2
         exit 1
@@ -72,16 +82,12 @@ in
 
       chmod 600 "$SSH_DIR/$KEY_NAME"
 
-      # Extract public key
+      # The enriched .public already includes `<type> <blob>` plus an annotated
+      # comment, so copy verbatim rather than reassembling.
       if ! ${pkgs.yq-go}/bin/yq eval '."'"$KEY_NAME"'".public' "$KEYS_YAML" > "$SSH_DIR/$KEY_NAME.pub"; then
         echo "[bringup-extract-ssh-key] ERROR: Failed to extract $KEY_NAME.pub from $KEYS_YAML" >&2
         exit 1
       fi
-
-      # Format public key properly (add type prefix)
-      KEY_TYPE=$(${pkgs.yq-go}/bin/yq eval '."'"$KEY_NAME"'".type' "$KEYS_YAML")
-      PUB_CONTENT=$(cat "$SSH_DIR/$KEY_NAME.pub")
-      echo "$KEY_TYPE $PUB_CONTENT" > "$SSH_DIR/$KEY_NAME.pub"
       chmod 644 "$SSH_DIR/$KEY_NAME.pub"
 
       echo "[bringup-extract-ssh-key] Successfully extracted SSH key: $KEY_NAME"
