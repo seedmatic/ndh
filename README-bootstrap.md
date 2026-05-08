@@ -6,7 +6,7 @@ This guide covers the manual steps required to bootstrap a new nix-darwin system
 
 This configuration supports multiple Darwin hosts:
 
-- **nikopol**: Darwin host (work profile)
+- **nikopol**: Darwin host (committed profile)
 - **bioskop**: Darwin host (committed profile)
 
 Each host is defined in the `hosts/` directory:
@@ -390,7 +390,7 @@ The manual steps above are only needed once per new system setup.
 This configuration supports distributed builds between the two Darwin hosts:
 
 ### Host Configuration
-- **nikopol** (work profile: stephane.lacoin)
+- **nikopol** (committed profile: nxmatic)
   - Primary builder: Local darwin-linux-builder (speedFactor: 2)
   - Secondary builder: bioskop's linux-builder via Tailscale (speedFactor: 3)
   

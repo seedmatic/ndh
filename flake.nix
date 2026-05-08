@@ -878,31 +878,12 @@
               hostProfile.hostName;
           catalog = catalogData;
 
-          workHomeManagerUser =
-            if hostProfile ? homeManagerUser && hostProfile.homeManagerUser != null then
-              hostProfile.homeManagerUser
-            else
-              catalog.users.work;
-          workHomeManagerUserWithHome = workHomeManagerUser // {
-            home =
-              if workHomeManagerUser ? home && workHomeManagerUser.home != null then
-                workHomeManagerUser.home
-              else
-                "/Users/${workHomeManagerUser.name}";
-          };
           committedHomeManagerUserWithHome = catalog.users.committed // {
             home =
               if catalog.users.committed ? home && catalog.users.committed.home != null then
                 catalog.users.committed.home
               else
                 "/Users/${catalog.users.committed.name}";
-          };
-          workProfile = {
-            name = "work";
-            sshKeyProfileName = "committed";
-            host = hostProfile;
-            user = workHomeManagerUserWithHome;
-            email = workHomeManagerUserWithHome.email;
           };
           committedProfile = {
             name = "committed";
@@ -1086,7 +1067,6 @@
 
           # Home Manager configurations are explicitly profile-keyed.
           homeManagerConfigurations = {
-            work = mkHomeManagerConfig workProfile;
             committed = mkHomeManagerConfig committedProfile;
           };
         in
@@ -1226,7 +1206,6 @@
         manager = import ./modules/home-manager;
         profiles = {
           # Optionally, expose profiles as modules if they are home-manager compatible
-          work = import ./profiles/work.nix;
           committed = import ./profiles/committed.nix;
         };
       };

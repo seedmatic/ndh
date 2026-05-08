@@ -107,7 +107,7 @@
       );
     in
     lib.filter (k: k != "") [
-      # Add linux-builder keys for root access (same keys used by builder user)
+      # Add linux-builder key for root access (same key used by builder user)
       (
         if
           builderKeys ? profiles
@@ -116,17 +116,6 @@
           && builderKeys.profiles.committed.linux-builder ? public
         then
           "ssh-ed25519 ${builderKeys.profiles.committed.linux-builder.public} committed-linux-builder"
-        else
-          ""
-      )
-      (
-        if
-          builderKeys ? profiles
-          && builderKeys.profiles ? work
-          && builderKeys.profiles.work ? linux-builder
-          && builderKeys.profiles.work.linux-builder ? public
-        then
-          "ssh-ed25519 ${builderKeys.profiles.work.linux-builder.public} work-linux-builder"
         else
           ""
       )

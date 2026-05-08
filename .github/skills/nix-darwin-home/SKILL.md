@@ -36,7 +36,7 @@ modules/
     outputs.nix             # mkNixosConfig / mkNixosOutputs
     systemd/                # Custom systemd unit modules
   home-manager/             # Home Manager modules (shared profiles)
-profiles/                   # .common.nix (base options), work.nix, committed.nix
+profiles/                   # .common.nix (base options), committed.nix
 hosts/                      # Per-host configs: bioskop/, nikopol/
 catalog/default.nix         # Central data: users, networks (lan/tailnet), clusters
 inventory/default.nix       # Host form (baremetal/vm), VM provider, builder specs

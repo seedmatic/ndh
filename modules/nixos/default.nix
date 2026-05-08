@@ -123,17 +123,6 @@ let
           else
             ""
         )
-        (
-          if
-            builderKeys ? profiles
-            && builderKeys.profiles ? work
-            && builderKeys.profiles.work ? linux-builder
-            && builderKeys.profiles.work.linux-builder ? public
-          then
-            "ssh-ed25519 ${builderKeys.profiles.work.linux-builder.public} work-linux-builder"
-          else
-            ""
-        )
       ]
       ++ (config.users.users.root.openssh.authorizedKeys.keys or [ ])
       ++ (config.users.users.${cfgUserName}.openssh.authorizedKeys.keys or [ ])

@@ -17,7 +17,6 @@ let
       "${ndhContext.nixBashTrampoline}"
     else
       "${self}/modules/.common.d/shell.d/nix-bash-trampoline.sh";
-  inventory = if ndhContext != null && ndhContext ? inventory then ndhContext.inventory else { };
   profileName = profile.name;
   sshKeyProfileName =
     if profile ? sshKeyProfileName && profile.sshKeyProfileName != null then
@@ -27,33 +26,12 @@ let
   userProfile = profile.user;
   userName = profile.user.name; # Use profile user name for tagging
   sshPaths = config.sshPaths;
-  loggerTagPrepareGenerated = "home-manager.activationScripts.${userName}.prepareGeneratedSSHKeysYaml";
   loggerTagExtract = "home-manager.activationScripts.${userName}.extractSSHKeys";
   loggerTagAuthorized = "home-manager.activationScripts.${userName}.ensureAuthorizedKeys";
   perUserKeysDir = sshPaths.secretsKeysDir;
   authorityKeysDir = sshPaths.authoritySecretsDir;
   systemManagedSshKeysPipeline = pkgs.stdenv.isLinux || pkgs.stdenv.isDarwin;
   systemSplitProfileKeysYamlPath = "/run/secrets/nix-darwin-home/ssh-keys-split.d/profiles/${sshKeyProfileName}.yaml";
-  alternateSystemSplitProfileKeysYamlPath = "${sshPaths.systemNamespaceDir}/ssh-keys-split.d/profiles/${sshKeyProfileName}.yaml";
-  allowSystemSplitFallback = profileName == "work";
-  runtimeSSHKeysYamlPath = sshPaths.runtimeSecretsKeysYaml;
-  alternateRuntimeSSHKeysYamlPath = "${sshPaths.systemNamespaceDir}/ssh-keys.yaml";
-  sourceProfileKeysYamlPath = "${./ssh.d/keys.yaml}";
-  hostIdent =
-    if
-      profile ? host
-      && profile.host ? hostAlias
-      && profile.host.hostAlias != null
-      && profile.host.hostAlias != ""
-    then
-      profile.host.hostAlias
-    else if profile ? host && profile.host ? hostName && profile.host.hostName != null then
-      profile.host.hostName
-    else
-      "darwin";
-  inventoryHostNames = if inventory ? hosts then builtins.attrNames inventory.hosts else [ ];
-  inventoryHostsCsv = lib.concatStringsSep "," inventoryHostNames;
-  rootBringupProfileDir = "/nix/var/nix/profiles/per-user/root/nerd-bringup-runtime";
   # Effective YAML path consumed by ssh-add-keys/launchd.
   effectiveSSHKeysYamlPath = "${perUserKeysDir}.yaml";
 
@@ -140,50 +118,6 @@ in
         source = sshExtractKeysScriptSource;
       };
 
-      sshEnrichKeysYamlScriptSource = pkgs.replaceVars "${ndhCommon}/ssh-keys.d/ssh-enrich-keys-yaml.sh" {
-        nixBashTrampoline = nixBashTrampoline;
-        loggerTag = "home-manager.activationScripts.${userName}.enrichSSHKeysYaml";
-      };
-      sshEnrichKeysYamlScript = ndh.store.installScript {
-        name = "ssh-enrich-keys-yaml.sh";
-        source = sshEnrichKeysYamlScriptSource;
-      };
-
-      sshSplitKeysYamlScriptSource = pkgs.replaceVars "${ndhCommon}/ssh-keys.d/ssh-split-keys-yaml.sh" {
-        nixBashTrampoline = nixBashTrampoline;
-        loggerTag = "home-manager.activationScripts.${userName}.splitSSHKeysYaml";
-      };
-      sshSplitKeysYamlScript = ndh.store.installScript {
-        name = "ssh-split-keys-yaml.sh";
-        source = sshSplitKeysYamlScriptSource;
-      };
-
-      prepareGeneratedSSHKeysYamlScriptSource =
-        pkgs.replaceVars ./ssh-key.d/ssh-prepare-generated-keys-yaml.sh
-          {
-            nixBashTrampoline = nixBashTrampoline;
-            loggerTag = loggerTagPrepareGenerated;
-            bash = "${pkgs.bash}/bin/bash";
-            sops = "${pkgs.sops}/bin/sops";
-            sshEnrichKeysYamlScript = sshEnrichKeysYamlScript;
-            sshSplitKeysYamlScript = sshSplitKeysYamlScript;
-            effectiveSSHKeysYamlPath = effectiveSSHKeysYamlPath;
-            systemNamespaceDir = sshPaths.systemNamespaceDir;
-            systemSplitProfileKeysYamlPath = systemSplitProfileKeysYamlPath;
-            alternateSystemSplitProfileKeysYamlPath = alternateSystemSplitProfileKeysYamlPath;
-            runtimeSSHKeysYamlPath = runtimeSSHKeysYamlPath;
-            alternateRuntimeSSHKeysYamlPath = alternateRuntimeSSHKeysYamlPath;
-            sshKeyProfileName = sshKeyProfileName;
-            hostIdent = hostIdent;
-            inventoryHostsCsv = inventoryHostsCsv;
-            userName = userName;
-            sourceProfileKeysYamlPath = sourceProfileKeysYamlPath;
-          };
-      prepareGeneratedSSHKeysYamlScript = ndh.store.installScript {
-        name = "ssh-prepare-generated-keys-yaml.sh";
-        source = prepareGeneratedSSHKeysYamlScriptSource;
-      };
-
       ensureAuthorizedKeysScriptSource = pkgs.replaceVars ./ssh-key.d/ssh-ensure-authorized-keys.sh {
         nixBashTrampoline = nixBashTrampoline;
         loggerTag = loggerTagAuthorized;
@@ -194,46 +128,17 @@ in
       };
     in
     {
-      ensureRootBringupRuntimeProfile = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-        ${lib.optionalString allowSystemSplitFallback ''
-                    if [[ ! -x "${rootBringupProfileDir}/bin/nix" || ! -x "${rootBringupProfileDir}/bin/bash" ]]; then
-                      runtime_target_host="$(hostname -f 2>/dev/null || hostname 2>/dev/null || echo "<target-host>")"
-                      echo "[ssh-keys][ERROR] required root runtime profile missing or incomplete: ${rootBringupProfileDir}" >&2
-                      echo "[ssh-keys][ERROR] install/update it before running Home Manager activation" >&2
-                      cat >&2 <<'EOF'
-          [ssh-keys][HINT] On operator host (with nix-darwin-home checkout):
-
-          holder_out="$(nix build --no-link --print-out-paths .#nerd-bringup-runtime)"
-          nix copy --no-check-sigs \
-            --to 'ssh-ng://<target-host>?remote-program=/nix/var/nix/profiles/default/bin/nix-daemon' \
-            "$holder_out"
-          ssh -t <target-host> \
-            "sudo /nix/var/nix/profiles/default/bin/nix profile add \
-              --profile /nix/var/nix/profiles/per-user/root/nerd-bringup-runtime \
-              $holder_out"
-          EOF
-                      echo "[ssh-keys][HINT] Replace <target-host> with: $runtime_target_host" >&2
-                      exit 1
-                    fi
-        ''}
-      '';
-
       # System-managed path (NixOS + Darwin): consume profile-specific generated YAML.
-      prepareGeneratedSSHKeysYaml = lib.hm.dag.entryAfter [ "ensureRootBringupRuntimeProfile" ] ''
-        ${lib.optionalString allowSystemSplitFallback ''
-          ${pkgs.bash}/bin/bash ${prepareGeneratedSSHKeysYamlScript}
-        ''}
-        ${lib.optionalString (!allowSystemSplitFallback) ''
-          if [[ -r "${systemSplitProfileKeysYamlPath}" ]]; then
-            install -m 0700 -d "$(dirname "${effectiveSSHKeysYamlPath}")"
-            install -m 0400 "${systemSplitProfileKeysYamlPath}" "${effectiveSSHKeysYamlPath}"
-            chown "${userName}:$(id -gn "${userName}" 2>/dev/null || echo "${userName}")" "${effectiveSSHKeysYamlPath}" 2>/dev/null || true
-          else
-            echo "missing system-generated profile keys YAML: ${systemSplitProfileKeysYamlPath}" >&2
-            echo "profile.name=${profileName} sshKeyProfileName=${sshKeyProfileName}" >&2
-            exit 1
-          fi
-        ''}
+      prepareGeneratedSSHKeysYaml = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+        if [[ -r "${systemSplitProfileKeysYamlPath}" ]]; then
+          install -m 0700 -d "$(dirname "${effectiveSSHKeysYamlPath}")"
+          install -m 0400 "${systemSplitProfileKeysYamlPath}" "${effectiveSSHKeysYamlPath}"
+          chown "${userName}:$(id -gn "${userName}" 2>/dev/null || echo "${userName}")" "${effectiveSSHKeysYamlPath}" 2>/dev/null || true
+        else
+          echo "missing system-generated profile keys YAML: ${systemSplitProfileKeysYamlPath}" >&2
+          echo "profile.name=${profileName} sshKeyProfileName=${sshKeyProfileName}" >&2
+          exit 1
+        fi
       '';
 
       extractSSHKeys = lib.hm.dag.entryAfter [ "prepareGeneratedSSHKeysYaml" ] ''

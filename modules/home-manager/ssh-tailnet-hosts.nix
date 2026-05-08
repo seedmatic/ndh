@@ -18,13 +18,8 @@ let
   profile = config._module.specialArgs.profile;
   userName = profile.user.name; # Use profile-based username (nxmatic for committed profile)
   committedUserName = catalog.users.committed.name;
-  workUserName = catalog.users.work.name;
   inventoryHostNames = builtins.attrNames (inventory.hosts or { });
-  sshUserOverrides = {
-    bioskop = committedUserName;
-    nikopol = workUserName;
-  };
-  sshUserForHost = host: sshUserOverrides.${host} or committedUserName;
+  sshUserForHost = _host: committedUserName;
   operatorAliasesForHost = host: ''
     Host rdp-host.${host}
       HostName ${host}.local

@@ -156,12 +156,11 @@ IMPORTANT: **Purpose**: Mark critical decisions, migration paths, and invariants
 
 [source,nix]
 ----
-# profiles/work.nix
-profile.user.name = "work-username";
+# profiles/committed.nix
+profile.user.name = "nxmatic";
 ----
 
-* **User mapping**: `userMapping.profileUsers.{work, committed}` in `profiles/common.nix`
-* **UID/GID**: Work profile uses 503:503 (see `profiles/work.nix`)
+* **User mapping**: `catalog.users.committed` in `catalog/default.nix`
 
 === Module Options Pattern
 

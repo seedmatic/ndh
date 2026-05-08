@@ -34,10 +34,8 @@ let
   groupKeysScriptStore = "${groupKeysScriptPkg}/bin/openssh-group-authorized-keys";
   inherit (lib) mkIf optionalString concatStringsSep;
 
-  # Derive principals based on profile and hostname
-  # Server should accept all possible principals from any client
-  # committed profile hosts: accept [committed, work, nikopol]
-  # work profile hosts: accept [committed, work, nikopol]
+  # Derive principals based on profile and hostname.
+  # All hosts accept the same principal set to allow cross-host connections.
   hostAlias =
     if (profile.host ? hostAlias && profile.host.hostAlias != null) then
       profile.host.hostAlias
@@ -45,11 +43,8 @@ let
       profile.host.hostName;
   profileName = profile.name;
 
-  # All hosts should accept all profile principals to allow cross-host connections
-  # This ensures bioskop (committed) can accept from nikopol (work) and vice versa
   allPrincipals = [
     "committed"
-    "work"
     "nikopol"
     "bioskop"
   ];
@@ -63,10 +58,6 @@ let
           # Accepts all profile principals to allow cross-host connections
           profiles:
             committed:
-              ${clientKeyName}:
-                principals:
-    ${formatPrincipals allPrincipals}
-            work:
               ${clientKeyName}:
                 principals:
     ${formatPrincipals allPrincipals}

@@ -27,9 +27,8 @@ let
   linuxBuilderCurrentPubKey = keys.profiles.${currentProfile}.linux-builder.public;
   linuxBuilderCurrentPrivKey = keys.profiles.${currentProfile}.linux-builder.private;
 
-  # Also get keys for both profiles for VM authorized_keys
+  # Public key trusted by the embedded linux-builder VM's authorized_keys.
   linuxBuilderCommittedPubKey = keys.profiles.committed.linux-builder.public;
-  linuxBuilderWorkPubKey = keys.profiles.work.linux-builder.public;
   # Pull builder inventory entries for this host (if present)
   hostName = config.profile.host.hostName;
   cacheCatalog = catalog.caches;
@@ -221,13 +220,12 @@ in
           NDH_VECTOR_ENDPOINT  = "http://127.0.0.1:9001";
         };
 
-        # Deploy profile SSH keys to the VM using NixOS environment.etc with mode
+        # Deploy the committed profile's SSH key to the VM using NixOS environment.etc with mode
         environment.etc = {
           "ssh/builder_keys.pub" = {
             text = lib.concatStrings [
               ''
                 ssh-ed25519 ${linuxBuilderCommittedPubKey} committed-profile
-                ssh-ed25519 ${linuxBuilderWorkPubKey} work-profile
               ''
             ];
             mode = "0644";

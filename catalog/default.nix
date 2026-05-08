@@ -3,12 +3,6 @@
   caches = cacheTrust.caches;
 
   users = {
-    work = {
-      name = "stephane.lacoin";
-      description = "Stephane Lacoin (aka nxmatic)";
-      email = "stephane.lacoin@hyland.com";
-    };
-
     committed = {
       name = "nxmatic";
       description = "Stephane Lacoin (aka nxmatic)";

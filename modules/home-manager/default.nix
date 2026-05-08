@@ -99,9 +99,6 @@ let
     && entry.vm.kind == "vz"
   ) hostCatalogEntries;
 
-  usingLimaProvider = selectedVmProvider == "lima";
-  usingTartProvider = selectedVmProvider == "tart";
-
   homeUsernameFallback = lib.attrByPath [ "home" "username" ] null config;
   homeDirectoryFallback = lib.attrByPath [ "home" "homeDirectory" ] null config;
 
@@ -131,7 +128,6 @@ let
   loggerArgs =
     if ndhLoggerArgs != { } then ndhLoggerArgs else throw "specialArgs.ndh.logger is required";
   loggerTagFixConfigOwnership = "home-manager.activationScripts.${userName}.fixConfigOwnership";
-  isMinimalHomeProfile = profileName == "work";
   hmVmMaterializationEnabled =
     pkgs.stdenvNoCC.isDarwin
     && activatingOnVzHost
@@ -141,128 +137,114 @@ let
       "tart"
     ];
 
-  resolvedImports =
-    if isMinimalHomeProfile then
-      (lib.optionals usingLimaProvider [ ./lima-rdp-assets.nix ])
-      ++ [
-        ./ssh.nix
-        ./ssh-keys.nix
-      ]
-    else
-      [
-        ./avahi.nix
-        ./bat.nix
-        ./chromium.nix
-        ./dircolors.nix
-        ./direnv.nix
-        ./dotfiles
-        ./emacs.nix
-        # ./firefox.nix
-        ./flox-direnv.nix
-        ./fzf.nix
-        ./git.nix
-        ./gh.nix
-        ./gpg.nix
-        ./java.nix
-        ./keychain.nix
-        # ./kitty.nix
-        ./shadow-repositories.nix
-        # ./nushell.nix
-        ./password-store.nix
-        ./socket-vmnet.nix
-        ./shell.nix
-        ./starship.nix
-        ./ssh.nix
-        ./ssh-keys.nix
-        ./ssh-tailnet-hosts.nix
-        ./ssh-keychain-removal.nix
-        ./tldr.nix
-        ./tmate.nix
-        ./tmux.nix
-        ./xdg.nix
-      ];
+  resolvedImports = [
+    ./avahi.nix
+    ./bat.nix
+    ./chromium.nix
+    ./dircolors.nix
+    ./direnv.nix
+    ./dotfiles
+    ./emacs.nix
+    # ./firefox.nix
+    ./flox-direnv.nix
+    ./fzf.nix
+    ./git.nix
+    ./gh.nix
+    ./gpg.nix
+    ./java.nix
+    ./keychain.nix
+    # ./kitty.nix
+    ./shadow-repositories.nix
+    # ./nushell.nix
+    ./password-store.nix
+    ./socket-vmnet.nix
+    ./shell.nix
+    ./starship.nix
+    ./ssh.nix
+    ./ssh-keys.nix
+    ./ssh-tailnet-hosts.nix
+    ./ssh-keychain-removal.nix
+    ./tldr.nix
+    ./tmate.nix
+    ./tmux.nix
+    ./xdg.nix
+  ];
 
   baseHomePackages =
-    if isMinimalHomeProfile then
-      lib.optionals pkgs.stdenv.isDarwin (
-        (lib.optionals usingLimaProvider [ pkgs.lima ])
-        ++ lib.optional (vmConfigMaterializerPackage != null) vmConfigMaterializerPackage
-      )
-    else
-      with pkgs;
-      [
-        alejandra
-        awscli2
-        avahi
-        cachix
-        cirrus-cli
-        comma
-        coreutils-full
-        curl
-        diffutils
-        direnv
-        docker
-        docker-compose
-        ffmpeg
-        findutils
-        flyctl
-        gawk
-        gdu
-        gh
-        git-workspace
-        gnugrep
-        gnupg
-        gnused
-        helm-docs
-        httpie
-        hurl
-        jdk
-        k9s
-        kpt
-        krew
-        kubectl
-        kubectx
-        kubernetes-helm
-        kustomize
-        #     lazydocker
-        luajit
-        minikube
-        mmv
-        neofetch
-        nix
-        nixfmt-classic
-        nixpkgs-fmt
-        nodejs
-        parallel
-        passExtensions.pass-otp
-        passExtensions.pass-audit
-        passExtensions.pass-update
-        passExtensions.pass-import
-        passExtensions.pass-checkup
-        passExtensions.pass-genphrase
-        podman
-        # podman-desktop
-        poetry
-        pnpm
-        pre-commit
-        # rancher-desktop
-        ranger
-        rclone
-        rsync
-        shellcheck
-        sops
-        stylua
-        tig
-        tree
-        treefmt
-        trivy
-        vault-bin
-        yarn
-        yamllint
-        yq-go
-        zellij
-        zsh
-      ];
+    with pkgs;
+    [
+      alejandra
+      awscli2
+      avahi
+      cachix
+      cirrus-cli
+      comma
+      coreutils-full
+      curl
+      diffutils
+      direnv
+      docker
+      docker-compose
+      ffmpeg
+      findutils
+      flyctl
+      gawk
+      gdu
+      gh
+      git-workspace
+      gnugrep
+      gnupg
+      gnused
+      helm-docs
+      httpie
+      hurl
+      jdk
+      k9s
+      kpt
+      krew
+      kubectl
+      kubectx
+      kubernetes-helm
+      kustomize
+      #     lazydocker
+      luajit
+      minikube
+      mmv
+      neofetch
+      nix
+      nixfmt-classic
+      nixpkgs-fmt
+      nodejs
+      parallel
+      passExtensions.pass-otp
+      passExtensions.pass-audit
+      passExtensions.pass-update
+      passExtensions.pass-import
+      passExtensions.pass-checkup
+      passExtensions.pass-genphrase
+      podman
+      # podman-desktop
+      poetry
+      pnpm
+      pre-commit
+      # rancher-desktop
+      ranger
+      rclone
+      rsync
+      shellcheck
+      sops
+      stylua
+      tig
+      tree
+      treefmt
+      trivy
+      vault-bin
+      yarn
+      yamllint
+      yq-go
+      zellij
+      zsh
+    ];
 
 in
 {
@@ -356,75 +338,65 @@ in
     ''
   );
 
-  programs =
-    if isMinimalHomeProfile then
-      {
-        home-manager.enable = lib.mkDefault true;
-      }
-    else
-      {
+  programs = {
 
-        home-manager.enable = lib.mkDefault true;
+    home-manager.enable = lib.mkDefault true;
 
-        zsh.enable = lib.mkDefault true;
+    zsh.enable = lib.mkDefault true;
 
-        dircolors.enable = lib.mkDefault true;
+    dircolors.enable = lib.mkDefault true;
 
-        go.enable = lib.mkDefault true;
+    go.enable = lib.mkDefault true;
 
-        gpg.enable = lib.mkDefault false;
+    gpg.enable = lib.mkDefault false;
 
-        password-store.enable = lib.mkDefault true;
+    password-store.enable = lib.mkDefault true;
 
-        git.enable = lib.mkDefault true;
+    git.enable = lib.mkDefault true;
 
-        htop.enable = lib.mkDefault true;
+    htop.enable = lib.mkDefault true;
 
-        jq.enable = lib.mkDefault true;
+    jq.enable = lib.mkDefault true;
 
-        java.enable = lib.mkDefault true;
+    java.enable = lib.mkDefault true;
 
-        k9s.enable = lib.mkDefault true;
+    k9s.enable = lib.mkDefault true;
 
-        lazygit.enable = lib.mkDefault true;
+    lazygit.enable = lib.mkDefault true;
 
-        less.enable = lib.mkDefault true;
+    less.enable = lib.mkDefault true;
 
-        man.enable = lib.mkDefault true;
+    man.enable = lib.mkDefault true;
 
-        nix-index.enable = lib.mkDefault true;
+    nix-index.enable = lib.mkDefault true;
 
-        pandoc.enable = lib.mkDefault true;
+    pandoc.enable = lib.mkDefault true;
 
-        ripgrep.enable = lib.mkDefault true;
+    ripgrep.enable = lib.mkDefault true;
 
-        starship.enable = lib.mkDefault true;
+    starship.enable = lib.mkDefault true;
 
-        yt-dlp.enable = lib.mkDefault false;
+    yt-dlp.enable = lib.mkDefault false;
 
-        zoxide.enable = lib.mkDefault true;
+    zoxide.enable = lib.mkDefault true;
 
-        zellij.enable = lib.mkDefault true;
-      };
+    zellij.enable = lib.mkDefault true;
+  };
 
-  services =
-    if isMinimalHomeProfile then
-      { }
-    else
-      {
-        # Enable the emacs daemon
-        emacsDaemon = {
-          enable = true;
-        };
+  services = {
+    # Enable the emacs daemon
+    emacsDaemon = {
+      enable = true;
+    };
 
-        # Enable shadowing folders
-        shadowRepositories = {
-          enable = false;
+    # Enable shadowing folders
+    shadowRepositories = {
+      enable = false;
 
-          mountPoints = [
-            "/Volumes/GitHub/HylandSoftware/hxpr"
-            "/Volumes/GitHub/nuxeo/nos"
-          ];
-        };
-      };
+      mountPoints = [
+        "/Volumes/GitHub/HylandSoftware/hxpr"
+        "/Volumes/GitHub/nuxeo/nos"
+      ];
+    };
+  };
 }

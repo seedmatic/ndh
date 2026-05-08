@@ -40,8 +40,8 @@ in
   };
   users.groups.${cfgUserName} = if nixosUserGid != null then { gid = nixosUserGid; } else { };
 
-  # builder user: accepts linux-builder key from all Darwin profiles for remote builds.
-  # The public keys are baked in at build time from keys.yaml (not SOPS-encrypted).
+  # builder user: accepts the linux-builder key from the committed Darwin profile for remote builds.
+  # The public key is baked in at build time from keys.yaml (not SOPS-encrypted).
   users.users.builder = lib.mkIf runtimeMode {
     isNormalUser = true;
     group = "builder";
@@ -62,17 +62,6 @@ in
         else
           ""
       )
-      (
-        if
-          builderKeys ? profiles
-          && builderKeys.profiles ? work
-          && builderKeys.profiles.work ? linux-builder
-          && builderKeys.profiles.work.linux-builder ? public
-        then
-          "ssh-ed25519 ${builderKeys.profiles.work.linux-builder.public} work-linux-builder"
-        else
-          ""
-      )
     ];
   };
   users.groups.builder = lib.mkIf runtimeMode { };
@@ -88,17 +77,6 @@ in
           && builderKeys.profiles.committed.linux-builder ? public
         then
           "ssh-ed25519 ${builderKeys.profiles.committed.linux-builder.public} committed-linux-builder"
-        else
-          ""
-      )
-      (
-        if
-          builderKeys ? profiles
-          && builderKeys.profiles ? work
-          && builderKeys.profiles.work ? linux-builder
-          && builderKeys.profiles.work.linux-builder ? public
-        then
-          "ssh-ed25519 ${builderKeys.profiles.work.linux-builder.public} work-linux-builder"
         else
           ""
       )
