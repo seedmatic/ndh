@@ -58,19 +58,17 @@ let
               principals:
     ${formatPrincipals allPrincipals}
   '';
-  principalsScriptPkg = ndh.store.installBinScript "openssh-principals-command" (
-    pkgs.replaceVars "${ndhCommon}/ssh/authorized-principals-command.sh" {
+  opensshAuthzTools = ndh.store.installBinScriptBundle "openssh-authz-tools" {
+    openssh-principals-command = pkgs.replaceVars "${ndhCommon}/ssh/authorized-principals-command.sh" {
       nixBashTrampoline = nixBashTrampoline;
-    }
-  );
-  principalsScriptStore = "${principalsScriptPkg}/bin/openssh-principals-command";
-  groupKeysScriptPkg = ndh.store.installBinScript "openssh-group-authorized-keys" (
-    pkgs.replaceVars "${ndhCommon}/ssh/ssh-group-authorized-keys.sh" {
+    };
+    openssh-group-authorized-keys = pkgs.replaceVars "${ndhCommon}/ssh/ssh-group-authorized-keys.sh" {
       nixBashTrampoline = nixBashTrampoline;
       authorizedKeysDir = config.opensshPolicy.authorizedKeysDir;
-    }
-  );
-  groupKeysScriptStore = "${groupKeysScriptPkg}/bin/openssh-group-authorized-keys";
+    };
+  };
+  principalsScriptStore = "${opensshAuthzTools}/bin/openssh-principals-command";
+  groupKeysScriptStore = "${opensshAuthzTools}/bin/openssh-group-authorized-keys";
   # Use the wrapped activation logger packaged into the system closure
   loggerTag = "nixos.activationScripts.sshGroupKeys";
   hasSopsInstallSecretsService = builtins.hasAttr "sops-install-secrets" config.systemd.services;
