@@ -20,10 +20,11 @@ in
     ./sops.nix
     "${self}/modules/.common.d/sops.nix"
     # ssh-keys-enrichment signs the cert-only keys (like `nix-store`) from
-    # ssh-keys.yaml using the mammoth-skate authority, materializing a usable
-    # top-level `.private` + cert pair that bringup-extract-ssh-key picks up.
-    # Pull in the option modules it consumes so bringup doesn't need the full
-    # systemd/ aggregator.
+    # ssh-keys.yaml using the mammoth-skate authority and writes the usable
+    # keypair + cert under sshPaths.secretsKeysDir (overridden below to
+    # /root/.ssh) so cloud-init's `nix copy --from ssh://` can use it.
+    # Pull in the option modules it consumes so bringup doesn't need the
+    # full systemd/ aggregator.
     "${self}/modules/.common.d/ssh-paths.nix"
     "${self}/modules/.common.d/openssh-policy.nix"
     ./systemd/ssh-keys-enrichment.nix
@@ -41,57 +42,26 @@ in
   # owner to config.profile.user.name. Override to root for the minimal image.
   sops.secrets."ssh-keys.yaml".owner = lib.mkForce "root";
 
-  # SSH key material for cloud-init remote-store access.
-  # Chain: sops-install-secrets → ssh-keys-enrichment → bringup-extract-ssh-key.
-  # The enrichment service signs the `nix-store` identity with the
-  # mammoth-skate authority and emits the usable keypair into
-  # keys.generated.yaml; we extract the top-level `.private` from there.
-  systemd.services.${ndhSystemd.mkUnitName "bringup-extract-ssh-key"} = {
-    description = "Extract nix-store SSH key for cloud-init remote store access";
-    wantedBy = [ "multi-user.target" ];
-    after = [ (ndhSystemd.mkServiceName "ssh-keys-enrichment") ];
-    requires = [ (ndhSystemd.mkServiceName "ssh-keys-enrichment") ];
+  # Bringup has no home-manager user; land the enriched key material directly
+  # under root so ssh-keys-enrichment's ssh-extract-keys step writes to a path
+  # we can use for `nix copy --from ssh://`. Both paths are overridden because
+  # authoritySecretsDir defaults from secretsRootDir, not from secretsKeysDir.
+  sshPaths.secretsKeysDir = lib.mkForce "/root/.ssh";
+  sshPaths.authoritySecretsDir = lib.mkForce "/root/.ssh/.authority.d";
 
-    serviceConfig = {
-      Type = "oneshot";
-      RemainAfterExit = true;
-    };
-
-    script = ''
-      set -euo pipefail
-
-      # keys.generated.yaml is the enriched output (top-level .private for every
-      # identity, including cert-signed ones). Path mirrors
-      # modules/nixos/systemd/ssh-keys-enrichment.nix (generatedKeysYamlPath).
-      KEYS_YAML="/run/secrets/nix-darwin-home/ssh-keys-split.d/keys.generated.yaml"
-      SSH_DIR="/root/.ssh"
-      KEY_NAME="nix-store"
-
-      if [[ ! -r "$KEYS_YAML" ]]; then
-        echo "[bringup-extract-ssh-key] ERROR: enriched keys.generated.yaml not found at $KEYS_YAML" >&2
-        exit 1
-      fi
-
-      mkdir -p "$SSH_DIR"
-      chmod 700 "$SSH_DIR"
-
-      if ! ${pkgs.yq-go}/bin/yq eval '."'"$KEY_NAME"'".private' "$KEYS_YAML" > "$SSH_DIR/$KEY_NAME"; then
-        echo "[bringup-extract-ssh-key] ERROR: Failed to extract $KEY_NAME from $KEYS_YAML" >&2
-        exit 1
-      fi
-
-      chmod 600 "$SSH_DIR/$KEY_NAME"
-
-      # The enriched .public already includes `<type> <blob>` plus an annotated
-      # comment, so copy verbatim rather than reassembling.
-      if ! ${pkgs.yq-go}/bin/yq eval '."'"$KEY_NAME"'".public' "$KEYS_YAML" > "$SSH_DIR/$KEY_NAME.pub"; then
-        echo "[bringup-extract-ssh-key] ERROR: Failed to extract $KEY_NAME.pub from $KEYS_YAML" >&2
-        exit 1
-      fi
-      chmod 644 "$SSH_DIR/$KEY_NAME.pub"
-
-      echo "[bringup-extract-ssh-key] Successfully extracted SSH key: $KEY_NAME"
-    '';
+  # Ordering for cloud-init: defer cloud-final until every prerequisite is up.
+  # This replaces the busy-wait loops that used to live inside the runcmd.
+  systemd.services.cloud-final = {
+    wants = [ "network-online.target" ];
+    after = [
+      "network-online.target"
+      "sops-install-secrets.service"
+      (ndhSystemd.mkServiceName "ssh-keys-enrichment")
+    ];
+    requires = [
+      "sops-install-secrets.service"
+      (ndhSystemd.mkServiceName "ssh-keys-enrichment")
+    ];
   };
 
   # Disable SSH agent (not needed)

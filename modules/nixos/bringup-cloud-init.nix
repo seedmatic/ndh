@@ -6,19 +6,21 @@ let
   # No /proc/cmdline parsing needed — values are embedded directly in user-data.
   fullSystem = ndhContext.runtimeSystemPath or "";
   remoteStore = ndhContext.remoteStore or "";
-  extractSshKeyServiceName = ndhSystemd.mkServiceName "bringup-extract-ssh-key";
 
-  # Cloud-init user-data for first-boot activation
+  # Cloud-init user-data for first-boot activation. All ordering against
+  # network-online + sops-install-secrets + ssh-keys-enrichment lives in the
+  # cloud-final.service systemd drop-in configured by bringup-minimal-system.nix,
+  # so the runcmd itself is free of wait-loops and can assume readiness.
   cloudInitUserData = pkgs.writeText "cloud-init-user-data.yaml" ''
     #cloud-config
 
-    # First boot: fetch full system from remote store and activate
     runcmd:
       - |
         set -euxo pipefail
 
         FULL_SYSTEM="${fullSystem}"
         STORE_HOST="${remoteStore}"
+        SSH_KEY="/root/.ssh/nix-store"
 
         if [ -z "$FULL_SYSTEM" ]; then
           echo "[cloud-init] WARN: No full system path configured, staying on minimal system" >&2
@@ -30,46 +32,6 @@ let
           exit 1
         fi
 
-        # Extract hostname from SSH URL for ping test (ssh://user@host -> host)
-        STORE_HOSTNAME=$(echo "$STORE_HOST" | sed -E 's|ssh://([^@]+@)?([^/:]+).*|\2|')
-
-        # Wait for network
-        timeout=60
-        while ! ping -c 1 "$STORE_HOSTNAME" >/dev/null 2>&1; do
-          sleep 1
-          timeout=$((timeout - 1))
-          if [ $timeout -le 0 ]; then
-            echo "[cloud-init] ERROR: network timeout waiting for $STORE_HOSTNAME" >&2
-            exit 1
-          fi
-        done
-
-        # Wait for sops-install-secrets so /run/secrets/.../ssh-keys.yaml is on disk.
-        # bringup-extract-ssh-key depends on it and materializes the nix-store key,
-        # so waiting for the extraction service covers both.
-        timeout=60
-        while ! systemctl is-active --quiet sops-install-secrets.service; do
-          sleep 1
-          timeout=$((timeout - 1))
-          if [ $timeout -le 0 ]; then
-            echo "[cloud-init] ERROR: sops-install-secrets did not become active" >&2
-            exit 1
-          fi
-        done
-
-        timeout=30
-        while ! systemctl is-active --quiet ${extractSshKeyServiceName}; do
-          sleep 1
-          timeout=$((timeout - 1))
-          if [ $timeout -le 0 ]; then
-            echo "[cloud-init] ERROR: SSH key extraction service did not complete" >&2
-            exit 1
-          fi
-        done
-
-        # The nix-store identity (see modules/home-manager/ssh.d/keys.yaml) is the
-        # purpose-built key for `nix copy --from ssh://` against the remote store.
-        SSH_KEY="/root/.ssh/nix-store"
         if [ ! -r "$SSH_KEY" ]; then
           echo "[cloud-init] ERROR: nix-store SSH key not found at $SSH_KEY" >&2
           exit 1
@@ -77,26 +39,19 @@ let
 
         echo "[cloud-init] Fetching full system from $STORE_HOST: $FULL_SYSTEM"
 
-        # Configure SSH to use the extracted key and disable strict host key checking for first boot
+        # StrictHostKeyChecking=no on first boot — the remote host's public key
+        # is not yet trusted. Tighten this once ssh-keys-enrichment also emits
+        # a known_hosts fragment for the remote store host.
         export NIX_SSHOPTS="-i $SSH_KEY -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
 
-        nix copy --from "$STORE_HOST" "$FULL_SYSTEM" || {
-          echo "[cloud-init] ERROR: Failed to fetch full system" >&2
-          exit 1
-        }
+        nix copy --from "$STORE_HOST" "$FULL_SYSTEM"
 
         echo "[cloud-init] Activating full system"
-
-        # Activate the full system
-        "$FULL_SYSTEM/bin/switch-to-configuration" boot || {
-          echo "[cloud-init] ERROR: Failed to activate full system" >&2
-          exit 1
-        }
+        "$FULL_SYSTEM/bin/switch-to-configuration" boot
 
         echo "[cloud-init] Full system activated, rebooting"
         systemctl reboot
 
-    # Disable cloud-init after first boot
     final_message: "Cloud-init bringup complete"
   '';
 in
