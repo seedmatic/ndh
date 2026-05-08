@@ -623,6 +623,7 @@
 
       nixosOutputsApi = import ./modules/nixos/outputs.nix {
         inherit
+          self
           nixpkgs
           pkgsForLinux
           ndhStoreApiLinux
