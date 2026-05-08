@@ -7,7 +7,7 @@
 }:
 # Order the shared nix-store identity deploy script (defined in
 # modules/.common.d/nix-store-identity.nix) after the extract pipeline so the
-# source files at ${sshPaths.secretsKeysDir}/nix-store{,-cert.pub} exist when
+# source files at ${sshPaths.systemKeysDir}/nix-store{,-cert.pub} exist when
 # it runs. Mirrors the Darwin activation wiring at
 # modules/darwin/linux-builder.nix for the same identity.
 let

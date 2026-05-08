@@ -281,11 +281,11 @@ in
     };
 
     # Deploy linux-builder private key for nix daemon (runs as root).
-    # The key is extracted from the per-user SSH keys directory after SOPS decryption.
-    # Source: ~/.local/var/run/secrets/ssh-keys/linux-builder (deployed by ssh-keys HM module).
+    # linux-builder declares `ssh-host` usage, so the enrichment pipeline
+    # lands its private under systemKeysDir (root-owned, sudo-reachable).
     system.activationScripts.nerdNixosBuilderKey = lib.mkIf nerdNixosBuilderEnabled {
       text = ''
-        user_key="${config.sshPaths.secretsKeysDir}/linux-builder"
+        user_key="${config.sshPaths.systemKeysDir}/linux-builder"
         dest="${builderKeyPath}"
         key_dir="${builderKeyDir}"
 

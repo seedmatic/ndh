@@ -9,8 +9,8 @@
 # Data layer: the `nix-store` entry in keys.yaml (commit 530eb299) produces a
 # rotating keypair signed by mammoth-skate. The per-user enrich+extract
 # pipeline materializes:
-#   ${secretsKeysDir}/nix-store            (private, 0600)
-#   ${secretsKeysDir}/nix-store-cert.pub   (symlink → authority user cert)
+#   ${systemKeysDir}/nix-store            (private, 0600)
+#   ${systemKeysDir}/nix-store-cert.pub   (symlink → authority user cert)
 #
 # Consumers (nix-daemon --stdio, `nix copy`) expect the identity at a stable
 # system path. Darwin wires the deploy script into a nix-darwin activation
