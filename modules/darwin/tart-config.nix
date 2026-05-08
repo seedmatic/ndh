@@ -119,7 +119,7 @@ let
     # Runs in background, collects macOS-side metrics (memory pressure, disk I/O,
     # nix process CPU/RSS) during the entire materialize phase.
     # Output: NDH_DARWIN_OBS_OUTPUT (default ~/Library/Logs/nix-darwin-home/darwin-observe.yaml)
-    _ndh_darwin_obs_enabled() { ''${NDH_ZFS_INSTALL_OBSERVE:-${if cfg.enableInstallObserve then "true" else "false"}}; }
+    _ndh_darwin_obs_enabled() { ''${NDH_BUILD_OBSERVE:-${if cfg.enableBuildObserve then "true" else "false"}}; }
 
     _ndh_darwin_obs_sample() {
       local ts nix_pid nix_cpu nix_rss
@@ -173,7 +173,7 @@ let
 
     _ndh_darwin_obs_start() {
       _ndh_darwin_obs_enabled || return 0
-      local interval="''${NDH_ZFS_INSTALL_OBSERVE_INTERVAL:-${toString cfg.installObserveInterval}}"
+      local interval="''${NDH_BUILD_OBSERVE_INTERVAL:-${toString cfg.buildObserveInterval}}"
       local out_file="''${NDH_DARWIN_OBS_OUTPUT:-$HOME/Library/Logs/nix-darwin-home/darwin-observe.yaml}"
       local pipe
       mkdir -p "$(dirname "$out_file")"
@@ -280,22 +280,24 @@ in
       '';
     };
 
-    enableInstallObserve = mkOption {
+    enableBuildObserve = mkOption {
       type = types.bool;
-      default = true;
+      default = false;
       description = ''
-        Enable the Darwin-side VZ-host observer that samples macOS memory /
-        disk-I/O / nix-daemon metrics during materialize.  Baked as the default
-        for `NDH_ZFS_INSTALL_OBSERVE`.
+        Enable the build-time observer that samples macOS VZ-host metrics
+        (memory / disk-I/O / nix-daemon) plus the nested builder/guest
+        telemetry streams during materialize.  Baked as the default for
+        `NDH_BUILD_OBSERVE`.
       '';
     };
 
-    installObserveInterval = mkOption {
+    buildObserveInterval = mkOption {
       type = types.int;
       default = 5;
       description = ''
-        Observer sample interval in seconds.  Baked as the default for
-        `NDH_ZFS_INSTALL_OBSERVE_INTERVAL`.
+        Observer sample interval in seconds, shared across all source layers
+        (VZ host, linux-builder, nested QEMU guest).  Baked as the default
+        for `NDH_BUILD_OBSERVE_INTERVAL`.
       '';
     };
 

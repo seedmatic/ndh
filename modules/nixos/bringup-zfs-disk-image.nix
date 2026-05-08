@@ -34,10 +34,10 @@
   # /mnt/zfs-root via the debug shell (socat → /proc/<qemu-pid>/shell.sock).
   # Remove with:  rm /tmp/xchg/pause.lock   (from inside the debug shell)
   pauseAfterInstall ? false,
-  # When true, enable ZFS install observability (iostat, zpool monitoring).
-  enableInstallObserve ? true,
-  # Observability sample interval in seconds.
-  installObserveInterval ? 5,
+  # When true, enable build observability (nested VM sampler + event emission).
+  enableBuildObserve ? false,
+  # Observability sample interval in seconds (shared across all source layers).
+  buildObserveInterval ? 5,
   # Cloud-init user-data file (for minimal bringup systems)
   cloudInitUserData ? null,
 }:
@@ -257,8 +257,8 @@ let
     # Read the buildcommand.sh source and inline it here
     text = ''
       export NDH_NIXOS_NAME="${hostLabel}"
-      export NDH_ZFS_INSTALL_OBSERVE="${if enableInstallObserve then "true" else "false"}"
-      export NDH_ZFS_INSTALL_OBSERVE_INTERVAL="${toString installObserveInterval}"
+      export NDH_BUILD_OBSERVE="${if enableBuildObserve then "true" else "false"}"
+      export NDH_BUILD_OBSERVE_INTERVAL="${toString buildObserveInterval}"
       export NDH_INSTALL_SCRIPT="${zfsBringupInstallScript}/bin/bringup-zfs-disk-images-install"
 
       ${builtins.readFile ./bringup-zfs-disk-image.d/buildcommand.sh}

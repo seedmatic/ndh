@@ -8,9 +8,10 @@
 #   - Execution of ZFS install script
 #
 # ENVIRONMENT (exported for debug shell):
-#   NDH_BUILD_OBSERVE                   - Enable build observability
-#   NDH_ZFS_INSTALL_OBSERVE             - Enable ZFS install observability (injected)
-#   NDH_ZFS_INSTALL_OBSERVE_INTERVAL    - Sample interval in seconds (injected)
+#   NDH_BUILD_OBSERVE                   - Enable build observability (master gate)
+#   NDH_BUILD_OBSERVE_INTERVAL          - Sample interval in seconds
+#   NDH_BUILD_OBSERVE_SESSION           - Session id (injected via --impure-env)
+#   NDH_BUILD_OBSERVE_HOST              - Short host label   (injected via --impure-env)
 #   NDH_VECTOR_ENDPOINT                 - Vector endpoint (baked in: http://10.0.2.2:9001)
 #   NDH_NIXOS_NAME                      - Short hostname label for PS4 logging
 #   NDH_INSTALL_SCRIPT                  - Path to bringup-zfs-disk-images-install script
@@ -20,10 +21,11 @@ set -eo pipefail
 PS4="[${NDH_NIXOS_NAME:-nixos}:bringup-vm:\${LINENO}] "
 set -x
 
-# Export observability variables (available in debug shell)
-export NDH_BUILD_OBSERVE="${NDH_BUILD_OBSERVE:-}"
-export NDH_ZFS_INSTALL_OBSERVE="${NDH_ZFS_INSTALL_OBSERVE:-true}"
-export NDH_ZFS_INSTALL_OBSERVE_INTERVAL="${NDH_ZFS_INSTALL_OBSERVE_INTERVAL:-5}"
+# Export observability variables (available in debug shell).
+# NDH_BUILD_OBSERVE is the master gate; default off so samples only flow
+# when the operator explicitly opts in (via nix-build-observe or NDH_BUILD_OBSERVE=true).
+export NDH_BUILD_OBSERVE="${NDH_BUILD_OBSERVE:-false}"
+export NDH_BUILD_OBSERVE_INTERVAL="${NDH_BUILD_OBSERVE_INTERVAL:-5}"
 # Session identity injected via --impure-env by nix-build-observe.
 # The aggregator's require_session filter drops events without these fields.
 export NDH_BUILD_OBSERVE_SESSION="${NDH_BUILD_OBSERVE_SESSION:-}"
@@ -41,7 +43,7 @@ setsid --ctty bash -i 0<>/dev/hvc0 1>&0 2>&0 &
 # Events are sent to Vector via obs::vector:push() for real-time aggregation.
 
 obs::enabled() {
-  ${NDH_ZFS_INSTALL_OBSERVE:-true}
+  ${NDH_BUILD_OBSERVE:-false}
 }
 
 obs::sample() {
@@ -117,7 +119,7 @@ obs::vector:push() {
 
 obs::start() {
   obs::enabled || return 0
-  local interval="${NDH_ZFS_INSTALL_OBSERVE_INTERVAL:-5}"
+  local interval="${NDH_BUILD_OBSERVE_INTERVAL:-5}"
 
   # Relay: forward local 9001 → NDH_VECTOR_RELAY_TARGET (macOS Vector).
   # The nested QEMU uses SLIRP; 10.0.2.2 is this linux-builder host.

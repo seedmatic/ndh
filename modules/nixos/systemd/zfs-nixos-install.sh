@@ -3,7 +3,7 @@
 source @nixBashTrampoline@
 
 zfs::obs:enabled() {
-  ${NDH_ZFS_INSTALL_OBSERVE:-true}
+  ${NDH_BUILD_OBSERVE:-false}
 }
 
 zfs::obs:log() {
@@ -24,7 +24,7 @@ zfs::obs:log_file() {
   if [[ -d /tmp/xchg ]]; then
     echo "/tmp/xchg/zfs-nixos-install-observe.yaml"
   else
-    echo "${NDH_ZFS_INSTALL_OBSERVE_LOG:-/var/log/ndh/zfs-nixos-install-observe.yaml}"
+    echo "${NDH_BUILD_OBSERVE_LOG:-/var/log/ndh/zfs-nixos-install-observe.yaml}"
   fi
 }
 
@@ -101,7 +101,7 @@ zfs::obs:sample() {
 
 zfs::obs:start() {
   zfs::obs:enabled || return 0
-  local interval="${NDH_ZFS_INSTALL_OBSERVE_INTERVAL:-5}"
+  local interval="${NDH_BUILD_OBSERVE_INTERVAL:-5}"
   local obs_log_file pipe
   obs_log_file="$(zfs::obs:log_file)"
   mkdir -p "$(dirname "$obs_log_file")"

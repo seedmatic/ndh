@@ -10,17 +10,17 @@
 #
 # USAGE:
 #   nix run .#nix-build-observe -- .#nixosDiskImages.bioskop -L
-#   env NDH_ZFS_INSTALL_OBSERVE=true NDH_BRINGUP_PAUSE=true nix run .#nix-build-observe -- .#nixosDiskImages.bioskop -L
+#   env NDH_BRINGUP_PAUSE=true nix run .#nix-build-observe -- .#nixosDiskImages.bioskop -L
 #
 # ENVIRONMENT:
-#   NDH_BUILD_OBSERVE_INTERVAL=5    — macOS sample interval in seconds (default: 5)
+#   NDH_BUILD_OBSERVE_INTERVAL=5    — sample interval in seconds, shared across
+#                                     all source layers (default: 5)
 #   NDH_BUILD_OBSERVE_DIR           — output dir (default: .local.d relative to CWD)
 #   NDH_VECTOR_HTTP_PORT=9001       — Vector HTTP source port (default: 9001)
 #   NDH_VECTOR_API_PORT=8686        — Vector API/health port (default: 8686)
 #
 # Build environment (passed through to nested builds):
 #   NDH_BRINGUP_PAUSE               — "true" to pause after ZFS install for inspection
-#   NDH_ZFS_INSTALL_OBSERVE         — "false" to disable detailed ZFS install observation (default: true)
 #
 # OUTPUT:
 #   .local.d/<iso8601>-<attr>.ndjson   — NDJSON stream, one JSON event per line
@@ -283,18 +283,15 @@ obs::build:run() {
   if [[ -n "${NDH_BRINGUP_PAUSE:-}" ]]; then
     impure_env_args+=(--impure-env "NDH_BRINGUP_PAUSE=${NDH_BRINGUP_PAUSE}")
   fi
-  if [[ -n "${NDH_ZFS_INSTALL_OBSERVE:-}" ]]; then
-    impure_env_args+=(--impure-env "NDH_ZFS_INSTALL_OBSERVE=${NDH_ZFS_INSTALL_OBSERVE}")
-  fi
-  if [[ -n "${NDH_ZFS_INSTALL_OBSERVE_INTERVAL:-}" ]]; then
-    impure_env_args+=(--impure-env "NDH_ZFS_INSTALL_OBSERVE_INTERVAL=${NDH_ZFS_INSTALL_OBSERVE_INTERVAL}")
+  if [[ -n "${NDH_BUILD_OBSERVE_INTERVAL:-}" ]]; then
+    impure_env_args+=(--impure-env "NDH_BUILD_OBSERVE_INTERVAL=${NDH_BUILD_OBSERVE_INTERVAL}")
   fi
   if [[ -n "${NDH_LINUX_BUILDER_GC_BEFORE_BUILD:-}" ]]; then
     impure_env_args+=(--impure-env "NDH_LINUX_BUILDER_GC_BEFORE_BUILD=${NDH_LINUX_BUILDER_GC_BEFORE_BUILD}")
   fi
 
-  # Always pass these
-  impure_env_args+=(--impure-env NDH_BUILD_OBSERVE=1)
+  # Always pass these — wrapping with nix-build-observe *is* the opt-in.
+  impure_env_args+=(--impure-env NDH_BUILD_OBSERVE=true)
 
   # Propagate the session identity so every layer can tag its own events.
   # Without these the aggregator's require_session filter drops the sample.

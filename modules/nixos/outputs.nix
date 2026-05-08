@@ -94,12 +94,12 @@ let
       # Remove /tmp/xchg/pause.lock from the debug shell to resume.
       # Set NDH_BRINGUP_PAUSE=true in the environment and pass --impure to nix build.
       pauseAfterInstall ? false,
-      # When true, enable ZFS install observability (iostat, zpool monitoring).
-      # Set NDH_ZFS_INSTALL_OBSERVE=false to disable.
-      enableInstallObserve ? true,
-      # Observability sample interval in seconds.
-      # Set NDH_ZFS_INSTALL_OBSERVE_INTERVAL=N to customize.
-      installObserveInterval ? 5,
+      # When true, enable build observability (sampler + event emission).
+      # Set NDH_BUILD_OBSERVE=true to enable.
+      enableBuildObserve ? false,
+      # Observability sample interval in seconds (shared across all layers).
+      # Set NDH_BUILD_OBSERVE_INTERVAL=N to customize.
+      buildObserveInterval ? 5,
     }:
     let
       mkImageModulesFor =
@@ -431,8 +431,8 @@ let
           hostLabel ? mainName,
           runtimeSystemPath ? null,
           pauseAfterInstall ? false,
-          enableInstallObserve ? true,
-          installObserveInterval ? 5,
+          enableBuildObserve ? false,
+          buildObserveInterval ? 5,
           cloudInitUserData ? null,
         }:
         import ./bringup-zfs-disk-image.nix {
@@ -445,8 +445,8 @@ let
           # the prebuilt path without network access at first boot.
           inherit runtimeSystemPath;
           inherit pauseAfterInstall;
-          inherit enableInstallObserve;
-          inherit installObserveInterval;
+          inherit enableBuildObserve;
+          inherit buildObserveInterval;
           inherit hostLabel;
           inherit cloudInitUserData;
           zpoolDiskSize = zpoolVdevDiskSizeMiB;
@@ -468,8 +468,8 @@ let
         # No runtime system closure — minimal bringup only
         runtimeSystemPath = null;
         inherit pauseAfterInstall;
-        inherit enableInstallObserve;
-        inherit installObserveInterval;
+        inherit enableBuildObserve;
+        inherit buildObserveInterval;
         # Pass cloud-init user-data for minimal bringup
         cloudInitUserData = selectedBringupSystemdZfs.config.system.build.cloudInitUserData or null;
       };

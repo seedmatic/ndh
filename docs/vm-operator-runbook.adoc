@@ -219,7 +219,7 @@ All `NDH_*` operator gates are read at flake evaluation time via
 wrapper `bin/nix-build-observe.sh` already passes `--impure --impure-env`
 automatically.  When running **bare** `nix build`, pass `--impure`
 yourself or the gate will silently be baked in as its default (`false`
-for `NDH_BRINGUP_PAUSE`, `true` for `NDH_ZFS_INSTALL_OBSERVE`).
+for both `NDH_BRINGUP_PAUSE` and `NDH_BUILD_OBSERVE`).
 
 All boolean gates use canonical `"true"` / `"false"` strings — anything
 else is rejected at eval time.  `"1"` and `"0"` are not accepted.
@@ -310,12 +310,14 @@ tail -f ~/.local/share/nix-build-observe/latest.ndjson | jq -c .
 |Variable |Default |Description
 
 |`NDH_BUILD_OBSERVE`
-|`1`
-|Set to `0` to disable observability and run bare `nix build`.
+|`false`
+|Master observability gate, shared across all source layers
+ (VZ host, linux-builder, nested QEMU guest).  Set to `true` to enable.
+ The `nix-build-observe` wrapper sets this automatically.
 
 |`NDH_BUILD_OBSERVE_INTERVAL`
 |`5`
-|macOS VZ-host sample interval in seconds.
+|Sample interval in seconds, shared across all source layers.
 
 |`NDH_BUILD_OBSERVE_DIR`
 |`~/.local/share/nix-darwin-home/build-obs`
@@ -333,14 +335,6 @@ tail -f ~/.local/share/nix-build-observe/latest.ndjson | jq -c .
 |`false`
 |If `true` (and `--impure` passed to nix), pause the nested QEMU after
  `nixos-install` completes.
-
-|`NDH_ZFS_INSTALL_OBSERVE`
-|`true`
-|Controls guest-side observer.  Set to `false` to disable.
-
-|`NDH_ZFS_INSTALL_OBSERVE_INTERVAL`
-|`5`
-|Guest-side observer sample interval in seconds.
 
 |`NDH_LINUX_BUILDER_GC_BEFORE_BUILD`
 |`true`

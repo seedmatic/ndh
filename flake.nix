@@ -694,9 +694,9 @@
 
       hostGateOverrides = {
         pauseAfterInstall = envBool "NDH_BRINGUP_PAUSE" false;
-        enableInstallObserve = envBool "NDH_ZFS_INSTALL_OBSERVE" true;
+        enableBuildObserve = envBool "NDH_BUILD_OBSERVE" false;
         linuxBuilderGcBeforeBuild = envBool "NDH_LINUX_BUILDER_GC_BEFORE_BUILD" true;
-        installObserveInterval = envInt "NDH_ZFS_INSTALL_OBSERVE_INTERVAL" 5;
+        buildObserveInterval = envInt "NDH_BUILD_OBSERVE_INTERVAL" 5;
       };
 
     in
@@ -884,8 +884,8 @@
           nixosExtraModules ? [ ],
           withBringupImages ? true,
           pauseAfterInstall ? false,
-          enableInstallObserve ? true,
-          installObserveInterval ? 5,
+          enableBuildObserve ? false,
+          buildObserveInterval ? 5,
           linuxBuilderGcBeforeBuild ? true,
           ...
         }:
@@ -913,7 +913,7 @@
           nixosOutputs = mkNixosOutputs {
             inherit hostProfile catalog;
             inventory = inventoryData;
-            inherit pauseAfterInstall enableInstallObserve installObserveInterval;
+            inherit pauseAfterInstall enableBuildObserve buildObserveInterval;
             profileModule =
               { ... }:
               {
@@ -985,8 +985,8 @@
                     {
                       lima.configGenerator.diskSizeGiB = nixosDiskSizeGiB;
                       tart.configGenerator.linuxBuilderGcBeforeBuild = linuxBuilderGcBeforeBuild;
-                      tart.configGenerator.enableInstallObserve = enableInstallObserve;
-                      tart.configGenerator.installObserveInterval = installObserveInterval;
+                      tart.configGenerator.enableBuildObserve = enableBuildObserve;
+                      tart.configGenerator.buildObserveInterval = buildObserveInterval;
                     }
                     // lib.optionalAttrs withBringupImages {
                       lima.configGenerator.imageManifestPath = "${nixosDiskImageBringupSystemdZfs}/manifest.yaml";
