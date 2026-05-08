@@ -136,11 +136,13 @@ if [[ -n "@cloudInitUserData@" ]]; then
 fi
 
 # - Post-install inspection pause ----------------------
-# When @pauseAfterInstall@ is "1", block here until the operator removes the lock.
-# Set via: env NDH_BRINGUP_PAUSE=1 nix build .#nixosDiskImages.HOST
+# When @pauseAfterInstall@ resolves to `true`, block here until the operator
+# removes the lock.  Value is injected as a literal `true`/`false` from the
+# flake and used as a bash command (not a string compare).
+# Set via: env NDH_BRINGUP_PAUSE=true nix build .#nixosDiskImages.HOST
 # Connect to the debug shell and inspect /mnt/zfs-root, then:
 #   rm /tmp/xchg/pause.lock
-if [[ "@pauseAfterInstall@" == "1" ]]; then
+if @pauseAfterInstall@; then
   lock=/tmp/xchg/pause.lock
   touch "$lock"
   echo '[bringup-zfs] *** PAUSED for inspection ***'

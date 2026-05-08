@@ -3,7 +3,7 @@
 source @nixBashTrampoline@
 
 zfs::obs:enabled() {
-  [[ "${NDH_ZFS_INSTALL_OBSERVE:-1}" == "1" ]]
+  ${NDH_ZFS_INSTALL_OBSERVE:-true}
 }
 
 zfs::obs:log() {

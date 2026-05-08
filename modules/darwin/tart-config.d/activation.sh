@@ -274,14 +274,14 @@ main() {
 	local tart_nix_cli_args_raw=""
 	local tart_factory_reset_raw=""
 	local profile_user=""
-	local factory_reset=0
+	local factory_reset=false
 	local configured_home=""
 	local effective_host_name=""
 
 	tart:state:init() {
 		manifest_path="@manifestPath@"
 		tart_nix_cli_args_raw="${NIX_CLI_ARGS:--L -v -v}"
-		tart_factory_reset_raw="${FACTORY_RESET:-0}"
+		tart_factory_reset_raw="${FACTORY_RESET:-false}"
 		profile_user=""
 		factory_reset=0
 		configured_home=""
@@ -774,7 +774,7 @@ main() {
 	}
 
 	tart:vm:factory-reset:apply() {
-		if ((factory_reset == 0)); then
+		if ! $factory_reset; then
 			return 0
 		fi
 
@@ -944,7 +944,7 @@ main() {
 		fi
 
 		if tart:bool:is-true "$tart_factory_reset_raw"; then
-			factory_reset=1
+			factory_reset=true
 		fi
 
 		: "start $(date) host=${effective_host_name} user=${profile_user}"

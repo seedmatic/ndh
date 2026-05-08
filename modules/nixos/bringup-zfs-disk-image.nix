@@ -244,7 +244,7 @@ let
             systemdLibUdevd = "${pkgs.systemd}/lib/systemd/systemd-udevd";
             channelFlag = if includeChannel then "--channel ${channelSources}" else "";
             bootSizePolicyNote = builtins.toJSON "ZFS bringup artifacts generated from canonical zfs-pool-disk-map definitions.";
-            pauseAfterInstall = if pauseAfterInstall then "1" else "0";
+            pauseAfterInstall = if pauseAfterInstall then "true" else "false";
             cloudInitUserData = if cloudInitUserData != null then "${cloudInitUserData}" else "";
           }
         } "$out/bin/bringup-zfs-disk-images-install"
@@ -257,7 +257,7 @@ let
     # Read the buildcommand.sh source and inline it here
     text = ''
       export NDH_NIXOS_NAME="${hostLabel}"
-      export NDH_ZFS_INSTALL_OBSERVE="${if enableInstallObserve then "1" else "0"}"
+      export NDH_ZFS_INSTALL_OBSERVE="${if enableInstallObserve then "true" else "false"}"
       export NDH_ZFS_INSTALL_OBSERVE_INTERVAL="${toString installObserveInterval}"
       export NDH_INSTALL_SCRIPT="${zfsBringupInstallScript}/bin/bringup-zfs-disk-images-install"
 

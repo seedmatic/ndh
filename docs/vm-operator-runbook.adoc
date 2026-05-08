@@ -203,12 +203,27 @@ cd /path/to/nix-darwin-home
 bin/nix-build-observe.sh .#nixosDiskImages.bioskop -L -v -v
 
 # With post-install pause (see section below) and verbose nix output:
-env NDH_BRINGUP_PAUSE=1 --impure \
+env NDH_BRINGUP_PAUSE=true \
   bin/nix-build-observe.sh .#nixosDiskImages.bioskop -L -v -v
+
+# Plain `nix build` requires --impure so flake eval can read the env var:
+env NDH_BRINGUP_PAUSE=true \
+  nix build --impure .#bioskop-tart-vm-materialize -L -v -v
 ----
 
-NOTE: `NDH_BRINGUP_PAUSE=1` requires `--impure` because `builtins.getEnv` is
-used to pass the flag into the Nix sandbox evaluation.
+[IMPORTANT]
+.Operator gates require `--impure` in plain `nix build`
+====
+All `NDH_*` operator gates are read at flake evaluation time via
+`builtins.getEnv`, which returns the empty string in pure mode.  The
+wrapper `bin/nix-build-observe.sh` already passes `--impure --impure-env`
+automatically.  When running **bare** `nix build`, pass `--impure`
+yourself or the gate will silently be baked in as its default (`false`
+for `NDH_BRINGUP_PAUSE`, `true` for `NDH_ZFS_INSTALL_OBSERVE`).
+
+All boolean gates use canonical `"true"` / `"false"` strings — anything
+else is rejected at eval time.  `"1"` and `"0"` are not accepted.
+====
 
 ==== What the observer collects
 
@@ -315,17 +330,38 @@ tail -f ~/.local/share/nix-build-observe/latest.ndjson | jq -c .
 |Vector API / health-check port.
 
 |`NDH_BRINGUP_PAUSE`
-|unset
-|If `1` (and `--impure` passed to nix), pause the nested QEMU after install.
+|`false`
+|If `true` (and `--impure` passed to nix), pause the nested QEMU after
+ `nixos-install` completes.
 
 |`NDH_ZFS_INSTALL_OBSERVE`
-|`1`
-|Controls guest-side observer (default enabled; set `0` to disable).
+|`true`
+|Controls guest-side observer.  Set to `false` to disable.
+
+|`NDH_ZFS_INSTALL_OBSERVE_INTERVAL`
+|`5`
+|Guest-side observer sample interval in seconds.
+
+|`NDH_LINUX_BUILDER_GC_BEFORE_BUILD`
+|`true`
+|If `true`, run `sudo nix-collect-garbage -d` on the linux-builder before
+ each Tart materialize.  Set to `false` to skip the pre-build GC.
 |===
+
+[NOTE]
+.Canonical boolean encoding
+====
+All `NDH_*` gates listed above are boolean and encoded as the literal
+strings `"true"` or `"false"`.  Legacy `"1"` / `"0"` forms are rejected
+at flake evaluation with an explanatory error.  Internally the resolved
+value is baked into shell scripts as a literal `true` / `false` token
+that is **run as a bash command** (relying on the `true` / `false`
+builtins) rather than string-compared.
+====
 
 === Post-Install Pause — Inspecting the Nested QEMU Guest
 
-When `NDH_BRINGUP_PAUSE=1`, the bringup install script creates a lock file
+When `NDH_BRINGUP_PAUSE=true`, the bringup install script creates a lock file
 inside the shared `xchg/` virtiofs volume after `nixos-install` completes.
 The QEMU VM blocks until the operator removes the lock — `/mnt/zfs-root` remains
 mounted for inspection.

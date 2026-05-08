@@ -645,6 +645,41 @@
         mkNixosOutputs
         ;
 
+      # Operator gates — resolved at flake evaluation time from environment
+      # variables.  Each boolean gate uses canonical "true"/"false" strings
+      # (never "0"/"1").  The resolved values are propagated through
+      # mkHostOutputs as typed nix arguments; downstream modules bake them into
+      # shell code as literal `true`/`false` tokens that can be *run* as bash
+      # commands (the shell builtins `true` and `false` return the matching
+      # exit status) rather than string-compared.
+      envBool =
+        name: default:
+        let
+          v = builtins.getEnv name;
+        in
+        if v == "" then
+          default
+        else if v == "true" then
+          true
+        else if v == "false" then
+          false
+        else
+          throw "${name} must be \"true\" or \"false\", got: ${v}";
+
+      envInt =
+        name: default:
+        let
+          v = builtins.getEnv name;
+        in
+        if v == "" then default else builtins.fromJSON v;
+
+      hostGateOverrides = {
+        pauseAfterInstall = envBool "NDH_BRINGUP_PAUSE" false;
+        enableInstallObserve = envBool "NDH_ZFS_INSTALL_OBSERVE" true;
+        linuxBuilderGcBeforeBuild = envBool "NDH_LINUX_BUILDER_GC_BEFORE_BUILD" true;
+        installObserveInterval = envInt "NDH_ZFS_INSTALL_OBSERVE_INTERVAL" 5;
+      };
+
     in
     rec {
       formatter = forAllSystems (
@@ -829,6 +864,10 @@
           darwinExtraModules ? [ ],
           nixosExtraModules ? [ ],
           withBringupImages ? true,
+          pauseAfterInstall ? false,
+          enableInstallObserve ? true,
+          installObserveInterval ? 5,
+          linuxBuilderGcBeforeBuild ? true,
           ...
         }:
         let
@@ -874,6 +913,7 @@
           nixosOutputs = mkNixosOutputs {
             inherit hostProfile catalog;
             inventory = inventoryData;
+            inherit pauseAfterInstall enableInstallObserve installObserveInterval;
             profileModule =
               { ... }:
               {
@@ -942,7 +982,12 @@
                   profileModule
                   (
                     { lib, ... }:
-                    { lima.configGenerator.diskSizeGiB = nixosDiskSizeGiB; }
+                    {
+                      lima.configGenerator.diskSizeGiB = nixosDiskSizeGiB;
+                      tart.configGenerator.linuxBuilderGcBeforeBuild = linuxBuilderGcBeforeBuild;
+                      tart.configGenerator.enableInstallObserve = enableInstallObserve;
+                      tart.configGenerator.installObserveInterval = installObserveInterval;
+                    }
                     // lib.optionalAttrs withBringupImages {
                       lima.configGenerator.imageManifestPath = "${nixosDiskImageBringupSystemdZfs}/manifest.yaml";
                       lima.configGenerator.imageStorePath = "${nixosDiskImageBringupSystemdZfs}/boot.img";
@@ -1088,16 +1133,7 @@
 
       hostOutputs = forAllHosts (
         _: hostSpec:
-        let
-          envObserve = builtins.getEnv "NDH_ZFS_INSTALL_OBSERVE";
-          envInterval = builtins.getEnv "NDH_ZFS_INSTALL_OBSERVE_INTERVAL";
-        in
-        mkHostOutputs (hostSpec // {
-          pauseAfterInstall = builtins.getEnv "NDH_BRINGUP_PAUSE" == "1";
-          enableInstallObserve = if envObserve == "0" then false else true;
-          installObserveInterval = if envInterval != "" then
-            (builtins.fromJSON envInterval) else 5;
-        })
+        mkHostOutputs (hostSpec // hostGateOverrides)
       );
 
       darwinConfigurations = builtins.foldl' (

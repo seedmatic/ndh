@@ -22,7 +22,7 @@ set -x
 
 # Export observability variables (available in debug shell)
 export NDH_BUILD_OBSERVE="${NDH_BUILD_OBSERVE:-}"
-export NDH_ZFS_INSTALL_OBSERVE="${NDH_ZFS_INSTALL_OBSERVE:-1}"
+export NDH_ZFS_INSTALL_OBSERVE="${NDH_ZFS_INSTALL_OBSERVE:-true}"
 export NDH_ZFS_INSTALL_OBSERVE_INTERVAL="${NDH_ZFS_INSTALL_OBSERVE_INTERVAL:-5}"
 
 : 'shell.sock -> /dev/hvc0 (first virtio-serial port we add).'
@@ -37,7 +37,7 @@ setsid --ctty bash -i 0<>/dev/hvc0 1>&0 2>&0 &
 # Events are sent to Vector via obs::vector:push() for real-time aggregation.
 
 obs::enabled() {
-  [[ "${NDH_ZFS_INSTALL_OBSERVE:-1}" == "1" ]]
+  ${NDH_ZFS_INSTALL_OBSERVE:-true}
 }
 
 obs::sample() {

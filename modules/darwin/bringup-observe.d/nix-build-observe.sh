@@ -10,7 +10,7 @@
 #
 # USAGE:
 #   nix run .#nix-build-observe -- .#nixosDiskImages.bioskop -L
-#   env NDH_ZFS_INSTALL_OBSERVE=1 NDH_ZFS_INSTALL_PAUSE=1 nix run .#nix-build-observe -- .#nixosDiskImages.bioskop -L
+#   env NDH_ZFS_INSTALL_OBSERVE=true NDH_BRINGUP_PAUSE=true nix run .#nix-build-observe -- .#nixosDiskImages.bioskop -L
 #
 # ENVIRONMENT:
 #   NDH_BUILD_OBSERVE_INTERVAL=5    — macOS sample interval in seconds (default: 5)
@@ -19,8 +19,8 @@
 #   NDH_VECTOR_API_PORT=8686        — Vector API/health port (default: 8686)
 #
 # Build environment (passed through to nested builds):
-#   NDH_ZFS_INSTALL_PAUSE           — if set, pause after ZFS install for inspection
-#   NDH_ZFS_INSTALL_OBSERVE         — if set to 0, disable detailed ZFS install observation (default: 1)
+#   NDH_BRINGUP_PAUSE               — "true" to pause after ZFS install for inspection
+#   NDH_ZFS_INSTALL_OBSERVE         — "false" to disable detailed ZFS install observation (default: true)
 #
 # OUTPUT:
 #   .local.d/<iso8601>-<attr>.ndjson   — NDJSON stream, one JSON event per line
@@ -262,12 +262,19 @@ obs::on_signal() {
 obs::build:run() {
   local -a impure_env_args=()
 
-  # Pass through user-controllable environment variables
-  if [[ -n "${NDH_ZFS_INSTALL_PAUSE:-}" ]]; then
-    impure_env_args+=(--impure-env "NDH_ZFS_INSTALL_PAUSE=${NDH_ZFS_INSTALL_PAUSE}")
+  # Pass through user-controllable environment variables.
+  # Each gate must be "true" or "false" — the flake rejects anything else.
+  if [[ -n "${NDH_BRINGUP_PAUSE:-}" ]]; then
+    impure_env_args+=(--impure-env "NDH_BRINGUP_PAUSE=${NDH_BRINGUP_PAUSE}")
   fi
   if [[ -n "${NDH_ZFS_INSTALL_OBSERVE:-}" ]]; then
     impure_env_args+=(--impure-env "NDH_ZFS_INSTALL_OBSERVE=${NDH_ZFS_INSTALL_OBSERVE}")
+  fi
+  if [[ -n "${NDH_ZFS_INSTALL_OBSERVE_INTERVAL:-}" ]]; then
+    impure_env_args+=(--impure-env "NDH_ZFS_INSTALL_OBSERVE_INTERVAL=${NDH_ZFS_INSTALL_OBSERVE_INTERVAL}")
+  fi
+  if [[ -n "${NDH_LINUX_BUILDER_GC_BEFORE_BUILD:-}" ]]; then
+    impure_env_args+=(--impure-env "NDH_LINUX_BUILDER_GC_BEFORE_BUILD=${NDH_LINUX_BUILDER_GC_BEFORE_BUILD}")
   fi
 
   # Always pass these

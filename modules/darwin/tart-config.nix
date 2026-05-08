@@ -106,7 +106,7 @@ let
       pkgs.bash
     ]}:/usr/bin:/bin:/usr/sbin:/sbin"
 
-    if [[ "''${NDH_LINUX_BUILDER_GC_BEFORE_BUILD:-1}" == "1" ]]; then
+    if ''${NDH_LINUX_BUILDER_GC_BEFORE_BUILD:-${if cfg.linuxBuilderGcBeforeBuild then "true" else "false"}}; then
       builder_target="''${NDH_LINUX_BUILDER_GC_TARGET:-builder@linux-builder}"
       builder_gc_cmd="''${NDH_LINUX_BUILDER_GC_COMMAND:-sudo nix-collect-garbage -d}"
       echo "[tart-materialize][INFO] running pre-build GC on ''${builder_target}: ''${builder_gc_cmd}" >&2
@@ -119,7 +119,7 @@ let
     # Runs in background, collects macOS-side metrics (memory pressure, disk I/O,
     # nix process CPU/RSS) during the entire materialize phase.
     # Output: NDH_DARWIN_OBS_OUTPUT (default ~/Library/Logs/nix-darwin-home/darwin-observe.yaml)
-    _ndh_darwin_obs_enabled() { [[ "''${NDH_ZFS_INSTALL_OBSERVE:-1}" == "1" ]]; }
+    _ndh_darwin_obs_enabled() { ''${NDH_ZFS_INSTALL_OBSERVE:-${if cfg.enableInstallObserve then "true" else "false"}}; }
 
     _ndh_darwin_obs_sample() {
       local ts nix_pid nix_cpu nix_rss
@@ -173,7 +173,7 @@ let
 
     _ndh_darwin_obs_start() {
       _ndh_darwin_obs_enabled || return 0
-      local interval="''${NDH_ZFS_INSTALL_OBSERVE_INTERVAL:-5}"
+      local interval="''${NDH_ZFS_INSTALL_OBSERVE_INTERVAL:-${toString cfg.installObserveInterval}}"
       local out_file="''${NDH_DARWIN_OBS_OUTPUT:-$HOME/Library/Logs/nix-darwin-home/darwin-observe.yaml}"
       local pipe
       mkdir -p "$(dirname "$out_file")"
@@ -267,6 +267,38 @@ let
 in
 {
   options.tart.configGenerator = {
+    # Operator-controlled gates, propagated from the flake via environment
+    # variables at eval time.  The defaults below bake the resolved boolean
+    # into the materializer shell script so `NDH_*` overrides at `tart-vm-
+    # materialize` runtime remain effective without a re-eval.
+    linuxBuilderGcBeforeBuild = mkOption {
+      type = types.bool;
+      default = true;
+      description = ''
+        Run `sudo nix-collect-garbage -d` on the linux-builder before each
+        Tart materialize.  Baked as the default for `NDH_LINUX_BUILDER_GC_BEFORE_BUILD`.
+      '';
+    };
+
+    enableInstallObserve = mkOption {
+      type = types.bool;
+      default = true;
+      description = ''
+        Enable the Darwin-side VZ-host observer that samples macOS memory /
+        disk-I/O / nix-daemon metrics during materialize.  Baked as the default
+        for `NDH_ZFS_INSTALL_OBSERVE`.
+      '';
+    };
+
+    installObserveInterval = mkOption {
+      type = types.int;
+      default = 5;
+      description = ''
+        Observer sample interval in seconds.  Baked as the default for
+        `NDH_ZFS_INSTALL_OBSERVE_INTERVAL`.
+      '';
+    };
+
     vmName = mkOption {
       type = types.str;
       default = "nerd-nixos";

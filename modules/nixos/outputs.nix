@@ -92,10 +92,10 @@ let
       includeRuntimeClosure ? true,
       # When true, the QEMU build VM pauses after nixos-install completes.
       # Remove /tmp/xchg/pause.lock from the debug shell to resume.
-      # Set NDH_BRINGUP_PAUSE=1 in the environment and pass --impure to nix build.
+      # Set NDH_BRINGUP_PAUSE=true in the environment and pass --impure to nix build.
       pauseAfterInstall ? false,
       # When true, enable ZFS install observability (iostat, zpool monitoring).
-      # Set NDH_ZFS_INSTALL_OBSERVE=0 to disable.
+      # Set NDH_ZFS_INSTALL_OBSERVE=false to disable.
       enableInstallObserve ? true,
       # Observability sample interval in seconds.
       # Set NDH_ZFS_INSTALL_OBSERVE_INTERVAL=N to customize.
