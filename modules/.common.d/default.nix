@@ -69,6 +69,7 @@ let
   ] "/run/secrets/nix-darwin-home/ssh-keys.yaml" config;
   hmSpecialArgs = mkNdhHomeManagerSpecialArgs {
     inherit
+      self
       profile
       ndhContext
       ndhStore
@@ -244,7 +245,7 @@ in
   };
 
   imports = [
-    ../../profiles/.common.nix
+    "${self}/profiles/.common.nix"
     ./cachix-watch-store.nix
     ./sops.nix
     ./primary-user.nix
@@ -282,7 +283,7 @@ in
 
     # bootstrap home manager using system config
     hm = lib.mkIf homeManagerEnabled (
-      import ../home-manager {
+      import "${self}/modules/home-manager" {
         inherit
           pkgs
           lib

@@ -1,4 +1,4 @@
-{ config, lib, pkgs, modulesPath, ndh ? null, ... }:
+{ config, lib, pkgs, modulesPath, ndh ? null, self, ... }:
 {
   # Minimal NixOS system for bringup — installs into ZFS pools, boots, then
   # cloud-init fetches and activates the full system at first boot.
@@ -100,7 +100,7 @@
       builderKeys = builtins.fromJSON (
         builtins.readFile (
           pkgs.runCommand "ndh-root-keys.json" { buildInputs = [ pkgs.yq-go ]; } ''
-            yq -o=json '.' ${./../home-manager/ssh.d/keys.yaml} > "$out"
+            yq -o=json '.' "${self}/modules/home-manager/ssh.d/keys.yaml" > "$out"
           ''
         )
       );

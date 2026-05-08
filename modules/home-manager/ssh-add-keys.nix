@@ -2,6 +2,7 @@
   config,
   pkgs,
   lib,
+  self,
   ...
 }:
 
@@ -20,7 +21,7 @@ let
     then
       "${specialArgs.ndh.context.nixBashTrampoline}"
     else
-      "${../.common.d/shell.d/nix-bash-trampoline.sh}";
+      "${self}/modules/.common.d/shell.d/nix-bash-trampoline.sh";
   user = config.profile.user;
   userName = user.name;
   userHome = user.home;
@@ -52,7 +53,7 @@ let
   };
 in
 {
-  imports = [ ../.common.d/ssh-paths.nix ];
+  imports = [ "${self}/modules/.common.d/ssh-paths.nix" ];
 
   options.ssh-add-keys = {
     enable = mkEnableOption "Enable loading private keys from the generated keys.yaml into ssh-agent.";

@@ -2,10 +2,12 @@
   config,
   pkgs,
   lib,
+  self,
   ...
 }:
 
 let
+  ndhCommon = "${self}/modules/.common.d";
   profile = config._module.specialArgs.profile;
   specialArgs = config._module.specialArgs;
   ndh = config._module.specialArgs.ndh;
@@ -14,7 +16,7 @@ let
     if ndhContext != null && ndhContext ? nixBashTrampoline then
       "${ndhContext.nixBashTrampoline}"
     else
-      "${../.common.d/shell.d/nix-bash-trampoline.sh}";
+      "${self}/modules/.common.d/shell.d/nix-bash-trampoline.sh";
   inventory = if ndhContext != null && ndhContext ? inventory then ndhContext.inventory else { };
   profileName = profile.name;
   sshKeyProfileName =
@@ -80,7 +82,7 @@ in
 
   imports = [
     ./ssh-add-keys.nix
-    ../.common.d/ssh-paths.nix
+    "${ndhCommon}/ssh-paths.nix"
   ];
 
   ssh-add-keys = {
@@ -138,7 +140,7 @@ in
         source = sshExtractKeysScriptSource;
       };
 
-      sshEnrichKeysYamlScriptSource = pkgs.replaceVars ../.common.d/ssh-keys.d/ssh-enrich-keys-yaml.sh {
+      sshEnrichKeysYamlScriptSource = pkgs.replaceVars "${ndhCommon}/ssh-keys.d/ssh-enrich-keys-yaml.sh" {
         nixBashTrampoline = nixBashTrampoline;
         loggerTag = "home-manager.activationScripts.${userName}.enrichSSHKeysYaml";
       };
@@ -147,7 +149,7 @@ in
         source = sshEnrichKeysYamlScriptSource;
       };
 
-      sshSplitKeysYamlScriptSource = pkgs.replaceVars ../.common.d/ssh-keys.d/ssh-split-keys-yaml.sh {
+      sshSplitKeysYamlScriptSource = pkgs.replaceVars "${ndhCommon}/ssh-keys.d/ssh-split-keys-yaml.sh" {
         nixBashTrampoline = nixBashTrampoline;
         loggerTag = "home-manager.activationScripts.${userName}.splitSSHKeysYaml";
       };

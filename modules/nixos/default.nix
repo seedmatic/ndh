@@ -4,6 +4,7 @@
   lib,
   options,
   ndh,
+  self,
   ...
 }:
 
@@ -104,7 +105,7 @@ let
   builderKeys = builtins.fromJSON (
     builtins.readFile (
       pkgs.runCommand "ndh-linux-builder-keys.json" { buildInputs = [ pkgs.yq-go ]; } ''
-        yq -o=json '.' ${../home-manager/ssh.d/keys.yaml} > "$out"
+        yq -o=json '.' "${self}/modules/home-manager/ssh.d/keys.yaml" > "$out"
       ''
     )
   );
@@ -147,7 +148,7 @@ let
   initrdRescueSshHostKeyInInitrd = "/etc/secrets/initrd/ssh_host_ed25519_key";
   initrdRescueSshHostKeyStorePath = initrdRescueSshHostKey + "/ssh_host_ed25519_key";
   bootstrapRequiredImports = [
-    ../.common.d
+    "${self}/modules/.common.d"
     ./etc-backup.nix
     ./lima-network-interfaces.nix
     ./disko.nix

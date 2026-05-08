@@ -4,11 +4,13 @@
   lib,
   ndh,
   ndhSystemd,
+  self,
   ...
 }:
 
 let
   ndhContext = ndh.context;
+  ndhCommon = "${self}/modules/.common.d";
   dollar = "$";
   hostname =
     if config.networking.hostName != "" then config.networking.hostName else "nix-darwin-home";
@@ -62,13 +64,13 @@ let
     ${formatPrincipals allPrincipals}
   '';
   principalsScriptPkg = ndh.store.installBinScript "openssh-principals-command" (
-    pkgs.replaceVars ../../.common.d/ssh/authorized-principals-command.sh {
+    pkgs.replaceVars "${ndhCommon}/ssh/authorized-principals-command.sh" {
       nixBashTrampoline = nixBashTrampoline;
     }
   );
   principalsScriptStore = "${principalsScriptPkg}/bin/openssh-principals-command";
   groupKeysScriptPkg = ndh.store.installBinScript "openssh-group-authorized-keys" (
-    pkgs.replaceVars ../../.common.d/ssh/ssh-group-authorized-keys.sh {
+    pkgs.replaceVars "${ndhCommon}/ssh/ssh-group-authorized-keys.sh" {
       nixBashTrampoline = nixBashTrampoline;
       authorizedKeysDir = config.opensshPolicy.authorizedKeysDir;
     }
@@ -127,8 +129,8 @@ let
 in
 {
   imports = [
-    ../../.common.d/openssh-policy.nix
-    ../../.common.d/ssh-paths.nix
+    "${ndhCommon}/openssh-policy.nix"
+    "${ndhCommon}/ssh-paths.nix"
   ];
 
   opensshPolicy = {

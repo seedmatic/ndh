@@ -8,7 +8,7 @@
 }:
 {
   imports = [
-    ../.common.d
+    "${self}/modules/.common.d"
     ./preferences.nix
     ./security.nix
     ./core.nix

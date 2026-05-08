@@ -1,6 +1,6 @@
 # User management configuration for NixOS systems.
 # Configures the profile user, builder user, and root authorized keys.
-{ config, lib, pkgs, ... }:
+{ config, lib, pkgs, self, ... }:
 let
   ndhContext = config.ndh.context or { };
   generationMode = ndhContext.generationMode or "full";
@@ -25,7 +25,7 @@ let
   builderKeys = builtins.fromJSON (
     builtins.readFile (
       pkgs.runCommand "ndh-linux-builder-keys.json" { buildInputs = [ pkgs.yq-go ]; } ''
-        yq -o=json '.' ${../home-manager/ssh.d/keys.yaml} > "$out"
+        yq -o=json '.' "${self}/modules/home-manager/ssh.d/keys.yaml" > "$out"
       ''
     )
   );

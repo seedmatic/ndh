@@ -2,6 +2,7 @@
   config,
   pkgs,
   lib,
+  self,
   ...
 }:
 let
@@ -13,7 +14,7 @@ let
     then
       "${specialArgs.ndh.context.nixBashTrampoline}"
     else
-      "${../.common.d/shell.d/nix-bash-trampoline.sh}";
+      "${self}/modules/.common.d/shell.d/nix-bash-trampoline.sh";
   profile = config._module.specialArgs.profile;
   userName = profile.user.name;
   userEmail = profile.email;
@@ -27,7 +28,7 @@ in
 {
   imports = [
     ./git.d/sops.nix
-    ../.common.d/ssh-paths.nix
+    "${self}/modules/.common.d/ssh-paths.nix"
   ];
 
   home.packages = [ pkgs.github-cli ];

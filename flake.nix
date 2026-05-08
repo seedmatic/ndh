@@ -913,6 +913,7 @@
               ];
               extraSpecialArgs = mkNdhHomeManagerSpecialArgs {
                 inherit
+                  self
                   profile
                   vmConfigMaterializerPackage
                   ;

@@ -2,6 +2,7 @@
   config,
   lib,
   pkgs,
+  self,
   ...
 }:
 let
@@ -13,7 +14,7 @@ let
     then
       "${specialArgs.ndh.context.nixBashTrampoline}"
     else
-      "${../.common.d/shell.d/nix-bash-trampoline.sh}";
+      "${self}/modules/.common.d/shell.d/nix-bash-trampoline.sh";
   profile = config._module.specialArgs.profile;
   userName = profile.user.name;
   coreShellPath = [

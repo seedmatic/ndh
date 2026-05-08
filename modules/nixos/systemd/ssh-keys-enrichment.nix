@@ -4,10 +4,13 @@
   lib,
   ndh,
   ndhSystemd,
+  self,
   ...
 }:
 let
   ndhContext = ndh.context;
+  ndhCommon = "${self}/modules/.common.d";
+  ndhHm = "${self}/modules/home-manager";
   nixBashTrampoline = "${ndhContext.nixBashTrampoline}";
   catalog = ndhContext.catalog;
   inventory = ndhContext.inventory;
@@ -63,28 +66,28 @@ let
   loggerTagSplit = "nixos.services.ssh-keys-enrichment.splitSSHKeysYaml";
   loggerTagExtract = "nixos.services.ssh-keys-enrichment.extractSSHKeys";
   sshEnrichKeysYamlScript = ndh.store.installBinScript "ssh-enrich-keys-yaml" (
-    pkgs.replaceVars ../../.common.d/ssh-keys.d/ssh-enrich-keys-yaml.sh {
+    pkgs.replaceVars "${ndhCommon}/ssh-keys.d/ssh-enrich-keys-yaml.sh" {
       nixBashTrampoline = nixBashTrampoline;
       loggerTag = loggerTagEnrich;
     }
   );
   sshSplitKeysYamlScript = ndh.store.installBinScript "ssh-split-keys-yaml" (
-    pkgs.replaceVars ../../.common.d/ssh-keys.d/ssh-split-keys-yaml.sh {
+    pkgs.replaceVars "${ndhCommon}/ssh-keys.d/ssh-split-keys-yaml.sh" {
       nixBashTrampoline = nixBashTrampoline;
       loggerTag = loggerTagSplit;
     }
   );
   sshEnrichSplitAndAuthorizeScript = ndh.store.installBinScript "ssh-enrich-split-and-authorize" (
-    pkgs.replaceVars ../../.common.d/ssh-keys.d/ssh-enrich-split-runtime-keys.sh {
+    pkgs.replaceVars "${ndhCommon}/ssh-keys.d/ssh-enrich-split-runtime-keys.sh" {
       nixBashTrampoline = nixBashTrampoline;
       loggerTag = loggerTagOrchestrate;
     }
   );
   sshExtractKeysSplitExpFile = ndh.store.runCommand "ssh-extract-keys.split-exp.yq" { } ''
-    install -m 0444 ${../../home-manager/ssh-key.d/ssh-extract-keys.split-exp.yq} "$out"
+    install -m 0444 "${ndhHm}/ssh-key.d/ssh-extract-keys.split-exp.yq" "$out"
   '';
   sshExtractKeysScript = ndh.store.installBinScript "ssh-extract-keys" (
-    pkgs.replaceVars ../../home-manager/ssh-key.d/ssh-extract-keys.sh {
+    pkgs.replaceVars "${ndhHm}/ssh-key.d/ssh-extract-keys.sh" {
       nixBashTrampoline = nixBashTrampoline;
       loggerTag = loggerTagExtract;
       splitExpFile = sshExtractKeysSplitExpFile;

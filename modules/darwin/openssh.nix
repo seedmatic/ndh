@@ -8,6 +8,7 @@
 }:
 let
   ndhContext = ndh.context;
+  ndhCommon = "${self}/modules/.common.d";
   profile = config.profile;
   userHome = profile.user.home;
   userName = profile.user.name;
@@ -19,13 +20,13 @@ let
   caPublicKeyFile = "${config.opensshPolicy.keysDir}/trusted-user-ca.pub";
   nixBashTrampoline = "${ndhContext.nixBashTrampoline}";
   principalsScriptPkg = ndh.store.installBinScript "openssh-principals-command" (
-    pkgs.replaceVars ../.common.d/ssh/authorized-principals-command.sh {
+    pkgs.replaceVars "${ndhCommon}/ssh/authorized-principals-command.sh" {
       nixBashTrampoline = nixBashTrampoline;
     }
   );
   principalsScriptStore = "${principalsScriptPkg}/bin/openssh-principals-command";
   groupKeysScriptPkg = ndh.store.installBinScript "openssh-group-authorized-keys" (
-    pkgs.replaceVars ../.common.d/ssh/ssh-group-authorized-keys.sh {
+    pkgs.replaceVars "${ndhCommon}/ssh/ssh-group-authorized-keys.sh" {
       nixBashTrampoline = nixBashTrampoline;
       authorizedKeysDir = config.opensshPolicy.authorizedKeysDir;
     }
@@ -116,8 +117,8 @@ let
 in
 {
   imports = [
-    ../.common.d/openssh-policy.nix
-    ../.common.d/ssh-paths.nix
+    "${ndhCommon}/openssh-policy.nix"
+    "${ndhCommon}/ssh-paths.nix"
   ];
 
   config = {

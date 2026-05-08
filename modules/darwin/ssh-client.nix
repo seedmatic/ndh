@@ -3,6 +3,7 @@
   lib,
   ndh,
   pkgs,
+  self,
   ...
 }:
 # Dynamic SSH client configuration (@codebase)
@@ -24,7 +25,7 @@ let
 
 in
 {
-  imports = [ ../.common.d/ssh-paths.nix ];
+  imports = [ "${self}/modules/.common.d/ssh-paths.nix" ];
 
   options.sshClient = {
     enable = mkOption {

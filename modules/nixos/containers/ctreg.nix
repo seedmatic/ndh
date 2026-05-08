@@ -2,6 +2,7 @@
   config,
   lib,
   containerRegistrySystem,
+  self,
   ...
 }:
 
@@ -55,7 +56,7 @@ in
             ./../caddy.nix
             ./../docker-registry.nix
             ./../tailscale.nix
-            ./../../nixos/networking-mammoth-skate.nix
+            "${self}/modules/nixos/networking-mammoth-skate.nix"
             (
               { config, ... }:
               {

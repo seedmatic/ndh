@@ -15,7 +15,11 @@
       "Bash(vector --help)",
       "Bash(vector tap *)",
       "Bash(git -C /private/var/lib/git/nxmatic/nix-darwin-home diff modules/nixos/outputs.nix)",
-      "Bash(git commit -m ' *)"
+      "Bash(git commit -m ' *)",
+      "Bash(nix build *)",
+      "Bash(git add *)",
+      "Bash(git restore *)",
+      "Bash(git commit -m 'fix\\(nixos\\): use hostProfile.hostName instead of hostProfile.name *)"
     ],
     "additionalDirectories": [
       "/Users/nxmatic/.local/share/nix-build-observe"

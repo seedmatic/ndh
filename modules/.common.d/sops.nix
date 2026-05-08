@@ -4,6 +4,7 @@
   lib,
   pkgs,
   ndh,
+  self,
   ...
 }:
 let
@@ -14,7 +15,7 @@ let
   ndhContext = ndh.context;
   cfg = config.ndh.sopsAgeKeyBootstrap;
   secretNamespaceDir = "/run/secrets/nix-darwin-home";
-  sshKeysSopsFile = ../../modules/home-manager/ssh.d/keys.yaml;
+  sshKeysSopsFile = "${self}/modules/home-manager/ssh.d/keys.yaml";
   sshKeysSopsContent = builtins.readFile sshKeysSopsFile;
   sshKeysSourceLooksEncrypted =
     lib.hasInfix "sops:" sshKeysSopsContent
@@ -298,7 +299,7 @@ in
   config = {
     sops = {
       # Canonical encrypted secrets source tracked in this repository.
-      defaultSopsFile = lib.mkDefault ../../.secrets;
+      defaultSopsFile = lib.mkDefault "${self}/.secrets";
 
       secrets = {
         "ssh-keys.yaml" = {
