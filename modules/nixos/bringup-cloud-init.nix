@@ -3,7 +3,7 @@ let
   ndhContext = ndh.context;
 
   # Full system path and remote store are baked in at eval time from ndh.context.
-  # No /proc/cmdline parsing needed — values arrive via nocloud xchg seed.
+  # No /proc/cmdline parsing needed — values are embedded directly in user-data.
   fullSystem = ndhContext.runtimeSystemPath or "";
   remoteStore = ndhContext.remoteStore or "";
 
@@ -98,14 +98,12 @@ in
           seedfrom: file:///var/lib/cloud/seed/nocloud/
     '';
 
-    # Mount xchg (shared via virtio-9p from preVM) as cloud-init seed directory.
-    # preVM places user-data there before the VM starts.
-    fileSystems."/var/lib/cloud/seed/nocloud" = {
-      device = "xchg";
-      fsType = "9p";
-      options = [ "trans=virtio" "version=9p2000.L" "msize=16384" ];
-      neededForBoot = true;
-    };
+    # cloud-init nocloud seed directory is pre-populated during disk image build
+    # (bringup-zfs-disk-images-install.sh copies user-data/meta-data into it).
+    # We just ensure the directory exists in case cloud-init runs before it is created.
+    systemd.tmpfiles.rules = [
+      "d /var/lib/cloud/seed/nocloud 0755 root root -"
+    ];
 
     # Export cloud-init user-data via system.build for mkBringupZfsDiskImages
     system.build.cloudInitUserData = cloudInitUserData;

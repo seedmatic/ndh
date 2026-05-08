@@ -7,7 +7,7 @@
   # zfs-nixos-install.service uses this as NDH_NIXOS_INSTALL_SYSTEM_PATH to
   # install the full system without network access at first boot.
   runtimeSystemPath ? null,
-  zpoolDiskSize ? 4096, # 4GiB (temporary - minimal system still has large closure)
+  zpoolDiskSize ? 3196, # 3GiB (temporary - minimal system still has large closure)
   # Dedicated EFI boot disk size — holds only systemd-boot + kernel + initrd.
   bootDiskSize ? 600, # 600MiB (512MiB ESP + GPT overhead)
   memSize ? 1536,
@@ -245,6 +245,7 @@ let
             channelFlag = if includeChannel then "--channel ${channelSources}" else "";
             bootSizePolicyNote = builtins.toJSON "ZFS bringup artifacts generated from canonical zfs-pool-disk-map definitions.";
             pauseAfterInstall = if pauseAfterInstall then "1" else "0";
+            cloudInitUserData = if cloudInitUserData != null then "${cloudInitUserData}" else "";
           }
         } "$out/bin/bringup-zfs-disk-images-install"
       '';
@@ -312,13 +313,6 @@ in
       # Run the main preVM script (it will use the exported variables and set up QEMU_OPTS)
       # shellcheck disable=SC1090,SC1091
       source ${./bringup-zfs-disk-image.d/prevm.sh}
-
-      # Place cloud-init seed data in xchg/ for the VM (before QEMU starts).
-      # The minimal system mounts xchg at /var/lib/cloud/seed/nocloud via 9p.
-      ${lib.optionalString (cloudInitUserData != null) ''
-        cp ${cloudInitUserData} "$PWD/xchg/user-data"
-        echo "instance-id: ${hostLabel}-$(date +%s)" > "$PWD/xchg/meta-data"
-      ''}
     '';
 
     postVM = ''
