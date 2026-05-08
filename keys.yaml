@@ -75,9 +75,6 @@ rdp-host:
     public_scope: user
 nix-store:
   type: ssh-ed25519
-  usage:
-    - user-signing
-  comment: nix-store@mammoth-skate
   authorities:
     mammoth-skate:
       type: ssh-ed25519
@@ -88,8 +85,12 @@ nix-store:
       private: ENC[AES256_GCM,data:ccsjkpRMJN+FOcEDO/TCy82gcXQRnXHhawJcVNHGxG4/wG/iVs/vHJBrw/+iZqvgylovBUjpDhzmA6QH0qk9yhfa6v5SBtFVxVZfn+iYw2/fockkGT9JxUvjyUqDGbx8fHm2UYahVM9AQBbdvIQlabaOyht7mNbg7zgZR+uC/BymluXjCTNHxudk1GarJN6u3Vk/b+bSox869pnhmAncHG1P+Bh0cMb/jlst+Amzceqr8ASiiGgaqJgzjPPyXw4o6OW9fDSFsoFhsfDu+44tDmTG/43vhxFFDBIZ+iJUwa62f5K/VZ2BvP1ppupIKeNV2Khxg38Q1LuPuRJ+dpmi29r+KuWBTAYONq7WECcLPEER+FASlTdTo4hRmzoM5gM0QnNshhOxp0dXcfRtIDmbEhiYXJGwutkPbeojvYPbnfZQ3NHLYFPXrGBX8MOdkGhtH4vr9z8nfftzdk2fgEOlhdgWVy9I/L3PwPsVmHDl+oH/g8IgqPkAh4skr3ObzaMgWKYobx7J/Bmdv6T2onmr2iso/EJXQ2RMyJg=,iv:+9TdDor1WkVDPvjJKMBqHav6Ysmk+p9NHaLWTPB1kVE=,tag:ti1NLtNxr8B1rUWGl+9QSg==,type:str]
       usage:
         - ssh-user
+  comment: nix-store@mammoth-skate
   principals:
     nix-store: nix-store
+  usage:
+    - ssh-host
+    - user-signing
 linux-builder:
   type: ssh-ed25519
   authorities:
@@ -108,6 +109,7 @@ linux-builder:
         committed: committed
   comment: linux-builder@mammoth-skate
   usage:
+    - ssh-host
     - agent-signing
     - user-signing
   principals:
@@ -179,7 +181,7 @@ sops:
         TUFYTy9BVWFEeFMxLzF6SDUrMUsvTTAKFb0xkpGAh4SOWpeAiQYXM9IZ9Mf1qjij
         HzBsTEPaW9HSHFxr2jsfFC67QqucA5hCcB5Y7BDOsbgVvV87mWQNdA==
         -----END AGE ENCRYPTED FILE-----
-  lastmodified: "2026-05-08T14:18:53Z"
-  mac: ENC[AES256_GCM,data:0UG8ShycmFbti9ufpFQKSAe3/xGW2wp0tm0p8mlcUv7+QBDuOpMmvizr1fQcq6TLCIrIXttd1VTg1vG2jsDNZY1IOBx2r+bZYQckS+faEkBff8ClSdvOOSPq4AGW+m5kYhpDTIdD2FVIiRcRtFPvEF5fg4q+FvajVKtxL4zWd5c=,iv:ki5WhYKI62KudBCDEmc8JUjDCC98Tn5CQewU7ZKOcVU=,tag:KKIQmQeogBc2s0C5CjTtVw==,type:str]
+  lastmodified: "2026-05-08T18:51:31Z"
+  mac: ENC[AES256_GCM,data:+7CJ+y1CVb742/FoFdW/cWSjizJ9AxaHwc1E8W/+8TWXh+ozuAf+rfTy3tL6c/dTDLEAZDdHYi8K5vM67/PDQdY1+PNslK1+0I07p87Aqe6DRTcMoLG3ndknuiIlNA78xmfG4TFomVbwb6iL4uLYovVBGrN0OhIuu4hFacAc7z4=,iv:RWFT/fnKHnEar6DgyOYvFD54mRqAaBpFTaqB0FQtvW4=,tag:LLCEwZOngHIGA5N4zESpzw==,type:str]
   encrypted_comment_regex: sops:encrypted
   version: 3.12.2
