@@ -6,6 +6,9 @@ let
   # No /proc/cmdline parsing needed — values are embedded directly in user-data.
   fullSystem = ndhContext.runtimeSystemPath or "";
   remoteStore = ndhContext.remoteStore or "";
+  # nix-store identity lives in the root-owned system dir (ssh-host scope in
+  # keys.yaml → sshPaths.systemKeysDir in the split-exp).
+  nixStoreKeyPath = "${config.sshPaths.systemKeysDir}/nix-store";
 
   # Cloud-init user-data for first-boot activation. All ordering against
   # network-online + sops-install-secrets + ssh-keys-enrichment lives in the
@@ -20,7 +23,7 @@ let
 
         FULL_SYSTEM="${fullSystem}"
         STORE_HOST="${remoteStore}"
-        SSH_KEY="/root/.ssh/nix-store"
+        SSH_KEY="${nixStoreKeyPath}"
 
         if [ -z "$FULL_SYSTEM" ]; then
           echo "[cloud-init] WARN: No full system path configured, staying on minimal system" >&2

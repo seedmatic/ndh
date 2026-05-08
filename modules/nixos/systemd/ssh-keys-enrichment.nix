@@ -140,10 +140,13 @@ in
       # Materialize file-based SSH key artifacts expected by OpenSSH activation
       # and hostkey enrollment scripts in both bootstrap and full runtime modes.
       # Use the full enriched keyset so host/system key material is included.
+      # 4th arg: systemKeysDir — root-owned path for privates whose top-level
+      # usage declares `ssh-host` (routed to target_dir="system-private").
       ${pkgs.bash}/bin/bash ${sshKeysEnrichmentTools}/bin/ssh-extract-keys \
         "${generatedKeysYamlPath}" \
         "${config.sshPaths.secretsKeysDir}" \
-        "${profileOwnerName}"
+        "${profileOwnerName}" \
+        "${config.sshPaths.systemKeysDir}"
     '';
   };
 }

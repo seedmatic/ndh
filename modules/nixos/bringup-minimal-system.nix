@@ -42,12 +42,11 @@ in
   # owner to config.profile.user.name. Override to root for the minimal image.
   sops.secrets."ssh-keys.yaml".owner = lib.mkForce "root";
 
-  # Bringup has no home-manager user; land the enriched key material directly
-  # under root so ssh-keys-enrichment's ssh-extract-keys step writes to a path
-  # we can use for `nix copy --from ssh://`. Both paths are overridden because
-  # authoritySecretsDir defaults from secretsRootDir, not from secretsKeysDir.
-  sshPaths.secretsKeysDir = lib.mkForce "/root/.ssh";
-  sshPaths.authoritySecretsDir = lib.mkForce "/root/.ssh/.authority.d";
+  # ssh-keys-enrichment lands host-scope privates (nix-store, linux-builder)
+  # at sshPaths.systemKeysDir (root-owned, default /var/lib/ndh/ssh-keys). No
+  # override needed: cloud-init reads from that path directly. User-scope
+  # extraction is effectively a no-op in bringup because there's no user
+  # home-manager consumer for the user-scope keys.
 
   # Ordering for cloud-init: defer cloud-final until every prerequisite is up.
   # This replaces the busy-wait loops that used to live inside the runcmd.

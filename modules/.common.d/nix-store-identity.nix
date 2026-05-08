@@ -72,13 +72,15 @@ in
 
     sourcePrivate = lib.mkOption {
       type = lib.types.str;
-      default = "${config.sshPaths.secretsKeysDir}/nix-store";
+      # nix-store is declared `ssh-host` in keys.yaml → split-exp routes its
+      # private to the system-private scope (sshPaths.systemKeysDir).
+      default = "${config.sshPaths.systemKeysDir}/nix-store";
       description = "Source path of the extracted private key (written by the enrich/extract pipeline).";
     };
 
     sourceCert = lib.mkOption {
       type = lib.types.str;
-      default = "${config.sshPaths.secretsKeysDir}/nix-store-cert.pub";
+      default = "${config.sshPaths.systemKeysDir}/nix-store-cert.pub";
       description = "Source path of the user certificate symlink (written by the enrich/extract pipeline).";
     };
 

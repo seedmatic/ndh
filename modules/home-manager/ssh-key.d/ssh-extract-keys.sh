@@ -10,7 +10,14 @@ main() {
 	yamlFile="$1"
 	userOutputDir="$2"
 	targetUser="${3:-${USER:-}}"
+	# Optional 4th arg: root-owned system path for keys whose top-level usage
+	# includes `ssh-host` (split-exp target_dir="system-private"). When empty
+	# we fall back to $authorityOutputDir so older callers keep working.
+	systemPrivateOutputDir="${4:-}"
 	authorityOutputDir="$userOutputDir/.authority.d"
+	if [[ -z "$systemPrivateOutputDir" ]]; then
+		systemPrivateOutputDir="$authorityOutputDir"
+	fi
 	if [[ ! -r "$yamlFile" ]]; then
 		echo "missing or unreadable generated YAML: $yamlFile" >&2
 		exit 1
@@ -28,6 +35,11 @@ main() {
 
 	: "Prune stale generated artifacts from previous schema/key-name variants."
 	rm -fr "$userOutputDir"
+	# Only wipe the system-private dir when it is distinct from the authority
+	# dir we already wiped transitively via userOutputDir.
+	if [[ "$systemPrivateOutputDir" != "$authorityOutputDir" ]]; then
+		rm -fr "$systemPrivateOutputDir"
+	fi
 
 	# Provision split SSH key directories.
 	if [[ "$(id -u)" -eq 0 && -n "$targetUser" ]]; then
@@ -38,6 +50,10 @@ main() {
 		install -m 0700 -d "${userOutputDir}"
 		install -m 0700 -d "${authorityOutputDir}"
 	fi
+	# system-private is always root-owned, regardless of who runs the script.
+	# The trampoline puts GNU coreutils on PATH on both Linux and Darwin, so
+	# `install -d` creates intermediate parents here.
+	install -m 0700 -d "${systemPrivateOutputDir}"
 
 	: "Use yq to generate the array, split it into files, and output to the specified directory"
 	if [[ ! -r "@splitExpFile@" ]]; then
@@ -61,11 +77,17 @@ main() {
 			exit 1
 		fi
 		targetDir="$(yq eval -r '.target_dir // "user"' "$yamlFile")"
-		if [[ "$targetDir" == "system" ]]; then
+		case "$targetDir" in
+		system-private)
+			contentFile="$systemPrivateOutputDir/$relPath"
+			;;
+		system)
 			contentFile="$authorityOutputDir/$relPath"
-		else
+			;;
+		*)
 			contentFile="$userOutputDir/$relPath"
-		fi
+			;;
+		esac
 		mkdir -p "$(dirname "$contentFile")"
 		mv "$yamlFile" "$contentFile"
 		contentTmp="$(mktemp)"
@@ -102,55 +124,63 @@ main() {
 
 	: "Provide stable symlink names (<key>-cert.pub) pointing to a matching user certificate."
 	# Match is validated by comparing key fingerprint and certificate embedded public-key fingerprint.
-	for priv in "$userOutputDir/"*; do
-		[[ -f "$priv" ]] || continue
-		case "$priv" in
-		*.pub) continue ;;
-		*/keys.yaml) continue ;;
-		esac
-		base="${priv##*/}"
-		user_certs=("$authorityOutputDir/${base}"-*-user-cert.pub)
-		host_certs=("$authorityOutputDir/${base}"-*-host-cert.pub)
+	# Iterate over both private-key locations (user + system-private) so that
+	# ssh-host identities get their cert symlink next to the system-scope key.
+	priv_dirs=("$userOutputDir")
+	if [[ "$systemPrivateOutputDir" != "$authorityOutputDir" ]]; then
+		priv_dirs+=("$systemPrivateOutputDir")
+	fi
+	for priv_dir in "${priv_dirs[@]}"; do
+		for priv in "$priv_dir/"*; do
+			[[ -f "$priv" ]] || continue
+			case "$priv" in
+			*.pub) continue ;;
+			*/keys.yaml) continue ;;
+			esac
+			base="${priv##*/}"
+			user_certs=("$authorityOutputDir/${base}"-*-user-cert.pub)
+			host_certs=("$authorityOutputDir/${base}"-*-host-cert.pub)
 
-		key_fp="$(ssh-keygen -lf "$priv" 2>/dev/null | awk '{print $2}' || true)"
-		if [[ -z "$key_fp" ]]; then
-			rm -f "$userOutputDir/${base}-cert.pub"
-			rm -f "$authorityOutputDir/${base}-server-cert.pub"
-			continue
-		fi
+			key_fp="$(ssh-keygen -lf "$priv" 2>/dev/null | awk '{print $2}' || true)"
+			if [[ -z "$key_fp" ]]; then
+				rm -f "$priv_dir/${base}-cert.pub"
+				rm -f "$authorityOutputDir/${base}-server-cert.pub"
+				continue
+			fi
 
-		matched_user_cert=""
-		for cert in "${user_certs[@]}"; do
-			[[ -f "$cert" ]] || continue
-			cert_fp="$(ssh-keygen -Lf "$cert" 2>/dev/null | awk '/Public key:/ {print $4; exit}' || true)"
-			if [[ -n "$cert_fp" && "$cert_fp" == "$key_fp" ]]; then
-				matched_user_cert="$cert"
-				break
+			matched_user_cert=""
+			for cert in "${user_certs[@]}"; do
+				[[ -f "$cert" ]] || continue
+				cert_fp="$(ssh-keygen -Lf "$cert" 2>/dev/null | awk '/Public key:/ {print $4; exit}' || true)"
+				if [[ -n "$cert_fp" && "$cert_fp" == "$key_fp" ]]; then
+					matched_user_cert="$cert"
+					break
+				fi
+			done
+
+			if [[ -n "$matched_user_cert" ]]; then
+				ln -sf "$matched_user_cert" "$priv_dir/${base}-cert.pub"
+			else
+				rm -f "$priv_dir/${base}-cert.pub"
+			fi
+
+			matched_host_cert=""
+			for cert in "${host_certs[@]}"; do
+				[[ -f "$cert" ]] || continue
+				cert_fp="$(ssh-keygen -Lf "$cert" 2>/dev/null | awk '/Public key:/ {print $4; exit}' || true)"
+				cert_kind="$(ssh-keygen -Lf "$cert" 2>/dev/null | awk '/Type:/ { if ($0 ~ / host certificate$/) { print "host" } else { print "other" }; exit }' || true)"
+				if [[ "$cert_kind" == "host" && -n "$cert_fp" && "$cert_fp" == "$key_fp" ]]; then
+					matched_host_cert="$cert"
+					break
+				fi
+			done
+
+			if [[ -n "$matched_host_cert" ]]; then
+				ln -sf "$matched_host_cert" "$authorityOutputDir/${base}-server-cert.pub"
+			else
+				rm -f "$authorityOutputDir/${base}-server-cert.pub"
 			fi
 		done
-
-		if [[ -n "$matched_user_cert" ]]; then
-			ln -sf "$matched_user_cert" "$userOutputDir/${base}-cert.pub"
-		else
-			rm -f "$userOutputDir/${base}-cert.pub"
-		fi
-
-		matched_host_cert=""
-		for cert in "${host_certs[@]}"; do
-			[[ -f "$cert" ]] || continue
-			cert_fp="$(ssh-keygen -Lf "$cert" 2>/dev/null | awk '/Public key:/ {print $4; exit}' || true)"
-			cert_kind="$(ssh-keygen -Lf "$cert" 2>/dev/null | awk '/Type:/ { if ($0 ~ / host certificate$/) { print "host" } else { print "other" }; exit }' || true)"
-			if [[ "$cert_kind" == "host" && -n "$cert_fp" && "$cert_fp" == "$key_fp" ]]; then
-				matched_host_cert="$cert"
-				break
-			fi
-		done
-
-		if [[ -n "$matched_host_cert" ]]; then
-			ln -sf "$matched_host_cert" "$authorityOutputDir/${base}-server-cert.pub"
-		else
-			rm -f "$authorityOutputDir/${base}-server-cert.pub"
-		fi
 	done
 }
 

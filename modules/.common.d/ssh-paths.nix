@@ -67,6 +67,16 @@ in
       description = "Base directory for system-owned SSH material (public keys/certs/CA metadata).";
     };
 
+    systemKeysDir = lib.mkOption {
+      type = lib.types.str;
+      default = "/var/lib/ndh/ssh-keys";
+      description = ''
+        Root-owned system directory for private identities whose top-level
+        usage includes `ssh-host` (e.g. `nix-store`, `linux-builder` on
+        bringup). Accessible to non-root users via `sudo`.
+      '';
+    };
+
     keyName = lib.mkOption {
       type = lib.types.str;
       default = "rdp-host";

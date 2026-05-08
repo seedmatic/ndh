@@ -1,7 +1,13 @@
 .keys | to_entries[] |
 env(TMPDIR) + "/" as $tmpdir |
 .value.usage // [] as $usage |
+# Scope routing:
+#   ssh-host      -> system-private for the private key (root-owned system dir)
+#                    system         for the .pub (authority dir, mirrors CA pubs)
+#   ssh-authority -> system for both (CA material)
+#   otherwise     -> user for both
 ( ["user", "system"][(($usage | map(select(. == "ssh-authority")) | length))] ) as $public_scope |
+( if ($usage | any(. == "ssh-host")) then "system-private" else $public_scope end ) as $private_scope |
 .key as $basename |
 select($basename != "") |
 ( $tmpdir + .key + ".yaml" ) as $yamlfile |
@@ -10,7 +16,7 @@ select($basename != "") |
 [
   {
     "yamlfile": $yamlfile,
-    "target_dir": $public_scope,
+    "target_dir": $private_scope,
     "rel_path": $basename,
     "content": $private
   },
