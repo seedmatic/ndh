@@ -100,7 +100,7 @@
       builderKeys = builtins.fromJSON (
         builtins.readFile (
           pkgs.runCommand "ndh-root-keys.json" { buildInputs = [ pkgs.yq-go ]; } ''
-            yq -o=json '.' ${./../../home-manager/ssh.d/keys.yaml} > "$out"
+            yq -o=json '.' ${./../home-manager/ssh.d/keys.yaml} > "$out"
           ''
         )
       );
