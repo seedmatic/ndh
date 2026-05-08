@@ -55,7 +55,7 @@ profiles:
         - user-signing
       # sops:encrypted
       private: ENC[AES256_GCM,data:8sVNkO5/vGbIws18GQfM26XKcCaLhCOETwswbNkSrnxe/YE9GjshaTaRDumDIvj8ALUIG6N1EnTdX3PF0f6aCDMFSA8B/EjG/XtlOG7Y3IwpOf5AUeQ1jzRKjXw4JJbv4aIPHqYzM4xZjY1dFFlPOwnnYLWxptd4IUNCsdqNE75Q3qeKFt0MnrBRmI4odbQjXDfHmIztKN8ISBjyur1TP/U8p67pYhTF+vM1L4cwIgtMzpCLkeFB/22Bc7sIeVc6m1SAcAVScuTrcr3LifGP2VvzRYLinEYvn7ITdDMztVtvU29+XVEgzt7QAnd74+sQLYnxVC/Bo+yo5Z7eCy5hqlrx5i+k3flkZHp0ZsJCL3CL8CEQFYYTMFMVC1scB6J3B/6WKCGn0XL4k1fx1Yt6a1U9O4w7oDTZcuuYoYSaxGONHitU2BBj6eiDsqrr6Nd3hSuaaNMl8X90SE6rk01hodGC4TZQe+lUjUg9z5kCAIV7lJtSQxHLJMBeW5p1g2wBbhFFJ9SVdzHvwPTzwiF4eATjYhe9UqO0HAY=,iv:CHEyVIb/gAksV++HN+xgqcJmpq5ngpqMVrBS3Ida38M=,tag:ObFuY5ARohZgS9clgPmSsw==,type:str]
-      public: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGet5e+oTAP3AfpWzlaM+SrHov14dGzao1jadf0S03oE nxmatic@mammoth-skate
+      public: AAAAC3NzaC1lZDI1NTE5AAAAIGet5e+oTAP3AfpWzlaM+SrHov14dGzao1jadf0S03oE
       # SSH authorized_keys options for this key (e.g., for GPG agent forwarding)
       authorized_keys_options:
         - forwarding
@@ -101,7 +101,7 @@ profiles:
         linux-builder: linux-builder
         committed: committed
         work: work
-      public: AAAAC3NzaC1lZDI1NTE5AAAAINzCSzYvJ8XBSN/vr8Azq4ZqWyXbk/xlHZHTrDtYrDjK
+      public: AAAAC3NzaC1lZDI1NTE5AAAAIMHU43EVt2ETrAd7u65ZX+nyLtbMKVr+zvdyM/6db7MV
       # sops:encrypted
       private: ENC[AES256_GCM,data:F/1mataNii3bjxw2WCSP3t3pWL9SBZDAQM0sFubJKx6sLyRBz+8gBYDYJpFXmj7p3qaEyz85HfZTB8muZ5Gx94iF3heBAXcDipT4LWmvBGWBEt1scc7vMLXZbc467mC9grQl65TEQEcTJCHhDN693SwUVg8SxUKHXH971ZLEPG6JBBBOJQsmva9DJTEg03MHRFXSJZpMSWSXMYVSlKTpgBXLYmpsSQfHthLxraMhB0PhY1eFZCBOcqFbyX1TMK6IG8trC96vJb2iSOO8iVL2KBzL+vgKYvAdk9n5Ztm+0SLnTLzTvSCYTFXNUeZDt3RFAfB0hoLEarQ7ksgsYo7zjsbCkNAfRSPIDR0lpbGuAD1Oj0NiUYgIa4cNrEtvYJ63hyg1cV2iaZeoukWedekdTRwZSPMeMasmj59VvqebIFuunyPCYtujw6qrCNYKjs8ON5RoF8R0erPjo875GxMbGihqNXcVZELkLKPIscFrQHNbmYK9lHPLv78EG1dXl29hCC2w+zX3rqxxQmn5sWhyW4cY+Jrn0ksfg1E=,iv:8UWg+xeC2Fs9id6M3D2wkaVNwmV3nFAU1K0RTSK8Cow=,tag:AkBlr9vSPBc7CwiMMuwFFw==,type:str]
       annotations:
@@ -178,7 +178,7 @@ profiles:
         - user-signing
       # sops:encrypted
       private: ENC[AES256_GCM,data:e4lPBt2sQNzrtv6GuP+uodwRiPsw4L+OfDH2ITRcN84PH3GY+D4unAGvIgJzE6TyQaaSYse2BmrwY3tCIaZSCbbUPbJaEX3at3LEjP2lfcxXqXQCpkl4GFINpwU6DKpyclb5xAYlL06roJnI2qRIPJNJl375q5uF41JkLDMl9yMD2KYa77sY6MK1YQQQvQxCTpk9ouLL4VGtKOCwA2OnlMHXZ75QnAxxAWcCnR42chhrItTG2ubhmIfeoGoJFdSEHrZQu0uDZyAFXSatiVEMFo1wqpZWx6qeveh+2O94joSpCRWJY6FBUdZqx3r6xrALLNjlHUBHWZ10pNmuJEXJkbV2JHcV1Balq4AQO5J/7OiR+BZLrdpFjdVip2LCY2IRw2nvWDUZ4ieulo3BNuz+DNcbIz0XYmIvftoxobOj4+CdmUwNBcLeiQQ9c2eIgiiXxL6NDI+dsc0yVTpEPEN6FEP5URG1X2DrDn9mC6e2JojSK4b2QdMjRFO3WLqCh8Ki5EV7NKzF2yOZwaM/zw+Mw8qrUIkP6KnN1PE=,iv:WELUHN9KN7vGRWnb1AEs9cAF+nxXEsnhrFMbJBm8Jhw=,tag:s52Qlg1RjNoZX6eR40wX/A==,type:str]
-      public: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGet5e+oTAP3AfpWzlaM+SrHov14dGzao1jadf0S03oE nxmatic@mammoth-skate
+      public: AAAAC3NzaC1lZDI1NTE5AAAAIGet5e+oTAP3AfpWzlaM+SrHov14dGzao1jadf0S03oE
       authorities:
         mammoth-skate:
           type: ssh-ed25519
@@ -255,7 +255,7 @@ sops:
         cTEvUEY5d0U4QTFsWlhDOUhLK0dKVk0Kau3pU73gtyjMsDGZqDSYzJD2crnVfvXl
         4u76QoxR2Y4Qhg0jCao5gwsaE4yRiksbs9I1hbPe8c6SqL4d0ZNxuw==
         -----END AGE ENCRYPTED FILE-----
-  lastmodified: "2026-04-08T09:31:56Z"
-  mac: ENC[AES256_GCM,data:7nCrJ3XjKy6FfM1E3D/2S6t9xTzWU63mn+EwVqH0Siova1VH/2R8Hlxx8RjUTb/RTpJcZWv4uLY9obyazLdiMhBgu1B8aIGmGH2U1MYfhwuTFvACSnS8yjhhSI/vmFcIEcj7SMTQbRvDj0VX4ltwcw6qkA5qeIKj0ApT2PUMqOI=,iv:JFYpyYnPFbIkU6JEqXdw6yNB9iZR1QwMa80yMxzFwO8=,tag:qeOCcKSAA/0U3wywRlFTdw==,type:str]
+  lastmodified: "2026-05-08T12:16:11Z"
+  mac: ENC[AES256_GCM,data:joTrU0m5IGlYr9XjYjWWeL/tn66BtMMPaPoNeSXc6QIo2kg4461pUpzTaK3cYAQjJBsgK4AFX+15qNq8NLtwbycmT7Hd0t8iMvhgZW/z5c0lEqNtf/wzq4tLfKE6agr3plHnEjqgGNMdscZruuhSXWcaZ6CZsjHq/ZFlzxXxxvI=,iv:1OFwJwJz3bP0P1bxscSw1jvDEPJS8scA4fR5Ou7jwoo=,tag:YdNirBvwqTYXYj2ui9kNlg==,type:str]
   encrypted_comment_regex: sops:encrypted
   version: 3.11.0
