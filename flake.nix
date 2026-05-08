@@ -157,6 +157,25 @@
             pkgsForSystem.runCommand (prefixedName name) { } ''
               install -Dm755 ${source} "$out/bin/${name}"
             '';
+          # Bundle several pre-substituted scripts into one derivation,
+          # exposing each at $out/bin/<attrName>. Callers still run
+          # replaceVars per script before handing it in, so per-caller
+          # substitutions (logger tags, allowed key names, etc.) stay
+          # isolated. Use this when 2+ scripts share a consumer boundary
+          # (same systemd unit, same activation step) to cut the number of
+          # store paths and replaceVars indirections.
+          installBinScriptBundle =
+            name: scripts:
+            pkgsForSystem.runCommand (prefixedName name) { } (
+              "mkdir -p $out/bin\n"
+              + nixpkgs.lib.concatStrings (
+                nixpkgs.lib.mapAttrsToList (
+                  binName: src: ''
+                    install -Dm755 ${src} "$out/bin/${binName}"
+                  ''
+                ) scripts
+              )
+            );
         };
 
       ndhStoreApiDarwin = mkNdhStoreApiFor pkgsForDarwin;
