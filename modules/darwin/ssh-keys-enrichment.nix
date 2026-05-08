@@ -62,39 +62,29 @@ let
   loggerTagOrchestrate = "darwin.activationScripts.ssh-keys-enrichment.orchestrate";
   loggerTagEnrich = "darwin.activationScripts.ssh-keys-enrichment.enrichSSHKeysYaml";
   loggerTagSplit = "darwin.activationScripts.ssh-keys-enrichment.splitSSHKeysYaml";
-  sshEnrichKeysYamlScriptSource = pkgs.replaceVars "${ndhCommon}/ssh-keys.d/ssh-enrich-keys-yaml.sh" {
-    nixBashTrampoline = nixBashTrampoline;
-    loggerTag = loggerTagEnrich;
+
+  sshKeysEnrichmentTools = ndh.store.installBinScriptBundle "ssh-keys-enrichment-tools" {
+    ssh-enrich-keys-yaml = pkgs.replaceVars "${ndhCommon}/ssh-keys.d/ssh-enrich-keys-yaml.sh" {
+      nixBashTrampoline = nixBashTrampoline;
+      loggerTag = loggerTagEnrich;
+    };
+    ssh-split-keys-yaml = pkgs.replaceVars "${ndhCommon}/ssh-keys.d/ssh-split-keys-yaml.sh" {
+      nixBashTrampoline = nixBashTrampoline;
+      loggerTag = loggerTagSplit;
+    };
+    ssh-enrich-split-and-authorize = pkgs.replaceVars "${ndhCommon}/ssh-keys.d/ssh-enrich-split-runtime-keys.sh" {
+      nixBashTrampoline = nixBashTrampoline;
+      loggerTag = loggerTagOrchestrate;
+    };
   };
-  sshEnrichKeysYamlScript = pkgs.runCommand "ndh-ssh-enrich-keys-yaml-darwin.sh" { } ''
-    install -m 0555 ${sshEnrichKeysYamlScriptSource} "$out"
-  '';
-  sshSplitKeysYamlScriptSource = pkgs.replaceVars "${ndhCommon}/ssh-keys.d/ssh-split-keys-yaml.sh" {
-    nixBashTrampoline = nixBashTrampoline;
-    loggerTag = loggerTagSplit;
-  };
-  sshSplitKeysYamlScript = pkgs.runCommand "ndh-ssh-split-keys-yaml-darwin.sh" { } ''
-    install -m 0555 ${sshSplitKeysYamlScriptSource} "$out"
-  '';
-  sshEnrichAndSplitKeysYamlScriptSource =
-    pkgs.replaceVars "${ndhCommon}/ssh-keys.d/ssh-enrich-split-runtime-keys.sh"
-      {
-        nixBashTrampoline = nixBashTrampoline;
-        loggerTag = loggerTagOrchestrate;
-      };
-  sshEnrichAndSplitKeysYamlScript =
-    pkgs.runCommand "ndh-ssh-enrich-and-split-keys-yaml-darwin.sh" { }
-      ''
-        install -m 0555 ${sshEnrichAndSplitKeysYamlScriptSource} "$out"
-      '';
 in
 {
   config.system.activationScripts.preActivation.text = lib.mkAfter ''
     set -euo pipefail
-    ${pkgs.bash}/bin/bash ${sshEnrichAndSplitKeysYamlScript} \
+    ${pkgs.bash}/bin/bash ${sshKeysEnrichmentTools}/bin/ssh-enrich-split-and-authorize \
       "${pkgs.bash}/bin/bash" \
-      "${sshEnrichKeysYamlScript}" \
-      "${sshSplitKeysYamlScript}" \
+      "${sshKeysEnrichmentTools}/bin/ssh-enrich-keys-yaml" \
+      "${sshKeysEnrichmentTools}/bin/ssh-split-keys-yaml" \
       "${hostIdent}" \
       "${decryptedSSHKeysYamlPath}" \
       "${generatedKeysYamlPath}" \

@@ -58,34 +58,32 @@ let
   loggerTagEnrich = "nixos.services.ssh-keys-enrichment.enrichSSHKeysYaml";
   loggerTagSplit = "nixos.services.ssh-keys-enrichment.splitSSHKeysYaml";
   loggerTagExtract = "nixos.services.ssh-keys-enrichment.extractSSHKeys";
-  sshEnrichKeysYamlScript = ndh.store.installBinScript "ssh-enrich-keys-yaml" (
-    pkgs.replaceVars "${ndhCommon}/ssh-keys.d/ssh-enrich-keys-yaml.sh" {
-      nixBashTrampoline = nixBashTrampoline;
-      loggerTag = loggerTagEnrich;
-    }
-  );
-  sshSplitKeysYamlScript = ndh.store.installBinScript "ssh-split-keys-yaml" (
-    pkgs.replaceVars "${ndhCommon}/ssh-keys.d/ssh-split-keys-yaml.sh" {
-      nixBashTrampoline = nixBashTrampoline;
-      loggerTag = loggerTagSplit;
-    }
-  );
-  sshEnrichSplitAndAuthorizeScript = ndh.store.installBinScript "ssh-enrich-split-and-authorize" (
-    pkgs.replaceVars "${ndhCommon}/ssh-keys.d/ssh-enrich-split-runtime-keys.sh" {
-      nixBashTrampoline = nixBashTrampoline;
-      loggerTag = loggerTagOrchestrate;
-    }
-  );
+
   sshExtractKeysSplitExpFile = ndh.store.runCommand "ssh-extract-keys.split-exp.yq" { } ''
     install -m 0444 "${ndhHm}/ssh-key.d/ssh-extract-keys.split-exp.yq" "$out"
   '';
-  sshExtractKeysScript = ndh.store.installBinScript "ssh-extract-keys" (
-    pkgs.replaceVars "${ndhHm}/ssh-key.d/ssh-extract-keys.sh" {
+
+  sshKeysEnrichmentTools = ndh.store.installBinScriptBundle "ssh-keys-enrichment-tools" {
+    ssh-enrich-keys-yaml = pkgs.replaceVars "${ndhCommon}/ssh-keys.d/ssh-enrich-keys-yaml.sh" {
+      nixBashTrampoline = nixBashTrampoline;
+      loggerTag = loggerTagEnrich;
+    };
+    ssh-split-keys-yaml = pkgs.replaceVars "${ndhCommon}/ssh-keys.d/ssh-split-keys-yaml.sh" {
+      nixBashTrampoline = nixBashTrampoline;
+      loggerTag = loggerTagSplit;
+    };
+    ssh-enrich-split-and-authorize = pkgs.replaceVars "${ndhCommon}/ssh-keys.d/ssh-enrich-split-runtime-keys.sh" {
+      nixBashTrampoline = nixBashTrampoline;
+      loggerTag = loggerTagOrchestrate;
+    };
+    # ssh-extract-keys carries an extra @splitExpFile@ substitution but shares
+    # the same activation pipeline + logger shape, so bundle it alongside.
+    ssh-extract-keys = pkgs.replaceVars "${ndhHm}/ssh-key.d/ssh-extract-keys.sh" {
       nixBashTrampoline = nixBashTrampoline;
       loggerTag = loggerTagExtract;
       splitExpFile = sshExtractKeysSplitExpFile;
-    }
-  );
+    };
+  };
 in
 {
   config.systemd.services.${ndhSystemd.mkUnitName "ssh-keys-enrichment"} = {
@@ -123,10 +121,10 @@ in
     script = ''
       set -euo pipefail
 
-      ${pkgs.bash}/bin/bash ${sshEnrichSplitAndAuthorizeScript}/bin/ssh-enrich-split-and-authorize \
+      ${pkgs.bash}/bin/bash ${sshKeysEnrichmentTools}/bin/ssh-enrich-split-and-authorize \
         "${pkgs.bash}/bin/bash" \
-        "${sshEnrichKeysYamlScript}/bin/ssh-enrich-keys-yaml" \
-        "${sshSplitKeysYamlScript}/bin/ssh-split-keys-yaml" \
+        "${sshKeysEnrichmentTools}/bin/ssh-enrich-keys-yaml" \
+        "${sshKeysEnrichmentTools}/bin/ssh-split-keys-yaml" \
         "${hostIdent}" \
         "${decryptedSSHKeysYamlPath}" \
         "${generatedKeysYamlPath}" \
@@ -142,7 +140,7 @@ in
       # Materialize file-based SSH key artifacts expected by OpenSSH activation
       # and hostkey enrollment scripts in both bootstrap and full runtime modes.
       # Use the full enriched keyset so host/system key material is included.
-      ${pkgs.bash}/bin/bash ${sshExtractKeysScript}/bin/ssh-extract-keys \
+      ${pkgs.bash}/bin/bash ${sshKeysEnrichmentTools}/bin/ssh-extract-keys \
         "${generatedKeysYamlPath}" \
         "${config.sshPaths.secretsKeysDir}" \
         "${profileOwnerName}"
