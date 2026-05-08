@@ -1,4 +1,4 @@
-{ config, lib, pkgs, ndh, ... }:
+{ config, lib, pkgs, ndh, ndhSystemd, ... }:
 let
   ndhContext = ndh.context;
 
@@ -6,6 +6,7 @@ let
   # No /proc/cmdline parsing needed — values are embedded directly in user-data.
   fullSystem = ndhContext.runtimeSystemPath or "";
   remoteStore = ndhContext.remoteStore or "";
+  extractSshKeyServiceName = ndhSystemd.mkServiceName "bringup-extract-ssh-key";
 
   # Cloud-init user-data for first-boot activation
   cloudInitUserData = pkgs.writeText "cloud-init-user-data.yaml" ''
@@ -45,7 +46,7 @@ let
 
         # Wait for SSH key extraction service
         timeout=30
-        while ! systemctl is-active --quiet bringup-extract-ssh-key.service; do
+        while ! systemctl is-active --quiet ${extractSshKeyServiceName}; do
           sleep 1
           timeout=$((timeout - 1))
           if [ $timeout -le 0 ]; then

@@ -1,5 +1,6 @@
 {
   config,
+  options,
   lib,
   pkgs,
   ndhSystemd,
@@ -62,6 +63,8 @@ in
           # for creating/importing the key before install runs.
         };
 
+  }
+  // lib.optionalAttrs (options ? nixBashLogger) {
     nixBashLogger.cmd = lib.mkDefault "${pkgs.util-linux}/bin/logger -p notice -t %TAG%";
   };
 }

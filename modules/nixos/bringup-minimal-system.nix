@@ -1,4 +1,4 @@
-{ config, lib, pkgs, modulesPath, ndh ? null, self, ... }:
+{ config, lib, pkgs, modulesPath, ndh ? null, ndhSystemd, self, ... }:
 {
   # Minimal NixOS system for bringup — installs into ZFS pools, boots, then
   # cloud-init fetches and activates the full system at first boot.
@@ -6,6 +6,10 @@
   imports = [
     (modulesPath + "/installer/scan/not-detected.nix")
     (modulesPath + "/profiles/qemu-guest.nix")
+    "${self}/profile.nix"
+    ./systemd/naming.nix
+    ./sops.nix
+    "${self}/modules/.common.d/sops.nix"
     ./bringup-cloud-init.nix
     ./initrd-emergency.nix
     ./console-serial.nix
@@ -14,21 +18,16 @@
     ./zfs-recovery-chroot.nix
   ];
 
-  # Provide stub ndhSystemd for zfs.nix module compatibility
-  _module.args.ndhSystemd = {
-    unitPrefix = "";
-    mkUnitName = name: name;
-    mkServiceName = name: "${name}.service";
-    mkTargetName = name: "${name}.target";
-    contributedTargetName = "multi-user.target";
-  };
+  # Bringup has no login user; the shared sops.nix defaults the ssh-keys secret
+  # owner to config.profile.user.name. Override to root for the minimal image.
+  sops.secrets."ssh-keys.yaml".owner = lib.mkForce "root";
 
   # SSH key management for cloud-init store access
   # The system decrypts the full ssh-keys.yaml via sops (defined in .common.d/sops.nix),
   # then we extract the rke2-cluster key for cloud-init to use for nix copy --from ssh://
 
   # Extract SSH key from decrypted keys.yaml for cloud-init
-  systemd.services.bringup-extract-ssh-key = {
+  systemd.services.${ndhSystemd.mkUnitName "bringup-extract-ssh-key"} = {
     description = "Extract SSH key for cloud-init remote store access";
     wantedBy = [ "multi-user.target" ];
     after = [ "sops-install-secrets.service" ];
