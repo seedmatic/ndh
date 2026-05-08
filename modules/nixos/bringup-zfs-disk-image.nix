@@ -260,6 +260,10 @@ let
       export NDH_BUILD_OBSERVE="${if enableBuildObserve then "true" else "false"}"
       export NDH_BUILD_OBSERVE_INTERVAL="${toString buildObserveInterval}"
       export NDH_INSTALL_SCRIPT="${zfsBringupInstallScript}/bin/bringup-zfs-disk-images-install"
+      # bashInteractive carries readline (history + line editing); the default
+      # `bash` in writeShellApplication's PATH is the minimal non-interactive
+      # build. buildcommand.sh uses this path for the /dev/hvc0 debug shell.
+      export NDH_INTERACTIVE_BASH="${pkgs.bashInteractive}/bin/bash"
 
       ${builtins.readFile ./bringup-zfs-disk-image.d/buildcommand.sh}
     '';

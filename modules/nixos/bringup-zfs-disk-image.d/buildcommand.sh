@@ -35,8 +35,11 @@ export NDH_BUILD_OBSERVE_HOST="${NDH_BUILD_OBSERVE_HOST:-}"
 : 'Use hvc0 directly - the /dev/virtio-ports/ symlink needs udev'
 : 'and may not exist yet; hvc0 is created by the kernel in devtmpfs.'
 : '-i: interactive (job control + prompt); skip -l to avoid /etc/profile.'
+: 'NDH_INTERACTIVE_BASH points at bashInteractive so readline (history + '
+: 'line editing) works over the socat connection; the plain `bash` in PATH '
+: 'is the minimal non-interactive build and gives a raw, unusable prompt.'
 while [[ ! -c /dev/hvc0 ]]; do sleep 0.1; done
-setsid --ctty bash -i 0<>/dev/hvc0 1>&0 2>&0 &
+setsid --ctty "${NDH_INTERACTIVE_BASH:-bash}" -i 0<>/dev/hvc0 1>&0 2>&0 &
 
 # -- builder-side observer --
 # Collects metrics from the linux-builder during the nested QEMU build.
