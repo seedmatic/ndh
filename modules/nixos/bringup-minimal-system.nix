@@ -88,6 +88,10 @@
     };
   };
 
+  # Allow root to use emergency shell without password
+  # Set empty password hash so sulogin can grant access
+  users.users.root.hashedPassword = "";
+
   # Add authorized SSH keys for root from keys.yaml
   # This allows SSH access for emergency/debugging
   users.users.root.openssh.authorizedKeys.keys =
