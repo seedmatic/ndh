@@ -69,6 +69,7 @@ in
   ++ (lib.optionals (!bringupMode) [
     ./buildkitd.nix
     ./hm-state-dirs.nix
+    ./nix-store-identity.nix
   ]);
 
   # Ensure the systemd manager's own PATH includes NixOS system paths.

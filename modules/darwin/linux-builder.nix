@@ -300,5 +300,19 @@ in
       '';
       deps = [ "setupActivationScript" ];
     };
+
+    # Enable the shared nix-store identity deploy logic from
+    # modules/.common.d/nix-store-identity.nix and run it during activation.
+    # Platform detail: nix-darwin runs the script as a plain activation step;
+    # on NixOS the same script is invoked from a systemd oneshot so it can
+    # order after ssh-keys-enrichment.service.
+    nixStoreIdentity.enable = true;
+
+    system.activationScripts.nixStoreIdentity = {
+      text = ''
+        ${config.nixStoreIdentity.deployScript}/bin/nix-store-identity-deploy
+      '';
+      deps = [ "setupActivationScript" ];
+    };
   };
 }

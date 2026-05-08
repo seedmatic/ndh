@@ -257,6 +257,7 @@ in
     ./lima-host.nix
     ./bringup-observe.nix
     ./vm-materializer.nix
+    ./nix-store-identity.nix
   ];
 
   config = {
