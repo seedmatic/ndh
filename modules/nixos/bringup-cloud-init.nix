@@ -10,6 +10,13 @@ let
   # keys.yaml → sshPaths.systemKeysDir in the split-exp).
   nixStoreKeyPath = "${config.sshPaths.systemKeysDir}/nix-store";
 
+  # cloud-init runcmd scripts inherit a minimal PATH that does not include
+  # /run/current-system/sw/bin, so `nix` needs an absolute path. `nix copy`
+  # also shells out to `ssh` internally, so we prepend both bin dirs to PATH
+  # rather than rely on the cloud-init default (which is typically
+  # /usr/bin:/bin:/sbin:/usr/sbin).
+  nixBin = "${config.nix.package}/bin/nix";
+
   # Cloud-init user-data for first-boot activation. All ordering against
   # network-online + sops-install-secrets + ssh-keys-enrichment lives in the
   # cloud-final.service systemd drop-in configured by bringup-minimal-system.nix,
@@ -20,6 +27,9 @@ let
     runcmd:
       - |
         set -euxo pipefail
+
+        PATH="${config.nix.package}/bin:$PATH"
+        PATH="${pkgs.openssh}/bin:$PATH"
 
         FULL_SYSTEM="${fullSystem}"
         STORE_HOST="${remoteStore}"
@@ -47,7 +57,7 @@ let
         # a known_hosts fragment for the remote store host.
         export NIX_SSHOPTS="-i $SSH_KEY -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
 
-        nix copy --from "$STORE_HOST" "$FULL_SYSTEM"
+        ${nixBin} copy --from "$STORE_HOST" "$FULL_SYSTEM"
 
         echo "[cloud-init] Activating full system"
         "$FULL_SYSTEM/bin/switch-to-configuration" boot
