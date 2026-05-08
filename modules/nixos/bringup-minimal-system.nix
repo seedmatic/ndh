@@ -80,6 +80,53 @@
   # Disable SSH agent (not needed)
   programs.ssh.startAgent = lib.mkForce false;
 
+  # Enable SSH server for emergency access
+  services.openssh = {
+    enable = true;
+    settings = {
+      PermitRootLogin = "prohibit-password";  # Only allow key-based auth
+    };
+  };
+
+  # Add authorized SSH keys for root from keys.yaml
+  # This allows SSH access for emergency/debugging
+  users.users.root.openssh.authorizedKeys.keys =
+    let
+      # Load SSH keys from keys.yaml (same pattern as users.nix)
+      builderKeys = builtins.fromJSON (
+        builtins.readFile (
+          pkgs.runCommand "ndh-root-keys.json" { buildInputs = [ pkgs.yq-go ]; } ''
+            yq -o=json '.' ${./../../home-manager/ssh.d/keys.yaml} > "$out"
+          ''
+        )
+      );
+    in
+    lib.filter (k: k != "") [
+      # Add linux-builder keys for root access (same keys used by builder user)
+      (
+        if
+          builderKeys ? profiles
+          && builderKeys.profiles ? committed
+          && builderKeys.profiles.committed ? linux-builder
+          && builderKeys.profiles.committed.linux-builder ? public
+        then
+          "ssh-ed25519 ${builderKeys.profiles.committed.linux-builder.public} committed-linux-builder"
+        else
+          ""
+      )
+      (
+        if
+          builderKeys ? profiles
+          && builderKeys.profiles ? work
+          && builderKeys.profiles.work ? linux-builder
+          && builderKeys.profiles.work.linux-builder ? public
+        then
+          "ssh-ed25519 ${builderKeys.profiles.work.linux-builder.public} work-linux-builder"
+        else
+          ""
+      )
+    ];
+
   # Override the zfs-nixos-install assertion that requires runtimeSystemPath.
   # For minimal bringup, we don't have a runtime system — activation is deferred to cloud-init.
   assertions = lib.mkForce [ ];
