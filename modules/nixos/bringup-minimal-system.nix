@@ -38,6 +38,25 @@ in
 
   networking.hostName = guestHostName;
 
+  # mDNS resolution via systemd-resolved. cloud-init's runcmd resolves the
+  # remote store hostname (e.g. bioskop.local) via standard NSS + resolved,
+  # so enable MulticastDNS both globally (resolver side) and per-link (sender
+  # side). cloud-init generates /etc/systemd/network/10-cloud-init-enp0s1.network
+  # at runtime, so we add a drop-in directory read by systemd-networkd that
+  # flips MulticastDNS on for the cloud-init link without fighting over the
+  # base .network file.
+  services.resolved = {
+    enable = true;
+    extraConfig = ''
+      MulticastDNS=resolve
+      LLMNR=resolve
+    '';
+  };
+  environment.etc."systemd/network/10-cloud-init-enp0s1.network.d/10-mdns.conf".text = ''
+    [Network]
+    MulticastDNS=yes
+  '';
+
   # Bringup has no login user; the shared sops.nix defaults the ssh-keys secret
   # owner to config.profile.user.name. Override to root for the minimal image.
   sops.secrets."ssh-keys.yaml".owner = lib.mkForce "root";
