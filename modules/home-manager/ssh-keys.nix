@@ -18,11 +18,6 @@ let
     else
       "${self}/modules/.common.d/shell.d/nix-bash-trampoline.sh";
   profileName = profile.name;
-  sshKeyProfileName =
-    if profile ? sshKeyProfileName && profile.sshKeyProfileName != null then
-      profile.sshKeyProfileName
-    else
-      profileName;
   userProfile = profile.user;
   userName = profile.user.name; # Use profile user name for tagging
   sshPaths = config.sshPaths;
@@ -31,7 +26,7 @@ let
   perUserKeysDir = sshPaths.secretsKeysDir;
   authorityKeysDir = sshPaths.authoritySecretsDir;
   systemManagedSshKeysPipeline = pkgs.stdenv.isLinux || pkgs.stdenv.isDarwin;
-  systemSplitProfileKeysYamlPath = "/run/secrets/nix-darwin-home/ssh-keys-split.d/profiles/${sshKeyProfileName}.yaml";
+  systemSplitProfileKeysYamlPath = "/run/secrets/nix-darwin-home/ssh-keys-split.d/profiles/${profileName}.yaml";
   # Effective YAML path consumed by ssh-add-keys/launchd.
   effectiveSSHKeysYamlPath = "${perUserKeysDir}.yaml";
 
@@ -136,7 +131,7 @@ in
           chown "${userName}:$(id -gn "${userName}" 2>/dev/null || echo "${userName}")" "${effectiveSSHKeysYamlPath}" 2>/dev/null || true
         else
           echo "missing system-generated profile keys YAML: ${systemSplitProfileKeysYamlPath}" >&2
-          echo "profile.name=${profileName} sshKeyProfileName=${sshKeyProfileName}" >&2
+          echo "profile.name=${profileName}" >&2
           exit 1
         fi
       '';

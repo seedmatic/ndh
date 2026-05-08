@@ -12,7 +12,7 @@ main() {
 	local bashBin="${1:?bash binary path required}"
 	local enrichScript="${2:?enrich script path required}"
 	local splitScript="${3:?split script path required}"
-	local sshKeyProfileName="${4:?ssh key profile name required}"
+	local profileName="${4:?ssh key profile name required}"
 	local hostIdent="${5:?host ident required}"
 	local decryptedSSHKeysYamlPath="${6:?decrypted ssh keys yaml path required}"
 	local generatedKeysYamlPath="${7:?generated keys yaml path required}"
@@ -40,7 +40,7 @@ main() {
 	install -d -m 0755 "$split_dir" "$profiles_dir"
 
 	"$bashBin" "$enrichScript" \
-		"$sshKeyProfileName" \
+		"$profileName" \
 		"$hostIdent" \
 		"$decryptedSSHKeysYamlPath" \
 		"$generatedKeysYamlPath" \

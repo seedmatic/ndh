@@ -14,13 +14,6 @@ let
   nixBashTrampoline = "${ndhContext.nixBashTrampoline}";
   profileName =
     if config ? profile && config.profile ? name then config.profile.name else "committed";
-  sshKeyProfileName =
-    if
-      config ? profile && config.profile ? sshKeyProfileName && config.profile.sshKeyProfileName != null
-    then
-      config.profile.sshKeyProfileName
-    else
-      profileName;
   hostIdent =
     if
       config ? profile
@@ -50,7 +43,7 @@ let
   splitKeysDir = "/run/secrets/nix-darwin-home/ssh-keys-split.d";
   generatedKeysYamlPath = "${splitKeysDir}/keys.generated.yaml";
   generatedSystemKeysYamlPath = "${splitKeysDir}/system.yaml";
-  generatedProfileKeysYamlPath = "${splitKeysDir}/profiles/${sshKeyProfileName}.yaml";
+  generatedProfileKeysYamlPath = "${splitKeysDir}/profiles/${profileName}.yaml";
 
   inventoryHostNames = builtins.attrNames (inventory.hosts or { });
   inventoryHostsCsv = lib.concatStringsSep "," inventoryHostNames;
@@ -102,7 +95,7 @@ in
       "${pkgs.bash}/bin/bash" \
       "${sshEnrichKeysYamlScript}" \
       "${sshSplitKeysYamlScript}" \
-      "${sshKeyProfileName}" \
+      "${profileName}" \
       "${hostIdent}" \
       "${decryptedSSHKeysYamlPath}" \
       "${generatedKeysYamlPath}" \
