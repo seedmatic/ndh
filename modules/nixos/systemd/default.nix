@@ -3,6 +3,7 @@
   pkgs,
   lib,
   ndh,
+  ndhSystemd,
   ...
 }:
 let
@@ -17,19 +18,10 @@ let
       "root";
   homeManagerServiceName = "home-manager-${profileUserName}";
   keysTargetUnit = "keys.target";
-  ndhUnitPrefix = "io-nxmatic-nix-darwin-home";
-  mkNdhUnitName =
-    suffix: if lib.hasPrefix "${ndhUnitPrefix}-" suffix then suffix else "${ndhUnitPrefix}-${suffix}";
-  mkNdhServiceName = suffix: "${mkNdhUnitName suffix}.service";
-  mkNdhTargetName = suffix: "${mkNdhUnitName suffix}.target";
-  contributedTargetName = mkNdhTargetName "contributed";
+  mkNdhUnitName = ndhSystemd.mkUnitName;
+  mkNdhServiceName = ndhSystemd.mkServiceName;
+  contributedTargetName = ndhSystemd.contributedTargetName;
   sshKeysEnrichmentServiceName = mkNdhServiceName "ssh-keys-enrichment";
-  attachToContributedTarget =
-    serviceAttrs:
-    serviceAttrs
-    // {
-      wantedBy = lib.unique ((serviceAttrs.wantedBy or [ ]) ++ [ contributedTargetName ]);
-    };
 in
 {
   options.ndh.vm.provider = lib.mkOption {
@@ -54,6 +46,7 @@ in
   };
 
   imports = [
+    ./naming.nix
     ./openssh.nix
     ./ssh-keys-enrichment.nix
     ./rescue.nix
@@ -116,13 +109,4 @@ in
     serviceConfig.Environment = "XDG_RUNTIME_DIR=/run/user/%U";
   };
 
-  config._module.args.ndhSystemd = {
-    unitPrefix = ndhUnitPrefix;
-    mkUnitName = mkNdhUnitName;
-    mkServiceName = mkNdhServiceName;
-    mkTargetName = mkNdhTargetName;
-    contributedTargetName = contributedTargetName;
-    attachToContributedTarget = attachToContributedTarget;
-    tailscaleAutoconnectUnitName = mkNdhUnitName "tailscaled-autoconnect";
-  };
 }
