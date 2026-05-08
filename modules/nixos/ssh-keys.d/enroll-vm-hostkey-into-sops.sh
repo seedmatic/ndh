@@ -2,7 +2,7 @@
 # @codebase
 # One-time/occasional enrollment helper:
 #   Capture current VM ssh_host_ed25519 keypair and persist it into the encrypted
-#   repo secrets profile so subsequent bootstraps can distribute a stable host key.
+#   repo secrets so subsequent bootstraps can distribute a stable host key.
 set -euo pipefail
 
 : "${COPILOT_XTRACE:=1}"
@@ -19,8 +19,7 @@ Usage: enroll-vm-hostkey-into-sops.sh [options]
 Options:
   --vm <name>             Lima instance name (default: nerd-nixos)
   --guest <name>          Guest key suffix for vz-guest-<name> (default: nixos)
-  --key-name <name>       Explicit key entry name under .profiles.<profile>
-  --profile <name>        Secrets profile under .profiles (default: committed)
+  --key-name <name>       Explicit top-level key entry name in the secrets YAML
   --secrets-file <path>   Encrypted SOPS YAML file (default: modules/home-manager/ssh.d/keys.yaml)
   --repo-root <path>      Repo root (default: git top-level)
   --dry-run               Capture/validate only; do not write secrets
@@ -30,7 +29,7 @@ Behavior:
   1) Reads /etc/ssh/ssh_host_ed25519_key(.pub) from the guest via limactl shell
   2) Validates private/public consistency
   3) Decrypts the encrypted worktree secrets file (source of truth)
-  4) Updates .profiles.<profile>.<key-name>.{private,public}
+  4) Updates .<key-name>.{private,public}
   5) Re-encrypts and writes back atomically to the worktree secrets file
 
 Notes:
@@ -49,7 +48,6 @@ require_cmd() {
 VM_NAME="nerd-nixos"
 GUEST_NAME="nixos"
 KEY_NAME=""
-PROFILE_NAME="committed"
 SECRETS_FILE="modules/home-manager/ssh.d/keys.yaml"
 REPO_ROOT=""
 DRY_RUN=0
@@ -62,8 +60,6 @@ while [[ $# -gt 0 ]]; do
       shift; GUEST_NAME="${1:-}" ;;
     --key-name)
       shift; KEY_NAME="${1:-}" ;;
-    --profile)
-      shift; PROFILE_NAME="${1:-}" ;;
     --secrets-file)
       shift; SECRETS_FILE="${1:-}" ;;
     --repo-root)
@@ -145,27 +141,21 @@ if [[ -z "$host_pub_type" || -z "$host_pub_base64" ]]; then
   exit 1
 fi
 
-# Decrypt secrets and verify profile path exists.
+# Decrypt secrets and verify the key entry exists.
 # Encrypted worktree file is the canonical source of truth.
 sops -d --input-type yaml --output-type yaml --filename-override "$(basename "$SECRETS_FILE")" "$SECRETS_FILE" > "$plain_yaml"
 printf '[enroll] baseline source: encrypted worktree file (%s)\n' "$SECRETS_FILE"
 
-profile_type="$(yq eval ".profiles.\"$PROFILE_NAME\" | type" "$plain_yaml" 2>/dev/null || true)"
-if [[ "$profile_type" != "!!map" ]]; then
-  echo "ERROR: profile not found in secrets: .profiles.\"$PROFILE_NAME\"" >&2
-  exit 1
-fi
-
-key_node_type="$(yq eval ".profiles.\"$PROFILE_NAME\".\"$KEY_NAME\" | type" "$plain_yaml" 2>/dev/null || true)"
+key_node_type="$(yq eval ".\"$KEY_NAME\" | type" "$plain_yaml" 2>/dev/null || true)"
 if [[ "$key_node_type" != "!!map" ]]; then
-  echo "ERROR: key entry .profiles.\"$PROFILE_NAME\".\"$KEY_NAME\" is missing or not a map." >&2
+  echo "ERROR: key entry .\"$KEY_NAME\" is missing or not a map." >&2
   echo "Refusing to create a new key entry automatically because comment-based SOPS encryption markers must be pre-seeded." >&2
   exit 1
 fi
 
-existing_private="$(yq -r ".profiles.\"$PROFILE_NAME\".\"$KEY_NAME\".private // \"\"" "$plain_yaml")"
+existing_private="$(yq -r ".\"$KEY_NAME\".private // \"\"" "$plain_yaml")"
 if [[ -z "$existing_private" ]]; then
-  echo "ERROR: key entry .profiles.\"$PROFILE_NAME\".\"$KEY_NAME\".private is empty." >&2
+  echo "ERROR: key entry .\"$KEY_NAME\".private is empty." >&2
   echo "Refusing to write private key material without a pre-seeded encrypted field/marker." >&2
   exit 1
 fi
@@ -180,20 +170,20 @@ export HOST_PUB_COMMENT
 HOST_PUB_COMMENT="$host_pub_comment"
 
 cp "$plain_yaml" "$updated_yaml"
-yq -i ".profiles.\"$PROFILE_NAME\".\"$KEY_NAME\".private = strenv(HOST_PRIV_CONTENT)" "$updated_yaml"
-yq -i ".profiles.\"$PROFILE_NAME\".\"$KEY_NAME\".type = strenv(HOST_PUB_TYPE)" "$updated_yaml"
-yq -i ".profiles.\"$PROFILE_NAME\".\"$KEY_NAME\".public = strenv(HOST_PUB_BASE64)" "$updated_yaml"
-yq -i ".profiles.\"$PROFILE_NAME\".\"$KEY_NAME\".comment = strenv(HOST_PUB_COMMENT)" "$updated_yaml"
+yq -i ".\"$KEY_NAME\".private = strenv(HOST_PRIV_CONTENT)" "$updated_yaml"
+yq -i ".\"$KEY_NAME\".type = strenv(HOST_PUB_TYPE)" "$updated_yaml"
+yq -i ".\"$KEY_NAME\".public = strenv(HOST_PUB_BASE64)" "$updated_yaml"
+yq -i ".\"$KEY_NAME\".comment = strenv(HOST_PUB_COMMENT)" "$updated_yaml"
 
 # Optional metadata breadcrumbs for auditability.
 # Store under annotations.enrollment to avoid colliding with key-field
 # flattening logic used by activation-time key generators.
 now_utc="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-yq -i ".profiles.\"$PROFILE_NAME\".\"$KEY_NAME\".annotations.enrollment = {\"fingerprint\": \"$fingerprint\", \"source\": \"$VM_NAME\", \"capturedAt\": \"$now_utc\"}" "$updated_yaml"
-yq -i "del(.profiles.\"$PROFILE_NAME\".\"$KEY_NAME\".enrollment)" "$updated_yaml"
+yq -i ".\"$KEY_NAME\".annotations.enrollment = {\"fingerprint\": \"$fingerprint\", \"source\": \"$VM_NAME\", \"capturedAt\": \"$now_utc\"}" "$updated_yaml"
+yq -i "del(.\"$KEY_NAME\".enrollment)" "$updated_yaml"
 
-printf '{"vm":"%s","profile":"%s","keyName":"%s","fingerprint":"%s","capturedAt":"%s"}\n' \
-  "$VM_NAME" "$PROFILE_NAME" "$KEY_NAME" "$fingerprint" "$now_utc" > "$meta_json"
+printf '{"vm":"%s","keyName":"%s","fingerprint":"%s","capturedAt":"%s"}\n' \
+  "$VM_NAME" "$KEY_NAME" "$fingerprint" "$now_utc" > "$meta_json"
 
 if [[ "$DRY_RUN" -eq 1 ]]; then
   echo "[enroll] dry-run complete; no secrets written"
@@ -208,5 +198,5 @@ state_dir="$REPO_ROOT/.local.d/share"
 mkdir -p "$state_dir"
 cp "$meta_json" "$state_dir/hostkey-enrollment-${VM_NAME}.json"
 
-printf '[enroll] updated %s (profile=%s, key=%s, vm=%s)\n' "$SECRETS_FILE" "$PROFILE_NAME" "$KEY_NAME" "$VM_NAME"
+printf '[enroll] updated %s (key=%s, vm=%s)\n' "$SECRETS_FILE" "$KEY_NAME" "$VM_NAME"
 printf '[enroll] state marker: %s\n' "$state_dir/hostkey-enrollment-${VM_NAME}.json"

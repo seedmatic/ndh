@@ -52,13 +52,8 @@ in
     description = "Nix remote builder";
     openssh.authorizedKeys.keys = lib.filter (k: k != "") [
       (
-        if
-          builderKeys ? profiles
-          && builderKeys.profiles ? committed
-          && builderKeys.profiles.committed ? linux-builder
-          && builderKeys.profiles.committed.linux-builder ? public
-        then
-          "ssh-ed25519 ${builderKeys.profiles.committed.linux-builder.public} committed-linux-builder"
+        if builderKeys ? linux-builder && builderKeys.linux-builder ? public then
+          "ssh-ed25519 ${builderKeys.linux-builder.public} committed-linux-builder"
         else
           ""
       )
@@ -70,13 +65,8 @@ in
   users.users.root.openssh.authorizedKeys.keys = lib.mkIf runtimeMode (
     lib.filter (k: k != "") [
       (
-        if
-          builderKeys ? profiles
-          && builderKeys.profiles ? committed
-          && builderKeys.profiles.committed ? linux-builder
-          && builderKeys.profiles.committed.linux-builder ? public
-        then
-          "ssh-ed25519 ${builderKeys.profiles.committed.linux-builder.public} committed-linux-builder"
+        if builderKeys ? linux-builder && builderKeys.linux-builder ? public then
+          "ssh-ed25519 ${builderKeys.linux-builder.public} committed-linux-builder"
         else
           ""
       )

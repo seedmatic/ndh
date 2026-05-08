@@ -394,8 +394,7 @@ ssh-keygen -L -f /run/secrets-per-user/$USER/ssh-authority/rke2-cluster-cert.pub
 [source,bash]
 ----
 # Manually test extract-keys.sh
-yq eval '.profiles.committed' /run/secrets/.../keys.yaml > /tmp/profile.yml
-bash modules/home-manager/ssh-key.d/ssh-extract-keys.sh /tmp/profile.yml /tmp/extracted-user /tmp/extracted-system
+bash modules/home-manager/ssh-key.d/ssh-extract-keys.sh /run/secrets/.../keys.yaml /tmp/extracted-user /tmp/extracted-system
 ls -la /tmp/extracted-user /tmp/extracted-system
 ----
 
@@ -403,7 +402,7 @@ ls -la /tmp/extracted-user /tmp/extracted-system
 [source,bash]
 ----
 # Test generate-keys-yaml.sh
-bash modules/home-manager/ssh-key.d/ssh-generate-keys-yaml.sh committed bioskop /run/secrets/nix-darwin-home/nxmatic-ssh-keys.yaml /tmp/keys.yaml nikopol,bioskop,nikopol
+bash modules/home-manager/ssh-key.d/ssh-generate-keys-yaml.sh bioskop /run/secrets/nix-darwin-home/nxmatic-ssh-keys.yaml /tmp/keys.yaml nikopol,bioskop,nikopol
 ls -la /tmp/keys.yaml
 ----
 

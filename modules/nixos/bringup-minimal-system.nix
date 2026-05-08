@@ -55,7 +55,7 @@
       chmod 700 "$SSH_DIR"
 
       # Extract the private key using yq
-      if ! ${pkgs.yq-go}/bin/yq eval '.profiles.committed."'"$KEY_NAME"'".private' "$KEYS_YAML" > "$SSH_DIR/$KEY_NAME"; then
+      if ! ${pkgs.yq-go}/bin/yq eval '."'"$KEY_NAME"'".private' "$KEYS_YAML" > "$SSH_DIR/$KEY_NAME"; then
         echo "[bringup-extract-ssh-key] ERROR: Failed to extract $KEY_NAME from $KEYS_YAML" >&2
         exit 1
       fi
@@ -63,13 +63,13 @@
       chmod 600 "$SSH_DIR/$KEY_NAME"
 
       # Extract public key
-      if ! ${pkgs.yq-go}/bin/yq eval '.profiles.committed."'"$KEY_NAME"'".public' "$KEYS_YAML" > "$SSH_DIR/$KEY_NAME.pub"; then
+      if ! ${pkgs.yq-go}/bin/yq eval '."'"$KEY_NAME"'".public' "$KEYS_YAML" > "$SSH_DIR/$KEY_NAME.pub"; then
         echo "[bringup-extract-ssh-key] ERROR: Failed to extract $KEY_NAME.pub from $KEYS_YAML" >&2
         exit 1
       fi
 
       # Format public key properly (add type prefix)
-      KEY_TYPE=$(${pkgs.yq-go}/bin/yq eval '.profiles.committed."'"$KEY_NAME"'".type' "$KEYS_YAML")
+      KEY_TYPE=$(${pkgs.yq-go}/bin/yq eval '."'"$KEY_NAME"'".type' "$KEYS_YAML")
       PUB_CONTENT=$(cat "$SSH_DIR/$KEY_NAME.pub")
       echo "$KEY_TYPE $PUB_CONTENT" > "$SSH_DIR/$KEY_NAME.pub"
       chmod 644 "$SSH_DIR/$KEY_NAME.pub"
@@ -109,13 +109,8 @@
     lib.filter (k: k != "") [
       # Add linux-builder key for root access (same key used by builder user)
       (
-        if
-          builderKeys ? profiles
-          && builderKeys.profiles ? committed
-          && builderKeys.profiles.committed ? linux-builder
-          && builderKeys.profiles.committed.linux-builder ? public
-        then
-          "ssh-ed25519 ${builderKeys.profiles.committed.linux-builder.public} committed-linux-builder"
+        if builderKeys ? linux-builder && builderKeys.linux-builder ? public then
+          "ssh-ed25519 ${builderKeys.linux-builder.public} committed-linux-builder"
         else
           ""
       )

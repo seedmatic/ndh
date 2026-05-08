@@ -113,13 +113,8 @@ let
     lib.filter (key: key != "") (
       [
         (
-          if
-            builderKeys ? profiles
-            && builderKeys.profiles ? committed
-            && builderKeys.profiles.committed ? linux-builder
-            && builderKeys.profiles.committed.linux-builder ? public
-          then
-            "ssh-ed25519 ${builderKeys.profiles.committed.linux-builder.public} committed-linux-builder"
+          if builderKeys ? linux-builder && builderKeys.linux-builder ? public then
+            "ssh-ed25519 ${builderKeys.linux-builder.public} committed-linux-builder"
           else
             ""
         )

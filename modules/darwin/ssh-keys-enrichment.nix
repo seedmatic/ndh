@@ -95,7 +95,6 @@ in
       "${pkgs.bash}/bin/bash" \
       "${sshEnrichKeysYamlScript}" \
       "${sshSplitKeysYamlScript}" \
-      "${profileName}" \
       "${hostIdent}" \
       "${decryptedSSHKeysYamlPath}" \
       "${generatedKeysYamlPath}" \

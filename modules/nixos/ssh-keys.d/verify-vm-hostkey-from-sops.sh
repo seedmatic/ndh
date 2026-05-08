@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # @codebase
-# Verify that the currently running VM host key matches the key stored in SOPS
-# for a selected profile. Useful before re-enabling strict host-key checks.
+# Verify that the currently running VM host key matches the key stored in SOPS.
+# Useful before re-enabling strict host-key checks.
 set -euo pipefail
 
 : "${COPILOT_XTRACE:=1}"
@@ -18,8 +18,7 @@ Usage: verify-vm-hostkey-from-sops.sh [options]
 Options:
   --vm <name>             Lima instance (default: nerd-nixos)
   --guest <name>          Guest key suffix for vz-guest-<name> (default: nixos)
-  --key-name <name>       Explicit key entry name under .profiles.<profile>
-  --profile <name>        Profile under .profiles (default: committed)
+  --key-name <name>       Explicit top-level key entry name in the secrets YAML
   --secrets-file <path>   Encrypted SOPS file (default: modules/home-manager/ssh.d/keys.yaml)
   --repo-root <path>      Repo root (default: git top-level)
   -h, --help              Show help
@@ -29,7 +28,6 @@ EOF
 VM_NAME="nerd-nixos"
 GUEST_NAME="nixos"
 KEY_NAME=""
-PROFILE_NAME="committed"
 SECRETS_FILE="modules/home-manager/ssh.d/keys.yaml"
 REPO_ROOT=""
 
@@ -38,7 +36,6 @@ while [[ $# -gt 0 ]]; do
     --vm) shift; VM_NAME="${1:-}" ;;
     --guest) shift; GUEST_NAME="${1:-}" ;;
     --key-name) shift; KEY_NAME="${1:-}" ;;
-    --profile) shift; PROFILE_NAME="${1:-}" ;;
     --secrets-file) shift; SECRETS_FILE="${1:-}" ;;
     --repo-root) shift; REPO_ROOT="${1:-}" ;;
     -h|--help) usage; exit 0 ;;
@@ -69,27 +66,27 @@ trap 'rm -rf "$workdir"' EXIT
 vm_pub="$workdir/vm_host.pub"
 sops_plain="$workdir/secrets.plain.yaml"
 sops_pub="$workdir/sops_host.pub"
-profile_key_type=""
-profile_key_public=""
-profile_key_comment=""
+sops_key_type=""
+sops_key_public=""
+sops_key_comment=""
 
 limactl shell "$VM_NAME" -- sudo cat /etc/ssh/ssh_host_ed25519_key.pub > "$vm_pub"
 
 sops -d --input-type yaml --output-type yaml --filename-override "$(basename "$SECRETS_FILE")" "$SECRETS_FILE" > "$sops_plain"
-profile_key_type="$(yq -r ".profiles.\"$PROFILE_NAME\".\"$KEY_NAME\".type // \"\"" "$sops_plain")"
-profile_key_public="$(yq -r ".profiles.\"$PROFILE_NAME\".\"$KEY_NAME\".public // \"\"" "$sops_plain")"
-profile_key_comment="$(yq -r ".profiles.\"$PROFILE_NAME\".\"$KEY_NAME\".comment // \"\"" "$sops_plain")"
+sops_key_type="$(yq -r ".\"$KEY_NAME\".type // \"\"" "$sops_plain")"
+sops_key_public="$(yq -r ".\"$KEY_NAME\".public // \"\"" "$sops_plain")"
+sops_key_comment="$(yq -r ".\"$KEY_NAME\".comment // \"\"" "$sops_plain")"
 
-if [[ -n "$profile_key_type" && -n "$profile_key_public" ]]; then
-  if [[ -n "$profile_key_comment" ]]; then
-    printf '%s %s %s\n' "$profile_key_type" "$profile_key_public" "$profile_key_comment" > "$sops_pub"
+if [[ -n "$sops_key_type" && -n "$sops_key_public" ]]; then
+  if [[ -n "$sops_key_comment" ]]; then
+    printf '%s %s %s\n' "$sops_key_type" "$sops_key_public" "$sops_key_comment" > "$sops_pub"
   else
-    printf '%s %s\n' "$profile_key_type" "$profile_key_public" > "$sops_pub"
+    printf '%s %s\n' "$sops_key_type" "$sops_key_public" > "$sops_pub"
   fi
 fi
 
 if [[ ! -s "$sops_pub" ]]; then
-  echo "ERROR: missing canonical key fields under .profiles.\"$PROFILE_NAME\".\"$KEY_NAME\" in $SECRETS_FILE (need .type and .public)" >&2
+  echo "ERROR: missing canonical key fields under .\"$KEY_NAME\" in $SECRETS_FILE (need .type and .public)" >&2
   exit 1
 fi
 
@@ -101,9 +98,9 @@ echo "SOPS fingerprint:  $sops_fp"
 echo "Key name:          $KEY_NAME"
 
 if [[ "$vm_fp" == "$sops_fp" ]]; then
-  echo "OK: VM host key matches SOPS profile '$PROFILE_NAME'"
+  echo "OK: VM host key matches SOPS entry '$KEY_NAME'"
   exit 0
 fi
 
-echo "MISMATCH: VM host key differs from SOPS profile '$PROFILE_NAME'" >&2
+echo "MISMATCH: VM host key differs from SOPS entry '$KEY_NAME'" >&2
 exit 1

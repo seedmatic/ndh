@@ -12,18 +12,17 @@ main() {
 	local bashBin="${1:?bash binary path required}"
 	local enrichScript="${2:?enrich script path required}"
 	local splitScript="${3:?split script path required}"
-	local profileName="${4:?ssh key profile name required}"
-	local hostIdent="${5:?host ident required}"
-	local decryptedSSHKeysYamlPath="${6:?decrypted ssh keys yaml path required}"
-	local generatedKeysYamlPath="${7:?generated keys yaml path required}"
-	local inventoryHostsCsv="${8:-}"
-	local profileOwnerName="${9:?profile owner name required}"
-	local splitKeysDir="${10:?split keys dir required}"
-	local generatedSystemKeysYamlPath="${11:?generated system keys yaml path required}"
-	local generatedProfileKeysYamlPath="${12:?generated profile keys yaml path required}"
-	local authorizedKeysDir="${13:-}"
-	local profileUserName="${14:-}"
-	local profileAuthKeyName="${15:-rdp-host}"
+	local hostIdent="${4:?host ident required}"
+	local decryptedSSHKeysYamlPath="${5:?decrypted ssh keys yaml path required}"
+	local generatedKeysYamlPath="${6:?generated keys yaml path required}"
+	local inventoryHostsCsv="${7:-}"
+	local profileOwnerName="${8:?profile owner name required}"
+	local splitKeysDir="${9:?split keys dir required}"
+	local generatedSystemKeysYamlPath="${10:?generated system keys yaml path required}"
+	local generatedProfileKeysYamlPath="${11:?generated profile keys yaml path required}"
+	local authorizedKeysDir="${12:-}"
+	local profileUserName="${13:-}"
+	local profileAuthKeyName="${14:-rdp-host}"
 
 	if [[ ! -x "$bashBin" ]]; then
 		echo "missing executable bash binary: $bashBin" >&2
@@ -40,7 +39,6 @@ main() {
 	install -d -m 0755 "$split_dir" "$profiles_dir"
 
 	"$bashBin" "$enrichScript" \
-		"$profileName" \
 		"$hostIdent" \
 		"$decryptedSSHKeysYamlPath" \
 		"$generatedKeysYamlPath" \

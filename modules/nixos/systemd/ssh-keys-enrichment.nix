@@ -127,7 +127,6 @@ in
         "${pkgs.bash}/bin/bash" \
         "${sshEnrichKeysYamlScript}/bin/ssh-enrich-keys-yaml" \
         "${sshSplitKeysYamlScript}/bin/ssh-split-keys-yaml" \
-        "${profileName}" \
         "${hostIdent}" \
         "${decryptedSSHKeysYamlPath}" \
         "${generatedKeysYamlPath}" \

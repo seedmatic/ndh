@@ -512,9 +512,7 @@ EOF
 source @nixBashTrampoline@
 
 main() {
-	declare -g profileName hostName inputFile outputFile
-	profileName="$1"
-	shift
+	declare -g hostName inputFile outputFile
 	hostName="$1"
 	shift
 	inputFile="$1"
@@ -537,7 +535,7 @@ main() {
 	trap 'rm -rf $tmpdir' EXIT
 
 	: "Load the entire YAML file into shell variables"
-	eval "$(env PROFILE="$profileName" yq -o shell eval 'explode(...) | .profiles.[env(PROFILE)] | { "ssh-keys": . }' - <"$inputFile")"
+	eval "$(yq -o shell eval 'explode(.) | { "ssh-keys": . }' "$inputFile")"
 
 	declare -g profileVarPrefix
 	profileVarPrefix=$(var::snakeCase "ssh-keys")
@@ -549,7 +547,7 @@ main() {
 
 	: "Collect original key names from source YAML to preserve dashed names in output"
 	declare -g sourceKeyNames
-	readarray -t sourceKeyNames < <(env PROFILE="$profileName" yq -r 'explode(...) | .profiles.[env(PROFILE)] | keys[]' "$inputFile")
+	readarray -t sourceKeyNames < <(yq -r 'explode(.) | keys[]' "$inputFile")
 
 	: Process each key entry
 	declare -g processedKeys=()

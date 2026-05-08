@@ -20,15 +20,9 @@ let
     )
   );
 
-  # Get current profile name
-  currentProfile = config.profile.name;
-
-  # Get SSH keys for current profile
-  linuxBuilderCurrentPubKey = keys.profiles.${currentProfile}.linux-builder.public;
-  linuxBuilderCurrentPrivKey = keys.profiles.${currentProfile}.linux-builder.private;
-
-  # Public key trusted by the embedded linux-builder VM's authorized_keys.
-  linuxBuilderCommittedPubKey = keys.profiles.committed.linux-builder.public;
+  # Public key trusted by the embedded linux-builder VM's authorized_keys
+  # (read from flattened keys.yaml — top-level entries, no profile wrapper).
+  linuxBuilderCommittedPubKey = keys.linux-builder.public;
   # Pull builder inventory entries for this host (if present)
   hostName = config.profile.host.hostName;
   cacheCatalog = catalog.caches;

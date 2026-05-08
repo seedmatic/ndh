@@ -432,9 +432,7 @@ EOF
 source @nixBashTrampoline@
 
 main() {
-	declare -g profileName hostName inputFile outputFile
-	profileName="$1"
-	shift
+	declare -g hostName inputFile outputFile
 	hostName="$1"
 	shift
 	inputFile="$1"
@@ -455,7 +453,7 @@ main() {
 	tmpdir=$(mktemp --directory --suffix=keys.d)
 	trap 'rm -rf $tmpdir' EXIT
 
-	eval "$(env PROFILE="$profileName" yq -o shell eval 'explode(...) | .profiles[env(PROFILE)] | { "ssh-keys": . }' - <"$inputFile")"
+	eval "$(yq -o shell eval 'explode(.) | { "ssh-keys": . }' "$inputFile")"
 
 	declare -g profileVarPrefix
 	profileVarPrefix=$(var::snakeCase "ssh-keys")
@@ -465,7 +463,7 @@ main() {
 	readarray -t profileVars <"${tmpdir}/profileVars"
 
 	declare -g sourceKeyNames
-	readarray -t sourceKeyNames < <(env PROFILE="$profileName" yq -r 'explode(...) | .profiles[env(PROFILE)] | keys[]' "$inputFile")
+	readarray -t sourceKeyNames < <(yq -r 'explode(.) | keys[]' "$inputFile")
 
 	declare -g processedKeys=()
 	for keyName in "${sourceKeyNames[@]}"; do

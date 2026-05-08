@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # @codebase
 # Idempotent VM host-key sync helper:
-# - verifies VM host key against encrypted SOPS profile entry
+# - verifies VM host key against its encrypted SOPS entry
 # - enrolls/updates encrypted keys.yaml only when mismatched (or forced)
 # - verifies again after update and checks decrypt integrity
 set -euo pipefail
@@ -21,7 +21,6 @@ Options:
   --vm <name>             Lima instance name (default: nerd-nixos)
   --guest <name>          Guest suffix for vz-guest-<name> (default: nixos)
   --key-name <name>       Explicit key name (default: vz-guest-<guest>)
-  --profile <name>        Secrets profile name (default: committed)
   --secrets-file <path>   Encrypted SOPS YAML (default: modules/home-manager/ssh.d/keys.yaml)
   --repo-root <path>      Repository root (default: git top-level)
   --force                 Force enrollment even if verify already passes
@@ -44,7 +43,6 @@ require_cmd() {
 VM_NAME="nerd-nixos"
 GUEST_NAME="nixos"
 KEY_NAME=""
-PROFILE_NAME="committed"
 SECRETS_FILE="modules/home-manager/ssh.d/keys.yaml"
 REPO_ROOT=""
 FORCE=0
@@ -54,7 +52,6 @@ while [[ $# -gt 0 ]]; do
     --vm) shift; VM_NAME="${1:-}" ;;
     --guest) shift; GUEST_NAME="${1:-}" ;;
     --key-name) shift; KEY_NAME="${1:-}" ;;
-    --profile) shift; PROFILE_NAME="${1:-}" ;;
     --secrets-file) shift; SECRETS_FILE="${1:-}" ;;
     --repo-root) shift; REPO_ROOT="${1:-}" ;;
     --force) FORCE=1 ;;
@@ -88,7 +85,6 @@ verify_args=(
   --vm "$VM_NAME"
   --guest "$GUEST_NAME"
   --key-name "$KEY_NAME"
-  --profile "$PROFILE_NAME"
   --secrets-file "$SECRETS_FILE"
   --repo-root "$REPO_ROOT"
 )
@@ -97,7 +93,6 @@ enroll_args=(
   --vm "$VM_NAME"
   --guest "$GUEST_NAME"
   --key-name "$KEY_NAME"
-  --profile "$PROFILE_NAME"
   --secrets-file "$SECRETS_FILE"
   --repo-root "$REPO_ROOT"
 )

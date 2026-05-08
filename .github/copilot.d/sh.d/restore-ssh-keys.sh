@@ -10,7 +10,6 @@ if [[ "${COPILOT_XTRACE}" == "1" ]]; then
 fi
 
 KEYS_YAML=/run/secrets/nix-darwin-home/nxmatic-ssh-keys.yaml
-PROFILE=committed
 STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/ssh-keys.d"
 REPO=/private/var/lib/git/nxmatic/nix-darwin-home
 
@@ -20,11 +19,7 @@ if [[ ! -f "$KEYS_YAML" ]]; then
 fi
 
 tmp_keys=$(mktemp -d)
-tmp_profile=$(mktemp)
-trap 'rm -rf "$tmp_keys" "$tmp_profile"' EXIT
-
-echo "=== Extracting profile: $PROFILE ==="
-yq eval ".profiles.\"${PROFILE}\"" "$KEYS_YAML" > "$tmp_profile"
+trap 'rm -rf "$tmp_keys"' EXIT
 
 echo "=== Generating agent-keys manifest ==="
 yq eval -r '
@@ -36,11 +31,11 @@ yq eval -r '
         | test("(^|,)(ssh-user)(,|$)"))
     )
   | .key
-' "$tmp_profile" | tee "$tmp_keys/agent-keys"
+' "$KEYS_YAML" | tee "$tmp_keys/agent-keys"
 
 echo ""
 echo "=== Extracting key files ==="
-bash "${REPO}/modules/home-manager/ssh-key.d/ssh-extract-keys.sh" "$tmp_profile" "$tmp_keys"
+bash "${REPO}/modules/home-manager/ssh-key.d/ssh-extract-keys.sh" "$KEYS_YAML" "$tmp_keys"
 
 echo ""
 echo "=== Files produced ==="
