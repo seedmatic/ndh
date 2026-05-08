@@ -19,6 +19,9 @@ in
     ./systemd/naming.nix
     ./sops.nix
     "${self}/modules/.common.d/sops.nix"
+    # Shared baseline experimental-features; cloud-init's `nix copy` needs
+    # at least `nix-command` + `flakes`.
+    "${self}/modules/.common.d/nix-settings.nix"
     # ssh-keys-enrichment signs the cert-only keys (like `nix-store`) from
     # ssh-keys.yaml using the mammoth-skate authority and writes the usable
     # keypair + cert under sshPaths.secretsKeysDir (overridden below to
@@ -37,16 +40,6 @@ in
   ];
 
   networking.hostName = guestHostName;
-
-  # Nix experimental features required by cloud-init's `nix copy`. Kept
-  # minimal (no substituters, no trusted-users) since the bringup image's
-  # only nix invocation is a single copy from the remote store into the
-  # local daemon; the full runtime reconfigures nix wholesale on first
-  # switch via modules/nixos/nix-settings.nix.
-  nix.settings.experimental-features = [
-    "nix-command"
-    "flakes"
-  ];
 
   # mDNS resolution via systemd-resolved. cloud-init's runcmd resolves the
   # remote store hostname (e.g. bioskop.local) via standard NSS + resolved,

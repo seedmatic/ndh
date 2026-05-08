@@ -266,6 +266,7 @@ in
     ./primary-user.nix
     ./user.nix
     ./nixpkgs.nix
+    ./nix-settings.nix
     ./io-nxmatic-nix-darwin-home-bringup-runtime.nix
     ./dns-servers.nix
     ./dnsmasq.nix

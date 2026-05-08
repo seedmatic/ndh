@@ -17,14 +17,9 @@ let
 in
 {
   nix.settings = {
-    # Enable content-addressed derivations to reduce rebuild churn for identical outputs.
-    # We also disable auto-optimise-store for faster iterative builds; run `nix-store --optimise` manually when idle.
-    experimental-features = [
-      "nix-command"
-      "flakes"
-      "ca-derivations"
-      "configurable-impure-env"
-    ];
+    # experimental-features declared in modules/.common.d/nix-settings.nix
+    # (baseline for both NixOS and nix-darwin); this file adds the NixOS-
+    # specific substituters, trusted-users, and store optimisation policy.
     auto-optimise-store = false; # Manual optimise recommended; improves build latency during development.
     trusted-users = [
       cfgUserName

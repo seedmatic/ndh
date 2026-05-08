@@ -18,11 +18,12 @@ in
 
   nix = {
     package = pkgs.nix;
+    # experimental-features declared in modules/.common.d/nix-settings.nix;
+    # keep the raw GC toggles here.
     extraOptions = ''
       keep-outputs = false
       keep-derivations = false
       keep-failed = false
-      experimental-features = nix-command flakes configurable-impure-env
     '';
     settings = {
       max-jobs = 4;
