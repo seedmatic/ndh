@@ -29,6 +29,17 @@ let
       ''
     )
   );
+
+  # Login shell restricted to the nix-daemon stdio protocol. Replaces the
+  # authorized_keys `command="..."` pattern which does not compose with
+  # cert-signed principals (TrustedUserCAKeys + AuthorizedPrincipalsCommand).
+  # Materialized at a stable /etc path so it is a plain file rather than a
+  # derivation (users.users.*.shell types are shellPackage | passwdEntry path).
+  nixStoreShellPath = "/etc/ssh/nix-store-shell";
+  nixStoreShellText = ''
+    #!/bin/sh
+    exec /run/current-system/sw/bin/nix-daemon --stdio
+  '';
 in
 {
   # Profile user configuration
@@ -60,6 +71,28 @@ in
     ];
   };
   users.groups.builder = lib.mkIf runtimeMode { };
+
+  # nix-store user: dedicated inbound identity for `nix copy` / `nix-daemon
+  # --stdio` traffic between hosts, distinct from `builder` which is authorized
+  # to drive builds. Authentication is via cert-signed principals
+  # (TrustedUserCAKeys + AuthorizedPrincipalsCommand); the login shell
+  # restricts any accepted session to the daemon protocol.
+  users.users.nix-store = lib.mkIf runtimeMode {
+    isSystemUser = true;
+    group = "nixbld";
+    description = "Inbound nix-daemon --stdio endpoint";
+    shell = nixStoreShellPath;
+    useDefaultShell = false;
+  };
+
+  environment.etc."ssh/nix-store-shell" = lib.mkIf runtimeMode {
+    text = nixStoreShellText;
+    mode = "0755";
+  };
+
+  environment.shells = lib.mkIf runtimeMode [ nixStoreShellPath ];
+
+  nix.settings.trusted-users = lib.mkIf runtimeMode [ "nix-store" ];
 
   # root: also accepts linux-builder key for builds that require root-level operations.
   users.users.root.openssh.authorizedKeys.keys = lib.mkIf runtimeMode (
