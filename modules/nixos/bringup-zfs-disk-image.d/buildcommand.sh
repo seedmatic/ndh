@@ -24,6 +24,10 @@ set -x
 export NDH_BUILD_OBSERVE="${NDH_BUILD_OBSERVE:-}"
 export NDH_ZFS_INSTALL_OBSERVE="${NDH_ZFS_INSTALL_OBSERVE:-true}"
 export NDH_ZFS_INSTALL_OBSERVE_INTERVAL="${NDH_ZFS_INSTALL_OBSERVE_INTERVAL:-5}"
+# Session identity injected via --impure-env by nix-build-observe.
+# The aggregator's require_session filter drops events without these fields.
+export NDH_BUILD_OBSERVE_SESSION="${NDH_BUILD_OBSERVE_SESSION:-}"
+export NDH_BUILD_OBSERVE_HOST="${NDH_BUILD_OBSERVE_HOST:-}"
 
 : 'shell.sock -> /dev/hvc0 (first virtio-serial port we add).'
 : 'Use hvc0 directly - the /dev/virtio-ports/ symlink needs udev'
@@ -74,6 +78,8 @@ obs::sample() {
 type: builder-sample
 source_layer: builder
 ts: "${ts}"
+session: "${NDH_BUILD_OBSERVE_SESSION}"
+host: "${NDH_BUILD_OBSERVE_HOST}"
 qemu:
   pid: "${qemu_pid:-}"
   cpu_pct: ${qemu_cpu:-0}
@@ -94,6 +100,8 @@ type: builder-phase
 source_layer: builder
 label: "${label}"
 ts: "$(date -Iseconds)"
+session: "${NDH_BUILD_OBSERVE_SESSION}"
+host: "${NDH_BUILD_OBSERVE_HOST}"
 EOJ
 )"
 }
@@ -121,7 +129,14 @@ obs::start() {
   fi
 
   # Send header
-  obs::vector:push '{"type":"builder-meta","started":"'"$(date -Iseconds)"'"}'
+  obs::vector:push "$(yq -p yaml -o json -I0 - <<EOJ
+type: builder-meta
+source_layer: builder
+started: "$(date -Iseconds)"
+session: "${NDH_BUILD_OBSERVE_SESSION}"
+host: "${NDH_BUILD_OBSERVE_HOST}"
+EOJ
+)"
 
   # Sampler loop — set +e so a transient metric failure never kills the loop.
   ( set +x +e

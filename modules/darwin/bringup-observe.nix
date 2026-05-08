@@ -50,49 +50,6 @@ let
     lib.generators.toYAML { } vectorSettings
   );
 
-  vectorConfigFileOld = ndh.store.writeText "bringup-observe-vector-config-old" ''
-    api:
-      enabled: true
-      address: "127.0.0.1:${toString cfg.apiPort}"
-
-    sources:
-      nix_bld_http:
-        type: http_server
-        address: "0.0.0.0:${toString cfg.httpPort}"
-        decoding:
-          codec: json
-      vector_logs:
-        type: internal_logs
-      vector_metrics:
-        type: internal_metrics
-
-    sinks:
-      ndjson_file:
-        type: file
-        inputs:
-          - nix_bld_http
-        path: "${resolvedOutputDir}/{{ session }}.ndjson"
-        encoding:
-          codec: json
-        buffer:
-          type: memory
-          max_events: 1
-          when_full: block
-      vector_logs_file:
-        type: file
-        inputs:
-          - vector_logs
-        path: "${resolvedOutputDir}/vector-aggregator.log"
-        encoding:
-          codec: text
-      vector_metrics_file:
-        type: file
-        inputs:
-          - vector_metrics
-        path: "${resolvedOutputDir}/vector-aggregator-metrics.ndjson"
-        encoding:
-          codec: json
-  '';
   nixBuildObservePackage = pkgs.writeShellScriptBin "nix-build-observe" ''
     export NDH_NIX_BASH_TRAMPOLINE="${ndh.context.nixBashTrampoline}"
     # Bake the resolved outputDir so `nix run` picks it up even without a login shell.

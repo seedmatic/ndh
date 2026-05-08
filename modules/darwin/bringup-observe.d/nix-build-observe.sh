@@ -280,6 +280,11 @@ obs::build:run() {
   # Always pass these
   impure_env_args+=(--impure-env NDH_BUILD_OBSERVE=1)
 
+  # Propagate the session identity so every layer can tag its own events.
+  # Without these the aggregator's require_session filter drops the sample.
+  impure_env_args+=(--impure-env "NDH_BUILD_OBSERVE_SESSION=${OBS_SESSION}")
+  impure_env_args+=(--impure-env "NDH_BUILD_OBSERVE_HOST=${OBS_HOST}")
+
   # Pin the endpoint the nested-QEMU guest uses.  10.0.2.2 is the macOS host
   # as seen from linux-builder SLIRP (the builder's Vector agent forwards to
   # the macOS aggregator).  We set it explicitly rather than relying on the
