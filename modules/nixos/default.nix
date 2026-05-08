@@ -154,6 +154,7 @@ let
     ./disko.nix
     ./systemd
     ./zfs.nix
+    ./zfs-recovery-chroot.nix
     ./sops.nix
     ./dbus-tcp.nix
     ./vlan.nix
@@ -227,6 +228,9 @@ in
     ]);
 
   config = {
+
+    # Enable ZFS recovery chroot script
+    zfsRecovery.enable = lib.mkDefault true;
 
     # Explicit NDH bootstrap profile policy by image mode:
     # - bootstrap images: non-strict runtime (warn) to avoid deadlocks while first boot converges

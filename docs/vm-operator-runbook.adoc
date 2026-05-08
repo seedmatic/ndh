@@ -793,12 +793,75 @@ ls -la /mnt/nix/var/nix/profiles/system*
 journalctl --directory=/mnt/var/log/journal -b -1 -p err
 ----
 
-=== Step 8 — chroot into the NixOS system
+=== Step 8 — Enter the NixOS chroot environment
+
+The NixOS system includes a `zfs-recovery-chroot` script (provisioned in both
+minimal and full configurations) that automates the chroot setup. You can use
+this script or perform manual chroot as described below.
+
+==== Option A: Using the zfs-recovery-chroot script (Recommended)
+
+[source,bash]
+----
+# The script is available in the mounted NixOS store:
+find /mnt/nix/store -name "zfs-recovery-chroot" -type f
+
+# Or from the system profile:
+/mnt/nix/var/nix/profiles/system/bin/zfs-recovery-chroot
+
+# The script handles:
+# - Pool import with altroot
+# - Network preservation (copies /etc/resolv.conf)
+# - Automatic chroot via nixos-enter
+# - Clean teardown on exit
+----
+
+.Script options
+[source,bash]
+----
+zfs-recovery-chroot --help
+
+Options:
+    -p, --pool POOL         ZFS pool name (default: tank)
+    -d, --dataset DATASET   Root dataset (default: tank/nerd)
+    -r, --root PATH         Chroot root path (default: /mnt/zfs-root)
+    -n, --no-network        Don't preserve network access
+    -c, --cleanup           Only perform cleanup
+    -h, --help              Show this help message
+----
+
+NOTE: If you've already imported the pool manually at `/mnt` (as in Step 6),
+you can use `nixos-enter` directly (see Option B1 below) or re-import with
+the script's altroot.
+
+==== Option B1: Using nixos-enter (Manual)
+
+`nixos-enter` is the NixOS-native way to enter a chroot. It automatically
+handles all virtual filesystem mounts (`/proc`, `/sys`, `/dev`).
+
+[source,bash]
+----
+# Preserve network configuration
+cp /etc/resolv.conf /mnt/etc/resolv.conf
+
+# Enter the NixOS environment
+# nixos-enter handles /proc, /sys, /dev mounts automatically
+nixos-enter --root /mnt
+
+# Inside the chroot:
+ls /nix/store | head
+ls -la /nix/var/nix/profiles/system
+----
+
+==== Option B2: Using Traditional Chroot (Fallback)
 
 [source,bash]
 ----
 # Mount the EFI partition (adjust device to match lsblk output):
 mount /dev/vda1 /mnt/boot    # Tart: vda is disk.img; Lima: find the boot disk
+
+# Preserve network configuration
+cp /etc/resolv.conf /mnt/etc/resolv.conf
 
 # Bind the virtual filesystems:
 mount --bind /dev  /mnt/dev
@@ -813,7 +876,93 @@ ls /nix/store | head
 ls -la /nix/var/nix/profiles/system
 ----
 
-=== Step 9 — Repair EFI boot entries with efibootmgr
+=== Step 9 — Common Recovery Tasks in Chroot
+
+Once inside the chroot environment, perform recovery operations as needed:
+
+==== Repair NixOS Configuration
+
+[source,bash]
+----
+# Edit configuration files
+nano /etc/nixos/configuration.nix
+
+# Rebuild the system (creates new boot entry)
+nixos-rebuild boot
+
+# Or switch immediately (also updates running system if booted)
+nixos-rebuild switch
+----
+
+==== Reset Root Password
+
+[source,bash]
+----
+# Set a new password for root
+passwd root
+
+# Or unlock root account (if locked)
+passwd -u root
+----
+
+==== Inspect System State
+
+[source,bash]
+----
+# Check disk usage
+df -h
+zpool list
+zfs list -r tank/nerd
+
+# View system logs
+journalctl -xe
+
+# Check systemd services
+systemctl list-units --failed
+----
+
+==== Network Troubleshooting
+
+[source,bash]
+----
+# Test network connectivity
+ping -c 3 1.1.1.1
+
+# If DNS doesn't work, manually configure:
+echo "nameserver 1.1.1.1" > /etc/resolv.conf
+echo "nameserver 8.8.8.8" >> /etc/resolv.conf
+----
+
+==== Restore from ZFS Snapshots
+
+[source,bash]
+----
+# List available snapshots
+zfs list -t snapshot -r tank/nerd
+
+# Rollback to a previous snapshot
+zfs rollback tank/nerd/root@snapshot-name
+
+# Or clone a snapshot to a new dataset
+zfs clone tank/nerd/root@snapshot-name tank/nerd/root-recovered
+----
+
+==== Clean Up Disk Space
+
+[source,bash]
+----
+# Remove old NixOS generations
+nix-collect-garbage -d
+
+# Delete old ZFS snapshots
+zfs destroy tank/nerd/root@old-snapshot
+
+# Check freed space
+df -h
+zpool list tank
+----
+
+=== Step 10 — Repair EFI boot entries with efibootmgr
 
 Run from the _Debian rescue_ shell (outside the chroot) so `efibootmgr` can
 write directly to the guest EFI NVRAM.
@@ -848,14 +997,15 @@ NOTE: Changes are committed to the guest NVRAM file on disk
 (`~/.tart/vms/nerd-nixos/.nvram` for Tart; `~/.lima/nerd-nixos/nvram.fd` for Lima).
 They take effect on the next `nerd-nixos` boot.
 
-=== Step 10 — Teardown
+=== Step 11 — Teardown
 
 [source,bash]
 ----
 # Exit chroot if open:
 exit
 
-# Unmount and export pools cleanly:
+# If using zfs-recovery-chroot script, it handles cleanup automatically
+# Otherwise, manually unmount and export:
 umount /mnt/boot /mnt/sys /mnt/proc /mnt/dev
 zpool export tank
 zpool export recover   # if imported
@@ -866,7 +1016,10 @@ tart stop debian-rescue          # Tart
 limactl stop debian-rescue       # Lima
 ----
 
-=== Step 11 — Boot the repaired nerd-nixos VM
+NOTE: The `zfs-recovery-chroot` script automatically handles cleanup (unmount
+virtual filesystems, export pools) when you exit the chroot.
+
+=== Step 12 — Boot the repaired nerd-nixos VM
 
 [source,bash]
 ----

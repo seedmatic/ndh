@@ -11,6 +11,7 @@
     ./console-serial.nix
     ./boot-loader.nix
     ./zfs.nix
+    ./zfs-recovery-chroot.nix
   ];
 
   # Provide stub ndhSystemd for zfs.nix module compatibility
@@ -153,6 +154,9 @@
     enable = true;
     network.enable = true;
   };
+
+  # Enable ZFS recovery chroot script
+  zfsRecovery.enable = true;
 
   # Minimal system packages - only essentials for bootstrap
   environment.systemPackages = with pkgs; [
