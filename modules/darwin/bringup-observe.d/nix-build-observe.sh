@@ -236,6 +236,20 @@ obs::start() {
   ln -sf "${OBS_OUT_FILE}" "$(dirname "${OBS_OUT_FILE}")/latest.ndjson"
 }
 
+obs::rotate() {
+  # Keep only the three most recent session NDJSON files.
+  # Session names start with an ISO-8601 UTC timestamp so `sort -r` == newest-first.
+  local keep=3
+  local -a victims=()
+  mapfile -t victims < <(
+    find "${OBS_DIR}" -maxdepth 1 -type f -name '[0-9]*.ndjson' 2>/dev/null \
+      | sort -r \
+      | tail -n +"$((keep + 1))"
+  )
+  (( ${#victims[@]} == 0 )) && return 0
+  rm -f "${victims[@]}"
+}
+
 obs::stop() {
   [[ "${_OBS_CLEANUP_DONE}" == "1" ]] && return 0
   _OBS_CLEANUP_DONE=1
@@ -247,6 +261,8 @@ obs::stop() {
   [[ -n "${OBS_VECTOR_PID:-}" ]] && kill "${OBS_VECTOR_PID}" 2>/dev/null || true
   [[ -n "${OBS_VECTOR_PID:-}" ]] && wait "${OBS_VECTOR_PID}" 2>/dev/null || true
   [[ -n "${OBS_TMPDIR:-}" ]]     && rm -rf "${OBS_TMPDIR}" || true
+
+  obs::rotate || true
 
   echo "[nix-build-observe][INFO] observe log: ${OBS_OUT_FILE}" >&2
 }
