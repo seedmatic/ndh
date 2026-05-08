@@ -111,13 +111,22 @@ obs::start() {
   obs::enabled || return 0
   local interval="${NDH_ZFS_INSTALL_OBSERVE_INTERVAL:-5}"
 
+  # Relay: forward local 9001 → NDH_VECTOR_RELAY_TARGET (macOS Vector).
+  # The nested QEMU uses SLIRP; 10.0.2.2 is this linux-builder host.
+  # Start socat only when a relay target is configured.
+  if [[ -n "${NDH_VECTOR_RELAY_TARGET:-}" ]] && command -v socat >/dev/null 2>&1; then
+    socat TCP-LISTEN:9001,fork,reuseaddr TCP:"${NDH_VECTOR_RELAY_TARGET}" &
+    _NDH_VECTOR_RELAY_PID="$!"
+    export _NDH_VECTOR_RELAY_PID
+  fi
+
   # Send header
   obs::vector:push '{"type":"builder-meta","started":"'"$(date -Iseconds)"'"}'
 
-  # Sampler loop
-  ( set +x
+  # Sampler loop — set +e so a transient metric failure never kills the loop.
+  ( set +x +e
     while true; do
-      obs::vector:push "$(obs::sample)"
+      obs::vector:push "$(obs::sample)" || true
       sleep "$interval"
     done ) &
   OBS_SAMPLER_PID="$!"
@@ -129,6 +138,8 @@ obs::stop() {
   [[ -n "${OBS_SAMPLER_PID:-}" ]] && \
     kill "${OBS_SAMPLER_PID}" 2>/dev/null || true
   obs::mark "builder-stop"
+  [[ -n "${_NDH_VECTOR_RELAY_PID:-}" ]] && \
+    kill "${_NDH_VECTOR_RELAY_PID}" 2>/dev/null || true
 }
 
 obs::start

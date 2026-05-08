@@ -280,15 +280,31 @@ obs::build:run() {
   # Always pass these
   impure_env_args+=(--impure-env NDH_BUILD_OBSERVE=1)
 
+  # Pin the endpoint the nested-QEMU guest uses.  10.0.2.2 is the macOS host
+  # as seen from linux-builder SLIRP (the builder's Vector agent forwards to
+  # the macOS aggregator).  We set it explicitly rather than relying on the
+  # hardcoded fallback baked into buildcommand.sh.
+  impure_env_args+=(--impure-env "NDH_VECTOR_ENDPOINT=http://10.0.2.2:${OBS_HTTP_PORT}")
+
+  # Tee the nix-daemon JSON stream into Vector so `source_layer=nix-daemon`
+  # events land in the aggregator alongside vz-host/builder/guest events.
+  # yq -I0 emits one compact JSON object per line (matches Vector's http_server
+  # json-lines decoder).  The outer `|| true` preserves tolerance for partial
+  # streams when the build is interrupted.
   nix build \
       --extra-experimental-features "nix-command flakes configurable-impure-env" \
       --impure \
       "${impure_env_args[@]}" \
       --out-link result \
       --json "$@" \
-    | env OBS_SESSION="${OBS_SESSION}" OBS_HOST="${OBS_HOST}" yq -p json -o yaml \
-        '. + {"source_layer": "nix-daemon", "session": strenv("OBS_SESSION"), "host": strenv("OBS_HOST")}' \
-        2>/dev/null || true
+    | env OBS_SESSION="${OBS_SESSION}" OBS_HOST="${OBS_HOST}" \
+        yq -p json -o json -I0 \
+          '. + {"source_layer": "nix-daemon", "session": strenv("OBS_SESSION"), "host": strenv("OBS_HOST")}' \
+        2>/dev/null \
+    | while IFS= read -r event; do
+        [[ -n "${event}" ]] || continue
+        obs::vector:send "${event}" || true
+      done || true
 
 }
 

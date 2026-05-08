@@ -819,7 +819,11 @@ main() {
 				|| true
 		)"
 		if [[ -n "$primary_source" ]]; then
-			if ! tart:image:size:matches-source "$primary_source" "$tart_vm_disk"; then
+			# After a factory reset tart:vm:ensure creates a fresh blank disk at the
+			# exact same virtual size as the bringup source image, so
+			# tart:image:size:matches-source would return true and the blank disk
+			# would be kept.  Skip the size check when factory_reset is active.
+			if $factory_reset || ! tart:image:size:matches-source "$primary_source" "$tart_vm_disk"; then
 				tart:disk:image:materialize-from-source "$primary_source" "$tart_vm_disk" "root disk (primary image)"
 			else
 				: "[tartConfig][INFO] preserving existing EFI root disk content (size matches source): $tart_vm_disk"
