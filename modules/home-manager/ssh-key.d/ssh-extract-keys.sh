@@ -82,7 +82,10 @@ main() {
 			if [[ "$filename" == *-cert.pub ]]; then
 				ssh-keygen -Lf "$contentFile" >/dev/null
 			else
-				ssh-keygen -lf "$contentFile" >/dev/null
+				# Emit a sibling .sha256 file holding the ssh-keygen fingerprint line
+				# (SHA256:... + comment + type) so it can be diff'd against `ssh-add -l`.
+				ssh-keygen -lf "$contentFile" >"${contentFile%.pub}.sha256"
+				chmod 644 "${contentFile%.pub}.sha256"
 			fi
 		else
 			chmod 600 "$contentFile"
