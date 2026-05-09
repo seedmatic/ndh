@@ -1,0 +1,193 @@
+# @codebase JSON Schema (draft 2020-12) for the NDH SSH keys bundle.
+# Authored in YAML so reviewers can eyeball it next to keys.v2.yaml.
+# check-jsonschema accepts YAML schemas directly (via ruamel-yaml).
+#
+# Validation scope: structural. ENC[...] scalars are accepted as opaque
+# strings (the encrypted envelope is validated separately by sops).
+#
+# Cross-reference validation (keys.<k>.authority must resolve to a top-level
+# authorities.<name>) is not expressible in JSON Schema and lives in a
+# companion script — to be added after the v2 migration stabilizes.
+
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://github.com/nxmatic/nix-darwin-home/modules/home-manager/ssh.d/keys.schema.yaml"
+title: "NDH SSH keys bundle (v2)"
+type: object
+additionalProperties: false
+required:
+  - authorities
+  - keys
+properties:
+  authorities:
+    type: object
+    description: >
+      Top-level signing authorities, referenced by name from each key's
+      `authority:` field. Each authority appears once; its private key is
+      encrypted exactly once by sops (no duplication across dependent keys).
+    patternProperties:
+      "^[a-z][a-z0-9-]*$":
+        $ref: "#/$defs/authority"
+    additionalProperties: false
+  keys:
+    type: object
+    description: >
+      Per-identity entries keyed by bare key name (e.g. `nix-store`,
+      `linux-builder`). Each entry references a top-level authority by name
+      instead of inlining the authority block.
+    patternProperties:
+      "^[a-z][a-z0-9-]*$":
+        $ref: "#/$defs/key"
+    additionalProperties: false
+  sops:
+    type: object
+    description: "Opaque sops metadata; validated by sops itself."
+
+$defs:
+
+  sshKeyType:
+    type: string
+    enum:
+      - ssh-ed25519
+      - ssh-rsa
+      - ecdsa-sha2-nistp256
+      - ecdsa-sha2-nistp384
+      - ecdsa-sha2-nistp521
+
+  usageTag:
+    type: string
+    enum:
+      - ssh-host
+      - ssh-user
+      - ssh-authority
+      - user-signing
+      - agent-signing
+      - host-signing
+      - github-signing
+
+  profileName:
+    type: string
+    description: >
+      Profile identifier. Matches `profile.name` in Nix. Hosts declare
+      `profile.name = "<profileName>"`; the split step filters keys to
+      those whose `profiles:` list contains that name. Profiles are
+      orthogonal (no implicit inheritance): a key whose profiles omit
+      `bringup` is excluded from bringup images even if it has `host`.
+    enum:
+      - bringup  # minimal image: only keys needed for activation (nix-store)
+      - host     # machine identity: sshd HostKey, inbound auth, cert chain
+      - user     # operator identity: outbound ssh, git signing, etc.
+
+  # Accepts either a raw base64 public key (min 40 chars, strict charset) or
+  # a sops-encrypted envelope `ENC[...]`. Either form is valid at rest.
+  base64OrEnc:
+    oneOf:
+      - type: string
+        pattern: "^[A-Za-z0-9+/]+=*$"
+        minLength: 40
+      - type: string
+        pattern: '^ENC\[.*\]$'
+
+  principalsMap:
+    type: object
+    description: >
+      Mapping of certificate principal names to their local user name on
+      the target host. The principal name is what appears in the signed
+      cert's Principals list; the value is the login name it grants.
+    patternProperties:
+      "^[a-z][a-z0-9-]*$":
+        type: string
+        pattern: "^[a-z_][a-z0-9_-]*$"
+    additionalProperties: false
+
+  authority:
+    type: object
+    additionalProperties: false
+    required:
+      - type
+      - public
+      - private
+    properties:
+      type:
+        $ref: "#/$defs/sshKeyType"
+      comment:
+        type: string
+      domain:
+        type: string
+        description: "DNS domain the authority asserts jurisdiction over."
+      public:
+        $ref: "#/$defs/base64OrEnc"
+      private:
+        $ref: "#/$defs/base64OrEnc"
+      usage:
+        type: array
+        description: >
+          Usage tags the authority can sign certificates for. The enrichment
+          step cross-checks `keys.<k>.usage` against this set before signing.
+        items:
+          $ref: "#/$defs/usageTag"
+        minItems: 1
+        uniqueItems: true
+      annotations:
+        type: object
+        additionalProperties: true
+        properties:
+          public_scope:
+            type: string
+            enum:
+              - user
+              - system
+
+  key:
+    type: object
+    additionalProperties: false
+    required:
+      - type
+      - authority
+      - usage
+      - profiles
+    properties:
+      type:
+        $ref: "#/$defs/sshKeyType"
+      authority:
+        type: string
+        pattern: "^[a-z][a-z0-9-]*$"
+        description: >
+          Reference to a top-level authorities.<name> block. Resolution is
+          a separate pass (not expressible in JSON Schema).
+      usage:
+        type: array
+        items:
+          $ref: "#/$defs/usageTag"
+        minItems: 1
+        uniqueItems: true
+      profiles:
+        type: array
+        description: >
+          Which profiles this key participates in. An empty list (or missing
+          field) means the key is excluded from every profile — the split
+          step warns on such entries.
+        items:
+          $ref: "#/$defs/profileName"
+        minItems: 1
+        uniqueItems: true
+      comment:
+        type: string
+      public:
+        $ref: "#/$defs/base64OrEnc"
+      private:
+        $ref: "#/$defs/base64OrEnc"
+      principals:
+        $ref: "#/$defs/principalsMap"
+      authorized_keys_options:
+        type: array
+        items:
+          type: string
+      annotations:
+        type: object
+        additionalProperties: true
+        properties:
+          public_scope:
+            type: string
+            enum:
+              - user
+              - system

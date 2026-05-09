@@ -19,4 +19,20 @@
     "-S"
     "error"
   ];
+
+  # Validate keys.v2.yaml against its JSON Schema. check-jsonschema reads
+  # YAML natively (via ruamel-yaml) so errors report YAML line/column back
+  # at the source file rather than any intermediate conversion.
+  # Not a formatter in the rewriting sense — it exits non-zero on invalid
+  # input; treefmt surfaces the diagnostics and blocks the run.
+  settings.formatter.keys-schema = {
+    command = "${pkgs.check-jsonschema}/bin/check-jsonschema";
+    options = [
+      "--schemafile"
+      "modules/home-manager/ssh.d/keys.schema.yaml"
+    ];
+    includes = [
+      "modules/home-manager/ssh.d/keys.v2.yaml"
+    ];
+  };
 }

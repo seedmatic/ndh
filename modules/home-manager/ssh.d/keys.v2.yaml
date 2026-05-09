@@ -1,0 +1,147 @@
+# v2 shape of the NDH SSH keys bundle.
+#
+# Changes from v1:
+#   - Top-level `authorities:` holds CA material once. Each authority's
+#     private (CA signing key) is encrypted exactly once by sops.
+#   - Each `keys.<name>` entry references its authority by name via
+#     `authority: <name>` instead of inlining an `authorities.<name>` block.
+#   - Each key declares `profiles: [...]` — the orthogonal role set from
+#     which the split step derives per-profile subsets (bringup/host/user).
+#   - The top-level `mammoth-skate` key entry from v1 is removed; its CA
+#     material now lives at `authorities.mammoth-skate` and its
+#     user-signing usage is subsumed by per-key references.
+#
+# Validation: modules/home-manager/ssh.d/keys.schema.yaml (JSON Schema).
+# Enrichment: ssh-enrich-keys-yaml.sh resolves `authority:` refs against
+# top-level `authorities.<name>` when signing per-key cert pairs.
+authorities:
+  mammoth-skate:
+    type: ssh-ed25519
+    comment: cert-authority@mammoth-skate
+    domain: mammoth-skate.ts.net
+    public: AAAAC3NzaC1lZDI1NTE5AAAAIMm2fu/uVbaaj1OljiSnZ9T1ES9yvbG+Y6JhyLrnQQAS
+    # sops:encrypted
+    private: ENC[AES256_GCM,data:fK1GjvAs/73vI8/d3zsXXNIxBdf2EZdByLYXEpjPESk19UwhcyIZsDnzAak6LnGo1SahFm19Rz67d+hglrMvT6JZKr2/Qecryq0eaDTe8e7pFXkmmmzlJeeVU7oEbEcqREZuAa+nB0WVR2g9NGqQQY684qkRFQ9kQNVKeLZ0e1r9eH93VjpzhT3EPhEhheipykwN+x/4CdPbEbAqlGLPvhd/uPUpSV9pfvHHUOj3Lw8S3jxbFnkYjbC05WmH2VYPak3LgdwtS9WWgDOpUNZZPsnA8PDbuMq6h4Ccn9GLSHLXk8TR7Lul+KIab6PBchMHTiocSIZUWhYMWjuHGo69DrSC3dbjvHWQ0FPzzRRzACHwdeEsXgRN4uEoghuyLmwhCVFGBezKcthPKIcMSgPR0jwjw+uzKZToJdqMzOgMjaaAl/P9F/brqo+hgmP7HHcAPIFOpS3+Qj6Sf0g6M17mdSQCbGQd0GU0BBZRutBJn6Ke0JfopyvA+v0o6jTbnZIjcroYp/7uBvm12ldqWABjt7o6HaUnW9Rp3rY=,iv:fpTcOKLw+4GHWckddTC0chZhk+3Wkiw6xqhJo6tB5uA=,tag:CfwtF6oBQlqf9wx+nFQlfw==,type:str]
+    usage:
+      - ssh-authority
+    annotations:
+      public_scope: system
+
+keys:
+
+  nix-store:
+    type: ssh-ed25519
+    authority: mammoth-skate
+    comment: nix-store@mammoth-skate
+    usage:
+      - ssh-host
+      - user-signing
+    profiles:
+      - bringup
+      - host
+    principals:
+      nix-store: nix-store
+    annotations:
+      public_scope: system
+
+  linux-builder:
+    type: ssh-ed25519
+    authority: mammoth-skate
+    comment: linux-builder@mammoth-skate
+    usage:
+      - ssh-host
+      - agent-signing
+      - user-signing
+    profiles:
+      - host
+    principals:
+      linux-builder: linux-builder
+      committed: committed
+    public: AAAAC3NzaC1lZDI1NTE5AAAAIMHU43EVt2ETrAd7u65ZX+nyLtbMKVr+zvdyM/6db7MV
+    # sops:encrypted
+    private: ENC[AES256_GCM,data:16iI67MioAgqwpjrAEFkdCg34SESds9jWfKcMd2XXjOeP7UFbxxmtt8wPVF2+SB6rElJTVLvQTXVmtAxtUn9Ve5FaomDXbOWTGzWbn5fFAqAozIqcAirha/sFdzjRubGLrR3QKdVeLoN/qf6iJ5/r7hWoJKtJzOKRKl4CECY1/oYjSeQE8P5fE89sCLM1B+7BV2bziHJSPdlAK6GSlJ03v8WFt+/UpGFeyK4X8qxypGmMvhdkCwmSXnLM7/bw4yYh2j6PYASBbtci4z203ZlUaTLKyqvWZCcL7zSWCPqEgAJ3z98BhVM7dbRD5zU2EbaUyuRoVzZTPPeYt2kiWk36noPdoCQ0ZcgnctOWNyXwRQ0o90K+YDoovky9c6uADZi+VNSDsXQfJYi7DkUWaFKGrt7r8wMmvi8Yggx/irExwX1R1YR/L5ib14zmPL5+FD9tTzmfuXSsbeky7opvQ5UJMtBz0taqir///cSwebmkgftbDCqhrXPzzPx5lv1F4N+imQaMCuJQ5ihi/inRkimYiFuSx9mtiFlGBI=,iv:9I0AktC29q1G+qMx3NVYVW+tSddP+xsgspuW8oykkek=,tag:iu8NC/AcAGdr5OYaZ3jb3g==,type:str]
+    annotations:
+      public_scope: user
+
+  rdp-host:
+    type: ssh-ed25519
+    authority: mammoth-skate
+    comment: nxmatic@mammoth-skate
+    usage:
+      - user-signing
+    profiles:
+      - host
+      - user
+    principals:
+      committed: committed
+    public: AAAAC3NzaC1lZDI1NTE5AAAAIGet5e+oTAP3AfpWzlaM+SrHov14dGzao1jadf0S03oE
+    # sops:encrypted
+    private: ENC[AES256_GCM,data:2Fg0gLNo5hcPUqLAs24YlpFcGz/YJzNyeitRliKNb00FVYOb49GPnzO4Pf+S3nDwiQ1hgimM08H5slid3njpuycFgZLuobMJkoeNpqvKdvLbTi9vtYT4Xrz7G2s7jjMRmJmjXw1pKhY+rcRcArTCZXFOpcQOzxFZSd0OBnGSn3Hbbbhp3EN22Vk1aKjncVwaR9zqnWRGbbWJ+eZ9eKKmoKtZ76usfDwV2qkf/d6DV/q6n85Ynwki//wktQLs15RS9qj9vFmf/gSokPiYBOMQNCCk1N4/Czm6w7kQtSHWkSUcRUM7hG3HZZ9RAYI/Vs9VZC3TJnQUjZpfIZO0BO6rYolMjPd+23UAh278yZhTeImVLFS6VK1SldonFq0U5PRPxmPuIvjfAoRActer7yEoNOo3gSXYHBuMqZ2MqRLn1elwi9AT2jwFmbw4BaHCBsHFUSKuIH8PyqzxU22FxVQyXmHDhN1bTE/fxRIoHJ5rAonVB7skjDTbRp3h9Hg5NbhcQD3LacS2slIUUB51rCxxmsZlvCdEoBhWvmI=,iv:igEriDRTkGemT96b9UiKR+KdhJ3RkHrShO2TZ1nLPnk=,tag:q2jmyvpx6kH6w9sIvMTxEw==,type:str]
+    authorized_keys_options:
+      - forwarding
+    annotations:
+      public_scope: user
+
+  rke2-cluster:
+    type: ssh-ed25519
+    authority: mammoth-skate
+    comment: rke2-cluster@github
+    usage:
+      - ssh-user
+    profiles:
+      - user
+    public: AAAAC3NzaC1lZDI1NTE5AAAAIEk3mPT46ePtbxdZg4CLBGVW4Tt5iFTxNdLm1ohNpV0b
+    # sops:encrypted
+    private: ENC[AES256_GCM,data:2/jc6KascJNwerV42Swc1WC/l8omEL6Zci/akwkN+c1bp4FzOJp85agXa4HNBxLrbi9yktTBBfyCf9ui/bdxCe6E9XwkDEnxdaH8nN7UiBU++/dqbII5jA8psQu2kwpYlTT+Mf5X2uiheC9Hm9uiiiAAgZWfoprykip6kaxly9VvVJ0ewFY5taYDrbVMQDTgrqVEKXWOEBf95vap2M3oc/hwFgQ1FXld5M40c0ytBHpGy/H8hi0xZWjLdpHSsBmOuB+hMWb0RpDiUfI2e3g7vBW/KiYpaZ4l6kzDjF0IvKLGdn0zmN4Lzy++mz58rWRAyPJTIE1UqlRpBDOuEpEzFcsnNXB4xBNTPMATQIN0fMti2krVaqMtTFaKJqLf2sEUWmY8a/x7sgVXQ0lDJs+CjUCm1Ehsx4bgKe6cpghCGYyu8IjxPx2MDHgxcDilOGYq8M7BtpZAJHiyc5UN6ZPMChErO1LRCtqsmf4w3WPFge7fWDV5b8XP+FvJeoYEy8zkwJSg29YYYZU/QTSH2BDKV/Hqb1W7ZPj5KwPKA186l4gr5Q==,iv:n9YChkY9gefUNuYvZHprAl2LKzrim4NQgGWdSCC4mEI=,tag:n7cauIVc9hfp00q90qgTuA==,type:str]
+    annotations:
+      public_scope: user
+
+  github-signing:
+    type: ssh-ed25519
+    authority: mammoth-skate
+    comment: github's published signing key
+    usage:
+      - github-signing
+    profiles:
+      - user
+    public: AAAAC3NzaC1lZDI1NTE5AAAAILvIHiqhNBsZE6gxYmDBA4tM2nGc6jV0sAkFa9f0iare
+    # sops:encrypted
+    private: ENC[AES256_GCM,data:Apq0U3EtjrNdux7o5gTws6jBP9X+/Gt0SjGWapEtn9s+cvP3IbI6d5Dg6wtSLJrj6NifQjdr388rfjb8/4TL6QinuVq3imX12KuegCujqtJ3a80gxrR71Z6/tTOniUxEk0rOZFnE0x9nYAZwWFD3Y8AZr2VxsdC1oHi/8Zr7QRgclep8FIfXLBgyAwxb4YTnx4mKM9Tf4BnBEEo2kmf9OLusvuUOHOVWughOfRf4numliNREMx2ZAARtqg1upOnoNU7m2o6Zkqxdm95h00sMV5VBpdijZTkA1jJNJXeGRPs4fOone9EDdKcgFqh+gMQn2vjm4rYbKI2WgSDn500rQ+VbCQfO3iaK3zDKJLTNiona+kL+C2i6adhnIMh4cHKaavK87bmLg1R2768P3/o1rKimByi/86d3kS8S9Ml79q2tiegUTknkgbCEuJtjQvYkmHJTCA1qHuxYNxg2YG7wTDuLpX1XftosSS/CY5z3HAQwScDwmuMn5qEVRPXNw1fy+xIEzcvT+ta5MhiYv57eztG3KKCUy4MT4BbfOmfZnqhYawx5/I8KgEmrWTIrc/I=,iv:wZ1nZACYOWbx/wCQ7NSyGWnYsaUgU0WVT0HlETtPkys=,tag:ET0SEva3OuU5PROsyc53dQ==,type:str]
+    annotations:
+      public_scope: user
+
+  github-signing-hyland:
+    type: ssh-ed25519
+    authority: mammoth-skate
+    comment: github's published hyland signing key
+    usage:
+      - github-signing
+    profiles:
+      - user
+    public: AAAAC3NzaC1lZDI1NTE5AAAAIF23Jq3UEKPHGZOGgdQdIvc4Am5EYQZNnCSA+bSs2WOP
+    # sops:encrypted
+    private: ENC[AES256_GCM,data:41/BvxpE0zphO9h2ZyTmF15tVAshjm6oc7t5DcBOBLMF7CG4CQiMYOMh2Uk44K3ckBZBaSDvZ/wDbfG/Xd2CYHiWfCFvSnCenIBgZDZCXnYUD79grELU+6A4qS8Uq3fl/oYCdaCuhgDVfKi0u0R1Qd1a67bE8wizyvyHx5JD12pnwNugB5dz0UChfMj/mmPaxbV4eIRU56N5PMiUbvNbWBa4GCIb28D6ItpmSbSy3g9tdCQdmimcHuYi2G26zhVPhXqhstA40c5BFqrkrde5FIVSNAoLQ0CohWHogT5AdOKTx3e5Q4V6epbjc8nVcKh7Gdu+FbtoW0GlBE0p1CVTEMvVYYlmxEprlEsUYfb3TWwmeuP4fO1GM9q8OCGKeNDrjpt4bGtyTwWndnu4Izer3C4Vq7bYrwoyMnKPw5pR7b5YJ7hCN0hVJqGZSELzocL92Ay6F1gnk1Rv9AdDeGje0l4UWBBgM/wO1lafNLbr81mE2JETDf/IVzC607ej+vOZm+C0GLe6iYNZwlySeT3TaMW3K8KYfvfSPhI=,iv:ie2aT6IGfVlKoo329Q20cCEEhgfw+7//4uCYgiZxni0=,tag:BI8f1XAN/yOH9tN9RzfKoA==,type:str]
+    annotations:
+      public_scope: user
+
+  vz-guest-nixos:
+    type: ssh-ed25519
+    authority: mammoth-skate
+    comment: root@bioskop-nixos
+    usage:
+      - agent-signing
+      - user-signing
+    profiles:
+      - host
+    principals:
+      linux-builder: linux-builder
+      committed: committed
+    public: AAAAC3NzaC1lZDI1NTE5AAAAIG1fGVLU3BOE2R+1zuJRSOAxYsw+fd4y7YvwZFxMs8RF
+    # sops:encrypted
+    private: ENC[AES256_GCM,data:xz0X2R037dOuw8VlmbAa4/L8Y6rlODT4tuxIxuYOSqHUaj+Jr7BPM1dWMxu5Z6o2hde6M4LBjGBPAJ5FXrAZHTy8sjSpXCr77b9S9OatHayvrDZXIOA5lMcgwzRsVFdBHP/p9+GMhcDuvWeuKbAo+DV4bEucT3SyHCKwUy7Isjf6sBj4925Brne7cwlHFJ0OiYT+kT0ITOeFmf3oKxVPk23t93szaNhCyHvOCeCX9UBTMfur6GUzjnZbuBS0iMBCHvx2cTflPbP08sM1dd8kgwUNxfhkN+ChXlASMECJf7YXXXGi4/MZ2uViOh4ORxiEPbzaxf3XpmmLuWZm0PSh71RYlyMb9yQHosKHcCsnwy6BSb8soEraNcQSJERxOerr6+pT8jybWxU+/hEUs3QhpD5MNwsbo+q2vx3xiyJdjUMeKyr8L6sBxn2wssuDIefoVwSRpmfcC+k3RTXgTLjuVgCuh08J1O2riLcgOlxxqy+nSS6zNcGvfb3D5Rb5X+Hdc8lxpUCakI1Y+onIVFqNHVRowfFCABOxPjw=,iv:tElQoLg023RupUp95OXEKhuYGTPr3L82zsdSZU2i5wY=,tag:Gr2w3p8KB0PpfTG4bjdH7w==,type:str]
+    annotations:
+      public_scope: user
+      enrollment:
+        fingerprint: SHA256:q6+rTkuA5ykNZepJCau8Uza0jP98dynlCfz+Z7UE8/M
+        source: nerd-nixos
+        capturedAt: "2026-04-07T22:48:19Z"
