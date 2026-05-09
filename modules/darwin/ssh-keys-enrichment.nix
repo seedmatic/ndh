@@ -64,8 +64,9 @@ let
   loggerTagOrchestrate = "darwin.activationScripts.ssh-keys-enrichment.orchestrate";
   loggerTagEnrich = "darwin.activationScripts.ssh-keys-enrichment.enrichSSHKeysYaml";
   loggerTagSplit = "darwin.activationScripts.ssh-keys-enrichment.splitSSHKeysYaml";
-
   loggerTagExtractSystem = "darwin.activationScripts.ssh-keys-enrichment.extractSystemKeys";
+  loggerTagExtractUser = "darwin.activationScripts.ssh-keys-enrichment.extractUserKeys";
+  loggerTagEnsureAuthorizedKeys = "darwin.activationScripts.ssh-keys-enrichment.ensureAuthorizedKeys";
 
   sshExtractKeysSplitExpFile = ndh.store.runCommand "ssh-extract-keys.split-exp.yq" { } ''
     install -m 0444 "${self}/modules/home-manager/ssh-key.d/ssh-extract-keys.split-exp.yq" "$out"
@@ -84,26 +85,45 @@ let
       nixBashTrampoline = nixBashTrampoline;
       loggerTag = loggerTagOrchestrate;
     };
-    # Same extract script HM uses, but parameterized with systemKeysDir so the
-    # ssh-host-scope privates land at /var/lib/ndh/ssh-keys (root-owned) when
-    # this runs from the root-context activation below.
-    ssh-extract-keys = pkgs.replaceVars "${self}/modules/home-manager/ssh-key.d/ssh-extract-keys.sh" {
+    # System-scope extract: ssh-host privates → sshPaths.systemKeysDir.
+    ssh-extract-keys-system = pkgs.replaceVars "${self}/modules/home-manager/ssh-key.d/ssh-extract-keys.sh" {
       nixBashTrampoline = nixBashTrampoline;
       loggerTag = loggerTagExtractSystem;
       splitExpFile = sshExtractKeysSplitExpFile;
     };
+    # User-scope extract: everything else → ~<profileOwner>/.local/var/run/secrets/ssh-keys.
+    ssh-extract-keys-user = pkgs.replaceVars "${self}/modules/home-manager/ssh-key.d/ssh-extract-keys.sh" {
+      nixBashTrampoline = nixBashTrampoline;
+      loggerTag = loggerTagExtractUser;
+      splitExpFile = sshExtractKeysSplitExpFile;
+    };
+    ssh-ensure-authorized-keys = pkgs.replaceVars "${self}/modules/home-manager/ssh-key.d/ssh-ensure-authorized-keys.sh" {
+      nixBashTrampoline = nixBashTrampoline;
+      loggerTag = loggerTagEnsureAuthorizedKeys;
+    };
   };
 
   # Scratch dir for the system-side extract pass: we only care about what
-  # lands in systemKeysDir (4th arg below). User-scope privates for this
-  # profile are still materialized by the home-manager activation from
-  # modules/home-manager/ssh-keys.nix, so we point the script's userOutputDir
-  # at a root-owned throwaway so it does not clobber ~/.local/var/run/secrets.
+  # lands in systemKeysDir (4th arg below). User-scope keys are materialized
+  # in a separate user-context step, so the system extract's userOutputDir
+  # points at a root-owned throwaway.
   systemExtractScratchDir = "/var/lib/ndh/ssh-keys-extract-scratch";
+
+  # Effective per-user yaml path (mirrors the path derived in
+  # modules/home-manager/ssh-keys.nix) so we can prepare it from the
+  # root-context before invoking the user-scope extractor.
+  perUserSecretsKeysDir = config.sshPaths.secretsKeysDir;
+  effectiveUserSSHKeysYamlPath = "${perUserSecretsKeysDir}.yaml";
 in
 {
-  config.system.activationScripts.preActivation.text = lib.mkAfter ''
+  # Split into two postActivation steps so ordering against sops-install-secrets
+  # (which runs mid-postActivation in the nix-darwin activate script) is explicit:
+  #   1. system-scope enrichment + extract → runs after sops via lib.mkOrder 1500
+  #      (sops-install-secrets lands around mkOrder 1000 by default).
+  #   2. user-scope extract + authorized_keys maintenance → runs after (1).
+  config.system.activationScripts.postActivation.text = lib.mkOrder 1500 ''
     set -euo pipefail
+
     ${pkgs.bash}/bin/bash ${sshKeysEnrichmentTools}/bin/ssh-enrich-split-and-authorize \
       "${pkgs.bash}/bin/bash" \
       "${sshKeysEnrichmentTools}/bin/ssh-enrich-keys-yaml" \
@@ -117,14 +137,34 @@ in
       "${generatedSystemKeysYamlPath}" \
       "${generatedProfileKeysYamlPath}"
 
-    # Harvest system-private key material (ssh-host scope) into
-    # sshPaths.systemKeysDir so nix-store-identity-deploy can pick them up.
-    # Scratch dir holds the user/authority duplicates we do not need here.
+    # System-scope extract: ssh-host privates land in sshPaths.systemKeysDir.
+    # /var/lib/ndh/ssh-keys-extract-scratch catches user/authority duplicates
+    # we do not need in this pass.
     install -d -m 0700 ${lib.escapeShellArg systemExtractScratchDir}
-    ${pkgs.bash}/bin/bash ${sshKeysEnrichmentTools}/bin/ssh-extract-keys \
+    ${pkgs.bash}/bin/bash ${sshKeysEnrichmentTools}/bin/ssh-extract-keys-system \
       ${lib.escapeShellArg generatedKeysYamlPath} \
       ${lib.escapeShellArg systemExtractScratchDir} \
       root \
       ${lib.escapeShellArg config.sshPaths.systemKeysDir}
+
+    # Install the per-profile yaml where the user-scope extractor expects it.
+    # install runs as root so we chown to the profile owner afterwards.
+    install -m 0700 -d "$(dirname ${lib.escapeShellArg effectiveUserSSHKeysYamlPath})"
+    install -m 0400 ${lib.escapeShellArg generatedProfileKeysYamlPath} ${lib.escapeShellArg effectiveUserSSHKeysYamlPath}
+    chown ${lib.escapeShellArg profileOwnerName} ${lib.escapeShellArg effectiveUserSSHKeysYamlPath} || true
+
+    # User-scope extract: populate ~<user>/.local/var/run/secrets/ssh-keys.
+    # `launchctl asuser ... sudo -u <user>` is the nix-darwin-standard way to
+    # run a step in the user's context during activation.
+    launchctl asuser "$(id -u ${lib.escapeShellArg profileOwnerName})" \
+      sudo -u ${lib.escapeShellArg profileOwnerName} \
+        ${pkgs.bash}/bin/bash ${sshKeysEnrichmentTools}/bin/ssh-extract-keys-user \
+          ${lib.escapeShellArg effectiveUserSSHKeysYamlPath} \
+          ${lib.escapeShellArg perUserSecretsKeysDir} \
+          ${lib.escapeShellArg profileOwnerName}
+
+    launchctl asuser "$(id -u ${lib.escapeShellArg profileOwnerName})" \
+      sudo -u ${lib.escapeShellArg profileOwnerName} \
+        ${pkgs.bash}/bin/bash ${sshKeysEnrichmentTools}/bin/ssh-ensure-authorized-keys
   '';
 }

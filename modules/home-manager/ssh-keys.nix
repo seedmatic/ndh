@@ -96,9 +96,17 @@ in
     recursive = true;
   };
 
-  # Deploy keys to canonical per-user runtime secrets directories with proper permissions
-  # Externalized activation scripts: keep content in the store and execute via bash
-  home.activation =
+  # Deploy keys to canonical per-user runtime secrets directories with proper permissions.
+  #
+  # On Darwin, the prepare/extract/ensure pipeline runs from
+  # modules/darwin/ssh-keys-enrichment.nix as a nix-darwin system
+  # postActivation step so ordering against sops-install-secrets is explicit.
+  # We leave these entries empty on Darwin to avoid double-materialization.
+  #
+  # On NixOS the dedicated systemd units (ssh-keys-enrichment + ssh-extract-keys)
+  # handle both steps; HM only needs to run its own user-context extract here
+  # to land keys under the user home.
+  home.activation = lib.mkIf pkgs.stdenv.isLinux (
     let
       sshExtractKeysSplitExpFile = ndh.store.installScript {
         name = "ssh-extract-keys.split-exp.yq";
@@ -119,7 +127,7 @@ in
       };
     in
     {
-      # System-managed path (NixOS + Darwin): consume profile-specific generated YAML.
+      # System-managed path: consume profile-specific generated YAML.
       prepareGeneratedSSHKeysYaml = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
         if [[ -r "${systemSplitProfileKeysYamlPath}" ]]; then
           install -m 0700 -d "$(dirname "${effectiveSSHKeysYamlPath}")"
@@ -140,7 +148,8 @@ in
       ensureAuthorizedKeys = lib.hm.dag.entryAfter [ "extractSSHKeys" ] ''
         ${pkgs.bash}/bin/bash ${sshKeyLifecycleTools}/bin/ssh-ensure-authorized-keys
       '';
-    };
+    }
+  );
 
   programs.ssh.extraConfig = ''
     KnownHostsCommand ${knownHostsScript}
