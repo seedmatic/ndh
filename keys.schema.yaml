@@ -77,15 +77,21 @@ $defs:
       - host     # machine identity: sshd HostKey, inbound auth, cert chain
       - user     # operator identity: outbound ssh, git signing, etc.
 
-  # Accepts either a raw base64 public key (min 40 chars, strict charset) or
-  # a sops-encrypted envelope `ENC[...]`. Either form is valid at rest.
+  # Accepts any of the forms a key material field can take at rest:
+  #  - sops-encrypted envelope `ENC[...]`
+  #  - OpenSSH PEM block `-----BEGIN OPENSSH PRIVATE KEY-----...-----END...-----`
+  #  - raw base64 public blob (possibly with `ssh-<type>` prefix + comment)
+  # Uses anyOf (not oneOf) because a sops-encrypted scalar happens to also
+  # satisfy the minLength predicate; the intent is "any of the known
+  # shapes", not "exactly one shape".
   base64OrEnc:
-    oneOf:
-      - type: string
-        pattern: "^[A-Za-z0-9+/]+=*$"
-        minLength: 40
+    anyOf:
       - type: string
         pattern: '^ENC\[.*\]$'
+      - type: string
+        pattern: '^-----BEGIN [A-Z ]+PRIVATE KEY-----'
+      - type: string
+        minLength: 40
 
   principalsMap:
     type: object
@@ -214,6 +220,24 @@ $defs:
         type: array
         items:
           type: string
+      certificates:
+        type: object
+        description: >
+          Signed certificate lines, keyed by authority name then by cert
+          type (ssh-user or ssh-host). Populated by the enrichment step
+          output; not present in the input shape.
+        patternProperties:
+          "^[a-z][a-z0-9-]*$":
+            type: object
+            additionalProperties: false
+            properties:
+              ssh-user:
+                type: string
+                pattern: "^ssh-[a-z0-9-]+-cert-v01@openssh.com "
+              ssh-host:
+                type: string
+                pattern: "^ssh-[a-z0-9-]+-cert-v01@openssh.com "
+        additionalProperties: false
       annotations:
         type: object
         additionalProperties: true
