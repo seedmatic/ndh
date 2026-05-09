@@ -1,509 +1,297 @@
 #!/usr/bin/env -S bash -euo pipefail
 # @codebase
-# Enrich SSH key material for a selected profile and output normalized YAML.
-# Used by system-side enrichment flows (NixOS + Darwin).
+# SSH keys bundle enrichment — v2 schema.
+#
+# Reads a v2-shaped keys.yaml:
+#
+#   authorities:
+#     <name>:
+#       type: ssh-ed25519
+#       public: <base64>
+#       private: <pem or ENC[...]>
+#       usage: [ssh-authority]
+#   keys:
+#     <name>:
+#       type: ssh-ed25519
+#       authority: <authority-name>        # optional; omit for bare keys
+#       cert_usage: [ssh-host, ssh-user]   # required iff authority is set
+#       usage: [...]
+#       profiles: [bringup, host, user, ...]
+#       principals: { ... }                # optional
+#       public: <base64>                   # optional; generated if missing
+#       private: <pem>                     # optional; generated if missing
+#
+# Writes the same shape augmented with per-key `certificates.<authority>.
+# <cert_type>` cert lines for every (authority, cert_type) the enrichment
+# produced.
+#
+# Schema validated by modules/home-manager/ssh.d/keys.schema.yaml; cross-
+# reference validation (authority names must resolve to top-level entries)
+# is enforced here at runtime — a dangling reference is a hard error.
 
-shopt -s extglob
-
-declare -g keyFields="type|usage|comment|public|private|authorities|principals|domain|authorized_keys_options|annotations"
-
-: "Function to convert a string to snake_case"
-var::snakeCase() {
-	local var="${1//./_}" &&
-		var="${var//-/_}" &&
-		if [[ $# -gt 1 ]]; then
-			shift
-			var+="_$(var::snakeCase "$@")"
-		fi
-	echo "${var,,}"
-}
-
-: "Function to get the private key variable name for an authority"
-var::authorityKey() {
-	var::snakeCase "${profileVarPrefix}" "${@}"
-}
-
-: "Function to get hostnames for an authority"
-key::authorityHostNames() {
-	local authorityName
-	authorityName="$1"
-
-	local domain
-	domain="$(key::value "authorities" "${authorityName}" "domain")"
-
-	local -A hostNames=()
-	hostNames["${hostName}"]=1
-	hostNames["${hostName}.lan"]=1
-	hostNames["${hostName}.local"]=1
-	hostNames["${hostName}.${domain}"]=1
-
-	hostNames[$(hostname -f)]=1
-	hostNames[$(hostname -s)]=1
-	hostNames[$(hostname -s).${domain}]=1
-
-	if [[ -n "${inventoryHostsCsv:-}" ]]; then
-		local inventoryHost
-		IFS=',' read -r -a inventoryHosts <<<"${inventoryHostsCsv}"
-		for inventoryHost in "${inventoryHosts[@]}"; do
-			[[ -n "${inventoryHost}" ]] || continue
-			hostNames["${inventoryHost}"]=1
-			hostNames["${inventoryHost}.lan"]=1
-			hostNames["${inventoryHost}.local"]=1
-			hostNames["${inventoryHost}.${domain}"]=1
-		done
-	fi
-
-	printf '%s\n' "${!hostNames[@]}"
-}
-
-key::principals() {
-	local principalsVar principals
-	principalsVar="$(var::snakeCase "${keyVar}" "principals")"
-	principals=()
-	for var in "${profileVars[@]}"; do
-		if [[ $var != "${principalsVar}"* ]]; then
-			continue
-		fi
-		principals+=("${!var}")
-	done
-	printf "%s\n" "${principals[@]}"
-}
-
-key::usage() {
-	local usages=()
-	local index=0
-	while true; do
-		local usageVar
-		usageVar="$(var::snakeCase "$keyVar" "usage" "$index")"
-		local usage="${!usageVar:-}"
-		if [ -z "$usage" ]; then
-			break
-		fi
-		usages+=("$usage")
-		index=$((index + 1))
-	done
-	printf "%s\n" "${usages[@]}"
-}
-
-key::generateKeyPair() {
-	local keyName
-	keyName="$1"
-
-	local type
-	type="$(key::value "type")"
-	type="${type:-ssh-ed25519}"
-	type="${type/^ssh-//}"
-
-	local comment
-	comment="$(key::value "comment")"
-	comment="${comment:-${keyName}}"
-
-	if ! ssh-keygen -q -t "$type" -N "" -f "${tmpdir}/${keyName}" -C "$comment"; then
-		: "Failed to generate key pair for $keyName"
-		return 1
-	fi
-
-	local keyPublic keyPrivate
-	keyPublic="$(cut -d' ' -f2,2 <"${tmpdir}/${keyName}.pub")"
-	keyPrivate="$(<"${tmpdir}/${keyName}")"
-
-	key::update "$keyPublic" "$keyPrivate"
-}
-
-authority::usage() {
-	local authoritVar="$1"
-	local usages=()
-	local index=0
-	while true; do
-		local usageVar
-		usageVar="$(var::snakeCase "$authoritVar" "usage" "$index")"
-		local usage="${!usageVar:-}"
-		if [ -z "$usage" ]; then
-			break
-		fi
-		usages+=("$usage")
-		index=$((index + 1))
-	done
-	printf "%s\n" "${usages[@]}"
-}
-
-key::signWithAuthorities() {
-	local signedAuthorities=()
-
-	for profileVar in "${profileVars[@]}"; do
-		if ! [[ "$profileVar" =~ ^${keyVar}_authorities_ ]]; then
-			continue
-		fi
-
-		local authorityName
-		authorityName=${profileVar##*_authorities_}
-		authorityName=${authorityName%%_@(${keyFields})*}
-
-		if [[ "${signedAuthorities[*]}" =~ ${authorityName} ]]; then
-			continue
-		fi
-
-		local authorityPrivateKeyVar="${keyVar}_authorities_${authorityName}_private"
-		local authorityPublicKeyVar="${keyVar}_authorities_${authorityName}_public"
-		local authorityPrivateKey="${!authorityPrivateKeyVar}"
-		local authorityPublicKey="${!authorityPublicKeyVar}"
-
-		if [[ -z "${authorityPrivateKey}" ]]; then
-			: "Missing private key for authority: ${authorityName}"
-			continue
-		fi
-
-		authority::signKey "${authorityName}" "${authorityPrivateKey}" "${authorityPublicKey}"
-		signedAuthorities+=("$authorityName")
-	done
-}
-
-authority::signKey() {
-	local authorityName authorityVar
-	authorityName="$1"
-	authorityVar=$(var::snakeCase "${keyVar}" "authorities" "${authorityName}")
-
-	local -a tmpfiles
-	trap 'trap - RETURN; rm -f "${tmpfiles[@]}"' RETURN
-
-	local cakeyPrivateVar cakeyPrivateTmpFile
-	cakeyPrivateVar="$(var::snakeCase "$keyVar" "authorities" "$authorityName" "private")"
-	if [ -z "${!cakeyPrivateVar:-}" ]; then
-		return
-	fi
-	cakeyPrivateTmpFile="${tmpdir}/${authorityName}"
-	tmpfiles+=("$cakeyPrivateTmpFile")
-	cat <<<"${!cakeyPrivateVar}" >"$cakeyPrivateTmpFile" && chmod 400 "$cakeyPrivateTmpFile"
-
-	local keyPublicLine keyPublicTmpFile keyNameLocal
-	keyNameLocal="$(key::name "${keyVar}")"
-	local keyPublicRaw keyPublicBlob
-	keyPublicRaw="$(key::value "public")"
-	keyPublicBlob="$(key::publicBlob "$keyPublicRaw")"
-	keyPublicLine="$(key::value "type") ${keyPublicBlob} $(key::value "comment")"
-	keyPublicTmpFile="${tmpdir}/${keyNameLocal}.pub"
-	tmpfiles+=("$keyPublicTmpFile")
-	cat <<<"${keyPublicLine}" >"$keyPublicTmpFile"
-
-	local -a authorityUsage
-	readarray -t authorityUsage < <(authority::usage "$authorityVar")
-	for usage in "${authorityUsage[@]}"; do
-		case "$usage" in
-		"ssh-user")
-			local principals
-			readarray -t principals < <(key::principals)
-			local certIdentity
-			certIdentity="$(key::certificateIdentity "${keyNameLocal}" "ssh-user")"
-			if ! ssh-keygen -q -s "$cakeyPrivateTmpFile" -I "${certIdentity}" -n "$(IFS=','; echo "${principals[*]}")" "$keyPublicTmpFile"; then
-				: "Failed to sign user key with authority $authorityName"
-				return 1
-			fi
-			;;
-		"ssh-host")
-			local authorityHostNames
-			readarray -t authorityHostNames < <(key::authorityHostNames "$authorityName")
-			local certIdentity
-			certIdentity="$(key::certificateIdentity "${keyNameLocal}" "ssh-host")"
-			if ! ssh-keygen -q -s "$cakeyPrivateTmpFile" -I "${certIdentity}" -h -n "$(IFS=','; echo "${authorityHostNames[*]}")" "$keyPublicTmpFile"; then
-				: "Failed to sign host key with authority $authorityName"
-				return 1
-			fi
-			;;
-		"ssh-authority" | "github-signing")
-			continue
-			;;
-		*)
-			: "Unknown key usage: $usage"
-			return 1
-			;;
-		esac
-		keyCertTmpFile="${keyPublicTmpFile%.pub}-cert.pub"
-		if [[ "${NDH_SSH_ENRICH_LOG_CERT_DETAILS:-0}" == "1" ]]; then
-			{
-				echo "[ssh-keys-enrichment] certificate details for key=${keyNameLocal} usage=${usage} authority=${authorityName}" 
-				ssh-keygen -L -f "$keyCertTmpFile"
-			} >&2 || echo "[ssh-keys-enrichment][WARN] Could not inspect certificate for key=${keyNameLocal} usage=${usage} authority=${authorityName}" >&2
-		fi
-		keyCertLine="$(cat "${keyCertTmpFile}")"
-		declare -g "$(var::snakeCase "${keyVar}" authorities "$authorityName" "$usage")=${keyCertLine}"
-	done
-}
-
-key::name() {
-	local keyVar
-	keyVar="$1"
-	keyName=${keyVar#"${profileVarPrefix}_"}
-	keyName=${keyName%%_@(${keyFields})*}
-	echo "$keyName"
-}
-
-key::value() {
-	local var
-	var=$(var::snakeCase "${keyVar}" "${@}")
-	echo "${!var:-}"
-}
-
-key::publicBlob() {
-	local publicRaw="${1:-}"
-	[[ -n "$publicRaw" ]] || return 1
-
-	local first second
-	read -r first second _ <<<"$publicRaw"
-	if [[ "$first" == ssh-* && -n "$second" ]]; then
-		echo "$second"
-	else
-		echo "$first"
-	fi
-}
-
-key::values() {
-	local arrayVar index values
-	arrayVar=$(var::snakeCase "${keyVar}" "${@}")
-	index=0
-	values=()
-	while true; do
-		local valueVar
-		valueVar="$(var::snakeCase "${arrayVar}" "${index}")"
-		local value="${!valueVar:-}"
-		if [ -z "$value" ]; then
-			break
-		fi
-		values+=("$value")
-		index=$((index + 1))
-	done
-	printf "%s\n" "${values[@]}"
-}
-
-key::update() {
-	local keyPublic keyPrivate
-	keyPublic="${1}"
-	keyPrivate="${2}"
-	declare -g "$(var::snakeCase "${keyVar}" public)=${keyPublic}"
-	declare -g "$(var::snakeCase "${keyVar}" private)=${keyPrivate}"
-}
-
-key::certificateIdentity() {
-	local keyName="$1"
-	local certUsage="$2"
-	key::annotationsJson "$keyName" "$certUsage"
-}
-
-key::defaultPublicScope() {
-	local usage
-	readarray -t usage < <(key::usage)
-	if [[ " ${usage[*]} " == *" ssh-authority "* ]]; then
-		echo "system"
-	else
-		echo "user"
-	fi
-}
-
-key::annotationsJson() {
-	local KEYNAME="$1"; shift
-	local USAGE_LINES
-	USAGE_LINES="$(printf '%s\n' "$@")"
-	env KEYNAME="$KEYNAME" USAGE_LINES="$USAGE_LINES" yq \
-	  --null-input --indent=0 --output-format=json eval \
-	  --from-file=<( cat <<'EoYaml'
-       {
-         "marker": "ndh-ssh-key-meta-v1",
-         "owner": "home-manager.ssh-add-keys",
-         "key": strenv(KEYNAME),
-         "usage": ((strenv(USAGE_LINES) | split("\n")) | map(select(length > 0)))
-       }
-EoYaml
-       )
-}
-
-key::annotatedComment() {
-	local keyName="$1"
-	local baseComment="$2"
-	if [[ -n "$baseComment" ]]; then
-		echo "${baseComment}"
-	else
-		echo "${keyName}"
-	fi
-}
-
-key::process() {
-	local keyName="$1"
-	declare -g keyVar
-	keyVar="$(var::snakeCase "${profileVarPrefix}" "${keyName}")"
-
-	declare keyPublic keyPrivate
-	keyPublic=$(key::value "public")
-	keyPrivate=$(key::value "private")
-
-	local hasAuthorities=0
-	for profileVar in "${profileVars[@]}"; do
-		if [[ "$profileVar" =~ ^${keyVar}_authorities_ ]]; then
-			hasAuthorities=1
-			break
-		fi
-	done
-
-	if ((hasAuthorities)) && { [ -z "$keyPublic" ] || [ -z "$keyPrivate" ]; }; then
-		key::generateKeyPair "$keyName" "$tmpdir"
-	fi
-
-	key::signWithAuthorities
-}
-
-keys::toYAML() {
-	cat <<EOF | yq --prettyPrint eval '.'
-keys:
-$(
-		local -a signingKeys otherKeys
-		declare -g keyVar
-		local keyName
-		for keyName in "${processedKeys[@]}"; do
-			keyVar="$(var::snakeCase "${profileVarPrefix}" "${keyName}")"
-			readarray -t keyUsage < <(key::usage)
-			local accumulator="otherKeys"
-			if [[ "${keyUsage[*]}" =~ user-signing ]]; then
-				accumulator="signingKeys"
-			fi
-			if [[ "$accumulator" == "signingKeys" ]]; then
-				signingKeys+=("$keyName")
-			else
-				otherKeys+=("$keyName")
-			fi
-		done
-		local -a orderedKeys=("${otherKeys[@]}" "${signingKeys[@]}")
-		for keyName in "${orderedKeys[@]}"; do
-			keyVar="$(var::snakeCase "${profileVarPrefix}" "${keyName}")"
-			local authorityHostNames keyUsage keyType keyComment keyPublic keyPrivate authorityUsage annotatedComment keyPublicRaw
-			readarray -t keyUsage < <(key::usage)
-			keyType=$(key::value type)
-			keyComment=$(key::value comment)
-			keyPublicRaw="$(key::value public)"
-			keyPublic="$(key::publicBlob "$keyPublicRaw")"
-			keyPrivate=$(key::value private)
-			annotatedComment="$(key::annotatedComment "$keyName" "$keyComment" "${keyUsage[@]}")"
-			readarray -t keyPrincipals < <(key::principals)
-			cat <<EOK
-  $keyName:
-    usage: $(IFS=','; echo "[ ${keyUsage[*]} ]")
-    private: |-
-$(echo "$keyPrivate" | sed 's/^/      /')
-    public: $keyType $keyPublic $annotatedComment
-$(
-				if ((${#keyPrincipals[@]} > 0)); then
-					printf '    principals: [ '
-					(IFS=','; echo "${keyPrincipals[*]}") | sed 's/,/, /g' | sed 's/$/ ]/'
-				fi
-			)
-$(
-				local -a processedAuthorities
-				processAuthorities=()
-				for profileVar in "${profileVars[@]}"; do
-					if ! [[ "$profileVar" =~ ^${keyVar}_authorities_ ]]; then
-						continue
-					fi
-					local authorityName
-					authorityName=${profileVar##*_authorities_}
-					authorityName=${authorityName%%_@(${keyFields})*}
-					if [[ "${processedAuthorities[*]}" =~ ${authorityName} ]]; then
-						continue
-					fi
-					processedAuthorities+=("$authorityName")
-					if ((${#processedAuthorities[@]} == 1)); then
-						echo "    certificates:"
-					fi
-					local authorityVar
-					authorityVar="$(var::snakeCase "$keyVar" "authorities" "$authorityName")"
-					echo "      $authorityName:"
-					local authorityUsage
-					readarray -t authorityUsage < <(authority::usage "$authorityVar")
-					for authorityUsage in "${authorityUsage[@]}"; do
-						local certVar
-						certVar="$(var::snakeCase "$authorityVar" "$authorityUsage")"
-						echo "        $authorityUsage: |"
-						echo "${!certVar}" | sed 's/^/          /'
-					done
-				done
-			)
-EOK
-		done
-	)
-EOF
-}
-
+# shellcheck disable=SC1091
 source @nixBashTrampoline@
 
-main() {
-	declare -g hostName inputFile outputFile
-	hostName="$1"
-	shift
-	inputFile="$1"
-	shift
-	outputFile="$1"
-	shift
-	declare -g inventoryHostsCsv
-	inventoryHostsCsv="${1:-}"
-	shift || true
-	local targetUser
-	targetUser="${1:-${USER:-}}"
+declare -g inputFile outputFile hostName inventoryHostsCsv targetUser
+declare -g tmpdir
 
-	if [[ ! -r "$inputFile" ]]; then
-		echo "missing or unreadable input YAML: $inputFile" >&2
+log::info() { echo "[ssh-keys-enrichment][INFO] $*" >&2; }
+log::warn() { echo "[ssh-keys-enrichment][WARN] $*" >&2; }
+log::error() { echo "[ssh-keys-enrichment][ERROR] $*" >&2; }
+
+# Read a yq path from the input file. Missing paths return the literal
+# empty string (caller distinguishes between "absent" and "empty value"
+# by checking `yq 'has(path)'` separately when needed).
+yq::get() { yq eval -r "${1}" "$inputFile" 2>/dev/null || true; }
+
+# Emit the comma-separated hostnames the enrichment will list in a host
+# certificate's Principals field. Union of: explicit hostName arg,
+# .lan/.local/<authority-domain> variants, plus every host from the
+# inventory CSV (same variants).
+authority::host_principals() {
+	local authorityName="$1"
+	local domain
+	domain="$(yq::get ".authorities.\"${authorityName}\".domain")"
+
+	local -A hosts=()
+	hosts["${hostName}"]=1
+	hosts["${hostName}.lan"]=1
+	hosts["${hostName}.local"]=1
+	if [[ -n "${domain}" && "${domain}" != "null" ]]; then
+		hosts["${hostName}.${domain}"]=1
+	fi
+	local localShort localFqdn
+	localShort="$(hostname -s 2>/dev/null || true)"
+	localFqdn="$(hostname -f 2>/dev/null || true)"
+	[[ -n "$localShort" ]] && hosts["$localShort"]=1
+	[[ -n "$localFqdn" ]] && hosts["$localFqdn"]=1
+	if [[ -n "$localShort" && -n "${domain}" && "${domain}" != "null" ]]; then
+		hosts["${localShort}.${domain}"]=1
+	fi
+
+	if [[ -n "${inventoryHostsCsv:-}" ]]; then
+		local inv
+		IFS=',' read -r -a invArr <<<"${inventoryHostsCsv}"
+		for inv in "${invArr[@]}"; do
+			[[ -n "$inv" ]] || continue
+			hosts["$inv"]=1
+			hosts["${inv}.lan"]=1
+			hosts["${inv}.local"]=1
+			if [[ -n "${domain}" && "${domain}" != "null" ]]; then
+				hosts["${inv}.${domain}"]=1
+			fi
+		done
+	fi
+
+	local IFS=','
+	echo "${!hosts[*]}"
+}
+
+# Build the `-I` cert identity blob (json one-liner) matching the v1 schema
+# downstream consumers (split-exp, extract-keys) look for.
+cert::identity() {
+	local keyName="$1"
+	local certUsage="$2"
+	env KEYNAME="$keyName" USAGE="$certUsage" yq \
+		--null-input --indent=0 --output-format=json eval '
+			{
+				"marker": "ndh-ssh-key-meta-v1",
+				"owner": "home-manager.ssh-add-keys",
+				"key": strenv(KEYNAME),
+				"usage": [ strenv(USAGE) ]
+			}'
+}
+
+# Comma-join the keys of the `principals` map for a given key.
+key::principals_csv() {
+	local keyName="$1"
+	local IFS=','
+	local -a arr
+	mapfile -t arr < <(yq::get ".keys.\"${keyName}\".principals | keys // [] | .[]")
+	echo "${arr[*]}"
+}
+
+# Sign one (authority, cert_usage) pair for a key and echo the resulting
+# cert line to stdout. Temp files are created under $tmpdir and cleaned
+# up in main's trap.
+sign::one_cert() {
+	local keyName="$1"
+	local authorityName="$2"
+	local certUsage="$3"
+
+	# Pull authority private + key public/private.
+	local authPriv keyType keyPub keyPriv keyComment
+	authPriv="$(yq::get ".authorities.\"${authorityName}\".private")"
+	keyType="$(yq::get ".keys.\"${keyName}\".type")"
+	keyPub="$(yq::get ".keys.\"${keyName}\".public")"
+	keyPriv="$(yq::get ".keys.\"${keyName}\".private")"
+	keyComment="$(yq::get ".keys.\"${keyName}\".comment")"
+	[[ -n "$keyComment" && "$keyComment" != "null" ]] || keyComment="$keyName"
+
+	if [[ -z "$authPriv" || "$authPriv" == "null" ]]; then
+		log::error "authority ${authorityName} has no private key (required to sign ${keyName}/${certUsage})"
 		return 1
 	fi
 
-	tmpdir=$(mktemp --directory --suffix=keys.d)
-	trap 'rm -rf $tmpdir' EXIT
+	# Cache the authority's private in a tempfile once per (authority)
+	# rather than per (authority, cert_usage). Repeated calls of this
+	# function with the same authority would otherwise fail to rewrite a
+	# 0400 file.
+	local authFile="${tmpdir}/auth-${authorityName}"
+	if [[ ! -s "$authFile" ]]; then
+		printf '%s\n' "$authPriv" >"$authFile"
+		chmod 400 "$authFile"
+	fi
 
-	eval "$(yq -o shell eval 'explode(.) | { "ssh-keys": . }' "$inputFile")"
+	# Generate key if missing public/private.
+	if [[ -z "$keyPub" || "$keyPub" == "null" || -z "$keyPriv" || "$keyPriv" == "null" ]]; then
+		local genType="${keyType#ssh-}"
+		if ! ssh-keygen -q -t "$genType" -N "" -f "${tmpdir}/${keyName}" -C "$keyComment"; then
+			log::error "failed to generate keypair for ${keyName}"
+			return 1
+		fi
+		keyPub="$(cut -d' ' -f2 <"${tmpdir}/${keyName}.pub")"
+		keyPriv="$(<"${tmpdir}/${keyName}")"
+		# Cache so subsequent cert_usage entries see the same pair.
+		yq -i ".keys.\"${keyName}\".public = \"${keyType} ${keyPub} ${keyComment}\"" "$inputFile"
+		yq -i ".keys.\"${keyName}\".private = \"${keyPriv//$'\n'/\\n}\"" "$inputFile"
+	fi
 
-	declare -g profileVarPrefix
-	profileVarPrefix=$(var::snakeCase "ssh-keys")
+	# Produce a .pub file in the expected "<type> <blob> <comment>" shape.
+	# If $keyPub already includes the type prefix, strip it before rewrap.
+	local pubBlob
+	if [[ "$keyPub" == ssh-* ]]; then
+		read -r _ pubBlob _ <<<"$keyPub"
+	else
+		pubBlob="$keyPub"
+	fi
+	local keyPubFile="${tmpdir}/${keyName}.pub"
+	printf '%s %s %s\n' "$keyType" "$pubBlob" "$keyComment" >"$keyPubFile"
 
-	declare -g profileVars
-	declare -p | grep -oE "${profileVarPrefix}_[^=]+" >"${tmpdir}/profileVars"
-	readarray -t profileVars <"${tmpdir}/profileVars"
+	local identity principalsArg
+	identity="$(cert::identity "$keyName" "$certUsage")"
 
-	declare -g sourceKeyNames
-	readarray -t sourceKeyNames < <(yq -r 'explode(.) | keys[]' "$inputFile")
+	local -a sshKeygenArgs=(-q -s "$authFile" -I "$identity")
+	case "$certUsage" in
+		ssh-user)
+			principalsArg="$(key::principals_csv "$keyName")"
+			if [[ -z "$principalsArg" ]]; then
+				log::warn "key ${keyName} has no principals; ssh-user cert will be identity-only"
+			else
+				sshKeygenArgs+=(-n "$principalsArg")
+			fi
+			;;
+		ssh-host)
+			sshKeygenArgs+=(-h -n "$(authority::host_principals "$authorityName")")
+			;;
+		*)
+			log::error "unsupported cert_usage ${certUsage} for ${keyName}"
+			return 1
+			;;
+	esac
 
-	declare -g processedKeys=()
-	for keyName in "${sourceKeyNames[@]}"; do
+	if ! ssh-keygen "${sshKeygenArgs[@]}" "$keyPubFile"; then
+		log::error "ssh-keygen failed to sign ${keyName} with ${authorityName} as ${certUsage}"
+		return 1
+	fi
+
+	local certFile="${keyPubFile%.pub}-cert.pub"
+	cat "$certFile"
+	rm -f "$certFile"
+}
+
+# Walk every key with an authority ref, sign for each cert_usage, and
+# record the resulting cert line back into the in-memory yaml (through
+# repeated yq -i updates on the working copy $inputFile).
+enrich::all_keys() {
+	local -a keyNames
+	mapfile -t keyNames < <(yq eval -r '.keys | keys // [] | .[]' "$inputFile")
+
+	local keyName
+	for keyName in "${keyNames[@]}"; do
 		[[ -n "$keyName" ]] || continue
-		processedKeys+=("$keyName")
-		key::process "$keyName"
-	done
+		local authorityName
+		authorityName="$(yq::get ".keys.\"${keyName}\".authority")"
+		if [[ -z "$authorityName" || "$authorityName" == "null" ]]; then
+			continue
+		fi
 
-	local outputDir
-	outputDir="$(dirname "$outputFile")"
+		# Cross-reference check: authority must exist.
+		if ! yq eval -e ".authorities | has(\"${authorityName}\")" "$inputFile" >/dev/null 2>&1; then
+			log::error "key ${keyName} references unknown authority ${authorityName}"
+			return 1
+		fi
+
+		local -a certUsages
+		mapfile -t certUsages < <(yq eval -r ".keys.\"${keyName}\".cert_usage // [] | .[]" "$inputFile")
+		if ((${#certUsages[@]} == 0)); then
+			log::error "key ${keyName} has authority ${authorityName} but empty cert_usage"
+			return 1
+		fi
+
+		local certUsage
+		for certUsage in "${certUsages[@]}"; do
+			local certLine
+			certLine="$(sign::one_cert "$keyName" "$authorityName" "$certUsage")"
+			# Inject under .keys.<k>.certificates.<auth>.<cert_usage>.
+			# yq -i with literal strings containing newlines/special chars
+			# via env to avoid quoting issues.
+			env CERT="$certLine" yq -i "
+				.keys.\"${keyName}\".certificates.\"${authorityName}\".\"${certUsage}\" = strenv(CERT)
+			" "$inputFile"
+		done
+	done
+}
+
+main() {
+	if (($# < 3)); then
+		log::error "usage: ssh-enrich-keys-yaml <hostName> <inputYaml> <outputYaml> [<inventoryHostsCsv>] [<targetUser>]"
+		return 64
+	fi
+
+	hostName="$1"
+	inputFile="$2"
+	outputFile="$3"
+	inventoryHostsCsv="${4:-}"
+	targetUser="${5:-${USER:-root}}"
+
+	if [[ ! -r "$inputFile" ]]; then
+		log::error "input yaml unreadable: $inputFile"
+		return 1
+	fi
+
+	tmpdir="$(mktemp -d --suffix=.enrich)"
+	trap 'rm -rf "$tmpdir"' EXIT
+
+	# Work on a mutable copy so repeated yq -i calls stay scoped.
+	local workFile="${tmpdir}/keys.work.yaml"
+	cp "$inputFile" "$workFile"
+	inputFile="$workFile"
+
+	enrich::all_keys
+
+	# Atomic install.
+	local outDir
+	outDir="$(dirname "$outputFile")"
 	if [[ "$(id -u)" -eq 0 && -n "$targetUser" ]]; then
 		local targetGroup
 		targetGroup="$(id -gn "$targetUser" 2>/dev/null || echo "$targetUser")"
-		install -o "$targetUser" -g "$targetGroup" -m 0700 -d "$outputDir"
+		install -o "$targetUser" -g "$targetGroup" -m 0700 -d "$outDir"
 	else
-		install -m 0700 -d "$outputDir"
+		install -m 0700 -d "$outDir"
 	fi
-	local tmpOutput
-	tmpOutput="$(mktemp)"
-	if ! keys::toYAML >"$tmpOutput"; then
-		echo "failed to render SSH keys YAML to temporary file: $tmpOutput" >&2
-		rm -f "$tmpOutput"
-		return 1
-	fi
-	if ! rm -f "$outputFile"; then
-		echo "failed to remove previous output file: $outputFile" >&2
-		rm -f "$tmpOutput"
-		return 1
-	fi
-	if ! install -m 0400 "$tmpOutput" "$outputFile"; then
-		echo "failed to install generated SSH keys YAML to output path: $outputFile" >&2
-		rm -f "$tmpOutput"
-		return 1
-	fi
-	rm -f "$tmpOutput"
 
-	if ! chmod 0400 "$outputFile"; then
-		echo "failed to enforce read-only mode on output file: $outputFile" >&2
+	local tmpOut
+	tmpOut="$(mktemp)"
+	cp "$inputFile" "$tmpOut"
+	rm -f "$outputFile"
+	if ! install -m 0400 "$tmpOut" "$outputFile"; then
+		log::error "failed to install enriched yaml at $outputFile"
+		rm -f "$tmpOut"
 		return 1
 	fi
+	rm -f "$tmpOut"
+
 	if [[ "$(id -u)" -eq 0 && -n "$targetUser" ]]; then
 		chown "$targetUser" "$outputFile" 2>/dev/null || true
 	fi
