@@ -1,82 +1,101 @@
-.keys | to_entries[] |
-env(TMPDIR) + "/" as $tmpdir |
-.value.usage // [] as $usage |
+# v2 ssh-extract-keys split expression.
+#
+# Input: enriched v2 yaml with top-level `authorities:` + `keys:`. Each key
+# may carry `certificates.<authority>.<ssh-user|ssh-host>` cert lines added
+# by the enrichment step.
+#
+# Output: a stream of yaml docs (split via `yq -s`), one per file to write.
+# Each doc carries:
+#   rel_path    — file name relative to the chosen target_dir
+#   target_dir  — one of "user" / "system" / "system-private"
+#   content     — the file payload
+#   yamlfile    — staging path under $TMPDIR (caller consumes this)
+#
 # Scope routing:
-#   ssh-host      -> system-private for the private key (root-owned system dir)
-#                    system         for the .pub (authority dir, mirrors CA pubs)
-#   ssh-authority -> system for both (CA material)
-#   otherwise     -> user for both
-( ["user", "system"][(($usage | map(select(. == "ssh-authority")) | length))] ) as $public_scope |
-# Start private_scope at $public_scope, then override to "system-private" when
-# ssh-host appears in $usage. yq-go doesn't support jq's `if/then/else/end`,
-# so we use the same `with(select(...); assign)` idiom as the -ca.pub logic
-# below.
-( { "scope": $public_scope } | with(
-    select( [ "ssh-host" ] - $usage | length == 0 );
-    .scope = "system-private"
-  ) | .scope ) as $private_scope |
-.key as $basename |
-select($basename != "") |
-( $tmpdir + .key + ".yaml" ) as $yamlfile |
-.value.private as $private |
-.value.public as $public |
-[
-  {
-    "yamlfile": $yamlfile,
-    "target_dir": $private_scope,
-    "rel_path": $basename,
-    "content": $private
-  },
-  {
-    "yamlfile": ( $tmpdir + .key + "-public.yaml" ),
-    "rel_path": ( $basename + (
-      { "suffix": ".pub" } | with(
-          select ( [ "ssh-authority"] - $usage | length == 0 );
-          .suffix = "-ca.pub"
-        ) | .suffix
-      )
-    ),
-    "target_dir": $public_scope,
-    "content": $public
-  }
-] +
-(
-  # Current schema: per-key authorities are nested under .authorities.
-  # Emit CA public keys with a deterministic suffix for known-hosts/signing helpers.
-  (.value.authorities // {}) | to_entries[] |
-  .key as $authorityNameRaw |
-  $authorityNameRaw as $authorityName |
-  .value.public as $authorityPublic |
-  select($authorityPublic != null and $authorityPublic != "") |
-  [
+#   * Authority public keys                → system (shared, root-readable)
+#   * Key private (profiles ∋ host)        → system-private (root-owned)
+#   * Key private (otherwise)              → user
+#   * Key public                           → user
+#   * Key certificates                     → system
+#
+# Implementation note: yq-go re-enters the pipeline from the root for each
+# top-level expression separated by `,`. To keep `$tmpdir` and per-key
+# variables in scope across all emitted docs, we build a single list-valued
+# expression per iteration and flatten with `.[]` at the end.
+
+env(TMPDIR) + "/" as $tmpdir |
+
+# ── 1. Authority public keys (one per authority) ─────────────────────────────
+( ( .authorities // {} ) | to_entries | map(
+    .key as $authName |
+    .value.type as $authType |
+    .value.public as $authPub |
+    .value.comment as $authComment |
+    select($authPub != null and $authPub != "") |
     {
-      "yamlfile": ( $tmpdir + $basename + "-" + $authorityName + "-ca.yaml" ),
-      "rel_path": ( $basename + "-" + $authorityName + "-ca.pub" ),
+      "yamlfile":   ( $tmpdir + $authName + "-ca.yaml" ),
+      "rel_path":   ( $authName + "-ca.pub" ),
       "target_dir": "system",
-      "content": $authorityPublic
-    } ]
-) +
-(
-  # Signed certificates are nested under .certificates.<authority>.
-  # Emit direct host/user certificate files for consumers that reference them by name.
-  (.value.certificates // {}) | to_entries[] |
-  .key as $authorityName |
-  .value as $authorityCerts |
-  [
-    {
-      "yamlfile": ( $tmpdir + $basename + "-" + $authorityName + "-host-cert.yaml"),
-      "rel_path": ( $basename + "-" + $authorityName + "-host-cert.pub" ),
-      "target_dir": "system",
-      "content": $authorityCerts."ssh-host"
-    },
-    {
-      "yamlfile": ( $tmpdir + $basename + "-" + $authorityName + "-user-cert.yaml"),
-      "rel_path": ( $basename + "-" + $authorityName + "-user-cert.pub" ),
-      "target_dir": "system",
-      "content": $authorityCerts."ssh-user"
+      "content":    ( [ $authType, $authPub, ($authComment // $authName) ] | join(" ") )
     }
-  ]
-) // []
+  )
+) as $authArtifacts |
+
+# ── 2. Per-key artifacts (private + pub + certs) ─────────────────────────────
+( ( .keys // {} ) | to_entries | map(
+    .key as $basename |
+    .value.profiles // [] as $profiles |
+    .value.type as $keyType |
+    .value.public as $public |
+    .value.private as $private |
+    .value.comment as $keyComment |
+    .value.certificates as $certs |
+
+    # Private scope: system-private if profile includes "host".
+    ( { "scope": "user" } | with(
+        select( [ "host" ] - $profiles | length == 0 );
+        .scope = "system-private"
+      ) | .scope ) as $private_scope |
+
+    # Build a list of docs for this key. Each element may be null; filter later.
+    [
+      (
+        { "yamlfile":   ( $tmpdir + $basename + ".yaml" ),
+          "rel_path":   $basename,
+          "target_dir": $private_scope,
+          "content":    $private }
+      ),
+      (
+        { "yamlfile":   ( $tmpdir + $basename + "-public.yaml" ),
+          "rel_path":   ( $basename + ".pub" ),
+          "target_dir": "user",
+          "content":    (
+            $public | with( select(test("^ssh-") | not); . = [ $keyType, ., ($keyComment // $basename) ] | join(" ") )
+          ) }
+      )
+    ]
+    +
+    (
+      ( $certs // {} ) | to_entries | map(
+        .key as $authName |
+        .value as $certsByUsage |
+        [
+          ( { "yamlfile":   ( $tmpdir + $basename + "-" + $authName + "-host-cert.yaml" ),
+              "rel_path":   ( $basename + "-" + $authName + "-host-cert.pub" ),
+              "target_dir": "system",
+              "content":    ( $certsByUsage."ssh-host" // null ) } ),
+          ( { "yamlfile":   ( $tmpdir + $basename + "-" + $authName + "-user-cert.yaml" ),
+              "rel_path":   ( $basename + "-" + $authName + "-user-cert.pub" ),
+              "target_dir": "system",
+              "content":    ( $certsByUsage."ssh-user" // null ) } )
+        ]
+      ) | flatten
+    )
+  ) | flatten
+) as $keyArtifacts |
+
+# Merge + emit. split_doc consumes each element as a separate yaml doc.
+$authArtifacts + $keyArtifacts
 | .[]
-| select(.content != null)
+| select(.content != null and .content != "")
 | split_doc
