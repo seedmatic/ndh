@@ -35,7 +35,9 @@ let
     else
       "nixos";
   decryptedSSHKeysYamlPath = config.sshPaths.runtimeSecretsKeysYaml;
-  splitKeysDir = "/run/secrets/nix-darwin-home/ssh-keys-split.d";
+  # Outside the sops-install-secrets namespace so that unit's strict
+  # directory-replacement sweep does not nuke our enrichment outputs.
+  splitKeysDir = "/run/ndh/ssh-keys-split.d";
   generatedKeysYamlPath = "${splitKeysDir}/keys.generated.yaml";
   generatedSystemKeysYamlPath = "${splitKeysDir}/system.yaml";
   generatedProfileKeysYamlPath = "${splitKeysDir}/profiles/${profileName}.yaml";

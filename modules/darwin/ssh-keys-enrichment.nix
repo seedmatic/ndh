@@ -40,7 +40,9 @@ let
     else
       "root";
   decryptedSSHKeysYamlPath = config.sshPaths.runtimeSecretsKeysYaml;
-  splitKeysDir = "/run/secrets/nix-darwin-home/ssh-keys-split.d";
+  # Outside the sops-install-secrets namespace so that unit's strict
+  # directory-replacement sweep does not nuke our enrichment outputs.
+  splitKeysDir = "/run/ndh/ssh-keys-split.d";
   generatedKeysYamlPath = "${splitKeysDir}/keys.generated.yaml";
   generatedSystemKeysYamlPath = "${splitKeysDir}/system.yaml";
   generatedProfileKeysYamlPath = "${splitKeysDir}/profiles/${profileName}.yaml";
@@ -63,6 +65,12 @@ let
   loggerTagEnrich = "darwin.activationScripts.ssh-keys-enrichment.enrichSSHKeysYaml";
   loggerTagSplit = "darwin.activationScripts.ssh-keys-enrichment.splitSSHKeysYaml";
 
+  loggerTagExtractSystem = "darwin.activationScripts.ssh-keys-enrichment.extractSystemKeys";
+
+  sshExtractKeysSplitExpFile = ndh.store.runCommand "ssh-extract-keys.split-exp.yq" { } ''
+    install -m 0444 "${self}/modules/home-manager/ssh-key.d/ssh-extract-keys.split-exp.yq" "$out"
+  '';
+
   sshKeysEnrichmentTools = ndh.store.installBinScriptBundle "ssh-keys-enrichment-tools" {
     ssh-enrich-keys-yaml = pkgs.replaceVars "${ndhCommon}/ssh-keys.d/ssh-enrich-keys-yaml.sh" {
       nixBashTrampoline = nixBashTrampoline;
@@ -76,7 +84,22 @@ let
       nixBashTrampoline = nixBashTrampoline;
       loggerTag = loggerTagOrchestrate;
     };
+    # Same extract script HM uses, but parameterized with systemKeysDir so the
+    # ssh-host-scope privates land at /var/lib/ndh/ssh-keys (root-owned) when
+    # this runs from the root-context activation below.
+    ssh-extract-keys = pkgs.replaceVars "${self}/modules/home-manager/ssh-key.d/ssh-extract-keys.sh" {
+      nixBashTrampoline = nixBashTrampoline;
+      loggerTag = loggerTagExtractSystem;
+      splitExpFile = sshExtractKeysSplitExpFile;
+    };
   };
+
+  # Scratch dir for the system-side extract pass: we only care about what
+  # lands in systemKeysDir (4th arg below). User-scope privates for this
+  # profile are still materialized by the home-manager activation from
+  # modules/home-manager/ssh-keys.nix, so we point the script's userOutputDir
+  # at a root-owned throwaway so it does not clobber ~/.local/var/run/secrets.
+  systemExtractScratchDir = "/var/lib/ndh/ssh-keys-extract-scratch";
 in
 {
   config.system.activationScripts.preActivation.text = lib.mkAfter ''
@@ -93,5 +116,15 @@ in
       "${splitKeysDir}" \
       "${generatedSystemKeysYamlPath}" \
       "${generatedProfileKeysYamlPath}"
+
+    # Harvest system-private key material (ssh-host scope) into
+    # sshPaths.systemKeysDir so nix-store-identity-deploy can pick them up.
+    # Scratch dir holds the user/authority duplicates we do not need here.
+    install -d -m 0700 ${lib.escapeShellArg systemExtractScratchDir}
+    ${pkgs.bash}/bin/bash ${sshKeysEnrichmentTools}/bin/ssh-extract-keys \
+      ${lib.escapeShellArg generatedKeysYamlPath} \
+      ${lib.escapeShellArg systemExtractScratchDir} \
+      root \
+      ${lib.escapeShellArg config.sshPaths.systemKeysDir}
   '';
 }

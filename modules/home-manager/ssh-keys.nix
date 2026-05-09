@@ -26,7 +26,10 @@ let
   perUserKeysDir = sshPaths.secretsKeysDir;
   authorityKeysDir = sshPaths.authoritySecretsDir;
   systemManagedSshKeysPipeline = pkgs.stdenv.isLinux || pkgs.stdenv.isDarwin;
-  systemSplitProfileKeysYamlPath = "/run/secrets/nix-darwin-home/ssh-keys-split.d/profiles/${profileName}.yaml";
+  # Match the splitKeysDir used by the platform enrichment services:
+  # modules/darwin/ssh-keys-enrichment.nix and
+  # modules/nixos/systemd/ssh-keys-enrichment.nix.
+  systemSplitProfileKeysYamlPath = "/run/ndh/ssh-keys-split.d/profiles/${profileName}.yaml";
   # Effective YAML path consumed by ssh-add-keys/launchd.
   effectiveSSHKeysYamlPath = "${perUserKeysDir}.yaml";
 
