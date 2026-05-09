@@ -142,9 +142,27 @@ $defs:
     additionalProperties: false
     required:
       - type
-      - authority
       - usage
       - profiles
+    # Cert-signed keys must declare both authority and cert_usage. Bare
+    # keys (no signing, just a keypair) omit both. The allOf below enforces
+    # the "either both or neither" invariant — JSON Schema's answer to
+    # conditional requirements.
+    allOf:
+      - if:
+          properties:
+            authority:
+              type: string
+          required: [authority]
+        then:
+          required: [authority, cert_usage]
+      - if:
+          properties:
+            cert_usage:
+              type: array
+          required: [cert_usage]
+        then:
+          required: [authority, cert_usage]
     properties:
       type:
         $ref: "#/$defs/sshKeyType"
@@ -154,6 +172,20 @@ $defs:
         description: >
           Reference to a top-level authorities.<name> block. Resolution is
           a separate pass (not expressible in JSON Schema).
+      cert_usage:
+        type: array
+        description: >
+          Which certificate types the referenced authority signs for this key.
+          Drives `ssh-keygen -s ... [-h]` in the enrichment step: `ssh-host`
+          adds `-h`, `ssh-user` signs a plain user cert. Distinct from `usage`
+          which describes the key's semantic role.
+        items:
+          type: string
+          enum:
+            - ssh-host
+            - ssh-user
+        minItems: 1
+        uniqueItems: true
       usage:
         type: array
         items:

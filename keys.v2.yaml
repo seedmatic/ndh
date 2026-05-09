@@ -32,6 +32,10 @@ keys:
   nix-store:
     type: ssh-ed25519
     authority: mammoth-skate
+    # In v1 the authority signed a user cert for this key (see nested
+    # authorities.mammoth-skate.usage: [ssh-user]).
+    cert_usage:
+      - ssh-user
     comment: nix-store@mammoth-skate
     usage:
       - ssh-host
@@ -47,6 +51,10 @@ keys:
   linux-builder:
     type: ssh-ed25519
     authority: mammoth-skate
+    # v1: authorities.mammoth-skate.usage: [ssh-host, ssh-user].
+    cert_usage:
+      - ssh-host
+      - ssh-user
     comment: linux-builder@mammoth-skate
     usage:
       - ssh-host
@@ -66,6 +74,10 @@ keys:
   rdp-host:
     type: ssh-ed25519
     authority: mammoth-skate
+    # v1: authorities.mammoth-skate.usage: [ssh-host, ssh-user].
+    cert_usage:
+      - ssh-host
+      - ssh-user
     comment: nxmatic@mammoth-skate
     usage:
       - user-signing
@@ -84,7 +96,7 @@ keys:
 
   rke2-cluster:
     type: ssh-ed25519
-    authority: mammoth-skate
+    # No authority in v1 — bare keypair used for direct GitHub auth.
     comment: rke2-cluster@github
     usage:
       - ssh-user
@@ -98,7 +110,6 @@ keys:
 
   github-signing:
     type: ssh-ed25519
-    authority: mammoth-skate
     comment: github's published signing key
     usage:
       - github-signing
@@ -112,7 +123,6 @@ keys:
 
   github-signing-hyland:
     type: ssh-ed25519
-    authority: mammoth-skate
     comment: github's published hyland signing key
     usage:
       - github-signing
@@ -127,6 +137,10 @@ keys:
   vz-guest-nixos:
     type: ssh-ed25519
     authority: mammoth-skate
+    # v1: authorities.mammoth-skate.usage: [ssh-host, ssh-user].
+    cert_usage:
+      - ssh-host
+      - ssh-user
     comment: root@bioskop-nixos
     usage:
       - agent-signing
