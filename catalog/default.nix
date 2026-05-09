@@ -2,12 +2,12 @@
 {
   caches = cacheTrust.caches;
 
-  users = {
-    committed = {
-      name = "nxmatic";
-      description = "Stephane Lacoin (aka nxmatic)";
-      email = "stephane.lacoin@gmail.com";
-    };
+  # v2 has a single OS user; the catalog holds it directly without the
+  # former per-profile wrapper.
+  user = {
+    name = "nxmatic";
+    description = "Stephane Lacoin (aka nxmatic)";
+    email = "stephane.lacoin@gmail.com";
   };
 
   netplan = {

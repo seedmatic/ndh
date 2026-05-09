@@ -17,7 +17,6 @@ let
       "${ndhContext.nixBashTrampoline}"
     else
       "${self}/modules/.common.d/shell.d/nix-bash-trampoline.sh";
-  profileName = profile.name;
   userProfile = profile.user;
   userName = profile.user.name; # Use profile user name for tagging
   sshPaths = config.sshPaths;
@@ -26,10 +25,12 @@ let
   perUserKeysDir = sshPaths.secretsKeysDir;
   authorityKeysDir = sshPaths.authoritySecretsDir;
   systemManagedSshKeysPipeline = pkgs.stdenv.isLinux || pkgs.stdenv.isDarwin;
-  # Match the splitKeysDir used by the platform enrichment services:
-  # modules/darwin/ssh-keys-enrichment.nix and
-  # modules/nixos/systemd/ssh-keys-enrichment.nix.
-  systemSplitProfileKeysYamlPath = "/run/ndh/ssh-keys-split.d/profiles/${profileName}.yaml";
+  # HM is user-scope by construction → consume the `user.yaml` slice of
+  # the enrichment split regardless of what other profiles the host
+  # participates in. The enrichment service (modules/darwin/ssh-keys-
+  # enrichment.nix + modules/nixos/systemd/ssh-keys-enrichment.nix)
+  # emits this path when profile.names includes "user".
+  systemSplitProfileKeysYamlPath = "/run/ndh/ssh-keys-split.d/profiles/user.yaml";
   # Effective YAML path consumed by ssh-add-keys/launchd.
   effectiveSSHKeysYamlPath = "${perUserKeysDir}.yaml";
 
@@ -135,7 +136,7 @@ in
           chown "${userName}:$(id -gn "${userName}" 2>/dev/null || echo "${userName}")" "${effectiveSSHKeysYamlPath}" 2>/dev/null || true
         else
           echo "missing system-generated profile keys YAML: ${systemSplitProfileKeysYamlPath}" >&2
-          echo "profile.name=${profileName}" >&2
+          echo "profile.names=${toString profile.names}" >&2
           exit 1
         fi
       '';

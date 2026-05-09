@@ -11,6 +11,18 @@ in
 {
   # Minimal NixOS system for bringup — installs into ZFS pools, boots, then
   # cloud-init fetches and activates the full system at first boot.
+  #
+  # TODO(minimal-bringup): strip non-essential runtime material that the
+  # image currently inherits from the shared modules:
+  #   - linux-builder key references (authorized_keys, builder user, etc.)
+  #     — bringup never runs nested builds, only `nix copy` via nix-store.
+  #   - any other keys beyond `nix-store` + the authority the split filter
+  #     implies (profiles ∋ bringup).
+  #   - any module that enables build-time tooling the image does not use
+  #     for activation.
+  # The bringup profile filter is already in place (profile.names =
+  # ["bringup"] below); the residual references live outside the
+  # enrichment pipeline and need their own targeted cleanup.
 
   imports = [
     (modulesPath + "/installer/scan/not-detected.nix")
@@ -40,6 +52,11 @@ in
   ];
 
   networking.hostName = guestHostName;
+
+  # Bringup profile: only the bringup-scope keys are deployed (nix-store
+  # for cloud-init's `nix copy --from ssh://`). No user-scope material,
+  # no host-scope material — the minimal image boots, fetches, activates.
+  profile.names = lib.mkForce [ "bringup" ];
 
   # mDNS resolution via systemd-resolved. cloud-init's runcmd resolves the
   # remote store hostname (e.g. bioskop.local) via standard NSS + resolved,
@@ -117,7 +134,7 @@ in
       # Add linux-builder key for root access (same key used by builder user)
       (
         if builderKeys ? linux-builder && builderKeys.linux-builder ? public then
-          "ssh-ed25519 ${builderKeys.linux-builder.public} committed-linux-builder"
+          "ssh-ed25519 ${builderKeys.linux-builder.public} ndh-linux-builder"
         else
           ""
       )

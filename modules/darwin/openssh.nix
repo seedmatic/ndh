@@ -39,7 +39,9 @@ let
       profile.host.hostAlias
     else
       profile.host.hostName;
-  profileName = profile.name;
+  # AuthorizedPrincipalsCommand traverses the principals-yaml recursively
+  # (yq `..` idiom), so the outer wrapper name is inert.
+  principalsYamlLabel = "host";
 
   allPrincipals = [
     "committed"
@@ -56,11 +58,11 @@ let
   formatPrincipals = principals: concatStringsSep "\n" (map (p: "              - ${p}") principals);
 
   sshKeysYamlText = ''
-          # Certificate principal validation for ${hostAlias} (${profileName} profile)
-          # Managed by modules/darwin/openssh.nix - regenerated on darwin-rebuild
-          # Accepts all profile principals to allow cross-host connections
+          # Certificate principal validation for ${hostAlias}.
+          # Managed by modules/darwin/openssh.nix - regenerated on darwin-rebuild.
+          # Accepts all profile principals to allow cross-host connections.
           profiles:
-            committed:
+            ${principalsYamlLabel}:
               ${clientKeyName}:
                 principals:
     ${formatPrincipals allPrincipals}

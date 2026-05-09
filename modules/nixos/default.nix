@@ -114,7 +114,7 @@ let
       [
         (
           if builderKeys ? linux-builder && builderKeys.linux-builder ? public then
-            "ssh-ed25519 ${builderKeys.linux-builder.public} committed-linux-builder"
+            "ssh-ed25519 ${builderKeys.linux-builder.public} ndh-linux-builder"
           else
             ""
         )

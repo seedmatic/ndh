@@ -16,10 +16,10 @@ let
   catalog = ndhContext.catalog;
   inventory = ndhContext.inventory;
   profile = config._module.specialArgs.profile;
-  userName = profile.user.name; # Use profile-based username (nxmatic for committed profile)
-  committedUserName = catalog.users.committed.name;
+  userName = profile.user.name;
+  catalogUserName = catalog.user.name;
   inventoryHostNames = builtins.attrNames (inventory.hosts or { });
-  sshUserForHost = _host: committedUserName;
+  sshUserForHost = _host: catalogUserName;
   operatorAliasesForHost = host: ''
     Host rdp-host.${host}
       HostName ${host}.local

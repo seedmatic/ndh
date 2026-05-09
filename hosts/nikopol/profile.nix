@@ -12,9 +12,12 @@
     })
   ];
   config = {
-    # Explicitly select committed profile for full Home Manager environment
-    # on the Darwin VM host.
-    profile.name = lib.mkForce "committed";
+    # Runtime host: participates in both the host-scope and user-scope
+    # profiles. See profile.nix for the semantics.
+    profile.names = lib.mkForce [
+      "host"
+      "user"
+    ];
 
     # Keep experiment/bootstrap mode until boot/login validation is complete.
     # This avoids stage-2 panic when /etc/sops/age/keys.txt is not yet provisioned.

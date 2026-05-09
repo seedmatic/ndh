@@ -51,12 +51,6 @@ let
   resolvedProfile =
     if profile != null then profile else lib.attrByPath [ "profile" ] null specialArgsResolved;
 
-  profileName =
-    if resolvedProfile != null && resolvedProfile ? name && resolvedProfile.name != null then
-      resolvedProfile.name
-    else
-      null;
-
   selectedVmProvider =
     if resolvedProfile != null && resolvedProfile ? host && resolvedProfile.host ? vmProvider then
       resolvedProfile.host.vmProvider

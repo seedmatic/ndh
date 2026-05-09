@@ -25,8 +25,17 @@ let
       config.profile.user.name
     else
       "root";
-  profileName =
-    if config ? profile && config.profile ? name then config.profile.name else "committed";
+  # v2 profile membership (list). Bringup forces [ "bringup" ]; runtime
+  # hosts default to [ "host" "user" ]. See modules/nixos/bringup-minimal-
+  # system.nix for the bringup override.
+  profileNames =
+    if config ? profile && config.profile ? names && config.profile.names != [ ] then
+      config.profile.names
+    else
+      [
+        "host"
+        "user"
+      ];
   hostIdent =
     if config ? limaHost && config.limaHost ? hostName && config.limaHost.hostName != null then
       config.limaHost.hostName
@@ -40,19 +49,15 @@ let
   splitKeysDir = "/run/ndh/ssh-keys-split.d";
   generatedKeysYamlPath = "${splitKeysDir}/keys.generated.yaml";
   generatedSystemKeysYamlPath = "${splitKeysDir}/system.yaml";
-  generatedProfileKeysYamlPath = "${splitKeysDir}/profiles/${profileName}.yaml";
+  profileKeysYamlPathFor = profile: "${splitKeysDir}/profiles/${profile}.yaml";
 
   inventoryHostNames = builtins.attrNames (inventory.hosts or { });
   inventoryHostsCsv = lib.concatStringsSep "," inventoryHostNames;
 
-  catalogUsers = if catalog ? users then catalog.users else { };
+  # v2: single catalog user; profile name no longer drives OS user lookup.
   profileOwnerName =
-    if
-      builtins.hasAttr profileName catalogUsers
-      && catalogUsers.${profileName} ? name
-      && catalogUsers.${profileName}.name != null
-    then
-      catalogUsers.${profileName}.name
+    if catalog ? user && catalog.user ? name && catalog.user.name != null then
+      catalog.user.name
     else
       profileUserName;
 
@@ -123,27 +128,30 @@ in
     script = ''
       set -euo pipefail
 
-      ${pkgs.bash}/bin/bash ${sshKeysEnrichmentTools}/bin/ssh-enrich-split-and-authorize \
-        "${pkgs.bash}/bin/bash" \
-        "${sshKeysEnrichmentTools}/bin/ssh-enrich-keys-yaml" \
-        "${sshKeysEnrichmentTools}/bin/ssh-split-keys-yaml" \
+      # 1. Enrich the decrypted sops yaml into keys.generated.yaml.
+      ${pkgs.bash}/bin/bash ${sshKeysEnrichmentTools}/bin/ssh-enrich-keys-yaml \
         "${hostIdent}" \
         "${decryptedSSHKeysYamlPath}" \
         "${generatedKeysYamlPath}" \
         "${inventoryHostsCsv}" \
-        "${profileOwnerName}" \
-        "${splitKeysDir}" \
-        "${generatedSystemKeysYamlPath}" \
-        "${generatedProfileKeysYamlPath}" \
-        "${config.opensshPolicy.authorizedKeysDir}" \
-        "${profileUserName}" \
-        "${config.sshPaths.keyName}"
+        "${profileOwnerName}"
 
-      # Materialize file-based SSH key artifacts expected by OpenSSH activation
-      # and hostkey enrollment scripts in both bootstrap and full runtime modes.
-      # Use the full enriched keyset so host/system key material is included.
-      # 4th arg: systemKeysDir — root-owned path for privates whose top-level
-      # usage declares `ssh-host` (routed to target_dir="system-private").
+      # 2. Split into per-profile yamls (one invocation per profile name
+      #    in profile.names). Each run emits the same system.yaml (host-
+      #    scope filter) plus one profiles/<name>.yaml (filter by that
+      #    profile's membership).
+      ${lib.concatMapStringsSep "\n" (p: ''
+        ${pkgs.bash}/bin/bash ${sshKeysEnrichmentTools}/bin/ssh-split-keys-yaml \
+          "${generatedKeysYamlPath}" \
+          "${generatedSystemKeysYamlPath}" \
+          "${profileKeysYamlPathFor p}" \
+          "${profileOwnerName}" \
+          "${p}"
+      '') profileNames}
+
+      # 3. Materialize extract artifacts: the full enriched set drives
+      #    both the per-user deploy (secretsKeysDir) and the host-scope
+      #    drop to systemKeysDir (privates whose .profiles ∋ "host").
       ${pkgs.bash}/bin/bash ${sshKeysEnrichmentTools}/bin/ssh-extract-keys \
         "${generatedKeysYamlPath}" \
         "${config.sshPaths.secretsKeysDir}" \

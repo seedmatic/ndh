@@ -926,18 +926,18 @@
               hostProfile.hostName;
           catalog = catalogData;
 
-          committedHomeManagerUserWithHome = catalog.users.committed // {
+          # HM user identity, augmented with a resolved home directory.
+          homeManagerUserWithHome = catalog.user // {
             home =
-              if catalog.users.committed ? home && catalog.users.committed.home != null then
-                catalog.users.committed.home
+              if catalog.user ? home && catalog.user.home != null then
+                catalog.user.home
               else
-                "/Users/${catalog.users.committed.name}";
+                "/Users/${catalog.user.name}";
           };
-          committedProfile = {
-            name = "committed";
+          hostUserProfile = {
             host = hostProfile;
-            user = committedHomeManagerUserWithHome;
-            email = committedHomeManagerUserWithHome.email;
+            user = homeManagerUserWithHome;
+            email = homeManagerUserWithHome.email;
           };
           nixosOutputs = mkNixosOutputs {
             inherit hostProfile catalog;
@@ -1113,9 +1113,9 @@
             };
           };
 
-          # Home Manager configurations are explicitly profile-keyed.
+          # Home Manager configuration for the single host user.
           homeManagerConfigurations = {
-            committed = mkHomeManagerConfig committedProfile;
+            default = mkHomeManagerConfig hostUserProfile;
           };
         in
         nixosOutputs
@@ -1131,7 +1131,7 @@
             nixosDiskSizeHint
             homeManagerConfigurations
             ;
-          homeManagerConfiguration = homeManagerConfigurations.committed;
+          homeManagerConfiguration = homeManagerConfigurations.default;
           diskoConfigurations = {
             "${mainName}-nixos" = nixosDiskoConfiguration;
           };

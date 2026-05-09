@@ -8,7 +8,7 @@ LIMA_CIDATA_MNT="${LIMA_CIDATA_MNT:-/mnt/lima-cidata}"
 LIMA_CIDATA_DEV="${LIMA_CIDATA_DEV:-/dev/disk/by-label/cidata}"
 PROFILE_USER_NAME="@profileUserName@"
 LINUX_BUILDER_PUBLIC_KEY="@linuxBuilderPublicKey@"
-COMMITTED_TRUSTED_CA_PUBLIC_KEY="@committedTrustedCaPublicKey@"
+TRUSTED_CA_PUBLIC_KEY="@trustedCaPublicKey@"
 
 exec 1> >(tee -a "${LIMA_CLOUD_INIT_OUTPUT_LOG:-/var/log/lima-cloud-init-output.log}") \
      2> >(tee -a "${LIMA_CLOUD_INIT_LOG:-/var/log/lima-cloud-init.log}")
@@ -154,8 +154,8 @@ fi
 # Bootstrap certificate-auth trust fallback: keep trusted-user CA available
 # even before runtime secret extraction populates /etc/ssh/keys.d.
 install -d -m 755 "/etc/ssh/keys.d"
-if [[ -n "${COMMITTED_TRUSTED_CA_PUBLIC_KEY}" ]]; then
-  printf 'ssh-ed25519 %s %s\n' "${COMMITTED_TRUSTED_CA_PUBLIC_KEY}" "cert-authority@mammoth-skate" \
+if [[ -n "${TRUSTED_CA_PUBLIC_KEY}" ]]; then
+  printf 'ssh-ed25519 %s %s\n' "${TRUSTED_CA_PUBLIC_KEY}" "cert-authority@mammoth-skate" \
     > "/etc/ssh/keys.d/trusted-user-ca.pub"
   chown root:root "/etc/ssh/keys.d/trusted-user-ca.pub"
   chmod 644 "/etc/ssh/keys.d/trusted-user-ca.pub"

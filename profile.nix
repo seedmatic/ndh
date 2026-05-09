@@ -12,7 +12,7 @@ let
   inherit (pkgs) stdenv;
   inherit (lib) mkDefault;
   catalog = ndhContext.catalog;
-  committedUser = catalog.users.committed;
+  catalogUser = catalog.user;
   cfg = config.profile;
   defaultUserHome = if stdenv.isDarwin then "Users" else "${config.users.defaultUserHome}";
 in
@@ -22,10 +22,25 @@ in
       description = "Profile currently evaluated";
       type = lib.types.submodule {
         options = {
-          name = lib.mkOption {
-            type = lib.types.str;
-            description = "The name of the profile";
-            default = "jdoe";
+          names = lib.mkOption {
+            # Enum-valued list of profile roles this host participates in.
+            # Drives which per-profile yaml(s) the enrichment split
+            # produces and which set of keys the host deploys from v2
+            # keys.yaml (filter by `.profiles` membership).
+            type = lib.types.listOf (lib.types.enum [
+              "bringup"
+              "host"
+              "user"
+            ]);
+            description = ''
+              List of profile roles the host belongs to. Runtime hosts
+              default to [ "host" "user" ]; bringup images force
+              [ "bringup" ]. Orthogonal — no implicit inclusion.
+            '';
+            default = [
+              "host"
+              "user"
+            ];
           };
           email = lib.mkOption {
             type = lib.types.str;
@@ -151,13 +166,13 @@ in
 
   # Compose config
   config = {
-    # Profile defaults for the sole profile (committed).
+    # Defaults sourced from catalog.user. `profile.names` retains its
+    # module-level default (["host" "user"] — runtime host).
     profile = {
-      name = mkDefault "committed";
-      email = mkDefault committedUser.email;
+      email = mkDefault catalogUser.email;
       user = {
-        name = mkDefault committedUser.name;
-        description = mkDefault committedUser.description;
+        name = mkDefault catalogUser.name;
+        description = mkDefault catalogUser.description;
         shell = mkDefault pkgs.zsh;
         uid = 501;
         gid = 501;

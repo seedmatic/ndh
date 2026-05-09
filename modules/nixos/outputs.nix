@@ -238,9 +238,9 @@ let
                 # hostProfile: consumed by .common.d/sops.nix (vmProvider fallback)
                 # and profile.nix. Keep minimal.
                 inherit hostProfile;
-                # catalog: profile.nix reads catalog.users.committed. Pass only the
-                # users sub-tree to avoid pulling the full inventory.
-                catalog = { inherit (catalog) users; };
+                # catalog: profile.nix reads catalog.user. Pass only the
+                # user sub-tree to avoid pulling the full inventory.
+                catalog = { inherit (catalog) user; };
                 # inventory: ssh-keys-enrichment reads inventory.hosts for the
                 # comma-separated host list that seeds authorized_principals.
                 inherit inventory;

@@ -41,7 +41,7 @@ in
   };
   users.groups.${cfgUserName} = if nixosUserGid != null then { gid = nixosUserGid; } else { };
 
-  # builder user: accepts the linux-builder key from the committed Darwin profile for remote builds.
+  # builder user: accepts the linux-builder key from the Darwin host for remote builds.
   # The public key is baked in at build time from keys.yaml (not SOPS-encrypted).
   users.users.builder = lib.mkIf runtimeMode {
     isNormalUser = true;
@@ -54,7 +54,7 @@ in
     openssh.authorizedKeys.keys = lib.filter (k: k != "") [
       (
         if builderKeys ? linux-builder && builderKeys.linux-builder ? public then
-          "ssh-ed25519 ${builderKeys.linux-builder.public} committed-linux-builder"
+          "ssh-ed25519 ${builderKeys.linux-builder.public} ndh-linux-builder"
         else
           ""
       )
@@ -70,7 +70,7 @@ in
     lib.filter (k: k != "") [
       (
         if builderKeys ? linux-builder && builderKeys.linux-builder ? public then
-          "ssh-ed25519 ${builderKeys.linux-builder.public} committed-linux-builder"
+          "ssh-ed25519 ${builderKeys.linux-builder.public} ndh-linux-builder"
         else
           ""
       )

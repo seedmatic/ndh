@@ -22,7 +22,7 @@ let
 
   # Public key trusted by the embedded linux-builder VM's authorized_keys
   # (read from flattened keys.yaml — top-level entries, no profile wrapper).
-  linuxBuilderCommittedPubKey = keys.linux-builder.public;
+  linuxBuilderPubKey = keys.linux-builder.public;
   # Pull builder inventory entries for this host (if present)
   hostName = config.profile.host.hostName;
   cacheCatalog = catalog.caches;
@@ -214,12 +214,12 @@ in
           NDH_VECTOR_ENDPOINT  = "http://127.0.0.1:9001";
         };
 
-        # Deploy the committed profile's SSH key to the VM using NixOS environment.etc with mode
+        # Deploy the linux-builder SSH key to the VM using NixOS environment.etc with mode
         environment.etc = {
           "ssh/builder_keys.pub" = {
             text = lib.concatStrings [
               ''
-                ssh-ed25519 ${linuxBuilderCommittedPubKey} committed-profile
+                ssh-ed25519 ${linuxBuilderPubKey} ndh-linux-builder
               ''
             ];
             mode = "0644";

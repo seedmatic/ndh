@@ -12,8 +12,16 @@ let
   ndhCommon = "${self}/modules/.common.d";
   ndhContext = ndh.context;
   nixBashTrampoline = "${ndhContext.nixBashTrampoline}";
-  profileName =
-    if config ? profile && config.profile ? name then config.profile.name else "committed";
+  # Profile membership list (v2). Defaults to the runtime profile set
+  # when unspecified; bringup-minimal-system forces [ "bringup" ].
+  profileNames =
+    if config ? profile && config.profile ? names && config.profile.names != [ ] then
+      config.profile.names
+    else
+      [
+        "host"
+        "user"
+      ];
   hostIdent =
     if
       config ? profile
@@ -45,19 +53,19 @@ let
   splitKeysDir = "/run/ndh/ssh-keys-split.d";
   generatedKeysYamlPath = "${splitKeysDir}/keys.generated.yaml";
   generatedSystemKeysYamlPath = "${splitKeysDir}/system.yaml";
-  generatedProfileKeysYamlPath = "${splitKeysDir}/profiles/${profileName}.yaml";
+  # Per-profile split outputs. One yaml per profile name this host
+  # participates in. The legacy 4-arg ssh-split-keys-yaml signature still
+  # expects a single profile path, so we invoke it once per entry below.
+  profileKeysYamlPathFor = profile: "${splitKeysDir}/profiles/${profile}.yaml";
 
   inventoryHostNames = builtins.attrNames (inventory.hosts or { });
   inventoryHostsCsv = lib.concatStringsSep "," inventoryHostNames;
 
-  catalogUsers = if catalog ? users then catalog.users else { };
+  # v2 has a single catalog user; profile name no longer drives the
+  # OS user lookup.
   profileOwnerName =
-    if
-      builtins.hasAttr profileName catalogUsers
-      && catalogUsers.${profileName} ? name
-      && catalogUsers.${profileName}.name != null
-    then
-      catalogUsers.${profileName}.name
+    if catalog ? user && catalog.user ? name && catalog.user.name != null then
+      catalog.user.name
     else
       profileUserName;
 
@@ -114,6 +122,27 @@ let
   # root-context before invoking the user-scope extractor.
   perUserSecretsKeysDir = config.sshPaths.secretsKeysDir;
   effectiveUserSSHKeysYamlPath = "${perUserSecretsKeysDir}.yaml";
+
+  # The HM consumer (modules/home-manager/ssh-keys.nix) always reads the
+  # "user" slice; other profiles (host/bringup) feed the system-scope
+  # extract exclusively.
+  hmProfileName = "user";
+  hmProfileKeysYamlPath = profileKeysYamlPathFor hmProfileName;
+
+  # Shell snippet that invokes ssh-split-keys-yaml once per profile name
+  # the host participates in. Each call emits two files (system.yaml +
+  # the per-profile yaml); we only care about the per-profile output
+  # here, but the script insists on writing both. The system.yaml is
+  # overwritten on every iteration — same content (all host-scope keys)
+  # so harmless.
+  splitAllProfilesSnippet = lib.concatMapStringsSep "\n\n" (p: ''
+    ${pkgs.bash}/bin/bash ${sshKeysEnrichmentTools}/bin/ssh-split-keys-yaml \
+      ${lib.escapeShellArg generatedKeysYamlPath} \
+      ${lib.escapeShellArg generatedSystemKeysYamlPath} \
+      ${lib.escapeShellArg (profileKeysYamlPathFor p)} \
+      ${lib.escapeShellArg profileOwnerName} \
+      ${lib.escapeShellArg p}
+  '') profileNames;
 in
 {
   # Split into two postActivation steps so ordering against sops-install-secrets
@@ -124,18 +153,16 @@ in
   config.system.activationScripts.postActivation.text = lib.mkOrder 1500 ''
     set -euo pipefail
 
-    ${pkgs.bash}/bin/bash ${sshKeysEnrichmentTools}/bin/ssh-enrich-split-and-authorize \
-      "${pkgs.bash}/bin/bash" \
-      "${sshKeysEnrichmentTools}/bin/ssh-enrich-keys-yaml" \
-      "${sshKeysEnrichmentTools}/bin/ssh-split-keys-yaml" \
-      "${hostIdent}" \
-      "${decryptedSSHKeysYamlPath}" \
-      "${generatedKeysYamlPath}" \
-      "${inventoryHostsCsv}" \
-      "${profileOwnerName}" \
-      "${splitKeysDir}" \
-      "${generatedSystemKeysYamlPath}" \
-      "${generatedProfileKeysYamlPath}"
+    # Enrichment produces the full enriched yaml at generatedKeysYamlPath.
+    # We then invoke split-keys-yaml once per profile in profile.names.
+    ${pkgs.bash}/bin/bash ${sshKeysEnrichmentTools}/bin/ssh-enrich-keys-yaml \
+      ${lib.escapeShellArg hostIdent} \
+      ${lib.escapeShellArg decryptedSSHKeysYamlPath} \
+      ${lib.escapeShellArg generatedKeysYamlPath} \
+      ${lib.escapeShellArg inventoryHostsCsv} \
+      ${lib.escapeShellArg profileOwnerName}
+
+    ${splitAllProfilesSnippet}
 
     # System-scope extract: ssh-host privates land in sshPaths.systemKeysDir.
     # /var/lib/ndh/ssh-keys-extract-scratch catches user/authority duplicates
@@ -147,24 +174,26 @@ in
       root \
       ${lib.escapeShellArg config.sshPaths.systemKeysDir}
 
-    # Install the per-profile yaml where the user-scope extractor expects it.
+    # Install the user-scope per-profile yaml where HM's extractor expects it.
     # install runs as root so we chown to the profile owner afterwards.
-    install -m 0700 -d "$(dirname ${lib.escapeShellArg effectiveUserSSHKeysYamlPath})"
-    install -m 0400 ${lib.escapeShellArg generatedProfileKeysYamlPath} ${lib.escapeShellArg effectiveUserSSHKeysYamlPath}
-    chown ${lib.escapeShellArg profileOwnerName} ${lib.escapeShellArg effectiveUserSSHKeysYamlPath} || true
+    ${lib.optionalString (builtins.elem hmProfileName profileNames) ''
+      install -m 0700 -d "$(dirname ${lib.escapeShellArg effectiveUserSSHKeysYamlPath})"
+      install -m 0400 ${lib.escapeShellArg hmProfileKeysYamlPath} ${lib.escapeShellArg effectiveUserSSHKeysYamlPath}
+      chown ${lib.escapeShellArg profileOwnerName} ${lib.escapeShellArg effectiveUserSSHKeysYamlPath} || true
 
-    # User-scope extract: populate ~<user>/.local/var/run/secrets/ssh-keys.
-    # `launchctl asuser ... sudo -u <user>` is the nix-darwin-standard way to
-    # run a step in the user's context during activation.
-    launchctl asuser "$(id -u ${lib.escapeShellArg profileOwnerName})" \
-      sudo -u ${lib.escapeShellArg profileOwnerName} \
-        ${pkgs.bash}/bin/bash ${sshKeysEnrichmentTools}/bin/ssh-extract-keys-user \
-          ${lib.escapeShellArg effectiveUserSSHKeysYamlPath} \
-          ${lib.escapeShellArg perUserSecretsKeysDir} \
-          ${lib.escapeShellArg profileOwnerName}
+      # User-scope extract: populate ~<user>/.local/var/run/secrets/ssh-keys.
+      # `launchctl asuser ... sudo -u <user>` is the nix-darwin-standard way to
+      # run a step in the user's context during activation.
+      launchctl asuser "$(id -u ${lib.escapeShellArg profileOwnerName})" \
+        sudo -u ${lib.escapeShellArg profileOwnerName} \
+          ${pkgs.bash}/bin/bash ${sshKeysEnrichmentTools}/bin/ssh-extract-keys-user \
+            ${lib.escapeShellArg effectiveUserSSHKeysYamlPath} \
+            ${lib.escapeShellArg perUserSecretsKeysDir} \
+            ${lib.escapeShellArg profileOwnerName}
 
-    launchctl asuser "$(id -u ${lib.escapeShellArg profileOwnerName})" \
-      sudo -u ${lib.escapeShellArg profileOwnerName} \
-        ${pkgs.bash}/bin/bash ${sshKeysEnrichmentTools}/bin/ssh-ensure-authorized-keys
+      launchctl asuser "$(id -u ${lib.escapeShellArg profileOwnerName})" \
+        sudo -u ${lib.escapeShellArg profileOwnerName} \
+          ${pkgs.bash}/bin/bash ${sshKeysEnrichmentTools}/bin/ssh-ensure-authorized-keys
+    ''}
   '';
 }

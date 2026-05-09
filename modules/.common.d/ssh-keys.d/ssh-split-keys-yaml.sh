@@ -36,9 +36,8 @@ main() {
 	fi
 
 	# Derive profile name from the output path if the caller did not
-	# supply one explicitly. The legacy API (4-arg) left profile name
-	# implicit in the path, e.g. profiles/committed.yaml → "committed".
-	# Commit 3 drops this fallback and makes the arg required.
+	# supply one explicitly. The legacy API left profile name implicit
+	# in the path, e.g. profiles/user.yaml → "user".
 	if [[ -z "$profileName" ]]; then
 		local base
 		base="$(basename "$generatedProfileKeysYamlPath")"

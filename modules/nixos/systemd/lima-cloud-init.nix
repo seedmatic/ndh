@@ -17,14 +17,14 @@ let
   isLimaProvider = config.ndh.vm.provider == "lima";
   contributedTargetName = ndhSystemd.contributedTargetName;
   zpoolInitServiceName = ndhSystemd.mkServiceName "zpool-init";
-  committedProfileUserName =
-    if catalog ? users && catalog.users ? committed && catalog.users.committed ? name then
-      catalog.users.committed.name
+  catalogUserName =
+    if catalog ? user && catalog.user ? name then
+      catalog.user.name
     else
       config.profile.user.name;
-  committedTrustedCaPublicKey = lib.removeSuffix "\n" (
+  trustedCaPublicKey = lib.removeSuffix "\n" (
     builtins.readFile (
-      pkgs.runCommand "committed-trusted-user-ca-public-key" { buildInputs = [ pkgs.yq-go ]; } ''
+      pkgs.runCommand "trusted-user-ca-public-key" { buildInputs = [ pkgs.yq-go ]; } ''
         yq -r '."mammoth-skate".public // ""' "${self}/modules/home-manager/ssh.d/keys.yaml" > "$out"
       ''
     )
@@ -56,12 +56,12 @@ let
         [
           "@profileUserName@"
           "@linuxBuilderPublicKey@"
-          "@committedTrustedCaPublicKey@"
+          "@trustedCaPublicKey@"
         ]
         [
-          committedProfileUserName
+          catalogUserName
           linuxBuilderPublicKey
-          committedTrustedCaPublicKey
+          trustedCaPublicKey
         ]
         (builtins.readFile ./lima-cloud-init.sh);
   };

@@ -21,15 +21,10 @@ let
 
   profileUser = config.profile.user.name;
   vmGuestUser =
-    if catalog ? users && catalog.users ? committed && catalog.users.committed ? name then
-      catalog.users.committed.name
+    if catalog ? user && catalog.user ? name then
+      catalog.user.name
     else
-      builtins.throw "lima-config.nix: catalog.users.committed.name is required for canonical NixOS VM guest user";
-  committedHostHome =
-    if catalog ? users && catalog.users ? committed && catalog.users.committed ? home then
-      catalog.users.committed.home
-    else
-      "/Users/${vmGuestUser}";
+      builtins.throw "lima-config.nix: catalog.user.name is required for canonical NixOS VM guest user";
   profileHome = config.profile.user.home;
   profileHost = config.profile.host;
   sshPaths = config.sshPaths;
@@ -42,7 +37,6 @@ let
     else
       profileHost.hostName;
 
-  profileName = config.profile.name;
   selectedVmProvider =
     if profileHost ? vmProvider && profileHost.vmProvider != null then
       profileHost.vmProvider
@@ -246,7 +240,7 @@ let
     mounts = [
       {
         # Explicit host home source; avoid '~' resolution against vm guest user name
-        # (which can point to non-existent /Users/<committed-user> on the host).
+        # (which can point to a non-existent /Users/<catalog-user> on the host).
         location = "${profileHome}";
         # Keep the same path layout as host inside the guest.
         mountPoint = "${profileHome}";
