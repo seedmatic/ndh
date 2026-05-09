@@ -865,11 +865,40 @@
             }
           ) { } (builtins.attrNames hostCatalog);
           nixBuildObservePackage = mkNixBuildObservePackage system;
+          pkgsForSystem = pkgsFor { inherit system; };
+          # Run check-jsonschema against the v2 shadow keys.yaml. Lives
+          # outside treefmt (which is wired to the canonical keys.v2.yaml
+          # only) so you can point at any file ad-hoc:
+          #   nix run .#ssh-keys-v2-validate -- path/to/keys.yaml
+          # Defaults to modules/home-manager/ssh.d/keys.v2.yaml when no
+          # argument is given.
+          sshKeysValidatorPackage =
+            pkgsForSystem.writeShellApplication {
+              name = "ssh-keys-v2-validate";
+              runtimeInputs = [ pkgsForSystem.check-jsonschema ];
+              text = ''
+                target="''${1:-modules/home-manager/ssh.d/keys.v2.yaml}"
+                schema="modules/home-manager/ssh.d/keys.schema.yaml"
+                if [[ ! -r "$schema" ]]; then
+                  echo "schema not found at $schema (run from repo root)" >&2
+                  exit 1
+                fi
+                if [[ ! -r "$target" ]]; then
+                  echo "target yaml not found: $target" >&2
+                  exit 1
+                fi
+                exec check-jsonschema --schemafile "$schema" "$target"
+              '';
+            };
         in
         {
           nix-build-observe = {
             type = "app";
             program = "${nixBuildObservePackage}/bin/nix-build-observe";
+          };
+          ssh-keys-v2-validate = {
+            type = "app";
+            program = "${sshKeysValidatorPackage}/bin/ssh-keys-v2-validate";
           };
         }
         // hostMaterializerApps
