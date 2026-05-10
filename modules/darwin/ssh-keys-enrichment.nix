@@ -154,6 +154,11 @@ in
   config.system.activationScripts.postActivation.text = lib.mkOrder 1400 ''
     set -euo pipefail
 
+    # Pre-create the split output directory tree so that enrichment/split
+    # scripts can always write their outputs even on first boot (mirrors the
+    # explicit install -d in ssh-enrich-split-runtime-keys.sh).
+    install -d -m 0755 ${lib.escapeShellArg splitKeysDir} ${lib.escapeShellArg "${splitKeysDir}/profiles"}
+
     # Enrichment produces the full enriched yaml at generatedKeysYamlPath.
     # We then invoke split-keys-yaml once per profile in profile.names.
     ${pkgs.bash}/bin/bash ${sshKeysEnrichmentTools}/bin/ssh-enrich-keys-yaml \

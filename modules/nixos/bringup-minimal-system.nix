@@ -42,7 +42,9 @@ in
     # full systemd/ aggregator.
     "${self}/modules/.common.d/ssh-paths.nix"
     "${self}/modules/.common.d/openssh-policy.nix"
+    "${self}/modules/.common.d/nix-store-identity.nix"
     ./systemd/ssh-keys-enrichment.nix
+    ./systemd/nix-store-identity.nix
     ./bringup-cloud-init.nix
     ./initrd-emergency.nix
     ./console-serial.nix

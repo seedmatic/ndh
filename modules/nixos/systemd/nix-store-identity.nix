@@ -11,15 +11,11 @@
 # it runs. Mirrors the Darwin activation wiring at
 # modules/darwin/linux-builder.nix for the same identity.
 let
-  ndhContext = config.ndh.context or { };
-  generationMode = ndhContext.generationMode or "full";
-  runtimeMode = generationMode != "bringup";
-
   sshKeysEnrichmentServiceName = ndhSystemd.mkServiceName "ssh-keys-enrichment";
   contributedTargetName = ndhSystemd.contributedTargetName;
 in
 {
-  config = lib.mkIf runtimeMode {
+  config = {
     nixStoreIdentity.enable = true;
 
     systemd.services.${ndhSystemd.mkUnitName "nix-store-identity"} = {

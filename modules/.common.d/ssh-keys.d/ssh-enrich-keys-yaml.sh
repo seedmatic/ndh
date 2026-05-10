@@ -263,14 +263,9 @@ main() {
 	tmpdir="$(mktemp -d --suffix=.enrich)"
 	trap 'rm -rf "$tmpdir"' EXIT
 
-	# Work on a mutable copy so repeated yq -i calls stay scoped.
-	local workFile="${tmpdir}/keys.work.yaml"
-	cp "$inputFile" "$workFile"
-	inputFile="$workFile"
-
-	enrich::all_keys
-
-	# Atomic install.
+	# Create the output directory before enrichment so that it exists even
+	# if enrich::all_keys exits early (set -e); callers that check for the
+	# directory's presence can distinguish "not started" from "failed".
 	local outDir
 	outDir="$(dirname "$outputFile")"
 	if [[ "$(id -u)" -eq 0 && -n "$targetUser" ]]; then
@@ -281,6 +276,14 @@ main() {
 		install -m 0700 -d "$outDir"
 	fi
 
+	# Work on a mutable copy so repeated yq -i calls stay scoped.
+	local workFile="${tmpdir}/keys.work.yaml"
+	cp "$inputFile" "$workFile"
+	inputFile="$workFile"
+
+	enrich::all_keys
+
+	# Atomic install.
 	local tmpOut
 	tmpOut="$(mktemp)"
 	cp "$inputFile" "$tmpOut"
