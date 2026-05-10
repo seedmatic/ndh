@@ -107,11 +107,20 @@ in
   # Disable SSH agent (not needed)
   programs.ssh.startAgent = lib.mkForce false;
 
-  # Enable SSH server for emergency access
+  # Enable SSH server for emergency access + mammoth-skate cert auth on
+  # both sides of the handshake so clients with the CA trust can ssh in
+  # without known_hosts pinning and sshd accepts ssh-user certs without
+  # per-user authorized_keys churn. The referenced files are materialized
+  # by the ssh-keys-enrichment unit (ordered `before sshd.service`) into
+  # sshPaths.systemKeysDir.
   services.openssh = {
     enable = true;
+    hostKeys = lib.mkForce [ ];  # Disable auto-generated host keys — we use the rdp-host material below.
     settings = {
       PermitRootLogin = "prohibit-password";  # Only allow key-based auth
+      HostKey = "${config.sshPaths.systemKeysDir}/${config.sshPaths.keyName}";
+      HostCertificate = "${config.sshPaths.systemKeysDir}/${config.sshPaths.keyName}-server-cert.pub";
+      TrustedUserCAKeys = "${config.sshPaths.systemKeysDir}/trusted-user-ca.pub";
     };
   };
 
