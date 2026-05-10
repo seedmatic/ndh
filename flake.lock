@@ -65454,11 +65454,11 @@
         "zen-browser": "zen-browser_129"
       },
       "locked": {
-        "lastModified": 1778418052,
-        "narHash": "sha256-Vx7A47FRSjSeidpULsmDkZO9EZn3aqxKC1LcuF9Kf8w=",
+        "lastModified": 1778420329,
+        "narHash": "sha256-/QzAOowZox11pazDofBkYdNLvR88x2R8gwJZWjzbfxU=",
         "owner": "nxmatic",
         "repo": "nix-flake-commons",
-        "rev": "bda44307123781449cef302f8afd053927f73bfa",
+        "rev": "704809b1131ea68011449577ec260334c9de2bcc",
         "type": "github"
       },
       "original": {
@@ -217177,16 +217177,14 @@
       "locked": {
         "lastModified": 1777954456,
         "narHash": "sha256-hGdgeU2Nk87RAuZyYjyDjFL6LK7dAZN5RE9+hrDTkDU=",
-        "owner": "NixOS",
-        "repo": "nixpkgs",
         "rev": "549bd84d6279f9852cae6225e372cc67fb91a4c1",
-        "type": "github"
+        "revCount": 992384,
+        "type": "tarball",
+        "url": "https://api.flakehub.com/f/pinned/NixOS/nixpkgs/0.1.992384%2Brev-549bd84d6279f9852cae6225e372cc67fb91a4c1/019df915-70b5-73a2-a5a4-63c620b45d9f/source.tar.gz"
       },
       "original": {
-        "owner": "NixOS",
-        "ref": "nixos-unstable",
-        "repo": "nixpkgs",
-        "type": "github"
+        "type": "tarball",
+        "url": "https://flakehub.com/f/NixOS/nixpkgs/0.1"
       }
     },
     "nixpkgs_10": {
