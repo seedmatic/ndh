@@ -53,7 +53,7 @@ keys:
       - user
     principals:
       linux-builder: linux-builder
-      committed: committed
+      rdp-host: rdp-host
     public: AAAAC3NzaC1lZDI1NTE5AAAAIMHU43EVt2ETrAd7u65ZX+nyLtbMKVr+zvdyM/6db7MV
     # sops:encrypted
     private: ENC[AES256_GCM,data:PIgijUt63xDanPJzohc7Djd33gebnNYjPCpcIvh02OV4pxIPkBANAwEItE8gQMJcnR+GUJKAB7+cfGGBPJgva+wxHwlyFiOS2z+QPr7TYlEO0Cm0wTjwe3e9dsaRqu7HVEZumx/jsKkgEJ2BWFWdXdHaVSMdN8bC5HneqGoBCow9fpwlf91AkzmVnQU7ttb/mM83YzMyY0tPD76ISlBCXjdIdyqyha3WQB+cfyBO/R08y9ucnNqw1J8nwoDhAjC21TVL5Y+wkuRvq+x9dAw3uuseesneTg7HJfjsvsxzIdJVVHSetBzQmMHe270xeh6TUkhLmztoEy5zIqpPa4Uq4tFclbHBFoa+ghRSW7DmGcbDjXUNn/FrUjjBMTeVgTUQkz2Nf79tWfNhtr1MZ6/BRj3EobQd7Lc3vKpR05eYLAo5dMj2lp3l0iEy38n/flxZALlorapLc+PxMPBo6qHTwMeceqbx1HBP+baG4xz4POD+rUkt2sRxV1T7LrBjcfPXveWL8RJhKPvJzK9/JjQa46CX/i3fU8BWzeQ=,iv:5L2WAZNSVBhh+Wfw1dra+2rro3ccQlvNtF7nB/I6Imw=,tag:53dcPvZemTMMBARoqURf3w==,type:str]
@@ -73,7 +73,7 @@ keys:
       - system
       - user
     principals:
-      committed: committed
+      rdp-host: rdp-host
     authorized_keys_options:
       - forwarding
     public: AAAAC3NzaC1lZDI1NTE5AAAAIGet5e+oTAP3AfpWzlaM+SrHov14dGzao1jadf0S03oE
@@ -96,7 +96,7 @@ keys:
       - system
     principals:
       linux-builder: linux-builder
-      committed: committed
+      rdp-host: rdp-host
     public: AAAAC3NzaC1lZDI1NTE5AAAAIG1fGVLU3BOE2R+1zuJRSOAxYsw+fd4y7YvwZFxMs8RF
     # sops:encrypted
     private: ENC[AES256_GCM,data:SmJ5dQVl5Kb8nAaEo7Q6ZKdUN6t/64Fz6vR3k1RczoCKMzgL+XUwCmYi1oN9ewIgL/ch1RXbErNzPURlRQDHOTb27yu2iArnAIxG1Y3tr+4a7qWYciFpDXiQenoXfCEJsuXI0aOxuAilN1lkgv91jWit6XKxjAC0uXAfRqOkkV1TPAJbuc0Ois2Fb0akpsw+vz1AKXGnA5I4LLmvW62INq2ivHnsft4y3LW+7dE+Ux1oxYBDolD+An9ARMf8S+jvhjjUK4+Wb47mJkzV8HfB/Y2M0rj4yekVoMUEoLURgAi/3aJX+R2zpVUHCuMskDKtFHrB6t1W5F19ErqH+1gAbwqeKb++xpYY8tWhkFro9ATCvysJ2M9zhP4ypyx323F25pWE53v/vtz1RsR/rBYp1L2RQDTCxSOxabsJZ7ORwbxSvUYuEZO2iGbgyAVFFZJj/9DtzfIQuyrXhpYCw8B9mLZ+eXZL5E0qd+D49IrEwbOt+gqxkb7eO1zpki9Z+pSHV9ZaggN0rVvTiAYbNmTEWyVTDMPn/GTmO1g=,iv:03nlHVii5ghtUKNmcO7j/A0/mrJVWe0cWzR6UHGmCXI=,tag:i7jtmLVxAO8Rp19gscKKqA==,type:str]
@@ -174,7 +174,7 @@ sops:
         TUFYTy9BVWFEeFMxLzF6SDUrMUsvTTAKFb0xkpGAh4SOWpeAiQYXM9IZ9Mf1qjij
         HzBsTEPaW9HSHFxr2jsfFC67QqucA5hCcB5Y7BDOsbgVvV87mWQNdA==
         -----END AGE ENCRYPTED FILE-----
-  lastmodified: "2026-05-10T12:08:45Z"
-  mac: ENC[AES256_GCM,data:DU1lRNj4qsbW8NN6njF67TTqqVIdW/oqJBUhiWBzPrqTa4iLz6bKsfqO6+YHfhIxlaUhF2sI9q+9EeRRP+g/EVx4UXMI4yknEkM4b7+/uHAoT/M60YbA0VC7oct/BLtzVylS8B006JWEgiu919NikVc7ZW9LfpKU8pjRziqEqwA=,iv:lbDa/6gLRwrjmHbt4HjgkMNf5I885wwvpWDH6D7TxFU=,tag:zsv39kIwyV6ut0bvtfedJg==,type:str]
+  lastmodified: "2026-05-10T22:19:11Z"
+  mac: ENC[AES256_GCM,data:DSv9wHFE5dc8prdR76UtHH+r3eEpKV/bAqDbL4ZnnbtKfdKngds+ZgCk6xLu8A7pGL4ThNiEhsGX9/uQyy8MrwEC1Wy3MzHPBEwsqhiHKUL+8XjaRmlKEnvaHCM7KpwP32YjfD1D76crSjnhQ7Tk5608IxNHoHeeqsSUUD6NL9I=,iv:vACTapY3X66Ijw0eii71iAl5p3XIvXEYGZR6Fo901Ec=,tag:NX4+LpEk+6gZZkaYJM1p+w==,type:str]
   encrypted_comment_regex: sops:encrypted
   version: 3.12.2
