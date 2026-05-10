@@ -50,7 +50,9 @@ ndh::ssh:keys:authorized:file:ensure() {
 ndh::ssh:keys:agent:init() {
 	# Initialize / attach to agent (keychain handles reuse)
 	# shellcheck disable=SC1090
-	source <(keychain -q "${KEYCHAIN_FLAGS:---noask --nogui}" --eval)
+	if ! source <(keychain --quiet --eval 2>/dev/null); then
+		source <(keychain -q --eval)
+	fi
 }
 
 ndh::ssh:keys:certificate:keyid:extract() {

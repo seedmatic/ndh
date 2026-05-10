@@ -51,18 +51,14 @@ env(TMPDIR) + "/" as $tmpdir |
     .value.comment as $keyComment |
     .value.certificates as $certs |
 
-    # Private scope: system-private if profile includes "system".
-    ( { "scope": "user" } | with(
-        select( [ "system" ] - $profiles | length == 0 );
-        .scope = "system-private"
-      ) | .scope ) as $private_scope |
-
-    # Build a list of docs for this key. Each element may be null; filter later.
+    # The yaml passed to this split expression is already filtered by profile
+    # (system extraction gets system-profile keys, user extraction gets user-profile keys).
+    # Always emit private key - the extraction script's context determines the target directory.
     [
       (
         { "yamlfile":   ( $tmpdir + $basename + ".yaml" ),
           "rel_path":   $basename,
-          "target_dir": $private_scope,
+          "target_dir": "system-private",
           "content":    $private }
       ),
       (

@@ -53,6 +53,7 @@ let
   splitKeysDir = "/run/ndh/ssh-keys-split.d";
   generatedKeysYamlPath = "${splitKeysDir}/keys.generated.yaml";
   generatedSystemKeysYamlPath = "${splitKeysDir}/system.yaml";
+  authorizedPrincipalsInputPath = "${config.opensshPolicy.canonicalCommandDir}/authorized-principals-command.yaml";
   # Per-profile split outputs. One yaml per profile name this host
   # participates in. The legacy 4-arg ssh-split-keys-yaml signature still
   # expects a single profile path, so we invoke it once per entry below.
@@ -150,7 +151,7 @@ in
   #   1. system-scope enrichment + extract → runs after sops via lib.mkOrder 1500
   #      (sops-install-secrets lands around mkOrder 1000 by default).
   #   2. user-scope extract + authorized_keys maintenance → runs after (1).
-  config.system.activationScripts.postActivation.text = lib.mkOrder 1500 ''
+  config.system.activationScripts.postActivation.text = lib.mkOrder 1400 ''
     set -euo pipefail
 
     # Enrichment produces the full enriched yaml at generatedKeysYamlPath.
@@ -163,6 +164,49 @@ in
       ${lib.escapeShellArg profileOwnerName}
 
     ${splitAllProfilesSnippet}
+
+    # Pre-extract principals for AuthorizedPrincipalsCommand into a dedicated
+    # non-secret input file readable by sshd helper user (_sshd).
+    install -d -m 0755 "$(dirname ${lib.escapeShellArg authorizedPrincipalsInputPath})"
+    principals_input_tmp="$(mktemp)"
+    ${pkgs.yq-go}/bin/yq eval '
+      {
+        "principals": (
+          [
+            (
+              .keys // {}
+              | to_entries
+              | .[]
+              | .value.principals // []
+              | select(tag == "!!seq")
+              | .[]
+            ),
+            (
+              .keys // {}
+              | to_entries
+              | .[]
+              | .value.principals // {}
+              | select(tag == "!!map")
+              | keys
+              | .[]
+            )
+          ]
+          | flatten
+          | map(select(. != null and . != ""))
+          | sort
+          | unique
+        )
+      }
+    ' ${lib.escapeShellArg generatedKeysYamlPath} > "$principals_input_tmp"
+    install -m 0644 "$principals_input_tmp" ${lib.escapeShellArg authorizedPrincipalsInputPath}
+    for sshd_group in _sshd sshd; do
+      if awk -F: -v g="$sshd_group" '$1 == g { found = 1 } END { exit !found }' /etc/group; then
+        chgrp "$sshd_group" ${lib.escapeShellArg authorizedPrincipalsInputPath} || true
+        chmod 0640 ${lib.escapeShellArg authorizedPrincipalsInputPath} || true
+        break
+      fi
+    done
+    rm -f "$principals_input_tmp"
 
     # System-scope extract: ssh-host privates land in sshPaths.systemKeysDir.
     # /var/lib/ndh/ssh-keys-extract-scratch catches user/authority duplicates
@@ -234,6 +278,20 @@ in
             ${lib.escapeShellArg perUserSecretsKeysDir} \
             ${lib.escapeShellArg profileOwnerName} \
             ${lib.escapeShellArg perUserSecretsKeysDir}
+
+      # Defensive fallback: if the canonical user key is still missing after
+      # user-scope extraction, copy it from the system key directory and hand
+      # ownership to the profile user. This guarantees sshPaths.privKeyFile
+      # exists at perUserSecretsKeysDir/<keyName> for HM/ssh-add consumers.
+      if [ ! -s ${lib.escapeShellArg "${perUserSecretsKeysDir}/${config.sshPaths.keyName}"} ] \
+        && [ -s ${lib.escapeShellArg "${config.sshPaths.systemKeysDir}/${config.sshPaths.keyName}"} ]; then
+        install -m 0700 -d ${lib.escapeShellArg perUserSecretsKeysDir}
+        install -m 0600 \
+          ${lib.escapeShellArg "${config.sshPaths.systemKeysDir}/${config.sshPaths.keyName}"} \
+          ${lib.escapeShellArg "${perUserSecretsKeysDir}/${config.sshPaths.keyName}"}
+        chown ${lib.escapeShellArg profileOwnerName} \
+          ${lib.escapeShellArg "${perUserSecretsKeysDir}/${config.sshPaths.keyName}"} || true
+      fi
 
       launchctl asuser "$(id -u ${lib.escapeShellArg profileOwnerName})" \
         sudo -H -u ${lib.escapeShellArg profileOwnerName} \

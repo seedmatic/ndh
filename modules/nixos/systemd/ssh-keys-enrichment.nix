@@ -49,6 +49,7 @@ let
   splitKeysDir = "/run/ndh/ssh-keys-split.d";
   generatedKeysYamlPath = "${splitKeysDir}/keys.generated.yaml";
   generatedSystemKeysYamlPath = "${splitKeysDir}/system.yaml";
+  authorizedPrincipalsInputPath = "${config.opensshPolicy.canonicalCommandDir}/authorized-principals-command.yaml";
   profileKeysYamlPathFor = profile: "${splitKeysDir}/profiles/${profile}.yaml";
 
   inventoryHostNames = builtins.attrNames (inventory.hosts or { });
@@ -148,6 +149,49 @@ in
           "${profileOwnerName}" \
           "${p}"
       '') profileNames}
+
+      # Pre-extract principals for AuthorizedPrincipalsCommand into a dedicated
+      # non-secret input file readable by sshd helper user (_sshd).
+      install -d -m 0755 "$(dirname "${authorizedPrincipalsInputPath}")"
+      principals_input_tmp="$(mktemp)"
+      ${pkgs.yq-go}/bin/yq eval '
+        {
+          "principals": (
+            [
+              (
+                .keys // {}
+                | to_entries
+                | .[]
+                | .value.principals // []
+                | select(tag == "!!seq")
+                | .[]
+              ),
+              (
+                .keys // {}
+                | to_entries
+                | .[]
+                | .value.principals // {}
+                | select(tag == "!!map")
+                | keys
+                | .[]
+              )
+            ]
+            | flatten
+            | map(select(. != null and . != ""))
+            | sort
+            | unique
+          )
+        }
+      ' "${generatedKeysYamlPath}" > "$principals_input_tmp"
+      install -m 0644 "$principals_input_tmp" "${authorizedPrincipalsInputPath}"
+      for sshd_group in _sshd sshd; do
+        if awk -F: -v g="$sshd_group" '$1 == g { found = 1 } END { exit !found }' /etc/group; then
+          chgrp "$sshd_group" "${authorizedPrincipalsInputPath}" || true
+          chmod 0640 "${authorizedPrincipalsInputPath}" || true
+          break
+        fi
+      done
+      rm -f "$principals_input_tmp"
 
       # 3. Materialize extract artifacts: the full enriched set drives
       #    both the per-user deploy (secretsKeysDir) and the system-scope

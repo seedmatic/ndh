@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
 # @codebase
-# AuthorizedPrincipalsCommand implementation that derives principals from the
-# generated keys.yaml (produced by ssh-generate-keys-yaml.sh) so that SSH user
-# certificate signing principals and sshd AuthorizedPrincipals align.
+# AuthorizedPrincipalsCommand implementation that reads a pre-extracted
+# principals input file generated at activation time.
 #
-# Fallback: if keys.yaml (or expected structure) is missing, emit Unix groups
-# for the user (previous behavior) to avoid locking accounts out.
+# Input format:
+#   YAML document with `.principals` as sequence/map, generated at activation.
 #
 # Usage: authorized-principals-command <user>
 set -euo pipefail
@@ -20,28 +19,25 @@ main() {
     exit 1
   fi
 
-  # Deterministic path from sops-nix decrypted secret
-  KEYS_FILE="@keysYamlPath@"
+  INPUT_FILE="@principalsInputPath@"
 
-  if [[ ! -r "$KEYS_FILE" ]]; then
-    echo "keys.yaml not readable at $KEYS_FILE" >&2
-    exit 1
+  if [[ ! -r "$INPUT_FILE" ]]; then
+    echo "authorized principals input not readable at $INPUT_FILE; falling back to USER_NAME" >&2
+    echo "$USER_NAME"
+    exit 0
   fi
 
   USER_NAME=$USER_NAME yq eval-all --from-file=<( cat <<'EoF' | cut -c 5-
       [
         (
-          ..
-          | select(has("principals"))
-          | .principals
+          .principals // []
           | select(tag == "!!seq")
           | .[]
         ),
         (
-          ..
-          | select(has("principals"))
-          | .principals
+          .principals // {}
           | select(tag == "!!map")
+          | keys
           | .[]
         )
       ] + [ env(USER_NAME) ]
@@ -50,7 +46,7 @@ main() {
       | unique
       | .[]
 EoF
-  ) "$KEYS_FILE" || true
+  ) "$INPUT_FILE" || true
 }
 
 ndh::logger:command:run ssh.authorized-principals-command main "$@"

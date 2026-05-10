@@ -13,16 +13,18 @@ let
   userHome = profile.user.home;
   userName = profile.user.name;
   sshPaths = config.sshPaths;
-  hostKeysDir = sshPaths.authoritySecretsDir;
+  hostKeysDir = sshPaths.secretsKeysDir;
   clientKeyName = builtins.baseNameOf sshPaths.privKeyFile;
+  # Host keys now extracted to user directory (keys with both system + user profiles)
   hostKeyPrivateFile = sshPaths.privKeyFile;
-  hostKeyPublicCert = sshPaths.hostCertPublic;
+  hostKeyPublicCert = "${sshPaths.secretsKeysDir}/${clientKeyName}-server-cert.pub";
   caPublicKeyFile = "${config.opensshPolicy.keysDir}/trusted-user-ca.pub";
+  authorizedPrincipalsInputPath = "${config.opensshPolicy.canonicalCommandDir}/authorized-principals-command.yaml";
   nixBashTrampoline = "${ndhContext.nixBashTrampoline}";
   opensshAuthzTools = ndh.store.installBinScriptBundle "openssh-authz-tools" {
     openssh-principals-command = pkgs.replaceVars "${ndhCommon}/ssh/authorized-principals-command.sh" {
       nixBashTrampoline = nixBashTrampoline;
-      keysYamlPath = config.sshPaths.runtimeSecretsKeysYaml;
+      principalsInputPath = authorizedPrincipalsInputPath;
     };
     openssh-group-authorized-keys = pkgs.replaceVars "${ndhCommon}/ssh/ssh-group-authorized-keys.sh" {
       nixBashTrampoline = nixBashTrampoline;
@@ -32,42 +34,6 @@ let
   principalsScriptStore = "${opensshAuthzTools}/bin/openssh-principals-command";
   groupKeysScriptStore = "${opensshAuthzTools}/bin/openssh-group-authorized-keys";
   inherit (lib) mkIf optionalString concatStringsSep;
-
-  # Derive principals based on profile and hostname.
-  # All hosts accept the same principal set to allow cross-host connections.
-  hostAlias =
-    if (profile.host ? hostAlias && profile.host.hostAlias != null) then
-      profile.host.hostAlias
-    else
-      profile.host.hostName;
-  # AuthorizedPrincipalsCommand traverses the principals-yaml recursively
-  # (yq `..` idiom), so the outer wrapper name is inert.
-  principalsYamlLabel = "host";
-
-  allPrincipals = [
-    "committed"
-    "nikopol"
-    "bioskop"
-    # nix-store: cert principal carried by the identity provisioned via
-    # modules/.common.d/nix-store-identity.nix. The matching user account
-    # exists locally on this host, and its AuthorizedPrincipalsCommand needs
-    # to emit `nix-store` so sshd accepts the cert-signed login.
-    "nix-store"
-  ];
-
-  # Format principals as YAML list with proper indentation (6 spaces for list items)
-  formatPrincipals = principals: concatStringsSep "\n" (map (p: "              - ${p}") principals);
-
-  sshKeysYamlText = ''
-          # Certificate principal validation for ${hostAlias}.
-          # Managed by modules/darwin/openssh.nix - regenerated on darwin-rebuild.
-          # Accepts all profile principals to allow cross-host connections.
-          profiles:
-            ${principalsYamlLabel}:
-              ${clientKeyName}:
-                principals:
-    ${formatPrincipals allPrincipals}
-  '';
 
   ndhSshdConfigText =
     let
@@ -148,11 +114,6 @@ in
       yq-go
       openssh
     ];
-
-    # Create keys.yaml for certificate principal validation
-    # This is world-readable in /etc so _sshd can access it
-    # All hosts accept all profile principals for cross-host connections
-    environment.etc."ssh/keys.yaml".text = sshKeysYamlText;
 
     # Keep NDH policy in a dedicated late drop-in so precedence is explicit.
     # nix-darwin still manages service enablement and host key lifecycle.

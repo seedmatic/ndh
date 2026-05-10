@@ -12,11 +12,10 @@ main() {
 	targetUser="${3:-${USER:-}}"
 	# Optional 4th arg: root-owned system path for keys whose top-level usage
 	# includes `ssh-host` (split-exp target_dir="system-private"). When empty
-	# we fall back to $authorityOutputDir so older callers keep working.
+	# we fall back to $userOutputDir so user extraction can write private keys.
 	systemPrivateOutputDir="${4:-}"
-	authorityOutputDir="$userOutputDir/.authority.d"
 	if [[ -z "$systemPrivateOutputDir" ]]; then
-		systemPrivateOutputDir="$authorityOutputDir"
+		systemPrivateOutputDir="$userOutputDir"
 	fi
 	if [[ ! -r "$yamlFile" ]]; then
 		echo "missing or unreadable generated YAML: $yamlFile" >&2
@@ -24,7 +23,7 @@ main() {
 	fi
 	if [[ ! -w "$(dirname "$userOutputDir")" ]] || [[ -e "$userOutputDir" && ! -w "$userOutputDir" ]]; then
 		if [[ -x /run/wrappers/bin/sudo ]]; then
-			targetGroup="$(id -gn "$targetUser" 2>/dev/null || echo "$targetUser")"
+		targetGroup="$(id -gn "$targetUser" 2>/dev/null || echo "$targetUser")"
 			/run/wrappers/bin/sudo -n chown -R "$targetUser:$targetGroup" "$(dirname "$userOutputDir")" 2>/dev/null || true
 		fi
 	fi
@@ -36,9 +35,8 @@ main() {
 	: "Prune stale generated artifacts from previous schema/key-name variants."
 	: "Full wipe ensures no orphaned keys from schema migrations remain."
 	rm -fr "$userOutputDir"
-	# Only wipe the system-private dir when it is distinct from the authority
-	# dir we already wiped transitively via userOutputDir.
-	if [[ "$systemPrivateOutputDir" != "$authorityOutputDir" ]]; then
+	# Only wipe the system-private dir when it is distinct from user output.
+	if [[ "$systemPrivateOutputDir" != "$userOutputDir" ]]; then
 		rm -fr "$systemPrivateOutputDir"
 	fi
 
@@ -46,10 +44,8 @@ main() {
 	if [[ "$(id -u)" -eq 0 && -n "$targetUser" ]]; then
 		targetGroup="$(id -gn "$targetUser" 2>/dev/null || echo "$targetUser")"
 		install -o "$targetUser" -g "$targetGroup" -m 0700 -d "${userOutputDir}"
-		install -o "$targetUser" -g "$targetGroup" -m 0700 -d "${authorityOutputDir}"
 	else
 		install -m 0700 -d "${userOutputDir}"
-		install -m 0700 -d "${authorityOutputDir}"
 	fi
 	# system-private is always root-owned, regardless of who runs the script.
 	# The trampoline puts GNU coreutils on PATH on both Linux and Darwin, so
@@ -61,10 +57,9 @@ main() {
 		echo "missing yq split expression file: @splitExpFile@" >&2
 		exit 1
 	fi
-	exp="$(<@splitExpFile@)"
 	tmpDir="$(mktemp --directory)"
 	trap 'rm -fr "$tmpDir"' EXIT
-	if ! env TMPDIR="$tmpDir" yq eval "$exp" "$yamlFile" -s '.yamlfile'; then
+	if ! env TMPDIR="$tmpDir" yq eval --from-file '@splitExpFile@' "$yamlFile" -s '.yamlfile'; then
 		echo "Failed to extract SSH key artifacts from $yamlFile" >&2
 		exit 1
 	fi
@@ -83,7 +78,7 @@ main() {
 			contentFile="$systemPrivateOutputDir/$relPath"
 			;;
 		system)
-			contentFile="$authorityOutputDir/$relPath"
+			contentFile="$userOutputDir/$relPath"
 			;;
 		*)
 			contentFile="$userOutputDir/$relPath"
@@ -114,11 +109,12 @@ main() {
 			chmod 600 "$contentFile"
 		fi
 
-		# Keep canonical public key next to its private key while preserving
-		# backward compatibility for consumers reading from authorityOutputDir.
+		# Keep canonical public key next to its private key.
 		if [[ "$filename" == *.pub && "$filename" != *-cert.pub && "$filename" != *-ca.pub ]]; then
-			mkdir -p "$(dirname "$authorityOutputDir/$relPath")"
-			ln -sf "$contentFile" "$authorityOutputDir/$relPath"
+			if [[ "$userOutputDir/$relPath" != "$contentFile" ]]; then
+				mkdir -p "$(dirname "$userOutputDir/$relPath")"
+				ln -sf "$contentFile" "$userOutputDir/$relPath"
+			fi
 		fi
 	done
 	rm -fr "$tmpDir"
@@ -128,7 +124,7 @@ main() {
 	# Iterate over both private-key locations (user + system-private) so that
 	# ssh-host identities get their cert symlink next to the system-scope key.
 	priv_dirs=("$userOutputDir")
-	if [[ "$systemPrivateOutputDir" != "$authorityOutputDir" ]]; then
+	if [[ "$systemPrivateOutputDir" != "$userOutputDir" ]]; then
 		priv_dirs+=("$systemPrivateOutputDir")
 	fi
 	for priv_dir in "${priv_dirs[@]}"; do
@@ -139,13 +135,13 @@ main() {
 			*/keys.yaml) continue ;;
 			esac
 			base="${priv##*/}"
-			user_certs=("$authorityOutputDir/${base}"-*-user-cert.pub)
-			host_certs=("$authorityOutputDir/${base}"-*-host-cert.pub)
+			user_certs=("$userOutputDir/${base}"-*-user-cert.pub)
+			host_certs=("$userOutputDir/${base}"-*-host-cert.pub)
 
 			key_fp="$(ssh-keygen -lf "$priv" 2>/dev/null | awk '{print $2}' || true)"
 			if [[ -z "$key_fp" ]]; then
 				rm -f "$priv_dir/${base}-cert.pub"
-				rm -f "$authorityOutputDir/${base}-server-cert.pub"
+				rm -f "$userOutputDir/${base}-server-cert.pub"
 				continue
 			fi
 
@@ -177,9 +173,9 @@ main() {
 			done
 
 			if [[ -n "$matched_host_cert" ]]; then
-				ln -sf "$matched_host_cert" "$authorityOutputDir/${base}-server-cert.pub"
+				ln -sf "$matched_host_cert" "$userOutputDir/${base}-server-cert.pub"
 			else
-				rm -f "$authorityOutputDir/${base}-server-cert.pub"
+				rm -f "$userOutputDir/${base}-server-cert.pub"
 			fi
 		done
 	done
