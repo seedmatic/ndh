@@ -25,6 +25,30 @@ let
   selfHostName = config.networking.hostName or "";
   peerHostNames = lib.filter (h: h != selfHostName && h != "") inventoryHostNames;
 
+  # Restricted login shell for the inbound nix-daemon user. Rendered as a
+  # writeShellApplication so the file is 0555 and shellcheck-clean; the
+  # meta.shellPath override is mandatory for NixOS's users-groups validator
+  # to accept the package as a login shell.
+  #
+  # Using a store-path shell (rather than `/etc/ssh/nix-store-shell`)
+  # sidesteps Darwin's /etc permission surface — nix-darwin's environment.etc
+  # does not honour `mode`, and the /etc/static/<…> symlink chain it
+  # materializes points at a 0444 store file, which sshd rejects with
+  # "shell is not executable".
+  inboundUserShell = (pkgs.writeShellApplication {
+    name = "nix-store-shell";
+    text = ''
+      exec /run/current-system/sw/bin/nix-daemon --stdio
+    '';
+  }).overrideAttrs (_: {
+    # NixOS's users-groups validator (nixos/modules/config/users-groups.nix)
+    # uses `pkg ? shellPath` to accept a package as a login shell — matching
+    # the convention in nixpkgs (bashInteractive, zsh, …) of exposing
+    # `shellPath` via passthru. `meta.shellPath` alone is not sufficient.
+    passthru.shellPath = "/bin/nix-store-shell";
+    meta.shellPath = "/bin/nix-store-shell";
+  });
+
   # Per-host stanza. CertificateFile is mandatory: with cert-signed auth, ssh
   # must present the cert alongside the private or sshd will not match the
   # TrustedUserCAKeys / AuthorizedPrincipalsCommand pair.
@@ -117,10 +141,23 @@ in
       description = "POSIX UID for the inbound nix-daemon user (used by Darwin; NixOS auto-allocates if omitted).";
     };
 
+    inboundUserShellPackage = lib.mkOption {
+      type = lib.types.package;
+      default = inboundUserShell;
+      description = ''
+        Package providing the restricted login shell for the inbound
+        nix-daemon user. Must carry `meta.shellPath` so NixOS's
+        users-groups validator accepts it.
+      '';
+    };
+
     inboundUserShellPath = lib.mkOption {
       type = lib.types.str;
-      default = "/etc/ssh/nix-store-shell";
-      description = "Login shell installed via environment.etc that restricts the inbound user to `nix-daemon --stdio`.";
+      default = "${cfg.inboundUserShellPackage}${cfg.inboundUserShellPackage.shellPath}";
+      description = ''
+        Absolute path to the inbound user's login shell inside the store
+        path produced by `inboundUserShellPackage`.
+      '';
     };
 
     hostSuffix = lib.mkOption {
@@ -172,37 +209,14 @@ in
         '';
       }
 
-      # Inbound nix-daemon user provisioning. Same semantics on both
-      # platforms — a system user whose only allowed command is
-      # `nix-daemon --stdio` — expressed with the platform's idiom.
-      # environment.etc.<name>.mode is NixOS-only; on Darwin the file is
-      # installed with defaults and chmod+x'd by the post-activation hook
-      # in modules/darwin/openssh.nix if needed.
-      (lib.mkIf cfg.provisionInboundUser (
-        {
-          environment.shells = [ cfg.inboundUserShellPath ];
-          nix.settings.trusted-users = [ cfg.inboundUserName ];
-        }
-        // (
-          if options ? users.knownUsers then
-            {
-              environment.etc."ssh/nix-store-shell".text = ''
-                #!/bin/sh
-                exec /run/current-system/sw/bin/nix-daemon --stdio
-              '';
-            }
-          else
-            {
-              environment.etc."ssh/nix-store-shell" = {
-                text = ''
-                  #!/bin/sh
-                  exec /run/current-system/sw/bin/nix-daemon --stdio
-                '';
-                mode = "0755";
-              };
-            }
-        )
-      ))
+      # Inbound nix-daemon user provisioning. The restricted login shell is
+      # now the writeShellScript store path (see `inboundUserShell` above),
+      # so we only need to register it in environment.shells and grant the
+      # user nix-daemon trust.
+      (lib.mkIf cfg.provisionInboundUser {
+        environment.shells = [ cfg.inboundUserShellPath ];
+        nix.settings.trusted-users = [ cfg.inboundUserName ];
+      })
 
       # Platform-specific user provisioning. `options ? users.knownUsers` is
       # the nix-darwin-only option; its presence discriminates Darwin from
@@ -225,12 +239,14 @@ in
           }
         else
           # NixOS. Auto-allocate UID, system-user bit, explicit nixbld group.
+          # NixOS's users-groups validator requires `shell` to be a package
+          # with `meta.shellPath`, not a bare string path.
           {
             users.users.${cfg.inboundUserName} = {
               isSystemUser = true;
               group = "nixbld";
               description = "Inbound nix-daemon --stdio endpoint";
-              shell = cfg.inboundUserShellPath;
+              shell = cfg.inboundUserShellPackage;
               useDefaultShell = false;
             };
           }
