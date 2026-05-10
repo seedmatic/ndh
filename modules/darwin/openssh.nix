@@ -22,6 +22,7 @@ let
   opensshAuthzTools = ndh.store.installBinScriptBundle "openssh-authz-tools" {
     openssh-principals-command = pkgs.replaceVars "${ndhCommon}/ssh/authorized-principals-command.sh" {
       nixBashTrampoline = nixBashTrampoline;
+      keysYamlPath = config.sshPaths.runtimeSecretsKeysYaml;
     };
     openssh-group-authorized-keys = pkgs.replaceVars "${ndhCommon}/ssh/ssh-group-authorized-keys.sh" {
       nixBashTrampoline = nixBashTrampoline;

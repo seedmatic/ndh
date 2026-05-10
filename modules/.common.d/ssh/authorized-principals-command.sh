@@ -20,21 +20,12 @@ main() {
     exit 1
   fi
 
-  # Try /etc/ssh/keys.yaml first (system-wide, readable by sshd helper user)
-  # Fall back to per-user runtime secret when available.
-  KEYS_FILE="/etc/ssh/keys.yaml"
+  # Deterministic path from sops-nix decrypted secret
+  KEYS_FILE="@keysYamlPath@"
 
   if [[ ! -r "$KEYS_FILE" ]]; then
-    KEYS_FILE="/run/secrets/${USER_NAME}-ssh-keys.yaml"
-  fi
-
-  if [[ ! -r "$KEYS_FILE" ]]; then
-    # Fallback to groups
-    {
-      echo "$USER_NAME"
-      id -nG "$USER_NAME" | tr ' ' '\n'
-    } | sort -u
-    return 0
+    echo "keys.yaml not readable at $KEYS_FILE" >&2
+    exit 1
   fi
 
   USER_NAME=$USER_NAME yq eval-all --from-file=<( cat <<'EoF' | cut -c 5-
