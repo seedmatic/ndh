@@ -36,10 +36,10 @@ in
     "${self}/modules/.common.d/nix-settings.nix"
     # ssh-keys-enrichment signs the cert-only keys (like `nix-store`) from
     # ssh-keys.yaml using the mammoth-skate authority and writes the usable
-    # keypair + cert under sshPaths.secretsKeysDir (overridden below to
-    # /root/.ssh) so cloud-init's `nix copy --from ssh://` can use it.
-    # Pull in the option modules it consumes so bringup doesn't need the
-    # full systemd/ aggregator.
+    # keypair + cert under sshPaths.systemKeysDir (root-owned,
+    # /var/lib/ndh/ssh-keys) so cloud-init's `nix copy --from ssh://` can
+    # use it. Pull in the option modules it consumes so bringup doesn't
+    # need the full systemd/ aggregator.
     "${self}/modules/.common.d/ssh-paths.nix"
     "${self}/modules/.common.d/openssh-policy.nix"
     "${self}/modules/.common.d/nix-store-identity.nix"
