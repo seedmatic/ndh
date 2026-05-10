@@ -50,6 +50,7 @@ keys:
       - user-signing
     profiles:
       - system
+      - user
     principals:
       linux-builder: linux-builder
       committed: committed
@@ -173,7 +174,7 @@ sops:
         TUFYTy9BVWFEeFMxLzF6SDUrMUsvTTAKFb0xkpGAh4SOWpeAiQYXM9IZ9Mf1qjij
         HzBsTEPaW9HSHFxr2jsfFC67QqucA5hCcB5Y7BDOsbgVvV87mWQNdA==
         -----END AGE ENCRYPTED FILE-----
-  lastmodified: "2026-05-10T06:00:41Z"
-  mac: ENC[AES256_GCM,data:CdWHioZebVmaPF9XD+N3dzXDsnlxlRlidy38YpQbwnDpk8gkcua8rPVGEjVlwrhW/ONxCTCGqBcBbtyVQeFBHVuL5Du8PDq1GabApz3h/7ycC58pk/FIytpw8f2kwIb+n5QU/Kuc1TloTtODAy0mw1uJHbTDoMWp8C+aowOJaIc=,iv:+Wxpgsg+UChYO1PHPvioMZGMHX69w1VyBEptbaCHknw=,tag:llEubx9c1gwh62jntBZnIQ==,type:str]
+  lastmodified: "2026-05-10T12:08:45Z"
+  mac: ENC[AES256_GCM,data:DU1lRNj4qsbW8NN6njF67TTqqVIdW/oqJBUhiWBzPrqTa4iLz6bKsfqO6+YHfhIxlaUhF2sI9q+9EeRRP+g/EVx4UXMI4yknEkM4b7+/uHAoT/M60YbA0VC7oct/BLtzVylS8B006JWEgiu919NikVc7ZW9LfpKU8pjRziqEqwA=,iv:lbDa/6gLRwrjmHbt4HjgkMNf5I885wwvpWDH6D7TxFU=,tag:zsv39kIwyV6ut0bvtfedJg==,type:str]
   encrypted_comment_regex: sops:encrypted
   version: 3.12.2
