@@ -245,9 +245,11 @@ in
     chmod 644 ${lib.escapeShellArg "${config.sshPaths.systemKeysDir}/trusted-user-ca.pub"}
 
     # Install the user-scope per-profile yaml where HM's extractor expects it.
-    # install runs as root so we chown to the profile owner afterwards.
+    # install runs as root so we hand ownership to the profile owner afterwards.
+    # The extractor runs later via `launchctl asuser` and cannot create or
+    # write into a root-owned parent, so own the whole chain up front.
     ${lib.optionalString (builtins.elem hmProfileName profileNames) ''
-      install -m 0700 -d "$(dirname ${lib.escapeShellArg effectiveUserSSHKeysYamlPath})"
+      install -d -m 0700 -o ${lib.escapeShellArg profileOwnerName} ${lib.escapeShellArg config.sshPaths.secretsRootDir}
       install -m 0400 ${lib.escapeShellArg hmProfileKeysYamlPath} ${lib.escapeShellArg effectiveUserSSHKeysYamlPath}
       chown ${lib.escapeShellArg profileOwnerName} ${lib.escapeShellArg effectiveUserSSHKeysYamlPath} || true
 
