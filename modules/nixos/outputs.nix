@@ -252,7 +252,13 @@ let
                 # modules/.common.d/nix-store-identity.nix. Its login shell
                 # execs `nix-daemon --stdio`, and its cert (principal
                 # `nix-store`) is matched by sshd.
-                remoteStore = "ssh://nix-store@${hostProfile.hostName}.local";
+                #
+                # Use ssh-ng:// (not ssh://): the nix-store-shell exec's
+                # nix-daemon --stdio, which speaks the new daemon protocol.
+                # Legacy ssh:// expects to spawn shell commands (cat,
+                # nix-store --export) and fails with "protocol mismatch"
+                # against a daemon-speaking stdio endpoint.
+                remoteStore = "ssh-ng://nix-store@${hostProfile.hostName}.local";
                 bringupRuntimePackage = ndhBootstrapRuntimePackageLinux;
                 # Must match the path the bootstrap trampoline reads in
                 # modules/.common.d/shell.d/nix-bash-trampoline.sh (`ndh::bootstrap:profile:dir`)
