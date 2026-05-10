@@ -5,24 +5,18 @@
   config,
   catalog,
   inventory,
-  ndh,
   ...
 }:
 let
   hostsInventory = inventory.hosts or { };
   qemu-pkgdb = self.packages.${pkgs.stdenv.hostPlatform.system}.qemu-pkgdb or pkgs.qemu;
 
-  keysYaml = builtins.fromJSON (
-    builtins.readFile (
-      ndh.store.runCommand "keys.json" { buildInputs = [ pkgs.yq-go ]; } ''
-        yq -o=json '.' "${self}/modules/home-manager/ssh.d/keys.yaml" > $out
-      ''
-    )
-  );
-
   # Public key trusted by the embedded linux-builder VM's authorized_keys.
-  # v2 shape: keys live under the top-level `keys:` map.
-  linuxBuilderPubKey = keysYaml.keys.linux-builder.public;
+  # Sourced from the shared ndh.keysYaml surface
+  # (modules/.common.d/keys-yaml.nix) so it travels through the same
+  # one-derivation extraction used by the NixOS side — no duplicate
+  # per-module yq/runCommand.
+  linuxBuilderPubKey = config.ndh.keysYaml.keys.linux-builder.public;
   # Pull builder inventory entries for this host (if present)
   hostName = config.profile.host.hostName;
   cacheCatalog = catalog.caches;
