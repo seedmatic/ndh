@@ -2,21 +2,26 @@
 source @nixBashTrampoline@
 
 main() {
-	# Install system CA public keys from runtime user keys directory.
+	# Aggregate every CA public from the runtime user keys directory into
+	# the single file sshd consumes via TrustedUserCAKeys. No intermediate
+	# per-CA copies under @keysDir@ — the source directory is the one place
+	# CA material is curated, and trusted-user-ca.pub is the one place sshd
+	# reads it.
 	install -d -m 755 "@keysDir@"
-	for ca in "@hostKeysDir@"/*-ca.pub; do
-		[ -f "$ca" ] || continue
-		install -m 644 "$ca" "@keysDir@/$(basename "$ca")"
-	done
 
 	: > "@keysDir@/trusted-user-ca.pub"
-	for ca in "@keysDir@/"*-ca.pub; do
+	for ca in "@hostKeysDir@"/*-ca.pub; do
 		[ -f "$ca" ] || continue
-		basename "$ca" | grep -q '^trusted-user-ca\.pub$' && continue
 		cat "$ca" >> "@keysDir@/trusted-user-ca.pub"
 		printf "\n" >> "@keysDir@/trusted-user-ca.pub"
 	done
 	chmod 644 "@keysDir@/trusted-user-ca.pub"
+
+	# Drop the per-CA copies created by earlier activations so /etc/ssh/keys.d/
+	# carries only the aggregate going forward. Find avoids matching
+	# trusted-user-ca.pub itself.
+	find "@keysDir@" -maxdepth 1 -type f -name '*-ca.pub' \
+		! -name 'trusted-user-ca.pub' -delete 2>/dev/null || true
 }
 
 ndh::logger:command:run "@loggerTag@" main "$@"
