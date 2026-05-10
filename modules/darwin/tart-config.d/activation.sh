@@ -270,23 +270,12 @@ tart:bootstrap:disk:sync-from-source() {
 main() {
 	set -euo pipefail
 
-	local manifest_path=""
-	local tart_nix_cli_args_raw=""
-	local tart_factory_reset_raw=""
+	local manifest_path="@manifestPath@"
+	local tart_nix_cli_args_raw="${NIX_CLI_ARGS:--L -v -v}"
 	local profile_user=""
-	local factory_reset=false
+	local factory_reset="${VM_FACTORY_RESET:-false}"
 	local configured_home=""
 	local effective_host_name=""
-
-	tart:state:init() {
-		manifest_path="@manifestPath@"
-		tart_nix_cli_args_raw="${NIX_CLI_ARGS:--L -v -v}"
-		tart_factory_reset_raw="${FACTORY_RESET:-false}"
-		profile_user=""
-		factory_reset=0
-		configured_home=""
-		effective_host_name=""
-	}
 
 	tart:manifest:load() {
 		if [[ ! -r "$manifest_path" ]]; then
@@ -778,7 +767,7 @@ main() {
 			return 0
 		fi
 
-		: "[tartConfig][WARN] factory reset requested (FACTORY_RESET=${tart_factory_reset_raw})"
+		: "[tartConfig][WARN] factory reset requested"
 		: "[tartConfig][WARN] removing existing Tart root/data images before recreation"
 
 		tart:vm:run stop "$vm_name" >/dev/null 2>&1 || true
@@ -947,10 +936,6 @@ main() {
 			: "NIX_CLI_ARGS is set but not consumed by activation: ${tart_nix_cli_args_raw}"
 		fi
 
-		if tart:bool:is-true "$tart_factory_reset_raw"; then
-			factory_reset=true
-		fi
-
 		: "start $(date) host=${effective_host_name} user=${profile_user}"
 
 		tart:runtime:home:resolve
@@ -992,7 +977,6 @@ main() {
 	}
 
 	# ---- execution area (no function definitions below) ----
-	tart:state:init
 	tart:manifest:load
 	tart:config:resolve
 
