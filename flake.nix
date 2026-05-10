@@ -30,7 +30,7 @@
     lix-module.follows = "flake-commons/lix-module";
     nixos-hardware.follows = "flake-commons/nixos-hardware";
     nixpkgs.follows = "flake-commons/nixpkgs";
-    nixpkgs-unstable.url = "github:NixOS/nixpkgs/nixos-unstable";
+    nixpkgs-unstable.follows = "flake-commons/nixpkgs-unstable";
     cachix.follows = "flake-commons/cachix";
     darwin.follows = "flake-commons/darwin";
     home-manager.follows = "flake-commons/home-manager";
