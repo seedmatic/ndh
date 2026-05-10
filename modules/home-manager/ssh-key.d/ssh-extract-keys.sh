@@ -113,7 +113,9 @@ main() {
 		if [[ "$filename" == *.pub && "$filename" != *-cert.pub && "$filename" != *-ca.pub ]]; then
 			if [[ "$userOutputDir/$relPath" != "$contentFile" ]]; then
 				mkdir -p "$(dirname "$userOutputDir/$relPath")"
-				ln -sf "$contentFile" "$userOutputDir/$relPath"
+				ln -sf \
+					"$(realpath --relative-to="$(dirname "$userOutputDir/$relPath")" "$contentFile")" \
+					"$userOutputDir/$relPath"
 			fi
 		fi
 	done
@@ -156,7 +158,12 @@ main() {
 			done
 
 			if [[ -n "$matched_user_cert" ]]; then
-				ln -sf "$matched_user_cert" "$priv_dir/${base}-cert.pub"
+				# Relative target: cert file lives in userOutputDir, link in
+				# priv_dir — identical when they are the same dir, else
+				# `realpath --relative-to` produces the right `../` prefix.
+				ln -sf \
+					"$(realpath --relative-to="$priv_dir" "$matched_user_cert")" \
+					"$priv_dir/${base}-cert.pub"
 			else
 				rm -f "$priv_dir/${base}-cert.pub"
 			fi
@@ -173,7 +180,9 @@ main() {
 			done
 
 			if [[ -n "$matched_host_cert" ]]; then
-				ln -sf "$matched_host_cert" "$userOutputDir/${base}-server-cert.pub"
+				ln -sf \
+					"$(realpath --relative-to="$userOutputDir" "$matched_host_cert")" \
+					"$userOutputDir/${base}-server-cert.pub"
 			else
 				rm -f "$userOutputDir/${base}-server-cert.pub"
 			fi
