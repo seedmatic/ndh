@@ -1,0 +1,306 @@
+= Session handover — 2026-05-10 (leaving bioskop, moving to nikopol)
+:toc: left
+:toclevels: 2
+:icons: font
+:source-highlighter: rouge
+
+== Context
+
+Operator is travelling. `bioskop` is at home (unreachable on the LAN). Active development continues from `nikopol`.
+
+Last physical `darwin-rebuild switch` target was `bioskop` at 2026-05-10T07:21 local. It succeeded end-to-end on the ssh-keys activation chain. What's in the working tree at session close is **uncommitted** and has not been rebuilt on `nikopol` yet.
+
+== Working-tree state (uncommitted)
+
+`git status` (branch `develop`):
+
+----
+modified:   flake.nix
+modified:   hosts/nikopol/profile.nix
+modified:   modules/.common.d/ssh-keys.d/ssh-split-keys-yaml.sh
+modified:   modules/darwin/linux-builder.nix
+modified:   modules/darwin/ssh-keys-enrichment.nix
+modified:   modules/home-manager/default.nix
+modified:   modules/home-manager/ssh-key.d/ssh-extract-keys.split-exp.yq
+modified:   modules/home-manager/ssh.d/keys.schema.yaml
+deleted:    modules/home-manager/ssh.d/keys.v2.yaml
+modified:   modules/home-manager/ssh.d/keys.yaml
+modified:   modules/nixos/bringup-minimal-system.nix
+modified:   modules/nixos/default.nix
+modified:   modules/nixos/systemd/lima-cloud-init.nix
+modified:   modules/nixos/systemd/ssh-keys-enrichment.nix
+modified:   modules/nixos/users.nix
+modified:   profile.nix
+----
+
+These cover four logically distinct changes that should probably land as separate commits (see <<Suggested commit layout>>).
+
+== What landed earlier on `develop`
+
+Commits already pushed (v2 migration backbone):
+
+[cols="1,3"]
+|===
+| Commit | What
+
+| `77b6ae10` | v2 enrichment rewrite (yq-driven, 512 → 249 lines).
+| `c35dec57` | v2 split + extract rewrite. Split filters by `.profiles` membership.
+| `090c2bd6` | Nix: `profile.name` (scalar) → `profile.names` (list). `catalog.users.committed` → `catalog.user`. "committed" profile label retired.
+| (operator, via `sops edit`) | `keys.yaml` migrated in place to v2 layout (hoisted `authorities.mammoth-skate`, per-key `authority:` / `cert_usage:` / `profiles:`). Verified with `nix run .#ssh-keys-v2-validate`.
+| `7ab66098` | feat(bringup): provision ssh-keys.yaml via sops-install-secrets
+| `b1590ccd` | refactor(systemd): split ndhSystemd naming helper into standalone module
+|===
+
+== Changes in working tree (what needs to ship)
+
+=== 1. `fix(darwin): ssh-keys activation chain` (three fixes bundled)
+
+These resolve activation-chain gaps uncovered by the bioskop switch.
+
+==== 1a. `modules/darwin/linux-builder.nix` — nix-store-identity via postActivation
+
+`nix-store-identity-deploy` was wired as a custom-named
+`system.activationScripts.nixStoreIdentity`, which **nix-darwin silently drops**
+(only well-known phase names get emitted into the activate script). Moved into
+`system.activationScripts.postActivation.text = lib.mkOrder 1600 ''...''`,
+ordered after `ssh-keys-enrichment.postActivation` (mkOrder 1500) so
+`/var/lib/ndh/ssh-keys/nix-store{,-cert.pub}` exists before deploy copies it to
+`/etc/nix/`.
+
+==== 1b. `modules/darwin/ssh-keys-enrichment.nix` — `sudo -H` for user-context steps
+
+macOS `sudo -u <user>` preserves root's `$HOME=/var/root`, so
+`install -d -m 700 ~/.ssh` in `ssh-ensure-authorized-keys` failed with
+"cannot create directory '/var/root'". Added `-H` to both
+`launchctl asuser … sudo -u <user>` invocations
+(`ssh-extract-keys-user` and `ssh-ensure-authorized-keys`).
+
+==== 1c. `modules/home-manager/default.nix` — HM materializer gate fix (disk-image-in-switch closure)
+
+Every `darwin-rebuild switch` was dragging the nixos bringup disk image
+derivation into the activation-script closure, even though
+`hosts/bioskop/default.nix:9` sets
+`vmMaterializerEnableActivationHook = false`.
+
+Root cause: the existing gate in HM `default.nix` was:
+
+[source,nix]
+----
+hostVmMaterializerActivationHook = lib.attrByPath
+  [ "host" "vmMaterializerEnableActivationHook" ] true resolvedProfile;
+----
+
+The `profile.host` submodule in `profile.nix` **does not declare**
+`vmMaterializerEnableActivationHook`, so the module system filters it out.
+`nix eval .#darwinConfigurations.bioskop.config.profile.host` returns only
+`{form, hostAlias, hostName, nixosBringupRootFs}` — the value from
+`hosts/bioskop/default.nix:9` never reaches `resolvedProfile`.
+
+The canonical option `config.vmMaterializer.enableActivationHook` exists in
+`modules/.common.d/vm-materializer.nix:20` but it's not visible from HM's
+`config` (HM `config` is the user-scope config, not nix-darwin top-level).
+
+**Fix**: read the raw value from
+`specialArgs.ndh.context.hostProfile.vmMaterializerEnableActivationHook`
+— same path the canonical option uses, but without the submodule stripping.
+
+[source,nix]
+----
+hostVmMaterializerActivationHook =
+  if ndhContext != null && ndhContext ? hostProfile && ndhContext.hostProfile != null then
+    ndhContext.hostProfile.vmMaterializerEnableActivationHook or true
+  else
+    true;
+----
+
+Verified: `home-manager.users.nxmatic.home.activation.materializeVm` is
+ABSENT on bioskop after the fix; `nix-instantiate` shows zero
+`bioskop-zfs-disk-images-raw` references in the toplevel closure.
+
+=== 2. `refactor(keys): profile name "host" → "system"`
+
+Operator-requested rename: "host" was ambiguous (collided with
+`profile.host` submodule, `ssh-host` cert type, hostname, etc.). The
+profile-role axis is really about **where extracted key material lands**,
+so "system" is clearer.
+
+Scope:
+
+* `modules/home-manager/ssh.d/keys.schema.yaml` — enum `host` → `system`;
+  expanded `profileName` description to spell out placement:
+** `bringup` — bundled into the nixos minimal bringup image.
+** `system` — root-owned host-wide paths (`sshPaths.systemKeysDir`,
+   i.e. `/var/lib/ndh/ssh-keys/` on darwin, plus downstream copies to
+   `/etc/nix/`, sshd HostKey, etc.).
+** `user` — per-operator paths under
+   `~/.local/var/run/secrets/ssh-keys/`.
+* `profile.nix` — enum + default list + docstring.
+* `hosts/nikopol/profile.nix` — `profile.names = lib.mkForce ["system" "user"]`.
+* `modules/darwin/ssh-keys-enrichment.nix` — profileNames fallback default.
+* `modules/nixos/systemd/ssh-keys-enrichment.nix` — profileNames fallback default + two comments.
+* `modules/home-manager/ssh-key.d/ssh-extract-keys.split-exp.yq` —
+  the `[ "host" ] - $profiles` membership test becomes `[ "system" ] - $profiles`.
+* `modules/.common.d/ssh-keys.d/ssh-split-keys-yaml.sh` — "Host scope" comment +
+  yq filter `== "host"` → `== "system"`.
+* `modules/home-manager/ssh.d/keys.yaml` (sops) — 4 keys rewritten via
+  `sops set` per-element (sops 3.12.1 only accepts scalars for `set`,
+  not arrays):
+
+[source,sh]
+----
+# nix-store: [bringup, host] → [bringup, system]  (index 1)
+sops set modules/home-manager/ssh.d/keys.yaml \
+  '["keys"]["nix-store"]["profiles"][1]' '"system"'
+# linux-builder: [host] → [system]  (index 0)
+sops set modules/home-manager/ssh.d/keys.yaml \
+  '["keys"]["linux-builder"]["profiles"][0]' '"system"'
+# rdp-host: [host, user] → [system, user]  (index 0)
+sops set modules/home-manager/ssh.d/keys.yaml \
+  '["keys"]["rdp-host"]["profiles"][0]' '"system"'
+# vz-guest-nixos: [host] → [system]  (index 0)
+sops set modules/home-manager/ssh.d/keys.yaml \
+  '["keys"]["vz-guest-nixos"]["profiles"][0]' '"system"'
+----
+
+`# sops:encrypted` markers preserved (7 before, 7 after — verified via grep).
+
+==== What's NOT renamed (deliberately)
+
+* `profile.host.*` submodule (host-form axis — hostname/alias/vmProvider/form
+  — completely different from the profile-role axis).
+* `ssh-host` / `ssh-user` `cert_usage` tags — those are OpenSSH cert types,
+  not profile names.
+* `principalsYamlLabel = "host"` in `modules/darwin/openssh.nix:44` — an
+  inert yq-recursion wrapper label.
+
+=== 3. `refactor(keys-validator): drop shadow file, validate canonical`
+
+* Deleted `modules/home-manager/ssh.d/keys.v2.yaml` (memory note: "shadow
+  file, redundant with canonical `keys.yaml`").
+* `flake.nix` `ssh-keys-v2-validate` app: now defaults to the canonical
+  `modules/home-manager/ssh.d/keys.yaml`, sops-decrypts into a mktemp
+  tempfile (cleanup via `trap EXIT`), runs `check-jsonschema` on the
+  plaintext. Falls back to verbatim copy if decrypt fails (lets you still
+  validate an already-decrypted sample).
+
+`nix run .#ssh-keys-v2-validate` → `ok -- validation done`.
+
+=== 4. Unrelated minor edits already staged in tree
+
+The following files are modified but touch adjacent concerns — review
+each before committing:
+
+* `modules/nixos/bringup-minimal-system.nix` — carries TODO(minimal-bringup)
+  header about pruning linux-builder key inheritance.
+* `modules/nixos/default.nix`, `modules/nixos/users.nix`,
+  `modules/nixos/systemd/lima-cloud-init.nix` — v2 consumer-side updates
+  (yq paths into `.keys` / `.authorities`).
+* `modules/home-manager/ssh-key.d/ssh-extract-keys.sh` is NOT in the dirty
+  list; the cert-kind `awk` block matching "host certificate" is OpenSSH
+  output, not related to the profile rename.
+
+Diff each with `git diff <file>` before deciding whether to fold them
+into the profile rename commit or split them further.
+
+== Known open issues (carry-forward)
+
+=== `nerdNixosBuilderKey` silently dropped on darwin
+
+`modules/darwin/linux-builder.nix:286` wires the linux-builder private
+deploy via `system.activationScripts.nerdNixosBuilderKey = { text = ...; }`
+— the same custom-named-attribute pattern that nix-darwin silently
+drops. Symptoms on bioskop:
+
+* `/etc/nix/builder_ed25519` still contains the **old nix-darwin-auto-
+  generated key** (for the embedded QEMU linux-builder), NOT the
+  enriched `linux-builder` private from `/var/lib/ndh/ssh-keys/`.
+* `nerd-nixos-builder: linux-builder key not yet deployed…` never
+  appears in `/tmp/darwin-rebuild.log` (0 hits).
+* Consequence: `ssh-ng://builder@linux-builder` falls back to the embedded
+  QEMU builder; remote builds to `bioskop-nixos.lan` can't authenticate.
+  `nix copy` from nerd-nixos bringup VM can't pull from the host store.
+
+**Fix pattern** (same as nix-store-identity in commit 1a above): move
+into `system.activationScripts.postActivation.text = lib.mkOrder <N>`
+ordered after ssh-keys-enrichment (1500). 1600 is currently
+nix-store-identity-deploy; consider 1650 or inlining the deploy into the
+same block.
+
+==== Secondary builder issue (separate)
+
+`/tmp/tart-materialize.log` shows:
+
+----
+Failed to find a machine for remote build!
+derivation: …-tart-nerd-nixos-materialize.drv
+required (system, features): (aarch64-darwin, [])
+1 available machines:
+([aarch64-linux], 8, [benchmark, big-parallel, kvm, nixos-test], [])
+----
+
+The tart-nerd-nixos-materialize derivation is aarch64-darwin but the
+only configured builder advertises aarch64-linux. Unrelated to the ssh-key
+deploy, but worth noting: likely `buildMachines` needs a native Darwin
+fallback, or the materialize derivation should declare
+`preferLocalBuild = true`.
+
+=== Cert principal "committed" still baked into signed certs
+
+The `allPrincipals` lists in `modules/darwin/openssh.nix` and
+`modules/nixos/openssh.nix` still include `"committed"`, and
+`keys.yaml` still has `principals: { committed: committed }` entries.
+Requires re-signing all certs + re-mapping — deferred as a separate
+data migration.
+
+=== TODO(minimal-bringup)
+
+`modules/nixos/bringup-minimal-system.nix` — bringup image still inherits
+linux-builder key refs from shared modules. The profile filter respects
+this at enrichment time (linux-builder isn't in `["bringup"]`), but
+downstream `authorized_keys` baking still pulls the public key in.
+Targeted cleanup needed.
+
+=== Cosmetic
+
+* `/run/ndh/ssh-keys-split.d/profiles/committed.yaml` — leftover from
+  pre-refactor runs. Safe to `sudo rm`. Splitter no longer writes it.
+* Cert symlinks in `/var/lib/ndh/ssh-keys/*-cert.pub` point into
+  `/var/lib/ndh/ssh-keys-extract-scratch/.authority.d/` — scratch dir
+  regenerates each switch. Fragile-looking but fine in practice
+  (enrichment runs every switch and rebuilds both).
+
+== Suggested commit layout
+
+. `fix(darwin): ssh-keys activation chain` — bundles 1a/1b/1c. All three
+  are the direct fallout of running the bioskop switch end-to-end.
+. `refactor(keys): rename profile role "host" → "system"` — bundles the
+  schema + Nix + yq + shell + sops data changes. Mechanical rename,
+  safe to land as one commit.
+. `refactor(keys-validator): drop shadow, validate canonical` — small,
+  shadow-file removal + flake validator retarget.
+
+Can also fold (3) into (2) if you prefer — same topic, smaller PR surface.
+
+== Post-switch verification checklist (to run after next `nix-darwin rebuild switch`)
+
+On nikopol:
+
+. `/etc/nix/nix-store_ed25519` + `/etc/nix/nix-store-cert.pub` land.
+. `sudo ls -la /var/lib/ndh/ssh-keys/` shows the system-scope
+  privates + cert symlinks.
+. `ls ~/.local/var/run/secrets/ssh-keys/` shows user-scope keys
+  (`github-signing*`, `rke2-cluster`, `rdp-host*`).
+. `ssh-ensure-authorized-keys` exits 0 (no `/var/root` ENOTDIR).
+. `darwin-rebuild switch` does **NOT** build
+  `nikopol-zfs-disk-images-raw` (check via
+  `grep -c 'zfs-disk-images' /tmp/darwin-rebuild.log` → 0 expected).
+
+Only after those pass: look at the `nerdNixosBuilderKey` issue above.
+
+== References
+
+* Memory index: `~/.claude/projects/-private-var-lib-git-nxmatic-nix-darwin-home/memory/MEMORY.md`
+* Detailed migration notes:
+  `~/.claude/projects/…/memory/project_keys_v2_migration.md`
+  (will need updating to reflect the rename + bioskop switch outcome
+  before next session).

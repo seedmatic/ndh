@@ -13,7 +13,7 @@
 #
 # Scope routing:
 #   * Authority public keys                → system (shared, root-readable)
-#   * Key private (profiles ∋ host)        → system-private (root-owned)
+#   * Key private (profiles ∋ system)      → system-private (root-owned)
 #   * Key private (otherwise)              → user
 #   * Key public                           → user
 #   * Key certificates                     → system
@@ -51,9 +51,9 @@ env(TMPDIR) + "/" as $tmpdir |
     .value.comment as $keyComment |
     .value.certificates as $certs |
 
-    # Private scope: system-private if profile includes "host".
+    # Private scope: system-private if profile includes "system".
     ( { "scope": "user" } | with(
-        select( [ "host" ] - $profiles | length == 0 );
+        select( [ "system" ] - $profiles | length == 0 );
         .scope = "system-private"
       ) | .scope ) as $private_scope |
 

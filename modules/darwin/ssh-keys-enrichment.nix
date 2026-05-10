@@ -19,7 +19,7 @@ let
       config.profile.names
     else
       [
-        "host"
+        "system"
         "user"
       ];
   hostIdent =
@@ -185,14 +185,14 @@ in
       # `launchctl asuser ... sudo -u <user>` is the nix-darwin-standard way to
       # run a step in the user's context during activation.
       launchctl asuser "$(id -u ${lib.escapeShellArg profileOwnerName})" \
-        sudo -u ${lib.escapeShellArg profileOwnerName} \
+        sudo -H -u ${lib.escapeShellArg profileOwnerName} \
           ${pkgs.bash}/bin/bash ${sshKeysEnrichmentTools}/bin/ssh-extract-keys-user \
             ${lib.escapeShellArg effectiveUserSSHKeysYamlPath} \
             ${lib.escapeShellArg perUserSecretsKeysDir} \
             ${lib.escapeShellArg profileOwnerName}
 
       launchctl asuser "$(id -u ${lib.escapeShellArg profileOwnerName})" \
-        sudo -u ${lib.escapeShellArg profileOwnerName} \
+        sudo -H -u ${lib.escapeShellArg profileOwnerName} \
           ${pkgs.bash}/bin/bash ${sshKeysEnrichmentTools}/bin/ssh-ensure-authorized-keys
     ''}
   '';

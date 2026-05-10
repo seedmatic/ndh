@@ -866,18 +866,19 @@
           ) { } (builtins.attrNames hostCatalog);
           nixBuildObservePackage = mkNixBuildObservePackage system;
           pkgsForSystem = pkgsFor { inherit system; };
-          # Run check-jsonschema against the v2 shadow keys.yaml. Lives
-          # outside treefmt (which is wired to the canonical keys.v2.yaml
-          # only) so you can point at any file ad-hoc:
+          # Run check-jsonschema against the canonical keys.yaml. The target
+          # is sops-encrypted at rest, so we decrypt into a tempfile before
+          # validating. Pass a path to validate a different file ad-hoc:
           #   nix run .#ssh-keys-v2-validate -- path/to/keys.yaml
-          # Defaults to modules/home-manager/ssh.d/keys.v2.yaml when no
-          # argument is given.
           sshKeysValidatorPackage =
             pkgsForSystem.writeShellApplication {
               name = "ssh-keys-v2-validate";
-              runtimeInputs = [ pkgsForSystem.check-jsonschema ];
+              runtimeInputs = [
+                pkgsForSystem.check-jsonschema
+                pkgsForSystem.sops
+              ];
               text = ''
-                target="''${1:-modules/home-manager/ssh.d/keys.v2.yaml}"
+                target="''${1:-modules/home-manager/ssh.d/keys.yaml}"
                 schema="modules/home-manager/ssh.d/keys.schema.yaml"
                 if [[ ! -r "$schema" ]]; then
                   echo "schema not found at $schema (run from repo root)" >&2
@@ -887,7 +888,12 @@
                   echo "target yaml not found: $target" >&2
                   exit 1
                 fi
-                exec check-jsonschema --schemafile "$schema" "$target"
+                tmp="$(mktemp -t ssh-keys-v2.XXXXXX.yaml)"
+                trap 'rm -f "$tmp"' EXIT
+                if ! sops -d "$target" > "$tmp" 2>/dev/null; then
+                  cp "$target" "$tmp"
+                fi
+                exec check-jsonschema --schemafile "$schema" "$tmp"
               '';
             };
         in

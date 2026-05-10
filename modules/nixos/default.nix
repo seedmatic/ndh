@@ -102,10 +102,11 @@ let
   ];
   rootFsType = if bringupMode then bringupRootFsType else "ext4";
   rootFsMountOptions = if rootFsType == "btrfs" then btrfsRootMountOptions else ext4RootMountOptions;
+  # v2 shape: identities live under the top-level `keys:` map.
   builderKeys = builtins.fromJSON (
     builtins.readFile (
       pkgs.runCommand "ndh-linux-builder-keys.json" { buildInputs = [ pkgs.yq-go ]; } ''
-        yq -o=json '.' "${self}/modules/home-manager/ssh.d/keys.yaml" > "$out"
+        yq -o=json '.keys' "${self}/modules/home-manager/ssh.d/keys.yaml" > "$out"
       ''
     )
   );

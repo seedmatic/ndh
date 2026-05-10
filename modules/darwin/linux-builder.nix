@@ -12,7 +12,7 @@ let
   hostsInventory = inventory.hosts or { };
   qemu-pkgdb = self.packages.${pkgs.stdenv.hostPlatform.system}.qemu-pkgdb or pkgs.qemu;
 
-  keys = builtins.fromJSON (
+  keysYaml = builtins.fromJSON (
     builtins.readFile (
       ndh.store.runCommand "keys.json" { buildInputs = [ pkgs.yq-go ]; } ''
         yq -o=json '.' "${self}/modules/home-manager/ssh.d/keys.yaml" > $out
@@ -20,9 +20,9 @@ let
     )
   );
 
-  # Public key trusted by the embedded linux-builder VM's authorized_keys
-  # (read from flattened keys.yaml — top-level entries, no profile wrapper).
-  linuxBuilderPubKey = keys.linux-builder.public;
+  # Public key trusted by the embedded linux-builder VM's authorized_keys.
+  # v2 shape: keys live under the top-level `keys:` map.
+  linuxBuilderPubKey = keysYaml.keys.linux-builder.public;
   # Pull builder inventory entries for this host (if present)
   hostName = config.profile.host.hostName;
   cacheCatalog = catalog.caches;
@@ -302,17 +302,19 @@ in
     };
 
     # Enable the shared nix-store identity deploy logic from
-    # modules/.common.d/nix-store-identity.nix and run it during activation.
-    # Platform detail: nix-darwin runs the script as a plain activation step;
-    # on NixOS the same script is invoked from a systemd oneshot so it can
-    # order after ssh-keys-enrichment.service.
+    # modules/.common.d/nix-store-identity.nix.
+    #
+    # Wiring as a custom-named activation script attribute (e.g.
+    # system.activationScripts.nixStoreIdentity) does not take effect on
+    # nix-darwin — only the well-known phase names get emitted into the
+    # activate script. Hook the deploy into `postActivation` ordered after
+    # the ssh-keys-enrichment extract (mkOrder 1500 in
+    # modules/darwin/ssh-keys-enrichment.nix) so /var/lib/ndh/ssh-keys/
+    # holds the private + cert by the time we copy them to /etc/nix.
     nixStoreIdentity.enable = true;
 
-    system.activationScripts.nixStoreIdentity = {
-      text = ''
-        ${config.nixStoreIdentity.deployScript}/bin/nix-store-identity-deploy
-      '';
-      deps = [ "setupActivationScript" ];
-    };
+    system.activationScripts.postActivation.text = lib.mkOrder 1600 ''
+      ${config.nixStoreIdentity.deployScript}/bin/nix-store-identity-deploy
+    '';
   };
 }

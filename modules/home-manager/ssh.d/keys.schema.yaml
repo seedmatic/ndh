@@ -67,15 +67,28 @@ $defs:
   profileName:
     type: string
     description: >
-      Profile identifier. Matches `profile.name` in Nix. Hosts declare
-      `profile.name = "<profileName>"`; the split step filters keys to
-      those whose `profiles:` list contains that name. Profiles are
-      orthogonal (no implicit inheritance): a key whose profiles omit
-      `bringup` is excluded from bringup images even if it has `host`.
+      Profile identifier. Matches an entry in `profile.names` in Nix.
+      The split step filters keys to those whose `profiles:` list
+      contains a name this host participates in. Profiles are orthogonal
+      (no implicit inheritance): a key whose profiles omit `bringup` is
+      excluded from bringup images even if it has `system`.
+
+      Profile names correspond to *where the extracted key material lands*:
+
+        bringup — installed into the nixos minimal bringup image so first
+                  boot can decrypt sops (only `nix-store` qualifies today).
+        system  — root-owned, host-wide placement: sshd HostKey, remote
+                  builder key, nix-store identity. Privates land under
+                  sshPaths.systemKeysDir (`/var/lib/ndh/ssh-keys/` on
+                  darwin) and downstream modules copy the specific ones
+                  they need (e.g. `/etc/nix/builder_ed25519`).
+        user    — operator identity, installed under the user's home:
+                  `~/.local/var/run/secrets/ssh-keys/`. Outbound ssh,
+                  git signing, etc.
     enum:
-      - bringup  # minimal image: only keys needed for activation (nix-store)
-      - host     # machine identity: sshd HostKey, inbound auth, cert chain
-      - user     # operator identity: outbound ssh, git signing, etc.
+      - bringup
+      - system
+      - user
 
   # Accepts any of the forms a key material field can take at rest:
   #  - sops-encrypted envelope `ENC[...]`

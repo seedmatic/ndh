@@ -29,16 +29,22 @@ in
             # keys.yaml (filter by `.profiles` membership).
             type = lib.types.listOf (lib.types.enum [
               "bringup"
-              "host"
+              "system"
               "user"
             ]);
             description = ''
               List of profile roles the host belongs to. Runtime hosts
-              default to [ "host" "user" ]; bringup images force
+              default to [ "system" "user" ]; bringup images force
               [ "bringup" ]. Orthogonal — no implicit inclusion.
+
+              Profile roles describe where extracted ssh-key material
+              lands:
+                bringup — bundled into the nixos minimal bringup image.
+                system  — root-owned host-wide paths (sshPaths.systemKeysDir).
+                user    — per-operator paths under ~/.local/var/run/secrets.
             '';
             default = [
-              "host"
+              "system"
               "user"
             ];
           };

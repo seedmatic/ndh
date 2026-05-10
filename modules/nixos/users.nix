@@ -22,13 +22,14 @@ let
 
   # Builder SSH keys from keys.yaml (not SOPS-encrypted)
   # Must use pkgs.runCommand to convert YAML to JSON (matches default.nix pattern)
-  builderKeys = builtins.fromJSON (
+  # v2 shape: identities live under the top-level `keys:` map.
+  builderKeys = (builtins.fromJSON (
     builtins.readFile (
       pkgs.runCommand "ndh-linux-builder-keys.json" { buildInputs = [ pkgs.yq-go ]; } ''
-        yq -o=json '.' "${self}/modules/home-manager/ssh.d/keys.yaml" > "$out"
+        yq -o=json '.keys' "${self}/modules/home-manager/ssh.d/keys.yaml" > "$out"
       ''
     )
-  );
+  ));
 
 in
 {

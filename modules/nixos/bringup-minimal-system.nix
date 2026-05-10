@@ -122,10 +122,11 @@ in
   users.users.root.openssh.authorizedKeys.keys =
     let
       # Load SSH keys from keys.yaml (same pattern as users.nix)
+      # v2 shape: identities live under the top-level `keys:` map.
       builderKeys = builtins.fromJSON (
         builtins.readFile (
           pkgs.runCommand "ndh-root-keys.json" { buildInputs = [ pkgs.yq-go ]; } ''
-            yq -o=json '.' "${self}/modules/home-manager/ssh.d/keys.yaml" > "$out"
+            yq -o=json '.keys' "${self}/modules/home-manager/ssh.d/keys.yaml" > "$out"
           ''
         )
       );

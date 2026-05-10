@@ -12,10 +12,10 @@
     })
   ];
   config = {
-    # Runtime host: participates in both the host-scope and user-scope
+    # Runtime host: participates in both the system-scope and user-scope
     # profiles. See profile.nix for the semantics.
     profile.names = lib.mkForce [
-      "host"
+      "system"
       "user"
     ];
 

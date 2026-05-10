@@ -48,12 +48,12 @@ main() {
 		"$(dirname "$generatedSystemKeysYamlPath")" \
 		"$(dirname "$generatedProfileKeysYamlPath")"
 
-	# Host scope: keys whose .profiles includes "host". Carries the full
+	# System scope: keys whose .profiles includes "system". Carries the full
 	# .authorities block so consumers can validate cert chains.
 	yq eval -o=yaml "
 		.keys |= with_entries(
 			select(
-				((.value.profiles // []) | map(select(. == \"host\")) | length > 0)
+				((.value.profiles // []) | map(select(. == \"system\")) | length > 0)
 			)
 		)
 	" "$generatedKeysYamlPath" >"$generatedSystemKeysYamlPath"

@@ -26,14 +26,14 @@ let
     else
       "root";
   # v2 profile membership (list). Bringup forces [ "bringup" ]; runtime
-  # hosts default to [ "host" "user" ]. See modules/nixos/bringup-minimal-
+  # hosts default to [ "system" "user" ]. See modules/nixos/bringup-minimal-
   # system.nix for the bringup override.
   profileNames =
     if config ? profile && config.profile ? names && config.profile.names != [ ] then
       config.profile.names
     else
       [
-        "host"
+        "system"
         "user"
       ];
   hostIdent =
@@ -137,9 +137,9 @@ in
         "${profileOwnerName}"
 
       # 2. Split into per-profile yamls (one invocation per profile name
-      #    in profile.names). Each run emits the same system.yaml (host-
-      #    scope filter) plus one profiles/<name>.yaml (filter by that
-      #    profile's membership).
+      #    in profile.names). Each run emits the same system.yaml
+      #    (system-scope filter) plus one profiles/<name>.yaml (filter by
+      #    that profile's membership).
       ${lib.concatMapStringsSep "\n" (p: ''
         ${pkgs.bash}/bin/bash ${sshKeysEnrichmentTools}/bin/ssh-split-keys-yaml \
           "${generatedKeysYamlPath}" \
@@ -150,8 +150,8 @@ in
       '') profileNames}
 
       # 3. Materialize extract artifacts: the full enriched set drives
-      #    both the per-user deploy (secretsKeysDir) and the host-scope
-      #    drop to systemKeysDir (privates whose .profiles ∋ "host").
+      #    both the per-user deploy (secretsKeysDir) and the system-scope
+      #    drop to systemKeysDir (privates whose .profiles ∋ "system").
       ${pkgs.bash}/bin/bash ${sshKeysEnrichmentTools}/bin/ssh-extract-keys \
         "${generatedKeysYamlPath}" \
         "${config.sshPaths.secretsKeysDir}" \

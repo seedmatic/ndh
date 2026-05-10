@@ -93,12 +93,18 @@ let
     && entry.vm.kind == "vz"
   ) hostCatalogEntries;
 
-  # Operator opt-out: hostProfile.vmMaterializerEnableActivationHook = false
+  # Operator opt-out via hostProfile.vmMaterializerEnableActivationHook = false
   # skips the HM materializeVm activation entirely so that `darwin-rebuild
-  # switch` does not drag the nixos bringup disk image into its closure.
-  # Default true preserves prior behavior on hosts that rely on the hook.
-  hostVmMaterializerActivationHook = lib.attrByPath
-    [ "host" "vmMaterializerEnableActivationHook" ] true resolvedProfile;
+  # switch` does not drag the nixos bringup disk image into its closure. Read
+  # the raw value from specialArgs.ndh.context.hostProfile — same path used by
+  # the canonical option in modules/.common.d/vm-materializer.nix. The
+  # profile.host submodule strips undeclared attributes so we cannot read via
+  # resolvedProfile here.
+  hostVmMaterializerActivationHook =
+    if ndhContext != null && ndhContext ? hostProfile && ndhContext.hostProfile != null then
+      ndhContext.hostProfile.vmMaterializerEnableActivationHook or true
+    else
+      true;
 
   homeUsernameFallback = lib.attrByPath [ "home" "username" ] null config;
   homeDirectoryFallback = lib.attrByPath [ "home" "homeDirectory" ] null config;
