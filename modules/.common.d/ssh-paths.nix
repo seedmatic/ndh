@@ -48,11 +48,15 @@ in
       description = "Namespace directory for nix-darwin-home secrets in system-style runtime layout.";
     };
 
-    # Canonical per-user SSH material root
+    # Canonical per-user SSH material root. Lives under ~/.local/share so
+    # it's clearly persistent, matches XDG_DATA_HOME conventions, and is
+    # namespaced under the project name. The prior location,
+    # ~/.local/var/run/secrets, mirrored the system /run/secrets namespace
+    # and misled readers into thinking it was tmpfs-backed — it never was.
     secretsRootDir = lib.mkOption {
       type = lib.types.str;
-      default = "${userHome}/.local/var/run/secrets";
-      description = "Root directory for per-user SSH material in runtime secrets namespace.";
+      default = "${userHome}/.local/share/ndh";
+      description = "Root directory for per-user SSH material. Persistent, user-owned.";
     };
 
     secretsKeysDir = lib.mkOption {

@@ -248,7 +248,7 @@ else is rejected at eval time.  `"1"` and `"0"` are not accepted.
 
 [source]
 ----
-~/.local/share/nix-darwin-home/build-obs/
+~/.local/share/ndh/build-obs/
   <iso8601>-<attr>.ndjson   ← NDJSON stream (one JSON event per line)
   latest.ndjson             ← symlink to most recent session
 ----
@@ -320,7 +320,7 @@ tail -f ~/.local/share/nix-build-observe/latest.ndjson | jq -c .
 |Sample interval in seconds, shared across all source layers.
 
 |`NDH_BUILD_OBSERVE_DIR`
-|`~/.local/share/nix-darwin-home/build-obs`
+|`~/.local/share/ndh/build-obs`
 |Override the NDJSON output directory.
 
 |`NDH_VECTOR_HTTP_PORT`
@@ -449,21 +449,21 @@ the pools, and the QEMU VM exits normally.
 [source,bash]
 ----
 # Tail the latest NDJSON stream as it's written:
-tail -f ~/.local/share/nix-darwin-home/build-obs/latest.ndjson | \
+tail -f ~/.local/share/ndh/build-obs/latest.ndjson | \
   yq -p json -o yaml
 
 # Filter by layer:
 yq 'select(.source_layer == "vz-host")' -p json -o yaml \
-  ~/.local/share/nix-darwin-home/build-obs/latest.ndjson
+  ~/.local/share/ndh/build-obs/latest.ndjson
 
 # Show only phase markers (build milestones):
 yq 'select(.type == "vz-phase" or .type == "builder-phase")' -p json -o yaml \
-  ~/.local/share/nix-darwin-home/build-obs/latest.ndjson
+  ~/.local/share/ndh/build-obs/latest.ndjson
 
 # Memory pressure summary across all layers:
 yq 'select(.mem != null) | {layer: .source_layer, ts: .ts, mem: .mem}' \
   -p json -o yaml \
-  ~/.local/share/nix-darwin-home/build-obs/latest.ndjson
+  ~/.local/share/ndh/build-obs/latest.ndjson
 ----
 
 == ZFS Install-Time Tuning
@@ -569,13 +569,13 @@ Check the observer output on the macOS host for a macro view:
 [source,bash]
 ----
 # Last 20 events across all layers:
-tail -n 20 ~/.local/share/nix-darwin-home/build-obs/latest.ndjson | \
+tail -n 20 ~/.local/share/ndh/build-obs/latest.ndjson | \
   yq -p json '{ts: .ts, layer: .source_layer, type: .type}' -o yaml
 
 # Builder memory pressure (from the linux-builder layer):
 yq 'select(.source_layer == "builder" and .mem != null) | .mem' \
   -p json -o yaml \
-  ~/.local/share/nix-darwin-home/build-obs/latest.ndjson
+  ~/.local/share/ndh/build-obs/latest.ndjson
 ----
 
 ==== txg_sync dominates at end of install

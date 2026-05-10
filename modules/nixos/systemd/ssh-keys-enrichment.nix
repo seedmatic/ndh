@@ -207,8 +207,11 @@ in
       #    dir for userOutputDir + systemPrivateOutputDir means every
       #    artifact (privates, pubs, authority pubs, certs) lands in one
       #    well-named place instead of a second scratch tree.
+      #
+      #    Feed generatedSystemKeysYamlPath (system-profile filtered) so
+      #    keys outside the system profile don't spill their pubs here.
       ${pkgs.bash}/bin/bash ${sshKeysEnrichmentTools}/bin/ssh-extract-keys \
-        "${generatedKeysYamlPath}" \
+        "${generatedSystemKeysYamlPath}" \
         "${config.sshPaths.systemKeysDir}" \
         root \
         "${config.sshPaths.systemKeysDir}"

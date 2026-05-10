@@ -100,7 +100,7 @@ let
       loggerTag = loggerTagExtractSystem;
       splitExpFile = sshExtractKeysSplitExpFile;
     };
-    # User-scope extract: everything else → ~<profileOwner>/.local/var/run/secrets/ssh-keys.
+    # User-scope extract: everything else → sshPaths.secretsKeysDir (~<user>/.local/share/ndh/ssh-keys).
     ssh-extract-keys-user = pkgs.replaceVars "${self}/modules/home-manager/ssh-key.d/ssh-extract-keys.sh" {
       nixBashTrampoline = nixBashTrampoline;
       loggerTag = loggerTagExtractUser;
@@ -212,47 +212,23 @@ in
     # same dir for both userOutputDir and systemPrivateOutputDir collapses
     # the prior scratch-dir split — one root-owned directory now holds
     # everything sshd and nix-daemon need at boot.
+    #
+    # Feed generatedSystemKeysYamlPath (system-profile filtered) rather
+    # than the full enriched yaml so keys outside the system profile
+    # (github-signing, user-only identities) don't spill their pubs here.
     ${pkgs.bash}/bin/bash ${sshKeysEnrichmentTools}/bin/ssh-extract-keys-system \
-      ${lib.escapeShellArg generatedKeysYamlPath} \
+      ${lib.escapeShellArg generatedSystemKeysYamlPath} \
       ${lib.escapeShellArg config.sshPaths.systemKeysDir} \
       root \
       ${lib.escapeShellArg config.sshPaths.systemKeysDir}
 
-    # Cleanup stale keys: remove files in systemKeysDir that are no longer
-    # in the system profile. Preserves current keys and their cert symlinks.
-    if [ -d ${lib.escapeShellArg config.sshPaths.systemKeysDir} ]; then
-      system_profile_yaml="${lib.escapeShellArg generatedSystemKeysYamlPath}"
-      if [ -f "$system_profile_yaml" ]; then
-        # Build list of expected keys (base names, no extensions)
-        expected_keys=$(${pkgs.yq-go}/bin/yq eval '.keys | keys | .[]' "$system_profile_yaml" 2>/dev/null || echo "")
-
-        # Walk systemKeysDir and remove files not matching expected keys
-        cd ${lib.escapeShellArg config.sshPaths.systemKeysDir}
-        for file in *; do
-          [ -e "$file" ] || continue  # skip if no files
-
-          # Extract base name (strip -cert.pub suffix if present)
-          base_name="$file"
-          if [[ "$file" == *-cert.pub ]]; then
-            base_name="''${file%-cert.pub}"
-          fi
-
-          # Check if this key is in the expected list
-          found=0
-          for expected in $expected_keys; do
-            if [ "$base_name" = "$expected" ]; then
-              found=1
-              break
-            fi
-          done
-
-          if [ "$found" -eq 0 ]; then
-            echo "ssh-keys-cleanup: removing stale system key: $file"
-            rm -f "$file"
-          fi
-        done
-      fi
-    fi
+    # Stale-file cleanup removed: ssh-extract-keys starts each run with
+    # `rm -fr` on the output dir, so the unified systemKeysDir is already
+    # re-materialized from scratch every activation. The previous cleanup
+    # loop predated the unified-dir refactor and assumed systemKeysDir held
+    # only private-key basenames — with authority pubs and per-authority
+    # cert files now landing here too, a filename-allowlist check would
+    # delete legitimate artifacts.
 
     # Build the aggregate TrustedUserCAKeys file in place — sshd reads
     # this path directly (no /etc/ssh/keys.d mirror). Runs every
@@ -275,7 +251,7 @@ in
       install -m 0400 ${lib.escapeShellArg hmProfileKeysYamlPath} ${lib.escapeShellArg effectiveUserSSHKeysYamlPath}
       chown ${lib.escapeShellArg profileOwnerName} ${lib.escapeShellArg effectiveUserSSHKeysYamlPath} || true
 
-      # User-scope extract: populate ~<user>/.local/var/run/secrets/ssh-keys.
+      # User-scope extract: populate sshPaths.secretsKeysDir.
       # `launchctl asuser ... sudo -u <user>` is the nix-darwin-standard way to
       # run a step in the user's context during activation.
       #
