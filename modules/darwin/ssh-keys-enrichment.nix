@@ -50,14 +50,14 @@ let
   decryptedSSHKeysYamlPath = config.sshPaths.runtimeSecretsKeysYaml;
   # Outside the sops-install-secrets namespace so that unit's strict
   # directory-replacement sweep does not nuke our enrichment outputs.
-  splitKeysDir = "/run/ndh/ssh-keys-split.d";
-  generatedKeysYamlPath = "${splitKeysDir}/keys.generated.yaml";
-  generatedSystemKeysYamlPath = "${splitKeysDir}/system.yaml";
+  enrichedKeysDir = "/run/ndh/ssh-keys.d";
+  generatedKeysYamlPath = "${enrichedKeysDir}/keys.generated.yaml";
+  generatedSystemKeysYamlPath = "${enrichedKeysDir}/system.yaml";
   authorizedPrincipalsInputPath = "${config.opensshPolicy.canonicalCommandDir}/authorized-principals-command.yaml";
   # Per-profile split outputs. One yaml per profile name this host
   # participates in. The legacy 4-arg ssh-split-keys-yaml signature still
   # expects a single profile path, so we invoke it once per entry below.
-  profileKeysYamlPathFor = profile: "${splitKeysDir}/profiles/${profile}.yaml";
+  profileKeysYamlPathFor = profile: "${enrichedKeysDir}/profiles/${profile}.yaml";
 
   inventoryHostNames = builtins.attrNames (inventory.hosts or { });
   inventoryHostsCsv = lib.concatStringsSep "," inventoryHostNames;
@@ -112,12 +112,6 @@ let
     };
   };
 
-  # Scratch dir for the system-side extract pass: we only care about what
-  # lands in systemKeysDir (4th arg below). User-scope keys are materialized
-  # in a separate user-context step, so the system extract's userOutputDir
-  # points at a root-owned throwaway.
-  systemExtractScratchDir = "/var/lib/ndh/ssh-keys-extract-scratch";
-
   # Effective per-user yaml path (mirrors the path derived in
   # modules/home-manager/ssh-keys.nix) so we can prepare it from the
   # root-context before invoking the user-scope extractor.
@@ -157,7 +151,7 @@ in
     # Pre-create the split output directory tree so that enrichment/split
     # scripts can always write their outputs even on first boot (mirrors the
     # explicit install -d in ssh-enrich-split-runtime-keys.sh).
-    install -d -m 0755 ${lib.escapeShellArg splitKeysDir} ${lib.escapeShellArg "${splitKeysDir}/profiles"}
+    install -d -m 0755 ${lib.escapeShellArg enrichedKeysDir} ${lib.escapeShellArg "${enrichedKeysDir}/profiles"}
 
     # Enrichment produces the full enriched yaml at generatedKeysYamlPath.
     # We then invoke split-keys-yaml once per profile in profile.names.
@@ -213,13 +207,14 @@ in
     done
     rm -f "$principals_input_tmp"
 
-    # System-scope extract: ssh-host privates land in sshPaths.systemKeysDir.
-    # /var/lib/ndh/ssh-keys-extract-scratch catches user/authority duplicates
-    # we do not need in this pass.
-    install -d -m 0700 ${lib.escapeShellArg systemExtractScratchDir}
+    # System-scope extract: every system-profile artifact (privates, pubs,
+    # authority pubs, certs) lands in sshPaths.systemKeysDir. Passing the
+    # same dir for both userOutputDir and systemPrivateOutputDir collapses
+    # the prior scratch-dir split — one root-owned directory now holds
+    # everything sshd and nix-daemon need at boot.
     ${pkgs.bash}/bin/bash ${sshKeysEnrichmentTools}/bin/ssh-extract-keys-system \
       ${lib.escapeShellArg generatedKeysYamlPath} \
-      ${lib.escapeShellArg systemExtractScratchDir} \
+      ${lib.escapeShellArg config.sshPaths.systemKeysDir} \
       root \
       ${lib.escapeShellArg config.sshPaths.systemKeysDir}
 
@@ -258,6 +253,20 @@ in
         done
       fi
     fi
+
+    # Build the aggregate TrustedUserCAKeys file in place — sshd reads
+    # this path directly (no /etc/ssh/keys.d mirror). Runs every
+    # activation so stale CAs cannot linger.
+    : > ${lib.escapeShellArg "${config.sshPaths.systemKeysDir}/trusted-user-ca.pub"}
+    for ca in ${lib.escapeShellArg config.sshPaths.systemKeysDir}/*-ca.pub; do
+      [ -f "$ca" ] || continue
+      case "$(basename "$ca")" in
+        trusted-user-ca.pub) continue ;;
+      esac
+      cat "$ca" >> ${lib.escapeShellArg "${config.sshPaths.systemKeysDir}/trusted-user-ca.pub"}
+      printf "\n" >> ${lib.escapeShellArg "${config.sshPaths.systemKeysDir}/trusted-user-ca.pub"}
+    done
+    chmod 644 ${lib.escapeShellArg "${config.sshPaths.systemKeysDir}/trusted-user-ca.pub"}
 
     # Install the user-scope per-profile yaml where HM's extractor expects it.
     # install runs as root so we chown to the profile owner afterwards.

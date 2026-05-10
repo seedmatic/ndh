@@ -64,6 +64,8 @@ let
     lib.filterAttrs (_: v: v != null && v != "") raw;
 in
 {
+  imports = [ ./ssh-paths.nix ];
+
   options.opensshPolicy = {
     enable = mkEnableOption "Unified OpenSSH policy (NixOS + Darwin).";
 
@@ -82,7 +84,7 @@ in
     trustedCAPath = mkOption {
       type = types.nullOr types.str;
       default = null;
-      description = "Path to TrustedUserCAKeys file (system-readable, e.g. /etc/ssh/keys.d/... ).";
+      description = "Path to TrustedUserCAKeys file (system-readable, e.g. `\${sshPaths.systemKeysDir}/trusted-user-ca.pub`).";
     };
 
     # Principals file
@@ -137,8 +139,14 @@ in
     };
     keysDir = mkOption {
       type = types.str;
-      default = "/etc/ssh/keys.d";
-      description = "Directory where OpenSSH-related keys (builder, CA) are stored.";
+      default = config.sshPaths.systemKeysDir;
+      description = ''
+        Directory where OpenSSH-related keys (builder, CA aggregate) are
+        stored. Defaults to `sshPaths.systemKeysDir` so sshd reads the
+        same root-owned directory where the ssh-keys enrichment pipeline
+        materializes authority pubs + certs — no intermediate mirror
+        under `/etc/ssh/keys.d` required.
+      '';
     };
     canonicalPrincipalsCommandName = mkOption {
       type = types.str;

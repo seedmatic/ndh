@@ -57,11 +57,13 @@ let
           "@profileUserName@"
           "@linuxBuilderPublicKey@"
           "@trustedCaPublicKey@"
+          "@systemKeysDir@"
         ]
         [
           catalogUserName
           linuxBuilderPublicKey
           trustedCaPublicKey
+          config.sshPaths.systemKeysDir
         ]
         (builtins.readFile ./lima-cloud-init.sh);
   };

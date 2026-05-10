@@ -68,15 +68,6 @@ let
     }
   );
 
-  opensshPostActivationScript = ndh.store.installBinScript "openssh-post-activation" (
-    pkgs.replaceVars ./openssh.d/post-activation.sh {
-      nixBashTrampoline = nixBashTrampoline;
-      hostKeysDir = hostKeysDir;
-      keysDir = config.opensshPolicy.keysDir;
-      loggerTag = "darwin.activationScripts.postActivation.openssh";
-    }
-  );
-
 in
 {
   imports = [
@@ -135,11 +126,9 @@ in
       bash ${opensshActivationScript}/bin/openssh-activation
     '';
 
-    # HM post-activation is wired at mkOrder 2000 in modules/darwin/default.nix.
-    # Run CA/trust aggregation after HM extraction so runtime SSH key material exists.
-    system.activationScripts.postActivation.text = lib.mkOrder 2100 ''
-      bash ${opensshPostActivationScript}/bin/openssh-post-activation
-    '';
-
+    # CA aggregation happens in-place inside sshPaths.systemKeysDir during
+    # the ssh-keys enrichment activation pass (modules/darwin/ssh-keys-
+    # enrichment.nix). No separate post-activation step needed — sshd's
+    # TrustedUserCAKeys points directly at that aggregate.
   };
 }

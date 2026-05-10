@@ -36,24 +36,10 @@ main() {
     ln -sf "${SSH_KEY_NIXBLD}.pub" "$SSH_AUTH_KEYS_DIR/nixbld"
   fi
 
-  # Install CA public keys from runtime user key directory.
-  if [ -d "$USER_CA_SOURCE_DIR" ]; then
-    cp -f "$USER_CA_SOURCE_DIR"/*-ca.pub "$SSH_KEYS_DIR"/ 2>/dev/null || true
-  fi
-  # Normalize CA public keys and build aggregate TrustedUserCAKeys file
-  for ca in "$SSH_KEYS_DIR"/*-ca.pub; do
-    [ -f "$ca" ] || continue
-    basename "$ca" | grep -q '^trusted-user-ca\.pub$' && continue
-    chmod 644 "$ca"
-  done
-  : > "$SSH_KEYS_DIR/trusted-user-ca.pub"
-  for ca in "$SSH_KEYS_DIR"/*-ca.pub; do
-    [ -f "$ca" ] || continue
-    basename "$ca" | grep -q '^trusted-user-ca\.pub$' && continue
-    cat "$ca" >> "$SSH_KEYS_DIR/trusted-user-ca.pub"
-    printf "\n" >> "$SSH_KEYS_DIR/trusted-user-ca.pub"
-  done
-  chmod 644 "$SSH_KEYS_DIR/trusted-user-ca.pub"
+  # CA public keys + trusted-user-ca.pub aggregate are materialized directly
+  # inside SSH_KEYS_DIR by the ssh-keys enrichment systemd unit
+  # (modules/nixos/systemd/ssh-keys-enrichment.nix). No /etc/ssh/keys.d mirror
+  # needed — sshd's TrustedUserCAKeys points at SSH_KEYS_DIR/trusted-user-ca.pub.
 
   # Canonical host SSH identity: install persisted SOPS-managed key material
   # so renewed VM instances keep a stable host key and known_hosts remains valid.

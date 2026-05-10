@@ -151,15 +151,19 @@ if [[ -n "${PROFILE_USER_NAME}" && "${PROFILE_USER_NAME}" != "${LIMA_CIDATA_USER
   build_authorized_keys_for_user "${PROFILE_USER_NAME}"
 fi
 
-# Bootstrap certificate-auth trust fallback: keep trusted-user CA available
-# even before runtime secret extraction populates /etc/ssh/keys.d.
-install -d -m 755 "/etc/ssh/keys.d"
+SYSTEM_KEYS_DIR="@systemKeysDir@"
+
+# Bootstrap certificate-auth trust fallback: seed trusted-user-ca.pub at the
+# canonical systemKeysDir location before runtime secret extraction runs. The
+# enrichment activation later re-aggregates from *-ca.pub siblings in the
+# same directory, so any stale bootstrap content gets overwritten cleanly.
+install -d -m 755 "${SYSTEM_KEYS_DIR}"
 if [[ -n "${TRUSTED_CA_PUBLIC_KEY}" ]]; then
   printf 'ssh-ed25519 %s %s\n' "${TRUSTED_CA_PUBLIC_KEY}" "cert-authority@mammoth-skate" \
-    > "/etc/ssh/keys.d/trusted-user-ca.pub"
-  chown root:root "/etc/ssh/keys.d/trusted-user-ca.pub"
-  chmod 644 "/etc/ssh/keys.d/trusted-user-ca.pub"
-  echo "[lima-cloud-init] installed bootstrap trusted user CA: /etc/ssh/keys.d/trusted-user-ca.pub"
+    > "${SYSTEM_KEYS_DIR}/trusted-user-ca.pub"
+  chown root:root "${SYSTEM_KEYS_DIR}/trusted-user-ca.pub"
+  chmod 644 "${SYSTEM_KEYS_DIR}/trusted-user-ca.pub"
+  echo "[lima-cloud-init] installed bootstrap trusted user CA: ${SYSTEM_KEYS_DIR}/trusted-user-ca.pub"
 fi
 
 # Optional compatibility alias for non-canonical home paths coming from cidata

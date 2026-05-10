@@ -30,7 +30,7 @@ let
   # participates in. The enrichment service (modules/darwin/ssh-keys-
   # enrichment.nix + modules/nixos/systemd/ssh-keys-enrichment.nix)
   # emits this path when profile.names includes "user".
-  systemSplitProfileKeysYamlPath = "/run/ndh/ssh-keys-split.d/profiles/user.yaml";
+  systemSplitProfileKeysYamlPath = "/run/ndh/ssh-keys.d/profiles/user.yaml";
   # Effective YAML path consumed by ssh-add-keys/launchd.
   effectiveSSHKeysYamlPath = "${perUserKeysDir}.yaml";
 
