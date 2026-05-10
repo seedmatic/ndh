@@ -19,6 +19,7 @@ let
     cp ${
       pkgs.replaceVars ./headscale-client.d/post-activation.sh {
         nixBashTrampoline = nixBashTrampoline;
+        enableSSH = if cfg.enableSSH then "true" else "false";
       }
     } "$out"
     chmod +x "$out"

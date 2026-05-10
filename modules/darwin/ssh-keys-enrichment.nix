@@ -220,12 +220,20 @@ in
       # User-scope extract: populate ~<user>/.local/var/run/secrets/ssh-keys.
       # `launchctl asuser ... sudo -u <user>` is the nix-darwin-standard way to
       # run a step in the user's context during activation.
+      #
+      # Pass perUserSecretsKeysDir as the 4th arg (systemPrivateOutputDir) so
+      # split-exp's "system-private" routing (for keys with profiles ∋ system
+      # that *also* ∋ user, e.g. rdp-host) lands the private at
+      # $perUserSecretsKeysDir/<name> — where sshPaths.privKeyFile points —
+      # rather than the default .authority.d/ fallback which sshd cannot
+      # find.
       launchctl asuser "$(id -u ${lib.escapeShellArg profileOwnerName})" \
         sudo -H -u ${lib.escapeShellArg profileOwnerName} \
           ${pkgs.bash}/bin/bash ${sshKeysEnrichmentTools}/bin/ssh-extract-keys-user \
             ${lib.escapeShellArg effectiveUserSSHKeysYamlPath} \
             ${lib.escapeShellArg perUserSecretsKeysDir} \
-            ${lib.escapeShellArg profileOwnerName}
+            ${lib.escapeShellArg profileOwnerName} \
+            ${lib.escapeShellArg perUserSecretsKeysDir}
 
       launchctl asuser "$(id -u ${lib.escapeShellArg profileOwnerName})" \
         sudo -H -u ${lib.escapeShellArg profileOwnerName} \
