@@ -174,6 +174,42 @@ in
       root \
       ${lib.escapeShellArg config.sshPaths.systemKeysDir}
 
+    # Cleanup stale keys: remove files in systemKeysDir that are no longer
+    # in the system profile. Preserves current keys and their cert symlinks.
+    if [ -d ${lib.escapeShellArg config.sshPaths.systemKeysDir} ]; then
+      system_profile_yaml="${lib.escapeShellArg generatedSystemKeysYamlPath}"
+      if [ -f "$system_profile_yaml" ]; then
+        # Build list of expected keys (base names, no extensions)
+        expected_keys=$(${pkgs.yq-go}/bin/yq eval '.keys | keys | .[]' "$system_profile_yaml" 2>/dev/null || echo "")
+
+        # Walk systemKeysDir and remove files not matching expected keys
+        cd ${lib.escapeShellArg config.sshPaths.systemKeysDir}
+        for file in *; do
+          [ -e "$file" ] || continue  # skip if no files
+
+          # Extract base name (strip -cert.pub suffix if present)
+          base_name="$file"
+          if [[ "$file" == *-cert.pub ]]; then
+            base_name="''${file%-cert.pub}"
+          fi
+
+          # Check if this key is in the expected list
+          found=0
+          for expected in $expected_keys; do
+            if [ "$base_name" = "$expected" ]; then
+              found=1
+              break
+            fi
+          done
+
+          if [ "$found" -eq 0 ]; then
+            echo "ssh-keys-cleanup: removing stale system key: $file"
+            rm -f "$file"
+          fi
+        done
+      fi
+    fi
+
     # Install the user-scope per-profile yaml where HM's extractor expects it.
     # install runs as root so we chown to the profile owner afterwards.
     ${lib.optionalString (builtins.elem hmProfileName profileNames) ''

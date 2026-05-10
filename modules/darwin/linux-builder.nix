@@ -56,9 +56,11 @@ let
     && (entry ? vm)
     && (entry.vm.manager or "") == "lima"
   ) inventoryEntries;
+  # Local QEMU linux-builder enabled only on baremetal (bioskop) as a fallback
+  # when nerd-nixos VM is not yet available. VM hosts (nikopol) cannot run
+  # nested QEMU and bootstrap from pre-built configs from bioskop instead.
   selected = if (!isBaremetalHost) then null else lib.head (linuxBuilderEntries ++ [ null ]);
-  selectedLimaBuilder =
-    if (!isBaremetalHost) then null else lib.head (limaBuilderEntries ++ [ null ]);
+  selectedLimaBuilder = null; # Remote builders disabled
   requestedLinuxBuilderVmCpuCores =
     if selected != null then (selected.builder.vmCpuCores or 8) else 8;
   effectiveLinuxBuilderVmCpuCores = lib.min requestedLinuxBuilderVmCpuCores 8;
@@ -238,67 +240,23 @@ in
     # SSH keys are managed by the home-manager ssh-keys.nix module
     # Keys are deployed to canonical split runtime paths via sshPaths (system/public + per-user/private)
 
-    # nerd-nixos remote builder — connects directly over LAN
-    nix.distributedBuilds = lib.mkIf nerdNixosBuilderEnabled true;
+    # Distributed builds disabled: we now build locally on bioskop and copy
+    # store paths to target hosts instead of using remote builders over LAN/tailscale.
 
-    nix.buildMachines = lib.optionals nerdNixosBuilderEnabled [
-      {
-        hostName = "bioskop-nixos.lan";
-        systems = selectedLimaBuilder.builder.systems or [ "aarch64-linux" ];
-        maxJobs = selectedLimaBuilder.builder.maxJobs or 8;
-        protocol = "ssh-ng";
-        sshUser = "nxmatic";
-        sshKey = builderKeyPath;
-        supportedFeatures = [
-          "nixos-test"
-          "benchmark"
-          "big-parallel"
-          "kvm"
-        ];
-        speedFactor = 2;
-      }
-    ];
-
-    # SSH config so the nix daemon can reach bioskop-nixos directly over LAN
-    environment.etc."ssh/ssh_config.d/70-nerd-nixos-builder.conf" = lib.mkIf nerdNixosBuilderEnabled {
+    # SSH config for manual access to bioskop-nixos (works on LAN and tailscale/headscale)
+    environment.etc."ssh/ssh_config.d/70-bioskop-nixos.conf" = {
       text = ''
-        Host bioskop-nixos.lan
+        Host bioskop-nixos.lan bioskop-nixos
           User nxmatic
-          IdentityFile ${builderKeyPath}
-          IdentitiesOnly yes
-          AddKeysToAgent yes
-          StrictHostKeyChecking no
-          UserKnownHostsFile /dev/null
-          LogLevel QUIET
+          StrictHostKeyChecking accept-new
           ServerAliveInterval 30
           ServerAliveCountMax 3
           ControlMaster auto
-          ControlPath /var/tmp/nix-builder-ssh-control/%C
+          ControlPath /var/tmp/ssh-control-%C
           ControlPersist 10m
           Compression yes
           TCPKeepAlive yes
       '';
-    };
-
-    # Deploy linux-builder private key for nix daemon (runs as root).
-    # linux-builder declares `ssh-host` usage, so the enrichment pipeline
-    # lands its private under systemKeysDir (root-owned, sudo-reachable).
-    system.activationScripts.nerdNixosBuilderKey = lib.mkIf nerdNixosBuilderEnabled {
-      text = ''
-        user_key="${config.sshPaths.systemKeysDir}/linux-builder"
-        dest="${builderKeyPath}"
-        key_dir="${builderKeyDir}"
-
-        install -d -m 0755 "$key_dir"
-        install -d -m 0700 /var/tmp/nix-builder-ssh-control
-
-        if [ -f "$user_key" ]; then
-          install -m 0600 -o root -g wheel "$user_key" "$dest"
-        else
-          echo "nerd-nixos-builder: linux-builder key not yet deployed at $user_key (run ssh-keys activation first)" >&2
-        fi
-      '';
-      deps = [ "setupActivationScript" ];
     };
 
     # Enable the shared nix-store identity deploy logic from

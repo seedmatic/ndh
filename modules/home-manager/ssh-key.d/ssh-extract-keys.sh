@@ -34,6 +34,7 @@ main() {
 	fi
 
 	: "Prune stale generated artifacts from previous schema/key-name variants."
+	: "Full wipe ensures no orphaned keys from schema migrations remain."
 	rm -fr "$userOutputDir"
 	# Only wipe the system-private dir when it is distinct from the authority
 	# dir we already wiped transitively via userOutputDir.

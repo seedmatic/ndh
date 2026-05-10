@@ -66,12 +66,12 @@ env(TMPDIR) + "/" as $tmpdir |
           "content":    $private }
       ),
       (
+        # Public keys are stored as raw base64 in keys.yaml (no ssh-* prefix).
+        # Always format as "ssh-ed25519 AAAAC3Nz... comment"
         { "yamlfile":   ( $tmpdir + $basename + "-public.yaml" ),
           "rel_path":   ( $basename + ".pub" ),
           "target_dir": "user",
-          "content":    (
-            $public | with( select(test("^ssh-") | not); . = [ $keyType, ., ($keyComment // $basename) ] | join(" ") )
-          ) }
+          "content":    ( [ $keyType, $public, ($keyComment // $basename) ] | join(" ") ) }
       )
     ]
     +

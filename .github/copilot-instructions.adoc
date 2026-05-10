@@ -134,6 +134,8 @@ make stop@cluster
 
 == Code Conventions & Patterns
 
+NOTE: Comprehensive conventions are documented in link:CONVENTIONS.md[CONVENTIONS.md]. The sections below provide quick reference for common patterns.
+
 === @codebase Comments
 
 Files use `@codebase` tags for architectural context:
