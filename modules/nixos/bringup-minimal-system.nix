@@ -150,6 +150,13 @@ in
         else
           ""
       )
+      # Add rdp-host key for root access (interactive operator key).
+      (
+        if builderKeys ? rdp-host && builderKeys.rdp-host ? public then
+          "ssh-ed25519 ${builderKeys.rdp-host.public} ndh-rdp-host"
+        else
+          ""
+      )
     ];
 
   # Override the zfs-nixos-install assertion that requires runtimeSystemPath.

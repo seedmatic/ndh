@@ -66,12 +66,19 @@ in
   # nix-store user provisioning moved to modules/.common.d/nix-store-identity.nix
   # so Darwin gets the same treatment via a single source of truth.
 
-  # root: also accepts linux-builder key for builds that require root-level operations.
+  # root: accepts the linux-builder key (for root-level build operations)
+  # and the rdp-host key (interactive operator access).
   users.users.root.openssh.authorizedKeys.keys = lib.mkIf runtimeMode (
     lib.filter (k: k != "") [
       (
         if builderKeys ? linux-builder && builderKeys.linux-builder ? public then
           "ssh-ed25519 ${builderKeys.linux-builder.public} ndh-linux-builder"
+        else
+          ""
+      )
+      (
+        if builderKeys ? rdp-host && builderKeys.rdp-host ? public then
+          "ssh-ed25519 ${builderKeys.rdp-host.public} ndh-rdp-host"
         else
           ""
       )
