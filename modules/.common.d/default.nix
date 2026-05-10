@@ -274,6 +274,7 @@ in
     ./bringup-observe.nix
     ./vm-materializer.nix
     ./nix-store-identity.nix
+    ./keys-yaml.nix
   ];
 
   config = {

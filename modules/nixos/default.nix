@@ -102,24 +102,9 @@ let
   ];
   rootFsType = if bringupMode then bringupRootFsType else "ext4";
   rootFsMountOptions = if rootFsType == "btrfs" then btrfsRootMountOptions else ext4RootMountOptions;
-  # v2 shape: identities live under the top-level `keys:` map.
-  builderKeys = builtins.fromJSON (
-    builtins.readFile (
-      pkgs.runCommand "ndh-linux-builder-keys.json" { buildInputs = [ pkgs.yq-go ]; } ''
-        yq -o=json '.keys' "${self}/modules/home-manager/ssh.d/keys.yaml" > "$out"
-      ''
-    )
-  );
   initrdRescueAuthorizedKeys = lib.unique (
     lib.filter (key: key != "") (
-      [
-        (
-          if builderKeys ? linux-builder && builderKeys.linux-builder ? public then
-            "ssh-ed25519 ${builderKeys.linux-builder.public} ndh-linux-builder"
-          else
-            ""
-        )
-      ]
+      config.ndh.keysYaml.authorizedLinesFor [ "linux-builder" ]
       ++ (config.users.users.root.openssh.authorizedKeys.keys or [ ])
       ++ (config.users.users.${cfgUserName}.openssh.authorizedKeys.keys or [ ])
     )

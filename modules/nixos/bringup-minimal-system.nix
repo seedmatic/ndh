@@ -43,6 +43,7 @@ in
     "${self}/modules/.common.d/ssh-paths.nix"
     "${self}/modules/.common.d/openssh-policy.nix"
     "${self}/modules/.common.d/nix-store-identity.nix"
+    "${self}/modules/.common.d/keys-yaml.nix"
     ./systemd/ssh-keys-enrichment.nix
     ./systemd/nix-store-identity.nix
     ./bringup-cloud-init.nix
@@ -128,35 +129,14 @@ in
   # Set empty password hash so sulogin can grant access
   users.users.root.hashedPassword = "";
 
-  # Add authorized SSH keys for root from keys.yaml
-  # This allows SSH access for emergency/debugging
+  # Add authorized SSH keys for root from keys.yaml via the shared
+  # ndh.keysYaml helper (modules/.common.d/keys-yaml.nix). linux-builder
+  # powers remote build fan-out during bootstrap; rdp-host is the
+  # interactive operator key.
   users.users.root.openssh.authorizedKeys.keys =
-    let
-      # Load SSH keys from keys.yaml (same pattern as users.nix)
-      # v2 shape: identities live under the top-level `keys:` map.
-      builderKeys = builtins.fromJSON (
-        builtins.readFile (
-          pkgs.runCommand "ndh-root-keys.json" { buildInputs = [ pkgs.yq-go ]; } ''
-            yq -o=json '.keys' "${self}/modules/home-manager/ssh.d/keys.yaml" > "$out"
-          ''
-        )
-      );
-    in
-    lib.filter (k: k != "") [
-      # Add linux-builder key for root access (same key used by builder user)
-      (
-        if builderKeys ? linux-builder && builderKeys.linux-builder ? public then
-          "ssh-ed25519 ${builderKeys.linux-builder.public} ndh-linux-builder"
-        else
-          ""
-      )
-      # Add rdp-host key for root access (interactive operator key).
-      (
-        if builderKeys ? rdp-host && builderKeys.rdp-host ? public then
-          "ssh-ed25519 ${builderKeys.rdp-host.public} ndh-rdp-host"
-        else
-          ""
-      )
+    config.ndh.keysYaml.authorizedLinesFor [
+      "linux-builder"
+      "rdp-host"
     ];
 
   # Override the zfs-nixos-install assertion that requires runtimeSystemPath.

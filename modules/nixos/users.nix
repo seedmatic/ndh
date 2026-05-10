@@ -1,6 +1,6 @@
 # User management configuration for NixOS systems.
 # Configures the profile user, builder user, and root authorized keys.
-{ config, lib, pkgs, self, ... }:
+{ config, lib, ... }:
 let
   ndhContext = config.ndh.context or { };
   generationMode = ndhContext.generationMode or "full";
@@ -20,17 +20,6 @@ let
     "ssh"
   ];
 
-  # Builder SSH keys from keys.yaml (not SOPS-encrypted)
-  # Must use pkgs.runCommand to convert YAML to JSON (matches default.nix pattern)
-  # v2 shape: identities live under the top-level `keys:` map.
-  builderKeys = (builtins.fromJSON (
-    builtins.readFile (
-      pkgs.runCommand "ndh-linux-builder-keys.json" { buildInputs = [ pkgs.yq-go ]; } ''
-        yq -o=json '.keys' "${self}/modules/home-manager/ssh.d/keys.yaml" > "$out"
-      ''
-    )
-  ));
-
 in
 {
   # Profile user configuration
@@ -43,7 +32,6 @@ in
   users.groups.${cfgUserName} = if nixosUserGid != null then { gid = nixosUserGid; } else { };
 
   # builder user: accepts the linux-builder key from the Darwin host for remote builds.
-  # The public key is baked in at build time from keys.yaml (not SOPS-encrypted).
   users.users.builder = lib.mkIf runtimeMode {
     isNormalUser = true;
     group = "builder";
@@ -52,14 +40,7 @@ in
       "nixbld"
     ];
     description = "Nix remote builder";
-    openssh.authorizedKeys.keys = lib.filter (k: k != "") [
-      (
-        if builderKeys ? linux-builder && builderKeys.linux-builder ? public then
-          "ssh-ed25519 ${builderKeys.linux-builder.public} ndh-linux-builder"
-        else
-          ""
-      )
-    ];
+    openssh.authorizedKeys.keys = config.ndh.keysYaml.authorizedLinesFor [ "linux-builder" ];
   };
   users.groups.builder = lib.mkIf runtimeMode { };
 
@@ -69,19 +50,9 @@ in
   # root: accepts the linux-builder key (for root-level build operations)
   # and the rdp-host key (interactive operator access).
   users.users.root.openssh.authorizedKeys.keys = lib.mkIf runtimeMode (
-    lib.filter (k: k != "") [
-      (
-        if builderKeys ? linux-builder && builderKeys.linux-builder ? public then
-          "ssh-ed25519 ${builderKeys.linux-builder.public} ndh-linux-builder"
-        else
-          ""
-      )
-      (
-        if builderKeys ? rdp-host && builderKeys.rdp-host ? public then
-          "ssh-ed25519 ${builderKeys.rdp-host.public} ndh-rdp-host"
-        else
-          ""
-      )
+    config.ndh.keysYaml.authorizedLinesFor [
+      "linux-builder"
+      "rdp-host"
     ]
   );
 }
