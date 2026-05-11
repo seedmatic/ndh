@@ -31,6 +31,17 @@
       publicKey = "flox-cache-public-1:7F4OyH7ZCnFhcze3fJdfyXYLQw/aV7GEed86nQ7IsOs=";
     };
 
+    # Local signing key used by bioskop's nix-daemon
+    # (secret-key-files = /etc/nix/bioskop-cache.key, wired at
+    # hosts/bioskop/nixos.nix). Every other host that does `nix copy
+    # --from ssh-ng://…@bioskop.*` must trust this pub to accept the
+    # locally-built paths (storage.conf, nixos-generation, etc.) that
+    # carry no cache.nixos.org signature. No substituter — bioskop isn't
+    # published as a cache; it's peer-to-peer over ssh-ng.
+    bioskop = {
+      publicKey = "bioskop-cache:H6oZXzgzujE4+saXVe6LDfzBRUUVCgPYYTFLoxK7IuE=";
+    };
+
     aseippFastly = {
       substituter = "https://aseipp-nix-cache.freetls.fastly.net";
     };

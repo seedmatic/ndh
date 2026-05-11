@@ -3,7 +3,6 @@
   darwinProfile,
   headscaleServerUrl,
   headscaleEnableSSH ? true,
-  bioskopCachePublicKey ? "bioskop-cache:H6oZXzgzujE4+saXVe6LDfzBRUUVCgPYYTFLoxK7IuE=",
 }:
 {
   lib,
@@ -11,6 +10,12 @@
   ...
 }:
 let
+  # Source-of-truth for the bioskop-cache signing key is catalog/cache-trust.nix.
+  # Consumers that need the literal string read it from here, not from a
+  # function parameter default.
+  cacheTrust = import ../catalog/cache-trust.nix;
+  bioskopCachePublicKey = cacheTrust.caches.bioskop.publicKey;
+
   hasHeadscaleOption = options ? networking && options.networking ? headscale;
   homeManagerExplicitlyDisabled =
     hostProfile ? enableHomeManager

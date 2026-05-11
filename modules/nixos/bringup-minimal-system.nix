@@ -7,6 +7,14 @@ let
   # Keeping the suffix here rather than importing lima-host.nix preserves the
   # minimal image's small module surface.
   guestHostName = "${baseHostName}-nixos";
+
+  # Trust the bioskop-cache signing key so cloud-init's `nix copy --from
+  # ssh-ng://nix-store@bioskop.local` accepts locally-built paths
+  # (storage.conf, nixos-generation, ZFS bootstrap artifacts) that don't
+  # carry a cache.nixos.org signature. Read from the single source of
+  # truth at catalog/cache-trust.nix — same place hosts/host-common.nix
+  # reads it from for non-bringup hosts.
+  cacheTrust = import "${self}/catalog/cache-trust.nix";
 in
 {
   # Minimal NixOS system for bringup — installs into ZFS pools, boots, then
@@ -164,6 +172,8 @@ in
 
   # Enable ZFS recovery chroot script
   zfsRecovery.enable = true;
+
+  nix.settings.trusted-public-keys = [ cacheTrust.caches.bioskop.publicKey ];
 
   # Minimal system packages - only essentials for bootstrap
   environment.systemPackages = with pkgs; [
