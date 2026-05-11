@@ -9,7 +9,7 @@
   runtimeSystemPath ? null,
   zpoolDiskSize ? 3196, # 3GiB (temporary - minimal system still has large closure)
   # Dedicated EFI boot disk size — holds only systemd-boot + kernel + initrd.
-  bootDiskSize ? 600, # 600MiB (512MiB ESP + GPT overhead)
+  bootDiskSize ? (import ./zfs-partition-layout.nix).bootDiskSizeMiB,
   memSize ? 1536,
   # Bringup is I/O-bound (nix-store --load-db + nix copy → ZFS virtio-blk).
   # 4 vCPUs balances ZFS checksum/compression threads with nested hypervisor
@@ -43,9 +43,10 @@
 }:
 let
   postVmUserCommands = postVM;  # Rename to avoid shadowing in derivation
+  partLayout = import ./zfs-partition-layout.nix;
   zfsPoolDiskMap = import ./zfs-pool-disk-map.nix;
-  espStartMiB = 1;
-  espSizeMiB = 512;
+  espStartMiB = partLayout.espStartMiB;
+  espSizeMiB = partLayout.espSizeMiB;
   zfsStartMiB = espStartMiB + espSizeMiB + 1;
   virtioDeviceNameAt = index: "vd${lib.substring index 1 "bcdefghijklmnopqrstuvwxyz"}";
   zfsDiskDeviceMap = lib.listToAttrs (

@@ -108,6 +108,9 @@ in
 
   # Ordering for cloud-init: defer cloud-final until every prerequisite is up.
   # This replaces the busy-wait loops that used to live inside the runcmd.
+  # ssh-keys-enrichment materializes config.nixStoreIdentity.keyPath +
+  # certPath under sshPaths.systemKeysDir, so cloud-init's `nix copy`
+  # finds the identity ready without a separate deploy step.
   systemd.services.cloud-final = {
     wants = [ "network-online.target" ];
     after = [
@@ -123,6 +126,16 @@ in
 
   # Disable SSH agent (not needed)
   programs.ssh.startAgent = lib.mkForce false;
+
+  # Include ssh_config.d/*.conf so cloud-init's `nix copy` resolves the
+  # `nix-store.<host>` alias that modules/.common.d/nix-store-identity.nix
+  # emits into /etc/ssh/ssh_config.d/75-nix-store.conf. The full runtime
+  # gets this from modules/nixos/systemd/openssh.nix; the minimal bringup
+  # image intentionally does not import that module and needs its own
+  # Include directive.
+  programs.ssh.extraConfig = lib.mkAfter ''
+    Include ssh_config.d/*.conf
+  '';
 
   # Enable SSH server for emergency access + mammoth-skate cert auth on
   # both sides of the handshake so clients with the CA trust can ssh in
@@ -154,6 +167,12 @@ in
       "linux-builder"
       "rdp-host"
     ];
+
+  # Auto-grow ZFS partitions when Lima/Tart resizes disk images.
+  # The partition layout constants (ESP size, ZFS type GUID) are defined in
+  # zfs-partition-layout.nix and surfaced as zfsOverlays.diskLayout.* options
+  # in zfs.nix. The repart config is generated there.
+  zfsOverlays.repart.enable = true;
 
   # Override the zfs-nixos-install assertion that requires runtimeSystemPath.
   # For minimal bringup, we don't have a runtime system — activation is deferred to cloud-init.

@@ -5,10 +5,10 @@
   diskImageSize ? "100G",
   # Dedicated EFI-only boot disk — holds systemd-boot + kernel + initrd only.
   # All ZFS data lives on the tank disks, keeping them uniform and seedable.
-  bootDiskImageSize ? "600M",
-  espStartMiB ? 1,
-  espSizeMiB ? 512,
-  zfsStartMiB ? 514,
+  bootDiskImageSize ? "${toString (import ./zfs-partition-layout.nix).bootDiskSizeMiB}M",
+  espStartMiB ? (import ./zfs-partition-layout.nix).espStartMiB,
+  espSizeMiB ? (import ./zfs-partition-layout.nix).espSizeMiB,
+  zfsStartMiB ? ((import ./zfs-partition-layout.nix).espStartMiB + (import ./zfs-partition-layout.nix).espSizeMiB + 1),
   zfsPoolDiskMap ? null,
   disks ? {
     # boot: dedicated EFI boot disk (vda). ZFS data disks start at vdb.
@@ -22,13 +22,14 @@
   ...
 }:
 let
+  partLayout = import ./zfs-partition-layout.nix;
   zfsPoolDiskMapEffective =
     if zfsPoolDiskMap != null then zfsPoolDiskMap else import ./zfs-pool-disk-map.nix;
   zstdLevel = hostProfile.nixosZstdCompressionLevel or 1;
   zfsCompression = "zstd-${toString zstdLevel}";
   espEndMiB = espStartMiB + espSizeMiB;
   # GPT type code BF01 shorthand expanded to canonical Solaris/ZFS GUID.
-  zfsPartitionType = "6A898CC3-1DD2-11B2-99A6-080020736631";
+  zfsPartitionType = partLayout.zfsPartitionTypeGuid;
 
   mkEspPartition =
     {
@@ -135,6 +136,9 @@ let
           };
           options = {
             ashift = "12";
+            # Automatically expand pool when vdev partitions grow (e.g. after
+            # Lima/Tart resizes disk images + systemd-repart grows the partition).
+            autoexpand = "on";
           };
           datasets = {
             "rke2" = {
@@ -373,6 +377,7 @@ let
           };
           options = {
             ashift = "12";
+            autoexpand = "on";
           };
           datasets = {
             "recover" = {

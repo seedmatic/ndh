@@ -5,23 +5,24 @@
   pkgs,
   ...
 }:
-# Platform-agnostic nix-store identity options + deploy script.
+# Platform-agnostic nix-store identity options.
 #
-# Data layer: the `nix-store` entry in keys.yaml (commit 530eb299)
-# produces a rotating keypair signed by mammoth-skate. The per-user
-# enrich+extract pipeline materializes:
+# Data layer: the `nix-store` entry in keys.yaml produces a rotating
+# keypair signed by mammoth-skate. The enrich+extract pipeline writes
+# the usable material under the NDH-managed system-keys root:
 #   ${sshPaths.systemKeysDir}/nix-store            (private, 0600)
 #   ${sshPaths.systemKeysDir}/nix-store-cert.pub   (symlink → user cert)
 #
-# Consumers (nix-daemon --stdio, `nix copy`) expect the identity at a
-# stable system path. Per-platform wiring (user provisioning, how to
-# run the deploy script at activation) lives in:
+# Consumers (the `nix-store.<peer>` ssh alias, cloud-init's `nix copy`)
+# read those paths directly — there is no /etc/nix/ copy. The ssh
+# alias is the single source of truth for nix-store outbound auth; any
+# new consumer should go through `ssh-ng://nix-store.<host>` and let
+# the alias supply IdentityFile + CertificateFile.
+#
+# Per-platform specifics (inbound nix-store user provisioning) live in:
 #
 #   - modules/darwin/nix-store-identity.nix
 #   - modules/nixos/nix-store-identity.nix
-#
-# Both platform modules read ndh.nixStoreIdentity.deployScript and
-# inboundUserShellPackage from the options declared here.
 let
   cfg = config.nixStoreIdentity;
 
@@ -80,43 +81,24 @@ in
       description = "Whether to expose the nix-store identity deploy helpers on this host.";
     };
 
-    keyDir = lib.mkOption {
-      type = lib.types.str;
-      default = "/etc/nix";
-      description = "Directory holding the deployed nix-store identity files.";
-    };
-
     keyPath = lib.mkOption {
       type = lib.types.str;
-      default = "${cfg.keyDir}/nix-store_ed25519";
-      description = "Destination path for the deployed nix-store private key.";
+      default = "${config.sshPaths.systemKeysDir}/nix-store";
+      description = ''
+        Path to the nix-store private key. Written directly by the
+        ssh-keys enrich/extract pipeline under sshPaths.systemKeysDir —
+        no separate deploy step. Bound as IdentityFile in the
+        `nix-store.<peer>` ssh alias.
+      '';
     };
 
     certPath = lib.mkOption {
       type = lib.types.str;
-      default = "${cfg.keyDir}/nix-store-cert.pub";
-      description = "Destination path for the deployed nix-store user certificate.";
-    };
-
-    sourcePrivate = lib.mkOption {
-      type = lib.types.str;
-      default = "${config.sshPaths.systemKeysDir}/nix-store";
-      description = "Source path of the extracted private key (written by the enrich/extract pipeline).";
-    };
-
-    sourceCert = lib.mkOption {
-      type = lib.types.str;
       default = "${config.sshPaths.systemKeysDir}/nix-store-cert.pub";
-      description = "Source path of the user certificate symlink (written by the enrich/extract pipeline).";
-    };
-
-    installGroup = lib.mkOption {
-      type = lib.types.str;
       description = ''
-        Group ownership for files installed by the deploy script. Must
-        be set by each platform module (wheel on Darwin, root on NixOS)
-        — no default here so cross-platform assumptions are never baked
-        into the common layer.
+        Path to the nix-store user certificate. Written as a symlink by
+        the ssh-keys enrich/extract pipeline. Bound as CertificateFile
+        in the `nix-store.<peer>` ssh alias; ssh-client follows symlinks.
       '';
     };
 
@@ -167,7 +149,7 @@ in
 
     hostSuffix = lib.mkOption {
       type = lib.types.str;
-      default = ".lan";
+      default = ".local";
       description = "Suffix appended to each inventory hostname when building the reachable HostName.";
     };
 
@@ -175,12 +157,6 @@ in
       type = lib.types.str;
       readOnly = true;
       description = "Rendered /etc/ssh/ssh_config.d fragment exposing Host nix-store.<peer> aliases.";
-    };
-
-    deployScript = lib.mkOption {
-      type = lib.types.package;
-      readOnly = true;
-      description = "Package exposing bin/nix-store-identity-deploy.";
     };
   };
 
@@ -190,27 +166,6 @@ in
     environment.etc."ssh/ssh_config.d/75-nix-store.conf" = lib.mkIf (peerHostNames != [ ]) {
       text = sshClientFragmentText;
     };
-
-    nixStoreIdentity.deployScript = ndh.store.writeShellScriptBin "nix-store-identity-deploy" ''
-      set -euo pipefail
-
-      install -d -m 0755 "${cfg.keyDir}"
-
-      if [ -f "${cfg.sourcePrivate}" ]; then
-        install -m 0600 -o root -g ${cfg.installGroup} "${cfg.sourcePrivate}" "${cfg.keyPath}"
-      else
-        echo "nix-store-identity: private key not yet deployed at ${cfg.sourcePrivate}" >&2
-      fi
-
-      # Resolve the cert symlink before copying so the destination holds
-      # the real contents rather than a link into the home-manager
-      # secrets tree.
-      if [ -e "${cfg.sourceCert}" ]; then
-        install -m 0644 -o root -g ${cfg.installGroup} "$(readlink -f "${cfg.sourceCert}")" "${cfg.certPath}"
-      else
-        echo "nix-store-identity: user certificate not yet deployed at ${cfg.sourceCert}" >&2
-      fi
-    '';
 
     # Register the restricted shell + grant the user nix-daemon trust.
     # Both options are platform-agnostic (environment.shells exists on

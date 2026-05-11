@@ -6,16 +6,13 @@ let
   # No /proc/cmdline parsing needed — values are embedded directly in user-data.
   fullSystem = ndhContext.runtimeSystemPath or "";
   remoteStore = ndhContext.remoteStore or "";
-  # nix-store identity lives in the root-owned system dir (ssh-host scope in
-  # keys.yaml → sshPaths.systemKeysDir in the split-exp).
-  nixStoreKeyPath = "${config.sshPaths.systemKeysDir}/nix-store";
-
-  # cloud-init runcmd scripts inherit a minimal PATH that does not include
-  # /run/current-system/sw/bin, so `nix` needs an absolute path. `nix copy`
-  # also shells out to `ssh` internally, so we prepend both bin dirs to PATH
-  # rather than rely on the cloud-init default (which is typically
-  # /usr/bin:/bin:/sbin:/usr/sbin).
-  nixBin = "${config.nix.package}/bin/nix";
+  # Single source of truth for the deployed nix-store identity path,
+  # declared by modules/.common.d/nix-store-identity.nix. The
+  # `nix-store.<host>` alias in 75-nix-store.conf binds both IdentityFile
+  # and CertificateFile pointing under the same keyDir, and the deploy
+  # script writes both files atomically — so checking keyPath is enough
+  # to assert readiness.
+  nixStoreKeyPath = config.nixStoreIdentity.keyPath;
 
   # Cloud-init user-data for first-boot activation. All ordering against
   # network-online + sops-install-secrets + ssh-keys-enrichment lives in the
@@ -28,9 +25,8 @@ let
       - |
         set -euxo pipefail
 
-        PATH="${config.nix.package}/bin:$PATH"
-        PATH="${pkgs.openssh}/bin:$PATH"
-
+        source /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh
+        
         FULL_SYSTEM="${fullSystem}"
         STORE_HOST="${remoteStore}"
         SSH_KEY="${nixStoreKeyPath}"
@@ -46,18 +42,20 @@ let
         fi
 
         if [ ! -r "$SSH_KEY" ]; then
-          echo "[cloud-init] ERROR: nix-store SSH key not found at $SSH_KEY" >&2
+          echo "[cloud-init] ERROR: nix-store SSH key not found at $SSH_KEY (ssh-keys-enrichment.service should have materialized it)" >&2
           exit 1
         fi
 
         echo "[cloud-init] Fetching full system from $STORE_HOST: $FULL_SYSTEM"
 
-        # StrictHostKeyChecking=no on first boot — the remote host's public key
-        # is not yet trusted. Tighten this once ssh-keys-enrichment also emits
-        # a known_hosts fragment for the remote store host.
-        export NIX_SSHOPTS="-i $SSH_KEY -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+        # The `nix-store.<host>` alias in /etc/ssh/ssh_config.d/75-nix-store.conf
+        # supplies HostName, User, IdentityFile, CertificateFile, and
+        # StrictHostKeyChecking=accept-new. Do not override any of those here —
+        # forcing `-i` would drop the CertificateFile the alias binds and
+        # cert-signed auth would silently fall back to bare key auth (which sshd
+        # refuses under TrustedUserCAKeys + AuthorizedPrincipalsCommand).
 
-        ${nixBin} copy --from "$STORE_HOST" "$FULL_SYSTEM"
+        nix copy -L -v -v --no-check-sigs --from "$STORE_HOST" "$FULL_SYSTEM"
 
         echo "[cloud-init] Activating full system"
         "$FULL_SYSTEM/bin/switch-to-configuration" boot

@@ -258,7 +258,15 @@ let
                 # Legacy ssh:// expects to spawn shell commands (cat,
                 # nix-store --export) and fails with "protocol mismatch"
                 # against a daemon-speaking stdio endpoint.
-                remoteStore = "ssh-ng://nix-store@${hostProfile.hostName}.local";
+                #
+                # Use the `nix-store.<host>` ssh alias rendered into
+                # /etc/ssh/ssh_config.d/75-nix-store.conf by
+                # modules/.common.d/nix-store-identity.nix. The alias
+                # carries User, IdentityFile, CertificateFile and
+                # HostName<host>.lan in one place; hardcoding
+                # `nix-store@<host>.local` here bypasses the alias and
+                # loses the cert-signed auth wiring.
+                remoteStore = "ssh-ng://nix-store.${hostProfile.hostName}";
                 bringupRuntimePackage = ndhBootstrapRuntimePackageLinux;
                 # Must match the path the bootstrap trampoline reads in
                 # modules/.common.d/shell.d/nix-bash-trampoline.sh (`ndh::bootstrap:profile:dir`)

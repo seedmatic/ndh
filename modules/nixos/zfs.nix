@@ -401,12 +401,24 @@ let
   };
 
 in
+let
+  partLayout = import ./zfs-partition-layout.nix;
+in
 {
 
   options.zfsOverlays.enable = lib.mkOption {
     type = lib.types.bool;
     default = false;
     description = "Enable ZFS-backed filesystem definitions and boot integration.";
+  };
+  options.zfsOverlays.repart.enable = lib.mkOption {
+    type = lib.types.bool;
+    default = false;
+    description = ''
+      Enable systemd-repart in the initrd to automatically grow ZFS data-disk
+      partitions when Lima/Tart resizes disk images.  Set to true on minimal
+      bringup systems; the full runtime system uses zpool-init instead.
+    '';
   };
   options.zfsOverlays.overlayMode.enable = lib.mkOption {
     type = lib.types.bool;
@@ -574,6 +586,28 @@ in
       These labels are exported to esp-sync via SECONDARY_ESP_PART_LABELS.
     '';
   };
+
+  # Single source of truth for the disk partition layout shared between
+  # zfs-disko-config.nix (build-time) and systemd-repart (runtime grow).
+  options.zfsOverlays.diskLayout.espSizeMiB = lib.mkOption {
+    type = lib.types.int;
+    default = partLayout.espSizeMiB;
+    description = ''
+      Size of the ESP partition in MiB. Must match the espSizeMiB parameter
+      passed to zfs-disko-config.nix at bringup image build time. Referenced by
+      systemd-repart to pin the ESP boundary when growing ZFS partitions.
+    '';
+  };
+  options.zfsOverlays.diskLayout.zfsPartitionTypeGuid = lib.mkOption {
+    type = lib.types.str;
+    default = partLayout.zfsPartitionTypeGuid;
+    description = ''
+      GPT partition type GUID for ZFS partitions (Solaris/ZFS canonical GUID,
+      equivalent to gdisk type code BF01). Must match what disko writes at bringup
+      build time. Referenced by systemd-repart to identify ZFS partitions to grow.
+    '';
+  };
+
   config = {
 
     # Keep disko root mountpoint aligned with the canonical bootstrap target.
@@ -582,6 +616,26 @@ in
     disko.rootMountPoint = lib.mkDefault installRootMountPoint;
 
     networking.hostId = lib.mkDefault hostId;
+
+    # Grow ZFS data-disk partitions in the initrd when disk images have been
+    # enlarged on the host (e.g. Lima diskSize increase). systemd-repart runs
+    # before any ZFS import. Combined with autoexpand=on on the pools the
+    # online expansion is fully automatic — no manual `zpool online -e` needed.
+    boot.initrd.systemd.repart.enable = lib.mkIf config.zfsOverlays.repart.enable true;
+    systemd.repart.partitions = lib.mkIf config.zfsOverlays.repart.enable {
+      # Pin the ESP at exactly its build-time size — never grow or shrink it.
+      "10-esp" = {
+        Type = "esp";
+        SizeMinBytes = "${toString config.zfsOverlays.diskLayout.espSizeMiB}M";
+        SizeMaxBytes = "${toString config.zfsOverlays.diskLayout.espSizeMiB}M";
+      };
+      # Grow the ZFS partition to the end of the disk.
+      # GrowFileSystem=off: ZFS handles its own online expansion via autoexpand=on.
+      "20-zfs" = {
+        Type = config.zfsOverlays.diskLayout.zfsPartitionTypeGuid;
+        GrowFileSystem = "off";
+      };
+    };
 
     boot = {
       supportedFilesystems = lib.mkAfter [ "zfs" ];

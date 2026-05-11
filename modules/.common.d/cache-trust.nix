@@ -1,5 +1,6 @@
 {
   self,
+  config,
   lib,
   pkgs,
   ...
@@ -62,6 +63,8 @@ let
 
   cachixNames = builtins.attrNames cachixCaches;
 
+  builderSecretsDir = config.ndh.cacheTrust.builderSecretsDir;
+
   # writeShellApplication: explicit runtimeInputs give the script a
   # deterministic PATH so it never depends on whatever ambient shell
   # launches it (nix-darwin's postActivation, systemd oneshot, etc.).
@@ -71,13 +74,18 @@ let
     runtimeInputs = [ pkgs.coreutils ];
     text = ''
       set -euo pipefail
+      ${lib.optionalString (builderSecretsDir != null) ''
+        install -d -m 0700 -o root ${escapeShellArg builderSecretsDir}
+      ''}
       ${concatMapStringsSep "\n" (name: ''
         bare=/run/secrets/${name}.key.bare
-        final=/etc/nix/${name}.key
         if [ -r "$bare" ]; then
           tmp="$(mktemp)"
           printf '%s:%s\n' ${escapeShellArg name} "$(cat "$bare")" > "$tmp"
-          install -m 0600 -o root "$tmp" "$final"
+          install -m 0600 -o root "$tmp" /etc/nix/${name}.key
+          ${lib.optionalString (builderSecretsDir != null) ''
+            install -m 0600 -o root "$tmp" ${escapeShellArg builderSecretsDir}/${name}.key
+          ''}
           rm -f "$tmp"
         else
           echo "[cache-trust] bare secret missing: $bare (sops-install-secrets should have deployed it)" >&2
@@ -108,6 +116,20 @@ in
         Names of fleet-owned signing keypairs (keys in caches.cachix).
         Exposed for platform modules that iterate over them when wiring
         the compose invocation.
+      '';
+    };
+
+    builderSecretsDir = mkOption {
+      type = types.nullOr types.str;
+      default = null;
+      description = ''
+        Optional host-side directory where the compose script mirrors
+        each `<name>.key` in addition to /etc/nix/. Set by platform
+        modules that need to expose the signing keys to a nested
+        builder VM (e.g. the nix-darwin linux-builder via a 9p share
+        at /srv/host/nix-keys). When null, only /etc/nix/<name>.key is
+        written. The directory itself is created 0700 root; each key
+        file is 0600 root, identical wire format to /etc/nix/<name>.key.
       '';
     };
   };
