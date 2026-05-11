@@ -7,14 +7,6 @@ let
   # Keeping the suffix here rather than importing lima-host.nix preserves the
   # minimal image's small module surface.
   guestHostName = "${baseHostName}-nixos";
-
-  # Trust the bioskop-cache signing key so cloud-init's `nix copy --from
-  # ssh-ng://nix-store@bioskop.local` accepts locally-built paths
-  # (storage.conf, nixos-generation, ZFS bootstrap artifacts) that don't
-  # carry a cache.nixos.org signature. Read from the single source of
-  # truth at catalog/cache-trust.nix — same place hosts/host-common.nix
-  # reads it from for non-bringup hosts.
-  cacheTrust = import "${self}/catalog/cache-trust.nix";
 in
 {
   # Minimal NixOS system for bringup — installs into ZFS pools, boots, then
@@ -33,31 +25,44 @@ in
   # enrichment pipeline and need their own targeted cleanup.
 
   imports = [
+    # NixOS installer scaffolding
     (modulesPath + "/installer/scan/not-detected.nix")
     (modulesPath + "/profiles/qemu-guest.nix")
+
+    # Profile & user
     "${self}/profile.nix"
-    ./systemd/naming.nix
+
+    # Secrets (SOPS): local sops.nix drives the bringup decrypt flow,
+    # .common.d/sops.nix provides the shared secret declarations.
     ./sops.nix
     "${self}/modules/.common.d/sops.nix"
-    # Shared baseline experimental-features; cloud-init's `nix copy` needs
-    # at least `nix-command` + `flakes`.
+
+    # Nix daemon configuration (experimental-features + fleet signing).
+    # Cloud-init's `nix copy` needs nix-command + flakes + trust of the
+    # fleet signing pub.
     "${self}/modules/.common.d/nix-settings.nix"
-    # ssh-keys-enrichment signs the cert-only keys (like `nix-store`) from
-    # ssh-keys.yaml using the mammoth-skate authority and writes the usable
-    # keypair + cert under sshPaths.systemKeysDir (root-owned,
-    # /var/lib/ndh/ssh-keys) so cloud-init's `nix copy --from ssh://` can
-    # use it. Pull in the option modules it consumes so bringup doesn't
-    # need the full systemd/ aggregator.
+    "${self}/modules/.common.d/nix-signing.nix"
+
+    # SSH identity (keys.yaml access + cert-signed nix-store identity).
+    # ssh-keys-enrichment signs the cert-only keys (nix-store, linux-builder)
+    # with the mammoth-skate authority and writes the usable keypair + cert
+    # under sshPaths.systemKeysDir (/var/lib/ndh/ssh-keys) so cloud-init's
+    # `nix copy --from ssh-ng://` can use it.
     "${self}/modules/.common.d/ssh-paths.nix"
     "${self}/modules/.common.d/openssh-policy.nix"
     "${self}/modules/.common.d/nix-store-identity.nix"
     "${self}/modules/.common.d/keys-yaml.nix"
     ./systemd/ssh-keys-enrichment.nix
     ./systemd/nix-store-identity.nix
+
+    # Cloud-init + minimal-guest boot scaffolding
+    ./systemd/naming.nix
     ./bringup-cloud-init.nix
     ./initrd-emergency.nix
     ./console-serial.nix
     ./boot-loader.nix
+
+    # Storage (ZFS pools + recovery chroot)
     ./zfs.nix
     ./zfs-recovery-chroot.nix
   ];
@@ -172,8 +177,6 @@ in
 
   # Enable ZFS recovery chroot script
   zfsRecovery.enable = true;
-
-  nix.settings.trusted-public-keys = [ cacheTrust.caches.bioskop.publicKey ];
 
   # Minimal system packages - only essentials for bootstrap
   environment.systemPackages = with pkgs; [

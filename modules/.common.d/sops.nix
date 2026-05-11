@@ -311,6 +311,21 @@ in
           owner = config.profile.user.name;
           mode = "0400";
         };
+
+        # Cache signing private key, source-of-truth at
+        # catalog/cache-trust.yaml under caches.cachix.<name>.private.
+        # Deployed to the canonical path /etc/nix/io-nxmatic-nix-darwin-home.key
+        # (0600 root:root) so nix-daemon's secret-key-files setting picks it up.
+        # Public counterpart lives plaintext in catalog/cache-trust.nix for
+        # trusted-public-keys.
+        "io-nxmatic-nix-darwin-home.key" = {
+          sopsFile = "${self}/catalog/cache-trust.yaml";
+          format = "yaml";
+          key = "caches.cachix.io-nxmatic-nix-darwin-home.private";
+          path = "/etc/nix/io-nxmatic-nix-darwin-home.key";
+          owner = "root";
+          mode = "0600";
+        };
       };
 
       age.keyFile = lib.mkDefault cfg.defaultAgeKeyFile;

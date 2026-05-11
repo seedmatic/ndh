@@ -10,12 +10,6 @@
   ...
 }:
 let
-  # Source-of-truth for the bioskop-cache signing key is catalog/cache-trust.nix.
-  # Consumers that need the literal string read it from here, not from a
-  # function parameter default.
-  cacheTrust = import ../catalog/cache-trust.nix;
-  bioskopCachePublicKey = cacheTrust.caches.bioskop.publicKey;
-
   hasHeadscaleOption = options ? networking && options.networking ? headscale;
   homeManagerExplicitlyDisabled =
     hostProfile ? enableHomeManager
@@ -50,11 +44,6 @@ in
 
       darwin = darwinProfile;
     };
-
-    # Trust bioskop local signing key on non-bioskop hosts for nix copy --from ssh-ng://...@bioskop
-    nix.settings.extra-trusted-public-keys = lib.mkIf (hostProfile.hostName != "bioskop") [
-      bioskopCachePublicKey
-    ];
   }
   // (lib.optionalAttrs hasHeadscaleOption {
     networking.headscale = {

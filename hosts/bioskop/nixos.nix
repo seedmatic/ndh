@@ -1,26 +1,14 @@
-{
-  config,
-  pkgs,
-  lib,
-  ...
-}:
+{ ... }:
 {
   config = {
-    # Bootstrap cache signing key on NixOS guests if missing.
-    # The secret key remains local at /etc/nix and is not stored in the Nix store.
+    # Cachix watch-store token for auto-push of locally-built paths to
+    # our nxmatic.cachix.org cache. Token path traced back to the repo's
+    # .secrets file (SOPS-encrypted).
     services.nxmaticCachixWatchStore.sopsEncryptedTokenFile = ../../.secrets;
-    nix.settings.secret-key-files = [ "/etc/nix/bioskop-cache.key" ];
-    system.activationScripts.ensureBioskopCacheKey = ''
-      if [ ! -s /etc/nix/bioskop-cache.key ] || [ ! -s /etc/nix/bioskop-cache.pub ]; then
-        install -d -m 0755 /etc/nix
-        ${pkgs.nix}/bin/nix-store --generate-binary-cache-key \
-          bioskop-cache \
-          /etc/nix/bioskop-cache.key \
-          /etc/nix/bioskop-cache.pub
-        chmod 600 /etc/nix/bioskop-cache.key
-        chmod 644 /etc/nix/bioskop-cache.pub
-      fi
-    '';
+
+    # Cache signing (private deploy + trusted-public-keys + /etc/nix/*.pub)
+    # is wired fleet-wide in modules/.common.d/nix-signing.nix — nothing
+    # host-specific here.
 
     # Vector observability agent forwards build events to Darwin aggregator
     bringupObserve = {

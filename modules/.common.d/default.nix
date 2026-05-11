@@ -260,21 +260,33 @@ in
   };
 
   imports = [
+    # Profile & user
     "${self}/profile.nix"
-    ./cachix-watch-store.nix
-    ./sops.nix
     ./primary-user.nix
     ./user.nix
+
+    # Secrets (SOPS)
+    ./sops.nix
+
+    # SSH identity (keys.yaml access, nix-store cert-signed identity)
+    ./keys-yaml.nix
+    ./nix-store-identity.nix
+
+    # Nix daemon configuration
     ./nixpkgs.nix
     ./nix-settings.nix
+    ./nix-signing.nix
+    ./cachix-watch-store.nix
     ./io-nxmatic-nix-darwin-home-bringup-runtime.nix
+
+    # Networking
     ./dns-servers.nix
     ./dnsmasq.nix
     ./lima-host.nix
-    ./bringup-observe.nix
+
+    # VM tooling & observability
     ./vm-materializer.nix
-    ./nix-store-identity.nix
-    ./keys-yaml.nix
+    ./bringup-observe.nix
   ];
 
   config = {
