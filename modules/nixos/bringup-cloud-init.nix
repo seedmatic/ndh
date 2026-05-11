@@ -57,13 +57,7 @@ let
         # a known_hosts fragment for the remote store host.
         export NIX_SSHOPTS="-i $SSH_KEY -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
 
-        # --no-check-sigs: the source store on bioskop serves paths built
-        # locally (no binary cache signature). Bringup is a trusted-LAN
-        # bootstrap: the cert-auth ssh session authenticates the peer, so
-        # skipping the per-path signature check is the correct trust model.
-        # Without it, nix copy aborts with "lacks a signature by a trusted
-        # key" as soon as it hits any locally-built path in the closure.
-        ${nixBin} copy --no-check-sigs --from "$STORE_HOST" "$FULL_SYSTEM"
+        ${nixBin} copy --from "$STORE_HOST" "$FULL_SYSTEM"
 
         echo "[cloud-init] Activating full system"
         "$FULL_SYSTEM/bin/switch-to-configuration" boot
