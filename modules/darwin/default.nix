@@ -37,6 +37,7 @@
     ./ssh-keys-enrichment.nix
     ./ssh-client.nix
     ./cache-trust.nix
+    ./nix-store-identity.nix
     ./incus-remote-trust.nix
     ./sops.nix
     ./bringup-observe.nix

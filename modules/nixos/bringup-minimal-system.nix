@@ -56,7 +56,7 @@ in
     "${self}/modules/.common.d/nix-store-identity.nix"
     "${self}/modules/.common.d/keys-yaml.nix"
     ./systemd/ssh-keys-enrichment.nix
-    ./systemd/nix-store-identity.nix
+    ./nix-store-identity.nix
 
     # Cloud-init + minimal-guest boot scaffolding
     ./systemd/naming.nix

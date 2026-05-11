@@ -51,7 +51,8 @@ in
   ++ (lib.optionals (!bringupMode) [
     ./buildkitd.nix
     ./hm-state-dirs.nix
-    ./nix-store-identity.nix
+    # nix-store-identity moved to modules/nixos/nix-store-identity.nix
+    # (platform-owned wiring per the common/platform split).
   ]);
 
   # Ensure the systemd manager's own PATH includes NixOS system paths.

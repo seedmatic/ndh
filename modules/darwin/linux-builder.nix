@@ -253,20 +253,8 @@ in
       '';
     };
 
-    # Enable the shared nix-store identity deploy logic from
-    # modules/.common.d/nix-store-identity.nix.
-    #
-    # Wiring as a custom-named activation script attribute (e.g.
-    # system.activationScripts.nixStoreIdentity) does not take effect on
-    # nix-darwin — only the well-known phase names get emitted into the
-    # activate script. Hook the deploy into `postActivation` ordered after
-    # the ssh-keys-enrichment extract (mkOrder 1500 in
-    # modules/darwin/ssh-keys-enrichment.nix) so /var/lib/ndh/ssh-keys/
-    # holds the private + cert by the time we copy them to /etc/nix.
-    nixStoreIdentity.enable = true;
-
-    system.activationScripts.postActivation.text = lib.mkOrder 1600 ''
-      ${config.nixStoreIdentity.deployScript}/bin/nix-store-identity-deploy
-    '';
+    # nix-store identity deploy wiring lives in
+    # modules/darwin/nix-store-identity.nix (enable-by-default across
+    # the fleet, activation ordered against ssh-keys-enrichment).
   };
 }

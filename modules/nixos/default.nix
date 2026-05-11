@@ -131,6 +131,8 @@ let
     ./tailscale.nix
     ./bringup-xchg-mount.nix
     ./cache-trust.nix
+    ./nix-store-identity.nix
+    ./bringup-runtime.nix
   ];
 
   runtimeOnlyImports = [

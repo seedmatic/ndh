@@ -1,22 +1,27 @@
 {
   config,
   lib,
-  pkgs,
-  options,
   ndh,
+  pkgs,
   ...
 }:
-# Shared options + deploy script for the cert-signed nix-store identity.
-# Data layer: the `nix-store` entry in keys.yaml (commit 530eb299) produces a
-# rotating keypair signed by mammoth-skate. The per-user enrich+extract
-# pipeline materializes:
-#   ${systemKeysDir}/nix-store            (private, 0600)
-#   ${systemKeysDir}/nix-store-cert.pub   (symlink → authority user cert)
+# Platform-agnostic nix-store identity options + deploy script.
 #
-# Consumers (nix-daemon --stdio, `nix copy`) expect the identity at a stable
-# system path. Darwin wires the deploy script into a nix-darwin activation
-# script; NixOS runs it from a systemd oneshot ordered after the extract
-# service. Both call the same script so the copy policy stays in one place.
+# Data layer: the `nix-store` entry in keys.yaml (commit 530eb299)
+# produces a rotating keypair signed by mammoth-skate. The per-user
+# enrich+extract pipeline materializes:
+#   ${sshPaths.systemKeysDir}/nix-store            (private, 0600)
+#   ${sshPaths.systemKeysDir}/nix-store-cert.pub   (symlink → user cert)
+#
+# Consumers (nix-daemon --stdio, `nix copy`) expect the identity at a
+# stable system path. Per-platform wiring (user provisioning, how to
+# run the deploy script at activation) lives in:
+#
+#   - modules/darwin/nix-store-identity.nix
+#   - modules/nixos/nix-store-identity.nix
+#
+# Both platform modules read ndh.nixStoreIdentity.deployScript and
+# inboundUserShellPackage from the options declared here.
 let
   cfg = config.nixStoreIdentity;
 
@@ -27,31 +32,29 @@ let
 
   # Restricted login shell for the inbound nix-daemon user. Rendered as a
   # writeShellApplication so the file is 0555 and shellcheck-clean; the
-  # meta.shellPath override is mandatory for NixOS's users-groups validator
-  # to accept the package as a login shell.
+  # passthru.shellPath override is mandatory for NixOS's users-groups
+  # validator to accept the package as a login shell.
   #
-  # Using a store-path shell (rather than `/etc/ssh/nix-store-shell`)
-  # sidesteps Darwin's /etc permission surface — nix-darwin's environment.etc
-  # does not honour `mode`, and the /etc/static/<…> symlink chain it
-  # materializes points at a 0444 store file, which sshd rejects with
-  # "shell is not executable".
-  inboundUserShell = (pkgs.writeShellApplication {
-    name = "nix-store-shell";
-    text = ''
-      exec /run/current-system/sw/bin/nix-daemon --stdio
-    '';
-  }).overrideAttrs (_: {
-    # NixOS's users-groups validator (nixos/modules/config/users-groups.nix)
-    # uses `pkg ? shellPath` to accept a package as a login shell — matching
-    # the convention in nixpkgs (bashInteractive, zsh, …) of exposing
-    # `shellPath` via passthru. `meta.shellPath` alone is not sufficient.
-    passthru.shellPath = "/bin/nix-store-shell";
-    meta.shellPath = "/bin/nix-store-shell";
-  });
+  # Using a store-path shell (rather than /etc/ssh/nix-store-shell)
+  # sidesteps Darwin's /etc permission surface — nix-darwin's
+  # environment.etc does not honour `mode`, and the /etc/static/<…>
+  # symlink chain it materializes points at a 0444 store file, which
+  # sshd rejects with "shell is not executable".
+  inboundUserShell =
+    (pkgs.writeShellApplication {
+      name = "nix-store-shell";
+      text = ''
+        exec /run/current-system/sw/bin/nix-daemon --stdio
+      '';
+    }).overrideAttrs
+      (_: {
+        passthru.shellPath = "/bin/nix-store-shell";
+        meta.shellPath = "/bin/nix-store-shell";
+      });
 
-  # Per-host stanza. CertificateFile is mandatory: with cert-signed auth, ssh
-  # must present the cert alongside the private or sshd will not match the
-  # TrustedUserCAKeys / AuthorizedPrincipalsCommand pair.
+  # Per-host stanza. CertificateFile is mandatory: with cert-signed auth,
+  # ssh must present the cert alongside the private or sshd will not
+  # match the TrustedUserCAKeys / AuthorizedPrincipalsCommand pair.
   peerStanza = host: ''
     Host nix-store.${host}
       HostName ${host}${cfg.hostSuffix}
@@ -97,8 +100,6 @@ in
 
     sourcePrivate = lib.mkOption {
       type = lib.types.str;
-      # nix-store is declared `ssh-host` in keys.yaml → split-exp routes its
-      # private to the system-private scope (sshPaths.systemKeysDir).
       default = "${config.sshPaths.systemKeysDir}/nix-store";
       description = "Source path of the extracted private key (written by the enrich/extract pipeline).";
     };
@@ -111,8 +112,12 @@ in
 
     installGroup = lib.mkOption {
       type = lib.types.str;
-      default = if pkgs.stdenv.isDarwin then "wheel" else "root";
-      description = "Group ownership for files installed by the deploy script (wheel on Darwin, root on NixOS).";
+      description = ''
+        Group ownership for files installed by the deploy script. Must
+        be set by each platform module (wheel on Darwin, root on NixOS)
+        — no default here so cross-platform assumptions are never baked
+        into the common layer.
+      '';
     };
 
     provisionInboundUser = lib.mkOption {
@@ -120,10 +125,11 @@ in
       default = true;
       description = ''
         Provision a local `nix-store` system user that serves inbound
-        `nix-daemon --stdio` connections, register it as a trusted nix user,
-        and expose its login shell. Enabled by default wherever
-        nixStoreIdentity is enabled so cert-signed remote store access works
-        symmetrically on NixOS and Darwin.
+        `nix-daemon --stdio` connections, register it as a trusted nix
+        user, and expose its login shell. The user itself is declared
+        in the platform module (modules/darwin/nix-store-identity.nix
+        or modules/nixos/nix-store-identity.nix) because Darwin and
+        NixOS need different option surfaces.
       '';
     };
 
@@ -135,10 +141,12 @@ in
 
     inboundUserUid = lib.mkOption {
       type = lib.types.int;
-      # Darwin requires an explicit UID for every user in users.knownUsers.
-      # Pick an unlikely-to-collide value in the NDH system-user range.
       default = 630;
-      description = "POSIX UID for the inbound nix-daemon user (used by Darwin; NixOS auto-allocates if omitted).";
+      description = ''
+        POSIX UID for the inbound nix-daemon user. Darwin needs an
+        explicit UID in users.knownUsers; NixOS ignores this field and
+        auto-allocates instead.
+      '';
     };
 
     inboundUserShellPackage = lib.mkOption {
@@ -146,24 +154,21 @@ in
       default = inboundUserShell;
       description = ''
         Package providing the restricted login shell for the inbound
-        nix-daemon user. Must carry `meta.shellPath` so NixOS's
-        users-groups validator accepts it.
+        nix-daemon user. Carries `meta.shellPath` + `passthru.shellPath`
+        so NixOS's users-groups validator accepts it.
       '';
     };
 
     inboundUserShellPath = lib.mkOption {
       type = lib.types.str;
       default = "${cfg.inboundUserShellPackage}${cfg.inboundUserShellPackage.shellPath}";
-      description = ''
-        Absolute path to the inbound user's login shell inside the store
-        path produced by `inboundUserShellPackage`.
-      '';
+      description = "Absolute path to the inbound user's login shell inside its store package.";
     };
 
     hostSuffix = lib.mkOption {
       type = lib.types.str;
       default = ".lan";
-      description = "Suffix appended to each inventory hostname to build its reachable HostName (e.g. '.lan' or a tailnet domain).";
+      description = "Suffix appended to each inventory hostname when building the reachable HostName.";
     };
 
     sshClientFragment = lib.mkOption {
@@ -175,82 +180,43 @@ in
     deployScript = lib.mkOption {
       type = lib.types.package;
       readOnly = true;
-      description = "Package exposing bin/nix-store-identity-deploy that installs the identity to its system paths.";
+      description = "Package exposing bin/nix-store-identity-deploy.";
     };
   };
 
-  config = lib.mkIf cfg.enable (
-    lib.mkMerge [
-      {
-        nixStoreIdentity.sshClientFragment = sshClientFragmentText;
+  config = lib.mkIf cfg.enable {
+    nixStoreIdentity.sshClientFragment = sshClientFragmentText;
 
-        environment.etc."ssh/ssh_config.d/75-nix-store.conf" = lib.mkIf (peerHostNames != [ ]) {
-          text = sshClientFragmentText;
-        };
+    environment.etc."ssh/ssh_config.d/75-nix-store.conf" = lib.mkIf (peerHostNames != [ ]) {
+      text = sshClientFragmentText;
+    };
 
-        nixStoreIdentity.deployScript = ndh.store.writeShellScriptBin "nix-store-identity-deploy" ''
-          set -euo pipefail
+    nixStoreIdentity.deployScript = ndh.store.writeShellScriptBin "nix-store-identity-deploy" ''
+      set -euo pipefail
 
-          install -d -m 0755 "${cfg.keyDir}"
+      install -d -m 0755 "${cfg.keyDir}"
 
-          if [ -f "${cfg.sourcePrivate}" ]; then
-            install -m 0600 -o root -g ${cfg.installGroup} "${cfg.sourcePrivate}" "${cfg.keyPath}"
-          else
-            echo "nix-store-identity: private key not yet deployed at ${cfg.sourcePrivate}" >&2
-          fi
+      if [ -f "${cfg.sourcePrivate}" ]; then
+        install -m 0600 -o root -g ${cfg.installGroup} "${cfg.sourcePrivate}" "${cfg.keyPath}"
+      else
+        echo "nix-store-identity: private key not yet deployed at ${cfg.sourcePrivate}" >&2
+      fi
 
-          # Resolve the cert symlink before copying so the destination holds the
-          # real contents rather than a link into the home-manager secrets tree.
-          if [ -e "${cfg.sourceCert}" ]; then
-            install -m 0644 -o root -g ${cfg.installGroup} "$(readlink -f "${cfg.sourceCert}")" "${cfg.certPath}"
-          else
-            echo "nix-store-identity: user certificate not yet deployed at ${cfg.sourceCert}" >&2
-          fi
-        '';
-      }
+      # Resolve the cert symlink before copying so the destination holds
+      # the real contents rather than a link into the home-manager
+      # secrets tree.
+      if [ -e "${cfg.sourceCert}" ]; then
+        install -m 0644 -o root -g ${cfg.installGroup} "$(readlink -f "${cfg.sourceCert}")" "${cfg.certPath}"
+      else
+        echo "nix-store-identity: user certificate not yet deployed at ${cfg.sourceCert}" >&2
+      fi
+    '';
 
-      # Inbound nix-daemon user provisioning. The restricted login shell is
-      # now the writeShellScript store path (see `inboundUserShell` above),
-      # so we only need to register it in environment.shells and grant the
-      # user nix-daemon trust.
-      (lib.mkIf cfg.provisionInboundUser {
-        environment.shells = [ cfg.inboundUserShellPath ];
-        nix.settings.trusted-users = [ cfg.inboundUserName ];
-      })
-
-      # Platform-specific user provisioning. `options ? users.knownUsers` is
-      # the nix-darwin-only option; its presence discriminates Darwin from
-      # NixOS without evaluating across platform boundaries. `lib.mkIf` still
-      # would not suppress option validation on the wrong platform — use
-      # lib.optionalAttrs inside the merged attrset instead.
-      (lib.mkIf cfg.provisionInboundUser (
-        if options ? users.knownUsers then
-          # Darwin (nix-darwin). Requires knownUsers + explicit UID, and uses
-          # the nixbld group family created by the Nix installer (gid 30000).
-          {
-            users.knownUsers = [ cfg.inboundUserName ];
-            users.users.${cfg.inboundUserName} = {
-              uid = cfg.inboundUserUid;
-              gid = 30000;
-              description = "Inbound nix-daemon --stdio endpoint";
-              shell = cfg.inboundUserShellPath;
-              home = "/var/empty";
-            };
-          }
-        else
-          # NixOS. Auto-allocate UID, system-user bit, explicit nixbld group.
-          # NixOS's users-groups validator requires `shell` to be a package
-          # with `meta.shellPath`, not a bare string path.
-          {
-            users.users.${cfg.inboundUserName} = {
-              isSystemUser = true;
-              group = "nixbld";
-              description = "Inbound nix-daemon --stdio endpoint";
-              shell = cfg.inboundUserShellPackage;
-              useDefaultShell = false;
-            };
-          }
-      ))
-    ]
-  );
+    # Register the restricted shell + grant the user nix-daemon trust.
+    # Both options are platform-agnostic (environment.shells exists on
+    # Darwin and NixOS; nix.settings.trusted-users likewise). The user
+    # *record* itself is declared in the platform module.
+    environment.shells = lib.mkIf cfg.provisionInboundUser [ cfg.inboundUserShellPath ];
+    nix.settings.trusted-users = lib.mkIf cfg.provisionInboundUser [ cfg.inboundUserName ];
+  };
 }
