@@ -130,6 +130,7 @@ let
     ./vlan.nix
     ./tailscale.nix
     ./bringup-xchg-mount.nix
+    ./cache-trust.nix
   ];
 
   runtimeOnlyImports = [

@@ -36,6 +36,7 @@
     ./shell-keychain.nix
     ./ssh-keys-enrichment.nix
     ./ssh-client.nix
+    ./cache-trust.nix
     ./incus-remote-trust.nix
     ./sops.nix
     ./bringup-observe.nix

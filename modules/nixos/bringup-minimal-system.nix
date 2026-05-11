@@ -39,9 +39,12 @@ in
 
     # Nix daemon configuration (experimental-features + fleet signing).
     # Cloud-init's `nix copy` needs nix-command + flakes + trust of the
-    # fleet signing pub.
+    # fleet signing pub. cache-trust is split common/platform: .common.d
+    # holds the walker + composeScript; ./cache-trust.nix wires the
+    # NixOS-side systemd oneshot that runs it after sops.
     "${self}/modules/.common.d/nix-settings.nix"
     "${self}/modules/.common.d/cache-trust.nix"
+    ./cache-trust.nix
 
     # SSH identity (keys.yaml access + cert-signed nix-store identity).
     # ssh-keys-enrichment signs the cert-only keys (nix-store, linux-builder)
