@@ -275,7 +275,7 @@ in
     # Nix daemon configuration
     ./nixpkgs.nix
     ./nix-settings.nix
-    ./nix-signing.nix
+    ./cache-trust.nix
     ./cachix-watch-store.nix
     ./io-nxmatic-nix-darwin-home-bringup-runtime.nix
 

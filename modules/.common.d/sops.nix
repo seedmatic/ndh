@@ -314,15 +314,21 @@ in
 
         # Cache signing private key, source-of-truth at
         # catalog/cache-trust.yaml under caches.cachix.<name>.private.
-        # Deployed to the canonical path /etc/nix/io-nxmatic-nix-darwin-home.key
-        # (0600 root:root) so nix-daemon's secret-key-files setting picks it up.
-        # Public counterpart lives plaintext in catalog/cache-trust.nix for
-        # trusted-public-keys.
-        "io-nxmatic-nix-darwin-home.key" = {
+        # The yaml stores the bare base64 bytes without the `<name>:`
+        # prefix. sops-install-secrets deploys it to a staging path;
+        # modules/.common.d/nix-signing.nix wraps it with the key name
+        # at activation time to produce the full `<name>:<base64>` wire
+        # format at /etc/nix/<name>.key that nix-daemon expects.
+        "io-nxmatic-nix-darwin-home.key.bare" = {
           sopsFile = "${self}/catalog/cache-trust.yaml";
           format = "yaml";
-          key = "caches.cachix.io-nxmatic-nix-darwin-home.private";
-          path = "/etc/nix/io-nxmatic-nix-darwin-home.key";
+          # sops-install-secrets uses `/` as the path separator (see
+          # pkgs/sops-install-secrets/main.go:recurseSecretKey), not `.`
+          # like most similar tooling. Easy trap: dotted notation parses
+          # as a literal flat key name and fails with "key cannot be
+          # found" even though the yaml tree has the right shape.
+          key = "caches/cachix/io-nxmatic-nix-darwin-home/private";
+          path = "/run/secrets/io-nxmatic-nix-darwin-home.key.bare";
           owner = "root";
           mode = "0600";
         };

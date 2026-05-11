@@ -41,7 +41,7 @@ in
     # Cloud-init's `nix copy` needs nix-command + flakes + trust of the
     # fleet signing pub.
     "${self}/modules/.common.d/nix-settings.nix"
-    "${self}/modules/.common.d/nix-signing.nix"
+    "${self}/modules/.common.d/cache-trust.nix"
 
     # SSH identity (keys.yaml access + cert-signed nix-store identity).
     # ssh-keys-enrichment signs the cert-only keys (nix-store, linux-builder)

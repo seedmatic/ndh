@@ -33,13 +33,14 @@ in
         "@admin"
         "@wheel"
       ];
+      # trusted-substituters gates which substituters non-root users may
+      # add on the command line via `--substituters`. Distinct from
+      # `substituters` (what's actually queried) and `trusted-public-keys`
+      # (which signatures verify) — both of the latter are emitted by
+      # modules/.common.d/cache-trust.nix walking the catalog.
       trusted-substituters = [
         cacheCatalog.nixos.substituter
         cacheCatalog.nxmatic.substituter
-      ];
-      trusted-public-keys = [
-        cacheCatalog.nixos.publicKey
-        cacheCatalog.nxmatic.publicKey
       ];
     };
     gc = {

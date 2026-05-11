@@ -1,58 +1,57 @@
-# Cache signing keypair.
+# Fleet signing private keys, SOPS-encrypted.
 #
-# The nix-darwin-home fleet uses a single shared cachix signing key.
-# The private field is SOPS-encrypted via an inline marker; the public
-# field is plaintext (no secrecy requirement) and kept alongside the
-# private so a reader of this file sees the pair together.
+# Each entry mirrors a publicKey declaration in catalog/cache-trust.nix
+# under caches.cachix.<name>. The value here is the BARE base64 bytes
+# of the nix private key — the `<name>:` prefix that nix-daemon expects
+# on disk is reconstructed at activation time by
+# modules/.common.d/cache-trust.nix.
 #
-# The public counterpart is also kept in catalog/cache-trust.nix for
-# eval-time access (trusted-public-keys wiring). An assertion at
-# modules/.common.d/cache-trust.nix guards against drift between the two
-# sources by comparing the yaml's public with the one in the nix file.
+# External caches (nixos, nxmatic, flakehub, flox, aseippFastly, etc.)
+# have no entry here because their private keys are not ours.
 #
-# Rotating the key:
-#   1. nix-store --generate-binary-cache-key <name> key pub
-#   2. Update caches.cachix.private + caches.cachix.public below.
-#   3. Update caches.cachix.publicKey in catalog/cache-trust.nix.
-#   4. sops -e -i catalog/cache-trust.yaml
-#   5. Re-sign the existing store closures with the new key and roll
-#      deploy: each host picks up the new private via sops-install-secrets
-#      at activation.
+# Rotating:
+#   1. nix-store --generate-binary-cache-key <name> /tmp/key /tmp/pub
+#   2. Strip the `<name>:` prefix from each file's contents.
+#   3. Update caches.cachix.<name>.private below with the bare private.
+#   4. Update caches.cachix.<name>.publicKey in catalog/cache-trust.nix
+#      with the full `<name>:<pub-base64>` wire-format value.
+#   5. sops -e -i catalog/cache-trust.yaml
+#   6. Re-sign existing store closures with the new key and roll deploy.
 caches:
   cachix:
-    # sops:encrypted
-    private: ENC[AES256_GCM,data:eAVecTsQp5ZXHpJwJ2zLqn6m4wtLsPBK2YLvCsex3+3OEzoCpFUVGKLbPySy0HbRM+WNR5DkZQK5eLw5j8w1lcyiqcUbd0Jnn3agZHjujbaLAW6iKADaZMGCxZd0FpPzRP3DQzgmnur2lbwF8Yox8asDfA==,iv:Qhjz1SflfusvqH+kmA74Z9PaalMooU2XHyF/jeQkfu4=,tag:AWyD1y83CrDJlVMpcZUyTw==,type:str]
-    public: io-nxmatic-nix-darwin-home:U/at4v0hCbZhn3u7uvQhQo+lzq5ZobOJyn3Be3txbqg=
+    io-nxmatic-nix-darwin-home:
+      # sops:encrypted
+      private: ENC[AES256_GCM,data:n+2ZdulaYPV9yDA/F9nYzOmHPH+JAS+NThcKDMWdug874iehD8jEU/NeRj+5uKaG0KPJ5aAndeWG11/BtDvwFbcmAG6Y8SijypHpfi8ZcMeCylLmJzsXxQ==,iv:bRFriw51EGDtuP4aT4TX9pMFzriyVNklHTNd73tHu5o=,tag:uickVfQGyDFvMD4XRPACkg==,type:str]
 sops:
   age:
     - recipient: age10ey0lcup4zpjqcknpxw7enpsagn674nm634f2u75trfr5t62uq5qdjuxzv
       enc: |
         -----BEGIN AGE ENCRYPTED FILE-----
-        YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSA4eU9NaVZGRjN1L1ZvdmN2
-        ZEJ5R3BnT2lUNkV4amNwTXZyaGpRQ2Z0NEZnCjRnWVI3alMzZjNMSGNKamlIUnFB
-        TWF0MUpIbTR0QWRsVHJaYmx5Znh3VFUKLS0tIDQyLzBSMzRaVkREdUdGcUI5Um5R
-        SkpaLzMzQUUzQlZ6cUR0RlpHelRuc00KY8l8zRRsM1PymC5Qs3k3zjeLcAHjDmcB
-        5e3t7FHYzWqUiYJWYQVC/GhqQDMQq7sW0+rVa6F0MxH4AFzqWUBFXQ==
+        YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBFMG5jTUp3b0VBV05wR0Q0
+        M1Z3ZkQ4b2hWTDlmTzlId0pSczZyeS8rTFFRCk5nQklBNkgvek4rRFg5M2lBUjdk
+        U0p6ZkRoQS9oaVNBVFhVYWVJRmo1QzAKLS0tIG9SZXlSaG5POW5FYisrZUJ5YkhL
+        MXF4L1ZDbUF0S3dmUWJRTG84azBRbTQKEjDPlaVmn3zFuFLDJfm7ZsyHRKouXVi7
+        bzkcy54MMTIUeSJUWrFl4PVKoLcvcxJ9X1voNOGcVMcPpmr8IAnFRQ==
         -----END AGE ENCRYPTED FILE-----
     - recipient: age1trxpn8efl5jctwakgpxxjd2h6x5h2m40ggugxl909qsj0h99p9yqkk8tej
       enc: |
         -----BEGIN AGE ENCRYPTED FILE-----
-        YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSA5NURMT3dDekZuSGZJZDhK
-        UUt4cGVmOHdrVDRwQ3BWQ1BHNW5rbmRmSzFJCjFzMGdZOXNvZjQzVG8rWWFENk94
-        bTZySWhsTGpEenZpcVRuUGg5ZWJoZEkKLS0tIFZUL2NhcERKUWM5eHNoaTk2cGFu
-        cC9KYVUwL3dxcW0wSmw1eDBJd0dDY3cKndh4dHz7WiZ7F3p3b80BNp6XeOPY1hRh
-        HQfehVgXThDCECYbbW70qOihN4C2c17ltwpo5vZ9WPnUNU61SWjNdQ==
+        YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBDRDQwelFtU05rWC90dklP
+        T1QxYVR0Ukw3MTZDL1NESmlmVUhySkJxZHpzCmJMMS9XbDBVbUlqQ3hiUXNBQmlM
+        RkI5YW5qVjhVYnZaQWt1OE9VSHNQM2MKLS0tIHF3UTBEcTVFVHgrSW0renBjNzhB
+        ZmZMSSt1STJmWmZzdzE0K2ZJR1hhaTgK/SNt6uwms3Ih+AI5FufaqP1DpooSGBDa
+        oYh1tIoXech5zACgnou7wwtsusvAYvyy8S9kp0qELyZRKs6HYf6uBA==
         -----END AGE ENCRYPTED FILE-----
     - recipient: age17q5kw0epcl9ft7ecegr20040vx3g86z0f7vtecn9t8kk27qjspaqp66pp4
       enc: |
         -----BEGIN AGE ENCRYPTED FILE-----
-        YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBrMmVPclN4QWlUM2Evd2ly
-        anVLeURQTUhMbkY5NGk3eHQ5cllGWTN5aGtFCmVtbGNuVmlOTFhpS2lIRVRIejZZ
-        WTN2ZXZjcE94NC9rQXZwT0h3a0hDWUkKLS0tIDJSU0t6cWppcng4MGh6SHJrT1pK
-        YUROalA3RkxkMXlRRWhpUko1Z3Uwa2cK2hPk791immzxlvtwqC6x7XD7cUOJj5Gl
-        o0+KOSmZeEOy79sOLYh+xJg59Qbw0pq3D/8PCv6CgeMzPDUq8w1a+g==
+        YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBBUDFBb05uVm0vRGJGeDc4
+        U1AvVklvZWlCNzZnWGI4bHB5WFlla2Vrd2swCmFnL3dTeWtEQTl2REpJSEovSU81
+        bWRldERpK1lsOWRrN2Vlc2trM1N5NGsKLS0tIGlFTXdCYTVPa20zbmRrV1BScUk5
+        ckdwQnVseEMyUTZxNG9ZQ3VlREovYzgKWm0YkU4RbapNN0BPx3aSbwx4V0hFDnnQ
+        Uk/WJMb5YDEw9/VeSBeAm96dz96CoKI17HR+WCcyMhB2DrDqLdKf4A==
         -----END AGE ENCRYPTED FILE-----
-  lastmodified: "2026-05-11T06:44:16Z"
-  mac: ENC[AES256_GCM,data:6kQSJ1qyGR5lfxCMXKNoiD6r0DfzNXLqCjuPyC1bKy+ipWIgZ5jcEqQWLudvcRt0KASv4x4L9sRmlLRHGto1WZUIwCltaa1wxRcFpIwPsbulLomRC0P+iTxDmxpcKV8SiKG6+iCRpe7o+b4MXSexog1X7xW0dAhHE7rcehJPXqg=,iv:tZW8sU+lpnlz/VPlxV617HR490cPW39/5CxJX4U1B1g=,tag:Q1Yrj0l9GInevM6p107WiQ==,type:str]
+  lastmodified: "2026-05-11T09:22:37Z"
+  mac: ENC[AES256_GCM,data:K4MLrvf/mJ7iqtsG57AeYdkc7SccuElFBhiD74Vhmp7uQJDZd1Ibg2FlXvl2gtyTkOl02WFFp7nn2xeY6wgwGsr40zTxWBQP5kfCi7O5K3m0uBkzkFnb6C2KJMew0vIIyjQ0F0Xv2VW6zAHJbDP1JiRHbRodXsX+VSzk4MoKHfs=,iv:KBkdZJ/GSvwa85y+Hlgx58lW4DVwXWwBSw9YcwO4rCg=,tag:VBnb0uR5Kg0/IDczGSOY+g==,type:str]
   encrypted_comment_regex: sops:encrypted
   version: 3.12.1

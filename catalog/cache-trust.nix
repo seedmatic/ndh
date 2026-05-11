@@ -35,7 +35,7 @@
     # from external third-party caches above. Privates live encrypted at
     # catalog/cache-trust.yaml under caches.cachix.<name>; publics here
     # drive trusted-public-keys and the signing-key deploy wiring in
-    # modules/.common.d/cache-trust.nix.
+    # modules/.common.d/nix-signing.nix.
     cachix = {
       # Single shared signing key for the nix-darwin-home fleet. Lets any
       # host `nix copy` locally-built paths peer-to-peer over ssh-ng —
