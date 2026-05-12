@@ -38,8 +38,6 @@
   enableBuildObserve ? false,
   # Observability sample interval in seconds (shared across all source layers).
   buildObserveInterval ? 5,
-  # Cloud-init user-data file (for minimal bringup systems)
-  cloudInitUserData ? null,
 }:
 let
   postVmUserCommands = postVM;  # Rename to avoid shadowing in derivation
@@ -246,7 +244,6 @@ let
             channelFlag = if includeChannel then "--channel ${channelSources}" else "";
             bootSizePolicyNote = builtins.toJSON "ZFS bringup artifacts generated from canonical zfs-pool-disk-map definitions.";
             pauseAfterInstall = if pauseAfterInstall then "true" else "false";
-            cloudInitUserData = if cloudInitUserData != null then "${cloudInitUserData}" else "";
           }
         } "$out/bin/bringup-zfs-disk-images-install"
       '';

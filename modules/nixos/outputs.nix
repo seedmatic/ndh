@@ -168,7 +168,8 @@ let
 
       selectedVmProvider = hostProfile.vmProvider or "tart";
 
-      # Full runtime systems (for cloud-init to fetch and activate)
+      # Full runtime systems (activated remotely via nixos-rebuild switch
+      # --target-host once the minimal bringup image is up).
       zfsRuntimeTart = mkNixosConfig {
         inherit
           profileModule
@@ -198,7 +199,8 @@ let
       selectedRuntime = if selectedVmProvider == "tart" then zfsRuntimeTart else zfsRuntimeLima;
       fullSystemPath = selectedRuntime.config.system.build.toplevel;
 
-      # Minimal bringup system — ZFS + network + cloud-init only.
+      # Minimal bringup system — ZFS + network + SSH only. The operator
+      # drives activation of the full system from bioskop.
       # Completely standalone, no host profile or modules imported.
       # Generate a deterministic hostId from hostname for ZFS.
       minimalHostId =
@@ -291,12 +293,15 @@ let
       # - A single compression factor is currently used.
       # - For zstd level 1, actual measured compressratio on NixOS store data is ~1.38x
       #   (factor = 1/1.38 ≈ 0.7246). The old 0.5 (2:1) assumption was too optimistic.
-      # - Default uncompressedDiskSizeGiB=4 is calibrated to produce ~2.0G vdev disks
-      #   (same ballpark as the old formula: unc=6 × factor=0.5). Tune per host via
-      #   nixosDiskImageSizeGiB to match the actual uncompressed runtime closure size.
+      # - Default uncompressedDiskSizeGiB=8 comfortably holds the current minimal
+      #   bringup closure (~2.4 GiB uncompressed, ~1.7 GiB after zstd-1) plus the
+      #   full runtime toplevel the operator ships in via `nix copy` during
+      #   remote activation, with headroom for ZFS metadata + dedup reference
+      #   overhead. Tune per host via nixosDiskImageSizeGiB if the full runtime
+      #   closure grows beyond the default.
       # - Future per-filesystem factors may override rootFsCompressionFactor,
       #   but should default to zstdCompressionFactor.
-      uncompressedDiskSizeGiB = hostProfile.nixosDiskImageSizeGiB or 4;
+      uncompressedDiskSizeGiB = hostProfile.nixosDiskImageSizeGiB or 8;
       selectedZstdCompressionLevel = hostProfile.nixosZstdCompressionLevel or 1;
       zstdCompressionFactor = if selectedZstdCompressionLevel == 1 then 0.7246 else 1.0;
       rootFsCompressionFactor = hostProfile.nixosRootFsCompressionFactor or zstdCompressionFactor;
@@ -462,7 +467,6 @@ let
           pauseAfterInstall ? false,
           enableBuildObserve ? false,
           buildObserveInterval ? 5,
-          cloudInitUserData ? null,
         }:
         import ./bringup-zfs-disk-image.nix {
           lib = nixpkgs.lib;
@@ -477,7 +481,6 @@ let
           inherit enableBuildObserve;
           inherit buildObserveInterval;
           inherit hostLabel;
-          inherit cloudInitUserData;
           zpoolDiskSize = zpoolVdevDiskSizeMiB;
           memSize = diskImageVmMemSizeMiB;
           vmCpuCores = diskImageVmCpuCores;
@@ -499,8 +502,6 @@ let
         inherit pauseAfterInstall;
         inherit enableBuildObserve;
         inherit buildObserveInterval;
-        # Pass cloud-init user-data for minimal bringup
-        cloudInitUserData = selectedBringupSystemdZfs.config.system.build.cloudInitUserData or null;
       };
 
       diskImageBringupZfsSystemdBoot = mkDiskImageWithManifest {
@@ -535,13 +536,20 @@ let
       nixosConfigurations = {
         # Minimal bringup installer VM (what gets installed onto ZFS disks as the bootstrap OS)
         "${mainName}-bringup" = minimalBringupSystemBase;
-        # Full runtime systems (what cloud-init activates after first boot)
+        # Full runtime systems (what the operator activates post-bringup via
+      # nixos-rebuild switch --target-host)
         "${mainName}-lima" = zfsRuntimeLima;
         "${mainName}-tart" = zfsRuntimeTart;
       };
       inherit
         diskImageBringupZfsSystemdBoot
         ;
+      # Full runtime system closure for the selected vmProvider. Exposed so
+      # the Darwin-side materializer can pull it into its own closure (one
+      # `nix build` stages both the bringup image and the full system the
+      # operator will activate remotely) and so callers can query it via
+      # `nix build .#<host>.runtimeSystem`.
+      runtimeSystem = selectedRuntime.config.system.build.toplevel;
     };
 in
 {

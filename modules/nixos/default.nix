@@ -150,6 +150,7 @@ let
     ./incus.nix
     ./podman.nix
     ./bringup-observe.nix
+    ./etc-nixos-flake.nix
   ];
   runtimeExtraSystemPackages = with pkgs; [
     autofs5 # Explicitly include autofs utilities @codebase

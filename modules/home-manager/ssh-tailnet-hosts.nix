@@ -20,20 +20,28 @@ let
   catalogUserName = catalog.user.name;
   inventoryHostNames = builtins.attrNames (inventory.hosts or { });
   sshUserForHost = _host: catalogUserName;
+  # Canonical operator alias layout: `{service}.{host}` with consistent auth.
+  # The three roles target the same host from three routes:
+  #   rdp-host.{host} → the Darwin host itself (LAN / mDNS)
+  #   vz-host.{host}  → the Darwin host via its vz bridge interface
+  #   nixos.{host}    → the NixOS guest VM living on the Darwin host
+  # All three present the profile user's rdp-host key+cert so mammoth-skate's
+  # TrustedUserCAKeys check accepts the login without per-host key pinning.
+  operatorAliasForService =
+    host: serviceName: hostNameSuffix:
+    ''
+      Host ${serviceName}.${host}
+        HostName ${host}${hostNameSuffix}
+        User ${sshUserForHost host}
+        IdentityFile ${config.sshPaths.privKeyFile}
+        IdentitiesOnly yes
+        IdentityAgent none
+        PreferredAuthentications publickey
+    '';
   operatorAliasesForHost = host: ''
-    Host rdp-host.${host}
-      HostName ${host}.local
-
-    Host vz-host.${host}
-      HostName ${host}-vz.lan
-      User ${sshUserForHost host}
-      IdentityFile ${config.sshPaths.privKeyFile}
-      IdentitiesOnly yes
-      IdentityAgent none
-      PreferredAuthentications publickey
-
-    Host nixos.${host}
-      HostName ${host}-nixos.local
+    ${operatorAliasForService host "rdp-host" ".local"}
+    ${operatorAliasForService host "vz-host" "-vz.lan"}
+    ${operatorAliasForService host "nixos" "-nixos.local"}
   '';
   tailnetDomain =
     if ndhContext ? catalog && ndhContext.catalog.netplan ? tailnet then

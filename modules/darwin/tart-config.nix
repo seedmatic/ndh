@@ -70,6 +70,10 @@ let
   # Bundle directory: bin/activate.sh + bringup-manifest → bringup images store dir.
   # The gcroot points here so one symlink keeps the entire disk-image closure alive.
   # manifest.yaml is linked here too so run.sh can resolve it via the stable gcroot path.
+  # runtime-system is a closure-only symlink (activation never dereferences it)
+  # that pulls the full NixOS runtime system into the bundle's closure so a
+  # single `nix build` stages both the bringup image and the target system the
+  # operator will activate remotely.
   tartActivationBundle = ndh.store.runCommand "tart-${cfg.vmName}-materialize" { } ''
     mkdir -p "$out/bin"
     cp ${
@@ -87,6 +91,9 @@ let
     ln -s ${lib.escapeShellArg (toString tartRunManifest)} "$out/manifest.yaml"
     ${lib.optionalString (bringupImagesDir != "") ''
       ln -s ${lib.escapeShellArg bringupImagesDir} "$out/bringup-manifest"
+    ''}
+    ${lib.optionalString (cfg.runtimeSystemPath != null) ''
+      ln -s ${lib.escapeShellArg (toString cfg.runtimeSystemPath)} "$out/runtime-system"
     ''}
   '';
 
@@ -569,6 +576,19 @@ in
       description = ''
         Optional path to disk-image manifest output containing `manifest.yaml`.
         When provided, activation resolves the raw image through manifest metadata first.
+      '';
+    };
+
+    runtimeSystemPath = mkOption {
+      type = types.nullOr types.path;
+      default = null;
+      description = ''
+        Optional store path of the full NixOS runtime system closure the operator
+        will activate remotely once the minimal bringup image is up. When set, a
+        closure edge is added to the Tart activation bundle so `nix build` of
+        the materializer realises the full system in the same stage — the
+        operator ends up with both the bringup disk image and the full
+        toplevel ready for `nixos-rebuild switch --target-host`.
       '';
     };
 

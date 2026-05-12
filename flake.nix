@@ -1026,9 +1026,11 @@
                     // lib.optionalAttrs withBringupImages {
                       lima.configGenerator.imageManifestPath = "${nixosDiskImageBringupSystemdZfs}/manifest.yaml";
                       lima.configGenerator.imageStorePath = "${nixosDiskImageBringupSystemdZfs}/boot.img";
+                      lima.configGenerator.runtimeSystemPath = nixosOutputs.runtimeSystem;
 
                       tart.configGenerator.rawImageManifestPath = "${nixosDiskImageBringupSystemdZfs}/manifest.yaml";
                       tart.configGenerator.rawImageStorePath = "${nixosDiskImageBringupSystemdZfs}/boot.img";
+                      tart.configGenerator.runtimeSystemPath = nixosOutputs.runtimeSystem;
                       tart.configGenerator.vmRunFirstBootAttachDiskManifestPath = null;
                       tart.configGenerator.vmRunFirstBootAttachDiskPath = "";
                     }

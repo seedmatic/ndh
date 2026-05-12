@@ -10,7 +10,8 @@ let
 in
 {
   # Minimal NixOS system for bringup — installs into ZFS pools, boots, then
-  # cloud-init fetches and activates the full system at first boot.
+  # the operator activates the full system by running nixos-rebuild switch
+  # from bioskop targeting this host over SSH.
   #
   # TODO(minimal-bringup): strip non-essential runtime material that the
   # image currently inherits from the shared modules:
@@ -47,10 +48,8 @@ in
     ./cache-trust.nix
 
     # SSH identity (keys.yaml access + cert-signed nix-store identity).
-    # ssh-keys-enrichment signs the cert-only keys (nix-store, linux-builder)
-    # with the mammoth-skate authority and writes the usable keypair + cert
-    # under sshPaths.systemKeysDir (/var/lib/ndh/ssh-keys) so cloud-init's
-    # `nix copy --from ssh-ng://` can use it.
+    # ssh-keys-enrichment materializes the nix-store + rdp-host keypairs so
+    # bioskop can `nix copy --to` and SSH in during bringup activation.
     "${self}/modules/.common.d/ssh-paths.nix"
     "${self}/modules/.common.d/openssh-policy.nix"
     "${self}/modules/.common.d/nix-store-identity.nix"
@@ -58,9 +57,8 @@ in
     ./systemd/ssh-keys-enrichment.nix
     ./nix-store-identity.nix
 
-    # Cloud-init + minimal-guest boot scaffolding
+    # Minimal-guest boot scaffolding
     ./systemd/naming.nix
-    ./bringup-cloud-init.nix
     ./initrd-emergency.nix
     ./console-serial.nix
     ./boot-loader.nix
@@ -72,70 +70,65 @@ in
 
   networking.hostName = guestHostName;
 
-  # Bringup profile: only the bringup-scope keys are deployed (nix-store
-  # for cloud-init's `nix copy --from ssh://`). No user-scope material,
-  # no host-scope material — the minimal image boots, fetches, activates.
+  # Bringup profile: only the bringup-scope keys are deployed.
   profile.names = lib.mkForce [ "bringup" ];
 
-  # mDNS resolution via systemd-resolved. cloud-init's runcmd resolves the
-  # remote store hostname (e.g. bioskop.local) via standard NSS + resolved,
-  # so enable MulticastDNS both globally (resolver side) and per-link (sender
-  # side). cloud-init generates /etc/systemd/network/10-cloud-init-enp0s1.network
-  # at runtime, so we add a drop-in directory read by systemd-networkd that
-  # flips MulticastDNS on for the cloud-init link without fighting over the
-  # base .network file.
+  # No /etc/nixos in the minimal image. The operator activates the full
+  # configuration remotely from bioskop via
+  # `nixos-rebuild switch --target-host root@<host>-nixos.local`, which ships
+  # the prebuilt toplevel over `nix copy` — no guest-side flake evaluation is
+  # needed. Once the full runtime is active, modules/nixos/etc-nixos-flake.nix
+  # materializes /etc/nixos/flake.nix as a git+file:// forwarding wrapper for
+  # day-2 in-guest `nixos-rebuild`.
+
+  # mDNS so bioskop can reach this VM by `<host>-nixos.local`. Both halves
+  # must be `yes`, not `resolve`:
+  #   - Global `MulticastDNS=yes` enables the announcer (resolved registers
+  #     the hostname on 0.0.0.0:5353). `resolve` would only enable inbound
+  #     lookups, which is why the VM could ping .local names but nothing
+  #     outside could find it.
+  #   - Per-link `MulticastDNS=yes` on the DHCP ethernet link actually
+  #     attaches the announcer to that interface. systemd-resolved caps the
+  #     per-link value at the global setting, so the global must be `yes`
+  #     first for the link setting to take effect.
   services.resolved = {
     enable = true;
     extraConfig = ''
-      MulticastDNS=resolve
+      MulticastDNS=yes
       LLMNR=resolve
     '';
   };
-  environment.etc."systemd/network/10-cloud-init-enp0s1.network.d/10-mdns.conf".text = ''
-    [Network]
-    MulticastDNS=yes
-  '';
+  systemd.network.networks."99-ethernet-default-dhcp".networkConfig.MulticastDNS = "yes";
 
   # Bringup has no login user; the shared sops.nix defaults the ssh-keys secret
   # owner to config.profile.user.name. Override to root for the minimal image.
   sops.secrets."ssh-keys.yaml".owner = lib.mkForce "root";
 
-  # ssh-keys-enrichment lands host-scope privates (nix-store, linux-builder)
-  # at sshPaths.systemKeysDir (root-owned, default /var/lib/ndh/ssh-keys). No
-  # override needed: cloud-init reads from that path directly. User-scope
-  # extraction is effectively a no-op in bringup because there's no user
-  # home-manager consumer for the user-scope keys.
-
-  # Ordering for cloud-init: defer cloud-final until every prerequisite is up.
-  # This replaces the busy-wait loops that used to live inside the runcmd.
-  # ssh-keys-enrichment materializes config.nixStoreIdentity.keyPath +
-  # certPath under sshPaths.systemKeysDir, so cloud-init's `nix copy`
-  # finds the identity ready without a separate deploy step.
-  systemd.services.cloud-final = {
-    wants = [ "network-online.target" ];
-    after = [
-      "network-online.target"
-      "sops-install-secrets.service"
-      (ndhSystemd.mkServiceName "ssh-keys-enrichment")
-    ];
-    requires = [
-      "sops-install-secrets.service"
-      (ndhSystemd.mkServiceName "ssh-keys-enrichment")
-    ];
+  # The minimal image does not import modules/nixos/systemd/default.nix, so the
+  # `io-nxmatic-nix-darwin-home-contributed.target` that normally pulls the
+  # enrichment unit into the boot transaction does not exist here. Wire the
+  # dependency directly onto sshd so enrichment runs before sshd starts — the
+  # `before = sshd.service` in ssh-keys-enrichment.nix only orders, it does not
+  # pull. Without this, sshd's HostKey / HostCertificate / TrustedUserCAKeys
+  # paths are not materialized and sshd fails on its first boot.
+  systemd.services.sshd = {
+    wants = [ (ndhSystemd.mkServiceName "ssh-keys-enrichment") ];
+    after = [ (ndhSystemd.mkServiceName "ssh-keys-enrichment") ];
   };
 
   # Disable SSH agent (not needed)
   programs.ssh.startAgent = lib.mkForce false;
 
-  # Include ssh_config.d/*.conf so cloud-init's `nix copy` resolves the
-  # `nix-store.<host>` alias that modules/.common.d/nix-store-identity.nix
-  # emits into /etc/ssh/ssh_config.d/75-nix-store.conf. The full runtime
-  # gets this from modules/nixos/systemd/openssh.nix; the minimal bringup
-  # image intentionally does not import that module and needs its own
-  # Include directive.
-  programs.ssh.extraConfig = lib.mkAfter ''
-    Include ssh_config.d/*.conf
-  '';
+  # Include ssh_config.d/*.conf so outbound SSH (e.g. root-initiated `nix copy`
+  # for rescue work) resolves the `nix-store.<host>` alias that
+  # modules/.common.d/nix-store-identity.nix emits into
+  # /etc/ssh/ssh_config.d/75-nix-store.conf. Read the glob list from the
+  # shared opensshPolicy so it stays in sync with the full runtime, which
+  # renders the same directives via modules/nixos/systemd/openssh.nix.
+  programs.ssh.extraConfig = lib.mkAfter (
+    lib.concatMapStringsSep "\n" (g: "Include ${g}") config.opensshPolicy.includeClientGlobs
+    + "\n"
+  );
 
   # Enable SSH server for emergency access + mammoth-skate cert auth on
   # both sides of the handshake so clients with the CA trust can ssh in
@@ -168,14 +161,10 @@ in
       "rdp-host"
     ];
 
-  # Auto-grow ZFS partitions when Lima/Tart resizes disk images.
-  # The partition layout constants (ESP size, ZFS type GUID) are defined in
-  # zfs-partition-layout.nix and surfaced as zfsOverlays.diskLayout.* options
-  # in zfs.nix. The repart config is generated there.
-  zfsOverlays.repart.enable = true;
-
   # Override the zfs-nixos-install assertion that requires runtimeSystemPath.
-  # For minimal bringup, we don't have a runtime system — activation is deferred to cloud-init.
+  # For minimal bringup we have no runtime system — the operator activates the
+  # full configuration remotely (nixos-rebuild switch --target-host) once the
+  # minimal image is up.
   assertions = lib.mkForce [ ];
 
   # ZFS root filesystem and all datasets - generated by zfs.nix from disko config
@@ -183,19 +172,25 @@ in
   # The zfs.nix module extracts filesystem entries from disko and applies them here.
   # Enable ZFS boot configuration and filesystem generation from ./zfs.nix module
   zfsOverlays.enable = true;
-  # Disable bootstrap activation in minimal system (no data disks present)
-  zfsOverlays.bootstrapActivation.enable = false;
+  # Split of responsibilities at first boot:
+  #   - zfsOverlays.repart.enable = true   → per-disk systemd-repart initrd
+  #     units own partition growth (pin ESP, grow ZFS partition) across all
+  #     four tank/recover disks.
+  #   - zfsOverlays.bootstrapActivation.enable = true → zpool-init.service
+  #     owns pool import, `zpool online -e` to claim the grown sectors, and
+  #     mountpoint reconciliation on the ZFS datasets.
+  zfsOverlays.repart.enable = true;
+  zfsOverlays.bootstrapActivation.enable = true;
 
-  # Network for cloud-init to fetch full system
+  # zpool-init runs as a systemd initrd unit; the minimal image does not import
+  # modules/nixos/default.nix (which is where the full runtime flips this on),
+  # so we enable the systemd-based initrd here explicitly.
+  boot.initrd.systemd.enable = true;
+
+  # Network for the operator to reach the minimal system over SSH.
   networking.useNetworkd = lib.mkForce true;
   networking.useDHCP = lib.mkForce true;
   networking.firewall.enable = lib.mkForce false;
-
-  # Cloud-init for runtime provisioning
-  services.cloud-init = {
-    enable = true;
-    network.enable = true;
-  };
 
   # Enable ZFS recovery chroot script
   zfsRecovery.enable = true;
@@ -204,7 +199,7 @@ in
   environment.systemPackages = with pkgs; [
     curl
     zfs
-    openssh  # SSH client for nix copy --from ssh://
+    openssh  # SSH client for ad-hoc `nix copy` from this side during rescue
     age      # For sops age key operations
     sops     # For secrets decryption
   ];

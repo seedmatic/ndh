@@ -124,22 +124,6 @@ fi
 : '[bringup-zfs] post-install zpool status'
 zpool status >&2 || true
 
-# Seed cloud-init nocloud data into the installed root filesystem.
-# The minimal bringup system has no virtio-9p xchg at Tart boot time, so we
-# embed user-data/meta-data directly onto the ZFS root before pool export.
-if [[ -n "@cloudInitUserData@" ]]; then
-  : '[bringup-zfs] seeding cloud-init nocloud into /mnt/zfs-root'
-  seed_dir=/mnt/zfs-root/var/lib/cloud/seed/nocloud
-  mkdir -p "$seed_dir"
-  cp @cloudInitUserData@ "$seed_dir/user-data"
-  # local-hostname mirrors networking.hostName composed in bringup-minimal-system.nix
-  # (always "${hostProfile.hostName}-nixos") so nocloud seed + NixOS config agree.
-  {
-    echo "instance-id: @nixosName@-$(date +%s)"
-    echo "local-hostname: @nixosName@-nixos"
-  } > "$seed_dir/meta-data"
-fi
-
 # - Post-install inspection pause ----------------------
 # When @pauseAfterInstall@ resolves to `true`, block here until the operator
 # removes the lock.  Value is injected as a literal `true`/`false` from the

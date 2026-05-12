@@ -20,13 +20,9 @@ main() {
   current_ssh="$(tailscale debug prefs 2>/dev/null \
     | sed -n 's/.*"RunSSH": *\(true\|false\).*/\1/p' \
     | head -n1)"
-  if [[ "$want_ssh" == "true" && "$current_ssh" != "true" ]]; then
-    echo "[headscale] enabling Tailscale SSH (tailscale set --ssh=true)"
-    tailscale set --ssh=true
-  elif [[ "$want_ssh" == "false" && "$current_ssh" == "true" ]]; then
-    echo "[headscale] disabling Tailscale SSH (tailscale set --ssh=false)"
-    tailscale set --ssh=false
-  fi
+  [[ "$want_ssh" == "$current_ssh" ]] && return 0
+  tailscale set --ssh=$want_ssh ||
+	echo "⚠️  Failed to set Tailscale SSH. Run: tailscale set --ssh=$want_ssh"
 }
 
 ndh::logger:command:run darwin.activationScripts.postActivation.headscale-client main "$@"

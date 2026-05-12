@@ -203,6 +203,14 @@ let
     mkdir -p "''${gcroot_dir}"
     ln -sfn "''${materializer_out}" "''${gcroot_link}"
 
+    # Closure edge: staging the materializer realises the full runtime system
+    # so `nixos-rebuild switch --target-host` has nothing left to build.
+    # The variable is exported for diagnostic access but the activation flow
+    # does not dereference it.
+    export NDH_LIMA_RUNTIME_SYSTEM=${
+      if cfg.runtimeSystemPath == null then "\"\"" else lib.escapeShellArg (toString cfg.runtimeSystemPath)
+    }
+
     export NDH_LIMA_ACTIVATION_SCRIPT="${limaActivationScript}"
     exec ${limaActivationScript} "$@"
   '';
@@ -418,6 +426,18 @@ in
         Store-pinned path to a prebuilt `nixos.img` used as first-priority source.
         This is the preferred mode for hosts like vz-host that should not resolve
         images from a local flake checkout or remote Git source.
+      '';
+    };
+
+    runtimeSystemPath = mkOption {
+      type = types.nullOr types.path;
+      default = null;
+      description = ''
+        Optional store path of the full NixOS runtime system closure the operator
+        will activate remotely once the minimal bringup image is up. When set, a
+        closure edge is added to the Lima materializer's activation bundle so a
+        single `nix build` of the materializer realises both the bringup image
+        and the full system.
       '';
     };
 

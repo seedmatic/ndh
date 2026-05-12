@@ -13,8 +13,9 @@
 #   ${sshPaths.systemKeysDir}/nix-store            (private, 0600)
 #   ${sshPaths.systemKeysDir}/nix-store-cert.pub   (symlink → user cert)
 #
-# Consumers (the `nix-store.<peer>` ssh alias, cloud-init's `nix copy`)
-# read those paths directly — there is no /etc/nix/ copy. The ssh
+# Consumers (the `nix-store.<peer>` ssh alias, `nix copy --to`
+# from bioskop during remote bringup activation) read those paths
+# directly — there is no /etc/nix/ copy. The ssh
 # alias is the single source of truth for nix-store outbound auth; any
 # new consumer should go through `ssh-ng://nix-store.<host>` and let
 # the alias supply IdentityFile + CertificateFile.
