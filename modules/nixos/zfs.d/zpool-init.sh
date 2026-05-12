@@ -34,23 +34,40 @@ zpool:import() {
 
 zpool:expand() {
 	local pool="$1"
-	# Enable autoexpand so ZFS persists the new capacity across reboots.
-	zpool set autoexpand=on "$pool" 2>/dev/null || true
 
-	# Generate and execute zpool online -e for each top-level vdev group.
-	# Uses zpool status --json + yq to discover leaf vdevs dynamically.
-	# The partitions have already been grown by the systemd-repart units
-	# ordered before initrd-root-fs.target (see zfs.nix:boot.initrd.systemd
-	# with zfsOverlays.repart.enable), so this is a fast metadata update —
-	# ZFS is just notified of the larger vdevs.
-	pool="$pool" zpool status --json 2>/dev/null \
+	# Enable autoexpand so ZFS persists the new capacity across reboots.
+	if ! zpool set autoexpand=on "$pool"; then
+		: "[zpool-init][WARN] failed to set autoexpand=on on $pool"
+	fi
+
+	# Enumerate leaf vdev *paths* (not names) and hand them to `zpool online -e`.
+	# Partition growth is owned by the per-disk systemd-repart initrd units,
+	# so all this has to do is tell ZFS to pick up the new sector count.
+	#
+	# The JSON shape is:
+	#   .pools.<pool>.vdevs.<pool>.vdevs.<raidz-group>.vdevs.<leaf>.{path,vdev_type}
+	# — recursion is the only way to stay correct across raidz / mirror /
+	# single-disk layouts, so we use yq's `..` descend operator and filter
+	# to disk leaves.  Any earlier implementation that selected on
+	# `.config.vdevs[]` was silently a no-op: `.config` does not exist at
+	# any level under `zpool status --json`.
+	local leaves
+	leaves="$(zpool status --json "$pool" \
 		| yq -p=json -r \
-			'.pools[env(pool)].config.vdevs[]
-			 | (if has("vdevs") then [.vdevs[].name] else [.name] end)
-			 | "zpool online -e " + env(pool) + " " + join(" ")' \
-		2>/dev/null \
-		| bash -x \
-		2>/dev/null || true
+			'[.. | select(has("vdev_type") and .vdev_type == "disk") | .path] | join(" ")')"
+
+	if [ -z "$leaves" ]; then
+		: "[zpool-init][WARN] could not enumerate leaf vdevs for $pool; skipping online -e"
+		return 0
+	fi
+
+	: "[zpool-init][INFO] bringing leaf vdevs online with expand: $leaves"
+	# Intentionally no error suppression: if `zpool online -e` fails the
+	# journal should carry the reason.  The pool already being sized as
+	# expected makes subsequent calls cheap metadata updates, so it is
+	# safe to run unconditionally.
+	# shellcheck disable=SC2086
+	zpool online -e "$pool" $leaves
 }
 
 zpool:zfs:set_legacy_mountpoints_for_rke2_paths() {
