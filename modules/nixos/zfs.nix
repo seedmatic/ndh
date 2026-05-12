@@ -491,19 +491,20 @@ in
   };
   options.zfsOverlays.repart.enable = lib.mkOption {
     type = lib.types.bool;
-    default = false;
+    default = true;
     description = ''
-      Enable per-data-disk systemd-repart initrd units that pin the ESP to its
-      build-time size and grow the ZFS partition to the end of the (possibly
-      resized) underlying disk. One unit per tank/recover disk is emitted —
-      the upstream NixOS `boot.initrd.systemd.repart` option only models a
-      single device, which is insufficient for the raidz1 layout, so this
-      implementation authors the units directly.
+      Enable per-data-disk systemd-repart initrd units that pin the ESP to
+      its build-time size and grow the ZFS partition to the end of the
+      (possibly resized) underlying disk.  One unit per tank/recover disk
+      is emitted — the upstream NixOS `boot.initrd.systemd.repart` option
+      only models a single device, which is insufficient for the raidz1
+      layout, so this implementation authors the units directly.
 
-      When true, zpool-init.sh no longer runs the sgdisk-based
-      `disk:partition:grow-last` loop (it would duplicate the work);
-      zpool-init then only imports pools + `zpool online -e` so ZFS picks up
-      the space systemd-repart exposed.
+      Default true so bringup and full-runtime configurations share the
+      same invariant: whenever the host-side data disk image is resized
+      between boots, partitions auto-grow and zpool-init's
+      `zpool online -e` picks up the new sectors.  On an already-sized
+      disk the repart run is a cheap no-op (condition check only).
     '';
   };
   options.zfsOverlays.overlayMode.enable = lib.mkOption {
@@ -756,32 +757,17 @@ in
       zpoolInit
     ];
 
-    # Explicitly include both ExecCondition and ExecStart scripts in the initrd store.
-    # NixOS does NOT auto-close either — both must be listed explicitly.
-    # zpoolInit and its runtime deps (gptfdisk, util-linux) are also required because
-    # initrdZpoolInitScript does `exec ${zpoolInit}/bin/zpool-init` which embeds
-    # absolute store paths that must exist in the initrd /nix/store.
+    # Initrd store-paths: explicitly enumerate scripts + binaries we need in
+    # the initrd slice of /nix/store.  NixOS does NOT scan shell scripts for
+    # store-path references via make-initrd-ng, so any path a script resolves
+    # at runtime has to appear here.
     boot.initrd.systemd.storePaths = lib.mkMerge [
-      (lib.mkIf
-        (
-          config.zfsOverlays.bootstrapActivation.enable && config.zfsOverlays.enable && (!overlayModeEnabled)
-        )
-        [
-          initrdDevicesCheckScript
-          initrdZpoolInitScript
-          zpoolInit
-          # zpool-init.sh opens with `source ${nixBashTrampoline}`; that file
-          # lives inside trampoline-dir alongside logger.sh, which the
-          # trampoline itself sources at runtime.  Keeping only the file path
-          # alive is not enough — NixOS initrd only copies paths enumerated
-          # here and doesn't walk symlinks inside them, so we pin the whole
-          # directory.
-          nixBashTrampolineDir
-          pkgs.gptfdisk
-          pkgs.util-linux
-          pkgs.yq-go
-        ]
-      )
+      # boot-entry reconcile service (runs in the initrd after /sysroot/nix/store
+      # is mounted).  zpool-init does NOT live in the initrd anymore: NixOS's
+      # `zfs-import-<pool>.service` (generated from boot.zfs.extraPools) owns
+      # pool import, and our unit runs later in stage-2 after
+      # zfs-import.target — see boot.initrd.systemd.services below and the
+      # stage-2 `systemd.services.${zpoolInitUnitName}` block further down.
       (lib.mkIf (config.zfsOverlays.enable && (!overlayModeEnabled)) [ initrdBootEntryReconcileScript ])
       (lib.mkIf config.zfsOverlays.repart.enable [
         "${config.boot.initrd.systemd.package}/bin/systemd-repart"
@@ -802,8 +788,18 @@ in
     # `services.<key> = value` at the same path. Each mkMerge element is
     # gated by its own `mkIf`, producing units only when the relevant
     # zfsOverlays flags are enabled.
+    #
+    # Note: zpool-init used to also run as an initrd unit here, but it
+    # duplicated NixOS's own `zfs-import-<pool>.service` (generated from
+    # boot.zfs.extraPools) and raced against it — `zpool import` without
+    # args only lists unimported pools, so after NixOS imported `tank` the
+    # initrd zpool-init saw "not discoverable" and failed the unit.  All
+    # responsibilities zpool-init owns (autoexpand + online -e + mountpoint
+    # reconcile) need the pool to be already imported, so the stage-2
+    # instance (ordered After=zfs-import.target) is the right — and only —
+    # placement.
     boot.initrd.systemd.services = lib.mkMerge [
-      # Per-disk systemd-repart initrd services (zfsOverlays.repart.enable)
+      # Per-disk systemd-repart initrd services (zfsOverlays.repart.enable).
       (lib.mkIf config.zfsOverlays.repart.enable (
         lib.listToAttrs (
           map (disk: {
@@ -812,47 +808,6 @@ in
           }) (builtins.attrNames config.zfsOverlays.bootstrapActivation.dataDisks)
         )
       ))
-
-      # Stage1 zpool-init (zfsOverlays.bootstrapActivation.enable, non-overlay)
-      (lib.mkIf
-        (
-          config.zfsOverlays.bootstrapActivation.enable && config.zfsOverlays.enable && (!overlayModeEnabled)
-        )
-        {
-          ${zpoolInitUnitName} = {
-            description = "Stage1 idempotent ZFS disko provisioning (@codebase)";
-            wantedBy = [ "initrd.target" ];
-            after = [
-              "systemd-udevd.service"
-              "systemd-udev-settle.service"
-            ];
-            before = [
-              "initrd-root-fs.target"
-              "sysroot.mount"
-            ];
-            path = with pkgs; [
-              bash
-              coreutils
-              util-linux
-              gawk
-              gptfdisk
-              systemd
-              zfs
-              yq-go
-              disko
-            ];
-            serviceConfig = {
-              Type = "oneshot";
-              RemainAfterExit = true;
-              StandardOutput = "journal+console";
-              StandardError = "journal+console";
-              ExecCondition = initrdDevicesCheckScript;
-              ExecStart = initrdZpoolInitScript;
-              TimeoutStartSec = "30min";
-            };
-          };
-        }
-      )
 
       # Boot-entry reconcile service: runs in the initrd after /sysroot/nix/store
       # is mounted, before initrd-find-nixos-closure. When the ZFS tank disks are
@@ -932,16 +887,19 @@ in
           };
         })
 
-        # Non-overlay mode (e.g., Lima bootstrap ext4 -> prepare ZFS for next boot)
-        # runs in stage-2 after local filesystems are available.
+        # Non-overlay mode: runs in stage-2 AFTER NixOS has imported the pools
+        # (zfs-import.target is a synchronization point for zfs-import-<pool>
+        # services generated from boot.zfs.extraPools).  zpool-init is the
+        # autoexpand + `zpool online -e` + mountpoint reconcile owner; pool
+        # import itself belongs to NixOS.
         (lib.mkIf (config.zfsOverlays.bootstrapActivation.enable && (!overlayModeEnabled)) {
-          description = "Stage2 idempotent ZFS disk/datastore provisioning (@codebase)";
+          description = "Reconcile ZFS pools and mountpoints after import (@codebase)";
           wantedBy = [ contributedTargetName ];
           after = [
+            "zfs-import.target"
             "local-fs.target"
-            "systemd-udevd.service"
-            "systemd-udev-settle.service"
           ];
+          requires = [ "zfs-import.target" ];
           before = [ zfsNixosInstallServiceName ];
 
           path = with pkgs; [
@@ -951,7 +909,7 @@ in
             gawk
             systemd
             zfs
-            disko
+            yq-go
           ];
 
           serviceConfig = {
@@ -959,7 +917,6 @@ in
             RemainAfterExit = true;
             StandardOutput = "journal+console";
             StandardError = "journal+console";
-            ExecCondition = "${stage2ZpoolInitDevicesCheckPackage}/bin/zpool-init-devices-check";
             ExecStart = "${stage2ZpoolInitPackage}/bin/zpool-init";
             TimeoutStartSec = "30min";
           };

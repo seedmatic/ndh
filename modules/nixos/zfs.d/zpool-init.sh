@@ -2,34 +2,27 @@
 # shellcheck source=/dev/null
 source @nixBashTrampoline@
 
-# zpool-init: import and expand pre-provisioned ZFS pools at VM boot.
+# zpool-init: expand pre-provisioned ZFS pools and reconcile dataset
+# mountpoints after the pools are already imported.
 #
-# ZFS pools and datasets are created during the Nix bringup build (nested QEMU).
-# This script's sole runtime responsibilities are:
-#   1. Verify required partition labels are present (sanity check)
-#   2. Import pools if not already imported
-#   3. Expand pools to claim new space when disk images have been grown
-#   4. Reconcile ZFS mountpoint properties if needed
+# Pool import is NOT this script's responsibility.  NixOS generates
+# `zfs-import-<pool>.service` units from `boot.zfs.extraPools`, and those
+# services run in both the initrd and stage-2.  By the time this unit
+# runs (After=zfs-import.target) the `tank` and `recover` pools are
+# already imported.  A prior implementation tried to own the import and
+# raced against NixOS's services — in one boot, `zpool import` (which
+# only lists *unimported* pools) showed `tank` as "not discoverable"
+# because NixOS had just imported it, and this script failed with
+# "expected pool not discoverable".
+#
+# Responsibilities now:
+#   1. For each expected pool: `autoexpand=on` + `zpool online -e` on
+#      every leaf vdev (picks up new sectors after systemd-repart).
+#   2. Reconcile ZFS dataset mountpoint properties (legacy for rke2,
+#      explicit paths under tank/nerd).
 
 zpool:init:configure() {
-	ZFS_DISK_TANK1="${ZFS_DISK_TANK1:-/dev/vdb}"
-	ZFS_DISK_TANK2="${ZFS_DISK_TANK2:-/dev/vdc}"
-	ZFS_DISK_TANK3="${ZFS_DISK_TANK3:-/dev/vdd}"
-	ZFS_DISK_RECOVER="${ZFS_DISK_RECOVER:-/dev/vde}"
 	EXPECTED_POOLS=(tank recover)
-	EXPECTED_TANK_PARTS=(
-		"/dev/disk/by-partlabel/tank1"
-		"/dev/disk/by-partlabel/tank2"
-		"/dev/disk/by-partlabel/tank3"
-	)
-	EXPECTED_RECOVER_PARTS=(
-		"/dev/disk/by-partlabel/recover"
-	)
-}
-
-zpool:import() {
-	local pool="$1"
-	zpool import -N "$pool" >/dev/null 2>&1
 }
 
 zpool:expand() {
@@ -40,32 +33,31 @@ zpool:expand() {
 		: "[zpool-init][WARN] failed to set autoexpand=on on $pool"
 	fi
 
-	# Enumerate leaf vdev *paths* (not names) and hand them to `zpool online -e`.
-	# Partition growth is owned by the per-disk systemd-repart initrd units,
-	# so all this has to do is tell ZFS to pick up the new sector count.
+	# Enumerate leaf vdev *paths* and hand them to `zpool online -e`.
+	# Partition growth is owned by the per-disk systemd-repart initrd
+	# units, so all this has to do is tell ZFS to pick up the new sector
+	# count.
 	#
-	# The JSON shape is:
-	#   .pools.<pool>.vdevs.<pool>.vdevs.<raidz-group>.vdevs.<leaf>.{path,vdev_type}
-	# — recursion is the only way to stay correct across raidz / mirror /
-	# single-disk layouts, so we use yq's `..` descend operator and filter
-	# to disk leaves.  Any earlier implementation that selected on
-	# `.config.vdevs[]` was silently a no-op: `.config` does not exist at
-	# any level under `zpool status --json`.
+	# A "leaf vdev" is any object under `.pools.<pool>` whose shape
+	# carries a `.path` — that's the one invariant across raidz / mirror
+	# / single-disk layouts.  Filtering on `vdev_type == "disk"` would
+	# miss the single-disk `recover` pool, which reports its leaf as
+	# `vdev_type: root`.
 	local leaves
 	leaves="$(zpool status --json "$pool" \
 		| yq -p=json -r \
-			'[.. | select(has("vdev_type") and .vdev_type == "disk") | .path] | join(" ")')"
+			'[.. | select(has("path")) | .path] | join(" ")')"
 
 	if [ -z "$leaves" ]; then
 		: "[zpool-init][WARN] could not enumerate leaf vdevs for $pool; skipping online -e"
 		return 0
 	fi
 
-	: "[zpool-init][INFO] bringing leaf vdevs online with expand: $leaves"
+	: "[zpool-init][INFO] bringing leaf vdevs online with expand on $pool: $leaves"
 	# Intentionally no error suppression: if `zpool online -e` fails the
-	# journal should carry the reason.  The pool already being sized as
-	# expected makes subsequent calls cheap metadata updates, so it is
-	# safe to run unconditionally.
+	# journal should carry the reason.  Subsequent runs are cheap metadata
+	# updates when the pool is already at full size, so it is safe to run
+	# unconditionally.
 	# shellcheck disable=SC2086
 	zpool online -e "$pool" $leaves
 }
@@ -121,78 +113,33 @@ zpool:is_imported() {
 	zpool list -H -o name "$pool" >/dev/null 2>&1
 }
 
-zpool:is_discoverable() {
-	local pool="$1"
-	zpool import 2>/dev/null | awk -v pool="$pool" '$1 == "pool:" && $2 == pool { found = 1 } END { exit(found ? 0 : 1) }'
-}
-
-zpool:partlabels:available() {
-	local part
-	local missing=0
-
-	for part in "${EXPECTED_TANK_PARTS[@]}" "${EXPECTED_RECOVER_PARTS[@]}"; do
-		if [ ! -e "$part" ]; then
-			: "[zpool-init][WARN] expected partlabel unavailable: $part"
-			missing=1
-		fi
-	done
-
-	[ "$missing" -eq 0 ]
-}
-
 zpool:init:main() {
 	set -euxo pipefail
 	zpool:init:configure
 
-	# Sanity check: partition labels must exist (created during bringup build)
-	if ! zpool:partlabels:available; then
-		: "[zpool-init][ERROR] expected ZFS partition labels missing — was the bringup disk image used?"
-		exit 1
-	fi
-
-	# Partition growth is owned by the per-disk systemd-repart units emitted
-	# by modules/nixos/zfs.nix (zfsOverlays.repart.enable = true). Those units
-	# run before initrd-root-fs.target, so by the time this script executes
-	# the tank/recover partitions already extend to end-of-disk and
-	# `zpool online -e` in zpool:expand() just metadata-updates ZFS.
-
-	# Import all expected pools and expand them to claim any grown disk space
-	import_failures=0
+	local missing=0
 	for pool in "${EXPECTED_POOLS[@]}"; do
-		if zpool:is_imported "$pool"; then
-			: "[zpool-init][INFO] pool already imported: $pool"
-			zpool:expand "$pool"
+		if ! zpool:is_imported "$pool"; then
+			: "[zpool-init][ERROR] expected pool not imported: $pool (ordering bug? zfs-import-${pool}.service should have run first)"
+			missing=1
 			continue
 		fi
-
-		if ! zpool:is_discoverable "$pool"; then
-			: "[zpool-init][ERROR] expected pool not discoverable: $pool"
-			import_failures=1
-			continue
-		fi
-
-		if ! zpool:import "$pool"; then
-			: "[zpool-init][ERROR] failed to import pool: $pool"
-			import_failures=1
-			continue
-		fi
-
 		zpool:expand "$pool"
 	done
 
-	if [ "$import_failures" -ne 0 ]; then
-		: "[zpool-init][ERROR] one or more ZFS pools could not be imported"
+	if [ "$missing" -ne 0 ]; then
+		: "[zpool-init][ERROR] one or more ZFS pools missing at zpool-init time"
 		exit 1
 	fi
 
 	# Reconcile ZFS mountpoint properties (idempotent)
 	: "[zpool-init][INFO] reconciling ZFS mountpoint properties"
-	if zpool list -H -o name tank >/dev/null 2>&1; then
+	if zpool:is_imported tank; then
 		zpool:zfs:set_legacy_mountpoints_for_rke2_paths
 		zpool:zfs:reconcile_nerd_mountpoints
 	fi
 
-	: "[zpool-init][INFO] ZFS pool import and expansion complete"
+	: "[zpool-init][INFO] ZFS pool expansion and mountpoint reconcile complete"
 }
 
 if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
