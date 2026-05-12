@@ -12,7 +12,6 @@ let
   cfg = config.services.disable-spotlight;
   ndhContext = ndh.context;
   nixBashTrampoline = "${ndhContext.nixBashTrampoline}";
-  loggerScript = config.nixBashLogger.script;
 
   disableSpotlightScript =
     ndh.store.runCommand "disable-spotlight"

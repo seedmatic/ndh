@@ -11,7 +11,6 @@ let
   user = config.profile.user;
   userName = user.name;
   logFile = "/Users/${userName}/Library/Logs/dnsmasq.log";
-  loggerScript = config.nixBashLogger.script;
 
   dnsmasqActivationScript = ndh.store.runCommand "dnsmasq-post-activation.sh" { } ''
     cp ${

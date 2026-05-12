@@ -2,10 +2,12 @@
   config,
   lib,
   pkgs,
+  ndh,
   ...
 }:
 let
   cfg = config.ndh.bringupRuntime;
+  ndhContext = ndh.context;
   installerCommand = "nerd-bringup-install";
   installerAttrDefault = "nerd-bringup-install";
   hostNameForAttr =
@@ -96,13 +98,10 @@ let
         install -Dm755 ${pkgs.writeShellScript "activation-check" activationCheckSource} \
           "$out/share/activation-check.sh"
       '';
-  # Package trampoline and logger.sh together so the trampoline can locate
-  # logger.sh via dirname "${BASH_SOURCE[0]}" at runtime.
-  trampolineDir = pkgs.runCommand (prefixStoreName "trampoline-dir") { } ''
-    mkdir -p "$out"
-    install -m 0644 ${./shell.d/logger.sh} "$out/logger.sh"
-    install -m 0755 ${./shell.d/nix-bash-trampoline.sh} "$out/nix-bash-trampoline.sh"
-  '';
+  # Canonical trampoline directory from the flake-level builder (single
+  # version across initrd / activation / runtime — see
+  # modules/.common.d/default.nix).
+  trampolineDir = builtins.dirOf ndhContext.nixBashTrampoline;
   standaloneInstallSource =
     builtins.replaceStrings
       [

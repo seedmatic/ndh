@@ -14,6 +14,11 @@ let
   # Safe defaults for minimal systems where ndh/ndhSystemd are not available
   ndhContext = if ndh != null then ndh.context else { nixBashTrampoline = "${pkgs.bash}/bin/bash"; generationMode = "full"; };
   nixBashTrampoline = "${ndhContext.nixBashTrampoline}";
+  # The trampoline is a file inside a store-path directory that also carries
+  # logger.sh; `source nix-bash-trampoline.sh` pulls logger.sh from the same
+  # dirname.  Derive the directory from the file path so the initrd can keep
+  # the whole directory alive via boot.initrd.systemd.storePaths.
+  nixBashTrampolineDir = builtins.dirOf nixBashTrampoline;
   generationMode = ndhContext.generationMode or "full";
   bringupMode = generationMode == "bringup";
   # Fallback to pkgs for store operations when ndh.store is not available
@@ -765,6 +770,13 @@ in
           initrdDevicesCheckScript
           initrdZpoolInitScript
           zpoolInit
+          # zpool-init.sh opens with `source ${nixBashTrampoline}`; that file
+          # lives inside trampoline-dir alongside logger.sh, which the
+          # trampoline itself sources at runtime.  Keeping only the file path
+          # alive is not enough — NixOS initrd only copies paths enumerated
+          # here and doesn't walk symlinks inside them, so we pin the whole
+          # directory.
+          nixBashTrampolineDir
           pkgs.gptfdisk
           pkgs.util-linux
           pkgs.yq-go

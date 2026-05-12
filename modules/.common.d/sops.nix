@@ -64,11 +64,10 @@ let
     "${hostSopsKeyShareMountPoint}/age/keys.txt"
   ];
 
-  trampolineDir = pkgs.runCommand "io.nxmatic.nix-darwin-home-trampoline-dir" { } ''
-    mkdir -p "$out"
-    install -m 0644 ${./shell.d/logger.sh} "$out/logger.sh"
-    install -m 0755 ${./shell.d/nix-bash-trampoline.sh} "$out/nix-bash-trampoline.sh"
-  '';
+  # Canonical trampoline directory from the flake-level builder — see
+  # modules/.common.d/default.nix for the rationale (single source of truth
+  # across initrd / activation / runtime scripts).
+  trampolineDir = builtins.dirOf ndhContext.nixBashTrampoline;
   sopsAgeBootstrapScript =
     builtins.replaceStrings
       [

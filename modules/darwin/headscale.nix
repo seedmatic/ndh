@@ -13,7 +13,6 @@ let
   ndhContext = ndh.context;
   nixBashTrampoline = "${ndhContext.nixBashTrampoline}";
   defaultHostname = config.networking.hostName or "localhost";
-  loggerScript = config.nixBashLogger.script;
 
   headscaleActivationScript = ndh.store.runCommand "headscale-post-activation.sh" { } ''
     cp ${

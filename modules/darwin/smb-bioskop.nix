@@ -14,7 +14,6 @@ let
       config.profile.user.name
     else
       "nxmatic";
-  loggerScript = config.nixBashLogger.script;
   mapFile = "/etc/auto_bioskop";
   autoMaster = "/etc/auto_master";
   bioskopFstabPkg = ndh.store.installBinScript "bioskop-fstab" (

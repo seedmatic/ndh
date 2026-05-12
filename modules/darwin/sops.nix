@@ -11,7 +11,5 @@
       );
       sudoCommand = lib.mkDefault "/usr/bin/sudo";
     };
-
-    nixBashLogger.cmd = lib.mkDefault "/usr/bin/logger -p notice -t %TAG%";
   };
 }

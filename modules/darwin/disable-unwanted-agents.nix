@@ -12,7 +12,6 @@ let
   cfg = config.services.disable-unwanted-agents;
   ndhContext = ndh.context;
   nixBashTrampoline = "${ndhContext.nixBashTrampoline}";
-  loggerScript = config.nixBashLogger.script;
 
   disableUnwantedAgentsScript =
     ndh.store.runCommand "disable-unwanted-agents"

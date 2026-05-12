@@ -13,7 +13,6 @@ let
     svc: lib.escapeShellArg svc
   ) config.networking.knownNetworkServices;
   wallpaperImage = config.profile.darwin.wallpaperImage;
-  loggerScript = config.nixBashLogger.script;
   timeoutExe = lib.getExe' pkgs.coreutils "timeout";
   gtimeoutExe = lib.getExe' pkgs.coreutils "gtimeout";
   networkPreferencesScript = ndh.store.installScript {

@@ -12,7 +12,6 @@ let
   cfg = config.services.incusRemoteTrust;
   ndhContext = ndh.context;
   nixBashTrampoline = "${ndhContext.nixBashTrampoline}";
-  loggerScript = config.nixBashLogger.script;
   hostProfile = config.profile.host;
   effectiveHostName =
     if (hostProfile ? hostAlias && hostProfile.hostAlias != null && hostProfile.hostAlias != "") then

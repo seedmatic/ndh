@@ -20,7 +20,6 @@ let
   cfg = config.internetSharing;
   ndhContext = ndh.context;
   nixBashTrampoline = "${ndhContext.nixBashTrampoline}";
-  loggerScript = config.nixBashLogger.script;
 
   # Plist configuration for Internet Sharing
   natConfig = {

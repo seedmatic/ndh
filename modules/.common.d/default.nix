@@ -94,14 +94,6 @@ let
   storeNamePrefix = "io.nxmatic.nix-darwin-home";
   prefixStoreName =
     name: if lib.hasPrefix "${storeNamePrefix}-" name then name else "${storeNamePrefix}-${name}";
-  loggerBase = ./shell.d/logger.sh;
-  loggerScript = pkgs.runCommand (prefixStoreName "logger.sh") { } ''
-        cat > "$out" <<'EOF'
-    #!/usr/bin/env bash
-    LOGGER_CMD=""
-    source ${loggerBase}
-    EOF
-  '';
   loggerTagHmPost = "common.activationScripts.postActivation.home-manager";
   # Define systemPackages separately
   systemPackages =
@@ -139,11 +131,12 @@ let
         install -m ${mode} ${source} "$out"
       '';
 
-  trampolineDir = pkgs.runCommand (prefixStoreName "trampoline-dir") { } ''
-    mkdir -p "$out"
-    install -m 0644 ${loggerBase} "$out/logger.sh"
-    install -m 0755 ${./shell.d/nix-bash-trampoline.sh} "$out/nix-bash-trampoline.sh"
-  '';
+  # Canonical trampoline directory — produced once at flake level by
+  # mkNdhNixBashTrampoline and surfaced through ndh.context.  Deriving it
+  # here from the trampoline file path keeps the `.common.d` layer free of
+  # a duplicate builder that has historically drifted from the flake-level
+  # one (different logger content, different LOGGER_CMD binding).
+  trampolineDir = builtins.dirOf ndhContext.nixBashTrampoline;
   ndhStoreAssetLookupSource = pkgs.replaceVars ./shell.d/store-asset-lookup.sh {
     nixBashTrampoline = "${trampolineDir}/nix-bash-trampoline.sh";
     nix = toString pkgs.nix;
@@ -217,18 +210,6 @@ let
 in
 {
 
-  options.nixBashLogger.cmd = lib.mkOption {
-    type = lib.types.str;
-    default = "";
-    description = "Command line (with %TAG% placeholder) used by the shared nix bash logger wrapper.";
-  };
-
-  options.nixBashLogger.script = lib.mkOption {
-    type = lib.types.path;
-    readOnly = true;
-    description = "Shared nix bash logger wrapper script that exports LOGGER_CMD.";
-  };
-
   options.activation.homeManagerPostActivationScript = lib.mkOption {
     type = lib.types.path;
     readOnly = true;
@@ -295,7 +276,6 @@ in
       store = ndhStore;
     };
 
-    nixBashLogger.script = loggerScript;
     activation.homeManagerPostActivationScript = postActivationScript;
 
     programs = {

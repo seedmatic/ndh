@@ -180,6 +180,12 @@
 
       ndhStoreApiDarwin = mkNdhStoreApiFor pkgsForDarwin;
       ndhStoreApiLinux = mkNdhStoreApiFor pkgsForLinux;
+      # Canonical trampoline directory: one store path per platform that
+      # carries `nix-bash-trampoline.sh` + a self-contained `logger.sh`.
+      # The logger.sh is inlined (not a wrapper that sources another store
+      # path) so the whole trampoline is reachable by a single store-path
+      # reference — necessary for the initrd, which doesn't scan shell-
+      # script store references transitively via make-initrd-ng.
       mkNdhNixBashTrampoline =
         {
           pkgsForSystem,
@@ -187,10 +193,17 @@
         }:
         let
           ndhStoreApi = mkNdhStoreApiFor pkgsForSystem;
+          loggerBody = builtins.readFile ./modules/.common.d/shell.d/logger.sh;
+          # Strip the shebang from the raw logger so we can prepend our own
+          # header + LOGGER_CMD binding cleanly.
+          loggerAfterShebang = builtins.substring
+            (builtins.stringLength (builtins.head (builtins.match "(#![^\n]*\n).*" loggerBody)))
+            (builtins.stringLength loggerBody)
+            loggerBody;
           loggerScript = ndhStoreApi.writeText "logger.sh" ''
             #!/usr/bin/env bash
             LOGGER_CMD="${loggerCmd}"
-            source ${./modules/.common.d/shell.d/logger.sh}
+            ${loggerAfterShebang}
           '';
           trampolineDir = ndhStoreApi.runCommand "trampoline-dir" { } ''
             mkdir -p "$out"

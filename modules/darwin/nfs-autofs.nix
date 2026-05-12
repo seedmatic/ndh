@@ -16,7 +16,6 @@ let
   # This prevents ZFS from hanging on network errors or unavailable NFS hosts.
   cfg = config.services.nfsDarwin;
   autoCfg = cfg.autofs;
-  loggerScript = config.nixBashLogger.script;
 
   bool01 = b: if b then "1" else "0";
 

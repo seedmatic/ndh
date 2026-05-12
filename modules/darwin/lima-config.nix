@@ -28,7 +28,6 @@ let
   profileHome = config.profile.user.home;
   profileHost = config.profile.host;
   sshPaths = config.sshPaths;
-  loggerScript = config.nixBashLogger.script;
 
   # Derive effective hostname (use alias if set, otherwise hostName)
   effectiveHostName =

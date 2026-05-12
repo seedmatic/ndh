@@ -12,7 +12,6 @@ let
   cfg = config.networking.bond;
   ndhContext = ndh.context;
   nixBashTrampoline = "${ndhContext.nixBashTrampoline}";
-  loggerScript = config.nixBashLogger.script;
 
   bondInterfaces = concatStringsSep " " cfg.interfaces;
 
