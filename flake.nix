@@ -181,44 +181,43 @@
       ndhStoreApiDarwin = mkNdhStoreApiFor pkgsForDarwin;
       ndhStoreApiLinux = mkNdhStoreApiFor pkgsForLinux;
       # Canonical trampoline directory: one store path per platform that
-      # carries `nix-bash-trampoline.sh` + a self-contained `logger.sh`.
-      # The logger.sh is inlined (not a wrapper that sources another store
-      # path) so the whole trampoline is reachable by a single store-path
-      # reference — necessary for the initrd, which doesn't scan shell-
-      # script store references transitively via make-initrd-ng.
+      # carries `nix-bash-trampoline.sh` + the raw `logger.sh`.
+      #
+      # The logger deliberately ships as-is — no LOGGER_CMD pre-binding.
+      # `ndh::logger:command:resolve` probes `/usr/bin/logger` then
+      # `command -v logger` at call time, which works in three contexts:
+      #
+      #   - Darwin activation: `/usr/bin/logger` always present.
+      #   - NixOS stage-2: systemd units carry util-linux on PATH.
+      #   - NixOS initrd: neither available; the probe returns empty and
+      #     `ndh::logger:lines:tag` falls back to the no-logger branch
+      #     (tag-prefix to stdout/stderr only, no external command).
+      #
+      # Baking an absolute `${pkgs.util-linux}/bin/logger` into the
+      # trampoline was wrong for the initrd case: make-initrd-ng only
+      # copies paths explicitly listed in `boot.initrd.systemd.storePaths`
+      # and does not scan shell-script text for closure edges, so the
+      # baked logger binary would be missing at runtime — causing a
+      # silent SIGPIPE on the first write to the redirected FD-2 and
+      # zpool-init.service exit 1.
       mkNdhNixBashTrampoline =
         {
           pkgsForSystem,
-          loggerCmd,
         }:
         let
           ndhStoreApi = mkNdhStoreApiFor pkgsForSystem;
-          loggerBody = builtins.readFile ./modules/.common.d/shell.d/logger.sh;
-          # Strip the shebang from the raw logger so we can prepend our own
-          # header + LOGGER_CMD binding cleanly.
-          loggerAfterShebang = builtins.substring
-            (builtins.stringLength (builtins.head (builtins.match "(#![^\n]*\n).*" loggerBody)))
-            (builtins.stringLength loggerBody)
-            loggerBody;
-          loggerScript = ndhStoreApi.writeText "logger.sh" ''
-            #!/usr/bin/env bash
-            LOGGER_CMD="${loggerCmd}"
-            ${loggerAfterShebang}
-          '';
           trampolineDir = ndhStoreApi.runCommand "trampoline-dir" { } ''
             mkdir -p "$out"
-            install -m 0644 ${loggerScript} "$out/logger.sh"
+            install -m 0644 ${./modules/.common.d/shell.d/logger.sh} "$out/logger.sh"
             install -m 0755 ${./modules/.common.d/shell.d/nix-bash-trampoline.sh} "$out/nix-bash-trampoline.sh"
           '';
         in
         "${trampolineDir}/nix-bash-trampoline.sh";
       ndhNixBashTrampolineDarwin = mkNdhNixBashTrampoline {
         pkgsForSystem = pkgsForDarwin;
-        loggerCmd = "/usr/bin/logger -p notice -t %TAG%";
       };
       ndhNixBashTrampolineLinux = mkNdhNixBashTrampoline {
         pkgsForSystem = pkgsForLinux;
-        loggerCmd = "${pkgsForLinux.util-linux}/bin/logger -p notice -t %TAG%";
       };
       ndhBootstrapRuntimePackageLinux = mkNdhBootstrapRuntimePackage "aarch64-linux";
       ndhBringupRuntimeAttr = "nerd-bringup-runtime";
