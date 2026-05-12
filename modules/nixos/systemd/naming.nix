@@ -27,4 +27,18 @@ in
     attachToContributedTarget = attachToContributedTarget;
     tailscaleAutoconnectUnitName = mkNdhUnitName "tailscaled-autoconnect";
   };
+
+  # Declare the contributed target here rather than in systemd/default.nix so
+  # modules like modules/nixos/bringup-minimal-system.nix — which only import
+  # naming.nix for the ndhSystemd helpers, not the full systemd aggregator —
+  # still get a real target to which their units can attach.  Without this
+  # declaration on the minimal image, `wantedBy = [ contributedTargetName ]`
+  # dangles and systemd drops the dependency, so nothing pulls the service
+  # into the boot transaction.
+  config.systemd.targets.${mkNdhUnitName "contributed"} = {
+    description = "Nix Darwin Home contributed units (@codebase)";
+    requires = [ "keys.target" ];
+    after = [ "keys.target" ];
+    wantedBy = [ "multi-user.target" ];
+  };
 }

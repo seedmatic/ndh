@@ -70,12 +70,9 @@ in
     ]
   );
 
-  config.systemd.targets.${mkNdhUnitName "contributed"} = {
-    description = "Nix Darwin Home contributed units (@codebase)";
-    requires = [ keysTargetUnit ];
-    after = [ keysTargetUnit ];
-    wantedBy = [ "multi-user.target" ];
-  };
+  # contributed.target declaration lives in ./naming.nix so modules that
+  # only import naming.nix (e.g. bringup-minimal-system.nix) still get the
+  # target.  Keeping it there avoids a duplicate declaration here.
 
   config.systemd.services.${homeManagerServiceName} = lib.mkIf (!bringupMode) {
     wantedBy = [ contributedTargetName ];

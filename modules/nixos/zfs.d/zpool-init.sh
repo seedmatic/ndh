@@ -22,7 +22,19 @@ source @nixBashTrampoline@
 #      explicit paths under tank/nerd).
 
 zpool:init:configure() {
-	EXPECTED_POOLS=(tank recover)
+	# EXPECTED_POOLS + MOUNTPOINTS_TABLE are injected by zfs.nix's
+	# zpoolInitText wrapper, which builds them from the disko config
+	# (`config.disko.devices.zpool` and each dataset's `mountpoint`).
+	# Fall back to the historical hard-coded values only when the env is
+	# missing, so direct `/bin/zpool-init` invocations (e.g. rescue shell)
+	# still work.
+	if [ -n "${NDH_ZPOOL_INIT_POOLS:-}" ]; then
+		# shellcheck disable=SC2206
+		EXPECTED_POOLS=(${NDH_ZPOOL_INIT_POOLS})
+	else
+		EXPECTED_POOLS=(tank recover)
+	fi
+	MOUNTPOINTS_TABLE="${NDH_ZPOOL_INIT_MOUNTPOINTS:-}"
 }
 
 zpool:expand() {
@@ -79,10 +91,21 @@ zpool:zfs:set_legacy_mountpoints_for_rke2_paths() {
 }
 
 zpool:zfs:reconcile_nerd_mountpoints() {
+	# Drive the reconcile from the MOUNTPOINTS_TABLE env injected by zfs.nix
+	# (derived from config.disko.devices.zpool at eval time).  Empty table =
+	# nothing to reconcile — supports rescue invocations where disko context
+	# is unavailable.
 	local dataset
 	local desired
 
+	if [ -z "${MOUNTPOINTS_TABLE:-}" ]; then
+		: "[zpool-init][INFO] no dataset mountpoint table provided; skipping reconcile"
+		return 0
+	fi
+
 	while read -r dataset desired; do
+		[ -n "$dataset" ] && [ -n "$desired" ] || continue
+
 		if ! zfs list -H -o name "$dataset" >/dev/null 2>&1; then
 			continue
 		fi
@@ -90,22 +113,7 @@ zpool:zfs:reconcile_nerd_mountpoints() {
 		if [ "$(zfs get -H -o value mountpoint "$dataset")" != "$desired" ]; then
 			zfs set "mountpoint=$desired" "$dataset" || : "[zpool-init][WARN] failed to set mountpoint=$desired on $dataset"
 		fi
-	done <<'EOF'
-tank/nerd/root /
-tank/nerd/nix /nix
-tank/nerd/nix/builds /nix/var/nix/builds
-tank/nerd/var/cache /var/cache
-tank/nerd/var/log /var/log
-tank/nerd/var/lib/buildkit /var/lib/buildkit
-tank/nerd/var/lib/containerd /var/lib/containerd
-tank/nerd/var/lib/incus /var/lib/incus
-tank/nerd/var/lib/lxc /var/lib/lxc
-tank/nerd/var/lib/nixos-containers /var/lib/nixos-containers
-tank/nerd/var/lib/nix-snapshotter /var/lib/nix-snapshotter
-tank/nerd/var/tmp /var/tmp
-tank/nerd/persist /persist
-tank/nerd/srv /srv
-EOF
+	done <<< "$MOUNTPOINTS_TABLE"
 }
 
 zpool:is_imported() {

@@ -194,11 +194,63 @@ let
     exit 0
   '';
 
+  # Derive runtime pool + dataset-mountpoint maps from disko so zpool-init
+  # stays in sync when a new pool or dataset is added to zfs-disko-config.nix.
+  # Pool list:  `.disko.devices.zpool` attribute names.
+  # Mount map:  for each pool, walk `.datasets.<name>` recursively; every
+  #             dataset that declares `mountpoint` as a concrete path yields
+  #             one "<pool>/<relative> <mountpoint>" line.  Legacy / none /
+  #             null mountpoints are skipped — those are owned by callers
+  #             (e.g. rke2 containerd datasets).
+  diskoPoolList = lib.attrNames (config.disko.devices.zpool or { });
+
+  diskoPoolDatasetMountpoints =
+    poolName:
+    let
+      poolCfg = config.disko.devices.zpool.${poolName};
+      walk =
+        prefix: dsSet:
+        lib.concatMap (
+          name:
+          let
+            ds = dsSet.${name};
+            # Disko uses `name/child` as the attribute name for nested datasets,
+            # so prefix is always `<pool>` and we concat directly.
+            fullName = "${prefix}/${name}";
+            this =
+              if
+                ds ? mountpoint
+                && ds.mountpoint != null
+                && lib.hasPrefix "/" (toString ds.mountpoint)
+              then
+                [ { dataset = fullName; mountpoint = ds.mountpoint; } ]
+              else
+                [ ];
+            children =
+              if ds ? datasets then walk fullName ds.datasets
+              else if ds ? children then walk fullName ds.children
+              else [ ];
+          in
+          this ++ children
+        ) (lib.attrNames dsSet);
+    in
+    walk poolName (poolCfg.datasets or { });
+
+  diskoAllMountpoints = lib.concatMap diskoPoolDatasetMountpoints diskoPoolList;
+
+  # Single heredoc body for zpool-init.sh — one "dataset mountpoint" line per
+  # entry, matching the original hard-coded table's shape.
+  zpoolInitMountpointsTable = lib.concatMapStringsSep "\n" (
+    e: "${e.dataset} ${toString e.mountpoint}"
+  ) diskoAllMountpoints;
+
   zpoolInitText = ''
     export ZFS_DISK_TANK1="${cfg.bootstrapActivation.dataDisks.tank1}"
     export ZFS_DISK_TANK2="${cfg.bootstrapActivation.dataDisks.tank2}"
     export ZFS_DISK_TANK3="${cfg.bootstrapActivation.dataDisks.tank3}"
     export ZFS_DISK_RECOVER="${cfg.bootstrapActivation.dataDisks.recover}"
+    export NDH_ZPOOL_INIT_POOLS=${lib.escapeShellArg (lib.concatStringsSep " " diskoPoolList)}
+    export NDH_ZPOOL_INIT_MOUNTPOINTS=${lib.escapeShellArg zpoolInitMountpointsTable}
     ${builtins.replaceStrings [ "@nixBashTrampoline@" ] [ nixBashTrampoline ] (
       builtins.readFile ./zfs.d/zpool-init.sh
     )}
@@ -718,10 +770,12 @@ in
         lib.mkIf config.zfsOverlays.enable {
           forceImportRoot = true;
           devNodes = lib.mkForce "/dev";
-          extraPools = [
-            "tank"
-            "recover"
-          ];
+          # Derive the import list from the disko config so a new pool added
+          # to zfs-disko-config.nix automatically gets its corresponding
+          # `zfs-import-<pool>.service` unit.  Mirrors the historic hard-
+          # coded `[ "tank" "recover" ]` while staying in sync with the
+          # source of truth.
+          extraPools = diskoPoolList;
         }
       );
 
