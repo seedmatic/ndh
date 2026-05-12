@@ -74,7 +74,12 @@ let
       nixBashTrampoline = nixBashTrampoline;
       logTag = hostkeyEnrollmentCheckTag;
       userPrivateSourceDir = config.sshPaths.secretsKeysDir;
-      userCaSourceDir = config.sshPaths.authoritySecretsDir;
+      # userCaSourceDir is a misnomer kept for the script's substitution
+      # slot: the variable holds the per-key `.pub` directory (used to
+      # read `<key>.pub` alongside its private counterpart), which
+      # ssh-extract-keys routes to `target_dir = "user"` → secretsKeysDir.
+      # authoritySecretsDir only holds CA pubs + certs, not key pubs.
+      userCaSourceDir = config.sshPaths.secretsKeysDir;
       systemHostKeyPub = "${hostKeyPath}.pub";
       clientKeyName = clientKeyName;
     }
@@ -207,7 +212,11 @@ in
             config.profile.user.name
             loggerTag
             config.sshPaths.secretsKeysDir
-            config.sshPaths.authoritySecretsDir
+            # userCaSourceDir placeholder now fed the per-key `.pub`
+            # directory (secretsKeysDir), matching ssh-extract-keys's
+            # `target_dir = "user"` routing.  Kept the misnomer for the
+            # substitution slot to avoid churn in the shell script.
+            config.sshPaths.secretsKeysDir
             clientKeyName
           ]
           (builtins.readFile ./openssh.d/activation.sh);

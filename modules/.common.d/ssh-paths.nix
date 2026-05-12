@@ -95,14 +95,26 @@ in
 
     hostPublicKeyFile = lib.mkOption {
       type = lib.types.str;
-      default = "${config.sshPaths.authoritySecretsDir}/${config.sshPaths.keyName}.pub";
-      description = "Path to the canonical SSH host public key used by Lima and enrollment checks.";
+      default = "${config.sshPaths.secretsKeysDir}/${config.sshPaths.keyName}.pub";
+      description = ''
+        Path to the canonical SSH host public key used by Lima, the
+        sshd authorized-keys enrollment check, and the home-manager
+        lima-rdp-assets provisioner.
+
+        Lives next to `privKeyFile` in `secretsKeysDir` rather than in
+        `authoritySecretsDir` because the ssh-extract-keys pipeline
+        (modules/home-manager/ssh-key.d/ssh-extract-keys.split-exp.yq)
+        routes key `.pub` files to `target_dir = "user"`.  Only
+        authority public keys (`<auth>-ca.pub`) and cert files
+        (`<key>-<auth>-{user,host}-cert.pub`) land in
+        `authoritySecretsDir`.
+      '';
     };
 
     hostCertPublic = lib.mkOption {
       type = lib.types.str;
       default = "${config.sshPaths.authoritySecretsDir}/${config.sshPaths.keyName}-server-cert.pub";
-      description = "Path to the SSH host public certificate.";
+      description = "Path to the SSH host public certificate (routed to authoritySecretsDir by ssh-extract-keys).";
     };
 
     userCertPublic = lib.mkOption {

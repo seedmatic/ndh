@@ -19,7 +19,13 @@ let
   userName = profile.user.name;
   userEmail = profile.email;
   sshPaths = config.sshPaths;
-  hostKeysDir = sshPaths.authoritySecretsDir;
+  # github-signing.pub / github-signing-hyland.pub are per-key public
+  # files that the ssh-extract-keys split-exp routes to
+  # `target_dir = "user"` → `secretsKeysDir`, alongside their private
+  # counterparts.  Only authority CA pubs and certs land in
+  # `authoritySecretsDir`; this used to point there and read missing
+  # files.  See modules/home-manager/ssh-key.d/ssh-extract-keys.split-exp.yq.
+  hostKeysDir = sshPaths.secretsKeysDir;
   signingKeysDir = sshPaths.secretsKeysDir;
   allowedSignersFile = "${config.xdg.configHome}/git/github_allowed_signers";
   systemCaBundle = config.home.sessionVariables.SSL_CERT_FILE;
