@@ -6,6 +6,7 @@
   lib,
   ndh ? null,
   ndhSystemd ? null,
+  utils,
   ...
 }:
 
@@ -193,8 +194,6 @@ let
     export ZFS_DISK_TANK2="${cfg.bootstrapActivation.dataDisks.tank2}"
     export ZFS_DISK_TANK3="${cfg.bootstrapActivation.dataDisks.tank3}"
     export ZFS_DISK_RECOVER="${cfg.bootstrapActivation.dataDisks.recover}"
-    export SGDISK_BIN="${pkgs.gptfdisk}/bin/sgdisk"
-    export BLOCKDEV_BIN="${pkgs.util-linux}/bin/blockdev"
     ${builtins.replaceStrings [ "@nixBashTrampoline@" ] [ nixBashTrampoline ] (
       builtins.readFile ./zfs.d/zpool-init.sh
     )}
@@ -341,6 +340,14 @@ let
     builtins.readFile ./zfs.d/esp-sync.sh
   );
 
+  # The esp-sync script runs from the upstream finalSystemdBootBuilder
+  # (install-systemd-boot.sh), which `switch-to-configuration` invokes via
+  # `systemd-run` with a stripped PATH. The source file uses a
+  # `#!/usr/bin/env -S bash -euo pipefail` shebang — under a stripped PATH,
+  # `/usr/bin/env bash` cannot resolve `bash` and the bootloader install
+  # aborts with "env: 'bash': No such file or directory / Failed to install
+  # bootloader". Rewrite the shebang to a direct store-path reference so
+  # it runs in any PATH context.
   espSyncScript =
     ndhStore.runCommand "esp-sync"
       {
@@ -348,7 +355,11 @@ let
         text = espSyncScriptText;
       }
       ''
-        install -Dm0555 "$textPath" "$out"
+        {
+          printf '%s\n' '#!${pkgs.bash}/bin/bash'
+          tail -n +2 "$textPath"
+        } > "$out"
+        chmod 0555 "$out"
       '';
 
   # Stage-2 packages shared by overlay-mode and non-overlay-mode bootstrap services.
@@ -403,6 +414,68 @@ let
 in
 let
   partLayout = import ./zfs-partition-layout.nix;
+
+  # repart.d directory for one disk — two rules, fixed across every tank/
+  # recover disk. Mounted into the initrd /etc tree so systemd-repart can
+  # consume it without a store-path flag at runtime.
+  zfsRepartDirFor =
+    disk:
+    pkgs.runCommand "zfs-repart-${disk}-defs" { } ''
+      mkdir -p "$out"
+      cat > "$out/10-esp.conf" <<EOF
+      [Partition]
+      Type=esp
+      SizeMinBytes=${toString config.zfsOverlays.diskLayout.espSizeMiB}M
+      SizeMaxBytes=${toString config.zfsOverlays.diskLayout.espSizeMiB}M
+      EOF
+      cat > "$out/20-zfs.conf" <<EOF
+      [Partition]
+      Type=${config.zfsOverlays.diskLayout.zfsPartitionTypeGuid}
+      GrowFileSystem=off
+      EOF
+    '';
+
+  # One initrd systemd-repart unit per data disk. Ordered before
+  # initrd-root-fs.target + sysroot.mount so the partition table has been
+  # extended by the time zfs-import scans for pools. Gated by
+  # ConditionPathExists so a missing disk is a no-op rather than a failure.
+  mkZfsRepartUnit =
+    disk:
+    let
+      devicePath = config.zfsOverlays.bootstrapActivation.dataDisks.${disk};
+      deviceUnit = "${utils.escapeSystemdPath devicePath}.device";
+    in
+    {
+      description = "Grow ZFS data-disk partition table on ${disk} (${devicePath})";
+      wantedBy = [ "initrd.target" ];
+      after = [
+        "systemd-udev-settle.service"
+        deviceUnit
+      ];
+      requires = [ deviceUnit ];
+      before = [
+        "initrd-root-fs.target"
+        "sysroot.mount"
+      ];
+      unitConfig = {
+        ConditionPathExists = devicePath;
+        DefaultDependencies = false;
+      };
+      serviceConfig = {
+        Type = "oneshot";
+        RemainAfterExit = true;
+        StandardOutput = "journal+console";
+        StandardError = "journal+console";
+        ExecStart = ''
+          ${config.boot.initrd.systemd.package}/bin/systemd-repart \
+            --definitions=/etc/repart.d.${disk} \
+            --dry-run=no \
+            --empty=refuse \
+            --discard=no \
+            ${devicePath}
+        '';
+      };
+    };
 in
 {
 
@@ -415,9 +488,17 @@ in
     type = lib.types.bool;
     default = false;
     description = ''
-      Enable systemd-repart in the initrd to automatically grow ZFS data-disk
-      partitions when Lima/Tart resizes disk images.  Set to true on minimal
-      bringup systems; the full runtime system uses zpool-init instead.
+      Enable per-data-disk systemd-repart initrd units that pin the ESP to its
+      build-time size and grow the ZFS partition to the end of the (possibly
+      resized) underlying disk. One unit per tank/recover disk is emitted —
+      the upstream NixOS `boot.initrd.systemd.repart` option only models a
+      single device, which is insufficient for the raidz1 layout, so this
+      implementation authors the units directly.
+
+      When true, zpool-init.sh no longer runs the sgdisk-based
+      `disk:partition:grow-last` loop (it would duplicate the work);
+      zpool-init then only imports pools + `zpool online -e` so ZFS picks up
+      the space systemd-repart exposed.
     '';
   };
   options.zfsOverlays.overlayMode.enable = lib.mkOption {
@@ -617,25 +698,10 @@ in
 
     networking.hostId = lib.mkDefault hostId;
 
-    # Grow ZFS data-disk partitions in the initrd when disk images have been
-    # enlarged on the host (e.g. Lima diskSize increase). systemd-repart runs
-    # before any ZFS import. Combined with autoexpand=on on the pools the
-    # online expansion is fully automatic — no manual `zpool online -e` needed.
-    boot.initrd.systemd.repart.enable = lib.mkIf config.zfsOverlays.repart.enable true;
-    systemd.repart.partitions = lib.mkIf config.zfsOverlays.repart.enable {
-      # Pin the ESP at exactly its build-time size — never grow or shrink it.
-      "10-esp" = {
-        Type = "esp";
-        SizeMinBytes = "${toString config.zfsOverlays.diskLayout.espSizeMiB}M";
-        SizeMaxBytes = "${toString config.zfsOverlays.diskLayout.espSizeMiB}M";
-      };
-      # Grow the ZFS partition to the end of the disk.
-      # GrowFileSystem=off: ZFS handles its own online expansion via autoexpand=on.
-      "20-zfs" = {
-        Type = config.zfsOverlays.diskLayout.zfsPartitionTypeGuid;
-        GrowFileSystem = "off";
-      };
-    };
+    # Per-disk systemd-repart initrd units are declared below alongside the
+    # shared storePaths/contents/services merges so we stay under a single
+    # boot.initrd.systemd.<attr> assignment per attribute (Nix module system
+    # forbids mixing nested + leaf at the same path without mkMerge).
 
     boot = {
       supportedFilesystems = lib.mkAfter [ "zfs" ];
@@ -705,61 +771,88 @@ in
         ]
       )
       (lib.mkIf (config.zfsOverlays.enable && (!overlayModeEnabled)) [ initrdBootEntryReconcileScript ])
+      (lib.mkIf config.zfsOverlays.repart.enable [
+        "${config.boot.initrd.systemd.package}/bin/systemd-repart"
+      ])
     ];
 
-    boot.initrd.systemd.services.${zpoolInitUnitName} =
-      lib.mkIf
+    boot.initrd.systemd.contents = lib.mkIf config.zfsOverlays.repart.enable (
+      lib.listToAttrs (
+        map (disk: {
+          name = "/etc/repart.d.${disk}";
+          value.source = zfsRepartDirFor disk;
+        }) (builtins.attrNames config.zfsOverlays.bootstrapActivation.dataDisks)
+      )
+    );
+
+    # All initrd systemd services are declared under a single `services = mkMerge`
+    # block — Nix module system rejects mixing `services = <attrset>` with
+    # `services.<key> = value` at the same path. Each mkMerge element is
+    # gated by its own `mkIf`, producing units only when the relevant
+    # zfsOverlays flags are enabled.
+    boot.initrd.systemd.services = lib.mkMerge [
+      # Per-disk systemd-repart initrd services (zfsOverlays.repart.enable)
+      (lib.mkIf config.zfsOverlays.repart.enable (
+        lib.listToAttrs (
+          map (disk: {
+            name = "zfs-repart-${disk}";
+            value = mkZfsRepartUnit disk;
+          }) (builtins.attrNames config.zfsOverlays.bootstrapActivation.dataDisks)
+        )
+      ))
+
+      # Stage1 zpool-init (zfsOverlays.bootstrapActivation.enable, non-overlay)
+      (lib.mkIf
         (
           config.zfsOverlays.bootstrapActivation.enable && config.zfsOverlays.enable && (!overlayModeEnabled)
         )
         {
-          description = "Stage1 idempotent ZFS disko provisioning (@codebase)";
-          wantedBy = [ "initrd.target" ];
-          after = [
-            "systemd-udevd.service"
-            "systemd-udev-settle.service"
-          ];
-          before = [
-            "initrd-root-fs.target"
-            "sysroot.mount"
-          ];
-          path = with pkgs; [
-            bash
-            coreutils
-            util-linux
-            gawk
-            gptfdisk
-            systemd
-            zfs
-            yq-go
-            disko
-          ];
-          serviceConfig = {
-            Type = "oneshot";
-            RemainAfterExit = true;
-            StandardOutput = "journal+console";
-            StandardError = "journal+console";
-            ExecCondition = initrdDevicesCheckScript;
-            ExecStart = initrdZpoolInitScript;
-            TimeoutStartSec = "30min";
+          ${zpoolInitUnitName} = {
+            description = "Stage1 idempotent ZFS disko provisioning (@codebase)";
+            wantedBy = [ "initrd.target" ];
+            after = [
+              "systemd-udevd.service"
+              "systemd-udev-settle.service"
+            ];
+            before = [
+              "initrd-root-fs.target"
+              "sysroot.mount"
+            ];
+            path = with pkgs; [
+              bash
+              coreutils
+              util-linux
+              gawk
+              gptfdisk
+              systemd
+              zfs
+              yq-go
+              disko
+            ];
+            serviceConfig = {
+              Type = "oneshot";
+              RemainAfterExit = true;
+              StandardOutput = "journal+console";
+              StandardError = "journal+console";
+              ExecCondition = initrdDevicesCheckScript;
+              ExecStart = initrdZpoolInitScript;
+              TimeoutStartSec = "30min";
+            };
           };
-        };
+        }
+      )
 
-    # Boot-entry reconcile service: runs in the initrd after /sysroot/nix/store
-    # is mounted, before initrd-find-nixos-closure. When the ZFS tank disks are
-    # provisioned from a newer bringup image than what wrote the ESP boot entries,
-    # the init= path in the boot entry may reference a system closure that no
-    # longer exists in the ZFS store. This service detects the mismatch and
-    # rewrites the systemd-boot .conf entries to point at the system closure
-    # that is actually present.
-    boot.initrd.systemd.services.${bootReconcileUnitName} =
-      lib.mkIf (config.zfsOverlays.enable && (!overlayModeEnabled))
-        {
+      # Boot-entry reconcile service: runs in the initrd after /sysroot/nix/store
+      # is mounted, before initrd-find-nixos-closure. When the ZFS tank disks are
+      # provisioned from a newer bringup image than what wrote the ESP boot entries,
+      # the init= path in the boot entry may reference a system closure that no
+      # longer exists in the ZFS store. This service detects the mismatch and
+      # rewrites the systemd-boot .conf entries to point at the system closure
+      # that is actually present.
+      (lib.mkIf (config.zfsOverlays.enable && (!overlayModeEnabled)) {
+        ${bootReconcileUnitName} = {
           description = "Reconcile EFI boot entry with ZFS store system closure";
           unitConfig = {
-            # Only need the ZFS store mounted to find the actual system closure.
-            # The ESP is detected via LoaderDevicePartUUID EFI variable and mounted
-            # by the script itself — /sysroot/boot may not exist on all layouts.
             RequiresMountsFor = [ "/sysroot/nix/store" ];
             DefaultDependencies = false;
           };
@@ -789,6 +882,8 @@ in
             ExecStart = initrdBootEntryReconcileScript;
           };
         };
+      })
+    ];
 
     systemd = {
       services.${zpoolInitUnitName} = lib.mkMerge [
