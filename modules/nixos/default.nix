@@ -393,7 +393,19 @@ in
     limaHost.isGuest = true;
 
     networking = {
-      hostId = "deadbeef";
+      # Per-host ZFS hostId derived from the bare host name (not the
+      # `<host>-nixos` composite networking.hostName).  The minimal
+      # bringup image uses the same formula at
+      # modules/nixos/outputs.nix (minimalHostId) — both must agree,
+      # otherwise zfs-import-<pool>.service refuses to import a pool
+      # that was formatted under the other configuration with
+      # "cannot import '<pool>': pool was previously in use from
+      # another system".
+      hostId =
+        let
+          hash = builtins.hashString "sha256" hostProfile.hostName;
+        in
+        builtins.substring 0 8 hash;
       # Canonical policy: firewall disabled on NixOS lab hosts.
       firewall.enable = lib.mkForce false;
     }
