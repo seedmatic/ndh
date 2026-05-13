@@ -22,12 +22,23 @@ let
 
 in
 {
-  # Profile user configuration
+  # Profile user configuration.
+  #
+  # The operator (nxmatic) connects via the mammoth-skate-signed cert
+  # carrying principal `rdp-host`.  That path works through
+  # TrustedUserCAKeys + AuthorizedPrincipalsCommand and does not require
+  # an entry in authorized_keys.  However we ALSO install the rdp-host
+  # bare public key here so a plain-key connection works — a useful
+  # rescue path if the principals command is unreachable, the CA file
+  # drifts, or a client strips the cert for any reason.
   users.users.${cfgUserName} = {
     group = cfgUserName;
     extraGroups = nixosUserExtraGroups;
     uid = lib.mkIf (nixosUserUid != null) nixosUserUid;
     linger = true;
+    openssh.authorizedKeys.keys = lib.mkIf runtimeMode (
+      config.ndh.keysYaml.authorizedLinesFor [ "rdp-host" ]
+    );
   };
   users.groups.${cfgUserName} = if nixosUserGid != null then { gid = nixosUserGid; } else { };
 
