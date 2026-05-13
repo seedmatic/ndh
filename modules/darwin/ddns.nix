@@ -163,6 +163,12 @@ in
       #       token: ENC[...]
       key = "duckdns/${host.subDomain}/token";
       path = tokenSecretPath;
+      # godns runs under the LaunchAgent's user context (gui/<uid>), not
+      # root, so sops-nix's default owner=root / mode=0400 would make
+      # the token unreadable from the agent.  Hand the file to the
+      # profile user so the launcher can cat it at service start.
+      owner = config.system.primaryUser;
+      mode = "0400";
     };
 
     launchd.user.agents.ddns-client = {
