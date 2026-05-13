@@ -261,13 +261,19 @@ in
   };
 
   systemd.services.${ndhSystemd.mkUnitName "authorized-keys-check"} = {
-    description = "Verify expected system authorized key is installed before sshd (@codebase)";
-    requiredBy = [ "sshd.service" ];
-    before = [ "sshd.service" ];
-    requires = lib.optionals hasSshKeysEnrichmentService [
+    description = "Verify expected system authorized key is installed (informational, does not gate sshd) (@codebase)";
+    # WantedBy (not RequiredBy) + no `before = sshd.service`: this is a
+    # post-flight assertion on the managed authorized_keys pipeline, not a
+    # prerequisite for sshd to come up.  If the operator's key is missing
+    # or mismatched, root key-based emergency SSH must still work so the
+    # operator can diagnose the enrichment / extraction failure — blocking
+    # sshd here turned a soft misconfiguration into a hard no-login outage.
+    wantedBy = [ "multi-user.target" ];
+    wants = lib.optionals hasSshKeysEnrichmentService [
       sshKeysEnrichmentServiceName
     ];
-    after = lib.optionals hasSshKeysEnrichmentService [
+    after = [ "sshd.service" ]
+    ++ lib.optionals hasSshKeysEnrichmentService [
       sshKeysEnrichmentServiceName
     ];
     path = with pkgs; [
