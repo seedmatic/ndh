@@ -20,6 +20,7 @@
     ./dnsmasq.nix
     ./headscale.nix
     ./headscale-daemon.nix
+    ./ddns.nix
     ./bird-daemon.nix
     ./lan-dns-resolver.nix
     ./nfs-autofs.nix

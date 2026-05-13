@@ -19,6 +19,14 @@ in
     # invariant in modules/darwin/headscale-daemon.nix).
     services.headscaleBootstrap.role = "primary";
 
+    # Bioskop is the authoritative Duck DNS updater for the WAN
+    # anchor recorded in catalog.netplan.wan.ddnsHostname.  nikopol
+    # (a roaming laptop) does not attempt to track the home IP.
+    services.ddnsClient = {
+      enable = true;
+      sopsEncryptedTokenFile = ../../.secrets;
+    };
+
     # Two-phase SOPS age key provisioning on Darwin:
     # phase 2 (enforce): key must already exist.
     ndh.sopsAgeKeyBootstrap = {
