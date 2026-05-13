@@ -53,9 +53,21 @@ main() {
       chown @userName@ "$activation_log_session_file" 2>/dev/null || true
     fi
 
+    # Use the conventional systemd-logind per-user runtime dir.  If it's
+    # not present (pre-login activation), fall back to a dedicated
+    # user-owned dir under the user's home.  We never inherit the
+    # system-wide env var because a root-set value could leak a
+    # root-owned XDG_RUNTIME_DIR into the child.
+    local xdg_runtime_dir
+    xdg_runtime_dir="/run/user/$(id -u @userName@)"
+    if [ ! -d "$xdg_runtime_dir" ]; then
+      xdg_runtime_dir="@userHome@/.xdg"
+      install -d -m 0700 -o @userName@ -g @userName@ "$xdg_runtime_dir"
+    fi
+
     sudo -u @userName@ \
       HOME="@userHome@" \
-      XDG_RUNTIME_DIR="@userHome@/.xdg" \
+      XDG_RUNTIME_DIR="$xdg_runtime_dir" \
       ACTIVATION_LOG_FILE="$activation_log_file" \
       ACTIVATION_LOG_SESSION_FILE="$activation_log_session_file" \
       ACTIVATION_LOG_SESSION_ID="$activation_session_id" \

@@ -318,9 +318,17 @@ in
 
       inherit systemPackages;
 
-      variables = {
-        XDG_RUNTIME_DIR = "${userHome}/.xdg";
-      };
+      # Deliberately *not* setting XDG_RUNTIME_DIR system-wide:
+      # systemd-logind creates `/run/user/$UID` per-user-session and PAM
+      # exports XDG_RUNTIME_DIR for interactive sessions.  A prior
+      # override to `${userHome}/.xdg` caused any root-run consumer (an
+      # activation script, a system systemd unit inheriting the global
+      # env) that touched the path to auto-create it with root
+      # ownership, which then broke `home-manager-<user>.service`'s
+      # per-user activation.  Callers that genuinely need a specific
+      # XDG_RUNTIME_DIR (e.g. the home-manager post-activation hook at
+      # modules/.common.d/shell.d/post-activation.sh) set it explicitly
+      # in their own environment.
 
       # list of acceptable shells in /etc/shells
       shells = with pkgs; [
