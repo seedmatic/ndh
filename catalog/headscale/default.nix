@@ -14,7 +14,21 @@
 # packaging on bioskop).  Tag advertising on clients is already wired
 # through this module; a re-register picks up the `operator` / `service`
 # names.
+let
+  # The port the LaunchAgent binds.  41841 sits next to Tailscale's
+  # own IANA-assigned 41641 (UDP WireGuard), making the port choice
+  # self-documenting for anyone who recognises the Tailscale
+  # numbering neighbourhood; unassigned by any well-known protocol,
+  # so conflicts are unlikely.  Mirrored into /etc/services by the
+  # Darwin headscale module so `lsof -iTCP -sTCP:LISTEN | grep 41841`
+  # renders "headscale-bootstrap" rather than an anonymous port
+  # number.
+  listenPort = 41841;
+  serviceName = "headscale-bootstrap";
+in
 {
+  inherit listenPort serviceName;
+
   # File path — callers dereference to a store path when they need to
   # copy it, or interpolate as a path when substituting into scripts.
   aclPolicyFile = ./acl.hujson;
@@ -46,12 +60,17 @@
   # can cross-check the membership against the catalog's `user.name`.
   tagOwnerGroup = "group:ndh";
 
-  # Per-host server URL.  Where each client points its `--login-server`.
-  # Today both Darwin hosts read this via `hostProfile.headscaleServerUrl`
-  # in their host profile; wiring them through the catalog is a
-  # follow-up cleanup.
+  # Where each client points its `--login-server`.  The server side
+  # runs as a user LaunchAgent on each Darwin host (bootstrap phase,
+  # before the rke2 cluster exists); mDNS gives a stable name so the
+  # URL doesn't chase DHCP-assigned LAN IPs.
+  #
+  # Both Darwin hosts point at their LOCAL headscale — each laptop
+  # maintains its own small tailnet during bootstrap.  Once rke2 is
+  # up and a central headscale runs there, this collapses to a single
+  # URL.
   serverUrls = {
-    bioskop = "http://192.168.5.10:8080";
-    nikopol = "http://192.168.1.193:8080";
+    bioskop = "http://bioskop.local:${toString listenPort}";
+    nikopol = "http://nikopol.local:${toString listenPort}";
   };
 }

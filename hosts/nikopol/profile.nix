@@ -8,7 +8,12 @@
   imports = [
     (import ../host-common.nix {
       inherit hostProfile darwinProfile;
-      headscaleServerUrl = "http://192.168.1.193:8080";
+      # URL tracks catalog.headscale.serverUrls.nikopol.  Points at
+      # nikopol's own LaunchAgent (each laptop maintains its own
+      # bootstrap tailnet until a central rke2-hosted instance takes
+      # over).  mDNS so DHCP-assigned LAN IPs don't invalidate it.
+      # Port 41841 documented at catalog/headscale/default.nix.
+      headscaleServerUrl = "http://nikopol.local:41841";
     })
   ];
   config = {

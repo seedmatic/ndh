@@ -7,7 +7,12 @@
   imports = [
     (import ../host-common.nix {
       inherit hostProfile darwinProfile;
-      headscaleServerUrl = "http://192.168.5.10:8080";
+      # URL tracks catalog.headscale.serverUrls.bioskop.  Points at the
+      # local LaunchAgent so bootstrap doesn't depend on a not-yet-
+      # existing rke2 cluster.  Resolves via mDNS so DHCP-assigned
+      # LAN IPs don't invalidate it.  Port 41841 documented at
+      # catalog/headscale/default.nix.
+      headscaleServerUrl = "http://bioskop.local:41841";
     })
     # Teleport removed - using Headscale for internal network
   ];
