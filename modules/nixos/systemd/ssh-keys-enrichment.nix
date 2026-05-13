@@ -221,11 +221,21 @@ in
         # User-scope pass: populate sshPaths.secretsKeysDir for HM consumers.
         # Skipped on bringup (profile.names = [ "bringup" ]) — no HM user
         # consumer and catalog.user.name need not exist as an OS account.
+        #
+        # Deliberately NOT passing sshPaths.systemKeysDir as the 4th arg
+        # (systemPrivateOutputDir).  A previous revision did, which made
+        # the user pass wipe + re-populate the system-owned tree as a
+        # side effect; the user pass's full-yaml input included keys the
+        # system pass had already extracted, so the user pass clobbered
+        # the system dir's cert files and left the system tree with only
+        # privates + cross-tree cert symlinks pointing into the user
+        # home.  Omitting the 4th arg keeps the user pass in its own
+        # lane: it only writes sshPaths.secretsKeysDir and never touches
+        # sshPaths.systemKeysDir.
         ${pkgs.bash}/bin/bash ${sshKeysEnrichmentTools}/bin/ssh-extract-keys \
           "${generatedKeysYamlPath}" \
           "${config.sshPaths.secretsKeysDir}" \
-          "${profileOwnerName}" \
-          "${config.sshPaths.systemKeysDir}"
+          "${profileOwnerName}"
       ''}
 
       # 4. Build the aggregate TrustedUserCAKeys file in place — every
