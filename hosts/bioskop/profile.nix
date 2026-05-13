@@ -24,5 +24,11 @@
     nix.settings.trusted-users = [
       "builder"
     ];
+
+    # Run the bootstrap headscale daemon as a user LaunchAgent.  See
+    # modules/darwin/headscale-daemon.nix for the full story; this
+    # flag flips the control-plane on, sourced from
+    # catalog/headscale/ for URL + port + policy.
+    services.headscaleBootstrap.enable = true;
   };
 }

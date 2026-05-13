@@ -43,5 +43,11 @@
         "nxmatic"
       ];
     };
+
+    # Run the bootstrap headscale daemon as a user LaunchAgent (see
+    # modules/darwin/headscale-daemon.nix).  nikopol runs its own
+    # bootstrap control-plane independently of bioskop during this
+    # phase; a central rke2-hosted instance will take over later.
+    services.headscaleBootstrap.enable = true;
   };
 }

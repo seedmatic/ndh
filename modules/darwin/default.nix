@@ -19,6 +19,7 @@
     ./disable-unwanted-agents.nix
     ./dnsmasq.nix
     ./headscale.nix
+    ./headscale-daemon.nix
     ./bird-daemon.nix
     ./lan-dns-resolver.nix
     ./nfs-autofs.nix
