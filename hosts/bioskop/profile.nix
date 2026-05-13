@@ -25,10 +25,11 @@
       "builder"
     ];
 
-    # Bioskop is the current primary owner of the headscale alias.
-    # Runs the daemon + the mdns-publish agent so clients resolve
-    # catalog.headscale.aliasUrl to this host.  See
-    # modules/darwin/headscale-daemon.nix for the role semantics.
-    services.headscaleBootstrap.role = "primary";
+    # Headscale role assignments (primary/standby) are Darwin-specific
+    # today — the Darwin LaunchAgent is the bootstrap control-plane.
+    # They live in hosts/bioskop/darwin.nix, not here, so the NixOS
+    # VM hosted on bioskop does not inherit the role and run a second
+    # daemon (the exactly-one-primary invariant requires the VM to
+    # stay at role = "none" for now).
   };
 }

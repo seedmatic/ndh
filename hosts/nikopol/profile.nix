@@ -44,10 +44,8 @@
       ];
     };
 
-    # Nikopol is the headscale standby: CLI + config materialised so
-    # the host is promotion-ready, but neither the daemon nor the
-    # mdns-publish agent run until the operator flips this to
-    # "primary" (and simultaneously demotes bioskop).
-    services.headscaleBootstrap.role = "standby";
+    # Headscale role assignments are Darwin-specific — they live in
+    # hosts/nikopol/darwin.nix so the NixOS VM does not inherit the
+    # role and run a second daemon.
   };
 }

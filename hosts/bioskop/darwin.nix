@@ -13,6 +13,12 @@ let
 in
 {
   config = {
+    # Bioskop is the current primary owner of the headscale alias.
+    # Darwin-scoped so the NixOS VM hosted here does not inherit the
+    # role and run a second daemon (see the exactly-one-primary
+    # invariant in modules/darwin/headscale-daemon.nix).
+    services.headscaleBootstrap.role = "primary";
+
     # Two-phase SOPS age key provisioning on Darwin:
     # phase 2 (enforce): key must already exist.
     ndh.sopsAgeKeyBootstrap = {

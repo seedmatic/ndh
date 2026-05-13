@@ -141,6 +141,7 @@ let
     ./cachix-watch-store.nix
     ./container-host.nix
     ./headscale.nix
+    ./headscale-daemon.nix
     ./nix-ld.nix
     ./resolved-lan.nix
     ./dnsmasq.nix

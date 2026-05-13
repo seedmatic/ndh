@@ -2,6 +2,13 @@
 { lib, ... }:
 {
   config = {
+    # Nikopol is the headscale standby: CLI + config materialised so
+    # the host is promotion-ready, but neither the daemon nor the
+    # mdns-publish agent run until the operator flips this to
+    # "primary" (and simultaneously demotes bioskop).  Darwin-scoped
+    # so the NixOS VM does not inherit the role.
+    services.headscaleBootstrap.role = "standby";
+
     # Keep Darwin user home aligned with vm-mounted persistent volume.
     profile.user.home = lib.mkForce (builtins.toPath "/Volumes/user-home");
 
