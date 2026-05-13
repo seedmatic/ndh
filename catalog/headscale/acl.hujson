@@ -1,0 +1,98 @@
+// Headscale ACL policy — declarative source of truth for tailnet access
+// and Tailscale SSH edges.
+//
+// Apply with:
+//
+//     headscale policy set -f /path/to/this/file
+//
+// The file is in HuJSON: JSON + comments + trailing commas.  Headscale
+// parses it directly.
+//
+// Two orthogonal tag axes — a node normally advertises one from each:
+//
+//   Role axis (who drives whom):
+//     tag:operator  — nodes driven by a human.  Laptops/workstations.
+//                     Originate SSH; reach any other node; can only
+//                     be reached from other operators.
+//     tag:service   — nodes driven by an operator.  VMs, containers,
+//                     cluster nodes.  Accept SSH; do not originate
+//                     it; reach each other for intra-fleet traffic.
+//
+//   Kind axis (what the node is):
+//     tag:darwin    — macOS hosts (bioskop, nikopol)
+//     tag:nixos     — NixOS guest VMs (bioskop-nixos, nikopol-nixos)
+//     tag:incus     — Incus containers on a NixOS host
+//     tag:rke2      — RKE2 cluster members
+//
+// Broad policy rules key off the role axis (compact, grep-able).
+// Kind-specific rules (e.g. "only rke2 nodes reach the cluster API
+// port") can be layered on top once such a rule is actually needed.
+//
+// All tags are owned by `group:ndh`; only that group's members may
+// register a node that claims any of these tags.  Advertising happens
+// client-side through `networking.headscale.tags` (Darwin) or
+// `tailscale.tags` (NixOS); headscale validates on accept.
+{
+  "groups": {
+    "group:ndh": [
+      "nxmatic",
+    ],
+  },
+
+  "tagOwners": {
+    "tag:operator": ["group:ndh"],
+    "tag:service":  ["group:ndh"],
+    "tag:darwin":   ["group:ndh"],
+    "tag:nixos":    ["group:ndh"],
+    "tag:incus":    ["group:ndh"],
+    "tag:rke2":     ["group:ndh"],
+  },
+
+  // Tailnet reachability authored on the role axis.
+  //
+  //   operator → operator | service    any port
+  //   service  → service               any port
+  //   service  → operator              implicit deny
+  "acls": [
+    {
+      "action": "accept",
+      "src":    ["tag:operator"],
+      "dst":    ["tag:operator:*", "tag:service:*"],
+    },
+    {
+      "action": "accept",
+      "src":    ["tag:service"],
+      "dst":    ["tag:service:*"],
+    },
+  ],
+
+  // Tailscale SSH.  Two rules:
+  //
+  //   1. Operators SSH into any node — interactive + scripted.
+  //      `check` requires fresh device-side authentication every
+  //      12 h so a lost or stolen laptop loses tailnet SSH access
+  //      within a day even before the node itself is revoked.
+  //
+  //   2. Services SSH each other freely, without device check.
+  //      Services are headless and can't answer a check prompt;
+  //      their identities are verified by the tailnet itself (node
+  //      key), so auto-accept is safe.  Covers nix-store copies
+  //      between VMs, rke2 node-to-node operations, etc.
+  //
+  // Services never SSH operators (no rule → implicit deny).
+  "ssh": [
+    {
+      "action":      "check",
+      "src":         ["tag:operator"],
+      "dst":         ["tag:operator", "tag:service"],
+      "users":       ["nxmatic", "root"],
+      "checkPeriod": "12h",
+    },
+    {
+      "action": "accept",
+      "src":    ["tag:service"],
+      "dst":    ["tag:service"],
+      "users":  ["nxmatic", "root"],
+    },
+  ],
+}

@@ -35,10 +35,17 @@ let
         {
           zfsOverlays.enable = zfsOverlays;
         };
+      # Tag vocabulary: NixOS guest VMs advertise role=service (driven
+      # by an operator) and kind=nixos.  Strings sourced from the
+      # catalog so they stay synchronized with
+      # catalog/headscale/acl.hujson.
       nixosTailscaleTagModule =
         { ... }:
         {
-          tailscale.tags = [ "nixos" ];
+          tailscale.tags = [
+            catalog.headscale.tags.role.service
+            catalog.headscale.tags.kind.nixos
+          ];
         };
       preModules = [
         profileModule
@@ -115,10 +122,15 @@ let
             {
               zfsOverlays.enable = false;
             };
+          # Same tag vocabulary as the top-level module — see the
+          # explanatory comment above.
           nixosTailscaleTagModule =
             { ... }:
             {
-              tailscale.tags = [ "nixos" ];
+              tailscale.tags = [
+                catalog.headscale.tags.role.service
+                catalog.headscale.tags.kind.nixos
+              ];
             };
         in
         mkModulesFor {

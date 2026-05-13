@@ -2,6 +2,10 @@
 {
   caches = cacheTrust.caches;
 
+  # Headscale policy + tag vocabulary + per-host server URLs.  See
+  # catalog/headscale/default.nix.
+  headscale = import ./headscale;
+
   # v2 has a single OS user; the catalog holds it directly without the
   # former per-profile wrapper.
   user = {

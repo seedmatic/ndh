@@ -7,10 +7,20 @@
 {
   lib,
   options,
+  ndh ? null,
   ...
 }:
 let
   hasHeadscaleOption = options ? networking && options.networking ? headscale;
+  # Tag vocabulary is shipped in the catalog so every call site names
+  # the same strings.  Darwin hosts advertise both role (operator) and
+  # kind (darwin) tags — see catalog/headscale/acl.hujson.
+  headscaleCatalog = lib.attrByPath [ "context" "catalog" "headscale" ] null ndh;
+  headscaleTags =
+    if headscaleCatalog != null then
+      [ headscaleCatalog.tags.role.operator headscaleCatalog.tags.kind.darwin ]
+    else
+      [ ];
   homeManagerExplicitlyDisabled =
     hostProfile ? enableHomeManager
     && hostProfile.enableHomeManager != null
@@ -50,6 +60,7 @@ in
       enable = true;
       serverUrl = headscaleServerUrl;
       enableSSH = headscaleEnableSSH;
+      tags = lib.mkDefault headscaleTags;
     };
   });
 }

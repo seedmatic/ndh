@@ -65,9 +65,12 @@ in
                   hostName = containerRegistrySystem.config.limaHost.hostName;
                   guestName = containerName;
                 };
+                # Role = service (driven by an operator); kind = incus
+                # (runs inside the NixOS guest's Incus runtime).
+                # Vocabulary defined at catalog/headscale/acl.hujson.
                 tailscale.tags = [
-                  "nixos"
-                  "container"
+                  "service"
+                  "incus"
                 ];
                 networking = {
                   mammoth-skate.enable = true;
