@@ -188,6 +188,19 @@ main() {
 			fi
 		done
 	done
+
+	# Final ownership reconciliation: writes during the split were done
+	# as root (the calling systemd unit runs with User=root), so anything
+	# landing under the user-scoped output dir is still root-owned.
+	# Recursively chown — `systemd.tmpfiles`'s `Z` rule handles this on
+	# subsequent activations, but we do it inline so sshd / home-manager
+	# consumers see user-owned artifacts on the same boot the keys were
+	# extracted.  Always safe: system-private stays root-owned because
+	# it's a different dir we never touch here.
+	if [[ "$(id -u)" -eq 0 && -n "$targetUser" && -e "$userOutputDir" ]]; then
+		targetGroup="$(id -gn "$targetUser" 2>/dev/null || echo "$targetUser")"
+		chown -R "$targetUser:$targetGroup" "$userOutputDir" 2>/dev/null || true
+	fi
 }
 
 # shellcheck disable=SC1091

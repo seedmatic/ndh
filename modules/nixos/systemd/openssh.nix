@@ -224,11 +224,14 @@ in
   };
 
   # ssh non-interactive session finds the setuid sudo via /bin or /usr/bin
+  # Directory ownership rules for the user-scope ssh secrets tree
+  # (secretsRootDir / secretsKeysDir / authoritySecretsDir) live in
+  # modules/nixos/systemd/hm-state-dirs.nix, which is the canonical
+  # source of truth for `~/.local/**` layout and uses recursive `Z`
+  # rules so the tree self-heals after the root-run enrichment service
+  # writes fresh files.
   systemd.tmpfiles.rules = [
-    "z ${config.sshPaths.secretsRootDir} 0700 ${config.profile.user.name} ${config.profile.user.name} - -"
-    "z ${config.sshPaths.secretsKeysDir} 0700 ${config.profile.user.name} ${config.profile.user.name} - -"
     "d /run/secrets/nix-darwin-home 0755 root root - -"
-    "z ${config.sshPaths.authoritySecretsDir} 0755 ${config.profile.user.name} ${config.profile.user.name} - -"
     "L+ /bin/sudo - - - - /run/wrappers/bin/sudo"
     "L+ /usr/bin/sudo - - - - /run/wrappers/bin/sudo"
     "L+ /bin/bash - - - - /run/current-system/sw/bin/bash"
