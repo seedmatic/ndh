@@ -25,10 +25,10 @@
       "builder"
     ];
 
-    # Run the bootstrap headscale daemon as a user LaunchAgent.  See
-    # modules/darwin/headscale-daemon.nix for the full story; this
-    # flag flips the control-plane on, sourced from
-    # catalog/headscale/ for URL + port + policy.
-    services.headscaleBootstrap.enable = true;
+    # Bioskop is the current primary owner of the headscale alias.
+    # Runs the daemon + the mdns-publish agent so clients resolve
+    # catalog.headscale.aliasUrl to this host.  See
+    # modules/darwin/headscale-daemon.nix for the role semantics.
+    services.headscaleBootstrap.role = "primary";
   };
 }

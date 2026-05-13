@@ -31,14 +31,21 @@ let
   catalog = ndh.context.catalog;
   headscaleCatalog = catalog.headscale;
   hostName = config.networking.hostName or "localhost";
-  serverUrl =
-    if builtins.hasAttr hostName headscaleCatalog.serverUrls then
-      headscaleCatalog.serverUrls.${hostName}
-    else
-      throw "services.headscaleBootstrap enabled on host ${hostName} but catalog.headscale.serverUrls has no entry for it";
+
+  # Clients always resolve `aliasName` via mDNS to the host currently
+  # holding role = "primary"; the daemon itself is told to issue
+  # certificates and registration URLs under that same alias, so a
+  # standby→primary flip on a different host is transparent at the
+  # tailnet level (same server_url, new backing IP).
+  serverUrl = headscaleCatalog.aliasUrl;
 
   stateDir = "${config.users.users.${config.system.primaryUser}.home}/Library/Application Support/Headscale";
   configFile = "${stateDir}/config.yaml";
+
+  # Resolve the mdns-publish binary through the current Darwin pkgs
+  # set.  Exposed at flake level as `packages.<system>.ndh-mdns-publish`
+  # (see packages/ndh-mdns-publish/).
+  mdnsPublish = pkgs.callPackage ../../packages/ndh-mdns-publish { };
 
   # Headscale config.yaml.  Values substituted in from the catalog.
   # Everything pinned to the state dir so re-activation doesn't relocate
@@ -132,50 +139,101 @@ let
 in
 {
   options.services.headscaleBootstrap = {
-    enable = mkOption {
-      type = types.bool;
-      default = false;
+    role = mkOption {
+      type = types.enum [ "primary" "standby" "none" ];
+      default = "none";
       description = ''
-        Run a headscale server as a user LaunchAgent on this Darwin
-        host.  Intended for the bootstrap phase, before a production
-        instance takes over from inside the rke2 cluster.  URL +
-        port are sourced from catalog.headscale.
+        This host's role in the headscale bootstrap topology.
+
+          primary — run the daemon AND publish the fleet-scoped mDNS
+                    alias (catalog.headscale.aliasName) so clients
+                    resolve aliasUrl to this host.  Exactly one host
+                    should be primary at a time.
+          standby — install the headscale CLI + config but do NOT run
+                    the daemon and do NOT publish the alias.  Intended
+                    for a host that takes over by manually flipping
+                    its role to "primary" (and simultaneously
+                    demoting the previous primary) during an outage.
+                    The config + state dir are ready so promotion
+                    needs no rebuild.
+          none    — do nothing.  Host neither runs the daemon nor
+                    advertises the alias.
+
+        Flip roles by editing host profile, committing, and rolling
+        out `darwin-rebuild switch` on both affected hosts.  Clients
+        pointed at aliasUrl continue without re-registration because
+        the mDNS alias follows ownership transparently.
       '';
     };
   };
 
-  config = mkIf cfg.enable {
-    # Install the CLI system-wide so the operator can run
-    # `headscale users create`, `headscale preauthkeys create`, etc.
-    # without fishing for the store path.
-    environment.systemPackages = [ pkgs.headscale ];
+  config = mkMerge [
+    # Everything except the running daemons — CLI, config, state dir
+    # setup — applies to both `primary` and `standby` so the latter is
+    # promotion-ready with no further rebuild.
+    (mkIf (cfg.role != "none") {
+      # Install the CLI system-wide so the operator can run
+      # `headscale users create`, `headscale preauthkeys create`, etc.
+      # without fishing for the store path.  Available on both primary
+      # and standby so a promoted standby can issue preauth keys
+      # against the migrated DB immediately.
+      environment.systemPackages = [
+        pkgs.headscale
+        mdnsPublish
+      ];
 
-    # Register the port in /etc/services so `lsof -iTCP -sTCP:LISTEN`,
-    # netstat, and similar tools render a descriptive name.  macOS
-    # ships /etc/services as a real file (not nix-darwin managed), so
-    # we append via activation rather than environment.etc.
-    system.activationScripts.postActivation.text = lib.mkAfter ''
-      if ! grep -qE '^${headscaleCatalog.serviceName}\s+${toString headscaleCatalog.listenPort}/tcp' /etc/services 2>/dev/null; then
-        printf '%s\n' '${headscaleCatalog.serviceName} ${toString headscaleCatalog.listenPort}/tcp # Headscale bootstrap control-plane (modules/darwin/headscale-daemon.nix)' >> /etc/services
-      fi
-    '';
+      # Register the port in /etc/services so `lsof -iTCP -sTCP:LISTEN`,
+      # netstat, and similar tools render a descriptive name.  macOS
+      # ships /etc/services as a real file (not nix-darwin managed), so
+      # we append via activation rather than environment.etc.
+      system.activationScripts.postActivation.text = lib.mkAfter ''
+        if ! grep -qE '^${headscaleCatalog.serviceName}\s+${toString headscaleCatalog.listenPort}/tcp' /etc/services 2>/dev/null; then
+          printf '%s\n' '${headscaleCatalog.serviceName} ${toString headscaleCatalog.listenPort}/tcp # Headscale bootstrap control-plane (modules/darwin/headscale-daemon.nix)' >> /etc/services
+        fi
+      '';
+    })
 
-    launchd.user.agents.headscale-bootstrap = {
-      command = "${headscaleLauncher}";
-      serviceConfig = {
-        Label = "io.nxmatic.nix-darwin-home.headscale-bootstrap";
-        # Restart on crash.  Headscale is long-lived; transient
-        # failures (port binding, DB lock) resolve themselves.
-        KeepAlive = true;
-        RunAtLoad = true;
-        # Logs: stdout/stderr both go to the user's Logs folder so
-        # `tail -f ~/Library/Logs/headscale-bootstrap.log` works.
-        StandardOutPath = "${config.users.users.${config.system.primaryUser}.home}/Library/Logs/headscale-bootstrap.log";
-        StandardErrorPath = "${config.users.users.${config.system.primaryUser}.home}/Library/Logs/headscale-bootstrap.err.log";
-        # launchd policy hints.
-        ProcessType = "Background";
-        LowPriorityIO = true;
+    # Primary-only: the two LaunchAgents that together own the alias
+    # identity (daemon + mdns publisher).  Both must run on exactly
+    # one host at a time; the `role = "primary"` gate enforces this
+    # per-host, and the operator is responsible for not flipping two
+    # hosts to primary simultaneously.
+    (mkIf (cfg.role == "primary") {
+      launchd.user.agents.headscale-bootstrap = {
+        command = "${headscaleLauncher}";
+        serviceConfig = {
+          Label = "io.nxmatic.nix-darwin-home.headscale-bootstrap";
+          # Restart on crash.  Headscale is long-lived; transient
+          # failures (port binding, DB lock) resolve themselves.
+          KeepAlive = true;
+          RunAtLoad = true;
+          # Logs: stdout/stderr both go to the user's Logs folder so
+          # `tail -f ~/Library/Logs/headscale-bootstrap.log` works.
+          StandardOutPath = "${config.users.users.${config.system.primaryUser}.home}/Library/Logs/headscale-bootstrap.log";
+          StandardErrorPath = "${config.users.users.${config.system.primaryUser}.home}/Library/Logs/headscale-bootstrap.err.log";
+          # launchd policy hints.
+          ProcessType = "Background";
+          LowPriorityIO = true;
+        };
       };
-    };
-  };
+
+      # mDNS alias: publishes `<aliasName> A <this-host-IP>` for the
+      # lifetime of the agent.  On SIGTERM the publisher sends a
+      # goodbye packet so clients drop the record; launchd will
+      # restart on crash (KeepAlive) but briefly leave the alias
+      # unresolved during the gap.  Clients retry at their own pace.
+      launchd.user.agents.headscale-mdns-publish = {
+        command = "${lib.getExe mdnsPublish} --name=${headscaleCatalog.serviceName} --host=${lib.escapeShellArg (lib.removeSuffix ".local" headscaleCatalog.aliasName)} --port=${toString headscaleCatalog.listenPort}";
+        serviceConfig = {
+          Label = "io.nxmatic.nix-darwin-home.headscale-mdns-publish";
+          KeepAlive = true;
+          RunAtLoad = true;
+          StandardOutPath = "${config.users.users.${config.system.primaryUser}.home}/Library/Logs/headscale-mdns-publish.log";
+          StandardErrorPath = "${config.users.users.${config.system.primaryUser}.home}/Library/Logs/headscale-mdns-publish.err.log";
+          ProcessType = "Background";
+          LowPriorityIO = true;
+        };
+      };
+    })
+  ];
 }

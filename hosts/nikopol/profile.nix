@@ -44,10 +44,10 @@
       ];
     };
 
-    # Run the bootstrap headscale daemon as a user LaunchAgent (see
-    # modules/darwin/headscale-daemon.nix).  nikopol runs its own
-    # bootstrap control-plane independently of bioskop during this
-    # phase; a central rke2-hosted instance will take over later.
-    services.headscaleBootstrap.enable = true;
+    # Nikopol is the headscale standby: CLI + config materialised so
+    # the host is promotion-ready, but neither the daemon nor the
+    # mdns-publish agent run until the operator flips this to
+    # "primary" (and simultaneously demotes bioskop).
+    services.headscaleBootstrap.role = "standby";
   };
 }

@@ -25,9 +25,10 @@ let
   # number.
   listenPort = 41841;
   serviceName = "headscale-bootstrap";
+  aliasName = "headscale.mammoth-skate.local";
 in
 {
-  inherit listenPort serviceName;
+  inherit listenPort serviceName aliasName;
 
   # File path — callers dereference to a store path when they need to
   # copy it, or interpolate as a path when substituting into scripts.
@@ -60,17 +61,23 @@ in
   # can cross-check the membership against the catalog's `user.name`.
   tagOwnerGroup = "group:ndh";
 
-  # Where each client points its `--login-server`.  The server side
-  # runs as a user LaunchAgent on each Darwin host (bootstrap phase,
-  # before the rke2 cluster exists); mDNS gives a stable name so the
-  # URL doesn't chase DHCP-assigned LAN IPs.
-  #
-  # Both Darwin hosts point at their LOCAL headscale — each laptop
-  # maintains its own small tailnet during bootstrap.  Once rke2 is
-  # up and a central headscale runs there, this collapses to a single
-  # URL.
+  # Per-host physical URL — falls back to each host's local mDNS name
+  # when the `aliasUrl` below is unreachable.  Currently unused by
+  # clients (they read `aliasUrl`) but retained for diagnostics and
+  # for the rare case where an operator wants to point at a specific
+  # physical instance instead of the alias.
   serverUrls = {
     bioskop = "http://bioskop.local:${toString listenPort}";
     nikopol = "http://nikopol.local:${toString listenPort}";
   };
+
+  # Fleet-scoped alias that every client's `--login-server` points at.
+  # The host currently holding `services.headscaleBootstrap.role =
+  # "primary"` publishes `aliasName` via mDNS (see
+  # packages/ndh-mdns-publish) so resolution follows ownership
+  # transparently: when the operator promotes nikopol by flipping
+  # roles, clients stay on the same URL and simply hit a different
+  # host's IP.  Exactly one host should be `primary` at any time.
+  # `aliasName` itself is inherited from the `let` block above.
+  aliasUrl = "http://${aliasName}:${toString listenPort}";
 }
