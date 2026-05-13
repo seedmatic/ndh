@@ -42,17 +42,25 @@ let
 
   host = if wan != null then splitHost wan.ddnsHostname else { subDomain = ""; domainName = ""; };
 
-  # sops secret key follows the .secrets schema:
-  # `<provider>.<subdomain>.token` so a future second subdomain lives
-  # alongside without colliding (e.g. `duckdns.office.token`).
-  tokenSecretName = "duckdns.${host.subDomain}.token";
+  # Duck DNS tokens are account-scoped, not per-subdomain: one token
+  # authorises updates for every subdomain under a DuckDNS account.
+  # `.secrets` mirrors that with a flat `duckdns.token` entry; if we
+  # ever add a second provider (Cloudflare, Hetzner, …) it would sit
+  # at the same level as a sibling `<provider>.token`.
+  tokenSecretName = "duckdns.token";
   tokenSecretPath = "/run/secrets/nix-darwin-home/${tokenSecretName}";
 
   # godns config is JSON; we materialise a wrapper at runtime that
   # substitutes the token from the sops-managed file into a generated
   # config.json under the state dir.  Keeping the token out of the
   # Nix store is the whole point of the sops pipeline.
-  stateDir = "${config.users.users.${config.system.primaryUser}.home}/Library/Application Support/godns";
+  #
+  # XDG config directory (`~/.config/godns/`) rather than the
+  # macOS-native `~/Library/Application Support/godns/`: godns's
+  # config loader splits on whitespace before picking the file
+  # extension, and the space in `Application Support` trips it into
+  # rejecting the .json file as "invalid file extension".
+  stateDir = "${config.users.users.${config.system.primaryUser}.home}/.config/godns";
 
   # Static part of the config — provider, domains, intervals.  The
   # dynamic part (login_token) is injected by the launcher from the
@@ -86,6 +94,17 @@ let
     interval = cfg.interval;
     resolver = "1.1.1.1";
     user_agent = "godns/nix-darwin-home";
+    # Web panel bound to loopback only — reachable via
+    # `ssh -L 9000:127.0.0.1:9000 bioskop.local` then http://localhost:9000
+    # or directly from bioskop itself.  Credentials are `admin:admin`
+    # because the panel is not exposed beyond loopback; harden with a
+    # sops-backed password if it ever binds a routable interface.
+    web_panel = {
+      enabled = true;
+      addr = "127.0.0.1:9000";
+      username = "admin";
+      password = "admin";
+    };
   };
 
   configTemplate = pkgs.writeText "godns-config-template.json" configStaticJson;
@@ -110,8 +129,7 @@ let
 
     # Substitute the token into a per-activation config file.  Written
     # with restrictive permissions since it now contains the secret in
-    # plaintext; sits under ~/Library/Application Support so it is not
-    # world-readable even if the mode slipped.
+    # plaintext; sits under the user's private state dir.
     token="$(tr -d '[:space:]' < "$TOKEN_FILE")"
     ${pkgs.gnused}/bin/sed -e "s|@TOKEN@|$token|g" "$CONFIG_TMPL" > "$CONFIG_FILE"
     chmod 0600 "$CONFIG_FILE"
@@ -170,9 +188,8 @@ in
       sopsFile = cfg.sopsEncryptedTokenFile;
       # Key path follows the .secrets YAML tree:
       #   duckdns:
-      #     <subDomain>:
-      #       token: ENC[...]
-      key = "duckdns/${host.subDomain}/token";
+      #     token: ENC[...]
+      key = "duckdns/token";
       path = tokenSecretPath;
       # godns runs under the LaunchAgent's user context (gui/<uid>), not
       # root, so sops-nix's default owner=root / mode=0400 would make
