@@ -1,15 +1,23 @@
-# Dynamic DNS client on Darwin — pushes the current WAN IPv4 to the
-# provider hosting `catalog.netplan.wan.ddnsHostname` so clients
-# reaching the fleet from off-LAN can resolve a stable name (the ISP
-# gives us a dynamic public IP).
+# Dynamic DNS client on Darwin — pushes the current WAN IPv4 + IPv6
+# to the provider hosting `catalog.netplan.wan.ddnsHostname` so
+# clients reaching the fleet from off-LAN can resolve a stable name
+# (the ISP gives us a dynamic public IP).
+#
+# Two LaunchAgents run in parallel — one per stack — because godns's
+# `ip_type` accepts only `IPV4` or `IPV6`; there is no `dual` mode in
+# a single instance (see internal/utils/constants.go + pkg/lib/ip_helper.go
+# in the upstream source).  Each agent pushes its own record under the
+# same Duck DNS FQDN; Duck DNS's idempotent update endpoint keeps the
+# A and AAAA records independent.
 #
 # Only bioskop runs this today; nikopol is a laptop that roams and
 # has no authority over the home WAN IP.  The update interval is
 # gentle (15 min) because residential IPs on Bouygues change rarely;
 # operators can bump it per-host via `services.ddnsClient.interval`.
 #
-# The provider token is a sops secret.  If the secret is missing the
-# LaunchAgent stays inert rather than shouting into the void.
+# The provider token is a sops secret shared across both agents.  If
+# the secret is missing the LaunchAgents stay inert rather than
+# shouting into the void.
 {
   config,
   pkgs,
@@ -50,92 +58,120 @@ let
   tokenSecretName = "duckdns.token";
   tokenSecretPath = "/run/secrets/nix-darwin-home/${tokenSecretName}";
 
-  # godns config is JSON; we materialise a wrapper at runtime that
-  # substitutes the token from the sops-managed file into a generated
-  # config.json under the state dir.  Keeping the token out of the
-  # Nix store is the whole point of the sops pipeline.
-  #
   # XDG config directory (`~/.config/godns/`) rather than the
   # macOS-native `~/Library/Application Support/godns/`: godns's
   # config loader splits on whitespace before picking the file
   # extension, and the space in `Application Support` trips it into
   # rejecting the .json file as "invalid file extension".
-  stateDir = "${config.users.users.${config.system.primaryUser}.home}/.config/godns";
+  stateDirBase = "${config.users.users.${config.system.primaryUser}.home}/.config/godns";
 
-  # Static part of the config — provider, domains, intervals.  The
-  # dynamic part (login_token) is injected by the launcher from the
-  # sops secret at activation / service-start time.
-  #
-  # `ip_type = "dual"` tells godns to push both A and AAAA records so
-  # off-LAN access works from either stack.  Bouygues Bbox gives the
-  # LAN a real IPv6 /64 delegated prefix, so bioskop has a globally
-  # routable IPv6 address alongside its dynamic IPv4; both should
-  # track the DuckDNS FQDN.
-  configStaticJson = builtins.toJSON {
-    provider = "DuckDNS";
-    login_token = "@TOKEN@";
-    domains = [
-      {
-        domain_name = host.domainName;
-        sub_domains = [ host.subDomain ];
-      }
-    ];
-    ip_urls = [
-      "https://api4.ipify.org"
-      "https://ipecho.net/plain"
-      "https://ifconfig.me/ip"
-    ];
-    ipv6_urls = [
-      "https://api6.ipify.org"
-      "https://api-ipv6.ip.sb/ip"
-      "https://v6.ipinfo.io/ip"
-    ];
-    ip_type = "dual";
-    interval = cfg.interval;
-    resolver = "1.1.1.1";
-    user_agent = "godns/nix-darwin-home";
-    # Web panel bound to loopback only — reachable via
-    # `ssh -L 9000:127.0.0.1:9000 bioskop.local` then http://localhost:9000
-    # or directly from bioskop itself.  Credentials are `admin:admin`
-    # because the panel is not exposed beyond loopback; harden with a
-    # sops-backed password if it ever binds a routable interface.
-    web_panel = {
-      enabled = true;
-      addr = "127.0.0.1:9000";
-      username = "admin";
-      password = "admin";
+  # Per-stack agent factory.  Each invocation produces the pieces
+  # needed to register one LaunchAgent: a config template, a launcher
+  # script, and the launchd attrset.  Stacks differ only by `ipType`
+  # (`IPV4` vs `IPV6`) and web-panel bind port so the two instances
+  # don't collide on 9000.
+  mkDdnsAgent =
+    { ipType, webPanelPort }:
+    let
+      stackTag = lib.toLower ipType;
+      stateDir = "${stateDirBase}/${stackTag}";
+
+      configStaticJson = builtins.toJSON {
+        provider = "DuckDNS";
+        login_token = "@TOKEN@";
+        domains = [
+          {
+            domain_name = host.domainName;
+            sub_domains = [ host.subDomain ];
+          }
+        ];
+        ip_urls = [
+          "https://api4.ipify.org"
+          "https://ipecho.net/plain"
+          "https://ifconfig.me/ip"
+        ];
+        ipv6_urls = [
+          "https://api6.ipify.org"
+          "https://api-ipv6.ip.sb/ip"
+          "https://v6.ipinfo.io/ip"
+        ];
+        ip_type = ipType;
+        interval = cfg.interval;
+        resolver = "1.1.1.1";
+        user_agent = "godns/nix-darwin-home-${stackTag}";
+        # Web panel bound to loopback only — reachable via
+        # `ssh -L <port>:127.0.0.1:<port> bioskop.local` then
+        # http://localhost:<port> or directly from bioskop itself.
+        # Credentials are `admin:admin` because the panel is not
+        # exposed beyond loopback; harden with a sops-backed password
+        # if it ever binds a routable interface.
+        web_panel = {
+          enabled = true;
+          addr = "127.0.0.1:${toString webPanelPort}";
+          username = "admin";
+          password = "admin";
+        };
+      };
+
+      configTemplate = pkgs.writeText "godns-config-template-${stackTag}.json" configStaticJson;
+
+      launcher = pkgs.writeShellScript "godns-launcher-${stackTag}" ''
+        set -euo pipefail
+
+        STATE_DIR=${lib.escapeShellArg stateDir}
+        TOKEN_FILE=${lib.escapeShellArg tokenSecretPath}
+        CONFIG_FILE="$STATE_DIR/config.json"
+        CONFIG_TMPL=${configTemplate}
+
+        if [ ! -r "$TOKEN_FILE" ]; then
+          echo "[godns-${stackTag}] token secret not readable at $TOKEN_FILE — staying inactive" >&2
+          # Exit 0 so KeepAlive doesn't loop on a config bootstrap condition
+          # that only flips once after the operator places the sops secret.
+          exit 0
+        fi
+
+        mkdir -p "$STATE_DIR"
+        chmod 0700 "$STATE_DIR"
+
+        # Substitute the token into a per-activation config file.  Written
+        # with restrictive permissions since it now contains the secret in
+        # plaintext; sits under the user's private state dir.
+        token="$(tr -d '[:space:]' < "$TOKEN_FILE")"
+        ${pkgs.gnused}/bin/sed -e "s|@TOKEN@|$token|g" "$CONFIG_TMPL" > "$CONFIG_FILE"
+        chmod 0600 "$CONFIG_FILE"
+
+        exec ${lib.getExe pkgs.godns} -c "$CONFIG_FILE"
+      '';
+
+      agentName = "ddns-client-${stackTag}";
+    in
+    {
+      inherit agentName;
+      agent = {
+        command = "${launcher}";
+        serviceConfig = {
+          Label = "io.nxmatic.nix-darwin-home.${agentName}";
+          # godns is long-lived with its own interval; launchd wraps it
+          # with KeepAlive so a transient network failure restart is
+          # cheap.
+          KeepAlive = true;
+          RunAtLoad = true;
+          StandardOutPath = "${config.users.users.${config.system.primaryUser}.home}/Library/Logs/${agentName}.log";
+          StandardErrorPath = "${config.users.users.${config.system.primaryUser}.home}/Library/Logs/${agentName}.err.log";
+          ProcessType = "Background";
+          LowPriorityIO = true;
+        };
+      };
     };
+
+  ipv4Agent = mkDdnsAgent {
+    ipType = "IPV4";
+    webPanelPort = 9000;
   };
-
-  configTemplate = pkgs.writeText "godns-config-template.json" configStaticJson;
-
-  launcher = pkgs.writeShellScript "godns-launcher" ''
-    set -euo pipefail
-
-    STATE_DIR=${lib.escapeShellArg stateDir}
-    TOKEN_FILE=${lib.escapeShellArg tokenSecretPath}
-    CONFIG_FILE="$STATE_DIR/config.json"
-    CONFIG_TMPL=${configTemplate}
-
-    if [ ! -r "$TOKEN_FILE" ]; then
-      echo "[godns] token secret not readable at $TOKEN_FILE — staying inactive" >&2
-      # Exit 0 so KeepAlive doesn't loop on a config bootstrap condition
-      # that only flips once after the operator places the sops secret.
-      exit 0
-    fi
-
-    mkdir -p "$STATE_DIR"
-    chmod 0700 "$STATE_DIR"
-
-    # Substitute the token into a per-activation config file.  Written
-    # with restrictive permissions since it now contains the secret in
-    # plaintext; sits under the user's private state dir.
-    token="$(tr -d '[:space:]' < "$TOKEN_FILE")"
-    ${pkgs.gnused}/bin/sed -e "s|@TOKEN@|$token|g" "$CONFIG_TMPL" > "$CONFIG_FILE"
-    chmod 0600 "$CONFIG_FILE"
-
-    exec ${lib.getExe pkgs.godns} -c "$CONFIG_FILE"
-  '';
+  ipv6Agent = mkDdnsAgent {
+    ipType = "IPV6";
+    webPanelPort = 9001;
+  };
 in
 {
   options.services.ddnsClient = {
@@ -145,8 +181,8 @@ in
       description = ''
         Run godns on this Darwin host to keep
         `catalog.netplan.wan.ddnsHostname` aligned with the current
-        WAN IPv4.  Only the host authoritative for the home WAN
-        anchor should enable this (bioskop today).
+        WAN IPv4 + IPv6.  Only the host authoritative for the home
+        WAN anchor should enable this (bioskop today).
       '';
     };
 
@@ -199,20 +235,7 @@ in
       mode = "0400";
     };
 
-    launchd.user.agents.ddns-client = {
-      command = "${launcher}";
-      serviceConfig = {
-        Label = "io.nxmatic.nix-darwin-home.ddns-client";
-        # godns is long-lived with its own interval; launchd wraps it
-        # with KeepAlive so a transient network failure restart is
-        # cheap.
-        KeepAlive = true;
-        RunAtLoad = true;
-        StandardOutPath = "${config.users.users.${config.system.primaryUser}.home}/Library/Logs/ddns-client.log";
-        StandardErrorPath = "${config.users.users.${config.system.primaryUser}.home}/Library/Logs/ddns-client.err.log";
-        ProcessType = "Background";
-        LowPriorityIO = true;
-      };
-    };
+    launchd.user.agents.${ipv4Agent.agentName} = ipv4Agent.agent;
+    launchd.user.agents.${ipv6Agent.agentName} = ipv6Agent.agent;
   };
 }
