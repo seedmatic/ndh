@@ -19,6 +19,14 @@ in
     # invariant in modules/darwin/headscale-daemon.nix).
     services.headscaleBootstrap.role = "primary";
 
+    # Expose the `hs` admin CLI wrapper — bioskop is the host from
+    # which fleet-level headscale management happens (creating users,
+    # minting preauth keys, inspecting nodes).  The local daemon's
+    # unix socket would work too, but the api-key path keeps the
+    # workflow identical to a future day when admin moves to a remote
+    # primary.
+    tailnet.headscale.api.enable = true;
+
     # Bioskop is the authoritative Duck DNS updater for the WAN
     # anchor recorded in catalog.netplan.wan.ddnsHostname.  nikopol
     # (a roaming laptop) does not attempt to track the home IP.

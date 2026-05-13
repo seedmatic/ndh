@@ -248,6 +248,7 @@ in
 
     # Secrets (SOPS)
     ./sops.nix
+    ./tailnet.nix
 
     # SSH identity (keys.yaml access, nix-store cert-signed identity)
     ./keys-yaml.nix

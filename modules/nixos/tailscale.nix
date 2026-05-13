@@ -11,10 +11,8 @@ let
   catalog = ndhContext.catalog;
   netplan = catalog.netplan or { };
   cfg = config.tailscale;
+  tailnet = config.tailnet;
   autoconnectUnitName = ndhSystemd.tailscaleAutoconnectUnitName;
-  tailscaleAuthSecretName = "tailscale.authKey";
-  tailscaleAuthSecretCanonicalPath = "/run/secrets/${tailscaleAuthSecretName}";
-  tailscaleAuthKeyPath = config.sops.secrets.${tailscaleAuthSecretName}.path;
   secretDeps = [ "sops-install-secrets.service" ];
   tagsString = lib.concatStringsSep "," (map (tag: "tag:" + tag) cfg.tags);
   # Only enable regular Tailscale if Headscale module is not enabled.
@@ -28,17 +26,27 @@ let
     if tailnetDomain != "" then "${base}${tailnetDomain}" else base;
 in
 {
+  options.tailscale = {
+    tags = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [ "nixos" ];
+      description = "Tags to use for the Tailscale node, defaults to ['nixos'].";
+    };
+  };
+
   config = lib.mkIf (!useHeadscale) {
-    sops.secrets.${tailscaleAuthSecretName} = {
-      format = "yaml";
-      key = cfg.authKeySopsKey;
-      # Canonical sops-nix path: avoid alias/symlink indirection under /run/secrets.
-      path = tailscaleAuthSecretCanonicalPath;
+    # Opt into the shared tailnet-secret schema.  `tailscaled` is
+    # root-run on NixOS, so override the common module's default
+    # (profile user) and hand the auth file to root at 0400.
+    tailnet.tailscale.auth = {
+      enable = true;
+      owner = "root";
+      mode = "0400";
     };
 
     services.tailscale = {
       enable = true;
-      authKeyFile = tailscaleAuthKeyPath;
+      authKeyFile = tailnet.tailscale.auth.path;
       useRoutingFeatures = "both";
       extraUpFlags = [
         "--ssh"
@@ -55,20 +63,7 @@ in
       wants = lib.mkAfter secretDeps;
       requires = lib.mkAfter secretDeps;
       after = lib.mkAfter secretDeps;
-      unitConfig.ConditionPathExists = lib.mkForce tailscaleAuthKeyPath;
-    };
-  };
-  options.tailscale = {
-    authKeySopsKey = lib.mkOption {
-      type = lib.types.str;
-      default = "tailscale/key";
-      description = "Key path in .secrets used for the Tailscale auth key.";
-    };
-
-    tags = lib.mkOption {
-      type = lib.types.listOf lib.types.str;
-      default = [ "nixos" ];
-      description = "Tags to use for the Tailscale node, defaults to ['nixos'].";
+      unitConfig.ConditionPathExists = lib.mkForce tailnet.tailscale.auth.path;
     };
   };
 }

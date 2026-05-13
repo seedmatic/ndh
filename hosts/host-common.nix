@@ -62,5 +62,11 @@ in
       enableSSH = headscaleEnableSSH;
       tags = lib.mkDefault headscaleTags;
     };
+    # Materialise the node-registration auth key from the shared
+    # tailnet schema ([modules/.common.d/tailnet.nix]) so
+    # `hs-connect` can register this host non-interactively.  Only
+    # kicks in on hosts that have the `tailnet` option tree (every
+    # host importing modules/.common.d, today: all of them).
+    tailnet.headscale.auth.enable = true;
   });
 }

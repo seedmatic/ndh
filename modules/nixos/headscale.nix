@@ -10,9 +10,18 @@ with lib;
 
 let
   cfg = config.networking.headscale;
+  tailnet = config.tailnet;
   defaultHostname = config.networking.hostName;
   tailscaleAutoconnectUnitName = ndhSystemd.mkUnitName "tailscaled-autoconnect";
   contributedTargetName = ndhSystemd.contributedTargetName;
+
+  # Same resolution rule as the Darwin client: explicit override wins,
+  # else fall back to the common module's materialised path when the
+  # caller has enabled tailnet.headscale.auth.
+  effectiveAuthKeyFile =
+    if cfg.authKeyFile != null then cfg.authKeyFile
+    else if tailnet.headscale.auth.enable then tailnet.headscale.auth.path
+    else null;
 in
 {
   options.networking.headscale = {
@@ -67,7 +76,7 @@ in
     # Install Tailscale (client compatible with Headscale)
     services.tailscale = {
       enable = true;
-      authKeyFile = cfg.authKeyFile;
+      authKeyFile = effectiveAuthKeyFile;
       extraUpFlags =
         let
           sshFlag = if cfg.enableSSH then [ "--ssh" ] else [ ];
@@ -128,7 +137,7 @@ in
           exit 0
         fi
 
-        auth_key_file="${if cfg.authKeyFile != null then cfg.authKeyFile else ""}"
+        auth_key_file="${if effectiveAuthKeyFile != null then effectiveAuthKeyFile else ""}"
 
         if [ -z "$auth_key_file" ] || [ ! -f "$auth_key_file" ]; then
           echo "No auth key available; skipping autoconnect"
