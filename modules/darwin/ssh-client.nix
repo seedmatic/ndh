@@ -330,7 +330,29 @@ in
         '';
       };
 
-      allExtraStanzas = hostIdentityStanzas ++ vzHostStanzas ++ cfg.extraStanzas;
+      # Off-LAN SSH via the WAN port-forward table in the netplan catalog.
+      # For every entry in `catalog.netplan.wan.portForwards` whose
+      # `internalPort = 22`, emit a `ssh-proxy.<hostName>` alias pointing
+      # at the WAN DDNS hostname on the matching external port — today
+      # that yields `ssh-proxy.bioskop` → `bboxmatic.duckdns.org:2222`.
+      # The alias unlocks transparent screen-sharing over an SSH tunnel
+      # from outside the LAN; adding a second forward in the catalog
+      # (e.g. `ssh-proxy.nikopol`) requires no edit here.
+      wan = netplan.wan or null;
+      wanPortForwards = if wan != null && wan ? portForwards then wan.portForwards else { };
+      wanProxyStanzas = lib.mapAttrsToList (externalPort: fwd: {
+        patterns = [ "ssh-proxy.${fwd.hostName}" ];
+        user = userName;
+        identityFile = hostIdentityFile;
+        identitiesOnly = true;
+        bypassAgent = false;
+        extraConfig = ''
+          HostName ${wan.ddnsHostname}
+          Port ${externalPort}
+        '';
+      }) (lib.filterAttrs (_: fwd: fwd.internalPort or 0 == 22) wanPortForwards);
+
+      allExtraStanzas = hostIdentityStanzas ++ vzHostStanzas ++ wanProxyStanzas ++ cfg.extraStanzas;
 
       extraText = concatStringsSep "\n" (map renderStanza allExtraStanzas);
     in
