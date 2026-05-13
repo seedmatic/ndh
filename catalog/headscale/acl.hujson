@@ -33,9 +33,14 @@
 // client-side through `networking.headscale.tags` (Darwin) or
 // `tailscale.tags` (NixOS); headscale validates on accept.
 {
+  // Headscale policy v2 (default since 0.26) requires usernames to
+  // contain an `@` — the suffix disambiguates plain usernames from
+  // full email identifiers when OIDC is in play.  For a non-OIDC
+  // local account, writing the username with a trailing `@` is the
+  // migration-documented shape (see CHANGELOG "Policy v2").
   "groups": {
     "group:ndh": [
-      "nxmatic",
+      "nxmatic@",
     ],
   },
 
@@ -85,14 +90,14 @@
       "action":      "check",
       "src":         ["tag:operator"],
       "dst":         ["tag:operator", "tag:service"],
-      "users":       ["nxmatic", "root"],
+      "users":       ["nxmatic@", "root"],
       "checkPeriod": "12h",
     },
     {
       "action": "accept",
       "src":    ["tag:service"],
       "dst":    ["tag:service"],
-      "users":  ["nxmatic", "root"],
+      "users":  ["nxmatic@", "root"],
     },
   ],
 }
