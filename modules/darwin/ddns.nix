@@ -57,6 +57,12 @@ let
   # Static part of the config — provider, domains, intervals.  The
   # dynamic part (login_token) is injected by the launcher from the
   # sops secret at activation / service-start time.
+  #
+  # `ip_type = "dual"` tells godns to push both A and AAAA records so
+  # off-LAN access works from either stack.  Bouygues Bbox gives the
+  # LAN a real IPv6 /64 delegated prefix, so bioskop has a globally
+  # routable IPv6 address alongside its dynamic IPv4; both should
+  # track the DuckDNS FQDN.
   configStaticJson = builtins.toJSON {
     provider = "DuckDNS";
     login_token = "@TOKEN@";
@@ -71,7 +77,12 @@ let
       "https://ipecho.net/plain"
       "https://ifconfig.me/ip"
     ];
-    ip_type = "IPv4";
+    ipv6_urls = [
+      "https://api6.ipify.org"
+      "https://api-ipv6.ip.sb/ip"
+      "https://v6.ipinfo.io/ip"
+    ];
+    ip_type = "dual";
     interval = cfg.interval;
     resolver = "1.1.1.1";
     user_agent = "godns/nix-darwin-home";
