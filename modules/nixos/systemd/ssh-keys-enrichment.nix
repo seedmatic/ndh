@@ -157,8 +157,16 @@ in
           "${p}"
       '') profileNames}
 
-      # Pre-extract principals for AuthorizedPrincipalsCommand into a dedicated
-      # non-secret input file readable by sshd helper user (_sshd).
+      # Pre-extract principals for AuthorizedPrincipalsCommand into a
+      # non-secret input file.  The file contains only public principal
+      # names (e.g. "rdp-host", "linux-builder") — no keys, no secrets —
+      # so it is world-readable (mode 0644).  Restricting it to the
+      # `_sshd` group (the previous policy) silently broke cert auth:
+      # sshd's default AuthorizedPrincipalsCommandUser is `nobody`,
+      # `nobody` is not in `_sshd`, the command's `[[ ! -r $INPUT_FILE ]]`
+      # branch fired, it emitted only `$USER_NAME` (i.e. "root"), the
+      # cert's principal (`rdp-host`) did not match, and sshd logged
+      # "ED25519-CERT key is not allowed" with no further diagnostic.
       install -d -m 0755 "$(dirname "${authorizedPrincipalsInputPath}")"
       principals_input_tmp="$(mktemp)"
       ${pkgs.yq-go}/bin/yq eval '
@@ -191,13 +199,6 @@ in
         }
       ' "${generatedKeysYamlPath}" > "$principals_input_tmp"
       install -m 0644 "$principals_input_tmp" "${authorizedPrincipalsInputPath}"
-      for sshd_group in _sshd sshd; do
-        if awk -F: -v g="$sshd_group" '$1 == g { found = 1 } END { exit !found }' /etc/group; then
-          chgrp "$sshd_group" "${authorizedPrincipalsInputPath}" || true
-          chmod 0640 "${authorizedPrincipalsInputPath}" || true
-          break
-        fi
-      done
       rm -f "$principals_input_tmp"
 
       # 3. Materialize extract artifacts into sshPaths.systemKeysDir

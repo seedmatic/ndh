@@ -164,8 +164,12 @@ in
 
     ${splitAllProfilesSnippet}
 
-    # Pre-extract principals for AuthorizedPrincipalsCommand into a dedicated
-    # non-secret input file readable by sshd helper user (_sshd).
+    # Pre-extract principals for AuthorizedPrincipalsCommand.  File is
+    # world-readable (0644) so `nobody` (sshd's default
+    # AuthorizedPrincipalsCommandUser) can read it.  Contents are only
+    # public principal names — see modules/nixos/systemd/ssh-keys-
+    # enrichment.nix for the rationale + the cert-auth failure mode the
+    # previous _sshd-group scoping caused.
     install -d -m 0755 "$(dirname ${lib.escapeShellArg authorizedPrincipalsInputPath})"
     principals_input_tmp="$(mktemp)"
     ${pkgs.yq-go}/bin/yq eval '
@@ -198,13 +202,6 @@ in
       }
     ' ${lib.escapeShellArg generatedKeysYamlPath} > "$principals_input_tmp"
     install -m 0644 "$principals_input_tmp" ${lib.escapeShellArg authorizedPrincipalsInputPath}
-    for sshd_group in _sshd sshd; do
-      if awk -F: -v g="$sshd_group" '$1 == g { found = 1 } END { exit !found }' /etc/group; then
-        chgrp "$sshd_group" ${lib.escapeShellArg authorizedPrincipalsInputPath} || true
-        chmod 0640 ${lib.escapeShellArg authorizedPrincipalsInputPath} || true
-        break
-      fi
-    done
     rm -f "$principals_input_tmp"
 
     # System-scope extract: every system-profile artifact (privates, pubs,
