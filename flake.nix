@@ -770,6 +770,7 @@
           ndhStoreApi = mkNdhStoreApiFor (pkgsFor {
             inherit system;
           });
+          systemPkgs = pkgsFor { inherit system; };
         in
         {
           ${ndhBringupRuntimeAttr} = mkNdhBootstrapRuntimePackage system;
@@ -778,6 +779,10 @@
             builtins.readFile ./modules/nixos/zfs-disko-config.nix
           );
           nix-build-observe = mkNixBuildObservePackage system;
+          # mDNS alias publisher used by the headscale-daemon modules to
+          # advertise a fleet-scoped alias pointing at the current owner.
+          # See packages/ndh-mdns-publish/{main.go,default.nix}.
+          ndh-mdns-publish = systemPkgs.callPackage ./packages/ndh-mdns-publish { };
         }
         // builtins.foldl' (
           acc: hostName:
