@@ -63,6 +63,13 @@ $defs:
       - agent-signing
       - host-signing
       - github-signing
+      # v2.1: the `mammoth-skate` authority also signs TLS x509 certs so
+      # headscale can serve HTTPS without introducing a second CA key.
+      # Leaf keys declare `cert_usage: [tls-server]` (and optionally
+      # `tls-client` in future) to opt into x509 issuance alongside SSH
+      # certs.  See modules/nixos/headscale-daemon.nix for the first
+      # consumer.
+      - tls-authority
 
   profileName:
     type: string
@@ -137,6 +144,19 @@ $defs:
         $ref: "#/$defs/base64OrEnc"
       private:
         $ref: "#/$defs/base64OrEnc"
+      ca_crt:
+        type: string
+        pattern: "^-----BEGIN CERTIFICATE-----"
+        description: >
+          Self-signed x509 root certificate (PEM), co-located with the
+          authority's SSH key material.  Populated by the bootstrap
+          ceremony (bin/authority-bootstrap-tls-root.sh) for authorities
+          that advertise `tls-authority` in their `usage`.  Plaintext —
+          cert bytes are public trust-anchor material, same category as
+          the `public:` SSH key above.  Consumed by the enrichment
+          pipeline (to sign TLS leaves via step-cli) and by downstream
+          Nix modules that install the cert into every client's system
+          trust store.
       usage:
         type: array
         description: >
@@ -195,16 +215,60 @@ $defs:
         type: array
         description: >
           Which certificate types the referenced authority signs for this key.
-          Drives `ssh-keygen -s ... [-h]` in the enrichment step: `ssh-host`
-          adds `-h`, `ssh-user` signs a plain user cert. Distinct from `usage`
-          which describes the key's semantic role.
+          Drives the signing step:
+            ssh-host    — ssh-keygen -s ... -h
+            ssh-user    — ssh-keygen -s ... (user cert)
+            tls-server  — openssl x509 with SAN/subject from the `tls:` block
+          Distinct from `usage` which describes the key's semantic role.
+          The authority named in `authority:` must advertise the matching
+          capability under its own `usage:` — e.g. `tls-server` requires
+          `tls-authority` on the signer.
         items:
           type: string
           enum:
             - ssh-host
             - ssh-user
+            - tls-server
         minItems: 1
         uniqueItems: true
+      tls:
+        type: object
+        description: >
+          Subject + SAN material used by the x509 signing step when
+          `cert_usage` contains `tls-server`.  Ignored otherwise.
+        additionalProperties: false
+        required:
+          - common_name
+        properties:
+          common_name:
+            type: string
+            description: "x509 Subject CN for the leaf cert."
+          sans:
+            type: object
+            description: "Subject Alternative Names."
+            additionalProperties: false
+            properties:
+              dns:
+                type: array
+                items:
+                  type: string
+                  minLength: 1
+                uniqueItems: true
+              ip:
+                type: array
+                items:
+                  type: string
+                  minLength: 1
+                uniqueItems: true
+          not_after_days:
+            type: integer
+            minimum: 1
+            maximum: 36500
+            description: >
+              Certificate lifetime in days.  Defaults to 365 if omitted.
+              x509 format allows up to ~100 years; there is no CAB/forum
+              cap here because the CA is operator-local (not publicly
+              trusted), but keep values sane so rotation stays useful.
       usage:
         type: array
         items:
@@ -236,9 +300,10 @@ $defs:
       certificates:
         type: object
         description: >
-          Signed certificate lines, keyed by authority name then by cert
-          type (ssh-user or ssh-host). Populated by the enrichment step
-          output; not present in the input shape.
+          Signed certificates, keyed by authority name then by cert type.
+          Populated by the enrichment step output; not present in the input
+          shape.  SSH cert types carry a single-line openssh format; TLS
+          types carry a PEM blob (multi-line, BEGIN/END CERTIFICATE).
         patternProperties:
           "^[a-z][a-z0-9-]*$":
             type: object
@@ -250,6 +315,9 @@ $defs:
               ssh-host:
                 type: string
                 pattern: "^ssh-[a-z0-9-]+-cert-v01@openssh.com "
+              tls-server:
+                type: string
+                pattern: "^-----BEGIN CERTIFICATE-----"
         additionalProperties: false
       annotations:
         type: object
