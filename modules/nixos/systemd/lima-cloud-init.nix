@@ -18,10 +18,7 @@ let
   contributedTargetName = ndhSystemd.contributedTargetName;
   zpoolInitServiceName = ndhSystemd.mkServiceName "zpool-init";
   catalogUserName =
-    if catalog ? user && catalog.user ? name then
-      catalog.user.name
-    else
-      config.profile.user.name;
+    if catalog ? user && catalog.user ? name then catalog.user.name else config.profile.user.name;
   trustedCaPublicKey = lib.removeSuffix "\n" (
     builtins.readFile (
       pkgs.runCommand "trusted-user-ca-public-key" { buildInputs = [ pkgs.yq-go ]; } ''

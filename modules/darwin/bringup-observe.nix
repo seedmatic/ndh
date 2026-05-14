@@ -35,9 +35,10 @@ let
         config = pkgs.config;
       };
     in
-    if lib.versionAtLeast (unstable.vector.version or "0.0.0") "0.55.0"
-    then unstable.vector
-    else pkgs.vector;
+    if lib.versionAtLeast (unstable.vector.version or "0.0.0") "0.55.0" then
+      unstable.vector
+    else
+      pkgs.vector;
 
   vectorConfigLib = import "${self}/modules/.common.d/vector-config.nix" { inherit lib; };
   vectorSettings = vectorConfigLib.mkAggregatorConfig {
@@ -68,7 +69,7 @@ in
 
     environment.variables = {
       NDH_VECTOR_HTTP_PORT = toString cfg.httpPort;
-      NDH_VECTOR_API_PORT  = toString cfg.apiPort;
+      NDH_VECTOR_API_PORT = toString cfg.apiPort;
       NDH_BUILD_OBSERVE_DIR = resolvedOutputDir;
     };
 

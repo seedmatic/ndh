@@ -48,7 +48,14 @@ let
       domainName = lib.concatStringsSep "." (builtins.tail parts);
     };
 
-  host = if wan != null then splitHost wan.ddnsHostname else { subDomain = ""; domainName = ""; };
+  host =
+    if wan != null then
+      splitHost wan.ddnsHostname
+    else
+      {
+        subDomain = "";
+        domainName = "";
+      };
 
   # Duck DNS tokens are account-scoped, not per-subdomain: one token
   # authorises updates for every subdomain under a DuckDNS account.
@@ -156,8 +163,12 @@ let
           # cheap.
           KeepAlive = true;
           RunAtLoad = true;
-          StandardOutPath = "${config.users.users.${config.system.primaryUser}.home}/Library/Logs/${agentName}.log";
-          StandardErrorPath = "${config.users.users.${config.system.primaryUser}.home}/Library/Logs/${agentName}.err.log";
+          StandardOutPath = "${
+            config.users.users.${config.system.primaryUser}.home
+          }/Library/Logs/${agentName}.log";
+          StandardErrorPath = "${
+            config.users.users.${config.system.primaryUser}.home
+          }/Library/Logs/${agentName}.err.log";
           ProcessType = "Background";
           LowPriorityIO = true;
         };
@@ -213,7 +224,9 @@ in
       }
       {
         assertion = host.subDomain != "" && host.domainName != "";
-        message = "services.ddnsClient could not split catalog.netplan.wan.ddnsHostname = \"${toString (wan.ddnsHostname or "<unset>")}\" into subDomain + domainName.";
+        message = "services.ddnsClient could not split catalog.netplan.wan.ddnsHostname = \"${
+          toString (wan.ddnsHostname or "<unset>")
+        }\" into subDomain + domainName.";
       }
     ];
 

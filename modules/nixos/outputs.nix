@@ -286,8 +286,7 @@ let
                 # modules/.common.d/shell.d/nix-bash-trampoline.sh (`ndh::bootstrap:profile:dir`)
                 # and the module default in
                 # modules/.common.d/io-nxmatic-nix-darwin-home-bringup-runtime.nix:151.
-                bringupRuntimeProfilePath =
-                  "/nix/var/nix/profiles/per-user/root/io-nxmatic-nix-darwin-home-bringup-runtime";
+                bringupRuntimeProfilePath = "/nix/var/nix/profiles/per-user/root/io-nxmatic-nix-darwin-home-bringup-runtime";
               };
               store = ndhStoreApiLinux;
             };
@@ -549,7 +548,7 @@ let
         # Minimal bringup installer VM (what gets installed onto ZFS disks as the bootstrap OS)
         "${mainName}-bringup" = minimalBringupSystemBase;
         # Full runtime systems (what the operator activates post-bringup via
-      # nixos-rebuild switch --target-host)
+        # nixos-rebuild switch --target-host)
         "${mainName}-lima" = zfsRuntimeLima;
         "${mainName}-tart" = zfsRuntimeTart;
       };

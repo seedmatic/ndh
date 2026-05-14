@@ -32,6 +32,7 @@ zfs::obs:log_file() {
 # All callers share the same fd inherited from zfs::obs:start.
 zfs::obs:send() {
   [[ -n "${NDH_ZFS_INSTALL_OBS_PIPE_FD:-}" ]] || return 0
+  # shellcheck disable=SC2261
   printf '%s\n' "$1" >&"${NDH_ZFS_INSTALL_OBS_PIPE_FD}" 2>/dev/null || true
 }
 

@@ -169,11 +169,9 @@
             pkgsForSystem.runCommand (prefixedName name) { } (
               "mkdir -p $out/bin\n"
               + nixpkgs.lib.concatStrings (
-                nixpkgs.lib.mapAttrsToList (
-                  binName: src: ''
-                    install -Dm755 ${src} "$out/bin/${binName}"
-                  ''
-                ) scripts
+                nixpkgs.lib.mapAttrsToList (binName: src: ''
+                  install -Dm755 ${src} "$out/bin/${binName}"
+                '') scripts
               )
             );
         };
@@ -755,9 +753,8 @@
         system:
         let
           pkgs = pkgsFor { inherit system; };
-          nixBashTrampoline = if system == "aarch64-darwin"
-            then ndhNixBashTrampolineDarwin
-            else ndhNixBashTrampolineLinux;
+          nixBashTrampoline =
+            if system == "aarch64-darwin" then ndhNixBashTrampolineDarwin else ndhNixBashTrampolineLinux;
         in
         pkgs.writeShellScriptBin "nix-build-observe" ''
           export NDH_NIX_BASH_TRAMPOLINE="${nixBashTrampoline}"
@@ -887,32 +884,31 @@
           # is sops-encrypted at rest, so we decrypt into a tempfile before
           # validating. Pass a path to validate a different file ad-hoc:
           #   nix run .#ssh-keys-v2-validate -- path/to/keys.yaml
-          sshKeysValidatorPackage =
-            pkgsForSystem.writeShellApplication {
-              name = "ssh-keys-v2-validate";
-              runtimeInputs = [
-                pkgsForSystem.check-jsonschema
-                pkgsForSystem.sops
-              ];
-              text = ''
-                target="''${1:-modules/home-manager/ssh.d/keys.yaml}"
-                schema="modules/home-manager/ssh.d/keys.schema.yaml"
-                if [[ ! -r "$schema" ]]; then
-                  echo "schema not found at $schema (run from repo root)" >&2
-                  exit 1
-                fi
-                if [[ ! -r "$target" ]]; then
-                  echo "target yaml not found: $target" >&2
-                  exit 1
-                fi
-                tmp="$(mktemp -t ssh-keys-v2.XXXXXX.yaml)"
-                trap 'rm -f "$tmp"' EXIT
-                if ! sops -d "$target" > "$tmp" 2>/dev/null; then
-                  cp "$target" "$tmp"
-                fi
-                exec check-jsonschema --schemafile "$schema" "$tmp"
-              '';
-            };
+          sshKeysValidatorPackage = pkgsForSystem.writeShellApplication {
+            name = "ssh-keys-v2-validate";
+            runtimeInputs = [
+              pkgsForSystem.check-jsonschema
+              pkgsForSystem.sops
+            ];
+            text = ''
+              target="''${1:-modules/home-manager/ssh.d/keys.yaml}"
+              schema="modules/home-manager/ssh.d/keys.schema.yaml"
+              if [[ ! -r "$schema" ]]; then
+                echo "schema not found at $schema (run from repo root)" >&2
+                exit 1
+              fi
+              if [[ ! -r "$target" ]]; then
+                echo "target yaml not found: $target" >&2
+                exit 1
+              fi
+              tmp="$(mktemp -t ssh-keys-v2.XXXXXX.yaml)"
+              trap 'rm -f "$tmp"' EXIT
+              if ! sops -d "$target" > "$tmp" 2>/dev/null; then
+                cp "$target" "$tmp"
+              fi
+              exec check-jsonschema --schemafile "$schema" "$tmp"
+            '';
+          };
         in
         {
           nix-build-observe = {
@@ -1184,10 +1180,7 @@
           defaultPackage."aarch64-darwin" = darwinConfiguration.system;
         };
 
-      hostOutputs = forAllHosts (
-        _: hostSpec:
-        mkHostOutputs (hostSpec // hostGateOverrides)
-      );
+      hostOutputs = forAllHosts (_: hostSpec: mkHostOutputs (hostSpec // hostGateOverrides));
 
       darwinConfigurations = builtins.foldl' (
         acc: hostOutput: acc // hostOutput.darwinConfigurations
@@ -1222,8 +1215,9 @@
         _: hostOutput: hostOutput.homeManagerConfigurations
       ) hostOutputs;
 
-      nixosDiskImages =
-        builtins.mapAttrs (_: hostOutput: hostOutput.nixosDiskImageBringupSystemdZfs) hostOutputs;
+      nixosDiskImages = builtins.mapAttrs (
+        _: hostOutput: hostOutput.nixosDiskImageBringupSystemdZfs
+      ) hostOutputs;
 
       # Overlay factories (curried: inputs: final: prev:) — used internally via overlayFactories.
       overlayFactories = {

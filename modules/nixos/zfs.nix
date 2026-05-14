@@ -12,7 +12,14 @@
 
 let
   # Safe defaults for minimal systems where ndh/ndhSystemd are not available
-  ndhContext = if ndh != null then ndh.context else { nixBashTrampoline = "${pkgs.bash}/bin/bash"; generationMode = "full"; };
+  ndhContext =
+    if ndh != null then
+      ndh.context
+    else
+      {
+        nixBashTrampoline = "${pkgs.bash}/bin/bash";
+        generationMode = "full";
+      };
   nixBashTrampoline = "${ndhContext.nixBashTrampoline}";
   # The trampoline is a file inside a store-path directory that also carries
   # logger.sh; `source nix-bash-trampoline.sh` pulls logger.sh from the same
@@ -42,13 +49,32 @@ let
   # Fallback unit naming when ndhSystemd is not available (minimal systems)
   mkUnitNameFallback = name: "${name}";
   mkServiceNameFallback = name: "${name}.service";
-  contributedTargetName = if ndhSystemd != null then ndhSystemd.contributedTargetName else "multi-user.target";
-  zpoolInitUnitName = if ndhSystemd != null then ndhSystemd.mkUnitName "zpool-init" else mkUnitNameFallback "zpool-init";
-  zpoolInitServiceName = if ndhSystemd != null then ndhSystemd.mkServiceName "zpool-init" else mkServiceNameFallback "zpool-init";
-  bootReconcileUnitName = if ndhSystemd != null then ndhSystemd.mkUnitName "boot-entry-reconcile" else mkUnitNameFallback "boot-entry-reconcile";
-  bootReconcileServiceName = if ndhSystemd != null then ndhSystemd.mkServiceName "boot-entry-reconcile" else mkServiceNameFallback "boot-entry-reconcile";
-  zfsNixosInstallServiceName = if ndhSystemd != null then ndhSystemd.mkServiceName "zfs-nixos-install" else mkServiceNameFallback "zfs-nixos-install";
-  espSyncUnitName = if ndhSystemd != null then ndhSystemd.mkUnitName "esp-sync" else mkUnitNameFallback "esp-sync";
+  contributedTargetName =
+    if ndhSystemd != null then ndhSystemd.contributedTargetName else "multi-user.target";
+  zpoolInitUnitName =
+    if ndhSystemd != null then ndhSystemd.mkUnitName "zpool-init" else mkUnitNameFallback "zpool-init";
+  zpoolInitServiceName =
+    if ndhSystemd != null then
+      ndhSystemd.mkServiceName "zpool-init"
+    else
+      mkServiceNameFallback "zpool-init";
+  bootReconcileUnitName =
+    if ndhSystemd != null then
+      ndhSystemd.mkUnitName "boot-entry-reconcile"
+    else
+      mkUnitNameFallback "boot-entry-reconcile";
+  bootReconcileServiceName =
+    if ndhSystemd != null then
+      ndhSystemd.mkServiceName "boot-entry-reconcile"
+    else
+      mkServiceNameFallback "boot-entry-reconcile";
+  zfsNixosInstallServiceName =
+    if ndhSystemd != null then
+      ndhSystemd.mkServiceName "zfs-nixos-install"
+    else
+      mkServiceNameFallback "zfs-nixos-install";
+  espSyncUnitName =
+    if ndhSystemd != null then ndhSystemd.mkUnitName "esp-sync" else mkUnitNameFallback "esp-sync";
 
   joinMountPoints =
     prefix: point:
@@ -171,7 +197,22 @@ let
     }) overlayMountPoints
   );
 
-  fileSystems = zfsLegacyFileSystems // zfsOverlayFileSystems // overlayFileSystems;
+  # Non-ZFS filesystems disko declared — today that's the ESP mounted
+  # at /boot (vfat on /dev/vda1), tomorrow potentially any other
+  # non-ZFS mount the disko schema adds.  We can't rely on disko's own
+  # `config.fileSystems` emission because zfs-disko-config.nix sets
+  # `enableConfig = false` to keep the ZFS reconstruction below in
+  # charge; so walk `fileSystemsMap` (disko's raw mountpoint →
+  # descriptor map) and pull in every entry our ZFS/overlay accounting
+  # hasn't already claimed.
+  nonZfsFileSystems =
+    let
+      zfsClaimed = zfsMountPoints ++ overlayMountPoints;
+    in
+    lib.filterAttrs (mp: _: !(lib.elem mp zfsClaimed)) fileSystemsMap;
+
+  fileSystems =
+    zfsLegacyFileSystems // zfsOverlayFileSystems // overlayFileSystems // nonZfsFileSystems;
 
   # Extracted so it can be referenced in both ExecCondition/ExecStart and storePaths.
   # NixOS initrd systemd does NOT auto-close ExecStart or ExecCondition store paths —
@@ -218,18 +259,22 @@ let
             # so prefix is always `<pool>` and we concat directly.
             fullName = "${prefix}/${name}";
             this =
-              if
-                ds ? mountpoint
-                && ds.mountpoint != null
-                && lib.hasPrefix "/" (toString ds.mountpoint)
-              then
-                [ { dataset = fullName; mountpoint = ds.mountpoint; } ]
+              if ds ? mountpoint && ds.mountpoint != null && lib.hasPrefix "/" (toString ds.mountpoint) then
+                [
+                  {
+                    dataset = fullName;
+                    mountpoint = ds.mountpoint;
+                  }
+                ]
               else
                 [ ];
             children =
-              if ds ? datasets then walk fullName ds.datasets
-              else if ds ? children then walk fullName ds.children
-              else [ ];
+              if ds ? datasets then
+                walk fullName ds.datasets
+              else if ds ? children then
+                walk fullName ds.children
+              else
+                [ ];
           in
           this ++ children
         ) (lib.attrNames dsSet);
@@ -779,13 +824,15 @@ in
         }
       );
 
-      loader.systemd-boot.extraInstallCommands = lib.mkIf (config.boot.loader.systemd-boot.enable && !bringupMode) (
-        lib.mkAfter ''
-          export PRIMARY_ESP_PART_LABEL=${lib.escapeShellArg primaryEspPartLabelEnv}
-          export SECONDARY_ESP_PART_LABELS=${lib.escapeShellArg secondaryEspPartLabelsEnv}
-          ${espSyncScript}
-        ''
-      );
+      loader.systemd-boot.extraInstallCommands =
+        lib.mkIf (config.boot.loader.systemd-boot.enable && !bringupMode)
+          (
+            lib.mkAfter ''
+              export PRIMARY_ESP_PART_LABEL=${lib.escapeShellArg primaryEspPartLabelEnv}
+              export SECONDARY_ESP_PART_LABELS=${lib.escapeShellArg secondaryEspPartLabelsEnv}
+              ${espSyncScript}
+            ''
+          );
     };
 
     # ZFS runtime services

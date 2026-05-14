@@ -1,4 +1,13 @@
-{ config, lib, pkgs, modulesPath, ndh ? null, ndhSystemd, self, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  modulesPath,
+  ndh ? null,
+  ndhSystemd,
+  self,
+  ...
+}:
 let
   ndhContext = if ndh != null then ndh.context else { };
   baseHostName = ndhContext.hostProfile.hostName or "host";
@@ -126,8 +135,7 @@ in
   # shared opensshPolicy so it stays in sync with the full runtime, which
   # renders the same directives via modules/nixos/systemd/openssh.nix.
   programs.ssh.extraConfig = lib.mkAfter (
-    lib.concatMapStringsSep "\n" (g: "Include ${g}") config.opensshPolicy.includeClientGlobs
-    + "\n"
+    lib.concatMapStringsSep "\n" (g: "Include ${g}") config.opensshPolicy.includeClientGlobs + "\n"
   );
 
   # Enable SSH server for emergency access + mammoth-skate cert auth on
@@ -138,9 +146,9 @@ in
   # sshPaths.systemKeysDir.
   services.openssh = {
     enable = true;
-    hostKeys = lib.mkForce [ ];  # Disable auto-generated host keys — we use the rdp-host material below.
+    hostKeys = lib.mkForce [ ]; # Disable auto-generated host keys — we use the rdp-host material below.
     settings = {
-      PermitRootLogin = "prohibit-password";  # Only allow key-based auth
+      PermitRootLogin = "prohibit-password"; # Only allow key-based auth
       HostKey = "${config.sshPaths.systemKeysDir}/${config.sshPaths.keyName}";
       HostCertificate = "${config.sshPaths.systemKeysDir}/${config.sshPaths.keyName}-server-cert.pub";
       TrustedUserCAKeys = "${config.sshPaths.systemKeysDir}/trusted-user-ca.pub";
@@ -155,11 +163,10 @@ in
   # ndh.keysYaml helper (modules/.common.d/keys-yaml.nix). linux-builder
   # powers remote build fan-out during bootstrap; rdp-host is the
   # interactive operator key.
-  users.users.root.openssh.authorizedKeys.keys =
-    config.ndh.keysYaml.authorizedLinesFor [
-      "linux-builder"
-      "rdp-host"
-    ];
+  users.users.root.openssh.authorizedKeys.keys = config.ndh.keysYaml.authorizedLinesFor [
+    "linux-builder"
+    "rdp-host"
+  ];
 
   # Override the zfs-nixos-install assertion that requires runtimeSystemPath.
   # For minimal bringup we have no runtime system — the operator activates the
@@ -201,9 +208,9 @@ in
   environment.systemPackages = with pkgs; [
     curl
     zfs
-    openssh  # SSH client for ad-hoc `nix copy` from this side during rescue
-    age      # For sops age key operations
-    sops     # For secrets decryption
+    openssh # SSH client for ad-hoc `nix copy` from this side during rescue
+    age # For sops age key operations
+    sops # For secrets decryption
   ];
 
   # Install bringup runtime profile that nixBashTrampoline expects

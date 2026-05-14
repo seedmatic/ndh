@@ -119,6 +119,14 @@ sign::one_cert() {
 	local authorityName="$2"
 	local certUsage="$3"
 
+	# x509 TLS leaves are signed via step-cli against the authority's
+	# OpenSSH Ed25519 private key.  Dispatch early to keep the SSH path
+	# below strictly ssh-keygen-driven.
+	if [[ "$certUsage" == "tls-server" ]]; then
+		sign::tls_server "$keyName" "$authorityName"
+		return $?
+	fi
+
 	# Pull authority private + key public/private.
 	local authPriv keyType keyPub keyPriv keyComment
 	authPriv="$(yq::get ".authorities.\"${authorityName}\".private")"
@@ -198,6 +206,154 @@ sign::one_cert() {
 	local certFile="${keyPubFile%.pub}-cert.pub"
 	cat "$certFile"
 	rm -f "$certFile"
+}
+
+# Sign a TLS x509 leaf certificate for `keyName` using the named
+# authority's OpenSSH-format Ed25519 private key.  Emits a PEM blob on
+# stdout.
+#
+# Preconditions (hard errors, not auto-provisioning):
+#   - The authority must advertise `tls-authority` in its `usage:` list.
+#   - The authority must carry `ca_crt:` (the self-signed root), which
+#     the operator mints once via bin/authority-bootstrap-tls-root.sh.
+#     The enrichment step is not authorised to mint new trust roots.
+#   - `step-cli` must be on PATH (threaded in via
+#     modules/.common.d/system-packages.nix and the per-platform
+#     enrichment unit's `path` list).
+#   - The key must carry a `tls:` block with at least `common_name`.
+#
+# step-cli reads OpenSSH Ed25519 keys natively (both signer and subject),
+# so no openssl/PEM conversion is required despite Ed25519 SSH keys
+# being opaque to stock openssl builds.
+sign::tls_server() {
+	local keyName="$1"
+	local authorityName="$2"
+
+	# Authority must advertise tls-authority before it is allowed to sign
+	# TLS leaves.  The schema already constrains the enum; this guards
+	# against a schema-valid authority that simply forgot to opt in.
+	# yq-go uses `contains()` for array-membership; `index()` exists in
+	# jq but not here and throws a lexer error.
+	if ! yq eval -e "(.authorities.\"${authorityName}\".usage // []) | contains([\"tls-authority\"])" \
+		"$inputFile" >/dev/null 2>&1; then
+		log::error "authority ${authorityName} does not advertise tls-authority (cannot sign ${keyName}/tls-server)"
+		return 1
+	fi
+
+	# Materialise the CA cert from keys.yaml to a tempfile step-cli can
+	# read.  Missing ca_crt means the authority hasn't been bootstrapped
+	# yet — hard error rather than auto-mint.
+	local caCrtPem
+	caCrtPem="$(yq::get ".authorities.\"${authorityName}\".ca_crt")"
+	if [[ -z "$caCrtPem" || "$caCrtPem" == "null" ]]; then
+		log::error "authority ${authorityName} has no ca_crt (run bin/authority-bootstrap-tls-root.sh ${authorityName})"
+		return 1
+	fi
+	local caCrt="${tmpdir}/auth-${authorityName}-ca.crt"
+	if [[ ! -s "$caCrt" ]]; then
+		printf '%s\n' "$caCrtPem" >"$caCrt"
+		chmod 0444 "$caCrt"
+	fi
+
+	if ! command -v step >/dev/null 2>&1; then
+		log::error "step-cli not found on PATH (add pkgs.step-cli to the enrichment unit's path)"
+		return 1
+	fi
+
+	local commonName
+	commonName="$(yq::get ".keys.\"${keyName}\".tls.common_name")"
+	if [[ -z "$commonName" || "$commonName" == "null" ]]; then
+		log::error "key ${keyName} requested tls-server but has no .tls.common_name"
+		return 1
+	fi
+
+	local notAfterDays notAfterHours
+	notAfterDays="$(yq::get ".keys.\"${keyName}\".tls.not_after_days // 365")"
+	notAfterHours=$((notAfterDays * 24))
+
+	# Materialise the signer (authority) and subject (leaf) privates as
+	# tempfiles step-cli can read.  Re-uses the $tmpdir/auth-<name> cache
+	# populated by the SSH signing path when present; otherwise creates
+	# it here so TLS-only enrichment runs don't depend on SSH-cert order.
+	local authPriv
+	authPriv="$(yq::get ".authorities.\"${authorityName}\".private")"
+	if [[ -z "$authPriv" || "$authPriv" == "null" ]]; then
+		log::error "authority ${authorityName} has no private key"
+		return 1
+	fi
+	local authFile="${tmpdir}/auth-${authorityName}"
+	if [[ ! -s "$authFile" ]]; then
+		printf '%s\n' "$authPriv" >"$authFile"
+		chmod 400 "$authFile"
+	fi
+
+	# The subject key must already exist (either present in the input
+	# yaml or generated earlier in this enrichment run by the SSH path).
+	# tls-server is never the first cert_usage we process for a key in
+	# practice — cert_usage is an ordered list and ssh-host/ssh-user
+	# entries populate the key first.  If a key declares only
+	# `cert_usage: [tls-server]` we still need material, so re-run the
+	# generate-if-missing dance.
+	local leafKeyFile="${tmpdir}/${keyName}"
+	if [[ ! -s "$leafKeyFile" ]]; then
+		local keyPriv keyType keyComment
+		keyPriv="$(yq::get ".keys.\"${keyName}\".private")"
+		keyType="$(yq::get ".keys.\"${keyName}\".type")"
+		keyComment="$(yq::get ".keys.\"${keyName}\".comment")"
+		[[ -n "$keyComment" && "$keyComment" != "null" ]] || keyComment="$keyName"
+		if [[ -z "$keyPriv" || "$keyPriv" == "null" ]]; then
+			local genType="${keyType#ssh-}"
+			if ! ssh-keygen -q -t "$genType" -N "" -f "$leafKeyFile" -C "$keyComment"; then
+				log::error "failed to generate keypair for ${keyName}"
+				return 1
+			fi
+			local keyPub
+			keyPub="$(cut -d' ' -f2 <"${leafKeyFile}.pub")"
+			keyPriv="$(<"$leafKeyFile")"
+			yq -i ".keys.\"${keyName}\".public = \"${keyType} ${keyPub} ${keyComment}\"" "$inputFile"
+			yq -i ".keys.\"${keyName}\".private = \"${keyPriv//$'\n'/\\n}\"" "$inputFile"
+		else
+			printf '%s\n' "$keyPriv" >"$leafKeyFile"
+			chmod 0400 "$leafKeyFile"
+		fi
+	fi
+
+	# SAN flags — step-cli accepts repeated --san whose arguments may be
+	# DNS names or IP literals; step's autodetection picks the right
+	# x509 SAN type from the string shape.
+	local -a sanFlags=()
+	local san
+	while IFS= read -r san; do
+		[[ -n "$san" && "$san" != "null" ]] || continue
+		sanFlags+=(--san "$san")
+	done < <(yq eval -r ".keys.\"${keyName}\".tls.sans.dns // [] | .[]" "$inputFile" 2>/dev/null)
+	while IFS= read -r san; do
+		[[ -n "$san" && "$san" != "null" ]] || continue
+		sanFlags+=(--san "$san")
+	done < <(yq eval -r ".keys.\"${keyName}\".tls.sans.ip // [] | .[]" "$inputFile" 2>/dev/null)
+
+	# step certificate create always writes a PKCS8 copy of the subject
+	# key next to the cert; we don't need it (the real private stays in
+	# the sops-sealed yaml) and delete immediately.
+	local leafCrtFile="${tmpdir}/${keyName}-tls-${authorityName}.crt"
+	local leafKeyCopy="${tmpdir}/${keyName}-tls-${authorityName}.key"
+
+	if ! step certificate create "$commonName" \
+		"$leafCrtFile" "$leafKeyCopy" \
+		--profile leaf \
+		--ca "$caCrt" \
+		--ca-key "$authFile" \
+		--key "$leafKeyFile" \
+		--no-password --insecure \
+		--not-after "${notAfterHours}h" \
+		"${sanFlags[@]}" >/dev/null 2>&1; then
+		log::error "step certificate create failed for ${keyName}/tls-server under ${authorityName}"
+		rm -f "$leafCrtFile" "$leafKeyCopy"
+		return 1
+	fi
+
+	cat "$leafCrtFile"
+	rm -f "$leafCrtFile" "$leafKeyCopy"
 }
 
 # Walk every key with an authority ref, sign for each cert_usage, and

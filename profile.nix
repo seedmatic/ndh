@@ -27,11 +27,13 @@ in
             # Drives which per-profile yaml(s) the enrichment split
             # produces and which set of keys the host deploys from v2
             # keys.yaml (filter by `.profiles` membership).
-            type = lib.types.listOf (lib.types.enum [
-              "bringup"
-              "system"
-              "user"
-            ]);
+            type = lib.types.listOf (
+              lib.types.enum [
+                "bringup"
+                "system"
+                "user"
+              ]
+            );
             description = ''
               List of profile roles the host belongs to. Runtime hosts
               default to [ "system" "user" ]; bringup images force

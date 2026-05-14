@@ -178,81 +178,79 @@ let
     ./xdg.nix
   ];
 
-  baseHomePackages =
-    with pkgs;
-    [
-      alejandra
-      awscli2
-      avahi
-      cachix
-      cirrus-cli
-      comma
-      coreutils-full
-      curl
-      diffutils
-      direnv
-      docker
-      docker-compose
-      ffmpeg
-      findutils
-      flyctl
-      gawk
-      gdu
-      gh
-      git-workspace
-      gnugrep
-      gnupg
-      gnused
-      helm-docs
-      httpie
-      hurl
-      jdk
-      k9s
-      kpt
-      krew
-      kubectl
-      kubectx
-      kubernetes-helm
-      kustomize
-      #     lazydocker
-      luajit
-      minikube
-      mmv
-      neofetch
-      nix
-      nixfmt-classic
-      nixpkgs-fmt
-      nodejs
-      parallel
-      passExtensions.pass-otp
-      passExtensions.pass-audit
-      passExtensions.pass-update
-      passExtensions.pass-import
-      passExtensions.pass-checkup
-      passExtensions.pass-genphrase
-      podman
-      # podman-desktop
-      poetry
-      pnpm
-      pre-commit
-      # rancher-desktop
-      ranger
-      rclone
-      rsync
-      shellcheck
-      sops
-      stylua
-      tig
-      tree
-      treefmt
-      trivy
-      vault-bin
-      yarn
-      yamllint
-      yq-go
-      zellij
-      zsh
-    ];
+  baseHomePackages = with pkgs; [
+    alejandra
+    awscli2
+    avahi
+    cachix
+    cirrus-cli
+    comma
+    coreutils-full
+    curl
+    diffutils
+    direnv
+    docker
+    docker-compose
+    ffmpeg
+    findutils
+    flyctl
+    gawk
+    gdu
+    gh
+    git-workspace
+    gnugrep
+    gnupg
+    gnused
+    helm-docs
+    httpie
+    hurl
+    jdk
+    k9s
+    kpt
+    krew
+    kubectl
+    kubectx
+    kubernetes-helm
+    kustomize
+    #     lazydocker
+    luajit
+    minikube
+    mmv
+    neofetch
+    nix
+    nixfmt-classic
+    nixpkgs-fmt
+    nodejs
+    parallel
+    passExtensions.pass-otp
+    passExtensions.pass-audit
+    passExtensions.pass-update
+    passExtensions.pass-import
+    passExtensions.pass-checkup
+    passExtensions.pass-genphrase
+    podman
+    # podman-desktop
+    poetry
+    pnpm
+    pre-commit
+    # rancher-desktop
+    ranger
+    rclone
+    rsync
+    shellcheck
+    sops
+    stylua
+    tig
+    tree
+    treefmt
+    trivy
+    vault-bin
+    yarn
+    yamllint
+    yq-go
+    zellij
+    zsh
+  ];
 
 in
 {
@@ -303,20 +301,18 @@ in
 
   targets.genericLinux.enable = false;
 
-  assertions = lib.optionals hmVmMaterializationEnabled (
-    [
-      {
-        assertion = builtins.elem selectedVmProvider [
-          "lima"
-          "tart"
-        ];
-        message = ''
-          Home Manager on Darwin requires a supported `vmProvider` for VM materialization.
-          Supported values: "lima" or "tart".
-        '';
-      }
-    ]
-  );
+  assertions = lib.optionals hmVmMaterializationEnabled ([
+    {
+      assertion = builtins.elem selectedVmProvider [
+        "lima"
+        "tart"
+      ];
+      message = ''
+        Home Manager on Darwin requires a supported `vmProvider` for VM materialization.
+        Supported values: "lima" or "tart".
+      '';
+    }
+  ]);
 
   home.activation.materializeVm = lib.mkIf hmVmMaterializationEnabled (
     lib.hm.dag.entryAfter [ "writeBoundary" ] ''

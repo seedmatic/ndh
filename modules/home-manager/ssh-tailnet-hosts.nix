@@ -27,17 +27,15 @@ let
   #   nixos.{host}    → the NixOS guest VM living on the Darwin host
   # All three present the profile user's rdp-host key+cert so mammoth-skate's
   # TrustedUserCAKeys check accepts the login without per-host key pinning.
-  operatorAliasForService =
-    host: serviceName: hostNameSuffix:
-    ''
-      Host ${serviceName}.${host}
-        HostName ${host}${hostNameSuffix}
-        User ${sshUserForHost host}
-        IdentityFile ${config.sshPaths.privKeyFile}
-        IdentitiesOnly yes
-        IdentityAgent none
-        PreferredAuthentications publickey
-    '';
+  operatorAliasForService = host: serviceName: hostNameSuffix: ''
+    Host ${serviceName}.${host}
+      HostName ${host}${hostNameSuffix}
+      User ${sshUserForHost host}
+      IdentityFile ${config.sshPaths.privKeyFile}
+      IdentitiesOnly yes
+      IdentityAgent none
+      PreferredAuthentications publickey
+  '';
   operatorAliasesForHost = host: ''
     ${operatorAliasForService host "rdp-host" ".local"}
     ${operatorAliasForService host "vz-host" "-vz.lan"}

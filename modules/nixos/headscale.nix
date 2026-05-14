@@ -19,9 +19,12 @@ let
   # else fall back to the common module's materialised path when the
   # caller has enabled tailnet.headscale.auth.
   effectiveAuthKeyFile =
-    if cfg.authKeyFile != null then cfg.authKeyFile
-    else if tailnet.headscale.auth.enable then tailnet.headscale.auth.path
-    else null;
+    if cfg.authKeyFile != null then
+      cfg.authKeyFile
+    else if tailnet.headscale.auth.enable then
+      tailnet.headscale.auth.path
+    else
+      null;
 in
 {
   options.networking.headscale = {
@@ -73,10 +76,20 @@ in
   };
 
   config = mkIf cfg.enable {
-    # Install Tailscale (client compatible with Headscale)
+    # Install Tailscale (client compatible with Headscale).  We DO NOT
+    # set `authKeyFile` here: the nixpkgs tailscale module generates
+    # its own `tailscaled-autoconnect.service` when that option is
+    # non-null, and that generated unit has no ordering against
+    # `sops-install-secrets` — on boot it races with sops, usually
+    # losing and failing with "No such file or directory" on the
+    # secret path.  The prefixed unit
+    # `io-nxmatic-nix-darwin-home-tailscaled-autoconnect` below is
+    # the race-safe equivalent that owns the registration flow for
+    # the fleet.  Keep `extraUpFlags` here so that a manual
+    # `tailscale up` still gets the right defaults, but registration
+    # lives in our unit.
     services.tailscale = {
       enable = true;
-      authKeyFile = effectiveAuthKeyFile;
       extraUpFlags =
         let
           sshFlag = if cfg.enableSSH then [ "--ssh" ] else [ ];
@@ -99,17 +112,28 @@ in
     # Trust Tailscale interface
     networking.firewall.trustedInterfaces = [ "tailscale0" ];
 
-    # Ensure Tailscale connects at boot
+    # Ensure Tailscale connects at boot.  Order strictly after
+    # sops-install-secrets so the auth-key file exists when the unit
+    # starts — early boots otherwise race and the first attempt fails
+    # with "cat: /run/secrets/.../tailnet.headscale.auth: No such file
+    # or directory", leaving the node unregistered until a manual
+    # `systemctl restart`.  ConditionPathExists belts-and-braces the
+    # gating for hosts that disabled the sops secret on purpose.
     systemd.services.${tailscaleAutoconnectUnitName} = {
       after = [
         "tailscaled.service"
         "network-online.target"
+        "sops-install-secrets.service"
       ];
       wants = [
         "tailscaled.service"
         "network-online.target"
       ];
+      requires = [ "sops-install-secrets.service" ];
       wantedBy = [ contributedTargetName ];
+      unitConfig = lib.mkIf (effectiveAuthKeyFile != null) {
+        ConditionPathExists = effectiveAuthKeyFile;
+      };
       serviceConfig = {
         Type = "oneshot";
         RemainAfterExit = true;

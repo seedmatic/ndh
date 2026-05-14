@@ -119,7 +119,8 @@
   };
 
   # Install builder keys in authorized_keys directory
-  environment.etc."ssh/authorized_keys.d/builder_ed25519.pub".source = "${self}/keys/builder_ed25519.pub";
+  environment.etc."ssh/authorized_keys.d/builder_ed25519.pub".source =
+    "${self}/keys/builder_ed25519.pub";
 
   # Ensure the nixbld group exists and builder user is part of it
   users.groups.nixbld.members = [ "builder" ];

@@ -50,9 +50,7 @@ let
       v = unstable.headscale.version or "0.0.0";
       withinBand = lib.versionAtLeast v "0.28.0" && !lib.versionAtLeast v "0.29.0";
     in
-    if withinBand
-    then unstable.headscale
-    else pkgs.headscale;
+    if withinBand then unstable.headscale else pkgs.headscale;
 
   # Clients always resolve `aliasName` via mDNS to the host currently
   # holding role = "primary"; the daemon itself is told to issue
@@ -231,7 +229,11 @@ in
 {
   options.services.headscaleBootstrap = {
     role = mkOption {
-      type = types.enum [ "primary" "standby" "none" ];
+      type = types.enum [
+        "primary"
+        "standby"
+        "none"
+      ];
       default = "none";
       description = ''
         This host's role in the headscale bootstrap topology.

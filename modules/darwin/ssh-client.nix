@@ -90,7 +90,7 @@ in
             identityFile = mkOption {
               type = types.nullOr types.path;
               default = null;
-              description = "Pinned key path (null -> defaultLimaKey).";
+              description = "Pinned key path for the guest stanza (null -> the host rdp-host key, which both Lima and Tart guests authorise).";
             };
             identitiesOnly = mkOption {
               type = types.bool;
@@ -239,15 +239,20 @@ in
             ++ lib.optional (tailnetFqdn != null) tailnetFqdn
           );
 
-      defaultLimaKey =
-        let
-          home =
-            if (config ? profile && config.profile ? user && config.profile.user ? home) then
-              config.profile.user.home
-            else
-              "/Users/${userName}";
-        in
-        "${home}/.lima/_config/user";
+      # Guest VMs (Lima and Tart both) authorise the same canonical
+      # rdp-host key on `nxmatic` (via
+      # `users.users.nxmatic.openssh.authorizedKeys.keys`); no other
+      # key is accepted in the final configuration.  Use that key as
+      # the guest-stanza default.
+      #
+      # Historical note: this used to point at
+      # `${home}/.lima/_config/user` back when Lima was the sole VM
+      # provider and Lima injected its own key during first-boot.
+      # With the Tart-first layout that Lima key is never provisioned
+      # on the guest, so the old default bricked `ssh
+      # bioskop-nixos.local` — including nix-copy-closure invoked by
+      # nixos-rebuild.
+      defaultGuestIdentity = hostIdentityFile;
       guestHostKeySafetyConfig = ''
         UserKnownHostsFile /dev/null
         GlobalKnownHostsFile /dev/null
@@ -260,7 +265,8 @@ in
         StrictHostKeyChecking no
         CheckHostIP no
       '';
-      guestIdentity = if cfg.guest.identityFile != null then cfg.guest.identityFile else defaultLimaKey;
+      guestIdentity =
+        if cfg.guest.identityFile != null then cfg.guest.identityFile else defaultGuestIdentity;
       userHome =
         if (config ? profile && config.profile ? user && config.profile.user ? home) then
           config.profile.user.home

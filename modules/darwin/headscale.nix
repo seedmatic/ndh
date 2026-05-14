@@ -36,9 +36,12 @@ let
   # the runtime path from there.  `cfg.authKeyFile` remains as an
   # explicit out-of-band override for manual bootstrap / tests.
   effectiveAuthKeyFile =
-    if cfg.authKeyFile != null then cfg.authKeyFile
-    else if tailnet.headscale.auth.enable then tailnet.headscale.auth.path
-    else null;
+    if cfg.authKeyFile != null then
+      cfg.authKeyFile
+    else if tailnet.headscale.auth.enable then
+      tailnet.headscale.auth.path
+    else
+      null;
 
   tagsCsv = concatStringsSep "," (map (tag: "tag:" + tag) cfg.tags);
 
@@ -130,9 +133,7 @@ in
           CMD="tailscale up --login-server=${cfg.serverUrl} --hostname=${cfg.hostname}"
           ${optionalString cfg.enableSSH ''CMD="$CMD --ssh"''}
           ${optionalString cfg.acceptRoutes ''CMD="$CMD --accept-routes"''}
-          ${optionalString (cfg.tags != [ ])
-            ''CMD="$CMD --advertise-tags=${tagsCsv}"''
-          }
+          ${optionalString (cfg.tags != [ ]) ''CMD="$CMD --advertise-tags=${tagsCsv}"''}
 
           AUTH_KEY_FILE="${if effectiveAuthKeyFile != null then effectiveAuthKeyFile else ""}"
           if [ -n "$AUTH_KEY_FILE" ] && [ -r "$AUTH_KEY_FILE" ]; then

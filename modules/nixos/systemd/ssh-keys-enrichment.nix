@@ -82,10 +82,12 @@ let
       nixBashTrampoline = nixBashTrampoline;
       loggerTag = loggerTagSplit;
     };
-    ssh-enrich-split-and-authorize = pkgs.replaceVars "${ndhCommon}/ssh-keys.d/ssh-enrich-split-runtime-keys.sh" {
-      nixBashTrampoline = nixBashTrampoline;
-      loggerTag = loggerTagOrchestrate;
-    };
+    ssh-enrich-split-and-authorize =
+      pkgs.replaceVars "${ndhCommon}/ssh-keys.d/ssh-enrich-split-runtime-keys.sh"
+        {
+          nixBashTrampoline = nixBashTrampoline;
+          loggerTag = loggerTagOrchestrate;
+        };
     # ssh-extract-keys carries an extra @splitExpFile@ substitution but shares
     # the same activation pipeline + logger shape, so bundle it alongside.
     ssh-extract-keys = pkgs.replaceVars "${ndhHm}/ssh-key.d/ssh-extract-keys.sh" {
@@ -122,6 +124,10 @@ in
       openssh
       inetutils
       yq-go
+      # step-cli signs tls-server x509 leaves when a key declares
+      # `cert_usage: [tls-server]`; benign overhead when no such key is
+      # present (shelled out only on demand).
+      step-cli
     ];
     serviceConfig = {
       Type = "oneshot";

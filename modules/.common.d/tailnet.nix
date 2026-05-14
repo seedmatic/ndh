@@ -50,10 +50,22 @@ let
   # as data so `config` can loop once and emit sops.secrets entries
   # without repeating the shape four times.
   entries = [
-    { service = "tailscale"; kind = "auth"; }
-    { service = "tailscale"; kind = "api"; }
-    { service = "headscale"; kind = "auth"; }
-    { service = "headscale"; kind = "api"; }
+    {
+      service = "tailscale";
+      kind = "auth";
+    }
+    {
+      service = "tailscale";
+      kind = "api";
+    }
+    {
+      service = "headscale";
+      kind = "auth";
+    }
+    {
+      service = "headscale";
+      kind = "api";
+    }
   ];
 
   # Build a nested `tailnet.<service>.{auth,api}` option tree.  Each
@@ -117,12 +129,18 @@ let
     types.submodule {
       options = {
         auth = mkOption {
-          type = credentialSubmodule { inherit service; kind = "auth"; };
+          type = credentialSubmodule {
+            inherit service;
+            kind = "auth";
+          };
           default = { };
           description = "Node-registration auth key (tskey-auth-/hskey-auth-).";
         };
         api = mkOption {
-          type = credentialSubmodule { inherit service; kind = "api"; };
+          type = credentialSubmodule {
+            inherit service;
+            kind = "api";
+          };
           default = { };
           description = "Admin API key (tskey-api-/hskey-api-).";
         };
@@ -131,7 +149,8 @@ let
 
   enabledEntries = lib.filter (e: cfg.${e.service}.${e.kind}.enable) entries;
 
-  mkSecretAttrs = e:
+  mkSecretAttrs =
+    e:
     let
       leaf = cfg.${e.service}.${e.kind};
     in

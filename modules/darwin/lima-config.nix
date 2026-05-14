@@ -207,7 +207,10 @@ let
     # The variable is exported for diagnostic access but the activation flow
     # does not dereference it.
     export NDH_LIMA_RUNTIME_SYSTEM=${
-      if cfg.runtimeSystemPath == null then "\"\"" else lib.escapeShellArg (toString cfg.runtimeSystemPath)
+      if cfg.runtimeSystemPath == null then
+        "\"\""
+      else
+        lib.escapeShellArg (toString cfg.runtimeSystemPath)
     }
 
     export NDH_LIMA_ACTIVATION_SCRIPT="${limaActivationScript}"
@@ -645,13 +648,14 @@ in
     # Dedicated activation script using postActivation which is actually executed
     # Use mkAfter to run after other postActivation scripts (@codebase)
     system.activationScripts.postActivation.text =
-      lib.mkIf (
-        config.vmMaterializer.enableActivationHook
-        && limaRuntimeSupported
-        && limaProviderSelected
-        && cfg.enableActivationHook
-        && cfg.rawImageManifestPath != null
-      )
+      lib.mkIf
+        (
+          config.vmMaterializer.enableActivationHook
+          && limaRuntimeSupported
+          && limaProviderSelected
+          && cfg.enableActivationHook
+          && cfg.rawImageManifestPath != null
+        )
         (
           lib.mkAfter ''
             ${limaActivationScript}

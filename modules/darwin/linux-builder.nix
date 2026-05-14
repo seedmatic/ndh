@@ -241,8 +241,8 @@ in
 
         environment.variables = {
           NDH_VECTOR_HTTP_PORT = "9001";
-          NDH_VECTOR_API_PORT  = "8686";
-          NDH_VECTOR_ENDPOINT  = "http://127.0.0.1:9001";
+          NDH_VECTOR_API_PORT = "8686";
+          NDH_VECTOR_ENDPOINT = "http://127.0.0.1:9001";
         };
 
         # Deploy the linux-builder SSH key to the VM using NixOS environment.etc with mode

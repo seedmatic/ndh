@@ -7,22 +7,21 @@ let
   ndhContext = ndh.context;
   effectiveVmProvider = ndhContext.vmProvider;
 
-  providerDataDisks =
-    if effectiveVmProvider == "tart" then
-      {
-        tank1 = "/dev/vda";
-        tank2 = "/dev/vdb";
-        tank3 = "/dev/vdc";
-        recover = "/dev/vdd";
-      }
-    else
-      {
-        # Lima keeps bootstrap/root as /dev/vda; ZFS data disks are attached after it.
-        tank1 = "/dev/vdb";
-        tank2 = "/dev/vdc";
-        tank3 = "/dev/vdd";
-        recover = "/dev/vde";
-      };
+  # Tart and Lima both front the guest with a dedicated boot disk at
+  # /dev/vda — Tart because the bringup image uses `mkBootDisk` at
+  # build time to lay down an `esp-boot`-labelled 600 MiB disk, Lima
+  # because cloud-init owns the root FS there for the bootstrap
+  # closure.  Either way the four ZFS pool disks start at /dev/vdb;
+  # declaring `boot = "/dev/vda"` here makes disko emit the
+  # `/boot` fileSystems entry (via mkBootDisk) so systemd-boot's
+  # post-install mount succeeds on the full config.
+  providerDataDisks = {
+    boot = "/dev/vda";
+    tank1 = "/dev/vdb";
+    tank2 = "/dev/vdc";
+    tank3 = "/dev/vdd";
+    recover = "/dev/vde";
+  };
 in
 {
   disko = import ./zfs-disko-config.nix {

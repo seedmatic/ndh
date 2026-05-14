@@ -1,4 +1,9 @@
-{ pkgs, lib, self, ... }:
+{
+  pkgs,
+  lib,
+  self,
+  ...
+}:
 let
   nixpkgsConfigFile = "${self}/modules/.common.d/nixpkgs-config.nix";
 in

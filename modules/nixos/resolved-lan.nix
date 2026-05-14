@@ -8,7 +8,7 @@
       DNS=192.168.1.254
       FallbackDNS=
       Domains=lan
-      MulticastDNS=no
+      MulticastDNS=yes
       LLMNR=no
     '';
   };

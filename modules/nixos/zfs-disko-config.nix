@@ -8,7 +8,9 @@
   bootDiskImageSize ? "${toString (import ./zfs-partition-layout.nix).bootDiskSizeMiB}M",
   espStartMiB ? (import ./zfs-partition-layout.nix).espStartMiB,
   espSizeMiB ? (import ./zfs-partition-layout.nix).espSizeMiB,
-  zfsStartMiB ? ((import ./zfs-partition-layout.nix).espStartMiB + (import ./zfs-partition-layout.nix).espSizeMiB + 1),
+  zfsStartMiB ? (
+    (import ./zfs-partition-layout.nix).espStartMiB + (import ./zfs-partition-layout.nix).espSizeMiB + 1
+  ),
   zfsPoolDiskMap ? null,
   disks ? {
     # boot: dedicated EFI boot disk (vda). ZFS data disks start at vdb.

@@ -14,6 +14,14 @@ lsof.pkg-path = "lsof"
 nixos-rebuild-ng.pkg-path = "nixos-rebuild-ng"
 vector.pkg-path = "vector"
 grpcurl.pkg-path = "grpcurl"
+# x509 toolkit used by the SSH enrichment pipeline to mint TLS leaf
+# certs off OpenSSH Ed25519 CA keys (see
+# modules/.common.d/ssh-keys.d/ssh-enrich-keys-yaml.sh's
+# sign::tls_server) and by the bin/authority-bootstrap-tls-root.sh
+# ceremony to mint the CA root itself.  Mirrors the `step-cli` entry
+# added to modules/.common.d/system-packages.nix so that both the dev
+# shell and the deployed host systems share the same signer.
+step-cli.pkg-path = "step-cli"
 # gum.pkg-path = "gum"
 # gum.version = "^0.14.5"
 

@@ -47,18 +47,14 @@ let
 
   externalPubs = flatten (
     mapAttrsToList (
-      _: entry:
-      (optional (entry ? publicKey) entry.publicKey)
-      ++ (entry.publicKeys or [ ])
+      _: entry: (optional (entry ? publicKey) entry.publicKey) ++ (entry.publicKeys or [ ])
     ) externalCaches
   );
 
   cachixPubs = mapAttrsToList (_: entry: entry.publicKey) cachixCaches;
 
   externalSubstituters = flatten (
-    mapAttrsToList (
-      _: entry: optional (entry ? substituter) entry.substituter
-    ) externalCaches
+    mapAttrsToList (_: entry: optional (entry ? substituter) entry.substituter) externalCaches
   );
 
   cachixNames = builtins.attrNames cachixCaches;
@@ -146,8 +142,7 @@ in
     };
 
     environment.etc = mapAttrs' (
-      name: entry:
-      nameValuePair "nix/${name}.pub" { text = entry.publicKey + "\n"; }
+      name: entry: nameValuePair "nix/${name}.pub" { text = entry.publicKey + "\n"; }
     ) cachixCaches;
   };
 }

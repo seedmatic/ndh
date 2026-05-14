@@ -98,7 +98,11 @@ in
 {
   options.services.headscaleBootstrap = {
     role = mkOption {
-      type = types.enum [ "primary" "standby" "none" ];
+      type = types.enum [
+        "primary"
+        "standby"
+        "none"
+      ];
       default = "none";
       description = ''
         This host's role in the headscale bootstrap topology.  Matches

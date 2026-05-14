@@ -27,11 +27,11 @@ in
     # Boot timeout
     timeout = lib.mkForce (
       if bringupMode then
-        0  # Immediate boot for bringup
+        0 # Immediate boot for bringup
       else if bootDebug then
-        15  # Extended timeout for debug/inspection
+        15 # Extended timeout for debug/inspection
       else
-        5  # Normal 5 second timeout for runtime
+        5 # Normal 5 second timeout for runtime
     );
   };
 }

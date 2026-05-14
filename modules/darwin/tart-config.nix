@@ -46,7 +46,10 @@ let
     entry: (entry ? vm) && (entry.vm ? manager) && entry.vm.manager == "tart"
   ) hostInventoryEntries;
   selectedVmProvider =
-    if profileHost ? vmProvider && profileHost.vmProvider != null then profileHost.vmProvider else "lima";
+    if profileHost ? vmProvider && profileHost.vmProvider != null then
+      profileHost.vmProvider
+    else
+      "lima";
   tartProviderSelected = selectedVmProvider == "tart";
   tartMaterializationEnabled = tartProviderSelected && (tartRuntimeSupported || cfg.forceEnable);
 
@@ -101,19 +104,23 @@ let
   tartActivationScript = "${tartActivationBundle}/bin/activate.sh";
 
   tartMaterializerPackage = pkgs.writeShellScriptBin "nerd-tart-vm-materialize" ''
-    export PATH="${lib.makeBinPath [
-      pkgs.openssh
-      pkgs.gawk
-      pkgs.gnused
-      pkgs.coreutils
-      pkgs.findutils
-      pkgs.procps
-      pkgs.yq-go
-      pkgs.util-linux
-      pkgs.bash
-    ]}:/usr/bin:/bin:/usr/sbin:/sbin"
+    export PATH="${
+      lib.makeBinPath [
+        pkgs.openssh
+        pkgs.gawk
+        pkgs.gnused
+        pkgs.coreutils
+        pkgs.findutils
+        pkgs.procps
+        pkgs.yq-go
+        pkgs.util-linux
+        pkgs.bash
+      ]
+    }:/usr/bin:/bin:/usr/sbin:/sbin"
 
-    if ''${NDH_LINUX_BUILDER_GC_BEFORE_BUILD:-${if cfg.linuxBuilderGcBeforeBuild then "true" else "false"}}; then
+    if ''${NDH_LINUX_BUILDER_GC_BEFORE_BUILD:-${
+      if cfg.linuxBuilderGcBeforeBuild then "true" else "false"
+    }}; then
       builder_target="''${NDH_LINUX_BUILDER_GC_TARGET:-builder@linux-builder}"
       builder_gc_cmd="''${NDH_LINUX_BUILDER_GC_COMMAND:-sudo nix-collect-garbage -d}"
       echo "[tart-materialize][INFO] running pre-build GC on ''${builder_target}: ''${builder_gc_cmd}" >&2
@@ -126,7 +133,9 @@ let
     # Runs in background, collects macOS-side metrics (memory pressure, disk I/O,
     # nix process CPU/RSS) during the entire materialize phase.
     # Output: NDH_DARWIN_OBS_OUTPUT (default ~/Library/Logs/nix-darwin-home/darwin-observe.yaml)
-    _ndh_darwin_obs_enabled() { ''${NDH_BUILD_OBSERVE:-${if cfg.enableBuildObserve then "true" else "false"}}; }
+    _ndh_darwin_obs_enabled() { ''${NDH_BUILD_OBSERVE:-${
+      if cfg.enableBuildObserve then "true" else "false"
+    }}; }
 
     _ndh_darwin_obs_sample() {
       local ts nix_pid nix_cpu nix_rss
@@ -726,12 +735,13 @@ in
     };
 
     system.activationScripts.postActivation.text =
-      lib.mkIf (
-        config.vmMaterializer.enableActivationHook
-        && tartMaterializationEnabled
-        && cfg.enableActivationHook
-        && cfg.rawImageManifestPath != null
-      )
+      lib.mkIf
+        (
+          config.vmMaterializer.enableActivationHook
+          && tartMaterializationEnabled
+          && cfg.enableActivationHook
+          && cfg.rawImageManifestPath != null
+        )
         (
           lib.mkAfter ''
             ${tartActivationScript}

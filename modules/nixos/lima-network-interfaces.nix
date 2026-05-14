@@ -164,6 +164,14 @@ in
       networkConfig = {
         DNS = [ "192.168.1.254" ];
         Domains = [ "~lan" ];
+        # Enable mDNS on the LAN link so systemd-resolved answers
+        # (and queries) `.local` names here.  Global resolved
+        # `MulticastDNS=yes` isn't enough — resolved gates mDNS
+        # per-link via this knob.  tailscaled's Go resolver uses
+        # systemd-resolved (not libc NSS), so this is what lets it
+        # resolve `headscale.mammoth-skate.local` in addition to
+        # libc consumers like `getent`/`ping`/`curl`.
+        MulticastDNS = "yes";
       };
       dhcpV4Config.UseDNS = false;
     };
@@ -258,24 +266,11 @@ in
       };
     };
 
-    # Enable mDNS (Avahi) and bind it to lan-br and vmhost0 so host backchannel
-    # mDNS works without leaking onto other links.
-    services.avahi = {
-      enable = true;
-      nssmdns4 = true;
-      allowInterfaces = [
-        "vmlan0"
-        "lan-br"
-      ]
-      ++ lib.optionals includeHostAndNatInterfaces [ "vmhost0" ]
-      ++ lib.optional vlanEnabled vlanName;
-      publish = {
-        enable = true;
-        addresses = true;
-        workstation = true;
-        hinfo = true;
-      };
-    };
+    # mDNS is served by systemd-resolved (per-link MulticastDNS=yes on
+    # lan-br above), not avahi.  See modules/nixos/avahi.nix for the
+    # migration rationale.  Left disabled explicitly so a reintroduction
+    # of the avahi block elsewhere is visible.
+    services.avahi.enable = lib.mkForce false;
 
     # Note: vmlan0 bridge membership is configured in incus.nix
 

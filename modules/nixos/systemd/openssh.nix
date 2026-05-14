@@ -275,7 +275,9 @@ in
     wants = lib.optionals hasSshKeysEnrichmentService [
       sshKeysEnrichmentServiceName
     ];
-    after = [ "sshd.service" ]
+    after = [
+      "sshd.service"
+    ]
     ++ lib.optionals hasSshKeysEnrichmentService [
       sshKeysEnrichmentServiceName
     ];

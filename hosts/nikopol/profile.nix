@@ -8,12 +8,11 @@
   imports = [
     (import ../host-common.nix {
       inherit hostProfile darwinProfile;
-      # URL tracks catalog.headscale.serverUrls.nikopol.  Points at
-      # nikopol's own LaunchAgent (each laptop maintains its own
-      # bootstrap tailnet until a central rke2-hosted instance takes
-      # over).  mDNS so DHCP-assigned LAN IPs don't invalidate it.
-      # Port 41841 documented at catalog/headscale/default.nix.
-      headscaleServerUrl = "http://nikopol.local:41841";
+      # No `headscaleServerUrl` — fall through to
+      # `catalog.headscale.aliasUrl` (headscale.mammoth-skate.local),
+      # which tracks whichever host currently holds `role = "primary"`.
+      # A standby promotion on nikopol keeps the alias pointing here
+      # without touching any client config.
     })
   ];
   config = {

@@ -180,27 +180,26 @@ in
       description = "Kernel/console log level (0=emerg, 7=debug).";
     };
   };
-  imports =
-    [
-      ./initrd-emergency.nix
-      ./console-serial.nix
-      ./nix-settings.nix
-      ./users.nix
-      ./boot-loader.nix
-    ]
-    ++ bootstrapRequiredImports
-    ++ (lib.optionals runtimeMode runtimeOnlyImports)
-    ++ (lib.optionals runtimeMode [
-      #(import ./remote-nix-store.nix { inherit config pkgs lib; })
-      #(import ./nix-snapshotter.nix { inherit config pkgs lib user; })
-      # Explicitly disable GPG in NixOS - agent is forwarded from Darwin host
-      (
-        { lib, ... }:
-        {
-          home-manager.users.${cfgUserName}.imports = [ ./enable-gpg-false.nix ];
-        }
-      )
-    ]);
+  imports = [
+    ./initrd-emergency.nix
+    ./console-serial.nix
+    ./nix-settings.nix
+    ./users.nix
+    ./boot-loader.nix
+  ]
+  ++ bootstrapRequiredImports
+  ++ (lib.optionals runtimeMode runtimeOnlyImports)
+  ++ (lib.optionals runtimeMode [
+    #(import ./remote-nix-store.nix { inherit config pkgs lib; })
+    #(import ./nix-snapshotter.nix { inherit config pkgs lib user; })
+    # Explicitly disable GPG in NixOS - agent is forwarded from Darwin host
+    (
+      { lib, ... }:
+      {
+        home-manager.users.${cfgUserName}.imports = [ ./enable-gpg-false.nix ];
+      }
+    )
+  ]);
 
   config = {
 
@@ -249,19 +248,17 @@ in
       # Boot loader configuration (systemd-boot, EFI, timeout, grub) via ./boot-loader.nix
 
       kernelParams = lib.mkMerge [
-        (
-          [
-            # Kernel cmdline journald routing:
-            # - rd.systemd.* applies in initrd (early boot stage before switch_root)
-            # - systemd.* applies in stage-2 (real root userspace)
-            # Keep both for consistent serial visibility across bootstrap.
-            "rd.systemd.journald.forward_to_console=1"
-            # "rd.systemd.journald.console=/dev/${virtualSerialConsole}"
-            "systemd.journald.forward_to_console=1"
-            # "systemd.journald.console=/dev/${virtualSerialConsole}"
-            # Console kernel params (console=tty0 console=hvc0) configured via ./console-serial.nix
-          ]
-        )
+        ([
+          # Kernel cmdline journald routing:
+          # - rd.systemd.* applies in initrd (early boot stage before switch_root)
+          # - systemd.* applies in stage-2 (real root userspace)
+          # Keep both for consistent serial visibility across bootstrap.
+          "rd.systemd.journald.forward_to_console=1"
+          # "rd.systemd.journald.console=/dev/${virtualSerialConsole}"
+          "systemd.journald.forward_to_console=1"
+          # "systemd.journald.console=/dev/${virtualSerialConsole}"
+          # Console kernel params (console=tty0 console=hvc0) configured via ./console-serial.nix
+        ])
         (lib.optionals (!bringupMode || bootDebug) [
           "rootwait"
           "rootdelay=5"
@@ -285,7 +282,6 @@ in
         "net.bridge.bridge-nf-call-arptables" = 1;
         "net.core.devconf_inherit_init_net" = 1;
       };
-
 
       # verbosity (default off; override per-host if needed)
       consoleLogLevel =

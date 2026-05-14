@@ -30,10 +30,7 @@ let
     else
       null;
   installerAttr =
-    if hostNameForAttr != null then
-      "${hostNameForAttr}-bringup-install"
-    else
-      installerAttrDefault;
+    if hostNameForAttr != null then "${hostNameForAttr}-bringup-install" else installerAttrDefault;
   storeNamePrefix = "io.nxmatic.nix-darwin-home";
   prefixStoreName =
     name: if lib.hasPrefix "${storeNamePrefix}-" name then name else "${storeNamePrefix}-${name}";

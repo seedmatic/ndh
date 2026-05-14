@@ -195,11 +195,9 @@ let
       pkgs.runCommand (prefixedName name) { } (
         "mkdir -p $out/bin\n"
         + lib.concatStrings (
-          lib.mapAttrsToList (
-            binName: src: ''
-              install -Dm755 ${src} "$out/bin/${binName}"
-            ''
-          ) scripts
+          lib.mapAttrsToList (binName: src: ''
+            install -Dm755 ${src} "$out/bin/${binName}"
+          '') scripts
         )
       );
     lookupScript = ndhStoreAssetLookupScript;

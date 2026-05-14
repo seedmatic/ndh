@@ -33,8 +33,8 @@ in
 
       environment.variables = {
         NDH_VECTOR_HTTP_PORT = toString cfg.httpPort;
-        NDH_VECTOR_API_PORT  = toString cfg.apiPort;
-        NDH_VECTOR_ENDPOINT  = "http://127.0.0.1:${toString cfg.httpPort}";
+        NDH_VECTOR_API_PORT = toString cfg.apiPort;
+        NDH_VECTOR_ENDPOINT = "http://127.0.0.1:${toString cfg.httpPort}";
       };
     }
   );

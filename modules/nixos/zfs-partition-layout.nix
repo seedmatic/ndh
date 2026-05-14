@@ -13,11 +13,11 @@
 #   └───────────────────────────────────────────────────────┘
 {
   # Boot disk (vda) — EFI-only, no ZFS partition.
-  bootDiskSizeMiB = 600;   # 512 MiB ESP + GPT overhead
+  bootDiskSizeMiB = 600; # 512 MiB ESP + GPT overhead
 
   # Per pool-disk partition layout
-  espStartMiB     = 1;
-  espSizeMiB      = 512;
+  espStartMiB = 1;
+  espSizeMiB = 512;
   # zfsStartMiB is derived: espStartMiB + espSizeMiB + 1 (alignment gap)
 
   # Solaris/ZFS GPT type GUID — disko shorthand "BF01".
