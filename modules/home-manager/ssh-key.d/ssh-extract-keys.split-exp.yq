@@ -83,7 +83,14 @@ env(TMPDIR) + "/" as $tmpdir |
           ( { "yamlfile":   ( $tmpdir + $basename + "-" + $authName + "-user-cert.yaml" ),
               "rel_path":   ( $basename + "-" + $authName + "-user-cert.pub" ),
               "target_dir": "system",
-              "content":    ( $certsByUsage."ssh-user" // null ) } )
+              "content":    ( $certsByUsage."ssh-user" // null ) } ),
+          # TLS x509 leaf cert — PEM blob, drops next to the private
+          # key with a `.crt` suffix so consumers (headscale daemon)
+          # can pass a single basename pair.
+          ( { "yamlfile":   ( $tmpdir + $basename + "-" + $authName + "-tls.yaml" ),
+              "rel_path":   ( $basename + ".crt" ),
+              "target_dir": "system",
+              "content":    ( $certsByUsage."tls-server" // null ) } )
         ]
       ) | flatten
     )

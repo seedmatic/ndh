@@ -14,10 +14,20 @@
 # into root's authorized_keys" decision expressed as a list of names,
 # not an open-coded conditional per key.
 let
+  # Single runCommand extracts both `.keys` and `.authorities` maps as
+  # JSON so every consumer reads from the same store path.  sops
+  # leaves plaintext fields (anything without a `# sops:encrypted`
+  # marker in .sops.yaml's encrypted_comment_regex, including
+  # `public`, `ca_crt`, everything under `authorities`) untouched,
+  # so yq can pull them out of the encrypted file directly without
+  # sops decryption at eval time.
   jsonDrv = pkgs.runCommand "ndh-keys-yaml.json" { buildInputs = [ pkgs.yq-go ]; } ''
-    yq -o=json '.keys' "${self}/modules/home-manager/ssh.d/keys.yaml" > "$out"
+    yq -o=json '{"keys": .keys, "authorities": .authorities}' \
+      "${self}/modules/home-manager/ssh.d/keys.yaml" > "$out"
   '';
-  keysJson = builtins.fromJSON (builtins.readFile jsonDrv);
+  parsed = builtins.fromJSON (builtins.readFile jsonDrv);
+  keysJson = parsed.keys or { };
+  authoritiesJson = parsed.authorities or { };
 in
 {
   options.ndh.keysYaml = {
@@ -29,6 +39,19 @@ in
         Parsed `.keys` map from `modules/home-manager/ssh.d/keys.yaml`.
         The build-time derivation producing the JSON is shared via the
         Nix store so consumers never rebuild it.
+      '';
+    };
+
+    authorities = lib.mkOption {
+      type = lib.types.attrsOf lib.types.anything;
+      readOnly = true;
+      default = authoritiesJson;
+      description = ''
+        Parsed `.authorities` map from keys.yaml.  Carries each
+        authority's `public`, `ca_crt`, `domain`, `usage`, etc.
+        (private is sops-encrypted and stays ENC[...] here; the only
+        consumer that needs it reads from the enriched keys.yaml
+        at activation time).
       '';
     };
 

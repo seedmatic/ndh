@@ -76,8 +76,8 @@ in
   # for the rare case where an operator wants to point at a specific
   # physical instance instead of the alias.
   serverUrls = {
-    bioskop = "http://bioskop.local:${toString listenPort}";
-    nikopol = "http://nikopol.local:${toString listenPort}";
+    bioskop = "https://bioskop.local:${toString listenPort}";
+    nikopol = "https://nikopol.local:${toString listenPort}";
   };
 
   # Fleet-scoped alias that every client's `--login-server` points at.
@@ -88,5 +88,5 @@ in
   # roles, clients stay on the same URL and simply hit a different
   # host's IP.  Exactly one host should be `primary` at any time.
   # `aliasName` itself is inherited from the `let` block above.
-  aliasUrl = "http://${aliasName}:${toString listenPort}";
+  aliasUrl = "https://${aliasName}:${toString listenPort}";
 }

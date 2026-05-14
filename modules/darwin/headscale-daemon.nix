@@ -46,6 +46,14 @@ let
   # tailnet level (same server_url, new backing IP).
   serverUrl = headscaleCatalog.aliasUrl;
 
+  # TLS leaf + private extracted by the ssh-keys enrichment pipeline
+  # from keys.yaml's headscale-tls-server entry.  Private lives in
+  # the user's secrets dir (profile = [user] in keys.yaml); cert
+  # sits next to it with a `.crt` suffix (see
+  # modules/home-manager/ssh-key.d/ssh-extract-keys.split-exp.yq).
+  tlsKeyPath = "${config.sshPaths.secretsKeysDir}/headscale-tls-server";
+  tlsCertPath = "${config.sshPaths.secretsKeysDir}/headscale-tls-server.crt";
+
   # XDG split:
   #   config at `~/.config/headscale/`        (XDG_CONFIG_HOME)
   #   state  at `~/.local/state/headscale/`  (XDG_STATE_HOME)
@@ -134,6 +142,21 @@ let
     server_url: ${serverUrl}
     listen_addr: 0.0.0.0:${toString headscaleCatalog.listenPort}
 
+    # TLS served directly by headscale (no reverse proxy).  The cert
+    # is a `mammoth-skate`-signed x509 leaf with SAN for
+    # `headscale.mammoth-skate.local` — matched to the server_url
+    # above.  Clients trust it via the CA cert committed at
+    # `authorities.mammoth-skate.ca_crt` in keys.yaml, installed
+    # into each client's system trust store by the client module.
+    #
+    # TLS is required because modern tailscale clients force the
+    # Noise upgrade onto HTTPS:443 after any failed plain-HTTP
+    # attempt (control/controlhttp/client.go's
+    # LastNoiseDialWasRecent heuristic), and because the embedded
+    # DERP relay below only speaks HTTPS.
+    tls_cert_path: ${tlsCertPath}
+    tls_key_path: ${tlsKeyPath}
+
     # Metrics listener on localhost only — exposing is optional.
     metrics_listen_addr: 127.0.0.1:${toString (headscaleCatalog.listenPort + 1)}
 
@@ -183,15 +206,45 @@ let
       level: info
       format: text
 
-    # DERP (relays): use the public Tailscale DERP map.  Good enough
-    # for LAN + cross-LAN; a self-hosted DERP is a future follow-up.
+    # DERP (relays): embedded in this headscale process.  Tailscale
+    # clients that can't form a direct WireGuard path — the common
+    # case for a VM-on-Darwin talking to its own host across Tart's
+    # NAT — fall back to DERP.  Running the public Tailscale DERP
+    # mesh instead would require outbound internet to Tailscale-hosted
+    # servers in Paris/Amsterdam/… which (a) adds cross-continental
+    # latency to LAN-local traffic and (b) doesn't work at all when
+    # the internet is down.
+    #
+    # The embedded DERP server insists on HTTPS (it's a Tailscale-
+    # protocol hard requirement); the TLS cert above covers both the
+    # control plane and the DERP endpoint on the same listener.
+    # `stun_listen_addr` needs UDP 3478 reachable from every client
+    # (the macOS firewall is off by default; no further action).
+    #
+    # `region_id = 999` is the headscale convention for "not an
+    # official Tailscale region" (anything ≥ 900 works); `region_code`
+    # shows up in `tailscale netcheck` output.
     derp:
       server:
-        enabled: false
-      urls:
-        - https://controlplane.tailscale.com/derpmap/default
-      auto_update_enabled: true
-      update_frequency: 24h
+        enabled: true
+        region_id: 999
+        region_code: "headscale"
+        region_name: "Headscale Embedded DERP"
+        # UDP 3478 — STUN endpoint clients probe for NAT traversal.
+        # Required whenever the embedded DERP server is enabled.
+        stun_listen_addr: "0.0.0.0:3478"
+        # DERP encryption key (separate from the Noise/control-plane
+        # private).  Created on first start if missing; lives
+        # alongside the DB and other stateful material.
+        private_key_path: ${dataDir}/derp_server_private.key
+        # Restrict DERP relay service to clients registered with this
+        # headscale instance.  Extra defence-in-depth on a LAN
+        # service that's about to be reachable via the DDNS off-LAN
+        # path too.
+        verify_clients: true
+      urls: []
+      paths: []
+      auto_update_enabled: false
 
     # Disable features we don't use.
     ephemeral_node_inactivity_timeout: 30m
