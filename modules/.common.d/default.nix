@@ -357,18 +357,41 @@ in
     # leaf, and add a macOS-specific `security add-trusted-cert`
     # activation script — a lot of churn for a cohort of one user-facing
     # Go daemon.  If browser trust becomes necessary later we revisit.
-    launchd.daemons.tailscaled.serviceConfig.EnvironmentVariables = {
-      SSL_CERT_FILE = "/etc/ssl/certs/ca-certificates.crt";
-      # Force Go's pure-Go x509 verifier instead of delegating to
-      # Apple's Security framework.  Apple's SecTrust rejects
-      # Ed25519 certs at validation time with "broken key size"
-      # even when the chain is otherwise valid and the root is
-      # in the env-trusted bundle.  Go 1.22+ with
-      # `x509usefallbackroots=1` honours SSL_CERT_FILE and uses
-      # its own Ed25519-aware validator.  Scoped to tailscaled
-      # only so other Go daemons on the system keep macOS-native
-      # validation.
-      GODEBUG = "x509usefallbackroots=1";
+    launchd.daemons.tailscaled = {
+      # The upstream nix-darwin `services.tailscale` module sets
+      # `command = "tailscaled"` which renders into a `/bin/sh -c
+      # wait4path && exec tailscaled` ProgramArguments vector.  We
+      # want to pass `-verbose 2` for diagnostic visibility into
+      # the noise/TS2021 handshake on macOS (where Apple's SecTrust
+      # rejects Ed25519 and only the env-forced Go verifier below
+      # is active), so replace the wrapper with an explicit
+      # ProgramArguments list.
+      #
+      # Blanking `command` silences the default wrapper injection
+      # (modules/launchd/default.nix: `serviceConfig.ProgramArguments
+      # = mkIf (config.command != "") [...]`), leaving our explicit
+      # list as the sole definition.
+      command = lib.mkForce "";
+      serviceConfig = {
+        EnvironmentVariables = {
+          SSL_CERT_FILE = "/etc/ssl/certs/ca-certificates.crt";
+          # Force Go's pure-Go x509 verifier instead of delegating
+          # to Apple's Security framework.  Apple's SecTrust rejects
+          # Ed25519 certs at validation time with "broken key size"
+          # even when the chain is otherwise valid and the root is
+          # in the env-trusted bundle.  Go 1.22+ with
+          # `x509usefallbackroots=1` honours SSL_CERT_FILE and uses
+          # its own Ed25519-aware validator.  Scoped to tailscaled
+          # only so other Go daemons on the system keep macOS-native
+          # validation.
+          GODEBUG = "x509usefallbackroots=1";
+        };
+        ProgramArguments = [
+          "/bin/sh"
+          "-c"
+          "/bin/wait4path /nix/store && exec ${lib.getExe' config.services.tailscale.package "tailscaled"} -verbose 2"
+        ];
+      };
     };
 
     fonts = {
