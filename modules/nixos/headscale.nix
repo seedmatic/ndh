@@ -15,16 +15,20 @@ let
   tailscaleAutoconnectUnitName = ndhSystemd.mkUnitName "tailscaled-autoconnect";
   contributedTargetName = ndhSystemd.contributedTargetName;
 
-  # Same resolution rule as the Darwin client: explicit override wins,
-  # else fall back to the common module's materialised path when the
-  # caller has enabled tailnet.headscale.auth.
+  # NixOS guests always register with the `nixos` kind
+  # (tag:headless,tag:nixos).  Fixed at the platform level rather than reading back
+  # from `tailnet.headscale.auth.*.enable` — the latter creates an
+  # infinite-recursion cycle because we *also* set the owner override
+  # on that same attribute below, and module evaluation can't reach a
+  # fixed point when a config read feeds a config write on the same
+  # option.  `cfg.authKeyFile` remains as an out-of-band override for
+  # manual bootstrap / test harnesses.
+  activeAuthKind = "nixos";
   effectiveAuthKeyFile =
     if cfg.authKeyFile != null then
       cfg.authKeyFile
-    else if tailnet.headscale.auth.enable then
-      tailnet.headscale.auth.path
     else
-      null;
+      tailnet.headscale.auth.${activeAuthKind}.path;
 in
 {
   options.networking.headscale = {
@@ -76,6 +80,16 @@ in
   };
 
   config = mkIf cfg.enable {
+    # `tailscaled` is root-run on NixOS; override the common module's
+    # default (profile user) on the active per-kind auth slot so
+    # sops-install-secrets materialises the file as root at 0400.
+    # Without this, the profile user owns the file and the root-run
+    # unit can't read it.
+    tailnet.headscale.auth.${activeAuthKind} = {
+      owner = "root";
+      mode = "0400";
+    };
+
     # Install Tailscale (client compatible with Headscale).  We DO NOT
     # set `authKeyFile` here: the nixpkgs tailscale module generates
     # its own `tailscaled-autoconnect.service` when that option is
@@ -168,16 +182,46 @@ in
           exit 0
         fi
 
+        # Headscale v2 rejects `--advertise-tags` on preauth-key
+        # registrations — tags come from the key itself, not the client
+        # request (see hscontrol/state/state.go:1660 in
+        # juanfont/headscale).  The earlier `cfg.tags` wiring becomes
+        # informational only: it's applied to non-authkey flows
+        # (interactive login) but must be omitted here.  The preauth
+        # key our `hs` admin CLI minted carries the full operator+
+        # service+{darwin,nixos,incus,rke2} tagset; every client
+        # inherits that on registration.
+        # Always start from a known-logged-out state before re-
+        # registering with a preauth key.  A stale node-key (e.g.
+        # after a headscale DB wipe or key rotation) would otherwise
+        # make `tailscale up` try to re-auth with a key the server no
+        # longer knows; the failure flips tailscale's
+        # "LastNoiseDialWasRecent" heuristic on, and every subsequent
+        # retry forces HTTPS:443 which our plain-HTTP daemon doesn't
+        # serve — the client then never recovers without a manual
+        # intervention.  `tailscale logout` is idempotent.
+        ${pkgs.tailscale}/bin/tailscale logout >/dev/null 2>&1 || true
+
+        # `--reset` clears any stale prefs from prior (possibly failed)
+        # registration attempts — e.g. the `--advertise-tags` residue
+        # from before the v2 semantics flip, which otherwise makes
+        # `tailscale up` refuse to proceed because the flag set
+        # differs from the current state's "non-default" prefs.  Safe
+        # to keep permanently: this unit is the authoritative
+        # registration flow on this host.
+        # `--timeout=45s` caps tailscaled's wait for Running — without
+        # it a missing headscale daemon blocks the unit indefinitely;
+        # with it, a failing activation fails fast and systemd retries
+        # are cheap.
         ${pkgs.tailscale}/bin/tailscale up \
+          --timeout=45s \
+          --reset \
           --login-server=${cfg.serverUrl} \
           --authkey="$(cat "$auth_key_file")" \
           --hostname=${cfg.hostname} \
           ${optionalString cfg.enableSSH "--ssh"} \
           ${optionalString cfg.acceptRoutes "--accept-routes"} \
-          ${
-            optionalString (cfg.tags != [ ])
-              "--advertise-tags=${concatStringsSep "," (map (tag: "tag:" + tag) cfg.tags)}"
-          } || {
+          || {
             echo "tailscale up failed" >&2
             exit 1
           }

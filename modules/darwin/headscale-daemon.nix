@@ -59,17 +59,29 @@ let
   # tailnet level (same server_url, new backing IP).
   serverUrl = headscaleCatalog.aliasUrl;
 
-  # XDG split: config at `~/.config/headscale/` (rendered per-activation
-  # from the Nix store) vs persistent data at `~/.local/share/headscale/`
-  # (SQLite DB, node/noise keys, unix socket — survives across
-  # rebuilds, included in the operator's backup sweep).  Matches the
-  # convention already used by godns ([ddns.nix]) and sidesteps the
-  # macOS-native `~/Library/Application Support/Headscale/` path whose
-  # embedded space trips tools that split their arguments on
-  # whitespace.
+  # XDG split:
+  #   config at `~/.config/headscale/`        (XDG_CONFIG_HOME)
+  #   state  at `~/.local/state/headscale/`  (XDG_STATE_HOME)
+  #
+  # Per the XDG Base Directory spec, `$XDG_DATA_HOME` (`~/.local/share/`)
+  # is for user-specific *data files* (sources, installed assets) while
+  # `$XDG_STATE_HOME` (`~/.local/state/`) is for "state data that is not
+  # important enough to be configured or is likely to be modified
+  # automatically" — which is exactly what the sqlite DB, noise private
+  # key, and unix socket are.  Earlier revisions of this module placed
+  # the state under `~/.local/share/`, which technically worked but mis-
+  # categorised it as data.  This rename is ops-safe: operators who
+  # reset the headscale DB (e.g. during the bootstrap ceremony or a key
+  # rotation) now won't leak confusion about "which dir is the real
+  # state?" across the two profile-home subtrees.
+  #
+  # Sidesteps the macOS-native `~/Library/Application Support/Headscale/`
+  # path entirely — that space-containing path trips tools that split
+  # their arguments on whitespace (godns had the same issue; see
+  # [ddns.nix]).
   homeDir = config.users.users.${config.system.primaryUser}.home;
   configDir = "${homeDir}/.config/headscale";
-  dataDir = "${homeDir}/.local/share/headscale";
+  dataDir = "${homeDir}/.local/state/headscale";
   configFile = "${configDir}/config.yaml";
 
   # On Darwin we publish the alias through Apple's own mDNSResponder via

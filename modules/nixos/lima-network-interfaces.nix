@@ -191,11 +191,16 @@ in
 
     # Fallback for rebuilt Lima VMs where the implicit primary NIC did not get
     # renamed to mgmt0 (e.g. MAC drift). Keep SSH management path alive.
+    # Also enable MulticastDNS here so `.local` resolution works when
+    # the lan-br bridge hasn't been created (Incus not running, LAN IP
+    # living directly on enp0s1).  Mirrors the per-link knob on the
+    # lan-br block above.
     systemd.network.networks."40-enp0s1-fallback" = {
       matchConfig.Name = "enp0s1";
       networkConfig = {
         DHCP = "ipv4";
         Domains = [ "" ];
+        MulticastDNS = "yes";
       };
       dhcpV4Config = {
         UseDNS = false;

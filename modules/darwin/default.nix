@@ -20,6 +20,8 @@
     ./dnsmasq.nix
     ./headscale.nix
     ./headscale-daemon.nix
+    ./headscale-client-kind.nix
+    ./headscale-tools.nix
     ./ddns.nix
     ./bird-daemon.nix
     ./lan-dns-resolver.nix

@@ -36,17 +36,26 @@ in
 
   # Tag vocabulary.  Two orthogonal axes:
   #
-  #   role — who drives whom:  tag:operator, tag:service
+  #   role — who drives whom:  tag:console, tag:headless
   #   kind — what the node is: tag:darwin, tag:nixos, tag:incus, tag:rke2
   #
   # A node normally advertises one tag from each axis (e.g. bioskop
-  # advertises both `operator` and `darwin`).  The ACL file keys broad
+  # advertises both `console` and `darwin`).  The ACL file keys broad
   # rules off the role axis for readability; kind-specific rules layer
   # on top when needed.
+  #
+  # Role vocabulary names the host's physical access pattern:
+  #   console  — a human sits at this host's keyboard / screen.
+  #              Workstations, laptops, admin terminals.
+  #   headless — no local console; reachable only remotely.
+  #              Servers, VMs, containers, cluster nodes.
+  # That axis is what the ACL actually gates on (who originates
+  # admin SSH vs only accepts it), so the tags read true regardless
+  # of operating system.
   tags = {
     role = {
-      operator = "operator";
-      service = "service";
+      console = "console";
+      headless = "headless";
     };
     kind = {
       darwin = "darwin";
@@ -56,7 +65,7 @@ in
     };
   };
 
-  # The group that owns both operator and service tags.  Referenced by
+  # The group that owns every role + kind tag.  Referenced by
   # the ACL file (`group:ndh`); exposed here so a future apply script
   # can cross-check the membership against the catalog's `user.name`.
   tagOwnerGroup = "group:ndh";

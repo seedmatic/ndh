@@ -142,6 +142,7 @@ let
     ./container-host.nix
     ./headscale.nix
     ./headscale-daemon.nix
+    ./headscale-client-kind.nix
     ./nix-ld.nix
     ./resolved-lan.nix
     ./dnsmasq.nix

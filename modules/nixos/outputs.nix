@@ -43,7 +43,7 @@ let
         { ... }:
         {
           tailscale.tags = [
-            catalog.headscale.tags.role.service
+            catalog.headscale.tags.role.headless
             catalog.headscale.tags.kind.nixos
           ];
         };
@@ -128,7 +128,7 @@ let
             { ... }:
             {
               tailscale.tags = [
-                catalog.headscale.tags.role.service
+                catalog.headscale.tags.role.headless
                 catalog.headscale.tags.kind.nixos
               ];
             };

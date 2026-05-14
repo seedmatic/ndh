@@ -10,13 +10,13 @@
 //
 // Two orthogonal tag axes — a node normally advertises one from each:
 //
-//   Role axis (who drives whom):
-//     tag:operator  — nodes driven by a human.  Laptops/workstations.
-//                     Originate SSH; reach any other node; can only
-//                     be reached from other operators.
-//     tag:service   — nodes driven by an operator.  VMs, containers,
-//                     cluster nodes.  Accept SSH; do not originate
-//                     it; reach each other for intra-fleet traffic.
+//   Role axis (does a human sit at this host's console?):
+//     tag:console  — console-attached, human-driven.  Laptops,
+//                    workstations, admin terminals.  Originates admin
+//                    SSH; reaches any other node.
+//     tag:headless — no local console; reachable only remotely.
+//                    Servers, VMs, containers, cluster nodes.  Accepts
+//                    SSH; does not originate admin SSH.
 //
 //   Kind axis (what the node is):
 //     tag:darwin    — macOS hosts (bioskop, nikopol)
@@ -30,8 +30,8 @@
 //
 // All tags are owned by `group:ndh`; only that group's members may
 // register a node that claims any of these tags.  Advertising happens
-// client-side through `networking.headscale.tags` (Darwin) or
-// `tailscale.tags` (NixOS); headscale validates on accept.
+// via the preauth key's tag list (headscale v2 binds tags to the key,
+// not to a client-asserted --advertise-tags).
 {
   // Headscale policy v2 (default since 0.26) requires usernames to
   // contain an `@` — the suffix disambiguates plain usernames from
@@ -45,8 +45,8 @@
   },
 
   "tagOwners": {
-    "tag:operator": ["group:ndh"],
-    "tag:service":  ["group:ndh"],
+    "tag:console":  ["group:ndh"],
+    "tag:headless": ["group:ndh"],
     "tag:darwin":   ["group:ndh"],
     "tag:nixos":    ["group:ndh"],
     "tag:incus":    ["group:ndh"],
@@ -55,48 +55,48 @@
 
   // Tailnet reachability authored on the role axis.
   //
-  //   operator → operator | service    any port
-  //   service  → service               any port
-  //   service  → operator              implicit deny
+  //   console  → console | headless   any port
+  //   headless → headless             any port
+  //   headless → console              implicit deny
   "acls": [
     {
       "action": "accept",
-      "src":    ["tag:operator"],
-      "dst":    ["tag:operator:*", "tag:service:*"],
+      "src":    ["tag:console"],
+      "dst":    ["tag:console:*", "tag:headless:*"],
     },
     {
       "action": "accept",
-      "src":    ["tag:service"],
-      "dst":    ["tag:service:*"],
+      "src":    ["tag:headless"],
+      "dst":    ["tag:headless:*"],
     },
   ],
 
   // Tailscale SSH.  Two rules:
   //
-  //   1. Operators SSH into any node — interactive + scripted.
+  //   1. Console nodes SSH into any node — interactive + scripted.
   //      `check` requires fresh device-side authentication every
   //      12 h so a lost or stolen laptop loses tailnet SSH access
   //      within a day even before the node itself is revoked.
   //
-  //   2. Services SSH each other freely, without device check.
-  //      Services are headless and can't answer a check prompt;
-  //      their identities are verified by the tailnet itself (node
-  //      key), so auto-accept is safe.  Covers nix-store copies
-  //      between VMs, rke2 node-to-node operations, etc.
+  //   2. Headless nodes SSH each other freely, without device check.
+  //      They can't answer an interactive check prompt; their
+  //      identities are verified by the tailnet itself (node key),
+  //      so auto-accept is safe.  Covers nix-store copies between
+  //      VMs, rke2 node-to-node operations, etc.
   //
-  // Services never SSH operators (no rule → implicit deny).
+  // Headless nodes never SSH console nodes (no rule → implicit deny).
   "ssh": [
     {
       "action":      "check",
-      "src":         ["tag:operator"],
-      "dst":         ["tag:operator", "tag:service"],
+      "src":         ["tag:console"],
+      "dst":         ["tag:console", "tag:headless"],
       "users":       ["nxmatic@", "root"],
       "checkPeriod": "12h",
     },
     {
       "action": "accept",
-      "src":    ["tag:service"],
-      "dst":    ["tag:service"],
+      "src":    ["tag:headless"],
+      "dst":    ["tag:headless"],
       "users":  ["nxmatic@", "root"],
     },
   ],

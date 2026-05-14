@@ -32,16 +32,18 @@ let
   nixBashTrampoline = "${ndhContext.nixBashTrampoline}";
   defaultHostname = config.networking.hostName or "localhost";
 
-  # When the common module has materialised the auth secret, derive
-  # the runtime path from there.  `cfg.authKeyFile` remains as an
-  # explicit out-of-band override for manual bootstrap / tests.
+  # Darwin hosts register with the `darwin` kind
+  # (tag:console,tag:darwin).  Fixed at the platform level rather than reading
+  # back from `tailnet.headscale.auth.*.enable` to keep module eval
+  # free of self-reference cycles — same shape as the NixOS client.
+  # `cfg.authKeyFile` remains as an out-of-band override for manual
+  # bootstrap / test harnesses.
+  activeAuthKind = "darwin";
   effectiveAuthKeyFile =
     if cfg.authKeyFile != null then
       cfg.authKeyFile
-    else if tailnet.headscale.auth.enable then
-      tailnet.headscale.auth.path
     else
-      null;
+      tailnet.headscale.auth.${activeAuthKind}.path;
 
   tagsCsv = concatStringsSep "," (map (tag: "tag:" + tag) cfg.tags);
 
@@ -50,6 +52,14 @@ let
       pkgs.replaceVars ./headscale-client.d/post-activation.sh {
         nixBashTrampoline = nixBashTrampoline;
         enableSSH = if cfg.enableSSH then "true" else "false";
+        acceptRoutes = if cfg.acceptRoutes then "true" else "false";
+        serverUrl = cfg.serverUrl;
+        hostname = cfg.hostname;
+        # Empty string => interactive-login fallback (hook won't
+        # autojoin).  Otherwise = absolute path of the sops-materialised
+        # authkey the common tailnet module places under
+        # /run/secrets/nix-darwin-home/tailnet.headscale.auth.
+        authKeyFile = if effectiveAuthKeyFile != null then effectiveAuthKeyFile else "";
       }
     } "$out"
     chmod +x "$out"
@@ -130,14 +140,28 @@ in
             exit 0
           fi
 
-          CMD="tailscale up --login-server=${cfg.serverUrl} --hostname=${cfg.hostname}"
+          # Always logout first so a stale node key (e.g. after a
+          # headscale DB wipe or key rotation) doesn't leak into the
+          # register attempt and flip tailscale into its "force HTTPS:443"
+          # fallback that our plain-HTTP daemon can't satisfy.
+          tailscale logout >/dev/null 2>&1 || true
+
+          # `--timeout=45s` caps tailscaled's wait for Running — without
+          # it a missing daemon blocks forever; with it we fail fast and
+          # the operator can retry.
+          CMD="tailscale up --timeout=45s --login-server=${cfg.serverUrl} --hostname=${cfg.hostname}"
           ${optionalString cfg.enableSSH ''CMD="$CMD --ssh"''}
           ${optionalString cfg.acceptRoutes ''CMD="$CMD --accept-routes"''}
-          ${optionalString (cfg.tags != [ ]) ''CMD="$CMD --advertise-tags=${tagsCsv}"''}
 
+          # Headscale v2 rejects `--advertise-tags` on preauth-key
+          # registrations (tags are carried by the key itself).  Only
+          # append the flag when falling back to interactive login —
+          # i.e. when no auth-key file is available.
           AUTH_KEY_FILE="${if effectiveAuthKeyFile != null then effectiveAuthKeyFile else ""}"
           if [ -n "$AUTH_KEY_FILE" ] && [ -r "$AUTH_KEY_FILE" ]; then
             CMD="$CMD --authkey=$(tr -d '[:space:]' < "$AUTH_KEY_FILE")"
+          else
+            ${optionalString (cfg.tags != [ ]) ''CMD="$CMD --advertise-tags=${tagsCsv}"''}
           fi
 
           echo "Connecting to Headscale at ${cfg.serverUrl}..."
@@ -166,51 +190,5 @@ in
       '';
     }
 
-    # `hs` admin wrapper.  Two invocation modes:
-    #
-    #   - Local (primary host): when the daemon's config file exists
-    #     on disk at ~/.config/headscale/config.yaml, call the CLI
-    #     with `-c <path>` and let it talk to the daemon via the
-    #     unix socket (authenticated by file permissions).  No api
-    #     key needed; in fact headscale doesn't expose remote gRPC
-    #     at all unless TLS or `grpc_allow_insecure` is explicitly
-    #     turned on in the server config.
-    #
-    #   - Remote (any other host): source HEADSCALE_CLI_* from the
-    #     sops-materialised api secret at invocation time and let
-    #     the CLI hit the daemon over gRPC.  The cleartext key
-    #     never persists in the shell env or history.
-    #
-    # Only provisioned when the operator opted into the api secret
-    # on this host.  See the shared schema in
-    # [modules/.common.d/tailnet.nix].
-    (mkIf tailnet.headscale.api.enable {
-      environment.systemPackages = [
-        (pkgs.writeShellScriptBin "hs" ''
-          set -euo pipefail
-
-          LOCAL_CONFIG="$HOME/.config/headscale/config.yaml"
-          if [ -r "$LOCAL_CONFIG" ]; then
-            exec headscale -c "$LOCAL_CONFIG" "$@"
-          fi
-
-          API_KEY_FILE=${escapeShellArg tailnet.headscale.api.path}
-          if [ ! -r "$API_KEY_FILE" ]; then
-            echo "[hs] no local headscale config and api key not readable at $API_KEY_FILE" >&2
-            exit 1
-          fi
-          # `HEADSCALE_CLI_ADDRESS` must be a gRPC host:port, not a
-          # URL.  The catalog.headscale.aliasUrl is HTTP-only today;
-          # callers running `hs` remotely need the daemon to have
-          # `grpc_allow_insecure: true` + `grpc_listen_addr` set.  We
-          # derive a sane host:port from the serverUrl when possible;
-          # otherwise the operator overrides via HEADSCALE_CLI_ADDRESS.
-          : "''${HEADSCALE_CLI_ADDRESS:=${cfg.hostname}:50443}"
-          export HEADSCALE_CLI_ADDRESS
-          export HEADSCALE_CLI_API_KEY="$(tr -d '[:space:]' < "$API_KEY_FILE")"
-          exec headscale "$@"
-        '')
-      ];
-    })
   ]);
 }

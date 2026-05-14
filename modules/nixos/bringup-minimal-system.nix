@@ -75,6 +75,32 @@ in
     # Storage (ZFS pools + recovery chroot)
     ./zfs.nix
     ./zfs-recovery-chroot.nix
+
+    # Tailnet (headscale client + sops schema).  Joining the fleet
+    # tailnet during bringup lets the operator `tailscale ssh
+    # bioskop-nixos` from any tailnet member while the minimal image
+    # is still up, before the full config takes over.  State lives at
+    # /var/lib/tailscale/ on the persistent ZFS root, so the full
+    # config reuses the same registration on handoff (no double-
+    # register, no re-tag).
+    #
+    # Scope:
+    #   - tailnet.nix + headscale-client-wiring.nix: the sops schema
+    #     + the `networking.headscale.enable`/`tags`/`serverUrl`
+    #     dispatch.  Importing is the opt-in (matches the full-config
+    #     path via hosts/host-common.nix).
+    #   - headscale.nix (client): the autoconnect unit + the prefixed
+    #     `tailscaled-autoconnect.service` that our preauth-key flow
+    #     relies on.
+    #
+    # mDNS (`MulticastDNS=yes` on systemd-resolved, per-link knob on
+    # the DHCP ethernet link) is already wired inline below — so we
+    # DON'T import modules/nixos/resolved-lan.nix here; doing so would
+    # conflict with the bringup-local `services.resolved.extraConfig`.
+    "${self}/modules/.common.d/tailnet.nix"
+    "${self}/modules/.common.d/headscale-client-wiring.nix"
+    ./headscale-client-kind.nix
+    ./headscale.nix
   ];
 
   networking.hostName = guestHostName;
