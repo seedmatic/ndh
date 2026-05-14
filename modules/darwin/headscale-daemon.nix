@@ -33,24 +33,11 @@ let
   headscaleCatalog = catalog.headscale;
   hostName = config.networking.hostName or "localhost";
 
-  # Pull headscale from nixpkgs-unstable so we land on the 0.28.x line,
-  # which brings the pre-auth-key format changes announced in the 0.28
-  # release notes (breaking vs. 0.27).  Pinned to the `>= 0.28, < 0.29`
-  # band so that an unstable bump to 0.29 (expected to carry another
-  # round of breaking changes) can't silently land via a flake lock
-  # update — the module falls back to pkgs.headscale instead, which
-  # flags the regression via the 0.27 runtime complaining about 0.28
-  # DB columns.  Same pattern as [bringup-observe.nix] for Vector.
-  headscalePkg =
-    let
-      unstable = import self.inputs.nixpkgs-unstable {
-        system = pkgs.stdenv.hostPlatform.system;
-        config = pkgs.config;
-      };
-      v = unstable.headscale.version or "0.0.0";
-      withinBand = lib.versionAtLeast v "0.28.0" && !lib.versionAtLeast v "0.29.0";
-    in
-    if withinBand then unstable.headscale else pkgs.headscale;
+  # Shared headscale derivation (pinned to 0.28.x via
+  # nixpkgs-unstable) — same binary the `hs` admin CLI uses, so
+  # daemon and client can't drift in version.  Defined in
+  # modules/.common.d/headscale-pkg.nix.
+  headscalePkg = config.ndh.headscalePkg;
 
   # Clients always resolve `aliasName` via mDNS to the host currently
   # holding role = "primary"; the daemon itself is told to issue

@@ -70,8 +70,14 @@ let
   hsBin = pkgs.writeShellApplication {
     name = "hs";
     text = builtins.readFile renderedHsSource;
-    runtimeInputs = with pkgs; [
-      headscale
+    runtimeInputs = [
+      # Pinned to the same derivation the daemon uses (0.28.x via
+      # nixpkgs-unstable) so CLI and server don't disagree on
+      # policy-v2 shapes or preauth-key formats.  Defined in
+      # modules/.common.d/headscale-pkg.nix.
+      config.ndh.headscalePkg
+    ]
+    ++ (with pkgs; [
       yq-go
       sops
       coreutils
@@ -80,7 +86,7 @@ let
       # nix-store snapshot is read-only, so we can't use it for
       # `hs mint`'s sops write-back).
       git
-    ];
+    ]);
   };
 in
 {
