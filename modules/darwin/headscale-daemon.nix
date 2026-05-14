@@ -47,11 +47,21 @@ let
   serverUrl = headscaleCatalog.aliasUrl;
 
   # TLS leaf + private extracted by the ssh-keys enrichment pipeline
-  # from keys.yaml's headscale-tls-server entry.  Private lives in
-  # the user's secrets dir (profile = [user] in keys.yaml); cert
-  # sits next to it with a `.crt` suffix (see
+  # from keys.yaml's headscale-tls-server entry.
+  #
+  # Private: OpenSSH's native Ed25519 format is what ssh-keygen +
+  # the enrichment pipeline produce by default, but Go's crypto/tls
+  # parser (what headscale uses) rejects that shape with "failed to
+  # parse private key".  The extractor converts the OpenSSH private
+  # into PKCS8 PEM next to it (<basename>.pem) — that's the file we
+  # feed to tls_key_path.  See ssh-extract-keys.sh's "Emit PKCS8 PEM"
+  # block for the conversion.  The OpenSSH file stays in place for
+  # callers that still want SSH semantics.
+  #
+  # Cert: PEM x509 emitted by step-cli in the enrichment pipeline,
+  # lands next to the private with a `.crt` suffix (see
   # modules/home-manager/ssh-key.d/ssh-extract-keys.split-exp.yq).
-  tlsKeyPath = "${config.sshPaths.secretsKeysDir}/headscale-tls-server";
+  tlsKeyPath = "${config.sshPaths.secretsKeysDir}/headscale-tls-server.pem";
   tlsCertPath = "${config.sshPaths.secretsKeysDir}/headscale-tls-server.crt";
 
   # XDG split:

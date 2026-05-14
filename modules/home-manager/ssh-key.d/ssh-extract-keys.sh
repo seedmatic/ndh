@@ -121,6 +121,36 @@ main() {
 	done
 	rm -fr "$tmpDir"
 
+	: "Emit PKCS8 PEM privates alongside any key whose cert_usage includes tls-server."
+	: "Go's stdlib crypto/tls parser rejects OpenSSH's native Ed25519 format with"
+	: "'tls: failed to parse private key', so consumers that feed the private into"
+	: "crypto/tls (headscale, anything speaking TS2021 Noise) need the PKCS8 PEM form."
+	: "step-cli reads the OpenSSH key natively and emits PKCS8 PEM via --pem."
+	tlsKeys=()
+	while IFS= read -r keyName; do
+		[[ -n "$keyName" ]] || continue
+		tlsKeys+=("$keyName")
+	done < <(yq eval -r '
+		.keys // {} |
+		to_entries |
+		map(select(.value.cert_usage // [] | contains(["tls-server"]))) |
+		.[].key
+	' "$yamlFile" 2>/dev/null)
+
+	for keyName in "${tlsKeys[@]}"; do
+		for priv_dir in "$userOutputDir" "$systemPrivateOutputDir"; do
+			local privPath="$priv_dir/$keyName"
+			[[ -f "$privPath" ]] || continue
+			local pemPath="${privPath}.pem"
+			if ! step crypto key format "$privPath" --out "$pemPath" \
+					--pem --no-password --insecure --force 2>/dev/null; then
+				echo "warn: failed to convert $keyName private to PKCS8 PEM" >&2
+				continue
+			fi
+			chmod 600 "$pemPath"
+		done
+	done
+
 	: "Provide stable symlink names (<key>-cert.pub) pointing to a matching user certificate."
 	# Match is validated by comparing key fingerprint and certificate embedded public-key fingerprint.
 	# Iterate over both private-key locations (user + system-private) so that
