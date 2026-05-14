@@ -342,6 +342,35 @@ in
       enable = true;
     };
 
+    # Point tailscaled (Go, uses crypto/x509) at the nix-darwin-built
+    # system CA bundle so it trusts our `mammoth-skate` root alongside
+    # the stock Mozilla store.  macOS's System keychain refuses to
+    # install an Ed25519 CA (Apple's Security framework rejects the
+    # curve at trust-insertion time with "Unknown format in import"),
+    # so the keychain path that works for Chrome/Safari is unavailable
+    # to us.  Go honours `SSL_CERT_FILE` when set in its process env;
+    # injecting it into the launchd daemon is the minimal fix that
+    # unblocks tailscaled against a self-signed LAN headscale.
+    #
+    # Rationale for not chasing the keychain path: we'd have to re-key
+    # the authority to ECDSA P-256, re-issue every SSH cert + every TLS
+    # leaf, and add a macOS-specific `security add-trusted-cert`
+    # activation script — a lot of churn for a cohort of one user-facing
+    # Go daemon.  If browser trust becomes necessary later we revisit.
+    launchd.daemons.tailscaled.serviceConfig.EnvironmentVariables = {
+      SSL_CERT_FILE = "/etc/ssl/certs/ca-certificates.crt";
+      # Force Go's pure-Go x509 verifier instead of delegating to
+      # Apple's Security framework.  Apple's SecTrust rejects
+      # Ed25519 certs at validation time with "broken key size"
+      # even when the chain is otherwise valid and the root is
+      # in the env-trusted bundle.  Go 1.22+ with
+      # `x509usefallbackroots=1` honours SSL_CERT_FILE and uses
+      # its own Ed25519-aware validator.  Scoped to tailscaled
+      # only so other Go daemons on the system keep macOS-native
+      # validation.
+      GODEBUG = "x509usefallbackroots=1";
+    };
+
     fonts = {
       packages = with pkgs; [ powerline-fonts ];
     };
