@@ -481,3 +481,132 @@ Carried over from prior session.  Not blocking nikopol enrollment.
 **Session Date:** 2026-05-15 +
 **Key Achievement:** Apple SecTrust compatibility via dual-CA pivot (ECDSA P-256 for TLS, Ed25519 retained for SSH) +
 **Branch state:** 4 commits ahead of `origin/develop`, not yet pushed
+
+== Session Continuation: DNS for Off-LAN Access
+
+**Date:** 2026-05-15 (continued)
+**Context:** nikopol registration pending DNS resolution strategy
+
+=== Problem Statement
+
+Off-LAN registration requires resolving `headscale.mammoth-skate.local` to
+the SSH tunnel endpoint (127.0.0.1:41841), but mDNS doesn't work through
+SSH tunnels.  Temporary `/etc/hosts` hacks work but are not maintainable.
+
+=== Solution: DNS Server on bioskop
+
+Implement a DNS server on bioskop that handles the `bboxmatic.duckdns.org`
+zone, allowing clean subdomain-based access for both on-LAN and off-LAN
+scenarios.
+
+==== DNS Zone Design
+
+[source,dns]
+----
+; bboxmatic.duckdns.org zone served by bioskop
+headscale.bboxmatic.duckdns.org.  A  192.168.1.129  ; on-LAN
+headscale.bboxmatic.duckdns.org.  A  <public-ip>    ; off-LAN (via bbox NAT)
+----
+
+==== Implementation Options
+
+**Option A: dnsmasq (Recommended)**
+
+Bioskop may already have dnsmasq running.  Add zone configuration:
+
+[source,conf]
+----
+# /etc/dnsmasq.d/bboxmatic.conf
+address=/headscale.bboxmatic.duckdns.org/192.168.1.129
+----
+
+**Option B: CoreDNS**
+
+More modern, better for advanced scenarios:
+
+[source,corefile]
+----
+bboxmatic.duckdns.org {
+    hosts {
+        192.168.1.129 headscale.bboxmatic.duckdns.org
+        fallthrough
+    }
+    forward . 1.1.1.1
+}
+----
+
+**Option C: Unbound**
+
+DNSSEC-capable, good for production:
+
+[source,conf]
+----
+local-zone: "bboxmatic.duckdns.org." static
+local-data: "headscale.bboxmatic.duckdns.org. IN A 192.168.1.129"
+----
+
+==== Integration with SSH Tunnel
+
+Once DNS is running on bioskop (e.g., port 53), forward DNS through SSH:
+
+[source,bash]
+----
+# Add to bboxmatic.conf
+Host headscale.bboxmatic
+  LocalForward 127.0.0.1:41841 127.0.0.1:41841
+  LocalForward 127.0.0.1:5353 127.0.0.1:53  # DNS forward
+----
+
+Then configure nikopol to use tunnel DNS:
+
+[source,bash]
+----
+# Temporary resolver for testing
+sudo mkdir -p /etc/resolver
+echo "nameserver 127.0.0.1" | sudo tee /etc/resolver/bboxmatic.duckdns.org
+echo "port 5353" | sudo tee -a /etc/resolver/bboxmatic.duckdns.org
+----
+
+==== Certificate Compatibility
+
+The TLS certificate already includes `bboxmatic.duckdns.org` in the SAN
+(commit `2f9cf397`), so `headscale.bboxmatic.duckdns.org` will validate if:
+
+*Option 1:* Update cert SAN to include `*.bboxmatic.duckdns.org` (wildcard)
+*Option 2:* Use `headscale.bboxmatic.duckdns.org` as CN and single SAN
+
+==== nikopol Registration Flow (with DNS)
+
+[source,bash]
+----
+# 1. Establish SSH tunnel (with DNS forward)
+ssh -N -f headscale.bboxmatic
+
+# 2. Test DNS resolution
+dig @127.0.0.1 -p 5353 headscale.bboxmatic.duckdns.org
+
+# 3. Configure resolver
+sudo mkdir -p /etc/resolver
+echo "nameserver 127.0.0.1" | sudo tee /etc/resolver/bboxmatic.duckdns.org
+echo "port 5353" | sudo tee -a /etc/resolver/bboxmatic.duckdns.org
+
+# 4. Register
+tailscale up \
+  --login-server=https://headscale.bboxmatic.duckdns.org:41841 \
+  --auth-key=hskey-auth-... \
+  --hostname=nikopol
+----
+
+=== Action Items for bioskop Session
+
+. Check if dnsmasq is already running
+. Configure DNS zone for `bboxmatic.duckdns.org`
+. Test resolution from on-LAN host
+. Decide: wildcard cert or specific subdomain?
+. Update nikopol SSH config with DNS forward
+
+=== References
+
+* Session commit: `2f9cf397` (TLS cert with `bboxmatic.duckdns.org`)
+* Catalog: `catalog/default.nix` (port forwards documented)
+* SSH config: `modules/home-manager/ssh.d/config.d/bboxmatic.conf`
