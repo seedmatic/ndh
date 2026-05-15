@@ -46,6 +46,7 @@
     ./sops.nix
     ./bringup-observe.nix
     ./tailscale-vnc-forward.nix
+    ./tls-authority-keychain.nix
   ];
 
   # Active le résolveur .lan par défaut (modifiable par hôte)
