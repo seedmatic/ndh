@@ -73,10 +73,26 @@ This directory contains detailed session summaries documenting the evolution of 
 
 == Latest Session
 
-link:2026-04-05-remote-rebuild-reboot-behavior.adoc[**2026-04-05: Remote Rebuild Reboot Behavior**]::
-Validated that remote `nixos-rebuild switch` can report a false-negative when SSH is interrupted during unit/network restarts; documented reliable operator flow (`boot` + reboot + post-boot generation verification).
+link:2026-05-15-headscale-tls-dual-ca-and-nikopol-onboarding.adoc[**2026-05-15: Headscale TLS Dual-CA Pivot & nikopol Onboarding Plan**]::
+Resolved the Apple SecTrust failure that blocked Tailscale registration against the LAN headscale.  Added a second authority (`mammoth-skate-tls`, ECDSA P-256) dedicated to TLS, kept the existing Ed25519 root for SSH, and wired a Darwin-only activation hook that pushes every `tls-authority` root into the System keychain.  bioskop is on the tailnet; nikopol enrollment plan documented for the next session.
 
 == All Sessions
+
+=== 2026-05-15
+
+link:2026-05-15-headscale-tls-dual-ca-and-nikopol-onboarding.adoc[Headscale TLS Dual-CA Pivot & nikopol Onboarding Plan]::
+**Focus:** Make Apple SecTrust accept the self-signed headscale TLS chain; document the SSH-tunnel shortcut for off-LAN nikopol enrollment.
++
+**Achievements:**
+* Added ECDSA P-256 `mammoth-skate-tls` root via extended `authority-bootstrap-tls-root.sh --create`
+* Re-keyed `headscale-tls-server` leaf to ECDSA P-256
+* Generalised `headscale-client-wiring.nix` to enumerate every `tls-authority` root (replaces hardcoded `mammoth-skate`)
+* New `modules/darwin/tls-authority-keychain.nix` activation hook: `security add-trusted-cert` for each root
+* Dropped the now-unnecessary `tailscaled-launchd.nix` workaround (`SSL_CERT_FILE`/`GODEBUG`/`-verbose 2`)
+* Wired `step-cli` into the bringup runtime profile (was missing, silently failing the PEM-conversion step)
+* Fixed `$yamlFile` shadowing in `ssh-extract-keys.sh`
++
+**Status:** bioskop registered (`100.64.0.2`, online); nikopol next session.
 
 === 2026-04-05
 

@@ -1,0 +1,483 @@
+= Session Summary: Headscale TLS Dual-CA Pivot & nikopol Onboarding Plan
+:toc: left
+:toclevels: 3
+:icons: font
+:source-highlighter: rouge
+:date: 2026-05-15
+
+== Overview
+
+This session resolved the long-standing TLS validation failure that kept
+Tailscale's macOS daemon from registering against the LAN-hosted
+headscale (the "x509: certificate is using a broken key size" error
+originating in Apple's SecTrust framework).  Outcome: Apple's SecTrust
+now natively accepts the chain served by `headscale.mammoth-skate.local`,
+the bioskop Mac is registered (`100.64.0.2`, tag `console+darwin`,
+online), and the codebase is set up to trust the new root automatically
+on every Darwin host at activation time.
+
+The session ends mid-flight on the *nikopol* side: bioskop is fully
+operational, but the nikopol Darwin host has not yet been registered.
+This document captures what was done, why, and the explicit next steps
+needed to bring nikopol onto the tailnet — including the SSH-tunnel
+shortcut that lets us register from off-LAN before the bbox is
+port-forwarded.
+
+A second context for this hand-off: the *next* session is expected to
+start from nikopol itself (rather than bioskop), so this note must be
+self-contained — anyone reading it from nikopol's clone of the repo
+should be able to act without needing to grep through bioskop's shell
+history.
+
+== Major Achievements
+
+=== 1. Dual-CA pivot: ECDSA P-256 root for TLS ✅
+
+Apple's Security framework rejects Ed25519 at *both* trust-insertion
+and leaf-validation time — `security add-trusted-cert` fails with
+"Unknown format in import" on an Ed25519 root, and even with the root
+in `/etc/ssl/certs/` (which Go's pure-Go verifier honours via
+`SSL_CERT_FILE`), the Tailscale daemon delegates leaf validation to
+SecTrust which then rejects the leaf with `CSSMERR_CSP_UNSUPPORTED_KEY_SIZE`.
+
+Solution implemented:
+
+* Keep the existing `mammoth-skate` Ed25519 authority for SSH cert
+  signing (Apple SecTrust is not on the SSH path).
+* Add a new `mammoth-skate-tls` ECDSA P-256 authority, dedicated to
+  x509 TLS leaves.
+* Re-key the `headscale-tls-server` leaf as ECDSA P-256, signed by the
+  new authority.
+
+Apple cleanly accepts the ECDSA root at both insertion and validation,
+the Ed25519 holdout fails gracefully (warn-and-continue), and the
+codebase now distributes both anchors through the existing wiring.
+
+=== 2. Bootstrap-script extended with --create mode ✅
+
+`bin/authority-bootstrap-tls-root.sh` previously assumed the authority
+already existed.  Added `--create <keyType>` which generates the
+keypair via `ssh-keygen -t ecdsa -b 256`, synthesises the full
+authority block (including a `# sops:encrypted` line-comment so the
+private gets encrypted on next sops save), and mints the self-signed
+root via `step certificate create --profile root-ca`.
+
+Use:
+[source,bash]
+----
+./bin/authority-bootstrap-tls-root.sh mammoth-skate-tls --create ecdsa-sha2-nistp256
+----
+
+Re-running on an existing authority requires `--force` (the script
+considers the resulting client-trust rotation a deliberate operator
+action, not an idempotent activation step).
+
+=== 3. Generalised tls-authority enumeration ✅
+
+`modules/.common.d/headscale-client-wiring.nix` previously hardcoded
+`mammoth-skate.ca_crt` as the trust anchor.  Replaced with an
+enumeration over every authority in `keys.yaml` whose `usage` list
+includes `tls-authority` and which has a minted `ca_crt`, mapping each
+into `security.pki.certificates`.  Both Ed25519 and ECDSA roots land
+in `/etc/ssl/certs/ca-certificates.crt` via this code path — same
+behaviour on Darwin and NixOS.
+
+=== 4. Darwin keychain trust activation hook ✅
+
+The above only handles the OpenSSL-style bundle path.  Apple's
+SecTrust does not consult `/etc/ssl/certs/`.  Created
+`modules/darwin/tls-authority-keychain.nix`, a Darwin-only post-
+activation hook that runs `security add-trusted-cert -d -r trustRoot
+-k /Library/Keychains/System.keychain` for each `tls-authority` root.
+Idempotent (re-running on an already-trusted cert is a no-op), and
+graceful when SecTrust refuses an Ed25519 holdout (warn-and-continue,
+since that root has SSH-only purpose anyway).
+
+This module replaces the earlier `modules/darwin/tailscaled-launchd.nix`
+override (which had injected `SSL_CERT_FILE` and
+`GODEBUG=x509usefallbackroots=1` to coax the Go verifier into
+honouring the bundle).  With Apple now natively accepting the chain,
+those workarounds are no longer needed and the launchd override has
+been removed.
+
+=== 5. step-cli wired into the bringup runtime ✅
+
+The PEM-conversion block in `ssh-extract-keys.sh` invokes
+`step crypto key format --pem` to emit a PKCS8 PEM sibling for any
+`tls-server` private (Go's `crypto/tls` rejects OpenSSH-format
+Ed25519 with "tls: failed to parse private key").  step-cli was
+missing from the bringup runtime profile, so the PEM file silently
+failed to materialise and headscale could not load the leaf.
+
+Two fixes:
+
+* Added `step-cli` to both runtime-package builders
+  (`mkNdhBootstrapRuntimePackage` in flake.nix for the standalone
+  installer, and the in-module `symlinkJoin` in
+  `modules/.common.d/io-nxmatic-nix-darwin-home-bringup-runtime.nix`
+  for the activation-installed holder).
+* Added `step` to `requiredCommands` so a stale profile is detected
+  by the activation check and reinstalled (rather than silently
+  lacking the binary).
+
+While here, also fixed `mkNdhBringupRuntimeInstaller`'s `replaceVars`
+call which was passing `bash` (unused) and missing `nixBashTrampoline`
+(referenced by the script) — strict `replaceVars` rejected the
+mismatch and the standalone installer derivation failed to build.
+
+=== 6. Extractor bug: $yamlFile shadowing ✅
+
+`modules/home-manager/ssh-key.d/ssh-extract-keys.sh` had a bug where
+the PKCS8 PEM conversion block read the wrong file: `$yamlFile` had
+been reassigned by the preceding split-fan-out loop and pointed at
+the last temp chunk written, not the original input yaml.  Result:
+`tlsKeys` was always empty and the `.pem` sibling never materialised.
+Renamed the parameter to `inputYamlFile` so the loop assignment no
+longer shadows.
+
+=== 7. Platform-split correctness restored ✅
+
+Earlier in the session, `modules/.common.d/default.nix` carried a
+`launchd.daemons.tailscaled` block — a Darwin-only attribute that
+caused `nix eval` to fail for VM-materializer packages on the
+*linux* side ("The option `launchd' does not exist").  Lifted into
+`modules/darwin/tailscaled-launchd.nix`, then deleted that module
+entirely once the workarounds it carried became unnecessary.
+
+This restores the platform-isolation rule recorded in the
+collaboration memory: `.common.d/` must stay platform-agnostic;
+Darwin/NixOS-specific wiring belongs in `modules/darwin/` /
+`modules/nixos/`.  Common modules expose readOnly options that
+platform modules consume.
+
+== Technical Details
+
+=== Why Ed25519 fails on Darwin TLS
+
+Both at insertion and validation:
+
+* `security add-trusted-cert -k System.keychain <ed25519-root.pem>` →
+  exit 0 in shell but the cert is *not* added; `errSecCertEd25519
+  Unknown format in import` is returned in the Security framework
+  log.  `security verify-cert -c <leaf.der>` then returns
+  `CSSMERR_TP_NOT_TRUSTED`.
+* Even with `SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt`
+  exported into tailscaled's environment, Go on Darwin delegates
+  leaf validation to SecTrust unconditionally.  SecTrust then errors
+  `CSSMERR_CSP_UNSUPPORTED_KEY_SIZE` ("certificate is using a broken
+  key size"), regardless of whether the root is in the bundle, in
+  the keychain, or trusted by both.
+* `GODEBUG=x509usefallbackroots=1` does not help.  Per Go upstream,
+  `usefallbackroots` only injects extra roots when the platform
+  verifier returns "no roots found"; it does not bypass the platform
+  verifier entirely.  There is no `GODEBUG` setting for
+  "use the pure-Go verifier on Darwin".
+
+=== Why ECDSA P-256 specifically
+
+ECDSA P-256 (NIST curve, OpenSSH wire-name `ecdsa-sha2-nistp256`) is
+the curve Apple's Security framework treats as a first-class citizen.
+Both `add-trusted-cert` and `SecTrustEvaluate` accept ECDSA P-256
+chains without special configuration.  P-384 and P-521 also work but
+P-256 is the default in step-cli and is the smallest curve with no
+known practical attacks at the 128-bit security level.
+
+=== keys.yaml schema
+
+The `mammoth-skate-tls` authority entry as committed:
+
+[source,yaml]
+----
+authorities:
+  mammoth-skate-tls:
+    type: ecdsa-sha2-nistp256
+    public: AAAA...
+    private: ENC[AES256_GCM,...]   # sops:encrypted
+    usage: [tls-authority]
+    annotations:
+      public_scope: system
+    ca_crt: |
+      -----BEGIN CERTIFICATE-----
+      ...
+      -----END CERTIFICATE-----
+----
+
+The `headscale-tls-server` leaf:
+
+[source,yaml]
+----
+keys:
+  headscale-tls-server:
+    type: ecdsa-sha2-nistp256
+    authority: mammoth-skate-tls
+    cert_usage: [tls-server]
+    usage: [host-signing]
+    profiles: [user]
+    tls:
+      common_name: headscale.mammoth-skate.local
+      sans:
+        dns: [headscale.mammoth-skate.local]
+      not_after_days: 365
+    annotations:
+      public_scope: system
+----
+
+When `public`/`private` are absent, the enrichment pipeline regenerates
+the keypair from `type` on the next activation cycle.
+
+=== End-to-end test result
+
+After `darwin-rebuild switch` + headscale daemon kickstart on bioskop:
+
+[source]
+----
+$ openssl s_client -connect headscale.mammoth-skate.local:41841 -showcerts </dev/null 2>/dev/null \
+    | openssl x509 -text -noout | grep -E "Public Key Algorithm|Signature Algorithm"
+        Signature Algorithm: ecdsa-with-SHA256
+            Public Key Algorithm: id-ecPublicKey
+    Signature Algorithm: ecdsa-with-SHA256
+
+$ openssl s_client -connect headscale.mammoth-skate.local:41841 </dev/null \
+    | openssl x509 -outform DER -out /tmp/leaf.der
+$ security verify-cert -c /tmp/leaf.der -p ssl
+...certificate verification successful.
+
+$ sudo tailscale up \
+    --login-server=https://headscale.mammoth-skate.local:41841 \
+    --auth-key=hskey-auth-... \
+    --hostname=bioskop --timeout=30s
+
+$ tailscale status
+100.64.0.2  bioskop  tagged-devices  macOS  -
+
+$ hs nodes list
+ID 5 | bioskop | online | tag:console, tag:darwin | 100.64.0.2
+----
+
+== Repository Commits
+
+All on branch `develop` (4 commits ahead of `origin/develop`, **not yet pushed**):
+
+`e8a9ad68`::  feat(headscale,tls): pivot to ECDSA P-256 root for Apple SecTrust compat +
+`bc6d3edb`::  refactor(.common.d): drop tailscaled launchd override (no longer needed) +
+`0b6b2441`::  feat(bringup-runtime): add step-cli to runtime profile contract +
+`e5119091`::  fix(ssh-extract-keys): use input yaml for tls-server lookup, not last split chunk
+
+The earlier work that set up the dual-CA *plumbing* (TLS daemon, embedded DERP, PKCS8 PEM conversion) landed in prior commits:
+
+`056f4b9e`::  fix(headscale): TLS leaf private needs PKCS8 PEM, not OpenSSH format +
+`684db4e7`::  feat(headscale): TLS + embedded DERP + client trust anchor +
+`6ed77336`::  fix(headscale): pin CLI + daemon to same headscale version
+
+== Files Touched (this session)
+
+* `bin/authority-bootstrap-tls-root.sh` — extended with `--create`
+* `flake.nix` — `step-cli` in `mkNdhBootstrapRuntimePackage`, fixed `mkNdhBringupRuntimeInstaller` replaceVars args
+* `modules/.common.d/default.nix` — removed Darwin-only launchd block
+* `modules/.common.d/headscale-client-wiring.nix` — enumerate every `tls-authority` root
+* `modules/.common.d/io-nxmatic-nix-darwin-home-bringup-runtime.nix` — `step-cli` in symlinkJoin + `step` in requiredCommands
+* `modules/darwin/default.nix` — import the new keychain module
+* `modules/darwin/tls-authority-keychain.nix` (new) — postActivation `security add-trusted-cert`
+* `modules/home-manager/ssh-key.d/ssh-extract-keys.sh` — `inputYamlFile` rename
+* `modules/home-manager/ssh.d/keys.yaml` (sops) — new authority + leaf re-key
+
+== Next Session Tasks
+
+The objective for the next session is **register nikopol on the tailnet
+via the existing SSH tunnel** (no bbox port-forwarding required yet).
+Read this section from end to end before starting — the prerequisites
+matter.
+
+=== Prerequisites on bioskop (already done, verify)
+
+* [x] Headscale daemon running (`launchctl list | grep headscale-bootstrap`)
+* [x] Listening on `0.0.0.0:41841` for TLS, `0.0.0.0:3478` for STUN
+* [x] mDNS publisher running (so `headscale.mammoth-skate.local` resolves on the LAN)
+* [x] Existing port-forward on the bbox: `bboxmatic.duckdns.org:2222 → bioskop:22`
+
+=== Prerequisites on nikopol (verify before starting)
+
+* [ ] Repository cloned and checked out to a commit at-or-after
+      `e8a9ad68` (the dual-CA commit).  Without these commits the
+      `mammoth-skate-tls` root will not be trusted at activation.
+* [ ] Nikopol's SOPS age key is installed at the expected path so
+      `sops -d modules/home-manager/ssh.d/keys.yaml` works.
+* [ ] `darwin-rebuild switch` has run successfully **after** pulling the
+      dual-CA commits.  At that point:
+  - `mammoth-skate-tls.ca_crt` is in `/etc/ssl/certs/ca-certificates.crt`
+  - `security verify-cert -c <root.der>` returns "certificate
+     verification successful" (root is in the keychain)
+  - `headscale-tls-server.{,crt,pem,pub}` materialise under
+    `~/.local/share/ndh/ssh-keys/` (these are NIKOPOL'S OWN copies, not
+    bioskop's serving material — same enrichment pipeline runs on both)
+
+=== Step 1 — open the SSH tunnel
+
+The shortcut for off-LAN registration without touching bbox NAT/PAT
+yet is to forward bioskop's headscale TCP port over the existing SSH
+tunnel:
+
+[source,bash]
+----
+# On nikopol.  -N = no remote command, -f = background after auth.
+ssh -L 41841:127.0.0.1:41841 -N -f bboxmatic.duckdns.org -p 2222
+----
+
+Limitations to know:
+
+* SSH only forwards TCP.  STUN (UDP 3478) is *not* forwarded, so
+  off-LAN nikopol will not discover a direct WireGuard path and will
+  use DERP fallback.  Embedded DERP travels over the same TCP/41841
+  tunnel, so this works — just at higher latency than direct
+  WireGuard.  Once nikopol is back on-LAN it picks up the direct path
+  automatically.
+* For long-term off-LAN operation (re-registration, key renewal),
+  proper port-forwarding on the bbox is the better answer.  See the
+  "Future work" section below.
+
+=== Step 2 — DNS override for the cert SAN
+
+Tell nikopol to resolve `headscale.mammoth-skate.local` to localhost
+(the tunnel endpoint).  This works because the leaf cert's SAN list
+contains exactly that name, so TLS validation succeeds against the
+public key without any cert change.
+
+[source,bash]
+----
+# Temporary, lasts until /etc/hosts is regenerated:
+echo "127.0.0.1 headscale.mammoth-skate.local" | sudo tee -a /etc/hosts
+----
+
+Don't try to use `localhost` as the `--login-server` host instead — the
+served cert has no `localhost` SAN and TLS validation would fail.
+
+=== Step 3 — mint a preauth key
+
+On bioskop (the host where headscale runs):
+
+[source,bash]
+----
+# tags depend on which nikopol you're enrolling:
+#   - nikopol Darwin host → tag:console,tag:darwin
+#   - nikopol-tart NixOS guest → tag:headless,tag:nixos
+hs preauthkeys create \
+  --user nxmatic \
+  --tags tag:console,tag:darwin \
+  --reusable \
+  --expiration 24h
+----
+
+Print the key, copy to nikopol via the existing SSH connection (don't
+paste through clipboard if the workstation is shared).
+
+=== Step 4 — register
+
+[source,bash]
+----
+sudo tailscale up \
+  --login-server=https://headscale.mammoth-skate.local:41841 \
+  --auth-key=hskey-auth-... \
+  --hostname=nikopol \
+  --timeout=30s
+----
+
+Expected outcome:
+
+* `tailscale status` shows nikopol with a `100.64.0.x` address.
+* `hs nodes list` on bioskop shows the new node, online, tagged.
+* The two hosts can ping each other on their tailnet IPs.
+
+If `tailscale up` reports a registration timeout but `hs nodes list`
+shows a row with `Expiration: 1970-01-01`, this is the bug we hit on
+bioskop earlier in the session — the auth-key was consumed but
+headscale stored zero-expiry on first registration.  Fix: `hs nodes
+delete -i <id> --force` and re-run `tailscale up --reset`.
+
+=== Step 5 — clean up
+
+Once nikopol is on the tailnet:
+
+* Tear down the SSH tunnel: `pkill -f 'ssh -L 41841'`.
+* Remove the `/etc/hosts` line — on the LAN, the mDNS publisher on
+  bioskop already resolves `headscale.mammoth-skate.local` to the
+  correct IP; off-LAN, future work will replace mDNS with DDNS+SAN.
+
+=== Question to settle before starting Step 1
+
+The catalog has both `darwinConfigurations.nikopol` (the Mac itself)
+and `nixosConfigurations.nikopol-tart` (a Tart VM running on it).  The
+instructions above target the Darwin host.  If the goal is the NixOS
+guest instead, two adaptations are needed:
+
+* The SSH tunnel must terminate inside the guest, not on the Darwin
+  host.  Easiest is to forward bioskop's port to the Mac, then have a
+  second SSH hop into the guest with a chained `-L`, OR run the
+  registration ceremony from the Darwin host's session via
+  `limactl shell` / `tart ssh` (registration runs as root inside the
+  guest so the daemon picks up the registration on next start).
+* The trust anchor must be in NixOS's
+  `security.pki.certificateFiles` / `/etc/ssl/certs/`, which is
+  already wired by `headscale-client-wiring.nix`.  No keychain hook
+  is needed (NixOS doesn't have one).
+
+If unclear, default to the Darwin host first — that's what the
+"console + darwin" tag pair was designed for.
+
+== Future Work
+
+=== Make off-LAN registration permanent (no SSH tunnel)
+
+Drop the tunnel-based workflow once the bbox is configured.  Three
+forwards needed on the bbox web UI (`http://192.168.1.254`):
+
+[options="header"]
+|===
+| Name              | Protocol | External | Internal | Internal IP    | Why
+| headscale-control | TCP      | 41841    | 41841    | 192.168.1.129  | TLS control + embedded DERP
+| headscale-stun    | UDP      | 3478     | 3478     | 192.168.1.129  | DERP STUN endpoint
+| ssh-tunnel        | TCP      | 2222     | 22       | 192.168.1.129  | (already configured)
+|===
+
+Plus a static DHCP reservation for bioskop's MAC so the LAN IP is
+stable.
+
+After port-forwarding, three repo changes:
+
+. Add the public DDNS name to the leaf cert's SAN list:
++
+[source,yaml]
+----
+keys.headscale-tls-server.tls.sans.dns:
+  - headscale.mammoth-skate.local
+  - bboxmatic.duckdns.org
+----
+. Flip `catalog.headscale.aliasUrl` to the public DDNS form.
+. Pin the public name to the LAN IP via dnsmasq on bioskop (already
+  the dnsmasq host) so on-LAN clients hairpin through the local IP
+  rather than going out-and-back through the bbox WAN — many consumer
+  routers don't support hairpin NAT cleanly.
+
+mDNS becomes redundant once DDNS is canonical and dnsmasq pins the
+local IP.  The `dns-sd -P` LaunchAgent on bioskop can be removed (or
+left as a fallback during DDNS provider outages, small cost).
+
+=== writeShellApplication migration sweep
+
+Tracked separately, applies to: `bin/authority-bootstrap-tls-root.sh`,
+`modules/home-manager/ssh-key.d/{ssh-extract-keys,ssh-add-keys,ssh-ensure-authorized-keys}.sh`,
+`modules/.common.d/shell.d/post-activation.sh`.
+
+`install-standalone.sh` (the bringup runtime bootstrapper) is
+intentionally left as-is: it cannot consume the runtime profile it is
+itself responsible for installing, so `runtimeInputs` would be a
+chicken-and-egg problem.
+
+=== nerd-nixos missing /boot mount on full config
+
+Carried over from prior session.  Not blocking nikopol enrollment.
+
+---
+**Status:** bioskop fully on tailnet; nikopol pending +
+**Session Date:** 2026-05-15 +
+**Key Achievement:** Apple SecTrust compatibility via dual-CA pivot (ECDSA P-256 for TLS, Ed25519 retained for SSH) +
+**Branch state:** 4 commits ahead of `origin/develop`, not yet pushed
