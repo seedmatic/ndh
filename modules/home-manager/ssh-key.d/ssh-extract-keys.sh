@@ -7,7 +7,8 @@ shopt -s nullglob
 # provided via activation wrapper/store paths.
 
 main() {
-	yamlFile="$1"
+	inputYamlFile="$1"
+	yamlFile="$inputYamlFile"
 	userOutputDir="$2"
 	targetUser="${3:-${USER:-}}"
 	# Optional 4th arg: root-owned system path for keys whose top-level usage
@@ -135,7 +136,7 @@ main() {
 		to_entries |
 		map(select(.value.cert_usage // [] | contains(["tls-server"]))) |
 		.[].key
-	' "$yamlFile" 2>/dev/null)
+	' "$inputYamlFile" 2>/dev/null)
 
 	for keyName in "${tlsKeys[@]}"; do
 		for priv_dir in "$userOutputDir" "$systemPrivateOutputDir"; do
