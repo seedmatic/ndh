@@ -84,17 +84,26 @@ in
     # Enable only the matching kind slot; all others stay sealed.
     tailnet.headscale.auth.${cfg.kind}.enable = true;
 
-    # Trust the `mammoth-skate` CA system-wide so every client on
-    # this host (tailscale, curl, browsers) accepts the self-signed
-    # leaf cert serving `headscale.mammoth-skate.local`.  Same
-    # option name on Darwin + NixOS (both flavours of nix-pki
+    # Trust every authority in keys.yaml that advertises
+    # `tls-authority` usage and carries a minted `ca_crt` PEM.
+    # Same option name on Darwin + NixOS (both flavours of nix-pki
     # expose `security.pki.certificates`).  `ca_crt` is a plaintext
     # field inside the sops-encrypted keys.yaml — cert bytes are
     # public-trust-anchor material — so we can read it at eval time
     # without sops decryption.
-    security.pki.certificates = lib.optional (
-      config.ndh.keysYaml.authorities ? mammoth-skate
-      && config.ndh.keysYaml.authorities.mammoth-skate ? ca_crt
-    ) config.ndh.keysYaml.authorities.mammoth-skate.ca_crt;
+    #
+    # Enumerating instead of hard-coding `mammoth-skate` lets the
+    # dual-CA setup (Ed25519 SSH root + ECDSA P-256 TLS root, the
+    # latter required by Apple's SecTrust which rejects Ed25519 leaves)
+    # land both anchors with no module change.
+    security.pki.certificates =
+      let
+        authorities = config.ndh.keysYaml.authorities or { };
+        isTlsAnchor =
+          auth:
+          (auth ? ca_crt)
+          && (builtins.elem "tls-authority" (auth.usage or [ ]));
+      in
+      lib.mapAttrsToList (_: a: a.ca_crt) (lib.filterAttrs (_: isTlsAnchor) authorities);
   };
 }
