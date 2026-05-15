@@ -342,6 +342,7 @@
             gnused
             keychain
             openssh
+            step-cli
             yq-go
           ];
         };
@@ -351,16 +352,17 @@
         let
           pkgsForSystem = pkgsFor { inherit system; };
           runtimePackage = mkNdhBootstrapRuntimePackage system;
-          loggerScript = (mkLoggerSpecialArg system).script;
+          nixBashTrampoline =
+            if system == "aarch64-darwin" then ndhNixBashTrampolineDarwin else ndhNixBashTrampolineLinux;
           scriptSource =
             pkgsForSystem.replaceVars ./modules/.common.d/bringup-runtime.d/install-standalone.sh
               {
-                bash = "${pkgsForSystem.bash}/bin/bash";
+                inherit nixBashTrampoline;
                 nix = "${pkgsForSystem.nix}/bin/nix";
                 loggerTag = "ndh.bringup-runtime.install-standalone";
                 runtimePackage = runtimePackage;
                 defaultProfileDir = "/nix/var/nix/profiles/per-user/root/nerd-bringup-runtime";
-                requiredCommands = "bash nix age age-keygen awk sed grep ssh ssh-keygen yq git";
+                requiredCommands = "bash nix age age-keygen awk sed grep ssh ssh-keygen step yq git";
               };
         in
         pkgsForSystem.runCommand ndhBringupInstallerAttr { } ''

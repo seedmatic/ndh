@@ -61,6 +61,7 @@ let
       keychain
       loggerShim
       openssh
+      step-cli
       yq-go
     ];
   };
@@ -159,6 +160,7 @@ in
         "grep"
         "ssh"
         "ssh-keygen"
+        "step"
         "yq"
         "git"
         "logger"
