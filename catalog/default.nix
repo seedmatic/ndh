@@ -28,17 +28,19 @@
     # bboxmatic.duckdns.org.  Port-forwards from the WAN router map
     # specific ports onto bioskop inside the LAN:
     #
-    #   WAN tcp/2222  →  bioskop  tcp/22    (SSH)
+    #   WAN tcp/2222   →  bioskop  tcp/22     (SSH)
+    #   WAN tcp/41841  →  bioskop  tcp/41841  (Headscale control + DERP)
+    #   WAN udp/3478   →  bioskop  udp/3478   (Headscale STUN)
     #
     # Additional ports can be added here as they are configured on the
     # router.  Consumers that need a stable internet URL (e.g.
-    # off-LAN SSH, future tailscale DERP relay, remote headscale
-    # join) read from this block instead of hard-coding strings.
+    # off-LAN SSH, tailscale DERP relay, remote headscale join) read
+    # from this block instead of hard-coding strings.
     wan = {
       ddnsHostname = "bboxmatic.duckdns.org";
       router = "bbox";
       isp = "bouygues";
-      # Port-forward map: externalPort → { hostName, internalPort }.
+      # Port-forward map: externalPort → { hostName, internalPort, protocol }.
       # Only ports actually configured on the Bbox live here; adding
       # a new one requires both a router config change and an entry
       # here.
@@ -46,7 +48,20 @@
         "2222" = {
           hostName = "bioskop";
           internalPort = 22;
+          protocol = "tcp";
           description = "SSH into bioskop from off-LAN";
+        };
+        "41841" = {
+          hostName = "bioskop";
+          internalPort = 41841;
+          protocol = "tcp";
+          description = "Headscale control plane + embedded DERP relay";
+        };
+        "3478" = {
+          hostName = "bioskop";
+          internalPort = 3478;
+          protocol = "udp";
+          description = "Headscale STUN endpoint for WireGuard NAT traversal";
         };
       };
     };
