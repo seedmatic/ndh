@@ -20,9 +20,13 @@ let
   profileModule = import ./profile.nix { inherit hostProfile darwinProfile; };
   darwinModule = import ./darwin.nix { inherit halfRamMiB; };
   nixosModule = import ./nixos.nix;
+  dnsmasqTunnelModule = import ./modules/darwin/dnsmasq-tunnel-mammoth-skate.nix;
 in
 {
   inherit hostProfile profileModule;
-  darwinExtraModules = [ darwinModule ];
+  darwinExtraModules = [
+    darwinModule
+    dnsmasqTunnelModule
+  ];
   nixosExtraModules = [ nixosModule ];
 }

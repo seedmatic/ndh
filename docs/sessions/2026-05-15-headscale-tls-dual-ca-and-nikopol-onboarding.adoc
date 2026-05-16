@@ -321,7 +321,7 @@ tunnel needed.
 === Reusing the preauth key
 
 Headscale preauth keys are owned by users, not nodes.  The reusable
-key minted on 2026-05-15 (id 17, scope `nxmatic` user, asserts
+key minted on 2026-05-15 (id 17, scope `nxmatic@` user, asserts
 `tag:console,tag:darwin`) is still active and unused as of writing.
 **Do not mint a new one.**  Retrieve the value on bioskop:
 
@@ -338,7 +338,7 @@ interim or expired, re-mint with the same parameters:
 [source,bash]
 ----
 hs preauthkeys create \
-  --user nxmatic \
+  --user nxmatic@ \
   --tags tag:console,tag:darwin \
   --reusable \
   --expiration 24h
@@ -401,6 +401,14 @@ without further work.
   tailnet, `dig rdp-host.bioskop.mammoth-skate.test` from nikopol
   resolves to bioskop's LAN IP via macOS's `/etc/resolver/`
   routing.
+* **2026-05-16**: Headscale user `nxmatic` renamed to `nxmatic@` to
+  satisfy Headscale policy v2 username requirements (trailing `@`
+  suffix disambiguates plain usernames from OIDC email identifiers).
+  The ACL already expected `nxmatic@` in `group:ndh`; the rename
+  aligns the runtime state with the policy.  All preauth keys remain
+  valid.  **nikopol successfully registered** on the tailnet
+  (100.64.0.1) via off-LAN SSH tunnel to bioskop's headscale control
+  plane at 127.0.0.1:41841.
 
 === Question to settle before starting Step 1
 

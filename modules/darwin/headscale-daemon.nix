@@ -13,9 +13,13 @@
 # hook needed.
 #
 # Clients authenticate via pre-auth keys.  Keys are created on first
-# use with `headscale preauthkeys create --user <user>`; they are NOT
+# use with `headscale preauthkeys create --user <user>@`; they are NOT
 # provisioned by this module (one-time bootstrap concern).  Once a
 # client registers, re-registrations use the stored node key.
+#
+# NOTE: Headscale policy v2 requires usernames with a trailing `@`
+# suffix (e.g., `nxmatic@`) to disambiguate plain usernames from
+# OIDC email identifiers.  See catalog/headscale/acl.hujson.
 {
   config,
   pkgs,
