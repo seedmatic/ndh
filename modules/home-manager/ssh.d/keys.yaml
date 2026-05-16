@@ -192,7 +192,7 @@ keys:
       sans:
         dns:
           - headscale.mammoth-skate.local
-          - bboxmatic.duckdns.org
+          - mammoth-skate.duckdns.org
       not_after_days: 365
     annotations:
       public_scope: system
@@ -225,7 +225,7 @@ sops:
         cTdtUlpiQ3F3cVBoRzlTb1hncStzSm8KPLFE6+gXG9wSezWYx2Tszffd35twhgYe
         ZYK5PH3No3jkQI96CvvhW/aFfShedIH28iebisTW7EmzpcC71bLFTw==
         -----END AGE ENCRYPTED FILE-----
-  lastmodified: "2026-05-15T08:43:51Z"
-  mac: ENC[AES256_GCM,data:iKnlkyVm5Wi+vxLeZUO03ajaki1zV7oS4ziMGIECBqwgPBcE0mszPst160DmOx5ox4gC19aQ+/ldj6wHhq5otNyPqqxFNY4jJ/C2XpAjtb0fjSk/iCibkS3CxTKZGFF8eFp7WLB4rJTD+sZggVWSfWgE9Kf9iK9xtLOKupyM+rI=,iv:agnnoCuy64DbiEHAS5czvKDh/DGe1JV3I2kVieUO/sg=,tag:/4lZhIw5e2CxHiYIuLP9cw==,type:str]
+  lastmodified: "2026-05-16T11:05:29Z"
+  mac: ENC[AES256_GCM,data:EetSzLX+HGiEgIJ7CRFmoJk/JBW1y8kWhKNxZOJNKi0IBcltF6nv/beoQCaJz8qWLGbp4p1nwr7DMGjdkrP2hipMAKwxqb8tJK4V62K3F/Bkw3eYaVyRwE0Vkx4mblB2U83xSeuZtUGeUE4V/pomGqUDGzE1LDlt9fF4c6xIEh4=,iv:dDbc3ECCrNesywKITgNTmUmPM8GbOXn/RKZus8idDQk=,tag:XtEcrcavv315xM+FKBuy6A==,type:str]
   encrypted_comment_regex: sops:encrypted
   version: 3.12.2

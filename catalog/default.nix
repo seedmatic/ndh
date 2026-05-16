@@ -18,6 +18,114 @@
     lan = {
       cidr = "192.168.1.0/24";
       domain = ".lan";
+      gateway = "192.168.1.254";
+
+      # LAN-side authorities (routers, APs, anything that owns part of
+      # the LAN's behaviour).  Non-secret metadata only; the matching
+      # admin credential lives sops-encrypted in `.secrets` under the
+      # same key (e.g. `lan.mammoth-skate.password`).
+      routers = {
+        mammoth-skate = {
+          # Bouygues Bbox residential router, primary LAN gateway and
+          # DHCP server.  Drives:
+          #   - DHCP leases + static reservations (see `hosts` below)
+          #   - WAN port forwards (see `netplan.wan.portForwards`)
+          #   - DDNS publication (see `netplan.wan.ddnsHostname`)
+          address = "192.168.1.254";
+          adminUrl = "https://mabbox.bytel.fr";
+          # API-shape reference: docs/bbox-api.adoc
+          kind = "bbox";
+        };
+      };
+
+      # Static DHCP reservations on `mammoth-skate`.  Source of truth
+      # for the catalog; reconciled against the bbox via the
+      # `bbox-reconcile` script (forthcoming) which reads
+      # /api/v1/dhcp/clients and diffs against this map.
+      #
+      # Schema: each entry is { mac, ip, kind } where `kind` describes
+      # the role for downstream consumers (dnsmasq zone generator,
+      # cert SAN list, ssh-tailnet-hosts).
+      hosts = {
+        # bioskop: bare-metal Mac (the daily driver)
+        bioskop = {
+          mac = "00:30:93:1d:0e:48";
+          ip = "192.168.1.129";
+          kind = "darwin-host";
+        };
+        bioskop-wifi = {
+          mac = "ca:f1:1a:ef:69:9f";
+          ip = "192.168.1.158";
+          kind = "wifi-iface";
+        };
+        bioskop-nixos = {
+          mac = "10:66:6a:4c:27:01";
+          ip = "192.168.1.130";
+          kind = "tart-nixos";
+        };
+
+        # nikopol: a Tart/VZ macOS guest (the catalog Mac).  The
+        # underlying bare metal is treated as a near-stock host whose
+        # only job is hosting this VM; only its VZ-bridge interface
+        # appears on the LAN.
+        nikopol = {
+          mac = "86:b7:a1:96:1a:9f";
+          ip = "192.168.1.33";
+          kind = "vz-darwin";
+        };
+        nikopol-vz = {
+          # Bare-metal VZ bridge — connectivity only, IP not
+          # load-bearing.  Used by the `vz-host.<host>` ssh alias to
+          # reach the bare-metal screen-sharing path.
+          mac = "84:2f:57:d4:36:be";
+          ip = "192.168.1.65";
+          kind = "vz-bridge";
+        };
+        nikopol-nixos = {
+          mac = "10:66:6a:4c:d6:01";
+          ip = "192.168.1.34";
+          kind = "tart-nixos";
+        };
+
+        # RKE2 control planes.  Tart-derived MACs follow the
+        # `10:66:6a:4c:${hostByteHex}:NN` scheme (see
+        # modules/darwin/tart-config.nix).
+        bioskop-peer3-control-node = {
+          mac = "10:66:6a:4c:00:03";
+          ip = "192.168.1.134";
+          kind = "rke2-bioskop";
+        };
+        bioskop-worker1-control-node = {
+          mac = "10:66:6a:4c:00:0a";
+          ip = "192.168.1.135";
+          kind = "rke2-bioskop";
+        };
+        bioskop-worker2-control-node = {
+          mac = "10:66:6a:4c:00:0b";
+          ip = "192.168.1.136";
+          kind = "rke2-bioskop";
+        };
+        nikopol-master-control-node = {
+          mac = "10:66:6a:4c:01:00";
+          ip = "192.168.1.35";
+          kind = "rke2-nikopol";
+        };
+        nikopol-peer1-control-node = {
+          mac = "10:66:6a:4c:01:01";
+          ip = "192.168.1.36";
+          kind = "rke2-nikopol";
+        };
+        nikopol-peer2-control-node = {
+          mac = "10:66:6a:4c:01:02";
+          ip = "192.168.1.37";
+          kind = "rke2-nikopol";
+        };
+        nikopol-peer3-control-node = {
+          mac = "10:66:6a:4c:01:03";
+          ip = "192.168.1.38";
+          kind = "rke2-nikopol";
+        };
+      };
     };
     tailnet = {
       cidr = "100.64.0.0/10";
@@ -25,8 +133,8 @@
     };
     # Internet-facing anchor: Bouygues Telecom (Bbox) residential
     # connection, dynamic public IPv4 tracked by Duck DNS at
-    # bboxmatic.duckdns.org.  Port-forwards from the WAN router map
-    # specific ports onto bioskop inside the LAN:
+    # mammoth-skate.duckdns.org.  Port-forwards from the WAN router
+    # map specific ports onto bioskop inside the LAN:
     #
     #   WAN tcp/2222   →  bioskop  tcp/22     (SSH)
     #   WAN tcp/41841  →  bioskop  tcp/41841  (Headscale control + DERP)
@@ -37,8 +145,8 @@
     # off-LAN SSH, tailscale DERP relay, remote headscale join) read
     # from this block instead of hard-coding strings.
     wan = {
-      ddnsHostname = "bboxmatic.duckdns.org";
-      router = "bbox";
+      ddnsHostname = "mammoth-skate.duckdns.org";
+      router = "mammoth-skate";
       isp = "bouygues";
       # Port-forward map: externalPort → { hostName, internalPort, protocol }.
       # Only ports actually configured on the Bbox live here; adding
