@@ -47,6 +47,7 @@
     ./bringup-observe.nix
     ./tailscale-vnc-forward.nix
     ./tls-authority-keychain.nix
+    ./dns-zone-mammoth-skate-resolver.nix
   ];
 
   # Active le résolveur .lan par défaut (modifiable par hôte)

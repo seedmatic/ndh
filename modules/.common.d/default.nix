@@ -263,6 +263,7 @@ in
     # Networking
     ./bbox-reconcile.nix
     ./dns-servers.nix
+    ./dns-zone-mammoth-skate.nix
     ./dnsmasq.nix
     ./lima-host.nix
 

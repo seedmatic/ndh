@@ -1,7 +1,12 @@
 {
   config,
+  lib,
   ...
 }:
+let
+  dnsZoneCfg = config.networking.dnsZoneMammothSkateTest;
+  dnsZoneSnippet = lib.optionalString dnsZoneCfg.enable dnsZoneCfg.dnsmasqSnippet;
+in
 {
 
   environment.etc."dnsmasq.conf".text = ''
@@ -28,6 +33,7 @@
     # Increase forwarding timeout (default is 5 seconds)
     dns-forward-max=150
     # query-timeout=10
+    ${dnsZoneSnippet}
   '';
 
 }
