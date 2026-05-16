@@ -145,7 +145,12 @@ let
     addn-hosts=${addnHostsFile}
   ''
   + lib.concatMapStringsSep "\n" (a: "cname=${a.alias},${a.canonical}") aliasRecords
-  + "\n";
+  + "\n"
+  # Service-level CNAMEs — point to their current hosting location.
+  # During Phase A (bootstrap), headscale runs as a LaunchAgent on
+  # bioskop.  During Phase B (production), update the target to the
+  # K8s ingress or service IP once headscale migrates to RKE2.
+  + "cname=headscale.${zone},rdp-host.bioskop.${zone}\n";
 in
 {
   # Surface read-only for any other module that wants to inspect what
