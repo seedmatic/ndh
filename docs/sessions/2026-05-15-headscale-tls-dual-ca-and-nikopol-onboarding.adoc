@@ -283,83 +283,60 @@ The earlier work that set up the dual-CA *plumbing* (TLS daemon, embedded DERP, 
 
 == Next Session Tasks
 
-The objective for the next session is **register nikopol on the tailnet
-via the existing SSH tunnel** (no bbox port-forwarding required yet).
-Read this section from end to end before starting — the prerequisites
-matter.
+The objective is **register nikopol on the tailnet**.
+
+NOTE: Several prerequisites mentioned in this note's earlier draft
+have shipped since 2026-05-15 — see the "Updates after 2026-05-15"
+note below.  The current path is **on-LAN registration**, no SSH
+tunnel needed.
 
 === Prerequisites on bioskop (already done, verify)
 
 * [x] Headscale daemon running (`launchctl list | grep headscale-bootstrap`)
 * [x] Listening on `0.0.0.0:41841` for TLS, `0.0.0.0:3478` for STUN
 * [x] mDNS publisher running (so `headscale.mammoth-skate.local` resolves on the LAN)
-* [x] Existing port-forward on the bbox: `bboxmatic.duckdns.org:2222 → bioskop:22`
+* [x] dnsmasq closed-world zone `mammoth-skate.test` live (added 2026-05-16)
+* [x] bbox port-forwards published 2026-05-15: `:2222`, `:41841`, `:3478` → bioskop
+* [x] Reusable preauth key minted, tag pair `tag:console,tag:darwin`, id 17.
+      Reuse — no new mint required.  See "Reusing the preauth key" below.
 
 === Prerequisites on nikopol (verify before starting)
 
-* [ ] Repository cloned and checked out to a commit at-or-after
-      `e8a9ad68` (the dual-CA commit).  Without these commits the
-      `mammoth-skate-tls` root will not be trusted at activation.
-* [ ] Nikopol's SOPS age key is installed at the expected path so
-      `sops -d modules/home-manager/ssh.d/keys.yaml` works.
-* [ ] `darwin-rebuild switch` has run successfully **after** pulling the
-      dual-CA commits.  At that point:
+. Repository cloned and pulled to current `develop` HEAD (after
+  commit `f97b5d72` "feat(dns): closed-world mammoth-skate.test
+  zone").  Without the recent commits the catalog rename and the
+  keychain trust hook won't deploy correctly.
+. Nikopol's SOPS age key is installed at the expected path so
+  `sops -d modules/home-manager/ssh.d/keys.yaml` works.
+. `darwin-rebuild switch` has run successfully **after** pulling the
+  recent commits.  At that point:
   - `mammoth-skate-tls.ca_crt` is in `/etc/ssl/certs/ca-certificates.crt`
   - `security verify-cert -c <root.der>` returns "certificate
-     verification successful" (root is in the keychain)
+     verification successful" (the keychain trust hook installed the
+     ECDSA root)
   - `headscale-tls-server.{,crt,pem,pub}` materialise under
-    `~/.local/share/ndh/ssh-keys/` (these are NIKOPOL'S OWN copies, not
-    bioskop's serving material — same enrichment pipeline runs on both)
+    `~/.local/share/ndh/ssh-keys/` (NIKOPOL'S OWN copies; same
+    enrichment pipeline runs on each host)
 
-=== Step 1 — open the SSH tunnel
+=== Reusing the preauth key
 
-The shortcut for off-LAN registration without touching bbox NAT/PAT
-yet is to forward bioskop's headscale TCP port over the existing SSH
-tunnel:
-
-[source,bash]
-----
-# On nikopol.  -N = no remote command, -f = background after auth.
-ssh -L 41841:127.0.0.1:41841 -N -f bboxmatic.duckdns.org -p 2222
-----
-
-Limitations to know:
-
-* SSH only forwards TCP.  STUN (UDP 3478) is *not* forwarded, so
-  off-LAN nikopol will not discover a direct WireGuard path and will
-  use DERP fallback.  Embedded DERP travels over the same TCP/41841
-  tunnel, so this works — just at higher latency than direct
-  WireGuard.  Once nikopol is back on-LAN it picks up the direct path
-  automatically.
-* For long-term off-LAN operation (re-registration, key renewal),
-  proper port-forwarding on the bbox is the better answer.  See the
-  "Future work" section below.
-
-=== Step 2 — DNS override for the cert SAN
-
-Tell nikopol to resolve `headscale.mammoth-skate.local` to localhost
-(the tunnel endpoint).  This works because the leaf cert's SAN list
-contains exactly that name, so TLS validation succeeds against the
-public key without any cert change.
+Headscale preauth keys are owned by users, not nodes.  The reusable
+key minted on 2026-05-15 (id 17, scope `nxmatic` user, asserts
+`tag:console,tag:darwin`) is still active and unused as of writing.
+**Do not mint a new one.**  Retrieve the value on bioskop:
 
 [source,bash]
 ----
-# Temporary, lasts until /etc/hosts is regenerated:
-echo "127.0.0.1 headscale.mammoth-skate.local" | sudo tee -a /etc/hosts
+# json output exposes the full hskey-auth-... value (yaml output masks)
+hs preauthkeys list --output json | yq -p=json '.[] | select(.id==17) | .key'
 ----
 
-Don't try to use `localhost` as the `--login-server` host instead — the
-served cert has no `localhost` SAN and TLS validation would fail.
-
-=== Step 3 — mint a preauth key
-
-On bioskop (the host where headscale runs):
+Copy it to nikopol over the existing SSH path (avoid clipboard if
+the workstation is shared).  If the key has been consumed in the
+interim or expired, re-mint with the same parameters:
 
 [source,bash]
 ----
-# tags depend on which nikopol you're enrolling:
-#   - nikopol Darwin host → tag:console,tag:darwin
-#   - nikopol-tart NixOS guest → tag:headless,tag:nixos
 hs preauthkeys create \
   --user nxmatic \
   --tags tag:console,tag:darwin \
@@ -367,40 +344,63 @@ hs preauthkeys create \
   --expiration 24h
 ----
 
-Print the key, copy to nikopol via the existing SSH connection (don't
-paste through clipboard if the workstation is shared).
-
-=== Step 4 — register
+=== Step 1 — register on-LAN
 
 [source,bash]
 ----
 sudo tailscale up \
   --login-server=https://headscale.mammoth-skate.local:41841 \
-  --auth-key=hskey-auth-... \
+  --auth-key=<the hskey-auth-... value> \
   --hostname=nikopol \
   --timeout=30s
 ----
 
 Expected outcome:
 
-* `tailscale status` shows nikopol with a `100.64.0.x` address.
-* `hs nodes list` on bioskop shows the new node, online, tagged.
-* The two hosts can ping each other on their tailnet IPs.
+* `tailscale status` shows nikopol with a `100.64.0.x` address
+* `hs nodes list` on bioskop shows the new node, online, tagged
+  `tag:console,tag:darwin`
+* `ping 100.64.0.2` (bioskop's tailnet IP) succeeds from nikopol
 
-If `tailscale up` reports a registration timeout but `hs nodes list`
-shows a row with `Expiration: 1970-01-01`, this is the bug we hit on
-bioskop earlier in the session — the auth-key was consumed but
-headscale stored zero-expiry on first registration.  Fix: `hs nodes
-delete -i <id> --force` and re-run `tailscale up --reset`.
+If `tailscale up` reports a registration timeout but `hs nodes
+list` shows a row with `Expiration: 1970-01-01`, this is the bug
+we hit on bioskop on 2026-05-15 — the auth-key was consumed but
+headscale stored zero-expiry on first registration.  Fix:
+`hs nodes delete -i <id> --force` then `tailscale up --reset`.
 
-=== Step 5 — clean up
+=== Step 2 (optional) — verify off-LAN path
 
-Once nikopol is on the tailnet:
+Once on-LAN works, a quick test that the bbox port-forward path
+works too:
 
-* Tear down the SSH tunnel: `pkill -f 'ssh -L 41841'`.
-* Remove the `/etc/hosts` line — on the LAN, the mDNS publisher on
-  bioskop already resolves `headscale.mammoth-skate.local` to the
-  correct IP; off-LAN, future work will replace mDNS with DDNS+SAN.
+. From nikopol, log out: `sudo tailscale logout`
+. Tether off-LAN (cellular, friend's network)
+. `sudo tailscale up --login-server=https://mammoth-skate.duckdns.org:41841 \
+   --auth-key=<key> --hostname=nikopol --timeout=30s`
+. Verify `tailscale status` shows the node up
+. Return on-LAN; tailscaled picks up the direct WireGuard path
+  automatically (no manual reset)
+
+The leaf cert's SAN list already contains `mammoth-skate.duckdns.org`
+(landed in commit `2f9cf397`), so TLS validates over the public path
+without further work.
+
+=== Updates after 2026-05-15
+
+* `bboxmatic.duckdns.org` renamed to `mammoth-skate.duckdns.org` in
+  catalog + cert SAN (commit `91d61654`).  This note's earlier
+  references to `bboxmatic` should be read as `mammoth-skate`.
+* `catalog.netplan.lan.hosts` schema changed: `kind` split into
+  `kind`/`parent`/`role` to drive structured FQDN composition for
+  the new `mammoth-skate.test` LAN zone (commit `69e378c0`).
+  Doesn't affect tailnet registration, but if reading nearby code
+  the field shape is different from what's in this note's earlier
+  examples.
+* Closed-world DNS zone `mammoth-skate.test` is now live on
+  bioskop's dnsmasq (commit `f97b5d72`).  After nikopol is on the
+  tailnet, `dig rdp-host.bioskop.mammoth-skate.test` from nikopol
+  resolves to bioskop's LAN IP via macOS's `/etc/resolver/`
+  routing.
 
 === Question to settle before starting Step 1
 

@@ -73,10 +73,27 @@ This directory contains detailed session summaries documenting the evolution of 
 
 == Latest Session
 
-link:2026-05-15-headscale-tls-dual-ca-and-nikopol-onboarding.adoc[**2026-05-15: Headscale TLS Dual-CA Pivot & nikopol Onboarding Plan**]::
-Resolved the Apple SecTrust failure that blocked Tailscale registration against the LAN headscale.  Added a second authority (`mammoth-skate-tls`, ECDSA P-256) dedicated to TLS, kept the existing Ed25519 root for SSH, and wired a Darwin-only activation hook that pushes every `tls-authority` root into the System keychain.  bioskop is on the tailnet; nikopol enrollment plan documented for the next session.
+link:2026-05-16-lan-catalog-bbox-reconcile-dnsmasq-zone.adoc[**2026-05-16: LAN Catalog, bbox-reconcile, mammoth-skate.test Closed-World DNS Zone**]::
+Landed the LAN-side declarative pipeline: catalog `netplan.lan` table of 13 static reservations, the `bbox-reconcile` diff tool that compares against the bbox JSON API, and the closed-world `mammoth-skate.test` DNS zone served by bioskop's dnsmasq with structured FQDNs mirroring the SSH alias convention.  Verified end-to-end on bioskop; nikopol enrollment ready for the next session.
 
 == All Sessions
+
+=== 2026-05-16
+
+link:2026-05-16-lan-catalog-bbox-reconcile-dnsmasq-zone.adoc[LAN Catalog, bbox-reconcile, mammoth-skate.test Closed-World DNS Zone]::
+**Focus:** Build the LAN-side declarative pipeline that nikopol enrollment depends on, consolidate naming under `mammoth-skate`.
++
+**Achievements:**
+* Catalog `netplan.lan.routers` (LAN authority metadata) and `hosts` (13 static reservations, schema `{mac, ip, kind, parent?, role?}`)
+* `catalog/lan-ignored-reservations.yaml` for unmanaged home devices (TVs, audio)
+* `bboxmatic` → `mammoth-skate` rename across DDNS hostname + cert SAN list
+* `docs/bbox-api.adoc` — full reference for the bbox JSON API
+* bbox state cleanup via API (14 stale "ghost" entries DELETEd)
+* `bbox-reconcile` diff tool — exit 0 against the live bbox after schema landed
+* Closed-world `mammoth-skate.test` zone served by bioskop's dnsmasq, 12 A records + 2 CNAME aliases, FQDN composition mirrors the SSH alias convention
+* dnsmasq auto-reload via launchd `WatchPaths`
++
+**Status:** LAN catalog single-source-of-truth pipeline operational.  Nikopol on-LAN enrollment unblocked; see updated 2026-05-15 note for the procedure.
 
 === 2026-05-15
 

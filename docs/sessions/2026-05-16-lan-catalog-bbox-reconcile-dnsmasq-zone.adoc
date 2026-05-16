@@ -1,0 +1,357 @@
+= Session Summary: LAN Catalog, bbox-reconcile, mammoth-skate.test Closed-World DNS Zone
+:toc: left
+:toclevels: 3
+:icons: font
+:source-highlighter: rouge
+:date: 2026-05-16
+
+== Overview
+
+This session built out the LAN-side declarative pipeline that the
+upcoming nikopol enrollment depends on, and consolidated naming so
+`mammoth-skate` is the one umbrella across the catalog, the SSH cert
+authority, the TLS authority, the DDNS publication, and the LAN
+router.
+
+Three landed pieces, in order:
+
+. **Catalog `netplan.lan` redesign** — added a `routers` map for the
+  LAN router metadata, a `hosts` table of all 13 declared static
+  reservations, and an `ignoredReservations` YAML at
+  `catalog/lan-ignored-reservations.yaml` for home devices the
+  catalog intentionally doesn't manage.
+
+. **`bbox-reconcile` script** — diff-only for now; reads the catalog
+  and queries the bbox JSON API at `/api/v1/dhcp/clients`, prints
+  three buckets (missing, extra, drift) and exits 0 on a clean
+  match.  Live diff against the bbox returned exit 0 immediately:
+  the catalog and the bbox state were already aligned.
+
+. **Closed-world DNS zone `mammoth-skate.test`** — bioskop's dnsmasq
+  is now authoritative for the RFC-6761-reserved zone, populated
+  from `catalog.netplan.lan.hosts` via a new common module.  Names
+  follow the structured shape `<service>.<host>.<zone>` mirroring
+  the SSH alias convention; queries for unmanaged names return
+  NXDOMAIN.  `/etc/resolver/mammoth-skate.test` routes macOS
+  resolution to the local dnsmasq.
+
+The session ended after `darwin-rebuild switch` on bioskop and
+end-to-end verification that the zone resolves correctly via both
+the system resolver chain (`dscacheutil`, `ping`) and explicit
+`dig @127.0.0.1`.  nikopol enrollment is the next-session concern;
+see the updated 2026-05-15 note.
+
+== Major Achievements
+
+=== 1. Catalog `netplan.lan` schema landed ✅
+
+* Added `routers.<name>` for LAN authority metadata (`mammoth-skate`
+  for now; future APs slot in as siblings).  Non-secret only; the
+  matching admin password lives in `.secrets.lan.<name>.password`.
+* Added `hosts` table — 13 declared static reservations with
+  schema `{mac, ip, kind, parent?, role?}`.  Source of truth for
+  the bbox.  Entries:
++
+[options="header"]
+|===
+| key | mac | ip | kind | parent | role
+| bioskop | 00:30:93:1d:0e:48 | .129 | darwin-host | — | —
+| bioskop-wifi | ca:f1:1a:ef:69:9f | .158 | wifi-iface | bioskop | —
+| bioskop-nixos | 10:66:6a:4c:27:01 | .130 | nixos | bioskop | —
+| bioskop-peer3-control-node | 10:66:6a:4c:00:03 | .134 | rke2 | bioskop | peer3
+| bioskop-worker1-control-node | 10:66:6a:4c:00:0a | .135 | rke2 | bioskop | worker1
+| bioskop-worker2-control-node | 10:66:6a:4c:00:0b | .136 | rke2 | bioskop | worker2
+| nikopol | 86:b7:a1:96:1a:9f | .33 | darwin-host | — | —
+| nikopol-vz | 84:2f:57:d4:36:be | .65 | vz-host | nikopol | —
+| nikopol-nixos | 10:66:6a:4c:d6:01 | .34 | nixos | nikopol | —
+| nikopol-master-control-node | 10:66:6a:4c:01:00 | .35 | rke2 | nikopol | master
+| nikopol-peer1-control-node | 10:66:6a:4c:01:01 | .36 | rke2 | nikopol | peer1
+| nikopol-peer2-control-node | 10:66:6a:4c:01:02 | .37 | rke2 | nikopol | peer2
+| nikopol-peer3-control-node | 10:66:6a:4c:01:03 | .38 | rke2 | nikopol | peer3
+|===
+
+`kind` was originally a single label that conflated two facts
+("what role this is" + "which top-level host owns it" — e.g.
+`rke2-bioskop`).  The split into `kind` + `parent` + `role` is
+what unblocks the structured DNS composition in achievement #3.
+
+=== 2. bboxmatic → mammoth-skate rename ✅
+
+The placeholder `bboxmatic` (DDNS hostname + cert SAN entry) flipped
+to `mammoth-skate` to align with the catalog/authority naming.  Two
+mechanical edits:
+
+* `catalog.netplan.wan.ddnsHostname`: `bboxmatic.duckdns.org → mammoth-skate.duckdns.org`
+* `keys.yaml` SAN list: same rename
+
+DDNS still publishes to DuckDNS; bbox port-forwards still work.  The
+nikopol off-LAN path uses `mammoth-skate.duckdns.org:41841` instead
+of `bboxmatic.duckdns.org:41841` — same path, different name.
+
+=== 3. `bbox-api.adoc` documents the bbox JSON API ✅
+
+`docs/bbox-api.adoc` (new) captures the auth flow, the
+two-distinct-tables model (`/api/v1/hosts` device discovery vs
+`/api/v1/dhcp/clients` reservations), confirmed verbs, and the
+"200-with-no-effect" anti-pattern (the bbox API silently drops
+unsupported writes).  Reference for the upcoming `bbox-reconcile
+apply` mode.
+
+=== 4. bbox cleanup via API ✅
+
+Earlier session work cleaned up 14 stale "ghost" entries from
+`/api/v1/hosts` via `DELETE`: old VM rebuilds, retired RKE2 nodes,
+MAC-randomized phones from previous OS installs.  Confirmed via
+re-fetch that the device-discovery table now matches the catalog
+1:1 by MAC.
+
+The reservation table at `/api/v1/dhcp/clients` was already
+correct — no writes needed there.  The bug we hit during the
+cleanup: confused `type: Static|DHCP` in `/hosts` (which reflects
+*current link state*, not reservation status) with the
+reservation table.  Documented in `bbox-api.adoc` so it doesn't
+trip the next reader.
+
+=== 5. `bbox-reconcile` (diff-only) ✅
+
+`writeShellApplication` on every host's PATH where the catalog
+declares a router.  Compares `catalog.netplan.lan.hosts` against
+the bbox's `/api/v1/dhcp/clients`.  Three buckets:
+
+* MISSING — declared in catalog, not on bbox (operator must add)
+* EXTRA — on bbox, not in catalog (typically expected: TVs,
+  speakers; suppressed via `lan-ignored-reservations.yaml`)
+* DRIFT — same MAC on both sides, hostname or IP differs
+
+Comparison key is MAC.  Implemented entirely in `yq-go` to avoid
+pulling `jq` + `awk` into runtimeInputs.  Read-only by design;
+write path is in `docs/bbox-api.adoc` but the body shape for
+POST/PUT against `/dhcp/clients` hasn't been captured from the
+bbox UI yet.
+
+Live result on bioskop:
+
+[source]
+----
+=== bbox-reconcile diff ===
+Catalog hosts:           13
+Bbox /dhcp/clients:      13 (+ 5 ignored)
+
+All catalog hosts match bbox /dhcp/clients reservations.
+----
+
+Exit 0.
+
+=== 6. Closed-world DNS zone `mammoth-skate.test` ✅
+
+bioskop's dnsmasq is authoritative for the zone.  Records rendered
+deterministically from the catalog with the structured shape
+
+  <service>.<host>.<zone>
+
+mirroring the SSH alias convention from
+`modules/home-manager/ssh-tailnet-hosts.nix`.  `dig
+rdp-host.bioskop.mammoth-skate.test` and
+`ssh rdp-host.bioskop` resolve to identical names.
+
+Twelve A records emitted (one per non-`wifi-iface` catalog entry):
+
+[source]
+----
+192.168.1.129  rdp-host.bioskop.mammoth-skate.test
+192.168.1.130  nixos.bioskop.mammoth-skate.test
+192.168.1.134  peer3.rke2.bioskop.mammoth-skate.test
+192.168.1.135  worker1.rke2.bioskop.mammoth-skate.test
+192.168.1.136  worker2.rke2.bioskop.mammoth-skate.test
+192.168.1.33   rdp-host.nikopol.mammoth-skate.test
+192.168.1.34   nixos.nikopol.mammoth-skate.test
+192.168.1.35   master.rke2.nikopol.mammoth-skate.test
+192.168.1.36   peer1.rke2.nikopol.mammoth-skate.test
+192.168.1.37   peer2.rke2.nikopol.mammoth-skate.test
+192.168.1.38   peer3.rke2.nikopol.mammoth-skate.test
+192.168.1.65   vz-host.nikopol.mammoth-skate.test
+----
+
+Plus two CNAMEs for muscle-memory:
+
+[source]
+----
+bioskop.mammoth-skate.test  CNAME  rdp-host.bioskop.mammoth-skate.test
+nikopol.mammoth-skate.test  CNAME  rdp-host.nikopol.mammoth-skate.test
+----
+
+Closed-world: dnsmasq is told `local=/mammoth-skate.test/` so any
+name in the zone NOT explicitly listed returns NXDOMAIN.  No
+upstream forwarding — privacy-safe (no leak of private hostnames
+to public resolvers) and fail-fast (typos surface immediately).
+
+=== 7. dnsmasq auto-reload on config change ✅
+
+Added `WatchPaths = [ "/etc/dnsmasq.conf" ]` to the dnsmasq launchd
+daemon.  On every `darwin-rebuild switch` that produces a new
+`dnsmasq.conf` (zone host added, IP changed, etc.), `nix-darwin`
+atomically swaps `/etc/static`, the `/etc/dnsmasq.conf` symlink's
+resolved inode changes, launchd's kqueue fires a vnode event and
+bounces the daemon.  Operator no longer needs `launchctl
+kickstart -k` after a switch.
+
+== Technical Details
+
+=== Why `.test` for the LAN zone
+
+RFC 6761 §6.2 reserves `.test` permanently for "private testing
+purposes; never publicly delegated".  Three properties matter:
+
+* No registrar can sell it.  No future name collision.
+* No public resolver caches answers under it.
+* Historically established convention; some tooling has special
+  cases for `.test` (no DNSSEC validation expected, etc.).
+
+Alternative would have been `.lan` (already used by the bbox
+auto-DNS), or a placeholder we plan to register later (e.g.
+`.eu.org`).  `.test` was the safest choice for "permanently LAN-
+internal" — the future public zone (whenever we register one)
+gets a different name and the two coexist.
+
+=== FQDN composition rule
+
+Codified in `modules/.common.d/dns-zone-mammoth-skate.nix` via a
+`kindShape` lookup:
+
+[source,nix]
+----
+kindShape = {
+  darwin-host = { emit = true;  service = _: "rdp-host"; };
+  nixos       = { emit = true;  service = _: "nixos"; };
+  vz-host     = { emit = true;  service = _: "vz-host"; };
+  rke2        = { emit = true;  service = e: "${e.role}.rke2"; };
+  wifi-iface  = { emit = false; };
+};
+----
+
+Top-level hosts (no `parent`) emit at `<service>.<key>.<zone>`.
+Nested hosts (parent set) emit at `<service>.<parent>.<zone>`.
+RKE2 nodes have role mandatory — the renderer throws if a
+`kind=rke2` entry lacks `role`, so a missing role doesn't silently
+land an entry at `.rke2.<parent>.<zone>`.
+
+=== Why CNAME aliases for top-level hosts only
+
+Decision: structured-only naming except for muscle-memory aliases
+on top-level hosts.  `bioskop.<zone>` and `nikopol.<zone>` get a
+CNAME to the canonical `rdp-host.*` form.  Nested hosts
+(`bioskop-nixos.<zone>`, etc.) do *not* get aliases — only the
+structured form (`nixos.bioskop.<zone>`) resolves.
+
+The reasoning: nested-host bbox-style aliases would leak the
+"prefix conflation" the schema split was meant to fix.  Top-level
+aliases are special because they're the operator's main entry
+points; the muscle memory of typing `bioskop` is too valuable to
+break.
+
+=== `WatchPaths` semantics on Darwin
+
+launchd uses `kqueue` with `EVFILT_VNODE`.  When a watched path
+changes:
+
+* Symlinks are followed; the watch is registered against the
+  resolved inode.
+* When `nix-darwin` atomically swaps `/etc/static` (during
+  `darwin-rebuild switch`), the resolved inode behind
+  `/etc/dnsmasq.conf` changes.
+* kqueue fires `NOTE_LINK` (or rejects with ENOENT and re-arms);
+  launchd interprets either as "config changed" and bounces the
+  service.
+
+Tested empirically: switch landed at 2026-05-16 14:59:30, dnsmasq
+PID changed 68486 → 8934 within seconds without manual intervention.
+
+== Repository Commits
+
+All on branch `develop`, **9 commits ahead of `origin/develop`,
+not yet pushed**:
+
+`f97b5d72`::  feat(dns): closed-world mammoth-skate.test zone served by dnsmasq +
+`69e378c0`::  refactor(catalog): split lan.hosts kind into kind/parent/role for FQDN composition +
+`79180a53`::  feat(bbox-reconcile): externalize ignore list to catalog/lan-ignored-reservations.yaml +
+`19f9e86e`::  feat(bbox-reconcile): diff-only LAN reservation reconciliation +
+`d575e03b`::  chore(flox): add ngrok to dev shell +
+`584287b3`::  docs(bbox-api): document the bbox JSON API surface +
+`482edeb7`::  refactor(.secrets): collect LAN router cred under lan.<name>; park ngrok/cloudflare tokens +
+`91d61654`::  refactor(catalog,tls): rename bboxmatic → mammoth-skate; add LAN routers/hosts tables
+
+(Plus the `WatchPaths` addition committed locally; verify with `git log` on read.)
+
+== Files Touched
+
+* `catalog/default.nix` — `netplan.lan.{routers,hosts,zone}`,
+  `netplan.wan.ddnsHostname` rename, `lan.hosts` schema split
+* `catalog/lan-ignored-reservations.yaml` (new) — opaque MAC list
+  with hostnames and notes
+* `modules/home-manager/ssh.d/keys.yaml` (sops) — SAN rename
+* `.secrets` (sops) — added `lan.mammoth-skate.password`,
+  `cloudfare.mammoth-skate`, `ngrok.mammoth-skate` (latter two
+  parked for future tunnel work)
+* `docs/bbox-api.adoc` (new)
+* `modules/.common.d/bbox-reconcile.nix` (new)
+* `modules/.common.d/dns-zone-mammoth-skate.nix` (new) — renderer
+* `modules/.common.d/dnsmasq.nix` — splice the zone snippet
+* `modules/darwin/dns-zone-mammoth-skate-resolver.nix` (new) —
+  `/etc/resolver/mammoth-skate.test`
+* `modules/darwin/dnsmasq.nix` — `WatchPaths`
+* `modules/.common.d/default.nix` — wire new modules
+* `modules/darwin/default.nix` — wire new resolver module
+* `.flox/env/manifest.{toml,lock}` — add `ngrok` to dev shell
+
+== Next Session Tasks
+
+The objective is **register nikopol on the tailnet** following the
+updated 2026-05-15 plan.  See
+link:2026-05-15-headscale-tls-dual-ca-and-nikopol-onboarding.adoc[2026-05-15:
+Headscale TLS Dual-CA Pivot & nikopol Onboarding Plan] — the "Next
+Session Tasks" section there has the current commands; it was
+updated this session to reflect that:
+
+* The bbox port-forwards are live, so on-LAN registration works
+  directly without an SSH tunnel
+* The reusable preauth key (id 17, `tag:console+darwin`) from
+  2026-05-15 is still valid; **do not mint a new one**
+* `mammoth-skate.duckdns.org` (not `bboxmatic.duckdns.org`) is the
+  off-LAN endpoint
+
+After nikopol is on the tailnet, post-validation work:
+
+. From nikopol, `dig rdp-host.bioskop.mammoth-skate.test` should
+  resolve via macOS `/etc/resolver/` routing once nikopol pulls
+  and rebuilds with the new commits.
+. Test off-LAN bring-up via the bbox-forward path
+  (`https://mammoth-skate.duckdns.org:41841`) — see the 2026-05-15
+  note's Step 2.
+
+== Future Work
+
+Listed on the session todo list, no commitment yet:
+
+* `bbox-reconcile apply` mode — capture the body shape from the
+  bbox UI's POST/PUT/DELETE on `/api/v1/dhcp/clients`, wire the
+  three writes
+* Lima-era modules deprecation — `modules/{darwin,nixos}/lima-*`
+  + `bioskop-lima` / `nikopol-lima` flake outputs.  Nothing
+  currently consumes them; safe to delete or `lib.warn` them
+* Migrate `bin/*` and `modules/home-manager/ssh-key.d/*.sh` to
+  `writeShellApplication` for shellcheck + runtimeInputs
+* `nerd-nixos` missing `/boot` mount on full config — long-parked
+* Rotate transcript-leaked credentials: `ngrok.mammoth-skate`,
+  `cloudfare.mammoth-skate`, `duckdns.token`, `bbox-admin
+  password`, `headscale.preauthkeys.id=17` (operator action,
+  out-of-session)
+
+---
+**Status:** LAN catalog landed; closed-world zone live and
+verified; nikopol enrollment ready to start.
+**Session Date:** 2026-05-16
+**Key Achievement:** Single-source-of-truth catalog drives both
+bbox reconciliation and DNS zone, with structured FQDNs
+mirroring SSH alias semantics.
+**Branch state:** 9 commits ahead of `origin/develop`, not yet
+pushed.
