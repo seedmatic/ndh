@@ -81,25 +81,28 @@
 
   // Tailscale SSH.  Two rules:
   //
-  //   1. Console nodes SSH into any node — interactive + scripted.
-  //      `check` requires fresh device-side authentication every
-  //      12 h so a lost or stolen laptop loses tailnet SSH access
-  //      within a day even before the node itself is revoked.
+  //   1. Console nodes SSH into any node — interactive + scripted —
+  //      with `accept` (no per-session re-auth prompt).  Trades the
+  //      stolen-device-key defence (`check`/12h re-auth would
+  //      mitigate) for friction-free `nix copy --to`, automation
+  //      scripts that can't answer interactive prompts, and a
+  //      consistent ssh-client UX with the rest of the fleet.  On a
+  //      single-operator fleet the missed defence isn't load-bearing;
+  //      reconsider if the operator set ever grows.
   //
-  //   2. Headless nodes SSH each other freely, without device check.
-  //      They can't answer an interactive check prompt; their
-  //      identities are verified by the tailnet itself (node key),
-  //      so auto-accept is safe.  Covers nix-store copies between
-  //      VMs, rke2 node-to-node operations, etc.
+  //   2. Headless nodes SSH each other freely.  They can't answer
+  //      interactive prompts in any case; identities are verified by
+  //      the tailnet itself (node key), so auto-accept is safe.
+  //      Covers nix-store copies between VMs, rke2 node-to-node
+  //      operations, etc.
   //
   // Headless nodes never SSH console nodes (no rule → implicit deny).
   "ssh": [
     {
-      "action":      "check",
-      "src":         ["tag:console"],
-      "dst":         ["tag:console", "tag:headless"],
-      "users":       ["nxmatic", "root"],
-      "checkPeriod": "12h",
+      "action": "accept",
+      "src":    ["tag:console"],
+      "dst":    ["tag:console", "tag:headless"],
+      "users":  ["nxmatic", "root"],
     },
     {
       "action": "accept",
