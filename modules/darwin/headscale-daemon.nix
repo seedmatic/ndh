@@ -43,11 +43,13 @@ let
   # modules/.common.d/headscale-pkg.nix.
   headscalePkg = config.ndh.headscalePkg;
 
-  # Clients always resolve `aliasName` via mDNS to the host currently
-  # holding role = "primary"; the daemon itself is told to issue
-  # certificates and registration URLs under that same alias, so a
-  # standby→primary flip on a different host is transparent at the
-  # tailnet level (same server_url, new backing IP).
+  # Clients resolve `aliasName` to the host currently holding
+  # role = "primary" via the closed-world `mammoth-skate.test`
+  # dnsmasq zone (see modules/.common.d/dns-zone-mammoth-skate.nix);
+  # the daemon itself is told to issue certificates and registration
+  # URLs under that same alias, so a standby→primary flip on a
+  # different host is transparent at the tailnet level (same
+  # server_url, new A-record target).
   serverUrl = headscaleCatalog.aliasUrl;
 
   # TLS leaf + private extracted by the ssh-keys enrichment pipeline
@@ -92,56 +94,6 @@ let
   configDir = "${homeDir}/.config/headscale";
   dataDir = "${homeDir}/.local/state/headscale";
   configFile = "${configDir}/config.yaml";
-
-  # On Darwin we publish the alias through Apple's own mDNSResponder via
-  # `dns-sd -P` (proxy registration) rather than standing up a parallel
-  # responder.  Any third-party binary that binds UDP 5353 loses to
-  # mDNSResponder for `.local` lookups — queries from local clients go
-  # through the system stub resolver straight to mDNSResponder, which
-  # answers authoritatively for registered names only.  `dns-sd -P`
-  # registers the alias with mDNSResponder itself, so it shows up in
-  # `dscacheutil`, `ping foo.local`, and every framework that honours
-  # the system resolver.  The Go publisher at
-  # packages/ndh-mdns-publish/ is still used by the NixOS peer module
-  # (avahi-daemon there has the same ownership but different registration
-  # APIs).
-  dnsSdPublisher = pkgs.writeShellScript "headscale-dns-sd-publisher" ''
-    set -euo pipefail
-    exec > >(/usr/bin/logger -t headscale-mdns-publish) 2>&1
-
-    # Pick the first non-loopback IPv4 on the default route interface so
-    # the proxy record points at whatever address clients on the LAN can
-    # actually reach.  `/sbin/route -n get default` (macOS native) prints
-    # the interface name; `/usr/sbin/ipconfig getifaddr` reads its
-    # primary IPv4.  Both live in the base system, so no PATH dependency
-    # on the Nix store.
-    iface="$(/sbin/route -n get default 2>/dev/null | ${pkgs.gnugrep}/bin/grep 'interface:' | ${pkgs.gawk}/bin/awk '{print $2}')"
-    if [ -z "$iface" ]; then
-      echo "[headscale-mdns] no default route interface — cannot publish alias" >&2
-      exit 1
-    fi
-    ip="$(/usr/sbin/ipconfig getifaddr "$iface" || true)"
-    if [ -z "$ip" ]; then
-      echo "[headscale-mdns] no IPv4 on $iface — cannot publish alias" >&2
-      exit 1
-    fi
-
-    # dns-sd -P <Name> <Type> <Domain> <Port> <Host> <IP>
-    # <Host> is the literal A-record target that the registered SRV
-    # will point at — NOT concatenated with <Domain>.  So it must be
-    # the full alias including the `.local` suffix; passing just
-    # `headscale.mammoth-skate` makes the SRV target unresolvable
-    # because there is no matching A record.  Stays in foreground;
-    # launchd tracks the process and reaps it on unload —
-    # mDNSResponder then withdraws the registration automatically.
-    exec /usr/bin/dns-sd -P \
-      ${lib.escapeShellArg headscaleCatalog.serviceName} \
-      _${headscaleCatalog.serviceName}._tcp \
-      local \
-      ${toString headscaleCatalog.listenPort} \
-      ${lib.escapeShellArg headscaleCatalog.aliasName} \
-      "$ip"
-  '';
 
   # Headscale config.yaml.  Values substituted in from the catalog.
   # Everything pinned to the state dir so re-activation doesn't relocate
@@ -290,24 +242,23 @@ in
       description = ''
         This host's role in the headscale bootstrap topology.
 
-          primary — run the daemon AND publish the fleet-scoped mDNS
-                    alias (catalog.headscale.aliasName) so clients
-                    resolve aliasUrl to this host.  Exactly one host
-                    should be primary at a time.
+          primary — run the daemon as the fleet's headscale instance.
+                    The closed-world `mammoth-skate.test` dnsmasq zone
+                    (catalog-driven) maps `headscale.<zone>` to the
+                    primary's IP.  Exactly one host should be primary
+                    at a time.
           standby — install the headscale CLI + config but do NOT run
-                    the daemon and do NOT publish the alias.  Intended
-                    for a host that takes over by manually flipping
-                    its role to "primary" (and simultaneously
-                    demoting the previous primary) during an outage.
-                    The config + state dir are ready so promotion
-                    needs no rebuild.
+                    the daemon.  Intended for a host that takes over
+                    by manually flipping its role to "primary" (and
+                    simultaneously demoting the previous primary)
+                    during an outage.  The config + state dir are
+                    ready so promotion needs no rebuild.
           none    — do nothing.  Host neither runs the daemon nor
-                    advertises the alias.
+                    serves the alias.
 
-        Flip roles by editing host profile, committing, and rolling
-        out `darwin-rebuild switch` on both affected hosts.  Clients
-        pointed at aliasUrl continue without re-registration because
-        the mDNS alias follows ownership transparently.
+        Flip roles by editing host profile, updating the dnsmasq zone
+        target if the IP differs, committing, and rolling out
+        `darwin-rebuild switch` on both affected hosts.
       '';
     };
   };
@@ -337,11 +288,12 @@ in
       '';
     })
 
-    # Primary-only: the two LaunchAgents that together own the alias
-    # identity (daemon + mdns publisher).  Both must run on exactly
-    # one host at a time; the `role = "primary"` gate enforces this
-    # per-host, and the operator is responsible for not flipping two
-    # hosts to primary simultaneously.
+    # Primary-only: the headscale daemon LaunchAgent.  Must run on
+    # exactly one host at a time; the `role = "primary"` gate
+    # enforces this per-host, and the operator is responsible for
+    # not flipping two hosts to primary simultaneously.  The
+    # `headscale.mammoth-skate.test` alias is served by bioskop's
+    # dnsmasq zone (see modules/.common.d/dns-zone-mammoth-skate.nix).
     (mkIf (cfg.role == "primary") {
       launchd.user.agents.headscale-bootstrap = {
         command = "${headscaleLauncher}";
@@ -361,23 +313,16 @@ in
         };
       };
 
-      # mDNS alias: registers `<aliasName> A <this-host-IP>` with Apple's
-      # mDNSResponder via `dns-sd -P` for the lifetime of the agent.
-      # When launchd stops the process, mDNSResponder withdraws the
-      # registration and sends a goodbye packet automatically; KeepAlive
-      # restarts on crash but the window of unresolvability is brief.
-      launchd.user.agents.headscale-mdns-publish = {
-        command = "${dnsSdPublisher}";
-        serviceConfig = {
-          Label = "io.nxmatic.nix-darwin-home.headscale-mdns-publish";
-          KeepAlive = true;
-          RunAtLoad = true;
-          # Logs: launcher pipes stdout/stderr through `logger` into the
-          # macOS unified log under the `headscale-mdns-publish` tag.
-          ProcessType = "Background";
-          LowPriorityIO = true;
-        };
-      };
+      # The mDNS alias publisher (`headscale-mdns-publish` /
+      # `dns-sd -P`) was retired 2026-05-16 once the closed-world
+      # `mammoth-skate.test` dnsmasq zone took over publishing
+      # `headscale.mammoth-skate.test`.  See
+      # modules/.common.d/dns-zone-mammoth-skate.nix for the renderer
+      # and docs/sessions/2026-05-16-...adoc for the migration log.
+      # The Go publisher at packages/ndh-mdns-publish/ is still
+      # consumed by the NixOS peer module (different mechanism:
+      # avahi-daemon) — left intact for the future RKE2-hosted
+      # headscale scenario where a NixOS host serves the alias.
     })
   ];
 }

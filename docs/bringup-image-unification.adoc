@@ -1,0 +1,271 @@
+= Bringup Image Unification — Single `nerd-nixos` Artifact, Runtime Identity
+:toc: left
+:toclevels: 3
+:icons: font
+:source-highlighter: rouge
+:date: 2026-05-16
+:status: plan, implementation in progress
+
+== Problem statement
+
+Today the flake exposes two NixOS bringup disk images, one per Mac:
+
+* `bioskop-bringup-zfs-systemd-disk`
+* `nikopol-bringup-zfs-systemd-disk`
+
+Each is built from
+`modules/nixos/outputs.nix:minimalBringupSystemBase` with
+`hostProfile.hostName` baked in.  That bake influences three things in
+the running image: `networking.hostName`, `networking.hostId`, and the
+sops/keys.yaml hostname seeds.
+
+The actual operator workflow is:
+
+. Mac (bioskop or nikopol) boots a fresh nerd-nixos VM from "its"
+  bringup image.
+. Cloud-init brings the VM up to network-reachable state.
+. Operator runs, *from the Mac side*,
+  `nixos-rebuild switch --target-host root@<host>-nixos` against the
+  bringup VM, which pushes the full system over `nix copy` and
+  activates it.
+. The bringup image's job ends.
+
+The VM never self-builds.  It never self-identifies.  Its identity is
+whatever the Mac shoves into it via cloud-init userdata + the
+nixos-rebuild push.
+
+So **two disk images for the same generic boot task** is wasteful:
+double build time, double cache footprint, and a per-host artifact
+that only exists for the few minutes between "boot the VM" and "push
+the full config".
+
+== Investigation summary (2026-05-16)
+
+A focused agent investigation (`Explore` agent, four-question scoped
+brief) confirmed the per-host bake is largely vestigial:
+
+[options="header"]
+|===
+| Concern | Bake-time today | Real requirement | Risk if collapsed
+| `networking.hostName` | `${hostProfile.hostName}-nixos` | Cloud-init's `hostname:` directive sets it on first boot.  Sops uses age recipients only (`.sops.yaml:1–22`), no `by_host` keying. | Low.  mDNS / `<host>-nixos.local` reachability changes if cloud-init runs after avahi advertises.
+| `networking.hostId` | 8 hex from `hashString hostName` | ZFS pool was created without `-o hostid=` and `boot.zfs.forceImportRoot = true` is set — hostId mismatch is force-imported.  The value is purely informational. | None.
+| `runtimeSystemPath` | string-context-stripped reference for cloud-init | Already not in image bytes (`builtins.unsafeDiscardStringContext`).  Belongs to the puller (Mac), not the receiver (VM). | None — already non-issue.
+| `remoteStore` (`ssh-ng://nix-store.<host>`) | Set in bringup catalog seed | Used by Mac-side push, not by the VM itself. | None — already non-issue.
+| `inventory.hosts` (ssh enrichment) | Same on both VMs (`[bioskop, nikopol]`) | Authorized_principals seed shared across the fleet. | None.
+| Tailscale state survives handoff | `/var/lib/tailscale/state.db` on persistent ZFS | Headscale keys by node-key, not hostname.  Bringup→full handoff re-registers under new hostname against same node-key. | Low.  ~10s re-registration window during handoff, invisible on a 2-host fleet.
+|===
+
+Citations from the investigation:
+
+* `outputs.nix:218–234` — `minimalHostId` derivation + `networking.hostId` injection
+* `zfs.nix:816` — `boot.zfs.forceImportRoot = true` (hostId check disabled)
+* `bringup-minimal-system.nix:18, 106` — hostname composition
+* `bringup-minimal-system.nix:79–85` — comment confirming tailscale state persists across handoff
+* `headscale.nix:119–120, 221` — `--hostname` is advertisement only, not registration key
+* `headscale-client-wiring.nix:66–67` — preauth-key registration, not hostname-keyed
+* `lima-cloud-init.nix:71–84` — cloud-init service runs at first boot from `cidata` device, not from baked-in image data
+
+== Target shape
+
+=== One image, generic identity
+
+Single flake output:
+`nerd-nixos-bringup-zfs-systemd-disk`.  Replaces both
+`bioskop-bringup-zfs-systemd-disk` and
+`nikopol-bringup-zfs-systemd-disk`.
+
+Identity in the image:
+
+[source,nix]
+----
+networking.hostName = "nerd-nixos";   # generic, overridden by cloud-init at first boot
+networking.hostId = "00000000";       # placeholder; real value set by cloud-init writing /etc/hostid
+----
+
+`forceImportRoot = true` already accommodates a hostId change at first
+boot — no ZFS-level intervention required.
+
+=== Per-host cloud-init seed
+
+The per-host
+`<host>-tart-vm-bootstrap-installer` flake outputs already exist for
+orchestration ("ship the image bits + boot the VM").  Their job
+expands by one step: render a per-VM cloud-init `user-data` carrying
+the host identity:
+
+[source,yaml]
+----
+# user-data injected via cidata ISO at VM boot
+hostname: bioskop-nixos
+manage_etc_hosts: localhost
+
+write_files:
+  - path: /etc/hostid
+    content: !!binary <8-byte hostId derived from hostname>
+    permissions: '0444'
+
+runcmd:
+  - hostname bioskop-nixos
+  - sysctl kernel.hostname=bioskop-nixos
+  # tailscale auth-key from sops/keys.yaml provisioned via separate path
+  # (existing mechanism, see modules/.common.d/sops.nix:nixosHostKeyImport)
+----
+
+The cidata mechanism is already wired (`lima-cloud-init.nix:71–84`),
+just carrying less host-specific content today.
+
+=== mammoth-skate.test zone integration
+
+The image moves from "advertise as `<host>-nixos.local` via mDNS" to
+"reachable as `nixos.<host>.mammoth-skate.test` via the dnsmasq zone
+on bioskop".  The zone records are already declared in
+`catalog.netplan.lan.hosts`:
+
+* `bioskop-nixos` → `nixos.bioskop.mammoth-skate.test` → `192.168.1.130`
+* `nikopol-nixos` → `nixos.nikopol.mammoth-skate.test` → `192.168.1.34`
+
+Both hostnames already resolve in the zone.  The bringup VM gets a
+DHCP-leased IP on first boot (the bbox honors the static reservation
+because the MAC matches), and bioskop's dnsmasq serves the same name
+that the full system will register under.
+
+So during bringup:
+
+* From bioskop: `ssh root@nixos.bioskop.mammoth-skate.test` works the
+  moment the VM is up.
+* The full-config push from the Mac uses the same hostname; nothing
+  changes between bringup and full from the resolver's perspective.
+
+This **removes mDNS as a bringup-time dependency**.  Cloud-init's
+`hostname:` change happens before any name needs to resolve, since
+the resolver doesn't go through mDNS.
+
+=== Identity flow summary
+
+[options="header"]
+|===
+| Phase | hostName seen by VM | Resolved IP | Resolution path
+| Bringup boot (pre-cloud-init) | `nerd-nixos` (image default) | DHCP lease (already correct, MAC-bound) | bbox returns reserved IP
+| Cloud-init runtime | hostName set to `<host>-nixos` via userdata | (same) | (same)
+| Mac-side push | `nixos-rebuild --target-host root@nixos.<host>.mammoth-skate.test` | bioskop dnsmasq → IP | mammoth-skate.test zone
+| Full system | hostName remains `<host>-nixos` | (same) | (same)
+| Tailscale registration | re-registered with `<host>-nixos` against existing node-key | tailnet IP | headscale
+|===
+
+== Risks and mitigations
+
+=== R1. mDNS during bringup
+
+If cloud-init's `hostname:` directive runs *after* avahi-daemon
+advertises, there's a brief window where the VM advertises as
+`nerd-nixos.local` instead of `<host>-nixos.local`.  In our model
+this doesn't matter because we don't use mDNS for resolution
+post-zone-deploy.  Confirm by stripping mDNS from the bringup
+config (`avahi-daemon` → not enabled).
+
+**Mitigation**: rely entirely on `mammoth-skate.test` zone for
+bringup-VM reachability.  No mDNS = no race.
+
+=== R2. ZFS pool import on a host that booted the previous host's image
+
+If the Tart VM disk gets re-used between hosts (operator boots
+bioskop's bringup VM disk on nikopol's Tart instance), the existing
+ZFS pool's stored hostId would mismatch.  `forceImportRoot = true`
+covers this, but it's worth documenting that the VM disk should be
+recreated when switching host context.
+
+**Mitigation**: document in the runbook; the Tart bootstrap installer
+already creates a fresh disk per provision.
+
+=== R3. Tailscale re-registration window
+
+Bringup VM registers with hostname `nerd-nixos`.  Full config
+re-registers with hostname `<host>-nixos`.  Headscale shows the
+re-registration as a hostname change on the same node-key — clean.
+
+**Mitigation**: none needed.  `tailscale up --hostname=` accepts
+re-registration with a different name.
+
+=== R4. Flake output rename
+
+`bioskop-bringup-zfs-systemd-disk` and
+`nikopol-bringup-zfs-systemd-disk` collapse to
+`nerd-nixos-bringup-zfs-systemd-disk`.  Anything (shell history, CI,
+docs) that referenced the per-host names will break.
+
+**Mitigation**: grep for the old names, update; release-note the
+rename.
+
+=== R5. Cloud-init userdata sops decryption timing
+
+If the per-host tailnet auth-key is encrypted in keys.yaml under a
+hostname-keyed sops path, cloud-init can't decrypt before its own
+hostname is set — chicken/egg.  The investigation confirmed
+`.sops.yaml` uses age-recipient-only encryption, no `by_host` rules,
+so any host with a valid age key can decrypt.  The bringup VM ships
+with the fleet age key in its image (carried in `keys.yaml` already),
+so this works.
+
+**Mitigation**: none needed.
+
+== Implementation plan
+
+. **Phase 1 — schema-only edits (zero runtime change)**
+  * Document the per-host build in this file ✓ (you're reading it)
+  * Capture the investigation findings as persistent reference
+
+. **Phase 2 — refactor the bringup builder**
+  * `outputs.nix:minimalBringupSystemBase`: drop `hostProfile`-derived
+    bake (`networking.hostId` and the `_module.args.ndh.context.hostProfile`
+    seed).  Keep: cache-trust, ssh-keys-enrichment, headscale-client.
+  * `bringup-minimal-system.nix`: replace `guestHostName =
+    "${baseHostName}-nixos"` with `guestHostName = "nerd-nixos"`.
+  * Move `runtimeSystemPath`, `remoteStore`, host-specific cloud-init
+    seed material out of the image and into the per-host
+    bootstrap-installer scripts.
+
+. **Phase 3 — update flake outputs**
+  * Add `nerd-nixos-bringup-zfs-systemd-disk` (single artifact).
+  * Mark `<host>-bringup-zfs-systemd-disk` as deprecated aliases
+    pointing at the new artifact (one-cycle backwards compat).
+  * Drop the old aliases after one rebuild cycle.
+
+. **Phase 4 — update `<host>-tart-vm-bootstrap-installer`**
+  * Render per-VM cloud-init `user-data` carrying:
+    - `hostname: <host>-nixos`
+    - `/etc/hostid` content
+    - tailnet auth-key extraction
+  * Wire into the cidata ISO mechanism that already exists.
+
+. **Phase 5 — verification**
+  * `nix build .#nerd-nixos-bringup-zfs-systemd-disk` succeeds.
+  * Bootstrap a bioskop-nixos VM from the shared image; verify it
+    boots, hostname is `bioskop-nixos`, ZFS imports cleanly.
+  * `nixos-rebuild switch --target-host
+    root@nixos.bioskop.mammoth-skate.test` pushes the full system.
+  * Repeat on nikopol-nixos with the same shared image bits.
+  * Confirm headscale view shows clean re-registration on full
+    handoff.
+
+. **Phase 6 — cleanup**
+  * Drop the deprecated per-host bringup outputs.
+  * Update `docs/bioskop-deployment.adoc` and any other operator
+    docs that reference the old artifact names.
+
+== Out of scope for this refactor
+
+* Bringup support for hosts beyond bioskop/nikopol.  The catalog adds
+  hosts to `netplan.lan.hosts` declaratively; the bringup pipeline
+  inherits any catalog entry that has `kind = "darwin-host"` parent
+  with a `nixos`-kind child.  No code changes for new hosts.
+* RKE2 cluster-member bringup.  Out of scope for this image, those
+  use a different bootstrap path (per `bioskop-peer3-control-node`
+  etc. catalog entries — unmaterialised today).
+* DDNS / Cloudflare-tunnel integration for off-LAN bringup.  The
+  bringup image stays LAN-only; operator must be on the LAN to push
+  the initial full config.
+
+== Status
+
+Plan landed 2026-05-16.  Implementation starts immediately after this
+note commits (Phase 2 onward).
