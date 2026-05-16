@@ -22,6 +22,7 @@ grpcurl.pkg-path = "grpcurl"
 # added to modules/.common.d/system-packages.nix so that both the dev
 # shell and the deployed host systems share the same signer.
 step-cli.pkg-path = "step-cli"
+ngrok.pkg-path = "ngrok"
 # gum.pkg-path = "gum"
 # gum.version = "^0.14.5"
 

@@ -54,6 +54,9 @@
       "lsof": {
         "pkg-path": "lsof"
       },
+      "ngrok": {
+        "pkg-path": "ngrok"
+      },
       "nix-eval-jobs": {
         "pkg-path": "nix-eval-jobs",
         "pkg-group": "nix",
@@ -1743,6 +1746,64 @@
       "priority": 5
     },
     {
+      "attr_path": "ngrok",
+      "broken": false,
+      "derivation": "/nix/store/alqxjffrnjn29gn7k9sg3vkl7gsfacq7-ngrok-3.31.0.drv",
+      "description": "Allows you to expose a web server running on your local machine to the internet",
+      "install_id": "ngrok",
+      "license": "Unfree",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=da5ad661ba4e5ef59ba743f0d112cbc30e474f32",
+      "name": "ngrok-3.31.0",
+      "pname": "ngrok",
+      "rev": "da5ad661ba4e5ef59ba743f0d112cbc30e474f32",
+      "rev_count": 995699,
+      "rev_date": "2026-05-10T19:57:52Z",
+      "scrape_date": "2026-05-13T08:53:04.380138Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": true,
+      "version": "3.31.0",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/96n31x033rnwkaqa6fbrjvsd5mr3bk12-ngrok-3.31.0"
+      },
+      "system": "aarch64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "ngrok",
+      "broken": false,
+      "derivation": "/nix/store/84z90i051gi3ylh15dymydw041wzxvhi-ngrok-3.31.0.drv",
+      "description": "Allows you to expose a web server running on your local machine to the internet",
+      "install_id": "ngrok",
+      "license": "Unfree",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=da5ad661ba4e5ef59ba743f0d112cbc30e474f32",
+      "name": "ngrok-3.31.0",
+      "pname": "ngrok",
+      "rev": "da5ad661ba4e5ef59ba743f0d112cbc30e474f32",
+      "rev_count": 995699,
+      "rev_date": "2026-05-10T19:57:52Z",
+      "scrape_date": "2026-05-13T09:55:46.439162Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": true,
+      "version": "3.31.0",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/hwhs13l30dbyvrj2z54cidvba090h41d-ngrok-3.31.0"
+      },
+      "system": "x86_64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
       "attr_path": "nixos-rebuild-ng",
       "broken": false,
       "derivation": "/nix/store/il82dxi3vsjp29qqccl5dm6jfqg7gsr5-nixos-rebuild-ng-26.05.drv",
@@ -2413,6 +2474,9 @@
         },
         "lsof": {
           "pkg-path": "lsof"
+        },
+        "ngrok": {
+          "pkg-path": "ngrok"
         },
         "nixos-rebuild-ng": {
           "pkg-path": "nixos-rebuild-ng"
