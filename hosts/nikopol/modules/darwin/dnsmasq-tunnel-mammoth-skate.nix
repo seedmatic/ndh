@@ -5,7 +5,7 @@
 # resolve the closed-world mammoth-skate.test zone by forwarding
 # queries through an SSH tunnel to bioskop's dnsmasq (which is the
 # authoritative server).  The tunnel forwards local TCP port 5353 to
-# bioskop's port 53 (see modules/home-manager/ssh.d/config.d/bboxmatic.conf).
+# bioskop's port 53 (see modules/home-manager/ssh.d/config.d/mammoth-skate.conf).
 #
 # This override replaces the `local=/mammoth-skate.test/` directive
 # from modules/.common.d/dns-zone-mammoth-skate.nix with a
@@ -47,7 +47,7 @@ in
       dns-forward-max=150
       # query-timeout=10
 
-      # ── ${zone} (forwarded via SSH tunnel to bioskop, see modules/home-manager/ssh.d/config.d/bboxmatic.conf) ─
+      # ── ${zone} (forwarded via SSH tunnel to bioskop, see modules/home-manager/ssh.d/config.d/mammoth-skate.conf) ─
       server=/${zone}/127.0.0.1#5353
     '';
   };

@@ -34,7 +34,7 @@ let
   catalog = ndhContext.catalog;
   wan = catalog.netplan.wan or null;
 
-  # Parse `bboxmatic.duckdns.org` into ("bboxmatic", "duckdns.org") so
+  # Parse `mammoth-skate.duckdns.org` into ("mammoth-skate", "duckdns.org") so
   # godns's config schema — which splits on the registered domain —
   # gets the right halves.  Assumes a single-label subdomain + a
   # known two-label apex; good enough for Duck DNS.

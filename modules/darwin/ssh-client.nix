@@ -340,7 +340,7 @@ in
       # For every entry in `catalog.netplan.wan.portForwards` whose
       # `internalPort = 22`, emit a `ssh-proxy.<hostName>` alias pointing
       # at the WAN DDNS hostname on the matching external port — today
-      # that yields `ssh-proxy.bioskop` → `bboxmatic.duckdns.org:2222`.
+      # that yields `ssh-proxy.bioskop` → `mammoth-skate.duckdns.org:2222`.
       # The alias unlocks transparent screen-sharing over an SSH tunnel
       # from outside the LAN; adding a second forward in the catalog
       # (e.g. `ssh-proxy.nikopol`) requires no edit here.
