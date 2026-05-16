@@ -218,14 +218,14 @@
           hostName = "bioskop";
           internalPort = 41841;
           protocol = "tcp";
-          description = "Headscale control plane + embedded DERP relay";
+          description = "Headscale control plane (registration, coordination)";
         };
-        "3478" = {
-          hostName = "bioskop";
-          internalPort = 3478;
-          protocol = "udp";
-          description = "Headscale STUN endpoint for WireGuard NAT traversal";
-        };
+        # Port 3478 (STUN) removed: headscale now uses Tailscale's public
+        # DERP map which includes public STUN servers (stun.l.google.com,
+        # etc.) for NAT traversal. DERP relays also from Tailscale
+        # infrastructure when direct WireGuard connections fail.
+        # Self-hosted DERP/STUN disabled to avoid off-LAN reachability
+        # complexity.
       };
     };
     # Canonical cluster underlay contract from rke2lab netplan (@codebase)
