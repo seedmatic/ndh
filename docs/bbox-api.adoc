@@ -1,0 +1,217 @@
+= Bbox Router API Reference
+:toc: left
+:toclevels: 3
+:icons: font
+:source-highlighter: rouge
+
+== Overview
+
+Operational reference for interacting with the Bouygues Bbox router that
+serves as the LAN gateway (`192.168.1.254` / `mabbox.bytel.fr`).  The
+bbox exposes a JSON API, undocumented publicly but stable enough across
+firmware revisions that we can drive it from scripts.
+
+This document captures everything a future operator (or the
+`bbox-reconcile` automation) needs to interact with the bbox without
+re-discovering the API surface.
+
+== Authentication
+
+Cookie-based session.  POST the admin password to `/api/v1/login`,
+the response sets a `BBOX_ID` cookie with a 900-second TTL.  Subsequent
+requests must carry that cookie.
+
+[source,bash]
+----
+JAR=$(mktemp)
+trap 'rm -f "$JAR"' EXIT
+
+read -rs -p "bbox admin password: " P; echo
+curl -sS -c "$JAR" -k \
+  --data-urlencode "password=$P" \
+  https://mabbox.bytel.fr/api/v1/login
+unset P
+# Cookie now in $JAR; valid 15 minutes from issue.
+# All subsequent calls: curl -b "$JAR" ...
+----
+
+The login responds with `HTTP 200`, `Content-Length: 0`, and
+`Set-Cookie: BBOX_ID=...; Max-Age=900; HttpOnly; Secure`.  An empty
+body on success is normal.
+
+NOTE: The TLS cert at `mabbox.bytel.fr` is signed by DigiCert (publicly
+trusted) — `-k` is not strictly needed but defends against weird home-
+network DNS hijacks where the name resolves to something that isn't
+the bbox.  The cert's CN matches `mabbox.bytel.fr`, no IP SAN, so
+`-k` is required if connecting via `https://192.168.1.254`.
+
+== Two Distinct Tables
+
+The bbox surfaces LAN device data through *two endpoints with two ID
+spaces*.  Knowing which one to read/write matters.
+
+=== `/api/v1/hosts` — Device-Discovery Table
+
+Every MAC the bbox has ever seen on the LAN.  Each entry carries:
+
+* `id` — bbox-internal device ID (sparse integer, see ID-space caveat)
+* `hostname` — last observed DHCP `Host-Name` option, or empty
+* `macaddress` — the device's MAC
+* `ipaddress` — the device's *current or last-known* IP
+* `type` — confusingly named, this is **the device's current link
+  mode**, not its reservation status.  `Static` means the device is
+  currently using a static IP (whether self-assigned or DHCP-reserved);
+  `DHCP` means it's currently on a normal lease.  **Do not rely on this
+  field to detect static reservations.**
+* `link` — current link state: `Ethernet`, `Wifi 2.4`, `Wifi MLO`,
+  `Offline`, …
+* `active` — `1` if currently online, `0` otherwise
+* `firstseen` / `lastseen` — discovery timestamps
+* `ip6address` / `ethernet` / `wireless` / `wirelessByBand` — link
+  metadata
+
+This table is **the device history**.  Old VM rebuilds, retired phones,
+guest-network devices that visited once — all linger here.  Cleanup
+(`DELETE`) only affects this view; it does not change the actual DHCP
+or routing behaviour.
+
+[source,bash]
+----
+# List all known devices
+curl -sS -b "$JAR" -k https://mabbox.bytel.fr/api/v1/hosts | jq '.[0].hosts.list[]'
+
+# Inspect one
+curl -sS -b "$JAR" -k https://mabbox.bytel.fr/api/v1/hosts/119
+
+# Delete a stale ghost (does NOT affect static reservations)
+curl -sS -b "$JAR" -k -X DELETE https://mabbox.bytel.fr/api/v1/hosts/119
+----
+
+CAUTION: The DELETE leaves the ID slot allocated — re-fetching
+returns the entry with all fields blank rather than a 404.  Subsequent
+DHCP traffic from the same MAC creates a *new* ID.
+
+=== `/api/v1/dhcp/clients` — Static-Reservation Table
+
+The persistent MAC↔IP↔hostname mappings the bbox honours when assigning
+leases.  Each entry:
+
+* `id` — separate ID space from `/hosts`!  The same physical device may
+  have completely different IDs in the two tables.
+* `hostname`, `macaddress`, `ipaddress` — the reservation
+* `ip6address` — IPv6 reservation (typically empty)
+* `enable` — `1` for active, `0` for disabled-but-kept
+
+This is the table the `bbox-reconcile` automation must operate on.
+The `/hosts` table is read-only context (device discovery) for the
+catalog.
+
+[source,bash]
+----
+# List static reservations
+curl -sS -b "$JAR" -k https://mabbox.bytel.fr/api/v1/dhcp/clients \
+  | jq '.[0].dhcp.clients[]'
+----
+
+== Verbs Discovered
+
+Every endpoint advertises `OPTIONS, HEAD, POST, GET, PUT, DELETE` via
+`Access-Control-Allow-Methods`, but most return `200 OK Content-Length:
+0` for unsupported verbs (the API "lies" rather than returning 405).
+Verbs **confirmed working** during the 2026-05-15 cleanup session:
+
+|===
+| Method | Endpoint | Effect
+
+| GET | `/api/v1/hosts` | List all known devices
+| GET | `/api/v1/hosts/<id>` | Inspect single device
+| DELETE | `/api/v1/hosts/<id>` | Remove device-history entry
+| GET | `/api/v1/dhcp/clients` | List static reservations
+| GET | `/api/v1/dhcp` | Read DHCP server config (range, lease time)
+| POST | `/api/v1/login` | Authenticate (form-encoded `password=...`)
+|===
+
+Verbs **not yet validated** — caller must verify before relying on:
+
+* `POST /api/v1/dhcp/clients` — presumably creates a new reservation,
+  body shape unknown
+* `PUT /api/v1/dhcp/clients/<id>` — presumably updates an existing
+  reservation, body shape unknown
+* `DELETE /api/v1/dhcp/clients/<id>` — presumably removes a reservation
+
+The "200 with no effect" anti-pattern means a `PUT` test on a known
+field has to be followed by a re-GET to confirm the write actually
+landed.  Trust nothing that returns `Content-Length: 0` without a
+follow-up GET.
+
+== Probing Convention
+
+When discovering an unfamiliar endpoint:
+
+. `OPTIONS <path>` — confirm the path exists (returns 200 with
+  `Allow-Methods` header) vs returns 404.
+. `GET <path>` — confirm read works and inspect the response shape.
+  The reservation table came up under `/api/v1/dhcp/clients` after
+  several earlier guesses (`/api/v1/dhcp/StaticIp`,
+  `/api/v1/lan/ip/dhcp/StaticLease`, etc.) returned 404 with
+  `"Operation not found"`.
+. For writes: `PUT` an existing field with the same value; re-`GET` to
+  confirm.  If the write took effect, the same value comes back; if
+  the API silently dropped the write, the original value is intact and
+  no harm done.
+
+NOTE: 404 messages with `"domain":"v1/hosts"` indicate the path matches
+a registered handler but the requested object doesn't exist.  Plain
+`"domain":"unknown"` indicates the path itself is not routed.  Useful
+discriminator when guessing endpoint names.
+
+== Cleanup Procedure (2026-05-15)
+
+Source-of-truth declared in `catalog/netplan/lan-hosts.nix` (forthcoming).
+At the time of the cleanup:
+
+. Logged in (`/api/v1/login`)
+. Fetched `/api/v1/hosts`, identified 14 stale entries (Lima-era VM
+  rebuilds, retired RKE2 nodes, MAC-randomized guest devices).  All had
+  `active=0` and old `lastseen` timestamps.
+. `DELETE /api/v1/hosts/<id>` for each ghost.  All returned `200 OK`.
+. Re-fetched `/api/v1/hosts`: clean.  13 bioskop/nikopol entries
+  remained, matching the catalog 1:1 by MAC and IP.
+. Discovered `/api/v1/dhcp/clients` is the actual static-reservation
+  table (separate from `/api/v1/hosts`).  Listed it: 13 reservations
+  matching the catalog plus 5 unrelated home devices (TVs, audio).
+  No writes needed.
+
+The `type: DHCP` field in `/api/v1/hosts` for `bioskop`, `bioskop-nixos`,
+`nikopol`, `nikopol-nixos` after cleanup is misleading: those *are*
+static reservations per `/api/v1/dhcp/clients`, but `/hosts` reports
+the field as `DHCP` because the link is currently up and pulling its
+reserved IP via DHCP-with-reservation rather than self-assigning a
+static IP.
+
+== Security Posture
+
+* **Admin password is the sole credential**.  Anyone on the LAN with
+  the password has full router admin (DHCP, port forwards, firewall
+  rules, parental controls, …).
+* **Password rotation is manual** — bbox UI → System → Admin password.
+  No API endpoint for it.
+* **Session lifetime is 15 minutes**.  The `bbox-reconcile` script must
+  re-authenticate per run rather than caching cookies across runs.
+* **Storing the password in sops-encrypted form is the recommended
+  path**.  See `bin/bbox-reconcile.sh` for the canonical lookup
+  pattern.
+
+== Open Questions
+
+* Is there a `/api/v1/dhcp/clients` POST/PUT shape that would let us
+  create/update reservations declaratively?  Empirical probing of the
+  UI's network requests during a manual reservation add would answer
+  this; we have not done that yet.
+* What's the difference (if any) between `enable: 0` and a deleted
+  reservation?  Disabling preserves the slot for re-enabling, deleting
+  reclaims the ID slot — but does either affect connectivity for
+  currently-online devices?
+
+The `bbox-reconcile` script will live in diff-only mode until at least
+the first question is answered.
