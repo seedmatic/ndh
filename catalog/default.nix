@@ -40,8 +40,8 @@
 
       # Static DHCP reservations on `mammoth-skate`.  Source of truth
       # for the catalog; reconciled against the bbox via the
-      # `bbox-reconcile` script (forthcoming) which reads
-      # /api/v1/dhcp/clients and diffs against this map.
+      # `bbox-reconcile` script which reads /api/v1/dhcp/clients and
+      # diffs against this map.
       #
       # Schema: each entry is { mac, ip, kind } where `kind` describes
       # the role for downstream consumers (dnsmasq zone generator,

@@ -35,6 +35,22 @@ let
   # script reads it without re-evaluating Nix at runtime.
   hostsJson = pkgs.writeText "bbox-reconcile-lan-hosts.json" (builtins.toJSON hosts);
 
+  # The ignore list lives in the source tree as a plain YAML so
+  # operators can edit it with normal text-editing tools and the
+  # `note` field documents why a MAC is being silenced.  Surfaced
+  # here as a JSON array of lowercased MACs the runtime script
+  # consumes directly.
+  ignoredYaml = "${self}/catalog/lan-ignored-reservations.yaml";
+  ignoredJson =
+    pkgs.runCommand "bbox-reconcile-ignored.json"
+      {
+        buildInputs = [ pkgs.yq-go ];
+      }
+      ''
+        yq -p=yaml -o=json '[.ignored_reservations[].mac | downcase]' \
+          ${ignoredYaml} > "$out"
+      '';
+
   routerAdminUrl = if router != null then router.adminUrl else "";
   routerAvailable = router != null && hosts != { };
 
@@ -51,6 +67,7 @@ let
 
       ROUTER_URL='${routerAdminUrl}'
       HOSTS_JSON='${hostsJson}'
+      IGNORED_JSON='${ignoredJson}'
       SECRETS_FILE='${self}/.secrets'
 
       usage() {
@@ -117,11 +134,25 @@ let
       catalog_yaml="$tmp/catalog.yaml"
       report_yaml="$tmp/report.yaml"
 
-      # bbox: array of {hostname, mac, ip}
+      # bbox: array of {hostname, mac, ip}, with ignored MACs filtered
+      # out so they never appear as EXTRA.  Lowercase comparison
+      # because the bbox UI lets operators enter MACs in any case.
       curl -sS -b "$cookie" -k "$ROUTER_URL/api/v1/dhcp/clients" \
         | yq -p=json -o=yaml \
             '[.[0].dhcp.clients[] | {"hostname": .hostname, "mac": .macaddress, "ip": .ipaddress}]' \
-        > "$bbox_yaml"
+        > "$tmp/bbox-raw.yaml"
+
+      # shellcheck disable=SC2016 # yq operator $ignore intentionally single-quoted
+      ignored_count="$(yq -p=yaml -o=yaml '
+        load("'"$IGNORED_JSON"'") as $ignore |
+        [.[] | select(.mac | downcase | (. as $m | $ignore | contains([$m])))] | length
+      ' "$tmp/bbox-raw.yaml")"
+
+      # shellcheck disable=SC2016 # yq operator $ignore intentionally single-quoted
+      yq -p=yaml -o=yaml '
+        load("'"$IGNORED_JSON"'") as $ignore |
+        [.[] | select(.mac | downcase | (. as $m | $ignore | contains([$m])) | not)]
+      ' "$tmp/bbox-raw.yaml" > "$bbox_yaml"
 
       # catalog: array of {hostname, mac, ip, kind}
       yq -p=json -o=yaml \
@@ -148,7 +179,7 @@ let
 
       echo "=== bbox-reconcile diff ==="
       echo "Catalog hosts:           $catalog_total"
-      echo "Bbox /dhcp/clients:      $bbox_total"
+      echo "Bbox /dhcp/clients:      $bbox_total (+ $ignored_count ignored)"
       echo
 
       if [[ "$missing_count" -gt 0 ]]; then
