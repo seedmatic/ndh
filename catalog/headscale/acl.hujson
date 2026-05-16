@@ -33,11 +33,19 @@
 // via the preauth key's tag list (headscale v2 binds tags to the key,
 // not to a client-asserted --advertise-tags).
 {
-  // Headscale policy v2 (default since 0.26) requires usernames to
-  // contain an `@` — the suffix disambiguates plain usernames from
-  // full email identifiers when OIDC is in play.  For a non-OIDC
-  // local account, writing the username with a trailing `@` is the
-  // migration-documented shape (see CHANGELOG "Policy v2").
+  // Headscale policy v2 (default since 0.26) has TWO distinct
+  // username conventions, depending on the field:
+  //
+  //   - Fields that hold tailnet identities (`groups.<name>`,
+  //     `tagOwners.<tag>`, `acls.src`, `acls.dst`) use the
+  //     `<localpart>@` form — the `@` disambiguates non-OIDC local
+  //     accounts from full email identifiers.  E.g. `nxmatic@`.
+  //
+  //   - The `ssh.users` field holds **literal Unix usernames** on
+  //     the SSH destination, NOT tailnet identities.  Plain names
+  //     here, no `@` suffix.  E.g. `nxmatic`, `root`.  Confirmed
+  //     by upstream test cases (hscontrol/policy/v2/filter_test.go
+  //     line 487+ uses `"ubuntu", "admin", "deploy"`).
   "groups": {
     "group:ndh": [
       "nxmatic@",
@@ -90,14 +98,14 @@
       "action":      "check",
       "src":         ["tag:console"],
       "dst":         ["tag:console", "tag:headless"],
-      "users":       ["nxmatic@", "root"],
+      "users":       ["nxmatic", "root"],
       "checkPeriod": "12h",
     },
     {
       "action": "accept",
       "src":    ["tag:headless"],
       "dst":    ["tag:headless"],
-      "users":  ["nxmatic@", "root"],
+      "users":  ["nxmatic", "root"],
     },
   ],
 }
