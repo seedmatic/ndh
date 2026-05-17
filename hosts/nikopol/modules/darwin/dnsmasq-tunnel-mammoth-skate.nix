@@ -5,7 +5,7 @@
 # resolve the closed-world mammoth-skate.test zone by forwarding
 # queries through an SSH tunnel to bioskop's dnsmasq (which is the
 # authoritative server).  The tunnel forwards local TCP port 5353 to
-# bioskop's port 53 (see modules/home-manager/ssh.d/config.d/mammoth-skate.conf).
+# bioskop's port 5354 (see modules/home-manager/ssh.d/config.d/mammoth-skate.conf).
 #
 # This override replaces the `local=/mammoth-skate.test/` directive
 # from modules/.common.d/dns-zone-mammoth-skate.nix with a
@@ -30,9 +30,10 @@ in
       server=8.8.8.8
       server=8.8.4.4
 
-      # Listen on localhost
+      # Listen on localhost on an unprivileged port (daemon runs as the
+      # primary user — see modules/darwin/dnsmasq.nix UserName/GroupName).
       listen-address=127.0.0.1
-      port=53
+      port=5354
 
       # Don't use /etc/resolv.conf
       no-resolv

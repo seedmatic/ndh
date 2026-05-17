@@ -1,39 +1,31 @@
 {
-  config,
-  lib,
   pkgs,
-  ndh,
   ...
 }:
-let
-  ndhContext = ndh.context;
-  nixBashTrampoline = "${ndhContext.nixBashTrampoline}";
-  user = config.profile.user;
-  userName = user.name;
-  logFile = "/Users/${userName}/Library/Logs/dnsmasq.log";
-
-  dnsmasqActivationScript = ndh.store.runCommand "dnsmasq-post-activation.sh" { } ''
-    cp ${
-      pkgs.replaceVars ./dnsmasq.d/post-activation.sh {
-        nixBashTrampoline = nixBashTrampoline;
-        logFile = logFile;
-        userName = userName;
-      }
-    } "$out"
-    chmod +x "$out"
-  '';
-in
 {
-  launchd.daemons.dnsmasq = lib.mkForce {
+  # Run dnsmasq as a per-user LaunchAgent (not a LaunchDaemon) so the
+  # process lives under the primary user's session on an unprivileged
+  # port (see modules/.common.d/dnsmasq.nix `port=5354`).  Consumers
+  # reach it via /etc/resolver/<zone> with an explicit `port 5354` line.
+  #
+  # Trade-off: a LaunchAgent only runs while the user has an active
+  # session.  Acceptable here — *.mammoth-skate.test resolution is only
+  # needed when the user is actually using the machine.
+  launchd.user.agents.dnsmasq = {
     serviceConfig = {
       Label = "io.nxmatic.nix-darwin-home.darwin.dnsmasq";
       ProgramArguments = [
         "${pkgs.dnsmasq}/bin/dnsmasq"
         "--conf-file=/etc/dnsmasq.conf"
         "--keep-in-foreground"
-        "--log-facility=${logFile}"
+        # No --log-facility: dnsmasq's default is syslog, which macOS
+        # bridges into unified logging.  Inspect with:
+        #   log show --predicate 'process == "dnsmasq"' --last 1h
+        #   log stream --predicate 'process == "dnsmasq"'
+        # (Symbolic facility names like LOG_DAEMON aren't recognized
+        # by the nixpkgs dnsmasq build on Darwin → "bad log facility".)
       ];
-      RunAtLoad = false;
+      RunAtLoad = true;
       KeepAlive = true;
 
       # Auto-restart on config change.  On every darwin-rebuild switch
@@ -53,8 +45,4 @@ in
       WatchPaths = [ "/etc/dnsmasq.conf" ];
     };
   };
-
-  system.activationScripts.postActivation.text = lib.mkAfter ''
-    ${dnsmasqActivationScript}
-  '';
 }

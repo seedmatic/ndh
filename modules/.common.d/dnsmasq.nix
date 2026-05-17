@@ -17,9 +17,12 @@ in
     server=8.8.8.8
     server=8.8.4.4
 
-    # Listen on localhost
+    # Listen on localhost on an unprivileged port so the daemon can run
+    # as a normal user (see modules/darwin/dnsmasq.nix UserName/GroupName).
+    # Consumers reach it via /etc/resolver/<zone> (`port 5354` line) or
+    # the SSH tunnel in modules/home-manager/ssh.d/config.d/mammoth-skate.conf.
     listen-address=127.0.0.1
-    port=53
+    port=5354
 
     # Don't use /etc/resolv.conf
     no-resolv
