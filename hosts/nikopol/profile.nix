@@ -8,11 +8,10 @@
   imports = [
     (import ../host-common.nix {
       inherit hostProfile darwinProfile;
-      # No `headscaleServerUrl` — fall through to
-      # `catalog.headscale.aliasUrl` (headscale.mammoth-skate.local),
-      # which tracks whichever host currently holds `role = "primary"`.
-      # A standby promotion on nikopol keeps the alias pointing here
-      # without touching any client config.
+      # No `headscaleServerUrl` override — fall through to
+      # `catalog.headscale.aliasUrl` (mammoth-skate.duckdns.org:41841),
+      # which works universally for all hosts (on-LAN via NAT hairpinning,
+      # off-LAN via WAN port forward).
     })
   ];
   config = {

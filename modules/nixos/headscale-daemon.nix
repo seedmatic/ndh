@@ -57,6 +57,8 @@ let
       base_domain: mammoth-skate.ts.net
       nameservers:
         global:
+          - 100.64.0.1
+          - 100.64.0.2
           - 1.1.1.1
           - 8.8.8.8
 

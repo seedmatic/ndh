@@ -264,6 +264,7 @@ in
     ./bbox-reconcile.nix
     ./dns-servers.nix
     ./dns-zone-mammoth-skate.nix
+    ./dns-zone-mammoth-skate-tailnet.nix
     ./dnsmasq.nix
     ./lima-host.nix
 

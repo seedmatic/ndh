@@ -155,14 +155,19 @@ let
       mode: file
       path: ${headscaleCatalog.aclPolicyFile}
 
-    # DNS is kept minimal: no MagicDNS override, no extra records.
-    # Clients already get their own mDNS resolution; MagicDNS adds a
-    # layer we don't need for the 2-operator fleet.
+    # DNS: MagicDNS provides automatic host records (bioskop.mammoth-skate.ts.net
+    # → tailnet IP). Additional nameservers point to each host's tailnet IP
+    # where dnsmasq serves CNAME records for structured names:
+    #   - 100.64.0.1 (bioskop): rdp.bioskop.ts.net, vz-host.bioskop.ts.net
+    #   - 100.64.0.2 (nikopol): rdp.nikopol.ts.net, vz-host.nikopol.ts.net
+    # Query order: MagicDNS → host-specific dnsmasq → public DNS.
     dns:
       magic_dns: true
       base_domain: mammoth-skate.ts.net
       nameservers:
         global:
+          - 100.64.0.1
+          - 100.64.0.2
           - 1.1.1.1
           - 8.8.8.8
 

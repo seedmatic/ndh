@@ -25,12 +25,12 @@ let
   # number.
   listenPort = 41841;
   serviceName = "headscale-bootstrap";
-  # Control plane alias.  During Phase A (bootstrap), this CNAME points
-  # to bioskop's rdp-host A record (192.168.1.129).  During Phase B
-  # (production), update the CNAME target to the K8s ingress or service
-  # IP.  The closed-world zone is served by dnsmasq on-LAN; off-LAN
-  # clients use mammoth-skate.duckdns.org (public bbox port forward).
-  aliasName = "headscale.mammoth-skate.test";
+  # Control plane alias.  All clients use the public DuckDNS domain,
+  # which works universally (on-LAN via NAT hairpinning, off-LAN via
+  # WAN). The Bbox port forward (WAN:41841 → bioskop:41841) routes
+  # traffic to the headscale daemon. During Phase B (production),
+  # update to point to K8s ingress or service IP.
+  aliasName = "mammoth-skate.duckdns.org";
 in
 {
   inherit listenPort serviceName aliasName;

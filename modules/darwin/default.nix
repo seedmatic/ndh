@@ -18,6 +18,7 @@
     ./disable-google-updaters.nix
     ./disable-unwanted-agents.nix
     ./dnsmasq.nix
+    ./dnsmasq-tailnet.nix
     ./headscale.nix
     ./headscale-daemon.nix
     ./headscale-client-kind.nix
