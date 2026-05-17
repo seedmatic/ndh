@@ -118,20 +118,7 @@ let
         value = hostSpec.ip;
       }) hostSpec.serviceNames
     ) (tailnetCfg.hosts or { })
-  )
-  # SMOKE TEST — to be removed once the patched tailscaled's
-  # CNAME-chase path is confirmed end-to-end.  This entry exercises
-  # github:nxmatic/tailscale@nxmatic/feature/extra-records-cname's
-  # net/dns/resolver.resolveLocal CNAME-chase logic: tailscaled should
-  # answer `dig cname-test.bioskop.<zone>` with one CNAME RR pointing
-  # at bioskop.<zone>, then chase that to MagicDNS's A record for
-  # bioskop, returning 100.64.0.1.  If the patch is broken, expect
-  # NXDOMAIN or the bare CNAME without an A.
-  ++ [{
-    name = "cname-test.bioskop.${baseDomain}";
-    type = "CNAME";
-    value = "bioskop.${baseDomain}";
-  }];
+  );
 
   # Headscale config.yaml.  Values shaped from the catalog and the
   # platform-specific paths.  Rationale comments live in this module
