@@ -6,15 +6,20 @@
 # Positional defaults:
 #   attr   = homeManagerConfigurations.bringup.activationPackage
 #   mode   = copy   (or: print / --print-out-path)
-#   target = vz-host.nikopol
+#   target = rdp.nikopol
 #
 # Environment override:
 #   NIX_REMOTE_COPY_TARGET
+#
+# Note: the previous default `vz-host.<host>` was retired (see catalog/
+# default.nix tailnet.hosts header).  `rdp.<host>` is the working alias
+# (renamed from `rdp-host.<host>` to stay consistent with the headscale
+# `dns.extra_records` service-name namespace).
 
 host="${NDH_VZ_HOST:-nikopol}"
 attr="${1:-homeManagerConfigurations.${host}.bringup.activationPackage}"
 mode="${2:-copy}"
-target="${3:-${NIX_REMOTE_COPY_TARGET:-vz-host.${host}}}"
+target="${3:-${NIX_REMOTE_COPY_TARGET:-rdp.${host}}}"
 
 # Normalize legacy generic materializer attrs to host-scoped names.
 case "${attr}" in

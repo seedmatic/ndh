@@ -21,12 +21,24 @@ let
   inventoryHostNames = builtins.attrNames (inventory.hosts or { });
   sshUserForHost = _host: catalogUserName;
   # Canonical operator alias layout: `{service}.{host}` with consistent auth.
-  # The three roles target the same host from three routes:
-  #   rdp-host.{host} → the Darwin host itself (LAN / mDNS)
-  #   vz-host.{host}  → the Darwin host via its vz bridge interface
-  #   nixos.{host}    → the NixOS guest VM living on the Darwin host
-  # All three present the profile user's rdp-host key+cert so mammoth-skate's
-  # TrustedUserCAKeys check accepts the login without per-host key pinning.
+  # Service names match the headscale `dns.extra_records` namespace
+  # (catalog.netplan.tailnet.hosts.<host>.serviceNames), so muscle
+  # memory carries between `dig rdp.bioskop.<zone>` and
+  # `ssh rdp.bioskop`.
+  #
+  # The two roles target the same host from two routes:
+  #   rdp.{host}    → the Darwin host itself (LAN / mDNS)
+  #   nixos.{host}  → the NixOS guest VM living on the Darwin host
+  # Both present the profile user's rdp-host key+cert so mammoth-skate's
+  # TrustedUserCAKeys check accepts the login without per-host key
+  # pinning.  The SSH cert *principal* stays `rdp-host` (server-side
+  # identity, internal); only the operator-facing alias prefix is `rdp`.
+  #
+  # The historical `vz-host.{host}` alias was retired: it pointed at
+  # `{host}-vz.lan`, but bioskop has no separate VZ host (the Mac runs
+  # bioskop directly) and nikopol's bare-metal Mac is on a company-
+  # managed network the bbox can't resolve.  Neither alias resolved
+  # to anything useful.
   operatorAliasForService = host: serviceName: hostNameSuffix: ''
     Host ${serviceName}.${host}
       HostName ${host}${hostNameSuffix}
@@ -37,8 +49,7 @@ let
       PreferredAuthentications publickey
   '';
   operatorAliasesForHost = host: ''
-    ${operatorAliasForService host "rdp-host" ".local"}
-    ${operatorAliasForService host "vz-host" "-vz.lan"}
+    ${operatorAliasForService host "rdp" ".local"}
     ${operatorAliasForService host "nixos" "-nixos.local"}
   '';
   tailnetDomain =

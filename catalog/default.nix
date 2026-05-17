@@ -55,7 +55,6 @@
       #   kind   — role for downstream consumers; values:
       #              darwin-host  → top-level RDP-able Mac
       #              nixos        → NixOS guest VM
-      #              vz-host      → bare-metal VZ bridge interface
       #              rke2         → RKE2 cluster member (requires `role`)
       #              wifi-iface   → wifi NIC
       #   parent — top-level host this entry belongs under (omitted for
@@ -91,15 +90,14 @@
           ip = "192.168.1.33";
           kind = "darwin-host";
         };
-        nikopol-vz = {
-          # Bare-metal VZ bridge — connectivity only, IP not
-          # load-bearing.  Used by the `vz-host.<host>` ssh alias to
-          # reach the bare-metal screen-sharing path.
-          mac = "84:2f:57:d4:36:be";
-          ip = "192.168.1.65";
-          kind = "vz-host";
-          parent = "nikopol";
-        };
+        # nikopol-vz (the bare-metal Mac hosting the nikopol Tart VM) is
+        # NOT on this LAN — it's bridged onto a company-managed network
+        # we don't run, with a DHCP-leased corp address.  No bbox
+        # reservation exists for it, so it doesn't belong in lan.hosts.
+        # The VM doesn't need to address the bare metal as a network
+        # peer either: the hypervisor relationship (filesystem, console,
+        # vmshare) handles VM↔host data flow without IP.
+
         nikopol-nixos = {
           mac = "10:66:6a:4c:d6:01";
           ip = "192.168.1.34";
@@ -177,16 +175,19 @@
       # CNAME locally and emits one CNAME RR ahead of the resolved A
       # in the answer.
       #
-      # `vz-host.nikopol` deliberately absent: the nikopol bare-metal
-      # host is company-managed and never joins the tailnet, so any
-      # tailnet record targeting it would be incorrect.  On-LAN access
-      # via the LAN IP (192.168.1.65 in netplan.lan.hosts.nikopol-vz)
-      # remains via mDNS / /etc/hosts as needed.
+      # The `vz-host` service prefix is intentionally retired.  It used
+      # to address the bare-metal Mac hosting a Tart VM, distinct from
+      # the VM itself, but no working SSH alias backs it: bioskop has
+      # no separate VZ host (the Mac runs bioskop directly), and the
+      # bare-metal Mac hosting nikopol lives on a company-managed
+      # network we don't run, so the bbox can't resolve a `-vz` name
+      # for it either.  Workflows that previously addressed the bare
+      # metal go through `rdp.<host>` (which targets the only Mac on
+      # each side) or are dropped.
       hosts = {
         bioskop = {
           serviceNames = [
             "rdp"
-            "vz-host"
             "ssh-host"
             # Phase A bootstrap: the headscale primary lives on
             # bioskop, so `headscale.bioskop.<zone>` resolves to the
