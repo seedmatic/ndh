@@ -8,9 +8,9 @@
 # native-Go resolvers (notably tailscaled) bypass NSS entirely and
 # talk to `/etc/resolv.conf` → systemd-resolved, which at that point
 # had `MulticastDNS=no` to avoid fighting avahi for UDP 5353.  Net
-# effect: `getent hosts headscale.mammoth-skate.local` worked, but
-# `tailscaled` with the same URL failed with "no DNS fallback
-# candidates remain" and never registered the node.
+# effect: `getent hosts` worked for `.local` names, but `tailscaled`
+# with the same URL failed with "no DNS fallback candidates remain"
+# and never registered the node.
 #
 # Simpler to run a single mDNS stack owned by resolved.  Downsides:
 # resolved's mDNS is less battle-tested for service discovery than

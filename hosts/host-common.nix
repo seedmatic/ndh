@@ -2,11 +2,11 @@
   hostProfile,
   darwinProfile,
   # Headscale server URL override.  Normally unset: the default is
-  # derived from `catalog.headscale.aliasUrl`, which is the fleet-
-  # scoped mDNS alias (`headscale.mammoth-skate.local`) that follows
-  # the host currently holding `role = "primary"`.  Override only
-  # when a specific host needs to pin a different control-plane
-  # (e.g. a test rig pointing at a staging headscale).
+  # derived from `catalog.headscale.aliasUrl`, which is the DuckDNS
+  # endpoint (mammoth-skate.duckdns.org:41841) that works universally
+  # (on-LAN via NAT hairpinning, off-LAN via WAN port forward).
+  # Override only when a specific host needs to pin a different
+  # control-plane (e.g. a test rig pointing at a staging headscale).
   headscaleServerUrl ? null,
   headscaleEnableSSH ? true,
 }:

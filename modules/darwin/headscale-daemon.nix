@@ -109,11 +109,11 @@ let
     listen_addr: 0.0.0.0:${toString headscaleCatalog.listenPort}
 
     # TLS served directly by headscale (no reverse proxy).  The cert
-    # is a `mammoth-skate`-signed x509 leaf with SAN for
-    # `headscale.mammoth-skate.local` — matched to the server_url
-    # above.  Clients trust it via the CA cert committed at
-    # `authorities.mammoth-skate.ca_crt` in keys.yaml, installed
-    # into each client's system trust store by the client module.
+    # is a `mammoth-skate`-signed x509 leaf with SANs for both the
+    # DuckDNS domain (mammoth-skate.duckdns.org) and the .test zone
+    # (headscale.mammoth-skate.test).  Clients trust it via the CA
+    # cert committed at `authorities.mammoth-skate.ca_crt` in keys.yaml,
+    # installed into each client's system trust store by the client module.
     #
     # TLS is required because modern tailscale clients force the
     # Noise upgrade onto HTTPS:443 after any failed plain-HTTP

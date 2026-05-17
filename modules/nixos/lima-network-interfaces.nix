@@ -168,9 +168,9 @@ in
         # (and queries) `.local` names here.  Global resolved
         # `MulticastDNS=yes` isn't enough — resolved gates mDNS
         # per-link via this knob.  tailscaled's Go resolver uses
-        # systemd-resolved (not libc NSS), so this is what lets it
-        # resolve `headscale.mammoth-skate.local` in addition to
-        # libc consumers like `getent`/`ping`/`curl`.
+        # systemd-resolved (not libc NSS), enabling resolution of
+        # `.local` names for both tailscaled and libc consumers like
+        # `getent`/`ping`/`curl`.
         MulticastDNS = "yes";
       };
       dhcpV4Config.UseDNS = false;
