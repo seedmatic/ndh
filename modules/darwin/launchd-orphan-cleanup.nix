@@ -28,10 +28,19 @@ let
   ];
 
   # Plain files (not actual launchd labels) that ended up under
-  # /Library/LaunchDaemons/ and should just be removed.  E.g.
-  # nix-darwin's own backup files.
+  # /Library/LaunchDaemons/ — or anywhere else — and should just be
+  # removed.  E.g. nix-darwin's own backup files, or stale copies of
+  # files we used to install via activation scripts before switching
+  # to package-managed delivery.
   stalePaths = [
     "/Library/LaunchDaemons/org.nixos.linux-builder.plist~bak"
+    # Pre-6e8b8ba9 the nikopol vz-host resolver was copied into
+    # ~/.local/bin/ via a system.activationScripts.postActivation
+    # `install -m 0755 -D` call, leaving a root-owned copy.  We now
+    # ship the resolver via home.packages (lands at
+    # /etc/profiles/per-user/<user>/bin/<binName>); the legacy copy
+    # lingers and shadows the new one in PATH order.  Sweep it.
+    "/Volumes/user-home/.local/bin/nikopol-vz-host-resolve-ip"
   ];
 
   cleanupLabelCmd = label: ''

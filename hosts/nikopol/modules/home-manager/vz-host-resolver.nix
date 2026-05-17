@@ -22,9 +22,20 @@ let
   # swap, Private Wi-Fi flipped to Fixed/Rotating), update here.
   bareMetalMac = "52:2d:10:fa:5a:1c";
 
-  # Bin name = the path the SSH ProxyCommand references on the VM.
-  # Mirrored verbatim in modules/home-manager/ssh-tailnet-hosts.nix's
-  # vzAliasForBioskopSide; if you rename here, rename there too.
+  # Bin name + bin path on disk.  This fleet runs nix-darwin with
+  # `home-manager.useUserPackages = true`, which routes home.packages
+  # through `users.users.<user>.packages` and lands them at
+  # /etc/profiles/per-user/<user>/bin/.  That's a stable, OS-managed
+  # directory on PATH — the resolver lives there, not in
+  # ~/.nix-profile/bin/ (which on this fleet is the legacy nix-env
+  # profile and contains only zsh).
+  #
+  # The path is host-stable: any host with this resolver in
+  # home.packages exposes it at the same /etc/profiles path.  The
+  # bioskop-side ProxyCommand in modules/home-manager/ssh-tailnet-hosts.nix
+  # references the bare command name and relies on PATH expansion in
+  # the remote shell — that works because nikopol's interactive zsh
+  # has /etc/profiles/per-user/nxmatic/bin on PATH.
   binName = "nikopol-vz-host-resolve-ip";
 
   # writeShellApplication's curated PATH is pkgs-only; the resolver
@@ -65,6 +76,6 @@ in
     user = "stephane.lacoin";
     identityFile = "~/.local/var/run/secrets/ssh-keys/rdp-host";
     identitiesOnly = true;
-    proxyCommand = ''sh -c 'nc "$(~/.nix-profile/bin/${binName})" 22' '';
+    proxyCommand = ''sh -c 'nc "$(${binName})" 22' '';
   };
 }
