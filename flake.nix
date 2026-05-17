@@ -135,6 +135,21 @@
         rec {
           prefix = storeNamePrefix;
           prefixedName = prefixStoreName;
+          # Compose a Darwin launchd Label scoped to this flake's prefix.
+          # Use as `Label = ndh.store.mkLaunchdLabel "headscale-bootstrap"`
+          # in `launchd.user.agents.<key>.serviceConfig` /
+          # `launchd.daemons.<key>.serviceConfig`.  Without this,
+          # nix-darwin falls back to its `org.nixos.<key>` default —
+          # avoid for our own services so an `ls /Library/LaunchDaemons/`
+          # is self-evident about ownership.  Mirrored in
+          # modules/.common.d/default.nix's ndhStore for the rare module
+          # that gets ndh from `_module.args` instead of specialArgs.
+          mkLaunchdLabel =
+            name:
+            if nixpkgs.lib.hasPrefix "${storeNamePrefix}." name then
+              name
+            else
+              "${storeNamePrefix}.${name}";
           installScript =
             {
               name,

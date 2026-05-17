@@ -167,6 +167,16 @@ let
   ndhStore = rec {
     prefix = storeNamePrefix;
     prefixedName = prefixStoreName;
+    # Compose a Darwin launchd Label / reverse-DNS identifier scoped to
+    # this flake's prefix.  Use as `Label = ndh.store.mkLaunchdLabel
+    # "headscale-bootstrap"` in `launchd.user.agents.<key>.serviceConfig`
+    # / `launchd.daemons.<key>.serviceConfig`.  Without this, nix-darwin
+    # falls back to its `org.nixos.<key>` default — which we want to
+    # avoid for our own services so an `ls /Library/LaunchDaemons/` is
+    # self-evident about ownership.
+    mkLaunchdLabel =
+      name:
+      if lib.hasPrefix "${storeNamePrefix}." name then name else "${storeNamePrefix}.${name}";
     installScript = installStoreScript;
     runCommand =
       name: attrs: text:

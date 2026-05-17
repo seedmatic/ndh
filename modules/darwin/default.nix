@@ -46,6 +46,7 @@
     ./bringup-observe.nix
     ./tailscale-vnc-forward.nix
     ./tls-authority-keychain.nix
+    ./launchd-orphan-cleanup.nix
   ];
 
   # Active le résolveur .lan par défaut (modifiable par hôte)

@@ -57,6 +57,7 @@ in
     launchd.daemons.nxmatic-cachix-watch-store = {
       script = "${watchStoreScript}/bin/nxmatic-cachix-watch-store";
       serviceConfig = {
+        Label = ndh.store.mkLaunchdLabel "nxmatic-cachix-watch-store";
         RunAtLoad = true;
         KeepAlive = true;
         ThrottleInterval = 30;

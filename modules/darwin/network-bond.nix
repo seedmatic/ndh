@@ -178,6 +178,7 @@ in
       script = "${networkBondDaemonScript}/bin/bond-daemon";
 
       serviceConfig = {
+        Label = ndh.store.mkLaunchdLabel "network-bond";
         RunAtLoad = true;
         KeepAlive = false;
         StandardErrorPath = "/var/log/network-bond.log";
@@ -191,6 +192,7 @@ in
       script = "${wakeMonitor}/bin/bond-wake-monitor";
 
       serviceConfig = {
+        Label = ndh.store.mkLaunchdLabel "network-bond-wake";
         RunAtLoad = true;
         KeepAlive = true; # Keep running to monitor wake events
         StandardErrorPath = "/var/log/network-bond-wake.log";
@@ -203,6 +205,7 @@ in
       script = "${networkBondMaintainScript}/bin/bond-maintain";
 
       serviceConfig = {
+        Label = ndh.store.mkLaunchdLabel "network-bond-maintain";
         RunAtLoad = true;
         WatchPaths = [
           "/Library/Preferences/SystemConfiguration/preferences.plist"

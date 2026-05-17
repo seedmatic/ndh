@@ -87,6 +87,7 @@ in
     launchd.daemons.static-routes = {
       script = "${ensureRoutesScript}";
       serviceConfig = {
+        Label = ndh.store.mkLaunchdLabel "static-routes";
         RunAtLoad = true;
         KeepAlive = false;
         WatchPaths = cfg.watchPaths;
