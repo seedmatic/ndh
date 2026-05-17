@@ -64,25 +64,36 @@ let
     ${operatorAliasForService host "nixos" "-nixos.local"}
   '';
 
-  # `vz.nikopol` from bioskop / any other operator host: jump
-  # through the nikopol VM (which is on tailnet) and let its own
-  # matchBlock resolve the bare metal via local ARP.  Two-hop: the
-  # outer hop is tailnet (bioskop → nikopol), the inner hop is the
-  # local-segment hop (nikopol VM → bare metal).
+  # `vz.nikopol` from bioskop / any other operator host: route the
+  # connection through the nikopol VM (which is on tailnet) so its
+  # local-segment ARP resolver finds the bare metal's current IP.
+  # Two-hop: the outer hop is tailnet (bioskop → nikopol), the inner
+  # hop is the local-segment hop (nikopol VM → bare metal).
   #
-  # `ProxyJump nikopol-ts` rather than `nikopol` because the latter
-  # is wired to `HostName ${host}.local` further down, which only
-  # resolves when the laptop is on the home LAN.  The `-ts` suffix
-  # alias targets `nikopol.mammoth-skate.ts.net`, which works from
-  # anywhere on the tailnet — including when the laptop is roaming
-  # on a corp / hotel / hotspot Wi-Fi where mDNS doesn't traverse.
+  # ProxyCommand rather than ProxyJump because the nikopol VM has
+  # `tailscale set --ssh=true` — Tailscale's built-in SSH server
+  # doesn't support stdio-forwarding (the `direct-tcpip` /
+  # session-stdio channels that ProxyJump needs internally
+  # translate to `ssh -W`).  Tailscale SSH allows interactive
+  # sessions and command execution but rejects port-forward
+  # channels by design (see tailscale.com docs on SSH features).
+  # ProxyCommand sidesteps this by using a regular session-exec to
+  # invoke `nc` on the VM, which then opens a plain local-segment
+  # TCP connection to the resolved bare-metal IP.
   #
-  # The `User stephane.lacoin` and `IdentityFile rdp-host` lines
-  # apply to the inner-hop authentication; the outer ssh hop uses
-  # whatever `Host nikopol-ts` is configured with elsewhere.
+  # The outer-hop alias is `nikopol-ts` rather than `nikopol`
+  # because the latter is wired to `HostName ${host}.local`
+  # elsewhere in this file's inventory loop, which only resolves
+  # when the laptop is at home.  `nikopol-ts` resolves to
+  # `nikopol.mammoth-skate.ts.net` and works wherever the laptop
+  # currently is.
+  #
+  # `User stephane.lacoin` and `IdentityFile rdp-host` apply to
+  # the inner-hop authentication; the outer ssh hop into nikopol-ts
+  # uses whatever `Host nikopol-ts` is configured with elsewhere.
   vzAliasForBioskopSide = ''
     Host vz.nikopol
-      ProxyJump nikopol-ts
+      ProxyCommand ssh nikopol-ts "nc \$(/Volumes/user-home/.local/bin/nikopol-vz-host-resolve-ip) 22"
       User stephane.lacoin
       IdentityFile ${config.sshPaths.privKeyFile}
       IdentitiesOnly yes
