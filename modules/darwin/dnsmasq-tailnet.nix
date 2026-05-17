@@ -1,6 +1,10 @@
 # Run dnsmasq on the tailnet interface to serve CNAME records for
 # structured service names under mammoth-skate.ts.net.
 #
+# Runs as a LaunchDaemon (system-level, root) so it can bind to port 53
+# on the tailnet interface. Headscale advertises this host's tailnet IP
+# as a nameserver, and DNS clients query it on the standard port.
+#
 # Architecture:
 #   - MagicDNS provides base records: bioskop.mammoth-skate.ts.net → 100.64.0.1
 #   - This dnsmasq provides CNAMEs: rdp.bioskop.mammoth-skate.ts.net → bioskop.mammoth-skate.ts.net
@@ -28,7 +32,11 @@ let
 in
 {
   config = lib.mkIf cfg.enable {
-    launchd.user.agents.dnsmasq-tailnet = {
+    # Run as LaunchDaemon (not LaunchAgent) so it can bind to port 53.
+    # The LAN dnsmasq (mammoth-skate.test) stays as LaunchAgent on port
+    # 5354 because /etc/resolver can specify custom ports, but headscale's
+    # nameserver list only supports standard port 53.
+    launchd.daemons.dnsmasq-tailnet = {
       serviceConfig = {
         Label = "io.nxmatic.nix-darwin-home.darwin.dnsmasq-tailnet";
         ProgramArguments = [
@@ -44,6 +52,7 @@ in
 
     environment.etc."dnsmasq-tailnet.conf".text = ''
       # Listen on tailnet interface at this host's assigned tailnet IP
+      # Port 53 (standard DNS) - requires root, hence LaunchDaemon
       listen-address=${tailnetIp}
       port=53
 
