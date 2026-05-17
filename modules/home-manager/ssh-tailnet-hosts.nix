@@ -70,12 +70,19 @@ let
   # outer hop is tailnet (bioskop → nikopol), the inner hop is the
   # local-segment hop (nikopol VM → bare metal).
   #
+  # `ProxyJump nikopol-ts` rather than `nikopol` because the latter
+  # is wired to `HostName ${host}.local` further down, which only
+  # resolves when the laptop is on the home LAN.  The `-ts` suffix
+  # alias targets `nikopol.mammoth-skate.ts.net`, which works from
+  # anywhere on the tailnet — including when the laptop is roaming
+  # on a corp / hotel / hotspot Wi-Fi where mDNS doesn't traverse.
+  #
   # The `User stephane.lacoin` and `IdentityFile rdp-host` lines
   # apply to the inner-hop authentication; the outer ssh hop uses
-  # whatever `Host nikopol` is configured with elsewhere.
+  # whatever `Host nikopol-ts` is configured with elsewhere.
   vzAliasForBioskopSide = ''
     Host vz.nikopol
-      ProxyJump nikopol
+      ProxyJump nikopol-ts
       User stephane.lacoin
       IdentityFile ${config.sshPaths.privKeyFile}
       IdentitiesOnly yes
