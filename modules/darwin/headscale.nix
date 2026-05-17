@@ -47,23 +47,46 @@ let
 
   tagsCsv = concatStringsSep "," (map (tag: "tag:" + tag) cfg.tags);
 
+  # Shared lib used by both consumers (post-activation hook +
+  # `hs-connect`).  Inlined verbatim into each via pkgs.replaceVars
+  # so writeShellApplication's shellcheck pass can see the whole
+  # composed script — same pattern the `hs` admin CLI uses for
+  # modules/darwin/headscale-tools/hs-lib.sh.
+  hsClientLibText = builtins.readFile ./headscale-client.d/lib.sh;
+
+  # Common token replacements for both consumers.  authKeyFile is
+  # empty-string when no key is available (sops not yet materialised
+  # / fresh laptop) — the lib's reconcile helper handles the empty
+  # case by warning and skipping.
+  hsClientReplaceVars = {
+    nixBashTrampoline = nixBashTrampoline;
+    HEADSCALE_CLIENT_LIB_INLINE = hsClientLibText;
+    enableSSH = if cfg.enableSSH then "true" else "false";
+    acceptRoutes = if cfg.acceptRoutes then "true" else "false";
+    serverUrl = cfg.serverUrl;
+    hostname = cfg.hostname;
+    authKeyFile = if effectiveAuthKeyFile != null then effectiveAuthKeyFile else "";
+  };
+
   headscaleActivationScript = ndh.store.runCommand "headscale-post-activation.sh" { } ''
-    cp ${
-      pkgs.replaceVars ./headscale-client.d/post-activation.sh {
-        nixBashTrampoline = nixBashTrampoline;
-        enableSSH = if cfg.enableSSH then "true" else "false";
-        acceptRoutes = if cfg.acceptRoutes then "true" else "false";
-        serverUrl = cfg.serverUrl;
-        hostname = cfg.hostname;
-        # Empty string => interactive-login fallback (hook won't
-        # autojoin).  Otherwise = absolute path of the sops-materialised
-        # authkey the common tailnet module places under
-        # /run/secrets/nix-darwin-home/tailnet.headscale.auth.
-        authKeyFile = if effectiveAuthKeyFile != null then effectiveAuthKeyFile else "";
-      }
-    } "$out"
+    cp ${pkgs.replaceVars ./headscale-client.d/post-activation.sh hsClientReplaceVars} "$out"
     chmod +x "$out"
   '';
+
+  # `hs-connect` — operator-facing reconcile wrapper.  writeShellApplication
+  # gives us shellcheck-at-build-time + a curated runtimeInputs PATH so the
+  # script can rely on `tailscale`, coreutils, etc. without thinking about
+  # the host shell's PATH.
+  hsConnectBin = pkgs.writeShellApplication {
+    name = "hs-connect";
+    text = builtins.readFile (
+      pkgs.replaceVars ./headscale-client.d/hs-connect.sh hsClientReplaceVars
+    );
+    runtimeInputs = with pkgs; [
+      tailscale
+      coreutils
+    ];
+  };
 in
 {
   options.networking.headscale = {
@@ -130,44 +153,7 @@ in
 
       environment.systemPackages = [
         pkgs.tailscale
-        (pkgs.writeScriptBin "hs-connect" ''
-          #!/usr/bin/env bash
-          set -e
-
-          if tailscale status >/dev/null 2>&1; then
-            echo "Already connected to Headscale"
-            tailscale status
-            exit 0
-          fi
-
-          # Always logout first so a stale node key (e.g. after a
-          # headscale DB wipe or key rotation) doesn't leak into the
-          # register attempt and flip tailscale into its "force HTTPS:443"
-          # fallback that our plain-HTTP daemon can't satisfy.
-          tailscale logout >/dev/null 2>&1 || true
-
-          # `--timeout=45s` caps tailscaled's wait for Running — without
-          # it a missing daemon blocks forever; with it we fail fast and
-          # the operator can retry.
-          CMD="tailscale up --timeout=45s --login-server=${cfg.serverUrl} --hostname=${cfg.hostname}"
-          ${optionalString cfg.enableSSH ''CMD="$CMD --ssh"''}
-          ${optionalString cfg.acceptRoutes ''CMD="$CMD --accept-routes"''}
-
-          # Headscale v2 rejects `--advertise-tags` on preauth-key
-          # registrations (tags are carried by the key itself).  Only
-          # append the flag when falling back to interactive login —
-          # i.e. when no auth-key file is available.
-          AUTH_KEY_FILE="${if effectiveAuthKeyFile != null then effectiveAuthKeyFile else ""}"
-          if [ -n "$AUTH_KEY_FILE" ] && [ -r "$AUTH_KEY_FILE" ]; then
-            CMD="$CMD --authkey=$(tr -d '[:space:]' < "$AUTH_KEY_FILE")"
-          else
-            ${optionalString (cfg.tags != [ ]) ''CMD="$CMD --advertise-tags=${tagsCsv}"''}
-          fi
-
-          echo "Connecting to Headscale at ${cfg.serverUrl}..."
-          echo "Running: $CMD"
-          eval "$CMD"
-        '')
+        hsConnectBin
         (pkgs.writeScriptBin "hs-ssh" ''
           #!/usr/bin/env bash
           if [ -z "$1" ]; then
