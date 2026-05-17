@@ -93,7 +93,7 @@ let
   # uses whatever `Host nikopol-ts` is configured with elsewhere.
   vzAliasForBioskopSide = ''
     Host vz.nikopol
-      ProxyCommand ssh nikopol-ts "nc \$(/Volumes/user-home/.local/bin/nikopol-vz-host-resolve-ip) 22"
+      ProxyCommand ssh nikopol-ts "nc \$(~/.nix-profile/bin/nikopol-vz-host-resolve-ip) 22"
       User stephane.lacoin
       IdentityFile ${config.sshPaths.privKeyFile}
       IdentitiesOnly yes

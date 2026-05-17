@@ -20,10 +20,11 @@
 #     `nxmatic`'s key, whose public is in stephane.lacoin@bare-metal's
 #     authorized_keys).
 #
-# Bioskop reaches the bare metal via this VM by chaining: bioskop →
-# nikopol VM (tailnet) → bare metal (local segment).  Bioskop's SSH
-# config carries `Host vz.nikopol  ProxyJump nikopol`; the rest is
-# delegated to this VM's resolver.
+# Bioskop reaches the bare metal via this VM by chaining a
+# `ProxyCommand ssh nikopol-ts "nc $(<resolver>) 22"`; the resolver
+# is on the VM (this module) and the bioskop-side alias references
+# its `/run/current-system/sw/bin/...` path from
+# modules/home-manager/ssh-tailnet-hosts.nix.
 {
   config,
   lib,
@@ -38,29 +39,52 @@ let
   # swap, Private Wi-Fi flipped to Fixed/Rotating), update here.
   bareMetalMac = "52:2d:10:fa:5a:1c";
 
-  resolveScript = ndh.store.installScript {
-    name = "nikopol-vz-host-resolve-ip.sh";
-    source = pkgs.replaceVars ./vz-host-resolver.d/resolve-ip.sh {
-      bareMetalMac = bareMetalMac;
-    };
-    preferLocalBuild = true;
-    allowSubstitutes = false;
-    mode = "0755";
-  };
+  # The resolver is consumed only by the operator's SSH client (here
+  # via the matchBlock below, on bioskop via vzAliasForBioskopSide
+  # in modules/home-manager/ssh-tailnet-hosts.nix).  That's user-scope,
+  # so the script ships via home-manager's `home.packages` and lives
+  # at ~/.nix-profile/bin/<binName> for the operator — no
+  # system-package install, no activation copy, no root ownership.
+  #
+  # Bin name is mirrored in vzAliasForBioskopSide; if you rename here,
+  # rename there too.  The `~/` in binPath expands on whichever shell
+  # sees it — the operator's local shell here, the remote (nikopol)
+  # shell when invoked from bioskop's chained ProxyCommand.
+  binName = "nikopol-vz-host-resolve-ip";
+  binPath = "~/.nix-profile/bin/${binName}";
 
-  user = config.profile.user;
-  userHome = toString user.home;
-  resolveScriptInstallPath = "${userHome}/.local/bin/nikopol-vz-host-resolve-ip";
+  # writeShellApplication wraps the script with a curated PATH and
+  # runs shellcheck at build time.  The token-substituted source
+  # lives in $out/bin/<binName>.
+  # writeShellApplication's curated PATH is pkgs-only, but the
+  # resolver uses `ping`, `arp`, `ifconfig`, and `awk` — three of
+  # which are macOS-system tools (not in nixpkgs in any Darwin-
+  # buildable form).  Add /sbin and /usr/sbin to PATH explicitly via
+  # the script body so writeShellApplication's strict-PATH wrapper
+  # finds them; runtimeInputs lists only the genuinely Nix-provided
+  # `gawk` (over the BSD awk which differs subtly).
+  resolverPkg = pkgs.writeShellApplication {
+    name = binName;
+    runtimeInputs = with pkgs; [ gawk ];
+    text = ''
+      # macOS network tools live outside nixpkgs.
+      PATH="/sbin:/usr/sbin:$PATH"
+    ''
+    + builtins.readFile (
+      pkgs.replaceVars ./vz-host-resolver.d/resolve-ip.sh {
+        bareMetalMac = bareMetalMac;
+      }
+    );
+  };
 in
 {
   config = lib.mkIf (config.profile.host.hostName == "nikopol") {
-    # Install the resolver into a stable in-home path the SSH config
-    # can reference verbatim.  Done via activation rather than a
-    # home-manager file so the path is the same regardless of which
-    # generation is active.
-    system.activationScripts.postActivation.text = lib.mkAfter ''
-      install -m 0755 -D ${resolveScript} ${lib.escapeShellArg resolveScriptInstallPath}
-    '';
+    # Install the resolver into the operator's user nix-profile via
+    # home-manager.  Lands at ~/.nix-profile/bin/<binName> — a
+    # store-pinned path that updates atomically per generation.  No
+    # activation copy, no root ownership.  Scope matches the
+    # consumer (the operator's SSH client) rather than the system.
+    hm.home.packages = [ resolverPkg ];
 
     # SSH alias: `vz.nikopol` resolves to whatever IP the bare metal
     # has on the current Wi-Fi network.  ProxyCommand pipes
@@ -76,7 +100,7 @@ in
       user = "stephane.lacoin";
       identityFile = "~/.local/var/run/secrets/ssh-keys/rdp-host";
       identitiesOnly = true;
-      proxyCommand = ''sh -c 'nc "$(${resolveScriptInstallPath})" 22' '';
+      proxyCommand = ''sh -c 'nc "$(${binPath})" 22' '';
     };
   };
 }
