@@ -211,17 +211,19 @@ let
       selectedRuntime = if selectedVmProvider == "tart" then zfsRuntimeTart else zfsRuntimeLima;
       fullSystemPath = selectedRuntime.config.system.build.toplevel;
 
-      # Minimal bringup system — ZFS + network + SSH only. The operator
-      # drives activation of the full system from bioskop.
-      # Completely standalone, no host profile or modules imported.
-      # Generate a deterministic hostId from hostname for ZFS.
-      minimalHostId =
-        let
-          hash = builtins.hashString "sha256" hostProfile.hostName;
-          # Take first 8 hex chars from hash for ZFS hostId
-        in
-        builtins.substring 0 8 hash;
-
+      # Minimal bringup system — ZFS + network + SSH only.  The image
+      # bytes are bit-identical for every host on the fleet (no
+      # hostProfile-derived bake): hostName is the literal
+      # "nerd-nixos", hostId is a placeholder, runtimeSystemPath is
+      # absent.  Per-host identity is injected at first boot by the
+      # per-host Tart bootstrap installer via cloud-init userdata
+      # (cidata ISO mechanism).
+      #
+      # The bringup-minimal config receives a generic ndh.context
+      # carrying only the catalog user and the inventory (the
+      # latter for ssh-keys-enrichment's authorized_principals
+      # seed, which is fleet-shared).  See
+      # docs/bringup-image-unification.adoc for the design.
       minimalBringupSystemBase = nixpkgs.lib.nixosSystem {
         system = "aarch64-linux";
         pkgs = pkgsForLinux;
@@ -231,61 +233,39 @@ let
           sops-nix.nixosModules.sops
           ./bringup-minimal-system.nix
           {
-            networking.hostId = minimalHostId;
-            # networking.hostName is composed inside bringup-minimal-system.nix
-            # as "${hostProfile.hostName}-nixos" so the bringup guest carries
-            # the same composite identity the runtime uses (via lima-host.nix).
+            # Placeholder hostId.  Real value is set at first boot by
+            # cloud-init writing /etc/hostid.  ZFS pool import survives
+            # any hostId because zfs.nix sets boot.zfs.forceImportRoot.
+            networking.hostId = "00000000";
+            # networking.hostName comes from bringup-minimal-system.nix
+            # (literal "nerd-nixos"); cloud-init's `hostname:` directive
+            # overrides at first boot.
             system.stateVersion = "25.11";
 
             # Disko configuration - needed for zfs.nix to generate fileSystems
             disko.devices = diskoConfiguration.devices;
 
-            # Pass full system path as a plain string (unsafeDiscardStringContext strips
-            # the derivation edge so the runtime closure is NOT pulled into the bringup
-            # image). Cloud-init userdata is seeded via nocloud xchg virtio-9p share and
-            # bakes these values at eval time — no kernel params needed.
             _module.args.ndh = {
               context = {
                 generationMode = "bringup";
+                # vmProvider is fleet-uniform (Tart today; Lima legacy).
+                # Picking the operator's chosen provider is fine since
+                # the bringup config doesn't dispatch on it.
                 vmProvider = selectedVmProvider;
                 nixBashTrampoline = ndhNixBashTrampoline;
-                # hostProfile: consumed by .common.d/sops.nix (vmProvider fallback)
-                # and profile.nix. Keep minimal.
-                inherit hostProfile;
-                # catalog: profile.nix reads catalog.user. Pass only the
-                # user sub-tree to avoid pulling the full inventory.
+                # catalog: profile.nix reads catalog.user.  Pass only
+                # the user sub-tree.  No host-scoped catalog material.
                 catalog = { inherit (catalog) user; };
-                # inventory: ssh-keys-enrichment reads inventory.hosts for the
-                # comma-separated host list that seeds authorized_principals.
+                # inventory: ssh-keys-enrichment reads inventory.hosts
+                # for the comma-separated host list that seeds
+                # authorized_principals.  Same on every host —
+                # the fleet's allow-list of registered hosts.
                 inherit inventory;
-                # runtimeSystemPath: unsafeDiscardStringContext strips the derivation edge
-                # so the full runtime system is NOT pulled into the bringup closure.
-                runtimeSystemPath = builtins.unsafeDiscardStringContext (builtins.toString fullSystemPath);
-                # Connect as the `nix-store` user: a system user provisioned
-                # symmetrically on NixOS and Darwin via
-                # modules/.common.d/nix-store-identity.nix. Its login shell
-                # execs `nix-daemon --stdio`, and its cert (principal
-                # `nix-store`) is matched by sshd.
-                #
-                # Use ssh-ng:// (not ssh://): the nix-store-shell exec's
-                # nix-daemon --stdio, which speaks the new daemon protocol.
-                # Legacy ssh:// expects to spawn shell commands (cat,
-                # nix-store --export) and fails with "protocol mismatch"
-                # against a daemon-speaking stdio endpoint.
-                #
-                # Use the `nix-store.<host>` ssh alias rendered into
-                # /etc/ssh/ssh_config.d/75-nix-store.conf by
-                # modules/.common.d/nix-store-identity.nix. The alias
-                # carries User, IdentityFile, CertificateFile and
-                # HostName<host>.lan in one place; hardcoding
-                # `nix-store@<host>.local` here bypasses the alias and
-                # loses the cert-signed auth wiring.
-                remoteStore = "ssh-ng://nix-store.${hostProfile.hostName}";
                 bringupRuntimePackage = ndhBootstrapRuntimePackageLinux;
                 # Must match the path the bootstrap trampoline reads in
-                # modules/.common.d/shell.d/nix-bash-trampoline.sh (`ndh::bootstrap:profile:dir`)
-                # and the module default in
-                # modules/.common.d/io-nxmatic-nix-darwin-home-bringup-runtime.nix:151.
+                # modules/.common.d/shell.d/nix-bash-trampoline.sh
+                # (`ndh::bootstrap:profile:dir`) and the module default
+                # in modules/.common.d/io-nxmatic-nix-darwin-home-bringup-runtime.nix.
                 bringupRuntimeProfilePath = "/nix/var/nix/profiles/per-user/root/io-nxmatic-nix-darwin-home-bringup-runtime";
               };
               store = ndhStoreApiLinux;
@@ -294,8 +274,9 @@ let
         ];
       };
 
-      # Minimal system uses selected VM provider from host profile
-      # No need for separate Lima/Tart variants since vmProvider is already set
+      # The bringup config is identity-less, so the lima/tart variants
+      # produce identical store paths (Nix dedups).  Aliases retained
+      # for source-level clarity at the call sites.
       limaBringupSystemdZfs = minimalBringupSystemBase;
       tartBringupSystemdZfs = minimalBringupSystemBase;
 

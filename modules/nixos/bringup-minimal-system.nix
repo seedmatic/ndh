@@ -10,12 +10,13 @@
 }:
 let
   ndhContext = if ndh != null then ndh.context else { };
-  baseHostName = ndhContext.hostProfile.hostName or "host";
-  # Compose the guest identity to match the runtime convention
-  # (modules/.common.d/lima-host.nix: "${hostName}-${guestName}", guestName = "nixos").
-  # Keeping the suffix here rather than importing lima-host.nix preserves the
-  # minimal image's small module surface.
-  guestHostName = "${baseHostName}-nixos";
+  # Generic identity baked into the image.  The bringup image is bit-
+  # identical for every host on the fleet; per-host identity (real
+  # hostname, ZFS hostId, host-scoped sops material) is injected by
+  # the per-host Tart bootstrap installer at first boot via cloud-init
+  # userdata.  See docs/bringup-image-unification.adoc for the design
+  # and modules/darwin/tart-config.nix for the per-host installer.
+  guestHostName = "nerd-nixos";
 in
 {
   # Minimal NixOS system for bringup — installs into ZFS pools, boots, then
