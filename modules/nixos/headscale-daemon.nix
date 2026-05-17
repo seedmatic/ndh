@@ -52,15 +52,24 @@ let
       mode: file
       path: ${headscaleCatalog.aclPolicyFile}
 
+    # DNS: MagicDNS provides automatic host records.  Split DNS
+    # delegates the per-host structured-name subzones to each host's
+    # own dnsmasq (modules/darwin/dnsmasq-tailnet.nix on Darwin) so
+    # only matching queries hit the host's resolver; everything else
+    # uses the global resolvers.  See the Darwin peer at
+    # modules/darwin/headscale-daemon.nix for the canonical comment.
     dns:
       magic_dns: true
       base_domain: mammoth-skate.ts.net
       nameservers:
         global:
-          - 100.64.0.1
-          - 100.64.0.2
           - 1.1.1.1
           - 8.8.8.8
+        split:
+          bioskop.mammoth-skate.ts.net:
+            - 100.64.0.1
+          nikopol.mammoth-skate.ts.net:
+            - 100.64.0.2
 
     log:
       level: info

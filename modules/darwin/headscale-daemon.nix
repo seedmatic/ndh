@@ -155,21 +155,24 @@ let
       mode: file
       path: ${headscaleCatalog.aclPolicyFile}
 
-    # DNS: MagicDNS provides automatic host records (bioskop.mammoth-skate.ts.net
-    # → tailnet IP). Additional nameservers point to each host's tailnet IP
-    # where dnsmasq serves CNAME records for structured names:
-    #   - 100.64.0.1 (bioskop): rdp.bioskop.ts.net, vz-host.bioskop.ts.net
-    #   - 100.64.0.2 (nikopol): rdp.nikopol.ts.net, vz-host.nikopol.ts.net
-    # Query order: MagicDNS → host-specific dnsmasq → public DNS.
+    # DNS: MagicDNS provides automatic host records
+    # (bioskop.mammoth-skate.ts.net → tailnet IP).  Split DNS delegates
+    # the per-host structured-name subzones to each host's own dnsmasq
+    # (modules/darwin/dnsmasq-tailnet.nix) so only matching queries
+    # (e.g. rdp.bioskop.mammoth-skate.ts.net) are routed there;
+    # everything else uses the global resolvers.
     dns:
       magic_dns: true
       base_domain: mammoth-skate.ts.net
       nameservers:
         global:
-          - 100.64.0.1
-          - 100.64.0.2
           - 1.1.1.1
           - 8.8.8.8
+        split:
+          bioskop.mammoth-skate.ts.net:
+            - 100.64.0.1
+          nikopol.mammoth-skate.ts.net:
+            - 100.64.0.2
 
     # Logging: journal-style, info level, stderr so launchd captures
     # into ~/Library/Logs.
