@@ -10,8 +10,6 @@
     "Ethernet"
     "USB 10/100/1000 LAN"
     "Wi-Fi"
-    "Tailscale"
-    "Tailscale 2"
     "Thunderbolt Bridge"
   ];
 }
