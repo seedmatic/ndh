@@ -4,12 +4,18 @@
 # wrapper runs shellcheck over the whole script at build time.
 #
 # Subcommands:
-#   hs check         Read-only reconcile between `.secrets` and the
-#                    live headscale server.  Runs from every Darwin
-#                    activation (timeout-capped, warn-only).
-#   hs mint [...]    Operator-only: mint missing per-kind preauth
-#                    keys and write them back into `.secrets`.
-#                    Never runs automatically.
+#   hs check                    Read-only reconcile between `.secrets`
+#                               and the live headscale server.  Runs
+#                               from every Darwin activation
+#                               (timeout-capped, warn-only).
+#   hs mint [...]               Operator-only: mint missing per-kind
+#                               preauth keys and write them back into
+#                               `.secrets`.  Never runs automatically.
+#   hs verify-extra-records     Drift check between the catalog's
+#                               hardcoded tailnet IPs (baked into
+#                               headscale's `extra_records`) and the
+#                               live `headscale node list`.  Run
+#                               manually after registering a node.
 #
 # Anything else is forwarded to the `headscale` CLI with the right
 # transport: local unix socket on the primary host (no API key
@@ -22,6 +28,12 @@ API_KEY_FILE="@API_KEY_FILE@"
 HEADSCALE_HOSTNAME="@HEADSCALE_HOSTNAME@"
 EXPECTED_USER="@EXPECTED_USER@"
 MINT_EXPIRATION="@MINT_EXPIRATION@"
+# JSON map of expected tailnet IPs by hostname, baked from
+# catalog.netplan.tailnet.hosts at build time.  Shape:
+#   {"bioskop":"100.64.0.1","nikopol":"100.64.0.2"}
+# Consumed by `hs verify-extra-records` to diff the catalog assumption
+# against the live `headscale node list`.
+EXPECTED_TAILNET_IPS_JSON='@EXPECTED_TAILNET_IPS_JSON@'
 
 # `.secrets` lives in the operator's worktree — NOT in the nix-store
 # snapshot of the flake (that's read-only and gets purged on GC).
@@ -174,6 +186,69 @@ hs::cmd::check() {
 	hs::check::user_exists
 	hs::check::preauth_keys "$sops_file"
 	log::info "reconcile check complete"
+}
+
+# ---------------------------------------------------------------------
+# Subcommand: verify-extra-records
+# ---------------------------------------------------------------------
+#
+# Read-only drift check between the catalog's hardcoded
+# `tailnet.hosts.<key>.ip` (baked into headscale's `extra_records` at
+# build time) and the live IPs headscale actually assigned.
+#
+# Headscale 0.28 has no IP-reservation feature: nodes get sequential
+# (or random) IPs from the prefix at registration time.  The catalog
+# assumes bioskop=100.64.0.1, nikopol=100.64.0.2 because they were
+# registered in that order; if a node is re-registered, the assumption
+# can drift silently.  This command surfaces the drift so the operator
+# can either fix the catalog or reset the headscale DB.
+#
+# Returns 0 when every catalog host matches the live IP (or is missing
+# from the server entirely — we warn but don't fail since a host may
+# legitimately not be registered yet).  Returns 1 when at least one
+# host on the server has an IP different from what the catalog claims.
+
+hs::cmd::verify-extra-records() {
+	hs::check::server_reachable || return 1
+
+	local nodes_json
+	nodes_json="$(hs::headscale nodes list --output json 2>/dev/null)" || {
+		log::error "headscale nodes list failed"
+		return 1
+	}
+
+	local mismatches=0 missing=0 ok=0
+	local hostName expectedIp actualIp
+
+	# Iterate the catalog's expectation map; per host, look up the live
+	# IPv4 in the server's node list and compare.  The given_name field
+	# is what headscale uses as the node hostname (set at registration).
+	while IFS=$'\t' read -r hostName expectedIp; do
+		[ -n "$hostName" ] || continue
+		actualIp="$(printf '%s' "$nodes_json" |
+			yq eval -r --output-format=json \
+				".[] | select(.given_name == \"$hostName\") | .ip_addresses[]" - 2>/dev/null |
+			grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1 || true)"
+
+		if [ -z "$actualIp" ]; then
+			log::warn "host '${hostName}' (catalog: ${expectedIp}) is not registered on the server yet"
+			missing=$((missing + 1))
+			continue
+		fi
+
+		if [ "$expectedIp" != "$actualIp" ]; then
+			log::error "host '${hostName}': catalog says ${expectedIp}, server has ${actualIp} → extra_records will point traffic at the wrong tailnet IP"
+			mismatches=$((mismatches + 1))
+			continue
+		fi
+
+		log::info "host '${hostName}': ${expectedIp} ✓"
+		ok=$((ok + 1))
+	done < <(printf '%s' "$EXPECTED_TAILNET_IPS_JSON" |
+		yq eval -p json -o tsv 'to_entries | .[] | [.key, .value]' -)
+
+	log::info "verify-extra-records summary: ok=${ok} missing=${missing} mismatches=${mismatches}"
+	[ "$mismatches" -eq 0 ]
 }
 
 # ---------------------------------------------------------------------
@@ -340,8 +415,9 @@ hs::usage() {
 		usage: hs <subcommand> [args...]
 
 		Fleet subcommands:
-		  check              read-only reconcile between .secrets and the server
-		  mint [--force] ... mint missing per-kind preauth keys into .secrets
+		  check                  read-only reconcile between .secrets and the server
+		  mint [--force] ...     mint missing per-kind preauth keys into .secrets
+		  verify-extra-records   diff catalog tailnet.hosts IPs against headscale's live assignment
 
 		Any other arg list is forwarded to the headscale CLI with the
 		right admin transport (local unix socket on the primary host,
@@ -366,6 +442,10 @@ main() {
 		mint)
 			shift
 			hs::cmd::mint "$@"
+			;;
+		verify-extra-records)
+			shift
+			hs::cmd::verify-extra-records "$@"
 			;;
 		-h | --help | help)
 			hs::usage

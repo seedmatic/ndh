@@ -47,6 +47,17 @@ let
   # mammoth-skate CA's lifetime so a full re-key is a single sweep.
   mintExpiration = "10y";
 
+  # Catalog's hardcoded tailnet IPs, baked into the script as a JSON
+  # map so `hs verify-extra-records` can diff them against the live
+  # `headscale node list`.  Source of truth is
+  # catalog.netplan.tailnet.hosts.<key>.ip — same data the
+  # extra_records renderer in
+  # modules/{darwin,nixos}/headscale-daemon.nix consumes.
+  expectedTailnetIpsJson = builtins.toJSON (
+    lib.mapAttrs (_: hostSpec: hostSpec.ip)
+      (ndh.context.catalog.netplan.tailnet.hosts or { })
+  );
+
   # Default gRPC host:port for remote-admin mode.  Only consulted
   # when we can't reach the daemon via its local unix socket and
   # the operator didn't set HEADSCALE_CLI_ADDRESS by hand.  The
@@ -65,6 +76,7 @@ let
     HEADSCALE_HOSTNAME = hsHostname;
     EXPECTED_USER = expectedUser;
     MINT_EXPIRATION = mintExpiration;
+    EXPECTED_TAILNET_IPS_JSON = expectedTailnetIpsJson;
   };
 
   hsBin = pkgs.writeShellApplication {
