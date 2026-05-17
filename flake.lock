@@ -282895,6 +282895,7 @@
           "socket-vmnet"
         ],
         "sops-nix": "sops-nix",
+        "tailscale-fork": "tailscale-fork",
         "treefmt-nix": "treefmt-nix_231",
         "zen-browser": [
           "flake-commons",
@@ -307443,6 +307444,23 @@
       "original": {
         "owner": "nix-systems",
         "repo": "default",
+        "type": "github"
+      }
+    },
+    "tailscale-fork": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1779027048,
+        "narHash": "sha256-1FiYYvmCcECFM99W2eX5tl6wy9V9/TKfnTWpsMM3u9c=",
+        "owner": "nxmatic",
+        "repo": "tailscale",
+        "rev": "fd16461efb1f33abf7f1ca0b4ae0116ff9693e72",
+        "type": "github"
+      },
+      "original": {
+        "owner": "nxmatic",
+        "ref": "nxmatic/feature/extra-records-cname",
+        "repo": "tailscale",
         "type": "github"
       }
     },

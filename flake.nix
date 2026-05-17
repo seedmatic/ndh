@@ -46,6 +46,15 @@
     impermanence.follows = "flake-commons/impermanence";
     incus-compose.follows = "flake-commons/incus-compose";
     sops-nix.url = "github:Mic92/sops-nix";
+
+    # Forked tailscale carrying the CNAME-in-extra_records patch (see
+    # overlays/tailscale.nix and the upstream PR tracked there).
+    # Pinned to a commit ref so the build is reproducible; bump the
+    # ref when a new patch revision lands.
+    tailscale-fork = {
+      url = "github:nxmatic/tailscale/nxmatic/feature/extra-records-cname";
+      flake = false;
+    };
   };
 
   outputs =
