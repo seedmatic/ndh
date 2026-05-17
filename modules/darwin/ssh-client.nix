@@ -277,8 +277,20 @@ in
           cfg.hostIdentityDomains.identityRelativePath
         else
           "${config.sshPaths.secretsKeysDir}/${cfg.hostIdentityDomains.identityRelativePath}";
-      vzHostAlias = if rawHost != "" then "vz.${rawHost}" else null;
-      vzHostName = if rawHost != "" then "${rawHost}-vz.lan" else null;
+      # `vzHost*` legacy bindings retired: they used to render a
+      # system-wide `Host vz.<host>` block with a hardcoded
+      # `HostName <host>-vz.lan`, but the .lan name was never
+      # resolvable for either fleet host (bioskop has no separate VZ
+      # host, nikopol's bare metal is on a corp network the bbox
+      # can't reach).  The replacement lives in two places:
+      #   - The nikopol VM's hm.programs.ssh.matchBlocks at
+      #     hosts/nikopol/modules/darwin/vz-host-resolver.nix uses an
+      #     ARP-cache resolver to find the bare metal's current IP.
+      #   - Bioskop and other operator hosts get a ProxyJump=nikopol
+      #     block via vzAliasForBioskopSide in
+      #     modules/home-manager/ssh-tailnet-hosts.nix.
+      # Leaving these symbols defined-but-empty keeps allExtraStanzas's
+      # concat shape unchanged.
 
       renderStanza =
         st:
@@ -319,22 +331,8 @@ in
         extraConfig = ownedDomainHostKeyBypassConfig;
       };
 
-      # Canonical VZ host aliases derived from profile host/user metadata.
-      # This ensures daemon/nixbld SSH behavior does not rely on per-user ~/.ssh/config.
-      vzHostStanzas = optional (vzHostAlias != null && vzHostName != null) {
-        patterns = [
-          vzHostAlias
-          "vz-host"
-        ];
-        user = userName;
-        identityFile = hostIdentityFile;
-        identitiesOnly = true;
-        bypassAgent = true;
-        extraConfig = ''
-          HostName ${vzHostName}
-          PreferredAuthentications publickey
-        '';
-      };
+      # Retired — see comment at vzHost* near line 280.
+      vzHostStanzas = [ ];
 
       # Off-LAN SSH via the WAN port-forward table in the netplan catalog.
       # For every entry in `catalog.netplan.wan.portForwards` whose
