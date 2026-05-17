@@ -17,8 +17,6 @@
     ./disable-spotlight.nix
     ./disable-google-updaters.nix
     ./disable-unwanted-agents.nix
-    ./dnsmasq.nix
-    ./dnsmasq-tailnet.nix
     ./headscale.nix
     ./headscale-daemon.nix
     ./headscale-client-kind.nix
@@ -48,7 +46,6 @@
     ./bringup-observe.nix
     ./tailscale-vnc-forward.nix
     ./tls-authority-keychain.nix
-    ./dns-zone-mammoth-skate-resolver.nix
   ];
 
   # Active le résolveur .lan par défaut (modifiable par hôte)

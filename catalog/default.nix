@@ -38,51 +38,30 @@
         };
       };
 
-      # LAN-internal DNS zone served closed-world by bioskop's dnsmasq.
-      # Names rendered from `hosts` below follow the structured shape
-      #
-      #     <service>.<host>.<zone>
-      #
-      # mirroring the SSH alias convention from
-      # modules/home-manager/ssh-tailnet-hosts.nix.  See
-      # modules/.common.d/dns-zone-mammoth-skate.nix for the renderer.
-      zone = "mammoth-skate.test";
-
       # Static DHCP reservations on `mammoth-skate`.  Source of truth
       # for the catalog; reconciled against the bbox via the
       # `bbox-reconcile` script which reads /api/v1/dhcp/clients and
       # diffs against this map.
       #
+      # Tailnet-side DNS for these hosts (when relevant) lives in
+      # `tailnet.hosts` below — that's the input to headscale's
+      # `dns.extra_records` and the only DNS surface that exists today.
+      # The previous `.test` zone served by per-host dnsmasq has been
+      # retired (see commits 98c4d9c7+).
+      #
       # Schema:
       #   mac    — primary key for bbox reconciliation
-      #   ip     — static reservation IP
+      #   ip     — static reservation IP (LAN, not tailnet)
       #   kind   — role for downstream consumers; values:
       #              darwin-host  → top-level RDP-able Mac
       #              nixos        → NixOS guest VM
       #              vz-host      → bare-metal VZ bridge interface
       #              rke2         → RKE2 cluster member (requires `role`)
-      #              wifi-iface   → wifi NIC (skipped by DNS zone)
+      #              wifi-iface   → wifi NIC
       #   parent — top-level host this entry belongs under (omitted for
       #            top-level hosts themselves).
       #   role   — local label within `kind` (only used by `kind=rke2`
       #            today: master / peer{1,2,3} / worker{1,2}).
-      #
-      # FQDN composition (see dns-zone-mammoth-skate.nix):
-      #
-      #   top-level host (no parent):
-      #       rdp-host.<key>.<zone>     A      <ip>
-      #
-      #   nested host (parent set):
-      #     <kind not rke2>:
-      #       <kind>.<parent>.<zone>     A      <ip>
-      #     <kind = rke2>:
-      #       <role>.rke2.<parent>.<zone>  A   <ip>
-      #
-      #   wifi-iface entries are skipped.
-      #
-      # Top-level hosts also get a CNAME from <key>.<zone> to the
-      # canonical rdp-host record so muscle-memory `dig bioskop.<zone>`
-      # resolves.
       hosts = {
         # bioskop: bare-metal Mac (the daily driver), top-level.
         bioskop = {

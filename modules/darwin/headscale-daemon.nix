@@ -43,13 +43,12 @@ let
   # modules/.common.d/headscale-pkg.nix.
   headscalePkg = config.ndh.headscalePkg;
 
-  # Clients resolve `aliasName` to the host currently holding
-  # role = "primary" via the closed-world `mammoth-skate.test`
-  # dnsmasq zone (see modules/.common.d/dns-zone-mammoth-skate.nix);
-  # the daemon itself is told to issue certificates and registration
+  # Clients resolve `aliasName` (= `mammoth-skate.duckdns.org`) over
+  # public DNS to the WAN address the Bbox port-forwards to bioskop:41841.
+  # The daemon itself is told to issue certificates and registration
   # URLs under that same alias, so a standby→primary flip on a
-  # different host is transparent at the tailnet level (same
-  # server_url, new A-record target).
+  # different host is transparent at the tailnet level (the WAN port-
+  # forward target moves; the alias does not).
   serverUrl = headscaleCatalog.aliasUrl;
 
   tailnetCfg = catalog.netplan.tailnet;
@@ -130,12 +129,11 @@ let
   # flake closure, immutable per generation.
   #
   # TLS notes (server.tls_cert_path/tls_key_path below):
-  #   - The cert is a `mammoth-skate`-signed x509 leaf with SANs for
-  #     both the DuckDNS domain (mammoth-skate.duckdns.org) and the
-  #     .test zone (headscale.mammoth-skate.test).  Clients trust it
-  #     via the CA cert committed at `authorities.mammoth-skate.ca_crt`
-  #     in keys.yaml, installed into each client's system trust store
-  #     by the client module.
+  #   - The cert is a `mammoth-skate`-signed x509 leaf carrying the
+  #     DuckDNS domain (mammoth-skate.duckdns.org) as its SAN.  Clients
+  #     trust it via the CA cert committed at
+  #     `authorities.mammoth-skate.ca_crt` in keys.yaml, installed into
+  #     each client's system trust store by the client module.
   #   - TLS is required because modern tailscale clients force the
   #     Noise upgrade onto HTTPS:443 after any failed plain-HTTP
   #     attempt (control/controlhttp/client.go's
@@ -257,10 +255,10 @@ in
         This host's role in the headscale bootstrap topology.
 
           primary — run the daemon as the fleet's headscale instance.
-                    The closed-world `mammoth-skate.test` dnsmasq zone
-                    (catalog-driven) maps `headscale.<zone>` to the
-                    primary's IP.  Exactly one host should be primary
-                    at a time.
+                    Clients reach the daemon via the WAN-facing
+                    `mammoth-skate.duckdns.org:41841` alias (Bbox port-
+                    forwarded to the primary's bioskop tcp/41841).
+                    Exactly one host should be primary at a time.
           standby — install the headscale CLI + config but do NOT run
                     the daemon.  Intended for a host that takes over
                     by manually flipping its role to "primary" (and
@@ -270,9 +268,10 @@ in
           none    — do nothing.  Host neither runs the daemon nor
                     serves the alias.
 
-        Flip roles by editing host profile, updating the dnsmasq zone
-        target if the IP differs, committing, and rolling out
-        `darwin-rebuild switch` on both affected hosts.
+        Flip roles by editing host profile, updating the WAN port-
+        forward target if the new primary lives on a different host,
+        committing, and rolling out `darwin-rebuild switch` on both
+        affected hosts.
       '';
     };
   };
@@ -305,9 +304,9 @@ in
     # Primary-only: the headscale daemon LaunchAgent.  Must run on
     # exactly one host at a time; the `role = "primary"` gate
     # enforces this per-host, and the operator is responsible for
-    # not flipping two hosts to primary simultaneously.  The
-    # `headscale.mammoth-skate.test` alias is served by bioskop's
-    # dnsmasq zone (see modules/.common.d/dns-zone-mammoth-skate.nix).
+    # not flipping two hosts to primary simultaneously.  Tailnet
+    # clients reach the daemon via the public `aliasUrl` (DuckDNS →
+    # Bbox WAN port-forward); see modules/darwin/headscale.nix.
     (mkIf (cfg.role == "primary") {
       launchd.user.agents.headscale-bootstrap = {
         command = "${headscaleLauncher}";
@@ -327,16 +326,13 @@ in
         };
       };
 
-      # The mDNS alias publisher (`headscale-mdns-publish` /
-      # `dns-sd -P`) was retired 2026-05-16 once the closed-world
-      # `mammoth-skate.test` dnsmasq zone took over publishing
-      # `headscale.mammoth-skate.test`.  See
-      # modules/.common.d/dns-zone-mammoth-skate.nix for the renderer
-      # and docs/sessions/2026-05-16-...adoc for the migration log.
-      # The Go publisher at packages/ndh-mdns-publish/ is still
-      # consumed by the NixOS peer module (different mechanism:
-      # avahi-daemon) — left intact for the future RKE2-hosted
-      # headscale scenario where a NixOS host serves the alias.
+      # The mDNS alias publisher (`headscale-mdns-publish`) was
+      # retired earlier this fleet when alias resolution moved to
+      # public DNS via DuckDNS + Bbox port-forward.  The Go publisher
+      # at packages/ndh-mdns-publish/ is still consumed by the NixOS
+      # peer module (via avahi-daemon) — left intact for a future
+      # RKE2-hosted headscale scenario where a NixOS host might
+      # serve a legacy alias.
     })
   ];
 }

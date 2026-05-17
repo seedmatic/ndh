@@ -145,7 +145,6 @@ let
     ./headscale-client-kind.nix
     ./nix-ld.nix
     ./resolved-lan.nix
-    ./dnsmasq.nix
     ./avahi.nix
     ./code-server.nix
     ./nfs-autofs.nix
