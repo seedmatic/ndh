@@ -185,6 +185,43 @@
     tailnet = {
       cidr = "100.64.0.0/10";
       domain = ".mammoth-skate.ts.net";
+
+      # Tailnet members and the structured-name service prefixes each
+      # exposes.  Consumed by modules/{darwin,nixos}/headscale-daemon.nix
+      # to render headscale `dns.extra_records` (A records) for every
+      # `<service>.<host>.mammoth-skate.ts.net`.
+      #
+      # MagicDNS already provides `<host>.mammoth-skate.ts.net` itself
+      # (the bare-host A record), so only the service prefixes need
+      # explicit records.  Tailscaled answers `extra_records` directly
+      # before any nameserver lookup, so no per-host dnsmasq is needed.
+      #
+      # Note: headscale's `extra_records` only supports A/AAAA, not
+      # CNAME (per its config-example.yaml).  Each entry below renders
+      # one A record per service prefix → that host's tailnet IP.
+      hosts = {
+        bioskop = {
+          ip = "100.64.0.1";
+          serviceNames = [
+            "rdp"
+            "vz-host"
+            "ssh-host"
+            # Phase A bootstrap: the headscale primary lives on
+            # bioskop, so `headscale.bioskop.<zone>` resolves to the
+            # bare-metal Mac itself.  Phase B (cluster) will move this
+            # alias onto the RKE2 ingress.
+            "headscale"
+          ];
+        };
+        nikopol = {
+          ip = "100.64.0.2";
+          serviceNames = [
+            "rdp"
+            "vz-host"
+            "ssh-host"
+          ];
+        };
+      };
     };
     # Internet-facing anchor: Bouygues Telecom (Bbox) residential
     # connection, dynamic public IPv4 tracked by Duck DNS at
