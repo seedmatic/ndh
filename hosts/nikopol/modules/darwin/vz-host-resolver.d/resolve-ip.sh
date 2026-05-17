@@ -19,11 +19,14 @@
 # default-route broadcast first to provoke an ARP exchange, then
 # retries the lookup.
 #
+# This script is invoked from SSH's `ProxyCommand` substitution and
+# its stdout MUST be a clean IPv4 literal (no logger framing, no
+# diagnostics).  Diagnostics go to stderr only, where SSH ignores
+# them.  The trampoline is intentionally NOT sourced here — the
+# logger wrapper would muddy stdout.
+#
 # Tokens substituted at build time by pkgs.replaceVars:
 #   @bareMetalMac@ — the bare metal's stable hardware MAC.
-
-# shellcheck disable=SC1091
-source @nixBashTrampoline@
 
 main() {
 	local mac="@bareMetalMac@"
@@ -50,52 +53,25 @@ main() {
 
 # Inspect the local ARP cache for a row matching the requested MAC,
 # return the dotted-quad IP without parens.  Empty stdout on miss.
+#
+# `arp -an` rows look like:
+#   ? (10.0.0.27) at 52:2d:10:fa:5a:1c on en0 ifscope [ethernet]
+# Field 2 is the parenthesised IP, field 4 is the MAC.  macOS's
+# `arp` does NOT strip leading zeros (verified empirically on
+# Darwin 25.x), so a literal lowercase-hex compare suffices —
+# previous iterations of this resolver had a normalisation pass
+# that introduced its own off-by-one bug.
 ndh::vzHostResolver:lookup() {
-	local mac="$1"
-	# `arp -an` rows look like:
-	#   ? (10.0.0.27) at 52:2d:10:fa:5a:1c on en0 ifscope [ethernet]
-	# Field 2 is the parenthesised IP, field 4 is the MAC.  macOS's
-	# `arp` truncates leading zeroes per octet (so the catalog MAC
-	# `0a:bc:…` would show as `a:bc:…`).  Normalize both sides to
-	# bytewise lowercase hex with no leading zeroes for comparison.
-	local target
-	target="$(ndh::vzHostResolver:normalizeMac "$mac")"
-
-	arp -an 2>/dev/null | awk -v target="$target" '
+	local mac="${1,,}"
+	arp -an 2>/dev/null | awk -v target="$mac" '
 		{
 			gsub(/[()]/, "", $2)
-			# Field 4 is the MAC; normalise to match.
-			n = split($4, octets, ":")
-			normalised = ""
-			for (i = 1; i <= n; i++) {
-				gsub(/^0+/, "", octets[i])
-				if (octets[i] == "") octets[i] = "0"
-				normalised = normalised (i == 1 ? "" : ":") tolower(octets[i])
-			}
-			if (normalised == target) {
+			if (tolower($4) == target) {
 				print $2
 				exit
 			}
 		}
 	'
-}
-
-# Same normalisation in pure bash so we can call it on the input MAC.
-ndh::vzHostResolver:normalizeMac() {
-	local raw="$1" out=""
-	local IFS=:
-	# shellcheck disable=SC2206
-	local octets=($raw)
-	local i octet
-	for ((i = 0; i < ${#octets[@]}; i++)); do
-		octet="${octets[$i]}"
-		# Strip leading zeroes; coerce empty to "0".
-		while [[ "${octet:0:1}" == "0" && ${#octet} -gt 1 ]]; do
-			octet="${octet:1}"
-		done
-		out+="${i:+:}${octet,,}"
-	done
-	printf '%s\n' "$out"
 }
 
 # Compute the broadcast address for en0's primary IPv4.  Used to
@@ -108,4 +84,4 @@ ndh::vzHostResolver:broadcastAddr() {
 	printf '%s\n' "${bcast:-255.255.255.255}"
 }
 
-ndh::logger:command:run hosts.nikopol.vz-host-resolver main "$@"
+main "$@"

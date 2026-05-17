@@ -41,7 +41,6 @@ let
   resolveScript = ndh.store.installScript {
     name = "nikopol-vz-host-resolve-ip.sh";
     source = pkgs.replaceVars ./vz-host-resolver.d/resolve-ip.sh {
-      nixBashTrampoline = ndh.context.nixBashTrampoline;
       bareMetalMac = bareMetalMac;
     };
     preferLocalBuild = true;
