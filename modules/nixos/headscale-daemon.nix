@@ -38,15 +38,15 @@ let
 
   # Same `extra_records` shape as the Darwin peer at
   # modules/darwin/headscale-daemon.nix — see that module for the
-  # design rationale (catalog → A records → tailscaled-served, no
-  # per-host dnsmasq).
+  # design rationale (catalog → CNAME → MagicDNS-resolved tailnet IP,
+  # served directly by tailscaled with no per-host dnsmasq).
   extraRecords = lib.concatLists (
     lib.mapAttrsToList (
       hostKey: hostSpec:
       map (svc: {
         name = "${svc}.${hostKey}.${baseDomain}";
-        type = "A";
-        value = hostSpec.ip;
+        type = "CNAME";
+        value = "${hostKey}.${baseDomain}";
       }) hostSpec.serviceNames
     ) (tailnetCfg.hosts or { })
   );

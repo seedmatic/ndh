@@ -167,20 +167,23 @@
 
       # Tailnet members and the structured-name service prefixes each
       # exposes.  Consumed by modules/{darwin,nixos}/headscale-daemon.nix
-      # to render headscale `dns.extra_records` (A records) for every
-      # `<service>.<host>.mammoth-skate.ts.net`.
+      # to render headscale `dns.extra_records` as CNAME entries:
+      # `<service>.<host>.mammoth-skate.ts.net` → `<host>.mammoth-skate.ts.net`.
       #
-      # MagicDNS already provides `<host>.mammoth-skate.ts.net` itself
-      # (the bare-host A record), so only the service prefixes need
-      # explicit records.  Tailscaled answers `extra_records` directly
-      # before any nameserver lookup, so no per-host dnsmasq is needed.
+      # MagicDNS already provides the bare-host A record
+      # (`<host>.mammoth-skate.ts.net` → tailnet IP), so the CNAME
+      # chain ends at MagicDNS — no hardcoded IPs in the catalog.
+      # Tailscaled (patched, see overlays/tailscale.nix) chases the
+      # CNAME locally and emits one CNAME RR ahead of the resolved A
+      # in the answer.
       #
-      # Note: headscale's `extra_records` only supports A/AAAA, not
-      # CNAME (per its config-example.yaml).  Each entry below renders
-      # one A record per service prefix → that host's tailnet IP.
+      # `vz-host.nikopol` deliberately absent: the nikopol bare-metal
+      # host is company-managed and never joins the tailnet, so any
+      # tailnet record targeting it would be incorrect.  On-LAN access
+      # via the LAN IP (192.168.1.65 in netplan.lan.hosts.nikopol-vz)
+      # remains via mDNS / /etc/hosts as needed.
       hosts = {
         bioskop = {
-          ip = "100.64.0.1";
           serviceNames = [
             "rdp"
             "vz-host"
@@ -193,10 +196,8 @@
           ];
         };
         nikopol = {
-          ip = "100.64.0.2";
           serviceNames = [
             "rdp"
-            "vz-host"
             "ssh-host"
           ];
         };

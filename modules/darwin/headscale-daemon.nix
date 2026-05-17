@@ -101,21 +101,21 @@ let
     inherit pkgs ndh;
   };
 
-  # Render catalog.netplan.tailnet.hosts into the list shape expected by
-  # headscale's `dns.extra_records`.  Each (host, serviceName) pair
-  # becomes one A record like `rdp.bioskop.mammoth-skate.ts.net →
-  # 100.64.0.1`.  Tailscaled answers these directly from the
-  # MapResponse-pushed list, so no per-host dnsmasq is required.
-  # Headscale's `extra_records` only supports A/AAAA (per its
-  # config-example.yaml) — service-prefix CNAMEs are flattened into
-  # parallel A records here.
+  # Render catalog.netplan.tailnet.hosts into the list shape expected
+  # by headscale's `dns.extra_records`.  Each (host, serviceName) pair
+  # becomes one CNAME entry like
+  #   rdp.bioskop.mammoth-skate.ts.net  CNAME  bioskop.mammoth-skate.ts.net
+  # Tailscaled (patched, see overlays/tailscale.nix) chases the chain
+  # locally; MagicDNS resolves the bare-host name to its current
+  # tailnet IP at the end of the chain — no hardcoded IPs anywhere
+  # in this flake.
   extraRecords = lib.concatLists (
     lib.mapAttrsToList (
       hostKey: hostSpec:
       map (svc: {
         name = "${svc}.${hostKey}.${baseDomain}";
-        type = "A";
-        value = hostSpec.ip;
+        type = "CNAME";
+        value = "${hostKey}.${baseDomain}";
       }) hostSpec.serviceNames
     ) (tailnetCfg.hosts or { })
   );
