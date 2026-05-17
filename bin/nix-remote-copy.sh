@@ -6,20 +6,27 @@
 # Positional defaults:
 #   attr   = homeManagerConfigurations.bringup.activationPackage
 #   mode   = copy   (or: print / --print-out-path)
-#   target = rdp.nikopol
+#   target = vz.nikopol
 #
 # Environment override:
 #   NIX_REMOTE_COPY_TARGET
 #
-# Note: the previous default `vz-host.<host>` was retired (see catalog/
-# default.nix tailnet.hosts header).  `rdp.<host>` is the working alias
-# (renamed from `rdp-host.<host>` to stay consistent with the headscale
-# `dns.extra_records` service-name namespace).
+# `vz.<host>` targets the bare-metal Mac hosting the nikopol Tart VM.
+# Renamed from the historical `vz-host.<host>` for consistency with
+# the single-word service-prefix namespace (rdp.<host>, ssh-host.<host>,
+# headscale.<host>).  The alias resolves differently depending on
+# where this script runs:
+#   - On the nikopol VM: ARP-cache lookup of the bare metal's stable
+#     hardware MAC, on whatever Wi-Fi the laptop is currently on.
+#     See hosts/nikopol/modules/darwin/vz-host-resolver.nix.
+#   - On bioskop or any other operator host: ProxyJump=nikopol → the
+#     same resolver inside the VM.  See modules/home-manager/
+#     ssh-tailnet-hosts.nix's vzAliasForBioskopSide.
 
 host="${NDH_VZ_HOST:-nikopol}"
 attr="${1:-homeManagerConfigurations.${host}.bringup.activationPackage}"
 mode="${2:-copy}"
-target="${3:-${NIX_REMOTE_COPY_TARGET:-rdp.${host}}}"
+target="${3:-${NIX_REMOTE_COPY_TARGET:-vz.${host}}}"
 
 # Normalize legacy generic materializer attrs to host-scoped names.
 case "${attr}" in

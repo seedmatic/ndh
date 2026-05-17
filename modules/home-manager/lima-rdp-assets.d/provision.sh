@@ -15,8 +15,17 @@ main() {
   ln -sfn "${host_priv}" "${lima_config_dir}/user"
   ln -sfn "${host_pub}" "${lima_config_dir}/user.pub"
 
+  # TODO: this lima-instance ssh.config still uses the legacy
+  # `nikopol-vz.lan` hostname which doesn't resolve any more (the
+  # bare metal is on a corp network the bbox can't reach).  The
+  # alias name is updated to `vz`/`vz.nikopol` here for naming
+  # consistency, but the HostName needs migrating to the resolver-
+  # ProxyCommand shape used by hosts/nikopol/modules/darwin/
+  # vz-host-resolver.nix.  Lima provisioning runs in a context
+  # without the trampoline, so the migration is non-trivial; leaving
+  # the broken alias name updated for now.
   cat >"${lima_instance_dir}/ssh.config" <<'EOF'
-Host vz-host vz-host.nikopol
+Host vz vz.nikopol
   HostName nikopol-vz.lan
   User stephane.lacoin
   IdentityFile ~/.lima/_config/user

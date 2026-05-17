@@ -34,11 +34,22 @@ let
   # pinning.  The SSH cert *principal* stays `rdp-host` (server-side
   # identity, internal); only the operator-facing alias prefix is `rdp`.
   #
-  # The historical `vz-host.{host}` alias was retired: it pointed at
-  # `{host}-vz.lan`, but bioskop has no separate VZ host (the Mac runs
-  # bioskop directly) and nikopol's bare-metal Mac is on a company-
-  # managed network the bbox can't resolve.  Neither alias resolved
-  # to anything useful.
+  # `vz.{host}` is intentionally NOT in operatorAliasesForHost
+  # because there's no clean generic shape: it only makes sense for
+  # hosts that have a separate bare-metal layer (a Tart VM running
+  # this nikos config on top of a managed Mac), which today is only
+  # nikopol.  Bioskop's "bare metal" IS bioskop — there's no
+  # separate VZ host above it.
+  #
+  # The nikopol-specific alias is defined in two places, depending
+  # on which side originates the connection:
+  #   - On the nikopol VM itself: a matchBlock in
+  #     hosts/nikopol/modules/darwin/vz-host-resolver.nix uses an
+  #     ARP-cache resolver to find the bare metal's current IP on
+  #     whatever Wi-Fi the laptop is on.
+  #   - On every other host: see `vzAliasForBioskopSide` below — a
+  #     `ProxyJump=nikopol` block that delegates to the VM's
+  #     resolver.
   operatorAliasForService = host: serviceName: hostNameSuffix: ''
     Host ${serviceName}.${host}
       HostName ${host}${hostNameSuffix}
@@ -52,6 +63,31 @@ let
     ${operatorAliasForService host "rdp" ".local"}
     ${operatorAliasForService host "nixos" "-nixos.local"}
   '';
+
+  # `vz.nikopol` from bioskop / any other operator host: jump
+  # through the nikopol VM (which is on tailnet) and let its own
+  # matchBlock resolve the bare metal via local ARP.  Two-hop: the
+  # outer hop is tailnet (bioskop → nikopol), the inner hop is the
+  # local-segment hop (nikopol VM → bare metal).
+  #
+  # The `User stephane.lacoin` and `IdentityFile rdp-host` lines
+  # apply to the inner-hop authentication; the outer ssh hop uses
+  # whatever `Host nikopol` is configured with elsewhere.
+  vzAliasForBioskopSide = ''
+    Host vz.nikopol
+      ProxyJump nikopol
+      User stephane.lacoin
+      IdentityFile ${config.sshPaths.privKeyFile}
+      IdentitiesOnly yes
+      IdentityAgent none
+      PreferredAuthentications publickey
+  '';
+
+  # The current host's identity, used to gate the bioskop-side
+  # vz-host alias: we don't render it ON nikopol itself because the
+  # per-host module hosts/nikopol/modules/darwin/vz-host-resolver.nix
+  # already provides a matchBlock with the local-ARP resolver shape.
+  currentHostName = config._module.specialArgs.profile.host.hostName or "";
   tailnetDomain =
     if ndhContext ? catalog && ndhContext.catalog.netplan ? tailnet then
       ndhContext.catalog.netplan.tailnet.domain
@@ -108,5 +144,7 @@ in
           HostName ${tailnetAlias host}
       ''
     ) inventoryHostNames}
+
+    ${lib.optionalString (currentHostName != "nikopol") vzAliasForBioskopSide}
   '';
 }

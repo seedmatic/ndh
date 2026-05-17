@@ -175,15 +175,22 @@
       # CNAME locally and emits one CNAME RR ahead of the resolved A
       # in the answer.
       #
-      # The `vz-host` service prefix is intentionally retired.  It used
-      # to address the bare-metal Mac hosting a Tart VM, distinct from
-      # the VM itself, but no working SSH alias backs it: bioskop has
-      # no separate VZ host (the Mac runs bioskop directly), and the
-      # bare-metal Mac hosting nikopol lives on a company-managed
-      # network we don't run, so the bbox can't resolve a `-vz` name
-      # for it either.  Workflows that previously addressed the bare
-      # metal go through `rdp.<host>` (which targets the only Mac on
-      # each side) or are dropped.
+      # `vz.<host>` is intentionally absent from this DNS section.
+      # The SSH alias by the same name still exists for nikopol (only),
+      # but it doesn't go through tailnet DNS — the bare metal hosting
+      # nikopol can't be a tailnet member (corp-managed Mac, VPN binaries
+      # not allowed there), so a tailnet record targeting it would have
+      # nothing to resolve to.  Instead, the alias resolves at SSH-
+      # connection time:
+      #   - From the nikopol VM: ARP-cache lookup of the bare metal's
+      #     stable hardware MAC, on whatever Wi-Fi the laptop is on.
+      #     See hosts/nikopol/modules/darwin/vz-host-resolver.nix.
+      #   - From bioskop / any other operator host: ProxyJump=nikopol
+      #     to the VM, then the VM's own resolver.  See
+      #     modules/home-manager/ssh-tailnet-hosts.nix.
+      #
+      # Bioskop has no equivalent: it IS its own bare metal.  No
+      # `vz.bioskop` alias exists.
       hosts = {
         bioskop = {
           serviceNames = [

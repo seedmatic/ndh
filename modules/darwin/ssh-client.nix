@@ -277,7 +277,7 @@ in
           cfg.hostIdentityDomains.identityRelativePath
         else
           "${config.sshPaths.secretsKeysDir}/${cfg.hostIdentityDomains.identityRelativePath}";
-      vzHostAlias = if rawHost != "" then "vz-host.${rawHost}" else null;
+      vzHostAlias = if rawHost != "" then "vz.${rawHost}" else null;
       vzHostName = if rawHost != "" then "${rawHost}-vz.lan" else null;
 
       renderStanza =
