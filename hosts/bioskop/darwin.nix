@@ -27,6 +27,13 @@ in
     # primary.
     tailnet.headscale.api.enable = true;
 
+    # Tailnet DNS: serve headscale.bioskop.mammoth-skate.ts.net CNAME.
+    # Phase A (now): points to bioskop.mammoth-skate.ts.net (Darwin LaunchAgent).
+    # Phase B (future): cluster dnsmasq will override to point to RKE2 ingress.
+    networking.dnsZoneMammothSkateTailnet.extraCnames = {
+      headscale = "bioskop.mammoth-skate.ts.net";
+    };
+
     # Bioskop is the authoritative Duck DNS updater for the WAN
     # anchor recorded in catalog.netplan.wan.ddnsHostname.  nikopol
     # (a roaming laptop) does not attempt to track the home IP.
