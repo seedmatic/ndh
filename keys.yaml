@@ -188,12 +188,12 @@ keys:
     profiles:
       - user
     tls:
-      common_name: headscale.mammoth-skate.local
+      common_name: mammoth-skate.duckdns.org
       sans:
         dns:
-          - headscale.mammoth-skate.local
           - mammoth-skate.duckdns.org
           - headscale.mammoth-skate.test
+          - headscale.mammoth-skate.local
       not_after_days: 365
     annotations:
       public_scope: system
