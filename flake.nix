@@ -840,9 +840,11 @@
         // nixpkgs.lib.optionalAttrs (system == "aarch64-linux") (
           # Single shared bringup disk image — bit-identical for every
           # host, per docs/bringup-image-unification.adoc.  The bringup
-          # NixOS config is identity-less; per-host identity is
-          # injected at first boot via cloud-init userdata produced by
-          # the per-host Tart bootstrap installer.
+          # NixOS config is identity-less; per-host identity is set by
+          # the full-system push at activation time, not by the image
+          # bytes (the speculative cloud-init seed in the original plan
+          # turned out to be unnecessary — see Phase 4 verdict in the
+          # plan note).
           #
           # Picks an arbitrary host's `nixosDiskImageBringupSystemdZfs`
           # because the underlying derivation is the same regardless
@@ -850,25 +852,11 @@
           # closure no longer depends on hostProfile).  Nix dedups.
           let
             anyHostName = builtins.head (builtins.attrNames hostCatalog);
-            sharedBringupImage = hostOutputs.${anyHostName}.nixosDiskImageBringupSystemdZfs;
           in
           {
-            nerd-nixos-bringup-zfs-systemd-disk = sharedBringupImage;
+            nerd-nixos-bringup-zfs-systemd-disk =
+              hostOutputs.${anyHostName}.nixosDiskImageBringupSystemdZfs;
           }
-          // builtins.foldl' (
-            acc: hostName:
-            let
-              hostSpec = hostCatalog.${hostName};
-              mainName = hostMainNameForProfile hostSpec.hostProfile;
-            in
-            acc
-            // {
-              # Backwards-compat aliases pointing at the shared image.
-              # Drop after one rebuild cycle (Phase 6) once external
-              # consumers (`nix run`, CI, docs) have been updated.
-              "${mainName}-bringup-zfs-systemd-disk" = sharedBringupImage;
-            }
-          ) { } (builtins.attrNames hostCatalog)
         )
       );
 

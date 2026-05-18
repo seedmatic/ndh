@@ -267,5 +267,55 @@ so this works.
 
 == Status
 
-Plan landed 2026-05-16.  Implementation starts immediately after this
-note commits (Phase 2 onward).
+Plan landed 2026-05-16.
+
+Phases 2 + 3 landed 2026-05-17 in commit `1a64335e`
+("refactor(bringup): single shared nerd-nixos disk image,
+identity-less"), with per-host backwards-compat aliases retained.
+
+Phase 4 was reassessed empirically and **dropped as unnecessary**:
+the full-system push from the Mac (`nixos-rebuild switch
+--target-host`) carries the host-specific `networking.hostName` via
+the flake attribute being pushed (`.#bioskop-tart` /
+`.#nikopol-tart`); hostname injection happens at full-system
+activation, no cloud-init seed required.  The bringup-VM SSH target
+during the push is the generic `nerd-nixos.local` (mDNS-advertised
+by the bringup image's literal hostname).
+
+Phase 5 (verification) completed 2026-05-18 on bioskop:
+
+* `nix build .#nerd-nixos-bringup-zfs-systemd-disk` produced a
+  bit-identical image
+* The Tart VM booted from the shared image with hostname
+  `nerd-nixos`, mDNS advertised it as `nerd-nixos.local`
+* `nixos-rebuild switch --target-host root@nerd-nixos.local --flake
+  .#bioskop-tart` pushed the full system
+* The hostname flipped to `bioskop-nixos` at activation, the ZFS
+  root pool imported (root pool only — see ZFS hostid drift below)
+* After reboot, all systemd units came up clean; `tailscaled-
+  autoconnect` registered the node with `tag:headless,tag:nixos`
+* Cross-host reachability verified end-to-end:
+  `nikopol → bioskop-nixos` over the tailnet works without manual
+  intervention
+
+ZFS hostid drift surfaced as risk R2 in this note: extra (non-root)
+ZFS pools refused import on the bringup→full handoff because the
+bringup image carries hostid `00000000` and the full system's
+hostid differs.  Resolved in commit `2e3a9e4a` by setting
+`boot.zfs.forceImportAll = true`, which makes every pool import
+re-stamp its hostid label on the first hostid-mismatch.  One-shot
+operator action `sudo zpool import -f recover` was needed on
+bioskop-nixos to bootstrap the running system; the patch makes
+future bringups self-healing.
+
+Phase 6 (cleanup) landed 2026-05-18 in this commit.  The per-host
+`<main>-bringup-zfs-systemd-disk` aliases are removed; the canonical
+flake output is `nerd-nixos-bringup-zfs-systemd-disk`.  Anyone
+invoking the old names via `nix run` / `nix build` will receive a
+clean "no such attribute" error and should migrate to the canonical
+name.
+
+Open follow-on (not blocking the unification arc): bring up
+nikopol-nixos from the same shared image as a final fleet-wide
+confidence check.  The design is empirically validated on bioskop;
+nikopol verification is a confirmation, not a discovery, exercise.
