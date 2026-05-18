@@ -1,0 +1,288 @@
+= Session Summary: Bringup-Image Unification End-to-End on bioskop
+:toc: left
+:toclevels: 3
+:icons: font
+:source-highlighter: rouge
+:date: 2026-05-18
+
+== Overview
+
+This session closed the bringup-image unification arc that began in
+the 2026-05-16 session note and the design proposal in
+link:../bringup-image-unification.adoc[bringup-image-unification.adoc].
+The single shared `nerd-nixos-bringup-zfs-systemd-disk` flake output
+is now empirically verified end-to-end on bioskop, the per-host
+backwards-compat aliases are removed, and the bioskop-nixos NixOS
+guest is fully on the tailnet.
+
+A handful of related fixes landed alongside the unification work:
+ZFS extra-pool hostid drift on the bringup→full handoff, headscale
+preauth-key rotation for three (`nixos`, `incus`, `rke2`) of the four
+kinds, and the retirement of the Darwin-side mDNS publisher that
+became redundant once the headscale `dns.extra_records` mechanism
+took over LAN+tailnet structured names.
+
+The notable finding was that **Phase 4 of the original plan turned
+out to be unnecessary**: there is no need for a per-host cloud-init
+seed to inject hostname/hostId at first boot.  The full-system push
+via `nixos-rebuild --target-host root@nerd-nixos.local --flake
+.#bioskop-tart` carries the host-specific `networking.hostName` and
+the host-derived `networking.hostId` through the flake attribute
+itself; identity flips at full-system activation, no first-boot
+intervention needed.  The mDNS `nerd-nixos.local` advertised by the
+generic bringup image is the operator's SSH target; once the push
+lands, mDNS re-advertises under `bioskop-nixos.local` (or
+`nikopol-nixos.local` for the second host).
+
+== Major Achievements
+
+=== 1. Bringup-image unification end-to-end ✅
+
+Phases 2 + 3 (the speculative scaffolding plus the new flake output)
+shipped 2026-05-17 in commit `1a64335e`.  Phase 5 (verification) and
+Phase 6 (cleanup) shipped 2026-05-18 across two commits:
+
+* The shared `nerd-nixos-bringup-zfs-systemd-disk` artifact builds
+  bit-identically regardless of which host's `mkNixosOutputs`
+  evaluates it (the bringup config no longer depends on
+  `hostProfile`; Nix dedups).
+* A bioskop Tart VM was provisioned from this image, booted as
+  `nerd-nixos.local`, was SSH-reached as `root` for the
+  `nixos-rebuild --target-host` push from bioskop, switched cleanly
+  to the full `bioskop-tart` system, and after a reboot came up
+  with hostname `bioskop-nixos`, all systemd units green, joined
+  the tailnet on its own.
+* Cross-host SSH `nikopol → bioskop-nixos` over the tailnet works,
+  proving the headscale `dns.extra_records` design is fully wired.
+* Phase 6 removed the per-host `<main>-bringup-zfs-systemd-disk`
+  backwards-compat aliases (commit `af9646d9`).  The canonical name
+  is the only flake output for the bringup image now.
+
+=== 2. ZFS extra-pool hostid drift fix ✅
+
+Phase 5 verification surfaced a known risk from the plan note (R2):
+the bringup image creates ZFS pool labels with `hostid=00000000`
+(the placeholder), and the full system boots with a host-derived
+hostid.  `forceImportRoot = true` covered the root pool but not
+extra pools (`recover`); `zfs-import-recover.service` failed.
+
+Fix: `boot.zfs.forceImportAll = true` in
+`modules/nixos/zfs.nix` (commit `2e3a9e4a`).  Every pool import
+now re-stamps its hostid label on first boot, after which subsequent
+boots are clean.  Trade-off documented in the comment: loses the
+safety check that catches accidental import-on-wrong-host —
+acceptable for a single-operator fleet where hostid changes are
+deliberate.
+
+Operator side, the existing bioskop-nixos pool needed a one-shot
+`sudo zpool import -f recover` to bootstrap; future bringups are
+self-healing.
+
+=== 3. Headscale auth-key rotation ✅
+
+Three of the four `tailnet.headscale.auth.<kind>` slots in
+`.secrets` were carrying keys headscale no longer recognised
+(probably from a previous DB iteration that was wiped).  This
+manifested as
+`tailscaled-autoconnect.service: handling register with auth key:
+auth-key not found` on the freshly-pushed bioskop-nixos.
+
+Action taken in this session:
+
+* Confirmed: the `darwin` slot (`UGOBEQG_qTX4-…`) was still alive
+  in headscale (id 18); both Macs registered fine through it.
+* Minted three new 10-year reusable preauth keys with the proper
+  tag pairs:
+  - id 19: `tag:headless,tag:nixos`  (`OX6IqJ8o2r0x-…`)
+  - id 20: `tag:headless,tag:incus`  (`WMl4hwFFs67q-…`)
+  - id 21: `tag:headless,tag:rke2`   (`mgQUl5c6HZHf-…`)
+* Updated `.secrets` via `sops` with the three new values; the
+  `darwin` slot stayed as-is.
+
+Note on `nixos-rebuild` semantics that bit during the rotation:
+when the working tree carries `M .secrets`, `nixos-rebuild --flake
+.#…` evaluates against the **previously-committed** `.secrets`
+content, not the working tree.  This is by design — flakes default
+to clean-tree evaluation.  Symptom: the deployed key on the VM
+stayed the old (dead) value despite a successful-looking rebuild.
+Resolution: commit `.secrets` first, then push.  The committed
+state changes the source-tree store path, the new path's `.secrets`
+is what `sops-install-secrets` reads, the new key reaches the VM.
+
+=== 4. mDNS publisher retirement on Darwin (2026-05-16, recap) ✅
+
+The `dns-sd -P` LaunchAgent that previously advertised
+`headscale.mammoth-skate.local` on Darwin was removed in
+`f4456de1`.  The headscale daemon's `server_url` now resolves
+through the `mammoth-skate.test` LAN dnsmasq zone (or, after the
+2026-05-17 DNS pivot, through headscale's `dns.extra_records`
+which serves CNAMEs to tailnet IPs directly).
+
+Carried-over note: the `packages/ndh-mdns-publish/` Go binary stays
+in the tree — still consumed by the NixOS peer module for the
+future RKE2-hosted headscale scenario.
+
+=== 5. Verified tailnet state ✅
+
+Final state at the close of session:
+
+[options="header"]
+|===
+| Headscale ID | Hostname     | IP          | Tags                          | Status
+| 8            | bioskop      | 100.64.0.1  | tag:console, tag:darwin       | online
+| 9            | nikopol      | 100.64.0.2  | tag:console, tag:darwin       | online
+| 10           | bioskop-nixos| 100.64.0.3  | tag:headless, tag:nixos       | online
+|===
+
+Reachability matrix proved:
+
+* bioskop-nixos resolves to its tailnet IP via headscale MagicDNS
+* `nikopol → bioskop-nixos` SSH works (the cross-host case)
+* `bioskop → bioskop-nixos` works locally over LAN bridge AND
+  through the tailnet
+* Headscale registration survives reboots; node-key persists in
+  `/var/lib/tailscale/state.db` on the persistent ZFS dataset
+
+== Technical Details
+
+=== The `.secrets` rebuild gotcha
+
+This caught me twice.  The mechanism, summarised:
+
+. `sops` decryption happens at activation time, not at build time —
+  the encrypted `.secrets` file is shipped via the flake source
+  tree, decrypted on the target host using the host's age key.
+. The flake source tree is realised as a single store path
+  `/nix/store/<hash>-source/` containing the entire repo content.
+  `sopsFile = "${self}/.secrets"` resolves to
+  `/nix/store/<hash>-source/.secrets`.
+. The `<hash>` is content-addressable over the entire tree,
+  excluding gitignored content.  `nixos-rebuild --flake` evaluates
+  against the **committed** state of the tree (the dirty-tree
+  warning notwithstanding — actual eval uses the committed
+  content).
+. Editing `.secrets` without committing leaves the source-tree
+  hash unchanged from the flake's perspective.  `sops-install-
+  secrets` decrypts the **old committed `.secrets` blob** and the
+  deployed value on the VM reflects the old content.
+. Only after `git add .secrets && git commit` does the source-tree
+  hash change, the new `<hash>-source/.secrets` is shipped, and
+  the new content gets decrypted.
+
+The pattern when rotating any sops-encrypted secret:
+
+[source,bash]
+----
+sops .secrets                # edit
+git add .secrets
+git commit -m "chore(.secrets): rotate <kind>"
+nixos-rebuild switch --target-host root@<host>.local --flake .#<config>
+----
+
+=== Pushing to the right SSH target
+
+A separate gotcha: between bringup and full activation, the VM's
+hostname changes from `nerd-nixos` to `<host>-nixos`.  Both
+hostnames register in mDNS.  The push must target the **active**
+hostname:
+
+* During bringup: `root@nerd-nixos.local`
+* After full activation: `root@<host>-nixos.local`
+* For incremental updates (the daily case): always
+  `root@<host>-nixos.local`
+
+I pushed to the wrong target once, which is why the live config
+didn't update despite a successful local rebuild.  No corrective
+action needed in the codebase; just an operator-aware reminder.
+
+=== Boot generations after the unification
+
+`bootctl list` on bioskop-nixos shows two clean entries:
+
+* Gen 1: built from `nerd-nixos-bringup-zfs-systemd-disk` (the
+  bringup image; hostname `nerd-nixos`)
+* Gen 2: built from the bioskop-tart full system (hostname
+  `bioskop-nixos`); selected default
+
+Gen 1 is preserved as a fallback path: the operator can boot back
+into the bringup state if the full system breaks.  No automatic
+GC on it; manual `nix-collect-garbage --delete-old` would clean it
+once gen 2 is trusted.
+
+== Repository Commits
+
+All on branch `develop`:
+
+`af9646d9`::  refactor(bringup): drop per-host bringup-zfs-systemd-disk aliases (Phase 6) +
+`2e3a9e4a`::  fix(zfs): set boot.zfs.forceImportAll = true for bringup→full hostid drift +
+`1a64335e`::  refactor(bringup): single shared nerd-nixos disk image, identity-less (May 17, Phases 2+3)
+
+The `.secrets` rotation will land in a separate commit at session
+close.
+
+The earlier mDNS retirement is `f4456de1` (May 16, predates this
+session).
+
+== Files Touched
+
+* `flake.nix` — Phase 6 alias removal
+* `modules/nixos/zfs.nix` — `forceImportAll = true`
+* `docs/bringup-image-unification.adoc` — plan note updated to
+  reflect Phase 4 dropped, Phase 5 + 6 closed
+* `.secrets` (sops) — rotated nixos/incus/rke2 preauth keys
+
+== Next Session Tasks
+
+The bringup-image unification arc is closed for bioskop.  The natural
+follow-on is **bring up nikopol-nixos from the same shared image**
+as a final fleet-wide confidence check.  Procedure mirrors what
+worked on bioskop:
+
+. From a Mac (nikopol or bioskop), `nix build
+  .#packages.aarch64-linux.nerd-nixos-bringup-zfs-systemd-disk`
+. From nikopol (the Mac), use `nikopol-tart-vm-materialize` to
+  write the image bits to a fresh Tart VM disk and start it
+. SSH into `root@nerd-nixos.local` once mDNS resolves
+. From nikopol, `nixos-rebuild switch --target-host
+  root@nerd-nixos.local --flake .#nikopol-tart`
+. Reboot the VM, confirm `bootctl list` shows gen 2 selected with
+  hostname `nikopol-nixos`
+. Confirm `tailscaled-autoconnect` succeeds (the rotated nixos
+  preauth key is shared across both VMs since it's reusable)
+. Confirm headscale shows `nikopol-nixos` (id 11 or next free)
+  with `tag:headless,tag:nixos`
+
+If anything surprises, the design hypothesis ("the shared image
+works fleet-wide unchanged") will be falsified and we have new
+data to act on.  My bet is no surprises — the only host-specific
+material the bringup image lacked was identity, and identity comes
+in via the full-system push, not the image bytes.
+
+Other parked tasks:
+
+* **Cred rotation**: the transcripts since 2026-05-15 carry several
+  credentials that should be rotated out-of-session — bbox admin
+  password (`oups la op` placeholder, several occurrences), DuckDNS
+  token, Cloudflare API token, ngrok authtoken, headscale preauth
+  keys id 17–21.  Operator-only action, no codebase change required.
+* **Lima-era module deprecation**: the `modules/{darwin,nixos}/lima-*`
+  files + the `bioskop-lima` / `nikopol-lima` flake outputs are
+  unused but still in the tree.  Mark with `lib.warn` or delete
+  outright — the choice is whether to keep a re-introducible
+  reference or rip the dead code.
+* **`writeShellApplication` migration sweep**: `bin/*` and
+  `modules/home-manager/ssh-key.d/*.sh` would benefit from the
+  shellcheck + runtimeInputs gates that `writeShellApplication`
+  provides.  Bigger refactor; not blocking anything.
+* **`/boot` mount on the full nerd-nixos config**: long-parked
+  issue from earlier sessions; haven't revisited.
+
+---
+**Status:** bioskop-nixos fully on tailnet, bringup unification arc
+closed.  Nikopol-nixos verification pending. +
+**Session Date:** 2026-05-17 to 2026-05-18 +
+**Key Achievement:** Single shared `nerd-nixos-bringup-zfs-systemd-disk`
+artifact validated end-to-end; per-host scaffolding removed;
+identity-less image is the canonical bringup path. +
+**Branch state:** all commits committed; `.secrets` rotation will
+land at session close.

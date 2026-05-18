@@ -73,10 +73,25 @@ This directory contains detailed session summaries documenting the evolution of 
 
 == Latest Session
 
-link:2026-05-16-lan-catalog-bbox-reconcile-dnsmasq-zone.adoc[**2026-05-16: LAN Catalog, bbox-reconcile, mammoth-skate.test Closed-World DNS Zone**]::
-Landed the LAN-side declarative pipeline: catalog `netplan.lan` table of 13 static reservations, the `bbox-reconcile` diff tool that compares against the bbox JSON API, and the closed-world `mammoth-skate.test` DNS zone served by bioskop's dnsmasq with structured FQDNs mirroring the SSH alias convention.  Verified end-to-end on bioskop; nikopol enrollment ready for the next session.
+link:2026-05-18-bringup-image-unification-end-to-end.adoc[**2026-05-18: Bringup-Image Unification End-to-End on bioskop**]::
+Closed the bringup-image unification arc.  Single shared `nerd-nixos-bringup-zfs-systemd-disk` flake artifact validated end-to-end on bioskop: build → Tart VM → mDNS → `nixos-rebuild switch --target-host` → reboot → tailnet registration → cross-host SSH `nikopol → bioskop-nixos`.  Phase 4 (per-host cloud-init seed) dropped as unnecessary; the full-system push carries identity via flake attribute.  ZFS extra-pool hostid drift fixed with `boot.zfs.forceImportAll = true`.  Headscale preauth keys rotated for `nixos`/`incus`/`rke2` kinds.  Per-host `<main>-bringup-zfs-systemd-disk` aliases removed (Phase 6).  bioskop-nixos online (id 10, `100.64.0.3`); nikopol-nixos verification pending.
 
 == All Sessions
+
+=== 2026-05-18
+
+link:2026-05-18-bringup-image-unification-end-to-end.adoc[Bringup-Image Unification End-to-End on bioskop]::
+**Focus:** Verify shared bringup image works end-to-end; close out the unification arc.
++
+**Achievements:**
+* Phase 5 verification: bioskop-nixos brought up from the shared `nerd-nixos-bringup-zfs-systemd-disk`, full-system push succeeded, hostname flipped, all systemd units green after reboot
+* Phase 4 verdict: the speculative cloud-init seed in the original plan is **not needed** — the full-system push carries `networking.hostName` via the flake attribute, no first-boot identity injection required
+* `boot.zfs.forceImportAll = true` (`2e3a9e4a`) — fixes hostid drift on extra ZFS pools at the bringup→full handoff
+* Headscale preauth keys rotated for `nixos`/`incus`/`rke2` kinds (the `darwin` slot was already valid)
+* Phase 6 cleanup (`af9646d9`): per-host `<main>-bringup-zfs-systemd-disk` aliases removed
+* Cross-host tailnet reachability verified: `nikopol → bioskop-nixos` SSH works through headscale's `dns.extra_records`
++
+**Status:** bringup unification closed; bioskop-nixos online (id 10); nikopol-nixos verification next.
 
 === 2026-05-16
 
