@@ -814,6 +814,24 @@ in
       zfs = (
         lib.mkIf config.zfsOverlays.enable {
           forceImportRoot = true;
+          # Force import every pool, not just the root.  Without this,
+          # `zfs-import-<extraPool>.service` refuses to import on a
+          # hostid mismatch — which happens reliably on the
+          # bringup→full handoff: the bringup image runs with the
+          # placeholder hostid `00000000` and creates the pool labels
+          # accordingly; the full system boots with a host-derived
+          # hostid that doesn't match the labels, and the non-root
+          # extra pools (`recover` etc.) get stuck on
+          # `zfs-import-recover.service` failing.  `forceImportAll`
+          # makes the import re-stamp the labels with the current
+          # hostid on first boot, after which subsequent boots are
+          # clean.  See docs/bringup-image-unification.adoc:R2.
+          #
+          # Trade-off: loses the safety check that catches an
+          # accidental import-on-wrong-host.  Acceptable for a
+          # single-operator fleet where the operator owns hostid
+          # changes deliberately.
+          forceImportAll = true;
           devNodes = lib.mkForce "/dev";
           # Derive the import list from the disko config so a new pool added
           # to zfs-disko-config.nix automatically gets its corresponding
