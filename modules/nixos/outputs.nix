@@ -486,9 +486,16 @@ let
       selectedBringupSystemdZfs =
         if selectedVmProvider == "tart" then tartBringupSystemdZfs else limaBringupSystemdZfs;
 
+      # Bringup image is identity-less (see minimalBringupSystemBase): the
+      # bytes are bit-identical for every host on the fleet.  Use a fixed
+      # host-agnostic derivation name ("nerd-bringup-…") so nix actually
+      # dedups the build across hosts — without this, `${mainName}-…`
+      # produces distinct store paths even when the contents match, and
+      # downstream consumers (deploy bundles, gcroots) end up duplicated.
       diskImageBringupZfsSystemdBootRaw = mkBringupZfsDiskImages {
         nixosSystem = selectedBringupSystemdZfs;
-        name = "${mainName}-zfs-disk-images-raw";
+        name = "nerd-bringup-zfs-disk-images-raw";
+        hostLabel = "nerd";
         # No runtime system closure — minimal bringup only
         runtimeSystemPath = null;
         inherit pauseAfterInstall;
@@ -497,8 +504,8 @@ let
       };
 
       diskImageBringupZfsSystemdBoot = mkDiskImageWithManifest {
-        attr = "${mainName}-zfs-disk-images";
-        nixosConfiguration = "${mainName}-bringup";
+        attr = "nerd-bringup-zfs-disk-images";
+        nixosConfiguration = "nerd-bringup";
         imageMode = "bringup";
         bootLoader = "systemd-boot";
         diskSizeMiB = diskSizeMiB;

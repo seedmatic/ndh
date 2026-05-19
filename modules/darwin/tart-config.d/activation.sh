@@ -270,7 +270,60 @@ tart:bootstrap:disk:sync-from-source() {
 main() {
 	set -euo pipefail
 
-	local manifest_path="@manifestPath@"
+	# Manifest resolution order (most explicit first):
+	#   1. --config FILE on the CLI
+	#   2. NDH_TART_VM_CONFIG env var
+	#   3. The bundle's own embedded path (@manifestPath@); empty in the
+	#      generic nerd-tart deploy bundle, host-specific in the per-host
+	#      materializer/deploy bundles.
+	# When the embedded path is empty AND no override is provided, we abort:
+	# the operator must opt in by selecting which VM identity to activate.
+	local cli_config_path=""
+	local positional_args=()
+	while (($# > 0)); do
+		case "$1" in
+			--config)
+				if (($# < 2)); then
+					echo "[tartConfig][ERROR] --config requires an argument" >&2
+					exit 2
+				fi
+				cli_config_path="$2"
+				shift 2
+				;;
+			--config=*)
+				cli_config_path="${1#--config=}"
+				shift
+				;;
+			*)
+				positional_args+=("$1")
+				shift
+				;;
+		esac
+	done
+	if ((${#positional_args[@]} > 0)); then
+		set -- "${positional_args[@]}"
+	else
+		set --
+	fi
+
+	local manifest_path=""
+	if [[ -n "$cli_config_path" ]]; then
+		manifest_path="$cli_config_path"
+	elif [[ -n "${NDH_TART_VM_CONFIG:-}" ]]; then
+		manifest_path="$NDH_TART_VM_CONFIG"
+	else
+		manifest_path="@manifestPath@"
+	fi
+
+	if [[ -z "$manifest_path" ]]; then
+		: "[tartConfig][ERROR] no run manifest selected; pass --config FILE or set NDH_TART_VM_CONFIG"
+		exit 1
+	fi
+
+	# Propagate to run.sh (invoked via the per-VM wrapper symlink) so it
+	# reads the same manifest without repeating the resolution logic.
+	export NDH_TART_VM_CONFIG="$manifest_path"
+
 	local tart_nix_cli_args_raw="${NIX_CLI_ARGS:--L -v -v}"
 	local profile_user=""
 	local factory_reset="${VM_FACTORY_RESET:-false}"

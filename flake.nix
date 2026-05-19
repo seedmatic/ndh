@@ -821,21 +821,113 @@
           }
         ) { } (builtins.attrNames hostCatalog)
         // nixpkgs.lib.optionalAttrs (system == "aarch64-darwin") (
-          builtins.foldl' (
-            acc: hostName:
-            let
-              hostSpec = hostCatalog.${hostName};
-              mainName = hostMainNameForProfile hostSpec.hostProfile;
-              hostOutput = hostOutputs.${hostName};
-            in
-            acc
-            // {
-              "${mainName}-lima-vm-materialize" =
-                hostOutput.darwinConfiguration.config.lima.configGenerator.materializerPackage;
-              "${mainName}-tart-vm-materialize" =
-                hostOutput.darwinConfiguration.config.tart.configGenerator.materializerPackage;
-            }
-          ) { } (builtins.attrNames hostCatalog)
+          # Tart artifacts grouped by `nerd-tart-` prefix to make their
+          # role obvious in `nix flake show`.  `packages.<system>` must be
+          # flat (the flake schema rejects nested attrsets), so we use a
+          # `nerd-tart-<host>-<role>` naming scheme:
+          #   nerd-tart                — generic, fleet-wide deploy bundle
+          #   nerd-tart-<host>-config  — per-VM YAML manifest (scp to vz)
+          #   nerd-tart-<host>-deploy  — operator helper: copy + activate
+          # The per-host materializer derivation is intentionally NOT
+          # surfaced as a flake package — it's an internal artifact
+          # consumed by the darwin module's activation script
+          # (`config.tart.configGenerator.materializerPackage`).  Operators
+          # use `-deploy` instead.
+          # Lima materializers keep their original `<host>-lima-vm-materialize`
+          # naming — Lima is out of scope for the nerd-tart refactor.
+          let
+            systemPkgs = pkgsFor { inherit system; };
+            anyHostName = builtins.head (builtins.attrNames hostCatalog);
+            anyHostDeploy =
+              hostOutputs.${anyHostName}.darwinConfiguration.config.tart.configGenerator.deployPackage;
+            anyHostBringup =
+              hostOutputs.${anyHostName}.nixosDiskImageBringupSystemdZfs;
+            mkDeployHelper =
+              {
+                mainName,
+                runManifest,
+              }:
+              systemPkgs.writeShellApplication {
+                name = "nerd-tart-${mainName}-deploy";
+                runtimeInputs = [
+                  systemPkgs.nix
+                  systemPkgs.openssh
+                ];
+                text = ''
+                  set -euo pipefail
+
+                  # Default vz host: by convention every Tart VM has a
+                  # matching `vz.<mainName>` ssh alias on the operator's
+                  # darwin home-manager (see hosts/<host>/modules/home-manager/
+                  # vz-host-resolver.nix).  Override by passing a host as the
+                  # first positional argument.
+                  vz_host="vz.${mainName}"
+                  if (($# > 0)) && [[ "$1" != --* ]]; then
+                    vz_host="$1"
+                    shift
+                  fi
+
+                  case "''${1:-}" in
+                    -h|--help)
+                      cat >&2 <<-USAGE
+                  Usage: nerd-tart-${mainName}-deploy [vz-host] [-- extra tart run args]
+
+                  Copies the generic Tart deploy bundle, the ${mainName}-specific
+                  per-VM YAML, and the fleet-wide bringup disk images to <vz-host>
+                  (default: vz.${mainName}); installs the YAML at
+                  ~/.config/nerd-tart/${mainName}.yaml on the vz host; then execs
+                  nerd-tart there to materialize and run the VM.
+                  USAGE
+                      exit 0
+                      ;;
+                  esac
+
+                  deploy_bundle=${anyHostDeploy}
+                  vm_config=${runManifest}
+                  bringup_images=${anyHostBringup}
+
+                  echo "[nerd-tart-deploy] copying artifacts to ssh-ng://$vz_host" >&2
+                  nix copy --to "ssh-ng://$vz_host" \
+                    "$deploy_bundle" "$vm_config" "$bringup_images"
+
+                  echo "[nerd-tart-deploy] installing per-VM YAML on $vz_host" >&2
+                  ssh "$vz_host" \
+                    "mkdir -p ~/.config/nerd-tart && \
+                     ln -sfn '$vm_config' ~/.config/nerd-tart/${mainName}.yaml"
+
+                  echo "[nerd-tart-deploy] activating nerd-tart on $vz_host" >&2
+                  exec ssh -t "$vz_host" "$deploy_bundle/bin/nerd-tart" \
+                    --config "$vm_config" "$@"
+                '';
+              };
+            tartAttrs = builtins.foldl' (
+              acc: hostName:
+              let
+                hostSpec = hostCatalog.${hostName};
+                mainName = hostMainNameForProfile hostSpec.hostProfile;
+                hostOutput = hostOutputs.${hostName};
+                runManifest =
+                  hostOutput.darwinConfiguration.config.tart.configGenerator.runManifest;
+              in
+              acc
+              // {
+                "${mainName}-lima-vm-materialize" =
+                  hostOutput.darwinConfiguration.config.lima.configGenerator.materializerPackage;
+                "nerd-tart-${mainName}-config" = runManifest;
+                "nerd-tart-${mainName}-deploy" = mkDeployHelper {
+                  inherit mainName runManifest;
+                };
+              }
+            ) { } (builtins.attrNames hostCatalog);
+            # Single fleet-wide deploy bundle — identical for every host that
+            # runs Tart, so we pick an arbitrary host's deployPackage.  The
+            # underlying derivation depends only on host-agnostic inputs (the
+            # bringup image and the activation/run scripts).
+          in
+          tartAttrs
+          // {
+            nerd-tart = anyHostDeploy;
+          }
         )
         // nixpkgs.lib.optionalAttrs (system == "aarch64-linux") (
           # Single shared bringup disk image — bit-identical for every
@@ -866,6 +958,11 @@
           installer = mkNdhBringupRuntimeInstaller system;
           logCapture = mkNdhLogCapturePackage system;
           tartBootstrapInstaller = mkNdhVmTartBootstrapInstallerPackage system;
+          # `apps.<system>` must be flat (each leaf is `{ type = "app"; … }`).
+          # Lima materializers stay surfaced as apps for now; the Tart
+          # materializer is intentionally not exposed (operators use
+          # `nerd-tart-<host>-deploy` instead — it covers the same
+          # workflow end-to-end).
           hostMaterializerApps = builtins.foldl' (
             acc: hostName:
             let
@@ -874,18 +971,12 @@
               hostOutput = hostOutputs.${hostName};
               limaMaterializerPackage =
                 hostOutput.darwinConfiguration.config.lima.configGenerator.materializerPackage;
-              tartMaterializerPackage =
-                hostOutput.darwinConfiguration.config.tart.configGenerator.materializerPackage;
             in
             acc
             // {
               "${mainName}-lima-vm-materialize" = {
                 type = "app";
                 program = "${limaMaterializerPackage}/bin/${ndhVmLimaMaterializeAttr}";
-              };
-              "${mainName}-tart-vm-materialize" = {
-                type = "app";
-                program = "${tartMaterializerPackage}/bin/${ndhVmTartMaterializeAttr}";
               };
             }
           ) { } (builtins.attrNames hostCatalog);
@@ -1248,9 +1339,19 @@
         _: hostOutput: hostOutput.homeManagerConfigurations
       ) hostOutputs;
 
-      nixosDiskImages = builtins.mapAttrs (
-        _: hostOutput: hostOutput.nixosDiskImageBringupSystemdZfs
-      ) hostOutputs;
+      # The bringup image is identity-less (see modules/nixos/outputs.nix
+      # `minimalBringupSystemBase`): bytes are bit-identical for every host
+      # on the fleet, so a single fleet-wide attribute is correct here.
+      # Per-host `${name}-bringup` nixosConfigurations remain available in
+      # `self.nixosConfigurations` for tooling that needs the per-host
+      # binding (e.g. nixos-rebuild --flake .#${name}-bringup).
+      nixosDiskImages =
+        let
+          anyHostName = builtins.head (builtins.attrNames hostCatalog);
+        in
+        {
+          nerd = hostOutputs.${anyHostName}.nixosDiskImageBringupSystemdZfs;
+        };
 
       # Overlay factories (curried: inputs: final: prev:) — used internally via overlayFactories.
       overlayFactories = {

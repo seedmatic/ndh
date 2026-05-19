@@ -76,32 +76,87 @@ let
   # runtime-system is a closure-only symlink (activation never dereferences it)
   # that pulls the full NixOS runtime system into the bundle's closure so a
   # single `nix build` stages both the bringup image and the target system the
-  # operator will activate remotely.
-  tartActivationBundle = ndh.store.runCommand "tart-${cfg.vmName}-materialize" { } ''
-    mkdir -p "$out/bin"
-    cp ${
-      pkgs.replaceVars ./tart-config.d/activation.sh {
-        nixBashTrampoline = nixBashTrampoline;
-        manifestPath = tartRunManifest;
-        tartRunScript = tartRunScript;
-        tartActivationBundlePlaceholder = "PLACEHOLDER";
-      }
-    } "$out/bin/activate.sh"
-    # Patch the self-referential placeholder with the real output store path.
-    # replaceVars cannot self-reference $out, so we substitute after the copy.
-    sed -i "s|PLACEHOLDER|$out|g" "$out/bin/activate.sh"
-    chmod +x "$out/bin/activate.sh"
-    ln -s ${lib.escapeShellArg (toString tartRunManifest)} "$out/manifest.yaml"
-    ${lib.optionalString (bringupImagesDir != "") ''
-      ln -s ${lib.escapeShellArg bringupImagesDir} "$out/bringup-manifest"
-    ''}
-    ${lib.optionalString (cfg.runtimeSystemPath != null) ''
-      ln -s ${lib.escapeShellArg (toString cfg.runtimeSystemPath)} "$out/runtime-system"
-    ''}
-  '';
+  # operator will activate remotely.  Build hosts pass includeRuntimeClosure=true
+  # to materialize the convenience symlink; deploy hosts (vz hosts that only
+  # consume artifacts) pass false to keep the closure to disk-image references
+  # only — saving ~16 GiB and ~1800 store paths.
+  # `embedManifest`: when true, the bundle includes a manifest.yaml symlink
+  # and bakes its store path into activate.sh's @manifestPath@ default.  Used
+  # by the per-host materializer (so darwin-rebuild's postActivation hook can
+  # invoke activate.sh without --config).  The generic nerd-tart deploy
+  # bundle passes false: it ships activate.sh with @manifestPath@ = "", and
+  # the operator selects a VM identity via --config FILE at runtime.
+  #
+  # `includeRuntimeClosure`: when true, adds a runtime-system symlink that
+  # pulls the full target NixOS closure into the bundle.  Build hosts pass
+  # true so a single `nix build` stages both image and runtime system; the
+  # generic deploy bundle passes false.
+  #
+  # `includeBringupSymlink`: when true, adds a bringup-manifest symlink that
+  # pulls the bringup disk images (~15 GiB of raw bytes scanned as store refs)
+  # into the bundle's closure.  Build hosts pass true so darwin-rebuild's
+  # postActivation hook can resolve the images locally.  The generic deploy
+  # bundle passes false: the operator nix-copies `nixosDiskImages.nerd`
+  # separately and wires the resolved store path via the per-VM YAML's
+  # `raw_image_manifest_path_default` field.
+  mkActivationBundle =
+    {
+      drvName,
+      embedManifest,
+      includeRuntimeClosure,
+      includeBringupSymlink,
+    }:
+    ndh.store.runCommand drvName { } ''
+      mkdir -p "$out/bin"
+      cp ${
+        pkgs.replaceVars ./tart-config.d/activation.sh {
+          nixBashTrampoline = nixBashTrampoline;
+          manifestPath = if embedManifest then toString tartRunManifest else "";
+          tartRunScript = tartRunScript;
+          tartActivationBundlePlaceholder = "PLACEHOLDER";
+        }
+      } "$out/bin/activate.sh"
+      # Patch the self-referential placeholder with the real output store path.
+      # replaceVars cannot self-reference $out, so we substitute after the copy.
+      sed -i "s|PLACEHOLDER|$out|g" "$out/bin/activate.sh"
+      chmod +x "$out/bin/activate.sh"
+      ${lib.optionalString embedManifest ''
+        ln -s ${lib.escapeShellArg (toString tartRunManifest)} "$out/manifest.yaml"
+      ''}
+      ${lib.optionalString (includeBringupSymlink && bringupImagesDir != "") ''
+        ln -s ${lib.escapeShellArg bringupImagesDir} "$out/bringup-manifest"
+      ''}
+      ${lib.optionalString (includeRuntimeClosure && cfg.runtimeSystemPath != null) ''
+        ln -s ${lib.escapeShellArg (toString cfg.runtimeSystemPath)} "$out/runtime-system"
+      ''}
+    '';
+
+  tartActivationBundle = mkActivationBundle {
+    drvName = "tart-${cfg.vmName}-materialize";
+    embedManifest = true;
+    includeRuntimeClosure = true;
+    includeBringupSymlink = true;
+  };
+
+  # Generic, host-agnostic deploy bundle.  No baked-in run manifest, no
+  # runtime-system closure, no bringup symlink — closure is bounded by the
+  # activate/run scripts and their PATH dependencies (~50-100 MiB).  The
+  # operator selects a VM identity at runtime by passing --config FILE to
+  # activate.sh, where FILE is a per-VM YAML produced by the matching
+  # `nerd-tart-<host>-config` flake package and placed under
+  # $XDG_CONFIG_HOME/nerd-tart/<vm>.yaml on the vz host.  The bringup
+  # disk images travel as a separate `nix copy` of `nixosDiskImages.nerd`,
+  # and the per-VM YAML carries their resolved store path.
+  tartDeployBundle = mkActivationBundle {
+    drvName = "nerd-tart-deploy";
+    embedManifest = false;
+    includeRuntimeClosure = false;
+    includeBringupSymlink = false;
+  };
 
   # Convenience alias: the activation script file inside the bundle.
   tartActivationScript = "${tartActivationBundle}/bin/activate.sh";
+  tartDeployActivationScript = "${tartDeployBundle}/bin/activate.sh";
 
   tartMaterializerPackage = pkgs.writeShellScriptBin "nerd-tart-vm-materialize" ''
     export PATH="${
@@ -238,6 +293,28 @@ let
     exit $_exit
   '';
 
+  # Minimal deploy wrapper: the same activation script, but with only the
+  # PATH dependencies it needs at runtime — no linux-builder GC, no Darwin
+  # observer, no closure to a NixOS runtime system.  Designed to be `nix
+  # copy`'d to a vz host that only consumes pre-built artifacts.  The bundle
+  # is generic and fleet-wide; per-VM identity flows in at runtime via
+  # `nerd-tart --config <YAML>`.
+  tartDeployPackage = pkgs.writeShellScriptBin "nerd-tart" ''
+    export PATH="${
+      lib.makeBinPath [
+        pkgs.gawk
+        pkgs.gnused
+        pkgs.coreutils
+        pkgs.findutils
+        pkgs.yq-go
+        pkgs.util-linux
+        pkgs.bash
+      ]
+    }:/usr/bin:/bin:/usr/sbin:/sbin"
+
+    exec ${tartDeployActivationScript} "$@"
+  '';
+
   tartRunManifest = pkgs.writeText "tart-${cfg.vmName}-run-manifest.yaml" ''
     # Generated Tart run manifest (@codebase)
     effective_host_name_default: ${builtins.toJSON effectiveHostName}
@@ -271,11 +348,13 @@ let
     diskutil_bin: ${builtins.toJSON cfg.diskutilBinaryPath}
   '';
 
-  tartRunScript = ndh.store.runCommand "tart-${cfg.vmName}-run.sh" { } ''
+  # Generic, host-agnostic.  The script self-resolves its run manifest from
+  # NDH_TART_VM_CONFIG or $XDG_CONFIG_HOME/nerd-tart/<vm>.yaml at runtime,
+  # so a single tartRunScript derivation is shared across the fleet.
+  tartRunScript = ndh.store.runCommand "tart-nerd-tart-run.sh" { } ''
     cp ${
       pkgs.replaceVars ./tart-config.d/run.sh {
         nixBashTrampoline = nixBashTrampoline;
-        rawImageTargetPath = cfg.rawImageTargetPath;
       }
     } "$out"
     chmod +x "$out"
@@ -686,6 +765,34 @@ in
       default = tartMaterializerPackage;
       description = ''
         Store package exposing `nerd-tart-vm-materialize` for host-side Tart VM materialization.
+      '';
+    };
+
+    deployPackage = mkOption {
+      type = types.package;
+      readOnly = true;
+      default = tartDeployPackage;
+      description = ''
+        Store package exposing `nerd-tart` — the generic, host-agnostic
+        sibling of `materializerPackage` for hosts that only consume
+        pre-built artifacts.  Skips the runtime-system closure symlink, the
+        linux-builder GC step, and the Darwin observability harness, so
+        its closure is bounded by the disk-image references rather than
+        the full NixOS runtime system.
+      '';
+    };
+
+    runManifest = mkOption {
+      type = types.package;
+      readOnly = true;
+      default = tartRunManifest;
+      description = ''
+        The per-host run manifest YAML carrying VM identity (vm_name,
+        vm_mac_address, cpu/mem, disk sizes, run-time flags).  The flake
+        exposes this as `<host>-tart-vm-config` so operators can `nix build`
+        it and scp the result to the vz host's
+        `$XDG_CONFIG_HOME/nerd-tart/<vm>.yaml`, where the generic
+        `nerd-tart` deploy bundle reads it via `--config FILE`.
       '';
     };
   };

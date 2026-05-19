@@ -5,7 +5,37 @@
 #         diskutil_bin, etc. are loaded dynamically from the run manifest via tart:manifest:load
 source "@nixBashTrampoline@"
 
-manifest_path="@rawImageTargetPath@/manifest.yaml"
+# The run manifest YAML is per-VM identity (vm_name, vm_mac_address, cpu/mem,
+# disk sizes).  Resolution order (most explicit first):
+#   1. NDH_TART_VM_CONFIG env var — set by activate.sh, lets the operator
+#      override at run time.
+#   2. $XDG_CONFIG_HOME/nerd-tart/<symlink-basename>.yaml — when run.sh is
+#      invoked via the per-VM wrapper symlink (~/.tart/vms/<vm>.sh), the
+#      basename of $0 minus .sh resolves to the vm_name.
+#   3. ~/.config/nerd-tart/<symlink-basename>.yaml — XDG fallback.
+# If none resolve, we abort: the deploy bundle is generic and has no built-in
+# manifest path to fall back to.
+manifest_path=""
+if [[ -n "${NDH_TART_VM_CONFIG:-}" ]]; then
+	manifest_path="$NDH_TART_VM_CONFIG"
+else
+	xdg_config_home="${XDG_CONFIG_HOME:-${HOME}/.config}"
+	wrapper_basename="$(basename "$0" .sh)"
+	for candidate in \
+		"${xdg_config_home}/nerd-tart/${wrapper_basename}.yaml" \
+		"${HOME}/.config/nerd-tart/${wrapper_basename}.yaml"; do
+		if [[ -r "$candidate" ]]; then
+			manifest_path="$candidate"
+			break
+		fi
+	done
+fi
+
+if [[ -z "$manifest_path" ]]; then
+	echo "[ERROR] run manifest not found; set NDH_TART_VM_CONFIG or place a YAML under \$XDG_CONFIG_HOME/nerd-tart/<vm>.yaml" >&2
+	exit 1
+fi
+
 extra_run_args_raw="${RUN_EXTRA_ARGS:-}"
 
 tart:bool:is-true() {
