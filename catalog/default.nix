@@ -253,24 +253,5 @@
         # complexity.
       };
     };
-    # Canonical cluster underlay contract from rke2lab netplan (@codebase)
-    # Source of truth: rke2lab/netplan (ClusterNetworkBlueprint semantics)
-    rke2lab = {
-      supernetCidr = "10.80.0.0/18";
-      clusterPrefixLength = 21;
-      vmnetNetworkName = "vmnet-br";
-      clusters = {
-        bioskop = {
-          index = 0;
-          cidr = "10.80.0.0/21";
-          gateway = "10.80.0.1";
-        };
-        nikopol = {
-          index = 2;
-          cidr = "10.80.16.0/21";
-          gateway = "10.80.16.1";
-        };
-      };
-    };
   };
 }

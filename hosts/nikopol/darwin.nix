@@ -25,13 +25,6 @@
       sopsEncryptedTokenFile = ../../.secrets;
     };
 
-    networking.vlan = {
-      enable = true;
-      id = 2;
-      addressPrefix = "192.168.2";
-      parentInterface = "en0";
-    };
-
     lima.configGenerator = {
       installMaterializerPackage = false;
     };

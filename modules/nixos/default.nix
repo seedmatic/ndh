@@ -53,10 +53,6 @@ let
   generationMode = ndhContext.generationMode;
   catalog = ndhContext.catalog;
   cacheCatalog = catalog.caches;
-  rke2labNetplan = lib.attrByPath [ "netplan" "rke2lab" ] { } catalog;
-  clusterName = hostProfile.hostName or null;
-  clusterNetwork =
-    if clusterName != null then lib.attrByPath [ "clusters" clusterName ] null rke2labNetplan else null;
 
   # Boot mode selection.
   isTartProvider = (lib.attrByPath [ "ndh" "vm" "provider" ] "lima" config) == "tart";
@@ -126,8 +122,6 @@ let
     ./zfs.nix
     ./zfs-recovery-chroot.nix
     ./sops.nix
-    ./dbus-tcp.nix
-    ./vlan.nix
     ./tailscale.nix
     ./bringup-xchg-mount.nix
     ./cache-trust.nix
@@ -455,20 +449,7 @@ in
           MaxLevelConsole=${journaldConsoleLevel}
         '';
       };
-    }
-    // (lib.optionalAttrs
-      (runtimeMode && clusterNetwork != null && options ? services && options.services ? dbusTcpSystemBus)
-      {
-        # Expose system D-Bus over vmnet gateway for lab-only remote control/testing.
-        dbusTcpSystemBus = {
-          enable = true;
-          bindAddress = clusterNetwork.gateway;
-          port = 12434;
-          openFirewall = true;
-          insecureAllowAnonymous = true;
-        };
-      }
-    );
+    };
 
     security.sudo = {
       enable = true;

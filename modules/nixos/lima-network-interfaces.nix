@@ -15,13 +15,6 @@ let
       "lima";
   isTartProvider = vmProvider == "tart";
   includeHostAndNatInterfaces = vmProvider == "lima";
-  vlanCfg = config.networking.vlan or { };
-  vlanEnabled = vlanCfg.enable or false;
-  vlanName =
-    if vlanEnabled then
-      (if (vlanCfg ? name && vlanCfg.name != null) then vlanCfg.name else "vlan${toString vlanCfg.id}")
-    else
-      null;
 
   # Canonical host profile from bundled special args.
   ndhContext = ndh.context;

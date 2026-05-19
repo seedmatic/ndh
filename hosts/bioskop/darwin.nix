@@ -1,16 +1,7 @@
 { halfRamMiB }:
 {
-  config,
-  lib,
-  ndh,
   ...
 }:
-let
-  ndhContext = ndh.context;
-  # Canonical source-of-truth network values from rke2lab netplan catalog (@codebase)
-  rke2labNetplan = ndhContext.catalog.netplan.rke2lab;
-  clusterNetwork = rke2labNetplan.clusters.bioskop;
-in
 {
   config = {
     # Bioskop is the current primary owner of the headscale alias.
@@ -46,25 +37,6 @@ in
     services.nxmaticCachixWatchStore = {
       enable = true;
       sopsEncryptedTokenFile = ../../.secrets;
-    };
-
-    networking.vlan = {
-      enable = false; # Temporarily disabled: VLAN 2 currently causes local resolution/routing issues.
-      id = 2;
-      addressPrefix = "192.168.2";
-      parentInterface = "en9";
-    };
-
-    networking.staticRoutes = {
-      enable = true;
-      routes = [
-        {
-          kind = "net";
-          destination = clusterNetwork.cidr;
-          gateway = "192.168.1.130";
-          interface = "en9";
-        }
-      ];
     };
 
     # Network bonding configuration (Darwin only)

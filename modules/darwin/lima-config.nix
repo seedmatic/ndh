@@ -65,9 +65,6 @@ let
 
   cfg = config.lima.configGenerator;
 
-  # Canonical source-of-truth network values from rke2lab netplan catalog (@codebase)
-  rke2labNetplan = catalog.netplan.rke2lab;
-
   # Canonical disk → ZFS pool membership (shared with bringup config)
   limaVmName = "nerd-nixos";
   zfsPoolDiskMap = import (worktreePath.of "modules/nixos/zfs-pool-disk-map.nix");
@@ -135,27 +132,6 @@ let
           metric = 100;
         }
       ];
-
-  # Cluster mapping (@codebase)
-  # Derive host -> cluster index from canonical rke2lab netplan catalog.
-  #
-  # Note: vmwan0 removed from Lima config. Incus containers now use:
-  # - lan0: macvlan on vmlan0 (bridged to bond0/en0) for internet access
-  # - wan0: Incus bridge network (10.80.x.0/21) for cluster-internal communication
-  hostClusterMap = lib.mapAttrs (_: cluster: cluster.index) rke2labNetplan.clusters;
-  # Enforce mapping: explicit error if host not in hostClusterMap (@codebase)
-  clusterId =
-    let
-      hn = effectiveHostName;
-    in
-    if builtins.hasAttr hn hostClusterMap then
-      hostClusterMap.${hn}
-    else
-      builtins.throw "lima-config.nix: host '${hn}' missing in hostClusterMap; add an entry to define deterministic cluster subnet.";
-
-  # Name for deterministic cluster network (managed via networks.yaml) (@codebase)
-  clusterNetworkName = "cluster${toString clusterId}";
-  limaNetworksOpts = config.lima.networks or { };
 
   limaActivationScript = ndh.store.runCommand "lima-config-activation.sh" { } ''
     cp ${
@@ -575,33 +551,6 @@ in
       Prefer querying this for downstream tooling instead of re-deriving structure.
       NOTE: Not readOnly to allow single assignment; no default to avoid multi-definition conflicts.
     '';
-  };
-  # Managed networks.yaml control options (@codebase)
-  options.lima.networks = {
-    enableManagedClusterNetwork = mkOption {
-      type = types.bool;
-      default = true;
-      description = ''
-        Generate or update $HOME/.lima/_config/networks.yaml with a deterministic per-host
-        cluster network entry (cluster<clusterId>). Disable if you need full manual control.
-      '';
-    };
-    netmask = mkOption {
-      type = types.str;
-      default = "255.255.248.0"; # full /21 cluster slice (was /24 previously)
-      description = ''
-        Netmask for the managed cluster network. Default now exposes full /21 (255.255.248.0).
-        To revert to the previous /24 behavior set 255.255.255.0; DHCP remains limited to first /24 by default.
-      '';
-    };
-    overwrite = mkOption {
-      type = types.bool;
-      default = false;
-      description = ''
-        When true, an existing cluster<id> block in networks.yaml that differs (gateway/dhcpEnd/netmask)
-        will be replaced in-place. When false, mismatches are logged and left unchanged.
-      '';
-    };
   };
   config = {
     assertions = lib.optionals cfg.requireNetAutomount [
