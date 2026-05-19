@@ -191,16 +191,25 @@ in
         # key our `hs` admin CLI minted carries the full operator+
         # service+{darwin,nixos,incus,rke2} tagset; every client
         # inherits that on registration.
-        # Always start from a known-logged-out state before re-
-        # registering with a preauth key.  A stale node-key (e.g.
-        # after a headscale DB wipe or key rotation) would otherwise
-        # make `tailscale up` try to re-auth with a key the server no
-        # longer knows; the failure flips tailscale's
-        # "LastNoiseDialWasRecent" heuristic on, and every subsequent
-        # retry forces HTTPS:443 which our plain-HTTP daemon doesn't
-        # serve — the client then never recovers without a manual
-        # intervention.  `tailscale logout` is idempotent.
-        ${pkgs.tailscale}/bin/tailscale logout >/dev/null 2>&1 || true
+        #
+        # IMPORTANT: do NOT call `tailscale logout` here.  An earlier
+        # version of this unit did, on the theory that "always start
+        # from a known-logged-out state" was harmless.  It is not.
+        # `tailscale logout` sends a RegisterRequest with `Expiry=past`
+        # to the server; headscale's auth.go:194-225 handleLogout()
+        # treats any past-expiry register as a logout, and for non-
+        # ephemeral nodes it writes that past expiry into the DB record
+        # via SetNodeExpiry().  On the next boot, the same machinekey
+        # presents → server finds the existing node, sees Expiry in the
+        # past, and short-circuits in auth.go:169-181 with
+        # `NodeKeyExpired: true, MachineAuthorized: false` — the
+        # incoming preauth key in the request is never even consulted.
+        # The client then loops forever ("regen=true but server says
+        # NodeKeyExpired") until an operator runs `headscale nodes
+        # delete <id>`.  Removing the logout call leaves any prior
+        # successful registration intact across reboots; `tailscale up
+        # --reset --authkey=...` below is sufficient to clear local
+        # stale prefs without poisoning the server-side record.
 
         # `--reset` clears any stale prefs from prior (possibly failed)
         # registration attempts — e.g. the `--advertise-tags` residue
