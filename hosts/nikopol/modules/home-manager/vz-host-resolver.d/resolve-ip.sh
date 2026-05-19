@@ -65,7 +65,13 @@ ndh::vzHostResolver:lookup() {
 	arp -an 2>/dev/null | awk -v target="$mac" '
 		function normalise(m,    parts, i, n) {
 			n = split(tolower(m), parts, ":")
-			for (i = 1; i <= n; i++) sub(/^0+([0-9a-f])/, "\\1", parts[i])
+			# Strip a leading zero from any 2-char octet (POSIX awk
+			# has no back-references, so do it positionally).  Each
+			# MAC octet is at most 2 hex chars, so a single substr
+			# slice is sufficient.
+			for (i = 1; i <= n; i++)
+				if (length(parts[i]) == 2 && substr(parts[i], 1, 1) == "0")
+					parts[i] = substr(parts[i], 2)
 			m = parts[1]
 			for (i = 2; i <= n; i++) m = m ":" parts[i]
 			return m
