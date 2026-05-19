@@ -33,5 +33,20 @@ in
       jobs = cfg.jobs;
       verbose = cfg.verbose;
     };
+
+    # cachix-watch-store keeps an open client connection to nix-daemon
+    # for the lifetime of the unit; on shutdown the upstream module
+    # has no ordering against nix-daemon.service, so systemd stops
+    # both in parallel and `cachix watch-store` wedges on the dying
+    # daemon socket.  Operator-visible symptom is systemd-shutdown
+    # printing `Waiting for process: <pid> (nix-daemon), <pid>
+    # (cachix)` and blocking until TimeoutStopSec expires (default
+    # 90s).  Make the ordering explicit and cap the worst case at
+    # 10s so a wedged cachix never blocks reboot for more than that.
+    systemd.services.cachix-watch-store = {
+      after = [ "nix-daemon.service" ];
+      requires = [ "nix-daemon.service" ];
+      serviceConfig.TimeoutStopSec = 10;
+    };
   };
 }
