@@ -15,6 +15,7 @@
   pkgs,
   ndh,
   self,
+  paths,
   ...
 }:
 with lib;
@@ -40,7 +41,7 @@ let
     else
       pkgs.vector;
 
-  vectorConfigLib = import "${self}/modules/.common.d/vector-config.nix" { inherit lib; };
+  vectorConfigLib = import paths.modulesCommonVectorConfig { inherit lib; };
   vectorSettings = vectorConfigLib.mkAggregatorConfig {
     apiPort = cfg.apiPort;
     httpPort = cfg.httpPort;

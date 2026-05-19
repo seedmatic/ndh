@@ -4,7 +4,7 @@
   lib,
   pkgs,
   ndh,
-  self,
+  paths,
   ...
 }:
 let
@@ -15,7 +15,7 @@ let
   ndhContext = ndh.context;
   cfg = config.ndh.sopsAgeKeyBootstrap;
   secretNamespaceDir = "/run/secrets/nix-darwin-home";
-  sshKeysSopsFile = "${self}/modules/home-manager/ssh.d/keys.yaml";
+  sshKeysSopsFile = paths.modulesHomeManagerSshKeysYaml;
   sshKeysSopsContent = builtins.readFile sshKeysSopsFile;
   sshKeysSourceLooksEncrypted =
     lib.hasInfix "sops:" sshKeysSopsContent
@@ -298,7 +298,7 @@ in
   config = {
     sops = {
       # Canonical encrypted secrets source tracked in this repository.
-      defaultSopsFile = lib.mkDefault "${self}/.secrets";
+      defaultSopsFile = lib.mkDefault paths.repoSecrets;
 
       secrets = {
         "ssh-keys.yaml" = {
@@ -319,7 +319,7 @@ in
         # at activation time to produce the full `<name>:<base64>` wire
         # format at /etc/nix/<name>.key that nix-daemon expects.
         "io-nxmatic-nix-darwin-home.key.bare" = {
-          sopsFile = "${self}/catalog/cache-trust.yaml";
+          sopsFile = paths.catalogCacheTrustYaml;
           format = "yaml";
           # sops-install-secrets uses `/` as the path separator (see
           # pkgs/sops-install-secrets/main.go:recurseSecretKey), not `.`

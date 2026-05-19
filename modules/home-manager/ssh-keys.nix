@@ -2,12 +2,12 @@
   config,
   pkgs,
   lib,
-  self,
+  paths,
   ...
 }:
 
 let
-  ndhCommon = "${self}/modules/.common.d";
+  ndhCommon = paths.modulesCommonDir;
   profile = config._module.specialArgs.profile;
   specialArgs = config._module.specialArgs;
   ndh = config._module.specialArgs.ndh;
@@ -16,7 +16,7 @@ let
     if ndhContext != null && ndhContext ? nixBashTrampoline then
       "${ndhContext.nixBashTrampoline}"
     else
-      "${self}/modules/.common.d/shell.d/nix-bash-trampoline.sh";
+      "${paths.modulesCommonNixBashTrampoline}";
   userProfile = profile.user;
   userName = profile.user.name; # Use profile user name for tagging
   sshPaths = config.sshPaths;
@@ -59,7 +59,7 @@ in
 
   imports = [
     ./ssh-add-keys.nix
-    "${ndhCommon}/ssh-paths.nix"
+    paths.modulesCommonSshPaths
   ];
 
   ssh-add-keys = {

@@ -5,7 +5,7 @@
   modulesPath,
   ndh ? null,
   ndhSystemd,
-  self,
+  paths,
   ...
 }:
 let
@@ -41,29 +41,29 @@ in
     (modulesPath + "/profiles/qemu-guest.nix")
 
     # Profile & user
-    "${self}/profile.nix"
+    paths.repoProfile
 
     # Secrets (SOPS): local sops.nix drives the bringup decrypt flow,
     # .common.d/sops.nix provides the shared secret declarations.
     ./sops.nix
-    "${self}/modules/.common.d/sops.nix"
+    paths.modulesCommonSops
 
     # Nix daemon configuration (experimental-features + fleet signing).
     # Cloud-init's `nix copy` needs nix-command + flakes + trust of the
     # fleet signing pub. cache-trust is split common/platform: .common.d
     # holds the walker + composeScript; ./cache-trust.nix wires the
     # NixOS-side systemd oneshot that runs it after sops.
-    "${self}/modules/.common.d/nix-settings.nix"
-    "${self}/modules/.common.d/cache-trust.nix"
+    paths.modulesCommonNixSettings
+    paths.modulesCommonCacheTrust
     ./cache-trust.nix
 
     # SSH identity (keys.yaml access + cert-signed nix-store identity).
     # ssh-keys-enrichment materializes the nix-store + rdp-host keypairs so
     # bioskop can `nix copy --to` and SSH in during bringup activation.
-    "${self}/modules/.common.d/ssh-paths.nix"
-    "${self}/modules/.common.d/openssh-policy.nix"
-    "${self}/modules/.common.d/nix-store-identity.nix"
-    "${self}/modules/.common.d/keys-yaml.nix"
+    paths.modulesCommonSshPaths
+    paths.modulesCommonOpensshPolicy
+    paths.modulesCommonNixStoreIdentity
+    paths.modulesCommonKeysYaml
     ./systemd/ssh-keys-enrichment.nix
     ./nix-store-identity.nix
 
@@ -98,8 +98,8 @@ in
     # the DHCP ethernet link) is already wired inline below — so we
     # DON'T import modules/nixos/resolved-lan.nix here; doing so would
     # conflict with the bringup-local `services.resolved.extraConfig`.
-    "${self}/modules/.common.d/tailnet.nix"
-    "${self}/modules/.common.d/headscale-client-wiring.nix"
+    paths.modulesCommonTailnet
+    paths.modulesCommonHeadscaleClientWiring
     ./headscale-client-kind.nix
     ./headscale.nix
   ];

@@ -4,6 +4,7 @@
   options,
   pkgs,
   self,
+  paths,
   ndh,
   ...
 }:
@@ -70,6 +71,7 @@ let
   hmSpecialArgs = mkNdhHomeManagerSpecialArgs {
     inherit
       self
+      paths
       profile
       ndhContext
       ndhStore
@@ -250,7 +252,7 @@ in
 
   imports = [
     # Profile & user
-    "${self}/profile.nix"
+    paths.repoProfile
     ./primary-user.nix
     ./user.nix
 
@@ -303,12 +305,13 @@ in
 
     # bootstrap home manager using system config
     hm = lib.mkIf homeManagerEnabled (
-      import "${self}/modules/home-manager" {
+      import paths.modulesHomeManagerDir {
         inherit
           pkgs
           lib
           user
           self
+          paths
           profile
           ;
         config = { };

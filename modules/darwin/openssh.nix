@@ -1,5 +1,5 @@
 {
-  self,
+  paths,
   config,
   pkgs,
   lib,
@@ -8,7 +8,7 @@
 }:
 let
   ndhContext = ndh.context;
-  ndhCommon = "${self}/modules/.common.d";
+  ndhCommon = paths.modulesCommonDir;
   profile = config.profile;
   userHome = profile.user.home;
   userName = profile.user.name;
@@ -71,8 +71,8 @@ let
 in
 {
   imports = [
-    "${ndhCommon}/openssh-policy.nix"
-    "${ndhCommon}/ssh-paths.nix"
+    paths.modulesCommonOpensshPolicy
+    paths.modulesCommonSshPaths
   ];
 
   config = {

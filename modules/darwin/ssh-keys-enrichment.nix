@@ -5,11 +5,12 @@
   catalog,
   inventory,
   ndh,
-  self,
+  paths,
   ...
 }:
 let
-  ndhCommon = "${self}/modules/.common.d";
+  ndhCommon = paths.modulesCommonDir;
+  hmSshKeyDir = paths.modulesHomeManagerSshKeyDir;
   ndhContext = ndh.context;
   nixBashTrampoline = "${ndhContext.nixBashTrampoline}";
   # Profile membership list (v2). Defaults to the runtime profile set
@@ -78,7 +79,7 @@ let
   loggerTagEnsureAuthorizedKeys = "darwin.activationScripts.ssh-keys-enrichment.ensureAuthorizedKeys";
 
   sshExtractKeysSplitExpFile = ndh.store.runCommand "ssh-extract-keys.split-exp.yq" { } ''
-    install -m 0444 "${self}/modules/home-manager/ssh-key.d/ssh-extract-keys.split-exp.yq" "$out"
+    install -m 0444 "${hmSshKeyDir}/ssh-extract-keys.split-exp.yq" "$out"
   '';
 
   sshKeysEnrichmentTools = ndh.store.installBinScriptBundle "ssh-keys-enrichment-tools" {
@@ -98,7 +99,7 @@ let
         };
     # System-scope extract: ssh-host privates → sshPaths.systemKeysDir.
     ssh-extract-keys-system =
-      pkgs.replaceVars "${self}/modules/home-manager/ssh-key.d/ssh-extract-keys.sh"
+      pkgs.replaceVars "${hmSshKeyDir}/ssh-extract-keys.sh"
         {
           nixBashTrampoline = nixBashTrampoline;
           loggerTag = loggerTagExtractSystem;
@@ -106,14 +107,14 @@ let
         };
     # User-scope extract: everything else → sshPaths.secretsKeysDir (~<user>/.local/share/ndh/ssh-keys).
     ssh-extract-keys-user =
-      pkgs.replaceVars "${self}/modules/home-manager/ssh-key.d/ssh-extract-keys.sh"
+      pkgs.replaceVars "${hmSshKeyDir}/ssh-extract-keys.sh"
         {
           nixBashTrampoline = nixBashTrampoline;
           loggerTag = loggerTagExtractUser;
           splitExpFile = sshExtractKeysSplitExpFile;
         };
     ssh-ensure-authorized-keys =
-      pkgs.replaceVars "${self}/modules/home-manager/ssh-key.d/ssh-ensure-authorized-keys.sh"
+      pkgs.replaceVars "${hmSshKeyDir}/ssh-ensure-authorized-keys.sh"
         {
           nixBashTrampoline = nixBashTrampoline;
           loggerTag = loggerTagEnsureAuthorizedKeys;

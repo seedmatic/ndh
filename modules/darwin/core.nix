@@ -1,5 +1,6 @@
 {
   self,
+  paths,
   lib,
   catalog,
   config,
@@ -160,7 +161,7 @@ in
 
     };
   };
-  nixpkgs.config = import "${self}/modules/.common.d/nixpkgs-config.nix";
+  nixpkgs.config = import paths.modulesCommonNixpkgsConfig;
 
   nixpkgs.overlays = (config.nixpkgs.overlays or [ ]) ++ [
     (final: prev: {

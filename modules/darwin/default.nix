@@ -3,12 +3,12 @@
   config,
   lib,
   pkgs,
-  self,
+  paths,
   ...
 }:
 {
   imports = [
-    "${self}/modules/.common.d"
+    paths.modulesCommonDir
     ./preferences.nix
     ./security.nix
     ./core.nix

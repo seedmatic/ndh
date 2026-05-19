@@ -2,6 +2,7 @@
   config,
   pkgs,
   lib,
+  paths,
   containerRegistrySystem,
   ...
 }:
@@ -12,6 +13,7 @@
         config
         pkgs
         lib
+        paths
         containerRegistrySystem
         ;
     })

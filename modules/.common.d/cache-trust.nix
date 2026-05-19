@@ -1,5 +1,5 @@
 {
-  self,
+  paths,
   config,
   lib,
   pkgs,
@@ -37,7 +37,7 @@ let
     concatMapStringsSep
     ;
 
-  cacheTrust = import "${self}/catalog/cache-trust.nix";
+  cacheTrust = import paths.catalogCacheTrust;
   allCaches = cacheTrust.caches;
 
   # Fleet-owned entries under caches.cachix.<name>. These have their

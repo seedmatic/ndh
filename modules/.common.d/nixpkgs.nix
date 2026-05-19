@@ -2,11 +2,11 @@
   nixpkgsInput,
   config,
   pkgs,
-  self,
+  paths,
   ...
 }:
 let
-  cacheTrust = import "${self}/catalog/cache-trust.nix";
+  cacheTrust = import paths.catalogCacheTrust;
   cacheCatalog = cacheTrust.caches;
 
   cfg = config.profile;

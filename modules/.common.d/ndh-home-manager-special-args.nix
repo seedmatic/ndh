@@ -1,5 +1,6 @@
 {
   self,
+  paths,
   profile,
   ndhContext,
   ndhStore,
@@ -7,7 +8,7 @@
   keysYamlPath,
 }:
 {
-  inherit self profile;
+  inherit self paths profile;
   ndh = {
     context = ndhContext;
     store = ndhStore;

@@ -2,7 +2,7 @@
   config,
   lib,
   pkgs,
-  self,
+  paths,
   ...
 }:
 
@@ -14,7 +14,7 @@ let
 in
 
 {
-  imports = [ "${self}/modules/.common.d/ssh-paths.nix" ];
+  imports = [ paths.modulesCommonSshPaths ];
 
   # System-wide shell configuration for keychain initialization
   # This adds keychain support to all interactive shells for all users.

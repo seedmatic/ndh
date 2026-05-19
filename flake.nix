@@ -641,6 +641,11 @@
           }
         '';
 
+      # Repo-relative path registry; each value is a path literal so the
+      # module's input hash depends only on the imported file, not on
+      # `self`'s whole-tree hash.  See ./paths.nix for the rationale.
+      paths = import ./paths.nix;
+
       mkSpecialArgs =
         {
           modules,
@@ -658,7 +663,7 @@
           );
         in
         {
-          inherit self lib;
+          inherit self lib paths;
           _modules = modules;
           nixpkgsInput = nixpkgs;
         }
@@ -679,6 +684,7 @@
       nixosOutputsApi = import ./modules/nixos/outputs.nix {
         inherit
           self
+          paths
           nixpkgs
           pkgsForLinux
           ndhStoreApiLinux
@@ -891,6 +897,10 @@
                     "$deploy_bundle" "$vm_config" "$bringup_images"
 
                   echo "[nerd-tart-deploy] installing per-VM YAML on $vz_host" >&2
+                  # `$vm_config` is intentionally expanded client-side: it
+                  # holds the local store path, which has just been copied
+                  # to the vz host's nix store and is now valid there too.
+                  # shellcheck disable=SC2029
                   ssh "$vz_host" \
                     "mkdir -p ~/.config/nerd-tart && \
                      ln -sfn '$vm_config' ~/.config/nerd-tart/${mainName}.yaml"
@@ -1127,6 +1137,7 @@
               extraSpecialArgs = mkNdhHomeManagerSpecialArgs {
                 inherit
                   self
+                  paths
                   profile
                   vmConfigMaterializerPackage
                   ;

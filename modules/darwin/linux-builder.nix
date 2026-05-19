@@ -1,5 +1,6 @@
 {
   self,
+  paths,
   lib,
   pkgs,
   config,
@@ -228,7 +229,7 @@ in
         # 10.0.2.2 = macOS host (SLIRP gateway from linux-builder perspective).
         services.vector =
           let
-            vectorConfigLib = import "${self}/modules/.common.d/vector-config.nix" { inherit lib; };
+            vectorConfigLib = import paths.modulesCommonVectorConfig { inherit lib; };
           in
           {
             enable = true;

@@ -9,7 +9,7 @@
 {
   config,
   lib,
-  self,
+  paths,
   ...
 }:
 with lib;
@@ -19,7 +19,7 @@ in
 {
   config = mkIf cfg.enable (
     let
-      vectorConfigLib = import "${self}/modules/.common.d/vector-config.nix" { inherit lib; };
+      vectorConfigLib = import paths.modulesCommonVectorConfig { inherit lib; };
     in
     {
       services.vector = {

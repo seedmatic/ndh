@@ -20,7 +20,7 @@
   lib,
   pkgs,
   ndh,
-  self,
+  paths,
   ...
 }:
 
@@ -28,7 +28,7 @@ let
   cfg = config.networking.headscale;
   tailnet = config.tailnet;
 
-  headscaleToolsDir = "${self}/modules/darwin/headscale-tools";
+  headscaleToolsDir = paths.modulesDarwinHeadscaleToolsDir;
 
   # Shared helpers inlined into the main script at build time.
   # writeShellApplication's shellcheck pass can't follow relative

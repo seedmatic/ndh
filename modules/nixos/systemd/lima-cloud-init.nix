@@ -5,7 +5,7 @@
   lib,
   ndh,
   ndhSystemd,
-  self,
+  paths,
   ...
 }:
 
@@ -22,14 +22,14 @@ let
   trustedCaPublicKey = lib.removeSuffix "\n" (
     builtins.readFile (
       pkgs.runCommand "trusted-user-ca-public-key" { buildInputs = [ pkgs.yq-go ]; } ''
-        yq -r '.authorities."mammoth-skate".public // ""' "${self}/modules/home-manager/ssh.d/keys.yaml" > "$out"
+        yq -r '.authorities."mammoth-skate".public // ""' "${paths.modulesHomeManagerSshKeysYaml}" > "$out"
       ''
     )
   );
   linuxBuilderPublicKey = lib.removeSuffix "\n" (
     builtins.readFile (
       pkgs.runCommand "linux-builder-public-key" { buildInputs = [ pkgs.yq-go ]; } ''
-        yq -r '.keys."linux-builder".public // ""' "${self}/modules/home-manager/ssh.d/keys.yaml" > "$out"
+        yq -r '.keys."linux-builder".public // ""' "${paths.modulesHomeManagerSshKeysYaml}" > "$out"
       ''
     )
   );
