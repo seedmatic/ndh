@@ -290,11 +290,21 @@ ndh::logger:command:run() {
 
 	ndh::logger:hints:resolve "$tag"
 
-	echo "[$tag] ndh::logger:command:starting logged command: \"${caller_src} ${*:2}\" with PID $$"
-	echo "[$tag] ndh::logger:command:run marker: ${NDH_LOG_RUN_MARKER}"
-	echo "[$tag] ndh::logger:command:run marker scope: ${NDH_LOG_RUN_MARKER_SCOPE:-unknown}"
-	echo "[$tag] ndh::logger:command:${NDH_LOG_HINT_SHOW_LABEL}: ${NDH_LOG_HINT_SHOW_CMD}"
-	echo "[$tag] ndh::logger:command:${NDH_LOG_HINT_STREAM_LABEL}: ${NDH_LOG_HINT_STREAM_CMD}"
+	# All logger diagnostics go to stderr.  The wrapped command's stdout
+	# is the contract: callers like sshd's `AuthorizedKeysCommand` /
+	# `AuthorizedPrincipalsCommand` parse the subprocess stdout
+	# verbatim, so any logger preamble/footer leaking onto fd 1 corrupts
+	# their input and breaks public-key auth.  Earlier this manifested
+	# as "ED25519 key is not allowed" with sshd's debug2 output showing
+	# the logger banner being processed as if it were authorized_keys
+	# lines.
+	{
+		echo "[$tag] ndh::logger:command:starting logged command: \"${caller_src} ${*:2}\" with PID $$"
+		echo "[$tag] ndh::logger:command:run marker: ${NDH_LOG_RUN_MARKER}"
+		echo "[$tag] ndh::logger:command:run marker scope: ${NDH_LOG_RUN_MARKER_SCOPE:-unknown}"
+		echo "[$tag] ndh::logger:command:${NDH_LOG_HINT_SHOW_LABEL}: ${NDH_LOG_HINT_SHOW_CMD}"
+		echo "[$tag] ndh::logger:command:${NDH_LOG_HINT_STREAM_LABEL}: ${NDH_LOG_HINT_STREAM_CMD}"
+	} >&2
 
 	# Keep a handle to original stderr so we can always emit critical notices to
 	# the invoking console, even after output redirection to logger/file sinks.
@@ -304,10 +314,10 @@ ndh::logger:command:run() {
 	set -x
 	local rc=0
 	if "$@"; then
-		echo "[$tag] ndh::logger:command:run completed successfully"
+		echo "[$tag] ndh::logger:command:run completed successfully" >&2
 	else
 		rc=$?
-		echo "[$tag] ndh::logger:command:run failed (rc=$rc)"
+		echo "[$tag] ndh::logger:command:run failed (rc=$rc)" >&2
 		if [ -n "${ACTIVATION_LOG_FILE:-}" ]; then
 			printf '[%s] ndh::logger:command:run error details: %s\n' "$tag" "${ACTIVATION_LOG_FILE}" >&3
 		fi
