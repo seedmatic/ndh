@@ -123,7 +123,15 @@ in
     platformRendersAuthorizedKeysFile = lib.mkDefault false;
     # NixOS guest policy: authorize via system-managed key files only.
     # Do not read per-user ~/.ssh/authorized_keys for server authentication.
+    #
+    # `/etc/ssh/authorized_keys.d/%u` is the static, Nix-baked rescue
+    # path: NixOS renders `users.users.<u>.openssh.authorizedKeys.keys`
+    # there at build time, so the rdp-host bare pubkey declared in
+    # modules/nixos/users.nix is always present even before the
+    # ssh-keys-enrichment unit runs (or if it fails). Listed first so
+    # sshd consults it before the runtime-managed dir.
     authorizedKeysFiles = [
+      "/etc/ssh/authorized_keys.d/%u"
       "${config.opensshPolicy.authorizedKeysDir}/%u"
     ];
     setEnvPath = lib.mkDefault "/run/wrappers/bin:/run/current-system/sw/bin:/bin:/usr/bin";

@@ -256,6 +256,23 @@ in
         printf "\n" >> "${config.sshPaths.systemKeysDir}/trusted-user-ca.pub"
       done
       chmod 644 "${config.sshPaths.systemKeysDir}/trusted-user-ca.pub"
+
+      # 5. Materialize authorizedKeysDir/<user> from the freshly extracted
+      #    rdp-host pubkey. The earlier system.activationScripts.sshGroupKeys
+      #    pass reads sshPaths.secretsKeysDir which is the user home — empty on
+      #    the very first boot, so authorized_keys was never written and sshd
+      #    rejected pubkey auth until the operator pasted the key by hand.
+      #    Doing this from the enrichment unit (root-owned, before=sshd.service)
+      #    ensures the file is populated on every boot from the canonical
+      #    system-keys source of truth.
+      host_pubkey="${config.sshPaths.systemKeysDir}/${config.sshPaths.keyName}.pub"
+      if [ -s "$host_pubkey" ]; then
+        install -d -m 0755 "${config.opensshPolicy.authorizedKeysDir}"
+        install -m 0644 "$host_pubkey" \
+          "${config.opensshPolicy.authorizedKeysDir}/${config.profile.user.name}"
+        install -m 0644 "$host_pubkey" \
+          "${config.opensshPolicy.authorizedKeysDir}/root"
+      fi
     '';
   };
 }
