@@ -450,6 +450,11 @@ let
             ${pkgsForLinux.bash}/bin/bash ${manifestAssemblyScript} "$out" "${source}"
           '';
 
+      # Sizing/disko knobs default to the host-derived values, but the
+      # fleet-wide bringup caller overrides them with literal constants
+      # to keep the produced drv host-agnostic (any hostProfile bleed
+      # would tag the same-bytes output with a different store path,
+      # defeating cross-host dedup).
       mkBringupZfsDiskImages =
         {
           nixosSystem,
@@ -459,6 +464,10 @@ let
           pauseAfterInstall ? false,
           enableBuildObserve ? false,
           buildObserveInterval ? 5,
+          builderZpoolDiskSizeMiB ? zpoolVdevDiskSizeMiB,
+          builderMemSizeMiB ? diskImageVmMemSizeMiB,
+          builderVmCpuCores ? diskImageVmCpuCores,
+          builderDiskoConfiguration ? diskoConfiguration,
         }:
         import ./bringup-zfs-disk-image.nix {
           lib = nixpkgs.lib;
@@ -473,13 +482,13 @@ let
           inherit enableBuildObserve;
           inherit buildObserveInterval;
           inherit hostLabel;
-          zpoolDiskSize = zpoolVdevDiskSizeMiB;
-          memSize = diskImageVmMemSizeMiB;
-          vmCpuCores = diskImageVmCpuCores;
+          zpoolDiskSize = builderZpoolDiskSizeMiB;
+          memSize = builderMemSizeMiB;
+          vmCpuCores = builderVmCpuCores;
           includeChannel = false;
           inherit name;
           # Pass pre-computed disko config to avoid a second evaluation of zfs-disko-config.nix.
-          inherit diskoConfiguration;
+          diskoConfiguration = builderDiskoConfiguration;
         };
 
       # ZFS bringup image selected by vmProvider — Lima and Tart differ in guest-side units.
@@ -489,47 +498,37 @@ let
       # Bringup image is identity-less (see minimalBringupSystemBase): the
       # bytes are bit-identical for every host on the fleet.  Use a fixed
       # host-agnostic derivation name ("nerd-bringup-…") so nix actually
-      # dedups the build across hosts — without this, `${mainName}-…`
-      # produces distinct store paths even when the contents match, and
-      # downstream consumers (deploy bundles, gcroots) end up duplicated.
-      #
-      # Critical: every input below must be a fleet-wide constant.  Threading
-      # `hostProfile`-derived values (e.g. `nixosDiskImageVm{CpuCores,MemSizeMiB}`,
-      # which legitimately differ per host because they describe the darwin
-      # host's nested-QEMU capacity, not the produced image) would tag two
-      # distinct store paths despite identical output bytes, defeating the
-      # dedup we just established.  Use literals; the produced image is
-      # fleet-shared and travels via `nix copy` separately from the
-      # per-host materializer/deploy bundle.
+      # dedups the build across hosts.  Every builder-side knob is overridden
+      # with a fleet-wide constant to keep the drv host-agnostic; threading
+      # `hostProfile`-derived values would tag two distinct store paths
+      # despite identical output bytes (the `nixosDiskImageVm{CpuCores,
+      # MemSizeMiB}` knobs legitimately differ per host because they
+      # describe the darwin host's nested-QEMU capacity, not the image).
       bringupDiskoConfiguration = import ./zfs-disko-config.nix {
         lib = nixpkgs.lib;
         # Empty hostProfile — zfs-disko-config.nix only reads
-        # `nixosZstdCompressionLevel` (defaults to 1).  Avoids any
-        # inadvertent per-host bleed.
+        # `nixosZstdCompressionLevel` (defaults to 1).
         hostProfile = { };
         diskImageSize = "3482M";
         espSizeMiB = 512;
         zfsStartMiB = 2 + 512;
       };
-      diskImageBringupZfsSystemdBootRaw = import ./bringup-zfs-disk-image.nix {
-        lib = nixpkgs.lib;
-        pkgs = pkgsForLinux;
-        config = selectedBringupSystemdZfs.config;
-        installSystemPath = selectedBringupSystemdZfs.config.system.build.toplevel;
+      diskImageBringupZfsSystemdBootRaw = mkBringupZfsDiskImages {
+        nixosSystem = selectedBringupSystemdZfs;
+        name = "nerd-bringup-zfs-disk-images-raw";
+        hostLabel = "nerd";
         runtimeSystemPath = null;
         inherit pauseAfterInstall;
         inherit enableBuildObserve;
         inherit buildObserveInterval;
-        hostLabel = "nerd";
-        # Fleet-wide constants — see comment above.  Do NOT swap for
-        # `zpoolVdevDiskSizeMiB` / `diskImageVmMemSizeMiB` /
-        # `diskImageVmCpuCores`; those flow from hostProfile.
-        zpoolDiskSize = 3482;
-        memSize = 8192;
-        vmCpuCores = 4;
-        includeChannel = false;
-        name = "nerd-bringup-zfs-disk-images-raw";
-        diskoConfiguration = bringupDiskoConfiguration;
+        # Fleet-wide constants — see comment above.  These literals match
+        # the default formula's output for the default hostProfile (8 GiB
+        # uncompressed × 0.7246 zstd factor + 512 MiB ESP + 2 MiB GPT
+        # overhead → 3482), so the produced image bytes are unchanged.
+        builderZpoolDiskSizeMiB = 3482;
+        builderMemSizeMiB = 8192;
+        builderVmCpuCores = 4;
+        builderDiskoConfiguration = bringupDiskoConfiguration;
       };
 
       diskImageBringupZfsSystemdBoot = mkDiskImageWithManifest {
