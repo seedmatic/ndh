@@ -73,10 +73,23 @@ This directory contains detailed session summaries documenting the evolution of 
 
 == Latest Session
 
-link:2026-05-18-bringup-image-unification-end-to-end.adoc[**2026-05-18: Bringup-Image Unification End-to-End on bioskop**]::
-Closed the bringup-image unification arc.  Single shared `nerd-nixos-bringup-zfs-systemd-disk` flake artifact validated end-to-end on bioskop: build → Tart VM → mDNS → `nixos-rebuild switch --target-host` → reboot → tailnet registration → cross-host SSH `nikopol → bioskop-nixos`.  Phase 4 (per-host cloud-init seed) dropped as unnecessary; the full-system push carries identity via flake attribute.  ZFS extra-pool hostid drift fixed with `boot.zfs.forceImportAll = true`.  Headscale preauth keys rotated for `nixos`/`incus`/`rke2` kinds.  Per-host `<main>-bringup-zfs-systemd-disk` aliases removed (Phase 6).  bioskop-nixos online (id 10, `100.64.0.3`); nikopol-nixos verification pending.
+link:2026-05-19-rke2-cluster-bringup-prep.adoc[**2026-05-19: RKE2 Cluster Bring-up Preparation (Mid-Session Save)**]::
+Mid-session save during VSCode update.  rke2lab working-tree triaged: 5 broken Java diffs reverted (botched s/networking/netplaning/), 3 clean commits landed (forward-looking docs, shim debug-tool asset + host-only flox runtime, netplan README rename).  Cross-repo interface map between nix-darwin-home ↔ rke2lab surveyed and verified.  bioskop-nixos prerequisites for Pulumi-driven RKE2 bring-up confirmed live (incusd:8443, lan-br bridge, distrobuilder, kubectl).  Outstanding sequence documented: push commits → rebuild JAR (March, stale) → resolve `bioskop-nixos` bare-hostname → `pulumi preview` → `pulumi up`.
 
 == All Sessions
+
+=== 2026-05-19
+
+link:2026-05-19-rke2-cluster-bringup-prep.adoc[RKE2 Cluster Bring-up Preparation (Mid-Session Save)]::
+**Focus:** Prepare bioskop's RKE2 cluster bring-up via the rke2lab Pulumi-based provisioning app.
++
+**Achievements:**
+* rke2lab working-tree triage: 5 broken Java files reverted (s/networking/netplaning/ corruption), 6 legitimate files committed in 3 logical commits
+* Cross-repo interface map verified: `catalog.netplan.rke2lab` (CIDR contract) in sync; `lan-br` bridge wiring confirmed live on bioskop-nixos
+* bioskop-nixos prerequisites all green: incusd v6.23 listening on `:8443`, `lan-br` bridge UP (unmanaged so containers get bbox-LAN IPs), distrobuilder + kubectl on PATH
+* Two hardcoded values in Pulumi.dev.yaml flagged for future catalog sourcing (`api.endpoint`, `incus.remoteAddress`)
++
+**Status:** rke2lab 90 commits ahead of origin/main, nix-darwin-home `develop` 5 ahead.  Push + JAR rebuild + `pulumi preview` is the next entry point.
 
 === 2026-05-18
 

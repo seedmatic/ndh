@@ -1,0 +1,220 @@
+= Session SOW: RKE2 Cluster Bring-up Preparation (Mid-Session Save)
+:toc: left
+:toclevels: 3
+:icons: font
+:source-highlighter: rouge
+:date: 2026-05-19
+
+== Status
+
+**Mid-session save.**  Operator paused to update VSCode.  This note
+preserves the in-flight state of the RKE2-bring-up thread so it can
+be resumed cleanly in the next session.
+
+== Where we are in the bigger arc
+
+The two preceding session notes set the stage:
+
+. link:2026-05-16-lan-catalog-bbox-reconcile-dnsmasq-zone.adoc[2026-05-16]
+  — LAN catalog (`netplan.lan.{routers,hosts}`), bbox-reconcile,
+  closed-world dnsmasq zone (later retired in favour of headscale
+  `dns.extra_records`).
+. link:2026-05-18-bringup-image-unification-end-to-end.adoc[2026-05-18]
+  — bringup-image unification arc closed; bioskop-nixos online on
+  the tailnet (id 10, `100.64.0.3`); cross-host SSH `nikopol →
+  bioskop-nixos` verified through headscale.
+
+This 2026-05-19 session continues that arc into **RKE2 cluster
+bring-up via the rke2lab Pulumi-based provisioning app**, scoping
+just bioskop's cluster as a proof-of-concept.
+
+== Pre-existing state surveyed
+
+=== nix-darwin-home
+
+* `catalog.netplan.rke2lab` already declares the cluster underlay
+  contract: `supernetCidr = 10.80.0.0/18`, `clusterPrefixLength =
+  21`, per-cluster `{index, cidr, gateway}` for both bioskop and
+  nikopol clusters.
+* `catalog.netplan.lan.hosts` declares 7 RKE2 nodes with
+  `kind = "rke2"`, `parent` (bioskop or nikopol), `role` (master /
+  peer{1,2,3} / worker{1,2}).
+* `hosts/bioskop/darwin.nix` consumes `rke2labNetplan.clusters.bioskop`
+  to drive a static route on `en9` to the cluster CIDR.
+* `modules/darwin/lima-config.nix` and `modules/nixos/default.nix`
+  also consume `catalog.netplan.rke2lab.clusters.<host>`.
+
+=== rke2lab
+
+* `Pulumi.yaml` runtime is Java; binary is
+  `seed-bootstrap/target/rke2lab-seed-bootstrap-0.1.0-SNAPSHOT-exec.jar`
+  (last built **2026-03-29**, **stale relative to source**).
+* `Pulumi.dev.yaml` configures bioskop as the cluster name, with
+  `incus.remoteAddress = https://bioskop-nixos:8443` as the target,
+  `image.builderHost = bioskop-nixos`, and the future cluster API
+  endpoint at `10.66.106.10:6443`.
+* The `modules/nixos/rke2lab/` git subtree was retired during the
+  May refactor; rke2lab is now a standalone repo at
+  `/private/var/lib/git/nxmatic/rke2lab` consumed only by reading
+  its `netplan` shape into `catalog.netplan.rke2lab`.
+* Working tree state at session start: branch ahead 87 commits,
+  11 modified files; **5 of those Java files contained a botched
+  s/networking/netplaning/ rename** that broke compilation
+  (`domainCatalog` → `domaincatalog`, `networking()` →
+  `netplaning()`).
+
+=== bioskop-nixos prerequisites verified live
+
+ssh probe confirmed all components are wired:
+
+[options="header"]
+|===
+| Component | Status
+| `incusd` listening on `0.0.0.0:8443` | ✅ PID 1765, client+server v6.23
+| `lan-br` bridge | ✅ exists at L2 (UP), `MANAGED: NO` so containers get bbox-LAN IPs via upstream DHCP
+| `vmlan0` physical network | ✅ present (the upstream interface)
+| `distrobuilder` | ✅ on PATH
+| `tailscale ip -4` | `100.64.0.3`
+| `kubectl` | ✅ installed (per-user)
+| `rke2` | ❌ NOT installed (expected — rke2 runs inside the incus-launched instance, not on bioskop-nixos)
+|===
+
+== Work landed this session
+
+. `rke2lab` working-tree triage:
+  - **5 broken Java files reverted**: `ManifestDomainPolicy.java`,
+    `HighAvailabilityDomainRegistrar.java`, `MeshDomainRegistrar.java`,
+    `NetworkingDomainRegistrar.java`,
+    `seed-bootstrap/.../ManifestLinkPolicy.java`.  All carried the
+    same s/networking/netplaning/ corruption.
+  - 6 legitimate files committed in 3 commits:
++
+[options="header"]
+|===
+| Commit  | Files | Subject
+| `11ac6466` | `docs/bootstrap-contract.adoc`, `docs/incus-distribution-contract.adoc` | docs(rke2lab): forward-looking notes — NixOps4 integration + SSH host-key cross-ref
+| `4e15e646` | `FloxContainerdShimAssets.java`, `containerd-shim-flox/{flake.nix,shim-build.sh}` | feat(shim): rke2lab-dlv debug tool asset + host-only flox runtime resolution
+| `9fff271c` | `netplan/README.md` | docs(netplan): align with nix-darwin-home catalog rename (`catalog.netplan.rke2lab`)
+|===
+
+. Verified cross-repo interface map between nix-darwin-home ↔
+  rke2lab.  Three concept-aligned surfaces, no automated mirroring:
+  - `nix-darwin-home → rke2lab`: `catalog.netplan.rke2lab` (CIDR
+    contract; in sync)
+  - `nix-darwin-home → rke2lab`: `lan-br` bridge wiring on
+    bioskop-nixos (verified live)
+  - `rke2lab → nix-darwin-home`: forward-looking SSH host-key
+    cross-ref (just added in `11ac6466`)
+
+. Identified two **hardcoded values in Pulumi.dev.yaml** that
+  should eventually be catalog-sourced but aren't today:
+  - `rke2lab:api.endpoint = https://10.66.106.10:6443`
+  - `rke2lab:incus.remoteAddress = https://bioskop-nixos:8443`
+    (bare hostname; resolves only via tailnet MagicDNS or local
+    bioskop-nixos)
+
+== Branch state at save
+
+[options="header"]
+|===
+| Repo | Branch | Ahead of origin | Working tree
+| nix-darwin-home | develop | 5 commits ahead | clean
+| rke2lab | main | 90 commits ahead | clean
+|===
+
+Neither branch pushed (per the no-push-without-explicit-request
+rule).
+
+== Outstanding for the rke2 thread
+
+Step-by-step plan to resume from after VSCode update:
+
+. **Push rke2lab commits to GitHub** so the source-of-truth is
+  sync'd before any pulumi action:
++
+[source,bash]
+----
+cd /private/var/lib/git/nxmatic/rke2lab
+git push origin main
+----
+
+. **Push nix-darwin-home commits** for the same reason:
++
+[source,bash]
+----
+cd /private/var/lib/git/nxmatic/nix-darwin-home
+git push origin develop
+----
+
+. **Rebuild the Pulumi seed-bootstrap JAR** — the on-disk JAR is
+  ~7 weeks stale relative to source:
++
+[source,bash]
+----
+cd /private/var/lib/git/nxmatic/rke2lab
+./mvnw clean package -DskipTests -pl seed-bootstrap -am
+----
+
+. **Resolve the `bioskop-nixos` bare-hostname question**.  Decide:
+  - (a) Run `pulumi up` from a Mac (uses tailscale MagicDNS, bare
+    `bioskop-nixos` resolves to `100.64.0.3`)
+  - (b) Run from inside the bioskop-nixos VM itself (resolves
+    locally, no tailnet involved)
+  - (c) Pin the address explicitly in Pulumi.dev.yaml to
+    `100.64.0.3` or `bioskop-nixos.mammoth-skate.ts.net` (more
+    durable but couples Pulumi config to the tailnet IP)
+
+. **Run `pulumi preview`** against the rebuilt JAR, no writes —
+  inspect what Pulumi thinks the next provisioning action is:
++
+[source,bash]
+----
+cd /private/var/lib/git/nxmatic/rke2lab
+pulumi preview
+----
+
+. **`pulumi up`** if the preview is sensible.  This will:
+  - Build a control-node image via distrobuilder on bioskop-nixos
+  - Launch the master instance via incus
+  - Configure netplan addressing per `catalog.netplan.rke2lab.clusters.bioskop`
+  - Apply Stage A bootstrap contract
+  - Export kubeconfig + endpoint outputs for Stage B
+
+. **Cluster smoke test**: `kubectl --kubeconfig <exported>
+  get nodes` should show the master ready.
+
+. Decide whether to bring up worker nodes immediately (peer3,
+  worker1, worker2 per the catalog) or stop at master-only for
+  this session.
+
+== Parked tasks (cold storage)
+
+* Bring up nikopol-nixos from the same shared bringup image (final
+  fleet-wide confidence check)
+* Rotate transcript-leaked credentials: ngrok / cloudflare / duckdns /
+  bbox / headscale preauth keys id 17–21
+* Mark Lima-era nix-darwin-home modules deprecated
+* Migrate `bin/*` and `ssh-key.d/*.sh` to `writeShellApplication`
+* `nerd-nixos` missing `/boot` mount on full config (long-parked)
+
+== Resumption checklist
+
+When the next session opens, before doing any rke2 work:
+
+* [ ] Confirm bioskop-nixos still on tailnet: `tailscale status`
+* [ ] Confirm incus daemon still listening on bioskop-nixos:
+      `ssh nxmatic@bioskop-nixos.local 'sudo ss -tlnp | grep :8443'`
+* [ ] Re-read this note's "Outstanding for the rke2 thread"
+      section
+* [ ] Pick up at step 1 (push) and proceed sequentially
+
+---
+**Status:** mid-session save during VSCode update; resume on
+2026-05-19 or later +
+**Session Date:** 2026-05-19 +
+**Key Achievement:** rke2lab working tree triaged + committed (3
+commits, 5 broken-Java reverts); bioskop-nixos prerequisites
+verified live; Pulumi runner unblocked but JAR rebuild + push
+pending +
+**Branch state:** nix-darwin-home `develop` 5 ahead, rke2lab
+`main` 90 ahead, neither pushed
