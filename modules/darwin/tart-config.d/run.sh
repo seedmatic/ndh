@@ -98,7 +98,13 @@ tart:runtime:configure() {
 	serial_bridge_auto_screen="${SERIAL_BRIDGE_AUTO_SCREEN:-$serial_bridge_auto_screen_default}"
 	no_graphics="${NO_GRAPHICS:-$no_graphics_default}"
 	nested_virt="${NESTED_VIRT:-$nested_virt_default}"
-	sops_age_host_dir="${SOPS_AGE_HOST_DIR:-$sops_age_host_dir_default}"
+	# `sops_age_host_dir_default` from the manifest is rendered against the
+	# *guest's* darwin profile (where the operator home mounts at e.g.
+	# /Volumes/user-home), but run.sh executes on the *host* invoking
+	# Tart — typically a different machine with $HOME at /Users/<op>.
+	# Re-anchor to the local $HOME unless the operator has explicitly
+	# overridden via SOPS_AGE_HOST_DIR.
+	sops_age_host_dir="${SOPS_AGE_HOST_DIR:-${HOME}/.config/sops}"
 	sops_age_key_file="${sops_age_host_dir}/age/keys.txt"
 
 	# Derive the bringup manifest: first follow the gcroot bundle (stable, GC-safe),

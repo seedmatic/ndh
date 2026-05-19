@@ -855,6 +855,7 @@
             mkDeployHelper =
               {
                 mainName,
+                vmName,
                 runManifest,
               }:
               systemPkgs.writeShellApplication {
@@ -896,18 +897,46 @@
                   vm_config=${runManifest}
                   bringup_images=${anyHostBringup}
 
-                  echo "[nerd-tart-deploy] copying artifacts to ssh-ng://$vz_host" >&2
-                  nix copy --to "ssh-ng://$vz_host" \
-                    "$deploy_bundle" "$vm_config" "$bringup_images"
+                  # Pull, don't push.  The operator host (e.g. bioskop) and
+                  # the bare-metal vz host share a LAN, while `vz.<host>`
+                  # routes through the Tart guest via ProxyJump — a
+                  # single-stream ssh tunnel that throttles disk-image
+                  # transfer to ~600 KB/s and traverses the bare metal's
+                  # network stack twice.  Inverting the direction lets
+                  # vz_host pull straight from the operator over mDNS,
+                  # which is the LAN-direct path.
+                  #
+                  # Source URL is `ssh-ng://$USER@<src>.local`, not the
+                  # cert-bound `nix-store.<peer>` alias from
+                  # modules/.common.d/nix-store-identity.nix: vz hosts are
+                  # bare-metal Macs outside the fleet inventory, so the
+                  # nix-store-identity ssh client fragment isn't generated
+                  # there.  Plain mDNS + the operator's normal ssh key is
+                  # what's reliably available.  `--no-check-sigs` covers
+                  # the case where vz_host's nix.conf doesn't trust the
+                  # fleet signing key (drift can leave the catalog stale
+                  # on a vz host that hasn't been rebuilt recently).
+                  src_host="$(hostname -s)"
+                  src_url="ssh-ng://$USER@$src_host.local"
+                  echo "[nerd-tart-deploy] pulling artifacts on $vz_host from $src_url" >&2
+                  # shellcheck disable=SC2029
+                  ssh "$vz_host" \
+                    "nix copy --no-check-sigs --from '$src_url' \
+                       '$deploy_bundle' '$vm_config' '$bringup_images'"
 
                   echo "[nerd-tart-deploy] installing per-VM YAML on $vz_host" >&2
                   # `$vm_config` is intentionally expanded client-side: it
                   # holds the local store path, which has just been copied
                   # to the vz host's nix store and is now valid there too.
+                  # The symlink basename must match the wrapper basename
+                  # at ~/.tart/vms/<vmName>.sh, since run.sh resolves the
+                  # manifest by `basename "$0" .sh`.  vmName is the Tart
+                  # VM directory name (default "nerd-nixos") and is
+                  # distinct from mainName (the host-catalog key).
                   # shellcheck disable=SC2029
                   ssh "$vz_host" \
                     "mkdir -p ~/.config/nerd-tart && \
-                     ln -sfn '$vm_config' ~/.config/nerd-tart/${mainName}.yaml"
+                     ln -sfn '$vm_config' ~/.config/nerd-tart/${vmName}.yaml"
 
                   echo "[nerd-tart-deploy] activating nerd-tart on $vz_host" >&2
                   exec ssh -t "$vz_host" "$deploy_bundle/bin/nerd-tart" \
@@ -930,6 +959,7 @@
                 "nerd-tart-${mainName}-config" = runManifest;
                 "nerd-tart-${mainName}-deploy" = mkDeployHelper {
                   inherit mainName runManifest;
+                  vmName = hostOutput.darwinConfiguration.config.tart.configGenerator.vmName;
                 };
               }
             ) { } (builtins.attrNames hostCatalog);

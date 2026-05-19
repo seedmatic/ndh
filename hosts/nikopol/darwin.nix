@@ -40,6 +40,15 @@
       forceEnable = false;
       installMaterializerPackage = false;
       vmMemoryMiB = halfRamMiB;
+      # When the operator deploys nikopol's run manifest to a vz host
+      # via `nerd-tart-nikopol-deploy`, the wrapper there reads these
+      # defaults.  Mirror bioskop's headless+screen-bridge combo so the
+      # boot flow is identical regardless of which Mac runs the VM.
+      # `Wi-Fi` is the canonical hardware-port name on macOS; reliable
+      # on laptops where a Thunderbolt adapter may not be plugged in.
+      vmRunBridgeInterface = "Wi-Fi";
+      vmRunSerialBridgeEnable = true;
+      vmRunSerialBridgeAutoScreen = true;
     };
 
     # Vector observability aggregator for NixOS disk image builds
