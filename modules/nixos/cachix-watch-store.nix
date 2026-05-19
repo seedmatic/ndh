@@ -34,19 +34,28 @@ in
       verbose = cfg.verbose;
     };
 
-    # cachix-watch-store keeps an open client connection to nix-daemon
-    # for the lifetime of the unit; on shutdown the upstream module
-    # has no ordering against nix-daemon.service, so systemd stops
-    # both in parallel and `cachix watch-store` wedges on the dying
-    # daemon socket.  Operator-visible symptom is systemd-shutdown
-    # printing `Waiting for process: <pid> (nix-daemon), <pid>
-    # (cachix)` and blocking until TimeoutStopSec expires (default
-    # 90s).  Make the ordering explicit and cap the worst case at
-    # 10s so a wedged cachix never blocks reboot for more than that.
-    systemd.services.cachix-watch-store = {
+    # cachix-watch-store-agent keeps an open client connection to
+    # nix-daemon for the lifetime of the unit; on shutdown the upstream
+    # module has no ordering against nix-daemon.service, so systemd
+    # stops both in parallel and `cachix watch-store` wedges on the
+    # dying daemon socket.  Worse, upstream sets KillMode=process so
+    # only the main PID gets SIGTERM, leaving child cachix workers
+    # parented to PID1 ignoring the stop signal entirely.  Operator-
+    # visible symptom is systemd-shutdown printing
+    # `Waiting for process: <pid> (cachix)` and blocking until
+    # TimeoutStopSec expires (default 90s).
+    #
+    # Override the right unit (note: upstream names it
+    # `cachix-watch-store-agent`, not `cachix-watch-store`), force a
+    # full control-group kill so the workers go down with the leader,
+    # add explicit nix-daemon ordering, and cap the worst case at 10s.
+    systemd.services.cachix-watch-store-agent = {
       after = [ "nix-daemon.service" ];
       requires = [ "nix-daemon.service" ];
-      serviceConfig.TimeoutStopSec = 10;
+      serviceConfig = {
+        KillMode = lib.mkForce "control-group";
+        TimeoutStopSec = 10;
+      };
     };
   };
 }
