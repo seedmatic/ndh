@@ -13,6 +13,7 @@
 # sshPaths.systemKeysDir.
 let
   cfg = config.nixStoreIdentity;
+  homeDir = "/var/empty";
 in
 {
   config = {
@@ -30,8 +31,34 @@ in
         gid = 30000;
         description = "Inbound nix-daemon --stdio endpoint";
         shell = cfg.inboundUserShellPath;
-        home = "/var/empty";
+        home = homeDir;
       };
     };
+
+    # macOS 26.5 (25F71) ran a directory-services consistency pass that
+    # promoted /Users/nix-store to a full interactive user record:
+    # rewrote NFSHomeDirectory to /private/var/empty_1 (spurious
+    # collision-rename), and added jpegphoto, picture, KerberosKeys,
+    # ShadowHashData, accountPolicyData, unlockOptions, etc. The home
+    # rewrite trips nix-darwin's "config contains the wrong home
+    # directory" check and aborts activation. Heal idempotently before
+    # the check runs.
+    system.activationScripts.preActivation.text = lib.mkIf (cfg.enable && cfg.provisionInboundUser) (
+      lib.mkBefore ''
+        if dscl . -read /Users/${cfg.inboundUserName} RecordName &>/dev/null; then
+          currentHome=$(dscl . -read /Users/${cfg.inboundUserName} NFSHomeDirectory 2>/dev/null | sed 's/^NFSHomeDirectory: //')
+          if [[ "$currentHome" != ${lib.escapeShellArg homeDir} ]]; then
+            printf '[nix-store-identity] resetting NFSHomeDirectory: %s -> %s\n' "$currentHome" ${lib.escapeShellArg homeDir} >&2
+            dscl . -change /Users/${cfg.inboundUserName} NFSHomeDirectory "$currentHome" ${lib.escapeShellArg homeDir} || true
+          fi
+          for attr in jpegphoto picture AvatarRepresentation KerberosKeys ShadowHashData accountPolicyData unlockOptions inputSources authentication_authority hint \
+                      _writers_jpegphoto _writers_picture _writers_AvatarRepresentation _writers_hint _writers_inputSources _writers_unlockOptions _writers_UserCertificate _writers_passwd; do
+            if dscl . -read /Users/${cfg.inboundUserName} "$attr" &>/dev/null; then
+              dscl . -delete /Users/${cfg.inboundUserName} "$attr" || true
+            fi
+          done
+        fi
+      ''
+    );
   };
 }
