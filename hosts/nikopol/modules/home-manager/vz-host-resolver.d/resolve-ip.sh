@@ -55,7 +55,7 @@ main() {
 # return the dotted-quad IP without parens.  Empty stdout on miss.
 #
 # `arp -an` rows look like:
-#   ? (10.0.0.27) at 52:2d:10:fa:5a:1c on en0 ifscope [ethernet]
+#   ? (10.0.0.27) at d0:11:e5:19:1c:9a on en0 ifscope [ethernet]
 # Field 2 is the parenthesised IP, field 4 is the MAC.  macOS's
 # `arp` does NOT strip leading zeros (verified empirically on
 # Darwin 25.x), so a literal lowercase-hex compare suffices —
