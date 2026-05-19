@@ -55,18 +55,24 @@ main() {
 # return the dotted-quad IP without parens.  Empty stdout on miss.
 #
 # `arp -an` rows look like:
-#   ? (10.0.0.27) at d0:11:e5:19:1c:9a on en0 ifscope [ethernet]
+#   ? (192.168.1.1) at 4a:4:df:ff:a8:de on en0 ifscope [ethernet]
 # Field 2 is the parenthesised IP, field 4 is the MAC.  macOS's
-# `arp` does NOT strip leading zeros (verified empirically on
-# Darwin 25.x), so a literal lowercase-hex compare suffices —
-# previous iterations of this resolver had a normalisation pass
-# that introduced its own off-by-one bug.
+# `arp` strips leading zeros from each octet (so `4a:04:...` becomes
+# `4a:4:...`) while `ifconfig` keeps them, so we normalise both
+# sides by stripping leading zeros per octet before comparing.
 ndh::vzHostResolver:lookup() {
 	local mac="${1,,}"
 	arp -an 2>/dev/null | awk -v target="$mac" '
+		function normalise(m,    parts, i, n) {
+			n = split(tolower(m), parts, ":")
+			for (i = 1; i <= n; i++) sub(/^0+([0-9a-f])/, "\\1", parts[i])
+			m = parts[1]
+			for (i = 2; i <= n; i++) m = m ":" parts[i]
+			return m
+		}
 		{
 			gsub(/[()]/, "", $2)
-			if (tolower($4) == target) {
+			if (normalise($4) == normalise(target)) {
 				print $2
 				exit
 			}

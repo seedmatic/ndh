@@ -20,7 +20,7 @@ let
   # from `ifconfig en0 | grep ether` on the bare metal; same value
   # on every network it joins.  If the MAC ever changes (hardware
   # swap, Private Wi-Fi flipped to Fixed/Rotating), update here.
-  bareMetalMac = "d0:11:e5:19:1c:9a";
+  bareMetalMac = "4a:04:df:ff:a8:de";
 
   # Bin name + bin path on disk.  This fleet runs nix-darwin with
   # `home-manager.useUserPackages = true`, which routes home.packages
