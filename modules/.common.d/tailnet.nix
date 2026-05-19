@@ -39,7 +39,7 @@
 {
   config,
   lib,
-  paths,
+  worktreePath,
   ...
 }:
 
@@ -239,7 +239,7 @@ in
   options.tailnet = {
     sopsEncryptedFile = mkOption {
       type = types.path;
-      default = (paths.at ".secrets");
+      default = (worktreePath.of ".secrets");
       description = ''
         Path to the sops-encrypted YAML carrying the `tailnet.*` tree.
         Defaults to the flake-tracked `.secrets`; override only when a

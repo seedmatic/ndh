@@ -1,6 +1,6 @@
 {
   self,
-  paths,
+  worktreePath,
   lib,
   catalog,
   config,
@@ -161,7 +161,7 @@ in
 
     };
   };
-  nixpkgs.config = import (paths.at "modules/.common.d/nixpkgs-config.nix");
+  nixpkgs.config = import (worktreePath.of "modules/.common.d/nixpkgs-config.nix");
 
   nixpkgs.overlays = (config.nixpkgs.overlays or [ ]) ++ [
     (final: prev: {

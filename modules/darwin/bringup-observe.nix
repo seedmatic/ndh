@@ -15,7 +15,7 @@
   pkgs,
   ndh,
   self,
-  paths,
+  worktreePath,
   ...
 }:
 with lib;
@@ -41,7 +41,7 @@ let
     else
       pkgs.vector;
 
-  vectorConfigLib = import (paths.at "modules/.common.d/vector-config.nix") { inherit lib; };
+  vectorConfigLib = import (worktreePath.of "modules/.common.d/vector-config.nix") { inherit lib; };
   vectorSettings = vectorConfigLib.mkAggregatorConfig {
     apiPort = cfg.apiPort;
     httpPort = cfg.httpPort;

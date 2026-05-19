@@ -2,7 +2,7 @@
   config,
   lib,
   containerRegistrySystem,
-  paths,
+  worktreePath,
   ...
 }:
 
@@ -56,7 +56,7 @@ in
             ./../caddy.nix
             ./../docker-registry.nix
             ./../tailscale.nix
-            (paths.at "modules/nixos/networking-mammoth-skate.nix")
+            (worktreePath.of "modules/nixos/networking-mammoth-skate.nix")
             (
               { config, ... }:
               {

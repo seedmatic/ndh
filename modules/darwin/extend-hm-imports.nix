@@ -2,7 +2,7 @@
   config,
   pkgs,
   lib,
-  paths,
+  worktreePath,
   ...
 }:
 let
@@ -10,6 +10,6 @@ let
 in
 {
   hm.imports = (config.hm.imports) ++ [
-    (paths.at "modules/home-manager/ssh-keys.nix")
+    (worktreePath.of "modules/home-manager/ssh-keys.nix")
   ];
 }

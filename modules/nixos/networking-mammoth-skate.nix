@@ -2,11 +2,11 @@
   config,
   lib,
   ndh,
-  paths,
+  worktreePath,
   ...
 }:
 {
-  imports = [ (paths.at "modules/.common.d/dns-servers.nix") ];
+  imports = [ (worktreePath.of "modules/.common.d/dns-servers.nix") ];
 
   options.networking.mammoth-skate = {
     enable = lib.mkOption {

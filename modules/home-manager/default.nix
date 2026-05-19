@@ -4,7 +4,7 @@
   pkgs,
   lib,
   floxEnv ? null,
-  paths,
+  worktreePath,
   # When imported from the system layer we pass `profile` directly; when
   # evaluated inside home-manager proper, it is available via
   # `config._module.specialArgs.profile`.
@@ -33,7 +33,7 @@ let
     if ndhContext != null && ndhContext ? nixBashTrampoline then
       "${ndhContext.nixBashTrampoline}"
     else
-      "${paths.at "modules/.common.d/shell.d/nix-bash-trampoline.sh"}";
+      "${worktreePath.of "modules/.common.d/shell.d/nix-bash-trampoline.sh"}";
 
   ndhArgs =
     if specialArgsResolved ? ndh && specialArgsResolved.ndh != null then

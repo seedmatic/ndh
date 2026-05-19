@@ -4,13 +4,13 @@
   lib,
   ndh,
   ndhSystemd,
-  paths,
+  worktreePath,
   ...
 }:
 
 let
   ndhContext = ndh.context;
-  ndhCommon = (paths.at "modules/.common.d");
+  ndhCommon = (worktreePath.of "modules/.common.d");
   dollar = "$";
   hostname =
     if config.networking.hostName != "" then config.networking.hostName else "nix-darwin-home";
@@ -114,8 +114,8 @@ let
 in
 {
   imports = [
-    (paths.at "modules/.common.d/openssh-policy.nix")
-    (paths.at "modules/.common.d/ssh-paths.nix")
+    (worktreePath.of "modules/.common.d/openssh-policy.nix")
+    (worktreePath.of "modules/.common.d/ssh-paths.nix")
   ];
 
   opensshPolicy = {

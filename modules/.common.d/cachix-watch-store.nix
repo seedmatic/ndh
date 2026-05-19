@@ -2,7 +2,7 @@
 {
   config,
   lib,
-  paths,
+  worktreePath,
   ...
 }:
 let
@@ -20,7 +20,7 @@ in
 
     sopsEncryptedTokenFile = lib.mkOption {
       type = lib.types.path;
-      default = (paths.at ".secrets");
+      default = (worktreePath.of ".secrets");
       description = ''
         Path to the SOPS-encrypted .secrets YAML file containing
         .cachix.<name>.token.

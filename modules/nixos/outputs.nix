@@ -1,6 +1,6 @@
 {
   self,
-  paths,
+  worktreePath,
   nixpkgs,
   pkgsForLinux,
   ndhStoreApiLinux,
@@ -228,7 +228,7 @@ let
       minimalBringupSystemBase = nixpkgs.lib.nixosSystem {
         system = "aarch64-linux";
         pkgs = pkgsForLinux;
-        specialArgs = { inherit self paths; };
+        specialArgs = { inherit self worktreePath; };
         modules = [
           disko.nixosModules.disko
           sops-nix.nixosModules.sops

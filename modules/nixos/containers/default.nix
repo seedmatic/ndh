@@ -2,7 +2,7 @@
   config,
   pkgs,
   lib,
-  paths,
+  worktreePath,
   containerRegistrySystem,
   ...
 }:
@@ -13,7 +13,7 @@
         config
         pkgs
         lib
-        paths
+        worktreePath
         containerRegistrySystem
         ;
     })

@@ -4,13 +4,13 @@
   lib,
   ndh,
   ndhSystemd,
-  paths,
+  worktreePath,
   ...
 }:
 let
   ndhContext = ndh.context;
-  ndhCommon = (paths.at "modules/.common.d");
-  ndhHm = (paths.at "modules/home-manager");
+  ndhCommon = (worktreePath.of "modules/.common.d");
+  ndhHm = (worktreePath.of "modules/home-manager");
   nixBashTrampoline = "${ndhContext.nixBashTrampoline}";
   catalog = ndhContext.catalog;
   inventory = ndhContext.inventory;

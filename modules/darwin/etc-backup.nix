@@ -1,13 +1,13 @@
 {
   config,
   lib,
-  paths,
+  worktreePath,
   ...
 }:
 let
   cfg = config.ndh.darwinEtcBackup;
   etcTargets = builtins.attrNames config.environment.etc;
-  etcBackupLib = import (paths.at "modules/.common.d/etc-backup-lib.nix") { inherit lib; };
+  etcBackupLib = import (worktreePath.of "modules/.common.d/etc-backup-lib.nix") { inherit lib; };
   backupScript = etcBackupLib.mkEtcBackupScript {
     inherit etcTargets;
     extension = cfg.extension;

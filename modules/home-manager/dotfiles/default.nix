@@ -1,11 +1,11 @@
 {
   pkgs,
   lib,
-  paths,
+  worktreePath,
   ...
 }:
 let
-  nixpkgsConfigFile = (paths.at "modules/.common.d/nixpkgs-config.nix");
+  nixpkgsConfigFile = (worktreePath.of "modules/.common.d/nixpkgs-config.nix");
 in
 {
   xdg.dataFile = {

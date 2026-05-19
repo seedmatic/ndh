@@ -1,11 +1,11 @@
 {
   config,
   lib,
-  paths,
+  worktreePath,
   ...
 }:
 let
-  shared = import (paths.at "modules/.common.d/nfs-shared.nix");
+  shared = import (worktreePath.of "modules/.common.d/nfs-shared.nix");
   cfg = config.services.nfsAutofs;
 
   autoMasterLines = [

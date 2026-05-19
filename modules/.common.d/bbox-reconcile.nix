@@ -20,7 +20,7 @@
   lib,
   pkgs,
   ndh,
-  paths,
+  worktreePath,
   ...
 }:
 let
@@ -40,7 +40,7 @@ let
   # `note` field documents why a MAC is being silenced.  Surfaced
   # here as a JSON array of lowercased MACs the runtime script
   # consumes directly.
-  ignoredYaml = (paths.at "catalog/lan-ignored-reservations.yaml");
+  ignoredYaml = (worktreePath.of "catalog/lan-ignored-reservations.yaml");
   ignoredJson =
     pkgs.runCommand "bbox-reconcile-ignored.json"
       {
@@ -68,7 +68,7 @@ let
       ROUTER_URL='${routerAdminUrl}'
       HOSTS_JSON='${hostsJson}'
       IGNORED_JSON='${ignoredJson}'
-      SECRETS_FILE='${paths.at ".secrets"}'
+      SECRETS_FILE='${worktreePath.of ".secrets"}'
 
       usage() {
         cat >&2 <<'EOF'

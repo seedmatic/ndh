@@ -641,10 +641,14 @@
           }
         '';
 
-      # Repo-relative path registry; each value is a path literal so the
-      # module's input hash depends only on the imported file, not on
-      # `self`'s whole-tree hash.  See ./paths.nix for the rationale.
-      paths = import ./paths.nix;
+      # Resolve a relative path to a path literal anchored at the repo
+      # root.  Each call hashes only the file (or subtree) named, not
+      # the whole worktree the way `${self}/<file>` does — so unrelated
+      # source edits don't bust downstream derivations like the bringup
+      # disk image.  See docs/bringup-image-unification.adoc.
+      worktreePath = {
+        of = rel: ./. + "/${rel}";
+      };
 
       mkSpecialArgs =
         {
@@ -663,7 +667,7 @@
           );
         in
         {
-          inherit self lib paths;
+          inherit self lib worktreePath;
           _modules = modules;
           nixpkgsInput = nixpkgs;
         }
@@ -684,7 +688,7 @@
       nixosOutputsApi = import ./modules/nixos/outputs.nix {
         inherit
           self
-          paths
+          worktreePath
           nixpkgs
           pkgsForLinux
           ndhStoreApiLinux
@@ -1137,7 +1141,7 @@
               extraSpecialArgs = mkNdhHomeManagerSpecialArgs {
                 inherit
                   self
-                  paths
+                  worktreePath
                   profile
                   vmConfigMaterializerPackage
                   ;

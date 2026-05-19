@@ -4,7 +4,7 @@
   lib,
   options,
   ndh,
-  paths,
+  worktreePath,
   ...
 }:
 
@@ -118,7 +118,7 @@ let
   initrdRescueSshHostKeyInInitrd = "/etc/secrets/initrd/ssh_host_ed25519_key";
   initrdRescueSshHostKeyStorePath = initrdRescueSshHostKey + "/ssh_host_ed25519_key";
   bootstrapRequiredImports = [
-    (paths.at "modules/.common.d")
+    (worktreePath.of "modules/.common.d")
     ./etc-backup.nix
     ./lima-network-interfaces.nix
     ./disko.nix

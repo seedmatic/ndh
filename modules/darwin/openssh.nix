@@ -1,5 +1,5 @@
 {
-  paths,
+  worktreePath,
   config,
   pkgs,
   lib,
@@ -8,7 +8,7 @@
 }:
 let
   ndhContext = ndh.context;
-  ndhCommon = (paths.at "modules/.common.d");
+  ndhCommon = (worktreePath.of "modules/.common.d");
   profile = config.profile;
   userHome = profile.user.home;
   userName = profile.user.name;
@@ -71,8 +71,8 @@ let
 in
 {
   imports = [
-    (paths.at "modules/.common.d/openssh-policy.nix")
-    (paths.at "modules/.common.d/ssh-paths.nix")
+    (worktreePath.of "modules/.common.d/openssh-policy.nix")
+    (worktreePath.of "modules/.common.d/ssh-paths.nix")
   ];
 
   config = {

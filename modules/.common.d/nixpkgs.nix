@@ -2,11 +2,11 @@
   nixpkgsInput,
   config,
   pkgs,
-  paths,
+  worktreePath,
   ...
 }:
 let
-  cacheTrust = import (paths.at "catalog/cache-trust.nix");
+  cacheTrust = import (worktreePath.of "catalog/cache-trust.nix");
   cacheCatalog = cacheTrust.caches;
 
   cfg = config.profile;

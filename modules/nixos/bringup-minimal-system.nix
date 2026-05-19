@@ -5,7 +5,7 @@
   modulesPath,
   ndh ? null,
   ndhSystemd,
-  paths,
+  worktreePath,
   ...
 }:
 let
@@ -41,29 +41,29 @@ in
     (modulesPath + "/profiles/qemu-guest.nix")
 
     # Profile & user
-    (paths.at "profile.nix")
+    (worktreePath.of "profile.nix")
 
     # Secrets (SOPS): local sops.nix drives the bringup decrypt flow,
     # .common.d/sops.nix provides the shared secret declarations.
     ./sops.nix
-    (paths.at "modules/.common.d/sops.nix")
+    (worktreePath.of "modules/.common.d/sops.nix")
 
     # Nix daemon configuration (experimental-features + fleet signing).
     # Cloud-init's `nix copy` needs nix-command + flakes + trust of the
     # fleet signing pub. cache-trust is split common/platform: .common.d
     # holds the walker + composeScript; ./cache-trust.nix wires the
     # NixOS-side systemd oneshot that runs it after sops.
-    (paths.at "modules/.common.d/nix-settings.nix")
-    (paths.at "modules/.common.d/cache-trust.nix")
+    (worktreePath.of "modules/.common.d/nix-settings.nix")
+    (worktreePath.of "modules/.common.d/cache-trust.nix")
     ./cache-trust.nix
 
     # SSH identity (keys.yaml access + cert-signed nix-store identity).
     # ssh-keys-enrichment materializes the nix-store + rdp-host keypairs so
     # bioskop can `nix copy --to` and SSH in during bringup activation.
-    (paths.at "modules/.common.d/ssh-paths.nix")
-    (paths.at "modules/.common.d/openssh-policy.nix")
-    (paths.at "modules/.common.d/nix-store-identity.nix")
-    (paths.at "modules/.common.d/keys-yaml.nix")
+    (worktreePath.of "modules/.common.d/ssh-paths.nix")
+    (worktreePath.of "modules/.common.d/openssh-policy.nix")
+    (worktreePath.of "modules/.common.d/nix-store-identity.nix")
+    (worktreePath.of "modules/.common.d/keys-yaml.nix")
     ./systemd/ssh-keys-enrichment.nix
     ./nix-store-identity.nix
 
@@ -98,8 +98,8 @@ in
     # the DHCP ethernet link) is already wired inline below — so we
     # DON'T import modules/nixos/resolved-lan.nix here; doing so would
     # conflict with the bringup-local `services.resolved.extraConfig`.
-    (paths.at "modules/.common.d/tailnet.nix")
-    (paths.at "modules/.common.d/headscale-client-wiring.nix")
+    (worktreePath.of "modules/.common.d/tailnet.nix")
+    (worktreePath.of "modules/.common.d/headscale-client-wiring.nix")
     ./headscale-client-kind.nix
     ./headscale.nix
   ];

@@ -2,7 +2,7 @@
   config,
   pkgs,
   lib,
-  paths,
+  worktreePath,
   ...
 }:
 let
@@ -14,7 +14,7 @@ let
     then
       "${specialArgs.ndh.context.nixBashTrampoline}"
     else
-      "${paths.at "modules/.common.d/shell.d/nix-bash-trampoline.sh"}";
+      "${worktreePath.of "modules/.common.d/shell.d/nix-bash-trampoline.sh"}";
   profile = config._module.specialArgs.profile;
   userName = profile.user.name;
   userEmail = profile.email;
@@ -34,7 +34,7 @@ in
 {
   imports = [
     ./git.d/sops.nix
-    (paths.at "modules/.common.d/ssh-paths.nix")
+    (worktreePath.of "modules/.common.d/ssh-paths.nix")
   ];
 
   home.packages = [ pkgs.github-cli ];

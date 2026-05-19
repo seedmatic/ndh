@@ -8,7 +8,7 @@
   catalog,
   inventory,
   ndh,
-  paths,
+  worktreePath,
   ...
 }:
 
@@ -70,7 +70,7 @@ let
 
   # Canonical disk → ZFS pool membership (shared with bringup config)
   limaVmName = "nerd-nixos";
-  zfsPoolDiskMap = import (paths.at "modules/nixos/zfs-pool-disk-map.nix");
+  zfsPoolDiskMap = import (worktreePath.of "modules/nixos/zfs-pool-disk-map.nix");
   limaAdditionalDisks = map (entry: {
     name = "${limaVmName}-${entry.disk}";
     format = false;

@@ -1,5 +1,5 @@
 {
-  paths,
+  worktreePath,
   config,
   lib,
   pkgs,
@@ -37,7 +37,7 @@ let
     concatMapStringsSep
     ;
 
-  cacheTrust = import (paths.at "catalog/cache-trust.nix");
+  cacheTrust = import (worktreePath.of "catalog/cache-trust.nix");
   allCaches = cacheTrust.caches;
 
   # Fleet-owned entries under caches.cachix.<name>. These have their

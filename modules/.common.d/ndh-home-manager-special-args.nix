@@ -1,6 +1,6 @@
 {
   self,
-  paths,
+  worktreePath,
   profile,
   ndhContext,
   ndhStore,
@@ -8,7 +8,7 @@
   keysYamlPath,
 }:
 {
-  inherit self paths profile;
+  inherit self worktreePath profile;
   ndh = {
     context = ndhContext;
     store = ndhStore;

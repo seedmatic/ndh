@@ -3,12 +3,12 @@
   config,
   lib,
   pkgs,
-  paths,
+  worktreePath,
   ...
 }:
 {
   imports = [
-    (paths.at "modules/.common.d")
+    (worktreePath.of "modules/.common.d")
     ./preferences.nix
     ./security.nix
     ./core.nix
