@@ -492,15 +492,44 @@ let
       # dedups the build across hosts — without this, `${mainName}-…`
       # produces distinct store paths even when the contents match, and
       # downstream consumers (deploy bundles, gcroots) end up duplicated.
-      diskImageBringupZfsSystemdBootRaw = mkBringupZfsDiskImages {
-        nixosSystem = selectedBringupSystemdZfs;
-        name = "nerd-bringup-zfs-disk-images-raw";
-        hostLabel = "nerd";
-        # No runtime system closure — minimal bringup only
+      #
+      # Critical: every input below must be a fleet-wide constant.  Threading
+      # `hostProfile`-derived values (e.g. `nixosDiskImageVm{CpuCores,MemSizeMiB}`,
+      # which legitimately differ per host because they describe the darwin
+      # host's nested-QEMU capacity, not the produced image) would tag two
+      # distinct store paths despite identical output bytes, defeating the
+      # dedup we just established.  Use literals; the produced image is
+      # fleet-shared and travels via `nix copy` separately from the
+      # per-host materializer/deploy bundle.
+      bringupDiskoConfiguration = import ./zfs-disko-config.nix {
+        lib = nixpkgs.lib;
+        # Empty hostProfile — zfs-disko-config.nix only reads
+        # `nixosZstdCompressionLevel` (defaults to 1).  Avoids any
+        # inadvertent per-host bleed.
+        hostProfile = { };
+        diskImageSize = "3482M";
+        espSizeMiB = 512;
+        zfsStartMiB = 2 + 512;
+      };
+      diskImageBringupZfsSystemdBootRaw = import ./bringup-zfs-disk-image.nix {
+        lib = nixpkgs.lib;
+        pkgs = pkgsForLinux;
+        config = selectedBringupSystemdZfs.config;
+        installSystemPath = selectedBringupSystemdZfs.config.system.build.toplevel;
         runtimeSystemPath = null;
         inherit pauseAfterInstall;
         inherit enableBuildObserve;
         inherit buildObserveInterval;
+        hostLabel = "nerd";
+        # Fleet-wide constants — see comment above.  Do NOT swap for
+        # `zpoolVdevDiskSizeMiB` / `diskImageVmMemSizeMiB` /
+        # `diskImageVmCpuCores`; those flow from hostProfile.
+        zpoolDiskSize = 3482;
+        memSize = 8192;
+        vmCpuCores = 4;
+        includeChannel = false;
+        name = "nerd-bringup-zfs-disk-images-raw";
+        diskoConfiguration = bringupDiskoConfiguration;
       };
 
       diskImageBringupZfsSystemdBoot = mkDiskImageWithManifest {
