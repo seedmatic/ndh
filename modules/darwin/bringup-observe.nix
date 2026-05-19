@@ -41,7 +41,7 @@ let
     else
       pkgs.vector;
 
-  vectorConfigLib = import paths.modulesCommonVectorConfig { inherit lib; };
+  vectorConfigLib = import (paths.at "modules/.common.d/vector-config.nix") { inherit lib; };
   vectorSettings = vectorConfigLib.mkAggregatorConfig {
     apiPort = cfg.apiPort;
     httpPort = cfg.httpPort;

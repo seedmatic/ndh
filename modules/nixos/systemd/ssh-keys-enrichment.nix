@@ -9,8 +9,8 @@
 }:
 let
   ndhContext = ndh.context;
-  ndhCommon = paths.modulesCommonDir;
-  ndhHm = paths.modulesHomeManagerDir;
+  ndhCommon = (paths.at "modules/.common.d");
+  ndhHm = (paths.at "modules/home-manager");
   nixBashTrampoline = "${ndhContext.nixBashTrampoline}";
   catalog = ndhContext.catalog;
   inventory = ndhContext.inventory;

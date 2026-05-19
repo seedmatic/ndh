@@ -25,7 +25,7 @@ let
 
 in
 {
-  imports = [ paths.modulesCommonSshPaths ];
+  imports = [ (paths.at "modules/.common.d/ssh-paths.nix") ];
 
   options.sshClient = {
     enable = mkOption {

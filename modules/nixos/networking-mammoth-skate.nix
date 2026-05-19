@@ -6,7 +6,7 @@
   ...
 }:
 {
-  imports = [ paths.modulesCommonDnsServers ];
+  imports = [ (paths.at "modules/.common.d/dns-servers.nix") ];
 
   options.networking.mammoth-skate = {
     enable = lib.mkOption {

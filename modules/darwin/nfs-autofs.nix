@@ -11,7 +11,7 @@ let
   ndhContext = ndh.context;
   nixBashTrampoline = "${ndhContext.nixBashTrampoline}";
   netplan = catalog.netplan or { };
-  shared = import paths.modulesCommonNfsShared;
+  shared = import (paths.at "modules/.common.d/nfs-shared.nix");
   # WARNING: Never let ZFS datasets or overlays mount or traverse /net (autofs)!
   # This prevents ZFS from hanging on network errors or unavailable NFS hosts.
   cfg = config.services.nfsDarwin;

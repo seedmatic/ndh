@@ -22,14 +22,14 @@ let
   trustedCaPublicKey = lib.removeSuffix "\n" (
     builtins.readFile (
       pkgs.runCommand "trusted-user-ca-public-key" { buildInputs = [ pkgs.yq-go ]; } ''
-        yq -r '.authorities."mammoth-skate".public // ""' "${paths.modulesHomeManagerSshKeysYaml}" > "$out"
+        yq -r '.authorities."mammoth-skate".public // ""' "${paths.at "modules/home-manager/ssh.d/keys.yaml"}" > "$out"
       ''
     )
   );
   linuxBuilderPublicKey = lib.removeSuffix "\n" (
     builtins.readFile (
       pkgs.runCommand "linux-builder-public-key" { buildInputs = [ pkgs.yq-go ]; } ''
-        yq -r '.keys."linux-builder".public // ""' "${paths.modulesHomeManagerSshKeysYaml}" > "$out"
+        yq -r '.keys."linux-builder".public // ""' "${paths.at "modules/home-manager/ssh.d/keys.yaml"}" > "$out"
       ''
     )
   );

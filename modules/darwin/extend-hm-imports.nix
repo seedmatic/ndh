@@ -10,6 +10,6 @@ let
 in
 {
   hm.imports = (config.hm.imports) ++ [
-    paths.modulesHomeManagerSshKeys
+    (paths.at "modules/home-manager/ssh-keys.nix")
   ];
 }

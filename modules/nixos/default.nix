@@ -118,7 +118,7 @@ let
   initrdRescueSshHostKeyInInitrd = "/etc/secrets/initrd/ssh_host_ed25519_key";
   initrdRescueSshHostKeyStorePath = initrdRescueSshHostKey + "/ssh_host_ed25519_key";
   bootstrapRequiredImports = [
-    paths.modulesCommonDir
+    (paths.at "modules/.common.d")
     ./etc-backup.nix
     ./lima-network-interfaces.nix
     ./disko.nix

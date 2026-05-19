@@ -14,7 +14,7 @@ let
     then
       "${specialArgs.ndh.context.nixBashTrampoline}"
     else
-      "${paths.modulesCommonNixBashTrampoline}";
+      "${paths.at "modules/.common.d/shell.d/nix-bash-trampoline.sh"}";
   profile = config._module.specialArgs.profile;
   userName = profile.user.name;
   homeDir = config.home.homeDirectory;
@@ -30,7 +30,7 @@ let
   };
 in
 {
-  imports = [ paths.modulesCommonSshPaths ];
+  imports = [ (paths.at "modules/.common.d/ssh-paths.nix") ];
 
   home.activation.provisionLimaRdpAssets = lib.hm.dag.entryAfter [ "extractSSHKeys" ] ''
     ${pkgs.bash}/bin/bash ${provisionLimaAssetsScript}

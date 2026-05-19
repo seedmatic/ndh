@@ -8,7 +8,7 @@
 }:
 {
   imports = [
-    paths.modulesCommonDir
+    (paths.at "modules/.common.d")
     ./preferences.nix
     ./security.nix
     ./core.nix

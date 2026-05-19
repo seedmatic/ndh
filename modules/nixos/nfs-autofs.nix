@@ -5,7 +5,7 @@
   ...
 }:
 let
-  shared = import paths.modulesCommonNfsShared;
+  shared = import (paths.at "modules/.common.d/nfs-shared.nix");
   cfg = config.services.nfsAutofs;
 
   autoMasterLines = [

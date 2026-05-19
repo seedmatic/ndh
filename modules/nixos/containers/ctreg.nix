@@ -56,7 +56,7 @@ in
             ./../caddy.nix
             ./../docker-registry.nix
             ./../tailscale.nix
-            paths.modulesNixosNetworkingMammothSkate
+            (paths.at "modules/nixos/networking-mammoth-skate.nix")
             (
               { config, ... }:
               {

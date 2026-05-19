@@ -252,7 +252,7 @@ in
 
   imports = [
     # Profile & user
-    paths.repoProfile
+    (paths.at "profile.nix")
     ./primary-user.nix
     ./user.nix
 
@@ -305,7 +305,7 @@ in
 
     # bootstrap home manager using system config
     hm = lib.mkIf homeManagerEnabled (
-      import paths.modulesHomeManagerDir {
+      import (paths.at "modules/home-manager") {
         inherit
           pkgs
           lib

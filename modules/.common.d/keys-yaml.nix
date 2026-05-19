@@ -23,7 +23,7 @@ let
   # sops decryption at eval time.
   jsonDrv = pkgs.runCommand "ndh-keys-yaml.json" { buildInputs = [ pkgs.yq-go ]; } ''
     yq -o=json '{"keys": .keys, "authorities": .authorities}' \
-      "${paths.modulesHomeManagerSshKeysYaml}" > "$out"
+      "${paths.at "modules/home-manager/ssh.d/keys.yaml"}" > "$out"
   '';
   parsed = builtins.fromJSON (builtins.readFile jsonDrv);
   keysJson = parsed.keys or { };

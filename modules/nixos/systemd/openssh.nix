@@ -10,7 +10,7 @@
 
 let
   ndhContext = ndh.context;
-  ndhCommon = paths.modulesCommonDir;
+  ndhCommon = (paths.at "modules/.common.d");
   dollar = "$";
   hostname =
     if config.networking.hostName != "" then config.networking.hostName else "nix-darwin-home";
@@ -114,8 +114,8 @@ let
 in
 {
   imports = [
-    paths.modulesCommonOpensshPolicy
-    paths.modulesCommonSshPaths
+    (paths.at "modules/.common.d/openssh-policy.nix")
+    (paths.at "modules/.common.d/ssh-paths.nix")
   ];
 
   opensshPolicy = {

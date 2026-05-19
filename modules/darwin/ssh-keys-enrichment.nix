@@ -9,8 +9,8 @@
   ...
 }:
 let
-  ndhCommon = paths.modulesCommonDir;
-  hmSshKeyDir = paths.modulesHomeManagerSshKeyDir;
+  ndhCommon = (paths.at "modules/.common.d");
+  hmSshKeyDir = (paths.at "modules/home-manager/ssh-key.d");
   ndhContext = ndh.context;
   nixBashTrampoline = "${ndhContext.nixBashTrampoline}";
   # Profile membership list (v2). Defaults to the runtime profile set

@@ -70,7 +70,7 @@ let
 
   # Canonical disk → ZFS pool membership (shared with bringup config)
   limaVmName = "nerd-nixos";
-  zfsPoolDiskMap = import paths.modulesNixosZfsPoolDiskMap;
+  zfsPoolDiskMap = import (paths.at "modules/nixos/zfs-pool-disk-map.nix");
   limaAdditionalDisks = map (entry: {
     name = "${limaVmName}-${entry.disk}";
     format = false;

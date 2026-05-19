@@ -19,7 +19,7 @@ in
 {
   config = mkIf cfg.enable (
     let
-      vectorConfigLib = import paths.modulesCommonVectorConfig { inherit lib; };
+      vectorConfigLib = import (paths.at "modules/.common.d/vector-config.nix") { inherit lib; };
     in
     {
       services.vector = {

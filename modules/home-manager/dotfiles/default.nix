@@ -5,7 +5,7 @@
   ...
 }:
 let
-  nixpkgsConfigFile = paths.modulesCommonNixpkgsConfig;
+  nixpkgsConfigFile = (paths.at "modules/.common.d/nixpkgs-config.nix");
 in
 {
   xdg.dataFile = {

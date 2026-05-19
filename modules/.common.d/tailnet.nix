@@ -239,7 +239,7 @@ in
   options.tailnet = {
     sopsEncryptedFile = mkOption {
       type = types.path;
-      default = paths.repoSecrets;
+      default = (paths.at ".secrets");
       description = ''
         Path to the sops-encrypted YAML carrying the `tailnet.*` tree.
         Defaults to the flake-tracked `.secrets`; override only when a

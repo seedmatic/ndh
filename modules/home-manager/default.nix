@@ -33,7 +33,7 @@ let
     if ndhContext != null && ndhContext ? nixBashTrampoline then
       "${ndhContext.nixBashTrampoline}"
     else
-      "${paths.modulesCommonNixBashTrampoline}";
+      "${paths.at "modules/.common.d/shell.d/nix-bash-trampoline.sh"}";
 
   ndhArgs =
     if specialArgsResolved ? ndh && specialArgsResolved.ndh != null then

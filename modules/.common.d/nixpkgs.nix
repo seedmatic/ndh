@@ -6,7 +6,7 @@
   ...
 }:
 let
-  cacheTrust = import paths.catalogCacheTrust;
+  cacheTrust = import (paths.at "catalog/cache-trust.nix");
   cacheCatalog = cacheTrust.caches;
 
   cfg = config.profile;

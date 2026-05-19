@@ -229,7 +229,7 @@ in
         # 10.0.2.2 = macOS host (SLIRP gateway from linux-builder perspective).
         services.vector =
           let
-            vectorConfigLib = import paths.modulesCommonVectorConfig { inherit lib; };
+            vectorConfigLib = import (paths.at "modules/.common.d/vector-config.nix") { inherit lib; };
           in
           {
             enable = true;

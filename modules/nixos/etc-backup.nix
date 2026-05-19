@@ -7,7 +7,7 @@
 let
   cfg = config.ndh.etcBackup;
   etcTargets = builtins.attrNames config.environment.etc;
-  etcBackupLib = import paths.modulesCommonEtcBackupLib { inherit lib; };
+  etcBackupLib = import (paths.at "modules/.common.d/etc-backup-lib.nix") { inherit lib; };
   backupScript = etcBackupLib.mkEtcBackupScript {
     inherit etcTargets;
     extension = cfg.extension;

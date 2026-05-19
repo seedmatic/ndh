@@ -7,7 +7,7 @@
 }:
 
 let
-  ndhCommon = paths.modulesCommonDir;
+  ndhCommon = (paths.at "modules/.common.d");
   profile = config._module.specialArgs.profile;
   specialArgs = config._module.specialArgs;
   ndh = config._module.specialArgs.ndh;
@@ -16,7 +16,7 @@ let
     if ndhContext != null && ndhContext ? nixBashTrampoline then
       "${ndhContext.nixBashTrampoline}"
     else
-      "${paths.modulesCommonNixBashTrampoline}";
+      "${paths.at "modules/.common.d/shell.d/nix-bash-trampoline.sh"}";
   userProfile = profile.user;
   userName = profile.user.name; # Use profile user name for tagging
   sshPaths = config.sshPaths;
@@ -59,7 +59,7 @@ in
 
   imports = [
     ./ssh-add-keys.nix
-    paths.modulesCommonSshPaths
+    (paths.at "modules/.common.d/ssh-paths.nix")
   ];
 
   ssh-add-keys = {

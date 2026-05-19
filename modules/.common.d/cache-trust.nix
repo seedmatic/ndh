@@ -37,7 +37,7 @@ let
     concatMapStringsSep
     ;
 
-  cacheTrust = import paths.catalogCacheTrust;
+  cacheTrust = import (paths.at "catalog/cache-trust.nix");
   allCaches = cacheTrust.caches;
 
   # Fleet-owned entries under caches.cachix.<name>. These have their
