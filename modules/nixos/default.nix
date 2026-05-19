@@ -12,6 +12,8 @@ let
   # Boot/runtime kernel capabilities shared by stage1+stage2.
   kernelModules = [
     "nfs"
+    "nfsv3"
+    "nfsv4"
     "ext4"
     "overlay"
     "isofs"
