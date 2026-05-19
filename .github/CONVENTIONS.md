@@ -28,10 +28,10 @@ launchd.user.agents.my-agent = {
 
 ### Naming Variants
 
-| Context | Pattern | Example |
-|---------|---------|---------|
-| Darwin system agent | `io.nxmatic.nix-darwin-home-<name>` | `io.nxmatic.nix-darwin-home-tailscale-vnc-forward` |
-| Home Manager agent | `io.nxmatic.nix-darwin-home.home.<name>` | `io.nxmatic.nix-darwin-home.home.ssh-add-keys` |
+| Context             | Pattern                              | Example                                            |
+| ------------------- | ------------------------------------ | -------------------------------------------------- |
+| Darwin system agent | `io.nxmatic.nix-darwin-home-<name>`  | `io.nxmatic.nix-darwin-home-tailscale-vnc-forward` |
+| Home Manager agent  | `io.nxmatic.nix-darwin-home.<name>`  | `io.nxmatic.nix-darwin-home.ssh-add-keys`          |
 
 ### Why?
 

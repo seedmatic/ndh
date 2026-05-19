@@ -38,7 +38,7 @@ in
     launchd.agents.shadow-repositories = {
       enable = true;
       config = {
-        Label = "io.nxmatic.nix-darwin-home.home.shadow-repositories";
+        Label = "io.nxmatic.nix-darwin-home.shadow-repositories";
         ProgramArguments = [ cfg.scriptPath ] ++ cfg.mountPoints;
         RunAtLoad = true;
         KeepAlive = false;
