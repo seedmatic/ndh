@@ -193,6 +193,7 @@ let
     docker-compose
     ffmpeg
     findutils
+    flox
     flyctl
     gawk
     gdu
@@ -268,11 +269,8 @@ in
 
     stateVersion = "25.11";
 
-    sessionPath = [
-      "${homeDirectorySafe}/.rd/bin"
-      "${homeDirectorySafe}/.local/bin"
-      "${homeDirectorySafe}/.krew/bin"
-    ];
+    # PATH is owned by ./shell.nix (`home.sessionPath = coreShellPath`).
+    # Don't add entries here — keep the list in one place.
 
     # Define package definitions for current user environment
     packages = baseHomePackages;

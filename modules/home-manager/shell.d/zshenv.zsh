@@ -1,8 +1,9 @@
 # shellcheck disable=all
 
-: ensure we\'re loading the wrappers and user bin directory with wrappers first
+: PATH is rendered by home-manager from modules/home-manager/shell.nix
+: '(home.sessionPath = coreShellPath)'. Just deduplicate after plugin
+: mutations \(typeset -U path\) — do not rebuild the list here.
 typeset -U path
-path=( "$HOME/.local/bin" "$HOME/.local/share/pnpm" "$HOME/.local/opt/lima-vm/bin" "$HOME/.nix-profile/bin" /run/wrappers/bin /run/current-system/sw/bin "/etc/profiles/per-user/$USER/bin" "${path[@]}" )
 
 : ensure we always have a TERM
 declare -g TERM=xterm-256color

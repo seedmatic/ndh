@@ -82,10 +82,11 @@ if command -v flox >/dev/null 2>&1 && [ -z "${NIX_DARWIN_HOME_FLOX_LOADED:-}" ];
   fi
 fi
 
-# Normalize PATH after plugin mutations.
+# Normalize PATH after plugin mutations. The canonical list is rendered by
+# home-manager from modules/home-manager/shell.nix; this block only strips
+# stale absolute paths from a previous account migration and dedupes.
 typeset -U path
 path=( ${path:#/Users/stephane.lacoin/*} )
-path=( "$HOME/.local/bin" "$HOME/.local/share/pnpm" "$HOME/.local/opt/lima-vm/bin" "$HOME/.nix-profile/bin" /run/wrappers/bin /run/current-system/sw/bin "/etc/profiles/per-user/$USER/bin" "${path[@]}" )
 export PATH="${(j/:/)path}"
 
 # In Copilot/agent-owned VS Code terminals, force a simple stable prompt and

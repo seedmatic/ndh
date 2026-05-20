@@ -124,20 +124,11 @@ if [[ "$__nxmatic_zshrc_status" -ne 0 ]]; then
   RPROMPT=""
 fi
 
-# Normalize PATH after external zshrc/plugin mutations.
-# Keep canonical Nix paths and remove stale foreign-home entries.
+# Normalize PATH after external zshrc/plugin mutations. Canonical list comes
+# from home-manager (modules/home-manager/shell.nix). Strip stale foreign-home
+# entries injected by upstream zdotdir scripts and dedupe.
 typeset -U path
 path=( ${path:#/Users/stephane.lacoin/*} )
-path=(
-  "$HOME/.local/bin"
-  "$HOME/.local/share/pnpm"
-  "$HOME/.local/opt/lima-vm/bin"
-  "$HOME/.nix-profile/bin"
-  @linuxWrappersLine@
-  /run/current-system/sw/bin
-  "/etc/profiles/per-user/$USER/bin"
-  "${path[@]}"
-)
 export PATH="${(j/:/)path}"
 
 # Avoid autofs trigger on the first-level /net mountpoint, but allow
