@@ -394,9 +394,16 @@ let
   addDatasetOptions =
     dataset:
     let
-      # Merge or create the options attribute, always setting auto-snapshot false
+      # canmount=noauto keeps `zfs mount -a` from mounting host datasets
+      # inside privileged guests that share /dev/zfs (e.g. incus containers
+      # whose zfs-mount.service would otherwise shadow incus bind-mounts at
+      # /srv/host/*). The host itself uses explicit `mount -t zfs -o zfsutil`
+      # via fileSystems entries, which ignores canmount — so the host keeps
+      # mounting normally. canmount is non-inheritable in ZFS, so it must be
+      # set per-dataset; this helper applies it uniformly.
       opts = (dataset.options or { }) // {
         "com.sun:auto-snapshot" = "false";
+        canmount = "noauto";
       };
       dsWithOpts = dataset // {
         options = opts;
