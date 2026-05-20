@@ -144,6 +144,7 @@ let
     ./avahi.nix
     ./code-server.nix
     ./nfs-autofs.nix
+    ./rke2lab-overlay.nix
     ./incus.nix
     ./podman.nix
     ./bringup-observe.nix

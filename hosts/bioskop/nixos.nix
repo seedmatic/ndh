@@ -17,5 +17,7 @@
       # VM NAT makes the macOS host accessible at 192.168.5.2
       upstreamEndpoint = "http://192.168.5.2:9001";
     };
+
+    services.rke2labOverlay.enable = true;
   };
 }
