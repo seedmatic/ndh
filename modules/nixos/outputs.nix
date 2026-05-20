@@ -181,8 +181,9 @@ let
 
       selectedVmProvider = hostProfile.vmProvider or "tart";
 
-      # Full runtime systems (activated remotely via nixos-rebuild switch
-      # --target-host once the minimal bringup image is up).
+      # Full runtime system (activated remotely via nixos-rebuild switch
+      # --target-host once the minimal bringup image is up). Lima variant
+      # was retired — both fleet hosts run Tart.
       zfsRuntimeTart = mkNixosConfig {
         inherit
           profileModule
@@ -196,20 +197,7 @@ let
         runtimeSystemPath = null; # No nested reference
       };
 
-      zfsRuntimeLima = mkNixosConfig {
-        inherit
-          profileModule
-          catalog
-          inventory
-          ;
-        generationMode = "full";
-        hostProfile = runtimeSystemdHostProfile;
-        zfsOverlays = true;
-        vmProvider = "lima";
-        runtimeSystemPath = null;
-      };
-
-      selectedRuntime = if selectedVmProvider == "tart" then zfsRuntimeTart else zfsRuntimeLima;
+      selectedRuntime = zfsRuntimeTart;
       fullSystemPath = selectedRuntime.config.system.build.toplevel;
 
       # Minimal bringup system — ZFS + network + SSH only.  The image
@@ -562,12 +550,16 @@ let
       inherit diskSizeMiB;
       inherit diskoConfiguration;
       nixosConfigurations = {
-        # Minimal bringup installer VM (what gets installed onto ZFS disks as the bootstrap OS)
+        # Minimal bringup installer VM (what gets installed onto ZFS disks as the bootstrap OS).
+        # The bringup config is identity-less: every host's `${mainName}-bringup`
+        # evaluates to the same derivation. The fleet-wide `nerd-nixos` alias
+        # is exposed once at the top level (see flake.nix nixosConfigurations).
         "${mainName}-bringup" = minimalBringupSystemBase;
-        # Full runtime systems (what the operator activates post-bringup via
-        # nixos-rebuild switch --target-host)
-        "${mainName}-lima" = zfsRuntimeLima;
+        # Full runtime system. `${mainName}-tart` is the canonical provider-tagged
+        # name; `${mainName}-nixos` is the host-named alias used for ergonomic
+        # `nixos-rebuild switch --flake .#<host>-nixos`.
         "${mainName}-tart" = zfsRuntimeTart;
+        "${mainName}-nixos" = zfsRuntimeTart;
       };
       inherit
         diskImageBringupZfsSystemdBoot

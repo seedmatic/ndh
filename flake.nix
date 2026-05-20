@@ -1371,11 +1371,25 @@
         acc: hostOutput: acc // hostOutput.darwinConfigurations
       ) { } (builtins.attrValues hostOutputs);
 
-      nixosConfigurations = builtins.foldl' (acc: hostOutput: acc // hostOutput.nixosConfigurations) { } (
-        builtins.attrValues hostOutputs
-      );
+      # Per-host nixosConfigurations expose `${name}-bringup` (per-host bringup
+      # binding), `${name}-tart` (canonical runtime), and `${name}-nixos`
+      # (host-named runtime alias). The fleet-wide `nerd-nixos` bringup alias
+      # is added once at the top level — its bytes are identical for every
+      # host and Nix dedups the underlying derivation.
+      nixosConfigurations =
+        let
+          merged = builtins.foldl' (
+            acc: hostOutput: acc // hostOutput.nixosConfigurations
+          ) { } (builtins.attrValues hostOutputs);
+          anyHostName = builtins.head (builtins.attrNames hostCatalog);
+          anyMainName = hostMainNameForProfile hostCatalog.${anyHostName}.hostProfile;
+        in
+        merged // {
+          nerd-nixos = merged."${anyMainName}-bringup";
+        };
 
       # Provider-scoped VM configuration aliases (full runtime systems, not bringup).
+      # Lima variant was retired — only Tart remains.
       vmConfigurations =
         let
           mkVmHostAliases =
@@ -1385,14 +1399,12 @@
               hostNixosConfigurations = hostOutputs.${hostName}.nixosConfigurations;
             in
             {
-              lima.system = hostNixosConfigurations."${mainName}-lima";
               tart.system = hostNixosConfigurations."${mainName}-tart";
             };
 
           vmAliasesByHost = forAllHosts mkVmHostAliases;
         in
         {
-          lima = builtins.mapAttrs (_: hostAliases: hostAliases.lima) vmAliasesByHost;
           tart = builtins.mapAttrs (_: hostAliases: hostAliases.tart) vmAliasesByHost;
         };
 
@@ -1436,6 +1448,7 @@
             inherit (inputs.maven-mvnd.packages.${hostSystem}) maven-mvnd-m39;
             inherit (inputs.disko.packages.${hostSystem}) disko;
             inherit (inputs.incus-compose.packages.${hostSystem}) incus-compose;
+            flox = inputs.flox.packages.${hostSystem}.default;
           };
 
         birdOverlay = inputs: import ./overlays/bird.nix inputs;
