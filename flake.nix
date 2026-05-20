@@ -64,12 +64,15 @@
     treefmt-nix.url = "github:numtide/treefmt-nix";
 
     # Forked tailscale carrying the CNAME-in-extra_records patch (see
-    # overlays/tailscale.nix and the upstream PR tracked there). Pinned
-    # to a branch ref so the build is reproducible; bump when a new
-    # patch revision lands.
+    # overlays/tailscale.nix and the upstream PR tracked there). The
+    # fork is consumed as a real flake — it builds itself via its
+    # own `flakehashes.json` so vendorHash is no longer coupled to
+    # whatever tailscale version nixpkgs-unstable happens to ship.
+    # `nixpkgs` is pinned to flake-commons so the fork's binaries
+    # share a glibc/openssl/etc with the rest of the closure.
     tailscale-fork = {
       url = "github:nxmatic/tailscale/nxmatic/feature/extra-records-cname";
-      flake = false;
+      inputs.nixpkgs.follows = "flake-commons/nixpkgs-unstable";
     };
   };
 
