@@ -45,8 +45,11 @@ let
     ++ lib.optionals limaActive [
       "${homeDir}/.local/opt/lima-vm/bin"
     ]
-    ++ [
+    ++ lib.optionals pkgs.stdenvNoCC.isDarwin [
+      # Rancher Desktop is a macOS-only install in this fleet.
       "${homeDir}/.rd/bin"
+    ]
+    ++ [
       "${homeDir}/.krew/bin"
       "${homeDir}/.nix-profile/bin"
       "/etc/profiles/per-user/${userName}/bin"

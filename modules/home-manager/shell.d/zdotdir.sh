@@ -92,6 +92,20 @@ fi
 typeset -U path
 path=( ${path:#/Users/stephane.lacoin/*} )
 @limaPathStrip@
+# Drop entries that don't resolve to a directory: NixOS injects several
+# legacy nix-profile aliases (`/nix/profile/bin`, `~/.local/state/nix/profile/bin`,
+# `/nix/var/nix/profiles/default/bin`) that are populated lazily on first
+# `nix profile install` and otherwise pollute PATH. Plugin managers also
+# leave behind references to uninstalled plugins. A non-existent dir is
+# always wrong in PATH (every lookup against it is a wasted stat) so
+# strip them unconditionally — they'll come back on next login if/when
+# the dir is created.
+#
+# `$^path(N-/)` expands each element of $path through the N (nullglob —
+# drop if no match) and `-/` (only directories, following symlinks)
+# qualifiers, so the result keeps only entries that currently resolve.
+setopt local_options extended_glob
+path=( $^path(N-/) )
 export PATH="${(j/:/)path}"
 
 # In Copilot/agent-owned VS Code terminals, force a simple stable prompt and
