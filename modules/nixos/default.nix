@@ -480,17 +480,20 @@ in
       };
     };
 
-    # Preserve profile-provided user kind flags.
-    # For normal users, do not force low Darwin-style IDs (<1000) on NixOS,
-    # because NixOS asserts that normal users must use UID >= 1000.
-    # We keep the user normal (for Home Manager activation) and let NixOS
-    # allocate a compliant uid/gid when profile ids are below the NixOS range.
+    # Preserve the profile uid/gid (e.g. 501) for host/guest alignment
+    # on NFS-mapped home directories. NixOS asserts isNormalUser → uid >= 1000,
+    # so we declare the operator as a system user instead. Home Manager
+    # activation still works against the user.
+    # `gid` is dropped here because users.users.<name> doesn't accept it;
+    # the matching group's gid is set in ./users.nix.
     user = lib.mkForce (
-      builtins.removeAttrs cfgUser [
-        "uid"
-        "gid"
-        "group"
-      ]
+      (builtins.removeAttrs cfgUser [ "gid" ])
+      // {
+        isNormalUser = false;
+        isSystemUser = true;
+        createHome = true;
+        group = cfgUserName;
+      }
     );
 
     # User configuration (users.users.*, users.groups.*) in ./users.nix

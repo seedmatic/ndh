@@ -8,11 +8,6 @@ let
 
   cfgUser = config.profile.user;
   cfgUserName = cfgUser.name;
-  cfgUserIsNormal = cfgUser.isNormalUser or true;
-  cfgUidLow = cfgUser.uid != null && cfgUser.uid < 1000;
-  cfgGidLow = cfgUser.gid != null && cfgUser.gid < 1000;
-  nixosUserUid = if cfgUserIsNormal && cfgUidLow then null else cfgUser.uid;
-  nixosUserGid = if cfgUserIsNormal && cfgGidLow then null else cfgUser.gid;
 
   nixosUserExtraGroups = [
     "keys"
@@ -32,15 +27,13 @@ in
   # rescue path if the principals command is unreachable, the CA file
   # drifts, or a client strips the cert for any reason.
   users.users.${cfgUserName} = {
-    group = cfgUserName;
     extraGroups = nixosUserExtraGroups;
-    uid = lib.mkIf (nixosUserUid != null) nixosUserUid;
     linger = true;
     openssh.authorizedKeys.keys = lib.mkIf runtimeMode (
       config.ndh.keysYaml.authorizedLinesFor [ "rdp-host" ]
     );
   };
-  users.groups.${cfgUserName} = if nixosUserGid != null then { gid = nixosUserGid; } else { };
+  users.groups.${cfgUserName} = lib.optionalAttrs (cfgUser.gid != null) { gid = cfgUser.gid; };
 
   # builder user: accepts the linux-builder key from the Darwin host for remote builds.
   users.users.builder = lib.mkIf runtimeMode {
