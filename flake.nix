@@ -22,35 +22,51 @@
     ];
   };
 
+  # Inputs are organized into three groups to keep the surface scannable:
+  #
+  #   1. Aggregator pin — `flake-commons` is the single source of truth for
+  #      most third-party flakes. Bump that flake to roll a coordinated set
+  #      of dependencies across all consumers.
+  #   2. Aggregator passthroughs — every entry is `follows = "flake-commons/<x>";`.
+  #      Listed alphabetically so adds/removes diff cleanly.
+  #   3. Direct inputs — flakes pinned here because flake-commons does not
+  #      re-export them (`treefmt-nix`, `sops-nix`) or because they're
+  #      project-local (`tailscale-fork`).
   inputs = {
+    # 1. Aggregator pin
     flake-commons.url = "github:nxmatic/nix-flake-commons/develop";
+
+    # 2. Aggregator passthroughs (alphabetized)
+    bird.follows = "flake-commons/bird";
+    cachix.follows = "flake-commons/cachix";
+    chromium-bin.follows = "flake-commons/chromium-bin";
+    darwin.follows = "flake-commons/darwin";
+    devenv.follows = "flake-commons/devenv";
+    disko.follows = "flake-commons/disko";
     flake-compat.follows = "flake-commons/flake-compat";
     flake-utils.follows = "flake-commons/flake-utils";
-    nix.follows = "flake-commons/nix";
+    flox.follows = "flake-commons/flox";
+    home-manager.follows = "flake-commons/home-manager";
+    impermanence.follows = "flake-commons/impermanence";
+    incus-compose.follows = "flake-commons/incus-compose";
     lix-module.follows = "flake-commons/lix-module";
+    maven-mvnd.follows = "flake-commons/maven-mvnd";
+    nix.follows = "flake-commons/nix";
     nixos-hardware.follows = "flake-commons/nixos-hardware";
     nixpkgs.follows = "flake-commons/nixpkgs";
     nixpkgs-unstable.follows = "flake-commons/nixpkgs-unstable";
-    cachix.follows = "flake-commons/cachix";
-    darwin.follows = "flake-commons/darwin";
-    home-manager.follows = "flake-commons/home-manager";
-    devenv.follows = "flake-commons/devenv";
-    treefmt-nix.url = "github:numtide/treefmt-nix";
-    bird.follows = "flake-commons/bird";
-    maven-mvnd.follows = "flake-commons/maven-mvnd";
+    ripvcs.follows = "flake-commons/ripvcs";
     socket-vmnet.follows = "flake-commons/socket-vmnet";
     zen-browser.follows = "flake-commons/zen-browser";
-    ripvcs.follows = "flake-commons/ripvcs";
-    chromium-bin.follows = "flake-commons/chromium-bin";
-    disko.follows = "flake-commons/disko";
-    impermanence.follows = "flake-commons/impermanence";
-    incus-compose.follows = "flake-commons/incus-compose";
+
+    # 3. Direct inputs (not aggregated upstream)
     sops-nix.url = "github:Mic92/sops-nix";
+    treefmt-nix.url = "github:numtide/treefmt-nix";
 
     # Forked tailscale carrying the CNAME-in-extra_records patch (see
-    # overlays/tailscale.nix and the upstream PR tracked there).
-    # Pinned to a commit ref so the build is reproducible; bump the
-    # ref when a new patch revision lands.
+    # overlays/tailscale.nix and the upstream PR tracked there). Pinned
+    # to a branch ref so the build is reproducible; bump when a new
+    # patch revision lands.
     tailscale-fork = {
       url = "github:nxmatic/tailscale/nxmatic/feature/extra-records-cname";
       flake = false;
