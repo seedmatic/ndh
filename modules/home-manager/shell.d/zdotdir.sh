@@ -84,9 +84,14 @@ fi
 
 # Normalize PATH after plugin mutations. The canonical list is rendered by
 # home-manager from modules/home-manager/shell.nix; this block only strips
-# stale absolute paths from a previous account migration and dedupes.
+# stale entries injected by upstream zdotdir scripts and dedupes. When the
+# host doesn't run the lima vm provider, also drop the upstream-hardcoded
+# `~/.local/opt/lima-vm/bin` so a stale lima toolchain doesn't shadow
+# anything else. On lima hosts, home-manager's `home.sessionPath` carries
+# the legitimate entry so the strip is gated off.
 typeset -U path
 path=( ${path:#/Users/stephane.lacoin/*} )
+@limaPathStrip@
 export PATH="${(j/:/)path}"
 
 # In Copilot/agent-owned VS Code terminals, force a simple stable prompt and

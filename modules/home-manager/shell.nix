@@ -100,6 +100,14 @@ in
         nixBashTrampoline = nixBashTrampoline;
         caBundle = "${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt";
         loggerTag = loggerTagZdotdir;
+        # Drop the upstream-zdotdir hardcoded lima entry on non-lima hosts.
+        # Lima hosts keep the line as a no-op so home-manager's sessionPath
+        # entry (which already points there) is the sole source of truth.
+        limaPathStrip =
+          if limaActive then
+            "# lima vmProvider active: keep ~/.local/opt/lima-vm/bin from upstream zdotdir"
+          else
+            "path=( \${path:#*/.local/opt/lima-vm/bin} )";
       };
     in
     lib.hm.dag.entryAfter [ "writeBoundary" ] ''
