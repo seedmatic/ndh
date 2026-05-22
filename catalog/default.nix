@@ -105,52 +105,60 @@
           parent = "nikopol";
         };
 
-        # RKE2 control planes.  Tart-derived MACs follow the
-        # `10:66:6a:4c:${hostByteHex}:NN` scheme (see
-        # modules/darwin/tart-config.nix).
-        bioskop-peer3-control-node = {
+        # RKE2 control planes.  Incus-derived MACs follow the
+        # `10:66:6a:4c:${clusterId}:${nodeId}` scheme from
+        # ClusterNetworkBlueprint (see netplan module).
+        # Naming: {host}-{role} for simpler DNS lookups.
+        bioskop-master = {
+          mac = "10:66:6a:4c:00:00";
+          ip = "192.168.1.13";
+          kind = "rke2";
+          parent = "bioskop";
+          role = "master";
+        };
+        bioskop-peer3 = {
           mac = "10:66:6a:4c:00:03";
           ip = "192.168.1.134";
           kind = "rke2";
           parent = "bioskop";
           role = "peer3";
         };
-        bioskop-worker1-control-node = {
+        bioskop-worker1 = {
           mac = "10:66:6a:4c:00:0a";
           ip = "192.168.1.135";
           kind = "rke2";
           parent = "bioskop";
           role = "worker1";
         };
-        bioskop-worker2-control-node = {
+        bioskop-worker2 = {
           mac = "10:66:6a:4c:00:0b";
           ip = "192.168.1.136";
           kind = "rke2";
           parent = "bioskop";
           role = "worker2";
         };
-        nikopol-master-control-node = {
+        nikopol-master = {
           mac = "10:66:6a:4c:01:00";
           ip = "192.168.1.35";
           kind = "rke2";
           parent = "nikopol";
           role = "master";
         };
-        nikopol-peer1-control-node = {
+        nikopol-peer1 = {
           mac = "10:66:6a:4c:01:01";
           ip = "192.168.1.36";
           kind = "rke2";
           parent = "nikopol";
           role = "peer1";
         };
-        nikopol-peer2-control-node = {
+        nikopol-peer2 = {
           mac = "10:66:6a:4c:01:02";
           ip = "192.168.1.37";
           kind = "rke2";
           parent = "nikopol";
           role = "peer2";
         };
-        nikopol-peer3-control-node = {
+        nikopol-peer3 = {
           mac = "10:66:6a:4c:01:03";
           ip = "192.168.1.38";
           kind = "rke2";
