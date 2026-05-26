@@ -40,6 +40,7 @@
     ./ssh-client.nix
     ./cache-trust.nix
     ./nix-store-identity.nix
+    ./nfs-remote-identity.nix
     ./incus-remote-trust.nix
     ./sops.nix
     ./bringup-observe.nix

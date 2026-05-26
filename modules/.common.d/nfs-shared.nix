@@ -19,9 +19,19 @@ rec {
   # inet forces IPv4 only (no IPv6)
   mountOptionsDefault = "vers=3,proto=tcp,soft,timeo=5,retrans=2,actimeo=5,rsize=65536,wsize=65536,inet";
 
+  # Squash remote root to nxmatic (uid 501) and tag the write with the
+  # `nfs-remote` group (gid 30001, provisioned by
+  # modules/{darwin,nixos}/nfs-remote-identity.nix). The dedicated gid
+  # makes "this file came from a remote NFS write" visible in `ls -l`
+  # and lets the operator membership flow through without sudo.
+  #
+  # NFS carries raw numeric ids on the wire, so the values must agree
+  # numerically across every NFS host in the mesh — they do because the
+  # nfs-remote group is pinned to gid 30001 by the shared module, and
+  # uid 501 is the operator's id on every node.
   exportOptionsDefault = {
-    darwin = "rw,async,no_subtree_check,no_root_squash";
-    nixos = "rw,async,insecure,no_subtree_check,no_root_squash";
+    darwin = "rw,async,no_subtree_check,maproot=501:30001";
+    nixos = "rw,async,insecure,no_subtree_check,root_squash,anonuid=501,anongid=30001";
   };
   clientScopesDefault = {
     darwin = [

@@ -128,6 +128,7 @@ let
     ./bringup-xchg-mount.nix
     ./cache-trust.nix
     ./nix-store-identity.nix
+    ./nfs-remote-identity.nix
     ./bringup-runtime.nix
   ];
 

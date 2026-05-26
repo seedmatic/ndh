@@ -265,6 +265,11 @@ in
     ./keys-yaml.nix
     ./nix-store-identity.nix
 
+    # NFS-remote identity: shared declaration of the `nfs-remote` group
+    # used by NFS exports to mark files written by remote root.
+    # Per-platform provisioning lives in modules/{darwin,nixos}/nfs-remote-identity.nix.
+    ./nfs-remote-identity.nix
+
     # Nix daemon configuration
     ./nixpkgs.nix
     ./nix-settings.nix
