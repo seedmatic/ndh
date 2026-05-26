@@ -612,78 +612,15 @@ in
       This mode is only active for Tart providers.
     '';
   };
-  options.zfsOverlays.sanoid.enable = lib.mkOption {
-    type = lib.types.bool;
-    default = true;
-    description = "Enable sanoid automatic snapshotting policy. Set to false to completely disable automatic ZFS snapshots inside the NixOS VM.";
-  };
-  options.zfsOverlays.sanoid.datasets = lib.mkOption {
-    type = lib.types.attrsOf (
-      lib.types.submodule (
-        { name, ... }:
-        {
-          options = {
-            recursive = lib.mkOption {
-              type = lib.types.bool;
-              default = true;
-              description = "Snapshot this dataset recursively.";
-            };
-            yearly = lib.mkOption {
-              type = lib.types.int;
-              default = 0;
-            };
-            monthly = lib.mkOption {
-              type = lib.types.int;
-              default = 0;
-            };
-            weekly = lib.mkOption {
-              type = lib.types.int;
-              default = 1;
-            };
-            daily = lib.mkOption {
-              type = lib.types.int;
-              default = 2;
-            };
-            hourly = lib.mkOption {
-              type = lib.types.int;
-              default = 4;
-            };
-          };
-        }
-      )
-    );
-    default = {
-      "tank" = {
-        recursive = true;
-        yearly = 0;
-        monthly = 0;
-        weekly = 1;
-        daily = 2;
-        hourly = 4;
-      };
-    };
-    description = ''
-      Attribute set of sanoid dataset policies.
-
-      Keys are full ZFS dataset names (e.g. "tank/nerd/persist"). Values define retention counts to keep; 0 disables that period.
-
-      Example: enable sanoid only for one persistent dataset instead of the whole pool:
-
-        zfsOverlays.sanoid.enable = true;
-        zfsOverlays.sanoid.datasets = {
-          "tank/nerd/persist" = {
-            recursive = false; # no children
-            hourly = 4;
-            daily = 3;
-            weekly = 2;
-            monthly = 0;
-            yearly = 0;
-          };
-        };
-
-      To disable snapshots entirely set zfsOverlays.sanoid.enable = false.
-    '';
-  };
+  # ZFS snapshots are not currently managed by this module set. Sanoid was
+  # configured here historically (took rolling hourly/daily/weekly snapshots
+  # of `tank`), but removed once we settled on a per-node-owns-its-data
+  # cluster design where replication is not a current requirement.
+  #
+  # When replication becomes a requirement, the candidate is `zrepl`
+  # (continuous TLS-transport replication, daemon model, structured logging)
+  # rather than reinstating sanoid + syncoid. See `docs/zfs-snapshot-policy.adoc`
+  # for the decision context.
   options.zfsOverlays.bootstrapActivation.enable = lib.mkOption {
     type = lib.types.bool;
     default = true;
@@ -857,11 +794,6 @@ in
     services.zfs = {
       autoScrub.enable = true;
       trim.enable = true;
-    };
-
-    services.sanoid = lib.mkIf config.zfsOverlays.sanoid.enable {
-      enable = true;
-      datasets = config.zfsOverlays.sanoid.datasets;
     };
 
     fileSystems = (

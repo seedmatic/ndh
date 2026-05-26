@@ -1,0 +1,44 @@
+= ZFS Snapshot Policy
+:toc: left
+:toclevels: 2
+
+== Current state: snapshots not managed
+
+The NixOS module set does not currently manage ZFS snapshots on any host.
+
+The `zfsOverlays.sanoid.*` option tree and the `services.sanoid` invocation
+that lived in `modules/nixos/zfs.nix` were removed once we settled on a
+per-node-owns-its-data cluster design where replication between hosts is
+not a current requirement.
+
+Existing snapshots taken by sanoid before its removal (named
+`tank@autosnap_*` etc.) are retained by ZFS until something prunes them.
+They cost no CPU/RAM and minimal disk (only blocks freed on the live
+filesystem since the snapshot was taken). They can be deleted by hand
+with `zfs destroy <snapname>` when the operator decides.
+
+== When replication becomes a requirement
+
+The candidate is *zrepl* rather than reinstating sanoid + syncoid:
+
+* TLS transport instead of SSH — relevant if/when the inter-host link
+  exceeds ~1 Gbit and replication of large datasets becomes a regular
+  thing.
+* Daemon model with continuous replication rather than cron-fired
+  one-shots — secondary stays closer to primary.
+* Structured logging.
+
+Sanoid + Syncoid remain a valid lower-floor option (cron-aligned,
+zero-state-outside-ZFS, well-understood). The choice is taste; either
+works for a homelab. zrepl is the path we're tentatively planning.
+
+== Re-enable workflow (if/when needed)
+
+. Decide which datasets need policy and which retention shape (hourly /
+  daily / weekly / monthly / yearly counts).
+. Pick a tool: zrepl (recommended) or sanoid + syncoid.
+. Add the chosen module to `modules/nixos/`. The `zfsOverlays.*` option
+  prefix is the established naming if reinstating that pattern.
+. Document the dataset → policy mapping in this file before flipping the
+  switch. Operator-visible policy is the highest-leverage piece — the
+  tool choice itself is mechanical.
