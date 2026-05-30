@@ -796,6 +796,16 @@
       # Disable flake checks to avoid treefmt-nix API mismatch during evaluation
       checks = forAllSystems (_: { });
 
+      # Surface the resolved catalog + inventory as flat (OS-independent) outputs
+      # so the operator can review them directly — `nix eval .#catalog.netplan.lan.hosts`
+      # or `:lf .` then `catalog…` — without drilling through a host's
+      # `darwinConfigurations.<host>._module.specialArgs.catalog`. The catalog's
+      # rke2 hosts are the projection of rke2lab's networkBlueprint (see the
+      # rke2lab input), so this is also the easiest way to diff the live underlay
+      # against the blueprint / bbox reservations.
+      catalog = catalogData;
+      inventory = inventoryData;
+
       diskoConfigurations = {
         default = import ./modules/nixos/zfs-disko-config.nix { lib = nixpkgs.lib; };
       }
