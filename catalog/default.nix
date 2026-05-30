@@ -116,21 +116,23 @@
       // (
         let
           addressing = networkBlueprint.addressing;
-          clusters = builtins.attrNames addressing;
-          rke2HostsFor =
+          # Flatten addressing.${cluster}.${node} into catalog host entries,
+          # using only builtins (the catalog has no `lib` in scope).
+          rke2HostList = builtins.concatMap (
             cluster:
-            builtins.mapAttrs' (node: a: {
+            map (node: {
               name = "${cluster}-${node}";
               value = {
-                mac = a.macs.lan;
-                ip = a.ips.lanHost;
+                mac = addressing.${cluster}.${node}.macs.lan;
+                ip = addressing.${cluster}.${node}.ips.lanHost;
                 kind = "rke2";
                 parent = cluster;
                 role = node;
               };
-            }) addressing.${cluster};
+            }) (builtins.attrNames addressing.${cluster})
+          ) (builtins.attrNames addressing);
         in
-        builtins.foldl' (acc: cluster: acc // rke2HostsFor cluster) { } clusters
+        builtins.listToAttrs rke2HostList
       );
     };
     tailnet = {
