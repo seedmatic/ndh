@@ -97,6 +97,17 @@ in
     fi
   '';
 
+  # Make the home directory traversable by the multi-user nix daemon's build
+  # users. The rke2lab seed-master store build (sandbox=false) reuses the host
+  # `~/.m2` (settings + cached/local artifacts) as a Maven repo tail; the
+  # `_nixbld*` user must be able to descend into `$HOME/.m2/...` to read it.
+  # Default macOS home perms (0700) block that traversal, so the build fails to
+  # see the tail. Grant execute (traverse) only — NOT read — so other users can
+  # reach known paths but cannot enumerate the home directory.
+  home.activation.ensureHomeTraversable = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+    chmod a+x "$HOME"
+  '';
+
   home.activation.zdotdir =
     let
       zdotdirScript = pkgs.replaceVars ./shell.d/zdotdir.sh {
