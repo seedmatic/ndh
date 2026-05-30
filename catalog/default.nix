@@ -1,4 +1,4 @@
-{ cacheTrust }:
+{ cacheTrust, networkBlueprint }:
 {
   caches = cacheTrust.caches;
 
@@ -105,67 +105,33 @@
           parent = "nikopol";
         };
 
-        # RKE2 control planes.  Incus-derived MACs follow the
-        # `10:66:6a:4c:${clusterId}:${nodeId}` scheme from
-        # ClusterNetworkBlueprint (see netplan module).
-        # Naming: {host}-{role} for simpler DNS lookups.
-        bioskop-master = {
-          mac = "10:66:6a:4c:00:00";
-          ip = "192.168.1.13";
-          kind = "rke2";
-          parent = "bioskop";
-          role = "master";
-        };
-        bioskop-peer3 = {
-          mac = "10:66:6a:4c:00:03";
-          ip = "192.168.1.134";
-          kind = "rke2";
-          parent = "bioskop";
-          role = "peer3";
-        };
-        bioskop-worker1 = {
-          mac = "10:66:6a:4c:00:0a";
-          ip = "192.168.1.135";
-          kind = "rke2";
-          parent = "bioskop";
-          role = "worker1";
-        };
-        bioskop-worker2 = {
-          mac = "10:66:6a:4c:00:0b";
-          ip = "192.168.1.136";
-          kind = "rke2";
-          parent = "bioskop";
-          role = "worker2";
-        };
-        nikopol-master = {
-          mac = "10:66:6a:4c:01:00";
-          ip = "192.168.1.35";
-          kind = "rke2";
-          parent = "nikopol";
-          role = "master";
-        };
-        nikopol-peer1 = {
-          mac = "10:66:6a:4c:01:01";
-          ip = "192.168.1.36";
-          kind = "rke2";
-          parent = "nikopol";
-          role = "peer1";
-        };
-        nikopol-peer2 = {
-          mac = "10:66:6a:4c:01:02";
-          ip = "192.168.1.37";
-          kind = "rke2";
-          parent = "nikopol";
-          role = "peer2";
-        };
-        nikopol-peer3 = {
-          mac = "10:66:6a:4c:01:03";
-          ip = "192.168.1.38";
-          kind = "rke2";
-          parent = "nikopol";
-          role = "peer3";
-        };
-      };
+        # RKE2 cluster members — a pure projection of rke2lab's network
+        # blueprint (the single source of truth; see the `networkBlueprint`
+        # argument and the rke2lab flake input). Each `${cluster}-${node}` host
+        # takes its MAC and LAN IP from `addressing.${cluster}.${node}`, so the
+        # `10:66:6a:4c:${clusterId}:${nodeId}` MAC scheme and the bbox static
+        # reservations stay in lockstep with rke2lab — no hand-copied values to
+        # drift. Naming: {host}-{role} for simpler DNS lookups.
+      }
+      // (
+        let
+          addressing = networkBlueprint.addressing;
+          clusters = builtins.attrNames addressing;
+          rke2HostsFor =
+            cluster:
+            builtins.mapAttrs' (node: a: {
+              name = "${cluster}-${node}";
+              value = {
+                mac = a.macs.lan;
+                ip = a.ips.lanHost;
+                kind = "rke2";
+                parent = cluster;
+                role = node;
+              };
+            }) addressing.${cluster};
+        in
+        builtins.foldl' (acc: cluster: acc // rke2HostsFor cluster) { } clusters
+      );
     };
     tailnet = {
       cidr = "100.64.0.0/10";

@@ -60983,6 +60983,29 @@
         "type": "github"
       }
     },
+    "devshell_3": {
+      "inputs": {
+        "nixpkgs": [
+          "rke2lab",
+          "flox-runtime",
+          "headplane",
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1768818222,
+        "narHash": "sha256-460jc0+CZfyaO8+w8JNtlClB2n4ui1RbHfPTLkpwhU8=",
+        "owner": "numtide",
+        "repo": "devshell",
+        "rev": "255a2b1725a20d060f566e4755dbf571bbbb5f76",
+        "type": "github"
+      },
+      "original": {
+        "owner": "numtide",
+        "repo": "devshell",
+        "type": "github"
+      }
+    },
     "disko": {
       "inputs": {
         "nixpkgs": [
@@ -102901,6 +102924,24 @@
         "type": "github"
       }
     },
+    "flake-utils_872": {
+      "inputs": {
+        "systems": "systems_1032"
+      },
+      "locked": {
+        "lastModified": 1731533236,
+        "narHash": "sha256-l0KFg5HjrsfsO/JpG+r7fRrqm12kzFHyUHqHCVpMMbI=",
+        "owner": "numtide",
+        "repo": "flake-utils",
+        "rev": "11707dc2f618dd54ca8739b309ec4fc024de578b",
+        "type": "github"
+      },
+      "original": {
+        "owner": "numtide",
+        "repo": "flake-utils",
+        "type": "github"
+      }
+    },
     "flake-utils_88": {
       "inputs": {
         "systems": "systems_106"
@@ -103212,6 +103253,37 @@
         "repo": "flox",
         "type": "github"
       }
+    },
+    "flox-runtime": {
+      "inputs": {
+        "flake-commons": [
+          "rke2lab",
+          "flake-commons"
+        ],
+        "flake-utils": [
+          "rke2lab",
+          "flake-utils"
+        ],
+        "headplane": "headplane",
+        "headplane-src": "headplane-src",
+        "headscale": "headscale",
+        "kdns-src": "kdns-src",
+        "nixpkgs": [
+          "rke2lab",
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "path": "./manifests/src/main/resources/runtime/flox",
+        "type": "path"
+      },
+      "original": {
+        "path": "./manifests/src/main/resources/runtime/flox",
+        "type": "path"
+      },
+      "parent": [
+        "rke2lab"
+      ]
     },
     "flox_10": {
       "inputs": {
@@ -137545,6 +137617,76 @@
         "type": "github"
       }
     },
+    "headplane": {
+      "inputs": {
+        "devshell": "devshell_3",
+        "flake-utils": [
+          "rke2lab",
+          "flox-runtime",
+          "flake-utils"
+        ],
+        "nixpkgs": [
+          "rke2lab",
+          "flox-runtime",
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1778776843,
+        "narHash": "sha256-zvJUTKRIlHyPMq80teVXBSb7K9Zz44Kuuj2PPi6qIOw=",
+        "owner": "tale",
+        "repo": "headplane",
+        "rev": "623e7c03f12f6e46bd956feb48b154d380a21a7e",
+        "type": "github"
+      },
+      "original": {
+        "owner": "tale",
+        "ref": "v0.6.3",
+        "repo": "headplane",
+        "type": "github"
+      }
+    },
+    "headplane-src": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1778776843,
+        "narHash": "sha256-zvJUTKRIlHyPMq80teVXBSb7K9Zz44Kuuj2PPi6qIOw=",
+        "owner": "tale",
+        "repo": "headplane",
+        "rev": "623e7c03f12f6e46bd956feb48b154d380a21a7e",
+        "type": "github"
+      },
+      "original": {
+        "owner": "tale",
+        "ref": "v0.6.3",
+        "repo": "headplane",
+        "type": "github"
+      }
+    },
+    "headscale": {
+      "inputs": {
+        "flake-utils": "flake-utils_872",
+        "nixpkgs": [
+          "rke2lab",
+          "flox-runtime",
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1770236782,
+        "narHash": "sha256-gR5kOFv4/+87mOhMYjejBMhZlrwYhABZpG0zjIL5vtI=",
+        "owner": "juanfont",
+        "repo": "headscale",
+        "rev": "97fa117c48a58bee3941e5e8b4393873501afe14",
+        "type": "github"
+      },
+      "original": {
+        "owner": "juanfont",
+        "ref": "v0.28.0",
+        "repo": "headscale",
+        "type": "github"
+      }
+    },
     "home-manager": {
       "inputs": {
         "nixpkgs": [
@@ -143409,6 +143551,23 @@
         "owner": "bketelsen",
         "ref": "main",
         "repo": "incus-compose",
+        "type": "github"
+      }
+    },
+    "kdns-src": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1773105092,
+        "narHash": "sha256-ZS5kR5eixIX/5NH7gU7Afr5/jyT4febtW3Q4uetWvjM=",
+        "owner": "lab42",
+        "repo": "kdns",
+        "rev": "b1af1f5cf942ca80a8f721e91e4c12a1d388c9b8",
+        "type": "github"
+      },
+      "original": {
+        "owner": "lab42",
+        "ref": "v0.2.15",
+        "repo": "kdns",
         "type": "github"
       }
     },
@@ -282746,6 +282905,37 @@
         "type": "github"
       }
     },
+    "rke2lab": {
+      "inputs": {
+        "flake-commons": [
+          "flake-commons"
+        ],
+        "flake-utils": [
+          "rke2lab",
+          "flake-commons",
+          "flake-utils"
+        ],
+        "flox-runtime": "flox-runtime",
+        "nixpkgs": [
+          "rke2lab",
+          "flake-commons",
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1780174446,
+        "narHash": "sha256-vZa2SWKAFGJjBBYIgrYOIcKEVztJ1P0dmM+EBmoZChI=",
+        "owner": "nxmatic",
+        "repo": "rke2lab",
+        "rev": "ca5d2793deda317461af1f2d8bd80d8dbc00769c",
+        "type": "github"
+      },
+      "original": {
+        "owner": "nxmatic",
+        "repo": "rke2lab",
+        "type": "github"
+      }
+    },
     "root": {
       "inputs": {
         "bird": [
@@ -282825,6 +283015,7 @@
           "flake-commons",
           "ripvcs"
         ],
+        "rke2lab": "rke2lab",
         "socket-vmnet": [
           "flake-commons",
           "socket-vmnet"
@@ -292487,6 +292678,21 @@
       }
     },
     "systems_1032": {
+      "locked": {
+        "lastModified": 1681028828,
+        "narHash": "sha256-Vy1rq5AaRuLzOxct8nz4T6wlgyUR7zLU309k9mBC768=",
+        "owner": "nix-systems",
+        "repo": "default",
+        "rev": "da67096a3b9bf56a91d16901293e51ba5b49a27e",
+        "type": "github"
+      },
+      "original": {
+        "owner": "nix-systems",
+        "repo": "default",
+        "type": "github"
+      }
+    },
+    "systems_1033": {
       "locked": {
         "lastModified": 1681028828,
         "narHash": "sha256-Vy1rq5AaRuLzOxct8nz4T6wlgyUR7zLU309k9mBC768=",
@@ -307404,7 +307610,7 @@
           "flake-commons",
           "nixpkgs-unstable"
         ],
-        "systems": "systems_1032"
+        "systems": "systems_1033"
       },
       "locked": {
         "lastModified": 1779260510,

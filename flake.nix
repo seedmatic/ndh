@@ -63,6 +63,19 @@
     sops-nix.url = "github:Mic92/sops-nix";
     treefmt-nix.url = "github:numtide/treefmt-nix";
 
+    # rke2lab is the source of truth for the cluster network underlay (cluster/
+    # node IDs, MAC derivation, addressing). The catalog consumes its flat
+    # `lib.networkBlueprint` instead of hand-inlining MAC/IP values. This is the
+    # sanctioned BUILD/eval-time edge: nix-darwin-home -> rke2lab. The reverse
+    # (rke2lab -> nix-darwin-home) is forbidden and guarded in rke2lab's flake;
+    # rke2lab is NOT routed through flake-commons because rke2lab already depends
+    # on flake-commons, which would form a flake-commons <-> rke2lab cycle.
+    # `flake-commons` follows ours so the two flakes share one resolved version set.
+    rke2lab = {
+      url = "github:nxmatic/rke2lab";
+      inputs.flake-commons.follows = "flake-commons";
+    };
+
     # Forked tailscale carrying the CNAME-in-extra_records patch (see
     # overlays/tailscale.nix and the upstream PR tracked there). The
     # fork is consumed as a real flake — it builds itself via its
@@ -94,7 +107,9 @@
       nixpkgsConfig = import ./modules/.common.d/nixpkgs-config.nix;
       cacheTrust = import ./catalog/cache-trust.nix;
       inventoryData = import ./inventory/default.nix;
-      catalogData = import ./catalog/default.nix { inherit cacheTrust; };
+      # Cluster network underlay, single source of truth (see the rke2lab input).
+      networkBlueprint = inputs.rke2lab.lib.networkBlueprint;
+      catalogData = import ./catalog/default.nix { inherit cacheTrust networkBlueprint; };
       defaultSystems = [
         "aarch64-darwin"
       ];
