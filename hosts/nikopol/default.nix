@@ -21,12 +21,14 @@ let
   darwinModule = import ./darwin.nix { inherit halfRamMiB; };
   nixosModule = import ./nixos.nix;
   vzHostResolverModule = import ./modules/darwin/vz-host-resolver.nix;
+  developerToolsModule = import ./modules/darwin/developer-tools.nix;
 in
 {
   inherit hostProfile profileModule;
   darwinExtraModules = [
     darwinModule
     vzHostResolverModule
+    developerToolsModule
   ];
   nixosExtraModules = [ nixosModule ];
 }
