@@ -146,6 +146,7 @@ let
     ];
 
   resolvedImports = [
+    ./aws.nix
     ./avahi.nix
     ./bat.nix
     ./chromium.nix

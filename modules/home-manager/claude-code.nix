@@ -2,11 +2,26 @@
   config,
   lib,
   pkgs,
+  worktreePath,
   ...
 }:
 with lib;
 let
   cfg = config.ndh.claude-code;
+
+  specialArgs =
+    if config ? _module && config._module ? specialArgs then config._module.specialArgs else { };
+  nixBashTrampoline =
+    if
+      specialArgs ? ndh && specialArgs.ndh ? context && specialArgs.ndh.context ? nixBashTrampoline
+    then
+      "${specialArgs.ndh.context.nixBashTrampoline}"
+    else
+      "${worktreePath.of "modules/.common.d/shell.d/nix-bash-trampoline.sh"}";
+  profile = config._module.specialArgs.profile;
+  userName = profile.user.name;
+  loggerTag = "home-manager.activationScripts.${userName}.claudeCodePurgeModelOverride";
+  loggerTagAwsReconcile = "home-manager.activationScripts.${userName}.claudeCodeReconcileAwsEnv";
 
   # Bootstrap seed for ~/.claude/settings.json. Written to the Nix store
   # and copied into place ONLY when the file is absent (fresh machine).
@@ -17,6 +32,14 @@ let
   # (plugins + marketplaces). The stable Bedrock/model env lives in
   # cfg.env (real shell vars, highest precedence) — NOT here — so the
   # two concerns don't fight.
+  #
+  # Separately, the legacy env block inside ~/.claude.json (an
+  # onboarding-era remnant, a DIFFERENT file Claude owns) can carry an
+  # ANTHROPIC_MODEL hard override that pins the model above every
+  # settings.json "model" field — defeating the user's chosen default and
+  # /model alike. The claudeCodePurgeModelOverride activation below strips
+  # that one key so the per-tier defaults here (ANTHROPIC_DEFAULT_OPUS_MODEL)
+  # decide the model.
   seedFile = pkgs.writeText "claude-settings-seed.json" (builtins.toJSON cfg.seed);
 in
 {
@@ -33,6 +56,8 @@ in
         default = {
           CLAUDE_CODE_USE_BEDROCK = "1";
           AWS_REGION = "us-east-1";
+          AWS_DEFAULT_REGION = "us-east-1";
+          AWS_SDK_LOAD_CONFIG = "1";
           AWS_PROFILE = "ai-tools-shared";
           ANTHROPIC_DEFAULT_SONNET_MODEL = "us.anthropic.claude-sonnet-4-5-20250929-v1:0[1m]";
           ANTHROPIC_DEFAULT_OPUS_MODEL = "us.anthropic.claude-opus-4-8[1m]";
@@ -99,5 +124,33 @@ in
         $VERBOSE_ECHO "Claude Code settings.json exists — leaving it untouched"
       fi
     '';
+
+    home.activation.claudeCodePurgeModelOverride =
+      let
+        purgeModelOverrideScript = pkgs.replaceVars ./claude-code.d/purge-anthropic-model.sh {
+          nixBashTrampoline = nixBashTrampoline;
+          loggerTag = loggerTag;
+        };
+      in
+      lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+        $DRY_RUN_CMD ${pkgs.bash}/bin/bash ${purgeModelOverrideScript}
+      '';
+
+    home.activation.claudeCodeReconcileAwsEnv =
+      let
+        reconcileAwsEnvScript = pkgs.replaceVars ./claude-code.d/reconcile-aws-bedrock-env.sh {
+          nixBashTrampoline = nixBashTrampoline;
+          python3 = "${pkgs.python3}/bin/python3";
+          loggerTag = loggerTagAwsReconcile;
+          claudeCodeUseBedrock = cfg.env.CLAUDE_CODE_USE_BEDROCK or "";
+          awsProfile = cfg.env.AWS_PROFILE or "";
+          awsRegion = cfg.env.AWS_REGION or "";
+          awsDefaultRegion = cfg.env.AWS_DEFAULT_REGION or "";
+          awsSdkLoadConfig = cfg.env.AWS_SDK_LOAD_CONFIG or "";
+        };
+      in
+      lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+        $DRY_RUN_CMD ${pkgs.bash}/bin/bash ${reconcileAwsEnvScript}
+      '';
   };
 }
