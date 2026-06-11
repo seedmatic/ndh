@@ -7,7 +7,7 @@ true
 
 __nxmatic_is_agent_vscode_terminal=0
 if [[ "${TERM_PROGRAM:-}" == "vscode" ]] && \
-   [[ "${VSCODE_PREVENT_SHELL_HISTORY:-}" == "1" ]]; then
+  [[ "${VSCODE_PREVENT_SHELL_HISTORY:-}" == "1" || "${COPILOT_AGENT:-}" == "1" || "${VSCODE_AGENT_ZSH_FIXUPS:-}" == "1" ]]; then
   __nxmatic_is_agent_vscode_terminal=1
 fi
 
@@ -69,6 +69,16 @@ if [[ "$__nxmatic_is_agent_vscode_terminal" == "1" ]]; then
   # command exercises intentionally probe failures.
   unsetopt ERR_EXIT NO_UNSET PIPE_FAIL 2>/dev/null || true
   set +e +u 2>/dev/null || true
+
+  # Keep strict modes disabled on every prompt cycle in agent terminals.
+  # Some commands temporarily enable them (e.g. `set -u`) and prompt/plugin
+  # hooks (like zi scheduler) can crash afterward if NO_UNSET remains active.
+  nxmatic_agent_terminal_relax_opts() {
+    unsetopt ERR_EXIT NO_UNSET PIPE_FAIL 2>/dev/null || true
+    set +e +u 2>/dev/null || true
+  }
+  precmd_functions=(${precmd_functions:#nxmatic_agent_terminal_relax_opts})
+  precmd_functions=(nxmatic_agent_terminal_relax_opts ${precmd_functions[@]})
 
   # Optional diagnostics for troubleshooting hidden terminal state.
   if [[ "${NDH_AGENT_TERMINAL_DEBUG:-0}" == "1" ]]; then
