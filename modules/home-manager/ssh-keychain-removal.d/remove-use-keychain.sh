@@ -7,7 +7,7 @@ main() {
   [ -f "$CFG" ] || exit 0
   chmod u+w "$CFG" 2>/dev/null || true
   [ -f "$BACKUP" ] && rm -f "$BACKUP"
-  sedj -E -i.nix-backup '/^[[:space:]]*UseKeychain[[:space:]]+yes([[:space:]]+#[^!]*)?$/d' "$CFG" || true
+  sed -E -i.nix-backup '/^[[:space:]]*UseKeychain[[:space:]]+yes([[:space:]]+#[^!]*)?$/d' "$CFG" || true
   chmod u-w "$CFG" 2>/dev/null || true
   if [ -f "$BACKUP" ] && cmp -s "$CFG" "$BACKUP"; then
     rm -f "$BACKUP"

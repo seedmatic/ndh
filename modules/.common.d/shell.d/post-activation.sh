@@ -62,7 +62,8 @@ main() {
     xdg_runtime_dir="/run/user/$(id -u @userName@)"
     if [ ! -d "$xdg_runtime_dir" ]; then
       xdg_runtime_dir="@userHome@/.xdg"
-      install -d -m 0700 -o @userName@ -g @userName@ "$xdg_runtime_dir"
+	  targetGroup="$(id -gn "@userName@" 2>/dev/null || echo "@userName@")"
+      install -d -m 0700 -o @userName@ -g "$targetGroup" "$xdg_runtime_dir"
     fi
 
     sudo -u @userName@ \
