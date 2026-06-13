@@ -61,6 +61,7 @@ in
       http.sslVerify = true;
       http.sslCAInfo = systemCaBundle;
       init.defaultBranch = "main";
+      core.hooksPath = "${config.xdg.configHome}/git/hooks";
       gh-get.root = "/var/lib/git";
       pull.rebase = true;
       push.followTags = true;
@@ -109,6 +110,7 @@ in
             ./git.d/sops.d
             ./git.d/sops.sh
             ./git.d/sops.nix
+            ./git.d/hooks/tests
           ]
         );
       };

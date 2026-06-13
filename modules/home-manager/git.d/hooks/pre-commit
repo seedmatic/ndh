@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# Dispatcher: block committing a wip/.wip path onto a protected branch (catches
+# direct commits and squash-merges, which both stage onto main/develop). Then chain
+# to the repo's own pre-commit so a global core.hooksPath does not shadow it.
+set -euo pipefail
+
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib-wip-guard.sh
+. "${here}/lib-wip-guard.sh"
+
+branch="$(git symbolic-ref --short HEAD 2>/dev/null || true)"
+if is_protected_branch "${branch}"; then
+  paths="$(wip_paths_in_index)"
+  if [ -n "${paths}" ]; then
+    reject "${paths}" "${branch}"
+    exit 1
+  fi
+fi
+
+chain_repo_local pre-commit "${here}" "$@"

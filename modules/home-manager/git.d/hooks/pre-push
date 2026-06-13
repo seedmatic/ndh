@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# Dispatcher / catch-all backstop: refuse to push a protected branch when the
+# pushed tree carries a wip/.wip path — the only path that catches a fast-forward
+# merge (which creates no commit, so pre-commit never sees it). Then chain to the
+# repo's own pre-push, replaying the same stdin.
+set -euo pipefail
+
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib-wip-guard.sh
+. "${here}/lib-wip-guard.sh"
+
+zero="0000000000000000000000000000000000000000"
+input="$(cat)"
+status=0
+
+while read -r _local_ref local_sha remote_ref _remote_sha; do
+  [ -z "${remote_ref:-}" ] && continue
+  case "${remote_ref}" in
+    refs/heads/*) branch="${remote_ref#refs/heads/}" ;;
+    *) continue ;;
+  esac
+  is_protected_branch "${branch}" || continue
+  [ "${local_sha}" = "${zero}" ] && continue
+  paths="$(wip_paths_in "${local_sha}")"
+  if [ -n "${paths}" ]; then
+    reject "${paths}" "${branch}"
+    status=1
+  fi
+done <<< "${input}"
+
+if [ "${status}" -ne 0 ]; then
+  exit "${status}"
+fi
+
+chain_repo_local pre-push "${here}" "$@" <<< "${input}"
