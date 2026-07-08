@@ -43,6 +43,41 @@
     region = eu-central-1
     output = yaml-stream
 
+    [profile cin-ccrepo-sandbox]
+    sso_session = hyland
+    sso_account_id = 407995386968
+    sso_role_name = AWSAdministratorAccess
+    region = us-east-1
+    output = yaml-stream
+
+    [profile cin-ccrepo-dev]
+    sso_session = hyland
+    sso_account_id = 662386863434
+    sso_role_name = AWSAdministratorAccess
+    region = us-east-1
+    output = yaml-stream
+
+    [profile cin-ccrepo-staging]
+    sso_session = hyland
+    sso_account_id = 144081923272
+    sso_role_name = AWSAdministratorAccess
+    region = us-east-1
+    output = yaml-stream
+
+    [profile cin-ccrepo-prod]
+    sso_session = hyland
+    sso_account_id = 066972352029
+    sso_role_name = AWSPowerUserAccess
+    region = us-east-1
+    output = yaml-stream
+
+    [profile cin-ccrepo-prod-eu]
+    sso_session = hyland
+    sso_account_id = 891377301114
+    sso_role_name = AWSPowerUserAccess
+    region = eu-central-1
+    output = yaml-stream
+
     [sso-session hyland]
     sso_start_url = https://identitycenter.amazonaws.com/ssoins-6684b922d5a25f41
     sso_region = us-east-2
