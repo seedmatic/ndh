@@ -8,10 +8,10 @@ if ! command -v nix >/dev/null 2>&1; then
   exit 0
 fi
 
-echo "Running nix fmt -- --check ..."
-if ! nix fmt -- --check; then
+echo "Running nix fmt -- --fail-on-change ..."
+if ! nix fmt -- --fail-on-change; then
   cat <<'EOF'
-nix fmt -- --check failed. Please run `nix fmt` to apply formatting.
+nix fmt -- --fail-on-change failed. Please run `nix fmt` to apply formatting.
 EOF
   exit 1
 fi
