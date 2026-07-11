@@ -23,10 +23,10 @@ let
   # `configValue`: the headscale config as a Nix attrset.  Keys map
   # directly to headscale's config schema; nested attrs become nested
   # YAML, lists become YAML lists.
-  build = { name, configValue }:
+  build =
+    { name, configValue }:
     let
-      configJson = pkgs.writeText "${name}-headscale-config.json"
-        (builtins.toJSON configValue);
+      configJson = pkgs.writeText "${name}-headscale-config.json" (builtins.toJSON configValue);
       renderScript = ndhStore.installScript {
         name = "${name}-render-headscale-config.sh";
         source = pkgs.replaceVars ./render-config.sh {
@@ -39,11 +39,16 @@ let
         mode = "0755";
       };
     in
-    ndhStore.runCommand "${name}-headscale-config.yaml" {
-      nativeBuildInputs = [ pkgs.yq-go pkgs.bash ];
-    } ''
-      ${renderScript} "$out"
-    '';
+    ndhStore.runCommand "${name}-headscale-config.yaml"
+      {
+        nativeBuildInputs = [
+          pkgs.yq-go
+          pkgs.bash
+        ];
+      }
+      ''
+        ${renderScript} "$out"
+      '';
 in
 {
   inherit build;

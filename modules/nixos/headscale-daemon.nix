@@ -82,7 +82,10 @@ let
       magic_dns = true;
       base_domain = baseDomain;
       nameservers = {
-        global = [ "1.1.1.1" "8.8.8.8" ];
+        global = [
+          "1.1.1.1"
+          "8.8.8.8"
+        ];
       };
       extra_records = extraRecords;
     };
@@ -93,7 +96,9 @@ let
     };
 
     derp = {
-      server = { enabled = false; };
+      server = {
+        enabled = false;
+      };
       urls = [ "https://controlplane.tailscale.com/derpmap/default" ];
       auto_update_enabled = true;
       update_frequency = "24h";

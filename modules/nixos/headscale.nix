@@ -25,10 +25,7 @@ let
   # manual bootstrap / test harnesses.
   activeAuthKind = "nixos";
   effectiveAuthKeyFile =
-    if cfg.authKeyFile != null then
-      cfg.authKeyFile
-    else
-      tailnet.headscale.auth.${activeAuthKind}.path;
+    if cfg.authKeyFile != null then cfg.authKeyFile else tailnet.headscale.auth.${activeAuthKind}.path;
 in
 {
   options.networking.headscale = {

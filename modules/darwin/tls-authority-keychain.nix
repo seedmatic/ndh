@@ -12,17 +12,13 @@
 }:
 let
   authorities = config.ndh.keysYaml.authorities or { };
-  isTlsAnchor =
-    auth:
-    (auth ? ca_crt) && (builtins.elem "tls-authority" (auth.usage or [ ]));
+  isTlsAnchor = auth: (auth ? ca_crt) && (builtins.elem "tls-authority" (auth.usage or [ ]));
   tlsAnchors = lib.filterAttrs (_: isTlsAnchor) authorities;
 
   # Materialise each ca_crt PEM into the Nix store so the activation
   # snippet can reference a stable path.  `security add-trusted-cert`
   # accepts PEM directly.
-  certFiles = lib.mapAttrs (
-    name: auth: pkgs.writeText "${name}-ca.crt" auth.ca_crt
-  ) tlsAnchors;
+  certFiles = lib.mapAttrs (name: auth: pkgs.writeText "${name}-ca.crt" auth.ca_crt) tlsAnchors;
 
   # Build a newline-separated list of "name:path" pairs for the script
   certPairs = lib.concatStringsSep "\n" (

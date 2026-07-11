@@ -180,10 +180,7 @@
           # that gets ndh from `_module.args` instead of specialArgs.
           mkLaunchdLabel =
             name:
-            if nixpkgs.lib.hasPrefix "${storeNamePrefix}." name then
-              name
-            else
-              "${storeNamePrefix}.${name}";
+            if nixpkgs.lib.hasPrefix "${storeNamePrefix}." name then name else "${storeNamePrefix}.${name}";
           installScript =
             {
               name,
@@ -894,8 +891,7 @@
             anyHostName = builtins.head (builtins.attrNames hostCatalog);
             anyHostDeploy =
               hostOutputs.${anyHostName}.darwinConfiguration.config.tart.configGenerator.deployPackage;
-            anyHostBringup =
-              hostOutputs.${anyHostName}.nixosDiskImageBringupSystemdZfs;
+            anyHostBringup = hostOutputs.${anyHostName}.nixosDiskImageBringupSystemdZfs;
             mkDeployHelper =
               {
                 mainName,
@@ -993,8 +989,7 @@
                 hostSpec = hostCatalog.${hostName};
                 mainName = hostMainNameForProfile hostSpec.hostProfile;
                 hostOutput = hostOutputs.${hostName};
-                runManifest =
-                  hostOutput.darwinConfiguration.config.tart.configGenerator.runManifest;
+                runManifest = hostOutput.darwinConfiguration.config.tart.configGenerator.runManifest;
               in
               acc
               // {
@@ -1034,8 +1029,7 @@
             anyHostName = builtins.head (builtins.attrNames hostCatalog);
           in
           {
-            nerd-nixos-bringup-zfs-systemd-disk =
-              hostOutputs.${anyHostName}.nixosDiskImageBringupSystemdZfs;
+            nerd-nixos-bringup-zfs-systemd-disk = hostOutputs.${anyHostName}.nixosDiskImageBringupSystemdZfs;
           }
         )
       );
@@ -1406,13 +1400,14 @@
       # host and Nix dedups the underlying derivation.
       nixosConfigurations =
         let
-          merged = builtins.foldl' (
-            acc: hostOutput: acc // hostOutput.nixosConfigurations
-          ) { } (builtins.attrValues hostOutputs);
+          merged = builtins.foldl' (acc: hostOutput: acc // hostOutput.nixosConfigurations) { } (
+            builtins.attrValues hostOutputs
+          );
           anyHostName = builtins.head (builtins.attrNames hostCatalog);
           anyMainName = hostMainNameForProfile hostCatalog.${anyHostName}.hostProfile;
         in
-        merged // {
+        merged
+        // {
           nerd-nixos = merged."${anyMainName}-bringup";
         };
 

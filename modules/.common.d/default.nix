@@ -177,8 +177,7 @@ let
     # avoid for our own services so an `ls /Library/LaunchDaemons/` is
     # self-evident about ownership.
     mkLaunchdLabel =
-      name:
-      if lib.hasPrefix "${storeNamePrefix}." name then name else "${storeNamePrefix}.${name}";
+      name: if lib.hasPrefix "${storeNamePrefix}." name then name else "${storeNamePrefix}.${name}";
     installScript = installStoreScript;
     runCommand =
       name: attrs: text:

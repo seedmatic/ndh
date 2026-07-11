@@ -30,8 +30,8 @@
 source @nixBashTrampoline@
 
 # Shared decision-tree helpers (ndh::headscaleClient:reconcile et al.).
-# Inlined verbatim by pkgs.replaceVars at build time so writeShellApplication's
-# shellcheck pass sees the whole script.
+# Inlined verbatim by pkgs.replaceVars at build time so the whole script is
+# visible to writeShellApplication's shellcheck pass.
 @HEADSCALE_CLIENT_LIB_INLINE@
 
 main() {

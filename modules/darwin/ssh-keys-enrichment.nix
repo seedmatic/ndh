@@ -98,27 +98,21 @@ let
           loggerTag = loggerTagOrchestrate;
         };
     # System-scope extract: ssh-host privates → sshPaths.systemKeysDir.
-    ssh-extract-keys-system =
-      pkgs.replaceVars "${hmSshKeyDir}/ssh-extract-keys.sh"
-        {
-          nixBashTrampoline = nixBashTrampoline;
-          loggerTag = loggerTagExtractSystem;
-          splitExpFile = sshExtractKeysSplitExpFile;
-        };
+    ssh-extract-keys-system = pkgs.replaceVars "${hmSshKeyDir}/ssh-extract-keys.sh" {
+      nixBashTrampoline = nixBashTrampoline;
+      loggerTag = loggerTagExtractSystem;
+      splitExpFile = sshExtractKeysSplitExpFile;
+    };
     # User-scope extract: everything else → sshPaths.secretsKeysDir (~<user>/.local/share/ndh/ssh-keys).
-    ssh-extract-keys-user =
-      pkgs.replaceVars "${hmSshKeyDir}/ssh-extract-keys.sh"
-        {
-          nixBashTrampoline = nixBashTrampoline;
-          loggerTag = loggerTagExtractUser;
-          splitExpFile = sshExtractKeysSplitExpFile;
-        };
-    ssh-ensure-authorized-keys =
-      pkgs.replaceVars "${hmSshKeyDir}/ssh-ensure-authorized-keys.sh"
-        {
-          nixBashTrampoline = nixBashTrampoline;
-          loggerTag = loggerTagEnsureAuthorizedKeys;
-        };
+    ssh-extract-keys-user = pkgs.replaceVars "${hmSshKeyDir}/ssh-extract-keys.sh" {
+      nixBashTrampoline = nixBashTrampoline;
+      loggerTag = loggerTagExtractUser;
+      splitExpFile = sshExtractKeysSplitExpFile;
+    };
+    ssh-ensure-authorized-keys = pkgs.replaceVars "${hmSshKeyDir}/ssh-ensure-authorized-keys.sh" {
+      nixBashTrampoline = nixBashTrampoline;
+      loggerTag = loggerTagEnsureAuthorizedKeys;
+    };
   };
 
   # Effective per-user yaml path (mirrors the path derived in

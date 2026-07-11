@@ -66,8 +66,7 @@ let
   #   slotPath is a list of strings, e.g. ["auth"] or ["auth" "darwin"].
   namespace = service: slotPath: "tailnet.${service}." + concatStringsSep "." slotPath;
   secretPath = service: slotPath: "${secretNamespaceDir}/${namespace service slotPath}";
-  sopsPath =
-    service: slotPath: "tailnet/${service}/" + concatStringsSep "/" slotPath;
+  sopsPath = service: slotPath: "tailnet/${service}/" + concatStringsSep "/" slotPath;
 
   # Canonical credential-leaf submodule.  One of these per concrete
   # secret the schema exposes.  The `slotPath` argument is purely
@@ -194,32 +193,31 @@ let
   # entry carries the slotPath used to build names + sops keys and a
   # pointer to the option leaf so we can read `.enable`, `.sopsKey`,
   # `.path`, etc. without re-deriving them.
-  allLeaves =
-    [
-      {
-        service = "tailscale";
-        slotPath = [ "auth" ];
-        leaf = cfg.tailscale.auth;
-      }
-      {
-        service = "tailscale";
-        slotPath = [ "api" ];
-        leaf = cfg.tailscale.api;
-      }
-      {
-        service = "headscale";
-        slotPath = [ "api" ];
-        leaf = cfg.headscale.api;
-      }
-    ]
-    ++ map (kind: {
+  allLeaves = [
+    {
+      service = "tailscale";
+      slotPath = [ "auth" ];
+      leaf = cfg.tailscale.auth;
+    }
+    {
+      service = "tailscale";
+      slotPath = [ "api" ];
+      leaf = cfg.tailscale.api;
+    }
+    {
       service = "headscale";
-      slotPath = [
-        "auth"
-        kind
-      ];
-      leaf = cfg.headscale.auth.${kind};
-    }) headscaleAuthKinds;
+      slotPath = [ "api" ];
+      leaf = cfg.headscale.api;
+    }
+  ]
+  ++ map (kind: {
+    service = "headscale";
+    slotPath = [
+      "auth"
+      kind
+    ];
+    leaf = cfg.headscale.auth.${kind};
+  }) headscaleAuthKinds;
 
   enabledLeaves = filter (e: e.leaf.enable) allLeaves;
 

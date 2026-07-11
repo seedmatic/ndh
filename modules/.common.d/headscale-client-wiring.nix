@@ -32,7 +32,10 @@ let
     kind:
     let
       roleTag =
-        if kind == "darwin" then headscaleCatalog.tags.role.console else headscaleCatalog.tags.role.headless;
+        if kind == "darwin" then
+          headscaleCatalog.tags.role.console
+        else
+          headscaleCatalog.tags.role.headless;
       kindTag = lib.attrByPath [
         "tags"
         "kind"
@@ -47,8 +50,7 @@ let
         kindTag
       ];
 
-  effectiveServerUrl =
-    if headscaleCatalog != null then headscaleCatalog.aliasUrl else "";
+  effectiveServerUrl = if headscaleCatalog != null then headscaleCatalog.aliasUrl else "";
 in
 {
   options.ndh.headscaleClient = {
@@ -99,10 +101,7 @@ in
     security.pki.certificates =
       let
         authorities = config.ndh.keysYaml.authorities or { };
-        isTlsAnchor =
-          auth:
-          (auth ? ca_crt)
-          && (builtins.elem "tls-authority" (auth.usage or [ ]));
+        isTlsAnchor = auth: (auth ? ca_crt) && (builtins.elem "tls-authority" (auth.usage or [ ]));
       in
       lib.mapAttrsToList (_: a: a.ca_crt) (lib.filterAttrs (_: isTlsAnchor) authorities);
   };

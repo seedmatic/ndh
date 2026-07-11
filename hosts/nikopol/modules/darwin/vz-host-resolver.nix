@@ -23,7 +23,7 @@
   ...
 }:
 {
-  hm.imports =
-    lib.optional (config.profile.host.hostName == "nikopol")
-      ../home-manager/vz-host-resolver.nix;
+  hm.imports = lib.optional (
+    config.profile.host.hostName == "nikopol"
+  ) ../home-manager/vz-host-resolver.nix;
 }

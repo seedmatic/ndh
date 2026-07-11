@@ -1,7 +1,12 @@
 # Cilium kernel modules configuration (@codebase)
 # This module loads kernel modules required by Cilium CNI in RKE2/K8s clusters
 
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 
 {
   # Kernel modules required by Cilium for:

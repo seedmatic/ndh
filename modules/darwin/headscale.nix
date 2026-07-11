@@ -40,10 +40,7 @@ let
   # bootstrap / test harnesses.
   activeAuthKind = "darwin";
   effectiveAuthKeyFile =
-    if cfg.authKeyFile != null then
-      cfg.authKeyFile
-    else
-      tailnet.headscale.auth.${activeAuthKind}.path;
+    if cfg.authKeyFile != null then cfg.authKeyFile else tailnet.headscale.auth.${activeAuthKind}.path;
 
   tagsCsv = concatStringsSep "," (map (tag: "tag:" + tag) cfg.tags);
 
@@ -79,9 +76,7 @@ let
   # the host shell's PATH.
   hsConnectBin = pkgs.writeShellApplication {
     name = "hs-connect";
-    text = builtins.readFile (
-      pkgs.replaceVars ./headscale-client.d/hs-connect.sh hsClientReplaceVars
-    );
+    text = builtins.readFile (pkgs.replaceVars ./headscale-client.d/hs-connect.sh hsClientReplaceVars);
     runtimeInputs = with pkgs; [
       tailscale
       coreutils

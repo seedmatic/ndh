@@ -37,27 +37,26 @@ let
   # place PATH is built — `home.sessionPath` propagates it to login shells,
   # and the shell init scripts (zshenv, zdotdir, zsh-init) deliberately do
   # NOT rebuild this list.
-  coreShellPath =
-    [
-      "${homeDir}/.local/bin"
-      "${homeDir}/.local/share/pnpm"
-    ]
-    ++ lib.optionals limaActive [
-      "${homeDir}/.local/opt/lima-vm/bin"
-    ]
-    ++ lib.optionals pkgs.stdenvNoCC.isDarwin [
-      # Rancher Desktop is a macOS-only install in this fleet.
-      "${homeDir}/.rd/bin"
-    ]
-    ++ [
-      "${homeDir}/.krew/bin"
-      "${homeDir}/.nix-profile/bin"
-      "/etc/profiles/per-user/${userName}/bin"
-      "/run/current-system/sw/bin"
-    ]
-    ++ lib.optionals pkgs.stdenvNoCC.isLinux [
-      "/run/wrappers/bin"
-    ];
+  coreShellPath = [
+    "${homeDir}/.local/bin"
+    "${homeDir}/.local/share/pnpm"
+  ]
+  ++ lib.optionals limaActive [
+    "${homeDir}/.local/opt/lima-vm/bin"
+  ]
+  ++ lib.optionals pkgs.stdenvNoCC.isDarwin [
+    # Rancher Desktop is a macOS-only install in this fleet.
+    "${homeDir}/.rd/bin"
+  ]
+  ++ [
+    "${homeDir}/.krew/bin"
+    "${homeDir}/.nix-profile/bin"
+    "/etc/profiles/per-user/${userName}/bin"
+    "/run/current-system/sw/bin"
+  ]
+  ++ lib.optionals pkgs.stdenvNoCC.isLinux [
+    "/run/wrappers/bin"
+  ];
   # Use platform-provided logger script from specialArgs (required)
   loggerTagZdotdir = "home-manager.activationScripts.${userName}.zdotdir";
   zshInitContent = builtins.readFile ./shell.d/zsh-init.zsh;
