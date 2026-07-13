@@ -3,7 +3,7 @@
 # guard fires at system-config evaluation.
 #
 # Enables:
-#   - Claude Code stable env (Bedrock/model vars; settings.json left mutable)
+#   - Claude Code stable env (model vars; settings.json left mutable)
 #   - Comet browser with Chrome DevTools remote debugging (port 9222)
 {
   config,
@@ -11,7 +11,7 @@
   ...
 }:
 {
-  hm.imports =
-    lib.optional (config.profile.host.hostName == "bioskop")
-      ../home-manager/developer-tools.nix;
+  hm.imports = lib.optional (
+    config.profile.host.hostName == "bioskop"
+  ) ../home-manager/developer-tools.nix;
 }

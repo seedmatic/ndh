@@ -21,7 +21,6 @@ let
   profile = config._module.specialArgs.profile;
   userName = profile.user.name;
   loggerTag = "home-manager.activationScripts.${userName}.claudeCodePurgeModelOverride";
-  loggerTagAwsReconcile = "home-manager.activationScripts.${userName}.claudeCodeReconcileAwsEnv";
 
   # Bootstrap seed for ~/.claude/settings.json. Written to the Nix store
   # and copied into place ONLY when the file is absent (fresh machine).
@@ -29,7 +28,7 @@ let
   # marketplace edits write back to it and we never overwrite them.
   #
   # Intentionally carries only the mutable-but-worth-restoring keys
-  # (plugins + marketplaces). The stable Bedrock/model env lives in
+  # (plugins + marketplaces). The stable model env lives in
   # cfg.env (real shell vars, highest precedence) — NOT here — so the
   # two concerns don't fight.
   #
@@ -54,14 +53,9 @@ in
       env = mkOption {
         type = types.attrsOf types.str;
         default = {
-          CLAUDE_CODE_USE_BEDROCK = "1";
-          AWS_REGION = "us-east-1";
-          AWS_DEFAULT_REGION = "us-east-1";
-          AWS_SDK_LOAD_CONFIG = "1";
-          AWS_PROFILE = "ai-tools-shared";
-          ANTHROPIC_DEFAULT_SONNET_MODEL = "us.anthropic.claude-sonnet-4-5-20250929-v1:0[1m]";
-          ANTHROPIC_DEFAULT_OPUS_MODEL = "us.anthropic.claude-opus-4-8[1m]";
-          ANTHROPIC_DEFAULT_HAIKU_MODEL = "global.anthropic.claude-haiku-4-5-20251001-v1:0";
+          ANTHROPIC_DEFAULT_SONNET_MODEL = "claude-sonnet-4-5-20250929";
+          ANTHROPIC_DEFAULT_OPUS_MODEL = "claude-opus-4-8";
+          ANTHROPIC_DEFAULT_HAIKU_MODEL = "claude-haiku-4-5-20251001";
         };
         description = ''
           Stable Claude Code configuration exported as real shell
@@ -69,7 +63,7 @@ in
 
           Shell env vars take HIGHEST precedence in Claude Code's settings
           layering — above the `env` block of ~/.claude/settings.json — so
-          this declarative, read-only set always wins for Bedrock/model
+          this declarative, read-only set always wins for model
           config.
 
           Deliberately NOT managed via home.file on settings.json:
@@ -134,23 +128,6 @@ in
       in
       lib.hm.dag.entryAfter [ "writeBoundary" ] ''
         $DRY_RUN_CMD ${pkgs.bash}/bin/bash ${purgeModelOverrideScript}
-      '';
-
-    home.activation.claudeCodeReconcileAwsEnv =
-      let
-        reconcileAwsEnvScript = pkgs.replaceVars ./claude-code.d/reconcile-aws-bedrock-env.sh {
-          nixBashTrampoline = nixBashTrampoline;
-          python3 = "${pkgs.python3}/bin/python3";
-          loggerTag = loggerTagAwsReconcile;
-          claudeCodeUseBedrock = cfg.env.CLAUDE_CODE_USE_BEDROCK or "";
-          awsProfile = cfg.env.AWS_PROFILE or "";
-          awsRegion = cfg.env.AWS_REGION or "";
-          awsDefaultRegion = cfg.env.AWS_DEFAULT_REGION or "";
-          awsSdkLoadConfig = cfg.env.AWS_SDK_LOAD_CONFIG or "";
-        };
-      in
-      lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-        $DRY_RUN_CMD ${pkgs.bash}/bin/bash ${reconcileAwsEnvScript}
       '';
   };
 }
