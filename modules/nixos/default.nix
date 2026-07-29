@@ -384,7 +384,7 @@ in
       };
     };
 
-    limaHost.isGuest = true;
+    vm.role = "guest";
 
     networking = {
       # Per-host ZFS hostId derived from the bare host name (not the

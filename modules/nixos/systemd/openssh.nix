@@ -90,10 +90,10 @@ let
       logTag = hostkeyEnrollmentSyncTag;
       clientPrivateSource = config.sshPaths.privKeyFile;
       clientUserCertSource = config.sshPaths.userCertPublic;
-      fallbackHost = config.limaHost.hostName;
+      fallbackHost = config.vm.hostName;
       remoteUser = config.profile.user.name;
       remoteRepo = "/var/lib/git/nxmatic/nix-darwin-home";
-      guestName = config.limaHost.guestName;
+      guestName = config.vm.guestName;
     }
   );
   authorizedKeysCheckScript = ndh.store.installBinScript "openssh-authorized-keys-check" (

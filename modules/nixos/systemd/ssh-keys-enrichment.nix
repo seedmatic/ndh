@@ -37,8 +37,8 @@ let
         "user"
       ];
   hostIdent =
-    if config ? limaHost && config.limaHost ? hostName && config.limaHost.hostName != null then
-      config.limaHost.hostName
+    if config ? vm && config.vm ? hostName && config.vm.hostName != null then
+      config.vm.hostName
     else if config.networking.hostName != "" then
       config.networking.hostName
     else

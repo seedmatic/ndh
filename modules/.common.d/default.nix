@@ -279,7 +279,7 @@ in
     # Networking
     ./bbox-reconcile.nix
     ./dns-servers.nix
-    ./lima-host.nix
+    ./vm.nix
 
     # VM tooling & observability
     ./vm-materializer.nix
@@ -363,7 +363,7 @@ in
       packages = with pkgs; [ powerline-fonts ];
     };
 
-    limaHost = {
+    vm = {
       guestName = "nixos";
     };
   }

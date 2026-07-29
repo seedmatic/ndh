@@ -47,7 +47,7 @@ in
   options.lima.networkInterfaces = {
     enable = mkOption {
       type = types.bool;
-      default = config.limaHost.isGuest;
+      default = config.vm.role == "guest";
       description = "Enable Lima network interface naming based on MAC addresses.";
     };
 

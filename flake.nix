@@ -310,7 +310,7 @@
         in
         [
           {
-            limaHost.hostName =
+            vm.hostName =
               if (hostProfile ? hostAlias && hostProfile.hostAlias != null && hostProfile.hostAlias != "") then
                 hostProfile.hostAlias
               else

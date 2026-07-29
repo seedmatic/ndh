@@ -5,17 +5,12 @@
   ...
 }:
 let
-  # Resolve hostName: prefer config.limaHost.hostName if defined; fallback to networking.hostName
+  # Resolve hostName: prefer config.vm.hostName if defined; fallback to networking.hostName
   hostName =
     if
-      (
-        config ? limaHost
-        && config.limaHost ? hostName
-        && config.limaHost.hostName != null
-        && config.limaHost.hostName != ""
-      )
+      (config ? vm && config.vm ? hostName && config.vm.hostName != null && config.vm.hostName != "")
     then
-      config.limaHost.hostName
+      config.vm.hostName
     else
       config.networking.hostName;
   flakeRef = "/etc/nixos"; # canonical flake symlink

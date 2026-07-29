@@ -26,7 +26,7 @@ in
         enable = true;
         internalInterfaces = [ "ve-${containerName}" ];
         # Use vmlan0 interface (bridged LAN) for external connectivity
-        externalInterface = if config.limaHost.isGuest then "vmlan0" else "enp0s1";
+        externalInterface = if config.vm.role == "guest" then "vmlan0" else "enp0s1";
       };
     };
     containers."${containerName}" = {
@@ -62,7 +62,7 @@ in
               {
                 containerHost = {
                   enable = true;
-                  hostName = containerRegistrySystem.config.limaHost.hostName;
+                  hostName = containerRegistrySystem.config.vm.hostName;
                   guestName = containerName;
                 };
                 # Role = service (driven by an operator); kind = incus

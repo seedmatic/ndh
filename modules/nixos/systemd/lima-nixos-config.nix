@@ -44,7 +44,7 @@ in
       serviceConfig = {
         Type = "oneshot";
         RemainAfterExit = true;
-        ExecStart = "${limaNixosConfigPkg}/bin/lima-nixos-config ${config.limaHost.hostName}";
+        ExecStart = "${limaNixosConfigPkg}/bin/lima-nixos-config ${config.vm.hostName}";
         TimeoutStartSec = 60;
       };
 
