@@ -90,9 +90,13 @@ in
       hostKeyPaths = [ hostKeyPrivateFile ];
       hostCertificatePath = hostKeyPublicCert;
 
-      # Force IPv4 only for SSH server
+      # Force IPv4 only for SSH server; expose the SFTP subsystem explicitly.
+      # Our canonical /etc/ssh/sshd_config is a bare `Include …` (baseSshdConfigText),
+      # which drops macOS's default `Subsystem sftp` line — without re-adding it here
+      # sshd answers exec but resets every SFTP channel, so sshfs (SFTP-based) fails.
       extraSettings = {
         AddressFamily = "inet";
+        Subsystem = "sftp internal-sftp";
       };
 
       # Enable SSH client policy to generate guest stanzas system-wide

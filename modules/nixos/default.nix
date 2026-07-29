@@ -144,8 +144,7 @@ let
     ./resolved-lan.nix
     ./avahi.nix
     ./code-server.nix
-    ./nfs-autofs.nix
-    ./rke2lab-overlay.nix
+    ./sshfs-mounts.nix
     ./incus.nix
     ./podman.nix
     ./bringup-observe.nix

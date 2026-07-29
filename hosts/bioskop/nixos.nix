@@ -18,6 +18,21 @@
       upstreamEndpoint = "http://192.168.5.2:9001";
     };
 
-    services.rke2labOverlay.enable = true;
+    # sshfs mounts of the Darwin-side git store (replaces the old NFS /net automount).
+    # Root executes the mount but authenticates as nxmatic — the operator who owns the
+    # trees — via the CA-signed rdp-host key; remote files map back to uid/gid 501:30001.
+    # bioskop keeps its git trees under /private/var/lib/git.
+    services.sshfsMounts = {
+      enable = true;
+      remoteHost = "bioskop.local";
+      remoteUser = "nxmatic";
+      identityFile = "/var/lib/ndh/ssh-keys/rdp-host";
+      mounts = [
+        {
+          remotePath = "/private/var/lib/git";
+          localPath = "/net/bioskop.local/private/var/lib/git";
+        }
+      ];
+    };
   };
 }
