@@ -160,6 +160,7 @@ let
     ./git.nix
     ./gh.nix
     ./gpg.nix
+    ./incus-remote.nix
     ./java.nix
     ./keychain.nix
     # ./kitty.nix
@@ -258,6 +259,11 @@ in
 {
 
   imports = resolvedImports;
+
+  # Operator Incus identity for the nxmatic account on every node: derives its
+  # remote from the host's own VM identity (<host>-nixos), idempotent, and
+  # non-fatal when the server is unreachable. mkDefault so a host can opt out.
+  ndh.incusRemote.enable = lib.mkDefault true;
 
   nix.gc = {
     automatic = true;
