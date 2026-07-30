@@ -50,12 +50,17 @@ in
     };
     remoteAddress = lib.mkOption {
       type = lib.types.str;
-      default = "https://${hostName}-nixos.local:8443";
-      description = "HTTPS address of the Incus server. Overridable for tailnet/bare-hostname resolution.";
+      default = "https://${hostName}-nixos:8443";
+      description = ''
+        HTTPS address of the Incus server. The bare tailnet hostname (MagicDNS),
+        not <host>-nixos.local: mDNS .local resolution stalls ~5s per call waiting
+        for a AAAA record the guest never advertises, whereas the bare name
+        resolves instantly — matching the reference host's config.yml.
+      '';
     };
     trustHost = lib.mkOption {
       type = lib.types.str;
-      default = "${hostName}-nixos.local";
+      default = "${hostName}-nixos";
       description = "SSH host on which to mint the trust token when this node has no local Incus daemon socket.";
     };
   };

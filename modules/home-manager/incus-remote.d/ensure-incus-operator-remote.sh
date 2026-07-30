@@ -17,6 +17,11 @@ config_dir="${XDG_CONFIG_HOME:-${HOME}/.config}/incus"
 main() {
   install -d -m 0700 "${config_dir}"
 
+  # Reconcile the remote's URL to the current address (cheap, no re-trust): heals
+  # an entry that drifted to a slow .local address. A no-op — and harmlessly
+  # ignored — when the remote does not exist yet.
+  "${incus_bin}" remote set-url "${remote_name}" "${remote_address}" >/dev/null 2>&1 || true
+
   # Already authenticated → nothing to do (keeps the operator's existing keypair
   # and pinned server cert untouched on every activation).
   if "${incus_bin}" info "${remote_name}:" >/dev/null 2>&1; then
