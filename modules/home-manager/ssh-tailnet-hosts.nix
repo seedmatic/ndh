@@ -27,7 +27,7 @@ let
   # `ssh rdp.bioskop`.
   #
   # The two roles target the same host from two routes:
-  #   rdp.{host}    → the Darwin host itself (LAN / mDNS)
+  #   rdp.{host}    → the Darwin host itself (via MagicDNS)
   #   nixos.{host}  → the NixOS guest VM living on the Darwin host
   # Both present the profile user's rdp-host key+cert so mammoth-skate's
   # TrustedUserCAKeys check accepts the login without per-host key
@@ -59,9 +59,13 @@ let
       IdentityAgent none
       PreferredAuthentications publickey
   '';
+  # Operator aliases resolve to the bare MagicDNS name, never `.local`:
+  # a `.local` HostName stalls ~5s on macOS — systemd-resolved's mDNS
+  # responder sends no NSEC for the absent AAAA, so getaddrinfo waits out
+  # the timeout — whereas MagicDNS answers over unicast DNS, instantly.
   operatorAliasesForHost = host: ''
-    ${operatorAliasForService host "rdp" ".local"}
-    ${operatorAliasForService host "nixos" "-nixos.local"}
+    ${operatorAliasForService host "rdp" ""}
+    ${operatorAliasForService host "nixos" "-nixos"}
   '';
 
   # `vz.nikopol` from bioskop / any other operator host: route the
@@ -81,12 +85,10 @@ let
   # invoke `nc` on the VM, which then opens a plain local-segment
   # TCP connection to the resolved bare-metal IP.
   #
-  # The outer-hop alias is `nikopol-ts` rather than `nikopol`
-  # because the latter is wired to `HostName ${host}.local`
-  # elsewhere in this file's inventory loop, which only resolves
-  # when the laptop is at home.  `nikopol-ts` resolves to
-  # `nikopol.mammoth-skate.ts.net` and works wherever the laptop
-  # currently is.
+  # The outer-hop alias is `nikopol-ts`, the explicit tailnet form
+  # resolving to `nikopol.mammoth-skate.ts.net` — it works wherever
+  # the laptop currently is.  (Bare `nikopol` now resolves via MagicDNS
+  # too; `-ts` is kept here to make the tailnet intent unambiguous.)
   #
   # `User stephane.lacoin` and `IdentityFile rdp-host` apply to
   # the inner-hop authentication; the outer ssh hop into nikopol-ts
@@ -154,7 +156,7 @@ in
           User ${sshUserForHost host}
 
         Host ${host} ${host}.lan
-          HostName ${host}.local
+          HostName ${host}
 
       ''
       + lib.optionalString (tailnetDomain != "") ''
