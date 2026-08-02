@@ -4,13 +4,15 @@
   # Uses mkDefault so host-specific configs can override if needed. (@codebase)
   services.resolved = {
     enable = lib.mkDefault true;
-    extraConfig = lib.mkDefault ''
-      DNS=192.168.1.254
-      FallbackDNS=
-      Domains=lan
-      MulticastDNS=yes
-      LLMNR=no
-    '';
+    # extraConfig was removed in 26.05 — resolved.conf is now built from
+    # settings.Resolve (the old fallbackDns/domains/llmnr options are aliases into it).
+    settings.Resolve = {
+      DNS = lib.mkDefault "192.168.1.254";
+      FallbackDNS = lib.mkDefault "";
+      Domains = lib.mkDefault "lan";
+      MulticastDNS = lib.mkDefault "yes";
+      LLMNR = lib.mkDefault "no";
+    };
   };
 
   # Keep networking.nameservers aligned with resolved.

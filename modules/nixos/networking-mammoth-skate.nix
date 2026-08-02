@@ -46,7 +46,7 @@
         };
         nftables.enable = true;
         networkmanager.enable = true;
-        wireless.enable = false;
+        wireless.enable = lib.mkDefault false;
         # Use common DNS servers with IPv6 and IPv4 support
         # Note: Tailscale DNS (100.100.100.100) is added by the Tailscale module
         nameservers = config.common.dnsServers;

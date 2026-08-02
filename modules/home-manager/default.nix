@@ -181,7 +181,6 @@ let
   ];
 
   baseHomePackages = with pkgs; [
-    alejandra
     awscli2
     avahi
     cachix
@@ -193,7 +192,6 @@ let
     direnv
     docker
     docker-compose
-    ffmpeg
     findutils
     flox
     flyctl
@@ -206,7 +204,6 @@ let
     gnused
     helm-docs
     httpie
-    hurl
     jdk
     k9s
     kpt
@@ -215,11 +212,6 @@ let
     kubectx
     kubernetes-helm
     kustomize
-    #     lazydocker
-    luajit
-    minikube
-    mmv
-    neofetch
     nix
     nixfmt-classic
     nixpkgs-fmt
@@ -242,7 +234,6 @@ let
     rsync
     shellcheck
     sops
-    stylua
     tig
     tree
     treefmt

@@ -97,7 +97,7 @@ in
     # mDNS (`MulticastDNS=yes` on systemd-resolved, per-link knob on
     # the DHCP ethernet link) is already wired inline below — so we
     # DON'T import modules/nixos/resolved-lan.nix here; doing so would
-    # conflict with the bringup-local `services.resolved.extraConfig`.
+    # conflict with the bringup-local `services.resolved.settings.Resolve`.
     (worktreePath.of "modules/.common.d/tailnet.nix")
     (worktreePath.of "modules/.common.d/headscale-client-wiring.nix")
     ./headscale-client-kind.nix
@@ -129,10 +129,11 @@ in
   #     first for the link setting to take effect.
   services.resolved = {
     enable = true;
-    extraConfig = ''
-      MulticastDNS=yes
-      LLMNR=resolve
-    '';
+    # extraConfig removed in 26.05 → resolved.conf is built from settings.Resolve.
+    settings.Resolve = {
+      MulticastDNS = "yes";
+      LLMNR = "resolve";
+    };
   };
   systemd.network.networks."99-ethernet-default-dhcp".networkConfig.MulticastDNS = "yes";
 

@@ -72,7 +72,7 @@
     # on flake-commons, which would form a flake-commons <-> rke2lab cycle.
     # `flake-commons` follows ours so the two flakes share one resolved version set.
     rke2lab = {
-      url = "github:nxmatic/rke2lab";
+      url = "github:nxmatic/rke2lab/feature/cluster-seed-scenario";
       inputs.flake-commons.follows = "flake-commons";
     };
 
