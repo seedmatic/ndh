@@ -27,8 +27,9 @@ let
     "br_netfilter"
     "iptable_filter"
     "iptable_nat"
-    "ip6table_filter"
-    "ip6table_nat"
+    # Legacy IPv6 iptables tables (ip6table_filter/ip6table_nat) were dropped from
+    # the kernel 6.18 nixpkgs config — nftables (nf_tables + nft_* below) is the backend,
+    # and iptables routes through the iptables-nft shim, so these are unloadable vestiges.
     "nf_conntrack"
     "nf_conntrack_netlink"
     "nf_tables"
