@@ -217,19 +217,16 @@ let
     nixpkgs-fmt
     nodejs
     parallel
-    passExtensions.pass-otp
-    passExtensions.pass-audit
-    passExtensions.pass-update
-    passExtensions.pass-import
-    passExtensions.pass-checkup
-    passExtensions.pass-genphrase
+    # pass + its extensions are declared once via pass.withExtensions in
+    # password-store.nix (the canonical, extension-bundling path) — no standalone
+    # passExtensions.* here, which only duplicated a subset of that closure.
     podman
     # podman-desktop
-    poetry
+    # poetry
     pnpm
-    pre-commit
+    # pre-commit
     # rancher-desktop
-    ranger
+    # ranger
     rclone
     rsync
     shellcheck
@@ -237,7 +234,7 @@ let
     tig
     tree
     treefmt
-    trivy
+    # trivy
     vault-bin
     yarn
     yamllint
