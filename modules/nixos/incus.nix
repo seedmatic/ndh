@@ -104,8 +104,13 @@ in
     package = pkgs.incus;
     preseed = {
       config = {
-        # Expose Incus HTTPS API for remote clients (e.g. Pulumi provider)
-        "core.https_address" = "0.0.0.0:8443";
+        # Expose Incus HTTPS API for remote clients (e.g. Pulumi provider). Bind DUAL-STACK: on
+        # Linux "[::]" listens on IPv6 AND accepts IPv4-mapped connections (net.ipv6.bindv6only=0),
+        # whereas "0.0.0.0" is IPv4-only. mDNS resolution of <host>.local hands IPv6 addresses
+        # FIRST, and the incus Go client (unlike curl) does not fall back to IPv4 — so with an
+        # IPv4-only bind, `incus … <host>.local:8443` connects to IPv6 and fails with EOF while the
+        # bare tailnet (IPv4) name works. "[::]" serves both.
+        "core.https_address" = "[::]:8443";
         # Trust tokens should be short-lived for remote bootstrap auth.
         "core.remote_token_expiry" = "10M";
       };
