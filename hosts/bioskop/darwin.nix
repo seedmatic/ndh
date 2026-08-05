@@ -39,6 +39,16 @@
       sopsEncryptedTokenFile = ../../.secrets;
     };
 
+    # macOS 26.5's directory-services consistency pass rewrote the nix-store
+    # record's NFSHomeDirectory to /private/var/empty_1 and then LOCKED the
+    # record against writes even by root (dscl -change/-create/-delete and
+    # sysadminctl -deleteUser all fail with eDSPermissionError). The rewrite
+    # can't be undone, so declare the home the record is stuck on: nix-darwin's
+    # home-directory check then matches reality and the heal skips (no dscl
+    # write). Drop this back to the /var/empty default once the record can be
+    # healed (e.g. after a reboot clears the opendirectoryd lock).
+    nixStoreIdentity.inboundUserHome = "/private/var/empty_1";
+
     # Network bonding configuration (Darwin only)
     # Combines en0 (built-in) and en8 (OWC hub) for ~1.8 Gbps aggregate bandwidth
     networking.bond = {

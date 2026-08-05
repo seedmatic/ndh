@@ -13,7 +13,7 @@
 # sshPaths.systemKeysDir.
 let
   cfg = config.nixStoreIdentity;
-  homeDir = "/var/empty";
+  homeDir = cfg.inboundUserHome;
 in
 {
   config = {

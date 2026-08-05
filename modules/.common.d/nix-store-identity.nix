@@ -132,6 +132,25 @@ in
       '';
     };
 
+    inboundUserHome = lib.mkOption {
+      type = lib.types.str;
+      default = "/var/empty";
+      description = ''
+        Home directory declared for the inbound nix-daemon user — normally
+        /var/empty (a service account with no real home).
+
+        Overridable per-host because macOS 26.5's directory-services
+        consistency pass can rewrite the record's NFSHomeDirectory to a
+        spurious /private/var/empty_1 AND then lock the record against writes
+        even by root — dscl and sysadminctl both fail with eDSPermissionError,
+        so the rewrite cannot be undone. When that happens the only way past
+        nix-darwin's home-directory check is to STOP fighting it and declare
+        the home the record is stuck on. The darwin heal target follows this
+        option too, so a matching value makes the heal a no-op (no dscl write).
+        See modules/darwin/nix-store-identity.nix.
+      '';
+    };
+
     inboundUserShellPackage = lib.mkOption {
       type = lib.types.package;
       default = inboundUserShell;
