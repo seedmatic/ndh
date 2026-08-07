@@ -143,6 +143,7 @@ let
     ./nix-ld.nix
     ./resolved-lan.nix
     ./avahi.nix
+    ./chrony-vz-clock.nix
     ./code-server.nix
     ./sshfs-mounts.nix
     ./incus.nix
