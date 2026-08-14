@@ -46,6 +46,7 @@
     ./tailscale-vnc-forward.nix
     ./tls-authority-keychain.nix
     ./launchd-orphan-cleanup.nix
+    ./tmpdir-tmpfs.nix
   ];
 
   # Active le résolveur .lan par défaut (modifiable par hôte)
