@@ -983,6 +983,49 @@
                     --config "$vm_config" "$@"
                 '';
               };
+            netflowProbe = systemPkgs.callPackage ./pkgs/netflow-probe.nix { };
+            # NetFlow probe deploy: push the (small) closure to the vz host over
+            # the forward ssh alias, then render + load the root LaunchDaemon via
+            # sudo.  Unlike nerd-tart (which pulls over mDNS to dodge the 600 KB/s
+            # ProxyJump on multi-GB disk images), a push needs no reverse
+            # connection, so it works standalone from any operator — nikopol or
+            # bioskop — wherever `ssh <vz-host>` resolves.  Default vz: vz.nikopol.
+            netflowProbeDeploy = systemPkgs.writeShellApplication {
+              name = "netflow-probe-deploy";
+              runtimeInputs = [
+                systemPkgs.nix
+                systemPkgs.openssh
+              ];
+              text = ''
+                set -euo pipefail
+
+                vz_host="vz.nikopol"
+                # A leading non-flag arg WITHOUT a colon is the vz host; an arg
+                # WITH a colon (host:port) is the collector.
+                if (($# > 0)) && [[ "$1" != --* && "$1" != *:* ]]; then
+                  vz_host="$1"
+                  shift
+                fi
+
+                collector="''${1:-''${NETFLOW_COLLECTOR:-}}"
+                if [[ -z "$collector" ]]; then
+                  echo "usage: netflow-probe-deploy [vz-host] <collector-host:port>" >&2
+                  exit 2
+                fi
+
+                bundle=${netflowProbe}
+
+                # --no-check-sigs is honoured because the operator account is a
+                # trusted nix user on the vz host (same assumption nerd-tart's
+                # pull relies on).
+                echo "[netflow-probe-deploy] copying closure to $vz_host" >&2
+                nix copy --no-check-sigs --to "ssh-ng://$vz_host" "$bundle"
+
+                echo "[netflow-probe-deploy] rendering + loading LaunchDaemon on $vz_host (sudo)" >&2
+                # shellcheck disable=SC2029
+                exec ssh -t "$vz_host" "sudo '$bundle/bin/netflow-probe-install' '$collector'"
+              '';
+            };
             tartAttrs = builtins.foldl' (
               acc: hostName:
               let
@@ -1010,6 +1053,8 @@
           tartAttrs
           // {
             nerd-tart = anyHostDeploy;
+            netflow-probe = netflowProbe;
+            netflow-probe-deploy = netflowProbeDeploy;
           }
         )
         // nixpkgs.lib.optionalAttrs (system == "aarch64-linux") (
