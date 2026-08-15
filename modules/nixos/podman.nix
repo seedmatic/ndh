@@ -18,12 +18,24 @@ let
   podmanDockerLinkUnitName = ndhSystemd.mkUnitName "podman-docker-link";
 in
 {
-  # Kernel modules required by netavark nftables firewall driver:
-  # - nft_ct: connection tracking expressions (ct state)
-  # - nft_fib_ipv4: FIB expressions (fib saddr . iif oif)
+  # Kernel modules for netavark's nftables firewall driver. On-demand module
+  # autoloading is broken on this image, so every nft expression netavark emits
+  # must be preloaded at boot — otherwise `nft -f` fails cryptically with
+  # "No such file or directory; did you mean table 'mangle' in family ip".
+  # (Diagnosed 2026-08-15: base networking needs the *inet* fib = both the v4
+  # and v6 halves; published ports need the nat/dnat statement module.)
   boot.kernelModules = [
-    "nft_ct"
-    "nft_fib_ipv4"
+    "nft_ct" # `ct state` — FORWARD invalid/established rules
+    "nft_fib" # base fib (auto-pulled by the fib_* below; kept explicit)
+    "nft_fib_ipv4" # `fib daddr type local`: the inet fib needs BOTH the v4 and
+    "nft_fib_ipv6" # v6 halves or the base ruleset apply fails — this was the
+    "nft_fib_inet" # original breakage (hostport PREROUTING/OUTPUT chains)
+    "nft_chain_nat" # nat chain type (postrouting/prerouting/output hooks)
+    "nft_nat" # `snat`/`dnat` statements — hostport DNAT for published ports
+    "nft_masq" # `masquerade` — POSTROUTING outbound
+    "nft_redir" # `redirect`
+    "nft_numgen" # multi-backend hostport DNAT (not needed for single backend)
+    "nft_reject" # `reject` (not used by the current netavark ruleset; harmless)
   ];
 
   # Enable Podman and containers
