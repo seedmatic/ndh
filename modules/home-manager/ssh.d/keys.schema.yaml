@@ -90,7 +90,7 @@ $defs:
                   darwin) and downstream modules copy the specific ones
                   they need (e.g. `/etc/nix/builder_ed25519`).
         user    — operator identity, installed under the user's home:
-                  `~/.local/var/run/secrets/ssh-keys/`. Outbound ssh,
+                  `~/.local/share/ndh/ssh-keys/`. Outbound ssh,
                   git signing, etc.
     enum:
       - bringup

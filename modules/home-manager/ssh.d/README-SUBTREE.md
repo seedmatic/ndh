@@ -124,7 +124,7 @@ annotations, certificate authorities, and profile associations.
 The rke2-cluster age key
 (`age1k0tc4gmaqrk5df3ujja34gkqxstu0cye7fl7fktjeuua3yych3aqxfjlak`) is:
 
-- Derived from the SSH key: `ssh-to-age < ~/.local/var/run/secrets/ssh-keys/rke2-cluster.pub`
+- Derived from the SSH key: `ssh-to-age < ~/.local/share/ndh/ssh-keys/rke2-cluster.pub`
 - Used as a recipient in rke2lab's `.sops.yaml` (operator key + flux key)
 - What lets both the operator AND Flux in-cluster decrypt the same content
 - Single source of truth: the SSH private key is stored only in nix-darwin-home secrets

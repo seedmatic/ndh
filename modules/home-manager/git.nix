@@ -105,7 +105,9 @@ in
         root = ./git.d;
         fileset = lib.fileset.difference (lib.fileset.fromSource ./git.d) (
           lib.fileset.unions [
-            ./git.d/config.d
+            # Static signing fragments were removed (regenerated from sshPaths via
+            # the xdg.configFile text blocks below); tolerate the now-empty dir.
+            (lib.fileset.maybeMissing ./git.d/config.d)
             ./git.d/sops
             ./git.d/sops.d
             ./git.d/sops.sh

@@ -91,11 +91,29 @@ in
             || base == ".gitattributes"
             || base == "authorized_keys"
             || (!includeLimaConfig && base == "lima.conf")
+            # Regenerated below from sshPaths (single source of truth) — the raw
+            # sources carry an @secretsKeysDir@ token, not a usable path.
+            || lib.hasSuffix "config.d/host-identity.conf" path
+            || lib.hasSuffix "config.d/zones.d/nikopol.conf" path
           );
       }
     );
     recursive = true;
   };
+
+  # Excluded from the verbatim tree copy above and regenerated here so the
+  # per-user key path comes from sshPaths (single source of truth) instead of a
+  # hardcoded literal that could drift out of the canonical secretsKeysDir.
+  home.file.".ssh/config.d/host-identity.conf".source =
+    pkgs.replaceVars ./ssh.d/config.d/host-identity.conf
+      {
+        secretsKeysDir = perUserKeysDir;
+      };
+  home.file.".ssh/config.d/zones.d/nikopol.conf".source =
+    pkgs.replaceVars ./ssh.d/config.d/zones.d/nikopol.conf
+      {
+        secretsKeysDir = perUserKeysDir;
+      };
 
   # Deploy keys to canonical per-user runtime secrets directories with proper permissions.
   #

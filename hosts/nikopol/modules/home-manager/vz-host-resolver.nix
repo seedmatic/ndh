@@ -74,7 +74,7 @@ in
   # public is already in that account's authorized_keys.
   programs.ssh.matchBlocks."vz.nikopol" = {
     user = "stephane.lacoin";
-    identityFile = "~/.local/var/run/secrets/ssh-keys/rdp-host";
+    identityFile = config.sshPaths.privKeyFile;
     identitiesOnly = true;
     proxyCommand = ''sh -c 'nc "$(${binName})" 22' '';
   };
