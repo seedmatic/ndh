@@ -16,8 +16,8 @@ Complete guide covering Tailscale and Headscale deployment, configuration, usage
 link:bioskop-deployment.adoc[bioskop Deployment Guide]::
 Step-by-step guide for deploying the complete Headscale/Tailscale architecture on bioskop (Mac Mini M4 Pro), including Headscale server, gateway, and RKE2 integration.
 
-link:network-topology-c4.adoc[Network Topology & vz-host Roaming Addressing (C4-Style UML)]::
-Context/container/sequence diagrams for the local `172.16.6` roaming overlay that gives `vz.nikopol` (the off-tailnet corp Mac) stable addressing to its Tart VMs and the netflow collector — single-source-of-truth addressing from the catalog, no NAT, no tailnet advertise.
+link:network-topology-c4.adoc[Baremetal Instance Segments & vz-host Access (C4-Style UML)]::
+Context/container/sequence diagrams for the per-baremetal Incus instance segment (`172.16.6.0/24`, dnsmasq `.nikopol` domain) advertised into the tailnet with split-DNS, so peers resolve/reach the netflow instances and the off-tailnet corp Mac `vz.nikopol` by name — no NAT, single-source addressing from the catalog. (Advertise + split-DNS are Tailscale-SaaS-console steps today; declarative under Headscale later.)
 
 link:nikopol-minimal-host.adoc[Corp Bare-Metal Minimal Host (vz.nikopol)]::
 The minimal-host design for the JAMF-managed corp Mac and the Tart VMs it hosts (`nikopol`, `nikopol-nixos`/Incus). Supersedes the retired Lima model.
@@ -72,9 +72,9 @@ Canonical prefix boundaries for `RKE2LAB_*` (lab domain) and `NDH_*` (`nix-darwi
 3. For bioskop bring-up: link:bioskop-deployment.adoc[bioskop Deployment Guide]
 4. Reference link:modules-reference.adoc[Module Options] as needed
 
-=== For the vz.nikopol roaming overlay
+=== For the vz.nikopol baremetal segment
 
-* link:network-topology-c4.adoc[Network Topology & vz-host Roaming Addressing]
+* link:network-topology-c4.adoc[Baremetal Instance Segments & vz-host Access]
 * link:nikopol-minimal-host.adoc[Corp Bare-Metal Minimal Host (vz.nikopol)]
 
 == Document Structure
@@ -132,7 +132,7 @@ RKE2 workload clusters (Incus instances, 10.80.x)
 
 vz.nikopol (corp Mac, NOT on tailnet)
     ↓
-local 172.16.6 roaming overlay → see network-topology-c4.adoc
+172.16.6.0/24 baremetal segment (advertised + .nikopol split-DNS) → network-topology-c4.adoc
 ----
 
 == Common Tasks
@@ -150,10 +150,10 @@ tailscale status
 
 [source,bash]
 ----
-ssh vz.nikopol        # HostName 172.16.6.253; from a remote host it ProxyJumps via nikopol
+ssh vz.nikopol        # resolves via .nikopol split-DNS → 172.16.6.253 (advertised segment)
 ----
 
-See: link:network-topology-c4.adoc#usage-patterns[vz-host roaming usage patterns].
+See: link:network-topology-c4.adoc#usage-patterns[vz-host access usage patterns].
 
 === Change addressing / reservations
 
@@ -264,7 +264,7 @@ Full options in link:modules-reference.adoc[Modules Reference]. Current-model no
 * *Subnet routing* — `bioskop-nixos` advertises the home LAN into the tailnet; cluster-side
   route advertisement is owned by rke2lab's mesh components.
 * *vz.nikopol roaming* — a *local* `172.16.6` overlay (no advertise, no NAT); see
-  link:network-topology-c4.adoc[Network Topology & vz-host Roaming Addressing].
+  link:network-topology-c4.adoc[Baremetal Instance Segments & vz-host Access].
 
 == Troubleshooting Quick Links
 

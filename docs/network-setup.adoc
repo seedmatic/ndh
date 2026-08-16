@@ -16,7 +16,7 @@ deployed today**; the mesh in use is the Tailscale SaaS tailnet.
 [NOTE]
 ====
 This document describes the *current* model — Tart VMs, `lan-br`, `mammoth-skate.ts.net`,
-the personal/corporate ownership split, and the `172.16` roaming overlay. The earlier
+the personal/corporate ownership split, and the `172.16.6.0/24` baremetal segment. The earlier
 *Lima* / `incusbr0` / `192.168.106` / `home.arpa` model is *retired*; if you find a
 reference to it elsewhere, treat it as stale.
 ====
@@ -28,8 +28,8 @@ Authoritative sources (this doc is a map, not the source of truth):
 * *Module options* — link:modules-reference.adoc[Modules Reference].
 * *Cluster mesh (two-plane node/workload model)* — rke2lab
   `docs/architecture/cluster-api/management-workload-topology.adoc`.
-* *`vz.nikopol` roaming overlay* — link:network-topology-c4.adoc[Network Topology & vz-host
-  Roaming Addressing].
+* *`vz.nikopol` baremetal segment* — link:network-topology-c4.adoc[Baremetal Instance
+  Segments & vz-host Access].
 
 == Architecture
 
@@ -51,17 +51,18 @@ Two planes stack (full detail in the rke2lab mesh document):
 │  • identity-based SSH  • MagicDNS  • cross-network reachability │
 └───────────────────────────────────────────────────────────────┘
         ▲                                          ▲
-        │ (future) workload plane = Headscale       │  one exception:
-        │  hosted on bioskop-wrkld                   │  vz.nikopol (corp Mac)
-        │                                            │  cannot join → reached
-        ▼                                            ▼  locally (172.16 overlay)
+        │ (future) workload plane = Headscale       │  one exception: vz.nikopol (corp Mac)
+        │  hosted on bioskop-wrkld                   │  cannot join → reached via nikopol-nixos's
+        │                                            │  advertised baremetal segment +
+        ▼                                            ▼  .nikopol split-DNS
    [ workloads / pods / services ]            [ see network-topology-c4.adoc ]
 ----
 
 *One structural exception*: the *corporate bare-metal Mac* `vz.nikopol` (JAMF-managed)
-cannot join the tailnet (no VPN binaries by policy). It is reached *locally* via a static
-`172.16.6` overlay — not as a tailnet member. See
-link:network-topology-c4.adoc[Network Topology & vz-host Roaming Addressing].
+cannot join the tailnet (no VPN binaries by policy). It is reached via its Incus host
+`nikopol-nixos`'s *baremetal instance segment* (`172.16.6.0/24`), advertised into the
+tailnet with a split-DNS `.nikopol` zone — resolved and reached by name, never as a tailnet
+member. See link:network-topology-c4.adoc[Baremetal Instance Segments & vz-host Access].
 
 == Network Topology
 
@@ -85,21 +86,23 @@ bioskop (Darwin/macOS, .129)                     ← personal bare-metal, own ha
 
 [source]
 ----
-vz.nikopol (Darwin/macOS, .1)                    ← corporate bare-metal · NOT on tailnet
-│                                                  (no VPN binary by corp policy)
-│   en0 (Wi-Fi) + static alias 172.16.6.253/30 (roaming-stable local overlay)
+vz.nikopol (macOS, JAMF, .1)                     ← corporate bare-metal · NOT on tailnet
+│                                                  (no darwin config; roaming pkg installed & run)
+│   en0 (Wi-Fi) + alias 172.16.6.253/30 + routes /25 & 100.64/10 via .254
 │
 ├── nikopol (Tart macOS VM, .33)                 ← personal env · tailnet member
-│                                                  (ProxyJump hop to reach vz.nikopol)
-└── nikopol-nixos (Tart NixOS VM, .34)           ← Incus host · tailnet member (cluster)
-    ├── lan-br (bridged on the LAN) + .254/30 (roaming link end, ip_forward)
+└── nikopol-nixos (Tart NixOS VM, .34)           ← Incus host · tailnet member
+    ├── lan-br (bridged on the LAN) + .254/30 · ip_forward
+    ├── advertises 172.16.6.0/24 + .nikopol split-DNS into the tailnet
     ├── Incus: nikopol-wrkld RKE2 cluster        ← 10.80.8.0/21 (vmnet-br)
-    └── Incus: managed 172.16.6.0/25 (dnsmasq)   ← netflow instances (collector nnh)
+    └── Incus: roam-br 172.16.6.0/25 (dnsmasq, .nikopol) ← netflow (collector.nikopol)
 ----
 
-The `172.16.6` roaming overlay is *local* to this machine (not advertised); it gives the
-corp Mac stable addressing to its VMs and the collector on any network. Full transport in
-link:network-topology-c4.adoc[Network Topology & vz-host Roaming Addressing].
+The `172.16.6.0/24` baremetal segment is *advertised* into the tailnet with a `.nikopol`
+split-DNS zone, so any peer resolves and reaches the instances and `vz.nikopol` by name (no
+NAT). On the Tailscale SaaS controller today the advertise + split-DNS are console steps;
+declarative under Headscale later. Full transport in
+link:network-topology-c4.adoc[Baremetal Instance Segments & vz-host Access].
 
 == Network Ranges
 
@@ -113,9 +116,9 @@ link:network-topology-c4.adoc[Network Topology & vz-host Roaming Addressing].
 | K8s pods | 10.42.0.0/16 | Kubernetes pods
 | K8s services | 10.43.0.0/16 | Kubernetes services
 | Tailnet (mammoth-skate) | 100.64.0.0/10 | Tailscale overlay
-| Roaming (reserved) | 172.16.0.0/12 | per-corp-host roaming overlays
-| nikopol roaming net | 172.16.6.0/25 | managed Incus net (netflow) behind nikopol-nixos
-| nikopol roaming link | 172.16.6.252/30 | static P2P: vz.nikopol .253 ↔ nikopol-nixos .254
+| Baremetal (reserved) | 172.16.0.0/12 | per-baremetal instance segments
+| nikopol baremetal net | 172.16.6.0/25 | managed Incus net (dnsmasq `.nikopol`) — netflow
+| nikopol baremetal link | 172.16.6.252/30 | static P2P: vz.nikopol .253 ↔ nikopol-nixos .254
 |===
 
 Cluster CIDRs are derived arithmetically from the `10.80.0.0/18` supernet (8 × /21, one per
@@ -164,24 +167,26 @@ Public IPv4 is dynamic, tracked by Duck DNS at `mammoth-skate.duckdns.org`
 
 * *Across networks* — via the tailnet: `ssh <host>` (MagicDNS `mammoth-skate.ts.net`) or
   `tailscale ssh <host>`. Members: `bioskop`, `nikopol`, the `-nixos` hosts.
-* *`vz.nikopol`* (off-tailnet corp Mac) — `HostName 172.16.6.253`; from the personal
-  `nikopol` VM it is a direct local hop, from any other host add `ProxyJump nikopol`. See
-  link:network-topology-c4.adoc#usage-patterns[the roaming usage patterns].
+* *`vz.nikopol`* (off-tailnet corp Mac) — a real DNS name via the `.nikopol` split-DNS zone:
+  `ssh vz.nikopol` resolves to `172.16.6.253` and reaches it over the advertised segment (no
+  `HostName`/`ProxyJump`/resolver). See
+  link:network-topology-c4.adoc#usage-patterns[the vz-host access usage patterns].
 * SSH config is rendered per host by the ndh SSH modules; see
   link:modules-reference.adoc[Modules Reference] and the catalog `netplan.tailnet.hosts`.
 
 == Security
 
 * All tailnet traffic is WireGuard-encrypted; access is identity-based (no shared keys).
-* The corp Mac runs *no VPN binary* (policy); its reachability is a local static overlay,
-  never an advertised tailnet route.
+* The corp Mac runs *no VPN binary* (policy); it is reached via its Incus host's advertised
+  baremetal segment + `.nikopol` split-DNS, never as a tailnet member. No NAT — source IPs
+  preserved.
 * Secrets (Bbox admin credential, tailnet auth) are sops-encrypted in `.secrets`; never
   commit plaintext.
 
 == Related documentation
 
-* link:network-topology-c4.adoc[Network Topology & vz-host Roaming Addressing (C4-Style UML)]
-  — the local `172.16.6` overlay.
+* link:network-topology-c4.adoc[Baremetal Instance Segments & vz-host Access (C4-Style UML)]
+  — the advertised segment + split-DNS.
 * link:nikopol-minimal-host.adoc[Corp Bare-Metal Minimal Host (vz.nikopol)] — the corp Mac +
   its Tart VMs.
 * link:bioskop-deployment.adoc[bioskop Deployment Guide] — bioskop-side bring-up.

@@ -5,9 +5,10 @@
 == Overview
 
 `vz.nikopol` is the *corporate*, JAMF-managed macOS bare-metal (the MacBook Pro). The
-design principle is to keep that host as *minimal* as possible — it runs only a lean
-nix-darwin profile and the Tart/`vz` VM engine — while all personal development and the
-Incus workloads live *inside Tart VMs* it hosts.
+design principle is to keep that host as *minimal* as possible — **it has no nix-darwin
+configuration**; we only install packages into its nix store and run them, plus the
+Tart/`vz` VM engine — while all personal development and the Incus workloads live *inside
+Tart VMs* it hosts.
 
 NOTE: naming. The corp bare-metal is addressed as `vz.nikopol` (`vz` = the VZ/Tart host
 role). The *personal* environment is the Tart macOS VM `nikopol`. The Incus host is the
@@ -34,77 +35,77 @@ skinparam rectangle {
     FontSize 12
 }
 
-rectangle "vz.nikopol — corp bare-metal Mac\nJAMF-managed · minimal nix-darwin + Tart/vz\nNOT a tailnet member (corp policy)" <<host>> {
-    [Nix + Tart/vz engine]
-    [SSH client]
-    [Minimal shell tools]
-    rectangle "en0 (Wi-Fi)\n+ static alias 172.16.6.253/30\n+ route 172.16.6.0/25 via .254" as EN0
+rectangle "vz.nikopol — corp bare-metal Mac\nJAMF-managed · NO darwin config\n(nix pkgs installed & run) · Tart/vz\nNOT a tailnet member (corp policy)" <<host>> {
+    [Nix store + Tart/vz engine]
+    [roaming pkg: en0 alias + routes]
+    rectangle "en0 (Wi-Fi)\n+ alias 172.16.6.253/30\n+ routes 172.16.6.0/25 & 100.64.0.0/10 via .254\n(set by the installed roaming pkg)" as EN0
 }
 
 rectangle "nikopol\nTart macOS VM (personal)\ntailnet member" <<vm>> {
     [Full personal env]
 }
 
-rectangle "nikopol-nixos — Tart NixOS VM\nIncus host · tailnet member (cluster)" <<router>> {
+rectangle "nikopol-nixos — Tart NixOS VM\nIncus host · tailnet member" <<router>> {
     [Incus + lan-br]
-    [tailscaled (cluster mesh)]
-    rectangle "lan-br .254/30\nip_forward: routes /30 ↔ /25\n(172.16 NOT advertised)" as LANBR
+    rectangle "lan-br .254/30 · ip_forward\nadvertises 172.16.6.0/24 (no NAT)" as LANBR
+    rectangle "roam-br 172.16.6.0/25\ndnsmasq · dns.domain=nikopol\nhost-record vz.nikopol→.253" as ROAMBR
 }
 
-rectangle "Incus instances\n(managed 172.16.6.0/25 · netflow, apps)" <<cluster>> as INCUS
+rectangle "Incus instances\n(collector.nikopol, apps · /25)" <<cluster>> as INCUS
 
 EN0 <--> LANBR : static /30 · shared Wi-Fi L2 (bridged)
-[Nix + Tart/vz engine] --> nikopol : tart run --net-bridged=Wi-Fi
-[Nix + Tart/vz engine] --> LANBR : tart run --net-bridged=Wi-Fi
-LANBR --> INCUS : routes managed /25
+[Nix store + Tart/vz engine] --> nikopol : tart run --net-bridged=Wi-Fi
+[Nix store + Tart/vz engine] --> LANBR : tart run --net-bridged=Wi-Fi
+LANBR --> ROAMBR : routes /30 ↔ /25
+ROAMBR --> INCUS : DHCP + .nikopol DNS
 @enduml
 ----
 
-Both Tart VMs bridge onto the *same Wi-Fi L2* as the corp Mac. `nikopol-nixos` forwards
-between the `/30` link and the managed `/25` so the corp Mac reaches the netflow instances;
-the `172.16` overlay is *local* — not advertised into the tailnet. Remote access to
-`vz.nikopol` rides `ProxyJump` through the personal `nikopol` VM (a tailnet member), then a
-local hop. See link:network-topology-c4.adoc[Network Topology & vz-host Roaming Addressing]
-for the full transport (managed `/25`, the `/30` link, the local static overlay).
+Both Tart VMs bridge onto the *same Wi-Fi L2* as the corp Mac. `nikopol-nixos` runs the
+baremetal instance segment `roam-br` (`172.16.6.0/25`, dnsmasq, `dns.domain=nikopol`),
+forwards between the `/30` link and the `/25`, and *advertises* `172.16.6.0/24` into the
+tailnet with a split-DNS `.nikopol` zone — so any tailnet peer resolves and reaches the
+instances *and* `vz.nikopol` by name. No NAT. See
+link:network-topology-c4.adoc[Baremetal Instance Segments & vz-host Access] for the full
+transport (and the runtime-vs-declarative split on the Tailscale SaaS controller).
 
 === Layer responsibilities
 
-==== Layer 1 — corp bare-metal (`vz.nikopol`, minimal)
+==== Layer 1 — corp bare-metal (`vz.nikopol`, minimal, no darwin config)
 
-*Purpose*: JAMF-managed, minimal interference with corporate policy. Runs only:
+*Purpose*: JAMF-managed, minimal interference with corporate policy. We do *not* own a
+nix-darwin config for it; we install packages into its nix store and run them:
 
-* Nix package manager + the *Tart/`vz`* VM engine (VM lifecycle)
-* SSH client, minimal shell tools (bash, zsh, coreutils), git (flake updates only)
-* the static roaming overlay: a `172.16.6.253/30` alias on `en0` plus the route
-  `172.16.6.0/25 via .254` (to reach the collector) — derived from the catalog,
-  materialized by a Darwin launchd module
+* the Tart/`vz` VM engine (VM lifecycle)
+* the *roaming package* — an idempotent script (built in the flake, derived from the
+  catalog) that sets the `en0` alias `172.16.6.253/30` plus two routes via `.254`:
+  `172.16.6.0/25` (reach the instances) and `100.64.0.0/10` (the no-NAT tailnet return path)
 
-*NOT on the host*: heavy dev tools, container runtimes, IDE servers, language
-toolchains, and — by corp policy — *any VPN binary* (no Tailscale/Headscale here).
+*NOT on the host*: heavy dev tools, container runtimes — and, by corp policy, *any VPN
+binary* (no Tailscale/Headscale here; the Mac is reached via its Incus host's advertised
+segment, never as a tailnet member).
 
 ==== Layer 2 — Tart VMs
 
-* `nikopol` — personal macOS environment (the daily driver VM); a `mammoth-skate` member,
-  which is what lets a remote operator `ProxyJump` through it to reach the corp Mac locally.
-* `nikopol-nixos` — the NixOS Incus host: `lan-br` bridge, Incus, and `ip_forward` to route
-  the corp Mac's `/30` to the managed `/25`. It is a `mammoth-skate` member for the *cluster*
-  mesh (rke2lab), but does *not* advertise the `172.16` overlay.
+* `nikopol` — personal macOS environment (the daily driver VM); a `mammoth-skate` member.
+* `nikopol-nixos` — the NixOS Incus host: `lan-br` bridge, Incus, `ip_forward`; runs the
+  `roam-br` segment and *advertises* `172.16.6.0/24` into the tailnet with the `.nikopol`
+  split-DNS zone. A `mammoth-skate` member.
 
 ==== Layer 3 — Incus instances (on `nikopol-nixos`)
 
-Application/workload containers and VMs on the managed `172.16.6.0/25` network
-(Incus dnsmasq), including the netflow collector (`nnh`). The RKE2 cluster stack
-proper is described by rke2lab (`vmnet-br`, `10.80.x`); this host also carries the
-roaming netflow segment.
+Workload containers/VMs on the managed `172.16.6.0/25` network (Incus dnsmasq, `.nikopol`
+zone), including the netflow collector (`collector.nikopol` / `nnh`). The RKE2 cluster
+stack proper is described by rke2lab (`vmnet-br`, `10.80.x`).
 
 == Benefits
 
-. *Compliance* — minimal, predictable footprint on the JAMF-managed Mac; no VPN binary.
+. *Compliance* — no darwin config + no VPN binary on the JAMF-managed Mac; only nix packages
+  installed and run.
 . *Isolation* — personal work and Incus workloads are inside VMs, off the corp host.
-. *Roaming-stable addressing* — the static `172.16.6` overlay gives corp Mac ↔ VMs ↔
-  collector a fixed address on any network, without the Mac joining the tailnet.
-. *Portability / recreatability* — the VMs and their config are declarative (nix-darwin
-  Tart contracts, `NDH_VZ_HOST` / `vz-guest`).
+. *Named, tailnet-wide reach* — the advertised baremetal segment + split-DNS let peers
+  resolve/reach `vz.nikopol` and the instances by name, on any network, without the Mac
+  joining the tailnet; no NAT, so source IPs stay intact for flow attribution.
 
 == Troubleshooting
 
@@ -116,21 +117,21 @@ tart list
 tart run <vm> --net-bridged=Wi-Fi   # observe boot; see modules/darwin/tart-config.nix
 ----
 
-=== Can't SSH into a VM / the corp Mac
+=== Can't reach the corp Mac / instances by name
 
-* Corp Mac (`vz.nikopol`): confirm the `.253/30` alias is set on `en0`
-  (`ifconfig en0 | grep 172.16.6.253`); from a remote host, confirm `ProxyJump=nikopol`
-  resolves (the personal VM is a tailnet member). See
-  link:network-topology-c4.adoc#troubleshooting[roaming troubleshooting].
-* VMs: they are bridged on Wi-Fi; reach them on their LAN reservation (see
+* Check split-DNS (`nikopol → 172.16.6.1`) + that `172.16.6.0/24` is approved in the tailnet.
+* On the corp Mac: confirm the roaming package ran — `ifconfig en0 | grep 172.16.6.253` and
+  the two `.254` routes exist. See
+  link:network-topology-c4.adoc#troubleshooting[the roaming troubleshooting].
+* Personal-env VMs: bridged on Wi-Fi; reach them on their LAN reservation (see
   link:network-setup.adoc[Network Setup] ranges).
 
 == See Also
 
-* link:network-topology-c4.adoc[Network Topology & vz-host Roaming Addressing (C4-Style UML)]
-  — the local roaming overlay this host relies on.
+* link:network-topology-c4.adoc[Baremetal Instance Segments & vz-host Access (C4-Style UML)]
+  — the segment + advertise + split-DNS transport this host relies on.
 * link:vm-configuration-models-c4.adoc[VM Configuration Models (C4-Style UML)] — the Tart
   host-driven contracts.
-* link:network-setup.adoc[Network Infrastructure Setup] — fleet-wide Tailscale /
-  `mammoth-skate` model and LAN reservations.
+* link:network-setup.adoc[Network Infrastructure Setup] — fleet-wide tailnet model and LAN
+  reservations.
 * link:../README.adoc[Main Documentation]
