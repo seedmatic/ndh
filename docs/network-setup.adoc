@@ -3,945 +3,188 @@
 :toclevels: 3
 :icons: font
 :source-highlighter: rouge
-:experimental:
 
 == Overview
 
-This document covers the complete network infrastructure setup using Tailscale and Headscale for secure SSH access across subnets and external locations.
+The fleet's cross-network reachability rests on a *Tailscale SaaS* tailnet,
+`mammoth-skate` (`mammoth-skate.ts.net`), on which the always-on machines are members. The
+home LAN is `192.168.1.0/24`, served by the Bouygues *Bbox* router (`192.168.1.254`, the
+catalog router `mammoth-skate`). A *self-hosted Headscale* control plane is planned as a
+*workload-cluster service* (hosted on the always-live bioskop workload) — it is **not
+deployed today**; the mesh in use is the Tailscale SaaS tailnet.
 
+[NOTE]
+====
+This document describes the *current* model — Tart VMs, `lan-br`, `mammoth-skate.ts.net`,
+the personal/corporate ownership split, and the `172.16` roaming overlay. The earlier
+*Lima* / `incusbr0` / `192.168.106` / `home.arpa` model is *retired*; if you find a
+reference to it elsewhere, treat it as stale.
+====
 
-=== Recent Change (2025-10-12): Dual-NIC Incus Cluster Refactor (Bridged → Macvlan/VLAN)
+Authoritative sources (this doc is a map, not the source of truth):
 
-The Incus RKE2 cluster networking inside the Lima NixOS guest was refactored from using Incus-managed bridges (with dnsmasq/DHCP) to direct macvlan (vlan) attachments:
+* *Address plan + host reservations* — `catalog/default.nix` (`netplan.*`), the single
+  source of truth, reconciled against the Bbox by the `bbox-reconcile` module.
+* *Module options* — link:modules-reference.adoc[Modules Reference].
+* *Cluster mesh (two-plane node/workload model)* — rke2lab
+  `docs/architecture/cluster-api/management-workload-topology.adoc`.
+* *`vz.nikopol` roaming overlay* — link:network-topology-c4.adoc[Network Topology & vz-host
+  Roaming Addressing].
 
-* `lan0` – Now a macvlan interface attached directly to the host's vmlan0 (physical LAN). No Incus bridge is created.
-* `wan0` – Now a macvlan interface attached directly to the host's vmwan0 (physical WAN/NAT). No Incus bridge is created.
+== Architecture
 
-**Key implications:**
+Two planes stack (full detail in the rke2lab mesh document):
 
-* No Incus-managed bridge or DHCP/DNS (dnsmasq) is present for lan0/wan0. The instance will only get an IP if a DHCP server is present on the parent network, or if static IPs are set.
-* The macvlan setup provides L2 isolation per instance, but the instance cannot communicate with the host via the parent interface (macvlan limitation).
-* This avoids Linux bridge errors ("Only unconfigured network interfaces can be bridged") and bridge name length issues.
-* Deterministic, per-node interface naming (lan0/wan0) is preserved.
-
-**Migration steps:**
-
-1. Clean old instances (Incus cannot hot‑rename NICs):
-  ```
-  make -C modules/nixos/rke2lab clean-all
-  ```
-2. Re‑generate preseed & recreate master:
-  ```
-  make -C modules/nixos/rke2lab preseed@incus NAME=master start
-  ```
-3. Launch peers if desired:
-  ```
-  make -C modules/nixos/rke2lab NAME=peer1 start
-  ```
-4. Verify inside container:
-  ```
-  incus exec master -- ip -brief addr show lan0 wan0
-  incus exec master -- grep vip_interface /var/lib/rancher/rke2/server/manifests/kube-vip.yaml.tmpl
-  ```
-5. Confirm Cilium announcements (after cluster up):
-  ```
-  kubectl -n kube-system logs -l k8s-app=cilium | grep -i wan0 || true
-  ```
-
-**DHCP/DNS Note:**
-
-* If you need DHCP/DNS for lan0/wan0, you must run a DHCP server (e.g., dnsmasq) on the Lima VM for vmlan0/vmwan0, or ensure an upstream DHCP server is present. Otherwise, configure static IPs in the instance.
-
-Rollback: revert device names and macvlan config in the Incus preseed & cloud-config YAML, then re‑create instances (not recommended unless legacy tooling mandates `eth0`).
-
-Planned Enhancements:
-
-* Inject `CONTAINER_LAN_IFACE` / `CONTAINER_VIP_IFACE` env variables for further abstraction.
-* Optional policy routing table to pin internal service traffic to `lan0` while leaving VIP + egress on `wan0`.
-
-All subsequent references in this document to the control plane VIP / egress should be assumed to operate on `wan0` unless explicitly stated otherwise.
-
-=== Architecture
+* *Node plane — Tailscale, tailnet `mammoth-skate`.* Every always-on machine is a member:
+  the NixOS Incus-host VMs (`bioskop-nixos`, `nikopol-nixos`) and the personal Macs/VMs.
+  Always present — the bootstrap and external-access transport.
+* *Workload plane — Headscale (future).* A distinct tailnet for workloads (pods/services),
+  deployed as a service on the always-live bioskop workload cluster; absent until a
+  workload runs.
 
 [source]
 ----
-┌─────────────────────────────────────────────────────────────────┐
-│                    External Access Layer                         │
-│                      Tailscale Cloud                             │
-│  • Identity-based SSH (no manual keys)                           │
-│  • Gateways for Lima VM subnets                                  │
-│  • Mobile and remote access                                      │
-└──────────────────────────┬──────────────────────────────────────┘
-                           │
-┌──────────────────────────▼──────────────────────────────────────┐
-│                    Internal LAN Layer                            │
-│                    Headscale (Optional)                          │
-│  • Fast local SSH (1-2ms latency)                                │
-│  • MagicDNS for hostname resolution                              │
-│  • Self-hosted, no external dependency                           │
-└──────────────────────────────────────────────────────────────────┘
+┌───────────────────────────────────────────────────────────────┐
+│  Node plane — Tailscale SaaS tailnet  mammoth-skate.ts.net      │
+│  members: bioskop, nikopol (personal), bioskop-nixos,          │
+│           nikopol-nixos  (+ cluster nodes)                     │
+│  • identity-based SSH  • MagicDNS  • cross-network reachability │
+└───────────────────────────────────────────────────────────────┘
+        ▲                                          ▲
+        │ (future) workload plane = Headscale       │  one exception:
+        │  hosted on bioskop-wrkld                   │  vz.nikopol (corp Mac)
+        │                                            │  cannot join → reached
+        ▼                                            ▼  locally (172.16 overlay)
+   [ workloads / pods / services ]            [ see network-topology-c4.adoc ]
 ----
 
-=== Components
-
-Tailscale (External)::
-Identity-based SSH with automatic key management, subnet routing via gateways in Lima VMs, mobile device support
-
-Headscale (Internal, Optional)::
-Self-hosted Tailscale alternative for LAN, lower latency, privacy-focused
-
-=== Why No Teleport?
-
-Both Tailscale and Headscale provide built-in SSH with:
-
-* ✅ Identity-based authentication
-* ✅ Automatic SSH key management
-* ✅ ACL-based access control
-* ✅ Encrypted WireGuard tunnels
-* ✅ MagicDNS hostname resolution
-
-This eliminates the need for a separate authentication layer like Teleport.
+*One structural exception*: the *corporate bare-metal Mac* `vz.nikopol` (JAMF-managed)
+cannot join the tailnet (no VPN binaries by policy). It is reached *locally* via a static
+`172.16.6` overlay — not as a tailnet member. See
+link:network-topology-c4.adoc[Network Topology & vz-host Roaming Addressing].
 
 == Network Topology
 
-=== nikopol (MacBook Pro - Mobile)
+Two bare-metal hosts, each running a NixOS Tart VM that hosts Incus. The `-nixos` VM is the
+Incus host and a tailnet member; the RKE2 workload cluster runs as Incus instances on it.
+
+=== bioskop — Mac Mini · personal · always at home
 
 [source]
 ----
-nikopol (Darwin/macOS)
-├── Tailscale (external access)
-├── Headscale Client (optional, LAN SSH)
-├── en0: 192.168.1.x/24 or external network
-│
-└── Lima VM (NixOS)
-    ├── lima0: 192.168.5.2/24
-    ├── incusbr0: 192.168.106.1/24
-    │
-    ├── Incus: tailscale-gateway
-    │   └── Advertises: 192.168.5.0/24, 192.168.106.0/24
-    │
-    └── RKE Kubernetes Cluster (Incus instances)
-        ├── rke-control-1,2,3: 192.168.106.10-12
-        └── rke-worker-N: 192.168.106.20+
+bioskop (Darwin/macOS, .129)                     ← personal bare-metal, own hardware
+├── Tailscale (mammoth-skate member)
+└── nikopol-... Tart VMs
+    └── bioskop-nixos (NixOS, .130)              ← Incus host · tailnet member
+        ├── lan-br (bridged on the home LAN)
+        ├── advertises 192.168.1.0/24 into the tailnet (LAN subnet router)
+        └── Incus: bioskop-wrkld RKE2 cluster    ← 10.80.0.0/21 (vmnet-br)
 ----
 
-=== bioskop (Always at Home)
+=== vz.nikopol — corp MacBook · JAMF-managed · roaming
 
 [source]
 ----
-bioskop (Darwin/macOS)
-├── Tailscale (always connected)
-├── Headscale Client (optional, LAN SSH)
-├── en0: 192.168.1.y/24 (fixed home IP)
+vz.nikopol (Darwin/macOS, .1)                    ← corporate bare-metal · NOT on tailnet
+│                                                  (no VPN binary by corp policy)
+│   en0 (Wi-Fi) + static alias 172.16.6.253/30 (roaming-stable local overlay)
 │
-└── Lima VM (NixOS)
-    ├── lima0: 192.168.5.2/24
-    ├── incusbr0: 192.168.107.1/24
-    │
-    ├── Incus: tailscale-gateway
-    │   └── Advertises: 192.168.5.0/24, 192.168.107.0/24
-    │
-    └── RKE Kubernetes Cluster (Incus instances)
-        ├── rke-control-1,2,3: 192.168.107.10-12
-        └── rke-worker-N: 192.168.107.20+
+├── nikopol (Tart macOS VM, .33)                 ← personal env · tailnet member
+│                                                  (ProxyJump hop to reach vz.nikopol)
+└── nikopol-nixos (Tart NixOS VM, .34)           ← Incus host · tailnet member (cluster)
+    ├── lan-br (bridged on the LAN) + .254/30 (roaming link end, ip_forward)
+    ├── Incus: nikopol-wrkld RKE2 cluster        ← 10.80.8.0/21 (vmnet-br)
+    └── Incus: managed 172.16.6.0/25 (dnsmasq)   ← netflow instances (collector nnh)
 ----
 
-== Installation and Configuration
-
-=== Step 1: Tailscale Gateways in Lima VMs
-
-==== Configuration
-
-Edit `/etc/nixos/configuration.nix` in each Lima VM:
-
-.nikopol's Lima VM
-[source,nix]
-----
-{ config, pkgs, lib, ... }:
-{
-  imports = [
-    ./hardware-configuration.nix
-  ];
-
-  # Enable Incus
-  virtualisation.incus = {
-    enable = true;
-    ui.enable = true;
-  };
-
-  # Tailscale gateway configuration
-  services.incus-tailscale-gateway = {
-    enable = true;
-    instanceName = "tailscale-gateway";
-    authKeyFile = "/run/secrets/tailscale-authkey";
-    hostname = "nikopol-gateway";
-    
-    # Advertise nikopol's subnets
-    routes = [
-      "192.168.5.0/24"    # Lima shared network
-      "192.168.106.0/24"  # Incus bridge (RKE cluster)
-    ];
-    
-    tags = [ "gateway" "lima" "nikopol" ];
-    exitNode = false;
-  };
-
-  # Enable IP forwarding
-  boot.kernel.sysctl = {
-    "net.ipv4.ip_forward" = 1;
-    "net.ipv6.conf.all.forwarding" = 1;
-  };
-
-  networking = {
-    hostName = "lima-nikopol";
-    firewall = {
-      enable = true;
-      trustedInterfaces = [ "incusbr0" ];
-    };
-  };
-
-  environment.systemPackages = with pkgs; [
-    incus
-    tailscale
-    kubectl
-    k9s
-  ];
-
-  system.stateVersion = "24.05";
-}
-----
-
-.bioskop's Lima VM
-[source,nix]
-----
-{ config, pkgs, lib, ... }:
-{
-  # Similar configuration, but different subnets
-  services.incus-tailscale-gateway = {
-    enable = true;
-    hostname = "bioskop-gateway";
-    routes = [
-      "192.168.5.0/24"
-      "192.168.107.0/24"  # Different Incus bridge
-    ];
-    tags = [ "gateway" "lima" "bioskop" ];
-  };
-  # ... rest of config similar to nikopol
-}
-----
-
-==== Deployment
-
-[source,bash]
-----
-# On nikopol
-limactl shell default
-
-# Store Tailscale auth key
-echo "tskey-auth-xxxxx-nikopol" | sudo tee /run/secrets/tailscale-authkey
-sudo chmod 600 /run/secrets/tailscale-authkey
-
-# Rebuild NixOS
-sudo nixos-rebuild switch
-
-# Deploy gateway
-sudo deploy-tailscale-gateway
-
-# Check status
-sudo tailscale-gateway-status
-----
-
-Repeat for bioskop with its auth key.
-
-==== Approve Routes
-
-In Tailscale admin console (https://login.tailscale.com/admin/machines):
-
-1. Find `nikopol-gateway` → Approve routes: `192.168.5.0/24`, `192.168.106.0/24`
-2. Find `bioskop-gateway` → Approve routes: `192.168.5.0/24`, `192.168.107.0/24`
-
-Or via CLI:
-[source,bash]
-----
-tailscale set --advertise-routes=192.168.5.0/24,192.168.106.0/24 nikopol-gateway
-tailscale set --advertise-routes=192.168.5.0/24,192.168.107.0/24 bioskop-gateway
-----
-
-=== Step 2: Configure Tailscale SSH
-
-==== Enable SSH in ACLs
-
-Edit ACLs in Tailscale admin console:
-
-[source,json]
-----
-{
-  "tagOwners": {
-    "tag:gateway": ["you@example.com"],
-    "tag:darwin": ["you@example.com"],
-    "tag:nixos": ["you@example.com"],
-    "tag:lima": ["you@example.com"]
-  },
-  
-  "acls": [
-    {
-      "action": "accept",
-      "comment": "Allow all access between your devices",
-      "src": ["you@example.com"],
-      "dst": ["*:*"]
-    }
-  ],
-  
-  "ssh": [
-    {
-      "action": "accept",
-      "comment": "SSH access to all devices",
-      "src": ["you@example.com"],
-      "dst": ["tag:darwin", "tag:nixos", "tag:lima"],
-      "users": ["autogroup:user", "root"]
-    }
-  ]
-}
-----
-
-==== Connect Darwin Hosts
-
-[source,bash]
-----
-# On nikopol and bioskop
-sudo tailscale up --ssh
-----
-
-=== Step 3: Optional Headscale for Internal LAN
-
-==== Deploy Headscale Server
-
-Choose an always-on host (NAS, server, or dedicated host):
-
-[source,nix]
-----
-{ config, pkgs, ... }:
-{
-  imports = [
-    ../../modules/nixos/headscale-server.nix
-  ];
-
-  services.headscale-custom = {
-    enable = true;
-    serverUrl = "http://192.168.1.10:8080";
-    baseDomain = "mammoth-skate.home.arpa";
-  };
-
-  networking.firewall.allowedTCPPorts = [ 8080 ];
-}
-
-NOTE: `home.arpa` is reserved for private home networks (RFC 8375), so using a `*.home.arpa` suffix keeps MagicDNS separate from macOS `.local` mDNS traffic.
-
-==== Initialize Headscale
-
-[source,bash]
-----
-# Create user/namespace
-sudo headscale users create default
-
-# Generate auth keys
-sudo headscale-preauth default --reusable > /tmp/gateway-key.txt
-sudo headscale-preauth default > /tmp/client-key.txt
-----
-
-==== Connect Clients
-
-.Darwin Hosts (nikopol, bioskop)
-[source,nix]
-----
-{ config, pkgs, ... }:
-{
-  imports = [
-    ../../modules/darwin/headscale-client.nix
-  ];
-
-  services.headscale-client = {
-    enable = true;
-    serverUrl = "http://192.168.1.10:8080";
-    hostname = "nikopol";  # or "bioskop"
-    enableSSH = true;
-    tags = [ "darwin" "laptop" ];
-  };
-}
-----
-
-[source,bash]
-----
-# After rebuilding
-darwin-rebuild switch --flake .#nikopol
-
-# Connect to Headscale
-hs-connect
-----
-
-.NixOS Hosts (Lima VMs, servers)
-[source,nix]
-----
-services.headscale-client = {
-  enable = true;
-  serverUrl = "http://192.168.1.10:8080";
-  authKeyFile = "/run/secrets/headscale-authkey";
-  hostname = "lima-nikopol";
-  enableSSH = true;
-  tags = [ "nixos" "lima" ];
-};
-----
-
-==== Configure Headscale ACLs
-
-Edit `/etc/headscale/policy.json`:
-
-[source,json]
-----
-{
-  "groups": {
-    "group:admin": ["stephane"]
-  },
-  
-  "tagOwners": {
-    "tag:darwin": ["group:admin"],
-    "tag:nixos": ["group:admin"],
-    "tag:lima": ["group:admin"]
-  },
-  
-  "acls": [
-    {
-      "action": "accept",
-      "src": ["group:admin"],
-      "dst": ["*:*"]
-    }
-  ],
-  
-  "ssh": [
-    {
-      "action": "accept",
-      "src": ["group:admin"],
-      "dst": ["*"],
-      "users": ["autogroup:user", "root"]
-    }
-  ]
-}
-----
-
-[source,bash]
-----
-sudo systemctl reload headscale
-----
-
-== Usage
-
-=== SSH Access
-
-==== Via Tailscale (Works Everywhere)
-
-[source,bash]
-----
-# SSH to Darwin hosts
-tailscale ssh bioskop
-
-# SSH to Lima VM
-tailscale ssh lima-bioskop
-
-# SSH to RKE node (via gateway routing)
-ssh 192.168.107.10
-
-# List available hosts
-tailscale status
-----
-
-==== Via Headscale (When on LAN)
-
-[source,bash]
-----
-# SSH to Darwin hosts
-ssh bioskop.mammoth-skate.home.arpa
-# or
-hs-ssh bioskop
-
-# SSH to Lima VM
-ssh lima-bioskop.mammoth-skate.home.arpa
-
-# Check status
-hs-status
-----
-
-==== Traditional SSH (Still Works)
-
-[source,bash]
-----
-# Direct LAN access
-ssh user@192.168.1.y
-----
-
-=== Kubernetes Access
-
-==== Local Access
-
-[source,bash]
-----
-# From same host
-kubectl --context=local get nodes
-
-# Direct via Incus bridge
-ssh 192.168.106.10
-----
-
-==== Remote Access via Tailscale
-
-[source,bash]
-----
-# From nikopol, access bioskop's RKE
-kubectl --server=https://192.168.107.10:6443 get nodes
-
-# SSH to nodes
-ssh 192.168.107.10
-
-# Port forwarding
-ssh -L 6443:192.168.107.10:6443 lima-bioskop
-----
-
-=== Usage Scenarios
-
-==== Scenario 1: nikopol at Home
-
-Both Tailscale and Headscale connected.
-
-[source,bash]
-----
-# Option 1: Use Headscale (faster)
-ssh bioskop.mammoth-skate.home.arpa
-
-# Option 2: Use Tailscale
-tailscale ssh bioskop
-
-# Access bioskop's RKE
-ssh 192.168.107.10
-kubectl --server=https://192.168.107.10:6443 get nodes
-----
-
-**Best choice**: Headscale for Darwin-to-Darwin SSH (lower latency), Tailscale for RKE access.
-
-==== Scenario 2: nikopol External (Coffee Shop)
-
-Only Tailscale available.
-
-[source,bash]
-----
-# SSH via Tailscale
-tailscale ssh bioskop
-tailscale ssh lima-bioskop
-
-# Access RKE clusters
-ssh 192.168.107.10  # Routes through bioskop-gateway
-ssh 192.168.106.10  # Routes through nikopol-gateway (loopback)
-
-# Kubernetes
-kubectl --server=https://192.168.107.10:6443 get nodes
-----
-
-==== Scenario 3: From Mobile Device
-
-Tailscale app on phone:
-
-[source,bash]
-----
-# Use Tailscale app SSH feature
-# Or terminal emulator:
-ssh 192.168.107.10
-ssh 192.168.106.10
-----
-
-== Troubleshooting
-
-=== Gateway Not Advertising Routes
-
-[source,bash]
-----
-# Check gateway status in Lima VM
-limactl shell default
-sudo tailscale-gateway-status
-
-# Check inside gateway instance
-incus exec tailscale-gateway -- tailscale status
-
-# Check IP forwarding
-sysctl net.ipv4.ip_forward  # Should be 1
-
-# Check iptables
-sudo iptables -t nat -L -n -v
-----
-
-=== Cannot Reach RKE Nodes
-
-[source,bash]
-----
-# From Darwin host, check Tailscale routing
-tailscale status
-netstat -rn | grep 192.168.106
-
-# Test gateway connectivity
-tailscale ping nikopol-gateway
-
-# Test from Lima VM
-limactl shell default
-ping 192.168.106.10  # Should work
-----
-
-=== Tailscale SSH Not Working
-
-[source,bash]
-----
-# Check Tailscale status
-tailscale status
-
-# Check SSH is enabled in ACLs
-# Go to Tailscale admin console → Access Controls
-
-# Check target host allows SSH
-tailscale up --ssh  # On target host
-
-# Try with verbose output
-ssh -v 100.x.x.x  # Tailscale IP
-----
-
-=== Headscale SSH Not Working
-
-[source,bash]
-----
-# Check Headscale connection
-hs-status
-
-# Verify SSH is enabled
-# In config: services.headscale-client.enableSSH = true;
-
-# Check ACLs on server
-ssh headscale-server
-sudo headscale policy check
-
-# Check node status
-sudo headscale nodes list
-----
-
-=== Performance Issues
-
-[source,bash]
-----
-# Check if using direct connection vs DERP relay
-tailscale netcheck
-
-# Check latency
-tailscale ping bioskop-gateway
-tailscale ping nikopol-gateway
-
-# Monitor traffic
-incus exec tailscale-gateway -- tcpdump -i any -n
-----
-
-== Reference
-
-=== Deterministic CIDR Derivation (ipcalc removal – 2025-10-18)
-
-Previously the dynamic allocation of hierarchical cluster networks relied on `ipcalc --split` JSON output. This dependency has been removed to simplify bootstrap environments (especially remote Incus execution inside constrained Lima images) and to make the allocation logic fully transparent. All splits are now derived arithmetically from the fixed supernet `10.80.0.0/18`.
-
-Allocation model (@codebase):
-
-* Host Supernet: `10.80.0.0/18` (capacity: 16,384 addresses)
-* Cluster Networks: 8 × /21 blocks. Index `i` maps to `10.80.(i*8).0/21` for `i=0..7`.
-* Node Networks (per selected cluster): 4 × /23 blocks within the /21. Index `n` maps to `third_octet + n*2`. Example: cluster index 1 ⇒ base third octet 8 ⇒ node0 `10.80.8.0/23`, node1 `10.80.10.0/23`, node2 `10.80.12.0/23`, node3 `10.80.14.0/23`.
-* VIP Network: Last /24 of the /21 (`third_octet + 7`). Example: cluster 1 ⇒ VIP `10.80.15.0/24`, gateway `10.80.15.1`.
-* LoadBalancer Network: Second /26 slice of node0's /23 ⇒ `10.80.<cluster_third>.64/26` with gateway convention kept at `.129` (historical choice pending review).
-* Node Broadcast (for /23): Spans its two constituent /24 blocks: `10.80.(third_octet+1).255`.
-
-Rationale:
-
-* Eliminates an external binary (smaller closure, fewer remote requirements).
-* Improves determinism (no parsing of tool JSON, pure arithmetic).
-* Speeds up `make summary@network` and `rebuild@rke2-networks` by avoiding 5+ subprocess calls.
-* Enhances diff readability – changes to the allocation logic are plain shell arithmetic.
-
-Validation Targets (@codebase):
-
-* `load@network` loads generated exports from `.run.d/network/_assign.mk`.
-* `summary@network` prints the currently selected cluster/node CIDRs using the new derivation.
-* (Optional) Future `test@network-arith` will assert expected counts (8 clusters, 4 nodes) and CIDR patterns.
-
-Impact:
-
-* Only `network/rules.mk` changed for derivation logic; Incus lifecycle (`incus/rules.mk`) already free of `ipcalc` since prior cleanup.
-* External rebuild sequences and higher-level targets remain unchanged.
-
-If a need arises for dynamic supernet sizing or non-linear allocation, a lightweight pure‑Nix or shell function can be introduced without re‑adding `ipcalc`.
-
-
-=== Network Ranges
-
-==== Internal Networks (10.x.x.x)
+The `172.16.6` roaming overlay is *local* to this machine (not advertised); it gives the
+corp Mac stable addressing to its VMs and the collector on any network. Full transport in
+link:network-topology-c4.adoc[Network Topology & vz-host Roaming Addressing].
+
+== Network Ranges
 
 [options="header"]
 |===
-| Network | Range | Purpose
-| Host Supernet | 10.80.0.0/18 | Cluster network pool
-| Incus (nikopol) | 10.80.8.0/21 | nikopol cluster supernet
-| Incus (bioskop) | 10.80.0.0/21 | bioskop cluster supernet
-| Lima Shared | 192.168.5.0/24 | Lima VMs
-| Tailscale Mesh | 100.64.0.0/10 | Tailscale overlay
-| Headscale Mesh | 100.64.0.0/10 | Headscale overlay
-| K8s Pods | 10.42.0.0/16 | Kubernetes pods
-| K8s Services | 10.43.0.0/16 | Kubernetes services
+| Network | CIDR | Purpose
+| Home LAN | 192.168.1.0/24 | main network (Bbox `mammoth-skate`, gw .254)
+| Cluster supernet | 10.80.0.0/18 | RKE2 cluster network pool
+| bioskop cluster | 10.80.0.0/21 | bioskop-wrkld
+| nikopol cluster | 10.80.8.0/21 | nikopol-wrkld
+| K8s pods | 10.42.0.0/16 | Kubernetes pods
+| K8s services | 10.43.0.0/16 | Kubernetes services
+| Tailnet (mammoth-skate) | 100.64.0.0/10 | Tailscale overlay
+| Roaming (reserved) | 172.16.0.0/12 | per-corp-host roaming overlays
+| nikopol roaming net | 172.16.6.0/25 | managed Incus net (netflow) behind nikopol-nixos
+| nikopol roaming link | 172.16.6.252/30 | static P2P: vz.nikopol .253 ↔ nikopol-nixos .254
 |===
 
-==== Home LAN Allocation (192.168.1.0/24)
+Cluster CIDRs are derived arithmetically from the `10.80.0.0/18` supernet (8 × /21, one per
+cluster; nodes as /23 within), by rke2lab's `ClusterNetworkBlueprint` — the source of truth
+projected into this catalog via the `rke2lab` flake input. See rke2lab's netplan blueprint
+docs for the allocation model.
 
-The home LAN is divided into /27 blocks (30 usable IPs per block) for organized IP management:
+=== Home LAN reservations (from `catalog/default.nix`)
+
+Static reservations live in `netplan.lan.hosts` (reconciled against the Bbox). `ownership`
+labels each host `personal` or `corporate` (a flow-attribution label for `nnh`; ndh
+reconciles both).
 
 [options="header"]
 |===
-| Block | CIDR | Range | Allocation | Purpose
-| 0 | 192.168.1.0/27 | .1-.30 | DHCP Pool | General devices, IoT
-| 1 | 192.168.1.32/27 | .33-.62 | nikopol Static | nikopol cluster infrastructure
-| 2 | 192.168.1.64/27 | .65-.94 | nikopol LoadBalancer | nikopol Cilium L2 announcements
-| 3 | 192.168.1.96/27 | .97-.126 | Reserved | Future expansion
-| 4 | 192.168.1.128/27 | .129-.158 | bioskop Static | bioskop cluster infrastructure
-| 5 | 192.168.1.160/27 | .161-.190 | Reserved | IoT/smart home
-| 6 | 192.168.1.192/27 | .193-.222 | bioskop LoadBalancer | bioskop Cilium L2 announcements
-| 7 | 192.168.1.224/27 | .225-.254 | Infrastructure | Router (.254), DNS, DHCP
+| Host | IP | kind | ownership
+| nikopol-vzhost (vz.nikopol) | 192.168.1.1 | vz-host | corporate
+| zecoute / huematic / pop-screen / vertdegris / pop-cast | .5–.12 | media | personal
+| nikopol | 192.168.1.33 | darwin-host | personal
+| nikopol-nixos | 192.168.1.34 | nixos | personal
+| nikopol-vz | 192.168.1.65 | vz-host | corporate
+| bioskop | 192.168.1.129 | darwin-host | personal
+| bioskop-nixos | 192.168.1.130 | nixos | personal
+| bioskop-wifi | 192.168.1.158 | wifi-iface | personal
+| `<cluster>-<role>` RKE2 nodes | (projected) | rke2 | personal
 |===
 
-===== Static IP Assignments
+RKE2 node reservations are a pure projection of rke2lab's blueprint (MAC scheme
+`10:66:6a:4c:<clusterId>:<nodeId>`), so they stay in lockstep — no hand-copied values.
 
-====== bioskop Cluster (Block 4: 192.168.1.128/27)
+== WAN port forwards (Bbox)
+
+From `netplan.wan.portForwards` (only ports actually configured on the Bbox):
 
 [options="header"]
 |===
-| Host | MAC Address | IP | Purpose
-| bioskop-darwin | d0:11:e5:19:1c:9a | 192.168.1.129 | Darwin host
-| bioskop-nixos (lan-br) | 10:66:6a:4c:27:fe | 192.168.1.130 | Lima NixOS VM (Incus bridge DHCP)
-| bioskop-nixos (vmlan0) | 10:66:6a:4c:27:01 | (no IP) | Bridge member (enslaved under lan-br)
-| bioskop-master-control-node (lan0) | 10:66:6a:42:15:4a | 192.168.1.131 | RKE2 master (DHCP)
-| bioskop-peer1-control-node | TBD | 192.168.1.132+ | RKE2 peer1 (DHCP)
-| bioskop-wifi | ca:f1:1a:ef:69:9f | 192.168.1.133 | WiFi interface (DHCP)
-| bioskop-peer2-control-node | TBD | 192.168.1.134+ | RKE2 peer2 (DHCP)
-| bioskop-peer3-control-node | TBD | 192.168.1.135+ | RKE2 peer3 (DHCP)
+| External | → Internal | Purpose
+| tcp/2222 | bioskop tcp/22 | SSH into bioskop from off-LAN
+| tcp/41841 | bioskop tcp/41841 | Headscale control plane (when deployed)
 |===
 
-====== nikopol Cluster (Block 1: 192.168.1.32/27)
+Public IPv4 is dynamic, tracked by Duck DNS at `mammoth-skate.duckdns.org`
+(`netplan.wan.ddnsHostname`).
 
-[options="header"]
-|===
-| Host | MAC Address | IP | Purpose
-| nikopol (en0) | e6:bb:3e:c9:cf:9b | 192.168.1.33 | Darwin host (MacBook)
-| nikopol-nixos (lan-br) | 10:66:6a:4c:6f:fe | 192.168.1.34 | Lima NixOS VM (Incus bridge DHCP)
-| nikopol-nixos (vmlan0) | 10:66:6a:4c:6f:01 | (no IP) | Bridge member (enslaved under lan-br)
-| nikopol-master-control-node (lan0) | 10:66:6a:9e:16:11 | 192.168.1.35 | RKE2 master (DHCP)
-| nikopol-peer1-control-node | TBD | 192.168.1.36+ | RKE2 peer1 (DHCP)
-| nikopol-peer2-control-node | TBD | 192.168.1.37+ | RKE2 peer2 (DHCP)
-| nikopol-peer3-control-node | TBD | 192.168.1.38+ | RKE2 peer3 (DHCP)
-|===
+== SSH access (current model)
 
-===== LoadBalancer IP Pools
+* *Across networks* — via the tailnet: `ssh <host>` (MagicDNS `mammoth-skate.ts.net`) or
+  `tailscale ssh <host>`. Members: `bioskop`, `nikopol`, the `-nixos` hosts.
+* *`vz.nikopol`* (off-tailnet corp Mac) — `HostName 172.16.6.253`; from the personal
+  `nikopol` VM it is a direct local hop, from any other host add `ProxyJump nikopol`. See
+  link:network-topology-c4.adoc#usage-patterns[the roaming usage patterns].
+* SSH config is rendered per host by the ndh SSH modules; see
+  link:modules-reference.adoc[Modules Reference] and the catalog `netplan.tailnet.hosts`.
 
-====== bioskop LoadBalancer Pool (Block 6: 192.168.1.192/27)
+== Security
 
-* **CIDR**: 192.168.1.192/27
-* **Usable Range**: 192.168.1.193-192.168.1.222 (30 IPs)
-* **Gateway**: 192.168.1.254 (home router)
-* **Purpose**: Cilium L2-announced LoadBalancer IPs for bioskop cluster services
-* **Example Services**:
-  - Headscale: 192.168.1.193 (deployed via headscale-operator)
-  - Ingress Controller: 192.168.1.194
-  - Additional services: 192.168.1.195+
+* All tailnet traffic is WireGuard-encrypted; access is identity-based (no shared keys).
+* The corp Mac runs *no VPN binary* (policy); its reachability is a local static overlay,
+  never an advertised tailnet route.
+* Secrets (Bbox admin credential, tailnet auth) are sops-encrypted in `.secrets`; never
+  commit plaintext.
 
-====== nikopol LoadBalancer Pool (Block 2: 192.168.1.64/27)
+== Related documentation
 
-* **CIDR**: 192.168.1.64/27
-* **Usable Range**: 192.168.1.65-192.168.1.94 (30 IPs)
-* **Gateway**: 192.168.1.254 (home router)
-* **Purpose**: Cilium L2-announced LoadBalancer IPs for nikopol cluster services
-* **Example Services**:
-  - Headscale: 192.168.1.65
-  - Ingress Controller: 192.168.1.66
-  - Additional services: 192.168.1.67+
-
-===== Network Configuration Notes
-
-* **Hostname Strategy**: Cluster nodes register on LAN with cluster-prefixed hostnames (e.g., `bioskop-master-control-node.lan`, `nikopol-master-control-node.lan`) to prevent DNS conflicts when both clusters are active on the same home network.
-
-* **System Hostnames**: Internal system hostnames and RKE2 node names remain unprefixed (e.g., `master-control-node`) for consistency across clusters.
-
-* **DHCP Configuration**: Cluster-prefixed hostnames are sent to DHCP via systemd-networkd drop-in on the `lan0` interface:
-+
-[source,ini]
-----
-# /etc/systemd/network/10-netplan-lan0.network.d/10-hostname.conf
-[DHCP]
-SendHostname=yes
-Hostname=${RKE2_CLUSTER_NAME}-${RKE2_NODENAME}-control-node
-----
-
-* **Static Reservations**: Darwin hosts and Lima VMs should have static DHCP reservations configured in the Bbox router to ensure stable IPs across reboots.
-
-* **Block Capacity**: Each /27 block provides 30 usable IPs, sufficient for:
-  - Darwin host (1 IP)
-  - Lima VM (1 IP)
-  - Up to 4 RKE2 control nodes (4 IPs)
-  - Additional infrastructure (24 IPs remaining)
-
-=== Port Reference
-
-[options="header"]
-|===
-| Service | Port | Protocol | Purpose
-| Tailscale | Dynamic | UDP | WireGuard
-| Headscale | 8080 | TCP | Control server
-| Headscale gRPC | 50443 | TCP | API
-| SSH | 22 | TCP | Shell access
-| Kubernetes API | 6443 | TCP | K8s control
-| Kubelet | 10250 | TCP | K8s node agent
-| NodePort Range | 30000-32767 | TCP/UDP | K8s services
-|===
-
-=== Useful Commands
-
-==== Tailscale
-
-[source,bash]
-----
-tailscale up --ssh                    # Connect with SSH enabled
-tailscale status                      # Show connection status
-tailscale ssh host                    # SSH to host
-tailscale ping host                   # Test connectivity
-tailscale netcheck                    # Network diagnostics
-tailscale set --advertise-routes=...  # Update routes
-----
-
-==== Headscale (Server)
-
-[source,bash]
-----
-sudo headscale users create <name>           # Create user
-sudo headscale-preauth <user> --reusable     # Generate auth key
-sudo headscale nodes list                    # List nodes
-sudo headscale routes list                   # List routes
-sudo headscale routes enable <route> <node>  # Enable route
-sudo headscale policy check                  # Validate policy
-----
-
-==== Headscale (Client)
-
-[source,bash]
-----
-hs-connect           # Connect to Headscale
-hs-status            # Show status
-hs-ssh host          # SSH to host
-hs-disconnect        # Disconnect
-----
-
-==== Gateway Management
-
-[source,bash]
-----
-deploy-tailscale-gateway      # Deploy gateway instance
-tailscale-gateway-status      # Check gateway status
-tailscale-gateway-shell       # Open shell in gateway
-tailscale-gateway-logs        # View gateway logs
-----
-
-==== Lima VM
-
-[source,bash]
-----
-limactl shell default         # SSH to Lima VM
-limactl list                  # List Lima VMs
-limactl stop default          # Stop Lima VM
-limactl start default         # Start Lima VM
-----
-
-=== Decision Matrix
-
-[options="header"]
-|===
-| Scenario | At Home | External | Recommended Method
-| Darwin → Darwin | Headscale | Tailscale | Headscale (faster)
-| Darwin → Lima VM | Tailscale | Tailscale | Tailscale
-| Darwin → RKE Node | Tailscale | Tailscale | Tailscale (via gateway)
-| Mobile → RKE | N/A | Tailscale | Tailscale (via gateway)
-| Lima → Lima | Headscale | N/A | Headscale
-|===
-
-=== Comparison: Tailscale vs Headscale
-
-[options="header"]
-|===
-| Feature | Tailscale | Headscale | Recommendation
-| Setup | Easy | Moderate | Tailscale for simplicity
-| External Access | ✅ Always works | ❌ LAN only | Tailscale when away
-| Latency (LAN) | ~5-10ms | ~1-2ms | Headscale for speed
-| Mobile App | ✅ Official | ⚠️ Manual | Tailscale for mobile
-| Privacy | Cloud | Self-hosted | Headscale for privacy
-| SSH | ✅ Built-in | ✅ Built-in | Both work
-| Cost | Free tier | Free | Both free
-|===
-
-== Security Considerations
-
-=== Authentication
-
-Both Tailscale and Headscale provide:
-
-* Identity-based authentication (no shared secrets)
-* Automatic key rotation
-* Per-device authentication
-* SSO integration (Tailscale)
-
-=== Access Control
-
-* Use ACLs to restrict access
-* Apply principle of least privilege
-* Use tags for grouping
-* Regular ACL audits
-
-=== Network Security
-
-* All traffic encrypted (WireGuard)
-* No exposed ports required
-* Firewall remains active
-* Subnet isolation via ACLs
-
-=== Best Practices
-
-1. Use tags for device categorization
-2. Implement granular ACLs
-3. Regularly rotate auth keys
-4. Monitor access logs
-5. Keep software updated
-6. Use MFA for Tailscale account
-7. Backup Headscale database
-
-== Conclusion
-
-This setup provides:
-
-✅ Secure SSH access from anywhere (Tailscale)::
-Identity-based authentication, no manual key management
-
-✅ Fast local SSH (Headscale)::
-Lower latency when on same LAN, self-hosted
-
-✅ Subnet routing (Gateways)::
-Access to RKE clusters and Lima VM networks
-
-✅ Mobile access (Tailscale)::
-Official app for iOS/Android
-
-✅ Simplified architecture::
-No need for separate authentication layer (Teleport)
-
-✅ Highly secure::
-WireGuard encryption, ACL-based access control
-
-The hybrid approach using both Tailscale and Headscale provides the best balance of external accessibility, local performance, and security.
+* link:network-topology-c4.adoc[Network Topology & vz-host Roaming Addressing (C4-Style UML)]
+  — the local `172.16.6` overlay.
+* link:nikopol-minimal-host.adoc[Corp Bare-Metal Minimal Host (vz.nikopol)] — the corp Mac +
+  its Tart VMs.
+* link:bioskop-deployment.adoc[bioskop Deployment Guide] — bioskop-side bring-up.
+* link:modules-reference.adoc[Modules Reference] — NixOS/Darwin module options.
+* rke2lab `docs/architecture/cluster-api/management-workload-topology.adoc` — the cluster
+  mesh two-plane model and the off-mesh `vz.nikopol` note.

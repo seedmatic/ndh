@@ -1,0 +1,136 @@
+= Corp Bare-Metal Minimal Host (vz.nikopol) Architecture
+:toc:
+:toclevels: 3
+
+== Overview
+
+`vz.nikopol` is the *corporate*, JAMF-managed macOS bare-metal (the MacBook Pro). The
+design principle is to keep that host as *minimal* as possible — it runs only a lean
+nix-darwin profile and the Tart/`vz` VM engine — while all personal development and the
+Incus workloads live *inside Tart VMs* it hosts.
+
+NOTE: naming. The corp bare-metal is addressed as `vz.nikopol` (`vz` = the VZ/Tart host
+role). The *personal* environment is the Tart macOS VM `nikopol`. The Incus host is the
+Tart NixOS VM `nikopol-nixos`. This document historically predates that split (it was
+"alcide", and conflated host and VM); it now reflects the current three-part model. The
+Incus stack is *Tart/`vz`-based — not Lima* (the earlier Lima/`incusbr0`/`192.168.106`
+model is retired).
+
+== Architecture
+
+=== Three-tier design (Tart on corp bare-metal)
+
+[plantuml,vznikopol-tiers,svg]
+----
+@startuml
+!define RECTANGLE class
+
+skinparam rectangle {
+    BackgroundColor<<host>> LightYellow
+    BackgroundColor<<vm>> LightBlue
+    BackgroundColor<<router>> LightGreen
+    BackgroundColor<<cluster>> Wheat
+    BorderColor Black
+    FontSize 12
+}
+
+rectangle "vz.nikopol — corp bare-metal Mac\nJAMF-managed · minimal nix-darwin + Tart/vz\nNOT a tailnet member (corp policy)" <<host>> {
+    [Nix + Tart/vz engine]
+    [SSH client]
+    [Minimal shell tools]
+    rectangle "en0 (Wi-Fi)\n+ static alias 172.16.6.253/30\n+ route 172.16.6.0/25 via .254" as EN0
+}
+
+rectangle "nikopol\nTart macOS VM (personal)\ntailnet member" <<vm>> {
+    [Full personal env]
+}
+
+rectangle "nikopol-nixos — Tart NixOS VM\nIncus host · tailnet member (cluster)" <<router>> {
+    [Incus + lan-br]
+    [tailscaled (cluster mesh)]
+    rectangle "lan-br .254/30\nip_forward: routes /30 ↔ /25\n(172.16 NOT advertised)" as LANBR
+}
+
+rectangle "Incus instances\n(managed 172.16.6.0/25 · netflow, apps)" <<cluster>> as INCUS
+
+EN0 <--> LANBR : static /30 · shared Wi-Fi L2 (bridged)
+[Nix + Tart/vz engine] --> nikopol : tart run --net-bridged=Wi-Fi
+[Nix + Tart/vz engine] --> LANBR : tart run --net-bridged=Wi-Fi
+LANBR --> INCUS : routes managed /25
+@enduml
+----
+
+Both Tart VMs bridge onto the *same Wi-Fi L2* as the corp Mac. `nikopol-nixos` forwards
+between the `/30` link and the managed `/25` so the corp Mac reaches the netflow instances;
+the `172.16` overlay is *local* — not advertised into the tailnet. Remote access to
+`vz.nikopol` rides `ProxyJump` through the personal `nikopol` VM (a tailnet member), then a
+local hop. See link:network-topology-c4.adoc[Network Topology & vz-host Roaming Addressing]
+for the full transport (managed `/25`, the `/30` link, the local static overlay).
+
+=== Layer responsibilities
+
+==== Layer 1 — corp bare-metal (`vz.nikopol`, minimal)
+
+*Purpose*: JAMF-managed, minimal interference with corporate policy. Runs only:
+
+* Nix package manager + the *Tart/`vz`* VM engine (VM lifecycle)
+* SSH client, minimal shell tools (bash, zsh, coreutils), git (flake updates only)
+* the static roaming overlay: a `172.16.6.253/30` alias on `en0` plus the route
+  `172.16.6.0/25 via .254` (to reach the collector) — derived from the catalog,
+  materialized by a Darwin launchd module
+
+*NOT on the host*: heavy dev tools, container runtimes, IDE servers, language
+toolchains, and — by corp policy — *any VPN binary* (no Tailscale/Headscale here).
+
+==== Layer 2 — Tart VMs
+
+* `nikopol` — personal macOS environment (the daily driver VM); a `mammoth-skate` member,
+  which is what lets a remote operator `ProxyJump` through it to reach the corp Mac locally.
+* `nikopol-nixos` — the NixOS Incus host: `lan-br` bridge, Incus, and `ip_forward` to route
+  the corp Mac's `/30` to the managed `/25`. It is a `mammoth-skate` member for the *cluster*
+  mesh (rke2lab), but does *not* advertise the `172.16` overlay.
+
+==== Layer 3 — Incus instances (on `nikopol-nixos`)
+
+Application/workload containers and VMs on the managed `172.16.6.0/25` network
+(Incus dnsmasq), including the netflow collector (`nnh`). The RKE2 cluster stack
+proper is described by rke2lab (`vmnet-br`, `10.80.x`); this host also carries the
+roaming netflow segment.
+
+== Benefits
+
+. *Compliance* — minimal, predictable footprint on the JAMF-managed Mac; no VPN binary.
+. *Isolation* — personal work and Incus workloads are inside VMs, off the corp host.
+. *Roaming-stable addressing* — the static `172.16.6` overlay gives corp Mac ↔ VMs ↔
+  collector a fixed address on any network, without the Mac joining the tailnet.
+. *Portability / recreatability* — the VMs and their config are declarative (nix-darwin
+  Tart contracts, `NDH_VZ_HOST` / `vz-guest`).
+
+== Troubleshooting
+
+=== Tart VM won't start
+
+[source,bash]
+----
+tart list
+tart run <vm> --net-bridged=Wi-Fi   # observe boot; see modules/darwin/tart-config.nix
+----
+
+=== Can't SSH into a VM / the corp Mac
+
+* Corp Mac (`vz.nikopol`): confirm the `.253/30` alias is set on `en0`
+  (`ifconfig en0 | grep 172.16.6.253`); from a remote host, confirm `ProxyJump=nikopol`
+  resolves (the personal VM is a tailnet member). See
+  link:network-topology-c4.adoc#troubleshooting[roaming troubleshooting].
+* VMs: they are bridged on Wi-Fi; reach them on their LAN reservation (see
+  link:network-setup.adoc[Network Setup] ranges).
+
+== See Also
+
+* link:network-topology-c4.adoc[Network Topology & vz-host Roaming Addressing (C4-Style UML)]
+  — the local roaming overlay this host relies on.
+* link:vm-configuration-models-c4.adoc[VM Configuration Models (C4-Style UML)] — the Tart
+  host-driven contracts.
+* link:network-setup.adoc[Network Infrastructure Setup] — fleet-wide Tailscale /
+  `mammoth-skate` model and LAN reservations.
+* link:../README.adoc[Main Documentation]

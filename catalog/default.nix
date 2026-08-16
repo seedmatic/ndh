@@ -221,19 +221,30 @@
         name = "home";
         asn = 65000;
       }
-      # 172.16.0.0/12 is reserved for ROAMING: a per-host /30 vz-host link that the
-      # host's NixOS VM subnet-routes into the tailnet (mammoth-skate), so a roaming
-      # operator reaches the corp bare metal WITHOUT it being a tailnet member.
-      # nikopol is the only roaming host (its NixOS VM routes 172.16.6.0/30);
-      # bioskop is stationary and routes 192.168.1.0/24 instead.
+      # 172.16.0.0/12 is reserved for ROAMING.  The corp bare-metal Mac (vz.nikopol)
+      # is the ONE node that cannot join the tailnet (corp policy: no VPN binaries),
+      # so it is reached indirectly: nikopol-nixos — the Incus host VM, itself a
+      # tailnet member — acts as subnet router, advertising the roaming prefix into
+      # mammoth-skate and forwarding to the corp Mac over a static /30 point-to-point
+      # link on the shared Wi-Fi L2 (corp Mac = .253, nikopol-nixos = .254 on lan-br;
+      # no DHCP, both ends hard-set).  A managed Incus network (/25, dnsmasq) carries
+      # the netflow instances behind the router.  Every other virtualized host may
+      # join the tailnet directly; only the corp Mac depends on the advertised route.
+      # bioskop is stationary and routes 192.168.1.0/24 instead.  nnh attributes flows
+      # most-specific-prefix-wins, so both nikopol sub-prefixes are declared:
       {
         cidr = "172.16.0.0/12";
         name = "roaming";
         asn = 65000;
       }
       {
-        cidr = "172.16.6.0/30";
-        name = "nikopol-roaming";
+        cidr = "172.16.6.0/25";
+        name = "nikopol-roaming-net";
+        asn = 65000;
+      }
+      {
+        cidr = "172.16.6.252/30";
+        name = "nikopol-roaming-link";
         asn = 65000;
       }
       {
