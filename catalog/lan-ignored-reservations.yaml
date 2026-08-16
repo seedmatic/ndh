@@ -2,30 +2,19 @@
 #
 # Consumed by `bbox-reconcile` to filter the EXTRA bucket.  Anything
 # listed here lives on the bbox without a corresponding entry in
-# `catalog.netplan.lan.hosts` — typically home devices (audio,
-# screens, smart-home) that an operator reserved by hand and that
-# don't participate in the fleet's nix-managed plumbing.
+# `catalog.netplan.lan.hosts` — a reservation an operator made by hand
+# that doesn't participate in the fleet's nix-managed plumbing.
 #
 # Add an entry when bbox-reconcile shouts about a reservation that's
 # expected; remove when the device is retired and the bbox
 # reservation is deleted.
 #
+# The home A/V devices (vertdegris/huematic/zecoute/pop-screen/pop-cast)
+# that used to live here are now first-class `kind = "media"` entries in
+# `catalog.netplan.lan.hosts` — ndh reconciles them, so they are no longer
+# "unmanaged" and must NOT be listed here.
+#
 # Schema: a list of {mac, hostname, note}.  `mac` is the comparison
 # key (case-insensitive); `hostname` and `note` are human-readable
 # annotations only.
-ignored_reservations:
-  - mac: "00:10:83:08:fe:c6"
-    hostname: vertdegris
-    note: audio receiver
-  - mac: "00:17:88:2b:22:0d"
-    hostname: huematic
-    note: audio
-  - mac: "00:22:6c:1b:8c:08"
-    hostname: zecoute
-    note: audio
-  - mac: "68:fc:ca:31:4d:be"
-    hostname: pop-screen
-    note: TV / display
-  - mac: "a4:77:33:ee:9e:1e"
-    hostname: pop-cast
-    note: Chromecast
+ignored_reservations: []

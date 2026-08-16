@@ -57,6 +57,11 @@
       #              nixos        → NixOS guest VM
       #              rke2         → RKE2 cluster member (requires `role`)
       #              wifi-iface   → wifi NIC
+      #              vz-host      → corporate bare-metal Mac / its VZ bridge
+      #              media        → home A/V device (audio, TV, chromecast)
+      #   ownership — who the machine belongs to: `personal` (default) or
+      #            `corporate`.  A label for downstream flow attribution (nnh);
+      #            orthogonal to reconciliation — ndh reconciles both.
       #   parent — top-level host this entry belongs under (omitted for
       #            top-level hosts themselves).
       #   role   — local label within `kind` (only used by `kind=rke2`
@@ -67,42 +72,92 @@
           mac = "00:30:93:1d:0e:48";
           ip = "192.168.1.129";
           kind = "darwin-host";
+          ownership = "personal";
         };
         bioskop-wifi = {
           mac = "ca:f1:1a:ef:69:9f";
           ip = "192.168.1.158";
           kind = "wifi-iface";
           parent = "bioskop";
+          ownership = "personal";
         };
         bioskop-nixos = {
           mac = "10:66:6a:4c:27:01";
           ip = "192.168.1.130";
           kind = "nixos";
           parent = "bioskop";
+          ownership = "personal";
         };
 
-        # nikopol: a Tart/VZ macOS guest (the catalog Mac), top-level.
-        # The underlying bare metal is a near-stock host whose only job
-        # is hosting this VM; only its VZ-bridge interface appears on
-        # the LAN as `nikopol-vz` below.
+        # nikopol: a Tart/VZ macOS guest (the catalog Mac), top-level — the
+        # personal environment running on the corporate bare metal (`vz-host`
+        # entries below).
         nikopol = {
           mac = "86:b7:a1:96:1a:9f";
           ip = "192.168.1.33";
           kind = "darwin-host";
+          ownership = "personal";
         };
-        # nikopol-vz (the bare-metal Mac hosting the nikopol Tart VM) is
-        # NOT on this LAN — it's bridged onto a company-managed network
-        # we don't run, with a DHCP-leased corp address.  No bbox
-        # reservation exists for it, so it doesn't belong in lan.hosts.
-        # The VM doesn't need to address the bare metal as a network
-        # peer either: the hypervisor relationship (filesystem, console,
-        # vmshare) handles VM↔host data flow without IP.
-
         nikopol-nixos = {
           mac = "10:66:6a:4c:d6:01";
           ip = "192.168.1.34";
           kind = "nixos";
           parent = "nikopol";
+          ownership = "personal";
+        };
+
+        # vz — the corporate bare-metal Mac hosting the nikopol Tart VM, and
+        # its VZ-bridge interface.  BOTH carry bbox reservations (the earlier
+        # "not on this LAN / no reservation" note was wrong — the router has
+        # `nikopol-vzhost` at .1 and `nikopol-vz` at .65).  `corporate`: the
+        # hardware + its DHCP are company-governed, but we keep the
+        # reservations declared so addressing stays predictive (and portable
+        # if the provider changes); ndh reconciles them like any other host.
+        nikopol-vzhost = {
+          mac = "4a:04:df:ff:a8:de";
+          ip = "192.168.1.1";
+          kind = "vz-host";
+          ownership = "corporate";
+        };
+        nikopol-vz = {
+          mac = "84:2f:57:d4:36:be";
+          ip = "192.168.1.65";
+          kind = "vz-host";
+          ownership = "corporate";
+        };
+
+        # Home A/V devices — reserved so their addresses stay predictive.
+        # Previously hand-managed and filtered out via
+        # lan-ignored-reservations.yaml; now first-class + reconciled.
+        zecoute = {
+          mac = "00:22:6c:1b:8c:08";
+          ip = "192.168.1.5";
+          kind = "media";
+          ownership = "personal";
+        };
+        huematic = {
+          mac = "00:17:88:2b:22:0d";
+          ip = "192.168.1.6";
+          kind = "media";
+          ownership = "personal";
+        };
+        pop-screen = {
+          mac = "68:fc:ca:31:4d:be";
+          ip = "192.168.1.7";
+          kind = "media";
+          ownership = "personal";
+        };
+        vertdegris = {
+          mac = "00:10:83:08:fe:c6";
+          ip = "192.168.1.8";
+          kind = "media";
+          ownership = "personal";
+        };
+        pop-cast = {
+          mac = "a4:77:33:ee:9e:1e";
+          ip = "192.168.1.12";
+          kind = "media";
+          ownership = "personal";
         };
 
         # RKE2 cluster members — a pure projection of rke2lab's network
@@ -128,6 +183,7 @@
                 kind = "rke2";
                 parent = cluster;
                 role = node;
+                ownership = "personal";
               };
             }) (builtins.attrNames addressing.${cluster})
           ) (builtins.attrNames addressing);
@@ -135,6 +191,70 @@
         builtins.listToAttrs rke2HostList
       );
     };
+
+    # Network SEGMENTS (cidr → name → asn) for flow attribution — the single
+    # source nnh (the netflow collector) derives its NetName + AS labelling
+    # from, replacing its hardcoded `selfBase`/`gatewayNetworks`.  ndh owns the
+    # HOME spans (asn 65000); the cluster spans (65010/65020) are projected from
+    # rke2lab's blueprint (`networkBlueprint.segments`) and unioned in.  Akvorado
+    # merges most-specific-prefix-wins, so the broad home fallbacks coexist with
+    # the finer cluster /27s.  The Bouygues delegated IPv6 /64 is deliberately
+    # ABSENT — it is ISP-assigned/dynamic, resolved live by nnh, not committed.
+    segments = [
+      {
+        cidr = "192.168.1.0/24";
+        name = "home";
+        asn = 65000;
+      }
+      {
+        cidr = "192.168.1.0/27";
+        name = "home-dynamic";
+        asn = 65000;
+      }
+      {
+        cidr = "100.64.0.0/10";
+        name = "tailnet";
+        asn = 65000;
+      }
+      {
+        cidr = "10.0.0.0/8";
+        name = "home";
+        asn = 65000;
+      }
+      {
+        cidr = "172.16.0.0/12";
+        name = "home";
+        asn = 65000;
+      }
+      {
+        cidr = "192.168.0.0/16";
+        name = "home";
+        asn = 65000;
+      }
+      {
+        cidr = "169.254.0.0/16";
+        name = "home";
+        asn = 65000;
+      }
+      {
+        cidr = "fc00::/7";
+        name = "home";
+        asn = 65000;
+      }
+      {
+        cidr = "fe80::/10";
+        name = "home";
+        asn = 65000;
+      }
+    ]
+    ++ (networkBlueprint.segments or [ ]);
+
+    # asn → canonical AS name (the `asns` dictionary nnh names its ASes with).
+    # Cluster ASNs (65010/65020) come from the blueprint; home (65000) is ndh's.
+    asns = (networkBlueprint.asns or { }) // {
+      "65000" = "home";
+    };
+
     tailnet = {
       cidr = "100.64.0.0/10";
       domain = ".mammoth-skate.ts.net";
