@@ -14,7 +14,7 @@ dnsmasq) and reach the instances — and, for `nikopol`, the *corporate bare-met
 The `nikopol` segment concretely:
 
 * `nikopol-nixos` (the Incus host VM, a tailnet member) runs a *managed Incus network*
-  `roam-br` = `172.16.6.0/25` (dnsmasq, `dns.domain = nikopol`) carrying the netflow
+  `bare-br` = `172.16.6.0/25` (dnsmasq, `dns.domain = nikopol`) carrying the netflow
   instances (collector `nnh`, …). Its dnsmasq also holds a static `host-record` for
   `vz.nikopol → 172.16.6.253`.
 * A static `/30` point-to-point link (`172.16.6.252/30`) on the shared Wi-Fi L2 joins
@@ -113,7 +113,7 @@ rectangle "vz.nikopol — corp bare-metal Mac (macOS, JAMF)\nno darwin config �
   rectangle "en0 (Wi-Fi)\n+ static alias 172.16.6.253/30\n+ route 172.16.6.0/25 via .254\n+ route 100.64.0.0/10 via .254 (tailnet return)" <<l2>> as EN0
   rectangle "nikopol-nixos — Tart NixOS VM · Incus host · tailnet member" <<router>> {
     rectangle "lan-br .254/30\nip_forward · advertises 172.16.6.0/24" <<router>> as LANBR
-    rectangle "roam-br 172.16.6.0/25\ndnsmasq · dns.domain=nikopol\nhost-record vz.nikopol→.253" <<peer>> as ROAMBR
+    rectangle "bare-br 172.16.6.0/25\ndnsmasq · dns.domain=nikopol\nhost-record vz.nikopol→.253" <<peer>> as ROAMBR
     rectangle "netflow collector (nnh)\ncollector.nikopol" <<peer>> as COLL
   }
 }
@@ -230,7 +230,7 @@ and the split-DNS entry. Three copies drift.
 
 === Managed Incus network, never bridged
 
-✅ *DO* — a managed bridge (`roam-br`, Incus dnsmasq bound to it), isolated from the Wi-Fi
+✅ *DO* — a managed bridge (`bare-br`, Incus dnsmasq bound to it), isolated from the Wi-Fi
 L2 → no DHCP collision with the local network.
 ❌ *DON'T* — bridge/macvlan the instances onto `en0`.
 
@@ -249,7 +249,7 @@ file (the retired resolver), or hard-code a `HostName`.
 
 . *Catalog* — `netplan.baremetal.nikopol` (done): domain, CIDRs, `.253`/`.254`,
   `advertiseCidr`.
-. *Incus host* (`hosts/nikopol/nixos.nix`) — `roam-br` managed `/25` with
+. *Incus host* (`hosts/nikopol/nixos.nix`) — `bare-br` managed `/25` with
   `dns.domain=nikopol` + `raw.dnsmasq` `host-record=vz.nikopol,172.16.6.253`; `.254/30`
   secondary on `lan-br`; `ip_forward`.
 . *corp-Mac roaming package* — an idempotent script (built in the flake, installed into the
@@ -272,7 +272,7 @@ same catalog values.
 
 `vz.nikopol` / `<inst>.nikopol` doesn't resolve::
 Check the split-DNS entry (`nikopol → 172.16.6.1`) in the tailnet DNS config, and that the
-`172.16.6.0/24` route is approved. On `nikopol-nixos`, `incus network get roam-br
+`172.16.6.0/24` route is approved. On `nikopol-nixos`, `incus network get bare-br
 dns.domain` should be `nikopol` and dnsmasq should serve the `host-record`.
 
 Resolves but unreachable::

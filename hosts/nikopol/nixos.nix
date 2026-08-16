@@ -57,10 +57,10 @@ in
     # a `.<domain>` DNS zone and a static host-record for the (off-DHCP) corp Mac.
     # Relies on virtualisation.incus.preseed.networks merging across modules (standard
     # NixOS submodule list merge with the shared modules/nixos/incus.nix); if that ever
-    # conflicts, create roam-br via `incus network create` instead.
+    # conflicts, create bare-br via `incus network create` instead.
     virtualisation.incus.preseed.networks = [
       {
-        name = "roam-br";
+        name = "bare-br";
         type = "bridge";
         config = {
           "ipv4.address" = "${bm.netGateway}/${netPrefix}";
@@ -74,8 +74,8 @@ in
         };
       }
     ];
-    networking.firewall.trustedInterfaces = [ "roam-br" ];
-    networking.networkmanager.unmanaged = [ "interface-name:roam-br" ];
+    networking.firewall.trustedInterfaces = [ "bare-br" ];
+    networking.networkmanager.unmanaged = [ "interface-name:bare-br" ];
 
     # Static /30 link end toward the corp Mac, as a secondary address on lan-br
     # (systemd-networkd-managed — networkd is force-enabled by

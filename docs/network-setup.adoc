@@ -80,7 +80,7 @@ bioskop (Darwin/macOS, .129)                     ← personal bare-metal, own ha
         ├── lan-br (bridged on the home LAN)
         ├── advertises 192.168.1.0/24 + 172.16.7.0/24 (+ .bioskop split-DNS)
         ├── Incus: bioskop-wrkld RKE2 cluster    ← 10.80.0.0/21 (vmnet-br)
-        └── Incus: roam-br 172.16.7.0/25 (dnsmasq, .bioskop) ← vz.bioskop→.129 + instances
+        └── Incus: bare-br 172.16.7.0/25 (dnsmasq, .bioskop) ← vz.bioskop→.129 + instances
 ----
 
 === vz.nikopol — corp MacBook · JAMF-managed · roaming
@@ -96,7 +96,7 @@ vz.nikopol (macOS, JAMF, .1)                     ← corporate bare-metal · NOT
     ├── lan-br (bridged on the LAN) + .254/30 · ip_forward
     ├── advertises 172.16.6.0/24 + .nikopol split-DNS into the tailnet
     ├── Incus: nikopol-wrkld RKE2 cluster        ← 10.80.8.0/21 (vmnet-br)
-    └── Incus: roam-br 172.16.6.0/25 (dnsmasq, .nikopol) ← netflow (collector.nikopol)
+    └── Incus: bare-br 172.16.6.0/25 (dnsmasq, .nikopol) ← netflow (collector.nikopol)
 ----
 
 The `172.16.6.0/24` baremetal segment is *advertised* into the tailnet with a `.nikopol`

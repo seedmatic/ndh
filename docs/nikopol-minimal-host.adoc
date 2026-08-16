@@ -48,7 +48,7 @@ rectangle "nikopol\nTart macOS VM (personal)\ntailnet member" <<vm>> {
 rectangle "nikopol-nixos — Tart NixOS VM\nIncus host · tailnet member" <<router>> {
     [Incus + lan-br]
     rectangle "lan-br .254/30 · ip_forward\nadvertises 172.16.6.0/24 (no NAT)" as LANBR
-    rectangle "roam-br 172.16.6.0/25\ndnsmasq · dns.domain=nikopol\nhost-record vz.nikopol→.253" as ROAMBR
+    rectangle "bare-br 172.16.6.0/25\ndnsmasq · dns.domain=nikopol\nhost-record vz.nikopol→.253" as ROAMBR
 }
 
 rectangle "Incus instances\n(collector.nikopol, apps · /25)" <<cluster>> as INCUS
@@ -62,7 +62,7 @@ ROAMBR --> INCUS : DHCP + .nikopol DNS
 ----
 
 Both Tart VMs bridge onto the *same Wi-Fi L2* as the corp Mac. `nikopol-nixos` runs the
-baremetal instance segment `roam-br` (`172.16.6.0/25`, dnsmasq, `dns.domain=nikopol`),
+baremetal instance segment `bare-br` (`172.16.6.0/25`, dnsmasq, `dns.domain=nikopol`),
 forwards between the `/30` link and the `/25`, and *advertises* `172.16.6.0/24` into the
 tailnet with a split-DNS `.nikopol` zone — so any tailnet peer resolves and reaches the
 instances *and* `vz.nikopol` by name. No NAT. See
@@ -89,7 +89,7 @@ segment, never as a tailnet member).
 
 * `nikopol` — personal macOS environment (the daily driver VM); a `mammoth-skate` member.
 * `nikopol-nixos` — the NixOS Incus host: `lan-br` bridge, Incus, `ip_forward`; runs the
-  `roam-br` segment and *advertises* `172.16.6.0/24` into the tailnet with the `.nikopol`
+  `bare-br` segment and *advertises* `172.16.6.0/24` into the tailnet with the `.nikopol`
   split-DNS zone. A `mammoth-skate` member.
 
 ==== Layer 3 — Incus instances (on `nikopol-nixos`)
