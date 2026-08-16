@@ -173,8 +173,9 @@ advertised route makes them reachable; no NAT keeps source IPs intact.
 
 == Address plan (single source of truth)
 
-`catalog/default.nix` → `netplan.baremetal.nikopol`. Consumed by the NixOS Incus host and
-the corp-Mac package by derivation.
+`catalog/default.nix` → `netplan.baremetal.<host>`. Consumed by the NixOS Incus host and
+the corp-Mac package by derivation. `nikopol` (below) is the *complex* case — an off-tailnet
+corp Mac reached over a `/30`; `bioskop` is the *simple* case (see below).
 
 [options="header"]
 |===
@@ -191,6 +192,26 @@ the corp-Mac package by derivation.
 The segment is also declared in `netplan.segments` (derived from `baremetal`) for `nnh`
 flow attribution: `nikopol-baremetal-net` (`/25`) + `nikopol-baremetal-link` (`/30`), under
 the `172.16.0.0/12` `baremetal` supernet.
+
+=== Second host — bioskop (the simple case)
+
+`bioskop` is a *personal* Mac Mini already on the tailnet + home LAN, so its `baremetal`
+entry has *no* `/30` link (no off-tailnet corp Mac): `vz.bioskop` resolves to bioskop's real
+LAN address, reachable via the existing home-LAN advertise.
+
+[options="header"]
+|===
+| Field | Value | Role
+| `domain` | `bioskop` | dnsmasq DNS zone + split-DNS domain
+| `netCidr` | `172.16.7.0/25` | managed Incus network (dnsmasq) — bioskop instances
+| `netGateway` | `172.16.7.1` | Incus bridge + dnsmasq + split-DNS target
+| `vzHostAddress` | `192.168.1.129` | `vz.bioskop` dnsmasq `host-record` (bioskop LAN addr)
+| `advertiseCidr` | `172.16.7.0/24` | aggregate advertised into the tailnet
+|===
+
+The split-DNS/advertise pattern applies identically on `bioskop-nixos` (its `.bioskop`
+zone), so `ssh vz.bioskop` and `<inst>.bioskop` resolve uniformly across both bare-metals —
+only the derived `-link` segment and the `/30` transport are nikopol-specific.
 
 == Usage patterns
 

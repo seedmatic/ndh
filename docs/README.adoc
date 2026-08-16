@@ -17,7 +17,7 @@ link:bioskop-deployment.adoc[bioskop Deployment Guide]::
 Step-by-step guide for deploying the complete Headscale/Tailscale architecture on bioskop (Mac Mini M4 Pro), including Headscale server, gateway, and RKE2 integration.
 
 link:network-topology-c4.adoc[Baremetal Instance Segments & vz-host Access (C4-Style UML)]::
-Context/container/sequence diagrams for the per-baremetal Incus instance segment (`172.16.6.0/24`, dnsmasq `.nikopol` domain) advertised into the tailnet with split-DNS, so peers resolve/reach the netflow instances and the off-tailnet corp Mac `vz.nikopol` by name — no NAT, single-source addressing from the catalog. (Advertise + split-DNS are Tailscale-SaaS-console steps today; declarative under Headscale later.)
+Context/container/sequence diagrams for the per-baremetal Incus instance segments (nikopol `172.16.6.0/24`/`.nikopol`, bioskop `172.16.7.0/24`/`.bioskop`) advertised into the tailnet with split-DNS, so peers resolve/reach the netflow instances and the vz-hosts (`vz.nikopol`, `vz.bioskop`) by name — no NAT, single-source addressing from the catalog. nikopol is the complex case (off-tailnet corp Mac via a `/30`); bioskop is the simple case. (Advertise + split-DNS are Tailscale-SaaS-console steps today; declarative under Headscale later.)
 
 link:nikopol-minimal-host.adoc[Corp Bare-Metal Minimal Host (vz.nikopol)]::
 The minimal-host design for the JAMF-managed corp Mac and the Tart VMs it hosts (`nikopol`, `nikopol-nixos`/Incus). Supersedes the retired Lima model.

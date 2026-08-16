@@ -78,8 +78,9 @@ bioskop (Darwin/macOS, .129)                     ← personal bare-metal, own ha
 └── nikopol-... Tart VMs
     └── bioskop-nixos (NixOS, .130)              ← Incus host · tailnet member
         ├── lan-br (bridged on the home LAN)
-        ├── advertises 192.168.1.0/24 into the tailnet (LAN subnet router)
-        └── Incus: bioskop-wrkld RKE2 cluster    ← 10.80.0.0/21 (vmnet-br)
+        ├── advertises 192.168.1.0/24 + 172.16.7.0/24 (+ .bioskop split-DNS)
+        ├── Incus: bioskop-wrkld RKE2 cluster    ← 10.80.0.0/21 (vmnet-br)
+        └── Incus: roam-br 172.16.7.0/25 (dnsmasq, .bioskop) ← vz.bioskop→.129 + instances
 ----
 
 === vz.nikopol — corp MacBook · JAMF-managed · roaming
@@ -119,6 +120,7 @@ link:network-topology-c4.adoc[Baremetal Instance Segments & vz-host Access].
 | Baremetal (reserved) | 172.16.0.0/12 | per-baremetal instance segments
 | nikopol baremetal net | 172.16.6.0/25 | managed Incus net (dnsmasq `.nikopol`) — netflow
 | nikopol baremetal link | 172.16.6.252/30 | static P2P: vz.nikopol .253 ↔ nikopol-nixos .254
+| bioskop baremetal net | 172.16.7.0/25 | managed Incus net (dnsmasq `.bioskop`) — bioskop instances
 |===
 
 Cluster CIDRs are derived arithmetically from the `10.80.0.0/18` supernet (8 × /21, one per
