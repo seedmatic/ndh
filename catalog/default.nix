@@ -229,14 +229,24 @@
         );
       };
 
-      # Network SEGMENTS (cidr → name → asn) for flow attribution — the single
-      # source nnh (the netflow collector) derives its NetName + AS labelling
-      # from, replacing its hardcoded `selfBase`/`gatewayNetworks`.  ndh owns the
-      # HOME spans (asn 65000); the cluster spans (65010/65020) are projected from
-      # rke2lab's blueprint (`networkBlueprint.segments`) and unioned in.  Akvorado
-      # merges most-specific-prefix-wins, so the broad home fallbacks coexist with
-      # the finer cluster /27s.  The Bouygues delegated IPv6 /64 is deliberately
-      # ABSENT — it is ISP-assigned/dynamic, resolved live by nnh, not committed.
+      # Network SEGMENTS for flow attribution — the single source nnh (the netflow
+      # collector) derives its NetName + AS labelling from, replacing its hardcoded
+      # `selfBase`/`gatewayNetworks`.  ndh owns the HOME spans (asn 65000); the
+      # cluster spans (65010/65020) are projected from rke2lab's blueprint
+      # (`networkBlueprint.segments`) and unioned in.  Akvorado merges
+      # most-specific-prefix-wins, so the broad home fallbacks coexist with the finer
+      # cluster /27s.  The Bouygues delegated IPv6 /64 is deliberately ABSENT — it is
+      # ISP-assigned/dynamic, resolved live by nnh, not committed.
+      #
+      # Uniform shape (shared with rke2lab): every segment is the attribution triple
+      # `{cidr, name, asn}` plus, WHEN ndh runs that network's gateway/DNS, the
+      # managed-network facts — `gateway`, a DNS `domain`, and the static `hosts`
+      # reservations (`{name, ip}`, plus `mac` for a MAC-known dhcp-host).  A pure
+      # attribution span carries just the triple.  `dhcp` (a range string, as on
+      # rke2lab's cluster nets) is omitted here: bare-br runs auto-range DHCP with no
+      # range pinned in the catalog — same rule as omitting `domain` when there is no
+      # DNS zone.  The per-baremetal `-net /25` carries the rich facts; the `-link
+      # /30` and the /12 supernet stay attribution-only.
       segments = [
         {
           cidr = "192.168.1.0/24";
@@ -294,15 +304,30 @@
       ++ (builtins.concatMap (
         bm:
         [
+          # The managed /25 (Incus bare-br + dnsmasq): gateway, the `.<domain>` DNS
+          # zone, and a static host-record for the off-DHCP vz-host (a corp Mac at a
+          # /30 address, or an on-tailnet bare-metal at its LAN address — no `mac`,
+          # it is not a dnsmasq DHCP client).  DHCP clients (the nnh collector, other
+          # instances) auto-register in the zone and are NOT catalog hosts.
           {
             cidr = bm.netCidr;
             name = "${bm.domain}-baremetal-net";
             asn = 65000;
+            gateway = bm.netGateway;
+            domain = bm.domain;
+            hosts = [
+              {
+                name = "vz.${bm.domain}";
+                ip = bm.vzHostAddress;
+              }
+            ];
           }
         ]
         # The static /30 link exists only for a vz-host that can't join the tailnet
-        # (the corporate Mac); on-tailnet bare-metals declare no `linkCidr`.  (Catalog is
-        # lib-free — plain `if`, not `lib.optionals`.)
+        # (the corporate Mac); on-tailnet bare-metals declare no `linkCidr`.  It is an
+        # attribution-only span (the P2P transport; the dnsmasq that registers the
+        # vz-host lives on the /25 above).  (Catalog is lib-free — plain `if`, not
+        # `lib.optionals`.)
         ++ (
           if bm ? linkCidr then
             [
