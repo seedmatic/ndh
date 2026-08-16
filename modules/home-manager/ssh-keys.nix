@@ -91,11 +91,31 @@ in
             || base == ".gitattributes"
             || base == "authorized_keys"
             || (!includeLimaConfig && base == "lima.conf")
+            # Rendered below from sshPaths (single source) via replaceVars —
+            # excluded here so the templated copy wins over the raw @sshKeysDir@ file.
+            || lib.hasSuffix "config.d/zones.d/nikopol.conf" path
+            || lib.hasSuffix "config.d/host-identity.conf" path
           );
       }
     );
     recursive = true;
   };
+
+  # The two ~/.ssh consumers that embed the SSH key directory: render them from
+  # sshPaths (the single source) via replaceVars rather than committing the
+  # literal path, so a future sshPaths move can't strand them (as it did when the
+  # dir went ~/.local/var/run/secrets/ssh-keys → ~/.local/share/ndh/ssh-keys).
+  # Both are excluded from the bulk ./ssh.d copy above.
+  home.file.".ssh/config.d/zones.d/nikopol.conf".source =
+    pkgs.replaceVars ./ssh.d/config.d/zones.d/nikopol.conf
+      {
+        sshKeysDir = sshPaths.secretsKeysDir;
+      };
+  home.file.".ssh/config.d/host-identity.conf".source =
+    pkgs.replaceVars ./ssh.d/config.d/host-identity.conf
+      {
+        sshKeysDir = sshPaths.secretsKeysDir;
+      };
 
   # Deploy keys to canonical per-user runtime secrets directories with proper permissions.
   #
