@@ -221,9 +221,19 @@
         name = "home";
         asn = 65000;
       }
+      # 172.16.0.0/12 is reserved for ROAMING: a per-host /30 vz-host link that the
+      # host's NixOS VM subnet-routes into the tailnet (mammoth-skate), so a roaming
+      # operator reaches the corp bare metal WITHOUT it being a tailnet member.
+      # nikopol is the only roaming host (its NixOS VM routes 172.16.6.0/30);
+      # bioskop is stationary and routes 192.168.1.0/24 instead.
       {
         cidr = "172.16.0.0/12";
-        name = "home";
+        name = "roaming";
+        asn = 65000;
+      }
+      {
+        cidr = "172.16.6.0/30";
+        name = "nikopol-roaming";
         asn = 65000;
       }
       {
