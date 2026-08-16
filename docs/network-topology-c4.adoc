@@ -41,8 +41,10 @@ once Headscale is the live controller.
 ====
 
 The corp-Mac side is *not* a nix-darwin configuration (the corp Mac has no darwin config —
-it is JAMF-managed). Its addressing is delivered as a *nix package* (an idempotent script)
-installed into its nix store and run there (see <<setup>>).
+it is JAMF-managed). Its addressing is delivered by the *baremetal-link* package
+(`pkgs/baremetal-link.d/`): an idempotent script rendered from the catalog and delivered as
+*text* over `ssh`, run as root — no nix runtime on the corp Mac, bash-3.2 compatible (see
+<<setup>>).
 
 All addresses are a single source of truth in `catalog/default.nix`
 (`netplan.baremetal.nikopol`), consumed by the NixOS Incus host and the corp-Mac package by
@@ -109,7 +111,7 @@ skinparam rectangle {
     FontSize 11
 }
 
-rectangle "vz.nikopol — corp bare-metal Mac (macOS, JAMF)\nno darwin config — roaming pkg installed in its nix store & run" <<host>> {
+rectangle "vz.nikopol — corp bare-metal Mac (macOS, JAMF)\nno darwin config — baremetal-link daemon (text-delivered, run as root)" <<host>> {
   rectangle "en0 (Wi-Fi)\n+ static alias 172.16.6.253/30\n+ route 172.16.6.0/25 via .254\n+ route 100.64.0.0/10 via .254 (tailnet return)" <<l2>> as EN0
   rectangle "nikopol-nixos — Tart NixOS VM · Incus host · tailnet member" <<router>> {
     rectangle "lan-br .254/30\nip_forward · advertises 172.16.6.0/24" <<router>> as LANBR
@@ -137,7 +139,8 @@ endlegend
 *Legend*: only `nikopol-nixos`'s `lan-br` (`.254/30`) touches the Wi-Fi L2 to reach the
 corp Mac; the netflow instances sit on the managed `/25` behind it (dnsmasq serves DHCP +
 the `.nikopol` zone). `nikopol-nixos` advertises the `/24` and forwards with *no NAT*; the
-corp Mac's en0 addressing (alias + both routes) is set by the installed roaming package.
+corp Mac's en0 addressing (alias + both routes) is set by the baremetal-link WatchPaths
+LaunchDaemon (re-applied on every Wi-Fi re-association).
 
 == C4 Level 3 — Resolve-and-reach sequence
 
@@ -164,7 +167,7 @@ NIXOS --> OP : A 172.16.6.253
 OP -> NIXOS : to .253 (advertised route)
 NIXOS -> VZ : forward over /30
 VZ --> NIXOS : reply via route 100.64.0.0/10 → .254
-note over VZ: corp-Mac routes (via .254) set by the installed roaming pkg:\n172.16.6.0/25 (instances) + 100.64.0.0/10 (tailnet return)
+note over VZ: corp-Mac routes (via .254) set by the baremetal-link daemon:\n172.16.6.0/25 (instances) + 100.64.0.0/10 (tailnet return)
 @enduml
 ----
 
@@ -252,9 +255,14 @@ file (the retired resolver), or hard-code a `HostName`.
 . *Incus host* (`hosts/nikopol/nixos.nix`) — `bare-br` managed `/25` with
   `dns.domain=nikopol` + `raw.dnsmasq` `host-record=vz.nikopol,172.16.6.253`; `.254/30`
   secondary on `lan-br`; `ip_forward`.
-. *corp-Mac roaming package* — an idempotent script (built in the flake, installed into the
-  corp Mac's nix store, run there) that sets `en0` alias `172.16.6.253/30` + routes
-  `172.16.6.0/25 via .254` and `100.64.0.0/10 via .254`.
+. *baremetal-link package* (`pkgs/baremetal-link.d/`) — deployed with
+  `nix run .#nikopol-baremetal-link-deploy` (teardown: `… -- --uninstall`). It delivers the
+  catalog-rendered install script as *text* over `ssh vz.nikopol` (first-run bootstrap
+  fallback `nikopol.local`, since `.253` isn't set yet) and runs it as root. The script
+  installs the `io.nxmatic.baremetal-link` *WatchPaths* LaunchDaemon that (re-)applies the
+  `en0` alias `172.16.6.253/30` + routes `172.16.6.0/25 via .254` and `100.64.0.0/10 via
+  .254` at load and on every Wi-Fi re-association. No nix runtime on the corp Mac; every
+  address derives from `netplan.baremetal.nikopol` — never hand-typed.
 
 === Runtime, on the Tailscale SaaS controller (today)
 

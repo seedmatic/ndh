@@ -72,7 +72,7 @@
     # on flake-commons, which would form a flake-commons <-> rke2lab cycle.
     # `flake-commons` follows ours so the two flakes share one resolved version set.
     rke2lab = {
-      url = "github:nxmatic/rke2lab/feature/cluster-seed-scenario";
+      url = "github:nxmatic/rke2lab/feature/network-blueprint-segments";
       inputs.flake-commons.follows = "flake-commons";
     };
 
@@ -672,6 +672,75 @@
           }
         '';
 
+      # --- baremetal-link (corp-Mac IP-alias daemon) ----------------------------
+      # Connects a CORPORATE bare-metal Mac (vz.<host>) that cannot join the tailnet
+      # to its Incus instance segment: a static /30 en0 alias + routes to the /25
+      # and the no-NAT tailnet return path, re-applied on Wi-Fi re-association (a
+      # WatchPaths LaunchDaemon).  Only baremetal hosts with a `linkCidr` — an
+      # off-tailnet corp Mac reached over a /30 — get one; on-tailnet bare-metals
+      # (bioskop) declare none.  Rendered from catalog.netplan.baremetal.<host> and
+      # delivered as TEXT (no nix runtime, bash-3.2 ok on the target), so the deploy
+      # runs from any host that resolves vz.<host> — the operator's Mac or the
+      # nikopol-nixos activation oneshot.  See docs/network-topology-c4.adoc +
+      # pkgs/baremetal-link.d/.
+      baremetalLinkHosts = nixpkgs.lib.filterAttrs (_: bm: bm ? linkCidr) catalogData.netplan.baremetal;
+
+      baremetalLinkLabel = "io.nxmatic.baremetal-link";
+
+      # Common addressing tokens both install.sh and uninstall.sh take from the
+      # catalog — single-sourced so the teardown undoes exactly what install set.
+      baremetalLinkVars = bm: {
+        interface = "en0";
+        vzHostAddress = bm.vzHostAddress;
+        netCidr = bm.netCidr;
+        tailnetCidr = catalogData.netplan.tailnet.cidr;
+        hostAddress = bm.hostAddress;
+        label = baremetalLinkLabel;
+        plist = "/Library/LaunchDaemons/${baremetalLinkLabel}.plist";
+        confDir = "/etc/baremetal-link";
+      };
+
+      mkBaremetalLinkInstall =
+        system: bm:
+        (pkgsFor { inherit system; }).replaceVars ./pkgs/baremetal-link.d/install.sh (
+          baremetalLinkVars bm
+          // {
+            linkPrefix = nixpkgs.lib.last (nixpkgs.lib.splitString "/" bm.linkCidr);
+            log = "/var/log/baremetal-link.log";
+          }
+        );
+
+      mkBaremetalLinkUninstall =
+        system: bm:
+        (pkgsFor { inherit system; }).replaceVars ./pkgs/baremetal-link.d/uninstall.sh (
+          baremetalLinkVars bm
+        );
+
+      mkBaremetalLinkDeploy =
+        system: bm:
+        let
+          pkgsForSystem = pkgsFor { inherit system; };
+        in
+        pkgsForSystem.writeShellApplication {
+          name = "${bm.domain}-baremetal-link-deploy";
+          runtimeInputs = [ pkgsForSystem.openssh ];
+          text = builtins.readFile (
+            pkgsForSystem.replaceVars ./pkgs/baremetal-link.d/deploy.sh {
+              installScript = "${mkBaremetalLinkInstall system bm}";
+              uninstallScript = "${mkBaremetalLinkUninstall system bm}";
+              vzHost = "vz.${bm.domain}";
+              bootstrapHost = "${bm.domain}.local";
+            }
+          );
+        };
+
+      # Per-baremetal-host deploy packages, keyed `<domain>-baremetal-link-deploy`.
+      mkBaremetalLinkPackages =
+        system:
+        builtins.foldl' (
+          acc: bm: acc // { "${bm.domain}-baremetal-link-deploy" = mkBaremetalLinkDeploy system bm; }
+        ) { } (builtins.attrValues baremetalLinkHosts);
+
       # Resolve a relative path to a path literal anchored at the repo
       # root.  Each call hashes only the file (or subtree) named, not
       # the whole worktree the way `${self}/<file>` does — so unrelated
@@ -858,6 +927,7 @@
           # See packages/ndh-mdns-publish/{main.go,default.nix}.
           ndh-mdns-publish = systemPkgs.callPackage ./packages/ndh-mdns-publish { };
         }
+        // mkBaremetalLinkPackages system
         // builtins.foldl' (
           acc: hostName:
           let
@@ -1084,6 +1154,16 @@
               };
             }
           ) { } (builtins.attrNames hostCatalog);
+          baremetalLinkApps = builtins.foldl' (
+            acc: bm:
+            acc
+            // {
+              "${bm.domain}-baremetal-link-deploy" = {
+                type = "app";
+                program = "${mkBaremetalLinkDeploy system bm}/bin/${bm.domain}-baremetal-link-deploy";
+              };
+            }
+          ) { } (builtins.attrValues baremetalLinkHosts);
           nixBuildObservePackage = mkNixBuildObservePackage system;
           pkgsForSystem = pkgsFor { inherit system; };
           # Run check-jsonschema against the canonical keys.yaml. The target
@@ -1128,6 +1208,7 @@
         }
         // hostMaterializerApps
         // hostBootstrapInstallerApps
+        // baremetalLinkApps
       );
 
       mkHostOutputs =

@@ -68,8 +68,10 @@ in
           "ipv4.dhcp" = "true";
           "ipv6.address" = "none";
           "dns.domain" = bm.domain;
-          # Static A record so `vz.${domain}` resolves to the corp Mac (which is not a
-          # dnsmasq DHCP client — its .253 is a hard-set en0 alias).
+          # Static A record so `vz.${domain}` resolves to the corp Mac (not a dnsmasq
+          # DHCP client — its .253 is a hard-set en0 alias).  The collector and other
+          # instances register in the `.${domain}` zone via DHCP when nnh attaches them
+          # to bare-br — their addresses are nnh's (from its own blueprint), not ours.
           "raw.dnsmasq" = "host-record=vz.${bm.domain},${bm.vzHostAddress}\n";
         };
       }
@@ -86,5 +88,23 @@ in
     # netflow instances (Incus enables forwarding for managed bridges too; explicit
     # here for the /30 <-> /25 path).
     boot.kernel.sysctl."net.ipv4.ip_forward" = lib.mkDefault 1;
+
+    # Clamp forwarded TCP MSS to the per-route PMTU.  This host forwards between
+    # 1500-MTU segments (bare-br /25, lan-br /30 toward the corp Mac) and the
+    # 1280-MTU tailnet (tailscale0): a netflow instance ↔ tailnet peer flow crosses
+    # that 1500→1280 step, so without a clamp the larger SYN/data blackholes on
+    # PMTUD (DF set, ICMP frag-needed often filtered).  `size set rt mtu` rewrites
+    # the SYN MSS to the actual egress-route MTU per flow, so intra-1500 paths stay
+    # 1460 (no-op) while tailnet-bound flows drop to 1240.  firewall.enable is off
+    # here, so this lands as its own nftables table rather than a firewall rule.
+    networking.nftables.tables.mss-clamp = {
+      family = "inet";
+      content = ''
+        chain forward {
+          type filter hook forward priority mangle; policy accept;
+          tcp flags syn tcp option maxseg size set rt mtu
+        }
+      '';
+    };
   };
 }

@@ -88,7 +88,7 @@ bioskop (Darwin/macOS, .129)                     ← personal bare-metal, own ha
 [source]
 ----
 vz.nikopol (macOS, JAMF, .1)                     ← corporate bare-metal · NOT on tailnet
-│                                                  (no darwin config; roaming pkg installed & run)
+│                                                  (no darwin config; baremetal-link daemon deployed)
 │   en0 (Wi-Fi) + alias 172.16.6.253/30 + routes /25 & 100.64/10 via .254
 │
 ├── nikopol (Tart macOS VM, .33)                 ← personal env · tailnet member

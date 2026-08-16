@@ -37,8 +37,8 @@ skinparam rectangle {
 
 rectangle "vz.nikopol — corp bare-metal Mac\nJAMF-managed · NO darwin config\n(nix pkgs installed & run) · Tart/vz\nNOT a tailnet member (corp policy)" <<host>> {
     [Nix store + Tart/vz engine]
-    [roaming pkg: en0 alias + routes]
-    rectangle "en0 (Wi-Fi)\n+ alias 172.16.6.253/30\n+ routes 172.16.6.0/25 & 100.64.0.0/10 via .254\n(set by the installed roaming pkg)" as EN0
+    [baremetal-link daemon: en0 alias + routes]
+    rectangle "en0 (Wi-Fi)\n+ alias 172.16.6.253/30\n+ routes 172.16.6.0/25 & 100.64.0.0/10 via .254\n(set by the baremetal-link daemon)" as EN0
 }
 
 rectangle "nikopol\nTart macOS VM (personal)\ntailnet member" <<vm>> {
@@ -77,9 +77,12 @@ transport (and the runtime-vs-declarative split on the Tailscale SaaS controller
 nix-darwin config for it; we install packages into its nix store and run them:
 
 * the Tart/`vz` VM engine (VM lifecycle)
-* the *roaming package* — an idempotent script (built in the flake, derived from the
-  catalog) that sets the `en0` alias `172.16.6.253/30` plus two routes via `.254`:
-  `172.16.6.0/25` (reach the instances) and `100.64.0.0/10` (the no-NAT tailnet return path)
+* the *baremetal-link package* (`pkgs/baremetal-link.d/`) — an idempotent script rendered
+  from the catalog, delivered as text over `ssh` and run as root (deploy:
+  `nix run .#nikopol-baremetal-link-deploy`; teardown: `-- --uninstall`).  It installs a
+  WatchPaths LaunchDaemon that sets the `en0` alias `172.16.6.253/30` plus two routes via
+  `.254`: `172.16.6.0/25` (reach the instances) and `100.64.0.0/10` (the no-NAT tailnet
+  return path), re-applied on every Wi-Fi re-association
 
 *NOT on the host*: heavy dev tools, container runtimes — and, by corp policy, *any VPN
 binary* (no Tailscale/Headscale here; the Mac is reached via its Incus host's advertised
@@ -120,9 +123,9 @@ tart run <vm> --net-bridged=Wi-Fi   # observe boot; see modules/darwin/tart-conf
 === Can't reach the corp Mac / instances by name
 
 * Check split-DNS (`nikopol → 172.16.6.1`) + that `172.16.6.0/24` is approved in the tailnet.
-* On the corp Mac: confirm the roaming package ran — `ifconfig en0 | grep 172.16.6.253` and
-  the two `.254` routes exist. See
-  link:network-topology-c4.adoc#troubleshooting[the roaming troubleshooting].
+* On the corp Mac: confirm the baremetal-link daemon ran — `ifconfig en0 | grep 172.16.6.253`
+  and the two `.254` routes exist. See
+  link:network-topology-c4.adoc#troubleshooting[the baremetal-link troubleshooting].
 * Personal-env VMs: bridged on Wi-Fi; reach them on their LAN reservation (see
   link:network-setup.adoc[Network Setup] ranges).
 
