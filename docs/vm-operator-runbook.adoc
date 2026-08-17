@@ -375,8 +375,10 @@ sudo socat UNIX-CONNECT:/proc/$qpid/root/build/shell.sock \
   -,raw,echo=0,escape=0x1d
 ----
 
-NOTE: The socket lives inside the linux-builder's Nix sandbox namespace
-(`/proc/<qpid>/root/build/shell.sock`).  `sudo` is required to enter it.
+NOTE: The socket lives inside the linux-builder's Nix sandbox namespace.
+`/proc/<qpid>/root/build/shell.sock` and `/proc/<qpid>/cwd/shell.sock` name the
+same file — the QEMU cwd is the sandbox's `/build`, so both forms resolve
+identically. `sudo` is required to enter the namespace either way.
 
 ==== First thing after connecting — fix terminal size
 
