@@ -131,6 +131,9 @@ in
     # lives in our unit.
     services.tailscale = {
       enable = true;
+      # Subnet-router features (advertise/accept routes) — needed for the
+      # baremetal /24 advertise; preserved from the old tailscale.nix path.
+      useRoutingFeatures = "both";
       extraUpFlags =
         let
           sshFlag = if cfg.enableSSH then [ "--ssh" ] else [ ];
