@@ -1161,6 +1161,7 @@
               "${bm.domain}-baremetal-link-deploy" = {
                 type = "app";
                 program = "${mkBaremetalLinkDeploy system bm}/bin/${bm.domain}-baremetal-link-deploy";
+                meta.description = "Install/refresh (or --uninstall) the baremetal-link LaunchDaemon on vz.${bm.domain}";
               };
             }
           ) { } (builtins.attrValues baremetalLinkHosts);

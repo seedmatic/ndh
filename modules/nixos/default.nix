@@ -147,6 +147,7 @@ let
     ./code-server.nix
     ./sshfs-mounts.nix
     ./incus.nix
+    ./baremetal-segment.nix
     ./podman.nix
     ./bringup-observe.nix
     ./etc-nixos-flake.nix
