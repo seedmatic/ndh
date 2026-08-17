@@ -19,6 +19,12 @@ Step-by-step guide for deploying the complete Headscale/Tailscale architecture o
 link:network-topology-c4.adoc[Baremetal Instance Segments & vz-host Access (C4-Style UML)]::
 Context/container/sequence diagrams for the per-baremetal Incus instance segments (nikopol `172.16.6.0/24`/`.nikopol`, bioskop `172.16.7.0/24`/`.bioskop`) advertised into the tailnet with split-DNS, so peers resolve/reach the netflow instances and the vz-hosts (`vz.nikopol`, `vz.bioskop`) by name — no NAT, single-source addressing from the catalog. nikopol is the complex case (off-tailnet corp Mac via a `/30`); bioskop is the simple case. (Advertise + split-DNS are Tailscale-SaaS-console steps today; declarative under Headscale later.)
 
+link:network-catalog-segments.adoc[Network Catalog Segments (feature: spec, architecture, usage)]::
+Specs + C4/UML architecture + usage of the per-baremetal Incus segments advertised into the tailnet: how to attach a probe/service to `bare-br`, reach `vz.<domain>`, the reachability model (route + ACL tag→CIDR + scoped resolvers + auto-approvers), operations, and troubleshooting. Includes the ndh→nnh handoff (what's ready + open items).
+
+link:network-catalog.adoc[Network Catalog (model & contribution)]::
+The network catalog data model — the `{cidr,name,asn}` attribution triple + managed-network facts + `asns` dictionary — its consumers (nnh flow attribution, ndh provisioning), how to consume it (`nix eval --json …#catalog`), and how a domain (rke2lab, nnh) contributes spans via `lib.networkBlueprint` (the two-layer federation: data up at eval, infrastructure down at runtime).
+
 link:nikopol-minimal-host.adoc[Corp Bare-Metal Minimal Host (vz.nikopol)]::
 The minimal-host design for the JAMF-managed corp Mac and the Tart VMs it hosts (`nikopol`, `nikopol-nixos`/Incus). Supersedes the retired Lima model.
 

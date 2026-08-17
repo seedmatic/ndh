@@ -1,0 +1,222 @@
+= Network Catalog
+:toc: macro
+:toclevels: 3
+
+toc::[]
+
+== Overview
+
+The *network catalog* (`catalog.netplan`) is the single source of truth for the
+lab's network *segments* — every IP span, its human name, and the AS it belongs
+to — plus, for the spans ndh actually operates, the *managed-network facts*
+(gateway, DNS domain, static host reservations).
+
+It exists so that **no addressing or attribution is hardcoded twice**. Two kinds
+of consumer read it:
+
+* *Attribution* consumers — the netflow collector *nnh* labels every flow with a
+  `NetName` + AS derived from the catalog (most-specific-prefix-wins), replacing
+  its former hardcoded `selfBase`/`gatewayNetworks`.
+* *Provisioning* consumers — the NixOS/Darwin modules derive real addresses from
+  it (the bare-metal Incus segments, the `/30` corp-Mac link, the tailnet
+  advertise, the split-DNS zones). See
+  link:network-catalog-segments.adoc[Network Catalog Segments].
+
+The catalog is *federated*: ndh owns the HOME spans, and other repos contribute
+their own spans via a `networkBlueprint` that ndh unions in (see
+<<contributing>>). This keeps each domain's addressing owned where it is
+authoritative while presenting one merged catalog to every consumer.
+
+== The model
+
+Every segment is the uniform *attribution triple*:
+
+[source,nix]
+----
+{ cidr = "192.168.1.0/24"; name = "home"; asn = 65000; }
+----
+
+A *pure attribution span* carries just the triple. A span ndh also *operates*
+(runs the gateway/DNS for) carries the extra *managed-network facts*:
+
+[source,nix]
+----
+{
+  cidr    = "172.16.6.0/25";          # the managed Incus bare-br /25
+  name    = "nikopol-baremetal-net";
+  asn     = 65000;
+  gateway = "172.16.6.1";             # bridge + dnsmasq + split-DNS target
+  domain  = "nikopol";                # dnsmasq .<domain> DNS zone
+  hosts   = [ { name = "vz.nikopol"; ip = "172.16.6.253"; } ];  # static host-records
+}
+----
+
+Rules (shared with rke2lab so the shapes merge cleanly):
+
+* `dhcp` (a range string) is *omitted* when the network runs auto-range DHCP with
+  no pinned range — same rule as omitting `domain` when there is no DNS zone.
+* DHCP clients (the nnh collector, other Incus instances) *auto-register* in the
+  `.<domain>` zone and are *NOT* catalog `hosts`; only off-DHCP endpoints (the
+  corp Mac at its `/30` address) are pinned as `hosts`.
+* `asn -> name` lives in the companion `asns` dictionary; attribution is
+  *most-specific-prefix-wins*, so broad home fallbacks coexist with finer cluster
+  `/27`s.
+
+[source,nix]
+----
+asns = { "65000" = "home"; "65010" = "rke2-cluster"; "65020" = "gateway"; };
+----
+
+.The segment model — attribution triple, with managed facts only for spans ndh operates
+[mermaid]
+....
+classDiagram
+  class Segment {
+    <<attribution triple>>
+    +cidr : CIDR
+    +name : string
+    +asn : int
+  }
+  class ManagedSegment {
+    <<ndh runs this network>>
+    +gateway : IP
+    +domain : string
+    +hosts : HostRecord[]
+  }
+  class HostRecord {
+    +name : string
+    +ip : IP
+  }
+  class AsnDict {
+    <<asn -> canonical AS name>>
+    +65000 : "home"
+    +65010 : "rke2-cluster"
+  }
+  Segment <|-- ManagedSegment : adds facts when ndh\nowns the gateway/DNS
+  ManagedSegment "1" o-- "*" HostRecord : off-DHCP static records\n(DHCP clients auto-register)
+  Segment ..> AsnDict : asn resolved via
+....
+
+== Consuming the catalog
+
+The catalog is a flake output — consume it as JSON, no Nix eval on the consumer
+side required:
+
+[source,console]
+----
+$ nix eval --json 'github:seedmatic/ndh#catalog.netplan.segments'
+[{"cidr":"192.168.1.0/24","name":"home","asn":65000}, …]
+
+$ nix eval --json 'github:seedmatic/ndh#catalog.netplan.asns'
+{"65000":"home","65010":"rke2-cluster","65020":"gateway"}
+----
+
+Top-level keys: `netplan` (segments, asns, baremetal, lan, wan, tailnet), plus
+`caches`, `tailnet` (tag vocabulary), `user`.
+
+*nnh* reads `netplan.segments` for NetName + AS labelling and
+`netplan.asns` for the canonical AS names — the single source that replaces its
+hardcoded network table.
+
+[#contributing]
+== Contributing to the catalog
+
+A domain that owns network spans does *not* hand-edit ndh's catalog. It exposes a
+`lib.networkBlueprint` from its own flake, and ndh unions it in — the *sanctioned
+build/eval-time edge* (consumer → contributor; the reverse is forbidden and
+guarded).
+
+=== The blueprint a contributor exposes
+
+[source,nix]
+----
+# in the contributor's flake (e.g. rke2lab, nnh)
+lib.networkBlueprint = {
+  segments = [
+    { cidr = "10.80.16.128/26"; name = "rke2-cluster"; asn = 65010; }
+    # … the attribution triples this domain is authoritative for
+  ];
+  asns = { "65010" = "rke2-cluster"; "65020" = "gateway"; };
+};
+----
+
+Use the *same triple shape* as above so the spans merge. Managed-network facts
+are only for spans the contributor's own modules operate.
+
+=== How ndh unions it
+
+ndh adds the contributor as a flake input and merges its blueprint into the
+catalog (`catalog/default.nix`):
+
+[source,nix]
+----
+# flake.nix — add the input
+inputs.rke2lab.url = "github:nxmatic/rke2lab/<branch>";
+networkBlueprint  = inputs.rke2lab.lib.networkBlueprint;
+
+# catalog/default.nix — union in (segments concatenated, asns merged)
+segments = [ /* ndh HOME spans */ ]
+  ++ (builtins.concatMap perBaremetalSegments (attrValues baremetal))
+  ++ (networkBlueprint.segments or [ ]);
+asns = (networkBlueprint.asns or { }) // { "65000" = "home"; };
+----
+
+To add *nnh* as a contributor, mirror the rke2lab wiring: nnh exposes
+`lib.networkBlueprint`, ndh adds an `nnh` flake input, and the catalog appends
+`nnh.lib.networkBlueprint.segments` + merges its `asns`.
+
+[#two-layer]
+=== The two-layer relationship (why it is not a flake cycle)
+
+nnh both *contributes to* and *consumes from* ndh — but on *different layers*, so
+there is no flake cycle:
+
+* *Eval / flake layer* — *ndh depends on nnh*: ndh's flake inputs
+  `nnh.lib.networkBlueprint` and unions it into the catalog. Data flows *up*
+  (blueprint -> catalog) at build/eval time.
+* *Runtime layer* — *nnh depends on ndh*: the nnh collector *plugs into the bare
+  network ndh provisions* — it attaches as an Incus instance on `bare-br`, gets
+  its `.<domain>` name from the segment's dnsmasq, and is reached over the
+  advertised tailnet route (see link:network-catalog-segments.adoc[Segments]).
+  Infrastructure flows *down* (provisioned network -> nnh) at run time.
+
+Viewed together the two edges form a cycle, but each *layer* is acyclic and the
+flake system only sees the eval layer — so there is no flake cycle to break.
+*rke2lab is the model for exactly this shape*: ndh consumes rke2lab's blueprint
+at eval time, while rke2lab's nodes run on ndh-provisioned infrastructure at run
+time.
+
+.Two-layer dependency — data flows UP at eval, infrastructure flows DOWN at runtime
+[mermaid]
+....
+flowchart TB
+  subgraph eval [Eval / flake layer — data flows UP]
+    direction LR
+    RKE[rke2lab\nlib.networkBlueprint]
+    NNHb[nnh\nlib.networkBlueprint]
+    CAT[ndh catalog.netplan\nHOME spans + managed facts]
+    RKE -->|flake input, union| CAT
+    NNHb -->|flake input, union| CAT
+  end
+  subgraph runtime [Runtime layer — infrastructure flows DOWN]
+    direction LR
+    BARE[ndh-provisioned bare-br\nIncus /25, dnsmasq, advertised route]
+    NNHi[nnh collector instance]
+    BARE -->|"plug in: DHCP + .domain + tailnet reach"| NNHi
+  end
+  CAT -. "consumed as JSON (attribution)" .-> NNHi
+....
+
+WARNING: The *flake/eval* edge stays one-way (ndh -> contributor). A contributor
+must never *flake-depend* back on ndh — that would be a real flake cycle
+(rke2lab guards this direction explicitly; nnh must too). The runtime dependency
+(nnh -> ndh's bare network) is *operational*, not a flake edge, so it is fine —
+that is what makes the two-layer cycle legal.
+
+== Related Documentation
+
+* link:network-catalog-segments.adoc[Network Catalog Segments] — the feature that
+  turns the catalog's baremetal segments into live Incus networks advertised into
+  the tailnet.
+* link:network-topology-c4.adoc[Network Topology (C4)] — the end-to-end topology
+  the catalog describes.
