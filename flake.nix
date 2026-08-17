@@ -1270,11 +1270,15 @@
               ]
               ++ builtins.attrValues t.kind;
               bm = catalogData.netplan.baremetal or { };
+              # The aggregate CIDR each baremetal host advertises into the tailnet.
+              baremetalCidrs = map (h: bm.${h}.advertiseCidr) (
+                builtins.filter (h: bm.${h} ? advertiseCidr) (builtins.attrNames bm)
+              );
               routeApprovers = builtins.listToAttrs (
-                map (h: {
-                  name = bm.${h}.advertiseCidr;
+                map (cidr: {
+                  name = cidr;
                   value = [ (tg t.kind.nixos) ];
-                }) (builtins.filter (h: bm.${h} ? advertiseCidr) (builtins.attrNames bm))
+                }) baremetalCidrs
               );
             in
             {
@@ -1295,13 +1299,20 @@
                   src = [ "autogroup:members" ];
                   dst = [ "*:*" ];
                 }
+                # Operator (console) hosts reach the whole fleet by role tag AND
+                # the per-baremetal segments — vz.<domain> + the Incus instances
+                # behind each subnet router.  A tag'd node's netmap only carries a
+                # subnet route it is ACL-permitted to reach, so without the CIDRs
+                # here a console host loses the baremetal segment it had as an
+                # untagged member (autogroup:members → *:*).
                 {
                   action = "accept";
                   src = [ (tg t.role.console) ];
                   dst = [
                     "${tg t.role.console}:*"
                     "${tg t.role.headless}:*"
-                  ];
+                  ]
+                  ++ map (cidr: "${cidr}:*") baremetalCidrs;
                 }
                 {
                   action = "accept";
