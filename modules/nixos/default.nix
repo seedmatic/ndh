@@ -136,7 +136,6 @@ let
     # ./nixos-reduction.nix
     ./networking-mammoth-skate.nix
     ./cachix-watch-store.nix
-    ./container-host.nix
     ./headscale.nix
     ./headscale-daemon.nix
     ./headscale-client-kind.nix

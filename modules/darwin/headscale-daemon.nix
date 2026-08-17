@@ -7,7 +7,7 @@
 # sandbox-friendly).  The binary comes from pkgs.headscale.
 #
 # Policy is pinned to the Nix-store copy of
-# `catalog.headscale.aclPolicyFile`; reloading the daemon re-reads it,
+# `catalog.tailnet.aclPolicyFile`; reloading the daemon re-reads it,
 # so editing the ACL + running `darwin-rebuild switch` is the full
 # apply cycle — no separate `headscale policy set` post-activation
 # hook needed.
@@ -34,7 +34,7 @@ with lib;
 let
   cfg = config.services.headscaleBootstrap;
   catalog = ndh.context.catalog;
-  headscaleCatalog = catalog.headscale;
+  headscaleCatalog = catalog.tailnet.headscale;
   hostName = config.networking.hostName or "localhost";
 
   # Shared headscale derivation (pinned to 0.28.x via
@@ -181,7 +181,7 @@ let
 
     policy = {
       mode = "file";
-      path = "${headscaleCatalog.aclPolicyFile}";
+      path = "${catalog.tailnet.aclPolicyFile}";
     };
 
     dns = {

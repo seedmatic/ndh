@@ -1196,6 +1196,49 @@
               exec check-jsonschema --schemafile "$schema" "$tmp"
             '';
           };
+          # Rotate the per-kind Tailscale SaaS auth keys in .secrets using the
+          # long-lived OAuth client (tailnet.tailscale.client).  Kinds + tag
+          # pairs are baked from catalog.tailnet.tags so the script needs no
+          # runtime `nix eval`.  Safe by default (dry-run).  Script:
+          # modules/.common.d/rotate-tailnet-secrets.d/rotate-tailnet-secrets.sh.
+          tailnetAuthKindsSpec =
+            let
+              t = catalogData.tailnet.tags;
+              pair =
+                k:
+                if k == "darwin" then
+                  [
+                    t.role.console
+                    t.kind.${k}
+                  ]
+                else
+                  [
+                    t.role.headless
+                    t.kind.${k}
+                  ];
+            in
+            map (k: {
+              kind = k;
+              tags = map (x: "tag:" + x) (pair k);
+            }) (builtins.attrNames t.kind);
+          tailnetAuthKindsFile = pkgsForSystem.writeText "tailnet-auth-kinds.json" (
+            builtins.toJSON tailnetAuthKindsSpec
+          );
+          rotateTailnetSecretsPackage = pkgsForSystem.writeShellApplication {
+            name = "rotate-tailnet-secrets";
+            runtimeInputs = with pkgsForSystem; [
+              sops
+              curl
+              jq
+              yq-go
+              gnugrep
+              coreutils
+            ];
+            text = ''
+              export NDH_TAILNET_AUTH_KINDS_FILE=${tailnetAuthKindsFile}
+            ''
+            + builtins.readFile ./modules/.common.d/rotate-tailnet-secrets.d/rotate-tailnet-secrets.sh;
+          };
         in
         {
           nix-build-observe = {
@@ -1205,6 +1248,11 @@
           ssh-keys-v2-validate = {
             type = "app";
             program = "${sshKeysValidatorPackage}/bin/ssh-keys-v2-validate";
+          };
+          rotate-tailnet-secrets = {
+            type = "app";
+            program = "${rotateTailnetSecretsPackage}/bin/rotate-tailnet-secrets";
+            meta.description = "[operator-run · exec] Rotate per-kind Tailscale SaaS auth keys in .secrets (dry-run by default) — doc: modules/.common.d/rotate-tailnet-secrets.d/";
           };
         }
         // hostMaterializerApps

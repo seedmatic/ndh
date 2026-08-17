@@ -13,14 +13,28 @@
 #   api  — admin control-plane token (`tskey-api-…` / `hskey-api-…`).
 #          Used by tooling that manages users, nodes, preauth keys via
 #          the HTTP/gRPC API instead of the local unix socket.  One
-#          per service; scope-neutral.
+#          per service; scope-neutral.  On Tailscale SaaS it is legacy:
+#          the `client` OAuth secret below supersedes it (API keys can't
+#          self-rotate; an OAuth client is long-lived and mints both the
+#          short-lived API token and the per-kind auth keys).
+#   client — Tailscale SaaS OAuth client secret (`tskey-client-…`).
+#          Tailscale-only, tailnet-wide (no per-kind split).  Long-lived
+#          (no 90-day expiry), used ONLY by the operator's rotation
+#          tooling (scripts/rotate-tailnet-secrets) — never materialised
+#          on a node.  It exchanges for a short-lived API token that
+#          mints the per-kind `auth` keys.
 #
 # Both live in the flake's `.secrets`:
 #
 #   tailnet:
 #     tailscale:
-#       auth: ENC[…]
-#       api:  ENC[…]
+#       client: ENC[…]     # OAuth client secret — mints the auth keys below
+#       auth:
+#         darwin: ENC[…]   # tag:console,tag:darwin
+#         nixos:  ENC[…]   # tag:headless,tag:nixos
+#         incus:  ENC[…]   # tag:headless,tag:incus (minted when needed)
+#         rke2:   ENC[…]   # tag:headless,tag:rke2  (minted when needed)
+#       api:  ENC[…]       # legacy admin key — superseded by `client`
 #     headscale:
 #       auth:
 #         darwin: ENC[…]   # tag:console,tag:darwin
@@ -48,10 +62,11 @@ with lib;
 let
   cfg = config.tailnet;
 
-  # Which kinds the headscale auth tree exposes slots for.  Every kind
-  # corresponds to a distinct `(role, kind)` tag pair — see
-  # catalog/headscale/acl.hujson.
-  headscaleAuthKinds = [
+  # Which kinds the per-kind auth tree exposes slots for — the SAME set
+  # for both services (tailscale + headscale), since a node's `(role,
+  # kind)` tag pair is controller-agnostic.  Every kind corresponds to a
+  # distinct tag pair — see catalog/tailnet/acl.hujson.
+  authKinds = [
     "darwin"
     "nixos"
     "incus"
@@ -122,16 +137,57 @@ let
       };
     };
 
-  # Tailscale keeps the simple shape (one auth + one api scalar).
+  # Per-kind `auth` tree, parameterized by service.  Both Tailscale (SaaS)
+  # and Headscale mint ONE auth key per kind, each scoped to that kind's
+  # `(role, kind)` tag pair.  The key carries the tags — headscale binds
+  # them to the preauth key; SaaS binds them at mint time via the API — so
+  # no client-asserted `--advertise-tags` is needed on either controller.
+  authKindsSubmodule =
+    service:
+    types.submodule {
+      options = listToAttrs (
+        map (kind: {
+          name = kind;
+          value = mkOption {
+            type = credentialSubmodule {
+              inherit service;
+              slotPath = [
+                "auth"
+                kind
+              ];
+            };
+            default = { };
+            description = ''
+              ${service} auth key scoped to the `${kind}` kind of node,
+              carrying the matching tag pair (`tag:console,tag:darwin` for
+              `darwin`, `tag:headless,tag:<kind>` for every other kind).
+            '';
+          };
+        }) authKinds
+      );
+    };
+
+  # Tailscale (SaaS): per-kind `auth` keys, one long-lived `client` OAuth
+  # secret that mints them, and the legacy `api` admin key.
   tailscaleSubmodule = types.submodule {
     options = {
       auth = mkOption {
+        type = authKindsSubmodule "tailscale";
+        default = { };
+        description = "Per-kind node-registration auth keys (tskey-auth-…).";
+      };
+      client = mkOption {
         type = credentialSubmodule {
           service = "tailscale";
-          slotPath = [ "auth" ];
+          slotPath = [ "client" ];
         };
         default = { };
-        description = "Node-registration auth key (tskey-auth-…).";
+        description = ''
+          OAuth client secret (tskey-client-…).  Long-lived (no 90-day
+          expiry); used ONLY by scripts/rotate-tailnet-secrets to mint the
+          per-kind `auth` keys.  Never materialised on a node — leave
+          `enable = false`.
+        '';
       };
       api = mkOption {
         type = credentialSubmodule {
@@ -139,42 +195,16 @@ let
           slotPath = [ "api" ];
         };
         default = { };
-        description = "Admin API key (tskey-api-…).";
+        description = "Legacy admin API key (tskey-api-…) — superseded by `client`.";
       };
     };
   };
 
-  # Headscale splits `auth` per kind — each kind mints a preauth key
-  # scoped to exactly the `(role, kind)` tag pair that node should
-  # register with.  `api` stays a single scalar.
-  headscaleAuthSubmodule = types.submodule {
-    options = listToAttrs (
-      map (kind: {
-        name = kind;
-        value = mkOption {
-          type = credentialSubmodule {
-            service = "headscale";
-            slotPath = [
-              "auth"
-              kind
-            ];
-          };
-          default = { };
-          description = ''
-            Pre-auth key scoped to the `${kind}` kind of node.  Minted
-            with the matching tag pair (`tag:console,tag:darwin` for
-            `darwin`, `tag:headless,tag:<kind>` for every other kind)
-            via `hs preauthkeys create`.
-          '';
-        };
-      }) headscaleAuthKinds
-    );
-  };
-
+  # Headscale (self-hosted): per-kind `auth` keys + a single `api` admin key.
   headscaleSubmodule = types.submodule {
     options = {
       auth = mkOption {
-        type = headscaleAuthSubmodule;
+        type = authKindsSubmodule "headscale";
         default = { };
         description = "Per-kind pre-auth keys (hskey-auth-…).";
       };
@@ -189,35 +219,41 @@ let
     };
   };
 
-  # Enumerate every concrete credential leaf in the schema.  Each
-  # entry carries the slotPath used to build names + sops keys and a
-  # pointer to the option leaf so we can read `.enable`, `.sopsKey`,
-  # `.path`, etc. without re-deriving them.
-  allLeaves = [
-    {
-      service = "tailscale";
-      slotPath = [ "auth" ];
-      leaf = cfg.tailscale.auth;
-    }
-    {
-      service = "tailscale";
-      slotPath = [ "api" ];
-      leaf = cfg.tailscale.api;
-    }
-    {
-      service = "headscale";
-      slotPath = [ "api" ];
-      leaf = cfg.headscale.api;
-    }
-  ]
-  ++ map (kind: {
-    service = "headscale";
-    slotPath = [
-      "auth"
-      kind
+  # Enumerate every concrete credential leaf in the schema.  Each entry
+  # carries the slotPath used to build names + sops keys and a pointer to
+  # the option leaf so we can read `.enable`, `.sopsKey`, `.path`, etc.
+  # without re-deriving them.
+  authLeaves =
+    service:
+    map (kind: {
+      inherit service;
+      slotPath = [
+        "auth"
+        kind
+      ];
+      leaf = cfg.${service}.auth.${kind};
+    }) authKinds;
+
+  allLeaves =
+    authLeaves "tailscale"
+    ++ authLeaves "headscale"
+    ++ [
+      {
+        service = "tailscale";
+        slotPath = [ "client" ];
+        leaf = cfg.tailscale.client;
+      }
+      {
+        service = "tailscale";
+        slotPath = [ "api" ];
+        leaf = cfg.tailscale.api;
+      }
+      {
+        service = "headscale";
+        slotPath = [ "api" ];
+        leaf = cfg.headscale.api;
+      }
     ];
-    leaf = cfg.headscale.auth.${kind};
-  }) headscaleAuthKinds;
 
   enabledLeaves = filter (e: e.leaf.enable) allLeaves;
 

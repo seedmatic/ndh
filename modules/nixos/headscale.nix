@@ -33,7 +33,7 @@ let
     if cfg.authKeyFile != null then
       cfg.authKeyFile
     else if isSaas then
-      tailnet.tailscale.auth.path
+      tailnet.tailscale.auth.${activeAuthKind}.path
     else
       tailnet.headscale.auth.${activeAuthKind}.path;
   # SaaS OAuth-client auth REQUIRES the node to assert its tags; the headscale
@@ -108,11 +108,16 @@ in
 
   config = mkIf cfg.enable {
     # `tailscaled` is root-run on NixOS; override the common module's
-    # default (profile user) on the active per-kind auth slot so
-    # sops-install-secrets materialises the file as root at 0400.
-    # Without this, the profile user owns the file and the root-run
-    # unit can't read it.
-    tailnet.headscale.auth.${activeAuthKind} = {
+    # default (profile user) on the ACTIVE controller's per-kind auth
+    # slot so sops-install-secrets materialises the file as root at 0400.
+    # Without this, the profile user owns the file and the root-run unit
+    # can't read it.  Only the enabled slot materialises (see the wiring),
+    # so we gate each override by controller to land it on the right one.
+    tailnet.tailscale.auth.${activeAuthKind} = lib.mkIf isSaas {
+      owner = "root";
+      mode = "0400";
+    };
+    tailnet.headscale.auth.${activeAuthKind} = lib.mkIf (!isSaas) {
       owner = "root";
       mode = "0400";
     };

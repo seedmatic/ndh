@@ -20,7 +20,7 @@
 }:
 let
   cfg = config.ndh.headscaleClient;
-  headscaleCatalog = lib.attrByPath [ "context" "catalog" "headscale" ] null ndh;
+  tailnetCatalog = lib.attrByPath [ "context" "catalog" "tailnet" ] null ndh;
 
   # Deterministic mapping from the kind axis to the (role, kind) tag
   # pair.  `darwin` is the only kind that registers as console-
@@ -32,17 +32,14 @@ let
     kind:
     let
       roleTag =
-        if kind == "darwin" then
-          headscaleCatalog.tags.role.console
-        else
-          headscaleCatalog.tags.role.headless;
+        if kind == "darwin" then tailnetCatalog.tags.role.console else tailnetCatalog.tags.role.headless;
       kindTag = lib.attrByPath [
         "tags"
         "kind"
         kind
-      ] null headscaleCatalog;
+      ] null tailnetCatalog;
     in
-    if headscaleCatalog == null || kindTag == null then
+    if tailnetCatalog == null || kindTag == null then
       [ ]
     else
       [
@@ -50,7 +47,7 @@ let
         kindTag
       ];
 
-  effectiveServerUrl = if headscaleCatalog != null then headscaleCatalog.aliasUrl else "";
+  effectiveServerUrl = if tailnetCatalog != null then tailnetCatalog.headscale.aliasUrl else "";
 in
 {
   options.ndh.headscaleClient = {
@@ -106,10 +103,10 @@ in
       tags = lib.mkDefault (tagsForKind cfg.kind);
     };
 
-    # Materialise the auth slot for the active controller only; the other
-    # stays sealed.  saas → the single fleet OAuth-client secret; headscale →
-    # the per-kind preauth key.
-    tailnet.tailscale.auth.enable = cfg.controller == "saas";
+    # Materialise this kind's auth slot for the active controller only; the
+    # other stays sealed.  Both controllers now key `auth` by kind — saas →
+    # the per-kind Tailscale auth key, headscale → the per-kind preauth key.
+    tailnet.tailscale.auth.${cfg.kind}.enable = cfg.controller == "saas";
     tailnet.headscale.auth.${cfg.kind}.enable = cfg.controller == "headscale";
 
     # Trust every authority in keys.yaml that advertises

@@ -1,12 +1,14 @@
-// Headscale ACL policy — declarative source of truth for tailnet access
-// and Tailscale SSH edges.
+// Tailnet ACL policy — declarative source of truth for tailnet access
+// and Tailscale SSH edges.  Controller-AGNOSTIC: the same HuJSON file
+// applies to whichever control-plane is live.
 //
-// Apply with:
+// Apply with, depending on the controller:
 //
-//     headscale policy set -f /path/to/this/file
+//     headscale : headscale policy set -f /path/to/this/file
+//     SaaS      : POST /api/v2/tailnet/-/acl   (or paste in the admin console)
 //
-// The file is in HuJSON: JSON + comments + trailing commas.  Headscale
-// parses it directly.
+// The file is in HuJSON: JSON + comments + trailing commas.  Both
+// Headscale and Tailscale SaaS parse it directly.
 //
 // Two orthogonal tag axes — a node normally advertises one from each:
 //
@@ -28,10 +30,12 @@
 // Kind-specific rules (e.g. "only rke2 nodes reach the cluster API
 // port") can be layered on top once such a rule is actually needed.
 //
-// All tags are owned by `group:ndh`; only that group's members may
-// register a node that claims any of these tags.  Advertising happens
-// via the preauth key's tag list (headscale v2 binds tags to the key,
-// not to a client-asserted --advertise-tags).
+// All tags are owned by `group:ndh`; only that group's members (and,
+// on SaaS, an OAuth client granted those tags) may register a node that
+// claims any of these tags.  Advertising happens via the auth key's tag
+// list — headscale v2 binds tags to the preauth key, and the SaaS
+// per-kind keys minted by scripts/rotate-tailnet-secrets carry the same
+// pair — not via a client-asserted --advertise-tags.
 {
   // Headscale policy v2 (default since 0.26) has TWO distinct
   // username conventions, depending on the field:

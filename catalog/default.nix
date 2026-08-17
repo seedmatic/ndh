@@ -2,9 +2,10 @@
 {
   caches = cacheTrust.caches;
 
-  # Headscale policy + tag vocabulary + per-host server URLs.  See
-  # catalog/headscale/default.nix.
-  headscale = import ./headscale;
+  # Tailnet control-plane identity: shared tag vocabulary + ACL policy
+  # (both controllers) + headscale server specifics.  See
+  # catalog/tailnet/default.nix.
+  tailnet = import ./tailnet;
 
   # v2 has a single OS user; the catalog holds it directly without the
   # former per-profile wrapper.

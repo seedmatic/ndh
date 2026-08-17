@@ -20,7 +20,7 @@ with lib;
 let
   cfg = config.services.headscaleBootstrap;
   catalog = ndh.context.catalog;
-  headscaleCatalog = catalog.headscale;
+  headscaleCatalog = catalog.tailnet.headscale;
 
   serverUrl = headscaleCatalog.aliasUrl;
 
@@ -75,7 +75,7 @@ let
 
     policy = {
       mode = "file";
-      path = "${headscaleCatalog.aclPolicyFile}";
+      path = "${catalog.tailnet.aclPolicyFile}";
     };
 
     dns = {
