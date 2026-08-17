@@ -27,6 +27,62 @@ their own spans via a `networkBlueprint` that ndh unions in (see
 <<contributing>>). This keeps each domain's addressing owned where it is
 authoritative while presenting one merged catalog to every consumer.
 
+== System landscape — ndh / rke2lab / nnh
+
+The three systems are *mutually complementary*; none stands alone:
+
+* *ndh* provisions the substrate (networks, `bare-br`, the tailnet, hosts) and
+  owns the merged catalog. It *needs nnh*: its nix builds pull large closure /
+  substituter payloads, and you cannot *justify* that bandwidth cost without
+  measuring it per network.
+* *rke2lab* is the cluster. It runs on ndh-provisioned infrastructure and
+  contributes its cluster spans to the catalog. It *needs nnh* for the same
+  reason — cluster nix builds pull heavy payloads too.
+* *nnh* is the netflow / bandwidth collector. It *needs ndh* to place its probe
+  (attach on `bare-br`) and see the traffic, and it *consumes the catalog*
+  (ndh + rke2lab spans) to label every flow with a NetName + AS. It *contributes*
+  its own spans back.
+
+The value loop closes: ndh + rke2lab build the infra (paying nix bandwidth) ->
+nnh observes and *attributes* that bandwidth per segment (home / cluster /
+gateway) using the catalog -> the accounting justifies the consumption -> and
+nnh can only attribute correctly because ndh + rke2lab keep the catalog
+authoritative. Each system is both a *provider* and a *dependent* of the others,
+on different layers (see <<two-layer>>).
+
+.System landscape — blueprints flow UP (eval), provisioning flows DOWN (runtime), accounting flows ACROSS
+[mermaid]
+....
+flowchart TB
+  CAT[("merged catalog\nsegments {cidr,name,asn} + asns")]:::data
+  NDH["ndh\nsubstrate + HOME spans\ncatalog owner"]:::sys
+  RKE["rke2lab\ncluster + cluster spans (65010/65020)"]:::sys
+  NNH["nnh\nnetflow / bandwidth collector"]:::sys
+
+  NDH -->|"HOME spans (eval)"| CAT
+  RKE -->|"lib.networkBlueprint (eval)"| CAT
+  NNH -->|"lib.networkBlueprint (eval)"| CAT
+
+  NDH ==>|"provisions substrate (runtime)"| RKE
+  NDH ==>|"provisions bare-br + places the probe (runtime)"| NNH
+
+  CAT -.->|"attribution: NetName + AS"| NNH
+  NNH -.->|"per-segment bandwidth accounting\n(justify nix payload cost)"| NDH
+  NNH -.->|"per-segment bandwidth accounting"| RKE
+
+  classDef data fill:#fde68a,stroke:#b45309,color:#000;
+  classDef sys fill:#bfdbfe,stroke:#1e40af,color:#000;
+....
+
+[cols="1,3"]
+|===
+| Edge | Meaning
+
+| solid `->` | *eval-time* — blueprints flow UP into the catalog
+| bold `==>` | *runtime* — ndh provisions infrastructure DOWN (incl. nnh's probe)
+| dotted `-.->` | *observability* — catalog attribution in, bandwidth accounting out
+|===
+
 == The model
 
 Every segment is the uniform *attribution triple*:
