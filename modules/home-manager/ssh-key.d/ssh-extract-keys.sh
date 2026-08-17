@@ -143,11 +143,19 @@ main() {
 			local privPath="$priv_dir/$keyName"
 			[[ -f "$privPath" ]] || continue
 			local pemPath="${privPath}.pem"
-			# stdin from /dev/null: in activation there is no tty, and if step
-			# ever wants input (e.g. an encrypted-input passphrase prompt — the
-			# --no-password/--insecure flags govern only the OUTPUT) it would read
-			# the never-closing activation stdin pipe and hang forever.  With EOF
-			# on stdin it fails fast instead, and the `if !` below warns + skips.
+			# step decrypts the INPUT key interactively: for a passphrase-encrypted
+			# OpenSSH key it opens /dev/tty to prompt (the --no-password/--insecure
+			# flags govern only the OUTPUT, and --password-file does not stop the tty
+			# open).  Under an interactive `darwin-rebuild switch` that tty exists, so
+			# step blocks and wedges the whole activation.  Gate on a non-interactive
+			# readability probe — `ssh-keygen -P ''` uses the given (empty) passphrase
+			# and never prompts — so only a passphrase-less key reaches step.  An
+			# encrypted tls-server key is skipped with a warning instead of hanging;
+			# the PKCS8 PEM is consumed only by a running headscale daemon.
+			if ! ssh-keygen -y -P '' -f "$privPath" </dev/null >/dev/null 2>&1; then
+				echo "warn: $keyName is passphrase-encrypted; skipping PKCS8 PEM conversion" >&2
+				continue
+			fi
 			if ! step crypto key format "$privPath" --out "$pemPath" \
 				--pem --no-password --insecure --force </dev/null 2>/dev/null; then
 				echo "warn: failed to convert $keyName private to PKCS8 PEM" >&2
