@@ -105,9 +105,13 @@ header = "Authorization: Bearer ${TOKEN}"
 EOF
 }
 
+# Auth-key ids ONLY.  GET /keys also lists the OAuth client (keyType=client) and
+# the admin API key (keyType=api); they must NEVER be revoked (revoking the
+# client is self-destruction — it's the credential this tool authenticates
+# with).  So the snapshot for --revoke-old is filtered to keyType=auth.
 list_key_ids() {
   api "$API_BASE/tailnet/$TAILNET/keys" 2>/dev/null |
-    $YQ -p json '.keys[].id' 2>/dev/null || true
+    $YQ -p json '.keys[] | select(.keyType == "auth") | .id' 2>/dev/null || true
 }
 
 revoke_key() {
