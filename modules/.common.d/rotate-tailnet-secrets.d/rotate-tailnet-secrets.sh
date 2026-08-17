@@ -97,8 +97,10 @@ authenticate() {
 
 # Authenticated Tailscale API call.  The bearer is injected via a stdin config
 # (heredoc) so the token never lands in a temp file or a process argument list.
+# --fail-with-body: still fails (non-zero) on HTTP >=400 but emits the response
+# body, so callers can surface the API's error message.
 api() {
-  $CURL -fsS --config - "$@" <<EOF
+  $CURL --fail-with-body -sS --config - "$@" <<EOF
 header = "Authorization: Bearer ${TOKEN}"
 EOF
 }
@@ -137,22 +139,25 @@ sync_acl() {
     | .autoApprovers.exitNode = (((.autoApprovers.exitNode // []) + load(strenv(ACL_CANONICAL)).autoApprovers.exitNode) | unique)
   ' "$workdir/acl.cur.json" >"$workdir/acl.target.json" || die "ACL reconcile failed"
 
-  log "=== ACL reconcile diff (current -> target) ==="
-  diff -u \
-    <($YQ -p json -o=yaml '.' "$workdir/acl.cur.json") \
-    <($YQ -p json -o=yaml '.' "$workdir/acl.target.json") || true
-  log "NOTE: for minting to work, assign '$OWNER_TAG' to the rotation OAuth"
-  log "      client in the Tailscale console (Settings -> OAuth clients)."
-
+  # Review (diff) is the point of the dry-run; on --yes we just push (terse).
   if [ "$assume_yes" -ne 1 ]; then
+    log "=== ACL reconcile diff (current -> target) ==="
+    diff -u \
+      <($YQ -p json -o=yaml '.' "$workdir/acl.cur.json") \
+      <($YQ -p json -o=yaml '.' "$workdir/acl.target.json") || true
+    log "NOTE: for minting to work, assign '$OWNER_TAG' to the rotation OAuth"
+    log "      client in the Tailscale console (Settings -> OAuth clients)."
     log "no --yes: ACL not pushed.  Re-run 'rotate-tailnet-secrets --sync-acl --yes' to POST."
     return 0
   fi
-  api -X POST -H 'Content-Type: application/json' \
+
+  log "pushing reconciled ACL (If-Match) …"
+  local resp
+  resp="$(api -X POST -H 'Content-Type: application/json' \
     ${etag:+-H "If-Match: $etag"} --data-binary "@$workdir/acl.target.json" \
-    "$API_BASE/tailnet/$TAILNET/acl" >/dev/null ||
-    die "POST acl failed (If-Match/ETag conflict or policy validation)"
-  log "SaaS ACL updated (reconciled)."
+    "$API_BASE/tailnet/$TAILNET/acl")" ||
+    die "POST acl rejected: $(printf '%s' "$resp" | $YQ -p json '.message // .' 2>/dev/null || printf '%s' "$resp")"
+  log "SaaS ACL updated.  If not already done, assign '$OWNER_TAG' to the OAuth client (console)."
 }
 
 # Migrate the legacy scalar tailnet.tailscale.auth to an empty map so per-kind

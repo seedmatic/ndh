@@ -1310,14 +1310,14 @@
                 }
               ];
               ssh = [
-                # Console (operator admin) hosts SSH the ENTIRE tailnet.  A bare
-                # "*" is not a valid ssh dst, so we enumerate the exhaustive set:
-                # every node is either a member device or carries a role tag.
+                # Console (operator admin) hosts SSH the entire fleet.  Every
+                # fleet node carries a role tag, so [console, headless] covers
+                # them all.  (SSH dst permits only tags + autogroup:self — not
+                # autogroup:members; untagged member devices aren't SSH targets.)
                 {
                   action = "accept";
                   src = [ (tg t.role.console) ];
                   dst = [
-                    "autogroup:members"
                     (tg t.role.console)
                     (tg t.role.headless)
                   ];
