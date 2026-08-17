@@ -24,7 +24,7 @@ main() {
 	fi
 	if [[ ! -w "$(dirname "$userOutputDir")" ]] || [[ -e "$userOutputDir" && ! -w "$userOutputDir" ]]; then
 		if [[ -x /run/wrappers/bin/sudo ]]; then
-		targetGroup="$(id -gn "$targetUser" 2>/dev/null || echo "$targetUser")"
+			targetGroup="$(id -gn "$targetUser" 2>/dev/null || echo "$targetUser")"
 			/run/wrappers/bin/sudo -n chown -R "$targetUser:$targetGroup" "$(dirname "$userOutputDir")" 2>/dev/null || true
 		fi
 	fi
@@ -143,8 +143,13 @@ main() {
 			local privPath="$priv_dir/$keyName"
 			[[ -f "$privPath" ]] || continue
 			local pemPath="${privPath}.pem"
+			# stdin from /dev/null: in activation there is no tty, and if step
+			# ever wants input (e.g. an encrypted-input passphrase prompt — the
+			# --no-password/--insecure flags govern only the OUTPUT) it would read
+			# the never-closing activation stdin pipe and hang forever.  With EOF
+			# on stdin it fails fast instead, and the `if !` below warns + skips.
 			if ! step crypto key format "$privPath" --out "$pemPath" \
-					--pem --no-password --insecure --force 2>/dev/null; then
+				--pem --no-password --insecure --force </dev/null 2>/dev/null; then
 				echo "warn: failed to convert $keyName private to PKCS8 PEM" >&2
 				continue
 			fi
