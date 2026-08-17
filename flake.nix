@@ -1243,9 +1243,93 @@
           tailnetAuthKindsFile = pkgsForSystem.writeText "tailnet-auth-kinds.json" (
             builtins.toJSON tailnetAuthKindsSpec
           );
+          # Canonical Tailscale-SaaS ACL fragment, built from the catalog.  The
+          # `--sync-acl` reconcile merges this into the LIVE tailnet policy
+          # (preserving personal/k8s tags, nodeAttrs, and existing routes;
+          # pruning the superseded operator/service/container tags).
+          #
+          # OAuth-client tag ownership follows the Tailscale-recommended pattern
+          # (kb/1215/oauth-clients): a dedicated owner tag — assigned to the
+          # rotation OAuth client in the console — owns the per-kind tags, so the
+          # client may mint keys carrying them.  We keep the legacy `acls` block
+          # (not `grants`) so the same tag vocabulary stays usable by the
+          # headscale controller too; `ssh` uses `accept` per the single-operator
+          # rationale in catalog/tailnet/acl.hujson.
+          tailnetAclCanonical =
+            let
+              t = catalogData.tailnet.tags;
+              tg = x: "tag:" + x;
+              ownerTag = "tag:tailnet-key-owner";
+              ourTags = [
+                t.role.console
+                t.role.headless
+              ]
+              ++ builtins.attrValues t.kind;
+              bm = catalogData.netplan.baremetal or { };
+              routeApprovers = builtins.listToAttrs (
+                map (h: {
+                  name = bm.${h}.advertiseCidr;
+                  value = [ (tg t.kind.nixos) ];
+                }) (builtins.filter (h: bm.${h} ? advertiseCidr) (builtins.attrNames bm))
+              );
+            in
+            {
+              tagOwners = {
+                ${ownerTag} = [ "autogroup:admin" ];
+              }
+              // builtins.listToAttrs (
+                map (x: {
+                  name = tg x;
+                  value = [ ownerTag ];
+                }) ourTags
+              );
+              acls = [
+                {
+                  action = "accept";
+                  src = [ (tg t.role.console) ];
+                  dst = [
+                    "${tg t.role.console}:*"
+                    "${tg t.role.headless}:*"
+                  ];
+                }
+                {
+                  action = "accept";
+                  src = [ (tg t.role.headless) ];
+                  dst = [ "${tg t.role.headless}:*" ];
+                }
+              ];
+              ssh = [
+                {
+                  action = "accept";
+                  src = [ (tg t.role.console) ];
+                  dst = [
+                    (tg t.role.console)
+                    (tg t.role.headless)
+                  ];
+                  users = [
+                    "autogroup:nonroot"
+                    "root"
+                  ];
+                }
+                {
+                  action = "accept";
+                  src = [ (tg t.role.headless) ];
+                  dst = [ (tg t.role.headless) ];
+                  users = [
+                    "autogroup:nonroot"
+                    "root"
+                  ];
+                }
+              ];
+              autoApprovers.routes = routeApprovers;
+            };
+          tailnetAclCanonicalFile = pkgsForSystem.writeText "tailnet-acl-canonical.json" (
+            builtins.toJSON tailnetAclCanonical
+          );
           # Bash-trampoline pattern: source the shared trampoline (nix-managed
           # bash + logger + stable env), pin every tool by absolute store path
-          # (@sops@/@curl@/@yq@ — yq-go only, no jq), and bake the kinds file in.
+          # (@sops@/@curl@/@yq@ — yq-go only, no jq), and bake the kinds + ACL
+          # canonical files in.
           rotateTailnetSecretsPackage = ndhStoreApiDarwin.installBinScript "rotate-tailnet-secrets" (
             pkgsForSystem.replaceVars ./modules/.common.d/rotate-tailnet-secrets.d/rotate-tailnet-secrets.sh {
               nixBashTrampoline = ndhNixBashTrampolineDarwin;
@@ -1254,6 +1338,7 @@
               curl = "${pkgsForSystem.curl}/bin/curl";
               yq = "${pkgsForSystem.yq-go}/bin/yq";
               authKinds = tailnetAuthKindsFile;
+              aclCanonical = tailnetAclCanonicalFile;
             }
           );
         in
