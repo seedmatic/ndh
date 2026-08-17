@@ -720,19 +720,26 @@
         system: bm:
         let
           pkgsForSystem = pkgsFor { inherit system; };
+          ndhStoreApi = mkNdhStoreApiFor pkgsForSystem;
+          trampoline =
+            if system == "aarch64-darwin" then ndhNixBashTrampolineDarwin else ndhNixBashTrampolineLinux;
         in
-        pkgsForSystem.writeShellApplication {
-          name = "${bm.domain}-baremetal-link-deploy";
-          runtimeInputs = [ pkgsForSystem.openssh ];
-          text = builtins.readFile (
-            pkgsForSystem.replaceVars ./pkgs/baremetal-link.d/deploy.sh {
-              installScript = "${mkBaremetalLinkInstall system bm}";
-              uninstallScript = "${mkBaremetalLinkUninstall system bm}";
-              vzHost = "vz.${bm.domain}";
-              bootstrapHost = "${bm.domain}.local";
-            }
-          );
-        };
+        # Bash-trampoline pattern (like rotate-tailnet-secrets): source the shared
+        # trampoline (nix bash + logger + stable env), pin ssh by store path, and
+        # run under ndh::logger:command:run so the full ssh pipe lands in the
+        # unified log.  ssh is pinned rather than a runtimeInputs PATH entry
+        # because the trampoline owns PATH.
+        ndhStoreApi.installBinScript "${bm.domain}-baremetal-link-deploy" (
+          pkgsForSystem.replaceVars ./pkgs/baremetal-link.d/deploy.sh {
+            nixBashTrampoline = trampoline;
+            loggerTag = "ndh.baremetal-link-deploy";
+            ssh = "${pkgsForSystem.openssh}/bin/ssh";
+            installScript = "${mkBaremetalLinkInstall system bm}";
+            uninstallScript = "${mkBaremetalLinkUninstall system bm}";
+            vzHost = "vz.${bm.domain}";
+            bootstrapHost = "${bm.domain}.local";
+          }
+        );
 
       # Per-baremetal-host deploy packages, keyed `<domain>-baremetal-link-deploy`.
       mkBaremetalLinkPackages =
