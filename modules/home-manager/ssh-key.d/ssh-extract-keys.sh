@@ -123,10 +123,10 @@ main() {
 	rm -fr "$tmpDir"
 
 	: "Emit PKCS8 PEM privates alongside any key whose cert_usage includes tls-server."
-	: "Go's stdlib crypto/tls parser rejects OpenSSH's native Ed25519 format with"
+	: "Go's stdlib crypto/tls parser rejects OpenSSH's native key format with"
 	: "'tls: failed to parse private key', so consumers that feed the private into"
 	: "crypto/tls (headscale, anything speaking TS2021 Noise) need the PKCS8 PEM form."
-	: "step-cli reads the OpenSSH key natively and emits PKCS8 PEM via --pem."
+	: "ssh-keygen -m PKCS8 does the conversion non-interactively (see the loop below)."
 	tlsKeys=()
 	while IFS= read -r keyName; do
 		[[ -n "$keyName" ]] || continue
@@ -143,22 +143,20 @@ main() {
 			local privPath="$priv_dir/$keyName"
 			[[ -f "$privPath" ]] || continue
 			local pemPath="${privPath}.pem"
-			# step decrypts the INPUT key interactively: for a passphrase-encrypted
-			# OpenSSH key it opens /dev/tty to prompt (the --no-password/--insecure
-			# flags govern only the OUTPUT, and --password-file does not stop the tty
-			# open).  Under an interactive `darwin-rebuild switch` that tty exists, so
-			# step blocks and wedges the whole activation.  Gate on a non-interactive
-			# readability probe — `ssh-keygen -P ''` uses the given (empty) passphrase
-			# and never prompts — so only a passphrase-less key reaches step.  An
-			# encrypted tls-server key is skipped with a warning instead of hanging;
-			# the PKCS8 PEM is consumed only by a running headscale daemon.
-			if ! ssh-keygen -y -P '' -f "$privPath" </dev/null >/dev/null 2>&1; then
-				echo "warn: $keyName is passphrase-encrypted; skipping PKCS8 PEM conversion" >&2
-				continue
-			fi
-			if ! step crypto key format "$privPath" --out "$pemPath" \
-				--pem --no-password --insecure --force </dev/null 2>/dev/null; then
-				echo "warn: failed to convert $keyName private to PKCS8 PEM" >&2
+			# Convert with ssh-keygen, NOT `step crypto key format`.  step opens
+			# /dev/tty to prompt for the input-key passphrase whenever the key is
+			# unreadable/encrypted (its --no-password/--insecure/--password-file
+			# flags govern only the OUTPUT, not the tty open); under an interactive
+			# `darwin-rebuild switch` that tty exists, so step blocks and wedges the
+			# whole activation.  ssh-keygen with an explicit empty input passphrase
+			# (-P '') NEVER prompts — it fast-fails instead — so the conversion is
+			# non-interactive by construction (no hang, at the root).  Work on a copy
+			# ($pemPath): -p rewrites it in place to -m PKCS8 (true PKCS#8), -N ''
+			# leaves it unencrypted.  (step-cli stays — it still signs the x509 leaf.)
+			cp "$privPath" "$pemPath"
+			if ! ssh-keygen -p -N '' -P '' -m PKCS8 -f "$pemPath" </dev/null >/dev/null 2>&1; then
+				rm -f "$pemPath"
+				echo "warn: failed to convert $keyName private to PKCS8 PEM (encrypted or unreadable)" >&2
 				continue
 			fi
 			chmod 600 "$pemPath"
