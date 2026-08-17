@@ -6,12 +6,10 @@
 }:
 {
   config = {
-    # Nikopol is the headscale standby: CLI + config materialised so
-    # the host is promotion-ready, but neither the daemon nor the
-    # mdns-publish agent run until the operator flips this to
-    # "primary" (and simultaneously demotes bioskop).  Darwin-scoped
-    # so the NixOS VM does not inherit the role.
-    services.headscaleBootstrap.role = "standby";
+    # Headscale bootstrap RETIRED fleet-wide (SaaS is the live controller;
+    # see hosts/bioskop/darwin.nix).  Nikopol was the standby; now "none"
+    # like the retired primary.  Re-arm by flipping a host back to "primary".
+    services.headscaleBootstrap.role = "none";
 
     # Keep Darwin user home aligned with vm-mounted persistent volume.
     profile.user.home = lib.mkForce (builtins.toPath "/Volumes/user-home");

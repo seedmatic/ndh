@@ -4,19 +4,17 @@
 }:
 {
   config = {
-    # Bioskop is the current primary owner of the headscale alias.
-    # Darwin-scoped so the NixOS VM hosted here does not inherit the
-    # role and run a second daemon (see the exactly-one-primary
-    # invariant in modules/darwin/headscale-daemon.nix).
-    services.headscaleBootstrap.role = "primary";
-
-    # Expose the `hs` admin CLI wrapper — bioskop is the host from
-    # which fleet-level headscale management happens (creating users,
-    # minting preauth keys, inspecting nodes).  The local daemon's
-    # unix socket would work too, but the api-key path keeps the
-    # workflow identical to a future day when admin moves to a remote
-    # primary.
-    tailnet.headscale.api.enable = true;
+    # Headscale bootstrap daemon RETIRED.  The whole fleet now registers
+    # against Tailscale SaaS (ndh.headscaleClient.controller = "saas"
+    # everywhere — nikopol, bioskop, and both NixOS VMs), so bioskop no
+    # longer runs the home-Mac bootstrap control-plane (it was a single
+    # point of failure behind residential DDNS, and served no client once
+    # bioskop-nixos migrated to SaaS).  The production headscale target is
+    # rke2-hosted, not this bootstrap (see modules/darwin/headscale-daemon.nix
+    # header).  To re-arm: role = "primary" + tailnet.headscale.api.enable
+    # = true here (+ point the WAN forward at this host).
+    services.headscaleBootstrap.role = "none";
+    tailnet.headscale.api.enable = false;
 
     # Bioskop is the authoritative Duck DNS updater for the WAN
     # anchor recorded in catalog.netplan.wan.ddnsHostname.  nikopol
