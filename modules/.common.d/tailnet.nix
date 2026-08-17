@@ -167,8 +167,8 @@ let
       );
     };
 
-  # Tailscale (SaaS): per-kind `auth` keys, one long-lived `client` OAuth
-  # secret that mints them, and the legacy `api` admin key.
+  # Tailscale (SaaS): per-kind `auth` keys + one long-lived `client` OAuth
+  # secret that mints them.
   tailscaleSubmodule = types.submodule {
     options = {
       auth = mkOption {
@@ -188,14 +188,6 @@ let
           per-kind `auth` keys.  Never materialised on a node — leave
           `enable = false`.
         '';
-      };
-      api = mkOption {
-        type = credentialSubmodule {
-          service = "tailscale";
-          slotPath = [ "api" ];
-        };
-        default = { };
-        description = "Legacy admin API key (tskey-api-…) — superseded by `client`.";
       };
     };
   };
@@ -242,11 +234,6 @@ let
         service = "tailscale";
         slotPath = [ "client" ];
         leaf = cfg.tailscale.client;
-      }
-      {
-        service = "tailscale";
-        slotPath = [ "api" ];
-        leaf = cfg.tailscale.api;
       }
       {
         service = "headscale";
