@@ -1343,7 +1343,15 @@
                   ];
                 }
               ];
-              autoApprovers.routes = routeApprovers;
+              autoApprovers = {
+                routes = routeApprovers;
+                # Darwin hosts are the sanctioned exit nodes: bioskop (home
+                # baremetal) always provides public egress; nikopol (roaming)
+                # shares its uplink on demand — e.g. tethered to a phone
+                # hotspot it becomes the tailnet's gateway to the public net.
+                # Auto-approve their exit-node advertisements (no console step).
+                exitNode = [ (tg t.kind.darwin) ];
+              };
             };
           tailnetAclCanonicalFile = pkgsForSystem.writeText "tailnet-acl-canonical.json" (
             builtins.toJSON tailnetAclCanonical

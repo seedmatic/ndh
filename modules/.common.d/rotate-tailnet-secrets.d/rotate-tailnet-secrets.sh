@@ -121,6 +121,7 @@ sync_acl() {
     | .acls = load(strenv(ACL_CANONICAL)).acls
     | .ssh  = load(strenv(ACL_CANONICAL)).ssh
     | .autoApprovers.routes = ((.autoApprovers.routes // {}) * load(strenv(ACL_CANONICAL)).autoApprovers.routes)
+    | .autoApprovers.exitNode = (((.autoApprovers.exitNode // []) + load(strenv(ACL_CANONICAL)).autoApprovers.exitNode) | unique)
   ' "$workdir/acl.cur.json" >"$workdir/acl.target.json" || die "ACL reconcile failed"
 
   log "=== ACL reconcile diff (current -> target) ==="
