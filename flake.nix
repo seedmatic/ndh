@@ -1129,7 +1129,7 @@
               "${mainName}-lima-vm-materialize" = {
                 type = "app";
                 program = "${limaMaterializerPackage}/bin/${ndhVmLimaMaterializeAttr}";
-                meta.description = "Materialize ${mainName}'s Lima VM assets + gcroot image";
+                meta.description = "Materialize ${mainName}'s Lima VM assets + gcroot image — src: modules/darwin/lima-config.nix";
               };
             }
           ) { } (builtins.attrNames hostCatalog);
@@ -1144,17 +1144,17 @@
               "${mainName}-bringup-install" = {
                 type = "app";
                 program = "${installer}/bin/${ndhBringupInstallerCommand}";
-                meta.description = "Install/refresh the NDH bringup-runtime nix profile for ${mainName}";
+                meta.description = "Install/refresh the NDH bringup-runtime nix profile for ${mainName} — src: modules/.common.d/bringup-runtime.d/";
               };
               "${mainName}-log-capture" = {
                 type = "app";
                 program = "${logCapture}/bin/${ndhLogCaptureCommand}";
-                meta.description = "Capture ${mainName}'s build + activation logs (Vector telemetry)";
+                meta.description = "Capture ${mainName}'s build + activation logs (Vector telemetry) — src: flake.nix (mkNdhLogCapturePackage)";
               };
               "${mainName}-tart-vm-bootstrap-installer" = {
                 type = "app";
                 program = "${tartBootstrapInstaller}/bin/${ndhVmTartBootstrapInstallerAttr}";
-                meta.description = "Install ${mainName}'s Tart NixOS bringup VM (disk image -> ZFS)";
+                meta.description = "Install ${mainName}'s Tart NixOS bringup VM (disk image -> ZFS) — src: flake.nix (mkNdhVmTartBootstrapInstallerPackage)";
               };
             }
           ) { } (builtins.attrNames hostCatalog);
@@ -1165,7 +1165,7 @@
               "${bm.domain}-baremetal-link-deploy" = {
                 type = "app";
                 program = "${mkBaremetalLinkDeploy system bm}/bin/${bm.domain}-baremetal-link-deploy";
-                meta.description = "Install/refresh (or --uninstall) the baremetal-link LaunchDaemon on vz.${bm.domain}";
+                meta.description = "Install/refresh (or --uninstall) the baremetal-link LaunchDaemon on vz.${bm.domain} — src: pkgs/baremetal-link.d/";
               };
             }
           ) { } (builtins.attrValues baremetalLinkHosts);
@@ -1380,17 +1380,17 @@
           nix-build-observe = {
             type = "app";
             program = "${nixBuildObservePackage}/bin/nix-build-observe";
-            meta.description = "Stream nix build telemetry to the observability sink";
+            meta.description = "Stream nix build telemetry to the observability sink — src: modules/darwin/bringup-observe.d/";
           };
           ssh-keys-v2-validate = {
             type = "app";
             program = "${sshKeysValidatorPackage}/bin/ssh-keys-v2-validate";
-            meta.description = "Validate ssh keys.yaml against its JSON schema (sops-decrypts first)";
+            meta.description = "Validate ssh keys.yaml against its JSON schema (sops-decrypts first) — src: modules/home-manager/ssh.d/keys.schema.yaml";
           };
           rotate-tailnet-secrets = {
             type = "app";
             program = "${rotateTailnetSecretsPackage}/bin/rotate-tailnet-secrets";
-            meta.description = "Rotate per-kind Tailscale SaaS auth keys + reconcile the tailnet ACL (dry-run by default) — doc: modules/.common.d/rotate-tailnet-secrets.d/";
+            meta.description = "Rotate per-kind Tailscale SaaS auth keys + reconcile the tailnet ACL (dry-run by default) — src: modules/.common.d/rotate-tailnet-secrets.d/";
           };
         }
         // hostMaterializerApps
