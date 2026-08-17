@@ -79,7 +79,10 @@ lib.mkIf enabled {
     serviceConfig = {
       Type = "oneshot";
       RemainAfterExit = true;
-      ExecStart = "${reconcileScript}/bin/incus-bare-br";
+      # Invoke bash explicitly (like incus.nix's ExecStartPre): the service's
+      # minimal PATH has no `bash`, so the script's `#!/usr/bin/env bash` shebang
+      # would fail with exit 127 (`env: 'bash': No such file or directory`).
+      ExecStart = "${pkgs.bash}/bin/bash ${reconcileScript}/bin/incus-bare-br";
     };
   };
 
