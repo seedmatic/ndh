@@ -1284,6 +1284,13 @@
                 }) ourTags
               );
               acls = [
+                # Trusted owner devices (untagged members: laptop, phone) reach
+                # everything.  Tagged fleet nodes below stay role-segmented.
+                {
+                  action = "accept";
+                  src = [ "autogroup:members" ];
+                  dst = [ "*:*" ];
+                }
                 {
                   action = "accept";
                   src = [ (tg t.role.console) ];
@@ -1299,10 +1306,14 @@
                 }
               ];
               ssh = [
+                # Console (operator admin) hosts SSH the ENTIRE tailnet.  A bare
+                # "*" is not a valid ssh dst, so we enumerate the exhaustive set:
+                # every node is either a member device or carries a role tag.
                 {
                   action = "accept";
                   src = [ (tg t.role.console) ];
                   dst = [
+                    "autogroup:members"
                     (tg t.role.console)
                     (tg t.role.headless)
                   ];
@@ -1311,10 +1322,21 @@
                     "root"
                   ];
                 }
+                # Headless nodes SSH each other (nix copy, node-to-node ops).
                 {
                   action = "accept";
                   src = [ (tg t.role.headless) ];
                   dst = [ (tg t.role.headless) ];
+                  users = [
+                    "autogroup:nonroot"
+                    "root"
+                  ];
+                }
+                # Member devices reach their own devices.
+                {
+                  action = "accept";
+                  src = [ "autogroup:members" ];
+                  dst = [ "autogroup:self" ];
                   users = [
                     "autogroup:nonroot"
                     "root"
