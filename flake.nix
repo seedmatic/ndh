@@ -1217,28 +1217,45 @@
                     t.kind.${k}
                   ];
             in
-            map (k: {
-              kind = k;
-              tags = map (x: "tag:" + x) (pair k);
-            }) (builtins.attrNames t.kind);
+            map (
+              k:
+              let
+                tags = map (x: "tag:" + x) (pair k);
+              in
+              {
+                inherit tags;
+                kind = k;
+                # Full Tailscale POST /keys request body, built here so the
+                # script only reads/extracts JSON with yq-go (no runtime JSON
+                # construction).  90-day expiry = the auth-key maximum.
+                body = {
+                  capabilities.devices.create = {
+                    reusable = true;
+                    ephemeral = false;
+                    preauthorized = true;
+                    inherit tags;
+                  };
+                  expirySeconds = 7776000;
+                  description = "ndh ${k} per-kind auth key";
+                };
+              }
+            ) (builtins.attrNames t.kind);
           tailnetAuthKindsFile = pkgsForSystem.writeText "tailnet-auth-kinds.json" (
             builtins.toJSON tailnetAuthKindsSpec
           );
-          rotateTailnetSecretsPackage = pkgsForSystem.writeShellApplication {
-            name = "rotate-tailnet-secrets";
-            runtimeInputs = with pkgsForSystem; [
-              sops
-              curl
-              jq
-              yq-go
-              gnugrep
-              coreutils
-            ];
-            text = ''
-              export NDH_TAILNET_AUTH_KINDS_FILE=${tailnetAuthKindsFile}
-            ''
-            + builtins.readFile ./modules/.common.d/rotate-tailnet-secrets.d/rotate-tailnet-secrets.sh;
-          };
+          # Bash-trampoline pattern: source the shared trampoline (nix-managed
+          # bash + logger + stable env), pin every tool by absolute store path
+          # (@sops@/@curl@/@yq@ — yq-go only, no jq), and bake the kinds file in.
+          rotateTailnetSecretsPackage = ndhStoreApiDarwin.installBinScript "rotate-tailnet-secrets" (
+            pkgsForSystem.replaceVars ./modules/.common.d/rotate-tailnet-secrets.d/rotate-tailnet-secrets.sh {
+              nixBashTrampoline = ndhNixBashTrampolineDarwin;
+              loggerTag = "ndh.rotate-tailnet-secrets";
+              sops = "${pkgsForSystem.sops}/bin/sops";
+              curl = "${pkgsForSystem.curl}/bin/curl";
+              yq = "${pkgsForSystem.yq-go}/bin/yq";
+              authKinds = tailnetAuthKindsFile;
+            }
+          );
         in
         {
           nix-build-observe = {
