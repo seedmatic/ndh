@@ -20,7 +20,7 @@
 }:
 let
   cfg = config.ndh.headscaleClient;
-  headscaleCatalog = lib.attrByPath [ "context" "catalog" "headscale" ] null ndh;
+  tailnetCatalog = lib.attrByPath [ "context" "catalog" "tailnet" ] null ndh;
 
   # Deterministic mapping from the kind axis to the (role, kind) tag
   # pair.  `darwin` is the only kind that registers as console-
@@ -32,17 +32,14 @@ let
     kind:
     let
       roleTag =
-        if kind == "darwin" then
-          headscaleCatalog.tags.role.console
-        else
-          headscaleCatalog.tags.role.headless;
+        if kind == "darwin" then tailnetCatalog.tags.role.console else tailnetCatalog.tags.role.headless;
       kindTag = lib.attrByPath [
         "tags"
         "kind"
         kind
-      ] null headscaleCatalog;
+      ] null tailnetCatalog;
     in
-    if headscaleCatalog == null || kindTag == null then
+    if tailnetCatalog == null || kindTag == null then
       [ ]
     else
       [
@@ -50,7 +47,7 @@ let
         kindTag
       ];
 
-  effectiveServerUrl = if headscaleCatalog != null then headscaleCatalog.aliasUrl else "";
+  effectiveServerUrl = if tailnetCatalog != null then tailnetCatalog.headscale.aliasUrl else "";
 in
 {
   options.ndh.headscaleClient = {
@@ -74,6 +71,29 @@ in
         rke2 node).
       '';
     };
+
+    controller = lib.mkOption {
+      type = lib.types.enum [
+        "saas"
+        "headscale"
+      ];
+      default = "saas";
+      description = ''
+        Which tailnet control-plane this host registers against.
+
+        `saas` (default — the live reality; Headscale is scaffolded but
+        NOT deployed): Tailscale SaaS.  Registration uses `tailscale up
+        --authkey=<tailnet.tailscale.auth> --advertise-tags=<kind tags>`
+        with NO `--login-server` (defaults to login.tailscale.com).  The
+        auth key is a long-lived OAuth client secret — no 90-day auth-key
+        expiry — that owns the fleet's tag set; each node advertises only
+        its own kind's `(role, kind)` tags.
+
+        `headscale` (future, once the self-hosted control-plane is live):
+        `--login-server=<serverUrl>` + the per-kind `tailnet.headscale.auth.<kind>`
+        preauth key (which itself binds the tags).
+      '';
+    };
   };
 
   config = {
@@ -83,8 +103,11 @@ in
       tags = lib.mkDefault (tagsForKind cfg.kind);
     };
 
-    # Enable only the matching kind slot; all others stay sealed.
-    tailnet.headscale.auth.${cfg.kind}.enable = true;
+    # Materialise this kind's auth slot for the active controller only; the
+    # other stays sealed.  Both controllers now key `auth` by kind — saas →
+    # the per-kind Tailscale auth key, headscale → the per-kind preauth key.
+    tailnet.tailscale.auth.${cfg.kind}.enable = cfg.controller == "saas";
+    tailnet.headscale.auth.${cfg.kind}.enable = cfg.controller == "headscale";
 
     # Trust every authority in keys.yaml that advertises
     # `tls-authority` usage and carries a minted `ca_crt` PEM.

@@ -50,14 +50,24 @@ let
   #   - On every other host: see `vzAliasForBioskopSide` below — a
   #     `ProxyJump=nikopol` block that delegates to the VM's
   #     resolver.
+  # The publickey identity every operator-facing alias presents: the profile
+  # user's rdp-host key+cert read straight from disk (IdentityAgent none) so
+  # auth never depends on a populated ssh-agent.  Single-sourced here because
+  # the bare/.local/-ts host block below must present the SAME identity —
+  # otherwise the literal `.local` name (a bringup fallback that does NOT match
+  # the rdp./nixos. operator aliases nor the `*.nikopol` zone block) would offer
+  # only ~/.ssh/id_rsa and be rejected by the CA-cert sshd.
+  operatorIdentityLines = ''
+    IdentityFile ${config.sshPaths.privKeyFile}
+    IdentitiesOnly yes
+    IdentityAgent none
+    PreferredAuthentications publickey
+  '';
   operatorAliasForService = host: serviceName: hostNameSuffix: ''
     Host ${serviceName}.${host}
       HostName ${host}${hostNameSuffix}
       User ${sshUserForHost host}
-      IdentityFile ${config.sshPaths.privKeyFile}
-      IdentitiesOnly yes
-      IdentityAgent none
-      PreferredAuthentications publickey
+      ${operatorIdentityLines}
   '';
   # Operator aliases resolve to the bare MagicDNS name, never `.local`:
   # a `.local` HostName stalls ~5s on macOS — systemd-resolved's mDNS
@@ -154,6 +164,7 @@ in
 
         Host ${lib.concatStringsSep " " (hostAliases host)}
           User ${sshUserForHost host}
+          ${operatorIdentityLines}
 
         Host ${host} ${host}.lan
           HostName ${host}

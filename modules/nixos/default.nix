@@ -136,7 +136,7 @@ let
     # ./nixos-reduction.nix
     ./networking-mammoth-skate.nix
     ./cachix-watch-store.nix
-    ./container-host.nix
+    ./nixos-rebuild-gh.nix
     ./headscale.nix
     ./headscale-daemon.nix
     ./headscale-client-kind.nix
@@ -147,6 +147,7 @@ let
     ./code-server.nix
     ./sshfs-mounts.nix
     ./incus.nix
+    ./baremetal-segment.nix
     ./podman.nix
     ./bringup-observe.nix
     ./etc-nixos-flake.nix

@@ -29,24 +29,11 @@ let
       runtimeSystemPath ? null,
     }:
     let
-      bringupModeInternal = generationMode == "bringup";
       effectiveVmProvider = if vmProvider != null then vmProvider else (hostProfile.vmProvider or "tart");
       zfsOverlaysModule =
         { ... }:
         {
           zfsOverlays.enable = zfsOverlays;
-        };
-      # Tag vocabulary: NixOS guest VMs advertise role=service (driven
-      # by an operator) and kind=nixos.  Strings sourced from the
-      # catalog so they stay synchronized with
-      # catalog/headscale/acl.hujson.
-      nixosTailscaleTagModule =
-        { ... }:
-        {
-          tailscale.tags = [
-            catalog.headscale.tags.role.headless
-            catalog.headscale.tags.kind.nixos
-          ];
         };
       preModules = [
         profileModule
@@ -54,8 +41,7 @@ let
         {
           ndh.vm.provider = effectiveVmProvider;
         }
-      ]
-      ++ (if bringupModeInternal then [ ] else [ nixosTailscaleTagModule ]);
+      ];
       modules = mkModulesFor {
         inherit hostProfile preModules generationMode;
         system = "nixos";
@@ -116,22 +102,11 @@ let
           generationMode,
         }:
         let
-          hpBringupModeInternal = generationMode == "bringup";
           hpVmProvider = hp.vmProvider or "tart";
           zfsOverlaysModule =
             { ... }:
             {
               zfsOverlays.enable = false;
-            };
-          # Same tag vocabulary as the top-level module — see the
-          # explanatory comment above.
-          nixosTailscaleTagModule =
-            { ... }:
-            {
-              tailscale.tags = [
-                catalog.headscale.tags.role.headless
-                catalog.headscale.tags.kind.nixos
-              ];
             };
         in
         mkModulesFor {
@@ -144,8 +119,7 @@ let
             {
               ndh.vm.provider = hpVmProvider;
             }
-          ]
-          ++ (if hpBringupModeInternal then [ ] else [ nixosTailscaleTagModule ]);
+          ];
         };
 
       mkImageSpecialArgsFor =

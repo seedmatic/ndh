@@ -1,0 +1,299 @@
+= Baremetal Instance Segments & vz-host Access (C4-Style UML)
+:toc: left
+:toclevels: 3
+:icons: font
+
+== Overview
+
+Each *baremetal host* owns a per-host *instance segment*: an Incus managed network with
+its own dnsmasq, a DNS domain `.<host>`, and a subnet route advertised into the tailnet.
+This lets any tailnet peer resolve `<instance>.<host>` (split-DNS to that segment's
+dnsmasq) and reach the instances — and, for `nikopol`, the *corporate bare-metal Mac*
+`vz.nikopol` that cannot join the tailnet.
+
+The `nikopol` segment concretely:
+
+* `nikopol-nixos` (the Incus host VM, a tailnet member) runs a *managed Incus network*
+  `bare-br` = `172.16.6.0/25` (dnsmasq, `dns.domain = nikopol`) carrying the netflow
+  instances (collector `nnh`, …). Its dnsmasq also holds a static `host-record` for
+  `vz.nikopol → 172.16.6.253`.
+* A static `/30` point-to-point link (`172.16.6.252/30`) on the shared Wi-Fi L2 joins
+  `vz.nikopol` (`.253`) to `nikopol-nixos` (`.254` on `lan-br`); `nikopol-nixos` forwards
+  (`ip_forward`) between the `/30` and the `/25`.
+* `nikopol-nixos` *advertises* the aggregate `172.16.6.0/24` into the tailnet, and
+  *split-DNS* points the `.nikopol` domain at its dnsmasq (`172.16.6.1`). A tailnet peer
+  thus resolves `collector.nikopol` / `vz.nikopol` and reaches them — the corp Mac
+  included — without the Mac ever being a tailnet member.
+
+*No NAT anywhere* — source IPs are preserved end-to-end (the point of the netflow
+project). The corp Mac carries a return route to the tailnet range (`100.64.0.0/10 via
+.254`), so replies find their way back without masquerading.
+
+[IMPORTANT]
+====
+*Controller: Tailscale SaaS today; Headscale is a future migration.* The fleet's live
+control-plane is *Tailscale SaaS* (the `mammoth-skate` tailnet). Self-hosted Headscale is
+scaffolded in the repo but *not deployed*. Consequently the three control-plane operations
+— advertising `172.16.6.0/24`, approving the subnet route, and the `.nikopol` split-DNS —
+are performed *at runtime in the Tailscale admin/CLI today* (see <<setup>>), and become
+*declarative* (Headscale daemon `dns.nameservers.split` + client `--advertise-routes`)
+once Headscale is the live controller.
+====
+
+The corp-Mac side is *not* a nix-darwin configuration (the corp Mac has no darwin config —
+it is JAMF-managed). Its addressing is delivered by the *baremetal-link* package
+(`pkgs/baremetal-link.d/`): an idempotent script rendered from the catalog and delivered as
+*text* over `ssh`, run as root — no nix runtime on the corp Mac, bash-3.2 compatible (see
+<<setup>>).
+
+All addresses are a single source of truth in `catalog/default.nix`
+(`netplan.baremetal.nikopol`), consumed by the NixOS Incus host and the corp-Mac package by
+derivation — never hard-coded twice.
+
+== C4 Level 1 — System Context
+
+[plantuml,vz-host-context,svg]
+----
+@startuml
+!define RECTANGLE class
+
+skinparam rectangle {
+    BackgroundColor<<offnet>> MistyRose
+    BackgroundColor<<tailnet>> LightBlue
+    BackgroundColor<<router>> LightGreen
+    BackgroundColor<<peer>> Wheat
+    BorderColor Black
+    FontSize 12
+}
+skinparam actorBorderColor Black
+
+actor "Tailnet peer\n(operator, from anywhere)" as OP
+rectangle "Tailscale SaaS tailnet\nmammoth-skate\n• split-DNS .nikopol → 172.16.6.1\n• route 172.16.6.0/24 (advertised)" <<tailnet>> as TS
+
+rectangle "nikopol-nixos\nIncus host · tailnet member\nSUBNET ROUTER + dnsmasq .1" <<router>> as NIXOS
+rectangle "vz.nikopol\ncorp bare-metal Mac\nNOT on tailnet · 172.16.6.253" <<offnet>> as VZ
+rectangle "netflow collector (nnh)\ncollector.nikopol · /25" <<peer>> as COLL
+
+OP  --> TS    : resolve <inst>.nikopol + route 172.16.6.0/24
+TS  --> NIXOS : split-DNS + subnet route
+NIXOS --> COLL: managed /25 (dnsmasq)
+NIXOS --> VZ  : static /30 (routes to .253)
+VZ  ..> COLL  : netflow export
+
+legend right
+  |= Colour |= Meaning |
+  |<back:MistyRose>   </back>| off-tailnet corp Mac |
+  |<back:LightBlue>   </back>| Tailscale SaaS tailnet |
+  |<back:LightGreen>  </back>| Incus host / subnet router |
+  |<back:Wheat>       </back>| Incus peer instance |
+endlegend
+@enduml
+----
+
+*Legend*: a tailnet peer resolves `.nikopol` names via split-DNS to `nikopol-nixos`'s
+dnsmasq (`172.16.6.1`) and reaches them over the advertised `172.16.6.0/24` route.
+`vz.nikopol` (rose) is resolved by a dnsmasq `host-record` and reached over the `/30` —
+never a tailnet member.
+
+== C4 Level 2 — Container view
+
+[plantuml,vz-host-container,svg]
+----
+@startuml
+!define RECTANGLE class
+
+skinparam rectangle {
+    BackgroundColor<<host>> LightYellow
+    BackgroundColor<<router>> LightGreen
+    BackgroundColor<<peer>> Wheat
+    BackgroundColor<<l2>> WhiteSmoke
+    BorderColor Black
+    FontSize 11
+}
+
+rectangle "vz.nikopol — corp bare-metal Mac (macOS, JAMF)\nno darwin config — baremetal-link daemon (text-delivered, run as root)" <<host>> {
+  rectangle "en0 (Wi-Fi)\n+ static alias 172.16.6.253/30\n+ route 172.16.6.0/25 via .254\n+ route 100.64.0.0/10 via .254 (tailnet return)" <<l2>> as EN0
+  rectangle "nikopol-nixos — Tart NixOS VM · Incus host · tailnet member" <<router>> {
+    rectangle "lan-br .254/30\nip_forward · advertises 172.16.6.0/24" <<router>> as LANBR
+    rectangle "bare-br 172.16.6.0/25\ndnsmasq · dns.domain=nikopol\nhost-record vz.nikopol→.253" <<peer>> as ROAMBR
+    rectangle "netflow collector (nnh)\ncollector.nikopol" <<peer>> as COLL
+  }
+}
+rectangle "Tailscale SaaS tailnet\nsplit-DNS .nikopol → 172.16.6.1" <<router>> as TS
+
+EN0 <--> LANBR : static /30 · Wi-Fi L2 (bridged)
+LANBR --> ROAMBR : routes (L3, /30 ↔ /25)
+ROAMBR --> COLL  : DHCP lease + .nikopol DNS
+LANBR --> TS   : advertise 172.16.6.0/24 (no NAT)
+
+legend right
+  |= Colour |= Meaning |
+  |<back:LightYellow> </back>| corp bare-metal (no darwin config) |
+  |<back:LightGreen>  </back>| Incus host / router |
+  |<back:Wheat>       </back>| managed net + instances |
+  |<back:WhiteSmoke>  </back>| corp-Mac en0 (pkg-set) |
+endlegend
+@enduml
+----
+
+*Legend*: only `nikopol-nixos`'s `lan-br` (`.254/30`) touches the Wi-Fi L2 to reach the
+corp Mac; the netflow instances sit on the managed `/25` behind it (dnsmasq serves DHCP +
+the `.nikopol` zone). `nikopol-nixos` advertises the `/24` and forwards with *no NAT*; the
+corp Mac's en0 addressing (alias + both routes) is set by the baremetal-link WatchPaths
+LaunchDaemon (re-applied on every Wi-Fi re-association).
+
+== C4 Level 3 — Resolve-and-reach sequence
+
+[plantuml,vz-host-sequence,svg]
+----
+@startuml
+actor "Tailnet peer" as OP
+participant "Tailscale SaaS\n(split-DNS)" as TS
+participant "nikopol-nixos\n(.1 dnsmasq / .254 / router)" as NIXOS
+participant "collector\n(collector.nikopol)" as COLL
+participant "vz.nikopol\n(.253)" as VZ
+
+== resolve + reach an instance ==
+OP -> TS : resolve collector.nikopol
+TS -> NIXOS : split-DNS query → dnsmasq 172.16.6.1
+NIXOS --> OP : A 172.16.6.x
+OP -> NIXOS : to 172.16.6.x (advertised 172.16.6.0/24 route)
+NIXOS -> COLL : forward on /25 (no NAT — src preserved)
+
+== reach the corp Mac ==
+OP -> TS : resolve vz.nikopol
+TS -> NIXOS : split-DNS → dnsmasq host-record
+NIXOS --> OP : A 172.16.6.253
+OP -> NIXOS : to .253 (advertised route)
+NIXOS -> VZ : forward over /30
+VZ --> NIXOS : reply via route 100.64.0.0/10 → .254
+note over VZ: corp-Mac routes (via .254) set by the baremetal-link daemon:\n172.16.6.0/25 (instances) + 100.64.0.0/10 (tailnet return)
+@enduml
+----
+
+*Legend*: split-DNS makes both instances and the corp Mac resolvable by name; the
+advertised route makes them reachable; no NAT keeps source IPs intact.
+
+== Address plan (single source of truth)
+
+`catalog/default.nix` → `netplan.baremetal.<host>`. Consumed by the NixOS Incus host and
+the corp-Mac package by derivation. `nikopol` (below) is the *complex* case — an off-tailnet
+corp Mac reached over a `/30`; `bioskop` is the *simple* case (see below).
+
+[options="header"]
+|===
+| Field | Value | Role
+| `domain` | `nikopol` | dnsmasq DNS zone + split-DNS domain
+| `netCidr` | `172.16.6.0/25` | managed Incus network (dnsmasq) — netflow instances
+| `netGateway` | `172.16.6.1` | Incus bridge + dnsmasq + split-DNS target
+| `linkCidr` | `172.16.6.252/30` | static P2P link, corp Mac ↔ Incus host
+| `hostAddress` | `172.16.6.254` | `nikopol-nixos` link end on `lan-br` (subnet router)
+| `vzHostAddress` | `172.16.6.253` | `vz.nikopol` en0 alias + dnsmasq `host-record`
+| `advertiseCidr` | `172.16.6.0/24` | aggregate advertised into the tailnet
+|===
+
+The segment is also declared in `netplan.segments` (derived from `baremetal`) for `nnh`
+flow attribution: `nikopol-baremetal-net` (`/25`) + `nikopol-baremetal-link` (`/30`), under
+the `172.16.0.0/12` `baremetal` supernet.
+
+=== Second host — bioskop (the simple case)
+
+`bioskop` is a *personal* Mac Mini already on the tailnet + home LAN, so its `baremetal`
+entry has *no* `/30` link (no off-tailnet corp Mac): `vz.bioskop` resolves to bioskop's real
+LAN address, reachable via the existing home-LAN advertise.
+
+[options="header"]
+|===
+| Field | Value | Role
+| `domain` | `bioskop` | dnsmasq DNS zone + split-DNS domain
+| `netCidr` | `172.16.7.0/25` | managed Incus network (dnsmasq) — bioskop instances
+| `netGateway` | `172.16.7.1` | Incus bridge + dnsmasq + split-DNS target
+| `vzHostAddress` | `192.168.1.129` | `vz.bioskop` dnsmasq `host-record` (bioskop LAN addr)
+| `advertiseCidr` | `172.16.7.0/24` | aggregate advertised into the tailnet
+|===
+
+The split-DNS/advertise pattern applies identically on `bioskop-nixos` (its `.bioskop`
+zone), so `ssh vz.bioskop` and `<inst>.bioskop` resolve uniformly across both bare-metals —
+only the derived `-link` segment and the `/30` transport are nikopol-specific.
+
+== Usage patterns
+
+=== Derive addresses from the catalog — never hard-code
+
+✅ *DO* — read `netplan.baremetal.<host>` in the module/package:
+
+[source,nix]
+----
+let bm = ndh.context.catalog.netplan.baremetal.nikopol;
+in { /* bm.netGateway, bm.hostAddress, bm.vzHostAddress, bm.advertiseCidr, bm.domain */ }
+----
+
+❌ *DON'T* — repeat `172.16.6.253`/`.254`/the CIDRs in the corp-Mac package, the NixOS host,
+and the split-DNS entry. Three copies drift.
+
+=== Managed Incus network, never bridged
+
+✅ *DO* — a managed bridge (`bare-br`, Incus dnsmasq bound to it), isolated from the Wi-Fi
+L2 → no DHCP collision with the local network.
+❌ *DON'T* — bridge/macvlan the instances onto `en0`.
+
+=== Reach `vz.nikopol` by DNS name
+
+✅ *DO* — `vz.nikopol` is a real DNS name (dnsmasq `host-record`, split-DNS'd into the
+tailnet). SSH resolves it via the tailnet resolver; no `HostName`/`ProxyJump`/resolver
+needed.
+❌ *DON'T* — resolve the corp Mac's live Wi-Fi IP via an ARP lookup or a virtiofs published
+file (the retired resolver), or hard-code a `HostName`.
+
+[[setup]]
+== Setup
+
+=== Declarative (in this repo)
+
+. *Catalog* — `netplan.baremetal.nikopol` (done): domain, CIDRs, `.253`/`.254`,
+  `advertiseCidr`.
+. *Incus host* (`hosts/nikopol/nixos.nix`) — `bare-br` managed `/25` with
+  `dns.domain=nikopol` + `raw.dnsmasq` `host-record=vz.nikopol,172.16.6.253`; `.254/30`
+  secondary on `lan-br`; `ip_forward`.
+. *baremetal-link package* (`pkgs/baremetal-link.d/`) — deployed with
+  `nix run .#nikopol-baremetal-link-deploy` (teardown: `… -- --uninstall`). It delivers the
+  catalog-rendered install script as *text* over `ssh vz.nikopol` (first-run bootstrap
+  fallback `nikopol.local`, since `.253` isn't set yet) and runs it as root. The script
+  installs the `io.nxmatic.baremetal-link` *WatchPaths* LaunchDaemon that (re-)applies the
+  `en0` alias `172.16.6.253/30` + routes `172.16.6.0/25 via .254` and `100.64.0.0/10 via
+  .254` at load and on every Wi-Fi re-association. No nix runtime on the corp Mac; every
+  address derives from `netplan.baremetal.nikopol` — never hand-typed.
+
+=== Runtime, on the Tailscale SaaS controller (today)
+
+. On `nikopol-nixos`: `tailscale up --advertise-routes=172.16.6.0/24` (+ `--accept-routes`
+  on consumers).
+. In the Tailscale admin console: *approve* the `172.16.6.0/24` subnet route.
+. In the Tailscale admin console → DNS: add a *split-DNS* nameserver for domain `nikopol`
+  → `172.16.6.1`.
+
+NOTE: when Headscale becomes the live controller, steps 1–3 move into the Headscale daemon
+`dns.nameservers.split` + the client `--advertise-routes` (declarative), driven from the
+same catalog values.
+
+== Troubleshooting
+
+`vz.nikopol` / `<inst>.nikopol` doesn't resolve::
+Check the split-DNS entry (`nikopol → 172.16.6.1`) in the tailnet DNS config, and that the
+`172.16.6.0/24` route is approved. On `nikopol-nixos`, `incus network get bare-br
+dns.domain` should be `nikopol` and dnsmasq should serve the `host-record`.
+
+Resolves but unreachable::
+On `nikopol-nixos` check `net.ipv4.ip_forward=1` and that the route is advertised/approved.
+On the corp Mac check the two routes via `.254` exist (`route -n get 172.16.6.3` /
+`route -n get 100.64.0.1`) — no NAT means replies must be routed back explicitly.
+
+== Related documentation
+
+* link:nikopol-minimal-host.adoc[Corp Bare-Metal Minimal Host (vz.nikopol)] — the
+  `vz.nikopol` → Tart VMs → Incus host layering.
+* link:network-setup.adoc[Network Infrastructure Setup] — fleet-wide tailnet model.
+* link:vm-configuration-models-c4.adoc[VM Configuration Models (C4-Style UML)] — Tart
+  host-driven contracts.
+* rke2lab `docs/architecture/cluster-api/management-workload-topology.adoc` — the cluster
+  mesh; `vz.nikopol` is the off-mesh node reached via this segment.

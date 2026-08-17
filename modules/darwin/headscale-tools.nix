@@ -55,7 +55,7 @@ let
   # clients.
   hsHostname =
     let
-      alias = ndh.context.catalog.headscale.aliasName or null;
+      alias = ndh.context.catalog.tailnet.headscale.aliasName or null;
     in
     if alias != null then alias else (cfg.hostname or "localhost");
 

@@ -16,6 +16,18 @@ Complete guide covering Tailscale and Headscale deployment, configuration, usage
 link:bioskop-deployment.adoc[bioskop Deployment Guide]::
 Step-by-step guide for deploying the complete Headscale/Tailscale architecture on bioskop (Mac Mini M4 Pro), including Headscale server, gateway, and RKE2 integration.
 
+link:network-topology-c4.adoc[Baremetal Instance Segments & vz-host Access (C4-Style UML)]::
+Context/container/sequence diagrams for the per-baremetal Incus instance segments (nikopol `172.16.6.0/24`/`.nikopol`, bioskop `172.16.7.0/24`/`.bioskop`) advertised into the tailnet with split-DNS, so peers resolve/reach the netflow instances and the vz-hosts (`vz.nikopol`, `vz.bioskop`) by name — no NAT, single-source addressing from the catalog. nikopol is the complex case (off-tailnet corp Mac via a `/30`); bioskop is the simple case. (Advertise + split-DNS are Tailscale-SaaS-console steps today; declarative under Headscale later.)
+
+link:network-catalog-segments.adoc[Network Catalog Segments (feature: spec, architecture, usage)]::
+Specs + C4/UML architecture + usage of the per-baremetal Incus segments advertised into the tailnet: how to attach a probe/service to `bare-br`, reach `vz.<domain>`, the reachability model (route + ACL tag→CIDR + scoped resolvers + auto-approvers), operations, and troubleshooting. Includes the ndh→nnh handoff (what's ready + open items).
+
+link:network-catalog.adoc[Network Catalog (model & contribution)]::
+The network catalog data model — the `{cidr,name,asn}` attribution triple + managed-network facts + `asns` dictionary — its consumers (nnh flow attribution, ndh provisioning), how to consume it (`nix eval --json …#catalog`), and how a domain (rke2lab, nnh) contributes spans via `lib.networkBlueprint` (the two-layer federation: data up at eval, infrastructure down at runtime).
+
+link:nikopol-minimal-host.adoc[Corp Bare-Metal Minimal Host (vz.nikopol)]::
+The minimal-host design for the JAMF-managed corp Mac and the Tart VMs it hosts (`nikopol`, `nikopol-nixos`/Incus). Supersedes the retired Lima model.
+
 link:nfs-kerberos.adoc[NFSv4 + Kerberos Plan]::
 Plan and bring-up steps for macOS/NixOS NFSv4 with Kerberos, including enabling NFSv4 on Darwin nfsd and roadmap for Kerberos-backed mounts.
 
@@ -61,31 +73,26 @@ Canonical prefix boundaries for `RKE2LAB_*` (lab domain) and `NDH_*` (`nix-darwi
 === For New Users
 
 1. Read link:network-setup.adoc#architecture[Architecture Overview]
-2. For bioskop: Follow link:bioskop-deployment.adoc[bioskop Deployment Guide]
-3. For general setup: Follow link:network-setup.adoc#installation-and-configuration[Installation Steps]
+2. Review link:network-setup.adoc#network-topology[Network Topology] and
+   link:network-setup.adoc#network-ranges[Network Ranges]
+3. For bioskop bring-up: link:bioskop-deployment.adoc[bioskop Deployment Guide]
 4. Reference link:modules-reference.adoc[Module Options] as needed
 
-=== For Existing Setups
+=== For the vz.nikopol baremetal segment
 
-* link:network-setup.adoc#troubleshooting[Troubleshooting Guide]
-* link:modules-reference.adoc#migration-guide[Migration Guide]
-* link:network-setup.adoc#reference[Quick Reference]
-* link:bioskop-deployment.adoc#troubleshooting[bioskop-Specific Troubleshooting]
+* link:network-topology-c4.adoc[Baremetal Instance Segments & vz-host Access]
+* link:nikopol-minimal-host.adoc[Corp Bare-Metal Minimal Host (vz.nikopol)]
 
 == Document Structure
 
 === Network Setup Guide
 
-* Overview & Architecture
-* Network Topology (nikopol, bioskop, Lima VMs)
-* Installation & Configuration
-** Tailscale Gateways
-** Tailscale SSH
-** Headscale (optional)
-* Usage Scenarios
-* Troubleshooting
-* Reference Tables
-* Security Considerations
+* Overview & Architecture (two-plane mesh)
+* Network Topology (bioskop, vz.nikopol + their Tart VMs)
+* Network Ranges + Home LAN reservations (from the catalog)
+* WAN port forwards
+* SSH access (current model)
+* Security
 
 === Modules Reference
 
@@ -110,8 +117,9 @@ Identity-based VPN using WireGuard, provides SSH with automatic key management, 
 === Headscale
 Self-hosted Tailscale control server for internal LAN, compatible with Tailscale clients, lower latency on LAN.
 
-=== Gateways
-Advertise subnet routes to make internal networks accessible via Tailscale/Headscale, deployed as Incus instances in Lima VMs.
+=== Gateways / subnet routers
+A tailnet member that advertises a subnet route into `mammoth-skate` (e.g. `bioskop-nixos`
+advertises the home LAN `192.168.1.0/24`). Runs on the NixOS Incus-host VMs — not in Lima.
 
 === Hybrid Approach
 Use Tailscale for external access and mobile devices, use Headscale for fast local SSH, both provide identity-based authentication.
@@ -120,79 +128,43 @@ Use Tailscale for external access and mobile devices, use Headscale for fast loc
 
 [source]
 ----
-External Access (Tailscale)
+Tailscale SaaS tailnet (mammoth-skate.ts.net)      ← node plane, always on
     ↓
-Darwin Hosts (nikopol, bioskop)
+Darwin hosts + personal VMs (bioskop, nikopol)
     ↓
-Lima VMs (NixOS)
+NixOS Incus-host VMs (bioskop-nixos, nikopol-nixos)  ← Tart VMs, tailnet members
     ↓
-Tailscale Gateways (Incus)
-    ↓
-RKE Clusters (Incus instances)
+RKE2 workload clusters (Incus instances, 10.80.x)
 
-Internal LAN (Headscale - optional)
+vz.nikopol (corp Mac, NOT on tailnet)
     ↓
-All LAN hosts connected
-    ↓
-Fast local SSH
+172.16.6.0/24 baremetal segment (advertised + .nikopol split-DNS) → network-topology-c4.adoc
 ----
 
 == Common Tasks
 
-=== Deploy Tailscale Gateway
+=== SSH across networks (via the tailnet)
 
 [source,bash]
 ----
-# In Lima VM
-limactl shell default
-sudo deploy-tailscale-gateway
+ssh <host>            # MagicDNS on mammoth-skate.ts.net (members: bioskop, nikopol, *-nixos)
+tailscale ssh <host>  # identity-based
+tailscale status
 ----
 
-See: link:network-setup.adoc#step-1-tailscale-gateways-in-lima-vms[Tailscale Gateway Setup]
-
-=== Setup Headscale Server
-
-[source,nix]
-----
-services.headscale-custom = {
-  enable = true;
-  serverUrl = "http://headscale.local:8080";
-  baseDomain = "home.arpa";
-};
-----
-
-See: link:network-setup.adoc#step-3-optional-headscale-for-internal-lan[Headscale Setup]
-
-NOTE: The reserved `.home.arpa` suffix avoids conflicts with Bonjour/mDNS, so adopt hostnames like `bioskop.home.arpa` for LAN-only MagicDNS.
-
-=== Connect to Network
+=== SSH to vz.nikopol (off-tailnet corp Mac)
 
 [source,bash]
 ----
-# Tailscale
-sudo tailscale up --ssh
-
-# Headscale
-hs-connect
+ssh vz.nikopol        # resolves via .nikopol split-DNS → 172.16.6.253 (advertised segment)
 ----
 
-See: link:network-setup.adoc#ssh-access[SSH Access Methods]
+See: link:network-topology-c4.adoc#usage-patterns[vz-host access usage patterns].
 
-=== SSH to Hosts
+=== Change addressing / reservations
 
-[source,bash]
-----
-# Via Tailscale
-tailscale ssh hostname
-
-# Via Headscale
-ssh hostname.home.arpa
-
-# To RKE nodes (via gateway)
-ssh 192.168.106.10
-----
-
-See: link:network-setup.adoc#usage[Usage Scenarios]
+Edit `catalog/default.nix` (`netplan.*`) — the single source of truth — then reconcile
+against the Bbox with the `bbox-reconcile` module. See: link:modules-reference.adoc[Modules Reference].
 
 === Refresh linux-builder After SSH Key Changes
 
@@ -279,63 +251,38 @@ ln -s /nix/store/<path> /nix/var/nix/gcroots/bioskop-cache-keep
 [options="header"]
 |===
 | Network | Range | Purpose
-| Home LAN | 192.168.1.0/24 | Main network
-| Lima Shared | 192.168.5.0/24 | Lima VMs
-| Incus (nikopol) | 192.168.106.0/24 | RKE cluster
-| Incus (bioskop) | 192.168.107.0/24 | RKE cluster
-| Tailscale | 100.64.0.0/10 | Mesh overlay
+| Home LAN | 192.168.1.0/24 | Main network (Bbox, gw .254)
+| Cluster supernet | 10.80.0.0/18 | RKE2 clusters (bioskop 10.80.0.0/21, nikopol 10.80.8.0/21)
+| Tailnet (mammoth-skate) | 100.64.0.0/10 | Tailscale overlay
+| Roaming (reserved) | 172.16.0.0/12 | per-corp-host overlays (nikopol 172.16.6.0/24)
 |===
+
+See link:network-setup.adoc#network-ranges[Network Setup → Network Ranges] for the full
+table and host reservations (sourced from `catalog/default.nix`).
 
 == Module Quick Reference
 
-=== Cluster-side Route Advertisement
+Full options in link:modules-reference.adoc[Modules Reference]. Current-model notes:
 
-Route advertisement for cluster subnets is managed by rke2lab cluster-side mesh components.
-
-=== Headscale Server
-
-[source,nix]
-----
-services.headscale-custom = {
-  enable = true;
-  serverUrl = "http://192.168.1.10:8080";
-  baseDomain = "home.arpa";
-};
-----
-
-=== Headscale Client
-
-[source,nix]
-----
-# NixOS
-services.headscale-client = {
-  enable = true;
-  serverUrl = "http://headscale.local:8080";
-  authKeyFile = "/run/secrets/headscale-authkey";
-  enableSSH = true;
-};
-
-# Darwin
-services.headscale-client = {
-  enable = true;
-  serverUrl = "http://headscale.local:8080";
-  enableSSH = true;
-};
-----
+* *Tailnet* — the fleet uses the *Tailscale SaaS* tailnet `mammoth-skate`. Self-hosted
+  Headscale is a *future* workload-cluster service (not deployed today); the retired
+  `home.arpa` / `headscale.local` addressing is gone.
+* *Subnet routing* — `bioskop-nixos` advertises the home LAN into the tailnet; cluster-side
+  route advertisement is owned by rke2lab's mesh components.
+* *vz.nikopol roaming* — a *local* `172.16.6` overlay (no advertise, no NAT); see
+  link:network-topology-c4.adoc[Baremetal Instance Segments & vz-host Access].
 
 == Troubleshooting Quick Links
 
-* link:network-setup.adoc#gateway-not-advertising-routes[Gateway Issues]
-* link:network-setup.adoc#cannot-reach-rke-nodes[RKE Connectivity]
-* link:network-setup.adoc#tailscale-ssh-not-working[Tailscale SSH]
-* link:network-setup.adoc#headscale-ssh-not-working[Headscale SSH]
-* link:network-setup.adoc#performance-issues[Performance Issues]
+* link:network-setup.adoc#ssh-access-current-model[SSH access (current model)]
+* link:network-topology-c4.adoc#troubleshooting[vz.nikopol roaming troubleshooting]
+* link:modules-reference.adoc[Module options & troubleshooting]
 
 == Support
 
 For issues or questions:
 
-1. Check link:network-setup.adoc#troubleshooting[Troubleshooting Section]
+1. Check link:network-setup.adoc#ssh-access-current-model[SSH access] and link:network-topology-c4.adoc#troubleshooting[roaming troubleshooting]
 2. Review link:modules-reference.adoc#troubleshooting[Module-Specific Troubleshooting]
 3. Consult external documentation:
    * https://tailscale.com/kb/[Tailscale Docs]

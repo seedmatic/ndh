@@ -72,7 +72,7 @@
     # on flake-commons, which would form a flake-commons <-> rke2lab cycle.
     # `flake-commons` follows ours so the two flakes share one resolved version set.
     rke2lab = {
-      url = "github:nxmatic/rke2lab/feature/cluster-seed-scenario";
+      url = "github:nxmatic/rke2lab/feature/network-blueprint-segments";
       inputs.flake-commons.follows = "flake-commons";
     };
 
@@ -672,6 +672,82 @@
           }
         '';
 
+      # --- baremetal-link (corp-Mac IP-alias daemon) ----------------------------
+      # Connects a CORPORATE bare-metal Mac (vz.<host>) that cannot join the tailnet
+      # to its Incus instance segment: a static /30 en0 alias + routes to the /25
+      # and the no-NAT tailnet return path, re-applied on Wi-Fi re-association (a
+      # WatchPaths LaunchDaemon).  Only baremetal hosts with a `linkCidr` — an
+      # off-tailnet corp Mac reached over a /30 — get one; on-tailnet bare-metals
+      # (bioskop) declare none.  Rendered from catalog.netplan.baremetal.<host> and
+      # delivered as TEXT (no nix runtime, bash-3.2 ok on the target), so the deploy
+      # runs from any host that resolves vz.<host> — the operator's Mac or the
+      # nikopol-nixos activation oneshot.  See docs/network-topology-c4.adoc +
+      # pkgs/baremetal-link.d/.
+      baremetalLinkHosts = nixpkgs.lib.filterAttrs (_: bm: bm ? linkCidr) catalogData.netplan.baremetal;
+
+      baremetalLinkLabel = "io.nxmatic.baremetal-link";
+
+      # Common addressing tokens both install.sh and uninstall.sh take from the
+      # catalog — single-sourced so the teardown undoes exactly what install set.
+      baremetalLinkVars = bm: {
+        interface = "en0";
+        vzHostAddress = bm.vzHostAddress;
+        netCidr = bm.netCidr;
+        tailnetCidr = catalogData.netplan.tailnet.cidr;
+        hostAddress = bm.hostAddress;
+        label = baremetalLinkLabel;
+        plist = "/Library/LaunchDaemons/${baremetalLinkLabel}.plist";
+        confDir = "/etc/baremetal-link";
+      };
+
+      mkBaremetalLinkInstall =
+        system: bm:
+        (pkgsFor { inherit system; }).replaceVars ./pkgs/baremetal-link.d/install.sh (
+          baremetalLinkVars bm
+          // {
+            linkPrefix = nixpkgs.lib.last (nixpkgs.lib.splitString "/" bm.linkCidr);
+            log = "/var/log/baremetal-link.log";
+          }
+        );
+
+      mkBaremetalLinkUninstall =
+        system: bm:
+        (pkgsFor { inherit system; }).replaceVars ./pkgs/baremetal-link.d/uninstall.sh (
+          baremetalLinkVars bm
+        );
+
+      mkBaremetalLinkDeploy =
+        system: bm:
+        let
+          pkgsForSystem = pkgsFor { inherit system; };
+          ndhStoreApi = mkNdhStoreApiFor pkgsForSystem;
+          trampoline =
+            if system == "aarch64-darwin" then ndhNixBashTrampolineDarwin else ndhNixBashTrampolineLinux;
+        in
+        # Bash-trampoline pattern (like rotate-tailnet-secrets): source the shared
+        # trampoline (nix bash + logger + stable env), pin ssh by store path, and
+        # run under ndh::logger:command:run so the full ssh pipe lands in the
+        # unified log.  ssh is pinned rather than a runtimeInputs PATH entry
+        # because the trampoline owns PATH.
+        ndhStoreApi.installBinScript "${bm.domain}-baremetal-link-deploy" (
+          pkgsForSystem.replaceVars ./pkgs/baremetal-link.d/deploy.sh {
+            nixBashTrampoline = trampoline;
+            loggerTag = "ndh.baremetal-link-deploy";
+            ssh = "${pkgsForSystem.openssh}/bin/ssh";
+            installScript = "${mkBaremetalLinkInstall system bm}";
+            uninstallScript = "${mkBaremetalLinkUninstall system bm}";
+            vzHost = "vz.${bm.domain}";
+            bootstrapHost = "${bm.domain}.local";
+          }
+        );
+
+      # Per-baremetal-host deploy packages, keyed `<domain>-baremetal-link-deploy`.
+      mkBaremetalLinkPackages =
+        system:
+        builtins.foldl' (
+          acc: bm: acc // { "${bm.domain}-baremetal-link-deploy" = mkBaremetalLinkDeploy system bm; }
+        ) { } (builtins.attrValues baremetalLinkHosts);
+
       # Resolve a relative path to a path literal anchored at the repo
       # root.  Each call hashes only the file (or subtree) named, not
       # the whole worktree the way `${self}/<file>` does — so unrelated
@@ -858,6 +934,7 @@
           # See packages/ndh-mdns-publish/{main.go,default.nix}.
           ndh-mdns-publish = systemPkgs.callPackage ./packages/ndh-mdns-publish { };
         }
+        // mkBaremetalLinkPackages system
         // builtins.foldl' (
           acc: hostName:
           let
@@ -1059,6 +1136,7 @@
               "${mainName}-lima-vm-materialize" = {
                 type = "app";
                 program = "${limaMaterializerPackage}/bin/${ndhVmLimaMaterializeAttr}";
+                meta.description = "Materialize ${mainName}'s Lima VM assets + gcroot image — src: modules/darwin/lima-config.nix";
               };
             }
           ) { } (builtins.attrNames hostCatalog);
@@ -1073,17 +1151,31 @@
               "${mainName}-bringup-install" = {
                 type = "app";
                 program = "${installer}/bin/${ndhBringupInstallerCommand}";
+                meta.description = "Install/refresh the NDH bringup-runtime nix profile for ${mainName} — src: modules/.common.d/bringup-runtime.d/";
               };
               "${mainName}-log-capture" = {
                 type = "app";
                 program = "${logCapture}/bin/${ndhLogCaptureCommand}";
+                meta.description = "Capture ${mainName}'s build + activation logs (Vector telemetry) — src: flake.nix (mkNdhLogCapturePackage)";
               };
               "${mainName}-tart-vm-bootstrap-installer" = {
                 type = "app";
                 program = "${tartBootstrapInstaller}/bin/${ndhVmTartBootstrapInstallerAttr}";
+                meta.description = "Install ${mainName}'s Tart NixOS bringup VM (disk image -> ZFS) — src: flake.nix (mkNdhVmTartBootstrapInstallerPackage)";
               };
             }
           ) { } (builtins.attrNames hostCatalog);
+          baremetalLinkApps = builtins.foldl' (
+            acc: bm:
+            acc
+            // {
+              "${bm.domain}-baremetal-link-deploy" = {
+                type = "app";
+                program = "${mkBaremetalLinkDeploy system bm}/bin/${bm.domain}-baremetal-link-deploy";
+                meta.description = "Install/refresh (or --uninstall) the baremetal-link LaunchDaemon on vz.${bm.domain} — src: pkgs/baremetal-link.d/";
+              };
+            }
+          ) { } (builtins.attrValues baremetalLinkHosts);
           nixBuildObservePackage = mkNixBuildObservePackage system;
           pkgsForSystem = pkgsFor { inherit system; };
           # Run check-jsonschema against the canonical keys.yaml. The target
@@ -1115,19 +1207,222 @@
               exec check-jsonschema --schemafile "$schema" "$tmp"
             '';
           };
+          # Rotate the per-kind Tailscale SaaS auth keys in .secrets using the
+          # long-lived OAuth client (tailnet.tailscale.client).  Kinds + tag
+          # pairs are baked from catalog.tailnet.tags so the script needs no
+          # runtime `nix eval`.  Safe by default (dry-run).  Script:
+          # modules/.common.d/rotate-tailnet-secrets.d/rotate-tailnet-secrets.sh.
+          tailnetAuthKindsSpec =
+            let
+              t = catalogData.tailnet.tags;
+              pair =
+                k:
+                if k == "darwin" then
+                  [
+                    t.role.console
+                    t.kind.${k}
+                  ]
+                else
+                  [
+                    t.role.headless
+                    t.kind.${k}
+                  ];
+            in
+            map (
+              k:
+              let
+                tags = map (x: "tag:" + x) (pair k);
+              in
+              {
+                inherit tags;
+                kind = k;
+                # Full Tailscale POST /keys request body, built here so the
+                # script only reads/extracts JSON with yq-go (no runtime JSON
+                # construction).  90-day expiry = the auth-key maximum.
+                body = {
+                  capabilities.devices.create = {
+                    reusable = true;
+                    ephemeral = false;
+                    preauthorized = true;
+                    inherit tags;
+                  };
+                  expirySeconds = 7776000;
+                  description = "ndh ${k} per-kind auth key";
+                };
+              }
+            ) (builtins.attrNames t.kind);
+          tailnetAuthKindsFile = pkgsForSystem.writeText "tailnet-auth-kinds.json" (
+            builtins.toJSON tailnetAuthKindsSpec
+          );
+          # Canonical Tailscale-SaaS ACL fragment, built from the catalog.  The
+          # `--sync-acl` reconcile merges this into the LIVE tailnet policy
+          # (preserving personal/k8s tags, nodeAttrs, and existing routes;
+          # pruning the superseded operator/service/container tags).
+          #
+          # OAuth-client tag ownership follows the Tailscale-recommended pattern
+          # (kb/1215/oauth-clients): a dedicated owner tag — assigned to the
+          # rotation OAuth client in the console — owns the per-kind tags, so the
+          # client may mint keys carrying them.  We keep the legacy `acls` block
+          # (not `grants`) so the same tag vocabulary stays usable by the
+          # headscale controller too; `ssh` uses `accept` per the single-operator
+          # rationale in catalog/tailnet/acl.hujson.
+          tailnetAclCanonical =
+            let
+              t = catalogData.tailnet.tags;
+              tg = x: "tag:" + x;
+              ownerTag = "tag:tailnet-key-owner";
+              ourTags = [
+                t.role.console
+                t.role.headless
+              ]
+              ++ builtins.attrValues t.kind;
+              bm = catalogData.netplan.baremetal or { };
+              # The aggregate CIDR each baremetal host advertises into the tailnet.
+              baremetalCidrs = map (h: bm.${h}.advertiseCidr) (
+                builtins.filter (h: bm.${h} ? advertiseCidr) (builtins.attrNames bm)
+              );
+              # A LAN-fixed baremetal's subnet router also advertises the whole home
+              # LAN (see baremetal-segment.nix); auto-approve it for the same nixos tag.
+              lanCidrs =
+                if builtins.any (h: (bm.${h}.lanAttachment or "roaming") == "fixed") (builtins.attrNames bm) then
+                  [ catalogData.netplan.lan.cidr ]
+                else
+                  [ ];
+              routeApprovers = builtins.listToAttrs (
+                map (cidr: {
+                  name = cidr;
+                  value = [ (tg t.kind.nixos) ];
+                }) (baremetalCidrs ++ lanCidrs)
+              );
+            in
+            {
+              tagOwners = {
+                ${ownerTag} = [ "autogroup:admin" ];
+              }
+              // builtins.listToAttrs (
+                map (x: {
+                  name = tg x;
+                  value = [ ownerTag ];
+                }) ourTags
+              );
+              acls = [
+                # Trusted owner devices (untagged members: laptop, phone) reach
+                # everything.  Tagged fleet nodes below stay role-segmented.
+                {
+                  action = "accept";
+                  src = [ "autogroup:members" ];
+                  dst = [ "*:*" ];
+                }
+                # Operator (console) hosts reach the whole fleet by role tag AND
+                # the per-baremetal segments (vz.<domain> + the Incus instances
+                # behind each subnet router) AND the fixed home LAN advertised by a
+                # LAN-fixed baremetal.  A tag'd node's netmap only carries a subnet
+                # route it is ACL-permitted to reach, so without these CIDRs a
+                # console host loses the segments/LAN it had as an untagged member
+                # (autogroup:members → *:*).
+                {
+                  action = "accept";
+                  src = [ (tg t.role.console) ];
+                  dst = [
+                    "${tg t.role.console}:*"
+                    "${tg t.role.headless}:*"
+                  ]
+                  ++ map (cidr: "${cidr}:*") (baremetalCidrs ++ lanCidrs);
+                }
+                {
+                  action = "accept";
+                  src = [ (tg t.role.headless) ];
+                  dst = [ "${tg t.role.headless}:*" ];
+                }
+              ];
+              ssh = [
+                # Console (operator admin) hosts SSH the entire fleet.  Every
+                # fleet node carries a role tag, so [console, headless] covers
+                # them all.  (SSH dst permits only tags + autogroup:self — not
+                # autogroup:members; untagged member devices aren't SSH targets.)
+                {
+                  action = "accept";
+                  src = [ (tg t.role.console) ];
+                  dst = [
+                    (tg t.role.console)
+                    (tg t.role.headless)
+                  ];
+                  users = [
+                    "autogroup:nonroot"
+                    "root"
+                  ];
+                }
+                # Headless nodes SSH each other (nix copy, node-to-node ops).
+                {
+                  action = "accept";
+                  src = [ (tg t.role.headless) ];
+                  dst = [ (tg t.role.headless) ];
+                  users = [
+                    "autogroup:nonroot"
+                    "root"
+                  ];
+                }
+                # Member devices reach their own devices.
+                {
+                  action = "accept";
+                  src = [ "autogroup:members" ];
+                  dst = [ "autogroup:self" ];
+                  users = [
+                    "autogroup:nonroot"
+                    "root"
+                  ];
+                }
+              ];
+              autoApprovers = {
+                routes = routeApprovers;
+                # Darwin hosts are the sanctioned exit nodes: bioskop (home
+                # baremetal) always provides public egress; nikopol (roaming)
+                # shares its uplink on demand — e.g. tethered to a phone
+                # hotspot it becomes the tailnet's gateway to the public net.
+                # Auto-approve their exit-node advertisements (no console step).
+                exitNode = [ (tg t.kind.darwin) ];
+              };
+            };
+          tailnetAclCanonicalFile = pkgsForSystem.writeText "tailnet-acl-canonical.json" (
+            builtins.toJSON tailnetAclCanonical
+          );
+          # Bash-trampoline pattern: source the shared trampoline (nix-managed
+          # bash + logger + stable env), pin every tool by absolute store path
+          # (@sops@/@curl@/@yq@ — yq-go only, no jq), and bake the kinds + ACL
+          # canonical files in.
+          rotateTailnetSecretsPackage = ndhStoreApiDarwin.installBinScript "rotate-tailnet-secrets" (
+            pkgsForSystem.replaceVars ./modules/.common.d/rotate-tailnet-secrets.d/rotate-tailnet-secrets.sh {
+              nixBashTrampoline = ndhNixBashTrampolineDarwin;
+              loggerTag = "ndh.rotate-tailnet-secrets";
+              sops = "${pkgsForSystem.sops}/bin/sops";
+              curl = "${pkgsForSystem.curl}/bin/curl";
+              yq = "${pkgsForSystem.yq-go}/bin/yq";
+              git = "${pkgsForSystem.git}/bin/git";
+              authKinds = tailnetAuthKindsFile;
+              aclCanonical = tailnetAclCanonicalFile;
+            }
+          );
         in
         {
           nix-build-observe = {
             type = "app";
             program = "${nixBuildObservePackage}/bin/nix-build-observe";
+            meta.description = "Stream nix build telemetry to the observability sink — src: modules/darwin/bringup-observe.d/";
           };
           ssh-keys-v2-validate = {
             type = "app";
             program = "${sshKeysValidatorPackage}/bin/ssh-keys-v2-validate";
+            meta.description = "Validate ssh keys.yaml against its JSON schema (sops-decrypts first) — src: modules/home-manager/ssh.d/keys.schema.yaml";
+          };
+          rotate-tailnet-secrets = {
+            type = "app";
+            program = "${rotateTailnetSecretsPackage}/bin/rotate-tailnet-secrets";
+            meta.description = "Rotate per-kind Tailscale SaaS auth keys + reconcile the tailnet ACL (dry-run by default) — src: modules/.common.d/rotate-tailnet-secrets.d/";
           };
         }
         // hostMaterializerApps
         // hostBootstrapInstallerApps
+        // baremetalLinkApps
       );
 
       mkHostOutputs =

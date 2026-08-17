@@ -1,0 +1,263 @@
+= Network Catalog Segments
+:toc: macro
+:toclevels: 3
+
+toc::[]
+
+== Overview
+
+*Network catalog segments* turn the catalog's per-baremetal entries into live
+*Incus network segments advertised into the tailnet with split-DNS*, so any
+tailnet peer can resolve and reach — *by name* — the workloads on a bare-metal
+host and the host itself, including a *corporate Mac that cannot join the
+tailnet*.
+
+Each baremetal host (nikopol, bioskop) that runs Incus becomes the *subnet
+router* for its own slice of `172.16.0.0/12`:
+
+* a managed `bare-br` `/25` bridge (Incus dnsmasq, a `.<domain>` DNS zone) where
+  netflow instances and the *nnh* collector attach and auto-register;
+* the aggregate `/24` *advertised into the tailnet* + a *split-DNS* entry so peers
+  resolve `<inst>.<domain>` and reach `172.16.6.x` directly;
+* for a host whose vz-host is *off-tailnet* (nikopol's corporate Mac), a static
+  `/30` link on `lan-br` and an IP-alias daemon on that Mac, so `vz.<domain>`
+  answers at a `/30` address reached through the advertised segment;
+* for a *LAN-fixed* host (bioskop, the always-on Mac Mini), the *whole home LAN*
+  is advertised too, so roaming peers reach every LAN device.
+
+Addresses are never hardcoded — they derive from
+link:network-catalog.adoc[the network catalog] (`catalog.netplan.baremetal`).
+
+== Architecture
+
+=== Context
+
+[mermaid]
+....
+flowchart TB
+  CAT[("network catalog\ncatalog.netplan.baremetal / .lan")]:::data
+  subgraph host [NixOS Incus host — subnet router]
+    SEG["bare-br segment\n/25 dnsmasq, .domain zone,\nadvertised /24, split-DNS"]:::infra
+  end
+  INST["Incus instances\n(nnh collector, netflow)"]:::wl
+  VZ["vz-host\n(corp Mac via /30, or on-LAN Mac Mini)"]:::ext
+  PEER["tailnet peers\n(operator Macs = tag:console)"]:::actor
+  TS{{"Tailscale SaaS\ncontrol-plane"}}:::ctrl
+
+  CAT -->|"derives addresses"| SEG
+  SEG -->|"DHCP + .domain DNS"| INST
+  SEG -->|"/30 link + host-record"| VZ
+  SEG -->|"advertise /24 + split-DNS"| TS
+  PEER -->|"accept route + resolve <name>.domain"| TS
+  TS -->|"routed via subnet router"| SEG
+
+  classDef data fill:#fde68a,stroke:#b45309,color:#000;
+  classDef infra fill:#bfdbfe,stroke:#1e40af,color:#000;
+  classDef wl fill:#bbf7d0,stroke:#166534,color:#000;
+  classDef ext fill:#e5e7eb,stroke:#374151,color:#000;
+  classDef actor fill:#ddd6fe,stroke:#5b21b6,color:#000;
+  classDef ctrl fill:#fecaca,stroke:#991b1b,color:#000;
+....
+
+[cols="1,3"]
+|===
+| Legend | Meaning
+
+| yellow | catalog data (single source of truth)
+| blue   | ndh-provisioned network infrastructure
+| green  | workloads (Incus instances, the nnh collector)
+| grey   | external endpoint (the vz-host Mac)
+| purple | actor (a tailnet peer / operator)
+| red    | the tailnet control-plane (Tailscale SaaS)
+|===
+
+=== Anatomy of a baremetal segment (container view)
+
+The NixOS host (`nikopol-nixos`) wires three interfaces; the corp Mac sits at the
+far end of the `/30`.
+
+[mermaid]
+....
+flowchart LR
+  subgraph nixos [nikopol-nixos — subnet router]
+    BARE["bare-br 172.16.6.1/25\ndnsmasq, dns.domain=nikopol\nipv4.nat=false"]:::infra
+    LAN["lan-br\n.254/30 (link) + 192.168.1.34/24 (LAN)"]:::infra
+    TS0["tailscale0\nadvertise 172.16.6.0/24\n(+ mss-clamp, ip_forward)"]:::infra
+  end
+  I1["instance a.nikopol\n172.16.6.10 (DHCP)"]:::wl
+  I2["nnh collector\n172.16.6.x (DHCP)"]:::wl
+  VZ["vz.nikopol\ncorp Mac en0 alias 172.16.6.253\n(baremetal-link daemon)"]:::ext
+  PEER["tailnet peer\n(tag:console)"]:::actor
+
+  I1 --- BARE
+  I2 --- BARE
+  BARE -. "same host, ip_forward" .- LAN
+  LAN -->|"/30 P2P"| VZ
+  PEER -->|"172.16.6.0/24 via tailnet"| TS0
+  TS0 -. route .- BARE
+  TS0 -. route .- LAN
+
+  classDef infra fill:#bfdbfe,stroke:#1e40af,color:#000;
+  classDef wl fill:#bbf7d0,stroke:#166534,color:#000;
+  classDef ext fill:#e5e7eb,stroke:#374151,color:#000;
+  classDef actor fill:#ddd6fe,stroke:#5b21b6,color:#000;
+....
+
+NOTE: *bioskop* is the simple case — its vz-host is an on-LAN Mac Mini
+(`192.168.1.129`), so there is *no `/30` link* and the `host-record` points at the
+LAN address; bioskop additionally advertises the whole home LAN
+(`lanAttachment = "fixed"`).
+
+== How to use it — attach a probe / service to a segment
+
+This is how *nnh* (or any workload) plugs into a segment. From the Incus host:
+
+[source,console]
+----
+# Launch on the segment bridge — DHCP gives it a 172.16.6.x lease and
+# dnsmasq registers it as <name>.nikopol in the .nikopol zone.
+$ incus launch images:debian/12 nnh --network bare-br
+$ incus list nnh -c n4          # -> 172.16.6.x
+----
+
+From then on, from any *tag:console* tailnet peer:
+
+[source,console]
+----
+$ ping nnh.nikopol              # split-DNS resolves .nikopol via the segment dnsmasq
+$ curl http://nnh.nikopol:3000  # nnh's UI, reached over the advertised /24
+----
+
+.Sequence — a tailnet peer reaches vz.nikopol (or an instance)
+[mermaid]
+....
+sequenceDiagram
+  autonumber
+  participant P as tailnet peer (tag:console, macOS)
+  participant R as MagicDNS 100.100.100.100
+  participant D as bare-br dnsmasq (172.16.6.1)
+  participant N as nikopol-nixos (subnet router)
+  participant V as vz.nikopol (corp Mac, .253)
+
+  Note over P: /etc/resolver/nikopol -> 100.100.100.100 (macOS scoped resolver)
+  P->>R: resolve vz.nikopol
+  R->>D: split-DNS: nikopol -> 172.16.6.1
+  D-->>P: 172.16.6.253 (host-record)
+  Note over P: route 172.16.6.0/24 accepted (ACL tag:console permits the CIDR)
+  P->>N: TCP to 172.16.6.253 via tailscale0
+  N->>V: forward over the /30 on lan-br
+  V-->>P: reply (SSH, etc.)
+....
+
+=== The two vz-host shapes
+
+[cols="1,2,2"]
+|===
+| | nikopol (corp Mac, off-tailnet) | bioskop (personal Mac Mini, on-LAN)
+
+| catalog `linkCidr` | `172.16.6.252/30` | (absent)
+| `vzHostAddress`    | `172.16.6.253` (/30 alias) | `192.168.1.129` (LAN addr)
+| reached via        | advertised `/24` -> `/30` link | advertised `/24` (+ home LAN)
+| alias provider     | `baremetal-link` LaunchDaemon on the Mac (`nix run '.#nikopol-baremetal-link-deploy'`) | none — it is a real LAN host
+| `lanAttachment`    | `roaming` (no LAN advertise) | `fixed` (advertises `192.168.1.0/24`)
+|===
+
+== Reachability model
+
+Three independent gates must all pass — miss one and the name resolves but the
+host is unreachable, or vice-versa:
+
+. *Route advertised + approved* — the subnet router advertises `advertiseCidr`;
+  `autoApprovers.routes` auto-approves it for `tag:nixos` (no console step).
+. *ACL permits the CIDR* — a *tagged* peer's netmap only carries a subnet route
+  its ACL allows. `tag:console` is granted the baremetal CIDRs *and* the fixed
+  home LAN CIDR; without that a tagged Mac accepts the route but tailscaled
+  filters it out. (An untagged member has `*:*` and never hits this.)
+. *Name resolves* — a tailnet split-DNS entry `<domain> -> netGateway` serves
+  Linux peers automatically; macOS additionally needs a *scoped*
+  `/etc/resolver/<domain>` file (`modules/darwin/baremetal-resolvers.nix`) —
+  the flat resolver list will not route a split-horizon domain.
+
+== Operations
+
+* *Tailnet auth + ACL* — `nix run '.#rotate-tailnet-secrets'` (dry-run by
+  default): `--rotate-auth-key` mints the per-kind `tskey-auth-*` keys via the
+  OAuth client; `--sync-acl` reconciles the SaaS ACL from the catalog;
+  `--retag-devices` heals device tags. See
+  `modules/.common.d/rotate-tailnet-secrets.d/`.
+* *Deploy* — rebuild the Incus host on the branch (`nixos-rebuild-gh switch
+  --refresh --flake …#<host>`). `advertise-routes` only re-applies on a fresh
+  registration, so after a re-register run `tailscale set --advertise-routes=…`
+  if the routes did not come back.
+* *Corp-Mac alias* — `nix run '.#nikopol-baremetal-link-deploy'` installs/refreshes
+  the IP-alias LaunchDaemon on `vz.nikopol` over ssh (no nix on the target).
+
+== Troubleshooting
+
+[cols="2,3"]
+|===
+| Symptom | Cause / fix
+
+| Name resolves but host unreachable from a *tagged* Mac | ACL does not grant that
+  tag the CIDR -> add it to the tag's `dst` (see reachability gate 2).
+| `<name>.domain` won't resolve on macOS (`dig` "works", apps don't) | Missing
+  `/etc/resolver/<domain>`. `dig` ignores scoped resolvers — test with
+  `dscacheutil -q host -a name <name>`.
+| Route shows advertised but not `enabled` | Auto-approvers evaluate at
+  advertise-time only — re-advertise (`tailscale set --advertise-routes=…`) after
+  a (re)tag.
+| Advertised `192.168.1.x` route unused from a peer *on that LAN* | Correct: the
+  peer's directly-connected LAN route shadows the tailnet route. The advertise is
+  for *roaming/remote* peers.
+| Incus instance can't reach a *LAN* service | `bare-br` has `ipv4.nat=false` and
+  the LAN has no return route to `172.16.6.0/24`. *Known limitation* — needs
+  selective masquerade on the subnet router or a LAN static route (planned).
+| darwin activation hangs on `step crypto key format` | Unrelated to segments —
+  see the ssh-keys pipeline; `step` opens `/dev/tty` (smallstep/cli#674); the
+  conversion now uses `ssh-keygen -m PKCS8`.
+|===
+
+[#handoff]
+== Status & handoff to nnh
+
+*From ndh's side this is ready.* The segment, its tailnet advertise, and the
+catalog contribution path are implemented and verified end-to-end:
+
+* ✅ `bare-br` segment provisioned on the Incus host (dnsmasq, `.<domain>` zone),
+  reconciled idempotently (preseed + oneshot).
+* ✅ `/24` advertised into the tailnet and *auto-approved* for `tag:nixos`;
+  reached from `tag:console` peers (ACL grants the CIDR).
+* ✅ Split-DNS live — Linux peers automatic, macOS via scoped
+  `/etc/resolver/<domain>`; `vz.<domain>` resolves + is reachable (verified over
+  SSH for nikopol's off-tailnet corp Mac).
+* ✅ Catalog consumable as JSON (`nix eval --json '…#catalog.netplan.segments'`);
+  contribution path defined (`lib.networkBlueprint` union — see
+  link:network-catalog.adoc#contributing[Contributing]).
+* ✅ Fleet on Tailscale SaaS; the headscale bootstrap daemon is retired (SaaS is
+  the live control-plane).
+
+*Known open item on the ndh side:* an Incus instance cannot yet reach *home-LAN*
+services — `bare-br` runs `ipv4.nat=false` and the LAN has no return route to
+`172.16.6.0/24`. Instance↔tailnet and instance↔instance work; instance→LAN needs
+selective masquerade on the subnet router (or a LAN static route). Flag if nnh
+needs LAN egress and we will land it.
+
+*Over to nnh.* Please review whether this covers your needs:
+
+* *Attach* — does launching the collector on `bare-br` (DHCP + `<name>.<domain>`,
+  reachable over the advertised `/24`) match how you want the probe deployed?
+* *Consume* — are `catalog.netplan.segments` (the `{cidr,name,asn}` triples) and
+  `.asns` sufficient for your NetName/AS attribution, or do you need extra fields
+  (e.g. per-segment metadata, IPv6 delegated prefixes)?
+* *Contribute* — is `lib.networkBlueprint` the right shape for the spans you want
+  to push back into the catalog, and do you want ndh to wire the `nnh` flake
+  input now?
+
+Tell us what is missing or wrong and we will provide/correct it.
+
+== Related Documentation
+
+* link:network-catalog.adoc[Network Catalog] — the segment data model and how a
+  domain (rke2lab, nnh) contributes spans via `lib.networkBlueprint`.
+* link:network-topology-c4.adoc[Network Topology (C4)] — the end-to-end lab
+  topology this feature realises.

@@ -16,10 +16,15 @@
   ...
 }:
 let
-  # Bare metal's stable hardware MAC (Private Wi-Fi: Off).  Captured
-  # from `ifconfig en0 | grep ether` on the bare metal; same value
-  # on every network it joins.  If the MAC ever changes (hardware
-  # swap, Private Wi-Fi flipped to Fixed/Rotating), update here.
+  # Bare metal's Wi-Fi MAC on the HOME SSID.  This is the macOS "Private Wi-Fi
+  # Address = Fixed" value (locally-administered — the `4a:` LA bit is set), which
+  # is stable PER-SSID as long as the setting stays Fixed.  It silently stopped
+  # resolving once when Private Wi-Fi was flipped off Fixed (macOS then presented
+  # the real HW MAC `84:2f:57:d4:36:be`, so the ARP lookup for this value found
+  # nothing); re-pinning the SSID to Fixed restores it.  Caveats: "Fixed" is
+  # PER-SSID, so this only matches home — on another network set Private Wi-Fi
+  # Off (→ HW MAC, same everywhere) or record that SSID's fixed MAC.  mDNS is NOT
+  # a fallback: the corp Mac blocks Bonjour by policy.
   bareMetalMac = "4a:04:df:ff:a8:de";
 
   # Bin name + bin path on disk.  This fleet runs nix-darwin with
@@ -74,7 +79,7 @@ in
   # public is already in that account's authorized_keys.
   programs.ssh.matchBlocks."vz.nikopol" = {
     user = "stephane.lacoin";
-    identityFile = "~/.local/var/run/secrets/ssh-keys/rdp-host";
+    identityFile = config.sshPaths.privKeyFile;
     identitiesOnly = true;
     proxyCommand = ''sh -c 'nc "$(${binName})" 22' '';
   };

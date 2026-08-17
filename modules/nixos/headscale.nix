@@ -24,8 +24,25 @@ let
   # option.  `cfg.authKeyFile` remains as an out-of-band override for
   # manual bootstrap / test harnesses.
   activeAuthKind = "nixos";
+  # Controller selects the registration flow (see headscale-client-wiring.nix):
+  #   saas      → Tailscale SaaS: the single fleet OAuth-client/auth key at
+  #               tailnet.tailscale.auth, no --login-server, tags via --advertise-tags.
+  #   headscale → self-hosted: --login-server + the per-kind headscale preauth key.
+  isSaas = config.ndh.headscaleClient.controller == "saas";
   effectiveAuthKeyFile =
-    if cfg.authKeyFile != null then cfg.authKeyFile else tailnet.headscale.auth.${activeAuthKind}.path;
+    if cfg.authKeyFile != null then
+      cfg.authKeyFile
+    else if isSaas then
+      tailnet.tailscale.auth.${activeAuthKind}.path
+    else
+      tailnet.headscale.auth.${activeAuthKind}.path;
+  # SaaS OAuth-client auth REQUIRES the node to assert its tags; the headscale
+  # preauth-key flow REJECTS --advertise-tags (the key binds them).  So tags are
+  # advertised only in saas mode.
+  advertiseTagsArg =
+    optionalString (isSaas && cfg.tags != [ ])
+      "--advertise-tags=${concatStringsSep "," (map (tag: "tag:" + tag) cfg.tags)}";
+  loginServerArg = optionalString (!isSaas) "--login-server=${cfg.serverUrl}";
 in
 {
   options.networking.headscale = {
@@ -74,15 +91,33 @@ in
       default = false;
       description = "Accept routes from other nodes (useful if you have gateways)";
     };
+
+    advertiseRoutes = mkOption {
+      type = types.listOf types.str;
+      default = [ ];
+      example = [ "172.16.6.0/24" ];
+      description = ''
+        Subnet routes this node advertises into the tailnet (subnet router).
+        Feeds `--advertise-routes`.  On the Tailscale SaaS controller the routes
+        still need console approval; under Headscale they become effective once
+        approved there.  Set by modules/nixos/baremetal-segment.nix from the
+        host's `advertiseCidr`.
+      '';
+    };
   };
 
   config = mkIf cfg.enable {
     # `tailscaled` is root-run on NixOS; override the common module's
-    # default (profile user) on the active per-kind auth slot so
-    # sops-install-secrets materialises the file as root at 0400.
-    # Without this, the profile user owns the file and the root-run
-    # unit can't read it.
-    tailnet.headscale.auth.${activeAuthKind} = {
+    # default (profile user) on the ACTIVE controller's per-kind auth
+    # slot so sops-install-secrets materialises the file as root at 0400.
+    # Without this, the profile user owns the file and the root-run unit
+    # can't read it.  Only the enabled slot materialises (see the wiring),
+    # so we gate each override by controller to land it on the right one.
+    tailnet.tailscale.auth.${activeAuthKind} = lib.mkIf isSaas {
+      owner = "root";
+      mode = "0400";
+    };
+    tailnet.headscale.auth.${activeAuthKind} = lib.mkIf (!isSaas) {
       owner = "root";
       mode = "0400";
     };
@@ -101,6 +136,9 @@ in
     # lives in our unit.
     services.tailscale = {
       enable = true;
+      # Subnet-router features (advertise/accept routes) — needed for the
+      # baremetal /24 advertise; preserved from the old tailscale.nix path.
+      useRoutingFeatures = "both";
       extraUpFlags =
         let
           sshFlag = if cfg.enableSSH then [ "--ssh" ] else [ ];
@@ -110,14 +148,19 @@ in
             else
               [ ];
           acceptRoutesFlag = if cfg.acceptRoutes then [ "--accept-routes" ] else [ ];
+          advertiseRoutesFlag =
+            if (cfg.advertiseRoutes != [ ]) then
+              [ "--advertise-routes=${concatStringsSep "," cfg.advertiseRoutes}" ]
+            else
+              [ ];
         in
-        [
-          "--login-server=${cfg.serverUrl}"
-          "--hostname=${cfg.hostname}"
-        ]
+        # No --login-server in saas mode (defaults to login.tailscale.com).
+        (lib.optionals (!isSaas) [ "--login-server=${cfg.serverUrl}" ])
+        ++ [ "--hostname=${cfg.hostname}" ]
         ++ sshFlag
         ++ tagFlags
-        ++ acceptRoutesFlag;
+        ++ acceptRoutesFlag
+        ++ advertiseRoutesFlag;
     };
 
     # Trust Tailscale interface
@@ -222,11 +265,17 @@ in
         ${pkgs.tailscale}/bin/tailscale up \
           --timeout=45s \
           --reset \
-          --login-server=${cfg.serverUrl} \
+          ${loginServerArg} \
           --authkey="$(cat "$auth_key_file")" \
           --hostname=${cfg.hostname} \
+          ${advertiseTagsArg} \
           ${optionalString cfg.enableSSH "--ssh"} \
           ${optionalString cfg.acceptRoutes "--accept-routes"} \
+          ${
+            optionalString (
+              cfg.advertiseRoutes != [ ]
+            ) "--advertise-routes=${concatStringsSep "," cfg.advertiseRoutes}"
+          } \
           || {
             echo "tailscale up failed" >&2
             exit 1

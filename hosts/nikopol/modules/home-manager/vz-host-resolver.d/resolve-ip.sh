@@ -1,6 +1,12 @@
 #!/usr/bin/env -S bash -euo pipefail
-# Resolve the bare-metal MacBook Pro's current IPv4 from the local
-# ARP cache, by matching its stable MAC address.
+# Resolve the bare-metal MacBook Pro's current IPv4, so the `vz.nikopol`
+# SSH ProxyCommand can reach it on whatever network both are on.
+#
+# Primary: read the IP the bare metal PUBLISHES into a virtiofs host-share
+# (tag `vz-host-ip`), refreshed on every network change by a LaunchAgent on
+# the bare metal — robust across networks, no L2 visibility required.
+# Fallback (below): the legacy ARP-cache lookup keyed on the bare metal's MAC,
+# which only works when the guest shares an L2 segment with the host.
 #
 # The bare metal that hosts this Tart VM keeps "Private Wi-Fi
 # address" set to Off, so its `en0` MAC is the same on every Wi-Fi
@@ -31,6 +37,24 @@
 main() {
 	local mac="@bareMetalMac@"
 
+	# Primary source: the bare metal publishes its current reachable IPv4 into a
+	# virtiofs host-share (tag `vz-host-ip`), refreshed on every network change by
+	# a LaunchAgent on the bare metal.  This is robust across networks (home LAN,
+	# corp DHCP, hotspot) and needs no L2 visibility — unlike the ARP fallback
+	# below, which only works when the guest shares an L2 segment with the host
+	# (it does NOT in bridged Tart mode: the guest can't ARP the host's own IP).
+	# macOS auto-mounts virtiofs shares under /Volumes/My Shared Files/<tag>/.
+	local shared_ip_file="/Volumes/My Shared Files/vz-host-ip/ip"
+	if [[ -r "$shared_ip_file" ]]; then
+		local shared_ip
+		shared_ip="$(tr -d '[:space:]' <"$shared_ip_file" 2>/dev/null || true)"
+		if [[ "$shared_ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+			printf '%s\n' "$shared_ip"
+			return 0
+		fi
+	fi
+
+	# Fallback: ARP-cache lookup keyed on the bare metal's MAC (legacy path).
 	local ip
 	ip="$(ndh::vzHostResolver:lookup "$mac")"
 	if [[ -z "$ip" ]]; then

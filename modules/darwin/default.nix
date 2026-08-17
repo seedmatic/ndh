@@ -24,6 +24,7 @@
     ./ddns.nix
     ./bird-daemon.nix
     ./lan-dns-resolver.nix
+    ./baremetal-resolvers.nix
     ./lima-config.nix
     ./tart-config.nix
     ./linux-builder.nix
