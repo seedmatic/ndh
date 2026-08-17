@@ -42,6 +42,7 @@ dry_run=1
 do_auth=0
 do_api=0
 do_sync_acl=0
+do_retag=0
 do_deploy=0
 do_revoke=0
 do_commit=0
@@ -73,6 +74,8 @@ Safe by default. Manages the per-kind Tailscale SaaS auth keys + the ACL.
   --rotate-both      Same as --rotate-auth-key (api keys can't be API-rotated).
   --sync-acl         Reconcile the live tailnet ACL with our canonical fragment;
                      shows a diff.  POSTs only with --yes.
+  --retag-devices    Reconcile each tailnet device's tags to its kind (from the
+                     hostname); lists a plan, applies only with --yes.
   --kind <kind>      Restrict rotation to a single kind (default: all).
   --deploy           Print the post-rotation rebuild commands (never runs them).
   --commit           After a successful rotation, git-commit .secrets (--no-verify).
@@ -162,6 +165,50 @@ sync_acl() {
     "$API_BASE/tailnet/$TAILNET/acl")" ||
     die "POST acl rejected: $(printf '%s' "$resp" | $YQ -p json '.message // .' 2>/dev/null || printf '%s' "$resp")"
   log "SaaS ACL updated.  If not already done, assign '$OWNER_TAG' to the OAuth client (console)."
+}
+
+# Reconcile each tailnet device's tags to match its kind.  A tagged auth key only
+# tags a device at REGISTRATION, so a node that registered before its per-kind
+# key existed stays untagged; this heals the drift via POST /device/{id}/tags.
+# Kind is derived from the hostname by convention: `<host>` = darwin (the bare
+# Mac), `<host>-<kind>` = that kind (e.g. nikopol-nixos -> nixos).  Dry-run
+# lists the plan; --yes applies.  Needs the OAuth client's `devices` scope.
+retag_devices() {
+  local devs
+  devs="$(api "$API_BASE/tailnet/$TAILNET/devices")" ||
+    die "GET devices failed (does the OAuth client have the 'devices' scope?)"
+  mapfile -t rows < <(printf '%s' "$devs" |
+    $YQ -p json -o=json -I=0 '.devices[] | {"id": .id, "host": .hostname, "tags": ((.tags // []) | sort)}')
+  local row id host cur kind want spec k
+  for row in "${rows[@]}"; do
+    id="$(printf '%s' "$row" | $YQ -p json '.id')"
+    host="$(printf '%s' "$row" | $YQ -p json '.host')"
+    cur="$(printf '%s' "$row" | $YQ -p json -o=json -I=0 '.tags')"
+    kind="darwin"
+    for spec in "${specs[@]}"; do
+      k="$(printf '%s' "$spec" | $YQ -p json '.kind')"
+      [ "$k" = "darwin" ] && continue
+      case "$host" in *-"$k")
+        kind="$k"
+        break
+        ;;
+      esac
+    done
+    want="$(printf '%s\n' "${specs[@]}" |
+      $YQ -p json -o=json -I=0 "select(.kind == \"$kind\") | (.tags | sort)" | head -n1)"
+    if [ "$cur" = "$want" ]; then
+      log "  $host: ok ($want)"
+      continue
+    fi
+    if [ "$assume_yes" -ne 1 ]; then
+      log "  $host: $cur -> $want  (kind=$kind)"
+      continue
+    fi
+    api -X POST -H 'Content-Type: application/json' \
+      -d "$(printf '%s' "$want" | $YQ -p json -o=json '{"tags": .}')" \
+      "$API_BASE/device/$id/tags" >/dev/null || die "failed to set tags on $host ($id)"
+    log "  $host: set $want"
+  done
 }
 
 # Migrate the legacy scalar tailnet.tailscale.auth to an empty map so per-kind
@@ -284,6 +331,7 @@ main() {
         dry_run=0
         ;;
       --sync-acl) do_sync_acl=1 ;;
+      --retag-devices) do_retag=1 ;;
       --kind)
         shift
         only_kind="${1:-}"
@@ -335,6 +383,7 @@ main() {
   authenticate
 
   [ "$do_sync_acl" -eq 1 ] && sync_acl
+  [ "$do_retag" -eq 1 ] && retag_devices
 
   if [ "$do_auth" -eq 1 ]; then
     mapfile -t OLD_IDS < <(list_key_ids) # snapshot before minting (for --revoke-old)
@@ -347,7 +396,7 @@ main() {
       log "  sudo nixos-rebuild switch --flake .#nikopol-nixos --refresh"
       log "  (repeat per host that consumes a rotated kind)"
     fi
-  elif [ "$dry_run" -eq 1 ] && [ "$do_sync_acl" -eq 0 ]; then
+  elif [ "$dry_run" -eq 1 ] && [ "$do_sync_acl" -eq 0 ] && [ "$do_retag" -eq 0 ]; then
     rotation_plan
   fi
 
