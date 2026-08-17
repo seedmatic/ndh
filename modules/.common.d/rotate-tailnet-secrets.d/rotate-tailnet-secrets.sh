@@ -186,7 +186,9 @@ rotation_plan() {
     log "  $k: tags=$t  reusable preauthorized expiry=90d  -> tailnet.tailscale.auth.$k"
   done
   log "tailnet has $(list_key_ids | grep -c . || true) existing auth key(s)."
-  log "Re-run with --rotate-auth-key to mint + write (--revoke-old --yes to retire old ones)."
+  log "Actions: --rotate-auth-key (mint + write; --revoke-old --yes to retire old);"
+  log "         --sync-acl (review/reconcile the tailnet ACL; --sync-acl --yes to push)."
+  log "See --help for the full option list."
 }
 
 rotate_auth() {
