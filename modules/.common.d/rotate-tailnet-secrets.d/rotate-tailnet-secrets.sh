@@ -27,6 +27,7 @@ source @nixBashTrampoline@
 readonly SOPS="@sops@"
 readonly CURL="@curl@"
 readonly YQ="@yq@"
+readonly GIT="@git@"
 readonly AUTH_KINDS_FILE="@authKinds@"
 export ACL_CANONICAL="@aclCanonical@" # exported so yq's load(strenv(...)) can read it
 
@@ -43,14 +44,20 @@ do_api=0
 do_sync_acl=0
 do_deploy=0
 do_revoke=0
+do_commit=0
 assume_yes=0
 only_kind=""
 workdir=""
+TOKEN=""
 
+# log() narrates on stdout (the terminal, since command:run redirects only
+# stderr); warn/die surface on the operator's console via the logger's
+# preserved fd3 (ndh::logger:notice) so a failure isn't swallowed into the log
+# sink — the full xtrace still lands in the log.
 log() { printf '%s\n' ":: $*"; }
-warn() { printf '%s\n' "!! $*" >&2; }
+warn() { ndh::logger:notice "!! $*"; }
 die() {
-  printf '%s\n' "xx $*" >&2
+  ndh::logger:notice "xx $*"
   exit 1
 }
 
@@ -68,6 +75,7 @@ Safe by default. Manages the per-kind Tailscale SaaS auth keys + the ACL.
                      shows a diff.  POSTs only with --yes.
   --kind <kind>      Restrict rotation to a single kind (default: all).
   --deploy           Print the post-rotation rebuild commands (never runs them).
+  --commit           After a successful rotation, git-commit .secrets (--no-verify).
   --revoke-old       Revoke the auth keys that existed before this run.
                      Requires --yes.  Runs only after new keys are written.
   --yes              Confirm destructive / remote-write actions (ACL POST, revoke).
@@ -75,32 +83,33 @@ Safe by default. Manages the per-kind Tailscale SaaS auth keys + the ACL.
 EOF
 }
 
-# Exchange the OAuth client secret for a short-lived API token; stash it in a
-# curl config file (the client secret goes to a file via a pipe, not an argv).
+# Exchange the OAuth client secret for a short-lived API token, kept in the
+# TOKEN global.  The client secret is decrypted straight into curl via a process
+# substitution (curl reads /dev/fd/N) — no temp file, and it never hits an argv.
 authenticate() {
-  $SOPS -d --input-type yaml --extract "$CLIENT_INDEX" "$SECRETS_FILE" \
-    >"$workdir/client" 2>/dev/null || die "could not decrypt tailnet.tailscale.client (sops)"
-  [ -s "$workdir/client" ] || die "tailnet.tailscale.client is empty"
-  grep -q '^tskey-client-' "$workdir/client" ||
-    die "tailnet.tailscale.client has an unexpected prefix (want tskey-client-…)"
-  local token
-  token="$($CURL -fsS --data-urlencode "client_secret@$workdir/client" \
+  TOKEN="$($CURL -fsS \
+    --data-urlencode client_secret@<($SOPS -d --input-type yaml --extract "$CLIENT_INDEX" "$SECRETS_FILE" 2>/dev/null) \
     "$API_BASE/oauth/token" | $YQ -p json '.access_token')" ||
-    die "OAuth token exchange failed (network / credentials)"
-  rm -f "$workdir/client"
-  { [ -n "$token" ] && [ "$token" != "null" ]; } ||
+    die "OAuth token exchange failed (bad/absent tailnet.tailscale.client, or network)"
+  { [ -n "$TOKEN" ] && [ "$TOKEN" != "null" ]; } ||
     die "OAuth token exchange returned no access_token"
-  printf 'header = "Authorization: Bearer %s"\n' "$token" >"$workdir/auth.conf"
+}
+
+# Authenticated Tailscale API call.  The bearer is injected via a stdin config
+# (heredoc) so the token never lands in a temp file or a process argument list.
+api() {
+  $CURL -fsS --config - "$@" <<EOF
+header = "Authorization: Bearer ${TOKEN}"
+EOF
 }
 
 list_key_ids() {
-  $CURL -fsS -K "$workdir/auth.conf" "$API_BASE/tailnet/$TAILNET/keys" 2>/dev/null |
+  api "$API_BASE/tailnet/$TAILNET/keys" 2>/dev/null |
     $YQ -p json '.keys[].id' 2>/dev/null || true
 }
 
 revoke_key() {
-  $CURL -fsS -X DELETE -K "$workdir/auth.conf" \
-    "$API_BASE/tailnet/$TAILNET/keys/$1" >/dev/null 2>&1
+  api -X DELETE "$API_BASE/tailnet/$TAILNET/keys/$1" >/dev/null 2>&1
 }
 
 # Reconcile the live tailnet ACL with @aclCanonical@.  Additive + rationalising:
@@ -110,10 +119,11 @@ revoke_key() {
 # canonical, merge our route + exit-node auto-approvers; preserve the rest
 # (k8s tagOwners, nodeAttrs, existing routes).
 sync_acl() {
+  # -o writes the body to a file (read twice below: reconcile + diff); -w emits
+  # the ETag on stdout (captured) so we need no separate header dump file.
   local etag
-  $CURL -fsS -D "$workdir/acl.hdr" -K "$workdir/auth.conf" -H 'Accept: application/json' \
-    "$API_BASE/tailnet/$TAILNET/acl" >"$workdir/acl.cur.json" || die "GET acl failed"
-  etag="$(sed -n 's/^[Ee][Tt][Aa][Gg]: *//p' "$workdir/acl.hdr" | tr -d '\r')"
+  etag="$(api -o "$workdir/acl.cur.json" -w '%header{etag}' -H 'Accept: application/json' \
+    "$API_BASE/tailnet/$TAILNET/acl")" || die "GET acl failed"
 
   $YQ -p json -o=json '
     .tagOwners = (
@@ -138,7 +148,7 @@ sync_acl() {
     log "no --yes: ACL not pushed.  Re-run 'rotate-tailnet-secrets --sync-acl --yes' to POST."
     return 0
   fi
-  $CURL -fsS -X POST -K "$workdir/auth.conf" -H 'Content-Type: application/json' \
+  api -X POST -H 'Content-Type: application/json' \
     ${etag:+-H "If-Match: $etag"} --data-binary "@$workdir/acl.target.json" \
     "$API_BASE/tailnet/$TAILNET/acl" >/dev/null ||
     die "POST acl failed (If-Match/ETag conflict or policy validation)"
@@ -159,10 +169,10 @@ ensure_auth_map() {
 }
 
 # Mint one tagged auth key for a kind (pre-built body) and write it to its slot.
-# The key flows API-response -> yq -> sops stdin.  Appends the id to new_ids.
+# The key flows API-response -> yq -> sops stdin.  Appends the id to NEW_IDS.
 mint_and_write() {
   local kind="$1" body="$2" resp index
-  resp="$($CURL -fsS -K "$workdir/auth.conf" -H 'Content-Type: application/json' \
+  resp="$(api -H 'Content-Type: application/json' \
     -d "$body" "$API_BASE/tailnet/$TAILNET/keys" 2>/dev/null)" ||
     die "mint failed for kind=$kind (API error — check OAuth scope + ACL tagOwners)"
   printf '%s' "$resp" | $YQ -p json '.key' | grep -q '^tskey-auth-' ||
@@ -171,7 +181,7 @@ mint_and_write() {
   printf '%s' "$resp" | $YQ -p json -o=json '.key' |
     $SOPS set --input-type yaml --value-stdin "$SECRETS_FILE" "$index" ||
     die "sops write failed for kind=$kind"
-  printf '%s' "$resp" | $YQ -p json '.id' >>"$workdir/new_ids"
+  NEW_IDS+=("$(printf '%s' "$resp" | $YQ -p json '.id')")
 }
 
 want_kind() { [ -z "$only_kind" ] || [ "$1" = "$only_kind" ]; }
@@ -216,15 +226,36 @@ revoke_old() {
   [ "$assume_yes" -eq 1 ] ||
     die "--revoke-old requires --yes (destructive: revokes pre-existing auth keys)"
   log "revoking pre-existing auth keys (snapshot taken before mint) …"
-  local oid
-  while IFS= read -r oid; do
+  local oid nid skip
+  for oid in "${OLD_IDS[@]}"; do
     [ -n "$oid" ] || continue
-    grep -qx "$oid" "$workdir/new_ids" && continue # never revoke one we just minted
+    skip=0
+    for nid in "${NEW_IDS[@]}"; do [ "$oid" = "$nid" ] && {
+      skip=1
+      break
+    }; done
+    [ "$skip" -eq 1 ] && continue # never revoke one we just minted
     if revoke_key "$oid"; then log "  revoked $oid"; else warn "  failed to revoke $oid"; fi
-  done <"$workdir/old_ids"
+  done
+}
+
+# Commit the (encrypted) .secrets after a successful rotation.  --no-verify: the
+# commit only touches the sops blob — nothing treefmt/pre-commit governs — and
+# must not be blocked by unrelated working-tree state.
+commit_secrets() {
+  $GIT add "$SECRETS_FILE" || die "git add $SECRETS_FILE failed"
+  if $GIT diff --cached --quiet -- "$SECRETS_FILE"; then
+    log "no .secrets change to commit"
+    return 0
+  fi
+  $GIT commit --no-verify -m "chore(.secrets): rotate per-kind tailscale auth keys" >/dev/null ||
+    die "git commit failed"
+  log "committed $SECRETS_FILE"
 }
 
 specs=()
+OLD_IDS=()
+NEW_IDS=()
 
 main() {
   while [ $# -gt 0 ]; do
@@ -251,6 +282,7 @@ main() {
         ;;
       --deploy) do_deploy=1 ;;
       --revoke-old) do_revoke=1 ;;
+      --commit) do_commit=1 ;;
       --yes) assume_yes=1 ;;
       -h | --help)
         usage
@@ -296,9 +328,10 @@ main() {
   [ "$do_sync_acl" -eq 1 ] && sync_acl
 
   if [ "$do_auth" -eq 1 ]; then
-    list_key_ids >"$workdir/old_ids" || true
-    : >"$workdir/new_ids"
+    mapfile -t OLD_IDS < <(list_key_ids) # snapshot before minting (for --revoke-old)
+    NEW_IDS=()
     rotate_auth
+    [ "$do_commit" -eq 1 ] && commit_secrets
     [ "$do_revoke" -eq 1 ] && revoke_old
     if [ "$do_deploy" -eq 1 ]; then
       log "post-rotation deploy — run these yourself (this tool never mutates a live host):"

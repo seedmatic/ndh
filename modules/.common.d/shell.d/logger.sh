@@ -271,6 +271,16 @@ ndh::logger:stderr:redirect() {
 	ndh::logger:run:marker:emit "$tag"
 }
 
+ndh::logger:notice() {
+	# Emit a message to the INVOKING console.  ndh::logger:command:run redirects
+	# fd2 to the log sink (journald / unified log) but first preserves the
+	# original stderr as fd3.  Activation scripts only need the log; interactive
+	# APPS must also surface errors/warnings to the operator's terminal — this
+	# writes to that preserved fd3, falling back to current stderr when fd3 is
+	# not open (e.g. the script runs outside command:run).
+	printf '%s\n' "$@" >&3 2>/dev/null || printf '%s\n' "$@" >&2
+}
+
 ndh::logger:command:run() {
 	if [ "$#" -lt 2 ]; then
 		echo "[ndh::logger:command:run] usage: ndh::logger:command:run <tag> <command> [args...]" >&2

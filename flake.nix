@@ -1371,6 +1371,7 @@
               sops = "${pkgsForSystem.sops}/bin/sops";
               curl = "${pkgsForSystem.curl}/bin/curl";
               yq = "${pkgsForSystem.yq-go}/bin/yq";
+              git = "${pkgsForSystem.git}/bin/git";
               authKinds = tailnetAuthKindsFile;
               aclCanonical = tailnetAclCanonicalFile;
             }
