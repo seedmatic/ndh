@@ -12,8 +12,9 @@
 # collector.  All addresses are rendered from catalog.netplan.baremetal.<host>
 # at build time (@vzHostAddress@ etc.) — never hand-typed here.
 #
-# Build-time tokens (pkgs.replaceVars): @interface@ @vzHostAddress@ @linkPrefix@
-# @netCidr@ @tailnetCidr@ @hostAddress@ @label@ @plist@ @confDir@ @log@.
+# Build-time tokens (pkgs.replaceVars): interface, vzHostAddress, linkPrefix,
+# netCidr, tailnetCidr, hostAddress, label, plist, confDir, log (written WITHOUT
+# their at-sigils — replaceVars would substitute an at-sigil placeholder here too).
 # Delivered as text and run as root via `ssh <vz> sudo bash -s` (see deploy.sh);
 # no nix runtime is required on the target, and it is bash-3.2 compatible.
 #

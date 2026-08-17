@@ -7,9 +7,9 @@
 # resolves — the operator's Mac or nikopol-nixos's activation oneshot (which is
 # aarch64-linux and could not hold a darwin closure anyway).
 #
-# Build-time tokens (pkgs.replaceVars): @installScript@ / @uninstallScript@
-# (rendered script store paths) @vzHost@ (default ssh target) @bootstrapHost@
-# (first-run fallback).
+# Build-time tokens (pkgs.replaceVars): installScript / uninstallScript (rendered
+# script store paths), vzHost (default ssh target), bootstrapHost (first-run
+# fallback) — written WITHOUT at-sigils (replaceVars would substitute them here).
 #
 # Usage: <host>-baremetal-link-deploy [vz-host] [--uninstall]
 #

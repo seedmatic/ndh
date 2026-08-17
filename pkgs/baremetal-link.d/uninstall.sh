@@ -4,8 +4,9 @@
 # install.sh: delivered as text and run as root via `ssh <vz> sudo bash -s`
 # (see deploy.sh --uninstall); bash-3.2 compatible, no nix runtime on target.
 #
-# Build-time tokens (pkgs.replaceVars): @interface@ @vzHostAddress@ @netCidr@
-# @tailnetCidr@ @hostAddress@ @label@ @plist@ @confDir@.
+# Build-time tokens (pkgs.replaceVars): interface, vzHostAddress, netCidr,
+# tailnetCidr, hostAddress, label, plist, confDir (written WITHOUT at-sigils —
+# replaceVars would substitute an at-sigil placeholder here too).
 #
 # Unlike nnh's netflow-link uninstall (which left its alias to clear on the next
 # Wi-Fi re-association), we also delete the two routes we added — they would

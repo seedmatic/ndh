@@ -46,13 +46,16 @@ let
     "raw.dnsmasq" = "host-record=vz.${bm.domain},${bm.vzHostAddress}";
   };
 
+  # The config as a JSON manifest (builtins.toJSON — no nix YAML codec needed);
+  # the reconcile script parses it with yq-go in JSON-input mode.
+  bareBrManifest = pkgs.writeText "bare-br.json" (builtins.toJSON bareBrConfig);
+
   reconcileScript = ndh.store.installBinScript "incus-bare-br" (
     pkgs.replaceVars ./baremetal-segment.d/incus-bare-br.sh {
       incus = "${pkgs.incus}/bin/incus";
+      yq = "${pkgs.yq-go}/bin/yq";
       network = "bare-br";
-      keyvals = lib.concatStringsSep "\n" (
-        lib.mapAttrsToList (key: value: "${key}\t${value}") bareBrConfig
-      );
+      manifest = "${bareBrManifest}";
     }
   );
 in
