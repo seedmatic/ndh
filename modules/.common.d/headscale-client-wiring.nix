@@ -74,6 +74,29 @@ in
         rke2 node).
       '';
     };
+
+    controller = lib.mkOption {
+      type = lib.types.enum [
+        "saas"
+        "headscale"
+      ];
+      default = "saas";
+      description = ''
+        Which tailnet control-plane this host registers against.
+
+        `saas` (default — the live reality; Headscale is scaffolded but
+        NOT deployed): Tailscale SaaS.  Registration uses `tailscale up
+        --authkey=<tailnet.tailscale.auth> --advertise-tags=<kind tags>`
+        with NO `--login-server` (defaults to login.tailscale.com).  The
+        auth key is a long-lived OAuth client secret — no 90-day auth-key
+        expiry — that owns the fleet's tag set; each node advertises only
+        its own kind's `(role, kind)` tags.
+
+        `headscale` (future, once the self-hosted control-plane is live):
+        `--login-server=<serverUrl>` + the per-kind `tailnet.headscale.auth.<kind>`
+        preauth key (which itself binds the tags).
+      '';
+    };
   };
 
   config = {
@@ -83,8 +106,11 @@ in
       tags = lib.mkDefault (tagsForKind cfg.kind);
     };
 
-    # Enable only the matching kind slot; all others stay sealed.
-    tailnet.headscale.auth.${cfg.kind}.enable = true;
+    # Materialise the auth slot for the active controller only; the other
+    # stays sealed.  saas → the single fleet OAuth-client secret; headscale →
+    # the per-kind preauth key.
+    tailnet.tailscale.auth.enable = cfg.controller == "saas";
+    tailnet.headscale.auth.${cfg.kind}.enable = cfg.controller == "headscale";
 
     # Trust every authority in keys.yaml that advertises
     # `tls-authority` usage and carries a minted `ca_crt` PEM.

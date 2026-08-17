@@ -24,8 +24,25 @@ let
   # option.  `cfg.authKeyFile` remains as an out-of-band override for
   # manual bootstrap / test harnesses.
   activeAuthKind = "nixos";
+  # Controller selects the registration flow (see headscale-client-wiring.nix):
+  #   saas      → Tailscale SaaS: the single fleet OAuth-client/auth key at
+  #               tailnet.tailscale.auth, no --login-server, tags via --advertise-tags.
+  #   headscale → self-hosted: --login-server + the per-kind headscale preauth key.
+  isSaas = config.ndh.headscaleClient.controller == "saas";
   effectiveAuthKeyFile =
-    if cfg.authKeyFile != null then cfg.authKeyFile else tailnet.headscale.auth.${activeAuthKind}.path;
+    if cfg.authKeyFile != null then
+      cfg.authKeyFile
+    else if isSaas then
+      tailnet.tailscale.auth.path
+    else
+      tailnet.headscale.auth.${activeAuthKind}.path;
+  # SaaS OAuth-client auth REQUIRES the node to assert its tags; the headscale
+  # preauth-key flow REJECTS --advertise-tags (the key binds them).  So tags are
+  # advertised only in saas mode.
+  advertiseTagsArg =
+    optionalString (isSaas && cfg.tags != [ ])
+      "--advertise-tags=${concatStringsSep "," (map (tag: "tag:" + tag) cfg.tags)}";
+  loginServerArg = optionalString (!isSaas) "--login-server=${cfg.serverUrl}";
 in
 {
   options.networking.headscale = {
@@ -129,10 +146,9 @@ in
             else
               [ ];
         in
-        [
-          "--login-server=${cfg.serverUrl}"
-          "--hostname=${cfg.hostname}"
-        ]
+        # No --login-server in saas mode (defaults to login.tailscale.com).
+        (lib.optionals (!isSaas) [ "--login-server=${cfg.serverUrl}" ])
+        ++ [ "--hostname=${cfg.hostname}" ]
         ++ sshFlag
         ++ tagFlags
         ++ acceptRoutesFlag
@@ -241,9 +257,10 @@ in
         ${pkgs.tailscale}/bin/tailscale up \
           --timeout=45s \
           --reset \
-          --login-server=${cfg.serverUrl} \
+          ${loginServerArg} \
           --authkey="$(cat "$auth_key_file")" \
           --hostname=${cfg.hostname} \
+          ${advertiseTagsArg} \
           ${optionalString cfg.enableSSH "--ssh"} \
           ${optionalString cfg.acceptRoutes "--accept-routes"} \
           ${
