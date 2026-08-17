@@ -104,9 +104,11 @@ revoke_key() {
 }
 
 # Reconcile the live tailnet ACL with @aclCanonical@.  Additive + rationalising:
-# prune superseded tags, set our tag vocabulary + owners, replace acls/ssh with
-# the role-based canonical, merge our route auto-approvers; preserve everything
-# else (personal/k8s tagOwners, nodeAttrs, existing routes).
+# prune the superseded tags (operator/service/container) and the obsolete
+# personal ones (work/committed/github — every host is owner-exclusive now),
+# set our tag vocabulary + owners, replace acls/ssh with the role-based
+# canonical, merge our route + exit-node auto-approvers; preserve the rest
+# (k8s tagOwners, nodeAttrs, existing routes).
 sync_acl() {
   local etag
   $CURL -fsS -D "$workdir/acl.hdr" -K "$workdir/auth.conf" -H 'Accept: application/json' \
@@ -116,7 +118,8 @@ sync_acl() {
   $YQ -p json -o=json '
     .tagOwners = (
       ((.tagOwners // {})
-        | del(.["tag:operator"]) | del(.["tag:service"]) | del(.["tag:container"]))
+        | del(.["tag:operator"]) | del(.["tag:service"]) | del(.["tag:container"])
+        | del(.["tag:work"]) | del(.["tag:committed"]) | del(.["tag:github"]))
       * load(strenv(ACL_CANONICAL)).tagOwners)
     | .acls = load(strenv(ACL_CANONICAL)).acls
     | .ssh  = load(strenv(ACL_CANONICAL)).ssh
