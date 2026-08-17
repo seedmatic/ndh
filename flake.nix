@@ -1314,11 +1314,12 @@
                   dst = [ "*:*" ];
                 }
                 # Operator (console) hosts reach the whole fleet by role tag AND
-                # the per-baremetal segments — vz.<domain> + the Incus instances
-                # behind each subnet router.  A tag'd node's netmap only carries a
-                # subnet route it is ACL-permitted to reach, so without the CIDRs
-                # here a console host loses the baremetal segment it had as an
-                # untagged member (autogroup:members → *:*).
+                # the per-baremetal segments (vz.<domain> + the Incus instances
+                # behind each subnet router) AND the fixed home LAN advertised by a
+                # LAN-fixed baremetal.  A tag'd node's netmap only carries a subnet
+                # route it is ACL-permitted to reach, so without these CIDRs a
+                # console host loses the segments/LAN it had as an untagged member
+                # (autogroup:members → *:*).
                 {
                   action = "accept";
                   src = [ (tg t.role.console) ];
@@ -1326,7 +1327,7 @@
                     "${tg t.role.console}:*"
                     "${tg t.role.headless}:*"
                   ]
-                  ++ map (cidr: "${cidr}:*") baremetalCidrs;
+                  ++ map (cidr: "${cidr}:*") (baremetalCidrs ++ lanCidrs);
                 }
                 {
                   action = "accept";
