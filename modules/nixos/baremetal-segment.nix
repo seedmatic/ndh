@@ -86,6 +86,14 @@ lib.mkIf enabled {
   networking.firewall.trustedInterfaces = [ "bare-br" ];
   networking.networkmanager.unmanaged = [ "interface-name:bare-br" ];
 
+  # Advertise this baremetal segment's aggregate into the tailnet, so peers reach
+  # the instances and the vz-host by name (paired with the split-DNS `.<domain>`
+  # zone → this host's dnsmasq).  On the Tailscale SaaS controller the route still
+  # needs console approval + the split-DNS nameserver entry (runtime); both become
+  # declarative once Headscale is the live control-plane.  Dormant if the headscale
+  # client is disabled on this host.
+  networking.headscale.advertiseRoutes = [ bm.advertiseCidr ];
+
   # This host is a subnet router for its bare-br /25 (advertised into the tailnet):
   # forward between bare-br and the tailnet, and clamp forwarded TCP MSS to the
   # per-route MTU.  bare-br/lan-br are 1500-MTU, tailscale0 is 1280 — an instance ↔

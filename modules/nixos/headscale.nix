@@ -74,6 +74,19 @@ in
       default = false;
       description = "Accept routes from other nodes (useful if you have gateways)";
     };
+
+    advertiseRoutes = mkOption {
+      type = types.listOf types.str;
+      default = [ ];
+      example = [ "172.16.6.0/24" ];
+      description = ''
+        Subnet routes this node advertises into the tailnet (subnet router).
+        Feeds `--advertise-routes`.  On the Tailscale SaaS controller the routes
+        still need console approval; under Headscale they become effective once
+        approved there.  Set by modules/nixos/baremetal-segment.nix from the
+        host's `advertiseCidr`.
+      '';
+    };
   };
 
   config = mkIf cfg.enable {
@@ -110,6 +123,11 @@ in
             else
               [ ];
           acceptRoutesFlag = if cfg.acceptRoutes then [ "--accept-routes" ] else [ ];
+          advertiseRoutesFlag =
+            if (cfg.advertiseRoutes != [ ]) then
+              [ "--advertise-routes=${concatStringsSep "," cfg.advertiseRoutes}" ]
+            else
+              [ ];
         in
         [
           "--login-server=${cfg.serverUrl}"
@@ -117,7 +135,8 @@ in
         ]
         ++ sshFlag
         ++ tagFlags
-        ++ acceptRoutesFlag;
+        ++ acceptRoutesFlag
+        ++ advertiseRoutesFlag;
     };
 
     # Trust Tailscale interface
@@ -227,6 +246,11 @@ in
           --hostname=${cfg.hostname} \
           ${optionalString cfg.enableSSH "--ssh"} \
           ${optionalString cfg.acceptRoutes "--accept-routes"} \
+          ${
+            optionalString (
+              cfg.advertiseRoutes != [ ]
+            ) "--advertise-routes=${concatStringsSep "," cfg.advertiseRoutes}"
+          } \
           || {
             echo "tailscale up failed" >&2
             exit 1
