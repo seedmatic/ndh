@@ -98,7 +98,17 @@ lib.mkIf enabled {
   # needs console approval + the split-DNS nameserver entry (runtime); both become
   # declarative once Headscale is the live control-plane.  Dormant if the headscale
   # client is disabled on this host.
-  networking.headscale.advertiseRoutes = [ bm.advertiseCidr ];
+  #
+  # A LAN-fixed baremetal (the always-on Mac Mini, `lanAttachment = "fixed"`) is
+  # additionally the subnet router for the whole home LAN, so peers reach every
+  # device on it (including vz.<host> at its LAN address).  A roaming host (corp
+  # MacBook) must NOT advertise it — the route would follow the laptop off-site.
+  # Only ONE fixed host per LAN may advertise `netplan.lan.cidr` (two routers for
+  # the same CIDR would collide).
+  networking.headscale.advertiseRoutes = [
+    bm.advertiseCidr
+  ]
+  ++ lib.optional ((bm.lanAttachment or "roaming") == "fixed") netplan.lan.cidr;
 
   # This host is a subnet router for its bare-br /25 (advertised into the tailnet):
   # forward between bare-br and the tailnet, and clamp forwarded TCP MSS to the

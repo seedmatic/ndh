@@ -1274,11 +1274,18 @@
               baremetalCidrs = map (h: bm.${h}.advertiseCidr) (
                 builtins.filter (h: bm.${h} ? advertiseCidr) (builtins.attrNames bm)
               );
+              # A LAN-fixed baremetal's subnet router also advertises the whole home
+              # LAN (see baremetal-segment.nix); auto-approve it for the same nixos tag.
+              lanCidrs =
+                if builtins.any (h: (bm.${h}.lanAttachment or "roaming") == "fixed") (builtins.attrNames bm) then
+                  [ catalogData.netplan.lan.cidr ]
+                else
+                  [ ];
               routeApprovers = builtins.listToAttrs (
                 map (cidr: {
                   name = cidr;
                   value = [ (tg t.kind.nixos) ];
-                }) baremetalCidrs
+                }) (baremetalCidrs ++ lanCidrs)
               );
             in
             {

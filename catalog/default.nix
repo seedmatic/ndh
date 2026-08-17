@@ -38,6 +38,7 @@
           hostAddress = "172.16.6.254"; # nikopol-nixos link end on lan-br (subnet router)
           vzHostAddress = "172.16.6.253"; # corp Mac en0 alias (dnsmasq host-record vz.nikopol)
           advertiseCidr = "172.16.6.0/24"; # aggregate advertised into the tailnet
+          lanAttachment = "roaming"; # itinerant (runs on the corp MacBook) — must NOT advertise the home LAN
         };
         # bioskop: the vz-host is a PERSONAL Mac Mini already on the tailnet + home LAN, so
         # vz.bioskop resolves to its real LAN address (.129, reachable via the home-LAN
@@ -49,6 +50,7 @@
           netGateway = "172.16.7.1"; # Incus bridge + dnsmasq + split-DNS target
           vzHostAddress = "192.168.1.129"; # bioskop bare-metal LAN addr (dnsmasq host-record)
           advertiseCidr = "172.16.7.0/24"; # aggregate advertised into the tailnet
+          lanAttachment = "fixed"; # Mac Mini, permanently on the home LAN — this host's subnet router advertises netplan.lan.cidr
         };
       };
     in
