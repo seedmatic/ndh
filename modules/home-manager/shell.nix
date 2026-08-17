@@ -65,6 +65,12 @@ in
   programs.zsh = {
     enable = true;
 
+    # Lock the legacy dotDir (the home directory) rather than inheriting the
+    # changed default gated on home.stateVersion < "26.05"; adopting the new XDG
+    # default would relocate the zsh dotfiles.  Behaviour-preserving; silences the
+    # eval warning.
+    dotDir = config.home.homeDirectory;
+
     profileExtra = ''
       ${lib.optionalString pkgs.stdenvNoCC.isLinux "[[ -e /etc/profile ]] && source /etc/profile"}
     '';
@@ -77,6 +83,11 @@ in
   programs.bash = {
     enable = true;
   };
+
+  # Lock the legacy default (export XDG_* session variables) rather than the
+  # 26.05 change gated on home.stateVersion.  Behaviour-preserving; silences the
+  # eval warning.
+  xdg.userDirs.setSessionVariables = true;
 
   # Ensure all interactive shells (including VS Code terminals) receive the
   # core NixOS/Nix profile paths in a consistent order.

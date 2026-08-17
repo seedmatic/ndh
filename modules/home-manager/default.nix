@@ -213,7 +213,7 @@ let
     kubernetes-helm
     kustomize
     nix
-    nixfmt-classic
+    nixfmt
     nixpkgs-fmt
     nodejs
     parallel
