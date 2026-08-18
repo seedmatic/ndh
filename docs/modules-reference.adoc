@@ -61,10 +61,9 @@ services.incus-tailscale-gateway = {
     authKeyFile = "/run/secrets/tailscale-authkey";
     hostname = "my-gateway";
     routes = [
-      "192.168.5.0/24"    # Lima network
       "192.168.106.0/24"  # Incus bridge
     ];
-    tags = [ "gateway" "lima" ];
+    tags = [ "gateway" ];
   };
 
   boot.kernel.sysctl = {
@@ -430,7 +429,7 @@ NOTE: This module is deprecated. Use Headscale client instead.
 }
 ----
 
-.Lima VMs (Headscale client)
+.NixOS guest VMs (Headscale client)
 [source,nix]
 ----
 {
@@ -439,7 +438,7 @@ NOTE: This module is deprecated. Use Headscale client instead.
     enable = true;
     serverUrl = "http://192.168.1.10:8080";
     authKeyFile = "/run/secrets/headscale-authkey";
-    hostname = "lima-nikopol";
+    hostname = "nikopol-nixos";
     enableSSH = true;
   };
 }
@@ -472,7 +471,7 @@ If you don't need Headscale:
 }
 ----
 
-.Lima VMs
+.NixOS guest VMs
 [source,nix]
 ----
 {
@@ -480,7 +479,7 @@ If you don't need Headscale:
     enable = true;
     authKeyFile = "/run/secrets/tailscale-authkey";
     hostname = "nikopol-gateway";
-    routes = [ "192.168.5.0/24" "192.168.106.0/24" ];
+    routes = [ "192.168.106.0/24" ];
   };
 }
 ----

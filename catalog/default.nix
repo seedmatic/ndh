@@ -20,7 +20,7 @@
       # Per-baremetal instance segments: each baremetal host owns an Incus segment +
       # dnsmasq DNS domain, advertised into the tailnet so peers resolve
       # <inst>.<domain> via the segment's dnsmasq and reach it — including the
-      # off-tailnet corp Mac vz.nikopol, reached over a static /30 via its Incus host.
+      # off-tailnet corp Mac vzhost.nikopol, reached over a static /30 via its Incus host.
       # SINGLE SOURCE for the corp-Mac package (Darwin) and the Incus host (NixOS):
       # .253/.254/the CIDRs derive from here, never hard-coded twice.  On the Tailscale
       # SaaS controller (current) the advertise + split-DNS are applied at runtime in
@@ -28,7 +28,7 @@
       # is the live control-plane.  See docs/network-topology-c4.adoc.
       baremetal = {
         # nikopol: the vz-host is a CORPORATE Mac that cannot join the tailnet — so its
-        # vz.<host> lives at .253 on a static /30 link to the Incus host, reached only via
+        # vzhost.<host> lives at .253 on a static /30 link to the Incus host, reached only via
         # the advertised segment.  `linkCidr`/`hostAddress` are the /30 endpoints.
         nikopol = {
           domain = "nikopol";
@@ -36,14 +36,14 @@
           netGateway = "172.16.6.1"; # Incus bridge + dnsmasq + split-DNS target
           linkCidr = "172.16.6.252/30"; # static P2P link: corp Mac <-> Incus host
           hostAddress = "172.16.6.254"; # nikopol-nixos link end on lan-br (subnet router)
-          vzHostAddress = "172.16.6.253"; # corp Mac en0 alias (dnsmasq host-record vz.nikopol)
+          vzHostAddress = "172.16.6.253"; # corp Mac en0 alias (dnsmasq host-record vzhost.nikopol)
           advertiseCidr = "172.16.6.0/24"; # aggregate advertised into the tailnet
           lanAttachment = "roaming"; # itinerant (runs on the corp MacBook) — must NOT advertise the home LAN
         };
         # bioskop: the vz-host is a PERSONAL Mac Mini already on the tailnet + home LAN, so
-        # vz.bioskop resolves to its real LAN address (.129, reachable via the home-LAN
+        # vzhost.bioskop resolves to its real LAN address (.129, reachable via the home-LAN
         # advertise) — NO /30 link, no off-tailnet corp Mac.  The segment exists for
-        # uniform .bioskop instance discovery + the vz.bioskop name.
+        # uniform .bioskop instance discovery + the vzhost.bioskop name.
         bioskop = {
           domain = "bioskop";
           netCidr = "172.16.7.0/25"; # managed Incus net (dnsmasq) — bioskop instances
@@ -146,21 +146,16 @@
             ownership = "personal";
           };
 
-          # vz — the corporate bare-metal Mac hosting the nikopol Tart VM, and
-          # its VZ-bridge interface.  BOTH carry bbox reservations (the earlier
-          # "not on this LAN / no reservation" note was wrong — the router has
-          # `nikopol-vzhost` at .1 and `nikopol-vz` at .65).  `corporate`: the
-          # hardware + its DHCP are company-governed, but we keep the
-          # reservations declared so addressing stays predictive (and portable
-          # if the provider changes); ndh reconciles them like any other host.
+          # vz — the corporate bare-metal Mac hosting the nikopol Tart VM.
+          # Its en0 now runs a fixed private Wi-Fi address, so that single NIC
+          # carries the bbox reservation at .65; the former separate VZ-bridge
+          # entry (mac 84:2f:57:d4:36:be) is retired — that MAC is no longer
+          # present on the host.  `corporate`: the hardware + its DHCP are
+          # company-governed, but we keep the reservation declared so
+          # addressing stays predictive (and portable if the provider
+          # changes); ndh reconciles it like any other host.
           nikopol-vzhost = {
             mac = "4a:04:df:ff:a8:de";
-            ip = "192.168.1.1";
-            kind = "vz-host";
-            ownership = "corporate";
-          };
-          nikopol-vz = {
-            mac = "84:2f:57:d4:36:be";
             ip = "192.168.1.65";
             kind = "vz-host";
             ownership = "corporate";
@@ -313,7 +308,7 @@
             # 172.16.0.0/12 is reserved for per-BAREMETAL instance segments.  Each baremetal
             # host (nikopol today; bioskop later) owns a slice with an Incus segment + dnsmasq
             # DNS domain + a subnet route advertised into the tailnet, so peers resolve
-            # <inst>.<domain> and reach it — including the off-tailnet corp Mac vz.nikopol,
+            # <inst>.<domain> and reach it — including the off-tailnet corp Mac vzhost.nikopol,
             # reached over a static /30 via its Incus host (nikopol-nixos).  The per-host
             # sub-prefixes (net /25 + link /30) are DERIVED from `baremetal` (below the `++`),
             # single-sourced.  nnh attributes flows most-specific-prefix-wins.
@@ -359,7 +354,7 @@
                 domain = bm.domain;
                 hosts = [
                   {
-                    name = "vz.${bm.domain}";
+                    name = "vzhost.${bm.domain}";
                     ip = bm.vzHostAddress;
                   }
                 ];
@@ -412,18 +407,18 @@
         # CNAME locally and emits one CNAME RR ahead of the resolved A
         # in the answer.
         #
-        # `vz.<host>` is intentionally absent from this DNS section.
+        # `vzhost.<host>` is intentionally absent from this DNS section.
         # The SSH alias by the same name still exists for nikopol (only),
         # but it doesn't go through tailnet DNS — the bare metal hosting
         # nikopol can't be a tailnet member (corp-managed Mac, VPN binaries
         # not allowed there), so a tailnet record targeting it would have
-        # nothing to resolve to.  Instead, `vz.nikopol` resolves via the
+        # nothing to resolve to.  Instead, `vzhost.nikopol` resolves via the
         # per-baremetal split-DNS zone (the segment's dnsmasq host-record)
         # and is reached over the advertised subnet route — see the single
-        # `vz.nikopol` stanza in modules/home-manager/ssh-tailnet-hosts.nix.
+        # `vzhost.nikopol` stanza in modules/home-manager/ssh-tailnet-hosts.nix.
         #
         # Bioskop has no equivalent: it IS its own bare metal.  No
-        # `vz.bioskop` alias exists.
+        # `vzhost.bioskop` alias exists.
         hosts = {
           bioskop = {
             serviceNames = [

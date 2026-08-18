@@ -4,7 +4,7 @@
   ...
 }:
 # Scoped macOS resolvers for the per-baremetal DNS domains.  Each baremetal host
-# owns an Incus segment with a dnsmasq `.<domain>` zone (vz.<domain> + the
+# owns an Incus segment with a dnsmasq `.<domain>` zone (vzhost.<domain> + the
 # instances), advertised into the tailnet.  macOS resolves a split-horizon
 # domain ONLY via a scoped `/etc/resolver/<domain>` file — the flat global
 # nameserver list never routes it (a public resolver answers NXDOMAIN, a
@@ -21,7 +21,7 @@ in
     _: bm:
     lib.nameValuePair "resolver/${bm.domain}" {
       text = ''
-        # Split-DNS for the ${bm.domain} baremetal segment (vz.${bm.domain} + instances).
+        # Split-DNS for the ${bm.domain} baremetal segment (vzhost.${bm.domain} + instances).
         # Resolves via the segment's Incus dnsmasq, reached over the advertised subnet route.
         nameserver ${bm.netGateway}
       '';

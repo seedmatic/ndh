@@ -159,8 +159,8 @@ Before closing a session:
 == Glossary (Focused)
 
 RKE2:: Lightweight Kubernetes distribution with minimal ops surface.
-Incus:: Container & VM manager used inside Lima guest.
-Lima Guest:: NixOS VM hosting Incus workloads.
+Incus:: Container & VM manager used inside the NixOS guest VM.
+Guest VM:: Tart/`vz` NixOS VM hosting Incus workloads.
 Headscale:: Self-hosted Tailscale control plane.
 Gateway:: Instance advertising subnet routes (Tailscale / Headscale hybrid).
 

@@ -103,7 +103,7 @@ A *pure attribution span* carries just the triple. A span ndh also *operates*
   asn     = 65000;
   gateway = "172.16.6.1";             # bridge + dnsmasq + split-DNS target
   domain  = "nikopol";                # dnsmasq .<domain> DNS zone
-  hosts   = [ { name = "vz.nikopol"; ip = "172.16.6.253"; } ];  # static host-records
+  hosts   = [ { name = "vzhost.nikopol"; ip = "172.16.6.253"; } ];  # static host-records
 }
 ----
 

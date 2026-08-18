@@ -28,7 +28,7 @@ Authoritative sources (this doc is a map, not the source of truth):
 * *Module options* — link:modules-reference.adoc[Modules Reference].
 * *Cluster mesh (two-plane node/workload model)* — rke2lab
   `docs/architecture/cluster-api/management-workload-topology.adoc`.
-* *`vz.nikopol` baremetal segment* — link:network-topology-c4.adoc[Baremetal Instance
+* *`vzhost.nikopol` baremetal segment* — link:network-topology-c4.adoc[Baremetal Instance
   Segments & vz-host Access].
 
 == Architecture
@@ -51,14 +51,14 @@ Two planes stack (full detail in the rke2lab mesh document):
 │  • identity-based SSH  • MagicDNS  • cross-network reachability │
 └───────────────────────────────────────────────────────────────┘
         ▲                                          ▲
-        │ (future) workload plane = Headscale       │  one exception: vz.nikopol (corp Mac)
+        │ (future) workload plane = Headscale       │  one exception: vzhost.nikopol (corp Mac)
         │  hosted on bioskop-wrkld                   │  cannot join → reached via nikopol-nixos's
         │                                            │  advertised baremetal segment +
         ▼                                            ▼  .nikopol split-DNS
    [ workloads / pods / services ]            [ see network-topology-c4.adoc ]
 ----
 
-*One structural exception*: the *corporate bare-metal Mac* `vz.nikopol` (JAMF-managed)
+*One structural exception*: the *corporate bare-metal Mac* `vzhost.nikopol` (JAMF-managed)
 cannot join the tailnet (no VPN binaries by policy). It is reached via its Incus host
 `nikopol-nixos`'s *baremetal instance segment* (`172.16.6.0/24`), advertised into the
 tailnet with a split-DNS `.nikopol` zone — resolved and reached by name, never as a tailnet
@@ -80,14 +80,14 @@ bioskop (Darwin/macOS, .129)                     ← personal bare-metal, own ha
         ├── lan-br (bridged on the home LAN)
         ├── advertises 192.168.1.0/24 + 172.16.7.0/24 (+ .bioskop split-DNS)
         ├── Incus: bioskop-wrkld RKE2 cluster    ← 10.80.0.0/21 (vmnet-br)
-        └── Incus: bare-br 172.16.7.0/25 (dnsmasq, .bioskop) ← vz.bioskop→.129 + instances
+        └── Incus: bare-br 172.16.7.0/25 (dnsmasq, .bioskop) ← vzhost.bioskop→.129 + instances
 ----
 
-=== vz.nikopol — corp MacBook · JAMF-managed · roaming
+=== vzhost.nikopol — corp MacBook · JAMF-managed · roaming
 
 [source]
 ----
-vz.nikopol (macOS, JAMF, .1)                     ← corporate bare-metal · NOT on tailnet
+vzhost.nikopol (macOS, JAMF, .1)                     ← corporate bare-metal · NOT on tailnet
 │                                                  (no darwin config; baremetal-link daemon deployed)
 │   en0 (Wi-Fi) + alias 172.16.6.253/30 + routes /25 & 100.64/10 via .254
 │
@@ -100,7 +100,7 @@ vz.nikopol (macOS, JAMF, .1)                     ← corporate bare-metal · NOT
 ----
 
 The `172.16.6.0/24` baremetal segment is *advertised* into the tailnet with a `.nikopol`
-split-DNS zone, so any peer resolves and reaches the instances and `vz.nikopol` by name (no
+split-DNS zone, so any peer resolves and reaches the instances and `vzhost.nikopol` by name (no
 NAT). On the Tailscale SaaS controller today the advertise + split-DNS are console steps;
 declarative under Headscale later. Full transport in
 link:network-topology-c4.adoc[Baremetal Instance Segments & vz-host Access].
@@ -119,7 +119,7 @@ link:network-topology-c4.adoc[Baremetal Instance Segments & vz-host Access].
 | Tailnet (mammoth-skate) | 100.64.0.0/10 | Tailscale overlay
 | Baremetal (reserved) | 172.16.0.0/12 | per-baremetal instance segments
 | nikopol baremetal net | 172.16.6.0/25 | managed Incus net (dnsmasq `.nikopol`) — netflow
-| nikopol baremetal link | 172.16.6.252/30 | static P2P: vz.nikopol .253 ↔ nikopol-nixos .254
+| nikopol baremetal link | 172.16.6.252/30 | static P2P: vzhost.nikopol .253 ↔ nikopol-nixos .254
 | bioskop baremetal net | 172.16.7.0/25 | managed Incus net (dnsmasq `.bioskop`) — bioskop instances
 |===
 
@@ -137,11 +137,10 @@ reconciles both).
 [options="header"]
 |===
 | Host | IP | kind | ownership
-| nikopol-vzhost (vz.nikopol) | 192.168.1.1 | vz-host | corporate
+| nikopol-vzhost (vzhost.nikopol) | 192.168.1.65 | vz-host | corporate
 | zecoute / huematic / pop-screen / vertdegris / pop-cast | .5–.12 | media | personal
 | nikopol | 192.168.1.33 | darwin-host | personal
 | nikopol-nixos | 192.168.1.34 | nixos | personal
-| nikopol-vz | 192.168.1.65 | vz-host | corporate
 | bioskop | 192.168.1.129 | darwin-host | personal
 | bioskop-nixos | 192.168.1.130 | nixos | personal
 | bioskop-wifi | 192.168.1.158 | wifi-iface | personal
@@ -169,8 +168,8 @@ Public IPv4 is dynamic, tracked by Duck DNS at `mammoth-skate.duckdns.org`
 
 * *Across networks* — via the tailnet: `ssh <host>` (MagicDNS `mammoth-skate.ts.net`) or
   `tailscale ssh <host>`. Members: `bioskop`, `nikopol`, the `-nixos` hosts.
-* *`vz.nikopol`* (off-tailnet corp Mac) — a real DNS name via the `.nikopol` split-DNS zone:
-  `ssh vz.nikopol` resolves to `172.16.6.253` and reaches it over the advertised segment (no
+* *`vzhost.nikopol`* (off-tailnet corp Mac) — a real DNS name via the `.nikopol` split-DNS zone:
+  `ssh vzhost.nikopol` resolves to `172.16.6.253` and reaches it over the advertised segment (no
   `HostName`/`ProxyJump`/resolver). See
   link:network-topology-c4.adoc#usage-patterns[the vz-host access usage patterns].
 * SSH config is rendered per host by the ndh SSH modules; see
@@ -189,9 +188,8 @@ Public IPv4 is dynamic, tracked by Duck DNS at `mammoth-skate.duckdns.org`
 
 * link:network-topology-c4.adoc[Baremetal Instance Segments & vz-host Access (C4-Style UML)]
   — the advertised segment + split-DNS.
-* link:nikopol-minimal-host.adoc[Corp Bare-Metal Minimal Host (vz.nikopol)] — the corp Mac +
+* link:nikopol-minimal-host.adoc[Corp Bare-Metal Minimal Host (vzhost.nikopol)] — the corp Mac +
   its Tart VMs.
-* link:bioskop-deployment.adoc[bioskop Deployment Guide] — bioskop-side bring-up.
 * link:modules-reference.adoc[Modules Reference] — NixOS/Darwin module options.
 * rke2lab `docs/architecture/cluster-api/management-workload-topology.adoc` — the cluster
-  mesh two-plane model and the off-mesh `vz.nikopol` note.
+  mesh two-plane model and the off-mesh `vzhost.nikopol` note.

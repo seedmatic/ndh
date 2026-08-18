@@ -44,11 +44,11 @@ let
     # own its `.<domain>` record — so nnh's collector/probe appear as their real
     # hostnames in the zone.
     "dns.mode" = "dynamic";
-    # Static A record so `vz.${domain}` resolves to the vz-host (a corp Mac at its
+    # Static A record so `vzhost.${domain}` resolves to the vz-host (a corp Mac at its
     # /30 address, or an on-tailnet bare-metal at its LAN address) — not a dnsmasq
     # DHCP client.  DHCP clients (nnh collector, other instances) auto-register in
     # the `.${domain}` zone; their addresses are theirs, not the catalog's.
-    "raw.dnsmasq" = "host-record=vz.${bm.domain},${bm.vzHostAddress}";
+    "raw.dnsmasq" = "host-record=vzhost.${bm.domain},${bm.vzHostAddress}";
   };
 
   # The config as a JSON manifest (builtins.toJSON — no nix YAML codec needed);
@@ -106,7 +106,7 @@ lib.mkIf enabled {
   #
   # A LAN-fixed baremetal (the always-on Mac Mini, `lanAttachment = "fixed"`) is
   # additionally the subnet router for the whole home LAN, so peers reach every
-  # device on it (including vz.<host> at its LAN address).  A roaming host (corp
+  # device on it (including vzhost.<host> at its LAN address).  A roaming host (corp
   # MacBook) must NOT advertise it — the route would follow the laptop off-site.
   # Only ONE fixed host per LAN may advertise `netplan.lan.cidr` (two routers for
   # the same CIDR would collide).
@@ -140,7 +140,7 @@ lib.mkIf enabled {
   # traffic whose destination is NOT a private or tailnet range.  A packet to the
   # internet then leaves with the host's LAN address (so the home router can route
   # the reply back), while traffic to the tailnet (${netplan.tailnet.cidr}), the
-  # LAN, vz.${bm.domain} and other instances keeps its real source.  Own nftables
+  # LAN, vzhost.${bm.domain} and other instances keeps its real source.  Own nftables
   # table (firewall.enable is off here), alongside mss-clamp.
   networking.nftables.tables.baremetal-nat = {
     family = "inet";

@@ -109,10 +109,10 @@ Keep rollout incremental:
 * then enforce,
 * then move to the next host.
 
-== NixOS Lima guests: enforce + host-key import (@codebase)
+== NixOS VM guests: enforce + host-key import (@codebase)
 
-For Lima-backed NixOS guests, key material can be sourced from host-accessible mounts at activation time
-without storing private keys in the Nix store.
+For NixOS VM guests (Tart/`vz`), key material can be sourced from the host-accessible
+virtiofs share at activation time without storing private keys in the Nix store.
 
 The shared SOPS module supports this in `enforce` mode:
 
@@ -125,10 +125,9 @@ Default candidates include common host-shared paths:
 
 * `${profile.user.home}/.config/sops/age/keys.txt`
 * `/home/<user>/.config/sops/age/keys.txt`
-* `/Users/<user>/.config/sops/age/keys.txt`
-* `/mnt/lima-cidata/sops-age-keys.txt`
+* `${hostSopsKeyShareMountPoint}/age/keys.txt` (the Tart virtiofs host share, default `/srv/host/sops.d/age/keys.txt`)
 
-This allows keeping host configs on `enforce` while still supporting first guest activation in Lima.
+This allows keeping host configs on `enforce` while still supporting first guest activation on Tart/`vz`.
 
 == Security reminders
 

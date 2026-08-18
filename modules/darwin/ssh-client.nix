@@ -287,7 +287,7 @@ in
       # `HostName <host>-vz.lan`, but the .lan name was never
       # resolvable for either fleet host (bioskop has no separate VZ
       # host, nikopol's bare metal is on a corp network the bbox
-      # can't reach).  The replacement is the single `vz.nikopol`
+      # can't reach).  The replacement is the single `vzhost.nikopol`
       # stanza in modules/home-manager/ssh-tailnet-hosts.nix, rendered
       # uniformly on every managed host — resolution + reachability
       # ride the per-baremetal split-DNS zone + advertised subnet route.

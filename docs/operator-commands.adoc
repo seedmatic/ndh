@@ -17,10 +17,6 @@ This document defines the canonical operator-facing command model.
 ** Purpose: install/refresh the NDH bringup runtime profile.
 ** Flake app/package attribute example: `bioskop-nixos-bringup-install`.
 
-* `<host>-nixos-lima-vm-materialize`
-** Purpose: materialize Lima VM config and image links in the host profile.
-** Flake app/package attribute example: `bioskop-nixos-lima-vm-materialize`.
-
 * `<host>-nixos-tart-vm-materialize`
 ** Purpose: materialize Tart raw/ASIF image links in the host profile.
 ** Flake app/package attribute example: `bioskop-nixos-tart-vm-materialize`.
@@ -137,14 +133,11 @@ Generated Tart run wrapper now supports stable serial endpoint override.
 
 == Darwin Configuration Selectors (@codebase)
 
-For each host, Darwin outputs expose one selected default plus explicit VM flavor variants:
+For each host, Darwin outputs expose one selected default plus the explicit Tart variant:
 
 * `{host}`
 ** Selected default Darwin configuration.
 ** Provider is controlled by `hosts/<host>/default.nix` via `hostProfile.vmProvider`.
-
-* `{host}-lima`
-** Explicit Darwin configuration aligned with Lima runtime (`<host>-nixos-lima`).
 
 * `{host}-tart`
 ** Explicit Darwin configuration aligned with Tart runtime (`<host>-nixos-tart`).
@@ -152,7 +145,6 @@ For each host, Darwin outputs expose one selected default plus explicit VM flavo
 Examples:
 
 * `bioskop`
-* `bioskop-lima`
 * `bioskop-tart`
 
 == Migration Rules

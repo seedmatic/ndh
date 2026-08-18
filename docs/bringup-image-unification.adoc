@@ -63,7 +63,7 @@ Citations from the investigation:
 * `bringup-minimal-system.nix:79–85` — comment confirming tailscale state persists across handoff
 * `headscale.nix:119–120, 221` — `--hostname` is advertisement only, not registration key
 * `headscale-client-wiring.nix:66–67` — preauth-key registration, not hostname-keyed
-* `lima-cloud-init.nix:71–84` — cloud-init service runs at first boot from `cidata` device, not from baked-in image data
+* `bringup-minimal-system.nix:16` — per-host identity is injected at first boot via cloud-init userdata from the `cidata` ISO (rendered by the per-host Tart bootstrap installer), not from baked-in image data
 
 == Target shape
 
@@ -111,8 +111,9 @@ runcmd:
   # (existing mechanism, see modules/.common.d/sops.nix:nixosHostKeyImport)
 ----
 
-The cidata mechanism is already wired (`lima-cloud-init.nix:71–84`),
-just carrying less host-specific content today.
+The cidata mechanism is already wired (`bringup-minimal-system.nix` + the
+per-host `<host>-tart-vm-bootstrap-installer` output), just carrying less
+host-specific content today.
 
 === mammoth-skate.test zone integration
 
@@ -249,7 +250,7 @@ so this works.
 
 . **Phase 6 — cleanup**
   * Drop the deprecated per-host bringup outputs.
-  * Update `docs/bioskop-deployment.adoc` and any other operator
+  * Update `docs/vm-operator-runbook.adoc` and any other operator
     docs that reference the old artifact names.
 
 == Out of scope for this refactor

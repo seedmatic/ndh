@@ -34,7 +34,7 @@ let
   # to package-managed delivery.
   stalePaths = [
     "/Library/LaunchDaemons/org.nixos.linux-builder.plist~bak"
-    # The nikopol vz-host ARP resolver is fully retired (vz.nikopol now
+    # The nikopol vz-host ARP resolver is fully retired (vzhost.nikopol now
     # resolves via split-DNS).  A legacy root-owned copy may still linger
     # in ~/.local/bin/ from the old postActivation `install -m 0755 -D`
     # path — sweep it so it doesn't shadow anything in PATH.

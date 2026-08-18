@@ -13,19 +13,16 @@ This directory contains documentation for the network infrastructure and NixOS/D
 link:network-setup.adoc[Network Infrastructure Setup]::
 Complete guide covering Tailscale and Headscale deployment, configuration, usage, and troubleshooting. Start here for setting up your network.
 
-link:bioskop-deployment.adoc[bioskop Deployment Guide]::
-Step-by-step guide for deploying the complete Headscale/Tailscale architecture on bioskop (Mac Mini M4 Pro), including Headscale server, gateway, and RKE2 integration.
-
 link:network-topology-c4.adoc[Baremetal Instance Segments & vz-host Access (C4-Style UML)]::
-Context/container/sequence diagrams for the per-baremetal Incus instance segments (nikopol `172.16.6.0/24`/`.nikopol`, bioskop `172.16.7.0/24`/`.bioskop`) advertised into the tailnet with split-DNS, so peers resolve/reach the netflow instances and the vz-hosts (`vz.nikopol`, `vz.bioskop`) by name — no NAT, single-source addressing from the catalog. nikopol is the complex case (off-tailnet corp Mac via a `/30`); bioskop is the simple case. (Advertise + split-DNS are Tailscale-SaaS-console steps today; declarative under Headscale later.)
+Context/container/sequence diagrams for the per-baremetal Incus instance segments (nikopol `172.16.6.0/24`/`.nikopol`, bioskop `172.16.7.0/24`/`.bioskop`) advertised into the tailnet with split-DNS, so peers resolve/reach the netflow instances and the vz-hosts (`vzhost.nikopol`, `vzhost.bioskop`) by name — no NAT, single-source addressing from the catalog. nikopol is the complex case (off-tailnet corp Mac via a `/30`); bioskop is the simple case. (Advertise + split-DNS are Tailscale-SaaS-console steps today; declarative under Headscale later.)
 
 link:network-catalog-segments.adoc[Network Catalog Segments (feature: spec, architecture, usage)]::
-Specs + C4/UML architecture + usage of the per-baremetal Incus segments advertised into the tailnet: how to attach a probe/service to `bare-br`, reach `vz.<domain>`, the reachability model (route + ACL tag→CIDR + scoped resolvers + auto-approvers), operations, and troubleshooting. Includes the ndh→nnh handoff (what's ready + open items).
+Specs + C4/UML architecture + usage of the per-baremetal Incus segments advertised into the tailnet: how to attach a probe/service to `bare-br`, reach `vzhost.<domain>`, the reachability model (route + ACL tag→CIDR + scoped resolvers + auto-approvers), operations, and troubleshooting. Includes the ndh→nnh handoff (what's ready + open items).
 
 link:network-catalog.adoc[Network Catalog (model & contribution)]::
 The network catalog data model — the `{cidr,name,asn}` attribution triple + managed-network facts + `asns` dictionary — its consumers (nnh flow attribution, ndh provisioning), how to consume it (`nix eval --json …#catalog`), and how a domain (rke2lab, nnh) contributes spans via `lib.networkBlueprint` (the two-layer federation: data up at eval, infrastructure down at runtime).
 
-link:nikopol-minimal-host.adoc[Corp Bare-Metal Minimal Host (vz.nikopol)]::
+link:nikopol-minimal-host.adoc[Corp Bare-Metal Minimal Host (vzhost.nikopol)]::
 The minimal-host design for the JAMF-managed corp Mac and the Tart VMs it hosts (`nikopol`, `nikopol-nixos`/Incus). Supersedes the retired Lima model.
 
 link:nfs-kerberos.adoc[NFSv4 + Kerberos Plan]::
@@ -44,9 +41,6 @@ Detailed session summaries documenting the evolution of the network infrastructu
 link:github-mcp-proxy.adoc[GitHub MCP Proxy]::
 Documentation for GitHub MCP proxy configuration.
 
-link:podman-remote-setup.adoc[Podman Remote Setup]::
-Guide for setting up Podman remote client.
-
 link:operator-commands.adoc[Operator Commands]::
 Canonical operator command surface and usage patterns.
 
@@ -59,9 +53,6 @@ Operational runbook for bootstrap/enforce lifecycle, host-by-host rollout, and o
 link:security-handling-c4.adoc[Security Handling (C4-Style UML)]::
 Context + container diagrams for SOPS key lifecycle, runtime secret materialization, and Cachix publish/consume flows.
 
-link:vm-configuration-models-c4.adoc[VM Configuration Models (Lima + Tart) — C4-Style UML]::
-System/context/container/component diagrams describing the Lima model, Tart scaffold model, and their shared host-driven contracts.
-
 link:env-prefix-policy.adoc[Environment Variable Prefix Policy]::
 Canonical prefix boundaries for `RKE2LAB_*` (lab domain) and `NDH_*` (`nix-darwin-home` domain), with a single-name/no-alias policy.
 
@@ -72,20 +63,19 @@ Canonical prefix boundaries for `RKE2LAB_*` (lab domain) and `NDH_*` (`nix-darwi
 1. Read link:network-setup.adoc#architecture[Architecture Overview]
 2. Review link:network-setup.adoc#network-topology[Network Topology] and
    link:network-setup.adoc#network-ranges[Network Ranges]
-3. For bioskop bring-up: link:bioskop-deployment.adoc[bioskop Deployment Guide]
-4. Reference link:modules-reference.adoc[Module Options] as needed
+3. Reference link:modules-reference.adoc[Module Options] as needed
 
-=== For the vz.nikopol baremetal segment
+=== For the vzhost.nikopol baremetal segment
 
 * link:network-topology-c4.adoc[Baremetal Instance Segments & vz-host Access]
-* link:nikopol-minimal-host.adoc[Corp Bare-Metal Minimal Host (vz.nikopol)]
+* link:nikopol-minimal-host.adoc[Corp Bare-Metal Minimal Host (vzhost.nikopol)]
 
 == Document Structure
 
 === Network Setup Guide
 
 * Overview & Architecture (two-plane mesh)
-* Network Topology (bioskop, vz.nikopol + their Tart VMs)
+* Network Topology (bioskop, vzhost.nikopol + their Tart VMs)
 * Network Ranges + Home LAN reservations (from the catalog)
 * WAN port forwards
 * SSH access (current model)
@@ -116,7 +106,7 @@ Self-hosted Tailscale control server for internal LAN, compatible with Tailscale
 
 === Gateways / subnet routers
 A tailnet member that advertises a subnet route into `mammoth-skate` (e.g. `bioskop-nixos`
-advertises the home LAN `192.168.1.0/24`). Runs on the NixOS Incus-host VMs — not in Lima.
+advertises the home LAN `192.168.1.0/24`). Runs on the NixOS Incus-host VMs.
 
 === Hybrid Approach
 Use Tailscale for external access and mobile devices, use Headscale for fast local SSH, both provide identity-based authentication.
@@ -133,7 +123,7 @@ NixOS Incus-host VMs (bioskop-nixos, nikopol-nixos)  ← Tart VMs, tailnet membe
     ↓
 RKE2 workload clusters (Incus instances, 10.80.x)
 
-vz.nikopol (corp Mac, NOT on tailnet)
+vzhost.nikopol (corp Mac, NOT on tailnet)
     ↓
 172.16.6.0/24 baremetal segment (advertised + .nikopol split-DNS) → network-topology-c4.adoc
 ----
@@ -149,11 +139,11 @@ tailscale ssh <host>  # identity-based
 tailscale status
 ----
 
-=== SSH to vz.nikopol (off-tailnet corp Mac)
+=== SSH to vzhost.nikopol (off-tailnet corp Mac)
 
 [source,bash]
 ----
-ssh vz.nikopol        # resolves via .nikopol split-DNS → 172.16.6.253 (advertised segment)
+ssh vzhost.nikopol        # resolves via .nikopol split-DNS → 172.16.6.253 (advertised segment)
 ----
 
 See: link:network-topology-c4.adoc#usage-patterns[vz-host access usage patterns].
@@ -266,13 +256,13 @@ Full options in link:modules-reference.adoc[Modules Reference]. Current-model no
   `home.arpa` / `headscale.local` addressing is gone.
 * *Subnet routing* — `bioskop-nixos` advertises the home LAN into the tailnet; cluster-side
   route advertisement is owned by rke2lab's mesh components.
-* *vz.nikopol roaming* — a *local* `172.16.6` overlay (no advertise, no NAT); see
+* *vzhost.nikopol roaming* — a *local* `172.16.6` overlay (no advertise, no NAT); see
   link:network-topology-c4.adoc[Baremetal Instance Segments & vz-host Access].
 
 == Troubleshooting Quick Links
 
 * link:network-setup.adoc#ssh-access-current-model[SSH access (current model)]
-* link:network-topology-c4.adoc#troubleshooting[vz.nikopol roaming troubleshooting]
+* link:network-topology-c4.adoc#troubleshooting[vzhost.nikopol roaming troubleshooting]
 * link:modules-reference.adoc[Module options & troubleshooting]
 
 == Support
@@ -294,20 +284,20 @@ The following files have been removed as their content was consolidated into Asc
 
 * `headscale-setup.md` → Consolidated into `network-setup.adoc`
 * `headscale-ssh-setup.md` → Consolidated into `network-setup.adoc`
-* `headscale-example-topology.md` → Consolidated into `bioskop-deployment.adoc`
 * `hybrid-tailscale-headscale.md` → Consolidated into `network-setup.adoc`
-* `lima-tailscale-gateway-example.md` → Consolidated into `modules-reference.adoc`
 * `network-architecture-summary.md` → Consolidated into `network-setup.adoc`
-* `simplified-architecture.md` → Consolidated into `bioskop-deployment.adoc`
 * `teleport-integration-summary.md` → Removed (Teleport no longer used)
 * `teleport-setup.md` → Removed (Teleport no longer used)
+* `bioskop-deployment.adoc` → Removed (Lima-era Headscale/RKE2 deployment guide; the Lima provider is retired)
+* `podman-remote-setup.adoc` → Removed (Lima-era Podman remote engine setup; the Lima provider is retired)
+* `vm-configuration-models-c4.adoc` → Removed (Lima/Tart dual-model C4 doc; obsolete under Tart-only)
+* `NEXT-SESSION-TODO.adoc` → Removed (stale Lima-era session plan)
 
 === Remaining Markdown Files
 
 The following Markdown files are kept for specific topics outside the main network infrastructure:
 
 * `github-mcp-proxy.adoc` - GitHub MCP proxy configuration
-* `podman-remote-setup.adoc` - Podman remote client setup
 * `operator-commands.adoc` - Canonical operator command model
 
 NOTE: Consider converting these to AsciiDoc format in the future for consistency.

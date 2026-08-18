@@ -20,7 +20,7 @@ router* for its own slice of `172.16.0.0/12`:
 * the aggregate `/24` *advertised into the tailnet* + a *split-DNS* entry so peers
   resolve `<inst>.<domain>` and reach `172.16.6.x` directly;
 * for a host whose vz-host is *off-tailnet* (nikopol's corporate Mac), a static
-  `/30` link on `lan-br` and an IP-alias daemon on that Mac, so `vz.<domain>`
+  `/30` link on `lan-br` and an IP-alias daemon on that Mac, so `vzhost.<domain>`
   answers at a `/30` address reached through the advertised segment;
 * for a *LAN-fixed* host (bioskop, the always-on Mac Mini), the *whole home LAN*
   is advertised too, so roaming peers reach every LAN device.
@@ -86,7 +86,7 @@ flowchart LR
   end
   I1["instance a.nikopol\n172.16.6.10 (DHCP)"]:::wl
   I2["nnh collector\n172.16.6.x (DHCP)"]:::wl
-  VZ["vz.nikopol\ncorp Mac en0 alias 172.16.6.253\n(baremetal-link daemon)"]:::ext
+  VZ["vzhost.nikopol\ncorp Mac en0 alias 172.16.6.253\n(baremetal-link daemon)"]:::ext
   PEER["tailnet peer\n(tag:console)"]:::actor
 
   I1 --- BARE
@@ -128,7 +128,7 @@ $ ping nnh.nikopol              # split-DNS resolves .nikopol via the segment dn
 $ curl http://nnh.nikopol:3000  # nnh's UI, reached over the advertised /24
 ----
 
-.Sequence — a tailnet peer reaches vz.nikopol (or an instance)
+.Sequence — a tailnet peer reaches vzhost.nikopol (or an instance)
 [mermaid]
 ....
 sequenceDiagram
@@ -137,10 +137,10 @@ sequenceDiagram
   participant R as MagicDNS 100.100.100.100
   participant D as bare-br dnsmasq (172.16.6.1)
   participant N as nikopol-nixos (subnet router)
-  participant V as vz.nikopol (corp Mac, .253)
+  participant V as vzhost.nikopol (corp Mac, .253)
 
   Note over P: /etc/resolver/nikopol -> 100.100.100.100 (macOS scoped resolver)
-  P->>R: resolve vz.nikopol
+  P->>R: resolve vzhost.nikopol
   R->>D: split-DNS: nikopol -> 172.16.6.1
   D-->>P: 172.16.6.253 (host-record)
   Note over P: route 172.16.6.0/24 accepted (ACL tag:console permits the CIDR)
@@ -190,7 +190,7 @@ host is unreachable, or vice-versa:
   registration, so after a re-register run `tailscale set --advertise-routes=…`
   if the routes did not come back.
 * *Corp-Mac alias* — `nix run '.#nikopol-baremetal-link-deploy'` installs/refreshes
-  the IP-alias LaunchDaemon on `vz.nikopol` over ssh (no nix on the target).
+  the IP-alias LaunchDaemon on `vzhost.nikopol` over ssh (no nix on the target).
 
 == Troubleshooting
 
@@ -228,7 +228,7 @@ catalog contribution path are implemented and verified end-to-end:
 * ✅ `/24` advertised into the tailnet and *auto-approved* for `tag:nixos`;
   reached from `tag:console` peers (ACL grants the CIDR).
 * ✅ Split-DNS live — Linux peers automatic, macOS via scoped
-  `/etc/resolver/<domain>`; `vz.<domain>` resolves + is reachable (verified over
+  `/etc/resolver/<domain>`; `vzhost.<domain>` resolves + is reachable (verified over
   SSH for nikopol's off-tailnet corp Mac).
 * ✅ Catalog consumable as JSON (`nix eval --json '…#catalog.netplan.segments'`);
   contribution path defined (`lib.networkBlueprint` union — see

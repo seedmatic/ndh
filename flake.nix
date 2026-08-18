@@ -696,14 +696,14 @@
         '';
 
       # --- baremetal-link (corp-Mac IP-alias daemon) ----------------------------
-      # Connects a CORPORATE bare-metal Mac (vz.<host>) that cannot join the tailnet
+      # Connects a CORPORATE bare-metal Mac (vzhost.<host>) that cannot join the tailnet
       # to its Incus instance segment: a static /30 en0 alias + routes to the /25
       # and the no-NAT tailnet return path, re-applied on Wi-Fi re-association (a
       # WatchPaths LaunchDaemon).  Only baremetal hosts with a `linkCidr` — an
       # off-tailnet corp Mac reached over a /30 — get one; on-tailnet bare-metals
       # (bioskop) declare none.  Rendered from catalog.netplan.baremetal.<host> and
       # delivered as TEXT (no nix runtime, bash-3.2 ok on the target), so the deploy
-      # runs from any host that resolves vz.<host> — the operator's Mac or the
+      # runs from any host that resolves vzhost.<host> — the operator's Mac or the
       # nikopol-nixos activation oneshot.  See docs/network-topology-c4.adoc +
       # pkgs/baremetal-link.d/.
       baremetalLinkHosts = nixpkgs.lib.filterAttrs (_: bm: bm ? linkCidr) catalogData.netplan.baremetal;
@@ -761,7 +761,7 @@
             ssh = "${pkgsForSystem.openssh}/bin/ssh";
             installScript = "${mkBaremetalLinkInstall system bm}";
             uninstallScript = "${mkBaremetalLinkUninstall system bm}";
-            vzHost = "vz.${bm.domain}";
+            vzHost = "vzhost.${bm.domain}";
             bootstrapHost = "${bm.domain}.local";
           }
         );
@@ -1008,10 +1008,10 @@
                   set -euo pipefail
 
                   # Default vz host: by convention every Tart VM has a
-                  # matching `vz.<mainName>` ssh alias on the operator's
+                  # matching `vzhost.<mainName>` ssh alias on the operator's
                   # home-manager (see modules/home-manager/ssh-tailnet-hosts.nix).
                   # Override by passing a host as the first positional argument.
-                  vz_host="vz.${mainName}"
+                  vz_host="vzhost.${mainName}"
                   if (($# > 0)) && [[ "$1" != --* ]]; then
                     vz_host="$1"
                     shift
@@ -1024,7 +1024,7 @@
 
                   Copies the generic Tart deploy bundle, the ${mainName}-specific
                   per-VM YAML, and the fleet-wide bringup disk images to <vz-host>
-                  (default: vz.${mainName}); installs the YAML at
+                  (default: vzhost.${mainName}); installs the YAML at
                   ~/.config/nerd-tart/${mainName}.yaml on the vz host; then execs
                   nerd-tart there to materialize and run the VM.
                   USAGE
@@ -1037,7 +1037,7 @@
                   bringup_images=${anyHostBringup}
 
                   # Pull, don't push.  The operator host (e.g. bioskop) and
-                  # the bare-metal vz host share a LAN, while `vz.<host>`
+                  # the bare-metal vz host share a LAN, while `vzhost.<host>`
                   # routes through the Tart guest via ProxyJump — a
                   # single-stream ssh tunnel that throttles disk-image
                   # transfer to ~600 KB/s and traverses the bare metal's
@@ -1173,7 +1173,7 @@
               "${bm.domain}-baremetal-link-deploy" = {
                 type = "app";
                 program = "${mkBaremetalLinkDeploy system bm}/bin/${bm.domain}-baremetal-link-deploy";
-                meta.description = "Install/refresh (or --uninstall) the baremetal-link LaunchDaemon on vz.${bm.domain} — src: pkgs/baremetal-link.d/";
+                meta.description = "Install/refresh (or --uninstall) the baremetal-link LaunchDaemon on vzhost.${bm.domain} — src: pkgs/baremetal-link.d/";
               };
             }
           ) { } (builtins.attrValues baremetalLinkHosts);
@@ -1315,7 +1315,7 @@
                   dst = [ "*:*" ];
                 }
                 # Operator (console) hosts reach the whole fleet by role tag AND
-                # the per-baremetal segments (vz.<domain> + the Incus instances
+                # the per-baremetal segments (vzhost.<domain> + the Incus instances
                 # behind each subnet router) AND the fixed home LAN advertised by a
                 # LAN-fixed baremetal.  A tag'd node's netmap only carries a subnet
                 # route it is ACL-permitted to reach, so without these CIDRs a

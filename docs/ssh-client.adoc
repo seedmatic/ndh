@@ -6,16 +6,15 @@ This repository centralizes OpenSSH client configuration on Darwin hosts using d
 * Eliminate ad‑hoc edits in ~/.ssh/config for infrastructure hosts
 * Prevent multi‑key spam & premature auth failure (Too many authentication failures)
 * Keep dynamic Headscale/Tailscale SSH cert / agent flow working
-* Provide reproducible host stanzas for Lima NixOS guests and remote builders
+* Provide reproducible host stanzas for NixOS VM guests and remote builders
 
 == File Layout
 
 /system etc managed by nix-darwin:
 
 * /etc/ssh/ssh_config :: Base Host * defaults + Include lines
-* /etc/ssh/ssh_config.d/50-nixos-guest.conf :: Dynamic stanza for the Lima NixOS guest
-* /etc/ssh/ssh_config.d/55-extra-hosts.conf :: (Optional) Additional user‑defined host stanzas (sshClient.extraHosts)
-* /etc/ssh/ssh_config.d/60-builders.conf :: Remote / local builder host stanzas
+* /etc/ssh/ssh_config.d/50-guest.conf :: Derived stanza for the NixOS VM guest
+* /etc/ssh/ssh_config.d/55-extra.conf :: Host-identity, WAN-proxy and user‑defined stanzas (sshClient.extraStanzas)
 
 == Module: modules/darwin/ssh-client.nix
 
@@ -24,16 +23,19 @@ Options (namespace: sshClient):
 [cols="1,2,3",options="header"]
 |===
 | Option | Type / Default | Description
-| nixosGuest.enable | bool (true) | Generate stanza for Lima NixOS guest.
-| nixosGuest.nameSuffix | str ("-nixos") | Suffix appended to hostName / hostAlias.
-| nixosGuest.useHostAlias | bool (true) | Prefer profile.host.hostAlias when present.
-| nixosGuest.identityFile | path (~/.lima/_config/user) | Key pinned for the guest host patterns.
-| nixosGuest.identitiesOnly | bool (true) | Emit IdentitiesOnly yes when identityFile pinned.
-| nixosGuest.bypassAgent | bool (false) | Emit IdentityAgent none (bypass ssh-agent) if true.
-| extraHosts | list ([]) | Additional host stanza definitions (see below).
+| guest.enable | bool (true) | Generate the derived NixOS VM guest stanza.
+| guest.useHostAlias | bool (true) | Prefer profile.host.hostAlias over hostName when deriving the base.
+| guest.nameSuffix | str ("-nixos") | Suffix appended to base (e.g. bioskop -> bioskop-nixos).
+| guest.includeLocal | bool (true) | Also match the `.local` pattern.
+| guest.includeTailnet | bool (true) | Also match the tailnet FQDN pattern `host.tailnetName.tailnetDomain`.
+| guest.explicitPatterns | list ([]) | If non-empty, override all derived patterns with this list.
+| guest.identityFile | nullOr path (null) | Pinned key for the guest patterns. `null` falls back to the host `rdp-host` key, which VM guests authorise.
+| guest.identitiesOnly | bool (true) | Emit IdentitiesOnly yes for the guest stanza.
+| guest.bypassAgent | bool (false) | Emit IdentityAgent none (bypass ssh-agent) if true.
+| extraStanzas | list ([]) | Additional explicit host stanza definitions (see below).
 |===
 
-extraHosts entry schema:
+extraStanzas entry schema:
 
 [cols="1,2,3",options="header"]
 |===
@@ -50,13 +52,13 @@ extraHosts entry schema:
 * We do NOT set global IdentitiesOnly yes to preserve dynamic ephemeral cert auth (Headscale/Tailscale).
 * Pin IdentitiesOnly only where we explicitly supply IdentityFile.
 * Agent bypass is opt‑in per stanza to allow diagnosing agent issues without affecting global behavior.
-* Drop‑in numeric ordering: 50 guest, 55 extra, 60 builders (later files can override earlier ones).
+* Drop‑in numeric ordering: 50 guest, 55 extra (later files can override earlier ones).
 
 == Adding Extra Hosts
 Example:
 
 [source,nix]
-sshClient.extraHosts = [
+sshClient.extraStanzas = [
   {
     patterns = [ "incus-gw" "incus-gw.mammoth-skate.ts.net" ];
     user = "root";

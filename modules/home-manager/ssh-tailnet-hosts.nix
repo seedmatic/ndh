@@ -34,14 +34,14 @@ let
   # pinning.  The SSH cert *principal* stays `rdp-host` (server-side
   # identity, internal); only the operator-facing alias prefix is `rdp`.
   #
-  # `vz.{host}` is intentionally NOT in operatorAliasesForHost
+  # `vzhost.{host}` is intentionally NOT in operatorAliasesForHost
   # because there's no clean generic shape: it only makes sense for
   # hosts that have a separate bare-metal layer (a Tart VM running
   # this nixos config on top of a managed Mac), which today is only
   # nikopol.  Bioskop's "bare metal" IS bioskop — there's no
   # separate VZ host above it.
   #
-  # The single nikopol-specific alias is `vzNikopolAlias` below,
+  # The single nikopol-specific alias is `vzhostNikopolAlias` below,
   # rendered uniformly on every managed host — resolution and
   # reachability now ride the per-baremetal split-DNS zone + advertised
   # subnet route (the former per-host ARP resolver is retired).
@@ -73,19 +73,19 @@ let
     ${operatorAliasForService host "nixos" "-nixos"}
   '';
 
-  # `vz.nikopol` — the corporate bare-metal Mac hosting the nikopol VM.  It runs
+  # `vzhost.nikopol` — the corporate bare-metal Mac hosting the nikopol VM.  It runs
   # no nix-darwin config, so it has no generated stanza of its own; every managed
   # host (the nikopol VM, nikopol-nixos, bioskop, …) reaches it by this one alias.
   #
   # Resolution + reachability are now split-DNS native: the per-baremetal segment
-  # dnsmasq holds a `vz.nikopol` host-record (see modules/nixos/baremetal-segment.nix)
+  # dnsmasq holds a `vzhost.nikopol` host-record (see modules/nixos/baremetal-segment.nix)
   # and the segment's /24 is advertised into the tailnet, so any host with the
-  # split-DNS zone resolves `vz.nikopol` and reaches it over the subnet route.  The
+  # split-DNS zone resolves `vzhost.nikopol` and reaches it over the subnet route.  The
   # former ARP ProxyCommand (nikopol-vz-host-resolve-ip) is retired — no ProxyCommand,
   # no `IdentityAgent none`.  `User stephane.lacoin` is the corp account on the bare
   # metal; the operator's rdp-host key is in its authorized_keys.
-  vzNikopolAlias = ''
-    Host vz.nikopol
+  vzhostNikopolAlias = ''
+    Host vzhost.nikopol
       User stephane.lacoin
       IdentityFile ${config.sshPaths.privKeyFile}
       IdentitiesOnly yes
@@ -158,6 +158,6 @@ in
       ''
     ) inventoryHostNames}
 
-    ${vzNikopolAlias}
+    ${vzhostNikopolAlias}
   '';
 }

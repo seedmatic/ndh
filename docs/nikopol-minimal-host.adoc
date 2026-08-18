@@ -1,17 +1,17 @@
-= Corp Bare-Metal Minimal Host (vz.nikopol) Architecture
+= Corp Bare-Metal Minimal Host (vzhost.nikopol) Architecture
 :toc:
 :toclevels: 3
 
 == Overview
 
-`vz.nikopol` is the *corporate*, JAMF-managed macOS bare-metal (the MacBook Pro). The
+`vzhost.nikopol` is the *corporate*, JAMF-managed macOS bare-metal (the MacBook Pro). The
 design principle is to keep that host as *minimal* as possible — **it has no nix-darwin
 configuration**; we only install packages into its nix store and run them, plus the
 Tart/`vz` VM engine — while all personal development and the Incus workloads live *inside
 Tart VMs* it hosts.
 
-NOTE: naming. The corp bare-metal is addressed as `vz.nikopol` (`vz` = the VZ/Tart host
-role). The *personal* environment is the Tart macOS VM `nikopol`. The Incus host is the
+NOTE: naming. The corp bare-metal is addressed as `vzhost.nikopol` (`vzhost` = the VZ/Tart
+host role). The *personal* environment is the Tart macOS VM `nikopol`. The Incus host is the
 Tart NixOS VM `nikopol-nixos`. This document historically predates that split (it was
 "alcide", and conflated host and VM); it now reflects the current three-part model. The
 Incus stack is *Tart/`vz`-based — not Lima* (the earlier Lima/`incusbr0`/`192.168.106`
@@ -35,7 +35,7 @@ skinparam rectangle {
     FontSize 12
 }
 
-rectangle "vz.nikopol — corp bare-metal Mac\nJAMF-managed · NO darwin config\n(nix pkgs installed & run) · Tart/vz\nNOT a tailnet member (corp policy)" <<host>> {
+rectangle "vzhost.nikopol — corp bare-metal Mac\nJAMF-managed · NO darwin config\n(nix pkgs installed & run) · Tart/vz\nNOT a tailnet member (corp policy)" <<host>> {
     [Nix store + Tart/vz engine]
     [baremetal-link daemon: en0 alias + routes]
     rectangle "en0 (Wi-Fi)\n+ alias 172.16.6.253/30\n+ routes 172.16.6.0/25 & 100.64.0.0/10 via .254\n(set by the baremetal-link daemon)" as EN0
@@ -48,7 +48,7 @@ rectangle "nikopol\nTart macOS VM (personal)\ntailnet member" <<vm>> {
 rectangle "nikopol-nixos — Tart NixOS VM\nIncus host · tailnet member" <<router>> {
     [Incus + lan-br]
     rectangle "lan-br .254/30 · ip_forward\nadvertises 172.16.6.0/24 (no NAT)" as LANBR
-    rectangle "bare-br 172.16.6.0/25\ndnsmasq · dns.domain=nikopol\nhost-record vz.nikopol→.253" as ROAMBR
+    rectangle "bare-br 172.16.6.0/25\ndnsmasq · dns.domain=nikopol\nhost-record vzhost.nikopol→.253" as ROAMBR
 }
 
 rectangle "Incus instances\n(collector.nikopol, apps · /25)" <<cluster>> as INCUS
@@ -65,13 +65,13 @@ Both Tart VMs bridge onto the *same Wi-Fi L2* as the corp Mac. `nikopol-nixos` r
 baremetal instance segment `bare-br` (`172.16.6.0/25`, dnsmasq, `dns.domain=nikopol`),
 forwards between the `/30` link and the `/25`, and *advertises* `172.16.6.0/24` into the
 tailnet with a split-DNS `.nikopol` zone — so any tailnet peer resolves and reaches the
-instances *and* `vz.nikopol` by name. No NAT. See
+instances *and* `vzhost.nikopol` by name. No NAT. See
 link:network-topology-c4.adoc[Baremetal Instance Segments & vz-host Access] for the full
 transport (and the runtime-vs-declarative split on the Tailscale SaaS controller).
 
 === Layer responsibilities
 
-==== Layer 1 — corp bare-metal (`vz.nikopol`, minimal, no darwin config)
+==== Layer 1 — corp bare-metal (`vzhost.nikopol`, minimal, no darwin config)
 
 *Purpose*: JAMF-managed, minimal interference with corporate policy. We do *not* own a
 nix-darwin config for it; we install packages into its nix store and run them:
@@ -107,7 +107,7 @@ stack proper is described by rke2lab (`vmnet-br`, `10.80.x`).
   installed and run.
 . *Isolation* — personal work and Incus workloads are inside VMs, off the corp host.
 . *Named, tailnet-wide reach* — the advertised baremetal segment + split-DNS let peers
-  resolve/reach `vz.nikopol` and the instances by name, on any network, without the Mac
+  resolve/reach `vzhost.nikopol` and the instances by name, on any network, without the Mac
   joining the tailnet; no NAT, so source IPs stay intact for flow attribution.
 
 == Troubleshooting
@@ -133,8 +133,6 @@ tart run <vm> --net-bridged=Wi-Fi   # observe boot; see modules/darwin/tart-conf
 
 * link:network-topology-c4.adoc[Baremetal Instance Segments & vz-host Access (C4-Style UML)]
   — the segment + advertise + split-DNS transport this host relies on.
-* link:vm-configuration-models-c4.adoc[VM Configuration Models (C4-Style UML)] — the Tart
-  host-driven contracts.
 * link:network-setup.adoc[Network Infrastructure Setup] — fleet-wide tailnet model and LAN
   reservations.
 * link:../README.adoc[Main Documentation]

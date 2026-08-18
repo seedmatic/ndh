@@ -36,8 +36,8 @@
       ];
     };
 
-    # The vz.nikopol baremetal segment — bare-br /25 (Incus dnsmasq + `.nikopol`
-    # zone + the vz.nikopol host-record), the static /30 link to the corp Mac,
+    # The vzhost.nikopol baremetal segment — bare-br /25 (Incus dnsmasq + `.nikopol`
+    # zone + the vzhost.nikopol host-record), the static /30 link to the corp Mac,
     # ip_forward and the forwarded-MSS clamp — is now provided uniformly by the
     # shared modules/nixos/baremetal-segment.nix, keyed off
     # catalog.netplan.baremetal.nikopol (bioskop gets the same, minus the /30).

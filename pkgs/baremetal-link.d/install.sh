@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # baremetal-link — install the io.nxmatic.baremetal-link LaunchDaemon on a
-# CORPORATE bare-metal Mac (vz.<host>) that cannot join the tailnet.  It aliases
+# CORPORATE bare-metal Mac (vzhost.<host>) that cannot join the tailnet.  It aliases
 # the Wi-Fi interface with this host's static /30 endpoint and installs the two
 # routes that make the Incus instance segment and the tailnet reachable through
 # the Incus host (the subnet router) — with NO NAT, so source IPs are preserved.
@@ -116,7 +116,7 @@ launchctl enable "system/${label}"
 : "[baremetal-link] scoping resolver: .${domain} -> ${net_gateway}"
 mkdir -p /etc/resolver
 cat >"/etc/resolver/${domain}" <<RESOLVER
-# Split-DNS for the ${domain} baremetal segment (vz.${domain} + instances).
+# Split-DNS for the ${domain} baremetal segment (vzhost.${domain} + instances).
 # Resolves via the segment's Incus dnsmasq, reached over the advertised subnet route.
 nameserver ${net_gateway}
 RESOLVER

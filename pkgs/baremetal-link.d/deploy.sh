@@ -41,9 +41,9 @@ main() {
 	--install) shift ;;
 	esac
 
-	# Bootstrap: on the very first run vz.<host> does not yet resolve to its alias
+	# Bootstrap: on the very first run vzhost.<host> does not yet resolve to its alias
 	# (this daemon is what sets it), so fall back to the mDNS name if the primary
-	# target is unreachable.  Once the alias is up, vz.<host> resolves and is used.
+	# target is unreachable.  Once the alias is up, vzhost.<host> resolves and is used.
 	local target="$vz_host"
 	if ! @ssh@ -o BatchMode=yes -o ConnectTimeout=5 "$vz_host" true 2>/dev/null; then
 		ndh::logger:notice "[baremetal-link-deploy] ${vz_host} unreachable — falling back to @bootstrapHost@"

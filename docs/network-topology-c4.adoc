@@ -9,20 +9,20 @@ Each *baremetal host* owns a per-host *instance segment*: an Incus managed netwo
 its own dnsmasq, a DNS domain `.<host>`, and a subnet route advertised into the tailnet.
 This lets any tailnet peer resolve `<instance>.<host>` (split-DNS to that segment's
 dnsmasq) and reach the instances — and, for `nikopol`, the *corporate bare-metal Mac*
-`vz.nikopol` that cannot join the tailnet.
+`vzhost.nikopol` that cannot join the tailnet.
 
 The `nikopol` segment concretely:
 
 * `nikopol-nixos` (the Incus host VM, a tailnet member) runs a *managed Incus network*
   `bare-br` = `172.16.6.0/25` (dnsmasq, `dns.domain = nikopol`) carrying the netflow
   instances (collector `nnh`, …). Its dnsmasq also holds a static `host-record` for
-  `vz.nikopol → 172.16.6.253`.
+  `vzhost.nikopol → 172.16.6.253`.
 * A static `/30` point-to-point link (`172.16.6.252/30`) on the shared Wi-Fi L2 joins
-  `vz.nikopol` (`.253`) to `nikopol-nixos` (`.254` on `lan-br`); `nikopol-nixos` forwards
+  `vzhost.nikopol` (`.253`) to `nikopol-nixos` (`.254` on `lan-br`); `nikopol-nixos` forwards
   (`ip_forward`) between the `/30` and the `/25`.
 * `nikopol-nixos` *advertises* the aggregate `172.16.6.0/24` into the tailnet, and
   *split-DNS* points the `.nikopol` domain at its dnsmasq (`172.16.6.1`). A tailnet peer
-  thus resolves `collector.nikopol` / `vz.nikopol` and reaches them — the corp Mac
+  thus resolves `collector.nikopol` / `vzhost.nikopol` and reaches them — the corp Mac
   included — without the Mac ever being a tailnet member.
 
 *No NAT anywhere* — source IPs are preserved end-to-end (the point of the netflow
@@ -71,7 +71,7 @@ actor "Tailnet peer\n(operator, from anywhere)" as OP
 rectangle "Tailscale SaaS tailnet\nmammoth-skate\n• split-DNS .nikopol → 172.16.6.1\n• route 172.16.6.0/24 (advertised)" <<tailnet>> as TS
 
 rectangle "nikopol-nixos\nIncus host · tailnet member\nSUBNET ROUTER + dnsmasq .1" <<router>> as NIXOS
-rectangle "vz.nikopol\ncorp bare-metal Mac\nNOT on tailnet · 172.16.6.253" <<offnet>> as VZ
+rectangle "vzhost.nikopol\ncorp bare-metal Mac\nNOT on tailnet · 172.16.6.253" <<offnet>> as VZ
 rectangle "netflow collector (nnh)\ncollector.nikopol · /25" <<peer>> as COLL
 
 OP  --> TS    : resolve <inst>.nikopol + route 172.16.6.0/24
@@ -92,7 +92,7 @@ endlegend
 
 *Legend*: a tailnet peer resolves `.nikopol` names via split-DNS to `nikopol-nixos`'s
 dnsmasq (`172.16.6.1`) and reaches them over the advertised `172.16.6.0/24` route.
-`vz.nikopol` (rose) is resolved by a dnsmasq `host-record` and reached over the `/30` —
+`vzhost.nikopol` (rose) is resolved by a dnsmasq `host-record` and reached over the `/30` —
 never a tailnet member.
 
 == C4 Level 2 — Container view
@@ -111,11 +111,11 @@ skinparam rectangle {
     FontSize 11
 }
 
-rectangle "vz.nikopol — corp bare-metal Mac (macOS, JAMF)\nno darwin config — baremetal-link daemon (text-delivered, run as root)" <<host>> {
+rectangle "vzhost.nikopol — corp bare-metal Mac (macOS, JAMF)\nno darwin config — baremetal-link daemon (text-delivered, run as root)" <<host>> {
   rectangle "en0 (Wi-Fi)\n+ static alias 172.16.6.253/30\n+ route 172.16.6.0/25 via .254\n+ route 100.64.0.0/10 via .254 (tailnet return)" <<l2>> as EN0
   rectangle "nikopol-nixos — Tart NixOS VM · Incus host · tailnet member" <<router>> {
     rectangle "lan-br .254/30\nip_forward · advertises 172.16.6.0/24" <<router>> as LANBR
-    rectangle "bare-br 172.16.6.0/25\ndnsmasq · dns.domain=nikopol\nhost-record vz.nikopol→.253" <<peer>> as ROAMBR
+    rectangle "bare-br 172.16.6.0/25\ndnsmasq · dns.domain=nikopol\nhost-record vzhost.nikopol→.253" <<peer>> as ROAMBR
     rectangle "netflow collector (nnh)\ncollector.nikopol" <<peer>> as COLL
   }
 }
@@ -151,7 +151,7 @@ actor "Tailnet peer" as OP
 participant "Tailscale SaaS\n(split-DNS)" as TS
 participant "nikopol-nixos\n(.1 dnsmasq / .254 / router)" as NIXOS
 participant "collector\n(collector.nikopol)" as COLL
-participant "vz.nikopol\n(.253)" as VZ
+participant "vzhost.nikopol\n(.253)" as VZ
 
 == resolve + reach an instance ==
 OP -> TS : resolve collector.nikopol
@@ -161,7 +161,7 @@ OP -> NIXOS : to 172.16.6.x (advertised 172.16.6.0/24 route)
 NIXOS -> COLL : forward on /25 (no NAT — src preserved)
 
 == reach the corp Mac ==
-OP -> TS : resolve vz.nikopol
+OP -> TS : resolve vzhost.nikopol
 TS -> NIXOS : split-DNS → dnsmasq host-record
 NIXOS --> OP : A 172.16.6.253
 OP -> NIXOS : to .253 (advertised route)
@@ -188,7 +188,7 @@ corp Mac reached over a `/30`; `bioskop` is the *simple* case (see below).
 | `netGateway` | `172.16.6.1` | Incus bridge + dnsmasq + split-DNS target
 | `linkCidr` | `172.16.6.252/30` | static P2P link, corp Mac ↔ Incus host
 | `hostAddress` | `172.16.6.254` | `nikopol-nixos` link end on `lan-br` (subnet router)
-| `vzHostAddress` | `172.16.6.253` | `vz.nikopol` en0 alias + dnsmasq `host-record`
+| `vzHostAddress` | `172.16.6.253` | `vzhost.nikopol` en0 alias + dnsmasq `host-record`
 | `advertiseCidr` | `172.16.6.0/24` | aggregate advertised into the tailnet
 |===
 
@@ -199,7 +199,7 @@ the `172.16.0.0/12` `baremetal` supernet.
 === Second host — bioskop (the simple case)
 
 `bioskop` is a *personal* Mac Mini already on the tailnet + home LAN, so its `baremetal`
-entry has *no* `/30` link (no off-tailnet corp Mac): `vz.bioskop` resolves to bioskop's real
+entry has *no* `/30` link (no off-tailnet corp Mac): `vzhost.bioskop` resolves to bioskop's real
 LAN address, reachable via the existing home-LAN advertise.
 
 [options="header"]
@@ -208,12 +208,12 @@ LAN address, reachable via the existing home-LAN advertise.
 | `domain` | `bioskop` | dnsmasq DNS zone + split-DNS domain
 | `netCidr` | `172.16.7.0/25` | managed Incus network (dnsmasq) — bioskop instances
 | `netGateway` | `172.16.7.1` | Incus bridge + dnsmasq + split-DNS target
-| `vzHostAddress` | `192.168.1.129` | `vz.bioskop` dnsmasq `host-record` (bioskop LAN addr)
+| `vzHostAddress` | `192.168.1.129` | `vzhost.bioskop` dnsmasq `host-record` (bioskop LAN addr)
 | `advertiseCidr` | `172.16.7.0/24` | aggregate advertised into the tailnet
 |===
 
 The split-DNS/advertise pattern applies identically on `bioskop-nixos` (its `.bioskop`
-zone), so `ssh vz.bioskop` and `<inst>.bioskop` resolve uniformly across both bare-metals —
+zone), so `ssh vzhost.bioskop` and `<inst>.bioskop` resolve uniformly across both bare-metals —
 only the derived `-link` segment and the `/30` transport are nikopol-specific.
 
 == Usage patterns
@@ -237,9 +237,9 @@ and the split-DNS entry. Three copies drift.
 L2 → no DHCP collision with the local network.
 ❌ *DON'T* — bridge/macvlan the instances onto `en0`.
 
-=== Reach `vz.nikopol` by DNS name
+=== Reach `vzhost.nikopol` by DNS name
 
-✅ *DO* — `vz.nikopol` is a real DNS name (dnsmasq `host-record`, split-DNS'd into the
+✅ *DO* — `vzhost.nikopol` is a real DNS name (dnsmasq `host-record`, split-DNS'd into the
 tailnet). SSH resolves it via the tailnet resolver; no `HostName`/`ProxyJump`/resolver
 needed.
 ❌ *DON'T* — resolve the corp Mac's live Wi-Fi IP via an ARP lookup or a virtiofs published
@@ -253,11 +253,11 @@ file (the retired resolver), or hard-code a `HostName`.
 . *Catalog* — `netplan.baremetal.nikopol` (done): domain, CIDRs, `.253`/`.254`,
   `advertiseCidr`.
 . *Incus host* (`hosts/nikopol/nixos.nix`) — `bare-br` managed `/25` with
-  `dns.domain=nikopol` + `raw.dnsmasq` `host-record=vz.nikopol,172.16.6.253`; `.254/30`
+  `dns.domain=nikopol` + `raw.dnsmasq` `host-record=vzhost.nikopol,172.16.6.253`; `.254/30`
   secondary on `lan-br`; `ip_forward`.
 . *baremetal-link package* (`pkgs/baremetal-link.d/`) — deployed with
   `nix run .#nikopol-baremetal-link-deploy` (teardown: `… -- --uninstall`). It delivers the
-  catalog-rendered install script as *text* over `ssh vz.nikopol` (first-run bootstrap
+  catalog-rendered install script as *text* over `ssh vzhost.nikopol` (first-run bootstrap
   fallback `nikopol.local`, since `.253` isn't set yet) and runs it as root. The script
   installs the `io.nxmatic.baremetal-link` *WatchPaths* LaunchDaemon that (re-)applies the
   `en0` alias `172.16.6.253/30` + routes `172.16.6.0/25 via .254` and `100.64.0.0/10 via
@@ -278,7 +278,7 @@ same catalog values.
 
 == Troubleshooting
 
-`vz.nikopol` / `<inst>.nikopol` doesn't resolve::
+`vzhost.nikopol` / `<inst>.nikopol` doesn't resolve::
 Check the split-DNS entry (`nikopol → 172.16.6.1`) in the tailnet DNS config, and that the
 `172.16.6.0/24` route is approved. On `nikopol-nixos`, `incus network get bare-br
 dns.domain` should be `nikopol` and dnsmasq should serve the `host-record`.
@@ -290,10 +290,8 @@ On the corp Mac check the two routes via `.254` exist (`route -n get 172.16.6.3`
 
 == Related documentation
 
-* link:nikopol-minimal-host.adoc[Corp Bare-Metal Minimal Host (vz.nikopol)] — the
-  `vz.nikopol` → Tart VMs → Incus host layering.
+* link:nikopol-minimal-host.adoc[Corp Bare-Metal Minimal Host (vzhost.nikopol)] — the
+  `vzhost.nikopol` → Tart VMs → Incus host layering.
 * link:network-setup.adoc[Network Infrastructure Setup] — fleet-wide tailnet model.
-* link:vm-configuration-models-c4.adoc[VM Configuration Models (C4-Style UML)] — Tart
-  host-driven contracts.
 * rke2lab `docs/architecture/cluster-api/management-workload-topology.adoc` — the cluster
-  mesh; `vz.nikopol` is the off-mesh node reached via this segment.
+  mesh; `vzhost.nikopol` is the off-mesh node reached via this segment.
