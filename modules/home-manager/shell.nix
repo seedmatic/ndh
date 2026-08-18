@@ -117,6 +117,13 @@ in
       ${pkgs.bash}/bin/bash ${zdotdirScript}
     '';
 
+  # home-manager points zsh's HISTFILE at ${config.xdg.dataHome}/zsh/history
+  # (the XDG default) but never creates the directory, so a freshly bootstrapped
+  # home has no zsh history until the dir exists.  Create it idempotently.
+  home.activation.zshDataDir = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+    mkdir -p "${config.xdg.dataHome}/zsh"
+  '';
+
   home.sessionVariables.ZDOTDIR = "$HOME/.config/zsh";
 
   # Ensure XDG_RUNTIME_DIR is set (not managed by home-manager's xdg module)
