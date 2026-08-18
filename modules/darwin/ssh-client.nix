@@ -288,7 +288,7 @@ in
       # resolvable for either fleet host (bioskop has no separate VZ
       # host, nikopol's bare metal is on a corp network the bbox
       # can't reach).  The replacement lives in two places:
-      #   - The nikopol VM's hm.programs.ssh.matchBlocks at
+      #   - The nikopol VM's hm.programs.ssh.settings at
       #     hosts/nikopol/modules/darwin/vz-host-resolver.nix uses an
       #     ARP-cache resolver to find the bare metal's current IP.
       #   - Bioskop and other operator hosts get a ProxyJump=nikopol

@@ -830,15 +830,13 @@ in
     # Uses ProxyCommand to resolve the VM's dynamic IP at connect time via `tart ip`.
     # Port 22 is the standard SSHD port inside the VM.
     # Guard: only requires tart binary to be configured (not full materialization).
-    hm.programs.ssh.matchBlocks."${cfg.vmName}" = lib.mkIf (cfg.tartBinaryPath != "") {
-      user = profileUser;
-      proxyCommand = "sh -c 'nc \"$(${cfg.tartBinaryPath} ip %h 2>/dev/null)\" 22'";
-      extraOptions = {
-        StrictHostKeyChecking = "no";
-        UserKnownHostsFile = "/dev/null";
-        ServerAliveInterval = "30";
-        ServerAliveCountMax = "3";
-      };
+    hm.programs.ssh.settings."${cfg.vmName}" = lib.mkIf (cfg.tartBinaryPath != "") {
+      User = profileUser;
+      ProxyCommand = "sh -c 'nc \"$(${cfg.tartBinaryPath} ip %h 2>/dev/null)\" 22'";
+      StrictHostKeyChecking = "no";
+      UserKnownHostsFile = "/dev/null";
+      ServerAliveInterval = "30";
+      ServerAliveCountMax = "3";
     };
 
     system.activationScripts.postActivation.text =
