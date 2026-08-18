@@ -202,8 +202,8 @@ in
       DHCP = "yes";
       IPv6AcceptRA = "yes";
       LinkLocalAddressing = "no";
-      DNS = "192.168.1.254";
-      Domains = "lan";
+      DNS = netplan.lan.gateway;
+      Domains = lib.removePrefix "." netplan.lan.domain;
     };
     dhcpV4Config = {
       # Make DHCP reservations keyed by MAC address deterministic.

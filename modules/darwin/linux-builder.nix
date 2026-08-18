@@ -276,7 +276,7 @@ in
     # SSH config for manual access to bioskop-nixos (works on LAN and tailscale/headscale)
     environment.etc."ssh/ssh_config.d/70-bioskop-nixos.conf" = {
       text = ''
-        Host bioskop-nixos.lan bioskop-nixos
+        Host bioskop-nixos${catalog.netplan.lan.domain} bioskop-nixos
           User nxmatic
           StrictHostKeyChecking accept-new
           ServerAliveInterval 30

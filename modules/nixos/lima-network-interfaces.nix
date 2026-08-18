@@ -20,6 +20,12 @@ let
   ndhContext = ndh.context;
   resolvedHostProfile = ndhContext.hostProfile;
 
+  # Single source for the LAN DNS facts on lan-br (gateway + domain) — from the
+  # catalog, never re-typed.  `domain` is the dotted `.lan`; resolved's routing
+  # domain wants the `~`-prefixed bare label.
+  netplan = ndhContext.catalog.netplan or { };
+  lanDomain = lib.removePrefix "." netplan.lan.domain;
+
   # Derive effective hostname (use alias if set, otherwise hostName)
   effectiveHostName =
     if
@@ -155,8 +161,8 @@ in
     systemd.network.networks."40-lan-br" = {
       matchConfig.Name = "lan-br";
       networkConfig = {
-        DNS = [ "192.168.1.254" ];
-        Domains = [ "~lan" ];
+        DNS = [ netplan.lan.gateway ];
+        Domains = [ "~${lanDomain}" ];
         # Enable mDNS on the LAN link so systemd-resolved answers
         # (and queries) `.local` names here.  Global resolved
         # `MulticastDNS=yes` isn't enough — resolved gates mDNS

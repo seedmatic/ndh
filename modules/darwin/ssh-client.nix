@@ -165,6 +165,11 @@ in
 
       patterns = mkOption {
         type = types.listOf types.str;
+        # `*.lan` is left as a literal on purpose: this module's contract (top of
+        # file) is that option defaults stay static — no specialArg/config reads —
+        # to keep them recursion-safe.  Here `*.lan` reads as a generic host
+        # pattern, not the managed LAN DNS fact, so it does not go through the
+        # catalog like the resolver/networking modules do.
         default = [
           "*.host"
           "*.lan"

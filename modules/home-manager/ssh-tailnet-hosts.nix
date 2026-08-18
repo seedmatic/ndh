@@ -124,11 +124,19 @@ let
     else
       "";
   tailnetAlias = host: if tailnetDomain != "" then "${host}${tailnetDomain}" else null;
+  # LAN domain from the catalog (single source, dotted `.lan`) — same guarded
+  # shape as tailnetDomain above, no re-typed literal.
+  lanDomain =
+    if ndhContext ? catalog && ndhContext.catalog.netplan ? lan then
+      ndhContext.catalog.netplan.lan.domain
+    else
+      "";
+  lanAlias = host: if lanDomain != "" then "${host}${lanDomain}" else null;
   hostAliases =
     host:
     lib.filter (x: x != null && x != "") [
       host
-      "${host}.lan"
+      (lanAlias host)
       "${host}.local"
       (tailnetAlias "${host}-ts")
       (tailnetAlias host)
@@ -166,7 +174,7 @@ in
           User ${sshUserForHost host}
           ${operatorIdentityLines}
 
-        Host ${host} ${host}.lan
+        Host ${host} ${host}${lanDomain}
           HostName ${host}
 
       ''

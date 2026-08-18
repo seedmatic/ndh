@@ -50,9 +50,10 @@
     ./tmpdir-tmpfs.nix
   ];
 
-  # Active le résolveur .lan par défaut (modifiable par hôte)
+  # Active le résolveur .lan par défaut (modifiable par hôte).  Le nameserver et le
+  # domaine de recherche viennent du catalogue (defaults de l'option) — pas de
+  # littéral ici.
   networking.lanDnsResolver.enable = true;
-  networking.lanDnsResolver.nameserver = "192.168.1.254";
 
   activation.postActivationLogShowLabel = "macOS unified log (last 2h)";
   activation.postActivationLogShowCmd = "log show --last 2h --style compact --info --debug --predicate 'eventMessage CONTAINS \"darwin.activationScripts\" OR eventMessage CONTAINS \"home-manager.activationScripts\"'";
