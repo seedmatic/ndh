@@ -268,7 +268,6 @@ in
     ./io-nxmatic-nix-darwin-home-bringup-runtime.nix
 
     # Networking
-    ./bbox-reconcile.nix
     ./dns-servers.nix
     ./vm.nix
 

@@ -65386,13 +65386,13 @@
       "locked": {
         "lastModified": 1786257288,
         "narHash": "sha256-s7KXT3+D2kzfBvLLDRHz02BHr3FAyEHd8woc+nFG2+M=",
-        "owner": "nxmatic",
+        "owner": "seedmatic",
         "repo": "nix-flake-commons",
         "rev": "674c6d3497bebf050e815a7f5d7aaa52b6964b1e",
         "type": "github"
       },
       "original": {
-        "owner": "nxmatic",
+        "owner": "seedmatic",
         "ref": "develop",
         "repo": "nix-flake-commons",
         "type": "github"
@@ -248234,11 +248234,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1787027884,
-        "narHash": "sha256-j+Cp1W3qBQ93638xncl83jRCKHHslcDMka0NBmCvda8=",
+        "lastModified": 1787073544,
+        "narHash": "sha256-oGVKljAPaJ/y7iw3pyXQCNU1YKBD0GjbJ9VpcIqFuzI=",
         "owner": "seedmatic",
         "repo": "nnh",
-        "rev": "91995155d87ea35b3a136930cab63f634734c91d",
+        "rev": "9984ea5610e98d8ade70485f511f0dd95fedefb2",
         "type": "github"
       },
       "original": {
@@ -282420,6 +282420,7 @@
           "flox"
         ],
         "flox-runtime": "flox-runtime",
+        "ndh": [],
         "nixpkgs": [
           "rke2lab",
           "flake-commons",
@@ -282432,15 +282433,15 @@
         ]
       },
       "locked": {
-        "lastModified": 1786902494,
-        "narHash": "sha256-nfHCAbhhyaQmFxIeKSqqIR26xISTQt7kIGAcHgRly4k=",
-        "owner": "nxmatic",
+        "lastModified": 1787080713,
+        "narHash": "sha256-GYMQ/QslH7nwYvYI3A3fYI3ordFRwn1fg4DwnBHgCqU=",
+        "owner": "seedmatic",
         "repo": "rke2lab",
-        "rev": "533d0fa88b8a65cc0555f0b81d9748617a4f2463",
+        "rev": "84db4501f05ca03f1ecb19d99279f920c9a7bcb0",
         "type": "github"
       },
       "original": {
-        "owner": "nxmatic",
+        "owner": "seedmatic",
         "ref": "feature/network-blueprint-segments",
         "repo": "rke2lab",
         "type": "github"

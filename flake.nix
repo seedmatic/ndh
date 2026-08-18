@@ -34,7 +34,7 @@
   #      project-local (`tailscale-fork`).
   inputs = {
     # 1. Aggregator pin
-    flake-commons.url = "github:nxmatic/nix-flake-commons/develop";
+    flake-commons.url = "github:seedmatic/nix-flake-commons/develop";
 
     # 2. Aggregator passthroughs (alphabetized)
     bird.follows = "flake-commons/bird";
@@ -64,15 +64,23 @@
     treefmt-nix.url = "github:numtide/treefmt-nix";
 
     # rke2lab is the source of truth for the cluster network underlay (cluster/
-    # node IDs, MAC derivation, addressing). The catalog consumes its flat
-    # `lib.networkBlueprint` instead of hand-inlining MAC/IP values. This is the
-    # sanctioned BUILD/eval-time edge: nix-darwin-home -> rke2lab. The reverse
-    # (rke2lab -> nix-darwin-home) is forbidden and guarded in rke2lab's flake;
-    # rke2lab is NOT routed through flake-commons because rke2lab already depends
-    # on flake-commons, which would form a flake-commons <-> rke2lab cycle.
-    # `flake-commons` follows ours so the two flakes share one resolved version set.
+    # node IDs, MAC derivation, addressing); the catalog consumes its flat
+    # `lib.networkBlueprint` rather than hand-inlining MAC/IP values — the
+    # BUILD/eval-time edge nix-darwin-home -> rke2lab. This is now a MUTUAL edge:
+    # rke2lab in turn consumes ndh's `catalog.netplan.lan` (Direction A, the
+    # home-LAN federation). So, exactly like the nnh input below, it is cut with
+    # a reciprocal EMPTY follows (rke2lab's back-reference to ndh follows THIS
+    # root), breaking the lock cycle while both flakes still build standalone.
+    # See the hub memory flake-mutual-dependency-follows-root.
+    # rke2lab is NOT routed through flake-commons (it already depends on
+    # flake-commons, which would form a flake-commons <-> rke2lab cycle).
+    # rke2lab defines its own `flake-commons` (github:seedmatic/nix-flake-commons,
+    # the same source as ours) and follows nixpkgs/flox/sops-nix/… through it; we
+    # pin `rke2lab.inputs.flake-commons.follows = "flake-commons"` so that whole
+    # set resolves against ours — one shared flake-commons closure, not two in the lock.
     rke2lab = {
-      url = "github:nxmatic/rke2lab/feature/network-blueprint-segments";
+      url = "github:seedmatic/rke2lab/feature/network-blueprint-segments";
+      inputs.ndh.follows = "";
       inputs.flake-commons.follows = "flake-commons";
     };
 
@@ -1403,6 +1411,12 @@
               aclCanonical = tailnetAclCanonicalFile;
             }
           );
+          bboxReconcilePackage = import ./modules/.common.d/bbox-reconcile.d/package.nix {
+            pkgs = pkgsForSystem;
+            lib = nixpkgs.lib;
+            catalog = catalogData;
+            inherit worktreePath;
+          };
         in
         {
           nix-build-observe = {
@@ -1419,6 +1433,11 @@
             type = "app";
             program = "${rotateTailnetSecretsPackage}/bin/rotate-tailnet-secrets";
             meta.description = "Rotate per-kind Tailscale SaaS auth keys + reconcile the tailnet ACL (dry-run by default) — src: modules/.common.d/rotate-tailnet-secrets.d/";
+          };
+          bbox-reconcile = {
+            type = "app";
+            program = "${bboxReconcilePackage}/bin/bbox-reconcile";
+            meta.description = "Diff catalog.netplan.lan.hosts against the bbox /dhcp/clients reservations (read-only) — src: modules/.common.d/bbox-reconcile.d/";
           };
         }
         // hostBootstrapInstallerApps
