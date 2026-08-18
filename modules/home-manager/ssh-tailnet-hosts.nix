@@ -37,19 +37,14 @@ let
   # `vz.{host}` is intentionally NOT in operatorAliasesForHost
   # because there's no clean generic shape: it only makes sense for
   # hosts that have a separate bare-metal layer (a Tart VM running
-  # this nikos config on top of a managed Mac), which today is only
+  # this nixos config on top of a managed Mac), which today is only
   # nikopol.  Bioskop's "bare metal" IS bioskop — there's no
   # separate VZ host above it.
   #
-  # The nikopol-specific alias is defined in two places, depending
-  # on which side originates the connection:
-  #   - On the nikopol VM itself: a matchBlock in
-  #     hosts/nikopol/modules/darwin/vz-host-resolver.nix uses an
-  #     ARP-cache resolver to find the bare metal's current IP on
-  #     whatever Wi-Fi the laptop is on.
-  #   - On every other host: see `vzAliasForBioskopSide` below — a
-  #     `ProxyJump=nikopol` block that delegates to the VM's
-  #     resolver.
+  # The single nikopol-specific alias is `vzNikopolAlias` below,
+  # rendered uniformly on every managed host — resolution and
+  # reachability now ride the per-baremetal split-DNS zone + advertised
+  # subnet route (the former per-host ARP resolver is retired).
   # The publickey identity every operator-facing alias presents: the profile
   # user's rdp-host key+cert read straight from disk (IdentityAgent none) so
   # auth never depends on a populated ssh-agent.  Single-sourced here because
@@ -78,46 +73,25 @@ let
     ${operatorAliasForService host "nixos" "-nixos"}
   '';
 
-  # `vz.nikopol` from bioskop / any other operator host: route the
-  # connection through the nikopol VM (which is on tailnet) so its
-  # local-segment ARP resolver finds the bare metal's current IP.
-  # Two-hop: the outer hop is tailnet (bioskop → nikopol), the inner
-  # hop is the local-segment hop (nikopol VM → bare metal).
+  # `vz.nikopol` — the corporate bare-metal Mac hosting the nikopol VM.  It runs
+  # no nix-darwin config, so it has no generated stanza of its own; every managed
+  # host (the nikopol VM, nikopol-nixos, bioskop, …) reaches it by this one alias.
   #
-  # ProxyCommand rather than ProxyJump because the nikopol VM has
-  # `tailscale set --ssh=true` — Tailscale's built-in SSH server
-  # doesn't support stdio-forwarding (the `direct-tcpip` /
-  # session-stdio channels that ProxyJump needs internally
-  # translate to `ssh -W`).  Tailscale SSH allows interactive
-  # sessions and command execution but rejects port-forward
-  # channels by design (see tailscale.com docs on SSH features).
-  # ProxyCommand sidesteps this by using a regular session-exec to
-  # invoke `nc` on the VM, which then opens a plain local-segment
-  # TCP connection to the resolved bare-metal IP.
-  #
-  # The outer-hop alias is `nikopol-ts`, the explicit tailnet form
-  # resolving to `nikopol.mammoth-skate.ts.net` — it works wherever
-  # the laptop currently is.  (Bare `nikopol` now resolves via MagicDNS
-  # too; `-ts` is kept here to make the tailnet intent unambiguous.)
-  #
-  # `User stephane.lacoin` and `IdentityFile rdp-host` apply to
-  # the inner-hop authentication; the outer ssh hop into nikopol-ts
-  # uses whatever `Host nikopol-ts` is configured with elsewhere.
-  vzAliasForBioskopSide = ''
+  # Resolution + reachability are now split-DNS native: the per-baremetal segment
+  # dnsmasq holds a `vz.nikopol` host-record (see modules/nixos/baremetal-segment.nix)
+  # and the segment's /24 is advertised into the tailnet, so any host with the
+  # split-DNS zone resolves `vz.nikopol` and reaches it over the subnet route.  The
+  # former ARP ProxyCommand (nikopol-vz-host-resolve-ip) is retired — no ProxyCommand,
+  # no `IdentityAgent none`.  `User stephane.lacoin` is the corp account on the bare
+  # metal; the operator's rdp-host key is in its authorized_keys.
+  vzNikopolAlias = ''
     Host vz.nikopol
-      ProxyCommand ssh nikopol-ts "nc \$(nikopol-vz-host-resolve-ip) 22"
       User stephane.lacoin
       IdentityFile ${config.sshPaths.privKeyFile}
       IdentitiesOnly yes
-      IdentityAgent none
       PreferredAuthentications publickey
   '';
 
-  # The current host's identity, used to gate the bioskop-side
-  # vz-host alias: we don't render it ON nikopol itself because the
-  # per-host module hosts/nikopol/modules/darwin/vz-host-resolver.nix
-  # already provides a matchBlock with the local-ARP resolver shape.
-  currentHostName = config._module.specialArgs.profile.host.hostName or "";
   tailnetDomain =
     if ndhContext ? catalog && ndhContext.catalog.netplan ? tailnet then
       ndhContext.catalog.netplan.tailnet.domain
@@ -184,6 +158,6 @@ in
       ''
     ) inventoryHostNames}
 
-    ${lib.optionalString (currentHostName != "nikopol") vzAliasForBioskopSide}
+    ${vzNikopolAlias}
   '';
 }

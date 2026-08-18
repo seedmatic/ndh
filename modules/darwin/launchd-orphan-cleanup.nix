@@ -34,12 +34,10 @@ let
   # to package-managed delivery.
   stalePaths = [
     "/Library/LaunchDaemons/org.nixos.linux-builder.plist~bak"
-    # Pre-6e8b8ba9 the nikopol vz-host resolver was copied into
-    # ~/.local/bin/ via a system.activationScripts.postActivation
-    # `install -m 0755 -D` call, leaving a root-owned copy.  We now
-    # ship the resolver via home.packages (lands at
-    # /etc/profiles/per-user/<user>/bin/<binName>); the legacy copy
-    # lingers and shadows the new one in PATH order.  Sweep it.
+    # The nikopol vz-host ARP resolver is fully retired (vz.nikopol now
+    # resolves via split-DNS).  A legacy root-owned copy may still linger
+    # in ~/.local/bin/ from the old postActivation `install -m 0755 -D`
+    # path — sweep it so it doesn't shadow anything in PATH.
     "/Volumes/user-home/.local/bin/nikopol-vz-host-resolve-ip"
   ];
 

@@ -287,13 +287,10 @@ in
       # `HostName <host>-vz.lan`, but the .lan name was never
       # resolvable for either fleet host (bioskop has no separate VZ
       # host, nikopol's bare metal is on a corp network the bbox
-      # can't reach).  The replacement lives in two places:
-      #   - The nikopol VM's hm.programs.ssh.settings at
-      #     hosts/nikopol/modules/darwin/vz-host-resolver.nix uses an
-      #     ARP-cache resolver to find the bare metal's current IP.
-      #   - Bioskop and other operator hosts get a ProxyJump=nikopol
-      #     block via vzAliasForBioskopSide in
-      #     modules/home-manager/ssh-tailnet-hosts.nix.
+      # can't reach).  The replacement is the single `vz.nikopol`
+      # stanza in modules/home-manager/ssh-tailnet-hosts.nix, rendered
+      # uniformly on every managed host — resolution + reachability
+      # ride the per-baremetal split-DNS zone + advertised subnet route.
       # Leaving these symbols defined-but-empty keeps allExtraStanzas's
       # concat shape unchanged.
 

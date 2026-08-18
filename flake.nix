@@ -1009,9 +1009,8 @@
 
                   # Default vz host: by convention every Tart VM has a
                   # matching `vz.<mainName>` ssh alias on the operator's
-                  # darwin home-manager (see hosts/<host>/modules/home-manager/
-                  # vz-host-resolver.nix).  Override by passing a host as the
-                  # first positional argument.
+                  # home-manager (see modules/home-manager/ssh-tailnet-hosts.nix).
+                  # Override by passing a host as the first positional argument.
                   vz_host="vz.${mainName}"
                   if (($# > 0)) && [[ "$1" != --* ]]; then
                     vz_host="$1"
