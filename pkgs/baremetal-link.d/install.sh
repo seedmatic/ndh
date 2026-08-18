@@ -13,8 +13,9 @@
 # at build time (@vzHostAddress@ etc.) — never hand-typed here.
 #
 # Build-time tokens (pkgs.replaceVars): interface, vzHostAddress, linkPrefix,
-# netCidr, tailnetCidr, hostAddress, label, plist, confDir, log (written WITHOUT
-# their at-sigils — replaceVars would substitute an at-sigil placeholder here too).
+# netCidr, tailnetCidr, hostAddress, domain, netGateway, label, plist, confDir,
+# log (written WITHOUT their at-sigils — replaceVars would substitute an at-sigil
+# placeholder here too).
 # Delivered as text and run as root via `ssh <vz> sudo bash -s` (see deploy.sh);
 # no nix runtime is required on the target, and it is bash-3.2 compatible.
 #
@@ -37,6 +38,8 @@ link_prefix="@linkPrefix@"
 net_cidr="@netCidr@"
 tailnet_cidr="@tailnetCidr@"
 via="@hostAddress@"
+domain="@domain@"
+net_gateway="@netGateway@"
 label="@label@"
 plist="@plist@"
 conf_dir="@confDir@"
@@ -102,4 +105,24 @@ launchctl bootout system "$plist" 2>/dev/null || true
 launchctl bootstrap system "$plist"
 launchctl enable "system/${label}"
 
-: "[baremetal-link] ${label} up: ${vz_address}/${link_prefix} on ${interface}; routes ${net_cidr} + ${tailnet_cidr} via ${via} (log ${log})"
+# Scoped macOS resolver for the .${domain} baremetal DNS zone.  This corp Mac
+# does NOT run a nix-darwin config, so modules/darwin/baremetal-resolvers.nix
+# never lands here — the daemon installer owns the same /etc/resolver/<domain>
+# file instead.  macOS routes a split-horizon domain ONLY via a scoped resolver
+# file (the flat global list would take a public NXDOMAIN as definitive), so we
+# point .${domain} straight at its segment's Incus dnsmasq (netGateway),
+# reachable over the /25 route the alias just installed.  Static file (survives
+# Wi-Fi re-association), so it lives here rather than in link-up.sh.
+: "[baremetal-link] scoping resolver: .${domain} -> ${net_gateway}"
+mkdir -p /etc/resolver
+cat >"/etc/resolver/${domain}" <<RESOLVER
+# Split-DNS for the ${domain} baremetal segment (vz.${domain} + instances).
+# Resolves via the segment's Incus dnsmasq, reached over the advertised subnet route.
+nameserver ${net_gateway}
+RESOLVER
+chown root:wheel "/etc/resolver/${domain}"
+chmod 0644 "/etc/resolver/${domain}"
+dscacheutil -flushcache 2>/dev/null || true
+killall -HUP mDNSResponder 2>/dev/null || true
+
+: "[baremetal-link] ${label} up: ${vz_address}/${link_prefix} on ${interface}; routes ${net_cidr} + ${tailnet_cidr} via ${via}; resolver .${domain} -> ${net_gateway} (log ${log})"

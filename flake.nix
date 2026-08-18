@@ -719,6 +719,7 @@
         netCidr = bm.netCidr;
         tailnetCidr = catalogData.netplan.tailnet.cidr;
         hostAddress = bm.hostAddress;
+        domain = bm.domain;
         label = baremetalLinkLabel;
         plist = "/Library/LaunchDaemons/${baremetalLinkLabel}.plist";
         confDir = "/etc/baremetal-link";
@@ -730,6 +731,7 @@
           baremetalLinkVars bm
           // {
             linkPrefix = nixpkgs.lib.last (nixpkgs.lib.splitString "/" bm.linkCidr);
+            netGateway = bm.netGateway;
             log = "/var/log/baremetal-link.log";
           }
         );

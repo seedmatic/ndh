@@ -5,8 +5,8 @@
 # (see deploy.sh --uninstall); bash-3.2 compatible, no nix runtime on target.
 #
 # Build-time tokens (pkgs.replaceVars): interface, vzHostAddress, netCidr,
-# tailnetCidr, hostAddress, label, plist, confDir (written WITHOUT at-sigils —
-# replaceVars would substitute an at-sigil placeholder here too).
+# tailnetCidr, hostAddress, domain, label, plist, confDir (written WITHOUT
+# at-sigils — replaceVars would substitute an at-sigil placeholder here too).
 #
 # Unlike nnh's netflow-link uninstall (which left its alias to clear on the next
 # Wi-Fi re-association), we also delete the two routes we added — they would
@@ -27,6 +27,7 @@ vz_address="@vzHostAddress@"
 net_cidr="@netCidr@"
 tailnet_cidr="@tailnetCidr@"
 via="@hostAddress@"
+domain="@domain@"
 label="@label@"
 plist="@plist@"
 conf_dir="@confDir@"
@@ -42,4 +43,9 @@ for net in "$net_cidr" "$tailnet_cidr"; do
 done
 /sbin/ifconfig "$interface" -alias "$vz_address" 2>/dev/null || true
 
-: "[baremetal-link] ${label} removed (${vz_address} alias + routes via ${via} torn down)"
+: "[baremetal-link] removing scoped resolver /etc/resolver/${domain}"
+rm -f "/etc/resolver/${domain}"
+dscacheutil -flushcache 2>/dev/null || true
+killall -HUP mDNSResponder 2>/dev/null || true
+
+: "[baremetal-link] ${label} removed (${vz_address} alias + routes via ${via} + resolver .${domain} torn down)"

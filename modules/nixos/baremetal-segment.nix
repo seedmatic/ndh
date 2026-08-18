@@ -39,6 +39,11 @@ let
     "ipv4.dhcp" = "true";
     "ipv6.address" = "none";
     "dns.domain" = bm.domain;
+    # Register each instance under the hostname it sends in its DHCP request, not
+    # the Incus instance name (`managed`, the default).  `dynamic` lets the guest
+    # own its `.<domain>` record — so nnh's collector/probe appear as their real
+    # hostnames in the zone.
+    "dns.mode" = "dynamic";
     # Static A record so `vz.${domain}` resolves to the vz-host (a corp Mac at its
     # /30 address, or an on-tailnet bare-metal at its LAN address) — not a dnsmasq
     # DHCP client.  DHCP clients (nnh collector, other instances) auto-register in
@@ -124,6 +129,25 @@ lib.mkIf enabled {
       chain forward {
         type filter hook forward priority mangle; policy accept;
         tcp flags syn tcp option maxseg size set rt mtu
+      }
+    '';
+  };
+
+  # Public-internet egress for the bare-br instances.  The managed network keeps
+  # `ipv4.nat = false` (source IPs must survive for nnh's flow attribution), so a
+  # blanket masquerade is wrong — it would rewrite the source of tailnet/LAN flows
+  # too and blind the collector.  Instead masquerade ONLY public-bound egress:
+  # traffic whose destination is NOT a private or tailnet range.  A packet to the
+  # internet then leaves with the host's LAN address (so the home router can route
+  # the reply back), while traffic to the tailnet (${netplan.tailnet.cidr}), the
+  # LAN, vz.${bm.domain} and other instances keeps its real source.  Own nftables
+  # table (firewall.enable is off here), alongside mss-clamp.
+  networking.nftables.tables.baremetal-nat = {
+    family = "inet";
+    content = ''
+      chain postrouting {
+        type nat hook postrouting priority srcnat; policy accept;
+        ip saddr ${bm.netCidr} ip daddr != { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, ${netplan.tailnet.cidr} } masquerade
       }
     '';
   };
