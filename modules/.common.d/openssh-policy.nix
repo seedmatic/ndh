@@ -268,7 +268,7 @@ in
                     enable = mkOption {
                       type = types.bool;
                       default = true;
-                      description = "Generate a derived guest stanza (Lima / VM).";
+                      description = "Generate a derived guest stanza (VM guest).";
                     };
                     useHostAlias = mkOption {
                       type = types.bool;
@@ -298,7 +298,7 @@ in
                     identityFile = mkOption {
                       type = types.nullOr types.path;
                       default = null;
-                      description = "Pinned key for guest (null -> inferred ~/.lima/_config/user).";
+                      description = "Pinned key for guest (null -> the operator's canonical rdp-host key).";
                     };
                     identitiesOnly = mkOption {
                       type = types.bool;
@@ -445,7 +445,6 @@ in
         hostProfile = (config.profile.host or { });
         userProfile = (config.profile.user or { });
         userName = userProfile.name or "";
-        userHome = userProfile.home or ("/home/" + userName);
         # Derive guest patterns
         baseRaw =
           if
@@ -477,8 +476,11 @@ in
               ++ lib.optional pcfg.guest.includeLocal "${baseHost}.local"
               ++ lib.optional (tailnetFqdn != null) tailnetFqdn
             );
-        defaultLimaKey = "${userHome}/.lima/_config/user";
-        guestKey = if pcfg.guest.identityFile != null then pcfg.guest.identityFile else defaultLimaKey;
+        # Guests authorise the operator's canonical rdp-host key (both the
+        # former Lima and the current Tart guests trust it); the legacy
+        # `~/.lima/_config/user` default is retired with Lima.
+        defaultGuestKey = config.sshPaths.privKeyFile;
+        guestKey = if pcfg.guest.identityFile != null then pcfg.guest.identityFile else defaultGuestKey;
         render =
           st:
           let

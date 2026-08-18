@@ -52,7 +52,7 @@ in
     };
 
     guest = mkOption {
-      description = "Derived Lima/NixOS guest stanza configuration.";
+      description = "Derived VM/NixOS guest stanza configuration.";
       type = types.submodule (
         { ... }:
         {
@@ -90,7 +90,7 @@ in
             identityFile = mkOption {
               type = types.nullOr types.path;
               default = null;
-              description = "Pinned key path for the guest stanza (null -> the host rdp-host key, which both Lima and Tart guests authorise).";
+              description = "Pinned key path for the guest stanza (null -> the host rdp-host key, which VM guests authorise).";
             };
             identitiesOnly = mkOption {
               type = types.bool;

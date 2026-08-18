@@ -84,7 +84,7 @@ in
     keyName = lib.mkOption {
       type = lib.types.str;
       default = "rdp-host";
-      description = "Canonical SSH key basename used by Lima and SSH consumers.";
+      description = "Canonical SSH key basename used by SSH consumers.";
     };
 
     privKeyFile = lib.mkOption {
@@ -97,9 +97,8 @@ in
       type = lib.types.str;
       default = "${config.sshPaths.secretsKeysDir}/${config.sshPaths.keyName}.pub";
       description = ''
-        Path to the canonical SSH host public key used by Lima, the
-        sshd authorized-keys enrollment check, and the home-manager
-        lima-rdp-assets provisioner.
+        Path to the canonical SSH host public key used by the sshd
+        authorized-keys enrollment check and other SSH consumers.
 
         Lives next to `privKeyFile` in `secretsKeysDir` rather than in
         `authoritySecretsDir` because the ssh-extract-keys pipeline

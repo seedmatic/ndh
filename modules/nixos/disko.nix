@@ -7,10 +7,9 @@ let
   ndhContext = ndh.context;
   effectiveVmProvider = ndhContext.vmProvider;
 
-  # Tart and Lima both front the guest with a dedicated boot disk at
-  # /dev/vda — Tart because the bringup image uses `mkBootDisk` at
-  # build time to lay down an `esp-boot`-labelled 600 MiB disk, Lima
-  # because cloud-init owns the root FS there for the bootstrap
+  # Tart fronts the guest with a dedicated boot disk at /dev/vda — the
+  # bringup image uses `mkBootDisk` at build time to lay down an
+  # `esp-boot`-labelled 600 MiB disk for the bootstrap
   # closure.  Either way the four ZFS pool disks start at /dev/vdb;
   # declaring `boot = "/dev/vda"` here makes disko emit the
   # `/boot` fileSystems entry (via mkBootDisk) so systemd-boot's

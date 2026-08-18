@@ -16,9 +16,7 @@ let
   inventory = ndhContext.inventory;
   keysTargetUnit = "keys.target";
   hasSopsInstallSecretsService = builtins.hasAttr "sops-install-secrets" config.systemd.services;
-  hasLimaCloudInitService = builtins.hasAttr (ndhSystemd.mkUnitName "lima-cloud-init") config.systemd.services;
   contributedTargetName = ndhSystemd.contributedTargetName;
-  limaCloudInitServiceName = ndhSystemd.mkServiceName "lima-cloud-init";
   hostkeyEnrollmentCheckServiceName = ndhSystemd.mkServiceName "hostkey-enrollment-check";
   profileUserName =
     if config ? profile && config.profile ? user && config.profile.user ? name then
@@ -108,7 +106,6 @@ in
     after = [
       keysTargetUnit
     ]
-    ++ lib.optionals hasLimaCloudInitService [ limaCloudInitServiceName ]
     ++ lib.optionals hasSopsInstallSecretsService [ "sops-install-secrets.service" ];
     before = [
       "sshd.service"

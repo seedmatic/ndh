@@ -43,25 +43,13 @@ let
     && (entry ? vm)
     && (entry.vm.manager or "") == "nix-darwin"
   ) inventoryEntries;
-  # nerd-nixos Lima builder: Lima managed VM (vm.manager == "lima")
-  limaBuilderEntries = lib.filter (
-    entry:
-    entry.builder != null
-    && lib.elem "aarch64-linux" entry.builder.systems
-    && (entry ? vm)
-    && (entry.vm.manager or "") == "lima"
-  ) inventoryEntries;
   # Local QEMU linux-builder enabled only on baremetal (bioskop) as a fallback
   # when nerd-nixos VM is not yet available. VM hosts (nikopol) cannot run
   # nested QEMU and bootstrap from pre-built configs from bioskop instead.
   selected = if (!isBaremetalHost) then null else lib.head (linuxBuilderEntries ++ [ null ]);
-  selectedLimaBuilder = null; # Remote builders disabled
   requestedLinuxBuilderVmCpuCores =
     if selected != null then (selected.builder.vmCpuCores or 8) else 8;
   effectiveLinuxBuilderVmCpuCores = lib.min requestedLinuxBuilderVmCpuCores 8;
-  # Lima nerd-nixos SSH port configured via lima.configGenerator.sshLocalPort (kept for reference)
-  nerdNixosSshPort = config.lima.configGenerator.sshLocalPort or 0;
-  nerdNixosBuilderEnabled = selectedLimaBuilder != null;
   # Key path shared by both embedded linux-builder (as fallback) and nerd-nixos builder
   builderKeyDir = "/etc/nix";
   builderKeyPath = "${builderKeyDir}/builder_ed25519";

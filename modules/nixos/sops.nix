@@ -10,11 +10,7 @@ let
   hasManagedSecrets = (config.sops.secrets or { }) != { };
   bootstrapCfg = config.ndh.sopsAgeKeyBootstrap;
   keysTargetUnit = "keys.target";
-  hasLimaCloudInitService = builtins.hasAttr (ndhSystemd.mkUnitName "lima-cloud-init") config.systemd.services;
   localFsUnitDeps = [ "local-fs.target" ];
-  limaCloudInitUnitDeps = lib.optionals hasLimaCloudInitService [
-    (ndhSystemd.mkServiceName "lima-cloud-init")
-  ];
   importCandidateDirs = lib.unique (
     map builtins.dirOf (lib.filter (path: path != "") bootstrapCfg.nixosHostKeyImport.candidates)
   );
@@ -45,8 +41,8 @@ in
       lib.mkIf (config.sops.useSystemdActivation or false)
         {
           description = "Ensure SOPS age key is available before sops-install-secrets (@codebase)";
-          requires = [ keysTargetUnit ] ++ localFsUnitDeps ++ limaCloudInitUnitDeps;
-          after = [ keysTargetUnit ] ++ localFsUnitDeps ++ limaCloudInitUnitDeps;
+          requires = [ keysTargetUnit ] ++ localFsUnitDeps;
+          after = [ keysTargetUnit ] ++ localFsUnitDeps;
           before = [ "sops-install-secrets.service" ];
           wantedBy = [ "sops-install-secrets.service" ];
           unitConfig = lib.mkIf bootstrapCfg.nixosHostKeyImport.enable {

@@ -20,15 +20,13 @@ in
   # option lives here rather than in systemd/default.nix.
   options.ndh.vm.provider = lib.mkOption {
     type = lib.types.enum [
-      "lima"
       "tart"
       "none"
     ];
     default = effectiveVmProvider;
     description = ''
       VM provider mode for guest-side systemd wiring.
-      - lima: enable Lima cidata/cloud-init + guest agent units.
-      - tart: disable Lima-specific units (Tart-specific units can be layered separately).
+      - tart: enable the Tart guest agent unit.
       - none: disable provider-specific VM units.
     '';
   };

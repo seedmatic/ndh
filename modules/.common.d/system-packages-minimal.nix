@@ -1,6 +1,6 @@
 { pkgs, ... }:
 # Minimal system packages for JAMF-managed macOS hosts
-# Most development work happens in Lima VM, not on host
+# Most development work happens in the VM, not on host
 with pkgs;
 [
   # Essential shell and core utilities
@@ -19,6 +19,5 @@ with pkgs;
   # SSH (for VM access)
   # openssh is provided by macOS, but we may want specific tools
 
-  # Lima is provided by modules/darwin/lima-config.nix
   # Heavy tools moved to VM
 ]

@@ -37,26 +37,14 @@ let
 
   nixosbringupMode = effectiveGenerationMode == "bringup";
 
-  vmProvider =
-    if config ? ndh && config.ndh ? vm && config.ndh.vm ? provider then
-      config.ndh.vm.provider
-    else if effectiveHostProfile ? vmProvider && effectiveHostProfile.vmProvider != null then
-      effectiveHostProfile.vmProvider
-    else
-      "lima";
-
-  hostSopsKeyShareMountPoint =
-    if vmProvider == "tart" then
-      lib.attrByPath [
-        "ndh"
-        "vm"
-        "tart"
-        "hostShares"
-        "sopsAge"
-        "mountPoint"
-      ] "/srv/host/sops.d" config
-    else
-      "/mnt/lima-cidata/sops.d";
+  hostSopsKeyShareMountPoint = lib.attrByPath [
+    "ndh"
+    "vm"
+    "tart"
+    "hostShares"
+    "sopsAge"
+    "mountPoint"
+  ] "/srv/host/sops.d" config;
 
   nixosHostKeyImportCandidatesDefault = lib.filter (path: path != "") [
     "${userHome}/.config/sops/age/keys.txt"
@@ -234,7 +222,7 @@ in
         description = ''
           Enable NixOS pre-activation import of an existing host age key into
           `${config.sops.age.keyFile}` when missing and phase is `enforce`.
-          Intended for Lima/VM guests where a host-mounted path can provide key material.
+          Intended for VM guests where a host-mounted path can provide key material.
         '';
       };
 

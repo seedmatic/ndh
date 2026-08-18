@@ -26,7 +26,7 @@ let
     else
       profileHost.hostName;
 
-  # Keep Tart LAN MAC aligned with Lima LAN interface derivation for the same host.
+  # Keep Tart LAN MAC aligned with the VM LAN interface derivation for the same host.
   hostByteHex =
     let
       hash = builtins.hashString "sha256" effectiveHostName;
@@ -49,7 +49,7 @@ let
     if profileHost ? vmProvider && profileHost.vmProvider != null then
       profileHost.vmProvider
     else
-      "lima";
+      "tart";
   tartProviderSelected = selectedVmProvider == "tart";
   tartMaterializationEnabled = tartProviderSelected && (tartRuntimeSupported || cfg.forceEnable);
 
@@ -464,7 +464,7 @@ in
       default = "10:66:6a:4c:${hostByteHex}:01";
       description = ''
         MAC address written to Tart `config.json` for LAN identity.
-        Default aligns with Lima `vmlan0` MAC derivation for the same host.
+        Default aligns with the `vmlan0` MAC derivation for the same host.
       '';
     };
 

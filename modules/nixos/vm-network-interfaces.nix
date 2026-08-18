@@ -7,14 +7,13 @@
 
 let
   inherit (lib) mkOption types mkIf;
-  cfg = config.lima.networkInterfaces;
+  cfg = config.vm.networkInterfaces;
   vmProvider =
     if config ? ndh && config.ndh ? vm && config.ndh.vm ? provider then
       config.ndh.vm.provider
     else
-      "lima";
+      "tart";
   isTartProvider = vmProvider == "tart";
-  includeHostAndNatInterfaces = vmProvider == "lima";
 
   # Canonical host profile from bundled special args.
   ndhContext = ndh.context;
@@ -39,22 +38,21 @@ let
     else
       resolvedHostProfile.hostName;
 
-  # Generate unique host byte from hostname hash (matching actual Lima VM MACs)
-  # Use single byte that matches the existing Lima VM interface MACs
+  # Unique host byte derived from the hostname hash, so the bridged-LAN NIC MAC
+  # is stable and distinct per Darwin host.
   hostByteHex =
     let
       hash = builtins.hashString "sha256" effectiveHostName;
-      # Take first 2 hex chars from hash - matches existing Lima VM: 27 for bioskop
     in
     lib.strings.toLower (builtins.substring 0 2 hash);
 
 in
 {
-  options.lima.networkInterfaces = {
+  options.vm.networkInterfaces = {
     enable = mkOption {
       type = types.bool;
       default = config.vm.role == "guest";
-      description = "Enable Lima network interface naming based on MAC addresses.";
+      description = "Enable VM-guest network interface naming based on MAC addresses.";
     };
 
     interfaces = mkOption {
@@ -76,39 +74,26 @@ in
       );
       default = [
         {
-          macAddress = "52:55:55:da:5c:19"; # Lima primary implicit NIC (stable unless VM is recreated)
-          name = "mgmt0"; # rename from enp0s1; update MAC if the Lima VM is rebuilt
+          macAddress = "52:55:55:da:5c:19"; # primary implicit NIC (stable unless VM is recreated)
+          name = "mgmt0"; # rename from enp0s1; update MAC if the VM is rebuilt
         }
         {
-          # Canonical bridged LAN NIC in Lima config (see darwin/lima-config.nix).
+          # Canonical bridged LAN NIC (Incus lan-br bridge member).
           macAddress = "10:66:6a:4c:${hostByteHex}:01";
-          name = "vmlan0"; # lima vmnet bridged (for Incus lan-br bridge member)
-        }
-      ]
-      ++ lib.optionals includeHostAndNatInterfaces [
-        {
-          macAddress = "10:66:6a:4c:${hostByteHex}:00";
-          name = "vznat0"; # lima vzNAT
-        }
-        {
-          macAddress = "10:66:6a:4c:${hostByteHex}:02";
-          name = "vmhost0"; # socket_vmnet shared network (host/NFS services)
+          name = "vmlan0";
         }
       ];
       description = ''
         List of network interfaces to rename based on MAC addresses.
-        MAC addresses match the actual Lima VM interface MACs.
         Default mapping (for hostname 'bioskop' -> hash '27'):
-        - 52:55:55:da:5c:19 -> mgmt0 (implicit primary Lima NIC; update if VM is rebuilt)
-        - 10:66:6a:4c:27:00 -> vznat0 (Lima vzNAT management)
+        - 52:55:55:da:5c:19 -> mgmt0 (implicit primary NIC; update if VM is rebuilt)
         - 10:66:6a:4c:27:01 -> vmlan0 (Incus lan-br bridge member for container LAN access)
-        - 10:66:6a:4c:27:02 -> vmhost0 (socket_vmnet shared network for host/guest services)
 
-        Scheme: OUI:LIMA:HOST:IF  
+        Scheme: OUI:VM:HOST:IF
         - OUI: 10:66:6a (local/private)
-        - LIMA: 0x4C (76, 'L' for Lima)
+        - VM: 0x4C
         - HOST: Hash-derived unique byte per Darwin host
-        - IF: Interface code (00=vznat0, 01=vmlan0, 02=vmhost0)
+        - IF: Interface code (01=vmlan0)
       '';
     };
   };
@@ -120,7 +105,7 @@ in
     # interface-level DHCP scripting disabled unless a profile explicitly opts in.
     networking.useDHCP = lib.mkDefault false;
 
-    # Disable wait-online: we only rename interfaces; they may be configured by other mechanisms (e.g. kernel/Lima DHCP)
+    # Disable wait-online: we only rename interfaces; they may be configured by other mechanisms (e.g. kernel DHCP)
     # Prevents 120s timeout because links are 'not managed by networkd'. If later you add .network files, remove this.
     systemd.network.wait-online.enable = false;
 
@@ -140,22 +125,6 @@ in
         };
       }) cfg.interfaces
     );
-
-    # Pin the socket_vmnet backchannel to a static address with no default route
-    # to avoid accidental gateway selection from DHCP on the shared network.
-    # Update Address if you change the vmhost0 assignment.
-    systemd.network.networks."40-vmhost0" = lib.mkIf includeHostAndNatInterfaces {
-      matchConfig.Name = "vmhost0";
-      networkConfig = {
-        DHCP = "no";
-        Address = [ "10.80.16.10/24" ];
-        DNSDefaultRoute = false;
-        Domains = [ "" ];
-      };
-      linkConfig = {
-        RequiredForOnline = false;
-      };
-    };
 
     # Ensure only lan-br provides DNS for .lan and prevent other links from injecting DNS
     systemd.network.networks."40-lan-br" = {
@@ -188,7 +157,7 @@ in
       };
     };
 
-    # Fallback for rebuilt Lima VMs where the implicit primary NIC did not get
+    # Fallback for rebuilt VMs where the implicit primary NIC did not get
     # renamed to mgmt0 (e.g. MAC drift). Keep SSH management path alive.
     # Also enable MulticastDNS here so `.local` resolution works when
     # the lan-br bridge hasn't been created (Incus not running, LAN IP
@@ -208,19 +177,6 @@ in
       };
       linkConfig = {
         RequiredForOnline = false;
-      };
-    };
-
-    systemd.network.networks."40-vznat0" = lib.mkIf includeHostAndNatInterfaces {
-      matchConfig.Name = "vznat0";
-      networkConfig = {
-        DHCP = "ipv4";
-        Domains = [ "" ];
-      };
-      dhcpV4Config = {
-        UseDNS = false;
-        # Keep gateway but de-prioritize versus bridged LAN.
-        RouteMetric = 3000;
       };
     };
 
@@ -277,11 +233,5 @@ in
     services.avahi.enable = lib.mkForce false;
 
     # Note: vmlan0 bridge membership is configured in incus.nix
-
-    # Helpful environment variables
-    environment.variables = {
-      LIMA_BRIDGE_IFACE = "vmlan0"; # Incus lan-br bridge member (unmanaged by NetworkManager)
-      # Note: Lima VM SSH management uses enp0s1 (built-in), not vmlan0
-    };
   };
 }

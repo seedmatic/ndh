@@ -57,7 +57,7 @@ let
   cacheCatalog = catalog.caches;
 
   # Boot mode selection.
-  isTartProvider = (lib.attrByPath [ "ndh" "vm" "provider" ] "lima" config) == "tart";
+  isTartProvider = (lib.attrByPath [ "ndh" "vm" "provider" ] "tart" config) == "tart";
   # Optional host override for debug verbosity.
   # Canonical default: bringup images are interactive-first (tty prompt usable)
   # unless debug is explicitly requested.
@@ -118,7 +118,7 @@ let
   bootstrapRequiredImports = [
     (worktreePath.of "modules/.common.d")
     ./etc-backup.nix
-    ./lima-network-interfaces.nix
+    ./vm-network-interfaces.nix
     ./disko.nix
     ./systemd
     ./zfs.nix

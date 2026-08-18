@@ -1,4 +1,4 @@
-# Remote Nix store and daemon configuration for Lima/vz VMs (@codebase)
+# Remote Nix store and daemon configuration for vz VMs (@codebase)
 # This module disables the local nix-daemon, mounts the host's /nix/store using virtiofs,
 # and configures Nix to use a remote daemon.
 
@@ -14,7 +14,7 @@
       This allows the VM to use the host's Nix store and remote daemon.
     */
     fileSystems."/nix/store" = {
-      device = "store"; # This label must match the virtiofs share name in your Lima config
+      device = "store"; # This label must match the virtiofs share name in the VM config
       fsType = "virtiofs";
       options = [ ];
     };

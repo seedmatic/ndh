@@ -1,6 +1,6 @@
 { lib, pkgs, ... }:
 {
-  # Disable bootloader installation in Lima / containerized / ZFS guest context.
+  # Disable bootloader installation in VM / containerized / ZFS guest context.
   boot.loader = {
     systemd-boot.enable = lib.mkForce false;
     grub = {

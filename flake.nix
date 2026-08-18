@@ -300,7 +300,6 @@
       ndhBringupRuntimeAttr = "nerd-bringup-runtime";
       ndhBringupInstallerAttr = "nerd-bringup-install";
       ndhBringupInstallerCommand = "nerd-bringup-install";
-      ndhVmLimaMaterializeAttr = "nerd-lima-vm-materialize";
       ndhVmTartMaterializeAttr = "nerd-tart-vm-materialize";
       ndhVmTartBootstrapInstallerAttr = "nerd-tart-vm-bootstrap-installer";
       ndhLogCaptureAttr = "nerd-log-capture";
@@ -987,8 +986,6 @@
           # consumed by the darwin module's activation script
           # (`config.tart.configGenerator.materializerPackage`).  Operators
           # use `-deploy` instead.
-          # Lima materializers keep their original `<host>-lima-vm-materialize`
-          # naming — Lima is out of scope for the nerd-tart refactor.
           let
             systemPkgs = pkgsFor { inherit system; };
             anyHostName = builtins.head (builtins.attrNames hostCatalog);
@@ -1096,8 +1093,6 @@
               in
               acc
               // {
-                "${mainName}-lima-vm-materialize" =
-                  hostOutput.darwinConfiguration.config.lima.configGenerator.materializerPackage;
                 "nerd-tart-${mainName}-config" = runManifest;
                 "nerd-tart-${mainName}-deploy" = mkDeployHelper {
                   inherit mainName runManifest;
@@ -1144,28 +1139,9 @@
           logCapture = mkNdhLogCapturePackage system;
           tartBootstrapInstaller = mkNdhVmTartBootstrapInstallerPackage system;
           # `apps.<system>` must be flat (each leaf is `{ type = "app"; … }`).
-          # Lima materializers stay surfaced as apps for now; the Tart
-          # materializer is intentionally not exposed (operators use
-          # `nerd-tart-<host>-deploy` instead — it covers the same
-          # workflow end-to-end).
-          hostMaterializerApps = builtins.foldl' (
-            acc: hostName:
-            let
-              hostSpec = hostCatalog.${hostName};
-              mainName = hostMainNameForProfile hostSpec.hostProfile;
-              hostOutput = hostOutputs.${hostName};
-              limaMaterializerPackage =
-                hostOutput.darwinConfiguration.config.lima.configGenerator.materializerPackage;
-            in
-            acc
-            // {
-              "${mainName}-lima-vm-materialize" = {
-                type = "app";
-                program = "${limaMaterializerPackage}/bin/${ndhVmLimaMaterializeAttr}";
-                meta.description = "Materialize ${mainName}'s Lima VM assets + gcroot image — src: modules/darwin/lima-config.nix";
-              };
-            }
-          ) { } (builtins.attrNames hostCatalog);
+          # The Tart materializer is intentionally not exposed as an app —
+          # operators use `nerd-tart-<host>-deploy`, which covers the same
+          # workflow end-to-end.
           hostBootstrapInstallerApps = builtins.foldl' (
             acc: hostName:
             let
@@ -1446,7 +1422,6 @@
             meta.description = "Rotate per-kind Tailscale SaaS auth keys + reconcile the tailnet ACL (dry-run by default) — src: modules/.common.d/rotate-tailnet-secrets.d/";
           };
         }
-        // hostMaterializerApps
         // hostBootstrapInstallerApps
         // baremetalLinkApps
       );
@@ -1502,7 +1477,6 @@
           nixosDiskImageBringupGrub = nixosOutputs.diskImageBringupGrub;
           nixosDiskSizeHint = nixosOutputs.diskSizeHint;
           nixosDiskSizeMiB = nixosOutputs.diskSizeMiB;
-          nixosDiskSizeGiB = nixosOutputs.diskSizeGiB;
           nixosDiskoConfiguration = nixosOutputs.diskoConfiguration;
           mkHomeManagerConfig =
             profile:
@@ -1510,10 +1484,8 @@
               vmConfigMaterializerPackage =
                 if !withBringupImages then
                   null
-                else if (hostProfile.vmProvider or "lima") == "tart" then
-                  darwinOutputs.darwinConfigurations.${mainName}.config.tart.configGenerator.materializerPackage
                 else
-                  darwinOutputs.darwinConfigurations.${mainName}.config.lima.configGenerator.materializerPackage;
+                  darwinOutputs.darwinConfigurations.${mainName}.config.tart.configGenerator.materializerPackage;
             in
             home-manager.lib.homeManagerConfiguration {
               pkgs = pkgsForDarwin;
@@ -1541,7 +1513,7 @@
                     ;
                   inventory = inventoryData;
                   generationMode = "full";
-                  vmProvider = hostProfile.vmProvider or "lima";
+                  vmProvider = hostProfile.vmProvider or "tart";
                   nixBashTrampoline = ndhNixBashTrampolineDarwin;
                 };
                 ndhStore = ndhStoreApiDarwin;
@@ -1559,16 +1531,11 @@
                   (
                     { lib, ... }:
                     {
-                      lima.configGenerator.diskSizeGiB = nixosDiskSizeGiB;
                       tart.configGenerator.linuxBuilderGcBeforeBuild = linuxBuilderGcBeforeBuild;
                       tart.configGenerator.enableBuildObserve = enableBuildObserve;
                       tart.configGenerator.buildObserveInterval = buildObserveInterval;
                     }
                     // lib.optionalAttrs withBringupImages {
-                      lima.configGenerator.imageManifestPath = "${nixosDiskImageBringupSystemdZfs}/manifest.yaml";
-                      lima.configGenerator.imageStorePath = "${nixosDiskImageBringupSystemdZfs}/boot.img";
-                      lima.configGenerator.runtimeSystemPath = nixosOutputs.runtimeSystem;
-
                       tart.configGenerator.rawImageManifestPath = "${nixosDiskImageBringupSystemdZfs}/manifest.yaml";
                       tart.configGenerator.rawImageStorePath = "${nixosDiskImageBringupSystemdZfs}/boot.img";
                       tart.configGenerator.runtimeSystemPath = nixosOutputs.runtimeSystem;
@@ -1581,7 +1548,6 @@
               };
           };
           darwinConfiguration = darwinOutputs.darwinConfigurations.${mainName};
-          limaMaterializerPackage = darwinConfiguration.config.lima.configGenerator.materializerPackage;
           tartMaterializerPackage = darwinConfiguration.config.tart.configGenerator.materializerPackage;
           autofsNetMaterializerPackage =
             if
@@ -1629,7 +1595,6 @@
           hostDarwinPackages = {
             ${ndhBringupRuntimeAttr} = ndhBootstrapRuntimePackage;
             ${ndhBringupInstallerAttr} = ndhPrerequisitesInstallerPackage;
-            ${ndhVmLimaMaterializeAttr} = limaMaterializerPackage;
             ${ndhVmTartMaterializeAttr} = tartMaterializerPackage;
             ${ndhVmTartBootstrapInstallerAttr} = mkNdhVmTartBootstrapInstallerPackage "aarch64-darwin";
           };
@@ -1641,10 +1606,6 @@
             ${ndhBringupInstallerAttr} = {
               type = "app";
               program = "${ndhPrerequisitesInstallerPackage}/bin/${ndhBringupInstallerCommand}";
-            };
-            ${ndhVmLimaMaterializeAttr} = {
-              type = "app";
-              program = "${limaMaterializerPackage}/bin/${ndhVmLimaMaterializeAttr}";
             };
             ${ndhVmTartMaterializeAttr} = {
               type = "app";
@@ -1800,7 +1761,6 @@
         nodejsOverlay = inputs: import ./overlays/nodejs.nix inputs;
         incusComposeOverlay = inputs: import ./overlays/incus-compose.nix inputs;
         lazygitOverlay = inputs: import ./overlays/lazygit.nix inputs;
-        limaOverlay = inputs: import ./overlays/lima.nix inputs;
         tailscaleOverlay = inputs: import ./overlays/tailscale.nix inputs;
         vmToolsDeterministicOverlay = inputs: import ./overlays/vm-tools-deterministic.nix inputs;
 

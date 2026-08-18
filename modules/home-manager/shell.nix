@@ -18,19 +18,6 @@ let
   profile = config._module.specialArgs.profile;
   userName = profile.user.name;
   homeDir = config.home.homeDirectory;
-  ndhContext =
-    if specialArgs ? ndh && specialArgs.ndh != null && specialArgs.ndh ? context then
-      specialArgs.ndh.context
-    else
-      null;
-  vmProvider =
-    if profile ? host && profile.host ? vmProvider then
-      profile.host.vmProvider
-    else if ndhContext != null && ndhContext ? vmProvider && ndhContext.vmProvider != null then
-      ndhContext.vmProvider
-    else
-      null;
-  limaActive = vmProvider == "lima";
   # Canonical PATH for interactive + non-interactive shells, in priority order.
   # Most-specific first (user-local bin dirs, then HM per-user profile, then
   # system-wide nix profiles, then OS-level wrappers/sw). This is the only
@@ -40,9 +27,6 @@ let
   coreShellPath = [
     "${homeDir}/.local/bin"
     "${homeDir}/.local/share/pnpm"
-  ]
-  ++ lib.optionals limaActive [
-    "${homeDir}/.local/opt/lima-vm/bin"
   ]
   ++ lib.optionals pkgs.stdenvNoCC.isDarwin [
     # Rancher Desktop is a macOS-only install in this fleet.
@@ -124,14 +108,9 @@ in
         nixBashTrampoline = nixBashTrampoline;
         caBundle = "${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt";
         loggerTag = loggerTagZdotdir;
-        # Drop the upstream-zdotdir hardcoded lima entry on non-lima hosts.
-        # Lima hosts keep the line as a no-op so home-manager's sessionPath
-        # entry (which already points there) is the sole source of truth.
-        limaPathStrip =
-          if limaActive then
-            "# lima vmProvider active: keep ~/.local/opt/lima-vm/bin from upstream zdotdir"
-          else
-            "path=( \${path:#*/.local/opt/lima-vm/bin} )";
+        # Drop the upstream-zdotdir hardcoded ~/.local/opt/lima-vm/bin entry
+        # (legacy Lima path; the fleet is Tart-only now).
+        limaPathStrip = "path=( \${path:#*/.local/opt/lima-vm/bin} )";
       };
     in
     lib.hm.dag.entryAfter [ "writeBoundary" ] ''

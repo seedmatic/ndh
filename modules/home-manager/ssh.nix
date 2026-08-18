@@ -22,24 +22,12 @@
         ControlPersist = "yes";
         ControlPath = "${config.home.homeDirectory}/.ssh/master-%C";
       };
-
-      # GPG agent forwarding for Lima VMs
-      # Forward Darwin's GPG agent to the NixOS VM
-      "lima-*" = {
-        # Forward GPG agent socket from Darwin to Lima VM
-        # IMPORTANT: Must use absolute paths for Unix domain socket forwarding
-        # Forward the MAIN agent socket (not .extra) for full key access
-        # Remote path: /home/nxmatic/.local/share/gnupg/S.gpg-agent (on NixOS VM)
-        # Local path: Darwin main agent socket (not .extra)
-        RemoteForward = "/home/${config.home.username}/.local/share/gnupg/S.gpg-agent ${config.xdg.dataHome}/gnupg/S.gpg-agent";
-        # Allow the remote socket to be unlinked if it already exists
-        StreamLocalBindUnlink = "yes";
-        # Allow remote forwarding (required for Unix domain socket forwarding)
-        GatewayPorts = "yes";
-      };
     };
   };
 
+  # Transitional: the fleet dropped Lima (Tart/vz only).  These activation
+  # steps scrub stale on-disk Lima SSH config left on already-deployed hosts;
+  # remove them once every host has been rebuilt at least once.
   home.activation.cleanupLegacyLimaSshConfig = lib.mkIf (!pkgs.stdenvNoCC.isDarwin) (
     lib.hm.dag.entryAfter [ "writeBoundary" ] ''
       rm -f "${config.home.homeDirectory}/.ssh/config.d/lima.conf"

@@ -57,7 +57,7 @@ let
     else if ndhContext != null && ndhContext ? vmProvider && ndhContext.vmProvider != null then
       ndhContext.vmProvider
     else
-      "lima";
+      "tart";
 
   effectiveHostName =
     if
@@ -140,10 +140,7 @@ let
     && activatingOnVzHost
     && hostVmMaterializerActivationHook
     && vmConfigMaterializerPackage != null
-    && builtins.elem selectedVmProvider [
-      "lima"
-      "tart"
-    ];
+    && selectedVmProvider == "tart";
 
   resolvedImports = [
     ./aws.nix
@@ -296,13 +293,10 @@ in
 
   assertions = lib.optionals hmVmMaterializationEnabled ([
     {
-      assertion = builtins.elem selectedVmProvider [
-        "lima"
-        "tart"
-      ];
+      assertion = selectedVmProvider == "tart";
       message = ''
         Home Manager on Darwin requires a supported `vmProvider` for VM materialization.
-        Supported values: "lima" or "tart".
+        Supported value: "tart".
       '';
     }
   ]);
@@ -311,9 +305,6 @@ in
     lib.hm.dag.entryAfter [ "writeBoundary" ] ''
       vm_provider="${selectedVmProvider}"
       case "$vm_provider" in
-        lima)
-          materializer_binary="nerd-lima-vm-materialize"
-          ;;
         tart)
           materializer_binary="nerd-tart-vm-materialize"
           ;;

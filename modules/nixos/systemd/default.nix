@@ -41,11 +41,6 @@ in
     ./rescue.nix
     ./tart-host-shares.nix
   ]
-  ++ (lib.optionals (effectiveVmProvider == "lima") [
-    ./lima-cloud-init.nix
-    ./lima-nixos-config.nix
-    ./lima-guest-agent.nix
-  ])
   ++ (lib.optionals (effectiveVmProvider == "tart") [ ./tart-guest-agent.nix ])
   ++ (lib.optionals bringupMode [ ./zfs-nixos-install.nix ])
   ++ (lib.optionals (!bringupMode) [

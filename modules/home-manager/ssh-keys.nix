@@ -84,13 +84,11 @@ in
           path: type:
           let
             base = builtins.baseNameOf path;
-            includeLimaConfig = pkgs.stdenv.isDarwin;
           in
           !(
             base == "keys.yaml"
             || base == ".gitattributes"
             || base == "authorized_keys"
-            || (!includeLimaConfig && base == "lima.conf")
             # Rendered below from sshPaths (single source) via replaceVars —
             # excluded here so the templated copy wins over the raw @sshKeysDir@ file.
             || lib.hasSuffix "config.d/zones.d/nikopol.conf" path

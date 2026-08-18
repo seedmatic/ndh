@@ -31,11 +31,11 @@ let
   # Fallback to pkgs for store operations when ndh.store is not available
   ndhStore = if ndh != null then ndh.store else pkgs;
   cfg = config.zfsOverlays;
-  vmProvider = lib.attrByPath [ "ndh" "vm" "provider" ] "lima" config;
+  vmProvider = lib.attrByPath [ "ndh" "vm" "provider" ] "tart" config;
   overlayModeEnabled = cfg.overlayMode.enable && vmProvider == "tart";
   providerDataDisks = {
     # Canonical disk layout: boot disk on vda, ZFS data disks on vdb–vde.
-    # Identical for both Lima and Tart — both use the same disk images.
+    # Uses the same disk images as the bringup build.
     tank1 = "/dev/vdb";
     tank2 = "/dev/vdc";
     tank3 = "/dev/vdd";
@@ -675,7 +675,7 @@ in
     ];
     description = ''
       Block devices that must be present before running bootstrap datastore provisioning.
-      This keeps first boot safe for Tart/Lima when extra data disks are not yet attached.
+      This keeps first boot safe for Tart when extra data disks are not yet attached.
     '';
   };
   options.zfsOverlays.bootstrapActivation.installRootMountPoint = lib.mkOption {

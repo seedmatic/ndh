@@ -57,9 +57,9 @@ let
     done
 
     # NOTE (@codebase): Do NOT delete default routes on bridge* interfaces here.
-    # Lima VZ/socket_vmnet networking may rely on bridge-scoped routes during
-    # guest bootstrap (e.g. 192.168.5.0/24 reachability for SSH bring-up).
-    # Removing bridge-scoped defaults can cause "no route to host" on limactl start.
+    # VZ/bridged VM networking may rely on bridge-scoped routes during guest
+    # bootstrap (e.g. 192.168.5.0/24 reachability for SSH bring-up).
+    # Removing bridge-scoped defaults can cause "no route to host" on VM start.
   '';
 
   dhcpDaemonBlock = optionalString cfg.dhcp ''

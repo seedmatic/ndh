@@ -12,7 +12,7 @@ in
     trusted-users = [
       cfgUserName
       "root"
-      "builder" # remote builder user (nerd-nixos Lima VM)
+      "builder" # remote builder user (nerd-nixos VM)
     ];
     sandbox = false;
     # Sandbox disabled for this profile set; do not force host-local

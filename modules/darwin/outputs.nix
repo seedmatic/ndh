@@ -27,13 +27,6 @@ let
     let
       preModules = [
         profileModule
-        # socket-vmnet.darwinModules.socket_vmnet
-        # (
-        #   { lib, ... }:
-        #   {
-        #     lima.configGenerator.vmType = "vz";
-        #   }
-        # )
       ]
       ++ extraModules;
       modules = mkModulesFor {
@@ -57,7 +50,7 @@ let
                 inventory
                 ;
               generationMode = "full";
-              vmProvider = hostProfile.vmProvider or "lima";
+              vmProvider = hostProfile.vmProvider or "tart";
               nixBashTrampoline = ndhNixBashTrampoline;
             };
             store = ndhStoreApiDarwin;
@@ -93,19 +86,12 @@ let
             inherit vmProvider;
           };
           inherit profileModule catalog inventory;
-          extraModules = [
-            {
-              lima.configGenerator.nixosHostAttr = "${mainName}-nixos-${vmProvider}";
-            }
-          ];
         };
 
-      darwinConfiguration = mkDarwinVmVariant (hostProfile.vmProvider or "lima");
-      darwinConfigurationLima = mkDarwinVmVariant "lima";
+      darwinConfiguration = mkDarwinVmVariant (hostProfile.vmProvider or "tart");
       darwinConfigurationTart = mkDarwinVmVariant "tart";
       darwinConfigurations = {
         "${hostProfile.hostName}" = darwinConfiguration;
-        "${mainName}-lima" = darwinConfigurationLima;
         "${mainName}-tart" = darwinConfigurationTart;
       }
       // (

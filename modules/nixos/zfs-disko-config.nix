@@ -139,7 +139,7 @@ let
           options = {
             ashift = "12";
             # Automatically expand pool when vdev partitions grow (e.g. after
-            # Lima/Tart resizes disk images + systemd-repart grows the partition).
+            # Tart resizes disk images + systemd-repart grows the partition).
             autoexpand = "on";
           };
           datasets = {

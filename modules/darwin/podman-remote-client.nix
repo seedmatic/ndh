@@ -1,5 +1,5 @@
 # Podman remote configuration for macOS host (@codebase)
-# This module configures the host to connect to the remote Podman engine in the Lima VM using containers.conf
+# This module configures the host to connect to the remote Podman engine in the VM using containers.conf
 
 {
   config,

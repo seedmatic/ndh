@@ -19,10 +19,6 @@
       sopsEncryptedTokenFile = ../../.secrets;
     };
 
-    lima.configGenerator = {
-      installMaterializerPackage = false;
-    };
-
     tart.configGenerator = {
       forceEnable = false;
       installMaterializerPackage = false;

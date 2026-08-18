@@ -6,7 +6,7 @@
 }:
 
 {
-  # Enable nix-ld to run dynamically linked binaries (e.g., Lima guest agent)
+  # Enable nix-ld to run dynamically linked binaries (e.g., the guest agent)
   # This provides a compatibility layer for running non-NixOS binaries
   programs.nix-ld = {
     enable = true;

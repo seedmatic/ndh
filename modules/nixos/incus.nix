@@ -149,7 +149,7 @@ in
     useNetworkd = false;
     networkmanager.enable = true;
     # NetworkManager should not manage interfaces that are explicitly
-    # configured by systemd-networkd in Lima guest mode.
+    # configured by systemd-networkd in VM guest mode.
     networkmanager.unmanaged = [
       "interface-name:mgmt0"
       "interface-name:vznat0"
@@ -168,7 +168,7 @@ in
       8443 # Incus HTTPS API
     ];
     # interfaces.externalbr0.macAddress =
-    #   "52:55:55:71:36:47"; # match your lima.yaml
+    #   "52:55:55:71:36:47"; # match the VM config
   };
 
   # Create the lan-br bridge device

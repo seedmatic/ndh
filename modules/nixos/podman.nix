@@ -1,4 +1,4 @@
-# Podman engine configuration for Lima NixOS VM (@codebase)
+# Podman engine configuration for the NixOS VM (@codebase)
 # This module configures Podman in the VM to act as a remote engine accessible from the host
 
 {

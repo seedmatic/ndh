@@ -45,22 +45,13 @@ let
     then
       lib.attrByPath [ "profile" "host" "vmProvider" ] null config
     else
-      "lima";
-  limaConfigMaterializerPackage = lib.attrByPath [
-    "lima"
-    "configGenerator"
-    "materializerPackage"
-  ] null (if isNixosPlatform then { } else config);
+      "tart";
   tartConfigMaterializerPackage = lib.attrByPath [
     "tart"
     "configGenerator"
     "materializerPackage"
   ] null (if isNixosPlatform then { } else config);
-  vmConfigMaterializerPackage =
-    if selectedVmProvider == "tart" then
-      tartConfigMaterializerPackage
-    else
-      limaConfigMaterializerPackage;
+  vmConfigMaterializerPackage = tartConfigMaterializerPackage;
   mkNdhHomeManagerSpecialArgs = import ./ndh-home-manager-special-args.nix;
   sopsSshKeysYamlPath = lib.attrByPath [
     "sops"

@@ -50,9 +50,6 @@ Guide for setting up Podman remote client.
 link:operator-commands.adoc[Operator Commands]::
 Canonical operator command surface and usage patterns.
 
-link:lima-yaml-management.adoc[Lima YAML Management]::
-Flexible Lima network YAML management with surgical updates and backup rotation.
-
 link:collaboration-guide.adoc[Collaboration & Session Operations Guide]::
 Workflow for running, capturing, and closing collaborative sessions (includes pre-expiration reminder protocol and quality gates).
 
@@ -312,7 +309,6 @@ The following Markdown files are kept for specific topics outside the main netwo
 * `github-mcp-proxy.adoc` - GitHub MCP proxy configuration
 * `podman-remote-setup.adoc` - Podman remote client setup
 * `operator-commands.adoc` - Canonical operator command model
-* `lima-yaml-management.adoc` - Lima network YAML management workflow
 
 NOTE: Consider converting these to AsciiDoc format in the future for consistency.
 

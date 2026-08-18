@@ -237,10 +237,8 @@ let
         ];
       };
 
-      # The bringup config is identity-less, so the lima/tart variants
-      # produce identical store paths (Nix dedups).  Aliases retained
-      # for source-level clarity at the call sites.
-      limaBringupSystemdZfs = minimalBringupSystemBase;
+      # The bringup config is identity-less; this alias is retained for
+      # source-level clarity at the call sites.
       tartBringupSystemdZfs = minimalBringupSystemBase;
 
       # Canonical raw build image size policy.
@@ -454,9 +452,8 @@ let
           diskoConfiguration = builderDiskoConfiguration;
         };
 
-      # ZFS bringup image selected by vmProvider — Lima and Tart differ in guest-side units.
-      selectedBringupSystemdZfs =
-        if selectedVmProvider == "tart" then tartBringupSystemdZfs else limaBringupSystemdZfs;
+      # ZFS bringup image (Tart-only fleet).
+      selectedBringupSystemdZfs = tartBringupSystemdZfs;
 
       # Bringup image is identity-less (see minimalBringupSystemBase): the
       # bytes are bit-identical for every host on the fleet.  Use a fixed
