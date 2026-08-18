@@ -76,6 +76,21 @@
       inputs.flake-commons.follows = "flake-commons";
     };
 
+    # Federation: ndh unions nnh's self-contained lib.networkBlueprint (its
+    # bare-br segments) alongside rke2lab's. nnh also consumes ndh's catalog, so
+    # this is a mutual edge — cut with a reciprocal EMPTY follows (nnh's
+    # back-reference to ndh follows THIS root). See the hub memory
+    # flake-mutual-dependency-follows-root.
+    nnh = {
+      url = "github:seedmatic/nnh/main";
+      inputs.ndh.follows = "";
+      # Share the family version set: dedup nnh's flake-commons subtree
+      # (devenv/cachix/bird/…) with ndh's so importing nnh for its blueprint
+      # does not balloon the lock. akvorado stays (nnh-specific) but is never
+      # forced — we read only nnh.lib.networkBlueprint.
+      inputs.flake-commons.follows = "flake-commons";
+    };
+
     # Forked tailscale carrying the CNAME-in-extra_records patch (see
     # overlays/tailscale.nix and the upstream PR tracked there). The
     # fork is consumed as a real flake — it builds itself via its
@@ -108,7 +123,16 @@
       cacheTrust = import ./catalog/cache-trust.nix;
       inventoryData = import ./inventory/default.nix;
       # Cluster network underlay, single source of truth (see the rke2lab input).
-      networkBlueprint = inputs.rke2lab.lib.networkBlueprint;
+      # Cluster underlay from rke2lab, UNIONED with nnh's self-contained blueprint
+      # (its bare-br segments; nnh introduces no ASNs). Both edges are cut with
+      # reciprocal empty follows — see the rke2lab / nnh inputs. Only segments+asns
+      # merge; everything else (clusters, nodes, addressing, MACs) stays rke2lab's.
+      rke2labBlueprint = inputs.rke2lab.lib.networkBlueprint;
+      nnhBlueprint = inputs.nnh.lib.networkBlueprint;
+      networkBlueprint = rke2labBlueprint // {
+        segments = (rke2labBlueprint.segments or [ ]) ++ (nnhBlueprint.segments or [ ]);
+        asns = (rke2labBlueprint.asns or { }) // (nnhBlueprint.asns or { });
+      };
       catalogData = import ./catalog/default.nix { inherit cacheTrust networkBlueprint; };
       defaultSystems = [
         "aarch64-darwin"

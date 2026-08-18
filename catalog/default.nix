@@ -250,101 +250,141 @@
       # range pinned in the catalog — same rule as omitting `domain` when there is no
       # DNS zone.  The per-baremetal `-net /25` carries the rich facts; the `-link
       # /30` and the /12 supernet stay attribution-only.
-      segments = [
-        {
-          cidr = "192.168.1.0/24";
-          name = "home";
-          asn = 65000;
-        }
-        {
-          cidr = "192.168.1.0/27";
-          name = "home-dynamic";
-          asn = 65000;
-        }
-        {
-          cidr = "100.64.0.0/10";
-          name = "tailnet";
-          asn = 65000;
-        }
-        {
-          cidr = "10.0.0.0/8";
-          name = "home";
-          asn = 65000;
-        }
-        # 172.16.0.0/12 is reserved for per-BAREMETAL instance segments.  Each baremetal
-        # host (nikopol today; bioskop later) owns a slice with an Incus segment + dnsmasq
-        # DNS domain + a subnet route advertised into the tailnet, so peers resolve
-        # <inst>.<domain> and reach it — including the off-tailnet corp Mac vz.nikopol,
-        # reached over a static /30 via its Incus host (nikopol-nixos).  The per-host
-        # sub-prefixes (net /25 + link /30) are DERIVED from `baremetal` (below the `++`),
-        # single-sourced.  nnh attributes flows most-specific-prefix-wins.
-        {
-          cidr = "172.16.0.0/12";
-          name = "baremetal";
-          asn = 65000;
-        }
-        {
-          cidr = "192.168.0.0/16";
-          name = "home";
-          asn = 65000;
-        }
-        {
-          cidr = "169.254.0.0/16";
-          name = "home";
-          asn = 65000;
-        }
-        {
-          cidr = "fc00::/7";
-          name = "home";
-          asn = 65000;
-        }
-        {
-          cidr = "fe80::/10";
-          name = "home";
-          asn = 65000;
-        }
-      ]
-      ++ (builtins.concatMap (
-        bm:
-        [
-          # The managed /25 (Incus bare-br + dnsmasq): gateway, the `.<domain>` DNS
-          # zone, and a static host-record for the off-DHCP vz-host (a corp Mac at a
-          # /30 address, or an on-tailnet bare-metal at its LAN address — no `mac`,
-          # it is not a dnsmasq DHCP client).  DHCP clients (the nnh collector, other
-          # instances) auto-register in the zone and are NOT catalog hosts.
-          {
-            cidr = bm.netCidr;
-            name = "${bm.domain}-baremetal-net";
-            asn = 65000;
-            gateway = bm.netGateway;
-            domain = bm.domain;
-            hosts = [
-              {
-                name = "vz.${bm.domain}";
-                ip = bm.vzHostAddress;
-              }
-            ];
-          }
-        ]
-        # The static /30 link exists only for a vz-host that can't join the tailnet
-        # (the corporate Mac); on-tailnet bare-metals declare no `linkCidr`.  It is an
-        # attribution-only span (the P2P transport; the dnsmasq that registers the
-        # vz-host lives on the /25 above).  (Catalog is lib-free — plain `if`, not
-        # `lib.optionals`.)
-        ++ (
-          if bm ? linkCidr then
+      segments =
+        let
+          # cidr is the attribution key (prefix→{name,asn}); two entries for the
+          # same cidr collide in that map. Collapse same-cidr segments: preserve
+          # first-seen order, union their `hosts`, and keep the FIRST-defined scalar
+          # facts so a rich ndh segment (domain/gateway) is not clobbered by a
+          # host-only contribution (e.g. nnh's inlet/outlet, which mirror ndh's
+          # nikopol-baremetal-net cidr on purpose). Catalog is lib-free → builtins.
+          mergeSegmentsByCidr =
+            segs:
+            let
+              cidrsInOrder = builtins.foldl' (
+                acc: s: if builtins.elem s.cidr acc then acc else acc ++ [ s.cidr ]
+              ) [ ] segs;
+              mergeGroup =
+                c:
+                let
+                  group = builtins.filter (s: s.cidr == c) segs;
+                  # Scalars must AGREE across contributors — union where a key is
+                  # defined once, throw LOUD on a genuine clash (no silent drop).
+                  checkMerge =
+                    a: b:
+                    let
+                      clashes = builtins.filter (k: (a ? ${k}) && a.${k} != b.${k}) (builtins.attrNames b);
+                    in
+                    if clashes != [ ] then
+                      throw "netplan segment ${c}: contributors disagree on ${builtins.concatStringsSep ", " clashes}"
+                    else
+                      a // b;
+                  scalars = builtins.foldl' checkMerge { } (map (s: builtins.removeAttrs s [ "hosts" ]) group);
+                in
+                if builtins.any (s: s ? hosts) group then
+                  scalars // { hosts = builtins.concatMap (s: s.hosts or [ ]) group; }
+                else
+                  scalars;
+            in
+            map mergeGroup cidrsInOrder;
+        in
+        mergeSegmentsByCidr (
+          [
+            {
+              cidr = "192.168.1.0/24";
+              name = "home";
+              asn = 65000;
+            }
+            {
+              cidr = "192.168.1.0/27";
+              name = "home-dynamic";
+              asn = 65000;
+            }
+            {
+              cidr = "100.64.0.0/10";
+              name = "tailnet";
+              asn = 65000;
+            }
+            {
+              cidr = "10.0.0.0/8";
+              name = "home";
+              asn = 65000;
+            }
+            # 172.16.0.0/12 is reserved for per-BAREMETAL instance segments.  Each baremetal
+            # host (nikopol today; bioskop later) owns a slice with an Incus segment + dnsmasq
+            # DNS domain + a subnet route advertised into the tailnet, so peers resolve
+            # <inst>.<domain> and reach it — including the off-tailnet corp Mac vz.nikopol,
+            # reached over a static /30 via its Incus host (nikopol-nixos).  The per-host
+            # sub-prefixes (net /25 + link /30) are DERIVED from `baremetal` (below the `++`),
+            # single-sourced.  nnh attributes flows most-specific-prefix-wins.
+            {
+              cidr = "172.16.0.0/12";
+              name = "baremetal";
+              asn = 65000;
+            }
+            {
+              cidr = "192.168.0.0/16";
+              name = "home";
+              asn = 65000;
+            }
+            {
+              cidr = "169.254.0.0/16";
+              name = "home";
+              asn = 65000;
+            }
+            {
+              cidr = "fc00::/7";
+              name = "home";
+              asn = 65000;
+            }
+            {
+              cidr = "fe80::/10";
+              name = "home";
+              asn = 65000;
+            }
+          ]
+          ++ (builtins.concatMap (
+            bm:
             [
+              # The managed /25 (Incus bare-br + dnsmasq): gateway, the `.<domain>` DNS
+              # zone, and a static host-record for the off-DHCP vz-host (a corp Mac at a
+              # /30 address, or an on-tailnet bare-metal at its LAN address — no `mac`,
+              # it is not a dnsmasq DHCP client).  DHCP clients (the nnh collector, other
+              # instances) auto-register in the zone and are NOT catalog hosts.
               {
-                cidr = bm.linkCidr;
-                name = "${bm.domain}-baremetal-link";
+                cidr = bm.netCidr;
+                name = "${bm.domain}-baremetal-net";
                 asn = 65000;
+                gateway = bm.netGateway;
+                domain = bm.domain;
+                hosts = [
+                  {
+                    name = "vz.${bm.domain}";
+                    ip = bm.vzHostAddress;
+                  }
+                ];
               }
             ]
-          else
-            [ ]
-        )
-      ) (builtins.attrValues baremetal))
-      ++ (networkBlueprint.segments or [ ]);
+            # The static /30 link exists only for a vz-host that can't join the tailnet
+            # (the corporate Mac); on-tailnet bare-metals declare no `linkCidr`.  It is an
+            # attribution-only span (the P2P transport; the dnsmasq that registers the
+            # vz-host lives on the /25 above).  (Catalog is lib-free — plain `if`, not
+            # `lib.optionals`.)
+            ++ (
+              if bm ? linkCidr then
+                [
+                  {
+                    cidr = bm.linkCidr;
+                    name = "${bm.domain}-baremetal-link";
+                    asn = 65000;
+                  }
+                ]
+              else
+                [ ]
+            )
+          ) (builtins.attrValues baremetal))
+          ++ (networkBlueprint.segments or [ ])
+        );
 
       # asn → canonical AS name (the `asns` dictionary nnh names its ASes with).
       # Cluster ASNs (65010/65020) come from the blueprint; home (65000) is ndh's.
