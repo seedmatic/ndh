@@ -64,37 +64,6 @@ When enabled, the materializer removes existing root/data images before rebuildi
 ** To refresh only selected data disks, delete one or more of `~/.tart/vms/nerd-nixos/disk2`, `~/.tart/vms/nerd-nixos/disk3`, `~/.tart/vms/nerd-nixos/recover`, then run `nix run .#bioskop-nixos-tart-vm-materialize`.
 ** `run.sh` removes stale `~/.tart/vms/nerd-nixos/nixos.img` automatically once a ZFS partition is detected on `disk.img`.
 
-== Remote Nix Copy to a vz Host (@codebase)
-
-Use `bin/nix-remote-copy.sh` to realize a flake attribute locally and `nix copy`
-its store closure to a bare-metal vz host (the macOS machine that runs the
-`nerd-nixos` Tart VM).
-
-* Signature: `nix-remote-copy.sh [attr] [mode] [target]`.
-* `attr` (`$1`): a flake attribute path *relative to `.#`* — pass it **without**
-  the leading `.#` (the script adds it). Example, the per-host Tart deploy helper
-  for bioskop: `packages.aarch64-darwin.nerd-tart-bioskop-deploy`.
-** The deploy helper attribute is `nerd-tart-<mainName>-deploy`, produced only
-   under `aarch64-darwin` (e.g. `nerd-tart-bioskop-deploy`,
-   `nerd-tart-nikopol-deploy`). `<mainName>` is the host name unless the host
-   sets a `hostAlias`.
-* `mode` (`$2`): `copy` (default) or `print` — `print` resolves and prints the
-  store path without copying (use it to verify the attribute first).
-* `target` (`$3`): defaults to `vz.${NDH_VZ_HOST:-nikopol}`. **This defaults to
-  `vz.nikopol`, not bioskop** — set `NDH_VZ_HOST=bioskop` (or pass `$3`) when
-  targeting another host.
-
-Examples:
-
-[source,bash]
-----
-# Verify the resolved store path first (no copy):
-bin/nix-remote-copy.sh packages.aarch64-darwin.nerd-tart-bioskop-deploy print
-
-# Copy the bioskop deploy helper closure to bioskop's vz host:
-NDH_VZ_HOST=bioskop bin/nix-remote-copy.sh packages.aarch64-darwin.nerd-tart-bioskop-deploy
-----
-
 == Command Output Capture Helper (@codebase)
 
 Use this helper instead of manually appending `| tee /tmp/...` each time.
