@@ -55,6 +55,7 @@ let
             };
             store = ndhStoreApiDarwin;
           };
+          claude-hub = inputs.claude-hub;
         };
       };
     in

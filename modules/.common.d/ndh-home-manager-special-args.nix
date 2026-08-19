@@ -6,9 +6,10 @@
   ndhStore,
   vmConfigMaterializerPackage,
   keysYamlPath,
+  claude-hub ? null,
 }:
 {
-  inherit self worktreePath profile;
+  inherit self worktreePath profile claude-hub;
   ndh = {
     context = ndhContext;
     store = ndhStore;

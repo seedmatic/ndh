@@ -3,6 +3,7 @@
   lib,
   pkgs,
   worktreePath,
+  claude-hub ? null,
   ...
 }:
 with lib;
@@ -105,29 +106,40 @@ in
     };
   };
 
-  config = mkIf cfg.enable {
-    home.sessionVariables = cfg.env;
+  config = mkIf cfg.enable (mkMerge [
+    {
+      home.sessionVariables = cfg.env;
+    }
 
-    home.activation.claudeCodeSeed = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-      claudeSettings="$HOME/.claude/settings.json"
-      if [ ! -e "$claudeSettings" ]; then
-        $VERBOSE_ECHO "Seeding fresh Claude Code settings.json from flake"
-        $DRY_RUN_CMD mkdir -p "$HOME/.claude"
-        $DRY_RUN_CMD install -m 0644 ${seedFile} "$claudeSettings"
-      else
-        $VERBOSE_ECHO "Claude Code settings.json exists — leaving it untouched"
-      fi
-    '';
+    (mkIf (claude-hub != null) {
+      home.file.".claude/bin/claude-config-home-wrapper.sh" = {
+        source = "${claude-hub.packages.${pkgs.stdenv.hostPlatform.system}.claude-config-home-wrapper}/bin/claude-config-home-wrapper.sh";
+        executable = true;
+      };
+    })
 
-    home.activation.claudeCodePurgeModelOverride =
-      let
-        purgeModelOverrideScript = pkgs.replaceVars ./claude-code.d/purge-anthropic-model.sh {
-          nixBashTrampoline = nixBashTrampoline;
-          loggerTag = loggerTag;
-        };
-      in
-      lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-        $DRY_RUN_CMD ${pkgs.bash}/bin/bash ${purgeModelOverrideScript}
+    {
+      home.activation.claudeCodeSeed = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+        claudeSettings="$HOME/.claude/settings.json"
+        if [ ! -e "$claudeSettings" ]; then
+          $VERBOSE_ECHO "Seeding fresh Claude Code settings.json from flake"
+          $DRY_RUN_CMD mkdir -p "$HOME/.claude"
+          $DRY_RUN_CMD install -m 0644 ${seedFile} "$claudeSettings"
+        else
+          $VERBOSE_ECHO "Claude Code settings.json exists — leaving it untouched"
+        fi
       '';
-  };
+
+      home.activation.claudeCodePurgeModelOverride =
+        let
+          purgeModelOverrideScript = pkgs.replaceVars ./claude-code.d/purge-anthropic-model.sh {
+            nixBashTrampoline = nixBashTrampoline;
+            loggerTag = loggerTag;
+          };
+        in
+        lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+          $DRY_RUN_CMD ${pkgs.bash}/bin/bash ${purgeModelOverrideScript}
+        '';
+    }
+  ]);
 }

@@ -6,6 +6,7 @@
   self,
   worktreePath,
   ndh,
+  claude-hub ? null,
   ...
 }:
 let
@@ -67,6 +68,7 @@ let
       ndhContext
       ndhStore
       vmConfigMaterializerPackage
+      claude-hub
       ;
     keysYamlPath = sopsSshKeysYamlPath;
   };
