@@ -75,8 +75,8 @@ if command -v flox >/dev/null 2>&1 && [ -z "${NIX_DARWIN_HOME_FLOX_LOADED:-}" ];
   typeset -g NIX_DARWIN_HOME_FLOX_LOADED=1
   if [ -n "${NIX_DARWIN_HOME_FLOX_ENV_DIR:-}" ] && [ -d "${NIX_DARWIN_HOME_FLOX_ENV_DIR}/.flox" ]; then
     source <(flox activate --dir "${NIX_DARWIN_HOME_FLOX_ENV_DIR}") || true
-  elif [ -d "/var/lib/git/nxmatic/nix-darwin-home/.flox" ]; then
-    source <(flox activate --dir "/var/lib/git/nxmatic/nix-darwin-home") || true
+  elif [ -d "/var/lib/git/seedmatic/ndh/.flox" ]; then
+    source <(flox activate --dir "/var/lib/git/seedmatic/ndh") || true
   elif [ -d "/Volumes/Git Worktree Store/nxmatic/nix-darwin-home/.flox" ]; then
     source <(flox activate --dir "/Volumes/Git Worktree Store/nxmatic/nix-darwin-home") || true
   fi

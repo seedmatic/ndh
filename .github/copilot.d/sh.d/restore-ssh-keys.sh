@@ -11,7 +11,7 @@ fi
 
 KEYS_YAML=/run/secrets/nix-darwin-home/nxmatic-ssh-keys.yaml
 STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/ssh-keys.d"
-REPO=/private/var/lib/git/nxmatic/nix-darwin-home
+REPO=/private/var/lib/git/seedmatic/ndh
 
 if [[ ! -f "$KEYS_YAML" ]]; then
   echo "ERROR: $KEYS_YAML not found (sops not yet run?)" >&2

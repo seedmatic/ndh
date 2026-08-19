@@ -645,8 +645,8 @@
             if [[ -z "$repo_root" ]]; then
               if repo_candidate="$(git -C "$PWD" rev-parse --show-toplevel 2>/dev/null || true)" && [[ -n "$repo_candidate" ]]; then
                 repo_root="$repo_candidate"
-              elif [[ -d "/private/var/lib/git/nxmatic/nix-darwin-home" ]]; then
-                repo_root="/private/var/lib/git/nxmatic/nix-darwin-home"
+              elif [[ -d "/private/var/lib/git/seedmatic/ndh" ]]; then
+                repo_root="/private/var/lib/git/seedmatic/ndh"
               else
                 echo "[nerd-tart-vm-bootstrap-installer][ERROR] unable to detect repo root; pass --repo PATH" >&2
                 exit 1

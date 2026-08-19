@@ -79,10 +79,10 @@ ngrok.pkg-path = "ngrok"
 ## ------------------------------------------------------------------
 [include]
 environments = [
- { dir = "/var/lib/git/nxmatic/fleet/flox/lima" },
- { dir = "/var/lib/git/nxmatic/fleet/flox/nix" },
- { dir = "/var/lib/git/nxmatic/fleet/flox/shell" },
- { dir = "/var/lib/git/nxmatic/fleet/flox/tart" }
+ { dir = "/var/lib/git/seedmatic/fleet/flox/lima" },
+ { dir = "/var/lib/git/seedmatic/fleet/flox/nix" },
+ { dir = "/var/lib/git/seedmatic/fleet/flox/shell" },
+ { dir = "/var/lib/git/seedmatic/fleet/flox/tart" }
 ]
 
 

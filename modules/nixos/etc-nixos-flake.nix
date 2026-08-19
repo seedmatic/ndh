@@ -2,7 +2,7 @@
 #
 # In full runtime mode we write a minimal flake at /etc/nixos/flake.nix that
 # forwards inputs + outputs to the git checkout shared into the guest at
-# cfg.sourcePath (default /var/lib/git/nxmatic/nix-darwin-home). This lets the
+# cfg.sourcePath (default /var/lib/git/seedmatic/ndh). This lets the
 # operator run `nixos-rebuild switch` from inside the VM and pick up new
 # commits the operator pushes to that tree — no rebuild of the VM image
 # required.
@@ -45,7 +45,7 @@ in
     };
     sourcePath = lib.mkOption {
       type = lib.types.str;
-      default = "/var/lib/git/nxmatic/nix-darwin-home";
+      default = "/var/lib/git/seedmatic/ndh";
       description = "Guest-side path of the shared git checkout the wrapper forwards to.";
     };
   };

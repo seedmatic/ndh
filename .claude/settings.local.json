@@ -9,7 +9,7 @@
       "Bash(vector --version)",
       "Bash(vector --help)",
       "Bash(vector tap *)",
-      "Bash(git -C /private/var/lib/git/nxmatic/nix-darwin-home diff *)",
+      "Bash(git -C /private/var/lib/git/seedmatic/ndh diff *)",
       "Bash(git commit -m ' *)",
       "Bash(nix build *)",
       "Bash(git add *)",

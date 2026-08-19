@@ -92,7 +92,7 @@ let
       clientUserCertSource = config.sshPaths.userCertPublic;
       fallbackHost = config.vm.hostName;
       remoteUser = config.profile.user.name;
-      remoteRepo = "/var/lib/git/nxmatic/nix-darwin-home";
+      remoteRepo = "/var/lib/git/seedmatic/ndh";
       guestName = config.vm.guestName;
     }
   );

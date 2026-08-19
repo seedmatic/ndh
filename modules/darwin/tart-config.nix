@@ -717,7 +717,7 @@ in
 
     nixosFlakePath = mkOption {
       type = types.str;
-      default = "/var/lib/git/nxmatic/nix-darwin-home";
+      default = "/var/lib/git/seedmatic/ndh";
       description = ''
         Host-side flake path used for fallback raw image resolution.
       '';
