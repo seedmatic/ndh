@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# baremetal-link — install the io.nxmatic.baremetal-link LaunchDaemon on a
+# baremetal-link — install the io.seedmatic.baremetal-link LaunchDaemon on a
 # CORPORATE bare-metal Mac (vzhost.<host>) that cannot join the tailnet.  It aliases
 # the Wi-Fi interface with this host's static /30 endpoint and installs the two
 # routes that make the Incus instance segment and the tailnet reachable through

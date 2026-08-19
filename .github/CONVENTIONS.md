@@ -12,14 +12,14 @@ This document defines coding standards and patterns for the nix-darwin-home (NDH
 
 ## LaunchAgent Naming
 
-**Rule**: All LaunchAgents added by NDH must use the `io.nxmatic.nix-darwin-home` prefix.
+**Rule**: All LaunchAgents added by NDH must use the `io.seedmatic.ndh` prefix.
 
 ### Pattern
 
 ```nix
 launchd.user.agents.my-agent = {
   serviceConfig = {
-    Label = "io.nxmatic.nix-darwin-home-my-agent";  # Always set explicit Label
+    Label = "io.seedmatic.ndh-my-agent";  # Always set explicit Label
     ProgramArguments = [ "${myScript}" ];
     # ... rest of config
   };
@@ -30,8 +30,8 @@ launchd.user.agents.my-agent = {
 
 | Context             | Pattern                              | Example                                            |
 | ------------------- | ------------------------------------ | -------------------------------------------------- |
-| Darwin system agent | `io.nxmatic.nix-darwin-home-<name>`  | `io.nxmatic.nix-darwin-home-tailscale-vnc-forward` |
-| Home Manager agent  | `io.nxmatic.nix-darwin-home.<name>`  | `io.nxmatic.nix-darwin-home.ssh-add-keys`          |
+| Darwin system agent | `io.seedmatic.ndh-<name>`  | `io.seedmatic.ndh-tailscale-vnc-forward` |
+| Home Manager agent  | `io.seedmatic.ndh.<name>`  | `io.seedmatic.ndh.ssh-add-keys`          |
 
 ### Why?
 
@@ -45,14 +45,14 @@ launchd.user.agents.my-agent = {
 # Darwin agent
 launchd.user.agents.bringup-observe-vector = {
   serviceConfig = {
-    Label = "io.nxmatic.nix-darwin-home-bringup-observe-vector";
+    Label = "io.seedmatic.ndh-bringup-observe-vector";
   };
 };
 
 # Home Manager agent
 launchd.user.agents.ssh-add-keys = {
   serviceConfig = {
-    Label = "io.nxmatic.nix-darwin-home.home.ssh-add-keys";
+    Label = "io.seedmatic.ndh.home.ssh-add-keys";
   };
 };
 ```

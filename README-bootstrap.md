@@ -34,14 +34,14 @@ The nix-darwin linux-builder provides a NixOS VM that can build Linux packages o
 When host outputs expose these packages:
 
 - `<host>-nixos-bringup-install`
-- `io-nxmatic-nix-darwin-home-bringup-runtime-profile-holder`
+- `io-seedmatic-ndh-bringup-runtime-profile-holder`
 - `<host>-nixos-lima-vm-materialize`
 
 Use this mapping:
 
 - **Run first:** `<host>-nixos-bringup-install` (host-scoped prerequisite installer)
-- **Profile target:** `/nix/var/nix/profiles/per-user/root/io-nxmatic-nix-darwin-home-bringup-runtime`
-- **Do not run directly:** `io-nxmatic-nix-darwin-home-bringup-runtime-profile-holder` (payload package installed into the dedicated profile)
+- **Profile target:** `/nix/var/nix/profiles/per-user/root/io-seedmatic-ndh-bringup-runtime`
+- **Do not run directly:** `io-seedmatic-ndh-bringup-runtime-profile-holder` (payload package installed into the dedicated profile)
 - **Separate concern:** `<host>-nixos-lima-vm-materialize` (Lima config generation/materialization)
 
 ## Bootstrap Steps
@@ -72,7 +72,7 @@ the root-owned runtime profile holder explicitly with these commands:
 
 ```bash
 # Build holder package locally and keep resulting store path
-holder_out="$(nix build --no-link --print-out-paths .#io-nxmatic-nix-darwin-home-bringup-runtime-profile-holder)"
+holder_out="$(nix build --no-link --print-out-paths .#io-seedmatic-ndh-bringup-runtime-profile-holder)"
 
 # Copy holder closure to the remote host daemon store
 nix copy --no-check-sigs \
@@ -82,7 +82,7 @@ nix copy --no-check-sigs \
 # Install/update the root profile on vz-host (requires sudo on remote host)
 ssh -t vz-host.nikopol \
   "sudo /nix/var/nix/profiles/default/bin/nix profile add \
-    --profile /nix/var/nix/profiles/per-user/root/io-nxmatic-nix-darwin-home-bringup-runtime \
+    --profile /nix/var/nix/profiles/per-user/root/io-seedmatic-ndh-bringup-runtime \
     $holder_out"
 ```
 
@@ -90,7 +90,7 @@ Verification on `vz-host`:
 
 ```bash
 ssh vz-host.nikopol \
-  'ls -la /nix/var/nix/profiles/per-user/root/io-nxmatic-nix-darwin-home-bringup-runtime/bin'
+  'ls -la /nix/var/nix/profiles/per-user/root/io-seedmatic-ndh-bringup-runtime/bin'
 ```
 
 ### 1. Generate SSH Keys for Builder

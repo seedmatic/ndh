@@ -18,9 +18,9 @@ let
   # activation script computes `/Library/LaunchDaemons/<label>.plist`
   # and runs `launchctl bootout` + `rm`.
   staleLabels = [
-    # Renamed to `io.nxmatic.nix-darwin-home.nxmatic-cachix-watch-store`
+    # Renamed to `io.seedmatic.ndh.nxmatic-cachix-watch-store`
     "org.nixos.nxmatic-cachix-watch-store"
-    # Renamed to `io.nxmatic.nix-darwin-home.static-routes`
+    # Renamed to `io.seedmatic.ndh.static-routes`
     "org.nixos.static-routes"
     # network-bond-wifi-manager: its declaring module was deleted but
     # the on-disk plist sticks around and launchd respawns it.

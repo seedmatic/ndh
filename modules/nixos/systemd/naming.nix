@@ -4,7 +4,7 @@
   ...
 }:
 let
-  ndhUnitPrefix = "io-nxmatic-nix-darwin-home";
+  ndhUnitPrefix = "io-seedmatic-ndh";
   mkNdhUnitName =
     suffix: if lib.hasPrefix "${ndhUnitPrefix}-" suffix then suffix else "${ndhUnitPrefix}-${suffix}";
   mkNdhServiceName = suffix: "${mkNdhUnitName suffix}.service";

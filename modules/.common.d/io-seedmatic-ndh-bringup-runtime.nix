@@ -31,7 +31,7 @@ let
       null;
   installerAttr =
     if hostNameForAttr != null then "${hostNameForAttr}-bringup-install" else installerAttrDefault;
-  storeNamePrefix = "io.nxmatic.nix-darwin-home";
+  storeNamePrefix = "io.seedmatic.ndh";
   prefixStoreName =
     name: if lib.hasPrefix "${storeNamePrefix}-" name then name else "${storeNamePrefix}-${name}";
   requiredCommandsString = lib.concatStringsSep " " cfg.requiredCommands;
@@ -138,7 +138,7 @@ in
 
     name = lib.mkOption {
       type = lib.types.str;
-      default = "io-nxmatic-nix-darwin-home-bringup-runtime";
+      default = "io-seedmatic-ndh-bringup-runtime";
       description = "Dedicated Nix profile name for NDH bringup runtime tools.";
     };
 

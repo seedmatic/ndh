@@ -217,7 +217,7 @@ trusted-public-keys = cache.nixos.org-1:<nixos-key> bioskop-cache-1:<bioskop-pub
 [source,bash]
 ----
 # @codebase
-darwin-rebuild switch --flake github:nxmatic/nix-darwin-home#nikopol
+darwin-rebuild switch --flake github:seedmatic/ndh#nikopol
 ----
 
 * Publish closures (run on bioskop before clients pull)

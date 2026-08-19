@@ -19,7 +19,7 @@ let
   trampolineDir = builtins.dirOf ndh.context.nixBashTrampoline;
 
   # `name`: store-name suffix; the wrapper drv ends up as
-  # io-nxmatic-nix-darwin-home-<name>-headscale-config.yaml.
+  # io-seedmatic-ndh-<name>-headscale-config.yaml.
   # `configValue`: the headscale config as a Nix attrset.  Keys map
   # directly to headscale's config schema; nested attrs become nested
   # YAML, lists become YAML lists.

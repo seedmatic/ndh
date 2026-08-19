@@ -307200,11 +307200,11 @@
         "systems": "systems_1033"
       },
       "locked": {
-        "lastModified": 1779260510,
-        "narHash": "sha256-kY6M1AOMR40Uu75wNRdEyLPzgVgjtfZ9QfMVx0CNITQ=",
+        "lastModified": 1787160369,
+        "narHash": "sha256-61uF+J8082tIc/TJIOtMwHmtik4+oAnI+rOWSbDimj4=",
         "owner": "nxmatic",
         "repo": "tailscale",
-        "rev": "e236ac9f83f300e91ffc184cdaa0bd185120a042",
+        "rev": "61f34186416e52163b7d598f9275edf65da09f52",
         "type": "github"
       },
       "original": {

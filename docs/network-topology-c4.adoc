@@ -259,7 +259,7 @@ file (the retired resolver), or hard-code a `HostName`.
   `nix run .#nikopol-baremetal-link-deploy` (teardown: `… -- --uninstall`). It delivers the
   catalog-rendered install script as *text* over `ssh vzhost.nikopol` (first-run bootstrap
   fallback `nikopol.local`, since `.253` isn't set yet) and runs it as root. The script
-  installs the `io.nxmatic.baremetal-link` *WatchPaths* LaunchDaemon that (re-)applies the
+  installs the `io.seedmatic.baremetal-link` *WatchPaths* LaunchDaemon that (re-)applies the
   `en0` alias `172.16.6.253/30` + routes `172.16.6.0/25 via .254` and `100.64.0.0/10 via
   .254` at load and on every Wi-Fi re-association. No nix runtime on the corp Mac; every
   address derives from `netplan.baremetal.nikopol` — never hand-typed.

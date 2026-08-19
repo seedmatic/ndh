@@ -9,7 +9,7 @@ This document defines the canonical operator-facing command model.
 * Internal implementation scripts can remain colocated with modules.
 * Operator entrypoints are exposed as short commands from Nix packages/apps.
 * Host-bound operator app/package attributes are host-scoped with host-first naming (`<host>-*`, where `<host>` is the host alias/name — e.g. `bioskop-*`, `nikopol-*`, `nerd-nixos-*`).  The VM-materialisation app is the fixed `nerd-tart-vm-materialize` (keyed to the `nerd-nixos` VM, not per darwin host).
-* Avoid exposing internal `io-nxmatic-*` script names in `bin/`.
+* Avoid exposing internal `io-seedmatic-*` script names in `bin/`.
 
 == Canonical Commands
 

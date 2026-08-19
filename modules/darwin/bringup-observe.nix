@@ -76,7 +76,7 @@ in
 
     launchd.user.agents.bringup-observe-vector = {
       serviceConfig = {
-        Label = "io.nxmatic.nix-darwin-home-bringup-observe-vector";
+        Label = "io.seedmatic.ndh-bringup-observe-vector";
         ProgramArguments = [
           "${vectorPkg}/bin/vector"
           "--config-yaml"

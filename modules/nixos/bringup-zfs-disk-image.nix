@@ -230,26 +230,24 @@ let
   diskoMountExe = lib.getExe diskoMountScript;
   diskoUnmountExe = lib.getExe diskoUnmountScript;
 
-  zfsBringupInstallScript =
-    pkgs.runCommand "io.nxmatic.nix-darwin-home-bringup-zfs-disk-images-install" { }
-      ''
-        install -Dm755 ${
-          pkgs.replaceVars ./zfs.d/bringup-zfs-disk-images-install.sh {
-            nixosName = hostLabel;
-            bringupCommonScript = "${./bringup-disk-image-common.sh}";
-            diskoFormatExe = "${diskoFormatExe}";
-            diskoMountExe = "${diskoMountExe}";
-            diskoUnmountExe = "${diskoUnmountExe}";
-            closureRegistration = "${closureInfo}/registration";
-            nixosInstall = "${config.system.build.nixos-install}/bin/nixos-install";
-            systemToplevel = "${installSystemPath}";
-            systemdLibUdevd = "${pkgs.systemd}/lib/systemd/systemd-udevd";
-            channelFlag = if includeChannel then "--channel ${channelSources}" else "";
-            bootSizePolicyNote = builtins.toJSON "ZFS bringup artifacts generated from canonical zfs-pool-disk-map definitions.";
-            pauseAfterInstall = if pauseAfterInstall then "true" else "false";
-          }
-        } "$out/bin/bringup-zfs-disk-images-install"
-      '';
+  zfsBringupInstallScript = pkgs.runCommand "io.seedmatic.ndh-bringup-zfs-disk-images-install" { } ''
+    install -Dm755 ${
+      pkgs.replaceVars ./zfs.d/bringup-zfs-disk-images-install.sh {
+        nixosName = hostLabel;
+        bringupCommonScript = "${./bringup-disk-image-common.sh}";
+        diskoFormatExe = "${diskoFormatExe}";
+        diskoMountExe = "${diskoMountExe}";
+        diskoUnmountExe = "${diskoUnmountExe}";
+        closureRegistration = "${closureInfo}/registration";
+        nixosInstall = "${config.system.build.nixos-install}/bin/nixos-install";
+        systemToplevel = "${installSystemPath}";
+        systemdLibUdevd = "${pkgs.systemd}/lib/systemd/systemd-udevd";
+        channelFlag = if includeChannel then "--channel ${channelSources}" else "";
+        bootSizePolicyNote = builtins.toJSON "ZFS bringup artifacts generated from canonical zfs-pool-disk-map definitions.";
+        pauseAfterInstall = if pauseAfterInstall then "true" else "false";
+      }
+    } "$out/bin/bringup-zfs-disk-images-install"
+  '';
 
   # buildCommandScript runs inside the VM
   buildCommandScriptApp = pkgs.writeShellApplication {

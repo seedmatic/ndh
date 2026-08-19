@@ -37,7 +37,7 @@ in
     launchd.agents.comet-debug = {
       enable = true;
       config = {
-        Label = "io.nxmatic.nix-darwin-home.comet-debug";
+        Label = "io.seedmatic.ndh.comet-debug";
         ProgramArguments = [
           "/usr/bin/open"
           "-a"
@@ -76,7 +76,7 @@ in
     home.activation.cometDebugInfo = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
       $VERBOSE_ECHO "Comet debug agent configured on port ${toString cfg.debugPort}"
       $VERBOSE_ECHO "Check status with: comet-debug-status"
-      $VERBOSE_ECHO "Load/unload with: launchctl {load,unload} ~/Library/LaunchAgents/io.nxmatic.nix-darwin-home.comet-debug.plist"
+      $VERBOSE_ECHO "Load/unload with: launchctl {load,unload} ~/Library/LaunchAgents/io.seedmatic.ndh.comet-debug.plist"
     '';
   };
 }

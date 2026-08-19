@@ -129,7 +129,7 @@ in
     # `sops-install-secrets` — on boot it races with sops, usually
     # losing and failing with "No such file or directory" on the
     # secret path.  The prefixed unit
-    # `io-nxmatic-nix-darwin-home-tailscaled-autoconnect` below is
+    # `io-seedmatic-ndh-tailscaled-autoconnect` below is
     # the race-safe equivalent that owns the registration flow for
     # the fleet.  Keep `extraUpFlags` here so that a manual
     # `tailscale up` still gets the right defaults, but registration

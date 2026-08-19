@@ -3,7 +3,7 @@
 # Darwin post-activation hook for the headscale client.
 #
 # Symmetric with the NixOS autoconnect unit
-# (io-nxmatic-nix-darwin-home-tailscaled-autoconnect): when a sops-
+# (io-seedmatic-ndh-tailscaled-autoconnect): when a sops-
 # materialised preauth key is available on disk, register the host
 # against the headscale server non-interactively.  Otherwise fall back
 # to the historic "emit a warning, operator runs hs-connect by hand"

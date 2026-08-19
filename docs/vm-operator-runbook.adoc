@@ -286,7 +286,7 @@ If the API isn't reachable, ensure the LaunchAgent is running and has the correc
 launchctl list | grep bringup-observe-vector
 
 # Restart if needed
-launchctl kickstart -k gui/$(id -u)/io.nxmatic.nix-darwin-home-bringup-observe-vector
+launchctl kickstart -k gui/$(id -u)/io.seedmatic.ndh-bringup-observe-vector
 
 # Verify config has API enabled (should show: enabled = true)
 grep -A2 "^\[api\]" ~/.local/share/nix-build-observe/vector-config.toml

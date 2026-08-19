@@ -6,7 +6,7 @@ source "@nixBashTrampoline@"
 
 usage() {
   cat <<'EOF'
-Usage: io.nxmatic.nix-darwin-home-store-asset-lookup <name-or-regex> [--all] [--literal]
+Usage: io.seedmatic.ndh-store-asset-lookup <name-or-regex> [--all] [--literal]
 
 Searches /nix/store paths reachable from active system roots and prints matches.
 EOF

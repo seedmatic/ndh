@@ -228,8 +228,8 @@ let
                 # Must match the path the bootstrap trampoline reads in
                 # modules/.common.d/shell.d/nix-bash-trampoline.sh
                 # (`ndh::bootstrap:profile:dir`) and the module default
-                # in modules/.common.d/io-nxmatic-nix-darwin-home-bringup-runtime.nix.
-                bringupRuntimeProfilePath = "/nix/var/nix/profiles/per-user/root/io-nxmatic-nix-darwin-home-bringup-runtime";
+                # in modules/.common.d/io-seedmatic-ndh-bringup-runtime.nix.
+                bringupRuntimeProfilePath = "/nix/var/nix/profiles/per-user/root/io-seedmatic-ndh-bringup-runtime";
               };
               store = ndhStoreApiLinux;
             };

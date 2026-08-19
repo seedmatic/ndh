@@ -316,7 +316,7 @@ in
       launchd.user.agents.headscale-bootstrap = {
         command = "${headscaleLauncher}";
         serviceConfig = {
-          Label = "io.nxmatic.nix-darwin-home.headscale-bootstrap";
+          Label = "io.seedmatic.ndh.headscale-bootstrap";
           # Restart on crash.  Headscale is long-lived; transient
           # failures (port binding, DB lock) resolve themselves.
           KeepAlive = true;

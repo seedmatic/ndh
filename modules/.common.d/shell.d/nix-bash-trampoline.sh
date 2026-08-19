@@ -60,7 +60,7 @@ ndh::bootstrap:profile:dir() {
 		echo "${NDH_BOOTSTRAP_PROFILE_DIR}"
 		return 0
 	fi
-	echo "/nix/var/nix/profiles/per-user/root/io-nxmatic-nix-darwin-home-bringup-runtime"
+	echo "/nix/var/nix/profiles/per-user/root/io-seedmatic-ndh-bringup-runtime"
 	return 0
 }
 
@@ -128,7 +128,7 @@ ndh::bootstrap:runtime:install() {
 	local install_attr host_short
 
 	profile_dir="$(ndh::bootstrap:profile:dir || true)"
-	runtime_name="$(basename "${profile_dir:-/nix/var/nix/profiles/per-user/root/io-nxmatic-nix-darwin-home-bringup-runtime}")"
+	runtime_name="$(basename "${profile_dir:-/nix/var/nix/profiles/per-user/root/io-seedmatic-ndh-bringup-runtime}")"
 	runtime_attr_name="$runtime_name"
 	install_attr="${NDH_BOOTSTRAP_INSTALL_ATTR:-}"
 	if [[ -z "$install_attr" ]]; then
@@ -291,7 +291,7 @@ ndh::bootstrap:runtime:ensure() {
 			fi
 		fi
 	else
-		local profile_fallback="/nix/var/nix/profiles/per-user/root/io-nxmatic-nix-darwin-home-bringup-runtime"
+		local profile_fallback="/nix/var/nix/profiles/per-user/root/io-seedmatic-ndh-bringup-runtime"
 		if [[ -n "$installer_hint" ]]; then
 			install_hint="${installer_hint} ${profile_fallback}"
 		else

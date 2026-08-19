@@ -48,15 +48,15 @@ sandbox/                    # VM working directory (disk images, manifests)
 ## ndh.store API — The Core Convention
 
 **All** externalized scripts must use `ndh.store.*` (not bare `pkgs.writeShellScript`
-or `pkgs.replaceVars`). This ensures the `io.nxmatic.nix-darwin-home-` prefix on every
+or `pkgs.replaceVars`). This ensures the `io.seedmatic.ndh-` prefix on every
 derivation, so scripts are traceable to their owning package.
 
 ### Full API (available as `ndh.store.*` in all modules)
 
 | Function | Signature | Output |
 |----------|-----------|--------|
-| `prefix` | `string` | `"io.nxmatic.nix-darwin-home"` |
-| `prefixedName` | `name → string` | `"io.nxmatic.nix-darwin-home-${name}"` (idempotent) |
+| `prefix` | `string` | `"io.seedmatic.ndh"` |
+| `prefixedName` | `name → string` | `"io.seedmatic.ndh-${name}"` (idempotent) |
 | `writeShellScript` | `name: text` | Bare script at `$out` (prefixed drv name) |
 | `writeShellScriptBin` | `name: text` | `$out/bin/<name>` (prefixed drv name) |
 | `installScript` | `{ name, source, mode? }` | Bare file at `$out` via `install -m <mode>` |
@@ -172,7 +172,7 @@ Key components:
 
 | Pattern | Convention |
 |---------|-----------|
-| Nix store derivation names | `io.nxmatic.nix-darwin-home-<name>` (via `ndh.store.prefixedName`) |
+| Nix store derivation names | `io.seedmatic.ndh-<name>` (via `ndh.store.prefixedName`) |
 | Lima VM hostname | `nerd-nixos` (from hostAlias) |
 | Disk images | `<vmName>-<pool>.img` |
 | Gcroot links | `~/.local/share/nix/gcroots/<name>` |
@@ -190,7 +190,7 @@ Key components:
 4. **`nix flake check --no-build`** uses committed state — staged but uncommitted changes
    won't be picked up; must commit before re-checking
 5. **`bringup-zfs-disk-image.nix`** has no `ndh` arg — use manual
-   `pkgs.runCommand "io.nxmatic.nix-darwin-home-<name>"` there
+   `pkgs.runCommand "io.seedmatic.ndh-<name>"` there
 
 ## References
 

@@ -33,7 +33,7 @@ in
     # LaunchAgent that reacts to network state changes (event-driven, not polling)
     launchd.user.agents.tailscale-vnc-forward = {
       serviceConfig = {
-        Label = "io.nxmatic.nix-darwin-home-tailscale-vnc-forward";
+        Label = "io.seedmatic.ndh-tailscale-vnc-forward";
         ProgramArguments = [ "${vncForwardScript}" ];
 
         # Event-driven: react to SystemConfiguration network state changes

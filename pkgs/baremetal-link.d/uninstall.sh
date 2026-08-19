@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# baremetal-link-uninstall — remove the io.nxmatic.baremetal-link LaunchDaemon
+# baremetal-link-uninstall — remove the io.seedmatic.baremetal-link LaunchDaemon
 # and undo the en0 alias + routes it installed on the corp Mac.  The mirror of
 # install.sh: delivered as text and run as root via `ssh <vz> sudo bash -s`
 # (see deploy.sh --uninstall); bash-3.2 compatible, no nix runtime on target.

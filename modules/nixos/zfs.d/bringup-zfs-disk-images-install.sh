@@ -91,7 +91,7 @@ require_partlabel recover
 
 nix-store --option build-users-group "" --load-db < @closureRegistration@
 
-target_bootstrap_profile="/mnt/zfs-root/nix/var/nix/profiles/per-user/root/io-nxmatic-nix-darwin-home-bringup-runtime"
+target_bootstrap_profile="/mnt/zfs-root/nix/var/nix/profiles/per-user/root/io-seedmatic-ndh-bringup-runtime"
 target_bootstrap_installer="@systemToplevel@/sw/bin/nerd-bringup-install"
 
 mkdir -p "$(dirname "$target_bootstrap_profile")"

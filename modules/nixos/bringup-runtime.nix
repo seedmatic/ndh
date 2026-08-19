@@ -7,7 +7,7 @@
 # NixOS wiring for the bringup-runtime profile.
 #
 # Options + package derivations live at
-# modules/.common.d/io-nxmatic-nix-darwin-home-bringup-runtime.nix. This
+# modules/.common.d/io-seedmatic-ndh-bringup-runtime.nix. This
 # module adds the NixOS-specific pieces:
 #
 #   - environment.systemPackages: expose the installer binary in the
@@ -40,19 +40,19 @@ in
     # `nixos-rebuild boot` does not run activation on the currently running
     # system. Ensure the bringup runtime profile is provisioned at next boot
     # before services that rely on the command contract.
-    systemd.services.io-nxmatic-nix-darwin-home-bringup-runtime-install = {
+    systemd.services.io-seedmatic-ndh-bringup-runtime-install = {
       description = "Install NDH bringup runtime profile for root (@codebase)";
       wantedBy = [ "multi-user.target" ];
       requiredBy = [
         "sops-install-secrets.service"
-        "io-nxmatic-nix-darwin-home-hostkey-enrollment-check.service"
+        "io-seedmatic-ndh-hostkey-enrollment-check.service"
       ];
       before = [
         # Read the configured name so NDH-prefixed (or otherwise overridden)
         # unit names are honored.
         "${config.ndh.sopsAgeKeyBootstrap.systemdUnitName}.service"
         "sops-install-secrets.service"
-        "io-nxmatic-nix-darwin-home-hostkey-enrollment-check.service"
+        "io-seedmatic-ndh-hostkey-enrollment-check.service"
       ];
       path = [
         pkgs.bash

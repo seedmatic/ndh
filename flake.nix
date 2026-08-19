@@ -202,7 +202,7 @@
       mkNdhStoreApiFor =
         pkgsForSystem:
         let
-          storeNamePrefix = "io.nxmatic.nix-darwin-home";
+          storeNamePrefix = "io.seedmatic.ndh";
           prefixStoreName =
             name:
             if nixpkgs.lib.hasPrefix "${storeNamePrefix}-" name then name else "${storeNamePrefix}-${name}";
@@ -725,7 +725,7 @@
       # pkgs/baremetal-link.d/.
       baremetalLinkHosts = nixpkgs.lib.filterAttrs (_: bm: bm ? linkCidr) catalogData.netplan.baremetal;
 
-      baremetalLinkLabel = "io.nxmatic.baremetal-link";
+      baremetalLinkLabel = "io.seedmatic.baremetal-link";
 
       # Common addressing tokens both install.sh and uninstall.sh take from the
       # catalog — single-sourced so the teardown undoes exactly what install set.

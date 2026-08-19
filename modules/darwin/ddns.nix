@@ -157,7 +157,7 @@ let
       agent = {
         command = "${launcher}";
         serviceConfig = {
-          Label = "io.nxmatic.nix-darwin-home.${agentName}";
+          Label = "io.seedmatic.ndh.${agentName}";
           # godns is long-lived with its own interval; launchd wraps it
           # with KeepAlive so a transient network failure restart is
           # cheap.

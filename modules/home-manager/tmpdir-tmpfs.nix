@@ -79,7 +79,7 @@ in
     launchd.agents.tmpdir-tmpfs = {
       enable = true;
       config = {
-        Label = "io.nxmatic.nix-darwin-home.tmpdir-tmpfs";
+        Label = "io.seedmatic.ndh.tmpdir-tmpfs";
         ProgramArguments = [
           "${script}/bin/mount-tmpdir-tmpfs.sh"
           cfg.mountPoint
@@ -102,7 +102,7 @@ in
     launchd.agents.tmpdir-tmpfs-reap = mkIf cfg.reap.enable {
       enable = true;
       config = {
-        Label = "io.nxmatic.nix-darwin-home.tmpdir-tmpfs-reap";
+        Label = "io.seedmatic.ndh.tmpdir-tmpfs-reap";
         ProgramArguments = [
           "${reapScript}/bin/tmpdir-reap.sh"
           cfg.mountPoint

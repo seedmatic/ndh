@@ -75,7 +75,7 @@ in
     launchd.agents.ssh-add-keys = {
       enable = true;
       config = {
-        Label = "io.nxmatic.nix-darwin-home.ssh-add-keys";
+        Label = "io.seedmatic.ndh.ssh-add-keys";
         Debug = true;
         ProgramArguments = [
           "${sshAddKeysStoreScript}/bin/ssh-add-keys"

@@ -86,7 +86,7 @@ let
     "home"
     "activationPackage"
   ] null (if isNixosPlatform then { } else config);
-  storeNamePrefix = "io.nxmatic.nix-darwin-home";
+  storeNamePrefix = "io.seedmatic.ndh";
   prefixStoreName =
     name: if lib.hasPrefix "${storeNamePrefix}-" name then name else "${storeNamePrefix}-${name}";
   loggerTagHmPost = "common.activationScripts.postActivation.home-manager";
@@ -146,7 +146,7 @@ let
   };
 
   ndhStoreAssetLookupPackage = pkgs.writeShellApplication {
-    name = "io.nxmatic.nix-darwin-home-store-asset-lookup";
+    name = "io.seedmatic.ndh-store-asset-lookup";
     runtimeInputs = with pkgs; [
       bash
       coreutils
@@ -267,7 +267,7 @@ in
     ./nix-settings.nix
     ./cache-trust.nix
     ./cachix-watch-store.nix
-    ./io-nxmatic-nix-darwin-home-bringup-runtime.nix
+    ./io-seedmatic-ndh-bringup-runtime.nix
 
     # Networking
     ./dns-servers.nix

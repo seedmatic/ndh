@@ -142,7 +142,7 @@ in
   sops.secrets."ssh-keys.yaml".owner = lib.mkForce "root";
 
   # The minimal image does not import modules/nixos/systemd/default.nix, so the
-  # `io-nxmatic-nix-darwin-home-contributed.target` that normally pulls the
+  # `io-seedmatic-ndh-contributed.target` that normally pulls the
   # enrichment unit into the boot transaction does not exist here. Wire the
   # dependency directly onto sshd so enrichment runs before sshd starts — the
   # `before = sshd.service` in ssh-keys-enrichment.nix only orders, it does not
