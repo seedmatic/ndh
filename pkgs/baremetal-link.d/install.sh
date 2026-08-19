@@ -60,6 +60,13 @@ mkdir -p "$conf_dir"
 # host / subnet router, on-link via the /30 alias).  It runs `set -x` too, so
 # its trace lands in @log@.  The heredoc is UNQUOTED so the rendered values
 # interpolate now; the deployed loop variable stays literal (\$net).
+#
+# Then, when the host's uplink actually changes (a new DHCP lease appears), it
+# nudges the Incus-host guest to re-acquire its own lan-br lease over the /30 —
+# so a single network switch auto-recovers the whole stack (host alias/routes +
+# guest lease + its tailscale, which self-heals once the guest network is fresh).
+# The WatchPaths bursts double as the retry loop; a lease-change guard fires the
+# nudge exactly once (see below).
 cat >"$conf_dir/link-up.sh" <<LINK
 #!/bin/sh
 # rendered by baremetal-link-install — re-applies the static /30 alias + routes.
@@ -71,6 +78,24 @@ for net in ${net_cidr} ${tailnet_cidr}; do
   /sbin/route -n add -net "\$net" ${via} 2>/dev/null \\
     || /sbin/route -n change -net "\$net" ${via} 2>/dev/null || true
 done
+
+# Once ${interface} holds a REAL DHCP lease on the (possibly new) network AND it
+# changed since last run, nudge the Incus-host guest to re-acquire ITS own lan-br
+# lease over the /30 (host-local, reached via \$via). The WatchPaths bursts ARE the
+# retry loop, so no polling: no lease yet -> skip; lease appeared/changed -> nudge
+# once; same lease -> skip (dedup). ipconfig getifaddr returns empty for a missing
+# or self-assigned (169.254) address. Non-blocking (BatchMode + ConnectTimeout +
+# || true): a missing key or an unreachable guest never stalls the re-apply above.
+lease="\$(/usr/sbin/ipconfig getifaddr ${interface} 2>/dev/null || true)"
+if [ -n "\$lease" ] && [ "\$lease" != "\$(cat ${conf_dir}/.uplink-lease 2>/dev/null)" ]; then
+  # Nudge first; record the lease ONLY on success, so a failed or transiently
+  # unreachable guest (e.g. host-key not yet accepted, guest still booting) is
+  # retried on the next WatchPaths fire instead of being silently marked done.
+  if /usr/bin/ssh -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new \\
+       root@${via} 'networkctl reconfigure lan-br' 2>/dev/null; then
+    echo "\$lease" > ${conf_dir}/.uplink-lease
+  fi
+fi
 LINK
 chown root:wheel "$conf_dir/link-up.sh"
 chmod 0755 "$conf_dir/link-up.sh"
