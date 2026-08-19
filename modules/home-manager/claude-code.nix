@@ -113,7 +113,9 @@ in
 
     (mkIf (claude-hub != null) {
       home.file.".claude/bin/claude-config-home-wrapper.sh" = {
-        source = "${claude-hub.packages.${pkgs.stdenv.hostPlatform.system}.claude-config-home-wrapper}/bin/claude-config-home-wrapper.sh";
+        source = "${
+          claude-hub.packages.${pkgs.stdenv.hostPlatform.system}.claude-config-home-wrapper
+        }/bin/claude-config-home-wrapper.sh";
         executable = true;
       };
     })

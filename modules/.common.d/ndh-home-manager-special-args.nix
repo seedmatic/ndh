@@ -9,7 +9,12 @@
   claude-hub ? null,
 }:
 {
-  inherit self worktreePath profile claude-hub;
+  inherit
+    self
+    worktreePath
+    profile
+    claude-hub
+    ;
   ndh = {
     context = ndhContext;
     store = ndhStore;
