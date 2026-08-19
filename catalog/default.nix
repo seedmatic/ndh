@@ -34,6 +34,8 @@
           domain = "nikopol";
           netCidr = "172.16.6.0/25"; # managed Incus net (dnsmasq) — netflow instances
           netGateway = "172.16.6.1"; # Incus bridge + dnsmasq + split-DNS target
+          dynamicCidr = "172.16.6.0/27"; # bottom /27 = DHCP dynamic pool; statics live above it (top-down)
+          dhcpRange = "172.16.6.2-172.16.6.30"; # dnsmasq range within the dynamic /27 (gateway .1 excluded)
           linkCidr = "172.16.6.252/30"; # static P2P link: corp Mac <-> Incus host
           hostAddress = "172.16.6.254"; # nikopol-nixos link end on lan-br (subnet router)
           vzHostAddress = "172.16.6.253"; # corp Mac en0 alias (dnsmasq host-record vzhost.nikopol)
@@ -360,6 +362,22 @@
                 ];
               }
             ]
+            # The dynamic sub-segment: the bottom /27 of the /25 is the DHCP pool
+            # (bare-br's ipv4.dhcp.ranges below); static reservations live ABOVE it,
+            # filled top-down (nnh's collector /30 comes in via the blueprint union).
+            # Optional per-baremetal.  (Catalog is lib-free — plain `if`.)
+            ++ (
+              if bm ? dynamicCidr then
+                [
+                  {
+                    cidr = bm.dynamicCidr;
+                    name = "${bm.domain}-baremetal-dynamic";
+                    asn = 65000;
+                  }
+                ]
+              else
+                [ ]
+            )
             # The static /30 link exists only for a vz-host that can't join the tailnet
             # (the corporate Mac); on-tailnet bare-metals declare no `linkCidr`.  It is an
             # attribution-only span (the P2P transport; the dnsmasq that registers the

@@ -49,6 +49,14 @@ let
     # DHCP client.  DHCP clients (nnh collector, other instances) auto-register in
     # the `.${domain}` zone; their addresses are theirs, not the catalog's.
     "raw.dnsmasq" = "host-record=vzhost.${bm.domain},${bm.vzHostAddress}";
+  }
+  # Confine DHCP to the dynamic sub-segment (the bottom /27) when the baremetal
+  # declares a range; the static-high half stays free for reservations (nnh's
+  # collector /30 at the top). Without this, dnsmasq auto-ranges the whole /25 and a
+  # bare-br recreate can hand a pinned static IP to a DHCP client — which wedged the
+  # pipeline (akvorado Kafka + probe stuck on a churned IP). Optional per-baremetal.
+  // lib.optionalAttrs (bm ? dhcpRange) {
+    "ipv4.dhcp.ranges" = bm.dhcpRange;
   };
 
   # The config as a JSON manifest (builtins.toJSON — no nix YAML codec needed);
