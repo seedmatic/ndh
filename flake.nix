@@ -250,7 +250,13 @@
             '';
           installBinScript =
             name: source:
-            pkgsForSystem.runCommand (prefixedName name) { } ''
+            # meta.mainProgram = the UNPREFIXED bin so `nix run <pkg>` resolves the
+            # right executable: the derivation is named `prefixedName name`
+            # (io.seedmatic.ndh-<name>) but the bin is `bin/<name>`, so without
+            # mainProgram `nix run` guesses bin/<pname> (prefixed) → "No such file"
+            # when resolved as a package (e.g. on a system with no matching apps.*
+            # entry — the aarch64-linux guest running the baremetal-link deploy).
+            pkgsForSystem.runCommand (prefixedName name) { meta.mainProgram = name; } ''
               install -Dm755 ${source} "$out/bin/${name}"
             '';
           # Bundle several pre-substituted scripts into one derivation,
@@ -780,6 +786,19 @@
             uninstallScript = "${mkBaremetalLinkUninstall system bm}";
             vzHost = "vzhost.${bm.domain}";
             bootstrapHost = "${bm.domain}.local";
+            # Where the enrich pipeline lands the vz-nudge private+cert (usage
+            # ssh-host → root-owned systemKeysDir). Read at runtime by deploy.sh and
+            # shipped to the target so link-up.sh can auth the guest nudge. Matches
+            # modules/.common.d/ssh-paths.nix `systemKeysDir` default. deploy.sh also
+            # reads ${systemKeysDir}/rdp-host{,-cert.pub} from here as the vzhost
+            # login identity (root-readable; the activation oneshot runs as root).
+            systemKeysDir = "/var/lib/ndh/ssh-keys";
+            # vzhost's OS login. The corp Mac refuses root ssh AND is off the
+            # nix-darwin fleet, so its username is not derivable from a host config;
+            # it is the operator's corp account. No single catalog source of truth
+            # exists for it (already duplicated across the repo, e.g.
+            # modules/home-manager/ssh-tailnet-hosts.nix), so it is duplicated here.
+            vzUser = "stephane.lacoin";
           }
         );
 

@@ -3,6 +3,8 @@
   pkgs,
   lib,
   ndh,
+  self,
+  ndhSystemd,
   ...
 }:
 # Per-baremetal instance segment for a NixOS Incus host.  Any host whose
@@ -101,6 +103,42 @@ lib.mkIf enabled {
       ExecStart = "${pkgs.bash}/bin/bash ${reconcileScript}/bin/incus-bare-br";
     };
   };
+
+  # For an off-tailnet corp Mac (hasLink): once this host has provisioned its system
+  # keys (ssh-keys-enrichment lands the rotating, CA-signed vz-nudge in systemKeysDir),
+  # ship that identity to the corp Mac and (re)load its baremetal-link daemon — so the
+  # Mac's WatchPaths link-up.sh can authenticate the guest-reconfigure nudge (see
+  # pkgs/baremetal-link.d/). The oneshot runs as root: it reads the 0600 vz-nudge
+  # private and connects to the corp Mac as the operator login with the root-readable
+  # rdp-host cert (the Mac refuses root ssh). Best-effort + idempotent — the CA cert is
+  # long-lived, so a missed/failed run is harmless (the last shipped key keeps working);
+  # attached to the contributed target so it re-runs each activation, re-shipping the
+  # rotated key.
+  systemd.services.baremetal-link-deploy = lib.mkIf hasLink (
+    ndhSystemd.attachToContributedTarget {
+      description = "Ship vz-nudge + (re)load baremetal-link on the corp Mac (${bm.domain})";
+      after = [
+        (ndhSystemd.mkServiceName "ssh-keys-enrichment")
+        "incus-bare-br.service"
+        "network-online.target"
+      ];
+      wants = [
+        (ndhSystemd.mkServiceName "ssh-keys-enrichment")
+        "network-online.target"
+      ];
+      serviceConfig = {
+        Type = "oneshot";
+        # Invoke bash explicitly (like incus-bare-br above): the service's minimal
+        # PATH has no `bash`, so the deploy bin's `#!/usr/bin/env -S bash` shebang
+        # fails with exit 127 (`env: 'bash': No such file or directory`).
+        ExecStart =
+          let
+            deploy = self.packages.${pkgs.stdenv.hostPlatform.system}."${bm.domain}-baremetal-link-deploy";
+          in
+          "${pkgs.bash}/bin/bash ${deploy}/bin/${bm.domain}-baremetal-link-deploy";
+      };
+    }
+  );
 
   networking.firewall.trustedInterfaces = [ "bare-br" ];
   networking.networkmanager.unmanaged = [ "interface-name:bare-br" ];

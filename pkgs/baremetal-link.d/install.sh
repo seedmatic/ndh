@@ -89,9 +89,14 @@ done
 lease="\$(/usr/sbin/ipconfig getifaddr ${interface} 2>/dev/null || true)"
 if [ -n "\$lease" ] && [ "\$lease" != "\$(cat ${conf_dir}/.uplink-lease 2>/dev/null)" ]; then
   # Nudge first; record the lease ONLY on success, so a failed or transiently
-  # unreachable guest (e.g. host-key not yet accepted, guest still booting) is
-  # retried on the next WatchPaths fire instead of being silently marked done.
-  if /usr/bin/ssh -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new \\
+  # unreachable guest (e.g. key not yet shipped, guest still booting) is retried
+  # on the next WatchPaths fire instead of being silently marked done.
+  # Auth = the vz-nudge CA-signed identity shipped here by the deploy (private +
+  # user cert); IdentitiesOnly pins it (no agent/other keys). Its cert principal
+  # (rdp-host) grants root on the guest via TrustedUserCAKeys — rotates freely.
+  if /usr/bin/ssh -i /var/root/.ssh/vz-nudge -o CertificateFile=/var/root/.ssh/vz-nudge-cert.pub \\
+       -o IdentitiesOnly=yes -o UserKnownHostsFile=/var/root/.ssh/known_hosts \\
+       -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new \\
        root@${via} 'networkctl reconfigure lan-br' 2>/dev/null; then
     echo "\$lease" > ${conf_dir}/.uplink-lease
   fi
