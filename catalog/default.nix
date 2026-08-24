@@ -39,6 +39,16 @@
           linkCidr = "172.16.6.252/30"; # static P2P link: corp Mac <-> Incus host
           hostAddress = "172.16.6.254"; # nikopol-nixos link end on lan-br (subnet router)
           vzHostAddress = "172.16.6.253"; # corp Mac en0 alias (dnsmasq host-record vzhost.nikopol)
+          # Static dnsmasq host-records for the PINNED collector instances (nnh's /30,
+          # 172.16.6.124/30). dns.mode=dynamic only registers a name while the instance holds a
+          # DHCP lease, so nnh-inlet/nnh-outlet.nikopol vanished during a multi-day offline window
+          # (lease expiry / dnsmasq restart) → akvorado-inlet couldn't resolve its own Kafka broker
+          # (produce failed, pipeline stalled). Static records (like vzHostAddress) make these names
+          # resolve deterministically, independent of DHCP. Names/IPs are nnh's pinned instances.
+          staticHosts = {
+            "nnh-inlet" = "172.16.6.126";
+            "nnh-outlet" = "172.16.6.125";
+          };
           advertiseCidr = "172.16.6.0/24"; # aggregate advertised into the tailnet
           lanAttachment = "roaming"; # itinerant (runs on the corp MacBook) — must NOT advertise the home LAN
         };

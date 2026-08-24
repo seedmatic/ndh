@@ -46,11 +46,16 @@ let
     # own its `.<domain>` record — so nnh's collector/probe appear as their real
     # hostnames in the zone.
     "dns.mode" = "dynamic";
-    # Static A record so `vzhost.${domain}` resolves to the vz-host (a corp Mac at its
-    # /30 address, or an on-tailnet bare-metal at its LAN address) — not a dnsmasq
-    # DHCP client.  DHCP clients (nnh collector, other instances) auto-register in
-    # the `.${domain}` zone; their addresses are theirs, not the catalog's.
-    "raw.dnsmasq" = "host-record=vzhost.${bm.domain},${bm.vzHostAddress}";
+    # Static A records: `vzhost.${domain}` (the off-DHCP vz-host) PLUS any `staticHosts`
+    # the baremetal entry declares (pinned instances whose names must resolve regardless
+    # of a DHCP lease — dns.mode=dynamic drops a name when its lease lapses, which stalled
+    # the pipeline when akvorado-inlet couldn't resolve nnh-inlet.nikopol after a multi-day
+    # offline window; see catalog netplan.baremetal.<host>.staticHosts). Other DHCP clients
+    # still auto-register dynamically in the `.${domain}` zone.
+    "raw.dnsmasq" = lib.concatStringsSep "\n" (
+      [ "host-record=vzhost.${bm.domain},${bm.vzHostAddress}" ]
+      ++ lib.mapAttrsToList (name: ip: "host-record=${name}.${bm.domain},${ip}") (bm.staticHosts or { })
+    );
   }
   # Confine DHCP to the dynamic sub-segment (the bottom /27) when the baremetal
   # declares a range; the static-high half stays free for reservations (nnh's
