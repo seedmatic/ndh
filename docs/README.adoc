@@ -44,6 +44,12 @@ Documentation for GitHub MCP proxy configuration.
 link:operator-commands.adoc[Operator Commands]::
 Canonical operator command surface and usage patterns.
 
+link:host-builder-phases.adoc[Host Builder Phases (bootstrap → steady)]::
+The two-phase aarch64-linux build lifecycle for Darwin hosts: embedded
+linux-builder to first build `<host>-nixos`, then offload to that sibling once it
+is up. Single host-derived `ndh.hostBuilder` knob; per-host state + promotion
+runbook.
+
 link:collaboration-guide.adoc[Collaboration & Session Operations Guide]::
 Workflow for running, capturing, and closing collaborative sessions (includes pre-expiration reminder protocol and quality gates).
 

@@ -27,6 +27,7 @@
     ./baremetal-resolvers.nix
     ./tart-config.nix
     ./linux-builder.nix
+    ./host-builder.nix
     ./network-bond.nix
     ./static-routes.nix
     ./podman-remote-client.nix

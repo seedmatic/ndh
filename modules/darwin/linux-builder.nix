@@ -33,6 +33,11 @@ let
       form = config.profile.host.form or null;
     in
     form == null || form == "baremetal";
+  # The embedded builder lives only in the bootstrap phase — once <host>-nixos
+  # is up (ndh.hostBuilder = "steady") the Mac offloads to it and this builder
+  # is retired. See modules/darwin/host-builder.nix and
+  # docs/host-builder-phases.adoc.
+  hostBuilderPhase = config.ndh.hostBuilder;
   inventoryEntries =
     if builtins.hasAttr hostName hostsInventory then hostsInventory.${hostName} else [ ];
   # Embedded linux-builder: nix-darwin managed QEMU VM (vm.manager == "nix-darwin")
@@ -46,7 +51,11 @@ let
   # Local QEMU linux-builder enabled only on baremetal (bioskop) as a fallback
   # when nerd-nixos VM is not yet available. VM hosts (nikopol) cannot run
   # nested QEMU and bootstrap from pre-built configs from bioskop instead.
-  selected = if (!isBaremetalHost) then null else lib.head (linuxBuilderEntries ++ [ null ]);
+  selected =
+    if (!isBaremetalHost || hostBuilderPhase != "bootstrap") then
+      null
+    else
+      lib.head (linuxBuilderEntries ++ [ null ]);
   requestedLinuxBuilderVmCpuCores =
     if selected != null then (selected.builder.vmCpuCores or 8) else 8;
   effectiveLinuxBuilderVmCpuCores = lib.min requestedLinuxBuilderVmCpuCores 8;
@@ -258,8 +267,9 @@ in
     # SSH keys are managed by the home-manager ssh-keys.nix module
     # Keys are deployed to canonical split runtime paths via sshPaths (system/public + per-user/private)
 
-    # Distributed builds disabled: we now build locally on bioskop and copy
-    # store paths to target hosts instead of using remote builders over LAN/tailscale.
+    # Distributed builds are governed by ndh.hostBuilder (modules/darwin/host-builder.nix):
+    # off in the bootstrap phase (this embedded builder is active), on in steady
+    # (offload to <host>-nixos). See docs/host-builder-phases.adoc.
 
     # SSH config for manual access to bioskop-nixos (works on LAN and tailscale/headscale)
     environment.etc."ssh/ssh_config.d/70-bioskop-nixos.conf" = {

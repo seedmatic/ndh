@@ -1,0 +1,98 @@
+= Host Builder Phases (bootstrap → steady)
+:toc: left
+:icons: font
+
+== Overview
+
+Every Darwin host in the fleet needs to build `aarch64-linux` derivations —
+the NixOS side of itself. But a Mac cannot build Linux natively, which creates
+a chicken-and-egg:
+
+* The `aarch64-linux` builder we *want* is the host's own NixOS sibling next
+  door (`<host>-nixos`, which also hosts incus). It is fast, native, and pulls
+  from the binary caches.
+* But that sibling does not exist yet the first time — it is precisely what we
+  are trying to build and activate.
+
+`ndh.hostBuilder` names this as a **lifecycle phase of the host**, with a single
+host-derived knob rather than a hand-maintained `nix.buildMachines` block per
+host:
+
+`bootstrap`:: No NixOS sibling yet. Build `aarch64-linux` locally through the
+embedded QEMU `linux-builder` (baremetal only — a `vm`-form host cannot run a
+nested builder). This is the *only* way to build+activate `<host>-nixos` the
+first time.
+
+`steady`:: `<host>-nixos` is up. It becomes the builder: the local
+`linux-builder` is turned off and the Mac offloads over ssh, pulling
+dependencies straight from the caches instead of uploading its whole closure.
+
+The builder name is *derived* from `config.profile.host.hostName`
+(`<host>-nixos`), never hardcoded — so the same module offloads
+`bioskop → bioskop-nixos` and `nikopol → nikopol-nixos`. `<host>-nixos` already
+authorizes root over ssh (root is a trusted nix user), so no builder key is
+deployed.
+
+== The two phases
+
+[mermaid]
+....
+stateDiagram-v2
+    direction LR
+    [*] --> bootstrap: fresh Mac,<br/>no NixOS sibling
+    bootstrap: bootstrap
+    bootstrap: local linux-builder (QEMU)<br/>baremetal only
+    steady: steady
+    steady: offload to '&lt;host&gt;-nixos'<br/>linux-builder OFF
+    bootstrap --> steady: '&lt;host&gt;-nixos' built,<br/>activated & incus up
+    steady --> steady: darwin-rebuild switch
+    note right of bootstrap
+        vm-form hosts (nikopol) can
+        never run a nested builder,
+        so they start in steady
+    end note
+....
+
+The gate lives in one place: `modules/darwin/linux-builder.nix` only selects the
+embedded builder when the host is baremetal *and* `ndh.hostBuilder == "bootstrap"`.
+`modules/darwin/host-builder.nix` owns the reverse: in `steady` it wires
+`nix.buildMachines = [ <host>-nixos ]` + `builders-use-substitutes`. The two are
+mutually exclusive by construction — never both on.
+
+== Per-host state
+
+[cols="1,1,1,1", options="header"]
+|===
+| Host | `ndh.hostBuilder` | Local linux-builder | Remote buildMachine
+
+| bioskop (first bring-up) | `bootstrap` (default) | ✅ baremetal | —
+| bioskop (post-bring-up)  | `steady`              | ❌            | `bioskop-nixos`
+| nikopol                  | `steady`              | ❌ (vm, never) | `nikopol-nixos`
+|===
+
+`nikopol` is a `vm`-form host: it can never run a nested `linux-builder`, so it
+declares `steady` from day one and always offloads to `nikopol-nixos`. The
+`bootstrap` default exists for baremetal Macs (`bioskop`) that must first build
+their own sibling.
+
+== Operator: promoting a host to steady
+
+Once `<host>-nixos` is built, activated, and reachable over ssh as root:
+
+. Set `ndh.hostBuilder = "steady"` in `hosts/<host>/darwin.nix`.
+. `darwin-rebuild switch` — regenerates `/etc/nix/machines` pointing at
+  `<host>-nixos`, and drops the embedded `linux-builder` launchd job.
+. Verify: `nix store ping --store ssh-ng://root@<host>-nixos` succeeds, and a
+  fresh `aarch64-linux` build offloads (watch `nix.settings.builders`).
+
+To fall back (e.g. sibling wiped), flip to `bootstrap` and re-switch — the
+embedded builder returns on baremetal hosts.
+
+== Related Documentation
+
+* link:modules-reference.adoc[Modules Reference] — the `host-builder` /
+  `linux-builder` module options
+* link:sessions/2026-04-05-remote-rebuild-reboot-behavior.adoc[Remote Rebuild & Reboot Behavior]
+  — how remote-builder rebuilds behave across a reboot
+* link:nikopol-minimal-host.adoc[Corp Bare-Metal Minimal Host] — why nikopol is
+  vm-form and remote-only
