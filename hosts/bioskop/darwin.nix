@@ -1,5 +1,6 @@
 { halfRamMiB }:
 {
+  config,
   ...
 }:
 {
@@ -26,6 +27,13 @@
     # node" (see modules/.common.d/tailnet.nix) — the operator host is not a
     # fleet node, and it already holds the client for scripts/rotate-tailnet-secrets.
     tailnet.tailscale.client.enable = true;
+    # sops lands the client under /run/secrets (root-traversed tmpfs, unreachable
+    # by the user process / automounted seed container). Mirror it to a persistent
+    # user-owned file rke2lab's seed-master reads at `pulumi up`.
+    ndh.userSecretMirror."tailnet.tailscale.client" = {
+      source = config.sops.secrets."tailnet.tailscale.client".path;
+      target = "${config.profile.user.home}/.local/share/ndh/tailnet.tailscale.client";
+    };
 
     # Bioskop is the authoritative Duck DNS updater for the WAN
     # anchor recorded in catalog.netplan.wan.ddnsHostname.  nikopol

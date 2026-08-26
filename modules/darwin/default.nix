@@ -37,6 +37,7 @@
     ./github-mcp-proxy.nix
     ./shell-keychain.nix
     ./ssh-keys-enrichment.nix
+    ./user-secret-mirror.nix
     ./ssh-client.nix
     ./cache-trust.nix
     ./nix-store-identity.nix

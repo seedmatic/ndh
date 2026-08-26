@@ -17,6 +17,12 @@
     # runs the cluster grow when roaming — see hosts/bioskop/darwin.nix for the
     # rationale and the "client never materialised on a node" exception.
     tailnet.tailscale.client.enable = true;
+    # Mirror the /run/secrets client to a persistent user-owned file (see
+    # hosts/bioskop/darwin.nix); rke2lab's seed-master reads it at `pulumi up`.
+    ndh.userSecretMirror."tailnet.tailscale.client" = {
+      source = config.sops.secrets."tailnet.tailscale.client".path;
+      target = "${config.profile.user.home}/.local/share/ndh/tailnet.tailscale.client";
+    };
 
     # Keep Darwin user home aligned with vm-mounted persistent volume.
     profile.user.home = lib.mkForce (builtins.toPath "/Volumes/user-home");
