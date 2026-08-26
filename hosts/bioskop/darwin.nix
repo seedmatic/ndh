@@ -16,6 +16,17 @@
     services.headscaleBootstrap.role = "none";
     tailnet.headscale.api.enable = false;
 
+    # Materialise the long-lived Tailscale OAuth client on this operator host.
+    # ndh is the single source of trust for the tailnet OAuth client; rke2lab
+    # holds NO tailscale creds — its seed-master reads this file at `pulumi up`
+    # (host-side, from /run/secrets/nix-darwin-home/tailnet.tailscale.client) to
+    # source the mesh k8s-operator's client_id/secret. bioskop is the primary
+    # operator host that runs the cluster grow; nikopol enables it too (roaming
+    # grow). This is the deliberate exception to "client never materialised on a
+    # node" (see modules/.common.d/tailnet.nix) — the operator host is not a
+    # fleet node, and it already holds the client for scripts/rotate-tailnet-secrets.
+    tailnet.tailscale.client.enable = true;
+
     # Bioskop is the authoritative Duck DNS updater for the WAN
     # anchor recorded in catalog.netplan.wan.ddnsHostname.  nikopol
     # (a roaming laptop) does not attempt to track the home IP.
