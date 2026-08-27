@@ -44,7 +44,10 @@ log() { printf '[%s] %s\n' "$1" "${*:2}" >&2; }
 info() { log info "$*"; }
 err() { log error "$*"; }
 
-REPO_ROOT="$(git -C "$(dirname "$0")/.." rev-parse --show-toplevel)"
+# Packaged as a flake app (`nix run .#authority-bootstrap-tls-root`), so $0 is a
+# /nix/store path — resolve the repo from the invocation cwd instead (run from the
+# ndh repo root).
+REPO_ROOT="$(git rev-parse --show-toplevel)"
 KEYS_YAML="${REPO_ROOT}/modules/home-manager/ssh.d/keys.yaml"
 
 usage() {

@@ -1445,6 +1445,31 @@
             catalog = catalogData;
             inherit worktreePath;
           };
+          # Operator ceremony: mint/rotate a self-signed TLS root for a keys.yaml
+          # authority. Hermetic — every tool the script's preconditions name is
+          # pinned here, so `nix run` works off any dev env. Runs from the repo cwd
+          # (git rev-parse --show-toplevel), reading/re-encrypting keys.yaml in place.
+          authorityBootstrapTlsRootPackage = pkgsForSystem.writeShellApplication {
+            name = "authority-bootstrap-tls-root";
+            runtimeInputs = [
+              pkgsForSystem.git
+              pkgsForSystem.step-cli
+              pkgsForSystem.sops
+              pkgsForSystem.yq-go
+              pkgsForSystem.openssh
+              pkgsForSystem.coreutils
+            ];
+            text = builtins.readFile ./modules/.common.d/authority-bootstrap-tls-root.d/authority-bootstrap-tls-root.sh;
+          };
+          # System-admin helper: prune darwin/HM/user generations + GC. Drives the
+          # AMBIENT sudo + system nix daemon (a pinned nix would desync from it), so
+          # runtimeInputs stays empty — writeShellApplication PREPENDS to PATH, it
+          # does not reset it, so ambient tooling stays reachable.
+          cleanupActivationsPackage = pkgsForSystem.writeShellApplication {
+            name = "cleanup-activations";
+            runtimeInputs = [ ];
+            text = builtins.readFile ./modules/.common.d/cleanup-activations.d/cleanup-activations.sh;
+          };
         in
         {
           nix-build-observe = {
@@ -1466,6 +1491,16 @@
             type = "app";
             program = "${bboxReconcilePackage}/bin/bbox-reconcile";
             meta.description = "Diff catalog.netplan.lan.hosts against the bbox /dhcp/clients reservations (read-only) — src: modules/.common.d/bbox-reconcile.d/";
+          };
+          authority-bootstrap-tls-root = {
+            type = "app";
+            program = "${authorityBootstrapTlsRootPackage}/bin/authority-bootstrap-tls-root";
+            meta.description = "Mint/rotate a self-signed TLS root for a keys.yaml authority — <authority> [--force|--create <keyType>], run from repo root — src: modules/.common.d/authority-bootstrap-tls-root.d/";
+          };
+          cleanup-activations = {
+            type = "app";
+            program = "${cleanupActivationsPackage}/bin/cleanup-activations";
+            meta.description = "Prune nix-darwin/Home-Manager/user generations + GC (DRY_RUN=1 to preview) — src: modules/.common.d/cleanup-activations.d/";
           };
         }
         // hostBootstrapInstallerApps
