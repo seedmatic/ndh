@@ -172,10 +172,30 @@ chmod 400 "$authKey"
 
 # --- Mint the self-signed root ---
 crtFile="${tmp}/${authority}-ca.crt"
-info "minting self-signed TLS root for ${authority} (validity 10y)"
+# Template mirrors step's built-in root-ca profile but WITHOUT pathLenConstraint.
+# The default profile stamps pathlen:1, which caps a valid path at a single
+# intermediate below the root. Our RKE2 BYO-CA subtree nests two
+# (rke2-intermediate-ca -> rke2-server-ca) before the leaf, so a strict verifier
+# (OpenSSL/rustls — e.g. kube-rs clients like flux9s) rejects the served chain
+# with X509_V_ERR_PATH_LENGTH_EXCEEDED, while client-go happens to anchor early
+# and pass. Dropping the constraint lets the root anchor an arbitrary-depth
+# subtree, as a top root normally does.
+rootTmpl="${tmp}/root-ca.tmpl"
+cat >"$rootTmpl" <<'STEP_TMPL'
+{
+	"subject": {{ toJson .Subject }},
+	"issuer": {{ toJson .Subject }},
+	"keyUsage": ["certSign", "crlSign"],
+	"basicConstraints": {
+		"isCA": true,
+		"maxPathLen": -1
+	}
+}
+STEP_TMPL
+info "minting self-signed TLS root for ${authority} (validity 10y, no pathlen)"
 step certificate create "$authority" \
 	"$crtFile" "${tmp}/${authority}-ca.unused-key" \
-	--profile root-ca \
+	--template "$rootTmpl" \
 	--key "$authKey" \
 	--no-password --insecure \
 	--not-after 87600h >/dev/null
