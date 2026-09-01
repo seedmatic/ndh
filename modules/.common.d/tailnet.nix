@@ -21,7 +21,7 @@
 #          Tailscale-only, tailnet-wide (no per-kind split).  Long-lived
 #          (no 90-day expiry).  It exchanges for a short-lived API token
 #          that mints the per-kind `auth` keys.  Used by the operator's
-#          rotation tooling (scripts/rotate-tailnet-secrets) AND — on the
+#          rotation tooling (scripts/manage-tailnet) AND — on the
 #          operator HOSTS (bioskop/nikopol) — materialised at
 #          `.client.path` so rke2lab's seed-master can source the mesh
 #          k8s-operator OAuth (client_id/secret) at `pulumi up`: ndh is the
@@ -188,7 +188,7 @@ let
         default = { };
         description = ''
           OAuth client secret (tskey-client-…).  Long-lived (no 90-day
-          expiry); used by scripts/rotate-tailnet-secrets to mint the
+          expiry); used by scripts/manage-tailnet to mint the
           per-kind `auth` keys, AND materialised on the operator hosts
           (bioskop/nikopol) so rke2lab's seed-master can source the mesh
           k8s-operator OAuth at `pulumi up`.  Enable ONLY on an operator

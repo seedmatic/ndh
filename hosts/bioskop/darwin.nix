@@ -25,7 +25,7 @@
     # operator host that runs the cluster grow; nikopol enables it too (roaming
     # grow). This is the deliberate exception to "client never materialised on a
     # node" (see modules/.common.d/tailnet.nix) — the operator host is not a
-    # fleet node, and it already holds the client for scripts/rotate-tailnet-secrets.
+    # fleet node, and it already holds the client for scripts/manage-tailnet.
     tailnet.tailscale.client.enable = true;
     # sops lands the client under /run/secrets (root-traversed tmpfs, unreachable
     # by the user process / automounted seed container). Mirror it to a persistent

@@ -1,8 +1,9 @@
 #!/usr/bin/env -S bash -euo pipefail
-# rotate-tailnet-secrets — manage the per-kind Tailscale SaaS auth keys in
-# .secrets, using the long-lived OAuth client at tailnet.tailscale.client.
+# manage-tailnet — administer the Tailscale SaaS tailnet via the long-lived
+# OAuth client at tailnet.tailscale.client: rotate per-kind auth keys, reconcile
+# the ACL, retag devices, and prune stale (orphaned) devices.
 #
-# Two actions (composable):
+# Actions (composable):
 #   --rotate-auth-key : mint one reusable, pre-authorized, tagged auth key per
 #                       host-kind (baked from catalog.tailnet.tags at @authKinds@)
 #                       and write it to tailnet.tailscale.auth.<kind> via a
@@ -13,6 +14,10 @@
 #                       role-based acls/ssh, baremetal route auto-approvers;
 #                       preserve personal/k8s tags, nodeAttrs, other routes),
 #                       show a diff, POST with If-Match only under --yes.
+#   --retag-devices   : reconcile each device's tags to its kind (from hostname).
+#   --prune-stale-devices : delete tagged devices offline > --stale-after — the
+#                       orphaned operator proxies a cluster re-grow leaves behind
+#                       (no teardown removes them), which hold MagicDNS names.
 #
 # Base: the shared bash trampoline (nix-managed bash + logger + stable env).
 # Tools are pinned by absolute store path (@sops@/@curl@/@yq@) — yq-go only,
@@ -42,10 +47,12 @@ dry_run=1
 do_auth=0
 do_sync_acl=0
 do_retag=0
+do_prune=0
 do_deploy=0
 do_revoke=0
 do_commit=0
 assume_yes=0
+stale_after="1h"
 only_kind=""
 workdir=""
 TOKEN=""
@@ -63,7 +70,7 @@ die() {
 
 usage() {
 	cat <<'EOF'
-Usage: rotate-tailnet-secrets [options]   (run from the repo root)
+Usage: manage-tailnet [options]   (run from the repo root)
 
 Safe by default. Manages the per-kind Tailscale SaaS auth keys + the ACL.
 
@@ -73,6 +80,14 @@ Safe by default. Manages the per-kind Tailscale SaaS auth keys + the ACL.
                      shows a diff.  POSTs only with --yes.
   --retag-devices    Reconcile each tailnet device's tags to its kind (from the
                      hostname); lists a plan, applies only with --yes.
+  --prune-stale-devices
+                     Delete TAGGED tailnet devices offline longer than
+                     --stale-after — orphaned operator proxies from cold-start
+                     teardowns that hold MagicDNS names (the funnel then drifts
+                     to pac-webhook-1, -2, …).  Lists a plan; deletes only with
+                     --yes.  Protects personal (untagged) + currently-online devices.
+  --stale-after <dur>  Age threshold for --prune-stale-devices: Ns/Nm/Nh/Nd
+                     (default 1h).
   --kind <kind>      Restrict rotation to a single kind (default: all).
   --deploy           Print the post-rotation rebuild commands (never runs them).
   --commit           After a successful rotation, git-commit .secrets (--no-verify).
@@ -151,7 +166,7 @@ sync_acl() {
 			<($YQ -p json -o=yaml '.' "$workdir/acl.target.json") || true
 		log "NOTE: for minting to work, assign '$OWNER_TAG' to the rotation OAuth"
 		log "      client in the Tailscale console (Settings -> OAuth clients)."
-		log "no --yes: ACL not pushed.  Re-run 'rotate-tailnet-secrets --sync-acl --yes' to POST."
+		log "no --yes: ACL not pushed.  Re-run 'manage-tailnet --sync-acl --yes' to POST."
 		return 0
 	fi
 
@@ -206,6 +221,77 @@ retag_devices() {
 			"$API_BASE/device/$id/tags" >/dev/null || die "failed to set tags on $host ($id)"
 		log "  $host: set $want"
 	done
+}
+
+# Parse a simple duration (Ns/Nm/Nh/Nd; bare number = seconds) to seconds.
+duration_seconds() {
+	local d="$1" n unit
+	n="${d%[smhd]}"
+	unit="${d#"$n"}"
+	printf '%s' "$n" | grep -qE '^[0-9]+$' || return 1
+	case "$unit" in
+	"" | s) printf '%s' "$n" ;;
+	m) printf '%s' "$((n * 60))" ;;
+	h) printf '%s' "$((n * 3600))" ;;
+	d) printf '%s' "$((n * 86400))" ;;
+	*) return 1 ;;
+	esac
+}
+
+# An RFC3339 timestamp (device.lastSeen) -> unix epoch, portable across GNU and
+# BSD date.  Prints 0 on an unparseable value so the caller skips it (never
+# treats a parse failure as "very old" and deletes on it).
+epoch_of() {
+	local ts="${1%%.*}" # strip any fractional seconds
+	ts="${ts%Z}"        # strip trailing Z (re-added for the GNU form)
+	date -u -d "${ts}Z" +%s 2>/dev/null ||
+		date -u -j -f "%Y-%m-%dT%H:%M:%S" "$ts" +%s 2>/dev/null ||
+		printf '0'
+}
+
+# Delete orphaned operator proxy devices — TAGGED devices whose lastSeen is older
+# than --stale-after.  A cold start (the whole cluster re-created) never deletes
+# its tailscale devices gracefully, so operator-created proxies (ingress funnels,
+# Connectors) orphan in the tailnet and HOLD their MagicDNS names — the next grow
+# can't reclaim `pac-webhook` and gets `pac-webhook-1`, accumulating stale hosts.
+# The tag filter protects personal (untagged member) devices; the age filter
+# protects the live cluster's currently-online devices.  Needs the OAuth client's
+# `devices` scope (DELETE).  Dry-run lists the plan; --yes applies.
+prune_stale_devices() {
+	local threshold_s now devs
+	threshold_s="$(duration_seconds "$stale_after")" || die "bad --stale-after: $stale_after"
+	now="$(date +%s)"
+	devs="$(api "$API_BASE/tailnet/$TAILNET/devices")" ||
+		die "GET devices failed (does the OAuth client have the 'devices' scope?)"
+	mapfile -t rows < <(printf '%s' "$devs" |
+		$YQ -p json -o=json -I=0 '.devices[] | select((.tags // []) | length > 0) | {"id": .id, "host": .hostname, "seen": .lastSeen}')
+	log "prune plan (tagged devices offline > $stale_after):"
+	local row id host seen seen_s age n=0
+	for row in "${rows[@]}"; do
+		id="$(printf '%s' "$row" | $YQ -p json '.id')"
+		host="$(printf '%s' "$row" | $YQ -p json '.host')"
+		seen="$(printf '%s' "$row" | $YQ -p json '.seen')"
+		seen_s="$(epoch_of "$seen")"
+		[ "$seen_s" -gt 0 ] || {
+			warn "  skip $host ($id): unparseable lastSeen ($seen)"
+			continue
+		}
+		age=$((now - seen_s))
+		[ "$age" -gt "$threshold_s" ] || continue
+		n=$((n + 1))
+		if [ "$assume_yes" -ne 1 ]; then
+			log "  would delete $host ($id) — last seen $((age / 3600))h$(((age % 3600) / 60))m ago"
+			continue
+		fi
+		if api -X DELETE "$API_BASE/device/$id" >/dev/null 2>&1; then
+			log "  deleted $host ($id)"
+		else
+			warn "  failed to delete $host ($id)"
+		fi
+	done
+	[ "$n" -gt 0 ] || log "  nothing to prune (no tagged device offline > $stale_after)"
+	{ [ "$assume_yes" -eq 1 ] || [ "$n" -eq 0 ]; } ||
+		log "no --yes: nothing deleted.  Re-run 'manage-tailnet --prune-stale-devices --yes' to apply."
 }
 
 # Migrate the legacy scalar tailnet.tailscale.auth to an empty map so per-kind
@@ -320,6 +406,12 @@ main() {
 			;;
 		--sync-acl) do_sync_acl=1 ;;
 		--retag-devices) do_retag=1 ;;
+		--prune-stale-devices) do_prune=1 ;;
+		--stale-after)
+			shift
+			stale_after="${1:-}"
+			[ -n "$stale_after" ] || die "--stale-after needs an argument"
+			;;
 		--kind)
 			shift
 			only_kind="${1:-}"
@@ -364,6 +456,7 @@ main() {
 
 	[ "$do_sync_acl" -eq 1 ] && sync_acl
 	[ "$do_retag" -eq 1 ] && retag_devices
+	[ "$do_prune" -eq 1 ] && prune_stale_devices
 
 	if [ "$do_auth" -eq 1 ]; then
 		mapfile -t OLD_IDS < <(list_key_ids) # snapshot before minting (for --revoke-old)
@@ -376,7 +469,7 @@ main() {
 			log "  sudo nixos-rebuild switch --flake .#nikopol-nixos --refresh"
 			log "  (repeat per host that consumes a rotated kind)"
 		fi
-	elif [ "$dry_run" -eq 1 ] && [ "$do_sync_acl" -eq 0 ] && [ "$do_retag" -eq 0 ]; then
+	elif [ "$dry_run" -eq 1 ] && [ "$do_sync_acl" -eq 0 ] && [ "$do_retag" -eq 0 ] && [ "$do_prune" -eq 0 ]; then
 		rotation_plan
 	fi
 

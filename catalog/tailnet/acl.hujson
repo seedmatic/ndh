@@ -34,7 +34,7 @@
 // on SaaS, an OAuth client granted those tags) may register a node that
 // claims any of these tags.  Advertising happens via the auth key's tag
 // list — headscale v2 binds tags to the preauth key, and the SaaS
-// per-kind keys minted by scripts/rotate-tailnet-secrets carry the same
+// per-kind keys minted by scripts/manage-tailnet carry the same
 // pair — not via a client-asserted --advertise-tags.
 {
   // Headscale policy v2 (default since 0.26) has TWO distinct

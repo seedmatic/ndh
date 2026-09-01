@@ -7,7 +7,7 @@
 #     Controller-AGNOSTIC: a `tag:headless,tag:nixos` node has the same
 #     identity whether it registers via Tailscale SaaS or self-hosted
 #     Headscale.  Consumed by the client wiring (tag advertising), the
-#     nixos/darwin outputs, and scripts/rotate-tailnet-secrets (which
+#     nixos/darwin outputs, and scripts/manage-tailnet (which
 #     mints one per-kind auth key carrying that kind's tag pair).
 #
 #   aclPolicyFile — the tailnet access policy (HuJSON: groups, tagOwners,
@@ -16,7 +16,7 @@
 #       headscale : `headscale policy set -f <aclPolicyFile>`
 #       SaaS      : `POST /api/v2/tailnet/-/acl` (or the admin console).
 #     Its `tagOwners` is what authorises minting per-kind auth keys, so
-#     scripts/rotate-tailnet-secrets depends on it staying in sync with
+#     scripts/manage-tailnet depends on it staying in sync with
 #     whichever controller is live.
 #
 #   headscale — the self-hosted control-plane server's NETWORK identity

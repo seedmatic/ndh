@@ -180,11 +180,11 @@ host is unreachable, or vice-versa:
 
 == Operations
 
-* *Tailnet auth + ACL* — `nix run '.#rotate-tailnet-secrets'` (dry-run by
+* *Tailnet auth + ACL* — `nix run '.#manage-tailnet'` (dry-run by
   default): `--rotate-auth-key` mints the per-kind `tskey-auth-*` keys via the
   OAuth client; `--sync-acl` reconciles the SaaS ACL from the catalog;
   `--retag-devices` heals device tags. See
-  `modules/.common.d/rotate-tailnet-secrets.d/`.
+  `modules/.common.d/manage-tailnet.d/`.
 * *Deploy* — rebuild the Incus host on the branch (`nixos-rebuild-gh switch
   --refresh --flake …#<host>`). `advertise-routes` only re-applies on a fresh
   registration, so after a re-register run `tailscale set --advertise-routes=…`

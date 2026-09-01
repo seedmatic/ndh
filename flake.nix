@@ -772,7 +772,7 @@
           trampoline =
             if system == "aarch64-darwin" then ndhNixBashTrampolineDarwin else ndhNixBashTrampolineLinux;
         in
-        # Bash-trampoline pattern (like rotate-tailnet-secrets): source the shared
+        # Bash-trampoline pattern (like manage-tailnet): source the shared
         # trampoline (nix bash + logger + stable env), pin ssh by store path, and
         # run under ndh::logger:command:run so the full ssh pipe lands in the
         # unified log.  ssh is pinned rather than a runtimeInputs PATH entry
@@ -1248,7 +1248,7 @@
           # long-lived OAuth client (tailnet.tailscale.client).  Kinds + tag
           # pairs are baked from catalog.tailnet.tags so the script needs no
           # runtime `nix eval`.  Safe by default (dry-run).  Script:
-          # modules/.common.d/rotate-tailnet-secrets.d/rotate-tailnet-secrets.sh.
+          # modules/.common.d/manage-tailnet.d/manage-tailnet.sh.
           tailnetAuthKindsSpec =
             let
               t = catalogData.tailnet.tags;
@@ -1427,10 +1427,10 @@
           # bash + logger + stable env), pin every tool by absolute store path
           # (@sops@/@curl@/@yq@ — yq-go only, no jq), and bake the kinds + ACL
           # canonical files in.
-          rotateTailnetSecretsPackage = ndhStoreApiDarwin.installBinScript "rotate-tailnet-secrets" (
-            pkgsForSystem.replaceVars ./modules/.common.d/rotate-tailnet-secrets.d/rotate-tailnet-secrets.sh {
+          manageTailnetPackage = ndhStoreApiDarwin.installBinScript "manage-tailnet" (
+            pkgsForSystem.replaceVars ./modules/.common.d/manage-tailnet.d/manage-tailnet.sh {
               nixBashTrampoline = ndhNixBashTrampolineDarwin;
-              loggerTag = "ndh.rotate-tailnet-secrets";
+              loggerTag = "ndh.manage-tailnet";
               sops = "${pkgsForSystem.sops}/bin/sops";
               curl = "${pkgsForSystem.curl}/bin/curl";
               yq = "${pkgsForSystem.yq-go}/bin/yq";
@@ -1482,10 +1482,10 @@
             program = "${sshKeysValidatorPackage}/bin/ssh-keys-v2-validate";
             meta.description = "Validate ssh keys.yaml against its JSON schema (sops-decrypts first) — src: modules/home-manager/ssh.d/keys.schema.yaml";
           };
-          rotate-tailnet-secrets = {
+          manage-tailnet = {
             type = "app";
-            program = "${rotateTailnetSecretsPackage}/bin/rotate-tailnet-secrets";
-            meta.description = "Rotate per-kind Tailscale SaaS auth keys + reconcile the tailnet ACL (dry-run by default) — src: modules/.common.d/rotate-tailnet-secrets.d/";
+            program = "${manageTailnetPackage}/bin/manage-tailnet";
+            meta.description = "Manage the tailnet: rotate per-kind Tailscale auth keys, reconcile the ACL, retag + prune stale devices (dry-run by default) — src: modules/.common.d/manage-tailnet.d/";
           };
           bbox-reconcile = {
             type = "app";
