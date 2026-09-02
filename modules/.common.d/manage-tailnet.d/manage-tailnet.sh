@@ -54,6 +54,7 @@ do_commit=0
 assume_yes=0
 stale_after="1h"
 only_kind=""
+client_secret_file=""
 workdir=""
 TOKEN=""
 
@@ -88,6 +89,13 @@ Safe by default. Manages the per-kind Tailscale SaaS auth keys + the ACL.
                      --yes.  Protects personal (untagged) + currently-online devices.
   --stale-after <dur>  Age threshold for --prune-stale-devices: Ns/Nm/Nh/Nd
                      (default 1h).
+  --client-secret-file <path>
+                     Read the OAuth client secret from <path> (a bare
+                     tskey-client-… scalar) instead of sops-decrypting .secrets
+                     — lets a caller with no .secrets/age key (e.g. rke2lab's
+                     incus GROW, reading ndh's user-mirrored client) drive the
+                     read-only remote actions.  Incompatible with
+                     --rotate-auth-key (which writes .secrets).
   --kind <kind>      Restrict rotation to a single kind (default: all).
   --deploy           Print the post-rotation rebuild commands (never runs them).
   --commit           After a successful rotation, git-commit .secrets (--no-verify).
@@ -102,10 +110,20 @@ EOF
 # TOKEN global.  The client secret is decrypted straight into curl via a process
 # substitution (curl reads /dev/fd/N) — no temp file, and it never hits an argv.
 authenticate() {
-	TOKEN="$($CURL -fsS \
-		--data-urlencode client_secret@<($SOPS -d --input-type yaml --extract "$CLIENT_INDEX" "$SECRETS_FILE" 2>/dev/null) \
-		"$API_BASE/oauth/token" | $YQ -p json '.access_token')" ||
-		die "OAuth token exchange failed (bad/absent tailnet.tailscale.client, or network)"
+	# The client secret reaches curl via /dev/fd/N (process substitution): either a
+	# targeted sops extract of .secrets, or a caller-supplied plaintext file — never
+	# a temp file, and never an argv.
+	if [ -n "$client_secret_file" ]; then
+		TOKEN="$($CURL -fsS \
+			--data-urlencode "client_secret@$client_secret_file" \
+			"$API_BASE/oauth/token" | $YQ -p json '.access_token')" ||
+			die "OAuth token exchange failed (bad client-secret file, or network)"
+	else
+		TOKEN="$($CURL -fsS \
+			--data-urlencode client_secret@<($SOPS -d --input-type yaml --extract "$CLIENT_INDEX" "$SECRETS_FILE" 2>/dev/null) \
+			"$API_BASE/oauth/token" | $YQ -p json '.access_token')" ||
+			die "OAuth token exchange failed (bad/absent tailnet.tailscale.client, or network)"
+	fi
 	{ [ -n "$TOKEN" ] && [ "$TOKEN" != "null" ]; } ||
 		die "OAuth token exchange returned no access_token"
 }
@@ -417,6 +435,11 @@ main() {
 			only_kind="${1:-}"
 			[ -n "$only_kind" ] || die "--kind needs an argument"
 			;;
+		--client-secret-file)
+			shift
+			client_secret_file="${1:-}"
+			[ -n "$client_secret_file" ] || die "--client-secret-file needs an argument"
+			;;
 		--deploy) do_deploy=1 ;;
 		--revoke-old) do_revoke=1 ;;
 		--commit) do_commit=1 ;;
@@ -435,13 +458,21 @@ main() {
 	done
 
 	# preflight
-	[ -f "$SECRETS_FILE" ] || die "run from the repo root: $SECRETS_FILE not found"
 	[ -r "$AUTH_KINDS_FILE" ] || die "kinds manifest missing: $AUTH_KINDS_FILE"
 	[ -r "$ACL_CANONICAL" ] || die "acl canonical missing: $ACL_CANONICAL"
-	local sops_version
-	sops_version="$($YQ '.sops.version' "$SECRETS_FILE" 2>/dev/null || true)"
-	{ [ -n "$sops_version" ] && [ "$sops_version" != "null" ]; } ||
-		die "$SECRETS_FILE is not sops-encrypted at rest (no .sops metadata); refusing"
+	if [ -n "$client_secret_file" ]; then
+		# Caller supplies the OAuth client secret directly — .secrets is neither read
+		# nor written, so its checks are skipped.  It is a READ path only: minting
+		# rotates keys INTO .secrets, which we are not touching here.
+		[ -r "$client_secret_file" ] || die "client-secret file not readable: $client_secret_file"
+		[ "$do_auth" -eq 0 ] || die "--client-secret-file is incompatible with --rotate-auth-key (which writes .secrets)"
+	else
+		[ -f "$SECRETS_FILE" ] || die "run from the repo root: $SECRETS_FILE not found"
+		local sops_version
+		sops_version="$($YQ '.sops.version' "$SECRETS_FILE" 2>/dev/null || true)"
+		{ [ -n "$sops_version" ] && [ "$sops_version" != "null" ]; } ||
+			die "$SECRETS_FILE is not sops-encrypted at rest (no .sops metadata); refusing"
+	fi
 
 	umask 077
 	workdir="$(mktemp -d "${TMPDIR:-/tmp}/rotate-tailnet.XXXXXX")"
