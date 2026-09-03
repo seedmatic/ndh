@@ -1,0 +1,165 @@
+= Dataset Catalog
+:toc: left
+:toclevels: 3
+
+== Overview
+
+The *dataset catalog* (`catalog.datasets`) is the ZFS dataset *layout* a cluster
+needs, merged from contributors and *materialised on the host `tank` pool by
+disko* — before any cluster exists. It is the storage twin of
+link:network-catalog.adoc[the network catalog] (`catalog.netplan`): a catalog
+dimension, populated by the same contributor-merge law, consumed by host modules.
+
+Where the network catalog's cluster underlay is owned by rke2lab and pulled in via
+`lib.networkBlueprint`, the dataset layout under `tank/rke2lab/*` is owned by
+rke2lab `seed-master` and pulled in via `lib.dataplan` — the *dataplan*. See
+rke2lab's link:https://github.com/seedmatic/rke2lab/blob/main/docs/architecture/patterns/dataplan-single-source.adoc[Dataplan SSOT]
+for the producer side.
+
+Addresses are never hardcoded (netplan); dataset paths are never hardcoded
+(dataplan). Both derive from the catalog.
+
+== Why this replaces a static literal
+
+Today `modules/nixos/zfs-disko-config.nix` carries the cluster's ZFS tree as a
+*hand-listed literal* (`tank/rke2/control-nodes/{master,peer1,…}/containerd`,
+`mountpoint=legacy`). That is a cluster fact frozen in the host repo — it drifts
+from rke2lab, and it re-hardcodes the same paths that rke2lab's `openebs-zfs`
+StorageClass and its static persist PV also name. Making it a *catalog dimension
+fed by the dataplan* gives datasets the single-source-of-truth treatment netplan
+already enjoys.
+
+== Ownership
+
+[cols="2,3",options="header"]
+|===
+| Fact | Owner
+
+| The `tank` zpool geometry (raidz1, `rootFsOptions`) + the host `nerd/*` trees
+  (root/nix/var/`persist` impermanence, `nerd/persist -> /persist`)
+| *ndh* — physical + host concern. The host `nerd/persist` is distinct from the
+  cluster `tank/rke2lab/persist`.
+
+| The materialisation *law* — `addDatasetOptions` / `addPostMountHook` /
+  `datasetsWithHooks`
+| *ndh* — normalises any declared dataset (`canmount=noauto`, snapshot props,
+  post-mount hooks).
+
+| The cluster dataset *layout* under `tank/rke2lab/*` (ephemeral `control-nodes/*`
+  + `persist/*`)
+| *rke2lab seed-master* — provided as `lib.dataplan`, unioned into
+  `catalog.datasets`.
+|===
+
+== Architecture
+
+[mermaid]
+....
+flowchart TB
+  DP[("rke2lab lib.dataplan\n(seed-master SSOT, checked-in dataplan.json)")]:::data
+  subgraph ndh [nix-darwin-home]
+    CAT[("catalog.datasets\ncontributor-merge (checkMerge, key=path)")]:::data
+    DISKO["zfs-disko-config.nix\nmaterialise via disko"]:::infra
+  end
+  POOL[("tank pool\nrke2lab/control-nodes/<node>, rke2lab/persist/*")]:::store
+  RECOVER[("recover pool\nzfs send/recv target (planned)")]:::store
+
+  DP -->|"flake input, union"| CAT --> DISKO -->|"zfs create"| POOL
+  POOL -.->|"persist/* is the replication set"| RECOVER
+
+  classDef data fill:#fde68a,stroke:#b45309,color:#000;
+  classDef infra fill:#bfdbfe,stroke:#1e40af,color:#000;
+  classDef store fill:#bbf7d0,stroke:#166534,color:#000;
+....
+
+[cols="1,3"]
+|===
+| Legend | Meaning
+
+| yellow | catalog data (single source of truth, merged from contributors)
+| blue   | ndh materialisation (disko)
+| green  | the physical ZFS pools
+|===
+
+== The contributor-merge
+
+`catalog.datasets` uses the same merge law as
+link:network-catalog-segments.adoc[network segments] — copy the `mergeSegmentsByCidr`
+/ `checkMerge` pattern from `catalog/default.nix`, keyed by *dataset path* instead
+of cidr:
+
+* a contributor appends dataset records;
+* records sharing a `path` are grouped;
+* scalar fields (`type`, `mountpoint`, ZFS `options`) fold with `checkMerge` —
+  a key defined by one contributor is unioned in, two contributors defining the
+  *same* key with *different* values throws
+  `dataset <path>: contributors disagree on <keys>`;
+* first-seen path order is preserved.
+
+The single current contributor is rke2lab's `lib.dataplan`; the merge law is in
+place so ndh (or another repo) can add host-side datasets under a shared tree
+without silent clobber.
+
+== The dataset entry shape
+
+[source,nix]
+----
+{ path = "rke2lab/control-nodes/master/containerd";
+  type = "zfs_fs";
+  mountpoint = "legacy";
+  options = { … }; }        # carried verbatim — extraction is behaviour-preserving
+----
+
+* `path` — relative to the pool root.
+* `type` — `zfs_fs`.
+* `mountpoint` — e.g. `legacy` for the containerd child.
+* `options` — the ZFS property map, ported verbatim from the current literal.
+
+== Materialisation
+
+`modules/nixos/zfs-disko-config.nix` stops listing the `tank/rke2/*` subtree
+statically. Instead it folds the merged `catalog.datasets` into
+`config.devices.zpool.tank.datasets` before the existing `datasetsWithHooks` pass,
+so injected entries get `canmount=noauto` + snapshot props + post-mount hooks for
+free. The catalog is threaded in by extending the
+`import ./zfs-disko-config.nix { … }` call in `modules/nixos/disko.nix` to also
+pass `catalog = ndhContext.catalog;`.
+
+`modules/nixos/zfs.d/zpool-init.sh` (which iterates `zfs list -r tank/rke2`) moves
+to the new `tank/rke2lab` root.
+
+== The root: `tank/rke2lab`
+
+The layout root renames `tank/rke2` -> `tank/rke2lab` — the datasets belong to the
+*rke2lab* project, not the `rke2` distro. `"rke2"` used elsewhere as a node *kind*
+(`catalog.netplan … kind = "rke2"`, the tailnet host kind) is unchanged; only the
+dataset path root moves. The cutover is greenfield (etcd wiped + tree re-grown
+each cold-start): a one-off `zfs destroy -r tank/rke2` at the first grow on the new
+root.
+
+== Persist and the recover pool
+
+The cluster *persist* tier `tank/rke2lab/persist/*` (the Tailscale funnel Let's
+Encrypt cert state, the render Maven cache) is retained across grows — a *sibling*
+of `control-nodes/*` so the ephemeral wipe never reaches it. When ZFS replication
+lands (link:zfs-snapshot-policy.adoc[the snapshot/replication policy] tentatively
+plans *zrepl* into the `recover` pool), `tank/rke2lab/persist/*` is exactly the
+replication set worth backing up — the ephemeral `control-nodes/*` is disposable.
+The persist/ephemeral boundary the dataplan draws serves both semantics: *survives
+a re-grow* and *worth replicating*.
+
+== How to contribute a dataset
+
+From rke2lab: add the entry to the `seed-master` dataplan SSOT and regenerate
+`dataplan.json` (`nix build .#dataplanJson`). ndh pulls `lib.dataplan` on the next
+`nix flake update rke2lab` and materialises it. From ndh (host-side datasets):
+append to the `catalog.datasets` contributor list in `catalog/default.nix`.
+
+== Related Documentation
+
+* link:network-catalog.adoc[Network Catalog] — the network twin (model &
+  contribution).
+* link:network-catalog-segments.adoc[Network Catalog Segments] — the
+  contributor-merge law this reuses.
+* link:zfs-snapshot-policy.adoc[ZFS Snapshot Policy] — the replication plan the
+  persist tier feeds.

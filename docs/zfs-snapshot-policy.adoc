@@ -17,6 +17,18 @@ They cost no CPU/RAM and minimal disk (only blocks freed on the live
 filesystem since the snapshot was taken). They can be deleted by hand
 with `zfs destroy <snapname>` when the operator decides.
 
+== The dataset that will want replication: the cluster persist tier
+
+When replication lands, the highest-value dataset → policy mapping is already
+known: the cluster *persist* tier `tank/rke2lab/persist/*` (the Tailscale funnel
+Let's Encrypt cert state, the render Maven cache). It is a
+link:dataset-catalog.adoc[dataplan-declared] dataset, a sibling of the ephemeral
+`control-nodes/*` tree, and it must survive both a cold-start re-grow *and* — once
+replication exists — a loss of the `tank` pool. The `recover` pool is the intended
+`zfs send/recv` target for exactly this set. The ephemeral `control-nodes/*`
+datasets are disposable and are NOT replicated. So the first entry in the dataset →
+policy table below will be `tank/rke2lab/persist/* -> recover` (retention TBD).
+
 == When replication becomes a requirement
 
 The candidate is *zrepl* rather than reinstating sanoid + syncoid:

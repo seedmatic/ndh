@@ -31,6 +31,19 @@ Plan and bring-up steps for macOS/NixOS NFSv4 with Kerberos, including enabling 
 link:modules-reference.adoc[Modules Reference]::
 Reference documentation for all custom NixOS and Darwin modules, including options, examples, and best practices.
 
+=== Storage
+
+link:dataset-catalog.adoc[Dataset Catalog]::
+The ZFS dataset *layout* as a catalog dimension (`catalog.datasets`), merged from
+contributors and materialised by disko on the `tank` pool. The storage twin of the
+network catalog: the cluster layout under `tank/rke2lab/*` is owned by rke2lab
+`seed-master` and pulled in via `lib.dataplan`. Covers the contributor-merge, the
+root rename `rke2 -> rke2lab`, and the persist tier feeding the `recover` backup.
+
+link:zfs-snapshot-policy.adoc[ZFS Snapshot Policy]::
+Snapshot/replication state and the re-enable workflow; the cluster persist tier is
+the first dataset that will want replication into the `recover` pool.
+
 === Session Notes
 
 link:sessions/README.adoc[Development Session Notes]::
