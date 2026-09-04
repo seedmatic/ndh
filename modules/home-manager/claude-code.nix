@@ -53,14 +53,13 @@ in
 
       env = mkOption {
         type = types.attrsOf types.str;
-        default = {
-          ANTHROPIC_DEFAULT_SONNET_MODEL = "claude-sonnet-4-5-20250929";
-          ANTHROPIC_DEFAULT_OPUS_MODEL = "claude-opus-4-8";
-          ANTHROPIC_DEFAULT_HAIKU_MODEL = "claude-haiku-4-5-20251001";
-        };
+        default = import ../claude-code-bedrock-env.nix;
         description = ''
           Stable Claude Code configuration exported as real shell
-          environment variables.
+          environment variables — the AWS Bedrock backend selection and
+          per-tier model ids, shared with the launchd session via the
+          darwin claude-code-bedrock module (single source:
+          modules/claude-code-bedrock-env.nix).
 
           Shell env vars take HIGHEST precedence in Claude Code's settings
           layering — above the `env` block of ~/.claude/settings.json — so

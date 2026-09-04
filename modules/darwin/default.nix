@@ -49,6 +49,7 @@
     ./tls-authority-keychain.nix
     ./launchd-orphan-cleanup.nix
     ./tmpdir-tmpfs.nix
+    ./claude-code-bedrock.nix
   ];
 
   # Active le résolveur .lan par défaut (modifiable par hôte).  Le nameserver et le
