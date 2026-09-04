@@ -67,7 +67,7 @@
     # project-local infrastructure. Share the family version set via
     # flake-commons to dedup nixpkgs/flake-utils.
     claude-hub = {
-      url = "github:nxmatic/claude-hub/main";
+      url = "github:seedmatic/claude-hub/main";
       inputs.flake-commons.follows = "flake-commons";
     };
 

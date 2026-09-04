@@ -22885,13 +22885,13 @@
       "locked": {
         "lastModified": 1787133300,
         "narHash": "sha256-AOcgCHAkv06I31Xi2Hii2n2Um81nXH6m/mxb3CFTiPw=",
-        "owner": "nxmatic",
+        "owner": "seedmatic",
         "repo": "claude-hub",
         "rev": "64ca588df427cd2f06d02cb8c7fe5f806937b6dc",
         "type": "github"
       },
       "original": {
-        "owner": "nxmatic",
+        "owner": "seedmatic",
         "ref": "main",
         "repo": "claude-hub",
         "type": "github"
