@@ -12,6 +12,9 @@
     (import ./zfs-partition-layout.nix).espStartMiB + (import ./zfs-partition-layout.nix).espSizeMiB + 1
   ),
   zfsPoolDiskMap ? null,
+  # The cluster ZFS dataset layout (catalog.datasets) rke2lab's dataplan contributes — materialised
+  # under the pool as the rke2lab/* subtree. Defaults empty so a catalog-less eval degrades safely.
+  datasetLayout ? { entries = [ ]; },
   disks ? {
     # boot: dedicated EFI boot disk (vda). ZFS data disks start at vdb.
     # This keeps all tank disks uniform — no dual boot+data role on tank1.
@@ -29,6 +32,17 @@ let
     if zfsPoolDiskMap != null then zfsPoolDiskMap else import ./zfs-pool-disk-map.nix;
   zstdLevel = hostProfile.nixosZstdCompressionLevel or 1;
   zfsCompression = "zstd-${toString zstdLevel}";
+
+  # Materialise rke2lab's dataplan (catalog.datasets.entries) into the disko dataset attrset — the
+  # rke2lab/* subtree, replacing the former hand-listed rke2/* literal (single source: seed-master's
+  # DataplanLayout). Each entry's `options` (e.g. mountpoint=legacy for the guest/CSI-owned leaves)
+  # is a ZFS property map, NOT a disko mountpoint, so these never enter the host fstab.
+  clusterDatasets = builtins.listToAttrs (
+    map (e: {
+      name = e.path;
+      value = { type = e.type; } // lib.optionalAttrs ((e.options or { }) != { }) { options = e.options; };
+    }) (datasetLayout.entries or [ ])
+  );
   espEndMiB = espStartMiB + espSizeMiB;
   # GPT type code BF01 shorthand expanded to canonical Solaris/ZFS GUID.
   zfsPartitionType = partLayout.zfsPartitionTypeGuid;
@@ -142,43 +156,9 @@ let
             # Tart resizes disk images + systemd-repart grows the partition).
             autoexpand = "on";
           };
-          datasets = {
-            "rke2" = {
-              type = "zfs_fs";
-            };
-            "rke2/control-nodes" = {
-              type = "zfs_fs";
-            };
-            "rke2/control-nodes/master" = {
-              type = "zfs_fs";
-            };
-            "rke2/control-nodes/master/containerd" = {
-              type = "zfs_fs";
-              # Owned by the incus guest, not the nerd host — legacy ZFS property
-              # prevents auto-mount; no disko mountpoint so it never enters host fstab.
-              options.mountpoint = "legacy";
-            };
-            "rke2/control-nodes/peer1" = {
-              type = "zfs_fs";
-            };
-            "rke2/control-nodes/peer1/containerd" = {
-              type = "zfs_fs";
-              options.mountpoint = "legacy";
-            };
-            "rke2/control-nodes/peer2" = {
-              type = "zfs_fs";
-            };
-            "rke2/control-nodes/peer2/containerd" = {
-              type = "zfs_fs";
-              options.mountpoint = "legacy";
-            };
-            "rke2/control-nodes/peer3" = {
-              type = "zfs_fs";
-            };
-            "rke2/control-nodes/peer3/containerd" = {
-              type = "zfs_fs";
-              options.mountpoint = "legacy";
-            };
+          # The rke2lab/* cluster subtree is materialised from the dataplan (clusterDatasets, above);
+          # the nerd/* host trees stay hand-declared here. `//` merges the two.
+          datasets = clusterDatasets // {
             "nerd" = {
               type = "zfs_fs";
             };

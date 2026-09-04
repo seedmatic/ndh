@@ -18,16 +18,21 @@ source @nixBashTrampoline@
 # Responsibilities now:
 #   1. For each expected pool: `autoexpand=on` + `zpool online -e` on
 #      every leaf vdev (picks up new sectors after systemd-repart).
-#   2. Reconcile ZFS dataset mountpoint properties (legacy for rke2,
-#      explicit paths under tank/nerd).
+#   2. Create any disko-declared dataset that is absent, applying its
+#      declared ZFS properties at creation.  disko only lays datasets down
+#      at install time, so a subtree added to the config after the pool was
+#      provisioned (e.g. rke2lab's dataplan on a running host) would never
+#      materialise without this create-if-absent pass.
+#   3. Reconcile ZFS dataset mountpoint properties for the explicit
+#      tank/nerd paths.
 
 zpool:init:configure() {
-	# EXPECTED_POOLS + MOUNTPOINTS_TABLE are injected by zfs.nix's
-	# zpoolInitText wrapper, which builds them from the disko config
-	# (`config.disko.devices.zpool` and each dataset's `mountpoint`).
-	# Fall back to the historical hard-coded values only when the env is
-	# missing, so direct `/bin/zpool-init` invocations (e.g. rescue shell)
-	# still work.
+	# EXPECTED_POOLS + MOUNTPOINTS_TABLE + DATASETS_TABLE are injected by
+	# zfs.nix's zpoolInitText wrapper, which builds them from the disko config
+	# (`config.disko.devices.zpool`, each dataset's `mountpoint`, and the full
+	# dataset inventory with declared ZFS properties).  Fall back to the
+	# historical hard-coded values only when the env is missing, so direct
+	# `/bin/zpool-init` invocations (e.g. rescue shell) still work.
 	if [ -n "${NDH_ZPOOL_INIT_POOLS:-}" ]; then
 		# shellcheck disable=SC2206
 		EXPECTED_POOLS=(${NDH_ZPOOL_INIT_POOLS})
@@ -35,6 +40,7 @@ zpool:init:configure() {
 		EXPECTED_POOLS=(tank recover)
 	fi
 	MOUNTPOINTS_TABLE="${NDH_ZPOOL_INIT_MOUNTPOINTS:-}"
+	DATASETS_TABLE="${NDH_ZPOOL_INIT_DATASETS:-}"
 }
 
 zpool:expand() {
@@ -74,20 +80,28 @@ zpool:expand() {
 	zpool online -e "$pool" $leaves
 }
 
-zpool:zfs:set_legacy_mountpoints_for_rke2_paths() {
-	local dataset
-	local mountpoint
+zpool:zfs:ensure_datasets() {
+	# Create every disko-declared dataset that is absent, applying its declared
+	# ZFS properties at creation (mountpoint=legacy on the CSI/guest-owned leaves,
+	# canmount=noauto, …).  Driven by DATASETS_TABLE — one
+	# "<dataset><TAB><k=v> <k=v> …" line per dataset, injected from the disko
+	# config by zfs.nix.  Idempotent: an already-present dataset is left untouched
+	# (property drift on existing datasets is not this pass's concern — a fresh
+	# subtree is born correct, and there is no every-boot force to migrate).
+	local dataset props kv
+	[ -n "${DATASETS_TABLE:-}" ] || return 0
 
-	zfs list -H -o name,mountpoint -r tank/rke2 2>/dev/null | while read -r dataset mountpoint; do
-		case "$mountpoint" in
-		legacy | none | -)
-			continue
-			;;
-		/*)
-			zfs set mountpoint=legacy "$dataset" || : "[zpool-init][WARN] failed to set legacy on $dataset"
-			;;
-		esac
-	done
+	while IFS=$'\t' read -r dataset props; do
+		[ -n "$dataset" ] || continue
+		zfs list -H -o name "$dataset" >/dev/null 2>&1 && continue
+
+		local -a create_args=()
+		for kv in $props; do
+			create_args+=(-o "$kv")
+		done
+		zfs create -p "${create_args[@]}" "$dataset" ||
+			: "[zpool-init][WARN] failed to create dataset $dataset"
+	done <<<"$DATASETS_TABLE"
 }
 
 zpool:zfs:reconcile_nerd_mountpoints() {
@@ -143,7 +157,7 @@ zpool:init:main() {
 	# Reconcile ZFS mountpoint properties (idempotent)
 	: "[zpool-init][INFO] reconciling ZFS mountpoint properties"
 	if zpool:is_imported tank; then
-		zpool:zfs:set_legacy_mountpoints_for_rke2_paths
+		zpool:zfs:ensure_datasets
 		zpool:zfs:reconcile_nerd_mountpoints
 	fi
 

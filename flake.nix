@@ -41,7 +41,6 @@
     cachix.follows = "flake-commons/cachix";
     chromium-bin.follows = "flake-commons/chromium-bin";
     darwin.follows = "flake-commons/darwin";
-    devenv.follows = "flake-commons/devenv";
     disko.follows = "flake-commons/disko";
     flake-compat.follows = "flake-commons/flake-compat";
     flake-utils.follows = "flake-commons/flake-utils";
@@ -88,7 +87,7 @@
     # pin `rke2lab.inputs.flake-commons.follows = "flake-commons"` so that whole
     # set resolves against ours — one shared flake-commons closure, not two in the lock.
     rke2lab = {
-      url = "github:seedmatic/rke2lab/feature/network-blueprint-segments";
+      url = "github:seedmatic/rke2lab/feature/nixos-node-substrate";
       inputs.ndh.follows = "";
       inputs.flake-commons.follows = "flake-commons";
     };
@@ -125,7 +124,6 @@
     {
       self,
       darwin,
-      devenv,
       flake-utils,
       home-manager,
       disko,
@@ -150,7 +148,11 @@
         segments = (rke2labBlueprint.segments or [ ]) ++ (nnhBlueprint.segments or [ ]);
         asns = (rke2labBlueprint.asns or { }) // (nnhBlueprint.asns or { });
       };
-      catalogData = import ./catalog/default.nix { inherit cacheTrust networkBlueprint; };
+      # rke2lab also owns the cluster ZFS dataset LAYOUT (the dataplan — the storage twin of the
+      # networkBlueprint), pulled the same way and merged into catalog.datasets, materialised on the
+      # host by zfs-disko-config.nix.
+      dataplan = inputs.rke2lab.lib.dataplan;
+      catalogData = import ./catalog/default.nix { inherit cacheTrust networkBlueprint dataplan; };
       defaultSystems = [
         "aarch64-darwin"
       ];
@@ -1653,7 +1655,6 @@
           in
           {
             #inherit (self.packages.${hostSystem}) sysdo pyEnv;
-            #inherit (inputs.devenv.packages.${hostSystem}) devenv;
 
             # rancher-desktop = final.callPackage ./pkgs/rancher-desktop.nix {};
             tart-guest-agent = final.callPackage ./pkgs/tart-guest-agent.nix { };
@@ -1692,33 +1693,6 @@
         manager = import ./modules/home-manager;
         profile = import ./profile.nix;
       };
-
-      # Development shells (add docs environment with diagram support)
-      devShells = flake-utils.lib.eachDefaultSystem (
-        system:
-        let
-          pkgs = import nixpkgs {
-            inherit system;
-            config = {
-              allowUnfree = true;
-            };
-          };
-        in
-        {
-          docs = pkgs.mkShell {
-            packages = with pkgs; [
-              asciidoctor-with-extensions
-              plantuml
-              graphviz
-              # Optional: dot for Graphviz is already in graphviz
-            ];
-            shellHook = ''
-              echo "Docs dev shell active (system: ${system})."
-              echo "Run: modules/nixos/rke2lab/bin/generate-docs.sh"
-            '';
-          };
-        }
-      );
 
     };
 }

@@ -1,6 +1,21 @@
-{ cacheTrust, networkBlueprint }:
+{ cacheTrust, networkBlueprint, dataplan }:
+let
+  # The shared catalog merge law (group-by-key, union/throw scalars, concat list attrs) — the ONE
+  # module both `netplan.segments` (key=cidr) and `datasets` (key=path) use. No duplication.
+  catalogMerge = import ./merge.nix;
+in
 {
   caches = cacheTrust.caches;
+
+  # The cluster ZFS dataset LAYOUT — the storage twin of `netplan`. rke2lab (seed-master) owns the
+  # tank/rke2lab/* layout and exposes it as `lib.dataplan`; ndh materialises it on the host pool via
+  # zfs-disko-config.nix. ONE contributor today (the dataplan) → a direct pass-through. When ndh adds
+  # host-side datasets under a shared tree, factor a SHARED merge-by-key helper (used by
+  # `netplan.segments` too, keyed by cidr) rather than duplicate its union/throw law here.
+  datasets = {
+    pool = dataplan.pool;
+    entries = catalogMerge.mergeByKey { key = "path"; } (dataplan.datasets or [ ]);
+  };
 
   # Tailnet control-plane identity: shared tag vocabulary + ACL policy
   # (both controllers) + headscale server specifics.  See
@@ -258,44 +273,11 @@
       # DNS zone.  The per-baremetal `-net /25` carries the rich facts; the `-link
       # /30` and the /12 supernet stay attribution-only.
       segments =
-        let
-          # cidr is the attribution key (prefix→{name,asn}); two entries for the
-          # same cidr collide in that map. Collapse same-cidr segments: preserve
-          # first-seen order, union their `hosts`, and keep the FIRST-defined scalar
-          # facts so a rich ndh segment (domain/gateway) is not clobbered by a
-          # host-only contribution (e.g. nnh's inlet/outlet, which mirror ndh's
-          # nikopol-baremetal-net cidr on purpose). Catalog is lib-free → builtins.
-          mergeSegmentsByCidr =
-            segs:
-            let
-              cidrsInOrder = builtins.foldl' (
-                acc: s: if builtins.elem s.cidr acc then acc else acc ++ [ s.cidr ]
-              ) [ ] segs;
-              mergeGroup =
-                c:
-                let
-                  group = builtins.filter (s: s.cidr == c) segs;
-                  # Scalars must AGREE across contributors — union where a key is
-                  # defined once, throw LOUD on a genuine clash (no silent drop).
-                  checkMerge =
-                    a: b:
-                    let
-                      clashes = builtins.filter (k: (a ? ${k}) && a.${k} != b.${k}) (builtins.attrNames b);
-                    in
-                    if clashes != [ ] then
-                      throw "netplan segment ${c}: contributors disagree on ${builtins.concatStringsSep ", " clashes}"
-                    else
-                      a // b;
-                  scalars = builtins.foldl' checkMerge { } (map (s: builtins.removeAttrs s [ "hosts" ]) group);
-                in
-                if builtins.any (s: s ? hosts) group then
-                  scalars // { hosts = builtins.concatMap (s: s.hosts or [ ]) group; }
-                else
-                  scalars;
-            in
-            map mergeGroup cidrsInOrder;
-        in
-        mergeSegmentsByCidr (
+        # cidr is the attribution key; same-cidr segments collapse via the shared merge law
+        # (catalog/merge.nix): union scalars where a key is defined once, throw LOUD on a genuine
+        # clash, concat the `hosts` reservations — so a rich ndh segment (domain/gateway) is not
+        # clobbered by a host-only contribution (e.g. nnh's inlet/outlet mirroring ndh's cidr).
+        catalogMerge.mergeByKey { key = "cidr"; listAttrs = [ "hosts" ]; } (
           [
             {
               cidr = "192.168.1.0/24";

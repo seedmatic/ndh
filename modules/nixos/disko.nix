@@ -27,5 +27,7 @@ in
     inherit lib;
     hostProfile = ndhContext.hostProfile;
     disks = providerDataDisks;
+    # rke2lab's dataplan → the tank/rke2lab/* subtree materialised on the host pool.
+    datasetLayout = ndhContext.catalog.datasets;
   };
 }

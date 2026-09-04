@@ -289,6 +289,59 @@ let
     e: "${e.dataset} ${toString e.mountpoint}"
   ) diskoAllMountpoints;
 
+  # Full dataset inventory (name + declared ZFS properties) for zpool-init's
+  # create-if-absent pass.  Unlike diskoAllMountpoints (concrete mountpoints only,
+  # feeding the reconcile), this yields EVERY disko-declared dataset — so a subtree
+  # added after the pool was first provisioned (e.g. rke2lab's dataplan landing on a
+  # running host) gets created on the next activation instead of silently missing
+  # (disko only creates at install time).  Each entry carries its real ZFS options;
+  # nixos:* pseudo-properties (overlay markers consumed at eval by the fileSystems
+  # wiring, not real ZFS props) are filtered out, and a concrete top-level `mountpoint`
+  # is folded in as a property so a fresh create is faithful.
+  diskoPoolDatasetInventory =
+    poolName:
+    let
+      poolCfg = config.disko.devices.zpool.${poolName};
+      walk =
+        prefix: dsSet:
+        lib.concatMap (
+          name:
+          let
+            ds = dsSet.${name};
+            fullName = "${prefix}/${name}";
+            realOpts = lib.filterAttrs (k: _: !(lib.hasPrefix "nixos:" k)) (ds.options or { });
+            optProps = lib.mapAttrsToList (k: v: "${k}=${toString v}") realOpts;
+            mountProp = lib.optional (
+              ds ? mountpoint && ds.mountpoint != null && lib.hasPrefix "/" (toString ds.mountpoint)
+            ) "mountpoint=${toString ds.mountpoint}";
+            # disko injects a synthetic `__root` dataset per pool to carry the
+            # pool's rootFsOptions — that IS the pool root (already created with
+            # the pool), never a real child to `zfs create`.  Skip it.
+            this = lib.optional (name != "__root") {
+              dataset = fullName;
+              props = optProps ++ mountProp;
+            };
+            children =
+              if ds ? datasets then
+                walk fullName ds.datasets
+              else if ds ? children then
+                walk fullName ds.children
+              else
+                [ ];
+          in
+          this ++ children
+        ) (lib.attrNames dsSet);
+    in
+    walk poolName (poolCfg.datasets or { });
+
+  diskoAllDatasets = lib.concatMap diskoPoolDatasetInventory diskoPoolList;
+
+  # One "<dataset><TAB><k=v> <k=v> …" line per dataset — TAB splits the name from the
+  # space-joined property tokens (ZFS property values here never contain spaces).
+  zpoolInitDatasetsTable = lib.concatMapStringsSep "\n" (
+    e: "${e.dataset}\t${lib.concatStringsSep " " e.props}"
+  ) diskoAllDatasets;
+
   zpoolInitText = ''
     export ZFS_DISK_TANK1="${cfg.bootstrapActivation.dataDisks.tank1}"
     export ZFS_DISK_TANK2="${cfg.bootstrapActivation.dataDisks.tank2}"
@@ -296,6 +349,7 @@ let
     export ZFS_DISK_RECOVER="${cfg.bootstrapActivation.dataDisks.recover}"
     export NDH_ZPOOL_INIT_POOLS=${lib.escapeShellArg (lib.concatStringsSep " " diskoPoolList)}
     export NDH_ZPOOL_INIT_MOUNTPOINTS=${lib.escapeShellArg zpoolInitMountpointsTable}
+    export NDH_ZPOOL_INIT_DATASETS=${lib.escapeShellArg zpoolInitDatasetsTable}
     ${builtins.replaceStrings [ "@nixBashTrampoline@" ] [ nixBashTrampoline ] (
       builtins.readFile ./zfs.d/zpool-init.sh
     )}
