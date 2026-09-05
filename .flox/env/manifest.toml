@@ -23,6 +23,15 @@ grpcurl.pkg-path = "grpcurl"
 # shell and the deployed host systems share the same signer.
 step-cli.pkg-path = "step-cli"
 ngrok.pkg-path = "ngrok"
+# manage-tailnet: administer the Tailscale tailnet (rotate per-kind auth keys,
+# sync-acl, retag + prune stale devices; dry-run by default, --yes to apply). A
+# repo-LOCAL flake package, so a path: flakeref reflecting the working copy (not a
+# lagging remote ref) — resolve from the repo root (where .flox lives) on activate.
+# systems: the flake exposes it for aarch64-darwin only (the admin runs it from the
+# Mac); without this, flox tries to lock it for every default system (x86_64-darwin …)
+# and fails since the flake provides no such attribute.
+manage-tailnet.flake = "path:.#manage-tailnet"
+manage-tailnet.systems = ["aarch64-darwin"]
 # gum.pkg-path = "gum"
 # gum.version = "^0.14.5"
 

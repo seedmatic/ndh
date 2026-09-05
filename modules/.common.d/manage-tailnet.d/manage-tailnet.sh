@@ -53,6 +53,7 @@ do_revoke=0
 do_commit=0
 assume_yes=0
 stale_after="1h"
+format="text"
 only_kind=""
 client_secret_file=""
 workdir=""
@@ -62,10 +63,32 @@ TOKEN=""
 # stderr); warn/die surface on the operator's console via the logger's
 # preserved fd3 (ndh::logger:notice) so a failure isn't swallowed into the log
 # sink — the full xtrace still lands in the log.
-log() { printf '%s\n' ":: $*"; }
-warn() { ndh::logger:notice "!! $*"; }
+#
+# --format=json turns the whole of stdout into JSON Lines (one object per line):
+# narration is not muzzled, it is STRUCTURED as {"level","msg"} events so a
+# programmatic caller (rke2lab's in-cluster prune loop) can parse the stream
+# while a human still reads it. yq's strenv encodes the message safely (no manual
+# escaping). Only stdout is JSONL; the logger's fd3 is left to the text path.
+log() {
+	if [ "$format" = json ]; then
+		msg="$*" $YQ -n -o=json -I=0 '{"level": "info", "msg": strenv(msg)}'
+	else
+		printf '%s\n' ":: $*"
+	fi
+}
+warn() {
+	if [ "$format" = json ]; then
+		msg="$*" $YQ -n -o=json -I=0 '{"level": "warn", "msg": strenv(msg)}'
+	else
+		ndh::logger:notice "!! $*"
+	fi
+}
 die() {
-	ndh::logger:notice "xx $*"
+	if [ "$format" = json ]; then
+		msg="$*" $YQ -n -o=json -I=0 '{"level": "error", "msg": strenv(msg)}'
+	else
+		ndh::logger:notice "xx $*"
+	fi
 	exit 1
 }
 
@@ -89,6 +112,10 @@ Safe by default. Manages the per-kind Tailscale SaaS auth keys + the ACL.
                      --yes.  Protects personal (untagged) + currently-online devices.
   --stale-after <dur>  Age threshold for --prune-stale-devices: Ns/Nm/Nh/Nd
                      (default 1h).
+  --format <fmt>     Output format: text (default) or json.  json emits JSON
+                     Lines on stdout — every narration line as a {level,msg}
+                     object, and each pruned device as a {event:"pruned",...}
+                     object — so a caller can parse exactly what was removed.
   --client-secret-file <path>
                      Read the OAuth client secret from <path> (a bare
                      tskey-client-… scalar) instead of sops-decrypting .secrets
@@ -302,7 +329,14 @@ prune_stale_devices() {
 			continue
 		fi
 		if api -X DELETE "$API_BASE/device/$id" >/dev/null 2>&1; then
-			log "  deleted $host ($id)"
+			if [ "$format" = json ]; then
+				# A structured event (distinct from the {level,msg} narration) so a caller
+				# selects `.event == "pruned"` to learn exactly which devices were removed.
+				id="$id" host="$host" seen="$seen" $YQ -n -o=json -I=0 \
+					'{"level": "info", "event": "pruned", "id": strenv(id), "host": strenv(host), "seen": strenv(seen)}'
+			else
+				log "  deleted $host ($id)"
+			fi
 		else
 			warn "  failed to delete $host ($id)"
 		fi
@@ -430,6 +464,12 @@ main() {
 			stale_after="${1:-}"
 			[ -n "$stale_after" ] || die "--stale-after needs an argument"
 			;;
+		--format=*) format="${1#*=}" ;;
+		--format)
+			shift
+			format="${1:-}"
+			[ -n "$format" ] || die "--format needs an argument"
+			;;
 		--kind)
 			shift
 			only_kind="${1:-}"
@@ -458,6 +498,8 @@ main() {
 	done
 
 	# preflight
+	[ "$format" = text ] || [ "$format" = json ] ||
+		die "--format must be 'text' or 'json' (got: $format)"
 	[ -r "$AUTH_KINDS_FILE" ] || die "kinds manifest missing: $AUTH_KINDS_FILE"
 	[ -r "$ACL_CANONICAL" ] || die "acl canonical missing: $ACL_CANONICAL"
 	if [ -n "$client_secret_file" ]; then
@@ -507,4 +549,22 @@ main() {
 	log "done."
 }
 
-ndh::logger:command:run "@loggerTag@" main "$@"
+# When JSON output is requested, run WITHOUT the logger trampoline: its command:starting/marker
+# announce (and the xtrace it enables) interleave non-JSON lines into stdout, which breaks a caller
+# parsing the JSON Lines. json mode is the machine path — the JSONL stream IS the log, and log()/
+# warn()/die() emit it directly (no logger dependency) — so the operator-facing trampoline is not
+# wanted there. Any other invocation keeps the trampoline (private xtrace log + markers).
+want_json=0
+prev=""
+for arg in "$@"; do
+	case "$arg" in
+	--format=json) want_json=1 ;;
+	json) [ "$prev" = --format ] && want_json=1 ;;
+	esac
+	prev="$arg"
+done
+if [ "$want_json" -eq 1 ]; then
+	main "$@"
+else
+	ndh::logger:command:run "@loggerTag@" main "$@"
+fi

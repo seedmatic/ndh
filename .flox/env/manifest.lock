@@ -54,6 +54,12 @@
       "lsof": {
         "pkg-path": "lsof"
       },
+      "manage-tailnet": {
+        "flake": "path:.#manage-tailnet",
+        "systems": [
+          "aarch64-darwin"
+        ]
+      },
       "moreutils": {
         "pkg-path": "moreutils"
       },
@@ -2889,6 +2895,29 @@
       "system": "x86_64-darwin",
       "group": "toplevel",
       "priority": 5
+    },
+    {
+      "install_id": "manage-tailnet",
+      "locked-url": "path:/private/var/lib/git/seedmatic/ndh?lastModified=1788640715&narHash=sha256-XFtczjIxvpM37lwVgBWcDyiq0%2BK5FBzEDtoJJAWDbIg%3D",
+      "flake-description": "nix system configurations",
+      "locked-flake-attr-path": "packages.aarch64-darwin.manage-tailnet",
+      "derivation": "/nix/store/p2npqgf83nrp7xjy57h0ri4d8r3shkvg-io.seedmatic.ndh-manage-tailnet.drv",
+      "outputs": {
+        "out": "/nix/store/vwgxpjsf2gpsfhnlw91nfgy4z9g3phmj-io.seedmatic.ndh-manage-tailnet"
+      },
+      "output-names": [
+        "out"
+      ],
+      "outputs-to-install": [
+        "out"
+      ],
+      "requested-outputs-to-install": [],
+      "package-system": "aarch64-darwin",
+      "system": "aarch64-darwin",
+      "name": "io.seedmatic.ndh-manage-tailnet",
+      "broken": false,
+      "unfree": false,
+      "priority": 5
     }
   ],
   "compose": {
@@ -2903,6 +2932,12 @@
         },
         "lsof": {
           "pkg-path": "lsof"
+        },
+        "manage-tailnet": {
+          "flake": "path:.#manage-tailnet",
+          "systems": [
+            "aarch64-darwin"
+          ]
         },
         "ngrok": {
           "pkg-path": "ngrok"
