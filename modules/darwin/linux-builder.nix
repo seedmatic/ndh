@@ -21,11 +21,6 @@ let
   # Pull builder inventory entries for this host (if present)
   hostName = config.profile.host.hostName;
   cacheCatalog = catalog.caches;
-  flakehubPublicKeys =
-    if cacheCatalog.flakehub ? publicKeys then
-      cacheCatalog.flakehub.publicKeys
-    else
-      [ cacheCatalog.flakehub.publicKey ];
   # Consider linux-builder only when running on baremetal hosts.
   # VM hosts (e.g. nikopol running as a Tart VZ VM) cannot run nested QEMU efficiently.
   isBaremetalHost =
@@ -147,25 +142,19 @@ in
         # Use the same binary caches and settings as the Darwin configuration
         nix.settings = {
           trusted-substituters = [
-            cacheCatalog.flakehub.substituter # Determinate Systems FlakeHub cache
             cacheCatalog.nxmatic.substituter # nxmatic cache
           ];
           trusted-public-keys = [
-          ]
-          ++ flakehubPublicKeys
-          ++ [
             cacheCatalog.nxmatic.publicKey # nxmatic key
           ];
 
           # Additional substituters from flox.conf
           extra-trusted-substituters = [
-            cacheCatalog.flakehub.substituter
             cacheCatalog.nxmatic.substituter
           ];
           extra-trusted-public-keys = [
             "floxhub-1:0QOAlcobcEvq1mqEf4qAYCaWnTTOXpyoRv/PmqfSixM="
-          ]
-          ++ flakehubPublicKeys;
+          ];
 
           # Connection and performance settings from flox.conf
           connect-timeout = lib.mkDefault 10;
