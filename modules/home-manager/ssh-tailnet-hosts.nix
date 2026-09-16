@@ -92,6 +92,20 @@ let
       PreferredAuthentications publickey
   '';
 
+  # LAN-direct path to the same corp Mac, by its corp-LAN FQDN. `vzhost.nikopol`
+  # above only resolves once nikopol-nixos is up as the tailnet subnet-router +
+  # split-DNS — but the FIRST materialisation of nerd-nixos on the corp Mac
+  # happens before that exists (chicken-and-egg). On the corp LAN the Mac answers
+  # at `nikopol-vzhost.lan`; same corp account + operator key. Target it
+  # explicitly for the bring-up, e.g. `nix run .#nerd-tart-nikopol-deploy -- nikopol-vzhost.lan`.
+  vzhostNikopolLanAlias = ''
+    Host nikopol-vzhost.lan
+      User stephane.lacoin
+      IdentityFile ${config.sshPaths.privKeyFile}
+      IdentitiesOnly yes
+      PreferredAuthentications publickey
+  '';
+
   tailnetDomain =
     if ndhContext ? catalog && ndhContext.catalog.netplan ? tailnet then
       ndhContext.catalog.netplan.tailnet.domain
@@ -159,5 +173,6 @@ in
     ) inventoryHostNames}
 
     ${vzhostNikopolAlias}
+    ${vzhostNikopolLanAlias}
   '';
 }
