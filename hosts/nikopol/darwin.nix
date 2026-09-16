@@ -48,11 +48,6 @@
     };
 
     # Vector observability aggregator for NixOS disk image builds
-    bringupObserve = {
-      enable = true;
-      # Darwin host acts as the aggregator (no upstream endpoint)
-      # NixOS VMs forward to this via upstreamEndpoint in their configs
-    };
 
     # A vz macOS VM can't run a nested linux-builder, so nikopol always offloads
     # aarch64-linux to its NixOS sibling next door (nikopol-nixos, which also

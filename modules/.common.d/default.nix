@@ -284,6 +284,11 @@ in
       store = ndhStore;
     };
 
+    # SSOT: catalog.observability.bringupObserve gates the Vector build-telemetry
+    # agent/aggregator on every host at once (option declared in
+    # ./bringup-observe.nix). mkDefault so a host can still force it locally.
+    bringupObserve.enable = lib.mkDefault (effectiveCatalog.observability.bringupObserve or false);
+
     activation.homeManagerPostActivationScript = postActivationScript;
 
     programs = {

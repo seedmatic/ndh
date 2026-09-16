@@ -17,6 +17,15 @@ in
     entries = catalogMerge.mergeByKey { key = "path"; } (dataplan.datasets or [ ]);
   };
 
+  # Fleet observability toggles — the single source of truth for opt-in telemetry
+  # that costs something to build/run. `bringupObserve` gates the Vector
+  # build-telemetry agent/aggregator (a large, darwin-uncached Rust build): flip
+  # it here to enable/disable it on every host at once. Per-host wiring
+  # (aggregator vs agent `upstreamEndpoint`) stays in each host module.
+  observability = {
+    bringupObserve = true;
+  };
+
   # Tailnet control-plane identity: shared tag vocabulary + ACL policy
   # (both controllers) + headscale server specifics.  See
   # catalog/tailnet/default.nix.
