@@ -43,7 +43,7 @@ must be materialised.  This is a fixed-name flake app (not per-host):
 [source,bash]
 ----
 # From the nix-darwin-home checkout:
-nix run .#nerd-tart-vm-materialize
+nix run .#nerd-tart-bioskop-materialize
 ----
 
 It builds the ZFS bringup disk image, creates the root disk `disk.img`
@@ -119,7 +119,7 @@ the VM and wipe its directory before recreating — set `VM_FACTORY_RESET=true`:
 [source,bash]
 ----
 cd /path/to/nix-darwin-home
-VM_FACTORY_RESET=true nix run .#nerd-tart-vm-materialize
+VM_FACTORY_RESET=true nix run .#nerd-tart-bioskop-materialize
 ----
 
 What the materialiser does (in order):
@@ -163,15 +163,44 @@ created — a plain re-run never destroys populated data disks.
 The VM first boots the generic bringup system (hostName `nerd-nixos`), which
 imports the ZFS pool from the seeded tank disks and brings up network + SSH.
 There is no host→guest orchestration wrapper: activation is a plain remote
-`nixos-rebuild` from the build host (bioskop) against the guest, reached over
-mDNS as `<host>-nixos.local`.  The minimal bringup image has no `/etc/nixos`,
-so the first activation must be `--target-host` (the prebuilt toplevel is
-shipped via `nix copy`):
+`nixos-rebuild` from the build host (bioskop) against the guest.  The minimal
+bringup image has no `/etc/nixos`, so the first activation must be
+`--flake .#<host>-nixos --target-host` (the prebuilt toplevel is shipped via
+`nix copy`):
 
 [source,bash]
 ----
-nixos-rebuild switch --target-host root@<host>-nixos.local
+TMPDIR=/tmp nixos-rebuild boot --flake .#<host>-nixos --target-host root@nerd-nixos.local
+ssh root@nerd-nixos.local reboot
 ----
+
+[IMPORTANT]
+====
+Use `boot` + reboot, *not* `switch`.  The guest has never booted this config, and
+an online `switch` runs activation scripts before `systemd-tmpfiles` / the boot
+oneshot seed the NDH bringup-runtime profile → the age-key enforce fails
+(`required NDH bootstrap profile is missing/incomplete`).  `boot` installs the
+bootloader + sets the system profile without online activation; the reboot brings
+the guest up in the right order (seed → enforce) and renames it to `<host>-nixos`.
+
+At first boot the guest carries the generic bringup hostname `nerd-nixos` and is
+reached as **`nerd-nixos.local`** — *not* `<host>-nixos.local`, which it only
+advertises *after* the reboot renames it.  If mDNS is flaky, fall back to the
+guest IP (`root@<guest-ip>`; the IP is DHCP-variable, the mDNS name is not).
+`--flake .#<host>-nixos` is mandatory — without it `nixos-rebuild` falls back to
+channel mode and fails with `file 'nixos-config' was not found`.
+
+`TMPDIR=/tmp` is required when `$TMPDIR` is long (e.g. macOS
+`/Users/<user>/.tmpfs`): `nixos-rebuild` puts its ssh `ControlPath` under
+`$TMPDIR`, which then overflows the ~104-byte Unix-socket limit
+(`too long for Unix domain socket`).
+
+This build needs a working `aarch64-linux` builder. On a from-scratch bioskop
+(no NixOS sibling yet) `/etc/nix/machines` may point at an unreachable
+`<host>-nixos` and `darwin-rebuild switch` can't set up the embedded builder
+either (chicken-and-egg) — run `nix run .#bootstrap-linux-builder` first; see
+link:host-builder-phases.adoc[Host Builder Phases] §"Cold bootstrap from zero".
+====
 
 The ZFS bootstrap is no longer an operator-invoked step: it runs
 automatically at first boot of the ZFS target via the
@@ -544,7 +573,7 @@ ls -la ~/.tart/vms/nerd-nixos/
 
 # Force-reset if stuck (stop + wipe + recreate):
 tart stop nerd-nixos || true
-VM_FACTORY_RESET=true nix run .#nerd-tart-vm-materialize
+VM_FACTORY_RESET=true nix run .#nerd-tart-bioskop-materialize
 ----
 
 === ZFS pool not importing
@@ -993,7 +1022,7 @@ is a small set of flake apps plus the generated per-VM run wrapper:
 
 [source]
 ----
-nix run .#nerd-tart-vm-materialize
+nix run .#nerd-tart-bioskop-materialize
     Build the bringup image, create disk.img + tank/recover disks, write
     config.json and the run wrapper.  VM_FACTORY_RESET=true wipes + recreates.
 

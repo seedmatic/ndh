@@ -75,6 +75,89 @@ declares `steady` from day one and always offloads to `nikopol-nixos`. The
 `bootstrap` default exists for baremetal Macs (`bioskop`) that must first build
 their own sibling.
 
+== Cold bootstrap from zero (first build ever, no builder at all)
+
+`bootstrap` assumes `darwin-rebuild switch` can stand up the embedded
+`linux-builder`. On a *truly* fresh Mac there is a deeper chicken-and-egg: the
+embedded builder's own guest system is an `aarch64-linux` derivation (customised
+here — 9p cache-key mounts, host port), so building it *itself* needs an
+`aarch64-linux` builder. `darwin-rebuild switch` then fails with
+`platform mismatch … Required system: 'aarch64-linux'` — no machine to offload
+to yet, and it falls back to building locally on `aarch64-darwin`.
+
+Escape: bring up a *stock*, cache-substitutable `linux-builder` (it downloads
+from `cache.nixos.org`, no local `aarch64-linux` build), wire the nix-daemon to
+it, then build `<host>-nixos` directly. You do **not** need `darwin-rebuild
+switch` for a renew — the goal is `<host>-nixos`, not the embedded builder.
+
+=== 1. Launch + wire the temporary builder (one app)
+
+[source,bash]
+----
+nix run .#bootstrap-linux-builder          # stays attached (the builder console)
+----
+
+This app (`modules/.common.d/bootstrap-linux-builder.d/`) does everything the
+cold start needs:
+
+* launches the *vz* `linux-builder` from `nixpkgs-unstable` (the pinned nixpkgs
+  lacks `darwin.linux-builder-vz`), which substitutes from cache — no
+  `aarch64-linux` build;
+* pins `KEYS` to a dedicated state dir so the generated keypair is stable (not
+  left in whatever cwd you launched from) and lets `create-builder` install it
+  into `/etc/nix/builder_ed25519`;
+* writes the root-side wiring — the ssh alias
+  `/etc/ssh/ssh_config.d/100-linux-builder.conf` (so root's ssh reaches
+  `localhost:31022`) and an `/etc/nix/machines` entry (backing up any existing
+  one) — using the ambient setuid `sudo`, not a pinned one.
+
+Tear it all down (kill the VM + remove the temporary wiring) with:
+
+[source,bash]
+----
+nix run .#bootstrap-linux-builder -- --stop
+----
+
+[NOTE]
+====
+The builder runs *attached* in this terminal, so run step 2 from a second
+terminal. The `KEYS`-in-cwd trap and the root-side key/ssh/machines wiring were
+formerly manual (and easy to get wrong — the generated key sitting in a user's
+cwd yields `Permission denied (publickey)` on offload); the app now owns them.
+====
+
+=== 2. Verify + build the sibling (second terminal)
+
+[source,bash]
+----
+sudo nix store info --store ssh-ng://linux-builder        # go/no-go: must answer
+nix build --system aarch64-linux nixpkgs#hello --no-link  # smoke test
+TMPDIR=/tmp nixos-rebuild boot --flake .#<host>-nixos --target-host root@nerd-nixos.local
+ssh root@nerd-nixos.local reboot
+----
+
+Use `boot` + reboot, *not* `switch`, for a first bring-up: the guest has never
+booted the target config, and an online `switch` runs activation scripts before
+`systemd-tmpfiles` / the boot oneshot seed the bringup-runtime profile, so the
+age-key enforce fails (see bringup-runtime.nix). `boot` only installs the
+bootloader + sets the system profile — no online activation — and the reboot
+brings the guest up in the correct order (seed → enforce), renamed to
+`<host>-nixos`. (`nixos-rebuild switch --target-host` for a *day-2* rebuild is
+fine: the profile is already seeded, and the activation-time seed in
+bringup-runtime.nix covers a never-booted online switch too.)
+
+`TMPDIR=/tmp` is required: `nixos-rebuild`'s ssh `ControlPath` lives under
+`$TMPDIR`, and a long `$TMPDIR` (e.g. macOS `/Users/<user>/.tmpfs`) overflows the
+~104-byte Unix-socket limit → `too long for Unix domain socket`.
+
+At first boot the guest carries the generic bringup hostname `nerd-nixos`, so
+target it as `nerd-nixos.local` (fall back to the guest IP if mDNS is flaky) —
+`<host>-nixos.local` does not resolve until *after* the reboot renames it.
+
+Once `<host>-nixos` is up and trusted as a builder, `--stop` the temporary
+builder and promote to `steady` (below); the hand-wired stock builder +
+`/etc/nix/machines` are superseded by the module-generated wiring.
+
 == Operator: promoting a host to steady
 
 Once `<host>-nixos` is built, activated, and reachable over ssh as root:

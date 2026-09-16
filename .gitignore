@@ -6,6 +6,12 @@
 .devenv/
 .pre-commit-config.yaml
 nixos.qcow2
+# bootstrap-linux-builder / stock create-builder artifacts if run from the repo
+# (the app writes these under $XDG_STATE_HOME instead; these guard stray runs)
+keys/
+store-*.img
+vzvm.json
+console.log
 .run.d
 .local.d
 tmp/

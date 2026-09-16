@@ -8,7 +8,7 @@ This document defines the canonical operator-facing command model.
 
 * Internal implementation scripts can remain colocated with modules.
 * Operator entrypoints are exposed as short commands from Nix packages/apps.
-* Host-bound operator app/package attributes are host-scoped with host-first naming (`<host>-*`, where `<host>` is the host alias/name — e.g. `bioskop-*`, `nikopol-*`, `nerd-nixos-*`).  The VM-materialisation app is the fixed `nerd-tart-vm-materialize` (keyed to the `nerd-nixos` VM, not per darwin host).
+* Host-bound operator app/package attributes are host-scoped with host-first naming (`<host>-*`, where `<host>` is the host alias/name — e.g. `bioskop-*`, `nikopol-*`, `nerd-nixos-*`).  The VM-materialisation package is per darwin host: `nerd-tart-<host>-materialize` (e.g. `nerd-tart-bioskop-materialize`), the local counterpart of `nerd-tart-<host>-deploy`.
 * Avoid exposing internal `io-seedmatic-*` script names in `bin/`.
 
 == Canonical Commands
@@ -17,10 +17,12 @@ This document defines the canonical operator-facing command model.
 ** Purpose: install/refresh the NDH bringup runtime profile.
 ** Flake app/package attribute example: `bioskop-bringup-install`.
 
-* `nerd-tart-vm-materialize`
+* `nerd-tart-<host>-materialize`
 ** Purpose: materialize the Tart VM directory (`~/.tart/vms/nerd-nixos/`) — build the
    bringup image, `tart create` the root disk, create the ZFS data disks, write the
-   run wrapper.  Fixed name (keyed to the `nerd-nixos` VM), not per darwin host.
+   run wrapper.  Per darwin host (the local counterpart of `nerd-tart-<host>-deploy`);
+   run the one for the host that actually runs the VM.
+** Flake app/package attribute example: `nerd-tart-bioskop-materialize`.
 
 * `nerd-tart-<host>-deploy`
 ** Purpose: copy the materialised bundle to a vz host and run the same activation there.
@@ -40,28 +42,28 @@ Use this procedure when you need to manually regenerate Tart VM disk images
 outside of darwin activation.
 
 * Standard rematerialization (rebuild root image, create missing data disks):
-** `nix run .#nerd-tart-vm-materialize`
-** or `nix run /private/var/lib/git/nxmatic/nix-darwin-home#nerd-tart-vm-materialize`
+** `nix run .#nerd-tart-bioskop-materialize`
+** or `nix run /private/var/lib/git/nxmatic/nix-darwin-home#nerd-tart-bioskop-materialize`
 
 * Recommended pre-step before rematerialization:
 ** `tart stop nerd-nixos || true`
 
 * Full reset rematerialization (recreate VM + all data disks):
 ** One-command factory reset mode:
-*** `VM_FACTORY_RESET=true nix run .#nerd-tart-vm-materialize`
+*** `VM_FACTORY_RESET=true nix run .#nerd-tart-bioskop-materialize`
 ** Equivalent manual sequence:
 *** Stop VM: `tart stop nerd-nixos || true`
 *** Remove VM and data disks:
 **** `rm -rf ~/.tart/vms/nerd-nixos`
 *** Re-run materializer:
-**** `nix run .#nerd-tart-vm-materialize`
+**** `nix run .#nerd-tart-bioskop-materialize`
 
 * Notes:
 ** Root disk `disk.img` is created by `tart create` and kept in `~/.tart/vms/nerd-nixos/`.
 ** VM-local ZFS data disks `tank1.img`, `tank2.img`, `tank3.img` and `recover.img` are created if missing in `~/.tart/vms/nerd-nixos/`.
 ** VM-local bootstrap image `nixos.img` is synced from configured Nix source into `~/.tart/vms/nerd-nixos/`.
 ** `VM_FACTORY_RESET` is executed directly as a shell command, so only the literal `true` enables it (not `1`/`yes`/`on`).  When enabled, the materializer stops+deletes the VM and wipes its directory before rebuilding.
-** To refresh only selected data disks, delete one or more of `~/.tart/vms/nerd-nixos/tank1.img`, `tank2.img`, `tank3.img`, `recover.img`, then run `nix run .#nerd-tart-vm-materialize`.
+** To refresh only selected data disks, delete one or more of `~/.tart/vms/nerd-nixos/tank1.img`, `tank2.img`, `tank3.img`, `recover.img`, then run `nix run .#nerd-tart-bioskop-materialize`.
 ** `run.sh` removes stale `~/.tart/vms/nerd-nixos/nixos.img` automatically once a ZFS partition is detected on `disk.img`.
 
 == Command Output Capture Helper (@codebase)
@@ -92,7 +94,7 @@ them with `<host>-log-capture` so logs are consistently archived in `/tmp`.
 ** `nix run .#bioskop-log-capture -- --name nix-build-darwin -- nix build .#darwinConfiguration.system -L -v -v`
 
 * Capture `nix run`:
-** `nix run .#bioskop-log-capture -- --name tart-materialize -- env VM_FACTORY_RESET=true nix run .#nerd-tart-vm-materialize`
+** `nix run .#bioskop-log-capture -- --name tart-materialize -- env VM_FACTORY_RESET=true nix run .#nerd-tart-bioskop-materialize`
 
 * Capture `nixos-rebuild`:
 ** `nix run .#bioskop-log-capture -- --name nixos-rebuild-boot -- sudo nixos-rebuild boot --flake .#tart-bioskop-bringup-grub-zfs -L`

@@ -203,6 +203,17 @@
         );
       pkgsForDarwin = (pkgsFor { system = "aarch64-darwin"; });
       pkgsForLinux = (pkgsFor { system = "aarch64-linux"; });
+      # nixpkgs-unstable, only for packages the pinned (flake-commons) nixpkgs
+      # lacks yet — e.g. darwin.linux-builder-vz (absent from 26.05, present in
+      # unstable). Used by the bootstrap-linux-builder app; keep the surface
+      # minimal so we don't drift the fleet onto unstable wholesale.
+      pkgsUnstableForDarwin = import inputs.nixpkgs-unstable {
+        system = "aarch64-darwin";
+        config = nixpkgsConfig // {
+          allowBroken = true;
+          checkAllPackages = false;
+        };
+      };
 
       mkNdhStoreApiFor =
         pkgsForSystem:
@@ -1047,14 +1058,15 @@
           # role obvious in `nix flake show`.  `packages.<system>` must be
           # flat (the flake schema rejects nested attrsets), so we use a
           # `nerd-tart-<host>-<role>` naming scheme:
-          #   nerd-tart                — generic, fleet-wide deploy bundle
-          #   nerd-tart-<host>-config  — per-VM YAML manifest (scp to vz)
-          #   nerd-tart-<host>-deploy  — operator helper: copy + activate
-          # The per-host materializer derivation is intentionally NOT
-          # surfaced as a flake package — it's an internal artifact
-          # consumed by the darwin module's activation script
-          # (`config.tart.configGenerator.materializerPackage`).  Operators
-          # use `-deploy` instead.
+          #   nerd-tart                    — generic, fleet-wide deploy bundle
+          #   nerd-tart-<host>-config      — per-VM YAML manifest (scp to vz)
+          #   nerd-tart-<host>-deploy      — operator helper: copy + activate on a REMOTE vz host
+          #   nerd-tart-<host>-materialize — LOCAL materializer for the host that runs the VM
+          # `-materialize` is the local counterpart of `-deploy`: on a host whose
+          # activation hook is off (`vmMaterializerEnableActivationHook = false`)
+          # and that runs the Tart VM itself (not a remote vz host), it is the only
+          # entry point to (re)materialize the VM — e.g.
+          # `VM_FACTORY_RESET=true nix run .#nerd-tart-bioskop-materialize`.
           let
             systemPkgs = pkgsFor { inherit system; };
             anyHostName = builtins.head (builtins.attrNames hostCatalog);
@@ -1166,6 +1178,8 @@
                   inherit mainName runManifest;
                   vmName = hostOutput.darwinConfiguration.config.tart.configGenerator.vmName;
                 };
+                "nerd-tart-${mainName}-materialize" =
+                  hostOutput.darwinConfiguration.config.tart.configGenerator.materializerPackage;
               }
             ) { } (builtins.attrNames hostCatalog);
             # Single fleet-wide deploy bundle — identical for every host that
@@ -1210,9 +1224,9 @@
           logCapture = mkNdhLogCapturePackage system;
           tartBootstrapInstaller = mkNdhVmTartBootstrapInstallerPackage system;
           # `apps.<system>` must be flat (each leaf is `{ type = "app"; … }`).
-          # The Tart materializer is intentionally not exposed as an app —
-          # operators use `nerd-tart-<host>-deploy`, which covers the same
-          # workflow end-to-end.
+          # The Tart materializer is exposed under `packages.<system>` as
+          # `nerd-tart-<host>-materialize` (its `meta.mainProgram` lets
+          # `nix run .#nerd-tart-<host>-materialize` work), not duplicated here.
           hostBootstrapInstallerApps = builtins.foldl' (
             acc: hostName:
             let
@@ -1321,6 +1335,40 @@
             runtimeInputs = [ ];
             text = builtins.readFile ./modules/.common.d/cleanup-activations.d/cleanup-activations.sh;
           };
+          # Temporary local vz linux-builder for the bootstrap phase (cold start,
+          # no aarch64-linux builder yet). runtimeInputs carries ONLY the vz
+          # builder (for `create-builder`) — NOT sudo: writeShellApplication
+          # prepends to PATH, so the ambient setuid /usr/bin/sudo (the wrapper)
+          # stays in reach for both this script and create-builder's own
+          # install-credentials. Pinning a nixpkgs sudo would shadow it.
+          # The stock vz builder boots tiny (1 vCPU / ~3 GiB RAM / 20 GiB store →
+          # OOM and "no space left" on real closures). bioskop has ample RAM, so
+          # bake a generous guest. These are read by the vz VM at build time
+          # (nixos/modules/virtualisation/vz-vm.nix: cpuCount = cfg.cores,
+          # memorySizeMiB = cfg.memorySize, dd seek = cfg.diskSize; cfg =
+          # config.virtualisation.darwin-builder), so they must be set here, not
+          # at runtime. diskSize is sparse (dd seek), so a large cap costs
+          # nothing until used. mkForce overrides the profile defaults.
+          bootstrapLinuxBuilderVz = pkgsUnstableForDarwin.darwin.linux-builder-vz.override {
+            modules = [
+              (
+                { lib, ... }:
+                {
+                  # cpuCount is read straight off virtualisation.cores (vz-vm.nix);
+                  # memorySize/diskSize are darwin-builder knobs that nix-builder.nix
+                  # maps onto virtualisation.memorySize / virtualisation.diskSize.
+                  virtualisation.cores = lib.mkForce 8;
+                  virtualisation.darwin-builder.memorySize = lib.mkForce 16384; # MiB (16 GiB)
+                  virtualisation.darwin-builder.diskSize = lib.mkForce 102400; # MiB (100 GiB, sparse)
+                }
+              )
+            ];
+          };
+          bootstrapLinuxBuilderPackage = pkgsForSystem.writeShellApplication {
+            name = "bootstrap-linux-builder";
+            runtimeInputs = [ bootstrapLinuxBuilderVz ];
+            text = builtins.readFile ./modules/.common.d/bootstrap-linux-builder.d/bootstrap-linux-builder.sh;
+          };
         in
         {
           nix-build-observe = {
@@ -1352,6 +1400,11 @@
             type = "app";
             program = "${cleanupActivationsPackage}/bin/cleanup-activations";
             meta.description = "Prune nix-darwin/Home-Manager/user generations + GC (DRY_RUN=1 to preview) — src: modules/.common.d/cleanup-activations.d/";
+          };
+          bootstrap-linux-builder = {
+            type = "app";
+            program = "${bootstrapLinuxBuilderPackage}/bin/bootstrap-linux-builder";
+            meta.description = "Cold-start: launch a temporary local vz linux-builder + wire the nix-daemon to it so `nixos-rebuild .#<host>-nixos` can build aarch64-linux (--stop to tear down) — src: modules/.common.d/bootstrap-linux-builder.d/";
           };
         }
         // hostBootstrapInstallerApps
