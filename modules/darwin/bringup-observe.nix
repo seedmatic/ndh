@@ -27,8 +27,10 @@ let
     if cfg.outputDir != "" then cfg.outputDir else "${profileHome}/.local/share/nix-build-observe";
 
   # The aggregator needs Vector ≥ 0.55 for gRPC API support (vector tap, grpcurl).
-  # Pull it directly from nixpkgs-unstable so the overlay is not needed and Linux
-  # agents can stay on the stable version.
+  # Prefer the PINNED nixpkgs vector when it already satisfies that (it does since
+  # 26.05 ships 0.55.0): vector is a huge Rust build that Hydra does not cache for
+  # aarch64-darwin, so tracking nixpkgs-unstable rebuilt it from source on every
+  # unstable bump. Fall back to unstable only if the pinned vector is too old.
   vectorPkg =
     let
       unstable = import self.inputs.nixpkgs-unstable {
@@ -36,7 +38,9 @@ let
         config = pkgs.config;
       };
     in
-    if lib.versionAtLeast (unstable.vector.version or "0.0.0") "0.55.0" then
+    if lib.versionAtLeast pkgs.vector.version "0.55.0" then
+      pkgs.vector
+    else if lib.versionAtLeast (unstable.vector.version or "0.0.0") "0.55.0" then
       unstable.vector
     else
       pkgs.vector;
