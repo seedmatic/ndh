@@ -1745,6 +1745,7 @@
         qemuOverlay = inputs: import ./overlays/qemu.nix inputs;
         nodejsOverlay = inputs: import ./overlays/nodejs.nix inputs;
         incusComposeOverlay = inputs: import ./overlays/incus-compose.nix inputs;
+        incusOverlay = inputs: import ./overlays/incus.nix inputs;
         lazygitOverlay = inputs: import ./overlays/lazygit.nix inputs;
         tailscaleOverlay = inputs: import ./overlays/tailscale.nix inputs;
         vmToolsDeterministicOverlay = inputs: import ./overlays/vm-tools-deterministic.nix inputs;
