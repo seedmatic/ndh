@@ -37,6 +37,26 @@ in
       "L+ /nix/var/nix/profiles/per-user/${config.profile.user.name}/${cfg.name} - - - - ${cfg.runtimePackage}"
     ];
 
+    # A first *remote* `nixos-rebuild switch --target-host` (or a hand-copied
+    # closure + `switch-to-configuration switch`) activates a NEVER-BOOTED
+    # system: activation scripts run BEFORE systemd-tmpfiles and the boot
+    # oneshot below seed the profile, so the age-key bootstrap enforce (which
+    # needs age/yq/git… from ${cfg.profileDir}/bin on PATH) fails. Seed the same
+    # symlink the tmpfiles `L+` rule declares, synchronously at the START of
+    # activation, and make the sops preActivation enforce depend on it.
+    system.activationScripts.ndhBringupRuntimeSeed = {
+      deps = [ ];
+      text = ''
+        install -d -m 0755 /nix/var/nix/profiles/per-user/root
+        ln -sfn ${cfg.runtimePackage} ${cfg.profileDir}
+      ''
+      + lib.optionalString (config.profile.user.name != "root") ''
+        install -d -m 0755 /nix/var/nix/profiles/per-user/${config.profile.user.name}
+        ln -sfn ${cfg.runtimePackage} /nix/var/nix/profiles/per-user/${config.profile.user.name}/${cfg.name}
+      '';
+    };
+    system.activationScripts.preActivation.deps = [ "ndhBringupRuntimeSeed" ];
+
     # `nixos-rebuild boot` does not run activation on the currently running
     # system. Ensure the bringup runtime profile is provisioned at next boot
     # before services that rely on the command contract.
