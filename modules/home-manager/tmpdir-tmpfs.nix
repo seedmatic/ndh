@@ -38,7 +38,15 @@ in
 
     mountPoint = mkOption {
       type = types.str;
-      default = "${config.home.homeDirectory}/.tmpfs";
+      # Short, fixed, account-agnostic path: it doubles as $TMPDIR, so anything
+      # that mints a Unix-domain socket underneath it (ssh ControlMaster during
+      # `nixos-rebuild --target-host`, ~85 chars of nested socket name) must fit
+      # macOS's 104-byte sun_path limit. A home-relative default
+      # (`/Users/<user>/.tmpfs` = 21 chars) blew that budget; a username-derived
+      # one would blow it again on the corp Mac (`stephane.lacoin`). `/tmp/.nxmatic`
+      # is 13 chars — the login LaunchAgent (RunAtLoad) re-creates and re-mounts it
+      # after each reboot clears /tmp.
+      default = "/tmp/.nxmatic";
       description = "Directory the tmpfs is mounted at; also the value of TMPDIR.";
     };
 
