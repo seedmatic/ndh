@@ -17,6 +17,7 @@
     settings = {
       "*" = {
         ForwardAgent = true;
+        ForwardX11 = false;
         AddKeysToAgent = "no";
         ControlMaster = "auto";
         ControlPersist = "yes";

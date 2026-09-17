@@ -50,8 +50,9 @@ let
   # auth never depends on a populated ssh-agent.  Single-sourced here because
   # the bare/.local/-ts host block below must present the SAME identity —
   # otherwise the literal `.local` name (a bringup fallback that does NOT match
-  # the rdp./nixos. operator aliases nor the `*.nikopol` zone block) would offer
-  # only ~/.ssh/id_rsa and be rejected by the CA-cert sshd.
+  # the rdp./nixos. operator aliases nor the `*.nikopol` zone block) would fall
+  # through to OpenSSH's built-in default identities (none of which carry the
+  # rdp-host key+cert) and be rejected by the CA-cert sshd.
   operatorIdentityLines = ''
     IdentityFile ${config.sshPaths.privKeyFile}
     IdentitiesOnly yes
