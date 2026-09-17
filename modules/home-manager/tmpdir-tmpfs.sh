@@ -22,8 +22,12 @@ OWNER="$(/usr/bin/id -un)"
 # when the tmpfs is absent; the volume simply overlays it.
 /bin/mkdir -p "$MP"
 
-# Idempotent: a tmpfs already mounted here means we are done.
-if /sbin/mount | /usr/bin/grep -q " on $MP (tmpfs"; then
+# Idempotent: a tmpfs already mounted here means we are done. macOS resolves
+# symlinks in the mount target (mount_tmpfs /tmp/.nxmatic actually mounts at
+# /private/tmp/.nxmatic), so match the PHYSICAL path too — otherwise the guard
+# never fires under a symlinked $MP and every login stacks another mount.
+MP_REAL="$(cd "$MP" && pwd -P)"
+if /sbin/mount | /usr/bin/grep -qE " on (${MP}|${MP_REAL}) \(tmpfs"; then
   echo "tmpdir-tmpfs: already mounted at $MP (TMPDIR published)"
   exit 0
 fi
