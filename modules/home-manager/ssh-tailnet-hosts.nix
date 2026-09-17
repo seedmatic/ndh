@@ -107,6 +107,24 @@ let
       PreferredAuthentications publickey
   '';
 
+  # `nerd-nixos` — the NixOS guest materialised as a Tart VM on a bare-metal Mac
+  # (today nikopol's corp Mac).  It is not an inventory host (a guest, not a managed
+  # Darwin host), so the per-host loop above never emits it; this single alias is
+  # rendered uniformly on every managed host.  Reached by its mDNS `.local` name
+  # because the guest carries no MagicDNS/tailnet alias of its own during bring-up.
+  # `User root` + the operator rdp-host key/cert; the `*-nixos` wildcard block above
+  # already relaxes known_hosts for it (host keys rotate across re-materialisation).
+  # The `IdentityFile none` reset clears the default identities accumulated by the
+  # `Host *` blocks so IdentitiesOnly offers only the rdp-host key.
+  nerdNixosAlias = ''
+    Host nerd-nixos
+      HostName nerd-nixos.local
+      User root
+      IdentityFile none
+      IdentityFile ${config.sshPaths.privKeyFile}
+      IdentitiesOnly yes
+  '';
+
   tailnetDomain =
     if ndhContext ? catalog && ndhContext.catalog.netplan ? tailnet then
       ndhContext.catalog.netplan.tailnet.domain
@@ -175,5 +193,6 @@ in
 
     ${vzhostNikopolAlias}
     ${vzhostNikopolLanAlias}
+    ${nerdNixosAlias}
   '';
 }
