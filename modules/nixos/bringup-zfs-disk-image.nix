@@ -91,8 +91,28 @@ let
     exec ${qemuBin} -machine virt,gic-version=max,accel=$accel -cpu max "$@"
   '';
 
+  # vmTools invokes virtiofsd twice with hardcoded flags (store + xchg shares)
+  # and exposes no hook for extra options.  Wrap the `virtiofsd` input so the
+  # STORE share gets `--cache=always`: the nix store is immutable during the
+  # build, so aggressive metadata/data caching in the guest collapses the
+  # per-file virtiofs round-trips that otherwise cap the image build at a few
+  # MB/s (measured: store served at ~1-2 MB/s, guest CPU pinned in %system,
+  # disk idle — the bottleneck is virtiofs lookup latency, not I/O).  The xchg
+  # share is read-write from both host and guest (boot-size-hint / pause.lock
+  # handoff), so it must keep the default `auto` coherence — discriminated by
+  # its socket path.
+  virtiofsdStoreCached = pkgs.writeShellScriptBin "virtiofsd" ''
+    case " $* " in
+      *" --socket-path virtio-store.sock "*)
+        exec ${pkgs.virtiofsd}/bin/virtiofsd --cache=always "$@" ;;
+      *)
+        exec ${pkgs.virtiofsd}/bin/virtiofsd "$@" ;;
+    esac
+  '';
+
   vmToolsBase = pkgs.vmTools.override {
     customQemu = "${kvmDetectQemu}";
+    virtiofsd = virtiofsdStoreCached;
   };
 
   # Basic slirp network — gives DHCP and internet access to the guest.
