@@ -167,6 +167,14 @@ trap 'obs::stop' EXIT
 obs::mark "qemu-start"
 
 : 'execute the ZFS bringup install script, which formats the disks and installs NixOS onto them'
-bash "${NDH_INSTALL_SCRIPT}"
+# Mirror the install script's combined output to the xchg 9p share so the
+# operator can follow progress live from the host:
+#   tail -f <build-tmpdir>/xchg/install.log
+# The guest serial console (ttyAMA0) does not reliably reach the nix build log
+# — its content is dropped, only blank lines surface — whereas xchg is the
+# proven host<->guest channel (it already carries boot-size-hint.yaml).  The
+# serial stays as the kernel console (panic=1); we just no longer depend on it
+# for the install trace.  pipefail (set above) preserves the install exit code.
+bash "${NDH_INSTALL_SCRIPT}" 2>&1 | tee /tmp/xchg/install.log
 
 obs::mark "qemu-done"
