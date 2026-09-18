@@ -355,6 +355,11 @@ let
     cp ${
       pkgs.replaceVars ./tart-config.d/run.sh {
         nixBashTrampoline = nixBashTrampoline;
+        # Last-resort manifest path, baked per host.  The gcroot bundle links
+        # manifest.yaml precisely so run.sh can find it without help (see the
+        # comment on rawImageTargetPath); without this a freshly materialized
+        # VM cannot be started by its own wrapper.
+        defaultManifestPath = "${cfg.rawImageTargetPath}/manifest.yaml";
       }
     } "$out"
     chmod +x "$out"

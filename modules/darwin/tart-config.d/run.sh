@@ -13,8 +13,10 @@ source "@nixBashTrampoline@"
 #      invoked via the per-VM wrapper symlink (~/.tart/vms/<vm>.sh), the
 #      basename of $0 minus .sh resolves to the vm_name.
 #   3. ~/.config/nerd-tart/<symlink-basename>.yaml — XDG fallback.
-# If none resolve, we abort: the deploy bundle is generic and has no built-in
-# manifest path to fall back to.
+#   4. The materializer gcroot's manifest.yaml, baked in at build time from
+#      `rawImageTargetPath`.  Nothing creates the files in 2 and 3, so without
+#      this a freshly materialized VM could not be started by its own wrapper
+#      at all — only by an operator who knew to export NDH_TART_VM_CONFIG.
 manifest_path=""
 if [[ -n "${NDH_TART_VM_CONFIG:-}" ]]; then
 	manifest_path="$NDH_TART_VM_CONFIG"
@@ -23,7 +25,8 @@ else
 	wrapper_basename="$(basename "$0" .sh)"
 	for candidate in \
 		"${xdg_config_home}/nerd-tart/${wrapper_basename}.yaml" \
-		"${HOME}/.config/nerd-tart/${wrapper_basename}.yaml"; do
+		"${HOME}/.config/nerd-tart/${wrapper_basename}.yaml" \
+		"@defaultManifestPath@"; do
 		if [[ -r "$candidate" ]]; then
 			manifest_path="$candidate"
 			break
@@ -32,7 +35,7 @@ else
 fi
 
 if [[ -z "$manifest_path" ]]; then
-	echo "[ERROR] run manifest not found; set NDH_TART_VM_CONFIG or place a YAML under \$XDG_CONFIG_HOME/nerd-tart/<vm>.yaml" >&2
+	echo "[ERROR] run manifest not found at @defaultManifestPath@ (run the materializer to create that gcroot), nor under \$XDG_CONFIG_HOME/nerd-tart/<vm>.yaml, nor via NDH_TART_VM_CONFIG" >&2
 	exit 1
 fi
 
