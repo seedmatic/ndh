@@ -394,13 +394,13 @@ main() {
 		done < <(tart:manifest:images:enumerate)
 
 		if [[ ${#tart_vm_data_disks[@]} -eq 0 ]]; then
-			: "[tartConfig][WARN] no data disks resolved from manifest; using default ZFS disk layout"
-			tart_vm_data_disks=(
-				"${tart_vm_dir}/tank1.img"
-				"${tart_vm_dir}/tank2.img"
-				"${tart_vm_dir}/tank3.img"
-				"${tart_vm_dir}/recover.img"
-			)
+			# Fatal on purpose: the old hardcoded layout predates the prebuilt
+			# store disk and omits it, so materializing from a guessed set
+			# yields a VM that hangs in the initrd on a missing
+			# /dev/disk/by-label/nix-store.
+			: "[tartConfig][ERROR] no disks resolved from bringup manifest: ${raw_image_manifest_path:-<unresolved>}"
+			: "[tartConfig][ERROR] refusing to materialize a guessed disk set; check that the gcroot resolves to the current bundle"
+			exit 1
 		fi
 	}
 
@@ -455,6 +455,38 @@ main() {
 				fi
 			fi
 		fi
+	}
+
+	tart:runtime:user:resolve() {
+		# Counterpart of tart:runtime:home:resolve, for the account name.
+		# profile_user comes from the Nix config (profile.user.name), which may
+		# legitimately name an account absent from the machine actually running
+		# the materializer. The home already self-heals that way; without the
+		# same treatment here the two disagree: disk images land in the real
+		# home while the gcroot goes under the configured account, and run.sh
+		# then reads a manifest that does not describe the VM it is starting —
+		# producing a VM whose store disk is never attached.
+		runtime_user="${runtime_user:-$(id -un)}"
+
+		if id -u "$profile_user" >/dev/null 2>&1; then
+			return 0
+		fi
+
+		: "[tartConfig][WARN] configured profile user does not exist on this host: ${profile_user}; using runtime user: ${runtime_user}"
+		profile_user="$runtime_user"
+	}
+
+	tart:runtime:gcroot:realign() {
+		# Keep the gcroot next to the files it keeps alive: its path is baked
+		# from the configured account, so it has to follow the effective one.
+		[[ -n "${configured_user:-}" && "$configured_user" != "$profile_user" ]] || return 0
+		[[ -n "${raw_image_target_path:-}" ]] || return 0
+
+		local realigned="${raw_image_target_path//\/per-user\/${configured_user}\//\/per-user\/${profile_user}\/}"
+		[[ "$realigned" != "$raw_image_target_path" ]] || return 0
+
+		: "[tartConfig][WARN] realigning gcroot on the effective user: ${raw_image_target_path} -> ${realigned}"
+		raw_image_target_path="$realigned"
 	}
 
 	tart:runtime:tooling:validate() {
@@ -830,8 +862,13 @@ main() {
 		# only wastes host space, the guest finds it by label either way.
 		local disk="" manifest_image_name="" manifest_source="" marker=""
 
-		# The manifest may declare none (older bundles), and `set -u` makes an
-		# empty-array expansion fatal on some bash builds.
+		# Safe to skip quietly: by this point the manifest is known to have
+		# resolved (tart:disks:from-manifest:init aborts otherwise), so an empty
+		# list means the bundle genuinely declares no prebuilt image — an
+		# older-style image whose system config does not expect one. It is the
+		# unresolved-manifest case that must never reach here silently.
+		# The guard is also needed because `set -u` makes expanding an empty
+		# array fatal on some bash builds.
 		if [[ ${#tart_vm_prebuilt_disks[@]} -eq 0 ]]; then
 			return 0
 		fi
@@ -1018,6 +1055,9 @@ main() {
 
 	tart:config:resolve() {
 		profile_user="${PROFILE_USER:-${profile_user_default:-}}"
+		# Kept so the gcroot path, baked from this value, can be realigned once
+		# the effective user is known.
+		configured_user="$profile_user"
 		configured_home="${PROFILE_HOME:-${profile_home_default:-${HOME:-}}}"
 		effective_host_name="${effective_host_name_default:-unknown}"
 
@@ -1038,6 +1078,7 @@ main() {
 		: "start $(date) host=${effective_host_name} user=${profile_user}"
 
 		tart:runtime:home:resolve
+		tart:runtime:user:resolve
 
 		vm_name="${vm_name:-}"
 		vm_disk_format="${vm_disk_format:-asif}"
@@ -1057,6 +1098,9 @@ main() {
 		raw_image_source_path="${raw_image_source_path_default:-}"
 		raw_image_target_path="${raw_image_target_path_default:-}"
 		tart_run_script_store="${tart_run_script_store:-@tartRunScript@}"
+
+		# Must precede the manifest auto-resolve below: that reads the gcroot.
+		tart:runtime:gcroot:realign
 
 		tart:raw-image:manifest:auto-resolve
 

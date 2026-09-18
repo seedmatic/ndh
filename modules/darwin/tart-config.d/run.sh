@@ -23,9 +23,13 @@ if [[ -n "${NDH_TART_VM_CONFIG:-}" ]]; then
 else
 	xdg_config_home="${XDG_CONFIG_HOME:-${HOME}/.config}"
 	wrapper_basename="$(basename "$0" .sh)"
+	# The baked path embeds the account from the Nix config, which is not always
+	# the one that owns the gcroot (see tart:runtime:user:resolve in
+	# activation.sh); try the effective user's gcroot first so both ends agree.
 	for candidate in \
 		"${xdg_config_home}/nerd-tart/${wrapper_basename}.yaml" \
 		"${HOME}/.config/nerd-tart/${wrapper_basename}.yaml" \
+		"/nix/var/nix/gcroots/per-user/$(id -un)/tart-${wrapper_basename}-materialize/manifest.yaml" \
 		"@defaultManifestPath@"; do
 		if [[ -r "$candidate" ]]; then
 			manifest_path="$candidate"
@@ -148,12 +152,14 @@ tart:runtime:configure() {
 	done < <(tart:manifest:images:enumerate)
 
 	if [[ ${#required_disks[@]} -eq 0 ]]; then
-		required_disks=(
-			"${vm_disk_dir}/tank1.img"
-			"${vm_disk_dir}/tank2.img"
-			"${vm_disk_dir}/tank3.img"
-			"${vm_disk_dir}/recover.img"
-		)
+		# Deliberately fatal rather than falling back to a hardcoded ZFS layout.
+		# That fallback predates the prebuilt store disk and silently omits it,
+		# which no longer degrades gracefully: /nix/.ro-store is neededForBoot,
+		# so the guest hangs in the initrd waiting for a device that was never
+		# attached — an failure visible only on the guest console.
+		echo "[ERROR] no disks resolved from the bringup manifest: ${raw_image_manifest_path:-<unresolved>}" >&2
+		echo "[ERROR] refusing to start with a guessed disk set; re-run the materializer so the gcroot points at the current bundle" >&2
+		exit 1
 	fi
 }
 
