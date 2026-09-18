@@ -88,13 +88,6 @@
       vmRunNestedVirt = true;
     };
 
-    # Vector observability aggregator for NixOS disk image builds
-    bringupObserve = {
-      enable = true;
-      # Darwin host acts as the aggregator (no upstream endpoint)
-      # NixOS VMs forward to this via upstreamEndpoint in their configs
-    };
-
     # bioskop-nixos is up and hosts incus — retire the local (bootstrap) QEMU
     # linux-builder and offload aarch64-linux to that sibling. The buildMachine
     # (bioskop-nixos) is wired by modules/darwin/host-builder.nix;

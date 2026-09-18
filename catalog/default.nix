@@ -23,7 +23,7 @@ in
   # it here to enable/disable it on every host at once. Per-host wiring
   # (aggregator vs agent `upstreamEndpoint`) stays in each host module.
   observability = {
-    bringupObserve = true;
+    bringupObserve = false;
   };
 
   # Tailnet control-plane identity: shared tag vocabulary + ACL policy
