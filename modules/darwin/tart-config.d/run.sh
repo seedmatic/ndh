@@ -6,31 +6,34 @@
 source "@nixBashTrampoline@"
 
 # The run manifest YAML is per-VM identity (vm_name, vm_mac_address, cpu/mem,
-# disk sizes).  Resolution order (most explicit first):
-#   1. NDH_TART_VM_CONFIG env var — set by activate.sh, lets the operator
-#      override at run time.
-#   2. $XDG_CONFIG_HOME/nerd-tart/<symlink-basename>.yaml — when run.sh is
-#      invoked via the per-VM wrapper symlink (~/.tart/vms/<vm>.sh), the
-#      basename of $0 minus .sh resolves to the vm_name.
-#   3. ~/.config/nerd-tart/<symlink-basename>.yaml — XDG fallback.
-#   4. The materializer gcroot's manifest.yaml, baked in at build time from
-#      `rawImageTargetPath`.  Nothing creates the files in 2 and 3, so without
-#      this a freshly materialized VM could not be started by its own wrapper
-#      at all — only by an operator who knew to export NDH_TART_VM_CONFIG.
+# disk sizes) and names the bringup bundle whose manifest lists the disks.
+#
+# Resolution order, freshest-authority first — NOT most-specific first. The
+# materializer relinks its gcroot on every run, so that is the one source that
+# cannot go stale; the XDG files are placed by hand and never refreshed. Putting
+# them ahead of the gcroot (as this did) means a leftover from an earlier
+# materialization silently wins, the wrapper starts the VM against a previous
+# bundle, and disks added since — the prebuilt EROFS store among them — are
+# never attached. That cost an evening: the guest hung in the initrd on
+# /dev/disk/by-label/nix-store while every artifact on disk was correct.
+#   1. NDH_TART_VM_CONFIG — explicit, per-invocation operator override.
+#   2. The materializer gcroot of the effective user. The account that owns it
+#      is not always the one the Nix config names (see tart:runtime:user:resolve
+#      in activation.sh), so resolve it at runtime.
+#   3. The same path baked at build time from `rawImageTargetPath`.
+#   4. $XDG_CONFIG_HOME / ~/.config — legacy, last: a stale file here must never
+#      outrank what the materializer just wrote.
 manifest_path=""
 if [[ -n "${NDH_TART_VM_CONFIG:-}" ]]; then
 	manifest_path="$NDH_TART_VM_CONFIG"
 else
 	xdg_config_home="${XDG_CONFIG_HOME:-${HOME}/.config}"
 	wrapper_basename="$(basename "$0" .sh)"
-	# The baked path embeds the account from the Nix config, which is not always
-	# the one that owns the gcroot (see tart:runtime:user:resolve in
-	# activation.sh); try the effective user's gcroot first so both ends agree.
 	for candidate in \
-		"${xdg_config_home}/nerd-tart/${wrapper_basename}.yaml" \
-		"${HOME}/.config/nerd-tart/${wrapper_basename}.yaml" \
 		"/nix/var/nix/gcroots/per-user/$(id -un)/tart-${wrapper_basename}-materialize/manifest.yaml" \
-		"@defaultManifestPath@"; do
+		"@defaultManifestPath@" \
+		"${xdg_config_home}/nerd-tart/${wrapper_basename}.yaml" \
+		"${HOME}/.config/nerd-tart/${wrapper_basename}.yaml"; do
 		if [[ -r "$candidate" ]]; then
 			manifest_path="$candidate"
 			break
