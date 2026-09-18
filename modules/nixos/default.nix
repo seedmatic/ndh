@@ -123,6 +123,7 @@ let
     ./systemd
     ./zfs.nix
     ./zfs-recovery-chroot.nix
+    ./erofs-store-mount.nix
     ./sops.nix
     ./tailscale.nix
     ./bringup-xchg-mount.nix

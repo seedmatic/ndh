@@ -73,9 +73,10 @@ in
     ./console-serial.nix
     ./boot-loader.nix
 
-    # Storage (ZFS pools + recovery chroot)
+    # Storage (ZFS pools + recovery chroot + split /nix/store)
     ./zfs.nix
     ./zfs-recovery-chroot.nix
+    ./erofs-store-mount.nix
 
     # Tailnet (headscale client + sops schema).  Joining the fleet
     # tailnet during bringup lets the operator `tailscale ssh

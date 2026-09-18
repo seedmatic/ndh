@@ -42,6 +42,7 @@
 let
   postVmUserCommands = postVM; # Rename to avoid shadowing in derivation
   partLayout = import ./zfs-partition-layout.nix;
+  storeLayout = import ./erofs-store-layout.nix;
   zfsPoolDiskMap = import ./zfs-pool-disk-map.nix;
   espStartMiB = partLayout.espStartMiB;
   espSizeMiB = partLayout.espSizeMiB;
@@ -265,6 +266,10 @@ let
         channelFlag = if includeChannel then "--channel ${channelSources}" else "";
         bootSizePolicyNote = builtins.toJSON "ZFS bringup artifacts generated from canonical zfs-pool-disk-map definitions.";
         pauseAfterInstall = if pauseAfterInstall then "true" else "false";
+        storeImageLabel = storeLayout.label;
+        storeRoMountPoint = storeLayout.roMountPoint;
+        storeRwMountPoint = storeLayout.rwMountPoint;
+        storeMountPoint = storeLayout.storeMountPoint;
       }
     } "$out/bin/bringup-zfs-disk-images-install"
   '';
@@ -289,26 +294,45 @@ let
   };
   buildCommandScript = lib.getExe buildCommandScriptApp;
 
-in
-(vmToolsBase.override {
-  rootModules = [
-    "zfs"
-    "fuse"
-    "9p"
-    "9pnet_virtio"
-    "virtio_blk"
-    "virtio_pci"
-    "virtio_console"
-    "virtiofs"
-  ];
-  kernel = modulesTree;
-}).runInLinuxVM
+  # Read-only lower layer of the produced image's /nix/store, packed HERE on the
+  # host rather than materialized file-by-file inside the nested guest.  Shares
+  # `closureInfo` with the registration the installer replays, so the image and
+  # the target's Nix database describe exactly the same closure.
+  storeImage = import ./erofs-store-image.nix {
+    inherit pkgs lib closureInfo;
+    inherit (storeLayout) label;
+  };
+
+  diskImages =
+    (vmToolsBase.override {
+      rootModules = [
+        "zfs"
+        "fuse"
+        "9p"
+        "9pnet_virtio"
+        "virtio_blk"
+        "virtio_pci"
+        "virtio_console"
+        "virtiofs"
+        # Needed to mount the prebuilt store lower + its writable overlay onto
+        # the target root before nixos-install runs.
+        "erofs"
+        "overlay"
+      ];
+      kernel = modulesTree;
+    }).runInLinuxVM
   (
     pkgs.runCommand name
       {
         QEMU_OPTS = lib.concatStringsSep " " [
           "-drive file=$bootDiskImage,if=virtio,format=raw,cache=unsafe,aio=io_uring,werror=report"
           qemuAdditionalDriveOpts
+          # Prebuilt store lower, attached last so the pool disks keep their
+          # vdb…vde ordering (zfsDiskDeviceMap indexes from vdb).  The installer
+          # mounts it as the target's /nix/.ro-store instead of unpacking the
+          # closure into the pool.  `if=virtio` on purpose — an explicit
+          # `-device` for this breaks the guest's boot.
+          "-drive file=${storeImage},if=virtio,format=raw,readonly=on"
           nestedQemuNetOpts
         ];
         NIX_BUILD_CORES = toString vmCpuCores;
@@ -365,4 +389,8 @@ in
       ''
         source ${buildCommandScript}
       ''
-  )
+  );
+in
+{
+  inherit diskImages storeImage;
+}

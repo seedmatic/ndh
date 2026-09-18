@@ -28,6 +28,7 @@
 }:
 let
   partLayout = import ./zfs-partition-layout.nix;
+  storeLayout = import ./erofs-store-layout.nix;
   zfsPoolDiskMapEffective =
     if zfsPoolDiskMap != null then zfsPoolDiskMap else import ./zfs-pool-disk-map.nix;
   zstdLevel = hostProfile.nixosZstdCompressionLevel or 1;
@@ -176,20 +177,24 @@ let
                 "nixos:mount-overlay" = "true";
               };
             };
-            "nerd/nix/store" = {
+            # Writable upper of /nix/store.  The bulk of the store is the
+            # read-only EROFS lower on its own disk (see erofs-store-layout.nix),
+            # packed on the host instead of being unpacked file-by-file in the
+            # nested guest; only what is written after bringup lands here.
+            "${storeLayout.rwDataset}" = {
               type = "zfs_fs";
-              mountpoint = "/nix/store";
+              mountpoint = storeLayout.rwMountPoint;
               options = {
-                # Nix store files are typically small (<64K) and write-once.
-                # 16K recordsize reduces write amplification vs the 128K default.
-                # primarycache=metadata keeps ARC free of data blocks that are
-                # never re-read during install (only metadata lookups matter).
+                # Store files are typically small (<64K) and write-once, so 16K
+                # cuts write amplification vs the 128K default.  Unlike the
+                # former install-time-only store dataset, this one is read back
+                # at runtime (binaries execute from it), so primarycache keeps
+                # its default `all` — caching data blocks here is the point.
                 # sync intentionally inherits from pool: the install script sets
                 # sync=disabled on the pool during bringup and restores
                 # sync=standard before export — a local property here would
                 # survive the pool-level restore and stay disabled at runtime.
                 recordsize = "16K";
-                primarycache = "metadata";
                 "nixos:mount-overlay" = "false";
               };
             };

@@ -378,10 +378,18 @@ main() {
 	tart:disks:from-manifest:init() {
 		local image_name image_role
 		tart_vm_data_disks=()
+		tart_vm_prebuilt_disks=()
 
 		while IFS=$'\t' read -r image_name image_role; do
 			[[ -n "$image_name" ]] || continue
 			[[ "$image_role" != "primary" ]] || continue
+			# Prebuilt images (e.g. the read-only EROFS store lower) are finished
+			# filesystems, not pool members: they are copied verbatim and never
+			# blank-created, grown, or probed for ZFS partition labels.
+			if [[ "$image_role" == "prebuilt" ]]; then
+				tart_vm_prebuilt_disks+=("${tart_vm_dir}/${image_name}.img")
+				continue
+			fi
 			tart_vm_data_disks+=("${tart_vm_dir}/${image_name}.img")
 		done < <(tart:manifest:images:enumerate)
 
@@ -815,6 +823,44 @@ main() {
 		done
 	}
 
+	tart:vm:prebuilt-disks:ensure() {
+		# Prebuilt images are finished read-only filesystems (the EROFS store
+		# lower), so unlike data disks they are copied verbatim: no blank
+		# creation, and deliberately no resize — growing a read-only filesystem
+		# only wastes host space, the guest finds it by label either way.
+		local disk="" manifest_image_name="" manifest_source="" marker=""
+
+		# The manifest may declare none (older bundles), and `set -u` makes an
+		# empty-array expansion fatal on some bash builds.
+		if [[ ${#tart_vm_prebuilt_disks[@]} -eq 0 ]]; then
+			return 0
+		fi
+
+		for disk in "${tart_vm_prebuilt_disks[@]}"; do
+			manifest_image_name="$(basename "$disk" .img)"
+			manifest_source="$(tart:raw-image:path:from-manifest "$manifest_image_name" 2>/dev/null || true)"
+
+			if [[ -z "$manifest_source" ]]; then
+				: "[tartConfig][ERROR] prebuilt image has no manifest source: $manifest_image_name"
+				exit 1
+			fi
+
+			# The source is a store path, so its identity IS its content — record
+			# it and skip the work when unchanged.  Content comparison cannot do
+			# this job here: the target is ASIF-converted, so it never compares
+			# equal to the raw source and would be rebuilt on every activation.
+			marker="${disk}.source"
+			if [[ -f "$disk" && -f "$marker" ]] && [[ "$(cat "$marker")" == "$manifest_source" ]]; then
+				: "[tartConfig][INFO] ${manifest_image_name} prebuilt image already matches source; keeping: $disk"
+				continue
+			fi
+
+			: "[tartConfig][INFO] ${manifest_image_name} prebuilt image materializing from source: $manifest_source"
+			tart:disk:image:materialize-from-source "$manifest_source" "$disk" "${manifest_image_name} prebuilt image"
+			printf '%s\n' "$manifest_source" > "$marker"
+		done
+	}
+
 	tart:vm:factory-reset:apply() {
 		if ! $factory_reset; then
 			return 0
@@ -1059,6 +1105,7 @@ main() {
 	tart:vm:factory-reset:apply
 	tart:vm:root-disk:ensure
 	tart:vm:data-disks:size:enforce
+	tart:vm:prebuilt-disks:ensure
 	tart:vm:zfs:pool-size:validate
 	tart:vm:config:patch
 	tart:vm:finalize

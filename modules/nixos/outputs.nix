@@ -332,7 +332,9 @@ let
           sourceOutPath,
           nixosConfiguration,
           primaryImagePath ? "boot.img",
-          zpools ? [ ],
+          # Populated at build time from `zpool status --json` (a map), so the
+          # unpopulated default matches that shape rather than being a list.
+          zpools ? { },
         }:
         {
           schemaVersion = 1;
@@ -365,7 +367,12 @@ let
           source,
           primaryImagePath ? "boot.img",
           extraImages ? [ ],
-          zpools ? [ ],
+          # Whole filesystem images built by their own derivation, symlinked
+          # into the bundle as `<name>.img` (never blank-created or resized).
+          prebuiltImages ? { },
+          # Populated at build time from `zpool status --json` (a map), so the
+          # unpopulated default matches that shape rather than being a list.
+          zpools ? { },
         }:
         let
           manifestAttrsJson = builtins.toJSON (mkDiskImageManifestAttrs {
@@ -391,6 +398,16 @@ let
             passAsFile = [ "extraImagesJson" ];
             extraImagesJson = builtins.toJSON extraImages;
           } ''yq -p json -o yaml "$extraImagesJsonPath" > "$out"'';
+          prebuiltImagesSpecYamlFile = ndhStoreApiLinux.runCommand "manifest-prebuilt-images-${attr}.yaml" {
+            nativeBuildInputs = [ pkgsForLinux.yq-go ];
+            passAsFile = [ "prebuiltImagesJson" ];
+            prebuiltImagesJson = builtins.toJSON (
+              nixpkgs.lib.mapAttrsToList (imageName: image: {
+                name = imageName;
+                path = "${image}";
+              }) prebuiltImages
+            );
+          } ''yq -p json -o yaml "$prebuiltImagesJsonPath" > "$out"'';
           manifestAssemblyScript = pkgsForLinux.replaceVars ./mk-disk-image-with-manifest.sh {
             nixBashTrampoline = "${ndhNixBashTrampoline}";
             loggerTag = "nixos.outputs.mkDiskImageWithManifest.${attr}";
@@ -402,6 +419,7 @@ let
             NDH_PRIMARY_IMAGE_PATH = primaryImagePath;
             NDH_MANIFEST_BASE_YAML_FILE = manifestBaseYamlFile;
             NDH_EXTRA_IMAGES_SPEC_YAML_FILE = extraImagesSpecYamlFile;
+            NDH_PREBUILT_IMAGES_SPEC_YAML_FILE = prebuiltImagesSpecYamlFile;
             # Disable strict bootstrap profile check for minimal bringup images
             NDH_BOOTSTRAP_STRICT = "0";
           }
@@ -498,7 +516,12 @@ let
         bootLoader = "systemd-boot";
         diskSizeMiB = diskSizeMiB;
         efiSystemPartitionSizeMiB = efiSystemPartitionSizeMiB;
-        source = diskImageBringupZfsSystemdBootRaw;
+        source = diskImageBringupZfsSystemdBootRaw.diskImages;
+        # The store lower is packed on the host, so it is not one of the disks
+        # the nested guest writes — it joins the bundle as its own image.
+        prebuiltImages = {
+          store = diskImageBringupZfsSystemdBootRaw.storeImage;
+        };
         # primaryImagePath defaults to "boot.img" — dedicated EFI boot disk
         # zpools is populated at runtime from boot-size-hint.yaml (zpool status inside QEMU)
       };

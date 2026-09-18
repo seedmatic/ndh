@@ -89,7 +89,25 @@ require_partlabel tank2
 require_partlabel tank3
 require_partlabel recover
 
+# Target /nix/store = overlay(prebuilt EROFS lower + ZFS upper).  Must precede
+# anything that reads or writes the target store.
+: '[bringup-zfs] mounting prebuilt store image on the install target'
+bringup::mount_prebuilt_store \
+  /mnt/zfs-root \
+  '@storeImageLabel@' \
+  '@storeRoMountPoint@' \
+  '@storeRwMountPoint@' \
+  '@storeMountPoint@'
+
+# Builder-side DB: lets nix resolve the virtiofs-mounted source closure (the
+# installer still reads @systemToplevel@ from the build host's store).
 nix-store --option build-users-group "" --load-db < @closureRegistration@
+
+# Target-side DB: the store files came with the image, so nothing has marked
+# them valid yet.  Without this, nixos-install's own `nix copy` concludes it
+# must rewrite the whole closure into the overlay upper.
+: '[bringup-zfs] registering the closure in the target Nix database'
+bringup::register_target_store_db /mnt/zfs-root @closureRegistration@
 
 target_bootstrap_profile="/mnt/zfs-root/nix/var/nix/profiles/per-user/root/io-seedmatic-ndh-bringup-runtime"
 target_bootstrap_installer="@systemToplevel@/sw/bin/nerd-bringup-install"
@@ -101,9 +119,9 @@ else
   : "[bringup-zfs][WARN] bootstrap installer missing in target system closure: $target_bootstrap_installer"
 fi
 
-: 'Ensure target image store contains the exact system closure referenced'
-: 'by boot entries (init=/nix/store/.../init) before nixos-install.'
-bringup::ensure_toplevel_in_target_store "/mnt/zfs-root" @systemToplevel@
+: 'Fail loudly if the prebuilt store lacks the closure the boot entries name'
+: '(init=/nix/store/.../init) — a silent miss would degrade into re-copying it.'
+bringup::assert_toplevel_in_target_store "/mnt/zfs-root" @systemToplevel@
 
 channel_arg='@channelFlag@'
 if [[ -n "$channel_arg" ]]; then
@@ -179,5 +197,10 @@ zfs set logbias=latency recover || true
 fuser -km /mnt/zfs-root 2>/dev/null || true
 sleep 1
 # --------------------------------------─
+
+# The store overlay pins the ZFS dataset holding its upper/work dirs, so it has
+# to come down before disko exports the pool.
+: '[bringup-zfs] unmounting the prebuilt store overlay'
+bringup::umount_prebuilt_store /mnt/zfs-root '@storeRoMountPoint@' '@storeMountPoint@'
 
 "@diskoUnmountExe@"

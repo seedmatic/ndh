@@ -131,9 +131,16 @@ tart:runtime:configure() {
 	fi
 
 	required_disks=()
+	required_prebuilt_disks=()
 	local image_name image_role
 	while IFS=$'\t' read -r image_name image_role; do
 		[[ -n "$image_name" && "$image_role" != "primary" ]] || continue
+		# Prebuilt images are finished read-only filesystems (the EROFS store
+		# lower); attach them ro so the guest cannot corrupt a shared artifact.
+		if [[ "$image_role" == "prebuilt" ]]; then
+			required_prebuilt_disks+=("${vm_disk_dir}/${image_name}.img")
+			continue
+		fi
 		required_disks+=("${vm_disk_dir}/${image_name}.img")
 	done < <(tart:manifest:images:enumerate)
 
@@ -199,6 +206,18 @@ tart:disk:required:validate() {
 	local disk=""
 	local current_bytes=""
 	local expected_bytes=$(( data_disk_size_gib * 1000 * 1000 * 1000 ))
+	# Prebuilt images must exist but are deliberately left out of the size check
+	# below: they are read-only filesystems sized by their content, not disks
+	# grown to vmDataDiskSizeGiB.
+	if [[ ${#required_prebuilt_disks[@]} -gt 0 ]]; then
+		for disk in "${required_prebuilt_disks[@]}"; do
+			if [[ ! -f "${disk}" ]]; then
+				echo "[ERROR] missing required prebuilt disk: ${disk}" >&2
+				echo "[ERROR] run activation/materializer first to provision it" >&2
+				exit 1
+			fi
+		done
+	fi
 	for disk in "${required_disks[@]}"; do
 		if [[ ! -f "${disk}" ]]; then
 			echo "[ERROR] missing required data disk: ${disk}" >&2
@@ -414,6 +433,11 @@ tart:run-args:required-disks:add() {
 	for disk in "${required_disks[@]}"; do
 		run_args+=("--disk=${disk}:sync=none,caching=cached")
 	done
+	if [[ ${#required_prebuilt_disks[@]} -gt 0 ]]; then
+		for disk in "${required_prebuilt_disks[@]}"; do
+			run_args+=("--disk=${disk}:ro")
+		done
+	fi
 }
 
 tart:run:execute() {
