@@ -539,11 +539,10 @@ let
         diskSizeMiB = diskSizeMiB;
         efiSystemPartitionSizeMiB = efiSystemPartitionSizeMiB;
         source = diskImageBringupZfsSystemdBootRaw.diskImages;
-        # The store lower is packed on the host, so it is not one of the disks
-        # the nested guest writes — it joins the bundle as its own image.
-        prebuiltImages = {
-          store = diskImageBringupZfsSystemdBootRaw.storeImage;
-        };
+        # The store layers are packed on the host, so they are not among the
+        # disks the nested guest writes — each joins the bundle as its own image,
+        # keyed by the `imageName` its layer declares.
+        prebuiltImages = diskImageBringupZfsSystemdBootRaw.storeImages;
         # primaryImagePath defaults to "boot.img" — dedicated EFI boot disk
         # zpools is populated at runtime from boot-size-hint.yaml (zpool status inside QEMU)
       };

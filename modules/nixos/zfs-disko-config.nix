@@ -28,7 +28,7 @@
 }:
 let
   partLayout = import ./zfs-partition-layout.nix;
-  storeLayout = import ./erofs-store-layout.nix;
+  storeLayers = import ./erofs-store-layers.nix;
   zfsPoolDiskMapEffective =
     if zfsPoolDiskMap != null then zfsPoolDiskMap else import ./zfs-pool-disk-map.nix;
   zstdLevel = hostProfile.nixosZstdCompressionLevel or 1;
@@ -177,13 +177,14 @@ let
                 "nixos:mount-overlay" = "true";
               };
             };
-            # Writable upper of /nix/store.  The bulk of the store is the
-            # read-only EROFS lower on its own disk (see erofs-store-layout.nix),
-            # packed on the host instead of being unpacked file-by-file in the
-            # nested guest; only what is written after bringup lands here.
-            "${storeLayout.rwDataset}" = {
+            # Writable upper of /nix/store.  The bulk of the store is the stack
+            # of read-only EROFS layers, each on its own disk (see
+            # erofs-store-layers.nix), packed on the host instead of being
+            # unpacked file-by-file in the nested guest; only what is written
+            # after bringup lands here.
+            "${storeLayers.rwDataset}" = {
               type = "zfs_fs";
-              mountpoint = storeLayout.rwMountPoint;
+              mountpoint = storeLayers.rwMountPoint;
               options = {
                 # Store files are typically small (<64K) and write-once, so 16K
                 # cuts write amplification vs the 128K default.  Unlike the

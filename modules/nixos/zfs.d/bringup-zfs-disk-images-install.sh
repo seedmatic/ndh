@@ -89,15 +89,14 @@ require_partlabel tank2
 require_partlabel tank3
 require_partlabel recover
 
-# Target /nix/store = overlay(prebuilt EROFS lower + ZFS upper).  Must precede
-# anything that reads or writes the target store.
-: '[bringup-zfs] mounting prebuilt store image on the install target'
+# Target /nix/store = overlay(the prebuilt EROFS layer stack + ZFS upper).  Must
+# precede anything that reads or writes the target store.
+: '[bringup-zfs] mounting the prebuilt store layers on the install target'
 bringup::mount_prebuilt_store \
   /mnt/zfs-root \
-  '@storeImageLabel@' \
-  '@storeRoMountPoint@' \
   '@storeRwMountPoint@' \
-  '@storeMountPoint@'
+  '@storeMountPoint@' \
+  @storeLayerMountSpecs@
 
 # Builder-side DB: lets nix resolve the virtiofs-mounted source closure (the
 # installer still reads @systemToplevel@ from the build host's store).
@@ -119,23 +118,30 @@ else
   : "[bringup-zfs][WARN] bootstrap installer missing in target system closure: $target_bootstrap_installer"
 fi
 
-# Durable GC root over the whole EROFS lower.
+# One durable GC root per EROFS layer.
 #
-# The lower's contents are, by construction, exactly this closure: the image is
-# packed from `closureInfo { rootPaths = [ installSystemPath ] }`.  So one root on
-# the toplevel covers it entirely — no per-path roots, no partial profile.
+# A layer's contents are, by construction, exactly the closure it was packed
+# from.  So one root on that closure's toplevel covers the layer entirely — no
+# per-path roots, no partial profile.
 #
-# Without it the lower is rooted only by generation 1 of the system profile, which
-# is precisely what `nix-collect-garbage -d` prunes.  Measured on bioskop-nixos
-# (2026-09-19): 105 of the 659 lower paths would then become garbage, and nix
-# would delete them *through the overlay* — so overlayfs writes a whiteout per
-# path in the upper, the EROFS bytes stay unreclaimable, and those paths are
-# masked for good, even if a later lower provides them again. A routine hygiene
-# command would silently poison the store.
-target_erofs_lower_gcroot="/mnt/zfs-root/nix/var/nix/gcroots/erofs-store-lower"
-: '[bringup-zfs] rooting the EROFS lower closure against nix-collect-garbage -d'
-mkdir -p "$(dirname "$target_erofs_lower_gcroot")"
-ln -sfn @systemToplevel@ "$target_erofs_lower_gcroot"
+# Without it a layer is rooted only by the system profile generation that happens
+# to name it, which is precisely what `nix-collect-garbage -d` prunes.  Measured
+# on bioskop-nixos (2026-09-19): 105 of the 659 paths in the single layer would
+# then become garbage, and nix would delete them *through the overlay* — so
+# overlayfs writes a whiteout per path in the upper, the EROFS bytes stay
+# unreclaimable, and those paths are masked for good, even if a later layer
+# provides them again.  A routine hygiene command would silently poison the store.
+: '[bringup-zfs] rooting each EROFS layer closure against nix-collect-garbage -d'
+# shellcheck disable=SC2043
+# SC2043: the loop list is a replaceVars placeholder, so shellcheck sees one
+# word here; the substituted text carries one quoted spec per declared layer.
+for layer_gcroot_spec in @storeLayerGcrootSpecs@; do
+  layer_name="${layer_gcroot_spec%%:*}"
+  layer_root_path="${layer_gcroot_spec#*:}"
+  target_layer_gcroot="/mnt/zfs-root/nix/var/nix/gcroots/erofs-store-layer-${layer_name}"
+  mkdir -p "$(dirname "$target_layer_gcroot")"
+  ln -sfn "$layer_root_path" "$target_layer_gcroot"
+done
 
 : 'Fail loudly if the prebuilt store lacks the closure the boot entries name'
 : '(init=/nix/store/.../init) — a silent miss would degrade into re-copying it.'
@@ -219,6 +225,6 @@ sleep 1
 # The store overlay pins the ZFS dataset holding its upper/work dirs, so it has
 # to come down before disko exports the pool.
 : '[bringup-zfs] unmounting the prebuilt store overlay'
-bringup::umount_prebuilt_store /mnt/zfs-root '@storeRoMountPoint@' '@storeMountPoint@'
+bringup::umount_prebuilt_store /mnt/zfs-root '@storeMountPoint@' @storeLayerRoMountPoints@
 
 "@diskoUnmountExe@"

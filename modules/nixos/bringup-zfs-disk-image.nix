@@ -42,7 +42,7 @@
 let
   postVmUserCommands = postVM; # Rename to avoid shadowing in derivation
   partLayout = import ./zfs-partition-layout.nix;
-  storeLayout = import ./erofs-store-layout.nix;
+  storeLayers = import ./erofs-store-layers.nix;
   zfsPoolDiskMap = import ./zfs-pool-disk-map.nix;
   espStartMiB = partLayout.espStartMiB;
   espSizeMiB = partLayout.espSizeMiB;
@@ -266,10 +266,9 @@ let
         channelFlag = if includeChannel then "--channel ${channelSources}" else "";
         bootSizePolicyNote = builtins.toJSON "ZFS bringup artifacts generated from canonical zfs-pool-disk-map definitions.";
         pauseAfterInstall = if pauseAfterInstall then "true" else "false";
-        storeImageLabel = storeLayout.label;
-        storeRoMountPoint = storeLayout.roMountPoint;
-        storeRwMountPoint = storeLayout.rwMountPoint;
-        storeMountPoint = storeLayout.storeMountPoint;
+        inherit storeLayerMountSpecs storeLayerRoMountPoints storeLayerGcrootSpecs;
+        storeRwMountPoint = storeLayers.rwMountPoint;
+        storeMountPoint = storeLayers.storeMountPoint;
       }
     } "$out/bin/bringup-zfs-disk-images-install"
   '';
@@ -294,14 +293,49 @@ let
   };
   buildCommandScript = lib.getExe buildCommandScriptApp;
 
-  # Read-only lower layer of the produced image's /nix/store, packed HERE on the
-  # host rather than materialized file-by-file inside the nested guest.  Shares
-  # `closureInfo` with the registration the installer replays, so the image and
+  # Which closure each declared layer carries.  erofs-store-layers.nix names the
+  # layers; what they hold is a build-time decision, so it is bound here.  Today
+  # every layer carries the same closure because there is exactly one — a layer
+  # per system generation binds them individually.
+  storeLayerBindings = map (layer: layer // { rootPath = installSystemPath; }) storeLayers.layers;
+
+  # Read-only layers of the produced image's /nix/store, packed HERE on the host
+  # rather than materialized file-by-file inside the nested guest.  They share
+  # `closureInfo` with the registration the installer replays, so the images and
   # the target's Nix database describe exactly the same closure.
-  storeImage = import ./erofs-store-image.nix {
-    inherit pkgs lib closureInfo;
-    inherit (storeLayout) label;
-  };
+  storeImages = lib.listToAttrs (
+    map (binding: {
+      name = binding.imageName;
+      value = import ./erofs-store-image.nix {
+        inherit pkgs lib closureInfo;
+        inherit (binding) label;
+      };
+    }) storeLayerBindings
+  );
+
+  # Projections of the stack onto the shape each consumer needs.  The shell specs
+  # are quoted here rather than at expansion time: replaceVars substitutes into
+  # the script text, so the quotes land in the file and bash parses each spec as
+  # one word.
+  storeLayerMountSpecs = lib.concatStringsSep " " (
+    map (layer: "'${layer.label}:${layer.roMountPoint}'") storeLayers.layers
+  );
+  # Unmount order is the reverse of the mount order.
+  storeLayerRoMountPoints = lib.concatStringsSep " " (
+    map (layer: "'${layer.roMountPoint}'") (lib.reverseList storeLayers.layers)
+  );
+  storeLayerGcrootSpecs = lib.concatStringsSep " " (
+    map (binding: "'${binding.name}:${binding.rootPath}'") storeLayerBindings
+  );
+
+  # Attached after the pool disks so those keep their vdb…vde ordering
+  # (zfsDiskDeviceMap indexes from vdb).  `if=virtio` on purpose — an explicit
+  # `-device` for these breaks the guest's boot.
+  qemuStoreLayerDriveOpts = lib.concatStringsSep " " (
+    map (
+      binding: "-drive file=${storeImages.${binding.imageName}},if=virtio,format=raw,readonly=on"
+    ) storeLayerBindings
+  );
 
   diskImages =
     (vmToolsBase.override {
@@ -327,12 +361,9 @@ let
         QEMU_OPTS = lib.concatStringsSep " " [
           "-drive file=$bootDiskImage,if=virtio,format=raw,cache=unsafe,aio=io_uring,werror=report"
           qemuAdditionalDriveOpts
-          # Prebuilt store lower, attached last so the pool disks keep their
-          # vdb…vde ordering (zfsDiskDeviceMap indexes from vdb).  The installer
-          # mounts it as the target's /nix/.ro-store instead of unpacking the
-          # closure into the pool.  `if=virtio` on purpose — an explicit
-          # `-device` for this breaks the guest's boot.
-          "-drive file=${storeImage},if=virtio,format=raw,readonly=on"
+          # Prebuilt store layers, attached last.  The installer mounts them as
+          # the target's stack instead of unpacking the closure into the pool.
+          qemuStoreLayerDriveOpts
           nestedQemuNetOpts
         ];
         NIX_BUILD_CORES = toString vmCpuCores;
@@ -392,5 +423,5 @@ let
   );
 in
 {
-  inherit diskImages storeImage;
+  inherit diskImages storeImages;
 }
