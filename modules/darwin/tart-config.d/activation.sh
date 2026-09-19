@@ -10,8 +10,18 @@ tart:bool:is-true() {
 	[[ "$value" == "1" || "$value" == "true" || "$value" == "yes" || "$value" == "on" ]]
 }
 
-tart:image:format() {
+tart:image:info:json() {
+	# The single door to `diskutil image info`, as JSON.
+	#
+	# Reading the plist as XML forces the caller to align interleaved <key> and
+	# value elements by index, and that alignment collapses when a dict holds a
+	# single entry: yq renders it as a map rather than a sequence, the
+	# expression errors, and the caller sees an EMPTY result — indistinguishable
+	# from "this image declares no partitions", i.e. from "this disk is a blank
+	# placeholder, erase it".  Going through plutil lets fields be addressed by
+	# name, so one partition reads like three.
 	local image_path="$1"
+	local json=""
 
 	if [[ ! -f "$image_path" ]]; then
 		return 1
@@ -21,33 +31,30 @@ tart:image:format() {
 		diskutil_bin="/usr/sbin/diskutil"
 	fi
 
-	"$diskutil_bin" image info --plist "$image_path" 2>/dev/null |
-		plutil -convert json -o - - 2>/dev/null |
-		yq -p=json -r '.["Image Format"]'
+	json="$(
+		"$diskutil_bin" image info --plist "$image_path" 2>/dev/null |
+			plutil -convert json -o - - 2>/dev/null || true
+	)"
+
+	# Every successful answer carries "Image Format".  Its absence means the
+	# introspection itself failed — the image is held open by a running VM
+	# ("Resource temporarily unavailable"), or a tool is missing from PATH — and
+	# that must never be reported as an image without partitions.
+	if [[ -z "$json" ]] || ! printf '%s' "$json" | yq -p=json -e '.["Image Format"]' >/dev/null 2>&1; then
+		return 1
+	fi
+
+	printf '%s\n' "$json"
+}
+
+tart:image:format() {
+	tart:image:info:json "$1" | yq -p=json -r '.["Image Format"]'
 }
 
 tart:image:virtual-size-bytes() {
-	local image_path="$1"
 	local total_bytes=""
 
-	if [[ ! -f "$image_path" ]]; then
-		return 1
-	fi
-
-	if [[ -z "${diskutil_bin:-}" ]]; then
-		diskutil_bin="/usr/sbin/diskutil"
-	fi
-
-	total_bytes="$(
-		"$diskutil_bin" image info --plist "$image_path" 2>/dev/null |
-			yq -p=xml -r '
-				.plist.dict.dict[] |
-				select((.key? | type) == "!!seq") |
-				select(.key[] == "Total Bytes") |
-				(.key | to_entries[] | select(.value == "Total Bytes") | .key) as $k |
-				.integer[$k]
-			'
-	)"
+	total_bytes="$(tart:image:info:json "$1" | yq -p=json -r '.["Size Info"]["Total Bytes"]' || true)"
 
 	if [[ ! "$total_bytes" =~ ^[0-9]+$ ]]; then
 		return 1
@@ -56,22 +63,58 @@ tart:image:virtual-size-bytes() {
 	printf '%s\n' "$total_bytes"
 }
 
-tart:image:size:matches-source() {
-	# tart:image:size:matches-source <source_img> <target_img>
-	local source_img="$1"
-	local target_img="$2"
-	local source_bytes=""
-	local target_bytes=""
+tart:image:partition:hint:present() {
+	# tart:image:partition:hint:present <image> <hint_substring>
+	#
+	# 0 = some partition carries the hint · 1 = none does · 2 = not
+	# introspectable.  The third outcome is not pedantry: callers ERASE disks on
+	# a negative answer, so "I could not look" must never collapse into "there
+	# is nothing there".
+	local image_path="$1"
+	local wanted="${2,,}"
+	local json=""
+	local hints=""
+	local hint=""
 
-	[[ -f "$source_img" && -f "$target_img" ]] || return 1
+	json="$(tart:image:info:json "$image_path")" || return 2
+	# Bracketed key access throughout: yq's lexer rejects `."Image Format"` but
+	# accepts `.["Image Format"]`, so one form works for every key.
+	hints="$(printf '%s\n' "$json" | yq -p=json -r '.Partitions[]["content-hint"]' 2>/dev/null || true)"
 
-	source_bytes="$(tart:image:virtual-size-bytes "$source_img" 2>/dev/null || true)"
-	target_bytes="$(tart:image:virtual-size-bytes "$target_img" 2>/dev/null || true)"
+	while IFS= read -r hint; do
+		hint="${hint,,}"
+		if [[ -n "$hint" && "$hint" == *"$wanted"* ]]; then
+			return 0
+		fi
+	done <<< "$hints"
 
-	[[ "$source_bytes" =~ ^[0-9]+$ ]] || return 1
-	[[ "$target_bytes" =~ ^[0-9]+$ ]] || return 1
+	return 1
+}
 
-	[[ "$source_bytes" == "$target_bytes" ]]
+tart:image:zfs:contains() {
+	# A ZFS member disk reports a "ZFS" (or Solaris) partition hint; a blank
+	# placeholder created with `--fs None` reports one partition with an EMPTY
+	# hint.  The two are unambiguous, which is what lets the caller erase one
+	# and preserve the other.  Propagates the three-valued contract.
+	local image_path="$1"
+	local status=0
+
+	tart:image:partition:hint:present "$image_path" zfs || status=$?
+	if ((status != 1)); then
+		return "$status"
+	fi
+
+	tart:image:partition:hint:present "$image_path" solaris
+}
+
+tart:image:efi:contains() {
+	# Positive content test for "this disk was materialized from a boot image",
+	# and the reason it replaced a virtual-size comparison against the source:
+	# size is not a marker.  It matched only by coincidence (source and target
+	# both 600 MiB), and any change to the boot image's size would have flipped
+	# the gate to "re-materialize", silently wiping the node's ESP and its
+	# NixOS generations.
+	tart:image:partition:hint:present "$1" efi
 }
 
 tart:image:resize-if-smaller() {
@@ -117,66 +160,6 @@ tart:image:resize-if-smaller() {
 	chmod 0644 "$image_path" 2>/dev/null || true
 
 	return 0
-}
-
-tart:root-disk:zfs:contains() {
-	local disk="$1"
-	local partition_hints=""
-	local partition_names=""
-	local hint=""
-	local part_name=""
-	local zfs_label_regex="${TART_ROOT_DISK_ZFS_LABEL_REGEX:-^(tank1|tank2|tank3|recover)$}"
-	local log_prefix="${TART_LOG_PREFIX:-[tart]}"
-
-	if [[ ! -f "$disk" ]]; then
-		echo "${log_prefix}[WARN] root disk missing for ZFS introspection: ${disk}" >&2
-		return 1
-	fi
-
-	if [[ -z "${diskutil_bin:-}" ]]; then
-		diskutil_bin="/usr/sbin/diskutil"
-	fi
-
-	partition_hints="$({
-		"$diskutil_bin" image info --plist "$disk" 2>/dev/null |
-			yq -p=xml '
-				.plist.dict.array.dict[] |
-				select(.key[] == "content-hint") |
-				(.key | to_entries[] | select(.value == "content-hint") | .key) as $k |
-				.string[$k]
-			' 2>/dev/null
-	} || true)"
-
-	partition_names="$({
-		"$diskutil_bin" image info --plist "$disk" 2>/dev/null |
-			yq -p=xml '
-				.plist.dict.array.dict[] |
-				select(.key[] == "name") |
-				(.key | to_entries[] | select(.value == "name") | .key) as $k |
-				.string[$k]
-			' 2>/dev/null
-	} || true)"
-
-	if [[ -z "$partition_hints" && -z "$partition_names" ]]; then
-		return 1
-	fi
-
-	while IFS= read -r hint; do
-		hint="${hint,,}"
-		if [[ "$hint" == *"zfs"* || "$hint" == *"solaris"* ]]; then
-			return 0
-		fi
-	done <<< "$partition_hints"
-
-	while IFS= read -r part_name; do
-		part_name="${part_name,,}"
-		if [[ "$part_name" =~ $zfs_label_regex ]]; then
-			echo "${log_prefix}[INFO] root disk ZFS signature detected from partition label: ${part_name}" >&2
-			return 0
-		fi
-	done <<< "$partition_names"
-
-	return 1
 }
 
 tart:bootstrap:manifest:bootloader:validate() {
@@ -804,6 +787,7 @@ main() {
 		local current_bytes=""
 		local expected_bytes=0
 		local disk_format=""
+		local zfs_probe=0
 
 		for disk in "${tart_vm_data_disks[@]}"; do
 			manifest_image_name="$(basename "$disk" .img)"
@@ -817,13 +801,22 @@ main() {
 				# Detect blank placeholder disks: ASIF format means the disk was
 				# created by tart:vm:disks:ensure:blank and has no real data.
 				# EXCEPTION: after initial bringup materialization, the disk is ASIF
-				# format but contains live ZFS data — detect this via partition labels
-				# and preserve it unconditionally.
+				# format but contains live ZFS data — detect this from the partition
+				# table and preserve it unconditionally.
 				disk_format="$(tart:image:format "$disk" 2>/dev/null || true)"
 				if [[ "$disk_format" == "ASIF" && -n "$manifest_source" ]]; then
-					if tart:root-disk:zfs:contains "$disk"; then
+					zfs_probe=0
+					tart:image:zfs:contains "$disk" || zfs_probe=$?
+					if ((zfs_probe == 0)); then
 						: "[tartConfig][INFO] ${manifest_image_name} ASIF data disk has live ZFS data; preserving: $disk"
 						continue
+					fi
+					if ((zfs_probe == 2)); then
+						# This is the one branch that destroys data, so it only ever
+						# runs on a POSITIVE answer.  An unreadable partition table
+						# used to read as "no ZFS here" and took the disk with it.
+						: "[tartConfig][ERROR] ${manifest_image_name} data disk partition table is unreadable; refusing to replace a disk that may hold a live pool: $disk"
+						exit 1
 					fi
 					: "[tartConfig][INFO] ${manifest_image_name} data disk is blank ASIF placeholder; re-materializing from source: $manifest_source"
 					rm -f "$disk"
@@ -916,10 +909,36 @@ main() {
 		: "[tartConfig][INFO] factory reset cleanup completed for vm=$vm_name"
 	}
 
+	tart:vm:disks:released:await() {
+		# `tart stop` returns before Virtualization.framework has closed the disk
+		# images, and every gate below reads a partition table to decide whether
+		# to preserve or erase.  A still-held image reports "unreadable", which
+		# is fatal by design now — so wait for the release instead of racing it.
+		local waited=0
+		local limit="${TART_DISK_RELEASE_TIMEOUT_SECONDS:-30}"
+
+		# Nothing to wait for on a VM whose root disk does not exist yet.
+		[[ -f "$tart_vm_disk" ]] || return 0
+
+		while ((waited < limit)); do
+			if tart:image:info:json "$tart_vm_disk" >/dev/null 2>&1; then
+				return 0
+			fi
+			sleep 1
+			waited=$((waited + 1))
+		done
+
+		: "[tartConfig][ERROR] VM disk images still held ${limit}s after stop; refusing to inspect or replace them: $tart_vm_disk"
+		exit 1
+	}
+
 	tart:vm:root-disk:ensure() {
 		local expected_root_bytes=0
 		local observed_root_bytes=""
 		local primary_source=""
+		local root_marker=""
+		local root_action=""
+		local efi_probe=0
 
 		tart:vm:ensure "$vm_name" "$vm_boot_disk_size_gib" "$vm_disk_format"
 		tart:vm:run stop "$vm_name" >/dev/null 2>&1 || true
@@ -936,6 +955,8 @@ main() {
 			exit 1
 		fi
 
+		tart:vm:disks:released:await
+
 		primary_source="$(
 			tart:raw-image:path:from-manifest primary 2>/dev/null \
 				|| { [[ -n "${raw_image_store_path:-}" && -f "${raw_image_store_path:-}" ]] && printf '%s\n' "$raw_image_store_path"; } \
@@ -944,15 +965,43 @@ main() {
 				|| true
 		)"
 		if [[ -n "$primary_source" ]]; then
-			# After a factory reset tart:vm:ensure creates a fresh blank disk at the
-			# exact same virtual size as the bringup source image, so
-			# tart:image:size:matches-source would return true and the blank disk
-			# would be kept.  Skip the size check when factory_reset is active.
-			if $factory_reset || ! tart:image:size:matches-source "$primary_source" "$tart_vm_disk"; then
-				tart:disk:image:materialize-from-source "$primary_source" "$tart_vm_disk" "root disk (primary image)"
+			root_marker="${tart_vm_disk}.source"
+			root_action="materialize"
+
+			if $factory_reset; then
+				: "[tartConfig][INFO] factory reset requested; root disk will be materialized from source: $primary_source"
+			elif [[ -f "$root_marker" ]] && [[ "$(cat "$root_marker")" == "$primary_source" ]]; then
+				# Same marker discipline as prebuilt images: the source is a store
+				# path, so its identity IS its content.  Content comparison cannot
+				# stand in — the target is ASIF-converted and never compares equal.
+				root_action="preserve"
+				: "[tartConfig][INFO] root disk already materialized from this source; preserving: $tart_vm_disk"
 			else
-				: "[tartConfig][INFO] preserving existing EFI root disk content (size matches source): $tart_vm_disk"
+				efi_probe=0
+				tart:image:efi:contains "$tart_vm_disk" || efi_probe=$?
+				case "$efi_probe" in
+				0)
+					# The root disk is MUTABLE: it carries the node's ESP and the
+					# NixOS generations installed since bringup.  So a source that
+					# no longer matches is reported, not acted on — replacing it is
+					# destructive and stays an explicit operator act.  A prebuilt
+					# image is the opposite: read-only and content-addressed, hence
+					# swapped freely.
+					root_action="preserve"
+					: "[tartConfig][WARN] root disk holds materialized content from another source; preserving it (set VM_FACTORY_RESET=true to replace): $tart_vm_disk"
+					;;
+				2)
+					: "[tartConfig][ERROR] root disk partition table is unreadable; refusing to decide whether to replace it: $tart_vm_disk"
+					exit 1
+					;;
+				esac
 			fi
+
+			if [[ "$root_action" == "materialize" ]]; then
+				tart:disk:image:materialize-from-source "$primary_source" "$tart_vm_disk" "root disk (primary image)"
+				printf '%s\n' "$primary_source" > "$root_marker"
+			fi
+
 			asif_output="$tart_vm_disk"
 			chmod 0644 "$asif_output" 2>/dev/null || true
 			if [ ! -e "$asif_output" ]; then
@@ -1003,8 +1052,11 @@ main() {
 			tank_disks+=("$disk")
 		done
 
+		# The check only means something once every tank disk is a live pool
+		# member; before that (blank placeholders, or a table we cannot read) the
+		# sizes are expected to differ and comparing them would be noise.
 		for disk in "${tank_disks[@]}"; do
-			if ! tart:root-disk:zfs:contains "$disk"; then
+			if ! tart:image:zfs:contains "$disk"; then
 				return 0
 			fi
 		done
