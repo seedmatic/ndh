@@ -1,230 +1,237 @@
 #!/usr/bin/env bash
-set -euxo pipefail
-
-PS4='[@nixosName@:bringup-install:${LINENO}] '
-
 # shellcheck source=/dev/null
-source @bringupCommonScript@
+source "@nixBashTrampoline@"
 
-bringup::ensure_usr_bin_env
-bringup::ensure_nixbld_group
-bringup::link_legacy_block_devices
+main() {
+  set -euxo pipefail
 
-mkdir -p /mnt/zfs-root
+  PS4='[@nixosName@:bringup-install:${LINENO}] '
 
-bringup::udev_block_sync @systemdLibUdevd@
+  # shellcheck source=/dev/null
+  source @bringupCommonScript@
 
-# Always format fresh - no more base image mode
-"@diskoFormatExe@"
+  bringup::ensure_usr_bin_env
+  bringup::ensure_nixbld_group
+  bringup::link_legacy_block_devices
 
-bringup::udev_block_sync
+  mkdir -p /mnt/zfs-root
 
-"@diskoMountExe@"
+  bringup::udev_block_sync @systemdLibUdevd@
 
-bringup::udev_block_sync
+  # Always format fresh - no more base image mode
+  "@diskoFormatExe@"
 
-# -- ZFS install-time throughput tuning --
-# These settings trade durability for speed - safe because these are fresh raw
-# disk images written once; real pool config is applied at first boot.
-: '[bringup-zfs] tuning ZFS for bulk write throughput'
+  bringup::udev_block_sync
 
-# sync=disabled: skip ZIL flush on every write - biggest throughput win.
-zfs set sync=disabled tank
-zfs set sync=disabled recover
+  "@diskoMountExe@"
 
-# logbias=throughput: avoid indirect ZIL writes for large sequential blocks.
-zfs set logbias=throughput tank
-zfs set logbias=throughput recover
+  bringup::udev_block_sync
 
-# Grow ARC to 2/3 of available RAM.  The kernel's default cap is ~1/2 physical
-# RAM; raising it lets the guest cache all metadata in RAM for the install phase.
-total_kb=$(awk '/MemTotal/ { print $2 }' /proc/meminfo)
-arc_max_bytes=$(( total_kb * 2 / 3 * 1024 ))
-: '[bringup-zfs] zfs_arc_max → ${arc_max_bytes} bytes (2/3 of ${total_kb} kB)'
-echo "${arc_max_bytes}" > /sys/module/zfs/parameters/zfs_arc_max
+  # -- ZFS install-time throughput tuning --
+  # These settings trade durability for speed - safe because these are fresh raw
+  # disk images written once; real pool config is applied at first boot.
+  : '[bringup-zfs] tuning ZFS for bulk write throughput'
 
-# ARC min = 1/4 of RAM: prevents the kernel from collapsing the ARC under brief
-# memory spikes (e.g. nix-store decompression), avoiding cold-start latency.
-arc_min_bytes=$(( total_kb / 4 * 1024 ))
-: '[bringup-zfs] zfs_arc_min → ${arc_min_bytes} bytes (1/4 of ${total_kb} kB)'
-echo "${arc_min_bytes}" > /sys/module/zfs/parameters/zfs_arc_min
+  # sync=disabled: skip ZIL flush on every write - biggest throughput win.
+  zfs set sync=disabled tank
+  zfs set sync=disabled recover
 
-# Re-enable speculative prefetch.  nixos-install unpacks many store paths
-# sequentially - prefetch reduces ARC miss latency on the read phase.
-# With 7.7 GiB RAM there is no memory pressure to justify disabling it.
-: '[bringup-zfs] zfs_prefetch_disable → 0 (re-enabled for sequential reads)'
-echo 0 > /sys/module/zfs/parameters/zfs_prefetch_disable
+  # logbias=throughput: avoid indirect ZIL writes for large sequential blocks.
+  zfs set logbias=throughput tank
+  zfs set logbias=throughput recover
 
-# Limit dirty data buffer to 20 % of ARC max.  Default is 10 % of physical RAM;
-# with sync=disabled and a large ARC, dirty data can accumulate into one giant
-# final TXG flush that makes the build appear stuck.  A smaller cap spreads I/O.
-dirty_max_bytes=$(( arc_max_bytes / 5 ))
-: '[bringup-zfs] zfs_dirty_data_max → ${dirty_max_bytes} bytes (20% of arc_max)'
-echo "${dirty_max_bytes}" > /sys/module/zfs/parameters/zfs_dirty_data_max
+  # Grow ARC to 2/3 of available RAM.  The kernel's default cap is ~1/2 physical
+  # RAM; raising it lets the guest cache all metadata in RAM for the install phase.
+  total_kb=$(awk '/MemTotal/ { print $2 }' /proc/meminfo)
+  arc_max_bytes=$(( total_kb * 2 / 3 * 1024 ))
+  : '[bringup-zfs] zfs_arc_max → ${arc_max_bytes} bytes (2/3 of ${total_kb} kB)'
+  echo "${arc_max_bytes}" > /sys/module/zfs/parameters/zfs_arc_max
 
-# txg_timeout=5s (keep default): frequent small flushes spread I/O evenly across
-# the install - a longer timeout defers everything into one massive final sync.
-: '[bringup-zfs] zfs_txg_timeout → 5s (avoids deferred final flush)'
-echo 5 > /sys/module/zfs/parameters/zfs_txg_timeout
-# --------------------------------------─
+  # ARC min = 1/4 of RAM: prevents the kernel from collapsing the ARC under brief
+  # memory spikes (e.g. nix-store decompression), avoiding cold-start latency.
+  arc_min_bytes=$(( total_kb / 4 * 1024 ))
+  : '[bringup-zfs] zfs_arc_min → ${arc_min_bytes} bytes (1/4 of ${total_kb} kB)'
+  echo "${arc_min_bytes}" > /sys/module/zfs/parameters/zfs_arc_min
 
-require_partlabel() {
-  local label="$1"
-  local dev="/dev/disk/by-partlabel/${label}"
-  if [[ ! -b "$dev" ]]; then
-    : '[bringup-zfs][ERROR] missing expected partition label: ${label} (${dev})'
-    lsblk -a -f >&2 || true
-    return 1
+  # Re-enable speculative prefetch.  nixos-install unpacks many store paths
+  # sequentially - prefetch reduces ARC miss latency on the read phase.
+  # With 7.7 GiB RAM there is no memory pressure to justify disabling it.
+  : '[bringup-zfs] zfs_prefetch_disable → 0 (re-enabled for sequential reads)'
+  echo 0 > /sys/module/zfs/parameters/zfs_prefetch_disable
+
+  # Limit dirty data buffer to 20 % of ARC max.  Default is 10 % of physical RAM;
+  # with sync=disabled and a large ARC, dirty data can accumulate into one giant
+  # final TXG flush that makes the build appear stuck.  A smaller cap spreads I/O.
+  dirty_max_bytes=$(( arc_max_bytes / 5 ))
+  : '[bringup-zfs] zfs_dirty_data_max → ${dirty_max_bytes} bytes (20% of arc_max)'
+  echo "${dirty_max_bytes}" > /sys/module/zfs/parameters/zfs_dirty_data_max
+
+  # txg_timeout=5s (keep default): frequent small flushes spread I/O evenly across
+  # the install - a longer timeout defers everything into one massive final sync.
+  : '[bringup-zfs] zfs_txg_timeout → 5s (avoids deferred final flush)'
+  echo 5 > /sys/module/zfs/parameters/zfs_txg_timeout
+  # --------------------------------------─
+
+  require_partlabel() {
+    local label="$1"
+    local dev="/dev/disk/by-partlabel/${label}"
+    if [[ ! -b "$dev" ]]; then
+      : '[bringup-zfs][ERROR] missing expected partition label: ${label} (${dev})'
+      lsblk -a -f >&2 || true
+      return 1
+    fi
+  }
+
+  # Enforce canonical expected partition labels from disko layout.
+  require_partlabel esp-boot
+  require_partlabel esp-tank1
+  require_partlabel esp-tank2
+  require_partlabel esp-tank3
+  require_partlabel esp-recover
+  require_partlabel tank1
+  require_partlabel tank2
+  require_partlabel tank3
+  require_partlabel recover
+
+  # Target /nix/store = overlay(the prebuilt EROFS layer stack + ZFS upper).  Must
+  # precede anything that reads or writes the target store.
+  : '[bringup-zfs] mounting the prebuilt store layers on the install target'
+  bringup::mount_prebuilt_store \
+    /mnt/zfs-root \
+    '@storeRwMountPoint@' \
+    '@storeMountPoint@' \
+    @storeLayerMountSpecs@
+
+  # Builder-side DB: lets nix resolve the virtiofs-mounted source closure (the
+  # installer still reads @systemToplevel@ from the build host's store).
+  nix-store --option build-users-group "" --load-db < @closureRegistration@
+
+  # Target-side DB: the store files came with the image, so nothing has marked
+  # them valid yet.  Without this, nixos-install's own `nix copy` concludes it
+  # must rewrite the whole closure into the overlay upper.
+  : '[bringup-zfs] registering the closure in the target Nix database'
+  bringup::register_target_store_db /mnt/zfs-root @closureRegistration@
+
+  target_bootstrap_profile="/mnt/zfs-root/nix/var/nix/profiles/per-user/root/io-seedmatic-ndh-bringup-runtime"
+  target_bootstrap_installer="@systemToplevel@/sw/bin/nerd-bringup-install"
+
+  mkdir -p "$(dirname "$target_bootstrap_profile")"
+  if [[ -x "$target_bootstrap_installer" ]]; then
+    "$target_bootstrap_installer" "$target_bootstrap_profile"
+  else
+    : "[bringup-zfs][WARN] bootstrap installer missing in target system closure: $target_bootstrap_installer"
   fi
+
+  # One durable GC root per EROFS layer.
+  #
+  # A layer's contents are, by construction, exactly the closure it was packed
+  # from.  So one root on that closure's toplevel covers the layer entirely — no
+  # per-path roots, no partial profile.
+  #
+  # Without it a layer is rooted only by the system profile generation that happens
+  # to name it, which is precisely what `nix-collect-garbage -d` prunes.  Measured
+  # on bioskop-nixos (2026-09-19): 105 of the 659 paths in the single layer would
+  # then become garbage, and nix would delete them *through the overlay* — so
+  # overlayfs writes a whiteout per path in the upper, the EROFS bytes stay
+  # unreclaimable, and those paths are masked for good, even if a later layer
+  # provides them again.  A routine hygiene command would silently poison the store.
+  : '[bringup-zfs] rooting each EROFS layer closure against nix-collect-garbage -d'
+  # shellcheck disable=SC2043
+  # SC2043: the loop list is a replaceVars placeholder, so shellcheck sees one
+  # word here; the substituted text carries one quoted spec per declared layer.
+  for layer_gcroot_spec in @storeLayerGcrootSpecs@; do
+    layer_name="${layer_gcroot_spec%%:*}"
+    layer_root_path="${layer_gcroot_spec#*:}"
+    target_layer_gcroot="/mnt/zfs-root/nix/var/nix/gcroots/erofs-store-layer-${layer_name}"
+    mkdir -p "$(dirname "$target_layer_gcroot")"
+    ln -sfn "$layer_root_path" "$target_layer_gcroot"
+  done
+
+  : 'Fail loudly if the prebuilt store lacks the closure the boot entries name'
+  : '(init=/nix/store/.../init) — a silent miss would degrade into re-copying it.'
+  bringup::assert_toplevel_in_target_store "/mnt/zfs-root" @systemToplevel@
+
+  channel_arg='@channelFlag@'
+  if [[ -n "$channel_arg" ]]; then
+    @nixosInstall@ \
+      --root /mnt/zfs-root \
+      --no-root-passwd \
+      --system @systemToplevel@ \
+      --substituters "" \
+      $channel_arg
+  else
+    @nixosInstall@ \
+      --root /mnt/zfs-root \
+      --no-root-passwd \
+      --system @systemToplevel@ \
+      --substituters ""
+  fi
+
+  : '[bringup-zfs] post-install zpool status'
+  zpool status >&2 || true
+
+  # - Post-install inspection pause ----------------------
+  # When @pauseAfterInstall@ resolves to `true`, block here until the operator
+  # removes the lock.  Value is injected as a literal `true`/`false` from the
+  # flake and used as a bash command (not a string compare).
+  # Set via: env NDH_BRINGUP_PAUSE=true nix build .#nixosDiskImages.HOST
+  # Connect to the debug shell and inspect /mnt/zfs-root, then:
+  #   rm /tmp/xchg/pause.lock
+  if @pauseAfterInstall@; then
+    lock=/tmp/xchg/pause.lock
+    touch "$lock"
+    echo '[bringup-zfs] *** PAUSED for inspection ***'
+    echo '[bringup-zfs]   /mnt/zfs-root is still mounted - inspect freely.'
+    echo '[bringup-zfs]   Connect via the debug shell:'
+    echo '[bringup-zfs]     sudo socat UNIX-CONNECT:/proc/$(pgrep --newest qemu)/cwd/shell.sock -,raw,echo=0,escape=0x1d'
+    echo '[bringup-zfs]   When done, resume with:'
+    echo '[bringup-zfs]     rm /tmp/xchg/pause.lock'
+    inotifywait -q -e delete_self "$lock"
+    echo '[bringup-zfs] lock removed - resuming'
+  fi
+  # --------------------------------------─
+
+  zpools_file="$(mktemp)"
+  trap 'rm -f "$zpools_file"' EXIT
+
+  # Capture full zpool status as YAML (--json-int avoids scientific notation for byte values).
+  zpool status --json --json-int | yq -p json -o yaml > "$zpools_file"
+
+  env ZPOOLS_FILE="$zpools_file" yq -n \
+    '{
+      "zpools": load(strenv(ZPOOLS_FILE)),
+      "policyNote": @bootSizePolicyNote@
+    }' > /tmp/xchg/boot-size-hint.yaml
+
+  # - Reset ZFS install-time tuning before pool export ------------─
+  # Drain remaining dirty TXGs first while sync=disabled (no ZIL overhead).
+  # Without this, restoring sync=standard triggers an uncontrolled final flush.
+  : '[bringup-zfs] draining dirty TXGs before property reset'
+  zpool sync tank    || true
+  zpool sync recover || true
+
+  # Restore production pool properties so the exported pool is safe on real hardware.
+  : '[bringup-zfs] restoring ZFS sync policy before export'
+  zfs set sync=standard tank    || true
+  zfs set sync=standard recover || true
+  zfs set logbias=latency tank   || true
+  zfs set logbias=latency recover || true
+  # --------------------------------------─
+
+  # - Kill processes holding /mnt/zfs-root before unmount -----------
+  # nixos-install may leave behind nix-daemon workers or chroot'd build processes
+  # with open fds or CWDs inside /mnt/zfs-root, causing "target is busy" on umount.
+  : '[bringup-zfs] killing processes holding /mnt/zfs-root busy'
+  fuser -km /mnt/zfs-root 2>/dev/null || true
+  sleep 1
+  # --------------------------------------─
+
+  # The store overlay pins the ZFS dataset holding its upper/work dirs, so it has
+  # to come down before disko exports the pool.
+  : '[bringup-zfs] unmounting the prebuilt store overlay'
+  bringup::umount_prebuilt_store /mnt/zfs-root '@storeMountPoint@' @storeLayerRoMountPoints@
+
+  "@diskoUnmountExe@"
 }
 
-# Enforce canonical expected partition labels from disko layout.
-require_partlabel esp-boot
-require_partlabel esp-tank1
-require_partlabel esp-tank2
-require_partlabel esp-tank3
-require_partlabel esp-recover
-require_partlabel tank1
-require_partlabel tank2
-require_partlabel tank3
-require_partlabel recover
-
-# Target /nix/store = overlay(the prebuilt EROFS layer stack + ZFS upper).  Must
-# precede anything that reads or writes the target store.
-: '[bringup-zfs] mounting the prebuilt store layers on the install target'
-bringup::mount_prebuilt_store \
-  /mnt/zfs-root \
-  '@storeRwMountPoint@' \
-  '@storeMountPoint@' \
-  @storeLayerMountSpecs@
-
-# Builder-side DB: lets nix resolve the virtiofs-mounted source closure (the
-# installer still reads @systemToplevel@ from the build host's store).
-nix-store --option build-users-group "" --load-db < @closureRegistration@
-
-# Target-side DB: the store files came with the image, so nothing has marked
-# them valid yet.  Without this, nixos-install's own `nix copy` concludes it
-# must rewrite the whole closure into the overlay upper.
-: '[bringup-zfs] registering the closure in the target Nix database'
-bringup::register_target_store_db /mnt/zfs-root @closureRegistration@
-
-target_bootstrap_profile="/mnt/zfs-root/nix/var/nix/profiles/per-user/root/io-seedmatic-ndh-bringup-runtime"
-target_bootstrap_installer="@systemToplevel@/sw/bin/nerd-bringup-install"
-
-mkdir -p "$(dirname "$target_bootstrap_profile")"
-if [[ -x "$target_bootstrap_installer" ]]; then
-  "$target_bootstrap_installer" "$target_bootstrap_profile"
-else
-  : "[bringup-zfs][WARN] bootstrap installer missing in target system closure: $target_bootstrap_installer"
-fi
-
-# One durable GC root per EROFS layer.
-#
-# A layer's contents are, by construction, exactly the closure it was packed
-# from.  So one root on that closure's toplevel covers the layer entirely — no
-# per-path roots, no partial profile.
-#
-# Without it a layer is rooted only by the system profile generation that happens
-# to name it, which is precisely what `nix-collect-garbage -d` prunes.  Measured
-# on bioskop-nixos (2026-09-19): 105 of the 659 paths in the single layer would
-# then become garbage, and nix would delete them *through the overlay* — so
-# overlayfs writes a whiteout per path in the upper, the EROFS bytes stay
-# unreclaimable, and those paths are masked for good, even if a later layer
-# provides them again.  A routine hygiene command would silently poison the store.
-: '[bringup-zfs] rooting each EROFS layer closure against nix-collect-garbage -d'
-# shellcheck disable=SC2043
-# SC2043: the loop list is a replaceVars placeholder, so shellcheck sees one
-# word here; the substituted text carries one quoted spec per declared layer.
-for layer_gcroot_spec in @storeLayerGcrootSpecs@; do
-  layer_name="${layer_gcroot_spec%%:*}"
-  layer_root_path="${layer_gcroot_spec#*:}"
-  target_layer_gcroot="/mnt/zfs-root/nix/var/nix/gcroots/erofs-store-layer-${layer_name}"
-  mkdir -p "$(dirname "$target_layer_gcroot")"
-  ln -sfn "$layer_root_path" "$target_layer_gcroot"
-done
-
-: 'Fail loudly if the prebuilt store lacks the closure the boot entries name'
-: '(init=/nix/store/.../init) — a silent miss would degrade into re-copying it.'
-bringup::assert_toplevel_in_target_store "/mnt/zfs-root" @systemToplevel@
-
-channel_arg='@channelFlag@'
-if [[ -n "$channel_arg" ]]; then
-  @nixosInstall@ \
-    --root /mnt/zfs-root \
-    --no-root-passwd \
-    --system @systemToplevel@ \
-    --substituters "" \
-    $channel_arg
-else
-  @nixosInstall@ \
-    --root /mnt/zfs-root \
-    --no-root-passwd \
-    --system @systemToplevel@ \
-    --substituters ""
-fi
-
-: '[bringup-zfs] post-install zpool status'
-zpool status >&2 || true
-
-# - Post-install inspection pause ----------------------
-# When @pauseAfterInstall@ resolves to `true`, block here until the operator
-# removes the lock.  Value is injected as a literal `true`/`false` from the
-# flake and used as a bash command (not a string compare).
-# Set via: env NDH_BRINGUP_PAUSE=true nix build .#nixosDiskImages.HOST
-# Connect to the debug shell and inspect /mnt/zfs-root, then:
-#   rm /tmp/xchg/pause.lock
-if @pauseAfterInstall@; then
-  lock=/tmp/xchg/pause.lock
-  touch "$lock"
-  echo '[bringup-zfs] *** PAUSED for inspection ***'
-  echo '[bringup-zfs]   /mnt/zfs-root is still mounted - inspect freely.'
-  echo '[bringup-zfs]   Connect via the debug shell:'
-  echo '[bringup-zfs]     sudo socat UNIX-CONNECT:/proc/$(pgrep --newest qemu)/cwd/shell.sock -,raw,echo=0,escape=0x1d'
-  echo '[bringup-zfs]   When done, resume with:'
-  echo '[bringup-zfs]     rm /tmp/xchg/pause.lock'
-  inotifywait -q -e delete_self "$lock"
-  echo '[bringup-zfs] lock removed - resuming'
-fi
-# --------------------------------------─
-
-zpools_file="$(mktemp)"
-trap 'rm -f "$zpools_file"' EXIT
-
-# Capture full zpool status as YAML (--json-int avoids scientific notation for byte values).
-zpool status --json --json-int | yq -p json -o yaml > "$zpools_file"
-
-env ZPOOLS_FILE="$zpools_file" yq -n \
-  '{
-    "zpools": load(strenv(ZPOOLS_FILE)),
-    "policyNote": @bootSizePolicyNote@
-  }' > /tmp/xchg/boot-size-hint.yaml
-
-# - Reset ZFS install-time tuning before pool export ------------─
-# Drain remaining dirty TXGs first while sync=disabled (no ZIL overhead).
-# Without this, restoring sync=standard triggers an uncontrolled final flush.
-: '[bringup-zfs] draining dirty TXGs before property reset'
-zpool sync tank    || true
-zpool sync recover || true
-
-# Restore production pool properties so the exported pool is safe on real hardware.
-: '[bringup-zfs] restoring ZFS sync policy before export'
-zfs set sync=standard tank    || true
-zfs set sync=standard recover || true
-zfs set logbias=latency tank   || true
-zfs set logbias=latency recover || true
-# --------------------------------------─
-
-# - Kill processes holding /mnt/zfs-root before unmount -----------
-# nixos-install may leave behind nix-daemon workers or chroot'd build processes
-# with open fds or CWDs inside /mnt/zfs-root, causing "target is busy" on umount.
-: '[bringup-zfs] killing processes holding /mnt/zfs-root busy'
-fuser -km /mnt/zfs-root 2>/dev/null || true
-sleep 1
-# --------------------------------------─
-
-# The store overlay pins the ZFS dataset holding its upper/work dirs, so it has
-# to come down before disko exports the pool.
-: '[bringup-zfs] unmounting the prebuilt store overlay'
-bringup::umount_prebuilt_store /mnt/zfs-root '@storeMountPoint@' @storeLayerRoMountPoints@
-
-"@diskoUnmountExe@"
+ndh::logger:command:run "@loggerTag@" main "$@"

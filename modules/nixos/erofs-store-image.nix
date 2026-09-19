@@ -16,10 +16,20 @@
 {
   pkgs,
   lib ? pkgs.lib,
+  # Path to nix-bash-trampoline.sh, which the pack script sources to get a known
+  # bash plus the logger.  Threaded in rather than rebuilt here so every script
+  # in the tree bootstraps through the same one.
+  nixBashTrampoline,
   # Prebuilt `pkgs.closureInfo` derivation.  Taken as a whole rather than as
   # root paths so the image and the `nix-store --load-db` registration the
   # installer replays are guaranteed to describe the same closure.
   closureInfo,
+  # Which store paths to pack, one per line.  Defaults to the whole closure; a
+  # layer in a stack passes a subset instead (a generation's paths minus what the
+  # layers below already carry).  The subset is NOT dependency-closed on its own
+  # — only the stack is — which is why `closureInfo` stays a separate input: the
+  # registration the installer replays must describe the union, not this layer.
+  storePathsFile ? "${closureInfo}/store-paths",
   label ? "nix-store",
   # Fixed by design: a generated UUID would tag otherwise identical bytes with
   # a different store path and defeat cross-host dedup.
@@ -32,6 +42,15 @@
   compression ? null,
   name ? "io.seedmatic.ndh-nix-store-erofs",
 }:
+let
+  # Extracted rather than inlined: this repo materializes its shell as assets and
+  # bootstraps them through the trampoline + logger, so the pack gets the same
+  # treatment as mk-disk-image-with-manifest.sh — which is also a builder script.
+  packScript = pkgs.replaceVars ./erofs-store-image.d/pack.sh {
+    inherit nixBashTrampoline;
+    loggerTag = "nixos.erofsStoreImage";
+  };
+in
 pkgs.runCommand name
   {
     nativeBuildInputs = [
@@ -41,25 +60,10 @@ pkgs.runCommand name
     passthru = { inherit label uuid closureInfo; };
   }
   ''
-    # `--tar=f` streams a tar into mkfs.erofs, so the closure is never staged
-    # on disk twice.  The transforms strip the /nix/store/ prefix (the image is
-    # mounted *at* the store root) and undo Nix's case-hack suffixes, which
-    # exist only to survive case-insensitive filesystems.
-    tar --create \
-      --absolute-names \
-      --verbatim-files-from \
-      --transform 'flags=rSh;s|/nix/store/||' \
-      --transform 'flags=rSh;s|~nix~case~hack~[[:digit:]]\+||g' \
-      --files-from ${closureInfo}/store-paths \
-      | mkfs.erofs \
-        --quiet \
-        --force-uid=0 \
-        --force-gid=0 \
-        -L ${label} \
-        -U ${uuid} \
-        -T 0 \
-        --hard-dereference \
-        ${lib.optionalString (compression != null) "-z ${compression}"} \
-        --tar=f \
-        "$out"
+    ${pkgs.bash}/bin/bash ${packScript} \
+      ${storePathsFile} \
+      ${label} \
+      ${uuid} \
+      "$out" \
+      ${lib.optionalString (compression != null) compression}
   ''

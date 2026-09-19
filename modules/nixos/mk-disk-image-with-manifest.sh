@@ -132,6 +132,14 @@ main() {
       yq -i '.zpools = load(strenv(HINT_FILE)).zpools' "$out_dir/manifest.yaml"
     fi
   fi
+
+  # Ordered description of the /nix/store layer stack.  Purely descriptive — it
+  # tells an operator what each prebuilt disk is FOR, while `images[].role` stays
+  # the delivery contract the darwin activation branches on.  Merged wholesale
+  # the way zpools is, because the stack is a list and its order is meaningful.
+  if [[ -s "${NDH_STORE_LAYERS_SPEC_YAML_FILE:-/dev/null}" ]]; then
+    yq -i '.storeLayers = load(strenv(NDH_STORE_LAYERS_SPEC_YAML_FILE))' "$out_dir/manifest.yaml"
+  fi
 }
 
 ndh::logger:command:run "@loggerTag@" main "$@"

@@ -370,6 +370,9 @@ let
           # Whole filesystem images built by their own derivation, symlinked
           # into the bundle as `<name>.img` (never blank-created or resized).
           prebuiltImages ? { },
+          # Ordered description of the /nix/store layer stack, for the operator
+          # reading a disk set.  Purely descriptive: nothing branches on it.
+          storeLayers ? [ ],
           # Populated at build time from `zpool status --json` (a map), so the
           # unpopulated default matches that shape rather than being a list.
           zpools ? { },
@@ -408,6 +411,11 @@ let
               }) prebuiltImages
             );
           } ''yq -p json -o yaml "$prebuiltImagesJsonPath" > "$out"'';
+          storeLayersSpecYamlFile = ndhStoreApiLinux.runCommand "manifest-store-layers-${attr}.yaml" {
+            nativeBuildInputs = [ pkgsForLinux.yq-go ];
+            passAsFile = [ "storeLayersJson" ];
+            storeLayersJson = builtins.toJSON storeLayers;
+          } ''yq -p json -o yaml "$storeLayersJsonPath" > "$out"'';
           manifestAssemblyScript = pkgsForLinux.replaceVars ./mk-disk-image-with-manifest.sh {
             nixBashTrampoline = "${ndhNixBashTrampoline}";
             loggerTag = "nixos.outputs.mkDiskImageWithManifest.${attr}";
@@ -420,6 +428,7 @@ let
             NDH_MANIFEST_BASE_YAML_FILE = manifestBaseYamlFile;
             NDH_EXTRA_IMAGES_SPEC_YAML_FILE = extraImagesSpecYamlFile;
             NDH_PREBUILT_IMAGES_SPEC_YAML_FILE = prebuiltImagesSpecYamlFile;
+            NDH_STORE_LAYERS_SPEC_YAML_FILE = storeLayersSpecYamlFile;
             # Disable strict bootstrap profile check for minimal bringup images
             NDH_BOOTSTRAP_STRICT = "0";
           }
@@ -452,6 +461,7 @@ let
           lib = nixpkgs.lib;
           pkgs = pkgsForLinux;
           config = nixosSystem.config;
+          nixBashTrampoline = "${ndhNixBashTrampoline}";
           # Use the bringup configuration closure for the bootstrap stage.
           installSystemPath = nixosSystem.config.system.build.toplevel;
           # Include the production runtime closure so zfs-nixos-install can use
@@ -517,7 +527,13 @@ let
         nixosSystem = selectedBringupSystemdZfs;
         name = "nerd-bringup-zfs-disk-images-raw";
         hostLabel = "nerd";
-        runtimeSystemPath = null;
+        # Packed as the stack's second layer, so the node mounts the runtime
+        # closure instead of materializing it.  This is what makes the bundle
+        # per-host, which the fleet-wide comment above was protecting against:
+        # measured, 1608 of ~1660 paths are common to bioskop and nikopol (9.19
+        # GiB) and only 54 are host-private (34 MiB), so the fix is a shared
+        # base layer plus a per-host residue — not keeping the runtime out.
+        runtimeSystemPath = fullSystemPath;
         inherit pauseAfterInstall;
         inherit enableBuildObserve;
         inherit buildObserveInterval;
@@ -543,6 +559,7 @@ let
         # disks the nested guest writes — each joins the bundle as its own image,
         # keyed by the `imageName` its layer declares.
         prebuiltImages = diskImageBringupZfsSystemdBootRaw.storeImages;
+        storeLayers = diskImageBringupZfsSystemdBootRaw.storeLayersSpec;
         # primaryImagePath defaults to "boot.img" — dedicated EFI boot disk
         # zpools is populated at runtime from boot-size-hint.yaml (zpool status inside QEMU)
       };

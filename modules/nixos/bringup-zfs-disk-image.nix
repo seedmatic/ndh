@@ -2,11 +2,16 @@
   lib,
   pkgs,
   config,
+  # Path to nix-bash-trampoline.sh, forwarded to the layer packer so its asset
+  # script bootstraps through the same bash + logger as the rest of the tree.
+  nixBashTrampoline,
   installSystemPath ? config.system.build.toplevel,
-  # Production runtime system closure to include in the bringup image store.
-  # zfs-nixos-install.service uses this as NDH_NIXOS_INSTALL_SYSTEM_PATH to
-  # install the full system without network access at first boot.
-  runtimeSystemPath ? null,
+  # Production runtime system closure, packed as its own EROFS layer so the node
+  # mounts it instead of materializing it: `nixos-rebuild` otherwise creates
+  # 165 591 files in the overlay upper, outside any derivation.  Required —
+  # erofs-store-layers.nix declares a layer for it, and a declared layer with no
+  # content is a disk the guest must mount to boot and that holds nothing.
+  runtimeSystemPath,
   zpoolDiskSize ? 3196, # 3GiB (temporary - minimal system still has large closure)
   # Dedicated EFI boot disk size — holds only systemd-boot + kernel + initrd.
   bootDiskSize ? (import ./zfs-partition-layout.nix).bootDiskSizeMiB,
@@ -139,13 +144,48 @@ let
       echo -n ${config.system.nixos.versionSuffix} > "$out/nixos/.version-suffix"
     '';
 
-  closureInfo = pkgs.closureInfo {
+  # Base layer: the bringup closure ALONE.  Keeping the runtime out of here is
+  # what makes a second layer possible at all — nix records a reference for every
+  # store path it finds in an output, so letting the bringup toplevel name the
+  # runtime toplevel (as ndh.context.runtimeSystemPath does, via the install
+  # service's environment) would pull the entire runtime closure into this set
+  # and flatten the stack back to one layer.  That is precisely why
+  # runtimeSystemPath was left null here before the stack existed.
+  baseClosureInfo = pkgs.closureInfo {
+    rootPaths = [ installSystemPath ] ++ (lib.optional includeChannel channelSources);
+  };
+
+  runtimeClosureInfo = pkgs.closureInfo { rootPaths = [ runtimeSystemPath ]; };
+
+  # What the installer replays into the target Nix database.  It must describe
+  # the UNION of the stack, not any single layer: a layer's path set is not
+  # dependency-closed on its own (measured: 142 outbound references over 60
+  # sampled delta paths), so registering per layer would declare paths whose
+  # references are missing and nix would conclude it must re-copy the closure
+  # into the overlay upper.
+  unionClosureInfo = pkgs.closureInfo {
     rootPaths = [
       installSystemPath
+      runtimeSystemPath
     ]
-    ++ (lib.optional (runtimeSystemPath != null) runtimeSystemPath)
     ++ (lib.optional includeChannel channelSources);
   };
+
+  # The runtime layer carries what the base does not already hold — a set
+  # difference, for the reasons erofs-store-image.d/delta.sh states.
+  storeLayerDeltaScript = pkgs.replaceVars ./erofs-store-image.d/delta.sh {
+    inherit nixBashTrampoline;
+    loggerTag = "nixos.erofsStoreLayerDelta";
+  };
+
+  runtimeDeltaStorePaths =
+    pkgs.runCommand "io.seedmatic.ndh-nix-store-erofs-runtime-delta-paths" { }
+      ''
+        ${pkgs.bash}/bin/bash ${storeLayerDeltaScript} \
+          ${baseClosureInfo}/store-paths \
+          ${runtimeClosureInfo}/store-paths \
+          "$out"
+      '';
 
   # boot.zfs.package is userspace (zfs-user-*). The kernel module package must
   # come from linuxPackages.${pkgs.zfs.kernelModuleAttribute}.
@@ -254,12 +294,14 @@ let
   zfsBringupInstallScript = pkgs.runCommand "io.seedmatic.ndh-bringup-zfs-disk-images-install" { } ''
     install -Dm755 ${
       pkgs.replaceVars ./zfs.d/bringup-zfs-disk-images-install.sh {
+        inherit nixBashTrampoline;
+        loggerTag = "nixos.bringupZfsDiskImagesInstall";
         nixosName = hostLabel;
         bringupCommonScript = "${./bringup-disk-image-common.sh}";
         diskoFormatExe = "${diskoFormatExe}";
         diskoMountExe = "${diskoMountExe}";
         diskoUnmountExe = "${diskoUnmountExe}";
-        closureRegistration = "${closureInfo}/registration";
+        closureRegistration = "${unionClosureInfo}/registration";
         nixosInstall = "${config.system.build.nixos-install}/bin/nixos-install";
         systemToplevel = "${installSystemPath}";
         systemdLibUdevd = "${pkgs.systemd}/lib/systemd/systemd-udevd";
@@ -293,25 +335,57 @@ let
   };
   buildCommandScript = lib.getExe buildCommandScriptApp;
 
-  # Which closure each declared layer carries.  erofs-store-layers.nix names the
-  # layers; what they hold is a build-time decision, so it is bound here.  Today
-  # every layer carries the same closure because there is exactly one — a layer
-  # per system generation binds them individually.
-  storeLayerBindings = map (layer: layer // { rootPath = installSystemPath; }) storeLayers.layers;
+  # What each declared layer carries.  erofs-store-layers.nix names the layers;
+  # the closure they hold is a build-time decision, so it is bound here.
+  #
+  # `rootPath` is what the layer's GC root points at — the toplevel whose closure
+  # the layer was packed from.  Without it a layer is rooted only by whichever
+  # system profile generation still names it, which is exactly what
+  # `nix-collect-garbage -d` prunes.
+  storeLayerContent = {
+    store = {
+      storePathsFile = "${baseClosureInfo}/store-paths";
+      rootPath = installSystemPath;
+    };
+    store-002 = {
+      storePathsFile = "${runtimeDeltaStorePaths}";
+      rootPath = runtimeSystemPath;
+    };
+  };
+
+  storeLayerBindings = map (layer: layer // storeLayerContent.${layer.imageName}) storeLayers.layers;
 
   # Read-only layers of the produced image's /nix/store, packed HERE on the host
-  # rather than materialized file-by-file inside the nested guest.  They share
-  # `closureInfo` with the registration the installer replays, so the images and
-  # the target's Nix database describe exactly the same closure.
+  # rather than materialized file-by-file inside the nested guest.  Each takes
+  # the union `closureInfo` so its `passthru` describes the stack it belongs to,
+  # while `storePathsFile` selects the subset it actually packs.
   storeImages = lib.listToAttrs (
     map (binding: {
       name = binding.imageName;
       value = import ./erofs-store-image.nix {
-        inherit pkgs lib closureInfo;
-        inherit (binding) label;
+        inherit pkgs lib nixBashTrampoline;
+        closureInfo = unionClosureInfo;
+        inherit (binding) label uuid storePathsFile;
+        # Distinct per layer, so a store path says which layer it is instead of
+        # leaving two identically-named images to tell apart by hash.
+        name = "io.seedmatic.ndh-nix-store-erofs-${binding.name}";
       };
     }) storeLayerBindings
   );
+
+  # Descriptive projection of the stack, merged into the VM manifest so a disk set
+  # is legible without reading erofs-store-layers.nix.  Deliberately NOT folded
+  # into each image's `role`: that field is a delivery contract the darwin
+  # activation branches on (`role == prebuilt` => copy verbatim, never resize,
+  # never probe for ZFS), so overloading it would mix two concerns.  Kept as an
+  # ordered list because the stack IS ordered — per-image entries would lose that.
+  storeLayersSpec = map (binding: {
+    index = binding.name;
+    image = binding.imageName;
+    inherit (binding) label purpose;
+    mountPoint = binding.roMountPoint;
+    rootPath = "${binding.rootPath}";
+  }) storeLayerBindings;
 
   # Projections of the stack onto the shape each consumer needs.  The shell specs
   # are quoted here rather than at expansion time: replaceVars substitutes into
@@ -423,5 +497,5 @@ let
   );
 in
 {
-  inherit diskImages storeImages;
+  inherit diskImages storeImages storeLayersSpec;
 }
