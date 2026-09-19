@@ -482,12 +482,34 @@ let
       # despite identical output bytes (the `nixosDiskImageVm{CpuCores,
       # MemSizeMiB}` knobs legitimately differ per host because they
       # describe the darwin host's nested-QEMU capacity, not the image).
+      # Size of each pool disk in the bringup image, shared by the disko layout
+      # and the raw file the builder truncates — they must agree, or disko lays
+      # out partitions for a disk larger than the file backing it.
+      #
+      # Sized for what the bringup install actually writes, which is now tiny:
+      # the store left the pool for its own EROFS disk, so the pool only carries
+      # the root dataset, the Nix database and the (initially empty) overlay
+      # upper. Measured on the produced image: 22 MiB per tank disk, 9 MiB on
+      # recover. 1540 MiB leaves a 1025 MiB ZFS partition (1540 - 1 GPT - 512
+      # ESP - 1 alignment - 1 tail), i.e. ~45x headroom and far above ZFS's
+      # 64 MiB per-vdev floor.
+      #
+      # Runtime capacity does NOT depend on this: the Tart activation grows each
+      # disk to `vmDataDiskSizeGiB` before first boot and ZFS autoexpands, which
+      # is what makes room for the runtime closure in the overlay upper.
+      #
+      # Why it is worth shrinking at all — NARs do not preserve sparseness, so
+      # every MiB here is copied from the builder and pushed to the cache even
+      # though the file is almost entirely zeros. It does not speed the build
+      # itself (truncate is instant; only those 22 MiB are written).
+      bringupZpoolDiskSizeMiB = 1540;
+
       bringupDiskoConfiguration = import ./zfs-disko-config.nix {
         lib = nixpkgs.lib;
         # Empty hostProfile — zfs-disko-config.nix only reads
         # `nixosZstdCompressionLevel` (defaults to 1).
         hostProfile = { };
-        diskImageSize = "3482M";
+        diskImageSize = "${toString bringupZpoolDiskSizeMiB}M";
         espSizeMiB = 512;
         zfsStartMiB = 2 + 512;
       };
@@ -499,11 +521,11 @@ let
         inherit pauseAfterInstall;
         inherit enableBuildObserve;
         inherit buildObserveInterval;
-        # Fleet-wide constants — see comment above.  These literals match
-        # the default formula's output for the default hostProfile (8 GiB
-        # uncompressed × 0.7246 zstd factor + 512 MiB ESP + 2 MiB GPT
-        # overhead → 3482), so the produced image bytes are unchanged.
-        builderZpoolDiskSizeMiB = 3482;
+        # Fleet-wide constants — see comment above.  The pool disk size is no
+        # longer derived from the store's compressed size (the store moved to
+        # its own EROFS disk); see bringupZpoolDiskSizeMiB for how it is sized
+        # now.
+        builderZpoolDiskSizeMiB = bringupZpoolDiskSizeMiB;
         builderMemSizeMiB = 8192;
         builderVmCpuCores = 4;
         builderDiskoConfiguration = bringupDiskoConfiguration;
