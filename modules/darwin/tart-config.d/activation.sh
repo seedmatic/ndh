@@ -684,14 +684,32 @@ main() {
 	}
 
 	tart:vm:exists() {
+		# Only a formal "does not exist" authorises the caller to create the VM,
+		# because `tart create` recreates the VM directory and takes the data
+		# disks with it.  Anything we cannot read that way counts as existing.
+		#
+		# `tart get` answers about ONE VM and encodes the outcome in its exit
+		# code — 0 registered · 2 "the specified VM does not exist" · 1 for a
+		# running VM, which holds its disk images open so diskutil answers
+		# "Resource temporarily unavailable".  That 1 is positive evidence of
+		# existence, not an unknown: to reach the disk at all tart had to resolve
+		# the VM, and it names the resolved path in the error.  Verified on both
+		# hosts.
+		#
+		# It replaces a `tart list` scan that was wrong twice over: it read the
+		# table's FIRST column as the VM name, but that column is Source, so the
+		# predicate compared "local" to the name and could never answer yes; and
+		# tart 2.36 fails the WHOLE listing when any single VM is running (10/10
+		# on the host where one runs permanently, while 2.30 tolerated it). Both
+		# faults surfaced as "not registered", the caller answered with `tart
+		# create`, and a materialization erased live ZFS pools.
 		local vm="$1"
-		local listed_vm
-		while read -r listed_vm _; do
-			if [[ "$listed_vm" == "$vm" ]]; then
-				return 0
-			fi
-		done < <(tart:vm:run list 2>/dev/null)
-		return 1
+		local status=0
+
+		tart:vm:run get --format=json "$vm" >/dev/null 2>&1 || status=$?
+
+		((status == 2)) && return 1
+		return 0
 	}
 
 	tart:vm:ensure() {
@@ -748,6 +766,19 @@ main() {
 		if [[ ! "$size_gib" =~ ^[0-9]+$ ]] || ((size_gib <= 0)); then
 			: "[tartConfig][ERROR] invalid data disk size (GiB): $size_gib"
 			exit 1
+		fi
+
+		# Last line of defence, behind tart:vm:exists.  Blanking is decided
+		# elsewhere; this only refuses to carry it out on a disk that still holds
+		# a pool — or whose partition table cannot be read, which is the same
+		# "I could not look" that already cost us one node's pools.
+		if [[ -f "$disk" ]]; then
+			local zfs_probe=0
+			tart:image:zfs:contains "$disk" || zfs_probe=$?
+			if ((zfs_probe != 1)); then
+				: "[tartConfig][ERROR] refusing to blank a data disk that holds ZFS data, or whose partition table is unreadable (probe=${zfs_probe}): $disk"
+				exit 1
+			fi
 		fi
 
 		rm -f "${disk}" >/dev/null 2>&1 || true
