@@ -294,8 +294,6 @@ let
   zfsBringupInstallScript = pkgs.runCommand "io.seedmatic.ndh-bringup-zfs-disk-images-install" { } ''
     install -Dm755 ${
       pkgs.replaceVars ./zfs.d/bringup-zfs-disk-images-install.sh {
-        inherit nixBashTrampoline;
-        loggerTag = "nixos.bringupZfsDiskImagesInstall";
         nixosName = hostLabel;
         bringupCommonScript = "${./bringup-disk-image-common.sh}";
         diskoFormatExe = "${diskoFormatExe}";
