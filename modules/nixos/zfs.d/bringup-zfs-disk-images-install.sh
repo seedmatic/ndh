@@ -119,6 +119,24 @@ else
   : "[bringup-zfs][WARN] bootstrap installer missing in target system closure: $target_bootstrap_installer"
 fi
 
+# Durable GC root over the whole EROFS lower.
+#
+# The lower's contents are, by construction, exactly this closure: the image is
+# packed from `closureInfo { rootPaths = [ installSystemPath ] }`.  So one root on
+# the toplevel covers it entirely — no per-path roots, no partial profile.
+#
+# Without it the lower is rooted only by generation 1 of the system profile, which
+# is precisely what `nix-collect-garbage -d` prunes.  Measured on bioskop-nixos
+# (2026-09-19): 105 of the 659 lower paths would then become garbage, and nix
+# would delete them *through the overlay* — so overlayfs writes a whiteout per
+# path in the upper, the EROFS bytes stay unreclaimable, and those paths are
+# masked for good, even if a later lower provides them again. A routine hygiene
+# command would silently poison the store.
+target_erofs_lower_gcroot="/mnt/zfs-root/nix/var/nix/gcroots/erofs-store-lower"
+: '[bringup-zfs] rooting the EROFS lower closure against nix-collect-garbage -d'
+mkdir -p "$(dirname "$target_erofs_lower_gcroot")"
+ln -sfn @systemToplevel@ "$target_erofs_lower_gcroot"
+
 : 'Fail loudly if the prebuilt store lacks the closure the boot entries name'
 : '(init=/nix/store/.../init) — a silent miss would degrade into re-copying it.'
 bringup::assert_toplevel_in_target_store "/mnt/zfs-root" @systemToplevel@
