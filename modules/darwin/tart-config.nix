@@ -96,7 +96,7 @@ let
   # pulls the bringup disk images (~15 GiB of raw bytes scanned as store refs)
   # into the bundle's closure.  Build hosts pass true so darwin-rebuild's
   # postActivation hook can resolve the images locally.  The generic deploy
-  # bundle passes false: the operator nix-copies `nixosDiskImages.nerd`
+  # bundle passes false: the operator nix-copies `nixosDiskImages.<host>`
   # separately and wires the resolved store path via the per-VM YAML's
   # `raw_image_manifest_path_default` field.
   mkActivationBundle =
@@ -145,7 +145,7 @@ let
   # activate.sh, where FILE is a per-VM YAML produced by the matching
   # `nerd-tart-<host>-config` flake package and placed under
   # $XDG_CONFIG_HOME/nerd-tart/<vm>.yaml on the vz host.  The bringup
-  # disk images travel as a separate `nix copy` of `nixosDiskImages.nerd`,
+  # disk images travel as a separate `nix copy` of `nixosDiskImages.<host>`,
   # and the per-VM YAML carries their resolved store path.
   tartDeployBundle = mkActivationBundle {
     drvName = "nerd-tart-deploy";

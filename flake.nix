@@ -1711,19 +1711,16 @@
         _: hostOutput: hostOutput.homeManagerConfigurations
       ) hostOutputs;
 
-      # The bringup image is identity-less (see modules/nixos/outputs.nix
-      # `minimalBringupSystemBase`): bytes are bit-identical for every host
-      # on the fleet, so a single fleet-wide attribute is correct here.
-      # Per-host `${name}-bringup` nixosConfigurations remain available in
-      # `self.nixosConfigurations` for tooling that needs the per-host
-      # binding (e.g. nixos-rebuild --flake .#${name}-bringup).
-      nixosDiskImages =
-        let
-          anyHostName = builtins.head (builtins.attrNames hostCatalog);
-        in
-        {
-          nerd = hostOutputs.${anyHostName}.nixosDiskImageBringupSystemdZfs;
-        };
+      # One bundle PER HOST.  The bringup *system* is still identity-less, but the
+      # bundle stopped being so when the runtime closure moved into the layer
+      # stack: the installer script bakes the union closure's registration and a
+      # GC root on the host runtime toplevel, so its derivation differs per host
+      # (verified: bioskop 4q24ly07…, nikopol jr2h199c…).  A single `nerd`
+      # attribute taking an arbitrary host's bundle therefore shipped whichever
+      # host sorted first, layer 003 carrying that host's residue.
+      nixosDiskImages = builtins.mapAttrs (
+        _: hostOutput: hostOutput.nixosDiskImageBringupSystemdZfs
+      ) hostOutputs;
 
       # Overlay factories (curried: inputs: final: prev:) — used internally via overlayFactories.
       overlayFactories = {
