@@ -202,6 +202,44 @@ either (chicken-and-egg) — run `nix run .#bootstrap-linux-builder` first; see
 link:host-builder-phases.adoc[Host Builder Phases] §"Cold bootstrap from zero".
 ====
 
+=== Since the EROFS layer stack, this activation transfers nothing
+
+The node's `/nix/store` is an overlay over a stack of read-only EROFS layers, and the target
+configuration's closure is *already in it*: the host-residue layer carries that toplevel, and
+the bringup installer replayed the *union* closure into the guest's Nix database, so the
+toplevel reads back `VALID` before any activation runs.
+
+The remote `nixos-rebuild --target-host` above therefore evaluates the flake on the
+operator's machine, delegates the build to the `aarch64-linux` builder and opens an SSH
+session — in order to discover there is nothing to send. It still works, and it stays the
+right tool for a configuration that is in *no* layer, but it is no longer the short path.
+
+The local equivalent, run on the guest:
+
+[source,bash]
+----
+nix-env -p /nix/var/nix/profiles/system --set /nix/store/<host-runtime-toplevel>
+/nix/var/nix/profiles/system/bin/switch-to-configuration boot
+reboot
+----
+
+No flake evaluation, no builder, no SSH key. The toplevel to name is recorded on the guest
+itself as `/nix/var/nix/gcroots/erofs-store-layer-003`, and the bundle manifest publishes it
+under `storeLayers[].rootPath`. Measured on `nikopol-nixos` on 2026-09-20: the switch takes
+about a second and writes nothing — the overlay upper stays at one path, 21 KB.
+
+[NOTE]
+====
+The intended end state is that this step disappears: `zfs-nixos-install.service` already
+exists for it, `wantedBy` the bringup target. It is armed but empty — the bringup config
+neutralises its assertion and never sets `NDH_NIXOS_INSTALL_SYSTEM_PATH`, so it fails on
+every bringup boot. Arming it needs the runtime toplevel delivered *out of the closure*, the
+way cloud-init already injects hostname and hostId.
+
+Design and rationale: `docs/architecture/nixos-substrate/erofs-store-layer-stack.adoc` in
+*rke2lab*, not this repo.
+====
+
 The ZFS bootstrap is no longer an operator-invoked step: it runs
 automatically at first boot of the ZFS target via the
 `zfs-bootstrap-activation` systemd unit (NixOS options
