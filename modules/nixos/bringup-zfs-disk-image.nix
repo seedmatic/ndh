@@ -427,72 +427,72 @@ let
       ];
       kernel = modulesTree;
     }).runInLinuxVM
-  (
-    pkgs.runCommand name
-      {
-        QEMU_OPTS = lib.concatStringsSep " " [
-          "-drive file=$bootDiskImage,if=virtio,format=raw,cache=unsafe,aio=io_uring,werror=report"
-          qemuAdditionalDriveOpts
-          # Prebuilt store layers, attached last.  The installer mounts them as
-          # the target's stack instead of unpacking the closure into the pool.
-          qemuStoreLayerDriveOpts
-          nestedQemuNetOpts
-        ];
-        NIX_BUILD_CORES = toString vmCpuCores;
-        inherit memSize;
+      (
+        pkgs.runCommand name
+          {
+            QEMU_OPTS = lib.concatStringsSep " " [
+              "-drive file=$bootDiskImage,if=virtio,format=raw,cache=unsafe,aio=io_uring,werror=report"
+              qemuAdditionalDriveOpts
+              # Prebuilt store layers, attached last.  The installer mounts them as
+              # the target's stack instead of unpacking the closure into the pool.
+              qemuStoreLayerDriveOpts
+              nestedQemuNetOpts
+            ];
+            NIX_BUILD_CORES = toString vmCpuCores;
+            inherit memSize;
 
-        preVM = ''
-          export NDH_NIXOS_NAME="${hostLabel}"
-          export NDH_BRINGUP_COMMON_SCRIPT="${./bringup-disk-image-common.sh}"
-          export NDH_BOOT_DISK_SIZE="${toString bootDiskSize}"
-          export PATH="${
-            lib.makeBinPath [
-              pkgs.socat
-              pkgs.qemu_kvm
-            ]
-          }:$PATH"
+            preVM = ''
+              export NDH_NIXOS_NAME="${hostLabel}"
+              export NDH_BRINGUP_COMMON_SCRIPT="${./bringup-disk-image-common.sh}"
+              export NDH_BOOT_DISK_SIZE="${toString bootDiskSize}"
+              export PATH="${
+                lib.makeBinPath [
+                  pkgs.socat
+                  pkgs.qemu_kvm
+                ]
+              }:$PATH"
 
-          # Set up disk image variables
-          bootDiskImage=boot.raw
-          ${preVmDiskImageVars}
+              # Set up disk image variables
+              bootDiskImage=boot.raw
+              ${preVmDiskImageVars}
 
-          # shellcheck disable=SC1090,SC1091
-          source "${./bringup-disk-image-common.sh}"
+              # shellcheck disable=SC1090,SC1091
+              source "${./bringup-disk-image-common.sh}"
 
-          # Create fresh blank disk images
-          bringup::create_raw_disk "$bootDiskImage" "${toString bootDiskSize}"
-          ${preVmCreateRawDisks}
+              # Create fresh blank disk images
+              bringup::create_raw_disk "$bootDiskImage" "${toString bootDiskSize}"
+              ${preVmCreateRawDisks}
 
-          # Export disk image variables so prevm.sh can reference them
-          export bootDiskImage
-          ${lib.concatStringsSep "\n      " (map (entry: "export ${entry.disk}DiskImage") zfsPoolDiskMap)}
+              # Export disk image variables so prevm.sh can reference them
+              export bootDiskImage
+              ${lib.concatStringsSep "\n      " (map (entry: "export ${entry.disk}DiskImage") zfsPoolDiskMap)}
 
-          # Run the main preVM script (it will use the exported variables and set up QEMU_OPTS)
-          # shellcheck disable=SC1090,SC1091
-          source ${./bringup-zfs-disk-image.d/prevm.sh}
-        '';
+              # Run the main preVM script (it will use the exported variables and set up QEMU_OPTS)
+              # shellcheck disable=SC1090,SC1091
+              source ${./bringup-zfs-disk-image.d/prevm.sh}
+            '';
 
-        postVM = ''
-          export NDH_NIXOS_NAME="${hostLabel}"
+            postVM = ''
+              export NDH_NIXOS_NAME="${hostLabel}"
 
-          # Move disk images to $out
-          mv "$bootDiskImage" "$out/boot.img"
-          ${postVmMoveDiskImages}
+              # Move disk images to $out
+              mv "$bootDiskImage" "$out/boot.img"
+              ${postVmMoveDiskImages}
 
-          if [[ -f xchg/boot-size-hint.yaml ]]; then
-            mv xchg/boot-size-hint.yaml "$out/boot-size-hint.yaml"
-          fi
+              if [[ -f xchg/boot-size-hint.yaml ]]; then
+                mv xchg/boot-size-hint.yaml "$out/boot-size-hint.yaml"
+              fi
 
-          [[ -n "''${_NDH_VECTOR_RELAY_PID:-}" ]] && kill "''${_NDH_VECTOR_RELAY_PID}" 2>/dev/null || true
+              [[ -n "''${_NDH_VECTOR_RELAY_PID:-}" ]] && kill "''${_NDH_VECTOR_RELAY_PID}" 2>/dev/null || true
 
-          # User-provided postVM commands
-          ${postVmUserCommands}
-        '';
-      }
-      ''
-        source ${buildCommandScript}
-      ''
-  );
+              # User-provided postVM commands
+              ${postVmUserCommands}
+            '';
+          }
+          ''
+            source ${buildCommandScript}
+          ''
+      );
 in
 {
   inherit diskImages storeImages storeLayersSpec;
