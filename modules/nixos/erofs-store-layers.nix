@@ -57,7 +57,15 @@ let
       roMountPoint = "/nix/.ro-store.002";
       imageName = "store-002";
       uuid = "9f4a1d2e-6c83-4b17-9e5a-2d7f0c8b3b02";
-      purpose = "host runtime closure, minus what the base already carries";
+      purpose = "fleet-generic runtime closure, minus what the base already carries";
+    }
+    {
+      name = "003";
+      label = "nix-store-003";
+      roMountPoint = "/nix/.ro-store.003";
+      imageName = "store-003";
+      uuid = "9f4a1d2e-6c83-4b17-9e5a-2d7f0c8b3b03";
+      purpose = "host runtime residue, minus the base and the fleet-generic layer";
     }
   ];
 
@@ -101,6 +109,14 @@ assert
   storeMountPoint = "/nix/store";
 
   # ---- the stack, OLDEST FIRST ----------------------------------------------
+  #
+  # The split into base / fleet-generic / host residue is STRUCTURAL: each layer
+  # holds the closure of one configuration in the composition chain, not a set
+  # intersection computed over the fleet.  An intersection would couple every
+  # host to every other (adding a host changes the shared layer, hence every
+  # node's lower); deriving the shared layer from the neutral host profile costs
+  # 66 paths / 41.5 MB that no host actually uses, and buys full decoupling.
+  # Measured: 659 paths base, 1098 fleet-generic, 77 host residue.
   #
   # This order is the order the disks are attached, and the REVERSE of the
   # overlay `lowerdir` order.  The kernel documents the latter: "the specified

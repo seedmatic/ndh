@@ -75,6 +75,45 @@ let
     in
     nixosSystem;
 
+  # The fleet-generic FULL generation: the placeholder host `nerd-nixos`, which
+  # already exists as the shared bringup, evaluated in `full` mode instead of
+  # minimal.  It is the missing half of that host — without it the runtime side
+  # is only N per-host closures with no fleet-wide part to factor out, and every
+  # node has to carry its whole 7.5 GiB runtime as a private EROFS layer.
+  #
+  # Built from the literal host definition, never from the caller's hostProfile
+  # or profileModule: the point is that every host derives the byte-identical
+  # closure, so its layer image dedups across the fleet the way the bringup
+  # image already does.  `catalog` and `inventory` are fleet-wide data, so they
+  # are the only inputs that may cross into it.
+  fleetRuntimeHostProfile = (import ../../hosts/nerd-nixos).hostProfile;
+
+  mkFleetRuntimeConfig =
+    { catalog, inventory }:
+    mkNixosConfig {
+      hostProfile = fleetRuntimeHostProfile;
+      profileModule =
+        { lib, ... }:
+        {
+          imports = [
+            (import ../../hosts/host-common.nix {
+              hostProfile = fleetRuntimeHostProfile;
+              darwinProfile = { };
+            })
+          ];
+          # Pinned rather than left to default: the profile set decides what the
+          # generic layer contains, so a host must not be able to widen it.
+          config.profile.names = lib.mkForce [
+            "system"
+            "user"
+          ];
+        };
+      generationMode = "full";
+      zfsOverlays = true;
+      vmProvider = "tart";
+      inherit catalog inventory;
+    };
+
   mkNixosOutputs =
     {
       hostProfile,
@@ -173,6 +212,13 @@ let
 
       selectedRuntime = zfsRuntimeTart;
       fullSystemPath = selectedRuntime.config.system.build.toplevel;
+
+      # The shared middle of the stack.  Same value for every host by
+      # construction — see mkFleetRuntimeConfig.
+      fleetRuntimeSystemPath =
+        (mkFleetRuntimeConfig {
+          inherit catalog inventory;
+        }).config.system.build.toplevel;
 
       # Minimal bringup system — ZFS + network + SSH only.  The image
       # bytes are bit-identical for every host on the fleet (no
@@ -467,6 +513,9 @@ let
           # Include the production runtime closure so zfs-nixos-install can use
           # the prebuilt path without network access at first boot.
           inherit runtimeSystemPath;
+          # Not a per-call knob: the middle layer is the same for every host, so
+          # it comes from the enclosing scope rather than from the caller.
+          inherit fleetRuntimeSystemPath;
           inherit pauseAfterInstall;
           inherit enableBuildObserve;
           inherit buildObserveInterval;
@@ -605,5 +654,5 @@ let
     };
 in
 {
-  inherit mkNixosConfig mkNixosOutputs;
+  inherit mkNixosConfig mkFleetRuntimeConfig mkNixosOutputs;
 }

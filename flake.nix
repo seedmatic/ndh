@@ -891,6 +891,7 @@
 
       inherit (nixosOutputsApi)
         mkNixosConfig
+        mkFleetRuntimeConfig
         mkNixosOutputs
         ;
 
@@ -1036,8 +1037,7 @@
           # in-cluster render env) both consume, so the filter that encrypts `.secrets` on
           # a commit is byte-for-byte the one that smudges it in the aarch64-linux render
           # pod. See modules/home-manager/git.d/git-sops-filter.nix.
-          git-sops-filter =
-            systemPkgs.callPackage ./modules/home-manager/git.d/git-sops-filter.nix { };
+          git-sops-filter = systemPkgs.callPackage ./modules/home-manager/git.d/git-sops-filter.nix { };
         }
         // mkBaremetalLinkPackages system
         // builtins.foldl' (
@@ -1677,6 +1677,14 @@
         merged
         // {
           nerd-nixos = merged."${anyMainName}-bringup";
+          # The same placeholder host in FULL mode — the fleet-generic runtime
+          # whose closure is the stack's middle EROFS layer.  Exposed so it can be
+          # built and inspected on its own; the image build gets it from
+          # mkNixosOutputs, which shares this one definition.
+          nerd-runtime = mkFleetRuntimeConfig {
+            catalog = catalogData;
+            inventory = inventoryData;
+          };
         };
 
       # Provider-scoped VM configuration aliases (full runtime systems, not bringup).

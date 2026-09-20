@@ -12,6 +12,14 @@
   # erofs-store-layers.nix declares a layer for it, and a declared layer with no
   # content is a disk the guest must mount to boot and that holds nothing.
   runtimeSystemPath,
+  # Fleet-generic runtime closure — the same neutral host profile the bringup
+  # uses, evaluated in `full` mode.  Packed as the layer between the bringup base
+  # and the host residue, which is what keeps the per-host layer small: measured
+  # on nikopol, of the 1175 paths its runtime needs above the base, this layer
+  # carries 1098 (7.49 GiB) and leaves 77 (41.6 MB) host-private.  Required for
+  # the same reason as runtimeSystemPath: erofs-store-layers.nix declares a layer
+  # for it, and a declared layer with no content is a disk that holds nothing.
+  fleetRuntimeSystemPath,
   zpoolDiskSize ? 3196, # 3GiB (temporary - minimal system still has large closure)
   # Dedicated EFI boot disk size — holds only systemd-boot + kernel + initrd.
   bootDiskSize ? (import ./zfs-partition-layout.nix).bootDiskSizeMiB,
@@ -155,7 +163,21 @@ let
     rootPaths = [ installSystemPath ] ++ (lib.optional includeChannel channelSources);
   };
 
+  fleetRuntimeClosureInfo = pkgs.closureInfo { rootPaths = [ fleetRuntimeSystemPath ]; };
+
   runtimeClosureInfo = pkgs.closureInfo { rootPaths = [ runtimeSystemPath ]; };
+
+  # Everything the host residue may assume is already mounted below it.  A
+  # `closureInfo` over both roots rather than a union of the two path lists,
+  # because the union of two closures IS a closure — so this needs no delta
+  # script and cannot drift from what the two lower layers actually carry.
+  baseAndFleetClosureInfo = pkgs.closureInfo {
+    rootPaths = [
+      installSystemPath
+      fleetRuntimeSystemPath
+    ]
+    ++ (lib.optional includeChannel channelSources);
+  };
 
   # What the installer replays into the target Nix database.  It must describe
   # the UNION of the stack, not any single layer: a layer's path set is not
@@ -166,23 +188,34 @@ let
   unionClosureInfo = pkgs.closureInfo {
     rootPaths = [
       installSystemPath
+      fleetRuntimeSystemPath
       runtimeSystemPath
     ]
     ++ (lib.optional includeChannel channelSources);
   };
 
-  # The runtime layer carries what the base does not already hold — a set
-  # difference, for the reasons erofs-store-image.d/delta.sh states.
+  # Each layer above the base carries only what the layers below it do not
+  # already hold — a set difference, for the reasons
+  # erofs-store-image.d/delta.sh states.
   storeLayerDeltaScript = pkgs.replaceVars ./erofs-store-image.d/delta.sh {
     inherit nixBashTrampoline;
     loggerTag = "nixos.erofsStoreLayerDelta";
   };
 
+  fleetRuntimeDeltaStorePaths =
+    pkgs.runCommand "io.seedmatic.ndh-nix-store-erofs-fleet-runtime-delta-paths" { }
+      ''
+        ${pkgs.bash}/bin/bash ${storeLayerDeltaScript} \
+          ${baseClosureInfo}/store-paths \
+          ${fleetRuntimeClosureInfo}/store-paths \
+          "$out"
+      '';
+
   runtimeDeltaStorePaths =
     pkgs.runCommand "io.seedmatic.ndh-nix-store-erofs-runtime-delta-paths" { }
       ''
         ${pkgs.bash}/bin/bash ${storeLayerDeltaScript} \
-          ${baseClosureInfo}/store-paths \
+          ${baseAndFleetClosureInfo}/store-paths \
           ${runtimeClosureInfo}/store-paths \
           "$out"
       '';
@@ -346,6 +379,10 @@ let
       rootPath = installSystemPath;
     };
     store-002 = {
+      storePathsFile = "${fleetRuntimeDeltaStorePaths}";
+      rootPath = fleetRuntimeSystemPath;
+    };
+    store-003 = {
       storePathsFile = "${runtimeDeltaStorePaths}";
       rootPath = runtimeSystemPath;
     };
