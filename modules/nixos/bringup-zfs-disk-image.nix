@@ -335,6 +335,11 @@ let
         closureRegistration = "${unionClosureInfo}/registration";
         nixosInstall = "${config.system.build.nixos-install}/bin/nixos-install";
         systemToplevel = "${installSystemPath}";
+        # Written to the target root as data, for the first-boot handover.  Safe
+        # here and nowhere else: this script installs the bringup system, it is
+        # not part of it, so naming the runtime toplevel adds no reference to the
+        # bringup closure.
+        runtimeSystemToplevel = "${runtimeSystemPath}";
         systemdLibUdevd = "${pkgs.systemd}/lib/systemd/systemd-udevd";
         channelFlag = if includeChannel then "--channel ${channelSources}" else "";
         bootSizePolicyNote = builtins.toJSON "ZFS bringup artifacts generated from canonical zfs-pool-disk-map definitions.";

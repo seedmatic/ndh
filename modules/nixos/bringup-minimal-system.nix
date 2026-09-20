@@ -69,6 +69,10 @@ in
 
     # Minimal-guest boot scaffolding
     ./systemd/naming.nix
+    # Hands the node over to the system it was provisioned for, on first boot.
+    # Only reachable from here: this config does not import modules/nixos/default.nix,
+    # so it never sees systemd/default.nix.
+    ./systemd/bringup-target-activate.nix
     ./initrd-emergency.nix
     ./console-serial.nix
     ./boot-loader.nix

@@ -230,11 +230,20 @@ about a second and writes nothing — the overlay upper stays at one path, 21 KB
 
 [NOTE]
 ====
-The intended end state is that this step disappears: `zfs-nixos-install.service` already
-exists for it, `wantedBy` the bringup target. It is armed but empty — the bringup config
-neutralises its assertion and never sets `NDH_NIXOS_INSTALL_SYSTEM_PATH`, so it fails on
-every bringup boot. Arming it needs the runtime toplevel delivered *out of the closure*, the
-way cloud-init already injects hostname and hostId.
+This step is now automatic on a freshly provisioned node:
+`io-seedmatic-ndh-bringup-target-activate.service` does exactly the three commands above on
+the first boot of the bringup, then reboots. The target it activates is read from
+`/var/lib/ndh/bringup-target-system`, a plain file the nested-VM installer writes onto the
+target root — *not* a path baked into the bringup system, because that would make the bringup
+closure reference the runtime one and collapse the EROFS stack into a single layer.
+
+The unit is skipped (`ConditionPathExists`) when no target is declared, so a plain bringup
+image stays a bringup. It refuses to retry after a failed handover rather than reboot-looping
+the node: if it reports `handover already attempted`, the bootloader entry did not take —
+investigate, then remove `/var/lib/ndh/bringup-target-system.attempted`.
+
+Run the commands above by hand when you are activating a *different* configuration than the
+one the node was provisioned for.
 
 Design and rationale: `docs/architecture/nixos-substrate/erofs-store-layer-stack.adoc` in
 *rke2lab*, not this repo.

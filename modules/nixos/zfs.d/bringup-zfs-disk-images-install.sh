@@ -164,6 +164,19 @@ for layer_gcroot_spec in @storeLayerGcrootSpecs@; do
   ln -sfn "$layer_root_path" "$target_layer_gcroot"
 done
 
+# Declare, as DATA on the target root, the system this node is provisioned for.
+#
+# systemd/bringup-target-activate.nix reads this file on first boot and hands the
+# node over to it.  A file and not a baked-in path: if the bringup toplevel named
+# the runtime toplevel, nix would record the reference, the bringup closure would
+# absorb the runtime one, and the EROFS stack would collapse into a single layer.
+# Writing it from here keeps the two closures disjoint — this script is not part
+# of the bringup system, it is what installs it.
+: '[bringup-zfs] declaring the provisioned target system on the target root'
+target_system_marker="/mnt/zfs-root/var/lib/ndh/bringup-target-system"
+mkdir -p "$(dirname "$target_system_marker")"
+printf '%s\n' '@runtimeSystemToplevel@' > "$target_system_marker"
+
 : 'Fail loudly if the prebuilt store lacks the closure the boot entries name'
 : '(init=/nix/store/.../init) — a silent miss would degrade into re-copying it.'
 bringup::assert_toplevel_in_target_store "/mnt/zfs-root" @systemToplevel@
