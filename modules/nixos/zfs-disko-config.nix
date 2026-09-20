@@ -14,7 +14,9 @@
   zfsPoolDiskMap ? null,
   # The cluster ZFS dataset layout (catalog.datasets) rke2lab's dataplan contributes — materialised
   # under the pool as the rke2lab/* subtree. Defaults empty so a catalog-less eval degrades safely.
-  datasetLayout ? { entries = [ ]; },
+  datasetLayout ? {
+    entries = [ ];
+  },
   disks ? {
     # boot: dedicated EFI boot disk (vda). ZFS data disks start at vdb.
     # This keeps all tank disks uniform — no dual boot+data role on tank1.
@@ -41,7 +43,10 @@ let
   clusterDatasets = builtins.listToAttrs (
     map (e: {
       name = e.path;
-      value = { type = e.type; } // lib.optionalAttrs ((e.options or { }) != { }) { options = e.options; };
+      value = {
+        type = e.type;
+      }
+      // lib.optionalAttrs ((e.options or { }) != { }) { options = e.options; };
     }) (datasetLayout.entries or [ ])
   );
   espEndMiB = espStartMiB + espSizeMiB;

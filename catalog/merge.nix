@@ -8,7 +8,10 @@
 # Catalog is lib-free → builtins only.
 {
   mergeByKey =
-    { key, listAttrs ? [ ] }:
+    {
+      key,
+      listAttrs ? [ ],
+    }:
     records:
     let
       keysInOrder = builtins.foldl' (
