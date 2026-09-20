@@ -68,11 +68,6 @@ let
       ndhSystemd.mkServiceName "boot-entry-reconcile"
     else
       mkServiceNameFallback "boot-entry-reconcile";
-  zfsNixosInstallServiceName =
-    if ndhSystemd != null then
-      ndhSystemd.mkServiceName "zfs-nixos-install"
-    else
-      mkServiceNameFallback "zfs-nixos-install";
   espSyncUnitName =
     if ndhSystemd != null then ndhSystemd.mkUnitName "esp-sync" else mkUnitNameFallback "esp-sync";
 
@@ -1005,7 +1000,6 @@ in
             "local-fs.target"
           ];
           requires = [ "zfs-import.target" ];
-          before = [ zfsNixosInstallServiceName ];
 
           path = with pkgs; [
             bash

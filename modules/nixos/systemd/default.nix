@@ -42,7 +42,6 @@ in
     ./tart-host-shares.nix
   ]
   ++ (lib.optionals (effectiveVmProvider == "tart") [ ./tart-guest-agent.nix ])
-  ++ (lib.optionals bringupMode [ ./zfs-nixos-install.nix ])
   ++ (lib.optionals (!bringupMode) [
     ./buildkitd.nix
     ./hm-state-dirs.nix

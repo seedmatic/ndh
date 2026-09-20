@@ -5,7 +5,6 @@
 # The xchg directory is used to pass:
 #   - pause.lock for inspection pauses
 #   - boot-size-hint.yaml with boot partition metadata
-#   - zfs-nixos-install-observe.yaml with install observability data
 #   - builder-observe.yaml with builder-side metrics
 {
   config,

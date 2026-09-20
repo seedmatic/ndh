@@ -23,10 +23,6 @@ let
       catalog,
       inventory,
       vmProvider ? null,
-      # Prebuilt production system store path baked into bringup image.
-      # Set for bringup configs so zfs-nixos-install.service can use the
-      # pre-downloaded closure instead of building from the flake at runtime.
-      runtimeSystemPath ? null,
     }:
     let
       effectiveVmProvider = if vmProvider != null then vmProvider else (hostProfile.vmProvider or "tart");
@@ -60,8 +56,6 @@ let
                 ;
               vmProvider = effectiveVmProvider;
               nixBashTrampoline = ndhNixBashTrampoline;
-              # Empty string when unset; zfs-nixos-install.nix asserts non-empty in bringup mode.
-              runtimeSystemPath = if runtimeSystemPath != null then builtins.toString runtimeSystemPath else "";
             };
             store = ndhStoreApiLinux;
           };
@@ -194,9 +188,9 @@ let
 
       selectedVmProvider = hostProfile.vmProvider or "tart";
 
-      # Full runtime system (activated remotely via nixos-rebuild switch
-      # --target-host once the minimal bringup image is up). Lima variant
-      # was retired — both fleet hosts run Tart.
+      # Full runtime system — the target the node hands itself over to on
+      # first boot, packed as the stack's third layer.  Lima variant was
+      # retired — both fleet hosts run Tart.
       zfsRuntimeTart = mkNixosConfig {
         inherit
           profileModule
@@ -207,7 +201,6 @@ let
         hostProfile = runtimeSystemdHostProfile;
         zfsOverlays = true;
         vmProvider = "tart";
-        runtimeSystemPath = null; # No nested reference
       };
 
       selectedRuntime = zfsRuntimeTart;
@@ -220,13 +213,14 @@ let
           inherit catalog inventory;
         }).config.system.build.toplevel;
 
-      # Minimal bringup system — ZFS + network + SSH only.  The image
-      # bytes are bit-identical for every host on the fleet (no
-      # hostProfile-derived bake): hostName is the literal
-      # "nerd-nixos", hostId is a placeholder, runtimeSystemPath is
-      # absent.  Per-host identity is injected at first boot by the
+      # Minimal bringup system — ZFS + network + SSH only.  This closure
+      # is bit-identical for every host on the fleet (no hostProfile-derived
+      # bake): hostName is the literal "nerd-nixos" and hostId is a
+      # placeholder.  Per-host identity is injected at first boot by the
       # per-host Tart bootstrap installer via cloud-init userdata
-      # (cidata ISO mechanism).
+      # (cidata ISO mechanism).  The disk image bundle around it is per-host,
+      # because it packs the host's runtime layer — see
+      # diskImageBringupZfsSystemdBootRaw.
       #
       # The bringup-minimal config receives a generic ndh.context
       # carrying only the catalog user and the inventory (the
@@ -494,7 +488,10 @@ let
           nixosSystem,
           name,
           hostLabel ? mainName,
-          runtimeSystemPath ? null,
+          # Required: it is the stack's third layer and the toplevel the node
+          # hands itself over to.  No default — a null would fail deeper, in
+          # the layer's closureInfo.
+          runtimeSystemPath,
           pauseAfterInstall ? false,
           enableBuildObserve ? false,
           buildObserveInterval ? 5,
@@ -510,8 +507,6 @@ let
           nixBashTrampoline = "${ndhNixBashTrampoline}";
           # Use the bringup configuration closure for the bootstrap stage.
           installSystemPath = nixosSystem.config.system.build.toplevel;
-          # Include the production runtime closure so zfs-nixos-install can use
-          # the prebuilt path without network access at first boot.
           inherit runtimeSystemPath;
           # Not a per-call knob: the middle layer is the same for every host, so
           # it comes from the enclosing scope rather than from the caller.

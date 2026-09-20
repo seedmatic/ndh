@@ -154,11 +154,12 @@ let
 
   # Base layer: the bringup closure ALONE.  Keeping the runtime out of here is
   # what makes a second layer possible at all — nix records a reference for every
-  # store path it finds in an output, so letting the bringup toplevel name the
-  # runtime toplevel (as ndh.context.runtimeSystemPath does, via the install
-  # service's environment) would pull the entire runtime closure into this set
-  # and flatten the stack back to one layer.  That is precisely why
-  # runtimeSystemPath was left null here before the stack existed.
+  # store path it finds in an output, so a bringup toplevel that named the
+  # runtime toplevel anywhere (a unit's environment, a script placeholder) would
+  # pull the entire runtime closure into this set and flatten the stack back to
+  # one layer.  This is why the handover target reaches the bringup as DATA on
+  # the target root, written below by the installer — which is not part of the
+  # system it installs.  See systemd/bringup-target-activate.nix.
   baseClosureInfo = pkgs.closureInfo {
     rootPaths = [ installSystemPath ] ++ (lib.optional includeChannel channelSources);
   };
