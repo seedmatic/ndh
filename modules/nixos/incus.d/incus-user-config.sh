@@ -12,7 +12,6 @@ main() {
   auto_user="@user@"
   auto_home="@home@"
   remote_name="@incusRemoteName@"
-  remote_address="@incusRemoteAddress@"
 
   autoconfig_dir="${auto_home}/.config/incus"
 
@@ -63,8 +62,21 @@ EOF
     return 1
   fi
 
-  runuser -u "${auto_user}" -- env HOME="${auto_home}" XDG_CONFIG_HOME="${auto_home}/.config" \
-    @incusBin@ remote remove "${remote_name}" >/dev/null 2>&1 || true
+  # Checked, not swallowed: if the removal fails the `remote add` below fails too
+  # ("already exists"), and a `|| true` here would hide the cause.  errexit does
+  # not help — the logger invokes main from an `if` condition, which makes it
+  # inert for the whole body (shell.d/logger.sh:326).  The config.yml written
+  # above keeps `default-remote: local`, so unlike the Darwin operator script
+  # this one is never removing the default remote.
+  if runuser -u "${auto_user}" -- env HOME="${auto_home}" XDG_CONFIG_HOME="${auto_home}/.config" \
+    @incusBin@ remote list --format json 2>/dev/null \
+    | remote="${remote_name}" yq -p json -e 'has(strenv(remote))' >/dev/null 2>&1; then
+    if ! runuser -u "${auto_user}" -- env HOME="${auto_home}" XDG_CONFIG_HOME="${auto_home}/.config" \
+      @incusBin@ remote remove "${remote_name}"; then
+      echo "failed to drop the stale ${remote_name} remote before re-adding it" >&2
+      return 1
+    fi
+  fi
 
   runuser -u "${auto_user}" -- env HOME="${auto_home}" XDG_CONFIG_HOME="${auto_home}/.config" \
     @incusBin@ remote add "${remote_name}" "${token}"

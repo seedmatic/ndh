@@ -22,9 +22,50 @@ main() {
   # ignored — when the remote does not exist yet.
   "${incus_bin}" remote set-url "${remote_name}" "${remote_address}" >/dev/null 2>&1 || true
 
-  # Already authenticated → nothing to do (keeps the operator's existing keypair
-  # and pinned server cert untouched on every activation).
-  if "${incus_bin}" info "${remote_name}:" >/dev/null 2>&1; then
+  # Three-valued probe, because what follows is DESTRUCTIVE — it drops the
+  # remote — so it may only run on a positive answer that the pin is the
+  # problem.  Authenticated: nothing to do, the operator's keypair and pinned
+  # cert stay untouched.  Answered with a trust complaint: re-pin.  Anything
+  # else (connection refused, timeout, DNS) means "could not look", and a server
+  # that is merely down must not cost a pin that is still good.
+  local probe_err=""
+  if probe_err="$("${incus_bin}" info "${remote_name}:" 2>&1 >/dev/null)"; then
+    return 0
+  fi
+  case "${probe_err}" in
+  *x509* | *certificate* | *uthoriz*) ;;
+  *)
+    echo "incus: ${remote_name} did not answer with a trust error, leaving it untouched: ${probe_err%%$'\n'*}" >&2
+    return 0
+    ;;
+  esac
+
+  # Mint the trust token BEFORE touching the remote: if minting fails we must
+  # leave the existing entry alone rather than destroy a pin we cannot replace.
+  #
+  # The token is not only an authorization secret — it CARRIES the server's
+  # certificate fingerprint (verified: the token minted on 2026-09-20 held
+  # fa4c5f23…, the same value the node reports as `certificate_fingerprint`), and
+  # it travels over SSH, a channel already authenticated by the ndh CA.  So
+  # `remote add --token` pins a certificate it can check, where a bare
+  # --accept-certificate would trust whatever happens to answer at that address.
+  #
+  # A node running the daemon locally (the NixOS guest) reaches it over the unix
+  # socket; a Mac operator has no local daemon, so mint it on the guest over SSH
+  # (the guest's incus talks to its own local socket).
+  local token=""
+  if [[ -S /var/lib/incus/unix.socket ]]; then
+    token="$("${incus_bin}" --force-local config trust add "${remote_name}-operator" --quiet 2>/dev/null || true)"
+  else
+    token="$(ssh -o ConnectTimeout=8 -o BatchMode=yes "${trust_host}" -- \
+      incus config trust add "${remote_name}-operator" --quiet 2>/dev/null || true)"
+  fi
+
+  # Non-fatal by design: a server that cannot mint (the guest VM is down at
+  # activation time) leaves the remote as it was rather than breaking the whole
+  # home activation.  Re-activate once the server is up.
+  if [[ -z "${token}" ]]; then
+    echo "incus: could not mint a trust token from ${trust_host}; leaving ${remote_name} as it is (re-activate once the server is up)" >&2
     return 0
   fi
 
@@ -42,54 +83,26 @@ main() {
       return 1
     fi
   fi
-  if "${incus_bin}" remote list --format csv 2>/dev/null | cut -d, -f1 | grep -qxF "${remote_name}"; then
+  if "${incus_bin}" remote list --format json 2>/dev/null \
+    | remote="${remote_name}" yq -p json -e 'has(strenv(remote))' >/dev/null 2>&1; then
     if ! "${incus_bin}" remote remove "${remote_name}"; then
       echo "incus: cannot remove the stale ${remote_name} remote" >&2
       return 1
     fi
   fi
 
-  # The server's trust store is provisioned by the node itself, so what is
-  # normally missing here is only the PINNED SERVER CERT — and pinning needs no
-  # token.  Try that first: it keeps the common path free of the token's
-  # ten-minute TTL, which made this script depend on a race it did not need.
-  # stdin is closed on both attempts because `remote add` prompts when it cannot
-  # authenticate, and a prompt in a home activation hangs it.
+  # stdin is closed because `remote add` prompts when it cannot authenticate, and
+  # a prompt inside a home activation hangs it.
   #
   # No --project: the rke2lab project is created by the bootstrap (Pulumi's
   # incus:index:Project) and does not exist on a fresh node, so setting it here
   # would fail with "Project not found".
   if ! "${incus_bin}" remote add "${remote_name}" "${remote_address}" \
+    --token "${token}" \
     --accept-certificate \
-    --auth-type tls </dev/null >/dev/null 2>&1; then
-
-    # Client not trusted yet: mint a token.  A node running the daemon locally
-    # (the NixOS guest) reaches it over the unix socket; a Mac operator has no
-    # local daemon, so mint it on the guest over SSH (CA-authenticated via the
-    # ndh SSH config; the guest's incus talks to its own local socket).
-    local token=""
-    if [[ -S /var/lib/incus/unix.socket ]]; then
-      token="$("${incus_bin}" --force-local config trust add "${remote_name}-operator" --quiet 2>/dev/null || true)"
-    else
-      token="$(ssh -o ConnectTimeout=8 -o BatchMode=yes "${trust_host}" -- \
-        incus config trust add "${remote_name}-operator" --quiet 2>/dev/null || true)"
-    fi
-
-    # An unreachable server (the guest VM is down at activation time) stays
-    # non-fatal by design: warn and leave the remote unconfigured rather than
-    # break the whole home activation.  Re-activate once the server is up.
-    if [[ -z "${token}" ]]; then
-      echo "incus: ${remote_name} is unreachable; leaving it unconfigured (re-activate once the server is up)" >&2
-      return 0
-    fi
-
-    if ! "${incus_bin}" remote add "${remote_name}" "${remote_address}" \
-      --token "${token}" \
-      --accept-certificate \
-      --auth-type tls </dev/null; then
-      echo "incus: could not add ${remote_name} even with a fresh trust token" >&2
-      return 1
-    fi
+    --auth-type tls </dev/null; then
+    echo "incus: could not add ${remote_name} with a fresh trust token" >&2
+    return 1
   fi
 
   if ! "${incus_bin}" remote set-default "${remote_name}"; then
