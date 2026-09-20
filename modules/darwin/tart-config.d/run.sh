@@ -170,6 +170,7 @@ tart:state:init() {
 	extra_run_args=()
 	cli_run_args=()
 	run_args=()
+	serial_bridge_socat_pid=""
 }
 
 tart:cli:usage() {
@@ -236,7 +237,7 @@ tart:disk:required:validate() {
 			echo "[ERROR] run activation/materializer first to provision VM-local required disks (disk2/disk3/recover)" >&2
 			exit 1
 		fi
-		current_bytes="$(/usr/sbin/diskutil image info --plist "${disk}" 2>/dev/null \
+		current_bytes="$("${diskutil_bin}" image info --plist "${disk}" 2>/dev/null \
 			| /usr/bin/plutil -extract 'Size Info.Sector Count' raw - 2>/dev/null \
 			| awk '{print $1 * 512}' 2>/dev/null || true)"
 		if [[ "$current_bytes" =~ ^[0-9]+$ ]] && (( current_bytes < expected_bytes )); then
@@ -277,7 +278,11 @@ tart:serial:bridge:start() {
 		PTY,link="${tart_pty}",raw,echo=0 \
 		PTY,link="${user_pty}",raw,echo=0 \
 		&
-	local socat_pid=$!
+	# Script-scope, not local: tart:run:execute has to reap this bridge when the
+	# VM stops.  Left behind otherwise — one socat per run accumulates on the
+	# host, each holding a PTY pair, and the next run's `rm -f` only drops the
+	# symlinks while the process lingers.
+	serial_bridge_socat_pid=$!
 
 	# Wait until both symlinks appear (up to 3 s)
 	local i=0
@@ -286,8 +291,9 @@ tart:serial:bridge:start() {
 	done
 
 	if [[ ! -e "$tart_pty" || ! -e "$user_pty" ]]; then
-		echo "[ERROR] socat PTY bridge did not start in time (pid=${socat_pid})" >&2
-		kill "$socat_pid" 2>/dev/null || true
+		echo "[ERROR] socat PTY bridge did not start in time (pid=${serial_bridge_socat_pid})" >&2
+		kill "${serial_bridge_socat_pid}" 2>/dev/null || true
+		serial_bridge_socat_pid=""
 		return 1
 	fi
 
@@ -452,8 +458,35 @@ tart:run-args:required-disks:add() {
 	fi
 }
 
+tart:serial:bridge:reap() {
+	[[ -n "${serial_bridge_socat_pid:-}" ]] || return 0
+	kill "${serial_bridge_socat_pid}" 2>/dev/null || true
+	serial_bridge_socat_pid=""
+}
+
 tart:run:execute() {
-	exec "${tart_bin}" "${run_args[@]}"
+	# tart shells out to `diskutil` to introspect the disks it is asked to
+	# attach, and resolves it through PATH — so an absolute ${tart_bin} is not
+	# enough.  A login shell on a Mac that runs nix has PATH
+	# /run/current-system/sw/bin:/nix/var/nix/profiles/default/bin:/usr/bin:/bin,
+	# with no /usr/sbin (measured on nikopol-vzhost, interactive AND not), and
+	# tart then fails with `"diskutil" binary is not found in PATH`.  Same setup
+	# as tart-config.d/activation.sh's tart:runtime:path:setup, same reason.
+	PATH="$(dirname "${diskutil_bin}"):/usr/bin:/bin:/usr/sbin:/sbin:${PATH:-}"
+	export PATH
+
+	# Deliberately NOT `exec`: that replaced this shell with tart, so no trap
+	# could ever run and the serial bridge outlived every run (four socat
+	# processes found orphaned on nikopol-vzhost, one per launch).  tart stays in
+	# the foreground process group, so Ctrl-C still reaches it directly; the trap
+	# only reaps the bridge afterwards.
+	# HUP matters as much as INT here: closing the terminal window is the most
+	# common way these runs end, and it is what left the orphans behind.
+	trap tart:serial:bridge:reap EXIT HUP INT TERM
+	local status=0
+	"${tart_bin}" "${run_args[@]}" || status=$?
+	tart:serial:bridge:reap
+	return "$status"
 }
 
 tart:run:main() {
