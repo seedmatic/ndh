@@ -44,15 +44,11 @@ let
   authorizedPrincipalsInputPath = "${config.opensshPolicy.canonicalCommandDir}/authorized-principals-command.yaml";
   caPublicKeyPath = "${keysDir}/trusted-user-ca.pub"; # generated from all *-ca.pub keys in keysDir
 
-  opensshAuthzTools = ndh.store.installBinScriptBundle "openssh-authz-tools" {
-    openssh-principals-command = pkgs.replaceVars "${ndhCommon}/ssh/authorized-principals-command.sh" {
-      nixBashTrampoline = nixBashTrampoline;
-      principalsInputPath = authorizedPrincipalsInputPath;
-    };
-    openssh-group-authorized-keys = pkgs.replaceVars "${ndhCommon}/ssh/ssh-group-authorized-keys.sh" {
-      nixBashTrampoline = nixBashTrampoline;
-      authorizedKeysDir = config.opensshPolicy.authorizedKeysDir;
-    };
+  opensshAuthzTools = import (worktreePath.of "modules/.common.d/ssh/authz-tools.nix") {
+    inherit pkgs ndh nixBashTrampoline;
+    sshCommonDir = "${ndhCommon}/ssh";
+    principalsInputPath = authorizedPrincipalsInputPath;
+    authorizedKeysDir = config.opensshPolicy.authorizedKeysDir;
   };
   principalsScriptStore = "${opensshAuthzTools}/bin/openssh-principals-command";
   groupKeysScriptStore = "${opensshAuthzTools}/bin/openssh-group-authorized-keys";
