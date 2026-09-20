@@ -879,6 +879,71 @@ main() {
 		done
 	}
 
+	tart:vm:prebuilt-disks:replaced:list() {
+		# Names of store layers whose CONTENT would change: the image is already
+		# on disk and its recorded source differs from the one this manifest
+		# declares.  A layer that is simply absent is NOT reported — that is an
+		# appended layer, and appending is safe (see the guard below).
+		local disk="" name="" source="" marker=""
+
+		if [[ ${#tart_vm_prebuilt_disks[@]} -eq 0 ]]; then
+			return 0
+		fi
+
+		for disk in "${tart_vm_prebuilt_disks[@]}"; do
+			[[ -f "$disk" ]] || continue
+			name="$(basename "$disk" .img)"
+			source="$(tart:raw-image:path:from-manifest "$name" 2>/dev/null || true)"
+			[[ -n "$source" ]] || continue
+			marker="${disk}.source"
+			if [[ ! -f "$marker" ]] || [[ "$(cat "$marker")" != "$source" ]]; then
+				printf '%s\n' "$name"
+			fi
+		done
+	}
+
+	tart:vm:store-layers:replacement:guard() {
+		# A store layer's content and the node's ESP are ONE unit: the ESP names a
+		# system toplevel, and that toplevel must still exist in the stack the
+		# layers provide.  Replacing a layer's content under a preserved ESP
+		# breaks that invariant.
+		#
+		# Measured on nikopol-nixos, 2026-09-20: layer 002 was re-cut from the
+		# host runtime closure to the fleet-generic one while the ESP and the
+		# pools were preserved.  The node dropped to an initrd emergency shell —
+		# the ESP still named generation 2, whose toplevel no longer existed in
+		# any layer.  Every individual decision was defensible; jointly they were
+		# incoherent, and nothing reported it.
+		#
+		# APPENDING a layer stays allowed and is not reported by the list above: a
+		# generation built before that layer existed neither references it nor
+		# mounts it (its initrd declares the lowerdirs it was built with), so it
+		# keeps booting from the layers it already had.
+		#
+		# REPLACEMENT stops here rather than being repaired, because the
+		# materializer cannot repair it: the preserved pools still carry the old
+		# Nix profile and its generations, and only the nested-VM installer writes
+		# a profile — into the bundle's own fresh pools, never the live ones.  So
+		# the choice between re-provisioning and keeping the node is the
+		# operator's.
+		local preserved_disk="$1"
+		local replaced=""
+
+		if $factory_reset; then
+			return 0
+		fi
+
+		replaced="$(tart:vm:prebuilt-disks:replaced:list)"
+		if [[ -z "$replaced" ]]; then
+			return 0
+		fi
+
+		: "[tartConfig][ERROR] refusing to preserve the root disk while replacing store layer content: $(tr '\n' ' ' <<<"$replaced")"
+		: "[tartConfig][ERROR] the ESP on ${preserved_disk} names a system toplevel those layers may no longer carry; the guest would drop to an initrd emergency shell"
+		: "[tartConfig][ERROR] re-provision the VM instead: VM_FACTORY_RESET=true"
+		exit 1
+	}
+
 	tart:vm:prebuilt-disks:ensure() {
 		# Prebuilt images are finished read-only filesystems (the EROFS store
 		# lower), so unlike data disks they are copied verbatim: no blank
@@ -1031,6 +1096,8 @@ main() {
 			if [[ "$root_action" == "materialize" ]]; then
 				tart:disk:image:materialize-from-source "$primary_source" "$tart_vm_disk" "root disk (primary image)"
 				printf '%s\n' "$primary_source" > "$root_marker"
+			else
+				tart:vm:store-layers:replacement:guard "$tart_vm_disk"
 			fi
 
 			asif_output="$tart_vm_disk"
@@ -1063,6 +1130,8 @@ main() {
 
 		asif_output="$tart_vm_disk"
 		: "preserving existing root disk content at: $asif_output"
+
+		tart:vm:store-layers:replacement:guard "$asif_output"
 
 		chmod 0644 "$asif_output" 2>/dev/null || true
 
