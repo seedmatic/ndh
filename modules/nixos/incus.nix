@@ -64,25 +64,6 @@ let
       pkgs.replaceVars ./incus.d/fix-incus-socket-perms.sh { }
     } "$out/bin/fix-incus-socket-perms"
   '';
-  # Client identities the fleet trusts on this host's Incus API, beyond the operator cert the host
-  # mints for itself — see catalog/default.nix `incus.trustedClients`.
-  incusTrustedClients = ndhContext.catalog.incus.trustedClients or [ ];
-  # name<TAB>path per line: the certificates are PUBLIC, so they ride in the store as plain files.
-  incusTrustManifest = pkgs.writeText "incus-trust-manifest" (
-    lib.concatMapStrings (
-      client: "${client.name}\t${pkgs.writeText "incus-trust-${client.name}.crt" client.certificate}\n"
-    ) incusTrustedClients
-  );
-  ensureIncusTrust = ndh.store.runCommand "ensure-incus-trust" { } ''
-    install -Dm755 ${
-      pkgs.replaceVars ./incus.d/ensure-incus-trust.sh {
-        nixBashTrampoline = nixBashTrampoline;
-        incus = "${pkgs.incus}/bin/incus";
-        openssl = "${pkgs.openssl}/bin/openssl";
-        manifest = "${incusTrustManifest}";
-      }
-    } "$out/bin/ensure-incus-trust"
-  '';
   incusUserConfigScript = ndh.store.installBinScript "incus-user-config" (
     pkgs.replaceVars ./incus.d/incus-user-config.sh {
       user = config.profile.user.name;
@@ -254,26 +235,6 @@ in
     serviceConfig = {
       ExecStartPre = [ "${pkgs.bash}/bin/bash ${ensureIncusServerCert}/bin/ensure-incus-server-cert" ];
       ExecStartPost = [ "${pkgs.bash}/bin/bash ${fixIncusSocketPerms}/bin/fix-incus-socket-perms" ];
-    };
-  };
-
-  # A oneshot rather than an ExecStartPre on incus.service: a trust entry is registered through the
-  # API, so the daemon has to be up already. `wantedBy` without `partOf`/`bindsTo` on purpose — a
-  # failure here has to stay VISIBLE in `systemctl --failed` (the missing entry cost seven hours of
-  # silent `not authorized`, surfacing only as a Cluster API health-check timeout) without taking the
-  # daemon down with it.
-  systemd.services.incus-ensure-trust = lib.mkIf (incusTrustedClients != [ ]) {
-    description = "Assert the fleet's Incus client trust entries";
-    wantedBy = [ "incus.service" ];
-    after = [
-      "incus.service"
-      "incus-preseed.service"
-    ];
-    restartTriggers = [ ensureIncusTrust ];
-    serviceConfig = {
-      Type = "oneshot";
-      RemainAfterExit = true;
-      ExecStart = "${pkgs.bash}/bin/bash ${ensureIncusTrust}/bin/ensure-incus-trust";
     };
   };
 

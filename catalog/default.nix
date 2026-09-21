@@ -2,7 +2,6 @@
   cacheTrust,
   networkBlueprint,
   dataplan,
-  capnProviderCert,
 }:
 let
   # The shared catalog merge law (group-by-key, union/throw scalars, concat list attrs) — the ONE
@@ -11,22 +10,6 @@ let
 in
 {
   caches = cacheTrust.caches;
-
-  # Incus API clients to trust beyond the operator identity each host mints for itself — the same
-  # nature as `caches` above (named, fleet-wide, PUBLIC trust material), for a different API.
-  # `capn-provider` is rke2lab's: its in-cluster CAPN provider authenticates to Incus with it to
-  # adopt and drive the LXC instances. The trust store is daemon state, so re-minting a node's Incus
-  # certificates or re-materialising the node drops the entry — and CAPN then answers `not
-  # authorized` on every reconcile, which surfaces only as a Cluster API health-check timeout several
-  # layers up. Declaring it here is what makes it survive; modules/nixos/incus.nix asserts it.
-  incus = {
-    trustedClients = [
-      {
-        name = "capn-provider";
-        certificate = capnProviderCert;
-      }
-    ];
-  };
 
   # The cluster ZFS dataset LAYOUT — the storage twin of `netplan`. rke2lab (seed-master) owns the
   # tank/rke2lab/* layout and exposes it as `lib.dataplan`; ndh materialises it on the host pool via

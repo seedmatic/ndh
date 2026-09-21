@@ -155,19 +155,7 @@
       # networkBlueprint), pulled the same way and merged into catalog.datasets, materialised on the
       # host by zfs-disko-config.nix.
       dataplan = inputs.rke2lab.lib.dataplan;
-      # …and the PUBLIC half of the `capn-provider` client certificate, pulled the same way. rke2lab
-      # owns that identity (its in-cluster CAPN provider authenticates to Incus with it); ndh owns the
-      # node's Incus trust store, which is daemon state — so the entry has to be re-asserted here, not
-      # typed once by hand.
-      capnProviderCert = inputs.rke2lab.lib.capnProviderCert;
-      catalogData = import ./catalog/default.nix {
-        inherit
-          cacheTrust
-          networkBlueprint
-          dataplan
-          capnProviderCert
-          ;
-      };
+      catalogData = import ./catalog/default.nix { inherit cacheTrust networkBlueprint dataplan; };
       defaultSystems = [
         "aarch64-darwin"
       ];
