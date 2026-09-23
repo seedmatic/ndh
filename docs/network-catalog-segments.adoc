@@ -162,6 +162,19 @@ sequenceDiagram
 | `lanAttachment`    | `roaming` (no LAN advertise) | `fixed` (advertises `192.168.1.0/24`)
 |===
 
+[NOTE]
+====
+*These two shapes are being collapsed into one* (decided 2026-09-23, not yet applied). bioskop gains a
+`/30` link of its own, so `vzHostAddress` becomes a segment address on *both* hosts rather than a `/30`
+alias on one and a home-LAN address on the other. What stays host-specific is only the *reason* — the
+corp Mac is off-tailnet, the Mac Mini is on the LAN — never the shape. The `lanAttachment` row is the
+one genuine difference that remains, because it encodes a physical fact (a roaming laptop must not
+advertise a LAN it may leave).
+
+See `docs/network-topology-c4.adoc#target-carve` for the addresses, and the *tenancy* note under
+<<handoff,Status & handoff>> for who moves in.
+====
+
 == Reachability model
 
 Three independent gates must all pass — miss one and the name resolves but the
@@ -212,6 +225,12 @@ host is unreachable, or vice-versa:
 | Incus instance can't reach a *LAN* service | `bare-br` has `ipv4.nat=false` and
   the LAN has no return route to `172.16.6.0/24`. *Known limitation* — needs
   selective masquerade on the subnet router or a LAN static route (planned).
+  ⚠️ Do NOT conclude the instance has no egress at all: `ipv4.nat=false` is
+  deliberate (nnh needs real source addresses for flow attribution), and the
+  `baremetal-nat` nftables table in `modules/nixos/baremetal-segment.nix` already
+  masquerades *public-bound* traffic out of the host's LAN address. Private and
+  tailnet destinations keep their source — which is why the LAN case, and only it,
+  is still open.
 | darwin activation hangs on `step crypto key format` | Unrelated to segments —
   see the ssh-keys pipeline; `step` opens `/dev/tty` (smallstep/cli#674); the
   conversion now uses `ssh-keygen -m PKCS8`.
@@ -242,6 +261,45 @@ services — `bare-br` runs `ipv4.nat=false` and the LAN has no return route to
 selective masquerade on the subnet router (or a LAN static route). Flag if nnh
 needs LAN egress and we will land it.
 
+=== Incoming tenancy — rke2lab's cluster nodes (decided 2026-09-23)
+
+So far the only tenants have been nnh's collector and the vz-host name. *rke2lab's cluster nodes are
+moving in*, which changes this feature's status from "ready, awaiting a consumer" to "the substrate of
+the lab's address plane".
+
+The motive comes from nikopol: it runs on a laptop that connects through mobile hotspots, so the home
+bbox — which today serves every cluster node's `lan0` lease from a static reservation, and the `.lan`
+zone that is the only suffix an in-cluster pod can resolve — *is simply absent* off-site. A segment whose
+dnsmasq the host itself runs has no such dependency.
+
+What this means concretely for ndh:
+
+* *nothing to extend.* `modules/nixos/baremetal-segment.nix` is already keyed off
+  `netplan.baremetal.<effectiveHostName>`, so bioskop qualifies today. Verified live on 2026-09-23:
+  `bare-br` is `Created` on `bioskop-nixos` at `172.16.7.1/25` with its `.bioskop` zone — and **empty**
+  (`used_by: []`, link `DOWN`, which is normal for a memberless Linux bridge). The logic did not need
+  extending; it needed a tenant.
+* *one missing joint.* `raw.dnsmasq` is built from the hand-written `bm.staticHosts`, while rke2lab's
+  reservations travel in `netplan.segments[].hosts` — whose MAC-less form exists *explicitly* to match
+  this module's `host-record` shape. The two contracts have never been joined. The work is to derive
+  `raw.dnsmasq` from the merged segment whose `cidr` is `bm.netCidr`; `catalog/merge.nix` already
+  concatenates `hosts` for exactly this.
+* *one addressing prerequisite* — bioskop's `dhcpRange`, see the Troubleshooting note above and
+  `network-topology-c4.adoc#target-carve`.
+* *the segment numbers become derived, and this catalog's literals become projections.* The number could
+  not simply flow from this catalog *into* rke2lab's blueprint — ndh imports that blueprint at flake-eval
+  time, so the reverse direction would close an eval cycle. The resolution is that nothing crosses in
+  either direction: the slice is *derived* from rke2lab's `hostId` (`bioskop = 0`, `nikopol = 1`), the
+  table that already generates the vmnet plane, the ULA mirror and the MACs, so both repos compute the
+  same value from a name they already hold.
++
+Consequence for this file: the arbitrary, *inverted* pair (`nikopol = 6`, `bioskop = 7` against
+`hostId` 0/1) disappears, and `netCidr`/`netGateway`/`linkCidr` become derived values like the
+`kind = "rke2"` reservation rows already are. Flagged here so the change is not mistaken for drift. The
+target addresses are in `network-topology-c4.adoc#target-carve`; the full plan, its four invariants and
+the exhaustive check that guards them are in rke2lab's
+`docs/architecture/atlas/netplan.adoc#solved-plan`.
+
 *Over to nnh.* Please review whether this covers your needs:
 
 * *Attach* — does launching the collector on `bare-br` (DHCP + `<name>.<domain>`,
@@ -260,4 +318,15 @@ Tell us what is missing or wrong and we will provide/correct it.
 * link:network-catalog.adoc[Network Catalog] — the segment data model and how a
   domain (rke2lab, nnh) contributes spans via `lib.networkBlueprint`.
 * link:network-topology-c4.adoc[Network Topology (C4)] — the end-to-end lab
-  topology this feature realises.
+  topology this feature realises, including
+  link:network-topology-c4.adoc#target-carve[the target carve] (the `/24` split in
+  two halves by link, and the uniform vz-host shape).
+* *rke2lab* `docs/architecture/atlas/netplan.adoc` — the consumer's side of the
+  incoming tenancy: before/after C4 of the cluster nodes' address plane leaving the
+  home LAN for this segment, the three-layer model (physical Mac = vz-host · NixOS
+  vz guest = Incus host = the dual-homed hinge · instances), and why the hinge cannot
+  move up to the Mac (vz NAT hands every Mac the same `192.168.64.0/24`, so it cannot
+  be a per-host advertised segment).
+* *rke2lab* `docs/architecture/patterns/netplan-blueprint-single-source.adoc` — the
+  flake edge this catalog consumes, and the eval-cycle constraint that decides who
+  may declare the segment number.

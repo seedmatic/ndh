@@ -123,6 +123,46 @@ Rules (shared with rke2lab so the shapes merge cleanly):
 asns = { "65000" = "home"; "65010" = "rke2-cluster"; "65020" = "gateway"; };
 ----
 
+[[tiers]]
+=== The four address tiers
+
+The spans are not a flat list: they fall into four RFC-scoped spaces, each with a distinct *nature*.
+Knowing the tier is what makes a new span's placement decidable instead of a judgement call.
+
+[cols="1,2",options="header"]
+|===
+| Space | Nature
+
+| `192.168.0.0/16` | *The family's network.* One `/24` live, the bbox at `.254`. Physical devices,
+  served by a DHCP authority we do not run. **Frozen** — see the caution below.
+| `172.16.0.0/12` | *The fabric.* Everything reachable *across* bare-metals: per-host segments, node
+  addresses, the vz `/30` — all advertised into the tailnet. Deliberately co-tenanted (host infra at
+  65000, cluster nodes at 6501x): the tier is defined by *nature*, not by owner.
+| `10.0.0.0/8` | *Cluster internals.* Pods, services, and the vmnet supernet. rke2lab's space.
+| `100.64.0.0/10` | *The transport.* Tailscale's CGNAT range. Not decorative — without it the fabric
+  tier has no path from `172.16.<a>` to `172.16.<b>`, since the per-host slices share no L2.
+|===
+
+[CAUTION]
+====
+*`192.168.1.0/24` is a frozen input.* Every other tier is a virtualised network defined from nix, so its
+addressing is a design decision. The home LAN is not: no device on it renumbers, and the only effects of
+the in-flight fabric migration are *deletions* (rke2lab ceasing to claim `192.168.1.128/25`, and the
+`kind = "rke2"` reservations leaving the bbox). A diff that introduces or alters an address inside
+`192.168.1.0/24` is a bug.
+====
+
+Two known defects in the spans as currently declared, both of the same shape — a boundary that holds by
+*prefix length* rather than by structure:
+
+. *`10.0.0.0/8` is labelled `name = "home"`, `asn = 65000`.* Under the tier model that fallback is wrong:
+  any `10/8` traffic not matching a finer cluster span is attributed to *home* instead of to the cluster
+  tier. It works today only because the per-cluster spans are more specific. The fallback should name the
+  cluster tier.
+. *rke2lab still owns spans inside the home tier* — `bioskop-mgmt-lan` is `192.168.1.128/29` at ASN
+  *65010*, a lab span living in the family's `/16`. The fabric migration is what repairs this, by moving
+  those spans into the `172.16` tier where they belong.
+
 .The segment model — attribution triple, with managed facts only for spans ndh operates
 [mermaid]
 ....

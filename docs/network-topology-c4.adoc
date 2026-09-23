@@ -216,6 +216,82 @@ The split-DNS/advertise pattern applies identically on `bioskop-nixos` (its `.bi
 zone), so `ssh vzhost.bioskop` and `<inst>.bioskop` resolve uniformly across both bare-metals —
 only the derived `-link` segment and the `/30` transport are nikopol-specific.
 
+That last asymmetry is *scheduled to go*: see <<target-carve,the target carve>> below, where both
+vz-hosts take the same shape (a `/30` alias in their own segment) and the `/24` gains an explicit
+two-half structure.
+
+[[target-carve]]
+=== Target carve — DERIVED from the bare-metal, with the link encoded in the address
+
+[IMPORTANT]
+====
+*Decided 2026-09-23, not yet applied.* The tables above describe the live catalog. This section describes
+the target. The motive is not tidiness: it makes each bare-metal's segment the *sole* address authority
+for everything running behind it, so a host on a mobile hotspot (nikopol) is as well-addressed as one on
+the home LAN. rke2lab's cluster nodes become the segment's main tenant.
+
+*The addresses stop being allocated and start being derived* — from rke2lab's `hostId` (`bioskop = 0`,
+`nikopol = 1`, `test = 2`), the same table that already generates the vmnet plane, the ULA mirror and the
+MACs. Consequence for this catalog: `netCidr`/`netGateway`/`linkCidr` become *projections* of rke2lab's
+blueprint, like the `kind = "rke2"` reservation rows already are. The full plan, its invariants and the
+exhaustive check that guards it live in rke2lab's `docs/architecture/atlas/netplan.adoc`.
+====
+
+Today an address does *not* tell you which link it is on: `netCidr` is a `/25` (`.0-.127`) on `bare-br`
+while `linkCidr` sits at `.252` — **outside** that `/25`, on `lan-br` — and `.128-.251` is claimed by
+nothing. The target encodes the link *in the address*: one bit of the third octet.
+
+....
+172.16.<hostId*16>.0/20        advertiseCidr — ONE tailnet route per bare-metal
+│                                bioskop .0/20 · nikopol .16/20 · test .32/20
+├── slots 0-7  →  ON bare-br   (the Incus L2, gateway .1, dnsmasq zone .<domain>)
+│   ├── slot 0   .0/24          HOST INFRA — ndh owns
+│   │            ├── .1         bare-br gateway (address is .1/21, covering slots 0-7)
+│   │            ├── .2-.30     dynamic DHCP pool (= dynamicCidr .0/27)
+│   │            └── .124-.126  nnh pinned collector (nikopol)
+│   ├── slots 1-4 .1-.4 .0/24   ONE /24 PER CLUSTER — rke2lab owns (slot = 1 + roleId)
+│   │                             mgmt slot 1 · wrkld slot 2 · two spare role slots
+│   └── slots 5-7               spare, on bare-br
+└── slots 8-15 →  OFF bare-br  (other links)
+    └── slot 8   .0/30          static P2P link, on lan-br: Incus host .1 ↔ vz-host .2
+....
+
+Read it as: *third-octet offset < 8 ⇒ on `bare-br`; ≥ 8 ⇒ another link.* That is the property the `.252`
+island lacked.
+
+Per-host consequences — every value derived, none chosen:
+
+[cols="1,2,2",options="header"]
+|===
+| Field | nikopol (`hostId 1`) | bioskop (`hostId 0`)
+
+| `advertiseCidr` | `172.16.6.0/24` → `172.16.16.0/20` | `172.16.7.0/24` → `172.16.0.0/20`
+| `netCidr` (bare-br) | `172.16.6.0/25` → `172.16.16.0/21` | `172.16.7.0/25` → `172.16.0.0/21`
+| `netGateway` | `.6.1` → `172.16.16.1` | `.7.1` → `172.16.0.1`
+| `dynamicCidr` | `172.16.6.0/27` → `172.16.16.0/27` | *(absent)* → `172.16.0.0/27`
+| `dhcpRange` | `.2-.30` → `172.16.16.2-172.16.16.30` | *(absent)* → `172.16.0.2-172.16.0.30`
+| `linkCidr` | `172.16.6.252/30` → `172.16.24.0/30` | *(absent)* → `172.16.8.0/30`
+| `hostAddress` | `.6.254` → `172.16.24.1` | *(absent)* → `172.16.8.1`
+| `vzHostAddress` | `.6.253` → `172.16.24.2` | `192.168.1.129` → `172.16.8.2`
+| `staticHosts` | `.6.125/.126` → `172.16.16.125/.126` | *(absent)*
+|===
+
+Three notes on why these are not cosmetic:
+
+* *bioskop's missing `dhcpRange` is a correctness gap, not an omission.* Without `ipv4.dhcp.ranges`
+  dnsmasq auto-ranges the whole managed net, so a `bare-br` recreate can hand a *pinned* address to a
+  DHCP client — the exact failure that stalled the nnh pipeline (see the `staticHosts` rationale in
+  `catalog/default.nix`). rke2lab's addressing is entirely pinned, so this must land *before* the first
+  cluster node attaches.
+* *bioskop's vz-host gains a segment address for a functional reason, not for symmetry.* Once the cluster
+  nodes live in the fabric they cannot reach `192.168.0.0/16` (excluded from `baremetal-nat`'s
+  masquerade, and the LAN has no return route), so a `vzhost.bioskop` answering only at a LAN address
+  would be unreachable from the tenants now sharing its host. The Mac *keeps* `192.168.1.129`; it gains
+  `172.16.8.2` alongside.
+* *`192.168.1.0/24` is a frozen input.* No device on the home LAN renumbers. The only LAN-side effects
+  are deletions — rke2lab stops claiming `192.168.1.128/25`, and the `kind = "rke2"` reservations leave
+  the bbox. Both reversible.
+
 == Usage patterns
 
 === Derive addresses from the catalog — never hard-code
