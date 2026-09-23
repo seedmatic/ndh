@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 # baremetal-link — install the io.seedmatic.baremetal-link LaunchDaemon on a
-# CORPORATE bare-metal Mac (vzhost.<host>) that cannot join the tailnet.  It aliases
-# the Wi-Fi interface with this host's static /30 endpoint and installs the two
-# routes that make the Incus instance segment and the tailnet reachable through
-# the Incus host (the subnet router) — with NO NAT, so source IPs are preserved.
-# macOS drops interface aliases on Wi-Fi re-association, so a WatchPaths
+# bare-metal Mac (vzhost.<host>).  It aliases the NIC the vz guest is BRIDGED onto
+# (the rendered `bridgeService` — Wi-Fi on the corp MacBook, Thunderbolt Ethernet on the Mini)
+# with this host's static /30 endpoint, and installs the `linkRoutes` spans that make
+# the Incus instance segment (and, for a foreign vz-host, the tailnet) reachable through
+# the Incus host (the subnet router) — with NO NAT, so source IPs are preserved.  That
+# NIC is the right one because the /30's far end is the guest's lan-br: they share an L2.
+# macOS drops interface aliases when the link re-associates, so a WatchPaths
 # LaunchDaemon re-applies the alias + routes at load and on every re-assoc.
 #
 # Generalised from nnh's netflow-link (which carried the probe's own /30 alias):
@@ -12,12 +14,15 @@
 # collector.  All addresses are rendered from catalog.netplan.baremetal.<host>
 # at build time (@vzHostAddress@ etc.) — never hand-typed here.
 #
-# Build-time tokens (pkgs.replaceVars): interface, vzHostAddress, linkPrefix,
-# netCidr, tailnetCidr, hostAddress, domain, netGateway, label, plist, confDir,
+# Build-time tokens (pkgs.replaceVars): bridgeService, vzHostAddress, linkPrefix,
+# linkRoutes, hostAddress, domain, netGateway, label, plist, confDir,
 # log (written WITHOUT their at-sigils — replaceVars would substitute an at-sigil
 # placeholder here too).
-# Delivered as text and run as root via `ssh <vz> sudo bash -s` (see deploy.sh);
-# no nix runtime is required on the target, and it is bash-3.2 compatible.
+# TWO deliveries, one artifact.  A `foreign` vz-host gets this rendered text piped over
+# ssh and run as root (see deploy.sh) — no nix runtime on the target, bash-3.2 compatible.
+# A `nix-managed` vz-host runs this very script from its own darwin activation instead
+# (modules/darwin/baremetal-link.nix), which is why the two sections nix-darwin already
+# owns there — /etc/resolver/<domain> and the guest nudge — are gated on vz_host_kind.
 #
 # xtrace is the narration: `set -x` traces every ifconfig/route/launchctl call,
 # so there are no echo lines — only `: "…"` markers for human-level milestones.
@@ -32,11 +37,11 @@ PATH="/bin:/usr/bin:/sbin:/usr/sbin:$PATH"
   exit 1
 }
 
-interface="@interface@"
+bridge_service="@bridgeService@"
 vz_address="@vzHostAddress@"
 link_prefix="@linkPrefix@"
-net_cidr="@netCidr@"
-tailnet_cidr="@tailnetCidr@"
+link_routes="@linkRoutes@"
+vz_host_kind="@vzHostKind@"
 via="@hostAddress@"
 domain="@domain@"
 net_gateway="@netGateway@"
@@ -55,8 +60,9 @@ mkdir -p "$conf_dir"
 
 # The re-apply script the LaunchDaemon runs at load and on every Wi-Fi
 # re-association.  Idempotent: alias only if absent; `route add || route change`
-# so a stale gateway is corrected.  net_cidr reaches the Incus instances and
-# tailnet_cidr is the no-NAT tailnet return path — both through $via (the Incus
+# so a stale gateway is corrected.  link_routes is the list of spans to reach over
+# this /30 (the segment always; the tailnet only for a foreign vz-host that has no
+# tailnet interface of its own — see the flake's baremetalLinkVars), all via $via (the Incus
 # host / subnet router, on-link via the /30 alias).  It runs `set -x` too, so
 # its trace lands in @log@.  The heredoc is UNQUOTED so the rendered values
 # interpolate now; the deployed loop variable stays literal (\$net).
@@ -72,21 +78,45 @@ cat >"$conf_dir/link-up.sh" <<LINK
 # rendered by baremetal-link-install — re-applies the static /30 alias + routes.
 set -x
 PATH="/bin:/usr/bin:/sbin:/usr/sbin"
-/sbin/ifconfig ${interface} 2>/dev/null | /usr/bin/grep -q "inet ${vz_address} " \\
-  || /sbin/ifconfig ${interface} inet ${vz_address} netmask ${link_netmask} alias
-for net in ${net_cidr} ${tailnet_cidr}; do
+
+# Resolve the SERVICE name to its current BSD device, here rather than at install
+# time: enX numbering shifts when adapters are added or removed, and this daemon
+# fires on exactly that event (WatchPaths on SystemConfiguration). Resolving per run
+# is what makes the link survive a renumbering without a redeploy. Empty result =
+# the adapter is absent right now (unplugged dock); skip the alias and let the next
+# burst retry rather than failing the daemon.
+iface="\$(/usr/sbin/networksetup -listnetworkserviceorder \\
+  | /usr/bin/sed -n 's/^(Hardware Port: ${bridge_service}, Device: \\(.*\\))\$/\\1/p' \\
+  | /usr/bin/head -1)"
+if [ -z "\$iface" ]; then
+  : "[baremetal-link] service '${bridge_service}' has no device right now — skipping"
+  exit 0
+fi
+
+/sbin/ifconfig "\$iface" 2>/dev/null | /usr/bin/grep -q "inet ${vz_address} " \\
+  || /sbin/ifconfig "\$iface" inet ${vz_address} netmask ${link_netmask} alias
+for net in ${link_routes}; do
   /sbin/route -n add -net "\$net" ${via} 2>/dev/null \\
     || /sbin/route -n change -net "\$net" ${via} 2>/dev/null || true
 done
+LINK
 
-# Once ${interface} holds a REAL DHCP lease on the (possibly new) network AND it
+# The guest-reconfigure nudge, appended ONLY for a foreign vz-host.  It exists because a
+# ROAMING corp Mac is the only party that can tell its guest the network moved; it also
+# needs /var/root/.ssh/vz-nudge, which the ssh deploy ships and a nix-managed host has no
+# reason to hold.  Emitting it there would retry a doomed ssh on every WatchPaths burst
+# (the lease marker is only written on success), so the guard is correctness, not taste.
+if [[ "$vz_host_kind" == "foreign" ]]; then
+  cat >>"$conf_dir/link-up.sh" <<NUDGE
+
+# Once the adapter holds a REAL DHCP lease on the (possibly new) network AND it
 # changed since last run, nudge the Incus-host guest to re-acquire ITS own lan-br
 # lease over the /30 (host-local, reached via \$via). The WatchPaths bursts ARE the
 # retry loop, so no polling: no lease yet -> skip; lease appeared/changed -> nudge
 # once; same lease -> skip (dedup). ipconfig getifaddr returns empty for a missing
 # or self-assigned (169.254) address. Non-blocking (BatchMode + ConnectTimeout +
 # || true): a missing key or an unreachable guest never stalls the re-apply above.
-lease="\$(/usr/sbin/ipconfig getifaddr ${interface} 2>/dev/null || true)"
+lease="\$(/usr/sbin/ipconfig getifaddr "\$iface" 2>/dev/null || true)"
 if [ -n "\$lease" ] && [ "\$lease" != "\$(cat ${conf_dir}/.uplink-lease 2>/dev/null)" ]; then
   # Nudge first; record the lease ONLY on success, so a failed or transiently
   # unreachable guest (e.g. key not yet shipped, guest still booting) is retried
@@ -101,7 +131,8 @@ if [ -n "\$lease" ] && [ "\$lease" != "\$(cat ${conf_dir}/.uplink-lease 2>/dev/n
     echo "\$lease" > ${conf_dir}/.uplink-lease
   fi
 fi
-LINK
+NUDGE
+fi
 chown root:wheel "$conf_dir/link-up.sh"
 chmod 0755 "$conf_dir/link-up.sh"
 
@@ -135,24 +166,28 @@ launchctl bootout system "$plist" 2>/dev/null || true
 launchctl bootstrap system "$plist"
 launchctl enable "system/${label}"
 
-# Scoped macOS resolver for the .${domain} baremetal DNS zone.  This corp Mac
-# does NOT run a nix-darwin config, so modules/darwin/baremetal-resolvers.nix
-# never lands here — the daemon installer owns the same /etc/resolver/<domain>
-# file instead.  macOS routes a split-horizon domain ONLY via a scoped resolver
-# file (the flat global list would take a public NXDOMAIN as definitive), so we
-# point .${domain} straight at its segment's Incus dnsmasq (netGateway),
-# reachable over the /25 route the alias just installed.  Static file (survives
-# Wi-Fi re-association), so it lives here rather than in link-up.sh.
-: "[baremetal-link] scoping resolver: .${domain} -> ${net_gateway}"
-mkdir -p /etc/resolver
-cat >"/etc/resolver/${domain}" <<RESOLVER
+# Scoped macOS resolver for the .${domain} baremetal DNS zone — ONLY for a foreign
+# vz-host.  macOS routes a split-horizon domain only via a scoped resolver file (the
+# flat global list would take a public NXDOMAIN as definitive), so .${domain} has to
+# point straight at its segment's Incus dnsmasq (netGateway), reachable over the route
+# the alias just installed.  A foreign vz-host runs no nix-darwin config, so
+# modules/darwin/baremetal-resolvers.nix never lands there and this installer owns the
+# file.  On a nix-managed vz-host that module DOES own it (via environment.etc), and two
+# owners writing one path would fight at every activation — so we leave it alone.
+if [[ "$vz_host_kind" == "foreign" ]]; then
+  : "[baremetal-link] scoping resolver: .${domain} -> ${net_gateway}"
+  mkdir -p /etc/resolver
+  cat >"/etc/resolver/${domain}" <<RESOLVER
 # Split-DNS for the ${domain} baremetal segment (vzhost.${domain} + instances).
 # Resolves via the segment's Incus dnsmasq, reached over the advertised subnet route.
 nameserver ${net_gateway}
 RESOLVER
-chown root:wheel "/etc/resolver/${domain}"
-chmod 0644 "/etc/resolver/${domain}"
-dscacheutil -flushcache 2>/dev/null || true
-killall -HUP mDNSResponder 2>/dev/null || true
+  chown root:wheel "/etc/resolver/${domain}"
+  chmod 0644 "/etc/resolver/${domain}"
+  dscacheutil -flushcache 2>/dev/null || true
+  killall -HUP mDNSResponder 2>/dev/null || true
+else
+  : "[baremetal-link] resolver .${domain} is owned by baremetal-resolvers.nix here — skipped"
+fi
 
-: "[baremetal-link] ${label} up: ${vz_address}/${link_prefix} on ${interface}; routes ${net_cidr} + ${tailnet_cidr} via ${via}; resolver .${domain} -> ${net_gateway} (log ${log})"
+: "[baremetal-link] ${label} up: ${vz_address}/${link_prefix} on '${bridge_service}'; routes ${link_routes} via ${via}; resolver .${domain} -> ${net_gateway} (log ${log})"

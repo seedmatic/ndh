@@ -29,6 +29,11 @@ let
   bm = netplan.baremetal.${effectiveHostName} or null;
   enabled = bm != null;
   hasLink = enabled && bm ? linkCidr;
+  # A FOREIGN vz-host runs neither nix nor tailscale, so this host is the one that must ship
+  # it its link daemon and its nudge identity over ssh.  A nix-managed vz-host installs the
+  # same script from its OWN darwin activation (modules/darwin/baremetal-link.nix) and has no
+  # deploy package at all — so this must not be merely "has a /30".
+  deliversLink = hasLink && bm.vzHostKind == "foreign";
 
   netPrefix = lib.last (lib.splitString "/" bm.netCidr);
   linkPrefix = lib.last (lib.splitString "/" bm.linkCidr);
@@ -109,7 +114,7 @@ lib.mkIf enabled {
     };
   };
 
-  # For an off-tailnet corp Mac (hasLink): once this host has provisioned its system
+  # For a FOREIGN vz-host (deliversLink): once this host has provisioned its system
   # keys (ssh-keys-enrichment lands the rotating, CA-signed vz-nudge in systemKeysDir),
   # ship that identity to the corp Mac and (re)load its baremetal-link daemon — so the
   # Mac's WatchPaths link-up.sh can authenticate the guest-reconfigure nudge (see
@@ -119,7 +124,7 @@ lib.mkIf enabled {
   # long-lived, so a missed/failed run is harmless (the last shipped key keeps working);
   # attached to the contributed target so it re-runs each activation, re-shipping the
   # rotated key.
-  systemd.services.baremetal-link-deploy = lib.mkIf hasLink (
+  systemd.services.baremetal-link-deploy = lib.mkIf deliversLink (
     ndhSystemd.attachToContributedTarget {
       description = "Ship vz-nudge + (re)load baremetal-link on the corp Mac (${bm.domain})";
       after = [

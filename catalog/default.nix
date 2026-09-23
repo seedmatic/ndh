@@ -47,17 +47,19 @@ in
     let
       # Per-baremetal instance segments: each baremetal host owns an Incus segment +
       # dnsmasq DNS domain, advertised into the tailnet so peers resolve
-      # <inst>.<domain> via the segment's dnsmasq and reach it — including the
-      # off-tailnet corp Mac vzhost.nikopol, reached over a static /30 via its Incus host.
-      # SINGLE SOURCE for the corp-Mac package (Darwin) and the Incus host (NixOS):
+      # <inst>.<domain> via the segment's dnsmasq and reach it — including each vz-host,
+      # which answers at .253 on a static /30 to its Incus host.  Both bare-metals declare
+      # that /30, for two DIFFERENT reasons: nikopol's Mac is off-tailnet and has no other
+      # path at all, while bioskop's Mac is reachable but its TENANTS are not (see there).
+      # SINGLE SOURCE for the vz-host package (Darwin) and the Incus host (NixOS):
       # .253/.254/the CIDRs derive from here, never hard-coded twice.  On the Tailscale
       # SaaS controller (current) the advertise + split-DNS are applied at runtime in
       # the console; they become declarative (Headscale daemon dns.split) once Headscale
       # is the live control-plane.  See docs/network-topology-c4.adoc.
       baremetal = {
         # nikopol: the vz-host is a CORPORATE Mac that cannot join the tailnet — so its
-        # vzhost.<host> lives at .253 on a static /30 link to the Incus host, reached only via
-        # the advertised segment.  `linkCidr`/`hostAddress` are the /30 endpoints.
+        # vzhost.<host> at .253 on the static /30 is its ONLY path in, reached via the
+        # advertised segment.  `linkCidr`/`hostAddress` are the /30 endpoints.
         nikopol = {
           domain = "nikopol";
           netCidr = "172.16.6.0/25"; # managed Incus net (dnsmasq) — netflow instances
@@ -66,7 +68,13 @@ in
           dhcpRange = "172.16.6.2-172.16.6.30"; # dnsmasq range within the dynamic /27 (gateway .1 excluded)
           linkCidr = "172.16.6.252/30"; # static P2P link: corp Mac <-> Incus host
           hostAddress = "172.16.6.254"; # nikopol-nixos link end on lan-br (subnet router)
-          vzHostAddress = "172.16.6.253"; # corp Mac en0 alias (dnsmasq host-record vzhost.nikopol)
+          vzHostAddress = "172.16.6.253"; # corp Mac alias (dnsmasq host-record vzhost.nikopol)
+          # FOREIGN: this vz-host is a JAMF-managed corp Mac that runs neither tailscale nor
+          # nix. Both consequences follow from that one fact — its baremetal-link daemon is
+          # shipped over ssh (`nix run .#nikopol-baremetal-link-deploy`, also run by
+          # nikopol-nixos at activation), and the tailnet must be routed to it over the /30,
+          # because it has no tailnet interface of its own.
+          vzHostKind = "foreign";
           # Static dnsmasq host-records for the PINNED collector instances (nnh's /30,
           # 172.16.6.124/30). dns.mode=dynamic only registers a name while the instance holds a
           # DHCP lease, so nnh-inlet/nnh-outlet.nikopol vanished during a multi-day offline window
@@ -80,15 +88,33 @@ in
           advertiseCidr = "172.16.6.0/24"; # aggregate advertised into the tailnet
           lanAttachment = "roaming"; # itinerant (runs on the corp MacBook) — must NOT advertise the home LAN
         };
-        # bioskop: the vz-host is a PERSONAL Mac Mini already on the tailnet + home LAN, so
-        # vzhost.bioskop resolves to its real LAN address (.129, reachable via the home-LAN
-        # advertise) — NO /30 link, no off-tailnet corp Mac.  The segment exists for
-        # uniform .bioskop instance discovery + the vzhost.bioskop name.
+        # bioskop: the vz-host is a PERSONAL Mac Mini on the tailnet + home LAN, so unlike
+        # nikopol it is reachable WITHOUT the /30 — yet it declares one anyway, because its
+        # tenants are not.  A cluster node addressed in this segment cannot reach
+        # 192.168.1.129: baremetal-nat masquerades only PUBLIC-bound egress (the LAN is in
+        # its exclusion set) and the home LAN has no return route to 172.16.7.0/25.  So the
+        # vz-host takes a segment address on the same /30 shape nikopol uses, and the Mac
+        # KEEPS 192.168.1.129 — the alias is additional, the LAN identity is untouched.
+        # Same offsets as nikopol on purpose: the two hosts then move together, unchanged in
+        # shape, when the slice becomes derived from rke2lab's hostId (a /20 per bare-metal
+        # with the link encoded in the third octet — docs/network-topology-c4.adoc#target-carve).
         bioskop = {
           domain = "bioskop";
           netCidr = "172.16.7.0/25"; # managed Incus net (dnsmasq) — bioskop instances
           netGateway = "172.16.7.1"; # Incus bridge + dnsmasq + split-DNS target
-          vzHostAddress = "192.168.1.129"; # bioskop bare-metal LAN addr (dnsmasq host-record)
+          dynamicCidr = "172.16.7.0/27"; # bottom /27 = DHCP dynamic pool; statics live above it (top-down)
+          dhcpRange = "172.16.7.2-172.16.7.30"; # dnsmasq range within the dynamic /27 (gateway .1 excluded)
+          linkCidr = "172.16.7.252/30"; # static P2P link: Mac Mini <-> Incus host
+          hostAddress = "172.16.7.254"; # bioskop-nixos link end on lan-br (subnet router)
+          vzHostAddress = "172.16.7.253"; # Mac Mini alias (dnsmasq host-record vzhost.bioskop)
+          # NIX-MANAGED: here the vz-host IS the machine `bioskop` — the Mac Mini is its own
+          # bare-metal, so it already has a darwinConfiguration (unlike nikopol, whose vz-host
+          # is the corp Mac *hosting* the `nikopol` VM). Two consequences, both from that fact:
+          # its baremetal-link daemon is declared in its own darwin config (so a
+          # `darwin-rebuild switch` delivers it, no ssh), and the tailnet is NOT routed over
+          # the /30 — it is a tailnet member and owns its own utun route. Routing 100.64/10 to
+          # the guest here would hijack its tailnet.
+          vzHostKind = "nix-managed";
           advertiseCidr = "172.16.7.0/24"; # aggregate advertised into the tailnet
           lanAttachment = "fixed"; # Mac Mini, permanently on the home LAN — this host's subnet router advertises netplan.lan.cidr
         };
@@ -435,18 +461,17 @@ in
         # CNAME locally and emits one CNAME RR ahead of the resolved A
         # in the answer.
         #
-        # `vzhost.<host>` is intentionally absent from this DNS section.
-        # The SSH alias by the same name still exists for nikopol (only),
-        # but it doesn't go through tailnet DNS — the bare metal hosting
-        # nikopol can't be a tailnet member (corp-managed Mac, VPN binaries
-        # not allowed there), so a tailnet record targeting it would have
-        # nothing to resolve to.  Instead, `vzhost.nikopol` resolves via the
-        # per-baremetal split-DNS zone (the segment's dnsmasq host-record)
-        # and is reached over the advertised subnet route — see the single
-        # `vzhost.nikopol` stanza in modules/home-manager/ssh-tailnet-hosts.nix.
-        #
-        # Bioskop has no equivalent: it IS its own bare metal.  No
-        # `vzhost.bioskop` alias exists.
+        # `vzhost.<host>` is intentionally absent from this DNS section, for
+        # BOTH bare-metals.  The name resolves via the per-baremetal split-DNS
+        # zone (the segment's dnsmasq host-record) and is reached over the
+        # advertised subnet route, never via tailnet DNS.  For nikopol it could
+        # not be otherwise — the corp-managed Mac can't be a tailnet member (VPN
+        # binaries not allowed), so a tailnet record would have nothing to
+        # resolve to; that host also carries the one SSH alias, `vzhostNikopolAlias`
+        # in modules/home-manager/ssh-tailnet-hosts.nix.  bioskop's Mac IS a tailnet
+        # member, so its `vzhost.bioskop` record exists for its TENANTS — it denotes
+        # the segment address 172.16.7.253, the only one they can reach — and needs
+        # no SSH alias, since an operator reaches that Mac as `bioskop`.
         hosts = {
           bioskop = {
             serviceNames = [

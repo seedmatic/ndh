@@ -18,7 +18,7 @@ let
   };
 
   profileModule = import ./profile.nix { inherit hostProfile darwinProfile; };
-  darwinModule = import ./darwin.nix { inherit halfRamMiB; };
+  darwinModule = import ./darwin.nix { inherit halfRamMiB hardware; };
   nixosModule = import ./nixos.nix;
   developerToolsModule = import ./modules/darwin/developer-tools.nix;
 in

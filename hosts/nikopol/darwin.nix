@@ -1,4 +1,4 @@
-{ halfRamMiB }:
+{ halfRamMiB, hardware }:
 {
   lib,
   config,
@@ -42,7 +42,7 @@
       # boot flow is identical regardless of which Mac runs the VM.
       # `Wi-Fi` is the canonical hardware-port name on macOS; reliable
       # on laptops where a Thunderbolt adapter may not be plugged in.
-      vmRunBridgeInterface = "Wi-Fi";
+      vmRunBridgeInterface = hardware.vmBridgeService;
       vmRunSerialBridgeEnable = true;
       vmRunSerialBridgeAutoScreen = true;
     };

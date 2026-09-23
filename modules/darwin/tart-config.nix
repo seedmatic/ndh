@@ -478,8 +478,12 @@ in
       default = "";
       description = ''
         Bridged host network interface used by generated run wrapper.
-        Set to a non-empty interface name (e.g. `en0`) to force bridged mode.
+        Set to a non-empty macOS SERVICE name — `networksetup -listallnetworkservices`,
+        e.g. `Wi-Fi` or `Thunderbolt Ethernet Slot 1` — to force bridged mode; NOT a
+        `enX` device name, whose numbering shifts with adapter enumeration.
         Empty default keeps Tart's default networking mode.
+        Hosts set this from `hardware.vmBridgeService`, the single source shared with
+        the baremetal-link `/30` alias (which must target the same adapter).
       '';
     };
 

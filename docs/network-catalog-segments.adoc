@@ -103,10 +103,11 @@ flowchart LR
   classDef actor fill:#ddd6fe,stroke:#5b21b6,color:#000;
 ....
 
-NOTE: *bioskop* is the simple case — its vz-host is an on-LAN Mac Mini
-(`192.168.1.129`), so there is *no `/30` link* and the `host-record` points at the
-LAN address; bioskop additionally advertises the whole home LAN
-(`lanAttachment = "fixed"`).
+NOTE: *bioskop* carries the same shape for a different reason — its vz-host is an
+on-LAN Mac Mini, reachable at `192.168.1.129`, but its *tenants* are not, so it too
+declares a `/30` and its `host-record` points at the segment address
+(`172.16.7.253`); the Mac keeps its LAN address alongside. bioskop additionally
+advertises the whole home LAN (`lanAttachment = "fixed"`).
 
 == How to use it — attach a probe / service to a segment
 
@@ -149,30 +150,57 @@ sequenceDiagram
   V-->>P: reply (SSH, etc.)
 ....
 
-=== The two vz-host shapes
+=== The one vz-host shape, two reasons
 
 [cols="1,2,2"]
 |===
 | | nikopol (corp Mac, off-tailnet) | bioskop (personal Mac Mini, on-LAN)
 
-| catalog `linkCidr` | `172.16.6.252/30` | (absent)
-| `vzHostAddress`    | `172.16.6.253` (/30 alias) | `192.168.1.129` (LAN addr)
-| reached via        | advertised `/24` -> `/30` link | advertised `/24` (+ home LAN)
-| alias provider     | `baremetal-link` LaunchDaemon on the Mac (`nix run '.#nikopol-baremetal-link-deploy'`) | none — it is a real LAN host
+| catalog `linkCidr` | `172.16.6.252/30` | `172.16.7.252/30`
+| `vzHostAddress`    | `172.16.6.253` (/30 alias) | `172.16.7.253` (/30 alias)
+| why a `/30`        | it is the Mac's ONLY path in | the Mac is reachable, its TENANTS are not
+| reached via        | advertised `/24` -> `/30` link | advertised `/24` -> `/30` link
+| `vzHostKind`       | `foreign` — JAMF Mac, no nix, no tailscale | `nix-managed` — it IS the darwin host `bioskop`
+| alias delivery     | the rendered install piped over ssh (`nix run '.#nikopol-baremetal-link-deploy'`, also run by `nikopol-nixos` at activation) | its own `darwin-rebuild switch` (`modules/darwin/baremetal-link.nix`)
+| routes over the `/30` | the segment `/25` *and* `100.64/10` | the segment `/25` only
+| bridged NIC        | service `Wi-Fi` | service `Thunderbolt Ethernet Slot 1`
 | `lanAttachment`    | `roaming` (no LAN advertise) | `fixed` (advertises `192.168.1.0/24`)
 |===
 
+[IMPORTANT]
+====
+The `routes` row is a *correctness* difference, not a preference. A `foreign` vz-host has no
+tailnet interface, so `100.64/10` has to be routed to it over the `/30`. A `nix-managed` one is a
+tailnet member with its own `utun` route — pushing `100.64/10` at the guest there would *hijack its
+own tailnet*. Both consequences, plus the two sections the installer skips on a nix-managed host
+(`/etc/resolver/<domain>`, owned by `baremetal-resolvers.nix`, and the guest-reconfigure nudge,
+which only a roaming Mac needs), are derived from the single `vzHostKind` field.
+
+The two deliveries run the *same rendered artifact* — `<host>-baremetal-link-install` — so they
+cannot drift. Only one exists per host: a nix-managed vz-host has no `-deploy` app at all, because
+two delivery paths for one daemon is a way to drift.
+====
+
+The *bridged NIC* row is a service name, never an `enX`: the alias has to land on the adapter the
+vz guest is bridged onto (so both ends of the `/30` share an L2), and device numbering differs
+between the two Macs *and* shifts on one — on bioskop, `Wi-Fi` is `en1` and `en0` is the built-in
+`Ethernet`. Single-sourced in `hosts/<host>/hardware.nix` as `vmBridgeService`, shared with Tart's
+bridge mode, and resolved to a device at run time. See
+`docs/network-topology-c4.adoc` → Usage patterns.
+
 [NOTE]
 ====
-*These two shapes are being collapsed into one* (decided 2026-09-23, not yet applied). bioskop gains a
-`/30` link of its own, so `vzHostAddress` becomes a segment address on *both* hosts rather than a `/30`
-alias on one and a home-LAN address on the other. What stays host-specific is only the *reason* — the
-corp Mac is off-tailnet, the Mac Mini is on the LAN — never the shape. The `lanAttachment` row is the
-one genuine difference that remains, because it encodes a physical fact (a roaming laptop must not
-advertise a LAN it may leave).
+*These two shapes are now ONE* (2026-09-23). bioskop gained a `/30` link, a `dynamicCidr` and a
+`dhcpRange`, so `vzHostAddress` is a segment address on *both* hosts rather than a `/30` alias on one
+and a home-LAN address on the other. What stays host-specific is only the *reason* — the corp Mac is
+off-tailnet and has no other path in, the Mac Mini is reachable but its tenants are not — never the
+shape. Two genuine differences remain: `lanAttachment`, which encodes a physical fact (a roaming
+laptop must not advertise a LAN it may leave), and nikopol's `staticHosts`.
 
-See `docs/network-topology-c4.adoc#target-carve` for the addresses, and the *tenancy* note under
-<<handoff,Status & handoff>> for who moves in.
+The *numbering* is still the legacy one and is the part still pending: see
+`docs/network-topology-c4.adoc#target-carve`, where both hosts re-derive their addresses from
+rke2lab's `hostId` — a change that must move them *together*, since bioskop's target `/21` covers
+nikopol's current `/25`. The *tenancy* note under <<handoff,Status & handoff>> says who moves in.
 ====
 
 == Reachability model
@@ -202,8 +230,11 @@ host is unreachable, or vice-versa:
   --refresh --flake …#<host>`). `advertise-routes` only re-applies on a fresh
   registration, so after a re-register run `tailscale set --advertise-routes=…`
   if the routes did not come back.
-* *Corp-Mac alias* — `nix run '.#nikopol-baremetal-link-deploy'` installs/refreshes
-  the IP-alias LaunchDaemon on `vzhost.nikopol` over ssh (no nix on the target).
+* *vz-host alias* — depends on `vzHostKind`. For a `foreign` vz-host,
+  `nix run '.#nikopol-baremetal-link-deploy'` pipes the rendered installer over ssh (no nix
+  needed on the target); `nikopol-nixos` also runs it at each activation, so a manual run is
+  only needed to bootstrap or force a refresh. For a `nix-managed` one there is *no deploy
+  app*: `darwin-rebuild switch` on that host installs the daemon itself.
 
 == Troubleshooting
 

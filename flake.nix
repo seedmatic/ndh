@@ -734,28 +734,56 @@
           }
         '';
 
-      # --- baremetal-link (corp-Mac IP-alias daemon) ----------------------------
-      # Connects a CORPORATE bare-metal Mac (vzhost.<host>) that cannot join the tailnet
-      # to its Incus instance segment: a static /30 en0 alias + routes to the /25
-      # and the no-NAT tailnet return path, re-applied on Wi-Fi re-association (a
-      # WatchPaths LaunchDaemon).  Only baremetal hosts with a `linkCidr` — an
-      # off-tailnet corp Mac reached over a /30 — get one; on-tailnet bare-metals
-      # (bioskop) declare none.  Rendered from catalog.netplan.baremetal.<host> and
-      # delivered as TEXT (no nix runtime, bash-3.2 ok on the target), so the deploy
-      # runs from any host that resolves vzhost.<host> — the operator's Mac or the
-      # nikopol-nixos activation oneshot.  See docs/network-topology-c4.adoc +
-      # pkgs/baremetal-link.d/.
-      baremetalLinkHosts = nixpkgs.lib.filterAttrs (_: bm: bm ? linkCidr) catalogData.netplan.baremetal;
+      # --- baremetal-link (vz-host IP-alias daemon) -----------------------------
+      # Connects a bare-metal Mac (vzhost.<host>) to its Incus instance segment: a static
+      # /30 alias on the NIC its vz guest is bridged onto, plus the routes that reach the
+      # segment, re-applied whenever that link comes back (a WatchPaths LaunchDaemon).
+      # Every baremetal host with a `linkCidr` gets one — BOTH of them do, for different
+      # reasons: nikopol's corp Mac is off-tailnet so the /30 is its only path in, while
+      # bioskop's Mac is reachable itself but not from its own tenants (see
+      # catalog.netplan.baremetal.bioskop).
+      #
+      # `vzHostKind` decides the DELIVERY. A `foreign` vz-host (nikopol's JAMF Mac: no nix,
+      # no tailscale) gets the daemon rendered as TEXT and piped over ssh — no nix runtime
+      # on the target, bash-3.2 ok — run by the operator or by <host>-nixos at activation.
+      # A `nix-managed` vz-host declares the same daemon in its own darwin config instead
+      # (modules/darwin/baremetal-link.nix), so `darwin-rebuild switch` delivers it; it gets
+      # no deploy app, because a second delivery path for one daemon is a way to drift.
+      # See docs/network-topology-c4.adoc + pkgs/baremetal-link.d/.
+      baremetalLinkHosts = nixpkgs.lib.filterAttrs (
+        _: bm: bm ? linkCidr && bm.vzHostKind == "foreign"
+      ) catalogData.netplan.baremetal;
 
       baremetalLinkLabel = "io.seedmatic.baremetal-link";
 
       # Common addressing tokens both install.sh and uninstall.sh take from the
       # catalog — single-sourced so the teardown undoes exactly what install set.
       baremetalLinkVars = bm: {
-        interface = "en0";
+        # The adapter to alias is the one the vz guest is BRIDGED onto — that is what puts
+        # the /30's two ends (this alias, the guest's lan-br) on a shared L2.  So it is read
+        # from the same declaration Tart's bridge mode uses, `hardware.vmBridgeService`,
+        # rather than restated: this token used to be a flat `en0`, which was accidentally
+        # right for nikopol (Wi-Fi) and silently wrong for bioskop (Thunderbolt Ethernet).
+        # A SERVICE name, resolved to its device by the script at runtime — `enX` numbering
+        # shifts when adapters are added or removed.  `bm.domain` is the host directory name
+        # (the catalog keys `baremetal.<host>` by it — see modules/nixos/baremetal-segment.nix).
+        bridgeService = (import (./hosts + "/${bm.domain}/hardware.nix")).vmBridgeService;
         vzHostAddress = bm.vzHostAddress;
-        netCidr = bm.netCidr;
-        tailnetCidr = catalogData.netplan.tailnet.cidr;
+        # The spans to route over the /30, as ONE list the script just loops over — so the
+        # decision lives here, in the data, instead of being wired into the script.
+        #   - the segment itself, always: a direct L2 path, and more specific than the
+        #     advertised /24 a tailnet-member Mac already holds via its utun.
+        #   - the tailnet, ONLY for a `foreign` vz-host, which has no tailnet interface and
+        #     can reach it no other way. Adding it on a nix-managed (tailnet-member) Mac
+        #     would hijack its own 100.64/10 route through the guest.
+        linkRoutes = nixpkgs.lib.concatStringsSep " " (
+          [ bm.netCidr ] ++ nixpkgs.lib.optional (bm.vzHostKind == "foreign") catalogData.netplan.tailnet.cidr
+        );
+        # The script also branches on the kind for the two things nix-darwin already owns on
+        # a nix-managed vz-host: /etc/resolver/<domain> (baremetal-resolvers.nix) and the
+        # guest-reconfigure nudge (which exists because a ROAMING corp Mac is the only one
+        # that can tell its guest the network moved).
+        vzHostKind = bm.vzHostKind;
         hostAddress = bm.hostAddress;
         domain = bm.domain;
         label = baremetalLinkLabel;
@@ -818,12 +846,26 @@
           }
         );
 
-      # Per-baremetal-host deploy packages, keyed `<domain>-baremetal-link-deploy`.
+      # The vz-hosts that ARE nix-darwin machines (bioskop: the Mac Mini is its own
+      # bare-metal, so `vzhost.bioskop` and the darwinConfiguration `bioskop` are one
+      # machine). They take the SAME rendered install.sh — the artifact is identical, only
+      # the delivery differs: piped over ssh for a foreign vz-host, run from the host's own
+      # activation here (modules/darwin/baremetal-link.nix). Exposed as a package so that
+      # module can reference it instead of re-deriving the tokens.
+      baremetalLinkNixHosts = nixpkgs.lib.filterAttrs (
+        _: bm: bm ? linkCidr && bm.vzHostKind == "nix-managed"
+      ) catalogData.netplan.baremetal;
+
+      # Per-baremetal-host packages: `<domain>-baremetal-link-deploy` for a foreign vz-host
+      # (ssh delivery), `<domain>-baremetal-link-install` for a nix-managed one (activation).
       mkBaremetalLinkPackages =
         system:
         builtins.foldl' (
           acc: bm: acc // { "${bm.domain}-baremetal-link-deploy" = mkBaremetalLinkDeploy system bm; }
-        ) { } (builtins.attrValues baremetalLinkHosts);
+        ) { } (builtins.attrValues baremetalLinkHosts)
+        // builtins.foldl' (
+          acc: bm: acc // { "${bm.domain}-baremetal-link-install" = mkBaremetalLinkInstall system bm; }
+        ) { } (builtins.attrValues baremetalLinkNixHosts);
 
       # Resolve a relative path to a path literal anchored at the repo
       # root.  Each call hashes only the file (or subtree) named, not
