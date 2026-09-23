@@ -24,7 +24,7 @@ grpcurl.pkg-path = "grpcurl"
 step-cli.pkg-path = "step-cli"
 ngrok.pkg-path = "ngrok"
 # manage-tailnet: administer the Tailscale tailnet (rotate per-kind auth keys,
-# sync-acl, retag + prune stale devices; dry-run by default, --yes to apply). A
+# sync-acl, retag + prune stale devices; dry-run by default, --apply to write). A
 # repo-LOCAL flake package, so a path: flakeref reflecting the working copy (not a
 # lagging remote ref) — resolve from the repo root (where .flox lives) on activate.
 # systems: the flake exposes it for aarch64-darwin only (the admin runs it from the

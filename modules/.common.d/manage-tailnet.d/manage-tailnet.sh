@@ -13,7 +13,7 @@
 #                       (prune superseded tags, set our tag vocabulary + owners,
 #                       role-based acls/ssh, baremetal route auto-approvers;
 #                       preserve personal/k8s tags, nodeAttrs, other routes),
-#                       show a diff, POST with If-Match only under --yes.
+#                       show a diff, POST with If-Match only under --apply.
 #   --retag-devices   : reconcile each device's tags to its kind (from hostname).
 #   --prune-stale-devices : delete tagged devices offline > --stale-after — the
 #                       orphaned operator proxies a cluster re-grow leaves behind
@@ -24,7 +24,7 @@
 # no jq: all structured-document parsing goes through yq.
 #
 # Safe by default: nothing is minted, written, revoked, or POSTed unless the
-# matching flag (+ --yes for destructive/remote writes) is given.  Logging runs
+# matching flag (+ --apply for destructive/remote writes) is given.  Logging runs
 # under ndh::logger:command:run (xtrace on) — the operator's private logs are
 # the debug surface here.
 source @nixBashTrampoline@
@@ -109,18 +109,18 @@ Safe by default. Manages the per-kind Tailscale SaaS auth keys + the ACL.
   --dry-run          Show planned actions, change nothing (default).
   --rotate-auth-key  Mint fresh per-kind auth keys and write .secrets.
   --sync-acl         Reconcile the live tailnet ACL with our canonical fragment;
-                     shows a diff.  POSTs only with --yes.
+                     shows a diff.  POSTs only with --apply.
   --sync-dns         Reconcile the tailnet split-DNS map (each per-baremetal zone
                      -> that segment's dnsmasq) from the catalog; shows a diff.
-                     PATCHes only with --yes.
+                     PATCHes only with --apply.
   --retag-devices    Reconcile each tailnet device's tags to its kind (from the
-                     hostname); lists a plan, applies only with --yes.
+                     hostname); lists a plan, applies only with --apply.
   --prune-stale-devices
                      Delete TAGGED tailnet devices offline longer than
                      --stale-after — orphaned operator proxies from cold-start
                      teardowns that hold MagicDNS names (the funnel then drifts
                      to pac-webhook-1, -2, …).  Lists a plan; deletes only with
-                     --yes.  Protects personal (untagged) + currently-online devices.
+                     --apply.  Protects personal (untagged) + currently-online devices.
   --stale-after <dur>  Age threshold for --prune-stale-devices: Ns/Nm/Nh/Nd
                      (default 1h).
   --keep-host <name>   Spare this EXACT hostname from --prune-stale-devices even
@@ -144,8 +144,11 @@ Safe by default. Manages the per-kind Tailscale SaaS auth keys + the ACL.
   --deploy           Print the post-rotation rebuild commands (never runs them).
   --commit           After a successful rotation, git-commit .secrets (--no-verify).
   --revoke-old       Revoke the auth keys that existed before this run.
-                     Requires --yes.  Runs only after new keys are written.
-  --yes              Confirm destructive / remote-write actions (ACL POST, revoke).
+                     Requires --apply.  Runs only after new keys are written.
+  --apply            Actually write: the remote-mutating half of every action above
+                     (ACL POST, split-DNS PATCH, device retag/delete, key revoke).
+                     Named for what it does, not for answering a prompt — nothing here
+                     prompts, and every action is dry-run until this is passed.
   -h, --help         This help.
 EOF
 }
@@ -220,7 +223,7 @@ sync_acl() {
     | .autoApprovers.exitNode = (((.autoApprovers.exitNode // []) + load(strenv(ACL_CANONICAL)).autoApprovers.exitNode) | unique)
   ' "$workdir/acl.cur.json" >"$workdir/acl.target.json" || die "ACL reconcile failed"
 
-	# Review (diff) is the point of the dry-run; on --yes we just push (terse).
+	# Review (diff) is the point of the dry-run; on --apply we just push (terse).
 	if [ "$assume_yes" -ne 1 ]; then
 		log "=== ACL reconcile diff (current -> target) ==="
 		diff -u \
@@ -228,7 +231,7 @@ sync_acl() {
 			<($YQ -p json -o=yaml '.' "$workdir/acl.target.json") || true
 		log "NOTE: for minting to work, assign '$OWNER_TAG' to the rotation OAuth"
 		log "      client in the Tailscale console (Settings -> OAuth clients)."
-		log "no --yes: ACL not pushed.  Re-run 'manage-tailnet --sync-acl --yes' to POST."
+		log "no --apply: ACL not pushed.  Re-run 'manage-tailnet --sync-acl --apply' to POST."
 		return 0
 	fi
 
@@ -241,36 +244,40 @@ sync_acl() {
 	log "SaaS ACL updated.  If not already done, assign '$OWNER_TAG' to the OAuth client (console)."
 }
 
-# Reconcile the tailnet SPLIT-DNS map with the catalog.  Merge, not replace: a zone we do not
-# declare is left alone (someone may have added one by hand for a reason we do not know), while
-# every zone we DO declare is set to the segment gateway the catalog says.
+# Reconcile the tailnet SPLIT-DNS map with the catalog: each per-baremetal zone resolved by that
+# segment's own Incus dnsmasq.
 #
-# This closes the last tailnet fact that was not in git.  Its absence is what let the map keep
-# pointing at a retired resolver through the 2026-09-23 renumbering, while the two GENERATED
-# consumers of the same `netGateway` corrected themselves at the next rebuild.
+# This closes the last tailnet fact that was not in git. Its absence is what let the map keep
+# pointing at a retired resolver through the 2026-09-23 fabric renumbering, while the two
+# GENERATED consumers of the same `netGateway` corrected themselves at the next rebuild.
+#
+# PATCH /dns/split-dns merges SERVER-SIDE — "only domains specified in the request map will be
+# modified", and a null value clears one. So we send only OUR map and a zone we do not declare is
+# left alone (someone may have added one for a reason this catalog does not know). The GET is for
+# the DIFF alone, not to build the payload; and no If-Match, which this endpoint does not document.
 sync_dns() {
-	local etag
-	etag="$(api -o "$workdir/dns.cur.json" -w '%header{etag}' -H 'Accept: application/json' \
-		"$API_BASE/tailnet/$TAILNET/dns/splitdns")" || die "GET splitdns failed"
-
-	$YQ -p json -o=json '. * load(strenv(SPLIT_DNS))' \
-		"$workdir/dns.cur.json" >"$workdir/dns.target.json" || die "split-DNS reconcile failed"
+	api -o "$workdir/dns.cur.json" -H 'Accept: application/json' \
+		"$API_BASE/tailnet/$TAILNET/dns/split-dns" >/dev/null || die "GET split-dns failed"
 
 	if [ "$assume_yes" -ne 1 ]; then
+		# Diffed as JSON, sorted: it is the wire format this PATCHes, so the diff shows exactly
+		# what would be sent rather than a transcription of it. (It was YAML on both sides at
+		# first, which read badly — yq inherits the FLOW style of the JSON document it loads, so
+		# the target came out on one line against a block-style current.)
 		log "=== split-DNS reconcile diff (current -> target) ==="
 		diff -u \
-			<($YQ -p json -o=yaml '.' "$workdir/dns.cur.json") \
-			<($YQ -p json -o=yaml '.' "$workdir/dns.target.json") || true
-		log "no --yes: split-DNS not pushed.  Re-run 'manage-tailnet --sync-dns --yes' to PATCH."
+			<($YQ -p json -o=json -P 'sort_keys(..)' "$workdir/dns.cur.json") \
+			<($YQ -p json -o=json -P '(. * load(strenv(SPLIT_DNS))) | sort_keys(..)' "$workdir/dns.cur.json") || true
+		log "no --apply: split-DNS not pushed.  Re-run 'manage-tailnet --sync-dns --apply' to PATCH."
 		return 0
 	fi
 
 	log "patching split-DNS …"
 	local resp
 	resp="$(api -X PATCH -H 'Content-Type: application/json' \
-		${etag:+-H "If-Match: $etag"} --data-binary "@$workdir/dns.target.json" \
-		"$API_BASE/tailnet/$TAILNET/dns/splitdns")" ||
-		die "PATCH splitdns rejected: $(printf '%s' "$resp" | $YQ -p json '.message // .' 2>/dev/null || printf '%s' "$resp")"
+		--data-binary "@$SPLIT_DNS" \
+		"$API_BASE/tailnet/$TAILNET/dns/split-dns")" ||
+		die "PATCH split-dns rejected: $(printf '%s' "$resp" | $YQ -p json '.message // .' 2>/dev/null || printf '%s' "$resp")"
 	log "split-DNS pushed."
 }
 
@@ -279,7 +286,7 @@ sync_dns() {
 # key existed stays untagged; this heals the drift via POST /device/{id}/tags.
 # Kind is derived from the hostname by convention: `<host>` = darwin (the bare
 # Mac), `<host>-<kind>` = that kind (e.g. nikopol-nixos -> nixos).  Dry-run
-# lists the plan; --yes applies.  Needs the OAuth client's `devices` scope.
+# lists the plan; --apply applies.  Needs the OAuth client's `devices` scope.
 retag_devices() {
 	local devs
 	devs="$(api "$API_BASE/tailnet/$TAILNET/devices")" ||
@@ -351,7 +358,7 @@ epoch_of() {
 # can't reclaim `pac-webhook` and gets `pac-webhook-1`, accumulating stale hosts.
 # The tag filter protects personal (untagged member) devices; the age filter
 # protects the live cluster's currently-online devices.  Needs the OAuth client's
-# `devices` scope (DELETE).  Dry-run lists the plan; --yes applies.
+# `devices` scope (DELETE).  Dry-run lists the plan; --apply applies.
 prune_stale_devices() {
 	local threshold_s now devs
 	threshold_s="$(duration_seconds "$stale_after")" || die "bad --stale-after: $stale_after"
@@ -405,7 +412,7 @@ prune_stale_devices() {
 	done
 	[ "$n" -gt 0 ] || log "  nothing to prune (no tagged device offline > $stale_after)"
 	{ [ "$assume_yes" -eq 1 ] || [ "$n" -eq 0 ]; } ||
-		log "no --yes: nothing deleted.  Re-run 'manage-tailnet --prune-stale-devices --yes' to apply."
+		log "no --apply: nothing deleted.  Re-run 'manage-tailnet --prune-stale-devices --apply' to apply."
 }
 
 # Migrate the legacy scalar tailnet.tailscale.auth to an empty map so per-kind
@@ -449,8 +456,8 @@ rotation_plan() {
 		log "  $k: tags=$t  reusable preauthorized expiry=90d  -> tailnet.tailscale.auth.$k"
 	done
 	log "tailnet has $(list_key_ids | grep -c . || true) existing auth key(s)."
-	log "Actions: --rotate-auth-key (mint + write; --revoke-old --yes to retire old);"
-	log "         --sync-acl (review/reconcile the tailnet ACL; --sync-acl --yes to push)."
+	log "Actions: --rotate-auth-key (mint + write; --revoke-old --apply to retire old);"
+	log "         --sync-acl (review/reconcile the tailnet ACL; --sync-acl --apply to push)."
 	log "See --help for the full option list."
 }
 
@@ -477,7 +484,7 @@ rotate_auth() {
 
 revoke_old() {
 	[ "$assume_yes" -eq 1 ] ||
-		die "--revoke-old requires --yes (destructive: revokes pre-existing auth keys)"
+		die "--revoke-old requires --apply (destructive: revokes pre-existing auth keys)"
 	log "revoking pre-existing auth keys (snapshot taken before mint) …"
 	local oid nid skip
 	for oid in "${OLD_IDS[@]}"; do
@@ -551,7 +558,7 @@ main() {
 		--deploy) do_deploy=1 ;;
 		--revoke-old) do_revoke=1 ;;
 		--commit) do_commit=1 ;;
-		--yes) assume_yes=1 ;;
+		--apply) assume_yes=1 ;;
 		-h | --help)
 			usage
 			exit 0

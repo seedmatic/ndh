@@ -236,10 +236,28 @@ let
   tailnetSplitDnsFile = pkgs.writeText "tailnet-split-dns.json" (
     builtins.toJSON (
       builtins.listToAttrs (
+        # Every per-baremetal zone, resolved by that segment's own dnsmasq …
         map (host: {
           name = catalog.netplan.baremetal.${host}.domain;
           value = [ catalog.netplan.baremetal.${host}.netGateway ];
         }) (builtins.attrNames (catalog.netplan.baremetal or { }))
+        # … plus the home LAN's own zone, resolved by the site router. It was the one zone live in
+        # the tailnet that this map did not declare, so a reconcile would have reported it as
+        # "extra" forever. It is load-bearing: it is what makes `<host>.lan` resolve for a tailnet
+        # peer, which is the out-of-band path to a foreign vz-host (see pkgs/baremetal-link.d).
+        # `lan.domain` carries a leading dot (".lan") because other consumers concatenate it; the
+        # API key is the bare zone.
+        ++ [
+          {
+            name =
+              let
+                d = catalog.netplan.lan.domain;
+              in
+              # builtins only, like the rest of this module (no `lib` in scope here).
+              if builtins.substring 0 1 d == "." then builtins.substring 1 (builtins.stringLength d - 1) d else d;
+            value = [ catalog.netplan.lan.gateway ];
+          }
+        ]
       )
     )
   );
