@@ -155,7 +155,13 @@
       # networkBlueprint), pulled the same way and merged into catalog.datasets, materialised on the
       # host by zfs-disko-config.nix.
       dataplan = inputs.rke2lab.lib.dataplan;
-      catalogData = import ./catalog/default.nix { inherit cacheTrust networkBlueprint dataplan; };
+      # `hostForms` lets the catalog derive each vz-host's kind instead of declaring it: the
+      # vz-host is nix-managed exactly when the config named <host> is the bare metal itself.
+      # Injected from here because this file owns the host tree; see catalog/default.nix.
+      catalogData = import ./catalog/default.nix {
+        inherit cacheTrust networkBlueprint dataplan;
+        hostForms = builtins.mapAttrs (_: entry: entry.hostProfile.form or null) hostCatalog;
+      };
       defaultSystems = [
         "aarch64-darwin"
       ];
@@ -846,12 +852,11 @@
             # reads ${systemKeysDir}/rdp-host{,-cert.pub} from here as the vzhost
             # login identity (root-readable; the activation oneshot runs as root).
             systemKeysDir = "/var/lib/ndh/ssh-keys";
-            # vzhost's OS login. The corp Mac refuses root ssh AND is off the
-            # nix-darwin fleet, so its username is not derivable from a host config;
-            # it is the operator's corp account. No single catalog source of truth
-            # exists for it (already duplicated across the repo, e.g.
-            # modules/home-manager/ssh-tailnet-hosts.nix), so it is duplicated here.
-            vzUser = "stephane.lacoin";
+            # vzhost's OS login — read from the catalog, which now holds it beside the vz-host's
+            # other identity facts. It used to be written here with a comment conceding that no
+            # single source existed and that the string was already duplicated in
+            # modules/home-manager/ssh-tailnet-hosts.nix. There is one now, and both read it.
+            vzUser = bm.vzHostUser;
           }
         );
 

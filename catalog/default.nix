@@ -2,11 +2,24 @@
   cacheTrust,
   networkBlueprint,
   dataplan,
+  # form ("baremetal" | "vm") per host, from hosts/<h>/default.nix's hostProfile. Injected
+  # rather than imported here so the flake keeps owning the host tree and this file keeps
+  # owning the netplan. It answers ONE question: is the darwin config named <host> the bare
+  # metal itself, or a VM running on it?
+  hostForms,
 }:
 let
   # The shared catalog merge law (group-by-key, union/throw scalars, concat list attrs) — the ONE
   # module both `netplan.segments` (key=cidr) and `datasets` (key=path) use. No duplication.
   catalogMerge = import ./merge.nix;
+
+  # The fleet's single OS user. Read by `user` below and used as the default operator login on
+  # a bare-metal — a `foreign` vz-host overrides it, since a corp machine has its own account.
+  operatorUser = {
+    name = "nxmatic";
+    description = "Stephane Lacoin (aka nxmatic)";
+    email = "stephane.lacoin@gmail.com";
+  };
 in
 {
   caches = cacheTrust.caches;
@@ -36,12 +49,9 @@ in
   tailnet = import ./tailnet;
 
   # v2 has a single OS user; the catalog holds it directly without the
-  # former per-profile wrapper.
-  user = {
-    name = "nxmatic";
-    description = "Stephane Lacoin (aka nxmatic)";
-    email = "stephane.lacoin@gmail.com";
-  };
+  # former per-profile wrapper. Hoisted into the `let` above so the per-baremetal entries can
+  # default their operator login to it instead of restating the name.
+  user = operatorUser;
 
   netplan =
     let
@@ -73,12 +83,21 @@ in
       mkBaremetal =
         {
           host,
-          vzHostKind,
           lanAttachment,
-          vzHostLanName,
+          # Both default to the bare-metal case and are overridden only by a `foreign` vz-host,
+          # whose identity genuinely differs from the machine named `host`.
+          vzHostLanName ? host,
+          vzHostUser ? operatorUser.name,
         }:
         let
           hostId = networkBlueprint.hosts.${host};
+          # DERIVED, not declared: the vz-host is nix-managed exactly when the darwin config
+          # named `host` IS the bare metal (form = "baremetal", bioskop — which is at once the
+          # vz-host and the rdp-host). When that config is a VM (form = "vm", nikopol), the
+          # vz-host is the physical Mac underneath it, corp-managed and running neither nix nor
+          # tailscale. These are the same fact, so it is read from `form` rather than restated —
+          # a second copy is how they come to disagree.
+          vzHostKind = if hostForms.${host} == "baremetal" then "nix-managed" else "foreign";
           # Two halves of the /20, split by LINK: the low eight /24s are the bare-br L2, the
           # high eight are other links. Slot 0 of the low half is ndh's own infra (gateway,
           # DHCP pool, tenant pins); slots 1-4 are rke2lab's per-cluster spans. Slot 8 is the
@@ -103,7 +122,15 @@ in
           # bringup and right after the segment is renumbered. It must NOT be guessed from the
           # domain: on nikopol, `nikopol` names the vz GUEST VM, and a deploy that assumed
           # `<domain>.local` addressed that guest instead of the bare-metal.
-          inherit vzHostLanName vzHostKind lanAttachment;
+          # The operator's login ON the vz-host: the fleet user on a nix-managed one, the corp
+          # account on a foreign one. Read by the deploy app's ssh and by the vzhost ssh alias,
+          # which each used to carry their own copy of the string.
+          inherit
+            vzHostLanName
+            vzHostUser
+            vzHostKind
+            lanAttachment
+            ;
         };
 
       baremetal = {
@@ -120,8 +147,6 @@ in
         # the alias is additional.
         bioskop = mkBaremetal {
           host = "bioskop";
-          vzHostLanName = "bioskop"; # this bare-metal IS the darwin host `bioskop` (lan.hosts.bioskop)
-          vzHostKind = "nix-managed";
           lanAttachment = "fixed"; # Mac Mini, permanently on the home LAN — its subnet router advertises netplan.lan.cidr
         };
         # nikopol: the vz-host is a CORPORATE Mac that runs neither tailscale nor nix, so the
@@ -137,7 +162,7 @@ in
         nikopol = mkBaremetal {
           host = "nikopol";
           vzHostLanName = "nikopol-vzhost"; # lan.hosts.nikopol-vzhost — the corp Mac, NOT the `nikopol` VM
-          vzHostKind = "foreign";
+          vzHostUser = "stephane.lacoin"; # the corp account; the Mac is not on the fleet's user
           lanAttachment = "roaming"; # itinerant (runs on the corp MacBook) — must NOT advertise the home LAN
         };
       };

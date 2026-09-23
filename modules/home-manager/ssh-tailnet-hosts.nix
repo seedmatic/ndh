@@ -74,38 +74,42 @@ let
     ${operatorAliasForService host "nixos" "-nixos"}
   '';
 
-  # `vzhost.nikopol` — the corporate bare-metal Mac hosting the nikopol VM.  It runs
-  # no nix-darwin config, so it has no generated stanza of its own; every managed
-  # host (the nikopol VM, nikopol-nixos, bioskop, …) reaches it by this one alias.
+  # The corporate bare-metal Mac hosting the nikopol VM. It runs no nix-darwin config, so it
+  # has no generated stanza of its own; every managed host (the nikopol VM, nikopol-nixos,
+  # bioskop, …) reaches it by this one.
   #
-  # Resolution + reachability are now split-DNS native: the per-baremetal segment
-  # dnsmasq holds a `vzhost.nikopol` host-record (see modules/nixos/baremetal-segment.nix)
-  # and the segment's /24 is advertised into the tailnet, so any host with the
-  # split-DNS zone resolves `vzhost.nikopol` and reaches it over the subnet route.  The
-  # former ARP ProxyCommand (nikopol-vz-host-resolve-ip) is retired — no ProxyCommand,
-  # no `IdentityAgent none`.  `User stephane.lacoin` is the corp account on the bare
-  # metal; the operator's rdp-host key is in its authorized_keys.
-  vzhostNikopolAlias = ''
-    Host vzhost.nikopol
-      User stephane.lacoin
-      IdentityFile ${config.sshPaths.privKeyFile}
-      IdentitiesOnly yes
-      PreferredAuthentications publickey
-  '';
-
-  # LAN-direct path to the same corp Mac, by its corp-LAN FQDN. `vzhost.nikopol`
-  # above only resolves once nikopol-nixos is up as the tailnet subnet-router +
-  # split-DNS — but the FIRST materialisation of nerd-nixos on the corp Mac
-  # happens before that exists (chicken-and-egg). On the corp LAN the Mac answers
-  # at `nikopol-vzhost.lan`; same corp account + operator key. Target it
-  # explicitly for the bring-up, e.g. `nix run .#nerd-tart-nikopol-deploy -- nikopol-vzhost.lan`.
-  vzhostNikopolLanAlias = ''
-    Host nikopol-vzhost.lan
-      User stephane.lacoin
-      IdentityFile ${config.sshPaths.privKeyFile}
-      IdentitiesOnly yes
-      PreferredAuthentications publickey
-  '';
+  # TWO names, one stanza, because they are two PATHS to the same machine and each resolves
+  # differently — so neither is redundant:
+  #
+  #   vzhost.<domain>          the segment name. The per-baremetal dnsmasq holds a host-record
+  #                            for it (modules/nixos/baremetal-segment.nix) and the segment is
+  #                            advertised into the tailnet, so this is the path that works from
+  #                            ANYWHERE, including off-site. It is also the path that does not
+  #                            exist yet during a first bringup, or for as long as a renumbering
+  #                            has not propagated.
+  #   <lanName>.lan            the home-LAN name, served by the LAN's own DNS. Works only on the
+  #                            LAN, but works BEFORE the segment does — which is what the first
+  #                            materialisation of nerd-nixos on that Mac needs
+  #                            (`nix run .#nerd-tart-nikopol-deploy -- <lanName>.lan`), and what
+  #                            the baremetal-link deploy falls back to.
+  #
+  # Do NOT collapse them by giving the first a `HostName` pointing at the second: the LAN name
+  # does not resolve for a remote peer, which is the entire reason the segment path exists.
+  #
+  # Both names and the login come from the catalog — the same entry the deploy app reads, so the
+  # operator's path and the automated one cannot drift. The former ARP ProxyCommand
+  # (nikopol-vz-host-resolve-ip) is retired: no ProxyCommand, no `IdentityAgent none`.
+  vzhostNikopolAlias =
+    let
+      bm = catalog.netplan.baremetal.nikopol;
+    in
+    ''
+      Host vzhost.${bm.domain} ${bm.vzHostLanName}${catalog.netplan.lan.domain}
+        User ${bm.vzHostUser}
+        IdentityFile ${config.sshPaths.privKeyFile}
+        IdentitiesOnly yes
+        PreferredAuthentications publickey
+    '';
 
   # `nerd-nixos` — the NixOS guest materialised as a Tart VM on a bare-metal Mac
   # (today nikopol's corp Mac).  It is not an inventory host (a guest, not a managed
@@ -192,7 +196,6 @@ in
     ) inventoryHostNames}
 
     ${vzhostNikopolAlias}
-    ${vzhostNikopolLanAlias}
     ${nerdNixosAlias}
   '';
 }
