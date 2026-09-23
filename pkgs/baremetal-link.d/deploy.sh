@@ -13,9 +13,9 @@
 # on the terminal via ndh::logger:notice.  ssh is pinned by store path (@ssh@)
 # because the trampoline owns PATH.
 #
-# Build-time tokens (pkgs.replaceVars): nixBashTrampoline, loggerTag, ssh,
+# Build-time tokens (pkgs.replaceVars): nixBashTrampoline, loggerTag, ssh, timeout,
 # installScript / uninstallScript (rendered script store paths), vzHost (default
-# ssh target), bootstrapHost (first-run fallback), and systemKeysDir (where the
+# ssh target), bootstrapHost (the out-of-band LAN name), and systemKeysDir (where the
 # enrich pipeline lands the vz-nudge private+cert, read at runtime and shipped to
 # the target) — written WITHOUT at-sigils (replaceVars would substitute them in
 # this comment too).
@@ -43,9 +43,6 @@ main() {
 	--install) shift ;;
 	esac
 
-	# Bootstrap: on the very first run vzhost.<host> does not yet resolve to its alias
-	# (this daemon is what sets it), so fall back to the mDNS name if the primary
-	# target is unreachable.  Once the alias is up, vzhost.<host> resolves and is used.
 	# vzhost REFUSES root ssh, and the activation oneshot runs as root — so connect
 	# as the operator login (@vzUser@) with the CA-signed rdp-host identity from the
 	# root-readable systemKeysDir (vzhost trusts the mammoth-skate CA inbound for that
@@ -58,16 +55,51 @@ main() {
 		sshVz+=(-i "$vzId" -o "CertificateFile=$vzId-cert.pub" -o IdentitiesOnly=yes)
 	fi
 
-	local target="$vz_host"
-	if ! "${sshVz[@]}" -o BatchMode=yes -o ConnectTimeout=5 "$vz_host" true 2>/dev/null; then
-		ndh::logger:notice "[baremetal-link-deploy] ${vz_host} unreachable — falling back to @bootstrapHost@"
-		target="@bootstrapHost@"
+	# Two ways in, tried in order. `vzhost.<host>` is the segment name this daemon is
+	# what CREATES, so on a first run — or right after the segment is renumbered — it
+	# does not resolve, and @bootstrapHost@ is the out-of-band path: the vz-host's
+	# LAN name, served by the LAN's own DNS and therefore independent of the segment.
+	#
+	# It used to be `<domain>.local`, which was WRONG the moment the bare-metal is not
+	# itself named after the segment: on nikopol that mDNS name is the vz GUEST VM, a
+	# different machine, and the deploy cheerfully addressed it. It is now the LAN name
+	# declared in the catalog beside the vz-host's own DHCP reservation — which also
+	# happens to be the name the operator's ssh config has a Host block for, so the
+	# identity resolves too.
+	#
+	# The probe is HARD-bounded. `ConnectTimeout` does not cover NAME RESOLUTION, and
+	# when the segment resolver is the thing that just moved, resolving `vzhost.<host>`
+	# hangs on it: measured at 30s against a 5s ConnectTimeout, which is also what made
+	# the activation oneshot burn 15s before failing.
+	local -a probe=(@timeout@ 8 "${sshVz[@]}" -o BatchMode=yes -o ConnectTimeout=5)
+	local target=""
+	local candidate
+	for candidate in "$vz_host" "@bootstrapHost@"; do
+		if "${probe[@]}" "$candidate" true 2>/dev/null; then
+			target="$candidate"
+			break
+		fi
+		ndh::logger:notice "[baremetal-link-deploy] ${candidate} unreachable"
+	done
+	if [[ -z "$target" ]]; then
+		ndh::logger:notice "[baremetal-link-deploy] FAILED: neither ${vz_host} nor @bootstrapHost@ answered — NOTHING was applied"
+		return 1
 	fi
 
 	ndh::logger:notice "[baremetal-link-deploy] ${action} on ${target} (sudo, from stdin)"
 	# Pipe the chosen rendered script to the target and run it as root.  Idempotent
 	# on the target (install: bootout -> bootstrap); sudo is NOPASSWD on the vz host.
-	"${sshVz[@]}" "$target" sudo /bin/bash -s <"$script"
+	#
+	# The status is checked EXPLICITLY, not left to errexit: this function is invoked
+	# through `ndh::logger:command:run`, which calls it after `local rc=0` and so
+	# neutralises `set -e` inside it. Without this check a refused ssh was followed by
+	# `ndh::logger:command:run completed successfully` — the tool reporting success for
+	# an install that never happened, which is how a daemon came to be believed
+	# deployed on a machine it had never reached.
+	if ! "${sshVz[@]}" "$target" sudo /bin/bash -s <"$script"; then
+		ndh::logger:notice "[baremetal-link-deploy] FAILED: ${action} on ${target} did not complete — NOTHING was applied"
+		return 1
+	fi
 
 	# Ship the vz-nudge daemon identity (private + user cert) so the installed
 	# link-up.sh can authenticate to the guest for its reconfigure-nudge. Read from

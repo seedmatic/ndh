@@ -75,6 +75,7 @@ in
           host,
           vzHostKind,
           lanAttachment,
+          vzHostLanName,
         }:
         let
           hostId = networkBlueprint.hosts.${host};
@@ -96,7 +97,13 @@ in
           linkCidr = "${octets link}.0/30"; # static P2P link: vz-host <-> Incus host
           hostAddress = "${octets link}.1"; # <host>-nixos link end on lan-br (subnet router)
           vzHostAddress = "${octets link}.2"; # vz-host alias (dnsmasq host-record vzhost.<host>)
-          inherit vzHostKind lanAttachment;
+          # The bare-metal's own name on the home LAN — the entry in `lan.hosts` that carries
+          # its DHCP reservation. This is the OUT-OF-BAND path to it: `vzhost.<host>` resolves
+          # only through the segment's dnsmasq, which is exactly what is missing on a first
+          # bringup and right after the segment is renumbered. It must NOT be guessed from the
+          # domain: on nikopol, `nikopol` names the vz GUEST VM, and a deploy that assumed
+          # `<domain>.local` addressed that guest instead of the bare-metal.
+          inherit vzHostLanName vzHostKind lanAttachment;
         };
 
       baremetal = {
@@ -113,6 +120,7 @@ in
         # the alias is additional.
         bioskop = mkBaremetal {
           host = "bioskop";
+          vzHostLanName = "bioskop"; # this bare-metal IS the darwin host `bioskop` (lan.hosts.bioskop)
           vzHostKind = "nix-managed";
           lanAttachment = "fixed"; # Mac Mini, permanently on the home LAN — its subnet router advertises netplan.lan.cidr
         };
@@ -128,6 +136,7 @@ in
         # copies of an address is how they come to disagree.
         nikopol = mkBaremetal {
           host = "nikopol";
+          vzHostLanName = "nikopol-vzhost"; # lan.hosts.nikopol-vzhost — the corp Mac, NOT the `nikopol` VM
           vzHostKind = "foreign";
           lanAttachment = "roaming"; # itinerant (runs on the corp MacBook) — must NOT advertise the home LAN
         };

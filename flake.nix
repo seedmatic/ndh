@@ -826,10 +826,19 @@
             nixBashTrampoline = trampoline;
             loggerTag = "ndh.baremetal-link-deploy";
             ssh = "${pkgsForSystem.openssh}/bin/ssh";
+            # Hard bound on the reachability probe: ssh's ConnectTimeout does not cover NAME
+            # RESOLUTION, so probing a segment name whose resolver just moved hung for 30s
+            # against a 5s ConnectTimeout.
+            timeout = "${pkgsForSystem.coreutils}/bin/timeout";
             installScript = "${mkBaremetalLinkInstall system bm}";
             uninstallScript = "${mkBaremetalLinkUninstall system bm}";
             vzHost = "vzhost.${bm.domain}";
-            bootstrapHost = "${bm.domain}.local";
+            # The out-of-band path, from the catalog rather than guessed. It used to be
+            # `${bm.domain}.local`, which silently addressed the wrong MACHINE wherever the
+            # bare-metal is not itself named after the segment — on nikopol that mDNS name is
+            # the vz guest VM. The LAN name also has a Host block in the operator's ssh config,
+            # so the identity resolves; `nikopol.local` matched none and was refused.
+            bootstrapHost = "${bm.vzHostLanName}${catalogData.netplan.lan.domain}";
             # Where the enrich pipeline lands the vz-nudge private+cert (usage
             # ssh-host → root-owned systemKeysDir). Read at runtime by deploy.sh and
             # shipped to the target so link-up.sh can auth the guest nudge. Matches
