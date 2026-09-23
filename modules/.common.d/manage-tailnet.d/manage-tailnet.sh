@@ -35,6 +35,7 @@ readonly YQ="@yq@"
 readonly GIT="@git@"
 readonly AUTH_KINDS_FILE="@authKinds@"
 export ACL_CANONICAL="@aclCanonical@" # exported so yq's load(strenv(...)) can read it
+export SPLIT_DNS="@splitDns@"          # likewise, for --sync-dns
 
 readonly API_BASE="https://api.tailscale.com/api/v2"
 readonly TAILNET="-" # "-" = the OAuth identity's default tailnet
@@ -46,6 +47,7 @@ readonly OWNER_TAG="tag:tailnet-key-owner"
 dry_run=1
 do_auth=0
 do_sync_acl=0
+do_sync_dns=0
 do_retag=0
 do_prune=0
 do_deploy=0
@@ -108,6 +110,9 @@ Safe by default. Manages the per-kind Tailscale SaaS auth keys + the ACL.
   --rotate-auth-key  Mint fresh per-kind auth keys and write .secrets.
   --sync-acl         Reconcile the live tailnet ACL with our canonical fragment;
                      shows a diff.  POSTs only with --yes.
+  --sync-dns         Reconcile the tailnet split-DNS map (each per-baremetal zone
+                     -> that segment's dnsmasq) from the catalog; shows a diff.
+                     PATCHes only with --yes.
   --retag-devices    Reconcile each tailnet device's tags to its kind (from the
                      hostname); lists a plan, applies only with --yes.
   --prune-stale-devices
@@ -234,6 +239,39 @@ sync_acl() {
 		"$API_BASE/tailnet/$TAILNET/acl")" ||
 		die "POST acl rejected: $(printf '%s' "$resp" | $YQ -p json '.message // .' 2>/dev/null || printf '%s' "$resp")"
 	log "SaaS ACL updated.  If not already done, assign '$OWNER_TAG' to the OAuth client (console)."
+}
+
+# Reconcile the tailnet SPLIT-DNS map with the catalog.  Merge, not replace: a zone we do not
+# declare is left alone (someone may have added one by hand for a reason we do not know), while
+# every zone we DO declare is set to the segment gateway the catalog says.
+#
+# This closes the last tailnet fact that was not in git.  Its absence is what let the map keep
+# pointing at a retired resolver through the 2026-09-23 renumbering, while the two GENERATED
+# consumers of the same `netGateway` corrected themselves at the next rebuild.
+sync_dns() {
+	local etag
+	etag="$(api -o "$workdir/dns.cur.json" -w '%header{etag}' -H 'Accept: application/json' \
+		"$API_BASE/tailnet/$TAILNET/dns/splitdns")" || die "GET splitdns failed"
+
+	$YQ -p json -o=json '. * load(strenv(SPLIT_DNS))' \
+		"$workdir/dns.cur.json" >"$workdir/dns.target.json" || die "split-DNS reconcile failed"
+
+	if [ "$assume_yes" -ne 1 ]; then
+		log "=== split-DNS reconcile diff (current -> target) ==="
+		diff -u \
+			<($YQ -p json -o=yaml '.' "$workdir/dns.cur.json") \
+			<($YQ -p json -o=yaml '.' "$workdir/dns.target.json") || true
+		log "no --yes: split-DNS not pushed.  Re-run 'manage-tailnet --sync-dns --yes' to PATCH."
+		return 0
+	fi
+
+	log "patching split-DNS …"
+	local resp
+	resp="$(api -X PATCH -H 'Content-Type: application/json' \
+		${etag:+-H "If-Match: $etag"} --data-binary "@$workdir/dns.target.json" \
+		"$API_BASE/tailnet/$TAILNET/dns/splitdns")" ||
+		die "PATCH splitdns rejected: $(printf '%s' "$resp" | $YQ -p json '.message // .' 2>/dev/null || printf '%s' "$resp")"
+	log "split-DNS pushed."
 }
 
 # Reconcile each tailnet device's tags to match its kind.  A tagged auth key only
@@ -481,6 +519,7 @@ main() {
 			dry_run=0
 			;;
 		--sync-acl) do_sync_acl=1 ;;
+		--sync-dns) do_sync_dns=1 ;;
 		--retag-devices) do_retag=1 ;;
 		--prune-stale-devices) do_prune=1 ;;
 		--stale-after)
@@ -557,6 +596,7 @@ main() {
 	authenticate
 
 	[ "$do_sync_acl" -eq 1 ] && sync_acl
+	[ "$do_sync_dns" -eq 1 ] && sync_dns
 	[ "$do_retag" -eq 1 ] && retag_devices
 	[ "$do_prune" -eq 1 ] && prune_stale_devices
 
@@ -571,7 +611,7 @@ main() {
 			log "  sudo nixos-rebuild switch --flake .#nikopol-nixos --refresh"
 			log "  (repeat per host that consumes a rotated kind)"
 		fi
-	elif [ "$dry_run" -eq 1 ] && [ "$do_sync_acl" -eq 0 ] && [ "$do_retag" -eq 0 ] && [ "$do_prune" -eq 0 ]; then
+	elif [ "$dry_run" -eq 1 ] && [ "$do_sync_acl" -eq 0 ] && [ "$do_sync_dns" -eq 0 ] && [ "$do_retag" -eq 0 ] && [ "$do_prune" -eq 0 ]; then
 		rotation_plan
 	fi
 

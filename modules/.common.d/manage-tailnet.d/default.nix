@@ -221,6 +221,28 @@ let
   tailnetAclCanonicalFile = pkgs.writeText "tailnet-acl-canonical.json" (
     builtins.toJSON tailnetAclCanonical
   );
+
+  # The tailnet's SPLIT-DNS map: each per-baremetal DNS zone resolved by that segment's own Incus
+  # dnsmasq.  `{ "<domain>": [ "<netGateway>" ] }`, derived from the same catalog entries the route
+  # auto-approvers come from.
+  #
+  # This was the last tailnet fact still typed into the console, and the cost was visible: the same
+  # `netGateway` is consumed by three resolvers — this one, `modules/darwin/baremetal-resolvers.nix`
+  # (`/etc/resolver/<domain>` on each nix-managed Mac) and `pkgs/baremetal-link.d/install.sh` (the
+  # same file on a foreign vz-host).  Two of the three were already generated, so when the fabric
+  # slices were renumbered on 2026-09-23 those two corrected themselves at the next rebuild while
+  # the authoritative one kept pointing at a retired resolver.  A hand-typed copy of a derived fact
+  # does not drift slowly; it drifts the moment the fact changes.
+  tailnetSplitDnsFile = pkgs.writeText "tailnet-split-dns.json" (
+    builtins.toJSON (
+      builtins.listToAttrs (
+        map (host: {
+          name = catalog.netplan.baremetal.${host}.domain;
+          value = [ catalog.netplan.baremetal.${host}.netGateway ];
+        }) (builtins.attrNames (catalog.netplan.baremetal or { }))
+      )
+    )
+  );
 in
 # Bash-trampoline pattern: source the shared trampoline (nix-managed bash +
 # logger + stable env), pin every tool by absolute store path (@sops@/@curl@/@yq@
@@ -235,5 +257,6 @@ ndhStore.installBinScript "manage-tailnet" (
     git = "${pkgs.git}/bin/git";
     authKinds = tailnetAuthKindsFile;
     aclCanonical = tailnetAclCanonicalFile;
+    splitDns = tailnetSplitDnsFile;
   }
 )
