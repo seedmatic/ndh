@@ -75,16 +75,13 @@ in
           # nikopol-nixos at activation), and the tailnet must be routed to it over the /30,
           # because it has no tailnet interface of its own.
           vzHostKind = "foreign";
-          # Static dnsmasq host-records for the PINNED collector instances (nnh's /30,
-          # 172.16.6.124/30). dns.mode=dynamic only registers a name while the instance holds a
-          # DHCP lease, so nnh-inlet/nnh-outlet.nikopol vanished during a multi-day offline window
-          # (lease expiry / dnsmasq restart) → akvorado-inlet couldn't resolve its own Kafka broker
-          # (produce failed, pipeline stalled). Static records (like vzHostAddress) make these names
-          # resolve deterministically, independent of DHCP. Names/IPs are nnh's pinned instances.
-          staticHosts = {
-            "nnh-inlet" = "172.16.6.126";
-            "nnh-outlet" = "172.16.6.125";
-          };
+          # No `staticHosts` here: the host-records for nnh's pinned collector instances used to
+          # be hand-copied into this entry, duplicating values nnh ALREADY publishes on the /30
+          # it owns (172.16.6.124/30, in its lib.networkBlueprint.segments). The consumer now
+          # derives them from the merged segments contained in `netCidr` — see
+          # modules/nixos/baremetal-segment.nix. A tenant's pins therefore reach dnsmasq without
+          # this catalog being edited, which is the point: two copies of an address is how they
+          # come to disagree.
           advertiseCidr = "172.16.6.0/24"; # aggregate advertised into the tailnet
           lanAttachment = "roaming"; # itinerant (runs on the corp MacBook) — must NOT advertise the home LAN
         };

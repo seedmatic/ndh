@@ -229,7 +229,7 @@ client — the exact failure that stalled the nnh pipeline on nikopol.
 The split-DNS/advertise pattern applies identically on `bioskop-nixos` (its `.bioskop` zone), so
 `ssh vzhost.bioskop` and `<inst>.bioskop` resolve uniformly across both bare-metals. The two
 entries now differ only in `lanAttachment` (a physical fact: a roaming laptop must not advertise a
-LAN it may leave) and in nikopol's `staticHosts`.
+LAN it may leave); `staticHosts` is gone from both, derived from the published segments instead.
 
 The *numbering* is still the legacy one. <<target-carve,The target carve>> below keeps this shape
 and re-derives the addresses from rke2lab's `hostId`; both hosts must move in the *same* change,
@@ -289,7 +289,7 @@ Per-host consequences — every value derived, none chosen:
 | `linkCidr` | `172.16.6.252/30` → `172.16.24.0/30` | `172.16.7.252/30` → `172.16.8.0/30`
 | `hostAddress` | `.6.254` → `172.16.24.1` | `.7.254` → `172.16.8.1`
 | `vzHostAddress` | `.6.253` → `172.16.24.2` | `.7.253` → `172.16.8.2`
-| `staticHosts` | `.6.125/.126` → `172.16.16.125/.126` | *(absent)*
+| nnh's pinned hosts | `.6.125/.126` → `172.16.16.125/.126` — declared by *nnh*, not here | *(none)*
 |===
 
 [IMPORTANT]
@@ -310,7 +310,7 @@ Three notes on why these are not cosmetic:
 * *bioskop's `dhcpRange` was a correctness gap, not an omission* (now closed). Without
   `ipv4.dhcp.ranges` dnsmasq auto-ranges the whole managed net, so a `bare-br` recreate can hand a
   *pinned* address to a DHCP client — the exact failure that stalled the nnh pipeline (see the
-  `staticHosts` rationale in `catalog/default.nix`). rke2lab's addressing is entirely pinned, so this
+  `staticHosts` rationale, now in `modules/nixos/baremetal-segment.nix`). rke2lab's addressing is entirely pinned, so this
   had to land *before* the first cluster node attaches.
 * *bioskop's vz-host gained a segment address for a functional reason, not for symmetry* (now landed
   at `172.16.7.253`). Once the cluster nodes live in the fabric they cannot reach `192.168.0.0/16`

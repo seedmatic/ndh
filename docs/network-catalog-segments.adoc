@@ -195,7 +195,8 @@ bridge mode, and resolved to a device at run time. See
 and a home-LAN address on the other. What stays host-specific is only the *reason* — the corp Mac is
 off-tailnet and has no other path in, the Mac Mini is reachable but its tenants are not — never the
 shape. Two genuine differences remain: `lanAttachment`, which encodes a physical fact (a roaming
-laptop must not advertise a LAN it may leave), and nikopol's `staticHosts`.
+laptop must not advertise a LAN it may leave). `staticHosts` is no longer one of them — it is gone,
+derived from the published segments instead (see <<handoff,Status & handoff>>).
 
 The *numbering* is still the legacy one and is the part still pending: see
 `docs/network-topology-c4.adoc#target-carve`, where both hosts re-derive their addresses from
@@ -310,11 +311,29 @@ What this means concretely for ndh:
   `bare-br` is `Created` on `bioskop-nixos` at `172.16.7.1/25` with its `.bioskop` zone — and **empty**
   (`used_by: []`, link `DOWN`, which is normal for a memberless Linux bridge). The logic did not need
   extending; it needed a tenant.
-* *one missing joint.* `raw.dnsmasq` is built from the hand-written `bm.staticHosts`, while rke2lab's
-  reservations travel in `netplan.segments[].hosts` — whose MAC-less form exists *explicitly* to match
-  this module's `host-record` shape. The two contracts have never been joined. The work is to derive
-  `raw.dnsmasq` from the merged segment whose `cidr` is `bm.netCidr`; `catalog/merge.nix` already
-  concatenates `hosts` for exactly this.
+* *the joint is now made* (2026-09-23). `raw.dnsmasq` used to be built from a hand-written
+  `bm.staticHosts` that restated values nnh already publishes in `netplan.segments[].hosts` — whose
+  MAC-less form exists *explicitly* to match this module's `host-record` shape. It is now derived, and
+  `staticHosts` is gone.
++
+Two corrections to how that derivation was first planned here, both found while doing it:
++
+--
+* *selection is by CONTAINMENT, not by an exact `cidr` match.* Deriving from "the merged segment whose
+  `cidr` is `bm.netCidr`" would have found *nothing* of nnh's: its hosts sit on the `/30` it owns, a
+  distinct key, and `catalog/merge.nix` groups by `cidr`. The module selects every segment contained in
+  `bm.netCidr` instead.
+* *the segment list is mixed-family.* It carries `fc00::/7`, `fe80::/10` and the ULA mirror beside the v4
+  spans, so an IPv4 family test has to precede parsing. `lib.network` in this nixpkgs offers only
+  `ipv6`, so the containment arithmetic is written in the module.
+--
++
+A name is qualified with the zone only when it carries no dot: ndh publishes `vzhost.<domain>` already
+qualified — the segment list is also read for *flow attribution*, where a bare `vzhost` would be
+ambiguous across bare-metals — while a tenant publishes bare instance names.
++
+The win is not fewer lines: a tenant's pins now reach dnsmasq *without this catalog being edited*.
+Verified byte-identical to the previous output on both hosts.
 * *one addressing prerequisite* — bioskop's `dhcpRange`, see the Troubleshooting note above and
   `network-topology-c4.adoc#target-carve`.
 * *the segment numbers become derived, and this catalog's literals become projections.* The number could

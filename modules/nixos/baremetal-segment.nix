@@ -38,6 +38,69 @@ let
   netPrefix = lib.last (lib.splitString "/" bm.netCidr);
   linkPrefix = lib.last (lib.splitString "/" bm.linkCidr);
 
+  # IPv4 CIDR containment.  Hand-written because `lib.network` in this nixpkgs carries only
+  # `ipv6`.  Used to answer ONE question: which published segments live inside this
+  # bare-metal's managed net, and therefore whose hosts this dnsmasq must serve.
+  ipv4ToInt =
+    ip:
+    let
+      o = map lib.toInt (lib.splitString "." ip);
+    in
+    (builtins.elemAt o 0) * 16777216
+    + (builtins.elemAt o 1) * 65536
+    + (builtins.elemAt o 2) * 256
+    + (builtins.elemAt o 3);
+  pow2 = n: builtins.foldl' (a: _: a * 2) 1 (lib.range 1 n);
+  parseCidr =
+    c:
+    let
+      p = lib.splitString "/" c;
+    in
+    {
+      addr = ipv4ToInt (builtins.head p);
+      len = lib.toInt (lib.last p);
+    };
+  # `netplan.segments` is MIXED-FAMILY — it carries fc00::/7, fe80::/10 and the ULA mirror
+  # alongside the v4 spans — so the family test comes first, or parsing throws on a v6 address.
+  isIpv4Cidr =
+    c:
+    let
+      p = lib.splitString "/" c;
+    in
+    builtins.length p == 2 && builtins.length (lib.splitString "." (builtins.head p)) == 4;
+
+  # Is `sub` contained in `outer` (equality counts)?  The length test is load-bearing: without
+  # it a SHORTER prefix sharing the same network address — say a /24 against a /25 — would
+  # compare equal once masked and be wrongly judged inside.
+  cidrWithin =
+    outer: sub:
+    let
+      o = parseCidr outer;
+      s = parseCidr sub;
+      mask = 4294967296 - pow2 (32 - o.len);
+    in
+    isIpv4Cidr sub && s.len >= o.len && builtins.bitAnd s.addr mask == builtins.bitAnd o.addr mask;
+
+  # The static A records this segment's dnsmasq serves, DERIVED from the published segments
+  # rather than restated.  `dns.mode=dynamic` only registers a name while its lease lives, so a
+  # pinned instance loses its name during a long offline window — which is how akvorado-inlet
+  # came to be unable to resolve its own Kafka broker (nnh-inlet.nikopol) after a multi-day gap,
+  # stalling the pipeline. Static records make those names independent of DHCP.
+  #
+  # The source is `netplan.segments`, whose `hosts` the catalog merge concatenates by cidr: ndh
+  # contributes `vzhost.<domain>` on the managed net, and a tenant (nnh) contributes its own
+  # pinned hosts on the sub-segment it owns. Selecting by CONTAINMENT rather than by an exact
+  # cidr match is what makes the tenant's hosts visible at all — they sit on a /30 inside the
+  # /25, so a match on `bm.netCidr` alone would never see them.
+  #
+  # A name is qualified with the zone only when it carries no dot: ndh publishes `vzhost.<domain>`
+  # already qualified (the segment list is also read for flow attribution, where a bare `vzhost`
+  # would be ambiguous across bare-metals), while a tenant publishes bare instance names.
+  segmentHostRecords = lib.concatMap (
+    seg: if cidrWithin bm.netCidr seg.cidr then seg.hosts or [ ] else [ ]
+  ) (netplan.segments or [ ]);
+  qualify = name: if lib.hasInfix "." name then name else "${name}.${bm.domain}";
+
   # bare-br managed-network config — the single source for BOTH belts (preseed +
   # reconcile), so the two cannot drift.
   bareBrConfig = {
@@ -51,15 +114,11 @@ let
     # own its `.<domain>` record — so nnh's collector/probe appear as their real
     # hostnames in the zone.
     "dns.mode" = "dynamic";
-    # Static A records: `vzhost.${domain}` (the off-DHCP vz-host) PLUS any `staticHosts`
-    # the baremetal entry declares (pinned instances whose names must resolve regardless
-    # of a DHCP lease — dns.mode=dynamic drops a name when its lease lapses, which stalled
-    # the pipeline when akvorado-inlet couldn't resolve nnh-inlet.nikopol after a multi-day
-    # offline window; see catalog netplan.baremetal.<host>.staticHosts). Other DHCP clients
-    # still auto-register dynamically in the `.${domain}` zone.
+    # Static A records for every host published on a segment inside this net (see
+    # segmentHostRecords). Other DHCP clients still auto-register dynamically in the
+    # `.${bm.domain}` zone.
     "raw.dnsmasq" = lib.concatStringsSep "\n" (
-      [ "host-record=vzhost.${bm.domain},${bm.vzHostAddress}" ]
-      ++ lib.mapAttrsToList (name: ip: "host-record=${name}.${bm.domain},${ip}") (bm.staticHosts or { })
+      map (h: "host-record=${qualify h.name},${h.ip}") segmentHostRecords
     );
   }
   # Confine DHCP to the dynamic sub-segment (the bottom /27) when the baremetal
