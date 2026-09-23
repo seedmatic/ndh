@@ -64,7 +64,13 @@ in
       core.hooksPath = "${config.xdg.configHome}/git/hooks";
       gh-get.root = "/var/lib/git";
       pull.rebase = true;
-      push.followTags = true;
+      # false rather than omitted, so it reads as a decision. With it on, an annotated tag git
+      # considers reachable from a pushed ref travels with the push, which quietly publishes
+      # local-only refs to a shared repository. That is not hypothetical: three
+      # `backup/pre-linearise/*` tags, taken to protect the old tips before rewriting a branch
+      # stack, landed on a team remote and had to be deleted again. Pushing a tag is now
+      # deliberate — `git push origin <tag>`, or `--tags`.
+      push.followTags = false;
       push.autoSetupRemote = true;
       rebase.autoStash = true;
       gpg.ssh.allowedSignersFile = allowedSignersFile;
