@@ -58,6 +58,30 @@ link_netmask="$(((mask >> 24) & 255)).$(((mask >> 16) & 255)).$(((mask >> 8) & 2
 : "[baremetal-link] rendering link-up.sh + ${label} plist under ${conf_dir}"
 mkdir -p "$conf_dir"
 
+# RETRACT the plan this daemon last applied, before writing the new one. Everything below
+# only ADDS — an alias is set if absent, a route is (re)installed — so without this a
+# renumbering leaves the previous alias and the previous routes in place beside the new
+# ones. Measured after nikopol moved slices: the Mac carried both 172.16.6.253 and
+# 172.16.24.2, a dead 172.16.6.0/25, and — the one that actually hurt — its tailnet route
+# still aimed at the retired /30 gateway, leaving it with NO path to the tailnet.
+#
+# The retraction reads a state file the applier wrote, so it removes EXACTLY what this
+# daemon put there and nothing else. That matters on a corp-managed Mac, where 172.16/12 is
+# not necessarily ours alone: scoping by prefix would have risked a VPN's addresses.
+applied="$conf_dir/.applied"
+if [[ -r "$applied" ]]; then
+  : "[baremetal-link] retracting the previously applied plan"
+  prev_iface="" prev_address="" prev_routes=""
+  # shellcheck source=/dev/null
+  . "$applied"
+  for net in ${prev_routes}; do
+    /sbin/route -n delete -net "$net" 2>/dev/null || true
+  done
+  if [[ -n "$prev_iface" && -n "$prev_address" ]]; then
+    /sbin/ifconfig "$prev_iface" -alias "$prev_address" 2>/dev/null || true
+  fi
+fi
+
 # The re-apply script the LaunchDaemon runs at load and on every Wi-Fi
 # re-association.  Idempotent: alias only if absent; `route add || route change`
 # so a stale gateway is corrected.  link_routes is the list of spans to reach over
@@ -95,10 +119,21 @@ fi
 
 /sbin/ifconfig "\$iface" 2>/dev/null | /usr/bin/grep -q "inet ${vz_address} " \\
   || /sbin/ifconfig "\$iface" inet ${vz_address} netmask ${link_netmask} alias
+# delete-then-add, not add-or-change: when only the GATEWAY moves, route change is
+# unreliable on macOS and its failure was swallowed by the trailing or-true — which is how
+# the tailnet route stayed pointed at a retired gateway through a renumbering.
+# (No backticks in this heredoc: it is UNQUOTED, so they would be command substitution.)
 for net in ${link_routes}; do
-  /sbin/route -n add -net "\$net" ${via} 2>/dev/null \\
-    || /sbin/route -n change -net "\$net" ${via} 2>/dev/null || true
+  /sbin/route -n delete -net "\$net" 2>/dev/null || true
+  /sbin/route -n add -net "\$net" ${via} 2>/dev/null || true
 done
+
+# Record what was just applied, so the next install can retract exactly this and no more.
+cat > ${conf_dir}/.applied <<APPLIED
+prev_iface="\$iface"
+prev_address="${vz_address}"
+prev_routes="${link_routes}"
+APPLIED
 LINK
 
 # The guest-reconfigure nudge, appended ONLY for a foreign vz-host.  It exists because a
