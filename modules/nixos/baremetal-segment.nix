@@ -248,7 +248,7 @@ lib.mkIf enabled {
     '';
   };
 
-  # Public-internet egress for the bare-br instances.  The managed network keeps
+  # Public-internet egress for everything behind this bare-metal.  The managed network keeps
   # `ipv4.nat = false` (source IPs must survive for nnh's flow attribution), so a
   # blanket masquerade is wrong — it would rewrite the source of tailnet/LAN flows
   # too and blind the collector.  Instead masquerade ONLY public-bound egress:
@@ -257,12 +257,23 @@ lib.mkIf enabled {
   # the reply back), while traffic to the tailnet (${netplan.tailnet.cidr}), the
   # LAN, vzhost.${bm.domain} and other instances keeps its real source.  Own nftables
   # table (firewall.enable is off here), alongside mss-clamp.
+  #
+  # The source is the whole SLICE (`advertiseCidr`), not the bare-br half (`netCidr`),
+  # because the slice is this bare-metal's unit of ownership — that is exactly what it
+  # advertises into the tailnet. Scoping to the /21 covered the bare-br tenants and left
+  # every slot at offset >= 8 out: correct today, since the only one in use is the
+  # vz-host /30 whose far end is a Mac with its own default route, but a silent hole for
+  # slots 9-15. An unmasqueraded public-bound packet is not refused, it BLACKHOLES, so
+  # the failure would arrive with no signal. Widening costs nothing: the destination
+  # exclusions are unchanged, so private and tailnet flows still carry real sources, and
+  # a vz-host that ever did route public traffic through this host would WANT the
+  # masquerade rather than be harmed by it.
   networking.nftables.tables.baremetal-nat = {
     family = "inet";
     content = ''
       chain postrouting {
         type nat hook postrouting priority srcnat; policy accept;
-        ip saddr ${bm.netCidr} ip daddr != { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, ${netplan.tailnet.cidr} } masquerade
+        ip saddr ${bm.advertiseCidr} ip daddr != { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, ${netplan.tailnet.cidr} } masquerade
       }
     '';
   };
