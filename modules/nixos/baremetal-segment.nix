@@ -178,7 +178,22 @@ lib.mkIf enabled {
 
   systemd.services.incus-fabric-br = {
     description = "Reconcile the fabric-br Incus network (preseed is create-only)";
-    after = [ "incus.service" ];
+    # Ordered AFTER the preseed, and this is a correctness requirement rather than tidiness.
+    # Both units are `After=incus.service` and nothing else, so they used to RACE — and
+    # `incus admin init --preseed` is check-then-create: it looks the network up, decides to
+    # create it, and fails hard (`set -e`) if something created it in between. Measured
+    # 2026-09-24 on the first activation after the bridge was renamed, the one moment when the
+    # network was absent for both: the preseed died with `Network "fabric-br" already exists`
+    # while this oneshot had already built it correctly. It never bit before because the
+    # bridge predated both units, so the preseed always took its update path.
+    #
+    # `after` only — no `wants`/`requires`. This is the RECOVERY belt: it must still run when
+    # the preseed is absent (no preseed declared) or has failed, which is exactly the case it
+    # exists to cover.
+    after = [
+      "incus.service"
+      "incus-preseed.service"
+    ];
     requires = [ "incus.service" ];
     wantedBy = [ "multi-user.target" ];
     serviceConfig = {
