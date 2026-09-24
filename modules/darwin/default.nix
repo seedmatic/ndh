@@ -12,6 +12,7 @@
     ./preferences.nix
     ./security.nix
     ./core.nix
+    ./darwin-rebuild-gh.nix
     ./etc-backup.nix
     ./cachix-watch-store.nix
     ./disable-spotlight.nix
