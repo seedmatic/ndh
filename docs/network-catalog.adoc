@@ -31,7 +31,7 @@ authoritative while presenting one merged catalog to every consumer.
 
 The three systems are *mutually complementary*; none stands alone:
 
-* *ndh* provisions the substrate (networks, `bare-br`, the tailnet, hosts) and
+* *ndh* provisions the substrate (networks, `fabric-br`, the tailnet, hosts) and
   owns the merged catalog. It *needs nnh*: its nix builds pull large closure /
   substituter payloads, and you cannot *justify* that bandwidth cost without
   measuring it per network.
@@ -39,7 +39,7 @@ The three systems are *mutually complementary*; none stands alone:
   contributes its cluster spans to the catalog. It *needs nnh* for the same
   reason — cluster nix builds pull heavy payloads too.
 * *nnh* is the netflow / bandwidth collector. It *needs ndh* to place its probe
-  (attach on `bare-br`) and see the traffic, and it *consumes the catalog*
+  (attach on `fabric-br`) and see the traffic, and it *consumes the catalog*
   (ndh + rke2lab spans) to label every flow with a NetName + AS. It *contributes*
   its own spans back.
 
@@ -64,7 +64,7 @@ flowchart TB
   NNH -->|"lib.networkBlueprint (eval)"| CAT
 
   NDH ==>|"provisions substrate (runtime)"| RKE
-  NDH ==>|"provisions bare-br + places the probe (runtime)"| NNH
+  NDH ==>|"provisions fabric-br + places the probe (runtime)"| NNH
 
   CAT -.->|"attribution: NetName + AS"| NNH
   NNH -.->|"per-segment bandwidth accounting\n(justify nix payload cost)"| NDH
@@ -98,12 +98,12 @@ A *pure attribution span* carries just the triple. A span ndh also *operates*
 [source,nix]
 ----
 {
-  cidr    = "172.16.6.0/25";          # the managed Incus bare-br /25
+  cidr    = "172.16.16.0/21";          # the managed Incus fabric-br /25
   name    = "nikopol-baremetal-net";
   asn     = 65000;
-  gateway = "172.16.6.1";             # bridge + dnsmasq + split-DNS target
+  gateway = "172.16.16.1";             # bridge + dnsmasq + split-DNS target
   domain  = "nikopol";                # dnsmasq .<domain> DNS zone
-  hosts   = [ { name = "vzhost.nikopol"; ip = "172.16.6.253"; } ];  # static host-records
+  hosts   = [ { name = "vzhost.nikopol"; ip = "172.16.24.2"; } ];  # static host-records
 }
 ----
 
@@ -271,7 +271,7 @@ there is no flake cycle:
   `nnh.lib.networkBlueprint` and unions it into the catalog. Data flows *up*
   (blueprint -> catalog) at build/eval time.
 * *Runtime layer* — *nnh depends on ndh*: the nnh collector *plugs into the bare
-  network ndh provisions* — it attaches as an Incus instance on `bare-br`, gets
+  network ndh provisions* — it attaches as an Incus instance on `fabric-br`, gets
   its `.<domain>` name from the segment's dnsmasq, and is reached over the
   advertised tailnet route (see link:network-catalog-segments.adoc[Segments]).
   Infrastructure flows *down* (provisioned network -> nnh) at run time.
@@ -296,7 +296,7 @@ flowchart TB
   end
   subgraph runtime [Runtime layer — infrastructure flows DOWN]
     direction LR
-    BARE[ndh-provisioned bare-br\nIncus /25, dnsmasq, advertised route]
+    BARE[ndh-provisioned fabric-br\nIncus /25, dnsmasq, advertised route]
     NNHi[nnh collector instance]
     BARE -->|"plug in: DHCP + .domain + tailnet reach"| NNHi
   end

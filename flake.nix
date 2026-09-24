@@ -93,7 +93,7 @@
     };
 
     # Federation: ndh unions nnh's self-contained lib.networkBlueprint (its
-    # bare-br segments) alongside rke2lab's. nnh also consumes ndh's catalog, so
+    # fabric-br segments) alongside rke2lab's. nnh also consumes ndh's catalog, so
     # this is a mutual edge — cut with a reciprocal EMPTY follows (nnh's
     # back-reference to ndh follows THIS root). See the hub memory
     # flake-mutual-dependency-follows-root.
@@ -142,7 +142,7 @@
       inventoryData = import ./inventory/default.nix;
       # Cluster network underlay, single source of truth (see the rke2lab input).
       # Cluster underlay from rke2lab, UNIONED with nnh's self-contained blueprint
-      # (its bare-br segments; nnh introduces no ASNs). Both edges are cut with
+      # (its fabric-br segments; nnh introduces no ASNs). Both edges are cut with
       # reciprocal empty follows — see the rke2lab / nnh inputs. Only segments+asns
       # merge; everything else (clusters, nodes, addressing, MACs) stays rke2lab's.
       rke2labBlueprint = inputs.rke2lab.lib.networkBlueprint;

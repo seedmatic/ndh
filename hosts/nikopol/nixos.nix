@@ -35,7 +35,7 @@
       ];
     };
 
-    # The vzhost.nikopol baremetal segment — bare-br /25 (Incus dnsmasq + `.nikopol`
+    # The vzhost.nikopol baremetal segment — fabric-br /25 (Incus dnsmasq + `.nikopol`
     # zone + the vzhost.nikopol host-record), the static /30 link to the corp Mac,
     # ip_forward and the forwarded-MSS clamp — is now provided uniformly by the
     # shared modules/nixos/baremetal-segment.nix, keyed off

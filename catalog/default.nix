@@ -73,7 +73,7 @@ in
       # This replaces an arbitrary, inverted literal pair (nikopol was 6, bioskop 7, against
       # hostId 0/1) and an island: `linkCidr` used to sit at .252, OUTSIDE the /25 it looked
       # adjacent to, in a range nothing claimed. Now the LINK is encoded in the address —
-      # third-octet offset < 8 is on bare-br, >= 8 is another link.
+      # third-octet offset < 8 is on fabric-br, >= 8 is another link.
       #
       # SINGLE SOURCE for the vz-host package (Darwin) and the Incus host (NixOS): the /30 ends
       # and the CIDRs derive from here, never hard-coded twice. On the Tailscale SaaS controller
@@ -98,7 +98,7 @@ in
           # tailscale. These are the same fact, so it is read from `form` rather than restated —
           # a second copy is how they come to disagree.
           vzHostKind = if hostForms.${host} == "baremetal" then "nix-managed" else "foreign";
-          # Two halves of the /20, split by LINK: the low eight /24s are the bare-br L2, the
+          # Two halves of the /20, split by LINK: the low eight /24s are the fabric-br L2, the
           # high eight are other links. Slot 0 of the low half is ndh's own infra (gateway,
           # DHCP pool, tenant pins); slots 1-4 are rke2lab's per-cluster spans. Slot 8 is the
           # vz-host /30.
@@ -109,7 +109,7 @@ in
         {
           domain = host;
           advertiseCidr = "${octets bare}.0/20"; # ONE tailnet route per bare-metal
-          netCidr = "${octets bare}.0/21"; # managed Incus net (bare-br dnsmasq) — slots 0-7
+          netCidr = "${octets bare}.0/21"; # managed Incus net (fabric-br dnsmasq) — slots 0-7
           netGateway = "${octets bare}.1"; # Incus bridge + dnsmasq + split-DNS target
           dynamicCidr = "${octets bare}.0/27"; # DHCP pool; statics live above it (top-down)
           dhcpRange = "${octets bare}.2-${octets bare}.30"; # within the dynamic /27 (gateway .1 excluded)
@@ -343,7 +343,7 @@ in
       # managed-network facts — `gateway`, a DNS `domain`, and the static `hosts`
       # reservations (`{name, ip}`, plus `mac` for a MAC-known dhcp-host).  A pure
       # attribution span carries just the triple.  `dhcp` (a range string, as on
-      # rke2lab's cluster nets) is omitted here: bare-br runs auto-range DHCP with no
+      # rke2lab's cluster nets) is omitted here: fabric-br runs auto-range DHCP with no
       # range pinned in the catalog — same rule as omitting `domain` when there is no
       # DNS zone.  The per-baremetal `-net /25` carries the rich facts; the `-link
       # /30` and the /12 supernet stay attribution-only.
@@ -415,7 +415,7 @@ in
             ++ (builtins.concatMap (
               bm:
               [
-                # The managed /25 (Incus bare-br + dnsmasq): gateway, the `.<domain>` DNS
+                # The managed /25 (Incus fabric-br + dnsmasq): gateway, the `.<domain>` DNS
                 # zone, and a static host-record for the off-DHCP vz-host (a corp Mac at a
                 # /30 address, or an on-tailnet bare-metal at its LAN address — no `mac`,
                 # it is not a dnsmasq DHCP client).  DHCP clients (the nnh collector, other
@@ -435,7 +435,7 @@ in
                 }
               ]
               # The dynamic sub-segment: the bottom /27 of the /25 is the DHCP pool
-              # (bare-br's ipv4.dhcp.ranges below); static reservations live ABOVE it,
+              # (fabric-br's ipv4.dhcp.ranges below); static reservations live ABOVE it,
               # filled top-down (nnh's collector /30 comes in via the blueprint union).
               # Optional per-baremetal.  (Catalog is lib-free — plain `if`.)
               ++ (
@@ -506,7 +506,7 @@ in
         # resolve to; that host also carries the one SSH alias, `vzhostNikopolAlias`
         # in modules/home-manager/ssh-tailnet-hosts.nix.  bioskop's Mac IS a tailnet
         # member, so its `vzhost.bioskop` record exists for its TENANTS — it denotes
-        # the segment address 172.16.7.253, the only one they can reach — and needs
+        # the segment address 172.16.8.2, the only one they can reach — and needs
         # no SSH alias, since an operator reaches that Mac as `bioskop`.
         hosts = {
           bioskop = {

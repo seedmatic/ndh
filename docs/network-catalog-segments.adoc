@@ -15,10 +15,10 @@ tailnet*.
 Each baremetal host (nikopol, bioskop) that runs Incus becomes the *subnet
 router* for its own slice of `172.16.0.0/12`:
 
-* a managed `bare-br` `/25` bridge (Incus dnsmasq, a `.<domain>` DNS zone) where
+* a managed `fabric-br` `/25` bridge (Incus dnsmasq, a `.<domain>` DNS zone) where
   netflow instances and the *nnh* collector attach and auto-register;
 * the aggregate `/24` *advertised into the tailnet* + a *split-DNS* entry so peers
-  resolve `<inst>.<domain>` and reach `172.16.6.x` directly;
+  resolve `<inst>.<domain>` and reach `172.16.16.x` directly;
 * for a host whose vz-host is *off-tailnet* (nikopol's corporate Mac), a static
   `/30` link on `lan-br` and an IP-alias daemon on that Mac, so `vzhost.<domain>`
   answers at a `/30` address reached through the advertised segment;
@@ -37,7 +37,7 @@ link:network-catalog.adoc[the network catalog] (`catalog.netplan.baremetal`).
 flowchart TB
   CAT[("network catalog\ncatalog.netplan.baremetal / .lan")]:::data
   subgraph host [NixOS Incus host — subnet router]
-    SEG["bare-br segment\n/25 dnsmasq, .domain zone,\nadvertised /24, split-DNS"]:::infra
+    SEG["fabric-br segment\n/25 dnsmasq, .domain zone,\nadvertised /24, split-DNS"]:::infra
   end
   INST["Incus instances\n(nnh collector, netflow)"]:::wl
   VZ["vz-host\n(corp Mac via /30, or on-LAN Mac Mini)"]:::ext
@@ -80,20 +80,20 @@ far end of the `/30`.
 ....
 flowchart LR
   subgraph nixos [nikopol-nixos — subnet router]
-    BARE["bare-br 172.16.6.1/25\ndnsmasq, dns.domain=nikopol\nipv4.nat=false"]:::infra
-    LAN["lan-br\n.254/30 (link) + 192.168.1.34/24 (LAN)"]:::infra
-    TS0["tailscale0\nadvertise 172.16.6.0/24\n(+ mss-clamp, ip_forward)"]:::infra
+    BARE["fabric-br 172.16.16.1/25\ndnsmasq, dns.domain=nikopol\nipv4.nat=false"]:::infra
+    LAN["lan-br\n172.16.24.1/30 (link) + 192.168.1.34/24 (LAN)"]:::infra
+    TS0["tailscale0\nadvertise 172.16.16.0/20\n(+ mss-clamp, ip_forward)"]:::infra
   end
-  I1["instance a.nikopol\n172.16.6.10 (DHCP)"]:::wl
-  I2["nnh collector\n172.16.6.x (DHCP)"]:::wl
-  VZ["vzhost.nikopol\ncorp Mac en0 alias 172.16.6.253\n(baremetal-link daemon)"]:::ext
+  I1["instance a.nikopol\n172.16.16.10 (DHCP)"]:::wl
+  I2["nnh collector\n172.16.16.x (DHCP)"]:::wl
+  VZ["vzhost.nikopol\ncorp Mac en0 alias 172.16.24.2\n(baremetal-link daemon)"]:::ext
   PEER["tailnet peer\n(tag:console)"]:::actor
 
   I1 --- BARE
   I2 --- BARE
   BARE -. "same host, ip_forward" .- LAN
   LAN -->|"/30 P2P"| VZ
-  PEER -->|"172.16.6.0/24 via tailnet"| TS0
+  PEER -->|"172.16.16.0/20 via tailnet"| TS0
   TS0 -. route .- BARE
   TS0 -. route .- LAN
 
@@ -106,7 +106,7 @@ flowchart LR
 NOTE: *bioskop* carries the same shape for a different reason — its vz-host is an
 on-LAN Mac Mini, reachable at `192.168.1.129`, but its *tenants* are not, so it too
 declares a `/30` and its `host-record` points at the segment address
-(`172.16.7.253`); the Mac keeps its LAN address alongside. bioskop additionally
+(`172.16.8.2`); the Mac keeps its LAN address alongside. bioskop additionally
 advertises the whole home LAN (`lanAttachment = "fixed"`).
 
 == How to use it — attach a probe / service to a segment
@@ -115,10 +115,10 @@ This is how *nnh* (or any workload) plugs into a segment. From the Incus host:
 
 [source,console]
 ----
-# Launch on the segment bridge — DHCP gives it a 172.16.6.x lease and
+# Launch on the segment bridge — DHCP gives it a 172.16.16.x lease and
 # dnsmasq registers it as <name>.nikopol in the .nikopol zone.
-$ incus launch images:debian/12 nnh --network bare-br
-$ incus list nnh -c n4          # -> 172.16.6.x
+$ incus launch images:debian/12 nnh --network fabric-br
+$ incus list nnh -c n4          # -> 172.16.16.x
 ----
 
 From then on, from any *tag:console* tailnet peer:
@@ -136,16 +136,16 @@ sequenceDiagram
   autonumber
   participant P as tailnet peer (tag:console, macOS)
   participant R as MagicDNS 100.100.100.100
-  participant D as bare-br dnsmasq (172.16.6.1)
+  participant D as fabric-br dnsmasq (172.16.16.1)
   participant N as nikopol-nixos (subnet router)
-  participant V as vzhost.nikopol (corp Mac, .253)
+  participant V as vzhost.nikopol (corp Mac, 172.16.24.2)
 
   Note over P: /etc/resolver/nikopol -> 100.100.100.100 (macOS scoped resolver)
   P->>R: resolve vzhost.nikopol
-  R->>D: split-DNS: nikopol -> 172.16.6.1
-  D-->>P: 172.16.6.253 (host-record)
-  Note over P: route 172.16.6.0/24 accepted (ACL tag:console permits the CIDR)
-  P->>N: TCP to 172.16.6.253 via tailscale0
+  R->>D: split-DNS: nikopol -> 172.16.16.1
+  D-->>P: 172.16.24.2 (host-record)
+  Note over P: route 172.16.16.0/20 accepted (ACL tag:console permits the CIDR)
+  P->>N: TCP to 172.16.24.2 via tailscale0
   N->>V: forward over the /30 on lan-br
   V-->>P: reply (SSH, etc.)
 ....
@@ -156,8 +156,8 @@ sequenceDiagram
 |===
 | | nikopol (corp Mac, off-tailnet) | bioskop (personal Mac Mini, on-LAN)
 
-| catalog `linkCidr` | `172.16.6.252/30` | `172.16.7.252/30`
-| `vzHostAddress`    | `172.16.6.253` (/30 alias) | `172.16.7.253` (/30 alias)
+| catalog `linkCidr` | `172.16.24.0/30` | `172.16.8.0/30`
+| `vzHostAddress`    | `172.16.24.2` (/30 alias) | `172.16.8.2` (/30 alias)
 | why a `/30`        | it is the Mac's ONLY path in | the Mac is reachable, its TENANTS are not
 | reached via        | advertised `/24` -> `/30` link | advertised `/24` -> `/30` link
 | `vzHostKind`       | `foreign` — JAMF Mac, no nix, no tailscale | `nix-managed` — it IS the darwin host `bioskop`
@@ -198,10 +198,10 @@ shape. Two genuine differences remain: `lanAttachment`, which encodes a physical
 laptop must not advertise a LAN it may leave). `staticHosts` is no longer one of them — it is gone,
 derived from the published segments instead (see <<handoff,Status & handoff>>).
 
-The *numbering* is still the legacy one and is the part still pending: see
-`docs/network-topology-c4.adoc#target-carve`, where both hosts re-derive their addresses from
-rke2lab's `hostId` — a change that must move them *together*, since bioskop's target `/21` covers
-nikopol's current `/25`. The *tenancy* note under <<handoff,Status & handoff>> says who moves in.
+The numbering is DERIVED from rke2lab's `hostId` since 2026-09-23: see
+`docs/network-topology-c4.adoc#target-carve`. The move was ordered rather than atomic — nikopol
+first, because bioskop's `/21` contains nikopol's former `/25`. The *tenancy* note under
+<<handoff,Status & handoff>> says who moves in.
 ====
 
 == Reachability model
@@ -254,8 +254,8 @@ host is unreachable, or vice-versa:
 | Advertised `192.168.1.x` route unused from a peer *on that LAN* | Correct: the
   peer's directly-connected LAN route shadows the tailnet route. The advertise is
   for *roaming/remote* peers.
-| Incus instance can't reach a *LAN* service | `bare-br` has `ipv4.nat=false` and
-  the LAN has no return route to `172.16.6.0/24`. *Known limitation* — needs
+| Incus instance can't reach a *LAN* service | `fabric-br` has `ipv4.nat=false` and
+  the LAN has no return route to `172.16.16.0/20`. *Known limitation* — needs
   selective masquerade on the subnet router or a LAN static route (planned).
   ⚠️ Do NOT conclude the instance has no egress at all: `ipv4.nat=false` is
   deliberate (nnh needs real source addresses for flow attribution), and the
@@ -274,7 +274,7 @@ host is unreachable, or vice-versa:
 *From ndh's side this is ready.* The segment, its tailnet advertise, and the
 catalog contribution path are implemented and verified end-to-end:
 
-* ✅ `bare-br` segment provisioned on the Incus host (dnsmasq, `.<domain>` zone),
+* ✅ `fabric-br` segment provisioned on the Incus host (dnsmasq, `.<domain>` zone),
   reconciled idempotently (preseed + oneshot).
 * ✅ `/24` advertised into the tailnet and *auto-approved* for `tag:nixos`;
   reached from `tag:console` peers (ACL grants the CIDR).
@@ -288,8 +288,8 @@ catalog contribution path are implemented and verified end-to-end:
   the live control-plane).
 
 *Known open item on the ndh side:* an Incus instance cannot yet reach *home-LAN*
-services — `bare-br` runs `ipv4.nat=false` and the LAN has no return route to
-`172.16.6.0/24`. Instance↔tailnet and instance↔instance work; instance→LAN needs
+services — `fabric-br` runs `ipv4.nat=false` and the LAN has no return route to
+`172.16.16.0/20`. Instance↔tailnet and instance↔instance work; instance→LAN needs
 selective masquerade on the subnet router (or a LAN static route). Flag if nnh
 needs LAN egress and we will land it.
 
@@ -308,7 +308,7 @@ What this means concretely for ndh:
 
 * *nothing to extend.* `modules/nixos/baremetal-segment.nix` is already keyed off
   `netplan.baremetal.<effectiveHostName>`, so bioskop qualifies today. Verified live on 2026-09-23:
-  `bare-br` is `Created` on `bioskop-nixos` at `172.16.7.1/25` with its `.bioskop` zone — and **empty**
+  `fabric-br` is `Created` on `bioskop-nixos` at `172.16.0.1/25` with its `.bioskop` zone — and **empty**
   (`used_by: []`, link `DOWN`, which is normal for a memberless Linux bridge). The logic did not need
   extending; it needed a tenant.
 * *the joint is now made* (2026-09-23). `raw.dnsmasq` used to be built from a hand-written
@@ -352,7 +352,7 @@ the exhaustive check that guards them are in rke2lab's
 
 *Over to nnh.* Please review whether this covers your needs:
 
-* *Attach* — does launching the collector on `bare-br` (DHCP + `<name>.<domain>`,
+* *Attach* — does launching the collector on `fabric-br` (DHCP + `<name>.<domain>`,
   reachable over the advertised `/24`) match how you want the probe deployed?
 * *Consume* — are `catalog.netplan.segments` (the `{cidr,name,asn}` triples) and
   `.asns` sufficient for your NetName/AS attribution, or do you need extra fields

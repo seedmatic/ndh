@@ -10,7 +10,7 @@
 # Per-baremetal instance segment for a NixOS Incus host.  Any host whose
 # canonical name matches a `catalog.netplan.baremetal.<name>` entry (nikopol,
 # bioskop) becomes the Incus host + subnet router for that segment: a managed
-# `bare-br` /25 (Incus dnsmasq, `.<domain>` zone, a static host-record for the
+# `fabric-br` /25 (Incus dnsmasq, `.<domain>` zone, a static host-record for the
 # off-DHCP vz-host) advertised into the tailnet with split-DNS, and — for a host
 # whose entry declares a `linkCidr` (an off-tailnet corp Mac reached over a /30) —
 # the static /30 link end on lan-br.  Hosts with no baremetal entry (bringup,
@@ -101,9 +101,9 @@ let
   ) (netplan.segments or [ ]);
   qualify = name: if lib.hasInfix "." name then name else "${name}.${bm.domain}";
 
-  # bare-br managed-network config — the single source for BOTH belts (preseed +
+  # fabric-br managed-network config — the single source for BOTH belts (preseed +
   # reconcile), so the two cannot drift.
-  bareBrConfig = {
+  fabricBrConfig = {
     "ipv4.address" = "${bm.netGateway}/${netPrefix}";
     "ipv4.nat" = "false";
     "ipv4.dhcp" = "true";
@@ -142,7 +142,7 @@ let
   # Confine DHCP to the dynamic sub-segment (the bottom /27) when the baremetal
   # declares a range; the static-high half stays free for reservations (nnh's
   # collector /30 at the top). Without this, dnsmasq auto-ranges the whole /25 and a
-  # bare-br recreate can hand a pinned static IP to a DHCP client — which wedged the
+  # fabric-br recreate can hand a pinned static IP to a DHCP client — which wedged the
   # pipeline (akvorado Kafka + probe stuck on a churned IP). Optional per-baremetal.
   // lib.optionalAttrs (bm ? dhcpRange) {
     "ipv4.dhcp.ranges" = bm.dhcpRange;
@@ -150,34 +150,34 @@ let
 
   # The config as a JSON manifest (builtins.toJSON — no nix YAML codec needed);
   # the reconcile script parses it with yq-go in JSON-input mode.
-  bareBrManifest = pkgs.writeText "bare-br.json" (builtins.toJSON bareBrConfig);
+  fabricBrManifest = pkgs.writeText "fabric-br.json" (builtins.toJSON fabricBrConfig);
 
-  reconcileScript = ndh.store.installBinScript "incus-bare-br" (
-    pkgs.replaceVars ./baremetal-segment.d/incus-bare-br.sh {
+  reconcileScript = ndh.store.installBinScript "incus-fabric-br" (
+    pkgs.replaceVars ./baremetal-segment.d/incus-fabric-br.sh {
       incus = "${pkgs.incus}/bin/incus";
       yq = "${pkgs.yq-go}/bin/yq";
-      network = "bare-br";
-      manifest = "${bareBrManifest}";
+      network = "fabric-br";
+      manifest = "${fabricBrManifest}";
     }
   );
 in
 lib.mkIf enabled {
   # DOUBLE BELT.  The nixpkgs incus preseed is CREATE-ONLY and runs once at
-  # `incus init`, so on an already-initialised incus adding bare-br here is
+  # `incus init`, so on an already-initialised incus adding fabric-br here is
   # silently ignored — and it never reconciles later field changes.  So we keep
   # the preseed (fresh bringup) AND add the reconcile oneshot below (existing
-  # incus + drift).  Both read the one bareBrConfig.  List options merge across
+  # incus + drift).  Both read the one fabricBrConfig.  List options merge across
   # modules, so this unions with modules/nixos/incus.nix's empty preseed.networks.
   virtualisation.incus.preseed.networks = [
     {
-      name = "bare-br";
+      name = "fabric-br";
       type = "bridge";
-      config = bareBrConfig;
+      config = fabricBrConfig;
     }
   ];
 
-  systemd.services.incus-bare-br = {
-    description = "Reconcile the bare-br Incus network (preseed is create-only)";
+  systemd.services.incus-fabric-br = {
+    description = "Reconcile the fabric-br Incus network (preseed is create-only)";
     after = [ "incus.service" ];
     requires = [ "incus.service" ];
     wantedBy = [ "multi-user.target" ];
@@ -187,7 +187,7 @@ lib.mkIf enabled {
       # Invoke bash explicitly (like incus.nix's ExecStartPre): the service's
       # minimal PATH has no `bash`, so the script's `#!/usr/bin/env bash` shebang
       # would fail with exit 127 (`env: 'bash': No such file or directory`).
-      ExecStart = "${pkgs.bash}/bin/bash ${reconcileScript}/bin/incus-bare-br";
+      ExecStart = "${pkgs.bash}/bin/bash ${reconcileScript}/bin/incus-fabric-br";
     };
   };
 
@@ -206,7 +206,7 @@ lib.mkIf enabled {
       description = "Ship vz-nudge + (re)load baremetal-link on the corp Mac (${bm.domain})";
       after = [
         (ndhSystemd.mkServiceName "ssh-keys-enrichment")
-        "incus-bare-br.service"
+        "incus-fabric-br.service"
         "network-online.target"
       ];
       wants = [
@@ -215,7 +215,7 @@ lib.mkIf enabled {
       ];
       serviceConfig = {
         Type = "oneshot";
-        # Invoke bash explicitly (like incus-bare-br above): the service's minimal
+        # Invoke bash explicitly (like incus-fabric-br above): the service's minimal
         # PATH has no `bash`, so the deploy bin's `#!/usr/bin/env -S bash` shebang
         # fails with exit 127 (`env: 'bash': No such file or directory`).
         ExecStart =
@@ -227,8 +227,8 @@ lib.mkIf enabled {
     }
   );
 
-  networking.firewall.trustedInterfaces = [ "bare-br" ];
-  networking.networkmanager.unmanaged = [ "interface-name:bare-br" ];
+  networking.firewall.trustedInterfaces = [ "fabric-br" ];
+  networking.networkmanager.unmanaged = [ "interface-name:fabric-br" ];
 
   # Advertise this baremetal segment's aggregate into the tailnet, so peers reach
   # the instances and the vz-host by name (paired with the split-DNS `.<domain>`
@@ -248,9 +248,9 @@ lib.mkIf enabled {
   ]
   ++ lib.optional ((bm.lanAttachment or "roaming") == "fixed") netplan.lan.cidr;
 
-  # This host is a subnet router for its bare-br /25 (advertised into the tailnet):
-  # forward between bare-br and the tailnet, and clamp forwarded TCP MSS to the
-  # per-route MTU.  bare-br/lan-br are 1500-MTU, tailscale0 is 1280 — an instance ↔
+  # This host is a subnet router for its fabric-br /21 (advertised into the tailnet):
+  # forward between fabric-br and the tailnet, and clamp forwarded TCP MSS to the
+  # per-route MTU.  fabric-br/lan-br are 1500-MTU, tailscale0 is 1280 — an instance ↔
   # tailnet peer SYN crosses that step and would blackhole on PMTUD (DF set, ICMP
   # frag-needed often filtered) without the clamp.  `size set rt mtu` rewrites the
   # SYN MSS to the egress-route MTU per flow (intra-1500 stays 1460, tailnet-bound
@@ -276,9 +276,9 @@ lib.mkIf enabled {
   # LAN, vzhost.${bm.domain} and other instances keeps its real source.  Own nftables
   # table (firewall.enable is off here), alongside mss-clamp.
   #
-  # The source is the whole SLICE (`advertiseCidr`), not the bare-br half (`netCidr`),
+  # The source is the whole SLICE (`advertiseCidr`), not the fabric-br half (`netCidr`),
   # because the slice is this bare-metal's unit of ownership — that is exactly what it
-  # advertises into the tailnet. Scoping to the /21 covered the bare-br tenants and left
+  # advertises into the tailnet. Scoping to the /21 covered the fabric-br tenants and left
   # every slot at offset >= 8 out: correct today, since the only one in use is the
   # vz-host /30 whose far end is a Mac with its own default route, but a silent hole for
   # slots 9-15. An unmasqueraded public-bound packet is not refused, it BLACKHOLES, so

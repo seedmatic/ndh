@@ -14,10 +14,10 @@ link:network-setup.adoc[Network Infrastructure Setup]::
 Complete guide covering Tailscale and Headscale deployment, configuration, usage, and troubleshooting. Start here for setting up your network.
 
 link:network-topology-c4.adoc[Baremetal Instance Segments & vz-host Access (C4-Style UML)]::
-Context/container/sequence diagrams for the per-baremetal Incus instance segments (nikopol `172.16.6.0/24`/`.nikopol`, bioskop `172.16.7.0/24`/`.bioskop`) advertised into the tailnet with split-DNS, so peers resolve/reach the netflow instances and the vz-hosts (`vzhost.nikopol`, `vzhost.bioskop`) by name — no NAT, single-source addressing from the catalog. Both hosts have the same shape — a `/30` to the vz-host — for different reasons: nikopol's corp Mac is off-tailnet, bioskop's Mac is reachable but its tenants are not. (Advertise + split-DNS are Tailscale-SaaS-console steps today; declarative under Headscale later.)
+Context/container/sequence diagrams for the per-baremetal Incus instance segments (nikopol `172.16.16.0/20`/`.nikopol`, bioskop `172.16.0.0/20`/`.bioskop`) advertised into the tailnet with split-DNS, so peers resolve/reach the netflow instances and the vz-hosts (`vzhost.nikopol`, `vzhost.bioskop`) by name — no NAT, single-source addressing from the catalog. Both hosts have the same shape — a `/30` to the vz-host — for different reasons: nikopol's corp Mac is off-tailnet, bioskop's Mac is reachable but its tenants are not. (Advertise + split-DNS are Tailscale-SaaS-console steps today; declarative under Headscale later.)
 
 link:network-catalog-segments.adoc[Network Catalog Segments (feature: spec, architecture, usage)]::
-Specs + C4/UML architecture + usage of the per-baremetal Incus segments advertised into the tailnet: how to attach a probe/service to `bare-br`, reach `vzhost.<domain>`, the reachability model (route + ACL tag→CIDR + scoped resolvers + auto-approvers), operations, and troubleshooting. Includes the ndh→nnh handoff (what's ready + open items).
+Specs + C4/UML architecture + usage of the per-baremetal Incus segments advertised into the tailnet: how to attach a probe/service to `fabric-br`, reach `vzhost.<domain>`, the reachability model (route + ACL tag→CIDR + scoped resolvers + auto-approvers), operations, and troubleshooting. Includes the ndh→nnh handoff (what's ready + open items).
 
 link:network-catalog.adoc[Network Catalog (model & contribution)]::
 The network catalog data model — the `{cidr,name,asn}` attribution triple + managed-network facts + `asns` dictionary — its consumers (nnh flow attribution, ndh provisioning), how to consume it (`nix eval --json …#catalog`), and how a domain (rke2lab, nnh) contributes spans via `lib.networkBlueprint` (the two-layer federation: data up at eval, infrastructure down at runtime).
@@ -148,15 +148,15 @@ vzhost.<host> (the physical Macs; the corp one is NOT on the tailnet)
     ↓
 172.16.<hostId*16>.0/20 per-baremetal fabric slice (advertised + .<host> split-DNS)
     DERIVED from rke2lab's hostId: bioskop 0 → .0/20 · nikopol 1 → .16/20
-    offset < 8 = on bare-br · offset >= 8 = another link   → network-topology-c4.adoc
+    offset < 8 = on fabric-br · offset >= 8 = another link   → network-topology-c4.adoc
 ----
 
 NOTE: the *reachable* address plane of the RKE2 nodes is moving off the home LAN and into each
 bare-metal's own fabric slice, so a node's address no longer depends on the bbox — decisive for
 `nikopol`, which runs on a laptop that connects through mobile hotspots. The slice is *derived* from
 rke2lab's `hostId`, not allocated here, so this catalog's `netCidr`/`netGateway`/`linkCidr` become
-projections. Decided 2026-09-23, not yet applied: addresses in
-link:network-topology-c4.adoc#target-carve[the target carve], tenancy in
+projections. Applied 2026-09-23: addresses in
+link:network-topology-c4.adoc#target-carve[the carve], tenancy in
 link:network-catalog-segments.adoc#handoff[Status & handoff], and the complete plan with its invariants
 in rke2lab's `docs/architecture/atlas/netplan.adoc`.
 
@@ -180,7 +180,7 @@ tailscale status
 
 [source,bash]
 ----
-ssh vzhost.nikopol        # resolves via .nikopol split-DNS → 172.16.6.253 (advertised segment)
+ssh vzhost.nikopol        # resolves via .nikopol split-DNS → 172.16.24.2 (advertised segment)
 ----
 
 See: link:network-topology-c4.adoc#usage-patterns[vz-host access usage patterns].
@@ -278,7 +278,7 @@ ln -s /nix/store/<path> /nix/var/nix/gcroots/bioskop-cache-keep
 | Home LAN | 192.168.1.0/24 | Main network (Bbox, gw .254)
 | Cluster supernet | 10.80.0.0/18 | RKE2 clusters (bioskop 10.80.0.0/21, nikopol 10.80.8.0/21)
 | Tailnet (mammoth-skate) | 100.64.0.0/10 | Tailscale overlay
-| Roaming (reserved) | 172.16.0.0/12 | per-corp-host overlays (nikopol 172.16.6.0/24)
+| Roaming (reserved) | 172.16.0.0/12 | per-corp-host overlays (nikopol 172.16.16.0/20)
 |===
 
 See link:network-setup.adoc#network-ranges[Network Setup → Network Ranges] for the full

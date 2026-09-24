@@ -95,7 +95,7 @@ in
     advertiseRoutes = mkOption {
       type = types.listOf types.str;
       default = [ ];
-      example = [ "172.16.6.0/24" ];
+      example = [ "172.16.16.0/20" ];
       description = ''
         Subnet routes this node advertises into the tailnet (subnet router).
         Feeds `--advertise-routes`.  On the Tailscale SaaS controller the routes

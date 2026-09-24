@@ -16,7 +16,7 @@ deployed today**; the mesh in use is the Tailscale SaaS tailnet.
 [NOTE]
 ====
 This document describes the *current* model — Tart VMs, `lan-br`, `mammoth-skate.ts.net`,
-the personal/corporate ownership split, and the `172.16.6.0/24` baremetal segment. The earlier
+the personal/corporate ownership split, and the `172.16.16.0/20` baremetal segment. The earlier
 *Lima* / `incusbr0` / `192.168.106` / `home.arpa` model is *retired*; if you find a
 reference to it elsewhere, treat it as stale.
 ====
@@ -60,7 +60,7 @@ Two planes stack (full detail in the rke2lab mesh document):
 
 *One structural exception*: the *corporate bare-metal Mac* `vzhost.nikopol` (JAMF-managed)
 cannot join the tailnet (no VPN binaries by policy). It is reached via its Incus host
-`nikopol-nixos`'s *baremetal instance segment* (`172.16.6.0/24`), advertised into the
+`nikopol-nixos`'s *baremetal instance segment* (`172.16.16.0/20`), advertised into the
 tailnet with a split-DNS `.nikopol` zone — resolved and reached by name, never as a tailnet
 member. See link:network-topology-c4.adoc[Baremetal Instance Segments & vz-host Access].
 
@@ -78,9 +78,9 @@ bioskop (Darwin/macOS, .129)                     ← personal bare-metal, own ha
 └── nikopol-... Tart VMs
     └── bioskop-nixos (NixOS, .130)              ← Incus host · tailnet member
         ├── lan-br (bridged on the home LAN)
-        ├── advertises 192.168.1.0/24 + 172.16.7.0/24 (+ .bioskop split-DNS)
+        ├── advertises 192.168.1.0/24 + 172.16.0.0/20 (+ .bioskop split-DNS)
         ├── Incus: bioskop-wrkld RKE2 cluster    ← 10.80.0.0/21 (vmnet-br)
-        └── Incus: bare-br 172.16.7.0/25 (dnsmasq, .bioskop) ← vzhost.bioskop→.253 + instances
+        └── Incus: fabric-br 172.16.0.0/21 (dnsmasq, .bioskop) ← vzhost.bioskop→172.16.8.2 + instances
 ----
 
 === vzhost.nikopol — corp MacBook · JAMF-managed · roaming
@@ -89,17 +89,17 @@ bioskop (Darwin/macOS, .129)                     ← personal bare-metal, own ha
 ----
 vzhost.nikopol (macOS, JAMF, .1)                     ← corporate bare-metal · NOT on tailnet
 │                                                  (no darwin config; baremetal-link daemon deployed)
-│   en0 (Wi-Fi) + alias 172.16.6.253/30 + routes /25 & 100.64/10 via .254
+│   en0 (Wi-Fi) + alias 172.16.24.2/30 + routes /21 & 100.64/10 via 172.16.24.1
 │
 ├── nikopol (Tart macOS VM, .33)                 ← personal env · tailnet member
 └── nikopol-nixos (Tart NixOS VM, .34)           ← Incus host · tailnet member
-    ├── lan-br (bridged on the LAN) + .254/30 · ip_forward
-    ├── advertises 172.16.6.0/24 + .nikopol split-DNS into the tailnet
+    ├── lan-br (bridged on the LAN) + 172.16.24.1/30 · ip_forward
+    ├── advertises 172.16.16.0/20 + .nikopol split-DNS into the tailnet
     ├── Incus: nikopol-wrkld RKE2 cluster        ← 10.80.8.0/21 (vmnet-br)
-    └── Incus: bare-br 172.16.6.0/25 (dnsmasq, .nikopol) ← netflow (collector.nikopol)
+    └── Incus: fabric-br 172.16.16.0/21 (dnsmasq, .nikopol) ← netflow (collector.nikopol)
 ----
 
-The `172.16.6.0/24` baremetal segment is *advertised* into the tailnet with a `.nikopol`
+The `172.16.16.0/20` baremetal segment is *advertised* into the tailnet with a `.nikopol`
 split-DNS zone, so any peer resolves and reaches the instances and `vzhost.nikopol` by name (no
 NAT). On the Tailscale SaaS controller today the advertise + split-DNS are console steps;
 declarative under Headscale later. Full transport in
@@ -118,9 +118,9 @@ link:network-topology-c4.adoc[Baremetal Instance Segments & vz-host Access].
 | K8s services | 10.43.0.0/16 | Kubernetes services
 | Tailnet (mammoth-skate) | 100.64.0.0/10 | Tailscale overlay
 | Baremetal (reserved) | 172.16.0.0/12 | per-baremetal instance segments
-| nikopol baremetal net | 172.16.6.0/25 | managed Incus net (dnsmasq `.nikopol`) — netflow
-| nikopol baremetal link | 172.16.6.252/30 | static P2P: vzhost.nikopol .253 ↔ nikopol-nixos .254
-| bioskop baremetal net | 172.16.7.0/25 | managed Incus net (dnsmasq `.bioskop`) — bioskop instances
+| nikopol baremetal net | 172.16.16.0/21 | managed Incus net (dnsmasq `.nikopol`) — netflow
+| nikopol baremetal link | 172.16.24.0/30 | static P2P: vzhost.nikopol .24.2 ↔ nikopol-nixos .24.1
+| bioskop baremetal net | 172.16.0.0/21 | managed Incus net (dnsmasq `.bioskop`) — bioskop instances
 |===
 
 Cluster CIDRs are derived arithmetically from the `10.80.0.0/18` supernet (8 × /21, one per
@@ -169,7 +169,7 @@ Public IPv4 is dynamic, tracked by Duck DNS at `mammoth-skate.duckdns.org`
 * *Across networks* — via the tailnet: `ssh <host>` (MagicDNS `mammoth-skate.ts.net`) or
   `tailscale ssh <host>`. Members: `bioskop`, `nikopol`, the `-nixos` hosts.
 * *`vzhost.nikopol`* (off-tailnet corp Mac) — a real DNS name via the `.nikopol` split-DNS zone:
-  `ssh vzhost.nikopol` resolves to `172.16.6.253` and reaches it over the advertised segment (no
+  `ssh vzhost.nikopol` resolves to `172.16.24.2` and reaches it over the advertised segment (no
   `HostName`/`ProxyJump`/resolver). See
   link:network-topology-c4.adoc#usage-patterns[the vz-host access usage patterns].
 * SSH config is rendered per host by the ndh SSH modules; see
