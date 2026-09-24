@@ -308,36 +308,25 @@ in
             ownership = "personal";
           };
 
-          # RKE2 cluster members — a pure projection of rke2lab's network
-          # blueprint (the single source of truth; see the `networkBlueprint`
-          # argument and the rke2lab flake input). Each `${cluster}-${node}` host
-          # takes its MAC and LAN IP from `addressing.${cluster}.${node}`, so the
-          # `10:66:6a:4c:${clusterId}:${nodeId}` MAC scheme and the bbox static
-          # reservations stay in lockstep with rke2lab — no hand-copied values to
-          # drift. Naming: {host}-{role} for simpler DNS lookups.
-        }
-        // (
-          let
-            addressing = networkBlueprint.addressing;
-            # Flatten addressing.${cluster}.${node} into catalog host entries,
-            # using only builtins (the catalog has no `lib` in scope).
-            rke2HostList = builtins.concatMap (
-              cluster:
-              map (node: {
-                name = "${cluster}-${node}";
-                value = {
-                  mac = addressing.${cluster}.${node}.macs.lan;
-                  ip = addressing.${cluster}.${node}.ips.lanHost;
-                  kind = "rke2";
-                  parent = cluster;
-                  role = node;
-                  ownership = "personal";
-                };
-              }) (builtins.attrNames addressing.${cluster})
-            ) (builtins.attrNames addressing);
-          in
-          builtins.listToAttrs rke2HostList
-        );
+          # RKE2 cluster members are NOT here any more, and their absence is the point.
+          #
+          # This block projected one `kind = "rke2"` bbox reservation per cluster node, taking
+          # `macs.lan` + `ips.lanHost` from rke2lab's blueprint so the two stayed in lockstep. rke2lab
+          # then moved its nodes off the home LAN into the fabric (rke2lab `e020654a1`): it emits no
+          # span on this network at all, so there is nothing here to reserve for it, and `ips.lanHost`
+          # no longer exists — which is what made the removal LOUD rather than silent when the input
+          # was bumped.
+          #
+          # Their reservations did not disappear, they changed authority: the bare-metal's own dnsmasq
+          # serves them now, derived from the fabric segments rke2lab publishes (see
+          # modules/nixos/baremetal-segment.nix, which reads `netplan.segments` by containment). So
+          # the bbox keeps the physical inventory above and loses ~12 rows it never had title to.
+          #
+          # ⚠️ Only nodes whose MAC the blueprint PREDICTS carry a reservation there — a CAPN node's
+          # hwaddr is minted by the provider, so it draws from the dynamic pool and is found by name.
+          # That distinction is rke2lab's `fabricMacIsPredictable`, and it is why the fabric segments
+          # carry `hosts` for management clusters only.
+        };
       };
 
       # Network SEGMENTS for flow attribution — the single source nnh (the netflow

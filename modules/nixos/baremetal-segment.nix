@@ -114,11 +114,29 @@ let
     # own its `.<domain>` record — so nnh's collector/probe appear as their real
     # hostnames in the zone.
     "dns.mode" = "dynamic";
-    # Static A records for every host published on a segment inside this net (see
+    # Static records for every host published on a segment inside this net (see
     # segmentHostRecords). Other DHCP clients still auto-register dynamically in the
     # `.${bm.domain}` zone.
+    #
+    # A host that carries a `mac` becomes a `dhcp-host` RESERVATION rather than a bare
+    # `host-record`, and the one directive does both jobs: dnsmasq pins the address to that
+    # hwaddr AND answers the name. A MAC-less host gets the name only — nothing binds it to an
+    # address, so asserting one would be a record nothing ever answers on.
+    #
+    # This is the door through which rke2lab's cluster-node reservations arrive. They used to be
+    # rows on the home router, declared in this catalog's `netplan.lan.hosts` and reconciled
+    # against the bbox; rke2lab moved its nodes into the fabric, so the reservations moved to the
+    # authority that owns the network they now live on — this dnsmasq. Same information, and now
+    # address and name are served by ONE thing instead of the bbox plus avahi, which is the split
+    # that made an mDNS name necessary at all.
     "raw.dnsmasq" = lib.concatStringsSep "\n" (
-      map (h: "host-record=${qualify h.name},${h.ip}") segmentHostRecords
+      map (
+        h:
+        if (h.mac or null) != null then
+          "dhcp-host=${h.mac},${qualify h.name},${h.ip}"
+        else
+          "host-record=${qualify h.name},${h.ip}"
+      ) segmentHostRecords
     );
   }
   # Confine DHCP to the dynamic sub-segment (the bottom /27) when the baremetal
