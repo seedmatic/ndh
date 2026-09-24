@@ -10,6 +10,25 @@
 # body shape the UI sends, so this is diff-only until that's settled.  See
 # `docs/bbox-api.adoc` for the full surface and probing convention.
 #
+# ★ THE WRITE PATH ALREADY EXISTED, in rke2lab, and it is worth fetching rather
+# than rediscovering.  rke2lab carried a whole bbox domain — a port, a surveying
+# /cultivating edge pair, and an external `java-bbox-api-client` that OPENED A
+# SESSION and applied each reservation row (the body shape this comment says we
+# never captured).  It was excised in rke2lab `e020654a1` when its cluster nodes
+# moved off the home LAN into the fabric: rke2lab emits no span here any more, so
+# it had nothing left to reserve, and keeping it would have implied otherwise.
+#
+# But ndh DOES own this network, so the client is not obsolete — it is in the
+# wrong repo.  Making it ndh's delegate for the write would close the gap above
+# and give this script its cultivating half.  What to retrieve from that commit's
+# parent: `osgi/domains/bbox/bbox-edge/…/CultivatingBboxReconciler.java` (the
+# session + per-row apply, and the `|| FAILED` per-row outcome discipline) and the
+# `io.seedmatic:java-bbox-api-client` artifact it wrapped.
+#
+# Note the ownership rule that made the excision necessary, because it applies to
+# whatever replaces it: the writer of a network's reservations must be the party
+# that OWNS the network, or the two reconcilers clobber each other silently.
+#
 # Inputs
 #   - `catalog.netplan.lan.hosts`   — declared static reservations
 #   - `catalog.netplan.lan.routers.mammoth-skate.adminUrl` — bbox UI base URL
