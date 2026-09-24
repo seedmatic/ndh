@@ -162,38 +162,35 @@ let
   );
 in
 lib.mkIf enabled {
-  # DOUBLE BELT.  The nixpkgs incus preseed is CREATE-ONLY and runs once at
-  # `incus init`, so on an already-initialised incus adding fabric-br here is
-  # silently ignored — and it never reconciles later field changes.  So we keep
-  # the preseed (fresh bringup) AND add the reconcile oneshot below (existing
-  # incus + drift).  Both read the one fabricBrConfig.  List options merge across
-  # modules, so this unions with modules/nixos/incus.nix's empty preseed.networks.
-  virtualisation.incus.preseed.networks = [
-    {
-      name = "fabric-br";
-      type = "bridge";
-      config = fabricBrConfig;
-    }
-  ];
+  # ONE OWNER for this network: the oneshot below, which creates it AND reconciles it.
+  #
+  # `virtualisation.incus.preseed.networks` deliberately does NOT list it — modules/nixos/incus.nix
+  # already states the rule this restores ("keep this list empty to avoid conflicting controllers"),
+  # and this module used to break it. The justification given was that the nixpkgs preseed is
+  # "create-only, runs once at `incus init`, so on an already-initialised incus this entry is
+  # silently ignored". That is FALSE, measured on both bare-metals 2026-09-24: `incus admin init
+  # --preseed` runs on EVERY activation, and when a declared network already exists it fails —
+  #
+  #   Error: Failed to create local member network "fabric-br" in project "default":
+  #   Network "fabric-br" already exists
+  #
+  # — taking `switch-to-configuration` to exit 4 with it. Two creators for one object can only
+  # race, and the rename is what opened the window: the bridge used to predate both units, so the
+  # preseed always found it and took its update path.
+  #
+  # ⚠️ Ordering the oneshot `After = [ "incus-preseed.service" ]` does NOT fix it, and the attempt
+  # is worth recording: `After` orders only within ONE transaction, while
+  # `switch-to-configuration` starts NEW units and restarts CHANGED units in separate systemctl
+  # invocations. With the dependency declared and visible in `systemctl show -p After`, both units
+  # still started in the same second and the preseed still lost.
+  #
+  # Nothing is lost by dropping the entry: on a fresh bringup the preseed still does what only it
+  # can (the HTTPS listener, the default profile, storage), and this oneshot creates the network at
+  # `multi-user.target`.
 
   systemd.services.incus-fabric-br = {
-    description = "Reconcile the fabric-br Incus network (preseed is create-only)";
-    # Ordered AFTER the preseed, and this is a correctness requirement rather than tidiness.
-    # Both units are `After=incus.service` and nothing else, so they used to RACE — and
-    # `incus admin init --preseed` is check-then-create: it looks the network up, decides to
-    # create it, and fails hard (`set -e`) if something created it in between. Measured
-    # 2026-09-24 on the first activation after the bridge was renamed, the one moment when the
-    # network was absent for both: the preseed died with `Network "fabric-br" already exists`
-    # while this oneshot had already built it correctly. It never bit before because the
-    # bridge predated both units, so the preseed always took its update path.
-    #
-    # `after` only — no `wants`/`requires`. This is the RECOVERY belt: it must still run when
-    # the preseed is absent (no preseed declared) or has failed, which is exactly the case it
-    # exists to cover.
-    after = [
-      "incus.service"
-      "incus-preseed.service"
-    ];
+    description = "Create + reconcile the fabric-br Incus network (sole owner)";
+    after = [ "incus.service" ];
     requires = [ "incus.service" ];
     wantedBy = [ "multi-user.target" ];
     serviceConfig = {
