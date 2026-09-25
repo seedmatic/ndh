@@ -416,10 +416,9 @@ in
               bm:
               [
                 # The managed /25 (Incus fabric-br + dnsmasq): gateway, the `.<domain>` DNS
-                # zone, and a static host-record for the off-DHCP vz-host (a corp Mac at a
-                # /30 address, or an on-tailnet bare-metal at its LAN address — no `mac`,
-                # it is not a dnsmasq DHCP client).  DHCP clients (the nnh collector, other
-                # instances) auto-register in the zone and are NOT catalog hosts.
+                # zone, and two static host-records for the two off-DHCP endpoints (neither
+                # carries a `mac`, neither is a dnsmasq DHCP client).  DHCP clients (the nnh
+                # collector, other instances) auto-register in the zone and are NOT catalog hosts.
                 {
                   cidr = bm.netCidr;
                   name = "${bm.domain}-baremetal-net";
@@ -427,9 +426,21 @@ in
                   gateway = bm.netGateway;
                   domain = bm.domain;
                   hosts = [
+                    # The vz-host: a corp Mac at a /30 address, or an on-tailnet bare-metal at
+                    # its LAN address.
                     {
                       name = "vzhost.${bm.domain}";
                       ip = bm.vzHostAddress;
+                    }
+                    # The NixOS hypervisor itself, at the bridge gateway it owns.  This is the ONE
+                    # name form rke2lab derives for an infra host, and the record is what makes it
+                    # resolvable: the answering authority is the host that owns the network, so the
+                    # name holds for every audience over the tailnet split-DNS — unlike a `.lan`
+                    # name, which only answers while that host sits on the home LAN.  Its incus
+                    # daemon already listens here.
+                    {
+                      name = "nixos.${bm.domain}";
+                      ip = bm.netGateway;
                     }
                   ];
                 }

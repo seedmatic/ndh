@@ -9,12 +9,16 @@
 }:
 # Per-baremetal instance segment for a NixOS Incus host.  Any host whose
 # canonical name matches a `catalog.netplan.baremetal.<name>` entry (nikopol,
-# bioskop) becomes the Incus host + subnet router for that segment: a managed
-# `fabric-br` /25 (Incus dnsmasq, `.<domain>` zone, a static host-record for the
-# off-DHCP vz-host) advertised into the tailnet with split-DNS, and — for a host
-# whose entry declares a `linkCidr` (an off-tailnet corp Mac reached over a /30) —
-# the static /30 link end on lan-br.  Hosts with no baremetal entry (bringup,
-# nerd-nixos) get nothing.  Addresses derive from the catalog — never hardcoded.
+# bioskop) becomes the Incus host + subnet router for that segment: a `fabric-br`
+# /21 bridge owned by systemd-networkd, its `.<domain>` zone and DHCP served by
+# this host's own dnsmasq (static host-records for the off-DHCP vz-host and for
+# the NixOS host itself), advertised into the tailnet with split-DNS, and — for a
+# host whose entry declares a `linkCidr` (an off-tailnet corp Mac reached over a
+# /30) — the static /30 link end on lan-br.  Hosts with no baremetal entry
+# (bringup, nerd-nixos) get nothing.  Addresses derive from the catalog — never
+# hardcoded.  Incus does NOT manage this bridge; instances attach to it as an
+# unmanaged parent, which is what lets each bare-metal keep its own subnet once
+# the Incus daemons are clustered (see the ownership note below).
 # See catalog/default.nix (netplan.baremetal) and docs/network-topology-c4.adoc.
 let
   ndhContext = ndh.context;
@@ -101,105 +105,120 @@ let
   ) (netplan.segments or [ ]);
   qualify = name: if lib.hasInfix "." name then name else "${name}.${bm.domain}";
 
-  # fabric-br managed-network config — the single source for BOTH belts (preseed +
-  # reconcile), so the two cannot drift.
-  fabricBrConfig = {
-    "ipv4.address" = "${bm.netGateway}/${netPrefix}";
-    "ipv4.nat" = "false";
-    "ipv4.dhcp" = "true";
-    "ipv6.address" = "none";
-    "dns.domain" = bm.domain;
-    # Register each instance under the hostname it sends in its DHCP request, not
-    # the Incus instance name (`managed`, the default).  `dynamic` lets the guest
-    # own its `.<domain>` record — so nnh's collector/probe appear as their real
-    # hostnames in the zone.
-    "dns.mode" = "dynamic";
-    # Static records for every host published on a segment inside this net (see
-    # segmentHostRecords). Other DHCP clients still auto-register dynamically in the
-    # `.${bm.domain}` zone.
-    #
-    # A host that carries a `mac` becomes a `dhcp-host` RESERVATION rather than a bare
-    # `host-record`, and the one directive does both jobs: dnsmasq pins the address to that
-    # hwaddr AND answers the name. A MAC-less host gets the name only — nothing binds it to an
-    # address, so asserting one would be a record nothing ever answers on.
-    #
-    # This is the door through which rke2lab's cluster-node reservations arrive. They used to be
-    # rows on the home router, declared in this catalog's `netplan.lan.hosts` and reconciled
-    # against the bbox; rke2lab moved its nodes into the fabric, so the reservations moved to the
-    # authority that owns the network they now live on — this dnsmasq. Same information, and now
-    # address and name are served by ONE thing instead of the bbox plus avahi, which is the split
-    # that made an mDNS name necessary at all.
-    "raw.dnsmasq" = lib.concatStringsSep "\n" (
-      map (
-        h:
-        if (h.mac or null) != null then
-          "dhcp-host=${h.mac},${qualify h.name},${h.ip}"
-        else
-          "host-record=${qualify h.name},${h.ip}"
-      ) segmentHostRecords
+  # The dotted netmask dnsmasq wants in `dhcp-range` (it takes a mask, not a prefix length).
+  # Integer division truncates in Nix, which is what makes the octet extraction work.
+  intToIpv4 =
+    n:
+    lib.concatStringsSep "." (
+      map toString [
+        (n / 16777216)
+        ((n / 65536) - (n / 16777216) * 256)
+        ((n / 256) - (n / 65536) * 256)
+        (n - (n / 256) * 256)
+      ]
     );
-  }
-  # Confine DHCP to the dynamic sub-segment (the bottom /27) when the baremetal
-  # declares a range; the static-high half stays free for reservations (nnh's
-  # collector /30 at the top). Without this, dnsmasq auto-ranges the whole /25 and a
-  # fabric-br recreate can hand a pinned static IP to a DHCP client — which wedged the
-  # pipeline (akvorado Kafka + probe stuck on a churned IP). Optional per-baremetal.
-  // lib.optionalAttrs (bm ? dhcpRange) {
-    "ipv4.dhcp.ranges" = bm.dhcpRange;
-  };
+  netNetmask = intToIpv4 (4294967296 - pow2 (32 - lib.toInt netPrefix));
 
-  # The config as a JSON manifest (builtins.toJSON — no nix YAML codec needed);
-  # the reconcile script parses it with yq-go in JSON-input mode.
-  fabricBrManifest = pkgs.writeText "fabric-br.json" (builtins.toJSON fabricBrConfig);
+  # Static records, split by whether the host pins a hwaddr.  A host that carries a `mac` becomes
+  # a `dhcp-host` RESERVATION — the one directive does both jobs, pinning the address to that
+  # hwaddr AND answering the name.  A MAC-less host gets the name only: nothing binds it to an
+  # address, so asserting one would be a record nothing ever answers on.
+  #
+  # This is the door through which rke2lab's cluster-node reservations arrive. They used to be
+  # rows on the home router, declared in this catalog's `netplan.lan.hosts` and reconciled against
+  # the bbox; rke2lab moved its nodes into the fabric, so the reservations moved to the authority
+  # that owns the network they now live on — this dnsmasq. Same information, and now address and
+  # name are served by ONE thing instead of the bbox plus avahi, which is the split that made an
+  # mDNS name necessary at all.
+  pinnedHosts = builtins.filter (h: (h.mac or null) != null) segmentHostRecords;
+  namedHosts = builtins.filter (h: (h.mac or null) == null) segmentHostRecords;
 
-  reconcileScript = ndh.store.installBinScript "incus-fabric-br" (
-    pkgs.replaceVars ./baremetal-segment.d/incus-fabric-br.sh {
-      incus = "${pkgs.incus}/bin/incus";
-      yq = "${pkgs.yq-go}/bin/yq";
-      network = "fabric-br";
-      manifest = "${fabricBrManifest}";
-    }
-  );
+  # DHCP confined to the dynamic sub-segment (the bottom /27) when the baremetal declares a range;
+  # the static-high half stays free for reservations (nnh's collector /30 at the top). Without the
+  # confinement dnsmasq auto-ranges the whole net and can hand a pinned static address to a DHCP
+  # client — which wedged the pipeline once (akvorado Kafka + probe stuck on a churned IP).
+  # The catalog spells the range incus-style (`start-end`); dnsmasq wants `start,end,mask,lease`.
+  dhcpRangeParts = lib.splitString "-" bm.dhcpRange;
+  dhcpRangeSetting = "${builtins.head dhcpRangeParts},${lib.last dhcpRangeParts},${netNetmask},${dhcpLease}";
+  dhcpLease = "1h";
 in
 lib.mkIf enabled {
-  # ONE OWNER for this network: the oneshot below, which creates it AND reconciles it.
+  # ONE OWNER for this network, and it is now NIXOS — systemd-networkd owns the bridge,
+  # `services.dnsmasq` owns the addressing and the zone.  Incus knows nothing about `fabric-br`:
+  # instances attach to it as an UNMANAGED parent bridge (`nictype=bridged, parent=fabric-br`),
+  # which is already how rke2lab attaches them — its `ensureNetwork` explicitly skips this name as
+  # "the canonical host-provided bridge".
   #
-  # `virtualisation.incus.preseed.networks` deliberately does NOT list it — modules/nixos/incus.nix
-  # already states the rule this restores ("keep this list empty to avoid conflicting controllers"),
-  # and this module used to break it. The justification given was that the nixpkgs preseed is
-  # "create-only, runs once at `incus init`, so on an already-initialised incus this entry is
-  # silently ignored". That is FALSE, measured on both bare-metals 2026-09-24: `incus admin init
-  # --preseed` runs on EVERY activation, and when a declared network already exists it fails —
+  # Why the ownership moved off Incus. A CLUSTERED Incus requires that "all members of a cluster
+  # must have identical networks defined": only `bridge.external_interfaces`, `parent`,
+  # `bgp.ipv4.nexthop` and `bgp.ipv6.nexthop` may differ per member — `ipv4.address` may NOT. Our
+  # fabric subnets differ BY DESIGN (one routed slice per bare-metal, each advertised into the
+  # tailnet) and so do the zones (`.bioskop` / `.nikopol`). As an Incus-managed network that is
+  # unrepresentable in a cluster; as a host bridge it is just a NAME that resolves locally on each
+  # member, so everything cluster-wide referring to `fabric-br` keeps working unchanged.
   #
-  #   Error: Failed to create local member network "fabric-br" in project "default":
-  #   Network "fabric-br" already exists
+  # Two things fall out for free, independent of clustering:
   #
-  # — taking `switch-to-configuration` to exit 4 with it. Two creators for one object can only
-  # race, and the rename is what opened the window: the bridge used to predate both units, so the
-  # preseed always found it and took its update path.
-  #
-  # ⚠️ Ordering the oneshot `After = [ "incus-preseed.service" ]` does NOT fix it, and the attempt
-  # is worth recording: `After` orders only within ONE transaction, while
-  # `switch-to-configuration` starts NEW units and restarts CHANGED units in separate systemctl
-  # invocations. With the dependency declared and visible in `systemctl show -p After`, both units
-  # still started in the same second and the preseed still lost.
-  #
-  # Nothing is lost by dropping the entry: on a fresh bringup the preseed still does what only it
-  # can (the HTTPS listener, the default profile, storage), and this oneshot creates the network at
-  # `multi-user.target`.
+  # * the create-vs-reconcile race is GONE with its oneshot. That race was real, measured on both
+  #   bare-metals 2026-09-24: `incus admin init --preseed` runs on EVERY activation (it is not
+  #   create-only, as had been assumed) and fails when a declared network already exists —
+  #   "Failed to create local member network \"fabric-br\": Network \"fabric-br\" already exists" —
+  #   taking `switch-to-configuration` to exit 4. Ordering `After = incus-preseed.service` did not
+  #   fix it either, because `switch-to-configuration` starts new and restarts changed units in
+  #   SEPARATE systemctl invocations, so `After` — which orders within one transaction — never
+  #   applied. With no Incus object there is no second creator to race.
+  # * `no-hosts` below closes a trap this zone was exposed to: Incus's dnsmasq served the HOST's
+  #   `/etc/hosts`, where NixOS writes `127.0.0.2 <hostname>`, so a client asking for the bare host
+  #   name got the asker's own loopback back ("certificate is valid for localhost"). Declaring the
+  #   zone ourselves lets us refuse to serve that file at all.
 
-  systemd.services.incus-fabric-br = {
-    description = "Create + reconcile the fabric-br Incus network (sole owner)";
-    after = [ "incus.service" ];
-    requires = [ "incus.service" ];
-    wantedBy = [ "multi-user.target" ];
-    serviceConfig = {
-      Type = "oneshot";
-      RemainAfterExit = true;
-      # Invoke bash explicitly (like incus.nix's ExecStartPre): the service's
-      # minimal PATH has no `bash`, so the script's `#!/usr/bin/env bash` shebang
-      # would fail with exit 127 (`env: 'bash': No such file or directory`).
-      ExecStart = "${pkgs.bash}/bin/bash ${reconcileScript}/bin/incus-fabric-br";
+  systemd.network.netdevs."40-fabric-br".netdevConfig = {
+    Name = "fabric-br";
+    Kind = "bridge";
+  };
+
+  systemd.network.networks."40-fabric-br" = {
+    matchConfig.Name = "fabric-br";
+    address = [ "${bm.netGateway}/${netPrefix}" ];
+    networkConfig = {
+      # A bridge with no member has NO CARRIER, and networkd withholds addresses from a
+      # carrier-less link — so without this the gateway address (and with it dnsmasq's bind
+      # target) would appear only once the first instance plugged in, which is exactly backwards:
+      # the instance needs DHCP to come up. This bridge does sit memberless — measured
+      # `used_by: []`, link DOWN on bioskop.
+      ConfigureWithoutCarrier = true;
+      # The Incus network this replaces carried `ipv6.address = none`; keep the plane v4-only
+      # rather than acquire a link-local the addressing plan does not describe.
+      LinkLocalAddressing = "no";
+      IPv6AcceptRA = false;
+    };
+  };
+
+  # The zone's authority: DHCP + DNS for this bare-metal's slice, and nothing else.
+  services.dnsmasq = {
+    enable = true;
+    # Do NOT become the host's resolver. The host resolves through its own path (tailnet / home
+    # LAN); this daemon exists for the instances on the bridge, and for the tailnet peers that
+    # reach the `.<domain>` zone through the advertised route + split-DNS.
+    resolveLocalQueries = false;
+    settings = {
+      # Bind ONLY the bridge, so nothing here competes with the host's resolver stack.
+      interface = [ "fabric-br" ];
+      bind-interfaces = true;
+      # Never serve the host's /etc/hosts — see the rationale above.
+      no-hosts = true;
+      # The zone. `local` makes this daemon authoritative for it, so a miss answers NXDOMAIN here
+      # instead of leaking the query upstream to a resolver that cannot know the answer.
+      domain = bm.domain;
+      local = "/${bm.domain}/";
+      # Register a DHCP client under the hostname IT sends, qualified into the zone — the property
+      # Incus spelled `dns.mode = dynamic`, and the reason a tenant's collector/probe appear under
+      # their real names rather than under an instance name.
+      expand-hosts = true;
+      dhcp-authoritative = true;
+      dhcp-range = [ dhcpRangeSetting ];
+      dhcp-host = map (h: "${h.mac},${qualify h.name},${h.ip}") pinnedHosts;
+      host-record = map (h: "${qualify h.name},${h.ip}") namedHosts;
     };
   };
 
@@ -216,9 +235,10 @@ lib.mkIf enabled {
   systemd.services.baremetal-link-deploy = lib.mkIf deliversLink (
     ndhSystemd.attachToContributedTarget {
       description = "Ship vz-nudge + (re)load baremetal-link on the corp Mac (${bm.domain})";
+      # No fabric-br ordering: the deploy reaches the vz-host over the /30 on lan-br, never over
+      # the fabric.
       after = [
         (ndhSystemd.mkServiceName "ssh-keys-enrichment")
-        "incus-fabric-br.service"
         "network-online.target"
       ];
       wants = [
@@ -227,7 +247,7 @@ lib.mkIf enabled {
       ];
       serviceConfig = {
         Type = "oneshot";
-        # Invoke bash explicitly (like incus-fabric-br above): the service's minimal
+        # Invoke bash explicitly (as incus.nix's ExecStartPre does): the service's minimal
         # PATH has no `bash`, so the deploy bin's `#!/usr/bin/env -S bash` shebang
         # fails with exit 127 (`env: 'bash': No such file or directory`).
         ExecStart =
