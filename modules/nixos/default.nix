@@ -149,6 +149,7 @@ let
     ./sshfs-mounts.nix
     ./incus.nix
     ./baremetal-segment.nix
+    ./incus-cluster.nix
     ./podman.nix
     ./bringup-observe.nix
     ./etc-nixos-flake.nix
