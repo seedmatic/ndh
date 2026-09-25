@@ -150,6 +150,7 @@ let
     ./incus.nix
     ./baremetal-segment.nix
     ./incus-cluster.nix
+    ./cluster-vmnet.nix
     ./podman.nix
     ./bringup-observe.nix
     ./etc-nixos-flake.nix
