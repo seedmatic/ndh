@@ -34,8 +34,17 @@
       substituter = "https://aseipp-nix-cache.freetls.fastly.net";
     };
 
-    tunaMirror = {
-      substituter = "https://mirrors.tuna.tsinghua.edu.cn/nix-channels/store";
-    };
+    # ⚠️ An entry here with a `substituter` is ACTIVE on every host — the module walks this set and
+    # appends each one to `extra-substituters` (see the emission contract at the top of
+    # modules/.common.d/cache-trust.nix). There is no "documented but inactive" shape, so do NOT
+    # park a mirror here for later: a regional mirror was, and every host then queried it.
+    #
+    # What that cost, measured 2026-09-25 from France: a narinfo round-trip to
+    # mirrors.tuna.tsinghua.edu.cn took 1.00 s against 0.20 s for cache.nixos.org (0.52 s in the
+    # connect alone). And it was never able to HELP: cache.nixos.org is already first in
+    # `substituters`, so the mirror could only ever answer a 404 — and nix walks substituters in
+    # order until one has the path, so every locally-built path (i.e. all of ours) paid the full
+    # round including that 404. To use a regional mirror while travelling, pass
+    # `--option extra-substituters …` for that invocation instead.
   };
 }

@@ -120,13 +120,11 @@ in
       extra-trusted-public-keys = ${cacheCatalog.nxmatic.publicKey} ${cacheCatalog.nixos.publicKey} ${cacheCatalog.flox.publicKey}
       # Increase download buffer size to prevent buffer full warnings
       download-buffer-size = 268435456  # 256 MB (was 64 MB default)
-      # Enable pushing to nxmatic cache and use mirror for faster downloads
-      # Alternative mirrors (uncomment one to use if cache.nixos.org is slow):
-      # extra-substituters = ${cacheCatalog.nixos.substituter} ${cacheCatalog.nxmatic.substituter}  # Official (default)
-      # extra-substituters = ${cacheCatalog.tunaMirror.substituter} ${cacheCatalog.nxmatic.substituter}  # Tsinghua (China)
-      # extra-substituters = https://mirrors.ustc.edu.cn/nix-channels/store ${cacheCatalog.nxmatic.substituter}  # USTC (China)
-      # extra-substituters = https://mirrors.bfsu.edu.cn/nix-channels/store ${cacheCatalog.nxmatic.substituter}  # BFSU (China)
-      extra-substituters = ${cacheCatalog.tunaMirror.substituter} ${cacheCatalog.nxmatic.substituter} ${cacheCatalog.flox.substituter}
+      # No `extra-substituters` here: modules/.common.d/cache-trust.nix is its SINGLE owner and
+      # already emits every catalog entry that carries one (nixos, nxmatic, flox, aseippFastly).
+      # This line used to restate three of them, so nix.conf carried two `extra-substituters`
+      # declarations — and the restatement is what let a regional mirror stay active long after it
+      # stopped being wanted. One owner, derived from the catalog.
     '';
 
     # Configure NIX_PATH for legacy nix commands and <nixpkgs> imports
