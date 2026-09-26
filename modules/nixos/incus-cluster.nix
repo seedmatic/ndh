@@ -90,10 +90,21 @@ let
       ${alreadyClusteredSnippet}
       ${tailnetAddressSnippet}
 
+      # `images_minimal_replica: -1` = "copy to ALL members", and it is coupled to the
+      # `database-client` role rather than independent of it. The DEFAULT replicates an image on "as
+      # many cluster members as there are database members" — and the itinerant member deliberately
+      # is not one, so under the default it could receive no copy at all and have nothing to
+      # provision from. `-1` stops counting database members and enumerates members instead.
+      #
+      # The price, accepted knowingly: every image travels to every member, including over the
+      # itinerant one's link. For the node-base that is gibibytes, possibly over a relay. Correct
+      # but slow, and slow at the worst moment. Watch what Incus does when a member is offline as an
+      # image lands — it should defer, but that is a behaviour to observe rather than to trust.
       echo "incus-cluster: enabling clustering as ${memberName} on $member_address:8443"
       ${pkgs.incus}/bin/incus admin init --preseed <<EOF
       config:
         cluster.https_address: $member_address:8443
+        cluster.images_minimal_replica: "-1"
       cluster:
         server_name: ${memberName}
         enabled: true
@@ -150,10 +161,24 @@ let
   };
 in
 lib.mkIf enabled {
-  # Bootstrap runs on the sedentary member only. The itinerant member's JOIN needs a token minted
-  # here, which is deliberately absent until its delivery is settled — a join token is single-use
-  # and short-lived, so it is fetched at enrolment, and the capability to fetch it must be bounded
-  # to "mint MY token" rather than "invite members".
+  # Bootstrap runs on the sedentary member only, and the JOIN is deliberately NOT here.
+  #
+  # A join token is single-use and expires in 3h, with no documented alternative for a
+  # non-interactive join. That rules out baking one into an image — it would start ageing before the
+  # VM boots and make the image good for exactly one join, inside one window. So the token must be
+  # minted and consumed in the same breath, which makes the join an OPERATOR act rather than host
+  # state: `nix run` on the operator's machine, minting on this member over the access the operator
+  # already has and handing it straight to the joining one.
+  #
+  # The alternative was a unit on the joining member fetching its own token over a capability
+  # bounded to "mint MY token" (ndh keys already carry `authorized_keys_options`, so the mechanism
+  # exists). Rejected because it answers a question that does not need asking: a join happens ONCE
+  # per member, and that member is materialised by an operator command anyway, so autonomy buys
+  # nothing and costs a distributed keypair plus a standing right to invite members. Who joins a
+  # cluster is the operator's authority, not a member's.
+  #
+  # What stays declarative is what is genuinely idempotent host state: enabling clustering here, and
+  # reconciling the roles below.
   systemd.services.incus-cluster-bootstrap = lib.mkIf isBootstrap {
     description = "Enable Incus clustering on this member (${memberName})";
     after = [
