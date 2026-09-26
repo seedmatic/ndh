@@ -114,16 +114,22 @@ let
       EOF
       fi
 
-      # `-1` = "copy to ALL members", and it is COUPLED to the `database-client` role rather than
-      # independent of it. The DEFAULT replicates an image on "as many cluster members as there are
-      # database members" — and the itinerant member deliberately is not one, so under the default it
-      # could receive no copy at all and have nothing to provision from. The setting that makes the
-      # cluster safe for a roaming host is the one that would have starved it.
+      # `-1` = "copy to ALL members". The DEFAULT replicates an image on "as many cluster members as
+      # there are database members", and the itinerant member deliberately is not one — so under the
+      # default it may hold no copy at all.
       #
-      # The price, accepted knowingly: every image travels to every member, including over the
-      # itinerant one's link. For the node-base that is gibibytes, possibly over a relay. Correct but
-      # slow, and slow at the worst moment. Watch what Incus does when a member is offline as an image
-      # lands — it should defer, but that is a behaviour to observe rather than to trust.
+      # ⚠️ WHY that matters is an INFERENCE, not a measured fact, and it is the weakest link in this
+      # module. The claim behind `-1` was that a member without the image "has nothing to provision
+      # from". That is unverified: if Incus copies an image to the target member on demand, then not
+      # prefetching costs nothing functionally and `-1` ships gibibytes for no reason.
+      #
+      # So the real question is not correctness but WHEN the transfer happens:
+      #   - `-1` (prefetch): always paid, but while the itinerant host is home on a good link.
+      #   - default (on demand): paid only when provisioning there, possibly over a hotspot or a
+      #     relay — i.e. at the worst moment.
+      # Measurable now that the cluster has two members and no images: watch where the first image
+      # lands, then whether `incus launch --target <itinerant>` fetches it by itself. Settle this by
+      # observation rather than leaving an assumption that reads like a conclusion.
       # `--` before the positional args, and it is load-bearing: without it the cobra parser reads
       # `-1` as a shorthand FLAG and the command dies with "unknown shorthand flag: '1' in -1".
       echo "incus-cluster: asserting cluster.images_minimal_replica=-1"
@@ -137,6 +143,34 @@ let
       # (trust-store entry vs cluster membership), so that setting does not cover this one.
       echo "incus-cluster: asserting cluster.join_token_expiry=${joinTokenExpiry}"
       ${pkgs.incus}/bin/incus config set cluster.join_token_expiry ${joinTokenExpiry}
+    '';
+  };
+
+  # Guard for the nixpkgs preseed unit, whose ExecStart is a BARE `incus admin init --preseed` with no
+  # clustering check of its own (read 2026-09-26: one line, no guard).  It is `Type=oneshot` +
+  # `RemainAfterExit`, so it does not re-run by itself — but any rebuild that CHANGES the preseed
+  # restarts it, and on a clustered member it then tries to (re)create pools the cluster already owns.
+  # That is not hypothetical: it is the exact refusal the first join attempt hit,
+  # `Config key "source" is cluster member specific`.
+  #
+  # `ExecCondition` rather than a wrapper around ExecStart: a non-zero ExecCondition makes systemd SKIP
+  # the unit and record it as succeeded, which is the honest outcome — there is nothing to preseed on a
+  # member whose storage and networks are cluster-owned. A wrapper would have to fake success instead.
+  # (Exit 1..254 = skip; 255 or a signal = genuine failure. So the guard exits 1, never 255.)
+  #
+  # Ordering is already right: the preseed runs after incus.service, so the daemon is up and can be
+  # asked. And on the bootstrap member at FIRST boot the sequence is preseed (creates the pool) then
+  # incus-cluster-bootstrap (forms the cluster) — so the guard passes exactly when the preseed is still
+  # the thing that should run.
+  preseedGuardScript = pkgs.writeShellApplication {
+    name = "incus-preseed-guard";
+    text = ''
+      ${isClusteredFn}
+      if is_clustered; then
+        echo "incus-preseed-guard: this member is CLUSTERED — its storage and networks are cluster-owned, skipping the preseed"
+        exit 1
+      fi
+      echo "incus-preseed-guard: standalone — the preseed is still this member's own business"
     '';
   };
 
@@ -189,6 +223,10 @@ let
   };
 in
 lib.mkIf enabled {
+  # Applies to EVERY member, not just the bootstrap one: nikopol is the member whose preseed would
+  # now fight the cluster, since the join discarded its local pool in favour of the cluster's.
+  systemd.services.incus-preseed.serviceConfig.ExecCondition = lib.getExe preseedGuardScript;
+
   # Bootstrap runs on the sedentary member only, and the JOIN is deliberately NOT here.
   #
   # A join token is single-use and expires in 3h, with no documented alternative for a
