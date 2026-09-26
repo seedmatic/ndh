@@ -73,42 +73,55 @@ let
     fi
   '';
 
-  # `incus admin init --preseed` is the only non-interactive door, and it is idempotent ONLY in the
-  # sense that we refuse to run it twice: enrolling an already-clustered daemon is an error, so the
-  # guard is ours to write.
-  alreadyClusteredSnippet = ''
-    if ${pkgs.incus}/bin/incus query /1.0 \
-      | ${pkgs.jq}/bin/jq -e '.environment.server_clustered == true' >/dev/null 2>&1; then
-      echo "incus-cluster: already a cluster member — nothing to do"
-      exit 0
-    fi
+  # A function rather than an interpolated snippet: this is a MULTI-LINE command, and splicing it
+  # into `if …; then` would put the `;` on a line of its own — a bash syntax error.
+  isClusteredFn = ''
+    is_clustered() {
+      ${pkgs.incus}/bin/incus query /1.0 \
+        | ${pkgs.jq}/bin/jq -e '.environment.server_clustered == true' >/dev/null 2>&1
+    }
   '';
 
+  # A RECONCILER, not a one-shot: the `admin init` half runs once (enrolling an already-clustered
+  # daemon is an error, so that guard is ours to write), but the cluster-wide settings below are
+  # re-asserted on every activation. Measured 2026-09-26, and the reason this is not a one-shot:
+  # `cluster.images_minimal_replica` passed in the preseed's `config:` **silently did not apply**
+  # while `cluster.https_address` in the same block did. The difference is scope — the address is
+  # Local and part of forming the cluster, the replica count is Global and needs the cluster to
+  # already exist. Chicken-and-egg inside one command, and it fails QUIETLY: the cluster came up
+  # "Fully operational" with the key simply absent from `incus config show`.
   bootstrapScript = pkgs.writeShellApplication {
     name = "incus-cluster-bootstrap";
     text = ''
-      ${alreadyClusteredSnippet}
-      ${tailnetAddressSnippet}
-
-      # `images_minimal_replica: -1` = "copy to ALL members", and it is coupled to the
-      # `database-client` role rather than independent of it. The DEFAULT replicates an image on "as
-      # many cluster members as there are database members" — and the itinerant member deliberately
-      # is not one, so under the default it could receive no copy at all and have nothing to
-      # provision from. `-1` stops counting database members and enumerates members instead.
-      #
-      # The price, accepted knowingly: every image travels to every member, including over the
-      # itinerant one's link. For the node-base that is gibibytes, possibly over a relay. Correct
-      # but slow, and slow at the worst moment. Watch what Incus does when a member is offline as an
-      # image lands — it should defer, but that is a behaviour to observe rather than to trust.
-      echo "incus-cluster: enabling clustering as ${memberName} on $member_address:8443"
-      ${pkgs.incus}/bin/incus admin init --preseed <<EOF
+      ${isClusteredFn}
+      if is_clustered; then
+        echo "incus-cluster: already a member — reconciling cluster-wide settings only"
+      else
+        ${tailnetAddressSnippet}
+        echo "incus-cluster: enabling clustering as ${memberName} on $member_address:8443"
+        ${pkgs.incus}/bin/incus admin init --preseed <<EOF
       config:
         cluster.https_address: $member_address:8443
-        cluster.images_minimal_replica: "-1"
       cluster:
         server_name: ${memberName}
         enabled: true
       EOF
+      fi
+
+      # `-1` = "copy to ALL members", and it is COUPLED to the `database-client` role rather than
+      # independent of it. The DEFAULT replicates an image on "as many cluster members as there are
+      # database members" — and the itinerant member deliberately is not one, so under the default it
+      # could receive no copy at all and have nothing to provision from. The setting that makes the
+      # cluster safe for a roaming host is the one that would have starved it.
+      #
+      # The price, accepted knowingly: every image travels to every member, including over the
+      # itinerant one's link. For the node-base that is gibibytes, possibly over a relay. Correct but
+      # slow, and slow at the worst moment. Watch what Incus does when a member is offline as an image
+      # lands — it should defer, but that is a behaviour to observe rather than to trust.
+      # `--` before the positional args, and it is load-bearing: without it the cobra parser reads
+      # `-1` as a shorthand FLAG and the command dies with "unknown shorthand flag: '1' in -1".
+      echo "incus-cluster: asserting cluster.images_minimal_replica=-1"
+      ${pkgs.incus}/bin/incus config set -- cluster.images_minimal_replica -1
     '';
   };
 
