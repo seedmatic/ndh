@@ -1077,6 +1077,19 @@
           # re-exports the patched build. rke2lab's flox-catalogue consumes
           # packages.aarch64-linux.tailscale so the in-cluster mesh tailscaled
           # runs the fork, matching the operator host.
+          # The Incus CLI, for BOTH systems.  `pkgs.incus` is the full daemon and is Linux-only in
+          # nixpkgs (it wants lxc, libcap, cowsql…), but nixpkgs ships a client-only variant as
+          # `incus.passthru.client` that builds on Darwin too because it needs only Go and the
+          # `cmd/incus` subpackage.  There is NO top-level `incus-client` attribute in our nixpkgs pin
+          # — checked on both systems — so `passthru.client` is the route, not a workaround.
+          #
+          # ndh owns this rather than rke2lab, and that is the natural direction: ndh already owns the
+          # incus DAEMON (modules/nixos/incus.nix, incus-cluster.nix) and the operator's trust to it
+          # (modules/darwin/incus-remote-trust.nix), so the client belongs beside them. rke2lab
+          # re-exports this package for its flox env, the same way ndh's manage-tailnet already
+          # travels in that direction. Cross-referencing it the other way — ndh importing rke2lab's
+          # client — would have the host layer borrow a tool from the cluster layer that runs ON it.
+          incus-client = systemPkgs.incus.passthru.client;
           inherit (systemPkgs) tailscale;
           ${ndhBringupRuntimeAttr} = mkNdhBootstrapRuntimePackage system;
           ndh-disko-module-pinned = mkNdhDiskoPinnedModule system;
