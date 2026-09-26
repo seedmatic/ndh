@@ -62,6 +62,12 @@ let
 
   memberName = if enabled then memberNameOf bm else "";
 
+  # One POSTURE — short-lived tokens — read from where it is already declared rather than restated.
+  # `core.remote_token_expiry` governs trust-store tokens and `cluster.join_token_expiry` governs
+  # cluster membership: different tokens, same intent, and a second literal is how two values come to
+  # disagree.
+  joinTokenExpiry = config.virtualisation.incus.preseed.config."core.remote_token_expiry" or "10M";
+
   # This member's own address for cluster traffic. Read off the interface, not from the tailscale
   # CLI: the fact is the same and it costs no dependency on which tailscale build runs here.
   tailnetAddressSnippet = ''
@@ -122,6 +128,15 @@ let
       # `-1` as a shorthand FLAG and the command dies with "unknown shorthand flag: '1' in -1".
       echo "incus-cluster: asserting cluster.images_minimal_replica=-1"
       ${pkgs.incus}/bin/incus config set -- cluster.images_minimal_replica -1
+
+      # Match the join token's lifetime to how it is actually USED. A join token is minted and
+      # consumed within seconds by the operator app, so the 3h default is not a requirement but a
+      # credential left lying around — and this is the ONE secret in the chain that cannot be
+      # build-time material, so its window is the whole of its exposure. 10M is the posture
+      # `core.remote_token_expiry` already sets for trust tokens; these are DIFFERENT tokens
+      # (trust-store entry vs cluster membership), so that setting does not cover this one.
+      echo "incus-cluster: asserting cluster.join_token_expiry=${joinTokenExpiry}"
+      ${pkgs.incus}/bin/incus config set cluster.join_token_expiry ${joinTokenExpiry}
     '';
   };
 
