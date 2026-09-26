@@ -47,9 +47,67 @@ is_clustered() {
 		@jq@ -e '.environment.server_clustered == true' >/dev/null 2>&1
 }
 
+# A joining member must have NO storage pool of its own.  Measured 2026-09-26, and the message is
+# worth quoting because it does not name the cause: `Failed to update storage pool "default": Config
+# key "source" is cluster member specific`.  The joining daemon already created `default` from its own
+# preseed, so the join tries to UPDATE that local pool with the member-specific `source` it was handed
+# in member_config — which Incus refuses on an existing pool.  The docs say it plainly: "If you are
+# using existing servers, make sure to clear their contents before joining them, because any existing
+# data on them will be lost."
+#
+# Refusing by DEFAULT is deliberate.  The interactive `incus admin init` asks "All existing data is
+# lost when joining a cluster, continue?"; `--preseed` skips that question, so the confirmation is
+# restored here as an explicit flag rather than silently destroyed on the operator's behalf.
+clear_joining_config() {
+	local do_clear="$1" pools
+
+	pools="$(remote "${JOINING_SSH}" incus storage list --format json |
+		@jq@ -r '[.[].name] | join(" ")')"
+	[[ -n "${pools// /}" ]] || return 0
+
+	if [[ "${do_clear}" != true ]]; then
+		ndh::logger:notice "join: ${JOINING} already defines storage pool(s): ${pools}"
+		ndh::logger:notice "join: Incus refuses to join a member that is not empty, and joining DISCARDS"
+		ndh::logger:notice "join: that member's local Incus config anyway. Re-run with --clear-joining-config"
+		ndh::logger:notice "join: to drop them (instances and volumes on ${JOINING} would go with them)."
+		return 1
+	fi
+
+	# The `default` profile's root device references the pool, so that reference goes first. Checked
+	# for presence rather than ignored with `|| true`: a silenced failure here is how the previous
+	# version of this app came to report success about nothing.
+	if remote "${JOINING_SSH}" incus profile show default |
+		@yq@ -e '.devices.root' >/dev/null 2>&1; then
+		if ! remote "${JOINING_SSH}" incus profile device remove default root >/dev/null; then
+			ndh::logger:notice "join: could not detach the root device from ${JOINING}'s default profile"
+			return 1
+		fi
+	fi
+
+	local pool
+	for pool in ${pools}; do
+		ndh::logger:notice "join: dropping ${JOINING}'s local storage pool ${pool}"
+		if ! remote "${JOINING_SSH}" incus storage delete "${pool}" >/dev/null; then
+			ndh::logger:notice "join: could not delete storage pool ${pool} on ${JOINING}"
+			return 1
+		fi
+	done
+}
+
 main() {
 	local dry_run=false
-	[[ "${1:-}" == --dry-run ]] && dry_run=true
+	local do_clear=false
+	while (($# > 0)); do
+		case "$1" in
+			--dry-run) dry_run=true ;;
+			--clear-joining-config) do_clear=true ;;
+			*)
+				ndh::logger:notice "join: unknown option: $1"
+				return 2
+				;;
+		esac
+		shift
+	done
 
 	ndh::logger:notice "join: ${JOINING} -> cluster of ${BOOTSTRAP}"
 
@@ -62,7 +120,7 @@ main() {
 	fi
 
 	if ! is_clustered "${BOOTSTRAP_SSH}"; then
-		ndh::logger:error "join: ${BOOTSTRAP} is not a cluster yet — its incus-cluster-bootstrap unit has not run"
+		ndh::logger:notice "join: ${BOOTSTRAP} is not a cluster yet — its incus-cluster-bootstrap unit has not run"
 		return 1
 	fi
 
@@ -73,21 +131,27 @@ main() {
 	member_address="$(remote "${JOINING_SSH}" ip -4 -o addr show tailscale0 |
 		awk '{print $4}' | cut -d/ -f1)"
 	if [[ -z "${member_address}" ]]; then
-		ndh::logger:error "join: ${JOINING} carries no IPv4 on tailscale0 — is it on the tailnet?"
+		ndh::logger:notice "join: ${JOINING} carries no IPv4 on tailscale0 — is it on the tailnet?"
 		return 1
 	fi
 
 	local cluster_address
 	cluster_address="$(remote "${BOOTSTRAP_SSH}" incus config get cluster.https_address)"
 	if [[ -z "${cluster_address}" ]]; then
-		ndh::logger:error "join: ${BOOTSTRAP} has no cluster.https_address"
+		ndh::logger:notice "join: ${BOOTSTRAP} has no cluster.https_address"
 		return 1
 	fi
 
 	if "${dry_run}"; then
 		ndh::logger:notice "join: --dry-run — would join ${member_address}:8443 to ${cluster_address}"
+		# Report the blocker in a dry run too, so the rehearsal tells you the real thing will fail.
+		clear_joining_config false || return 1
 		return 0
 	fi
+
+	# BEFORE minting, deliberately: a join token is single-use, so a precondition that fails after the
+	# mint burns it for nothing.
+	clear_joining_config "${do_clear}" || return 1
 
 	# Mint. `--quiet` drops the progress chatter; the token is the last non-empty line. The shape is
 	# NOT assumed beyond "long and on its own line" — a short answer means the CLI changed its output
@@ -96,7 +160,7 @@ main() {
 	token="$(remote "${BOOTSTRAP_SSH}" incus cluster add --quiet "${JOINING}" |
 		grep -v '^[[:space:]]*$' | tail -1 | tr -d '[:space:]')"
 	if ((${#token} < 32)); then
-		ndh::logger:error "join: no join token in the output of 'incus cluster add ${JOINING}'"
+		ndh::logger:notice "join: no join token in the output of 'incus cluster add ${JOINING}'"
 		return 1
 	fi
 	ndh::logger:notice "join: token minted (${#token} chars), consuming it now"
@@ -129,7 +193,7 @@ main() {
 	)"
 	if ! preseed_out="$(printf '%s\n' "${preseed}" |
 		remote "${JOINING_SSH}" incus admin init --preseed 2>&1)"; then
-		ndh::logger:error "join: ${JOINING} REFUSED the preseed — it is not a member, and the token is now spent"
+		ndh::logger:notice "join: ${JOINING} REFUSED the preseed — it is not a member, and the token is now spent"
 		printf '%s\n' "${preseed_out}" >&2
 		return 1
 	fi
@@ -141,7 +205,7 @@ main() {
 	# asserts this, but only at its next activation — that window is exactly what this closes.
 	ndh::logger:notice "join: pinning ${JOINING} out of the raft (database-client)"
 	if ! remote "${BOOTSTRAP_SSH}" incus cluster role add "${JOINING}" database-client; then
-		ndh::logger:error "join: could not give ${JOINING} the database-client role — it may be a VOTER"
+		ndh::logger:notice "join: could not give ${JOINING} the database-client role — it may be a VOTER"
 		return 1
 	fi
 
@@ -151,20 +215,20 @@ main() {
 	# success about nothing.  So: the joining side must say it is clustered, the bootstrap side must
 	# know the member, and the role must be THERE.
 	if ! is_clustered "${JOINING_SSH}"; then
-		ndh::logger:error "join: ${JOINING} still reports itself standalone — the join did not take"
+		ndh::logger:notice "join: ${JOINING} still reports itself standalone — the join did not take"
 		return 1
 	fi
 
 	local roles
 	if ! roles="$(remote "${BOOTSTRAP_SSH}" incus cluster show "${JOINING}" | @yq@ -r '.roles | join(",")')"; then
-		ndh::logger:error "join: ${BOOTSTRAP} knows no member named ${JOINING} — the join did not take"
+		ndh::logger:notice "join: ${BOOTSTRAP} knows no member named ${JOINING} — the join did not take"
 		return 1
 	fi
 	case ",${roles}," in
 		*,database-client,*) ;;
 		*)
-			ndh::logger:error "join: ${JOINING} is a member but NOT database-client (roles: ${roles:-<none>})."
-			ndh::logger:error "join: its absence would cost ${BOOTSTRAP} its quorum — refusing to report success"
+			ndh::logger:notice "join: ${JOINING} is a member but NOT database-client (roles: ${roles:-<none>})."
+			ndh::logger:notice "join: its absence would cost ${BOOTSTRAP} its quorum — refusing to report success"
 			return 1
 			;;
 	esac
