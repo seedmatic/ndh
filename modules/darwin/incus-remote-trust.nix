@@ -19,7 +19,11 @@ let
     else
       hostProfile.hostName;
 
-  remoteHostDefault = "${effectiveHostName}-nixos.local";
+  # The ONE name form for an infra host, served by that host's own dnsmasq in its `.<host>` zone and
+  # reachable over the tailnet split-DNS.  It used to be `<host>-nixos.local`: mDNS, which answers
+  # only while the operator shares an L2 with the guest and dies across a routed boundary — the trap
+  # already documented for `.lan` in the netplan atlas.
+  remoteHostDefault = "nixos.${effectiveHostName}";
   userHome = config.profile.user.home;
 
   incusRemoteTrustActivationScript =
@@ -31,6 +35,7 @@ let
             remoteHost = cfg.remoteHost;
             localClientCert = cfg.localClientCert;
             trustEntryName = cfg.trustEntryName;
+            serverCertPin = cfg.serverCertPin;
           }
         } "$out"
         chmod +x "$out"
@@ -60,6 +65,20 @@ in
       type = types.str;
       default = "macos-incus-client";
       description = "Name used for the remote Incus trust entry.";
+    };
+
+    serverCertPin = mkOption {
+      type = types.str;
+      default = "${userHome}/.config/incus/servercerts/${effectiveHostName}-nixos.crt";
+      description = ''
+        Where the local Incus client pins the REMOTE daemon's server certificate. Keyed by the
+        client's remote NAME (`<host>-nixos`), which is a client-config fact and deliberately not the
+        ssh target above — one is an identity, the other an address.
+
+        Reconciled at every activation because a Tart factory reset recreates the guest's
+        /var/lib/incus, so the daemon returns with a new certificate while this file still pins the
+        old one. Set to "" to leave the pin alone.
+      '';
     };
   };
 
