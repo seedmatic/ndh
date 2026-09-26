@@ -207,6 +207,29 @@ let
             ;;
         esac
 
+        # ★ And keep automatic placement away from this member.  Incus, verbatim: "the automatic
+        # assignment picks the cluster member that has the lowest number of instances. If several
+        # members have the same amount of instances, one of the members is CHOSEN AT RANDOM."  With
+        # two empty members that is a coin toss — so a `bioskop-mgmt` node could be born on nikopol,
+        # look for a lease on nikopol's 10.80.16/21 while its deterministic reservation lives in
+        # bioskop's dnsmasq, and take the whole addressing plan with it.
+        #
+        # `scheduler.instance = manual` excludes a member from automatic selection entirely: it then
+        # receives only what is placed there DELIBERATELY (`--target`, or CAPN's
+        # LXCMachineTemplate.spec.target).  That is exactly the posture we want for every member other
+        # than the one whose segment a cluster is addressed on — and it is the safer default, because
+        # it fails by refusing to place rather than by placing somewhere wrong.
+        scheduler="$(${pkgs.incus}/bin/incus cluster show "$member" \
+          | ${pkgs.yq-go}/bin/yq -r '.config."scheduler.instance" // ""')"
+        if [ "$scheduler" != "manual" ]; then
+          echo "incus-cluster-roles: excluding $member from automatic placement (was: ''${scheduler:-<unset>})"
+          if ! ${pkgs.incus}/bin/incus cluster set "$member" scheduler.instance manual; then
+            echo "incus-cluster-roles: FAULT — could not set scheduler.instance=manual on $member." \
+                 "An untargeted instance may be placed there AT RANDOM." >&2
+            failed=1
+          fi
+        fi
+
         # The assertion. `database` is the voter role; an itinerant voter means its absence costs
         # THIS host its quorum, so refuse to report success while that is true.
         case ",$roles," in
