@@ -1096,6 +1096,17 @@
           git-sops-filter = systemPkgs.callPackage ./modules/home-manager/git.d/git-sops-filter.nix { };
         }
         // mkBaremetalLinkPackages system
+        # Darwin only: the join is an operator act run from the operator's machine, and the recipe is
+        # built against the Darwin store API. Exposed as packages too so it can be built and
+        # dry-run'd on its own, not only through `nix run`.
+        // nixpkgs.lib.optionalAttrs (system == "aarch64-darwin") (
+          builtins.listToAttrs (
+            map (domain: {
+              name = "${domain}-incus-cluster-join";
+              value = incusClusterJoinPackages.${domain};
+            }) (builtins.attrNames incusClusterJoinPackages)
+          )
+        )
         // builtins.foldl' (
           acc: hostName:
           let
@@ -1319,6 +1330,18 @@
               };
             }
           ) { } (builtins.attrValues baremetalLinkHosts);
+          # listToAttrs, NOT mapAttrs: the recipe keys by bare domain, and mapAttrs would keep that
+          # key — exposing the app as `nix run .#nikopol`, a name generic enough to collide.
+          incusClusterJoinApps = builtins.listToAttrs (
+            map (domain: {
+              name = "${domain}-incus-cluster-join";
+              value = {
+                type = "app";
+                program = "${incusClusterJoinPackages.${domain}}/bin/${domain}-incus-cluster-join";
+                meta.description = "Join ${domain}-nixos to the Incus cluster, then pin it OUT of the raft (database-client) — src: pkgs/incus-cluster-join.d/";
+              };
+            }) (builtins.attrNames incusClusterJoinPackages)
+          );
           nixBuildObservePackage = mkNixBuildObservePackage system;
           pkgsForSystem = pkgsFor { inherit system; };
           # Run check-jsonschema against the canonical keys.yaml. The target
@@ -1465,6 +1488,7 @@
         }
         // hostBootstrapInstallerApps
         // baremetalLinkApps
+        // incusClusterJoinApps
       );
 
       mkHostOutputs =
@@ -1712,6 +1736,43 @@
         };
 
       hostOutputs = forAllHosts (_: hostSpec: mkHostOutputs (hostSpec // hostGateOverrides));
+
+      # `<host>-incus-cluster-join` — mint a join token on the sedentary member and consume it on the
+      # itinerant one in the same breath (the token is single-use and short-lived, so it cannot be
+      # baked into an image).  Darwin-only, and that is the point: joining a cluster is an OPERATOR
+      # act, not host state — see the rationale in modules/nixos/incus-cluster.nix.  Exposed BOTH as
+      # apps and as packages, so the recipe lives here once (like manage-tailnet).
+      #
+      # Sits HERE rather than in the outer `let` because it needs `hostOutputs`: the joining member's
+      # pool SOURCE is the one member-specific value `incus admin init --preseed` wants in
+      # `member_config`, and its single source of truth is that host's own
+      # `virtualisation.incus.preseed.storage_pools` — read from there rather than restated.
+      incusStoragePools =
+        let
+          nixosConfigurationsAll = builtins.foldl' (
+            acc: hostOutput: acc // hostOutput.nixosConfigurations
+          ) { } (builtins.attrValues hostOutputs);
+        in
+        builtins.mapAttrs (
+          _: bm:
+          let
+            pool =
+              builtins.head
+                nixosConfigurationsAll."${bm.domain}-nixos".config.virtualisation.incus.preseed.storage_pools;
+          in
+          {
+            inherit (pool) name;
+            inherit (pool.config) source;
+          }
+        ) (catalogData.netplan.baremetal or { });
+
+      incusClusterJoinPackages = import ./pkgs/incus-cluster-join.d {
+        pkgs = pkgsForDarwin;
+        catalog = catalogData;
+        ndhStore = ndhStoreApiDarwin;
+        nixBashTrampoline = ndhNixBashTrampolineDarwin;
+        storagePools = incusStoragePools;
+      };
 
       darwinConfigurations = builtins.foldl' (
         acc: hostOutput: acc // hostOutput.darwinConfigurations
