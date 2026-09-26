@@ -42,6 +42,17 @@ let
   netPrefix = lib.last (lib.splitString "/" bm.netCidr);
   linkPrefix = lib.last (lib.splitString "/" bm.linkCidr);
 
+  # Every OTHER bare-metal's zone, forwarded to that bare-metal's own dnsmasq (its `netGateway`
+  # is the split-DNS target the catalog names it as). The NAMING half of the gateway pair below:
+  # `local = /<own domain>/` makes this daemon authoritative for its own zone, so a sibling's
+  # name answers NXDOMAIN here and never leaves — measured 2026-09-26 from a pod on bioskop,
+  # where `nixos.nikopol` timed out while the address behind it was perfectly routable. Reaching
+  # the peer's dnsmasq is what `acceptRoutes` below provides. Derived, so a third bare-metal
+  # needs no edit here.
+  peerZoneServers = map (p: "/${p.domain}/${p.netGateway}") (
+    lib.attrValues (lib.filterAttrs (n: _: n != effectiveHostName) (netplan.baremetal or { }))
+  );
+
   # IPv4 CIDR containment.  Hand-written because `lib.network` in this nixpkgs carries only
   # `ipv6`.  Used to answer ONE question: which published segments live inside this
   # bare-metal's managed net, and therefore whose hosts this dnsmasq must serve.
@@ -211,6 +222,8 @@ lib.mkIf enabled {
       # instead of leaking the query upstream to a resolver that cannot know the answer.
       domain = bm.domain;
       local = "/${bm.domain}/";
+      # A sibling bare-metal's zone goes to ITS dnsmasq, never upstream (see peerZoneServers).
+      server = peerZoneServers;
       # Register a DHCP client under the hostname IT sends, qualified into the zone — the property
       # Incus spelled `dns.mode = dynamic`, and the reason a tenant's collector/probe appear under
       # their real names rather than under an instance name.
@@ -279,6 +292,26 @@ lib.mkIf enabled {
     bm.advertiseCidr
   ]
   ++ lib.optional ((bm.lanAttachment or "roaming") == "fixed") netplan.lan.cidr;
+
+  # The SYMMETRIC half of that role: advertise our slice, ACCEPT our peers'. Each bare-metal held
+  # only its own /21 and sent a sibling's segment to the home router, which drops it — measured
+  # 2026-09-26, `ip route get 172.16.16.1` on bioskop-nixos answered `via 192.168.1.254 dev
+  # lan-br`, and symmetrically on nikopol-nixos. Nothing in the tailnet policy was ever the
+  # obstacle: both hosts carry `tag:headless`, the `headless → tag:headless:*` rule covers a
+  # peer's approved routes (proven by a `tag:console` Mac reaching 172.16.16.1, an address behind
+  # the node rather than one of its own), and manage-tailnet already derives
+  # `autoApprovers.routes` from every `advertiseCidr` → tag:nixos, so there is no console step.
+  # Paired with peerZoneServers above: this gives the ADDRESS, that gives the NAME.
+  #
+  # ⚠️ `--accept-routes` is all-or-nothing, so this host also installs the home-LAN route the
+  # LAN-FIXED bare-metal advertises. On that host it is inert — a node never installs its own
+  # advertisement. On a ROAMING host it is what we want off-site (the home LAN becomes reachable
+  # through its peer), but the on-LAN case is UNMEASURED: tailscale installs into table 52, whose
+  # ip rule is consulted before main, so the accepted /24 may out-prioritise the directly
+  # connected one. The Mac accepts routes and kept its local route, but macOS routing is not
+  # evidence for Linux. Measure with `tailscale set --accept-routes` + `ip route get` on the
+  # roaming host while it sits on that LAN before trusting this off-site.
+  networking.headscale.acceptRoutes = true;
 
   # This host is a subnet router for its fabric-br /21 (advertised into the tailnet):
   # forward between fabric-br and the tailnet, and clamp forwarded TCP MSS to the
