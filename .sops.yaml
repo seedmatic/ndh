@@ -11,30 +11,18 @@
 #   age17q5k…   nikopol host key        — likewise on nikopol
 #   age1k0tc4…  rke2-cluster            — ALSO a recipient in rke2lab, which is what lets both the
 #                                         operator and in-cluster Flux decrypt the same content
-#   age1rs4ru…  vzhost.nikopol user key — .secrets ONLY, see the first rule
+#
+# ★ The operator key is what a corp-managed vz-host decrypts `.secrets` with — the Tart materializer
+# carries the ENCRYPTED blob in its own bundle (it has no ndh checkout) and reads it there.  No extra
+# recipient was added for that machine, DELIBERATELY: the operator key is ALREADY on it to sign
+# commits, so scoping sops to some other identity would change nothing about what is readable there
+# — the private key sits in that home either way.  The exposure to name is therefore this list, not
+# the machine: `age10ey0l…` opens EVERY file here, including
+# modules/home-manager/ssh.d/keys.yaml and the `mammoth-skate` SSH authority's private material.
+# Narrowing THAT is the real fix (a distinct operator identity for the sensitive files) and it is not
+# done. Until then, a narrower door exists for this one use:
+# `manage-tailnet --client-secret-file` takes the Tailscale OAuth client alone, with no age key.
 creation_rules:
-  # `.secrets` alone, and FIRST because sops takes the first matching rule.  It carries one extra
-  # recipient: vzhost.nikopol, the corp-managed Mac that materialises the nikopol Tart VM.  The Tart
-  # materializer must free that host's tailnet name before the renewed VM re-registers
-  # (manage-tailnet --reclaim-host), and it has no ndh checkout — so it carries this ENCRYPTED blob
-  # in its own bundle and decrypts it there with the operator's age key.
-  #
-  # ★ Scoped DELIBERATELY to this one file rather than added to the rules below.  The general rules
-  # cover modules/home-manager/ssh.d/keys.yaml, which holds the `mammoth-skate` SSH authority's
-  # PRIVATE material; a machine under corporate MDM has no business decrypting that to run a tailnet
-  # purge.  The honest residue: it does gain ALL of `.secrets`, not just the Tailscale OAuth client,
-  # because sops encrypts per FILE.  If that is ever too much, the narrower door already exists —
-  # `manage-tailnet --client-secret-file` takes that single credential on its own.
-  # Anchored on the basename, NOT '^\.secrets$': sops matches the path as GIVEN, so an absolute
-  # invocation would miss that anchor, fall through to the catch-all below, and silently DROP the
-  # vzhost recipient on the next `updatekeys`.
-  - path_regex: '(^|/)\.secrets$'
-    age:
-      - 'age10ey0lcup4zpjqcknpxw7enpsagn674nm634f2u75trfr5t62uq5qdjuxzv'
-      - 'age1trxpn8efl5jctwakgpxxjd2h6x5h2m40ggugxl909qsj0h99p9yqkk8tej'
-      - 'age17q5kw0epcl9ft7ecegr20040vx3g86z0f7vtecn9t8kk27qjspaqp66pp4'
-      - 'age1k0tc4gmaqrk5df3ujja34gkqxstu0cye7fl7fktjeuua3yych3aqxfjlak'
-      - 'age1rs4runhn90lw5mup0p2a4zs7kwvlul4qe4dkfz0zxtkps0vjqq2qlwg30e'
   # Text formats keep the encrypted comment regex for inline markers.
   - path_regex: '.*\.(ya?ml|json|env|ini|toml|cert)$'
     encrypted_comment_regex: 'sops:encrypted'

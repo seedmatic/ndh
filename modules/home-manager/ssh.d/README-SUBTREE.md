@@ -161,10 +161,12 @@ Every one of them is derived from an ed25519 SSH key via `ssh-to-age` — recomp
 - `age17q5k...` — **nikopol's SSH host key**, same role on that host.
 - `age1k0tc4...` — **rke2-cluster key** (derived from the `rke2-cluster` SSH key via `ssh-to-age`)
 
-NOTE: `keys.yaml` holds the `mammoth-skate` authority's PRIVATE material, so this recipient list is
-the list of machines that can read the SSH CA. Widen it only with that in mind — ndh's `.secrets` has
-its own, wider rule in `.sops.yaml` precisely so a corp-managed vz-host can decrypt *that* file
-without gaining this one.
+CAUTION: `keys.yaml` holds the `mammoth-skate` authority's PRIVATE material, so this recipient list
+is the list of identities that can read the SSH CA — and the primary one is the operator key, which
+also lives on the corp-managed Mac to sign commits. Reading the CA there therefore only takes access
+to that machine. Narrowing it (a distinct operator identity for the sensitive files, leaving the
+signing key as a recipient of `.secrets` alone) is the real fix and is NOT done; see the note in
+`.sops.yaml`.
 
 The rke2-cluster age key
 (`age1k0tc4gmaqrk5df3ujja34gkqxstu0cye7fl7fktjeuua3yych3aqxfjlak`) is:
