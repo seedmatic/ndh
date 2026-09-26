@@ -39,7 +39,11 @@ export SPLIT_DNS="@splitDns@"          # likewise, for --sync-dns
 
 readonly API_BASE="https://api.tailscale.com/api/v2"
 readonly TAILNET="-" # "-" = the OAuth identity's default tailnet
-readonly SECRETS_FILE=".secrets"
+# Default: the repo's own blob, hence relative — this tool's home is a checkout.  NOT readonly,
+# because --secrets-file redirects it to a copy carried by a caller that has NO checkout (the Tart
+# materializer on a corp-managed vz-host bakes the ENCRYPTED blob into its bundle and decrypts it
+# with the operator's age key).  Only the read path may be redirected; see the preflight.
+SECRETS_FILE=".secrets"
 readonly CLIENT_INDEX='["tailnet"]["tailscale"]["client"]'
 readonly OWNER_TAG="tag:tailnet-key-owner"
 
@@ -50,6 +54,7 @@ do_sync_acl=0
 do_sync_dns=0
 do_retag=0
 do_prune=0
+do_reclaim=0
 do_deploy=0
 do_revoke=0
 do_commit=0
@@ -58,6 +63,7 @@ stale_after="1h"
 format="text"
 only_kind=""
 client_secret_file=""
+secrets_file_override=0
 workdir=""
 # Hostnames --prune-stale-devices must SPARE even when stale: a device whose identity we PERSIST
 # and RESTORE across a cold-start (a funnel proxy backed by a stable state Secret) must survive so
@@ -65,6 +71,9 @@ workdir=""
 # re-registering. Only the drifted duplicates (pipelines-webhook-1, …) and un-persisted orphans are
 # pruned. Exact-name match, repeatable via --keep-host.
 keep_hosts=()
+# Hostnames whose tailnet identity the caller is DESTROYING — see reclaim_host_names. Repeatable
+# via --reclaim-host.
+reclaim_hosts=()
 TOKEN=""
 
 # log() narrates on stdout (the terminal, since command:run redirects only
@@ -121,6 +130,15 @@ Safe by default. Manages the per-kind Tailscale SaaS auth keys + the ACL.
                      teardowns that hold MagicDNS names (the funnel then drifts
                      to pac-webhook-1, -2, …).  Lists a plan; deletes only with
                      --apply.  Protects personal (untagged) + currently-online devices.
+  --reclaim-host <name>
+                     Free ONE host's tailnet name: delete the TAGGED devices named
+                     <name> or <name>-<N>, with NO age filter — the caller asserts
+                     that host's identity is being DESTROYED (a nerd-nixos VM renew
+                     recreates the ZFS root that carries /var/lib/tailscale), so the
+                     re-registering host reclaims the bare name instead of drifting
+                     to <name>-1.  Scoped, unlike --prune-stale-devices: it cannot
+                     reach an itinerant host that is merely away.  Repeatable.
+                     Lists a plan; deletes only with --apply.
   --stale-after <dur>  Age threshold for --prune-stale-devices: Ns/Nm/Nh/Nd
                      (default 1h).
   --keep-host <name>   Spare this EXACT hostname from --prune-stale-devices even
@@ -140,6 +158,12 @@ Safe by default. Manages the per-kind Tailscale SaaS auth keys + the ACL.
                      incus GROW, reading ndh's user-mirrored client) drive the
                      read-only remote actions.  Incompatible with
                      --rotate-auth-key (which writes .secrets).
+  --secrets-file <path>
+                     Read the sops-encrypted .secrets from <path> instead of the
+                     repo-relative default — for a caller with the operator's age
+                     key but NO checkout (the Tart materializer bakes the encrypted
+                     blob into its own bundle).  Read-only: incompatible with
+                     --rotate-auth-key and --commit, which WRITE .secrets.
   --kind <kind>      Restrict rotation to a single kind (default: all).
   --deploy           Print the post-rotation rebuild commands (never runs them).
   --commit           After a successful rotation, git-commit .secrets (--no-verify).
@@ -428,6 +452,74 @@ prune_stale_devices() {
 		log "no --apply: nothing deleted.  Re-run 'manage-tailnet --prune-stale-devices --apply' to apply."
 }
 
+# Free ONE host's tailnet name, because the caller is about to destroy that host's identity —
+# a `nerd-nixos` VM renew recreates tank/nerd/root, and /var/lib/tailscale lives there, so the
+# node key does not survive.  Deletes the TAGGED devices named <host> or <host>-<N>, so the
+# re-registering host reclaims the bare name instead of drifting to <host>-1.  Repeatable.
+#
+# ★ DELIBERATELY NO AGE FILTER, and that is the whole difference from --prune-stale-devices.
+#   - Correctness: at renew the host's own device is often still ONLINE (the VM has not been shut
+#     down yet), so an age filter would SPARE exactly the device whose name we need, and the drift
+#     would happen anyway.  Tailscale also only marks a node offline after its ~50s keepalive
+#     window, which is why the in-cluster purge Job needs a 90s guard loop to converge.  Asserting
+#     "this identity is being destroyed" removes the race instead of waiting it out.
+#   - Safety: this is the SCOPED counterpart of a fleet-wide action.  --prune-stale-devices walks
+#     every tagged device, so an ITINERANT host that is merely away (nikopol off the tailnet, its
+#     device legitimately offline) is in its blast radius; this walks only the names the caller
+#     names, so it cannot reach another host.  Untagged (personal) devices are skipped here too —
+#     the same guard, since a member device must never be deletable by fleet tooling.
+reclaim_host_names() {
+	local devs
+	devs="$(api "$API_BASE/tailnet/$TAILNET/devices")" ||
+		die "GET devices failed (does the OAuth client have the 'devices' scope?)"
+	mapfile -t rows < <(printf '%s' "$devs" |
+		$YQ -p json -o=json -I=0 '.devices[] | select((.tags // []) | length > 0) | {"id": .id, "host": .hostname, "seen": .lastSeen}')
+	log "reclaim plan (tagged devices holding: ${reclaim_hosts[*]}):"
+	local row id host seen name suffix matched n=0
+	for row in "${rows[@]}"; do
+		id="$(printf '%s' "$row" | $YQ -p json '.id')"
+		host="$(printf '%s' "$row" | $YQ -p json '.host')"
+		seen="$(printf '%s' "$row" | $YQ -p json '.seen')"
+		matched=""
+		for name in "${reclaim_hosts[@]}"; do
+			case "$host" in
+				"$name")
+					matched="$name"
+					;;
+				"$name"-*)
+					# Only a NUMERIC suffix is this name's drift: `bioskop-nixos-1` is the duplicate
+					# tailscale minted, while `bioskop-nixos-something` would be a different host.
+					suffix="${host##*-}"
+					case "$suffix" in
+						'' | *[!0-9]*) ;;
+						*) matched="$name" ;;
+					esac
+					;;
+			esac
+			[ -n "$matched" ] && break
+		done
+		[ -n "$matched" ] || continue
+		n=$((n + 1))
+		if [ "$assume_yes" -ne 1 ]; then
+			log "  would delete $host ($id) — holds '$matched', last seen $seen"
+			continue
+		fi
+		if api -X DELETE "$API_BASE/device/$id" >/dev/null 2>&1; then
+			if [ "$format" = json ]; then
+				id="$id" host="$host" seen="$seen" $YQ -n -o=json -I=0 \
+					'{"level": "info", "event": "reclaimed", "id": strenv(id), "host": strenv(host), "seen": strenv(seen)}'
+			else
+				log "  deleted $host ($id)"
+			fi
+		else
+			die "failed to delete $host ($id) — the name stays held and the host WILL drift to ${host}-N"
+		fi
+	done
+	[ "$n" -gt 0 ] || log "  nothing to reclaim (no tagged device holds those names)"
+	{ [ "$assume_yes" -eq 1 ] || [ "$n" -eq 0 ]; } ||
+		log "no --apply: nothing deleted.  Re-run with --apply to free the name."
+}
+
 # Migrate the legacy scalar tailnet.tailscale.auth to an empty map so per-kind
 # keys can nest under it.  No-op once it is already a map.
 ensure_auth_map() {
@@ -552,6 +644,18 @@ main() {
 			[ -n "${1:-}" ] || die "--keep-host needs an argument"
 			keep_hosts+=("$1")
 			;;
+		--reclaim-host)
+			shift
+			[ -n "${1:-}" ] || die "--reclaim-host needs an argument"
+			reclaim_hosts+=("$1")
+			do_reclaim=1
+			;;
+		--secrets-file)
+			shift
+			SECRETS_FILE="${1:-}"
+			[ -n "$SECRETS_FILE" ] || die "--secrets-file needs an argument"
+			secrets_file_override=1
+			;;
 		--format=*) format="${1#*=}" ;;
 		--format)
 			shift
@@ -589,6 +693,9 @@ main() {
 	[ "$format" = text ] || [ "$format" = json ] ||
 		die "--format must be 'text' or 'json' (got: $format)"
 	[ -r "$AUTH_KINDS_FILE" ] || die "kinds manifest missing: $AUTH_KINDS_FILE"
+	# A read-only build leaves git unpinned to keep its closure small (see default.nix `withCommit`).
+	{ [ "$do_commit" -eq 0 ] || [ -n "$GIT" ]; } ||
+		die "this build of manage-tailnet excludes git, so --commit is unavailable; run it from a checkout"
 	[ -r "$ACL_CANONICAL" ] || die "acl canonical missing: $ACL_CANONICAL"
 	if [ -n "$client_secret_file" ]; then
 		# Caller supplies the OAuth client secret directly — .secrets is neither read
@@ -597,7 +704,16 @@ main() {
 		[ -r "$client_secret_file" ] || die "client-secret file not readable: $client_secret_file"
 		[ "$do_auth" -eq 0 ] || die "--client-secret-file is incompatible with --rotate-auth-key (which writes .secrets)"
 	else
-		[ -f "$SECRETS_FILE" ] || die "run from the repo root: $SECRETS_FILE not found"
+		# A redirected blob is a READ path only: the store copy is immutable, and `git add` on a
+		# store path is meaningless — so refuse the two actions that write, rather than fail
+		# halfway through a rotation.
+		if [ "$secrets_file_override" -eq 1 ]; then
+			[ "$do_auth" -eq 0 ] || die "--secrets-file is incompatible with --rotate-auth-key (which writes .secrets)"
+			[ "$do_commit" -eq 0 ] || die "--secrets-file is incompatible with --commit (which git-adds .secrets)"
+			[ -f "$SECRETS_FILE" ] || die "--secrets-file not found: $SECRETS_FILE"
+		else
+			[ -f "$SECRETS_FILE" ] || die "run from the repo root: $SECRETS_FILE not found"
+		fi
 		local sops_version
 		sops_version="$($YQ '.sops.version' "$SECRETS_FILE" 2>/dev/null || true)"
 		{ [ -n "$sops_version" ] && [ "$sops_version" != "null" ]; } ||
@@ -619,6 +735,7 @@ main() {
 	[ "$do_sync_dns" -eq 1 ] && sync_dns
 	[ "$do_retag" -eq 1 ] && retag_devices
 	[ "$do_prune" -eq 1 ] && prune_stale_devices
+	[ "$do_reclaim" -eq 1 ] && reclaim_host_names
 
 	if [ "$do_auth" -eq 1 ]; then
 		mapfile -t OLD_IDS < <(list_key_ids) # snapshot before minting (for --revoke-old)
@@ -631,7 +748,7 @@ main() {
 			log "  sudo nixos-rebuild switch --flake .#nikopol-nixos --refresh"
 			log "  (repeat per host that consumes a rotated kind)"
 		fi
-	elif [ "$dry_run" -eq 1 ] && [ "$do_sync_acl" -eq 0 ] && [ "$do_sync_dns" -eq 0 ] && [ "$do_retag" -eq 0 ] && [ "$do_prune" -eq 0 ]; then
+	elif [ "$dry_run" -eq 1 ] && [ "$do_sync_acl" -eq 0 ] && [ "$do_sync_dns" -eq 0 ] && [ "$do_retag" -eq 0 ] && [ "$do_prune" -eq 0 ] && [ "$do_reclaim" -eq 0 ]; then
 		rotation_plan
 	fi
 

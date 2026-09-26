@@ -20,11 +20,19 @@
 #                                     advertises each cluster's kube-vip VIP in it)
 #   - `ndhStore.installBinScript`   — the bash-trampoline bin wrapper
 #   - `nixBashTrampoline`           — the shared nix-managed bash + logger + env
+#   - `withCommit`                  — pin git for `--commit`, or leave it out (see below)
 {
   pkgs,
   catalog,
   ndhStore,
   nixBashTrampoline,
+  # `--commit` git-commits .secrets after a rotation, and pinning git costs **1540 MiB of closure**
+  # (measured 2026-09-26: git pulls python3, clang and the apple-sdk), against ~60 MiB for everything
+  # else this script needs.  A caller that only READS the tailnet therefore builds with false — the
+  # Tart materializer does, since its bundle is `nix copy`'d to a vz-host and was designed to stay
+  # around 50-100 MiB.  Not an arbitrary switch: `--commit` requires a checkout to commit INTO, and
+  # the preflight already refuses it alongside `--secrets-file`, so the two are exclusive by nature.
+  withCommit ? true,
 }:
 let
   # Kinds + tag pairs are baked from catalog.tailnet.tags so the script needs no
@@ -272,7 +280,9 @@ ndhStore.installBinScript "manage-tailnet" (
     sops = "${pkgs.sops}/bin/sops";
     curl = "${pkgs.curl}/bin/curl";
     yq = "${pkgs.yq-go}/bin/yq";
-    git = "${pkgs.git}/bin/git";
+    # Empty when excluded, so the closure never reaches git; the preflight turns that into a clear
+    # refusal if --commit is asked of such a build, rather than an obscure "command not found".
+    git = if withCommit then "${pkgs.git}/bin/git" else "";
     authKinds = tailnetAuthKindsFile;
     aclCanonical = tailnetAclCanonicalFile;
     splitDns = tailnetSplitDnsFile;
