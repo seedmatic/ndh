@@ -34,6 +34,13 @@
       "grpcurl": {
         "pkg-path": "grpcurl"
       },
+      "incus-client": {
+        "flake": "path:.#incus-client",
+        "systems": [
+          "aarch64-darwin",
+          "aarch64-linux"
+        ]
+      },
       "keychain": {
         "pkg-path": "keychain",
         "pkg-group": "keyhole"
@@ -2918,6 +2925,64 @@
       "broken": false,
       "unfree": false,
       "priority": 5
+    },
+    {
+      "install_id": "incus-client",
+      "locked-url": "path:/private/var/lib/git/seedmatic/ndh.d/develop?lastModified=1790422295&narHash=sha256-KCqKut3BDlmS0g6g3iIsrt9MA4leTxACpu%2BQjcQMLws%3D",
+      "flake-description": "nix system configurations",
+      "locked-flake-attr-path": "packages.aarch64-darwin.incus-client",
+      "derivation": "/nix/store/7ksq3h46dyrc75r24sv41x3chmpwq8w4-incus-client-7.4.0.drv",
+      "outputs": {
+        "out": "/nix/store/sz3r5yhrym5572glmqz1smnva2bd60sz-incus-client-7.4.0"
+      },
+      "output-names": [
+        "out"
+      ],
+      "outputs-to-install": [
+        "out"
+      ],
+      "requested-outputs-to-install": [],
+      "package-system": "aarch64-darwin",
+      "system": "aarch64-darwin",
+      "name": "incus-client-7.4.0",
+      "pname": "incus-client",
+      "version": "7.4.0",
+      "description": "Powerful system container and virtual machine manager",
+      "licenses": [
+        "Apache-2.0"
+      ],
+      "broken": false,
+      "unfree": false,
+      "priority": 5
+    },
+    {
+      "install_id": "incus-client",
+      "locked-url": "path:/private/var/lib/git/seedmatic/ndh.d/develop?lastModified=1790422301&narHash=sha256-VhLO419HPQfwSkC1TwL8n2wfmIPPySOM8KDcDQgGKt0%3D",
+      "flake-description": "nix system configurations",
+      "locked-flake-attr-path": "packages.aarch64-linux.incus-client",
+      "derivation": "/nix/store/bkxsmg2fvsmssd7kiixc8k9nz5wxk82f-incus-client-7.4.0.drv",
+      "outputs": {
+        "out": "/nix/store/s4p9ypc24p94m25nfgjyja6xdari9r6h-incus-client-7.4.0"
+      },
+      "output-names": [
+        "out"
+      ],
+      "outputs-to-install": [
+        "out"
+      ],
+      "requested-outputs-to-install": [],
+      "package-system": "aarch64-linux",
+      "system": "aarch64-linux",
+      "name": "incus-client-7.4.0",
+      "pname": "incus-client",
+      "version": "7.4.0",
+      "description": "Powerful system container and virtual machine manager",
+      "licenses": [
+        "Apache-2.0"
+      ],
+      "broken": false,
+      "unfree": false,
+      "priority": 5
     }
   ],
   "compose": {
@@ -2929,6 +2994,13 @@
         },
         "grpcurl": {
           "pkg-path": "grpcurl"
+        },
+        "incus-client": {
+          "flake": "path:.#incus-client",
+          "systems": [
+            "aarch64-darwin",
+            "aarch64-linux"
+          ]
         },
         "lsof": {
           "pkg-path": "lsof"

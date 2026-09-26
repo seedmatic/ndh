@@ -32,6 +32,21 @@ ngrok.pkg-path = "ngrok"
 # and fails since the flake provides no such attribute.
 manage-tailnet.flake = "path:.#manage-tailnet"
 manage-tailnet.systems = ["aarch64-darwin"]
+# incus-client: the Incus CLI, for driving the fleet's daemons from this shell — the two-member
+# cluster, and the remote-trust reconciliation in modules/darwin/incus-remote-trust.nix. ndh owns the
+# package (the daemon's NixOS modules live here), and rke2lab re-exports it for its own env.
+#
+# `path:.` for the same reason manage-tailnet uses it above: a repo-LOCAL package, so the flakeref
+# tracks the working copy instead of a remote ref that lags behind it.
+#
+# systems: BOTH, unlike manage-tailnet — the client is wanted on the Mac that drives the cluster and
+# inside the Linux guests. It must still be listed, because the flake exposes nothing for flox's other
+# default systems (x86_64-*) and locking would fail on the missing attribute.
+incus-client.flake = "path:.#incus-client"
+incus-client.systems = [
+  "aarch64-darwin",
+  "aarch64-linux",
+]
 # gum.pkg-path = "gum"
 # gum.version = "^0.14.5"
 
