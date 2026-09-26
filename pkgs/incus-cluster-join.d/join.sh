@@ -104,19 +104,35 @@ main() {
 	# Consume. `member_config` carries the one thing that IS member-specific here: this member's
 	# storage-pool source. Networks need no member_config at all — none are Incus-managed any more,
 	# which is what let the per-host subnets survive clustering in the first place.
-	remote "${JOINING_SSH}" incus admin init --preseed <<-EOF
-		cluster:
-		  enabled: true
-		  server_name: ${JOINING}
-		  server_address: ${member_address}:8443
-		  cluster_address: ${cluster_address}
-		  cluster_token: ${token}
-		  member_config:
-		  - entity: storage-pool
-		    name: ${POOL_NAME}
-		    key: source
-		    value: ${POOL_SOURCE}
-	EOF
+	#
+	# ★ EVERY mutating step below is checked explicitly, and `set -e` is NOT relied on.  Measured
+	# 2026-09-26, the hard way: ndh::logger:command:run invokes `main` as `if "$@"; then`, and POSIX
+	# suppresses errexit throughout a command that forms a condition — re-running `set -e` inside
+	# changes nothing.  So every unchecked command in a logger-wrapped script fails SILENTLY.  This
+	# app reported "joined and out of the raft" about a join that never happened, on a cluster whose
+	# member list still had one entry.
+	local preseed preseed_out
+	preseed="$(
+		cat <<-EOF
+			cluster:
+			  enabled: true
+			  server_name: ${JOINING}
+			  server_address: ${member_address}:8443
+			  cluster_address: ${cluster_address}
+			  cluster_token: ${token}
+			  member_config:
+			  - entity: storage-pool
+			    name: ${POOL_NAME}
+			    key: source
+			    value: ${POOL_SOURCE}
+		EOF
+	)"
+	if ! preseed_out="$(printf '%s\n' "${preseed}" |
+		remote "${JOINING_SSH}" incus admin init --preseed 2>&1)"; then
+		ndh::logger:error "join: ${JOINING} REFUSED the preseed — it is not a member, and the token is now spent"
+		printf '%s\n' "${preseed_out}" >&2
+		return 1
+	fi
 
 	# ★ Demote IMMEDIATELY, and this is not cosmetic. Until the role is applied, a two-member cluster
 	# has TWO voters (cluster.max_voters must be odd >= 3 and cannot be lowered), so the majority is 2
@@ -124,19 +140,36 @@ main() {
 	# host that carries every live cluster. The declarative reconciler on the bootstrap member also
 	# asserts this, but only at its next activation — that window is exactly what this closes.
 	ndh::logger:notice "join: pinning ${JOINING} out of the raft (database-client)"
-	remote "${BOOTSTRAP_SSH}" incus cluster role add "${JOINING}" database-client
-
-	# Likewise structural: `grep -A10 '^roles:'` over YAML depends on indentation and on how many
-	# roles there happen to be.  `database` is the VOTER role.
-	local roles
-	roles="$(remote "${BOOTSTRAP_SSH}" incus cluster show "${JOINING}" |
-		@yq@ -r '.roles | join(",")' || true)"
-	if [[ ",${roles}," == *,database,* ]]; then
-		ndh::logger:error "join: ${JOINING} is STILL a voter — its absence will cost ${BOOTSTRAP} its quorum"
+	if ! remote "${BOOTSTRAP_SSH}" incus cluster role add "${JOINING}" database-client; then
+		ndh::logger:error "join: could not give ${JOINING} the database-client role — it may be a VOTER"
 		return 1
 	fi
 
-	ndh::logger:notice "join: ${JOINING} joined and out of the raft"
+	# Verify what is PRESENT, never what is absent.  The previous version asserted that `roles` did
+	# not contain `database` — which passes when `incus cluster show` fails and `roles` is EMPTY.  An
+	# assertion that succeeds on missing input is not an assertion; it is how this app came to report
+	# success about nothing.  So: the joining side must say it is clustered, the bootstrap side must
+	# know the member, and the role must be THERE.
+	if ! is_clustered "${JOINING_SSH}"; then
+		ndh::logger:error "join: ${JOINING} still reports itself standalone — the join did not take"
+		return 1
+	fi
+
+	local roles
+	if ! roles="$(remote "${BOOTSTRAP_SSH}" incus cluster show "${JOINING}" | @yq@ -r '.roles | join(",")')"; then
+		ndh::logger:error "join: ${BOOTSTRAP} knows no member named ${JOINING} — the join did not take"
+		return 1
+	fi
+	case ",${roles}," in
+		*,database-client,*) ;;
+		*)
+			ndh::logger:error "join: ${JOINING} is a member but NOT database-client (roles: ${roles:-<none>})."
+			ndh::logger:error "join: its absence would cost ${BOOTSTRAP} its quorum — refusing to report success"
+			return 1
+			;;
+	esac
+
+	ndh::logger:notice "join: ${JOINING} joined and out of the raft (roles: ${roles})"
 	remote "${BOOTSTRAP_SSH}" incus cluster list
 }
 
