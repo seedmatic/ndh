@@ -8,6 +8,7 @@
   catalog,
   inventory,
   ndh,
+  worktreePath,
   ...
 }:
 
@@ -15,6 +16,41 @@ let
   inherit (lib) mkOption types;
   ndhContext = ndh.context;
   nixBashTrampoline = "${ndhContext.nixBashTrampoline}";
+
+  # ── Tailnet name reclaim, for the factory-reset path ──────────────────────────────────────────
+  # A renew recreates the guest's ZFS root, and /var/lib/tailscale lives there — so the node key does
+  # NOT survive and the guest re-registers from scratch.  Whatever device still holds its name then
+  # pushes the new one to `<name>-1`, which is not cosmetic: the Incus cluster records a member's
+  # tailnet address and the split-DNS zone answers for that name.  Measured on 2026-09-26, with two
+  # such leftovers live.  So the name is freed HERE, in the one command that marks "this identity is
+  # being destroyed", before the VM can boot.
+  #
+  # manage-tailnet is imported exactly as flake.nix does it, because it is the single owner of tailnet
+  # mutations — the materializer must not speak to that API itself.
+  manageTailnet = import ../.common.d/manage-tailnet.d {
+    inherit pkgs catalog nixBashTrampoline;
+    ndhStore = ndh.store;
+    # Read-only here — this bundle only DELETES devices, it never rotates keys into .secrets. Worth
+    # 1540 MiB of closure (git), which matters because this bundle is meant to be nix-copied.
+    withCommit = false;
+  };
+
+  # The ENCRYPTED .secrets, carried INTO this bundle so the gate also works on a vz-host with NO ndh
+  # checkout — nikopol's is a corp-managed Mac, and manage-tailnet's own default is repo-relative.
+  # Safe by construction: .gitattributes disables the sops git filters across this repo precisely so
+  # the worktree holds ciphertext and an eval-time read cannot ingest plaintext into /nix/store. The
+  # assertion below refuses to build the day that stops being true.
+  # `<vm host>-<guest>`, from the ONE option that also composes the guest's own networking.hostName
+  # (modules/.common.d/vm.nix) — the name is claimed on one side and freed on the other, so a second
+  # spelling here is how the two would come to disagree.
+  guestTailnetName = config.vm.guestHostName;
+
+  sopsSecretsFile = worktreePath.of ".secrets";
+  sopsSecretsLooksEncrypted =
+    let
+      content = builtins.readFile sopsSecretsFile;
+    in
+    lib.hasInfix "ENC[" content && lib.hasInfix "\"sops\"" content;
 
   profileUser = config.profile.user.name;
   profileHome = config.profile.user.home;
@@ -114,6 +150,12 @@ let
           manifestPath = if embedManifest then toString tartRunManifest else "";
           tartRunScript = tartRunScript;
           tartActivationBundlePlaceholder = "PLACEHOLDER";
+          # The tailnet-reclaim gate's TOOLS.  Build-time tokens rather than manifest fields because
+          # both are fleet-generic — the identity they act on is the per-VM `guest_host_name`, which
+          # travels in the run manifest like every other per-host fact.  So the generic deploy bundle
+          # carries the same capability and gains the gate as soon as it is pointed at a --config.
+          manageTailnet = "${manageTailnet}/bin/manage-tailnet";
+          sopsSecretsFile = toString sopsSecretsFile;
         }
       } "$out/bin/activate.sh"
       # Patch the self-referential placeholder with the real output store path.
@@ -321,6 +363,10 @@ let
     profile_user_default: ${builtins.toJSON profileUser}
     profile_home_default: ${builtins.toJSON profileHome}
     vm_name: ${builtins.toJSON cfg.vmName}
+    # The GUEST's own hostname, hence its tailnet device name — distinct from `vm_name`, which is the
+    # fleet-generic Tart VM name (`nerd-nixos`).  The factory reset frees this name once the guest is
+    # stopped; see tart:vm:factory-reset:apply.
+    guest_host_name: ${builtins.toJSON guestTailnetName}
     vm_disk_format: ${builtins.toJSON cfg.vmDiskFormat}
     vm_boot_disk_size_gib: ${builtins.toJSON cfg.vmBootDiskSizeGiB}
     vm_cpu_count: ${builtins.toJSON cfg.vmCpuCount}
@@ -813,6 +859,18 @@ in
         message = ''
           tart.configGenerator.tartBinaryPath must be set when Tart materialization is enabled.
           Prefer Nix-provided path, e.g. "${pkgs.tart}/bin/tart".
+        '';
+      }
+      {
+        # The materializer copies .secrets into the store so the renew gate works without a checkout.
+        # That is only ever safe while the worktree holds the CIPHERTEXT, which is why this repo keeps
+        # the sops git filters off (see .gitattributes). Same guard as sops.nix applies to keys.yaml.
+        assertion = sopsSecretsLooksEncrypted;
+        message = ''
+          sops source-of-truth violation: .secrets appears decrypted in this worktree.
+          Refusing evaluation — the Tart materializer carries this file into /nix/store, so a
+          decrypted worktree copy would publish every secret it holds, world-readable.
+          Re-encrypt it with sops before rebuild, and do not add `filter=sops-*` to .gitattributes.
         '';
       }
       {

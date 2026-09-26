@@ -987,6 +987,40 @@ main() {
 		done
 	}
 
+	# Delete the tailnet devices holding this guest's name, so the renewed guest reclaims it instead
+	# of drifting to `<name>-1`.  Called from tart:vm:factory-reset:apply, which explains the timing.
+	# manage-tailnet owns every tailnet mutation in this fleet; this only calls it, and reads the
+	# ENCRYPTED .secrets carried in this bundle (a vz-host may have no ndh checkout, only the age key).
+	tart:vm:tailnet:reclaim() {
+		local reclaim="${NDH_TAILNET_RECLAIM:-apply}"
+
+		if [[ -z "$guest_host_name" ]]; then
+			: "[tartConfig][WARN] run manifest carries no guest_host_name; skipping the tailnet reclaim"
+			: "[tartConfig][WARN] the renewed guest may come back as <name>-1 — regenerate the per-VM YAML"
+			return 0
+		fi
+
+		if [[ "$reclaim" == "skip" ]]; then
+			: "[tartConfig][WARN] NDH_TAILNET_RECLAIM=skip — leaving ${guest_host_name} held on the tailnet"
+			return 0
+		fi
+
+		: "[tartConfig][INFO] freeing tailnet name ${guest_host_name} (its node key dies with this reset)"
+		if @manageTailnet@ --secrets-file @sopsSecretsFile@ \
+			--reclaim-host "$guest_host_name" --apply; then
+			return 0
+		fi
+
+		# Fail the reset rather than report a false success: a silently-held name surfaces days later
+		# as a cluster member or a DNS answer pointing at a node that no longer exists.
+		: "[tartConfig][ERROR] could not free '${guest_host_name}' on the tailnet — refusing to reset"
+		: "[tartConfig][ERROR] the guest would return as '${guest_host_name}-1', and both the Incus"
+		: "[tartConfig][ERROR] member address and the split-DNS zone would then name the wrong node"
+		: "[tartConfig][ERROR] needs an age key under ~/.config/sops/age and the OAuth 'devices' scope"
+		: "[tartConfig][ERROR] to reset anyway, accepting the drift: NDH_TAILNET_RECLAIM=skip"
+		exit 1
+	}
+
 	tart:vm:factory-reset:apply() {
 		if ! $factory_reset; then
 			return 0
@@ -996,6 +1030,22 @@ main() {
 		: "[tartConfig][WARN] removing existing Tart root/data images before recreation"
 
 		tart:vm:run stop "$vm_name" >/dev/null 2>&1 || true
+
+		# ── Free the guest's tailnet name ────────────────────────────────────────────────────
+		# HERE, and the position is the whole correctness argument: the guest is STOPPED, and its
+		# identity is about to be destroyed (the reset removes the ZFS root that carries
+		# /var/lib/tailscale, so the node key does not survive).  Deleting the device any EARLIER,
+		# while the guest still runs, makes tailscaled notice its key was invalidated and
+		# re-register from its auth key — recreating the very leftover this prevents, moments
+		# before we wipe the disk.  Deleting it LATER races the renewed guest's own registration.
+		# Between the stop and the wipe there is no such race: deterministic.
+		#
+		# Why it matters beyond tidiness: whatever still holds `<host>-nixos` pushes the returning
+		# guest to `<host>-nixos-1`, and that name is load-bearing — the Incus cluster records a
+		# member's tailnet address, and the per-host split-DNS zone answers for it.  Measured
+		# 2026-09-26 with two such leftovers live.
+		tart:vm:tailnet:reclaim
+
 		if tart:vm:exists "$vm_name"; then
 			: "[tartConfig][INFO] deleting existing VM definition to force root disk recreation via tart create"
 			tart:vm:run delete "$vm_name" >/dev/null 2>&1 || true
@@ -1233,6 +1283,8 @@ main() {
 		tart:runtime:user:resolve
 
 		vm_name="${vm_name:-}"
+		# Empty for a pre-`guest_host_name` per-VM YAML; the reclaim gate skips rather than guesses.
+		guest_host_name="${guest_host_name:-}"
 		vm_disk_format="${vm_disk_format:-asif}"
 		vm_boot_disk_size_gib="${VM_BOOT_DISK_SIZE_GIB:-${vm_boot_disk_size_gib:-}}"
 		vm_cpu_count="${vm_cpu_count:-}"

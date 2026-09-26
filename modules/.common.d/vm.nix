@@ -61,6 +61,18 @@ in
       default = baseTailnetDomain;
       description = "Domain for the VM host; defaults to the tailnet domain.";
     };
+    guestHostName = mkOption {
+      type = types.str;
+      readOnly = true;
+      default = "${hostName}-${guestName}";
+      description = ''
+        The guest system's hostname, `<vm host>-<guest>` — ONE composition, read from BOTH sides.
+        The guest's own `networking.hostName` below is it; the Tart materializer on the HOST side
+        needs the same string to free that name on the tailnet before a renewed guest re-registers
+        (a renew recreates the ZFS root that carries /var/lib/tailscale, so the node key is lost and
+        a leftover device would push the new one to `<name>-1`).
+      '';
+    };
   };
   config = {
     # Apply the dynamic default here so other definitions (e.g. from the flake) can override.
@@ -73,8 +85,6 @@ in
       NDH_DOMAIN = domainName;
       NDH_USER = profileUser;
     };
-    networking.hostName = lib.mkForce (
-      if cfg.role == "guest" then "${hostName}-${guestName}" else hostName
-    );
+    networking.hostName = lib.mkForce (if cfg.role == "guest" then cfg.guestHostName else hostName);
   };
 }
