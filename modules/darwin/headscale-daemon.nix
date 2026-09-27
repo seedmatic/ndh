@@ -311,7 +311,7 @@ in
     # enforces this per-host, and the operator is responsible for
     # not flipping two hosts to primary simultaneously.  Tailnet
     # clients reach the daemon via the public `aliasUrl` (DuckDNS →
-    # Bbox WAN port-forward); see modules/darwin/headscale.nix.
+    # Bbox WAN port-forward); see modules/darwin/tailnet-client.nix.
     (mkIf (cfg.role == "primary") {
       launchd.user.agents.headscale-bootstrap = {
         command = "${headscaleLauncher}";

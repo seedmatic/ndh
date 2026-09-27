@@ -1,16 +1,16 @@
 # Shared headscale-client wiring.  Platform-agnostic: reads
-# `ndh.headscaleClient.kind` (set by the platform module) and emits
-# the corresponding `networking.headscale.*` + `tailnet.headscale.auth.<kind>.enable`.
+# `ndh.tailnetClient.kind` (set by the platform module) and emits
+# the corresponding `networking.tailnet.*` + `tailnet.headscale.auth.<kind>.enable`.
 #
 # Caller responsibilities — exactly one per (platform × host):
 #   - modules/darwin/headscale-client-kind.nix: sets kind = "darwin"
 #   - modules/nixos/headscale-client-kind.nix:  sets kind = "nixos"
 #   - A host that needs a non-default kind (e.g. a NixOS host acting
-#     as an incus/rke2 node) overrides `ndh.headscaleClient.kind` in
+#     as an incus/rke2 node) overrides `ndh.tailnetClient.kind` in
 #     its own host profile.
 #
 # Importing this file IS the opt-in to joining the fleet tailnet:
-# `networking.headscale.enable` is set unconditionally.  Configs
+# `networking.tailnet.enable` is set unconditionally.  Configs
 # that must not join the tailnet simply don't import this file.
 {
   config,
@@ -19,7 +19,7 @@
   ...
 }:
 let
-  cfg = config.ndh.headscaleClient;
+  cfg = config.ndh.tailnetClient;
   tailnetCatalog = lib.attrByPath [ "context" "catalog" "tailnet" ] null ndh;
 
   # Deterministic mapping from the kind axis to the (role, kind) tag
@@ -27,7 +27,7 @@ let
   # attached by default (a human sits at it); every other kind is
   # headless (server / VM / container / cluster member).  A future
   # darwin-that's-actually-headless (mac mini in a closet) overrides
-  # `ndh.headscaleClient.kind` or sets its role tag directly.
+  # `ndh.tailnetClient.kind` or sets its role tag directly.
   tagsForKind =
     kind:
     let
@@ -50,7 +50,7 @@ let
   effectiveServerUrl = if tailnetCatalog != null then tailnetCatalog.headscale.aliasUrl else "";
 in
 {
-  options.ndh.headscaleClient = {
+  options.ndh.tailnetClient = {
     kind = lib.mkOption {
       type = lib.types.enum [
         "darwin"
@@ -97,7 +97,7 @@ in
   };
 
   config = {
-    networking.headscale = {
+    networking.tailnet = {
       enable = true;
       serverUrl = lib.mkDefault effectiveServerUrl;
       tags = lib.mkDefault (tagsForKind cfg.kind);

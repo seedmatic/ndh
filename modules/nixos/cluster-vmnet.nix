@@ -186,7 +186,7 @@ lib.mkIf enabled {
   # v4 only, though the segment is dual-stack: approval is keyed on the v4 supernet
   # (manage-tailnet's `autoApprovers.routes`), so a v6 advertisement would sit pending forever, and
   # the segment's v6 is a ULA with no off-host consumer today.
-  networking.headscale.advertiseRoutes = map (seg: seg.cidr) segments;
+  networking.tailnet.advertiseRoutes = map (seg: seg.cidr) segments;
 
   networking.firewall.trustedInterfaces = bridges;
   networking.networkmanager.unmanaged = map (b: "interface-name:${b}") bridges;

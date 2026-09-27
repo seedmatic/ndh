@@ -23,12 +23,12 @@ in
 {
   imports = [
     ../profile.nix
-    # Fleet-wide headscale-client wiring (networking.headscale.*,
+    # Fleet-wide headscale-client wiring (networking.tailnet.*,
     # tailnet.headscale.auth.<kind>.enable).  Factored out so the
     # minimal bringup image (modules/nixos/bringup-minimal-system.nix)
     # can import the exact same wiring without pulling the rest of
     # host-common.
-    ../modules/.common.d/headscale-client-wiring.nix
+    ../modules/.common.d/tailnet-client-wiring.nix
     # Tailscale Services rendering.  Deliberately NOT imported by the bringup image:
     # that toplevel is an EROFS layer the whole fleet shares, so it has no per-host
     # identity to advertise a service under — the same reason it no longer joins the
@@ -66,7 +66,7 @@ in
     # wiring.  `serverUrl` only lands when the caller explicitly
     # passed one; otherwise the shared module's default
     # (catalog.headscale.aliasUrl) wins.
-    networking.headscale = {
+    networking.tailnet = {
       enableSSH = headscaleEnableSSH;
     }
     // (lib.optionalAttrs (headscaleServerUrl != null) {

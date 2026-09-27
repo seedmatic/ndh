@@ -138,7 +138,7 @@ let
     ./networking-mammoth-skate.nix
     ./cachix-watch-store.nix
     ./nixos-rebuild-gh.nix
-    ./headscale.nix
+    ./tailnet-client.nix
     ./headscale-daemon.nix
     ./headscale-client-kind.nix
     ./nix-ld.nix

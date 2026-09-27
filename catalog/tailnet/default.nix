@@ -21,7 +21,7 @@
 #
 #   headscale — the self-hosted control-plane server's NETWORK identity
 #     (listen port, mDNS alias, per-host URLs).  Only relevant when
-#     `ndh.headscaleClient.controller = "headscale"`; the SaaS controller
+#     `ndh.tailnetClient.controller = "headscale"`; the SaaS controller
 #     needs none of it (login.tailscale.com is implicit).  Consumed by
 #     modules/{darwin,nixos}/headscale-daemon.nix and the client wiring's
 #     `--login-server` derivation.

@@ -6,7 +6,7 @@
 {
   config = {
     # Headscale bootstrap daemon RETIRED.  The whole fleet now registers
-    # against Tailscale SaaS (ndh.headscaleClient.controller = "saas"
+    # against Tailscale SaaS (ndh.tailnetClient.controller = "saas"
     # everywhere — nikopol, bioskop, and both NixOS VMs), so bioskop no
     # longer runs the home-Mac bootstrap control-plane (it was a single
     # point of failure behind residential DDNS, and served no client once

@@ -18,10 +18,10 @@
     ./disable-spotlight.nix
     ./disable-google-updaters.nix
     ./disable-unwanted-agents.nix
-    ./headscale.nix
+    ./tailnet-client.nix
     ./headscale-daemon.nix
     ./headscale-client-kind.nix
-    ./headscale-tools.nix
+    ./tailnet-client-tools.nix
     ./ddns.nix
     ./bird-daemon.nix
     ./lan-dns-resolver.nix

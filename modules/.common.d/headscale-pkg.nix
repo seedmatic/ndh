@@ -1,7 +1,7 @@
 # Shared headscale binary pin.
 #
 # Both the `headscale serve` daemon (modules/darwin/headscale-daemon.nix)
-# and the `hs` admin CLI (modules/darwin/headscale-tools.nix) need to
+# and the `hs` admin CLI (modules/darwin/tailnet-client-tools.nix) need to
 # run the same binary.  Stock nixpkgs stable ships 0.27.1 but the
 # pre-auth-key + policy-v2 behaviour we depend on only stabilised in
 # the 0.28.x line, pulled from `nixpkgs-unstable`.  Running a 0.27.1

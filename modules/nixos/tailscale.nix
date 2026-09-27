@@ -8,8 +8,8 @@
   # daemon is enabled, regardless of which controller enrolls the node
   # (SaaS or self-hosted headscale).  Registration itself (auth key,
   # tags, --login-server, autoconnect ordering) lives in
-  # modules/nixos/headscale.nix, which is controller-aware and keys the
-  # per-kind auth slot off `ndh.headscaleClient.controller`.  This module
+  # modules/nixos/tailnet-client.nix, which is controller-aware and keys the
+  # per-kind auth slot off `ndh.tailnetClient.controller`.  This module
   # only hardens the running daemon, so it must NOT duplicate any
   # registration wiring.
   config = lib.mkIf config.services.tailscale.enable {

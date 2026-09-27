@@ -322,7 +322,7 @@ lib.mkIf enabled {
   #
   # The segment aggregate below stays: no host is physically on another's /20, so
   # accepting it displaces nothing.
-  networking.headscale.advertiseRoutes = [
+  networking.tailnet.advertiseRoutes = [
     bm.advertiseCidr
   ];
 
@@ -344,7 +344,7 @@ lib.mkIf enabled {
   # connected one. The Mac accepts routes and kept its local route, but macOS routing is not
   # evidence for Linux. Measure with `tailscale set --accept-routes` + `ip route get` on the
   # roaming host while it sits on that LAN before trusting this off-site.
-  networking.headscale.acceptRoutes = true;
+  networking.tailnet.acceptRoutes = true;
 
   # This host is a subnet router for its fabric-br /21 (advertised into the tailnet):
   # forward between fabric-br and the tailnet, and clamp forwarded TCP MSS to the

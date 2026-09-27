@@ -26,7 +26,7 @@
 with lib;
 
 let
-  cfg = config.networking.headscale;
+  cfg = config.networking.tailnet;
   tailnet = config.tailnet;
   ndhContext = ndh.context;
   nixBashTrampoline = "${ndhContext.nixBashTrampoline}";
@@ -84,7 +84,7 @@ let
   };
 in
 {
-  options.networking.headscale = {
+  options.networking.tailnet = {
     enable = mkOption {
       type = types.bool;
       default = false;

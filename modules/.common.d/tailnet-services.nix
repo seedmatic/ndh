@@ -22,7 +22,7 @@
   ...
 }:
 let
-  cfg = config.networking.headscale;
+  cfg = config.networking.tailnet;
 
   allServices = lib.attrByPath [
     "context"
@@ -33,7 +33,7 @@ let
   ] { } ndh;
 
   # A host advertises a service when the catalog names it among the advertisers, under
-  # the SAME name it registers with (`networking.headscale.hostname`, defaulting to
+  # the SAME name it registers with (`networking.tailnet.hostname`, defaulting to
   # `networking.hostName` on both platforms).  Matching on the registration name is not
   # incidental: a device's machine name is fixed at registration, so this is the only
   # identifier that is guaranteed to agree with what the control plane sees.

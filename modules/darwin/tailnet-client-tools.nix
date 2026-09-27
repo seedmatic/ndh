@@ -25,7 +25,7 @@
 }:
 
 let
-  cfg = config.networking.headscale;
+  cfg = config.networking.tailnet;
   tailnet = config.tailnet;
 
   headscaleToolsDir = (worktreePath.of "modules/darwin/headscale-tools");
