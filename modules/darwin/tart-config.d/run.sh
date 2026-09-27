@@ -449,7 +449,17 @@ tart:run-args:host-shares:add() {
 tart:run-args:required-disks:add() {
 	local disk=""
 	for disk in "${required_disks[@]}"; do
-		run_args+=("--disk=${disk}:sync=none,caching=cached")
+		# sync=full, never sync=none: the guest's ZFS derives ALL of its
+		# crash consistency from the flush that closes a transaction group,
+		# and sync=none makes the host discard that flush.  These disks are
+		# one raidz1 vdev set living in a single host filesystem, so they
+		# share one failure domain: a host power cut drops the same txgs on
+		# all three at once, leaving no redundancy to rebuild from.  The
+		# result is a pool whose labels are intact and whose MOS is gone —
+		# FAULTED, and unreachable by either `zpool import -F` or -FX.
+		# caching=cached stays: sync=full honours the flush regardless of
+		# the host page cache, so the read-side win costs nothing.
+		run_args+=("--disk=${disk}:sync=full,caching=cached")
 	done
 	if [[ ${#required_prebuilt_disks[@]} -gt 0 ]]; then
 		for disk in "${required_prebuilt_disks[@]}"; do
