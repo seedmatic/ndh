@@ -19,7 +19,7 @@
 #
 # NOTE: Headscale policy v2 requires usernames with a trailing `@`
 # suffix (e.g., `nxmatic@`) to disambiguate plain usernames from
-# OIDC email identifiers.  See catalog/headscale/acl.hujson.
+# OIDC email identifiers.  See catalog/tailnet/acl.hujson.
 {
   config,
   pkgs,

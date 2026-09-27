@@ -45,7 +45,7 @@ hs::secrets_file() {
 
 # All the kinds the .secrets schema knows about.  Must stay in sync
 # with modules/.common.d/tailnet.nix's headscaleAuthKinds and with
-# catalog/headscale/acl.hujson's tagOwners block.
+# catalog/tailnet/acl.hujson's tagOwners block.
 declare -ga HS_KINDS=(darwin nixos incus rke2)
 
 # ---------------------------------------------------------------------
@@ -78,7 +78,7 @@ hs::headscale() {
 }
 
 # Expected tag pair per kind.  Must stay in sync with
-# catalog/headscale/acl.hujson (the `console` / `headless` vocabulary
+# catalog/tailnet/acl.hujson (the `console` / `headless` vocabulary
 # defined there).
 hs::kind::tags() {
 	local kind="$1"

@@ -1,28 +1,27 @@
-// ⚠️ THIS FILE IS NOT WHAT GETS APPLIED, and it has drifted.  The policy the
-// fleet actually runs is GENERATED — `tailnetAclCanonical` in
+// ⚠️ THIS IS THE HEADSCALE SERVER'S POLICY, and headscale is HIBERNATING — so
+// nothing reads this file today.  It reaches the daemon as
+// `catalog.tailnet.aclPolicyFile` (modules/{nixos,darwin}/headscale-daemon.nix).
+//
+// The live fleet runs on the Tailscale SaaS, whose policy is GENERATED and never
+// passes through here: `tailnetAclCanonical` in
 // modules/.common.d/manage-tailnet.d/default.nix, written to
-// `tailnet-acl-canonical.json` and reconciled into the live tailnet by
-// `manage-tailnet --sync-acl`.  That generated canonical derives its CIDRs from
-// the catalog (each baremetal's advertiseCidr, the home LAN, the vmnet supernet),
-// which this hand-written copy never had; it also lacks the `autogroup:members`
-// rule and the `tag:k8s` rule.  Read it for the VOCABULARY and the RATIONALE
-// below — the two-axis tag design and the SSH `accept`-over-`check` decision,
-// which live nowhere else — and read default.nix for what is in force.
+// `tailnet-acl-canonical.json` and reconciled by `manage-tailnet --sync-acl`.
+// That canonical derives its CIDRs from the catalog (each baremetal's
+// advertiseCidr, the home LAN, the vmnet supernet) and carries rules this file
+// has never had (`autogroup:members`, `tag:k8s`).  So the two are NOT copies of
+// one policy — they are two control planes' policies, and only one is in force.
 //
-// Keeping two copies is the reason they disagree; this one should either be
-// deleted (moving the rationale into default.nix) or generated.  Not yet decided.
+// The header used to claim "declarative source of truth … controller-AGNOSTIC:
+// the same HuJSON file applies to whichever control-plane is live".  That was
+// aspiration, not fact, and it is what made this file read as the applied policy.
+// Whoever wakes headscale must reconcile the two BY HAND, or better, generate
+// this file from the same catalog the canonical comes from.
 //
-// Tailnet ACL policy — declarative source of truth for tailnet access
-// and Tailscale SSH edges.  Controller-AGNOSTIC: the same HuJSON file
-// applies to whichever control-plane is live.
+// Apply (headscale only):
 //
-// Apply with, depending on the controller:
+//     headscale policy set -f /path/to/this/file
 //
-//     headscale : headscale policy set -f /path/to/this/file
-//     SaaS      : POST /api/v2/tailnet/-/acl   (or paste in the admin console)
-//
-// The file is in HuJSON: JSON + comments + trailing commas.  Both
-// Headscale and Tailscale SaaS parse it directly.
+// The file is in HuJSON: JSON + comments + trailing commas.
 //
 // Two orthogonal tag axes — a node normally advertises one from each:
 //
