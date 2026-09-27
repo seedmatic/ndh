@@ -130,10 +130,12 @@ let
       # Measurable now that the cluster has two members and no images: watch where the first image
       # lands, then whether `incus launch --target <itinerant>` fetches it by itself. Settle this by
       # observation rather than leaving an assumption that reads like a conclusion.
-      # `--` before the positional args, and it is load-bearing: without it the cobra parser reads
-      # `-1` as a shorthand FLAG and the command dies with "unknown shorthand flag: '1' in -1".
+      # `key=value`, not `key value`: incus deprecated the two-positional form and warns on every
+      # call ("the <key> <value> syntax is deprecated"), measured 2026-09-27 in this unit's own
+      # journal. `--` stays load-bearing even so, because the VALUE begins with a dash: without it
+      # the cobra parser reads `-1` as a shorthand flag and dies with "unknown shorthand flag".
       echo "incus-cluster: asserting cluster.images_minimal_replica=-1"
-      ${pkgs.incus}/bin/incus config set -- cluster.images_minimal_replica -1
+      ${pkgs.incus}/bin/incus config set -- cluster.images_minimal_replica=-1
 
       # Match the join token's lifetime to how it is actually USED. A join token is minted and
       # consumed within seconds by the operator app, so the 3h default is not a requirement but a
@@ -142,7 +144,7 @@ let
       # `core.remote_token_expiry` already sets for trust tokens; these are DIFFERENT tokens
       # (trust-store entry vs cluster membership), so that setting does not cover this one.
       echo "incus-cluster: asserting cluster.join_token_expiry=${joinTokenExpiry}"
-      ${pkgs.incus}/bin/incus config set cluster.join_token_expiry ${joinTokenExpiry}
+      ${pkgs.incus}/bin/incus config set cluster.join_token_expiry=${joinTokenExpiry}
     '';
   };
 
@@ -223,7 +225,7 @@ let
           | ${pkgs.yq-go}/bin/yq -r '.config."scheduler.instance" // ""')"
         if [ "$scheduler" != "manual" ]; then
           echo "incus-cluster-roles: excluding $member from automatic placement (was: ''${scheduler:-<unset>})"
-          if ! ${pkgs.incus}/bin/incus cluster set "$member" scheduler.instance manual; then
+          if ! ${pkgs.incus}/bin/incus cluster set "$member" scheduler.instance=manual; then
             echo "incus-cluster-roles: FAULT — could not set scheduler.instance=manual on $member." \
                  "An untargeted instance may be placed there AT RANDOM." >&2
             failed=1
