@@ -79,12 +79,11 @@ in
   # Point to the exact nix-darwin-home source used for this activation (store path),
   # so /etc/nix-darwin stays reproducible and does not depend on mutable git state.
   #
-  # ⚠️ THE CONSEQUENCE, which cost an operator a morning on 2026-09-27: because this
-  # pins `self.outPath` — a FROZEN STORE COPY of the tree that was activated — a bare
-  # `darwin-rebuild switch` rebuilds THAT copy and is therefore a NO-OP with respect
-  # to your working tree. Editing a module and re-activating changes nothing, however
-  # many times you repeat it, and the failure is silent: activation reports success
-  # and the generation number advances while the configuration is byte-identical.
+  # ⚠️ THE CONSEQUENCE: because this pins `self.outPath` — a FROZEN STORE COPY of the
+  # tree that was activated — a bare `darwin-rebuild switch` rebuilds THAT copy and is
+  # therefore a NO-OP with respect to your working tree. Editing a module and
+  # re-activating changes nothing, and the failure is silent: activation reports
+  # success and the generation number advances while the configuration is identical.
   #
   # To pick up an edit you must name the tree:
   #
@@ -93,6 +92,12 @@ in
   # which also RE-PINS this wrapper to the new copy, so subsequent bare switches
   # track that one instead. (`flake.nix~local` keeps the previous pin as a rollback
   # breadcrumb; it is GC-able, so do not rely on it.)
+  #
+  # This is NOT, however, an explanation for "my change did not take effect" on its
+  # own — on 2026-09-27 that symptom came from a CORRUPTED STORE PATH instead (see
+  # modules/.common.d/bootstrap-linux-builder.d), where the evaluation was correct and
+  # the bytes on disk were not. Check `nix-store --verify-path` on the file you are
+  # reading before blaming this pin.
   #
   # Use hostAlias if available (e.g., "nikopol"), otherwise fall back to hostName
   environment.etc."nix-darwin/flake.nix".source =

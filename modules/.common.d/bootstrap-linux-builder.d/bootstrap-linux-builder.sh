@@ -33,8 +33,7 @@ teardown() {
   # Restore the KIND, not the bytes. Putting a regular file back where nix-darwin
   # keeps a symlink shadows the declarative wiring: activation then refuses to
   # clobber it (it moves it aside as machines.before-nix-darwin) and `builders`
-  # keeps serving the stale contents. Measured 2026-09-27 — that is how a
-  # `builder@linux-builder` entry outlived its VM and blocked a re-materialisation.
+  # keeps serving the stale contents.
   machines_kind=""
   if sudo test -f "$MACHINES_STATE"; then
     machines_kind="$(sudo cat "$MACHINES_STATE")"
@@ -120,8 +119,16 @@ EOF
       printf 'absent\n' | sudo tee "$MACHINES_STATE" >/dev/null
     fi
   fi
-  # Unlink first: writing THROUGH the managed symlink would target a read-only
-  # store path.
+  # Unlink first — this is the load-bearing line. $MACHINES is a chain
+  # (/etc/nix/machines -> /etc/static/nix/machines -> /nix/store/…-etc-machines)
+  # and `tee` FOLLOWS it, so without this the write lands INSIDE THE STORE. It did:
+  # measured 2026-09-27, `nix-store --verify-path` reported
+  # `…-etc-machines was modified! expected sha256:0v0a9hvj… got sha256:03670l2b…`.
+  # Nix never rebuilds a path that already exists, so every generation referencing
+  # it served the corrupt bytes — the configuration, the evaluation and the
+  # activation were all correct and no number of switches could fix it. The store is
+  # writable APFS here and DEDUPLICATED (/nix/store/.links), so the write can reach
+  # every other path sharing that content.
   sudo rm -f "$MACHINES"
   sudo tee "$MACHINES" >/dev/null <<EOF
 ssh-ng://builder@linux-builder aarch64-linux /etc/nix/builder_ed25519 8 1 big-parallel,kvm,nixos-test - -
