@@ -765,6 +765,13 @@
       # Common addressing tokens both install.sh and uninstall.sh take from the
       # catalog — single-sourced so the teardown undoes exactly what install set.
       baremetalLinkVars = bm: {
+        # The tailnet's MagicDNS zone, unqualified.  A FOREIGN vz-host can never join the
+        # tailnet, so it gets a SECOND scoped resolver for this zone pointing at the segment's
+        # dnsmasq, which forwards it to MagicDNS (modules/nixos/baremetal-segment.nix).  Without
+        # it that seat can reach a Tailscale Service only by its virtual IP.  Shared by install
+        # and uninstall so the teardown removes the same file the install wrote.
+        tailnetZone = nixpkgs.lib.removePrefix "." catalogData.netplan.tailnet.domain;
+
         # The adapter to alias is the one the vz guest is BRIDGED onto — that is what puts
         # the /30's two ends (this alias, the guest's lan-br) on a shared L2.  So it is read
         # from the same declaration Tart's bridge mode uses, `hardware.vmBridgeService`,

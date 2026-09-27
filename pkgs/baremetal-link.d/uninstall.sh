@@ -28,6 +28,7 @@ link_routes="@linkRoutes@"
 vz_host_kind="@vzHostKind@"
 via="@hostAddress@"
 domain="@domain@"
+tailnet_zone="@tailnetZone@"
 label="@label@"
 plist="@plist@"
 conf_dir="@confDir@"
@@ -53,6 +54,9 @@ iface="$(/usr/sbin/networksetup -listnetworkserviceorder \
 # modules/darwin/baremetal-resolvers.nix (see install.sh).
 if [[ "$vz_host_kind" == "foreign" ]]; then
   rm -f "/etc/resolver/${domain}"
+  # The tailnet-zone resolver is ours on this kind of host too — install.sh writes both, so a
+  # teardown that removed only one would leave a dangling nameserver for every ts.net name.
+  rm -f "/etc/resolver/${tailnet_zone}"
   dscacheutil -flushcache 2>/dev/null || true
   killall -HUP mDNSResponder 2>/dev/null || true
 fi

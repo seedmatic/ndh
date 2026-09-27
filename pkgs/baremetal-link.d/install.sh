@@ -45,6 +45,7 @@ vz_host_kind="@vzHostKind@"
 via="@hostAddress@"
 domain="@domain@"
 net_gateway="@netGateway@"
+tailnet_zone="@tailnetZone@"
 label="@label@"
 plist="@plist@"
 conf_dir="@confDir@"
@@ -219,6 +220,23 @@ nameserver ${net_gateway}
 RESOLVER
   chown root:wheel "/etc/resolver/${domain}"
   chmod 0644 "/etc/resolver/${domain}"
+
+  # Second scoped resolver: the TAILNET zone, so this seat can dial a Tailscale SERVICE by
+  # NAME.  It can never be a tailnet member — no VPN binaries on a corp-managed Mac — so it
+  # has no MagicDNS of its own, and without this it must type the service's virtual IP.  The
+  # same segment dnsmasq answers, because it forwards this zone to MagicDNS; the query gets
+  # there for the same reason the .${domain} one does, over the route the alias just
+  # installed.  Scoped rather than global for the same reason as above: a public NXDOMAIN
+  # for a ts.net name would otherwise be taken as definitive.
+  : "[baremetal-link] scoping resolver: .${tailnet_zone} -> ${net_gateway}"
+  cat >"/etc/resolver/${tailnet_zone}" <<RESOLVER
+# Tailscale MagicDNS (machines + Services) for a seat that is not a tailnet member.
+# Resolves via the segment's dnsmasq, which forwards this zone to 100.100.100.100.
+nameserver ${net_gateway}
+RESOLVER
+  chown root:wheel "/etc/resolver/${tailnet_zone}"
+  chmod 0644 "/etc/resolver/${tailnet_zone}"
+
   dscacheutil -flushcache 2>/dev/null || true
   killall -HUP mDNSResponder 2>/dev/null || true
 else

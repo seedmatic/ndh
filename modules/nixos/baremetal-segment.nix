@@ -42,6 +42,12 @@ let
   netPrefix = lib.last (lib.splitString "/" bm.netCidr);
   linkPrefix = lib.last (lib.splitString "/" bm.linkCidr);
 
+  # The tailnet's MagicDNS zone, unqualified — the catalog spells it with a leading dot because
+  # it is used as a suffix there, while dnsmasq's `/<domain>/<server>` form wants the bare label.
+  # Strict, no fallback: a literal here would be a second spelling of a catalog value, and
+  # laziness means this is only forced where it is actually used (inside the gated segment).
+  tailnetZone = lib.removePrefix "." netplan.tailnet.domain;
+
   # Every OTHER bare-metal's zone, forwarded to that bare-metal's own dnsmasq (its `netGateway`
   # is the split-DNS target the catalog names it as). The NAMING half of the gateway pair below:
   # `local = /<own domain>/` makes this daemon authoritative for its own zone, so a sibling's
@@ -222,8 +228,19 @@ lib.mkIf enabled {
       # instead of leaking the query upstream to a resolver that cannot know the answer.
       domain = bm.domain;
       local = "/${bm.domain}/";
-      # A sibling bare-metal's zone goes to ITS dnsmasq, never upstream (see peerZoneServers).
-      server = peerZoneServers;
+      # A sibling bare-metal's zone goes to ITS dnsmasq, never upstream (see peerZoneServers),
+      # and the TAILNET zone goes to this node's own MagicDNS proxy.  That last forward is what
+      # lets a client of this zone resolve a Tailscale SERVICE — `<name>.<tailnetDomain>` — which
+      # matters for the one client that can never be a tailnet member: a FOREIGN vz-host reaches
+      # the shared screens and the router UI by service name only if this daemon can answer for
+      # them (its scoped resolver on the Mac sends the query here).  Verified 2026-09-27 that
+      # 100.100.100.100 answers for service names, not just for machines.
+      #
+      # Unconditional rather than gated on `deliversLink`: a resolver that could answer and does
+      # not is worse than one that cannot, and every client of this zone sits behind a tailnet
+      # member either way.  If tailscaled is down the failure is scoped to this one domain — the
+      # zone itself stays authoritative.
+      server = peerZoneServers ++ [ "/${tailnetZone}/100.100.100.100" ];
       # Register a DHCP client under the hostname IT sends, qualified into the zone — the property
       # Incus spelled `dns.mode = dynamic`, and the reason a tenant's collector/probe appear under
       # their real names rather than under an instance name.
