@@ -192,11 +192,28 @@ let
           value = uniq (map advertiserTag tailnetServices.${n}.advertisers);
         }) serviceNames
       );
-      # Every service here is operator-facing, so one src covers them all.  A service is
-      # named in `dst` WITH its prefix; unlike a subnet route it needs no CIDR, and unlike a
-      # tag it grants no reach to the advertiser's own addresses.
+      # ★ Operator seats that are NOT tailnet members.  A vz-host declared `foreign` is a
+      # corp-managed Mac that cannot join the tailnet (VPN binaries are not allowed on it),
+      # yet it is the operator's primary seat for the shared screens — so it must be able to
+      # REACH a service even though it can never carry a tag.
+      #
+      # Its segment address is the identity, because there is no NAT anywhere: a packet
+      # forwarded by the subnet router keeps `vzHostAddress` as its source, which is not a
+      # tailnet identity, so `src = tag:console` alone drops it.  `src` accepting a bare IP
+      # or CIDR is exactly the vendor's mechanism for traffic originating behind a subnet
+      # router.  Measured 2026-09-27 that only this rule was missing: the corp Mac already
+      # routes `100.64.0.0/10` via its link (baremetal-link), every service VIP falls inside
+      # that /10, and the reply path is live — bioskop holds `172.16.16/20 -> utun0` and
+      # reaches `172.16.24.2` today.
+      offTailnetOperatorSeats = map (h: bm.${h}.vzHostAddress) (
+        builtins.filter (h: (bm.${h}.vzHostKind or "") == "foreign") (builtins.attrNames bm)
+      );
+      # Every service here is operator-facing, so one src list covers them all — including
+      # the bbox, since the seat that needs a screen is the seat that needs the router's UI.
+      # A service is named in `dst` WITH its prefix; unlike a subnet route it needs no CIDR,
+      # and unlike a tag it grants no reach to the advertiser's own addresses.
       serviceGrants = map (n: {
-        src = [ (tg t.role.console) ];
+        src = [ (tg t.role.console) ] ++ offTailnetOperatorSeats;
         dst = [ "svc:${n}" ];
         ip = tailnetServices.${n}.ip;
       }) serviceNames;
