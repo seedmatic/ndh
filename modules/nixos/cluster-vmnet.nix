@@ -169,6 +169,25 @@ lib.mkIf enabled {
     enable-ra = true;
   };
 
+  # Advertise each of these segments into the tailnet, so a cluster's kube-vip VIP and its cilium LB
+  # pool answer from off-host. The advertiser is THIS HOST — the machine that holds the bridge and
+  # forwards between them — not a `Connector` pod inside each cluster, which is what rke2lab used to
+  # render (removed with it). Two reasons the pod was the wrong owner: the route died with the
+  # cluster, precisely when it is wanted (debugging a half-born cluster), and a Connector can only
+  # forward to bridges on its OWN bare-metal, so a cluster on the other one would have been a black
+  # hole behind tailscale's elected primary subnet router. A host device is also PERSISTED, so these
+  # routes no longer churn — nor need re-approval — across a cold start.
+  #
+  # The whole `/21` rather than the VIP `/32` + LB `/26` the Connector listed: those spans live
+  # inside it, and this host can forward to every address in it because it owns the bridge, so the
+  # narrower advertisement claimed less than the truth. Narrowing access belongs to the tailnet ACL,
+  # not to a routing table.
+  #
+  # v4 only, though the segment is dual-stack: approval is keyed on the v4 supernet
+  # (manage-tailnet's `autoApprovers.routes`), so a v6 advertisement would sit pending forever, and
+  # the segment's v6 is a ULA with no off-host consumer today.
+  networking.headscale.advertiseRoutes = map (seg: seg.cidr) segments;
+
   networking.firewall.trustedInterfaces = bridges;
   networking.networkmanager.unmanaged = map (b: "interface-name:${b}") bridges;
 }

@@ -123,18 +123,17 @@ let
       vmnetCidrs = map (s: s.cidr) (
         builtins.filter (s: (s.name or "") == "vmnet") (catalog.netplan.segments or [ ])
       );
+      # ONE approver tag for all three families, because one kind of device advertises all three:
+      # the bare-metal's NixOS host. Its own fabric slice, the home LAN when it is the LAN-fixed
+      # one, and — since the vmnet subnet-router role moved off the operator's `Connector` pod onto
+      # the host that owns the bridges (see modules/nixos/cluster-vmnet.nix) — the cluster segments
+      # too. The vmnet family was mapped to `tag:k8s` for exactly as long as a Connector advertised
+      # it; leaving it there would have left every cluster segment PENDING approval forever.
       routeApprovers = builtins.listToAttrs (
-        (map (cidr: {
+        map (cidr: {
           name = cidr;
           value = [ (tg t.kind.nixos) ];
-        }) (baremetalCidrs ++ lanCidrs))
-        # vmnet routes are advertised by the operator's Connector device, which
-        # the operator stamps `tag:k8s` — NOT tag:nixos (the baremetal host subnet
-        # routers).  A different approver tag, so a separate mapping.
-        ++ (map (cidr: {
-          name = cidr;
-          value = [ (tg "k8s") ];
-        }) vmnetCidrs)
+        }) (baremetalCidrs ++ lanCidrs ++ vmnetCidrs)
       );
     in
     {
