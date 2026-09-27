@@ -304,9 +304,28 @@ let
           ++ vmnetCidrs;
           ip = [ "*" ];
         }
+        # Headless nodes reach each other AND each other's segments. The CIDRs are what makes
+        # `acceptRoutes` mean anything host-to-host: a node installs only the routes it is
+        # ACL-permitted to reach, so without them the reciprocal-gateway design is a no-op — the
+        # routes arrive in the netmap and are dropped.
+        #
+        # ⚠️ Measured 2026-09-27, and it cost the milestone: `nikopol-mgmt`'s kube-vip was up and
+        # `bioskop-nixos` had ZERO route to `10.80.16.0/21`, so `ip route get 10.80.23.10` fell
+        # through to the home gateway and CAPI's RemoteConnectionProbe timed out — the cluster read
+        # `Degraded` with every pool `Adopted`. The failure is silent by construction: the route is
+        # advertised, approved, and simply never installed.
+        #
+        # ★ Not the tailscale OPERATOR's job. An in-cluster egress would dial the same subnet-routed
+        # address and hit this same rule, and a pod-advertised route dies with its cluster — which is
+        # why the per-cluster `Connector` was removed earlier the same day. Routing belongs to the
+        # hosts; this rule is what lets them do it.
         {
           src = [ (tg t.role.headless) ];
-          dst = [ (tg t.role.headless) ];
+          dst = [
+            (tg t.role.headless)
+          ]
+          ++ baremetalCidrs
+          ++ vmnetCidrs;
           ip = [ "*" ];
         }
         # The Tailscale operator's own devices inside a cluster (funnel / ingress
@@ -396,13 +415,22 @@ let
         }
         {
           src = tg t.role.headless;
-          accept = [ "${tg t.role.headless}:22" ]; # nix copy, node-to-node ops
-          # Asserted in the direction a mistake would WIDEN: a headless node must not
-          # reach an operator console.  The segment probes are denied today only because
-          # the `headless` rule's `dst` omits those CIDRs, which is the known gap that
-          # makes `acceptRoutes` inert host-to-host; closing it moves these very entries
-          # from `deny` to `accept` in the same change, deliberately and visibly.
-          deny = [ "${tg t.role.console}:5900" ] ++ map (ip: "${ip}:22") segmentProbes;
+          # A node must reach its PEER's segments — that is what makes `acceptRoutes` mean
+          # anything host-to-host, and what CAPI's RemoteConnectionProbe rides to reach a
+          # child cluster's apiserver.
+          #
+          # ★ These moved from `deny` to `accept` on 2026-09-27, and the move was FORCED
+          # rather than chosen: widening the grant alone made the control plane reject the
+          # POST with "test(s) failed", because this block still asserted the old posture.
+          # That is the gate working — an intent cannot drift from a rule in silence, and
+          # closing the gap had to be stated here in the same change.
+          accept = [
+            "${tg t.role.headless}:22"
+          ] # nix copy, node-to-node ops
+          ++ map (ip: "${ip}:22") segmentProbes;
+          # Still asserted in the direction a mistake would WIDEN: role segmentation holds,
+          # a headless node has no business on an operator console.
+          deny = [ "${tg t.role.console}:5900" ];
         }
       ];
     };
