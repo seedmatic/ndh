@@ -82,33 +82,42 @@ in
     ./zfs-recovery-chroot.nix
     ./erofs-store-mount.nix
 
-    # Tailnet (headscale client + sops schema).  Joining the fleet
-    # tailnet during bringup lets the operator `tailscale ssh
-    # bioskop-nixos` from any tailnet member while the minimal image
-    # is still up, before the full config takes over.  State lives at
-    # /var/lib/tailscale/ on the persistent ZFS root, so the full
-    # config reuses the same registration on handoff (no double-
-    # register, no re-tag).
+    # NO tailnet client here, deliberately — see `networking.hostName` below.
     #
-    # Scope:
-    #   - tailnet.nix + headscale-client-wiring.nix: the sops schema
-    #     + the `networking.headscale.enable`/`tags`/`serverUrl`
-    #     dispatch.  Importing is the opt-in (matches the full-config
-    #     path via hosts/host-common.nix).
-    #   - headscale.nix (client): the autoconnect unit + the prefixed
-    #     `tailscaled-autoconnect.service` that our preauth-key flow
-    #     relies on.
+    # This image used to join the fleet tailnet so the operator could
+    # `tailscale ssh` into a half-built VM, keeping its state on the
+    # persistent ZFS root so "the full config reuses the same registration
+    # on handoff (no double-register, no re-tag)".  That reuse WAS the bug:
+    # the registration carries the `--hostname` of the generation that made
+    # it, and a device's machine name is fixed at registration — so every
+    # VM in the fleet appeared as `nerd-nixos`, the full config could never
+    # claim its own name, and the operator had to rename by hand in the
+    # admin UI (done for bioskop on 2026-09-27).  Worse, `manage-tailnet
+    # --reclaim-host <host>-nixos` could not match that device, so each
+    # materialisation left a `nerd-nixos` ghost for the next one to drift
+    # behind as `nerd-nixos-1`, `-2`, … — exactly what the reclaim exists
+    # to prevent, just under the other name.
+    #
+    # Dropping the join is what fixes it at the root: the FIRST and ONLY
+    # registration then happens from the per-host generation, under
+    # `vm.guestHostName`.  Nothing is lost — the operator reaches this image
+    # over mDNS (`nerd-nixos.local`, wired inline below) or on the host's
+    # own console, which is the better path anyway: it does not presuppose
+    # that the machine being debugged succeeded in joining a network.  It
+    # also keeps a fleet auth key off an image that has no use for one.
     #
     # mDNS (`MulticastDNS=yes` on systemd-resolved, per-link knob on
     # the DHCP ethernet link) is already wired inline below — so we
     # DON'T import modules/nixos/resolved-lan.nix here; doing so would
     # conflict with the bringup-local `services.resolved.settings.Resolve`.
-    (worktreePath.of "modules/.common.d/tailnet.nix")
-    (worktreePath.of "modules/.common.d/headscale-client-wiring.nix")
-    ./headscale-client-kind.nix
-    ./headscale.nix
   ];
 
+  # GENERIC on purpose, and this is why the tailnet client is not imported above:
+  # `guestHostName` resolves to `nerd-nixos` for EVERY host here (measured — both
+  # `nerd-nixos` and `bioskop-bringup` evaluate to it), because the bringup
+  # toplevel is one of the EROFS layers the whole fleet shares. Baking a per-host
+  # name in would fork a 661 MiB layer per host, so the identity stays generic and
+  # the tailnet registration waits for the generation that knows the real name.
   networking.hostName = guestHostName;
 
   # Bringup profile: only the bringup-scope keys are deployed.
@@ -116,7 +125,7 @@ in
 
   # No /etc/nixos in the minimal image. The operator activates the full
   # configuration remotely from bioskop via
-  # `nixos-rebuild switch --target-host root@<host>-nixos.local`, which ships
+  # `nixos-rebuild switch --target-host root@nerd-nixos.local`, which ships
   # the prebuilt toplevel over `nix copy` — no guest-side flake evaluation is
   # needed. Once the full runtime is active, modules/nixos/etc-nixos-flake.nix
   # materializes /etc/nixos/flake.nix as a git+file:// forwarding wrapper for
