@@ -68,13 +68,15 @@ but not deployed, and its policy file `catalog/tailnet/acl.hujson` is NOT what t
 the applied policy is generated (`tailnetAclCanonical` in
 `modules/.common.d/manage-tailnet.d/default.nix`).
 
-All three control-plane operations are now *declarative*, and no longer "performed at runtime in
+All four control-plane operations are now *declarative*, and no longer "performed at runtime in
 the admin console":
 
 * *advertising* — `networking.headscale.advertiseRoutes`, derived from the catalog
   (`baremetal-segment.nix` for the `/20`, `cluster-vmnet.nix` for each `vmnet` `/21`);
 * *approving* — `autoApprovers.routes` in the generated policy, keyed on `tag:nixos`, pushed by
   `manage-tailnet --sync-acl`;
+* *authorising* — the policy's `acls` block, generated from the same catalog. Migrating it to
+  `grants` is DECIDED but not implemented — see <<authorisation>>;
 * *split-DNS* — `manage-tailnet --sync-dns`, which PATCHes only the zones this catalog declares.
   That was the last tailnet fact outside git, and its absence is what let the map keep pointing at a
   retired resolver through the 2026-09-23 fabric renumbering.
@@ -455,17 +457,161 @@ file (the retired resolver), or hard-code a `HostName`.
   `100.64.0.0/10 via 172.16.24.1` at load and on every Wi-Fi re-association. No nix runtime on the corp Mac; every
   address derives from `netplan.baremetal.nikopol` — never hand-typed.
 
-=== Runtime, on the Tailscale SaaS controller (today)
+=== Reconciled onto the Tailscale SaaS controller
 
-. On `nikopol-nixos`: `tailscale up --advertise-routes=172.16.16.0/20` (+ `--accept-routes`
-  on consumers).
-. In the Tailscale admin console: *approve* the `172.16.16.0/20` subnet route.
-. In the Tailscale admin console → DNS: add a *split-DNS* nameserver for domain `nikopol`
-  → `172.16.16.1`.
+Not a console step among them any more — each is generated from the catalog and pushed:
 
-NOTE: when Headscale becomes the live controller, steps 1–3 move into the Headscale daemon
-`dns.nameservers.split` + the client `--advertise-routes` (declarative), driven from the
-same catalog values.
+. *advertise* — `networking.headscale.advertiseRoutes` carries `172.16.16.0/20` on
+  `nikopol-nixos`; consumers set `acceptRoutes`. Neither is a `tailscale up` flag.
+. *approve* — `autoApprovers.routes` maps the `/20` to `tag:nixos`, so the route is approved as
+  soon as it is advertised. Pushed by `manage-tailnet --sync-acl --apply`.
+. *split-DNS* — `manage-tailnet --sync-dns --apply` PATCHes `nikopol` → `172.16.16.1`.
+
+⚠️ The approver must follow the *advertiser*: an `autoApprovers.routes` entry left keyed on the
+tag of a retired announcer leaves the route PENDING for ever, silently. That is exactly what the
+`vmnet` family did while it was still mapped to `tag:k8s` after the announcing `Connector` pod was
+removed on 2026-09-27.
+
+NOTE: Headscale is HIBERNATING, not next in line. Were it revived, these same catalog values would
+drive its daemon's `dns.nameservers.split` + the client `--advertise-routes`. Its policy file
+`catalog/tailnet/acl.hujson` is a SEPARATE artefact from the generated SaaS policy and does not
+track it — do not read one for the other.
+
+[[authorisation]]
+== Authorisation model, and reaching a screen from off-site
+
+Decided 2026-09-27, *not yet implemented*. Recorded here because the reasoning is what dates, not
+the syntax.
+
+=== `acls` → `grants`: the reason to stay on the legacy block has expired
+
+The generated policy has always used the legacy `acls` block, and the rationale was explicit in
+`manage-tailnet.d/default.nix`: *"so the same tag vocabulary stays usable by the headscale
+controller too"*. Headscale does not understand `grants`. With Headscale hibernating and its policy
+now known to be a separate artefact that nothing syncs, that coupling is gone — so `grants` is
+available.
+
+Two things this does NOT buy, stated so nobody re-derives them:
+
+* It is *not* a prerequisite for Tailscale Services. A `svc:` destination is accepted in *both*
+  syntaxes; the vendor documents the legacy form too (`{"src": …, "dst": ["svc:web-server"],
+  "ip": ["443"]}`).
+* It does *not* make advertising the home LAN safe. Grants' `via` *chooses between* routers; it
+  does not withhold a prefix from a peer. The 2026-09-27 LAN outage is not addressed by it.
+
+⚠️ *The migration trap is in the reconciler, not the policy.* `sync_acl` does
+`.acls = canonical.acls` — a REPLACE — and touches only the keys it names, preserving everything
+else. So a canonical `.grants` block would be *silently dropped*, while the superseded `.acls`
+stayed live; and since the effective policy is the permissive union of the two, the old block would
+keep granting. The migration is therefore: write `.grants`, and `del(.acls)` in the *same* change.
+Anything less is inoperative and more permissive than it looks.
+
+⚠️ *Open defect, one line.* The segment CIDRs sit in the `dst` of the `console` rule only; the
+`headless` rule's `dst` is just `tag:headless:*`. A node installs only the routes it is
+ACL-permitted to reach, so `acceptRoutes = true` on the hosts (added the same day) is INERT for
+host-to-host traffic — neither NixOS host may reach the other's segments, nor a `console` host at
+all. Fix: add `baremetalCidrs ++ vmnetCidrs` to that rule's `dst`.
+
+★ *Read that defect from the policy, never from a port probe.* A denial by the tailnet packet filter
+is a DROP, so it TIMES OUT. `Connection refused` is an RST, which means the packet ARRIVED and
+nothing was listening — it proves reachability, not denial. Conflating the two is what briefly made
+this defect look confirmed by measurement when the measurement said the opposite.
+
+=== Tailscale Services — the mechanism for a remote screen
+
+The need: reach `bioskop`'s shared screen, and `vzhost.nikopol`'s, while `nikopol` is roaming.
+Every simpler path was eliminated by measurement — `tailscale serve` alone is localhost-only, the
+SaaS forbids arbitrary MagicDNS records, a dnsmasq `cname` refuses an upstream target, and
+`apertures` is AI-agent governance. Services answer because a service has *its own virtual IP and
+name*, several nodes may advertise one (HA), and — the decisive property — those virtual IPs are
+*accepted by clients regardless of `--accept-routes`*. No route is installed, so the class of
+failure that caused the LAN outage becomes structurally impossible.
+
+Three facts confirmed against the *fork we build* (`overlays/tailscale.nix`, clone at
+`7b962478b`, the exact commit of the installed 1.102.3 binary) rather than the documentation:
+
+Name syntax:: `svc:<name>` — `tailscale serve drain --help` states *"`<service>` should be a
+service name (e.g., `svc:my-service`)"*.
+
+Remote target:: *Supported* — and here the documentation is WRONG. The configuration-file page
+describes targets as local; `isRemote()` in `cmd/tailscale/cli/serve_v2.go:1176` exists precisely
+to single out targets that are *not* `localhost`/`127.0.0.1`/`::1`. ⚠️ The platform guard is
+*fatal*, not a warning (`return err`): a **Mac App Store or system-extension** tailscaled refuses a
+remote target outright, as does **Linux without `SO_MARK`**. Our Macs run the standalone build from
+this overlay, so they are eligible — but a switch to the Mac App Store client would break this
+silently at the CLI.
+
+ACL shape:: Three requirements, of which the middle one is the trap. (a) A service host *must* be a
+tagged node — *"You cannot use a device authenticated with a user account as a Service host"*;
+`bioskop`/`nikopol` already carry `tag:console`. (b) `autoApprovers.services` must map the service
+to the advertiser's tag, or it stays PENDING admin approval for ever — the *same* "approver follows
+advertiser" defect as `autoApprovers.routes` above. (c) Access is granted by naming the service in
+`dst`, with its prefix.
+
+[source,json]
+----
+"autoApprovers": { "services": { "svc:rdp-bioskop": ["tag:console"] } },
+"grants": [ { "src": ["autogroup:member"], "dst": ["svc:rdp-bioskop"], "ip": ["5900"] } ]
+----
+
+Delivery is *declarative by file*, which is why this fits the repo: there is no
+`--advertise-services` flag (the pref is set by `serve` itself), but `tailscale serve set-config
+<file>` / `get-config` exist to *"declaratively set configuration for a service host"*:
+
+[source,json]
+----
+{ "version": "0.0.1",
+  "services": { "svc:rdp-bioskop": {
+      "endpoints": { "tcp:5900": "tcp://localhost:5900" },
+      "advertised": true } } }
+----
+
+★ The vocabulary already exists: `catalog.netplan.tailnet.hosts.<host>.serviceNames` today feeds
+Headscale `dns.extra_records` CNAMEs (which is why tailscaled is patched at all — see
+`overlays/tailscale.nix`). Only the *delivery* moves to the Services API. And the catalog already
+settled the split: `vzhost.<host>` is deliberately absent from tailnet DNS, so *`vzhost` stays a
+fabric-zone name and the screen alias belongs to tailnet DNS*. A `rdphost` record was written into
+the fabric zone and reverted — it duplicated a naming already designed, and was only honest for the
+host that never moves.
+
+=== Why Services, even where a direct path already works
+
+Measured 2026-09-27 from `bioskop` toward `nikopol` — both `tag:console`, the mirror of the roaming
+case: `nc -vz 100.100.216.24 5900` *succeeds*. Console-to-console screen access over the tailnet is
+already permitted, and listening. Nothing is urgently broken.
+
+That reading is location-independent, which is the non-obvious part: the ACL is enforced by the
+receiving node's packet filter from its netmap, so sitting on the same home LAN does not flatter the
+result. What *does* require going off-site is latency and local-route behaviour — never the right of
+access.
+
+So Services are not a fix for a broken path. They are the target shape for reasons reachability
+cannot express:
+
+* *One uniform operator view across both bare-metals* — the deciding reason. Today the two screens
+  are reached by two different MECHANISMS: `bioskop` is a MagicDNS host name, while
+  `vzhost.nikopol` is a fabric-zone record behind a subnet route. As Services they become the same
+  kind of name, resolved the same way, wherever the operator stands. The asymmetry being removed is
+  in the mechanism, not merely the spelling.
+* *No route is installed*, so the LAN-displacement failure of 2026-09-27 cannot recur.
+* *The alias follows the service, not the machine*, and several nodes may advertise one.
+* `vzhost.nikopol` has no other honest path: it is not a tailnet member, so it needs an advertiser
+  holding a REMOTE target — and the fabric address is the only stable one, since its LAN address
+  while roaming would designate a stranger's machine in a hotel.
+
+[options="header"]
+|===
+| Service | Advertiser | Endpoint target
+| `svc:rdp-bioskop` | `bioskop` (`tag:console`) | `tcp://localhost:5900`
+| `svc:rdp-nikopol` | `nikopol` (`tag:console`) | `tcp://localhost:5900`
+| `svc:rdp-vzhost-nikopol` | `nikopol-nixos` (`tag:headless`) | `tcp://vzhost.nikopol:5900` — REMOTE
+|===
+
+`vzhost.bioskop` needs no row: it *is* `bioskop`, the same machine at its fabric address, so its
+screen is the first row's local target. `vzhost.nikopol` is a distinct corp Mac that never joins the
+tailnet. That is precisely the asymmetry the Services layer hides from the operator — and the reason
+the third row is the one that depends on remote-target support, hence on this fleet keeping the
+standalone macOS/Linux clients rather than the App Store one.
 
 == Troubleshooting
 

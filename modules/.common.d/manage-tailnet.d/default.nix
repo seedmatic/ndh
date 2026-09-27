@@ -87,10 +87,17 @@ let
   # OAuth-client tag ownership follows the Tailscale-recommended pattern
   # (kb/1215/oauth-clients): a dedicated owner tag — assigned to the
   # rotation OAuth client in the console — owns the per-kind tags, so the
-  # client may mint keys carrying them.  We keep the legacy `acls` block
-  # (not `grants`) so the same tag vocabulary stays usable by the
-  # headscale controller too; `ssh` uses `accept` per the single-operator
-  # rationale in catalog/tailnet/acl.hujson.
+  # client may mint keys carrying them.  The legacy `acls` block is still
+  # what we emit, but its REASON HAS EXPIRED: it was kept so this tag
+  # vocabulary stayed usable by the headscale controller, which does not
+  # understand `grants` — and headscale is hibernating, its policy file a
+  # separate artefact nothing syncs.  Migrating is decided, not done (see
+  # docs/network-topology-c4.adoc#authorisation): it must `del(.acls)` in
+  # sync_acl in the SAME change, because the effective policy is the
+  # permissive UNION of both blocks — a canonical `.grants` alone would be
+  # dropped by the reconciler while the superseded `acls` kept granting.
+  # `ssh` uses `accept` per the single-operator rationale in
+  # catalog/tailnet/acl.hujson.
   tailnetAclCanonical =
     let
       t = catalog.tailnet.tags;
