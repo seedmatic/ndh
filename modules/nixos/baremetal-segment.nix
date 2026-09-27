@@ -282,16 +282,32 @@ lib.mkIf enabled {
   # declarative once Headscale is the live control-plane.  Dormant if the headscale
   # client is disabled on this host.
   #
-  # A LAN-fixed baremetal (the always-on Mac Mini, `lanAttachment = "fixed"`) is
-  # additionally the subnet router for the whole home LAN, so peers reach every
-  # device on it (including vzhost.<host> at its LAN address).  A roaming host (corp
-  # MacBook) must NOT advertise it — the route would follow the laptop off-site.
-  # Only ONE fixed host per LAN may advertise `netplan.lan.cidr` (two routers for
-  # the same CIDR would collide).
+  # ⚠️ The home LAN is deliberately NOT advertised, and re-adding it is a regression.
+  #
+  # A LAN-fixed baremetal used to advertise `netplan.lan.cidr` too, so off-site peers
+  # could reach every device on the home LAN (including vzhost.<host> at its LAN
+  # address). The cost was measured on 2026-09-27 and it is not acceptable: a peer
+  # that ACCEPTS tailnet routes and sits ON that LAN installs `192.168.1.0/24 → utun0`,
+  # which DISPLACES its own connected route. The bioskop Mac lost its en9 route that
+  # way, keeping only the host routes for itself and the box, which produced an
+  # asymmetric path — vzhost→bioskop direct over L2 (TTL 64), bioskop→vzhost out
+  # through the tunnel, through bioskop-nixos and back onto the LAN (TTL 63). Only the
+  # SYN-ACK survived it: Screen Sharing and LAN ssh both hung with no banner, while
+  # `nc` to the same port ON the host answered. Nothing looked broken, which is what
+  # made it expensive.
+  #
+  # An advertiser cannot know whether a given accepter is on the LAN, and
+  # `--accept-routes` is all-or-nothing per client, so there is no scoping that makes
+  # this safe. Off-site access to home-LAN devices has to come from somewhere else.
+  # ★ And macOS did NOT restore the connected route when the advertisement went away —
+  # it took `route -n add -net 192.168.1.0/24 -interface en9` by hand, so a recovery
+  # is not just "stop advertising".
+  #
+  # The segment aggregate below stays: no host is physically on another's /20, so
+  # accepting it displaces nothing.
   networking.headscale.advertiseRoutes = [
     bm.advertiseCidr
-  ]
-  ++ lib.optional ((bm.lanAttachment or "roaming") == "fixed") netplan.lan.cidr;
+  ];
 
   # The SYMMETRIC half of that role: advertise our slice, ACCEPT our peers'. Each bare-metal held
   # only its own /21 and sent a sibling's segment to the home router, which drops it — measured

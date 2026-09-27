@@ -106,8 +106,13 @@ let
       baremetalCidrs = map (h: bm.${h}.advertiseCidr) (
         builtins.filter (h: bm.${h} ? advertiseCidr) (builtins.attrNames bm)
       );
-      # A LAN-fixed baremetal's subnet router also advertises the whole home
-      # LAN (see baremetal-segment.nix); auto-approve it for the same nixos tag.
+      # INERT since 2026-09-27: nothing advertises `netplan.lan.cidr` any more (the ⚠️
+      # note in modules/nixos/baremetal-segment.nix says why — an accepter sitting ON
+      # that LAN had its connected route displaced by the tunnel). Kept rather than
+      # deleted because it is the hook for the scoped design under discussion: grant
+      # the /24 only to peers that are NOT on that LAN. That needs a tag distinguishing
+      # LAN-FIXED from ROAMING hosts, and today tags are minted per KIND and shared by
+      # every host of that kind — so it is a vocabulary change, not a one-liner.
       lanCidrs =
         if builtins.any (h: (bm.${h}.lanAttachment or "roaming") == "fixed") (builtins.attrNames bm) then
           [ catalog.netplan.lan.cidr ]
