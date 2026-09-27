@@ -118,18 +118,19 @@ let
       # there are database members", and the itinerant member deliberately is not one — so under the
       # default it may hold no copy at all.
       #
-      # ⚠️ WHY that matters is an INFERENCE, not a measured fact, and it is the weakest link in this
-      # module. The claim behind `-1` was that a member without the image "has nothing to provision
-      # from". That is unverified: if Incus copies an image to the target member on demand, then not
-      # prefetching costs nothing functionally and `-1` ships gibibytes for no reason.
+      # ★ SETTLED BY OBSERVATION 2026-09-27, which is what the note here used to ask for. On a cold
+      # start with two members and no images, the FIRST image minted on the bootstrap member landed
+      # on BOTH — `images_nodes` joined to `nodes` showed `5bb750573c2d…` against `bioskop-nixos` AND
+      # `nikopol-nixos`, with nothing having asked for it on the itinerant one. So `-1` does prefetch,
+      # and the transfer is paid while that host is home on a good link rather than at provisioning
+      # time over a hotspot or a relay.
       #
-      # So the real question is not correctness but WHEN the transfer happens:
-      #   - `-1` (prefetch): always paid, but while the itinerant host is home on a good link.
-      #   - default (on demand): paid only when provisioning there, possibly over a hotspot or a
-      #     relay — i.e. at the worst moment.
-      # Measurable now that the cluster has two members and no images: watch where the first image
-      # lands, then whether `incus launch --target <itinerant>` fetches it by itself. Settle this by
-      # observation rather than leaving an assumption that reads like a conclusion.
+      # What this does NOT establish: whether the default would have been fine too (i.e. whether
+      # Incus also copies on demand to a target member that lacks the image). That question is now
+      # moot for us — the cost of prefetching is one copy while home, against a provisioning step
+      # that would stall off-site — but it is the reason not to read the above as "the default is
+      # broken". The old claim that a member without the image "has nothing to provision from"
+      # remains unverified, and is no longer load-bearing.
       # `key=value`, not `key value`: incus deprecated the two-positional form and warns on every
       # call ("the <key> <value> syntax is deprecated"), measured 2026-09-27 in this unit's own
       # journal. `--` stays load-bearing even so, because the VALUE begins with a dash: without it
