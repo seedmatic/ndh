@@ -5,18 +5,30 @@
 
 == Overview
 
-Each *baremetal host* owns a per-host *instance segment*: an Incus managed network with
+Each *baremetal host* owns a per-host *instance segment*: a *systemd-networkd* bridge with
 its own dnsmasq, a DNS domain `.<host>`, and a subnet route advertised into the tailnet.
+
+NOTE: It was an *Incus managed network* until 2026-09-25. Clustering forced the change: Incus
+requires that "all members of a cluster must have identical networks defined" and `ipv4.address` may
+not differ per member, while these differ per host BY DESIGN — and worse, a cluster-wide network is
+materialised on EVERY member, so each host would carry a bridge holding the OTHER's `/21` and route
+the cross-host reach into a dead interface. Incus now manages no network at all; instances attach to
+these bridges as an unmanaged `parent`. See `modules/nixos/baremetal-segment.nix` and
+`modules/nixos/cluster-vmnet.nix`.
 This lets any tailnet peer resolve `<instance>.<host>` (split-DNS to that segment's
 dnsmasq) and reach the instances — and, for `nikopol`, the *corporate bare-metal Mac*
 `vzhost.nikopol` that cannot join the tailnet.
 
 The `nikopol` segment concretely:
 
-* `nikopol-nixos` (the Incus host VM, a tailnet member) runs a *managed Incus network*
-  `fabric-br` = `172.16.16.0/21` (dnsmasq, `dns.domain = nikopol`) carrying the netflow
+* `nikopol-nixos` (the Incus host VM, a tailnet member) owns the *networkd bridge*
+  `fabric-br` = `172.16.16.0/21`, whose addressing, DHCP and `.nikopol` zone are served by the
+  host's own `services.dnsmasq` (`local=/nikopol/` makes it authoritative), carrying the netflow
   instances (collector `nnh`, …). Its dnsmasq also holds a static `host-record` for
   `vzhost.nikopol → 172.16.24.2`.
+  `ConfigureWithoutCarrier = true` is load-bearing: a memberless bridge has no carrier and networkd
+  would withhold the address, leaving dnsmasq nothing to bind — which is backwards, since the first
+  instance needs DHCP to come up.
 * A static `/30` point-to-point link (`172.16.24.0/30`) on the shared Wi-Fi L2 joins
   `vzhost.nikopol` (`172.16.24.2`) to `nikopol-nixos` (`172.16.24.1` on `lan-br`); `nikopol-nixos` forwards
   (`ip_forward`) between the `/30` and the `/21`.
@@ -24,6 +36,25 @@ The `nikopol` segment concretely:
   *split-DNS* points the `.nikopol` domain at its dnsmasq (`172.16.16.1`). A tailnet peer
   thus resolves `collector.nikopol` / `vzhost.nikopol` and reaches them — the corp Mac
   included — without the Mac ever being a tailnet member.
+  The aggregate is a `/20` and not the `/21`: it covers BOTH halves of the host's slice, so the
+  `/30` link to the corp Mac rides the same single route. Narrowing it to the `/21` would cut
+  `vzhost.nikopol` off, since the `/30` sits in the high half.
+
+Three further facts, added 2026-09-27:
+
+* *Each host also advertises its `vmnet` cluster segments* (`cluster-vmnet.nix`), so a cluster's
+  kube-vip VIP and cilium LB pool are reachable from the tailnet. The advertiser is the host that
+  OWNS the bridge — not a pod inside the cluster, which is what rke2lab rendered until then and
+  which died with the cluster it was meant to make debuggable.
+* *Each host ACCEPTS its peers' routes* (`acceptRoutes = true`) and forwards the peer's zone to that
+  peer's dnsmasq (`server=/<peer>/<peer netGateway>`), so `nixos.<other-host>` resolves and routes
+  from either side. Routing gives the address, the dnsmasq forward gives the name.
+* *The home LAN is NOT advertised*, deliberately. A LAN-fixed host used to advertise
+  `netplan.lan.cidr` so off-site peers could reach every device at home; a peer that accepts routes
+  AND sits on that LAN then installs `192.168.1.0/24 → utun0`, displacing its own connected route.
+  It cost a LAN outage on 2026-09-27 — see the ⚠️ note in `modules/nixos/baremetal-segment.nix`.
+  `--accept-routes` is all-or-nothing per client and grants' `via` only chooses BETWEEN routers, so
+  no scoping makes it safe.
 
 *No NAT anywhere* — source IPs are preserved end-to-end (the point of the netflow
 project). The corp Mac carries a return route to the tailnet range (`100.64.0.0/10 via
@@ -31,13 +62,22 @@ project). The corp Mac carries a return route to the tailnet range (`100.64.0.0/
 
 [IMPORTANT]
 ====
-*Controller: Tailscale SaaS today; Headscale is a future migration.* The fleet's live
-control-plane is *Tailscale SaaS* (the `mammoth-skate` tailnet). Self-hosted Headscale is
-scaffolded in the repo but *not deployed*. Consequently the three control-plane operations
-— advertising `172.16.16.0/20`, approving the subnet route, and the `.nikopol` split-DNS —
-are performed *at runtime in the Tailscale admin/CLI today* (see <<setup>>), and become
-*declarative* (Headscale daemon `dns.nameservers.split` + client `--advertise-routes`)
-once Headscale is the live controller.
+*Controller: Tailscale SaaS; Headscale is HIBERNATING.* The fleet's live control-plane is
+*Tailscale SaaS* (the `mammoth-skate` tailnet). Self-hosted Headscale is scaffolded in the repo
+but not deployed, and its policy file `catalog/tailnet/acl.hujson` is NOT what the fleet runs —
+the applied policy is generated (`tailnetAclCanonical` in
+`modules/.common.d/manage-tailnet.d/default.nix`).
+
+All three control-plane operations are now *declarative*, and no longer "performed at runtime in
+the admin console":
+
+* *advertising* — `networking.headscale.advertiseRoutes`, derived from the catalog
+  (`baremetal-segment.nix` for the `/20`, `cluster-vmnet.nix` for each `vmnet` `/21`);
+* *approving* — `autoApprovers.routes` in the generated policy, keyed on `tag:nixos`, pushed by
+  `manage-tailnet --sync-acl`;
+* *split-DNS* — `manage-tailnet --sync-dns`, which PATCHes only the zones this catalog declares.
+  That was the last tailnet fact outside git, and its absence is what let the map keep pointing at a
+  retired resolver through the 2026-09-23 fabric renumbering.
 ====
 
 The corp-Mac side is *not* a nix-darwin configuration (the corp Mac has no darwin config —

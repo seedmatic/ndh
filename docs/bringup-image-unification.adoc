@@ -52,7 +52,7 @@ brief) confirmed the per-host bake is largely vestigial:
 | `runtimeSystemPath` | string-context-stripped reference for cloud-init | Already not in image bytes (`builtins.unsafeDiscardStringContext`).  Belongs to the puller (Mac), not the receiver (VM). | None — already non-issue.
 | `remoteStore` (`ssh-ng://nix-store.<host>`) | Set in bringup catalog seed | Used by Mac-side push, not by the VM itself. | None — already non-issue.
 | `inventory.hosts` (ssh enrichment) | Same on both VMs (`[bioskop, nikopol]`) | Authorized_principals seed shared across the fleet. | None.
-| Tailscale state survives handoff | `/var/lib/tailscale/state.db` on persistent ZFS | Headscale keys by node-key, not hostname.  Bringup→full handoff re-registers under new hostname against same node-key. | Low.  ~10s re-registration window during handoff, invisible on a 2-host fleet.
+| Tailscale state survives handoff | ❌ RETIRED 2026-09-27 — the bringup image no longer joins the tailnet at all | The claim below was FALSE: a device's machine name is fixed at REGISTRATION, so the reuse of the node-key is precisely what stopped the full config from ever claiming `<host>-nixos`.  See R3. | Was: "Low, ~10s re-registration window".  Actually: every VM in the fleet appeared as `nerd-nixos` until renamed by hand.
 |===
 
 Citations from the investigation:
@@ -150,7 +150,7 @@ the resolver doesn't go through mDNS.
 | Cloud-init runtime | hostName set to `<host>-nixos` via userdata | (same) | (same)
 | Mac-side push | `nixos-rebuild --target-host root@nixos.<host>.mammoth-skate.test` | bioskop dnsmasq → IP | mammoth-skate.test zone
 | Full system | hostName remains `<host>-nixos` | (same) | (same)
-| Tailscale registration | re-registered with `<host>-nixos` against existing node-key | tailnet IP | headscale
+| Tailscale registration | ONLY in the full system, as `<host>-nixos` (a FIRST registration — the bringup image does not join since 2026-09-27) | tailnet IP | Tailscale SaaS
 |===
 
 == Risks and mitigations
@@ -184,8 +184,32 @@ Bringup VM registers with hostname `nerd-nixos`.  Full config
 re-registers with hostname `<host>-nixos`.  Headscale shows the
 re-registration as a hostname change on the same node-key — clean.
 
-**Mitigation**: none needed.  `tailscale up --hostname=` accepts
-re-registration with a different name.
+**This was wrong, and "none needed" was the costly part.**  A device's
+MACHINE NAME is fixed at REGISTRATION; a later `tailscale up --hostname=`
+does not rename it.  Because the tailscale state lives on the persistent
+ZFS root, the full config reused that registration — so it could never
+claim its own name.  Measured 2026-09-27: every VM in the fleet appeared
+as `nerd-nixos`, the operator had to rename bioskop's device by hand in
+the admin console, and `manage-tailnet --reclaim-host <host>-nixos` could
+not match the device either — the reclaim compares the client-reported
+`.hostname`, which a console rename does NOT change.  So each
+materialisation left a ghost for the next to drift behind as
+`nerd-nixos-1`, `-2`, … , which is the very drift the reclaim exists to
+prevent.
+
+The bringup toplevel is also one of the EROFS layers the whole fleet
+SHARES — `nerd-nixos`, `bioskop-bringup` and `nikopol-bringup` all
+evaluate to the same derivation, with `hostName = nerd-nixos` — so baking
+the real name in was not an option either: it would fork a 661 MiB layer
+per host.
+
+**Actual mitigation** (ndh `f4d39c4d`): the bringup image does not join
+the tailnet at all.  The first and only registration then happens from
+the per-host generation, under `vm.guestHostName`.  Nothing is lost — the
+operator reaches the bringup image over mDNS (`nerd-nixos.local`) or on
+the host's own console, which is the better path anyway since it does not
+presuppose that the machine being debugged joined a network.  It also
+keeps a fleet auth key off an image that has no use for one.
 
 === R4. Flake output rename
 
