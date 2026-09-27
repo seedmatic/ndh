@@ -68,15 +68,18 @@ but not deployed, and its policy file `catalog/tailnet/acl.hujson` is NOT what t
 the applied policy is generated (`tailnetAclCanonical` in
 `modules/.common.d/manage-tailnet.d/default.nix`).
 
-All four control-plane operations are now *declarative*, and no longer "performed at runtime in
+All five control-plane operations are now *declarative*, and no longer "performed at runtime in
 the admin console":
 
 * *advertising* — `networking.headscale.advertiseRoutes`, derived from the catalog
   (`baremetal-segment.nix` for the `/20`, `cluster-vmnet.nix` for each `vmnet` `/21`);
 * *approving* — `autoApprovers.routes` in the generated policy, keyed on `tag:nixos`, pushed by
   `manage-tailnet --sync-acl`;
-* *authorising* — the policy's `acls` block, generated from the same catalog. Migrating it to
-  `grants` is DECIDED but not implemented — see <<authorisation>>;
+* *authorising* — the policy's `grants` block, generated from the same catalog (it was `acls`
+  until 2026-09-27 — see <<authorisation>>);
+* *defining services* — `manage-tailnet --sync-services`, from
+  `catalog.netplan.tailnet.services`. The vendor documents this one as admin-console-only;
+  that is measurably false, and <<authorisation>> records the probe;
 * *split-DNS* — `manage-tailnet --sync-dns`, which PATCHes only the zones this catalog declares.
   That was the last tailnet fact outside git, and its absence is what let the map keep pointing at a
   retired resolver through the 2026-09-23 fabric renumbering.
@@ -480,8 +483,45 @@ track it — do not read one for the other.
 [[authorisation]]
 == Authorisation model, and reaching a screen from off-site
 
-Decided 2026-09-27, *not yet implemented*. Recorded here because the reasoning is what dates, not
-the syntax.
+Decided AND shipped 2026-09-27, verified live the same evening. Recorded here because the
+reasoning is what dates, not the syntax.
+
+=== Verified live, 2026-09-27 evening
+
+[options="header"]
+|===
+| Service | Virtual IP | MagicDNS name | Type inferred
+| `svc:bbox` | `100.70.201.227` | `bbox.mammoth-skate.ts.net` | `http`
+| `svc:rdp-bioskop` | `100.73.113.146` | `rdp-bioskop.mammoth-skate.ts.net` | `vnc`
+| `svc:rdp-nikopol` | `100.77.231.247` | `rdp-nikopol.mammoth-skate.ts.net` | `vnc`
+| `svc:rdp-vzhost-nikopol` | `100.102.16.100` | `rdp-vzhost-nikopol.mammoth-skate.ts.net` | `vnc`
+|===
+
+`curl -k https://bbox.mammoth-skate.ts.net/api/v1/device` answers *HTTP 200*, and
+`bbox-reconcile` reads `/dhcp/clients` over it — so the `Host:` header doubt is settled: the
+router does not care which name was dialled. `192.168.1.0/24` therefore has no remaining
+reason to be routed, the bbox having been the last thing on that LAN any code needed.
+
+Three traps this cost, all of which look like something else:
+
+Mixed autogroup spellings:: The first `--sync-acl --apply` was REJECTED — _"ACLs contain a mix
+of old-style `autogroup:members` and new-style `autogroup:member`; use one or the other."_
+Consistency is a property of the WHOLE policy, so translating `grants` was not enough: the
+`ssh` block carried the plural, and so did `nodeAttrs`, a field this reconcile PRESERVES
+(Tailscale's own Funnel/Taildrive defaults). ★ A canonical that owns only some fields cannot
+by itself guarantee a whole-file property — the same lesson as the merged `autoApprovers`,
+arriving from the opposite direction.
+
+`--all` before the filename:: `serve set-config` parses flags only up to the first positional
+argument, so `set-config <file> --all` makes `--all` a second positional and fails with
+_"must specify filename"_ — while the CLI's own usage line prints `set-config <file> [--all]`,
+the order that does NOT work. ⚠️ The activation is deliberately non-fatal (it must not fail
+because the daemon is logged out), which means a wrong invocation is indistinguishable from a
+logged-out daemon: bioskop advertised NOTHING while all four services existed.
+
+`addrs` on update:: Tailscale auto-allocates the address pair on create and REJECTS a later
+update that omits it, so `--sync-services` fetches the live object first and merges ours on
+top. Writing the catalog's object verbatim would have worked exactly once.
 
 === `acls` → `grants`: the reason to stay on the legacy block has expired
 
