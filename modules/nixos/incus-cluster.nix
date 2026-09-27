@@ -118,34 +118,31 @@ let
       # there are database members", and the itinerant member deliberately is not one — so under the
       # default it may hold no copy at all.
       #
-      # ⚠️ STILL OPEN, and a WRONG answer was committed here first — the mistake is worth keeping
-      # because it is the one this note warned against. On the 2026-09-27 cold start the assignment
-      # table said both members had the image: `images_nodes` joined to `nodes` showed
-      # `5bb750573c2d…` against bioskop-nixos AND nikopol-nixos. That was read as "prefetch works".
-      # It is not what that table means: `images_nodes` records which members a copy is ASSIGNED to,
-      # not that the bytes arrived. The disk disagreed — `tank/nerd/incus/images/5bb750573c2d…` exists
-      # on bioskop-nixos and the itinerant member's `images` dataset is EMPTY.
+      # ★ SETTLED 2026-09-27: `-1` DOES prefetch, the itinerant member included. `images_nodes`
+      # joined to `nodes` said so all along, and it was right.
       #
-      # ★ So the discriminator is the STORAGE, never the database: for a zfs-backed pool an image is
-      # a dataset under `<pool>/incus/images/<fingerprint>`, and `/var/lib/incus/images/` is empty on
-      # both members (optimized storage keeps no tarball). Check with `zfs list`, per member.
+      # ⚠️⚠️ WHERE an image lives, because looking in the wrong place cost three reversals in one
+      # evening. The bytes are FILES under `/var/lib/incus/images/<fingerprint>`, readable by ROOT
+      # ONLY. A `<pool>/incus/images/<fingerprint>` dataset is something else entirely — the UNPACKED
+      # volume, created on a member when an instance is first built there — so it exists on the
+      # member that grew a node and not on one that has not, whatever the image replication did. It
+      # is not an indicator of image presence and must never be read as one.
       #
-      # Looked again 20 minutes later, both members up and idle: still ZERO image datasets on the
-      # itinerant one. So "merely asynchronous" is not supported either, and the best-founded reading
-      # is that `-1` DOES NOT COVER A LOCALLY IMPORTED IMAGE: ours carries `auto_update: false`
-      # (there is no upstream to update from — we built and imported it), `public: false`, and the
-      # task that honours `images.minimal_replica` belongs to that same sync machinery. The
-      # `images_nodes` row is written at import; nothing then moves the bytes.
+      # ★ And the mechanical cause of the wrong readings: `ls` on that root-only directory was run
+      # with `2>/dev/null`, which swallowed "Permission denied" and returned EMPTY — indistinguishable
+      # from absent. The shape to distrust is any check whose failure mode is "less" rather than "I
+      # cannot"; suppressing stderr manufactures exactly that.
       #
-      # ⚠️ That is a DEDUCTION from three facts, not a read of incus' source. What would settle it is
-      # the first provision targeting the itinerant member: incus copies an image to a member that
-      # lacks it as part of the launch, so the transfer simply happens THEN.
+      # So the ordering claim this setting exists for holds: the copy is paid while the itinerant host
+      # is home on a good link, not at provisioning time. Availability was never at stake either way
+      # (it reaches the leader over the tailnet from any hotspot) — only ~633 MiB, once per image
+      # version, the image changing only with flake.lock / flake.nix / nixos/.
       #
-      # Which makes this setting close to INERT for our images, and the honest consequence is an
-      # operating habit rather than a knob: bump the node image while the itinerant host is home, so
-      # the one ~633 MiB copy rides the home link. Availability is never the issue — that host reaches
-      # the leader through the tailnet from any hotspot — only the metered cost, once per image
-      # version (the image changes only with flake.lock / flake.nix / nixos/, its source digest).
+      # ⚠️ Still unobserved, and not a gap in the setting: the hourly leader-only
+      # `autoSyncImagesTask` logs "Synchronizing images across the cluster" at INFO, and incusd emits
+      # nothing below WARNING by default, so its ticks are invisible here. Seeing them needs
+      # `--verbose` on the leader, which no `virtualisation.incus` option exposes — an ExecStart
+      # override.
       # `key=value`, not `key value`: incus deprecated the two-positional form and warns on every
       # call ("the <key> <value> syntax is deprecated"), measured 2026-09-27 in this unit's own
       # journal. `--` stays load-bearing even so, because the VALUE begins with a dash: without it
