@@ -81,6 +81,12 @@ in
     # service this node hosts, so a service REMOVED from the catalog is withdrawn by the
     # next activation instead of lingering.  The document is therefore rendered and
     # applied even when empty — an empty `services` map is how a host stops advertising.
-    applyCommand = "${lib.getExe' pkgs.tailscale "tailscale"} serve set-config ${configFile} --all";
+    # ⚠️ `--all` MUST precede the filename.  The CLI parses flags only up to the first
+    # positional argument, so `set-config <file> --all` makes `--all` a second positional
+    # and fails with the misleading "must specify filename" — while the usage line prints
+    # `set-config <file> [--all]`, which is the order that does NOT work.  Measured
+    # 2026-09-27: the activation ran, swallowed that error by design, and bioskop silently
+    # advertised nothing while all four services existed in the tailnet.
+    applyCommand = "${lib.getExe' pkgs.tailscale "tailscale"} serve set-config --all ${configFile}";
   };
 }
