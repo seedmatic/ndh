@@ -36,6 +36,7 @@ readonly GIT="@git@"
 readonly AUTH_KINDS_FILE="@authKinds@"
 export ACL_CANONICAL="@aclCanonical@" # exported so yq's load(strenv(...)) can read it
 export SPLIT_DNS="@splitDns@"          # likewise, for --sync-dns
+export SERVICES_CANONICAL="@servicesCanonical@" # likewise, for --sync-services
 
 readonly API_BASE="https://api.tailscale.com/api/v2"
 readonly TAILNET="-" # "-" = the OAuth identity's default tailnet
@@ -52,6 +53,7 @@ dry_run=1
 do_auth=0
 do_sync_acl=0
 do_sync_dns=0
+do_sync_services=0
 do_retag=0
 do_prune=0
 do_reclaim=0
@@ -122,6 +124,12 @@ Safe by default. Manages the per-kind Tailscale SaaS auth keys + the ACL.
   --sync-dns         Reconcile the tailnet split-DNS map (each per-baremetal zone
                      -> that segment's dnsmasq) from the catalog; shows a diff.
                      PATCHes only with --apply.
+  --sync-services    Reconcile the tailnet's Tailscale SERVICE definitions from
+                     catalog.netplan.tailnet.services.  A service must EXIST before
+                     any node may advertise it, so this runs BEFORE a host applies
+                     its `serve set-config`.  Lists a plan; PUTs/DELETEs only with
+                     --apply.  Prunes only services this tool owns (annotation
+                     io.seedmatic.ndh/managed) — anything else is reported, kept.
   --retag-devices    Reconcile each tailnet device's tags to its kind (from the
                      hostname); lists a plan, applies only with --apply.
   --prune-stale-devices
@@ -355,6 +363,110 @@ sync_dns() {
 		"$API_BASE/tailnet/$TAILNET/dns/split-dns")" ||
 		die "PATCH split-dns rejected: $(printf '%s' "$resp" | $YQ -p json '.message // .' 2>/dev/null || printf '%s' "$resp")"
 	log "split-DNS pushed."
+}
+
+# Reconcile the tailnet's Tailscale SERVICE definitions with @servicesCanonical@.
+#
+# Ordering is a hard dependency, not a preference: a service must EXIST here before any
+# node may advertise it with `serve set-config`, and an advertisement of an undefined (or
+# unapproved) service is INERT — tailscaled returns early with "No approved VIP Services"
+# rather than failing, so the symptom of getting this order wrong is silence.
+#
+# ★ Live object FIRST, ours merged on top.  Tailscale AUTO-ALLOCATES the `addrs` pair when
+# a service is created, and the vendor's own client warns that a later update omitting them
+# ERRORS — so the merge is what carries them forward.  Writing the catalog's object
+# verbatim would work exactly once, then break on every subsequent run.
+#
+# Pruning is scoped by OWNERSHIP (the io.seedmatic.ndh/managed annotation) rather than by
+# "not in the catalog".  The tailscale k8s-operator can create services of its own, and the
+# rule this repo learned the hard way today is that a field nobody governs is state nobody
+# reviews — so we govern what we marked, and report the rest instead of deleting it.
+sync_services() {
+	api -o "$workdir/svc.cur.json" -H 'Accept: application/json' \
+		"$API_BASE/tailnet/$TAILNET/vip-services" >/dev/null || die "GET vip-services failed"
+
+	local count i name want_file cur_file target_file changes=0
+	count="$($YQ -p json 'length' "$SERVICES_CANONICAL")"
+
+	log "=== Tailscale Services reconcile plan ==="
+
+	i=0
+	while [ "$i" -lt "$count" ]; do
+		want_file="$workdir/svc.want.$i.json"
+		I="$i" $YQ -p json -o=json '.[env(I)]' "$SERVICES_CANONICAL" >"$want_file"
+		name="$($YQ -p json '.name' "$want_file")"
+
+		cur_file="$workdir/svc.cur.$i.json"
+		SVC_NAME="$name" $YQ -p json -o=json \
+			'[.vipServices[] | select(.name == strenv(SVC_NAME))] | .[0] // {}' \
+			"$workdir/svc.cur.json" >"$cur_file"
+
+		target_file="$workdir/svc.target.$i.json"
+		WANT="$want_file" $YQ -p json -o=json '. * load(strenv(WANT))' "$cur_file" >"$target_file"
+
+		if [ "$($YQ -p json 'length' "$cur_file")" -eq 0 ]; then
+			log "  CREATE $name  ports=$($YQ -p json -o=json -I0 '.ports' "$want_file")"
+			changes=$((changes + 1))
+		elif ! diff -q \
+			<($YQ -p json -o=json -P 'sort_keys(..)' "$cur_file") \
+			<($YQ -p json -o=json -P 'sort_keys(..)' "$target_file") >/dev/null; then
+			log "  UPDATE $name"
+			diff -u \
+				<($YQ -p json -o=json -P 'sort_keys(..)' "$cur_file") \
+				<($YQ -p json -o=json -P 'sort_keys(..)' "$target_file") || true
+			changes=$((changes + 1))
+		else
+			log "  unchanged $name"
+		fi
+		i=$((i + 1))
+	done
+
+	# Ours-but-gone, versus someone else's.  The annotation is the discriminator.
+	local stale foreign
+	stale="$(DESIRED="$SERVICES_CANONICAL" $YQ -p json -o=csv -I0 '
+		[ .vipServices[]
+		  | select(.annotations["io.seedmatic.ndh/managed"] == "true")
+		  | select([.name] - [load(strenv(DESIRED))[].name] | length > 0)
+		  | .name ]' "$workdir/svc.cur.json")" || stale=""
+	foreign="$($YQ -p json -o=csv -I0 '
+		[ .vipServices[]
+		  | select(.annotations["io.seedmatic.ndh/managed"] != "true")
+		  | .name ]' "$workdir/svc.cur.json")" || foreign=""
+	[ -n "$stale" ] && {
+		log "  DELETE (ours, no longer in the catalog): $stale"
+		changes=$((changes + 1))
+	}
+	[ -n "$foreign" ] && log "  KEEP (not ours, left alone): $foreign"
+
+	if [ "$assume_yes" -ne 1 ]; then
+		log "no --apply: $changes change(s) NOT pushed.  Re-run 'manage-tailnet --sync-services --apply'."
+		return 0
+	fi
+
+	i=0
+	while [ "$i" -lt "$count" ]; do
+		name="$($YQ -p json '.name' "$workdir/svc.want.$i.json")"
+		log "PUT $name …"
+		local resp
+		resp="$(api -X PUT -H 'Content-Type: application/json' \
+			--data-binary "@$workdir/svc.target.$i.json" \
+			"$API_BASE/tailnet/$TAILNET/vip-services/$name")" ||
+			die "PUT $name rejected: $(printf '%s' "$resp" | $YQ -p json '.message // .' 2>/dev/null || printf '%s' "$resp")"
+		i=$((i + 1))
+	done
+
+	local old_ifs
+	old_ifs="$IFS"
+	IFS=','
+	for name in $stale; do
+		[ -n "$name" ] || continue
+		log "DELETE $name …"
+		api -X DELETE "$API_BASE/tailnet/$TAILNET/vip-services/$name" >/dev/null ||
+			die "DELETE $name failed"
+	done
+	IFS="$old_ifs"
+
+	log "Tailscale Services reconciled."
 }
 
 # Reconcile each tailnet device's tags to match its kind.  A tagged auth key only
@@ -671,6 +783,7 @@ main() {
 			;;
 		--sync-acl) do_sync_acl=1 ;;
 		--sync-dns) do_sync_dns=1 ;;
+		--sync-services) do_sync_services=1 ;;
 		--retag-devices) do_retag=1 ;;
 		--prune-stale-devices) do_prune=1 ;;
 		--stale-after)
@@ -772,6 +885,7 @@ main() {
 
 	[ "$do_sync_acl" -eq 1 ] && sync_acl
 	[ "$do_sync_dns" -eq 1 ] && sync_dns
+	[ "$do_sync_services" -eq 1 ] && sync_services
 	[ "$do_retag" -eq 1 ] && retag_devices
 	[ "$do_prune" -eq 1 ] && prune_stale_devices
 	[ "$do_reclaim" -eq 1 ] && reclaim_host_names
@@ -787,7 +901,7 @@ main() {
 			log "  sudo nixos-rebuild switch --flake .#nikopol-nixos --refresh"
 			log "  (repeat per host that consumes a rotated kind)"
 		fi
-	elif [ "$dry_run" -eq 1 ] && [ "$do_sync_acl" -eq 0 ] && [ "$do_sync_dns" -eq 0 ] && [ "$do_retag" -eq 0 ] && [ "$do_prune" -eq 0 ] && [ "$do_reclaim" -eq 0 ]; then
+	elif [ "$dry_run" -eq 1 ] && [ "$do_sync_acl" -eq 0 ] && [ "$do_sync_dns" -eq 0 ] && [ "$do_sync_services" -eq 0 ] && [ "$do_retag" -eq 0 ] && [ "$do_prune" -eq 0 ] && [ "$do_reclaim" -eq 0 ]; then
 		rotation_plan
 	fi
 

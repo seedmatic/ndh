@@ -399,6 +399,38 @@ let
   # slices were renumbered on 2026-09-23 those two corrected themselves at the next rebuild while
   # the authoritative one kept pointing at a retired resolver.  A hand-typed copy of a derived fact
   # does not drift slowly; it drifts the moment the fact changes.
+  # Desired Tailscale SERVICE definitions, consumed by `--sync-services`.  A service must
+  # EXIST in the tailnet before any node may advertise it, and the vendor documents that
+  # step as admin-console-only — measured FALSE on 2026-09-27:
+  # `/api/v2/tailnet/-/vip-services` answers 200 and has a per-service path (a bogus path
+  # 404s with a different body).  So service definition stays declarative alongside the
+  # other four control-plane operations instead of becoming the one console step.
+  #
+  # ★ `annotations` marks OWNERSHIP, and that is what makes pruning safe: the reconcile
+  # deletes only services carrying this marker, so anything created by the tailscale
+  # k8s-operator — or by hand — is reported and left alone.  The live list is empty today,
+  # so nothing is at stake yet; the marker is here so it never becomes a question.
+  #
+  # `addrs` is deliberately ABSENT: Tailscale auto-allocates the pair on create, and the
+  # vendor's own client warns that a later update omitting them ERRORS.  Carrying them
+  # forward is the reconcile's job, not the catalog's.
+  tailnetServicesCanonical =
+    let
+      svcs = catalog.netplan.tailnet.services or { };
+    in
+    map (n: {
+      name = "svc:${n}";
+      ports = svcs.${n}.ip;
+      comment = "ndh: catalog.netplan.tailnet.services.${n} — advertised by ${
+        builtins.concatStringsSep ", " svcs.${n}.advertisers
+      }";
+      annotations = {
+        "io.seedmatic.ndh/managed" = "true";
+      };
+    }) (builtins.attrNames svcs);
+  tailnetServicesFile = pkgs.writeText "tailnet-services-canonical.json" (
+    builtins.toJSON tailnetServicesCanonical
+  );
   tailnetSplitDnsFile = pkgs.writeText "tailnet-split-dns.json" (
     builtins.toJSON (
       builtins.listToAttrs (
@@ -443,6 +475,7 @@ ndhStore.installBinScript "manage-tailnet" (
     git = if withCommit then "${pkgs.git}/bin/git" else "";
     authKinds = tailnetAuthKindsFile;
     aclCanonical = tailnetAclCanonicalFile;
+    servicesCanonical = tailnetServicesFile;
     splitDns = tailnetSplitDnsFile;
   }
 )
