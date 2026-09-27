@@ -78,6 +78,22 @@ in
   # Create symlink to host-specific flake for darwin-rebuild without --flake
   # Point to the exact nix-darwin-home source used for this activation (store path),
   # so /etc/nix-darwin stays reproducible and does not depend on mutable git state.
+  #
+  # ⚠️ THE CONSEQUENCE, which cost an operator a morning on 2026-09-27: because this
+  # pins `self.outPath` — a FROZEN STORE COPY of the tree that was activated — a bare
+  # `darwin-rebuild switch` rebuilds THAT copy and is therefore a NO-OP with respect
+  # to your working tree. Editing a module and re-activating changes nothing, however
+  # many times you repeat it, and the failure is silent: activation reports success
+  # and the generation number advances while the configuration is byte-identical.
+  #
+  # To pick up an edit you must name the tree:
+  #
+  #     darwin-rebuild --flake /path/to/ndh#<host> switch
+  #
+  # which also RE-PINS this wrapper to the new copy, so subsequent bare switches
+  # track that one instead. (`flake.nix~local` keeps the previous pin as a rollback
+  # breadcrumb; it is GC-able, so do not rely on it.)
+  #
   # Use hostAlias if available (e.g., "nikopol"), otherwise fall back to hostName
   environment.etc."nix-darwin/flake.nix".source =
     let
