@@ -236,11 +236,18 @@ revoke_key() {
 }
 
 # Reconcile the live tailnet ACL with @aclCanonical@.  Additive + rationalising:
-# prune the superseded tags (operator/service/container) and the obsolete
-# personal ones (work/committed/github — every host is owner-exclusive now),
-# set our tag vocabulary + owners, replace acls/ssh with the role-based
-# canonical, merge our route + exit-node auto-approvers; preserve the rest
-# (k8s tagOwners, nodeAttrs, existing routes).
+# prune the superseded tags (operator/service/container), the obsolete personal
+# ones (work/committed/github — every host is owner-exclusive now) and the two
+# kinds no device ever carried (incus/rke2), set our tag vocabulary + owners,
+# replace acls/ssh with the role-based canonical, merge our route + exit-node
+# auto-approvers; preserve the rest (nodeAttrs, existing routes).
+#
+# `tag:k8s` OWNERSHIP is deliberately preserved, never asserted: it is the
+# Tailscale operator chart's default tag, claimed by the operator's OAuth client.
+# Adding it to our vocabulary would make the canonical tagOwners overwrite that
+# claim — the merge is `live * canonical` — and the operator would stop being
+# able to register any device.  The canonical `acls` names it as a dst instead,
+# which needs no ownership.
 sync_acl() {
 	# -o writes the body to a file (read twice below: reconcile + diff); -w emits
 	# the ETag on stdout (captured) so we need no separate header dump file.
@@ -252,7 +259,8 @@ sync_acl() {
     .tagOwners = (
       ((.tagOwners // {})
         | del(.["tag:operator"]) | del(.["tag:service"]) | del(.["tag:container"])
-        | del(.["tag:work"]) | del(.["tag:committed"]) | del(.["tag:github"]))
+        | del(.["tag:work"]) | del(.["tag:committed"]) | del(.["tag:github"])
+        | del(.["tag:incus"]) | del(.["tag:rke2"]))
       * load(strenv(ACL_CANONICAL)).tagOwners)
     | .acls = load(strenv(ACL_CANONICAL)).acls
     | .ssh  = load(strenv(ACL_CANONICAL)).ssh

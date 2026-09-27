@@ -51,7 +51,7 @@ in
   # Tag vocabulary.  Two orthogonal axes:
   #
   #   role — who drives whom:  tag:console, tag:headless
-  #   kind — what the node is: tag:darwin, tag:nixos, tag:incus, tag:rke2
+  #   kind — what the node is: tag:darwin, tag:nixos
   #
   # A node normally advertises one tag from each axis (e.g. bioskop
   # advertises both `console` and `darwin`).  The ACL file keys broad
@@ -71,11 +71,16 @@ in
       console = "console";
       headless = "headless";
     };
+    # This vocabulary is exactly the set of kinds ndh MINTS AN AUTH KEY FOR (one per entry, paired
+    # with a role tag), and therefore also the set it CLAIMS in `tagOwners`. So a tag registered by
+    # something else must not appear here — see `tag:k8s` in acl.hujson.
+    #
+    # `incus` and `rke2` were removed on 2026-09-27: no device ever carried either. Incus containers
+    # are not tailnet members (only the operator's proxies are), and cluster devices are registered
+    # by the Tailscale operator as `tag:k8s`, a name the chart defaults to and we do not own.
     kind = {
       darwin = "darwin";
       nixos = "nixos";
-      incus = "incus";
-      rke2 = "rke2";
     };
   };
 

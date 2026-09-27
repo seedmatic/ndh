@@ -158,10 +158,14 @@ let
         # the per-baremetal segments (vzhost.<domain> + the Incus instances
         # behind each subnet router) AND the fixed home LAN advertised by a
         # LAN-fixed baremetal AND the cluster vmnet supernet (kube-vip VIPs /
-        # apiservers advertised by the operator Connector).  A tag'd node's
-        # netmap only carries a subnet route it is ACL-permitted to reach, so
-        # without these CIDRs a console host loses the segments/LAN/VIPs it had
-        # as an untagged member (autogroup:members → *:*).
+        # apiservers, advertised since 2026-09-27 by the BARE-METAL that owns
+        # each vmnet bridge — see modules/nixos/cluster-vmnet.nix — not by a
+        # per-cluster operator Connector, which rke2lab no longer renders).
+        # A tag'd node's netmap only carries a subnet route it is ACL-permitted
+        # to reach, so without these CIDRs a console host loses the
+        # segments/LAN/VIPs it had as an untagged member (autogroup:members →
+        # *:*).  The supernet entry is what keeps this independent of which
+        # /21s exist: a new cluster needs no ACL change.
         {
           action = "accept";
           src = [ (tg t.role.console) ];
@@ -175,6 +179,22 @@ let
           action = "accept";
           src = [ (tg t.role.headless) ];
           dst = [ "${tg t.role.headless}:*" ];
+        }
+        # The Tailscale operator's own devices inside a cluster (funnel / ingress
+        # proxies).  They carry `tag:k8s` and NO role-axis tag, so neither rule
+        # above reaches them: measured 2026-09-27, `bioskop-mgmt-flux-webhook` and
+        # its three siblings answer the public internet through Funnel while being
+        # absent from every fleet node's netmap — a posture nobody chose.
+        #
+        # Named as a dst rather than fixed by making the operator stamp a role tag:
+        # `tag:k8s` is the operator CHART's default, owned by ITS OAuth client, and
+        # a dst may reference a tag without owning it.  Claiming it in tagOwners
+        # would take that ownership away and stop the operator registering devices
+        # at all (the reconcile merges `live * canonical`, canonical winning).
+        {
+          action = "accept";
+          src = [ (tg t.role.console) ];
+          dst = [ "tag:k8s:*" ];
         }
       ];
       ssh = [

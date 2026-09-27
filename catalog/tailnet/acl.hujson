@@ -1,3 +1,17 @@
+// ⚠️ THIS FILE IS NOT WHAT GETS APPLIED, and it has drifted.  The policy the
+// fleet actually runs is GENERATED — `tailnetAclCanonical` in
+// modules/.common.d/manage-tailnet.d/default.nix, written to
+// `tailnet-acl-canonical.json` and reconciled into the live tailnet by
+// `manage-tailnet --sync-acl`.  That generated canonical derives its CIDRs from
+// the catalog (each baremetal's advertiseCidr, the home LAN, the vmnet supernet),
+// which this hand-written copy never had; it also lacks the `autogroup:members`
+// rule and the `tag:k8s` rule.  Read it for the VOCABULARY and the RATIONALE
+// below — the two-axis tag design and the SSH `accept`-over-`check` decision,
+// which live nowhere else — and read default.nix for what is in force.
+//
+// Keeping two copies is the reason they disagree; this one should either be
+// deleted (moving the rationale into default.nix) or generated.  Not yet decided.
+//
 // Tailnet ACL policy — declarative source of truth for tailnet access
 // and Tailscale SSH edges.  Controller-AGNOSTIC: the same HuJSON file
 // applies to whichever control-plane is live.
@@ -23,8 +37,20 @@
 //   Kind axis (what the node is):
 //     tag:darwin    — macOS hosts (bioskop, nikopol)
 //     tag:nixos     — NixOS guest VMs (bioskop-nixos, nikopol-nixos)
-//     tag:incus     — Incus containers on a NixOS host
-//     tag:rke2      — RKE2 cluster members
+//
+//   And one tag that is NOT ours:
+//     tag:k8s       — every device the Tailscale operator registers inside a
+//                     cluster (funnel / ingress proxies). It is the operator
+//                     CHART's own `proxyConfig.defaultTags` default, claimed by
+//                     the operator's OAuth client — so it is deliberately absent
+//                     from `tagOwners` below and from catalog/tailnet/tags.kind.
+//                     Claiming it here would hand ownership to our rotation key
+//                     and stop the operator registering anything at all.
+//                     It carries NO role-axis tag, so the two role rules below
+//                     cannot cover it; the third rule names it explicitly.
+//                     (`tag:incus` and `tag:rke2` were removed 2026-09-27 — no
+//                     device ever carried either, and `rke2` was the headscale-era
+//                     name for what the operator calls `k8s`.)
 //
 // Broad policy rules key off the role axis (compact, grep-able).
 // Kind-specific rules (e.g. "only rke2 nodes reach the cluster API
@@ -61,15 +87,20 @@
     "tag:headless": ["group:ndh"],
     "tag:darwin":   ["group:ndh"],
     "tag:nixos":    ["group:ndh"],
-    "tag:incus":    ["group:ndh"],
-    "tag:rke2":     ["group:ndh"],
   },
 
   // Tailnet reachability authored on the role axis.
   //
-  //   console  → console | headless   any port
-  //   headless → headless             any port
-  //   headless → console              implicit deny
+  //   console  → console | headless | k8s   any port
+  //   headless → headless                   any port
+  //   headless → console                    implicit deny
+  //
+  // ⚠️ A tag in `dst` covers only the node's OWN tailnet addresses. A SUBNET
+  // ROUTE needs its CIDR named in `dst` too — "a tag'd node's netmap only carries
+  // a subnet route it is ACL-permitted to reach". That is why the applied policy
+  // carries the per-baremetal /20s, the home LAN /24 and the vmnet /18 beside the
+  // tags. They are absent here because this file predates them and is not the
+  // artifact that gets applied (see the header).
   "acls": [
     {
       "action": "accept",
@@ -80,6 +111,17 @@
       "action": "accept",
       "src":    ["tag:headless"],
       "dst":    ["tag:headless:*"],
+    },
+    // The operator's own devices. They carry `tag:k8s` and NO role-axis tag, so
+    // neither rule above reaches them: today a funnel proxy answers the public
+    // internet through Funnel while being unreachable from this tailnet, which
+    // is not a posture anyone chose. Named explicitly rather than fixed by making
+    // the operator stamp a role tag too — the tag is not ours to shape, and a
+    // `dst` may reference a tag without owning it.
+    {
+      "action": "accept",
+      "src":    ["tag:console"],
+      "dst":    ["tag:k8s:*"],
     },
   ],
 
