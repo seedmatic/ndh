@@ -118,19 +118,22 @@ let
       # there are database members", and the itinerant member deliberately is not one — so under the
       # default it may hold no copy at all.
       #
-      # ★ SETTLED BY OBSERVATION 2026-09-27, which is what the note here used to ask for. On a cold
-      # start with two members and no images, the FIRST image minted on the bootstrap member landed
-      # on BOTH — `images_nodes` joined to `nodes` showed `5bb750573c2d…` against `bioskop-nixos` AND
-      # `nikopol-nixos`, with nothing having asked for it on the itinerant one. So `-1` does prefetch,
-      # and the transfer is paid while that host is home on a good link rather than at provisioning
-      # time over a hotspot or a relay.
+      # ⚠️ STILL OPEN, and a WRONG answer was committed here first — the mistake is worth keeping
+      # because it is the one this note warned against. On the 2026-09-27 cold start the assignment
+      # table said both members had the image: `images_nodes` joined to `nodes` showed
+      # `5bb750573c2d…` against bioskop-nixos AND nikopol-nixos. That was read as "prefetch works".
+      # It is not what that table means: `images_nodes` records which members a copy is ASSIGNED to,
+      # not that the bytes arrived. The disk disagreed — `tank/nerd/incus/images/5bb750573c2d…` exists
+      # on bioskop-nixos and the itinerant member's `images` dataset is EMPTY.
       #
-      # What this does NOT establish: whether the default would have been fine too (i.e. whether
-      # Incus also copies on demand to a target member that lacks the image). That question is now
-      # moot for us — the cost of prefetching is one copy while home, against a provisioning step
-      # that would stall off-site — but it is the reason not to read the above as "the default is
-      # broken". The old claim that a member without the image "has nothing to provision from"
-      # remains unverified, and is no longer load-bearing.
+      # ★ So the discriminator is the STORAGE, never the database: for a zfs-backed pool an image is
+      # a dataset under `<pool>/incus/images/<fingerprint>`, and `/var/lib/incus/images/` is empty on
+      # both members (optimized storage keeps no tarball). Check with `zfs list`, per member.
+      #
+      # What remains unknown: whether the transfer is merely ASYNCHRONOUS (and would arrive), or does
+      # not happen at all. Both readings fit one observation taken minutes after the mint. Settle it
+      # by looking again on a member that has been up and idle for a while, and by whether
+      # provisioning THERE succeeds — which is the only thing that actually matters.
       # `key=value`, not `key value`: incus deprecated the two-positional form and warns on every
       # call ("the <key> <value> syntax is deprecated"), measured 2026-09-27 in this unit's own
       # journal. `--` stays load-bearing even so, because the VALUE begins with a dash: without it
