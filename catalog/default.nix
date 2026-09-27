@@ -133,6 +133,17 @@ in
             ;
         };
 
+      # The residential router's LAN address, bound once: it is BOTH the LAN's default
+      # gateway and the bbox admin endpoint, and it is dialled a third time as the
+      # destination of the `bbox` tailnet Service.  Three spellings of one address is how
+      # a renumbering leaves one of them behind.
+      lanRouterAddress = "192.168.1.254";
+
+      # The tailnet's MagicDNS suffix.  Bound once because a Tailscale SERVICE is reached
+      # at `<name><tailnetDomain>` — so this string is now part of an endpoint a consumer
+      # dials, not just a display detail.
+      tailnetDomain = ".mammoth-skate.ts.net";
+
       baremetal = {
         # bioskop: the vz-host IS this darwin host — the Mac Mini is its own bare-metal, so it
         # already has a darwinConfiguration (unlike nikopol, whose vz-host is the corp Mac
@@ -147,7 +158,7 @@ in
         # the alias is additional.
         bioskop = mkBaremetal {
           host = "bioskop";
-          lanAttachment = "fixed"; # Mac Mini, permanently on the home LAN — its subnet router advertises netplan.lan.cidr
+          lanAttachment = "fixed"; # Mac Mini, permanently on the home LAN — so it can advertise the `bbox` Service
         };
         # nikopol: the vz-host is a CORPORATE Mac that runs neither tailscale nor nix, so the
         # /30 is its ONLY path in and its daemon must be shipped over ssh — both consequences of
@@ -163,7 +174,7 @@ in
           host = "nikopol";
           vzHostLanName = "nikopol-vzhost"; # lan.hosts.nikopol-vzhost — the corp Mac, NOT the `nikopol` VM
           vzHostUser = "stephane.lacoin"; # the corp account; the Mac is not on the fleet's user
-          lanAttachment = "roaming"; # itinerant (runs on the corp MacBook) — must NOT advertise the home LAN
+          lanAttachment = "roaming"; # itinerant (runs on the corp MacBook) — off-LAN as often as on it
         };
       };
     in
@@ -171,7 +182,7 @@ in
       lan = {
         cidr = "192.168.1.0/24";
         domain = ".lan";
-        gateway = "192.168.1.254";
+        gateway = lanRouterAddress;
 
         # LAN-side authorities (routers, APs, anything that owns part of
         # the LAN's behaviour).  Non-secret metadata only; the matching
@@ -184,8 +195,15 @@ in
             #   - DHCP leases + static reservations (see `hosts` below)
             #   - WAN port forwards (see `netplan.wan.portForwards`)
             #   - DDNS publication (see `netplan.wan.ddnsHostname`)
-            address = "192.168.1.254";
-            adminUrl = "https://mabbox.bytel.fr";
+            address = lanRouterAddress;
+            # Reached through the `bbox` tailnet Service (see netplan.tailnet.services),
+            # NOT at `https://mabbox.bytel.fr` over a routed `192.168.1.0/24`.  The
+            # vendor name resolves publicly to this private address, so it only ever
+            # worked from a peer that had the LAN route installed — which is the very
+            # thing that caused the 2026-09-27 outage.  A Service needs no route.
+            # TLS is unverified either way (`bbox-reconcile` dials with `curl -k`), so
+            # the raw TCP passthrough changes nothing but the hostname composed.
+            adminUrl = "https://bbox${tailnetDomain}";
             # API-shape reference: docs/bbox-api.adoc
             kind = "bbox";
           };
@@ -494,7 +512,7 @@ in
 
       tailnet = {
         cidr = "100.64.0.0/10";
-        domain = ".mammoth-skate.ts.net";
+        domain = tailnetDomain;
 
         # Tailnet members and the structured-name service prefixes each
         # exposes.  Consumed by modules/{darwin,nixos}/headscale-daemon.nix
@@ -536,6 +554,84 @@ in
               "rdp"
               "ssh-host"
             ];
+          };
+        };
+
+        # Tailscale SERVICES (GA 2026-01) — a different object from `serviceNames`
+        # above, which are per-host CNAME prefixes for the (hibernating) headscale
+        # resolver.  A Service is tailnet-level: its own virtual IP and name, one or
+        # more ADVERTISERS, and a destination that may be REMOTE to the advertiser.
+        #
+        # Why these and not subnet routes: a service's virtual IP is accepted by every
+        # client REGARDLESS of `--accept-routes`, so nothing installs a route.  That is
+        # what lets the home LAN stop being routed at all — advertising `lan.cidr` cost
+        # an outage on 2026-09-27 by displacing an accepter's own connected route, and
+        # no ACL scoping makes it safe (see modules/nixos/baremetal-segment.nix and
+        # docs/network-topology-c4.adoc#authorisation).
+        #
+        # `endpoints` maps `<proto>:<port>` on the service to the destination the
+        # advertiser dials.  ★ EVERY advertiser of a service must be able to reach that
+        # destination, with no exception: tailscale picks one, so an advertiser that is
+        # merely reachable — rather than able — is a black hole for the clients routed to
+        # it.  That is why each screen is advertised only by the machine it belongs to,
+        # and why `bbox` is restricted to the LAN-FIXED bare-metal.
+        services = {
+          # The residential router's admin API.  This is what replaces routing
+          # `192.168.1.0/24`: the bbox was the ONLY device on that LAN any code needed
+          # (rke2lab's DHCP-reservation contact was delegated here when it switched to
+          # dynamic addresses).  TLS is NOT terminated here — `bbox-reconcile` already
+          # dials with `curl -k`, so a raw TCP passthrough keeps the client unchanged
+          # apart from the hostname it composes.
+          bbox = {
+            # ★ SINGLE OWNER: the host that holds the REAL route to a resource is the one
+            # that serves it.  Derived, not listed — whoever is LAN-FIXED advertises the
+            # bbox, so the reason is stated rather than the name.
+            #
+            # ⚠️ Deliberately NOT the `-nixos` guests, though they hold a home-LAN DHCP
+            # lease and could reach the router today.  An advertiser that is UP but cannot
+            # reach the destination is a BLACK HOLE for whichever clients tailscale routes
+            # to it — the defect removed from the per-cluster `Connector` on 2026-09-27.
+            # And a guest's LAN presence is the fragile half: the lease is served BY the
+            # bbox, so its path depends on the very thing it would front, and the guest is
+            # routinely factory-reset.  `lanAttachment` is a property of the BARE-METAL,
+            # which is the part that is actually permanent.
+            advertisers = builtins.filter (h: baremetal.${h}.lanAttachment == "fixed") (
+              builtins.attrNames baremetal
+            );
+            endpoints = {
+              "tcp:443" = "tcp://${lanRouterAddress}:443";
+            };
+            ip = [ "tcp:443" ];
+          };
+          # One screen per machine, so the operator reaches any of them by the same kind
+          # of name from anywhere.  Today they are reached by two DIFFERENT mechanisms —
+          # a MagicDNS host name for the tailnet members, a fabric-zone record behind a
+          # subnet route for the corp Mac — and that asymmetry is in the mechanism, not
+          # merely the spelling.
+          rdp-bioskop = {
+            advertisers = [ "bioskop" ];
+            endpoints = {
+              "tcp:5900" = "tcp://localhost:5900";
+            };
+            ip = [ "tcp:5900" ];
+          };
+          rdp-nikopol = {
+            advertisers = [ "nikopol" ];
+            endpoints = {
+              "tcp:5900" = "tcp://localhost:5900";
+            };
+            ip = [ "tcp:5900" ];
+          };
+          # The one REMOTE destination: the corp Mac never joins the tailnet (VPN
+          # binaries are not allowed on it), so its screen needs an advertiser that can
+          # reach it.  Its FABRIC address, never its LAN one — nikopol is itinerant, and
+          # off-site `192.168.1.x` would designate a stranger's machine in a hotel.
+          rdp-vzhost-nikopol = {
+            advertisers = [ "nikopol-nixos" ];
+            endpoints = {
+              "tcp:5900" = "tcp://${baremetal.nikopol.vzHostAddress}:5900";
+            };
+            ip = [ "tcp:5900" ];
           };
         };
       };

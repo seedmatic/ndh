@@ -29,6 +29,11 @@ in
     # can import the exact same wiring without pulling the rest of
     # host-common.
     ../modules/.common.d/headscale-client-wiring.nix
+    # Tailscale Services rendering.  Deliberately NOT imported by the bringup image:
+    # that toplevel is an EROFS layer the whole fleet shares, so it has no per-host
+    # identity to advertise a service under — the same reason it no longer joins the
+    # tailnet at all (see docs/bringup-image-unification.adoc, R3).
+    ../modules/.common.d/tailnet-services.nix
   ];
 
   config = {

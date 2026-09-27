@@ -168,6 +168,18 @@ in
 
       system.activationScripts.postActivation.text = mkAfter ''
         ${headscaleActivationScript}
+
+        # Reconcile the Tailscale Services this Mac advertises (its own screen, and the
+        # bbox when it sits on the home LAN).  Non-fatal: an activation must not fail
+        # because the daemon happens to be logged out — that is precisely the state an
+        # operator is about to fix, and failing here would block the fix.
+        if ${pkgs.tailscale}/bin/tailscale status >/dev/null 2>&1; then
+          echo "applying advertised Tailscale Services: ${lib.concatStringsSep " " config.ndh.tailnetServices.names}"
+          ${config.ndh.tailnetServices.applyCommand} || \
+            echo "warning: could not reconcile advertised services" >&2
+        else
+          echo "tailscaled not logged in; leaving advertised services untouched"
+        fi
       '';
     }
 

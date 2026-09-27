@@ -239,14 +239,44 @@ revoke_key() {
 # prune the superseded tags (operator/service/container), the obsolete personal
 # ones (work/committed/github — every host is owner-exclusive now) and the two
 # kinds no device ever carried (incus/rke2), set our tag vocabulary + owners,
-# replace acls/ssh with the role-based canonical, merge our route + exit-node
-# auto-approvers; preserve the rest (nodeAttrs, existing routes).
+# replace grants/ssh/tests/autoApprovers with the role-based canonical; preserve the rest
+# (nodeAttrs).
+#
+# ★ `autoApprovers` is REPLACED, not merged, and that was a defect for as long as it was
+# merged.  An approver is the gate that turns someone's ADVERTISEMENT into an installed
+# route on every accepting peer, so a key nobody governs is reach nobody reviews — and
+# because a merge preserves live keys, dropping a CIDR from the catalog never withdrew
+# it.  Measured 2026-09-27, the live map had accumulated five such orphans: the home LAN
+# `192.168.1.0/24`, the pre-renumbering `172.16.6.0/24` and `172.16.7.0/24`, and two
+# Connector-era `/32`s still approved for `tag:k8s` after that pod was removed.  None of
+# them could ever have left.  Same reasoning as `acls` below: preservation is how
+# withdrawn reach survives its own withdrawal.
+#
+# ★ `acls` is DELETED, not translated in place, and the deletion is load-bearing: the
+# effective policy is the permissive UNION of `acls` and `grants`, so leaving the legacy
+# block behind would keep granting whatever it still named.  That union was not
+# hypothetical — measured 2026-09-27, an ungoverned `grants` block had been live
+# alongside our `acls` all along, frozen on the pre-renumbering `172.16.6/7.0/24`.  This
+# reconcile is what brings it under the catalog; setting one block without deleting the
+# other is how reach survives its own withdrawal.
+#
+# It does NOT withdraw `192.168.1.0/24`: the canonical still grants the home LAN to
+# `tag:console` while a bare-metal declares `lanAttachment = "fixed"`.  That grant is
+# inert rather than wrong — nothing advertises the prefix since the outage, so no route
+# exists to use it — and it is deliberately the hook for the scoped design described in
+# the `lanCidrs` comment of default.nix.
+#
+# ★ `tests` is REPLACED like acls/ssh, and it is the safety gate rather than a
+# nicety: the control plane refuses this POST outright when an assertion fails, so
+# a reach-widening edit cannot land silently.  Keep it replaced, never merged — a
+# stale assertion kept from the live policy would either block a deliberate change
+# or, worse, pass while asserting a shape we no longer intend.
 #
 # `tag:k8s` OWNERSHIP is deliberately preserved, never asserted: it is the
 # Tailscale operator chart's default tag, claimed by the operator's OAuth client.
 # Adding it to our vocabulary would make the canonical tagOwners overwrite that
 # claim — the merge is `live * canonical` — and the operator would stop being
-# able to register any device.  The canonical `acls` names it as a dst instead,
+# able to register any device.  The canonical `grants` names it as a dst instead,
 # which needs no ownership.
 sync_acl() {
 	# -o writes the body to a file (read twice below: reconcile + diff); -w emits
@@ -262,10 +292,11 @@ sync_acl() {
         | del(.["tag:work"]) | del(.["tag:committed"]) | del(.["tag:github"])
         | del(.["tag:incus"]) | del(.["tag:rke2"]))
       * load(strenv(ACL_CANONICAL)).tagOwners)
-    | .acls = load(strenv(ACL_CANONICAL)).acls
+    | .grants = load(strenv(ACL_CANONICAL)).grants
+    | del(.acls)
     | .ssh  = load(strenv(ACL_CANONICAL)).ssh
-    | .autoApprovers.routes = ((.autoApprovers.routes // {}) * load(strenv(ACL_CANONICAL)).autoApprovers.routes)
-    | .autoApprovers.exitNode = (((.autoApprovers.exitNode // []) + load(strenv(ACL_CANONICAL)).autoApprovers.exitNode) | unique)
+    | .tests = load(strenv(ACL_CANONICAL)).tests
+    | .autoApprovers = load(strenv(ACL_CANONICAL)).autoApprovers
   ' "$workdir/acl.cur.json" >"$workdir/acl.target.json" || die "ACL reconcile failed"
 
 	# Review (diff) is the point of the dry-run; on --apply we just push (terse).

@@ -14,10 +14,14 @@
 #                                     the auth-key request bodies + the ACL)
 #   - `catalog.netplan.baremetal`   — subnet-router advertised CIDRs (ACL route
 #                                     auto-approvers)
-#   - `catalog.netplan.lan.cidr`    — the home LAN a LAN-fixed baremetal advertises
+#     (`catalog.netplan.lan.cidr` is NOT an input any more — the home LAN is neither
+#      approved nor granted here; see the ⚠️ note above `routeApprovers`)
 #   - `catalog.netplan.segments`    — cluster segments; the "vmnet" /18 supernet is
-#                                     auto-approved for tag:k8s (operator Connector
-#                                     advertises each cluster's kube-vip VIP in it)
+#                                     auto-approved for tag:nixos, the BARE-METAL that
+#                                     owns each vmnet bridge having replaced the
+#                                     per-cluster operator Connector as its announcer.
+#                                     Each cluster's `*-net` gateway also serves as the
+#                                     in-supernet probe for the policy's `tests`
 #   - `ndhStore.installBinScript`   — the bash-trampoline bin wrapper
 #   - `nixBashTrampoline`           — the shared nix-managed bash + logger + env
 #   - `withCommit`                  — pin git for `--commit`, or leave it out (see below)
@@ -113,18 +117,24 @@ let
       baremetalCidrs = map (h: bm.${h}.advertiseCidr) (
         builtins.filter (h: bm.${h} ? advertiseCidr) (builtins.attrNames bm)
       );
-      # INERT since 2026-09-27: nothing advertises `netplan.lan.cidr` any more (the ⚠️
-      # note in modules/nixos/baremetal-segment.nix says why — an accepter sitting ON
-      # that LAN had its connected route displaced by the tunnel). Kept rather than
-      # deleted because it is the hook for the scoped design under discussion: grant
-      # the /24 only to peers that are NOT on that LAN. That needs a tag distinguishing
-      # LAN-FIXED from ROAMING hosts, and today tags are minted per KIND and shared by
-      # every host of that kind — so it is a vocabulary change, not a one-liner.
-      lanCidrs =
-        if builtins.any (h: (bm.${h}.lanAttachment or "roaming") == "fixed") (builtins.attrNames bm) then
-          [ catalog.netplan.lan.cidr ]
-        else
-          [ ];
+      # ⚠️ `netplan.lan.cidr` is DELIBERATELY ABSENT from both families below, and the
+      # absence must survive refactors.  Advertising the home LAN cost an outage on
+      # 2026-09-27 (see the ⚠️ note in modules/nixos/baremetal-segment.nix: an accepter
+      # sitting ON that LAN has its connected route displaced by the tunnel, leaving an
+      # asymmetric path where only the SYN-ACK survives).  Dropping the advertisement
+      # alone was NOT enough, which is why the CIDR is gone from here too: approval and
+      # permission are the other two conditions, and both were still armed — the /24 was
+      # auto-approved for `tag:nixos`, so ANY re-advertisement, deliberate or regressed,
+      # would have been approved with NO console step and reached by every `tag:console`
+      # peer.  With `acceptRoutes = true` now on both NixOS hosts, the next victim was
+      # nikopol coming home onto that same LAN.
+      #
+      # Restoring off-site reach to the home LAN is not a matter of putting this back: it
+      # needs the prefix withheld from peers that SIT on it, hence a tag distinguishing
+      # LAN-FIXED from ROAMING hosts, where tags are minted per KIND and shared by every
+      # host of that kind.  A vocabulary change — and Tailscale Services reach a screen
+      # without installing any route at all (docs/network-topology-c4.adoc#authorisation).
+      #
       # The cluster vmnet supernet (/18) the tailscale-operator's `controlplane`
       # Connector advertises as a subnet route: every cluster's kube-vip VIP
       # (10.80.<w>.10) and LB span live inside it, so the management cluster's
@@ -135,18 +145,82 @@ let
       vmnetCidrs = map (s: s.cidr) (
         builtins.filter (s: (s.name or "") == "vmnet") (catalog.netplan.segments or [ ])
       );
-      # ONE approver tag for all three families, because one kind of device advertises all three:
-      # the bare-metal's NixOS host. Its own fabric slice, the home LAN when it is the LAN-fixed
-      # one, and — since the vmnet subnet-router role moved off the operator's `Connector` pod onto
-      # the host that owns the bridges (see modules/nixos/cluster-vmnet.nix) — the cluster segments
-      # too. The vmnet family was mapped to `tag:k8s` for exactly as long as a Connector advertised
-      # it; leaving it there would have left every cluster segment PENDING approval forever.
+      # ONE approver tag for both families, because one kind of device advertises both: the
+      # bare-metal's NixOS host — its own fabric slice, and, since the vmnet subnet-router role
+      # moved off the operator's `Connector` pod onto the host that owns the bridges (see
+      # modules/nixos/cluster-vmnet.nix), the cluster segments too. The vmnet family was mapped
+      # to `tag:k8s` for exactly as long as a Connector advertised it; leaving it there would
+      # have left every cluster segment PENDING approval forever.
       routeApprovers = builtins.listToAttrs (
         map (cidr: {
           name = cidr;
           value = [ (tg t.kind.nixos) ];
-        }) (baremetalCidrs ++ lanCidrs ++ vmnetCidrs)
+        }) (baremetalCidrs ++ vmnetCidrs)
       );
+
+      # Tailscale SERVICES (catalog.netplan.tailnet.services) — see that block for why they
+      # replace routing the home LAN.  Two policy facts they need, both derived:
+      tailnetServices = catalog.netplan.tailnet.services or { };
+      serviceNames = builtins.attrNames tailnetServices;
+      uniq =
+        xs:
+        builtins.attrNames (
+          builtins.listToAttrs (
+            map (x: {
+              name = x;
+              value = null;
+            }) xs
+          )
+        );
+      # An advertiser name -> the KIND tag it carries, by the SAME convention
+      # `--retag-devices` applies: `<host>` is the bare Mac (darwin), `<host>-<kind>` is that
+      # kind.  Unknown suffixes fail the evaluation rather than defaulting, since a service
+      # approved for the wrong tag is a service that never leaves PENDING.
+      advertiserTag =
+        name:
+        let
+          m = builtins.match "[^-]+-(.+)" name;
+        in
+        tg (if m == null then t.kind.darwin else t.kind.${builtins.head m});
+      # ★ A service host must be TAGGED, and the service must be auto-approved for the tag
+      # its advertisers carry — otherwise it sits PENDING admin approval for ever.  Exactly
+      # the "approver follows the advertiser" rule the routes above obey; it has already cost
+      # us one silent stall this week, on the vmnet family.
+      serviceApprovers = builtins.listToAttrs (
+        map (n: {
+          name = "svc:${n}";
+          value = uniq (map advertiserTag tailnetServices.${n}.advertisers);
+        }) serviceNames
+      );
+      # Every service here is operator-facing, so one src covers them all.  A service is
+      # named in `dst` WITH its prefix; unlike a subnet route it needs no CIDR, and unlike a
+      # tag it grants no reach to the advertiser's own addresses.
+      serviceGrants = map (n: {
+        src = [ (tg t.role.console) ];
+        dst = [ "svc:${n}" ];
+        ip = tailnetServices.${n}.ip;
+      }) serviceNames;
+      # `tests` wants an `ip:port`, and a service accepts `svc:<name>:<port>` — so the
+      # reachability of every service is assertable, and the control plane refuses a policy
+      # that would drop one.
+      serviceProbes = builtins.concatMap (
+        n: map (e: "svc:${n}:${builtins.head (builtins.match "[a-z]+:([0-9]+)" e)}") tailnetServices.${n}.ip
+      ) serviceNames;
+      # Concrete in-family addresses for the `tests` block below.  A test asserts an
+      # `ip:port`, and a CIDR is not one — so the families above cannot be tested by
+      # their prefix, only through an address that sits inside them.  All derived:
+      # `netGateway`/`vzHostAddress` for each bare-metal slice, and — since the
+      # `vmnet` segment declares no `hosts` — each cluster's own `*-net` gateway,
+      # which lives inside the `/18` supernet the ACL actually names.
+      segmentProbes =
+        builtins.concatMap (
+          h: [ bm.${h}.netGateway ] ++ (if bm.${h} ? vzHostAddress then [ bm.${h}.vzHostAddress ] else [ ])
+        ) (builtins.attrNames bm)
+        ++ map (s: s.gateway) (
+          builtins.filter (s: (s ? gateway) && builtins.match ".*-(mgmt|wrkld)-net" (s.name or "") != null) (
+            catalog.netplan.segments or [ ]
+          )
+        );
     in
     {
       tagOwners = {
@@ -158,39 +232,60 @@ let
           value = [ ownerTag ];
         }) ourTags
       );
-      acls = [
+      # `grants`, not the legacy `acls` block.  Two reasons, and the second is why this
+      # is not merely a modernisation:
+      #
+      #  1. The `acls` block was kept so this tag vocabulary stayed readable by the
+      #     headscale controller, which does not understand grants.  Headscale is
+      #     hibernating and its policy is a separate artefact nothing syncs, so that
+      #     coupling is gone.
+      #  2. ★ A `grants` block was ALREADY LIVE and ungoverned — measured 2026-09-27,
+      #     mirroring these rules but frozen on `172.16.6.0/24` / `172.16.7.0/24`, the
+      #     pre-renumbering fabric segments, which designate nothing since 2026-09-23.
+      #     Nothing in this repo emitted it, so it cannot be a stale generation of this
+      #     file: it was written by hand or by the console's ACL-to-grants conversion.
+      #     The effective policy being the permissive UNION of both blocks, it granted
+      #     reach nobody was reviewing.  Emitting grants here is what puts it under the
+      #     catalog; `sync_acl` replaces it and deletes `acls` in one move.
+      #
+      # Shape differs from `acls`: there is no `action`, the port leaves `dst` for `ip`,
+      # so `"tag:x:*"` becomes dst `"tag:x"` + `ip = ["*"]`.  A mistranslation would be
+      # invisible in review, which is what the `tests` block below exists to catch.
+      grants = [
         # Trusted owner devices (untagged members: laptop, phone) reach
         # everything.  Tagged fleet nodes below stay role-segmented.
+        # `autogroup:member` is the documented spelling; the plural is a tolerated
+        # alias for the same set (the live block used it), so this is a rename only.
         {
-          action = "accept";
-          src = [ "autogroup:members" ];
-          dst = [ "*:*" ];
+          src = [ "autogroup:member" ];
+          dst = [ "*" ];
+          ip = [ "*" ];
         }
         # Operator (console) hosts reach the whole fleet by role tag AND
         # the per-baremetal segments (vzhost.<domain> + the Incus instances
-        # behind each subnet router) AND the fixed home LAN advertised by a
-        # LAN-fixed baremetal AND the cluster vmnet supernet (kube-vip VIPs /
+        # behind each subnet router) AND the cluster vmnet supernet (kube-vip VIPs /
         # apiservers, advertised since 2026-09-27 by the BARE-METAL that owns
         # each vmnet bridge — see modules/nixos/cluster-vmnet.nix — not by a
         # per-cluster operator Connector, which rke2lab no longer renders).
         # A tag'd node's netmap only carries a subnet route it is ACL-permitted
         # to reach, so without these CIDRs a console host loses the
-        # segments/LAN/VIPs it had as an untagged member (autogroup:members →
-        # *:*).  The supernet entry is what keeps this independent of which
+        # segments/LAN/VIPs it had as an untagged member (autogroup:member →
+        # *).  The supernet entry is what keeps this independent of which
         # /21s exist: a new cluster needs no ACL change.
         {
-          action = "accept";
           src = [ (tg t.role.console) ];
           dst = [
-            "${tg t.role.console}:*"
-            "${tg t.role.headless}:*"
+            (tg t.role.console)
+            (tg t.role.headless)
           ]
-          ++ map (cidr: "${cidr}:*") (baremetalCidrs ++ lanCidrs ++ vmnetCidrs);
+          ++ baremetalCidrs
+          ++ vmnetCidrs;
+          ip = [ "*" ];
         }
         {
-          action = "accept";
           src = [ (tg t.role.headless) ];
-          dst = [ "${tg t.role.headless}:*" ];
+          dst = [ (tg t.role.headless) ];
+          ip = [ "*" ];
         }
         # The Tailscale operator's own devices inside a cluster (funnel / ingress
         # proxies).  They carry `tag:k8s` and NO role-axis tag, so neither rule
@@ -204,11 +299,12 @@ let
         # would take that ownership away and stop the operator registering devices
         # at all (the reconcile merges `live * canonical`, canonical winning).
         {
-          action = "accept";
           src = [ (tg t.role.console) ];
-          dst = [ "tag:k8s:*" ];
+          dst = [ "tag:k8s" ];
+          ip = [ "*" ];
         }
-      ];
+      ]
+      ++ serviceGrants;
       ssh = [
         # Console (operator admin) hosts SSH the entire fleet.  Every
         # fleet node carries a role tag, so [console, headless] covers
@@ -255,7 +351,38 @@ let
         # hotspot it becomes the tailnet's gateway to the public net.
         # Auto-approve their exit-node advertisements (no console step).
         exitNode = [ (tg t.kind.darwin) ];
+        services = serviceApprovers;
       };
+      # ★ The policy carries its OWN assertions, and the control plane REFUSES the POST
+      # when one fails ("If an assertion fails, Tailscale rejects the updated tailnet
+      # policy file").  So this block is not documentation — it is the gate that stops a
+      # later edit of this file from widening or narrowing reach unnoticed, starting with
+      # the pending `acls` -> `grants` translation, where ports leave `dst` for `ip` and a
+      # mistranslation would be invisible in review.  A test's `src` may be a TAG and its
+      # `accept`/`deny` may name `tag:<name>:<port>`, so the role segmentation is
+      # assertable directly rather than through device addresses.
+      tests = [
+        {
+          src = tg t.role.console;
+          accept = [
+            "${tg t.role.console}:5900" # the operator's own screens
+            "${tg t.role.headless}:22"
+            "tag:k8s:443" # named without owning the tag — see the grants comment
+          ]
+          ++ map (ip: "${ip}:22") segmentProbes
+          ++ serviceProbes;
+        }
+        {
+          src = tg t.role.headless;
+          accept = [ "${tg t.role.headless}:22" ]; # nix copy, node-to-node ops
+          # Asserted in the direction a mistake would WIDEN: a headless node must not
+          # reach an operator console.  The segment probes are denied today only because
+          # the `headless` rule's `dst` omits those CIDRs, which is the known gap that
+          # makes `acceptRoutes` inert host-to-host; closing it moves these very entries
+          # from `deny` to `accept` in the same change, deliberately and visibly.
+          deny = [ "${tg t.role.console}:5900" ] ++ map (ip: "${ip}:22") segmentProbes;
+        }
+      ];
     };
   tailnetAclCanonicalFile = pkgs.writeText "tailnet-acl-canonical.json" (
     builtins.toJSON tailnetAclCanonical

@@ -166,6 +166,33 @@ in
     # Trust Tailscale interface
     networking.firewall.trustedInterfaces = [ "tailscale0" ];
 
+    # Reconcile the Tailscale Services this host advertises.  Ordered after the
+    # autoconnect unit because `serve set-config` needs a logged-in daemon; failure is
+    # NOT fatal to the boot — a node that cannot advertise a service must still come up
+    # and be reachable, which is exactly when an operator needs to log into it.
+    systemd.services.rke2lab-tailnet-services = {
+      description = "Reconcile advertised Tailscale Services from the catalog";
+      after = [
+        "tailscaled.service"
+        "${tailscaleAutoconnectUnitName}.service"
+      ];
+      wants = [ "${tailscaleAutoconnectUnitName}.service" ];
+      wantedBy = [ contributedTargetName ];
+      serviceConfig = {
+        Type = "oneshot";
+        RemainAfterExit = true;
+      };
+      script = ''
+        set -uo pipefail
+        if ! ${pkgs.tailscale}/bin/tailscale status >/dev/null 2>&1; then
+          echo "tailscaled not logged in; leaving advertised services untouched" >&2
+          exit 0
+        fi
+        echo "applying ${toString (builtins.length config.ndh.tailnetServices.names)} service(s): ${lib.concatStringsSep " " config.ndh.tailnetServices.names}"
+        ${config.ndh.tailnetServices.applyCommand}
+      '';
+    };
+
     # Ensure Tailscale connects at boot.  Order strictly after
     # sops-install-secrets so the auth-key file exists when the unit
     # starts — early boots otherwise race and the first attempt fails

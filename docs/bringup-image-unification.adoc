@@ -203,6 +203,17 @@ evaluate to the same derivation, with `hostName = nerd-nixos` — so baking
 the real name in was not an option either: it would fork a 661 MiB layer
 per host.
 
+⚠️ *That property belongs to the CODE, not to an image already on disk.*
+Measured the same day: `nikopol-nixos` was factory reset at 16:38 local and
+the VM registered as `nerd-nixos` anyway (device created
+`2026-09-27T14:38:31Z`, `tag:headless,tag:nixos`) — because the Tart disk
+image it booted was built before `f4d39c4d` landed at 10:03.  So after any
+reset from a pre-fix image, expect the ghost and clear it: reclaim the
+host's bare name BEFORE pushing the full config (`manage-tailnet
+--reclaim-host <host>-nixos`), or the per-host generation drifts to
+`<host>-nixos-1`; then reclaim `nerd-nixos` once the handoff is done.
+Rebuilding the bringup image is what makes the loop stop.
+
 **Actual mitigation** (ndh `f4d39c4d`): the bringup image does not join
 the tailnet at all.  The first and only registration then happens from
 the per-host generation, under `vm.guestHostName`.  Nothing is lost — the
