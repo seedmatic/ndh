@@ -130,10 +130,22 @@ let
       # a dataset under `<pool>/incus/images/<fingerprint>`, and `/var/lib/incus/images/` is empty on
       # both members (optimized storage keeps no tarball). Check with `zfs list`, per member.
       #
-      # What remains unknown: whether the transfer is merely ASYNCHRONOUS (and would arrive), or does
-      # not happen at all. Both readings fit one observation taken minutes after the mint. Settle it
-      # by looking again on a member that has been up and idle for a while, and by whether
-      # provisioning THERE succeeds — which is the only thing that actually matters.
+      # Looked again 20 minutes later, both members up and idle: still ZERO image datasets on the
+      # itinerant one. So "merely asynchronous" is not supported either, and the best-founded reading
+      # is that `-1` DOES NOT COVER A LOCALLY IMPORTED IMAGE: ours carries `auto_update: false`
+      # (there is no upstream to update from — we built and imported it), `public: false`, and the
+      # task that honours `images.minimal_replica` belongs to that same sync machinery. The
+      # `images_nodes` row is written at import; nothing then moves the bytes.
+      #
+      # ⚠️ That is a DEDUCTION from three facts, not a read of incus' source. What would settle it is
+      # the first provision targeting the itinerant member: incus copies an image to a member that
+      # lacks it as part of the launch, so the transfer simply happens THEN.
+      #
+      # Which makes this setting close to INERT for our images, and the honest consequence is an
+      # operating habit rather than a knob: bump the node image while the itinerant host is home, so
+      # the one ~633 MiB copy rides the home link. Availability is never the issue — that host reaches
+      # the leader through the tailnet from any hotspot — only the metered cost, once per image
+      # version (the image changes only with flake.lock / flake.nix / nixos/, its source digest).
       # `key=value`, not `key value`: incus deprecated the two-positional form and warns on every
       # call ("the <key> <value> syntax is deprecated"), measured 2026-09-27 in this unit's own
       # journal. `--` stays load-bearing even so, because the VALUE begins with a dash: without it
