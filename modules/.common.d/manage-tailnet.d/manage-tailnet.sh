@@ -250,6 +250,16 @@ revoke_key() {
 # replace grants/ssh/tests/autoApprovers with the role-based canonical; preserve the rest
 # (nodeAttrs).
 #
+# ★ The `autogroup:members` -> `autogroup:member` rewrite is whole-document and NOT
+# cosmetic: the control plane rejects a policy carrying both spellings — measured, "ACLs
+# contain a mix of old-style autogroup:members and new-style autogroup:member; use one or
+# the other."  So consistency is a property of the WHOLE file, which a canonical that only
+# owns some fields cannot achieve alone.  The legacy spelling survives in `nodeAttrs`, a
+# PRESERVED field carrying Tailscale's own Funnel/Taildrive defaults — semantically right,
+# only spelled the old way.  Renaming the value in place is the narrowest fix available:
+# the set is identical, and we take no ownership of what those attributes mean.  It
+# rewrites VALUES only, never keys (verified against a document with a colliding key).
+#
 # ★ `autoApprovers` is REPLACED, not merged, and that was a defect for as long as it was
 # merged.  An approver is the gate that turns someone's ADVERTISEMENT into an installed
 # route on every accepting peer, so a key nobody governs is reach nobody reviews — and
@@ -305,6 +315,7 @@ sync_acl() {
     | .ssh  = load(strenv(ACL_CANONICAL)).ssh
     | .tests = load(strenv(ACL_CANONICAL)).tests
     | .autoApprovers = load(strenv(ACL_CANONICAL)).autoApprovers
+    | (.. | select(. == "autogroup:members")) |= "autogroup:member"
   ' "$workdir/acl.cur.json" >"$workdir/acl.target.json" || die "ACL reconcile failed"
 
 	# Review (diff) is the point of the dry-run; on --apply we just push (terse).

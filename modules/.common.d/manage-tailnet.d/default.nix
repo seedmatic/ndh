@@ -254,8 +254,13 @@ let
       grants = [
         # Trusted owner devices (untagged members: laptop, phone) reach
         # everything.  Tagged fleet nodes below stay role-segmented.
-        # `autogroup:member` is the documented spelling; the plural is a tolerated
-        # alias for the same set (the live block used it), so this is a rename only.
+        # `autogroup:member` is the documented spelling and the plural is a legacy alias
+        # for the same set, so this is a rename — but ⚠️ the two MAY NOT COEXIST in one
+        # policy.  Measured 2026-09-27, the POST was rejected outright: "ACLs contain a
+        # mix of old-style autogroup:members and new-style autogroup:member; use one or
+        # the other."  It is therefore a whole-policy property, not a per-rule choice:
+        # the `ssh` block below had to move in the same change, and anything preserved
+        # from the live policy must be checked before adding a rule here.
         {
           src = [ "autogroup:member" ];
           dst = [ "*" ];
@@ -309,7 +314,7 @@ let
         # Console (operator admin) hosts SSH the entire fleet.  Every
         # fleet node carries a role tag, so [console, headless] covers
         # them all.  (SSH dst permits only tags + autogroup:self — not
-        # autogroup:members; untagged member devices aren't SSH targets.)
+        # autogroup:member; untagged member devices aren't SSH targets.)
         {
           action = "accept";
           src = [ (tg t.role.console) ];
@@ -335,7 +340,7 @@ let
         # Member devices reach their own devices.
         {
           action = "accept";
-          src = [ "autogroup:members" ];
+          src = [ "autogroup:member" ];
           dst = [ "autogroup:self" ];
           users = [
             "autogroup:nonroot"
