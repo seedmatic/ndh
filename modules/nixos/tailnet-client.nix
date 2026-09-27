@@ -9,7 +9,7 @@
 with lib;
 
 let
-  cfg = config.networking.headscale;
+  cfg = config.networking.tailnet;
   tailnet = config.tailnet;
   defaultHostname = config.networking.hostName;
   tailscaleAutoconnectUnitName = ndhSystemd.mkUnitName "tailscaled-autoconnect";
@@ -24,11 +24,11 @@ let
   # option.  `cfg.authKeyFile` remains as an out-of-band override for
   # manual bootstrap / test harnesses.
   activeAuthKind = "nixos";
-  # Controller selects the registration flow (see headscale-client-wiring.nix):
+  # Controller selects the registration flow (see tailnet-client-wiring.nix):
   #   saas      → Tailscale SaaS: the single fleet OAuth-client/auth key at
   #               tailnet.tailscale.auth, no --login-server, tags via --advertise-tags.
   #   headscale → self-hosted: --login-server + the per-kind headscale preauth key.
-  isSaas = config.ndh.headscaleClient.controller == "saas";
+  isSaas = config.ndh.tailnetClient.controller == "saas";
   effectiveAuthKeyFile =
     if cfg.authKeyFile != null then
       cfg.authKeyFile
@@ -45,7 +45,7 @@ let
   loginServerArg = optionalString (!isSaas) "--login-server=${cfg.serverUrl}";
 in
 {
-  options.networking.headscale = {
+  options.networking.tailnet = {
     enable = mkOption {
       type = types.bool;
       default = false;
@@ -236,9 +236,27 @@ in
 
         wait_for_tailscaled || exit 0
 
-        # If already connected, we're done
+        # Already connected: RECONCILE the declarative prefs instead of returning.
+        #
+        # ⚠️ Exiting here was a silent one-way door, and it cost an evening. Registration happens
+        # once, so every preference below was applied ONCE — at first join — and no later change to
+        # the NixOS config ever reached a running node. Measured 2026-09-27 on nikopol-nixos: the
+        # config declared `advertiseRoutes = [10.80.16.0/21 10.80.24.0/21 172.16.16.0/20]` while the
+        # daemon still held only the `/20` from its first join, so `nikopol-mgmt`'s kube-vip was up
+        # and unreachable from bioskop — a cluster born correctly behind a route that was never
+        # announced. The declaration was right and the activation reported success; nothing said the
+        # two had parted.
+        #
+        # `tailscale set` is the reconciling verb (`up` re-runs registration, which is exactly what
+        # must NOT happen — see the logout note below). It settles only what it owns: routes and
+        # route-acceptance. Tags are deliberately absent because they are fixed at REGISTRATION and
+        # no flag changes them, and --hostname likewise names the device only when it registers.
         if ${pkgs.tailscale}/bin/tailscale status >/dev/null 2>&1; then
-          echo "Already connected to Headscale"
+          echo "Already connected — reconciling advertised routes + route acceptance"
+          ${pkgs.tailscale}/bin/tailscale set \
+            --accept-routes=${if cfg.acceptRoutes then "true" else "false"} \
+            --advertise-routes=${concatStringsSep "," cfg.advertiseRoutes} \
+            || echo "warning: could not reconcile tailscale prefs" >&2
           exit 0
         fi
 
