@@ -145,6 +145,17 @@ let
       vmnetCidrs = map (s: s.cidr) (
         builtins.filter (s: (s.name or "") == "vmnet") (catalog.netplan.segments or [ ])
       );
+      # The per-cluster vmnet /21s, as opposed to the /18 supernet above — the SOURCE addresses a
+      # pod's traffic actually leaves a node with, and the narrower grant of the two.  Identified by
+      # SHAPE, not by name: a cluster's node span is the only kind of segment declaring BOTH a
+      # `gateway` and a DHCPv6 prefix (`cidr6`).  Measured 2026-09-28 against the published
+      # blueprint — the four `<cluster>-net` spans carry both, every fabric window, lb range and
+      # attribution span carries neither, and ndh's own `<domain>-baremetal-net` has no `cidr6` at
+      # all, so it cannot match.  Keying on the name would have meant either spelling rke2lab's role
+      # vocabulary here or catching `-baremetal-net` by accident.
+      vmnetNodeCidrs = map (s: s.cidr) (
+        builtins.filter (s: (s ? gateway) && (s ? cidr6)) (catalog.netplan.segments or [ ])
+      );
       # ONE approver tag for both families, because one kind of device advertises both: the
       # bare-metal's NixOS host — its own fabric slice, and, since the vmnet subnet-router role
       # moved off the operator's `Connector` pod onto the host that owns the bridges (see
@@ -375,6 +386,35 @@ let
         # address), never a conversation with the bare-metal itself.
         {
           src = [ "tag:k8s" ];
+          dst = baremetalCidrs ++ vmnetCidrs;
+          ip = [ "*" ];
+        }
+        # ★ A cluster NODE as a source, by ADDRESS. This is what closes the case the egress relay
+        # above cannot: CAPI's RemoteConnectionProbe runs in a POD, and a pod is not a tailnet device,
+        # so its packet leaves masqueraded to its NODE's vmnet address (cilium masquerades pod → node
+        # IP) and arrives at the peer bearing an address no tag names. Measured 2026-09-28: from the
+        # egress pod — a real tailnet device — the peer's VIP answers, while from an ordinary pod it
+        # does not, and `ClusterIntention/nikopol-mgmt` reads Degraded with every pool Adopted.
+        #
+        # ⚠️ Identity by ADDRESS, and the trade was made deliberately. A tag is revocable and
+        # scopable; an address is not. What made it acceptable is WHAT lives in these spans: only our
+        # own cluster nodes — Incus containers CAPN creates, on a /21 served by this fleet's own
+        # dnsmasq from its own reservations. The alternative was to route the probe through the egress
+        # relay, which works but requires `controlPlaneEndpoint` to name a CLUSTER-LOCAL Service — so
+        # a cluster's endpoint would differ depending on who reads it, re-creating the asymmetry of
+        # mechanism that naming the VIPs had just collapsed. The precedent for admitting an address is
+        # already here: the corp Mac at 172.16.24.2.
+        #
+        # ★ The SAME line also covers the clustermesh dataplane if cilium ever moves from
+        # `routing-mode: native` to tunnel — encapsulated pod↔pod traffic travels between NODE
+        # addresses, which is exactly this source set. Native mode instead needs the underlay to carry
+        # whole pod CIDRs, a second and separate problem.
+        #
+        # Restricted to the per-cluster /21s rather than the /18 supernet: the four unallocated spans
+        # inside it have no bridge and no server, so admitting them would widen only the DECLARATION —
+        # which is the whole point of writing it narrowly.
+        {
+          src = vmnetNodeCidrs;
           dst = baremetalCidrs ++ vmnetCidrs;
           ip = [ "*" ];
         }
