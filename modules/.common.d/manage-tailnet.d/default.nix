@@ -344,6 +344,40 @@ let
           dst = [ "tag:k8s" ];
           ip = [ "*" ];
         }
+        # The reverse direction, and the one that makes an in-cluster EGRESS possible: a
+        # `tag:k8s` device reaching the fleet's segments.  Measured 2026-09-28 from inside
+        # `egress-0` of a `ProxyGroup type: egress` — a real tailnet device, `tailscale0` up
+        # at 100.97.76.24 — everything on its OWN bare-metal answers and everything on the
+        # PEER fails, regardless of destination kind:
+        #
+        #     172.16.0.1:8443   (own fabric/incus)  OK
+        #     10.80.7.10:6443   (own vmnet VIP)     OK
+        #     172.16.16.1:8443  (peer fabric)       fail
+        #     10.80.23.10:6443  (peer vmnet VIP)    fail
+        #
+        # Which places the failure here and nowhere else: the rule widened on 2026-09-27
+        # named `tag:headless` — the bare-metals — so the hosts route to each other's
+        # segments while a cluster device carries no tag this policy admits as a source.
+        # That is the whole of why `ClusterIntention/nikopol-mgmt` reads `Degraded` while
+        # the operator's own kubeconfig reaches the very same VIP: a kubeconfig runs on a
+        # tailnet member, CAPI's RemoteConnectionProbe runs in a POD.
+        #
+        # ⚠️ `tag:k8s` as a SRC without owning it. Naming it as a `dst` is established
+        # above, and claiming it in `tagOwners` is ruled out there (it would stop the
+        # operator registering devices at all). Whether `src` is equally permissive is NOT
+        # verified — it cannot be tested without POSTing a policy, which is the operator's
+        # move. If it is refused, the refusal is LOUD: `sync_acl` POSTs the whole document
+        # and the API rejects it with a message, exactly as it did for the
+        # autogroup:members mix. A silent half-application is not a failure mode here.
+        #
+        # Least privilege on purpose: the CIDRs only, no role tag in `dst`. The relay needs
+        # the peer's SEGMENTS (subnet-routed traffic is filtered on the destination
+        # address), never a conversation with the bare-metal itself.
+        {
+          src = [ "tag:k8s" ];
+          dst = baremetalCidrs ++ vmnetCidrs;
+          ip = [ "*" ];
+        }
       ]
       ++ serviceGrants;
       ssh = [
