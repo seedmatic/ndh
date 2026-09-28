@@ -355,55 +355,27 @@ let
           dst = [ "tag:k8s" ];
           ip = [ "*" ];
         }
-        # The reverse direction, and the one that makes an in-cluster EGRESS possible: a
-        # `tag:k8s` device reaching the fleet's segments.  Measured 2026-09-28 from inside
-        # `egress-0` of a `ProxyGroup type: egress` — a real tailnet device, `tailscale0` up
-        # at 100.97.76.24 — everything on its OWN bare-metal answers and everything on the
-        # PEER fails, regardless of destination kind:
+        # ★ A cluster NODE as a source, by ADDRESS — what lets a POD reach the fleet's segments at
+        # all. CAPI's RemoteConnectionProbe runs in a pod, and a pod is not a tailnet device: cilium
+        # masquerades pod → node IP, so the packet arrives at the peer bearing a vmnet address no tag
+        # names. Measured 2026-09-28, and the fix verified the same way — before, `nikopol-mgmt` read
+        # Degraded with every pool Adopted and 1/1 pets present while the operator's own kubeconfig
+        # reached that very VIP; after, all three clusters read Adopted and a plain pod dials
+        # 10.80.23.10:6443 open.
         #
-        #     172.16.0.1:8443   (own fabric/incus)  OK
-        #     10.80.7.10:6443   (own vmnet VIP)     OK
-        #     172.16.16.1:8443  (peer fabric)       fail
-        #     10.80.23.10:6443  (peer vmnet VIP)    fail
+        # ⚠️ Identity by ADDRESS, traded deliberately. A tag is revocable and scopable; an address is
+        # not. What made it acceptable is WHAT lives in these spans: only our own cluster nodes —
+        # Incus containers CAPN creates, on a /21 served by this fleet's own dnsmasq from its own
+        # reservations. The precedent is already here: the corp Mac at 172.16.24.2.
         #
-        # Which places the failure here and nowhere else: the rule widened on 2026-09-27
-        # named `tag:headless` — the bare-metals — so the hosts route to each other's
-        # segments while a cluster device carries no tag this policy admits as a source.
-        # That is the whole of why `ClusterIntention/nikopol-mgmt` reads `Degraded` while
-        # the operator's own kubeconfig reaches the very same VIP: a kubeconfig runs on a
-        # tailnet member, CAPI's RemoteConnectionProbe runs in a POD.
-        #
-        # ⚠️ `tag:k8s` as a SRC without owning it. Naming it as a `dst` is established
-        # above, and claiming it in `tagOwners` is ruled out there (it would stop the
-        # operator registering devices at all). Whether `src` is equally permissive is NOT
-        # verified — it cannot be tested without POSTing a policy, which is the operator's
-        # move. If it is refused, the refusal is LOUD: `sync_acl` POSTs the whole document
-        # and the API rejects it with a message, exactly as it did for the
-        # autogroup:members mix. A silent half-application is not a failure mode here.
-        #
-        # Least privilege on purpose: the CIDRs only, no role tag in `dst`. The relay needs
-        # the peer's SEGMENTS (subnet-routed traffic is filtered on the destination
-        # address), never a conversation with the bare-metal itself.
-        {
-          src = [ "tag:k8s" ];
-          dst = baremetalCidrs ++ vmnetCidrs;
-          ip = [ "*" ];
-        }
-        # ★ A cluster NODE as a source, by ADDRESS. This is what closes the case the egress relay
-        # above cannot: CAPI's RemoteConnectionProbe runs in a POD, and a pod is not a tailnet device,
-        # so its packet leaves masqueraded to its NODE's vmnet address (cilium masquerades pod → node
-        # IP) and arrives at the peer bearing an address no tag names. Measured 2026-09-28: from the
-        # egress pod — a real tailnet device — the peer's VIP answers, while from an ordinary pod it
-        # does not, and `ClusterIntention/nikopol-mgmt` reads Degraded with every pool Adopted.
-        #
-        # ⚠️ Identity by ADDRESS, and the trade was made deliberately. A tag is revocable and
-        # scopable; an address is not. What made it acceptable is WHAT lives in these spans: only our
-        # own cluster nodes — Incus containers CAPN creates, on a /21 served by this fleet's own
-        # dnsmasq from its own reservations. The alternative was to route the probe through the egress
-        # relay, which works but requires `controlPlaneEndpoint` to name a CLUSTER-LOCAL Service — so
-        # a cluster's endpoint would differ depending on who reads it, re-creating the asymmetry of
-        # mechanism that naming the VIPs had just collapsed. The precedent for admitting an address is
-        # already here: the corp Mac at 172.16.24.2.
+        # The alternative, tried and then REMOVED, was an egress `ProxyGroup` relaying pod traffic
+        # under `tag:k8s`. It worked to the relay's own socket, but a pod only reaches a relay through
+        # a cluster-local `ExternalName` Service — so `controlPlaneEndpoint` would have had to name
+        # one, making a cluster's endpoint read differently depending on who asks and re-creating the
+        # asymmetry of mechanism that naming the VIPs had just collapsed. If that question reopens,
+        # the candidate is a `kube-apiserver` ProxyGroup: it gives ONE tailnet name for every audience
+        # AND identity by tag, and its only blocker is whether it preserves a BYO-CA client cert
+        # through the TLS it terminates.
         #
         # ★ The SAME line also covers the clustermesh dataplane if cilium ever moves from
         # `routing-mode: native` to tunnel — encapsulated pod↔pod traffic travels between NODE
