@@ -318,12 +318,18 @@ sync_acl() {
     | (.. | select(. == "autogroup:members")) |= "autogroup:member"
   ' "$workdir/acl.cur.json" >"$workdir/acl.target.json" || die "ACL reconcile failed"
 
-	# Review (diff) is the point of the dry-run; on --apply we just push (terse).
+	# Shown on BOTH paths, and on --apply BEFORE the POST. The dry-run's diff is not evidence of what
+	# an apply changes: they are two separate GETs, so the reviewed document and the pushed one are
+	# only presumed identical (`If-Match` REJECTS a concurrent edit, which protects the write but says
+	# nothing about what this run altered). Printing it here is what leaves a record of the act, for a
+	# document that governs the whole fleet's authorization — and both files are already in hand, so
+	# it costs a diff.
+	log "=== ACL reconcile diff (current -> target) ==="
+	diff -u \
+		<($YQ -p json -o=yaml '.' "$workdir/acl.cur.json") \
+		<($YQ -p json -o=yaml '.' "$workdir/acl.target.json") || true
+
 	if [ "$assume_yes" -ne 1 ]; then
-		log "=== ACL reconcile diff (current -> target) ==="
-		diff -u \
-			<($YQ -p json -o=yaml '.' "$workdir/acl.cur.json") \
-			<($YQ -p json -o=yaml '.' "$workdir/acl.target.json") || true
 		log "NOTE: for minting to work, assign '$OWNER_TAG' to the rotation OAuth"
 		log "      client in the Tailscale console (Settings -> OAuth clients)."
 		log "no --apply: ACL not pushed.  Re-run 'manage-tailnet --sync-acl --apply' to POST."
