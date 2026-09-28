@@ -87,7 +87,12 @@
     # pin `rke2lab.inputs.flake-commons.follows = "flake-commons"` so that whole
     # set resolves against ours — one shared flake-commons closure, not two in the lock.
     rke2lab = {
-      url = "github:seedmatic/rke2lab/feature/nixos-node-substrate";
+      # The branch rke2lab is worked on, not an integration branch: the blueprint this input
+      # supplies must be referenceable at runtime without merging at every checkpoint. It tracked
+      # `feature/nixos-node-substrate` long after that branch was retired, so `nix flake update`
+      # kept advancing along a dead line — pulling newer commits that carried none of the work,
+      # silently (measured 2026-09-28: the lock moved and the VIP host-records still did not exist).
+      url = "github:seedmatic/rke2lab/feature/viewpoint-separation";
       inputs.ndh.follows = "";
       inputs.flake-commons.follows = "flake-commons";
     };

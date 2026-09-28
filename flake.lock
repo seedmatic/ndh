@@ -103079,11 +103079,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1789404183,
-        "narHash": "sha256-dzksUXHUAmrZsWmXHLeEWiqf7ed01TWiYmbmni+c3FY=",
+        "lastModified": 1790593895,
+        "narHash": "sha256-LikDOT2ucj2LkyxMcI3tSOrcX13OZ0EXkfOmw1yyzCM=",
         "owner": "seedmatic",
         "repo": "flox-controller",
-        "rev": "c1e571d5341ad771f4fd65b7a6a4f9f732fe9bc0",
+        "rev": "ca151e53170fc373e632da391ab314e827f0b179",
         "type": "github"
       },
       "original": {
@@ -282368,16 +282368,16 @@
         ]
       },
       "locked": {
-        "lastModified": 1790494494,
-        "narHash": "sha256-jPp+m5FLPBKNR/YCfYdAKbnVTa4FZQ647MrhJsSRc0g=",
+        "lastModified": 1790619062,
+        "narHash": "sha256-patpPMtfk6hi1VoSZaxa45ypYp3n9hxtCo7y2nCKA/E=",
         "owner": "seedmatic",
         "repo": "rke2lab",
-        "rev": "acd0e45d4f9793948464bcc3b68abbf011b48194",
+        "rev": "57c2115fc1f772aaedd8228e4945392378e029f6",
         "type": "github"
       },
       "original": {
         "owner": "seedmatic",
-        "ref": "feature/nixos-node-substrate",
+        "ref": "feature/viewpoint-separation",
         "repo": "rke2lab",
         "type": "github"
       }
@@ -284778,11 +284778,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1790423837,
-        "narHash": "sha256-8gMW35T65oVxjz5WgPUQy4G+FlmDd+RX8D4Pvu0tyr8=",
+        "lastModified": 1790608102,
+        "narHash": "sha256-5rbb5kP4bxxFtNedQ41gwIbZBiIrRIoBtrJ3reFuiTY=",
         "owner": "seedmatic",
         "repo": "rke2lab",
-        "rev": "1d8804441ba9b5be6124b14ee13d76063233870c",
+        "rev": "870adf38d0cac887481f4c3a11f0db89f832b668",
         "type": "github"
       },
       "original": {
