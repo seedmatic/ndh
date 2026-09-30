@@ -1444,7 +1444,6 @@
               pkgsForSystem.step-cli
               pkgsForSystem.sops
               pkgsForSystem.yq-go
-              pkgsForSystem.jq
               pkgsForSystem.nix
               pkgsForSystem.coreutils
               pkgsForSystem.gnused

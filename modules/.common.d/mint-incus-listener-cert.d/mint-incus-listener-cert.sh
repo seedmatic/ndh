@@ -13,6 +13,9 @@
 # So the fix is not a better self-signed cert. It is a leaf signed by an authority clients can trust
 # by CA, after which the leaf is replaceable without touching a single consumer.
 #
+# Status 2026-10-01: a `mammoth-skate-tls` leaf IS installed — the self-signed era is over — but the
+# first one carried ONE host's SAN, so only `nixos.bioskop` verifies by name. See the SAN block.
+#
 # ★ NOTHING SECRET TOUCHES THE DISK. `authority-bootstrap-tls-root` materialises the decrypted
 # keys.yaml — and therefore every private key in the fleet — into a temp dir; that is the precedent
 # and this deliberately does not follow it. `sops -d` is piped, the values live in shell variables,
@@ -20,11 +23,15 @@
 # work with both `--ca` and `--ca-key`. The only pair written out is the LEAF, because
 # `incus cluster update-certificate` takes two file arguments — that is its interface, not a choice.
 #
-# ★ The SAN set is CONSUMED, never retyped. Names come from `catalog.netplan.baremetal.<host>`
-# (which itself consumes rke2lab's `lib.networkBlueprint.hostFacts` — one author for `nixos.<host>`
-# and `<host>-nixos`) crossed with the catalog's own domains, plus `.local` for mDNS. Addresses come
-# from the same catalog entry and from rke2lab's segments. Retyping any of them here would be a
+# ★ The SAN set is CONSUMED, never retyped. Names come from `catalog.netplan.baremetal` (which
+# itself consumes rke2lab's `lib.networkBlueprint.hostFacts` — one author for `nixos.<host>` and
+# `<host>-nixos`) crossed with the catalog's own domains, plus `.local` for mDNS. Addresses come
+# from the same catalog entries and from rke2lab's segments. Retyping any of them here would be a
 # second place a name lives, which is how two spellings come to disagree.
+#
+# ★ The SAN covers the WHOLE FLEET, not the named host. One cert serves every member, so a
+# per-host SAN mints a cert that half the cluster cannot be verified by name against — see the
+# measurement at the SAN block below.
 #
 # ⚠️ The TAILNET carries a NAME and never an address: a tailnet address is assigned by the tailnet,
 # so nothing declares it and a cert built on today's value would be wrong after a renew.
@@ -71,7 +78,7 @@ while (($#)); do
 		shift 2
 		;;
 	-h | --help)
-		sed -n '3,45p' "$0" | sed 's/^# \{0,1\}//'
+		sed -n '3,48p' "$0" | sed 's/^# \{0,1\}//'
 		exit 0
 		;;
 	-*) die "unknown flag '$1' (try --help)" ;;
@@ -89,32 +96,58 @@ repoRoot="$(git rev-parse --show-toplevel)" || die "not inside a git repo"
 keysYaml="${repoRoot}/modules/home-manager/ssh.d/keys.yaml"
 [[ -f $keysYaml ]] || die "keys.yaml not found at ${keysYaml} — run from the ndh repo root"
 
-# --- The SAN set, read off the catalog (one authority per name) ---------------------------------
-log "reading the SAN set for '${host}' from the catalog"
-bm="$(nix eval --json "${repoRoot}#catalog.netplan.baremetal.${host}" 2>/dev/null)" ||
-	die "no catalog.netplan.baremetal.${host} — is '${host}' a declared bare-metal?"
+# --- The SAN set: the WHOLE FLEET, because ONE cert serves every member --------------------------
+#
+# ⚠️ Measured 2026-10-01 against the live cluster, and it is why this is a union and not one host's
+# names. Both members present the SAME leaf — `CN=bioskop-nixos`, issuer `mammoth-skate-tls` — which
+# is precisely what `incus cluster update-certificate` does: it installs ONE cluster certificate
+# everywhere. The first version of this script derived the SAN from `baremetal.<host>` alone, so
+# `nixos.nikopol` ended up serving a certificate that never names it:
+#
+#     openssl s_client -connect nixos.bioskop:8443 -verify_hostname nixos.bioskop  → Verification: OK
+#     openssl s_client -connect nixos.nikopol:8443 -verify_hostname nixos.nikopol  → hostname mismatch
+#
+# Pinning HID that (`TLSServerCert` compares the leaf and never checks a name), and trusting the CA
+# does not — so the very change that removes the pin is the one that exposes it. A cluster
+# certificate must carry every member's name, or CA trust works on exactly one member.
+log "reading the FLEET-WIDE SAN set from the catalog (one cert serves every member)"
+bmAll="$(nix eval --json "${repoRoot}#catalog.netplan.baremetal" 2>/dev/null)" ||
+	die "cannot read catalog.netplan.baremetal — refusing to mint a cert with an incomplete SAN"
 
-hostname="$(jq -r '.nixosHostname // empty' <<<"$bm")"
-fabricFqdn="$(jq -r '.fabricFqdn // empty' <<<"$bm")"
-[[ -n $hostname && -n $fabricFqdn ]] ||
-	die "catalog entry for '${host}' carries no nixosHostname/fabricFqdn — is rke2lab's hostFacts export pinned? (needs rke2lab a0acc778c or later)"
+mapfile -t fleetHosts < <(yq -p json 'keys | .[]' <<<"$bmAll")
+((${#fleetHosts[@]})) || die "catalog.netplan.baremetal declares no bare-metal"
+printf '%s\n' "${fleetHosts[@]}" | grep -qxF "$host" ||
+	die "'${host}' is not a declared bare-metal (fleet: ${fleetHosts[*]})"
+
+# The CN names the member this leaf is filed under; every member's names land in the SAN below.
+hostname="$(h="$host" yq -p json '.[env(h)].nixosHostname // ""' <<<"$bmAll")"
+[[ -n $hostname ]] ||
+	die "catalog entry for '${host}' carries no nixosHostname — is rke2lab's hostFacts export pinned? (needs rke2lab a0acc778c or later)"
 
 # Every domain the catalog declares, plus `.local` for mDNS — the same derivation the nixos module
 # uses for server.crt, read from the same place rather than restated.
 mapfile -t suffixes < <(
 	nix eval --json "${repoRoot}#catalog.netplan" \
 		--apply 'n: builtins.filter (d: d != null && d != "") (map (net: net.domain or "") (builtins.attrValues n))' 2>/dev/null |
-		jq -r '.[]' | sed 's/^\.//'
+		yq -p json '.[]' | sed 's/^\.//'
 )
 
-sans=("$hostname" "$fabricFqdn" "${hostname}.local")
-for s in "${suffixes[@]}"; do sans+=("${hostname}.${s}"); done
-
-# Addresses: this host's fabric gateway and its lan-br link end, plus loopback. The tailnet is
-# deliberately a NAME only (see the header).
-for key in netGateway hostAddress; do
-	v="$(jq -r --arg k "$key" '.[$k] // empty' <<<"$bm")"
-	[[ -n $v ]] && sans+=("$v")
+# Every member's names, and every member's fabric gateway + lan-br link end. A member missing from
+# the catalog is FATAL rather than skipped: a cluster cert that silently omits one member is the
+# defect this block exists to prevent, and it reads as success everywhere else.
+sans=()
+for h in "${fleetHosts[@]}"; do
+	memberHostname="$(h="$h" yq -p json '.[env(h)].nixosHostname // ""' <<<"$bmAll")"
+	memberFqdn="$(h="$h" yq -p json '.[env(h)].fabricFqdn // ""' <<<"$bmAll")"
+	[[ -n $memberHostname && -n $memberFqdn ]] ||
+		die "catalog entry for '${h}' carries no nixosHostname/fabricFqdn — refusing to mint a cluster cert that would not name every member"
+	sans+=("$memberHostname" "$memberFqdn" "${memberHostname}.local")
+	for s in "${suffixes[@]}"; do sans+=("${memberHostname}.${s}"); done
+	# The tailnet is deliberately a NAME only (see the header).
+	for key in netGateway hostAddress; do
+		v="$(h="$h" k="$key" yq -p json '.[env(h)][env(k)] // ""' <<<"$bmAll")"
+		[[ -n $v ]] && sans+=("$v")
+	done
 done
 sans+=("127.0.0.1" "::1")
 
@@ -129,12 +162,15 @@ sans+=("127.0.0.1" "::1")
 # before. An unreadable segment list must stop the mint.
 segmentsJson="$(nix eval --json "${repoRoot}#catalog.netplan.segments" 2>/dev/null)" ||
 	die "cannot read catalog.netplan.segments — refusing to mint a cert with an incomplete SAN"
-mapfile -t hostGateways < <(
-	jq -r --arg h "$host" '.[] | select((.name // "") | startswith($h + "-")) | .gateway // empty' 		<<<"$segmentsJson" | grep -E '^[0-9a-fA-F:.]+$'
-)
-((${#hostGateways[@]})) ||
-	die "no segment gateway found for '${host}' — refusing to mint a cert with an incomplete SAN"
-sans+=("${hostGateways[@]}")
+for h in "${fleetHosts[@]}"; do
+	mapfile -t hostGateways < <(
+		h="$h" yq -p json '.[] | select((.name // "") | test("^" + env(h) + "-")) | .gateway // ""' \
+			<<<"$segmentsJson" | grep -E '^[0-9a-fA-F:.]+$'
+	)
+	((${#hostGateways[@]})) ||
+		die "no segment gateway found for '${h}' — refusing to mint a cert with an incomplete SAN"
+	sans+=("${hostGateways[@]}")
+done
 
 # De-duplicate, keeping order stable so two runs produce the same cert shape.
 mapfile -t sans < <(printf '%s\n' "${sans[@]}" | awk 'NF && !seen[$0]++')
@@ -202,6 +238,18 @@ The way OUT of pinning is the one the incus client documents:
 
 So a CA-signed listener cert + the authority in the CONSUMER's trust store makes the pin
 unnecessary — and the provider already accepts an empty \`server-crt\`. That is a change to how the
-provider pod is deployed (a CA bundle it trusts), not to the Secret's contents. Until it lands, the
-pin stays and a reissue invalidates every pinned copy exactly as before.
+provider pod is deployed (a CA bundle it trusts), not to the Secret's contents.
+
+Where that stands, measured 2026-10-01: a \`mammoth-skate-tls\` leaf IS installed on the cluster, and
+\`nixos.bioskop\` verifies against the CA by name. \`nixos.nikopol\` did NOT — the first leaf carried
+one host's SAN while the cluster serves it to every member — which is what the fleet-wide SAN above
+fixes, so this needs ONE more \`update-certificate\` before CA trust holds on both members. Verify it
+without guessing, per member:
+
+    openssl s_client -connect nixos.<host>:8443 -servername nixos.<host> \\
+      -CAfile <(ca-cert) -verify_hostname nixos.<host> </dev/null 2>&1 | grep Verification
+
+Until every member verifies, do NOT drop \`server-crt\` from the identity Secrets: the pin is what is
+holding the unnamed member together, and removing it is exactly what turns a hostname mismatch from
+invisible into fatal.
 INSTALL
