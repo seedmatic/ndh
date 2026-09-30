@@ -103109,11 +103109,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1789073434,
-        "narHash": "sha256-jMafEbN+DzaXy5pyZqrdRNIBSMRxYObl/1rT5UgGJWE=",
+        "lastModified": 1789289469,
+        "narHash": "sha256-bGwN9d45RyO6HEtELu2Evq6dRr8thvRppYUAGpuzch4=",
         "owner": "seedmatic",
         "repo": "flox-nri-plugin",
-        "rev": "b058dd26a7c83f2f4a8bb4707a7fdc23e99e05e0",
+        "rev": "923f19fe1f90fa466d36632f7a0e3a49503e10a5",
         "type": "github"
       },
       "original": {
@@ -282368,11 +282368,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1790619062,
-        "narHash": "sha256-patpPMtfk6hi1VoSZaxa45ypYp3n9hxtCo7y2nCKA/E=",
+        "lastModified": 1790793509,
+        "narHash": "sha256-9eC/NrHtVXYcKYm/hhk4o+4GCGVFQ8p/b5sj2rQksvw=",
         "owner": "seedmatic",
         "repo": "rke2lab",
-        "rev": "57c2115fc1f772aaedd8228e4945392378e029f6",
+        "rev": "a0acc778ce491d413d6891dfc124df16ae9fac10",
         "type": "github"
       },
       "original": {
@@ -284778,11 +284778,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1790608102,
-        "narHash": "sha256-5rbb5kP4bxxFtNedQ41gwIbZBiIrRIoBtrJ3reFuiTY=",
+        "lastModified": 1790789415,
+        "narHash": "sha256-QmkjdUYekBX620EF5BL0Kl+CdQq5VVv0+6qKeYC0BcI=",
         "owner": "seedmatic",
         "repo": "rke2lab",
-        "rev": "870adf38d0cac887481f4c3a11f0db89f832b668",
+        "rev": "5071741ac616adb3c9ebd5ad1e58c5bb5e208401",
         "type": "github"
       },
       "original": {
