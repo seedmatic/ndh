@@ -36,9 +36,27 @@ let
         if normalized == "" then "" else ".${normalized}"
       ) ([ ".local" ] ++ catalogDomainSuffixes)
     );
+  # THIS bare-metal's catalog entry, joined on the hostname the catalog now carries from rke2lab —
+  # rather than re-deriving the baremetal key from the hostname, which would be a third place that
+  # spelling lives.
+  selfBaremetal = lib.findFirst (bm: lib.elem (bm.nixosHostname or "") certHostLabels) null (
+    builtins.attrValues (netplan.baremetal or { })
+  );
+  # ⚠️ `nixos.<host>` is of a DIFFERENT SHAPE from everything else here — a prefix, not a
+  # `<hostname><suffix>` — which is exactly why the cross product above cannot produce it, and why it
+  # was the ONE name missing from the cert. It is also the FQDN every rke2lab `remote.endpoint`
+  # dials, so its absence is what forced every consumer to pin the leaf: measured 2026-09-30, the
+  # served cert carried `DNS:bioskop-nixos` and loopback ONLY, on both members (it is the CLUSTER
+  # certificate, self-generated at join — see the note in incus-remote-trust.d/post-activation.sh).
+  #
+  # Consumed from the catalog, which consumes it from rke2lab's NamePlan: one author, one derivation.
+  fabricNames = lib.optional (selfBaremetal != null && (selfBaremetal.fabricFqdn or "") != "") (
+    selfBaremetal.fabricFqdn
+  );
   incusServerCertNames = lib.unique (
     certHostLabels
     ++ (lib.concatMap (host: map (domain: "${host}${domain}") certDomainSuffixes) certHostLabels)
+    ++ fabricNames
   );
   incusServerCertPrimaryName =
     if builtins.length certHostLabels > 0 then

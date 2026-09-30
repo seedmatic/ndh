@@ -108,6 +108,14 @@ in
         in
         {
           domain = host;
+          # CONSUMED from rke2lab, not re-derived. rke2lab's ClusterNetworkBlueprint.NamePlan is the
+          # author of this form (`nixos.<host>`), and the dnsmasq record below plus the Incus listener
+          # cert's SAN both need it. Building the string here as well would have the two agree by
+          # COINCIDENCE rather than by construction — the same shape as any other duplicated
+          # derivation. So it is read from `lib.networkBlueprint.hostFacts`.
+          fabricFqdn = networkBlueprint.hostFacts.${host}.fabricFqdn;
+          # Likewise the `<host>-nixos` hostname, which the cert's SAN carries as its primary name.
+          nixosHostname = networkBlueprint.hostFacts.${host}.hostname;
           advertiseCidr = "${octets bare}.0/20"; # ONE tailnet route per bare-metal
           netCidr = "${octets bare}.0/21"; # managed Incus net (fabric-br dnsmasq) — slots 0-7
           netGateway = "${octets bare}.1"; # Incus bridge + dnsmasq + split-DNS target
@@ -457,7 +465,7 @@ in
                     # name, which only answers while that host sits on the home LAN.  Its incus
                     # daemon already listens here.
                     {
-                      name = "nixos.${bm.domain}";
+                      name = bm.fabricFqdn;
                       ip = bm.netGateway;
                     }
                   ];
