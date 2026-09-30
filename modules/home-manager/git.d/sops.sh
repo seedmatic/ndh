@@ -203,7 +203,21 @@ if [[ -L "${0}" ]]; then
 
   case "$OP" in
   "textconv")
+    # git hands textconv a PATH and no stdin, where clean/smudge are FED on stdin. So point stdin at
+    # the blob, then take the SAME re-exec as every other arm — as SMUDGE, because a textconv exists
+    # to render a blob READABLE for `git diff`, which for a sops file means decrypted. Smudge already
+    # handles both shapes a textconv can be handed (git passes the raw blob for the index/HEAD side
+    # and the smudged worktree file for the other): it decrypts what is encrypted and passes the rest
+    # through.
+    #
+    # ⚠️ Two defects lived here, measured 2026-09-30. This arm redirected stdin and then FELL THROUGH
+    # to the `exit 1` below — every other arm re-execs — so textconv returned nothing, with no
+    # diagnostic, for every format; git then silently falls back to the raw blob, which is why
+    # `git diff` never showed plaintext for a sops file anywhere and nobody noticed. And had it
+    # re-exec'd with its own name it would have landed in the clean arm, which ENCRYPTS — the
+    # opposite of what a textconv is for.
     exec <"${FILE}"
+    exec "$(realpath "$0")" smudge "$FORMAT" "${@}"
     ;;
   *)
     exec "$(realpath "$0")" "$OP" "$FORMAT" "${@}"
@@ -344,7 +358,11 @@ case "${OP}" in
     git::sops show "${DECRYPTED}"
   fi
   ;;
-"textconv" | "clean")
+"clean")
+  # ⚠️ `textconv` USED to share this arm, which was wrong twice over: a textconv must render a blob
+  # readable, and this arm ENCRYPTS. It now re-execs as smudge, so the label is gone rather than left
+  # standing as an unreachable alternative.
+  #
   # Either the file was not committed yet, or the existing decrypted content is different
   # from the input, in which case we output the new encrypted input.
   # If the file was commited and its decrypted content is the same as the new input,
