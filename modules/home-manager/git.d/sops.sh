@@ -156,7 +156,7 @@ git::sops() {
   show)
     git::sops::"${operation}" "${@:2}"
     ;;
-  decrypt | encrypt)
+  decrypt | encrypt | canonical)
     local filecontent
 
     [[ -z "${filecontent:=$( cat /dev/stdin )}" ]] &&
@@ -291,12 +291,29 @@ if [[ -n "${META[fileFormat]}" && "${META[fileFormat]}" != "binary" ]]; then
     sops --decrypt --input-type=yaml --output-type=yaml --filename-override="${META[fileName]}" /dev/stdin |
       yq --input-format=yaml --output-format="${META[fileFormat]}" eval . /dev/stdin
   }
+
+  # The COMPARISON projection — NEVER a transform of what gets stored. Its only caller is the
+  # idempotence check in the clean/textconv arm, and it must be applied to BOTH sides there: the
+  # whole point is that two spellings of the same document project to one form.
+  #
+  # `--no-doc` drops the leading `---` and `sort_keys(..)` makes key order irrelevant, so a
+  # producer's style stops deciding whether a secret "changed".
+  git::sops::canonical() {
+    yq --input-format=yaml --output-format="${META[fileFormat]}" --no-doc eval 'sort_keys(..)' /dev/stdin
+  }
 else
   git::sops::encrypt() {
     sops --encrypt --input-type=binary --output-type=binary --filename-override="${META[fileName]}" /dev/stdin
   }
   git::sops::decrypt() {
     sops --decrypt --input-type=binary --output-type=binary --filename-override="${META[fileName]}" /dev/stdin
+  }
+
+  # Binary has no structure to canonicalise — the bytes ARE the document, so the projection is
+  # identity. Defined rather than special-cased at the call site, so the comparison below has ONE
+  # shape for every format (the uniformity rule: no variant to remember).
+  git::sops::canonical() {
+    cat
   }
 fi
 
@@ -343,7 +360,34 @@ case "${OP}" in
 
   INPUT="$(cat /dev/stdin)"
 
-  if [[ -z "${ENCRYPTED_HEAD_CONTENTS}" || "${DECRYPTED_HEAD_CONTENTS}" != "${INPUT}" ]]; then
+  # ★ Both sides of the comparison go through the SAME canonical projection, or the idempotence this
+  # arm promises never fires. Measured 2026-09-30 on rke2lab's rendered branch: the two sides
+  # differed by exactly ONE line — a leading `---` the renderer emits and sops's own output does not
+  # — so EVERY encrypted manifest was re-encrypted on EVERY render. That is not free: sops takes a
+  # fresh AES-GCM IV, a fresh ephemeral age key per recipient and a `lastmodified` stamp each time,
+  # so a re-encryption is ALWAYS a new blob. 28 Secrets churning per render, ~370 lines of
+  # incompressible ciphertext, renders measured at `369 insertions(+), 369 deletions(-)` with
+  # nothing whatsoever changed.
+  #
+  # ⚠️ `yq eval .` is NOT a canonicaliser — it faithfully preserves whether the input carried a
+  # document separator, so normalising one side with it fixes nothing (verified: 0 of 29 matched).
+  # The projection has to be canonical: `--no-doc` removes the separator, `sort_keys(..)` makes key
+  # order irrelevant. With both sides projected, 26 of 29 match and stop churning; the rest differ
+  # in real content, which is exactly what should still be re-encrypted.
+  #
+  # A one-sided projection is the classic asymmetric-comparison bug, and the discipline already
+  # exists in this fleet: lock-envs normalises BOTH sides with `jq -S` before deciding a lock moved.
+  # This projects for the COMPARISON only — what gets encrypted below is still the caller's INPUT
+  # verbatim, so no producer's formatting is ever rewritten behind its back.
+  HEAD_CANONICAL="$(git::sops canonical <<<"${DECRYPTED_HEAD_CONTENTS}" 2>/dev/null || true)"
+  INPUT_CANONICAL="$(git::sops canonical <<<"${INPUT}" 2>/dev/null || true)"
+
+  # An input that does not project — invalid YAML, or yq failing — must compare UNEQUAL and be
+  # encrypted. Treating it as a match would stage the OLD blob for NEW content, which is the one
+  # outcome worse than churn: a silent loss. So the emptiness of INPUT_CANONICAL is a condition to
+  # re-encrypt, never a reason to skip.
+  if [[ -z "${ENCRYPTED_HEAD_CONTENTS}" || -z "${INPUT_CANONICAL}" \
+    || "${HEAD_CANONICAL}" != "${INPUT_CANONICAL}" ]]; then
     # Refuse to encrypt content that already looks encrypted — otherwise a
     # never-smudged worktree file gets passed through and sops exits non-zero,
     # which without this guard would silently stage empty output.
