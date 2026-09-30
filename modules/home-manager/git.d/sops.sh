@@ -217,6 +217,9 @@ if [[ -L "${0}" ]]; then
     # re-exec'd with its own name it would have landed in the clean arm, which ENCRYPTS — the
     # opposite of what a textconv is for.
     exec <"${FILE}"
+    # The marker lets the smudge path tell a CHECKOUT from a DIFF: the two disagree about what to do
+    # when no age identity matches (empty is safe for one, a lie for the other).
+    export SOPS_SERVING_TEXTCONV=1
     exec "$(realpath "$0")" smudge "$FORMAT" "${@}"
     ;;
   *)
@@ -345,6 +348,25 @@ case "${OP}" in
   if [[ $err == *"${wrong_key_error_message}"* ]]; then
     # Host has no matching age identity — leave worktree empty rather than
     # writing stale ciphertext. Expected on machines without the key.
+    #
+    # ⚠️ But EMPTY is only safe for a checkout. Serving a TEXTCONV, empty output means "this blob
+    # renders to nothing", so `git diff` shows two differing secrets as IDENTICAL — a silent lie
+    # exactly where a human is looking for a change. Fail instead: a non-zero textconv makes git fall
+    # back to the raw blob, so the diff is unreadable but HONEST.
+    #
+    # ⚠️ Measured 2026-09-30: THIS WHOLE BRANCH IS NOT REACHED by the sops in use. Both denial cases
+    # — no identity file at all, and an identity present that matches no recipient — report "Failed to
+    # get the data key required to decrypt the SOPS file", never the age wording matched above. So the
+    # graceful "leave the worktree empty" intent is currently inert and every failure exits via the
+    # generic rc branch below. That is why the textconv is honest TODAY (verified rc=128, 0 bytes),
+    # and it is not this guard that makes it so. The guard is kept because the age wording does occur
+    # with other sops/age configurations, but do not mistake it for the protection: broadening the
+    # match to the generic message would swallow corrupt files and unreachable KMS alike, which is the
+    # "answer less instead of I cannot" failure this repo keeps paying for.
+    if [[ -n ${SOPS_SERVING_TEXTCONV:-} ]]; then
+      echo >&2 "sops textconv: no age identity for ${META[filePath]} — refusing to render it as empty (git will diff the raw blob)."
+      exit 1
+    fi
     :
   elif [[ $err == *"${metadata_missing}"* ]]; then
     # The blob at rest is NOT sops-encrypted (plaintext a prior non-required commit stored, or
