@@ -188,11 +188,20 @@ with every member ONLINE (check: incus cluster list):
 
     incus cluster update-certificate ${crt} ${key}
 
-Then, so consumers stop pinning the leaf, the identity Secrets must carry the CA instead. Read it
-with:
+⚠️ Do NOT try to put the CA into the identity Secrets' \`server-crt\`. Checked against the provider's
+source 2026-10-01: cluster-api-provider-incus reads exactly
+\`server, server-crt, client-crt, client-key, project, insecure-skip-verify\` — there is NO \`ca-crt\`
+key — and it passes \`server-crt\` straight to the incus client's \`TLSServerCert\`, the PINNED remote
+certificate (it even logs its fingerprint). Its own docs call that field "the cluster certificate".
+A CA there would not match what the server presents.
 
-    sops -d ${keysYaml} | yq eval -r '.authorities."${authority}".ca_crt' -
+The way OUT of pinning is the one the incus client documents:
 
-⚠️ Until that last step lands, every consumer still pins the leaf — so this reissue invalidates the
-pinned copies exactly as before. The gain arrives only when trust moves to the CA.
+    "Unless the remote server is trusted by the system CA, the remote certificate
+     must be provided (TLSServerCert)."
+
+So a CA-signed listener cert + the authority in the CONSUMER's trust store makes the pin
+unnecessary — and the provider already accepts an empty \`server-crt\`. That is a change to how the
+provider pod is deployed (a CA bundle it trusts), not to the Secret's contents. Until it lands, the
+pin stays and a reissue invalidates every pinned copy exactly as before.
 INSTALL
