@@ -28,13 +28,18 @@
 # single voter. The failure mode is bounded: it shows up the first time the itinerant member leaves,
 # and the exit is `incus cluster remove <member> --force` back to standalone.
 #
-# Why this is not in the preseed. Clustering needs a CONCRETE member address, and ours is the tailnet
-# address — assigned by the control plane, so not a build-time fact (`core.https_address` stays the
-# `[::]:8443` wildcard for ordinary clients; `cluster.https_address` is Local scope and carries the
-# member identity).  Both modes therefore run the same enrolment at boot, reading the address off
-# `tailscale0` rather than restating it.  The join half additionally needs a token, which is
-# single-use and expires in 3h — a credential that must be fetched at the moment of use, never
-# persisted into an image.
+# Why this is not in the preseed.  `core.https_address` stays the `[::]:8443` wildcard for ordinary
+# clients; `cluster.https_address` is Local scope and carries the member IDENTITY.  That identity used
+# to be the tailnet address, read off `tailscale0` at boot because the control plane assigns it and so
+# it was not a build-time fact — the reason this ran as an enrolment rather than a declaration.  It is
+# now the host's own fabric bridge address, declared in the catalog, so that reason is GONE: what
+# remains is the reconciler's own (cluster-wide settings are Global scope and need the cluster to
+# already exist — see below, it fails quietly) and, for the join half, a token that is single-use and
+# short-lived, a credential to fetch at the moment of use and never persist into an image.
+#
+# ⚠️ So the bootstrap half could now move into the declarative preseed, and only the `is_clustered`
+# guard argues against it (enrolling an already-clustered daemon is an error). Not moved here: that is
+# a separate change with its own failure mode, and this one is about the address.
 let
   netplan = ndh.context.catalog.netplan or { };
   hostProfile = config.profile.host;
@@ -68,16 +73,25 @@ let
   # disagree.
   joinTokenExpiry = config.virtualisation.incus.preseed.config."core.remote_token_expiry" or "10M";
 
-  # This member's own address for cluster traffic. Read off the interface, not from the tailscale
-  # CLI: the fact is the same and it costs no dependency on which tailscale build runs here.
-  tailnetAddressSnippet = ''
-    member_address="$(${pkgs.iproute2}/bin/ip -4 -o addr show tailscale0 \
-      | ${pkgs.gawk}/bin/awk '{print $4}' | ${pkgs.coreutils}/bin/cut -d/ -f1)"
-    if [ -z "$member_address" ]; then
-      echo "incus-cluster: tailscale0 carries no IPv4 yet — will retry" >&2
-      exit 1
-    fi
-  '';
+  # This member's cluster address — its fabric NAME, consumed from the catalog (the same `fabricFqdn`
+  # rke2lab's `NamePlan.nixosFabricFqdn` and the listener cert's SAN read, so one author owns it).
+  #
+  # ★ It was read off `tailscale0` at boot, and that is what made the member address a non-build-time
+  # fact (see the header). The cost was not the discovery, it was the IDENTITY: the fleet's TLS
+  # authority signs `*.<domain>`, never a tailnet address — which is assigned by the control plane and
+  # changes on a renew — so a member URL built on one is a URL no certificate can ever cover.
+  #
+  # A NAME, not the address it resolves to: incus 7.4 validates this key with
+  # `IsListenAddress(allowDNS = true, …)` and `CanonicalNetworkAddress` returns it verbatim instead of
+  # resolving it, so `incus cluster list` reports `https://nixos.<host>:8443` — a URL the certificate
+  # covers, which is what lets a consumer verify by CA rather than pin a leaf. It also drops the
+  # "tailscale0 carries no IPv4 yet — will retry" failure mode with the snippet it replaces: the name
+  # is served by this host's own resolver for its own zone.
+  memberAddress =
+    if enabled then
+      bm.fabricFqdn or (throw "incus-cluster: ${effectiveHostName} declares no fabricFqdn")
+    else
+      "";
 
   # A function rather than an interpolated snippet: this is a MULTI-LINE command, and splicing it
   # into `if …; then` would put the `;` on a line of its own — a bash syntax error.
@@ -103,11 +117,10 @@ let
       if is_clustered; then
         echo "incus-cluster: already a member — reconciling cluster-wide settings only"
       else
-        ${tailnetAddressSnippet}
-        echo "incus-cluster: enabling clustering as ${memberName} on $member_address:8443"
+        echo "incus-cluster: enabling clustering as ${memberName} on ${memberAddress}:8443"
         ${pkgs.incus}/bin/incus admin init --preseed <<EOF
       config:
-        cluster.https_address: $member_address:8443
+        cluster.https_address: ${memberAddress}:8443
       cluster:
         server_name: ${memberName}
         enabled: true
@@ -296,8 +309,9 @@ lib.mkIf enabled {
       Type = "oneshot";
       RemainAfterExit = true;
       ExecStart = lib.getExe bootstrapScript;
-      # tailscale0 may carry no address yet at first boot, and on an itinerant fleet "not yet" is a
-      # normal state rather than a fault — so retry instead of failing the boot.
+      # The retry no longer covers a missing address — that is declared now — but it still covers a
+      # daemon that is up without being ready to accept `admin init`. On an itinerant fleet "not yet"
+      # is a normal state rather than a fault, so retry instead of failing the boot.
       Restart = "on-failure";
       RestartSec = "10s";
     };

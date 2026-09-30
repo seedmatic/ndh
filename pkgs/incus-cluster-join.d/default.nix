@@ -52,7 +52,23 @@ let
   # served by that host's own dnsmasq in its `.<host>` zone and reachable over the tailnet split-DNS.
   # Not `<host>-nixos.local` (mDNS dies across a routed boundary) and not the tailnet name (which is
   # what a renew changes).
-  sshTargetOf = entry: "nixos.${entry.domain}";
+  # CONSUMED from the catalog, not spelled here: `fabricFqdn` is the same field rke2lab's
+  # `NamePlan.nixosFabricFqdn` and the listener cert's SAN read, so one author owns the name.
+  fabricNameOf =
+    entry: entry.fabricFqdn or (throw "incus-cluster-join: ${entry.domain} declares no fabricFqdn");
+
+  # ★ ONE name does three jobs — the ssh target, the cluster member address, and a SAN entry on the
+  # listener certificate — and that is the point, not a coincidence to factor out. A cluster member
+  # address used to be read off the joining host's `tailscale0`, because a tailnet address is ASSIGNED
+  # and a renew changes it, so it could not be a build-time fact. The cost was identity: the fleet's
+  # TLS authority signs `*.<domain>`, never a tailnet address, so a member URL built on one is a URL
+  # no certificate can ever cover.
+  #
+  # Incus 7.4 takes a NAME here — `cluster.https_address` validates with
+  # `IsListenAddress(allowDNS = true, …)` and `CanonicalNetworkAddress` returns it verbatim rather
+  # than resolving it — so what lands in `incus cluster list` is `https://nixos.<host>:8443`, a URL
+  # the certificate covers. An address would have worked and been unnameable.
+  sshTargetOf = fabricNameOf;
 
   mkJoin =
     entry:
@@ -79,6 +95,7 @@ let
         bootstrapMember = memberNameOf bootstrapEntry;
         joiningSsh = sshTargetOf entry;
         bootstrapSsh = sshTargetOf bootstrapEntry;
+        joiningAddress = fabricNameOf entry;
         poolName = pool.name;
         poolSource = pool.source;
       }

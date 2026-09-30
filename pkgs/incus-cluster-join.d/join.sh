@@ -17,7 +17,7 @@
 #
 # Build-time tokens (pkgs.replaceVars), written WITHOUT at-sigils so replaceVars does not substitute
 # them in this comment: nixBashTrampoline, loggerTag, ssh, timeout, jq, yq, joiningMember,
-# bootstrapMember, joiningSsh, bootstrapSsh, poolName, poolSource.
+# bootstrapMember, joiningSsh, bootstrapSsh, joiningAddress, poolName, poolSource.
 #
 # Usage: <host>-incus-cluster-join [--dry-run]
 source @nixBashTrampoline@
@@ -124,16 +124,16 @@ main() {
 		return 1
 	fi
 
-	# The joining member's own address for cluster traffic, read where it lives rather than restated:
-	# it is a tailnet address, assigned by the control plane, so it is not a build-time fact. And it
-	# CHANGES when that VM is renewed, which is why nothing may cache it.
-	local member_address
-	member_address="$(remote "${JOINING_SSH}" ip -4 -o addr show tailscale0 |
-		awk '{print $4}' | cut -d/ -f1)"
-	if [[ -z "${member_address}" ]]; then
-		ndh::logger:notice "join: ${JOINING} carries no IPv4 on tailscale0 — is it on the tailnet?"
-		return 1
-	fi
+	# The joining member's own cluster address — its fabric NAME, declared, not discovered. This used
+	# to read the joining host's `tailscale0`, because a tailnet address is assigned by the control
+	# plane and changes on a renew, so it could not be a build-time fact. That worked, and it cost the
+	# member URL its identity: the fleet's TLS authority signs `*.<domain>`, never a tailnet address,
+	# so no certificate can ever cover a member URL built on one.
+	#
+	# A NAME and not the address behind it, deliberately: incus stores this key verbatim (its validator
+	# allows DNS and its canonicaliser does not resolve), so `incus cluster list` shows a URL the
+	# certificate NAMES — which is what lets a consumer verify by CA instead of pinning a leaf.
+	local member_address="@joiningAddress@"
 
 	local cluster_address
 	cluster_address="$(remote "${BOOTSTRAP_SSH}" incus config get cluster.https_address)"
