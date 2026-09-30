@@ -1430,6 +1430,29 @@
             ];
             text = builtins.readFile ./modules/.common.d/authority-bootstrap-tls-root.d/authority-bootstrap-tls-root.sh;
           };
+          # Mint the Incus LISTENER cert from a keys.yaml TLS authority. Hermetic like its sibling
+          # above, plus jq (the SAN set is read out of the catalog as JSON) and nix itself (it
+          # evaluates this flake's catalog and rke2lab's segments rather than retyping any name).
+          #
+          # ★ Unlike authority-bootstrap-tls-root it materialises NOTHING secret: sops is piped and
+          # step-cli takes the CA cert/key through process substitution. Only the leaf pair is
+          # written, because `incus cluster update-certificate` takes two file paths.
+          mintIncusListenerCertPackage = pkgsForSystem.writeShellApplication {
+            name = "mint-incus-listener-cert";
+            runtimeInputs = [
+              pkgsForSystem.git
+              pkgsForSystem.step-cli
+              pkgsForSystem.sops
+              pkgsForSystem.yq-go
+              pkgsForSystem.jq
+              pkgsForSystem.nix
+              pkgsForSystem.coreutils
+              pkgsForSystem.gnused
+              pkgsForSystem.gnugrep
+              pkgsForSystem.gawk
+            ];
+            text = builtins.readFile ./modules/.common.d/mint-incus-listener-cert.d/mint-incus-listener-cert.sh;
+          };
           # System-admin helper: prune darwin/HM/user generations + GC. Drives the
           # AMBIENT sudo + system nix daemon (a pinned nix would desync from it), so
           # runtimeInputs stays empty — writeShellApplication PREPENDS to PATH, it
@@ -1494,6 +1517,11 @@
             type = "app";
             program = "${bboxReconcilePackage}/bin/bbox-reconcile";
             meta.description = "Diff catalog.netplan.lan.hosts against the bbox /dhcp/clients reservations (read-only) — src: modules/.common.d/bbox-reconcile.d/";
+          };
+          mint-incus-listener-cert = {
+            type = "app";
+            program = "${mintIncusListenerCertPackage}/bin/mint-incus-listener-cert";
+            meta.description = "Mint the Incus listener cert for a bare-metal from a keys.yaml TLS authority — <host> [--authority <name>], run from repo root; prints the `incus cluster update-certificate` to run — src: modules/.common.d/mint-incus-listener-cert.d/";
           };
           authority-bootstrap-tls-root = {
             type = "app";
