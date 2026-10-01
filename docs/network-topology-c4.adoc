@@ -74,7 +74,7 @@ the admin console":
 * *advertising* — `networking.headscale.advertiseRoutes`, derived from the catalog
   (`baremetal-segment.nix` for the `/20`, `cluster-vmnet.nix` for each `vmnet` `/21`);
 * *approving* — `autoApprovers.routes` in the generated policy, keyed on `tag:nixos`, pushed by
-  `manage-tailnet --sync-acl`;
+  `manage-tailnet --sync-policy`;
 * *authorising* — the policy's `grants` block, generated from the same catalog (it was `acls`
   until 2026-09-27 — see <<authorisation>>);
 * *defining services* — `manage-tailnet --sync-services`, from
@@ -467,7 +467,7 @@ Not a console step among them any more — each is generated from the catalog an
 . *advertise* — `networking.headscale.advertiseRoutes` carries `172.16.16.0/20` on
   `nikopol-nixos`; consumers set `acceptRoutes`. Neither is a `tailscale up` flag.
 . *approve* — `autoApprovers.routes` maps the `/20` to `tag:nixos`, so the route is approved as
-  soon as it is advertised. Pushed by `manage-tailnet --sync-acl --apply`.
+  soon as it is advertised. Pushed by `manage-tailnet --sync-policy --apply`.
 . *split-DNS* — `manage-tailnet --sync-dns --apply` PATCHes `nikopol` → `172.16.16.1`.
 
 ⚠️ The approver must follow the *advertiser*: an `autoApprovers.routes` entry left keyed on the
@@ -504,7 +504,7 @@ reason to be routed, the bbox having been the last thing on that LAN any code ne
 
 Three traps this cost, all of which look like something else:
 
-Mixed autogroup spellings:: The first `--sync-acl --apply` was REJECTED — _"ACLs contain a mix
+Mixed autogroup spellings:: The first `--sync-policy --apply` was REJECTED — _"ACLs contain a mix
 of old-style `autogroup:members` and new-style `autogroup:member`; use one or the other."_
 Consistency is a property of the WHOLE policy, so translating `grants` was not enough: the
 `ssh` block carried the plural, and so did `nodeAttrs`, a field this reconcile PRESERVES
@@ -539,7 +539,7 @@ Two things this does NOT buy, stated so nobody re-derives them:
 * It does *not* make advertising the home LAN safe. Grants' `via` *chooses between* routers; it
   does not withhold a prefix from a peer. The 2026-09-27 LAN outage is not addressed by it.
 
-⚠️ *The migration trap is in the reconciler, not the policy.* `sync_acl` does
+⚠️ *The migration trap is in the reconciler, not the policy.* `sync_policy` does
 `.acls = canonical.acls` — a REPLACE — and touches only the keys it names, preserving everything
 else. So a canonical `.grants` block would be *silently dropped*, while the superseded `.acls`
 stayed live; and since the effective policy is the permissive union of the two, the old block would

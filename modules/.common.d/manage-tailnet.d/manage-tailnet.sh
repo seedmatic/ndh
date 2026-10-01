@@ -8,7 +8,7 @@
 #                       host-kind (baked from catalog.tailnet.tags at @authKinds@)
 #                       and write it to tailnet.tailscale.auth.<kind> via a
 #                       targeted, atomic `sops set`.
-#   --sync-acl        : reconcile the LIVE tailnet ACL with our canonical
+#   --sync-policy        : reconcile the LIVE tailnet ACL with our canonical
 #                       fragment (@aclCanonical@) — GET current + ETag, merge
 #                       (prune superseded tags, set our tag vocabulary + owners,
 #                       role-based acls/ssh, baremetal route auto-approvers;
@@ -51,7 +51,7 @@ readonly OWNER_TAG="tag:tailnet-key-owner"
 # Option state (globals; set by main, read by helpers).
 dry_run=1
 do_auth=0
-do_sync_acl=0
+do_sync_policy=0
 do_sync_dns=0
 do_sync_services=0
 do_retag=0
@@ -119,7 +119,7 @@ Safe by default. Manages the per-kind Tailscale SaaS auth keys + the ACL.
 
   --dry-run          Show planned actions, change nothing (default).
   --rotate-auth-key  Mint fresh per-kind auth keys and write .secrets.
-  --sync-acl         Reconcile the live tailnet ACL with our canonical fragment;
+  --sync-policy         Reconcile the live tailnet ACL with our canonical fragment;
                      shows a diff.  POSTs only with --apply.
   --sync-dns         Reconcile the tailnet split-DNS map (each per-baremetal zone
                      -> that segment's dnsmasq) from the catalog; shows a diff.
@@ -296,7 +296,7 @@ revoke_key() {
 # claim — the merge is `live * canonical` — and the operator would stop being
 # able to register any device.  The canonical `grants` names it as a dst instead,
 # which needs no ownership.
-sync_acl() {
+sync_policy() {
 	# -o writes the body to a file (read twice below: reconcile + diff); -w emits
 	# the ETag on stdout (captured) so we need no separate header dump file.
 	local etag
@@ -332,7 +332,7 @@ sync_acl() {
 	if [ "$assume_yes" -ne 1 ]; then
 		log "NOTE: for minting to work, assign '$OWNER_TAG' to the rotation OAuth"
 		log "      client in the Tailscale console (Settings -> OAuth clients)."
-		log "no --apply: ACL not pushed.  Re-run 'manage-tailnet --sync-acl --apply' to POST."
+		log "no --apply: ACL not pushed.  Re-run 'manage-tailnet --sync-policy --apply' to POST."
 		return 0
 	fi
 
@@ -730,7 +730,7 @@ rotation_plan() {
 	done
 	log "tailnet has $(list_key_ids | grep -c . || true) existing auth key(s)."
 	log "Actions: --rotate-auth-key (mint + write; --revoke-old --apply to retire old);"
-	log "         --sync-acl (review/reconcile the tailnet ACL; --sync-acl --apply to push)."
+	log "         --sync-policy (review/reconcile the tailnet ACL; --sync-policy --apply to push)."
 	log "See --help for the full option list."
 }
 
@@ -798,7 +798,7 @@ main() {
 			do_auth=1
 			dry_run=0
 			;;
-		--sync-acl) do_sync_acl=1 ;;
+		--sync-policy) do_sync_policy=1 ;;
 		--sync-dns) do_sync_dns=1 ;;
 		--sync-services) do_sync_services=1 ;;
 		--retag-devices) do_retag=1 ;;
@@ -900,7 +900,7 @@ main() {
 
 	authenticate
 
-	[ "$do_sync_acl" -eq 1 ] && sync_acl
+	[ "$do_sync_policy" -eq 1 ] && sync_policy
 	[ "$do_sync_dns" -eq 1 ] && sync_dns
 	[ "$do_sync_services" -eq 1 ] && sync_services
 	[ "$do_retag" -eq 1 ] && retag_devices
@@ -918,7 +918,7 @@ main() {
 			log "  sudo nixos-rebuild switch --flake .#nikopol-nixos --refresh"
 			log "  (repeat per host that consumes a rotated kind)"
 		fi
-	elif [ "$dry_run" -eq 1 ] && [ "$do_sync_acl" -eq 0 ] && [ "$do_sync_dns" -eq 0 ] && [ "$do_sync_services" -eq 0 ] && [ "$do_retag" -eq 0 ] && [ "$do_prune" -eq 0 ] && [ "$do_reclaim" -eq 0 ]; then
+	elif [ "$dry_run" -eq 1 ] && [ "$do_sync_policy" -eq 0 ] && [ "$do_sync_dns" -eq 0 ] && [ "$do_sync_services" -eq 0 ] && [ "$do_retag" -eq 0 ] && [ "$do_prune" -eq 0 ] && [ "$do_reclaim" -eq 0 ]; then
 		rotation_plan
 	fi
 

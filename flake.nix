@@ -1398,7 +1398,7 @@
               exec check-jsonschema --schemafile "$schema" "$tmp"
             '';
           };
-          # manage-tailnet: administer the tailnet (rotate auth keys / sync-acl /
+          # manage-tailnet: administer the tailnet (rotate auth keys / sync-policy /
           # retag / prune stale devices).  The recipe is extracted to package.nix
           # so it is exposed BOTH here (the app) and as packages.<system>.manage-tailnet
           # (for PATH consumers — the flox env, another flake's runtimeInputs).

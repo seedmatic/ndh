@@ -224,7 +224,7 @@ host is unreachable, or vice-versa:
 
 * *Tailnet auth + ACL* — `nix run '.#manage-tailnet'` (dry-run by
   default): `--rotate-auth-key` mints the per-kind `tskey-auth-*` keys via the
-  OAuth client; `--sync-acl` reconciles the SaaS ACL from the catalog;
+  OAuth client; `--sync-policy` reconciles the SaaS ACL from the catalog;
   `--retag-devices` heals device tags. See
   `modules/.common.d/manage-tailnet.d/`.
 * *Deploy* — rebuild the Incus host on the branch (`nixos-rebuild-gh switch

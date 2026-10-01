@@ -84,7 +84,7 @@ let
     builtins.toJSON tailnetAuthKindsSpec
   );
   # Canonical Tailscale-SaaS ACL fragment, built from the catalog.  The
-  # `--sync-acl` reconcile merges this into the LIVE tailnet policy
+  # `--sync-policy` reconcile merges this into the LIVE tailnet policy
   # (preserving personal/k8s tags, nodeAttrs, and existing routes;
   # pruning the superseded operator/service/container tags).
   #
@@ -97,7 +97,7 @@ let
   # understand `grants` — and headscale is hibernating, its policy file a
   # separate artefact nothing syncs.  Migrating is decided, not done (see
   # docs/network-topology-c4.adoc#authorisation): it must `del(.acls)` in
-  # sync_acl in the SAME change, because the effective policy is the
+  # sync_policy in the SAME change, because the effective policy is the
   # permissive UNION of both blocks — a canonical `.grants` alone would be
   # dropped by the reconciler while the superseded `acls` kept granting.
   # `ssh` uses `accept` per the single-operator rationale in
@@ -155,6 +155,27 @@ let
       # vocabulary here or catching `-baremetal-net` by accident.
       vmnetNodeCidrs = map (s: s.cidr) (
         builtins.filter (s: (s ? gateway) && (s ? cidr6)) (catalog.netplan.segments or [ ])
+      );
+      # The OTHER address a cluster node speaks from — its fabric NIC. Keyed by the MIRROR of the
+      # shape above (a gateway, no DHCPv6 prefix), which the note above already establishes picks out
+      # exactly ndh's `<domain>-baremetal-net` spans: measured, the two `/21`s holding each bare-metal
+      # host and the fabric NICs of the cluster nodes on it. The Macs are NOT in them — they sit on the
+      # `-link` `/30`s — so this stays as narrow as its vmnet twin.
+      #
+      # ⚠️ Why it is needed, measured 2026-10-01 and it cost nikopol-mgmt its adoption. A node has TWO
+      # addresses, and the grant below named only one. Dialling a bare-metal fabric address, the node
+      # egresses `fabric0` and therefore SOURCES from `172.16.1.3` — an address no rule names — so the
+      # packet left bioskop (conntrack recorded it, UNREPLIED) and was dropped INSIDE the tailnet,
+      # never reaching nikopol (nikopol's conntrack had no trace of it, while the vmnet-sourced ping
+      # beside it was there and answered). Every host-side explanation was innocent: the route was in
+      # table 52, `ip route get … iif fabric-br` resolved out `tailscale0`, every forward chain was
+      # `policy accept`, and nikopol held the return route with `RouteAll`.
+      #
+      # ★ The discriminator was the SOURCE, not the destination — `dst` already admits
+      # `baremetalCidrs`, so the same node reaching the same address from its vmnet NIC worked. A
+      # grant that names one of a machine's two addresses reads as a routing fault from every angle.
+      baremetalNodeCidrs = map (s: s.cidr) (
+        builtins.filter (s: (s ? gateway) && !(s ? cidr6)) (catalog.netplan.segments or [ ])
       );
       # ONE approver tag for both families, because one kind of device advertises both: the
       # bare-metal's NixOS host — its own fabric slice, and, since the vmnet subnet-router role
@@ -274,7 +295,7 @@ let
       #     file: it was written by hand or by the console's ACL-to-grants conversion.
       #     The effective policy being the permissive UNION of both blocks, it granted
       #     reach nobody was reviewing.  Emitting grants here is what puts it under the
-      #     catalog; `sync_acl` replaces it and deletes `acls` in one move.
+      #     catalog; `sync_policy` replaces it and deletes `acls` in one move.
       #
       # Shape differs from `acls`: there is no `action`, the port leaves `dst` for `ip`,
       # so `"tag:x:*"` becomes dst `"tag:x"` + `ip = ["*"]`.  A mistranslation would be
@@ -385,8 +406,12 @@ let
         # Restricted to the per-cluster /21s rather than the /18 supernet: the four unallocated spans
         # inside it have no bridge and no server, so admitting them would widen only the DECLARATION —
         # which is the whole point of writing it narrowly.
+        #
+        # ★ BOTH of a node's addresses, and that is the 2026-10-01 correction: naming only the vmnet
+        # one made every bare-metal fabric address unreachable from a cluster, with a symptom that
+        # pointed everywhere except here (see `baremetalNodeCidrs`).
         {
-          src = vmnetNodeCidrs;
+          src = vmnetNodeCidrs ++ baremetalNodeCidrs;
           dst = baremetalCidrs ++ vmnetCidrs;
           ip = [ "*" ];
         }
