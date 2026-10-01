@@ -52,9 +52,19 @@ let
   bm = netplan.baremetal.${effectiveHostName} or null;
   enabled = bm != null;
 
-  # The Incus member name for a bare-metal — the same `<host>-nixos` convention its tailnet node and
-  # its incus remote label already carry, so one name identifies the daemon everywhere.
-  memberNameOf = entry: "${entry.domain}-nixos";
+  # The Incus member name for a bare-metal: the BARE host, no `-nixos` suffix.
+  #
+  # ⚠️ It was `${entry.domain}-nixos`, on the ground that the tailnet node and the incus remote label
+  # carry that convention — and that reconflated two concepts rke2lab had deliberately split.
+  # `ClusterNetworkBlueprint.NamePlan` declares BOTH, and says why: `nixosHost` is the NixOS HOSTNAME
+  # and must keep its suffix (`nikopol` alone already names the RDP host, a different machine), while
+  # `incusMember` is the member name a pool's `spec.target` states and `incusTargets` lists. rke2lab
+  # owns that decision; this follows it.
+  #
+  # Measured 2026-10-01, after the reformation renamed the members: every LXCMachine failed with
+  # `CreateInstance: Cluster member "nikopol" not found` — the cluster had `nikopol-nixos` and the
+  # render targeted `nikopol`. Two repos naming one machine, each with a stated rationale.
+  memberNameOf = entry: entry.domain;
 
   # The bootstrap member is the SEDENTARY one, and that is derived rather than chosen: a roaming host
   # cannot be the member others join (its address and its presence both move).  `lanAttachment` is

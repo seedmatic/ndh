@@ -44,9 +44,19 @@ let
     e: bootstrapEntry != null && e.domain != bootstrapEntry.domain
   ) baremetals;
 
-  # `<host>-nixos` — the same convention the host's tailnet node, its Incus remote label and its
-  # NixOS configuration already carry, so one name identifies the daemon everywhere.
-  memberNameOf = entry: "${entry.domain}-nixos";
+  # The Incus member name for a bare-metal: the BARE host, no `-nixos` suffix.
+  #
+  # ⚠️ It was `${entry.domain}-nixos`, on the ground that the tailnet node and the incus remote label
+  # carry that convention — and that reconflated two concepts rke2lab had deliberately split.
+  # `ClusterNetworkBlueprint.NamePlan` declares BOTH, and says why: `nixosHost` is the NixOS HOSTNAME
+  # and must keep its suffix (`nikopol` alone already names the RDP host, a different machine), while
+  # `incusMember` is the member name a pool's `spec.target` states and `incusTargets` lists. rke2lab
+  # owns that decision; this follows it.
+  #
+  # Measured 2026-10-01, after the reformation renamed the members: every LXCMachine failed with
+  # `CreateInstance: Cluster member "nikopol" not found` — the cluster had `nikopol-nixos` and the
+  # render targeted `nikopol`. Two repos naming one machine, each with a stated rationale.
+  memberNameOf = entry: entry.domain;
 
   # The one name form for an infra host (rke2lab's `NamePlan.nixosFabricFqdn`, ndh's catalog record):
   # served by that host's own dnsmasq in its `.<host>` zone and reachable over the tailnet split-DNS.
