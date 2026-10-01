@@ -78,7 +78,10 @@ while (($#)); do
 		shift 2
 		;;
 	-h | --help)
-		sed -n '3,48p' "$0" | sed 's/^# \{0,1\}//'
+		# The header, DERIVED: from line 3 to whatever precedes `set -euo pipefail`. It used to be a
+		# hard-coded range and it silently truncated the last precondition twice in one sitting —
+		# every edit to the header moved the end, and nothing failed, it just said less.
+		awk 'NR>=3 { if (/^set -euo pipefail$/) exit; print }' "$0" | sed 's/^# \{0,1\}//'
 		exit 0
 		;;
 	-*) die "unknown flag '$1' (try --help)" ;;
