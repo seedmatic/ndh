@@ -298,12 +298,22 @@ lib.mkIf enabled {
   # reconciling the roles below.
   systemd.services.incus-cluster-bootstrap = lib.mkIf isBootstrap {
     description = "Enable Incus clustering on this member (${memberName})";
+    # ⚠️ `dnsmasq` is load-bearing here, not incidental: `cluster.https_address` is a NAME, and incus
+    # validates it with `net.LookupHost` before accepting the preseed (`IsListenAddress`, allowDNS).
+    # That name is `nixos.<host>`, served by THIS host's own dnsmasq, so an unordered first boot races
+    # it and `admin init` fails with `Couldn't resolve …`. The retry below would eventually win, which
+    # is exactly why this is worth stating — a self-healing race is a cold start that looks broken for
+    # as long as it takes.
     after = [
       "incus.service"
+      "dnsmasq.service"
       "network-online.target"
     ];
     requires = [ "incus.service" ];
-    wants = [ "network-online.target" ];
+    wants = [
+      "dnsmasq.service"
+      "network-online.target"
+    ];
     wantedBy = [ "multi-user.target" ];
     serviceConfig = {
       Type = "oneshot";
