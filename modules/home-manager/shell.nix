@@ -14,7 +14,7 @@ let
     then
       "${specialArgs.ndh.context.nixBashTrampoline}"
     else
-      "${worktreePath.of "modules/.common.d/shell.d/nix-bash-trampoline.sh"}";
+      "${worktreePath.runtimeFile "modules/.common.d/shell.d/nix-bash-trampoline.sh"}";
   profile = config._module.specialArgs.profile;
   userName = profile.user.name;
   homeDir = config.home.homeDirectory;

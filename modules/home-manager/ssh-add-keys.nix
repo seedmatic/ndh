@@ -21,7 +21,7 @@ let
     then
       "${specialArgs.ndh.context.nixBashTrampoline}"
     else
-      "${worktreePath.of "modules/.common.d/shell.d/nix-bash-trampoline.sh"}";
+      "${worktreePath.runtimeFile "modules/.common.d/shell.d/nix-bash-trampoline.sh"}";
   user = config.profile.user;
   userName = user.name;
   userHome = user.home;

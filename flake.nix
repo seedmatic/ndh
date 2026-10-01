@@ -893,13 +893,71 @@
           acc: bm: acc // { "${bm.domain}-baremetal-link-install" = mkBaremetalLinkInstall system bm; }
         ) { } (builtins.attrValues baremetalLinkNixHosts);
 
-      # Resolve a relative path to a path literal anchored at the repo
-      # root.  Each call hashes only the file (or subtree) named, not
-      # the whole worktree the way `${self}/<file>` does — so unrelated
-      # source edits don't bust downstream derivations like the bringup
-      # disk image.  See docs/bringup-image-unification.adoc.
+      # Resolve a relative path to its OWN store path, hashed on that file (or subtree) alone — not on
+      # the whole worktree the way `${self}/<file>` does, so unrelated source edits don't bust
+      # downstream derivations like the bringup disk image.  See docs/bringup-image-unification.adoc.
+      #
+      # ⚠️ It used to be `./. + "/${rel}"`, which achieved NEITHER half of that sentence. In a flake
+      # `./.` is already the store path of the whole source, so the result was a path INSIDE it: hashed
+      # on the entire worktree, and — the part that actually broke — a string that the reference
+      # scanner never records. Measured 2026-10-01 on the tart materializer: the activation script
+      # NAMED `/nix/store/…-source/.secrets` while `nix-store --query --requisites` on it found 0
+      # occurrences of that source. So the file was not in the closure, never travelled to a host that
+      # had not built locally, and `manage-tailnet --reclaim-host` died on
+      # `--secrets-file not found` — refusing the factory reset, correctly, for a missing dependency
+      # that LOOKED declared.
+      #
+      # ★ The scope is the file's DIRECTORY, not the file — which is what makes ONE helper enough.
+      # Isolating the file alone also works for the closure and breaks everything that resolves a
+      # sibling: measured, `modules/.common.d/ssh-paths.nix` lost its relative imports outright, and
+      # `shell.d/nix-bash-trampoline.sh` finds its logger through `${BASH_SOURCE[0]%/*}/logger.sh`.
+      # Those scripts need their neighbours, and a directory gives them both the neighbours and the
+      # reference.
+      #
+      # Probed rather than assumed, because the shape is the one that FAILED above: a path inside a
+      # DEDICATED `builtins.path` directory IS recorded as a reference (a `writeText` naming
+      # `${dir}/nix-bash-trampoline.sh` lists that dir in `--references`). So the broken shape was
+      # never "a path inside a store path" — it was a path inside the WHOLE-SOURCE path specifically,
+      # whose context is discarded somewhere downstream, which is exactly what one would want for the
+      # source and exactly what silently took `.secrets` with it.
+      #
+      # A root-level file (`.secrets`) is scoped to the FILE: its directory IS the whole worktree,
+      # which is the thing being avoided, and it has no sibling set to preserve.
+      # ⚠️ And it cannot be ONE helper, which two separate evaluation failures established in order:
+      #
+      #   1. file-scoped `of` broke every script resolving a sibling, hence the directory scope;
+      #   2. directory- or file-scoped `of` then broke the MODULE SYSTEM, which dedupes imports by
+      #      PATH: `profile.nix` reached through a new store identity read as a second module —
+      #      "The option `profile' in `…-ndh-profile.nix' is already declared in `…-source/profile.nix'".
+      #
+      # So identity and dependency pull in opposite directions, and the two uses are named apart:
+      #
+      #   of          — EVAL-time. Identity-preserving, because a module imported by two different
+      #                 paths is imported TWICE. Never reach for it where a BUILT artifact will later
+      #                 open the file.
+      #   runtimeFile — a real DEPENDENCY, scoped to the file's DIRECTORY so siblings survive, and
+      #                 scanned into the closure so it travels.
       worktreePath = {
         of = rel: ./. + "/${rel}";
+        runtimeFile =
+          rel:
+          let
+            split = builtins.match "(.*)/([^/]+)" rel;
+            storeName = p: "ndh-${builtins.replaceStrings [ "/" ] [ "-" ] p}";
+          in
+          if split == null then
+            # A root-level file (`.secrets`): its directory IS the whole worktree — the thing being
+            # avoided — and it has no sibling set to preserve.
+            builtins.path {
+              path = ./. + "/${rel}";
+              name = storeName rel;
+            }
+          else
+            builtins.path {
+              path = ./. + "/${builtins.elemAt split 0}";
+              name = storeName (builtins.elemAt split 0);
+            }
+            + "/${builtins.elemAt split 1}";
       };
 
       mkSpecialArgs =

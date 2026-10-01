@@ -45,7 +45,7 @@ let
   # spelling here is how the two would come to disagree.
   guestTailnetName = config.vm.guestHostName;
 
-  sopsSecretsFile = worktreePath.of ".secrets";
+  sopsSecretsFile = worktreePath.runtimeFile ".secrets";
   sopsSecretsLooksEncrypted =
     let
       content = builtins.readFile sopsSecretsFile;

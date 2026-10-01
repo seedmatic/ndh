@@ -25,7 +25,7 @@ let
     then
       "${specialArgs.ndh.context.nixBashTrampoline}"
     else
-      "${worktreePath.of "modules/.common.d/shell.d/nix-bash-trampoline.sh"}";
+      "${worktreePath.runtimeFile "modules/.common.d/shell.d/nix-bash-trampoline.sh"}";
   profile = config._module.specialArgs.profile;
   userName = profile.user.name;
   hostProfile = profile.host or { };
@@ -50,18 +50,28 @@ in
     };
     remoteAddress = lib.mkOption {
       type = lib.types.str;
-      default = "https://${hostName}-nixos:8443";
+      default = "https://nixos.${hostName}:8443";
       description = ''
-        HTTPS address of the Incus server. The bare tailnet hostname (MagicDNS),
-        not <host>-nixos.local: mDNS .local resolution stalls ~5s per call waiting
-        for a AAAA record the guest never advertises, whereas the bare name
-        resolves instantly — matching the reference host's config.yml.
+        HTTPS address of the Incus server — `nixos.<host>`, the name WE declare, served by that
+        bare-metal's own dnsmasq in its `.<host>` zone and carried in the listener certificate's SAN.
+
+        ⚠️ It was the bare `<host>-nixos`, on the stated ground that MagicDNS answers it instantly.
+        Measured 2026-10-01 with getaddrinfo — what the incus client actually calls — that is not what
+        happens: a single-label name gets the search list applied, so `lan` answers FIRST and
+        `bioskop-nixos` resolves to 192.168.1.130. The remote then points at whatever the home LAN
+        calls that name, which is why the URL had to be repaired by hand with `incus remote set-urls`.
+        `.local` is still rightly avoided (mDNS stalls ~5s on macOS); the fix is a name we own, not
+        another name we do not.
       '';
     };
     trustHost = lib.mkOption {
       type = lib.types.str;
-      default = "${hostName}-nixos";
-      description = "SSH host on which to mint the trust token when this node has no local Incus daemon socket.";
+      default = "nixos.${hostName}";
+      description = ''
+        SSH host on which to mint the trust token when this node has no local Incus daemon socket.
+        The same name as the remote address, for the same reason — and it is also the ssh alias ndh
+        declares, so one name reaches the daemon and the shell alike.
+      '';
     };
   };
 
