@@ -59,19 +59,46 @@ let
     IdentityAgent none
     PreferredAuthentications publickey
   '';
-  operatorAliasForService = host: serviceName: hostNameSuffix: ''
-    Host ${serviceName}.${host}
-      HostName ${host}${hostNameSuffix}
-      User ${sshUserForHost host}
-      ${operatorIdentityLines}
-  '';
-  # Operator aliases resolve to the bare MagicDNS name, never `.local`:
-  # a `.local` HostName stalls ~5s on macOS — systemd-resolved's mDNS
-  # responder sends no NSEC for the absent AAAA, so getaddrinfo waits out
-  # the timeout — whereas MagicDNS answers over unicast DNS, instantly.
+  # `hostName = null` means the alias name IS the resolvable name, so NO HostName is written. That is
+  # not a shortcut: a HostName restating a name DNS already answers is a second place that name lives,
+  # and the two can then disagree — which is exactly what happened here.
+  operatorAliasForService =
+    host: serviceName: hostName:
+    lib.concatStringsSep "\n" (
+      [ "Host ${serviceName}.${host}" ]
+      ++ lib.optional (hostName != null) "  HostName ${hostName}"
+      ++ [
+        "  User ${sshUserForHost host}"
+        operatorIdentityLines
+      ]
+    );
+  # Operator aliases resolve over UNICAST DNS, never `.local`: a `.local` HostName stalls ~5s on macOS
+  # — systemd-resolved's mDNS responder sends no NSEC for the absent AAAA, so getaddrinfo waits out the
+  # timeout.
+  #
+  # ⚠️ But NOT via the bare MagicDNS name, which is what this did and why `ssh nixos.nikopol` broke.
+  # Measured 2026-10-01 from bioskop, with getaddrinfo (what ssh calls) and not `dig` (which asks
+  # MagicDNS directly and therefore cannot see this at all):
+  #
+  #   nikopol-nixos                       -> 192.168.1.34     the LAN resolver, via the `lan` search domain
+  #   nixos.nikopol                       -> 172.16.16.1      our own dnsmasq, the fabric address
+  #   nikopol-nixos.mammoth-skate.ts.net  -> 100.106.165.29   MagicDNS, only when FULLY qualified
+  #
+  # A single-label name gets the search list applied, so `lan` answers before MagicDNS ever does — the
+  # alias was pointing at whatever the home LAN happens to call that name, and earlier at nothing at
+  # all.
+  #
+  # So the `nixos.` alias overrides NOTHING: `nixos.<host>` is a name WE declare, served by that
+  # bare-metal's own dnsmasq in its `.<host>` zone, and it is the same name the Incus listener
+  # certificate carries. It resolves on its own (measured above), so the block exists only for the User
+  # and the identity.
+  #
+  # `rdp.` still needs its HostName, and that asymmetry is the measurement, not a style choice:
+  # `rdp.<host>` does not resolve at all, while `nixos.<host>` does. One alias names a target DNS knows
+  # nothing about; the other names a target DNS already answers for.
   operatorAliasesForHost = host: ''
-    ${operatorAliasForService host "rdp" ""}
-    ${operatorAliasForService host "nixos" "-nixos"}
+    ${operatorAliasForService host "rdp" host}
+    ${operatorAliasForService host "nixos" null}
   '';
 
   # The corporate bare-metal Mac hosting the nikopol VM. It runs no nix-darwin config, so it
