@@ -1507,6 +1507,29 @@
             program = "${sshKeysValidatorPackage}/bin/ssh-keys-v2-validate";
             meta.description = "Validate ssh keys.yaml against its JSON schema (sops-decrypts first) — src: modules/home-manager/ssh.d/keys.schema.yaml";
           };
+          # relock — THIS repo's locks, by the SHARED implementation. The rule lives once, in
+          # rke2lab's `lib.mkRelockApp`, and ndh supplies only what is its own: bumping an input is
+          # editing YOUR lock, making someone pin YOU is THEIR act, and the uniform NAME is what lets
+          # `relock --downstream` request us without knowing anything about us. Before this, that
+          # request reported "exposes no #relock yet" and ndh's pin of rke2lab drifted with nothing to
+          # move it.
+          #
+          # ndh has no orphan branches and no generated artifacts beyond its lock, so
+          # `pushFirstBranch` / `catalogueBranch` / `ownedArtifacts` stay at their defaults — which is
+          # the case the shared implementation was written to serve.
+          relock = {
+            type = "app";
+            program = "${
+              inputs.rke2lab.lib.mkRelockApp {
+                pkgs = pkgsForSystem;
+                name = "ndh";
+                slug = "seedmatic/ndh";
+                url = "https://github.com/seedmatic/ndh.git";
+                consumers = [ "github:seedmatic/rke2lab" ];
+              }
+            }/bin/relock";
+            meta.description = "Reconcile THIS repo's locks: bump each input, DROP any bump that moves no exported derivation, push. --downstream requests each declared consumer's own relock — impl: rke2lab lib.mkRelockApp";
+          };
           manage-tailnet = {
             type = "app";
             program = "${manageTailnetPackage}/bin/manage-tailnet";
