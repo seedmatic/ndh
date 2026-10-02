@@ -20,7 +20,10 @@
     # sshfs mounts of the Darwin-side git store (replaces the old NFS /net automount).
     # Root executes the mount but authenticates as nxmatic — the operator who owns the
     # trees — via the CA-signed rdp-host key; remote files map back to uid/gid 501:30001.
-    # bioskop keeps its git trees under /private/var/lib/git.
+    # bioskop now names the split the way nikopol does — object stores on one volume, coexisting
+    # checkouts on the other — so this block is its twin, and the layout divergence is gone. The
+    # old single /private/var/lib/git export is NOT kept: it carried 44 other orgs beside the
+    # seedmatic closure, and nothing on the NixOS side ever consumed it.
     services.sshfsMounts = {
       enable = true;
       remoteHost = "bioskop.local";
@@ -28,8 +31,12 @@
       identityFile = "/var/lib/ndh/ssh-keys/rdp-host";
       mounts = [
         {
-          remotePath = "/private/var/lib/git";
-          localPath = "/net/bioskop.local/private/var/lib/git";
+          remotePath = "/Volumes/git-worktree-store";
+          localPath = "/net/bioskop.local/Volumes/git-worktree-store";
+        }
+        {
+          remotePath = "/Volumes/git-bare-store";
+          localPath = "/net/bioskop.local/Volumes/git-bare-store";
         }
       ];
     };
