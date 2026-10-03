@@ -298,11 +298,6 @@ in
       }
     );
 
-    # zen-browser = {
-    #    enable = false;
-    #    packages = pkgs.zen-browser-unwrapped;
-    #  };
-
     # environment setup
     environment = {
 

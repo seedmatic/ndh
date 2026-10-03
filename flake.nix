@@ -56,7 +56,6 @@
     nixpkgs-unstable.follows = "flake-commons/nixpkgs-unstable";
     ripvcs.follows = "flake-commons/ripvcs";
     socket-vmnet.follows = "flake-commons/socket-vmnet";
-    zen-browser.follows = "flake-commons/zen-browser";
 
     # 3. Direct inputs (not aggregated upstream)
     sops-nix.url = "github:Mic92/sops-nix";

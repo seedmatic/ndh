@@ -282466,11 +282466,7 @@
         ],
         "sops-nix": "sops-nix_2",
         "tailscale-fork": "tailscale-fork",
-        "treefmt-nix": "treefmt-nix_230",
-        "zen-browser": [
-          "flake-commons",
-          "zen-browser"
-        ]
+        "treefmt-nix": "treefmt-nix_230"
       }
     },
     "rust-analyzer-src": {
