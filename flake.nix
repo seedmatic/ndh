@@ -395,8 +395,15 @@
             # and it was wrong at least once, when bioskop switched AFTER nikopol yet with the
             # older configuration. Now `nixos-version --json` and `darwin-version --json` say it.
             # Set here rather than per assembly site because this list feeds both nixos and
-            # darwin, bringup and full alike. `dirtyRev` is the fallback for an uncommitted tree;
-            # null when the flake is evaluated outside a git tree at all.
+            # darwin. `dirtyRev` is the fallback for an uncommitted tree; null when the flake is
+            # evaluated outside a git tree at all.
+            #
+            # ⚠️ This reaches 9 of the 12 configurations — the 4 darwin and the 5 FULL nixos.
+            # The three bringup ones cannot carry it, for a reason specific to them: they force
+            # `disableInstallerTools`, which removes the only program that consumes the option.
+            # See minimalBringupSystemBase in modules/nixos/outputs.nix. Discriminator, if this
+            # is ever claimed again: whether the toplevel drv hash MOVES between two revisions —
+            # a config can report the option at eval and still not carry it at build.
             system.configurationRevision = self.rev or self.dirtyRev or null;
           }
         ]
