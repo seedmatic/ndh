@@ -29,20 +29,51 @@ The nix-darwin linux-builder provides a NixOS VM that can build Linux packages o
 - This flake configuration available
 - Admin access to modify `/etc/nix/machines`
 
+### Lock the vendored flox envs — required on a fresh clone
+
+The flox environments live at `.flox-envs.d/`, a git subtree of `fleet`. fleet gitignores
+`manifest.lock`, so the locks never travel with the tree — and a lock is what makes an
+environment includable. Until they are realised, `flox activate` refuses:
+
+```text
+✘ ERROR: failed to fetch environment './.flox-envs.d/nix':
+  cannot include environment since its manifest and lockfile are out of sync
+```
+
+Run this once per clone, before any `flox activate`:
+
+```bash
+nix run .#lock-flox-envs
+```
+
+It walks the seat's include graph dependency-first (`nix` includes `keyhole`, so keyhole is
+locked first) and locks whatever has no lock. The locks stay gitignored on purpose: fleet
+publishes manifests, each checkout realises its own.
+
+To pull newer environments down later:
+
+```bash
+git subtree pull --prefix=.flox-envs.d fleet flox-subtree --squash
+nix run .#lock-flox-envs
+```
+
+Never edit anything under `.flox-envs.d/` directly — it is a derived copy, and the edit is
+lost at the next pull. Changes belong in `fleet`'s own `flox/` tree.
+
 === Required installer package (@codebase)
 
 When host outputs expose these packages:
 
-- `<host>-nixos-bringup-install`
+- `<host>-bringup-install`
 - `io-seedmatic-ndh-bringup-runtime-profile-holder`
-- `<host>-nixos-lima-vm-materialize`
+- `nerd-tart-<host>-materialize`
 
 Use this mapping:
 
-- **Run first:** `<host>-nixos-bringup-install` (host-scoped prerequisite installer)
+- **Run first:** `<host>-bringup-install` (host-scoped prerequisite installer)
 - **Profile target:** `/nix/var/nix/profiles/per-user/root/io-seedmatic-ndh-bringup-runtime`
 - **Do not run directly:** `io-seedmatic-ndh-bringup-runtime-profile-holder` (payload package installed into the dedicated profile)
-- **Separate concern:** `<host>-nixos-lima-vm-materialize` (Lima config generation/materialization)
+- **Separate concern:** `nerd-tart-<host>-materialize` (Tart VM config generation/materialization)
 
 ## Bootstrap Steps
 
@@ -284,7 +315,13 @@ The setup relies on a flox environment that provides:
 - Additional build tools and utilities
 - Consistent development environment across hosts
 
+The seat composes three environments from the vendored subtree — `./.flox-envs.d/{nix,shell,tart}`
+— so they travel with the checkout. They were previously reached through absolute paths under
+`/var/lib/git/seedmatic/fleet/flox`, which exist on no host any more; see the re-lock step in
+Prerequisites, which a fresh clone must run first.
+
 **Bootstrap vs Post-Installation**:
+
 - **At bootstrap**: Use `source <( flox activate )` since direnv isn't configured yet
 - **After installation**: The flox environment is automatically loaded via direnv when you enter the project directory
 

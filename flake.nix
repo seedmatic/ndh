@@ -1456,6 +1456,73 @@
               exec check-jsonschema --schemafile "$schema" "$tmp"
             '';
           };
+          # The envs vendored under .flox-envs.d arrive WITHOUT their manifest.lock: fleet
+          # gitignores it, and the lock is what makes an env includable — so a fresh clone
+          # cannot activate the seat until this runs ("manifest and lockfile are out of sync").
+          # The locks stay gitignored on purpose: fleet publishes manifests, each checkout
+          # realises its own lock.
+          #
+          # The include graph is WALKED, not listed: `nix` includes `../keyhole`, and a composed
+          # env must be locked after the ones it includes. A hardcoded list rots the next time
+          # fleet adds an include. Both quote styles are read because fleet writes the seat form
+          # with double quotes and the internal form with single quotes.
+          #
+          # `flox` comes from the host (the flox installer), not nixpkgs —
+          # writeShellApplication prepends runtimeInputs and keeps the inherited PATH.
+          #
+          # ⚠️ This is a SECOND copy — rke2lab's flake carries the same app. Its decided home is a
+          # flake INSIDE the subtree, owned by fleet (`nix run ./.flox-envs.d#lock`): what it encodes
+          # is fleet's own relative-include convention, so the producer should own it, and that route
+          # adds no flake input edge. Moving it must delete rke2lab's copy in the same change, or two
+          # copies become three.
+          lockFloxEnvsPackage = pkgsForSystem.writeShellApplication {
+            name = "lock-flox-envs";
+            runtimeInputs = [
+              pkgsForSystem.git
+              pkgsForSystem.gnused
+            ];
+            text = ''
+              cd "$(git rev-parse --show-toplevel)"
+
+              declare -A walked=()
+
+              deps_of() {
+                sed -n -e "s|^[[:space:]]*dir = '\.\./\([^']*\)'.*|\1|p" \
+                       -e 's|^[[:space:]]*{\? *dir = "\.\./\([^"]*\)".*|\1|p' "$1"
+              }
+
+              lock_env() {
+                local env="$1"
+                local dir=".flox-envs.d/$env"
+                if [ -n "''${walked[$env]:-}" ]; then
+                  return 0
+                fi
+                walked[$env]=1
+                if [ ! -f "$dir/.flox/env/manifest.toml" ]; then
+                  echo "lock-flox-envs: no vendored env '$env' — is the subtree imported?" >&2
+                  exit 1
+                fi
+                local dep
+                while read -r dep; do
+                  if [ -n "$dep" ]; then
+                    lock_env "$dep"
+                  fi
+                done < <(deps_of "$dir/.flox/env/manifest.toml")
+                if [ -f "$dir/.flox/env/manifest.lock" ]; then
+                  echo "  $env already locked"
+                else
+                  echo "  locking $env"
+                  flox upgrade --dir "$dir" >/dev/null
+                fi
+              }
+
+              while read -r env; do
+                lock_env "$env"
+              done < <(sed -n 's|^[[:space:]]*{ dir = "\./\.flox-envs\.d/\([^"]*\)".*|\1|p' .flox/env/manifest.toml)
+
+              echo "vendored flox envs locked — 'flox activate' is ready"
+            '';
+          };
           # manage-tailnet: administer the tailnet (rotate auth keys / sync-policy /
           # retag / prune stale devices).  The recipe is extracted to package.nix
           # so it is exposed BOTH here (the app) and as packages.<system>.manage-tailnet
@@ -1564,6 +1631,11 @@
             type = "app";
             program = "${sshKeysValidatorPackage}/bin/ssh-keys-v2-validate";
             meta.description = "Validate ssh keys.yaml against its JSON schema (sops-decrypts first) — src: modules/home-manager/ssh.d/keys.schema.yaml";
+          };
+          lock-flox-envs = {
+            type = "app";
+            program = "${lockFloxEnvsPackage}/bin/lock-flox-envs";
+            meta.description = "Lock the flox envs vendored under .flox-envs.d so the seat can activate (fresh-clone bootstrap) — src: flake.nix (lockFloxEnvsPackage)";
           };
           # relock — THIS repo's locks, by the SHARED implementation. The rule lives once, in
           # rke2lab's `lib.mkRelockApp`, and ndh supplies only what is its own: bumping an input is

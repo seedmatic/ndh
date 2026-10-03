@@ -103,10 +103,9 @@ incus-client.systems = [
 ## ------------------------------------------------------------------
 [include]
 environments = [
- { dir = "/var/lib/git/seedmatic/fleet/flox/lima" },
- { dir = "/var/lib/git/seedmatic/fleet/flox/nix" },
- { dir = "/var/lib/git/seedmatic/fleet/flox/shell" },
- { dir = "/var/lib/git/seedmatic/fleet/flox/tart" }
+ { dir = "./.flox-envs.d/nix" },
+ { dir = "./.flox-envs.d/shell" },
+ { dir = "./.flox-envs.d/tart" }
 ]
 
 
