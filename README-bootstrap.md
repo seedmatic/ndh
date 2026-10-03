@@ -88,7 +88,7 @@ At bootstrap time, install the dedicated NDH runtime profile before any `darwin-
 cd /path/to/nix-darwin-home
 
 # Install host prerequisites (autofs + dedicated NDH runtime profile)
-nix run .#nikopol-nixos-bringup-install
+nix run .#nikopol-bringup-install
 ```
 
 This is mandatory for deterministic activation and script runtime command resolution.
@@ -172,8 +172,7 @@ Now you can perform the first darwin build using `nix run` (since `darwin-rebuil
 You can select an explicit VM flavor Darwin output when needed (@codebase):
 
 - `.#<host>`: selected default from `hostProfile.vmProvider`
-- `.#<host>-lima`: explicit Lima flavor
-- `.#<host>-tart`: explicit Tart flavor
+- `.#<host>-tart`: explicit Tart flavor (the only provider — Lima was retired)
 
 ```bash
 # For nikopol host
@@ -237,9 +236,10 @@ nix build --system aarch64-linux nixpkgs#hello
 # This should use the linux-builder VM
 ```
 
-## Building and Running NixOS in Lima
+## Building and Running NixOS under Tart
 
-After the darwin configuration is set up, you can build and run NixOS disk images using Lima.
+After the darwin configuration is set up, you can build the NixOS bringup disk image and
+install it as a Tart VM. Tart is the only provider; Lima was retired.
 
 ### 1. Build the NixOS Disk Image
 
@@ -247,58 +247,28 @@ Build the disk image for the host you're currently running on:
 
 ```bash
 # If you're on bioskop, build bioskop's NixOS disk image
-nix build .#nixosDiskImages.bioskop.full
+nix build .#nixosDiskImages.bioskop
 
-# If you're on nikopol, build nikopol's NixOS disk image  
-nix build .#nixosDiskImages.nikopol.full
-
-# This creates a disk image at ./result/nixos.img
-# The build uses the increased linux-builder disk size to avoid space issues
+# If you're on nikopol, build nikopol's NixOS disk image
+nix build .#nixosDiskImages.nikopol
 ```
 
-**Note**: Build only the image for your current host - each host has its own specific NixOS configuration and disk image.
+The result holds `boot.img` plus a `manifest.yaml` describing it. The build uses the
+increased linux-builder disk size to avoid space issues.
 
-### 2. Start NixOS VM in Lima
+**Note**: Build only the image for your current host — each host packs its own runtime
+layer, so the image bundle is per-host even though the bringup closure inside it is
+bit-identical across the fleet.
 
-Navigate to the Lima configuration directory and start the VM:
+### 2. Install the Tart VM
 
 ```bash
-# Navigate to Lima directory
-cd ~/.lima
+# Generate/materialize the host's Tart VM configuration
+nix run .#nerd-tart-bioskop-materialize
 
-# Source the flox environment (provides Lima management tools)
-source <( flox activate )
-
-# Start the nerd-nixos VM
-# (This uses the disk image built in step 1)
-limactl start nerd-nixos
-
-# Or follow your specific Lima startup procedure
+# Install the Tart NixOS bringup VM (disk image -> ZFS)
+nix run .#bioskop-tart-vm-bootstrap-installer
 ```
-
-**Note**: The Lima configuration should reference the disk image path `./result/nixos.img` created by the nix build command.
-
-### 3. First bootstrap stage shortcut (`run.sh vm:reset`) (@codebase)
-
-For the first bootstrap stage, you can run:
-
-```bash
-run.sh vm:reset
-```
-
-This performs:
-
-1. host disk image build,
-2. Lima config presence check,
-3. Lima factory reset + VM start.
-
-So yes: this is enough to bring the VM up from a clean state for stage-1 bootstrap.
-
-Important scope note:
-
-- `vm:reset` does **not** run remote `nixos-rebuild boot/switch` steps.
-- For full staged flow, use `phase:bootstrap:all` (or run `vm:nixos:boot:ext4` / `vm:nixos:boot:zfs` explicitly).
-- `vm:nixos:boot:zfs` now updates only the next boot generation; runtime `switch` is intentionally manual/operator-driven.
 
 NDH bootstrap profile note:
 
