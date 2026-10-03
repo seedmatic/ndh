@@ -245,12 +245,17 @@ let
             # overrides at first boot.
             system.stateVersion = "25.11";
 
-            # Same revision stamp the runtime configurations carry (set in flake.nix's shared
-            # module list, which this explicit one bypasses). The bringup closure must stay
-            # bit-identical ACROSS hosts, and one repo revision is one value for every host, so
-            # the invariant holds — while the first thing installed on a node stops being the
-            # one thing that cannot say which revision it came from.
-            system.configurationRevision = self.rev or self.dirtyRev or null;
+            # NO `system.configurationRevision` here, deliberately — it would be inert, and an
+            # inert setting reads as a working one. The option's only consumer in nixpkgs is the
+            # `nixos-version` program, which substitutes `@configurationRevision@`
+            # (nixos/modules/installer/tools/tools.nix); that program is installed only when
+            # `config.nix.enable && !config.system.disableInstallerTools`, and
+            # bringup-minimal-system.nix forces `disableInstallerTools = true`. So
+            # `system.tools.nixos-version.enable` is false here and the revision has nowhere to
+            # land. Measured: setting it moved the option at eval while leaving this toplevel's
+            # drv hash byte-identical across two revisions — reporting at eval is not carrying
+            # at build. A running bringup therefore cannot name its ndh revision; the runtime
+            # generation it hands over to can.
 
             # Disko configuration - needed for zfs.nix to generate fileSystems
             disko.devices = diskoConfiguration.devices;
