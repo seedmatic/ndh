@@ -100,7 +100,6 @@ in
 {
   environment.systemPackages = with pkgs; [
     incus
-    incus-compose
     skopeo
     debootstrap
     dpkg

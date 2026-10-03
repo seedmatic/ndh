@@ -47,7 +47,6 @@
     flox.follows = "flake-commons/flox";
     home-manager.follows = "flake-commons/home-manager";
     impermanence.follows = "flake-commons/impermanence";
-    incus-compose.follows = "flake-commons/incus-compose";
     lix-module.follows = "flake-commons/lix-module";
     maven-mvnd.follows = "flake-commons/maven-mvnd";
     nix.follows = "flake-commons/nix";
@@ -2097,14 +2096,12 @@
             tart-guest-agent = final.callPackage ./pkgs/tart-guest-agent.nix { };
             inherit (inputs.maven-mvnd.packages.${hostSystem}) maven-mvnd-m39;
             inherit (inputs.disko.packages.${hostSystem}) disko;
-            inherit (inputs.incus-compose.packages.${hostSystem}) incus-compose;
             flox = inputs.flox.packages.${hostSystem}.default;
           };
 
         birdOverlay = inputs: import ./overlays/bird.nix inputs;
         qemuOverlay = inputs: import ./overlays/qemu.nix inputs;
         nodejsOverlay = inputs: import ./overlays/nodejs.nix inputs;
-        incusComposeOverlay = inputs: import ./overlays/incus-compose.nix inputs;
         incusOverlay = inputs: import ./overlays/incus.nix inputs;
         lazygitOverlay = inputs: import ./overlays/lazygit.nix inputs;
         tailscaleOverlay = inputs: import ./overlays/tailscale.nix inputs;

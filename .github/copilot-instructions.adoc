@@ -182,7 +182,7 @@ config = mkIf cfg.enable {
 
 * **Applied in flake.nix**: `pkgsFor` extends basePackages with custom overlays
 * **Convention**: `<name>Overlay = inputs: import ./overlays/<name>.nix inputs;`
-* **Examples**: `qemuOverlay`, `birdOverlay`, `incusComposeOverlay`
+* **Examples**: `qemuOverlay`, `birdOverlay`, `incusOverlay`
 
 == Testing & Validation
 

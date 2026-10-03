@@ -282426,10 +282426,6 @@
           "flake-commons",
           "impermanence"
         ],
-        "incus-compose": [
-          "flake-commons",
-          "incus-compose"
-        ],
         "lix-module": [
           "flake-commons",
           "lix-module"
