@@ -245,6 +245,13 @@ let
             # overrides at first boot.
             system.stateVersion = "25.11";
 
+            # Same revision stamp the runtime configurations carry (set in flake.nix's shared
+            # module list, which this explicit one bypasses). The bringup closure must stay
+            # bit-identical ACROSS hosts, and one repo revision is one value for every host, so
+            # the invariant holds — while the first thing installed on a node stops being the
+            # one thing that cannot say which revision it came from.
+            system.configurationRevision = self.rev or self.dirtyRev or null;
+
             # Disko configuration - needed for zfs.nix to generate fileSystems
             disko.devices = diskoConfiguration.devices;
 

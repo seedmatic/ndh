@@ -388,6 +388,16 @@
                 hostProfile.hostAlias
               else
                 hostProfile.hostName;
+
+            # Which revision of THIS repo is running was not answerable from a host: the only
+            # revisions a host exposed were nixpkgs' (`nixosVersion`) and nix-darwin's
+            # (`darwinRevision`), so "what is deployed?" had to be reconstructed by hypothesis —
+            # and it was wrong at least once, when bioskop switched AFTER nikopol yet with the
+            # older configuration. Now `nixos-version --json` and `darwin-version --json` say it.
+            # Set here rather than per assembly site because this list feeds both nixos and
+            # darwin, bringup and full alike. `dirtyRev` is the fallback for an uncommitted tree;
+            # null when the flake is evaluated outside a git tree at all.
+            system.configurationRevision = self.rev or self.dirtyRev or null;
           }
         ]
         ++ (
