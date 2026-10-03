@@ -1497,8 +1497,13 @@
               declare -A walked=()
 
               deps_of() {
-                sed -n -e "s|^[[:space:]]*dir = '\.\./\([^']*\)'.*|\1|p" \
+                sed -n -e "s|^[[:space:]]*{\? *dir = '\.\./\([^']*\)'.*|\1|p" \
                        -e 's|^[[:space:]]*{\? *dir = "\.\./\([^"]*\)".*|\1|p' "$1"
+              }
+
+              seat_includes() {
+                sed -n -e "s|^[[:space:]]*{\? *dir = '\./\.flox-envs\.d/\([^']*\)'.*|\1|p" \
+                       -e 's|^[[:space:]]*{\? *dir = "\./\.flox-envs\.d/\([^"]*\)".*|\1|p' "$1"
               }
 
               lock_env() {
@@ -1526,9 +1531,24 @@
                 fi
               }
 
+              # Refusing on zero is the point, not a guard against a typo: with no matches the
+              # loop below simply never runs, and the success line still prints. The operator is
+              # then told "ready" and `flox activate` fails with the very "manifest and lockfile
+              # are out of sync" this app exists to prevent. A locker that cannot read the
+              # manifest must SAY SO, not answer "nothing" — so this stays correct even for an
+              # include form neither reader above anticipates.
+              includes="$(seat_includes .flox/env/manifest.toml)"
+              if [ -z "$includes" ]; then
+                echo "lock-flox-envs: no [include] entries under .flox-envs.d found in" >&2
+                echo "  .flox/env/manifest.toml — refusing to report success." >&2
+                exit 1
+              fi
+
               while read -r env; do
-                lock_env "$env"
-              done < <(sed -n 's|^[[:space:]]*{ dir = "\./\.flox-envs\.d/\([^"]*\)".*|\1|p' .flox/env/manifest.toml)
+                if [ -n "$env" ]; then
+                  lock_env "$env"
+                fi
+              done <<< "$includes"
 
               echo "vendored flox envs locked — 'flox activate' is ready"
             '';
