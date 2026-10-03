@@ -17,7 +17,6 @@ let
   effectiveGenerationMode = ndhContext.generationMode;
   effectiveCatalog = ndhContext.catalog;
   effectiveInventory = ndhContext.inventory;
-  effectiveVmProviderFromContext = ndhContext.vmProvider;
   # Bootstrap image mode is a NixOS guest concern. Keep Home Manager enabled on
   # Darwin hosts even when they orchestrate bootstrap guest flows.
   bringupModeInternal = isNixosPlatform && effectiveGenerationMode == "bringup";
@@ -32,27 +31,6 @@ let
       true;
   homeManagerEnabled = if bringupModeInternal then false else requestedHomeManagerEnabled;
   hasHomeManagerOption = builtins.hasAttr "home-manager" options;
-  selectedVmProvider =
-    if
-      effectiveHostProfile != null
-      && effectiveHostProfile ? vmProvider
-      && effectiveHostProfile.vmProvider != null
-    then
-      effectiveHostProfile.vmProvider
-    else if effectiveVmProviderFromContext != null then
-      effectiveVmProviderFromContext
-    else if
-      (!isNixosPlatform) && (lib.attrByPath [ "profile" "host" "vmProvider" ] null config) != null
-    then
-      lib.attrByPath [ "profile" "host" "vmProvider" ] null config
-    else
-      "tart";
-  tartConfigMaterializerPackage = lib.attrByPath [
-    "tart"
-    "configGenerator"
-    "materializerPackage"
-  ] null (if isNixosPlatform then { } else config);
-  vmConfigMaterializerPackage = tartConfigMaterializerPackage;
   mkNdhHomeManagerSpecialArgs = import ./ndh-home-manager-special-args.nix;
   sopsSshKeysYamlPath = lib.attrByPath [
     "sops"
@@ -67,7 +45,6 @@ let
       profile
       ndhContext
       ndhStore
-      vmConfigMaterializerPackage
       claude-hub
       ;
     keysYamlPath = sopsSshKeysYamlPath;
@@ -274,7 +251,6 @@ in
     ./vm.nix
 
     # VM tooling & observability
-    ./vm-materializer.nix
     ./bringup-observe.nix
   ];
 

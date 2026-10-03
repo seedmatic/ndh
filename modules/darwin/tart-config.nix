@@ -118,8 +118,8 @@ let
   # only — saving ~16 GiB and ~1800 store paths.
   # `embedManifest`: when true, the bundle includes a manifest.yaml symlink
   # and bakes its store path into activate.sh's @manifestPath@ default.  Used
-  # by the per-host materializer (so darwin-rebuild's postActivation hook can
-  # invoke activate.sh without --config).  The generic nerd-tart deploy
+  # by the per-host materializer, so `nix run .#nerd-tart-<host>-materialize`
+  # invokes activate.sh without --config.  The generic nerd-tart deploy
   # bundle passes false: it ships activate.sh with @manifestPath@ = "", and
   # the operator selects a VM identity via --config FILE at runtime.
   #
@@ -130,11 +130,18 @@ let
   #
   # `includeBringupSymlink`: when true, adds a bringup-manifest symlink that
   # pulls the bringup disk images (~15 GiB of raw bytes scanned as store refs)
-  # into the bundle's closure.  Build hosts pass true so darwin-rebuild's
-  # postActivation hook can resolve the images locally.  The generic deploy
-  # bundle passes false: the operator nix-copies `nixosDiskImages.<host>`
-  # separately and wires the resolved store path via the per-VM YAML's
+  # into the bundle's closure.  Build hosts pass true so the materializer can
+  # resolve the images locally.  The generic deploy bundle passes false: the
+  # operator nix-copies `nixosDiskImages.<host>` separately and wires the
+  # resolved store path via the per-VM YAML's
   # `raw_image_manifest_path_default` field.
+  #
+  # Both heavy flags are reachable ONLY from `materializerPackage`, i.e. from
+  # the `nerd-tart-<host>-materialize` app.  Nothing in the darwin system
+  # closure refers to this bundle, which is what keeps `darwin-rebuild switch`
+  # from building the image.  Do not wire it into an activation script or into
+  # `environment.systemPackages` — either one puts those ~31 GiB back on every
+  # host convergence.
   mkActivationBundle =
     {
       drvName,
@@ -778,31 +785,12 @@ in
       '';
     };
 
-    enableActivationHook = mkOption {
-      type = types.bool;
-      default = true;
-      description = ''
-        Run Tart VM materialization during darwin activation (`postActivation`).
-        Enabled by default so `darwin-rebuild switch` keeps the VM configuration
-        in sync. Existing disks are never overwritten — only missing disks are
-        created and undersized disks produce a warning.
-      '';
-    };
-
     forceEnable = mkOption {
       type = types.bool;
       default = false;
       description = ''
         Force-enable Tart materialization on this Darwin host even when inventory host
         VM manager metadata does not declare `tart` runtime support.
-      '';
-    };
-
-    installMaterializerPackage = mkOption {
-      type = types.bool;
-      default = false;
-      description = ''
-        Install the `nerd-tart-vm-materialize` helper package in system packages.
       '';
     };
 
@@ -888,23 +876,6 @@ in
       ]
       ++ lib.optionals (tartMaterializationEnabled && cfg.vmRunSerialBridgeEnable) [
         pkgs.socat
-      ]
-      ++ lib.optionals (tartMaterializationEnabled && cfg.installMaterializerPackage) [
-        cfg.materializerPackage
       ];
-
-    system.activationScripts.postActivation.text =
-      lib.mkIf
-        (
-          config.vmMaterializer.enableActivationHook
-          && tartMaterializationEnabled
-          && cfg.enableActivationHook
-          && cfg.rawImageManifestPath != null
-        )
-        (
-          lib.mkAfter ''
-            ${tartActivationScript}
-          ''
-        );
   };
 }

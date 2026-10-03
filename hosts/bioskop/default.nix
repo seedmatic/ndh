@@ -6,7 +6,6 @@ let
   hostProfile = {
     hostName = "bioskop";
     vmProvider = "tart";
-    vmMaterializerEnableActivationHook = false;
     nixosBootLoader = "systemd-boot";
     nixosBootstrapDebug = false;
     form = "baremetal";
@@ -34,5 +33,4 @@ in
     developerToolsModule
   ];
   nixosExtraModules = [ nixosModule ];
-  withBringupImages = true;
 }

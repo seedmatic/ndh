@@ -184,12 +184,13 @@ nix run nix-darwin -- switch --flake ./hosts/bioskop
 # Or if building from within a host directory:
 cd hosts/nikopol  # or hosts/bioskop
 nix run nix-darwin -- switch --flake .
-
-# This may take some time as it:
-# - Downloads the NixOS base system
-# - Creates the VM disk image
-# - Configures the VM with host-specific settings
 ```
+
+This converges the host only. It does **not** build the NixOS bringup disk image and does
+not materialize the Tart VM: the image and the target runtime system are ~31 GiB of closure
+with their own cadence, so they are deliberately kept out of the darwin system closure. See
+[Building and Running NixOS under Tart](#building-and-running-nixos-under-tart) for the
+explicit gesture that stages them.
 
 ### 5. Create the Builder VM
 
@@ -238,8 +239,13 @@ nix build --system aarch64-linux nixpkgs#hello
 
 ## Building and Running NixOS under Tart
 
-After the darwin configuration is set up, you can build the NixOS bringup disk image and
-install it as a Tart VM. Tart is the only provider; Lima was retired.
+After the darwin configuration is set up, you build the NixOS bringup disk image and install
+it as a Tart VM. Tart is the only provider; Lima was retired.
+
+This is the **only** path to the image: darwin activation never stages it, on any host. So
+these steps are not a one-off bootstrap you can forget afterwards — re-run them whenever the
+VM needs to pick up a new image or runtime system. `darwin-rebuild switch` will not do it for
+you, and will not warn you that it did not.
 
 ### 1. Build the NixOS Disk Image
 

@@ -1229,11 +1229,16 @@
           #   nerd-tart-<host>-config      — per-VM YAML manifest (scp to vz)
           #   nerd-tart-<host>-deploy      — operator helper: copy + activate on a REMOTE vz host
           #   nerd-tart-<host>-materialize — LOCAL materializer for the host that runs the VM
-          # `-materialize` is the local counterpart of `-deploy`: on a host whose
-          # activation hook is off (`vmMaterializerEnableActivationHook = false`)
-          # and that runs the Tart VM itself (not a remote vz host), it is the only
-          # entry point to (re)materialize the VM — e.g.
+          # `-materialize` is the local counterpart of `-deploy`, and on a host that
+          # runs the Tart VM itself (not a remote vz host) it is the ONLY entry point
+          # to (re)materialize the VM — e.g.
           # `VM_FACTORY_RESET=true nix run .#nerd-tart-bioskop-materialize`.
+          # Darwin activation deliberately never does this: staging the bringup image
+          # and the target NixOS runtime system is ~31 GiB of closure (see the
+          # `includeRuntimeClosure` / `includeBringupSymlink` notes in
+          # modules/darwin/tart-config.nix), and it has its own cadence, independent
+          # of host convergence.  So the image stays out of the darwin system closure
+          # and reaching it is an explicit operator gesture.
           let
             systemPkgs = pkgsFor { inherit system; };
             anyHostName = builtins.head (builtins.attrNames hostCatalog);
@@ -1739,7 +1744,6 @@
           profileModule,
           darwinExtraModules ? [ ],
           nixosExtraModules ? [ ],
-          withBringupImages ? true,
           pauseAfterInstall ? false,
           enableBuildObserve ? false,
           buildObserveInterval ? 5,
@@ -1787,13 +1791,6 @@
           nixosDiskoConfiguration = nixosOutputs.diskoConfiguration;
           mkHomeManagerConfig =
             profile:
-            let
-              vmConfigMaterializerPackage =
-                if !withBringupImages then
-                  null
-                else
-                  darwinOutputs.darwinConfigurations.${mainName}.config.tart.configGenerator.materializerPackage;
-            in
             home-manager.lib.homeManagerConfiguration {
               pkgs = pkgsForDarwin;
               modules = [
@@ -1811,7 +1808,6 @@
                   self
                   worktreePath
                   profile
-                  vmConfigMaterializerPackage
                   ;
                 ndhContext = {
                   inherit
@@ -1832,23 +1828,24 @@
             inherit hostProfile catalog;
             inventory = inventoryData;
             profileModule =
-              { lib, ... }:
+              { ... }:
               {
                 imports = [
                   profileModule
                   (
-                    { lib, ... }:
+                    { ... }:
                     {
-                      tart.configGenerator.linuxBuilderGcBeforeBuild = linuxBuilderGcBeforeBuild;
-                      tart.configGenerator.enableBuildObserve = enableBuildObserve;
-                      tart.configGenerator.buildObserveInterval = buildObserveInterval;
-                    }
-                    // lib.optionalAttrs withBringupImages {
+                      # These store paths are what the `nerd-tart-<host>-materialize`
+                      # staging gesture resolves. They reach the Tart bundle, never the
+                      # darwin system closure — no activation path consumes the bundle.
                       tart.configGenerator.rawImageManifestPath = "${nixosDiskImageBringupSystemdZfs}/manifest.yaml";
                       tart.configGenerator.rawImageStorePath = "${nixosDiskImageBringupSystemdZfs}/boot.img";
                       tart.configGenerator.runtimeSystemPath = nixosOutputs.runtimeSystem;
                       tart.configGenerator.vmRunFirstBootAttachDiskManifestPath = null;
                       tart.configGenerator.vmRunFirstBootAttachDiskPath = "";
+                      tart.configGenerator.linuxBuilderGcBeforeBuild = linuxBuilderGcBeforeBuild;
+                      tart.configGenerator.enableBuildObserve = enableBuildObserve;
+                      tart.configGenerator.buildObserveInterval = buildObserveInterval;
                     }
                   )
                 ]
