@@ -13,6 +13,13 @@
   programs.ruff.check = false;
   programs.ruff.format = false;
   settings.walk = "git";
+
+  # `.flox-envs.d` is a vendored subtree of fleet, not our source. Formatting it
+  # rewrites a derived copy: the change is lost at the next `subtree pull` and
+  # until then shows up as permanent drift against fleet's split. nixfmt claimed
+  # one of its flakes on the very first commit, which is how this was found.
+  settings.global.excludes = [ ".flox-envs.d/**" ];
+
   settings.formatter.shellcheck.options = [
     "-s"
     "bash"
