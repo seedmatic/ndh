@@ -282451,10 +282451,6 @@
           "nixpkgs-unstable"
         ],
         "nnh": "nnh",
-        "ripvcs": [
-          "flake-commons",
-          "ripvcs"
-        ],
         "rke2lab": "rke2lab",
         "socket-vmnet": [
           "flake-commons",

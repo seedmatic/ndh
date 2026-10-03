@@ -11,7 +11,6 @@ with pkgs;
   powerline-fonts
   powerline-go
   powerline-symbols
-  ripvcs
   sops
   ssh-to-age
   # step-cli is consumed by the SSH enrichment pipeline to mint x509
