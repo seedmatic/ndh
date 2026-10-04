@@ -111,7 +111,7 @@ h|Aspect|Details
 |Generated profile YAML for extraction
 
 |Script
-|`ssh-generate-keys-yaml.sh`
+|`ssh-enrich-keys-yaml.sh`
 |===
 
 === Stage 2: Key Extraction and Materialization
@@ -173,7 +173,7 @@ Plaintext Profile YAML
   linux-builder: { type, public, private, authorities: { mammoth-skate: { ... } } }
 }
       │
-      ├─ [STAGE 1: ssh-generate-keys-yaml.sh]
+      ├─ [STAGE 1: ssh-enrich-keys-yaml.sh]
       │  ├─ Select active profile/host from source YAML
       │  ├─ Write generated keys.yaml
       │  └─ Output: /run/secrets-per-user/<user>/ssh-keys/keys.yaml
@@ -218,7 +218,6 @@ Plaintext Profile YAML
 modules/home-manager/
 ├── ssh-keys.nix                          # Main Nix module (wires everything up)
 ├── ssh-key.d/
-│   ├── ssh-generate-keys-yaml.sh        # Stage 1: Generate profile-specific YAML
 │   ├── ssh-extract-keys.sh              # Stage 2: Extract to split runtime dirs
 │   ├── ssh-ensure-authorized-keys.sh    # Stage 3: Ensure authorized_keys file exists
 │   ├── ssh-add-keys.sh                  # Agent key loading helper
@@ -401,8 +400,8 @@ ls -la /tmp/extracted-user /tmp/extracted-system
 **Check generated profile YAML (Stage 1):**
 [source,bash]
 ----
-# Test generate-keys-yaml.sh
-bash modules/home-manager/ssh-key.d/ssh-generate-keys-yaml.sh bioskop /run/secrets/nix-darwin-home/nxmatic-ssh-keys.yaml /tmp/keys.yaml nikopol,bioskop,nikopol
+# Test ssh-enrich-keys-yaml.sh
+bash modules/.common.d/ssh-keys.d/ssh-enrich-keys-yaml.sh bioskop /run/secrets/nix-darwin-home/nxmatic-ssh-keys.yaml /tmp/keys.yaml nikopol,bioskop,nikopol
 ls -la /tmp/keys.yaml
 ----
 
@@ -448,8 +447,8 @@ ls -la /tmp/keys.yaml
 |===
 h|Script|Purpose|Input|Output|Trigger
 
-|`ssh-generate-keys-yaml.sh`
-|Generate host/profile-scoped keys YAML
+|`ssh-enrich-keys-yaml.sh`
+|Generate missing key material, sign it, and emit host/profile-scoped keys YAML
 |Profile, host, source YAML, output YAML, host catalog
 |Generated profile YAML
 |Stage 1

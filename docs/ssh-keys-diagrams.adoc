@@ -33,7 +33,7 @@ graph TB
             
             subgraph "SSH Keys Deployment Module"
                 nix["📝 ssh-keys.nix<br/>(wires everything up)"]
-                stage1["Stage 1: Generate YAML<br/>ssh-generate-keys-yaml.sh"]
+                stage1["Stage 1: Enrich YAML<br/>ssh-enrich-keys-yaml.sh"]
                 stage2["Stage 2: Extract<br/>ssh-extract-keys.sh<br/>(split private/public)"]
                 stage3["Stage 3: Authorize<br/>ssh-ensure-authorized-keys.sh<br/>(perms setup)"]
             end
@@ -190,7 +190,7 @@ graph TD
 graph TB
     subgraph "ssh-keys.nix"
         replaceVars1["pkgs.replaceVars<br/>ssh-extract-keys.sh"]
-        replaceVars2["pkgs.replaceVars<br/>ssh-generate-keys-yaml.sh"]
+        replaceVars2["pkgs.replaceVars<br/>ssh-enrich-keys-yaml.sh"]
         replaceVars3["pkgs.replaceVars<br/>ssh-ensure-authorized-keys.sh"]
         
         dag["lib.hm.dag.entryAfter<br/>writeBoundary"]
