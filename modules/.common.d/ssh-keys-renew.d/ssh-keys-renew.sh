@@ -46,11 +46,20 @@ source @nixBashTrampoline@
 declare -g keysYaml tmpdir decrypted today apply olderThanDays
 declare -ga selectKeys=() selectAuthorities=() plan=() refusals=()
 
-log::info() { echo "[ssh-keys-renew][INFO] $*" >&2; }
-log::error() { echo "[ssh-keys-renew][ERROR] $*" >&2; }
+# ⚠️ stdout, NOT stderr — the opposite of the activation scripts' convention, and
+# for a reason. ndh::logger:command:run redirects stderr into the logger sink and
+# leaves stdout as "the wrapped command's contract", so an operator tool that
+# logs to stderr prints nothing the operator can see: the plan, the refusals and
+# the next steps all vanish into the syslog. Measured — the first run of this
+# tool returned status 1 with an empty terminal.
+#
+# (The escape hatch, when you do need the stderr trace: ACTIVATION_LOG_FILE=<path>
+# makes the logger tee it back to the console.)
+log::info() { echo "[ssh-keys-renew][INFO] $*"; }
+log::error() { echo "[ssh-keys-renew][ERROR] $*"; }
 
 usage() {
-	cat >&2 <<-EOF
+	cat <<-EOF
 		usage: ssh-keys-renew [--key NAME]... [--authority NAME]... [--older-than Nd] [--apply]
 
 		  --key NAME         Renew keys.<NAME>. Repeatable.
@@ -181,6 +190,28 @@ plan::build() {
 	done
 }
 
+# An authority renews BEFORE its leaves, and that is not a suggestion: the leaf
+# certificates are signed by the PRESENTED authority, so renewing both in one
+# gesture mints leaf certs under a CA that every host which has not activated yet
+# does not trust. The authority has to be published, and activated everywhere,
+# first. `--older-than` selects both by construction — it found all eleven
+# entries on the first run — so this refusal is the thing standing between a
+# sweep and a fleet that cannot verify its own hosts.
+plan::assert_ordering() {
+	local line section name authorityOf authLine authSection authName
+	for authLine in ${plan[@]+"${plan[@]}"}; do
+		IFS=$'\t' read -r authSection authName _ _ <<<"$authLine"
+		[[ "$authSection" == "authorities" ]] || continue
+		for line in "${plan[@]}"; do
+			IFS=$'\t' read -r section name _ _ <<<"$line"
+			[[ "$section" == "keys" ]] || continue
+			authorityOf="$(yq eval -r ".keys.\"${name}\".authority // \"\"" "$decrypted")"
+			[[ "$authorityOf" == "$authName" ]] || continue
+			refusals+=("authorities.${authName} and keys.${name} cannot renew together — the authority must be published and activated everywhere BEFORE its leaves are re-signed under it")
+		done
+	done
+}
+
 plan::show() {
 	local line section name keyType existing refusal
 	cat <<-EOF
@@ -250,7 +281,7 @@ renew::apply() {
 	done
 
 	reencrypted="${tmpdir}/keys.yaml.reenc"
-	"$SOPS" --input-type yaml --output-type yaml encrypt "$decrypted" >"$reencrypted"
+	sops --input-type yaml --output-type yaml encrypt "$decrypted" >"$reencrypted"
 	if [[ ! -s "$reencrypted" ]]; then
 		log::error "sops encrypt produced an empty file; keys.yaml left untouched"
 		return 1
@@ -271,7 +302,7 @@ renew::apply() {
 
 	install -m 0644 "$reencrypted" "$keysYaml"
 
-	cat >&2 <<-EOF
+	cat <<-EOF
 
 		phase 1 written. Both generations are now declared.
 
@@ -345,7 +376,7 @@ main() {
 	trap 'rm -rf "$tmpdir"' EXIT
 
 	decrypted="${tmpdir}/keys.yaml"
-	"$SOPS" --input-type yaml --output-type yaml -d "$keysYaml" >"$decrypted"
+	sops --input-type yaml --output-type yaml -d "$keysYaml" >"$decrypted"
 	if [[ ! -s "$decrypted" ]]; then
 		log::error "sops -d produced an empty file (check SOPS_AGE_KEY_FILE / sops.age.keyFile)"
 		return 1
@@ -354,6 +385,7 @@ main() {
 	today="$(date +%y-%m-%d)"
 
 	plan::build
+	plan::assert_ordering
 	plan::show
 
 	if ((${#refusals[@]} > 0)); then
