@@ -69,7 +69,7 @@ slot::newest() { # <section> <name>
 	local n
 	n="$(slot::count "$1" "$2")"
 	if ((n == 0)); then
-		log::error "${1%s} ${2} has no slots — the flat public/private shape is not supported"
+		log::error "${1} entry ${2} has no slots — the flat public/private shape is not supported"
 		return 1
 	fi
 	yq eval -r ".${1}.\"${2}\".slots | keys | sort | .[-1]" "$inputFile"
@@ -81,7 +81,7 @@ slot::assert() { # <section> <name>
 	local n
 	n="$(slot::count "$1" "$2")"
 	if ((n > 2)); then
-		log::error "${1%s} ${2} has ${n} slots; at most two are allowed — phase 2 of a renewal removes the retiring one"
+		log::error "${1} entry ${2} has ${n} slots; at most two are allowed — phase 2 of a renewal removes the retiring one"
 		return 1
 	fi
 	return 0
@@ -230,20 +230,16 @@ sign::one_cert() {
 		keyPub="$(cut -d' ' -f2 <"${tmpdir}/${keyName}.pub")"
 		keyPriv="$(<"${tmpdir}/${keyName}")"
 		# Cache so subsequent cert_usage entries see the same pair.
-		key::set_slot_field "$keyName" public "${keyType} ${keyPub} ${keyComment}"
+		key::set_slot_field "$keyName" public "$keyPub"
 		key::set_slot_field "$keyName" private "$keyPriv"
 	fi
 
-	# Produce a .pub file in the expected "<type> <blob> <comment>" shape.
-	# If $keyPub already includes the type prefix, strip it before rewrap.
-	local pubBlob
-	if [[ "$keyPub" == ssh-* ]]; then
-		read -r _ pubBlob _ <<<"$keyPub"
-	else
-		pubBlob="$keyPub"
-	fi
+	# `public` holds the bare base64 blob; the type and the comment have fields of
+	# their own, and every consumer rebuilds the line from the three. Writing a
+	# whole "<type> <blob> <comment>" line into it doubled the type and the
+	# comment in the rebuilt line.
 	local keyPubFile="${tmpdir}/${keyName}.pub"
-	printf '%s %s %s\n' "$keyType" "$pubBlob" "$keyComment" >"$keyPubFile"
+	printf '%s %s %s\n' "$keyType" "$keyPub" "$keyComment" >"$keyPubFile"
 
 	local identity principalsArg
 	identity="$(cert::identity "$keyName" "$certUsage")"
@@ -380,7 +376,7 @@ sign::tls_server() {
 			local keyPub
 			keyPub="$(cut -d' ' -f2 <"${leafKeyFile}.pub")"
 			keyPriv="$(<"$leafKeyFile")"
-			key::set_slot_field "$keyName" public "${keyType} ${keyPub} ${keyComment}"
+			key::set_slot_field "$keyName" public "$keyPub"
 			key::set_slot_field "$keyName" private "$keyPriv"
 		else
 			printf '%s\n' "$keyPriv" >"$leafKeyFile"
