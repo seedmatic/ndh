@@ -44,6 +44,56 @@ log::error() { echo "[ssh-keys-enrichment][ERROR] $*" >&2; }
 # by checking `yq 'has(path)'` separately when needed).
 yq::get() { yq eval -r "${1}" "$inputFile" 2>/dev/null || true; }
 
+# A key entry holds its generations in `slots`, keyed by the date the material was
+# created (YY-MM-DD). The generation that is PRESENTED is derived from the newest
+# key rather than named by a field, so there is nothing to keep in step and nothing
+# that can go stale. All generations are accepted, which is what makes a renewal
+# survivable. See docs/ssh-keys-renewal-spec.adoc.
+#
+# There is no fallback to a flat `public`/`private`: an entry without slots is an
+# error. Carrying both shapes would mean testing neither.
+
+key::slots_count() {
+	local n
+	n="$(yq eval -r ".keys.\"${1}\".slots | length" "$inputFile" 2>/dev/null || true)"
+	[[ -n "$n" && "$n" != "null" ]] || n=0
+	printf '%s\n' "$n"
+}
+
+key::newest_slot() {
+	local keyName="$1" n
+	n="$(key::slots_count "$keyName")"
+	if ((n == 0)); then
+		log::error "key ${keyName} has no slots — the flat public/private shape is not supported"
+		return 1
+	fi
+	yq eval -r ".keys.\"${keyName}\".slots | keys | sort | .[-1]" "$inputFile"
+}
+
+# Two slots means a renewal is in flight; one means settled. Three means phase 2
+# was skipped, and phase 2 is not optional.
+key::assert_slots() {
+	local keyName="$1" n
+	n="$(key::slots_count "$keyName")"
+	if ((n > 2)); then
+		log::error "key ${keyName} has ${n} slots; at most two are allowed — phase 2 of a renewal removes the retiring one"
+		return 1
+	fi
+	return 0
+}
+
+key::slot_field() {
+	local keyName="$1" field="$2" slot
+	slot="$(key::newest_slot "$keyName")" || return 1
+	yq eval -r ".keys.\"${keyName}\".slots.\"${slot}\".${field} // \"\"" "$inputFile" 2>/dev/null || true
+}
+
+key::set_slot_field() {
+	local keyName="$1" field="$2" value="$3" slot
+	slot="$(key::newest_slot "$keyName")" || return 1
+	VALUE="$value" yq -i ".keys.\"${keyName}\".slots.\"${slot}\".${field} = strenv(VALUE)" "$inputFile"
+}
+
 # Emit the comma-separated hostnames the enrichment will list in a host
 # certificate's Principals field. Union of: explicit hostName arg,
 # .lan/.local/<authority-domain> variants, plus every host from the
@@ -131,8 +181,9 @@ sign::one_cert() {
 	local authPriv keyType keyPub keyPriv keyComment
 	authPriv="$(yq::get ".authorities.\"${authorityName}\".private")"
 	keyType="$(yq::get ".keys.\"${keyName}\".type")"
-	keyPub="$(yq::get ".keys.\"${keyName}\".public")"
-	keyPriv="$(yq::get ".keys.\"${keyName}\".private")"
+	key::assert_slots "$keyName" || return 1
+	keyPub="$(key::slot_field "$keyName" public)" || return 1
+	keyPriv="$(key::slot_field "$keyName" private)" || return 1
 	keyComment="$(yq::get ".keys.\"${keyName}\".comment")"
 	[[ -n "$keyComment" && "$keyComment" != "null" ]] || keyComment="$keyName"
 
@@ -161,8 +212,8 @@ sign::one_cert() {
 		keyPub="$(cut -d' ' -f2 <"${tmpdir}/${keyName}.pub")"
 		keyPriv="$(<"${tmpdir}/${keyName}")"
 		# Cache so subsequent cert_usage entries see the same pair.
-		yq -i ".keys.\"${keyName}\".public = \"${keyType} ${keyPub} ${keyComment}\"" "$inputFile"
-		yq -i ".keys.\"${keyName}\".private = \"${keyPriv//$'\n'/\\n}\"" "$inputFile"
+		key::set_slot_field "$keyName" public "${keyType} ${keyPub} ${keyComment}"
+		key::set_slot_field "$keyName" private "$keyPriv"
 	fi
 
 	# Produce a .pub file in the expected "<type> <blob> <comment>" shape.
@@ -297,7 +348,7 @@ sign::tls_server() {
 	local leafKeyFile="${tmpdir}/${keyName}"
 	if [[ ! -s "$leafKeyFile" ]]; then
 		local keyPriv keyType keyComment
-		keyPriv="$(yq::get ".keys.\"${keyName}\".private")"
+		keyPriv="$(key::slot_field "$keyName" private)" || return 1
 		keyType="$(yq::get ".keys.\"${keyName}\".type")"
 		keyComment="$(yq::get ".keys.\"${keyName}\".comment")"
 		[[ -n "$keyComment" && "$keyComment" != "null" ]] || keyComment="$keyName"
@@ -310,8 +361,8 @@ sign::tls_server() {
 			local keyPub
 			keyPub="$(cut -d' ' -f2 <"${leafKeyFile}.pub")"
 			keyPriv="$(<"$leafKeyFile")"
-			yq -i ".keys.\"${keyName}\".public = \"${keyType} ${keyPub} ${keyComment}\"" "$inputFile"
-			yq -i ".keys.\"${keyName}\".private = \"${keyPriv//$'\n'/\\n}\"" "$inputFile"
+			key::set_slot_field "$keyName" public "${keyType} ${keyPub} ${keyComment}"
+			key::set_slot_field "$keyName" private "$keyPriv"
 		else
 			printf '%s\n' "$keyPriv" >"$leafKeyFile"
 			chmod 0400 "$leafKeyFile"
