@@ -113,6 +113,20 @@ $defs:
       - type: string
         minLength: 40
 
+  publicBlob:
+    description: >
+      The BARE base64 blob, with no `ssh-ed25519 ` prefix and no trailing
+      comment: the type lives in `type:` and the comment in `comment:`, and
+      consumers rebuild the `<type> <blob> <comment>` line from the three.
+      The pattern is the barrier: writing a whole line in here instead doubled
+      both the type and the comment in every rebuilt line, and `ssh-keygen -lf`
+      accepted the result without complaint.
+    anyOf:
+      - type: string
+        pattern: '^ENC\[.*\]$'
+      - type: string
+        pattern: '^[A-Za-z0-9+/]{40,}={0,2}$'
+
   principalsMap:
     type: object
     description: >
@@ -147,7 +161,7 @@ $defs:
       additionalProperties: false
       properties:
         public:
-          $ref: "#/$defs/base64OrEnc"
+          $ref: "#/$defs/publicBlob"
         private:
           $ref: "#/$defs/base64OrEnc"
 
