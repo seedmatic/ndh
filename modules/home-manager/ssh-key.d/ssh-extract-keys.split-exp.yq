@@ -29,7 +29,9 @@ env(TMPDIR) + "/" as $tmpdir |
 ( ( .authorities // {} ) | to_entries | map(
     .key as $authName |
     .value.type as $authType |
-    .value.public as $authPub |
+    # Material lives in dated slots; the generation to MATERIALISE is derived from the
+    # newest key rather than named by a field. See docs/ssh-keys-renewal-spec.adoc.
+    ( ( .value.slots // {} ) | to_entries | sort_by(.key) | ( .[-1].value.public // "" ) ) as $authPub |
     .value.comment as $authComment |
     select($authPub != null and $authPub != "") |
     {
@@ -46,8 +48,8 @@ env(TMPDIR) + "/" as $tmpdir |
     .key as $basename |
     .value.profiles // [] as $profiles |
     .value.type as $keyType |
-    .value.public as $public |
-    .value.private as $private |
+    ( ( .value.slots // {} ) | to_entries | sort_by(.key) | ( .[-1].value.public // "" ) ) as $public |
+    ( ( .value.slots // {} ) | to_entries | sort_by(.key) | ( .[-1].value.private // "" ) ) as $private |
     .value.comment as $keyComment |
     .value.certificates as $certs |
 
