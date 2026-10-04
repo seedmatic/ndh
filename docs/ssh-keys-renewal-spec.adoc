@@ -1,0 +1,224 @@
+= SSH Keys Renewal Model
+:toc: macro
+:toclevels: 3
+
+toc::[]
+
+== Overview
+
+This spec defines how SSH key material in `modules/home-manager/ssh.d/keys.yaml` is *renewed*:
+how a key holds more than one generation at a time, which generation is presented, which are
+accepted, and who decides that a renewal happens.
+
+It exists because a renewal has to be *survivable*. Replacing key material in one step means
+there is an instant where the old material is gone and the new one is not yet distributed — and
+for anything that identifies a host, that instant is a lockout. Every rule below follows from
+making the overlap representable.
+
+The model deliberately avoids two shapes that look simpler and are not:
+
+* a generation *counter* in the entry name (`<name>-2`), because the name is a *reference* —
+  `identityFile`, `authority:`, `principals:` and `HostKey` all point at keys by name, so
+  renaming breaks call sites that have nothing to do with the renewal;
+* a pointer field (`active: …`) naming the current generation, because a pointer is a second
+  source of truth and can therefore disagree with the data it describes.
+
+== Two dated slots per entry
+
+A key entry holds its generations in `slots`, keyed by the date the material was created:
+
+[source,yaml]
+----
+rdp-host:
+  type: ssh-ed25519
+  authority: mammoth-skate
+  slots:
+    26-07-12: { public: …, private: … }   # accepted, retiring
+    26-10-04: { public: …, private: … }   # most recent — this is the one presented
+----
+
+[cols="1,2"]
+|===
+h|Rule|Form
+
+|Which generation is *presented*
+|*Derived*: `max(keys)`. There is no field to keep in step, so there is nothing that can be
+ stale.
+
+|Which generations are *accepted*
+|*All of them.* Every consumer already concatenates: `trusted-user-ca.pub` is rebuilt from every
+ `*-ca.pub` on each activation, `authorized_keys` and `nix_authorized_keys.d/<user>` take N
+ lines, `sshd` takes N `HostKey` directives, and `ssh` takes N `IdentityFile` lines.
+
+|Renewal in flight
+|*Two* slots. Settled is *one*.
+
+|At most two
+|An *assertion*, `length(slots) <= 2`. An assertion cannot be stale — it can only fail, loudly.
+
+|Two renewals the same day
+|A *key collision*, which fails. That is intended: renewing the same key twice in one day is a
+ symptom, not a case to support.
+|===
+
+IMPORTANT: The asymmetry between *presenting* one generation and *accepting* all of them is the
+whole mechanism. A reader who collapses `slots` back to a single pair removes the overlap and
+with it the ability to renew anything that identifies a host.
+
+=== Why `YY-MM-DD` and not `YYYY-MM-DD`
+
+Measured, not aesthetic:
+
+[source]
+----
+26-10-04     -> !!str         stays a string, needs no quoting
+2026-10-04   -> !!timestamp   YAML types it
+----
+
+`ssh-enrich-keys-yaml.sh` writes with `yq -i`. A key YAML has typed as a timestamp can be
+re-serialised in another form on write, so the two-digit year keeps the slot keys inert.
+
+NOTE: Any `yq -i` reformats the whole document's flow style regardless. That is also why the
+repository's sops clean filter refuses to re-encrypt unchanged content — see
+`ssh-keys-architecture.adoc`.
+
+The lexicographic sort breaks at a century boundary. Slots live for weeks, so this is stated and
+dismissed rather than solved.
+
+== Stable by default; renewal is the declared exception
+
+A missing annotation must be harmless. That decides the direction of the default:
+
+[cols="1,2"]
+|===
+h|Default|What forgetting the annotation gives you
+
+|Ephemeral unless marked
+|A key that changes *on every activation*, silently. Hosts stop being recognisable and nothing
+ says why.
+
+|*Stable unless marked*
+|A key that does not auto-renew. Visible, harmless, and recoverable.
+|===
+
+So key material is *stable by default*, persisted in the source document, and renewed *on
+request*. The exception is declared on the entry and states an intention rather than a
+mechanism:
+
+[source,yaml]
+----
+some-ephemeral-key:
+  renew: on-activation      # the exception; `on-request` is the implicit default
+----
+
+=== Keys are stable, certificates are derived
+
+These are two different objects, and conflating them is what makes the two regimes look
+contradictory:
+
+[source]
+----
+KEYS           stable by default, persisted in the source, renewed on request
+CERTIFICATES   derived from keys (a signature) -> regenerated on every activation, never persisted
+----
+
+A certificate has no reason to appear in the source document at all. "Regenerated on every
+activation" is correct *for certificates* and wrong for key material.
+
+== Generation is an operator gesture, not an activation side effect
+
+Activation invokes the enrichment with a *runtime* input:
+
+[source]
+----
+inputYaml  = decryptedSSHKeysYamlPath          the sops-decrypted runtime copy
+outputYaml = ${enrichedKeysDir}/keys.generated.yaml
+----
+
+and the script writes generated material back into `$inputFile` with `yq -i`. That file is
+rewritten from the encrypted source at the next activation, so material generated there does not
+survive: a stable key left empty in the source would be a *different* key after every switch.
+
+WARNING: That path is only safe today because no entry is empty. The moment one is, every
+activation produces fresh material for it.
+
+So renewal runs deliberately, against the source document:
+
+. empty the target slot in the repository's `keys.yaml`
+. run the enrichment with `inputYaml` pointing at *that* file
+. the script writes the new material back into it, in place
+. stage it — the sops clean filter (rke2lab) or `sops -e` (here) re-encrypts
+. commit; activation then *distributes* and no longer generates
+
+The material lands in the *mutated input*, not in the output. `keys.generated.yaml` is the
+enriched, profile-split runtime artefact and is disposable.
+
+NOTE: This generalises a mechanism that already exists for one key.
+`modules/nixos/ssh-keys.d/enroll-vm-hostkey-into-sops.sh` decrypts the worktree secrets file,
+updates `.<key-name>.{private,public}`, and re-encrypts atomically — the same inject-back step,
+for a single entry.
+
+== The renewal is always two phases
+
+[cols="1,3"]
+|===
+h|Phase|Content
+
+|1 — generate *and* install
+|Write the new slot, publish *both* generations, activate, and verify the new one works. An
+ *authority* renews before its leaves: the enrichment refuses to sign without the authority's
+ private key, and says so.
+
+|2 — remove the obsolete
+|Drop the retiring slot, and only after a *positive* check that the new generation serves.
+ Otherwise the one path that worked is the one removed.
+|===
+
+Phase 2 is not optional, and the model makes that visible: while two slots exist, the assertion,
+the selector and the document all say a renewal is unfinished. A half-finished renewal is
+therefore distinguishable from a settled state, which is not true of a counter-plus-pointer
+shape.
+
+== Selection is an app; generation stays in the enrichment
+
+[source]
+----
+nix run .#ssh-keys-renew -- --select <name|authority|role|older-than> [--apply]
+----
+
+[cols="1,2"]
+|===
+h|Property|Rationale
+
+|Single responsibility: *selection*
+|The engine already exists. This follows the idiom `nix run .#ssh-keys-v2-validate` sets.
+
+|Dry-run by default, `--apply` explicit
+|An app that empties key fields shows its work before doing it.
+
+|`--older-than 90d` reads the slot keys directly
+|No side table to keep in step — the free benefit of dating the slots.
+
+|It empties *and* generates, in one gesture
+|Emptying alone and letting activation generate is churn, per the section above.
+|===
+
+Renewal is requested rather than scheduled: a periodic job would renew things nobody is watching,
+and the two-phase rule needs a human to confirm phase 1 before phase 2.
+
+== Realisation
+
+The only behavioural change is in `modules/.common.d/ssh-keys.d/ssh-enrich-keys-yaml.sh`, which
+currently reads and writes `.keys.<name>.public` flat and knows nothing about `slots`. The change
+is confined to the guard that decides to generate and the two `yq -i` writes that follow it; the
+rest of the script — signing against the authority, profile splitting, materialisation — handles
+*values* and not paths.
+
+Everything else is additive: the schema gains `slots` and `renew`, the assertion is new, and the
+selector app is new.
+
+== Related Documentation
+
+* `ssh-keys-architecture.adoc` — the deployment pipeline these keys flow through
+* `sops-two-phase-rollout.adoc` — the two-phase discipline applied to sops recipients
+* `modules-reference.adoc` — the modules that materialise key material per platform

@@ -69,6 +69,9 @@ Workflow for running, capturing, and closing collaborative sessions (includes pr
 link:sops-two-phase-rollout.adoc[SOPS Two-Phase Rollout (Shared Flake)]::
 Operational runbook for bootstrap/enforce lifecycle, host-by-host rollout, and onboarding new Darwin/NixOS hosts.
 
+link:ssh-keys-renewal-spec.adoc[SSH Keys Renewal Model (spec)]::
+How a key entry holds two dated generations at once, which one is presented and which are accepted, and why renewal is requested rather than scheduled. Defines the two-phase rule — publish the new generation before removing the old — and the stable-by-default posture that makes a forgotten annotation harmless.
+
 link:security-handling-c4.adoc[Security Handling (C4-Style UML)]::
 Context + container diagrams for SOPS key lifecycle, runtime secret materialization, and Cachix publish/consume flows.
 
