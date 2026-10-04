@@ -60,22 +60,37 @@ in
       readOnly = true;
       default =
         names:
-        lib.filter (line: line != "") (
-          map (
-            name:
-            if keysJson ? ${name} && keysJson.${name} ? public then
-              "ssh-ed25519 ${keysJson.${name}.public} ndh-${name}"
-            else
-              ""
-          ) names
-        );
+        lib.concatMap (
+          name:
+          let
+            entry =
+              keysJson.${name} or (throw "ndh.keysYaml.authorizedLinesFor: no key named '${name}' in keys.yaml");
+            usable = lib.filterAttrs (
+              _slot: material: (material.public or "") != "" && !(lib.hasPrefix "ENC[" material.public)
+            ) (entry.slots or { });
+            lines = lib.mapAttrsToList (
+              _slot: material: "${entry.type or "ssh-ed25519"} ${material.public} ndh-${name}"
+            ) usable;
+          in
+          if lines == [ ] then
+            throw "ndh.keysYaml.authorizedLinesFor: key '${name}' has no slot carrying a usable public key"
+          else
+            lines
+        ) names;
       description = ''
         Given a list of key names from keys.yaml, return the matching
-        authorized_keys lines in the shape
-        `ssh-ed25519 <pub> ndh-<name>`. Names missing from keys.yaml or
-        without a `.public` field are silently dropped so callers can
-        list aspirational keys without hard-failing eval on an empty
-        entry.
+        authorized_keys lines in the shape `<type> <blob> ndh-<name>` —
+        *one line per slot*, because every generation of a key is accepted
+        while only the newest is presented. That asymmetry is what makes a
+        renewal survivable: see docs/ssh-keys-renewal-spec.adoc.
+
+        A name absent from keys.yaml, or present with no slot carrying a
+        usable public key, is an eval **error**. It used to be dropped
+        silently, and when the entries moved from a flat `public` into
+        dated slots every call site started returning the empty list
+        without a word — including root's authorized_keys and the initrd
+        rescue door. An access list that can be silently empty is worse
+        than one that refuses to build.
       '';
     };
   };
