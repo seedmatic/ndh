@@ -164,6 +164,40 @@ $defs:
           $ref: "#/$defs/publicBlob"
         private:
           $ref: "#/$defs/base64OrEnc"
+        certificates:
+          $ref: "#/$defs/certificates"
+
+  certificates:
+    type: object
+    description: >
+      Signed certificates for THIS generation of the key, keyed by authority
+      name then by cert type. A certificate belongs to the generation it
+      certifies, which is why it sits inside the slot rather than beside it:
+      during a renewal both generations are published, and each needs its own.
+
+      Populated by the enrichment step output; never present in the input
+      shape, and never persisted — keys are stable and certificates are
+      derived. SSH cert types carry a single-line openssh format; TLS types
+      carry a PEM blob (multi-line, BEGIN/END CERTIFICATE).
+
+      The signing authority is always the PRESENTED one. An authority renews
+      before its leaves, so a single certificate per key generation suffices;
+      see docs/ssh-keys-renewal-spec.adoc.
+    patternProperties:
+      "^[a-z][a-z0-9-]*$":
+        type: object
+        additionalProperties: false
+        properties:
+          ssh-user:
+            type: string
+            pattern: "^ssh-[a-z0-9-]+-cert-v01@openssh.com "
+          ssh-host:
+            type: string
+            pattern: "^ssh-[a-z0-9-]+-cert-v01@openssh.com "
+          tls-server:
+            type: string
+            pattern: "^-----BEGIN CERTIFICATE-----"
+    additionalProperties: false
 
   authority:
     type: object
@@ -341,28 +375,6 @@ $defs:
         type: array
         items:
           type: string
-      certificates:
-        type: object
-        description: >
-          Signed certificates, keyed by authority name then by cert type.
-          Populated by the enrichment step output; not present in the input
-          shape.  SSH cert types carry a single-line openssh format; TLS
-          types carry a PEM blob (multi-line, BEGIN/END CERTIFICATE).
-        patternProperties:
-          "^[a-z][a-z0-9-]*$":
-            type: object
-            additionalProperties: false
-            properties:
-              ssh-user:
-                type: string
-                pattern: "^ssh-[a-z0-9-]+-cert-v01@openssh.com "
-              ssh-host:
-                type: string
-                pattern: "^ssh-[a-z0-9-]+-cert-v01@openssh.com "
-              tls-server:
-                type: string
-                pattern: "^-----BEGIN CERTIFICATE-----"
-        additionalProperties: false
       annotations:
         type: object
         additionalProperties: true

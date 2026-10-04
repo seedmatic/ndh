@@ -119,6 +119,68 @@ user rdp-host.pub" ]
   [ "$output" = "ssh-ed25519 NEWPUBLIC host" ]
 }
 
+@test "each generation's certificates are named after that generation" {
+  cat >"${tmp}/certs.yaml" <<'YAML'
+authorities:
+  mammoth-skate:
+    type: ssh-ed25519
+    slots:
+      26-10-04: { public: AUTHPUBLIC }
+keys:
+  rdp-host:
+    type: ssh-ed25519
+    slots:
+      26-05-29:
+        public: OLDPUBLIC
+        private: OLDPRIVATE
+        certificates:
+          mammoth-skate:
+            ssh-host: OLDHOSTCERT
+            ssh-user: OLDUSERCERT
+      26-10-04:
+        public: NEWPUBLIC
+        private: NEWPRIVATE
+        certificates:
+          mammoth-skate:
+            ssh-host: NEWHOSTCERT
+            ssh-user: NEWUSERCERT
+YAML
+  run artefacts "${tmp}/certs.yaml"
+  [ "$status" -eq 0 ]
+  [ "$output" = "system mammoth-skate-ca.pub
+system rdp-host-26-05-29-mammoth-skate-host-cert.pub
+system rdp-host-26-05-29-mammoth-skate-user-cert.pub
+system rdp-host-mammoth-skate-host-cert.pub
+system rdp-host-mammoth-skate-user-cert.pub
+system-private rdp-host
+system-private rdp-host-26-05-29
+user rdp-host-26-05-29.pub
+user rdp-host.pub" ]
+}
+
+@test "a certificate goes with the generation it certifies, not the other one" {
+  cat >"${tmp}/certs.yaml" <<'YAML'
+keys:
+  rdp-host:
+    type: ssh-ed25519
+    slots:
+      26-05-29:
+        private: OLDPRIVATE
+        certificates: { mammoth-skate: { ssh-user: OLDUSERCERT } }
+      26-10-04:
+        private: NEWPRIVATE
+        certificates: { mammoth-skate: { ssh-user: NEWUSERCERT } }
+YAML
+  local out="${tmp}/split"
+  rm -rf "$out"; mkdir -p "$out"
+  env TMPDIR="${out}/" yq eval --from-file "$SPLIT_EXP" "${tmp}/certs.yaml" -s '.yamlfile' >/dev/null
+
+  run yq -r '.content' "${out}/rdp-host-mammoth-skate-user-cert.yaml"
+  [ "$output" = "NEWUSERCERT" ]
+  run yq -r '.content' "${out}/rdp-host-26-05-29-mammoth-skate-user-cert.yaml"
+  [ "$output" = "OLDUSERCERT" ]
+}
+
 @test "a slot with no public yields no .pub artefact, not an empty one" {
   cat >"${tmp}/empty.yaml" <<'YAML'
 authorities:

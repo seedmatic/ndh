@@ -65,7 +65,6 @@ env(TMPDIR) + "/" as $tmpdir |
     .key as $basename |
     .value.type as $keyType |
     .value.comment as $keyComment |
-    .value.certificates as $certs |
     ( ( .value.slots // {} ) | to_entries | sort_by(.key) ) as $slots |
     ( $slots | .[-1].key ) as $presented |
 
@@ -73,10 +72,11 @@ env(TMPDIR) + "/" as $tmpdir |
     # (system extraction gets system-profile keys, user extraction gets user-profile keys).
     # Always emit private key - the extraction script's context determines the target directory.
     #
-    # One private and one public per generation. ssh offers identities in turn and
-    # sshd takes N HostKey directives, so materialising the retiring generation
-    # alongside the new one is what carries a renewal across hosts that have not
-    # activated yet.
+    # One private, one public and its certificates per generation. ssh offers
+    # identities in turn and sshd takes N HostKey directives, so materialising the
+    # retiring generation alongside the new one is what carries a renewal across
+    # hosts that have not activated yet — and a certificate belongs to the
+    # generation it certifies, which is why it lives inside the slot.
     ( $slots | map(
         # `public` is the bare base64 blob; the line consumers accept is rebuilt
         # from type + blob + comment. See the authorities block above for why the
@@ -84,10 +84,11 @@ env(TMPDIR) + "/" as $tmpdir |
         { "slot":    .key,
           "line":    ( .value.public // "" ),
           "private": ( .value.private // "" ),
+          "certs":   ( .value.certificates // {} ),
           "stem":    $basename }
         | with(select(.slot != $presented); .stem = $basename + "-" + .slot)
         | with(select(.line != "");         .line = ( [ $keyType, .line, ($keyComment // $basename) ] | join(" ") ))
-        | .stem as $stem | .line as $line | .private as $private |
+        | .stem as $stem | .line as $line | .private as $private | .certs as $certs |
         [
           { "yamlfile":   ( $tmpdir + $stem + ".yaml" ),
             "rel_path":   $stem,
@@ -98,31 +99,29 @@ env(TMPDIR) + "/" as $tmpdir |
             "target_dir": "user",
             "content":    $line }
         ]
+        +
+        ( $certs | to_entries | map(
+            .key as $authName |
+            .value as $certsByUsage |
+            [
+              { "yamlfile":   ( $tmpdir + $stem + "-" + $authName + "-host-cert.yaml" ),
+                "rel_path":   ( $stem + "-" + $authName + "-host-cert.pub" ),
+                "target_dir": "system",
+                "content":    ( $certsByUsage."ssh-host" // null ) },
+              { "yamlfile":   ( $tmpdir + $stem + "-" + $authName + "-user-cert.yaml" ),
+                "rel_path":   ( $stem + "-" + $authName + "-user-cert.pub" ),
+                "target_dir": "system",
+                "content":    ( $certsByUsage."ssh-user" // null ) },
+              # TLS x509 leaf cert — PEM blob, drops next to the private
+              # key with a `.crt` suffix so consumers (headscale daemon)
+              # can pass a single basename pair.
+              { "yamlfile":   ( $tmpdir + $stem + "-" + $authName + "-tls.yaml" ),
+                "rel_path":   ( $stem + ".crt" ),
+                "target_dir": "system",
+                "content":    ( $certsByUsage."tls-server" // null ) }
+            ]
+          ) | flatten )
       ) | flatten )
-    +
-    (
-      ( $certs // {} ) | to_entries | map(
-        .key as $authName |
-        .value as $certsByUsage |
-        [
-          ( { "yamlfile":   ( $tmpdir + $basename + "-" + $authName + "-host-cert.yaml" ),
-              "rel_path":   ( $basename + "-" + $authName + "-host-cert.pub" ),
-              "target_dir": "system",
-              "content":    ( $certsByUsage."ssh-host" // null ) } ),
-          ( { "yamlfile":   ( $tmpdir + $basename + "-" + $authName + "-user-cert.yaml" ),
-              "rel_path":   ( $basename + "-" + $authName + "-user-cert.pub" ),
-              "target_dir": "system",
-              "content":    ( $certsByUsage."ssh-user" // null ) } ),
-          # TLS x509 leaf cert — PEM blob, drops next to the private
-          # key with a `.crt` suffix so consumers (headscale daemon)
-          # can pass a single basename pair.
-          ( { "yamlfile":   ( $tmpdir + $basename + "-" + $authName + "-tls.yaml" ),
-              "rel_path":   ( $basename + ".crt" ),
-              "target_dir": "system",
-              "content":    ( $certsByUsage."tls-server" // null ) } )
-        ]
-      ) | flatten
-    )
   ) | flatten
 ) as $keyArtifacts |
 

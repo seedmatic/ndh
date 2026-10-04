@@ -67,15 +67,22 @@ YAML
   [[ "$output" == *"no slots"* ]]
 }
 
-@test "material is read from the newest slot, never from the older one" {
+@test "both generations are addressable — the slot is a parameter, not a guess" {
   two_slots
-  run key::slot_field rdp-host public
+  newest="$(key::newest_slot rdp-host)"
+
+  run key::field rdp-host "$newest" public
   [ "$status" -eq 0 ]
   [ "$output" = "newer-public" ]
-
-  run key::slot_field rdp-host private
-  [ "$status" -eq 0 ]
+  run key::field rdp-host "$newest" private
   [ "$output" = "newer-private" ]
+
+  # The retiring generation is read the same way. The enrichment signs a
+  # certificate for it too, so it must be reachable by name.
+  run key::field rdp-host 26-07-12 public
+  [ "$output" = "older-public" ]
+  run key::field rdp-host 26-07-12 private
+  [ "$output" = "older-private" ]
 }
 
 @test "an empty newest slot yields empty material, which is how a renewal is requested" {
@@ -89,7 +96,7 @@ YAML
   run key::newest_slot rdp-host
   [ "$output" = "26-10-04" ]
 
-  run key::slot_field rdp-host public
+  run key::field rdp-host 26-10-04 public
   [ "$status" -eq 0 ]
   [ -z "${output}" ] || [ "$output" = "null" ]
 }
@@ -151,8 +158,12 @@ YAML
   [ "$status" -eq 0 ]
   [ "$output" = "26-10-04" ]
 
-  run authority::slot_field mammoth-skate private
+  # The authority that SIGNS is the presented one — a leaf is only re-signed by
+  # the new authority once every host already trusts it.
+  run authority::presented mammoth-skate private
   [ "$output" = "newer-priv" ]
+  run authority::field mammoth-skate 26-07-12 private
+  [ "$output" = "older-priv" ]
 }
 
 @test "an authority with no slots FAILS — same rule, no flat fallback" {
