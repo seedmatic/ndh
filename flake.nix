@@ -495,7 +495,7 @@
                 loggerTag = "ndh.bringup-runtime.install-standalone";
                 runtimePackage = runtimePackage;
                 defaultProfileDir = "/nix/var/nix/profiles/per-user/root/nerd-bringup-runtime";
-                requiredCommands = "bash nix age age-keygen awk sed grep ssh ssh-keygen step yq git";
+                requiredCommands = "bash nix age age-keygen awk sed grep ssh ssh-keygen sops step yq git";
               };
         in
         pkgsForSystem.runCommand ndhBringupInstallerAttr { } ''
@@ -1585,6 +1585,27 @@
             ];
             text = builtins.readFile ./modules/.common.d/authority-bootstrap-tls-root.d/authority-bootstrap-tls-root.sh;
           };
+          # Operator ceremony: phase 1 of an SSH key renewal — add a dated slot to
+          # selected keys.yaml entries and generate into it, so BOTH generations are
+          # published while the fleet activates. Dry run unless --apply.
+          #
+          # ★ Generation happens HERE rather than by emptying a slot and letting
+          # activation fill it: the enrichment runs against the sops-decrypted
+          # RUNTIME copy, which is rewritten from the encrypted source on every
+          # switch, so an empty slot in the source would be a different key after
+          # every activation.
+          # ★ Nothing is pinned by store path here, unlike its two siblings below:
+          # sops, yq, ssh-keygen, git and the coreutils this needs are all part of
+          # the bringup runtime profile's command contract, so the trampoline either
+          # provides them or refuses with an install hint. `sops` was the one that
+          # was NOT in that profile and had to come from the system closure — it is
+          # in the contract now (53 MB of closure, measured).
+          sshKeysRenewPackage = ndhStoreApiDarwin.installBinScript "ssh-keys-renew" (
+            pkgsForSystem.replaceVars ./modules/.common.d/ssh-keys-renew.d/ssh-keys-renew.sh {
+              nixBashTrampoline = ndhNixBashTrampolineDarwin;
+              loggerTag = "ndh.ssh-keys-renew";
+            }
+          );
           # Mint the Incus LISTENER cert from a keys.yaml TLS authority. Hermetic like its sibling
           # above, plus jq (the SAN set is read out of the catalog as JSON) and nix itself (it
           # evaluates this flake's catalog and rke2lab's segments rather than retyping any name).
@@ -1709,6 +1730,11 @@
             type = "app";
             program = "${authorityBootstrapTlsRootPackage}/bin/authority-bootstrap-tls-root";
             meta.description = "Mint/rotate a self-signed TLS root for a keys.yaml authority — <authority> [--force|--create <keyType>], run from repo root — src: modules/.common.d/authority-bootstrap-tls-root.d/";
+          };
+          ssh-keys-renew = {
+            type = "app";
+            program = "${sshKeysRenewPackage}/bin/ssh-keys-renew";
+            meta.description = "Phase 1 of an SSH key renewal: add a dated slot and generate into it — [--key NAME] [--authority NAME] [--older-than Nd] [--apply], dry run by default, run from repo root — src: modules/.common.d/ssh-keys-renew.d/";
           };
           cleanup-activations = {
             type = "app";

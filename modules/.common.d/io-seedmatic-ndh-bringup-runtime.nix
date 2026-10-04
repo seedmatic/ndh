@@ -55,12 +55,28 @@ let
       coreutils-full
       findutils
       gawk
-      git
+      # ⛔ NOT `git`. On darwin git pulls python3, which pulls clang, cctools and
+      # the apple-sdk: 1614.9 MB of closure against gitMinimal's 159.3 MB, both
+      # measured — git alone was 95% of this profile, and this profile is
+      # `nix copy`'d to every vz-host. gitMinimal pulls no python3, clang or
+      # apple-sdk at all.
+      #
+      # Everything reachable from the trampoline uses add / commit / rev-parse /
+      # diff / clone / checkout / push / config, and nothing uses the perl or
+      # python subcommands gitMinimal drops (`add -i`, `rebase -i`, send-email,
+      # p4, svn, gitk) — surveyed across every *.sh and *.nix in the repo.
+      gitMinimal
       gnugrep
       gnused
       keychain
       loggerShim
       openssh
+      # The profile already carries `age`, which decrypts; `sops` is what every
+      # script that reads or rewrites an encrypted document actually calls, and it
+      # was the one tool a trampoline-sourced script had to find in the SYSTEM
+      # profile instead. 53 MB of closure, against 1.6 GB for the git already
+      # here — measured, not assumed.
+      sops
       step-cli
       yq-go
     ];
@@ -160,6 +176,7 @@ in
         "grep"
         "ssh"
         "ssh-keygen"
+        "sops"
         "step"
         "yq"
         "git"
