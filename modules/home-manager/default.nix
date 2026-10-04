@@ -41,70 +41,10 @@ let
     else
       { };
 
-  ndhVmArgs = if ndhArgs ? vm && ndhArgs.vm != null then ndhArgs.vm else { };
-
   ndhLoggerArgs = if ndhArgs ? logger && ndhArgs.logger != null then ndhArgs.logger else { };
-
-  vmConfigMaterializerPackage =
-    if ndhVmArgs ? configMaterializerPackage then ndhVmArgs.configMaterializerPackage else null;
 
   resolvedProfile =
     if profile != null then profile else lib.attrByPath [ "profile" ] null specialArgsResolved;
-
-  selectedVmProvider =
-    if resolvedProfile != null && resolvedProfile ? host && resolvedProfile.host ? vmProvider then
-      resolvedProfile.host.vmProvider
-    else if ndhContext != null && ndhContext ? vmProvider && ndhContext.vmProvider != null then
-      ndhContext.vmProvider
-    else
-      "tart";
-
-  effectiveHostName =
-    if
-      resolvedProfile != null
-      && resolvedProfile ? host
-      && resolvedProfile.host ? hostAlias
-      && resolvedProfile.host.hostAlias != null
-      && resolvedProfile.host.hostAlias != ""
-    then
-      resolvedProfile.host.hostAlias
-    else if resolvedProfile != null && resolvedProfile ? host && resolvedProfile.host ? hostName then
-      resolvedProfile.host.hostName
-    else
-      null;
-
-  hostCatalogEntries =
-    if
-      ndhContext != null
-      && ndhContext ? inventory
-      && ndhContext.inventory ? hosts
-      && effectiveHostName != null
-    then
-      lib.attrByPath [ effectiveHostName ] [ ] ndhContext.inventory.hosts
-    else
-      [ ];
-
-  activatingOnVzHost = lib.any (
-    entry:
-    (entry ? form)
-    && entry.form == "baremetal"
-    && (entry ? vm)
-    && (entry.vm ? kind)
-    && entry.vm.kind == "vz"
-  ) hostCatalogEntries;
-
-  # Operator opt-out via hostProfile.vmMaterializerEnableActivationHook = false
-  # skips the HM materializeVm activation entirely so that `darwin-rebuild
-  # switch` does not drag the nixos bringup disk image into its closure. Read
-  # the raw value from specialArgs.ndh.context.hostProfile — same path used by
-  # the canonical option in modules/.common.d/vm-materializer.nix. The
-  # profile.host submodule strips undeclared attributes so we cannot read via
-  # resolvedProfile here.
-  hostVmMaterializerActivationHook =
-    if ndhContext != null && ndhContext ? hostProfile && ndhContext.hostProfile != null then
-      ndhContext.hostProfile.vmMaterializerEnableActivationHook or true
-    else
-      true;
 
   homeUsernameFallback = lib.attrByPath [ "home" "username" ] null config;
   homeDirectoryFallback = lib.attrByPath [ "home" "homeDirectory" ] null config;
@@ -135,12 +75,6 @@ let
   loggerArgs =
     if ndhLoggerArgs != { } then ndhLoggerArgs else throw "specialArgs.ndh.logger is required";
   loggerTagFixConfigOwnership = "home-manager.activationScripts.${userName}.fixConfigOwnership";
-  hmVmMaterializationEnabled =
-    pkgs.stdenvNoCC.isDarwin
-    && activatingOnVzHost
-    && hostVmMaterializerActivationHook
-    && vmConfigMaterializerPackage != null
-    && selectedVmProvider == "tart";
 
   resolvedImports = [
     ./aws.nix
@@ -290,41 +224,6 @@ in
   };
 
   targets.genericLinux.enable = false;
-
-  assertions = lib.optionals hmVmMaterializationEnabled ([
-    {
-      assertion = selectedVmProvider == "tart";
-      message = ''
-        Home Manager on Darwin requires a supported `vmProvider` for VM materialization.
-        Supported value: "tart".
-      '';
-    }
-  ]);
-
-  home.activation.materializeVm = lib.mkIf hmVmMaterializationEnabled (
-    lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-      vm_provider="${selectedVmProvider}"
-      case "$vm_provider" in
-        tart)
-          materializer_binary="nerd-tart-vm-materialize"
-          ;;
-        *)
-          echo "[vmConfig][ERROR] unsupported vm provider for HM materialization: $vm_provider" >&2
-          exit 1
-          ;;
-      esac
-
-      materializer="${vmConfigMaterializerPackage}/bin/$materializer_binary"
-
-      if [[ ! -x "$materializer" ]]; then
-        echo "[vmConfig][ERROR] missing Home Manager materializer executable: $materializer" >&2
-        exit 1
-      fi
-
-      echo "[vmConfig] Home Manager activation: materializing $vm_provider assets and gcroot image"
-      NDH_GCROOT_USER="${userName}" "${pkgs.bash}/bin/bash" "$materializer"
-    ''
-  );
 
   programs = {
 

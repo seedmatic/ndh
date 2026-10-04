@@ -34,7 +34,6 @@
 
     tart.configGenerator = {
       forceEnable = false;
-      installMaterializerPackage = false;
       vmMemoryMiB = halfRamMiB;
       # When the operator deploys nikopol's run manifest to a vz host
       # via `nerd-tart-nikopol-deploy`, the wrapper there reads these

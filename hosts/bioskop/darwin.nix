@@ -79,7 +79,6 @@
 
     tart.configGenerator = {
       forceEnable = false;
-      installMaterializerPackage = false;
       vmCpuCount = 8; # 8 of 14 cores (10P+4E) reserved for nerd-nixos; 6 remain for macOS
       vmMemoryMiB = halfRamMiB;
       vmRunBridgeInterface = hardware.vmBridgeService;

@@ -282426,10 +282426,6 @@
           "flake-commons",
           "impermanence"
         ],
-        "incus-compose": [
-          "flake-commons",
-          "incus-compose"
-        ],
         "lix-module": [
           "flake-commons",
           "lix-module"
@@ -282455,10 +282451,6 @@
           "nixpkgs-unstable"
         ],
         "nnh": "nnh",
-        "ripvcs": [
-          "flake-commons",
-          "ripvcs"
-        ],
         "rke2lab": "rke2lab",
         "socket-vmnet": [
           "flake-commons",
@@ -282466,11 +282458,7 @@
         ],
         "sops-nix": "sops-nix_2",
         "tailscale-fork": "tailscale-fork",
-        "treefmt-nix": "treefmt-nix_230",
-        "zen-browser": [
-          "flake-commons",
-          "zen-browser"
-        ]
+        "treefmt-nix": "treefmt-nix_230"
       }
     },
     "rust-analyzer-src": {

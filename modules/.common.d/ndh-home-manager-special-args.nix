@@ -4,7 +4,6 @@
   profile,
   ndhContext,
   ndhStore,
-  vmConfigMaterializerPackage,
   keysYamlPath,
   claude-hub ? null,
 }:
@@ -18,9 +17,6 @@
   ndh = {
     context = ndhContext;
     store = ndhStore;
-    vm = {
-      configMaterializerPackage = vmConfigMaterializerPackage;
-    };
     ssh = {
       inherit keysYamlPath;
     };

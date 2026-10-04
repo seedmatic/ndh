@@ -47,16 +47,13 @@
     flox.follows = "flake-commons/flox";
     home-manager.follows = "flake-commons/home-manager";
     impermanence.follows = "flake-commons/impermanence";
-    incus-compose.follows = "flake-commons/incus-compose";
     lix-module.follows = "flake-commons/lix-module";
     maven-mvnd.follows = "flake-commons/maven-mvnd";
     nix.follows = "flake-commons/nix";
     nixos-hardware.follows = "flake-commons/nixos-hardware";
     nixpkgs.follows = "flake-commons/nixpkgs";
     nixpkgs-unstable.follows = "flake-commons/nixpkgs-unstable";
-    ripvcs.follows = "flake-commons/ripvcs";
     socket-vmnet.follows = "flake-commons/socket-vmnet";
-    zen-browser.follows = "flake-commons/zen-browser";
 
     # 3. Direct inputs (not aggregated upstream)
     sops-nix.url = "github:Mic92/sops-nix";
@@ -191,13 +188,6 @@
             else
               throw "Socket VMNet packages not defined for ${system}";
 
-          ripvcsOverlay =
-            final: prev:
-            if inputs.ripvcs.packages ? ${system} then
-              inputs.ripvcs.packages.${system}
-            else
-              throw "Ripvcs packages not defined for ${system}";
-
           overlays = builtins.map (
             name:
             let
@@ -209,9 +199,7 @@
           applyOverlays =
             final: prev: builtins.foldl' (acc: overlay: (acc // (overlay final prev))) { } overlays;
         in
-        basePackages.extend (
-          final: prev: (vmnetOverlay final prev) // (ripvcsOverlay final prev) // (applyOverlays final prev)
-        );
+        basePackages.extend (final: prev: (vmnetOverlay final prev) // (applyOverlays final prev));
       pkgsForDarwin = (pkgsFor { system = "aarch64-darwin"; });
       pkgsForLinux = (pkgsFor { system = "aarch64-linux"; });
       # nixpkgs-unstable, only for packages the pinned (flake-commons) nixpkgs
@@ -1229,11 +1217,16 @@
           #   nerd-tart-<host>-config      — per-VM YAML manifest (scp to vz)
           #   nerd-tart-<host>-deploy      — operator helper: copy + activate on a REMOTE vz host
           #   nerd-tart-<host>-materialize — LOCAL materializer for the host that runs the VM
-          # `-materialize` is the local counterpart of `-deploy`: on a host whose
-          # activation hook is off (`vmMaterializerEnableActivationHook = false`)
-          # and that runs the Tart VM itself (not a remote vz host), it is the only
-          # entry point to (re)materialize the VM — e.g.
+          # `-materialize` is the local counterpart of `-deploy`, and on a host that
+          # runs the Tart VM itself (not a remote vz host) it is the ONLY entry point
+          # to (re)materialize the VM — e.g.
           # `VM_FACTORY_RESET=true nix run .#nerd-tart-bioskop-materialize`.
+          # Darwin activation deliberately never does this: staging the bringup image
+          # and the target NixOS runtime system is ~31 GiB of closure (see the
+          # `includeRuntimeClosure` / `includeBringupSymlink` notes in
+          # modules/darwin/tart-config.nix), and it has its own cadence, independent
+          # of host convergence.  So the image stays out of the darwin system closure
+          # and reaching it is an explicit operator gesture.
           let
             systemPkgs = pkgsFor { inherit system; };
             anyHostName = builtins.head (builtins.attrNames hostCatalog);
@@ -1739,7 +1732,6 @@
           profileModule,
           darwinExtraModules ? [ ],
           nixosExtraModules ? [ ],
-          withBringupImages ? true,
           pauseAfterInstall ? false,
           enableBuildObserve ? false,
           buildObserveInterval ? 5,
@@ -1787,13 +1779,6 @@
           nixosDiskoConfiguration = nixosOutputs.diskoConfiguration;
           mkHomeManagerConfig =
             profile:
-            let
-              vmConfigMaterializerPackage =
-                if !withBringupImages then
-                  null
-                else
-                  darwinOutputs.darwinConfigurations.${mainName}.config.tart.configGenerator.materializerPackage;
-            in
             home-manager.lib.homeManagerConfiguration {
               pkgs = pkgsForDarwin;
               modules = [
@@ -1811,7 +1796,6 @@
                   self
                   worktreePath
                   profile
-                  vmConfigMaterializerPackage
                   ;
                 ndhContext = {
                   inherit
@@ -1832,23 +1816,24 @@
             inherit hostProfile catalog;
             inventory = inventoryData;
             profileModule =
-              { lib, ... }:
+              { ... }:
               {
                 imports = [
                   profileModule
                   (
-                    { lib, ... }:
+                    { ... }:
                     {
-                      tart.configGenerator.linuxBuilderGcBeforeBuild = linuxBuilderGcBeforeBuild;
-                      tart.configGenerator.enableBuildObserve = enableBuildObserve;
-                      tart.configGenerator.buildObserveInterval = buildObserveInterval;
-                    }
-                    // lib.optionalAttrs withBringupImages {
+                      # These store paths are what the `nerd-tart-<host>-materialize`
+                      # staging gesture resolves. They reach the Tart bundle, never the
+                      # darwin system closure — no activation path consumes the bundle.
                       tart.configGenerator.rawImageManifestPath = "${nixosDiskImageBringupSystemdZfs}/manifest.yaml";
                       tart.configGenerator.rawImageStorePath = "${nixosDiskImageBringupSystemdZfs}/boot.img";
                       tart.configGenerator.runtimeSystemPath = nixosOutputs.runtimeSystem;
                       tart.configGenerator.vmRunFirstBootAttachDiskManifestPath = null;
                       tart.configGenerator.vmRunFirstBootAttachDiskPath = "";
+                      tart.configGenerator.linuxBuilderGcBeforeBuild = linuxBuilderGcBeforeBuild;
+                      tart.configGenerator.enableBuildObserve = enableBuildObserve;
+                      tart.configGenerator.buildObserveInterval = buildObserveInterval;
                     }
                   )
                 ]
@@ -2101,14 +2086,12 @@
             tart-guest-agent = final.callPackage ./pkgs/tart-guest-agent.nix { };
             inherit (inputs.maven-mvnd.packages.${hostSystem}) maven-mvnd-m39;
             inherit (inputs.disko.packages.${hostSystem}) disko;
-            inherit (inputs.incus-compose.packages.${hostSystem}) incus-compose;
             flox = inputs.flox.packages.${hostSystem}.default;
           };
 
         birdOverlay = inputs: import ./overlays/bird.nix inputs;
         qemuOverlay = inputs: import ./overlays/qemu.nix inputs;
         nodejsOverlay = inputs: import ./overlays/nodejs.nix inputs;
-        incusComposeOverlay = inputs: import ./overlays/incus-compose.nix inputs;
         incusOverlay = inputs: import ./overlays/incus.nix inputs;
         lazygitOverlay = inputs: import ./overlays/lazygit.nix inputs;
         tailscaleOverlay = inputs: import ./overlays/tailscale.nix inputs;
