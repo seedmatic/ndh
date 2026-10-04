@@ -53,46 +53,63 @@ yq::get() { yq eval -r "${1}" "$inputFile" 2>/dev/null || true; }
 # There is no fallback to a flat `public`/`private`: an entry without slots is an
 # error. Carrying both shapes would mean testing neither.
 
-key::slots_count() {
+# Keys and authorities differ only in which top-level section holds them, so the
+# resolution is written once and named twice. Authorities need the overlap most:
+# trusted-user-ca.pub concatenates every *-ca.pub on each activation, so two
+# authority generations are both trusted while the leaves move across.
+
+slot::count() { # <section> <name>
 	local n
-	n="$(yq eval -r ".keys.\"${1}\".slots | length" "$inputFile" 2>/dev/null || true)"
+	n="$(yq eval -r ".${1}.\"${2}\".slots | length" "$inputFile" 2>/dev/null || true)"
 	[[ -n "$n" && "$n" != "null" ]] || n=0
 	printf '%s\n' "$n"
 }
 
-key::newest_slot() {
-	local keyName="$1" n
-	n="$(key::slots_count "$keyName")"
+slot::newest() { # <section> <name>
+	local n
+	n="$(slot::count "$1" "$2")"
 	if ((n == 0)); then
-		log::error "key ${keyName} has no slots — the flat public/private shape is not supported"
+		log::error "${1%s} ${2} has no slots — the flat public/private shape is not supported"
 		return 1
 	fi
-	yq eval -r ".keys.\"${keyName}\".slots | keys | sort | .[-1]" "$inputFile"
+	yq eval -r ".${1}.\"${2}\".slots | keys | sort | .[-1]" "$inputFile"
 }
 
 # Two slots means a renewal is in flight; one means settled. Three means phase 2
 # was skipped, and phase 2 is not optional.
-key::assert_slots() {
-	local keyName="$1" n
-	n="$(key::slots_count "$keyName")"
+slot::assert() { # <section> <name>
+	local n
+	n="$(slot::count "$1" "$2")"
 	if ((n > 2)); then
-		log::error "key ${keyName} has ${n} slots; at most two are allowed — phase 2 of a renewal removes the retiring one"
+		log::error "${1%s} ${2} has ${n} slots; at most two are allowed — phase 2 of a renewal removes the retiring one"
 		return 1
 	fi
 	return 0
 }
 
-key::slot_field() {
-	local keyName="$1" field="$2" slot
-	slot="$(key::newest_slot "$keyName")" || return 1
-	yq eval -r ".keys.\"${keyName}\".slots.\"${slot}\".${field} // \"\"" "$inputFile" 2>/dev/null || true
+slot::get() { # <section> <name> <field>
+	local slot
+	slot="$(slot::newest "$1" "$2")" || return 1
+	yq eval -r ".${1}.\"${2}\".slots.\"${slot}\".${3} // \"\"" "$inputFile" 2>/dev/null || true
 }
 
-key::set_slot_field() {
-	local keyName="$1" field="$2" value="$3" slot
-	slot="$(key::newest_slot "$keyName")" || return 1
-	VALUE="$value" yq -i ".keys.\"${keyName}\".slots.\"${slot}\".${field} = strenv(VALUE)" "$inputFile"
+slot::set() { # <section> <name> <field> <value>
+	local slot
+	slot="$(slot::newest "$1" "$2")" || return 1
+	VALUE="$4" yq -i ".${1}.\"${2}\".slots.\"${slot}\".${3} = strenv(VALUE)" "$inputFile"
 }
+
+key::slots_count() { slot::count keys "$1"; }
+key::newest_slot() { slot::newest keys "$1"; }
+key::assert_slots() { slot::assert keys "$1"; }
+key::slot_field() { slot::get keys "$1" "$2"; }
+key::set_slot_field() { slot::set keys "$1" "$2" "$3"; }
+
+authority::slots_count() { slot::count authorities "$1"; }
+authority::newest_slot() { slot::newest authorities "$1"; }
+authority::assert_slots() { slot::assert authorities "$1"; }
+authority::slot_field() { slot::get authorities "$1" "$2"; }
+authority::set_slot_field() { slot::set authorities "$1" "$2" "$3"; }
 
 # Emit the comma-separated hostnames the enrichment will list in a host
 # certificate's Principals field. Union of: explicit hostName arg,
@@ -179,7 +196,8 @@ sign::one_cert() {
 
 	# Pull authority private + key public/private.
 	local authPriv keyType keyPub keyPriv keyComment
-	authPriv="$(yq::get ".authorities.\"${authorityName}\".private")"
+	authority::assert_slots "$authorityName" || return 1
+	authPriv="$(authority::slot_field "$authorityName" private)" || return 1
 	keyType="$(yq::get ".keys.\"${keyName}\".type")"
 	key::assert_slots "$keyName" || return 1
 	keyPub="$(key::slot_field "$keyName" public)" || return 1
@@ -327,7 +345,8 @@ sign::tls_server() {
 	# populated by the SSH signing path when present; otherwise creates
 	# it here so TLS-only enrichment runs don't depend on SSH-cert order.
 	local authPriv
-	authPriv="$(yq::get ".authorities.\"${authorityName}\".private")"
+	authority::assert_slots "$authorityName" || return 1
+	authPriv="$(authority::slot_field "$authorityName" private)" || return 1
 	if [[ -z "$authPriv" || "$authPriv" == "null" ]]; then
 		log::error "authority ${authorityName} has no private key"
 		return 1

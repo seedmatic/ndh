@@ -133,3 +133,48 @@ YAML
   [[ "$output" == *"!!str"* ]]
   [[ "$output" != *"!!timestamp"* ]]
 }
+
+# --- authorities carry generations too, and they are the ones that most need the
+# --- overlap: trusted-user-ca.pub concatenates every *-ca.pub, so two authority
+# --- generations are both trusted while leaves move across.
+
+@test "an authority resolves its newest slot like a key does" {
+  write_fixture <<'YAML'
+authorities:
+  mammoth-skate:
+    type: ssh-ed25519
+    slots:
+      26-07-12: { public: older, private: older-priv }
+      26-10-04: { public: newer, private: newer-priv }
+YAML
+  run authority::newest_slot mammoth-skate
+  [ "$status" -eq 0 ]
+  [ "$output" = "26-10-04" ]
+
+  run authority::slot_field mammoth-skate private
+  [ "$output" = "newer-priv" ]
+}
+
+@test "an authority with no slots FAILS — same rule, no flat fallback" {
+  write_fixture <<'YAML'
+authorities:
+  mammoth-skate: { type: ssh-ed25519, private: flat-priv }
+YAML
+  run authority::newest_slot mammoth-skate
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"no slots"* ]]
+}
+
+@test "three authority slots is refused too" {
+  write_fixture <<'YAML'
+authorities:
+  mammoth-skate:
+    slots:
+      26-05-01: { public: a }
+      26-07-12: { public: b }
+      26-10-04: { public: c }
+YAML
+  run authority::assert_slots mammoth-skate
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"at most two"* ]]
+}
