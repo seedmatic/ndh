@@ -29,9 +29,11 @@ let
   # marketplace edits write back to it and we never overwrite them.
   #
   # Intentionally carries only the mutable-but-worth-restoring keys
-  # (plugins + marketplaces). The stable model env lives in
-  # cfg.env (real shell vars, highest precedence) — NOT here — so the
-  # two concerns don't fight.
+  # (plugins + marketplaces) and the model ALIAS. The alias picks the tier
+  # and the context window; the `[1m]` suffix exists nowhere else, so
+  # without it a fresh machine falls back to 200k. The Bedrock model id
+  # behind the tier lives in cfg.env (real shell vars, highest precedence)
+  # — NOT here — so the two concerns don't fight.
   #
   # Separately, the legacy env block inside ~/.claude.json (an
   # onboarding-era remnant, a DIFFERENT file Claude owns) can carry an
@@ -77,6 +79,7 @@ in
       seed = mkOption {
         type = types.attrs;
         default = {
+          model = "opus[1m]";
           enabledPlugins = {
             "claude-session-driver@superpowers-marketplace" = true;
             "double-shot-latte@superpowers-marketplace" = true;
