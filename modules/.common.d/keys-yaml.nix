@@ -22,12 +22,41 @@ let
   # so yq can pull them out of the encrypted file directly without
   # sops decryption at eval time.
   jsonDrv = pkgs.runCommand "ndh-keys-yaml.json" { buildInputs = [ pkgs.yq-go ]; } ''
-    yq -o=json '{"keys": .keys, "authorities": .authorities}' \
+    yq -o=json '{"keys": .keys, "authorities": .authorities, "revoked": (.revoked // {})}' \
       "${worktreePath.of "modules/home-manager/ssh.d/keys.yaml"}" > "$out"
   '';
   parsed = builtins.fromJSON (builtins.readFile jsonDrv);
   keysJson = parsed.keys or { };
   authoritiesJson = parsed.authorities or { };
+  revokedJson = parsed.revoked or { };
+
+  # Every public blob a slot still carries, keys and authorities alike.
+  livePublics =
+    lib.concatMap
+      (
+        entries:
+        lib.concatMap (
+          entry: lib.mapAttrsToList (_slot: material: material.public or "") (entry.slots or { })
+        ) (lib.attrValues entries)
+      )
+      [
+        keysJson
+        authoritiesJson
+      ];
+
+  # A revoked key that a slot still carries would refuse its own users — the
+  # sshd that reads this list would lock out every client still presenting it.
+  stillLive = lib.filterAttrs (_id: r: lib.elem r.public livePublics) revokedJson;
+
+  revokedKeysFile =
+    if stillLive != { } then
+      throw ''
+        ndh.keysYaml: revoked but still carried by a slot in keys.yaml: ${lib.concatStringsSep ", " (lib.attrNames stillLive)}
+        A generation is revoked in the same change that deletes its slot, never before.''
+    else
+      pkgs.writeText "ndh-revoked-keys.pub" (
+        lib.concatStrings (lib.mapAttrsToList (id: r: "${r.type} ${r.public} revoked:${id}\n") revokedJson)
+      );
 in
 {
   options.ndh.keysYaml = {
@@ -52,6 +81,19 @@ in
         (private is sops-encrypted and stays ENC[...] here; the only
         consumer that needs it reads from the enriched keys.yaml
         at activation time).
+      '';
+    };
+
+    revokedKeysFile = lib.mkOption {
+      type = lib.types.path;
+      readOnly = true;
+      default = revokedKeysFile;
+      description = ''
+        sshd's RevokedKeys: one public key per line, built from `.revoked` in
+        keys.yaml. A STORE path on purpose — sshd refuses ALL public-key
+        authentication when this file is unreadable, so it must not depend on
+        an activation step that can fail. Refuses to evaluate if a revoked
+        key is still carried by a slot.
       '';
     };
 

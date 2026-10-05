@@ -31,6 +31,7 @@ let
         PasswordAuthentication = cfg.passwordAuthentication;
         PermitRootLogin = cfg.permitRootLogin;
         TrustedUserCAKeys = cfg.trustedCAPath;
+        RevokedKeys = cfg.revokedKeysPath;
         AuthorizedPrincipalsFile = cfg.principalsFilePath;
         AuthorizedPrincipalsCommand =
           if cfg.principalsCommandSource != null then
@@ -85,6 +86,16 @@ in
       type = types.nullOr types.str;
       default = null;
       description = "Path to TrustedUserCAKeys file (system-readable, e.g. `\${sshPaths.systemKeysDir}/trusted-user-ca.pub`).";
+    };
+
+    revokedKeysPath = mkOption {
+      type = types.str;
+      default = "${config.ndh.keysYaml.revokedKeysFile}";
+      description = ''
+        RevokedKeys file. Defaults to the store path built from keys.yaml's
+        `.revoked` — see ndh.keysYaml.revokedKeysFile for why it is not a
+        runtime file.
+      '';
     };
 
     # Principals file
