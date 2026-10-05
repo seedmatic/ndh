@@ -106,19 +106,25 @@ in
             # Rendered below from sshPaths (single source) via replaceVars —
             # excluded here so the templated copy wins over the raw @sshKeysDir@ file.
             || lib.hasSuffix "config.d/host-identity.conf" path
+            || lib.hasSuffix "config.d/zones.d/github.conf" path
           );
       }
     );
     recursive = true;
   };
 
-  # The ~/.ssh consumer that embeds the SSH key directory: render it from
+  # The ~/.ssh consumers that embed the SSH key directory: render them from
   # sshPaths (the single source) via replaceVars rather than committing the
-  # literal path, so a future sshPaths move can't strand it (as it did when the
+  # literal path, so a future sshPaths move can't strand them (as it did when the
   # dir went ~/.local/var/run/secrets/ssh-keys → ~/.local/share/ndh/ssh-keys).
-  # Excluded from the bulk ./ssh.d copy above.
+  # Both are excluded from the bulk ./ssh.d copy above.
   home.file.".ssh/config.d/host-identity.conf".source =
     pkgs.replaceVars ./ssh.d/config.d/host-identity.conf
+      {
+        sshKeysDir = sshPaths.secretsKeysDir;
+      };
+  home.file.".ssh/config.d/zones.d/github.conf".source =
+    pkgs.replaceVars ./ssh.d/config.d/zones.d/github.conf
       {
         sshKeysDir = sshPaths.secretsKeysDir;
       };
