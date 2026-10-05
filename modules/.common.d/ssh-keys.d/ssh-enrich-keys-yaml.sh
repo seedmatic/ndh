@@ -38,7 +38,7 @@
 # shellcheck disable=SC1091
 source @nixBashTrampoline@
 
-declare -g inputFile outputFile hostName inventoryHostsCsv targetUser
+declare -g inputFile outputFile hostName inventoryHostsCsv targetUser extraPrincipalsCsv
 declare -g tmpdir
 
 log::info() { echo "[ssh-keys-enrichment][INFO] $*" >&2; }
@@ -168,7 +168,14 @@ authority::signing() { # <name> <field>
 # Emit the comma-separated hostnames the enrichment will list in a host
 # certificate's Principals field. Union of: explicit hostName arg,
 # .lan/.local/<authority-domain> variants, plus every host from the
-# inventory CSV (same variants).
+# inventory CSV (same variants), plus the extra principals VERBATIM.
+#
+# The extras are names the platform declares for itself that the variants
+# cannot produce: a NixOS guest is reached as `nixos.<host>`, served by the
+# bare-metal's dnsmasq, and a `.lan`/`.local` of that is meaningless. Without
+# it the client checks the certificate against `nixos.bioskop`, finds it is
+# not a listed principal, and falls back to the raw key pinned in known_hosts
+# — which a host-key rotation then breaks.
 authority::host_principals() {
 	local authorityName="$1"
 	local domain
@@ -201,6 +208,15 @@ authority::host_principals() {
 			if [[ -n "${domain}" && "${domain}" != "null" ]]; then
 				hosts["${inv}.${domain}"]=1
 			fi
+		done
+	fi
+
+	if [[ -n "${extraPrincipalsCsv:-}" ]]; then
+		local extra
+		IFS=',' read -r -a extraArr <<<"${extraPrincipalsCsv}"
+		for extra in "${extraArr[@]}"; do
+			[[ -n "$extra" ]] || continue
+			hosts["$extra"]=1
 		done
 	fi
 
@@ -543,7 +559,7 @@ enrich::all_keys() {
 
 main() {
 	if (($# < 3)); then
-		log::error "usage: ssh-enrich-keys-yaml <hostName> <inputYaml> <outputYaml> [<inventoryHostsCsv>] [<targetUser>]"
+		log::error "usage: ssh-enrich-keys-yaml <hostName> <inputYaml> <outputYaml> [<inventoryHostsCsv>] [<targetUser>] [<extraPrincipalsCsv>]"
 		return 64
 	fi
 
@@ -552,6 +568,7 @@ main() {
 	outputFile="$3"
 	inventoryHostsCsv="${4:-}"
 	targetUser="${5:-${USER:-root}}"
+	extraPrincipalsCsv="${6:-}"
 
 	if [[ ! -r "$inputFile" ]]; then
 		log::error "input yaml unreadable: $inputFile"

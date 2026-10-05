@@ -158,10 +158,8 @@ YAML
   [ "$status" -eq 0 ]
   [ "$output" = "26-10-04" ]
 
-  # The authority that SIGNS is the presented one — a leaf is only re-signed by
-  # the new authority once every host already trusts it.
-  run authority::signing mammoth-skate private
-  [ "$output" = "newer-priv" ]
+  # Newest is NOT the signing generation: an authority signs with its oldest,
+  # pinned by "an authority SIGNS with its oldest generation, not its newest".
   run authority::field mammoth-skate 26-07-12 private
   [ "$output" = "older-priv" ]
 }

@@ -39,7 +39,6 @@ let
   nixBashTrampoline = "${ndhContext.nixBashTrampoline}";
   # Reuse existing host key generated/managed by NixOS (ed25519 preferred)
   hostKeyPath = "/etc/ssh/ssh_host_ed25519_key"; # runtime path consumed by sshd
-  hostCertPath = null; # Add signed host cert later if desired
   keysDir = config.opensshPolicy.keysDir;
   authorizedPrincipalsInputPath = "${config.opensshPolicy.canonicalCommandDir}/authorized-principals-command.yaml";
   caPublicKeyPath = "${keysDir}/trusted-user-ca.pub"; # generated from all *-ca.pub keys in keysDir
@@ -136,6 +135,12 @@ in
     principalsCommandSource = principalsScriptStore;
     groupKeysCommandSource = groupKeysScriptStore;
     hostKeyPaths = [ hostKeyPath ];
+    # Without a certificate, a client verifying this guest falls back to the raw
+    # key pinned in known_hosts, and a host-key rotation fails on every client.
+    # The served key IS rdp-host (hostkey-enrollment keeps them equal), and this
+    # path is the extractor's symlink to the matching certificate, resolved by
+    # fingerprint. A missing file is not fatal: sshd logs it and serves the key.
+    hostCertificatePath = config.sshPaths.hostCertPublic;
 
     # Force IPv4 only for SSH server
     extraSettings = {

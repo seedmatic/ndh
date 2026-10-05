@@ -55,6 +55,17 @@ let
   inventoryHostNames = builtins.attrNames (inventory.hosts or { });
   inventoryHostsCsv = lib.concatStringsSep "," inventoryHostNames;
 
+  # The guest's own names, signed into its host certificate verbatim:
+  # `<host>-nixos` (tailnet) and `nixos.<host>` (the bare-metal's dnsmasq zone —
+  # see modules/home-manager/ssh-tailnet-hosts.nix). Neither is derivable from
+  # hostIdent, which is the VM HOST's name.
+  guestPrincipalsCsv = lib.optionalString (config ? vm) (
+    lib.concatStringsSep "," [
+      config.vm.guestHostName
+      "${config.vm.guestName}.${config.vm.hostName}"
+    ]
+  );
+
   # v2: single catalog user; profile name no longer drives OS user lookup.
   profileOwnerName =
     if catalog ? user && catalog.user ? name && catalog.user.name != null then
@@ -145,7 +156,8 @@ in
         "${decryptedSSHKeysYamlPath}" \
         "${generatedKeysYamlPath}" \
         "${inventoryHostsCsv}" \
-        "${profileOwnerName}"
+        "${profileOwnerName}" \
+        "${guestPrincipalsCsv}"
 
       # 2. Split into per-profile yamls (one invocation per profile name
       #    in profile.names). Each run emits the same system.yaml
