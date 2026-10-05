@@ -100,6 +100,16 @@ let
       profileUserName = config.profile.user.name;
     }
   );
+  sshdHostCertificateReloadTag = "nixos.services.ndh.sshdHostCertificateReload";
+  sshdHostCertificateReloadScript =
+    ndh.store.installBinScript "openssh-sshd-host-certificate-reload"
+      (
+        pkgs.replaceVars ./openssh.d/sshd-host-certificate-reload.sh {
+          nixBashTrampoline = nixBashTrampoline;
+          logTag = sshdHostCertificateReloadTag;
+          hostCertificatePath = config.sshPaths.hostCertPublic;
+        }
+      );
   sshdAutostartCheckScript = ndh.store.installBinScript "openssh-sshd-autostart-check" (
     pkgs.replaceVars ./openssh.d/sshd-autostart-check.sh {
       nixBashTrampoline = nixBashTrampoline;
@@ -352,6 +362,20 @@ in
       ExecStart = "${pkgs.bash}/bin/bash ${sshdAutostartCheckScript}/bin/openssh-sshd-autostart-check";
     };
   };
+
+  # The home-manager unit is what writes the host certificate, so it is the one
+  # that tells sshd to pick it up — `+` because the unit runs as the user. Never
+  # the other way round (sshd After= home-manager): sshd must not wait on the key
+  # pipeline, or a broken extraction locks the operator out.
+  # Gated on home-manager.users, not hasHomeManagerService: that one reads
+  # config.systemd.services, and conditioning a definition OF it recurses.
+  systemd.services.${homeManagerServiceName} =
+    lib.mkIf (lib.hasAttrByPath [ "home-manager" "users" config.profile.user.name ] config)
+      {
+        serviceConfig.ExecStartPost = [
+          "+${pkgs.bash}/bin/bash ${sshdHostCertificateReloadScript}/bin/openssh-sshd-host-certificate-reload"
+        ];
+      };
 
   # Keep sshd start robust across boot ordering by binding it to both
   # canonical multi-user and NDH contributed targets.
