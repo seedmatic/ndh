@@ -1,15 +1,23 @@
-# Every recipient below is an age identity DERIVED from an ed25519 SSH key via `ssh-to-age`, so the
-# SSH key is the single source of truth and no age key is ever generated on its own.  Recompute any
-# line with `ssh-to-age < <key>.pub` (the public keys live in ~/.local/share/ndh/ssh-keys/, the host
-# ones in /etc/ssh/ssh_host_ed25519_key.pub).
+# The HOST recipients below are age identities DERIVED from an ed25519 SSH key via `ssh-to-age`, so
+# the SSH key is the single source of truth for those.  Recompute such a line with
+# `ssh-to-age < <key>.pub` (the host public keys live in /etc/ssh/ssh_host_ed25519_key.pub).
 #
-#   age19fvdj…  operator (sops only)    — ★ a STANDALONE age identity, deliberately NOT derived
-#                                         from an SSH key, and present in no keys.yaml. It lives
-#                                         only at ~/.config/sops/age/, which activation reads as
-#                                         an import candidate and never rewrites. Standalone
-#                                         because the key that opens a file must not live inside
-#                                         that file: the previous operator key was an entry of
-#                                         the very keys.yaml it decrypts.
+# ★ The OPERATOR recipients are deliberately NOT derived from anything: the key that opens a file
+# must not live inside that file, and the original operator key was an entry of the very keys.yaml
+# it decrypts — which is why one leak opened every sops file in both repositories.
+#
+#   age1stxd…   operator (sops only)    — ★ STANDALONE, generated on its own, present in no
+#                                         keys.yaml. Lives only at ~/.config/sops/age/, which
+#                                         activation reads as an import candidate and never
+#                                         rewrites.
+#   age19fvdj…  operator (sops only)    — ⛔ COMPROMISED, being retired. Standalone like its
+#                                         replacement above, and it held for one day: on
+#                                         2026-10-05 it was printed in the clear into an operator
+#                                         session log, by a shell command whose two stdin
+#                                         redirections made an interpreter read the key file as
+#                                         its own script. Never committed, never pushed — the
+#                                         exposure is a local log plus the path that carried it.
+#                                         Kept as a recipient only until every file is re-keyed.
 #   age10ey0l…  github-signing-hyland   — ⛔ COMPROMISED, being retired. Published in the clear in
 #                                         the PUBLIC rke2lab repository from 2026-08-27. It also
 #                                         signs commits, so the two lifecycles were coupled —
@@ -40,6 +48,7 @@ creation_rules:
   - path_regex: '.*\.(ya?ml|json|env|ini|toml|cert)$'
     encrypted_comment_regex: 'sops:encrypted'
     age:
+      - 'age1stxdeh0t6arhdm7uhyy2jcf2qj9r9vfzkwte4jr4gj6hlpxe740seq8j82'
       - 'age19fvdjd6gr3mwthv4vuvym24wxlkugvcy4fuvmnngecsg8fpj4y9qm33qu0'
       - 'age10ey0lcup4zpjqcknpxw7enpsagn674nm634f2u75trfr5t62uq5qdjuxzv'
       - 'age1trxpn8efl5jctwakgpxxjd2h6x5h2m40ggugxl909qsj0h99p9yqkk8tej'
@@ -48,6 +57,7 @@ creation_rules:
   # Binary/other files skip comment regex to avoid the warning.
   - path_regex: '.*'
     age:
+      - 'age1stxdeh0t6arhdm7uhyy2jcf2qj9r9vfzkwte4jr4gj6hlpxe740seq8j82'
       - 'age19fvdjd6gr3mwthv4vuvym24wxlkugvcy4fuvmnngecsg8fpj4y9qm33qu0'
       - 'age10ey0lcup4zpjqcknpxw7enpsagn674nm634f2u75trfr5t62uq5qdjuxzv'
       - 'age1trxpn8efl5jctwakgpxxjd2h6x5h2m40ggugxl909qsj0h99p9yqkk8tej'
