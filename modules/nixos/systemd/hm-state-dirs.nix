@@ -60,11 +60,9 @@ let
       mode = "0700";
       recursive = true;
     }
-    {
-      path = config.sshPaths.authoritySecretsDir;
-      mode = "0755";
-      recursive = true;
-    }
+    # No `.authority.d` entry: it sat inside secretsKeysDir, which the extractor
+    # wipes wholesale on every run, so this rule recreated a directory that was
+    # deleted again moments later and nothing ever landed in it.
   ];
   # Use the wrapped activation logger placed in the store so it's always available
   loggerTag = "nixos.activationScripts.hmStateDirs";

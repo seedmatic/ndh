@@ -74,7 +74,7 @@ let
       # slot: the variable holds the per-key `.pub` directory (used to
       # read `<key>.pub` alongside its private counterpart), which
       # ssh-extract-keys routes to `target_dir = "user"` → secretsKeysDir.
-      # authoritySecretsDir only holds CA pubs + certs, not key pubs.
+      # Everything the extractor writes lands in secretsKeysDir, scoped by suffix.
       userCaSourceDir = config.sshPaths.secretsKeysDir;
       systemHostKeyPub = "${hostKeyPath}.pub";
       clientKeyName = clientKeyName;
@@ -229,7 +229,7 @@ in
 
   # ssh non-interactive session finds the setuid sudo via /bin or /usr/bin
   # Directory ownership rules for the user-scope ssh secrets tree
-  # (secretsRootDir / secretsKeysDir / authoritySecretsDir) live in
+  # (secretsRootDir / secretsKeysDir) live in
   # modules/nixos/systemd/hm-state-dirs.nix, which is the canonical
   # source of truth for `~/.local/**` layout and uses recursive `Z`
   # rules so the tree self-heals after the root-run enrichment service

@@ -23,7 +23,6 @@ let
   loggerTagExtract = "home-manager.activationScripts.${userName}.extractSSHKeys";
   loggerTagAuthorized = "home-manager.activationScripts.${userName}.ensureAuthorizedKeys";
   perUserKeysDir = sshPaths.secretsKeysDir;
-  authorityKeysDir = sshPaths.authoritySecretsDir;
   systemManagedSshKeysPipeline = pkgs.stdenv.isLinux || pkgs.stdenv.isDarwin;
   # HM is user-scope by construction → consume the `user.yaml` slice of
   # the enrichment split regardless of what other profiles the host
@@ -35,11 +34,26 @@ let
   effectiveSSHKeysYamlPath = "${perUserKeysDir}.yaml";
 
   # Externalized KnownHostsCommand script sourced from repo (templated with keysDir)
+  #
+  # ⛔ caDir is secretsKeysDir, NOT a separate authority directory. It pointed at
+  # `<secretsKeysDir>/.authority.d` and that directory can never exist: the
+  # extractor wipes secretsKeysDir wholesale (`rm -fr "$userOutputDir"`) on every
+  # run, and .authority.d sat inside it. So KnownHostsCommand globbed an absent
+  # path and emitted NOTHING — measured on all four hosts, with 0 @cert-authority
+  # lines in the operator's known_hosts and 5 raw host keys instead.
+  #
+  # The consequence was not cosmetic: host verification fell back to pinned raw
+  # keys, so the certificate chain only worked in the client→server direction
+  # (sshd reading trusted-user-ca.pub) and not the other way. A host-key rotation
+  # would therefore have produced "Host key verification failed" on every client.
+  #
+  # The `-ca.pub` suffix is what scopes the glob; a separate directory added
+  # nothing the suffix did not already give.
   knownHostsScript = ndh.store.runCommand "ssh-ca-known-hosts" { } ''
     cp ${
       pkgs.replaceVars ./ssh.d/scripts/ca-known-hosts-command.sh {
         nixBashTrampoline = nixBashTrampoline;
-        caDir = authorityKeysDir;
+        caDir = perUserKeysDir;
       }
     } "$out"
     chmod +x "$out"
