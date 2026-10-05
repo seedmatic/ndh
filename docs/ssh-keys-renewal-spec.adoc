@@ -65,6 +65,34 @@ IMPORTANT: The asymmetry between *presenting* one generation and *accepting* all
 whole mechanism. A reader who collapses `slots` back to a single pair removes the overlap and
 with it the ability to renew anything that identifies a host.
 
+=== An authority signs with its OLDEST generation
+
+For a key, the generation presented is the newest. For an *authority*, the generation that
+*signs* is the oldest still published — the opposite end — and that asymmetry is what closes the
+renewal window rather than merely describing it.
+
+[cols="1,2"]
+|===
+h|Property|Why it decides the direction
+
+|Trust *distributes* slowly
+|A client learns a new authority only when it activates: `KnownHostsCommand` globs the live
+ `*-ca.pub` directory, which is rewritten per activation.
+
+|A signature takes effect *immediately*
+|On the first host that activates.
+|===
+
+Sign with the newest and an activated host presents a certificate that a host which has not
+activated yet cannot verify — and failing to verify a host certificate is a *blocking* failure,
+not a prompt. Sign with the oldest and phase 1 distributes the new authority while it signs
+nothing; phase 2, dropping the retiring slot, switches the signature over at a point where every
+host already trusts it.
+
+NOTE: This costs nothing in exposure when the retiring private is compromised, which is the case
+that prompted the rule. The old authority stays *accepted* throughout phase 1 either way, so a
+forged certificate under it would pass either way. Phase 2 is what revokes it.
+
 === Why `YY-MM-DD` and not `YYYY-MM-DD`
 
 Measured, not aesthetic:
@@ -166,8 +194,9 @@ h|Phase|Content
 
 |1 — generate *and* install
 |Write the new slot, publish *both* generations, activate, and verify the new one works. An
- *authority* renews before its leaves: the enrichment refuses to sign without the authority's
- private key, and says so.
+ *authority* renews before its leaves, in its own two phases, because the signature only moves
+ at its phase 2 — `ssh-keys-renew` refuses an authority in the same plan as any key referencing
+ it, naming each pair.
 
 |2 — remove the obsolete
 |Drop the retiring slot, and only after a *positive* check that the new generation serves.

@@ -160,7 +160,7 @@ YAML
 
   # The authority that SIGNS is the presented one — a leaf is only re-signed by
   # the new authority once every host already trusts it.
-  run authority::presented mammoth-skate private
+  run authority::signing mammoth-skate private
   [ "$output" = "newer-priv" ]
   run authority::field mammoth-skate 26-07-12 private
   [ "$output" = "older-priv" ]
@@ -174,6 +174,52 @@ YAML
   run authority::newest_slot mammoth-skate
   [ "$status" -ne 0 ]
   [[ "$output" == *"no slots"* ]]
+}
+
+@test "an authority SIGNS with its oldest generation, not its newest" {
+  # The asymmetry that closes the renewal window, and the single most
+  # consequential line in this model.
+  #
+  # Trust distributes slowly: a client learns a new authority only when it
+  # activates, because KnownHostsCommand globs the live *-ca.pub directory. A
+  # signature takes effect immediately, on the first host that activates. Signing
+  # with the NEWEST would therefore have an activated host present a certificate
+  # that a not-yet-activated host cannot verify — a blocking failure, not a
+  # prompt. Signing with the OLDEST still-published generation means phase 1
+  # distributes the new authority while it signs nothing, and phase 2 switches
+  # the signature over once everyone trusts it.
+  write_fixture <<'YAML'
+authorities:
+  mammoth-skate:
+    type: ssh-ed25519
+    slots:
+      26-07-12: { public: older, private: older-priv }
+      26-10-04: { public: newer, private: newer-priv }
+YAML
+  run authority::signing_slot mammoth-skate
+  [ "$status" -eq 0 ]
+  [ "$output" = "26-07-12" ]
+
+  run authority::signing mammoth-skate private
+  [ "$output" = "older-priv" ]
+
+  # And it is the OPPOSITE end from a key, which presents its newest.
+  run authority::newest_slot mammoth-skate
+  [ "$output" = "26-10-04" ]
+}
+
+@test "a settled authority signs with its only generation" {
+  write_fixture <<'YAML'
+authorities:
+  mammoth-skate:
+    type: ssh-ed25519
+    slots:
+      26-10-04: { public: only, private: only-priv }
+YAML
+  run authority::signing_slot mammoth-skate
+  [ "$output" = "26-10-04" ]
+  run authority::signing mammoth-skate private
+  [ "$output" = "only-priv" ]
 }
 
 @test "three authority slots is refused too" {

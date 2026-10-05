@@ -133,14 +133,35 @@ authority::newest_slot() { slot::newest authorities "$1"; }
 authority::assert_slots() { slot::assert authorities "$1"; }
 authority::field() { slot::get authorities "$1" "$2" "$3"; }
 
-# The authority that SIGNS is the presented one. An authority renews before its
-# leaves — phase 1 publishes both authority publics into the trust set, and only
-# once every host trusts both does a leaf get re-signed. That ordering is what
-# makes a single certificate per key generation sufficient; see
-# docs/ssh-keys-renewal-spec.adoc.
-authority::presented() { # <name> <field>
+# The OLDEST generation still published, which is the one that signs.
+#
+# ★ This is the opposite of a key, and the asymmetry is the whole point. Trust
+# DISTRIBUTES slowly — a client learns a new authority only when it activates,
+# because KnownHostsCommand globs the live `*-ca.pub` directory. A signature
+# takes effect IMMEDIATELY, on the first host that activates. Signing with the
+# newest generation therefore opens a window in which an activated host presents
+# a certificate that a host which has not activated yet cannot verify, and
+# "cannot verify a host certificate" is a blocking failure, not a prompt.
+#
+# Signing with the oldest closes that window entirely: during phase 1 the new
+# authority is distributed but signs nothing, and phase 2 — dropping the retiring
+# slot — is what switches the signature over, at a point where every host already
+# trusts the new one.
+#
+# It costs nothing in exposure when the old private is compromised, which is the
+# case that prompted this: the old authority stays ACCEPTED throughout phase 1
+# either way, so a forged certificate under it would pass either way. Phase 2 is
+# what revokes it.
+authority::signing_slot() { # <name>
+	local -a slots
+	mapfile -t slots < <(authority::slots "$1")
+	((${#slots[@]} > 0)) || return 1
+	printf '%s\n' "${slots[0]}"
+}
+
+authority::signing() { # <name> <field>
 	local slot
-	slot="$(authority::newest_slot "$1")" || return 1
+	slot="$(authority::signing_slot "$1")" || return 1
 	authority::field "$1" "$slot" "$2"
 }
 
@@ -234,7 +255,7 @@ sign::one_cert() {
 	# Pull authority private + key public/private.
 	local authPriv keyType keyPub keyPriv keyComment
 	authority::assert_slots "$authorityName" || return 1
-	authPriv="$(authority::presented "$authorityName" private)" || return 1
+	authPriv="$(authority::signing "$authorityName" private)" || return 1
 	keyType="$(yq::get ".keys.\"${keyName}\".type")"
 	key::assert_slots "$keyName" || return 1
 	keyPub="$(key::field "$keyName" "$keySlot" public)"
@@ -385,7 +406,7 @@ sign::tls_server() {
 	# it here so TLS-only enrichment runs don't depend on SSH-cert order.
 	local authPriv
 	authority::assert_slots "$authorityName" || return 1
-	authPriv="$(authority::presented "$authorityName" private)" || return 1
+	authPriv="$(authority::signing "$authorityName" private)" || return 1
 	if [[ -z "$authPriv" || "$authPriv" == "null" ]]; then
 		log::error "authority ${authorityName} has no private key"
 		return 1
