@@ -105,7 +105,6 @@ in
             || base == "authorized_keys"
             # Rendered below from sshPaths (single source) via replaceVars —
             # excluded here so the templated copy wins over the raw @sshKeysDir@ file.
-            || lib.hasSuffix "config.d/zones.d/nikopol.conf" path
             || lib.hasSuffix "config.d/host-identity.conf" path
           );
       }
@@ -113,16 +112,11 @@ in
     recursive = true;
   };
 
-  # The two ~/.ssh consumers that embed the SSH key directory: render them from
+  # The ~/.ssh consumer that embeds the SSH key directory: render it from
   # sshPaths (the single source) via replaceVars rather than committing the
-  # literal path, so a future sshPaths move can't strand them (as it did when the
+  # literal path, so a future sshPaths move can't strand it (as it did when the
   # dir went ~/.local/var/run/secrets/ssh-keys → ~/.local/share/ndh/ssh-keys).
-  # Both are excluded from the bulk ./ssh.d copy above.
-  home.file.".ssh/config.d/zones.d/nikopol.conf".source =
-    pkgs.replaceVars ./ssh.d/config.d/zones.d/nikopol.conf
-      {
-        sshKeysDir = sshPaths.secretsKeysDir;
-      };
+  # Excluded from the bulk ./ssh.d copy above.
   home.file.".ssh/config.d/host-identity.conf".source =
     pkgs.replaceVars ./ssh.d/config.d/host-identity.conf
       {
