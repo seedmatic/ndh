@@ -25,12 +25,19 @@
     # Keep experiment/bootstrap mode until boot/login validation is complete.
     # This avoids stage-2 panic when /etc/sops/age/keys.txt is not yet provisioned.
     ndh.sopsAgeKeyBootstrap.phase = "bootstrap";
-    ndh.sopsAgeKeyBootstrap.nixosHostKeyImport.candidates = [
-      # Preferred: key delivered via Tart host share.
-      "/mnt/tart-cidata/sops.d/age/keys.txt"
-      # Host-mounted fallback: ~/Private/sops:age:keys.txt on Darwin host.
-      "/Users/nxmatic/.config/sops/age/keys.txt"
-    ];
+
+    # ⛔ No `nixosHostKeyImport.candidates` override here. There was one, listing
+    # /mnt/tart-cidata/sops.d/age/keys.txt and /Users/nxmatic/.config/sops/age/keys.txt,
+    # and BOTH paths are absent — measured inside the guest and on the host. It
+    # therefore replaced a correct default with two dead entries, and the guest had no
+    # working way to receive an operator identity at all: its /etc/sops/age/keys.txt sat
+    # frozen on a single identity, and the remoteFetch fallback reads
+    # /etc/sops/age/keys.txt on the vz host, which nikopol does not have either (its own
+    # sops.age.keyFile is the operator's ~/.config, deliberately).
+    #
+    # The default from modules/.common.d/sops.nix already lists the share at its real
+    # mount point — `/srv/host/sops.d/age/keys.txt`, virtiofs tag `ndh-sops-age` — which
+    # is exactly what bioskop-nixos uses and why that guest receives new identities.
 
     # Safety valve while exercising fresh SSH/runtime-secret changes.
     opensshPolicy.passwordAuthentication = true;
