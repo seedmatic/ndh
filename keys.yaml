@@ -30,7 +30,7 @@ authorities:
       26-10-05:
         public: AAAAC3NzaC1lZDI1NTE5AAAAIFdHpryIBqPRUPfIKsKtE69u38Vj0csTFIEpQkjXGyrw
         # sops:encrypted
-        private: ENC[AES256_GCM,data:wLU9mlIMyTz38TvG5GsISUp/F5+o4cuMItpDWXnHH5aarwFhV85nuEBUxBz+XXWuMK6fck2X1L8hcUNjgOoKLZ0ZhCPXgFA2IgqS/PIgw2vqdi0+gc3VBOEAW1ulnjturcyfLBqLUVTW9M+ZhYopbT8C2DT5tJon54BClJ2L/EhIq41hkx8x5+yj0VNfaCogeUtEd9+3/77qVxl0UVoFewdBOGcRsvOyel6S2l50txEMuGvSJOyrq5V/BRy6ujdF83nf06xV8myWvjHYMcWxOaCvkc8VLFg5N5rF89beJ0ZyQVyJdBBqo3vQ4CqwP+RRlSrcYAjc95TdIJmLJC/9djs8A3oFnpYyHPtTjpdZct2GjHdPnHSe2NDGbkXwU9zkXLc0xuKLgxhAjuBQubwD35p8hk6xRjKCsMukO5kkpak/JVErQTJLTAcY4fscFFCxUC8tq9W4mwjW96RrQAtbAvHz9bMjsDTRr0KnU/c7CTkUPok6fuuEQSdvLBlPUed85QPNxzvQNYOwMSiHe2TNWr4NxYQqA0n6R07t8B6lE+fohg==,iv:ByMfR3sgBPuzQLTqULyNO4Dwum+zsngKHmV3keE75I0=,tag:lmsdeYJUVAW0X8nW7nBGSA==,type:str]
+        private: ENC[AES256_GCM,data:1934DxMIWWkpN37vwTZclKUvcnS2YL4SX4nQB06F6e1rKjmFQq2ABEG36G/Gry4Wbd4H4/CFkJoZ3aupBeMIml6cSdFmqUxd3CL6TSPXUH/YnVixM4axZ/FBGCrMIVQsbtE7GdRuTF3MuWhO+GJrMx7Im0kbuAROh26rhlgMSlY8+NrJEsjzlTUkFPUzJ2Ojy/5X+zsEzB3cXiVETFKDz5TE9KrK+FcYFDUJSMrQPYAJ7Y/4A+miQKI0azfyPGWQg+ZvhiAfeFEXtcvvc0f6WgK6jctbGKKQvdIsOHbbI6aGElTD7DrFdPDWdkDGB1+8NpQppm7toaRlW0FesLY+wOa9Z9rydykOW+XR3okFBv8NqK6HK39Rmw2cBzA0doThy022Naz7K70FOrZgFpunphYxAtrFtWVPHMy3Znx0Y4aoViXF9BCRln4wVzf8pMJpdD/sMyZUFFCT0vcZTUYs7vTDKqZaZ5eulS5z9XF4O6Gppyt2tSsflFhGuboGFNE1UMrKx5l9tGi6cJqvrL0ZfJueo+pp+Kk6bZ2UHMQM7AerVg==,iv:5Bgj9DUZvRh0IkwYNcKh2gEM8Qy45crC7FqOZo5qQqM=,tag:r1A8Tlj8x/2N5IWiQcOs4Q==,type:str]
   mammoth-skate-tls:
     type: ecdsa-sha2-nistp256
     comment: cert-authority@mammoth-skate-tls
@@ -53,7 +53,7 @@ authorities:
       26-05-29:
         public: AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBNk85dUnU8uD1qUbP6m78fguUtf1uwicxfR0XCY5c5G+1vgxGiI6RJXj7szDlzpmSTFVLh/UL9sUtom2spAwTNg=
         # sops:encrypted
-        private: ENC[AES256_GCM,data:90RgJRzR7i+AFmY8s5JdHako5KLPLrMuW71z/Hq0JPR16YlIhRTSKghIryI114hF4A2aQmeqSvFgiaM4oWNE5TG9M985lyBs7wFMN5o0DvC+NCdFpPmjgYhknegIl07A7NzJyR2j9kttzm/HGKA99LJP8Jap5tp8jQIpcn2+6B4HWUXbZ6WQ3g+trQyiaQF6rCLdLYnPSHzU/ZZxsv7335Bdbw9GE94BUgNupq1/1vOAiP+iknD0ykvjGyHfsXEDdiUN7mjA7tCdL8WztloH+J2l2OHK9Sf+bV/9VrpZ3XD24lIorXOJ1qTxnoApmYMRyQ12ZRICctpeLlbUzNkpZFTCN3cbeBf7wK4T4C/G9txiHMYLdSvFuPZzbJEfKG8uRxVNAakM4QaKtwyVbb4PvUkyBKnjWmMr3lHY3m//tj+crcqAlzwv9aU41S7ylEWBH1BmBgH/D0Wj3pLwylhxXQIt40/nnys7wkQf6vV99cm8F0frO6Vt2iENoul920pqVD7C7l+cfwrD/kzEOLp0ebe49NAm0GNJmnrPHG/ZKYS/kVNhoiO8cnT2MjvvA7ejy8IHIQp+8UkOo0rIOsQUNY1lOv+ylKynQdXEkJqOWgOiFuHrTfTcy9hhTPQn/IjtaoLBOrci5zEuE+WtT9TD+/b/GIN2JnD1KK1MTeAds/bhsIdIdaBLHuf5iIc=,iv:oSw6mNMtc++YDJmgvYBSIbgGyc7De+kfdPl4ooESDg0=,tag:zcLL+nP/ylj3FJPHPa91og==,type:str]
+        private: ENC[AES256_GCM,data:y2kUua2oeLXw3hAtji3NZ4+USg+AYq9gqXDGT5tI2YsOKvOO8aMBAP65IAUw9bsY+oz1LQY19xT942UCEoMFLoZoFpKZMqoNO6TuwZd1tczNIySYgamV/FvxFdsaKjSTeJnELgTfEuTcK4MBz1ZLqs3tLMGS6wW7VAPd7FP/hJknk+6or225TRpQEcyrUZKnuIGW9U/rpdRFu5hrjgTKHniIPxKC4SWKwAE+id+gBi+gi0zQ8JuFcVvByELCG/FFGqbxCBO0e/5IGqGzzSB3LVgAoQdVitXOw0FhPUruFaP3iG4HSxpcLNz45a3PPOFDcJeUp7eJgOHEVkKZl5UMXknhBI6ytnPs2xAa7mvwgQpRXEWz/ZXJhai/awDRCW2TWiAYOzoXksn6mUgjCbB1eFbDz9yKP57oLFW/DyMetcN28KI0Jd1jjzdJIDpGvd2gxN66TvXDCKkbgTgqX8vWLnE8FXaPbgBZGKNd3nzZkrotUuPNYczWghCoKAY7wqg1juOBw3UPRCU41E+CAZ9879uqRRxWpchIUlxtOTuntnwWOzZefyrQQB2ZWRioZwJdR7LUs3rXZARksEw7azoEEzW9LfmXlu7IhSUVXkKBb1NGk69OQsMr8+YvwNpq7ySEVqmNNALSHyTY4OHUWlE3TPky5XjvxGJcpJ5yKr9pFce349sg4ZVv1IIcOj4=,iv:S5BGHQZF/8IwU4KQrqnL8Dpm/ZD0rB+VIJA6hrDQUyE=,tag:EhILd1ObmlgTvYdCY+x5AA==,type:str]
 keys:
   nix-store:
     type: ssh-ed25519
@@ -99,7 +99,7 @@ keys:
       26-10-05:
         public: AAAAC3NzaC1lZDI1NTE5AAAAIFb+p0nUP/k9dFfy28gMmgM63a2lVv6hsTWJCcr69/6u
         # sops:encrypted
-        private: ENC[AES256_GCM,data:Gry/ogH9drRv+563jOvWiuRHi2DhVRcTOFMXPZMXJ2oJT7sZnv/y1YQXPKn0UaQL7F2em3vt5iCD+qL25TWzYSy02eJh3veCe5tCEJXAgKKIzGmvdjT9kX80SrSt11ghXIl7aAYZnb+ur33wdXApOJZCh5293WC9Sf+cjbUMZNrj6bkkEE0t5GvNejIFSnGLJQ0HY4CQ85wndeW1wOREplsh4dTwcwq7/lKj2NVj8pjMUPO9RpIbF0zubIgzsq6Z75Xb/PZQSNx8i83pba2wMYW0ddICx5Cl5907BaBKPFXbfitmkBUMdTDIqlawv6jzbJlVJdKqYARB0ddcktgbJ22hgOJ/K10PpfBpDIJfzjt8iXxCwjAL1rO5Au15m/RiMBxJ+ZLzZMU4GhE9s7yqNaN6YXVwGn+URBl+86j+Q8Htck+E0PeT+xDrw1TomQcCKT7TlO5w7UL0IY1DRWD2XqL8+sIXmb/GGetWb02L3tH4wg3FTyh/xiXIGVpjUAMpE2Xq8y48/q7DwA6/hkno1ea4HDHJBIymNm0D9koJS1allA==,iv:KDt+NJNTjTIqxjDn8g6NF2GeAjRVC9ar9fioKHS3uFo=,tag:iliNwWhVgHThX3eFle+GVA==,type:str]
+        private: ENC[AES256_GCM,data:tRrFVeZcaLfLo2zbAqPxcSD1WXUJCk0R7sZiS/yO0YA/33QxSSwaU5NqtFpRU/bSelnM0LldFAG/EaZ/cZC8YsfMq+SpM32CGzKzs8lrvYt1gD9+6hZx9MLqZZMuTFjPEEcH17LE7PP1SG7n/XbQ0Ewbj2hINqo3B3ihcS+haEHac6YSHiM8T+tT4Nb3ZmZnHrDXw4KkhQyt2iODgKquB4r51hd+txDy2zqvzRGjCTcnitzYY8Crot3bc20gL2W5JSuR02KGZP/jUXnkeldaxCv5hRpvLBP6xPEjjke3LVN258hJoN8bj/U3gykAuZIdQXL2nx8kTxNQqNkCtvLH+OJBaHD5yEM2bd2bjMg2gbLXgxYgB4BFa+gtm0a+inHgV35f1OtPcGaeXVaQzy6AeXE0lvRmQN9rEaeVmUAiTxcPbALlEzwHEEhHfoTkTeYuapSTgH2YfDeVLnpBbJ0SHWZ4NQwjSEcUZJPDr77kcZGmTdLrXV9tZPlx+UxcTsx4dDvJ0MNVPhdYQH4XSg7r0u7h0kcuJsdncDJebpTp5mEEjQ==,iv:v3Bhorz13mgVVREppr28stLzClzu7IjOyRA/tPRZD9c=,tag:p7V97VyeCtKzXyB8ts9KlA==,type:str]
   rdp-host:
     type: ssh-ed25519
     authority: mammoth-skate
@@ -123,7 +123,7 @@ keys:
       26-10-05:
         public: AAAAC3NzaC1lZDI1NTE5AAAAIM2ydCX6iGWLvMCJ3CR1hujCwjs96i/PTNqQrLIA1UjG
         # sops:encrypted
-        private: ENC[AES256_GCM,data:AlmjySE9EC0EaCvjkqzuglg5U7jye6lSE2CIveEr6oML28qgq+gMNOlHe2vZU34w6JbtCuDNfgH7BamTN52CNeE+BgO6Kn15tkW4h2AsE0b37ITsyw8HMPIc9S7TfEx2K5aKYY19hAkg0jeaNx7Ocx6i94LMlX9YkJb/pDwRSiN06AybVlxRIYN2qKxdT3UFTYeyqtrB3zBm5tvfOR4StxUsjjDeyM90xooZNY7BF2m7F0E12slXmCd8XSrYb28RU5CKDsGfYknZKvi5f5XX5XG7q2MdY00VS46VH5PorvFqObWSO53v8YuB9/TfR4viiSlFHHOUD3LcTu0YWgOER287brqPNClnn6an0u4mDI1UGFTEvqA2bGYlAwfdsQVC4tIfuwEouLBsjKdlC3KiyKzGu5HaRISERVu/XoNZJvcl88uAk52TBkeIu9kE0lXknN9Jl6O1TpWxZPn+YbfCbIo5pu4mBO5SclwypIm86Csljy/LgzS/vGhqQQIvV+td56tUa88WVSzxfoBLSH+CWjUCJmFPu7Yggoc=,iv:6966MMy/vnoUlyY7rtN1UW+KkWGDql4MdC5vR6NOzoE=,tag:Bt2muIHnJuSjPX7lp3jSMQ==,type:str]
+        private: ENC[AES256_GCM,data:WBpL8pYVQX+K4oxGUNs+fxUQyRJYXM2k/a/qyQOSRQob9jdiPdw/TDj4bxo06rM2PhBtYG8xZB46DN4y3GbDYN+rE/5zTTYagYZEa+bzKi19gN59/gesKIpotecrEbBeIvXWhUG7YlB2Zpa0il+2eIHYGhFa2ASrcYmuErpUuY1EsgK4qlnPNse3i8tN6zn7iDZLX04fw+eoR4ceLwm4anpVP9gNOcMODwiBK5+lTmfHraRdHUEUmTk/pvfLbXcJ3kLKYfJj2fEXMigedV0WRHqTIA5VTrRs7Ao/5+A4nvwQX7j6EvzlzAeTnWVDqmunI5cWZKVkKRADw0pyDwgg6ZL24Ddm+HyhtDHw1YwDCMBhrpuNpa3/Yx5SLCcnh/Pu/O5GjsRjmMshPRd7IRrE19GY+FtT37jbstJIpz4D1mdG6am8Ij/38e/93sHNdn05hd8mGR6XgReoqHikCr0M2wJTOB0aWKgUG+E+9g6vCutpiFVZ6n28fnQyryU9ijxgd2IMXuGeSrYBov7lbbtBULBP7kHjmbFXN4A=,iv:mIRdEdbXFI2cnIGXbh+JsAeQ6zs7FB/B/9WZY1TTWoM=,tag:IdgPX1tjZzNmexINBA/jbA==,type:str]
   rke2-cluster:
     type: ssh-ed25519
     # Bare key — no authority, used directly for GitHub auth.
@@ -138,7 +138,7 @@ keys:
       26-05-29:
         public: AAAAC3NzaC1lZDI1NTE5AAAAIEk3mPT46ePtbxdZg4CLBGVW4Tt5iFTxNdLm1ohNpV0b
         # sops:encrypted
-        private: ENC[AES256_GCM,data:JH08ts4Ogo9rFzkMZpcIgJReXHbM280hNcCFPSswuHDK+ifMwYUB9sVq7bFIioc++BIVyrH2SdEMBuz9+4kWWxEU7dWLqoliFI1hR4K98wR1/bcb/nJ6RhW5g8a2fUasbZwEjbCm+doMAnq4Slh9Bp1tf+9zbjSi/Gs4QrSDWgyDIswGjClwymxHJxu5S4JJ4LZbKY1QwKf0JRTwAPdR4WvFpR9mh8VTKr1cX+7scktzL2JMtyDkUpqmky3J57UApeQlDhhgno4fK9BvjPvszMT0EzTqMFUwNmXMxzG22sgMlZhYIAg1Y+cNosnVdexQcFWrXF/H4myVJ1D2QOQe46s0v9S40TwRIUg/wsoZK9tL5AGZEv4EP2QKr/q+LlshRg34aMLsvWUgOe7oGMDOTLA6TYAWI1CdCsW1PPbuUEE1d6EjKdI82lfwySEjdtay89YmE+/2XEIcht2RvFVgFaFfcUgUQWNn/anXWjqsY3oCYr3t5J0YHbo4hBXd3KrQDngCXsUxXV9IJvCjBECfTFxiMgdMfBeX2kvGzqfIw24+MQ==,iv:P/2FI0ul51QJCDmFvx2Eongw7hihcG48GMHB5AlZLig=,tag:xcAUtD23cZkyGwggiWwu7w==,type:str]
+        private: ENC[AES256_GCM,data:84EzMpBbLavoCuCyI3tlHFCEPsvTElxeUaoA8T/wKDJyFhO+/dCFqVwYfOa+P+j/O3A7Uy2/ba0RLkIfFx8aPWK8hbQh68ZZpJfmjUvtSpTNytw3HHR7NMgdAHFoH1EtMQbQ7BjJ8kMnh6O9sjvT5WzrDMOuTmt26jTuRvnk4mWwP1sM2741CbKbvEa+VY4jQ2ufGdw9Lq8n1KPFtb/QHJeAhSG5VhPOGFA4rwEp4ZWpZcu0bSvs1DFyoTFMIb6VN3Toko4j+yhWVPUejUBq5xa3Xuk9TZe+nOt/BNib42uPA0kds7NxdF4bdhfIgtcSaiUl/wksCtL5WCPmmgZKqkw1gxj8iwP6cabbBpCkCDeD2vukf7mv2GP4qNunHQfU7bGUTwscuoEwCUXECViF8mWYjm40lPu9un7yBEfA27gldhlUnaQsjLs1ra5SDn+94h5hIZIEQy2h9X/1//OzaOQCqjnBi78UBVMigXuTiNMYrfeLM8vsLVDvVxtpp6PU2nz5EqsLJW1QCyHOOEA030586sxAtrkMfyejPRjG2ES8bA==,iv:zVsJYt1aS1nyJYqYNEXxEFRNX75DZOSIcKDKGc1N5TU=,tag:jh/h+/6r32Fuk2wgfEvb/A==,type:str]
   github-signing:
     type: ssh-ed25519
     # Bare key — github signing identity.
@@ -153,7 +153,7 @@ keys:
       26-10-05:
         public: AAAAC3NzaC1lZDI1NTE5AAAAID7/8Szxs9eC5fy3zMytkj8xwTyj5PMe5faHfCObw/gE
         # sops:encrypted
-        private: ENC[AES256_GCM,data:2G6BzQRImJT9xW9ar6vjeT7ays9yIquEE+sasWr1SML3VGXEiItC5Le5jGV8fKJZtgyyQppiUi6bcryeOlrEVhcSQ2yNOQWQnWC5qqCmM5YGc3FZw+HTjaS9IK652mSrO2gHcbFIy92ElCmumQNYl+IoqWRUW2XlOJSfDBoLUfdwRhHRUhoWqpQFIGTFCvv2GCoDa8CaiuwUDpWyLmwrbp5N+AwKpMOB5I77HYoFdzrSIY0T2rS/czND0gIxtsISiyxloxdolJK7NHat2+43t5ahbriLHIUsRnOvKI6txpVA67FSJPKRF6FfCZz2Yo8y2Rm8DCB8MvSHyKWY5+HPDA1DrhvP+9oTwnL/qcw7OgjZt4/F3cGu13aFwSq0/OQDBe5OgZH9a0Yb5Pw49eHYmEyayBknguRLyvO2rqh0HHn90clibJmXvlgk7IqzkOsAhZS5BufY5BTZ1i0aPg41mzoBLVzWeswMnRujnqeKabFKURbpUhZ2UgMjrB5rHkYmhMTfTZoXU0+xrQioiqY5zqQ3mCyLprDmQdSnK4ZRacY76eitMCm95cqCGd0j0qI=,iv:MdBAodrDkh1ARMr5nNZshJStVYagrmh38rMe7NM6TmA=,tag:DQ8x0VJn2L762UCSKkOZ2Q==,type:str]
+        private: ENC[AES256_GCM,data:JJzVYL6aKvn6aYUujJEHEK7/O4SU31+2aPpNeCNrF3DGv9TDWor+oa/1jYzVrfGMxjwWrNaELdVHhy29bLn/iQL0WIpfYNTvpkRHK14jvo/bxU4UTkNsbEI+NUmNJy/Ns34N+CAVpHltFVKf9csnpkjtiVQyRV2oOqjnMNeO96KURm95Au1kPUglhwPPXrnfZnQRw2VbcKalUAU6pt3M4+0skXJ69XBI+AVpfRscvF+KQ10H6Csa11lwVi/nABcYYO/WB5zxahFoYgWsQoPaqw+Hc15UgcC17ZA0S7DFRdoi2aepgUNXvqBj/I8vNDNeoGGU30vv/YwzW3zg0mPMAUXpoWest8I2/a8/LAXiSRniKmG5w8ApicvY5hzaEpqax2CyN8tEjSOGlyiEyq8j8m5LHFU4h69dEp3dSlpQ5QqwYDxZ3/pM/CZKXiKh0jhUKv73jzF0O6+V5JGMv6Z0To7gxCyZdVzkNv/Mh65sKm4mF9BDKqagtG4UzQ3sekg9kFuhgJuUpTCtht9WJtkOo49bYoTyM68VFvufu8ApRTOa/KXayyuLhPXzj3d8rH8=,iv:ta+VAN5FPUZrq4QMbEMUVfdLyX35RMAw+8qQiUF7PMY=,tag:aOdSTN83n6x+NhEtUUV6Bw==,type:str]
   github-signing-hyland:
     type: ssh-ed25519
     # Bare key — github signing identity (hyland).
@@ -168,7 +168,7 @@ keys:
       26-10-05:
         public: AAAAC3NzaC1lZDI1NTE5AAAAIJmxr6Xl2g1Ren8nyT4L+g1aayeBbiqswlOGWzKaatg4
         # sops:encrypted
-        private: ENC[AES256_GCM,data:sY6fFRSlrT58veTroaChGuYzlE9c/HtHBqcQiQ1kvVbGcHvbWvGdgzggSe4CjrvJQNcK76lnEQMocxfLVJ7Ik01YbtiRk8jh+6xpgBKZsOouW35372iyslkVI4kDX88XpKaHikoTxewg+XoijS33yuUz85WVuz//pehFtFBZdPt4Noa5ya/61rNhNak/L6S347ELUvRx3qtWqvt3+jEoWG6Ub23dLxjELmtuSmfRCQqW8YSNASgaeHRgqWZTMdq2zWudnQ/0K4YkXmBjrUr2WWifMngfXTtXkhhHYlW9yZnNjkf3zpjZDFJv7m5vzg9roI/Z7SF/kT6/eTYcfSCl4Qfz9X7sguUuWStwH+dcG8HYDhTIIIGVz6IN7z1ZBWJ8mUalSPxvWcaTFKJLRBF3IJh9t5pTQ+DpTnA1Lp6TpkZsjMzeNUmN87xFWkXEwI5HAwmSeNURfnMEcfIVjD2B0HflbFVRRupTBAbvZQtCWE7xon5i5imyD7rZaGXKfm1/78SHu/N9Rw0vrvOR43420GgG4pOJc5n4KdhJeEUxIZOnZguFD2zr9crzoD77HE8=,iv:/Mfg0BxwQUl0y94245eL8gFFdXgqwzhbMqH5wd9gQe4=,tag:iMoQ9o9ttw6+IMi3APr1ag==,type:str]
+        private: ENC[AES256_GCM,data:XOsM9vSEC/ctrt8u3ejnKczW+kuXuqU9YKXxuZ9lWYngZHnwxZmKjPtL6yc6hWQz3gBFbfdRqG62XmoBlA7kD7mAC1wpcKDhUQzlZaPas6aOCzS9gMnNkZewWuN7eiDcxrFN6hX6XnEjnl+dkgDYpdhtaY6yWJybM7Tvbtm0o9GIDIO3Zo83dMypWvxfuYhxvsdCVwOeWkeawxvHXZS+7U/pmFZrA8PO9IiA3+vFmzKpwVU0wu92pzEBuwNlO8pHvUSGjOwZTDUUTGVlHcxA5jveaZPxpuAPhvaxMMCey0R/Ebgf306A36sklu0iaIGQorgs4lbUQksil6F2/EHnXON8VTFQpk52/pvwTVFCdwDTFLrkFWX3ttZj7lTOq2jJMFC31IrZrFGFJ+pQtg2DaBGkUcOP/yQfo9s218bg0If4iZt5MG8MTChP9nPEH2rp2lCTpqiRs9/hPZNSGqkrBBMc++xx+01qzdkyPEchqIxwiQi+YeNlllYpo7NSVp4P+8SbpbbZOyHT6WtIuuD8ncOIDX30eMyGLpYo+kbDg6csmilpQnveRGiy/y19tbE=,iv:GiEx/8wNjQOLETkTUj1gnJHCuepphUIp133NA2kdaj4=,tag:UUFrAvTH1PwNcTSZsD1H0A==,type:str]
   vz-nudge:
     type: ssh-ed25519
     authority: mammoth-skate
@@ -202,7 +202,34 @@ keys:
       26-10-05:
         public: AAAAC3NzaC1lZDI1NTE5AAAAICQKpfav/YAyZasUYR0RTY+n3rkekmcq07xn3wEf7Avh
         # sops:encrypted
-        private: ENC[AES256_GCM,data:yKh3u4OU3HYY+EjVjygNDhVhx/Ystp88MFsELhEdDdH4Z2rUYPIstOdNpjgzoqmroNKs9uYZgrHpT6VcO9vBpF98LzVQvRjAbbedjcwC0yNlfXfoTNTdJ977r48nvl/cQ+rqE/8OhvgTTEh0u8lKupONuZhij4DGIHq83LT/LyPBbe6VmrxZGeRPFRKWESp98gKpv6tQ7dj4WCKl4/tKtssOJMoQXrjVw0YLToQBn6TnOen/7ecX/mVD4j3/oGNb2vvGYvF74ypN3mrBOJ2hxa9xv4AXM3qlfEdPN8uJYSSS/gVaB9sxpEz5VQ1800G4wQIKK3LhWXvM2j4kE4K6L5nJHCL/gez8oJ9w7JhGvd24QTC5jNIaMdBpECMUj/lqnIy2G6l7TIp9z2G4hFS4WObkjWbAwaEY61jM5ppG5U4ISTWKDn0xkuvljCCshPy30hRcfUEjb0YwzYK3NaSV3uZkZCFrdKqMUSmUX/DrKdoVgdemvKDz0udW9jo+Xy7BnH3t+tJYL3RnY374M7/FD+XD3tGPlIvbnJqsGxWYs1Bcaw==,iv:o37RT0wrc8aCGXWOX8t5oDt4lnnRgkXzE5PNxbqOgUE=,tag:xmNmpIkBdSE+o+8MeBODcg==,type:str]
+        private: ENC[AES256_GCM,data:0+k1XSytPf4SmINhg6fIFYZPG59nSk8iuiNC0TwYsJ6hkEKXyhxv0BGNm0SdY6Af2XgRaNZzCgJUNz+t6f9SH8mexDyVuLyyk15RHOSV91AnDDSYZUlELdum3ljljEyJjPH+T2cmMSSjHLiFSEnET0XCjR+4eh5btxLnIsY6lupTvhFXOEkqGwCdg3XiyU6ubmH/mPPqqSW+2ushFWSwsvqpDc15iXtBT781ucnVViEztSYVkiDTXzlSGy0HoUF42l9OqmQmwlfAD/iU+BBm6g5uMNzS0eyDPhW5LZcuIw0S52i6ZY2bvcvhwRylHLET2AtJLmNp5jXcEQgBi9CDGy4k+r1ziaIWABBAX5NsjP6I4CH0674Mi1mmrpNdH+t267JdOKu5m/rB8ueBpI3KmZHemz47aP05vkgIYwF2Ec/gx9i6ktLh94AQmnCStPfC0WcuW9HJ/OoFgjTMnrMyaEViEIpcptxVv86LfE/m8YsfAYqg2gTHM0USGEkj4BiXHlZEYTFruLkMhI5bGIDj8NACKItX6r63Hq0SzNTdFI3grw==,iv:b14CIgEHIJiqxkXgCX1HYvGHYdP9xDF1AZqwx3tT5ow=,tag:sIXtCED13f2mVBIOMitVAg==,type:str]
+  nch-relay-tls-server:
+    # TLS edge of the nch relay on nikopol-nixos. Declared in rke2lab (c546290c7, 824550bd1, 87cd2a1ba) directly in the subtree copy; upstreamed here with material generated ONCE.
+    type: ecdsa-sha2-nistp256
+    authority: mammoth-skate-tls
+    cert_usage:
+      - tls-server
+    comment: nch-relay-tls-server@nixos.nikopol
+    usage:
+      - host-signing
+    profiles:
+      - system
+    tls:
+      common_name: nixos.nikopol
+      sans:
+        dns:
+          - nixos.nikopol
+          - nikopol-nixos
+        ip:
+          - 172.16.16.1
+      not_after_days: 365
+    annotations:
+      public_scope: system
+    slots:
+      26-10-05:
+        public: AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBEZ3467lozxKdMyFJR88JKpxpviNgFxkMDRtkK1aQmY2FAC6EYmD7Da3N3XgrT+5guINtsp+uhpEX3u02rjY0UQ=
+        # sops:encrypted
+        private: ENC[AES256_GCM,data:8i0+zju+zRYW5YYmQUNAaTrxgyBqKt2aNnwTLCb+k33+U2cE0XNDqyFZno0hfVDG8yXJIKWlDIEGrwpGzZAQeiQYQLmYnE/lkAGYDpiN53NLe8DNknGjKDHyvOJyGKtgifva9B/7KwWGscxoocYFqSEmV6xJHUJMOzyNg90jgJM6Fx+QimjF59L8a8Np59MLntq7sAWeaVZM2BUCqIeHSwu4T9itoyQkM80NUjf6vZP0/o8zKQ4qWN3V35Pxh02gZOHet+5iAps3vJKr0BhERM7LZeYCZRJMO6nPOebWHhdaMjuhsdIs5/gf/9AZfLrH9hl1pM4vUHdB9Mhcsd3N1wQ0IaHVQh892DL8TFvErYxcTBw9TIXJhD0M6hxr+45ZGjXeWsexx58neFuYyohUnil1Un15L6YflSjKGckaOaSqBaozqEfR77207d1yHWlXJr26oY6V1KhUqX8Q8W6azEkOliAf/WrLAkoDlSJ7UuGiN2xnGu78uiSuJVX7cuWwZf3SRkOylOPDkvZOgBS1BBw4V9ZruifxGK3lrX16lG+M7yCTwbW/iWqMpIMYDc+MRO324Ut5KV7eWou0nm1vqlDSZF40CqysjftLjSCmjGvF2+TRKClvWMWHDSitcwGmhVJDNyyU3d5mdUqiNzQO8J7isXHqntIYmb2QDrKaT+hLZWlVToElezJ1Mu2ODdMwY2TVAyhO6Ao=,iv:MslThTnu2bfIsZhNwS2kAQ6RkYow0nMEW9+RapEAaAM=,tag:YF9axUZGo1xMFQMOH3ZPjA==,type:str]
 revoked:
   # Generations no sshd accepts any more — see keys.schema.yaml#revoked.
   mammoth-skate@26-05-29:
@@ -233,50 +260,50 @@ sops:
   age:
     - enc: |
         -----BEGIN AGE ENCRYPTED FILE-----
-        YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBOWUpwVmN1RXp1ejVZQzhr
-        R045T0FIa1g5eUp2VE1CS0JiN2YxbU15ZHdFCkhzYU9yMkRzcFlNRklKNXBCbWQ4
-        dW9ZaWFqdXQzVlJOR0tWUXByWVBvbG8KLS0tIExqNUFvWVh2SDVjbXR5V0l3cmw0
-        dGJ0NDg3MjBEZjdNTURxWjJRNFdXWE0KAIEU2oixI6GrwAMuVkGrWs94JnQ1IKL0
-        8yCR8vTXs70jVzi4Izybmo0u1IK5XICX3u0/tM3tPeNc/r/SJrgyXg==
+        YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSArOS9qazhEM1FtblZrREhM
+        NDBPUmIyNWVtWWVOQ2sxa05TRWZIaCtmajNRCmhpdnNNMzVXa0hMdmY4c2dGNzJ5
+        QkJLTVR6eUtvSWxEUVpyalE5aGN3S28KLS0tIDVUVUYzTzJxOVRkdEVPVE5oVUZ2
+        bVZRM3JMcmtYTmJybllTRHRMbldvQ2MKzStMPN85LywNBBs0JIrWyKAADTOl2zDJ
+        PchPh6ygfuCXkDkjl7vtBfbX9MGmYwGITeU+7u2Vpn4371ijBvALBQ==
         -----END AGE ENCRYPTED FILE-----
       recipient: age1stxdeh0t6arhdm7uhyy2jcf2qj9r9vfzkwte4jr4gj6hlpxe740seq8j82
     - enc: |
         -----BEGIN AGE ENCRYPTED FILE-----
-        YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBiZDVIcjk5RHdNM1hyLzU5
-        WTk3OUdJNHdET2lySXptdU5USnhiRnEwekc0ClFYWE8yaUxyNStaRTI5UnVNa1JD
-        OGVmOEhJTWJZVUJmOHpCRitSV2RpQnMKLS0tIFY1TFAxb2lSbnQ1V0pKYXVpSWNK
-        SmZwengrcENlalRoL25KOFlYNkRCK3cKUzA483YyjP4KkT7rQ6xmTG1ew5m+4b8n
-        I6vHb32Xo2W4XW8poLZ59zjltXgQtuLum0YmQKUfBUedctz1wjcZbA==
+        YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBucTUxS1pFR3pnNDFoa0Zr
+        cTA1WU8vWFNJc1o1aUQySFhlMTJBVThncXpVCjREbGs1c2VaT0sySW5uVytEN2Ew
+        aDZHM3NQS25xQS81UFZXVHRjbmNmSlUKLS0tIDlTU1IvbEZneDVKVzE4TFJ2aWRk
+        RlVRRGg3REtoY1ZFUy9qSEFtNThTSzAKLO8RWDb14O8cdXHaUKZROMGBT/1Te1Ez
+        dzb+S15qzXW7Tx1fIxQnQ8XgzoaOYSY/cLRbegiAhlCigp9bFkDYLQ==
         -----END AGE ENCRYPTED FILE-----
       recipient: age10ey0lcup4zpjqcknpxw7enpsagn674nm634f2u75trfr5t62uq5qdjuxzv
     - enc: |
         -----BEGIN AGE ENCRYPTED FILE-----
-        YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBURjAzNVVPNUplV2RuZE9p
-        UmhmOTR2aWlHOTB3aXRLWjdEbVo5bys5djE0CmloZHpyVUl3U3hCVEpaWW9ZMklt
-        MXFDQ1kyQXU3T09GbXFUZzgvaURXUGcKLS0tIDVRWUZndzZZTkR0Q2FVZFpOczlW
-        Y3VQM2RjZEVialpHcllhczVxYVlvTWsK7NglMqMInKU+RiYnbL3X9IK3iHA81BnR
-        1fbq95t39K8b1nRMtoVmjjXm2ppAgGkSIgu02XfAOtqQY9ghJ6qNcg==
+        YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBaTUZNMUJTZUdDNThGbWta
+        TDQzdzl3YmVCWjNMWEZ5TGRVVXFTWSsvbDBzCnJxTS91eVdPKzc0N3Jic2RvbU1h
+        azZaRmlTa21UUWk0ZWtwUnVhMVpGaHMKLS0tIFBkOW1RM2JtZ2hUYWFEbUN4cEw1
+        MXp4K1R4ZXhYdnZjNDM5bytHdWEzNmcKB8YZn7eOdKoZui35KyaioxeMml6OrJUa
+        bibhSObw7rCoN2fhJn4HKOGVzvwRWbhNsye50kfy6gi+eKlgMzWffQ==
         -----END AGE ENCRYPTED FILE-----
       recipient: age1trxpn8efl5jctwakgpxxjd2h6x5h2m40ggugxl909qsj0h99p9yqkk8tej
     - enc: |
         -----BEGIN AGE ENCRYPTED FILE-----
-        YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBnblRudUcreFpPN2pUbml4
-        R2Ivb2UvalhBTGZEYUtlaDBDdDZBRTZLOXlRCmtGV3I1WkRaZkF0MXJPWUpRczlh
-        c2F2d0tWejRiU3VVN2JBMnpUNldoZ28KLS0tIDhLcWhhWFZrV0t4R1ppQXBoNHNI
-        QnNNK2pndGptKzNPRjBvTlZaRzg3eUkK6weM9hic56n+Vt1Un35ES8DghSqcYsgM
-        s7RrG7EYwQr+Ey4SradfZrtHse1WUjXuCN8ErMyNf/8pnqOymix+gw==
+        YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSB0SFBGbDEwWi8vNlp5QS9y
+        VVlETUs0NkNYNWFDbDRGNk1nUlFlNU5QK3pjClZSZTZiMmxOZEpqbFdsdGFqaEoy
+        TytIWENpcTBERVdocElCZG12Nk1mbjAKLS0tIE92SlE1RDlieE1sb3pDU3VTSVBX
+        VzZHRjREaWdWWnBwTk1tcUV3YnMyR1UKU/hwx4xMyExttetJ51HAOlv+A09i5+7l
+        i2LoFelw3ac8Uq8izx0DbRtTvJYKGooH1OcjP+DkKGeHMB1B9sriBQ==
         -----END AGE ENCRYPTED FILE-----
       recipient: age17q5kw0epcl9ft7ecegr20040vx3g86z0f7vtecn9t8kk27qjspaqp66pp4
     - enc: |
         -----BEGIN AGE ENCRYPTED FILE-----
-        YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBBMkcwdldiU0NGMzZ2eG56
-        WjY5a1JLSXdOWHE1cFFBWmdwcmkvVy9hNEVRClpJNmdXZGZZUHdwcXIwS1ZBU09R
-        TkZibzFEWTZFSzdlVUlibjA2WVY0L1kKLS0tIHZ5MDFEQ3h4ZU9McE1DeE1FbVl5
-        dHd4RkVQaExiNWRtQ0daVkF1TDFmMnMKDpz2pfaBrW2RYvpwZNrmxwHTsoXkjqwk
-        moKOMOlEA8jZXrX32FxFoDeZPsZAyEQQI4p1hX6WE5MLOD68GuU5nA==
+        YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBmZ3RNUnJ4aDRCTnoxc3Bi
+        eVBnVEMySTBMVDNHYlRmUnZXSXV4SGlsclFnCnlSQlFMeDg2MWo1a29MVW1WajlS
+        VGdkZzQrd2t4L1R1NlZMMkh0cklMT2cKLS0tIFM5NzMrM2M3N3lReFdzaGhBbEti
+        dE96MXVRNTk5R1IvK0F3aG1iUjBmK0EKrLqbeT2ffhR2dgoqO8lGVcxLo7pqehQV
+        cgR0G+ueErAIBxcUmFNovO7qbU0GL1C6I6a2rAULIQGfxur9YZD9gA==
         -----END AGE ENCRYPTED FILE-----
       recipient: age1k0tc4gmaqrk5df3ujja34gkqxstu0cye7fl7fktjeuua3yych3aqxfjlak
   encrypted_comment_regex: sops:encrypted
-  lastmodified: "2026-10-05T20:09:12Z"
-  mac: ENC[AES256_GCM,data:P1YT8nJdn3sWMLFS/cltpAFR88ETd6nxBAdfJP5KZ6bEFgQzNOqsIXKc3/AJwcmev4ra9ptNUa5I/1YiV8B9ZyTF9+bH0TcJE+zxkAWPOnI0AqtsyQEL3gSBM6CisQAZPEEcykRG+39C/bhulr8WCplclEtgRPIOfyarYfdFgkA=,iv:IBov0XeeAx2iAA0KBLS6nJtQuLYxUsgPWIO2jyvxRhg=,tag:Z46OVzAgdQ90llZOXKjq7A==,type:str]
+  lastmodified: "2026-10-05T20:57:10Z"
+  mac: ENC[AES256_GCM,data:uigzy0apbG6zt/xnrjj5d8iS/3jhz8h/uz9qKMKi5Bu32ry16VKwkwzKxowRVZasCp4cvpB2Ssf8ChnYPCLSpNv1vsEKUfhxBEX2zeQnO9OEmH+Jjue1xGvtjkZZw73ZdtMWsZ/6GPem+R2EzcMT0o5qSBg7Q1BigPKBE0lLv6I=,iv:gESg9tqarQ3cv3tBF6ofkJ0m7H58S1EFDYlsnHV7lrM=,tag:yLHjAnAesrjlU76X15iRug==,type:str]
   version: 3.13.3
