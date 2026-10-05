@@ -63,6 +63,10 @@ $defs:
       - agent-signing
       - host-signing
       - github-signing
+      # Authenticates to GitHub over ssh and nothing else — kept apart from
+      # github-signing so a leak of one grants either push access or a
+      # "Verified" signature, never both.
+      - github-authentication
       # v2.1: the `mammoth-skate` authority also signs TLS x509 certs so
       # headscale can serve HTTPS without introducing a second CA key.
       # Leaf keys declare `cert_usage: [tls-server]` (and optionally
