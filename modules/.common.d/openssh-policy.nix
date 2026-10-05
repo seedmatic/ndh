@@ -418,6 +418,33 @@ in
           if cfg.hostCertificatePath != null then { HostCertificate = cfg.hostCertificatePath; } else { };
       in
       cert // baseSettings;
+    # Host verification by the AUTHORITY, system-wide — /etc/ssh/ssh_known_hosts,
+    # read by every user including root. KnownHostsCommand (home-manager) only
+    # covers the operator, so root's connections — the sshfs mounts, nix-daemon to
+    # its builders, the guest sops bootstrap — verified hosts by raw keys pinned
+    # on first use, and a host-key renewal breaks a pin: `accept-new` accepts an
+    # UNKNOWN host, never a CHANGED one. Measured on a throwaway sshd: with the
+    # authority here, a certificate-presenting host is accepted even past a stale
+    # raw pin, so the existing pins need no cleanup. One entry per slot, so both
+    # generations are trusted while the authority itself renews.
+    programs.ssh.knownHosts = lib.listToAttrs (
+      lib.concatLists (
+        lib.mapAttrsToList (
+          name: authority:
+          lib.optionals (lib.elem "ssh-authority" (authority.usage or [ ])) (
+            lib.mapAttrsToList (slot: material: {
+              name = "${name}@${slot}";
+              value = {
+                certAuthority = true;
+                hostNames = [ "*" ];
+                publicKey = "${authority.type or "ssh-ed25519"} ${material.public}";
+              };
+            }) (lib.filterAttrs (_slot: material: (material.public or "") != "") (authority.slots or { }))
+          )
+        ) config.ndh.keysYaml.authorities
+      )
+    );
+
     # Expose helpers
     opensshPolicy.hostKeys = cfg.hostKeyPaths;
     opensshPolicy.authorizedKeysFileString =
