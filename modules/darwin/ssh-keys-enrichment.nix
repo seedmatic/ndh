@@ -71,6 +71,17 @@ let
     else
       profileUserName;
 
+  sshAddKeysAgent = lib.attrByPath [
+    "home-manager"
+    "users"
+    profileOwnerName
+    "launchd"
+    "agents"
+    "ssh-add-keys"
+  ] null config;
+  sshAddKeysLabel =
+    if sshAddKeysAgent != null && sshAddKeysAgent.enable then sshAddKeysAgent.config.Label else null;
+
   loggerTagOrchestrate = "darwin.activationScripts.ssh-keys-enrichment.orchestrate";
   loggerTagEnrich = "darwin.activationScripts.ssh-keys-enrichment.enrichSSHKeysYaml";
   loggerTagSplit = "darwin.activationScripts.ssh-keys-enrichment.splitSSHKeysYaml";
@@ -288,6 +299,17 @@ in
       launchctl asuser "$(id -u ${lib.escapeShellArg profileOwnerName})" \
         sudo -H -u ${lib.escapeShellArg profileOwnerName} \
           ${pkgs.bash}/bin/bash ${sshKeysEnrichmentTools}/bin/ssh-ensure-authorized-keys
+      ${lib.optionalString (sshAddKeysLabel != null) ''
+
+        # The certificates were just re-signed, and the agent still holds the
+        # previous ones: its launchd job is RunAtLoad only, and its plist does not
+        # change when keys.yaml does. Measured after the mammoth-skate phase 2: the
+        # agent offered a certificate the servers no longer trusted, ahead of the
+        # raw key, and MaxAuthTries cut the connection first. Without a GUI session
+        # there is no domain to kick; the job loads at the next login anyway.
+        launchctl kickstart -k "gui/$(id -u ${lib.escapeShellArg profileOwnerName})/${sshAddKeysLabel}" \
+          || echo "[ssh-keys-enrichment] ${sshAddKeysLabel} not kicked (no GUI session?) — it loads at next login" >&2
+      ''}
     ''}
   '';
 }

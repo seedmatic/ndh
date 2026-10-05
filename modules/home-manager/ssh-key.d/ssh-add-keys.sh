@@ -58,7 +58,12 @@ ndh::ssh:keys:agent:init() {
 ndh::ssh:keys:certificate:keyid:extract() {
 	local certPath="${1:?certificate path required}"
 	[[ -f "$certPath" ]] || return 1
-	ssh-keygen -Lf "$certPath" 2>/dev/null | awk -F': ' '/Key ID:/ { gsub(/"/, "", $2); print $2; exit }'
+	# Strip ONLY the quotes ssh-keygen wraps the Key ID in. The ID is JSON, and
+	# removing every quote turned `{"marker":"…"}` into `{marker:…}` — a single
+	# YAML scalar, not a map — so no certificate was ever recognised as managed,
+	# the rotation below found nothing to evict, and the agent kept every
+	# certificate a previous signing had loaded.
+	ssh-keygen -Lf "$certPath" 2>/dev/null | awk '/Key ID:/ { sub(/^[^"]*"/, ""); sub(/"$/, ""); print; exit }'
 }
 
 ndh::ssh:keys:certificate:is:managed() {
