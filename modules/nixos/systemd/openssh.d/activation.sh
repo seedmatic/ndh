@@ -19,10 +19,7 @@ main() {
   PRINCIPALS_SRC=@principalsScript@
   GROUP_SRC=@groupKeysScript@
   CLIENT_KEY_NAME=@clientKeyName@
-  SERVER_KEY_NAME="$CLIENT_KEY_NAME"
 
-  SERVER_PRIVATE_SOURCE="$USER_PRIVATE_SOURCE_DIR/$SERVER_KEY_NAME"
-  SERVER_PUBLIC_SOURCE="$USER_CA_SOURCE_DIR/$SERVER_KEY_NAME.pub"
   CLIENT_PRIVATE_SOURCE="$USER_PRIVATE_SOURCE_DIR/$CLIENT_KEY_NAME"
   CLIENT_PUBLIC_SOURCE="$USER_CA_SOURCE_DIR/$CLIENT_KEY_NAME.pub"
 
@@ -41,17 +38,10 @@ main() {
   # (modules/nixos/systemd/ssh-keys-enrichment.nix). No /etc/ssh/keys.d mirror
   # needed — sshd's TrustedUserCAKeys points at SSH_KEYS_DIR/trusted-user-ca.pub.
 
-  # Canonical host SSH identity: install persisted SOPS-managed key material
-  # so renewed VM instances keep a stable host key and known_hosts remains valid.
-  if [ -s "$SERVER_PRIVATE_SOURCE" ]; then
-    install -m 600 "$SERVER_PRIVATE_SOURCE" "$SYSTEM_HOST_KEY"
-    if [ -s "$SERVER_PUBLIC_SOURCE" ]; then
-      install -m 644 "$SERVER_PUBLIC_SOURCE" "$SYSTEM_HOST_KEY_PUB"
-    else
-      ssh-keygen -y -f "$SYSTEM_HOST_KEY" > "$SYSTEM_HOST_KEY_PUB"
-      chmod 644 "$SYSTEM_HOST_KEY_PUB"
-    fi
-  fi
+  # The canonical host key is NOT installed here: this runs before the
+  # home-manager extraction, so it would serve the key extracted the time before.
+  # openssh.d/sshd-host-identity-reload.sh installs it after that extraction,
+  # together with the certificate it must match.
 
   # Keep a root-local client identity available for early boot/activation SSH calls.
   # Home-manager key extraction is user-scoped, so duplicate the RDP host client key for root here.

@@ -100,16 +100,17 @@ let
       profileUserName = config.profile.user.name;
     }
   );
-  sshdHostCertificateReloadTag = "nixos.services.ndh.sshdHostCertificateReload";
-  sshdHostCertificateReloadScript =
-    ndh.store.installBinScript "openssh-sshd-host-certificate-reload"
-      (
-        pkgs.replaceVars ./openssh.d/sshd-host-certificate-reload.sh {
-          nixBashTrampoline = nixBashTrampoline;
-          logTag = sshdHostCertificateReloadTag;
-          hostCertificatePath = config.sshPaths.hostCertPublic;
-        }
-      );
+  sshdHostIdentityReloadTag = "nixos.services.ndh.sshdHostIdentityReload";
+  sshdHostIdentityReloadScript = ndh.store.installBinScript "openssh-sshd-host-identity-reload" (
+    pkgs.replaceVars ./openssh.d/sshd-host-identity-reload.sh {
+      nixBashTrampoline = nixBashTrampoline;
+      logTag = sshdHostIdentityReloadTag;
+      hostKeySource = config.sshPaths.privKeyFile;
+      hostKeyPublicSource = config.sshPaths.hostPublicKeyFile;
+      systemHostKey = hostKeyPath;
+      hostCertificatePath = config.sshPaths.hostCertPublic;
+    }
+  );
   sshdAutostartCheckScript = ndh.store.installBinScript "openssh-sshd-autostart-check" (
     pkgs.replaceVars ./openssh.d/sshd-autostart-check.sh {
       nixBashTrampoline = nixBashTrampoline;
@@ -363,8 +364,9 @@ in
     };
   };
 
-  # The home-manager unit is what writes the host certificate, so it is the one
-  # that tells sshd to pick it up — `+` because the unit runs as the user. Never
+  # The home-manager unit is what extracts the host key and its certificate, so
+  # it is the one that installs the key into /etc/ssh and tells sshd to pick
+  # both up — `+` because the unit runs as the user. Never
   # the other way round (sshd After= home-manager): sshd must not wait on the key
   # pipeline, or a broken extraction locks the operator out.
   # Gated on home-manager.users, not hasHomeManagerService: that one reads
@@ -373,7 +375,7 @@ in
     lib.mkIf (lib.hasAttrByPath [ "home-manager" "users" config.profile.user.name ] config)
       {
         serviceConfig.ExecStartPost = [
-          "+${pkgs.bash}/bin/bash ${sshdHostCertificateReloadScript}/bin/openssh-sshd-host-certificate-reload"
+          "+${pkgs.bash}/bin/bash ${sshdHostIdentityReloadScript}/bin/openssh-sshd-host-identity-reload"
         ];
       };
 
