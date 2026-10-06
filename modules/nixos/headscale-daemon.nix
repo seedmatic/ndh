@@ -26,7 +26,7 @@ let
 
   serverUrl = headscaleCatalog.aliasUrl;
 
-  tailnetCfg = catalog.netplan.tailnet;
+  tailnetCfg = catalog.netplan.tailnets.saas;
   baseDomain = lib.removePrefix "." tailnetCfg.domain;
 
   stateDir = "/var/lib/headscale";

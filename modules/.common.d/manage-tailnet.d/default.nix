@@ -190,9 +190,9 @@ let
         }) (baremetalCidrs ++ vmnetCidrs)
       );
 
-      # Tailscale SERVICES (catalog.netplan.tailnet.services) — see that block for why they
+      # Tailscale SERVICES (catalog.netplan.tailnets.saas.services) — see that block for why they
       # replace routing the home LAN.  Two policy facts they need, both derived:
-      tailnetServices = catalog.netplan.tailnet.services or { };
+      tailnetServices = catalog.netplan.tailnets.saas.services or { };
       serviceNames = builtins.attrNames tailnetServices;
       uniq =
         xs:
@@ -537,12 +537,12 @@ let
   # forward is the reconcile's job, not the catalog's.
   tailnetServicesCanonical =
     let
-      svcs = catalog.netplan.tailnet.services or { };
+      svcs = catalog.netplan.tailnets.saas.services or { };
     in
     map (n: {
       name = "svc:${n}";
       ports = svcs.${n}.ip;
-      comment = "ndh: catalog.netplan.tailnet.services.${n} — advertised by ${
+      comment = "ndh: catalog.netplan.tailnets.saas.services.${n} — advertised by ${
         builtins.concatStringsSep ", " svcs.${n}.advertisers
       }";
       annotations = {

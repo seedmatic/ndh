@@ -8,7 +8,7 @@
 }:
 
 let
-  tailnetDomain = catalog.netplan.tailnet.domain;
+  tailnetDomain = catalog.netplan.tailnets.saas.domain;
   bioskopHost = "bioskop${tailnetDomain}";
   loggerTag = "tailscale-vnc-forward";
 

@@ -51,7 +51,7 @@ let
   # forward target moves; the alias does not).
   serverUrl = headscaleCatalog.aliasUrl;
 
-  tailnetCfg = catalog.netplan.tailnet;
+  tailnetCfg = catalog.netplan.tailnets.saas;
   baseDomain = lib.removePrefix "." tailnetCfg.domain;
 
   # TLS leaf + private extracted by the ssh-keys enrichment pipeline
@@ -101,7 +101,7 @@ let
     inherit pkgs ndh;
   };
 
-  # Render catalog.netplan.tailnet.hosts into the list shape expected
+  # Render catalog.netplan.tailnets.saas.hosts into the list shape expected
   # by headscale's `dns.extra_records`.  Each (host, serviceName) pair
   # becomes one CNAME entry like
   #   rdp.bioskop.mammoth-skate.ts.net  CNAME  bioskop.mammoth-skate.ts.net
@@ -162,7 +162,7 @@ let
     metrics_listen_addr = "127.0.0.1:${toString (headscaleCatalog.listenPort + 1)}";
 
     prefixes = {
-      v4 = catalog.netplan.tailnet.cidr;
+      v4 = catalog.netplan.tailnets.saas.prefixes.v4;
       v6 = "fd7a:115c:a1e0::/48";
       allocation = "sequential";
     };
