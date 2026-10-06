@@ -308,6 +308,99 @@ cuts the control plane (the data plane keeps running on its last map); recovery 
 | rely on ACME or `tailscale cert` for a private name
 |===
 
+=== Reaching the control plane from the darwin guest
+
+Both guests of a bare-metal must reach the headscale container, and only one of them hosts it. The
+container keeps a **stable** address on `fabric-br`, served by its host's own dnsmasq, and the darwin
+guest routes to it through an address the NixOS guest **already** holds on the L2 they share.
+
+Nothing new is needed on the network. The `172.16` addresses are ours — `fabric-br` and the link are
+static, declared inside the guest, and independent of whatever network the bare-metal is attached to.
+What moves when the machine roams is the DHCP lease on `lan-br`, which is exactly why the next hop
+must be one of our own addresses rather than that lease.
+
+The NixOS guest's end of the vz-host link, `hostAddress`, is already such an address. The only
+obstacle is capacity: a `/30` holds two hosts, and both are taken — the guest and the bare-metal. So
+the link **widens** rather than being duplicated.
+
+[cols="1,2,2",options="header"]
+|===
+| | Today | Widened
+
+| `linkCidr`
+| `{link}.0/30` — two hosts
+| `{link}.0/29` — six
+
+| `.1`
+| the NixOS guest on `lan-br` (`hostAddress`)
+| unchanged
+
+| `.2`
+| the corporate bare-metal (`vzHostAddress`)
+| unchanged
+
+| `.3`
+| —
+| the darwin guest
+|===
+
+One link subnet for the **three** parties that share that L2, instead of parallel `/30`s. It stays
+inside slot 8's `/24`, so it collides with nothing, and the carve already reserves the high half for
+links. The darwin guest then carries an alias at `.3` and one route: the fabric `/21` via `.1`.
+
+[mermaid]
+....
+flowchart LR
+  nk["darwin guest — alias .3"]:::seat
+  l2["shared L2 — the bridged physical service"]:::net
+  gw["NixOS guest — .1 on lan-br, plus the fabric gateway"]:::gw
+  bm["corporate bare-metal — .2"]:::outside
+  c["headscale container — stable address on fabric-br"]:::cp
+
+  nk --- l2
+  bm --- l2
+  l2 --- gw
+  gw -->|"forwards"| c
+  nk -.->|"route: the fabric /21 via .1"| gw
+
+  classDef seat fill:#dbeafe,stroke:#1d4ed8;
+  classDef net fill:#eef2f6,stroke:#8a94a3;
+  classDef gw fill:#dcfce7,stroke:#15803d,stroke-width:2px;
+  classDef outside fill:#fee2e2,stroke:#b91c1c;
+  classDef cp fill:#ddd9f2,stroke:#5b52b8,stroke-width:2px;
+....
+
+
+[cols="1,2",options="header"]
+|===
+| Alternative | Why not — measured
+
+| a second NIC per guest
+| a Tart VM has exactly **one**: `--net-bridged` and `--net-softnet` are alternatives to the default
+shared mode, not additions.
+
+| `--net-softnet`
+| it replaces bridged mode, so the guests lose their LAN presence — DHCP reservations, the bridged
+`lan-br`, and the `/30` to the bare-metal.
+
+| the container on the shared L2
+| reachable with no route, but its address becomes whatever the local DHCP hands out, so `server_url`
+stops being stable.
+|===
+
+[WARNING]
+.Two consequences to design for
+====
+*macOS drops interface aliases when the link re-associates* — stated at the head of
+`pkgs/baremetal-link.d/install.sh`, and the reason that package ships a `WatchPaths` daemon. The
+darwin guest needs the same re-apply; unlike the corporate bare-metal it is nix-managed, so that is a
+declarative launchd agent rather than a script delivered as text.
+
+*ARP on a shared L2 is spoofable* when strangers are on it — the class Tart cites to justify softnet.
+Which is why TLS on the control URL is load-bearing here and not defence in depth, per
+<<control-tls>>.
+====
+
 == The three access layers
 
 [mermaid]
