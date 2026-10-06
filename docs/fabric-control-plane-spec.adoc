@@ -229,50 +229,77 @@ only.
 | publish a control plane on the WAN, or point `server_url` at an address reached *through* the tailnet
 |===
 
-==== No tailnet zone — MagicDNS stays off
+==== The tailnet resolves the fabric zone — what it lacks is a MagicDNS zone of its own
 
-*Decided 2026-10-06.* The two self-hosted tailnets carry **no `base_domain`** and run with MagicDNS
-**off**. The SaaS entry keeps `.mammoth-skate.ts.net` because the vendor operates MagicDNS; ours have
-none because their members are named by the fabric zone. Spell the absence as a decision — a
-`magicDns = false` beside the vendor's domain, never an empty string someone later fills in.
+*Decided 2026-10-06.* The two self-hosted tailnets run with MagicDNS **off** and carry no
+`base_domain`. They are **not** without DNS: their members resolve `.{host}` — `nixos.bioskop`,
+`vzhost.bioskop` — **authoritatively**, from the segment's own dnsmasq, through headscale's split
+DNS. The distinction is the whole of it.
+
+[cols="1,2",options="header"]
+|===
+| Knob | What it does for us
+
+| `dns.nameservers.split`
+| *"a map of domains and which DNS server to use for each"* — `{host}: [ the segment's dnsmasq ]`. This
+is how a member resolves the fabric zone, and it needs **no `base_domain`**. The catalog already
+anticipates it: the SaaS console's split-DNS *"become[s] declarative (Headscale daemon dns.split) once
+Headscale is the live control-plane"*.
+
+| `search_domains`
+| *"With MagicDNS enabled, your tailnet base_domain is always the first search domain"* — so with
+MagicDNS **off** it is empty and ours to set. `[ "{host}" ]` makes bare names resolve for members.
+
+| `base_domain` + `magic_dns`
+| **unused.** A MagicDNS zone of our own would duplicate, with a second authority, names the segment
+already serves.
+|===
+
+===== Two constraints headscale enforces itself
+
+Its `config-example.yaml` forbids reusing the fabric zone as a `base_domain` on **two independent**
+counts, so the workaround of re-pointing `server_url` to free the zone does not exist:
+
+[cols="1,2",options="header"]
+|===
+| Constraint | Consequence
+
+| *"This domain _must_ be different from the server_url domain."*
+| with `server_url = headscale.{host}`, a `base_domain` of `{host}` is refused.
+
+| *"`base_domain` must be a FQDN, without the trailing dot."*
+| `{host}` is a **single label**, so it is refused whatever `server_url` is.
+|===
+
+===== Why MagicDNS stays off
 
 [cols="1,2",options="header"]
 |===
 | Reason | Detail
 
 | a tailnet's members are the machines of **one** bare-metal
-| its darwin host and its NixOS guest — two or three names, already resolved **authoritatively** by
-that segment's dnsmasq (`nixos.{host}`, `vzhost.{host}`). A tailnet zone would be a second authority
-for names that already exist.
+| its darwin host and its NixOS guest — two or three names, already served authoritatively by that
+segment's dnsmasq. A MagicDNS zone would be a second authority for names that exist.
 
 | nothing outside a tailnet uses its names
 | cross-tailnet traffic targets segment addresses and fabric-zone names, per
-<<_the_rule,Crossing between tailnets>>. So tailnet names would serve only inside one bare-metal —
-exactly where dnsmasq answers.
+<<_the_rule,Crossing between tailnets>>.
 
 | `extra_records` has never served anything
 | `services.headscaleBootstrap.role = "none"` on both bare-metals: headscale has never run. This
 retires **scaffolding**, not a working feature.
 
 | it retires one fork patch
-| the CNAME synthesis is **not** an upstream feature — headscale's config states *"so far only A and
-AAAA records are supported (on the tailscale side)"*, so it works only through our fork's `net/dns`
-ExtraRecords patch. With MagicDNS off that patch has no consumer. ⚠️ The fork **stays**: its SSH
-interception on port 2222 is load-bearing for keyless Tailscale SSH.
+| the CNAME synthesis is **not** upstream — headscale states *"so far only A and AAAA records are
+supported (on the tailscale side)"*, so it works only through our fork's `net/dns` ExtraRecords patch,
+which then has no consumer. ⚠️ The fork **stays**: its SSH interception on port 2222 is load-bearing
+for keyless Tailscale SSH.
 |===
 
-[IMPORTANT]
-.A constraint headscale enforces itself
-====
-headscale's `config-example.yaml` states that `base_domain` *"must be different from the `server_url`
-domain"*. So a tailnet zone equal to the fabric zone is not a matter of taste — headscale **refuses**
-it. Had we wanted MagicDNS, a sibling private suffix would have been *mandatory*, and it would have
-bought nothing the fabric zone does not already provide.
-====
-
-ⓘ One thing to measure when standing it up: whether headscale validates `base_domain` even with
-`magic_dns: false`. If it does, give it a value that cannot be mistaken for a live zone and record it
-as inert — a placeholder must not become a suffix someone starts using.
+ⓘ Spell the absence as a decision — `magicDns = false` beside the vendor's `domain`, never an empty
+string someone later fills in. And one thing to measure when standing it up: whether headscale
+validates `base_domain` even with `magic_dns: false`. If it does, give it a value that cannot be
+mistaken for a live zone and record it as inert.
 
 [[control-tls]]
 === TLS on the control URL — kept, from the shared authority
