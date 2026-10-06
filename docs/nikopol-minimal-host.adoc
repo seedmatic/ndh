@@ -67,7 +67,8 @@ forwards between the `/30` link and the `/25`, and *advertises* `172.16.16.0/20`
 tailnet with a split-DNS `.nikopol` zone — so any tailnet peer resolves and reaches the
 instances *and* `vzhost.nikopol` by name. No NAT. See
 link:network-topology-c4.adoc[Baremetal Instance Segments & vz-host Access] for the full
-transport (and the runtime-vs-declarative split on the Tailscale SaaS controller).
+transport, and link:fabric-control-plane-spec.adoc[Fabric Control Plane] for the segment's own
+control plane.
 
 === Layer responsibilities
 

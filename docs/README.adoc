@@ -69,6 +69,26 @@ Workflow for running, capturing, and closing collaborative sessions (includes pr
 link:sops-two-phase-rollout.adoc[SOPS Two-Phase Rollout (Shared Flake)]::
 Operational runbook for bootstrap/enforce lifecycle, host-by-host rollout, and onboarding new Darwin/NixOS hosts.
 
+link:fabric-control-plane-spec.adoc[Fabric Control Plane — the Self-Managed Tailnet (spec)]::
+📐 The access model: one headscale control plane per bare-metal, in an Incus container on its NixOS
+guest, carrying the infrastructure nodes (the clusters stay on Tailscale SaaS). Every managed access
+is a grant; the bootstrap is out of band (screen sharing → bare-metal → serial console → `incus
+exec` → headscale); **no SSH key reaches the fabric** — the emergency path is a screen, its credential
+from the GPG-encrypted password store. Covers the CGNAT sub-prefix per
+control plane, the bridge between the two gateways, the hard-coded `ts-forward` drop and the fork
+patch that lifts it, private zones plus one duckdns name, and the version floor.
+
+link:ssh-keys-architecture.adoc[SSH Keys — the Keys That Remain]::
+📐 Which keys exist once access is granted by the control plane — the bridge,
+the service keys, and the shared material — who generates each (always the machine that uses it),
+and how they travel: publics in `keys.yaml`, secrets only inside per-role projections encrypted
+for their own recipients.
+
+link:ssh-keys-renewal-spec.adoc[SSH Keys Renewal Model (spec)]::
+How a static key holds two dated generations at once, which one is presented and which are
+accepted. Two phases — declare and install, then retire AND revoke in the same change. No key
+rotates at activation.
+
 link:security-handling-c4.adoc[Security Handling (C4-Style UML)]::
 Context + container diagrams for SOPS key lifecycle, runtime secret materialization, and Cachix publish/consume flows.
 
@@ -134,7 +154,7 @@ Use Tailscale for external access and mobile devices, use Headscale for fast loc
 
 [source]
 ----
-Tailscale SaaS tailnet (mammoth-skate.ts.net)      ← node plane, always on
+one headscale tailnet per bare-metal               ← infrastructure nodes (clusters: Tailscale SaaS)
     ↓
 Darwin hosts + personal VMs (bioskop, nikopol)
     ↓
@@ -288,11 +308,11 @@ table and host reservations (sourced from `catalog/default.nix`).
 
 Full options in link:modules-reference.adoc[Modules Reference]. Current-model notes:
 
-* *Tailnet* — the fleet uses the *Tailscale SaaS* tailnet `mammoth-skate`. Self-hosted
-  Headscale is a *future* workload-cluster service (not deployed today); the retired
-  `home.arpa` / `headscale.local` addressing is gone.
-* *Subnet routing* — `bioskop-nixos` advertises the home LAN into the tailnet; cluster-side
-  route advertisement is owned by rke2lab's mesh components.
+* *Tailnets* — one self-managed headscale tailnet per bare-metal for the infrastructure nodes;
+  the clusters stay on the Tailscale SaaS tailnet `mammoth-skate`. See
+  link:fabric-control-plane-spec.adoc[Fabric Control Plane].
+* *Subnet routing* — each NixOS guest advertises its segment's `/20` into its own tailnet; the
+  home LAN is never advertised.
 * *vzhost.nikopol roaming* — a *local* `172.16.6` overlay (no advertise, no NAT); see
   link:network-topology-c4.adoc[Baremetal Instance Segments & vz-host Access].
 

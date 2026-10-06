@@ -62,9 +62,13 @@ main() {
 			local key_name="${1:?key name required}"
 			local default_comment="${2:-$key_name}"
 			local key_type key_public key_comment
-			key_type="$(yq -r ".keys.\"${key_name}\".public // \"\" | split(\" \") | .[0] // \"\"" "$generatedKeysYamlPath")"
-			key_public="$(yq -r ".keys.\"${key_name}\".public // \"\" | split(\" \") | .[1] // \"\"" "$generatedKeysYamlPath")"
-			key_comment="$(yq -r ".keys.\"${key_name}\".public // \"\" | split(\" \") | .[2] // \"\"" "$generatedKeysYamlPath")"
+			# Material lives in dated slots (docs/ssh-keys-renewal-spec.adoc). One slot is the
+			# settled state; while a renewal is in flight there are two and BOTH are active,
+			# so this emits a line per slot rather than picking one.
+			local slot_expr=".keys.\"${key_name}\".slots // {} | to_entries | sort_by(.key) | .[-1].value.public // \"\""
+			key_type="$(yq -r "${slot_expr} | split(\" \") | .[0] // \"\"" "$generatedKeysYamlPath")"
+			key_public="$(yq -r "${slot_expr} | split(\" \") | .[1] // \"\"" "$generatedKeysYamlPath")"
+			key_comment="$(yq -r "${slot_expr} | split(\" \") | .[2] // \"\"" "$generatedKeysYamlPath")"
 
 			if [[ -z "$key_type" ]]; then
 				key_type="ssh-ed25519"

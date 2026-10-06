@@ -39,7 +39,6 @@ let
   nixBashTrampoline = "${ndhContext.nixBashTrampoline}";
   # Reuse existing host key generated/managed by NixOS (ed25519 preferred)
   hostKeyPath = "/etc/ssh/ssh_host_ed25519_key"; # runtime path consumed by sshd
-  hostCertPath = null; # Add signed host cert later if desired
   keysDir = config.opensshPolicy.keysDir;
   authorizedPrincipalsInputPath = "${config.opensshPolicy.canonicalCommandDir}/authorized-principals-command.yaml";
   caPublicKeyPath = "${keysDir}/trusted-user-ca.pub"; # generated from all *-ca.pub keys in keysDir
@@ -74,7 +73,7 @@ let
       # slot: the variable holds the per-key `.pub` directory (used to
       # read `<key>.pub` alongside its private counterpart), which
       # ssh-extract-keys routes to `target_dir = "user"` → secretsKeysDir.
-      # authoritySecretsDir only holds CA pubs + certs, not key pubs.
+      # Everything the extractor writes lands in secretsKeysDir, scoped by suffix.
       userCaSourceDir = config.sshPaths.secretsKeysDir;
       systemHostKeyPub = "${hostKeyPath}.pub";
       clientKeyName = clientKeyName;
@@ -99,6 +98,17 @@ let
       authorizedKeysFile = "${config.opensshPolicy.authorizedKeysDir}/${config.profile.user.name}";
       expectedPublicKeyFile = config.sshPaths.hostPublicKeyFile;
       profileUserName = config.profile.user.name;
+    }
+  );
+  sshdHostIdentityReloadTag = "nixos.services.ndh.sshdHostIdentityReload";
+  sshdHostIdentityReloadScript = ndh.store.installBinScript "openssh-sshd-host-identity-reload" (
+    pkgs.replaceVars ./openssh.d/sshd-host-identity-reload.sh {
+      nixBashTrampoline = nixBashTrampoline;
+      logTag = sshdHostIdentityReloadTag;
+      hostKeySource = config.sshPaths.privKeyFile;
+      hostKeyPublicSource = config.sshPaths.hostPublicKeyFile;
+      systemHostKey = hostKeyPath;
+      hostCertificatePath = config.sshPaths.hostCertPublic;
     }
   );
   sshdAutostartCheckScript = ndh.store.installBinScript "openssh-sshd-autostart-check" (
@@ -136,6 +146,12 @@ in
     principalsCommandSource = principalsScriptStore;
     groupKeysCommandSource = groupKeysScriptStore;
     hostKeyPaths = [ hostKeyPath ];
+    # Without a certificate, a client verifying this guest falls back to the raw
+    # key pinned in known_hosts, and a host-key rotation fails on every client.
+    # The served key IS rdp-host (hostkey-enrollment keeps them equal), and this
+    # path is the extractor's symlink to the matching certificate, resolved by
+    # fingerprint. A missing file is not fatal: sshd logs it and serves the key.
+    hostCertificatePath = config.sshPaths.hostCertPublic;
 
     # Force IPv4 only for SSH server
     extraSettings = {
@@ -229,7 +245,7 @@ in
 
   # ssh non-interactive session finds the setuid sudo via /bin or /usr/bin
   # Directory ownership rules for the user-scope ssh secrets tree
-  # (secretsRootDir / secretsKeysDir / authoritySecretsDir) live in
+  # (secretsRootDir / secretsKeysDir) live in
   # modules/nixos/systemd/hm-state-dirs.nix, which is the canonical
   # source of truth for `~/.local/**` layout and uses recursive `Z`
   # rules so the tree self-heals after the root-run enrichment service
@@ -347,6 +363,21 @@ in
       ExecStart = "${pkgs.bash}/bin/bash ${sshdAutostartCheckScript}/bin/openssh-sshd-autostart-check";
     };
   };
+
+  # The home-manager unit is what extracts the host key and its certificate, so
+  # it is the one that installs the key into /etc/ssh and tells sshd to pick
+  # both up — `+` because the unit runs as the user. Never
+  # the other way round (sshd After= home-manager): sshd must not wait on the key
+  # pipeline, or a broken extraction locks the operator out.
+  # Gated on home-manager.users, not hasHomeManagerService: that one reads
+  # config.systemd.services, and conditioning a definition OF it recurses.
+  systemd.services.${homeManagerServiceName} =
+    lib.mkIf (lib.hasAttrByPath [ "home-manager" "users" config.profile.user.name ] config)
+      {
+        serviceConfig.ExecStartPost = [
+          "+${pkgs.bash}/bin/bash ${sshdHostIdentityReloadScript}/bin/openssh-sshd-host-identity-reload"
+        ];
+      };
 
   # Keep sshd start robust across boot ordering by binding it to both
   # canonical multi-user and NDH contributed targets.

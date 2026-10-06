@@ -1,0 +1,177 @@
+= SSH Keys Renewal Model
+:toc: macro
+:toclevels: 3
+
+toc::[]
+
+**Status:** 📐 target — aligned on the fabric control plane, 2026-10-06
+
+== Overview
+
+This spec defines how a static key declared in `modules/home-manager/ssh.d/keys.yaml` is
+*renewed*: how an entry holds two generations at once, which one is presented, which are accepted,
+and how a retired generation is revoked.
+
+It concerns only the keys that remain once access is granted by the control plane — the emergency
+door, the bridge, the service keys (see link:ssh-keys-architecture.adoc[SSH Keys]). There is no
+authority and no certificate, so nothing here signs.
+
+A renewal has to be *survivable*. Replacing a key in one step leaves an instant where the old one is
+refused and the new one is not yet authorised — for the bridge, that instant cuts the two segments
+apart. Every rule below follows from making the overlap representable.
+
+The model deliberately avoids two shapes that look simpler and are not:
+
+* a generation *counter* in the entry name (`{name}-2`): the name is a *reference*, so renaming
+  breaks call sites that have nothing to do with the renewal;
+* a pointer field (`active: …`): a second source of truth, which can disagree with the data it
+  describes.
+
+== Two dated slots per entry
+
+An entry holds its generations in `slots`, keyed by the date the key was generated. A slot holds
+the **public** half only: the private half lives on the owning machine
+(link:ssh-keys-architecture.adoc[SSH Keys], rule 1).
+
+[source,yaml]
+----
+emergency-door:
+  type: ssh-ed25519
+  owner: seat
+  slots:
+    26-07-12: { public: … }   # accepted, retiring
+    26-10-04: { public: … }   # most recent — the one presented
+----
+
+[cols="1,2"]
+|===
+h|Rule|Form
+
+|Which generation is *presented*
+|*Derived*: `max(slots)`. No field to keep in step, so nothing can be stale.
+
+|Which generations are *accepted*
+|*All of them.* `authorized_keys` takes N lines, a WireGuard peer list takes N peers.
+
+|Renewal in flight
+|*Two* slots. Settled is *one*.
+
+|At most two
+|An *assertion*, `length(slots) <= 2` — it cannot be stale, it can only fail, loudly.
+
+|Two renewals the same day
+|A *key collision*, which fails: renewing the same key twice in one day is a symptom.
+|===
+
+IMPORTANT: The asymmetry between *presenting* one generation and *accepting* all of them is the
+whole mechanism. Collapsing `slots` to a single pair removes the overlap.
+
+=== Why `YY-MM-DD` and not `YYYY-MM-DD`
+
+Measured, not aesthetic:
+
+[source]
+----
+26-10-04     -> !!str         stays a string, needs no quoting
+2026-10-04   -> !!timestamp   YAML types it
+----
+
+A key YAML types as a timestamp can be re-serialised in another form by `yq -i`. The two-digit year
+keeps the slot keys inert. The lexicographic sort breaks at a century boundary; slots live for
+weeks, so this is stated and dismissed.
+
+== Every key is stable
+
+There is no rotating key. A key generated at activation is never recorded, so it can be neither
+revoked — no verifier ever sees its public — nor evicted from an agent. Revoking it locally at each
+rotation instead would grow a revocation list at every activation, without bound.
+
+So every key is generated **once**, on its owner, and changes only by the gesture below.
+
+== Generation is an operator gesture on the owning machine
+
+. **generate** the new keypair *on the machine that owns the key*;
+. **declare** its public as a new slot in the repository's `keys.yaml`;
+. **commit**; evaluation renders both generations into every verifier's configuration;
+. **activate** the verifiers — `nixos-rebuild`, over Tailscale SSH, never through the key being
+  renewed.
+
+The private half is never written into `keys.yaml`.
+
+== The renewal is always two phases
+
+[mermaid]
+....
+sequenceDiagram
+  autonumber
+  actor O as Operator
+  participant W as owning machine
+  participant R as keys.yaml
+  participant V as verifiers
+
+  O->>W: generate the new keypair
+  W-->>O: new public
+  O->>R: phase 1 — add slot YY-MM-DD, both generations declared
+  R->>V: nixos-rebuild — both publics authorised
+  O->>V: positive check — the NEW generation serves
+  O->>R: phase 2 — remove the retiring slot AND add it to revoked
+  R->>V: nixos-rebuild — retired generation refused
+....
+
+[cols="1,3"]
+|===
+h|Phase|Content
+
+|1 — declare and install
+|Add the new slot, activate the verifiers, verify the new generation works.
+
+|2 — retire and revoke
+|After a *positive* check that the new generation serves, remove the retiring slot **and** write
+its `revoked` entry, in the same change. Otherwise the retired generation stays valid wherever its
+public is still known.
+|===
+
+Phase 2 is not optional, and the model makes that visible: while two slots exist, the assertion,
+the selector and the document all say a renewal is unfinished.
+
+[cols="1,2",options="header"]
+|===
+| Guard | Enforces
+
+| `length(slots) <= 2` | phase 2 was not skipped
+| a revoked public still carried by a slot is refused at evaluation | revoke only with the slot's removal
+| phase 2 is one gesture of the app | no removal without revocation
+|===
+
+== Selection is an app
+
+[source]
+----
+nix run .#ssh-keys-renew -- [--key NAME]... [--older-than Nd] [--apply]
+nix run .#ssh-keys-renew -- --retire NAME@YY-MM-DD [--apply]
+----
+
+[cols="1,2"]
+|===
+h|Property|Rationale
+
+|Dry-run by default, `--apply` explicit
+|An app that rewrites `keys.yaml` shows its work first.
+
+|`--older-than 90d` reads the slot keys directly
+|No side table — the free benefit of dating the slots.
+
+|`--retire` removes the slot and writes `revoked` together
+|Phase 2 cannot be done half.
+|===
+
+Renewal is requested, not scheduled: a periodic job would renew things nobody is watching, and the
+two-phase rule needs a human to confirm phase 1.
+
+== Related Documentation
+
+* link:ssh-keys-architecture.adoc[SSH Keys] — which keys remain, who owns them, how they travel.
+* link:fabric-control-plane-spec.adoc[Fabric Control Plane] — the access model that makes these
+  keys exceptions.
+* link:sops-two-phase-rollout.adoc[SOPS Two-Phase Rollout] — the same two-phase discipline for sops
+  recipients.

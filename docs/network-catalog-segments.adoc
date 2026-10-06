@@ -42,7 +42,7 @@ flowchart TB
   INST["Incus instances\n(nnh collector, netflow)"]:::wl
   VZ["vz-host\n(corp Mac via /30, or on-LAN Mac Mini)"]:::ext
   PEER["tailnet peers\n(operator Macs = tag:console)"]:::actor
-  TS{{"Tailscale SaaS\ncontrol-plane"}}:::ctrl
+  TS{{"segment control-plane\nheadscale"}}:::ctrl
 
   CAT -->|"derives addresses"| SEG
   SEG -->|"DHCP + .domain DNS"| INST
@@ -68,7 +68,7 @@ flowchart TB
 | green  | workloads (Incus instances, the nnh collector)
 | grey   | external endpoint (the vz-host Mac)
 | purple | actor (a tailnet peer / operator)
-| red    | the tailnet control-plane (Tailscale SaaS)
+| red    | the segment's control plane (headscale)
 |===
 
 === Anatomy of a baremetal segment (container view)
@@ -224,7 +224,7 @@ host is unreachable, or vice-versa:
 
 * *Tailnet auth + ACL* — `nix run '.#manage-tailnet'` (dry-run by
   default): `--rotate-auth-key` mints the per-kind `tskey-auth-*` keys via the
-  OAuth client; `--sync-policy` reconciles the SaaS ACL from the catalog;
+  OAuth client; `--sync-policy` reconciles each segment's policy from the catalog;
   `--retag-devices` heals device tags. See
   `modules/.common.d/manage-tailnet.d/`.
 * *Deploy* — rebuild the Incus host on the branch (`nixos-rebuild-gh switch
@@ -284,8 +284,8 @@ catalog contribution path are implemented and verified end-to-end:
 * ✅ Catalog consumable as JSON (`nix eval --json '…#catalog.netplan.segments'`);
   contribution path defined (`lib.networkBlueprint` union — see
   link:network-catalog.adoc#contributing[Contributing]).
-* ✅ Fleet on Tailscale SaaS; the headscale bootstrap daemon is retired (SaaS is
-  the live control-plane).
+* 📐 One headscale control plane per bare-metal for the infrastructure nodes; the clusters
+  stay on Tailscale SaaS — see link:fabric-control-plane-spec.adoc[Fabric Control Plane].
 
 *Known open item on the ndh side:* an Incus instance cannot yet reach *home-LAN*
 services — `fabric-br` runs `ipv4.nat=false` and the LAN has no return route to

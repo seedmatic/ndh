@@ -6,133 +6,120 @@
 
 == Overview
 
-The fleet's cross-network reachability rests on a *Tailscale SaaS* tailnet,
-`mammoth-skate` (`mammoth-skate.ts.net`), on which the always-on machines are members. The
-home LAN is `192.168.1.0/24`, served by the Bouygues *Bbox* router (`192.168.1.254`, the
-catalog router `mammoth-skate`). A *self-hosted Headscale* control plane is planned as a
-*workload-cluster service* (hosted on the always-live bioskop workload) — it is **not
-deployed today**; the mesh in use is the Tailscale SaaS tailnet.
+The fleet rests on **three tailnets** and one unmanaged LAN:
 
-[NOTE]
-====
-This document describes the *current* model — Tart VMs, `lan-br`, `mammoth-skate.ts.net`,
-the personal/corporate ownership split, and the `172.16.16.0/20` baremetal segment. The earlier
-*Lima* / `incusbr0` / `192.168.106` / `home.arpa` model is *retired*; if you find a
-reference to it elsewhere, treat it as stale.
-====
+* **two self-managed tailnets, one per bare-metal** — each run by a headscale control plane in an
+  Incus container on that bare-metal's NixOS guest, carrying the *infrastructure* nodes;
+* **the Tailscale SaaS tailnet** `mammoth-skate` — carrying the *clusters* (their nodes and their
+  tailscale-operator);
+* **the home LAN** `192.168.1.0/24`, served by the Bouygues *Bbox* (`192.168.1.254`, the catalog
+  router `mammoth-skate`) — deliberately **unmanaged**.
+
+The design and its rationale are in link:fabric-control-plane-spec.adoc[Fabric Control Plane]; this
+document is the operating map.
 
 Authoritative sources (this doc is a map, not the source of truth):
 
-* *Address plan + host reservations* — `catalog/default.nix` (`netplan.*`), the single
-  source of truth, reconciled against the Bbox by the `bbox-reconcile` module.
+* *Address plan + host reservations* — `catalog/default.nix` (`netplan.*`), reconciled against the
+  Bbox by `bbox-reconcile`.
 * *Module options* — link:modules-reference.adoc[Modules Reference].
-* *Cluster mesh (two-plane node/workload model)* — rke2lab
-  `docs/architecture/cluster-api/management-workload-topology.adoc`.
-* *`vzhost.nikopol` baremetal segment* — link:network-topology-c4.adoc[Baremetal Instance
+* *Segments, `/30` links, advertised routes* — link:network-topology-c4.adoc[Baremetal Instance
   Segments & vz-host Access].
+* *How the clusters reach each other* — rke2lab
+  `docs/architecture/cluster-api/management-workload-topology.adoc`.
 
 == Architecture
 
-Two planes stack (full detail in the rke2lab mesh document):
-
-* *Node plane — Tailscale, tailnet `mammoth-skate`.* Every always-on machine is a member:
-  the NixOS Incus-host VMs (`bioskop-nixos`, `nikopol-nixos`) and the personal Macs/VMs.
-  Always present — the bootstrap and external-access transport.
-* *Workload plane — Headscale (future).* A distinct tailnet for workloads (pods/services),
-  deployed as a service on the always-live bioskop workload cluster; absent until a
-  workload runs.
-
 [source]
 ----
-┌───────────────────────────────────────────────────────────────┐
-│  Node plane — Tailscale SaaS tailnet  mammoth-skate.ts.net      │
-│  members: bioskop, nikopol (personal), bioskop-nixos,          │
-│           nikopol-nixos  (+ cluster nodes)                     │
-│  • identity-based SSH  • MagicDNS  • cross-network reachability │
-└───────────────────────────────────────────────────────────────┘
-        ▲                                          ▲
-        │ (future) workload plane = Headscale       │  one exception: vzhost.nikopol (corp Mac)
-        │  hosted on bioskop-wrkld                   │  cannot join → reached via nikopol-nixos's
-        │                                            │  advertised baremetal segment +
-        ▼                                            ▼  .nikopol split-DNS
-   [ workloads / pods / services ]            [ see network-topology-c4.adoc ]
+┌──────────────────────────────┐      bridge       ┌──────────────────────────────┐
+│ tailnet bioskop  (headscale) │ ◀═══════════════▶ │ tailnet nikopol  (headscale) │
+│ bioskop, bioskop-nixos       │  gateway–gateway  │ nikopol, nikopol-nixos       │
+│ control plane: container on  │                   │ control plane: container on  │
+│ bioskop-nixos                │                   │ nikopol-nixos                │
+└──────────────────────────────┘                   └──────────────────────────────┘
+               ▲                                                  ▲
+               │ segment routes                                   │ segment routes, and the
+               │                                                  │ corporate bare-metal's /30
+┌──────────────────────────────────────────────────────────────────────────────────┐
+│ Tailscale SaaS tailnet  mammoth-skate — the clusters' nodes and their operator     │
+└──────────────────────────────────────────────────────────────────────────────────┘
 ----
 
-*One structural exception*: the *corporate bare-metal Mac* `vzhost.nikopol` (JAMF-managed)
-cannot join the tailnet (no VPN binaries by policy). It is reached via its Incus host
-`nikopol-nixos`'s *baremetal instance segment* (`172.16.16.0/20`), advertised into the
-tailnet with a split-DNS `.nikopol` zone — resolved and reached by name, never as a tailnet
-member. See link:network-topology-c4.adoc[Baremetal Instance Segments & vz-host Access].
+*One structural exception*: the corporate bare-metal `vzhost.nikopol` (JAMF-managed) can join no
+tailnet — no VPN binaries by policy. It sits on `nikopol-nixos`'s `/30` link, inside the nikopol
+segment's `/20`, and is reached by name through the `.nikopol` zone, never as a member.
 
 == Network Topology
 
-Two bare-metal hosts, each running a NixOS Tart VM that hosts Incus. The `-nixos` VM is the
-Incus host and a tailnet member; the RKE2 workload cluster runs as Incus instances on it.
+Two bare-metals, each running a NixOS Tart VM that is the Incus host, the segment gateway, and the
+host of its segment's control plane.
 
 === bioskop — Mac Mini · personal · always at home
 
 [source]
 ----
-bioskop (Darwin/macOS, .129)                     ← personal bare-metal, own hardware
-├── Tailscale (mammoth-skate member)
-└── nikopol-... Tart VMs
-    └── bioskop-nixos (NixOS, .130)              ← Incus host · tailnet member
-        ├── lan-br (bridged on the home LAN)
-        ├── advertises 192.168.1.0/24 + 172.16.0.0/20 (+ .bioskop split-DNS)
-        ├── Incus: bioskop-wrkld RKE2 cluster    ← 10.80.0.0/21 (vmnet-br)
-        └── Incus: fabric-br 172.16.0.0/21 (dnsmasq, .bioskop) ← vzhost.bioskop→172.16.8.2 + instances
+bioskop (Darwin/macOS, .129)                     ← personal bare-metal · roles: rdp-host, vz-host
+├── member of the bioskop tailnet
+└── Tart VM nerd-nixos — config bioskop-nixos (NixOS, .130)
+    ├── member of the bioskop tailnet · gateway of the bioskop segment
+    ├── lan-br (bridged on the home LAN)
+    ├── advertises 172.16.0.0/20 (+ .bioskop split-DNS)
+    ├── Incus container: headscale — control plane of the bioskop tailnet
+    ├── Incus: bioskop-wrkld RKE2 cluster        ← 10.80.0.0/21 (vmnet-br) · SaaS tailnet
+    └── fabric-br 172.16.0.0/21 (dnsmasq, .bioskop)
 ----
 
-=== vzhost.nikopol — corp MacBook · JAMF-managed · roaming
+=== vzhost.nikopol — corporate bare-metal · JAMF-managed · roaming
 
 [source]
 ----
-vzhost.nikopol (macOS, JAMF, .1)                     ← corporate bare-metal · NOT on tailnet
-│                                                  (no darwin config; baremetal-link daemon deployed)
-│   en0 (Wi-Fi) + alias 172.16.24.2/30 + routes /21 & 100.64/10 via 172.16.24.1
+vzhost.nikopol (macOS, JAMF)                     ← corporate bare-metal · member of NO tailnet
+│   en0 (Wi-Fi) + alias 172.16.24.2/30 + routes via 172.16.24.1 (baremetal-link daemon)
 │
-├── nikopol (Tart macOS VM, .33)                 ← personal env · tailnet member
-└── nikopol-nixos (Tart NixOS VM, .34)           ← Incus host · tailnet member
+├── nikopol (Tart macOS VM, .33)                 ← personal env · role: rdp-host · nikopol tailnet
+└── nikopol-nixos (Tart NixOS VM, .34)           ← nikopol tailnet · gateway of the nikopol segment
     ├── lan-br (bridged on the LAN) + 172.16.24.1/30 · ip_forward
-    ├── advertises 172.16.16.0/20 + .nikopol split-DNS into the tailnet
-    ├── Incus: nikopol-wrkld RKE2 cluster        ← 10.80.8.0/21 (vmnet-br)
-    └── Incus: fabric-br 172.16.16.0/21 (dnsmasq, .nikopol) ← netflow (collector.nikopol)
+    ├── advertises 172.16.16.0/20 + .nikopol split-DNS
+    ├── Incus container: headscale — control plane of the nikopol tailnet
+    ├── Incus: nikopol-wrkld RKE2 cluster        ← 10.80.8.0/21 (vmnet-br) · SaaS tailnet
+    └── fabric-br 172.16.16.0/21 (dnsmasq, .nikopol) ← netflow (collector.nikopol)
 ----
-
-The `172.16.16.0/20` baremetal segment is *advertised* into the tailnet with a `.nikopol`
-split-DNS zone, so any peer resolves and reaches the instances and `vzhost.nikopol` by name (no
-NAT). On the Tailscale SaaS controller today the advertise + split-DNS are console steps;
-declarative under Headscale later. Full transport in
-link:network-topology-c4.adoc[Baremetal Instance Segments & vz-host Access].
 
 == Network Ranges
 
 [options="header"]
 |===
 | Network | CIDR | Purpose
-| Home LAN | 192.168.1.0/24 | main network (Bbox `mammoth-skate`, gw .254)
+| Home LAN | 192.168.1.0/24 | main network (Bbox `mammoth-skate`, gw .254) — unmanaged
 | Cluster supernet | 10.80.0.0/18 | RKE2 cluster network pool
 | bioskop cluster | 10.80.0.0/21 | bioskop-wrkld
 | nikopol cluster | 10.80.8.0/21 | nikopol-wrkld
 | K8s pods | 10.42.0.0/16 | Kubernetes pods
 | K8s services | 10.43.0.0/16 | Kubernetes services
-| Tailnet (mammoth-skate) | 100.64.0.0/10 | Tailscale overlay
+| CGNAT super-segment | 100.64.0.0/10 | one disjoint sub-prefix per headscale control plane (catalog)
+| Tailnet (SaaS, mammoth-skate) | 100.64.0.0/10 | the clusters' tailnet, allocated by the SaaS
 | Baremetal (reserved) | 172.16.0.0/12 | per-baremetal instance segments
-| nikopol baremetal net | 172.16.16.0/21 | managed Incus net (dnsmasq `.nikopol`) — netflow
+| nikopol baremetal net | 172.16.16.0/21 | fabric-br (dnsmasq `.nikopol`) — netflow
 | nikopol baremetal link | 172.16.24.0/30 | static P2P: vzhost.nikopol .24.2 ↔ nikopol-nixos .24.1
-| bioskop baremetal net | 172.16.0.0/21 | managed Incus net (dnsmasq `.bioskop`) — bioskop instances
+| bioskop baremetal net | 172.16.0.0/21 | fabric-br (dnsmasq `.bioskop`) — bioskop instances
 |===
 
-Cluster CIDRs are derived arithmetically from the `10.80.0.0/18` supernet (8 × /21, one per
-cluster; nodes as /23 within), by rke2lab's `ClusterNetworkBlueprint` — the source of truth
-projected into this catalog via the `rke2lab` flake input. See rke2lab's netplan blueprint
-docs for the allocation model.
+Cluster CIDRs are derived from the `10.80.0.0/18` supernet (8 × /21, one per cluster; nodes as /23
+within) by rke2lab's `ClusterNetworkBlueprint`, projected into this catalog via the `rke2lab` flake
+input.
+
+[NOTE]
+====
+The SaaS tailnet allocates from the whole `100.64.0.0/10`, so its addresses may coincide with a
+headscale sub-prefix. No machine belongs to both, and traffic between tailnets targets segment
+addresses, so the overlap is never seen.
+====
 
 === Home LAN reservations (from `catalog/default.nix`)
 
-Static reservations live in `netplan.lan.hosts` (reconciled against the Bbox). `ownership`
-labels each host `personal` or `corporate` (a flow-attribution label for `nnh`; ndh
-reconciles both).
+Static reservations live in `netplan.lan.hosts` (reconciled against the Bbox). `ownership` labels
+each host `personal` or `corporate` (a flow-attribution label for `nnh`).
 
 [options="header"]
 |===
@@ -144,11 +131,35 @@ reconciles both).
 | bioskop | 192.168.1.129 | darwin-host | personal
 | bioskop-nixos | 192.168.1.130 | nixos | personal
 | bioskop-wifi | 192.168.1.158 | wifi-iface | personal
-| `<cluster>-<role>` RKE2 nodes | (projected) | rke2 | personal
+| `{cluster}-{role}` RKE2 nodes | (projected) | rke2 | personal
 |===
 
 RKE2 node reservations are a pure projection of rke2lab's blueprint (MAC scheme
-`10:66:6a:4c:<clusterId>:<nodeId>`), so they stay in lockstep — no hand-copied values.
+`10:66:6a:4c:{clusterId}:{nodeId}`).
+
+== Names — private zones, one public name
+
+We hold no authority over a public subdomain, so every zone is private. The single public name is
+the Duck DNS host `mammoth-skate.duckdns.org` (`netplan.wan.ddnsHostname`), tracking the dynamic
+public IPv4.
+
+[options="header"]
+|===
+| Name | Zone | Serves
+| `mammoth-skate.duckdns.org` | public | the emergency screen, the bridge endpoint
+| `{instance}.bioskop`, `vzhost.bioskop`, `nixos.bioskop` | private, bioskop dnsmasq | the bioskop segment
+| `{instance}.nikopol`, `vzhost.nikopol`, `nixos.nikopol` | private, nikopol dnsmasq | the nikopol segment, incl. its control plane's `server_url`
+| `{instance}.bioskop` (the control plane) | private, bioskop dnsmasq | the bioskop control plane's `server_url`
+|===
+
+Each control URL is served over TLS with a leaf signed by the shared `mammoth-skate-tls` authority,
+whose root every member already trusts — see
+link:fabric-control-plane-spec.adoc#control-tls[Fabric Control Plane § TLS on the control URL].
+
+[options="header"]
+|===
+| Name | Zone | Serves
+|===
 
 == WAN port forwards (Bbox)
 
@@ -157,39 +168,45 @@ From `netplan.wan.portForwards` (only ports actually configured on the Bbox):
 [options="header"]
 |===
 | External | → Internal | Purpose
-| tcp/2222 | bioskop tcp/22 | SSH into bioskop from off-LAN
-| tcp/41841 | bioskop tcp/41841 | Headscale control plane (when deployed)
+| tcp/2222 | — | superseded: it tunnelled the screen over ssh (`rdp.mammoth-skate`) — close it
+| tcp/5900 | bioskop tcp/5900 | ⚠️ the emergency screen — **not declared in the catalog**, which is the only record of what is open
+| tcp/41841 | — | not needed: both control planes are reached locally — close it
+| udp, to be chosen | bioskop-nixos | the bridge — nikopol-nixos initiates the WireGuard link
 |===
 
-Public IPv4 is dynamic, tracked by Duck DNS at `mammoth-skate.duckdns.org`
-(`netplan.wan.ddnsHostname`).
+== SSH access
 
-== SSH access (current model)
+[options="header"]
+|===
+| Situation | Path | Key
+| managed, steady state | Tailscale SSH on port 2222, granted by the segment's policy | none
+| a NixOS guest, any state | the serial console from its bare-metal (`screen -r {vm}-serial`) | none
+| a cluster node | `incus exec` from its Incus host | none
+| off-site and the segment down | the bbox VNC forward → bioskop's screen → `screen` on the serial console | none — the screen-sharing credential, from the password store
+| `vzhost.nikopol` | from inside the nikopol segment, by its fabric name | per the segment's policy
+|===
 
-* *Across networks* — via the tailnet: `ssh <host>` (MagicDNS `mammoth-skate.ts.net`) or
-  `tailscale ssh <host>`. Members: `bioskop`, `nikopol`, the `-nixos` hosts.
-* *`vzhost.nikopol`* (off-tailnet corp Mac) — a real DNS name via the `.nikopol` split-DNS zone:
-  `ssh vzhost.nikopol` resolves to `172.16.24.2` and reaches it over the advertised segment (no
-  `HostName`/`ProxyJump`/resolver). See
-  link:network-topology-c4.adoc#usage-patterns[the vz-host access usage patterns].
-* SSH config is rendered per host by the ndh SSH modules; see
-  link:modules-reference.adoc[Modules Reference] and the catalog `netplan.tailnet.hosts`.
+Cross-segment access targets the other segment's fabric names (`nixos.{host}`, `vzhost.{host}`),
+never its MagicDNS names — see
+link:fabric-control-plane-spec.adoc#_crossing_between_tailnets[Crossing between tailnets].
 
 == Security
 
-* All tailnet traffic is WireGuard-encrypted; access is identity-based (no shared keys).
-* The corp Mac runs *no VPN binary* (policy); it is reached via its Incus host's advertised
-  baremetal segment + `.nikopol` split-DNS, never as a tailnet member. No NAT — source IPs
-  preserved.
-* Secrets (Bbox admin credential, tailnet auth) are sops-encrypted in `.secrets`; never
-  commit plaintext.
+* All tailnet traffic is WireGuard-encrypted, and access is granted by policy.
+* The corporate bare-metal runs *no VPN binary* and holds *no key*; it is reached over its
+  segment, never as a tailnet member. No NAT — source IPs preserved.
+* The home LAN is outside every policy; bioskop's screen there is guarded by the operator's macOS
+  credentials, and is addressed by a name only the Bbox resolves.
+* Secrets (Bbox admin credential, auth keys) are sops-encrypted in `.secrets`; never commit
+  plaintext.
 
 == Related documentation
 
-* link:network-topology-c4.adoc[Baremetal Instance Segments & vz-host Access (C4-Style UML)]
-  — the advertised segment + split-DNS.
-* link:nikopol-minimal-host.adoc[Corp Bare-Metal Minimal Host (vzhost.nikopol)] — the corp Mac +
-  its Tart VMs.
+* link:fabric-control-plane-spec.adoc[Fabric Control Plane] — the model this map operates.
+* link:network-topology-c4.adoc[Baremetal Instance Segments & vz-host Access (C4-Style UML)] — the
+  segments, the `/30` links, the advertised routes.
+* link:nikopol-minimal-host.adoc[Corp Bare-Metal Minimal Host (vzhost.nikopol)] — the corporate
+  bare-metal and its Tart VMs.
 * link:modules-reference.adoc[Modules Reference] — NixOS/Darwin module options.
-* rke2lab `docs/architecture/cluster-api/management-workload-topology.adoc` — the cluster
-  mesh two-plane model and the off-mesh `vzhost.nikopol` note.
+* rke2lab `docs/architecture/cluster-api/management-workload-topology.adoc` — the clusters on the
+  SaaS tailnet and their reach across bare-metals.

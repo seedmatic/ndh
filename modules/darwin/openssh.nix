@@ -99,6 +99,17 @@ in
       client.enable = true;
     };
 
+    # opensshPolicy now manages /etc/ssh/ssh_known_hosts (the host authority, for
+    # root as for everyone). bioskop had an unmanaged one — leftovers of an old
+    # nix-darwin linux-builder keyscan: six `# localhost:22` comments and two pins
+    # for that builder, which bootstrap-linux-builder no longer reads (it keeps its
+    # own /var/root/.ssh/known_hosts.linux-builder). Without its hash here,
+    # nix-darwin aborts the activation on an unexpected file in /etc; with it, the
+    # old file is moved aside as *.before-nix-darwin.
+    environment.etc."ssh/ssh_known_hosts".knownSha256Hashes = [
+      "94534bca4c585b03705f6b0195da955c8fc12336a6dbbd35429e1d6b2e992e5c"
+    ];
+
     # System packages
     environment.systemPackages = with pkgs; [
       rsync

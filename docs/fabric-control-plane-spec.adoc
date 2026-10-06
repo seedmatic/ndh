@@ -1,0 +1,1135 @@
+= Fabric Control Plane — the Self-Managed Tailnet
+:toc: left
+:toclevels: 3
+:icons: font
+
+**Status:** 📐 target architecture — decided 2026-10-06, not built +
+**Scope:** how every managed access to the fabric is granted, and what remains a key
+
+[NOTE]
+====
+This spec states the *target* only. How the infrastructure gets there from today's state —
+Tailscale SaaS, a CA-based SSH model, keys rotated at every activation — is the migration atlas:
+rke2lab `docs/architecture/atlas/fabric-control-plane.adoc`.
+
+The corporate bare-metal is referred to by its role and its network alias `vzhost.nikopol`, never
+by its machine name.
+====
+
+[IMPORTANT]
+.Scope — the infrastructure nodes, not the clusters
+====
+The self-managed tailnets carry the **infrastructure nodes**: the bare-metals' darwin hosts and
+their NixOS guests. **The clusters stay on the Tailscale SaaS tailnet** (`mammoth-skate`): their
+tailscale-operator drives the Tailscale admin API (`/api/v2`, OAuth), which headscale only gains
+in 0.30.0, unreleased on 2026-10-06.
+
+Cluster nodes need no ssh either: they are Incus instances, reached out of band with
+`incus exec` from their host — the cluster equivalent of the guests' serial console.
+====
+
+== Overview
+
+The fabric becomes **our own tailnet**. Each bare-metal runs the control plane of its segment —
+a headscale server in an Incus container on its NixOS guest — and from then on *every* managed
+access is a **grant** in that control plane's policy. Keys stop being the access model; they
+survive only as two declared exceptions.
+
+[cols="1,3",options="header"]
+|===
+| Property | What it gives
+
+| Access is policy
+| Host roles become tags, principals become grants. One source — the catalog — renders the policy.
+
+| Revocation is removal
+| Withdrawing a grant or a node propagates through the control plane. No revocation list grows
+with activations.
+
+| Bootstrap is out of band
+| The control plane is hosted inside the fabric it controls, so it is bootstrapped by a path that
+needs neither the tailnet nor a key.
+
+| No SSH key reaches the fabric
+| Not one. The out-of-band paths need none, the managed paths are grants, and the emergency path is a
+screen. The only key material left is one static WireGuard keypair per gateway, for the bridge.
+|===
+
+== Vocabulary
+
+[cols="1,3",options="header"]
+|===
+| Term | Meaning
+
+| *Bare-metal*
+| A physical machine: `bioskop` (nix-managed) or the corporate bare-metal (`vzhost.nikopol`,
+foreign, MDM-managed).
+
+| *Segment*
+| A bare-metal's network slice: its `fabric-br` `/21`, the `/30` link to the bare-metal, its
+`vmnet` cluster segments, its DNS zone `.{host}`.
+
+| *Control plane*
+| The headscale server of one segment, in an Incus container on that segment's NixOS guest.
+
+| *Tailnet*
+| The network one control plane governs. **Two tailnets, one per bare-metal.**
+
+| *Gateway*
+| The segment's NixOS guest (`bioskop-nixos`, `nikopol-nixos`): subnet router of its segment, and
+endpoint of the bridge.
+
+| *Bridge*
+| The link between the two gateways that lets segment-to-segment traffic cross tailnets.
+
+| *Role*
+| What a host does — `rdp-host`, `vz-host`, `linux-builder`, `nix-store`. A base set comes from the
+platform, additions come from the catalog. Rendered as tags.
+|===
+
+== C1 — system context
+
+[mermaid]
+....
+flowchart LR
+  op["Operator"]:::person
+  corp["Corporate bare-metal — vzhost.nikopol — display only, holds no key"]:::outside
+  home["Home segment 192.168.1.0/24 — UNMANAGED"]:::unmanaged
+  bbox["bbox — WAN tcp/2222 + the bridge UDP port"]:::ext
+
+  subgraph TB_["Tailnet bioskop"]
+    bioskop["bioskop — bare-metal, RDP seat, vz host"]:::seat
+    hsB["control plane bioskop"]:::cp
+  end
+  subgraph TN_["Tailnet nikopol"]
+    nikopol["nikopol — darwin VM, RDP seat"]:::seat
+    hsN["control plane nikopol"]:::cp
+  end
+
+  op -->|"screen"| corp
+  corp -->|"VNC, at home"| home
+  home -->|"VNC, macOS credentials"| bioskop
+  corp -->|"local screen"| nikopol
+  hsB -.->|"control"| bioskop
+  hsN -.->|"control"| nikopol
+  TB_ <-->|"bridge between gateways"| TN_
+  nikopol -->|"emergency path, off-tailnet"| bbox
+  bbox -->|"VNC forward — screen, no key"| bioskop
+
+  classDef person fill:#e7ebf0,stroke:#555;
+  classDef outside fill:#fee2e2,stroke:#b91c1c;
+  classDef unmanaged fill:#f3f4f6,stroke:#9ca3af,stroke-dasharray:4 3;
+  classDef ext fill:#e7ebf0,stroke:#8a94a3;
+  classDef seat fill:#dbeafe,stroke:#1d4ed8;
+  classDef cp fill:#ddd9f2,stroke:#5b52b8,stroke-width:2px;
+....
+
+Legend: blue — RDP seat; violet — control plane; red — outside the fabric's trust; grey dashed —
+deliberately unmanaged.
+
+The **home segment is unmanaged by design**. bioskop is LAN-fixed; it accepts VNC there behind the
+operator's macOS credentials, and nothing of it enters the policy. That path depends on nothing
+this spec builds, which is what makes bioskop autonomous.
+
+== C2 — containers, symmetric on each bare-metal
+
+Both platforms play the same roles on each bare-metal. The one difference: on the corporate side
+the managed darwin host is split out into a VM (`nikopol`), because a corporate machine cannot be
+nix-managed.
+
+[mermaid]
+....
+flowchart TB
+  subgraph BM_B["bioskop — bare-metal, nix-managed"]
+    direction TB
+    dB["darwin — roles: rdp-host, vz-host"]:::seat
+    subgraph VM_B["Tart VM nerd-nixos — config bioskop-nixos"]
+      direction TB
+      gwB["gateway — subnet router of the /20, builder, nix-store"]:::gw
+      subgraph INC_B["Incus"]
+        hsB["headscale container — own network stack, no tailscaled"]:::cp
+      end
+    end
+    fabB["fabric-br"]:::net
+  end
+
+  subgraph BM_N["corporate bare-metal — foreign, MDM-managed"]
+    direction TB
+    dN["darwin VM nikopol — role: rdp-host"]:::seat
+    subgraph VM_N["Tart VM nikopol-nixos"]
+      direction TB
+      gwN["gateway — subnet router of the /20, builder, nix-store"]:::gw
+      subgraph INC_N["Incus"]
+        hsN["headscale container — own network stack, no tailscaled"]:::cp
+      end
+    end
+    fabN["fabric-br"]:::net
+  end
+
+  hsB -.->|"control plane"| gwB
+  hsN -.->|"control plane"| gwN
+  gwB --- fabB
+  gwN --- fabN
+  gwB <==>|"bridge"| gwN
+
+  classDef seat fill:#dbeafe,stroke:#1d4ed8;
+  classDef gw fill:#dcfce7,stroke:#15803d,stroke-width:2px;
+  classDef cp fill:#ddd9f2,stroke:#5b52b8,stroke-width:2px;
+  classDef net fill:#eef2f6,stroke:#8a94a3;
+....
+
+[cols="1,3",options="header"]
+|===
+| Placement | Why
+
+| headscale in an Incus **container**
+| headscale's FAQ: *"Running headscale on a machine that is also in the tailnet can cause problems
+with subnet routers, traffic relay nodes, and MagicDNS. It might work, but it is not supported."*
+The container has its own network stack and runs no `tailscaled`, so it is a different machine;
+its host joins the tailnet and stays a subnet router.
+
+| the **gateway** is the NixOS guest, not the control plane
+| headscale carries no packets — its embedded DERP relays only inside its own tailnet. The guest
+already owns `fabric-br` and advertises its segment.
+
+| `server_url` is reachable **without the tailnet**
+| Otherwise a tailnet outage makes its own control plane unreachable. See <<naming>>.
+|===
+
+[[naming]]
+=== Naming — private domains only, one public name
+
+We hold no authority over a public subdomain, so every zone is **private**; the only public name is
+a **duckdns** host.
+
+The control connection never needs it. A tailnet's members are the machines of ONE bare-metal — its
+darwin host and its NixOS guest, next to the container — so each member reaches its control plane
+**locally**, over the segment. The control traffic never crosses the public network.
+
+[cols="1,2",options="header"]
+|===
+| Flow | Crosses the public network?
+
+| member → its control plane (registration, network map) | **no** — local, over the segment
+| between members of one tailnet | no — direct WireGuard on the same hardware
+| the bridge between the two gateways | **yes** — nikopol initiates towards a bbox UDP forward
+| the emergency path | **yes** — the duckdns name, a bbox VNC forward to bioskop's screen
+| DERP fallback | yes — Tailscale's public relays, with their own valid certificates
+|===
+
+So each `server_url` is a **private fabric-zone name** of its own segment, and no inbound door is
+opened for a control plane. The duckdns name serves the emergency screen and the bridge endpoint
+only.
+
+[cols="1,1",options="header"]
+|===
+| ✅ Do | ❌ Don't
+
+| check, per member, that the control URL is reached over the segment, not over `tailscale0`
+| publish a control plane on the WAN, or point `server_url` at an address reached *through* the tailnet
+|===
+
+[[control-tls]]
+=== TLS on the control URL — kept, from the shared authority
+
+*Decided 2026-10-06.* The control URL is served over TLS with a leaf signed by
+**`mammoth-skate-tls`**, the authority already shared with the cluster PKI. Not because the traffic
+would otherwise be in the clear — the control protocol is Noise-encrypted on its own — but because
+TLS is what **authenticates the server at first contact**: a client fetches the server's Noise key
+from `server_url`, and over plain HTTP a party on that path could substitute its own.
+
+That first hop is *not* host-internal, which makes this load-bearing rather than defence in depth.
+*Measured:* a Tart VM has exactly ONE network interface — `run.sh` passes only
+`--net-bridged={service}`, and `tart run --help` offers `--net-bridged` / `--net-softnet` as
+alternatives to the default shared (vmnet NAT) mode, not as additions. Both guests of a bare-metal are
+therefore bridged onto the same physical L2, which on a roaming host is a hotspot shared with
+strangers. The `/30` link rides that same adapter, and the cluster's `vmnet-{role}` bridges live
+*inside* the NixOS guest, where the darwin guest has no leg — so no existing network makes this path
+private.
+
+Neither automatic mechanism applies, which is why the authority is the answer:
+
+[cols="1,2",options="header"]
+|===
+| Mechanism | Why not
+
+| `tailscale cert` (node certificates)
+| not implemented by headscale — issue #2137, open, with #2527 / #2696 / #3321 tracking it. On the
+SaaS it works because the vendor controls the public `ts.net` domain.
+
+| headscale's own ACME (Let's Encrypt)
+| needs a **public** name and port 80 (HTTP-01) or 443 (TLS-ALPN-01) reachable from outside. Our
+control URLs are private and local. Staging changes nothing: same challenges, and its roots are test
+roots in no trust store.
+|===
+
+[cols="1,3",options="header"]
+|===
+| Property | Value, and why
+
+| Algorithm
+| **ECDSA P-256** — Apple's SecTrust rejects Ed25519 leaves, which is why the fleet carries two roots
+(Ed25519 for SSH, ECDSA for TLS). Already recorded in `modules/.common.d/tailnet-client-wiring.nix`.
+
+| Trust, already in place
+| the root is installed on both platforms with no new work: `security.pki.certificates` on NixOS, and
+`security add-trusted-cert -d -r trustRoot` into the System keychain on darwin
+(`modules/darwin/tls-authority-keychain.nix`). Enumerated from every authority advertising
+`tls-authority`, never hard-coded.
+
+| Validity
+| **long-lived, our choice.** *Measured:* Apple's 398-day ceiling states *"This change will not affect
+certificates issued from user-added or administrator-added Root CAs"* — and ours is
+administrator-added, so no ceiling applies. Recommended: a decade, which makes issuance a one-off
+gesture rather than a recurring chore. The exact `tls.not_after_days` is to choose.
+
+| Who signs
+| a **seat**, with `step-cli` against the root — the same path the retired `headscale-tls-server`
+leaf used. Never at activation: that entry had an empty slot and regenerated its key on every
+activation on every host, which is exactly the defect this model removes.
+
+| Delivery
+| the leaf is public material: `tls_cert_path` / `tls_key_path` in headscale's config. The leaf's
+private key is generated **in the container** and never leaves it — only its public half is signed.
+
+| Cost
+| headscale reads both files at start, so a re-issue means restarting the container. An expired leaf
+cuts the control plane (the data plane keeps running on its last map); recovery is the serial console.
+|===
+
+[cols="1,1",options="header"]
+|===
+| ✅ Do | ❌ Don't
+
+| generate the leaf key in the container, sign its public half on a seat, commit the certificate
+| sign at activation, or let a key regenerate itself — the `headscale-tls-server` defect
+
+| watch the expiry, however distant
+| rely on ACME or `tailscale cert` for a private name
+|===
+
+=== Reaching the control plane from the darwin guest
+
+Both guests of a bare-metal must reach the headscale container, and only one of them hosts it. The
+container keeps a **stable** address on `fabric-br`, served by its host's own dnsmasq, and the darwin
+guest routes to it through an address the NixOS guest **already** holds on the L2 they share.
+
+Nothing new is needed on the network. The `172.16` addresses are ours — `fabric-br` and the link are
+static, declared inside the guest, and independent of whatever network the bare-metal is attached to.
+What moves when the machine roams is the DHCP lease on `lan-br`, which is exactly why the next hop
+must be one of our own addresses rather than that lease.
+
+The NixOS guest's end of the vz-host link, `hostAddress`, is already such an address. The only
+obstacle is capacity: a `/30` holds two hosts, and both are taken — the guest and the bare-metal. So
+the link **widens** rather than being duplicated.
+
+[cols="1,2,2",options="header"]
+|===
+| | Today | Widened
+
+| `linkCidr`
+| `{link}.0/30` — two hosts
+| `{link}.0/29` — six
+
+| `.1`
+| the NixOS guest on `lan-br` (`hostAddress`)
+| unchanged
+
+| `.2`
+| the corporate bare-metal (`vzHostAddress`)
+| unchanged
+
+| `.3`
+| —
+| the darwin guest
+|===
+
+One link subnet for the **three** parties that share that L2, instead of parallel `/30`s. It stays
+inside slot 8's `/24`, so it collides with nothing, and the carve already reserves the high half for
+links. The darwin guest then carries an alias at `.3` and one route: the fabric `/21` via `.1`.
+
+[mermaid]
+....
+flowchart LR
+  nk["darwin guest — alias .3"]:::seat
+  l2["shared L2 — the bridged physical service"]:::net
+  gw["NixOS guest — .1 on lan-br, plus the fabric gateway"]:::gw
+  bm["corporate bare-metal — .2"]:::outside
+  c["headscale container — stable address on fabric-br"]:::cp
+
+  nk --- l2
+  bm --- l2
+  l2 --- gw
+  gw -->|"forwards"| c
+  nk -.->|"route: the fabric /21 via .1"| gw
+
+  classDef seat fill:#dbeafe,stroke:#1d4ed8;
+  classDef net fill:#eef2f6,stroke:#8a94a3;
+  classDef gw fill:#dcfce7,stroke:#15803d,stroke-width:2px;
+  classDef outside fill:#fee2e2,stroke:#b91c1c;
+  classDef cp fill:#ddd9f2,stroke:#5b52b8,stroke-width:2px;
+....
+
+
+[cols="1,2",options="header"]
+|===
+| Alternative | Why not — measured
+
+| a second NIC per guest
+| a Tart VM has exactly **one**: `--net-bridged` and `--net-softnet` are alternatives to the default
+shared mode, not additions.
+
+| `--net-softnet`
+| it replaces bridged mode, so the guests lose their LAN presence — DHCP reservations, the bridged
+`lan-br`, and the `/30` to the bare-metal.
+
+| the container on the shared L2
+| reachable with no route, but its address becomes whatever the local DHCP hands out, so `server_url`
+stops being stable.
+|===
+
+[WARNING]
+.Two consequences to design for
+====
+*macOS drops interface aliases when the link re-associates* — stated at the head of
+`pkgs/baremetal-link.d/install.sh`, and the reason that package ships a `WatchPaths` daemon. The
+darwin guest needs the same re-apply; unlike the corporate bare-metal it is nix-managed, so that is a
+declarative launchd agent rather than a script delivered as text.
+
+*ARP on a shared L2 is spoofable* when strangers are on it — the class Tart cites to justify softnet.
+Which is why TLS on the control URL is load-bearing here and not defence in depth, per
+<<control-tls>>.
+====
+
+== The three access layers
+
+[mermaid]
+....
+flowchart TB
+  subgraph L0["Layer 0 — out of band, the bootstrap"]
+    direction LR
+    l0a["screen sharing"] --> l0b["bare-metal"] --> l0c["screen on the serial console"] --> l0d["NixOS guest"] --> l0e["incus exec"] --> l0f["headscale"]
+  end
+  subgraph L1["Layer 1 — managed tailnet, the steady state"]
+    direction LR
+    l1a["headscale"] --> l1b["grants + ssh rules"] --> l1c["Tailscale SSH, port 2222 of the fork"]
+  end
+  subgraph L2["Layer 2 — emergency path, off-site AND the segment down"]
+    direction LR
+    l2a["a seat — nikopol"] --> l2b["bbox VNC forward"] --> l2c["bioskop's screen"] --> l2d["screen on the serial console"]
+  end
+  L0 ==>|"headscale up"| L1
+  L1 -.->|"control plane down, off-site"| L2
+
+  classDef none fill:#dcfce7,stroke:#15803d;
+  classDef one fill:#fef3c7,stroke:#b45309;
+  class l0a,l0b,l0c,l0d,l0e,l0f,l1a,l1b,l1c none
+  class l2a,l2b,l2c,l2d none
+....
+
+[cols="1,2,1",options="header"]
+|===
+| Layer | Guarded by | Key
+
+| 0 — out of band | macOS credentials, then the guest's console login | none
+| 1 — managed tailnet | the policy's grants | none
+| 2 — emergency path | the screen-sharing credential, from the password store | none
+|===
+
+=== The emergency path is a screen, not a key
+
+*Decided 2026-10-06.* There is **no emergency SSH key.** The path that survives everything is the
+operator's own screen:
+
+[cols="1,2",options="header"]
+|===
+| Where the operator is | The path
+
+| at home
+| VNC on the home segment to bioskop, addressed by a name only the bbox resolves → `screen` on the
+guest's serial console → `incus exec`
+
+| off-site, the segment healthy
+| nikopol's screen → the bridge (static WireGuard, independent of any control plane) → bioskop
+
+| off-site, bioskop's guest down
+| the **bbox VNC forward** straight to bioskop's screen → `screen` on the serial console of the guest
+to repair
+|===
+
+Each line reaches the whole of that bare-metal's layer 0, so an operator who holds a screen holds
+everything. And since the bridge is static WireGuard, line 2 does not need a control plane to be up.
+
+[cols="1,2",options="header"]
+|===
+| Consequence | Detail
+
+| ✅ zero SSH keys for reaching the fabric
+| the remaining key material is the bridge's WireGuard pairs, plus — if measured necessary — a service
+key for a flow Tailscale SSH cannot carry. Nothing an operator uses.
+
+| the credential comes from the **password store**
+| GPG-encrypted, held at `nxmatic/store` — see <<bootstrap-root>>. So it can be long and unique, which
+is the mitigation this path needs, Screen Sharing being exposed on the WAN.
+
+| ⚠️ `tcp/2222` loses its purpose
+| it existed to tunnel the screen over SSH (`rdp.mammoth-skate`: `LocalForward 0.0.0.0:5901
+localhost:5900`). With a direct VNC forward, both that forward and that ssh-config block are
+superseded.
+
+| ⚠️ the catalog does not declare the VNC forward
+| `netplan.wan.portForwards` lists `2222` and `41841` only. It is *descriptive* — nothing reconciles
+it against the router — so it is the only record of what is open, and the row is missing.
+|===
+
+== Raising the fabric — the bring-up, from nothing
+
+Nothing in this sequence uses a key. Each step is reached from the step before it by a path that does
+not depend on the network being up.
+
+[[bootstrap-root]]
+=== The root — what the operator brings to bioskop
+
+Below layer 0 there is a root the fabric cannot derive: **the operator's GnuPG key, and a GitHub
+session.** That pair opens the password store, and the store holds what the fabric cannot invent. The
+GPG key is carried to bioskop by hand.
+
+[mermaid]
+....
+flowchart LR
+  gpg["GnuPG key — operator-carried, physically"]:::root
+  gh["GitHub session — gh auth, from the shared screen"]:::root
+  store["password store — pass, GPG-encrypted, nxmatic/store"]:::secret
+  scr["screen-sharing credential — the emergency path"]:::secret
+  age["sops/age operator identity"]:::secret
+  repos["the repositories — ndh, rke2lab"]:::plain
+  seat["bioskop — the first seat"]:::seat
+  nk["nikopol — the second seat, by authorized replication"]:::seat
+  fab["the fabric — control planes, grants, guests"]:::ok
+
+  gpg -->|"decrypts"| store
+  gh -->|"releases"| store
+  gh -->|"releases"| repos
+  store --> scr
+  store --> age
+  age --> seat
+  repos --> seat
+  seat --> nk
+  seat --> fab
+
+  classDef root fill:#fde68a,stroke:#b45309,stroke-width:2px;
+  classDef secret fill:#f6e6c4,stroke:#9a6710,stroke-dasharray:5 3;
+  classDef plain fill:#eef2f6,stroke:#8a94a3;
+  classDef seat fill:#dbeafe,stroke:#1d4ed8;
+  classDef ok fill:#d9f2e0,stroke:#2d7a4b;
+....
+
+[cols="1,3",options="header"]
+|===
+| What the root holds | Why nothing below can replace it
+
+| the **GnuPG key**
+| it opens the **password store** — `pass`, GPG-encrypted, held at `nxmatic/store`. Operator-carried,
+so it is the one piece no machine of the fabric holds.
+
+| a **GitHub session**
+| it releases both the password store and the repositories every activation derives from.
+`gh auth login`, run from the shared screen, is what unlocks them.
+
+| the **password store** they open
+| it holds the credentials the fabric cannot derive: the screen-sharing credential of the emergency
+path, and the sops/age operator identity.
+|===
+
+==== The initiating gesture
+
+The root is **deliberately manual**, and it is the only manual step in the whole model. On a seat that
+holds nothing yet, the operator:
+
+[source,bash]
+----
+gh auth login                                        # 1 · release GitHub
+git clone https://github.com/nxmatic/store.git \
+    "${XDG_DATA_HOME:-$HOME/.local/share}/password-store"   # 2 · bring the store down
+pass ls                                              # 3 · the GPG key opens it
+----
+
+From there everything else derives: the screen-sharing credential of the emergency path, the sops/age
+operator identity, and — through the repositories — every activation.
+
+[cols="1,2",options="header"]
+|===
+| Property | Why it is right that this is a gesture
+
+| it is **not** automated
+| a machine that could fetch the store unattended would hold the credential that opens it, which is
+the one thing the root must not delegate. The operator's presence *is* the authentication.
+
+| it is **idempotent and cheap**
+| three commands, one clone of a repository that already exists. Nothing to provision.
+
+| it is the only step that needs the **outside**
+| GitHub reachable, and the GPG key present. Everything after it is self-hosted — see the note above.
+|===
+
+`pass` itself is already installed and configured on the seats
+(`modules/home-manager/password-store.nix`: the `pass-audit` / `pass-otp` / … extensions, and
+`PASSWORD_STORE_DIR` pointing at that location), so the gesture needs no setup beyond the clone.
+
+[IMPORTANT]
+.The two remaining external dependencies — stated, not hidden
+====
+The model removes the vendor from the *control plane*, not from the *bootstrap*. Starting the fabric
+from nothing needs **GitHub to be reachable** and **the operator's GPG key to be present**. Everything
+after that is self-hosted. Naming it is the point: a reader who believes the fabric is fully sovereign
+would plan a cold start that cannot complete.
+====
+
+*Measured 2026-10-06 — the tool is already there, the role is new.* GnuPG is configured on the seats
+(`modules/home-manager/gpg.nix`: `programs.gpg`, `services.gpg-agent` with loopback pinentry), but it
+plays **no part** in today's secret chain: `.sops.yaml` carries age recipients only, and commit signing
+is SSH-based (`github-signing.pub`, `modules/home-manager/git.nix`). So this adds a role to an existing
+tool rather than a new mechanism.
+
+
+=== Containers — who is involved, and over what
+
+[mermaid]
+....
+flowchart TB
+  op["Operator — carries the GPG key"]:::person
+
+  subgraph HOME["Home — bioskop, the always-at-home bare-metal"]
+    direction TB
+    bs["bioskop — darwin seat, holds the operator identity"]:::seat
+    subgraph VB["Tart VM nerd-nixos → bioskop-nixos"]
+      direction TB
+      sb["serial console — screen -r"]:::oob
+      gb["gateway — dnsmasq, Incus"]:::gw
+      cb["headscale container"]:::cp
+    end
+  end
+
+  subgraph CORP["Corporate bare-metal — holds no identity"]
+    direction TB
+    subgraph VN["Tart VM nikopol → the second seat"]
+      nk["nikopol — darwin seat, receives by replication"]:::seat
+    end
+    subgraph VNX["Tart VM nerd-nixos → nikopol-nixos"]
+      direction TB
+      sn["serial console — screen -r"]:::oob
+      gn["gateway — dnsmasq, Incus"]:::gw
+      cn["headscale container"]:::cp
+    end
+  end
+
+  op -->|"1 · by hand"| bs
+  bs -->|"2 · authorized replication, seats only"| nk
+  bs -->|"3 · screen + serial"| sb
+  sb --> gb --> cb
+  nk -->|"screen"| sn
+  sn --> gn --> cn
+  cb -.->|"grants + Tailscale SSH"| gb
+  cn -.->|"grants + Tailscale SSH"| gn
+  cn -.->|"grants"| nk
+
+  classDef person fill:#e7ebf0,stroke:#555;
+  classDef seat fill:#dbeafe,stroke:#1d4ed8;
+  classDef oob fill:#fde68a,stroke:#b45309;
+  classDef gw fill:#dcfce7,stroke:#15803d,stroke-width:2px;
+  classDef cp fill:#ddd9f2,stroke:#5b52b8,stroke-width:2px;
+....
+
+Legend: amber — the out-of-band link, which depends on no network; blue — a seat holding the operator
+identity; green — a segment gateway; violet — a control plane.
+
+=== Components — what each step depends on
+
+[mermaid]
+....
+flowchart LR
+  subgraph OOB["Needs no network"]
+    direction TB
+    c1["screen sharing — macOS credentials"]:::oob
+    c2["serial console — the guest's console login"]:::oob
+    c3["incus exec — root on the gateway"]:::oob
+  end
+  subgraph LOCAL["Needs the segment only"]
+    direction TB
+    c4["dnsmasq — resolves the control URL"]:::gw
+    c5["headscale serve — TLS leaf from the shared root"]:::cp
+    c6["tailscaled registers — retries until the server answers"]:::gw
+  end
+  subgraph GRANTED["Needs the policy"]
+    direction TB
+    c7["Tailscale SSH on 2222 — no key"]:::ok
+    c8["the bridge — WireGuard, static keypairs"]:::one
+  end
+  c1 --> c2 --> c3 --> c4 --> c5 --> c6 --> c7
+  c6 --> c8
+
+  classDef oob fill:#fde68a,stroke:#b45309;
+  classDef gw fill:#dcfce7,stroke:#15803d;
+  classDef cp fill:#ddd9f2,stroke:#5b52b8;
+  classDef ok fill:#d9f2e0,stroke:#2d7a4b;
+  classDef one fill:#fef3c7,stroke:#b45309;
+....
+
+The chain never inverts: no step needs anything from a later one. That is what makes the model
+bootstrappable at all — the control plane is hosted inside the fabric it governs.
+
+=== The sequence, per bare-metal
+
+[mermaid]
+....
+sequenceDiagram
+  autonumber
+  actor O as Operator
+  participant B as the bare-metal
+  participant V as its NixOS guest
+  participant C as the headscale container
+  participant S as the darwin seat
+  participant T as that segment's tailnet
+
+  O->>B: screen sharing — the machine addressed by NAME, macOS credentials
+  B->>V: screen -r on the serial console
+  Note over V: console login — no key, no network
+  V->>C: incus exec headscale
+  C->>C: headscale serve — its CGNAT sub-prefix, TLS leaf from the shared root
+  V->>V: generate this guest's own age identity
+  V->>O: its age PUBLIC travels up to a seat
+  O->>V: the guest's projection, re-encrypted for that public, committed
+  V->>T: tailscale up against the control URL, over the segment
+  T-->>V: network map and policy
+  S->>T: the darwin seat registers too
+  Note over T: from here every managed access is a grant
+  O->>V: Tailscale SSH on 2222 — no key
+....
+
+[IMPORTANT]
+.The ordering is a dependency, not a preference
+====
+The guest that **hosts** the control plane is itself a **member** of the tailnet it hosts, so the
+NixOS guest boots first and its container must answer before any member registers. This is not a
+deadlock: `tailscaled` retries its registration until the server answers, so the order converges on
+its own. It is worth stating because for a few seconds a first boot looks like a failure, and the
+wrong thing gets diagnosed.
+====
+
+=== The order, end to end
+
+The sequence above is one segment. The whole fabric follows this order, and the order is forced: each
+step is the only thing that makes the next one possible.
+
+[mermaid]
+....
+flowchart TB
+  r["0 · the root — the operator's GnuPG key and a GitHub session, carried to bioskop"]:::root
+  b1["1 · bioskop, the first seat — the operator identity and the repositories land here"]:::seat
+  b2["2 · its NixOS guest — Tart VM, reached by the serial console"]:::oob
+  b3["3 · its control plane — headscale in an Incus container, TLS leaf from the shared root"]:::cp
+  b4["4 · the bioskop segment lives — its two members registered, access by grants"]:::ok
+  n1["5 · nikopol, the second seat — the operator identity by authorized replication"]:::seat
+  n2["6 · its NixOS guest and its control plane — the same path, from the corporate bare-metal"]:::cp
+  n3["7 · the nikopol segment lives"]:::ok
+  g["8 · the departure gate — roaming may begin"]:::gate
+  br["9 · the bridge — WireGuard between the two gateways"]:::one
+  k["10 · the emergency path — a bbox VNC forward to bioskop's screen"]:::ok
+
+  r --> b1 --> b2 --> b3 --> b4 --> n1 --> n2 --> n3 --> g
+  b4 --> br
+  n3 --> br
+  b4 --> k
+
+  classDef root fill:#fde68a,stroke:#b45309,stroke-width:2px;
+  classDef seat fill:#dbeafe,stroke:#1d4ed8;
+  classDef oob fill:#fde68a,stroke:#b45309;
+  classDef cp fill:#ddd9f2,stroke:#5b52b8,stroke-width:2px;
+  classDef ok fill:#d9f2e0,stroke:#2d7a4b;
+  classDef gate fill:#f7d9d9,stroke:#a33,stroke-width:2px;
+  classDef one fill:#fef3c7,stroke:#b45309;
+....
+
+[cols="1,3",options="header"]
+|===
+| Step | Why it cannot come earlier
+
+| 0 — the root
+| nothing in the fabric can derive the operator's GPG key or a GitHub session. See
+<<bootstrap-root>>.
+
+| 1 — bioskop first
+| it is the bare-metal that never leaves home, so it is the only one reachable without the fabric
+already existing. It becomes the distribution point for the second seat.
+
+| 2 — its NixOS guest
+| the control plane is hosted there, and the serial console is the only way in before a network
+exists.
+
+| 3 — its control plane
+| every managed access afterwards is a grant in it.
+
+| 4 — the bioskop segment lives
+| its two members can now register. From here the operator stops using the console for routine work.
+
+| 5 — nikopol, by replication
+| the second seat receives the operator identity from the first. This needs a path between the seats,
+which at this point is the home LAN.
+
+| 6–7 — the nikopol segment
+| the same path, from the corporate bare-metal: its screen, its guest's serial console, its own
+control plane.
+
+| 8 — the departure gate
+| roaming begins only here. See <<departure-gate>>.
+
+| 9 — the bridge
+| it joins two segments, so both must live first.
+
+| 10 — the emergency path
+| it is the fallback for a state the fabric can only be in once it exists.
+|===
+
+[NOTE]
+.Why bioskop and not nikopol
+====
+Both bare-metals are symmetric in the model, and either could host a control plane first. The order is
+decided by **reachability, not by role**: bioskop is LAN-fixed and always at home, so it can be reached
+and repaired without the fabric. The corporate bare-metal roams, holds no identity, and is the one
+whose segment the operator must be able to raise *while sitting at it*.
+====
+
+[[departure-gate]]
+=== The departure gate — when roaming may begin
+
+*Operator rule, 2026-10-06.* Roaming begins **only** once `nikopol` is functional and reachable
+through the bare-metal's screen-sharing app.
+
+[cols="1,2",options="header"]
+|===
+| Why it gates | Consequence if skipped
+
+| `nikopol` is the second seat
+| off-site it is the ONLY seat you hold. Without it there is no place to run a gesture from.
+
+| its screen is the out-of-band entry to that bare-metal
+| without it, `nikopol-nixos`'s serial console is out of reach, and so is `incus exec` — the whole
+layer 0 of that segment.
+
+| the first replication bioskop → nikopol needs a path between the seats
+| at home that is the LAN. Off-site it needs the bridge (both control planes up) or the emergency
+door — a worse place to discover it is missing.
+|===
+
+[cols="1,1",options="header"]
+|===
+| ✅ Check before leaving | ❌ Don't leave with
+
+| the screen-sharing app opens `nikopol`
+| only `nikopol-nixos` verified — the seat is what you operate from
+
+| `nikopol` holds the replicated operator identity
+| the identity still only on bioskop
+
+| `nikopol-nixos`'s serial console answers from the bare-metal
+| the console untested — it is the recovery path for everything else
+
+| its control plane answers on its private URL
+| a registration that has never converged once
+|===
+
+
+== Address plan
+
+Each control plane owns a **sub-prefix of the CGNAT super-segment**, the same discipline as the
+`172.16.` fabric carve. headscale's `config-example.yaml` (v0.29.4): *"Using a SUBSET of these
+ranges is supported"*; *"Using ranges OUTSIDE of CGNAT/ULA is NOT supported"*.
+
+[mermaid]
+....
+flowchart TB
+  cg["CGNAT 100.64.0.0/10 — the super-segment"]:::super
+  cg --> pb["sub-prefix — tailnet bioskop"]:::tb
+  cg --> pn["sub-prefix — tailnet nikopol"]:::tn
+  ula["ULA fd7a:115c:a1e0::/48"]:::super
+  ula --> ub["v6 sub-prefix — bioskop"]:::tb
+  ula --> un["v6 sub-prefix — nikopol"]:::tn
+  fab["fabric — one /20 per bare-metal"]:::super
+  fab --> fb["segment bioskop"]:::tb
+  fab --> fn["segment nikopol, incl. the corporate /30"]:::tn
+
+  classDef super fill:#f3f4f6,stroke:#555,stroke-width:2px;
+  classDef tb fill:#dbeafe,stroke:#1d4ed8;
+  classDef tn fill:#dcfce7,stroke:#15803d;
+....
+
+The sub-prefix values are derived in the catalog like every other span; the rule — disjoint,
+inside CGNAT/ULA — is not negotiable.
+
+== Crossing between tailnets
+
+=== The rule
+
+Cross-tailnet traffic **targets segment addresses** (`172.16.x` fabric, `10.80.x` vmnet) and fabric
+zone names (`nixos.{host}`, `vzhost.{host}`, already forwarded between the dnsmasqs) — never a
+`100.x` address or a MagicDNS name of the other tailnet.
+
+=== Why — a firewall rule hard-coded in the client
+
+`util/linuxfw/iptables_runner.go`, `addBase4`, and its nftables equivalent:
+
+[source]
+----
+ts-forward   -i tailscale0                        MARK + ACCEPT
+ts-forward   -o tailscale0 -s 100.64.0.0/10       DROP      the WHOLE /10, hard-coded
+ts-forward   -o tailscale0                        ACCEPT
+ts-input     ExternalCGNATRules                   CGNAT arriving off tailscale0: DROP
+----
+
+[mermaid]
+....
+flowchart LR
+  subgraph SRC["Tailnet nikopol"]
+    n1["node — source in the nikopol sub-prefix"]:::tn
+    c1["corporate bare-metal — source 172.16.24.2"]:::outside
+  end
+  gwN["gateway nikopol-nixos"]:::gw
+  gwB["gateway bioskop-nixos"]:::gw
+  subgraph DST["bioskop side"]
+    seg["segment address — 172.16.x or 10.80.x"]:::ok
+    tsb["tailnet address of a node"]:::ko
+  end
+  n1 --> gwN
+  c1 --> gwN
+  gwN ==>|"bridge"| gwB
+  gwB -->|"egresses fabric-br or vmnet — PASSES"| seg
+  gwB -->|"CGNAT source, egresses tailscale0 — DROPPED"| tsb
+  gwB -->|"non-CGNAT source — PASSES"| tsb
+
+  classDef tn fill:#dcfce7,stroke:#15803d;
+  classDef outside fill:#fee2e2,stroke:#b91c1c;
+  classDef gw fill:#dcfce7,stroke:#15803d,stroke-width:2px;
+  classDef ok fill:#d9f2e0,stroke:#2d7a4b;
+  classDef ko fill:#f7d9d9,stroke:#a33;
+....
+
+=== The fork patch — decided, contributable upstream
+
+We own `tailscaled` through the fork, so the drop rule can follow the local tailnet's allocation.
+
+[cols="1,3",options="header"]
+|===
+| Aspect | Shape
+
+| The notion
+| one: *my tailnet's CGNAT allocation* — a pref defaulting to `100.64.0.0/10`, so SaaS behaviour is
+unchanged, which is what makes it contributable
+
+| What it replaces
+| `tsaddr.CGNATRange()` in BOTH rules (`ts-forward`, `ExternalCGNATRules`), in BOTH runners
+(iptables, nftables)
+
+| IPv6
+| nothing — upstream has only a `TODO`
+
+| What it unlocks
+| addressing the other tailnet's `100.x` directly. Every flow identified so far targets segment
+addresses and needs no patch.
+|===
+
+=== The bridge
+
+A **dedicated static WireGuard link between the two gateways**. nikopol is itinerant and often
+behind hotspot NAT, so it initiates with a keepalive towards a bbox UDP forward. Each tailnet
+receives a route to the other segment through its own gateway.
+
+[cols="1,1",options="header"]
+|===
+| ✅ Do | ❌ Don't
+
+| one WireGuard link, one static keypair per gateway
+| a second `tailscaled` on each gateway, registered to both tailnets — two instances fighting over
+the host's DNS and routes, the workaround criticised under headscale #1973
+|===
+
+== Roles, tags and grants
+
+[mermaid]
+....
+classDiagram
+  class BareMetal {
+    +name
+    +vzHostKind
+    +lanAttachment
+  }
+  class Host {
+    +name
+    +platform
+  }
+  class Role {
+    +name
+  }
+  class Segment {
+    +fabricCidr
+    +dnsZone
+  }
+  class ControlPlane {
+    +serverUrl
+    +noiseKey
+    +cgnatPrefix
+    +ulaPrefix
+  }
+  class Tailnet {
+    +policy
+  }
+  class Grant {
+    +src
+    +dst
+    +ip
+  }
+  class Gateway {
+    +advertisedRoutes
+  }
+  class Bridge {
+    +wireguardPeers
+  }
+  class EmergencyKey {
+    +public
+    +heldBySeats
+  }
+  BareMetal "1" *-- "1" Segment : owns
+  BareMetal "1" *-- "1..*" Host : runs
+  Host "1" --> "1..*" Role : platform base plus catalog additions
+  Segment "1" *-- "1" ControlPlane : hosts
+  ControlPlane "1" --> "1" Tailnet : controls
+  Tailnet "1" *-- "0..*" Grant
+  Grant ..> Role : src and dst are tags
+  Segment "1" *-- "1" Gateway
+  Gateway "2" --> "1" Bridge
+  BareMetal ..> EmergencyKey : bioskop only, via the WAN
+....
+
+[cols="1,1,1",options="header"]
+|===
+| Host | Base roles (platform) | Added by the catalog
+
+| bioskop | darwin: `rdp-host` | `vz-host`
+| nikopol | darwin: `rdp-host` | —
+| bioskop-nixos, nikopol-nixos | nixos: `linux-builder`, `nix-store` | —
+| corporate bare-metal | none — no module, foreign | `vz-host`
+|===
+
+Roles live in the **catalog**, never in host modules: the policy is generated centrally and must
+see every host at once. The platform base is today's tag-per-kind partition (`console` for darwin,
+`headless` otherwise).
+
+== Availability of one control plane
+
+Within a tailnet there is **one** control plane. headscale's maintainer on #2695: *"The short answer
+is no"* to HA, and the strategy he recommends is *"how quickly can I recover or replace my
+server?"* — the Tailscale client keeps working on its last network map for minutes to an hour, as
+long as the network's shape does not change.
+
+[cols="1,3",options="header"]
+|===
+| Concern | Rule
+
+| Recovery
+| continuous replication of the SQLite database to the other bare-metal, then a manual restore
+behind the same `server_url`
+
+| Identity of the server
+| the Noise private key (and the embedded DERP key) are copied once and kept — a restored server
+with another key would be another control plane to its clients
+
+| Split-brain
+| impossible by construction: the operator decides which instance runs; there is no election
+|===
+
+== Version floor
+
+[cols="1,1,2",options="header"]
+|===
+| Capability | headscale | Consumer
+
+| grants, `tests`, `sshTests` | ≥ 0.29.0 | the generated policy
+| `/api/v2` + OAuth clients | ≥ 0.30.0 (unreleased on 2026-10-06) | not required while the clusters stay on SaaS; `manage-tailnet` drives headscale through its own CLI
+| Tailscale Services | not supported | the screens and the bbox ride subnet routes + grants inside the infra tailnets
+| Funnel | not supported | not required: the PaC webhook stays on the SaaS tailnet with the clusters
+|===
+
+== Usage patterns
+
+=== ✅ Address the other segment by its fabric name
+
+[source,bash]
+----
+ssh -p 2222 root@nixos.nikopol      # Tailscale SSH, resolved by the fabric zone, crosses the bridge
+----
+
+=== ❌ Address the other tailnet's node by its tailnet address
+
+[source,bash]
+----
+ssh -p 2222 root@100.96.0.7         # dropped by ts-forward on the arriving gateway (unpatched)
+----
+
+=== ❌ Put the home segment into the policy
+
+The home segment is unmanaged. A grant naming `192.168.1.0/24`, or a VNC client aiming at a
+`192.168.1.x` address, breaks the model — off-site that address may be a stranger's machine, and
+the operator would type macOS credentials into it. Address bioskop by a name only the bbox DNS
+resolves.
+
+=== ❌ Run headscale on the gateway itself
+
+Same machine as a subnet router: the FAQ's unsupported case. Container, always.
+
+== Troubleshooting
+
+[cols="2,2,2",options="header"]
+|===
+| Symptom | Cause | Fix
+
+| Cross-tailnet ping to a `100.x` address times out, segment address answers
+| `ts-forward` drops CGNAT sources egressing `tailscale0`
+| address the segment, or deploy the fork patch
+
+| Every node loses the control plane when the tailnet degrades
+| `server_url` points at the container's fabric address, reached through the tailnet
+| make the member reach the control plane over the segment — a private name, no accepted route covering it
+
+| A restored control plane makes clients re-register
+| the Noise key was not carried over
+| restore the original Noise and DERP keys with the database
+
+| The guest's console asks for a login nobody holds
+| layer 0 depends on the console credential
+| see the open question below
+|===
+
+== Open questions
+
+* the sub-prefix values, and the bridge's UDP port;
+* what guards the serial-console login on the runtime guests;
+* whether Tailscale SSH carries sftp (sshfs) and `nix-daemon --stdio` (`ssh-ng` builders) — if not,
+  each gets a static service key;
+* whether a subnet route *inside* the CGNAT range is advertisable and accepted;
+* the TLS certificate behind `server_url`;
+* who advertises the `vmnet` cluster segments into the SaaS tailnet once the NixOS guests leave it.
+  The option that fits the scope above: each cluster's nodes — SaaS members already — advertise
+  their OWN cluster's `/21`, never the supernet, so no cluster black-holes the other bare-metal's.
+
+== Related Documentation
+
+* link:ssh-keys-architecture.adoc[SSH Keys] — the keys that remain: the emergency door, the bridge,
+  and the service keys.
+* link:ssh-keys-renewal-spec.adoc[SSH Keys Renewal Model] — how those static keys are rotated and
+  revoked.
+* link:network-topology-c4.adoc[Baremetal Instance Segments] — the segments, the `/30` links and the
+  routes the gateways advertise.
+* link:network-setup.adoc[Network Infrastructure Setup] — operating the control planes.
+* rke2lab `docs/architecture/atlas/fabric-control-plane.adoc` — the migration from today's state
+  to this target.
+* rke2lab `docs/architecture/cluster-api/management-workload-topology.adoc` — how the clusters reach
+  each other across the two tailnets.

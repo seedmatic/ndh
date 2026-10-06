@@ -55,6 +55,17 @@ let
   inventoryHostNames = builtins.attrNames (inventory.hosts or { });
   inventoryHostsCsv = lib.concatStringsSep "," inventoryHostNames;
 
+  # The guest's own names, signed into its host certificate verbatim:
+  # `<host>-nixos` (tailnet) and `nixos.<host>` (the bare-metal's dnsmasq zone —
+  # see modules/home-manager/ssh-tailnet-hosts.nix). Neither is derivable from
+  # hostIdent, which is the VM HOST's name.
+  guestPrincipalsCsv = lib.optionalString (config ? vm) (
+    lib.concatStringsSep "," [
+      config.vm.guestHostName
+      "${config.vm.guestName}.${config.vm.hostName}"
+    ]
+  );
+
   # v2: single catalog user; profile name no longer drives OS user lookup.
   profileOwnerName =
     if catalog ? user && catalog.user ? name && catalog.user.name != null then
@@ -145,7 +156,8 @@ in
         "${decryptedSSHKeysYamlPath}" \
         "${generatedKeysYamlPath}" \
         "${inventoryHostsCsv}" \
-        "${profileOwnerName}"
+        "${profileOwnerName}" \
+        "${guestPrincipalsCsv}"
 
       # 2. Split into per-profile yamls (one invocation per profile name
       #    in profile.names). Each run emits the same system.yaml
@@ -254,22 +266,35 @@ in
       done
       chmod 644 "${config.sshPaths.systemKeysDir}/trusted-user-ca.pub"
 
-      # 5. Materialize authorizedKeysDir/<user> from the freshly extracted
-      #    rdp-host pubkey. The earlier system.activationScripts.sshGroupKeys
+      # 5. Materialize authorizedKeysDir/<user> from EVERY published generation of
+      #    the rdp-host pubkey. The earlier system.activationScripts.sshGroupKeys
       #    pass reads sshPaths.secretsKeysDir which is the user home — empty on
       #    the very first boot, so authorized_keys was never written and sshd
       #    rejected pubkey auth until the operator pasted the key by hand.
       #    Doing this from the enrichment unit (root-owned, before=sshd.service)
       #    ensures the file is populated on every boot from the canonical
       #    system-keys source of truth.
-      host_pubkey="${config.sshPaths.systemKeysDir}/${config.sshPaths.keyName}.pub"
-      if [ -s "$host_pubkey" ]; then
+      #
+      #    N lines, not one: this file is the fallback for when the certificate
+      #    chain does not apply, and during a renewal the two generations are
+      #    published side by side. The retiring generation carries a `-YY-MM-DD`
+      #    segment, which is why the second pattern is shaped the way it is — it
+      #    cannot match a `-cert.pub`.
+      authorized_keys_tmp="$(mktemp)"
+      for pub in \
+        "${config.sshPaths.systemKeysDir}/${config.sshPaths.keyName}.pub" \
+        "${config.sshPaths.systemKeysDir}/${config.sshPaths.keyName}"-[0-9][0-9]-[0-9][0-9]-[0-9][0-9].pub; do
+        [ -s "$pub" ] || continue
+        cat "$pub" >> "$authorized_keys_tmp"
+      done
+      if [ -s "$authorized_keys_tmp" ]; then
         install -d -m 0755 "${config.opensshPolicy.authorizedKeysDir}"
-        install -m 0644 "$host_pubkey" \
+        install -m 0644 "$authorized_keys_tmp" \
           "${config.opensshPolicy.authorizedKeysDir}/${config.profile.user.name}"
-        install -m 0644 "$host_pubkey" \
+        install -m 0644 "$authorized_keys_tmp" \
           "${config.opensshPolicy.authorizedKeysDir}/root"
       fi
+      rm -f "$authorized_keys_tmp"
     '';
   };
 }

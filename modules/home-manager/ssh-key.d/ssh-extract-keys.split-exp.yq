@@ -25,75 +25,103 @@
 
 env(TMPDIR) + "/" as $tmpdir |
 
-# ── 1. Authority public keys (one per authority) ─────────────────────────────
+# ── 1. Authority public keys (one per authority GENERATION) ──────────────────
+# Every slot is materialised, because every generation is ACCEPTED while only the
+# newest is PRESENTED (docs/ssh-keys-renewal-spec.adoc). The presented generation
+# keeps the canonical name and the others take a `-<slot>` segment, so a settled
+# entry — one slot — produces exactly the file set it produced before slots
+# existed, and the extra files appear only while a renewal is in flight.
+#
+# Authorities need the overlap most: both aggregators that build
+# trusted-user-ca.pub glob `*-ca.pub`, so a second generation joins the trust set
+# with no change on either platform.
 ( ( .authorities // {} ) | to_entries | map(
     .key as $authName |
     .value.type as $authType |
-    .value.public as $authPub |
     .value.comment as $authComment |
-    select($authPub != null and $authPub != "") |
-    {
-      "yamlfile":   ( $tmpdir + $authName + "-ca.yaml" ),
-      "rel_path":   ( $authName + "-ca.pub" ),
-      "target_dir": "system",
-      "content":    ( [ $authType, $authPub, ($authComment // $authName) ] | join(" ") )
-    }
-  )
+    ( ( .value.slots // {} ) | to_entries | sort_by(.key) ) as $slots |
+    ( $slots | .[-1].key ) as $presented |
+    ( $slots | map(
+        # yq-go has no `if/then/else` — that is jq. `with(select(cond); update)`
+        # is the conditional here, which is why the record is built first and
+        # then adjusted. An empty `public` stays empty and the trailing select
+        # drops the artefact.
+        { "slot": .key, "line": ( .value.public // "" ), "stem": $authName }
+        | with(select(.slot != $presented); .stem = $authName + "-" + .slot)
+        | with(select(.line != "");         .line = ( [ $authType, .line, ($authComment // $authName) ] | join(" ") ))
+        | .stem as $stem | .line as $line |
+        {
+          "yamlfile":   ( $tmpdir + $stem + "-ca.yaml" ),
+          "rel_path":   ( $stem + "-ca.pub" ),
+          "target_dir": "system",
+          "content":    $line
+        }
+      ) )
+  ) | flatten
 ) as $authArtifacts |
 
-# ── 2. Per-key artifacts (private + pub + certs) ─────────────────────────────
+# ── 2. Per-key artifacts (private + pub per GENERATION, plus certs) ──────────
 ( ( .keys // {} ) | to_entries | map(
     .key as $basename |
-    .value.profiles // [] as $profiles |
     .value.type as $keyType |
-    .value.public as $public |
-    .value.private as $private |
     .value.comment as $keyComment |
-    .value.certificates as $certs |
+    ( ( .value.slots // {} ) | to_entries | sort_by(.key) ) as $slots |
+    ( $slots | .[-1].key ) as $presented |
 
     # The yaml passed to this split expression is already filtered by profile
     # (system extraction gets system-profile keys, user extraction gets user-profile keys).
     # Always emit private key - the extraction script's context determines the target directory.
-    [
-      (
-        { "yamlfile":   ( $tmpdir + $basename + ".yaml" ),
-          "rel_path":   $basename,
-          "target_dir": "system-private",
-          "content":    $private }
-      ),
-      (
-        # Public keys are stored as raw base64 in keys.yaml (no ssh-* prefix).
-        # Always format as "ssh-ed25519 AAAAC3Nz... comment"
-        { "yamlfile":   ( $tmpdir + $basename + "-public.yaml" ),
-          "rel_path":   ( $basename + ".pub" ),
-          "target_dir": "user",
-          "content":    ( [ $keyType, $public, ($keyComment // $basename) ] | join(" ") ) }
-      )
-    ]
-    +
-    (
-      ( $certs // {} ) | to_entries | map(
-        .key as $authName |
-        .value as $certsByUsage |
+    #
+    # One private, one public and its certificates per generation. ssh offers
+    # identities in turn and sshd takes N HostKey directives, so materialising the
+    # retiring generation alongside the new one is what carries a renewal across
+    # hosts that have not activated yet — and a certificate belongs to the
+    # generation it certifies, which is why it lives inside the slot.
+    ( $slots | map(
+        # `public` is the bare base64 blob; the line consumers accept is rebuilt
+        # from type + blob + comment. See the authorities block above for why the
+        # record is built and then adjusted with `with` rather than a ternary.
+        { "slot":    .key,
+          "line":    ( .value.public // "" ),
+          "private": ( .value.private // "" ),
+          "certs":   ( .value.certificates // {} ),
+          "stem":    $basename }
+        | with(select(.slot != $presented); .stem = $basename + "-" + .slot)
+        | with(select(.line != "");         .line = ( [ $keyType, .line, ($keyComment // $basename) ] | join(" ") ))
+        | .stem as $stem | .line as $line | .private as $private | .certs as $certs |
         [
-          ( { "yamlfile":   ( $tmpdir + $basename + "-" + $authName + "-host-cert.yaml" ),
-              "rel_path":   ( $basename + "-" + $authName + "-host-cert.pub" ),
-              "target_dir": "system",
-              "content":    ( $certsByUsage."ssh-host" // null ) } ),
-          ( { "yamlfile":   ( $tmpdir + $basename + "-" + $authName + "-user-cert.yaml" ),
-              "rel_path":   ( $basename + "-" + $authName + "-user-cert.pub" ),
-              "target_dir": "system",
-              "content":    ( $certsByUsage."ssh-user" // null ) } ),
-          # TLS x509 leaf cert — PEM blob, drops next to the private
-          # key with a `.crt` suffix so consumers (headscale daemon)
-          # can pass a single basename pair.
-          ( { "yamlfile":   ( $tmpdir + $basename + "-" + $authName + "-tls.yaml" ),
-              "rel_path":   ( $basename + ".crt" ),
-              "target_dir": "system",
-              "content":    ( $certsByUsage."tls-server" // null ) } )
+          { "yamlfile":   ( $tmpdir + $stem + ".yaml" ),
+            "rel_path":   $stem,
+            "target_dir": "system-private",
+            "content":    $private },
+          { "yamlfile":   ( $tmpdir + $stem + "-public.yaml" ),
+            "rel_path":   ( $stem + ".pub" ),
+            "target_dir": "user",
+            "content":    $line }
         ]
-      ) | flatten
-    )
+        +
+        ( $certs | to_entries | map(
+            .key as $authName |
+            .value as $certsByUsage |
+            [
+              { "yamlfile":   ( $tmpdir + $stem + "-" + $authName + "-host-cert.yaml" ),
+                "rel_path":   ( $stem + "-" + $authName + "-host-cert.pub" ),
+                "target_dir": "system",
+                "content":    ( $certsByUsage."ssh-host" // null ) },
+              { "yamlfile":   ( $tmpdir + $stem + "-" + $authName + "-user-cert.yaml" ),
+                "rel_path":   ( $stem + "-" + $authName + "-user-cert.pub" ),
+                "target_dir": "system",
+                "content":    ( $certsByUsage."ssh-user" // null ) },
+              # TLS x509 leaf cert — PEM blob, drops next to the private
+              # key with a `.crt` suffix so consumers (headscale daemon)
+              # can pass a single basename pair.
+              { "yamlfile":   ( $tmpdir + $stem + "-" + $authName + "-tls.yaml" ),
+                "rel_path":   ( $stem + ".crt" ),
+                "target_dir": "system",
+                "content":    ( $certsByUsage."tls-server" // null ) }
+            ]
+          ) | flatten )
+      ) | flatten )
   ) | flatten
 ) as $keyArtifacts |
 

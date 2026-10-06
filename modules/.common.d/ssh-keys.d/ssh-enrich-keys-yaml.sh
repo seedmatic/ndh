@@ -7,9 +7,11 @@
 #   authorities:
 #     <name>:
 #       type: ssh-ed25519
-#       public: <base64>
-#       private: <pem or ENC[...]>
 #       usage: [ssh-authority]
+#       slots:
+#         <YY-MM-DD>:
+#           public: <bare base64>
+#           private: <pem or ENC[...]>
 #   keys:
 #     <name>:
 #       type: ssh-ed25519
@@ -18,12 +20,16 @@
 #       usage: [...]
 #       profiles: [bringup, host, user, ...]
 #       principals: { ... }                # optional
-#       public: <base64>                   # optional; generated if missing
-#       private: <pem>                     # optional; generated if missing
+#       slots:
+#         <YY-MM-DD>:
+#           public: <bare base64>          # optional; generated if missing
+#           private: <pem>                 # optional; generated if missing
 #
-# Writes the same shape augmented with per-key `certificates.<authority>.
-# <cert_type>` cert lines for every (authority, cert_type) the enrichment
-# produced.
+# Writes the same shape augmented, per key GENERATION, with
+# `slots.<YY-MM-DD>.certificates.<authority>.<cert_type>` cert lines for every
+# (authority, cert_type) the enrichment produced. A certificate belongs to the
+# generation it certifies: during a renewal both generations are published and
+# each one needs its own.
 #
 # Schema validated by modules/home-manager/ssh.d/keys.schema.yaml; cross-
 # reference validation (authority names must resolve to top-level entries)
@@ -32,7 +38,7 @@
 # shellcheck disable=SC1091
 source @nixBashTrampoline@
 
-declare -g inputFile outputFile hostName inventoryHostsCsv targetUser
+declare -g inputFile outputFile hostName inventoryHostsCsv targetUser extraPrincipalsCsv
 declare -g tmpdir
 
 log::info() { echo "[ssh-keys-enrichment][INFO] $*" >&2; }
@@ -44,10 +50,132 @@ log::error() { echo "[ssh-keys-enrichment][ERROR] $*" >&2; }
 # by checking `yq 'has(path)'` separately when needed).
 yq::get() { yq eval -r "${1}" "$inputFile" 2>/dev/null || true; }
 
+# A key entry holds its generations in `slots`, keyed by the date the material was
+# created (YY-MM-DD). The generation that is PRESENTED is derived from the newest
+# key rather than named by a field, so there is nothing to keep in step and nothing
+# that can go stale. All generations are accepted, which is what makes a renewal
+# survivable. See docs/ssh-keys-renewal-spec.adoc.
+#
+# There is no fallback to a flat `public`/`private`: an entry without slots is an
+# error. Carrying both shapes would mean testing neither.
+
+# Keys and authorities differ only in which top-level section holds them, so the
+# resolution is written once and named twice. Authorities need the overlap most:
+# trusted-user-ca.pub concatenates every *-ca.pub on each activation, so two
+# authority generations are both trusted while the leaves move across.
+
+slot::count() { # <section> <name>
+	local n
+	n="$(yq eval -r ".${1}.\"${2}\".slots | length" "$inputFile" 2>/dev/null || true)"
+	[[ -n "$n" && "$n" != "null" ]] || n=0
+	printf '%s\n' "$n"
+}
+
+# Oldest first, which is the order the enrichment walks: a cert is signed for
+# every generation, so the retiring one keeps a valid certificate for as long as
+# it is still published.
+slot::list() { # <section> <name>
+	local n
+	n="$(slot::count "$1" "$2")"
+	if ((n == 0)); then
+		log::error "${1} entry ${2} has no slots — the flat public/private shape is not supported"
+		return 1
+	fi
+	yq eval -r ".${1}.\"${2}\".slots | keys | sort | .[]" "$inputFile"
+}
+
+slot::newest() { # <section> <name>
+	# Not `slot::list | tail -1`: a pipeline reports the LAST command's status, so
+	# the failure on a slotless entry would be swallowed wherever pipefail is not
+	# set — and it is not set when these functions are sourced by the tests.
+	# The emptiness check is the real guard: a process substitution does not
+	# propagate its status to mapfile, and slot::list prints its refusal on
+	# stderr, so an empty array IS the failure — already reported.
+	local -a slots
+	mapfile -t slots < <(slot::list "$1" "$2")
+	((${#slots[@]} > 0)) || return 1
+	printf '%s\n' "${slots[-1]}"
+}
+
+# Two slots means a renewal is in flight; one means settled. Three means phase 2
+# was skipped, and phase 2 is not optional.
+slot::assert() { # <section> <name>
+	local n
+	n="$(slot::count "$1" "$2")"
+	if ((n > 2)); then
+		log::error "${1} entry ${2} has ${n} slots; at most two are allowed — phase 2 of a renewal removes the retiring one"
+		return 1
+	fi
+	return 0
+}
+
+# The slot is a parameter, never resolved inside the accessor. The enrichment
+# works one generation at a time, so a helper that silently picked the newest
+# would read the wrong material for every generation but one.
+slot::get() { # <section> <name> <slot> <field>
+	yq eval -r ".${1}.\"${2}\".slots.\"${3}\".${4} // \"\"" "$inputFile" 2>/dev/null || true
+}
+
+slot::set() { # <section> <name> <slot> <field> <value>
+	VALUE="$5" yq -i ".${1}.\"${2}\".slots.\"${3}\".${4} = strenv(VALUE)" "$inputFile"
+}
+
+key::slots() { slot::list keys "$1"; }
+key::slots_count() { slot::count keys "$1"; }
+key::newest_slot() { slot::newest keys "$1"; }
+key::assert_slots() { slot::assert keys "$1"; }
+key::field() { slot::get keys "$1" "$2" "$3"; }
+key::set_field() { slot::set keys "$1" "$2" "$3" "$4"; }
+
+authority::slots() { slot::list authorities "$1"; }
+authority::slots_count() { slot::count authorities "$1"; }
+authority::newest_slot() { slot::newest authorities "$1"; }
+authority::assert_slots() { slot::assert authorities "$1"; }
+authority::field() { slot::get authorities "$1" "$2" "$3"; }
+
+# The OLDEST generation still published, which is the one that signs.
+#
+# ★ This is the opposite of a key, and the asymmetry is the whole point. Trust
+# DISTRIBUTES slowly — a client learns a new authority only when it activates,
+# because KnownHostsCommand globs the live `*-ca.pub` directory. A signature
+# takes effect IMMEDIATELY, on the first host that activates. Signing with the
+# newest generation therefore opens a window in which an activated host presents
+# a certificate that a host which has not activated yet cannot verify, and
+# "cannot verify a host certificate" is a blocking failure, not a prompt.
+#
+# Signing with the oldest closes that window entirely: during phase 1 the new
+# authority is distributed but signs nothing, and phase 2 — dropping the retiring
+# slot — is what switches the signature over, at a point where every host already
+# trusts the new one.
+#
+# It costs nothing in exposure when the old private is compromised, which is the
+# case that prompted this: the old authority stays ACCEPTED throughout phase 1
+# either way, so a forged certificate under it would pass either way. Phase 2 is
+# what revokes it.
+authority::signing_slot() { # <name>
+	local -a slots
+	mapfile -t slots < <(authority::slots "$1")
+	((${#slots[@]} > 0)) || return 1
+	printf '%s\n' "${slots[0]}"
+}
+
+authority::signing() { # <name> <field>
+	local slot
+	slot="$(authority::signing_slot "$1")" || return 1
+	authority::field "$1" "$slot" "$2"
+}
+
 # Emit the comma-separated hostnames the enrichment will list in a host
 # certificate's Principals field. Union of: explicit hostName arg,
 # .lan/.local/<authority-domain> variants, plus every host from the
-# inventory CSV (same variants).
+# inventory CSV (same variants), plus the extra principals VERBATIM.
+#
+# The extras are names the platform declares for itself that the variants
+# cannot produce: a NixOS guest is reached as `nixos.<host>`, served by the
+# bare-metal's dnsmasq, and a `.lan`/`.local` of that is meaningless. Without
+# it the client checks the certificate against `nixos.bioskop`, finds it is
+# not a listed principal, and falls back to the raw key pinned in known_hosts
+# — which a host-key rotation then breaks.
 authority::host_principals() {
 	local authorityName="$1"
 	local domain
@@ -83,6 +211,15 @@ authority::host_principals() {
 		done
 	fi
 
+	if [[ -n "${extraPrincipalsCsv:-}" ]]; then
+		local extra
+		IFS=',' read -r -a extraArr <<<"${extraPrincipalsCsv}"
+		for extra in "${extraArr[@]}"; do
+			[[ -n "$extra" ]] || continue
+			hosts["$extra"]=1
+		done
+	fi
+
 	local IFS=','
 	echo "${!hosts[*]}"
 }
@@ -111,33 +248,39 @@ key::principals_csv() {
 	echo "${arr[*]}"
 }
 
-# Sign one (authority, cert_usage) pair for a key and echo the resulting
+# Sign one (key generation, authority, cert_usage) triple and echo the resulting
 # cert line to stdout. Temp files are created under $tmpdir and cleaned
 # up in main's trap.
+#
+# The key generation is explicit: every generation that is published gets its own
+# certificate, so the retiring one stays usable for as long as it is on disk.
 sign::one_cert() {
 	local keyName="$1"
-	local authorityName="$2"
-	local certUsage="$3"
+	local keySlot="$2"
+	local authorityName="$3"
+	local certUsage="$4"
 
 	# x509 TLS leaves are signed via step-cli against the authority's
 	# OpenSSH Ed25519 private key.  Dispatch early to keep the SSH path
 	# below strictly ssh-keygen-driven.
 	if [[ "$certUsage" == "tls-server" ]]; then
-		sign::tls_server "$keyName" "$authorityName"
+		sign::tls_server "$keyName" "$keySlot" "$authorityName"
 		return $?
 	fi
 
 	# Pull authority private + key public/private.
 	local authPriv keyType keyPub keyPriv keyComment
-	authPriv="$(yq::get ".authorities.\"${authorityName}\".private")"
+	authority::assert_slots "$authorityName" || return 1
+	authPriv="$(authority::signing "$authorityName" private)" || return 1
 	keyType="$(yq::get ".keys.\"${keyName}\".type")"
-	keyPub="$(yq::get ".keys.\"${keyName}\".public")"
-	keyPriv="$(yq::get ".keys.\"${keyName}\".private")"
+	key::assert_slots "$keyName" || return 1
+	keyPub="$(key::field "$keyName" "$keySlot" public)"
+	keyPriv="$(key::field "$keyName" "$keySlot" private)"
 	keyComment="$(yq::get ".keys.\"${keyName}\".comment")"
 	[[ -n "$keyComment" && "$keyComment" != "null" ]] || keyComment="$keyName"
 
 	if [[ -z "$authPriv" || "$authPriv" == "null" ]]; then
-		log::error "authority ${authorityName} has no private key (required to sign ${keyName}/${certUsage})"
+		log::error "authority ${authorityName} has no private key (required to sign ${keyName}@${keySlot}/${certUsage})"
 		return 1
 	fi
 
@@ -151,30 +294,31 @@ sign::one_cert() {
 		chmod 400 "$authFile"
 	fi
 
+	# Every tempfile is scoped to the generation: two generations of the same key
+	# are signed in the same run, and a shared name would have one overwrite the
+	# other's material.
+	local stem="${tmpdir}/${keyName}@${keySlot}"
+
 	# Generate key if missing public/private.
 	if [[ -z "$keyPub" || "$keyPub" == "null" || -z "$keyPriv" || "$keyPriv" == "null" ]]; then
 		local genType="${keyType#ssh-}"
-		if ! ssh-keygen -q -t "$genType" -N "" -f "${tmpdir}/${keyName}" -C "$keyComment"; then
-			log::error "failed to generate keypair for ${keyName}"
+		if ! ssh-keygen -q -t "$genType" -N "" -f "$stem" -C "$keyComment"; then
+			log::error "failed to generate keypair for ${keyName}@${keySlot}"
 			return 1
 		fi
-		keyPub="$(cut -d' ' -f2 <"${tmpdir}/${keyName}.pub")"
-		keyPriv="$(<"${tmpdir}/${keyName}")"
+		keyPub="$(cut -d' ' -f2 <"${stem}.pub")"
+		keyPriv="$(<"$stem")"
 		# Cache so subsequent cert_usage entries see the same pair.
-		yq -i ".keys.\"${keyName}\".public = \"${keyType} ${keyPub} ${keyComment}\"" "$inputFile"
-		yq -i ".keys.\"${keyName}\".private = \"${keyPriv//$'\n'/\\n}\"" "$inputFile"
+		key::set_field "$keyName" "$keySlot" public "$keyPub"
+		key::set_field "$keyName" "$keySlot" private "$keyPriv"
 	fi
 
-	# Produce a .pub file in the expected "<type> <blob> <comment>" shape.
-	# If $keyPub already includes the type prefix, strip it before rewrap.
-	local pubBlob
-	if [[ "$keyPub" == ssh-* ]]; then
-		read -r _ pubBlob _ <<<"$keyPub"
-	else
-		pubBlob="$keyPub"
-	fi
-	local keyPubFile="${tmpdir}/${keyName}.pub"
-	printf '%s %s %s\n' "$keyType" "$pubBlob" "$keyComment" >"$keyPubFile"
+	# `public` holds the bare base64 blob; the type and the comment have fields of
+	# their own, and every consumer rebuilds the line from the three. Writing a
+	# whole "<type> <blob> <comment>" line into it doubled the type and the
+	# comment in the rebuilt line.
+	local keyPubFile="${stem}.pub"
+	printf '%s %s %s\n' "$keyType" "$keyPub" "$keyComment" >"$keyPubFile"
 
 	local identity principalsArg
 	identity="$(cert::identity "$keyName" "$certUsage")"
@@ -199,7 +343,7 @@ sign::one_cert() {
 	esac
 
 	if ! ssh-keygen "${sshKeygenArgs[@]}" "$keyPubFile"; then
-		log::error "ssh-keygen failed to sign ${keyName} with ${authorityName} as ${certUsage}"
+		log::error "ssh-keygen failed to sign ${keyName}@${keySlot} with ${authorityName} as ${certUsage}"
 		return 1
 	fi
 
@@ -227,7 +371,8 @@ sign::one_cert() {
 # being opaque to stock openssl builds.
 sign::tls_server() {
 	local keyName="$1"
-	local authorityName="$2"
+	local keySlot="$2"
+	local authorityName="$3"
 
 	# Authority must advertise tls-authority before it is allowed to sign
 	# TLS leaves.  The schema already constrains the enum; this guards
@@ -276,7 +421,8 @@ sign::tls_server() {
 	# populated by the SSH signing path when present; otherwise creates
 	# it here so TLS-only enrichment runs don't depend on SSH-cert order.
 	local authPriv
-	authPriv="$(yq::get ".authorities.\"${authorityName}\".private")"
+	authority::assert_slots "$authorityName" || return 1
+	authPriv="$(authority::signing "$authorityName" private)" || return 1
 	if [[ -z "$authPriv" || "$authPriv" == "null" ]]; then
 		log::error "authority ${authorityName} has no private key"
 		return 1
@@ -294,24 +440,24 @@ sign::tls_server() {
 	# entries populate the key first.  If a key declares only
 	# `cert_usage: [tls-server]` we still need material, so re-run the
 	# generate-if-missing dance.
-	local leafKeyFile="${tmpdir}/${keyName}"
+	local leafKeyFile="${tmpdir}/${keyName}@${keySlot}"
 	if [[ ! -s "$leafKeyFile" ]]; then
 		local keyPriv keyType keyComment
-		keyPriv="$(yq::get ".keys.\"${keyName}\".private")"
+		keyPriv="$(key::field "$keyName" "$keySlot" private)"
 		keyType="$(yq::get ".keys.\"${keyName}\".type")"
 		keyComment="$(yq::get ".keys.\"${keyName}\".comment")"
 		[[ -n "$keyComment" && "$keyComment" != "null" ]] || keyComment="$keyName"
 		if [[ -z "$keyPriv" || "$keyPriv" == "null" ]]; then
 			local genType="${keyType#ssh-}"
 			if ! ssh-keygen -q -t "$genType" -N "" -f "$leafKeyFile" -C "$keyComment"; then
-				log::error "failed to generate keypair for ${keyName}"
+				log::error "failed to generate keypair for ${keyName}@${keySlot}"
 				return 1
 			fi
 			local keyPub
 			keyPub="$(cut -d' ' -f2 <"${leafKeyFile}.pub")"
 			keyPriv="$(<"$leafKeyFile")"
-			yq -i ".keys.\"${keyName}\".public = \"${keyType} ${keyPub} ${keyComment}\"" "$inputFile"
-			yq -i ".keys.\"${keyName}\".private = \"${keyPriv//$'\n'/\\n}\"" "$inputFile"
+			key::set_field "$keyName" "$keySlot" public "$keyPub"
+			key::set_field "$keyName" "$keySlot" private "$keyPriv"
 		else
 			printf '%s\n' "$keyPriv" >"$leafKeyFile"
 			chmod 0400 "$leafKeyFile"
@@ -335,8 +481,8 @@ sign::tls_server() {
 	# step certificate create always writes a PKCS8 copy of the subject
 	# key next to the cert; we don't need it (the real private stays in
 	# the sops-sealed yaml) and delete immediately.
-	local leafCrtFile="${tmpdir}/${keyName}-tls-${authorityName}.crt"
-	local leafKeyCopy="${tmpdir}/${keyName}-tls-${authorityName}.key"
+	local leafCrtFile="${tmpdir}/${keyName}@${keySlot}-tls-${authorityName}.crt"
+	local leafKeyCopy="${tmpdir}/${keyName}@${keySlot}-tls-${authorityName}.key"
 
 	if ! step certificate create "$commonName" \
 		"$leafCrtFile" "$leafKeyCopy" \
@@ -356,9 +502,13 @@ sign::tls_server() {
 	rm -f "$leafCrtFile" "$leafKeyCopy"
 }
 
-# Walk every key with an authority ref, sign for each cert_usage, and
-# record the resulting cert line back into the in-memory yaml (through
-# repeated yq -i updates on the working copy $inputFile).
+# Walk every key with an authority ref, sign each of its GENERATIONS for each
+# cert_usage, and record the resulting cert line back into the in-memory yaml
+# (through repeated yq -i updates on the working copy $inputFile).
+#
+# A certificate belongs to the generation it certifies, so it is recorded inside
+# the slot. Signing only the newest left the retiring generation materialised on
+# disk with no certificate, which is half a renewal.
 enrich::all_keys() {
 	local -a keyNames
 	mapfile -t keyNames < <(yq eval -r '.keys | keys // [] | .[]' "$inputFile")
@@ -385,23 +535,31 @@ enrich::all_keys() {
 			return 1
 		fi
 
-		local certUsage
-		for certUsage in "${certUsages[@]}"; do
-			local certLine
-			certLine="$(sign::one_cert "$keyName" "$authorityName" "$certUsage")"
-			# Inject under .keys.<k>.certificates.<auth>.<cert_usage>.
-			# yq -i with literal strings containing newlines/special chars
-			# via env to avoid quoting issues.
-			env CERT="$certLine" yq -i "
-				.keys.\"${keyName}\".certificates.\"${authorityName}\".\"${certUsage}\" = strenv(CERT)
-			" "$inputFile"
+		key::assert_slots "$keyName" || return 1
+		local -a keySlots
+		mapfile -t keySlots < <(key::slots "$keyName")
+		if ((${#keySlots[@]} == 0)); then
+			return 1
+		fi
+
+		local keySlot certUsage certLine
+		for keySlot in "${keySlots[@]}"; do
+			for certUsage in "${certUsages[@]}"; do
+				certLine="$(sign::one_cert "$keyName" "$keySlot" "$authorityName" "$certUsage")"
+				# Inject under .keys.<k>.slots.<slot>.certificates.<auth>.<cert_usage>.
+				# yq -i with literal strings containing newlines/special chars
+				# via env to avoid quoting issues.
+				env CERT="$certLine" yq -i "
+					.keys.\"${keyName}\".slots.\"${keySlot}\".certificates.\"${authorityName}\".\"${certUsage}\" = strenv(CERT)
+				" "$inputFile"
+			done
 		done
 	done
 }
 
 main() {
 	if (($# < 3)); then
-		log::error "usage: ssh-enrich-keys-yaml <hostName> <inputYaml> <outputYaml> [<inventoryHostsCsv>] [<targetUser>]"
+		log::error "usage: ssh-enrich-keys-yaml <hostName> <inputYaml> <outputYaml> [<inventoryHostsCsv>] [<targetUser>] [<extraPrincipalsCsv>]"
 		return 64
 	fi
 
@@ -410,6 +568,7 @@ main() {
 	outputFile="$3"
 	inventoryHostsCsv="${4:-}"
 	targetUser="${5:-${USER:-root}}"
+	extraPrincipalsCsv="${6:-}"
 
 	if [[ ! -r "$inputFile" ]]; then
 		log::error "input yaml unreadable: $inputFile"
