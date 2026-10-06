@@ -229,6 +229,51 @@ only.
 | publish a control plane on the WAN, or point `server_url` at an address reached *through* the tailnet
 |===
 
+==== No tailnet zone — MagicDNS stays off
+
+*Decided 2026-10-06.* The two self-hosted tailnets carry **no `base_domain`** and run with MagicDNS
+**off**. The SaaS entry keeps `.mammoth-skate.ts.net` because the vendor operates MagicDNS; ours have
+none because their members are named by the fabric zone. Spell the absence as a decision — a
+`magicDns = false` beside the vendor's domain, never an empty string someone later fills in.
+
+[cols="1,2",options="header"]
+|===
+| Reason | Detail
+
+| a tailnet's members are the machines of **one** bare-metal
+| its darwin host and its NixOS guest — two or three names, already resolved **authoritatively** by
+that segment's dnsmasq (`nixos.{host}`, `vzhost.{host}`). A tailnet zone would be a second authority
+for names that already exist.
+
+| nothing outside a tailnet uses its names
+| cross-tailnet traffic targets segment addresses and fabric-zone names, per
+<<_the_rule,Crossing between tailnets>>. So tailnet names would serve only inside one bare-metal —
+exactly where dnsmasq answers.
+
+| `extra_records` has never served anything
+| `services.headscaleBootstrap.role = "none"` on both bare-metals: headscale has never run. This
+retires **scaffolding**, not a working feature.
+
+| it retires one fork patch
+| the CNAME synthesis is **not** an upstream feature — headscale's config states *"so far only A and
+AAAA records are supported (on the tailscale side)"*, so it works only through our fork's `net/dns`
+ExtraRecords patch. With MagicDNS off that patch has no consumer. ⚠️ The fork **stays**: its SSH
+interception on port 2222 is load-bearing for keyless Tailscale SSH.
+|===
+
+[IMPORTANT]
+.A constraint headscale enforces itself
+====
+headscale's `config-example.yaml` states that `base_domain` *"must be different from the `server_url`
+domain"*. So a tailnet zone equal to the fabric zone is not a matter of taste — headscale **refuses**
+it. Had we wanted MagicDNS, a sibling private suffix would have been *mandatory*, and it would have
+bought nothing the fabric zone does not already provide.
+====
+
+ⓘ One thing to measure when standing it up: whether headscale validates `base_domain` even with
+`magic_dns: false`. If it does, give it a value that cannot be mistaken for a live zone and record it
+as inert — a placeholder must not become a suffix someone starts using.
+
 [[control-tls]]
 === TLS on the control URL — kept, from the shared authority
 
