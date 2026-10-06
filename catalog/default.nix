@@ -102,6 +102,31 @@ in
           # high eight are other links. Slot 0 of the low half is ndh's own infra (gateway,
           # DHCP pool, tenant pins); slots 1-4 are rke2lab's per-cluster spans. Slot 8 is the
           # vz-host /30.
+          #
+          # Inside slot 0, who holds what — stated HERE because ndh owns the /25 and DELEGATES
+          # from it, so the map belongs to the owner rather than to each tenant's own view of
+          # the block it was given (nnh's flake states its `.124/30`, which is the tenant
+          # declaring what it holds, not the carve):
+          #
+          #   .1          the gateway — fabric-br, dnsmasq, the split-DNS target
+          #   .2  - .30   the DHCP pool (`dynamicCidr` /27); clients auto-register in the zone
+          #   .32 - .111  unallocated — the bulk of the /25, room for whatever comes next
+          #   .112/28     the top of the /25, split in two /29s:
+          #     .112/29   ndh's own infra (`ndhInfraCidr`) — headscale at .113, .114-.118 spare
+          #     .120/29   RESERVED for delegation to tenants, two /30s: .120/30 and .124/30
+          #
+          # The two halves are deliberately SEPARATE rather than adjacent: allocating both
+          # top-down from the /25 makes owner and tenants converge on each other, and the first
+          # address an owner reaches for (`.126`) already falls in the tenant half.
+          #
+          # ⚠️ The tenant half is a RESERVATION, not an inventory — what is actually delegated
+          # differs per bare-metal and is NOT derived here. A tenant publishes its own block and
+          # only that (nnh's flake: "nnh owns exactly this /30 and its two hosts, and publishes
+          # ONLY that — never the enclosing net"), ndh unions it in, and akvorado's
+          # most-specific-prefix match makes the /30 win over the enclosing span. Today: nnh
+          # holds `172.16.16.124/30` on NIKOPOL ALONE — its `base` is hard-coded to `172.16.16`
+          # — so the same block on bioskop is free. Read `netplan.segments` for who holds what;
+          # do not infer a tenant's holding from this map, which describes the carve.
           bare = hostId * 16;
           link = bare + 8;
           octets = n: "172.16.${toString n}";
@@ -121,6 +146,20 @@ in
           netGateway = "${octets bare}.1"; # Incus bridge + dnsmasq + split-DNS target
           dynamicCidr = "${octets bare}.0/27"; # DHCP pool; statics live above it (top-down)
           dhcpRange = "${octets bare}.2-${octets bare}.30"; # within the dynamic /27 (gateway .1 excluded)
+          # ndh's OWN infra span inside this segment — a delegated block, the same idiom the nnh
+          # tenant already uses for its collector (`.124/30`, usable .125/.126). Distinct and
+          # adjacent rather than two stacks descending from the same top: when ndh and a tenant
+          # both allocate top-down from the /25 they converge on each other, and the first
+          # candidate address for this (`.126`) sat INSIDE nnh's delegated /30 — taking it would
+          # have revoked a span, not moved two records.
+          ndhInfraCidr = "${octets bare}.112/29"; # usable .113-.118; .119 broadcast
+          # The headscale control plane's container on this bare-metal. A STATIC record, not a
+          # dynamic DHCP registration: `dns.mode=dynamic` only holds a name while its lease
+          # lives, and a control plane whose name vanishes during an offline window cannot be
+          # registered against — the circular failure the bring-up exists to avoid. The same
+          # mechanism already cost the akvorado pipeline its Kafka broker for days (see
+          # modules/nixos/baremetal-segment.nix).
+          headscaleAddress = "${octets bare}.113";
           linkCidr = "${octets link}.0/30"; # static P2P link: vz-host <-> Incus host
           hostAddress = "${octets link}.1"; # <host>-nixos link end on lan-br (subnet router)
           vzHostAddress = "${octets link}.2"; # vz-host alias (dnsmasq host-record vzhost.<host>)
@@ -550,6 +589,30 @@ in
                 else
                   [ ]
               )
+              # ndh's own delegated infra span, carrying the names this bare-metal's segment must
+              # resolve for ndh's services.  Declared as its OWN segment rather than as extra
+              # hosts on the `-net` entry, so the delegation is visible in the registry the way
+              # the nnh tenant's is — and `baremetal-segment.nix` picks its hosts up anyway,
+              # since it selects by CONTAINMENT in `netCidr`, not by an exact cidr match.
+              ++ [
+                {
+                  cidr = bm.ndhInfraCidr;
+                  name = "${bm.domain}-ndh-infra";
+                  asn = 65000;
+                  hosts = [
+                    # The control plane each member dials to register. It is reached over THIS
+                    # segment, never the public network: the guest's own dnsmasq is authoritative
+                    # for the `.${bm.domain}` zone, so `headscale.${bm.domain}` resolves locally
+                    # to the container on `fabric-br`. This record is what makes the name exist —
+                    # `server_url` is the one DNS name the fabric control plane cannot do without
+                    # (unlike `base_domain`, which the self-hosted tailnets deliberately omit).
+                    {
+                      name = "headscale.${bm.domain}";
+                      ip = bm.headscaleAddress;
+                    }
+                  ];
+                }
+              ]
               # The static /30 link exists only for a vz-host that can't join the tailnet
               # (the corporate Mac); on-tailnet bare-metals declare no `linkCidr`.  It is an
               # attribution-only span (the P2P transport; the dnsmasq that registers the

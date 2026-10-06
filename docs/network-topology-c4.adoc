@@ -318,7 +318,12 @@ by nothing. The carve encodes the link *in the address*: one bit of the third oc
 │   ├── slot 0   .0/24          HOST INFRA — ndh owns
 │   │            ├── .1         fabric-br gateway (address is .1/21, covering slots 0-7)
 │   │            ├── .2-.30     dynamic DHCP pool (= dynamicCidr .0/27)
-│   │            └── .124-.126  nnh pinned collector (nikopol)
+│   │            ├── .32-.111   unallocated — the bulk of the /25
+│   │            └── .112/28    the top /28, split in two /29s:
+│   │                 ├── .112/29  ndh's own infra (= ndhInfraCidr) — headscale .113
+│   │                 └── .120/29  RESERVED for tenants, two /30s:
+│   │                      ├── .120/30  free
+│   │                      └── .124/30  nnh pinned collector (nikopol)
 │   ├── slots 1-4 .1-.4 .0/24   ONE /24 PER CLUSTER — rke2lab owns (slot = 1 + roleId)
 │   │                             mgmt slot 1 · wrkld slot 2 · two spare role slots
 │   └── slots 5-7               spare, on fabric-br
@@ -343,8 +348,24 @@ Per-host consequences — every value derived, none chosen:
 | `linkCidr` | `172.16.6.252/30` → `172.16.24.0/30` | `172.16.7.252/30` → `172.16.8.0/30`
 | `hostAddress` | `.6.254` → `172.16.24.1` | `.7.254` → `172.16.8.1`
 | `vzHostAddress` | `.6.253` → `172.16.24.2` | `.7.253` → `172.16.8.2`
+| `ndhInfraCidr` | *(postdates the renumbering)* `172.16.16.112/29` | *(postdates the renumbering)* `172.16.0.112/29`
+| `headscaleAddress` | *(postdates the renumbering)* `172.16.16.113` | *(postdates the renumbering)* `172.16.0.113`
 | nnh's pinned hosts | `.6.125/.126` → `172.16.16.125/.126` — declared by *nnh*, not here | *(none)*
 |===
+
+The top `/28` of slot 0 is split into two `/29`s — the owner's and the tenants' — rather than having
+both allocate top-down from the `/25`. Two stacks descending from one top converge on each other, and
+the first address an owner reaches for (`.126`) already falls inside nnh's delegated `/30`: taking it
+revokes a span rather than moving a record, and on nikopol that span is live. The tenant half is a
+**reservation**, not an inventory — what is actually delegated differs per bare-metal and is declared
+by the tenant, never derived here. Read `netplan.segments` for who holds what.
+
+`headscaleAddress` is a *static* record, deliberately, and the reason is the same failure recorded
+below for pinned instances: Incus' `dns.mode = dynamic` holds a name only while its lease lives, so a
+control plane whose name vanishes during an offline window cannot be registered against — the
+circular failure the bring-up exists to avoid. `server_url` is the one DNS name the fabric control
+plane cannot do without; `base_domain` it deliberately omits (see
+link:fabric-control-plane-spec.adoc[the fabric control plane spec]).
 
 [IMPORTANT]
 ====
