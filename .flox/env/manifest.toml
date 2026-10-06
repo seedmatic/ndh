@@ -63,14 +63,39 @@ incus-client.systems = [
 ##  ... run by _bash_ shell when you run 'flox activate'.
 ## -------------------------------------------------------------------
 [hook]
-# on-activate = '''
-#   # -> Set variables, create files and directories
-#   # -> Perform initialization steps, e.g. create a python venv
-#   # -> Useful environment variables:
-#   #      - FLOX_ENV_PROJECT=/home/user/example
-#   #      - FLOX_ENV=/home/user/example/.flox/run
-#   #      - FLOX_ENV_CACHE=/home/user/example/.flox/cache
-# '''
+## The flake-input registry indirection. This repo's seedmatic inputs are INDIRECT ids
+## (`url = "flake-commons"`), resolved through nix's registry instead of naming a branch
+## in flake.nix — so re-aiming one is a LOCAL edit, never a flake edit that has to be
+## pushed before the rest of the chain can see it.
+##
+## `flake-registry.json` is COMMITTED and carries the default, branch-less targets. It has
+## to be committed because of `relock`: it CLONES the repo to re-lock it (rke2lab's
+## nix/relock.sh), so a registry that existed only as a gitignored file would leave it
+## unable to resolve a single seedmatic input — and its `relock_input` only PRINTS
+## "FAILED to resolve" while still exiting 0, which is the silent-ish failure this whole
+## indirection exists to abolish.
+##
+## A gitignored `flake-registry.local.json` REPLACES it wholesale when present. Not
+## merged on purpose: a merge needs jq, which this env does not install, and a stale local
+## copy missing a newly added id fails LOUDLY (`cannot find flake 'flake:x' in the flake
+## registries`) rather than resolving the wrong thing. Copy the committed file and edit the
+## lines you want — e.g. aim `flake-commons` at `git+file:///…/nix-flake-commons.d/develop`
+## to build your own commits WITHOUT pushing them.
+##
+## It takes the GLOBAL registry slot, measured to cost nothing here: `nixpkgs` keeps
+## resolving through the SYSTEM registry (higher precedence, pinned by nix-darwin) and
+## nothing in this closure ever relied on a channels.nixos.org indirect id.
+on-activate = '''
+  _ndh_registry="$FLOX_ENV_PROJECT/flake-registry.json"
+  if [ -f "$FLOX_ENV_PROJECT/flake-registry.local.json" ]; then
+    _ndh_registry="$FLOX_ENV_PROJECT/flake-registry.local.json"
+  fi
+  # nix.conf settings are newline-separated, and NIX_CONFIG may already carry some.
+  _ndh_nl='
+'
+  export NIX_CONFIG="${NIX_CONFIG:+${NIX_CONFIG}${_ndh_nl}}flake-registry = $_ndh_registry"
+  unset _ndh_registry _ndh_nl
+'''
 
 
 ## Profile script ----------------------------------------------------
