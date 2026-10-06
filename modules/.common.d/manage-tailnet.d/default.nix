@@ -91,15 +91,15 @@ let
   # OAuth-client tag ownership follows the Tailscale-recommended pattern
   # (kb/1215/oauth-clients): a dedicated owner tag — assigned to the
   # rotation OAuth client in the console — owns the per-kind tags, so the
-  # client may mint keys carrying them.  The legacy `acls` block is still
-  # what we emit, but its REASON HAS EXPIRED: it was kept so this tag
-  # vocabulary stayed usable by the headscale controller, which does not
-  # understand `grants` — and headscale is hibernating, its policy file a
-  # separate artefact nothing syncs.  Migrating is decided, not done (see
-  # docs/network-topology-c4.adoc#authorisation): it must `del(.acls)` in
-  # sync_policy in the SAME change, because the effective policy is the
-  # permissive UNION of both blocks — a canonical `.grants` alone would be
-  # dropped by the reconciler while the superseded `acls` kept granting.
+  # client may mint keys carrying them.  The migration off the legacy
+  # `acls` block IS DONE: this file emits `grants` (see the block below)
+  # and the reconciler in manage-tailnet.sh `del(.acls)` in the same
+  # POST, because the effective policy is the permissive UNION of both —
+  # setting one without deleting the other is how reach survives its own
+  # withdrawal.  ⚠️ `catalog/tailnet/acl.hujson`, the HEADSCALE-side
+  # policy, is still on `acls`; nothing syncs it, and converging it is
+  # possible now that the pin sits at headscale 0.29.x, where `grants`
+  # arrive.
   # `ssh` uses `accept` per the single-operator rationale in
   # catalog/tailnet/acl.hujson.
   tailnetAclCanonical =
@@ -285,9 +285,10 @@ let
       # is not merely a modernisation:
       #
       #  1. The `acls` block was kept so this tag vocabulary stayed readable by the
-      #     headscale controller, which does not understand grants.  Headscale is
+      #     headscale controller, which could not read grants before 0.29.0.  Headscale is
       #     hibernating and its policy is a separate artefact nothing syncs, so that
-      #     coupling is gone.
+      #     coupling was already gone — and the version objection has expired too, the pin
+      #     having moved to the 0.29.x band where grants arrive.
       #  2. ★ A `grants` block was ALREADY LIVE and ungoverned — measured 2026-09-27,
       #     mirroring these rules but frozen on `172.16.6.0/24` / `172.16.7.0/24`, the
       #     pre-renumbering fabric segments, which designate nothing since 2026-09-23.
@@ -468,9 +469,9 @@ let
       # ★ The policy carries its OWN assertions, and the control plane REFUSES the POST
       # when one fails ("If an assertion fails, Tailscale rejects the updated tailnet
       # policy file").  So this block is not documentation — it is the gate that stops a
-      # later edit of this file from widening or narrowing reach unnoticed, starting with
-      # the pending `acls` -> `grants` translation, where ports leave `dst` for `ip` and a
-      # mistranslation would be invisible in review.  A test's `src` may be a TAG and its
+      # later edit of this file from widening or narrowing reach unnoticed — as it did for
+      # the `acls` -> `grants` translation, now LANDED, where ports leave `dst` for `ip`
+      # and a mistranslation would have been invisible in review.  A test's `src` may be a TAG and its
       # `accept`/`deny` may name `tag:<name>:<port>`, so the role segmentation is
       # assertable directly rather than through device addresses.
       tests = [

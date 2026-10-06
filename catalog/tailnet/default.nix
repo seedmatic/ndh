@@ -7,17 +7,28 @@
 #     Controller-AGNOSTIC: a `tag:headless,tag:nixos` node has the same
 #     identity whether it registers via Tailscale SaaS or self-hosted
 #     Headscale.  Consumed by the client wiring (tag advertising), the
-#     nixos/darwin outputs, and scripts/manage-tailnet (which
+#     nixos/darwin outputs, and modules/.common.d/manage-tailnet.d (which
 #     mints one per-kind auth key carrying that kind's tag pair).
 #
-#   aclPolicyFile — the tailnet access policy (HuJSON: groups, tagOwners,
-#     acls, ssh).  Controller-AGNOSTIC: the SAME file is the source of
-#     truth for both controllers, applied differently —
-#       headscale : `headscale policy set -f <aclPolicyFile>`
-#       SaaS      : `POST /api/v2/tailnet/-/acl` (or the admin console).
-#     Its `tagOwners` is what authorises minting per-kind auth keys, so
-#     scripts/manage-tailnet depends on it staying in sync with
-#     whichever controller is live.
+#   aclPolicyFile — the HEADSCALE control plane's access policy (HuJSON).
+#     NOT controller-agnostic, whatever this header used to say: the live
+#     SaaS policy is GENERATED (`tailnetAclCanonical` in
+#     modules/.common.d/manage-tailnet.d/default.nix, rendered to
+#     tailnet-acl-canonical.json and reconciled by
+#     `manage-tailnet --sync-acl`), derives its CIDRs from this catalog,
+#     and carries rules this file has never had.  acl.hujson's own header
+#     withdrew the agnostic claim already — « NOT copies of one policy —
+#     they are two control planes' policies, and only one is in force ».
+#     Split the two halves: the tag vocabulary below IS shared (a
+#     `tag:headless,tag:nixos` node has one identity whichever controller
+#     enrolls it), the POLICY is per control plane.
+#
+#     ⚠️ This file is still hand-written and on the legacy `acls` block,
+#     while the generated SaaS policy moved to `grants` (and the
+#     reconciler `del(.acls)` so the two never union).  Converging it is
+#     now possible rather than blocked: `grants` arrive in headscale
+#     0.29.0 and the pin sits at 0.29.x, so the old reason to keep `acls`
+#     here — a controller that could not read grants — has expired.
 #
 #   headscale — the self-hosted control-plane server's NETWORK identity
 #     (listen port, mDNS alias, per-host URLs).  Only relevant when
@@ -98,16 +109,6 @@ in
   # all of this (see the module header).
   headscale = {
     inherit listenPort serviceName aliasName;
-
-    # Per-host physical URL — falls back to each host's local mDNS name
-    # when the `aliasUrl` below is unreachable.  Currently unused by
-    # clients (they read `aliasUrl`) but retained for diagnostics and
-    # for the rare case where an operator wants to point at a specific
-    # physical instance instead of the alias.
-    serverUrls = {
-      bioskop = "https://bioskop.local:${toString listenPort}";
-      nikopol = "https://nikopol.local:${toString listenPort}";
-    };
 
     # Fleet-scoped alias that every client's `--login-server` points at.
     # The host currently holding `services.headscaleBootstrap.role =
