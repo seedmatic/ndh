@@ -80,7 +80,7 @@ in
             includeTailnet = mkOption {
               type = types.bool;
               default = true;
-              description = "Include tailnet FQDN pattern host.tailnetName.tailnetDomain.";
+              description = "Include the tailnet FQDN pattern <guest><tailnetDomain>.";
             };
             explicitPatterns = mkOption {
               type = types.listOf types.str;
@@ -215,24 +215,20 @@ in
           );
       baseHost = rawHost + cfg.guest.nameSuffix;
 
-      # Tailnet info sourced from canonical netplan catalog
-      tailnetName = if netplan ? tailnet && netplan.tailnet ? name then netplan.tailnet.name else null;
-      tailnetDomain =
-        if netplan ? tailnet && netplan.tailnet ? domain then netplan.tailnet.domain else null;
+      # Tailnet info sourced from the canonical netplan catalog.  Only the VENDOR tailnet carries a
+      # MagicDNS domain — the self-hosted ones run `magicDns = false`, so they form no FQDN.
+      tailnetDomain = if netplan ? tailnets then netplan.tailnets.saas.domain else null;
       normalizedTailnetDomain =
         if (tailnetDomain != null && tailnetDomain != "") then lib.removePrefix "." tailnetDomain else null;
       hostIdentityTailnetPattern =
-        if (tailnetName != null && tailnetName != "" && normalizedTailnetDomain != null) then
-          "*.${tailnetName}.${normalizedTailnetDomain}"
-        else if (normalizedTailnetDomain != null) then
-          "*.${normalizedTailnetDomain}"
-        else
-          null;
+        if normalizedTailnetDomain != null then "*.${normalizedTailnetDomain}" else null;
+      # `<guest><domain>`, the domain carrying its own leading dot.  This used to interpolate a
+      # `tailnetName` read as `netplan.tailnet ? name` — a key the catalog has never had, so the
+      # value was permanently null and this pattern reached no ssh config at all, silently.  The
+      # two-part form is the correct one: the guest name IS the tailnet node name (`nameSuffix`
+      # defaults to `-nixos`, and `bioskop-nixos` / `nikopol-nixos` are the live nodes).
       tailnetFqdn =
-        if (cfg.guest.includeTailnet && tailnetName != null && tailnetDomain != null) then
-          "${baseHost}.${tailnetName}.${tailnetDomain}"
-        else
-          null;
+        if (cfg.guest.includeTailnet && tailnetDomain != null) then "${baseHost}${tailnetDomain}" else null;
 
       derivedPatterns =
         if (cfg.guest.explicitPatterns != [ ]) then
