@@ -32,9 +32,23 @@
   #   3. Direct inputs — flakes pinned here because flake-commons does not
   #      re-export them (`treefmt-nix`, `sops-nix`) or because they're
   #      project-local (`tailscale-fork`).
+  #
+  # Every SEEDMATIC-owned input below is an INDIRECT id (`url = "flake-commons"`),
+  # resolved through nix's registry: the branch-less default targets live in the
+  # committed flake-registry.json, and the operator re-aims one by dropping a
+  # flake-registry.local.json beside it (see the [hook] in .flox/env/manifest.toml).
+  #
+  # Why, and it is not a preference: this chain is PUSH-GATED, so a branch named here
+  # could only be re-aimed by pushing an edit to this file — which is precisely how the
+  # same pin rotted twice, advancing along a line nobody was on without ever erroring.
+  # Naming no branch means naming nothing that can be deleted.
+  #
+  # Hermeticity is unaffected, measured: an indirect id is consulted only when
+  # RE-locking. flake.lock still records a revision, so anyone evaluating this flake
+  # from the lock — with no registry at all — resolves exactly what we resolved.
   inputs = {
     # 1. Aggregator pin
-    flake-commons.url = "github:seedmatic/nix-flake-commons/develop";
+    flake-commons.url = "flake-commons";
 
     # 2. Aggregator passthroughs (alphabetized)
     bird.follows = "flake-commons/bird";
@@ -64,7 +78,7 @@
     # project-local infrastructure. Share the family version set via
     # flake-commons to dedup nixpkgs/flake-utils.
     claude-hub = {
-      url = "github:seedmatic/claude-hub/main";
+      url = "claude-hub";
       inputs.flake-commons.follows = "flake-commons";
     };
 
@@ -84,12 +98,17 @@
     # pin `rke2lab.inputs.flake-commons.follows = "flake-commons"` so that whole
     # set resolves against ours — one shared flake-commons closure, not two in the lock.
     rke2lab = {
-      # The branch rke2lab is worked on, not an integration branch: the blueprint this input
-      # supplies must be referenceable at runtime without merging at every checkpoint. It tracked
-      # `feature/nixos-node-substrate` long after that branch was retired, so `nix flake update`
-      # kept advancing along a dead line — pulling newer commits that carried none of the work,
-      # silently (measured 2026-09-28: the lock moved and the VIP host-records still did not exist).
-      url = "github:seedmatic/rke2lab/feature/viewpoint-separation";
+      # ★ The pin that proved the point. It tracked `feature/nixos-node-substrate` long after
+      # that branch was retired, so `nix flake update` kept advancing along a dead line —
+      # pulling newer commits that carried none of the work, silently (measured 2026-09-28:
+      # the lock moved and the VIP host-records still did not exist). Repaired by hand, it then
+      # rotted a SECOND time onto `feature/viewpoint-separation`, itself since deleted.
+      # Twice, no error — just the wrong source.
+      #
+      # So it names no branch at all now. When the blueprint has to be read from a line that is
+      # not yet pushed — the original reason a work branch was named here — aim this id at a
+      # local checkout in flake-registry.local.json instead of editing this file.
+      url = "rke2lab";
       inputs.ndh.follows = "";
       inputs.flake-commons.follows = "flake-commons";
     };
@@ -100,7 +119,7 @@
     # back-reference to ndh follows THIS root). See the hub memory
     # flake-mutual-dependency-follows-root.
     nnh = {
-      url = "github:seedmatic/nnh/main";
+      url = "nnh";
       inputs.ndh.follows = "";
       # Share the family version set: dedup nnh's flake-commons subtree
       # (devenv/cachix/bird/…) with ndh's so importing nnh for its blueprint

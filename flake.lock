@@ -22883,18 +22883,16 @@
         ]
       },
       "locked": {
-        "lastModified": 1787133300,
-        "narHash": "sha256-AOcgCHAkv06I31Xi2Hii2n2Um81nXH6m/mxb3CFTiPw=",
+        "lastModified": 1791305389,
+        "narHash": "sha256-aHfjuT0XeTk+2oLp4SNrJhtQN2HdHIX3j0aMW6v6Cv8=",
         "owner": "seedmatic",
         "repo": "claude-hub",
-        "rev": "64ca588df427cd2f06d02cb8c7fe5f806937b6dc",
+        "rev": "19675081ba9975cf5e3dbafee73464a85f7656c5",
         "type": "github"
       },
       "original": {
-        "owner": "seedmatic",
-        "ref": "main",
-        "repo": "claude-hub",
-        "type": "github"
+        "id": "claude-hub",
+        "type": "indirect"
       }
     },
     "crane": {
@@ -65392,18 +65390,16 @@
         "zen-browser": "zen-browser_129"
       },
       "locked": {
-        "lastModified": 1789286053,
-        "narHash": "sha256-GkIN9sn8RhM3D+c9DXdnXL6z9VUhm6Y0ZFofB7WCm7M=",
+        "lastModified": 1791310612,
+        "narHash": "sha256-s0x2VQ70xpmcSz4CYQm3vQfuNZlWz6jdsAEMCfQjzxs=",
         "owner": "seedmatic",
         "repo": "nix-flake-commons",
-        "rev": "783718f167110b140925c51ccf473234b8dd181c",
+        "rev": "ed347450fb47f368451108e0c9f37b2e210a472f",
         "type": "github"
       },
       "original": {
-        "owner": "seedmatic",
-        "ref": "develop",
-        "repo": "nix-flake-commons",
-        "type": "github"
+        "id": "flake-commons",
+        "type": "indirect"
       }
     },
     "flake-commons_2": {
@@ -216795,12 +216791,12 @@
     },
     "nixpkgs-unstable": {
       "locked": {
-        "lastModified": 1789149629,
-        "narHash": "sha256-H6GwaZzZf+4npqv0tph94w9tZddSjFjmQrVsW0z78uk=",
-        "rev": "eaad089433ca2bb662274377d33df3d0e51ef28b",
-        "revCount": 1072397,
+        "lastModified": 1791260994,
+        "narHash": "sha256-Miqqk/ammqnTUxaoCyvtwoPeLbI1ksFyLxi/CazZpWY=",
+        "rev": "151fa4e8ddfdd8dd25d945ad94ed54a13de9f6e4",
+        "revCount": 1086391,
         "type": "tarball",
-        "url": "https://api.flakehub.com/f/pinned/NixOS/nixpkgs/0.1.1072397%2Brev-eaad089433ca2bb662274377d33df3d0e51ef28b/01a096b2-d158-7183-ae68-b86674ebb578/source.tar.gz"
+        "url": "https://api.flakehub.com/f/pinned/NixOS/nixpkgs/0.1.1086391%2Brev-151fa4e8ddfdd8dd25d945ad94ed54a13de9f6e4/01a11093-232b-73b3-a9d0-859cd3039a86/source.tar.gz"
       },
       "original": {
         "type": "tarball",
@@ -248167,18 +248163,16 @@
         ]
       },
       "locked": {
-        "lastModified": 1790236883,
-        "narHash": "sha256-+z2JsmvirMDL7l1FJlLcvIfk216yjjeY0Ytv0vbwtfQ=",
+        "lastModified": 1790929062,
+        "narHash": "sha256-HvWRPDHjdwk8E9ZW0Vx4hVosOUzbMRXjPrPrh2DCwOM=",
         "owner": "seedmatic",
         "repo": "nnh",
-        "rev": "66b3f1754e16dd288cdcf7d71857b6c0eded0306",
+        "rev": "a9387f873e694a0e275da0649891711a7f536789",
         "type": "github"
       },
       "original": {
-        "owner": "seedmatic",
-        "ref": "main",
-        "repo": "nnh",
-        "type": "github"
+        "id": "nnh",
+        "type": "indirect"
       }
     },
     "nvfetcher": {
@@ -282368,18 +282362,16 @@
         ]
       },
       "locked": {
-        "lastModified": 1790855833,
-        "narHash": "sha256-RcLj/zwGpcUPXJPy6DduJjVf0xOnQngNRmS0sCIU0bs=",
+        "lastModified": 1791305373,
+        "narHash": "sha256-+WT6TJR8p46WSkUpBz/Jbh+2NX7oyYeUSDN/aD4VwOs=",
         "owner": "seedmatic",
         "repo": "rke2lab",
-        "rev": "2c0be4e314baf512f7d5ab9d6ba7a71955bb6b16",
+        "rev": "5495e02c83a5cdd0cd136730d8ae9c051e235e2c",
         "type": "github"
       },
       "original": {
-        "owner": "seedmatic",
-        "ref": "feature/viewpoint-separation",
-        "repo": "rke2lab",
-        "type": "github"
+        "id": "rke2lab",
+        "type": "indirect"
       }
     },
     "root": {
