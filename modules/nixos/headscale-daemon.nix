@@ -22,6 +22,8 @@ let
   catalog = ndh.context.catalog;
   headscaleCatalog = catalog.tailnet.headscale;
 
+  headscalePkg = config.ndh.headscalePkg;
+
   serverUrl = headscaleCatalog.aliasUrl;
 
   tailnetCfg = catalog.netplan.tailnet;
@@ -129,7 +131,7 @@ let
 
     ln -sfn "$CONFIG_SRC" "$CONFIG_LINK"
 
-    exec ${lib.getExe pkgs.headscale} --config "$CONFIG_LINK" serve
+    exec ${lib.getExe headscalePkg} --config "$CONFIG_LINK" serve
   '';
 in
 {
@@ -160,7 +162,7 @@ in
     # to User=headscale rather than root.
     (mkIf (cfg.role != "none") {
       environment.systemPackages = [
-        pkgs.headscale
+        headscalePkg
         mdnsPublish
       ];
 
