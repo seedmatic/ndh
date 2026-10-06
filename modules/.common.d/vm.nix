@@ -29,8 +29,8 @@ let
   hostName = cfg.hostName;
   guestName = cfg.guestName;
   baseTailnetDomain =
-    if catalog.netplan ? tailnet && (catalog.netplan.tailnet ? domain) then
-      lib.removePrefix "." catalog.netplan.tailnet.domain
+    if catalog.netplan ? tailnets && (catalog.netplan.tailnets.saas ? domain) then
+      lib.removePrefix "." catalog.netplan.tailnets.saas.domain
     else
       "tailnet.local";
   domainName = cfg.domainName;

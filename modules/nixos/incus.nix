@@ -87,7 +87,7 @@ let
       user = config.profile.user.name;
       home = config.profile.user.home;
       tailnetDomain =
-        if netplan ? tailnet then lib.removePrefix "." netplan.tailnet.domain else "tailnet.local";
+        if netplan ? tailnets then lib.removePrefix "." netplan.tailnets.saas.domain else "tailnet.local";
       incusRemoteName = config.networking.hostName;
       incusRemoteAddress = "https://${config.networking.hostName}:8443";
       nixBashTrampoline = nixBashTrampoline;

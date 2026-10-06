@@ -46,7 +46,7 @@ let
   # it is used as a suffix there, while dnsmasq's `/<domain>/<server>` form wants the bare label.
   # Strict, no fallback: a literal here would be a second spelling of a catalog value, and
   # laziness means this is only forced where it is actually used (inside the gated segment).
-  tailnetZone = lib.removePrefix "." netplan.tailnet.domain;
+  tailnetZone = lib.removePrefix "." netplan.tailnets.saas.domain;
 
   # Every OTHER bare-metal's zone, forwarded to that bare-metal's own dnsmasq (its `netGateway`
   # is the split-DNS target the catalog names it as). The NAMING half of the gateway pair below:
@@ -370,7 +370,7 @@ lib.mkIf enabled {
   # too and blind the collector.  Instead masquerade ONLY public-bound egress:
   # traffic whose destination is NOT a private or tailnet range.  A packet to the
   # internet then leaves with the host's LAN address (so the home router can route
-  # the reply back), while traffic to the tailnet (${netplan.tailnet.cidr}), the
+  # the reply back), while traffic to the tailnet (${netplan.tailnets.saas.prefixes.v4}), the
   # LAN, vzhost.${bm.domain} and other instances keeps its real source.  Own nftables
   # table (firewall.enable is off here), alongside mss-clamp.
   #
@@ -389,7 +389,7 @@ lib.mkIf enabled {
     content = ''
       chain postrouting {
         type nat hook postrouting priority srcnat; policy accept;
-        ip saddr ${bm.advertiseCidr} ip daddr != { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, ${netplan.tailnet.cidr} } masquerade
+        ip saddr ${bm.advertiseCidr} ip daddr != { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, ${netplan.tailnets.saas.prefixes.v4} } masquerade
       }
     '';
   };
