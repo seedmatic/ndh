@@ -2,15 +2,15 @@
 # PreCompact hook: snapshot the session before context compaction.
 #
 # Merges agent-authored session context (if present) with git state.
-# - Agent draft: .claude/checkpoint-draft-<session_id>.md (conversation context)
+# - Agent draft: .scratchpad.d/checkpoints/checkpoint-draft-<session_id>.md (conversation context)
 # - Git state: the WHOLE worktree DAG, not just the current checkout
-# - Output: .claude/checkpoint-<session_id>-<timestamp>.md (complete recovery point)
+# - Output: .scratchpad.d/checkpoints/checkpoint-<session_id>-<timestamp>.md (complete recovery point)
 #
 # Non-destructive by design: runs *before* compaction (which may fail),
 # so only writes — never deletes.
 #
-# ★ What this file is NOT: the session's memory. Continuity lives in the handoffs
-# under .claude/ and in the memory branch; this is a git snapshot that tells the
+# ★ What this file is NOT: the session's memory. Continuity lives in the scratchpads
+# and in the memory branch; this is a git snapshot that tells the
 # next session WHERE to look. Measured the hard way on 2026-10-04: a backlog that
 # lived only in an interface's state vanished when that interface was tidied.
 set -euo pipefail
@@ -26,8 +26,10 @@ fi
 
 repo_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 timestamp="$(date '+%Y%m%d-%H%M%S')"
-checkpoint="$repo_root/.claude/checkpoint-$session_id-$timestamp.md"
-draft="$repo_root/.claude/checkpoint-draft-$session_id.md"
+checkpoints="$repo_root/.scratchpad.d/checkpoints"
+mkdir -p "$checkpoints"
+checkpoint="$checkpoints/checkpoint-$session_id-$timestamp.md"
+draft="$checkpoints/checkpoint-draft-$session_id.md"
 now_display="$(date '+%Y-%m-%d, %Hh%M')"
 
 # A truncation that does not say so is indistinguishable from completeness — the
@@ -114,8 +116,8 @@ emit_state() {
   fi
   echo "### Where continuity actually lives"
   echo ""
-  echo "- handoffs: \`.claude/*handoff*.md\` — the master one is \`devpod-integration-handoff.md\`"
-  echo "- memory: the \`memory\` branch, checked out at \`<repo>.d/memory\`"
+  echo "- scratchpads: \`.scratchpad.d/<topic>/\`, at the level each concerns"
+  echo "- memory: the \`memory\` branch, at the \`autoMemoryDirectory\` in force"
   echo ""
   echo "⚠️ This checkpoint is a git snapshot. It records WHERE things were, never"
   echo "what was decided — read the handoff for that."
@@ -141,8 +143,8 @@ emit_state() {
 if [[ -f "$draft" ]]; then
   rm -f "$draft"
   printf '{"systemMessage": "Checkpoint created with agent context + worktree DAG: %s"}\n' \
-    ".claude/checkpoint-$session_id-$timestamp.md"
+    ".scratchpad.d/checkpoints/checkpoint-$session_id-$timestamp.md"
 else
   printf '{"systemMessage": "Checkpoint created (git state + worktree DAG, no agent draft): %s"}\n' \
-    ".claude/checkpoint-$session_id-$timestamp.md"
+    ".scratchpad.d/checkpoints/checkpoint-$session_id-$timestamp.md"
 fi

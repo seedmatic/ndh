@@ -14,16 +14,14 @@ if [[ -z "$session_id" ]]; then
 fi
 
 repo_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
-draft="$repo_root/.claude/checkpoint-draft-$session_id.md"
+draft="$repo_root/.scratchpad.d/checkpoints/checkpoint-draft-$session_id.md"
 
 # Check draft age and remind if stale
 if [[ -f "$draft" ]]; then
   # Draft exists - check if stale (older than 30 minutes)
-  if [[ "$(uname)" == "Darwin" ]]; then
-    draft_age=$(($(date +%s) - $(stat -f %m "$draft")))
-  else
-    draft_age=$(($(date +%s) - $(stat -c %Y "$draft")))
-  fi
+  # `date -r FILE`, not `stat`: GNU and BSD stat take opposite flags, and the PATH a hook runs
+  # with decides which one answers, not the OS.
+  draft_age=$(($(date +%s) - $(date -r "$draft" +%s)))
 
   if ((draft_age > 1800)); then
     # Draft is stale (30+ minutes old)

@@ -34,7 +34,7 @@ removed_old=0
 # First pass: collect all checkpoints by session
 declare -A session_checkpoints
 shopt -s nullglob
-for checkpoint in "$repo_root"/.claude/checkpoint-*.md; do
+for checkpoint in "$repo_root"/.scratchpad.d/checkpoints/checkpoint-*.md; do
   base="$(basename "$checkpoint" .md)"
   # Extract session_id from checkpoint-<session_id>-<timestamp>.md
   # Timestamp format is YYYYMMDD-HHMMSS (always 15 chars with dash)
