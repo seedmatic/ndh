@@ -92,5 +92,8 @@
     # (bioskop-nixos) is wired by modules/darwin/host-builder.nix;
     # see docs/host-builder-phases.adoc.
     ndh.hostBuilder = "steady";
+
+    # The Claude Code policy (deny/ask list and hook) is set here only: nikopol runs its employer policy.
+    ndh.claude-code.managedSettings.enable = true;
   };
 }

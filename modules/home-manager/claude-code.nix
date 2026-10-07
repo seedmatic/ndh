@@ -80,6 +80,8 @@ in
         '';
       };
 
+      sessionHooks.enable = mkEnableOption "the session hooks (memory guard and commit, checkpoints) in ~/.claude/settings.json";
+
       seed = mkOption {
         type = types.attrs;
         default = {
@@ -99,6 +101,18 @@ in
       home.sessionVariables = cfg.env;
     }
 
+    (mkIf cfg.sessionHooks.enable {
+      home.activation.claudeCodeHooks = lib.hm.dag.entryAfter [ "writeBoundary" "claudeCodeSeed" ] ''
+        claudeSettings="$HOME/.claude/settings.json"
+        if [ -f "$claudeSettings" ]; then
+          claudeSettingsNew="$(mktemp)"
+          ${pkgs.jq}/bin/jq --slurpfile hooks ${hooksFile} '.hooks = $hooks[0]' "$claudeSettings" >"$claudeSettingsNew"
+          $DRY_RUN_CMD install -m 0644 "$claudeSettingsNew" "$claudeSettings"
+          rm -f "$claudeSettingsNew"
+        fi
+      '';
+    })
+
     {
       home.activation.claudeCodeSeed = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
         claudeSettings="$HOME/.claude/settings.json"
@@ -108,16 +122,6 @@ in
           $DRY_RUN_CMD install -m 0644 ${seedFile} "$claudeSettings"
         else
           $VERBOSE_ECHO "Claude Code settings.json exists — leaving it untouched"
-        fi
-      '';
-
-      home.activation.claudeCodeHooks = lib.hm.dag.entryAfter [ "writeBoundary" "claudeCodeSeed" ] ''
-        claudeSettings="$HOME/.claude/settings.json"
-        if [ -f "$claudeSettings" ]; then
-          claudeSettingsNew="$(mktemp)"
-          ${pkgs.jq}/bin/jq --slurpfile hooks ${hooksFile} '.hooks = $hooks[0]' "$claudeSettings" >"$claudeSettingsNew"
-          $DRY_RUN_CMD install -m 0644 "$claudeSettingsNew" "$claudeSettings"
-          rm -f "$claudeSettingsNew"
         fi
       '';
 

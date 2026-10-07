@@ -7,6 +7,7 @@
 #   - an invalid JSON stops EVERY session from starting, hence the `jq -e` in the derivation, and the
 #     list checker, which fails the build on an open gap or a false positive.
 {
+  config,
   lib,
   pkgs,
   ...
@@ -17,8 +18,15 @@ let
   target = "/Library/Application Support/ClaudeCode/managed-settings.json";
 in
 {
-  system.activationScripts.postActivation.text = lib.mkAfter ''
-    install -d -m 0755 "${builtins.dirOf target}"
-    install -m 0644 ${managed.settings} "${target}"
-  '';
+  # Off unless a host turns it on: a machine under an employer's MDM may carry its own Claude Code
+  # policy, which is theirs and not to be doubled.
+  options.ndh.claude-code.managedSettings.enable =
+    lib.mkEnableOption "the Claude Code managed deny/ask list and PreToolUse hook";
+
+  config = lib.mkIf config.ndh.claude-code.managedSettings.enable {
+    system.activationScripts.postActivation.text = lib.mkAfter ''
+      install -d -m 0755 "${builtins.dirOf target}"
+      install -m 0644 ${managed.settings} "${target}"
+    '';
+  };
 }
