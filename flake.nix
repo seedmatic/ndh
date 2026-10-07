@@ -1707,27 +1707,35 @@
             meta.description = "Lock the flox envs vendored under .flox-envs.d so the seat can activate (fresh-clone bootstrap) — src: flake.nix (lockFloxEnvsPackage)";
           };
           # relock — THIS repo's locks, by the SHARED implementation. The rule lives once, in
-          # rke2lab's `lib.mkRelockApp`, and ndh supplies only what is its own: bumping an input is
-          # editing YOUR lock, making someone pin YOU is THEIR act, and the uniform NAME is what lets
-          # `relock --downstream` request us without knowing anything about us. Before this, that
-          # request reported "exposes no #relock yet" and ndh's pin of rke2lab drifted with nothing to
-          # move it.
+          # nix-flake-commons' `lib.mkRelockApp`, the root every seedmatic flake already consumes.
+          # ndh supplies only what is its own: bumping an input is editing YOUR lock, making someone
+          # pin YOU is THEIR act, and the uniform NAME is what lets `relock --downstream` request us
+          # without knowing anything about us.
           #
           # ndh has no orphan branches and no generated artifacts beyond its lock, so
-          # `pushFirstBranch` / `catalogueBranch` / `ownedArtifacts` stay at their defaults — which is
+          # `pushFirstBranch` / `catalogBranch` / `ownedArtifacts` stay at their defaults — which is
           # the case the shared implementation was written to serve.
+          #
+          # ★ `consumers` names BOTH repos that pin ndh while ndh pins them back: rke2lab and nnh. Each
+          # pair is a CYCLE — cut at the lock by a reciprocal empty `follows` — and a cycle only turns
+          # if each side requests the other: from inside a cycle, the reverse edge IS a forward edge
+          # for the other repo. A change to ndh's catalog has to regenerate the blueprint nnh builds
+          # from it, hence nnh.
           relock = {
             type = "app";
             program = "${
-              inputs.rke2lab.lib.mkRelockApp {
+              inputs.flake-commons.lib.mkRelockApp {
                 pkgs = pkgsForSystem;
                 name = "ndh";
                 slug = "seedmatic/ndh";
                 url = "https://github.com/seedmatic/ndh.git";
-                consumers = [ "github:seedmatic/rke2lab" ];
+                consumers = [
+                  "github:seedmatic/rke2lab"
+                  "github:seedmatic/nnh"
+                ];
               }
             }/bin/relock";
-            meta.description = "Reconcile THIS repo's locks: bump each input, DROP any bump that moves no exported derivation, push. --downstream requests each declared consumer's own relock — impl: rke2lab lib.mkRelockApp";
+            meta.description = "Reconcile THIS repo's locks: bump each input, DROP any bump that moves no exported derivation, push. --downstream requests each declared consumer's own relock — impl: nix-flake-commons lib.mkRelockApp";
           };
           manage-tailnet = {
             type = "app";
