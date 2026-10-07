@@ -47,10 +47,16 @@ commits() { git -C "$MEM" rev-list --count HEAD; }
   run hook memory-guard.sh
   [ "$status" -eq 0 ] && [ -z "$output" ]
 }
-@test "guard: a directory off the memory branch is reported" {
-  git -C "$MEM" switch -q -c elsewhere
+@test "guard: any branch name is fine — none is assumed" {
+  git -C "$MEM" switch -q -c notes-of-some-repo
   run hook memory-guard.sh
-  [[ "$output" == *"not a worktree of the 'memory' branch"* ]]
+  [ "$status" -eq 0 ] && [ -z "$output" ]
+}
+@test "guard: a directory that is not a worktree root is reported" {
+  mkdir -p "$MEM/sub"
+  printf '{"autoMemoryDirectory": "%s/sub"}\n' "$MEM" >"$HOME/.claude/settings.json"
+  run hook memory-guard.sh
+  [[ "$output" == *"not the root of a git worktree"* ]]
 }
 @test "guard: a missing directory is reported" {
   printf '{"autoMemoryDirectory": "%s/nowhere"}\n' "$T" >"$HOME/.claude/settings.json"
@@ -143,4 +149,22 @@ commits() { git -C "$MEM" rev-list --count HEAD; }
   run hook checkpoint-gc.sh
   [ ! -e "$REPO/.scratchpad.d/checkpoints/checkpoint-deadbeef-0000-20261007-120000.md" ]
   [[ "$output" == *"1 orphaned"* ]]
+}
+
+# --- two projects, two memories: everything comes from the autoMemoryDirectory in force ---
+@test "commit: a project-level autoMemoryDirectory takes the session's write, the user one does not" {
+  OTHER="$T/other.d/memory"
+  git init -q "$OTHER"
+  git -C "$OTHER" commit -q --allow-empty -m init
+  mkdir -p "$REPO/.claude"
+  printf '{"autoMemoryDirectory": "%s"}\n' "$OTHER" >"$REPO/.claude/settings.json"
+  printf 'project memory\n' >"$OTHER/fact.md"
+  printf 'user memory\n' >"$MEM/fact.md"
+  wrote Write "$OTHER/fact.md"
+  wrote Write "$MEM/fact.md"
+  user_before="$(commits)"
+  run hook memory-commit.sh
+  git -C "$OTHER" show --name-only --format= HEAD | grep -qx fact.md
+  [ "$(commits)" -eq "$user_before" ]
+  [[ "$(git -C "$MEM" status --porcelain)" == "?? fact.md" ]]
 }

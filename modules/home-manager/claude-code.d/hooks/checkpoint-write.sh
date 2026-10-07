@@ -10,7 +10,7 @@
 # so only writes — never deletes.
 #
 # ★ What this file is NOT: the session's memory. Continuity lives in the scratchpads
-# and in the memory branch; this is a git snapshot that tells the
+# and in the memory worktree; this is a git snapshot that tells the
 # next session WHERE to look. Measured the hard way on 2026-10-04: a backlog that
 # lived only in an interface's state vanished when that interface was tidied.
 set -euo pipefail
@@ -117,7 +117,7 @@ emit_state() {
   echo "### Where continuity actually lives"
   echo ""
   echo "- scratchpads: \`.scratchpad.d/<topic>/\`, at the level each concerns"
-  echo "- memory: the \`memory\` branch, at the \`autoMemoryDirectory\` in force"
+  echo "- memory: the git worktree at the \`autoMemoryDirectory\` in force"
   echo ""
   echo "⚠️ This checkpoint is a git snapshot. It records WHERE things were, never"
   echo "what was decided — read the handoff for that."

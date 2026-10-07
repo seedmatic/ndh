@@ -25,8 +25,8 @@ note() { printf '{"systemMessage": "%s"}\n' "$1"; }
 repo_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 dir="$(memory_dir "$repo_root")"
 [[ -n "$dir" && -d "$dir" && -f "$transcript" ]] || exit 0
-[[ "$(git -C "$dir" rev-parse --abbrev-ref HEAD 2>/dev/null)" == "memory" ]] || exit 0
 real_dir="$(cd "$dir" && pwd -P)"
+[[ "$(git -C "$dir" rev-parse --show-toplevel 2>/dev/null)" == "$real_dir" ]] || exit 0
 
 files=()
 while IFS= read -r f; do
