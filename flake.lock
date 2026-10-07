@@ -78,35 +78,6 @@
         "type": "github"
       }
     },
-    "claude-hub": {
-      "inputs": {
-        "flake-commons": [
-          "flake-commons"
-        ],
-        "flake-utils": [
-          "claude-hub",
-          "flake-commons",
-          "flake-utils"
-        ],
-        "nixpkgs": [
-          "claude-hub",
-          "flake-commons",
-          "nixpkgs"
-        ]
-      },
-      "locked": {
-        "lastModified": 1791392716,
-        "narHash": "sha256-QDNHCPV2znhJM6f8omg3UQ5vW0v+7Kyh80G/Bo/83dA=",
-        "owner": "seedmatic",
-        "repo": "claude-hub",
-        "rev": "01553f51feb093544f336ee9a0c717659d28d87d",
-        "type": "github"
-      },
-      "original": {
-        "id": "claude-hub",
-        "type": "indirect"
-      }
-    },
     "crane": {
       "locked": {
         "lastModified": 1774313767,
@@ -1584,7 +1555,6 @@
           "flake-commons",
           "chromium-bin"
         ],
-        "claude-hub": "claude-hub",
         "darwin": [
           "flake-commons",
           "darwin"

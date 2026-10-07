@@ -3,7 +3,6 @@
   lib,
   pkgs,
   worktreePath,
-  claude-hub ? null,
   ...
 }:
 with lib;
@@ -28,8 +27,8 @@ let
   # Once present, Claude Code owns the file — /model, /plugin, and
   # marketplace edits write back to it and we never overwrite them.
   #
-  # Intentionally carries only the mutable-but-worth-restoring keys
-  # (plugins + marketplaces) and the model ALIAS. The alias picks the tier
+  # Intentionally carries only the model ALIAS, and no plugin: the operator
+  # enables those one at a time, knowing what each changes. The alias picks the tier
   # and the context window; the `[1m]` suffix exists nowhere else, so
   # without it a fresh machine falls back to 200k. The Bedrock model id
   # behind the tier lives in cfg.env (real shell vars, highest precedence)
@@ -85,29 +84,11 @@ in
         type = types.attrs;
         default = {
           model = "opus[1m]";
-          enabledPlugins = {
-            "claude-session-driver@superpowers-marketplace" = true;
-            "double-shot-latte@superpowers-marketplace" = true;
-            "elements-of-style@superpowers-marketplace" = true;
-            "episodic-memory@superpowers-marketplace" = true;
-            "private-journal-mcp@superpowers-marketplace" = true;
-            "superpowers@superpowers-marketplace" = true;
-            "superpowers-chrome@superpowers-marketplace" = true;
-          };
-          extraKnownMarketplaces = {
-            superpowers-marketplace = {
-              source = {
-                source = "github";
-                repo = "obra/superpowers-marketplace";
-              };
-            };
-          };
         };
         description = ''
           Bootstrap seed copied to ~/.claude/settings.json only when that
-          file does not yet exist (fresh machine). Protects the plugin and
-          marketplace list across machine rebuilds without ever clobbering
-          the live file Claude mutates at runtime.
+          file does not yet exist (fresh machine), so the model alias survives a
+          rebuild without ever clobbering the live file Claude mutates at runtime.
         '';
       };
     };
@@ -117,15 +98,6 @@ in
     {
       home.sessionVariables = cfg.env;
     }
-
-    (mkIf (claude-hub != null) {
-      home.file.".claude/bin/claude-config-home-wrapper.sh" = {
-        source = "${
-          claude-hub.packages.${pkgs.stdenv.hostPlatform.system}.claude-config-home-wrapper
-        }/bin/claude-config-home-wrapper.sh";
-        executable = true;
-      };
-    })
 
     {
       home.activation.claudeCodeSeed = lib.hm.dag.entryAfter [ "writeBoundary" ] ''

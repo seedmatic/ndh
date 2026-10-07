@@ -6,10 +6,6 @@
       "to": { "type": "github", "owner": "seedmatic", "repo": "nix-flake-commons" }
     },
     {
-      "from": { "type": "indirect", "id": "claude-hub" },
-      "to": { "type": "github", "owner": "seedmatic", "repo": "claude-hub" }
-    },
-    {
       "from": { "type": "indirect", "id": "rke2lab" },
       "to": { "type": "github", "owner": "seedmatic", "repo": "rke2lab" }
     },

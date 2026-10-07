@@ -71,15 +71,6 @@
     sops-nix.url = "github:Mic92/sops-nix";
     treefmt-nix.url = "github:numtide/treefmt-nix";
 
-    # claude-hub provides the dynamic CLAUDE_CONFIG_DIR wrapper and shared
-    # Claude Code tooling. Direct input (not via flake-commons) as it's
-    # project-local infrastructure. Share the family version set via
-    # flake-commons to dedup nixpkgs/flake-utils.
-    claude-hub = {
-      url = "claude-hub";
-      inputs.flake-commons.follows = "flake-commons";
-    };
-
     # rke2lab is the source of truth for the cluster network underlay (cluster/
     # node IDs, MAC derivation, addressing); the catalog consumes its flat
     # `lib.networkBlueprint` rather than hand-inlining MAC/IP values — the
@@ -1866,7 +1857,6 @@
                 };
                 ndhStore = ndhStoreApiDarwin;
                 keysYamlPath = "${toString profile.user.home}/.local/var/run/secrets/sops/ssh-keys.yaml";
-                claude-hub = inputs.claude-hub;
               };
             };
           darwinOutputs = mkDarwinOutputs {

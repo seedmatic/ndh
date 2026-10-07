@@ -6,7 +6,6 @@
   self,
   worktreePath,
   ndh,
-  claude-hub ? null,
   ...
 }:
 let
@@ -45,7 +44,6 @@ let
       profile
       ndhContext
       ndhStore
-      claude-hub
       ;
     keysYamlPath = sopsSshKeysYamlPath;
   };
