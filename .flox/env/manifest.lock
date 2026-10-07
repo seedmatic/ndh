@@ -4010,7 +4010,7 @@
     },
     {
       "install_id": "incus-client",
-      "locked-url": "path:/private/var/lib/git/seedmatic/ndh.d/develop?lastModified=1790422295&narHash=sha256-KCqKut3BDlmS0g6g3iIsrt9MA4leTxACpu%2BQjcQMLws%3D",
+      "locked-url": "path:/Volumes/git-worktree-store/seedmatic/ndh.d/develop?lastModified=1791392932&narHash=sha256-0KvTMpZlspiRL3yb5vfBqw0MvznaLA4lvTJspSfHoQU%3D",
       "flake-description": "nix system configurations",
       "locked-flake-attr-path": "packages.aarch64-darwin.incus-client",
       "derivation": "/nix/store/7ksq3h46dyrc75r24sv41x3chmpwq8w4-incus-client-7.4.0.drv",
@@ -4039,7 +4039,7 @@
     },
     {
       "install_id": "incus-client",
-      "locked-url": "path:/private/var/lib/git/seedmatic/ndh.d/develop?lastModified=1790422301&narHash=sha256-VhLO419HPQfwSkC1TwL8n2wfmIPPySOM8KDcDQgGKt0%3D",
+      "locked-url": "path:/Volumes/git-worktree-store/seedmatic/ndh.d/develop?lastModified=1791392932&narHash=sha256-0KvTMpZlspiRL3yb5vfBqw0MvznaLA4lvTJspSfHoQU%3D",
       "flake-description": "nix system configurations",
       "locked-flake-attr-path": "packages.aarch64-linux.incus-client",
       "derivation": "/nix/store/bkxsmg2fvsmssd7kiixc8k9nz5wxk82f-incus-client-7.4.0.drv",
@@ -4068,12 +4068,12 @@
     },
     {
       "install_id": "manage-tailnet",
-      "locked-url": "path:/private/var/lib/git/seedmatic/ndh?lastModified=1788939365&narHash=sha256-XDqMIsJWlsPbNWoPrNQYNvtMiTuiGDTDzgTngTtotzA%3D",
+      "locked-url": "path:/Volumes/git-worktree-store/seedmatic/ndh.d/develop?lastModified=1791392932&narHash=sha256-0KvTMpZlspiRL3yb5vfBqw0MvznaLA4lvTJspSfHoQU%3D",
       "flake-description": "nix system configurations",
       "locked-flake-attr-path": "packages.aarch64-darwin.manage-tailnet",
-      "derivation": "/nix/store/gszk3ch80h1s193596k84638sqcl031a-io.seedmatic.ndh-manage-tailnet.drv",
+      "derivation": "/nix/store/y2xddpgfi9dqyngmw5jqk107g4lnifbx-io.seedmatic.ndh-manage-tailnet.drv",
       "outputs": {
-        "out": "/nix/store/nij78zhjf3ljyiyc1mb0ik0dwlya15j5-io.seedmatic.ndh-manage-tailnet"
+        "out": "/nix/store/7mz6qh3m10a4bl7rv8ld0dqrdddibplk-io.seedmatic.ndh-manage-tailnet"
       },
       "output-names": [
         "out"
