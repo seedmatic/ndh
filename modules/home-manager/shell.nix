@@ -108,9 +108,6 @@ in
         nixBashTrampoline = nixBashTrampoline;
         caBundle = "${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt";
         loggerTag = loggerTagZdotdir;
-        # Drop the upstream-zdotdir hardcoded ~/.local/opt/lima-vm/bin entry
-        # (legacy Lima path; the fleet is Tart-only now).
-        limaPathStrip = "path=( \${path:#*/.local/opt/lima-vm/bin} )";
       };
     in
     lib.hm.dag.entryAfter [ "writeBoundary" ] ''

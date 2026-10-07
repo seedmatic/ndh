@@ -35,26 +35,6 @@ main() {
     mv "$tmp_file" "$zshrc_file"
   fi
 
-  # Guard Lima keychain bootstrap on hosts where ~/.lima/_config/user is absent
-  # (e.g. NixOS guest). Keep keychain behavior when the key exists.
-  local zlogin_file
-  for zlogin_file in "$HOME/.config/zsh/rcs/zlogin.zsh" "$HOME/.config/zsh/.zlogin"; do
-    if [ -f "$zlogin_file" ] && grep -qF 'source <( keychain --eval --quiet ~/.lima/_config/user )' "$zlogin_file"; then
-      local tmp_zlogin
-      tmp_zlogin="$(mktemp "${TMPDIR:-/tmp}/zlogin.zsh.XXXXXX")"
-      awk '
-        /source <\( keychain --eval --quiet ~\/\.lima\/_config\/user \)/ {
-          print "if [ -r \"$HOME/.lima/_config/user\" ]; then"
-          print "  source <( keychain --eval --quiet ~/.lima/_config/user )"
-          print "fi"
-          next
-        }
-        { print }
-      ' "$zlogin_file" > "$tmp_zlogin"
-      mv "$tmp_zlogin" "$zlogin_file"
-    fi
-  done
-
   # Keep managed shell customizations in a dedicated part file and source it
   # from zshrc. This avoids reconstructing the entire zshrc and protects prompt
   # and plugin sections owned by the zdotdir repository.
@@ -84,14 +64,9 @@ fi
 
 # Normalize PATH after plugin mutations. The canonical list is rendered by
 # home-manager from modules/home-manager/shell.nix; this block only strips
-# stale entries injected by upstream zdotdir scripts and dedupes. When the
-# host doesn't run the lima vm provider, also drop the upstream-hardcoded
-# `~/.local/opt/lima-vm/bin` so a stale lima toolchain doesn't shadow
-# anything else. On lima hosts, home-manager's `home.sessionPath` carries
-# the legitimate entry so the strip is gated off.
+# stale entries injected by upstream zdotdir scripts and dedupes.
 typeset -U path
 path=( ${path:#/Users/stephane.lacoin/*} )
-@limaPathStrip@
 # Drop entries that don't resolve to a directory: NixOS injects several
 # legacy nix-profile aliases (`/nix/profile/bin`, `~/.local/state/nix/profile/bin`,
 # `/nix/var/nix/profiles/default/bin`) that are populated lazily on first
