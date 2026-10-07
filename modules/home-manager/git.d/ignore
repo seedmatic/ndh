@@ -6,3 +6,7 @@
 \#*
 .\#*
 .local
+
+# Session scratchpads and machine-local files, at any depth of any repo
+.local.d/
+.scratchpad.d/
