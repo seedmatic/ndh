@@ -1707,11 +1707,12 @@
           # `pushFirstBranch` / `catalogBranch` / `ownedArtifacts` stay at their defaults — which is
           # the case the shared implementation was written to serve.
           #
-          # ★ `consumers` names BOTH repos that pin ndh while ndh pins them back: rke2lab and nnh. Each
-          # pair is a CYCLE — cut at the lock by a reciprocal empty `follows` — and a cycle only turns
-          # if each side requests the other: from inside a cycle, the reverse edge IS a forward edge
-          # for the other repo. A change to ndh's catalog has to regenerate the blueprint nnh builds
-          # from it, hence nnh.
+          # ★ `consumers` names every repo that pins ndh: rke2lab, nnh and nch. ndh pins rke2lab and
+          # nnh back, so each of those pairs is a CYCLE — cut at the lock by a reciprocal empty
+          # `follows` — and a cycle only turns if each side requests the other: from inside a cycle,
+          # the reverse edge IS a forward edge for the other repo. A change to ndh's catalog has to
+          # regenerate the blueprint nnh builds from it, hence nnh. nch pins ndh and is pinned by
+          # nobody: a plain edge, with nothing to reciprocate.
           relock = {
             type = "app";
             program = "${
@@ -1723,6 +1724,7 @@
                 consumers = [
                   "github:seedmatic/rke2lab"
                   "github:seedmatic/nnh"
+                  "github:seedmatic/nch"
                 ];
               }
             }/bin/relock";
