@@ -282380,10 +282380,6 @@
           "flake-commons",
           "bird"
         ],
-        "cachix": [
-          "flake-commons",
-          "cachix"
-        ],
         "chromium-bin": [
           "flake-commons",
           "chromium-bin"

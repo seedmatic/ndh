@@ -52,7 +52,6 @@
 
     # 2. Aggregator passthroughs (alphabetized)
     bird.follows = "flake-commons/bird";
-    cachix.follows = "flake-commons/cachix";
     chromium-bin.follows = "flake-commons/chromium-bin";
     darwin.follows = "flake-commons/darwin";
     disko.follows = "flake-commons/disko";
