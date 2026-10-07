@@ -136,7 +136,6 @@ let
     httpie
     jdk
     k9s
-    kpt
     krew
     kubectl
     kubectx
