@@ -1,0 +1,70 @@
+{
+  "programs": {
+    "kubectl": {
+      "verbs": ["apply", "create", "delete", "patch", "replace"],
+      "window": 2,
+      "value_opts": ["-n", "--namespace", "--context", "--kubeconfig", "--cluster", "--user",
+                     "-s", "--server", "--token", "--as", "--as-group", "--as-uid",
+                     "--request-timeout", "--certificate-authority", "--client-certificate",
+                     "--client-key", "--tls-server-name", "--cache-dir", "-v", "--v"]
+    },
+    "helm": {
+      "verbs": ["install", "upgrade", "uninstall", "del", "delete", "un"],
+      "window": 2,
+      "value_opts": ["-n", "--namespace", "--kube-context", "--kubeconfig", "--kube-apiserver",
+                     "--kube-as-user", "--kube-as-group", "--kube-ca-file", "--kube-token",
+                     "--registry-config", "--repository-config", "--repository-cache",
+                     "--burst-limit", "--qps"]
+    },
+    "pulumi": {
+      "verbs": ["up", "update", "destroy", "down", "dn", "cancel"],
+      "window": 2,
+      "value_opts": ["-C", "--cwd", "-s", "--stack", "--color", "-v", "--verbose", "--tracing",
+                     "--profiling", "--memprofilerate"]
+    },
+    "incus": {
+      "verbs": ["launch", "init", "create", "start", "stop", "restart", "pause", "delete", "rm",
+                "copy", "cp", "move", "mv", "rename", "exec", "shell", "restore", "publish",
+                "import", "rebuild", "admin"],
+      "window": 1,
+      "nested_verbs": ["create", "delete", "set", "unset", "edit", "add", "remove", "attach",
+                       "detach", "restore", "push", "import", "rename"],
+      "nested_window": 4,
+      "value_opts": ["--project", "--target"]
+    },
+    "home-manager": {
+      "verbs": ["switch"],
+      "window": 2,
+      "value_opts": ["--flake", "-f", "--file", "-A", "-I", "-b", "--option"]
+    },
+    "darwin-rebuild": {
+      "verbs": ["switch", "activate"],
+      "flag_verbs": ["--rollback"],
+      "sudo": true,
+      "window": 2,
+      "value_opts": ["--flake", "-I", "--option", "-p", "--profile-name"]
+    },
+    "nixos-rebuild": {
+      "verbs": ["switch", "boot", "test"],
+      "flag_verbs": ["--rollback"],
+      "sudo": true,
+      "window": 2,
+      "value_opts": ["--flake", "--target-host", "--build-host", "-I", "--option", "-p",
+                     "--profile-name", "--specialisation", "-c"]
+    },
+    "rke2lab-grow": { "verbs": ["up"], "window": 2, "value_opts": [], "in_list": false },
+    "grow": { "verbs": ["up"], "window": 2, "value_opts": [], "in_list": false }
+  },
+  "list_extra_rules": ["rm -rf *", "rm -rf ~/.claude*", "mv ~/.claude*"],
+  "nix_attr_aliases": {
+    "kubernetes-helm": "helm",
+    "pulumi-bin": "pulumi",
+    "incus-lts": "incus",
+    "incus-client": "incus"
+  },
+  "ask_launchers": [
+    { "program": "java", "any_arg_contains": ["io.seedmatic.rke2lab.controlplane.Main", "seed-outcluster"] },
+    { "program": "mvnw", "all_args_contain": ["exec:java"], "any_arg_contains": ["seed-outcluster"] },
+    { "program": "mvn", "all_args_contain": ["exec:java"], "any_arg_contains": ["seed-outcluster"] }
+  ]
+}
