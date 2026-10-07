@@ -1,5 +1,7 @@
 .DS_STORE
 .vscode/
+# Claude Code rewrites it itself when a prompt is answered "always allow"
+/.claude/settings.local.json
 **/result
 .git/
 .git.clone.d/
