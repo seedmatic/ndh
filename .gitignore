@@ -1,7 +1,7 @@
 .DS_STORE
 .vscode/
-# Claude Code rewrites it itself when a prompt is answered "always allow"
-/.claude/settings.local.json
+# Claude Code's own per-checkout files: nothing under .claude/ is tracked
+/.claude/
 **/result
 .git/
 .git.clone.d/
