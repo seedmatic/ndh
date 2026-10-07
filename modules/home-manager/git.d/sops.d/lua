@@ -1,6 +1,0 @@
-[filter "sops-lua"]
-  clean = @sopsConfigHome@/lua-clean %f
-  smudge = @sopsConfigHome@/lua-smudge %f
-  required = true
-[diff "sops-lua"]
-  textconv = @sopsConfigHome@/lua-textconv

@@ -1,8 +1,0 @@
-*~
-*.zwc
-.git-credentials
-
-# temp files
-\#*
-.\#*
-.local

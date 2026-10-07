@@ -1,6 +1,0 @@
-{ ... }:
-{
-  programs.tmate = {
-    enable = true;
-  };
-}

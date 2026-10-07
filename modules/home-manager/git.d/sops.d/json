@@ -1,6 +1,0 @@
-[filter "sops-json"]
-  clean = @sopsConfigHome@/json-clean %f
-  smudge = @sopsConfigHome@/json-smudge %f
-  required = true
-[diff "sops-json"]
-  textconv = @sopsConfigHome@/json-textconv

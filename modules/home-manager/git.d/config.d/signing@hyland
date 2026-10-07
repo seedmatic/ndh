@@ -1,3 +1,0 @@
-[user]
-    email = stephane.lacoin@hyland.com
-    signingkey = ~/.local/var/run/secrets/ssh-keys/github-signing-hyland.pub
