@@ -43,6 +43,11 @@ let
   # that one key so the per-tier defaults here (ANTHROPIC_DEFAULT_OPUS_MODEL)
   # decide the model.
   seedFile = pkgs.writeText "claude-settings-seed.json" (builtins.toJSON cfg.seed);
+
+  # The session hooks own the `hooks` key of ~/.claude/settings.json and nothing else: the file stays
+  # Claude's, and this block is replaced whole at every activation, so a hook removed here is gone.
+  sessionHooks = import ./claude-code.d/hooks/package.nix { inherit pkgs; };
+  hooksFile = pkgs.writeText "claude-code-hooks.json" (builtins.toJSON sessionHooks.hooks);
 in
 {
   options = {
@@ -131,6 +136,16 @@ in
           $DRY_RUN_CMD install -m 0644 ${seedFile} "$claudeSettings"
         else
           $VERBOSE_ECHO "Claude Code settings.json exists — leaving it untouched"
+        fi
+      '';
+
+      home.activation.claudeCodeHooks = lib.hm.dag.entryAfter [ "writeBoundary" "claudeCodeSeed" ] ''
+        claudeSettings="$HOME/.claude/settings.json"
+        if [ -f "$claudeSettings" ]; then
+          claudeSettingsNew="$(mktemp)"
+          ${pkgs.jq}/bin/jq --slurpfile hooks ${hooksFile} '.hooks = $hooks[0]' "$claudeSettings" >"$claudeSettingsNew"
+          $DRY_RUN_CMD install -m 0644 "$claudeSettingsNew" "$claudeSettings"
+          rm -f "$claudeSettingsNew"
         fi
       '';
 

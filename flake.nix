@@ -1088,13 +1088,14 @@
       checks = forAllSystems (
         system:
         let
-          managed = import ./modules/darwin/claude-code-managed.d/package.nix {
-            pkgs = pkgsFor { inherit system; };
-          };
+          pkgs = pkgsFor { inherit system; };
+          managed = import ./modules/darwin/claude-code-managed.d/package.nix { inherit pkgs; };
+          sessionHooks = import ./modules/home-manager/claude-code.d/hooks/package.nix { inherit pkgs; };
         in
         {
           claude-code-managed-settings = managed.settings;
           claude-code-deny-hook = managed.tests;
+          claude-code-session-hooks = sessionHooks.tests;
         }
       );
 
