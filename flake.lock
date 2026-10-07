@@ -302,11 +302,11 @@
         "treefmt-nix": "treefmt-nix"
       },
       "locked": {
-        "lastModified": 1791384400,
-        "narHash": "sha256-GTGIORGqk64Z6lKxOF+RjdRis/Wuzxdr5Sphdeii4n8=",
+        "lastModified": 1791390905,
+        "narHash": "sha256-ANeJidN5KNYXtFDjXpMGKRyfqnOTdFKWbORCviLDRZ8=",
         "owner": "seedmatic",
         "repo": "nix-flake-commons",
-        "rev": "bd41a92a13e28fb0b5eeb57ce2f4aaf83759fb6d",
+        "rev": "1f06902b06f18630813b452c802ef94ef0c0af08",
         "type": "github"
       },
       "original": {
