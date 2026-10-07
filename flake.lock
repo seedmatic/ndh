@@ -653,18 +653,16 @@
         ]
       },
       "locked": {
-        "lastModified": 1790593895,
+        "lastModified": 1791305583,
         "narHash": "sha256-LikDOT2ucj2LkyxMcI3tSOrcX13OZ0EXkfOmw1yyzCM=",
         "owner": "seedmatic",
         "repo": "flox-controller",
-        "rev": "ca151e53170fc373e632da391ab314e827f0b179",
+        "rev": "b865e4d505e710601c9c695b5aa10e55b10da444",
         "type": "github"
       },
       "original": {
-        "owner": "seedmatic",
-        "ref": "develop",
-        "repo": "flox-controller",
-        "type": "github"
+        "id": "flox-controller",
+        "type": "indirect"
       }
     },
     "flox-runtime": {
@@ -683,18 +681,16 @@
         ]
       },
       "locked": {
-        "lastModified": 1790805818,
+        "lastModified": 1791305930,
         "narHash": "sha256-J3IrJtV2pvA0CMYYG1OUAYGkUwsRRwqEbFa/6WH72wQ=",
         "owner": "seedmatic",
         "repo": "flox-nri-plugin",
-        "rev": "dc872115ca119008e4cc5bbbe495af68233c76e1",
+        "rev": "f34fe5a13de29dd6546af07061f3e7f35b357a98",
         "type": "github"
       },
       "original": {
-        "owner": "seedmatic",
-        "ref": "develop",
-        "repo": "flox-nri-plugin",
-        "type": "github"
+        "id": "flox-runtime",
+        "type": "indirect"
       }
     },
     "git-hooks-nix": {
@@ -1566,11 +1562,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1791305373,
-        "narHash": "sha256-+WT6TJR8p46WSkUpBz/Jbh+2NX7oyYeUSDN/aD4VwOs=",
+        "lastModified": 1791384664,
+        "narHash": "sha256-jOwKNAkv1xAsRGHL9B4rMd8TYM7C8nJ+Atp2HfVUZWw=",
         "owner": "seedmatic",
         "repo": "rke2lab",
-        "rev": "5495e02c83a5cdd0cd136730d8ae9c051e235e2c",
+        "rev": "b1c09940cbaaf0442f35a413eb6b026cf1cb6b6d",
         "type": "github"
       },
       "original": {
@@ -1690,10 +1686,8 @@
         "type": "github"
       },
       "original": {
-        "owner": "seedmatic",
-        "ref": "seed-incluster",
-        "repo": "rke2lab",
-        "type": "github"
+        "id": "seed-incluster",
+        "type": "indirect"
       }
     },
     "sops-nix": {
