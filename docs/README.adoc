@@ -23,7 +23,7 @@ link:network-catalog.adoc[Network Catalog (model & contribution)]::
 The network catalog data model — the `{cidr,name,asn}` attribution triple + managed-network facts + `asns` dictionary — its consumers (nnh flow attribution, ndh provisioning), how to consume it (`nix eval --json …#catalog`), and how a domain (rke2lab, nnh) contributes spans via `lib.networkBlueprint` (the two-layer federation: data up at eval, infrastructure down at runtime).
 
 link:nikopol-minimal-host.adoc[Corp Bare-Metal Minimal Host (vzhost.nikopol)]::
-The minimal-host design for the JAMF-managed corp Mac and the Tart VMs it hosts (`nikopol`, `nikopol-nixos`/Incus). Supersedes the retired Lima model.
+The minimal-host design for the JAMF-managed corp Mac and the Tart VMs it hosts (`nikopol`, `nikopol-nixos`/Incus).
 
 link:nfs-kerberos.adoc[NFSv4 + Kerberos Plan]::
 Plan and bring-up steps for macOS/NixOS NFSv4 with Kerberos, including enabling NFSv4 on Darwin nfsd and roadmap for Kerberos-backed mounts.
@@ -47,7 +47,7 @@ the first dataset that will want replication into the `recover` pool.
 === Session Notes
 
 link:sessions/README.adoc[Development Session Notes]::
-Detailed session summaries documenting the evolution of the network infrastructure. Latest: link:sessions/2025-10-12.adoc[Cluster Startup & Headscale Deployment (Planning) – 2025-10-12]
+Detailed session summaries documenting the evolution of the network infrastructure. Latest: link:sessions/2026-05-19-rke2-cluster-bringup-prep.adoc[RKE2 Cluster Bring-up Preparation – 2026-05-19]
 
 === Other Documentation
 
@@ -345,10 +345,10 @@ The following files have been removed as their content was consolidated into Asc
 * `network-architecture-summary.md` → Consolidated into `network-setup.adoc`
 * `teleport-integration-summary.md` → Removed (Teleport no longer used)
 * `teleport-setup.md` → Removed (Teleport no longer used)
-* `bioskop-deployment.adoc` → Removed (Lima-era Headscale/RKE2 deployment guide; the Lima provider is retired)
-* `podman-remote-setup.adoc` → Removed (Lima-era Podman remote engine setup; the Lima provider is retired)
-* `vm-configuration-models-c4.adoc` → Removed (Lima/Tart dual-model C4 doc; obsolete under Tart-only)
-* `NEXT-SESSION-TODO.adoc` → Removed (stale Lima-era session plan)
+* `bioskop-deployment.adoc` → Removed (obsolete Headscale/RKE2 deployment guide)
+* `podman-remote-setup.adoc` → Removed (obsolete Podman remote engine setup)
+* `vm-configuration-models-c4.adoc` → Removed (dual-model C4 doc; obsolete under Tart-only)
+* `NEXT-SESSION-TODO.adoc` → Removed (stale session plan)
 
 === Remaining Markdown Files
 

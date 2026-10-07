@@ -265,11 +265,6 @@ Other parked tasks:
   password (`oups la op` placeholder, several occurrences), DuckDNS
   token, Cloudflare API token, ngrok authtoken, headscale preauth
   keys id 17–21.  Operator-only action, no codebase change required.
-* **Lima-era module deprecation**: the `modules/{darwin,nixos}/lima-*`
-  files + the `bioskop-lima` / `nikopol-lima` flake outputs are
-  unused but still in the tree.  Mark with `lib.warn` or delete
-  outright — the choice is whether to keep a re-introducible
-  reference or rip the dead code.
 * **`writeShellApplication` migration sweep**: `bin/*` and
   `modules/home-manager/ssh-key.d/*.sh` would benefit from the
   shellcheck + runtimeInputs gates that `writeShellApplication`

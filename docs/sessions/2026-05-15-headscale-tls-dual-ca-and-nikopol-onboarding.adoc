@@ -421,7 +421,7 @@ guest instead, two adaptations are needed:
   host.  Easiest is to forward bioskop's port to the Mac, then have a
   second SSH hop into the guest with a chained `-L`, OR run the
   registration ceremony from the Darwin host's session via
-  `limactl shell` / `tart ssh` (registration runs as root inside the
+  `tart ssh` (registration runs as root inside the
   guest so the daemon picks up the registration on next start).
 * The trust anchor must be in NixOS's
   `security.pki.certificateFiles` / `/etc/ssl/certs/`, which is

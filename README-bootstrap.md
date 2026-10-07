@@ -172,7 +172,7 @@ Now you can perform the first darwin build using `nix run` (since `darwin-rebuil
 You can select an explicit VM flavor Darwin output when needed (@codebase):
 
 - `.#<host>`: selected default from `hostProfile.vmProvider`
-- `.#<host>-tart`: explicit Tart flavor (the only provider — Lima was retired)
+- `.#<host>-tart`: explicit Tart flavor (the only provider)
 
 ```bash
 # For nikopol host
@@ -240,7 +240,7 @@ nix build --system aarch64-linux nixpkgs#hello
 ## Building and Running NixOS under Tart
 
 After the darwin configuration is set up, you build the NixOS bringup disk image and install
-it as a Tart VM. Tart is the only provider; Lima was retired.
+it as a Tart VM. Tart is the only provider.
 
 This is the **only** path to the image: darwin activation never stages it, on any host. So
 these steps are not a one-off bootstrap you can forget afterwards — re-run them whenever the

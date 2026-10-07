@@ -171,7 +171,7 @@ Source-of-truth declared in `catalog/netplan/lan-hosts.nix` (forthcoming).
 At the time of the cleanup:
 
 . Logged in (`/api/v1/login`)
-. Fetched `/api/v1/hosts`, identified 14 stale entries (Lima-era VM
+. Fetched `/api/v1/hosts`, identified 14 stale entries (old VM
   rebuilds, retired RKE2 nodes, MAC-randomized guest devices).  All had
   `active=0` and old `lastseen` timestamps.
 . `DELETE /api/v1/hosts/<id>` for each ghost.  All returned `200 OK`.

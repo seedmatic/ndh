@@ -29,7 +29,7 @@ Main outcome: remote `switch` can complete activation but still return a false-n
 == Runtime operation performed
 
 * Issued remote poweroff from host side
-* Restarted Lima instance `nerd-nixos`
+* Restarted the `nerd-nixos` VM
 * Encountered and resolved one startup transient: `attach disk ... in use by instance` by force-stop + restart
 * Confirmed VM state `Running` and SSH reachability after restart
 

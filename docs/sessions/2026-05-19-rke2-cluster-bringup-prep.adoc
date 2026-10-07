@@ -41,8 +41,8 @@ just bioskop's cluster as a proof-of-concept.
   peer{1,2,3} / worker{1,2}).
 * `hosts/bioskop/darwin.nix` consumes `rke2labNetplan.clusters.bioskop`
   to drive a static route on `en9` to the cluster CIDR.
-* `modules/darwin/lima-config.nix` and `modules/nixos/default.nix`
-  also consume `catalog.netplan.rke2lab.clusters.<host>`.
+* `modules/nixos/default.nix` also consumes
+  `catalog.netplan.rke2lab.clusters.<host>`.
 
 === rke2lab
 
@@ -193,7 +193,6 @@ pulumi preview
   fleet-wide confidence check)
 * Rotate transcript-leaked credentials: ngrok / cloudflare / duckdns /
   bbox / headscale preauth keys id 17–21
-* Mark Lima-era nix-darwin-home modules deprecated
 * Migrate `bin/*` and `ssh-key.d/*.sh` to `writeShellApplication`
 * `nerd-nixos` missing `/boot` mount on full config (long-parked)
 

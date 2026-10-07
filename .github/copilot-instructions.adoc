@@ -6,9 +6,9 @@
 
 == Project Overview
 
-This is a **Nix-based infrastructure-as-code** repository managing Darwin (macOS) and NixOS systems with Lima VMs, container orchestration (Incus), and Tailscale/Headscale networking. The architecture bridges macOS hosts (nikopol, bioskop) with NixOS Lima VMs running RKE2 Kubernetes clusters.
+This is a **Nix-based infrastructure-as-code** repository managing Darwin (macOS) and NixOS systems with Tart VMs, container orchestration (Incus), and Tailscale/Headscale networking. The architecture bridges macOS hosts (nikopol, bioskop) with NixOS Tart VMs running RKE2 Kubernetes clusters.
 
-IMPORTANT: **Key architectural pattern**: Development happens in Lima NixOS VMs (not on the macOS host directly). The Darwin configuration is minimal, delegating heavy workloads to virtualized NixOS.
+IMPORTANT: **Key architectural pattern**: Development happens in Tart NixOS VMs (not on the macOS host directly). The Darwin configuration is minimal, delegating heavy workloads to virtualized NixOS.
 
 == Architecture & Critical Components
 
@@ -16,7 +16,7 @@ IMPORTANT: **Key architectural pattern**: Development happens in Lima NixOS VMs 
 
 * **`mkHostOutputs`**: Factory function generating both Darwin and NixOS configurations for a host
 * **Returns**: `darwinConfiguration`, `nixosConfiguration`, `nixosDiskImage`, `homeManagerConfigurations`
-* **Dual-purpose hosts**: Each physical host (nikopol, bioskop) has both Darwin config (host OS) and NixOS config (Lima VM)
+* **Dual-purpose hosts**: Each physical host (nikopol, bioskop) has both Darwin config (host OS) and NixOS config (Tart VM)
 * **Module composition**: `mkModulesFor` constructs module lists with `preModules`, `baseModules`, `extraModules` layers
 
 === Host Configuration Pattern (`hosts/*/flake.nix`)
@@ -25,13 +25,13 @@ IMPORTANT: **Key architectural pattern**: Development happens in Lima NixOS VMs 
 ----
 hostProfile = {
   hostName = "APL-dk40njhk9h";  # Physical hostname
-  hostAlias = "nikopol";          # Human-friendly alias (used as Lima hostname)
+  hostAlias = "nikopol";          # Human-friendly alias (used as VM host name)
 };
 ----
 
 Tailnet metadata is sourced canonically from `catalog.netplan.tailnet` (not from `hostProfile`).
 
-* **hostAlias becomes Lima hostname**: `limaHost.hostName` defaults to hostAlias if present
+* **hostAlias becomes the VM host name**: `vm.hostName` defaults to hostAlias if present; the guest is `vm.guestHostName` = `<host>-<guest>`
 * Profile modules import from `profiles/` (work.nix, committed.nix, common.nix)
 
 === Module Layering
@@ -39,7 +39,7 @@ Tailnet metadata is sourced canonically from `catalog.netplan.tailnet` (not from
 ----
 modules/
 ├── .common.d/     # Shared Darwin + NixOS; defines ndh.store API, logger, trampoline
-├── darwin/        # macOS-specific (lima-config, tart-config, network-bond, preferences)
+├── darwin/        # macOS-specific (tart-config, network-bond, preferences)
 ├── nixos/         # Linux-specific (zfs, incus, systemd/, bringup images)
 └── home-manager/  # User environment (shared across systems)
 ----
@@ -49,13 +49,10 @@ CRITICAL: `modules/.common.d/default.nix` is imported by both Darwin and NixOS. 
 IMPORTANT: All externalized shell scripts must use `ndh.store.*` helpers (not bare `pkgs.writeShellScript`).
 See the link:.github/skills/nix-darwin-home/SKILL.md[nix-darwin-home skill] for full conventions.
 
-=== Lima VM Architecture
+=== Tart VM Architecture
 
-* **VM generator**: `modules/darwin/lima-config.nix` creates `~/.lima/<guestName>/lima.yaml`
-* **Network management**: `bin/lima-yaml-manager.sh` for surgical YAML edits (preserves user content)
-* **Standard networks**: `host`, `bridged`, `shared` (see link:../docs/lima-yaml-management.md[Lima YAML Management])
+* **VM materializer**: `modules/darwin/tart-config.nix` builds the `nerd-tart-<host>-{config,materialize,deploy}` packages and the `tart-<vmName>-materialize` gcroot under `~/.tart/vms/<vmName>/`
 * **Incus in VM**: NixOS VM runs Incus for container orchestration (not on macOS host)
-* **Rebuild workflow**: `darwin-rebuild switch` regenerates Lima configs → restart VM for changes
 
 === Networking Stack
 
@@ -69,7 +66,6 @@ See the link:.github/skills/nix-darwin-home/SKILL.md[nix-darwin-home skill] for 
 [options="header"]
 |===
 | Network | Range | Purpose
-| Lima shared | 192.168.5.0/24 | Lima VM networking
 | Incus (nikopol) | 192.168.106.0/24 | RKE2 cluster
 | Incus (bioskop) | 192.168.107.0/24 | RKE2 cluster
 | RKE2 infrastructure | 10.80.0.0/18 | Hierarchical allocation
@@ -96,15 +92,14 @@ cd hosts/nikopol  # or hosts/bioskop
 darwin-rebuild switch --flake .#nikopol
 ----
 
-* Regenerates Lima VM configs in `~/.lima/`
-* Use `--no-networks` flag to skip network management (via `regenerate-lima-config.sh`)
+* Regenerates the Tart VM materializer (`modules/darwin/tart-config.nix`)
 
-=== Rebuilding NixOS (Lima VM)
+=== Rebuilding NixOS (Tart VM)
 
 [source,bash]
 ----
 # SSH into VM
-limactl shell nerd-nixos
+ssh nikopol-nixos
 
 # Rebuild from host config
 sudo nixos-rebuild switch --flake /Users/username/hosts/nikopol#nikopol-nixos
@@ -151,7 +146,7 @@ IMPORTANT: **Purpose**: Mark critical decisions, migration paths, and invariants
 
 === mkDefault vs mkForce
 
-* **mkDefault**: Allows flake-level overrides (e.g., `limaHost.hostName` in `lima-host.nix`)
+* **mkDefault**: Allows flake-level overrides (e.g., `vm.hostName` in `modules/.common.d/vm.nix`)
 * **mkForce**: Overrides all other priorities (use sparingly, e.g., `networking.hostName`)
 
 === Profile System
@@ -268,10 +263,6 @@ Use AsciiDoc (`.adoc`) for consistency with existing documentation.
 
 These document architectural decisions and migration paths.
 
-=== ✅ Do: Use lima-yaml-manager.sh for network changes
-
-Preserves user customizations (see link:../docs/lima-yaml-management.md[Lima YAML Management]).
-
 === ✅ Do: Test both Darwin and NixOS builds
 
 Both configurations are generated from same host flake.
@@ -285,7 +276,7 @@ Both configurations are generated from same host flake.
 | `hosts/nikopol/flake.nix` | Darwin entry for nikopol host
 | `hosts/bioskop/flake.nix` | Darwin entry for bioskop host
 | `modules/{darwin,nixos,common}/default.nix` | Module indices
-| `modules/darwin/lima-config.nix` | VM generation logic
+| `modules/darwin/tart-config.nix` | VM materialization logic
 | `modules/nixos/headscale-server.nix` | Self-hosted VPN server
 | `modules/nixos/rke2lab/Makefile` | RKE2 cluster orchestration
 | `docs/collaboration-guide.adoc` | AI session protocol
@@ -295,7 +286,7 @@ Both configurations are generated from same host flake.
 
 * **Default shell**: `zsh` (configured in `modules/.common.d/default.nix`)
 * **Home Manager**: Manages shell config, user packages (`.zshrc`, `.bashrc`)
-* **Lima VM shell**: `limactl shell <vm-name>` or `ssh lima-<hostname>`
+* **VM shell**: `ssh <host>-nixos`
 
 == External Dependencies
 
@@ -304,7 +295,6 @@ Both configurations are generated from same host flake.
 | Dependency | Purpose
 | Cachix | Binary cache (`nxmatic.cachix.org`)
 | Flox | Environment management (from `flake-commons`)
-| Socket VMNet | macOS VM networking
 | Incus | Container orchestration (replaces LXD)
 |===
 
@@ -320,10 +310,10 @@ cd hosts/nikopol && darwin-rebuild switch --flake .#nikopol
 # NixOS rebuild (in VM)
 sudo nixos-rebuild switch --flake /path/to/config
 
-# Lima VM management
-limactl start nerd-nixos
-limactl shell nerd-nixos
-limactl stop nerd-nixos
+# Tart VM management
+tart list
+ssh nikopol-nixos
+tart stop nerd-nixos
 
 # RKE2 cluster
 make start@cluster RKE2_CLUSTER_NAME=cluster-1
