@@ -1645,10 +1645,6 @@
         ],
         "nnh": "nnh",
         "rke2lab": "rke2lab",
-        "socket-vmnet": [
-          "flake-commons",
-          "socket-vmnet"
-        ],
         "sops-nix": "sops-nix_2",
         "tailscale-fork": "tailscale-fork",
         "treefmt-nix": "treefmt-nix_2"

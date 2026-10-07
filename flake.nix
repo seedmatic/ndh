@@ -66,7 +66,6 @@
     nixos-hardware.follows = "flake-commons/nixos-hardware";
     nixpkgs.follows = "flake-commons/nixpkgs";
     nixpkgs-unstable.follows = "flake-commons/nixpkgs-unstable";
-    socket-vmnet.follows = "flake-commons/socket-vmnet";
 
     # 3. Direct inputs (not aggregated upstream)
     sops-nix.url = "github:Mic92/sops-nix";
@@ -150,7 +149,6 @@
       flake-utils,
       home-manager,
       disko,
-      socket-vmnet,
       impermanence,
       nixpkgs,
       ...
@@ -199,13 +197,6 @@
             };
           };
 
-          vmnetOverlay =
-            final: prev:
-            if inputs.socket-vmnet.packages ? ${system} then
-              inputs.socket-vmnet.packages.${system}
-            else
-              throw "Socket VMNet packages not defined for ${system}";
-
           overlays = builtins.map (
             name:
             let
@@ -217,7 +208,7 @@
           applyOverlays =
             final: prev: builtins.foldl' (acc: overlay: (acc // (overlay final prev))) { } overlays;
         in
-        basePackages.extend (final: prev: (vmnetOverlay final prev) // (applyOverlays final prev));
+        basePackages.extend applyOverlays;
       pkgsForDarwin = (pkgsFor { system = "aarch64-darwin"; });
       pkgsForLinux = (pkgsFor { system = "aarch64-linux"; });
       # nixpkgs-unstable, only for packages the pinned (flake-commons) nixpkgs
@@ -2084,7 +2075,6 @@
         };
 
       # Provider-scoped VM configuration aliases (full runtime systems, not bringup).
-      # Lima variant was retired — only Tart remains.
       vmConfigurations =
         let
           mkVmHostAliases =

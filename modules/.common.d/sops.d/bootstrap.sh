@@ -80,12 +80,6 @@ else
 
   if [ ! -s "$key_file" ] && [ "$nixos_import_from_host" = "1" ] && [ "$remote_fetch_enable" = "1" ]; then
     remote_host_raw="$(printenv "$remote_fetch_hostname_env_var" 2>/dev/null || true)"
-    if [ -z "$remote_host_raw" ] && [ -r /mnt/lima-cidata/lima.env ]; then
-      while IFS='=' read -r key value; do
-        [ "$key" = "$remote_fetch_hostname_env_var" ] || continue
-        remote_host_raw="$value"
-      done < /mnt/lima-cidata/lima.env
-    fi
 
     if [ -n "$remote_host_raw" ]; then
       case "$remote_host_raw" in

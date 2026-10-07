@@ -10,7 +10,7 @@
     services.nix-daemon.enable = false; # Do not run local daemon
 
     /**
-      Mount /nix/store from the host using virtiofs (for Lima/vz VMs).
+      Mount /nix/store from the host using virtiofs (for vz VMs).
       This allows the VM to use the host's Nix store and remote daemon.
     */
     fileSystems."/nix/store" = {

@@ -1,2 +1,2 @@
-: "Skipping bootloader install (Lima guest / no real EFI)"
+: "Skipping bootloader install (VM guest / no real EFI)"
 exit 0

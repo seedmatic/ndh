@@ -98,7 +98,6 @@ let
     ./shadow-repositories.nix
     # ./nushell.nix
     ./password-store.nix
-    ./socket-vmnet.nix
     ./shell.nix
     ./starship.nix
     ./ssh.nix

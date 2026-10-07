@@ -189,8 +189,7 @@ let
       selectedVmProvider = hostProfile.vmProvider or "tart";
 
       # Full runtime system — the target the node hands itself over to on
-      # first boot, packed as the stack's third layer.  Lima variant was
-      # retired — both fleet hosts run Tart.
+      # first boot, packed as the stack's third layer.
       zfsRuntimeTart = mkNixosConfig {
         inherit
           profileModule
@@ -263,7 +262,7 @@ let
             _module.args.ndh = {
               context = {
                 generationMode = "bringup";
-                # vmProvider is fleet-uniform (Tart today; Lima legacy).
+                # vmProvider is fleet-uniform (Tart).
                 # Picking the operator's chosen provider is fine since
                 # the bringup config doesn't dispatch on it.
                 vmProvider = selectedVmProvider;

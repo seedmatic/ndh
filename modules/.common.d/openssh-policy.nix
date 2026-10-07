@@ -514,9 +514,7 @@ in
               ++ lib.optional pcfg.guest.includeLocal "${baseHost}.local"
               ++ lib.optional (tailnetFqdn != null) tailnetFqdn
             );
-        # Guests authorise the operator's canonical rdp-host key (both the
-        # former Lima and the current Tart guests trust it); the legacy
-        # `~/.lima/_config/user` default is retired with Lima.
+        # Guests authorise the operator's canonical rdp-host key.
         defaultGuestKey = config.sshPaths.privKeyFile;
         guestKey = if pcfg.guest.identityFile != null then pcfg.guest.identityFile else defaultGuestKey;
         render =

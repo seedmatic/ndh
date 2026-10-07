@@ -55,13 +55,10 @@ let
   loggerTag = "nixos.activationScripts.sshGroupKeys";
   hasSopsInstallSecretsService = builtins.hasAttr "sops-install-secrets" config.systemd.services;
   sshKeysEnrichmentServiceName = ndhSystemd.mkServiceName "ssh-keys-enrichment";
-  hostkeyEnrollmentCheckServiceName = ndhSystemd.mkServiceName "hostkey-enrollment-check";
   contributedTargetName = ndhSystemd.contributedTargetName;
   hasSshKeysEnrichmentService = builtins.hasAttr (ndhSystemd.mkUnitName "ssh-keys-enrichment") config.systemd.services;
   homeManagerServiceName = "home-manager-${config.profile.user.name}";
-  hasHomeManagerService = builtins.hasAttr homeManagerServiceName config.systemd.services;
   hostkeyEnrollmentCheckTag = "nixos.services.ndh.hostkeyEnrollmentCheck";
-  hostkeyEnrollmentSyncTag = "nixos.services.ndh.hostkeyEnrollmentSync";
   authorizedKeysCheckTag = "nixos.services.ndh.authorizedKeysCheck";
   sshdAutostartCheckTag = "nixos.services.ndh.sshdAutostartCheck";
   hostkeyEnrollmentCheckScript = ndh.store.installBinScript "openssh-hostkey-enrollment-check" (
@@ -77,18 +74,6 @@ let
       userCaSourceDir = config.sshPaths.secretsKeysDir;
       systemHostKeyPub = "${hostKeyPath}.pub";
       clientKeyName = clientKeyName;
-    }
-  );
-  hostkeyEnrollmentSyncScript = ndh.store.installBinScript "openssh-hostkey-enrollment-sync" (
-    pkgs.replaceVars ./openssh.d/hostkey-enrollment-sync.sh {
-      nixBashTrampoline = nixBashTrampoline;
-      logTag = hostkeyEnrollmentSyncTag;
-      clientPrivateSource = config.sshPaths.privKeyFile;
-      clientUserCertSource = config.sshPaths.userCertPublic;
-      fallbackHost = config.vm.hostName;
-      remoteUser = config.profile.user.name;
-      remoteRepo = "/var/lib/git/seedmatic/ndh";
-      guestName = config.vm.guestName;
     }
   );
   authorizedKeysCheckScript = ndh.store.installBinScript "openssh-authorized-keys-check" (
@@ -314,40 +299,6 @@ in
     };
   };
 
-  systemd.services.${ndhSystemd.mkUnitName "hostkey-enrollment-sync"} = {
-    description = "Run remote hostkey enrollment sync when drift marker is present (@codebase)";
-    wantedBy = [ contributedTargetName ];
-    wants = [
-      "network-online.target"
-      "nss-lookup.target"
-      "systemd-resolved.service"
-      hostkeyEnrollmentCheckServiceName
-    ]
-    ++ lib.optionals hasHomeManagerService [ "${homeManagerServiceName}.service" ];
-    after = [
-      "network-online.target"
-      "nss-lookup.target"
-      "systemd-resolved.service"
-      hostkeyEnrollmentCheckServiceName
-    ]
-    ++ lib.optionals hasHomeManagerService [ "${homeManagerServiceName}.service" ];
-    unitConfig.ConditionPathExists = "/run/ndh/ssh/hostkey-enrollment-state.yaml";
-    path = with pkgs; [
-      coreutils
-      gawk
-      openssh
-      util-linux
-      yq-go
-    ];
-    serviceConfig = {
-      Type = "oneshot";
-      User = config.profile.user.name;
-      Group = config.profile.user.name;
-      Environment = [ "HOME=${userHome}" ];
-      ExecStart = "${pkgs.bash}/bin/bash ${hostkeyEnrollmentSyncScript}/bin/openssh-hostkey-enrollment-sync";
-    };
-  };
-
   systemd.services.${ndhSystemd.mkUnitName "sshd-autostart-check"} = {
     description = "Validate sshd autostart state after contributed target activation (@codebase)";
     wantedBy = [ contributedTargetName ];
@@ -369,8 +320,8 @@ in
   # both up — `+` because the unit runs as the user. Never
   # the other way round (sshd After= home-manager): sshd must not wait on the key
   # pipeline, or a broken extraction locks the operator out.
-  # Gated on home-manager.users, not hasHomeManagerService: that one reads
-  # config.systemd.services, and conditioning a definition OF it recurses.
+  # Gated on home-manager.users, not on config.systemd.services: conditioning
+  # a definition OF it on it recurses.
   systemd.services.${homeManagerServiceName} =
     lib.mkIf (lib.hasAttrByPath [ "home-manager" "users" config.profile.user.name ] config)
       {
