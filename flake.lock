@@ -95,11 +95,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1791305389,
-        "narHash": "sha256-aHfjuT0XeTk+2oLp4SNrJhtQN2HdHIX3j0aMW6v6Cv8=",
+        "lastModified": 1791392716,
+        "narHash": "sha256-QDNHCPV2znhJM6f8omg3UQ5vW0v+7Kyh80G/Bo/83dA=",
         "owner": "seedmatic",
         "repo": "claude-hub",
-        "rev": "19675081ba9975cf5e3dbafee73464a85f7656c5",
+        "rev": "01553f51feb093544f336ee9a0c717659d28d87d",
         "type": "github"
       },
       "original": {
