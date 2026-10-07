@@ -26,7 +26,7 @@ repo_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 dir="$(memory_dir "$repo_root")"
 [[ -n "$dir" && -d "$dir" && -f "$transcript" ]] || exit 0
 real_dir="$(cd "$dir" && pwd -P)"
-[[ "$(git -C "$dir" rev-parse --show-toplevel 2>/dev/null)" == "$real_dir" ]] || exit 0
+git -C "$dir" symbolic-ref -q HEAD >/dev/null || exit 0
 
 files=()
 while IFS= read -r f; do

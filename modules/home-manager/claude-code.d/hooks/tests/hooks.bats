@@ -52,11 +52,26 @@ commits() { git -C "$MEM" rev-list --count HEAD; }
   run hook memory-guard.sh
   [ "$status" -eq 0 ] && [ -z "$output" ]
 }
-@test "guard: a directory that is not a worktree root is reported" {
-  mkdir -p "$MEM/sub"
-  printf '{"autoMemoryDirectory": "%s/sub"}\n' "$MEM" >"$HOME/.claude/settings.json"
+@test "guard: a directory outside any worktree is reported" {
+  mkdir -p "$T/loose"
+  printf '{"autoMemoryDirectory": "%s/loose"}\n' "$T" >"$HOME/.claude/settings.json"
   run hook memory-guard.sh
-  [[ "$output" == *"not the root of a git worktree"* ]]
+  [[ "$output" == *"not inside a git worktree"* ]]
+}
+@test "guard: a detached HEAD is reported" {
+  git -C "$MEM" switch -q --detach
+  run hook memory-guard.sh
+  [[ "$output" == *"detached HEAD"* ]]
+}
+@test "guard: a subdirectory reports its own dirt, not another subdirectory's" {
+  mkdir -p "$MEM/rke2lab" "$MEM/nnh"
+  printf '{"autoMemoryDirectory": "%s/rke2lab"}\n' "$MEM" >"$HOME/.claude/settings.json"
+  printf 'theirs\n' >"$MEM/nnh/fact.md"
+  run hook memory-guard.sh
+  [ -z "$output" ]
+  printf 'mine\n' >"$MEM/rke2lab/fact.md"
+  run hook memory-guard.sh
+  [[ "$output" == *"1 uncommitted file(s)"* ]]
 }
 @test "guard: a missing directory is reported" {
   printf '{"autoMemoryDirectory": "%s/nowhere"}\n' "$T" >"$HOME/.claude/settings.json"
@@ -167,4 +182,16 @@ commits() { git -C "$MEM" rev-list --count HEAD; }
   git -C "$OTHER" show --name-only --format= HEAD | grep -qx fact.md
   [ "$(commits)" -eq "$user_before" ]
   [[ "$(git -C "$MEM" status --porcelain)" == "?? fact.md" ]]
+}
+@test "commit: in a subdirectory memory, the session's file is committed, another subdirectory's dirt is not" {
+  mkdir -p "$MEM/rke2lab" "$MEM/nnh"
+  printf '{"autoMemoryDirectory": "%s/rke2lab"}\n' "$MEM" >"$HOME/.claude/settings.json"
+  printf 'mine\n' >"$MEM/rke2lab/fact.md"
+  printf 'theirs\n' >"$MEM/nnh/fact.md"
+  wrote Write "$MEM/rke2lab/fact.md"
+  before="$(commits)"
+  run hook memory-commit.sh
+  [ "$(commits)" -eq $((before + 1)) ]
+  [[ "$(git -C "$MEM" show --name-only --format= HEAD)" == "rke2lab/fact.md" ]]
+  [[ "$(git -C "$MEM" status --porcelain)" == "?? nnh/" ]]
 }
