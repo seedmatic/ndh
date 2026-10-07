@@ -12,7 +12,9 @@ import re
 import sys
 
 path = sys.argv[1]
-rules = [r[5:-1] for r in json.load(open(path))["permissions"]["deny"]]
+settings = json.load(open(path))["permissions"]
+rules = [r[5:-1] for r in settings["deny"]]
+ask_rules = [r[5:-1] for r in settings.get("ask", [])]
 
 
 def matches(rule, cmd):
@@ -49,7 +51,7 @@ must_refuse = {
         "kubectl apply -f y", "kubectl delete", "incus delete c1", "incus rm c1",
         "incus config set c1 k v", "incus storage volume delete p v", "incus config device add c1 d disk",
         "nixos-rebuild switch --flake .#h", "darwin-rebuild --rollback", "sudo darwin-rebuild switch",
-        "rm -rf build", "mv ~/.claude /tmp/x", "flox activate -- pulumi up",
+        "mv ~/.claude /tmp/x", "flox activate -- pulumi up",
         "flox activate -d . -- pulumi destroy",
     ],
 }
@@ -77,4 +79,19 @@ fps = [(c, hit) for c, hit in fps if hit]
 print(f"false positives: {len(fps)}/{len(read_only)} read-only commands refused")
 for c, hit in fps:
     print(f"  FP  {c!r:52} ← {hit[0]!r}")
-sys.exit(1 if open_cases or fps or missing or len(rules) != len(set(rules)) else 0)
+
+
+def asked(cmd):
+    return [r for r in ask_rules if matches(r, cmd)]
+
+
+must_ask = ["rm -rf /", "rm -rf ~", "rm -rf $HOME", "rm -rf /Volumes", "rm -rf /nix",
+            "rm -rf ~/.claude", "rm -rf ~/.claude/projects", "flox activate -- rm -rf /"]
+not_asked = [c for c in must_ask if not asked(c) or refused(c)]
+print(f"ask: {len(must_ask) - len(not_asked)}/{len(must_ask)} dangerous roots asked, not refused",
+      *(f"  OPEN {c}" for c in not_asked), sep="\n")
+cleanup = ["rm -rf /tmp/x", "rm -rf /private/tmp/flox-sb", "rm -rf $T", "rm -rf mmcheck",
+           "rm -rf repo/.scratchpad.d/topic", "rm -rf ${T:?}/out"]
+caught = [c for c in cleanup if refused(c) or asked(c)]
+print(f"cleanup: {len(cleanup) - len(caught)}/{len(cleanup)} left to the hook", *(f"  CAUGHT {c}" for c in caught), sep="\n")
+sys.exit(1 if open_cases or fps or missing or not_asked or caught or len(rules) != len(set(rules)) else 0)

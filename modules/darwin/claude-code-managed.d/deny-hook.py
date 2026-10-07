@@ -39,14 +39,113 @@ def load_table():
         return json.load(fh)
 
 
+HEREDOC = re.compile(r"<<(-?)\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\2")
+# Commands that run their standard input, or wrap a command that may: a heredoc fed to one of
+# these is code. Everything else (`cat`, `tee`, `git commit -F -`, `jq`) receives it as data.
+RUNS_STDIN = SHELLS | {"ssh", "sudo", "doas", "env", "flox", "nix", "eval", "exec", "xargs", "timeout",
+                       "nice", "nohup", "command", "time", "watch", "source", "."}
+
+
+def heredoc_is_code(text, op, after, eol):
+    """Whether the heredoc whose operator starts at OP (delimiter ending at AFTER) feeds a runner."""
+    head = re.split(r"&&|\|\||[;|&(]", text[text.rfind("\n", 0, op) + 1:op])[-1].split()
+    words = [w for w in head if not ASSIGNMENT.match(w)]
+    if words and os.path.basename(words[0]) in RUNS_STDIN:
+        return True
+    rest = re.split(r"&&|\|\||;", text[after:eol])[0]
+    return any(os.path.basename(w) in RUNS_STDIN for w in re.findall(r"\|&?\s*(\S+)", rest))
+
+
+def match_paren(text, i):
+    """Index just past the `)` closing the `(` at I, skipping quoted text and nested forms."""
+    depth, j, n, resume = 1, i + 1, len(text), {}
+    while j < n and depth:
+        c = text[j]
+        if c == "\\":
+            j += 2
+            continue
+        if c == "\n" and j in resume:
+            j = resume.pop(j)
+            continue
+        if text.startswith("<<", j) and not text.startswith("<<<", j):
+            eol = text.find("\n", j)
+            if eol >= 0 and eol not in resume:
+                pos = eol + 1
+                for m in HEREDOC.finditer(text, j, eol):
+                    end = re.compile(r"^" + ("\t*" if m.group(1) else "") + re.escape(m.group(3)) + r"$", re.M).search(text, pos)
+                    if not end:
+                        raise Refused("unterminated heredoc")
+                    pos = end.end() + 1
+                resume[eol] = min(pos, n)
+        if c == "'" or text.startswith("$'", j):
+            j = text.find("'", j + (2 if c == "$" else 1))
+            while j > 0 and c == "$" and text[j - 1] == "\\":
+                j = text.find("'", j + 1)
+            if j < 0:
+                raise Refused("unbalanced quote")
+        elif c == '"':
+            k = j + 1
+            while k < n and text[k] != '"':
+                if text[k] == "\\":
+                    k += 1
+                elif text.startswith("$(", k):
+                    k = match_paren(text, k + 1) - 1
+                k += 1
+            if k >= n:
+                raise Refused("unbalanced quote")
+            j = k
+        elif c == "`":
+            j = text.find("`", j + 1)
+            if j < 0:
+                raise Refused("unbalanced backtick")
+        elif c == "(":
+            depth += 1
+        elif c == ")":
+            depth -= 1
+        j += 1
+    if depth:
+        raise Refused("unbalanced substitution")
+    return j
+
+
+def heredoc_substitutions(body):
+    """`$(…)` and backtick bodies in an UNQUOTED heredoc, which the shell runs even when the
+    heredoc itself is data. Quotes are literal there, so prose apostrophes do not count."""
+    found, i, n = [], 0, len(body)
+    while i < n:
+        if body[i] == "\\":
+            i += 2
+            continue
+        if body.startswith("$(", i) and not body.startswith("$((", i):
+            depth, j = 1, i + 2
+            while j < n and depth:
+                depth += {"(": 1, ")": -1}.get(body[j], 0)
+                j += 1
+            if depth:
+                raise Refused("unbalanced substitution in a heredoc")
+            found.append(body[i + 2:j - 1])
+            i = j
+            continue
+        if body[i] == "`":
+            j = body.find("`", i + 1)
+            if j < 0:
+                raise Refused("unbalanced backtick in a heredoc")
+            found.append(body[i + 1:j])
+            i = j + 1
+            continue
+        i += 1
+    return found
+
+
 def extract_substitutions(text):
     """Pull `$(…)`, `<(…)`, `>(…)` and backtick bodies out of TEXT.
 
     Returns (outer, bodies): OUTER has each substitution replaced by a neutral word and every
-    unquoted newline turned into `;`, so heredoc bodies and multi-line scripts are analysed line
-    by line — a refusal of a `cat <<EOF` that merely mentions a verb is the accepted cost.
+    unquoted newline turned into `;`, so multi-line scripts are analysed line by line. A heredoc
+    body is analysed only when it feeds something that runs it (see `heredoc_is_code`); fed to
+    `cat` or `git commit -F -`, it is data, and a commit message that names a verb is not a call.
     """
-    out, bodies = [], []
+    out, bodies, resume = [], [], {}
     i, n, quote = 0, len(text), None
     while i < n:
         c = text[i]
@@ -71,15 +170,7 @@ def extract_substitutions(text):
             i += 1
             continue
         if c in "$<>" and i + 1 < n and text[i + 1] == "(" and not (c == "$" and text[i + 2:i + 3] == "("):
-            depth, j = 1, i + 2
-            while j < n and depth:
-                if text[j] == "(":
-                    depth += 1
-                elif text[j] == ")":
-                    depth -= 1
-                j += 1
-            if depth:
-                raise Refused("unbalanced substitution")
+            j = match_paren(text, i + 1)
             bodies.append(text[i + 2:j - 1])
             out.append(" __subst__ ")
             i = j
@@ -92,9 +183,38 @@ def extract_substitutions(text):
             out.append(" __subst__ ")
             i = j + 1
             continue
+        if c == "$" and quote is None and text.startswith("$'", i):
+            j = i + 2
+            while j < n and text[j] != "'":
+                j += 2 if text[j] == "\\" else 1
+            if j >= n:
+                raise Refused("unbalanced quote")
+            out.append(shlex.quote(text[i + 2:j].encode("latin-1", "backslashreplace").decode("unicode_escape")))
+            i = j + 1
+            continue
+        if c == "#" and quote is None and (i == 0 or text[i - 1] in " \t\n;|&("):
+            j = text.find("\n", i)
+            i = n if j < 0 else j
+            continue
+        if c == "<" and quote is None and text.startswith("<<", i) and not text.startswith("<<<", i):
+            eol = text.find("\n", i)
+            if eol >= 0 and eol not in resume:
+                pos = eol + 1
+                for m in HEREDOC.finditer(text, i, eol):
+                    end_rx = re.compile(r"^" + ("\t*" if m.group(1) else "") + re.escape(m.group(3)) + r"$", re.M)
+                    end = end_rx.search(text, pos)
+                    if not end:
+                        raise Refused("unterminated heredoc")
+                    body = text[pos:end.start()]
+                    if heredoc_is_code(text, m.start(), m.end(), eol):
+                        bodies.append(body)
+                    elif not m.group(2):
+                        bodies.extend(heredoc_substitutions(body))
+                    pos = end.end() + 1
+                resume[eol] = min(pos, n)
         if c == "\n" and quote is None:
             out.append(" ; ")
-            i += 1
+            i = resume.pop(i, i + 1)
             continue
         out.append(c)
         i += 1
@@ -325,16 +445,52 @@ class Analyzer:
             return bool(re.match(r"^(?:\./)?\.claude(?:$|[./_-])", tok))
         return tok.startswith(self.home.rstrip("/") + "/.claude")
 
+    def resolve(self, tok):
+        """TOK as an absolute normalised path, or None when the shell would expand it."""
+        if re.search(r"[$`*?\[\]{}]", tok):
+            return None
+        if tok == "~" or tok.startswith("~/"):
+            tok = self.home + tok[1:]
+        elif tok.startswith("~"):
+            return None
+        if not os.path.isabs(tok):
+            if not self.cwd:
+                return None
+            tok = os.path.join(self.cwd, tok)
+        return os.path.normpath(tok)
+
+    def is_scratch_target(self, tok):
+        path = self.resolve(tok)
+        if path is None:
+            return False
+        if ".scratchpad.d" in path.split(os.sep)[:-1] or path.endswith(os.sep + ".scratchpad.d"):
+            return True
+        roots = ["/tmp", "/private/tmp"] + [os.path.normpath(os.environ["TMPDIR"])] * ("TMPDIR" in os.environ)
+        return any(path.startswith(r.rstrip("/") + "/") for r in roots)
+
+    def is_dangerous_root(self, tok):
+        if tok in ("$HOME", "${HOME}", '"$HOME"'):
+            return True
+        path = self.resolve(tok)
+        if path is None:
+            return False
+        home = os.path.normpath(self.home)
+        return (path.count("/") <= 1 or path == home or home.startswith(path.rstrip("/") + "/")
+                or path == "/nix" or path.startswith("/nix/"))
+
     def check(self, argv):
         prog, args = argv[0], argv[1:]
         if prog == "rm":
             flags = "".join(t[1:] for t in args if t.startswith("-") and not t.startswith("--"))
             recursive = bool(set(flags) & {"r", "R"}) or "--recursive" in args
             force = "f" in flags or "--force" in args
-            if recursive and force:
-                self.deny("recursive forced removal", argv)
-            elif recursive and any(self.is_claude_path(t) for t in args if not t.startswith("-")):
-                self.deny("recursive removal of the Claude config", argv)
+            targets = [t for t in args if not t.startswith("-")]
+            if not recursive or not targets:
+                return
+            if any(self.is_claude_path(t) or self.is_dangerous_root(t) for t in targets):
+                self.ask("recursive removal of the Claude config or a top-level directory", argv)
+            elif force and not all(self.is_scratch_target(t) for t in targets):
+                self.ask("recursive forced removal outside a scratch directory", argv)
             return
         if prog == "mv":
             if any(self.is_claude_path(t) for t in args if not t.startswith("-")):

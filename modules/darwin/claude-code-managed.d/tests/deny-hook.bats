@@ -2,7 +2,8 @@
 # Feeds PreToolUse JSON to deny-hook.py. Nothing here runs the commands under test.
 
 setup() {
-  HOOK="$BATS_TEST_DIRNAME/deny-hook.py"
+  HOOK="$BATS_TEST_DIRNAME/../deny-hook.py"
+  REPO=/Volumes/git-worktree-store/seedmatic/rke2lab.d/develop
   export HOME=/Users/tester
 }
 
@@ -70,13 +71,13 @@ asked()   { [ "$status" -eq 0 ] && [[ "$output" == *'"permissionDecision": "ask"
 @test "B nested wrappers"                   { run hook "sudo env FOO=1 bash -c 'nix run nixpkgs#kubectl -- -n x delete pod y'"; denied; }
 
 # --- C: spelling variants ---
-@test "C rm -fr"                            { run hook 'rm -fr build'; denied; }
-@test "C rm -Rf"                            { run hook 'rm -Rf build'; denied; }
-@test "C rm -r -f"                          { run hook 'rm -r -f build'; denied; }
-@test "C rm --recursive --force"            { run hook 'rm --recursive --force build'; denied; }
-@test "C rm -r ~/.claude (no force)"        { run hook 'rm -r ~/.claude'; denied; }
-@test "C rm -r \$HOME/.claude"              { run hook 'rm -r "$HOME/.claude"'; denied; }
-@test "C rm -r .claude from HOME"           { run hook 'rm -r .claude' /Users/tester; denied; }
+@test "C rm -fr in a repo"                  { run hook 'rm -fr build' "$REPO"; asked; }
+@test "C rm -Rf in a repo"                  { run hook 'rm -Rf build' "$REPO"; asked; }
+@test "C rm -r -f in a repo"                { run hook 'rm -r -f build' "$REPO"; asked; }
+@test "C rm --recursive --force in a repo"  { run hook 'rm --recursive --force build' "$REPO"; asked; }
+@test "C rm -r ~/.claude (no force)"        { run hook 'rm -r ~/.claude'; asked; }
+@test "C rm -r \$HOME/.claude"              { run hook 'rm -r "$HOME/.claude"'; asked; }
+@test "C rm -r .claude from HOME"           { run hook 'rm -r .claude' /Users/tester; asked; }
 @test "C mv absolute home path"             { run hook 'mv /Users/tester/.claude /tmp/old'; denied; }
 @test "C mv \$HOME/.claude.json"            { run hook 'mv "$HOME/.claude.json" /tmp/x'; denied; }
 @test "C mv into ~/.claude"                 { run hook 'mv settings.json ~/.claude/settings.json'; denied; }
@@ -123,3 +124,36 @@ asked()   { [ "$status" -eq 0 ] && [[ "$output" == *'"permissionDecision": "ask"
 @test "robust unbalanced substitution"      { run hook 'echo $(kubectl get pods'; denied; }
 @test "robust missing command field"        { run bash -c "echo '{\"tool_name\":\"Bash\",\"tool_input\":{}}' | python3 '$HOOK'"; denied; }
 @test "robust nesting deeper than followed" { run hook 'watch watch watch watch watch watch watch watch watch watch ls'; denied; }
+
+# --- rm: recursive forced removal passes in a scratch directory, and ASKS elsewhere ---
+@test "rm ok scratch /tmp"                  { run hook 'rm -rf /tmp/mm2'; allowed; }
+@test "rm ok scratch /private/tmp"          { run hook 'rm -rf /private/tmp/flox-sb'; allowed; }
+@test "rm ok relative under /tmp"           { run hook 'rm -rf mmcheck' /private/tmp; allowed; }
+@test "rm ok a repo's .scratchpad.d"        { run hook 'rm -rf .scratchpad.d/topic' "$REPO"; allowed; }
+@test "rm ok quoted path with a space"      { run hook 'rm -rf "/tmp/a b"'; allowed; }
+@test "rm asks an unresolved variable"      { run hook 'rm -rf $T'; asked; }
+@test "rm asks a glob"                      { run hook 'rm -rf /tmp/x/*'; asked; }
+@test "rm asks / even unforced"             { run hook 'rm -r /'; asked; }
+@test "rm asks ~"                           { run hook 'rm -rf ~'; asked; }
+@test "rm asks a .. escape out of /tmp"     { run hook 'rm -rf /tmp/../Users/tester'; asked; }
+@test "rm asks /nix/store"                  { run hook 'sudo rm -rf /nix/store/abc-x'; asked; }
+@test "rm asks under flox"                  { run hook 'flox activate -- rm -rf build' "$REPO"; asked; }
+
+# --- heredocs: data unless something runs them ---
+@test "heredoc commit message naming verbs" { run hook "$(printf "git commit -q -F - <<'EOF'\nkubectl -n x delete pod y is a gesture\npulumi up too\nEOF")"; allowed; }
+@test "heredoc in \$(cat) for -m"           { run hook "$(printf "git commit -m \"\$(cat <<'EOF'\npulumi up is the operator's\nEOF\n)\"")"; allowed; }
+@test "heredoc with prose apostrophes"      { run hook "$(printf "cat > /tmp/n.md <<EOF\nit's the operator's call, don't\nEOF")"; allowed; }
+@test "heredoc piped into bash"             { run hook "$(printf "cat <<'EOF' | bash\nkubectl apply -f y\nEOF")"; denied; }
+@test "heredoc into sudo"                   { run hook "$(printf "sudo tee /etc/x <<'EOF'\nkubectl delete pod y\nEOF")"; denied; }
+@test "heredoc unquoted runs \$()"          { run hook "$(printf "cat <<EOF\n\$(kubectl delete pod y)\nEOF")"; denied; }
+@test "heredoc quoted keeps \$() literal"   { run hook "$(printf "cat <<'EOF'\n\$(kubectl delete pod y)\nEOF")"; allowed; }
+@test "heredoc then a real command"         { run hook "$(printf "cat > /tmp/x <<'EOF'\nhello\nEOF\nkubectl delete pod y")"; denied; }
+
+# --- parse robustness: real commands of 2026-10-07 that a fail-closed parser refused ---
+@test "parse paren inside quotes in \$()"   { run hook "echo \"calls: \$(git grep -c 'packageAnnotations(' -- '*.java' | wc -l)\""; allowed; }
+@test "parse apostrophe in a comment"       { run hook "$(printf "for d in a b; do\n  # it is fleet's, counted there\n  echo \$d\ndone")"; allowed; }
+@test "parse two heredocs on one line"      { run hook "$(printf "git commit -F - <<'EOF' && git commit -F - <<'EOF2'\nthe operator's call\nEOF\nit's done\nEOF2")"; allowed; }
+@test "parse ANSI-C \$'' string"             { run hook "C=\$'it\\'s a\\nline'; echo \"\$C\""; allowed; }
+@test "parse still sees a verb after two heredocs" { run hook "$(printf "cat <<'A' && cat <<'B'\nx\nA\ny\nB\nkubectl delete pod z")"; denied; }
+@test "parse comment does not hide the next line" { run hook "$(printf "# kubectl delete here is prose\nkubectl delete pod z")"; denied; }
+@test "parse ANSI-C string still analysed"  { run hook "bash -c \$'kubectl delete pod z'"; denied; }

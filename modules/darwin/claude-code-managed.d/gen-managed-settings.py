@@ -23,7 +23,7 @@ import os
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-table = json.load(open(os.path.join(HERE, "deny-hook", "verbs.json")))
+table = json.load(open(os.path.join(HERE, "verbs.json")))
 
 bases = []
 
@@ -51,12 +51,17 @@ for prog, spec in table["programs"].items():
 for rule in table.get("list_extra_rules", []):
     add(rule)
 
-deny = []
-for base in bases:
-    deny += [f"Bash({base})", f"Bash(flox activate -- {base})", f"Bash(flox activate * -- {base})"]
 
-out = os.path.join(HERE, sys.argv[1] if len(sys.argv) > 1 else "managed-settings.v3.json")
+
+def twins(base):
+    return [f"Bash({base})", f"Bash(flox activate -- {base})", f"Bash(flox activate * -- {base})"]
+
+
+deny = [r for base in bases for r in twins(base)]
+ask = [r for base in table.get("list_ask_rules", []) for r in twins(base)]
+
+out = sys.argv[1]
 with open(out, "w", encoding="utf-8") as fh:
-    json.dump({"permissions": {"deny": deny}}, fh, indent=2)
+    json.dump({"permissions": {"deny": deny, "ask": ask}}, fh, indent=2)
     fh.write("\n")
-print(f"{os.path.basename(out)}: bases={len(bases)} rules={len(deny)}")
+print(f"{os.path.basename(out)}: bases={len(bases)} deny={len(deny)} ask={len(ask)}")
