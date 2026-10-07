@@ -3,6 +3,7 @@
   pkgs,
   lib,
   worktreePath,
+  osConfig ? { },
   ...
 }:
 let
@@ -29,6 +30,11 @@ let
   signingKeysDir = sshPaths.secretsKeysDir;
   allowedSignersFile = "${config.xdg.configHome}/git/github_allowed_signers";
   systemCaBundle = config.home.sessionVariables.SSL_CERT_FILE;
+  # The machine that holds the git-bare-store others reach over ssh://<it>/… (the claude-home
+  # registry's descriptors name it). There, git rewrites those URLs to the local path instead of
+  # opening ssh to itself; elsewhere the URL must stay ssh.
+  bareStoreHost = "bioskop";
+  onBareStoreHost = (osConfig.networking.hostName or null) == bareStoreHost;
   loggerTag = "home-manager.activationScripts.${userName}.generateAllowedSigners";
 in
 {
@@ -74,6 +80,9 @@ in
       push.autoSetupRemote = true;
       rebase.autoStash = true;
       gpg.ssh.allowedSignersFile = allowedSignersFile;
+      url = lib.mkIf onBareStoreHost {
+        "file:///Volumes/git-bare-store/".insteadOf = "ssh://${bareStoreHost}/Volumes/git-bare-store/";
+      };
 
       alias = {
         fix = "commit --amend --no-edit";
