@@ -1084,8 +1084,19 @@
         inputs.treefmt-nix.lib.mkWrapper pkgs treefmtConfig
       );
 
-      # Disable flake checks to avoid treefmt-nix API mismatch during evaluation
-      checks = forAllSystems (_: { });
+      # No treefmt check here (its API mismatched during evaluation); the formatter runs as a hook.
+      checks = forAllSystems (
+        system:
+        let
+          managed = import ./modules/darwin/claude-code-managed.d/package.nix {
+            pkgs = pkgsFor { inherit system; };
+          };
+        in
+        {
+          claude-code-managed-settings = managed.settings;
+          claude-code-deny-hook = managed.tests;
+        }
+      );
 
       # Surface the resolved catalog + inventory as flat (OS-independent) outputs
       # so the operator can review them directly — `nix eval .#catalog.netplan.lan.hosts`
