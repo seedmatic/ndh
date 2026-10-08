@@ -81,6 +81,11 @@ asked()   { [ "$status" -eq 0 ] && [[ "$output" == *'"permissionDecision": "ask"
 @test "C mv absolute home path"             { run hook 'mv /Users/tester/.claude /tmp/old'; denied; }
 @test "C mv \$HOME/.claude.json"            { run hook 'mv "$HOME/.claude.json" /tmp/x'; denied; }
 @test "C mv into ~/.claude"                 { run hook 'mv settings.json ~/.claude/settings.json'; denied; }
+@test "C mv config into its scratchpad"     { run hook 'mv ~/.claude/settings.json ~/.claude/.scratchpad.d/cutover/'; denied; }
+@test "C mv .. out of the scratchpad"       { run hook 'mv x ~/.claude/.scratchpad.d/../settings.json'; denied; }
+@test "C mv to a scratchpad lookalike"      { run hook 'mv x ~/.claude/.scratchpad.dx/'; denied; }
+@test "ok mv into ~/.claude/.scratchpad.d"  { run hook 'mv notes.md ~/.claude/.scratchpad.d/cutover/'; allowed; }
+@test "ok mv into \$HOME scratchpad"         { run hook 'mv notes.md "$HOME/.claude/.scratchpad.d/cutover/notes.md"'; allowed; }
 
 # --- D: Pulumi through the Automation API ---
 @test "D nix run .#grow -- stack up"        { run hook 'nix run .#grow -- dev up'; denied; }

@@ -445,6 +445,14 @@ class Analyzer:
             return bool(re.match(r"^(?:\./)?\.claude(?:$|[./_-])", tok))
         return tok.startswith(self.home.rstrip("/") + "/.claude")
 
+    def is_claude_config(self, tok):
+        """A Claude path outside ~/.claude/.scratchpad.d, the one place under it a session files its own scratch."""
+        if not self.is_claude_path(tok):
+            return False
+        path = self.resolve(re.sub(r"^\$(?:HOME|\{HOME\})(?=/|$)", "~", tok))
+        scratch = os.path.join(os.path.normpath(self.home), ".claude", ".scratchpad.d")
+        return path is None or not (path == scratch or path.startswith(scratch + os.sep))
+
     def resolve(self, tok):
         """TOK as an absolute normalised path, or None when the shell would expand it."""
         if re.search(r"[$`*?\[\]{}]", tok):
@@ -493,7 +501,7 @@ class Analyzer:
                 self.ask("recursive forced removal outside a scratch directory", argv)
             return
         if prog == "mv":
-            if any(self.is_claude_path(t) for t in args if not t.startswith("-")):
+            if any(self.is_claude_config(t) for t in args if not t.startswith("-")):
                 self.deny("moves the Claude config", argv)
             return
         spec = self.table["programs"].get(prog)
