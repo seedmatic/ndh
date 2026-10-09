@@ -42,10 +42,24 @@ in
         {
           description = "Ensure SOPS age key is available before sops-install-secrets (@codebase)";
           requires = [ keysTargetUnit ] ++ localFsUnitDeps;
-          after = [ keysTargetUnit ] ++ localFsUnitDeps;
+          # The runtime profile (age-keygen) is seeded by activation and by the
+          # tmpfiles `L+` rule; tmpfiles-setup runs before sysinit, so ordering
+          # on it keeps this unit inside the early-boot phase.
+          after = [
+            keysTargetUnit
+            "systemd-tmpfiles-setup.service"
+          ]
+          ++ localFsUnitDeps;
           before = [ "sops-install-secrets.service" ];
           wantedBy = [ "sops-install-secrets.service" ];
-          unitConfig = lib.mkIf bootstrapCfg.nixosHostKeyImport.enable {
+          # sops-nix runs sops-install-secrets before sysinit.target with
+          # DefaultDependencies=no; default dependencies here would order this
+          # unit after sysinit/basic and close a cycle that systemd breaks by
+          # dropping jobs, leaving /run/secrets empty.
+          unitConfig = {
+            DefaultDependencies = false;
+          }
+          // lib.optionalAttrs bootstrapCfg.nixosHostKeyImport.enable {
             RequiresMountsFor = bootstrapRequiredMountPaths;
           };
           serviceConfig = {
