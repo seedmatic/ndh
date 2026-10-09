@@ -1,5 +1,5 @@
 # Tailscale SERVICES delivery, platform-agnostic.  Renders the declarative
-# service-configuration file for THIS host from `catalog.netplan.tailnet.services`
+# service-configuration file for THIS host from `catalog.netplan.tailnets.saas.services`
 # and exposes it plus the command that applies it; each platform module owns the
 # activation (a systemd oneshot on NixOS, postActivation on darwin) because the
 # rendering is shared but the trigger is not.
@@ -12,7 +12,7 @@
 #
 # Why services rather than subnet routes, in one line: a service's virtual IP is
 # accepted by every client REGARDLESS of `--accept-routes`, so nothing installs a
-# route — see catalog.netplan.tailnet.services and
+# route — see catalog.netplan.tailnets.saas.services and
 # docs/network-topology-c4.adoc#authorisation.
 {
   config,

@@ -497,12 +497,15 @@ in
           else
             (hostProfile.hostName or "host");
         baseHost = baseRaw + pcfg.guest.nameSuffix;
-        tailnetName = if netplan ? tailnet && netplan.tailnet ? name then netplan.tailnet.name else null;
-        tailnetDomain =
-          if netplan ? tailnet && netplan.tailnet ? domain then netplan.tailnet.domain else null;
+        # Only the VENDOR tailnet carries a MagicDNS domain; the self-hosted ones run
+        # `magicDns = false` and form no FQDN.  The former `tailnetName` interpolated here was
+        # read as `netplan.tailnet ? name`, a key the catalog has never had — permanently null,
+        # so this pattern reached no ssh config.  `<guest><domain>` is the correct form (the
+        # domain carries its leading dot, and the guest name IS the tailnet node name).
+        tailnetDomain = if netplan ? tailnets then netplan.tailnets.saas.domain else null;
         tailnetFqdn =
-          if (pcfg.guest.includeTailnet && tailnetName != null && tailnetDomain != null) then
-            "${baseHost}.${tailnetName}.${tailnetDomain}"
+          if (pcfg.guest.includeTailnet && tailnetDomain != null) then
+            "${baseHost}${tailnetDomain}"
           else
             null;
         derivedPatterns =

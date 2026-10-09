@@ -20,7 +20,10 @@
     let
       ndhContext = ndh.context;
       tailnetDomain =
-        if ndhContext.catalog.netplan ? tailnet then ndhContext.catalog.netplan.tailnet.domain else "";
+        if ndhContext.catalog.netplan ? tailnets then
+          ndhContext.catalog.netplan.tailnets.saas.domain
+        else
+          "";
       bareDomain = lib.removePrefix "." tailnetDomain;
     in
     {

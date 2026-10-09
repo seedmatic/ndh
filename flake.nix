@@ -780,7 +780,7 @@
         # dnsmasq, which forwards it to MagicDNS (modules/nixos/baremetal-segment.nix).  Without
         # it that seat can reach a Tailscale Service only by its virtual IP.  Shared by install
         # and uninstall so the teardown removes the same file the install wrote.
-        tailnetZone = nixpkgs.lib.removePrefix "." catalogData.netplan.tailnet.domain;
+        tailnetZone = nixpkgs.lib.removePrefix "." catalogData.netplan.tailnets.saas.domain;
 
         # The adapter to alias is the one the vz guest is BRIDGED onto — that is what puts
         # the /30's two ends (this alias, the guest's lan-br) on a shared L2.  So it is read
@@ -800,7 +800,8 @@
         #     can reach it no other way. Adding it on a nix-managed (tailnet-member) Mac
         #     would hijack its own 100.64/10 route through the guest.
         linkRoutes = nixpkgs.lib.concatStringsSep " " (
-          [ bm.netCidr ] ++ nixpkgs.lib.optional (bm.vzHostKind == "foreign") catalogData.netplan.tailnet.cidr
+          [ bm.netCidr ]
+          ++ nixpkgs.lib.optional (bm.vzHostKind == "foreign") catalogData.netplan.tailnets.saas.prefixes.v4
         );
         # The script also branches on the kind for the two things nix-darwin already owns on
         # a nix-managed vz-host: /etc/resolver/<domain> (baremetal-resolvers.nix) and the

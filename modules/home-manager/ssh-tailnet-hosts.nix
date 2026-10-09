@@ -22,7 +22,7 @@ let
   sshUserForHost = _host: catalogUserName;
   # Canonical operator alias layout: `{service}.{host}` with consistent auth.
   # Service names match the headscale `dns.extra_records` namespace
-  # (catalog.netplan.tailnet.hosts.<host>.serviceNames), so muscle
+  # (catalog.netplan.tailnets.saas.hosts.<host>.serviceNames), so muscle
   # memory carries between `dig rdp.bioskop.<zone>` and
   # `ssh rdp.bioskop`.
   #
@@ -157,8 +157,8 @@ let
   '';
 
   tailnetDomain =
-    if ndhContext ? catalog && ndhContext.catalog.netplan ? tailnet then
-      ndhContext.catalog.netplan.tailnet.domain
+    if ndhContext ? catalog && ndhContext.catalog.netplan ? tailnets then
+      ndhContext.catalog.netplan.tailnets.saas.domain
     else
       "";
   tailnetAlias = host: if tailnetDomain != "" then "${host}${tailnetDomain}" else null;

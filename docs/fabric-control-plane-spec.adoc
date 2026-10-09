@@ -229,6 +229,78 @@ only.
 | publish a control plane on the WAN, or point `server_url` at an address reached *through* the tailnet
 |===
 
+==== The tailnet resolves the fabric zone — what it lacks is a MagicDNS zone of its own
+
+*Decided 2026-10-06.* The two self-hosted tailnets run with MagicDNS **off** and carry no
+`base_domain`. They are **not** without DNS: their members resolve `.{host}` — `nixos.bioskop`,
+`vzhost.bioskop` — **authoritatively**, from the segment's own dnsmasq, through headscale's split
+DNS. The distinction is the whole of it.
+
+[cols="1,2",options="header"]
+|===
+| Knob | What it does for us
+
+| `dns.nameservers.split`
+| *"a map of domains and which DNS server to use for each"* — `{host}: [ the segment's dnsmasq ]`. This
+is how a member resolves the fabric zone, and it needs **no `base_domain`**. The catalog already
+anticipates it: the SaaS console's split-DNS *"become[s] declarative (Headscale daemon dns.split) once
+Headscale is the live control-plane"*.
+
+| `search_domains`
+| *"With MagicDNS enabled, your tailnet base_domain is always the first search domain"* — so with
+MagicDNS **off** it is empty and ours to set. `[ "{host}" ]` makes bare names resolve for members.
+
+| `base_domain` + `magic_dns`
+| **unused.** A MagicDNS zone of our own would duplicate, with a second authority, names the segment
+already serves.
+|===
+
+===== Two constraints headscale enforces itself
+
+Its `config-example.yaml` forbids reusing the fabric zone as a `base_domain` on **two independent**
+counts, so the workaround of re-pointing `server_url` to free the zone does not exist:
+
+[cols="1,2",options="header"]
+|===
+| Constraint | Consequence
+
+| *"This domain _must_ be different from the server_url domain."*
+| with `server_url = headscale.{host}`, a `base_domain` of `{host}` is refused.
+
+| *"`base_domain` must be a FQDN, without the trailing dot."*
+| `{host}` is a **single label**, so it is refused whatever `server_url` is.
+|===
+
+===== Why MagicDNS stays off
+
+[cols="1,2",options="header"]
+|===
+| Reason | Detail
+
+| a tailnet's members are the machines of **one** bare-metal
+| its darwin host and its NixOS guest — two or three names, already served authoritatively by that
+segment's dnsmasq. A MagicDNS zone would be a second authority for names that exist.
+
+| nothing outside a tailnet uses its names
+| cross-tailnet traffic targets segment addresses and fabric-zone names, per
+<<_the_rule,Crossing between tailnets>>.
+
+| `extra_records` has never served anything
+| `services.headscaleBootstrap.role = "none"` on both bare-metals: headscale has never run. This
+retires **scaffolding**, not a working feature.
+
+| it retires one fork patch
+| the CNAME synthesis is **not** upstream — headscale states *"so far only A and AAAA records are
+supported (on the tailscale side)"*, so it works only through our fork's `net/dns` ExtraRecords patch,
+which then has no consumer. ⚠️ The fork **stays**: its SSH interception on port 2222 is load-bearing
+for keyless Tailscale SSH.
+|===
+
+ⓘ Spell the absence as a decision — `magicDns = false` beside the vendor's `domain`, never an empty
+string someone later fills in. And one thing to measure when standing it up: whether headscale
+validates `base_domain` even with `magic_dns: false`. If it does, give it a value that cannot be
+mistaken for a live zone and record it as inert.
+
 [[control-tls]]
 === TLS on the control URL — kept, from the shared authority
 
@@ -839,19 +911,23 @@ door — a worse place to discover it is missing.
 |===
 
 
-== Address plan
+== Address plan — three tailnets, and only two are ours to carve
 
-Each control plane owns a **sub-prefix of the CGNAT super-segment**, the same discipline as the
-`172.16.` fabric carve. headscale's `config-example.yaml` (v0.29.4): *"Using a SUBSET of these
-ranges is supported"*; *"Using ranges OUTSIDE of CGNAT/ULA is NOT supported"*.
+The netplan describes **several** tailnets: the two self-hosted ones and the Tailscale SaaS one the
+clusters stay on. A tailnet is **a control plane's domain of authority**, not primarily a span, so
+prefixes, domain, policy and control-plane identity are attributes of ONE object — keyed by the same
+three names wherever they are read. Splitting them across the span registry and the identity node is
+what makes them drift.
 
 [mermaid]
 ....
 flowchart TB
-  cg["CGNAT 100.64.0.0/10 — the super-segment"]:::super
+  cg["CGNAT 100.64.0.0/10"]:::super
+  cg --> ps["SaaS — the WHOLE /10, a vendor given, not ours to carve"]:::vendor
   cg --> pb["sub-prefix — tailnet bioskop"]:::tb
   cg --> pn["sub-prefix — tailnet nikopol"]:::tn
   ula["ULA fd7a:115c:a1e0::/48"]:::super
+  ula --> us["SaaS — its own /64, indexed at zero"]:::vendor
   ula --> ub["v6 sub-prefix — bioskop"]:::tb
   ula --> un["v6 sub-prefix — nikopol"]:::tn
   fab["fabric — one /20 per bare-metal"]:::super
@@ -859,12 +935,67 @@ flowchart TB
   fab --> fn["segment nikopol, incl. the corporate /30"]:::tn
 
   classDef super fill:#f3f4f6,stroke:#555,stroke-width:2px;
+  classDef vendor fill:#fee2e2,stroke:#b91c1c;
   classDef tb fill:#dbeafe,stroke:#1d4ed8;
   classDef tn fill:#dcfce7,stroke:#15803d;
 ....
 
-The sub-prefix values are derived in the catalog like every other span; the rule — disjoint,
-inside CGNAT/ULA — is not negotiable.
+=== The SaaS is not a carve participant
+
+*Measured 2026-10-06:* the SaaS holds 13 v4 addresses scattered from `100.65` to `100.120` — across
+the **whole** `/10` — and we do not control its allocator. So it cannot be fenced. Its entry declares
+the vendor's `/10` as an opaque **given**; only the two self-hosted tailnets get sub-prefixes we
+allocate.
+
+[cols="1,1",options="header"]
+|===
+| ✅ Do | ❌ Don't
+
+| carry the asymmetry in the type — a discriminant saying whose allocation a prefix is
+| model the three uniformly as "each has prefixes we carve", which would encode a falsehood and invite
+someone to "fix" the SaaS entry by carving it
+|===
+
+=== The carve is for legibility, and nothing may depend on it
+
+Two measured reasons it cannot be load-bearing:
+
+* **No machine is ever on two tailnets** — the clusters on the SaaS, the infrastructure nodes on
+  headscale, one `tailscaled` each — so an address collision is never resolved on a host. The route
+  overlap is irreducible anyway: `tailscaled` claims the entire `/10` on its interface, which is why
+  `catalog/default.nix` already warns that routing `100.64/10` at a guest would hijack a member's own
+  utun route.
+* **Cross-tailnet traffic targets segment addresses**, never `100.x`, because of the hard-coded
+  `ts-forward` rule — see <<_the_rule,Crossing between tailnets>>.
+
+So the carve buys exactly two things: you can tell which tailnet an address belongs to, and the fork
+patch becomes meaningful later. Neither the container, the policy nor the bring-up may require it.
+
+=== How the sub-prefixes derive
+
+Derived from `hostId` like every other span, never hand-typed. headscale's `config-example.yaml`
+(v0.29.4): *"Using a SUBSET of these ranges is supported"*; *"Using ranges OUTSIDE of CGNAT/ULA is NOT
+supported"*.
+
+[cols="1,2,2",options="header"]
+|===
+| Family | Shape | Why that index
+
+| v4
+| `100.{127 - hostId}.0.0/16`
+| it sits above every SaaS address observed (highest `100.120`). A convention for **legibility, not a
+guarantee** — the vendor may allocate anywhere.
+
+| v6
+| `fd7a:115c:a1e0:{hostId + 1}::/64`
+| indexing from **1** avoids the SaaS's own `::/64` (its addresses carry a zero fourth hextet), and
+decimal and hex spellings coincide for 1..9 — so no `toHexString` is needed, which matters because
+`lib` is not in `catalog/default.nix`'s scope. Assert a cap at 9.
+|===
+
+ⓘ The prefixes also appear in the span registry used for flow attribution (`{cidr, name, asn}`),
+**derived** from the tailnets node and never retyped — with three tailnets, attribution has to tell
+them apart.
 
 == Crossing between tailnets
 
@@ -1022,6 +1153,29 @@ classDiagram
 Roles live in the **catalog**, never in host modules: the policy is generated centrally and must
 see every host at once. The platform base is today's tag-per-kind partition (`console` for darwin,
 `headless` otherwise).
+
+=== The vocabulary is shared, the policy is per control plane
+
+A distinction that a stale comment still gets wrong in the catalog, and that the measurement settles:
+
+[cols="1,2",options="header"]
+|===
+| | Verdict
+
+| the tag vocabulary — `(role, kind)`
+| **shared across the fleet.** A `tag:headless,tag:nixos` node has the same identity whichever control
+plane enrolls it. This half of `catalog/tailnet/default.nix`'s "controller-agnostic" claim is true.
+
+| the access policy — grants, `ssh` rules, `autoApprovers`
+| **one per control plane, generated** from the catalog, as the SaaS one already is. Three generated
+policies at the end state.
+|===
+
+⛔ `catalog/tailnet/default.nix` still asserts that one `aclPolicyFile` is *"the source of truth for
+both controllers"*. `catalog/tailnet/acl.hujson`'s own header already withdrew that claim — *"they are
+NOT copies of one policy — they are two control planes' policies"* — so the two headers disagree and
+the ACL file is the corrected one. A comment asserting a property the code does not have is the shape
+that cost five weeks on the sops rule.
 
 == Availability of one control plane
 
