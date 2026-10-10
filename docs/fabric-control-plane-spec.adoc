@@ -196,6 +196,11 @@ already owns `fabric-br` and advertises its segment.
 | Otherwise a tailnet outage makes its own control plane unreachable. See <<naming>>.
 |===
 
+headscale-nixos is not the only infrastructure container: bioskop's nerd-nixos also hosts
+**attic-nixos**, the private binary cache. Both are declared by one shared ndh module, with their
+placement stated and their `/nix/store` an overlay on nerd-nixos's EROFS layers. See
+link:private-binary-cache-spec.adoc[Private Binary Cache].
+
 [[naming]]
 === Naming — private domains only, one public name
 
@@ -1129,6 +1134,8 @@ Same machine as a subnet router: the FAQ's unsupported case. Container, always.
 * link:network-topology-c4.adoc[Baremetal Instance Segments] — the segments, the `/30` links and the
   routes the gateways advertise.
 * link:network-setup.adoc[Network Infrastructure Setup] — operating the control planes.
+* link:private-binary-cache-spec.adoc[Private Binary Cache] — attic-nixos, the other tenant of the
+  container module, reached over these tailnets and the bridge.
 * rke2lab `docs/architecture/atlas/fabric-control-plane.adoc` — the migration from today's state
   to this target.
 * rke2lab `docs/architecture/cluster-api/management-workload-topology.adoc` — how the clusters reach
