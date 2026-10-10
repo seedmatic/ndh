@@ -268,6 +268,11 @@ are built by rke2lab, from a pushed rke2lab revision like every other fill input
 | 5.25 GiB on bioskop
 | `pulumi-3.261.0` alone is 4.70 GiB, built locally. In scope if the operator confirms; open below.
 
+| in-cluster `FloxEnv` closures (the `flox-catalog` locks the flox controller realises on each node)
+| **unmeasured**
+| no cluster was running on 2026-10-10. Built by the builder from the pushed lock, never realised
+from a dirty tree.
+
 | package and app outputs of the seedmatic flakes
 | **unmeasured**
 | `seed-outcluster`, `manifests-cli`, `plan-cli`, `flox-controller`, `flox-nri-plugin`,
@@ -521,14 +526,59 @@ carry no nix DB today (measured), so the lower DB is generated **once per layer 
 store = local-overlay://?lower-store=local://?root={ro-root}%26read-only=true&upper-layer={upper}&check-mount=true
 ----
 
-=== The same base for the cluster nodes
+=== Three tiers of store, one immutable base
 
 attic-nixos and headscale-nixos are the first users of this mechanism, not the only ones. The rke2lab
-cluster nodes are Incus containers on the same members, so they **inherit the same immutable base**:
-the EROFS lowers, the lower DB shipped with them, and an upper that receives only their delta. That
-delta is what they substitute from attic. This is the intent of building the mechanism in ndh as a
-module rather than inside one service. The node side is adopted in rke2lab; see its atlas, section
-_The private binary cache_.
+cluster nodes are Incus containers on the same members, and their workloads mount a store of their
+own through the flox NRI plugin. Each tier inherits the base of the tier below and substitutes only
+its delta, from attic:
+
+[mermaid]
+....
+flowchart TB
+  subgraph T1["Tier 1 — nerd-nixos"]
+    E["EROFS layers — immutable"]
+    Z["ZFS upper"]
+  end
+  subgraph T2["Tier 2 — Incus containers: attic-nixos, headscale-nixos, the cluster nodes"]
+    N["node store — overlay, lowers = the EROFS layers, upper = its own volume"]
+    F["FloxEnv closures — realised by the flox controller, GC-rooted"]
+  end
+  subgraph T3["Tier 3 — pods"]
+    P["pod /nix — overlay, lower = the node's /nix read-only, upper = 2 GiB tmpfs or a PVC"]
+  end
+  A["attic-nixos — the cache"]
+  E --> N
+  N --> F
+  N --> P
+  A -. "the delta of each tier" .-> N
+  A -. "env closures" .-> F
+....
+
+[cols="1,2,2",options="header"]
+|===
+| Tier | Its store | What it substitutes from attic
+
+| 1 — nerd-nixos
+| EROFS layers plus a ZFS upper
+| its generations beyond the layers
+
+| 2 — containers (infrastructure and cluster nodes)
+| overlay on the EROFS layers (this section)
+| its configuration's delta, then for a node the `FloxEnv` closures that the flox controller realises
+and GC-roots. A node collects on disk pressure (rke2lab node-base: `min-free = 128MB`,
+`max-free = 1GB`), so it re-substitutes what it collected.
+
+| 3 — pods
+| overlay whose lower is the node's `/nix`, bind-mounted read-only by
+`flox-nri-overlay-hook.sh`, and whose upper is a 2 GiB tmpfs or a PVC
+| nothing directly: they read the node's store. Unknown packages are built remotely on
+`{bioskop,nikopol}-nixos` (`max-jobs = 0`) and land in the pod's upper. Those builds are **not
+fills**, and are never pushed.
+|===
+
+This is the intent of building the mechanism in ndh as a module rather than inside one service.
+Tiers 2 (nodes) and 3 are adopted in rke2lab; see its atlas, section _The private binary cache_.
 
 === Boot, then switch — the container never evaluates a flake
 
@@ -674,7 +724,15 @@ without one. Always query upstream before pushing.
   only ever switch to.
 * **Flox environments**: in scope or not, and if so, who realises them from a pushed lock. They are
   the largest item measured.
-* **Package outputs and cluster node closures**: their size, once a fill has built them.
+* **Package outputs, cluster node closures and in-cluster env closures**: their size, once a fill has
+  built them.
+* **Reaching attic from the cluster nodes**: the nodes sit on their bare-metal's `vmnet` segments
+  and the clusters on the SaaS tailnet. The route from a node to attic's fabric name, and from
+  nikopol's nodes across the bridge, has to be stated.
+* **The pod tier's lower changes while mounted**: it is the node's live `/nix`, which the flox
+  controller grows and the node's GC shrinks. That is the case this spec forbids for tier 2. The hook
+  reconciles the pod's store DB at every container start, which repairs the DB, not the overlayfs
+  rule. Whether tier 3 should instead stack on the immutable layers is rke2lab's to decide.
 * **uid shifting**: an unprivileged container sees the store's files as `nobody`, and nix expects
   root-owned store paths. Incus `shift` relies on idmapped mounts, and whether EROFS supports them is
   unverified. If it does not: a privileged container or a `raw.idmap`.
