@@ -1525,6 +1525,11 @@
           "flake-commons",
           "nixpkgs"
         ],
+        "nixpkgs-unstable": [
+          "rke2lab",
+          "flake-commons",
+          "nixpkgs-unstable"
+        ],
         "seed-incluster": "seed-incluster",
         "sops-nix": [
           "rke2lab",
@@ -1533,11 +1538,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1791663429,
-        "narHash": "sha256-uwkrfRWHq7GnWQgu2qMr+2ffKfvvs9TO09vBScGaliw=",
+        "lastModified": 1791668670,
+        "narHash": "sha256-aOTKP4aVwR1vSkpp1tFIyc4fdgJ/+x7UoFvefjgZAD4=",
         "owner": "seedmatic",
         "repo": "rke2lab",
-        "rev": "a98bf072c4f4c34ab2a012ff921dd20159d53b2c",
+        "rev": "b30745c0ed1df8c573431b65e4e1cb71b320ff06",
         "type": "github"
       },
       "original": {
