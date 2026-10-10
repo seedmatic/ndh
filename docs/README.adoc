@@ -88,8 +88,8 @@ stated: the cache is as trustworthy as its least trusted writer, one of which si
 side, and attic tokens cannot be revoked one by one. The upstream filter is attic's own, by signature key names: the upstream
 substituters plus a dedicated EROFS-layer key, never the fleet's build key. The real fix, refusing
 secret-bearing paths at upload, is an attic fork, for later. "Latest only" is a retention period plus a keep-alive,
-because attic can neither pin nor delete a single path. PostgreSQL, because SQLite reaps 500 chunks
-per GC run. Sizing measured on 2026-10-10: a 15.7 GiB union of host closures, of which 1.56 GiB is
+because attic can neither pin nor delete a single path. SQLite (attic runs no database service) with
+a GC every 15 minutes, because SQLite reaps 500 chunks per GC run; PostgreSQL as the fallback. Sizing measured on 2026-10-10: a 15.7 GiB union of host closures, of which 1.56 GiB is
 not on cache.nixos.org, plus 5.25 GiB of flox environments. Proposed quota `tank/nerd/attic` = 32G.
 The containers' `/nix/store` is an overlay on nerd-nixos's EROFS layers. Their placement in the
 Incus cluster is stated, in a project separate from the `rke2lab` cluster nodes.

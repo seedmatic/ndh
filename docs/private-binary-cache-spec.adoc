@@ -42,8 +42,9 @@ an upstream cache serves them.
 
 | Every host writes
 | Each of the four hosts uploads, with a write token of its own. The price is trust: the cache is as
-trustworthy as its least trusted writer (see <<trust-model>>). The other consumers (cluster nodes,
-containers) hold a read token at most.
+trustworthy as its least trusted writer (see <<trust-model>>). The clusters hold **no** attic
+token: their nodes and workloads read and write through their nerd-nixos builder (see
+<<cluster-builds>>, design only). The infrastructure containers hold none either.
 
 | Private by authentication
 | The cache is created **without** `--public`, so an anonymous request is refused (see
@@ -269,8 +270,9 @@ plaintext included, is skipped by name, but an output that references one carrie
 | the outputs of derivations their darwin host evaluated, dirty trees included
 
 | bioskop-nixos, nikopol-nixos
-| the pods' remote builds (rke2lab's flox runtime, Part 2: `max-jobs = 0` → `ssh-ng://nix-store.{host}-nixos`)
-| the unknown packages a workload asked for, built from inputs the workload chose
+| the cluster nodes' and pods' remote builds (see <<cluster-builds>>)
+| what the nodes and their workloads build, the flox controller's realisations and unknown packages
+included. Inputs are accepted only signed or content-addressed (see <<builder-tests>>).
 
 | bioskop
 | the darwin fill job
@@ -345,6 +347,146 @@ sequenceDiagram
   B->>A: keep-alive — download the NAR of every live-set path
   H->>A: substitute on its next switch, with its read token
 ....
+
+[[cluster-builds]]
+== The clusters write and read through their builder — design only
+
+**Decided by the operator on 2026-10-10.** Cluster nodes and their workloads write to the cache
+**through the remote builder**: the nerd-nixos of the node's own bare-metal, which has the same
+architecture (bioskop-nixos for bioskop's clusters, nikopol-nixos for nikopol's). A node or a pod
+does not build: it delegates (`max-jobs = 0`, `builders = ssh-ng://…`). The builder's watch-store
+then uploads the result with that host's token. With `builders-use-substitutes = true`, the same
+builder substitutes from attic on their behalf.
+
+So **no attic token reaches a cluster**, neither read nor write. The four hosts remain the only
+holders. What the clusters hold instead is a way to reach their builder (see <<secrets>>).
+
+⚠️ **Design only today.** Measured on 2026-10-10: nothing declares `builders`, `max-jobs` or
+`builders-use-substitutes`, neither rke2lab's `nixos/*.nix` nor flox-nri-plugin. The node-base nix
+configuration that must carry them is **rke2lab's side**: it is a rke2lab follow-up, not something
+this spec implements.
+
+[cols="1,3",options="header"]
+|===
+| Client of the builder | How it gets there
+
+| the flox controller
+| it enters the node's namespace (`nsenter`) and realises an env with `flox activate`
+(flox-controller `internal/provisioner/exec.go:270`). So it runs the node's own nix, and the
+node-base nix configuration decides whether it delegates.
+
+| a workload with a writable store and the nix toolchain
+| it builds into its own upper (tmpfs or PVC), which no watch-store sees, so its builds are not
+shared. To share them, it delegates through the configuration the NRI plugin mounts (`max-jobs = 0`,
+`builders`). The in-cluster render, whose Maven closure is built into a PVC today, is the case in
+point.
+
+| a workload asking for an unknown package
+| rke2lab's flox runtime, Part 2, already designed to delegate (`max-jobs = 0` →
+`ssh-ng://nix-store.{host}-nixos`)
+|===
+
+=== A build client cannot write into the builder's store — on three settings
+
+A build over `ssh-ng` copies paths into the builder, and the builder's watch-store then uploads
+whatever is in its store, signed by attic. If a node could import an arbitrary path there, it would
+poison the cache without holding any token. Read in nix 2.34:
+
+* for a client it does not trust, the daemon **forces signature checking** on every import
+  (`src/libstore/daemon.cc:505-506`, `:907-908`). An unsigned, input-addressed path is refused;
+* the daemon refuses an untrusted client's `buildDerivation` of an input-addressed derivation
+  (`daemon.cc:632-633`: _"you are not privileged to build input-addressed derivations"_);
+* `build-remote` handles that case: when the builder does not trust the client and the derivation
+  is input-addressed, it copies the `.drv` closure, which is content-addressed and so accepted, and
+  asks for `buildPaths` instead (`src/nix/build-remote/build-remote.cc:300-340`). **The builder
+  computes the outputs itself.**
+
+So, with these three settings on nerd-nixos:
+
+. the build clients (nodes, pods) are **not** in `trusted-users`;
+. `require-sigs = true` (nix's default, stated so that nobody turns it off);
+. their input paths are signed by a trusted key or content-addressed.
+
+[mermaid]
+....
+sequenceDiagram
+  autonumber
+  participant N as Node or pod (not a trusted user)
+  participant B as Its builder ({host}-nixos)
+  participant U as cache.nixos.org, attic
+  participant W as watch-store on B
+  participant A as attic-nixos
+  N->>B: copy the .drv closure — content-addressed, accepted
+  N->>B: buildPaths of the derivation
+  B->>U: substitute the outputs if a cache has them
+  B->>B: otherwise build them itself
+  B-->>N: copy the outputs back
+  W->>A: upload what B realised, with B's own token
+  N-xB: nix copy of an unsigned input-addressed path
+  Note over N,B: refused — the daemon forces signature checks<br/>on an untrusted client
+....
+
+A node can then only **request builds of derivations**. The builder computes or substitutes the
+outputs, and nothing a node supplies reaches the cache unchecked. That is what makes this better
+than a write token in the clusters, and **it holds only with these settings**: one build client in
+`trusted-users`, and the property is gone.
+
+One gap remains. A node gets **by build** only what it has the derivation for. A flox package
+locked by its store path is **substituted**, not built. If it comes from cache.flox.dev or
+cache.nixos.org, nothing more is needed. If only attic holds it, there are two ways:
+
+* a read token on the node, which this design avoids;
+* the builder as a substituter: `substituters = ssh-ng://{host}-nixos` with `require-sigs = true`.
+  An untrusted client can substitute that way, as long as the path carries a key the node trusts.
+  The builder serves only what **its own** store holds, and its own builds are signed with
+  `io-nxmatic-nix-darwin-home`, not by attic, so that is the key the node must trust. Unverified;
+  test 3 below.
+
+[[builder-tests]]
+=== The tests the implementation must pass — the builder
+
+These sit next to <<read-test>>. Together they decide whether "the clusters hold no attic token"
+holds.
+
+[cols="1,2,2",options="header"]
+|===
+| Test | Gesture, from a node that is not a trusted user | Expected
+
+| 1 — an untrusted client gets a build
+| `nix build` of an input-addressed derivation, delegated to `ssh-ng://{host}-nixos`
+| the build succeeds, through `build-remote`'s `buildPaths` path, and the output is computed by the
+builder
+
+| 2 — an untrusted client cannot import
+| `nix copy --to ssh-ng://{host}-nixos {an unsigned, input-addressed path}`
+| refused, for lack of a trusted signature
+
+| 3 — an untrusted client substitutes, signed only
+| with `substituters = ssh-ng://{host}-nixos`, realise a path the builder signed, then one it did not
+| the signed path is substituted, the unsigned one is refused
+|===
+
+If test 1 **fails**, the design keeps no hole. It falls back to one of two shapes:
+
+[cols="1,2,2",options="header"]
+|===
+| Fallback | What it is | Its cost
+
+| A — content-addressed derivations
+| what nodes build is content-addressed (nix's experimental `ca-derivations`). The builder builds it
+for an untrusted client, and the outputs are checked by content, so nothing a node supplies is
+taken on trust.
+| maturity and coverage: the feature is experimental, and most of nixpkgs is input-addressed
+
+| B — nodes never build ✅ (the default if test 1 fails)
+| everything a node or a pod needs is built ahead by the host builder, from pushed commits, and
+uploaded. Nodes and pods only substitute. It is the shape this spec already uses for the hosts'
+closures, extended to the clusters.
+| a workload that needs an unplanned build **fails** until the builder has built it. The gain: the
+poisoning question disappears entirely.
+|===
+
+B is the default because it needs no experimental feature and fits the trust model.
 
 [[trust-model]]
 == Trust model — the cache is as trustworthy as its least trusted writer
@@ -473,6 +615,24 @@ the registration kept it. The paths **we** built into the layers carry only
 . **add `nerd-erofs-layers-1` to `upstream-cache-key-names`.** No fork is needed: attic compares
   key names only (`push.rs:449-466`). A real signature still proves where the path came from.
 
+[mermaid]
+....
+sequenceDiagram
+  autonumber
+  participant L as Layer build (builder, outside any derivation)
+  participant S as sops — the layer key's secret half
+  participant D as Lower DB shipped with the layers
+  participant N as nerd-nixos DB
+  participant W as watch-store
+  participant A as attic-nixos
+  L->>S: decrypt the layer key
+  L->>D: load the closureInfo registration, then nix store sign --recursive
+  Note over D: every layer path now carries nerd-erofs-layers-1
+  N->>D: after load-db, nix store copy-sigs from the signed lower
+  W->>A: upload a new path
+  A-->>W: key name nerd-erofs-layers-1 is upstream — the layer path is skipped
+....
+
 The upstream paths inside the layers can be signed with the layer key too, so that everything in a
 layer is excluded, or given back their own signature with
 `nix store copy-sigs -s https://cache.nixos.org -r {roots}`.
@@ -544,6 +704,23 @@ keep-alive**:
 . a superseded path stops being downloaded, so it is collected about 14 days after the last fill
   that still needed it.
 
+[mermaid]
+....
+stateDiagram-v2
+  [*] --> Uploaded: created_at set
+  Uploaded --> Live: keep-alive downloads its NAR
+  Live --> Live: last_accessed_at bumped
+  Live --> Superseded: newer generation
+  Superseded --> Expired: retention period passed
+  Expired --> Orphaned: GC deletes the object
+  Orphaned --> Reaped: no NAR or chunk holder left
+  Reaped --> [*]: disk freed
+....
+
+A superseded path that a host still runs goes back to _Live_ as soon as it is in the live set
+again. The disk is freed only at the last step, which is why the GC cadence matters: SQLite reaps
+at most 500 chunks per GC run.
+
 [cols="1,3",options="header"]
 |===
 | Guarantee | Holds when
@@ -555,19 +732,33 @@ host that has not switched for more than the retention period loses re-substitut
 closure. It still runs, and still holds every path locally.
 |===
 
-=== GC cadence and database — PostgreSQL
+=== GC cadence and database — SQLite, a GC every 15 minutes
 
-One full set of truly-ours paths is about 6.8 GiB of NAR, roughly 111 000 chunks at FastCDC's
-64 KiB average, and a nixpkgs bump orphans nearly the whole set (measured below), about once a week.
+attic runs **no database service of its own**. `atticd` keeps its metadata (caches, objects, NARs,
+chunks, the GC's dates) in the database named by `[database] url`. The nixpkgs module's default is a
+SQLite **file**, `sqlite:///var/lib/atticd/server.db`; PostgreSQL is an option, which attic's
+template recommends for production (`server/src/config-template.toml:44`).
 
-* **SQLite**, 500 chunks per run: at the default 12-hour interval, reaping one set takes 223 runs,
-  that is 111 days. At a 1-hour interval it takes 9.3 days, and the capacity is 84 000 chunks a week
-  against 111 000 orphaned. **GC never catches up, and the disk grows without bound.**
-* **PostgreSQL**, 65535 chunks per run: two runs reap a set.
+What decides is the GC's reap rate. On SQLite a run frees at most **500 chunks**, on PostgreSQL
+65 535 (`gc.rs:178-190`). One full set of truly-ours paths is about 6.8 GiB of NAR, roughly
+111 000 chunks at FastCDC's 64 KiB average. A nixpkgs bump orphans nearly the whole set (measured
+below), about once a week, so about 224 SQLite runs a week are needed:
 
-So attic-nixos runs PostgreSQL next to atticd (nixpkgs `services.postgresql`), with a GC interval
-of 1 hour. This is also what attic's own template recommends for production
-(`server/src/config-template.toml:44`).
+[cols="1,1,1",options="header"]
+|===
+| GC interval on SQLite | Chunks reaped per week | Enough?
+
+| 12 hours (default) | ≈ 7 000 | no: the disk grows without bound
+| 1 hour | ≈ 84 000 | no
+| 45 minutes | ≈ 112 000 | barely
+| **15 minutes** | **≈ 336 000** | **yes, three times the need**
+|===
+
+**Decided by the operator on 2026-10-10: SQLite, with `[garbage-collection] interval` at 15
+minutes.** No database service is added; the SQLite file lives in the cache's dataset.
+PostgreSQL (nixpkgs `services.postgresql`, 65 535 chunks per run) is the fallback, if write
+contention appears. Four watch-store daemons and a frequent GC writing to one SQLite file could
+answer _database is locked_; that is unverified.
 
 [[sizing]]
 == Sizing the cache's own disk
@@ -623,13 +814,12 @@ Two things are deliberately left out:
 
 * chunk dedup between successive versions of the same package, which only makes the real figure
   smaller;
-* PostgreSQL's footprint, for which attic publishes no guidance (unverified). It is small next to
-  the chunks: one row per chunk and per object.
+* the SQLite file's footprint, for which attic publishes no guidance (unverified). It is small next
+  to the chunks: one row per chunk and per object.
 
 === Quota proposal
 
-A dataset `tank/nerd/attic` with **`quota=32G`**, holding the chunk storage and the PostgreSQL data
-directory as children. That is 19 % of the 168 GiB available. The quota covers three things:
+A dataset `tank/nerd/attic` with **`quota=32G`**, holding the chunk storage and the SQLite file. That is 19 % of the 168 GiB available. The quota covers three things:
 
 * the measured 7.1 GiB, × 3 for headroom;
 * U, the unmeasured package outputs, and the flox environments of the Linux side;
@@ -750,14 +940,16 @@ flowchart TB
 | overlay on the EROFS layers (this section)
 | its configuration's delta, then for a node the `FloxEnv` closures that the flox controller realises
 and GC-roots. A node collects on disk pressure (rke2lab node-base: `min-free = 128MB`,
-`max-free = 1GB`), so it re-substitutes what it collected.
+`max-free = 1GB`), so it re-substitutes what it collected. A node does so **through its builder**,
+holding no attic token (see <<cluster-builds>>).
 
 | 3 — pods
 | overlay whose lower is the node's `/nix`, bind-mounted read-only by
 `flox-nri-overlay-hook.sh`, and whose upper is a 2 GiB tmpfs or a PVC
-| nothing directly: they read the node's store. Unknown packages are built remotely on
-`{bioskop,nikopol}-nixos` (`max-jobs = 0`) and land in the pod's upper. Built on bioskop-nixos,
-they **are** uploaded by its watch-store (see <<watch-store-sees>>).
+| nothing directly: they read the node's store. What they build is delegated to
+`{bioskop,nikopol}-nixos` (`max-jobs = 0`) and lands in the pod's upper, and that host's
+watch-store uploads it (see <<watch-store-sees>>). A pod that builds locally into its own upper is
+not shared.
 |===
 
 This is the intent of building the mechanism in ndh as a module rather than inside one service.
@@ -830,7 +1022,8 @@ attic-nixos and headscale-nixos are the first two instances ndh declares, and th
 * the overlay store described above;
 * the boot-then-switch delivery.
 
-Each service then adds only its own NixOS configuration: `services.atticd` plus PostgreSQL, or the
+Each service then adds only its own NixOS configuration: `services.atticd` (SQLite, no database
+service), or the
 existing `modules/nixos/headscale-daemon.nix`. There is no second way to host a service in Incus.
 
 [[secrets]]
@@ -851,9 +1044,40 @@ existing `modules/nixos/headscale-daemon.nix`. There is no second way to host a 
 * Each consumer's `nix.conf` gains attic's fabric URL and public key, **after** cache.nixos.org in
   substituter order, and a `netrc-file` pointing at its decrypted token.
 
+[mermaid]
+....
+flowchart LR
+  subgraph HOSTS["The four hosts — the only token holders"]
+    h1["bioskop — write token sub=bioskop, read token"]:::writer
+    h2["nikopol — write token sub=nikopol, read token — on the corporate side"]:::corp
+    h3["bioskop-nixos — write token, read token — builder"]:::writer
+    h4["nikopol-nixos — write token, read token — builder"]:::writer
+  end
+  subgraph CLUSTERS["Clusters — no attic token"]
+    n1["nodes and the flox controller"]:::none
+    p1["pods with the nix toolchain"]:::none
+  end
+  subgraph INFRA["Infrastructure containers — no token"]
+    c1["their own system — delivered by nix copy from their nerd-nixos"]:::none
+  end
+  attic["attic-nixos — one common cache, reads need a token"]:::cache
+
+  h1 & h2 & h3 & h4 -->|"upload and substitute"| attic
+  n1 & p1 -->|"build and substitute through, SSH identity"| h3
+  n1 & p1 -->|"same, on nikopol"| h4
+
+  classDef writer fill:#fef3c7,stroke:#b45309,stroke-width:2px;
+  classDef corp fill:#fee2e2,stroke:#b91c1c,stroke-width:2px;
+  classDef none fill:#dcfce7,stroke:#15803d;
+  classDef cache fill:#ddd9f2,stroke:#5b52b8,stroke-width:2px;
+....
+
+Legend: amber — a writer holding its own write token and a read token; red — the same, on the
+corporate side; green — holds no attic token; violet — the cache.
+
 [cols="1,2,1",options="header"]
 |===
-| Consumer | Where its read token lives | Encrypted at rest
+| Consumer | Where its read token, or its credential, lives | Encrypted at rest
 
 | darwin hosts (bioskop, nikopol)
 | sops-nix secret under `/run/secrets/nix-darwin-home/`, named by `nix.settings.netrc-file`, read by
@@ -870,16 +1094,24 @@ switch)
 | —
 
 | cluster nodes
-| the node's sops-nix secret (rke2lab `nixos/sops.nix`), named by the node-base `netrc-file`. The flox
-controller realises `FloxEnv` closures through the node's nix daemon, so it uses the same token.
-| rke2lab sops
+| **no attic token**: they read and write through their builder (see <<cluster-builds>>). What they
+hold instead is an identity to reach it, in the row below.
+| —
 
 | pods (flox NRI)
-| **none, recommended**: Part 2 sets `builders-use-substitutes = true`, so the remote builder
-substitutes with its own token and copies the result back. If a pod ever has to substitute directly,
-its token is an NRI read-only mount next to `builder.conf`, materialised at synth time, and never
-baked into an image.
-| rke2lab sops
+| **no attic token**, for the same reason: the configuration the NRI plugin mounts points their nix at
+the builder (`builders-use-substitutes = true`)
+| —
+
+| nodes and pods → their builder (not an attic token, but a credential they now hold)
+| an identity to reach `nix-daemon --stdio` on `{host}-nixos`. The shape that fits the fabric is
+**Tailscale SSH under a tailnet grant, scoped to the nix-daemon command only**, with no key on the
+node. Two things to settle first: the clusters stay on the SaaS tailnet, so the grant lives in that
+policy; and whether Tailscale SSH carries `nix-daemon --stdio` is already an open question of the
+fabric control plane spec. If it does not, the fallback is the static `nix-store` service key that
+rke2lab's flox runtime already designs: forced command `nix-daemon --stdio`, mounted read-only by the
+NRI plugin, never in an image.
+| rke2lab sops, for the fallback key
 |===
 
 === Revocation — when a host is lost
@@ -896,6 +1128,25 @@ means ending them all and re-issuing the rest:
 
 Until step 3 reaches a host, that host can neither upload nor substitute from attic. It falls back to
 cache.nixos.org and to building.
+
+[mermaid]
+....
+sequenceDiagram
+  autonumber
+  participant Op as Operator
+  participant A as attic-nixos
+  participant K as sops (ndh)
+  participant H as Remaining hosts
+  participant X as Lost host
+  Op->>K: new server secret, encrypted
+  Op->>A: restart atticd on the new secret
+  Note over A,X: every token, write and read, stops working here
+  Op->>A: atticadm make-token — one write token per remaining host, new read tokens
+  Op->>K: encrypt them for the remaining hosts only
+  Op->>H: switch — the new tokens reach them
+  X-xA: the lost host's token is refused — 401
+  Op->>A: the read test — old token 401, new token 200
+....
 
 [[read-test]]
 === The test the implementation must pass — an anonymous read is refused
@@ -962,7 +1213,7 @@ the list out: the upstream substituters' key names, plus the layer key.
 
 | the dataset grows week after week
 | GC on SQLite, capped at 500 chunks per run
-| PostgreSQL, and a 1-hour GC interval
+| a GC interval of 15 minutes on SQLite; PostgreSQL if that is not enough
 
 | a superseded path is never collected
 | retention 0 (the default), or a `cache configure` that reset it
@@ -1059,9 +1310,13 @@ be a different path, and every closure that references it would have to be rebui
   the largest item measured.
 * **Package outputs, cluster node closures and in-cluster env closures**: their size, once a fill has
   built them.
-* **Reaching attic from the cluster nodes**: the nodes sit on their bare-metal's `vmnet` segments
-  and the clusters on the SaaS tailnet. The route from a node to attic's fabric name, and from
-  nikopol's nodes across the bridge, has to be stated.
+* **Reaching the builder from the cluster nodes**: the nodes sit on their bare-metal's `vmnet`
+  segments and the clusters on the SaaS tailnet. The route and the identity from a node to its
+  `{host}-nixos` (see <<secrets>>) have to be stated. Nodes no longer need to reach attic itself.
+* **The node-base nix configuration** (`builders`, `max-jobs = 0`, `builders-use-substitutes`,
+  `require-sigs`): a rke2lab follow-up.
+* **The builder tests** (<<builder-tests>>): their results decide between the design as written and
+  fallback B.
 * **The pod tier's lower changes while mounted**: it is the node's live `/nix`, which the flox
   controller grows and the node's GC shrinks. That is the case this spec forbids for tier 2. The hook
   reconciles the pod's store DB at every container start, which repairs the DB, not the overlayfs
