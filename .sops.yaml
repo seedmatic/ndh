@@ -7,7 +7,7 @@
 # it decrypts — which is why one leak opened every sops file in both repositories.  For the same
 # reason no key of keys.yaml is a recipient here.
 #
-#   age1stxd…   operator (sops only)    — ★ STANDALONE, generated on its own, present in no
+#   age1hlvu…   operator (sops only)    — ★ STANDALONE, generated on its own, present in no
 #                                         keys.yaml. Lives only at ~/.config/sops/age/, which
 #                                         activation reads as an import candidate and never
 #                                         rewrites.
@@ -18,12 +18,13 @@
 #                                         .remoteFetch, default true for NixOS), so they decrypt
 #                                         with the OPERATOR identity rather than their own.
 #
-# ⛔ Former recipients, removed on 2026-10-10, whose privates were PUBLISHED: every version of a
-# file encrypted to one of them before that date is readable from the public history, and
-# re-encrypting does not change that.
+# ⛔ Former recipients, removed on 2026-10-10, whose privates were PUBLISHED or exposed: every
+# version of a file encrypted to one of them before that date is readable by whoever holds that
+# private, and re-encrypting does not change that.
 #   age19fvdj…  operator, printed into a session log on 2026-10-05.
 #   age10ey0l…  github-signing-hyland@26-05-29, in the clear in rke2lab from 2026-08-27.
 #   age1k0tc4…  rke2-cluster@26-05-29, in the 52 store copies pushed to the public cache.
+#   age1stxd…   operator, exposed in a session transcript on 2026-10-10 (not published).
 #
 # ★ The operator key is what a corp-managed vz-host decrypts `.secrets` with — the Tart materializer
 # carries the ENCRYPTED blob in its own bundle (it has no ndh checkout) and reads it there.  No extra
@@ -35,13 +36,13 @@ creation_rules:
   - path_regex: '.*\.(ya?ml|json|env|ini|toml|cert)$'
     encrypted_comment_regex: 'sops:encrypted'
     age:
-      - 'age1stxdeh0t6arhdm7uhyy2jcf2qj9r9vfzkwte4jr4gj6hlpxe740seq8j82'
+      - 'age1hlvu7l7kefeum8drzvc5jp0jhgsqw2h3t3a8rmzvx05lcrsmx48q2ehxsk'
       - 'age1trxpn8efl5jctwakgpxxjd2h6x5h2m40ggugxl909qsj0h99p9yqkk8tej'
       - 'age17q5kw0epcl9ft7ecegr20040vx3g86z0f7vtecn9t8kk27qjspaqp66pp4'
   # Binary/other files skip comment regex to avoid the warning.
   - path_regex: '.*'
     age:
-      - 'age1stxdeh0t6arhdm7uhyy2jcf2qj9r9vfzkwte4jr4gj6hlpxe740seq8j82'
+      - 'age1hlvu7l7kefeum8drzvc5jp0jhgsqw2h3t3a8rmzvx05lcrsmx48q2ehxsk'
       - 'age1trxpn8efl5jctwakgpxxjd2h6x5h2m40ggugxl909qsj0h99p9yqkk8tej'
       - 'age17q5kw0epcl9ft7ecegr20040vx3g86z0f7vtecn9t8kk27qjspaqp66pp4'
 stores:
