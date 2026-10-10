@@ -67,10 +67,13 @@ in
           darwin claude-code-bedrock module (single source:
           modules/claude-code-bedrock-env.nix).
 
-          Shell env vars take HIGHEST precedence in Claude Code's settings
-          layering — above the `env` block of ~/.claude/settings.json — so
-          this declarative, read-only set always wins for model
-          config.
+          These do NOT outrank the `env` block of ~/.claude/settings.json:
+          Claude Code applies that block on top of the inherited
+          environment, and sessions the VSCode extension launches only get
+          the right model ids from there (the extension passes the binary's
+          built-in Bedrock defaults). The model ids are therefore set in
+          that block too, with the same values (see
+          modules/claude-code-bedrock-env.nix); change both together.
 
           Deliberately NOT managed via home.file on settings.json:
           Claude Code writes back to ~/.claude/settings.json at runtime

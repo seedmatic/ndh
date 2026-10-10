@@ -10,10 +10,17 @@
 #
 # These must be REAL process environment variables: Claude Code only
 # selects the Bedrock backend and resolves AWS credentials from the
-# process env, not from the `env` block of ~/.claude/settings.json. The
-# same precedence makes this file the ONLY place the model ids can be
-# changed: a process env var outranks that block, so a copy written there
-# is inert, whatever it says.
+# process env, not from the `env` block of ~/.claude/settings.json.
+#
+# That block does NOT lose to this environment — it is applied on top of
+# it, and live (measured 2026-10-10: a running session switched ids
+# between two turns when the block was edited). It is also the ONLY layer
+# that reaches sessions the VSCode extension launches: the extension passes
+# the binary's built-in Bedrock defaults (us.…sonnet-4-6, a dated
+# haiku-4-5) to the `claude` it spawns, whatever its own host inherited
+# from here. So the three model ids are set in BOTH places, with the same
+# values: here for terminals, and in that block for the extension. Change
+# them together.
 #
 # The ids are `global.` inference profiles, so AWS routes each request to
 # any region with capacity. A `us.` profile is confined to us-east-1,
