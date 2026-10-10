@@ -23,9 +23,9 @@ The seedmatic hosts share most of one configuration, so they run mostly the same
 each host builds them again. The cache makes a path **built once and substituted everywhere**:
 
 * **one builder** builds every host's configuration from a pushed commit;
-* what it builds reaches an **attic** server, which runs in an Incus container on bioskop. On Linux
-  an `attic watch-store` daemon uploads it; on darwin a fill job pushes it explicitly;
-* the hosts only **substitute** from it, and **every read needs a token**.
+* an **attic** server runs in an Incus container on bioskop, with one common cache. An `attic
+  watch-store` daemon **on every host** uploads what that host builds, the builder's fills included;
+* every read from it needs a token.
 
 [cols="1,3",options="header"]
 |===
@@ -40,9 +40,10 @@ rebuild today.
 | The cache keeps what the hosts run now, not a history, and it skips the paths whose signature says
 an upstream cache serves them.
 
-| Write tokens on the builders only
-| Only the builders upload: the watch-store daemon on bioskop-nixos and the darwin fill job. Every
-other consumer holds a read token, nothing more.
+| Every host writes
+| Each of the four hosts uploads, with a write token of its own. The price is trust: the cache is as
+trustworthy as its least trusted writer (see <<trust-model>>). The other consumers (cluster nodes,
+containers) hold a read token at most.
 
 | Private by authentication
 | The cache is created **without** `--public`, so an anonymous request is refused (see
@@ -89,8 +90,7 @@ link:fabric-control-plane-spec.adoc[the fabric control plane].
 this is bioskop's nerd-nixos. For darwin it is a dedicated job on bioskop (see <<who-fills>>).
 
 | *Fill*
-| One builder run: build, then upload (by the watch-store on Linux, by an explicit push on darwin),
-then keep alive.
+| One builder run: build from a pushed revision, let the host's watch-store upload, then keep alive.
 
 | *Read token*
 | An attic token that can pull from the cache and nothing else. Every substituter of attic holds one
@@ -118,23 +118,26 @@ flowchart LR
   up["cache.nixos.org, cache.flox.dev — upstream substituters"]:::ext
 
   subgraph BIOSKOP["bioskop bare-metal"]
-    dB["darwin bioskop — dev seat, substitutes"]:::host
+    dB["darwin bioskop — dev seat, watch-store"]:::builder
     dj["darwin fill job — dedicated user, pushed revision"]:::builder
     subgraph NN_B["nerd-nixos bioskop-nixos"]
-      lb["Linux builder — attic watch-store"]:::builder
-      attic["attic-nixos — the cache, reads need a token"]:::cache
+      lb["Linux builder — watch-store"]:::builder
+      attic["attic-nixos — one common cache, reads need a token"]:::cache
     end
   end
   subgraph NIKOPOL["corporate bare-metal"]
-    dN["darwin nikopol — substitutes"]:::host
-    nN["nerd-nixos nikopol-nixos — substitutes"]:::host
+    dN["darwin nikopol — watch-store"]:::builder
+    nN["nerd-nixos nikopol-nixos — watch-store"]:::builder
   end
 
   op -->|"triggers a fill"| lb
   gh -->|"clean revision"| lb
   gh -->|"clean revision"| dj
-  lb -->|"watch-store — the Linux write token"| attic
-  dj -->|"explicit push — darwin-only paths"| attic
+  dj -->|"builds into bioskop's store"| dB
+  lb -->|"upload, its own write token"| attic
+  dB -->|"upload, its own write token"| attic
+  dN -->|"upload, across the bridge"| attic
+  nN -->|"upload, across the bridge"| attic
   attic -.->|"substitute, read token"| dB
   attic -.->|"substitute, read token, across the bridge"| dN
   attic -.->|"substitute, read token, across the bridge"| nN
@@ -148,8 +151,8 @@ flowchart LR
   classDef cache fill:#ddd9f2,stroke:#5b52b8,stroke-width:2px;
 ....
 
-Legend: blue — a host that only substitutes, with a read token; amber — a builder that holds a
-write token; violet — the cache; grey — outside the fabric.
+Legend: amber — a writer, which uploads with its own write token and substitutes with its read
+token; violet — the cache; grey — outside the fabric. Every host is a writer.
 
 attic is addressed by a **private fabric-zone name** of bioskop's segment, never by a tailnet
 `100.x` address. nikopol's machines reach it across the bridge, under the rule of
@@ -157,44 +160,90 @@ link:fabric-control-plane-spec.adoc[the fabric control plane]: address the other
 fabric name.
 
 [[who-fills]]
-== Who fills the cache — the central decision
+== Who fills the cache — every host, into one common cache
 
-[cols="1,2,2",options="header"]
+**Decided by the operator on 2026-10-10**, through the question prompt and with the price below in
+front of them: an `attic watch-store` daemon runs on **each of the four hosts** (bioskop, nikopol,
+bioskop-nixos, nikopol-nixos). Every host uploads what it builds, dev builds included.
+
+The reason is the topology. bioskop-nixos is bioskop's Linux builder (`/etc/nix/machines` →
+`ssh-ng://root@bioskop-nixos`), so it already receives the builds of bioskop's dirty trees. Whether
+a dirty build lands on the dev seat or on its builder is a difference of degree, not of kind.
+
+The builder still exists. It builds every host's configuration from a pushed revision, so that a
+host's switch finds its closure already in the cache. What the hosts upload on top is what they
+build themselves.
+
+[cols="1,3",options="header"]
 |===
-| | (a) every host pushes what it builds | (b) one builder, from a pushed commit ✅
+| | What the decision gives, and what it costs
 
-| Write tokens
-| one on every machine
-| one per builder platform
+| Gain
+| every build on any host is shared, dev builds included: the most the cache can do for "build once"
 
-| Evaluated tree
-| whatever is checked out, dirty included
-| a pushed revision (`github:` or `git+file` at a `rev`), so the tree is clean
+| Price — trust
+| a write token on every host, so the cache is as trustworthy as the **least trusted of the four
+writers** (see <<trust-model>>), and tokens that cannot yet be revoked one by one, so a single loss
+means rotating them all (see <<write-tokens>>)
 
-| Secret exposure
-| every dirty evaluation is again a leak path, into a private cache instead of a public one. That is
-the incident's shape.
-| the fill's own evaluation keeps sops files encrypted, as git holds them. The Linux watch-store
-also sees the remote builds bioskop-nixos serves (see <<watch-store-sees>>).
+| Price — the corporate side
+| the write token inside nikopol, the darwin VM that runs on the corporate bare-metal (see
+<<trust-model>>)
 
-| `allow-dirty = false`
-| unusable: the hosts are dev seats, and the dev loop evaluates dirty trees all day
-| fits: nobody develops on the builder
-
-| Builds per path
-| one per host that needs it, minus the substitution races
-| one
+| Price — exposure
+| every dev seat's dirty evaluations reach the cache, confined by authenticated reads (see
+<<watch-store-sees>>)
 |===
 
-**Recommendation: (b).** For Linux, the builder is bioskop's nerd-nixos. It already serves remote
-builds (`/etc/nix/machines` → `ssh-ng://root@bioskop-nixos`), and it sits next to attic.
+[[write-tokens]]
+=== One common cache, one write token per host
 
-On Linux the upload is an **`attic watch-store` daemon** on bioskop-nixos. The operator allowed it
-on 2026-10-10, on the condition that reads are authenticated. On darwin the upload stays an
-**explicit push** from the fill job, for a reason given below.
+**Decided by the operator on 2026-10-10**: one common cache, `seedmatic`, and **a write token per
+host**, each with its own subject. attic issues as many tokens for one cache as needed:
+
+[source,bash]
+----
+atticadm make-token --sub bioskop       --validity "3 months" --pull seedmatic --push seedmatic
+atticadm make-token --sub nikopol       --validity "3 months" --pull seedmatic --push seedmatic
+atticadm make-token --sub bioskop-nixos --validity "3 months" --pull seedmatic --push seedmatic
+atticadm make-token --sub nikopol-nixos --validity "3 months" --pull seedmatic --push seedmatic
+----
+
+What a per-host token does **not** give yet is revocation of that host alone. attic's tokens are
+**stateless JWTs**: the server checks a token's signature and expiry, and keeps no list of issued
+tokens (attic `token/src/lib.rs:3-12`: _"simple and stateless […] We may revisit this later"_).
+Ending one token means rotating the server secret (`ATTIC_SERVER_TOKEN_RS256_SECRET_BASE64`), which
+ends every token, reads included, or waiting for its expiry. Revoking one host alone is left to a
+later contribution to attic (see <<attic-fork>>). Access control is already far better than the
+public cache.
+
+[cols="1,3",options="header"]
+|===
+| A host's write token | Rule
+
+| subject
+| the host's name (`--sub {host}`), so that each token belongs to one host and none is shared
+
+| scope
+| `--push seedmatic` (plus `--pull seedmatic` for the keep-alive), nothing else: no `create-cache`,
+`configure-cache`, `delete` or `destroy-cache`
+
+| validity
+| bounded (`--validity`, three months in the example), re-issued on a schedule. Until the
+contribution, the validity is the only bound on how long a lost token keeps pushing. The value is
+open below.
+
+| a host is lost or compromised
+| rotate the server secret, then re-issue every other host's write token and every read token (see
+<<secrets>>)
+|===
+
+Considered and not chosen: a cache per writer. It would make a single host revocable (destroy its
+cache) and give each writer its own signing key, at no disk cost, since attic deduplicates NARs
+across caches. The operator kept one common cache.
 
 [[watch-store-sees]]
-=== What bioskop-nixos's watch-store also uploads
+=== What a host's watch-store uploads
 
 The daemon watches the whole store, not the fill. Read in attic `client/src/command/watch_store.rs`
 at `7a19204d`:
@@ -204,30 +253,33 @@ at `7a19204d`:
 * for every path it keeps, it pushes the **closure** by default (`--no-closure` is a hidden flag).
   An output that references a flake source therefore carries that source, whatever its name.
 
-bioskop-nixos realises three kinds of paths besides the fill, so all three now reach the cache:
+With a daemon on every host, these origins all reach the cache:
 
-[cols="1,2",options="header"]
+[cols="1,1,2",options="header"]
 |===
-| Origin | What lands in the cache
+| Host | Origin | What lands in the cache
 
-| the dev seats' remote builds (`ssh-ng`, `/etc/nix/machines` on bioskop and nikopol)
-| the outputs of derivations evaluated from **dirty trees**. Their input `-source` copies, plaintext
-included, are skipped by name, but an output that references one carries it in its closure.
+| every host
+| its own builds
+| the outputs of whatever it builds, dirty trees included. A dirty evaluation's `-source` copy,
+plaintext included, is skipped by name, but an output that references one carries it in its closure.
 
+| bioskop-nixos, nikopol-nixos
+| the dev seats' remote builds (`ssh-ng`, `/etc/nix/machines` on the darwin hosts)
+| the outputs of derivations their darwin host evaluated, dirty trees included
+
+| bioskop-nixos, nikopol-nixos
 | the pods' remote builds (rke2lab's flox runtime, Part 2: `max-jobs = 0` → `ssh-ng://nix-store.{host}-nixos`)
 | the unknown packages a workload asked for, built from inputs the workload chose
 
-| anything realised on bioskop-nixos itself
-| its own generations, and what a session there builds
+| bioskop
+| the darwin fill job
+| both darwin configurations, built from a pushed revision
 |===
 
 This is **accepted under authenticated reads**. A plaintext copy that reaches the cache can be read
 only by a holder of a read token, all of which are machines of the fabric (see <<secrets>>). It is
 not fixed by them. The fix is the fork in <<attic-fork>>.
-
-The darwin side keeps an explicit push because there the watch-store would run **on the dev seat
-itself**. bioskop's store receives every dirty evaluation directly, not just its remote builds.
-The darwin fill job pushes only the closures it built from a pushed revision.
 
 === The darwin paths need a darwin builder
 
@@ -253,7 +305,7 @@ dedicated launchd job:
 
 * it runs under its own user;
 * it evaluates a pushed revision, with `--option allow-dirty false` on its own command line;
-* it reads a darwin write token that only that user can read.
+* it holds no token: what it builds lands in bioskop's store, and bioskop's watch-store uploads it.
 
 The operator's `nix.conf` keeps `allow-dirty` at its default, because a global `false` would break
 the Maven build of manifests-core (`nix run .#stage-*-crd`) and the whole dev loop.
@@ -289,9 +341,45 @@ sequenceDiagram
   B->>B: build every Linux configuration
   W->>A: upload each new valid path and its closure
   Note over W,A: skipped — drv and -source paths by name,<br/>and paths signed by an upstream key name
+  Note over W,H: every host's own watch-store does the same<br/>for what that host builds
   B->>A: keep-alive — download the NAR of every live-set path
   H->>A: substitute on its next switch, with its read token
 ....
+
+[[trust-model]]
+== Trust model — the cache is as trustworthy as its least trusted writer
+
+This is a fact of the design, not a footnote.
+
+attic signs, with **the cache's** key, every path a writer uploads. For an input-addressed path,
+which most outputs are, nothing proves the uploaded content is what the derivation would produce.
+Any writer can publish **arbitrary content under any input-addressed path**, and every consumer
+accepts it, signed by attic. Content-addressed paths, such as a `-source`, are the exception: their
+name is derived from their content, so a substitute for one cannot be swapped. With a write token on
+four hosts, the cache is therefore exactly as trustworthy as the **least trusted** of the four.
+
+[cols="1,3",options="header"]
+|===
+| Writer | What its token puts at stake
+
+| bioskop, bioskop-nixos, nikopol-nixos
+| a writer of the fabric: a compromise of any one of them can poison what all the others substitute
+
+| nikopol
+| its own write token (`--sub nikopol`) **inside the darwin VM that runs on the corporate
+bare-metal**. It sits next to the fabric rule that the corporate machine holds no key. The token
+lives in the VM, not on the bare-metal, and is scoped to pushing to `seedmatic` with a bounded
+validity. It is nikopol's alone, but until attic can revoke one token, losing it still means
+rotating every token (see <<write-tokens>>).
+|===
+
+What would restore the trust, neither of which this spec builds:
+
+* a **content check at upload**, so that a writer cannot publish what the server rejects. That is
+  the fork, <<attic-fork>>;
+* **per-writer signing keys that consumers can tell apart**, so that a consumer trusts some writers
+  and not others. attic gives one key per cache, so this means a cache per writer, which the operator
+  did not choose (see <<write-tokens>>).
 
 == Scope — what is cached
 
@@ -361,8 +449,7 @@ The filter misses what upstream serves but no local signature says: **297 paths 
 the four host closures. On bioskop-nixos, 96 of its 289 such paths are in the EROFS layers,
 registered from `closureInfo` without signatures (`nix-store --load-db`,
 `modules/nixos/bringup-disk-image-common.sh:131`). The others were built locally. They cost disk,
-not a leak. The darwin push may add a narinfo query to upstream before pushing; the watch-store
-cannot until the fork.
+not a leak. No uploader can query upstream before uploading until the fork.
 
 === Excluding the EROFS layers' own paths — a layer key
 
@@ -394,21 +481,20 @@ Measured on bioskop-nixos, the gain is small today: 115 of its 611 ours paths ar
 and the running generation is not, because the layers predate it. The key prevents duplicates; the
 delta since the layers is what the cache is for.
 
-=== The secret guard — on the darwin push only
+=== The secret guard — no step left to run it in, so it is the fork
 
 Every host's system closure already carries sops files **by design**: sops-nix puts the encrypted
 file in the store. Measured, by counts only: `ndh-.secrets` (16 `ENC[` values), `keys.yaml` (10
 `ENC[`, no `PRIVATE KEY` marker, its 77 plain values are public by design) and `cache-trust.yaml`
-(2 `ENC[`). So the guard judges **content, not names**. It refuses the whole push if any candidate
-path holds:
+(2 `ENC[`). So a guard must judge **content, not names**. It would refuse a path that holds:
 
 * a `# sops:encrypted` annotation followed by anything but an `ENC[` value (the rule of
   <<attic-fork>>);
 * a private-key armour header followed by a body;
 * a GitHub token shape (`gh[opsu]_…`, `github_pat_…`).
 
-It runs where there is a push step to run it in: the darwin fill. The Linux watch-store has no such
-step, and attic offers no hook, so the same guard on Linux **is** the fork.
+With a watch-store on every host there is no push step left to run it in, and attic offers no hook.
+So the guard **is** the fork.
 
 [[retention]]
 == Retention — latest only
@@ -754,9 +840,12 @@ existing `modules/nixos/headscale-daemon.nix`. There is no second way to host a 
   `environmentFile`), the cache's signing key, the layer key and every token are **sops-encrypted at
   rest**. They are decrypted only into `/run/secrets` (tmpfs, root-only, mode 0400), and never sit in a
   flake tree that anyone evaluates dirty.
-* The cache is created **without** `--public`. Tokens come from `atticadm make-token`: a write token
-  (`--push`, plus `--pull` for the keep-alive) per builder platform, and a **read token** (`--pull`
-  only) per consumer class.
+* The cache is created **without** `--public`. Tokens come from `atticadm make-token`: **a write
+  token per host** (`--sub {host} --push seedmatic --pull seedmatic`, see <<write-tokens>>), and a
+  **read token** (`--pull seedmatic` only) per consumer class.
+* Each host's write token sits on that host only, in the attic client configuration of its
+  watch-store service (`attic login`). That configuration is written at service start from the
+  sops-decrypted token, and is readable only by the service. No token is shared between hosts.
 * nix reads a token from its `netrc-file`, as the `password` of the attic host's `machine` entry. That
   is the same entry `attic use` writes (`client/src/command/use.rs:54-68`, `nix_netrc.rs:96`).
 * Each consumer's `nix.conf` gains attic's fabric URL and public key, **after** cache.nixos.org in
@@ -793,6 +882,21 @@ baked into an image.
 | rke2lab sops
 |===
 
+=== Revocation — when a host is lost
+
+attic tokens cannot be revoked one by one (see <<write-tokens>>), so losing any host, or any token,
+means ending them all and re-issuing the rest:
+
+. rotate the server secret: a new `ATTIC_SERVER_TOKEN_RS256_SECRET_BASE64`, sops-encrypted, then
+  restart atticd. Every token, write and read, stops working at that moment;
+. mint new write tokens for the remaining hosts, one each, and new read tokens
+  (`atticadm make-token`, same subjects and scopes, bounded validity);
+. re-encrypt them with sops for every host except the lost one, and switch the remaining hosts;
+. check with <<read-test>> that the old read token gets 401 and the new one 200.
+
+Until step 3 reaches a host, that host can neither upload nor substitute from attic. It falls back to
+cache.nixos.org and to building.
+
 [[read-test]]
 === The test the implementation must pass — an anonymous read is refused
 
@@ -822,29 +926,27 @@ nix build "github:seedmatic/ndh/$REV#nixosConfigurations.bioskop-nixos.config.sy
   --option allow-dirty false
 ----
 
-=== ❌ Push from a dev seat
+=== ✅ A watch-store on every host, behind authenticated reads
 
 [source,bash]
 ----
-attic push seedmatic ./result      # from the operator's checkout: one dirty evaluation away from the incident
-----
-
-=== ✅ A watch-store on the Linux builder, behind authenticated reads
-
-[source,bash]
-----
-# on bioskop-nixos, as the daemon's service: the cache was created without --public
+# on each of the four hosts, as the daemon's service: the cache was created without --public
 attic watch-store seedmatic
 ----
 
-Allowed under one condition, which <<read-test>> checks: every read needs a token. What it also
-uploads is listed in <<watch-store-sees>>.
+Allowed under one condition, which <<read-test>> checks: every read needs a token. What it uploads
+is listed in <<watch-store-sees>>, and what it costs in trust in <<trust-model>>.
 
-=== ❌ A watch-store on a dev seat, or towards a cache readable without a token
+=== ❌ A watch-store towards a cache readable without a token
 
-On bioskop's darwin, the daemon would see every dirty evaluation of the dev loop first-hand. On a
-`--public` cache, or a public one like `nxmatic.cachix.org`, it would bring back the incident
-itself.
+On a `--public` cache, or on a public one like `nxmatic.cachix.org`, a watch-store brings the
+incident back as it was: every dirty evaluation of every host published.
+
+=== ❌ Share one write token between hosts, or give one more than push
+
+One token per host, each with its own `--sub`, never one copied to several hosts. And no
+`create-cache`, `configure-cache`, `delete` or `destroy-cache`: the tokens sit on four hosts, one of
+them on the corporate side, and none can be revoked alone yet.
 
 === ❌ Derive the key-name list from `trusted-public-keys`
 
@@ -886,6 +988,14 @@ the list out: the upstream substituters' key names, plus the layer key.
 | `io-nxmatic-nix-darwin-home` is in `upstream-cache-key-names`
 | remove it: it signs every local build
 
+| a host is lost, or a token leaked
+| attic tokens cannot be revoked one by one
+| rotate the server secret and re-issue the tokens (see the revocation steps in <<secrets>>)
+
+| every host stops uploading on the same day
+| the write tokens were issued together and expired together
+| re-issue them; the validity is bounded on purpose
+
 | the container's store reports a stale file handle (ESTALE)
 | a lower changed under `index=on`
 | restart the container on the layer set nerd-nixos booted
@@ -920,6 +1030,22 @@ body, an `AGE-SECRET-KEY-1`, and GitHub token shapes, because the `.sops.yaml` i
 (2026-08-27).
 |===
 
+Two more contributions follow from the operator's choices on writers (see <<trust-model>>):
+
+[cols="1,3",options="header"]
+|===
+| Change | What it does
+
+| revocable per-host tokens
+| a token per host that can be ended alone, without rotating the server secret. That needs state on
+the server, a list of revoked subjects or of issued tokens, where attic is stateless today
+(`token/src/lib.rs:3-12`).
+
+| trust restored per writer
+| the content check above, at upload, so that no writer can publish what the server rejects. Or
+per-writer signing keys that consumers can tell apart.
+|===
+
 The filter **refuses**; it never re-encrypts. A `-source` path is addressed by its content, a cache
 signature covers the NAR hash, and sops draws a fresh IV at each encryption. A rewritten path would
 be a different path, and every closure that references it would have to be rebuilt.
@@ -951,6 +1077,8 @@ be a different path, and every closure that references it would have to be rebui
   and go with it.
 * **`nix store copy-sigs` from a local store**: whether it accepts `local?root=…` as its source, for
   the layer key.
+* **Token validity and re-issue**: the validity of the write and read tokens (three months in the
+  example), and what re-issues them on schedule.
 
 == Related Documentation
 
