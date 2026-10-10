@@ -434,7 +434,8 @@ in
       nscd.enable = lib.mkForce runtimeMode;
       nscd.enableNsncd = lib.mkForce runtimeMode;
 
-      nxmaticCachixWatchStore.enable = lib.mkDefault runtimeMode;
+      # DISABLED 2026-10-10: watch-store pushed dirty-tree flake sources carrying sops-smudged .secrets/keys.yaml in clear to the PUBLIC nxmatic cache. Not removed; see the rke2lab memory note dirty-flake-eval-publishes-smudged-secrets.
+      nxmaticCachixWatchStore.enable = lib.mkDefault false;
       ntopng = {
         enable = lib.mkDefault runtimeMode;
         interfaces = [ "all" ];
