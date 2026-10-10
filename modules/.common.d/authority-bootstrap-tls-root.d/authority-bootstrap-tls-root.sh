@@ -133,15 +133,16 @@ if [[ "$mode" == "--create" ]]; then
 	# clarity + line-comment assignment on the private (sops only
 	# encrypts scalars preceded by `# sops:encrypted` per the repo's
 	# .sops.yaml encrypted_comment_regex).
+	slot="$(date +%y-%m-%d)"
 	env NDH_PRIV="$privPem" NDH_PUB="$pubBlob" \
 		NDH_TYPE="$modeArg" \
 		NDH_COMMENT="cert-authority@${authority}" \
 		yq eval -i "
 			.authorities.\"${authority}\".type = strenv(NDH_TYPE) |
 			.authorities.\"${authority}\".comment = strenv(NDH_COMMENT) |
-			.authorities.\"${authority}\".public = strenv(NDH_PUB) |
-			.authorities.\"${authority}\".private = strenv(NDH_PRIV) |
-			.authorities.\"${authority}\".private lineComment = \"sops:encrypted\" |
+			.authorities.\"${authority}\".slots.\"${slot}\".public = strenv(NDH_PUB) |
+			.authorities.\"${authority}\".slots.\"${slot}\".private = strenv(NDH_PRIV) |
+			(.authorities.\"${authority}\".slots.\"${slot}\".private | key) headComment = \"sops:encrypted\" |
 			.authorities.\"${authority}\".usage = [\"tls-authority\"] |
 			.authorities.\"${authority}\".annotations.public_scope = \"system\"
 		" "$decrypted"
@@ -170,7 +171,8 @@ fi
 
 # --- Materialise the authority's private for step-cli ---
 authKey="${tmp}/ca-signer"
-yq eval -r ".authorities.\"${authority}\".private" "$decrypted" >"$authKey"
+yq eval -r ".authorities.\"${authority}\".slots // {} | to_entries | sort_by(.key) | .[-1].value.private // \"\"" "$decrypted" >"$authKey"
+[[ -s "$authKey" ]] || { err "authority ${authority} has no private in its presented slot"; exit 1; }
 chmod 400 "$authKey"
 
 # --- Mint the self-signed root ---

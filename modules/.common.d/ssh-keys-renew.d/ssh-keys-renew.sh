@@ -14,8 +14,13 @@
 #                         check — otherwise the one path that worked is the one
 #                         removed
 #
+# --replace collapses both phases into one change, for a key whose private is
+# EXPOSED: there, the overlap the two phases exist to provide is the risk itself,
+# since it keeps the published generation accepted until phase 2.
+#
 # Usage:
-#   ssh-keys-renew [--key NAME]... [--authority NAME]... [--older-than Nd] [--apply]
+#   ssh-keys-renew [--key NAME]... [--authority NAME]... [--older-than Nd]
+#                  [--replace --reason TEXT] [--apply]
 #
 # Safe by default: nothing is generated and keys.yaml is not touched unless
 # --apply is given. A tool that rewrites key material shows its work first.
@@ -43,7 +48,7 @@
 # shellcheck disable=SC1091
 source @nixBashTrampoline@
 
-declare -g keysYaml tmpdir decrypted today apply olderThanDays
+declare -g keysYaml tmpdir decrypted today apply olderThanDays replace reason
 declare -ga selectKeys=() selectAuthorities=() plan=() refusals=()
 
 # ⚠️ stdout, NOT stderr — the opposite of the activation scripts' convention, and
@@ -60,7 +65,8 @@ log::error() { echo "[ssh-keys-renew][ERROR] $*"; }
 
 usage() {
 	cat <<-EOF
-		usage: ssh-keys-renew [--key NAME]... [--authority NAME]... [--older-than Nd] [--apply]
+		usage: ssh-keys-renew [--key NAME]... [--authority NAME]... [--older-than Nd]
+		                      [--replace --reason TEXT] [--apply]
 
 		  --key NAME         Renew keys.<NAME>. Repeatable.
 		  --authority NAME   Renew authorities.<NAME>. Repeatable. Renew an authority
@@ -69,12 +75,19 @@ usage() {
 		                     old. Reads the slot dates directly — there is no side
 		                     table to keep in step, which is the free benefit of
 		                     dating the slots.
+		  --replace          No overlap: every existing slot of a selected entry is
+		                     deleted AND written to revoked in the same change.
+		                     For an EXPOSED private, where the overlap is the risk.
+		                     An authority and its leaves may then go together.
+		  --reason TEXT      The reason recorded in each revoked entry. Required with
+		                     --replace.
 		  --apply            Actually generate and rewrite keys.yaml. Without it this
 		                     prints the plan and changes nothing.
 
 		Effect with --apply: adds a slot dated today to each selected entry, generates
 		a keypair into it, re-encrypts keys.yaml in place. BOTH generations are then
 		published; phase 2 removes the retiring one, by hand, after a positive check.
+		With --replace, only the new generation is published.
 	EOF
 	return 64
 }
@@ -140,8 +153,9 @@ plan::consider() { # <section> <name>
 		return 0
 	fi
 	# Two slots means a renewal is already in flight. A third is the state the
-	# enrichment's assertion refuses, and it would mean phase 2 was skipped.
-	if ((${#existing[@]} >= 2)); then
+	# enrichment's assertion refuses, and it would mean phase 2 was skipped. A
+	# replacement retires every slot, so an in-flight renewal is no obstacle to it.
+	if ((replace == 0)) && ((${#existing[@]} >= 2)); then
 		refusals+=("${section}.${name}: a renewal is already in flight (${existing[*]}) — finish phase 2 first")
 		return 0
 	fi
@@ -149,6 +163,17 @@ plan::consider() { # <section> <name>
 	for slot in "${existing[@]}"; do
 		if [[ "$slot" == "$today" ]]; then
 			refusals+=("${section}.${name}: slot ${today} already exists — renewing the same entry twice in one day is a symptom, not a case to support")
+			return 0
+		fi
+		((replace == 1)) || continue
+		# A slot without a public is generated at activation and never recorded:
+		# there is nothing to revoke, so replacing it would only hide that.
+		if [[ -z "$(yq eval -r ".${section}.\"${name}\".slots.\"${slot}\".public // \"\"" "$decrypted")" ]]; then
+			refusals+=("${section}.${name}: slot ${slot} has no public — an entry generated at activation cannot be revoked, so it is not replaced")
+			return 0
+		fi
+		if [[ "$(yq eval -r ".revoked // {} | has(\"${name}@${slot}\")" "$decrypted")" == "true" ]]; then
+			refusals+=("${section}.${name}: revoked already holds ${name}@${slot}")
 			return 0
 		fi
 	done
@@ -227,7 +252,11 @@ plan::show() {
 		printf '%-13s %-24s %-22s %s\n' SECTION ENTRY TYPE 'SLOTS AFTER'
 		for line in "${plan[@]}"; do
 			IFS=$'\t' read -r section name keyType existing <<<"$line"
-			printf '%-13s %-24s %-22s %s\n' "$section" "$name" "$keyType" "${existing} + ${today}"
+			if ((replace == 1)); then
+				printf '%-13s %-24s %-22s %s\n' "$section" "$name" "$keyType" "${today} (revokes ${existing})"
+			else
+				printf '%-13s %-24s %-22s %s\n' "$section" "$name" "$keyType" "${existing} + ${today}"
+			fi
 		done
 	fi
 
@@ -272,12 +301,34 @@ renew::one() { # <section> <name> <keyType>
 		"$decrypted"
 }
 
+# Delete each retiring slot and write its `revoked` entry in the same document:
+# the evaluation refuses a revoked public that a slot still carries, and a slot
+# deleted without its entry stays valid wherever its public is still known.
+renew::retire() { # <section> <name> <slot>...
+	local section="$1" name="$2" slot
+	shift 2
+	for slot in "$@"; do
+		log::info "retiring ${section}.${name} slot ${slot} into revoked"
+		REASON="$reason" yq eval -i "
+			.revoked.\"${name}@${slot}\".type   = .${section}.\"${name}\".type |
+			.revoked.\"${name}@${slot}\".public = .${section}.\"${name}\".slots.\"${slot}\".public |
+			.revoked.\"${name}@${slot}\".reason = strenv(REASON) |
+			del(.${section}.\"${name}\".slots.\"${slot}\")
+		" "$decrypted"
+	done
+}
+
 renew::apply() {
-	local line section name keyType reencrypted value
+	local line section name keyType existing reencrypted value
+	local -a retiring
 
 	for line in "${plan[@]}"; do
-		IFS=$'\t' read -r section name keyType _ <<<"$line"
+		IFS=$'\t' read -r section name keyType existing <<<"$line"
 		renew::one "$section" "$name" "$keyType"
+		if ((replace == 1)); then
+			read -r -a retiring <<<"$existing"
+			renew::retire "$section" "$name" "${retiring[@]}"
+		fi
 	done
 
 	reencrypted="${tmpdir}/keys.yaml.reenc"
@@ -302,6 +353,22 @@ renew::apply() {
 
 	install -m 0644 "$reencrypted" "$keysYaml"
 
+	if ((replace == 1)); then
+		cat <<-EOF
+
+			replacement written. Only the new generations are declared; the retired
+			ones are in revoked.
+
+			Next, in order:
+			  1. nix run .#ssh-keys-v2-validate
+			  2. commit the keys.yaml diff
+			  3. activate EVERY host. There is no overlap: from its own activation on,
+			     a host refuses the retired generation — activate it from a session
+			     that does not depend on that generation.
+		EOF
+		return 0
+	fi
+
 	cat <<-EOF
 
 		phase 1 written. Both generations are now declared.
@@ -319,6 +386,8 @@ renew::apply() {
 
 main() {
 	apply=0
+	replace=0
+	reason=""
 	olderThanDays=""
 
 	while (($# > 0)); do
@@ -341,6 +410,15 @@ main() {
 				olderThanDays="${BASH_REMATCH[1]}"
 				shift 2
 				;;
+			--replace)
+				replace=1
+				shift
+				;;
+			--reason)
+				[[ -n "${2:-}" ]] || return "$(usage || echo $?)"
+				reason="$2"
+				shift 2
+				;;
 			--apply)
 				apply=1
 				shift
@@ -359,6 +437,11 @@ main() {
 
 	if ((${#selectKeys[@]} == 0)) && ((${#selectAuthorities[@]} == 0)) && [[ -z "$olderThanDays" ]]; then
 		log::error "nothing selected — pass --key, --authority or --older-than"
+		usage
+		return $?
+	fi
+	if ((replace == 1)) && [[ -z "$reason" ]]; then
+		log::error "--replace needs --reason: it is what each revoked entry records"
 		usage
 		return $?
 	fi
@@ -385,7 +468,10 @@ main() {
 	today="$(date +%y-%m-%d)"
 
 	plan::build
-	plan::assert_ordering
+	# The ordering protects an overlap: leaves re-signed under a CA that hosts not
+	# yet activated do not trust. A replacement has no overlap to protect — every
+	# host refuses the old generations from its activation on, CA included.
+	((replace == 1)) || plan::assert_ordering
 	plan::show
 
 	if ((${#refusals[@]} > 0)); then

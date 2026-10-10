@@ -191,7 +191,7 @@ caCrt="$(yq eval -r ".authorities.\"${authority}\".ca_crt // \"\"" - <<<"$decryp
 [[ -n $caCrt ]] ||
 	die "authority '${authority}' has no minted ca_crt — run: nix run .#authority-bootstrap-tls-root -- ${authority}"
 
-caKey="$(yq eval -r ".authorities.\"${authority}\".private // \"\"" - <<<"$decrypted")"
+caKey="$(yq eval -r ".authorities.\"${authority}\".slots // {} | to_entries | sort_by(.key) | .[-1].value.private // \"\"" - <<<"$decrypted")"
 [[ -n $caKey ]] || die "authority '${authority}' has no private key in keys.yaml"
 
 # --- Mint -------------------------------------------------------------------------------------

@@ -120,7 +120,6 @@ in
         root = ./git.d;
         fileset = lib.fileset.difference (lib.fileset.fromSource ./git.d) (
           lib.fileset.unions [
-            ./git.d/config.d
             ./git.d/sops
             ./git.d/sops.d
             ./git.d/sops.sh
