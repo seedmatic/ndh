@@ -78,6 +78,13 @@
     region = eu-central-1
     output = yaml-stream
 
+    [profile cin-ccrepo-prod-au]
+    sso_session = hyland
+    sso_account_id = 137429247134
+    sso_role_name = AWSPowerUserAccess
+    region = ap-southeast-2
+    output = yaml-stream
+
     [sso-session hyland]
     sso_start_url = https://identitycenter.amazonaws.com/ssoins-6684b922d5a25f41
     sso_region = us-east-2
