@@ -78,6 +78,18 @@ from the GPG-encrypted password store. Covers the CGNAT sub-prefix per
 control plane, the bridge between the two gateways, the hard-coded `ts-forward` drop and the fork
 patch that lifts it, private zones plus one duckdns name, and the version floor.
 
+link:private-binary-cache-spec.adoc[Private Binary Cache — build once, substitute everywhere (spec)]::
+📐 attic in an Incus container on bioskop's nerd-nixos (`attic-nixos`), reachable from the fabric
+only. **One builder fills it from a pushed revision**: Linux on nerd-nixos, darwin through a
+dedicated job on bioskop. The hosts only substitute, and no dev seat holds a write token. Push
+filters: an upstream narinfo query, because attic's signature filter misses 297 layer-registered
+paths, and a secret guard that fails closed. "Latest only" is a retention period plus a keep-alive,
+because attic can neither pin nor delete a single path. PostgreSQL, because SQLite reaps 500 chunks
+per GC run. Sizing measured on 2026-10-10: a 15.7 GiB union of host closures, of which 1.56 GiB is
+not on cache.nixos.org, plus 5.25 GiB of flox environments. Proposed quota `tank/nerd/attic` = 32G.
+The containers' `/nix/store` is an overlay on nerd-nixos's EROFS layers. Their placement in the
+Incus cluster is stated, in a project separate from the `rke2lab` cluster nodes.
+
 link:ssh-keys-architecture.adoc[SSH Keys — the Keys That Remain]::
 📐 Which keys exist once access is granted by the control plane — the bridge,
 the service keys, and the shared material — who generates each (always the machine that uses it),
