@@ -8,12 +8,19 @@ if ! command -v nix >/dev/null 2>&1; then
   exit 0
 fi
 
-echo "Running nix fmt -- --fail-on-change ..."
-if ! nix fmt -- --fail-on-change; then
-  cat <<'EOF'
-nix fmt -- --fail-on-change failed. Please run `nix fmt` to apply formatting.
+# The formatter is built from HEAD and run on the tree. A bare `nix fmt` evaluates the working tree, and in a
+# checkout the sops smudge decrypted that copies the secrets into the store in clear (the 2026-10-10 leak).
+if sha="$(git rev-parse --verify --quiet HEAD)"; then
+  system="$(nix eval --impure --raw --expr builtins.currentSystem)"
+  echo "Running the formatter of ${sha:0:8} with --fail-on-change ..."
+  if ! nix run "git+file://${PWD}?rev=${sha}#formatter.${system}" -- --fail-on-change; then
+    cat <<'EOF'
+The formatter changed files. Review them, stage them, and commit again.
 EOF
-  exit 1
+    exit 1
+  fi
+else
+  echo "no HEAD yet; skipping the formatter check" >&2
 fi
 
 # Refuse to commit secret material in the clear.
