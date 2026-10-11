@@ -10,8 +10,26 @@
 { lib, ... }:
 let
   storeLayers = import ./erofs-store-layers.nix;
+
+  # overlayfs searches lowerdir left to right, so the newest layer must come first: when a later
+  # generation re-packs a path, its copy wins.
+  lowerdirs = lib.reverseList (map (layer: layer.roMountPoint) storeLayers.layers);
+
+  # The contract every OTHER overlay on these layers reads: the NixOS containers'
+  # (incus-nixos-container.nix), and a candidate for the flox NRI plugin's pod stores. A consumer mounts
+  # `lowerdirs` FLAT, never an overlay of them: an overlay as lowerdir mounts, but the kernel then
+  # silently falls back to index=off (measured 2026-10-11, kernel 6.18.55), which loses the ESTALE
+  # refusal of a changed lower. After mounting, the consumer asserts that the effective options carry
+  # `lowerdir=` + `lowerdirs` joined by `:` and every `requiredOptions` entry, and fails hard
+  # otherwise.
+  layerContract = {
+    inherit lowerdirs;
+    requiredOptions = [ "index=on" ];
+  };
 in
 {
+  environment.etc."ndh/store-layers.json".text = builtins.toJSON layerContract;
+
   # /nix/store must be mountable in stage 1 to reach stage 2 at all, and
   # nixos/modules/tasks/filesystems/erofs.nix only adds the `erofs` module to
   # the initrd when the filesystem is declared supported there.
@@ -36,9 +54,7 @@ in
     // {
       ${storeLayers.storeMountPoint} = {
         overlay = {
-          # overlayfs searches lowerdir left to right, so the newest layer must
-          # come first: when a later generation re-packs a path, its copy wins.
-          lowerdir = lib.reverseList (map (layer: layer.roMountPoint) storeLayers.layers);
+          lowerdir = lowerdirs;
           upperdir = "${storeLayers.rwMountPoint}/upper";
           workdir = "${storeLayers.rwMountPoint}/work";
         };

@@ -1158,60 +1158,114 @@ container's lifecycle would govern
 
 Both attic-nixos and headscale-nixos mount their `/nix/store` as an overlay **from the start** (the
 operator's choice: there is no plain-store first increment). The lowers are the EROFS layers that
-nerd-nixos already mounts. The upper is a per-container ZFS volume. The containers' system closures
-therefore overlap nerd-nixos's, and the upper receives only the **delta**.
+nerd-nixos already mounts. The upper is a per-container ZFS dataset. The containers' system closures
+therefore overlap nerd-nixos's, and the upper receives only the **delta**. Implemented by
+`modules/nixos/incus-nixos-container.nix`.
 
 [mermaid]
 ....
 flowchart TB
-  subgraph C["container /nix/store — local-overlay-store"]
-    U["upper — per-container Incus volume on ZFS, receives only the delta"]
-    L["lower — a complete read-only store: nix/store = the EROFS stack, nix/var/nix/db shipped with the layers"]
-    U --> L
+  subgraph C["container — sees only binds"]
+    S["/nix/store — the store overlay, bound from nerd-nixos"]
+    M["/nix/.lower — the metadata view, read-only: nix's lower store"]
+    U["/nix/.upper — the upper, nix's upper-layer"]
   end
-  subgraph N["nerd-nixos"]
-    E1["/nix/.ro-store — layer 001"]
-    E2["/nix/.ro-store.002"]
-    E3["/nix/.ro-store.003"]
-    R["closureInfo registration — already built by the bringup"]
+  subgraph N["nerd-nixos — owns every mount"]
+    E["/nix/.ro-store.003 : .002 : .ro-store — the EROFS layers"]
+    J["/etc/ndh/store-layers.json — the layer contract"]
+    O["store overlay — lowerdir = the layers FLAT, index=on, upper = the container's dataset"]
+    V["metadata view — a read-only overlay of the layers, a .links shim, a DB per layer set"]
   end
-  L -. "the same immutable images" .-> E1 & E2 & E3
-  R -- "generated ONCE per layer set" --> L
+  J -- "lowerdirs, required options" --> O
+  J --> V
+  E -- "flat lowers" --> O
+  E -. "never as an overlay lower" .-> V
+  O --> S
+  V --> M
   X["nerd-nixos merged /nix/store — changes at every activation"]
-  X -. "NEVER a lower: a lower that changes while mounted is undefined" .-x L
+  X -. "NEVER a lower" .-x O
 ....
 
 [cols="1,3",options="header"]
 |===
 | Rule | Why
 
-| the lowers are the **EROFS layers**, never nerd-nixos's merged `/nix/store`
-| the merged store changes as nerd-nixos activates generations, and in OverlayFS a lower that changes
-while mounted is undefined behaviour
+| the store overlay's lowers are the **EROFS layers, flat**, never nerd-nixos's merged `/nix/store`
+and never an overlay of the layers
+| the merged store changes as nerd-nixos activates generations, and in OverlayFS a lower that
+changes while mounted is undefined. And an overlay as lowerdir mounts, but the kernel silently
+falls back to `index=off` ("does not support file handles"), which loses the ESTALE refusal of a
+changed lower. Measured on bioskop-nixos on 2026-10-11 (kernel 6.18.55): flat lowers keep
+`index=on`
 
-| pass the **mount points** (`/nix/.ro-store`, `.002`, `.003`) read-only, never `/dev/vdX`
-| measured: the device names do not follow the layer index (vdh, vdf, vdg), while ndh already mounts
-the layers by label. Use the post-`switch_root` paths, not the initrd's `/sysroot/…`.
+| one **layer contract**, `/etc/ndh/store-layers.json`, rendered by `erofs-store-mount.nix`
+| the ordered lowerdirs (newest first, `.003:.002:.ro-store`) and the options a consumer must find
+on its mount. A second, hand-written list would drift. The flox NRI plugin's pod stores are a
+candidate second consumer
 
-| lowerdir order = nerd-nixos's, newest first (`.003:.002:.ro-store`), **projected** from
-`modules/nixos/erofs-store-layers.nix`
-| overlayfs reads left to right. A second, hand-written list would drift.
+| the store unit **asserts** the effective mount against the contract and fails hard
+| it replaces nix's `check-mount`, which must be off: nix wants lowerdir to be the lower store's
+single directory, and flat lowers are three
 
-| nix side: `local-overlay-store` with a lower that is a **complete** read-only store
-| nix then knows which paths come from the lower, so it never rebuilds or collects them. The layers
-carry no nix DB today (measured), so the lower DB is generated **once per layer set** from the same
-`closureInfo` registration (`baseClosureInfo`, `fleetRuntimeClosureInfo` in
-`modules/nixos/bringup-zfs-disk-image.nix`) and shipped with the layers.
+| nix's lower store is a separate **read-only metadata view**: an overlay of the layers plus a shim
+holding an empty `.links`, and a DB
+| nix reads paths and metadata there, never through overlayfs. The shim: nix 2.34 creates `.links`
+even in a read-only store (`src/libstore/local-store.cc:139`), and the layers carry none
 
-| same invariants as `modules/nixos/erofs-store-mount.nix`
-| immutable labels and UUIDs, and `index=on`, which refuses a changed lower (ESTALE)
+| the view's DB is generated **at runtime, once per layer set**, keyed by a fingerprint of the
+layers' path lists, from nerd-nixos's own DB (`nix-store --dump-db` then `--load-db`)
+| decided by the operator on 2026-10-11. Not shipped with the layers: the running generation cannot
+name the layers' union closure, which holds its own toplevel (`unionClosureInfo` in
+`bringup-zfs-disk-image.nix`). Measured: 1842 paths
+
+| the container's `/nix/var/nix` lives on its dataset, beside the upper
+| nerd-nixos then delivers into the container's store with a host-side `nix copy`, no SSH needed
 |===
 
 [source,ini]
 ----
-# the shape of the container's store setting — {ro-root} and {upper} are the mount points
-store = local-overlay://?lower-store=local://?root={ro-root}%26read-only=true&upper-layer={upper}&check-mount=true
+# the container's store setting — /nix/.lower and /nix/.upper are binds from nerd-nixos
+store = local-overlay://?lower-store=local%3Froot%3D/nix/.lower%26read-only%3Dtrue&upper-layer=/nix/.upper&check-mount=false
+extra-experimental-features = local-overlay-store read-only-local-store
 ----
+
+⚠️ **The overlap needs layers from the same lock.** Measured on 2026-10-11: a test container built
+from ndh's current lock has 535 paths (869 MiB), of which 525 are **outside** the layers, all of
+them. The layers come from the last bringup and carry an older nixpkgs (`glibc-2.42-51` against the
+container's `glibc-2.42-100`). Until the layers are rebuilt from the current lock, each container's
+upper holds its whole closure.
+
+⚠️ **Privileged**, by the operator's decision of 2026-10-11, against the recommendation: the
+container's root is nerd-nixos's root. The question of uid shifting on an overlay does not arise
+there, and comes back with `shift=true` or a `raw.idmap`.
+
+=== The tests the implementation must pass — the container
+
+[cols="1,2,2",options="header"]
+|===
+| Test | Gesture (the operator's) | Expected
+
+| 1 — the store unit holds the contract
+| `systemctl start ndh-incus-container-store-{name}` on the target member
+| the overlay is mounted with the contract's lowerdirs and `index=on`. A mismatch fails the unit,
+and leaves nothing mounted
+
+| 2 — an empty rootfs boots on its profile
+| `ndh-incus-container create {name}`, then `deliver`, then `incus start --project ndh {name}`
+| the container reaches `multi-user.target` on `lxc.init.cmd = /nix/var/nix/profiles/system/init`
+
+| 3 — the delta only
+| after `deliver`, compare the dataset's `upper/` with the container's closure
+| the upper holds the closure minus the layers' paths
+
+| 4 — a delivery while the container runs
+| `deliver {name}` with the container started, its nix-daemon holding the DB, then `switch {name}`
+| the copy succeeds and SQLite locking holds across the bind; the switch activates the new system
+
+| 5 — nix sees the lower
+| inside: `nix path-info` of a layer path, `nix store verify` of it
+| valid, served from `/nix/.lower`, never copied into the upper
+|===
 
 === Three tiers of store, one immutable base
 
@@ -1278,18 +1332,20 @@ sequenceDiagram
   participant Op as Operator (bioskop)
   participant NN as nerd-nixos
   participant C as Incus container
-  Note over C: boots a small boot.isContainer generation<br/>whose paths are already in the shared lowers
-  Op->>NN: build the target configuration (same lock as the layers)
+  Op->>NN: switch nerd-nixos — its generation builds each container's system
   NN->>NN: evaluate and build, never in the container
-  NN->>C: nix copy --to the closure (the delta lands in the upper)
-  C->>C: switch-to-configuration on the copied closure
+  Op->>NN: ndh-incus-container deliver {name}
+  NN->>NN: host-side nix copy into the container's store — the delta lands in the upper, then set its system profile
+  Op->>C: incus start the first time, or ndh-incus-container switch {name}
+  Note over C: an empty rootfs boots its profile (lxc.init.cmd),<br/>or switch-to-configuration activates the delivered system
   Note over C: no flake source ever enters the container<br/>and attic's bootstrap needs no cache
 ....
 
 Four conditions:
 
 . **share the paths, not the boot.** nerd-nixos's generation is a VM's (kernel, initrd, EROFS mounts
-  in the initrd) and cannot boot as an Incus container;
+  in the initrd) and cannot boot as an Incus container. The container's own system is a
+  `boot.isContainer` configuration, evaluated by nerd-nixos's generation;
 . **build the containers and the layers from the same lock**, or the upper fills with copies;
 . **the delta does not come from the cache that does not exist yet.** attic's own container is filled
   by `nix copy`, not by substitution;
