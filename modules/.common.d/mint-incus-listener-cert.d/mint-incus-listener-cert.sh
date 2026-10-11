@@ -47,7 +47,7 @@
 # Preconditions:
 #   - run from the ndh repo root (keys.yaml is read relative to it)
 #   - keys.yaml decryptable with the current sops age key
-#   - the authority advertises `tls-authority` in `usage:` and carries a minted `ca_crt`
+#   - the authority advertises `tls-authority` in `usage:` and its signing slot carries a minted `ca_crt`
 #     (run `authority-bootstrap-tls-root <name>` first if it does not)
 
 set -euo pipefail
@@ -187,12 +187,17 @@ authUsage="$(yq eval -r ".authorities.\"${authority}\".usage // [] | join(\",\")
 [[ ,${authUsage}, == *,tls-authority,* ]] ||
 	die "authority '${authority}' does not advertise tls-authority (usage: ${authUsage:-none})"
 
-caCrt="$(yq eval -r ".authorities.\"${authority}\".ca_crt // \"\"" - <<<"$decrypted")"
-[[ -n $caCrt ]] ||
-	die "authority '${authority}' has no minted ca_crt — run: nix run .#authority-bootstrap-tls-root -- ${authority}"
+# The signing slot: the oldest one not marked compromised (keys.schema.yaml, authoritySlots) —
+# the same rule as the enrichment, so the leaf chains to the root that slot presents.
+signingSlot="$(yq eval -r ".authorities.\"${authority}\".slots // {} | to_entries | sort_by(.key) | map(select((.value.compromised // \"\") == \"\")) | .[0].key // \"\"" - <<<"$decrypted")"
+[[ -n $signingSlot ]] || die "authority '${authority}' has no slot that may sign (none, or every one compromised)"
 
-caKey="$(yq eval -r ".authorities.\"${authority}\".slots // {} | to_entries | sort_by(.key) | .[-1].value.private // \"\"" - <<<"$decrypted")"
-[[ -n $caKey ]] || die "authority '${authority}' has no private key in keys.yaml"
+caCrt="$(yq eval -r ".authorities.\"${authority}\".slots.\"${signingSlot}\".ca_crt // \"\"" - <<<"$decrypted")"
+[[ -n $caCrt ]] ||
+	die "authority '${authority}' slot ${signingSlot} has no minted ca_crt — run: nix run .#authority-bootstrap-tls-root -- ${authority}"
+
+caKey="$(yq eval -r ".authorities.\"${authority}\".slots.\"${signingSlot}\".private // \"\"" - <<<"$decrypted")"
+[[ -n $caKey ]] || die "authority '${authority}' slot ${signingSlot} has no private key in keys.yaml"
 
 # --- Mint -------------------------------------------------------------------------------------
 outDir="${outDir:-${repoRoot}/.local.d/incus-listener-cert/${host}}"

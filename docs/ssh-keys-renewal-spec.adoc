@@ -66,6 +66,34 @@ h|Rule|Form
 IMPORTANT: The asymmetry between *presenting* one generation and *accepting* all of them is the
 whole mechanism. Collapsing `slots` to a single pair removes the overlap.
 
+=== An authority presents its OLDEST generation
+
+A key presents its newest generation; an authority presents — and signs with — its **oldest slot
+that is not marked `compromised`**. One rule, applied by everything that signs: the enrichment, the
+TLS root bootstrap, the incus listener mint, and rke2lab's keystore reader.
+
+[cols="1,2"]
+|===
+h|Rule|Why
+
+|The oldest slot signs
+|Trust distributes slowly: a host learns a new authority only when it activates. A signature from
+the new generation would be refused by every host not yet activated. The old generation keeps
+signing through phase 1; phase 2 drops it, and the signature moves to a generation every trust
+store already carries.
+
+|Each slot carries its own `ca_crt`
+|The root a TLS leaf chains to is the root of the slot that signed it. Trust stores take the
+`ca_crt` and `public` of every slot that is not compromised, so both generations are trusted during
+the overlap.
+
+|A `compromised` slot never signs
+|Keeping a leaked private as the signer through a whole phase would mint certificates an attacker
+can match. Mark the slot `compromised: <reason>`: the other generation signs at once, the slot
+leaves every trust store (a root already installed is removed at activation), the breakage is
+accepted (the screen is the fallback), and the slot is revoked in the same renewal.
+|===
+
 === Why `YY-MM-DD` and not `YYYY-MM-DD`
 
 Measured, not aesthetic:
@@ -142,8 +170,8 @@ until phase 2. A replacement is therefore *one* change:
 
 . a new slot, generated as in phase 1;
 . every existing slot deleted, and written to `revoked` with the reason;
-. an authority and its leaves together — the ordering rule protects an overlap that no longer
-  exists.
+. an authority and its leaves together, as in any renewal; the new authority generation is the only
+  one left, so it signs at once.
 
 [cols="1,3"]
 |===

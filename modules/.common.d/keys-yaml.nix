@@ -18,7 +18,7 @@ let
   # JSON so every consumer reads from the same store path.  sops
   # leaves plaintext fields (anything without a `# sops:encrypted`
   # marker in .sops.yaml's encrypted_comment_regex, including
-  # `public`, `ca_crt`, everything under `authorities`) untouched,
+  # `public`, each slot's `ca_crt`, everything under `authorities`) untouched,
   # so yq can pull them out of the encrypted file directly without
   # sops decryption at eval time.
   jsonDrv = pkgs.runCommand "ndh-keys-yaml.json" { buildInputs = [ pkgs.yq-go ]; } ''
@@ -29,6 +29,7 @@ let
   keysJson = parsed.keys or { };
   authoritiesJson = parsed.authorities or { };
   revokedJson = parsed.revoked or { };
+  trust = import ./keys-yaml.d/trust.nix { inherit lib; };
 
   # Every public blob a slot still carries, keys and authorities alike.
   livePublics =
@@ -77,10 +78,30 @@ in
       default = authoritiesJson;
       description = ''
         Parsed `.authorities` map from keys.yaml.  Carries each
-        authority's `public`, `ca_crt`, `domain`, `usage`, etc.
+        authority's `domain`, `usage`, and per slot its `public` and `ca_crt`.
         (private is sops-encrypted and stays ENC[...] here; the only
         consumer that needs it reads from the enriched keys.yaml
         at activation time).
+      '';
+    };
+
+    trustedAuthoritySlots = lib.mkOption {
+      type = lib.types.attrsOf (lib.types.attrsOf lib.types.anything);
+      readOnly = true;
+      default = trust.trustedSlots authoritiesJson;
+      description = ''
+        Per authority, the slots every trust store carries: all of them except a slot
+        marked `compromised` (keys-yaml.d/trust.nix). The only source the trust paths read.
+      '';
+    };
+
+    compromisedAuthoritySlots = lib.mkOption {
+      type = lib.types.attrsOf (lib.types.attrsOf lib.types.anything);
+      readOnly = true;
+      default = trust.compromisedSlots authoritiesJson;
+      description = ''
+        Per authority, the slots marked `compromised`: removed from every trust store,
+        including a root an earlier activation already installed.
       '';
     };
 

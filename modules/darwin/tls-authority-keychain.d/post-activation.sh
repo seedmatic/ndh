@@ -29,20 +29,44 @@ main() {
   local cert_count=@certCount@
 
   # certPairs is a newline-separated list of "name:path" pairs
-  local certPairs
+  local certPairs compromisedPairs
   certPairs="@certPairs@"
+  compromisedPairs="@compromisedPairs@"
 
-  if [[ -z "$certPairs" ]]; then
+  if [[ -z "$certPairs" && -z "$compromisedPairs" ]]; then
     echo "[tls-authority-keychain] no tls-authority roots to reconcile"
     return 0
   fi
 
+  # Read once: a `security … | grep -q` pipeline under pipefail reports the
+  # SIGPIPE grep -q causes, which would read as "absent" for a present root.
+  local installed
+  installed="$(/usr/bin/security find-certificate -a -Z "$keychain" 2>/dev/null || true)"
+
+  # A compromised root leaves trust FIRST: no longer installing it is not enough, an
+  # earlier activation already trusted it, and the leaked private still mints leaves
+  # every host would accept. Removed by fingerprint, like it is detected.
+  local fp
+  while IFS=':' read -r name certFile; do
+    [[ -z "$name" ]] && continue
+    fp="$(/usr/bin/openssl x509 -noout -fingerprint -sha1 -in "$certFile" | sed -e 's/.*=//' -e 's/://g')"
+    grep -qi "SHA-1 hash: ${fp}$" <<<"$installed" || continue
+    echo "[tls-authority-keychain] removing compromised $name from System keychain"
+    if ! /usr/bin/security delete-certificate -Z "$fp" "$keychain"; then
+      echo "[tls-authority-keychain] ERROR: could not remove compromised $name" >&2
+      return 1
+    fi
+  done <<< "$compromisedPairs"
+
   while IFS=':' read -r name certFile; do
     [[ -z "$name" ]] && continue
 
-    # Check if already installed by matching on the authority name
-    # (which should match the cert's CN in our keys.yaml schema)
-    if /usr/bin/security find-certificate -c "$name" "$keychain" >/dev/null 2>&1; then
+    # Presence is decided by FINGERPRINT, never by common name: every generation
+    # of an authority carries the same CN, so a CN lookup would take the old root
+    # for the new one and never install the second slot of a renewal.
+    local fp
+    fp="$(/usr/bin/openssl x509 -noout -fingerprint -sha1 -in "$certFile" | sed -e 's/.*=//' -e 's/://g')"
+    if grep -qi "SHA-1 hash: ${fp}$" <<<"$installed"; then
       # Silent on already-installed certs to reduce noise on repeated activations
       continue
     fi

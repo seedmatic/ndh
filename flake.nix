@@ -1054,6 +1054,29 @@
           claude-code-managed-settings = managed.settings;
           claude-code-deny-hook = managed.tests;
           claude-code-session-hooks = sessionHooks.tests;
+          ssh-keys-bats = import ./modules/.common.d/ssh-keys.d/tests/package.nix {
+            inherit pkgs;
+            trampoline = mkNdhNixBashTrampoline { pkgsForSystem = pkgs; };
+          };
+          # A two-slot authority whose old slot is compromised: ONE trusted slot, ONE to remove.
+          ssh-keys-trust =
+            let
+              trust = import ./modules/.common.d/keys-yaml.d/trust.nix { inherit (pkgs) lib; };
+              authorities.tls.slots = {
+                "26-05-29" = {
+                  ca_crt = "OLD";
+                  compromised = "published";
+                };
+                "26-10-04".ca_crt = "NEW";
+              };
+            in
+            assert pkgs.lib.assertMsg (
+              pkgs.lib.attrNames (trust.trustedSlots authorities).tls == [ "26-10-04" ]
+            ) "a compromised slot is still trusted";
+            assert pkgs.lib.assertMsg (
+              pkgs.lib.attrNames (trust.compromisedSlots authorities).tls == [ "26-05-29" ]
+            ) "a compromised slot is not listed for removal";
+            pkgs.runCommand "ssh-keys-trust" { } "touch $out";
         }
       );
 

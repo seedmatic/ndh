@@ -425,21 +425,28 @@ in
     # on first use, and a host-key renewal breaks a pin: `accept-new` accepts an
     # UNKNOWN host, never a CHANGED one. Measured on a throwaway sshd: with the
     # authority here, a certificate-presenting host is accepted even past a stale
-    # raw pin, so the existing pins need no cleanup. One entry per slot, so both
-    # generations are trusted while the authority itself renews.
+    # raw pin, so the existing pins need no cleanup. One entry per TRUSTED slot, so
+    # both generations are trusted while the authority itself renews, and a slot
+    # marked `compromised` is not (ndh.keysYaml.trustedAuthoritySlots).
     programs.ssh.knownHosts = lib.listToAttrs (
       lib.concatLists (
         lib.mapAttrsToList (
           name: authority:
           lib.optionals (lib.elem "ssh-authority" (authority.usage or [ ])) (
-            lib.mapAttrsToList (slot: material: {
-              name = "${name}@${slot}";
-              value = {
-                certAuthority = true;
-                hostNames = [ "*" ];
-                publicKey = "${authority.type or "ssh-ed25519"} ${material.public}";
-              };
-            }) (lib.filterAttrs (_slot: material: (material.public or "") != "") (authority.slots or { }))
+            lib.mapAttrsToList
+              (slot: material: {
+                name = "${name}@${slot}";
+                value = {
+                  certAuthority = true;
+                  hostNames = [ "*" ];
+                  publicKey = "${authority.type or "ssh-ed25519"} ${material.public}";
+                };
+              })
+              (
+                lib.filterAttrs (_slot: material: (material.public or "") != "") (
+                  config.ndh.keysYaml.trustedAuthoritySlots.${name} or { }
+                )
+              )
           )
         ) config.ndh.keysYaml.authorities
       )

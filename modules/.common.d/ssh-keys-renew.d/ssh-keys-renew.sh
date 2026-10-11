@@ -38,10 +38,11 @@
 # does not survive, so an empty slot in the source would be a DIFFERENT key after
 # every activation — fatal for anything that identifies a host.
 #
-# Authorities are renewed the same way, and they must be renewed BEFORE their
-# leaves: the enrichment refuses to sign without the authority's private key, and
-# a leaf is only re-signed by the new authority once every host trusts it. That
-# ordering is what makes one certificate per key generation sufficient.
+# Authorities are renewed the same way. An authority signs with its OLDEST slot
+# that is not compromised (keys.schema.yaml, authoritySlots), so a new generation
+# signs nothing until phase 2 drops the old one — by which time every trust store
+# carries it. An authority and its leaves may therefore renew together: the new
+# leaf slot is signed by the generation every host already trusts.
 #
 # See docs/ssh-keys-renewal-spec.adoc.
 
@@ -69,8 +70,8 @@ usage() {
 		                      [--replace --reason TEXT] [--apply]
 
 		  --key NAME         Renew keys.<NAME>. Repeatable.
-		  --authority NAME   Renew authorities.<NAME>. Repeatable. Renew an authority
-		                     BEFORE its leaves.
+		  --authority NAME   Renew authorities.<NAME>. Repeatable. The new generation
+		                     signs only once phase 2 drops the old one.
 		  --older-than Nd    Select every entry whose newest slot is more than N days
 		                     old. Reads the slot dates directly — there is no side
 		                     table to keep in step, which is the free benefit of
@@ -78,7 +79,6 @@ usage() {
 		  --replace          No overlap: every existing slot of a selected entry is
 		                     deleted AND written to revoked in the same change.
 		                     For an EXPOSED private, where the overlap is the risk.
-		                     An authority and its leaves may then go together.
 		  --reason TEXT      The reason recorded in each revoked entry. Required with
 		                     --replace.
 		  --apply            Actually generate and rewrite keys.yaml. Without it this
@@ -212,28 +212,6 @@ plan::build() {
 			((age > olderThanDays)) || continue
 			plan::consider "$section" "$name"
 		done < <(entry::names_in "$section")
-	done
-}
-
-# An authority renews BEFORE its leaves, and that is not a suggestion: the leaf
-# certificates are signed by the PRESENTED authority, so renewing both in one
-# gesture mints leaf certs under a CA that every host which has not activated yet
-# does not trust. The authority has to be published, and activated everywhere,
-# first. `--older-than` selects both by construction — it found all eleven
-# entries on the first run — so this refusal is the thing standing between a
-# sweep and a fleet that cannot verify its own hosts.
-plan::assert_ordering() {
-	local line section name authorityOf authLine authSection authName
-	for authLine in ${plan[@]+"${plan[@]}"}; do
-		IFS=$'\t' read -r authSection authName _ _ <<<"$authLine"
-		[[ "$authSection" == "authorities" ]] || continue
-		for line in "${plan[@]}"; do
-			IFS=$'\t' read -r section name _ _ <<<"$line"
-			[[ "$section" == "keys" ]] || continue
-			authorityOf="$(yq eval -r ".keys.\"${name}\".authority // \"\"" "$decrypted")"
-			[[ "$authorityOf" == "$authName" ]] || continue
-			refusals+=("authorities.${authName} and keys.${name} cannot renew together — the authority must be published and activated everywhere BEFORE its leaves are re-signed under it")
-		done
 	done
 }
 
@@ -468,10 +446,6 @@ main() {
 	today="$(date +%y-%m-%d)"
 
 	plan::build
-	# The ordering protects an overlap: leaves re-signed under a CA that hosts not
-	# yet activated do not trust. A replacement has no overlap to protect — every
-	# host refuses the old generations from its activation on, CA included.
-	((replace == 1)) || plan::assert_ordering
 	plan::show
 
 	if ((${#refusals[@]} > 0)); then
