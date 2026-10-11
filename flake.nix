@@ -71,51 +71,17 @@
     sops-nix.url = "github:Mic92/sops-nix";
     treefmt-nix.url = "github:numtide/treefmt-nix";
 
-    # rke2lab is the source of truth for the cluster network underlay (cluster/
-    # node IDs, MAC derivation, addressing); the catalog consumes its flat
-    # `lib.networkBlueprint` rather than hand-inlining MAC/IP values — the
-    # BUILD/eval-time edge nix-darwin-home -> rke2lab. This is now a MUTUAL edge:
-    # rke2lab in turn consumes ndh's `catalog.netplan.lan` (Direction A, the
-    # home-LAN federation). So, exactly like the nnh input below, it is cut with
-    # a reciprocal EMPTY follows (rke2lab's back-reference to ndh follows THIS
-    # root), breaking the lock cycle while both flakes still build standalone.
-    # See the hub memory flake-mutual-dependency-follows-root.
-    # rke2lab is NOT routed through flake-commons (it already depends on
-    # flake-commons, which would form a flake-commons <-> rke2lab cycle).
-    # rke2lab defines its own `flake-commons` (github:seedmatic/nix-flake-commons,
-    # the same source as ours) and follows nixpkgs/flox/sops-nix/… through it; we
-    # pin `rke2lab.inputs.flake-commons.follows = "flake-commons"` so that whole
-    # set resolves against ours — one shared flake-commons closure, not two in the lock.
-    rke2lab = {
-      # ★ The pin that proved the point. It tracked `feature/nixos-node-substrate` long after
-      # that branch was retired, so `nix flake update` kept advancing along a dead line —
-      # pulling newer commits that carried none of the work, silently (measured 2026-09-28:
-      # the lock moved and the VIP host-records still did not exist). Repaired by hand, it then
-      # rotted a SECOND time onto `feature/viewpoint-separation`, itself since deleted.
-      # Twice, no error — just the wrong source.
-      #
-      # So it names no branch at all now. When the blueprint has to be read from a line that is
-      # not yet pushed — the original reason a work branch was named here — aim this id at a
-      # local checkout in flake-registry.local.json instead of editing this file.
-      url = "rke2lab";
-      inputs.ndh.follows = "";
-      inputs.flake-commons.follows = "flake-commons";
-    };
-
-    # Federation: ndh unions nnh's self-contained lib.networkBlueprint (its
-    # fabric-br segments) alongside rke2lab's. nnh also consumes ndh's catalog, so
-    # this is a mutual edge — cut with a reciprocal EMPTY follows (nnh's
-    # back-reference to ndh follows THIS root). See the hub memory
-    # flake-mutual-dependency-follows-root.
-    nnh = {
-      url = "nnh";
-      inputs.ndh.follows = "";
-      # Share the family version set: dedup nnh's flake-commons subtree
-      # (devenv/cachix/bird/…) with ndh's so importing nnh for its blueprint
-      # does not balloon the lock. akvorado stays (nnh-specific) but is never
-      # forced — we read only nnh.lib.networkBlueprint.
-      inputs.flake-commons.follows = "flake-commons";
-    };
+    # The fabric's two deliveries, pinned as DATA rather than as the flakes that produce them.
+    # rke2lab's plan is the source of truth for the cluster network underlay (cluster/node IDs,
+    # MACs, addressing) and for the cluster dataset layout: netplan.json and dataplan.json on its
+    # fabric/plan orphan, which rke2lab's publish-plan writes. nnh's contribution is its fabric-br
+    # segments: network-blueprint.json on its fabric/contribution orphan. ndh used to pin rke2lab
+    # and nnh themselves, each of which pins ndh back — two cycles, cut at the lock by reciprocal
+    # empty follows. An orphan pins nothing, so no cycle is left to cut.
+    fabric-plan.url = "fabric-plan";
+    fabric-plan.flake = false;
+    nnh-contribution.url = "nnh-contribution";
+    nnh-contribution.flake = false;
 
     # Forked tailscale carrying our patches (see overlays/tailscale.nix):
     # the CNAME-in-extra_records resolver support and the SSH-interception
@@ -149,21 +115,22 @@
       nixpkgsConfig = import ./modules/.common.d/nixpkgs-config.nix;
       cacheTrust = import ./catalog/cache-trust.nix;
       inventoryData = import ./inventory/default.nix;
-      # Cluster network underlay, single source of truth (see the rke2lab input).
-      # Cluster underlay from rke2lab, UNIONED with nnh's self-contained blueprint
-      # (its fabric-br segments; nnh introduces no ASNs). Both edges are cut with
-      # reciprocal empty follows — see the rke2lab / nnh inputs. Only segments+asns
-      # merge; everything else (clusters, nodes, addressing, MACs) stays rke2lab's.
-      rke2labBlueprint = inputs.rke2lab.lib.networkBlueprint;
-      nnhBlueprint = inputs.nnh.lib.networkBlueprint;
+      # The cluster underlay is rke2lab's plan, UNIONED with nnh's contribution (its fabric-br
+      # segments; nnh introduces no ASNs) — both read from their pinned deliveries (see the
+      # fabric-plan / nnh-contribution inputs). Only segments+asns merge; everything else
+      # (clusters, nodes, addressing, MACs) stays rke2lab's.
+      rke2labBlueprint = builtins.fromJSON (builtins.readFile "${inputs.fabric-plan}/netplan.json");
+      nnhBlueprint = builtins.fromJSON (
+        builtins.readFile "${inputs.nnh-contribution}/network-blueprint.json"
+      );
       networkBlueprint = rke2labBlueprint // {
         segments = (rke2labBlueprint.segments or [ ]) ++ (nnhBlueprint.segments or [ ]);
         asns = (rke2labBlueprint.asns or { }) // (nnhBlueprint.asns or { });
       };
       # rke2lab also owns the cluster ZFS dataset LAYOUT (the dataplan — the storage twin of the
-      # networkBlueprint), pulled the same way and merged into catalog.datasets, materialised on the
+      # networkBlueprint), delivered beside it and merged into catalog.datasets, materialised on the
       # host by zfs-disko-config.nix.
-      dataplan = inputs.rke2lab.lib.dataplan;
+      dataplan = builtins.fromJSON (builtins.readFile "${inputs.fabric-plan}/dataplan.json");
       # `hostForms` lets the catalog derive each vz-host's kind instead of declaring it: the
       # vz-host is nix-managed exactly when the config named <host> is the bare metal itself.
       # Injected from here because this file owns the host tree; see catalog/default.nix.
@@ -1095,7 +1062,7 @@
       # or `:lf .` then `catalog…` — without drilling through a host's
       # `darwinConfigurations.<host>._module.specialArgs.catalog`. The catalog's
       # rke2 hosts are the projection of rke2lab's networkBlueprint (see the
-      # rke2lab input), so this is also the easiest way to diff the live underlay
+      # fabric-plan input), so this is also the easiest way to diff the live underlay
       # against the blueprint / bbox reservations.
       catalog = catalogData;
       inventory = inventoryData;
@@ -1700,38 +1667,18 @@
             program = "${lockFloxEnvsPackage}/bin/lock-flox-envs";
             meta.description = "Lock the flox envs vendored under .flox-envs.d so the seat can activate (fresh-clone bootstrap) — src: flake.nix (lockFloxEnvsPackage)";
           };
-          # relock — THIS repo's locks, by the SHARED implementation. The rule lives once, in
-          # nix-flake-commons' `lib.mkRelockApp`, the root every seedmatic flake already consumes.
-          # ndh supplies only what is its own: bumping an input is editing YOUR lock, making someone
-          # pin YOU is THEIR act, and the uniform NAME is what lets `relock --downstream` request us
-          # without knowing anything about us.
-          #
-          # ndh has no orphan branches and no generated artifacts beyond its lock, so
-          # `pushFirstBranch` / `catalogBranch` / `ownedArtifacts` stay at their defaults — which is
-          # the case the shared implementation was written to serve.
-          #
-          # ★ `consumers` names every repo that pins ndh: rke2lab, nnh and nch. ndh pins rke2lab and
-          # nnh back, so each of those pairs is a CYCLE — cut at the lock by a reciprocal empty
-          # `follows` — and a cycle only turns if each side requests the other: from inside a cycle,
-          # the reverse edge IS a forward edge for the other repo. A change to ndh's catalog has to
-          # regenerate the blueprint nnh builds from it, hence nnh. nch pins ndh and is pinned by
-          # nobody: a plain edge, with nothing to reciprocate.
+          # relock — nix-flake-commons' `lib.mkRelockApp`, the one implementation every seedmatic
+          # flake shares. ndh supplies its name; the heads, the order and what each head pins are read
+          # from nix-flake-commons:fabric/heads.
           relock = {
             type = "app";
             program = "${
               inputs.flake-commons.lib.mkRelockApp {
                 pkgs = pkgsForSystem;
                 name = "ndh";
-                slug = "seedmatic/ndh";
-                url = "https://github.com/seedmatic/ndh.git";
-                consumers = [
-                  "github:seedmatic/rke2lab"
-                  "github:seedmatic/nnh"
-                  "github:seedmatic/nch"
-                ];
               }
             }/bin/relock";
-            meta.description = "Reconcile THIS repo's locks: bump each input, DROP any bump that moves no exported derivation, push. --downstream requests each declared consumer's own relock — impl: nix-flake-commons lib.mkRelockApp";
+            meta.description = "Reconcile THIS head's locks: bump each input, DROP any bump that moves nothing it exports, push. --plan shows a pass, --downstream plays it over every head of fabric/heads";
           };
           manage-tailnet = {
             type = "app";
