@@ -72,6 +72,14 @@ in
         flatBundle="$(tr -d '\n' <"$bundle" 2>/dev/null || true)"
 
         failures=0
+        unreadable=0
+        # A store this user cannot read is NOT an absent root: say so, never answer "missing".
+        readable() { # <id> <store>
+          if [[ -r $2 ]]; then return 0; fi
+          printf '%-4s %-7s %-40s %s\n' "SKIP" "unread" "$1" "$2 (not readable — run with sudo)"
+          unreadable=$((unreadable + 1))
+          return 1
+        }
         report() { # <expected present|absent> <found 0|1> <id> <store>
           local verdict
           if [[ $1 == present && $2 == 1 ]] || [[ $1 == absent && $2 == 0 ]]; then
@@ -89,21 +97,29 @@ in
           case "$usage" in
             tls-authority)
               body="$(grep -v -- '-----' "$value" | tr -d '\n')"
-              report "$expected" "$(found grep -qF -- "$body" <<<"$flatBundle")" "$id" "$bundle"
+              if readable "$id" "$bundle"; then
+                report "$expected" "$(found grep -qF -- "$body" <<<"$flatBundle")" "$id" "$bundle"
+              fi
               if [[ $isDarwin == 1 ]]; then
                 fp="$(openssl x509 -noout -fingerprint -sha1 -in "$value" | sed -e 's/.*=//' -e 's/://g')"
                 report "$expected" "$(found grep -qi -- "SHA-1 hash: $fp$" <<<"$keychain")" "$id" "System keychain"
               fi
               ;;
             ssh-authority)
-              report "$expected" "$(found grep -qF -- "$value" "$knownHosts")" "$id" "$knownHosts"
-              if [[ -n $trustedCa ]]; then
+              if readable "$id" "$knownHosts"; then
+                report "$expected" "$(found grep -qF -- "$value" "$knownHosts")" "$id" "$knownHosts"
+              fi
+              if [[ -n $trustedCa ]] && readable "$id" "$trustedCa"; then
                 report "$expected" "$(found grep -qF -- "$value" "$trustedCa")" "$id" "$trustedCa"
               fi
               ;;
           esac
         done <${expectations}
 
+        if ((unreadable > 0)) && ((failures == 0)); then
+          echo "ndh-trust-check: $unreadable store(s) not readable by this user — run with sudo for a verdict" >&2
+          exit 2
+        fi
         if ((failures > 0)); then
           echo "ndh-trust-check: $failures check(s) failed — this host does not trust what keys.yaml expects" >&2
           exit 1

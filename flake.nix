@@ -1058,6 +1058,10 @@
             inherit pkgs;
             trampoline = mkNdhNixBashTrampoline { pkgsForSystem = pkgs; };
           };
+          tls-authority-keychain-bats = import ./modules/darwin/tls-authority-keychain.d/tests/package.nix {
+            inherit pkgs;
+            trampoline = mkNdhNixBashTrampoline { pkgsForSystem = pkgs; };
+          };
           # A two-slot authority whose old slot is compromised: ONE trusted slot, ONE to remove.
           ssh-keys-trust =
             let
