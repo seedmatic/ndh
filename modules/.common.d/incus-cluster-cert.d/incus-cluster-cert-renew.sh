@@ -23,8 +23,9 @@ unset BASH_XTRACEFD 2>/dev/null || true
 #
 # The seat's client PINS the leaf (servercerts/<remote>.crt, in both config dirs incus uses on
 # darwin); both copies are backed up and replaced. Moving the client to CA trust is a later
-# step. The cluster's own consumers (CAPN's identity Secrets `server-crt`) pin it too: they are
-# re-pinned at the cold start, from the servercerts copy this writes.
+# step. The cluster's own consumer, CAPN, pins NOTHING: rke2lab renders its identity Secrets
+# without `server-crt`, so the provider verifies the leaf by NAME against the TLS authority's root,
+# which its pod trusts — a re-mint needs no re-pin there.
 
 log() { printf '[incus-cluster-cert] %s\n' "$*" >&2; }
 die() {
@@ -314,7 +315,7 @@ verify "$leafFp"
 
 cat <<EOF >&2
 [incus-cluster-cert] done. The cluster serves the new leaf on every name, chaining to ${authority}@${slot}.
-[incus-cluster-cert] At the cold start (T4): CAPN's identity Secrets pin \`server-crt\` — re-pin them with
+[incus-cluster-cert] CAPN needs nothing: it verifies the leaf by name against ${authority}'s root, no pin.
+[incus-cluster-cert] NOT refreshed here: an incus client on nikopol, if one pins the cluster — re-pin it from
 [incus-cluster-cert]   $HOME/.config/incus/servercerts/${remote}.crt  (the new leaf, sha256 ${leafFp})
-[incus-cluster-cert] NOT refreshed here: an incus client on nikopol, if one pins the cluster — re-pin it from that file.
 EOF
