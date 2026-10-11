@@ -25,9 +25,14 @@ in
   # Enable automatic backup of conflicting files during activation
   environment.etc.backup.enable = true;
 
-  # Provide a deterministic CA bundle for both user and daemon contexts.
-  environment.etc."ssl/certs/ca-bundle.crt".source = "${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt";
-  environment.etc."ssl/cert.pem".source = "${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt";
+  # One CA bundle for both user and daemon contexts: security.pki's, which is the public
+  # cacert set PLUS the fleet's tls-authority roots. The plain cacert bundle these paths
+  # used to carry left every SSL_CERT_FILE reader (nix, git, curl, Go) unable to verify a
+  # leaf of our own authority.
+  environment.etc."ssl/certs/ca-bundle.crt".source =
+    config.environment.etc."ssl/certs/ca-certificates.crt".source;
+  environment.etc."ssl/cert.pem".source =
+    config.environment.etc."ssl/certs/ca-certificates.crt".source;
   environment.etc."gitconfig".text = ''
     [http]
       sslVerify = true
