@@ -105,8 +105,10 @@ note right of bootstrap
 end note
 
 note right of hostkeyinst
-  Canonical server host-key selection:
-  default `rdp-host`, override `vz-guest-${NDH_VZ_GUEST}` when present.
+  Server host key: a key generated on the
+  host itself, certified on the seat by the
+  ssh fabric HOSTS authority. See
+  ssh-keys-architecture (Roles × Keys).
 end note
 @enduml
 ----
