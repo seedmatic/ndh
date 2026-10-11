@@ -40,6 +40,12 @@ in
         ];
       }
     ];
+    PreToolUse = [
+      {
+        matcher = "Bash";
+        hooks = [ (entry "leak-guard.sh" 5 "Checking for a working-tree evaluation...") ];
+      }
+    ];
     PreCompact = [
       {
         matcher = "manual|auto";

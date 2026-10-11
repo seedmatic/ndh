@@ -265,3 +265,15 @@ chantier() { # a chantier page that claims the test conversation
   [[ "$(printf '%s' "$output" | jq -r .hookSpecificOutput.additionalContext)" == *"> conversation: abcd1234-0000"* ]]
   [[ "$(printf '%s' "$output" | jq -r '.hookSpecificOutput.sessionTitle // "none"')" == none ]]
 }
+
+# --- leak-guard ---
+# One case per line of leak-guard-cases.tsv: the verdict, a tab, the command as a session would type it.
+@test "leak-guard: every case gets its verdict" {
+  local want cmd got bad=""
+  while IFS=$'\t' read -r want cmd; do
+    got="$(jq -cn --arg c "$cmd" '{tool_input: {command: $c}}' | bash "$H/leak-guard.sh" | jq -r '.hookSpecificOutput.permissionDecision // "allow"')"
+    got="${got:-allow}"
+    [[ "$got" == "${want,,}" ]] || bad+="  want $want, got $got: $cmd"$'\n'
+  done <"$BATS_TEST_DIRNAME/leak-guard-cases.tsv"
+  [[ -z "$bad" ]] || { printf '%s' "$bad"; false; }
+}
