@@ -49,3 +49,36 @@ fp() { keychain::fingerprint "${BATS_TEST_TMPDIR}/$1.pem"; }
   [[ "$output" != *"$(fp other)"* ]]
   [[ "$output" != *"$(fp foreign)"* ]]
 }
+
+# The DER of an X.509 Name, base64 — one RDN per <type-oid-hex>=<value> argument, each a
+# PrintableString. Built byte by byte: the trust-settings plist stores the issuer this way.
+der_name() {
+  local rdns="" arg oid value atv
+  for arg in "$@"; do
+    oid="${arg%%=*}" value="${arg#*=}"
+    atv="$(printf '06%02x%s13%02x%s' $((${#oid} / 2)) "$oid" ${#value} "$(printf '%s' "$value" | od -An -tx1 | tr -d ' \n')")"
+    atv="$(printf '30%02x%s' $((${#atv} / 2)) "$atv")"
+    rdns+="$(printf '31%02x%s' $((${#atv} / 2)) "$atv")"
+  done
+  printf '30%02x%s' $((${#rdns} / 2)) "$rdns" | xxd -r -p | base64 | tr -d '\n'
+}
+CN=550403
+O=55040a
+
+@test "a stale trust setting of the authority is reported even with no certificate in the keychain" {
+  settings="$(printf '%s\t%s\n%s\t%s\n' \
+    "$(fp retired)" "$(der_name "$CN=test-tls")" \
+    "$(fp current)" "$(der_name "$CN=test-tls")")"
+  run keychain::stale_trust test-tls "$(fp current)" "$settings"
+  [ "$status" -eq 0 ]
+  [ "$output" = "$(fp retired)" ]
+}
+
+@test "a trust setting of another name, or of a two-RDN issuer, is never reported" {
+  settings="$(printf '%s\t%s\n%s\t%s\n' \
+    "$(fp other)" "$(der_name "$CN=test-tls-other")" \
+    "$(fp foreign)" "$(der_name "$CN=test-tls" "$O=Someone Else")")"
+  run keychain::stale_trust test-tls "$(fp current)" "$settings"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}

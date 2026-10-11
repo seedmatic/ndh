@@ -1,8 +1,10 @@
-# Darwin-only: install every keys.yaml authority that advertises
-# `tls-authority` usage into the System keychain so Apple's SecTrust
-# accepts certs they sign.
+# Darwin-only: the System keychain holds EXACTLY each tls-authority's trusted roots, so
+# Apple's SecTrust accepts what they sign and nothing a stale root signed.
 #
-# See ./tls-authority-keychain.d/post-activation.sh for implementation details.
+# One script, `ndh-keychain-reconcile`, run by the activation, kept on PATH for the operator
+# (`sudo ndh-keychain-reconcile` from the GUI session when an ssh switch could not apply a
+# trust setting; `--check` reports only), and exported as a flake package so a fix ships
+# between configurations. See ./tls-authority-keychain.d/post-activation.sh.
 {
   config,
   lib,
@@ -47,25 +49,32 @@ let
   ndhContext = ndh.context;
   nixBashTrampoline = "${ndhContext.nixBashTrampoline}";
 
-  tlsAuthorityKeychainScript = ndh.store.runCommand "tls-authority-keychain-post-activation.sh" { } ''
-    cp ${
+  reconcile = ndh.store.runCommand "ndh-keychain-reconcile" { } ''
+    install -D -m 0755 ${
       pkgs.replaceVars ./tls-authority-keychain.d/post-activation.sh {
         inherit nixBashTrampoline certPairs;
         authorities = lib.concatStringsSep " " tlsAuthorities;
         openssl = "${pkgs.openssl}/bin/openssl";
       }
-    } "$out"
-    chmod +x "$out"
+    } "$out/bin/ndh-keychain-reconcile"
   '';
 in
 {
-  # `system.activationScripts.postActivation` runs as root after the
-  # main system swap, so it has the rights `security add-trusted-cert
-  # -k /Library/Keychains/System.keychain` needs. It runs whenever a
-  # tls-authority exists — even with no trusted slot, its stale roots go.
-  system.activationScripts.postActivation.text = lib.mkIf (tlsAuthorities != [ ]) (
-    lib.mkAfter ''
-      ${tlsAuthorityKeychainScript}
-    ''
-  );
+  options.ndh.tlsAuthorityKeychain.package = lib.mkOption {
+    type = lib.types.package;
+    readOnly = true;
+    default = reconcile;
+    description = "`ndh-keychain-reconcile`: the System keychain holds exactly each tls-authority's trusted roots.";
+  };
+
+  config = lib.mkIf (tlsAuthorities != [ ]) {
+    environment.systemPackages = [ reconcile ];
+
+    # `system.activationScripts.postActivation` runs as root after the main system swap. It
+    # runs whenever a tls-authority exists — even with no trusted slot, its stale roots go.
+    # A trust setting it cannot apply over ssh fails the activation, naming the gesture.
+    system.activationScripts.postActivation.text = lib.mkAfter ''
+      ${reconcile}/bin/ndh-keychain-reconcile
+    '';
+  };
 }

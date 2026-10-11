@@ -10,6 +10,7 @@ pkgs.runCommand "tls-authority-keychain-bats"
       gnugrep
       gnused
       openssl
+      xxd
     ];
     NDH_TRAMPOLINE = trampoline;
   }

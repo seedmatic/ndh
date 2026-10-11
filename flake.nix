@@ -1160,7 +1160,14 @@
           ndhNixBashTrampoline =
             if system == "aarch64-darwin" then ndhNixBashTrampolineDarwin else ndhNixBashTrampolineLinux;
         in
-        {
+        # The keychain reconcile, buildable ON ITS OWN by revision: a fix between two
+        # configurations ships as this closure, copied to the host and run by the operator
+        # (`sudo ndh-keychain-reconcile` from the GUI session) — the same script the darwin
+        # activation runs (modules/darwin/tls-authority-keychain.nix).
+        nixpkgs.lib.optionalAttrs (system == "aarch64-darwin") {
+          ndh-keychain-reconcile = self.darwinConfigurations.bioskop.config.ndh.tlsAuthorityKeychain.package;
+        }
+        // {
           # manage-tailnet on PATH for BOTH systems (a packages output, not just the app):
           # rke2lab's flox-catalogue re-exports packages.aarch64-linux.manage-tailnet so the
           # in-cluster tailnet-purge Job installs it via a FloxEnv. Wired to the PER-SYSTEM

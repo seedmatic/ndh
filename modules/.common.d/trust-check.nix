@@ -61,15 +61,13 @@ in
         openssl
       ];
       text = ''
-        bundle=/etc/ssl/certs/ca-certificates.crt
+        # Every CA bundle a reader is pointed at: security.pki's, and on darwin /etc/ssl/cert.pem,
+        # which SSL_CERT_FILE, NIX_SSL_CERT_FILE, GIT_SSL_CAINFO and CURL_CA_BUNDLE name.
+        bundles=(/etc/ssl/certs/ca-certificates.crt)
         knownHosts=/etc/ssh/ssh_known_hosts
         trustedCa=${lib.escapeShellArg trustedCa}
         isDarwin=${if pkgs.stdenv.isDarwin then "1" else "0"}
-        keychain=""
-        if [[ $isDarwin == 1 ]]; then
-          keychain="$(/usr/bin/security find-certificate -a -Z /Library/Keychains/System.keychain 2>/dev/null || true)"
-        fi
-        flatBundle="$(tr -d '\n' <"$bundle" 2>/dev/null || true)"
+        if [[ $isDarwin == 1 ]]; then bundles+=(/etc/ssl/cert.pem); fi
 
         failures=0
         unreadable=0
@@ -90,20 +88,18 @@ in
           fi
           printf '%-4s %-7s %-40s %s\n' "$verdict" "$1" "$3" "$4"
         }
-        found() { if "$@"; then echo 1; else echo 0; fi; }
+        found() { if "$@" >/dev/null 2>&1; then echo 1; else echo 0; fi; }
 
         while IFS=$'\t' read -r expected usage id value; do
           [[ -n $id ]] || continue
           case "$usage" in
             tls-authority)
               body="$(grep -v -- '-----' "$value" | tr -d '\n')"
-              if readable "$id" "$bundle"; then
-                report "$expected" "$(found grep -qF -- "$body" <<<"$flatBundle")" "$id" "$bundle"
-              fi
-              if [[ $isDarwin == 1 ]]; then
-                fp="$(openssl x509 -noout -fingerprint -sha1 -in "$value" | sed -e 's/.*=//' -e 's/://g')"
-                report "$expected" "$(found grep -qi -- "SHA-1 hash: $fp$" <<<"$keychain")" "$id" "System keychain"
-              fi
+              for bundle in "''${bundles[@]}"; do
+                if readable "$id" "$bundle"; then
+                  report "$expected" "$(found grep -qF -- "$body" <(tr -d '\n' <"$bundle"))" "$id" "$bundle"
+                fi
+              done
               ;;
             ssh-authority)
               if readable "$id" "$knownHosts"; then
@@ -115,6 +111,24 @@ in
               ;;
           esac
         done <${expectations}
+
+        # The darwin System keychain has ONE definition of "reconciled": its own check — every
+        # trusted root trusted by SecTrust, no stale root left in the keychain or in the admin
+        # trust settings. Its exit contract is this one, propagated unchanged.
+        if [[ $isDarwin == 1 ]]; then
+          rc=0
+          if command -v ndh-keychain-reconcile >/dev/null; then
+            ndh-keychain-reconcile --check || rc=$?
+          else
+            echo "FAIL ndh-keychain-reconcile is not installed — the keychain is unchecked" >&2
+            rc=1
+          fi
+          case $rc in
+            0) echo "ok   System keychain reconciled" ;;
+            2) unreadable=$((unreadable + 1)) ;;
+            *) failures=$((failures + 1)) ;;
+          esac
+        fi
 
         if ((unreadable > 0)) && ((failures == 0)); then
           echo "ndh-trust-check: $unreadable store(s) not readable by this user — run with sudo for a verdict" >&2

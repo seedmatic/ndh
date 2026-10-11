@@ -178,10 +178,20 @@ h|Gesture|What it proves
 on each host, or phase 2 waits.
 
 |`trusted: <YY-MM-DD>` on the slot that will sign
-|Written in the same change that drops the old slot and writes its `revoked` entry. The evaluation
-refuses an ordinary retirement without it (`keys-yaml.d/trust.nix`, `phase2Gaps`); a compromised
-retirement (`revoked.<id>.compromised: true`, written by `--replace`) is exempt, its breakage
-accepted.
+|Written in the same change that drops the old slot and writes its `revoked` entry. The record IS
+the attestation that `ndh-trust-check` passed on every host on that date: the evaluation checks that
+the record exists, it does not — and cannot — verify any host. It refuses an ordinary retirement
+without it (`keys-yaml.d/trust.nix`, `phase2Gaps`); a compromised retirement
+(`revoked.<id>.compromised: true`, written by `--replace`) is exempt, its breakage accepted.
+
+|On darwin, the System keychain trusts the new root
+|Setting or removing a trust setting needs an admin authorization only an interactive GUI session
+provides (no authorizationdb lift). Over ssh, `add-trusted-cert` imports the root WITHOUT trusting
+it and the `-t` removal is denied; the activation then exits 1 naming the gesture: run
+`sudo ndh-keychain-reconcile` from a Terminal in the GUI session — the same script, kept on the
+system PATH and exported as a flake package — until `ndh-trust-check` reports the keychain
+reconciled. Stale roots are removed unconditionally: a stale root is never legitimate, so keeping
+it protects no availability.
 
 |The cluster PKI re-sealed under the new generation
 |A cluster trusts what `ClusterSeal` minted from the old signing slot: its CA set, the cert-manager

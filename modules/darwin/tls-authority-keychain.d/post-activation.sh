@@ -1,33 +1,43 @@
 #!/usr/bin/env -S bash -euo pipefail
 # @codebase
-# Darwin post-activation hook for TLS authority keychain reconciliation.
+# ndh-keychain-reconcile — the darwin System keychain holds EXACTLY each tls-authority's
+# trusted roots. The activation runs it; the operator re-runs it (`sudo
+# ndh-keychain-reconcile`) from a Terminal in the GUI session when an activation over ssh
+# could not apply a trust setting; `--check` reports without changing anything.
 #
-# For every keys.yaml authority that advertises `tls-authority` usage, the System
-# keychain holds EXACTLY its trusted roots: every slot that is not compromised is
-# installed, and every other root that authority ever had is removed — a compromised
-# slot, but also a retired generation whose slot is gone from keys.yaml. A root that
-# stays in the keychain stays trusted by SecTrust (empty trust settings read as
-# "always trust"), and whoever holds its private still mints accepted leaves.
+# For every keys.yaml authority that advertises `tls-authority` usage:
+#   1. every trusted slot (not compromised) is installed AND verified trusted by SecTrust;
+#   2. every STALE root is removed with its trust setting — UNCONDITIONALLY. A stale root is
+#      never legitimate: it is a compromised slot, or a retired one, and a retirement only
+#      happens after the phase-2 gate proved its successor trusted everywhere. Keeping it
+#      protects no availability and preserves the exposure;
+#   3. the ADMIN TRUST SETTINGS are re-read: a trust setting applies to a certificate by
+#      digest even once the certificate has left the keychain, so a server presenting that
+#      root is still trusted. Any entry for this authority that is not a trusted slot is
+#      "STALE root STILL TRUSTED".
+#
+# Setting or removing a trust setting needs an admin authorization only an interactive GUI
+# session provides (no authorizationdb lift, operator decision 2026-10-11). Over ssh,
+# `add-trusted-cert` imports WITHOUT trusting and `-t` removal is denied; both are errors
+# that name the gesture, and the run exits 1.
 #
 # Background: nix-darwin's `security.pki.certificates` writes the bundle at
-# /etc/ssl/certs/ca-certificates.crt — which Go's pure-Go verifier honours
-# via SSL_CERT_FILE, but Apple's SecTrust does NOT consult.  Anything that
-# goes through Apple's frameworks (Tailscale's native daemon, every HTTPS
-# call from a notarised Mac app, Safari, Chrome) needs the root in
-# /Library/Keychains/System.keychain.
+# /etc/ssl/certs/ca-certificates.crt — honoured by every SSL_CERT_FILE reader — but Apple's
+# SecTrust does NOT consult it: the Tailscale native daemon, notarised apps, Safari need the
+# root in /Library/Keychains/System.keychain.
 #
-# Every generation of an authority carries the same subject, so roots are told apart
-# by FINGERPRINT; an ndh root is recognised by its subject being exactly
-# `CN=<authority>`, the shape authority-bootstrap-tls-root mints, so a foreign
-# certificate that merely contains the name is never touched.
+# Every generation of an authority carries the same subject, so roots are told apart by
+# FINGERPRINT; an ndh root is recognised by its subject (and, for a self-signed root, its
+# issuer) being exactly `CN=<authority>`, the shape authority-bootstrap-tls-root mints, so a
+# foreign certificate that merely contains the name is never touched.
 #
-# Apple's SecTrust accepts ECDSA P-256 roots cleanly.  Ed25519 roots are
-# rejected with "Unknown format in import" — this script warns and continues
-# (those roots remain in the bundle for Go-verifier consumers).
+# Apple's SecTrust accepts ECDSA P-256 roots cleanly; an Ed25519 root is refused at import —
+# warned, and left to the bundle.
 
 source @nixBashTrampoline@
 
 keychain="/Library/Keychains/System.keychain"
+gesture="run \`sudo ndh-keychain-reconcile\` from a Terminal in the GUI session"
 
 keychain::fingerprint() { # <pem file>
   @openssl@ x509 -noout -fingerprint -sha1 -in "$1" | sed -e 's/.*=//' -e 's/://g'
@@ -39,8 +49,29 @@ keychain::certs() { # <authority>
   /usr/bin/security find-certificate -a -c "$1" -p "$keychain" 2>/dev/null || true
 }
 
-# The fingerprints to remove for <authority>: every keychain root whose subject is
-# exactly CN=<authority> and whose fingerprint is not among <trusted> (one per line).
+# The admin-domain trust settings, one "<SHA-1><TAB><issuer DER, base64>" per line. Fails (2)
+# when they cannot be read: an unreadable store is not an empty one.
+keychain::trust_settings() {
+  local plist fp
+  plist="$(mktemp)"
+  /usr/bin/security trust-settings-export -d "$plist" >/dev/null 2>&1 || {
+    rm -f "$plist"
+    return 2
+  }
+  while IFS= read -r fp; do
+    printf '%s\t%s\n' "$fp" \
+      "$(/usr/bin/plutil -extract "trustList.${fp}.issuerName" raw -o - "$plist" 2>/dev/null || true)"
+  done < <(/usr/bin/plutil -p "$plist" | grep -oE '"[0-9A-F]{40}" =>' | tr -d '" =>')
+  rm -f "$plist"
+}
+
+# Whether SecTrust trusts <pem> as an anchor — present in the keychain is not enough.
+keychain::trusted() { # <pem file>
+  /usr/bin/security verify-cert -c "$1" -k "$keychain" >/dev/null 2>&1
+}
+
+# The keychain roots to remove for <authority>: subject exactly CN=<authority>, fingerprint
+# not among <trusted> (one per line).
 keychain::stale() { # <authority> <trusted fingerprints>
   local name="$1" trusted="$2" dir file fp subject
   dir="$(mktemp -d)"
@@ -58,9 +89,42 @@ keychain::stale() { # <authority> <trusted fingerprints>
   rm -rf "$dir"
 }
 
+# The admin trust settings still in force for <authority> that are not a trusted slot: the
+# issuer is exactly CN=<authority> (one RDN, commonName) and the fingerprint is not trusted.
+# <settings> is keychain::trust_settings' output.
+keychain::stale_trust() { # <authority> <trusted fingerprints> <settings>
+  local name="$1" trusted="$2" settings="$3" fp issuer prims
+  while IFS=$'\t' read -r fp issuer; do
+    [[ -n "$fp" && -n "$issuer" ]] || continue
+    prims="$(base64 -d <<<"$issuer" 2>/dev/null | @openssl@ asn1parse -inform DER 2>/dev/null | grep 'prim:' || true)"
+    [[ "$(grep -c 'prim:' <<<"$prims")" == 2 ]] || continue
+    grep -q 'OBJECT *:commonName$' <<<"$prims" || continue
+    grep -qE "STRING *:${name}\$" <<<"$prims" || continue
+    grep -qix -- "$fp" <<<"$trusted" || printf '%s\n' "$fp"
+  done <<<"$settings"
+}
+
+# Install <pem> as a trusted root. 0 on success; 2 when the trust setting needs an
+# authorization this session lacks (the root is then present but NOT trusted); 1 for a
+# format refusal (an Ed25519 root SecTrust cannot import).
+keychain::install() { # <id> <pem file>
+  local err
+  if err="$(/usr/bin/security add-trusted-cert -d -r trustRoot -k "$keychain" "$2" 2>&1)"; then
+    return 0
+  fi
+  if grep -qiE 'authorization|user interaction' <<<"$err"; then
+    return 2
+  fi
+  echo "[tls-authority-keychain] WARN: SecTrust refused $1 (${err}); leaving it to the bundle" >&2
+  return 1
+}
+
 main() {
-  # authorities: the tls-authority names; certPairs: "<authority>@<slot>:<pem path>"
-  # per TRUSTED slot, newline-separated.
+  local check=0
+  [[ "${1:-}" == "--check" ]] && check=1
+
+  # authorities: the tls-authority names; certPairs: "<authority>@<slot>:<pem path>" per
+  # TRUSTED slot, newline-separated.
   local authorities certPairs
   authorities="@authorities@"
   certPairs="@certPairs@"
@@ -70,42 +134,76 @@ main() {
     return 0
   fi
 
-  local name pair id certFile trusted stale fp
+  local installed
+  # Read once: a `security … | grep -q` pipeline under pipefail reports the SIGPIPE grep -q
+  # causes, which would read as "absent" for a present root.
+  installed="$(/usr/bin/security find-certificate -a -Z "$keychain" 2>/dev/null || true)"
+
+  local name pair id certFile trusted fp rc settings unavailable=0 exposed=0 unreadable=0
   for name in $authorities; do
     trusted=""
+
+    # 1. install and verify every trusted slot
     while IFS= read -r pair; do
       [[ -n "$pair" ]] || continue
       id="${pair%%:*}"
       certFile="${pair#*:}"
       [[ "${id%@*}" == "$name" ]] || continue
-      trusted+="$(keychain::fingerprint "$certFile")"$'\n'
+      fp="$(keychain::fingerprint "$certFile")"
+      trusted+="${fp}"$'\n'
+      if ((check == 0)) && ! grep -qi "SHA-1 hash: ${fp}$" <<<"$installed"; then
+        echo "[tls-authority-keychain] installing $id to System keychain"
+        rc=0
+        keychain::install "$id" "$certFile" || rc=$?
+        ((rc == 1)) && continue # a format refusal: never reaches SecTrust
+      fi
+      if ! keychain::trusted "$certFile"; then
+        echo "[tls-authority-keychain] ERROR: ${name}: trusted root ${id} NOT installed/trusted — ${gesture}" >&2
+        unavailable=$((unavailable + 1))
+      fi
     done <<<"$certPairs"
 
-    stale="$(keychain::stale "$name" "$trusted")" || return 1
+    if [[ -z "$trusted" ]]; then
+      echo "[tls-authority-keychain] ${name}: keys.yaml has no trusted slot — ALL its roots are stale" >&2
+    fi
+
+    # 2. remove every stale root with its trust setting, whatever step 1 found
+    if ((check == 0)); then
+      while IFS= read -r fp; do
+        [[ -n "$fp" ]] || continue
+        echo "[tls-authority-keychain] removing ${name} root ${fp} and its trust setting — not a trusted slot of keys.yaml"
+        /usr/bin/security delete-certificate -Z "$fp" -t "$keychain" >/dev/null 2>&1 || true
+      done < <(keychain::stale "$name" "$trusted")
+    fi
+
+    # 3. what is still in force: a stale cert still in the keychain, or a stale trust setting
+    settings="$(keychain::trust_settings)" || {
+      unreadable=1
+      settings=""
+    }
     while IFS= read -r fp; do
       [[ -n "$fp" ]] || continue
-      echo "[tls-authority-keychain] removing ${name} root ${fp} — not a trusted slot of keys.yaml"
-      if ! /usr/bin/security delete-certificate -Z "$fp" "$keychain"; then
-        echo "[tls-authority-keychain] ERROR: could not remove ${name} root ${fp}" >&2
-        return 1
-      fi
-    done <<<"$stale"
+      echo "[tls-authority-keychain] ERROR: ${name}: STALE root ${fp} still in the System keychain — removal denied; ${gesture}" >&2
+      exposed=$((exposed + 1))
+    done < <(keychain::stale "$name" "$trusted")
+    while IFS= read -r fp; do
+      [[ -n "$fp" ]] || continue
+      echo "[tls-authority-keychain] ERROR: ${name}: STALE root ${fp} STILL TRUSTED (admin trust setting) — removal denied; ${gesture}" >&2
+      exposed=$((exposed + 1))
+    done < <(keychain::stale_trust "$name" "$trusted" "$settings")
   done
 
-  # Read once: a `security … | grep -q` pipeline under pipefail reports the
-  # SIGPIPE grep -q causes, which would read as "absent" for a present root.
-  local installed
-  installed="$(/usr/bin/security find-certificate -a -Z "$keychain" 2>/dev/null || true)"
-
-  while IFS=':' read -r id certFile; do
-    [[ -n "$id" ]] || continue
-    fp="$(keychain::fingerprint "$certFile")"
-    grep -qi "SHA-1 hash: ${fp}$" <<<"$installed" && continue
-    echo "[tls-authority-keychain] installing $id to System keychain"
-    if ! /usr/bin/security add-trusted-cert -d -r trustRoot -k "$keychain" "$certFile" 2>/dev/null; then
-      echo "[tls-authority-keychain] WARN: SecTrust refused $id (likely Ed25519); leaving SSL_CERT_FILE-only" >&2
-    fi
-  done <<<"$certPairs"
+  # Exit contract shared with ndh-trust-check: 0 clean, 1 a stale root still trusted or a
+  # trusted root not trusted, 2 the trust settings could not be read.
+  if ((exposed > 0 || unavailable > 0)); then
+    echo "[tls-authority-keychain] NOT reconciled: ${exposed} stale root(s) still trusted, ${unavailable} trusted root(s) not trusted" >&2
+    return 1
+  fi
+  if ((unreadable > 0)); then
+    echo "[tls-authority-keychain] the admin trust settings could not be read — run with sudo for a verdict" >&2
+    return 2
+  fi
+  echo "[tls-authority-keychain] reconciled: every tls-authority holds exactly its trusted roots"
 }
 
 ndh::logger:command:run darwin.activationScripts.postActivation.tls-authority-keychain main "$@"
