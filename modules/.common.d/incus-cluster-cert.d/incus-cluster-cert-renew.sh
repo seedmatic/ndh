@@ -1,3 +1,9 @@
+# ★ xtrace-guard — no trace, whatever the invocation (bash -x, an inherited SHELLOPTS=xtrace, a
+# caller's set -x): this script handles private keys, and a trace prints every value it expands.
+case $- in *x*) { set +x; } 2>/dev/null; echo "[xtrace-guard] xtrace disabled: this script handles private keys" >&2 ;; esac
+export -n SHELLOPTS 2>/dev/null || true # readonly in bash, so not unset; un-exported, it stops at this process
+unset BASH_XTRACEFD 2>/dev/null || true
+
 # incus-cluster-cert-renew — re-mint the Incus CLUSTER certificate under the authority's
 # CURRENT signing slot, install it on every member, re-pin the seat's client, verify.
 #
@@ -26,15 +32,22 @@ die() {
   exit 1
 }
 
-# Exit contract: 0 the cluster is (now) CURRENT · 1 it needs RENEW (with --check) or a step
-# failed · 2 a member is ABSENT. --check classifies and changes nothing.
-force=0 check=0
-case "${1:-}" in
-  "") ;;
-  --force) force=1 ;;
-  --check) check=1 ;;
-  *) die "usage: incus-cluster-cert-renew [--check | --force]  (--check classifies only; --force re-mints even when current)" ;;
-esac
+# Exit contract: 0 the cluster is (now) CURRENT, or --dry-run reached the mint · 10 --check found a
+# RENEW or REPIN to do · 2 a member is ABSENT · 1 anything that failed. --check classifies only;
+# --dry-run runs the real path — classification and preflight — up to the mint and stops there.
+# A renewal needed is 10, never 1, so a real failure can never pass for a normal check.
+# --debug traces the PUBLIC part only — classification and preflight, after the keys are loaded
+# and before the mint — never the reading of keys.yaml nor the mint itself.
+force=0 check=0 dryRun=0 debug=0
+for arg in "$@"; do
+  case "$arg" in
+    --force) force=1 ;;
+    --check) check=1 ;;
+    --dry-run) dryRun=1 ;;
+    --debug) debug=1 ;;
+    *) die "usage: incus-cluster-cert-renew [--check | --dry-run | --force] [--debug]" ;;
+  esac
+done
 
 work="$(mktemp -d)"
 chmod 700 "$work"
@@ -88,6 +101,7 @@ unset selected
 printf '%s\n' "$caCrt" >"$work/ca.crt"
 caFp="$(openssl x509 -noout -fingerprint -sha1 -in "$work/ca.crt" | sed -e 's/.*=//' -e 's/://g')"
 log "signing slot ${authority}@${slot}, root ${caFp}"
+if ((debug == 1)); then set -x; fi
 
 # --- Three cases, decided before anything changes --------------------------------------------
 #   CURRENT  every name serves a leaf that chains to this root, names itself, carries every SAN,
@@ -137,7 +151,7 @@ done
 pinReasons=()
 pins=()
 for dir in "$HOME/.config/incus/servercerts" "$HOME/Library/Application Support/incus/servercerts"; do
-  [[ -f "$dir/${remote}.crt" ]] && pins+=("$dir/${remote}.crt")
+  if [[ -f "$dir/${remote}.crt" ]]; then pins+=("$dir/${remote}.crt"); fi
 done
 for pin in "${pins[@]}"; do
   [[ "$(openssl x509 -noout -fingerprint -sha256 -in "$pin" | sed -e 's/.*=//')" == "$current" ]] ||
@@ -213,9 +227,10 @@ preflight() {
     while IFS= read -r line; do
       [[ -n $line ]] || continue
       log "  ${line}"
-      [[ $line == ERROR* ]] && preflightErrors=$((preflightErrors + 1))
+      if [[ $line == ERROR* ]]; then preflightErrors=$((preflightErrors + 1)); fi
     done <<<"$line"
   done
+  return 0
 }
 
 if ((${#reasons[@]} == 0 && ${#pinReasons[@]} == 0 && force == 0)); then
@@ -228,7 +243,11 @@ fi
 if ((${#reasons[@]} == 0 && force == 0)); then
   log "REPIN: the cluster is current, the client is not:"
   for r in "${pinReasons[@]}"; do log "  - ${r}"; done
-  ((check == 0)) || exit 1
+  ((check == 0)) || exit 10
+  if ((dryRun == 1)); then
+    log "DRY RUN: would re-pin the client from the served leaf — stopping here"
+    exit 0
+  fi
   servedPem "${verifyNames[0]}" >"$work/served.crt"
   repin "$work/served.crt"
   verify "$current"
@@ -243,7 +262,13 @@ else
 fi
 preflight
 ((preflightErrors == 0)) || die "preflight found ${preflightErrors} error(s) — nothing was minted or changed"
-((check == 0)) || exit 1
+((check == 0)) || exit 10
+if ((dryRun == 1)); then
+  log "DRY RUN: would mint a ${days}d cluster leaf CN=${cn} with ${#sans[@]} SANs and install it through ${via} — stopping here"
+  exit 0
+fi
+
+{ set +x; } 2>/dev/null
 
 # --- Mint -----------------------------------------------------------------------------------
 sanArgs=()
@@ -273,7 +298,7 @@ log "running update-certificate on ${via} — sudo may prompt for your password 
 sshq -t "$via" "$rsudo incus cluster update-certificate '$remoteDir/leaf.crt' '$remoteDir/leaf.key'" ||
   die "incus cluster update-certificate failed on ${via} — check \`sudo incus cluster list\` there"
 log "removing the leaf and its key from ${via}…"
-sshq "$via" "rm -rf '$remoteDir'" && remoteDir=""
+if sshq "$via" "rm -rf '$remoteDir'"; then remoteDir=""; else log "WARN: could not remove $remoteDir on $via yet — the exit trap retries"; fi
 
 # --- Every member serves the new leaf, restarting the ones that do not ---------------------
 for member in "${members[@]}"; do

@@ -1,5 +1,10 @@
 #!/usr/bin/env bash
 # @codebase
+# ★ xtrace-guard — no trace, whatever the invocation (bash -x, an inherited SHELLOPTS=xtrace, a
+# caller's set -x): this script handles private keys, and a trace prints every value it expands.
+case $- in *x*) { set +x; } 2>/dev/null; echo "[xtrace-guard] xtrace disabled: this script handles private keys" >&2 ;; esac
+export -n SHELLOPTS 2>/dev/null || true # readonly in bash, so not unset; un-exported, it stops at this process
+unset BASH_XTRACEFD 2>/dev/null || true
 # Bootstrap a self-signed TLS root certificate for an authority in
 # keys.yaml.
 #
