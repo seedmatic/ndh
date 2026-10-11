@@ -70,7 +70,7 @@ whole mechanism. Collapsing `slots` to a single pair removes the overlap.
 
 A key presents its newest generation; an authority presents — and signs with — its **oldest slot
 that is not marked `compromised`**. One rule, applied by everything that signs: the enrichment, the
-TLS root bootstrap, the incus listener mint, and rke2lab's keystore reader.
+TLS root bootstrap, the incus cluster certificate renewal, and rke2lab's keystore reader.
 
 [cols="1,2"]
 |===

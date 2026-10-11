@@ -203,7 +203,7 @@ $defs:
     description: >
       An authority's generations, keyed like a key's slots. ONE rule decides
       which generation signs, everywhere it is applied (the enrichment, the TLS
-      root bootstrap, the incus listener mint, rke2lab's keystore reader): the
+      root bootstrap, the incus cluster cert renewal, rke2lab's keystore reader): the
       OLDEST slot that is not `compromised`. That slot is also the one the
       authority PRESENTS — its `ca_crt` is the root its leaves chain to. Every
       slot that is not compromised is ACCEPTED: trust stores carry its `public`

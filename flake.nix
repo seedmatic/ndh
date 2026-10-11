@@ -1182,6 +1182,12 @@
         # activation runs (modules/darwin/tls-authority-keychain.nix).
         nixpkgs.lib.optionalAttrs (system == "aarch64-darwin") {
           ndh-keychain-reconcile = self.darwinConfigurations.bioskop.config.ndh.tlsAuthorityKeychain.package;
+          # T14, by the same rule: one closure built by revision, run from the seat.
+          incus-cluster-cert-renew = import ./modules/.common.d/incus-cluster-cert.d/package.nix {
+            pkgs = systemPkgs;
+            inherit (nixpkgs) lib;
+            netplan = catalogData.netplan;
+          };
         }
         // {
           # manage-tailnet on PATH for BOTH systems (a packages output, not just the app):
@@ -1650,27 +1656,12 @@
               loggerTag = "ndh.ssh-keys-renew";
             }
           );
-          # Mint the Incus LISTENER cert from a keys.yaml TLS authority. Hermetic like its sibling
-          # above, plus jq (the SAN set is read out of the catalog as JSON) and nix itself (it
-          # evaluates this flake's catalog and rke2lab's segments rather than retyping any name).
-          #
-          # ★ Unlike authority-bootstrap-tls-root it materialises NOTHING secret: sops is piped and
-          # step-cli takes the CA cert/key through process substitution. Only the leaf pair is
-          # written, because `incus cluster update-certificate` takes two file paths.
-          mintIncusListenerCertPackage = pkgsForSystem.writeShellApplication {
-            name = "mint-incus-listener-cert";
-            runtimeInputs = [
-              pkgsForSystem.git
-              pkgsForSystem.step-cli
-              pkgsForSystem.sops
-              pkgsForSystem.yq-go
-              pkgsForSystem.nix
-              pkgsForSystem.coreutils
-              pkgsForSystem.gnused
-              pkgsForSystem.gnugrep
-              pkgsForSystem.gawk
-            ];
-            text = builtins.readFile ./modules/.common.d/mint-incus-listener-cert.d/mint-incus-listener-cert.sh;
+          # T14's closure: re-mint and install the Incus cluster certificate (one definition,
+          # also packages.<system>.incus-cluster-cert-renew) — see its package.nix.
+          incusClusterCertRenewPackage = import ./modules/.common.d/incus-cluster-cert.d/package.nix {
+            pkgs = pkgsForSystem;
+            inherit (nixpkgs) lib;
+            netplan = catalogData.netplan;
           };
           # System-admin helper: prune darwin/HM/user generations + GC. Drives the
           # AMBIENT sudo + system nix daemon (a pinned nix would desync from it), so
@@ -1755,10 +1746,10 @@
             program = "${bboxReconcilePackage}/bin/bbox-reconcile";
             meta.description = "Diff catalog.netplan.lan.hosts against the bbox /dhcp/clients reservations (read-only) — src: modules/.common.d/bbox-reconcile.d/";
           };
-          mint-incus-listener-cert = {
+          incus-cluster-cert-renew = {
             type = "app";
-            program = "${mintIncusListenerCertPackage}/bin/mint-incus-listener-cert";
-            meta.description = "Mint the Incus listener cert for a bare-metal from a keys.yaml TLS authority — <host> [--authority <name>], run from repo root; prints the `incus cluster update-certificate` to run — src: modules/.common.d/mint-incus-listener-cert.d/";
+            program = "${incusClusterCertRenewPackage}/bin/incus-cluster-cert-renew";
+            meta.description = "Re-mint the Incus cluster certificate under the current TLS signing slot, install it on every member, re-pin the seat client, verify — run from the seat, built by revision — src: modules/.common.d/incus-cluster-cert.d/";
           };
           authority-bootstrap-tls-root = {
             type = "app";
