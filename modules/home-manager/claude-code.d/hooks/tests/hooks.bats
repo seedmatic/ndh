@@ -197,22 +197,23 @@ commits() { git -C "$MEM" rev-list --count HEAD; }
 }
 
 # --- live-page ---
-start() { # $1 = source
-  jq -cn --arg s "$1" '{session_id: "abcd1234-0000", source: $s, cwd: "/w", transcript_path: "/t.jsonl"}' |
-    CLAUDE_INTEGRATION_SOW="$T/sow" bash "$H/live-page.sh"
+start() { # $1 = source, $2 = the session's current title (empty: never renamed)
+  jq -cn --arg s "$1" --arg t "${2:-}" \
+    '{session_id: "abcd1234-0000", source: $s, cwd: "/w", transcript_path: "/t.jsonl"} + (if $t == "" then {} else {session_title: $t} end)' |
+    CLAUDE_SCRATCHPAD="$T" bash "$H/live-page.sh"
 }
 
 live() {
-  mkdir -p "$T/sow"
-  printf '# Intégration — LIVE\n> tenu par develop-ab\n## 0. En figures\nfigure\n## 1. Ce qui t%sattend\nT1\n## 2. En cours\nnoise\n## 4. Arbre des sessions\ntree\n' "'" >"$T/sow/LIVE.md"
+  mkdir -p "$T/integration-sow"
+  printf '# Intégration — LIVE\n> tenu par develop-ab\n## 0. En figures\nFIGBODY\n## 1. Ce qui t%sattend\nT1\n## 2. En cours\nnoise\n## 4. Arbre des sessions\ntree\n' "'" >"$T/integration-sow/LIVE.md"
 }
 
 @test "live: every start is registered, whatever its source" {
   live
   start startup >/dev/null
   start compact >/dev/null
-  [ "$(wc -l <"$T/sow/sessions.jsonl")" -eq 2 ]
-  [[ "$(jq -r .source "$T/sow/sessions.jsonl" | tr '\n' ' ')" == "startup compact " ]]
+  [ "$(wc -l <"$T/integration-sow/sessions.jsonl")" -eq 2 ]
+  [[ "$(jq -r .source "$T/integration-sow/sessions.jsonl" | tr '\n' ' ')" == "startup compact " ]]
 }
 
 @test "live: a fresh start receives the header, section 1 and the tree, nothing else" {
@@ -220,8 +221,8 @@ live() {
   run start startup
   c="$(printf '%s' "$output" | jq -r .hookSpecificOutput.additionalContext)"
   [[ "$c" == *"tenu par develop-ab"* && "$c" == *T1* && "$c" == *tree* ]]
-  [[ "$c" != *figure* && "$c" != *noise* ]]
-  [[ "$c" == *"registered as abcd1234-0000"* ]]
+  [[ "$c" != *FIGBODY* && "$c" != *noise* ]]
+  [[ "$c" == *"conversation is abcd1234-0000"* ]]
 }
 
 @test "live: a compaction is registered but injects nothing" {
@@ -233,5 +234,34 @@ live() {
 @test "live: a missing page is said, and the start is still registered" {
   run start startup
   [[ "$(printf '%s' "$output" | jq -r .hookSpecificOutput.additionalContext)" == *"does not exist"* ]]
-  [ -f "$T/sow/sessions.jsonl" ]
+  [ -f "$T/integration-sow/sessions.jsonl" ]
+}
+
+chantier() { # a chantier page that claims the test conversation
+  mkdir -p "$T/chantierx"
+  printf '# Chantier X — LIVE\n> conversation: abcd1234-0000\n> title: chantier-x\n## 1. Etat\nok\n' >"$T/chantierx/LIVE.md"
+}
+
+@test "live: a resume gets its chantier's title back, and a short reminder" {
+  live
+  chantier
+  run start resume
+  [[ "$(printf '%s' "$output" | jq -r .hookSpecificOutput.sessionTitle)" == chantier-x ]]
+  [[ "$(printf '%s' "$output" | jq -r .hookSpecificOutput.additionalContext)" == *"You are the chantierx session"* ]]
+  [[ "$(tail -1 "$T/integration-sow/sessions.jsonl" | jq -r '.chantier + "/" + .title')" == chantierx/chantier-x ]]
+}
+
+@test "live: a title the operator set wins over the declared one" {
+  live
+  chantier
+  run start resume operator-choice
+  [[ "$(printf '%s' "$output" | jq -r '.hookSpecificOutput.sessionTitle // "none"')" == none ]]
+  [[ "$(tail -1 "$T/integration-sow/sessions.jsonl" | jq -r .title)" == operator-choice ]]
+}
+
+@test "live: a session no page claims is told how to declare itself" {
+  live
+  run start resume
+  [[ "$(printf '%s' "$output" | jq -r .hookSpecificOutput.additionalContext)" == *"> conversation: abcd1234-0000"* ]]
+  [[ "$(printf '%s' "$output" | jq -r '.hookSpecificOutput.sessionTitle // "none"')" == none ]]
 }
