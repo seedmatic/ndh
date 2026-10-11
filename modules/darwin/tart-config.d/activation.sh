@@ -990,7 +990,9 @@ main() {
 	# Delete the tailnet devices holding this guest's name, so the renewed guest reclaims it instead
 	# of drifting to `<name>-1`.  Called from tart:vm:factory-reset:apply, which explains the timing.
 	# manage-tailnet owns every tailnet mutation in this fleet; this only calls it, and reads the
-	# ENCRYPTED .secrets carried in this bundle (a vz-host may have no ndh checkout, only the age key).
+	# ENCRYPTED .secrets carried in this bundle (a vz-host may have no ndh checkout). Opening it needs
+	# an age key, which the corp-managed vz host deliberately does not hold — there, the reclaim fails
+	# and names the fabric-side command instead.
 	tart:vm:tailnet:reclaim() {
 		local reclaim="${NDH_TAILNET_RECLAIM:-apply}"
 
@@ -1016,8 +1018,10 @@ main() {
 		: "[tartConfig][ERROR] could not free '${guest_host_name}' on the tailnet — refusing to reset"
 		: "[tartConfig][ERROR] the guest would return as '${guest_host_name}-1', and both the Incus"
 		: "[tartConfig][ERROR] member address and the split-DNS zone would then name the wrong node"
-		: "[tartConfig][ERROR] needs an age key under ~/.config/sops/age and the OAuth 'devices' scope"
-		: "[tartConfig][ERROR] to reset anyway, accepting the drift: NDH_TAILNET_RECLAIM=skip"
+		: "[tartConfig][ERROR] freeing it here needs an age key that opens .secrets, and a corp-managed"
+		: "[tartConfig][ERROR] vz host is meant to hold none. Free it from a fabric host instead, then"
+		: "[tartConfig][ERROR] reset with NDH_TAILNET_RECLAIM=skip:"
+		: "[tartConfig][ERROR]   manage-tailnet --reclaim-host ${guest_host_name} --apply"
 		exit 1
 	}
 
