@@ -462,7 +462,9 @@ identity, generated on the guest
   credential stay on the seats.
 . **No authority private on a runtime host.** Certificates are signed on the seat from each consumer's
   public, and shipped as public certificates.
-. **One signing rule: the newest slot signs**, stated once in the schema and enforced by a check, in
+. **One signing rule: an authority signs with its OLDEST slot not marked `compromised`**, and presents
+  that slot's root; the new generation signs only once phase 2 drops the old one, and a compromised
+  slot never signs and leaves every trust store. Stated once in the schema, enforced by a check, in
   ndh and in rke2lab's keystore reader alike.
 . **No key is generated at activation.** An unrecorded key cannot be revoked.
 . **Each host receives a projection, computed, never placed by hand** (next section).
@@ -531,7 +533,8 @@ only, `yes` elsewhere; commits are signed on the darwin seats only
 | one reference
 
 | 3, 4
-| the newest slot signs, everywhere; the bats suites and `ssh-keys-v2-validate` run in `checks`
+| one signing rule — the oldest slot not compromised signs, everywhere; the bats suites and
+`ssh-keys-v2-validate` run in `checks`
 | one signing rule, checked
 
 | 5
@@ -564,7 +567,9 @@ only on the seat
 | 9
 | the single renewal, two phases: the root generated on the offline side; the intermediate and both
 cross-certificates; host certificates from each host's own key; `operator`, `cluster-age`; then
-`keys.yaml` re-encrypted for the seats only, and the retired keys revoked
+`keys.yaml` re-encrypted for the seats only, and the retired keys revoked. Each authority's phase 2
+passes the trust gate: `ndh-trust-check` on every host, then `trusted: <YY-MM-DD>` on the slot that
+now signs (link:ssh-keys-renewal-spec.adoc[renewal spec])
 | one key, one role, everywhere
 
 | 10
@@ -648,8 +653,8 @@ inventory names, `{host}-nixos`, `nixos.{host}`)
 | re-encrypt its projection for the guest's public, from a seat
 
 | After a two-slot renewal a TLS leaf does not chain
-| the old slot signed the leaf while the new `ca_crt` is presented
-| one signing rule — the newest slot signs, everywhere
+| the leaf was signed by one slot and chained to another slot's root
+| one signing rule — signer and presented root are the same slot, the oldest not compromised
 |===
 
 == Related Documentation

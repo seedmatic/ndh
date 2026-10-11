@@ -15,7 +15,7 @@ and how a retired generation is revoked.
 It concerns the keys that remain once access is granted by the control plane — their roles,
 holders and lifecycles are in link:ssh-keys-architecture.adoc[Roles × Keys]. Certificates are
 signed on the seat by the delegated authorities, from each consumer's public; nothing signs at
-activation, and the newest slot of an authority is the one that signs.
+activation, and an authority signs with its oldest slot that is not marked `compromised`.
 
 A renewal has to be *survivable*. Replacing a key in one step leaves an instant where the old one is
 refused and the new one is not yet authorised — for the bridge, that instant cuts the two segments
