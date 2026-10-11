@@ -39,7 +39,20 @@ esac
 work="$(mktemp -d)"
 chmod 700 "$work"
 # Every ssh forwards NOTHING: no agent (the seat's ForwardAgent may still say yes), no port.
-sshq() { ssh -o ForwardAgent=no -o ClearAllForwardings=yes "$@"; }
+# And no MULTIPLEXING: with ControlMaster auto, a session rides an existing master — one that may
+# have been opened with ForwardAgent yes, which would defeat the option above, and a stale one
+# hangs silently. Timeouts so a dead link fails instead of waiting.
+# And ONE identity, stated here and not taken from the seat's ssh config or its agent: the
+# operator principal's key and certificate, fixed at evaluation (no agent is consulted at all).
+sshq() {
+  ssh -o IdentityAgent=none -o IdentitiesOnly=yes -o IdentityFile="$sshKey" -o CertificateFile="$sshCert" \
+    -o User="$sshUser" -o ForwardAgent=no -o ClearAllForwardings=yes -o ControlMaster=no -o ControlPath=none \
+    -o ConnectTimeout=10 -o ServerAliveInterval=15 -o ServerAliveCountMax=2 "$@"
+}
+
+# On a NixOS member, the SETUID sudo is the wrapper; a non-interactive ssh PATH finds the plain,
+# non-setuid copy in /run/current-system/sw/bin first, which refuses to run.
+rsudo=/run/wrappers/bin/sudo
 
 remoteDir=""
 cleanup() {
@@ -83,12 +96,14 @@ log "signing slot ${authority}@${slot}, root ${caFp}"
 #            self-signed one after a re-init, a missing SAN, an expiry near, a stale pin;
 #   ABSENT   a name does not answer on 8443 — the cluster is not up, or a member is offline.
 #            `update-certificate` needs every member ONLINE, so this refuses and changes nothing.
-served() { # <name> → sha256 of the leaf <name>:8443 presents
-  openssl s_client -connect "$1:8443" -servername "$1" </dev/null 2>/dev/null |
-    openssl x509 -noout -fingerprint -sha256 2>/dev/null | sed -e 's/.*=//'
+# Both answer EMPTY when <name> serves nothing — never fail: under errexit + pipefail a failing
+# probe would end the run silently instead of reporting the member ABSENT.
+served() { # <name> → sha256 of the leaf <name>:8443 presents, or nothing
+  { openssl s_client -connect "$1:8443" -servername "$1" </dev/null 2>/dev/null |
+    openssl x509 -noout -fingerprint -sha256 2>/dev/null | sed -e 's/.*=//'; } || true
 }
-servedPem() { # <name> → the PEM of the leaf <name>:8443 presents
-  openssl s_client -connect "$1:8443" -servername "$1" </dev/null 2>/dev/null | openssl x509 2>/dev/null
+servedPem() { # <name> → the PEM of the leaf <name>:8443 presents, or nothing
+  { openssl s_client -connect "$1:8443" -servername "$1" </dev/null 2>/dev/null | openssl x509 2>/dev/null; } || true
 }
 absent=() reasons=()
 for name in "${verifyNames[@]}"; do
@@ -161,20 +176,45 @@ verify() { # <expected leaf sha256> — every name serves it, chaining to the ro
   ((failures == 0)) || die "${failures} verification(s) failed"
 }
 
-# Read-only preflight of the install path, so the operator knows before the real run.
+# Read-only preflight of the install path, so the operator knows before the real run. The SAME
+# remote probe runs on every member (each may be restarted), testing the EXACT commands the
+# install uses, and every line it prints is tagged OK, PROMPT or ERROR. Any ERROR stops the run
+# before anything is minted.
+probe='rsudo="$1"
+if out="$("$rsudo" -n true 2>&1)"; then echo "OK $rsudo runs without a password"
+else case "$out" in
+  *"must be owned by uid 0"*|*setuid*) echo "ERROR $rsudo is not the setuid sudo: $out" ;;
+  *"password is required"*|*"a terminal is required"*) echo "PROMPT $rsudo will ask for your password (ssh -t)" ;;
+  *) echo "ERROR $rsudo -n true failed: $out" ;;
+esac; fi
+command -v incus >/dev/null && echo "OK incus on PATH" || echo "ERROR incus not on PATH"
+d="/run/user/$(id -u)"
+[ -d "$d" ] && echo "OK $d present (tmpfs)" || echo "ERROR $d absent — the key would have nowhere safe to go"'
+preflightErrors=0
 preflight() {
-  local m
-  log "preflight on ${via} (install path):"
-  sshq -o BatchMode=yes -o ConnectTimeout=8 "$via" 'command -v incus >/dev/null && echo "  incus on PATH" || echo "  ERROR incus not on PATH";
-    sudo -n true 2>/dev/null && echo "  sudo without password" || echo "  sudo will ask for a password (ssh -t)";
-    [ -d "/run/user/$(id -u)" ] && echo "  /run/user/$(id -u) present (tmpfs)" || echo "  ERROR /run/user/$(id -u) absent — the install would refuse"' >&2 ||
-    log "  ERROR ${via} unreachable over ssh"
-  for m in "${members[@]}"; do
-    if sshq -o BatchMode=yes -o ConnectTimeout=8 "$m" true >/dev/null 2>&1; then
-      log "  ${m}: reachable over ssh (a restart is possible)"
+  local m line f
+  for f in "$sshKey" "$sshCert"; do
+    if [[ -r $f ]]; then
+      log "  OK $f readable (the operator identity)"
     else
-      log "  ERROR ${m}: not reachable over ssh — it cannot be restarted"
+      log "  ERROR $f missing or unreadable — sshq has no identity"
+      preflightErrors=$((preflightErrors + 1))
     fi
+  done
+  for m in "${members[@]}"; do
+    log "preflight on ${m}:"
+    # stdout carries the tagged probe lines; ssh's own stderr (its KnownHostsCommand logs
+    # included) is shown only when the connection fails.
+    if ! line="$(sshq -o BatchMode=yes "$m" "sh -c '$probe' sh $rsudo" 2>"$work/ssh.err")"; then
+      log "  ERROR ${m}: unreachable over ssh ($(grep -v -F 'ndh::logger' "$work/ssh.err" | tail -2 | tr '\n' ' '))"
+      preflightErrors=$((preflightErrors + 1))
+      continue
+    fi
+    while IFS= read -r line; do
+      [[ -n $line ]] || continue
+      log "  ${line}"
+      [[ $line == ERROR* ]] && preflightErrors=$((preflightErrors + 1))
+    done <<<"$line"
   done
 }
 
@@ -202,6 +242,7 @@ else
   log "RENEW (--force): the cluster is current, re-minting anyway"
 fi
 preflight
+((preflightErrors == 0)) || die "preflight found ${preflightErrors} error(s) — nothing was minted or changed"
 ((check == 0)) || exit 1
 
 # --- Mint -----------------------------------------------------------------------------------
@@ -221,19 +262,24 @@ log "minted leaf sha256 ${leafFp}"
 
 # --- Install through ONE member's local socket ----------------------------------------------
 log "installing through ${via}'s local socket (every member must be ONLINE)"
+log "opening a private tmpfs directory on ${via}…"
 remoteDir="$(sshq "$via" 'd="/run/user/$(id -u)"; [ -d "$d" ] || exit 3; umask 077; mktemp -d "$d/incus-cluster-cert.XXXXXX"')" ||
   die "cannot open a private tmpfs directory on ${via} (/run/user/<uid> is required — the key never goes to a disk-backed /tmp)"
+log "sending the leaf to ${via}…"
 sshq "$via" "cat > '$remoteDir/leaf.crt'" <"$work/leaf.crt" || die "cannot send the leaf to ${via}"
+log "sending the leaf KEY to ${via}…"
 sshq "$via" "cat > '$remoteDir/leaf.key'" <"$work/leaf.key" || die "cannot send the key to ${via}"
-sshq -t "$via" "sudo incus cluster update-certificate '$remoteDir/leaf.crt' '$remoteDir/leaf.key'" ||
+log "running update-certificate on ${via} — sudo may prompt for your password NOW"
+sshq -t "$via" "$rsudo incus cluster update-certificate '$remoteDir/leaf.crt' '$remoteDir/leaf.key'" ||
   die "incus cluster update-certificate failed on ${via} — check \`sudo incus cluster list\` there"
+log "removing the leaf and its key from ${via}…"
 sshq "$via" "rm -rf '$remoteDir'" && remoteDir=""
 
 # --- Every member serves the new leaf, restarting the ones that do not ---------------------
 for member in "${members[@]}"; do
   if [[ "$(served "$member")" != "$leafFp" ]]; then
-    log "${member} still serves the old leaf — restarting its incus daemon"
-    sshq -t "$member" "sudo systemctl restart incus" || die "cannot restart incus on ${member}"
+    log "${member} still serves the old leaf — restarting its incus daemon (sudo may prompt NOW)"
+    sshq -t "$member" "$rsudo systemctl restart incus" || die "cannot restart incus on ${member}"
     sleep 5
   fi
 done

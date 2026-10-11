@@ -5,10 +5,14 @@
 # the members, the names to verify — and the keys.yaml it reads is the ENCRYPTED one of this
 # revision: nothing evaluates a working tree at run time. Imported by the flake's packages and
 # apps, one definition.
+# operatorIdentity: the ONE ssh identity the closure uses to reach a member — the OPERATOR
+# principal's key, named by its role (rdp-host today; the `operator` key after the step-9 renewal
+# changes this one argument): { user, keyFile, certFile }.
 {
   pkgs,
   lib,
   netplan,
+  operatorIdentity,
 }:
 let
   memberOf = host: netplan.baremetal.${host};
@@ -44,6 +48,9 @@ pkgs.writeShellApplication {
     cn=${lib.escapeShellArg seatGuest.nixosHostname}
     via=${lib.escapeShellArg seatGuest.fabricFqdn}
     remote=${lib.escapeShellArg seatGuest.nixosHostname}
+    sshUser=${lib.escapeShellArg operatorIdentity.user}
+    sshKey=${lib.escapeShellArg operatorIdentity.keyFile}
+    sshCert=${lib.escapeShellArg operatorIdentity.certFile}
     days=365
     sans=${array (import ./sans.nix { inherit lib netplan; })}
     members=${array (map (h: (memberOf h).fabricFqdn) hosts)}

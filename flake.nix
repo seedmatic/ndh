@@ -134,6 +134,18 @@
       # `hostForms` lets the catalog derive each vz-host's kind instead of declaring it: the
       # vz-host is nix-managed exactly when the config named <host> is the bare metal itself.
       # Injected from here because this file owns the host tree; see catalog/default.nix.
+      # The ONE identity the incus cluster-cert closure reaches a member with: the OPERATOR
+      # principal's key on the seat, read from bioskop's configuration (sshPaths, the profile
+      # user) so it is never retyped. Step 9 moves it from rdp-host to the `operator` key here.
+      incusCertOperatorIdentity =
+        let
+          seat = self.darwinConfigurations.bioskop.config;
+        in
+        {
+          user = seat.profile.user.name;
+          keyFile = seat.sshPaths.privKeyFile;
+          certFile = seat.sshPaths.userCertPublic;
+        };
       catalogData = import ./catalog/default.nix {
         inherit cacheTrust networkBlueprint dataplan;
         hostForms = builtins.mapAttrs (_: entry: entry.hostProfile.form or null) hostCatalog;
@@ -1187,6 +1199,7 @@
             pkgs = systemPkgs;
             inherit (nixpkgs) lib;
             netplan = catalogData.netplan;
+            operatorIdentity = incusCertOperatorIdentity;
           };
         }
         // {
@@ -1662,6 +1675,7 @@
             pkgs = pkgsForSystem;
             inherit (nixpkgs) lib;
             netplan = catalogData.netplan;
+            operatorIdentity = incusCertOperatorIdentity;
           };
           # System-admin helper: prune darwin/HM/user generations + GC. Drives the
           # AMBIENT sudo + system nix daemon (a pinned nix would desync from it), so
