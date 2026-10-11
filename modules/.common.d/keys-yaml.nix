@@ -49,11 +49,19 @@ let
   # sshd that reads this list would lock out every client still presenting it.
   stillLive = lib.filterAttrs (_id: r: lib.elem r.public livePublics) revokedJson;
 
+  phase2Gaps = trust.phase2Gaps authoritiesJson revokedJson;
+
   revokedKeysFile =
     if stillLive != { } then
       throw ''
         ndh.keysYaml: revoked but still carried by a slot in keys.yaml: ${lib.concatStringsSep ", " (lib.attrNames stillLive)}
         A generation is revoked in the same change that deletes its slot, never before.''
+    else if phase2Gaps != [ ] then
+      throw ''
+        ndh.keysYaml: authority generation retired before its successor was trusted everywhere: ${lib.concatStringsSep ", " phase2Gaps}
+        Run ndh-trust-check on every host, then record `trusted: <YY-MM-DD>` on the slot that now signs
+        (docs/ssh-keys-renewal-spec.adoc, phase 2 of an authority). A compromised generation is marked
+        `compromised: true` in revoked instead.''
     else
       pkgs.writeText "ndh-revoked-keys.pub" (
         lib.concatStrings (lib.mapAttrsToList (id: r: "${r.type} ${r.public} revoked:${id}\n") revokedJson)

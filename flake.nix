@@ -1076,6 +1076,27 @@
             assert pkgs.lib.assertMsg (
               pkgs.lib.attrNames (trust.compromisedSlots authorities).tls == [ "26-05-29" ]
             ) "a compromised slot is not listed for removal";
+            # The phase-2 gate: an ordinary retirement needs the slot that now signs to be trusted.
+            assert pkgs.lib.assertMsg (
+              trust.phase2Gaps { tls.slots."26-10-04".ca_crt = "NEW"; } { "tls@26-05-29".reason = "retired"; }
+              == [ "tls@26-05-29" ]
+            ) "an ordinary retirement passed the gate without `trusted`";
+            assert pkgs.lib.assertMsg (
+              trust.phase2Gaps {
+                tls.slots."26-10-04" = {
+                  ca_crt = "NEW";
+                  trusted = "26-10-12";
+                };
+              } { "tls@26-05-29".reason = "retired"; } == [ ]
+            ) "a retirement whose successor is trusted was refused";
+            assert pkgs.lib.assertMsg (
+              trust.phase2Gaps { tls.slots."26-10-04".ca_crt = "NEW"; } {
+                "tls@26-05-29" = {
+                  reason = "published";
+                  compromised = true;
+                };
+              } == [ ]
+            ) "a compromised retirement was held by the gate";
             pkgs.runCommand "ssh-keys-trust" { } "touch $out";
         }
       );

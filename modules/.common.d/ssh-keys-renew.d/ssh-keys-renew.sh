@@ -291,6 +291,8 @@ renew::retire() { # <section> <name> <slot>...
 			.revoked.\"${name}@${slot}\".type   = .${section}.\"${name}\".type |
 			.revoked.\"${name}@${slot}\".public = .${section}.\"${name}\".slots.\"${slot}\".public |
 			.revoked.\"${name}@${slot}\".reason = strenv(REASON) |
+			.revoked.\"${name}@${slot}\".compromised = true |
+			.revoked.\"${name}@${slot}\".compromised = true |
 			del(.${section}.\"${name}\".slots.\"${slot}\")
 		" "$decrypted"
 	done

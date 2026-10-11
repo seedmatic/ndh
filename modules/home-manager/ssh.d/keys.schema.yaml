@@ -70,6 +70,14 @@ $defs:
       reason:
         type: string
         minLength: 1
+      compromised:
+        type: boolean
+        description: >
+          The retired generation's private was exposed. An authority generation
+          retired as compromised is exempt from the phase-2 gate (its successor
+          signs at once, breakage accepted); an ordinary retirement requires the
+          slot that now signs to carry `trusted`. Written by `ssh-keys-renew
+          --replace`.
 
   sshKeyType:
     type: string
@@ -234,6 +242,13 @@ $defs:
             authorities that advertise `tls-authority`. Plaintext: trust-anchor
             material, like `public`. Every trusted slot's root goes into every
             trust store; the signing slot's root is the one leaves chain to.
+        trusted:
+          type: string
+          pattern: "^[0-9]{2}-[0-9]{2}-[0-9]{2}$"
+          description: >
+            The date `ndh-trust-check` passed on every host for this generation —
+            recorded in the change that drops the previous slot (phase 2), which
+            the evaluation refuses without it (keys-yaml.d/trust.nix, phase2Gaps).
         compromised:
           type: string
           minLength: 1

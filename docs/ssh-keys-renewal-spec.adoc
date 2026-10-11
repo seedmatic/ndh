@@ -162,6 +162,34 @@ public is still known.
 Phase 2 is not optional, and the model makes that visible: while two slots exist, the assertion,
 the selector and the document all say a renewal is unfinished.
 
+=== Phase 2 of an AUTHORITY — the trust gate
+
+For an authority, phase 2 is also the moment the signature moves: once the old slot is gone, the new
+one signs. So the positive check is not "the new generation serves" but "every verifier already
+trusts it", and it is recorded.
+
+[cols="1,3"]
+|===
+h|Gesture|What it proves
+
+|`ndh-trust-check` on every host
+|Its live trust — the NixOS bundle, the darwin System keychain, `ssh_known_hosts`,
+`TrustedUserCAKeys` — carries every trusted slot of every authority, and no compromised one. Exit 0
+on each host, or phase 2 waits.
+
+|`trusted: <YY-MM-DD>` on the slot that will sign
+|Written in the same change that drops the old slot and writes its `revoked` entry. The evaluation
+refuses an ordinary retirement without it (`keys-yaml.d/trust.nix`, `phase2Gaps`); a compromised
+retirement (`revoked.<id>.compromised: true`, written by `--replace`) is exempt, its breakage
+accepted.
+
+|The cluster PKI re-sealed under the new generation
+|A cluster trusts what `ClusterSeal` minted from the old signing slot: its CA set, the cert-manager
+issuer, the admin credentials. No host check sees that. Before phase 2 of `mammoth-skate-tls`, purge
+every `ClusterPkiCoordinate` case from the cellar and re-grow, as rke2lab
+`docs/architecture/cluster-api/deterministic-cluster-access.adoc` describes — then drop the old slot.
+|===
+
 == Replacement — when the private is exposed
 
 The overlap protects the operator from a renewal that does not serve. When the retiring private is
