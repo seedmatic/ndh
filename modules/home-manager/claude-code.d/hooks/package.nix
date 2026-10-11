@@ -36,6 +36,7 @@ in
         hooks = [
           (entry "session-start-reminder.sh" 5 "Checking checkpoint draft status...")
           (entry "memory-guard.sh" 5 "Verifying memory wiring...")
+          (entry "live-page.sh" 5 "Registering with the integration...")
         ];
       }
     ];
