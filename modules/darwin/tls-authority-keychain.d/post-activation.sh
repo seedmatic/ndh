@@ -115,7 +115,7 @@ keychain::install() { # <id> <pem file>
   if grep -qiE 'authorization|user interaction' <<<"$err"; then
     return 2
   fi
-  echo "[tls-authority-keychain] WARN: SecTrust refused $1 (${err}); leaving it to the bundle" >&2
+  echo "[ndh-keychain-reconcile] WARN: SecTrust refused $1 (${err}); leaving it to the bundle" >&2
   return 1
 }
 
@@ -130,7 +130,7 @@ main() {
   certPairs="@certPairs@"
 
   if [[ -z "$authorities" ]]; then
-    echo "[tls-authority-keychain] no tls-authority roots to reconcile"
+    echo "[ndh-keychain-reconcile] no tls-authority roots to reconcile"
     return 0
   fi
 
@@ -152,26 +152,26 @@ main() {
       fp="$(keychain::fingerprint "$certFile")"
       trusted+="${fp}"$'\n'
       if ((check == 0)) && ! grep -qi "SHA-1 hash: ${fp}$" <<<"$installed"; then
-        echo "[tls-authority-keychain] installing $id to System keychain"
+        echo "[ndh-keychain-reconcile] installing $id to System keychain"
         rc=0
         keychain::install "$id" "$certFile" || rc=$?
         ((rc == 1)) && continue # a format refusal: never reaches SecTrust
       fi
       if ! keychain::trusted "$certFile"; then
-        echo "[tls-authority-keychain] ERROR: ${name}: trusted root ${id} NOT installed/trusted — ${gesture}" >&2
+        echo "[ndh-keychain-reconcile] ERROR: ${name}: trusted root ${id} NOT installed/trusted — ${gesture}" >&2
         unavailable=$((unavailable + 1))
       fi
     done <<<"$certPairs"
 
     if [[ -z "$trusted" ]]; then
-      echo "[tls-authority-keychain] ${name}: keys.yaml has no trusted slot — ALL its roots are stale" >&2
+      echo "[ndh-keychain-reconcile] ${name}: keys.yaml has no trusted slot — ALL its roots are stale" >&2
     fi
 
     # 2. remove every stale root with its trust setting, whatever step 1 found
     if ((check == 0)); then
       while IFS= read -r fp; do
         [[ -n "$fp" ]] || continue
-        echo "[tls-authority-keychain] removing ${name} root ${fp} and its trust setting — not a trusted slot of keys.yaml"
+        echo "[ndh-keychain-reconcile] removing ${name} root ${fp} and its trust setting — not a trusted slot of keys.yaml"
         /usr/bin/security delete-certificate -Z "$fp" -t "$keychain" >/dev/null 2>&1 || true
       done < <(keychain::stale "$name" "$trusted")
     fi
@@ -183,12 +183,12 @@ main() {
     }
     while IFS= read -r fp; do
       [[ -n "$fp" ]] || continue
-      echo "[tls-authority-keychain] ERROR: ${name}: STALE root ${fp} still in the System keychain — removal denied; ${gesture}" >&2
+      echo "[ndh-keychain-reconcile] ERROR: ${name}: STALE root ${fp} still in the System keychain — removal denied; ${gesture}" >&2
       exposed=$((exposed + 1))
     done < <(keychain::stale "$name" "$trusted")
     while IFS= read -r fp; do
       [[ -n "$fp" ]] || continue
-      echo "[tls-authority-keychain] ERROR: ${name}: STALE root ${fp} STILL TRUSTED (admin trust setting) — removal denied; ${gesture}" >&2
+      echo "[ndh-keychain-reconcile] ERROR: ${name}: STALE root ${fp} STILL TRUSTED (admin trust setting) — removal denied; ${gesture}" >&2
       exposed=$((exposed + 1))
     done < <(keychain::stale_trust "$name" "$trusted" "$settings")
   done
@@ -196,14 +196,14 @@ main() {
   # Exit contract shared with ndh-trust-check: 0 clean, 1 a stale root still trusted or a
   # trusted root not trusted, 2 the trust settings could not be read.
   if ((exposed > 0 || unavailable > 0)); then
-    echo "[tls-authority-keychain] NOT reconciled: ${exposed} stale root(s) still trusted, ${unavailable} trusted root(s) not trusted" >&2
+    echo "[ndh-keychain-reconcile] NOT reconciled: ${exposed} stale root(s) still trusted, ${unavailable} trusted root(s) not trusted" >&2
     return 1
   fi
   if ((unreadable > 0)); then
-    echo "[tls-authority-keychain] the admin trust settings could not be read — run with sudo for a verdict" >&2
+    echo "[ndh-keychain-reconcile] the admin trust settings could not be read — run with sudo for a verdict" >&2
     return 2
   fi
-  echo "[tls-authority-keychain] reconciled: every tls-authority holds exactly its trusted roots"
+  echo "[ndh-keychain-reconcile] reconciled: every tls-authority holds exactly its trusted roots"
 }
 
-ndh::logger:command:run darwin.activationScripts.postActivation.tls-authority-keychain main "$@"
+ndh::logger:command:run ndh-keychain-reconcile main "$@"

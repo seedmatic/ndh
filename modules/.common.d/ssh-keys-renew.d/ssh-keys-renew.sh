@@ -340,7 +340,7 @@ renew::apply() {
 			ones are in revoked.
 
 			Next, in order:
-			  1. nix run .#ssh-keys-v2-validate
+			  1. nix run "git+file://\$PWD?rev=\$(git rev-parse HEAD)#ssh-keys-v2-validate" -- modules/home-manager/ssh.d/keys.yaml
 			  2. commit the keys.yaml diff
 			  3. activate EVERY host. There is no overlap: from its own activation on,
 			     a host refuses the retired generation — activate it from a session
@@ -354,7 +354,7 @@ renew::apply() {
 		phase 1 written. Both generations are now declared.
 
 		Next, in order:
-		  1. nix run .#ssh-keys-v2-validate
+		  1. nix run "git+file://\$PWD?rev=\$(git rev-parse HEAD)#ssh-keys-v2-validate" -- modules/home-manager/ssh.d/keys.yaml
 		  2. commit the keys.yaml diff
 		  3. activate EVERY host, and verify the new generation serves on each
 		  4. phase 2, by hand: delete the retiring slot and activate again

@@ -1058,6 +1058,22 @@
             inherit pkgs;
             trampoline = mkNdhNixBashTrampoline { pkgsForSystem = pkgs; };
           };
+          # keys.yaml against its schema, ENCRYPTED as committed: the schema accepts ENC[...]
+          # wherever a private may sit, so the sandbox needs no key and nothing is decrypted.
+          # Each broken fixture must be REFUSED — a schema that accepts them proves nothing.
+          ssh-keys-schema =
+            pkgs.runCommand "ssh-keys-schema" { nativeBuildInputs = [ pkgs.check-jsonschema ]; }
+              ''
+                schema=${./modules/home-manager/ssh.d/keys.schema.yaml}
+                check-jsonschema --schemafile "$schema" ${./modules/home-manager/ssh.d/keys.yaml}
+                for broken in ${./modules/home-manager/ssh.d/tests}/broken-*.yaml; do
+                  if check-jsonschema --schemafile "$schema" "$broken" >/dev/null 2>&1; then
+                    echo "the schema ACCEPTED $broken, which it must refuse" >&2
+                    exit 1
+                  fi
+                done
+                touch $out
+              '';
           tls-authority-keychain-bats = import ./modules/darwin/tls-authority-keychain.d/tests/package.nix {
             inherit pkgs;
             trampoline = mkNdhNixBashTrampoline { pkgsForSystem = pkgs; };
@@ -1471,16 +1487,15 @@
           );
           nixBuildObservePackage = mkNixBuildObservePackage system;
           pkgsForSystem = pkgsFor { inherit system; };
-          # Run check-jsonschema against the canonical keys.yaml. The target
-          # is sops-encrypted at rest, so we decrypt into a tempfile before
-          # validating. Pass a path to validate a different file ad-hoc:
-          #   nix run .#ssh-keys-v2-validate -- path/to/keys.yaml
+          # check-jsonschema against keys.yaml AS COMMITTED — encrypted: the schema accepts
+          # ENC[...] wherever a private may sit, so nothing is decrypted and no plaintext copy
+          # is written. The same validation runs as checks.<system>.ssh-keys-schema and in the
+          # pre-commit (treefmt keys-schema); this app checks an uncommitted keys.yaml, from the
+          # repo root, with the tool named by revision:
+          #   nix run "git+file://$PWD?rev=$(git rev-parse HEAD)#ssh-keys-v2-validate" -- <keys.yaml>
           sshKeysValidatorPackage = pkgsForSystem.writeShellApplication {
             name = "ssh-keys-v2-validate";
-            runtimeInputs = [
-              pkgsForSystem.check-jsonschema
-              pkgsForSystem.sops
-            ];
+            runtimeInputs = [ pkgsForSystem.check-jsonschema ];
             text = ''
               target="''${1:-modules/home-manager/ssh.d/keys.yaml}"
               schema="modules/home-manager/ssh.d/keys.schema.yaml"
@@ -1492,12 +1507,7 @@
                 echo "target yaml not found: $target" >&2
                 exit 1
               fi
-              tmp="$(mktemp -t ssh-keys-v2.XXXXXX.yaml)"
-              trap 'rm -f "$tmp"' EXIT
-              if ! sops -d "$target" > "$tmp" 2>/dev/null; then
-                cp "$target" "$tmp"
-              fi
-              exec check-jsonschema --schemafile "$schema" "$tmp"
+              exec check-jsonschema --schemafile "$schema" "$target"
             '';
           };
           # The envs vendored under .flox-envs.d arrive WITHOUT their manifest.lock: fleet
