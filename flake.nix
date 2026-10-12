@@ -1070,6 +1070,9 @@
             inherit pkgs;
             trampoline = mkNdhNixBashTrampoline { pkgsForSystem = pkgs; };
           };
+          ssh-keys-renew-bats = import ./modules/.common.d/ssh-keys-renew.d/tests/package.nix {
+            inherit pkgs;
+          };
           # keys.yaml against its schema, ENCRYPTED as committed: the schema accepts ENC[...]
           # wherever a private may sit, so the sandbox needs no key and nothing is decrypted.
           # Each broken fixture must be REFUSED — a schema that accepts them proves nothing.
@@ -1776,7 +1779,7 @@
           ssh-keys-renew = {
             type = "app";
             program = "${sshKeysRenewPackage}/bin/ssh-keys-renew";
-            meta.description = "Phase 1 of an SSH key renewal: add a dated slot and generate into it — [--key NAME] [--authority NAME] [--older-than Nd] [--apply], dry run by default, run from repo root — src: modules/.common.d/ssh-keys-renew.d/";
+            meta.description = "Phase 1 of an SSH key renewal: add a dated slot and generate into it — [--key NAME] [--authority NAME] [--older-than Nd] [--apply], or declare a new entry with --create NAME --usage TAG, dry run by default, run from repo root — src: modules/.common.d/ssh-keys-renew.d/";
           };
           cleanup-activations = {
             type = "app";

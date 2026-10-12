@@ -103,6 +103,7 @@ flowchart LR
   subgraph BATCH["batch roles — one principal each"]
     NS["nix-store<br/>held by bioskop"]:::batch
     TR["transitional: sshfs,<br/>baremetal-deploy, vz-nudge"]:::batch
+    BOT["rke2lab-bot-signing<br/>held by the cluster's render and bumper"]:::batch
   end
 
   subgraph EXT["outside the fabric"]
@@ -123,6 +124,7 @@ flowchart LR
   TR -- "one account each" --> SSHD
   GHS -- "signs commits" --> GH
   GHA -- "push" --> GH
+  BOT -- "signs bot commits, rke2lab+* only" --> GH
   TSA -- "policy, grants, scoped node credentials" --> CP
   HAGE -- "decrypts its own secrets" --> HOST
   HNIX -- "signs what the host builds" --> CACHE
@@ -156,7 +158,7 @@ flowchart TB
     SOPS["sops operator identity, seat only"]:::perm
     HOSTK["per host: SSH host key · age identity ·<br/>nix signing key · TLS leaves · bridge WireGuard key"]:::perm
     CTRL["tailnet admin credential, headscale keys"]:::perm
-    CLU["cluster-age · GitHub App · incus client certs"]:::perm
+    CLU["cluster-age · GitHub App · incus client certs ·<br/>rke2lab-bot-signing"]:::perm
     GH["github-signing ×2 · github-authentication"]:::perm
   end
   subgraph SPK["decided by the Tailscale SSH measurement"]
@@ -367,6 +369,13 @@ recorded slot; remote builds use it too
 
 | `github-authentication`
 | the seat agent only · GitHub
+| permanent
+
+| `rke2lab-bot-signing`
+| generated on the seat, no profile; held in memory by the rke2lab bots (the render, the version
+bumper, the fabric delivery) and the cluster's `manifests-render-signing` Secret · the seats' allowed
+signers, for `rke2lab+*@<tailnet domain>` only. It exists so that a cluster never holds the operator's
+`github-signing`
 | permanent
 
 | `nch-relay-tls-server`
