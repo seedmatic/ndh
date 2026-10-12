@@ -1315,12 +1315,6 @@
           # advertise a fleet-scoped alias pointing at the current owner.
           # See packages/ndh-mdns-publish/{main.go,default.nix}.
           ndh-mdns-publish = systemPkgs.callPackage ./packages/ndh-mdns-publish { };
-          # The git sops clean/smudge filter as a self-contained package — the SSOT the
-          # operator's home-manager git AND rke2lab's flox-catalogue (re-exported for the
-          # in-cluster render env) both consume, so the filter that encrypts `.secrets` on
-          # a commit is byte-for-byte the one that smudges it in the aarch64-linux render
-          # pod. See modules/home-manager/git.d/git-sops-filter.nix.
-          git-sops-filter = systemPkgs.callPackage ./modules/home-manager/git.d/git-sops-filter.nix { };
         }
         // mkBaremetalLinkPackages system
         # Darwin only: the join is an operator act run from the operator's machine, and the recipe is

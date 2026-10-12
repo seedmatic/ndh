@@ -116,7 +116,7 @@ run_renew() { HOME="$t/home" PATH="$t/bin:$PATH" run bash "$script" "$@"; }
   guard() { sed -n '/^# ★ xtrace-guard/,/^unset BASH_XTRACEFD/p' "$1"; }
   [ -n "$(guard "$here/incus-cluster-cert-renew.sh")" ]
   for f in ssh-keys.d/ssh-enrich-keys-yaml.sh ssh-keys-renew.d/ssh-keys-renew.sh \
-    authority-bootstrap-tls-root.d/authority-bootstrap-tls-root.sh; do
+    authority-bootstrap-tls-root.d/authority-bootstrap-tls-root.sh ../home-manager/git.d/sops.sh; do
     [ "$(guard "$here/../$f")" = "$(guard "$here/incus-cluster-cert-renew.sh")" ]
   done
 }

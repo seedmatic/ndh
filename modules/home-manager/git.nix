@@ -142,7 +142,7 @@ in
             ./git.d/sops.d
             ./git.d/sops.sh
             ./git.d/sops.nix
-            ./git.d/git-sops-filter.nix
+            ./git.d/git-sops-diff.nix
             ./git.d/hooks/tests
           ]
         );

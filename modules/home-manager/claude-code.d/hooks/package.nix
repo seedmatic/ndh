@@ -19,6 +19,7 @@ let
   dir = pkgs.runCommand "claude-code-session-hooks" { } ''
     mkdir -p $out
     cp ${src}/*.sh ${src}/memory-dir.bash $out/
+    # sops-git-env.sh names sops-clean-guard.sh by its own directory, as the clean filter's command.
     chmod +x $out/*.sh
   '';
 
@@ -37,6 +38,7 @@ in
           (entry "session-start-reminder.sh" 5 "Checking checkpoint draft status...")
           (entry "memory-guard.sh" 5 "Verifying memory wiring...")
           (entry "live-page.sh" 5 "Registering with the integration...")
+          (entry "sops-git-env.sh" 5 "Neutralising the sops git drivers for this session...")
         ];
       }
     ];
