@@ -29,9 +29,6 @@
     # The NixOS guest does not receive an identity from the vz host at all — it decrypts
     # with one generated on itself. See nixos.nix.
 
-    # Safety valve while exercising fresh SSH/runtime-secret changes.
-    opensshPolicy.passwordAuthentication = true;
-
     nix.settings = {
       trusted-users = [
         "root"

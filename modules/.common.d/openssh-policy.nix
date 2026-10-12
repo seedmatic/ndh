@@ -29,6 +29,9 @@ let
     let
       raw = {
         PasswordAuthentication = cfg.passwordAuthentication;
+        # Through PAM, keyboard-interactive asks for the same password; both default to
+        # yes (NixOS, macOS), so turning only the first off leaves password login open.
+        KbdInteractiveAuthentication = cfg.passwordAuthentication;
         PermitRootLogin = cfg.permitRootLogin;
         TrustedUserCAKeys = cfg.trustedCAPath;
         RevokedKeys = cfg.revokedKeysPath;
@@ -98,11 +101,13 @@ in
       '';
     };
 
-    # Principals file
+    # Principals file. `none`: sshd accepts a principal found in the file OR in the
+    # command's output, so a file in the user's home would let any process running as
+    # that user widen what the command decides. The command alone decides.
     principalsFilePath = mkOption {
       type = types.str;
-      default = "%h/.ssh/authorized_principals";
-      description = "AuthorizedPrincipalsFile path.";
+      default = "none";
+      description = "AuthorizedPrincipalsFile path; `none` leaves AuthorizedPrincipalsCommand alone.";
     };
 
     # Principals command
