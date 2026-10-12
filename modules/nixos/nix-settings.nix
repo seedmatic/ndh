@@ -14,10 +14,15 @@ in
       "root"
       "builder" # remote builder user (nerd-nixos VM)
     ];
+    # Builds run as the nixbldN users. NixOS emits no build-users-group here, so
+    # Nix fell back to a default that depends on the daemon's uid; stated, it is
+    # a reviewed fact. Nix takes the group's MEMBERS as build users: only the
+    # nixbldN accounts may be members (see the builder user in users.nix).
+    build-users-group = "nixbld";
+    # The sandbox stays off for now: rke2lab's Maven reactor build needs the
+    # network and the host's Maven repository. Until it is made pure, a build
+    # reaches the network and what nixbld may read, never what root may.
     sandbox = false;
-    # Sandbox disabled for this profile set; do not force host-local
-    # device paths (e.g. /dev/kvm) into evaluated settings, as that
-    # breaks evaluation on non-KVM bringup/runtime hosts.
   };
 
   nix.extraOptions = ''

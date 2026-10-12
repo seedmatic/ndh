@@ -36,7 +36,14 @@ in
         hooks = [
           (entry "session-start-reminder.sh" 5 "Checking checkpoint draft status...")
           (entry "memory-guard.sh" 5 "Verifying memory wiring...")
+          (entry "live-page.sh" 5 "Registering with the integration...")
         ];
+      }
+    ];
+    PreToolUse = [
+      {
+        matcher = "Bash";
+        hooks = [ (entry "leak-guard.sh" 5 "Checking for a working-tree evaluation...") ];
       }
     ];
     PreCompact = [

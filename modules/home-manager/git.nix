@@ -51,7 +51,9 @@ in
     signing = {
       key = "${signingKeysDir}/github-signing.pub";
       format = "ssh";
-      signByDefault = true;
+      # Signing goes through the agent, which only the seats (the Macs) hold: the agent is never forwarded, so a
+      # Linux guest commits unsigned and the work is signed and pushed from the seat.
+      signByDefault = pkgs.stdenv.isDarwin;
     };
 
     settings = {

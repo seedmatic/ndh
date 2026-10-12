@@ -36,13 +36,12 @@ in
   users.groups.${cfgUserName} = lib.optionalAttrs (cfgUser.gid != null) { gid = cfgUser.gid; };
 
   # builder user: accepts the linux-builder key from the Darwin host for remote builds.
+  # Never in nixbld: Nix takes that group's members as build users, so it would build
+  # as this login user and kill its processes (its ssh session) before each build.
   users.users.builder = lib.mkIf runtimeMode {
     isNormalUser = true;
     group = "builder";
-    extraGroups = [
-      "wheel"
-      "nixbld"
-    ];
+    extraGroups = [ "wheel" ];
     description = "Nix remote builder";
     openssh.authorizedKeys.keys = config.ndh.keysYaml.authorizedLinesFor [ "linux-builder" ];
   };

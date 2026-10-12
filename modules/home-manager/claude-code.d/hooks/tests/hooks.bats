@@ -195,3 +195,85 @@ commits() { git -C "$MEM" rev-list --count HEAD; }
   [[ "$(git -C "$MEM" show --name-only --format= HEAD)" == "rke2lab/fact.md" ]]
   [[ "$(git -C "$MEM" status --porcelain)" == "?? nnh/" ]]
 }
+
+# --- live-page ---
+start() { # $1 = source, $2 = the session's current title (empty: never renamed)
+  jq -cn --arg s "$1" --arg t "${2:-}" \
+    '{session_id: "abcd1234-0000", source: $s, cwd: "/w", transcript_path: "/t.jsonl"} + (if $t == "" then {} else {session_title: $t} end)' |
+    CLAUDE_SCRATCHPAD="$T" bash "$H/live-page.sh"
+}
+
+live() {
+  mkdir -p "$T/integration-sow"
+  printf '# Intégration — LIVE\n> tenu par develop-ab\n## 0. En figures\nFIGBODY\n## 1. Ce qui t%sattend\nT1\n## 2. En cours\nnoise\n## 4. Arbre des sessions\ntree\n' "'" >"$T/integration-sow/LIVE.md"
+}
+
+@test "live: every start is registered, whatever its source" {
+  live
+  start startup >/dev/null
+  start compact >/dev/null
+  [ "$(wc -l <"$T/integration-sow/sessions.jsonl")" -eq 2 ]
+  [[ "$(jq -r .source "$T/integration-sow/sessions.jsonl" | tr '\n' ' ')" == "startup compact " ]]
+}
+
+@test "live: a fresh start receives the header, section 1 and the tree, nothing else" {
+  live
+  run start startup
+  c="$(printf '%s' "$output" | jq -r .hookSpecificOutput.additionalContext)"
+  [[ "$c" == *"tenu par develop-ab"* && "$c" == *T1* && "$c" == *tree* ]]
+  [[ "$c" != *FIGBODY* && "$c" != *noise* ]]
+  [[ "$c" == *"conversation is abcd1234-0000"* ]]
+}
+
+@test "live: a compaction is registered but injects nothing" {
+  live
+  run start compact
+  [ -z "$output" ]
+}
+
+@test "live: a missing page is said, and the start is still registered" {
+  run start startup
+  [[ "$(printf '%s' "$output" | jq -r .hookSpecificOutput.additionalContext)" == *"does not exist"* ]]
+  [ -f "$T/integration-sow/sessions.jsonl" ]
+}
+
+chantier() { # a chantier page that claims the test conversation
+  mkdir -p "$T/chantierx"
+  printf '# Chantier X — LIVE\n> conversation: abcd1234-0000\n> title: chantier-x\n## 1. Etat\nok\n' >"$T/chantierx/LIVE.md"
+}
+
+@test "live: a resume gets its chantier's title back, and a short reminder" {
+  live
+  chantier
+  run start resume
+  [[ "$(printf '%s' "$output" | jq -r .hookSpecificOutput.sessionTitle)" == chantier-x ]]
+  [[ "$(printf '%s' "$output" | jq -r .hookSpecificOutput.additionalContext)" == *"You are the chantierx session"* ]]
+  [[ "$(tail -1 "$T/integration-sow/sessions.jsonl" | jq -r '.chantier + "/" + .title')" == chantierx/chantier-x ]]
+}
+
+@test "live: a title the operator set wins over the declared one" {
+  live
+  chantier
+  run start resume operator-choice
+  [[ "$(printf '%s' "$output" | jq -r '.hookSpecificOutput.sessionTitle // "none"')" == none ]]
+  [[ "$(tail -1 "$T/integration-sow/sessions.jsonl" | jq -r .title)" == operator-choice ]]
+}
+
+@test "live: a session no page claims is told how to declare itself" {
+  live
+  run start resume
+  [[ "$(printf '%s' "$output" | jq -r .hookSpecificOutput.additionalContext)" == *"> conversation: abcd1234-0000"* ]]
+  [[ "$(printf '%s' "$output" | jq -r '.hookSpecificOutput.sessionTitle // "none"')" == none ]]
+}
+
+# --- leak-guard ---
+# One case per line of leak-guard-cases.tsv: the verdict, a tab, the command as a session would type it.
+@test "leak-guard: every case gets its verdict" {
+  local want cmd got bad=""
+  while IFS=$'\t' read -r want cmd; do
+    got="$(jq -cn --arg c "$cmd" '{tool_input: {command: $c}}' | bash "$H/leak-guard.sh" | jq -r '.hookSpecificOutput.permissionDecision // "allow"')"
+    got="${got:-allow}"
+    [[ "$got" == "${want,,}" ]] || bad+="  want $want, got $got: $cmd"$'\n'
+  done <"$BATS_TEST_DIRNAME/leak-guard-cases.tsv"
+  [[ -z "$bad" ]] || { printf '%s' "$bad"; false; }
+}

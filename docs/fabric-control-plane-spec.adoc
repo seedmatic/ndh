@@ -1127,8 +1127,8 @@ Same machine as a subnet router: the FAQ's unsupported case. Container, always.
 
 == Related Documentation
 
-* link:ssh-keys-architecture.adoc[SSH Keys] — the keys that remain: the emergency door, the bridge,
-  and the service keys.
+* link:ssh-keys-architecture.adoc[Roles × Keys] — the keys that remain, their roles, holders,
+  authorities and lifecycles.
 * link:ssh-keys-renewal-spec.adoc[SSH Keys Renewal Model] — how those static keys are rotated and
   revoked.
 * link:network-topology-c4.adoc[Baremetal Instance Segments] — the segments, the `/30` links and the
