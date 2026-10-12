@@ -260,17 +260,19 @@ in
     # off in the bootstrap phase (this embedded builder is active), on in steady
     # (offload to <host>-nixos). See docs/host-builder-phases.adoc.
 
-    # SSH config for manual access to bioskop-nixos (works on LAN and tailscale/headscale)
+    # SSH config for manual access to bioskop-nixos (works on LAN and tailscale/headscale).
+    # System-wide, so root reads it too: the host is verified by the authority, and no
+    # session is multiplexed — a socket in world-writable /var/tmp, stale or planted, would
+    # be reused without verifying the host again.
     environment.etc."ssh/ssh_config.d/70-bioskop-nixos.conf" = {
       text = ''
         Host bioskop-nixos${catalog.netplan.lan.domain} bioskop-nixos
           User nxmatic
-          StrictHostKeyChecking accept-new
+          StrictHostKeyChecking yes
           ServerAliveInterval 30
           ServerAliveCountMax 3
-          ControlMaster auto
-          ControlPath /var/tmp/ssh-control-%C
-          ControlPersist 10m
+          ControlMaster no
+          ControlPath none
           Compression yes
           TCPKeepAlive yes
       '';

@@ -189,13 +189,12 @@ in
         # are stabilized via your OpenSSH CA instead of Tailscale SSH rotation.
         ###############################################################################
 
-        # NixOS guest hosts are ephemeral and can rotate host keys; keep them
-        # out of persistent known_hosts checks to avoid rebuild interruption.
+        # NixOS guests rotate their host keys on a rebuild, and each presents a
+        # certificate from the host authority, which KnownHostsCommand and
+        # /etc/ssh/ssh_known_hosts trust: a rotated key still verifies, so the
+        # guests are checked strictly instead of being accepted blindly.
         Host *-nixos *-nixos.local
-          StrictHostKeyChecking no
-          UserKnownHostsFile /dev/null
-          GlobalKnownHostsFile /dev/null
-          CheckHostIP no
+          StrictHostKeyChecking yes
 
         Host *
           StrictHostKeyChecking accept-new

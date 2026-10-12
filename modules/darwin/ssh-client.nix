@@ -249,17 +249,13 @@ in
       # key is accepted in the final configuration.  Use that key as
       # the guest-stanza default.
       defaultGuestIdentity = hostIdentityFile;
-      guestHostKeySafetyConfig = ''
-        UserKnownHostsFile /dev/null
-        GlobalKnownHostsFile /dev/null
-        StrictHostKeyChecking no
-        CheckHostIP no
-      '';
-      ownedDomainHostKeyBypassConfig = ''
-        UserKnownHostsFile /dev/null
-        GlobalKnownHostsFile /dev/null
-        StrictHostKeyChecking no
-        CheckHostIP no
+      # Hosts we own present a certificate from the host authority, which
+      # /etc/ssh/ssh_known_hosts trusts for every user, root included (openssh-policy.nix).
+      # So these names are verified by the authority and nothing else: no blind accept,
+      # no pin taken on first use. These stanzas used to send both known-hosts files to
+      # /dev/null, and root — the nix-daemon to its builders — then verified no host at all.
+      verifiedByAuthorityConfig = ''
+        StrictHostKeyChecking yes
       '';
       guestIdentity =
         if cfg.guest.identityFile != null then cfg.guest.identityFile else defaultGuestIdentity;
@@ -308,7 +304,7 @@ in
             identitiesOnly = cfg.guest.identitiesOnly;
             bypassAgent = cfg.guest.bypassAgent;
             extraConfig =
-              guestHostKeySafetyConfig + optionalString (cfg.guest.extraConfig != null) cfg.guest.extraConfig;
+              verifiedByAuthorityConfig + optionalString (cfg.guest.extraConfig != null) cfg.guest.extraConfig;
           }
         else
           "";
@@ -321,7 +317,7 @@ in
         identityFile = hostIdentityFile;
         identitiesOnly = true;
         bypassAgent = false;
-        extraConfig = ownedDomainHostKeyBypassConfig;
+        extraConfig = verifiedByAuthorityConfig;
       };
 
       # Retired — see comment at vzHost* near line 280.
