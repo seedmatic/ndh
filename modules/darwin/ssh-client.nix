@@ -36,17 +36,19 @@ in
 
     baseConfig = mkOption {
       type = types.lines;
+      # ssh keeps the FIRST value it obtains for each option, so the specific stanzas (the drop-ins)
+      # come first and the `Host *` defaults last. With the defaults first, `StrictHostKeyChecking
+      # accept-new` shadowed every stanza's `yes`, and root's builder channel fell back to trust on
+      # first use. No ControlMaster here: without a ControlPath it multiplexes nothing.
       default = ''
+        Include /etc/ssh/ssh_config.d/*.conf
+
         Host *
           AddressFamily inet
           ServerAliveInterval 30
           ServerAliveCountMax 3
-          ControlMaster auto
-          ControlPersist 5m
           PreferredAuthentications publickey,keyboard-interactive
           StrictHostKeyChecking accept-new
-        Include ssh_config.d/*.conf
-        Include /etc/ssh/ssh_config.d/*.conf
       '';
       description = "Raw /etc/ssh/ssh_config base contents (may contain Include lines).";
     };
