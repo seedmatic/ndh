@@ -60,6 +60,8 @@ unset BASH_XTRACEFD 2>/dev/null || true
 # shellcheck disable=SC1091
 source @nixBashTrampoline@
 
+# keys.yaml relative to the repository root: the real file, and the copy whose path picks its sops rule.
+readonly keysRel="modules/home-manager/ssh.d/keys.yaml"
 declare -g keysYaml tmpdir decrypted today apply olderThanDays replace reason
 declare -g createName createComment createType
 declare -ga selectKeys=() selectAuthorities=() plan=() refusals=()
@@ -319,9 +321,16 @@ renew::one() { # <section> <name> <keyType>
 		"$decrypted"
 }
 
-# The recipients of a sops file, sorted: who can read it.
+# Who can read a sops file, every key provider included, sorted.
 recipients::of() { # <sops file>
-	yq eval -r '[.sops.age[].recipient] | sort | join(",")' "$1"
+	yq eval -r '[
+		((.sops.age // [])[] | "age:" + .recipient),
+		((.sops.pgp // [])[] | "pgp:" + .fp),
+		((.sops.kms // [])[] | "kms:" + .arn),
+		((.sops.gcp_kms // [])[] | "gcp_kms:" + .resource_id),
+		((.sops.azure_kv // [])[] | "azure_kv:" + .vault_url + "/" + .name),
+		((.sops.hc_vault // [])[] | "hc_vault:" + .vault_address + "/" + .engine_path + "/" + .key_name)
+	] | sort | join(",")' "$1"
 }
 
 # A tool that rewrites key material never changes who can read it. The re-encryption follows
@@ -335,7 +344,7 @@ recipients::unchanged() { # <committed file> <re-encrypted file>
 	after="$(recipients::of "$2")"
 	[[ "$before" == "$after" ]] && return 0
 	log::error "keys.yaml's recipients would change: +[$(comm -13 <(tr ',' '\n' <<<"$before") <(tr ',' '\n' <<<"$after") | paste -sd, -)] -[$(comm -23 <(tr ',' '\n' <<<"$before") <(tr ',' '\n' <<<"$after") | paste -sd, -)]"
-	log::error "keys.yaml left untouched — align its recipients with its creation rule first: sops updatekeys modules/home-manager/ssh.d/keys.yaml"
+	log::error "keys.yaml left untouched — align its recipients with its creation rule first: sops updatekeys ${keysRel}"
 	return 1
 }
 
@@ -391,7 +400,7 @@ renew::apply() {
 	done
 
 	reencrypted="${tmpdir}/keys.yaml.reenc"
-	(cd "${tmpdir}/repo" && sops --input-type yaml --output-type yaml encrypt modules/home-manager/ssh.d/keys.yaml) >"$reencrypted"
+	(cd "${tmpdir}/repo" && sops --input-type yaml --output-type yaml encrypt "$keysRel") >"$reencrypted"
 	if [[ ! -s "$reencrypted" ]]; then
 		log::error "sops encrypt produced an empty file; keys.yaml left untouched"
 		return 1
@@ -576,7 +585,7 @@ main() {
 
 	# Packaged as a flake app, so $0 is a /nix/store path — resolve the repo from
 	# the invocation cwd instead (run from the ndh repo root).
-	keysYaml="$(git rev-parse --show-toplevel)/modules/home-manager/ssh.d/keys.yaml"
+	keysYaml="$(git rev-parse --show-toplevel)/${keysRel}"
 	if [[ ! -r "$keysYaml" ]]; then
 		log::error "keys.yaml not readable at ${keysYaml} (run from the ndh repo root)"
 		return 1
@@ -589,9 +598,9 @@ main() {
 	# The decrypted copy sits at keys.yaml's OWN relative path, beside a copy of the repository's
 	# .sops.yaml: sops picks the creation rule by the path it encrypts (--filename-override does not
 	# change that, measured with 3.13.3), so the re-encryption gets exactly keys.yaml's rule.
-	install -d -m 0700 "${tmpdir}/repo/modules/home-manager/ssh.d"
+	install -d -m 0700 "${tmpdir}/repo/$(dirname "$keysRel")"
 	cp "$(git rev-parse --show-toplevel)/.sops.yaml" "${tmpdir}/repo/.sops.yaml"
-	decrypted="${tmpdir}/repo/modules/home-manager/ssh.d/keys.yaml"
+	decrypted="${tmpdir}/repo/${keysRel}"
 	sops --input-type yaml --output-type yaml -d "$keysYaml" >"$decrypted"
 	if [[ ! -s "$decrypted" ]]; then
 		log::error "sops -d produced an empty file (check SOPS_AGE_KEY_FILE / sops.age.keyFile)"
