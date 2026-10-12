@@ -319,6 +319,26 @@ renew::one() { # <section> <name> <keyType>
 		"$decrypted"
 }
 
+# The recipients of a sops file, sorted: who can read it.
+recipients::of() { # <sops file>
+	yq eval -r '[.sops.age[].recipient] | sort | join(",")' "$1"
+}
+
+# A tool that rewrites key material never changes who can read it. The re-encryption follows
+# keys.yaml's own creation rule (the decrypted copy sits at its relative path — a temp path once
+# matched the catch-all and dropped a recipient), and a recipient set that would still change —
+# the rule and the committed envelope disagree — is refused: that is `sops updatekeys`, an
+# explicit gesture of its own.
+recipients::unchanged() { # <committed file> <re-encrypted file>
+	local before after
+	before="$(recipients::of "$1")"
+	after="$(recipients::of "$2")"
+	[[ "$before" == "$after" ]] && return 0
+	log::error "keys.yaml's recipients would change: +[$(comm -13 <(tr ',' '\n' <<<"$before") <(tr ',' '\n' <<<"$after") | paste -sd, -)] -[$(comm -23 <(tr ',' '\n' <<<"$before") <(tr ',' '\n' <<<"$after") | paste -sd, -)]"
+	log::error "keys.yaml left untouched — align its recipients with its creation rule first: sops updatekeys modules/home-manager/ssh.d/keys.yaml"
+	return 1
+}
+
 # Declare the new entry's public fields; renew::one then generates its first slot.
 create::declare() {
 	local item
@@ -371,11 +391,12 @@ renew::apply() {
 	done
 
 	reencrypted="${tmpdir}/keys.yaml.reenc"
-	sops --input-type yaml --output-type yaml encrypt "$decrypted" >"$reencrypted"
+	(cd "${tmpdir}/repo" && sops --input-type yaml --output-type yaml encrypt modules/home-manager/ssh.d/keys.yaml) >"$reencrypted"
 	if [[ ! -s "$reencrypted" ]]; then
 		log::error "sops encrypt produced an empty file; keys.yaml left untouched"
 		return 1
 	fi
+	recipients::unchanged "$keysYaml" "$reencrypted" || return 1
 
 	for line in "${plan[@]}"; do
 		IFS=$'\t' read -r section name _ _ <<<"$line"
@@ -565,7 +586,12 @@ main() {
 	chmod 700 "$tmpdir"
 	trap 'rm -rf "$tmpdir"' EXIT
 
-	decrypted="${tmpdir}/keys.yaml"
+	# The decrypted copy sits at keys.yaml's OWN relative path, beside a copy of the repository's
+	# .sops.yaml: sops picks the creation rule by the path it encrypts (--filename-override does not
+	# change that, measured with 3.13.3), so the re-encryption gets exactly keys.yaml's rule.
+	install -d -m 0700 "${tmpdir}/repo/modules/home-manager/ssh.d"
+	cp "$(git rev-parse --show-toplevel)/.sops.yaml" "${tmpdir}/repo/.sops.yaml"
+	decrypted="${tmpdir}/repo/modules/home-manager/ssh.d/keys.yaml"
 	sops --input-type yaml --output-type yaml -d "$keysYaml" >"$decrypted"
 	if [[ ! -s "$decrypted" ]]; then
 		log::error "sops -d produced an empty file (check SOPS_AGE_KEY_FILE / sops.age.keyFile)"

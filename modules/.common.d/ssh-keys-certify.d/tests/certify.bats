@@ -51,6 +51,27 @@ bake() { # <host names>
     "$BATS_TEST_DIRNAME/../ssh-keys-certify.sh" >"$BATS_TEST_TMPDIR/ssh-keys-certify"
 }
 
+# keys.yaml's own rule names TWO recipients, the catch-all after it only one: the shape that let a
+# temp-path encryption drop a recipient. `$1` = sync|nosync: re-key the fixture to its rule or not.
+narrow_rule() {
+  age-keygen -o "$BATS_TEST_TMPDIR/age2.txt" 2>/dev/null
+  local first second
+  first="$(age-keygen -y "$SOPS_AGE_KEY_FILE")"
+  second="$(age-keygen -y "$BATS_TEST_TMPDIR/age2.txt")"
+  cat >"$repo/.sops.yaml" <<EOF
+creation_rules:
+  - path_regex: '(^|/)modules/home-manager/ssh\.d/keys\.yaml$'
+    encrypted_comment_regex: 'sops:encrypted'
+    age: $first,$second
+  - path_regex: '.*'
+    encrypted_comment_regex: 'sops:encrypted'
+    age: $first
+EOF
+  if [ "$1" = sync ]; then (cd "$repo" && sops updatekeys -y modules/home-manager/ssh.d/keys.yaml >/dev/null 2>&1); fi
+}
+
+recipients() { yq eval -r '.sops.age | length' "$keys"; }
+
 certify() { (cd "$repo" && bash -euo pipefail "$BATS_TEST_TMPDIR/ssh-keys-certify" "$@"); }
 
 cert() { # <usage> → describe the recorded certificate
@@ -119,4 +140,21 @@ cert() { # <usage> → describe the recorded certificate
   run certify --apply
   [ "$status" -eq 1 ]
   [[ "$output" == *"no host names were baked"* ]]
+}
+
+@test "--apply keeps keys.yaml's own rule's recipients, not the catch-all's" {
+  narrow_rule sync
+  [ "$(recipients)" = 2 ]
+  run certify --apply
+  [ "$status" -eq 0 ]
+  [ "$(recipients)" = 2 ]
+}
+
+@test "a run that would change keys.yaml's recipients is refused, and changes nothing" {
+  narrow_rule nosync
+  cp "$keys" before
+  run certify --apply
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"recipients would change"*"sops updatekeys"* ]]
+  cmp "$keys" before
 }

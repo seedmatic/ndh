@@ -79,23 +79,38 @@ cert::principals_for() { # <key> <usage> → comma-separated, sorted
 	fi | sort -u | paste -sd, -
 }
 
-# What a recorded certificate says, normalised: type, key, CA, identity, validity, principals.
+# What a recorded certificate says, normalised: type, key, CA, identity, serial, validity, principals,
+# critical options and extensions (each list sorted, "(none)" when empty).
 cert::describe() { # <cert file>
 	ssh-keygen -L -f "$1" | awk '
-		/^ *Type:/ { type = ($0 ~ /host certificate/) ? "host" : "user" }
-		/^ *Public key:/ { key = $NF }
-		/^ *Signing CA:/ { ca = $(NF - 2) }
-		/^ *Key ID:/ { sub(/^ *Key ID: /, ""); id = $0 }
-		/^ *Valid:/ { sub(/^ *Valid: /, ""); valid = $0 }
-		/^ *Principals:/ { p = 1; next }
-		/^ *Critical Options:/ { p = 0 }
-		p { gsub(/^ +/, ""); if ($0 != "(none)") names = names (names ? "\n" : "") $0 }
-		END {
-			n = split(names, arr, "\n"); sorted = ""
+		function flush(name) { if (sec == name) { n = split(buf, arr, "\n"); out = ""
 			for (i = 1; i <= n; i++) for (j = i + 1; j <= n; j++) if (arr[j] < arr[i]) { t = arr[i]; arr[i] = arr[j]; arr[j] = t }
-			for (i = 1; i <= n; i++) sorted = sorted (i > 1 ? "," : "") arr[i]
-			print type "|" key "|" ca "|" id "|" valid "|" sorted
-		}'
+			for (i = 1; i <= n; i++) if (arr[i] != "") out = out (out ? "," : "") arr[i]
+			val[name] = out ? out : "(none)"; buf = "" } }
+		function section(name, rest) { flush(sec); sec = name; buf = ""; if (rest != "" && rest != "(none)") buf = rest }
+		/^ *Type:/ { type = ($0 ~ /host certificate/) ? "host" : "user"; next }
+		/^ *Public key:/ { key = $NF; next }
+		/^ *Signing CA:/ { ca = $(NF - 2); next }
+		/^ *Key ID:/ { sub(/^ *Key ID: /, ""); id = $0; next }
+		/^ *Serial:/ { serial = $2; next }
+		/^ *Valid:/ { sub(/^ *Valid: /, ""); valid = $0; next }
+		/^ *Principals:/ { r = $0; sub(/^ *Principals: */, "", r); section("principals", r); next }
+		/^ *Critical Options:/ { r = $0; sub(/^ *Critical Options: */, "", r); section("critical", r); next }
+		/^ *Extensions:/ { r = $0; sub(/^ *Extensions: */, "", r); section("extensions", r); next }
+		sec != "" { line = $0; gsub(/^ +| +$/, "", line); if (line != "") buf = buf (buf ? "\n" : "") line }
+		END { flush(sec)
+			print type "|" key "|" ca "|" id "|" serial "|" valid "|" val["principals"] "|" val["critical"] "|" val["extensions"] }'
+}
+
+# ssh-keygen's defaults, which a certificate signed here carries: no critical option, and for a user
+# certificate the permit-* extensions. A recorded certificate with anything else (a force-command, a
+# source-address) is stale, and re-signed.
+cert::default_extensions() { # <usage>
+	if [[ "$1" == ssh-host ]]; then
+		echo "(none)"
+	else
+		echo "permit-X11-forwarding,permit-agent-forwarding,permit-port-forwarding,permit-pty,permit-user-rc" | tr ',' '\n' | sort | paste -sd, -
+	fi
 }
 
 # The description a certificate signed now would have, to compare with the recorded one.
@@ -104,7 +119,8 @@ cert::expected() { # <key> <slot> <authority> <authority slot> <usage>
 	type="$([[ "$5" == ssh-host ]] && echo host || echo user)"
 	keyFp="$(printf '%s %s\n' "$(yq::get ".keys.\"$1\".type")" "$(yq::get ".keys.\"$1\".slots.\"$2\".public")" | ssh-keygen -lf - | awk '{print $2}')"
 	caFp="$(printf '%s %s\n' "$(yq::get ".authorities.\"$3\".type // \"ssh-ed25519\"")" "$(yq::get ".authorities.\"$3\".slots.\"$4\".public")" | ssh-keygen -lf - | awk '{print $2}')"
-	printf '%s|%s|%s|"%s"|forever|%s\n' "$type" "$keyFp" "$caFp" "$(cert::identity "$1" "$5")" "$(cert::principals_for "$1" "$5")"
+	printf '%s|%s|%s|"%s"|0|forever|%s|(none)|%s\n' "$type" "$keyFp" "$caFp" "$(cert::identity "$1" "$5")" \
+		"$(cert::principals_for "$1" "$5")" "$(cert::default_extensions "$5")"
 }
 
 plan::build() {
@@ -152,11 +168,34 @@ plan::show() {
 	printf '\n'
 }
 
+# The recipients of a sops file, sorted: who can read it.
+recipients::of() { # <sops file>
+	yq eval -r '[.sops.age[].recipient] | sort | join(",")' "$1"
+}
+
+# A tool that rewrites key material never changes who can read it. The re-encryption follows
+# keys.yaml's own creation rule (the decrypted copy sits at its relative path — a temp path once
+# matched the catch-all and dropped a recipient), and a recipient set that would still change —
+# the rule and the committed envelope disagree — is refused: that is `sops updatekeys`, an
+# explicit gesture of its own.
+recipients::unchanged() { # <committed file> <re-encrypted file>
+	local before after
+	before="$(recipients::of "$1")"
+	after="$(recipients::of "$2")"
+	[[ "$before" == "$after" ]] && return 0
+	log::error "keys.yaml's recipients would change: +[$(comm -13 <(tr ',' '\n' <<<"$before") <(tr ',' '\n' <<<"$after") | paste -sd, -)] -[$(comm -23 <(tr ',' '\n' <<<"$before") <(tr ',' '\n' <<<"$after") | paste -sd, -)]"
+	log::error "keys.yaml left untouched — align its recipients with its creation rule first: sops updatekeys modules/home-manager/ssh.d/keys.yaml"
+	return 1
+}
+
 certify::one() { # <key> <slot> <authority> <authority slot> <usage>
 	local key="$1" slot="$2" authority="$3" authSlot="$4" usage="$5"
 	local authFile="${tmpdir}/authority-${authority}@${authSlot}"
 	if [[ ! -s "$authFile" ]]; then
-		yq::get ".authorities.\"${authority}\".slots.\"${authSlot}\".private" >"$authFile"
+		(
+			umask 077
+			yq::get ".authorities.\"${authority}\".slots.\"${authSlot}\".private" >"$authFile"
+		)
 		chmod 400 "$authFile"
 	fi
 	local stem="${tmpdir}/${key}@${slot}-${usage}"
@@ -177,11 +216,12 @@ certify::apply() {
 		certify::one "$key" "$slot" "$authority" "$authSlot" "$usage"
 	done
 	reencrypted="${tmpdir}/keys.yaml.reenc"
-	sops --input-type yaml --output-type yaml encrypt "$decrypted" >"$reencrypted"
+	(cd "${tmpdir}/repo" && sops --input-type yaml --output-type yaml encrypt modules/home-manager/ssh.d/keys.yaml) >"$reencrypted"
 	[[ -s "$reencrypted" ]] || {
 		log::error "sops encrypt produced an empty file; keys.yaml left untouched"
 		return 1
 	}
+	recipients::unchanged "$keysYaml" "$reencrypted" || return 1
 	# Every private, of every key and authority, must still be ciphertext: a certificate is public
 	# and travels in clear, nothing else may.
 	if [[ "$(yq eval '[.keys[].slots[].private, .authorities[].slots[].private] | map(select(. != null)) | all_c(test("^ENC\["))' "$reencrypted")" != true ]]; then
@@ -227,7 +267,12 @@ main() {
 	tmpdir="$(mktemp -d)"
 	chmod 700 "$tmpdir"
 	trap 'rm -rf "$tmpdir"' EXIT
-	decrypted="${tmpdir}/keys.yaml"
+	# The decrypted copy sits at keys.yaml's OWN relative path, beside a copy of the repository's
+	# .sops.yaml: sops picks the creation rule by the path it encrypts (--filename-override does not
+	# change that, measured with 3.13.3), so the re-encryption gets exactly keys.yaml's rule.
+	install -d -m 0700 "${tmpdir}/repo/modules/home-manager/ssh.d"
+	cp "$(git rev-parse --show-toplevel)/.sops.yaml" "${tmpdir}/repo/.sops.yaml"
+	decrypted="${tmpdir}/repo/modules/home-manager/ssh.d/keys.yaml"
 	sops --input-type yaml --output-type yaml -d "$keysYaml" >"$decrypted"
 	[[ -s "$decrypted" ]] || {
 		log::error "sops -d produced an empty file (check SOPS_AGE_KEY_FILE / sops.age.keyFile)"
