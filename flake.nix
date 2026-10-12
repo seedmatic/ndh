@@ -1136,6 +1136,12 @@
               } == [ ]
             ) "a compromised retirement was held by the gate";
             pkgs.runCommand "ssh-keys-trust" { } "touch $out";
+          # Built for aarch64-linux (the builder runs it): the check runs a real sshd, and on darwin
+          # sshd's preauth child cannot enter its own seatbelt sandbox inside the nix build sandbox
+          # (sandbox_init: Operation not permitted).
+          openssh-revoked-host-keys = import ./modules/.common.d/openssh-policy.d/tests/package.nix {
+            pkgs = pkgsForLinux;
+          };
         }
       );
 
