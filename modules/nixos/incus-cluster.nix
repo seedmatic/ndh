@@ -212,6 +212,30 @@ let
     '';
   };
 
+  # The daemon re-reads `cluster.https_address` on EVERY start, not only at `admin init`, and the same
+  # `net.LookupHost` gate applies: an unresolvable name is dropped with `Invalid configuration key:
+  # Couldn't resolve …` and the daemon comes up WITHOUT its cluster endpoint — the DB still says
+  # clustered, the API answers `Server is not clustered` on every member, and nothing retries.
+  # Measured on bioskop 2026-10-11 21:10 and 2026-10-12 16:07, dnsmasq having started one second
+  # before incusd. Ordering alone does not close it (dnsmasq is `started` before it answers for the
+  # zone), so wait for the name itself — BOUNDED, failing loudly: the unit's `Restart=on-failure`
+  # retries, and a boot never hangs on a resolver that will not come.
+  resolveGateScript = pkgs.writeShellApplication {
+    name = "incus-cluster-address-gate";
+    runtimeInputs = [ pkgs.getent ];
+    text = ''
+      for _ in $(seq 60); do
+        if getent hosts ${memberAddress} >/dev/null; then
+          exit 0
+        fi
+        sleep 1
+      done
+      echo "incus-cluster-address-gate: FAULT — ${memberAddress} does not resolve after 60 s;" \
+           "incusd would drop cluster.https_address and start without its cluster endpoint" >&2
+      exit 1
+    '';
+  };
+
   # Reconcile + ASSERT the roles of every OTHER member: each must be `database-client`, i.e. out of
   # the raft.  The assertion is the point — a role that silently failed to apply is exactly the
   # regression this whole design exists to avoid, and it would only surface as an outage the next
@@ -287,6 +311,14 @@ lib.mkIf enabled {
   # Applies to EVERY member, not just the bootstrap one: nikopol is the member whose preseed would
   # now fight the cluster, since the join discarded its local pool in favour of the cluster's.
   systemd.services.incus-preseed.serviceConfig.ExecCondition = lib.getExe preseedGuardScript;
+
+  # Every member, the itinerant one too: each carries its own `nixos.<host>` cluster address, served
+  # by its own dnsmasq.
+  systemd.services.incus = {
+    after = [ "dnsmasq.service" ];
+    wants = [ "dnsmasq.service" ];
+    serviceConfig.ExecStartPre = [ (lib.getExe resolveGateScript) ];
+  };
 
   # Bootstrap runs on the sedentary member only, and the JOIN is deliberately NOT here.
   #
