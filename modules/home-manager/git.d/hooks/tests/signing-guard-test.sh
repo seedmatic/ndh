@@ -96,6 +96,40 @@ commit "$r" b --no-gpg-sign
 git -C "$r" tag -a -s -m t v1
 pushes "$r" origin v1 && bad "a tag that publishes an unsigned commit is refused" || ok "a tag that publishes an unsigned commit is refused"
 
+# A pushRemote never fetched: the remote has unsigned history but no tracking ref names it here.
+untracked() { # $1 = name; echoes a repo whose remote, pushed to by URL, holds 2 unsigned commits
+  local r="$T/$1"
+  git init -q --bare "$r.git"
+  git init -q "$r"
+  commit "$r" old1 --no-gpg-sign
+  commit "$r" old2 --no-gpg-sign
+  git -C "$r" push -q --no-verify "$r.git" HEAD:refs/heads/develop >/dev/null 2>&1
+  printf '%s' "$r"
+}
+
+r="$(untracked trackless)"
+[ -z "$(git -C "$r" for-each-ref refs/remotes)" ] || bad "setup: no tracking ref"
+commit "$r" new
+git -C "$r" push -q "$r.git" HEAD:refs/heads/develop >/dev/null 2>&1 &&
+  ok "a remote with no tracking ref judges only what it lacks" ||
+  bad "a remote with no tracking ref judges only what it lacks"
+
+r="$(untracked tracklessbad)"
+commit "$r" new --no-gpg-sign
+git -C "$r" push -q "$r.git" HEAD:refs/heads/develop >/dev/null 2>&1 &&
+  bad "a new unsigned commit is refused there too" || ok "a new unsigned commit is refused there too"
+
+r="$(fresh unknownremote)"
+commit "$r" a
+unknown="0123456789abcdef0123456789abcdef01234567"
+printf 'refs/heads/develop %s refs/heads/develop %s\n' "$(git -C "$r" rev-parse HEAD)" "$unknown" |
+  (cd "$r" && "$HOOKS_DIR/pre-push" origin "$r.git") >/dev/null 2>&1 &&
+  ok "a remote tip we do not hold is ignored, not fatal" || bad "a remote tip we do not hold is ignored, not fatal"
+commit "$r" b --no-gpg-sign
+printf 'refs/heads/develop %s refs/heads/develop %s\n' "$(git -C "$r" rev-parse HEAD)" "$unknown" |
+  (cd "$r" && "$HOOKS_DIR/pre-push" origin "$r.git") >/dev/null 2>&1 &&
+  bad "and the judgement stays strict" || ok "and the judgement stays strict"
+
 as_bot() { # $1 = repo, $2 = signing key; commits as the render bot
   printf 'b\n' >"$1/b" && git -C "$1" add b
   GIT_AUTHOR_NAME=bot GIT_AUTHOR_EMAIL=bot+render@example.invalid GIT_COMMITTER_NAME=bot \
