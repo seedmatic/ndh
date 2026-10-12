@@ -347,7 +347,24 @@ in
         '';
       }) (lib.filterAttrs (_: fwd: fwd.internalPort or 0 == 22) wanPortForwards);
 
-      allExtraStanzas = hostIdentityStanzas ++ vzHostStanzas ++ wanProxyStanzas ++ cfg.extraStanzas;
+      # Every fleet guest, not only this host's: root reaches the other bare-metal's guest too, and
+      # that name is verified by the authority like the rest. Strictness only — no identity is set.
+      fleetGuestStanzas = [
+        {
+          patterns = [
+            "*-nixos"
+            "*-nixos.local"
+          ];
+          user = null;
+          identityFile = null;
+          identitiesOnly = false;
+          bypassAgent = false;
+          extraConfig = verifiedByAuthorityConfig;
+        }
+      ];
+
+      allExtraStanzas =
+        hostIdentityStanzas ++ fleetGuestStanzas ++ vzHostStanzas ++ wanProxyStanzas ++ cfg.extraStanzas;
 
       extraText = concatStringsSep "\n" (map renderStanza allExtraStanzas);
     in
