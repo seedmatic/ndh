@@ -7,12 +7,17 @@
 # git falls back to, and runs no hook: ndh 5cbbdee0 reached GitHub that way. This is the last
 # local gate before the server.
 #
-# Only commits no remote-tracking ref already holds are read (`--not --remotes`), so history
-# that is already published — someone else's, or a subtree pulled from another remote — is never
-# re-judged. A deletion publishes nothing. For an SSH signature `%G?` is `G` as soon as the key is
-# in gpg.ssh.allowedSignersFile under ANY principal — git does not tie it to the committer — so the
-# committer must also match the principal the key was found under (`%GS`): the operator's key may
-# not sign as a bot, nor a bot key as the operator.
+# Only commits the remote does not already hold are read: those no remote-tracking ref holds
+# (`--not --remotes`) AND those not reachable from the remote's current tip for this ref, which the
+# pre-push receives on stdin. The second matters for a remote with no tracking ref at all — a
+# branch.<b>.pushRemote never fetched — where --remotes alone would judge the whole history. History
+# already published — someone else's, a subtree pulled from another remote — is never re-judged. A
+# deletion publishes nothing.
+#
+# For an SSH signature `%G?` is `G` as soon as the key is in gpg.ssh.allowedSignersFile under ANY
+# principal — git does not tie it to the committer — so the committer must also match the principal
+# the key was found under (`%GS`): the operator's key may not sign as a bot, nor a bot key as the
+# operator.
 
 zero_sha="0000000000000000000000000000000000000000"
 
@@ -26,11 +31,17 @@ allowed_principals() {
 }
 
 # Echo one line per commit of the push that fails the rule: "<sha> <reason>".
-# $1 = the local sha being pushed.
+# $1 = the local sha being pushed, $2 = the remote's current sha for that ref (zeros for a new ref).
 unsigned_commits_in() {
-  local local_sha="$1" principals revs sha mark author committer signer
+  local local_sha="$1" remote_sha="${2:-$zero_sha}" principals revs sha mark author committer signer
+  local -a published=(--remotes)
   [ "$local_sha" = "$zero_sha" ] && return 0
-  revs="$(git rev-list "$local_sha" --not --remotes)"
+  # The remote's tip counts as published only if we hold it: an unknown object would make rev-list
+  # fail, and without it the judgement stays as strict as --remotes alone.
+  if [ "$remote_sha" != "$zero_sha" ] && git cat-file -e "${remote_sha}^{commit}" 2>/dev/null; then
+    published+=("$remote_sha")
+  fi
+  revs="$(git rev-list "$local_sha" --not "${published[@]}")"
   # Nothing new: stop here — `git log` given no revision would read HEAD instead.
   [ -n "$revs" ] || return 0
   principals="$(allowed_principals)"
