@@ -230,6 +230,7 @@ in
 
     # SSH identity (keys.yaml access, nix-store cert-signed identity)
     ./keys-yaml.nix
+    ./trust-check.nix
     ./nix-store-identity.nix
 
     # NFS-remote identity: shared declaration of the `nfs-remote` group

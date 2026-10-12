@@ -67,6 +67,34 @@ h|Rule|Form
 IMPORTANT: The asymmetry between *presenting* one generation and *accepting* all of them is the
 whole mechanism. Collapsing `slots` to a single pair removes the overlap.
 
+=== An authority presents its OLDEST generation
+
+A key presents its newest generation; an authority presents — and signs with — its **oldest slot
+that is not marked `compromised`**. One rule, applied by everything that signs: the enrichment, the
+TLS root bootstrap, the incus cluster certificate renewal, and rke2lab's keystore reader.
+
+[cols="1,2"]
+|===
+h|Rule|Why
+
+|The oldest slot signs
+|Trust distributes slowly: a host learns a new authority only when it activates. A signature from
+the new generation would be refused by every host not yet activated. The old generation keeps
+signing through phase 1; phase 2 drops it, and the signature moves to a generation every trust
+store already carries.
+
+|Each slot carries its own `ca_crt`
+|The root a TLS leaf chains to is the root of the slot that signed it. Trust stores take the
+`ca_crt` and `public` of every slot that is not compromised, so both generations are trusted during
+the overlap.
+
+|A `compromised` slot never signs
+|Keeping a leaked private as the signer through a whole phase would mint certificates an attacker
+can match. Mark the slot `compromised: <reason>`: the other generation signs at once, the slot
+leaves every trust store (a root already installed is removed at activation), the breakage is
+accepted (the screen is the fallback), and the slot is revoked in the same renewal.
+|===
+
 === Why `YY-MM-DD` and not `YYYY-MM-DD`
 
 Measured, not aesthetic:
@@ -135,6 +163,44 @@ public is still known.
 Phase 2 is not optional, and the model makes that visible: while two slots exist, the assertion,
 the selector and the document all say a renewal is unfinished.
 
+=== Phase 2 of an AUTHORITY — the trust gate
+
+For an authority, phase 2 is also the moment the signature moves: once the old slot is gone, the new
+one signs. So the positive check is not "the new generation serves" but "every verifier already
+trusts it", and it is recorded.
+
+[cols="1,3"]
+|===
+h|Gesture|What it proves
+
+|`ndh-trust-check` on every host
+|Its live trust — the NixOS bundle, the darwin System keychain, `ssh_known_hosts`,
+`TrustedUserCAKeys` — carries every trusted slot of every authority, and no compromised one. Exit 0
+on each host, or phase 2 waits.
+
+|`trusted: <YY-MM-DD>` on the slot that will sign
+|Written in the same change that drops the old slot and writes its `revoked` entry. The record IS
+the attestation that `ndh-trust-check` passed on every host on that date: the evaluation checks that
+the record exists, it does not — and cannot — verify any host. It refuses an ordinary retirement
+without it (`keys-yaml.d/trust.nix`, `phase2Gaps`); a compromised retirement
+(`revoked.<id>.compromised: true`, written by `--replace`) is exempt, its breakage accepted.
+
+|On darwin, the System keychain trusts the new root
+|Setting or removing a trust setting needs an admin authorization only an interactive GUI session
+provides (no authorizationdb lift). Over ssh, `add-trusted-cert` imports the root WITHOUT trusting
+it and the `-t` removal is denied; the activation then exits 1 naming the gesture: run
+`sudo ndh-keychain-reconcile` from a Terminal in the GUI session — the same script, kept on the
+system PATH and exported as a flake package — until `ndh-trust-check` reports the keychain
+reconciled. Stale roots are removed unconditionally: a stale root is never legitimate, so keeping
+it protects no availability.
+
+|The cluster PKI re-sealed under the new generation
+|A cluster trusts what `ClusterSeal` minted from the old signing slot: its CA set, the cert-manager
+issuer, the admin credentials. No host check sees that. Before phase 2 of `mammoth-skate-tls`, purge
+every `ClusterPkiCoordinate` case from the cellar and re-grow, as rke2lab
+`docs/architecture/cluster-api/deterministic-cluster-access.adoc` describes — then drop the old slot.
+|===
+
 == Replacement — when the private is exposed
 
 The overlap protects the operator from a renewal that does not serve. When the retiring private is
@@ -143,8 +209,8 @@ until phase 2. A replacement is therefore *one* change:
 
 . a new slot, generated as in phase 1;
 . every existing slot deleted, and written to `revoked` with the reason;
-. an authority and its leaves together — the ordering rule protects an overlap that no longer
-  exists.
+. an authority and its leaves together, as in any renewal; the new authority generation is the only
+  one left, so it signs at once.
 
 [cols="1,3"]
 |===

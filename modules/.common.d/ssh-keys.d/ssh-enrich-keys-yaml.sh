@@ -1,5 +1,10 @@
 #!/usr/bin/env -S bash -euo pipefail
 # @codebase
+# ★ xtrace-guard — no trace, whatever the invocation (bash -x, an inherited SHELLOPTS=xtrace, a
+# caller's set -x): this script handles private keys, and a trace prints every value it expands.
+case $- in *x*) { set +x; } 2>/dev/null; echo "[xtrace-guard] xtrace disabled: this script handles private keys" >&2 ;; esac
+export -n SHELLOPTS 2>/dev/null || true # readonly in bash, so not unset; un-exported, it stops at this process
+unset BASH_XTRACEFD 2>/dev/null || true
 # SSH keys bundle enrichment — v2 schema.
 #
 # Reads a v2-shaped keys.yaml:
@@ -133,7 +138,9 @@ authority::newest_slot() { slot::newest authorities "$1"; }
 authority::assert_slots() { slot::assert authorities "$1"; }
 authority::field() { slot::get authorities "$1" "$2" "$3"; }
 
-# The OLDEST generation still published, which is the one that signs.
+# The OLDEST generation still published that is not marked `compromised` — the
+# one that signs, and the one an authority PRESENTS: its `ca_crt` is the root a
+# TLS leaf chains to, so signer and presented root are always the same slot.
 #
 # ★ This is the opposite of a key, and the asymmetry is the whole point. Trust
 # DISTRIBUTES slowly — a client learns a new authority only when it activates,
@@ -148,15 +155,23 @@ authority::field() { slot::get authorities "$1" "$2" "$3"; }
 # slot — is what switches the signature over, at a point where every host already
 # trusts the new one.
 #
-# It costs nothing in exposure when the old private is compromised, which is the
-# case that prompted this: the old authority stays ACCEPTED throughout phase 1
-# either way, so a forged certificate under it would pass either way. Phase 2 is
-# what revokes it.
+# The exception is a COMPROMISED slot. Keeping a leaked private as the signer
+# through a whole phase would mint fresh certificates an attacker can match, so a
+# slot that carries `compromised: <reason>` never signs: the signature moves to the
+# other generation at once, and the breakage that causes is accepted (the screen
+# is the fallback). The slot is revoked in the same renewal.
 authority::signing_slot() { # <name>
 	local -a slots
 	mapfile -t slots < <(authority::slots "$1")
 	((${#slots[@]} > 0)) || return 1
-	printf '%s\n' "${slots[0]}"
+	local slot
+	for slot in "${slots[@]}"; do
+		[[ -n "$(authority::field "$1" "$slot" compromised)" ]] && continue
+		printf '%s\n' "$slot"
+		return 0
+	done
+	log::error "authority $1: every slot is marked compromised — nothing may sign"
+	return 1
 }
 
 authority::signing() { # <name> <field>
@@ -358,8 +373,9 @@ sign::one_cert() {
 #
 # Preconditions (hard errors, not auto-provisioning):
 #   - The authority must advertise `tls-authority` in its `usage:` list.
-#   - The authority must carry `ca_crt:` (the self-signed root), which
-#     the operator mints once via bin/authority-bootstrap-tls-root.sh.
+#   - The authority's SIGNING slot must carry `ca_crt:` (that generation's
+#     self-signed root), minted by bin/authority-bootstrap-tls-root.sh. The
+#     leaf is signed by that slot's private, so it chains to that root.
 #     The enrichment step is not authorised to mint new trust roots.
 #   - `step-cli` must be on PATH (threaded in via
 #     modules/.common.d/system-packages.nix and the per-platform
@@ -389,9 +405,10 @@ sign::tls_server() {
 	# read.  Missing ca_crt means the authority hasn't been bootstrapped
 	# yet — hard error rather than auto-mint.
 	local caCrtPem
-	caCrtPem="$(yq::get ".authorities.\"${authorityName}\".ca_crt")"
+	authority::assert_slots "$authorityName" || return 1
+	caCrtPem="$(authority::signing "$authorityName" ca_crt)" || return 1
 	if [[ -z "$caCrtPem" || "$caCrtPem" == "null" ]]; then
-		log::error "authority ${authorityName} has no ca_crt (run bin/authority-bootstrap-tls-root.sh ${authorityName})"
+		log::error "authority ${authorityName}: its signing slot has no ca_crt (run bin/authority-bootstrap-tls-root.sh ${authorityName})"
 		return 1
 	fi
 	local caCrt="${tmpdir}/auth-${authorityName}-ca.crt"

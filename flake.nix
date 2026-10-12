@@ -134,6 +134,18 @@
       # `hostForms` lets the catalog derive each vz-host's kind instead of declaring it: the
       # vz-host is nix-managed exactly when the config named <host> is the bare metal itself.
       # Injected from here because this file owns the host tree; see catalog/default.nix.
+      # The ONE identity the incus cluster-cert closure reaches a member with: the OPERATOR
+      # principal's key on the seat, read from bioskop's configuration (sshPaths, the profile
+      # user) so it is never retyped. Step 9 moves it from rdp-host to the `operator` key here.
+      incusCertOperatorIdentity =
+        let
+          seat = self.darwinConfigurations.bioskop.config;
+        in
+        {
+          user = seat.profile.user.name;
+          keyFile = seat.sshPaths.privKeyFile;
+          certFile = seat.sshPaths.userCertPublic;
+        };
       catalogData = import ./catalog/default.nix {
         inherit cacheTrust networkBlueprint dataplan;
         hostForms = builtins.mapAttrs (_: entry: entry.hostProfile.form or null) hostCatalog;
@@ -1054,6 +1066,73 @@
           claude-code-managed-settings = managed.settings;
           claude-code-deny-hook = managed.tests;
           claude-code-session-hooks = sessionHooks.tests;
+          ssh-keys-bats = import ./modules/.common.d/ssh-keys.d/tests/package.nix {
+            inherit pkgs;
+            trampoline = mkNdhNixBashTrampoline { pkgsForSystem = pkgs; };
+          };
+          # keys.yaml against its schema, ENCRYPTED as committed: the schema accepts ENC[...]
+          # wherever a private may sit, so the sandbox needs no key and nothing is decrypted.
+          # Each broken fixture must be REFUSED — a schema that accepts them proves nothing.
+          ssh-keys-schema =
+            pkgs.runCommand "ssh-keys-schema" { nativeBuildInputs = [ pkgs.check-jsonschema ]; }
+              ''
+                schema=${./modules/home-manager/ssh.d/keys.schema.yaml}
+                check-jsonschema --schemafile "$schema" ${./modules/home-manager/ssh.d/keys.yaml}
+                for broken in ${./modules/home-manager/ssh.d/tests}/broken-*.yaml; do
+                  if check-jsonschema --schemafile "$schema" "$broken" >/dev/null 2>&1; then
+                    echo "the schema ACCEPTED $broken, which it must refuse" >&2
+                    exit 1
+                  fi
+                done
+                touch $out
+              '';
+          incus-cluster-cert-bats = import ./modules/.common.d/incus-cluster-cert.d/tests/package.nix {
+            inherit pkgs;
+          };
+          tls-authority-keychain-bats = import ./modules/darwin/tls-authority-keychain.d/tests/package.nix {
+            inherit pkgs;
+            trampoline = mkNdhNixBashTrampoline { pkgsForSystem = pkgs; };
+          };
+          # A two-slot authority whose old slot is compromised: ONE trusted slot, ONE to remove.
+          ssh-keys-trust =
+            let
+              trust = import ./modules/.common.d/keys-yaml.d/trust.nix { inherit (pkgs) lib; };
+              authorities.tls.slots = {
+                "26-05-29" = {
+                  ca_crt = "OLD";
+                  compromised = "published";
+                };
+                "26-10-04".ca_crt = "NEW";
+              };
+            in
+            assert pkgs.lib.assertMsg (
+              pkgs.lib.attrNames (trust.trustedSlots authorities).tls == [ "26-10-04" ]
+            ) "a compromised slot is still trusted";
+            assert pkgs.lib.assertMsg (
+              pkgs.lib.attrNames (trust.compromisedSlots authorities).tls == [ "26-05-29" ]
+            ) "a compromised slot is not listed for removal";
+            # The phase-2 gate: an ordinary retirement needs the slot that now signs to be trusted.
+            assert pkgs.lib.assertMsg (
+              trust.phase2Gaps { tls.slots."26-10-04".ca_crt = "NEW"; } { "tls@26-05-29".reason = "retired"; }
+              == [ "tls@26-05-29" ]
+            ) "an ordinary retirement passed the gate without `trusted`";
+            assert pkgs.lib.assertMsg (
+              trust.phase2Gaps {
+                tls.slots."26-10-04" = {
+                  ca_crt = "NEW";
+                  trusted = "26-10-12";
+                };
+              } { "tls@26-05-29".reason = "retired"; } == [ ]
+            ) "a retirement whose successor is trusted was refused";
+            assert pkgs.lib.assertMsg (
+              trust.phase2Gaps { tls.slots."26-10-04".ca_crt = "NEW"; } {
+                "tls@26-05-29" = {
+                  reason = "published";
+                  compromised = true;
+                };
+              } == [ ]
+            ) "a compromised retirement was held by the gate";
+            pkgs.runCommand "ssh-keys-trust" { } "touch $out";
         }
       );
 
@@ -1112,7 +1191,21 @@
           ndhNixBashTrampoline =
             if system == "aarch64-darwin" then ndhNixBashTrampolineDarwin else ndhNixBashTrampolineLinux;
         in
-        {
+        # The keychain reconcile, buildable ON ITS OWN by revision: a fix between two
+        # configurations ships as this closure, copied to the host and run by the operator
+        # (`sudo ndh-keychain-reconcile` from the GUI session) — the same script the darwin
+        # activation runs (modules/darwin/tls-authority-keychain.nix).
+        nixpkgs.lib.optionalAttrs (system == "aarch64-darwin") {
+          ndh-keychain-reconcile = self.darwinConfigurations.bioskop.config.ndh.tlsAuthorityKeychain.package;
+          # T14, by the same rule: one closure built by revision, run from the seat.
+          incus-cluster-cert-renew = import ./modules/.common.d/incus-cluster-cert.d/package.nix {
+            pkgs = systemPkgs;
+            inherit (nixpkgs) lib;
+            netplan = catalogData.netplan;
+            operatorIdentity = incusCertOperatorIdentity;
+          };
+        }
+        // {
           # manage-tailnet on PATH for BOTH systems (a packages output, not just the app):
           # rke2lab's flox-catalogue re-exports packages.aarch64-linux.manage-tailnet so the
           # in-cluster tailnet-purge Job installs it via a FloxEnv. Wired to the PER-SYSTEM
@@ -1416,16 +1509,15 @@
           );
           nixBuildObservePackage = mkNixBuildObservePackage system;
           pkgsForSystem = pkgsFor { inherit system; };
-          # Run check-jsonschema against the canonical keys.yaml. The target
-          # is sops-encrypted at rest, so we decrypt into a tempfile before
-          # validating. Pass a path to validate a different file ad-hoc:
-          #   nix run .#ssh-keys-v2-validate -- path/to/keys.yaml
+          # check-jsonschema against keys.yaml AS COMMITTED — encrypted: the schema accepts
+          # ENC[...] wherever a private may sit, so nothing is decrypted and no plaintext copy
+          # is written. The same validation runs as checks.<system>.ssh-keys-schema and in the
+          # pre-commit (treefmt keys-schema); this app checks an uncommitted keys.yaml, from the
+          # repo root, with the tool named by revision:
+          #   nix run "git+file://$PWD?rev=$(git rev-parse HEAD)#ssh-keys-v2-validate" -- <keys.yaml>
           sshKeysValidatorPackage = pkgsForSystem.writeShellApplication {
             name = "ssh-keys-v2-validate";
-            runtimeInputs = [
-              pkgsForSystem.check-jsonschema
-              pkgsForSystem.sops
-            ];
+            runtimeInputs = [ pkgsForSystem.check-jsonschema ];
             text = ''
               target="''${1:-modules/home-manager/ssh.d/keys.yaml}"
               schema="modules/home-manager/ssh.d/keys.schema.yaml"
@@ -1437,12 +1529,7 @@
                 echo "target yaml not found: $target" >&2
                 exit 1
               fi
-              tmp="$(mktemp -t ssh-keys-v2.XXXXXX.yaml)"
-              trap 'rm -f "$tmp"' EXIT
-              if ! sops -d "$target" > "$tmp" 2>/dev/null; then
-                cp "$target" "$tmp"
-              fi
-              exec check-jsonschema --schemafile "$schema" "$tmp"
+              exec check-jsonschema --schemafile "$schema" "$target"
             '';
           };
           # The envs vendored under .flox-envs.d arrive WITHOUT their manifest.lock: fleet
@@ -1585,27 +1672,13 @@
               loggerTag = "ndh.ssh-keys-renew";
             }
           );
-          # Mint the Incus LISTENER cert from a keys.yaml TLS authority. Hermetic like its sibling
-          # above, plus jq (the SAN set is read out of the catalog as JSON) and nix itself (it
-          # evaluates this flake's catalog and rke2lab's segments rather than retyping any name).
-          #
-          # ★ Unlike authority-bootstrap-tls-root it materialises NOTHING secret: sops is piped and
-          # step-cli takes the CA cert/key through process substitution. Only the leaf pair is
-          # written, because `incus cluster update-certificate` takes two file paths.
-          mintIncusListenerCertPackage = pkgsForSystem.writeShellApplication {
-            name = "mint-incus-listener-cert";
-            runtimeInputs = [
-              pkgsForSystem.git
-              pkgsForSystem.step-cli
-              pkgsForSystem.sops
-              pkgsForSystem.yq-go
-              pkgsForSystem.nix
-              pkgsForSystem.coreutils
-              pkgsForSystem.gnused
-              pkgsForSystem.gnugrep
-              pkgsForSystem.gawk
-            ];
-            text = builtins.readFile ./modules/.common.d/mint-incus-listener-cert.d/mint-incus-listener-cert.sh;
+          # T14's closure: re-mint and install the Incus cluster certificate (one definition,
+          # also packages.<system>.incus-cluster-cert-renew) — see its package.nix.
+          incusClusterCertRenewPackage = import ./modules/.common.d/incus-cluster-cert.d/package.nix {
+            pkgs = pkgsForSystem;
+            inherit (nixpkgs) lib;
+            netplan = catalogData.netplan;
+            operatorIdentity = incusCertOperatorIdentity;
           };
           # System-admin helper: prune darwin/HM/user generations + GC. Drives the
           # AMBIENT sudo + system nix daemon (a pinned nix would desync from it), so
@@ -1690,10 +1763,10 @@
             program = "${bboxReconcilePackage}/bin/bbox-reconcile";
             meta.description = "Diff catalog.netplan.lan.hosts against the bbox /dhcp/clients reservations (read-only) — src: modules/.common.d/bbox-reconcile.d/";
           };
-          mint-incus-listener-cert = {
+          incus-cluster-cert-renew = {
             type = "app";
-            program = "${mintIncusListenerCertPackage}/bin/mint-incus-listener-cert";
-            meta.description = "Mint the Incus listener cert for a bare-metal from a keys.yaml TLS authority — <host> [--authority <name>], run from repo root; prints the `incus cluster update-certificate` to run — src: modules/.common.d/mint-incus-listener-cert.d/";
+            program = "${incusClusterCertRenewPackage}/bin/incus-cluster-cert-renew";
+            meta.description = "Re-mint the Incus cluster certificate under the current TLS signing slot, install it on every member, re-pin the seat client, verify — run from the seat, built by revision — src: modules/.common.d/incus-cluster-cert.d/";
           };
           authority-bootstrap-tls-root = {
             type = "app";

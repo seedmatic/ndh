@@ -29,6 +29,9 @@ let
     let
       raw = {
         PasswordAuthentication = cfg.passwordAuthentication;
+        # Through PAM, keyboard-interactive asks for the same password; both default to
+        # yes (NixOS, macOS), so turning only the first off leaves password login open.
+        KbdInteractiveAuthentication = cfg.passwordAuthentication;
         PermitRootLogin = cfg.permitRootLogin;
         TrustedUserCAKeys = cfg.trustedCAPath;
         RevokedKeys = cfg.revokedKeysPath;
@@ -98,11 +101,13 @@ in
       '';
     };
 
-    # Principals file
+    # Principals file. `none`: sshd accepts a principal found in the file OR in the
+    # command's output, so a file in the user's home would let any process running as
+    # that user widen what the command decides. The command alone decides.
     principalsFilePath = mkOption {
       type = types.str;
-      default = "%h/.ssh/authorized_principals";
-      description = "AuthorizedPrincipalsFile path.";
+      default = "none";
+      description = "AuthorizedPrincipalsFile path; `none` leaves AuthorizedPrincipalsCommand alone.";
     };
 
     # Principals command
@@ -425,21 +430,28 @@ in
     # on first use, and a host-key renewal breaks a pin: `accept-new` accepts an
     # UNKNOWN host, never a CHANGED one. Measured on a throwaway sshd: with the
     # authority here, a certificate-presenting host is accepted even past a stale
-    # raw pin, so the existing pins need no cleanup. One entry per slot, so both
-    # generations are trusted while the authority itself renews.
+    # raw pin, so the existing pins need no cleanup. One entry per TRUSTED slot, so
+    # both generations are trusted while the authority itself renews, and a slot
+    # marked `compromised` is not (ndh.keysYaml.trustedAuthoritySlots).
     programs.ssh.knownHosts = lib.listToAttrs (
       lib.concatLists (
         lib.mapAttrsToList (
           name: authority:
           lib.optionals (lib.elem "ssh-authority" (authority.usage or [ ])) (
-            lib.mapAttrsToList (slot: material: {
-              name = "${name}@${slot}";
-              value = {
-                certAuthority = true;
-                hostNames = [ "*" ];
-                publicKey = "${authority.type or "ssh-ed25519"} ${material.public}";
-              };
-            }) (lib.filterAttrs (_slot: material: (material.public or "") != "") (authority.slots or { }))
+            lib.mapAttrsToList
+              (slot: material: {
+                name = "${name}@${slot}";
+                value = {
+                  certAuthority = true;
+                  hostNames = [ "*" ];
+                  publicKey = "${authority.type or "ssh-ed25519"} ${material.public}";
+                };
+              })
+              (
+                lib.filterAttrs (_slot: material: (material.public or "") != "") (
+                  config.ndh.keysYaml.trustedAuthoritySlots.${name} or { }
+                )
+              )
           )
         ) config.ndh.keysYaml.authorities
       )

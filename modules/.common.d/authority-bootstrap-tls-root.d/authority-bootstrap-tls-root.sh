@@ -1,5 +1,10 @@
 #!/usr/bin/env bash
 # @codebase
+# ★ xtrace-guard — no trace, whatever the invocation (bash -x, an inherited SHELLOPTS=xtrace, a
+# caller's set -x): this script handles private keys, and a trace prints every value it expands.
+case $- in *x*) { set +x; } 2>/dev/null; echo "[xtrace-guard] xtrace disabled: this script handles private keys" >&2 ;; esac
+export -n SHELLOPTS 2>/dev/null || true # readonly in bash, so not unset; un-exported, it stops at this process
+unset BASH_XTRACEFD 2>/dev/null || true
 # Bootstrap a self-signed TLS root certificate for an authority in
 # keys.yaml.
 #
@@ -7,8 +12,11 @@
 #
 #   1. Existing authority — keys.yaml already has a full authority
 #      block (public + private, usage includes tls-authority).  Mint
-#      the self-signed x509 root off the existing key and write it
-#      back as `authorities.<name>.ca_crt`.
+#      the self-signed x509 root off the key of its NEWEST slot — the
+#      generation a renewal just added — and write it into that slot
+#      as `authorities.<name>.slots.<slot>.ca_crt`. Each generation has its
+#      own root; which one SIGNS is a separate rule (keys.schema.yaml,
+#      authoritySlots): the oldest slot that is not compromised.
 #
 #   2. Fresh authority — keys.yaml has no entry at all.  Pass
 #      `--create <keyType>` to generate the keypair and synthesise
@@ -35,8 +43,8 @@
 #   - keys.yaml is decryptable with the current sops age key.
 #   - step-cli + sops + yq + ssh-keygen on PATH.
 #
-# Re-running (non-create mode) without --force is a no-op when
-# `ca_crt` is already set.
+# Re-running (non-create mode) without --force refuses when the newest
+# slot already carries its `ca_crt`.
 
 set -euo pipefail
 
@@ -56,11 +64,11 @@ usage() {
 		       $(basename "$0") <authority-name> --create <keyType>
 
 		  <authority-name>   Name of a top-level authorities.<name> in keys.yaml.
-		  --force            Overwrite an existing ca_crt field.
+		  --force            Overwrite the newest slot's existing ca_crt.
 		  --create <type>    Create a fresh authority entry with the given key
 		                     type.  Supported: ecdsa-sha2-nistp256.
 
-		Effect: writes authorities.<name>.ca_crt (and in --create mode, the
+		Effect: writes authorities.<name>.slots.<newest>.ca_crt (and in --create mode, the
 		full authority block) into keys.yaml via sops, re-encrypting the
 		file in place.  Commit the yaml diff.
 	EOF
@@ -163,16 +171,19 @@ if ! yq eval -e "(.authorities.\"${authority}\".usage // []) | contains([\"tls-a
 	exit 1
 fi
 
-existing="$(yq eval -r ".authorities.\"${authority}\".ca_crt // \"\"" "$decrypted")"
+slot="$(yq eval -r ".authorities.\"${authority}\".slots // {} | keys | sort | .[-1] // \"\"" "$decrypted")"
+[[ -n "$slot" ]] || { err "authority ${authority} has no slot"; exit 1; }
+
+existing="$(yq eval -r ".authorities.\"${authority}\".slots.\"${slot}\".ca_crt // \"\"" "$decrypted")"
 if [[ -n "$existing" && "$mode" != "--force" && "$mode" != "--create" ]]; then
-	err "authorities.${authority}.ca_crt already present; rerun with --force to replace (this invalidates every client's trust)"
+	err "authorities.${authority}.slots.${slot}.ca_crt already present; rerun with --force to replace (this invalidates every client's trust in that generation)"
 	exit 1
 fi
 
-# --- Materialise the authority's private for step-cli ---
+# --- Materialise the newest slot's private for step-cli ---
 authKey="${tmp}/ca-signer"
-yq eval -r ".authorities.\"${authority}\".slots // {} | to_entries | sort_by(.key) | .[-1].value.private // \"\"" "$decrypted" >"$authKey"
-[[ -s "$authKey" ]] || { err "authority ${authority} has no private in its presented slot"; exit 1; }
+yq eval -r ".authorities.\"${authority}\".slots.\"${slot}\".private // \"\"" "$decrypted" >"$authKey"
+[[ -s "$authKey" ]] || { err "authority ${authority} has no private in slot ${slot}"; exit 1; }
 chmod 400 "$authKey"
 
 # --- Mint the self-signed root ---
@@ -211,9 +222,9 @@ if [[ ! -s "$crtFile" ]]; then
 fi
 
 # --- Inject ca_crt into the yaml ---
-info "writing authorities.${authority}.ca_crt into ${KEYS_YAML} (re-encrypting)"
+info "writing authorities.${authority}.slots.${slot}.ca_crt into ${KEYS_YAML} (re-encrypting)"
 env CA_PEM="$(<"$crtFile")" yq eval -i \
-	".authorities.\"${authority}\".ca_crt = strenv(CA_PEM)" "$decrypted"
+	".authorities.\"${authority}\".slots.\"${slot}\".ca_crt = strenv(CA_PEM)" "$decrypted"
 
 # --- Re-encrypt atomically ---
 reencrypted="${tmp}/keys.yaml.reenc"
@@ -226,5 +237,5 @@ install -m 0644 "$reencrypted" "$KEYS_YAML"
 
 info "bootstrap complete for ${authority}"
 info "Inspect the minted cert with:"
-info "  sops -d ${KEYS_YAML} | yq eval -r '.authorities.\"${authority}\".ca_crt' - | step certificate inspect -"
+info "  yq eval -r '.authorities.\"${authority}\".slots.\"${slot}\".ca_crt' ${KEYS_YAML} | step certificate inspect -"
 info "Commit the yaml diff to ship the new trust anchor."
