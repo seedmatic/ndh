@@ -13,8 +13,9 @@ pkgs.runCommand "incus-cluster-cert-bats"
     ];
   }
   ''
-    # The whole .common.d: the guard-uniformity case reads the other scripts that handle a private.
-    cp -r ${../..} common && chmod -R u+w common
-    cd common/incus-cluster-cert.d/tests && HOME=$TMPDIR bats .
+    # The whole modules tree: the guard-uniformity case reads every script that handles a private,
+    # and one of them (git.d/sops.sh) lives outside .common.d.
+    cp -r ${../../..} modules && chmod -R u+w modules
+    cd modules/.common.d/incus-cluster-cert.d/tests && HOME=$TMPDIR bats .
     touch $out
   ''
