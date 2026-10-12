@@ -456,6 +456,11 @@ in
         ) config.ndh.keysYaml.authorities
       )
     );
+    # Revocation on the CLIENT side, from the list sshd's RevokedKeys already reads: every client, root
+    # included, refuses a host key in keys.yaml `revoked` — and a certificate whose signing authority is
+    # there. Host certificates are valid forever by decision (a missed calendar renewal would break every
+    # strict connection), so this is what cuts a leaked host key: at the next activation, not at an expiry.
+    programs.ssh.extraConfig = "RevokedHostKeys ${config.ndh.keysYaml.revokedKeysFile}\n";
 
     # Expose helpers
     opensshPolicy.hostKeys = cfg.hostKeyPaths;

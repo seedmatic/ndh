@@ -36,17 +36,19 @@ in
 
     baseConfig = mkOption {
       type = types.lines;
+      # ssh keeps the FIRST value it obtains for each option, so the specific stanzas (the drop-ins)
+      # come first and the `Host *` defaults last. With the defaults first, `StrictHostKeyChecking
+      # accept-new` shadowed every stanza's `yes`, and root's builder channel fell back to trust on
+      # first use. No ControlMaster here: without a ControlPath it multiplexes nothing.
       default = ''
+        Include /etc/ssh/ssh_config.d/*.conf
+
         Host *
           AddressFamily inet
           ServerAliveInterval 30
           ServerAliveCountMax 3
-          ControlMaster auto
-          ControlPersist 5m
           PreferredAuthentications publickey,keyboard-interactive
           StrictHostKeyChecking accept-new
-        Include ssh_config.d/*.conf
-        Include /etc/ssh/ssh_config.d/*.conf
       '';
       description = "Raw /etc/ssh/ssh_config base contents (may contain Include lines).";
     };
@@ -345,7 +347,24 @@ in
         '';
       }) (lib.filterAttrs (_: fwd: fwd.internalPort or 0 == 22) wanPortForwards);
 
-      allExtraStanzas = hostIdentityStanzas ++ vzHostStanzas ++ wanProxyStanzas ++ cfg.extraStanzas;
+      # Every fleet guest, not only this host's: root reaches the other bare-metal's guest too, and
+      # that name is verified by the authority like the rest. Strictness only — no identity is set.
+      fleetGuestStanzas = [
+        {
+          patterns = [
+            "*-nixos"
+            "*-nixos.local"
+          ];
+          user = null;
+          identityFile = null;
+          identitiesOnly = false;
+          bypassAgent = false;
+          extraConfig = verifiedByAuthorityConfig;
+        }
+      ];
+
+      allExtraStanzas =
+        hostIdentityStanzas ++ fleetGuestStanzas ++ vzHostStanzas ++ wanProxyStanzas ++ cfg.extraStanzas;
 
       extraText = concatStringsSep "\n" (map renderStanza allExtraStanzas);
     in

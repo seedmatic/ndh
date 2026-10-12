@@ -1136,7 +1136,71 @@
               } == [ ]
             ) "a compromised retirement was held by the gate";
             pkgs.runCommand "ssh-keys-trust" { } "touch $out";
+          # Built for aarch64-linux (the builder runs it): the check runs a real sshd, and on darwin
+          # sshd's preauth child cannot enter its own seatbelt sandbox inside the nix build sandbox
+          # (sandbox_init: Operation not permitted).
+          openssh-revoked-host-keys = import ./modules/.common.d/openssh-policy.d/tests/package.nix {
+            pkgs = pkgsForLinux;
+          };
         }
+        // nixpkgs.lib.listToAttrs (
+          map
+            (
+              host:
+              let
+                darwin = self.darwinConfigurations.${host}.config;
+                owned = [
+                  "root@bioskop-nixos"
+                  "root@nikopol-nixos"
+                  "bioskop-nixos.local"
+                  "nikopol-nixos.local"
+                  "router.lan"
+                  "bioskop.mammoth-skate.ts.net"
+                ];
+                everywhere = owned ++ [ "example.com" ];
+              in
+              nixpkgs.lib.nameValuePair "ssh-client-effective-${host}" (
+                import ./modules/darwin/ssh-client.d/tests/effective.nix {
+                  inherit pkgs;
+                  inherit (nixpkgs) lib;
+                  name = host;
+                  etc = darwin.environment.etc;
+                  expect =
+                    map (target: {
+                      inherit target;
+                      option = "stricthostkeychecking";
+                      value = "true";
+                    }) owned
+                    ++ map (target: {
+                      inherit target;
+                      option = "controlmaster";
+                      value = "false";
+                    }) everywhere
+                    ++ map (target: {
+                      inherit target;
+                      option = "globalknownhostsfile";
+                      value = "/etc/ssh/ssh_known_hosts";
+                    }) everywhere
+                    ++ map (target: {
+                      inherit target;
+                      option = "revokedhostkeys";
+                      value = "${darwin.ndh.keysYaml.revokedKeysFile}";
+                    }) everywhere
+                    ++ [
+                      {
+                        target = "example.com";
+                        option = "stricthostkeychecking";
+                        value = "accept-new";
+                      }
+                    ];
+                }
+              )
+            )
+            [
+              "bioskop"
+              "nikopol"
+            ]
+        )
       );
 
       # Surface the resolved catalog + inventory as flat (OS-independent) outputs

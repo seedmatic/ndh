@@ -163,6 +163,13 @@ public is still known.
 Phase 2 is not optional, and the model makes that visible: while two slots exist, the assertion,
 the selector and the document all say a renewal is unfinished.
 
+The `revoked` list is read on BOTH sides. sshd refuses a revoked user key (`RevokedKeys`); every
+client, root included, refuses a revoked host key, and a certificate whose signing authority is
+revoked (`RevokedHostKeys`, openssh-policy.nix). Host certificates are valid forever by decision: the
+hosts are checked strictly, so a missed calendar renewal would break every connection, and an expiry
+only bounds a leaked key that nobody revoked. Revocation is what cuts one, at the next activation. A
+host certificate is renewed on an event — a leak, the authority's own renewal — never on a date.
+
 === Phase 2 of an AUTHORITY — the trust gate
 
 For an authority, phase 2 is also the moment the signature moves: once the old slot is gone, the new

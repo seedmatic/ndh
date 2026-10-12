@@ -169,20 +169,24 @@ in
       '';
   };
 
-  # OpenSSH client configuration: allow includes for drop-ins under /etc/ssh/ssh_config.d
+  # OpenSSH client configuration: the drop-ins under /etc/ssh/ssh_config.d first, the `Host *`
+  # defaults after them — ssh keeps the FIRST value it obtains, so a default placed first would
+  # shadow every specific stanza.
   programs.ssh = {
-    extraConfig = ''
-      Host *
-        AddressFamily inet
-        ServerAliveInterval 30
-        ServerAliveCountMax 3
-    ''
-    + (
-      let
-        lines = builtins.map (g: "Include ${g}") config.opensshPolicy.includeClientGlobs;
-      in
-      "\n" + lib.concatStringsSep "\n" lines + "\n"
-    );
+    extraConfig =
+      (
+        let
+          lines = builtins.map (g: "Include ${g}") config.opensshPolicy.includeClientGlobs;
+        in
+        lib.concatStringsSep "\n" lines + "\n"
+      )
+      + ''
+
+        Host *
+          AddressFamily inet
+          ServerAliveInterval 30
+          ServerAliveCountMax 3
+      '';
   };
 
   # Ensure the group authorized keys directory exists and create keys
