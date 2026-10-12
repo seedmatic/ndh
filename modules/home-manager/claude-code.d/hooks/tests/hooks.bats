@@ -99,7 +99,7 @@ commits() { git -C "$MEM" rev-list --count HEAD; }
   run hook memory-commit.sh
   [ "$(commits)" -eq $((before + 1)) ]
   git -C "$MEM" show --name-only --format= HEAD | grep -qx mine.md
-  ! git -C "$MEM" show --name-only --format= HEAD | grep -q theirs.md
+  [ -z "$(git -C "$MEM" show --name-only --format= HEAD | grep theirs.md)" ]
   [[ "$(git -C "$MEM" status --porcelain)" == "?? theirs.md" ]]
   [[ "$output" == *"push FAILED"* ]] # no remote here: reported, not fatal
 }
@@ -130,7 +130,7 @@ commits() { git -C "$MEM" rev-list --count HEAD; }
   printf 'mine\n' >"$MEM/mine.md"
   wrote Write "$MEM/mine.md"
   run hook memory-commit.sh
-  ! git -C "$MEM" show --name-only --format= HEAD | grep -q staged.md
+  [ -z "$(git -C "$MEM" show --name-only --format= HEAD | grep staged.md)" ]
   [[ "$(git -C "$MEM" status --porcelain)" == "A  staged.md" ]]
 }
 @test "commit: nothing written, nothing committed, nothing said" {
@@ -276,4 +276,113 @@ chantier() { # a chantier page that claims the test conversation
     [[ "$got" == "${want,,}" ]] || bad+="  want $want, got $got: $cmd"$'\n'
   done <"$BATS_TEST_DIRNAME/leak-guard-cases.tsv"
   [[ -z "$bad" ]] || { printf '%s' "$bad"; false; }
+}
+
+# --- sops-git-env ---
+
+# The sops drivers come from an INCLUDED file, as the real git-sops-diff is; their commands
+# fail, so a run that still used them would show it.
+sops_drivers() {
+  printf '[filter "sops-yaml"]\n\tclean = false\n\tsmudge = false\n\trequired = true\n[diff "sops-yaml"]\n\ttextconv = false\n[filter "sops-json"]\n\tclean = false\n\tsmudge = false\n\trequired = true\n[diff "sops-json"]\n\ttextconv = false\n' >"$T/sops-include"
+  git config --global include.path "$T/sops-include"
+}
+
+@test "sops-git-env: no env file, nothing written" {
+  sops_drivers
+  run env -u CLAUDE_ENV_FILE bash "$H/sops-git-env.sh" </dev/null
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "sops-git-env: every included sops driver becomes cat, the identity stays" {
+  sops_drivers
+  export CLAUDE_ENV_FILE="$T/env"
+  bash "$H/sops-git-env.sh" </dev/null
+  run bash -c '. "$CLAUDE_ENV_FILE"; echo "$GIT_CONFIG_COUNT $(git config filter.sops-yaml.smudge) $(git config filter.sops-yaml.required) $(git config diff.sops-json.textconv) $(git config user.name)"; git config filter.sops-json.clean'
+  [ "${lines[0]}" = "8 cat true cat tester" ]
+  [[ "${lines[1]}" == *"/sops-clean-guard.sh %f" ]]
+}
+
+@test "sops-git-env: an existing GIT_CONFIG_COUNT is kept, a second read adds nothing" {
+  sops_drivers
+  export CLAUDE_ENV_FILE="$T/env"
+  bash "$H/sops-git-env.sh" </dev/null
+  run bash -c 'export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.autocrlf GIT_CONFIG_VALUE_0=input; . "$CLAUDE_ENV_FILE"; . "$CLAUDE_ENV_FILE"; echo "$GIT_CONFIG_COUNT $(git config core.autocrlf) $(git config diff.sops-yaml.textconv)"'
+  [ "$output" = "9 input cat" ]
+}
+
+@test "sops-git-env: a sops file checks out and diffs as the envelope on disk" {
+  sops_drivers
+  export CLAUDE_ENV_FILE="$T/env"
+  bash "$H/sops-git-env.sh" </dev/null
+  R="$T/sopsrepo"
+  git init -q "$R"
+  printf '*.yaml filter=sops-yaml diff=sops-yaml\n' >"$R/.gitattributes"
+  run bash -c '. "$CLAUDE_ENV_FILE"; cd "'"$R"'" && printf "a: ENC[x]\nsops:\n  v: 1\n" >s.yaml && git add .gitattributes s.yaml && git commit -qm one && printf "a: ENC[y]\nsops:\n  v: 1\n" >s.yaml && git diff s.yaml | grep -c "ENC\[y\]" && rm s.yaml && git checkout -- s.yaml && head -1 s.yaml'
+  [ "$status" -eq 0 ]
+  [ "${lines[0]}" = "1" ]
+  [ "${lines[1]}" = "a: ENC[x]" ]
+}
+
+@test "sops-git-env: a sops file in the clear on disk is refused at git add" {
+  sops_drivers
+  export CLAUDE_ENV_FILE="$T/env"
+  bash "$H/sops-git-env.sh" </dev/null
+  R="$T/clearrepo"
+  git init -q "$R"
+  printf '*.yaml filter=sops-yaml diff=sops-yaml\n' >"$R/.gitattributes"
+  printf 'a: dummy-clear\n' >"$R/s.yaml"
+  run bash -c '. "$CLAUDE_ENV_FILE"; cd "'"$R"'" && git add s.yaml'
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"not a sops envelope"* ]]
+  [[ "$output" != *"dummy-clear"* ]]
+}
+
+@test "sops-git-env: the clean guard holds the content in memory only" {
+  # A refused content is the clear text. bash backs a large here-string with a temporary file it
+  # unlinks at once — no listing ever sees it, and it falls back to /tmp when TMPDIR is unwritable —
+  # so the property is checked on the script itself: no here-string, no pipe into a reader.
+  # Not `! grep`: bats ignores a negated command's status.
+  [ -z "$(grep -nE '<<<|\|[[:space:]]*(grep|sed|awk)' "$H/sops-clean-guard.sh")" ]
+  { printf 'a: ENC[x]\nsops:\n  v: 1\n'; head -c 200000 /dev/zero | tr '\0' 'a'; } >"$T/big.yaml"
+  run bash -c 'bash "$1" s.yaml <"$2" | wc -c' _ "$H/sops-clean-guard.sh" "$T/big.yaml"
+  [ "$status" -eq 0 ]
+  [ "$output" -eq "$(wc -c <"$T/big.yaml")" ]
+}
+
+@test "sops-git-env: the clean guard passes yaml, json and dotenv envelopes unchanged" {
+  for e in $'a: ENC[x]\nsops:\n  v: 1\n' $'{"a": "ENC[x]", "sops": {"v": 1}}\n' $'A=ENC[x]\nsops_version=3\n'; do
+    run bash -c 'printf "%s" "$1" | bash "$2"' _ "$e" "$H/sops-clean-guard.sh"
+    [ "$status" -eq 0 ]
+    [ "$output" = "${e%$'\n'}" ]
+  done
+}
+
+@test "sops-git-env: drivers in the XDG config are found beside a ~/.gitconfig" {
+  unset GIT_CONFIG_GLOBAL
+  mkdir -p "$HOME/.config/git"
+  printf '[user]\n\tname = tester\n' >"$HOME/.gitconfig"
+  printf '[filter "sops-yaml"]\n\tsmudge = false\n[diff "sops-yaml"]\n\ttextconv = false\n' >"$HOME/.config/git/sops"
+  printf '[include]\n\tpath = sops\n' >"$HOME/.config/git/config"
+  export CLAUDE_ENV_FILE="$T/env"
+  run bash "$H/sops-git-env.sh" </dev/null
+  [ -z "$output" ]
+  run bash -c '. "$CLAUDE_ENV_FILE"; git -C / config filter.sops-yaml.smudge; git -C / config diff.sops-yaml.textconv'
+  [ "${lines[0]}" = "cat" ]
+  [ "${lines[1]}" = "cat" ]
+}
+
+@test "sops-git-env: the file reads the same under zsh" {
+  command -v zsh >/dev/null || skip "no zsh"
+  sops_drivers
+  export CLAUDE_ENV_FILE="$T/env"
+  bash "$H/sops-git-env.sh" </dev/null
+  run zsh -c '. "$CLAUDE_ENV_FILE"; echo "$GIT_CONFIG_COUNT $(git config filter.sops-yaml.smudge)"'
+  [ "$output" = "8 cat" ]
+}
+
+@test "sops-git-env: without sops drivers, nothing is written" {
+  export CLAUDE_ENV_FILE="$T/env"
+  bash "$H/sops-git-env.sh" </dev/null
+  [ ! -s "$CLAUDE_ENV_FILE" ]
 }
