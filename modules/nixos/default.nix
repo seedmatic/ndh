@@ -176,9 +176,11 @@ in
       description = "Forward journald messages to the console.";
     };
 
+    # A frozen guest takes journald down with it, so a lockup's only witness is the kernel writing
+    # straight to the console, which tart records on the host. At 0, no freeze left a trace.
     logLevel = lib.mkOption {
       type = lib.types.int;
-      default = 0;
+      default = 7;
       description = "Kernel/console log level (0=emerg, 7=debug).";
     };
   };
@@ -283,9 +285,12 @@ in
         "net.bridge.bridge-nf-call-iptables" = 1;
         "net.bridge.bridge-nf-call-arptables" = 1;
         "net.core.devconf_inherit_init_net" = 1;
+        # A lockup report shows only the stuck CPU; the culprit is the CPU that never answered it.
+        "kernel.softlockup_all_cpu_backtrace" = 1;
+        "kernel.hardlockup_all_cpu_backtrace" = 1;
       };
 
-      # verbosity (default off; override per-host if needed)
+      # verbosity (consoleLogging.logLevel by default; override per-host if needed)
       consoleLogLevel =
         if bootDebug then
           lib.mkForce 7
