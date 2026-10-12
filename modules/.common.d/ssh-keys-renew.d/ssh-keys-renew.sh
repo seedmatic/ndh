@@ -23,9 +23,15 @@ unset BASH_XTRACEFD 2>/dev/null || true
 # EXPOSED: there, the overlap the two phases exist to provide is the risk itself,
 # since it keeps the published generation accepted until phase 2.
 #
+# --create declares a NEW entry and generates its first slot in the same change: the
+# schema requires one slot per entry, so an entry cannot be committed empty and filled
+# later, and an entry with no slots at all is refused as one that predates the model.
+#
 # Usage:
 #   ssh-keys-renew [--key NAME]... [--authority NAME]... [--older-than Nd]
 #                  [--replace --reason TEXT] [--apply]
+#   ssh-keys-renew --create NAME --usage TAG... [--profile NAME]... [--comment TEXT]
+#                  [--type TYPE] [--apply]
 #
 # Safe by default: nothing is generated and keys.yaml is not touched unless
 # --apply is given. A tool that rewrites key material shows its work first.
@@ -55,7 +61,9 @@ unset BASH_XTRACEFD 2>/dev/null || true
 source @nixBashTrampoline@
 
 declare -g keysYaml tmpdir decrypted today apply olderThanDays replace reason
+declare -g createName createComment createType
 declare -ga selectKeys=() selectAuthorities=() plan=() refusals=()
+declare -ga createUsages=() createProfiles=()
 
 # ⚠️ stdout, NOT stderr — the opposite of the activation scripts' convention, and
 # for a reason. ndh::logger:command:run redirects stderr into the logger sink and
@@ -73,6 +81,8 @@ usage() {
 	cat <<-EOF
 		usage: ssh-keys-renew [--key NAME]... [--authority NAME]... [--older-than Nd]
 		                      [--replace --reason TEXT] [--apply]
+		       ssh-keys-renew --create NAME --usage TAG... [--profile NAME]...
+		                      [--comment TEXT] [--type TYPE] [--apply]
 
 		  --key NAME         Renew keys.<NAME>. Repeatable.
 		  --authority NAME   Renew authorities.<NAME>. Repeatable. The new generation
@@ -86,6 +96,13 @@ usage() {
 		                     For an EXPOSED private, where the overlap is the risk.
 		  --reason TEXT      The reason recorded in each revoked entry. Required with
 		                     --replace.
+		  --create NAME      Declare keys.<NAME>, which must not exist, and generate its
+		                     first slot. Needs at least one --usage.
+		  --usage TAG        A usage of the new entry (keys.schema.yaml). Repeatable.
+		  --profile NAME     A profile of the new entry. Repeatable; none means the key
+		                     lands on no host and its consumer reads keys.yaml itself.
+		  --comment TEXT     The new entry's comment (default: NAME).
+		  --type TYPE        The new entry's key type (default: ssh-ed25519).
 		  --apply            Actually generate and rewrite keys.yaml. Without it this
 		                     prints the plan and changes nothing.
 
@@ -194,8 +211,24 @@ plan::consider() { # <section> <name>
 	return 0
 }
 
+# A new entry: its name must be free and its type generable; the schema checks the rest
+# (usage tags, profile names) when the result is validated, before the commit.
+plan::consider_create() {
+	if [[ "$(yq eval -r ".keys // {} | has(\"${createName}\")" "$decrypted")" == "true" ]]; then
+		refusals+=("keys.${createName}: already exists — --create declares a new entry, --key renews one")
+		return 0
+	fi
+	if ! keygen::args_for "$createType" >/dev/null; then
+		refusals+=("keys.${createName}: unsupported type '${createType}'")
+		return 0
+	fi
+	plan+=("keys	${createName}	${createType}	create")
+	return 0
+}
+
 plan::build() {
 	local name section newest age
+	if [[ -n "$createName" ]]; then plan::consider_create; fi
 	if ((${#selectKeys[@]} > 0)); then
 		for name in "${selectKeys[@]}"; do plan::consider keys "$name"; done
 	fi
@@ -235,7 +268,9 @@ plan::show() {
 		printf '%-13s %-24s %-22s %s\n' SECTION ENTRY TYPE 'SLOTS AFTER'
 		for line in "${plan[@]}"; do
 			IFS=$'\t' read -r section name keyType existing <<<"$line"
-			if ((replace == 1)); then
+			if [[ "$existing" == create ]]; then
+				printf '%-13s %-24s %-22s %s\n' "$section" "$name" "$keyType" "${today} (new entry)"
+			elif ((replace == 1)); then
 				printf '%-13s %-24s %-22s %s\n' "$section" "$name" "$keyType" "${today} (revokes ${existing})"
 			else
 				printf '%-13s %-24s %-22s %s\n' "$section" "$name" "$keyType" "${existing} + ${today}"
@@ -284,6 +319,24 @@ renew::one() { # <section> <name> <keyType>
 		"$decrypted"
 }
 
+# Declare the new entry's public fields; renew::one then generates its first slot.
+create::declare() {
+	local item
+	log::info "declaring keys.${createName} (${createType})"
+	TYPE="$createType" COMMENT="$createComment" yq eval -i "
+		.keys.\"${createName}\".type = strenv(TYPE) |
+		.keys.\"${createName}\".comment = strenv(COMMENT) |
+		.keys.\"${createName}\".usage = [] |
+		.keys.\"${createName}\".profiles = []
+	" "$decrypted"
+	for item in "${createUsages[@]}"; do
+		ITEM="$item" yq eval -i ".keys.\"${createName}\".usage += [strenv(ITEM)]" "$decrypted"
+	done
+	for item in ${createProfiles[@]+"${createProfiles[@]}"}; do
+		ITEM="$item" yq eval -i ".keys.\"${createName}\".profiles += [strenv(ITEM)]" "$decrypted"
+	done
+}
+
 # Delete each retiring slot and write its `revoked` entry in the same document:
 # the evaluation refuses a revoked public that a slot still carries, and a slot
 # deleted without its entry stays valid wherever its public is still known.
@@ -309,8 +362,9 @@ renew::apply() {
 
 	for line in "${plan[@]}"; do
 		IFS=$'\t' read -r section name keyType existing <<<"$line"
+		if [[ "$existing" == create ]]; then create::declare; fi
 		renew::one "$section" "$name" "$keyType"
-		if ((replace == 1)); then
+		if ((replace == 1)) && [[ "$existing" != create ]]; then
 			read -r -a retiring <<<"$existing"
 			renew::retire "$section" "$name" "${retiring[@]}"
 		fi
@@ -337,6 +391,20 @@ renew::apply() {
 	done
 
 	install -m 0644 "$reencrypted" "$keysYaml"
+
+	if [[ -n "$createName" ]]; then
+		cat <<-EOF
+
+			keys.${createName} declared, with its first slot ${today}. A new entry has no
+			phase 2: nothing trusted the generation before it.
+
+			Next, in order:
+			  1. nix run "git+file://\$PWD?rev=\$(git rev-parse HEAD)#ssh-keys-v2-validate" -- modules/home-manager/ssh.d/keys.yaml
+			  2. commit the keys.yaml diff
+			  3. activate the hosts whose profiles it names, if any
+		EOF
+		return 0
+	fi
 
 	if ((replace == 1)); then
 		cat <<-EOF
@@ -374,6 +442,9 @@ main() {
 	replace=0
 	reason=""
 	olderThanDays=""
+	createName=""
+	createComment=""
+	createType=""
 
 	while (($# > 0)); do
 		case "$1" in
@@ -404,6 +475,31 @@ main() {
 				reason="$2"
 				shift 2
 				;;
+			--create)
+				[[ -n "${2:-}" ]] || return "$(usage || echo $?)"
+				createName="$2"
+				shift 2
+				;;
+			--usage)
+				[[ -n "${2:-}" ]] || return "$(usage || echo $?)"
+				createUsages+=("$2")
+				shift 2
+				;;
+			--profile)
+				[[ -n "${2:-}" ]] || return "$(usage || echo $?)"
+				createProfiles+=("$2")
+				shift 2
+				;;
+			--comment)
+				[[ -n "${2:-}" ]] || return "$(usage || echo $?)"
+				createComment="$2"
+				shift 2
+				;;
+			--type)
+				[[ -n "${2:-}" ]] || return "$(usage || echo $?)"
+				createType="$2"
+				shift 2
+				;;
 			--apply)
 				apply=1
 				shift
@@ -420,8 +516,34 @@ main() {
 		esac
 	done
 
-	if ((${#selectKeys[@]} == 0)) && ((${#selectAuthorities[@]} == 0)) && [[ -z "$olderThanDays" ]]; then
-		log::error "nothing selected — pass --key, --authority or --older-than"
+	if [[ -n "$createName" ]]; then
+		# One gesture at a time: a creation mixed with renewals would apply both or
+		# neither, and a replacement has nothing to revoke in a new entry.
+		if ((${#selectKeys[@]} + ${#selectAuthorities[@]} > 0)) || [[ -n "$olderThanDays" ]] || ((replace == 1)); then
+			log::error "--create stands alone: no --key, --authority, --older-than or --replace with it"
+			usage
+			return $?
+		fi
+		# The schema's key-name pattern (keys.patternProperties), checked here because the name
+		# is spliced into yq expressions before anything validates the document.
+		if [[ ! "$createName" =~ ^[a-z][a-z0-9-]*$ ]]; then
+			log::error "--create ${createName@Q}: a key name is ^[a-z][a-z0-9-]*\$ (keys.schema.yaml)"
+			usage
+			return $?
+		fi
+		if ((${#createUsages[@]} == 0)); then
+			log::error "--create needs at least one --usage: it is what the schema reads the key's role from"
+			usage
+			return $?
+		fi
+		[[ -n "$createComment" ]] || createComment="$createName"
+		[[ -n "$createType" ]] || createType="ssh-ed25519"
+	elif ((${#createUsages[@]} + ${#createProfiles[@]} > 0)) || [[ -n "$createComment$createType" ]]; then
+		log::error "--usage, --profile, --comment and --type describe a new entry: they need --create"
+		usage
+		return $?
+	elif ((${#selectKeys[@]} == 0)) && ((${#selectAuthorities[@]} == 0)) && [[ -z "$olderThanDays" ]]; then
+		log::error "nothing selected — pass --key, --authority, --older-than or --create"
 		usage
 		return $?
 	fi

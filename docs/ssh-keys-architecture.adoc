@@ -52,8 +52,13 @@ restricted `authorized_keys` line.
 
 | `github-signing`, `github-authentication`
 | SSH, static
-| the seats
+| the seats — never a cluster
 | GitHub
+
+| `rke2lab-bot-signing`
+| SSH, static
+| generated on a seat; held by the cluster's render and version bumper, in memory
+| the seats' allowed signers, under `rke2lab+*@<tailnet domain>` only
 
 | `rke2-cluster`
 | SSH key used as an age identity
@@ -203,7 +208,7 @@ already needs no ssh. What the share carries is that guest's own identity, a rec
 guest's projection only, never an identity that opens every file.
 
 rke2lab receives its projection as the `.ndh-ssh.d/` subtree: the four items it reads
-(`mammoth-skate-tls` root, `rke2-cluster`, `github-signing`, the tailnet domain), never the whole
+(`mammoth-skate-tls` root, `rke2-cluster`, `rke2lab-bot-signing`, the tailnet domain), never the whole
 registry.
 
 == The pipeline
