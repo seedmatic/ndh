@@ -373,6 +373,8 @@ kill "$output_cat_pid" "$monitor_pid" 2>/dev/null || true
 exec 3>&-
 RELAY_EOF
 
+	# The console carries whatever the guest prints: screen appends to the log, so its mode is set here.
+	: >>"$serial_log" && chmod 0600 "$serial_log"
 	screen -dmS "${screen_session}" -L -Logfile "${serial_log}" "$relay_script" "$tart_pty" "$user_pty"
 
 	# Remove the relay script once screen has had time to exec it.
