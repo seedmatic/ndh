@@ -395,9 +395,13 @@ enrich::all_keys() {
 				# Inject under .keys.<k>.slots.<slot>.certificates.<auth>.<cert_usage>.
 				# yq -i with literal strings containing newlines/special chars
 				# via env to avoid quoting issues.
-				env CERT="$certLine" yq -i "
+				# Checked: the logger wrapper runs this script with errexit OFF.
+				if ! env CERT="$certLine" yq -i "
 					.keys.\"${keyName}\".slots.\"${keySlot}\".certificates.\"${authorityName}\".\"${certUsage}\" = strenv(CERT)
-				" "$inputFile"
+				" "$inputFile"; then
+					log::error "cannot record the ${certUsage} certificate of ${keyName}@${keySlot}"
+					return 1
+				fi
 			done
 		done
 	done
