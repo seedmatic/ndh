@@ -49,7 +49,7 @@ EOF
 }
 
 bake() { # <host names>
-  sed -e "s#@nixBashTrampoline@#$BATS_TEST_TMPDIR/trampoline.sh#" -e 's#@loggerTag@#test#' -e "s#@hostPrincipals@#$1#" \
+  sed -e "s#@nixBashTrampoline@#$BATS_TEST_TMPDIR/trampoline.sh#" -e 's#@loggerTag@#test#' -e "s#@hostPrincipals@#$1#" -e "s#@sshKeygen@#$(command -v ssh-keygen)#" \
     "$BATS_TEST_DIRNAME/../ssh-keys-certify.sh" >"$BATS_TEST_TMPDIR/ssh-keys-certify"
 }
 

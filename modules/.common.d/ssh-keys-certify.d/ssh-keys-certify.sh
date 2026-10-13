@@ -32,6 +32,9 @@ source @nixBashTrampoline@
 
 # keys.yaml relative to the repository root: the real file, and the copy whose path picks its sops rule.
 readonly keysRel="modules/home-manager/ssh.d/keys.yaml"
+# ssh-keygen is pinned: the signature AND the comparison of a recorded certificate read its `-L`
+# output, and the first ssh-keygen on PATH (Apple's or nix's) made a current certificate look stale.
+readonly sshKeygen="@sshKeygen@"
 declare -g keysYaml tmpdir decrypted apply
 declare -ga hostPrincipals=() plan=() current=() unrecorded=()
 IFS=',' read -r -a hostPrincipals <<<"@hostPrincipals@"
@@ -84,7 +87,7 @@ cert::principals_for() { # <key> <usage> → comma-separated, sorted
 # What a recorded certificate says, normalised: type, key, CA, identity, serial, validity, principals,
 # critical options and extensions (each list sorted, "(none)" when empty).
 cert::describe() { # <cert file>
-	ssh-keygen -L -f "$1" | awk '
+	"$sshKeygen" -L -f "$1" | awk '
 		function flush(name) { if (sec == name) { n = split(buf, arr, "\n"); out = ""
 			for (i = 1; i <= n; i++) for (j = i + 1; j <= n; j++) if (arr[j] < arr[i]) { t = arr[i]; arr[i] = arr[j]; arr[j] = t }
 			for (i = 1; i <= n; i++) if (arr[i] != "") out = out (out ? "," : "") arr[i]
@@ -119,8 +122,8 @@ cert::default_extensions() { # <usage>
 cert::expected() { # <key> <slot> <authority> <authority slot> <usage>
 	local type keyFp caFp
 	type="$([[ "$5" == ssh-host ]] && echo host || echo user)"
-	keyFp="$(printf '%s %s\n' "$(yq::get ".keys.\"$1\".type")" "$(yq::get ".keys.\"$1\".slots.\"$2\".public")" | ssh-keygen -lf - | awk '{print $2}')"
-	caFp="$(printf '%s %s\n' "$(yq::get ".authorities.\"$3\".type // \"ssh-ed25519\"")" "$(yq::get ".authorities.\"$3\".slots.\"$4\".public")" | ssh-keygen -lf - | awk '{print $2}')"
+	keyFp="$(printf '%s %s\n' "$(yq::get ".keys.\"$1\".type")" "$(yq::get ".keys.\"$1\".slots.\"$2\".public")" | "$sshKeygen" -lf - | awk '{print $2}')"
+	caFp="$(printf '%s %s\n' "$(yq::get ".authorities.\"$3\".type // \"ssh-ed25519\"")" "$(yq::get ".authorities.\"$3\".slots.\"$4\".public")" | "$sshKeygen" -lf - | awk '{print $2}')"
 	printf '%s|%s|%s|"%s"|0|forever|%s|(none)|%s\n' "$type" "$keyFp" "$caFp" "$(cert::identity "$1" "$5")" \
 		"$(cert::principals_for "$1" "$5")" "$(cert::default_extensions "$5")"
 }
@@ -224,7 +227,7 @@ certify::one() { # <key> <slot> <authority> <authority slot> <usage>
 	[[ "$usage" == ssh-host ]] && args+=(-h)
 	# Every step is checked: the logger wrapper runs this script with errexit OFF, and an unchecked
 	# failure once recorded EMPTY certificates as "signed".
-	if ! ssh-keygen "${args[@]}" "${stem}.pub"; then
+	if ! "$sshKeygen" "${args[@]}" "${stem}.pub"; then
 		log::error "ssh-keygen could not sign ${key}@${slot} ${usage}"
 		return 1
 	fi

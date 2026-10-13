@@ -1778,6 +1778,7 @@
               nixBashTrampoline = ndhNixBashTrampolineDarwin;
               loggerTag = "ndh.ssh-keys-certify";
               hostPrincipals = nixpkgs.lib.concatStringsSep "," fleetHostPrincipals;
+              sshKeygen = "${pkgsForSystem.openssh}/bin/ssh-keygen";
             }
           );
           # T14's closure: re-mint and install the Incus cluster certificate (one definition,
