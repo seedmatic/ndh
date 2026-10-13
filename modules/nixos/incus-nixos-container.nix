@@ -247,7 +247,9 @@ in
         };
         environment = {
           LAYER_CONTRACT = layerContract;
+          LOWER_CURRENT = lowerCurrent;
           CONTAINER_DIR = info.dir;
+          CONTAINER_NAME = name;
         };
         script = lib.getExe storeScript;
       }

@@ -1265,6 +1265,13 @@ and leaves nothing mounted
 | 5 — nix sees the lower
 | inside: `nix path-info` of a layer path, `nix store verify` of it
 | valid, served from `/nix/.lower`, never copied into the upper
+
+| 6 — a changed layer set is refused, then reset
+| re-bring-up nerd-nixos (new layers), start the store unit, then `incus stop`,
+`ndh-incus-container reset {name}`, `deliver`, `incus start`
+| the unit fails **before** mounting and names the `reset` gesture: an `index=on` upper is bound to
+the lower set it was first mounted on, and the kernel would refuse it with ESTALE. After the reset,
+the previous store sits in one dated `.reset-{ts}`, and the container boots on the new layers
 |===
 
 === Three tiers of store, one immutable base

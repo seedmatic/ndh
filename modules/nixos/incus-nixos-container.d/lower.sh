@@ -7,8 +7,13 @@
 mapfile -t layers < <(yq -p json -r '.lowerdirs[]' "$LAYER_CONTRACT")
 lowerdirs=$(IFS=:; echo "${layers[*]}")
 
-# One view per layer set, named by what the layers hold: the DB is a function of that and nothing else.
-fingerprint=$(find "${layers[@]}" -mindepth 1 -maxdepth 1 ! -name '.*' -printf '%f\n' | sort -u | sha256sum | cut -c1-16)
+# One view per layer set, named by what each layer holds and by their order. The DB needs only the
+# union, but an `index=on` upper is bound to the layers AND their order, and every container's upper
+# is stamped with this same fingerprint (store.sh).
+fingerprint=$({
+  echo "$lowerdirs"
+  find "${layers[@]}" -mindepth 1 -maxdepth 1 ! -name '.*' -printf '%H/%f\n' | sort
+} | sha256sum | cut -c1-16)
 view="$LOWER_ROOT/$fingerprint"
 shim="$LOWER_ROOT/.links-shim"
 
