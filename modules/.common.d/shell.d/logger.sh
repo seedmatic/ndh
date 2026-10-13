@@ -321,9 +321,9 @@ ndh::logger:command:run() {
 	exec 3>&2
 	ndh::logger:stderr:redirect "$tag"
 
-	# A script whose xtrace-guard set NDH_LOGGER_NO_XTRACE handles privates: tracing its command
-	# would write every value it expands into the log sink, after the guard has turned xtrace off.
-	[ -n "${NDH_LOGGER_NO_XTRACE:-}" ] || set -x
+	# Traced only on request: a trace writes every value the command expands into the log sink,
+	# tokens and privates included. A script that handles privates unsets the request in its guard.
+	if [ "${NDH_LOGGER_XTRACE:-0}" = 1 ]; then set -x; fi
 	local rc=0
 	if "$@"; then
 		echo "[$tag] ndh::logger:command:run completed successfully" >&2

@@ -101,14 +101,14 @@ decrypted() { sops --input-type yaml --output-type yaml -d "$file"; }
   [[ "$output" == *"holds 2 fleet signing keys"* ]]
 }
 
-# The REAL wrapper turns xtrace on around the command after the script's head guard has turned it
-# off, so a guard alone left every expanded value — the new private included — in the log sink.
-@test "under the real logger wrapper, the log sink never carries the new private" {
+# The REAL wrapper traces its command on request (NDH_LOGGER_XTRACE=1), and a trace writes every
+# expanded value — the new private included — into the log sink: the guard must cancel the request.
+@test "under the real logger wrapper, even with a trace requested, the sink never carries the new private" {
   sink="$BATS_TEST_TMPDIR/sink"
   sed -e "s#@nixBashTrampoline@#$BATS_TEST_DIRNAME/../../shell.d/nix-bash-trampoline.sh#" \
     -e 's#@loggerTag@#test#' -e "s#@nix@#$(command -v nix)#" \
     "$BATS_TEST_DIRNAME/../cache-signing-key-rotate.sh" >"$BATS_TEST_TMPDIR/rotate"
-  NDH_BASH_TRAMPOLINED=1 LOGGER_CMD=cat ACTIVATION_LOG_FILE="$sink" run rotate --to new-fleet-1 --apply
+  NDH_LOGGER_XTRACE=1 NDH_BASH_TRAMPOLINED=1 LOGGER_CMD=cat ACTIVATION_LOG_FILE="$sink" run rotate --to new-fleet-1 --apply
   [ "$status" -eq 0 ]
   # The sink is written by a process substitution that may outlive the script by a moment.
   for _ in 1 2 3 4 5 6 7 8 9 10; do grep -q 'command:run completed' "$sink" && break; sleep 0.5; done
