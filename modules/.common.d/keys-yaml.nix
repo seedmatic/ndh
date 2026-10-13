@@ -51,11 +51,37 @@ let
 
   phase2Gaps = trust.phase2Gaps authoritiesJson revokedJson;
 
+  # Roles × keys 6a: a generation whose public is recorded is certified on the seat, and the activation
+  # only installs what is recorded — so a recorded public without its recorded certificate would leave
+  # its host with none. Refused here, before any host is switched. A slot with no public (material
+  # generated at activation) is still signed on its host and is not listed.
+  uncertified = lib.concatLists (
+    lib.mapAttrsToList (
+      name: key:
+      lib.concatMap (
+        usage:
+        lib.concatLists (
+          lib.mapAttrsToList (
+            slot: material:
+            lib.optional (
+              (material.public or "") != ""
+              && ((material.certificates or { }).${key.authority} or { }).${usage} or "" == ""
+            ) "${name}@${slot} ${usage}"
+          ) (key.slots or { })
+        )
+      ) (lib.filter (u: u == "ssh-host" || u == "ssh-user") (key.cert_usage or [ ]))
+    ) (lib.filterAttrs (_: key: (key.authority or null) != null) keysJson)
+  );
+
   revokedKeysFile =
     if stillLive != { } then
       throw ''
         ndh.keysYaml: revoked but still carried by a slot in keys.yaml: ${lib.concatStringsSep ", " (lib.attrNames stillLive)}
         A generation is revoked in the same change that deletes its slot, never before.''
+    else if uncertified != [ ] then
+      throw ''
+        ndh.keysYaml: recorded public without its recorded certificate: ${lib.concatStringsSep ", " uncertified}
+        Run `ssh-keys-certify --apply` on the seat and commit keys.yaml (roles × keys 6a).''
     else if phase2Gaps != [ ] then
       throw ''
         ndh.keysYaml: authority generation retired before its successor was trusted everywhere: ${lib.concatStringsSep ", " phase2Gaps}

@@ -206,3 +206,55 @@ empty_slot_fixture() {
 
   [ "$first" = "$second" ]
 }
+
+# Roles × keys 6a: a generation whose public is recorded is certified ON THE SEAT. The activation
+# installs that certificate as recorded and signs nothing for it — so it needs no authority private.
+recorded_fixture() { # <with certificate: yes|no>
+  ssh-keygen -q -t ed25519 -N '' -f "${tmpdir}/recorded" -C recorded
+  ssh-keygen -q -t ed25519 -N '' -f "${tmpdir}/seat-ca" -C seat-ca
+  ssh-keygen -q -s "${tmpdir}/seat-ca" -h -I seat -n bioskop "${tmpdir}/recorded.pub"
+  local cert=""
+  [ "$1" = yes ] && cert="$(<"${tmpdir}/recorded-cert.pub")"
+  write_fixture <<<"$(PUB="$(cut -d' ' -f2 "${tmpdir}/recorded.pub")" CERT="$cert" yq --null-input '
+    {
+      "authorities": { "test-ca": { "type": "ssh-ed25519", "slots": { "26-10-04": { "public": "unused" } } } },
+      "keys": {
+        "host": {
+          "type": "ssh-ed25519",
+          "authority": "test-ca",
+          "cert_usage": [ "ssh-host" ],
+          "slots": { "26-10-04": { "public": strenv(PUB), "private": "recorded-private" } }
+        }
+      }
+    } | with(select(strenv(CERT) != ""); .keys.host.slots."26-10-04".certificates."test-ca"."ssh-host" = strenv(CERT))')"
+}
+
+@test "a recorded certificate is installed as recorded, with no authority private on the host" {
+  recorded_fixture yes
+  local before
+  before="$(yq -r '.keys.host.slots."26-10-04".certificates."test-ca"."ssh-host"' "$inputFile")"
+  run enrich::all_keys
+  [ "$status" -eq 0 ]
+  [ "$(yq -r '.keys.host.slots."26-10-04".certificates."test-ca"."ssh-host"' "$inputFile")" = "$before" ]
+}
+
+@test "a recorded public without its recorded certificate stops the enrichment" {
+  recorded_fixture no
+  run enrich::all_keys
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"its public is recorded but its certificate is not"*"ssh-keys-certify"* ]]
+}
+
+@test "a generation made at activation is still signed here, beside a recorded one" {
+  recorded_fixture yes
+  local recorded
+  recorded="$(yq -r '.keys.host.slots."26-10-04".certificates."test-ca"."ssh-host"' "$inputFile")"
+  AUTH_PRIV="$authorityPrivate" yq -i '
+    .authorities."test-ca".slots."26-10-04".private = strenv(AUTH_PRIV) |
+    .keys.host.slots."26-11-01" = {}' "$inputFile"
+  run enrich::all_keys
+  [ "$status" -eq 0 ]
+  [ "$(yq -r '.keys.host.slots."26-10-04".certificates."test-ca"."ssh-host"' "$inputFile")" = "$recorded" ]
+  run yq -r '.keys.host.slots."26-11-01".certificates."test-ca"."ssh-host"' "$inputFile"
+  [[ "$output" == ssh-ed25519-cert-v01@openssh.com* ]]
+}

@@ -559,9 +559,22 @@ enrich::all_keys() {
 			return 1
 		fi
 
-		local keySlot certUsage certLine
+		local keySlot certUsage certLine recorded recordedPublic
 		for keySlot in "${keySlots[@]}"; do
+			# Decided once per generation, BEFORE anything is generated: a slot whose public is in keys.yaml
+			# is certified on the seat (ssh-keys-certify) and its certificates are installed as recorded; a
+			# slot with no public holds material generated here, and only that one is still signed here,
+			# until its slot is recorded (roles × keys step 9).
+			recordedPublic="$(yq::get ".keys.\"${keyName}\".slots.\"${keySlot}\".public // \"\"")"
 			for certUsage in "${certUsages[@]}"; do
+				if [[ "$certUsage" == ssh-host || "$certUsage" == ssh-user ]] && [[ -n "$recordedPublic" ]]; then
+					recorded="$(yq::get ".keys.\"${keyName}\".slots.\"${keySlot}\".certificates.\"${authorityName}\".\"${certUsage}\" // \"\"")"
+					if [[ -z "$recorded" ]]; then
+						log::error "${keyName}@${keySlot} ${certUsage}: its public is recorded but its certificate is not — run ssh-keys-certify on the seat"
+						return 1
+					fi
+					continue
+				fi
 				certLine="$(sign::one_cert "$keyName" "$keySlot" "$authorityName" "$certUsage")"
 				# Inject under .keys.<k>.slots.<slot>.certificates.<auth>.<cert_usage>.
 				# yq -i with literal strings containing newlines/special chars
