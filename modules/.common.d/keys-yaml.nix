@@ -51,10 +51,10 @@ let
 
   phase2Gaps = trust.phase2Gaps authoritiesJson revokedJson;
 
-  # Roles × keys 6a: a generation whose public is recorded is certified on the seat, and the activation
-  # only installs what is recorded — so a recorded public without its recorded certificate would leave
-  # its host with none. Refused here, before any host is switched. A slot with no public (material
-  # generated at activation) is still signed on its host and is not listed.
+  # Roles × keys 6a: every SSH certificate (ssh-host, ssh-user) is signed on the seat and recorded
+  # in keys.yaml; the activation only installs it and signs nothing. So a generation of a key with an
+  # SSH cert_usage must carry its recorded public AND its recorded certificate — otherwise its host
+  # would have none. Refused here, before any host is switched.
   uncertified = lib.concatLists (
     lib.mapAttrsToList (
       name: key:
@@ -63,10 +63,12 @@ let
         lib.concatLists (
           lib.mapAttrsToList (
             slot: material:
-            lib.optional (
-              (material.public or "") != ""
-              && ((material.certificates or { }).${key.authority} or { }).${usage} or "" == ""
-            ) "${name}@${slot} ${usage}"
+            if (material.public or "") == "" then
+              [ "${name}@${slot} ${usage} (no recorded material)" ]
+            else
+              lib.optional (
+                ((material.certificates or { }).${key.authority} or { }).${usage} or "" == ""
+              ) "${name}@${slot} ${usage} (no recorded certificate)"
           ) (key.slots or { })
         )
       ) (lib.filter (u: u == "ssh-host" || u == "ssh-user") (key.cert_usage or [ ]))
@@ -80,8 +82,9 @@ let
         A generation is revoked in the same change that deletes its slot, never before.''
     else if uncertified != [ ] then
       throw ''
-        ndh.keysYaml: recorded public without its recorded certificate: ${lib.concatStringsSep ", " uncertified}
-        Run `ssh-keys-certify --apply` on the seat and commit keys.yaml (roles × keys 6a).''
+        ndh.keysYaml: SSH certificates not recorded: ${lib.concatStringsSep ", " uncertified}
+        Record the material on the seat (ssh-keys-renew), sign it (ssh-keys-certify --apply), and commit
+        keys.yaml (roles × keys 6a).''
     else if phase2Gaps != [ ] then
       throw ''
         ndh.keysYaml: authority generation retired before its successor was trusted everywhere: ${lib.concatStringsSep ", " phase2Gaps}
