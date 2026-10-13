@@ -80,7 +80,9 @@
 
     tart.configGenerator = {
       forceEnable = false;
-      vmCpuCount = 8; # 8 of 14 cores (10P+4E) reserved for nerd-nixos; 6 remain for macOS
+      # M4 Pro: 12 cores, 8P+4E. 8 vCPUs took every P-core, and a vCPU the host preempts stops
+      # answering IPIs: the guest's soft lockups and RCU stalls of 2026-10. 6 leaves macOS 2 P-cores.
+      vmCpuCount = 6;
       vmMemoryMiB = halfRamMiB;
       vmRunBridgeInterface = hardware.vmBridgeService;
       vmRunSerialBridgeEnable = true;

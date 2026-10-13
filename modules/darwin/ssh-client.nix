@@ -36,17 +36,19 @@ in
 
     baseConfig = mkOption {
       type = types.lines;
+      # ssh keeps the FIRST value it obtains for each option, so the specific stanzas (the drop-ins)
+      # come first and the `Host *` defaults last. With the defaults first, `StrictHostKeyChecking
+      # accept-new` shadowed every stanza's `yes`, and root's builder channel fell back to trust on
+      # first use. No ControlMaster here: without a ControlPath it multiplexes nothing.
       default = ''
+        Include /etc/ssh/ssh_config.d/*.conf
+
         Host *
           AddressFamily inet
           ServerAliveInterval 30
           ServerAliveCountMax 3
-          ControlMaster auto
-          ControlPersist 5m
           PreferredAuthentications publickey,keyboard-interactive
           StrictHostKeyChecking accept-new
-        Include ssh_config.d/*.conf
-        Include /etc/ssh/ssh_config.d/*.conf
       '';
       description = "Raw /etc/ssh/ssh_config base contents (may contain Include lines).";
     };
@@ -249,17 +251,13 @@ in
       # key is accepted in the final configuration.  Use that key as
       # the guest-stanza default.
       defaultGuestIdentity = hostIdentityFile;
-      guestHostKeySafetyConfig = ''
-        UserKnownHostsFile /dev/null
-        GlobalKnownHostsFile /dev/null
-        StrictHostKeyChecking no
-        CheckHostIP no
-      '';
-      ownedDomainHostKeyBypassConfig = ''
-        UserKnownHostsFile /dev/null
-        GlobalKnownHostsFile /dev/null
-        StrictHostKeyChecking no
-        CheckHostIP no
+      # Hosts we own present a certificate from the host authority, which
+      # /etc/ssh/ssh_known_hosts trusts for every user, root included (openssh-policy.nix).
+      # So these names are verified by the authority and nothing else: no blind accept,
+      # no pin taken on first use. These stanzas used to send both known-hosts files to
+      # /dev/null, and root — the nix-daemon to its builders — then verified no host at all.
+      verifiedByAuthorityConfig = ''
+        StrictHostKeyChecking yes
       '';
       guestIdentity =
         if cfg.guest.identityFile != null then cfg.guest.identityFile else defaultGuestIdentity;
@@ -308,7 +306,7 @@ in
             identitiesOnly = cfg.guest.identitiesOnly;
             bypassAgent = cfg.guest.bypassAgent;
             extraConfig =
-              guestHostKeySafetyConfig + optionalString (cfg.guest.extraConfig != null) cfg.guest.extraConfig;
+              verifiedByAuthorityConfig + optionalString (cfg.guest.extraConfig != null) cfg.guest.extraConfig;
           }
         else
           "";
@@ -321,7 +319,7 @@ in
         identityFile = hostIdentityFile;
         identitiesOnly = true;
         bypassAgent = false;
-        extraConfig = ownedDomainHostKeyBypassConfig;
+        extraConfig = verifiedByAuthorityConfig;
       };
 
       # Retired — see comment at vzHost* near line 280.
@@ -349,7 +347,24 @@ in
         '';
       }) (lib.filterAttrs (_: fwd: fwd.internalPort or 0 == 22) wanPortForwards);
 
-      allExtraStanzas = hostIdentityStanzas ++ vzHostStanzas ++ wanProxyStanzas ++ cfg.extraStanzas;
+      # Every fleet guest, not only this host's: root reaches the other bare-metal's guest too, and
+      # that name is verified by the authority like the rest. Strictness only — no identity is set.
+      fleetGuestStanzas = [
+        {
+          patterns = [
+            "*-nixos"
+            "*-nixos.local"
+          ];
+          user = null;
+          identityFile = null;
+          identitiesOnly = false;
+          bypassAgent = false;
+          extraConfig = verifiedByAuthorityConfig;
+        }
+      ];
+
+      allExtraStanzas =
+        hostIdentityStanzas ++ fleetGuestStanzas ++ vzHostStanzas ++ wanProxyStanzas ++ cfg.extraStanzas;
 
       extraText = concatStringsSep "\n" (map renderStanza allExtraStanzas);
     in

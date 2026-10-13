@@ -95,8 +95,6 @@ in
         Subsystem = "sftp internal-sftp";
       };
 
-      # Enable SSH client policy to generate guest stanzas system-wide
-      client.enable = true;
     };
 
     # opensshPolicy now manages /etc/ssh/ssh_known_hosts (the host authority, for

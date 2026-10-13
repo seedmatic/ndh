@@ -132,7 +132,7 @@ let
   #   - The cert is a `mammoth-skate`-signed x509 leaf carrying the
   #     DuckDNS domain (mammoth-skate.duckdns.org) as its SAN.  Clients
   #     trust it via the CA cert committed at
-  #     `authorities.mammoth-skate.ca_crt` in keys.yaml, installed into
+  #     `authorities.<authority>.slots.<slot>.ca_crt` in keys.yaml, installed into
   #     each client's system trust store by the client module.
   #   - TLS is required because modern tailscale clients force the
   #     Noise upgrade onto HTTPS:443 after any failed plain-HTTP

@@ -3,7 +3,6 @@
   pkgs,
   lib,
   catalog,
-  inventory,
   ndh,
   worktreePath,
   ...
@@ -23,26 +22,6 @@ let
         "system"
         "user"
       ];
-  hostIdent =
-    if
-      config ? profile
-      && config.profile ? host
-      && config.profile.host ? hostAlias
-      && config.profile.host.hostAlias != null
-      && config.profile.host.hostAlias != ""
-    then
-      config.profile.host.hostAlias
-    else if
-      config ? profile
-      && config.profile ? host
-      && config.profile.host ? hostName
-      && config.profile.host.hostName != null
-    then
-      config.profile.host.hostName
-    else if config.networking.hostName != "" then
-      config.networking.hostName
-    else
-      "darwin";
   profileUserName =
     if config ? profile && config.profile ? user && config.profile.user ? name then
       config.profile.user.name
@@ -59,9 +38,6 @@ let
   # participates in. The legacy 4-arg ssh-split-keys-yaml signature still
   # expects a single profile path, so we invoke it once per entry below.
   profileKeysYamlPathFor = profile: "${enrichedKeysDir}/profiles/${profile}.yaml";
-
-  inventoryHostNames = builtins.attrNames (inventory.hosts or { });
-  inventoryHostsCsv = lib.concatStringsSep "," inventoryHostNames;
 
   # v2 has a single catalog user; profile name no longer drives the
   # OS user lookup.
@@ -82,7 +58,6 @@ let
   sshAddKeysLabel =
     if sshAddKeysAgent != null && sshAddKeysAgent.enable then sshAddKeysAgent.config.Label else null;
 
-  loggerTagOrchestrate = "darwin.activationScripts.ssh-keys-enrichment.orchestrate";
   loggerTagEnrich = "darwin.activationScripts.ssh-keys-enrichment.enrichSSHKeysYaml";
   loggerTagSplit = "darwin.activationScripts.ssh-keys-enrichment.splitSSHKeysYaml";
   loggerTagExtractSystem = "darwin.activationScripts.ssh-keys-enrichment.extractSystemKeys";
@@ -102,12 +77,6 @@ let
       nixBashTrampoline = nixBashTrampoline;
       loggerTag = loggerTagSplit;
     };
-    ssh-enrich-split-and-authorize =
-      pkgs.replaceVars "${ndhCommon}/ssh-keys.d/ssh-enrich-split-runtime-keys.sh"
-        {
-          nixBashTrampoline = nixBashTrampoline;
-          loggerTag = loggerTagOrchestrate;
-        };
     # System-scope extract: ssh-host privates → sshPaths.systemKeysDir.
     ssh-extract-keys-system = pkgs.replaceVars "${hmSshKeyDir}/ssh-extract-keys.sh" {
       nixBashTrampoline = nixBashTrampoline;
@@ -163,17 +132,14 @@ in
     set -euo pipefail
 
     # Pre-create the split output directory tree so that enrichment/split
-    # scripts can always write their outputs even on first boot (mirrors the
-    # explicit install -d in ssh-enrich-split-runtime-keys.sh).
+    # scripts can always write their outputs even on first boot.
     install -d -m 0755 ${lib.escapeShellArg enrichedKeysDir} ${lib.escapeShellArg "${enrichedKeysDir}/profiles"}
 
     # Enrichment produces the full enriched yaml at generatedKeysYamlPath.
     # We then invoke split-keys-yaml once per profile in profile.names.
     ${pkgs.bash}/bin/bash ${sshKeysEnrichmentTools}/bin/ssh-enrich-keys-yaml \
-      ${lib.escapeShellArg hostIdent} \
       ${lib.escapeShellArg decryptedSSHKeysYamlPath} \
       ${lib.escapeShellArg generatedKeysYamlPath} \
-      ${lib.escapeShellArg inventoryHostsCsv} \
       ${lib.escapeShellArg profileOwnerName}
 
     ${splitAllProfilesSnippet}

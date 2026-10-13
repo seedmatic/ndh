@@ -1,5 +1,10 @@
 #!/usr/bin/env -S bash -euo pipefail
 # @codebase
+# ★ xtrace-guard — no trace, whatever the invocation (bash -x, an inherited SHELLOPTS=xtrace, a
+# caller's set -x): this script handles private keys, and a trace prints every value it expands.
+case $- in *x*) { set +x; } 2>/dev/null; echo "[xtrace-guard] xtrace disabled: this script handles private keys" >&2 ;; esac
+export -n SHELLOPTS 2>/dev/null || true # readonly in bash, so not unset; un-exported, it stops at this process
+unset BASH_XTRACEFD 2>/dev/null || true
 # ssh-keys-renew — phase 1 of an SSH key renewal in
 # modules/home-manager/ssh.d/keys.yaml.
 #
@@ -18,9 +23,15 @@
 # EXPOSED: there, the overlap the two phases exist to provide is the risk itself,
 # since it keeps the published generation accepted until phase 2.
 #
+# --create declares a NEW entry and generates its first slot in the same change: the
+# schema requires one slot per entry, so an entry cannot be committed empty and filled
+# later, and an entry with no slots at all is refused as one that predates the model.
+#
 # Usage:
 #   ssh-keys-renew [--key NAME]... [--authority NAME]... [--older-than Nd]
 #                  [--replace --reason TEXT] [--apply]
+#   ssh-keys-renew --create NAME --usage TAG... [--profile NAME]... [--comment TEXT]
+#                  [--type TYPE] [--apply]
 #
 # Safe by default: nothing is generated and keys.yaml is not touched unless
 # --apply is given. A tool that rewrites key material shows its work first.
@@ -38,18 +49,23 @@
 # does not survive, so an empty slot in the source would be a DIFFERENT key after
 # every activation — fatal for anything that identifies a host.
 #
-# Authorities are renewed the same way, and they must be renewed BEFORE their
-# leaves: the enrichment refuses to sign without the authority's private key, and
-# a leaf is only re-signed by the new authority once every host trusts it. That
-# ordering is what makes one certificate per key generation sufficient.
+# Authorities are renewed the same way. An authority signs with its OLDEST slot
+# that is not compromised (keys.schema.yaml, authoritySlots), so a new generation
+# signs nothing until phase 2 drops the old one — by which time every trust store
+# carries it. An authority and its leaves may therefore renew together: the new
+# leaf slot is signed by the generation every host already trusts.
 #
 # See docs/ssh-keys-renewal-spec.adoc.
 
 # shellcheck disable=SC1091
 source @nixBashTrampoline@
 
+# keys.yaml relative to the repository root: the real file, and the copy whose path picks its sops rule.
+readonly keysRel="modules/home-manager/ssh.d/keys.yaml"
 declare -g keysYaml tmpdir decrypted today apply olderThanDays replace reason
+declare -g createName createComment createType
 declare -ga selectKeys=() selectAuthorities=() plan=() refusals=()
+declare -ga createUsages=() createProfiles=()
 
 # ⚠️ stdout, NOT stderr — the opposite of the activation scripts' convention, and
 # for a reason. ndh::logger:command:run redirects stderr into the logger sink and
@@ -67,10 +83,12 @@ usage() {
 	cat <<-EOF
 		usage: ssh-keys-renew [--key NAME]... [--authority NAME]... [--older-than Nd]
 		                      [--replace --reason TEXT] [--apply]
+		       ssh-keys-renew --create NAME --usage TAG... [--profile NAME]...
+		                      [--comment TEXT] [--type TYPE] [--apply]
 
 		  --key NAME         Renew keys.<NAME>. Repeatable.
-		  --authority NAME   Renew authorities.<NAME>. Repeatable. Renew an authority
-		                     BEFORE its leaves.
+		  --authority NAME   Renew authorities.<NAME>. Repeatable. The new generation
+		                     signs only once phase 2 drops the old one.
 		  --older-than Nd    Select every entry whose newest slot is more than N days
 		                     old. Reads the slot dates directly — there is no side
 		                     table to keep in step, which is the free benefit of
@@ -78,9 +96,15 @@ usage() {
 		  --replace          No overlap: every existing slot of a selected entry is
 		                     deleted AND written to revoked in the same change.
 		                     For an EXPOSED private, where the overlap is the risk.
-		                     An authority and its leaves may then go together.
 		  --reason TEXT      The reason recorded in each revoked entry. Required with
 		                     --replace.
+		  --create NAME      Declare keys.<NAME>, which must not exist, and generate its
+		                     first slot. Needs at least one --usage.
+		  --usage TAG        A usage of the new entry (keys.schema.yaml). Repeatable.
+		  --profile NAME     A profile of the new entry. Repeatable; none means the key
+		                     lands on no host and its consumer reads keys.yaml itself.
+		  --comment TEXT     The new entry's comment (default: NAME).
+		  --type TYPE        The new entry's key type (default: ssh-ed25519).
 		  --apply            Actually generate and rewrite keys.yaml. Without it this
 		                     prints the plan and changes nothing.
 
@@ -189,8 +213,24 @@ plan::consider() { # <section> <name>
 	return 0
 }
 
+# A new entry: its name must be free and its type generable; the schema checks the rest
+# (usage tags, profile names) when the result is validated, before the commit.
+plan::consider_create() {
+	if [[ "$(yq eval -r ".keys // {} | has(\"${createName}\")" "$decrypted")" == "true" ]]; then
+		refusals+=("keys.${createName}: already exists — --create declares a new entry, --key renews one")
+		return 0
+	fi
+	if ! keygen::args_for "$createType" >/dev/null; then
+		refusals+=("keys.${createName}: unsupported type '${createType}'")
+		return 0
+	fi
+	plan+=("keys	${createName}	${createType}	create")
+	return 0
+}
+
 plan::build() {
 	local name section newest age
+	if [[ -n "$createName" ]]; then plan::consider_create; fi
 	if ((${#selectKeys[@]} > 0)); then
 		for name in "${selectKeys[@]}"; do plan::consider keys "$name"; done
 	fi
@@ -215,28 +255,6 @@ plan::build() {
 	done
 }
 
-# An authority renews BEFORE its leaves, and that is not a suggestion: the leaf
-# certificates are signed by the PRESENTED authority, so renewing both in one
-# gesture mints leaf certs under a CA that every host which has not activated yet
-# does not trust. The authority has to be published, and activated everywhere,
-# first. `--older-than` selects both by construction — it found all eleven
-# entries on the first run — so this refusal is the thing standing between a
-# sweep and a fleet that cannot verify its own hosts.
-plan::assert_ordering() {
-	local line section name authorityOf authLine authSection authName
-	for authLine in ${plan[@]+"${plan[@]}"}; do
-		IFS=$'\t' read -r authSection authName _ _ <<<"$authLine"
-		[[ "$authSection" == "authorities" ]] || continue
-		for line in "${plan[@]}"; do
-			IFS=$'\t' read -r section name _ _ <<<"$line"
-			[[ "$section" == "keys" ]] || continue
-			authorityOf="$(yq eval -r ".keys.\"${name}\".authority // \"\"" "$decrypted")"
-			[[ "$authorityOf" == "$authName" ]] || continue
-			refusals+=("authorities.${authName} and keys.${name} cannot renew together — the authority must be published and activated everywhere BEFORE its leaves are re-signed under it")
-		done
-	done
-}
-
 plan::show() {
 	local line section name keyType existing refusal
 	cat <<-EOF
@@ -252,7 +270,9 @@ plan::show() {
 		printf '%-13s %-24s %-22s %s\n' SECTION ENTRY TYPE 'SLOTS AFTER'
 		for line in "${plan[@]}"; do
 			IFS=$'\t' read -r section name keyType existing <<<"$line"
-			if ((replace == 1)); then
+			if [[ "$existing" == create ]]; then
+				printf '%-13s %-24s %-22s %s\n' "$section" "$name" "$keyType" "${today} (new entry)"
+			elif ((replace == 1)); then
 				printf '%-13s %-24s %-22s %s\n' "$section" "$name" "$keyType" "${today} (revokes ${existing})"
 			else
 				printf '%-13s %-24s %-22s %s\n' "$section" "$name" "$keyType" "${existing} + ${today}"
@@ -277,7 +297,11 @@ renew::one() { # <section> <name> <keyType>
 	read -r -a keygenArgs <<<"$(keygen::args_for "$keyType")"
 
 	out="${tmpdir}/${section}-${name}"
-	ssh-keygen -q "${keygenArgs[@]}" -N "" -f "$out" -C "$comment"
+	# Checked: the logger wrapper runs this script with errexit OFF.
+	if ! ssh-keygen -q "${keygenArgs[@]}" -N "" -f "$out" -C "$comment"; then
+		log::error "ssh-keygen could not generate ${section}.${name}"
+		return 1
+	fi
 
 	# `public` is the BARE base64 blob — the type is in `type:` and the comment in
 	# `comment:`, and consumers rebuild the line from the three. Writing a whole
@@ -301,6 +325,51 @@ renew::one() { # <section> <name> <keyType>
 		"$decrypted"
 }
 
+# Who can read a sops file, every key provider included, sorted.
+recipients::of() { # <sops file>
+	yq eval -r '[
+		((.sops.age // [])[] | "age:" + .recipient),
+		((.sops.pgp // [])[] | "pgp:" + .fp),
+		((.sops.kms // [])[] | "kms:" + .arn),
+		((.sops.gcp_kms // [])[] | "gcp_kms:" + .resource_id),
+		((.sops.azure_kv // [])[] | "azure_kv:" + .vault_url + "/" + .name),
+		((.sops.hc_vault // [])[] | "hc_vault:" + .vault_address + "/" + .engine_path + "/" + .key_name)
+	] | sort | join(",")' "$1"
+}
+
+# A tool that rewrites key material never changes who can read it. The re-encryption follows
+# keys.yaml's own creation rule (the decrypted copy sits at its relative path — a temp path once
+# matched the catch-all and dropped a recipient), and a recipient set that would still change —
+# the rule and the committed envelope disagree — is refused: that is `sops updatekeys`, an
+# explicit gesture of its own.
+recipients::unchanged() { # <committed file> <re-encrypted file>
+	local before after
+	before="$(recipients::of "$1")"
+	after="$(recipients::of "$2")"
+	[[ "$before" == "$after" ]] && return 0
+	log::error "keys.yaml's recipients would change: +[$(comm -13 <(tr ',' '\n' <<<"$before") <(tr ',' '\n' <<<"$after") | paste -sd, -)] -[$(comm -23 <(tr ',' '\n' <<<"$before") <(tr ',' '\n' <<<"$after") | paste -sd, -)]"
+	log::error "keys.yaml left untouched — align its recipients with its creation rule first: sops updatekeys ${keysRel}"
+	return 1
+}
+
+# Declare the new entry's public fields; renew::one then generates its first slot.
+create::declare() {
+	local item
+	log::info "declaring keys.${createName} (${createType})"
+	TYPE="$createType" COMMENT="$createComment" yq eval -i "
+		.keys.\"${createName}\".type = strenv(TYPE) |
+		.keys.\"${createName}\".comment = strenv(COMMENT) |
+		.keys.\"${createName}\".usage = [] |
+		.keys.\"${createName}\".profiles = []
+	" "$decrypted"
+	for item in "${createUsages[@]}"; do
+		ITEM="$item" yq eval -i ".keys.\"${createName}\".usage += [strenv(ITEM)]" "$decrypted"
+	done
+	for item in ${createProfiles[@]+"${createProfiles[@]}"}; do
+		ITEM="$item" yq eval -i ".keys.\"${createName}\".profiles += [strenv(ITEM)]" "$decrypted"
+	done
+}
+
 # Delete each retiring slot and write its `revoked` entry in the same document:
 # the evaluation refuses a revoked public that a slot still carries, and a slot
 # deleted without its entry stays valid wherever its public is still known.
@@ -313,6 +382,8 @@ renew::retire() { # <section> <name> <slot>...
 			.revoked.\"${name}@${slot}\".type   = .${section}.\"${name}\".type |
 			.revoked.\"${name}@${slot}\".public = .${section}.\"${name}\".slots.\"${slot}\".public |
 			.revoked.\"${name}@${slot}\".reason = strenv(REASON) |
+			.revoked.\"${name}@${slot}\".compromised = true |
+			.revoked.\"${name}@${slot}\".compromised = true |
 			del(.${section}.\"${name}\".slots.\"${slot}\")
 		" "$decrypted"
 	done
@@ -324,19 +395,24 @@ renew::apply() {
 
 	for line in "${plan[@]}"; do
 		IFS=$'\t' read -r section name keyType existing <<<"$line"
-		renew::one "$section" "$name" "$keyType"
-		if ((replace == 1)); then
+		if [[ "$existing" == create ]]; then create::declare || return 1; fi
+		renew::one "$section" "$name" "$keyType" || return 1
+		if ((replace == 1)) && [[ "$existing" != create ]]; then
 			read -r -a retiring <<<"$existing"
 			renew::retire "$section" "$name" "${retiring[@]}"
 		fi
 	done
 
 	reencrypted="${tmpdir}/keys.yaml.reenc"
-	sops --input-type yaml --output-type yaml encrypt "$decrypted" >"$reencrypted"
+	if ! (cd "${tmpdir}/repo" && sops --input-type yaml --output-type yaml encrypt "$keysRel") >"$reencrypted"; then
+		log::error "sops encrypt failed; keys.yaml left untouched"
+		return 1
+	fi
 	if [[ ! -s "$reencrypted" ]]; then
 		log::error "sops encrypt produced an empty file; keys.yaml left untouched"
 		return 1
 	fi
+	recipients::unchanged "$keysYaml" "$reencrypted" || return 1
 
 	for line in "${plan[@]}"; do
 		IFS=$'\t' read -r section name _ _ <<<"$line"
@@ -351,7 +427,21 @@ renew::apply() {
 		esac
 	done
 
-	install -m 0644 "$reencrypted" "$keysYaml"
+	install -m 0644 "$reencrypted" "$keysYaml" || return 1
+
+	if [[ -n "$createName" ]]; then
+		cat <<-EOF
+
+			keys.${createName} declared, with its first slot ${today}. A new entry has no
+			phase 2: nothing trusted the generation before it.
+
+			Next, in order:
+			  1. nix run "git+file://\$PWD?rev=\$(git rev-parse HEAD)#ssh-keys-v2-validate" -- modules/home-manager/ssh.d/keys.yaml
+			  2. commit the keys.yaml diff
+			  3. activate the hosts whose profiles it names, if any
+		EOF
+		return 0
+	fi
 
 	if ((replace == 1)); then
 		cat <<-EOF
@@ -360,7 +450,7 @@ renew::apply() {
 			ones are in revoked.
 
 			Next, in order:
-			  1. nix run .#ssh-keys-v2-validate
+			  1. nix run "git+file://\$PWD?rev=\$(git rev-parse HEAD)#ssh-keys-v2-validate" -- modules/home-manager/ssh.d/keys.yaml
 			  2. commit the keys.yaml diff
 			  3. activate EVERY host. There is no overlap: from its own activation on,
 			     a host refuses the retired generation — activate it from a session
@@ -374,7 +464,7 @@ renew::apply() {
 		phase 1 written. Both generations are now declared.
 
 		Next, in order:
-		  1. nix run .#ssh-keys-v2-validate
+		  1. nix run "git+file://\$PWD?rev=\$(git rev-parse HEAD)#ssh-keys-v2-validate" -- modules/home-manager/ssh.d/keys.yaml
 		  2. commit the keys.yaml diff
 		  3. activate EVERY host, and verify the new generation serves on each
 		  4. phase 2, by hand: delete the retiring slot and activate again
@@ -389,6 +479,9 @@ main() {
 	replace=0
 	reason=""
 	olderThanDays=""
+	createName=""
+	createComment=""
+	createType=""
 
 	while (($# > 0)); do
 		case "$1" in
@@ -419,6 +512,31 @@ main() {
 				reason="$2"
 				shift 2
 				;;
+			--create)
+				[[ -n "${2:-}" ]] || return "$(usage || echo $?)"
+				createName="$2"
+				shift 2
+				;;
+			--usage)
+				[[ -n "${2:-}" ]] || return "$(usage || echo $?)"
+				createUsages+=("$2")
+				shift 2
+				;;
+			--profile)
+				[[ -n "${2:-}" ]] || return "$(usage || echo $?)"
+				createProfiles+=("$2")
+				shift 2
+				;;
+			--comment)
+				[[ -n "${2:-}" ]] || return "$(usage || echo $?)"
+				createComment="$2"
+				shift 2
+				;;
+			--type)
+				[[ -n "${2:-}" ]] || return "$(usage || echo $?)"
+				createType="$2"
+				shift 2
+				;;
 			--apply)
 				apply=1
 				shift
@@ -435,8 +553,34 @@ main() {
 		esac
 	done
 
-	if ((${#selectKeys[@]} == 0)) && ((${#selectAuthorities[@]} == 0)) && [[ -z "$olderThanDays" ]]; then
-		log::error "nothing selected — pass --key, --authority or --older-than"
+	if [[ -n "$createName" ]]; then
+		# One gesture at a time: a creation mixed with renewals would apply both or
+		# neither, and a replacement has nothing to revoke in a new entry.
+		if ((${#selectKeys[@]} + ${#selectAuthorities[@]} > 0)) || [[ -n "$olderThanDays" ]] || ((replace == 1)); then
+			log::error "--create stands alone: no --key, --authority, --older-than or --replace with it"
+			usage
+			return $?
+		fi
+		# The schema's key-name pattern (keys.patternProperties), checked here because the name
+		# is spliced into yq expressions before anything validates the document.
+		if [[ ! "$createName" =~ ^[a-z][a-z0-9-]*$ ]]; then
+			log::error "--create ${createName@Q}: a key name is ^[a-z][a-z0-9-]*\$ (keys.schema.yaml)"
+			usage
+			return $?
+		fi
+		if ((${#createUsages[@]} == 0)); then
+			log::error "--create needs at least one --usage: it is what the schema reads the key's role from"
+			usage
+			return $?
+		fi
+		[[ -n "$createComment" ]] || createComment="$createName"
+		[[ -n "$createType" ]] || createType="ssh-ed25519"
+	elif ((${#createUsages[@]} + ${#createProfiles[@]} > 0)) || [[ -n "$createComment$createType" ]]; then
+		log::error "--usage, --profile, --comment and --type describe a new entry: they need --create"
+		usage
+		return $?
+	elif ((${#selectKeys[@]} == 0)) && ((${#selectAuthorities[@]} == 0)) && [[ -z "$olderThanDays" ]]; then
+		log::error "nothing selected — pass --key, --authority, --older-than or --create"
 		usage
 		return $?
 	fi
@@ -448,7 +592,7 @@ main() {
 
 	# Packaged as a flake app, so $0 is a /nix/store path — resolve the repo from
 	# the invocation cwd instead (run from the ndh repo root).
-	keysYaml="$(git rev-parse --show-toplevel)/modules/home-manager/ssh.d/keys.yaml"
+	keysYaml="$(git rev-parse --show-toplevel)/${keysRel}"
 	if [[ ! -r "$keysYaml" ]]; then
 		log::error "keys.yaml not readable at ${keysYaml} (run from the ndh repo root)"
 		return 1
@@ -458,7 +602,12 @@ main() {
 	chmod 700 "$tmpdir"
 	trap 'rm -rf "$tmpdir"' EXIT
 
-	decrypted="${tmpdir}/keys.yaml"
+	# The decrypted copy sits at keys.yaml's OWN relative path, beside a copy of the repository's
+	# .sops.yaml: sops picks the creation rule by the path it encrypts (--filename-override does not
+	# change that, measured with 3.13.3), so the re-encryption gets exactly keys.yaml's rule.
+	install -d -m 0700 "${tmpdir}/repo/$(dirname "$keysRel")"
+	cp "$(git rev-parse --show-toplevel)/.sops.yaml" "${tmpdir}/repo/.sops.yaml"
+	decrypted="${tmpdir}/repo/${keysRel}"
 	sops --input-type yaml --output-type yaml -d "$keysYaml" >"$decrypted"
 	if [[ ! -s "$decrypted" ]]; then
 		log::error "sops -d produced an empty file (check SOPS_AGE_KEY_FILE / sops.age.keyFile)"
@@ -468,10 +617,6 @@ main() {
 	today="$(date +%y-%m-%d)"
 
 	plan::build
-	# The ordering protects an overlap: leaves re-signed under a CA that hosts not
-	# yet activated do not trust. A replacement has no overlap to protect — every
-	# host refuses the old generations from its activation on, CA included.
-	((replace == 1)) || plan::assert_ordering
 	plan::show
 
 	if ((${#refusals[@]} > 0)); then

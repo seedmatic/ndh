@@ -198,3 +198,19 @@ YAML
   [ "$status" -eq 0 ]
   [[ "$output" != *"pending"* ]]
 }
+
+@test "a compromised authority slot leaves the trust set — no -ca.pub, the other slot stays" {
+  cat >"${tmp}/keys.yaml" <<'YAML'
+authorities:
+  mammoth-skate:
+    type: ssh-ed25519
+    comment: ca
+    slots:
+      26-05-29: { public: OLDAUTHPUBLIC, compromised: published }
+      26-10-04: { public: NEWAUTHPUBLIC }
+keys: {}
+YAML
+  run artefacts "${tmp}/keys.yaml"
+  [ "$status" -eq 0 ]
+  [ "$output" = "system mammoth-skate-ca.pub" ]
+}

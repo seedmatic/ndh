@@ -99,7 +99,7 @@ commits() { git -C "$MEM" rev-list --count HEAD; }
   run hook memory-commit.sh
   [ "$(commits)" -eq $((before + 1)) ]
   git -C "$MEM" show --name-only --format= HEAD | grep -qx mine.md
-  ! git -C "$MEM" show --name-only --format= HEAD | grep -q theirs.md
+  [ -z "$(git -C "$MEM" show --name-only --format= HEAD | grep theirs.md)" ]
   [[ "$(git -C "$MEM" status --porcelain)" == "?? theirs.md" ]]
   [[ "$output" == *"push FAILED"* ]] # no remote here: reported, not fatal
 }
@@ -130,7 +130,7 @@ commits() { git -C "$MEM" rev-list --count HEAD; }
   printf 'mine\n' >"$MEM/mine.md"
   wrote Write "$MEM/mine.md"
   run hook memory-commit.sh
-  ! git -C "$MEM" show --name-only --format= HEAD | grep -q staged.md
+  [ -z "$(git -C "$MEM" show --name-only --format= HEAD | grep staged.md)" ]
   [[ "$(git -C "$MEM" status --porcelain)" == "A  staged.md" ]]
 }
 @test "commit: nothing written, nothing committed, nothing said" {
@@ -194,4 +194,195 @@ commits() { git -C "$MEM" rev-list --count HEAD; }
   [ "$(commits)" -eq $((before + 1)) ]
   [[ "$(git -C "$MEM" show --name-only --format= HEAD)" == "rke2lab/fact.md" ]]
   [[ "$(git -C "$MEM" status --porcelain)" == "?? nnh/" ]]
+}
+
+# --- live-page ---
+start() { # $1 = source, $2 = the session's current title (empty: never renamed)
+  jq -cn --arg s "$1" --arg t "${2:-}" \
+    '{session_id: "abcd1234-0000", source: $s, cwd: "/w", transcript_path: "/t.jsonl"} + (if $t == "" then {} else {session_title: $t} end)' |
+    CLAUDE_SCRATCHPAD="$T" bash "$H/live-page.sh"
+}
+
+live() {
+  mkdir -p "$T/integration-sow"
+  printf '# Intégration — LIVE\n> tenu par develop-ab\n## 0. En figures\nFIGBODY\n## 1. Ce qui t%sattend\nT1\n## 2. En cours\nnoise\n## 4. Arbre des sessions\ntree\n' "'" >"$T/integration-sow/LIVE.md"
+}
+
+@test "live: every start is registered, whatever its source" {
+  live
+  start startup >/dev/null
+  start compact >/dev/null
+  [ "$(wc -l <"$T/integration-sow/sessions.jsonl")" -eq 2 ]
+  [[ "$(jq -r .source "$T/integration-sow/sessions.jsonl" | tr '\n' ' ')" == "startup compact " ]]
+}
+
+@test "live: a fresh start receives the header, section 1 and the tree, nothing else" {
+  live
+  run start startup
+  c="$(printf '%s' "$output" | jq -r .hookSpecificOutput.additionalContext)"
+  [[ "$c" == *"tenu par develop-ab"* && "$c" == *T1* && "$c" == *tree* ]]
+  [[ "$c" != *FIGBODY* && "$c" != *noise* ]]
+  [[ "$c" == *"conversation is abcd1234-0000"* ]]
+}
+
+@test "live: a compaction is registered but injects nothing" {
+  live
+  run start compact
+  [ -z "$output" ]
+}
+
+@test "live: a missing page is said, and the start is still registered" {
+  run start startup
+  [[ "$(printf '%s' "$output" | jq -r .hookSpecificOutput.additionalContext)" == *"does not exist"* ]]
+  [ -f "$T/integration-sow/sessions.jsonl" ]
+}
+
+chantier() { # a chantier page that claims the test conversation
+  mkdir -p "$T/chantierx"
+  printf '# Chantier X — LIVE\n> conversation: abcd1234-0000\n> title: chantier-x\n## 1. Etat\nok\n' >"$T/chantierx/LIVE.md"
+}
+
+@test "live: a resume gets its chantier's title back, and a short reminder" {
+  live
+  chantier
+  run start resume
+  [[ "$(printf '%s' "$output" | jq -r .hookSpecificOutput.sessionTitle)" == chantier-x ]]
+  [[ "$(printf '%s' "$output" | jq -r .hookSpecificOutput.additionalContext)" == *"You are the chantierx session"* ]]
+  [[ "$(tail -1 "$T/integration-sow/sessions.jsonl" | jq -r '.chantier + "/" + .title')" == chantierx/chantier-x ]]
+}
+
+@test "live: a title the operator set wins over the declared one" {
+  live
+  chantier
+  run start resume operator-choice
+  [[ "$(printf '%s' "$output" | jq -r '.hookSpecificOutput.sessionTitle // "none"')" == none ]]
+  [[ "$(tail -1 "$T/integration-sow/sessions.jsonl" | jq -r .title)" == operator-choice ]]
+}
+
+@test "live: a session no page claims is told how to declare itself" {
+  live
+  run start resume
+  [[ "$(printf '%s' "$output" | jq -r .hookSpecificOutput.additionalContext)" == *"> conversation: abcd1234-0000"* ]]
+  [[ "$(printf '%s' "$output" | jq -r '.hookSpecificOutput.sessionTitle // "none"')" == none ]]
+}
+
+# --- leak-guard ---
+# One case per line of leak-guard-cases.tsv: the verdict, a tab, the command as a session would type it.
+@test "leak-guard: every case gets its verdict" {
+  local want cmd got bad=""
+  while IFS=$'\t' read -r want cmd; do
+    got="$(jq -cn --arg c "$cmd" '{tool_input: {command: $c}}' | bash "$H/leak-guard.sh" | jq -r '.hookSpecificOutput.permissionDecision // "allow"')"
+    got="${got:-allow}"
+    [[ "$got" == "${want,,}" ]] || bad+="  want $want, got $got: $cmd"$'\n'
+  done <"$BATS_TEST_DIRNAME/leak-guard-cases.tsv"
+  [[ -z "$bad" ]] || { printf '%s' "$bad"; false; }
+}
+
+# --- sops-git-env ---
+
+# The sops drivers come from an INCLUDED file, as the real git-sops-diff is; their commands
+# fail, so a run that still used them would show it.
+sops_drivers() {
+  printf '[filter "sops-yaml"]\n\tclean = false\n\tsmudge = false\n\trequired = true\n[diff "sops-yaml"]\n\ttextconv = false\n[filter "sops-json"]\n\tclean = false\n\tsmudge = false\n\trequired = true\n[diff "sops-json"]\n\ttextconv = false\n' >"$T/sops-include"
+  git config --global include.path "$T/sops-include"
+}
+
+@test "sops-git-env: no env file, nothing written" {
+  sops_drivers
+  run env -u CLAUDE_ENV_FILE bash "$H/sops-git-env.sh" </dev/null
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "sops-git-env: every included sops driver becomes cat, the identity stays" {
+  sops_drivers
+  export CLAUDE_ENV_FILE="$T/env"
+  bash "$H/sops-git-env.sh" </dev/null
+  run bash -c '. "$CLAUDE_ENV_FILE"; echo "$GIT_CONFIG_COUNT $(git config filter.sops-yaml.smudge) $(git config filter.sops-yaml.required) $(git config diff.sops-json.textconv) $(git config user.name)"; git config filter.sops-json.clean'
+  [ "${lines[0]}" = "8 cat true cat tester" ]
+  [[ "${lines[1]}" == *"/sops-clean-guard.sh %f" ]]
+}
+
+@test "sops-git-env: an existing GIT_CONFIG_COUNT is kept, a second read adds nothing" {
+  sops_drivers
+  export CLAUDE_ENV_FILE="$T/env"
+  bash "$H/sops-git-env.sh" </dev/null
+  run bash -c 'export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.autocrlf GIT_CONFIG_VALUE_0=input; . "$CLAUDE_ENV_FILE"; . "$CLAUDE_ENV_FILE"; echo "$GIT_CONFIG_COUNT $(git config core.autocrlf) $(git config diff.sops-yaml.textconv)"'
+  [ "$output" = "9 input cat" ]
+}
+
+@test "sops-git-env: a sops file checks out and diffs as the envelope on disk" {
+  sops_drivers
+  export CLAUDE_ENV_FILE="$T/env"
+  bash "$H/sops-git-env.sh" </dev/null
+  R="$T/sopsrepo"
+  git init -q "$R"
+  printf '*.yaml filter=sops-yaml diff=sops-yaml\n' >"$R/.gitattributes"
+  run bash -c '. "$CLAUDE_ENV_FILE"; cd "'"$R"'" && printf "a: ENC[x]\nsops:\n  v: 1\n" >s.yaml && git add .gitattributes s.yaml && git commit -qm one && printf "a: ENC[y]\nsops:\n  v: 1\n" >s.yaml && git diff s.yaml | grep -c "ENC\[y\]" && rm s.yaml && git checkout -- s.yaml && head -1 s.yaml'
+  [ "$status" -eq 0 ]
+  [ "${lines[0]}" = "1" ]
+  [ "${lines[1]}" = "a: ENC[x]" ]
+}
+
+@test "sops-git-env: a sops file in the clear on disk is refused at git add" {
+  sops_drivers
+  export CLAUDE_ENV_FILE="$T/env"
+  bash "$H/sops-git-env.sh" </dev/null
+  R="$T/clearrepo"
+  git init -q "$R"
+  printf '*.yaml filter=sops-yaml diff=sops-yaml\n' >"$R/.gitattributes"
+  printf 'a: dummy-clear\n' >"$R/s.yaml"
+  run bash -c '. "$CLAUDE_ENV_FILE"; cd "'"$R"'" && git add s.yaml'
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"not a sops envelope"* ]]
+  [[ "$output" != *"dummy-clear"* ]]
+}
+
+@test "sops-git-env: the clean guard holds the content in memory only" {
+  # A refused content is the clear text. bash backs a large here-string with a temporary file it
+  # unlinks at once — no listing ever sees it, and it falls back to /tmp when TMPDIR is unwritable —
+  # so the property is checked on the script itself: no here-string, no pipe into a reader.
+  # Not `! grep`: bats ignores a negated command's status.
+  [ -z "$(grep -nE '<<<|\|[[:space:]]*(grep|sed|awk)' "$H/sops-clean-guard.sh")" ]
+  { printf 'a: ENC[x]\nsops:\n  v: 1\n'; head -c 200000 /dev/zero | tr '\0' 'a'; } >"$T/big.yaml"
+  run bash -c 'bash "$1" s.yaml <"$2" | wc -c' _ "$H/sops-clean-guard.sh" "$T/big.yaml"
+  [ "$status" -eq 0 ]
+  [ "$output" -eq "$(wc -c <"$T/big.yaml")" ]
+}
+
+@test "sops-git-env: the clean guard passes yaml, json and dotenv envelopes unchanged" {
+  for e in $'a: ENC[x]\nsops:\n  v: 1\n' $'{"a": "ENC[x]", "sops": {"v": 1}}\n' $'A=ENC[x]\nsops_version=3\n'; do
+    run bash -c 'printf "%s" "$1" | bash "$2"' _ "$e" "$H/sops-clean-guard.sh"
+    [ "$status" -eq 0 ]
+    [ "$output" = "${e%$'\n'}" ]
+  done
+}
+
+@test "sops-git-env: drivers in the XDG config are found beside a ~/.gitconfig" {
+  unset GIT_CONFIG_GLOBAL
+  mkdir -p "$HOME/.config/git"
+  printf '[user]\n\tname = tester\n' >"$HOME/.gitconfig"
+  printf '[filter "sops-yaml"]\n\tsmudge = false\n[diff "sops-yaml"]\n\ttextconv = false\n' >"$HOME/.config/git/sops"
+  printf '[include]\n\tpath = sops\n' >"$HOME/.config/git/config"
+  export CLAUDE_ENV_FILE="$T/env"
+  run bash "$H/sops-git-env.sh" </dev/null
+  [ -z "$output" ]
+  run bash -c '. "$CLAUDE_ENV_FILE"; git -C / config filter.sops-yaml.smudge; git -C / config diff.sops-yaml.textconv'
+  [ "${lines[0]}" = "cat" ]
+  [ "${lines[1]}" = "cat" ]
+}
+
+@test "sops-git-env: the file reads the same under zsh" {
+  command -v zsh >/dev/null || skip "no zsh"
+  sops_drivers
+  export CLAUDE_ENV_FILE="$T/env"
+  bash "$H/sops-git-env.sh" </dev/null
+  run zsh -c '. "$CLAUDE_ENV_FILE"; echo "$GIT_CONFIG_COUNT $(git config filter.sops-yaml.smudge)"'
+  [ "$output" = "8 cat" ]
+}
+
+@test "sops-git-env: without sops drivers, nothing is written" {
+  export CLAUDE_ENV_FILE="$T/env"
+  bash "$H/sops-git-env.sh" </dev/null
+  [ ! -s "$CLAUDE_ENV_FILE" ]
 }

@@ -45,8 +45,12 @@ env(TMPDIR) + "/" as $tmpdir |
         # yq-go has no `if/then/else` — that is jq. `with(select(cond); update)`
         # is the conditional here, which is why the record is built first and
         # then adjusted. An empty `public` stays empty and the trailing select
-        # drops the artefact.
-        { "slot": .key, "line": ( .value.public // "" ), "stem": $authName }
+        # drops the artefact. A slot marked `compromised` gets an empty line on
+        # purpose: it leaves the trust set (TrustedUserCAKeys and the known_hosts
+        # glob both read these files), and the extractor prunes its output dir
+        # on every run, so an earlier copy goes too.
+        { "slot": .key, "line": ( .value.public // "" ), "stem": $authName, "compromised": ( .value.compromised // "" ) }
+        | with(select(.compromised != ""); .line = "")
         | with(select(.slot != $presented); .stem = $authName + "-" + .slot)
         | with(select(.line != "");         .line = ( [ $authType, .line, ($authComment // $authName) ] | join(" ") ))
         | .stem as $stem | .line as $line |

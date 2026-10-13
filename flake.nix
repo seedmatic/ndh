@@ -71,51 +71,17 @@
     sops-nix.url = "github:Mic92/sops-nix";
     treefmt-nix.url = "github:numtide/treefmt-nix";
 
-    # rke2lab is the source of truth for the cluster network underlay (cluster/
-    # node IDs, MAC derivation, addressing); the catalog consumes its flat
-    # `lib.networkBlueprint` rather than hand-inlining MAC/IP values — the
-    # BUILD/eval-time edge nix-darwin-home -> rke2lab. This is now a MUTUAL edge:
-    # rke2lab in turn consumes ndh's `catalog.netplan.lan` (Direction A, the
-    # home-LAN federation). So, exactly like the nnh input below, it is cut with
-    # a reciprocal EMPTY follows (rke2lab's back-reference to ndh follows THIS
-    # root), breaking the lock cycle while both flakes still build standalone.
-    # See the hub memory flake-mutual-dependency-follows-root.
-    # rke2lab is NOT routed through flake-commons (it already depends on
-    # flake-commons, which would form a flake-commons <-> rke2lab cycle).
-    # rke2lab defines its own `flake-commons` (github:seedmatic/nix-flake-commons,
-    # the same source as ours) and follows nixpkgs/flox/sops-nix/… through it; we
-    # pin `rke2lab.inputs.flake-commons.follows = "flake-commons"` so that whole
-    # set resolves against ours — one shared flake-commons closure, not two in the lock.
-    rke2lab = {
-      # ★ The pin that proved the point. It tracked `feature/nixos-node-substrate` long after
-      # that branch was retired, so `nix flake update` kept advancing along a dead line —
-      # pulling newer commits that carried none of the work, silently (measured 2026-09-28:
-      # the lock moved and the VIP host-records still did not exist). Repaired by hand, it then
-      # rotted a SECOND time onto `feature/viewpoint-separation`, itself since deleted.
-      # Twice, no error — just the wrong source.
-      #
-      # So it names no branch at all now. When the blueprint has to be read from a line that is
-      # not yet pushed — the original reason a work branch was named here — aim this id at a
-      # local checkout in flake-registry.local.json instead of editing this file.
-      url = "rke2lab";
-      inputs.ndh.follows = "";
-      inputs.flake-commons.follows = "flake-commons";
-    };
-
-    # Federation: ndh unions nnh's self-contained lib.networkBlueprint (its
-    # fabric-br segments) alongside rke2lab's. nnh also consumes ndh's catalog, so
-    # this is a mutual edge — cut with a reciprocal EMPTY follows (nnh's
-    # back-reference to ndh follows THIS root). See the hub memory
-    # flake-mutual-dependency-follows-root.
-    nnh = {
-      url = "nnh";
-      inputs.ndh.follows = "";
-      # Share the family version set: dedup nnh's flake-commons subtree
-      # (devenv/cachix/bird/…) with ndh's so importing nnh for its blueprint
-      # does not balloon the lock. akvorado stays (nnh-specific) but is never
-      # forced — we read only nnh.lib.networkBlueprint.
-      inputs.flake-commons.follows = "flake-commons";
-    };
+    # The fabric's two deliveries, pinned as DATA rather than as the flakes that produce them.
+    # rke2lab's plan is the source of truth for the cluster network underlay (cluster/node IDs,
+    # MACs, addressing) and for the cluster dataset layout: netplan.json and dataplan.json on its
+    # fabric/plan orphan, which rke2lab's publish-plan writes. nnh's contribution is its fabric-br
+    # segments: network-blueprint.json on its fabric/contribution orphan. ndh used to pin rke2lab
+    # and nnh themselves, each of which pins ndh back — two cycles, cut at the lock by reciprocal
+    # empty follows. An orphan pins nothing, so no cycle is left to cut.
+    fabric-plan.url = "fabric-plan";
+    fabric-plan.flake = false;
+    nnh-contribution.url = "nnh-contribution";
+    nnh-contribution.flake = false;
 
     # Forked tailscale carrying our patches (see overlays/tailscale.nix):
     # the CNAME-in-extra_records resolver support and the SSH-interception
@@ -149,24 +115,72 @@
       nixpkgsConfig = import ./modules/.common.d/nixpkgs-config.nix;
       cacheTrust = import ./catalog/cache-trust.nix;
       inventoryData = import ./inventory/default.nix;
-      # Cluster network underlay, single source of truth (see the rke2lab input).
-      # Cluster underlay from rke2lab, UNIONED with nnh's self-contained blueprint
-      # (its fabric-br segments; nnh introduces no ASNs). Both edges are cut with
-      # reciprocal empty follows — see the rke2lab / nnh inputs. Only segments+asns
-      # merge; everything else (clusters, nodes, addressing, MACs) stays rke2lab's.
-      rke2labBlueprint = inputs.rke2lab.lib.networkBlueprint;
-      nnhBlueprint = inputs.nnh.lib.networkBlueprint;
+      # The cluster underlay is rke2lab's plan, UNIONED with nnh's contribution (its fabric-br
+      # segments; nnh introduces no ASNs) — both read from their pinned deliveries (see the
+      # fabric-plan / nnh-contribution inputs). Only segments+asns merge; everything else
+      # (clusters, nodes, addressing, MACs) stays rke2lab's.
+      rke2labBlueprint = builtins.fromJSON (builtins.readFile "${inputs.fabric-plan}/netplan.json");
+      nnhBlueprint = builtins.fromJSON (
+        builtins.readFile "${inputs.nnh-contribution}/network-blueprint.json"
+      );
       networkBlueprint = rke2labBlueprint // {
         segments = (rke2labBlueprint.segments or [ ]) ++ (nnhBlueprint.segments or [ ]);
         asns = (rke2labBlueprint.asns or { }) // (nnhBlueprint.asns or { });
       };
       # rke2lab also owns the cluster ZFS dataset LAYOUT (the dataplan — the storage twin of the
-      # networkBlueprint), pulled the same way and merged into catalog.datasets, materialised on the
+      # networkBlueprint), delivered beside it and merged into catalog.datasets, materialised on the
       # host by zfs-disko-config.nix.
-      dataplan = inputs.rke2lab.lib.dataplan;
+      dataplan = builtins.fromJSON (builtins.readFile "${inputs.fabric-plan}/dataplan.json");
       # `hostForms` lets the catalog derive each vz-host's kind instead of declaring it: the
       # vz-host is nix-managed exactly when the config named <host> is the bare metal itself.
       # Injected from here because this file owns the host tree; see catalog/default.nix.
+      # The ONE identity the incus cluster-cert closure reaches a member with: the OPERATOR
+      # principal's key on the seat, read from bioskop's configuration (sshPaths, the profile
+      # user) so it is never retyped. Step 9 moves it from rdp-host to the `operator` key here.
+      # Roles × keys 6a: every name a fleet host or guest answers to, the union ONE host certificate is
+      # signed for on the seat (ssh-keys-certify). Each inventory host, and each guest read from its own
+      # configuration (vm.guestHostName, and vm.guestName.vm.hostName, the bare-metal's dnsmasq zone), in
+      # the bare, .lan, .local and <ssh authority domain> forms. Computed, never retyped.
+      fleetHostPrincipals =
+        let
+          lib = nixpkgs.lib;
+          authorities = lib.filterAttrs (
+            _: a: lib.elem "ssh-authority" (a.usage or [ ])
+          ) self.darwinConfigurations.bioskop.config.ndh.keysYaml.authorities;
+          domain =
+            assert lib.assertMsg (lib.length (lib.attrNames authorities) == 1)
+              "fleetHostPrincipals: exactly one ssh-authority is expected, found ${toString (lib.attrNames authorities)}";
+            (lib.head (lib.attrValues authorities)).domain;
+          forms = name: [
+            name
+            "${name}.lan"
+            "${name}.local"
+            "${name}.${domain}"
+          ];
+          hosts = lib.attrNames inventoryData.hosts;
+          guests = lib.concatMap (
+            host:
+            lib.optional (
+              self.nixosConfigurations ? "${host}-nixos"
+            ) self.nixosConfigurations."${host}-nixos".config.vm
+          ) hosts;
+        in
+        lib.sort lib.lessThan (
+          lib.unique (
+            lib.concatMap forms hosts
+            ++ lib.concatMap (vm: forms vm.guestHostName ++ [ "${vm.guestName}.${vm.hostName}" ]) guests
+          )
+        );
+
+      incusCertOperatorIdentity =
+        let
+          seat = self.darwinConfigurations.bioskop.config;
+        in
+        {
+          user = seat.profile.user.name;
+          keyFile = seat.sshPaths.privKeyFile;
+          certFile = seat.sshPaths.userCertPublic;
+        };
       catalogData = import ./catalog/default.nix {
         inherit cacheTrust networkBlueprint dataplan;
         hostForms = builtins.mapAttrs (_: entry: entry.hostProfile.form or null) hostCatalog;
@@ -1087,7 +1101,144 @@
           claude-code-managed-settings = managed.settings;
           claude-code-deny-hook = managed.tests;
           claude-code-session-hooks = sessionHooks.tests;
+          ssh-keys-bats = import ./modules/.common.d/ssh-keys.d/tests/package.nix {
+            inherit pkgs;
+            trampoline = mkNdhNixBashTrampoline { pkgsForSystem = pkgs; };
+          };
+          ssh-keys-renew-bats = import ./modules/.common.d/ssh-keys-renew.d/tests/package.nix {
+            inherit pkgs;
+          };
+          ssh-keys-certify-bats = import ./modules/.common.d/ssh-keys-certify.d/tests/package.nix {
+            inherit pkgs;
+          };
+          # keys.yaml against its schema, ENCRYPTED as committed: the schema accepts ENC[...]
+          # wherever a private may sit, so the sandbox needs no key and nothing is decrypted.
+          # Each broken fixture must be REFUSED — a schema that accepts them proves nothing.
+          ssh-keys-schema =
+            pkgs.runCommand "ssh-keys-schema" { nativeBuildInputs = [ pkgs.check-jsonschema ]; }
+              ''
+                schema=${./modules/home-manager/ssh.d/keys.schema.yaml}
+                check-jsonschema --schemafile "$schema" ${./modules/home-manager/ssh.d/keys.yaml}
+                for broken in ${./modules/home-manager/ssh.d/tests}/broken-*.yaml; do
+                  if check-jsonschema --schemafile "$schema" "$broken" >/dev/null 2>&1; then
+                    echo "the schema ACCEPTED $broken, which it must refuse" >&2
+                    exit 1
+                  fi
+                done
+                touch $out
+              '';
+          incus-cluster-cert-bats = import ./modules/.common.d/incus-cluster-cert.d/tests/package.nix {
+            inherit pkgs;
+          };
+          tls-authority-keychain-bats = import ./modules/darwin/tls-authority-keychain.d/tests/package.nix {
+            inherit pkgs;
+            trampoline = mkNdhNixBashTrampoline { pkgsForSystem = pkgs; };
+          };
+          # A two-slot authority whose old slot is compromised: ONE trusted slot, ONE to remove.
+          ssh-keys-trust =
+            let
+              trust = import ./modules/.common.d/keys-yaml.d/trust.nix { inherit (pkgs) lib; };
+              authorities.tls.slots = {
+                "26-05-29" = {
+                  ca_crt = "OLD";
+                  compromised = "published";
+                };
+                "26-10-04".ca_crt = "NEW";
+              };
+            in
+            assert pkgs.lib.assertMsg (
+              pkgs.lib.attrNames (trust.trustedSlots authorities).tls == [ "26-10-04" ]
+            ) "a compromised slot is still trusted";
+            assert pkgs.lib.assertMsg (
+              pkgs.lib.attrNames (trust.compromisedSlots authorities).tls == [ "26-05-29" ]
+            ) "a compromised slot is not listed for removal";
+            # The phase-2 gate: an ordinary retirement needs the slot that now signs to be trusted.
+            assert pkgs.lib.assertMsg (
+              trust.phase2Gaps { tls.slots."26-10-04".ca_crt = "NEW"; } { "tls@26-05-29".reason = "retired"; }
+              == [ "tls@26-05-29" ]
+            ) "an ordinary retirement passed the gate without `trusted`";
+            assert pkgs.lib.assertMsg (
+              trust.phase2Gaps {
+                tls.slots."26-10-04" = {
+                  ca_crt = "NEW";
+                  trusted = "26-10-12";
+                };
+              } { "tls@26-05-29".reason = "retired"; } == [ ]
+            ) "a retirement whose successor is trusted was refused";
+            assert pkgs.lib.assertMsg (
+              trust.phase2Gaps { tls.slots."26-10-04".ca_crt = "NEW"; } {
+                "tls@26-05-29" = {
+                  reason = "published";
+                  compromised = true;
+                };
+              } == [ ]
+            ) "a compromised retirement was held by the gate";
+            pkgs.runCommand "ssh-keys-trust" { } "touch $out";
+          # Built for aarch64-linux (the builder runs it): the check runs a real sshd, and on darwin
+          # sshd's preauth child cannot enter its own seatbelt sandbox inside the nix build sandbox
+          # (sandbox_init: Operation not permitted).
+          openssh-revoked-host-keys = import ./modules/.common.d/openssh-policy.d/tests/package.nix {
+            pkgs = pkgsForLinux;
+          };
         }
+        // nixpkgs.lib.listToAttrs (
+          map
+            (
+              host:
+              let
+                darwin = self.darwinConfigurations.${host}.config;
+                owned = [
+                  "root@bioskop-nixos"
+                  "root@nikopol-nixos"
+                  "bioskop-nixos.local"
+                  "nikopol-nixos.local"
+                  "router.lan"
+                  "bioskop.mammoth-skate.ts.net"
+                ];
+                everywhere = owned ++ [ "example.com" ];
+              in
+              nixpkgs.lib.nameValuePair "ssh-client-effective-${host}" (
+                import ./modules/darwin/ssh-client.d/tests/effective.nix {
+                  inherit pkgs;
+                  inherit (nixpkgs) lib;
+                  name = host;
+                  etc = darwin.environment.etc;
+                  expect =
+                    map (target: {
+                      inherit target;
+                      option = "stricthostkeychecking";
+                      value = "true";
+                    }) owned
+                    ++ map (target: {
+                      inherit target;
+                      option = "controlmaster";
+                      value = "false";
+                    }) everywhere
+                    ++ map (target: {
+                      inherit target;
+                      option = "globalknownhostsfile";
+                      value = "/etc/ssh/ssh_known_hosts";
+                    }) everywhere
+                    ++ map (target: {
+                      inherit target;
+                      option = "revokedhostkeys";
+                      value = "${darwin.ndh.keysYaml.revokedKeysFile}";
+                    }) everywhere
+                    ++ [
+                      {
+                        target = "example.com";
+                        option = "stricthostkeychecking";
+                        value = "accept-new";
+                      }
+                    ];
+                }
+              )
+            )
+            [
+              "bioskop"
+              "nikopol"
+            ]
+        )
       );
 
       # Surface the resolved catalog + inventory as flat (OS-independent) outputs
@@ -1095,7 +1246,7 @@
       # or `:lf .` then `catalog…` — without drilling through a host's
       # `darwinConfigurations.<host>._module.specialArgs.catalog`. The catalog's
       # rke2 hosts are the projection of rke2lab's networkBlueprint (see the
-      # rke2lab input), so this is also the easiest way to diff the live underlay
+      # fabric-plan input), so this is also the easiest way to diff the live underlay
       # against the blueprint / bbox reservations.
       catalog = catalogData;
       inventory = inventoryData;
@@ -1145,7 +1296,21 @@
           ndhNixBashTrampoline =
             if system == "aarch64-darwin" then ndhNixBashTrampolineDarwin else ndhNixBashTrampolineLinux;
         in
-        {
+        # The keychain reconcile, buildable ON ITS OWN by revision: a fix between two
+        # configurations ships as this closure, copied to the host and run by the operator
+        # (`sudo ndh-keychain-reconcile` from the GUI session) — the same script the darwin
+        # activation runs (modules/darwin/tls-authority-keychain.nix).
+        nixpkgs.lib.optionalAttrs (system == "aarch64-darwin") {
+          ndh-keychain-reconcile = self.darwinConfigurations.bioskop.config.ndh.tlsAuthorityKeychain.package;
+          # T14, by the same rule: one closure built by revision, run from the seat.
+          incus-cluster-cert-renew = import ./modules/.common.d/incus-cluster-cert.d/package.nix {
+            pkgs = systemPkgs;
+            inherit (nixpkgs) lib;
+            netplan = catalogData.netplan;
+            operatorIdentity = incusCertOperatorIdentity;
+          };
+        }
+        // {
           # manage-tailnet on PATH for BOTH systems (a packages output, not just the app):
           # rke2lab's flox-catalogue re-exports packages.aarch64-linux.manage-tailnet so the
           # in-cluster tailnet-purge Job installs it via a FloxEnv. Wired to the PER-SYSTEM
@@ -1188,12 +1353,6 @@
           # advertise a fleet-scoped alias pointing at the current owner.
           # See packages/ndh-mdns-publish/{main.go,default.nix}.
           ndh-mdns-publish = systemPkgs.callPackage ./packages/ndh-mdns-publish { };
-          # The git sops clean/smudge filter as a self-contained package — the SSOT the
-          # operator's home-manager git AND rke2lab's flox-catalogue (re-exported for the
-          # in-cluster render env) both consume, so the filter that encrypts `.secrets` on
-          # a commit is byte-for-byte the one that smudges it in the aarch64-linux render
-          # pod. See modules/home-manager/git.d/git-sops-filter.nix.
-          git-sops-filter = systemPkgs.callPackage ./modules/home-manager/git.d/git-sops-filter.nix { };
         }
         // mkBaremetalLinkPackages system
         # Darwin only: the join is an operator act run from the operator's machine, and the recipe is
@@ -1449,16 +1608,15 @@
           );
           nixBuildObservePackage = mkNixBuildObservePackage system;
           pkgsForSystem = pkgsFor { inherit system; };
-          # Run check-jsonschema against the canonical keys.yaml. The target
-          # is sops-encrypted at rest, so we decrypt into a tempfile before
-          # validating. Pass a path to validate a different file ad-hoc:
-          #   nix run .#ssh-keys-v2-validate -- path/to/keys.yaml
+          # check-jsonschema against keys.yaml AS COMMITTED — encrypted: the schema accepts
+          # ENC[...] wherever a private may sit, so nothing is decrypted and no plaintext copy
+          # is written. The same validation runs as checks.<system>.ssh-keys-schema and in the
+          # pre-commit (treefmt keys-schema); this app checks an uncommitted keys.yaml, from the
+          # repo root, with the tool named by revision:
+          #   nix run "git+file://$PWD?rev=$(git rev-parse HEAD)#ssh-keys-v2-validate" -- <keys.yaml>
           sshKeysValidatorPackage = pkgsForSystem.writeShellApplication {
             name = "ssh-keys-v2-validate";
-            runtimeInputs = [
-              pkgsForSystem.check-jsonschema
-              pkgsForSystem.sops
-            ];
+            runtimeInputs = [ pkgsForSystem.check-jsonschema ];
             text = ''
               target="''${1:-modules/home-manager/ssh.d/keys.yaml}"
               schema="modules/home-manager/ssh.d/keys.schema.yaml"
@@ -1470,12 +1628,7 @@
                 echo "target yaml not found: $target" >&2
                 exit 1
               fi
-              tmp="$(mktemp -t ssh-keys-v2.XXXXXX.yaml)"
-              trap 'rm -f "$tmp"' EXIT
-              if ! sops -d "$target" > "$tmp" 2>/dev/null; then
-                cp "$target" "$tmp"
-              fi
-              exec check-jsonschema --schemafile "$schema" "$tmp"
+              exec check-jsonschema --schemafile "$schema" "$target"
             '';
           };
           # The envs vendored under .flox-envs.d arrive WITHOUT their manifest.lock: fleet
@@ -1618,27 +1771,23 @@
               loggerTag = "ndh.ssh-keys-renew";
             }
           );
-          # Mint the Incus LISTENER cert from a keys.yaml TLS authority. Hermetic like its sibling
-          # above, plus jq (the SAN set is read out of the catalog as JSON) and nix itself (it
-          # evaluates this flake's catalog and rke2lab's segments rather than retyping any name).
-          #
-          # ★ Unlike authority-bootstrap-tls-root it materialises NOTHING secret: sops is piped and
-          # step-cli takes the CA cert/key through process substitution. Only the leaf pair is
-          # written, because `incus cluster update-certificate` takes two file paths.
-          mintIncusListenerCertPackage = pkgsForSystem.writeShellApplication {
-            name = "mint-incus-listener-cert";
-            runtimeInputs = [
-              pkgsForSystem.git
-              pkgsForSystem.step-cli
-              pkgsForSystem.sops
-              pkgsForSystem.yq-go
-              pkgsForSystem.nix
-              pkgsForSystem.coreutils
-              pkgsForSystem.gnused
-              pkgsForSystem.gnugrep
-              pkgsForSystem.gawk
-            ];
-            text = builtins.readFile ./modules/.common.d/mint-incus-listener-cert.d/mint-incus-listener-cert.sh;
+          # 6a: the seat signs every SSH certificate keys.yaml declares, host certificates for
+          # fleetHostPrincipals; the activation only installs them.
+          sshKeysCertifyPackage = ndhStoreApiDarwin.installBinScript "ssh-keys-certify" (
+            pkgsForSystem.replaceVars ./modules/.common.d/ssh-keys-certify.d/ssh-keys-certify.sh {
+              nixBashTrampoline = ndhNixBashTrampolineDarwin;
+              loggerTag = "ndh.ssh-keys-certify";
+              hostPrincipals = nixpkgs.lib.concatStringsSep "," fleetHostPrincipals;
+              sshKeygen = "${pkgsForSystem.openssh}/bin/ssh-keygen";
+            }
+          );
+          # T14's closure: re-mint and install the Incus cluster certificate (one definition,
+          # also packages.<system>.incus-cluster-cert-renew) — see its package.nix.
+          incusClusterCertRenewPackage = import ./modules/.common.d/incus-cluster-cert.d/package.nix {
+            pkgs = pkgsForSystem;
+            inherit (nixpkgs) lib;
+            netplan = catalogData.netplan;
+            operatorIdentity = incusCertOperatorIdentity;
           };
           # System-admin helper: prune darwin/HM/user generations + GC. Drives the
           # AMBIENT sudo + system nix daemon (a pinned nix would desync from it), so
@@ -1700,38 +1849,18 @@
             program = "${lockFloxEnvsPackage}/bin/lock-flox-envs";
             meta.description = "Lock the flox envs vendored under .flox-envs.d so the seat can activate (fresh-clone bootstrap) — src: flake.nix (lockFloxEnvsPackage)";
           };
-          # relock — THIS repo's locks, by the SHARED implementation. The rule lives once, in
-          # nix-flake-commons' `lib.mkRelockApp`, the root every seedmatic flake already consumes.
-          # ndh supplies only what is its own: bumping an input is editing YOUR lock, making someone
-          # pin YOU is THEIR act, and the uniform NAME is what lets `relock --downstream` request us
-          # without knowing anything about us.
-          #
-          # ndh has no orphan branches and no generated artifacts beyond its lock, so
-          # `pushFirstBranch` / `catalogBranch` / `ownedArtifacts` stay at their defaults — which is
-          # the case the shared implementation was written to serve.
-          #
-          # ★ `consumers` names every repo that pins ndh: rke2lab, nnh and nch. ndh pins rke2lab and
-          # nnh back, so each of those pairs is a CYCLE — cut at the lock by a reciprocal empty
-          # `follows` — and a cycle only turns if each side requests the other: from inside a cycle,
-          # the reverse edge IS a forward edge for the other repo. A change to ndh's catalog has to
-          # regenerate the blueprint nnh builds from it, hence nnh. nch pins ndh and is pinned by
-          # nobody: a plain edge, with nothing to reciprocate.
+          # relock — nix-flake-commons' `lib.mkRelockApp`, the one implementation every seedmatic
+          # flake shares. ndh supplies its name; the heads, the order and what each head pins are read
+          # from nix-flake-commons:fabric/heads.
           relock = {
             type = "app";
             program = "${
               inputs.flake-commons.lib.mkRelockApp {
                 pkgs = pkgsForSystem;
                 name = "ndh";
-                slug = "seedmatic/ndh";
-                url = "https://github.com/seedmatic/ndh.git";
-                consumers = [
-                  "github:seedmatic/rke2lab"
-                  "github:seedmatic/nnh"
-                  "github:seedmatic/nch"
-                ];
               }
             }/bin/relock";
-            meta.description = "Reconcile THIS repo's locks: bump each input, DROP any bump that moves no exported derivation, push. --downstream requests each declared consumer's own relock — impl: nix-flake-commons lib.mkRelockApp";
+            meta.description = "Reconcile THIS head's locks: bump each input, DROP any bump that moves nothing it exports, push. --plan shows a pass, --downstream plays it over every head of fabric/heads";
           };
           manage-tailnet = {
             type = "app";
@@ -1743,10 +1872,10 @@
             program = "${bboxReconcilePackage}/bin/bbox-reconcile";
             meta.description = "Diff catalog.netplan.lan.hosts against the bbox /dhcp/clients reservations (read-only) — src: modules/.common.d/bbox-reconcile.d/";
           };
-          mint-incus-listener-cert = {
+          incus-cluster-cert-renew = {
             type = "app";
-            program = "${mintIncusListenerCertPackage}/bin/mint-incus-listener-cert";
-            meta.description = "Mint the Incus listener cert for a bare-metal from a keys.yaml TLS authority — <host> [--authority <name>], run from repo root; prints the `incus cluster update-certificate` to run — src: modules/.common.d/mint-incus-listener-cert.d/";
+            program = "${incusClusterCertRenewPackage}/bin/incus-cluster-cert-renew";
+            meta.description = "Re-mint the Incus cluster certificate under the current TLS signing slot, install it on every member, re-pin the seat client, verify — run from the seat, built by revision — src: modules/.common.d/incus-cluster-cert.d/";
           };
           authority-bootstrap-tls-root = {
             type = "app";
@@ -1756,7 +1885,12 @@
           ssh-keys-renew = {
             type = "app";
             program = "${sshKeysRenewPackage}/bin/ssh-keys-renew";
-            meta.description = "Phase 1 of an SSH key renewal: add a dated slot and generate into it — [--key NAME] [--authority NAME] [--older-than Nd] [--apply], dry run by default, run from repo root — src: modules/.common.d/ssh-keys-renew.d/";
+            meta.description = "Phase 1 of an SSH key renewal: add a dated slot and generate into it — [--key NAME] [--authority NAME] [--older-than Nd] [--apply], or declare a new entry with --create NAME --usage TAG, dry run by default, run from repo root — src: modules/.common.d/ssh-keys-renew.d/";
+          };
+          ssh-keys-certify = {
+            type = "app";
+            program = "${sshKeysCertifyPackage}/bin/ssh-keys-certify";
+            meta.description = "Sign, on the seat, every SSH certificate keys.yaml declares (host certificates for every fleet name) and record them in keys.yaml — [--apply], dry run by default, run from repo root — src: modules/.common.d/ssh-keys-certify.d/";
           };
           cleanup-activations = {
             type = "app";

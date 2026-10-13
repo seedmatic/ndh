@@ -1,0 +1,19 @@
+DENY	nix build .#foo
+DENY	nix build
+DENY	nix flake check
+DENY	cd x && nix run .#lock-flox-envs
+allow	nix run "git+file://$PWD?rev=$(git rev-parse HEAD)#lock-flox-envs"
+allow	nix eval --raw nixpkgs#treefmt.version
+allow	nix shell nixpkgs#bats --command bats tests/hooks.bats
+DENY	flox activate -- nix build ./pkgs
+DENY	sudo darwin-rebuild switch --flake .#bioskop
+allow	darwin-rebuild switch --flake github:seedmatic/ndh/abc#bioskop
+DENY	nix build git+file:///Volumes/x
+allow	nix copy --to ssh-ng://nix-store.bioskop /nix/store/abc-foo
+allow	nix eval --expr "1+1"
+DENY	nix build github:seedmatic/ndh#x --override-input rke2lab path:../rke2lab
+DENY	nix fmt
+allow	nix-store --verify-path /nix/store/x
+allow	git commit -m "use nix run .#publish-plan"
+DENY	nix flake update --flake "$W"
+DENY	NIX_CONFIG=x nix develop

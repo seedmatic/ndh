@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# A merge commit gets the same checks as any other commit: the wip guard on the merged index, then
+# the repository's own pre-commit and its content guards. Without it a merge is the one commit no
+# guard reads — and a `git subtree pull` is a merge, which is how one repository's files arrive in
+# another (fleet's flox envs in rke2lab, ndh and nnh). The merged result is staged when this runs,
+# so the pre-commit reads it as it reads any staged change.
+set -euo pipefail
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+exec "${here}/pre-commit" "$@"

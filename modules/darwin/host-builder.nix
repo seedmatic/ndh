@@ -50,11 +50,14 @@ in
         systems = [ "aarch64-linux" ];
         maxJobs = 8;
         protocol = "ssh-ng";
+        # kvm is the INTENT: the guest has /dev/kvm when Tart launches it with --nested. The guest
+        # advertises what the running VM really has (modules/nixos/nix-settings.nix), so a kvm build
+        # sent while NESTED_VIRT=0 overrides it fails there instead of falling back to TCG.
         supportedFeatures = [
           "big-parallel"
-          "kvm"
           "nixos-test"
-        ];
+        ]
+        ++ lib.optional config.tart.configGenerator.vmRunNestedVirt "kvm";
       }
     ];
     # The remote builder pulls dependencies straight from the binary caches
