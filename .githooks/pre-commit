@@ -12,14 +12,26 @@ formatter_check() {
     echo "nix not found; skipping nix fmt check" >&2
     return 0
   fi
-  local sha system
+  local sha system ref
   if ! sha="$(git rev-parse --verify --quiet HEAD)"; then
     echo "no HEAD yet; skipping the formatter check" >&2
     return 0
   fi
   system="$(nix eval --impure --raw --expr builtins.currentSystem)"
-  echo "Running the formatter of ${sha:0:8} with --fail-on-change ..."
-  if ! nix run "git+file://${PWD}?rev=${sha}#formatter.${system}" -- --fail-on-change; then
+  ref="git+file://${PWD}?rev=${sha}"
+  # nix refuses a shallow repository unless the ref says so, and relock clones shallow. Only then:
+  # shallow=1 drops revCount, which a full checkout keeps.
+  if [[ "$(git rev-parse --is-shallow-repository)" == true ]]; then
+    ref+="&shallow=1"
+  fi
+  # Built first, so a fetch or evaluation failure is reported as one, never as a formatting change.
+  echo "Building the formatter of ${sha:0:8} ..."
+  if ! nix build --no-link "${ref}#formatter.${system}"; then
+    echo "Could not build the formatter of ${sha:0:8} (nix's error above); nothing was formatted." >&2
+    return 1
+  fi
+  echo "Running it with --fail-on-change ..."
+  if ! nix run "${ref}#formatter.${system}" -- --fail-on-change; then
     echo "The formatter changed files. Review them, stage them, and commit again." >&2
     return 1
   fi
