@@ -1,26 +1,31 @@
 {
   "schema": "seedmatic.relock/v1",
   "head": "ndh",
-  "rev": "1a478d8c77c9d1660f95cd31c026f2a045f3ba4e",
+  "rev": "625b67e6cbd1ae97bff890947cb197da1e1a5378",
   "status": {
-    "wave": "flake-commons@2026-10-11T09:19:47Z",
-    "tool": "3441528c8710e06d3fb518a0ec7f7bf8697b0a380245e74d765d35f0253eeb66",
+    "wave": "flake-commons@2026-10-13T19:47:32Z",
+    "tool": "ab9ed4142b9736920e237973f2deafba0677f8306f73d3db5c719e9a30a711f0",
     "bumped": {
+      "fabric-plan": [
+        "18b126eb701513668c0d9557b315f0a788658143",
+        "eda63e430a51c3c9be35cd9c061054879a7e482d"
+      ],
       "flake-commons": [
-        "26a657da6c7066960d510babb7c1e0517ebe1d62",
-        "f994a3f785a72ace4100a500576bf95019b2cd39"
+        "f994a3f785a72ace4100a500576bf95019b2cd39",
+        "337f08b156f4a0e3281819cc31ed563989ccdcd4"
       ],
       "sops-nix": [
-        "dcd241ba97088c22569d1573286e1b9daad340c0",
-        "a8be3b14935d3532604c51c8dfe3021c73d1a885"
+        "a8be3b14935d3532604c51c8dfe3021c73d1a885",
+        "ee48786c6f9160d2c1a084aac841f68195b8420c"
       ],
       "treefmt-nix": [
-        "7ba5d7180939b022772e9dbaa1cd82435962073c",
-        "4cfe8d7065cc8ca91c0a50361b6dd74920eeb1f5"
+        "4cfe8d7065cc8ca91c0a50361b6dd74920eeb1f5",
+        "0d6d739a833ba9a9c93034862e4a7b061a062a1c"
       ]
     },
     "dropped": [],
     "after": [],
-    "unmeasured": []
+    "unmeasured": [],
+    "seconds": 360
   }
 }
