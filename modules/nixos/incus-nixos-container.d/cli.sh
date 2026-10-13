@@ -22,11 +22,19 @@ instance() {
 field() { KEY="$2" yq -p json -r '.[strenv(KEY)]' <<<"$1"; }
 
 create() {
-  local info dir dataset target
+  local info dir dataset target placement=()
   info=$(instance "$1")
   dir=$(field "$info" dir)
   dataset=$(field "$info" dataset)
-  target=$(field "$info" target)
+  target=$(yq -p json -r '.target // ""' <<<"$info")
+
+  if [ "$(incus query /1.0/cluster | yq -p json -r '.enabled')" = true ]; then
+    [ -n "$target" ] || { echo "ndh-incus-container: this member is clustered, and $1 states no target" >&2; exit 1; }
+    placement=(--target "$target")
+  elif [ -n "$target" ]; then
+    echo "ndh-incus-container: this Incus is not clustered, so target $target cannot apply to $1" >&2
+    exit 1
+  fi
 
   # Created here, not by disko: disko formats the pool at bringup and never revisits it.
   zfs list -H "$dataset" >/dev/null 2>&1 ||
@@ -41,7 +49,7 @@ create() {
 
   # An empty rootfs: the system lives in /nix, and init is its profile. The rootfs keeps only the
   # mount points LXC needs.
-  incus init --empty --project "$PROJECT" --target "$target" "$1" \
+  incus init --empty --project "$PROJECT" "${placement[@]}" "$1" \
     -c security.privileged=true \
     -c cluster.evacuate=stop \
     -c boot.autostart=true \
@@ -60,7 +68,7 @@ create() {
     mapfile -t keys < <(DEVICE="$device" yq -p json -r '.devices[strenv(DEVICE)] | to_entries | .[] | .key + "=" + .value' <<<"$info")
     incus config device add --project "$PROJECT" "$1" "$device" "${keys[@]}"
   done
-  echo "ndh-incus-container: $1 created on $target — deliver it, then: incus start --project $PROJECT $1"
+  echo "ndh-incus-container: $1 created on ${target:-this standalone member} — deliver it, then: incus start --project $PROJECT $1"
 }
 
 deliver() {
@@ -119,7 +127,7 @@ reset() {
 }
 
 case "${1:-}" in
-  list) yq -p json -r 'to_entries | .[] | .key + "  target=" + .value.target + "  " + .value.toplevel' <<<"$INSTANCES" ;;
+  list) yq -p json -r 'to_entries | .[] | .key + "  target=" + (.value.target // "standalone") + "  " + .value.toplevel' <<<"$INSTANCES" ;;
   create | deliver | switch | reset)
     [ -n "${2:-}" ] || usage
     "$1" "$2"

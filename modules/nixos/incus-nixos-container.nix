@@ -187,10 +187,12 @@ in
         lib.types.submodule {
           options = {
             target = lib.mkOption {
-              type = lib.types.str;
+              type = lib.types.nullOr lib.types.str;
               description = ''
                 Incus cluster member the instance is created on. Stated, never left to Incus: without
-                it, Incus places at random between members with equal load.
+                it, Incus places at random between members with equal load. `null` states a standalone
+                Incus, which refuses `--target`. Whether the member is clustered is a runtime fact, so
+                `ndh-incus-container create` checks it and refuses either mismatch.
               '';
             };
             modules = lib.mkOption {
