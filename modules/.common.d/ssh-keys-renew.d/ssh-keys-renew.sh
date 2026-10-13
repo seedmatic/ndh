@@ -4,6 +4,7 @@
 # caller's set -x): this script handles private keys, and a trace prints every value it expands.
 case $- in *x*) { set +x; } 2>/dev/null; echo "[xtrace-guard] xtrace disabled: this script handles private keys" >&2 ;; esac
 export -n SHELLOPTS 2>/dev/null || true # readonly in bash, so not unset; un-exported, it stops at this process
+NDH_LOGGER_NO_XTRACE=1 # read by ndh::logger:command:run, which then runs the command untraced
 unset BASH_XTRACEFD 2>/dev/null || true
 # ssh-keys-renew — phase 1 of an SSH key renewal in
 # modules/home-manager/ssh.d/keys.yaml.

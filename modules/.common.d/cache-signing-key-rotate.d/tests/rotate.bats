@@ -3,6 +3,8 @@
 # throwaway git repository whose cache-trust.yaml rule comes BEFORE a catch-all with different
 # recipients — the shape in which encrypting a temp path silently dropped a recipient once.
 
+bats_require_minimum_version 1.5.0
+
 setup() {
   repo="$BATS_TEST_TMPDIR/repo"
   mkdir -p "$repo/catalog"
@@ -97,4 +99,22 @@ decrypted() { sops --input-type yaml --output-type yaml -d "$file"; }
   run rotate --to new-fleet-1 --apply
   [ "$status" -eq 1 ]
   [[ "$output" == *"holds 2 fleet signing keys"* ]]
+}
+
+# The REAL wrapper turns xtrace on around the command after the script's head guard has turned it
+# off, so a guard alone left every expanded value — the new private included — in the log sink.
+@test "under the real logger wrapper, the log sink never carries the new private" {
+  sink="$BATS_TEST_TMPDIR/sink"
+  sed -e "s#@nixBashTrampoline@#$BATS_TEST_DIRNAME/../../shell.d/nix-bash-trampoline.sh#" \
+    -e 's#@loggerTag@#test#' -e "s#@nix@#$(command -v nix)#" \
+    "$BATS_TEST_DIRNAME/../cache-signing-key-rotate.sh" >"$BATS_TEST_TMPDIR/rotate"
+  NDH_BASH_TRAMPOLINED=1 LOGGER_CMD=cat ACTIVATION_LOG_FILE="$sink" run rotate --to new-fleet-1 --apply
+  [ "$status" -eq 0 ]
+  # The sink is written by a process substitution that may outlive the script by a moment.
+  for _ in 1 2 3 4 5 6 7 8 9 10; do grep -q 'command:run completed' "$sink" && break; sleep 0.5; done
+  grep -q 'command:run completed' "$sink"
+  decrypted | yq eval -r '.caches.cachix."new-fleet-1".private' - >"$BATS_TEST_TMPDIR/private"
+  [ -s "$BATS_TEST_TMPDIR/private" ]
+  run ! grep -qF -f "$BATS_TEST_TMPDIR/private" "$sink"
+  run ! grep -q '^\[test\] +' "$sink"
 }

@@ -4,6 +4,7 @@
 # caller's set -x): this script handles private keys, and a trace prints every value it expands.
 case $- in *x*) { set +x; } 2>/dev/null; echo "[xtrace-guard] xtrace disabled: this script handles private keys" >&2 ;; esac
 export -n SHELLOPTS 2>/dev/null || true # readonly in bash, so not unset; un-exported, it stops at this process
+NDH_LOGGER_NO_XTRACE=1 # read by ndh::logger:command:run, which then runs the command untraced
 unset BASH_XTRACEFD 2>/dev/null || true
 # cache-signing-key-rotate — replace the fleet's nix signing key, ON THE SEAT.
 #
@@ -96,7 +97,7 @@ rotate::apply() {
 		log::error "the new private is NOT encrypted in the re-encrypted file; ${fileRel} left untouched"
 		return 1
 	fi
-	if grep -qF -- "$bare" "$reencrypted"; then
+	if grep -qF -f <(printf '%s\n' "$bare") "$reencrypted"; then
 		log::error "the new private appears in clear in the re-encrypted file; ${fileRel} left untouched"
 		return 1
 	fi
