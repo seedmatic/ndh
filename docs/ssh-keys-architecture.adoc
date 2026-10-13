@@ -600,7 +600,14 @@ authorities); at fabric iteration 1, `operator` moves to the password store
 ssh-keygen -t ed25519 -N "" -f /etc/ssh/ssh_host_ed25519_key     # on the host
 # the seat records the public under keys.{key}.slots.{YY-MM-DD}.public,
 # signs a host certificate with the ssh fabric HOSTS CA, and commits the certificate
+nix run "git+file://$PWD?rev=$(git rev-parse HEAD)#ssh-keys-certify" -- --apply   # on the seat
 ----
+
+`ssh-keys-certify` signs every SSH certificate keys.yaml declares, host certificates for every name a fleet
+host or guest answers to, and records them under `keys.{key}.slots.{YY-MM-DD}.certificates`. The activation
+installs them as recorded and signs nothing for them; evaluation refuses a recorded public without its
+certificate. A slot with no recorded public (material still generated at activation) is signed on its host
+until its slot is recorded, so the authority's private leaves the hosts only then.
 
 The same shape holds for a TLS leaf: the key is generated on the server, the seat signs its CSR with
 `mammoth-skate tls`.
