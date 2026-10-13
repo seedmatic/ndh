@@ -85,7 +85,7 @@ YAML
   [ "$output" = "older-private" ]
 }
 
-@test "an empty newest slot yields empty material, which is how a renewal is requested" {
+@test "an empty newest slot yields empty material, not a guess" {
   write_fixture <<'YAML'
 keys:
   rdp-host:

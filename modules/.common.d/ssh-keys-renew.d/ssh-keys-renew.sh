@@ -60,6 +60,8 @@ unset BASH_XTRACEFD 2>/dev/null || true
 # shellcheck disable=SC1091
 source @nixBashTrampoline@
 
+# keys.yaml relative to the repository root: the real file, and the copy whose path picks its sops rule.
+readonly keysRel="modules/home-manager/ssh.d/keys.yaml"
 declare -g keysYaml tmpdir decrypted today apply olderThanDays replace reason
 declare -g createName createComment createType
 declare -ga selectKeys=() selectAuthorities=() plan=() refusals=()
@@ -295,7 +297,11 @@ renew::one() { # <section> <name> <keyType>
 	read -r -a keygenArgs <<<"$(keygen::args_for "$keyType")"
 
 	out="${tmpdir}/${section}-${name}"
-	ssh-keygen -q "${keygenArgs[@]}" -N "" -f "$out" -C "$comment"
+	# Checked: the logger wrapper runs this script with errexit OFF.
+	if ! ssh-keygen -q "${keygenArgs[@]}" -N "" -f "$out" -C "$comment"; then
+		log::error "ssh-keygen could not generate ${section}.${name}"
+		return 1
+	fi
 
 	# `public` is the BARE base64 blob — the type is in `type:` and the comment in
 	# `comment:`, and consumers rebuild the line from the three. Writing a whole
@@ -317,6 +323,33 @@ renew::one() { # <section> <name> <keyType>
 	yq eval -i \
 		"(.${section}.\"${name}\".slots.\"${today}\".private | key) headComment = \"sops:encrypted\"" \
 		"$decrypted"
+}
+
+# Who can read a sops file, every key provider included, sorted.
+recipients::of() { # <sops file>
+	yq eval -r '[
+		((.sops.age // [])[] | "age:" + .recipient),
+		((.sops.pgp // [])[] | "pgp:" + .fp),
+		((.sops.kms // [])[] | "kms:" + .arn),
+		((.sops.gcp_kms // [])[] | "gcp_kms:" + .resource_id),
+		((.sops.azure_kv // [])[] | "azure_kv:" + .vault_url + "/" + .name),
+		((.sops.hc_vault // [])[] | "hc_vault:" + .vault_address + "/" + .engine_path + "/" + .key_name)
+	] | sort | join(",")' "$1"
+}
+
+# A tool that rewrites key material never changes who can read it. The re-encryption follows
+# keys.yaml's own creation rule (the decrypted copy sits at its relative path — a temp path once
+# matched the catch-all and dropped a recipient), and a recipient set that would still change —
+# the rule and the committed envelope disagree — is refused: that is `sops updatekeys`, an
+# explicit gesture of its own.
+recipients::unchanged() { # <committed file> <re-encrypted file>
+	local before after
+	before="$(recipients::of "$1")"
+	after="$(recipients::of "$2")"
+	[[ "$before" == "$after" ]] && return 0
+	log::error "keys.yaml's recipients would change: +[$(comm -13 <(tr ',' '\n' <<<"$before") <(tr ',' '\n' <<<"$after") | paste -sd, -)] -[$(comm -23 <(tr ',' '\n' <<<"$before") <(tr ',' '\n' <<<"$after") | paste -sd, -)]"
+	log::error "keys.yaml left untouched — align its recipients with its creation rule first: sops updatekeys ${keysRel}"
+	return 1
 }
 
 # Declare the new entry's public fields; renew::one then generates its first slot.
@@ -362,8 +395,8 @@ renew::apply() {
 
 	for line in "${plan[@]}"; do
 		IFS=$'\t' read -r section name keyType existing <<<"$line"
-		if [[ "$existing" == create ]]; then create::declare; fi
-		renew::one "$section" "$name" "$keyType"
+		if [[ "$existing" == create ]]; then create::declare || return 1; fi
+		renew::one "$section" "$name" "$keyType" || return 1
 		if ((replace == 1)) && [[ "$existing" != create ]]; then
 			read -r -a retiring <<<"$existing"
 			renew::retire "$section" "$name" "${retiring[@]}"
@@ -371,11 +404,15 @@ renew::apply() {
 	done
 
 	reencrypted="${tmpdir}/keys.yaml.reenc"
-	sops --input-type yaml --output-type yaml encrypt "$decrypted" >"$reencrypted"
+	if ! (cd "${tmpdir}/repo" && sops --input-type yaml --output-type yaml encrypt "$keysRel") >"$reencrypted"; then
+		log::error "sops encrypt failed; keys.yaml left untouched"
+		return 1
+	fi
 	if [[ ! -s "$reencrypted" ]]; then
 		log::error "sops encrypt produced an empty file; keys.yaml left untouched"
 		return 1
 	fi
+	recipients::unchanged "$keysYaml" "$reencrypted" || return 1
 
 	for line in "${plan[@]}"; do
 		IFS=$'\t' read -r section name _ _ <<<"$line"
@@ -390,7 +427,7 @@ renew::apply() {
 		esac
 	done
 
-	install -m 0644 "$reencrypted" "$keysYaml"
+	install -m 0644 "$reencrypted" "$keysYaml" || return 1
 
 	if [[ -n "$createName" ]]; then
 		cat <<-EOF
@@ -555,7 +592,7 @@ main() {
 
 	# Packaged as a flake app, so $0 is a /nix/store path — resolve the repo from
 	# the invocation cwd instead (run from the ndh repo root).
-	keysYaml="$(git rev-parse --show-toplevel)/modules/home-manager/ssh.d/keys.yaml"
+	keysYaml="$(git rev-parse --show-toplevel)/${keysRel}"
 	if [[ ! -r "$keysYaml" ]]; then
 		log::error "keys.yaml not readable at ${keysYaml} (run from the ndh repo root)"
 		return 1
@@ -565,7 +602,12 @@ main() {
 	chmod 700 "$tmpdir"
 	trap 'rm -rf "$tmpdir"' EXIT
 
-	decrypted="${tmpdir}/keys.yaml"
+	# The decrypted copy sits at keys.yaml's OWN relative path, beside a copy of the repository's
+	# .sops.yaml: sops picks the creation rule by the path it encrypts (--filename-override does not
+	# change that, measured with 3.13.3), so the re-encryption gets exactly keys.yaml's rule.
+	install -d -m 0700 "${tmpdir}/repo/$(dirname "$keysRel")"
+	cp "$(git rev-parse --show-toplevel)/.sops.yaml" "${tmpdir}/repo/.sops.yaml"
+	decrypted="${tmpdir}/repo/${keysRel}"
 	sops --input-type yaml --output-type yaml -d "$keysYaml" >"$decrypted"
 	if [[ ! -s "$decrypted" ]]; then
 		log::error "sops -d produced an empty file (check SOPS_AGE_KEY_FILE / sops.age.keyFile)"

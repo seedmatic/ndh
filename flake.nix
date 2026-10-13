@@ -137,6 +137,41 @@
       # The ONE identity the incus cluster-cert closure reaches a member with: the OPERATOR
       # principal's key on the seat, read from bioskop's configuration (sshPaths, the profile
       # user) so it is never retyped. Step 9 moves it from rdp-host to the `operator` key here.
+      # Roles × keys 6a: every name a fleet host or guest answers to, the union ONE host certificate is
+      # signed for on the seat (ssh-keys-certify). Each inventory host, and each guest read from its own
+      # configuration (vm.guestHostName, and vm.guestName.vm.hostName, the bare-metal's dnsmasq zone), in
+      # the bare, .lan, .local and <ssh authority domain> forms. Computed, never retyped.
+      fleetHostPrincipals =
+        let
+          lib = nixpkgs.lib;
+          authorities = lib.filterAttrs (
+            _: a: lib.elem "ssh-authority" (a.usage or [ ])
+          ) self.darwinConfigurations.bioskop.config.ndh.keysYaml.authorities;
+          domain =
+            assert lib.assertMsg (lib.length (lib.attrNames authorities) == 1)
+              "fleetHostPrincipals: exactly one ssh-authority is expected, found ${toString (lib.attrNames authorities)}";
+            (lib.head (lib.attrValues authorities)).domain;
+          forms = name: [
+            name
+            "${name}.lan"
+            "${name}.local"
+            "${name}.${domain}"
+          ];
+          hosts = lib.attrNames inventoryData.hosts;
+          guests = lib.concatMap (
+            host:
+            lib.optional (
+              self.nixosConfigurations ? "${host}-nixos"
+            ) self.nixosConfigurations."${host}-nixos".config.vm
+          ) hosts;
+        in
+        lib.sort lib.lessThan (
+          lib.unique (
+            lib.concatMap forms hosts
+            ++ lib.concatMap (vm: forms vm.guestHostName ++ [ "${vm.guestName}.${vm.hostName}" ]) guests
+          )
+        );
+
       incusCertOperatorIdentity =
         let
           seat = self.darwinConfigurations.bioskop.config;
@@ -1073,6 +1108,9 @@
           ssh-keys-renew-bats = import ./modules/.common.d/ssh-keys-renew.d/tests/package.nix {
             inherit pkgs;
           };
+          ssh-keys-certify-bats = import ./modules/.common.d/ssh-keys-certify.d/tests/package.nix {
+            inherit pkgs;
+          };
           # keys.yaml against its schema, ENCRYPTED as committed: the schema accepts ENC[...]
           # wherever a private may sit, so the sandbox needs no key and nothing is decrypted.
           # Each broken fixture must be REFUSED — a schema that accepts them proves nothing.
@@ -1733,6 +1771,16 @@
               loggerTag = "ndh.ssh-keys-renew";
             }
           );
+          # 6a: the seat signs every SSH certificate keys.yaml declares, host certificates for
+          # fleetHostPrincipals; the activation only installs them.
+          sshKeysCertifyPackage = ndhStoreApiDarwin.installBinScript "ssh-keys-certify" (
+            pkgsForSystem.replaceVars ./modules/.common.d/ssh-keys-certify.d/ssh-keys-certify.sh {
+              nixBashTrampoline = ndhNixBashTrampolineDarwin;
+              loggerTag = "ndh.ssh-keys-certify";
+              hostPrincipals = nixpkgs.lib.concatStringsSep "," fleetHostPrincipals;
+              sshKeygen = "${pkgsForSystem.openssh}/bin/ssh-keygen";
+            }
+          );
           # T14's closure: re-mint and install the Incus cluster certificate (one definition,
           # also packages.<system>.incus-cluster-cert-renew) — see its package.nix.
           incusClusterCertRenewPackage = import ./modules/.common.d/incus-cluster-cert.d/package.nix {
@@ -1838,6 +1886,11 @@
             type = "app";
             program = "${sshKeysRenewPackage}/bin/ssh-keys-renew";
             meta.description = "Phase 1 of an SSH key renewal: add a dated slot and generate into it — [--key NAME] [--authority NAME] [--older-than Nd] [--apply], or declare a new entry with --create NAME --usage TAG, dry run by default, run from repo root — src: modules/.common.d/ssh-keys-renew.d/";
+          };
+          ssh-keys-certify = {
+            type = "app";
+            program = "${sshKeysCertifyPackage}/bin/ssh-keys-certify";
+            meta.description = "Sign, on the seat, every SSH certificate keys.yaml declares (host certificates for every fleet name) and record them in keys.yaml — [--apply], dry run by default, run from repo root — src: modules/.common.d/ssh-keys-certify.d/";
           };
           cleanup-activations = {
             type = "app";

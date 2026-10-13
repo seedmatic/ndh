@@ -13,7 +13,6 @@ let
   ndhHm = (worktreePath.of "modules/home-manager");
   nixBashTrampoline = "${ndhContext.nixBashTrampoline}";
   catalog = ndhContext.catalog;
-  inventory = ndhContext.inventory;
   keysTargetUnit = "keys.target";
   hasSopsInstallSecretsService = builtins.hasAttr "sops-install-secrets" config.systemd.services;
   contributedTargetName = ndhSystemd.contributedTargetName;
@@ -34,13 +33,6 @@ let
         "system"
         "user"
       ];
-  hostIdent =
-    if config ? vm && config.vm ? hostName && config.vm.hostName != null then
-      config.vm.hostName
-    else if config.networking.hostName != "" then
-      config.networking.hostName
-    else
-      "nixos";
   decryptedSSHKeysYamlPath = config.sshPaths.runtimeSecretsKeysYaml;
   # Outside the sops-install-secrets namespace so that unit's strict
   # directory-replacement sweep does not nuke our enrichment outputs.
@@ -52,20 +44,6 @@ let
 
   hasUserProfile = builtins.elem "user" profileNames;
 
-  inventoryHostNames = builtins.attrNames (inventory.hosts or { });
-  inventoryHostsCsv = lib.concatStringsSep "," inventoryHostNames;
-
-  # The guest's own names, signed into its host certificate verbatim:
-  # `<host>-nixos` (tailnet) and `nixos.<host>` (the bare-metal's dnsmasq zone —
-  # see modules/home-manager/ssh-tailnet-hosts.nix). Neither is derivable from
-  # hostIdent, which is the VM HOST's name.
-  guestPrincipalsCsv = lib.optionalString (config ? vm) (
-    lib.concatStringsSep "," [
-      config.vm.guestHostName
-      "${config.vm.guestName}.${config.vm.hostName}"
-    ]
-  );
-
   # v2: single catalog user; profile name no longer drives OS user lookup.
   profileOwnerName =
     if catalog ? user && catalog.user ? name && catalog.user.name != null then
@@ -73,7 +51,6 @@ let
     else
       profileUserName;
 
-  loggerTagOrchestrate = "nixos.services.ssh-keys-enrichment.orchestrate";
   loggerTagEnrich = "nixos.services.ssh-keys-enrichment.enrichSSHKeysYaml";
   loggerTagSplit = "nixos.services.ssh-keys-enrichment.splitSSHKeysYaml";
   loggerTagExtract = "nixos.services.ssh-keys-enrichment.extractSSHKeys";
@@ -91,12 +68,6 @@ let
       nixBashTrampoline = nixBashTrampoline;
       loggerTag = loggerTagSplit;
     };
-    ssh-enrich-split-and-authorize =
-      pkgs.replaceVars "${ndhCommon}/ssh-keys.d/ssh-enrich-split-runtime-keys.sh"
-        {
-          nixBashTrampoline = nixBashTrampoline;
-          loggerTag = loggerTagOrchestrate;
-        };
     # ssh-extract-keys carries an extra @splitExpFile@ substitution but shares
     # the same activation pipeline + logger shape, so bundle it alongside.
     ssh-extract-keys = pkgs.replaceVars "${ndhHm}/ssh-key.d/ssh-extract-keys.sh" {
@@ -146,18 +117,14 @@ in
       set -euo pipefail
 
       # Pre-create the split output directory tree so that enrichment/split
-      # scripts can always write their outputs even on first boot (mirrors the
-      # explicit install -d in ssh-enrich-split-runtime-keys.sh).
+      # scripts can always write their outputs even on first boot.
       install -d -m 0755 "${enrichedKeysDir}" "${enrichedKeysDir}/profiles"
 
       # 1. Enrich the decrypted sops yaml into keys.generated.yaml.
       ${pkgs.bash}/bin/bash ${sshKeysEnrichmentTools}/bin/ssh-enrich-keys-yaml \
-        "${hostIdent}" \
         "${decryptedSSHKeysYamlPath}" \
         "${generatedKeysYamlPath}" \
-        "${inventoryHostsCsv}" \
-        "${profileOwnerName}" \
-        "${guestPrincipalsCsv}"
+        "${profileOwnerName}"
 
       # 2. Split into per-profile yamls (one invocation per profile name
       #    in profile.names). Each run emits the same system.yaml

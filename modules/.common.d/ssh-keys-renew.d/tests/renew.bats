@@ -32,11 +32,34 @@ EOF
     ' >"$keys"
   (cd "$repo" && sops --input-type yaml --output-type yaml encrypt -i modules/home-manager/ssh.d/keys.yaml)
 
-  printf 'ndh::logger:command:run() { shift; "$@"; }\n' >"$BATS_TEST_TMPDIR/trampoline.sh"
+  # The real ndh::logger:command:run runs the command as `if "$@"` — errexit is OFF inside it — so the
+  # stub does the same: a failure the script does not check would otherwise pass here and not there.
+  printf 'ndh::logger:command:run() { shift; local rc=0; if "$@"; then :; else rc=$?; fi; return "$rc"; }\n' >"$BATS_TEST_TMPDIR/trampoline.sh"
   sed -e "s#@nixBashTrampoline@#$BATS_TEST_TMPDIR/trampoline.sh#" -e 's#@loggerTag@#test#' \
     "$BATS_TEST_DIRNAME/../ssh-keys-renew.sh" >"$BATS_TEST_TMPDIR/ssh-keys-renew"
   today="$(date +%y-%m-%d)"
 }
+
+# keys.yaml's own rule names TWO recipients, the catch-all after it only one: the shape that let a
+# temp-path encryption drop a recipient. `$1` = sync|nosync: re-key the fixture to its rule or not.
+narrow_rule() {
+  age-keygen -o "$BATS_TEST_TMPDIR/age2.txt" 2>/dev/null
+  local first second
+  first="$(age-keygen -y "$SOPS_AGE_KEY_FILE")"
+  second="$(age-keygen -y "$BATS_TEST_TMPDIR/age2.txt")"
+  cat >"$repo/.sops.yaml" <<EOF
+creation_rules:
+  - path_regex: '(^|/)modules/home-manager/ssh\.d/keys\.yaml$'
+    encrypted_comment_regex: 'sops:encrypted'
+    age: $first,$second
+  - path_regex: '.*'
+    encrypted_comment_regex: 'sops:encrypted'
+    age: $first
+EOF
+  if [ "$1" = sync ]; then (cd "$repo" && sops updatekeys -y modules/home-manager/ssh.d/keys.yaml >/dev/null 2>&1); fi
+}
+
+recipients() { yq eval -r '.sops.age | length' "$keys"; }
 
 renew() {
   (cd "$repo" && bash -euo pipefail "$BATS_TEST_TMPDIR/ssh-keys-renew" "$@")
@@ -117,4 +140,21 @@ decrypted() {
   [ "$status" -eq 64 ]
   run renew --key existing --type ssh-rsa
   [ "$status" -eq 64 ]
+}
+
+@test "--apply keeps keys.yaml's own rule's recipients, not the catch-all's" {
+  narrow_rule sync
+  [ "$(recipients)" = 2 ]
+  run renew --create bot --usage bot-signing --apply
+  [ "$status" -eq 0 ]
+  [ "$(recipients)" = 2 ]
+}
+
+@test "a run that would change keys.yaml's recipients is refused, and changes nothing" {
+  narrow_rule nosync
+  cp "$keys" "$BATS_TEST_TMPDIR/before"
+  run renew --create bot --usage bot-signing --apply
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"recipients would change"*"sops updatekeys"* ]]
+  cmp "$keys" "$BATS_TEST_TMPDIR/before"
 }

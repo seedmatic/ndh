@@ -168,7 +168,9 @@ client, root included, refuses a revoked host key, and a certificate whose signi
 revoked (`RevokedHostKeys`, openssh-policy.nix). Host certificates are valid forever by decision: the
 hosts are checked strictly, so a missed calendar renewal would break every connection, and an expiry
 only bounds a leaked key that nobody revoked. Revocation is what cuts one, at the next activation. A
-host certificate is renewed on an event — a leak, the authority's own renewal — never on a date.
+host certificate is renewed on an event — a leak, the authority's own renewal — never on a date. The seat
+signs it (`ssh-keys-certify`) after a renewal of the key or of the authority; the activation only installs
+what is recorded.
 
 === Phase 2 of an AUTHORITY — the trust gate
 
@@ -258,6 +260,7 @@ nix run "git+file://$PWD?rev=$(git rev-parse HEAD)#ssh-keys-renew" -- [--key NAM
 nix run "git+file://$PWD?rev=$(git rev-parse HEAD)#ssh-keys-renew" -- [--key NAME]... --replace --reason TEXT [--apply]
 nix run "git+file://$PWD?rev=$(git rev-parse HEAD)#ssh-keys-renew" -- --create NAME --usage TAG... [--profile NAME]... [--apply]
 nix run "git+file://$PWD?rev=$(git rev-parse HEAD)#ssh-keys-renew" -- --retire NAME@YY-MM-DD [--apply]
+nix run "git+file://$PWD?rev=$(git rev-parse HEAD)#ssh-keys-certify" -- [--apply]
 ----
 
 By revision, never `.#`: an evaluation of the checkout copies it into the store. `--retire` is
