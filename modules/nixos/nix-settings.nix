@@ -66,14 +66,11 @@ in
 
   # systemd's default rule leaves /dev/kvm world-writable (0666). Nix 2.34 mounts /dev/kvm into
   # EVERY sandbox once kvm is among the daemon's features (linux-derivation-builder.cc reads the
-  # store's systemFeatures, not the derivation's), so only the kvm group may open it, and the
-  # build users are in it.
+  # store's systemFeatures, not the derivation's), but the sandbox drops every supplementary group
+  # (setgroups(0, 0)): a build holds only its primary gid, build-users-group. So the kvm group
+  # keeps the device, and an ACL opens it to that gid alone — not to a login user. RUN applies it
+  # on every event for the node, so a re-trigger or a module reload re-applies it.
   services.udev.extraRules = ''
-    KERNEL=="kvm", GROUP="kvm", MODE="0660"
+    KERNEL=="kvm", GROUP="kvm", MODE="0660", RUN+="${pkgs.acl}/bin/setfacl -m g:${config.nix.settings.build-users-group}:rw /dev/kvm"
   '';
-  users.users =
-    lib.genAttrs (map (n: "nixbld${toString n}") (lib.range 1 config.nix.nrBuildUsers))
-      (_: {
-        extraGroups = [ "kvm" ];
-      });
 }
