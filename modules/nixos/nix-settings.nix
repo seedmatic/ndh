@@ -33,10 +33,7 @@ in
     # a reviewed fact. Nix takes the group's MEMBERS as build users: only the
     # nixbldN accounts may be members (see the builder user in users.nix).
     build-users-group = "nixbld";
-    # The sandbox stays off for now: rke2lab's Maven reactor build needs the
-    # network and the host's Maven repository. Until it is made pure, a build
-    # reaches the network and what nixbld may read, never what root may.
-    sandbox = false;
+    sandbox = true;
     # mkForce: NixOS DEFINES its feature list (kvm included) rather than defaulting it, so a plain
     # definition would be concatenated to it.
     system-features = lib.mkForce (lib.remove "kvm" defaultFeatures);
