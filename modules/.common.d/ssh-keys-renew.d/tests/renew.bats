@@ -32,7 +32,9 @@ EOF
     ' >"$keys"
   (cd "$repo" && sops --input-type yaml --output-type yaml encrypt -i modules/home-manager/ssh.d/keys.yaml)
 
-  printf 'ndh::logger:command:run() { shift; "$@"; }\n' >"$BATS_TEST_TMPDIR/trampoline.sh"
+  # The real ndh::logger:command:run runs the command as `if "$@"` — errexit is OFF inside it — so the
+  # stub does the same: a failure the script does not check would otherwise pass here and not there.
+  printf 'ndh::logger:command:run() { shift; local rc=0; if "$@"; then :; else rc=$?; fi; return "$rc"; }\n' >"$BATS_TEST_TMPDIR/trampoline.sh"
   sed -e "s#@nixBashTrampoline@#$BATS_TEST_TMPDIR/trampoline.sh#" -e 's#@loggerTag@#test#' \
     "$BATS_TEST_DIRNAME/../ssh-keys-renew.sh" >"$BATS_TEST_TMPDIR/ssh-keys-renew"
   today="$(date +%y-%m-%d)"

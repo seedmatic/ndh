@@ -42,7 +42,9 @@ EOF
       (.keys.host.slots."26-03-03".private | key) headComment = "sops:encrypted"
     ' >"$keys"
   (cd "$repo" && sops --input-type yaml --output-type yaml encrypt -i modules/home-manager/ssh.d/keys.yaml)
-  printf 'ndh::logger:command:run() { shift; "$@"; }\n' >"$BATS_TEST_TMPDIR/trampoline.sh"
+  # The real ndh::logger:command:run runs the command as `if "$@"` — errexit is OFF inside it — so the
+  # stub does the same: a failure the script does not check would otherwise pass here and not there.
+  printf 'ndh::logger:command:run() { shift; local rc=0; if "$@"; then :; else rc=$?; fi; return "$rc"; }\n' >"$BATS_TEST_TMPDIR/trampoline.sh"
   bake "alpha,alpha.lan,beta"
 }
 
@@ -156,5 +158,24 @@ cert() { # <usage> → describe the recorded certificate
   run certify --apply
   [ "$status" -eq 1 ]
   [[ "$output" == *"recipients would change"*"sops updatekeys"* ]]
+  cmp "$keys" before
+}
+
+@test "a slot with no recorded public is reported as unrecorded, and nothing is recorded for it" {
+  (cd "$repo" && sops set modules/home-manager/ssh.d/keys.yaml '["keys"]["ephemeral"]' \
+    '{"type": "ssh-ed25519", "authority": "fabric", "cert_usage": ["ssh-host"], "slots": {"26-04-04": {}}}')
+  run certify --apply
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"unrecorded"*"ephemeral"*"generated and signed at activation"* ]]
+  [ "$(yq eval -r '.keys.ephemeral.slots."26-04-04".certificates // "none"' "$keys")" = none ]
+}
+
+@test "a signature that fails stops the run and leaves keys.yaml untouched" {
+  (cd "$repo" && sops set modules/home-manager/ssh.d/keys.yaml '["keys"]["broken"]' \
+    '{"type": "ssh-ed25519", "authority": "fabric", "cert_usage": ["ssh-host"], "slots": {"26-04-04": {"public": "AAAAnotakey"}}}')
+  cp "$keys" before
+  run certify --apply
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"keys.yaml left untouched"* ]]
   cmp "$keys" before
 }

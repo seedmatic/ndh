@@ -297,7 +297,11 @@ renew::one() { # <section> <name> <keyType>
 	read -r -a keygenArgs <<<"$(keygen::args_for "$keyType")"
 
 	out="${tmpdir}/${section}-${name}"
-	ssh-keygen -q "${keygenArgs[@]}" -N "" -f "$out" -C "$comment"
+	# Checked: the logger wrapper runs this script with errexit OFF.
+	if ! ssh-keygen -q "${keygenArgs[@]}" -N "" -f "$out" -C "$comment"; then
+		log::error "ssh-keygen could not generate ${section}.${name}"
+		return 1
+	fi
 
 	# `public` is the BARE base64 blob — the type is in `type:` and the comment in
 	# `comment:`, and consumers rebuild the line from the three. Writing a whole
@@ -391,8 +395,8 @@ renew::apply() {
 
 	for line in "${plan[@]}"; do
 		IFS=$'\t' read -r section name keyType existing <<<"$line"
-		if [[ "$existing" == create ]]; then create::declare; fi
-		renew::one "$section" "$name" "$keyType"
+		if [[ "$existing" == create ]]; then create::declare || return 1; fi
+		renew::one "$section" "$name" "$keyType" || return 1
 		if ((replace == 1)) && [[ "$existing" != create ]]; then
 			read -r -a retiring <<<"$existing"
 			renew::retire "$section" "$name" "${retiring[@]}"
@@ -400,7 +404,10 @@ renew::apply() {
 	done
 
 	reencrypted="${tmpdir}/keys.yaml.reenc"
-	(cd "${tmpdir}/repo" && sops --input-type yaml --output-type yaml encrypt "$keysRel") >"$reencrypted"
+	if ! (cd "${tmpdir}/repo" && sops --input-type yaml --output-type yaml encrypt "$keysRel") >"$reencrypted"; then
+		log::error "sops encrypt failed; keys.yaml left untouched"
+		return 1
+	fi
 	if [[ ! -s "$reencrypted" ]]; then
 		log::error "sops encrypt produced an empty file; keys.yaml left untouched"
 		return 1
@@ -420,7 +427,7 @@ renew::apply() {
 		esac
 	done
 
-	install -m 0644 "$reencrypted" "$keysYaml"
+	install -m 0644 "$reencrypted" "$keysYaml" || return 1
 
 	if [[ -n "$createName" ]]; then
 		cat <<-EOF

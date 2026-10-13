@@ -33,7 +33,7 @@ source @nixBashTrampoline@
 # keys.yaml relative to the repository root: the real file, and the copy whose path picks its sops rule.
 readonly keysRel="modules/home-manager/ssh.d/keys.yaml"
 declare -g keysYaml tmpdir decrypted apply
-declare -ga hostPrincipals=() plan=() current=()
+declare -ga hostPrincipals=() plan=() current=() unrecorded=()
 IFS=',' read -r -a hostPrincipals <<<"@hostPrincipals@"
 
 # stdout, like ssh-keys-renew: the logger sends stderr to the syslog, and the operator must see the plan.
@@ -139,6 +139,12 @@ plan::build() {
 			[[ -n "$slot" ]] || continue
 			while IFS= read -r usage; do
 				[[ "$usage" == ssh-host || "$usage" == ssh-user ]] || continue
+				# A slot whose public is not recorded holds material generated at activation, on each host:
+				# there is nothing to sign here, so that host keeps signing it until its slot is recorded.
+				if [[ -z "$(yq::get ".keys.\"${key}\".slots.\"${slot}\".public // \"\"")" ]]; then
+					unrecorded+=("${key}	${slot}	${usage}")
+					continue
+				fi
 				recorded="$(yq::get ".keys.\"${key}\".slots.\"${slot}\".certificates.\"${authority}\".\"${usage}\" // \"\"")"
 				if [[ -n "$recorded" ]]; then
 					printf '%s\n' "$recorded" >"${tmpdir}/recorded-cert.pub"
@@ -162,6 +168,10 @@ plan::show() {
 	for line in ${current[@]+"${current[@]}"}; do
 		IFS=$'\t' read -r key slot usage <<<"$line"
 		printf '  current  %-22s %-9s %s\n' "$key" "$slot" "$usage"
+	done
+	for line in ${unrecorded[@]+"${unrecorded[@]}"}; do
+		IFS=$'\t' read -r key slot usage <<<"$line"
+		printf '  unrecorded %-20s %-9s %-9s no public in keys.yaml: generated and signed at activation\n' "$key" "$slot" "$usage"
 	done
 	for line in ${plan[@]+"${plan[@]}"}; do
 		IFS=$'\t' read -r key slot authority authSlot usage why <<<"$line"
@@ -212,20 +222,38 @@ certify::one() { # <key> <slot> <authority> <authority slot> <usage>
 		"$(yq::get ".keys.\"${key}\".comment // \"${key}\"")" >"${stem}.pub"
 	local -a args=(-q -s "$authFile" -I "$(cert::identity "$key" "$usage")" -n "$(cert::principals_for "$key" "$usage")")
 	[[ "$usage" == ssh-host ]] && args+=(-h)
-	ssh-keygen "${args[@]}" "${stem}.pub"
+	# Every step is checked: the logger wrapper runs this script with errexit OFF, and an unchecked
+	# failure once recorded EMPTY certificates as "signed".
+	if ! ssh-keygen "${args[@]}" "${stem}.pub"; then
+		log::error "ssh-keygen could not sign ${key}@${slot} ${usage}"
+		return 1
+	fi
+	if [[ ! -s "${stem}-cert.pub" ]]; then
+		log::error "no certificate was written for ${key}@${slot} ${usage}"
+		return 1
+	fi
+	if ! CERT="$(<"${stem}-cert.pub")" yq eval -i \
+		".keys.\"${key}\".slots.\"${slot}\".certificates.\"${authority}\".\"${usage}\" = strenv(CERT)" "$decrypted"; then
+		log::error "cannot record the certificate of ${key}@${slot} ${usage}"
+		return 1
+	fi
 	log::info "signed ${key}@${slot} ${usage} with ${authority}@${authSlot}"
-	CERT="$(<"${stem}-cert.pub")" yq eval -i \
-		".keys.\"${key}\".slots.\"${slot}\".certificates.\"${authority}\".\"${usage}\" = strenv(CERT)" "$decrypted"
 }
 
 certify::apply() {
 	local line reencrypted
 	for line in "${plan[@]}"; do
 		IFS=$'\t' read -r key slot authority authSlot usage _ <<<"$line"
-		certify::one "$key" "$slot" "$authority" "$authSlot" "$usage"
+		certify::one "$key" "$slot" "$authority" "$authSlot" "$usage" || {
+			log::error "keys.yaml left untouched"
+			return 1
+		}
 	done
 	reencrypted="${tmpdir}/keys.yaml.reenc"
-	(cd "${tmpdir}/repo" && sops --input-type yaml --output-type yaml encrypt "$keysRel") >"$reencrypted"
+	if ! (cd "${tmpdir}/repo" && sops --input-type yaml --output-type yaml encrypt "$keysRel") >"$reencrypted"; then
+		log::error "sops encrypt failed; keys.yaml left untouched"
+		return 1
+	fi
 	[[ -s "$reencrypted" ]] || {
 		log::error "sops encrypt produced an empty file; keys.yaml left untouched"
 		return 1
@@ -237,7 +265,7 @@ certify::apply() {
 		log::error "a private is NOT encrypted in the re-encrypted file; keys.yaml left untouched"
 		return 1
 	fi
-	install -m 0644 "$reencrypted" "$keysYaml"
+	install -m 0644 "$reencrypted" "$keysYaml" || return 1
 	cat <<-EOF
 
 		${#plan[@]} certificate(s) recorded in keys.yaml.
@@ -245,7 +273,8 @@ certify::apply() {
 		Next, in order:
 		  1. nix run "git+file://\$PWD?rev=\$(git rev-parse HEAD)#ssh-keys-v2-validate" -- modules/home-manager/ssh.d/keys.yaml
 		  2. commit the keys.yaml diff
-		  3. activate every host: each installs the certificates recorded here
+		  3. the hosts install them once the enrichment reads recorded certificates (the next ndh
+		     change of 6a part B); until then each activation still signs its own
 	EOF
 }
 
@@ -288,7 +317,7 @@ main() {
 		return 1
 	}
 
-	plan::build
+	plan::build || return 1
 	plan::show
 	if ((${#plan[@]} == 0)); then
 		log::info "every certificate is current — nothing to sign"
