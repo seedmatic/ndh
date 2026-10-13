@@ -1,10 +1,24 @@
-# NixOS-specific nix daemon configuration: trusted-users, sandbox,
-# auto-optimise. Substituter + trusted-public-key emission lives in
+# NixOS-specific nix daemon configuration: trusted-users, build users, sandbox,
+# kvm, auto-optimise. Substituter + trusted-public-key emission lives in
 # modules/.common.d/cache-trust.nix (walks the catalog automatically).
-{ config, ... }:
+{
+  config,
+  lib,
+  options,
+  pkgs,
+  ...
+}:
 let
   cfgUser = config.profile.user;
   cfgUserName = cfgUser.name;
+
+  # Whether this guest has KVM is decided when the VM is LAUNCHED (Tart's --nested, which
+  # NESTED_VIRT overrides at runtime), not when it is evaluated. So the evaluated settings never
+  # advertise kvm; a boot-time unit states what the running VM actually has, in a file the
+  # daemon includes. The Mac's buildMachines line states the INTENT (tart vmRunNestedVirt): a
+  # kvm build sent while the override is on fails on this side, loudly, instead of running TCG.
+  kvmConf = "/run/ndh/nix-kvm.conf";
+  defaultFeatures = (options.nix.settings.type.getSubOptions [ ]).system-features.default;
 in
 {
   nix.settings = {
@@ -19,13 +33,47 @@ in
     # a reviewed fact. Nix takes the group's MEMBERS as build users: only the
     # nixbldN accounts may be members (see the builder user in users.nix).
     build-users-group = "nixbld";
-    # The sandbox stays off for now: rke2lab's Maven reactor build needs the
-    # network and the host's Maven repository. Until it is made pure, a build
-    # reaches the network and what nixbld may read, never what root may.
-    sandbox = false;
+    sandbox = true;
+    # mkForce: NixOS DEFINES its feature list (kvm included) rather than defaulting it, so a plain
+    # definition would be concatenated to it.
+    system-features = lib.mkForce (lib.remove "kvm" defaultFeatures);
   };
 
   nix.extraOptions = ''
     !include /etc/nix/nix.custom.conf
+    !include ${kvmConf}
   '';
+
+  systemd.services.ndh-nix-kvm-features = {
+    description = "State whether this boot has /dev/kvm, for the nix daemon";
+    wantedBy = [ "multi-user.target" ];
+    before = [ "nix-daemon.service" ];
+    requiredBy = [ "nix-daemon.service" ];
+    after = [ "systemd-udev-settle.service" ];
+    serviceConfig = {
+      Type = "oneshot";
+      RemainAfterExit = true;
+    };
+    script = ''
+      ${pkgs.coreutils}/bin/mkdir -p ${dirOf kvmConf}
+      if [ -c /dev/kvm ]; then
+        printf 'extra-system-features = kvm\n' > ${kvmConf}
+      else
+        : > ${kvmConf}
+      fi
+    '';
+  };
+
+  # systemd's default rule leaves /dev/kvm world-writable (0666). Nix 2.34 mounts /dev/kvm into
+  # EVERY sandbox once kvm is among the daemon's features (linux-derivation-builder.cc reads the
+  # store's systemFeatures, not the derivation's), so only the kvm group may open it, and the
+  # build users are in it.
+  services.udev.extraRules = ''
+    KERNEL=="kvm", GROUP="kvm", MODE="0660"
+  '';
+  users.users =
+    lib.genAttrs (map (n: "nixbld${toString n}") (lib.range 1 config.nix.nrBuildUsers))
+      (_: {
+        extraGroups = [ "kvm" ];
+      });
 }
