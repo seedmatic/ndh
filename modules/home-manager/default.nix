@@ -105,7 +105,6 @@ let
     ./ssh-tailnet-hosts.nix
     ./ssh-keychain-removal.nix
     ./tldr.nix
-    ./tmate.nix
     ./tmux.nix
     ./xdg.nix
   ];
