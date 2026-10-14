@@ -250,5 +250,23 @@ in
 
     launchd.user.agents.${ipv4Agent.agentName} = ipv4Agent.agent;
     launchd.user.agents.${ipv6Agent.agentName} = ipv6Agent.agent;
+
+    # The launcher copies the token into godns's config at start: a rotated token is read only when
+    # the agent restarts.
+    ndh.restartOnSecretChange = lib.listToAttrs (
+      map
+        (
+          a:
+          lib.nameValuePair a.agent.serviceConfig.Label {
+            domain = "gui:${config.system.primaryUser}";
+            secrets = [ tokenSecretName ];
+            reason = "the Duck DNS token changed";
+          }
+        )
+        [
+          ipv4Agent
+          ipv6Agent
+        ]
+    );
   };
 }

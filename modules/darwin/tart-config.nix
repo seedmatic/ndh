@@ -395,6 +395,7 @@ let
     raw_image_store_path_default: ${builtins.toJSON rawImageStorePath}
     raw_image_source_path_default: ${builtins.toJSON cfg.rawImageSourcePath}
     raw_image_target_path_default: ${builtins.toJSON cfg.rawImageTargetPath}
+    sops_age_host_share: ${builtins.toJSON cfg.vmRunSopsAgeHostShare}
     sops_age_host_dir_default: ${builtins.toJSON cfg.vmRunSopsAgeHostDir}
     sops_age_tag: ${builtins.toJSON cfg.vmRunSopsAgeTag}
     tart_bin: ${builtins.toJSON cfg.tartBinaryPath}
@@ -668,13 +669,23 @@ in
       '';
     };
 
+    vmRunSopsAgeHostShare = mkOption {
+      type = types.bool;
+      description = ''
+        Whether the guest imports its age identity from this host, through the SOPS age host share.
+        Set from the GUEST's own configuration (`ndh.sopsAgeKeyBootstrap.nixosHostKeyImport.enable`),
+        never guessed on the host: a guest with its own identity gets no share, and run.sh does not
+        require one.
+      '';
+    };
+
     vmRunSopsAgeHostDir = mkOption {
       type = types.str;
       default = "${profileHome}/.config/sops";
       description = ''
-        Host directory shared into the Tart VM via virtiofs as the SOPS config root.
-        The age key is expected at `<mountPoint>/age/keys.txt` inside the guest.
-        Canonical behavior requires this share for in-guest SOPS bootstrap decryption.
+        Host directory shared into the Tart VM via virtiofs as the SOPS config root, when
+        `vmRunSopsAgeHostShare` holds. The age key is expected at `<mountPoint>/age/keys.txt`
+        inside the guest.
       '';
     };
 
@@ -682,7 +693,7 @@ in
       type = types.str;
       default = "ndh-sops-age";
       description = ''
-        Virtiofs mount tag used for the mandatory SOPS age host directory share.
+        Virtiofs mount tag of the SOPS age host directory share, when `vmRunSopsAgeHostShare` holds.
       '';
     };
 

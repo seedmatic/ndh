@@ -51,7 +51,6 @@
     flake-commons.url = "flake-commons";
 
     # 2. Aggregator passthroughs (alphabetized)
-    bird.follows = "flake-commons/bird";
     chromium-bin.follows = "flake-commons/chromium-bin";
     darwin.follows = "flake-commons/darwin";
     disko.follows = "flake-commons/disko";
@@ -1111,6 +1110,16 @@
           ssh-keys-certify-bats = import ./modules/.common.d/ssh-keys-certify.d/tests/package.nix {
             inherit pkgs;
           };
+          cache-signing-key-rotate-bats =
+            import ./modules/.common.d/cache-signing-key-rotate.d/tests/package.nix
+              {
+                inherit pkgs;
+              };
+          restart-on-secret-change-bats =
+            import ./modules/darwin/restart-on-secret-change.d/tests/package.nix
+              {
+                inherit pkgs;
+              };
           # keys.yaml against its schema, ENCRYPTED as committed: the schema accepts ENC[...]
           # wherever a private may sit, so the sandbox needs no key and nothing is decrypted.
           # Each broken fixture must be REFUSED — a schema that accepts them proves nothing.
@@ -1231,6 +1240,23 @@
                         value = "accept-new";
                       }
                     ];
+                }
+              )
+            )
+            [
+              "bioskop"
+              "nikopol"
+            ]
+        )
+        // nixpkgs.lib.listToAttrs (
+          map
+            (
+              host:
+              nixpkgs.lib.nameValuePair "secrets-read-after-install-${host}" (
+                import ./modules/darwin/activation-order.d/tests/read-after-install.nix {
+                  inherit pkgs;
+                  name = host;
+                  text = self.darwinConfigurations.${host}.config.system.activationScripts.postActivation.text;
                 }
               )
             )
@@ -1773,6 +1799,15 @@
           );
           # 6a: the seat signs every SSH certificate keys.yaml declares, host certificates for
           # fleetHostPrincipals; the activation only installs them.
+          # The fleet's nix signing key, replaced on the seat (the interim rotation of 2026-10-13).
+          cacheSigningKeyRotatePackage = ndhStoreApiDarwin.installBinScript "cache-signing-key-rotate" (
+            pkgsForSystem.replaceVars ./modules/.common.d/cache-signing-key-rotate.d/cache-signing-key-rotate.sh
+              {
+                nixBashTrampoline = ndhNixBashTrampolineDarwin;
+                loggerTag = "ndh.cache-signing-key-rotate";
+                nix = "${pkgsForSystem.nix}/bin/nix";
+              }
+          );
           sshKeysCertifyPackage = ndhStoreApiDarwin.installBinScript "ssh-keys-certify" (
             pkgsForSystem.replaceVars ./modules/.common.d/ssh-keys-certify.d/ssh-keys-certify.sh {
               nixBashTrampoline = ndhNixBashTrampolineDarwin;
@@ -1886,6 +1921,11 @@
             type = "app";
             program = "${sshKeysRenewPackage}/bin/ssh-keys-renew";
             meta.description = "Phase 1 of an SSH key renewal: add a dated slot and generate into it — [--key NAME] [--authority NAME] [--older-than Nd] [--apply], or declare a new entry with --create NAME --usage TAG, dry run by default, run from repo root — src: modules/.common.d/ssh-keys-renew.d/";
+          };
+          cache-signing-key-rotate = {
+            type = "app";
+            program = "${cacheSigningKeyRotatePackage}/bin/cache-signing-key-rotate";
+            meta.description = "Replace the fleet's nix signing key on the seat: generate it, write it encrypted into catalog/cache-trust.yaml, print the new public — --to NAME [--apply], dry run by default, run from repo root — src: modules/.common.d/cache-signing-key-rotate.d/";
           };
           ssh-keys-certify = {
             type = "app";
@@ -2010,6 +2050,8 @@
                       tart.configGenerator.rawImageManifestPath = "${nixosDiskImageBringupSystemdZfs}/manifest.yaml";
                       tart.configGenerator.rawImageStorePath = "${nixosDiskImageBringupSystemdZfs}/boot.img";
                       tart.configGenerator.runtimeSystemPath = nixosOutputs.runtimeSystem;
+                      tart.configGenerator.vmRunSopsAgeHostShare =
+                        nixosOutputs.nixosConfigurations."${mainName}-nixos".config.ndh.sopsAgeKeyBootstrap.nixosHostKeyImport.enable;
                       tart.configGenerator.vmRunFirstBootAttachDiskManifestPath = null;
                       tart.configGenerator.vmRunFirstBootAttachDiskPath = "";
                       tart.configGenerator.linuxBuilderGcBeforeBuild = linuxBuilderGcBeforeBuild;
@@ -2269,7 +2311,6 @@
             flox = inputs.flox.packages.${hostSystem}.default;
           };
 
-        birdOverlay = inputs: import ./overlays/bird.nix inputs;
         qemuOverlay = inputs: import ./overlays/qemu.nix inputs;
         incusOverlay = inputs: import ./overlays/incus.nix inputs;
         lazygitOverlay = inputs: import ./overlays/lazygit.nix inputs;

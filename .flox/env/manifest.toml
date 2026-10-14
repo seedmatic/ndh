@@ -22,7 +22,6 @@ grpcurl.pkg-path = "grpcurl"
 # added to modules/.common.d/system-packages.nix so that both the dev
 # shell and the deployed host systems share the same signer.
 step-cli.pkg-path = "step-cli"
-ngrok.pkg-path = "ngrok"
 # manage-tailnet: administer the Tailscale tailnet (rotate per-kind auth keys,
 # sync-acl, retag + prune stale devices; dry-run by default, --apply to write). A
 # repo-LOCAL flake package, so a path: flakeref reflecting the working copy (not a
