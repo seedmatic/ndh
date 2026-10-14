@@ -87,6 +87,7 @@ deliver() {
   dir=$(field "$info" dir)
   toplevel=$(field "$info" toplevel)
   store=$(field "$info" hostStore)
+  store=${store//@lowerView@/$(realpath -e "$LOWER_CURRENT")}
 
   systemctl start "ndh-incus-container-store-$1.service"
   # Only the delta lands in the upper: nix reads the lower's DB, so what the layers hold is not copied.

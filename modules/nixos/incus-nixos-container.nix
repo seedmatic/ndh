@@ -107,10 +107,12 @@ let
     dir = "${stateRoot}/${name}";
     dataset = "${cfg.datasetParent}/${name}";
     toplevel = toplevelOf name instance;
-    # The same store as the container's, seen from nerd-nixos: deliveries write the delta here.
+    # The same store as the container's, seen from nerd-nixos: deliveries write the delta here. nix
+    # refuses a symlink on a store path, and `current` is one, so `deliver` puts the view it resolves
+    # to in place of `@lowerView@`.
     hostStore = localOverlayStore {
       root = "${stateRoot}/${name}/root";
-      lower = lowerCurrent;
+      lower = "@lowerView@";
       upper = "${stateRoot}/${name}/upper";
     };
     devices = instance.devices;
