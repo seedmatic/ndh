@@ -122,6 +122,7 @@ let
   storeScript = pkgs.writeShellApplication {
     name = "ndh-incus-container-store";
     runtimeInputs = [
+      config.boot.zfs.package
       pkgs.coreutils
       pkgs.findutils
       pkgs.gnugrep

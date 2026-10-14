@@ -512,9 +512,11 @@ clean `--repair-path` failure
 | measured on 2026-10-14 on a stack of two snapshots: no EXDEV, three whiteouts for three paths,
 verify clean, "cannot repair path" with no substituter
 
-| the stamp beside a consumer's upper is ours, never the kernel's
+| the stamp beside a consumer's upper is ours, never the kernel's: it names the delivery snapshot,
+the **GUID** of every ZFS snapshot below the upper, and the layers' paths, order and top-level entries
 | the kernel does not refuse an upper over a newer snapshot of the same dataset, and with two
-snapshot lowers it runs without `index` at all
+snapshot lowers it runs without `index` at all. A name can be renamed, a GUID cannot (🛡️, review of
+3168f933)
 
 | **a secret that was ever frozen is rotated**, at every level, whatever a purge did
 | a purge makes a path unservable, unfrozen and unreplicable, not erased: a purged marker survived in

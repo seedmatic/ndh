@@ -56,8 +56,19 @@ done
 
 lowerdirs=$(IFS=:; echo "$frozen:${layers[*]}")
 requested=$(IFS=,; echo "${required[*]}")
+# Every ZFS snapshot below the upper is named by its GUID as well as by its path: a name can be
+# renamed, a GUID cannot (🛡️ review of 3168f933). The EROFS layers are bound to the image.
+guids=$(zfs get -H -o value guid "$(findmnt -no SOURCE "$upper_root")@$snapshot") ||
+  fail "cannot read the GUID of the delivery snapshot $snapshot"
+for layer in "${layers[@]}"; do
+  if [[ "$layer" == */upper ]] && mountpoint -q "${layer%/upper}"; then
+    guids+=" $(zfs get -H -o value guid "$(findmnt -no SOURCE "${layer%/upper}")")" ||
+      fail "cannot read the GUID of the layer under $layer"
+  fi
+done
 layer_set=$({
   echo "${layers[*]}"
+  echo "$guids"
   find "${layers[@]}" -mindepth 1 -maxdepth 1 ! -name '.*' -printf '%H/%f\n' | sort
 } | sha256sum | cut -c1-16)
 expected="$snapshot $layer_set"

@@ -1220,8 +1220,8 @@ The snapshot's directory has file handles: with **one** snapshot over the EROFS 
 holds (measured 2026-10-14). Once nerd-nixos has frozen layers, a container stacks two snapshots or
 more, ZFS snapshots have a null filesystem UUID, and the kernel drops `index` silently (measured on
 the probe, 2026-10-14): the store unit then neither requests nor requires `index=on`, and the stamp
-beside the upper — the snapshot, the layers' content and order — is the only guard (store-freeze
-spec, _Rules that hold at every level_)
+beside the upper — the snapshot and every ZFS layer by GUID, the layers' content and order — is the
+only guard (store-freeze spec, _Rules that hold at every level_)
 
 | one **layer contract**, `/etc/ndh/store-layers.json`, rendered by `erofs-store-mount.nix`
 | the ordered lowerdirs (newest first, `.003:.002:.ro-store`), the options a consumer must find on its
