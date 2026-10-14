@@ -24,6 +24,7 @@ status() {
     echo "this boot: no stack description from the initrd"
   fi
   if [ -e "$RUN_DIR/store-degraded" ]; then echo "DEGRADED: $(cat "$RUN_DIR/store-degraded")"; fi
+  if [ -e "$RUN_DIR/store-manifest-refused" ]; then echo "REFUSED: $(cat "$RUN_DIR/store-manifest-refused")"; fi
   if [ -e "$RUN_DIR/store-freeze-not-done" ]; then
     echo "a requested freeze is not in this stack: $(cat "$RUN_DIR/store-freeze-not-done")"
   fi

@@ -91,8 +91,10 @@ stateDiagram-v2
   Read --> Fallback: missing, truncated or unreadable manifest
   Checked --> Fallback: GUID mismatch, foreign dataset
   Checked --> Fallback: the booted toplevel does not resolve in stack + upper
-  Fallback --> Degraded: the previous manifest, else the bare EROFS stack — LOUD
-  Degraded --> [*]: nix-daemon masked, store read-only, the operator repairs and reboots
+  Fallback --> Refused: the next manifest in order IS the upper's base — LOUD
+  Refused --> Running: a normal boot; the refused next manifest is set aside at commit
+  Fallback --> Degraded: an older stack, or none, under the upper — LOUD
+  Degraded --> [*]: nix-daemon masked, store read-only with the upper as its top lower, the operator logs in, repairs and reboots
   note right of Fallback
     Two generations stay in the bootloader
     until the next compaction, and both
@@ -254,12 +256,22 @@ toplevel is information, **not** a gate
 would refuse the normal workflow: after a freeze, a hot switch then a plain reboot boots generation
 N+1, which lives in the upper, against a manifest that names N (❄️ nix, B1)
 
-| any failed check, or a missing, truncated or unreadable manifest, falls back to the previous
-manifest, else to the bare EROFS stack, **loudly** (a failed unit, a boot message the operator
-sees), in **degraded mode**: `nix-daemon` masked and the store read-only
+| any failed check, or a missing, truncated or unreadable manifest, is **refused, loudly** (a failed
+unit, a boot message the operator sees), and the next manifest in order is tried. If the stack it
+falls back to **is the upper's base** (`upper.base`), the boot is **normal**; otherwise it is in
+**degraded mode**: `nix-daemon` masked and the store read-only
 | the nix DB is continuous, so an older stack sits under a newer DB, which calls absent paths valid,
 machine-wide (GCs, builds, deliveries). Nix is never started on a DB ahead of its stack; the
-operator repairs, then reboots. Decided by the operator on 2026-10-14 (❄️ nix, B2)
+operator repairs, then reboots. Decided by the operator on 2026-10-14 (❄️ nix, B2). A stack that is
+the upper's base is not older than its DB: the upper and the DB are exactly as they were before the
+refused freeze, which is lost whole, never applied by halves. Decided by the operator on 2026-10-14,
+after the probe's test 7
+
+| in degraded mode the upper is mounted as the **top lower, never as an upperdir**: the store is
+read-only by construction, and nothing is written to an upper built on another base
+| the generation being booted usually lives only in the upper — every switch since the last freeze —
+so a store without it has no `init` for it, and the boot stops in the initrd's emergency shell: the
+probe's test 7, 2026-10-14. Decided by the operator on 2026-10-14
 
 | **two generations stay in the bootloader until the next compaction**, the current one and the
 previous one, and **both initrds read the manifest**
@@ -270,8 +282,8 @@ stack. A compaction brings it back to one. Decided by the operator on 2026-10-14
 how 🛡️'s "a tested way back" holds)
 
 | the degraded mode always reaches a state where the operator can **log in and repair**: the
-console they use (the serial screen) and sshd where the host has it, the store read-only,
-`nix-daemon` masked; from there the manifest can be rewritten
+console they use (the serial screen) and sshd where the host has it, the store read-only with the
+upper as its top lower, `nix-daemon` masked; from there the manifest can be rewritten
 | a bad **manifest** is read identically by both initrds, so for that case the way back IS the
 degraded boot (🛡️, condition 1)
 
@@ -502,8 +514,14 @@ manifest and builds the stack
 | N+1 boots normally: its toplevel resolves in the stack plus the upper; no fallback
 
 | 4c — a fallback never starts nix on a DB ahead of its stack
-| force a fallback to an older stack
-| the boot is loud, `nix-daemon` is masked and the store read-only
+| after a switch, make `upper.base` disagree with the current manifest
+| the boot is loud, `nix-daemon` is masked, the store read-only with the upper as its top lower, the
+switched generation reaches multi-user, and the upper is byte-identical before and after
+
+| 4c' — a refused freeze is lost whole
+| corrupt `next.json` after a freeze, before its reboot
+| the current stack is the upper's base: a normal boot with `nix-daemon` up, the refusal loud, and
+`next.json` set aside in `stack/refused/` at commit, so the next freeze is not blocked
 
 | 4d — a corrupted manifest
 | corrupt the current manifest

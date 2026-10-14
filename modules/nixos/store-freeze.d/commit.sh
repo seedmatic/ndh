@@ -23,6 +23,11 @@ if [ "$chosen" = "next" ]; then
   if [ -e "$STACK_DIR/current.json" ]; then sync_rename "$STACK_DIR/current.json" "$STACK_DIR/previous.json"; fi
   sync_rename "$STACK_DIR/next.json" "$STACK_DIR/current.json"
   echo "ndh-store-commit: the new stack is now the current one" >&2
+elif [ -e "$STACK_DIR/next.json" ]; then
+  # Refused by the initrd: kept as evidence, out of the way of the next freeze.
+  mkdir -p "$STACK_DIR/refused"
+  sync_rename "$STACK_DIR/next.json" "$STACK_DIR/refused/next-$(date -u +%Y%m%dT%H%M%SZ).json"
+  echo "ndh-store-commit: the refused next manifest is set aside in $STACK_DIR/refused" >&2
 fi
 
 # A freeze request this stack satisfies is done.

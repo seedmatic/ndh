@@ -9,9 +9,14 @@
 # the layers the upper sits on: a stack is consistent only if it equals it, or extends it by the one
 # layer frozen from it — then the upper is emptied, once, before mounting.
 #
-# Never fails the boot for a manifest problem: it falls back to an older stack, else to the bare
-# EROFS layers, mounted read-only WITHOUT the upper, and writes $RUN_DIR/store-degraded, which masks
-# nix-daemon in stage 2 and fails a unit loudly. It fails only when no store can be mounted at all.
+# Never fails the boot for a manifest problem. A refused manifest is reported in
+# $RUN_DIR/store-manifest-refused and the next one in order is tried. If the stack chosen is the
+# upper's base, the boot is normal: the upper and the continuous DB are exactly as before. Otherwise
+# the DB is ahead of the stack: the boot is DEGRADED — $RUN_DIR/store-degraded masks nix-daemon in
+# stage 2 and fails a unit loudly — and the store is mounted read-only with the upper as its TOP
+# LOWER, never as an upperdir, so the system the bootloader asked for still finds its init and the
+# operator can log in and repair, while nothing is written. It fails only when no store can be
+# mounted at all.
 #
 # Env: SYSROOT, RW_DATASET, RW_MOUNT, STACK_DIR, FROZEN_ROOT, EROFS_LOWERS (colon list, newest first),
 #      RUN_DIR, MANIFEST_VERSION.
@@ -22,6 +27,12 @@ store="$SYSROOT/nix/store"
 mkdir -p "$RUN_DIR" "$stack"
 
 say() { echo "ndh-store-stack: $*" >&2; }
+
+refused=""
+refuse() {
+  say "REFUSED — $1"
+  refused="${refused:+$refused; }$1"
+}
 
 degraded=""
 degrade() {
@@ -89,7 +100,7 @@ for candidate in next current previous; do
     chosen="$candidate"
     break
   fi
-  if [ -e "$stack/$candidate.json" ]; then degrade "$candidate.json refused: $reason"; fi
+  if [ -e "$stack/$candidate.json" ]; then refuse "$candidate.json: $reason"; fi
 done
 
 names=$(awk '{print $1}' <<<"$layers" | paste -sd' ')
@@ -127,33 +138,40 @@ for snap in $names; do
 done
 
 erofs_sysroot=$(tr ':' '\n' <<<"$EROFS_LOWERS" | sed "s|^|$SYSROOT|" | paste -sd:)
-mkdir -p "$store"
+mkdir -p "$store" "$rw/upper"
 
-# Degraded: the lowers only, NO upper — a read-only overlay. The persistent upper was built on
-# another base, so it is never mixed with this stack nor written while degraded, and the store is
-# read-only by construction rather than by a remount that could fail (🛡️ review of af723ca3).
+# Degraded: a read-only overlay with no upperdir, so the store is read-only by construction rather
+# than by a remount that could fail (🛡️ review of af723ca3), and the upper, built on another base, is
+# never written. It is still the top lower: the generation being booted usually lives only there,
+# and without it the initrd cannot find its init, so the operator could not log in. Each failure
+# drops what failed: the frozen layers, then the upper.
+upper_top=true
 mount_degraded() {
-  mount -t overlay overlay -o "ro,lowerdir=${1:+$1:}$erofs_sysroot" "$store"
+  if mount -t overlay overlay -o "ro,lowerdir=$rw/upper:${lowerdirs:+$lowerdirs:}$erofs_sysroot" "$store"; then
+    return
+  fi
+  stage2=""
+  if mount -t overlay overlay -o "ro,lowerdir=$rw/upper:$erofs_sysroot" "$store"; then return; fi
+  upper_top=false
+  mount -t overlay overlay -o "ro,lowerdir=$erofs_sysroot" "$store"
 }
 
 if [ -n "$degraded" ]; then
-  if ! mount_degraded "$lowerdirs"; then
-    stage2=""
-    mount_degraded ""
-  fi
+  mount_degraded
 else
-  mkdir -p "$rw/upper" "$rw/work"
+  upper_top=false
+  mkdir -p "$rw/work"
   if ! mount -t overlay overlay \
     -o "lowerdir=${lowerdirs:+$lowerdirs:}$erofs_sysroot,upperdir=$rw/upper,workdir=$rw/work" "$store"; then
-    degrade "the stack did not mount; the bare EROFS layers, read-only"
-    stage2=""
-    mount_degraded ""
+    degrade "the stack did not mount"
+    upper_top=true
+    mount_degraded
   fi
 fi
 
 erofs_json=$(tr ':' '\n' <<<"$EROFS_LOWERS" | sed 's/.*/"&"/' | paste -sd,)
 write "$RUN_DIR/store-stack.json" \
-  "{\"manifest\":\"$chosen\",\"frozen\":[${stage2}],\"erofs\":[${erofs_json}]}"
+  "{\"manifest\":\"$chosen\",\"frozen\":[${stage2}],\"erofs\":[${erofs_json}],\"upperReadOnlyOnTop\":${upper_top}}"
 
 # A freeze the gesture asked for and this boot does not show is REPORTED, never performed.
 if [ -s "$stack/request.json" ]; then
@@ -164,5 +182,6 @@ if [ -s "$stack/request.json" ]; then
   fi
 fi
 
+if [ -n "$refused" ]; then printf '%s\n' "$refused" >"$RUN_DIR/store-manifest-refused"; fi
 if [ -n "$degraded" ]; then printf '%s\n' "$degraded" >"$RUN_DIR/store-degraded"; fi
-say "manifest $chosen, ${names:-no frozen layer}${degraded:+ — DEGRADED}"
+say "manifest $chosen, ${names:-no frozen layer}${refused:+ — a manifest was REFUSED}${degraded:+ — DEGRADED}"

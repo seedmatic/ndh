@@ -147,11 +147,11 @@ in
 
     systemd.services = {
       # Loud on purpose: a failed unit and a console message. The store is already read-only: the
-      # initrd mounted it without its upper. Not ordered against nix: the initrd wrote the marker
+      # initrd mounted it with no upperdir. Not ordered against nix: the initrd wrote the marker
       # that masks it, and ordering a default-dependency service before a socket is a cycle that
       # systemd breaks by dropping the socket's start.
       ndh-store-degraded = {
-        description = "The store stack fell back: nix is masked, the store read-only";
+        description = "The store stack disagrees with its upper: nix is masked, the store read-only";
         unitConfig.ConditionPathExists = "${runDir}/store-degraded";
         wantedBy = [ "multi-user.target" ];
         serviceConfig = {
@@ -161,6 +161,22 @@ in
         script = ''
           echo "ndh-store: DEGRADED — $(cat ${runDir}/store-degraded)"
           echo "ndh-store: nix-daemon is masked and /nix/store is read-only; repair the manifest, then reboot"
+          exit 1
+        '';
+      };
+
+      # The boot itself is sound — the stack it chose is its upper's base — but a manifest was
+      # refused, and with it whatever freeze it carried.
+      ndh-store-manifest-refused = {
+        description = "A store stack manifest was refused at boot";
+        unitConfig.ConditionPathExists = "${runDir}/store-manifest-refused";
+        wantedBy = [ "multi-user.target" ];
+        serviceConfig = {
+          Type = "oneshot";
+          StandardOutput = "journal+console";
+        };
+        script = ''
+          echo "ndh-store: REFUSED — $(cat ${runDir}/store-manifest-refused)"
           exit 1
         '';
       };
