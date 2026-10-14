@@ -2050,6 +2050,8 @@
                       tart.configGenerator.rawImageManifestPath = "${nixosDiskImageBringupSystemdZfs}/manifest.yaml";
                       tart.configGenerator.rawImageStorePath = "${nixosDiskImageBringupSystemdZfs}/boot.img";
                       tart.configGenerator.runtimeSystemPath = nixosOutputs.runtimeSystem;
+                      tart.configGenerator.vmRunSopsAgeHostShare =
+                        nixosOutputs.nixosConfigurations."${mainName}-nixos".config.ndh.sopsAgeKeyBootstrap.nixosHostKeyImport.enable;
                       tart.configGenerator.vmRunFirstBootAttachDiskManifestPath = null;
                       tart.configGenerator.vmRunFirstBootAttachDiskPath = "";
                       tart.configGenerator.linuxBuilderGcBeforeBuild = linuxBuilderGcBeforeBuild;

@@ -34,7 +34,10 @@ in
   options.ndh.vm.tart.hostShares.sopsAge = {
     enable = lib.mkOption {
       type = lib.types.bool;
-      default = true;
+      # One fact, one flag: the share serves only the import of the host's key, and the darwin side
+      # shares it only then (tart.configGenerator.vmRunSopsAgeHostShare, from the same option).
+      default = config.ndh.sopsAgeKeyBootstrap.nixosHostKeyImport.enable;
+      defaultText = lib.literalExpression "config.ndh.sopsAgeKeyBootstrap.nixosHostKeyImport.enable";
       description = ''
         Mount host-provided SOPS age key share for Tart guests.
       '';
