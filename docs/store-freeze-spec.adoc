@@ -45,7 +45,7 @@ flowchart TB
   end
   D["nix DB, profiles, gcroots — tank/nerd/nix/var/nix<br/>CONTINUOUS, never frozen into a layer"]:::cont
   B["build dir — tank/nerd/nix/builds<br/>its own dataset, never frozen"]:::cont
-  M["stack manifest on the pool — A/B<br/>the layers, by GUID, bound to the booted toplevel"]:::manifest
+  M["stack manifest on the pool — A/B<br/>the layers, by dataset and GUID; the frozen-for toplevel as information"]:::manifest
   U --> F --> E
   M -. "read by the initrd at boot" .-> F
   D -. "says what is valid; the overlay says where the bytes are" .- U
@@ -84,17 +84,20 @@ sequenceDiagram
 ....
 stateDiagram-v2
   [*] --> Read: stage 1 — read the manifest from the pool
-  Read --> Checked: every snapshot by GUID, in the expected dataset, bound to the booted toplevel
-  Checked --> Stacked: mount each snapshot read-only, lowerdir+= per layer, an EMPTY upper
+  Read --> Checked: every snapshot by GUID, in the expected dataset
+  Checked --> Stacked: mount each snapshot read-only, lowerdir+= per layer, an EMPTY upper at the first boot on a new stack
   Stacked --> Running: stage 2 reaches multi-user
   Running --> Committed: the new manifest becomes the current one; the previous is released
   Read --> Fallback: missing, truncated or unreadable manifest
-  Checked --> Fallback: GUID mismatch, foreign dataset, another toplevel
-  Fallback --> Running: the previous manifest, else the bare EROFS stack — LOUD (a failed unit, a boot message)
+  Checked --> Fallback: GUID mismatch, foreign dataset
+  Checked --> Fallback: the booted toplevel does not resolve in stack + upper
+  Fallback --> Degraded: the previous manifest, else the bare EROFS stack — LOUD
+  Degraded --> [*]: nix-daemon masked, store read-only, the operator repairs and reboots
   note right of Fallback
-    The previous boot generation boots
-    WITHOUT reading the manifest: a bad
-    initrd change is undone from the bootloader.
+    Two generations stay in the bootloader
+    until the next compaction, and both
+    initrds read the manifest: a bad initrd
+    change is undone from the bootloader.
   end note
 ....
 
@@ -153,10 +156,10 @@ would freeze the state with it
 | nix 2.34 builds under `/nix/var/nix/builds`, and a freeze must never capture an in-flight build
 dir. It is already its own dataset on nerd-nixos (measured on the probe)
 
-| the manifest names each frozen layer by **dataset, snapshot name and GUID**, and the **toplevel**
-it was frozen for
-| a name can be renamed, a GUID cannot; the toplevel binds the stack to the generation the
-bootloader started
+| the manifest names each frozen layer by **dataset, snapshot name and GUID**, and records the
+**toplevel** it was frozen for, as information
+| a name can be renamed, a GUID cannot. The toplevel is not a gate: the boot checks that the booted
+toplevel resolves in the stack plus the upper (<<boot>>)
 
 | two manifests, **A/B**: the previous one is kept until the new boot reaches `multi-user`
 | without a rollback generation, the previous stack is the way back if the new one does not come up
@@ -244,20 +247,32 @@ the new mount API, one `lowerdir+=` per layer
 | the `.zfs/snapshot` automount does not cross mount namespaces (ENOENT, measured); the legacy
 `lowerdir=a:b:c` string is capped at one page, about 90 layers
 
-| before mounting, every listed snapshot is checked: its GUID, its dataset, and the toplevel the
-manifest is bound to
-| a renamed snapshot, a foreign dataset or a manifest for another generation must not be stacked
+| before mounting, every listed snapshot is checked: its GUID and its dataset. After mounting, the
+**booted toplevel must resolve in the stack plus the upper** (its `init` exists); the manifest's
+toplevel is information, **not** a gate
+| a renamed snapshot or a foreign dataset must not be stacked. A gate on the manifest's toplevel
+would refuse the normal workflow: after a freeze, a hot switch then a plain reboot boots generation
+N+1, which lives in the upper, against a manifest that names N (❄️ nix, B1)
 
 | any failed check, or a missing, truncated or unreadable manifest, falls back to the previous
-manifest, else to the bare EROFS stack, **loudly**: a failed unit, a boot message the operator sees
-| a silent fallback would boot an unexpected stack. If the bare EROFS stack lacks the booted toplevel,
-the boot stops at that loud failure and the bootloader's previous generation is the way back
+manifest, else to the bare EROFS stack, **loudly** (a failed unit, a boot message the operator
+sees), in **degraded mode**: `nix-daemon` masked and the store read-only
+| the nix DB is continuous, so an older stack sits under a newer DB, which calls absent paths valid,
+machine-wide (GCs, builds, deliveries). Nix is never started on a DB ahead of its stack; the
+operator repairs, then reboots. Decided by the operator on 2026-10-14 (❄️ nix, B2)
 
-| the **previous boot generation boots without reading the manifest**
-| a bad initrd change is undone from the bootloader, not by a rescue
+| **two generations stay in the bootloader until the next compaction**, the current one and the
+previous one, and **both initrds read the manifest**
+| after a freeze, the previous generation's closure is in a frozen layer, so an initrd that skipped
+the manifest would stop in `initrd-find-nixos-closure`. With two generations, a bad initrd change is
+undone from the bootloader: the previous generation boots with its own, older initrd, which reads the
+stack. A compaction brings it back to one. Decided by the operator on 2026-10-14 (❄️ nix, B3; it is
+how 🛡️'s "a tested way back" holds)
 
-| the upper is **empty** at the first boot on a new stack, and its workdir is fresh
-| the frozen content is in the new layer; an upper bound to the old stack would shadow it
+| the upper is **empty** at the first boot on a new stack, and its workdir is fresh — emptied by
+removing its contents, or a new dataset, **never by `zfs rollback`** of `rwstore`
+| the frozen content is in the new layer; an upper bound to the old stack would shadow it. A rollback
+destroys every later snapshot of the dataset, that is, the frozen layer itself (❄️ nix, B4)
 
 | `/run/ndh/nix-kvm.conf` (written at boot, included by `nix.conf`) stays ordered before
 `nix-daemon`
@@ -271,17 +286,77 @@ rke2lab's EROFS stack spec decides "*stack*, never replace", and makes append-on
 for rollback: a generation bakes its lowerdir list, and survives appended layers but not a
 replacement. For nerd-nixos under this spec:
 
-* **there is no rollback**, so a compaction is allowed at any time. It **keeps only the current
-  generation in the bootloader**, and the freeze does the pruning. An older generation left in the
-  bootloader would find its closure in a layer the compaction removed, and stop in
+* **there is no rollback of the stack**, so a compaction is allowed at any time. Between two
+  compactions, **two generations** stay in the bootloader (the current and the previous, both
+  initrds reading the manifest), so a bad initrd change is undone from the bootloader. A compaction
+  **keeps only the current generation**, and prunes the bootloader to it: an older generation left
+  there would find its closure in a layer the compaction removed, and stop in
   `initrd-find-nixos-closure`;
-* a compaction never removes a layer that holds a valid path (`nix-store --verify` after it), nor a
-  layer a container still mounts. It runs at a freeze, when everything stops and remounts;
+* a compaction keeps **every valid path**, not only the current closure: the container systems,
+  the profiles, `keep-outputs`, every GC root. It GCs to the roots, copies every remaining valid path
+  into the new layer, then runs `nix-store --verify`. It never removes a layer a container still
+  mounts, and it runs at a freeze, when everything stops and remounts;
+* the copy is of **files, not a store**: a `nix copy` would build a second DB to discard. The
+  candidate is `cp -a --reflink=auto` of the valid trees into a fresh dataset; with OpenZFS ≥ 2.2
+  block cloning it costs metadata, not data. To measure on the probe (❄️ nix);
 * a GC on a layered store leaves **one whiteout per deleted store path** (measured: the per-file
   whiteouts of the deletion are folded into one at the final `rmdir`). Space comes back by
   compaction only.
 
 The amendment to rke2lab's ABI section is delivered on rke2lab `docs/erofs-layer-consumers`.
+
+[[purge]]
+== Purge — removing a path from frozen layers (the incident response)
+
+A compaction is an optimisation, and it may never run. A **purge** is the incident response: "a
+secret, or a path signed by the leaked key, was found in a frozen layer". A freeze makes a path
+permanent, so without a purge a frozen leak is indelible. One live reason it matters: material once
+thought private (the manifests branches of 2026-10-02) proved readable from public history.
+
+[mermaid]
+....
+sequenceDiagram
+  autonumber
+  participant Op as Operator
+  participant P as ndh-store purge
+  participant Z as ZFS
+  participant N as nerd-nixos
+  Op->>P: ndh-store purge {store path | layer}
+  P->>P: refuse unless the daemon can be stopped and no container would lose a valid path
+  P->>N: stop nix-daemon.socket and nix-daemon, stop the containers
+  P->>Z: build a new layer from the valid trees MINUS the purged path (or minus the layer)
+  P->>P: sweep every remaining layer and the new one — the path must be ABSENT
+  P->>Z: write the next manifest naming only the new stack
+  P->>Op: reboot on the new stack
+  Op->>P: after multi-user, confirm
+  P->>Z: zfs destroy the old snapshots, drop the manifest entries naming them
+  Note over Z: the leaked bytes leave the POOL, not just the overlay
+....
+
+[cols="1,3",options="header"]
+|===
+| Rule | Why
+
+| the purge rebuilds the stack **without** a given store path, or without a given layer, by the same
+file copy as a compaction, minus what is purged
+| an overlay whiteout hides a path; it does not remove its bytes
+
+| after the reboot on the new stack, the old snapshots are **destroyed** and the manifest entries
+naming them dropped
+| the bytes must leave the pool, not just the merged view
+
+| the verification is a **sweep**: the path is absent from every remaining layer and from the new
+one; then `nix-store --verify`
+| a purge that leaves a copy in another layer has purged nothing
+
+| a purged path that a container or a profile still needs is **refused** unless the operator names
+it explicitly, and the DB unregisters it
+| a purge must not leave "valid but absent" behind it
+
+| it is an **operator gesture**, with the freeze's fail-closed rules: refuse on any doubt, report
+loudly, never automatic
+| a purge destroys data, by design
+|===
 
 [[containers]]
 == What the containers need from increment 1
@@ -377,7 +452,16 @@ boots
 
 | 4 — the way back
 | an initrd change that cannot build the stack
-| the previous boot generation, chosen in the bootloader, boots without reading the manifest
+| the previous boot generation, chosen in the bootloader, boots with its own initrd, which reads the
+manifest and builds the stack
+
+| 4b — a hot switch, then a plain reboot, after a freeze
+| freeze; switch to generation N+1 at runtime; reboot without a new freeze
+| N+1 boots normally: its toplevel resolves in the stack plus the upper; no fallback
+
+| 4c — a fallback never starts nix on a DB ahead of its stack
+| force a fallback to an older stack
+| the boot is loud, `nix-daemon` is masked and the store read-only
 
 | 5 — the request record is never acted on
 | a planted freeze-request record, no gesture
@@ -393,9 +477,15 @@ GC did not remove a container path
 | frozen paths become whiteouts, no container path is removed, `--verify --check-contents` is clean
 
 | 8 — compaction
-| a compaction that folds the frozen layers into one
-| only the current generation stays in the bootloader; every valid path is present; the containers
-are re-delivered
+| a compaction that folds the frozen layers into one, with a container system and a user profile as
+GC roots
+| only the current generation stays in the bootloader; every valid path is present, the container
+system and the profile included; the containers are re-delivered
+
+| 9 — purge
+| plant a path in a frozen layer, then `ndh-store purge` it
+| after the reboot and the confirmation, the sweep finds it in no layer, its old snapshots are gone
+from the pool, `nix-store --verify` is clean
 |===
 
 == Open questions
@@ -403,8 +493,8 @@ are re-delivered
 * **The secret sweep**: its shapes are rke2lab's pre-commit guards (`token_shape_guard`); whether to
   share that script or restate it, and in which language. The Go porting of the tooling is a separate
   chantier.
-* **The compaction itself**: a new single layer of the current closure, built how. A `nix copy` into
-  a fresh dataset is one candidate, to measure.
+* **The compaction and purge copy**: `cp -a --reflink=auto` of the valid trees into a fresh dataset
+  (OpenZFS ≥ 2.2 block cloning), to measure on the probe: its time and the space it really costs.
 * **Where the manifest lives**: a dataset of its own on the pool, out of every container mount.
 * **The interplay with the materializer**: a re-materialization (new EROFS layers) recreates the
   pools, frozen layers included. Plan item 15 (`vm_cpu_count`) and nix's 2e sit on the same hosts.
