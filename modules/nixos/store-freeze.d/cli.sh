@@ -97,20 +97,29 @@ gc_and_verify() {
 # sweep {dir}: the entries of a store layer that hold a secret shape, text and binary files alike.
 #
 # Its scope is every entry that is NOT a built output: paths with no deriver (sources, eval copies,
-# `nix-store --add`), every .drv, and anything invalid — the leak class of 2026-10-10. A built
+# `nix-store --add`), outputs whose .drv is not in this store, every .drv, and anything invalid —
+# the leak class of 2026-10-10. A built
 # output is public; a secret interpolated into it at evaluation sits in its .drv, which
 # keep-derivations keeps and this sweeps (🛡️, 2026-10-14). A hit passes only if the operator
 # accepted it, bound to its narHash. grep exits 0 on a match, 1 on none, 2 on an error: only 1 is
 # clean, since a sweep that could not run must never let a gesture make what it missed permanent.
 # It reports store paths only, never a matching line: the line would be the secret.
 sweep() {
-  local dir="$1" entry name status valid derivers hits="" refused="" accepted="" hash
-  local -A built=()
+  local dir="$1" entry name status valid derivers missing hits="" refused="" accepted="" hash
+  local -A built=() absent=()
   say "secret sweep of $dir (every entry but built outputs)"
   valid=$(nix-store --gc --print-live 2>/dev/null) || die "cannot list the valid paths — nothing done"
   derivers=$(xargs -r nix-store -q --deriver <<<"$valid") || die "cannot query the derivers — nothing done"
+  # A recorded deriver is not enough: a SUBSTITUTED output carries its deriver's name in the
+  # narinfo while that .drv was never instantiated here, so nothing would sweep it. An output is
+  # exempt only when its .drv is valid in this store (🛡️, review of 0e5fb7a9).
+  missing=$({ grep -vx unknown-deriver <<<"$derivers" || true; } | sort -u | xargs -r nix-store --check-validity --print-invalid) ||
+    die "cannot check the derivers — nothing done"
+  while read -r name; do
+    if [ -n "$name" ]; then absent["$name"]=1; fi
+  done <<<"$missing"
   while read -r entry name; do
-    if [ "$name" != unknown-deriver ]; then built["${entry#/nix/store/}"]=1; fi
+    if [ "$name" != unknown-deriver ] && [ -z "${absent[$name]:-}" ]; then built["${entry#/nix/store/}"]=1; fi
   done < <(paste -d' ' <(echo "$valid") <(echo "$derivers"))
   for entry in "$dir"/*; do
     [ -e "$entry" ] || [ -L "$entry" ] || continue

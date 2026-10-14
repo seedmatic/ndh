@@ -126,7 +126,8 @@ deliver() {
   fi
   # Before anything is snapshotted or moved: Incus can refuse it (an ETag race while it starts up,
   # measured), and a delivery that stops here has changed nothing.
-  incus config set --project "$PROJECT" "$1" raw.lxc="$(raw_lxc "$dir")"
+  incus config set --project "$PROJECT" "$1" raw.lxc="$(raw_lxc "$dir")" ||
+    die "Incus refused raw.lxc for $1 — nothing delivered, and the container stays STOPPED: run deliver again"
   systemctl stop "ndh-incus-container-store-$1.service"
   for entry in "$dir/root/nix/store" "$dir/view/nix/store"; do
     if mountpoint -q "$entry"; then die "$entry is still mounted"; fi
@@ -139,7 +140,7 @@ deliver() {
 
   aside="$dir/.previous-$snapshot"
   mkdir -p "$aside/root/nix/var" "$aside/view/nix/var/nix"
-  for entry in upper work upper.layer-set lower.snapshot lower.layers; do
+  for entry in upper work upper.layer-set lower.snapshot lower.layers lower.frozen; do
     if [ -e "$dir/$entry" ]; then mv "$dir/$entry" "$aside/"; fi
   done
   if [ -e "$dir/root/nix/var/nix" ]; then mv "$dir/root/nix/var/nix" "$aside/root/nix/var/"; fi
@@ -148,10 +149,14 @@ deliver() {
   # `immutable` mode would ignore the WAL.
   cp -a "/nix/var/nix/db/.zfs/snapshot/$snapshot" "$dir/view/nix/var/nix/db"
   mkdir -p "$dir/upper"
+  local frozen_layers=""
+  if [ -s "$STACK_DESCRIPTION" ]; then frozen_layers=$(yq -p json -oy -r '.frozen[]' "$STACK_DESCRIPTION"); fi
   {
-    if [ -s "$STACK_DESCRIPTION" ]; then yq -p json -oy -r '.frozen[]' "$STACK_DESCRIPTION"; fi
+    if [ -n "$frozen_layers" ]; then echo "$frozen_layers"; fi
     yq -p json -oy -r '.lowerdirs[]' "$LAYER_CONTRACT"
   } >"$dir/lower.layers"
+  # Counted here, at delivery: a later change of the contract's EROFS list must not change it.
+  if [ -n "$frozen_layers" ]; then wc -l <<<"$frozen_layers"; else echo 0; fi >"$dir/lower.frozen"
   echo "$snapshot" >"$dir/lower.snapshot"
   systemctl start "ndh-incus-container-store-$1.service"
 

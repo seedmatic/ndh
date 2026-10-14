@@ -17,16 +17,16 @@
 #
 # Env: LAYER_CONTRACT (/etc/ndh/store-layers.json), CONTAINER_DIR, CONTAINER_NAME.
 
-[ -s "$CONTAINER_DIR/lower.layers" ] ||
+[ -s "$CONTAINER_DIR/lower.layers" ] && [ -s "$CONTAINER_DIR/lower.frozen" ] ||
   { echo "ndh-incus-container-store: no stamped layer list — run: ndh-incus-container deliver $CONTAINER_NAME" >&2; exit 1; }
 mapfile -t layers <"$CONTAINER_DIR/lower.layers"
 mapfile -t required < <(yq -p json -oy -r '.requiredOptions[]' "$LAYER_CONTRACT")
 # ZFS snapshots have a null filesystem UUID: over the delivery snapshot alone `index=on` holds, but
 # with nerd-nixos's frozen layers below it the kernel drops it silently (measured 2026-10-14). Then
 # the stamp below — the snapshot, and the layers' content and order — is the only guard, as the
-# store-freeze spec states, and `index=on` is neither requested nor required.
-mapfile -t erofs < <(yq -p json -oy -r '.lowerdirs[]' "$LAYER_CONTRACT")
-if [ "${#layers[@]}" -gt "${#erofs[@]}" ]; then
+# store-freeze spec states, and `index=on` is neither requested nor required. How many stamped
+# layers are frozen was counted at delivery: the current contract must not decide it (🖥️).
+if [ "$(cat "$CONTAINER_DIR/lower.frozen")" -gt 0 ]; then
   mapfile -t required < <(printf '%s\n' "${required[@]}" | grep -vx 'index=on' || true)
 fi
 upper_root=$(yq -p json -oy -r '.upperRoot' "$LAYER_CONTRACT")

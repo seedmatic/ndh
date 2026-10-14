@@ -227,12 +227,14 @@ the pre-commit guards); a hit **refuses** the freeze and names only the path
 | the 2026-10-10 class: a plaintext path that reached the store becomes indelible once frozen. **The
 gesture refuses entirely until the sweep exists and passes**
 
-| the sweep's **scope** is every entry but a built output: paths with no deriver (sources, eval
-copies, `nix-store --add`), every `.drv`, anything invalid. **`keep-derivations = true`** is asserted
-on a frozen level
+| the sweep's **scope** is every entry but a built output whose `.drv` is **valid in this store**:
+paths with no deriver (sources, eval copies, `nix-store --add`), outputs whose recorded deriver is
+absent, every `.drv`, anything invalid. **`keep-derivations = true`** is asserted on a frozen level
 | the leak class is a path ADDED to the store, never built. A built output is public; a secret
 interpolated into it at evaluation sits in its `.drv`, which keep-derivations keeps and the sweep
-reads. Measured on nikopol-nixos on 2026-10-14: an 11 G upper held 415 matching files, almost all
+reads. A SUBSTITUTED output records its deriver's name while that `.drv` was never instantiated
+here, so only a present `.drv` earns the exemption — our own Mac-built derivations reach a guest
+that way. Measured on nikopol-nixos on 2026-10-14: an 11 G upper held 415 matching files, almost all
 public test fixtures of built packages (mbedtls, awscli, openssh…), which would block every freeze.
 Decided by 🛡️ on 2026-10-14
 
@@ -469,7 +471,8 @@ breaks them unless three things land in the **same** increment:
 delivery** in `lower.layers`, beside `lower.snapshot`: the frozen layers of that boot
 (`/run/ndh/store-stack.json`), then the EROFS ones (the layer contract). The store unit mounts the
 stamped list, never the current one, and fails when a stamped layer is gone; only a re-delivery
-moves a container to the new list. A delivery refuses a degraded boot
+moves a container to the new list. A delivery refuses a degraded boot, and counts in `lower.frozen`
+how many stamped layers are frozen, so a later change of the contract cannot misjudge it (🖥️)
 | a delivery snapshots a nearly empty `rwstore`, so without the frozen layers its copied DB calls
 valid paths that are absent ("valid but absent", measured on 2026-10-14 with a contract one layer
 short: the container broke). And after a freeze-reboot the containers first come back on their OLD
