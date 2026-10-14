@@ -29,7 +29,6 @@ in
     ndh.sopsAgeKeyBootstrap = {
       defaultAgeKeyFile = lib.mkDefault config.ndh.sopsAgeKeyBootstrap.systemWideKeyFile;
       nixosHostKeyImport.enable = lib.mkDefault true;
-      nixosHostKeyImport.remoteFetch.enable = lib.mkDefault true;
       # Prefix the unit name so it groups with the other NDH systemd services
       # (mkUnitName is a no-op if the prefix is already present, so downstream
       # overrides remain effective).

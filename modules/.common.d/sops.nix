@@ -64,12 +64,6 @@ let
         "@publicKeyFile@"
         "@exportPublicKeyOnActivation@"
         "@nixosImportFromHost@"
-        "@remoteFetchEnable@"
-        "@remoteFetchUser@"
-        "@remoteFetchKeyPath@"
-        "@remoteFetchUseSudo@"
-        "@remoteFetchHostnameEnvVar@"
-        "@remoteFetchMdnsSuffix@"
         "@phase@"
         "@darwinUserKeyFile@"
         "@importExistingUserKeyOnBootstrap@"
@@ -81,12 +75,6 @@ let
         (toString cfg.publicKeyFile)
         (if cfg.exportPublicKeyOnActivation then "1" else "0")
         (if cfg.nixosHostKeyImport.enable then "1" else "0")
-        (if cfg.nixosHostKeyImport.remoteFetch.enable then "1" else "0")
-        (toString cfg.nixosHostKeyImport.remoteFetch.user)
-        (toString cfg.nixosHostKeyImport.remoteFetch.keyPath)
-        (if cfg.nixosHostKeyImport.remoteFetch.useSudo then "1" else "0")
-        (toString cfg.nixosHostKeyImport.remoteFetch.hostnameEnvVar)
-        (toString cfg.nixosHostKeyImport.remoteFetch.mdnsSuffix)
         (toString cfg.phase)
         (toString cfg.darwinUserKeyFile)
         (if cfg.importExistingUserKeyOnBootstrap then "1" else "0")
@@ -233,52 +221,6 @@ in
           Ordered list of candidate file paths to import an existing age key from
           when `${config.sops.age.keyFile}` is missing in `enforce` mode.
         '';
-      };
-
-      remoteFetch = {
-        enable = mkOption {
-          type = types.bool;
-          default = false;
-          description = ''
-            Enable best-effort remote key fetch over SSH before local candidate file checks.
-            Hostname is resolved from `hostnameEnvVar` (e.g. `NDH_VZ_HOST`) and mDNS suffix.
-          '';
-        };
-
-        user = mkOption {
-          type = types.str;
-          default = "root";
-          description = ''
-            Username used for SSH remote fetch. Set to `root` to avoid a user+sudo hop.
-          '';
-        };
-
-        keyPath = mkOption {
-          type = types.str;
-          default = "/etc/sops/age/keys.txt";
-          description = "Remote key path fetched over SSH when remoteFetch is enabled.";
-        };
-
-        useSudo = mkOption {
-          type = types.bool;
-          default = false;
-          description = ''
-            When true and `user` is not root, run remote key reads via `sudo -n`.
-            Keep this false for root-first fetch mode.
-          '';
-        };
-
-        hostnameEnvVar = mkOption {
-          type = types.str;
-          default = "NDH_VZ_HOST";
-          description = "Environment variable name containing the host identifier used for remote fetch.";
-        };
-
-        mdnsSuffix = mkOption {
-          type = types.str;
-          default = ".local";
-          description = "Suffix appended when hostname from `hostnameEnvVar` has no domain part.";
-        };
       };
     };
   };

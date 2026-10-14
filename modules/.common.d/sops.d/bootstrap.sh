@@ -9,12 +9,6 @@ public_key_file="@publicKeyFile@"
 public_key_dir="$(dirname "$public_key_file")"
 export_public_key_on_activation="@exportPublicKeyOnActivation@"
 nixos_import_from_host="@nixosImportFromHost@"
-remote_fetch_enable="@remoteFetchEnable@"
-remote_fetch_user="@remoteFetchUser@"
-remote_fetch_key_path="@remoteFetchKeyPath@"
-remote_fetch_use_sudo="@remoteFetchUseSudo@"
-remote_fetch_hostname_env_var="@remoteFetchHostnameEnvVar@"
-remote_fetch_mdns_suffix="@remoteFetchMdnsSuffix@"
 phase="@phase@"
 
 import_key_from_candidates() {
@@ -76,46 +70,6 @@ else
   if [ "${NIXOS_INSTALL_BOOTLOADER:-}" = "1" ]; then
     echo "[sops-age-bootstrap] image build activation context detected (NIXOS_INSTALL_BOOTLOADER=1); skipping key enforcement"
     exit 0
-  fi
-
-  if [ ! -s "$key_file" ] && [ "$nixos_import_from_host" = "1" ] && [ "$remote_fetch_enable" = "1" ]; then
-    remote_host_raw="$(printenv "$remote_fetch_hostname_env_var" 2>/dev/null || true)"
-
-    if [ -n "$remote_host_raw" ]; then
-      case "$remote_host_raw" in
-        *.*) remote_host="$remote_host_raw" ;;
-        *) remote_host="${remote_host_raw}${remote_fetch_mdns_suffix}" ;;
-      esac
-
-      tmp_key="$(mktemp)"
-      chmod 600 "$tmp_key"
-
-      if [ "$remote_fetch_use_sudo" = "1" ] && [ "$remote_fetch_user" != "root" ]; then
-        remote_cmd="sudo -n test -s '${remote_fetch_key_path}' && sudo -n cat '${remote_fetch_key_path}'"
-      else
-        remote_cmd="test -s '${remote_fetch_key_path}' && cat '${remote_fetch_key_path}'"
-      fi
-
-      if [ -n "$remote_fetch_user" ] && command -v runuser >/dev/null 2>&1; then
-        if runuser -u "$remote_fetch_user" -- ssh -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new "$remote_fetch_user@$remote_host" "$remote_cmd" > "$tmp_key" 2>/dev/null; then
-          if [ -s "$tmp_key" ]; then
-            install -d -m 700 "$key_dir"
-            cp "$tmp_key" "$key_file"
-            chmod 600 "$key_file"
-            echo "[sops-age-bootstrap] imported host age key over ssh from $remote_fetch_user@$remote_host:$remote_fetch_key_path"
-          fi
-        fi
-      elif ssh -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new "$remote_host" "$remote_cmd" > "$tmp_key" 2>/dev/null; then
-        if [ -s "$tmp_key" ]; then
-          install -d -m 700 "$key_dir"
-          cp "$tmp_key" "$key_file"
-          chmod 600 "$key_file"
-          echo "[sops-age-bootstrap] imported host age key over ssh from $remote_host:$remote_fetch_key_path"
-        fi
-      fi
-
-      rm -f "$tmp_key"
-    fi
   fi
 
   if [ "$nixos_import_from_host" = "1" ]; then
