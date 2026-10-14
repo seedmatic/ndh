@@ -143,7 +143,11 @@ sweep() {
     say "purge them, or, for a PUBLIC one only: ndh-store freeze --accept {store path} …"
     return 1
   fi
-  say "secret sweep clean"
+  if [ -n "$accepted" ]; then
+    say "secret sweep: nothing refused"
+  else
+    say "secret sweep clean"
+  fi
 }
 
 # accept {store path}: let one path the sweep refuses through, recorded with its narHash, so the
