@@ -4,7 +4,7 @@
 #
 # Env: LAYER_CONTRACT (/etc/ndh/store-layers.json), LOWER_ROOT.
 
-mapfile -t layers < <(yq -p json -r '.lowerdirs[]' "$LAYER_CONTRACT")
+mapfile -t layers < <(yq -p json -oy -r '.lowerdirs[]' "$LAYER_CONTRACT")
 lowerdirs=$(IFS=:; echo "${layers[*]}")
 
 # One view per layer set, named by what each layer holds and by their order. The DB needs only the

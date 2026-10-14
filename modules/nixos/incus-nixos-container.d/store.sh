@@ -8,8 +8,8 @@
 #
 # Env: LAYER_CONTRACT (/etc/ndh/store-layers.json), LOWER_CURRENT, CONTAINER_DIR, CONTAINER_NAME.
 
-mapfile -t layers < <(yq -p json -r '.lowerdirs[]' "$LAYER_CONTRACT")
-mapfile -t required < <(yq -p json -r '.requiredOptions[]' "$LAYER_CONTRACT")
+mapfile -t layers < <(yq -p json -oy -r '.lowerdirs[]' "$LAYER_CONTRACT")
+mapfile -t required < <(yq -p json -oy -r '.requiredOptions[]' "$LAYER_CONTRACT")
 lowerdirs=$(IFS=:; echo "${layers[*]}")
 requested=$(IFS=,; echo "${required[*]}")
 fingerprint=$(readlink "$LOWER_CURRENT")

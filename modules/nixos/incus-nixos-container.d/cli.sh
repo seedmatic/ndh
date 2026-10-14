@@ -7,7 +7,7 @@
 #   ndh-incus-container switch  {name}   activate the delivered system in the running container
 #   ndh-incus-container reset   {name}   set a stopped container's store aside after its layers changed
 #
-# Set by the wrapper: INSTANCES (JSON), PROJECT, LOWER_CURRENT, GUEST_LOWER, GUEST_UPPER, NIX_CONFIG.
+# Set by the wrapper: INSTANCES (JSON), PROJECT, POOL, LOWER_CURRENT, GUEST_LOWER, GUEST_UPPER, NIX_CONFIG.
 
 usage() {
   sed -n '4,8p' "${BASH_SOURCE[0]}" >&2
@@ -19,16 +19,16 @@ instance() {
     { echo "ndh-incus-container: no instance '$1' is declared on this member" >&2; exit 1; }
 }
 
-field() { KEY="$2" yq -p json -r '.[strenv(KEY)]' <<<"$1"; }
+field() { KEY="$2" yq -p json -oy -r '.[strenv(KEY)]' <<<"$1"; }
 
 create() {
   local info dir dataset target placement=()
   info=$(instance "$1")
   dir=$(field "$info" dir)
   dataset=$(field "$info" dataset)
-  target=$(yq -p json -r '.target // ""' <<<"$info")
+  target=$(yq -p json -oy -r '.target // ""' <<<"$info")
 
-  if [ "$(incus query /1.0/cluster | yq -p json -r '.enabled')" = true ]; then
+  if [ "$(incus query /1.0/cluster | yq -p json -oy -r '.enabled')" = true ]; then
     [ -n "$target" ] || { echo "ndh-incus-container: this member is clustered, and $1 states no target" >&2; exit 1; }
     placement=(--target "$target")
   elif [ -n "$target" ]; then
@@ -49,7 +49,8 @@ create() {
 
   # An empty rootfs: the system lives in /nix, and init is its profile. The rootfs keeps only the
   # mount points LXC needs.
-  incus init --empty --project "$PROJECT" "${placement[@]}" "$1" \
+  # A new project's default profile has no root disk, and Incus refuses an instance without one.
+  incus init --empty --project "$PROJECT" --storage "$POOL" "${placement[@]}" "$1" \
     -c security.privileged=true \
     -c cluster.evacuate=stop \
     -c boot.autostart=true \
@@ -64,8 +65,8 @@ create() {
   incus config device add --project "$PROJECT" "$1" nix-upper disk \
     source="$dir/upper" path="$GUEST_UPPER"
   local device keys
-  for device in $(yq -p json -r '.devices | keys | .[]' <<<"$info"); do
-    mapfile -t keys < <(DEVICE="$device" yq -p json -r '.devices[strenv(DEVICE)] | to_entries | .[] | .key + "=" + .value' <<<"$info")
+  for device in $(yq -p json -oy -r '.devices | keys | .[]' <<<"$info"); do
+    mapfile -t keys < <(DEVICE="$device" yq -p json -oy -r '.devices[strenv(DEVICE)] | to_entries | .[] | .key + "=" + .value' <<<"$info")
     incus config device add --project "$PROJECT" "$1" "$device" "${keys[@]}"
   done
   echo "ndh-incus-container: $1 created on ${target:-this standalone member} — deliver it, then: incus start --project $PROJECT $1"
@@ -102,7 +103,7 @@ reset() {
   # A running container still holds the store overlay through its disk device, even once nerd-nixos
   # has unmounted its own view of it.
   if incus info --project "$PROJECT" "$1" >/dev/null 2>&1 &&
-    [ "$(incus query "/1.0/instances/$1/state?project=$PROJECT" | yq -p json -r '.status')" != Stopped ]; then
+    [ "$(incus query "/1.0/instances/$1/state?project=$PROJECT" | yq -p json -oy -r '.status')" != Stopped ]; then
     echo "ndh-incus-container: $1 is not stopped — incus stop --project $PROJECT $1" >&2
     exit 1
   fi
@@ -127,7 +128,7 @@ reset() {
 }
 
 case "${1:-}" in
-  list) yq -p json -r 'to_entries | .[] | .key + "  target=" + (.value.target // "standalone") + "  " + .value.toplevel' <<<"$INSTANCES" ;;
+  list) yq -p json -oy -r 'to_entries | .[] | .key + "  target=" + (.value.target // "standalone") + "  " + .value.toplevel' <<<"$INSTANCES" ;;
   create | deliver | switch | reset)
     [ -n "${2:-}" ] || usage
     "$1" "$2"

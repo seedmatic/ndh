@@ -151,6 +151,7 @@ let
     text = ''
       INSTANCES=${lib.escapeShellArg (builtins.toJSON instanceInfo)}
       PROJECT=${lib.escapeShellArg cfg.project}
+      POOL=${lib.escapeShellArg (lib.head config.virtualisation.incus.preseed.storage_pools).name}
       LOWER_CURRENT=${lib.escapeShellArg lowerCurrent}
       GUEST_LOWER=${lib.escapeShellArg guestLower}
       GUEST_UPPER=${lib.escapeShellArg guestUpper}
@@ -172,7 +173,8 @@ in
 
     datasetParent = lib.mkOption {
       type = lib.types.str;
-      default = "tank/nerd/containers";
+      # Not `tank/nerd/containers`: podman owns it (modules/nixos/podman.nix).
+      default = "tank/nerd/ndh-containers";
       description = "ZFS parent of the per-container datasets (upper, work, the container's /nix/var/nix).";
     };
 
@@ -241,7 +243,10 @@ in
           "ndh-incus-container-lower.service"
         ];
         requires = [ "ndh-incus-container-lower.service" ];
-        unitConfig.RequiresMountsFor = [ info.dir ];
+        # The dataset is created by `ndh-incus-container create`, and mounted by zfs-mount, not by a
+        # mount unit, so RequiresMountsFor cannot wait for it. Without this the unit ran at the first
+        # boot on the root fs, and the dataset then hid that upper (measured on the probe, 2026-10-14).
+        unitConfig.ConditionPathIsMountPoint = info.dir;
         serviceConfig = {
           Type = "oneshot";
           RemainAfterExit = true;
