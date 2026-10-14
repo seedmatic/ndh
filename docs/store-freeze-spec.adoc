@@ -361,9 +361,19 @@ naming them dropped
 one; then `nix-store --verify`
 | a purge that leaves a copy in another layer has purged nothing
 
-| a purged path that a container or a profile still needs is **refused** unless the operator names
-it explicitly, and the DB unregisters it
-| a purge must not leave "valid but absent" behind it
+| the purge removes the path **and the transitive closure of its referrers**
+(`nix-store --query --referrers-closure`), unregistered and dropped from the new layer; it **lists
+them to the operator before acting**, and refuses if one of them is a declared root (the current
+system, a container system, a profile) unless named explicitly; `nix-store --verify` then checks
+references as well as existence
+| nix assumes every valid path's references are valid: unregistering the purged path alone would
+leave its referrers valid with a missing dependency, which fails at runtime, not at nix (❄️ nix)
+
+| the purge **reports where it cannot purge**: the containers' delivery snapshots and their own
+frozen layers, the Macs' stores (a delegated build's output is copied back to the Mac), and every
+binary cache the path reached (attic, `nxmatic.cachix` if a watch-store ran) — as remaining
+actions for 🛡️, never as done
+| a copy anywhere else is a copy that was not purged (❄️ nix)
 
 | it is an **operator gesture**, with the freeze's fail-closed rules: refuse on any doubt, report
 loudly, never automatic
