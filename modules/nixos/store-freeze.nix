@@ -147,15 +147,13 @@ in
 
     systemd.services = {
       # Loud on purpose: a failed unit and a console message. The store is already read-only: the
-      # initrd mounted it without its upper.
+      # initrd mounted it without its upper. Not ordered against nix: the initrd wrote the marker
+      # that masks it, and ordering a default-dependency service before a socket is a cycle that
+      # systemd breaks by dropping the socket's start.
       ndh-store-degraded = {
         description = "The store stack fell back: nix is masked, the store read-only";
         unitConfig.ConditionPathExists = "${runDir}/store-degraded";
         wantedBy = [ "multi-user.target" ];
-        before = [
-          "nix-daemon.socket"
-          "nix-daemon.service"
-        ];
         serviceConfig = {
           Type = "oneshot";
           StandardOutput = "journal+console";
