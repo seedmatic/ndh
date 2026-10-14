@@ -546,7 +546,7 @@ Measured on 2026-10-11 (nix 2.34.8):
   `nix store add-path` receive **no** signature, only their `ca:` field. `nix store sign` on the
   same path works, so the key was read;
 * **in bioskop's store**, 396 paths created since 2026-10-09: 69 of 69 built locally are signed by
-  `io-nxmatic-nix-darwin-home`, 0 of 210 added paths are;
+  `io-nxmatic-nix-darwin-home` (the fleet key then, rotated to `seedmatic-fleet-1` before T4), 0 of 210 added paths are;
 * fixed-output outputs (fetchers) are content-addressed too, but they have a deriver and are signed
   like any build.
 
@@ -653,7 +653,7 @@ worktree evaluation ever wrote. So:
 . **no other host builds from source.** bioskop builds and sends each host its closure,
   `nix copy --to ssh-ng://nix-store.{host}`, under the existing `nix-store` identity. A host's
   switch then finds every path already local, added paths included. The receiving daemon accepts
-  the copy without trusting the sender: the built paths carry `io-nxmatic-nix-darwin-home`, which
+  the copy without trusting the sender: the built paths carry `seedmatic-fleet-1`, which
   every host of the fleet already trusts, and the added paths are content-addressed, which nix
   accepts without a signature.
 
@@ -714,7 +714,7 @@ cache.nixos.org, nothing more is needed. If only attic holds it, there are two w
 * the builder as a substituter: `substituters = ssh-ng://{host}-nixos` with `require-sigs = true`.
   An untrusted client can substitute that way, as long as the path carries a key the node trusts.
   The builder serves only what **its own** store holds, and its own builds are signed with
-  `io-nxmatic-nix-darwin-home`, not by attic, so that is the key the node must trust. Unverified;
+  `seedmatic-fleet-1`, not by attic, so that is the key the node must trust. Unverified;
   test 3 below.
 
 [[builder-tests]]
@@ -866,7 +866,7 @@ two keys of the public tier: `seedmatic-publish-1` and `nxmatic.cachix.org-1` (s
 |===
 | Key name | Why
 
-| `io-nxmatic-nix-darwin-home` — out
+| `seedmatic-fleet-1` — out
 | the fleet's own key, in `secret-key-files`, so nix signs **every local build** with it (about 1170
 of our paths carry it, measured). In the list, it would leave the cache empty.
 
@@ -891,7 +891,7 @@ not a leak. No uploader can query upstream before uploading until the fork.
 A path that is in the layers is already on every consumer that mounts them, so it should not be
 uploaded. Paths substituted from upstream into the layers would be excluded by their signature, if
 the registration kept it. The paths **we** built into the layers carry only
-`io-nxmatic-nix-darwin-home`, like every other build of ours. A key of their own separates them:
+`seedmatic-fleet-1`, like every other build of ours. A key of their own separates them:
 
 . **a dedicated key**, `nerd-erofs-layers-1`. It is generated with
   `nix key generate-secret --key-name nerd-erofs-layers-1`, and its secret half is sops-encrypted
@@ -1127,8 +1127,16 @@ Two things are deliberately left out:
 
 * chunk dedup between successive versions of the same package, which only makes the real figure
   smaller;
-* the SQLite file's footprint, for which attic publishes no guidance (unverified). It is small next
-  to the chunks: one row per chunk and per object.
+* the SQLite file's footprint, for which attic publishes no guidance. It is small next to the chunks:
+  one row per chunk and per object.
+
+Measured on 2026-10-14 on the probe (attic `7a19204d`, the module's default chunking, zstd): one
+`attic push` of a 572-path closure, 1260 MiB of NAR before the upstream filter, left **496 MiB** of
+storage in 17 492 chunk files and a **4.4 MiB** SQLite file. The push also uploaded paths that
+cache.nixos.org serves, such as `gcc-lib` and `incus`: they reached the probe's store through the
+layers' registration, which carries no signature, so the upstream filter did not recognise them. That
+is the 297-path, 0.66 GiB share measured on 2026-10-10, and it inflates the private tier until the
+layers' paths carry their upstream signatures.
 
 === Quota — open until the split is measured
 
@@ -1154,64 +1162,291 @@ container's lifecycle would govern
 |===
 
 [[container-store]]
-== The containers' `/nix/store` — an overlay on nerd-nixos's EROFS lowers
+== The containers' `/nix/store` — an overlay on a snapshot of nerd-nixos's store
 
 Both attic-nixos and headscale-nixos mount their `/nix/store` as an overlay **from the start** (the
-operator's choice: there is no plain-store first increment). The lowers are the EROFS layers that
-nerd-nixos already mounts. The upper is a per-container ZFS volume. The containers' system closures
-therefore overlap nerd-nixos's, and the upper receives only the **delta**.
+operator's choice: there is no plain-store first increment). Their lowers are a **ZFS snapshot of
+nerd-nixos's own store** on top of the EROFS layers nerd-nixos already mounts: `deliver` takes that
+snapshot of nerd-nixos's upper and DB in one command. nerd-nixos built the container's system into its
+own store when it switched, so the snapshot already carries it; the container's upper, a per-container
+ZFS dataset, starts **empty** and only receives what the container itself writes. Implemented by
+`modules/nixos/incus-nixos-container.nix`.
 
 [mermaid]
 ....
 flowchart TB
-  subgraph C["container /nix/store — local-overlay-store"]
-    U["upper — per-container Incus volume on ZFS, receives only the delta"]
-    L["lower — a complete read-only store: nix/store = the EROFS stack, nix/var/nix/db shipped with the layers"]
-    U --> L
+  subgraph C["container — sees only binds"]
+    S["/nix/store — the store overlay, bound from nerd-nixos"]
+    M["/nix/.lower — the metadata view, read-only: nix's lower store"]
+    U["/nix/.upper — the upper, nix's upper-layer, empty after a delivery"]
   end
-  subgraph N["nerd-nixos"]
-    E1["/nix/.ro-store — layer 001"]
-    E2["/nix/.ro-store.002"]
-    E3["/nix/.ro-store.003"]
-    R["closureInfo registration — already built by the bringup"]
+  subgraph N["nerd-nixos — owns every mount"]
+    E["/nix/.ro-store.003 : .002 : .ro-store — the EROFS layers"]
+    F["/nix/.frozen/{layer}/upper — nerd-nixos's frozen layers of this boot"]
+    J["/etc/ndh/store-layers.json — the layer contract, upperRoot included"]
+    L["lower.layers — the frozen then the EROFS layers, STAMPED at delivery"]
+    Z["rwstore@T + db@T — ONE snapshot of nerd-nixos's upper and DB, taken by deliver"]
+    O["store overlay — lowerdir = the snapshot's upper : the stamped layers, FLAT; upper = the container's dataset"]
+    V["metadata view — a read-only overlay of the same lowers, a .links shim, the snapshot's DB copied"]
   end
-  L -. "the same immutable images" .-> E1 & E2 & E3
-  R -- "generated ONCE per layer set" --> L
-  X["nerd-nixos merged /nix/store — changes at every activation"]
-  X -. "NEVER a lower: a lower that changes while mounted is undefined" .-x L
+  F -- "at delivery" --> L
+  J -- "EROFS lowerdirs, at delivery" --> L
+  J -- "required options, upperRoot" --> O
+  L -- "flat lowers" --> O
+  L --> V
+  Z -- "top lower" --> O
+  Z --> V
+  E -. "listed in the contract" .-> J
+  E -. "never as an overlay lower" .-> V
+  O --> S
+  V --> M
+  X["nerd-nixos live /nix/store — changes at every switch and GC"]
+  X -. "NEVER a lower: only its snapshot" .-x O
 ....
+
+Legend: the snapshot is the only part of nerd-nixos's store a container reads; its live store keeps
+changing underneath without touching the container.
 
 [cols="1,3",options="header"]
 |===
 | Rule | Why
 
-| the lowers are the **EROFS layers**, never nerd-nixos's merged `/nix/store`
-| the merged store changes as nerd-nixos activates generations, and in OverlayFS a lower that changes
-while mounted is undefined behaviour
+| the store overlay's lowers are **one ZFS snapshot of nerd-nixos's upper on top of the EROFS
+layers, flat**, never nerd-nixos's live `/nix/store` and never an overlay of the layers
+| the live store changes as nerd-nixos switches and collects garbage, and in OverlayFS a lower that
+changes while mounted is undefined; a snapshot cannot change. An overlay as lowerdir mounts, but the
+kernel silently falls back to `index=off` ("does not support file handles", measured 2026-10-11).
+The snapshot's directory has file handles: with **one** snapshot over the EROFS layers, `index=on`
+holds (measured 2026-10-14). Once nerd-nixos has frozen layers, a container stacks two snapshots or
+more, ZFS snapshots have a null filesystem UUID, and the kernel drops `index` silently (measured on
+the probe, 2026-10-14): the store unit then neither requests nor requires `index=on`, and the stamp
+beside the upper — the snapshot and every ZFS layer by GUID, the layers' content and order — is the
+only guard (store-freeze spec, _Rules that hold at every level_)
 
-| pass the **mount points** (`/nix/.ro-store`, `.002`, `.003`) read-only, never `/dev/vdX`
-| measured: the device names do not follow the layer index (vdh, vdf, vdg), while ndh already mounts
-the layers by label. Use the post-`switch_root` paths, not the initrd's `/sysroot/…`.
+| one **layer contract**, `/etc/ndh/store-layers.json`, rendered by `erofs-store-mount.nix`
+| the ordered lowerdirs (newest first, `.003:.002:.ro-store`), the options a consumer must find on its
+mount, and `upperRoot`, where nerd-nixos's upper dataset is mounted (from `erofs-store-layers.nix`). A
+second, hand-written list would drift. The flox NRI plugin's pod stores are a candidate second
+consumer
 
-| lowerdir order = nerd-nixos's, newest first (`.003:.002:.ro-store`), **projected** from
-`modules/nixos/erofs-store-layers.nix`
-| overlayfs reads left to right. A second, hand-written list would drift.
+| the store unit **asserts** the effective mount — the snapshot's upper over the layers stamped at
+delivery in `lower.layers` (nerd-nixos's frozen layers, then the contract's EROFS ones), and every
+required option — and fails hard, leaving nothing mounted (store-freeze spec, _What the containers
+need from increment 1_)
+| it replaces nix's `check-mount`, which must be off: nix wants lowerdir to be the lower store's
+single directory, and these lowers are four
 
-| nix side: `local-overlay-store` with a lower that is a **complete** read-only store
-| nix then knows which paths come from the lower, so it never rebuilds or collects them. The layers
-carry no nix DB today (measured), so the lower DB is generated **once per layer set** from the same
-`closureInfo` registration (`baseClosureInfo`, `fleetRuntimeClosureInfo` in
-`modules/nixos/bringup-zfs-disk-image.nix`) and shipped with the layers.
+| nix's lower store is a separate **read-only metadata view**: an overlay of the same lowers plus a
+shim holding an empty `.links`, and the snapshot's DB
+| nix reads paths and metadata there, never through overlayfs. The shim: nix 2.34 creates `.links`
+even in a read-only store (`src/libstore/local-store.cc:139`), and neither the layers nor the
+snapshot carry one
 
-| same invariants as `modules/nixos/erofs-store-mount.nix`
-| immutable labels and UUIDs, and `index=on`, which refuses a changed lower (ESTALE)
+| the view's DB is a **copy of the snapshot's DB**, WAL included, taken in the **same** `zfs snapshot`
+command as the upper
+| one command snapshots both datasets atomically, so the paths the DB calls valid are the paths the
+snapshot holds (measured: a path deleted from the live store afterwards stays valid in the copy). A
+copy, opened normally: SQLite's `immutable` mode would ignore the WAL. It replaces the DB generated
+once per layer set by `--dump-db`/`--load-db` (2026-10-11)
+
+| the container's lowers are **exactly** nerd-nixos's stack: its snapshot over its layers, in its order
+| the copied DB is nerd-nixos's. Measured with a contract one layer short: paths the DB calls valid
+were absent, `deliver` copied nothing, and the container broke ("Command not found")
+
+| the container's `/nix/var/nix` lives on its dataset, beside the upper
+| `deliver` sets the container's profile host-side through the same store, no SSH needed
+
+| the snapshot is **reached host-side** before anything uses it
+| `.zfs/snapshot/{name}` is automounted on first access, and an access from a private mount namespace
+does not see a mount made outside it: ENOENT (measured 2026-10-14)
+
+| the stamp beside the upper names the **snapshot and the layer set**; a mismatch fails the store
+unit before mounting and names `deliver`
+| the kernel does NOT refuse an `index=on` upper over a newer snapshot of the same dataset (measured
+2026-10-14), so the binding is ours
+
+| **one snapshot per container**: `deliver` destroys the previous one only once the container runs
+on the new one
+| a snapshot holds every block nerd-nixos frees after it, so the latest only is kept
+
+| the view enters the container as **two plain read-only binds**, its store and its DB
+| the view's store is a mount of its own, and the kernel refuses a recursive read-only bind
+("Recursive read-only bind-mounts aren't currently supported by the kernel", measured 2026-10-14)
+
+| the store unit runs **only once the container's dataset is mounted**
+| `create` makes the dataset, and zfs-mount mounts it, not a mount unit, so `RequiresMountsFor`
+cannot wait for it. Without the condition the unit ran at first boot on the root fs, and the dataset
+then hid that upper (measured 2026-10-14)
+
+| the host-side store URL names the view's real directory, never a symlink to it
+| nix refuses a symlink on a store path or its parents (measured 2026-10-14)
+
+| an extra device states its **`type`**, and never targets `/run` or `/tmp`; both are asserted at
+evaluation
+| Incus wants the type positionally and refuses it among the keys ("Unsupported device type"); the
+container's systemd mounts tmpfs on `/run` and `/tmp` at boot, over the device (attic's environment
+file at `/run/attic` was simply not there, 2026-10-14)
+
+| a device's **source must exist before Incus autostarts** the instance
+| a missing source fails the autostart three times, then gives up ("Missing source path", measured
+after a reboot of the probe). sops-nix decrypts into `/run/secrets` during activation, before any
+service, so a sops secret qualifies; a file written by a later service would not
+
+| the containers' firewall is **nftables**
+| the iptables firewall needs `xt_*` modules a container cannot load; nerd-nixos had loaded
+`xt_pkttype` only by chance, and after its reboot the firewall unit failed in every container
+
+| a delivery's copy runs **without checking signatures**, and normally copies nothing
+| the snapshot carries the system, so the copy only checks that it does. Its source is nerd-nixos's
+own store, which built or validated every path, and most carry no signature: a checked copy refused
+the first path of the first real delta (2026-10-14)
 |===
 
 [source,ini]
 ----
-# the shape of the container's store setting — {ro-root} and {upper} are the mount points
-store = local-overlay://?lower-store=local://?root={ro-root}%26read-only=true&upper-layer={upper}&check-mount=true
+# the container's store setting — /nix/.lower and /nix/.upper are binds from nerd-nixos
+store = local-overlay://?lower-store=local%3Froot%3D/nix/.lower%26read-only%3Dtrue&upper-layer=/nix/.upper&check-mount=false
+extra-experimental-features = local-overlay-store read-only-local-store
 ----
+
+**The overlap no longer depends on the layers' lock.** On 2026-10-11, against layers from an older
+lock, 525 of a container's 535 paths were outside them, and a copy-based delivery would have put them
+all in its upper. With the snapshot, everything nerd-nixos built since its layers is in the
+container's lowers too. Measured on 2026-10-14 on a throwaway nerd-nixos: `deliver` copied **0**
+paths for both `probe` and `attic` (attic's closure had cost 43 MB of upper by copy), and both uppers
+stayed at about 11 KB. How that holds over nerd-nixos's life is the next section.
+
+⚠️ **Privileged**, by the operator's decision of 2026-10-11, against the recommendation: the
+container's root is nerd-nixos's root. The question of uid shifting on an overlay does not arise
+there, and comes back with `shift=true` or a `raw.idmap`.
+
+[[container-lifecycle]]
+=== Across nerd-nixos's life — what moves under a container
+
+A container's lowers are nerd-nixos's EROFS layers, so the container lives through every event of
+nerd-nixos's own life cycle. That cycle is rke2lab's
+`docs/architecture/nixos-substrate/erofs-store-layer-stack.adoc`: a VM is materialized with its
+layers and pools, its first boot hands over to the target configuration and reboots, and from then
+on a generation is either switched inside the VM or delivered as an **appended** layer; replacing a
+layer's content means re-provisioning. Each event does something different to a container:
+
+[mermaid]
+....
+sequenceDiagram
+  autonumber
+  participant Op as Operator
+  participant M as Materializer (darwin)
+  participant N as nerd-nixos
+  participant C as Container
+  Op->>M: materialize — layers L1..L3 + pools
+  N->>N: first boot hands over to the target, reboots
+  Op->>N: ndh-incus-container create, then deliver
+  N->>C: snapshot S1 over {L1..L3}, empty upper, stamp (S1, L1..L3)
+  rect rgb(240,253,244)
+    Note over N,C: A — a generation switched INSIDE the VM: the layers do not move
+    Op->>N: switch nerd-nixos (its system carries the container's), reboot
+    Op->>N: ndh-incus-container deliver
+    N->>C: restart on snapshot S2 over {L1..L3}, empty upper, S1 destroyed — nothing copied
+  end
+  rect rgb(254,249,231)
+    Note over N,C: B — a generation delivered as an APPENDED layer: pools kept
+    Op->>M: materialize — L4 appended, pools preserved
+    N->>N: boot on {L1..L4}
+    N--xC: store unit refuses before mounting: stamp (S2, L1..L3), booted (S2, L1..L4)
+    Op->>N: ndh-incus-container deliver — snapshot S3 over {L1..L4}
+  end
+  rect rgb(254,242,242)
+    Note over N,C: C — a layer's content REPLACED: refused unless VM_FACTORY_RESET
+    Op->>M: VM_FACTORY_RESET=true — new layers AND new pools
+    Op->>N: create + deliver again: snapshots and uppers went with the pools
+  end
+....
+
+Legend: green — layers unchanged; amber — layers changed, pools kept, a case the stamp refuses; red
+— layers and pools both new.
+
+[cols="1,2,2,2",options="header"]
+|===
+| Event on nerd-nixos | Layers | Pools (the container's upper) | What the container does
+
+| A — a generation switched inside the VM, the operator's practice
+| unchanged
+| kept
+| `deliver` restarts it on a new snapshot: its system is in it, nothing is copied, its upper starts
+empty, and nerd-nixos's GC can no longer take a path from under it
+
+| B — a generation delivered as an appended layer (decided: "appending a layer is routine")
+| one more, newest first
+| kept — the materializer allows an append
+| its stamp no longer matches. The store unit refuses before mounting and names `deliver`, which
+restarts it on a snapshot over the new layer set
+
+| C — a layer's content replaced
+| new
+| recreated — the materializer refuses this without `VM_FACTORY_RESET=true`
+| snapshots and upper went with the pools: `create` and `deliver` again
+|===
+
+`deliver` is the one gesture for A and B, and it absorbs the former `switch` (activate a delivered
+system in the running container) and `reset` (set an upper aside after a layer change): every
+delivery is a restart on a fresh upper, the way nerd-nixos itself takes a new generation; service data
+lives on its own devices. B is decided ("every generation is an EROFS layer") but **not
+implemented**: the layer list is fixed at three in `modules/nixos/erofs-store-layers.nix`, one source
+the whole fleet shares. A probe that rebuilds the image tests **C**, not B: the materializer refuses
+it, which says nothing about an append (a wrong conclusion drawn exactly that way on 2026-10-14,
+discarded before push).
+
+=== The tests the implementation must pass — the container
+
+Measured on 2026-10-14 on a throwaway nerd-nixos (`incus-probe`, standalone Incus), with the snapshot
+delivery (`aab6235a`): tests 1, 2, 3, 5, 6 and 7 pass, and test 4 rests on the snapshot measurements.
+Test 8 passed **synthetically**: a runtime drop-in gave the store unit a contract one layer short, the
+unit refused before mounting and named `deliver`, and `deliver` then restarted the container on a new
+snapshot. The same run showed why the container's stack must be nerd-nixos's own (the identity rule
+above): with a layer missing, the copied DB called absent paths valid and the container broke. The
+materializer's append itself is exercised once it exists.
+
+[cols="1,2,2",options="header"]
+|===
+| Test | Gesture (the operator's) | Expected
+
+| 1 — the store unit holds the contract
+| `ndh-incus-container deliver {name}`, then `findmnt` of the container's store
+| the overlay is mounted with the snapshot's upper over the contract's lowerdirs, and every required
+option. A mismatch fails the unit, and leaves nothing mounted
+
+| 2 — an empty rootfs boots on its profile
+| `ndh-incus-container create {name}`, then `deliver`
+| the container reaches `multi-user.target` on `lxc.init.cmd = /nix/var/nix/profiles/system/init`
+
+| 3 — nothing copied
+| after a switch of nerd-nixos, `deliver`; compare the upper with the container's closure
+| the copy reports 0 paths and the upper stays empty but for the container's own writes (measured:
+0 paths, about 11 KB, for `probe` and `attic`)
+
+| 4 — nerd-nixos's GC cannot take a path from under a container
+| after a delivery, delete a path of the container's closure from nerd-nixos's live store
+| the path stays in the snapshot and valid in the view's DB (measured on the snapshot itself: a path
+deleted from the live store after the snapshot stays present and valid)
+
+| 5 — nix sees its system
+| inside: `nix-store --check-validity` of the profile's toplevel, `nix store verify` of a layer path
+| valid, served from `/nix/.lower`, never copied into the upper
+
+| 6 — one snapshot per container
+| `deliver {name}` twice
+| after the second, only the second snapshot exists for that container, and nothing set aside remains
+
+| 7 — a reboot of nerd-nixos
+| reboot nerd-nixos without a new switch
+| every delivered container autostarts on its snapshot; an instance never delivered stays down
+without failing (its store unit's condition is not met)
+
+| 8 — a changed layer set is refused (event B)
+| append a layer to nerd-nixos with its pools kept, and reboot
+| the store unit fails **before** mounting and names `deliver`; after `deliver` the container runs on
+a snapshot over the new layer set
+|===
 
 === Three tiers of store, one immutable base
 
@@ -1269,7 +1504,7 @@ not shared.
 This is the intent of building the mechanism in ndh as a module rather than inside one service.
 Tiers 2 (nodes) and 3 are adopted in rke2lab; see its atlas, section _The private binary cache_.
 
-=== Boot, then switch — the container never evaluates a flake
+=== Switch nerd-nixos, then deliver — the container never evaluates a flake
 
 [mermaid]
 ....
@@ -1277,22 +1512,28 @@ sequenceDiagram
   autonumber
   participant Op as Operator (bioskop)
   participant NN as nerd-nixos
+  participant Z as ZFS
   participant C as Incus container
-  Note over C: boots a small boot.isContainer generation<br/>whose paths are already in the shared lowers
-  Op->>NN: build the target configuration (same lock as the layers)
+  Op->>NN: switch nerd-nixos — its generation builds each container's system into its own store
   NN->>NN: evaluate and build, never in the container
-  NN->>C: nix copy --to the closure (the delta lands in the upper)
-  C->>C: switch-to-configuration on the copied closure
-  Note over C: no flake source ever enters the container<br/>and attic's bootstrap needs no cache
+  Op->>NN: ndh-incus-container deliver {name}
+  NN->>C: incus stop
+  NN->>Z: zfs snapshot rwstore@T db@T — one command, atomic
+  NN->>NN: copy the snapshot's DB into the view, set the old upper aside, mount, set the profile
+  NN->>C: incus start — the empty rootfs boots its profile (lxc.init.cmd)
+  NN->>Z: destroy the previous snapshot
+  Note over C: no flake source ever enters the container,<br/>nothing is copied, and attic's bootstrap needs no cache
 ....
 
 Four conditions:
 
 . **share the paths, not the boot.** nerd-nixos's generation is a VM's (kernel, initrd, EROFS mounts
-  in the initrd) and cannot boot as an Incus container;
-. **build the containers and the layers from the same lock**, or the upper fills with copies;
-. **the delta does not come from the cache that does not exist yet.** attic's own container is filled
-  by `nix copy`, not by substitution;
+  in the initrd) and cannot boot as an Incus container. The container's own system is a
+  `boot.isContainer` configuration, evaluated by nerd-nixos's generation;
+. **the container's system is in nerd-nixos's store before the delivery**: `deliver` refuses a system
+  nerd-nixos has not switched to, since the snapshot would not carry it;
+. **the system does not come from the cache that does not exist yet.** attic's own container gets its
+  system from the snapshot, not by substitution;
 . **the container never evaluates a flake.** Evaluation, the incident's vector, stays on nerd-nixos.
 
 == Hosting — one Incus service, two owners of instances
@@ -1334,7 +1575,7 @@ attic-nixos and headscale-nixos are the first two instances ndh declares, and th
 
 * the container declaration, with its project and its target;
 * the overlay store described above;
-* the boot-then-switch delivery.
+* the delivery: switch nerd-nixos, then `deliver` on a snapshot of its store.
 
 Each service then adds only its own NixOS configuration: `services.atticd` (SQLite, no database
 service), or the
@@ -1387,7 +1628,7 @@ flowchart LR
     p1["pods with the nix toolchain"]:::none
   end
   subgraph INFRA["Infrastructure containers — no token"]
-    c1["their own system — delivered by nix copy from their nerd-nixos"]:::none
+    c1["their own system — a snapshot of their nerd-nixos's store"]:::none
   end
   attic["attic-nixos — the private tier, reads need a token"]:::cache
   cx["nxmatic.cachix.org — the public tier, no token to read"]:::pub
@@ -1424,8 +1665,8 @@ the nix daemon
 | ndh `.secrets`
 
 | attic-nixos, headscale-nixos
-| **none**: they never substitute. Their closure arrives by `nix copy` from nerd-nixos (boot, then
-switch)
+| **none**: they never substitute. Their closure is in the snapshot of nerd-nixos's store they are
+delivered on (switch nerd-nixos, then deliver)
 | —
 
 | cluster nodes
@@ -1495,11 +1736,41 @@ curl -s -o /dev/null -w '%{http_code}\n' --netrc-file {netrc} "https://{attic}/{
 # → 200  (read token)
 ----
 
-attic answers **401** to a client without the permission. It deliberately masks a missing cache, a
-missing object and a missing permission behind the same `Unauthorized` (`server/src/error.rs:194-205`,
-`:218`), so the anonymous answer reveals nothing about what the cache holds. A **200 without a token**
-means the cache was created or reconfigured `--public`: the cache is then not private, and this spec's
-condition for the watch-store no longer holds.
+attic answers **401** to a client without the permission. A **200 without a token** means the cache
+was created or reconfigured `--public`: the cache is then not private, and this spec's condition for
+the watch-store no longer holds.
+
+⚠️ **The anonymous answer still tells present from absent.** This spec read attic's source as masking
+a missing object behind the same `Unauthorized` (`server/src/error.rs:194-205`, `:218`). Measured on
+2026-10-14 against attic `7a19204d` on the probe, anonymous:
+
+[cols="2,1,1",options="header"]
+|===
+| Request | Object in the cache | Object absent
+
+| `GET` or `HEAD` `/{cache}/{hash}.narinfo`
+| 401
+| **404**
+
+| `GET` `/{cache}/nar/{hash}.nar`, `/{cache}/nix-cache-info`, an unknown cache
+| 401
+| 401
+|===
+
+So anyone who reaches the port can test whether a store hash they already know is cached, without
+reading anything of it. Reaching the port is the fabric segment only, and a hash has to be known
+first, so the exposure is small; it is still one more reason never to listen beyond the fabric. The
+read test therefore uses a hash **known to be in the cache**, as written above: an absent one answers
+404 and proves nothing.
+
+⚠️ **nix caches narinfo answers**, positive ones included, under `~/.cache/nix`. A substitution test
+run after a successful one answers from that cache and looks authorised without a token. Run it with
+an empty `XDG_CACHE_HOME` and `narinfo-cache-positive-ttl = 0` (measured the same day: the cached run
+printed the path, the clean run got the 401).
+
+Measured the same day, with a read token: `nix path-info` through a `netrc-file` whose `password` is
+the token reads the narinfo, the path carries the cache key's signature, and `nix store verify`
+checks it against that key. A read token is refused a configuration change (403).
 
 == Usage patterns
 
@@ -1564,7 +1835,7 @@ them on the corporate side, and none can be revoked alone yet.
 
 === ❌ Derive the key-name list from `trusted-public-keys`
 
-That list holds `io-nxmatic-nix-darwin-home`, which signs every local build, so the cache would stay
+That list holds `seedmatic-fleet-1`, which signs every local build, so the cache would stay
 empty. It also holds `nxmatic.cachix.org-1`, whose paths the public cache no longer serves. Write
 the list out: the upstream substituters' key names, plus the layer key.
 
@@ -1616,7 +1887,7 @@ closure. Count, never print, what that path holds
 | check the decrypted token under `/run/secrets` and the `netrc-file` setting
 
 | the cache stays empty
-| `io-nxmatic-nix-darwin-home` is in `upstream-cache-key-names`
+| `seedmatic-fleet-1` is in `upstream-cache-key-names`
 | remove it: it signs every local build
 
 | a host is lost, or a token leaked
@@ -1718,6 +1989,10 @@ be a different path, and every closure that references it would have to be rebui
   example), and what re-issues them on schedule.
 
 == Related Documentation
+
+* link:store-freeze-spec.adoc[Store Freeze] — nerd-nixos freezes its store upper into a read-only
+  layer by command; what the containers here need from it (their contract listing the frozen layers,
+  their systems as GC roots of nerd-nixos).
 
 * link:fabric-control-plane-spec.adoc[Fabric Control Plane] — the tailnets and the bridge attic is
   reached over, and headscale-nixos, the other tenant of the shared container module.

@@ -22,6 +22,10 @@
     };
     sops.age.sshKeyPaths = [ ];
 
+    # The store freeze is tried here first: bioskop carries the toolchain we work from, so a
+    # failure on nikopol breaks nothing we depend on (docs/store-freeze-spec.adoc, the rollout).
+    ndh.storeFreeze.enable = true;
+
     # Vector observability agent forwards build events to Darwin aggregator
     bringupObserve = {
       # Forward to Darwin host Vector aggregator via VM network gateway
