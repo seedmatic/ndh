@@ -207,7 +207,10 @@ in
             devices = lib.mkOption {
               type = lib.types.attrsOf (lib.types.attrsOf lib.types.str);
               default = { };
-              description = "Extra Incus devices (a NIC on the fabric, a data disk), as `incus config device add` keys.";
+              description = ''
+                Extra Incus devices (a NIC on the fabric, a data disk), as `incus config device add`
+                keys. `type` is required: `create` passes it positionally, as Incus wants it.
+              '';
             };
           };
         }
@@ -216,6 +219,16 @@ in
   };
 
   config = lib.mkIf (cfg.instances != { }) {
+    assertions = lib.concatLists (
+      lib.mapAttrsToList (
+        name: instance:
+        lib.mapAttrsToList (device: keys: {
+          assertion = keys ? type;
+          message = "ndh.incusNixosContainers.instances.${name}.devices.${device} has no `type`";
+        }) instance.devices
+      ) cfg.instances
+    );
+
     environment.systemPackages = [ operatorCli ];
 
     systemd.services = {

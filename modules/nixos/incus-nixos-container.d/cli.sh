@@ -72,10 +72,12 @@ create() {
     source="$LOWER_CURRENT/nix/var/nix" path="$GUEST_LOWER/nix/var/nix" readonly=true
   incus config device add --project "$PROJECT" "$1" nix-upper disk \
     source="$dir/upper" path="$GUEST_UPPER"
-  local device keys
+  local device type keys
   for device in $(yq -p json -oy -r '.devices | keys | .[]' <<<"$info"); do
-    mapfile -t keys < <(DEVICE="$device" yq -p json -oy -r '.devices[strenv(DEVICE)] | to_entries | .[] | .key + "=" + .value' <<<"$info")
-    incus config device add --project "$PROJECT" "$1" "$device" "${keys[@]}"
+    # Incus takes the type as a positional argument and refuses `type=` among the keys.
+    type=$(DEVICE="$device" yq -p json -oy -r '.devices[strenv(DEVICE)].type' <<<"$info")
+    mapfile -t keys < <(DEVICE="$device" yq -p json -oy -r '.devices[strenv(DEVICE)] | to_entries | .[] | select(.key != "type") | .key + "=" + .value' <<<"$info")
+    incus config device add --project "$PROJECT" "$1" "$device" "$type" "${keys[@]}"
   done
   trap - ERR
   echo "ndh-incus-container: $1 created on ${target:-this standalone member} — deliver it, then: incus start --project $PROJECT $1"
