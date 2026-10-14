@@ -179,6 +179,12 @@ and none may land on an upper built on another base
 | two manifests, **A/B**: the previous one is kept until the new boot reaches `multi-user`
 | without a rollback generation, the previous stack is the way back if the new one does not come up
 
+| the manifests live in `/nix/.rw-store/stack`, on the **upper's own dataset**, beside `upper.base`
+| the initrd checks that the stack and `upper.base` agree, so they stay on one filesystem, and the pool
+layout does not change. No container sees them: a container mounts only the `upper/` of its
+delivery snapshot. Every frozen snapshot carries an old copy of the manifests, which nothing reads.
+Decided by the operator on 2026-10-14
+
 | the manifest is written by write to a temporary file, rename, and an fsync of its directory
 | a crash during the write leaves the previous manifest intact, never a truncated current one
 
@@ -260,7 +266,9 @@ of the lowerdir list baked into the generation's `fileSystems`
 | each snapshot is mounted directly, read-only (`mount -t zfs {dataset}@{snapshot}`), and passed with
 the new mount API, one `lowerdir+=` per layer
 | the `.zfs/snapshot` automount does not cross mount namespaces (ENOENT, measured); the legacy
-`lowerdir=a:b:c` string is capped at one page, about 90 layers
+`lowerdir=a:b:c` string is capped at one page, about 90 layers. libmount hands each `lowerdir+=` to
+the kernel on its own (util-linux 2.42.3, kernel 6.18, measured on the probe on 2026-10-14);
+decided by the operator on 2026-10-14, the code having used the legacy string until then
 
 | before mounting, every listed snapshot is checked: its GUID and its dataset. After mounting, the
 **booted toplevel must resolve in the stack plus the upper** (its `init` exists); the manifest's
@@ -594,7 +602,6 @@ from the pool, `nix-store --verify` is clean
 * **The secret sweep**: its shapes are rke2lab's pre-commit guards (`token_shape_guard`); whether to
   share that script or restate it, and in which language. The Go porting of the tooling is a separate
   chantier.
-* **Where the manifest lives**: a dataset of its own on the pool, out of every container mount.
 * **The interplay with the materializer**: a re-materialization (new EROFS layers) recreates the
   pools, frozen layers included. Plan item 15 (`vm_cpu_count`) and nix's 2e sit on the same hosts.
 

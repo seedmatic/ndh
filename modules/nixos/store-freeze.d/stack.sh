@@ -144,6 +144,12 @@ done <<<"$layers"
 erofs_sysroot=$(tr ':' '\n' <<<"$EROFS_LOWERS" | sed "s|^|$SYSROOT|" | paste -sd:)
 mkdir -p "$store" "$rw/upper"
 
+# lowers {colon list}: one lowerdir+= per layer. libmount hands each option to the kernel on its
+# own, so the stack is not capped by the one page a lowerdir=a:b:c string must fit in.
+lowers() {
+  tr ':' '\n' <<<"$1" | sed 's/^/lowerdir+=/' | paste -sd,
+}
+
 # Degraded: a read-only overlay with no upperdir, so the store is read-only by construction rather
 # than by a remount that could fail (🛡️ review of af723ca3), and the upper, built on another base, is
 # never written. It is still the top lower: the generation being booted usually lives only there,
@@ -154,13 +160,13 @@ mkdir -p "$store" "$rw/upper"
 degraded_opts="ro,redirect_dir=nofollow,metacopy=off"
 upper_top=true
 mount_degraded() {
-  if mount -t overlay overlay -o "$degraded_opts,lowerdir=$rw/upper:${lowerdirs:+$lowerdirs:}$erofs_sysroot" "$store"; then
+  if mount -t overlay overlay -o "$degraded_opts,$(lowers "$rw/upper:${lowerdirs:+$lowerdirs:}$erofs_sysroot")" "$store"; then
     return
   fi
   stage2=""
-  if mount -t overlay overlay -o "$degraded_opts,lowerdir=$rw/upper:$erofs_sysroot" "$store"; then return; fi
+  if mount -t overlay overlay -o "$degraded_opts,$(lowers "$rw/upper:$erofs_sysroot")" "$store"; then return; fi
   upper_top=false
-  mount -t overlay overlay -o "$degraded_opts,lowerdir=$erofs_sysroot" "$store"
+  mount -t overlay overlay -o "$degraded_opts,$(lowers "$erofs_sysroot")" "$store"
 }
 
 if [ -n "$degraded" ]; then
@@ -169,7 +175,7 @@ else
   upper_top=false
   mkdir -p "$rw/work"
   if ! mount -t overlay overlay \
-    -o "lowerdir=${lowerdirs:+$lowerdirs:}$erofs_sysroot,upperdir=$rw/upper,workdir=$rw/work" "$store"; then
+    -o "$(lowers "${lowerdirs:+$lowerdirs:}$erofs_sysroot"),upperdir=$rw/upper,workdir=$rw/work" "$store"; then
     degrade "the stack did not mount"
     upper_top=true
     mount_degraded
