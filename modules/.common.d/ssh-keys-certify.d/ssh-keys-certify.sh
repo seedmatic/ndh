@@ -4,6 +4,7 @@
 # caller's set -x): this script handles private keys, and a trace prints every value it expands.
 case $- in *x*) { set +x; } 2>/dev/null; echo "[xtrace-guard] xtrace disabled: this script handles private keys" >&2 ;; esac
 export -n SHELLOPTS 2>/dev/null || true # readonly in bash, so not unset; un-exported, it stops at this process
+unset NDH_LOGGER_XTRACE # ndh::logger:command:run traces its command only when this is 1
 unset BASH_XTRACEFD 2>/dev/null || true
 # ssh-keys-certify — sign, ON THE SEAT, every SSH certificate keys.yaml declares, and record it
 # in keys.yaml next to the generation it certifies.

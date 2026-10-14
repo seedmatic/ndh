@@ -298,28 +298,26 @@ in
           owner = config.profile.user.name;
           mode = "0400";
         };
-
-        # Cache signing private key, source-of-truth at
-        # catalog/cache-trust.yaml under caches.cachix.<name>.private.
-        # The yaml stores the bare base64 bytes without the `<name>:`
-        # prefix. sops-install-secrets deploys it to a staging path;
-        # modules/.common.d/nix-signing.nix wraps it with the key name
-        # at activation time to produce the full `<name>:<base64>` wire
-        # format at /etc/nix/<name>.key that nix-daemon expects.
-        "io-nxmatic-nix-darwin-home.key.bare" = {
-          sopsFile = (worktreePath.of "catalog/cache-trust.yaml");
-          format = "yaml";
-          # sops-install-secrets uses `/` as the path separator (see
-          # pkgs/sops-install-secrets/main.go:recurseSecretKey), not `.`
-          # like most similar tooling. Easy trap: dotted notation parses
-          # as a literal flat key name and fails with "key cannot be
-          # found" even though the yaml tree has the right shape.
-          key = "caches/cachix/io-nxmatic-nix-darwin-home/private";
-          path = "/run/secrets/io-nxmatic-nix-darwin-home.key.bare";
-          owner = "root";
-          mode = "0600";
-        };
-      };
+      }
+      # The fleet's cache signing private key(s), source of truth at catalog/cache-trust.yaml under
+      # caches.cachix.<name>.private (the bare base64, without the `<name>:` prefix). One secret per
+      # name in catalog/cache-trust.nix's caches.cachix, so a rotation renames nothing here;
+      # cache-trust.nix's compose script wraps it into /etc/nix/<name>.key at activation.
+      // lib.listToAttrs (
+        map (name: {
+          name = "${name}.key.bare";
+          value = {
+            sopsFile = (worktreePath.of "catalog/cache-trust.yaml");
+            format = "yaml";
+            # sops-install-secrets uses `/` as the path separator, not `.`: a dotted key parses as
+            # one flat name and fails with "key cannot be found".
+            key = "caches/cachix/${name}/private";
+            path = "/run/secrets/${name}.key.bare";
+            owner = "root";
+            mode = "0600";
+          };
+        }) config.ndh.cacheTrust.cachixNames
+      );
 
       age.keyFile = lib.mkDefault cfg.defaultAgeKeyFile;
       # In first-boot bootstrap images, avoid host SSH-key based decryption fallback.
