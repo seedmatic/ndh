@@ -106,7 +106,7 @@ create() {
 # unit mounts that list, never the current one: after a freeze-reboot the container comes back on
 # its old snapshot while /run already describes the new stack. Only a delivery moves it.
 deliver() {
-  local info dir toplevel store upper_root rw db snapshot previous aside entry old
+  local info dir toplevel store upper_root rw db snapshot aside entry old
   info=$(instance "$1")
   dir=$(field "$info" dir)
   toplevel=$(field "$info" toplevel)
@@ -120,12 +120,13 @@ deliver() {
   [ "$(findmnt -no FSTYPE /nix/var/nix/db)" = zfs ] || die "/nix/var/nix/db is not a ZFS dataset"
   rw=$(findmnt -no SOURCE "$upper_root")
   db=$(findmnt -no SOURCE /nix/var/nix/db)
-  previous=""
-  if [ -e "$dir/lower.snapshot" ]; then previous=$(cat "$dir/lower.snapshot"); fi
 
   if [ "$(incus query "/1.0/instances/$1/state?project=$PROJECT" | yq -p json -oy -r '.status')" != Stopped ]; then
     incus stop --project "$PROJECT" "$1"
   fi
+  # Before anything is snapshotted or moved: Incus can refuse it (an ETag race while it starts up,
+  # measured), and a delivery that stops here has changed nothing.
+  incus config set --project "$PROJECT" "$1" raw.lxc="$(raw_lxc "$dir")"
   systemctl stop "ndh-incus-container-store-$1.service"
   for entry in "$dir/root/nix/store" "$dir/view/nix/store"; do
     if mountpoint -q "$entry"; then die "$entry is still mounted"; fi
@@ -152,7 +153,6 @@ deliver() {
     yq -p json -oy -r '.lowerdirs[]' "$LAYER_CONTRACT"
   } >"$dir/lower.layers"
   echo "$snapshot" >"$dir/lower.snapshot"
-  incus config set --project "$PROJECT" "$1" raw.lxc="$(raw_lxc "$dir")"
   systemctl start "ndh-incus-container-store-$1.service"
 
   # The snapshot carries the system, so this copies nothing; it stays as the check that it does.
@@ -165,11 +165,11 @@ deliver() {
   ln -sfn "$toplevel" "$GCROOTS/$1"
   incus start --project "$PROJECT" "$1"
 
-  # The container runs on the new snapshot: the previous one, and what was set aside, can go.
-  if [ -n "$previous" ]; then
-    zfs destroy "$rw@$previous"
-    zfs destroy "$db@$previous"
-  fi
+  # The container runs on the new snapshot: every other delivery snapshot of it — the previous one,
+  # and any a delivery that failed midway left behind — and what was set aside, can go.
+  for old in $(zfs list -H -t snapshot -o name "$rw" "$db" | grep -E "@ndh-incus-$1-[0-9]{8}T[0-9]{6}Z\$" | grep -v "@$snapshot\$" || true); do
+    zfs destroy "$old"
+  done
   for old in "$dir"/.previous-*; do rm -rf --one-file-system "$old"; done
   echo "ndh-incus-container: $1 ← $toplevel, on snapshot $snapshot"
 }

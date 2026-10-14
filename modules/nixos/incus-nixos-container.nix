@@ -154,6 +154,7 @@ let
       config.virtualisation.incus.package
       config.boot.zfs.package
       pkgs.coreutils
+      pkgs.gnugrep
       pkgs.yq-go
       pkgs.systemd
       pkgs.util-linux
