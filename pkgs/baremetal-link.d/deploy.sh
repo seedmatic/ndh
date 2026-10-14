@@ -122,8 +122,8 @@ main() {
 		# existing file's mode; BSD `install` can't read pipes, so no `install -m` from
 		# a heredoc without a temp). Outer heredoc UNQUOTED → local `$(cat …)` embeds
 		# the private + cert; INNER delimiters quoted → written verbatim; set -eu aborts
-		# on a failed write.
-		"${sshVz[@]}" "$target" sudo /bin/bash -s <<REMOTE
+		# on a failed write. Checked like the install pipe: a nudge identity that did not land is said.
+		if ! "${sshVz[@]}" "$target" sudo /bin/bash -s <<REMOTE
 set -eu
 install -d -m 700 /var/root/.ssh
 umask 077
@@ -136,6 +136,10 @@ VZ_NUDGE_CERT
 chmod 600 /var/root/.ssh/vz-nudge
 chmod 644 /var/root/.ssh/vz-nudge-cert.pub
 REMOTE
+		then
+			ndh::logger:notice "[baremetal-link-deploy] FAILED: the vz-nudge identity did not land on ${target} — the ${action} itself did"
+			return 1
+		fi
 	elif [[ "$action" == "install" ]]; then
 		ndh::logger:notice "[baremetal-link-deploy] vz-nudge identity absent here (${vzNudgeKey}) — nudge stays inert (manual reconfigure fallback)"
 	fi

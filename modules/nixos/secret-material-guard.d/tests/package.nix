@@ -38,9 +38,16 @@ pkgs.runCommand "secret-material-guard-tests" { } ''
   log=${refusedKey}/testBuildFailure.log
   grep -q "secret-material-guard: REFUSED ${canaryKey}/id_canary" "$log"
   # The value never reaches the log: neither the key's body line nor the age key.
-  ! grep -qF "$(sed -n 2p ${canaryKey}/id_canary)" "$log"
+  # Not `! grep`: a negated command never trips errexit.
+  if grep -qF "$(sed -n 2p ${canaryKey}/id_canary)" "$log"; then
+    echo "the key's body reached the log" >&2
+    exit 1
+  fi
   grep -q "secret-material-guard: REFUSED ${canaryAge}/age.txt" ${refusedAge}/testBuildFailure.log
-  ! grep -qF "$(cat ${canaryAge}/age.txt)" ${refusedAge}/testBuildFailure.log
+  if grep -qF "$(cat ${canaryAge}/age.txt)" ${refusedAge}/testBuildFailure.log; then
+    echo "the age key reached the log" >&2
+    exit 1
+  fi
 
   # A reviewed public key is packed.
   test -s ${layer publicKey}

@@ -489,6 +489,7 @@ let
 
             preVM = ''
               export NDH_NIXOS_NAME="${hostLabel}"
+              export NDH_INSTALL_LOG_MASK="${./bringup-zfs-disk-image.d/install-log-mask.sed}"
               export NDH_BRINGUP_COMMON_SCRIPT="${./bringup-disk-image-common.sh}"
               export NDH_BOOT_DISK_SIZE="${toString bootDiskSize}"
               export PATH="${
@@ -559,4 +560,7 @@ let
 in
 {
   inherit diskImages storeImages storeLayersSpec;
+  # The VM build itself, before its reference-free copy: what a check that expects the install to
+  # REFUSE builds (a dependency's failure would not be the check's own).
+  inherit builtDiskImages;
 }

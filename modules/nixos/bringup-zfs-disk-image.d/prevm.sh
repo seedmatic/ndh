@@ -46,6 +46,21 @@ QEMU_OPTS+=" -device virtio-serial"
 QEMU_OPTS+=" -chardev socket,id=shell-sock,path=$PWD/shell.sock,server=on,wait=off"
 QEMU_OPTS+=" -device virtconsole,chardev=shell-sock,name=shell"
 
+# A failed install leaves its trace only in xchg/install.log, inside a build directory nix removes, and
+# postVM never runs after a failure: then say the end of that log in the build log. Its lines are the
+# install's own trace — paths and verdicts; the secret-material guard prints no file content. A build
+# log persists (`nix log`) and travels, so the lines are MASKED on the way: an age secret, and every
+# line between a private-key header and its footer, whatever a future change makes the install print
+# (install-log-mask.sed, whose check is bringup-install-log-mask).
+ndh_bringup_install_log_on_failure() {
+  local rc=$?
+  if [ "$rc" != 0 ] && [ -f xchg/install.log ]; then
+    echo "[bringup] the install failed (rc=$rc); the end of its log (masked):" >&2
+    tail -n 60 xchg/install.log | sed -E -f "$NDH_INSTALL_LOG_MASK" >&2
+  fi
+}
+trap ndh_bringup_install_log_on_failure EXIT
+
 # Share xchg directory with nested QEMU via virtio-9p
 mkdir -p "$PWD/xchg"
 QEMU_OPTS+=" -fsdev local,id=fsdev-xchg,path=$PWD/xchg,security_model=none"

@@ -4,6 +4,20 @@
 # stdout carries the command's output and nothing else. Its log sink is a file here (LOGGER_CMD), not
 # the system log a sandbox cannot reach.
 
+# `! cmd` asserts nothing in bats: bash exempts a negated command from errexit, so it never fails a test
+# unless it is the last line. refute does — and only on a NO: the command must answer 1 (grep's "no
+# match"). 0 is a refutation that held; any other code (grep's 2 on a file that is not there) is no
+# answer at all, and a property must not pass on one.
+refute() {
+  local rc=0
+  "$@" || rc=$?
+  case $rc in
+    1) return 0 ;;
+    0) echo "refuted, but it held: $*" >&2; return 1 ;;
+    *) echo "refute got no answer (rc=$rc): $*" >&2; return 1 ;;
+  esac
+}
+
 setup() {
   script="$BATS_TEST_TMPDIR/wrapped.sh"
   sink="$BATS_TEST_TMPDIR/sink.log"
@@ -41,7 +55,7 @@ wrapped() { # $1 header ('set -e' or ''), then the lines of main's body
   [ "$status" -ne 0 ]
   [[ "$output" != *"REACHED-AFTER-FAILURE"* ]]
   sink_has "[test-tag] ndh::logger:command:run failed (rc=1)"
-  ! grep -q "completed successfully" "$sink"
+  refute grep -q "completed successfully" "$sink"
 }
 
 @test "a set -e script whose last command succeeds still fails on an earlier failure" {
