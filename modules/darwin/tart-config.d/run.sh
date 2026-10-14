@@ -1,7 +1,7 @@
 #!/usr/bin/env -S bash -euxo pipefail
 # shellcheck disable=SC1091,SC2016,SC2154
 # SC2016: yq expressions use single quotes intentionally (not bash variable expansion)
-# SC2154: use_vnc_experimental, sops_age_tag, bridge_interface, tart_bin,
+# SC2154: use_vnc_experimental, sops_age_host_share, sops_age_tag, bridge_interface, tart_bin,
 #         diskutil_bin, etc. are loaded dynamically from the run manifest via tart:manifest:load
 source "@nixBashTrampoline@"
 
@@ -448,6 +448,21 @@ tart:run-args:host-shares:add() {
 	run_args+=("--dir=${sops_age_host_dir}:ro,tag=${sops_age_tag}")
 }
 
+# The host's age directory is shared, and required, only for a guest that imports its identity from
+# this host. The fact comes from the GUEST's configuration, rendered into the run manifest: a guest
+# with its own identity (nikopol-nixos) gets no share, so a host holding no age key can launch it.
+# A run manifest without the field was written by an earlier materialization (the gcroot keeps it
+# until the next one): it keeps the share required, as it always was, so a darwin switch alone never
+# stops a running seat's VM from relaunching.
+tart:share:sops:apply() {
+	if ! tart:bool:is-true "${sops_age_host_share:-true}"; then
+		echo "[INFO] the guest keeps its own age identity: no SOPS age host share"
+		return
+	fi
+	tart:share:sops:validate
+	tart:run-args:host-shares:add
+}
+
 tart:run-args:required-disks:add() {
 	local disk=""
 	for disk in "${required_disks[@]}"; do
@@ -513,8 +528,7 @@ tart:run:main() {
 	tart:run-args:extra:add
 	tart:run-args:bridge-network:add
 	tart:run-args:nested:add
-	tart:share:sops:validate
-	tart:run-args:host-shares:add
+	tart:share:sops:apply
 	tart:run-args:required-disks:add
 	tart:run:execute
 }
