@@ -456,6 +456,18 @@ operator on 2026-10-14): bioskop is the working seat, the fleet's builder and th
 voter, so a runtime error there breaks the toolchain and the cluster API. A failed initrd on
 nikopol-nixos only breaks that VM, and nikopol is a database client.
 
+On nikopol, the corporate Mac, **every step is the operator's gesture**, made by them on nikopol (or
+through the Incus cluster from bioskop for what Incus covers), never something a session runs. The
+rollout is written as an ordered list of those gestures, each with its exact command, once the code
+exists:
+
+. take the cluster nodes off nikopol-nixos: after T4 it carries the nikopol-mgmt CAPN nodes, so they
+  are drained and stopped first (with 🎛️ operations);
+. switch nikopol-nixos to the generation carrying the stage-1 stack unit, and reboot it: it must boot
+  as today, on the EROFS layers, with an empty manifest;
+. `ndh-store freeze`, and the checks of test 1;
+. re-deliver nikopol's containers, if any, then bring the nodes back.
+
 [cols="1,2,2",options="header"]
 |===
 | Test | Gesture | Expected
