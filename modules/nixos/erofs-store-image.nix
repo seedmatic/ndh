@@ -49,6 +49,7 @@ let
   packScript = pkgs.replaceVars ./erofs-store-image.d/pack.sh {
     inherit nixBashTrampoline;
     loggerTag = "nixos.erofsStoreImage";
+    secretMaterialGuard = import ./secret-material-guard.nix { inherit pkgs; };
   };
 in
 pkgs.runCommand name
@@ -58,6 +59,12 @@ pkgs.runCommand name
       pkgs.erofs-utils
     ];
     passthru = { inherit label uuid closureInfo; };
+    # The image's bytes name every path it packs, so nix's reference scan would record the whole
+    # layer as references of the image, and every copy of the image would bring the same paths along
+    # as plain store paths (measured on nikopol: a 7.6 GiB layer with a 16.7 GiB closure). What the
+    # image holds is its content, not its dependencies: it records none.
+    __structuredAttrs = true;
+    unsafeDiscardReferences.out = true;
   }
   ''
     ${pkgs.bash}/bin/bash ${packScript} \

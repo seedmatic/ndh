@@ -341,6 +341,7 @@ let
         # not part of it, so naming the runtime toplevel adds no reference to the
         # bringup closure.
         runtimeSystemToplevel = "${runtimeSystemPath}";
+        secretMaterialGuard = "${import ./secret-material-guard.nix { inherit pkgs; }}";
         systemdLibUdevd = "${pkgs.systemd}/lib/systemd/systemd-udevd";
         channelFlag = if includeChannel then "--channel ${channelSources}" else "";
         bootSizePolicyNote = builtins.toJSON "ZFS bringup artifacts generated from canonical zfs-pool-disk-map definitions.";
@@ -425,7 +426,9 @@ let
     image = binding.imageName;
     inherit (binding) label purpose;
     mountPoint = binding.roMountPoint;
-    rootPath = "${binding.rootPath}";
+    # Named, not depended on: the layer already holds this closure, and a context here would make the
+    # manifest — and every bundle that links it — carry the whole system again as plain store paths.
+    rootPath = builtins.unsafeDiscardStringContext "${binding.rootPath}";
   }) storeLayerBindings;
 
   # Projections of the stack onto the shape each consumer needs.  The shell specs
@@ -452,7 +455,7 @@ let
     ) storeLayerBindings
   );
 
-  diskImages =
+  builtDiskImages =
     (vmToolsBase.override {
       rootModules = [
         "zfs"
@@ -536,6 +539,23 @@ let
             source ${buildCommandScript}
           ''
       );
+
+  # The guest writes its Nix database into the pool, and that database names every path it
+  # registered, so nix's scan of these bytes records the whole stack's closure as references of the
+  # disks (measured on nikopol: 1 856 paths, 16.6 GiB) — paths the store layers already hold. The
+  # disks are their bytes and nothing else, so a copy that records no reference is what the bundle
+  # carries. A copy, because runInLinuxVM passes its attributes through the environment and cannot
+  # take structured attributes itself.
+  diskImages =
+    pkgs.runCommand "${name}-detached"
+      {
+        __structuredAttrs = true;
+        unsafeDiscardReferences.out = true;
+      }
+      ''
+        mkdir "$out"
+        cp -r --sparse=always ${builtDiskImages}/. "$out"/
+      '';
 in
 {
   inherit diskImages storeImages storeLayersSpec;
