@@ -39,7 +39,7 @@ profiles/                   # .common.nix (base options), committed.nix
 hosts/                      # Per-host configs: bioskop/, nikopol/
 catalog/default.nix         # Central data: users, networks (lan/tailnet), clusters
 inventory/default.nix       # Host form (baremetal/vm), VM provider, builder specs
-overlays/                   # Nixpkgs overlays (bird, qemu, direnv, incus…)
+overlays/                   # Nixpkgs overlays (qemu, direnv, incus…)
 pkgs/                       # Custom derivations (tart-guest-agent)
 sandbox/                    # VM working directory (disk images, manifests)
 ```
