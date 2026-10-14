@@ -267,11 +267,16 @@ the upper's base is not older than its DB: the upper and the DB are exactly as t
 refused freeze, which is lost whole, never applied by halves. Decided by the operator on 2026-10-14,
 after the probe's test 7
 
-| in degraded mode the upper is mounted as the **top lower, never as an upperdir**: the store is
-read-only by construction, and nothing is written to an upper built on another base
+| in degraded mode the upper is mounted as the **top lower, never as an upperdir**, with
+`redirect_dir=nofollow,metacopy=off`: the store is read-only by construction, nothing is written to
+an upper built on another base, and that upper can only **hide** a name of the base, never make it
+serve another file's data. Degraded mode **boots to repair**: never a state to run builds or
+workloads in
 | the generation being booted usually lives only in the upper — every switch since the last freeze —
 so a store without it has no `init` for it, and the boot stops in the initrd's emergency shell: the
-probe's test 7, 2026-10-14. Decided by the operator on 2026-10-14
+probe's test 7, 2026-10-14. Decided by the operator on 2026-10-14. Over another base, a redirect or a
+metacopy entry could point a name at another file's data, while a whiteout only hides; not following
+them makes a mismatched upper fail as a missing file, never as a wrong one (🛡️, review of 746445db)
 
 | **two generations stay in the bootloader until the next compaction**, the current one and the
 previous one, and **both initrds read the manifest**

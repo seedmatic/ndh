@@ -143,17 +143,20 @@ mkdir -p "$store" "$rw/upper"
 # Degraded: a read-only overlay with no upperdir, so the store is read-only by construction rather
 # than by a remount that could fail (🛡️ review of af723ca3), and the upper, built on another base, is
 # never written. It is still the top lower: the generation being booted usually lives only there,
-# and without it the initrd cannot find its init, so the operator could not log in. Each failure
-# drops what failed: the frozen layers, then the upper.
+# and without it the initrd cannot find its init, so the operator could not log in. Its redirects
+# and metacopy entries are not followed: over another base they could make a name serve another
+# file's data, while a whiteout can only hide one (🛡️ review of 746445db). Each failure drops what
+# failed: the frozen layers, then the upper.
+degraded_opts="ro,redirect_dir=nofollow,metacopy=off"
 upper_top=true
 mount_degraded() {
-  if mount -t overlay overlay -o "ro,lowerdir=$rw/upper:${lowerdirs:+$lowerdirs:}$erofs_sysroot" "$store"; then
+  if mount -t overlay overlay -o "$degraded_opts,lowerdir=$rw/upper:${lowerdirs:+$lowerdirs:}$erofs_sysroot" "$store"; then
     return
   fi
   stage2=""
-  if mount -t overlay overlay -o "ro,lowerdir=$rw/upper:$erofs_sysroot" "$store"; then return; fi
+  if mount -t overlay overlay -o "$degraded_opts,lowerdir=$rw/upper:$erofs_sysroot" "$store"; then return; fi
   upper_top=false
-  mount -t overlay overlay -o "ro,lowerdir=$erofs_sysroot" "$store"
+  mount -t overlay overlay -o "$degraded_opts,lowerdir=$erofs_sysroot" "$store"
 }
 
 if [ -n "$degraded" ]; then
