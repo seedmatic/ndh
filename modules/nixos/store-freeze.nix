@@ -119,11 +119,15 @@ in
   config = lib.mkIf cfg.enable {
     # The secret sweep treats built outputs as public because their .drv is kept and swept: a secret
     # interpolated at evaluation lands there (🛡️, 2026-10-14).
-    nix.settings.keep-derivations = lib.mkDefault true;
+    nix.settings.keep-derivations = true;
     assertions = [
       {
-        assertion = config.nix.settings.keep-derivations or false;
-        message = "ndh.storeFreeze needs nix.settings.keep-derivations = true: the secret sweep exempts built outputs only because their .drv is kept and swept";
+        # extraOptions lines come after the settings in nix.conf and win over them (measured on
+        # the probe: keep-derivations = true, then = false, and the GC took every .drv).
+        assertion =
+          (config.nix.settings.keep-derivations or false)
+          && !(lib.hasInfix "keep-derivations" config.nix.extraOptions);
+        message = "ndh.storeFreeze needs keep-derivations = true in nix.settings and nowhere in nix.extraOptions: the secret sweep exempts built outputs only because their .drv is kept and swept";
       }
     ];
 
