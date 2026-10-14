@@ -10,8 +10,8 @@
 # layer frozen from it — then the upper is emptied, once, before mounting.
 #
 # Never fails the boot for a manifest problem: it falls back to an older stack, else to the bare
-# EROFS layers, and writes $RUN_DIR/store-degraded, which masks nix-daemon in stage 2 and fails a
-# unit loudly. It fails only when no store can be mounted at all.
+# EROFS layers, mounted read-only WITHOUT the upper, and writes $RUN_DIR/store-degraded, which masks
+# nix-daemon in stage 2 and fails a unit loudly. It fails only when no store can be mounted at all.
 #
 # Env: SYSROOT, RW_DATASET, RW_MOUNT, STACK_DIR, FROZEN_ROOT, EROFS_LOWERS (colon list, newest first),
 #      RUN_DIR, MANIFEST_VERSION.
@@ -127,12 +127,28 @@ for snap in $names; do
 done
 
 erofs_sysroot=$(tr ':' '\n' <<<"$EROFS_LOWERS" | sed "s|^|$SYSROOT|" | paste -sd:)
-mkdir -p "$store" "$rw/upper" "$rw/work"
-if ! mount -t overlay overlay \
-  -o "lowerdir=${lowerdirs:+$lowerdirs:}$erofs_sysroot,upperdir=$rw/upper,workdir=$rw/work" "$store"; then
-  degrade "the stack did not mount; falling back to the bare EROFS layers"
-  stage2=""
-  mount -t overlay overlay -o "lowerdir=$erofs_sysroot,upperdir=$rw/upper,workdir=$rw/work" "$store"
+mkdir -p "$store"
+
+# Degraded: the lowers only, NO upper — a read-only overlay. The persistent upper was built on
+# another base, so it is never mixed with this stack nor written while degraded, and the store is
+# read-only by construction rather than by a remount that could fail (🛡️ review of af723ca3).
+mount_degraded() {
+  mount -t overlay overlay -o "ro,lowerdir=${1:+$1:}$erofs_sysroot" "$store"
+}
+
+if [ -n "$degraded" ]; then
+  if ! mount_degraded "$lowerdirs"; then
+    stage2=""
+    mount_degraded ""
+  fi
+else
+  mkdir -p "$rw/upper" "$rw/work"
+  if ! mount -t overlay overlay \
+    -o "lowerdir=${lowerdirs:+$lowerdirs:}$erofs_sysroot,upperdir=$rw/upper,workdir=$rw/work" "$store"; then
+    degrade "the stack did not mount; the bare EROFS layers, read-only"
+    stage2=""
+    mount_degraded ""
+  fi
 fi
 
 erofs_json=$(tr ':' '\n' <<<"$EROFS_LOWERS" | sed 's/.*/"&"/' | paste -sd,)

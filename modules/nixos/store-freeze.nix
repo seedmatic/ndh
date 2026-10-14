@@ -146,7 +146,8 @@ in
     systemd.sockets.nix-daemon.unitConfig.ConditionPathExists = "!${runDir}/store-degraded";
 
     systemd.services = {
-      # Loud on purpose: a failed unit and a console message, the store read-only.
+      # Loud on purpose: a failed unit and a console message. The store is already read-only: the
+      # initrd mounted it without its upper.
       ndh-store-degraded = {
         description = "The store stack fell back: nix is masked, the store read-only";
         unitConfig.ConditionPathExists = "${runDir}/store-degraded";
@@ -160,7 +161,6 @@ in
           StandardOutput = "journal+console";
         };
         script = ''
-          ${pkgs.util-linux}/bin/mount -o remount,ro /nix/store || true
           echo "ndh-store: DEGRADED — $(cat ${runDir}/store-degraded)"
           echo "ndh-store: nix-daemon is masked and /nix/store is read-only; repair the manifest, then reboot"
           exit 1
