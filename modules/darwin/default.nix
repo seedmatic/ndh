@@ -23,7 +23,6 @@
     ./headscale-client-kind.nix
     ./tailnet-client-tools.nix
     ./ddns.nix
-    ./bird-daemon.nix
     ./lan-dns-resolver.nix
     ./baremetal-resolvers.nix
     ./baremetal-link.nix

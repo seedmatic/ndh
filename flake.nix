@@ -51,7 +51,6 @@
     flake-commons.url = "flake-commons";
 
     # 2. Aggregator passthroughs (alphabetized)
-    bird.follows = "flake-commons/bird";
     chromium-bin.follows = "flake-commons/chromium-bin";
     darwin.follows = "flake-commons/darwin";
     disko.follows = "flake-commons/disko";
@@ -2288,7 +2287,6 @@
             flox = inputs.flox.packages.${hostSystem}.default;
           };
 
-        birdOverlay = inputs: import ./overlays/bird.nix inputs;
         qemuOverlay = inputs: import ./overlays/qemu.nix inputs;
         incusOverlay = inputs: import ./overlays/incus.nix inputs;
         lazygitOverlay = inputs: import ./overlays/lazygit.nix inputs;
