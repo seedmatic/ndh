@@ -1233,6 +1233,10 @@ then hid that upper (measured 2026-10-14)
 
 | the host-side store URL names the **resolved** view, never `.lower/current`
 | nix refuses a symlink on a store path or its parents
+
+| a delivery copies **without checking signatures**
+| its source is nerd-nixos's own store, which built or validated every path, and most carry no
+signature: a checked copy refused the first path of the first real delta (test 6, 2026-10-14)
 |===
 
 [source,ini]
@@ -1330,7 +1334,11 @@ about an append (a wrong conclusion drawn exactly that way on 2026-10-14, discar
 === The tests the implementation must pass — the container
 
 Tests 1 to 5 passed on 2026-10-14 on a throwaway nerd-nixos (`incus-probe`, standalone Incus, layers
-from the container's lock). Test 6 needs event B, which waits for the layer append to exist.
+from the container's lock). Test 6 passed the same day **synthetically**: a runtime drop-in gave
+the lower and store units a contract one layer short, which changes the layer set as an append does,
+then the real contract again. Both ways the store unit refused before mounting and named `reset`;
+after `reset` and `deliver` the container ran (95 paths copied one way, none on the way back). The
+materializer's append itself is exercised once it exists.
 
 [cols="1,2,2",options="header"]
 |===
