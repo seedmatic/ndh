@@ -91,7 +91,9 @@ deliver() {
 
   systemctl start "ndh-incus-container-store-$1.service"
   # Only the delta lands in the upper: nix reads the lower's DB, so what the layers hold is not copied.
-  nix copy --to "$store" "$toplevel"
+  # The source is nerd-nixos's own store, which built or validated every path; most carry no
+  # signature, so a checked copy refuses the first path of any delta.
+  nix copy --no-check-sigs --to "$store" "$toplevel"
   nix-env --store "$store" -p "$dir/root/nix/var/nix/profiles/system" --set "$toplevel"
   echo "ndh-incus-container: $1 ← $toplevel"
 }
