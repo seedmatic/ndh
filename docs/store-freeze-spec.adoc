@@ -227,6 +227,21 @@ the pre-commit guards); a hit **refuses** the freeze and names only the path
 | the 2026-10-10 class: a plaintext path that reached the store becomes indelible once frozen. **The
 gesture refuses entirely until the sweep exists and passes**
 
+| the sweep's **scope** is every entry but a built output: paths with no deriver (sources, eval
+copies, `nix-store --add`), every `.drv`, anything invalid. **`keep-derivations = true`** is asserted
+on a frozen level
+| the leak class is a path ADDED to the store, never built. A built output is public; a secret
+interpolated into it at evaluation sits in its `.drv`, which keep-derivations keeps and the sweep
+reads. Measured on nikopol-nixos on 2026-10-14: an 11 G upper held 415 matching files, almost all
+public test fixtures of built packages (mbedtls, awscli, openssh…), which would block every freeze.
+Decided by 🛡️ on 2026-10-14
+
+| a hit passes only through **`ndh-store freeze --accept {store path}`**, recorded with the path's
+**narHash**, re-checked at every sweep, and listed in every report; never a name allow-list
+| a fetched public source or a build-time key (libcamera's `ipa-priv-key.pem`) is accepted once, until
+nixpkgs moves it; the hash binding means the same name with other content is refused again. Anyone
+can name a path, so a name alone proves nothing (🛡️, 2026-10-14)
+
 | ONE `zfs snapshot tank/nerd/nix/rwstore@T tank/nerd/nix/var/nix/db@T`
 | one command, atomic across both datasets: the store and its DB are frozen together, crash-consistent
 
@@ -482,7 +497,10 @@ Implementation: `raw.lxc` is ONE key, already holding `lxc.init.cmd`; the hook g
 value, newline-separated, never as a second `-c raw.lxc=…` (which would replace the first and lose
 init). Every delivery rewrites that value. It runs on the host before the rootfs mount, so it tests
 the host path, and it is named by an absolute path, `/run/current-system/sw/bin/…` (LXC's PATH, not
-the unit's): a store path would outlive its generation in `raw.lxc`, and a GC could take it
+the unit's): a store path would outlive its generation in `raw.lxc`, and a GC could take it. This
+ties every container's start to the host's current generation, so the hook is installed by the SAME
+module as the containers (`environment.systemPackages`): it travels with them, and a generation
+without the module has no container to start (🖥️ incus, 2026-10-14)
 
 | at a freeze-reboot: freeze, then **re-deliver every container**, then reap the old snapshots
 | a container's lower is a snapshot of the old upper; reaping first would pull it from under it
@@ -513,7 +531,9 @@ clean `--repair-path` failure
 verify clean, "cannot repair path" with no substituter
 
 | the stamp beside a consumer's upper is ours, never the kernel's: it names the delivery snapshot,
-the **GUID** of every ZFS snapshot below the upper, and the layers' paths, order and top-level entries
+the **GUID** of every ZFS snapshot below the upper, and the layers' paths, order and top-level
+entries. It is checked BEFORE the overlay mount, and a mismatch FAILS the unit, never skips nor
+warns; the container's pre-start hook then refuses it (measured: a reversed layer order)
 | the kernel does not refuse an upper over a newer snapshot of the same dataset, and with two
 snapshot lowers it runs without `index` at all. A name can be renamed, a GUID cannot (🛡️, review of
 3168f933)
@@ -627,9 +647,10 @@ guest's raw disks finds no copy (a marker delivered only over stdin, never in an
 
 == Open questions
 
-* **The secret sweep**: its shapes are rke2lab's pre-commit guards (`token_shape_guard`); whether to
-  share that script or restate it, and in which language. The Go porting of the tooling is a separate
-  chantier.
+* **The secret sweep**: its shapes restate rke2lab's pre-commit guard (`token_shape_guard`, the JWT,
+  `dckr_pat_` and `glpat-` shapes included since 2026-10-14); whether to share that script instead,
+  and in which language. Whether typed languages beat bash for this tooling is an experiment under
+  evaluation, not a decided chantier.
 * **The interplay with the materializer**: a re-materialization (new EROFS layers) recreates the
   pools, frozen layers included. Plan item 15 (`vm_cpu_count`) and nix's 2e sit on the same hosts.
 * **Native ZFS encryption of the store datasets**, the operator's decision, later: it makes every

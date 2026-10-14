@@ -1,18 +1,20 @@
 # The operator's gestures on nerd-nixos's store stack (docs/store-freeze-spec.adoc).
 #
 #   ndh-store status                       the stack this boot was built on, the manifests, the upper's base
-#   ndh-store freeze {validated system}    freeze the upper into a new layer, then reboot
+#   ndh-store freeze [--accept {store path}]… {validated system}
+#                                          freeze the upper into a new layer, then reboot
 #   ndh-store compact {validated system}   fold every layer above the EROFS ones into one, then reboot
 #   ndh-store purge [--yes] {store path}…  rebuild the layers without those paths and their referrers
 #   ndh-store confirm [--yes]              once booted on a new stack, destroy the layers it no longer names
 #
-# purge and confirm destroy data: without --yes they only list what they would do.
+# purge and confirm destroy data: without --yes they only list what they would do. --accept lets a
+# path the secret sweep refuses through, bound to its narHash: for a public one only.
 #
 # Set by the wrapper: RW_DATASET, DB_DATASET, LAYERS_DATASET, RW_MOUNT, STACK_DIR, FROZEN_ROOT,
 # EROFS_LOWERS, RUN_DIR, MANIFEST_VERSION, SWEEP_SHAPES, CONTAINER_PROJECT, CONTAINER_STATE_ROOT.
 
 usage() {
-  sed -n '3,9p' "${BASH_SOURCE[0]}" >&2
+  sed -n '3,8p' "${BASH_SOURCE[0]}" >&2
   exit 2
 }
 
@@ -92,21 +94,72 @@ gc_and_verify() {
   nix-store --verify || die "nix-store --verify failed — nothing done"
 }
 
-# sweep {dir}: text and binary files alike. grep exits 0 on a match, 1 on none, 2 on an error: only 1
-# is clean, since a sweep that could not run must never let a gesture make what it missed permanent.
+# sweep {dir}: the entries of a store layer that hold a secret shape, text and binary files alike.
+#
+# Its scope is every entry that is NOT a built output: paths with no deriver (sources, eval copies,
+# `nix-store --add`), every .drv, and anything invalid — the leak class of 2026-10-10. A built
+# output is public; a secret interpolated into it at evaluation sits in its .drv, which
+# keep-derivations keeps and this sweeps (🛡️, 2026-10-14). A hit passes only if the operator
+# accepted it, bound to its narHash. grep exits 0 on a match, 1 on none, 2 on an error: only 1 is
+# clean, since a sweep that could not run must never let a gesture make what it missed permanent.
+# It reports store paths only, never a matching line: the line would be the secret.
 sweep() {
-  local hits status=0
-  say "secret sweep of $1"
-  hits=$(grep -rlE -f "$SWEEP_SHAPES" "$1") || status=$?
-  case "$status" in
-    0)
-      say "a secret shape was found in:"
-      listing "$hits"
-      return 1
-      ;;
-    1) ;;
-    *) die "the secret sweep could not run (grep exit $status) — nothing done" ;;
-  esac
+  local dir="$1" entry name status valid derivers hits="" refused="" accepted="" hash
+  local -A built=()
+  say "secret sweep of $dir (every entry but built outputs)"
+  valid=$(nix-store --gc --print-live 2>/dev/null) || die "cannot list the valid paths — nothing done"
+  derivers=$(xargs -r nix-store -q --deriver <<<"$valid") || die "cannot query the derivers — nothing done"
+  while read -r entry name; do
+    if [ "$name" != unknown-deriver ]; then built["${entry#/nix/store/}"]=1; fi
+  done < <(paste -d' ' <(echo "$valid") <(echo "$derivers"))
+  for entry in "$dir"/*; do
+    [ -e "$entry" ] || [ -L "$entry" ] || continue
+    name="${entry##*/}"
+    [ -z "${built[$name]:-}" ] || continue
+    status=0
+    grep -rqE -f "$SWEEP_SHAPES" "$entry" || status=$?
+    case "$status" in
+      0) hits+="${hits:+$'\n'}$name" ;;
+      1) ;;
+      *) die "the secret sweep could not run (grep exit $status on $name) — nothing done" ;;
+    esac
+  done
+  while read -r name; do
+    [ -n "$name" ] || continue
+    hash=$(nix-store -q --hash "/nix/store/$name" 2>/dev/null || true)
+    if [ -n "$hash" ] && grep -qxF "$name $hash" "$STACK_DIR/accepted" 2>/dev/null; then
+      accepted+="${accepted:+$'\n'}/nix/store/$name"
+    else
+      refused+="${refused:+$'\n'}/nix/store/$name"
+    fi
+  done <<<"$hits"
+  if [ -n "$accepted" ]; then
+    say "$(wc -l <<<"$accepted") paths hold a secret shape and were ACCEPTED, bound to their narHash:"
+    listing "$accepted"
+  fi
+  if [ -n "$refused" ]; then
+    say "$(wc -l <<<"$refused") paths hold a secret shape:"
+    listing "$refused"
+    say "purge them, or, for a PUBLIC one only: ndh-store freeze --accept {store path} …"
+    return 1
+  fi
+  say "secret sweep clean"
+}
+
+# accept {store path}: let one path the sweep refuses through, recorded with its narHash, so the
+# same name with other content is refused again.
+accept() {
+  local path hash name
+  [[ "$1" == /nix/store/* ]] || die "$1 is not a store path"
+  path="/nix/store/$(cut -d/ -f4 <<<"$1")"
+  hash=$(nix-store -q --hash "$path") || die "$path is not a valid store path — it cannot be accepted"
+  name="${path#/nix/store/}"
+  touch "$STACK_DIR/accepted"
+  grep -v "^$name " "$STACK_DIR/accepted" >"$STACK_DIR/accepted.tmp" || true
+  echo "$name $hash" >>"$STACK_DIR/accepted.tmp"
+  sync "$STACK_DIR/accepted.tmp"
+  mv "$STACK_DIR/accepted.tmp" "$STACK_DIR/accepted"
+  say "accepted $path, bound to $hash"
 }
 
 # base_layers: the committed current stack, which must be what the upper sits on — else the stack
@@ -240,6 +293,12 @@ drop_layer() {
 # and a failure stops it before any snapshot.
 freeze() {
   local base snapshot
+  while [ "${1:-}" = --accept ]; do
+    [ -n "${2:-}" ] || usage
+    accept "$2"
+    shift 2
+  done
+  [ -n "${1:-}" ] || usage
   preflight "$1"
   gc_and_verify
   sweep "$RW_MOUNT/upper" || die "nothing frozen — purge those paths first"
@@ -390,9 +449,13 @@ confirm() {
 
 case "${1:-}" in
   status) status ;;
-  freeze | compact)
+  freeze)
+    shift
+    freeze "$@"
+    ;;
+  compact)
     [ -n "${2:-}" ] || usage
-    "$1" "$2"
+    compact "$2"
     ;;
   purge)
     shift

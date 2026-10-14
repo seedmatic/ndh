@@ -117,6 +117,16 @@ in
   '';
 
   config = lib.mkIf cfg.enable {
+    # The secret sweep treats built outputs as public because their .drv is kept and swept: a secret
+    # interpolated at evaluation lands there (🛡️, 2026-10-14).
+    nix.settings.keep-derivations = lib.mkDefault true;
+    assertions = [
+      {
+        assertion = config.nix.settings.keep-derivations or false;
+        message = "ndh.storeFreeze needs nix.settings.keep-derivations = true: the secret sweep exempts built outputs only because their .drv is kept and swept";
+      }
+    ];
+
     # The stage-1 unit owns the store mount instead.
     fileSystems.${storeLayers.storeMountPoint}.enable = lib.mkForce false;
 
