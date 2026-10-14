@@ -19,7 +19,7 @@
 set -euo pipefail
 
 allow_list='@allowList@'
-grep='@grep@' awk='@awk@' sha256sum='@sha256sum@' find='@find@' xargs='@xargs@'
+grep='@grep@' awk='@awk@' sha256sum='@sha256sum@' find='@find@' xargs='@xargs@' bash='@bash@'
 
 declare -a roots=() prunes=()
 case "${1:-}" in
@@ -46,7 +46,7 @@ fi
 # The candidates: any file naming either marker anywhere; the exact rule below decides. grep's own
 # "no match" (1) is not a failure, an unreadable file (2) is: each batch maps the first to success.
 # shellcheck disable=SC2016  # expanded by the batch's bash, not here
-if ! "$xargs" -0 -r bash -c '"$0" -laE "PRIVATE[ ]KEY|AGE-SECRET[-]KEY-1" -- "$@"; s=$?; [ "$s" -le 1 ]' "$grep" \
+if ! "$xargs" -0 -r "$bash" -c '"$0" -laE "PRIVATE[ ]KEY|AGE-SECRET[-]KEY-1" -- "$@"; s=$?; [ "$s" -le 1 ]' "$grep" \
   < "$work/files" > "$work/candidates" 2> "$work/grep.err"; then
   echo "secret-material-guard: REFUSED — a file it must scan cannot be read:" >&2
   sed 's/^/  /' "$work/grep.err" >&2

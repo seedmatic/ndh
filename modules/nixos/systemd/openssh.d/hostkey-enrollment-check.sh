@@ -24,7 +24,9 @@ main() {
   reason=""
 
   fingerprint() {
-    ssh-keygen -lf "$1" 2>/dev/null | awk '{print $2}'
+    # Empty when the key is unreadable or invalid — the fingerprint_unavailable case reported below —
+    # never an abort under pipefail.
+    ssh-keygen -lf "$1" 2>/dev/null | awk '{print $2}' || true
   }
 
   if [ ! -s "$EXPECTED_PUB" ]; then

@@ -34,10 +34,7 @@ main() {
 
   # No layer packs secret material in the clear: a layer holds whole closures, and since it records
   # no reference to them, nothing downstream would see what it carries.
-  # Checked by hand: main runs under the logger wrapper, where errexit does not carry.
-  if ! bash "@secretMaterialGuard@" --paths-file "$store_paths_file"; then
-    exit 1
-  fi
+  bash "@secretMaterialGuard@" --paths-file "$store_paths_file"
 
   # --force-uid/gid=0 + -T 0 + a fixed UUID are what make the output
   # bit-identical across hosts, which is what lets the fleet share one layer.

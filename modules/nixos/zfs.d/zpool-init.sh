@@ -64,7 +64,7 @@ zpool:expand() {
 	local leaves
 	leaves="$(zpool status --json "$pool" \
 		| yq -p=json -r \
-			'[.. | select(has("path")) | .path] | join(" ")')"
+			'[.. | select(has("path")) | .path] | join(" ")' || true)"
 
 	if [ -z "$leaves" ]; then
 		: "[zpool-init][WARN] could not enumerate leaf vdevs for $pool; skipping online -e"
@@ -72,12 +72,14 @@ zpool:expand() {
 	fi
 
 	: "[zpool-init][INFO] bringing leaf vdevs online with expand on $pool: $leaves"
-	# Intentionally no error suppression: if `zpool online -e` fails the
-	# journal should carry the reason.  Subsequent runs are cheap metadata
-	# updates when the pool is already at full size, so it is safe to run
-	# unconditionally.
+	# Not suppressed, and not fatal: if `zpool online -e` fails the journal carries
+	# zpool's own reason, and the datasets are still ensured after it.  Subsequent
+	# runs are cheap metadata updates when the pool is already at full size, so it
+	# is safe to run unconditionally.
 	# shellcheck disable=SC2086
-	zpool online -e "$pool" $leaves
+	if ! zpool online -e "$pool" $leaves; then
+		: "[zpool-init][WARN] zpool online -e failed on $pool (its reason is above)"
+	fi
 }
 
 zpool:zfs:ensure_datasets() {

@@ -1136,6 +1136,9 @@
                 done
                 touch $out
               '';
+          # The logger wrapper every ndh script runs under: a `set -e` script's failure stops it and fails
+          # the wrapper.
+          logger-command-run-bats = import ./modules/.common.d/shell.d/tests/package.nix { inherit pkgs; };
           incus-cluster-cert-bats = import ./modules/.common.d/incus-cluster-cert.d/tests/package.nix {
             inherit pkgs;
           };

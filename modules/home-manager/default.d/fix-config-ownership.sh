@@ -48,7 +48,7 @@ main() {
     if [ -e "$f" ] || [ -L "$f" ]; then
       current_owner="$(stat -c '%U' "$f" 2>/dev/null || echo unknown)"
       if [ "$current_owner" != "$user" ]; then
-        $SUDO chown -Rh "$user:" "$f"
+        $SUDO chown -Rh "$user:" "$f" || echo "[warn] chown $f failed" >&2
       fi
     fi
   done

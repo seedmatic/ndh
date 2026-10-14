@@ -42,9 +42,10 @@ EOF
       (.keys.host.slots."26-03-03".private | key) headComment = "sops:encrypted"
     ' >"$keys"
   (cd "$repo" && sops --input-type yaml --output-type yaml encrypt -i modules/home-manager/ssh.d/keys.yaml)
-  # The real ndh::logger:command:run runs the command as `if "$@"` — errexit is OFF inside it — so the
-  # stub does the same: a failure the script does not check would otherwise pass here and not there.
-  printf 'ndh::logger:command:run() { shift; local rc=0; if "$@"; then :; else rc=$?; fi; return "$rc"; }\n' >"$BATS_TEST_TMPDIR/trampoline.sh"
+  # The stub runs the command the way the real ndh::logger:command:run does — through its
+  # ndh::logger:command:invoke, sourced from the real logger — without its log sinks: a failure the
+  # script does not check behaves here as it does there.
+  printf 'source "%s"\nndh::logger:command:run() { shift; ndh::logger:command:invoke "$@"; return "$NDH_LOGGER_COMMAND_RC"; }\n' "$NDH_LOGGER_SH" >"$BATS_TEST_TMPDIR/trampoline.sh"
   bake "alpha,alpha.lan,beta"
 }
 
