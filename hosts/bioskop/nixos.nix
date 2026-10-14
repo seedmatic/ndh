@@ -13,7 +13,8 @@
     # ★ This guest decrypts with an age identity the operator places at its keyFile, from their
     # secret manager. It imports nothing from its host: the /srv/host/sops.d share is bioskop's
     # ~/.config/sops, which holds the OPERATOR identity, and the import refreshed it at every boot.
-    # A missing identity fails the activation (phase enforce); nothing generates one.
+    # A missing identity fails the age bootstrap unit and then sops-install-secrets (phase enforce);
+    # nothing generates one.
     #
     # ⛔ No sshKeyPaths: the guest's sshd host key is the `rdp-host` material, a key that
     # travels in keys.yaml to every host; the identity derived from it is a recipient of nothing.
