@@ -55,13 +55,21 @@ create() {
     -c cluster.evacuate=stop \
     -c boot.autostart=true \
     -c raw.lxc="lxc.init.cmd = /nix/var/nix/profiles/system/init"
+  # From here a failure deletes the instance: a half-configured one would make the next `create`
+  # stop at "already exists".
+  created="$1"
+  trap 'incus delete --force --project "$PROJECT" "$created"' ERR
   for mountpoint in proc sys dev run tmp; do
     incus file create --project "$PROJECT" --type=directory "$1/$mountpoint"
   done
   incus config device add --project "$PROJECT" "$1" nix disk \
     source="$dir/root/nix" path=/nix recursive=true
-  incus config device add --project "$PROJECT" "$1" nix-lower disk \
-    source="$LOWER_CURRENT" path="$GUEST_LOWER" readonly=true recursive=true
+  # The lower view's store is a mount of its own, and the kernel refuses a recursive read-only bind:
+  # its two halves go in as two plain read-only binds.
+  incus config device add --project "$PROJECT" "$1" nix-lower-store disk \
+    source="$LOWER_CURRENT/nix/store" path="$GUEST_LOWER/nix/store" readonly=true
+  incus config device add --project "$PROJECT" "$1" nix-lower-db disk \
+    source="$LOWER_CURRENT/nix/var/nix" path="$GUEST_LOWER/nix/var/nix" readonly=true
   incus config device add --project "$PROJECT" "$1" nix-upper disk \
     source="$dir/upper" path="$GUEST_UPPER"
   local device keys
@@ -69,6 +77,7 @@ create() {
     mapfile -t keys < <(DEVICE="$device" yq -p json -oy -r '.devices[strenv(DEVICE)] | to_entries | .[] | .key + "=" + .value' <<<"$info")
     incus config device add --project "$PROJECT" "$1" "$device" "${keys[@]}"
   done
+  trap - ERR
   echo "ndh-incus-container: $1 created on ${target:-this standalone member} — deliver it, then: incus start --project $PROJECT $1"
 }
 
