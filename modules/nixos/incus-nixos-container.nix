@@ -1,13 +1,14 @@
 # The one way ndh hosts a service in Incus: a NixOS container whose /nix/store is an overlay on
-# nerd-nixos's EROFS layers (docs/private-binary-cache-spec.adoc, _The containers' /nix/store_).
-# attic-nixos and headscale-nixos are its tenants; each adds only its own NixOS modules.
+# a ZFS snapshot of nerd-nixos's own store over its EROFS layers (docs/private-binary-cache-spec.adoc,
+# _The containers' /nix/store_). attic-nixos and headscale-nixos are its tenants; each adds only its
+# own NixOS modules.
 #
 # Every mount belongs to nerd-nixos — the container cannot mount its own /nix/store before an init
-# that lives in it:
-#   * a store overlay per container: the EROFS layers FLAT as lowerdir, the container's dataset as
-#     upper, passed in as a disk device;
-#   * one read-only metadata view of the same layers, which nix inside the container reads as its
-#     lower store (paths and DB), and which is NEVER an overlayfs lower.
+# that lives in it. Per container:
+#   * a store overlay: the snapshot's upper on top of the EROFS layers, all FLAT as lowerdir, the
+#     container's dataset as upper, passed in as a disk device;
+#   * a read-only metadata view of the same lowers with the snapshot's DB copied beside it, which
+#     nix inside the container reads as its lower store, and which is NEVER an overlayfs lower.
 #
 # Why flat, and why `check-mount=false` (measured on bioskop-nixos 2026-10-11, kernel 6.18.55):
 # an overlay whose lowerdir is itself an overlay mounts, but the kernel silently falls back to
@@ -21,9 +22,9 @@
 # container's root IS nerd-nixos's root. A tenant that listens on the tailnet (attic) is a root
 # shell on the Incus host if it is compromised. Revisit with `shift=true` or a `raw.idmap`.
 #
-# The container never evaluates a flake. Its system is built here, from the same package set as
-# nerd-nixos (so its closure overlaps the layers), and delivered by a host-side `nix copy` into its
-# store. Creating, delivering and switching are the operator's gestures (`ndh-incus-container`).
+# The container never evaluates a flake. Its system is built here, into nerd-nixos's store, so the
+# snapshot `deliver` takes already carries it; the container restarts on it with an empty upper.
+# Creating and delivering are the operator's gestures (`ndh-incus-container`).
 {
   config,
   lib,
@@ -33,13 +34,12 @@
 let
   cfg = config.ndh.incusNixosContainers;
   hostStateVersion = config.system.stateVersion;
-  # The layer contract erofs-store-mount.nix renders: the ordered lowerdirs and the options a
-  # consumer must find on its mount. The flox NRI plugin's pod stores are its second consumer.
+  # The layer contract erofs-store-mount.nix renders: the ordered lowerdirs, the options a consumer
+  # must find on its mount, and where nerd-nixos's upper is. The flox NRI plugin's pod stores are its
+  # second consumer.
   layerContract = "/etc/ndh/store-layers.json";
 
   stateRoot = "/var/lib/ndh-containers";
-  # `current` points at the view of the layer set nerd-nixos booted: `{fingerprint}/nix/{store,var/nix/db}`.
-  lowerCurrent = "${stateRoot}/.lower/current";
 
   # Inside the container: the metadata view and the upper, at fixed paths.
   guestLower = "/nix/.lower";
@@ -110,33 +110,20 @@ let
     dir = "${stateRoot}/${name}";
     dataset = "${cfg.datasetParent}/${name}";
     toplevel = toplevelOf name instance;
-    # The same store as the container's, seen from nerd-nixos: deliveries write the delta here. nix
-    # refuses a symlink on a store path, and `current` is one, so `deliver` puts the view it resolves
-    # to in place of `@lowerView@`.
+    # The same store as the container's, seen from nerd-nixos: `deliver` sets its profile here.
     hostStore = localOverlayStore {
       root = "${stateRoot}/${name}/root";
-      lower = "@lowerView@";
+      lower = "${stateRoot}/${name}/view";
       upper = "${stateRoot}/${name}/upper";
     };
     devices = instance.devices;
   }) cfg.instances;
 
-  lowerScript = pkgs.writeShellApplication {
-    name = "ndh-incus-container-lower";
-    runtimeInputs = [
-      config.nix.package
-      pkgs.coreutils
-      pkgs.findutils
-      pkgs.yq-go
-      pkgs.util-linux
-    ];
-    text = builtins.readFile ./incus-nixos-container.d/lower.sh;
-  };
-
   storeScript = pkgs.writeShellApplication {
     name = "ndh-incus-container-store";
     runtimeInputs = [
       pkgs.coreutils
+      pkgs.findutils
       pkgs.yq-go
       pkgs.util-linux
     ];
@@ -152,12 +139,13 @@ let
       pkgs.coreutils
       pkgs.yq-go
       pkgs.systemd
+      pkgs.util-linux
     ];
     text = ''
       INSTANCES=${lib.escapeShellArg (builtins.toJSON instanceInfo)}
       PROJECT=${lib.escapeShellArg cfg.project}
       POOL=${lib.escapeShellArg (lib.head config.virtualisation.incus.preseed.storage_pools).name}
-      LOWER_CURRENT=${lib.escapeShellArg lowerCurrent}
+      LAYER_CONTRACT=${lib.escapeShellArg layerContract}
       GUEST_LOWER=${lib.escapeShellArg guestLower}
       GUEST_UPPER=${lib.escapeShellArg guestUpper}
       export NIX_CONFIG="extra-experimental-features = ${lib.concatStringsSep " " nixFeatures}"
@@ -247,45 +235,31 @@ in
 
     environment.systemPackages = [ operatorCli ];
 
-    systemd.services = {
-      ndh-incus-container-lower = {
-        description = "Read-only metadata view of the EROFS layers, for the NixOS containers' nix";
-        wantedBy = [ "multi-user.target" ];
-        before = [ "incus.service" ];
-        serviceConfig = {
-          Type = "oneshot";
-          RemainAfterExit = true;
-        };
-        environment = {
-          LAYER_CONTRACT = layerContract;
-          LOWER_ROOT = "${stateRoot}/.lower";
-        };
-        script = lib.getExe lowerScript;
-      };
-    }
-    // lib.mapAttrs' (
+    systemd.services = lib.mapAttrs' (
       name: info:
       lib.nameValuePair "ndh-incus-container-store-${name}" {
         description = "Store overlay of the NixOS container ${name}";
         wantedBy = [ "multi-user.target" ];
         before = [ "incus.service" ];
-        after = [
-          "zfs-mount.service"
-          "ndh-incus-container-lower.service"
-        ];
-        requires = [ "ndh-incus-container-lower.service" ];
-        # The dataset is created by `ndh-incus-container create`, and mounted by zfs-mount, not by a
-        # mount unit, so RequiresMountsFor cannot wait for it. Without this the unit ran at the first
-        # boot on the root fs, and the dataset then hid that upper (measured on the probe, 2026-10-14).
-        unitConfig.ConditionPathIsMountPoint = info.dir;
+        after = [ "zfs-mount.service" ];
+        unitConfig = {
+          # The dataset is created by `ndh-incus-container create`, and mounted by zfs-mount, not by a
+          # mount unit, so RequiresMountsFor cannot wait for it. Without this the unit ran at the first
+          # boot on the root fs, and the dataset then hid that upper (measured on the probe, 2026-10-14).
+          ConditionPathIsMountPoint = info.dir;
+          # Written by the first `deliver`: before it there is no snapshot to mount.
+          ConditionPathExists = "${info.dir}/lower.snapshot";
+        };
         serviceConfig = {
           Type = "oneshot";
           RemainAfterExit = true;
-          ExecStop = "${pkgs.util-linux}/bin/umount ${info.dir}/root/nix/store";
+          ExecStop = [
+            "${pkgs.util-linux}/bin/umount ${info.dir}/root/nix/store"
+            "${pkgs.util-linux}/bin/umount ${info.dir}/view/nix/store"
+          ];
         };
         environment = {
           LAYER_CONTRACT = layerContract;
-          LOWER_CURRENT = lowerCurrent;
           CONTAINER_DIR = info.dir;
           CONTAINER_NAME = name;
         };

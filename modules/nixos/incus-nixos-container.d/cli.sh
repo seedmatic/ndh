@@ -1,22 +1,25 @@
-# The operator's gestures on ndh's NixOS containers. Nothing here runs by itself: creating,
-# delivering and switching change the live system.
+# The operator's gestures on ndh's NixOS containers. Nothing here runs by itself: creating and
+# delivering change the live system.
 #
 #   ndh-incus-container list
-#   ndh-incus-container create  {name}   dataset, store overlay, project, instance and its devices
-#   ndh-incus-container deliver {name}   copy this generation's container system into its store
-#   ndh-incus-container switch  {name}   activate the delivered system in the running container
-#   ndh-incus-container reset   {name}   set a stopped container's store aside after its layers changed
+#   ndh-incus-container create  {name}   dataset, project, instance and its devices
+#   ndh-incus-container deliver {name}   restart the container on a snapshot of this generation's store
 #
-# Set by the wrapper: INSTANCES (JSON), PROJECT, POOL, LOWER_CURRENT, GUEST_LOWER, GUEST_UPPER, NIX_CONFIG.
+# Set by the wrapper: INSTANCES (JSON), PROJECT, POOL, LAYER_CONTRACT, GUEST_LOWER, GUEST_UPPER, NIX_CONFIG.
 
 usage() {
-  sed -n '4,8p' "${BASH_SOURCE[0]}" >&2
+  sed -n '4,6p' "${BASH_SOURCE[0]}" >&2
   exit 2
+}
+
+die() {
+  echo "ndh-incus-container: $1" >&2
+  exit 1
 }
 
 instance() {
   NAME="$1" yq -p json -o json -I0 -e '.[strenv(NAME)]' <<<"$INSTANCES" 2>/dev/null ||
-    { echo "ndh-incus-container: no instance '$1' is declared on this member" >&2; exit 1; }
+    die "no instance '$1' is declared on this member"
 }
 
 field() { KEY="$2" yq -p json -oy -r '.[strenv(KEY)]' <<<"$1"; }
@@ -29,17 +32,17 @@ create() {
   target=$(yq -p json -oy -r '.target // ""' <<<"$info")
 
   if [ "$(incus query /1.0/cluster | yq -p json -oy -r '.enabled')" = true ]; then
-    [ -n "$target" ] || { echo "ndh-incus-container: this member is clustered, and $1 states no target" >&2; exit 1; }
+    [ -n "$target" ] || die "this member is clustered, and $1 states no target"
     placement=(--target "$target")
   elif [ -n "$target" ]; then
-    echo "ndh-incus-container: this Incus is not clustered, so target $target cannot apply to $1" >&2
-    exit 1
+    die "this Incus is not clustered, so target $target cannot apply to $1"
   fi
 
   # Created here, not by disko: disko formats the pool at bringup and never revisits it.
   zfs list -H "$dataset" >/dev/null 2>&1 ||
     zfs create -p -o mountpoint="$dir" -o xattr=sa -o acltype=posixacl -o recordsize=16K "$dataset"
-  systemctl start "ndh-incus-container-store-$1.service"
+  # Incus checks every disk device's source when it adds the device and when it starts the instance.
+  mkdir -p "$dir/root/nix" "$dir/upper" "$dir/view/nix/store" "$dir/view/nix/var/nix"
 
   incus project show "$PROJECT" >/dev/null 2>&1 || incus project create "$PROJECT"
   if incus info --project "$PROJECT" "$1" >/dev/null 2>&1; then
@@ -67,9 +70,9 @@ create() {
   # The lower view's store is a mount of its own, and the kernel refuses a recursive read-only bind:
   # its two halves go in as two plain read-only binds.
   incus config device add --project "$PROJECT" "$1" nix-lower-store disk \
-    source="$LOWER_CURRENT/nix/store" path="$GUEST_LOWER/nix/store" readonly=true
+    source="$dir/view/nix/store" path="$GUEST_LOWER/nix/store" readonly=true
   incus config device add --project "$PROJECT" "$1" nix-lower-db disk \
-    source="$LOWER_CURRENT/nix/var/nix" path="$GUEST_LOWER/nix/var/nix" readonly=true
+    source="$dir/view/nix/var/nix" path="$GUEST_LOWER/nix/var/nix" readonly=true
   incus config device add --project "$PROJECT" "$1" nix-upper disk \
     source="$dir/upper" path="$GUEST_UPPER"
   local device type keys
@@ -80,70 +83,78 @@ create() {
     incus config device add --project "$PROJECT" "$1" "$device" "$type" "${keys[@]}"
   done
   trap - ERR
-  echo "ndh-incus-container: $1 created on ${target:-this standalone member} — deliver it, then: incus start --project $PROJECT $1"
+  echo "ndh-incus-container: $1 created on ${target:-this standalone member} — deliver it"
 }
 
+# The container's lowers are a ZFS snapshot of nerd-nixos's own store, upper and DB taken in ONE
+# command (atomic), on top of the EROFS layers. nerd-nixos built the container's system into that
+# store when it switched, so the snapshot already carries it: the container's upper starts empty and
+# only receives what the container itself writes. nerd-nixos's GC can no longer take a path from
+# under a container, since the snapshot keeps it. Each delivery is a restart on a fresh upper, the
+# way nerd-nixos itself takes a new generation; service data lives on its own devices.
 deliver() {
-  local info dir toplevel store
+  local info dir toplevel store upper_root rw db snapshot previous aside entry old
   info=$(instance "$1")
   dir=$(field "$info" dir)
   toplevel=$(field "$info" toplevel)
   store=$(field "$info" hostStore)
-  store=${store//@lowerView@/$(realpath -e "$LOWER_CURRENT")}
+  upper_root=$(yq -p json -oy -r '.upperRoot' "$LAYER_CONTRACT")
 
-  systemctl start "ndh-incus-container-store-$1.service"
-  # Only the delta lands in the upper: nix reads the lower's DB, so what the layers hold is not copied.
-  # The source is nerd-nixos's own store, which built or validated every path; most carry no
-  # signature, so a checked copy refuses the first path of any delta.
-  nix copy --no-check-sigs --to "$store" "$toplevel"
-  nix-env --store "$store" -p "$dir/root/nix/var/nix/profiles/system" --set "$toplevel"
-  echo "ndh-incus-container: $1 ← $toplevel"
-}
+  incus info --project "$PROJECT" "$1" >/dev/null 2>&1 || die "$1 does not exist — create it first"
+  [ -e "$toplevel" ] || die "$toplevel is not in nerd-nixos's store — switch nerd-nixos to this generation first"
+  [ "$(findmnt -no FSTYPE "$upper_root")" = zfs ] || die "$upper_root is not a ZFS dataset"
+  [ "$(findmnt -no FSTYPE /nix/var/nix/db)" = zfs ] || die "/nix/var/nix/db is not a ZFS dataset"
+  rw=$(findmnt -no SOURCE "$upper_root")
+  db=$(findmnt -no SOURCE /nix/var/nix/db)
+  previous=""
+  if [ -e "$dir/lower.snapshot" ]; then previous=$(cat "$dir/lower.snapshot"); fi
 
-switch() {
-  instance "$1" >/dev/null
-  incus exec --project "$PROJECT" "$1" -- /nix/var/nix/profiles/system/bin/switch-to-configuration switch
-}
-
-# After a re-bringup of nerd-nixos the layers change, and an `index=on` upper is bound to the layer
-# set it was first mounted on (ESTALE). The store unit then refuses to mount and names this gesture.
-# Upper, work and the container's /nix/var/nix go to one dated `.reset-{ts}`, the previous one is
-# deleted, and `deliver` re-populates the store. Service data lives on its own devices.
-reset() {
-  local info dir aside entry old
-  info=$(instance "$1")
-  dir=$(field "$info" dir)
-
-  # A running container still holds the store overlay through its disk device, even once nerd-nixos
-  # has unmounted its own view of it.
-  if incus info --project "$PROJECT" "$1" >/dev/null 2>&1 &&
-    [ "$(incus query "/1.0/instances/$1/state?project=$PROJECT" | yq -p json -oy -r '.status')" != Stopped ]; then
-    echo "ndh-incus-container: $1 is not stopped — incus stop --project $PROJECT $1" >&2
-    exit 1
+  if [ "$(incus query "/1.0/instances/$1/state?project=$PROJECT" | yq -p json -oy -r '.status')" != Stopped ]; then
+    incus stop --project "$PROJECT" "$1"
   fi
   systemctl stop "ndh-incus-container-store-$1.service"
-  if mountpoint -q "$dir/root/nix/store"; then
-    echo "ndh-incus-container: $dir/root/nix/store is still mounted" >&2
-    exit 1
-  fi
+  for entry in "$dir/root/nix/store" "$dir/view/nix/store"; do
+    if mountpoint -q "$entry"; then die "$entry is still mounted"; fi
+  done
 
-  aside="$dir/.reset-$(date -u +%Y%m%dT%H%M%SZ)"
-  mkdir -p "$aside/root/nix/var"
-  for entry in upper work upper.layer-set; do
+  snapshot="ndh-incus-$1-$(date -u +%Y%m%dT%H%M%SZ)"
+  zfs snapshot "$rw@$snapshot" "$db@$snapshot"
+  # Reached host-side first: a snapshot automounted from a private namespace is ENOENT there.
+  [ -d "$upper_root/.zfs/snapshot/$snapshot/upper" ] || die "snapshot $snapshot has no upper"
+
+  aside="$dir/.previous-$snapshot"
+  mkdir -p "$aside/root/nix/var" "$aside/view/nix/var/nix"
+  for entry in upper work upper.layer-set lower.snapshot; do
     if [ -e "$dir/$entry" ]; then mv "$dir/$entry" "$aside/"; fi
   done
   if [ -e "$dir/root/nix/var/nix" ]; then mv "$dir/root/nix/var/nix" "$aside/root/nix/var/"; fi
-  for old in "$dir"/.reset-*; do
-    if [ "$old" != "$aside" ]; then rm -rf --one-file-system "$old"; fi
-  done
-
+  if [ -e "$dir/view/nix/var/nix/db" ]; then mv "$dir/view/nix/var/nix/db" "$aside/view/nix/var/nix/"; fi
+  # A copy, WAL included, never the snapshot's own file: nix opens it normally, and SQLite's
+  # `immutable` mode would ignore the WAL.
+  cp -a "/nix/var/nix/db/.zfs/snapshot/$snapshot" "$dir/view/nix/var/nix/db"
+  mkdir -p "$dir/upper"
+  echo "$snapshot" >"$dir/lower.snapshot"
   systemctl start "ndh-incus-container-store-$1.service"
-  echo "ndh-incus-container: $1 reset, the previous store is in $aside — deliver it, then: incus start --project $PROJECT $1"
+
+  # The snapshot carries the system, so this copies nothing; it stays as the check that it does.
+  # The source is nerd-nixos's own store, which built or validated every path; most carry no
+  # signature, so a checked copy would refuse the first path of any delta.
+  nix copy --no-check-sigs --to "$store" "$toplevel"
+  nix-env --store "$store" -p "$dir/root/nix/var/nix/profiles/system" --set "$toplevel"
+  incus start --project "$PROJECT" "$1"
+
+  # The container runs on the new snapshot: the previous one, and what was set aside, can go.
+  if [ -n "$previous" ]; then
+    zfs destroy "$rw@$previous"
+    zfs destroy "$db@$previous"
+  fi
+  for old in "$dir"/.previous-*; do rm -rf --one-file-system "$old"; done
+  echo "ndh-incus-container: $1 ← $toplevel, on snapshot $snapshot"
 }
 
 case "${1:-}" in
   list) yq -p json -oy -r 'to_entries | .[] | .key + "  target=" + (.value.target // "standalone") + "  " + .value.toplevel' <<<"$INSTANCES" ;;
-  create | deliver | switch | reset)
+  create | deliver)
     [ -n "${2:-}" ] || usage
     "$1" "$2"
     ;;

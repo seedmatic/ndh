@@ -25,6 +25,8 @@ let
   layerContract = {
     inherit lowerdirs;
     requiredOptions = [ "index=on" ];
+    # The dataset holding nerd-nixos's own upper: the NixOS containers' lowers are a snapshot of it.
+    upperRoot = storeLayers.rwMountPoint;
   };
 in
 {
