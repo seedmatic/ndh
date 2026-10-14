@@ -506,6 +506,11 @@ verify clean, "cannot repair path" with no substituter
 | the stamp beside a consumer's upper is ours, never the kernel's
 | the kernel does not refuse an upper over a newer snapshot of the same dataset, and with two
 snapshot lowers it runs without `index` at all
+
+| **a secret that was ever frozen is rotated**, at every level, whatever a purge did
+| a purge makes a path unservable, unfrozen and unreplicable, not erased: a purged marker survived in
+the Mac-side Tart sparse image after `confirm` and `zpool trim` (measured on 2026-10-14), and an SSD
+keeps its old cells (<<purge>>)
 |===
 
 == The tests the implementation must pass
