@@ -70,6 +70,9 @@ let
       nixpkgs.pkgs = pkgs;
       boot.isContainer = true;
       networking.hostName = name;
+      # The iptables firewall needs xt_* modules a container cannot load, and nerd-nixos loads them
+      # only by chance: after its reboot the firewall unit failed in every container (pkttype).
+      networking.nftables.enable = true;
       nix.settings = {
         experimental-features = nixFeatures;
         store = localOverlayStore {
