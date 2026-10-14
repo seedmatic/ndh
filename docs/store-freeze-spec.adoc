@@ -313,7 +313,11 @@ is a mountpoint
 | today the unit is only ordered before `incus.service` and its conditions make it skip silently,
 so Incus autostarts the container on an empty `/nix` ("init not found"). `Requires=` would be too
 blunt: one container's failure would fail `incus-startup`, and no autostart instance of the member
-would start, the cluster nodes included (🖥️ incus). The hook keeps the refusal to that container
+would start, the cluster nodes included (🖥️ incus). The hook keeps the refusal to that container.
+Implementation: `raw.lxc` is ONE key, already holding `lxc.init.cmd`; the hook goes into the same
+value, newline-separated, never as a second `-c raw.lxc=…` (which would replace the first and lose
+init). It runs on the host before the rootfs mount, so it tests the host path, and it is named by an
+absolute store path (LXC's PATH, not the unit's)
 
 | at a freeze-reboot: freeze, then **re-deliver every container**, then reap the old snapshots
 | a container's lower is a snapshot of the old upper; reaping first would pull it from under it
