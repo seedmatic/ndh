@@ -21,6 +21,14 @@
   { echo "ndh-incus-container-store: no stamped layer list — run: ndh-incus-container deliver $CONTAINER_NAME" >&2; exit 1; }
 mapfile -t layers <"$CONTAINER_DIR/lower.layers"
 mapfile -t required < <(yq -p json -oy -r '.requiredOptions[]' "$LAYER_CONTRACT")
+# ZFS snapshots have a null filesystem UUID: over the delivery snapshot alone `index=on` holds, but
+# with nerd-nixos's frozen layers below it the kernel drops it silently (measured 2026-10-14). Then
+# the stamp below — the snapshot, and the layers' content and order — is the only guard, as the
+# store-freeze spec states, and `index=on` is neither requested nor required.
+mapfile -t erofs < <(yq -p json -oy -r '.lowerdirs[]' "$LAYER_CONTRACT")
+if [ "${#layers[@]}" -gt "${#erofs[@]}" ]; then
+  mapfile -t required < <(printf '%s\n' "${required[@]}" | grep -vx 'index=on' || true)
+fi
 upper_root=$(yq -p json -oy -r '.upperRoot' "$LAYER_CONTRACT")
 snapshot=$(cat "$CONTAINER_DIR/lower.snapshot")
 frozen="$upper_root/.zfs/snapshot/$snapshot/upper"
@@ -69,7 +77,7 @@ fi
 
 if ! mountpoint -q "$store"; then
   mount -t overlay overlay \
-    -o "lowerdir=$lowerdirs,upperdir=$CONTAINER_DIR/upper,workdir=$CONTAINER_DIR/work,$requested" "$store"
+    -o "lowerdir=$lowerdirs,upperdir=$CONTAINER_DIR/upper,workdir=$CONTAINER_DIR/work${requested:+,$requested}" "$store"
 fi
 
 options=",$(findmnt -no OPTIONS "$store"),"

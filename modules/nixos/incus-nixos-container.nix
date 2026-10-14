@@ -124,6 +124,7 @@ let
     runtimeInputs = [
       pkgs.coreutils
       pkgs.findutils
+      pkgs.gnugrep
       pkgs.yq-go
       pkgs.util-linux
     ];

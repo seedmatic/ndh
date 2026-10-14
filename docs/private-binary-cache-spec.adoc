@@ -1217,7 +1217,11 @@ layers, flat**, never nerd-nixos's live `/nix/store` and never an overlay of the
 changes while mounted is undefined; a snapshot cannot change. An overlay as lowerdir mounts, but the
 kernel silently falls back to `index=off` ("does not support file handles", measured 2026-10-11).
 The snapshot's directory has file handles: with **one** snapshot over the EROFS layers, `index=on`
-holds (measured 2026-10-14)
+holds (measured 2026-10-14). Once nerd-nixos has frozen layers, a container stacks two snapshots or
+more, ZFS snapshots have a null filesystem UUID, and the kernel drops `index` silently (measured on
+the probe, 2026-10-14): the store unit then neither requests nor requires `index=on`, and the stamp
+beside the upper — the snapshot, the layers' content and order — is the only guard (store-freeze
+spec, _Rules that hold at every level_)
 
 | one **layer contract**, `/etc/ndh/store-layers.json`, rendered by `erofs-store-mount.nix`
 | the ordered lowerdirs (newest first, `.003:.002:.ro-store`), the options a consumer must find on its
