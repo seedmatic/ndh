@@ -114,9 +114,6 @@ let
       profileModule,
       catalog,
       inventory,
-      # When false, the bringup image omits the production runtime closure.
-      # Use for base/template images (e.g. nerd-nixos) that carry no runtime deployment.
-      includeRuntimeClosure ? true,
       # When true, the QEMU build VM pauses after nixos-install completes.
       # Remove /tmp/xchg/pause.lock from the debug shell to resume.
       # Set NDH_BRINGUP_PAUSE=true in the environment and pass --impure to nix build.
@@ -651,12 +648,6 @@ let
       inherit
         diskImageBringupZfsSystemdBoot
         ;
-      # Full runtime system closure for the selected vmProvider. Exposed so
-      # the Darwin-side materializer can pull it into its own closure (one
-      # `nix build` stages both the bringup image and the full system the
-      # operator will activate remotely) and so callers can query it via
-      # `nix build .#<host>.runtimeSystem`.
-      runtimeSystem = selectedRuntime.config.system.build.toplevel;
     };
 in
 {

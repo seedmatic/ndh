@@ -1418,9 +1418,8 @@
           # runs the Tart VM itself (not a remote vz host) it is the ONLY entry point
           # to (re)materialize the VM — e.g.
           # `VM_FACTORY_RESET=true nix run .#nerd-tart-bioskop-materialize`.
-          # Darwin activation deliberately never does this: staging the bringup image
-          # and the target NixOS runtime system is ~31 GiB of closure (see the
-          # `includeRuntimeClosure` / `includeBringupSymlink` notes in
+          # Darwin activation deliberately never does this: staging the bringup images
+          # is tens of GiB (see the `includeBringupSymlink` notes in
           # modules/darwin/tart-config.nix), and it has its own cadence, independent
           # of host convergence.  So the image stays out of the darwin system closure
           # and reaching it is an explicit operator gesture.
@@ -1429,12 +1428,14 @@
             anyHostName = builtins.head (builtins.attrNames hostCatalog);
             anyHostDeploy =
               hostOutputs.${anyHostName}.darwinConfiguration.config.tart.configGenerator.deployPackage;
-            anyHostBringup = hostOutputs.${anyHostName}.nixosDiskImageBringupSystemdZfs;
             mkDeployHelper =
               {
                 mainName,
                 vmName,
                 runManifest,
+                # The host's OWN bringup images: their third store layer is the host's runtime
+                # residue, so another host's images would boot another host's system.
+                bringupImages,
               }:
               systemPkgs.writeShellApplication {
                 name = "nerd-tart-${mainName}-deploy";
@@ -1461,7 +1462,7 @@
                   Usage: nerd-tart-${mainName}-deploy [vz-host] [-- extra tart run args]
 
                   Copies the generic Tart deploy bundle, the ${mainName}-specific
-                  per-VM YAML, and the fleet-wide bringup disk images to <vz-host>
+                  per-VM YAML, and ${mainName}'s bringup disk images to <vz-host>
                   (default: vzhost.${mainName}); installs the YAML at
                   ~/.config/nerd-tart/${mainName}.yaml on the vz host; then execs
                   nerd-tart there to materialize and run the VM.
@@ -1472,7 +1473,7 @@
 
                   deploy_bundle=${anyHostDeploy}
                   vm_config=${runManifest}
-                  bringup_images=${anyHostBringup}
+                  bringup_images=${bringupImages}
 
                   # Pull, don't push.  The operator host (e.g. bioskop) and
                   # the bare-metal vz host share a LAN, while `vzhost.<host>`
@@ -1534,6 +1535,7 @@
                 "nerd-tart-${mainName}-deploy" = mkDeployHelper {
                   inherit mainName runManifest;
                   vmName = hostOutput.darwinConfiguration.config.tart.configGenerator.vmName;
+                  bringupImages = hostOutput.nixosDiskImageBringupSystemdZfs;
                 };
                 "nerd-tart-${mainName}-materialize" =
                   hostOutput.darwinConfiguration.config.tart.configGenerator.materializerPackage;
@@ -1553,24 +1555,17 @@
           }
         )
         // nixpkgs.lib.optionalAttrs (system == "aarch64-linux") (
-          # Single shared bringup disk image — bit-identical for every
-          # host, per docs/bringup-image-unification.adoc.  The bringup
-          # NixOS config is identity-less; per-host identity is set by
-          # the full-system push at activation time, not by the image
-          # bytes (the speculative cloud-init seed in the original plan
-          # turned out to be unnecessary — see Phase 4 verdict in the
-          # plan note).
-          #
-          # Picks an arbitrary host's `nixosDiskImageBringupSystemdZfs`
-          # because the underlying derivation is the same regardless
-          # of which host's mkNixosOutputs computed it (the config
-          # closure no longer depends on hostProfile).  Nix dedups.
-          let
-            anyHostName = builtins.head (builtins.attrNames hostCatalog);
-          in
-          {
-            nerd-nixos-bringup-zfs-systemd-disk = hostOutputs.${anyHostName}.nixosDiskImageBringupSystemdZfs;
-          }
+          # One bringup disk-image set PER HOST: the third store layer is the host's runtime residue
+          # (see modules/nixos/bringup-zfs-disk-image.nix), so the sets are no longer bit-identical
+          # across hosts, and an arbitrary host's set boots that host's system.
+          builtins.listToAttrs (
+            map (hostName: {
+              name = "nerd-nixos-${
+                hostMainNameForProfile hostCatalog.${hostName}.hostProfile
+              }-bringup-zfs-systemd-disk";
+              value = hostOutputs.${hostName}.nixosDiskImageBringupSystemdZfs;
+            }) (builtins.attrNames hostCatalog)
+          )
         )
       );
 
@@ -2049,7 +2044,6 @@
                       # darwin system closure — no activation path consumes the bundle.
                       tart.configGenerator.rawImageManifestPath = "${nixosDiskImageBringupSystemdZfs}/manifest.yaml";
                       tart.configGenerator.rawImageStorePath = "${nixosDiskImageBringupSystemdZfs}/boot.img";
-                      tart.configGenerator.runtimeSystemPath = nixosOutputs.runtimeSystem;
                       tart.configGenerator.vmRunSopsAgeHostShare =
                         nixosOutputs.nixosConfigurations."${mainName}-nixos".config.ndh.sopsAgeKeyBootstrap.nixosHostKeyImport.enable;
                       tart.configGenerator.vmRunFirstBootAttachDiskManifestPath = null;
