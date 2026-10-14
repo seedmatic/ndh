@@ -62,25 +62,32 @@ freeze() {
   if pgrep -u "$(getent group nixbld | cut -d: -f4)" >/dev/null 2>&1; then
     die "a build is running (a nixbld process) — nothing frozen"
   fi
+  # From here any exit before the reboot brings the builders back.
+  trap 'systemctl start nix-daemon.socket' EXIT
   systemctl stop nix-daemon.socket nix-daemon.service
   if [ -n "$(find /nix/var/nix/builds -mindepth 1 -maxdepth 1 2>/dev/null | head -1)" ]; then
-    systemctl start nix-daemon.socket
     die "a build dir is still in /nix/var/nix/builds — nothing frozen"
   fi
 
   echo "ndh-store: GC of the upper to the GC roots" >&2
-  nix-store --gc
+  nix-store --gc || die "the GC failed — nothing frozen"
   echo "ndh-store: every valid path must be present" >&2
-  nix-store --verify || { systemctl start nix-daemon.socket; die "nix-store --verify failed — nothing frozen"; }
+  nix-store --verify || die "nix-store --verify failed — nothing frozen"
 
+  # Text and binary files alike. grep exits 0 on a match, 1 on none, 2 on an error: only 1 is clean,
+  # since a sweep that could not run must never let a freeze make what it missed permanent.
   echo "ndh-store: secret sweep of the upper" >&2
-  hits=$(grep -rIlE -f "$SWEEP_SHAPES" "$RW_MOUNT/upper" || true)
-  if [ -n "$hits" ]; then
-    systemctl start nix-daemon.socket
-    echo "ndh-store: a secret shape was found in:" >&2
-    printf '  %s\n' "$hits" >&2
-    die "nothing frozen — purge those paths first"
-  fi
+  local sweep=0
+  hits=$(grep -rlE -f "$SWEEP_SHAPES" "$RW_MOUNT/upper") || sweep=$?
+  case "$sweep" in
+    0)
+      echo "ndh-store: a secret shape was found in:" >&2
+      printf '  %s\n' "$hits" >&2
+      die "nothing frozen — purge those paths first"
+      ;;
+    1) ;;
+    *) die "the secret sweep could not run (grep exit $sweep) — nothing frozen" ;;
+  esac
 
   snapshot="ndh-store-$(date -u +%Y%m%dT%H%M%SZ)"
   zfs snapshot "$RW_DATASET@$snapshot" "$DB_DATASET@$snapshot"
@@ -93,7 +100,6 @@ freeze() {
   if [ "$(jq -r '[.[].snapshot] | join(" ")' <<<"$base")" != "$(cat "$RW_MOUNT/upper.base" 2>/dev/null || true)" ]; then
     zfs destroy "$RW_DATASET@$snapshot"
     zfs destroy "$DB_DATASET@$snapshot"
-    systemctl start nix-daemon.socket
     die "current.json is not what the upper sits on (upper.base) — nothing frozen"
   fi
   next=$(jq -cn --arg v "$MANIFEST_VERSION" --arg ds "$RW_DATASET" --arg s "$snapshot" --arg g "$guid" \
@@ -108,6 +114,8 @@ freeze() {
       incus stop --project "$CONTAINER_PROJECT" "$instance"
     done
   fi
+  # Not on the way down: the reboot stops everything anyway.
+  trap - EXIT
   systemctl reboot
 }
 
