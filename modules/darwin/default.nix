@@ -36,6 +36,7 @@
     ./github-mcp-proxy.nix
     ./shell-keychain.nix
     ./activation-order.nix
+    ./restart-on-secret-change.nix
     ./ssh-keys-enrichment.nix
     ./user-secret-mirror.nix
     ./ssh-client.nix

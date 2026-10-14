@@ -12,6 +12,7 @@
       cacheTrustCompose = 1600;
       sshKeysEnrichment = 1610;
       userSecretMirror = 1620;
+      restartSecretReaders = 1700;
       homeManager = 2000;
     };
     description = "mkOrder slots of the postActivation steps that depend on each other.";
