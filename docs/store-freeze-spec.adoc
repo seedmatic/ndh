@@ -1,0 +1,407 @@
+= Store Freeze — nerd-nixos freezes its store upper into a read-only layer, by command
+:toc: left
+:toclevels: 3
+:icons: font
+
+**Status:** 📐 target, increment 1 of the private-cache work, not built. The model was validated on
+2026-10-14 by the operator, the integration, security, nix and incus. Its mechanisms were measured
+that day on a throwaway nerd-nixos (`incus-probe`). +
+**Scope:** nerd-nixos only, plus what its containers need so that its freeze does not break them.
+A container's own freeze is increment 2. The RKE2 nodes are increment 3, frozen at image build.
+
+[NOTE]
+====
+This spec states the target. It builds on the EROFS layer stack described in rke2lab's
+`docs/architecture/nixos-substrate/erofs-store-layer-stack.adoc`, and amends that spec's
+"Depth is part of the ABI" for nerd-nixos (see <<abi>>). The containers it must keep working are
+those of link:private-binary-cache-spec.adoc#container-store[the private binary cache spec].
+====
+
+== Overview
+
+nerd-nixos's `/nix/store` is an overlay: read-only EROFS layers, laid at materialization, under a
+ZFS upper (`tank/nerd/nix/rwstore`) that every in-VM switch and every GC writes. Today that upper
+grows forever, and it is the live state under every Incus container's store snapshot.
+
+The operator's way of working gives the shape:
+
+. **switch at runtime** to a new system, try it, fix it, as often as needed. The upper is a draft;
+. **when satisfied, freeze**: `ndh-store freeze` turns the upper into a new read-only layer, then
+  reboots;
+. **at boot**, the initrd stacks the frozen layer on top of the EROFS layers and gives an **empty**
+  upper.
+
+There is **never a rollback**: the stack moves forward at the pace of the head of the repositories
+seedmatic deploys from. Each level of the fleet plays the same logic (dogfooding). Increment 2 does
+it for a container, and increment 3 for a node, frozen at image build.
+
+[mermaid]
+....
+flowchart TB
+  subgraph VM["nerd-nixos /nix/store — an overlay"]
+    U["upper — tank/nerd/nix/rwstore<br/>the draft: switches, builds, GC whiteouts"]:::live
+    F["frozen layers F_n … F_1 — ZFS snapshots, read-only<br/>one per freeze, newest first"]:::frozen
+    E["EROFS layers .003 : .002 : .ro-store<br/>laid at materialization"]:::imm
+  end
+  D["nix DB, profiles, gcroots — tank/nerd/nix/var/nix<br/>CONTINUOUS, never frozen into a layer"]:::cont
+  B["build dir — tank/nerd/nix/builds<br/>its own dataset, never frozen"]:::cont
+  M["stack manifest on the pool — A/B<br/>the layers, by GUID, bound to the booted toplevel"]:::manifest
+  U --> F --> E
+  M -. "read by the initrd at boot" .-> F
+  D -. "says what is valid; the overlay says where the bytes are" .- U
+
+  classDef imm fill:#e6f0ff,stroke:#06c,color:#035;
+  classDef live fill:#fff4e6,stroke:#c60,color:#803;
+  classDef frozen fill:#ede9fe,stroke:#6d28d9,color:#3b0764;
+  classDef cont fill:#e6ffe9,stroke:#0a0,color:#050;
+  classDef manifest fill:#fef3c7,stroke:#b45309,color:#78350f;
+....
+
+Legend: blue immutable, laid at materialization · orange the live draft · violet frozen by a
+command · green continuous state, never layered · amber the manifest the initrd reads.
+
+[mermaid]
+....
+sequenceDiagram
+  autonumber
+  participant Op as Operator
+  participant G as ndh-store freeze
+  participant N as nix daemon
+  participant Z as ZFS
+  participant C as Incus containers
+  Op->>G: ndh-store freeze (names the validated system = /run/current-system)
+  G->>G: refuse if the current system is not the named one, or a build is running
+  G->>N: stop nix-daemon.socket and nix-daemon
+  G->>G: GC the upper to the validated closure plus declared roots, then the secret sweep
+  G->>Z: ONE zfs snapshot rwstore@T db@T (atomic)
+  G->>Z: write the next manifest (tmp, rename, fsync of the dir), keep the previous one
+  G->>C: stop the containers (they restart on the new stack at boot)
+  G->>Op: report — then systemctl reboot
+  Note over G,Z: any failure stops here, before the reboot, loudly: nothing is half-frozen
+....
+
+[mermaid]
+....
+stateDiagram-v2
+  [*] --> Read: stage 1 — read the manifest from the pool
+  Read --> Checked: every snapshot by GUID, in the expected dataset, bound to the booted toplevel
+  Checked --> Stacked: mount each snapshot read-only, lowerdir+= per layer, an EMPTY upper
+  Stacked --> Running: stage 2 reaches multi-user
+  Running --> Committed: the new manifest becomes the current one; the previous is released
+  Read --> Fallback: missing, truncated or unreadable manifest
+  Checked --> Fallback: GUID mismatch, foreign dataset, another toplevel
+  Fallback --> Running: the previous manifest, else the bare EROFS stack — LOUD (a failed unit, a boot message)
+  note right of Fallback
+    The previous boot generation boots
+    WITHOUT reading the manifest: a bad
+    initrd change is undone from the bootloader.
+  end note
+....
+
+== Vocabulary
+
+[cols="1,3",options="header"]
+|===
+| Term | Meaning
+
+| *upper*
+| `tank/nerd/nix/rwstore`, mounted at `/nix/.rw-store`, the overlay's writable layer: everything
+nerd-nixos writes into its store between two freezes
+
+| *frozen layer*
+| a ZFS snapshot of that upper, taken by the freeze gesture, mounted read-only as a lower
+
+| *stack*
+| the ordered lowers of nerd-nixos's store: the frozen layers, newest first, then the EROFS layers
+
+| *manifest*
+| a small file on the pool naming the stack the next boot builds. There are two, the current and the
+previous (A/B)
+
+| *freeze*
+| the operator's gesture `ndh-store freeze`: from the validated system's upper, a frozen layer and
+a new manifest, then a reboot
+
+| *compaction*
+| rebuilding the stack so that frozen layers holding no valid path can go; the only way frozen
+space comes back
+|===
+
+== The stack and its manifest
+
+[cols="1,3",options="header"]
+|===
+| Rule | Why
+
+| the stack is the frozen layers, newest first, on top of the EROFS layers, **flat**
+| an overlay as a lowerdir silently drops `index=on` (measured 2026-10-11); flat lowers are the
+model of the EROFS stack already
+
+| the stack runs **without `index`** once it holds two frozen layers
+| ZFS snapshots have a null filesystem UUID. Overlayfs accepts one null-UUID lower under `index=on`,
+and with two or more it falls back silently to `index=off`, `xino=off` ("null uuid detected in lower
+fs", measured 2026-10-14). nerd-nixos's store runs without `index` today already. It costs nix
+nothing: only hard links across a copy-up break, and `--optimise` is excluded (below). Generic tools
+misread the merged store (`du` adds up wrongly): measure per dataset
+
+| the nix DB, profiles and gcroots stay on `tank/nerd/nix/var/nix`, **continuous**, never in a
+frozen layer
+| the DB says what is valid, and the overlay says where the bytes are. Freezing the DB into a layer
+would freeze the state with it
+
+| the build dir stays on its own dataset, `tank/nerd/nix/builds`, outside every freeze
+| nix 2.34 builds under `/nix/var/nix/builds`, and a freeze must never capture an in-flight build
+dir. It is already its own dataset on nerd-nixos (measured on the probe)
+
+| the manifest names each frozen layer by **dataset, snapshot name and GUID**, and the **toplevel**
+it was frozen for
+| a name can be renamed, a GUID cannot; the toplevel binds the stack to the generation the
+bootloader started
+
+| two manifests, **A/B**: the previous one is kept until the new boot reaches `multi-user`
+| without a rollback generation, the previous stack is the way back if the new one does not come up
+
+| the manifest is written by write to a temporary file, rename, and an fsync of its directory
+| a crash during the write leaves the previous manifest intact, never a truncated current one
+
+| the manifest lives on a dataset the containers do not mount
+| hygiene against accidents. It is **not** a security boundary: the containers are privileged, so
+their root is the host's, and root can choose the next boot anyway
+
+| the initrd writes the **current layer contract** to `/run/ndh/store-layers.json` at boot
+| the containers' stores read it; it now lists the frozen layers too (<<containers>>)
+|===
+
+== The freeze gesture
+
+`ndh-store freeze` is an operator gesture, never automatic, never scheduled. It takes the snapshot
+**itself**, interactively, before the reboot (decided by the operator on 2026-10-14). A failure is
+then seen before the reboot instead of being buried in a shutdown log. Also, bioskop has hung at
+shutdown once (2026-10-12), so nothing that matters may run on the way down.
+
+[cols="1,3",options="header"]
+|===
+| Step, in order | Why
+
+| refuse unless `/run/current-system` is the system the operator validated (the gesture names it)
+| only what was validated is frozen
+
+| refuse while a build runs; then stop `nix-daemon.socket` and `nix-daemon`
+| the guests build sandboxed, and delegated builds from the Macs write into the upper; a stopped
+daemon means no write in flight. Never stop the socket from inside a stop job during shutdown, where
+the job queue is being torn down
+
+| GC the upper to the closure of the validated system plus the declared GC roots
+| a freeze makes the upper **permanent**: no GC ever frees a frozen path. Strays must not be frozen
+
+| the container systems are declared **GC roots** of nerd-nixos
+| nerd-nixos's GC does not know the containers' roots. A freeze whose GC removed a path a container
+still reads would leave the container's DB calling it valid while the file is gone
+
+| the **secret sweep** of the upper (private-key headers, sops-decrypted files, the token shapes of
+the pre-commit guards); a hit **refuses** the freeze and names only the path
+| the 2026-10-10 class: a plaintext path that reached the store becomes indelible once frozen. **The
+gesture refuses entirely until the sweep exists and passes**
+
+| ONE `zfs snapshot tank/nerd/nix/rwstore@T tank/nerd/nix/var/nix/db@T`
+| one command, atomic across both datasets: the store and its DB are frozen together, crash-consistent
+
+| write the next manifest; keep the previous
+| A/B
+
+| `nix-store --verify` (existence) on the next stack, before the reboot
+| every valid path must be present in the stack; a compaction must never drop a layer holding one
+
+| stop the containers, then reboot
+| they restart on the new stack at boot (<<containers>>)
+|===
+
+A **freeze-request record** is left on the pool by the gesture and compared by the next boot, which
+reports a requested-but-not-done freeze loudly. It is only ever **reported**, never **acted on**: no
+boot performs or retries a freeze because the record says so. The only trigger is the gesture in the
+same boot. A stale or planted record must never become an unattended freeze, since a freeze is
+permanent.
+
+A shutdown unit is kept **only as a fallback**, for a gesture interrupted after its snapshot step. It
+is ordered against `nix-daemon.service` only, **never** against `nix-daemon.socket`. A socket comes
+before `sockets.target`, which comes before `basic.target`, which comes before the unit. systemd
+breaks that cycle by **deleting the unit's stop job**, and the freeze silently never happens
+(measured 2026-10-14).
+
+[[boot]]
+== The boot — the initrd builds the stack
+
+[cols="1,3",options="header"]
+|===
+| Rule | Why
+
+| a systemd stage-1 unit builds the stack before `sysroot-nix-store.mount`, from the manifest, instead
+of the lowerdir list baked into the generation's `fileSystems`
+| a generation cannot name the frozen layer that holds it: it was built before its own freeze
+
+| each snapshot is mounted directly, read-only (`mount -t zfs {dataset}@{snapshot}`), and passed with
+the new mount API, one `lowerdir+=` per layer
+| the `.zfs/snapshot` automount does not cross mount namespaces (ENOENT, measured); the legacy
+`lowerdir=a:b:c` string is capped at one page, about 90 layers
+
+| before mounting, every listed snapshot is checked: its GUID, its dataset, and the toplevel the
+manifest is bound to
+| a renamed snapshot, a foreign dataset or a manifest for another generation must not be stacked
+
+| any failed check, or a missing, truncated or unreadable manifest, falls back to the previous
+manifest, else to the bare EROFS stack, **loudly**: a failed unit, a boot message the operator sees
+| a silent fallback would boot an unexpected stack. If the bare EROFS stack lacks the booted toplevel,
+the boot stops at that loud failure and the bootloader's previous generation is the way back
+
+| the **previous boot generation boots without reading the manifest**
+| a bad initrd change is undone from the bootloader, not by a rescue
+
+| the upper is **empty** at the first boot on a new stack, and its workdir is fresh
+| the frozen content is in the new layer; an upper bound to the old stack would shadow it
+
+| `/run/ndh/nix-kvm.conf` (written at boot, included by `nix.conf`) stays ordered before
+`nix-daemon`
+| the sandboxed builds need it; it is in `/run`, so never part of any frozen state
+|===
+
+[[abi]]
+== Compaction, the bootloader, and the ABI amendment
+
+rke2lab's EROFS stack spec decides "*stack*, never replace", and makes append-only the condition
+for rollback: a generation bakes its lowerdir list, and survives appended layers but not a
+replacement. For nerd-nixos under this spec:
+
+* **there is no rollback**, so a compaction is allowed at any time. It **keeps only the current
+  generation in the bootloader**, and the freeze does the pruning. An older generation left in the
+  bootloader would find its closure in a layer the compaction removed, and stop in
+  `initrd-find-nixos-closure`;
+* a compaction never removes a layer that holds a valid path (`nix-store --verify` after it), nor a
+  layer a container still mounts. It runs at a freeze, when everything stops and remounts;
+* a GC on a layered store leaves **one whiteout per deleted store path** (measured: the per-file
+  whiteouts of the deletion are folded into one at the final `rmdir`). Space comes back by
+  compaction only.
+
+The amendment to rke2lab's ABI section is delivered on rke2lab `docs/erofs-layer-consumers`.
+
+[[containers]]
+== What the containers need from increment 1
+
+The Incus NixOS containers of the private-cache spec run on a snapshot of nerd-nixos's upper over
+the EROFS layers. Once nerd-nixos freezes, its upper is nearly empty after each boot, and that
+breaks them unless three things land in the **same** increment:
+
+[cols="1,3",options="header"]
+|===
+| Rule | Why
+
+| the containers' layer contract lists nerd-nixos's **frozen layers** too, read from
+`/run/ndh/store-layers.json`
+| a delivery snapshots a nearly empty `rwstore`. Without the frozen layers in the container's stack,
+its copied DB calls valid paths that are absent ("valid but absent", measured on 2026-10-14 with a
+contract one layer short: the container broke)
+
+| the container systems are **GC roots** of nerd-nixos
+| see the freeze gesture: nerd-nixos's GC must not take what a container still reads
+
+| the store unit of each container is **required by `incus-startup.service`** and **fails** on a
+missing snapshot, instead of skipping
+| today it is only ordered before `incus.service`, and its conditions make it skip silently; Incus
+then autostarts the container on an empty `/nix` ("init not found")
+
+| at a freeze-reboot: freeze, then **re-deliver every container**, then reap the old snapshots
+| a container's lower is a snapshot of the old upper; reaping first would pull it from under it
+
+| bioskop is the only Incus database voter
+| while it reboots, the cluster API is down for nikopol too (its instances keep running)
+|===
+
+A container's **own** freeze, its upper into its own layer, is increment 2. The empty-upper rule for
+it is stated there: an empty upper passes a changed stack, a non-empty one is refused, because the
+kernel does not catch it (measured).
+
+== Rules that hold at every level
+
+[cols="1,3",options="header"]
+|===
+| Rule | Why
+
+| **never `nix-store --optimise`** nor `auto-optimise-store` on a level with lowers
+| hard-linking a lower file into `.links` copies its data up
+
+| after every freeze and compaction: every valid path is present in the stack
+| the DB and the overlay must agree
+
+| a frozen-layer GC works: deleting frozen files and directories, `--verify --check-contents`, and a
+clean `--repair-path` failure
+| measured on 2026-10-14 on a stack of two snapshots: no EXDEV, three whiteouts for three paths,
+verify clean, "cannot repair path" with no substituter
+
+| the stamp beside a consumer's upper is ours, never the kernel's
+| the kernel does not refuse an upper over a newer snapshot of the same dataset, and with two
+snapshot lowers it runs without `index` at all
+|===
+
+== The tests the implementation must pass
+
+All on the throwaway probe first. Live on bioskop only after T4, and on nikopol after bioskop.
+
+[cols="1,2,2",options="header"]
+|===
+| Test | Gesture | Expected
+
+| 1 — a freeze, then a boot on the new stack
+| switch, `ndh-store freeze`, let it reboot
+| the new frozen layer is on top, the upper is empty, the system is the validated one,
+`nix-store --verify` is clean
+
+| 2 — the freeze refuses
+| a current system other than the named one; a build running; the sweep finding a planted secret
+shape
+| the gesture refuses before any snapshot, and names the reason (only the path, for a secret)
+
+| 3 — the loud fallback
+| a manifest naming another toplevel; a renamed snapshot (GUID mismatch); a truncated manifest
+| each falls back loudly to the previous manifest or the bare EROFS stack, and the system still
+boots
+
+| 4 — the way back
+| an initrd change that cannot build the stack
+| the previous boot generation, chosen in the bootloader, boots without reading the manifest
+
+| 5 — the request record is never acted on
+| a planted freeze-request record, no gesture
+| the boot reports it and freezes nothing
+
+| 6 — the containers survive a freeze
+| a freeze with `probe` and `attic` delivered
+| after the reboot and their re-delivery, both run, nothing is "valid but absent", and nerd-nixos's
+GC did not remove a container path
+
+| 7 — a GC after a freeze
+| `nix-collect-garbage` on nerd-nixos after a freeze
+| frozen paths become whiteouts, no container path is removed, `--verify --check-contents` is clean
+
+| 8 — compaction
+| a compaction that folds the frozen layers into one
+| only the current generation stays in the bootloader; every valid path is present; the containers
+are re-delivered
+|===
+
+== Open questions
+
+* **The secret sweep**: its shapes are rke2lab's pre-commit guards (`token_shape_guard`); whether to
+  share that script or restate it, and in which language. The Go porting of the tooling is a separate
+  chantier.
+* **The compaction itself**: a new single layer of the current closure, built how. A `nix copy` into
+  a fresh dataset is one candidate, to measure.
+* **Where the manifest lives**: a dataset of its own on the pool, out of every container mount.
+* **The interplay with the materializer**: a re-materialization (new EROFS layers) recreates the
+  pools, frozen layers included. Plan item 15 (`vm_cpu_count`) and nix's 2e sit on the same hosts.
+
+== Related documentation
+
+* link:private-binary-cache-spec.adoc[Private Binary Cache] — the containers this spec must keep
+  working, and the cache that is increment 2.
+* rke2lab `docs/architecture/nixos-substrate/erofs-store-layer-stack.adoc` — the EROFS stack, and the
+  ABI section this spec amends.
+* link:vm-operator-runbook.adoc[VM Operator Runbook] — the operator's gestures on nerd-nixos.

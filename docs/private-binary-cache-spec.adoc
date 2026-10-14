@@ -1979,6 +1979,10 @@ be a different path, and every closure that references it would have to be rebui
 
 == Related Documentation
 
+* link:store-freeze-spec.adoc[Store Freeze] — nerd-nixos freezes its store upper into a read-only
+  layer by command; what the containers here need from it (their contract listing the frozen layers,
+  their systems as GC roots of nerd-nixos).
+
 * link:fabric-control-plane-spec.adoc[Fabric Control Plane] — the tailnets and the bridge attic is
   reached over, and headscale-nixos, the other tenant of the shared container module.
 * link:host-builder-phases.adoc[Host Builder Phases] — how `<host>-nixos` became the Linux builder
