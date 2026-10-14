@@ -1290,6 +1290,14 @@
                   exit 1
                 fi
                 [ "$(grep -c '\[MASKED\]' masked)" -ge 2 ]
+                # A window that starts INSIDE a key — its body and footer, no header: no body line survives.
+                tail -n +2 key > midkey
+                sed -E -f ${./modules/nixos/bringup-zfs-disk-image.d/install-log-mask.sed} midkey > midkey.masked
+                if grep -qE '^[A-Za-z0-9+/=]{40,}$' midkey.masked; then
+                  echo "a key body with no header passed the mask" >&2
+                  exit 1
+                fi
+                [ "$(grep -c '\[MASKED\]' midkey.masked)" -ge 1 ]
                 touch $out
               '';
         }

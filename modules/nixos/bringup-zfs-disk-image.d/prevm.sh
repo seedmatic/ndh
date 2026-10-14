@@ -56,7 +56,9 @@ ndh_bringup_install_log_on_failure() {
   local rc=$?
   if [ "$rc" != 0 ] && [ -f xchg/install.log ]; then
     echo "[bringup] the install failed (rc=$rc); the end of its log (masked):" >&2
-    tail -n 60 xchg/install.log | sed -E -f "$NDH_INSTALL_LOG_MASK" >&2
+    # Masked BEFORE the cut: a window that starts inside a key would leave its header above the cut,
+    # and a header-bound rule would never open.
+    sed -E -f "$NDH_INSTALL_LOG_MASK" xchg/install.log | tail -n 60 >&2
   fi
 }
 trap ndh_bringup_install_log_on_failure EXIT

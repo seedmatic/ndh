@@ -5,3 +5,5 @@ s/AGE-SECRET[-]KEY-1[A-Z0-9]+/AGE-SECRET-KEY-1[MASKED]/g
 /BEGIN [A-Z ]*PRIVATE[ ]KEY/,/END [A-Z ]*PRIVATE[ ]KEY/{
 /BEGIN|END/!s/.*/[MASKED]/
 }
+# A key-body-shaped line anywhere — with no header in sight (a cut, a mangled header) — is masked too.
+s#^[A-Za-z0-9+/=]{40,}$#[MASKED]#
