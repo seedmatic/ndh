@@ -8,6 +8,7 @@ main() {
 stephane.lacoin@gmail.com namespaces="git" $( cat "@hostKeysDir@/github-signing.pub" )
 stephane.lacoin@hyland.com namespaces="git" $( cat "@hostKeysDir@/github-signing-hyland.pub" )
 EoF
+	cat "@botSignersFile@" >> "@allowedSignersFile@"
 }
 
 ndh::logger:command:run "@loggerTag@" main "$@"

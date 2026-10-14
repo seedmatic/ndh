@@ -58,15 +58,6 @@ let
   builderKeyDir = "/etc/nix";
   builderKeyPath = "${builderKeyDir}/builder_ed25519";
 
-  # Host-side directory the cache-trust compose script mirrors each
-  # fleet signing key into (modules/.common.d/cache-trust.nix). 9p-shared
-  # read-only into the linux-builder VM at guestCacheKeysDir so
-  # aarch64-linux outputs are signed at build time rather than arriving
-  # unsigned on bioskop and being rejected downstream.
-  hostCacheKeysDir = "/var/lib/linux-builder/secrets";
-  guestCacheKeysDir = "/srv/host/nix-keys";
-  cachixNames = config.ndh.cacheTrust.cachixNames;
-
 in
 {
 
@@ -75,13 +66,6 @@ in
       linux-builder requested ${toString requestedLinuxBuilderVmCpuCores} vCPUs, but qemu mach-virt supports up to 8 here.
       Clamping linux-builder VM vCPUs to 8.
     '';
-
-    # Tell the fleet cache-trust compose script to mirror each
-    # <name>.key into hostCacheKeysDir, on top of /etc/nix/<name>.key.
-    # The linux-builder VM mounts that directory read-only via 9p so
-    # its nix-daemon can sign outputs with the same fleet keypairs
-    # bioskop uses locally.
-    ndh.cacheTrust.builderSecretsDir = lib.mkIf (selected != null) hostCacheKeysDir;
 
     nix.linux-builder = lib.mkIf (selected != null) {
       enable = true;
@@ -101,18 +85,6 @@ in
       mandatoryFeatures = selected.builder.mandatoryFeatures or [ ];
       config = {
         virtualisation.darwin-builder.hostPort = selected.builder.hostPort or 31022;
-
-        # 9p-share the host's mirrored cache-keys directory read-only into
-        # the VM. securityModel = "none" leaves host file permissions
-        # (0600 root) authoritative — the guest's nix-daemon runs as root
-        # so it can read them; no uid/gid mapping needed. The guest
-        # gets a fileSystems entry at target/ automatically via
-        # qemu-vm.nix's sharedDirectories wiring.
-        virtualisation.sharedDirectories.cacheKeys = {
-          source = hostCacheKeysDir;
-          target = guestCacheKeysDir;
-          securityModel = "none";
-        };
 
         # Increase Linux builder VM disk size to handle large disk image builds
         virtualisation.diskSize = lib.mkForce (selected.builder.diskSize or (150 * 1024)); # 150 GB for building 64GB+ images
@@ -179,13 +151,6 @@ in
           ];
           accept-flake-config = true;
           always-allow-substitutes = true;
-
-          # Sign aarch64-linux outputs with the fleet cachix keys the
-          # host mirrors into guestCacheKeysDir (see sharedDirectories
-          # above). Without this, paths built inside the builder would
-          # arrive unsigned on bioskop and get rejected by downstream
-          # hosts that only trust fleet-signed paths.
-          secret-key-files = map (name: "${guestCacheKeysDir}/${name}.key") cachixNames;
         };
 
         # Configure SSH daemon to also check our profile keys file
@@ -260,17 +225,19 @@ in
     # off in the bootstrap phase (this embedded builder is active), on in steady
     # (offload to <host>-nixos). See docs/host-builder-phases.adoc.
 
-    # SSH config for manual access to bioskop-nixos (works on LAN and tailscale/headscale)
+    # SSH config for manual access to bioskop-nixos (works on LAN and tailscale/headscale).
+    # System-wide, so root reads it too: the host is verified by the authority, and no
+    # session is multiplexed — a socket in world-writable /var/tmp, stale or planted, would
+    # be reused without verifying the host again.
     environment.etc."ssh/ssh_config.d/70-bioskop-nixos.conf" = {
       text = ''
         Host bioskop-nixos${catalog.netplan.lan.domain} bioskop-nixos
           User nxmatic
-          StrictHostKeyChecking accept-new
+          StrictHostKeyChecking yes
           ServerAliveInterval 30
           ServerAliveCountMax 3
-          ControlMaster auto
-          ControlPath /var/tmp/ssh-control-%C
-          ControlPersist 10m
+          ControlMaster no
+          ControlPath none
           Compression yes
           TCPKeepAlive yes
       '';

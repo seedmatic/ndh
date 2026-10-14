@@ -412,10 +412,13 @@ let
       }
     fi
 
+    # Unmount on every exit path: /run carries over into stage 2, and a
+    # leftover ro mount of the ESP pins its vfat superblock read-only, so
+    # the later /boot mount comes up ro ("source write-protected").
     cleanup() {
       if [[ -n "$esp_dev" ]] && mountpoint -q "$boot_dir" 2>/dev/null; then
-        # Remount rw only if we need to write
-        :
+        umount "$boot_dir" || echo "[boot-reconcile] WARN: failed to unmount $boot_dir — /boot may come up read-only" >&2
+        rmdir "$boot_dir" 2>/dev/null || true
       fi
     }
     trap cleanup EXIT
@@ -478,12 +481,6 @@ let
 
     if [[ "$updated" -eq 0 ]]; then
       echo "[boot-reconcile] WARN: no entries contained old init path" >&2
-    fi
-
-    # Unmount the ESP if we mounted it ourselves
-    if [[ -n "$esp_dev" ]] && mountpoint -q "$boot_dir" 2>/dev/null; then
-      umount "$boot_dir"
-      rmdir "$boot_dir" 2>/dev/null || true
     fi
   '';
 

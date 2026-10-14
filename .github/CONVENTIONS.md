@@ -221,7 +221,7 @@ Use for **module defaults** that should be overridable:
 
 ```nix
 # ✅ Allows flake-level overrides
-limaHost.hostName = lib.mkDefault (profile.host.hostAlias or profile.host.hostName);
+vm.hostName = lib.mkDefault (profile.host.hostAlias or profile.host.hostName);
 ```
 
 #### `lib.mkForce` - Use Sparingly

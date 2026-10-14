@@ -3,6 +3,7 @@
   pkgs,
   lib,
   worktreePath,
+  osConfig ? { },
   ...
 }:
 let
@@ -28,7 +29,28 @@ let
   hostKeysDir = sshPaths.secretsKeysDir;
   signingKeysDir = sshPaths.secretsKeysDir;
   allowedSignersFile = "${config.xdg.configHome}/git/github_allowed_signers";
+  # The rke2lab bots commit as rke2lab+<tool>@<authority domain> and sign with their OWN key, which
+  # vouches for that identity pattern only — never with the operator's, which leaves the seat for
+  # no one. Read from keys.yaml at evaluation: the key has no profile, so no host holds its .pub.
+  # Empty until the key's first slot exists, and then a bot commit is simply not trusted.
+  keysYaml = osConfig.ndh.keysYaml or null;
+  botSigners =
+    let
+      key = keysYaml.keys.rke2lab-bot-signing or { };
+      domain = keysYaml.authorities.mammoth-skate.domain or null;
+      publics = lib.filter (p: p != "" && !(lib.hasPrefix "ENC[" p)) (
+        map (slot: slot.public or "") (lib.attrValues (key.slots or { }))
+      );
+    in
+    lib.optionals (keysYaml != null && domain != null) (
+      map (p: ''rke2lab+*@${domain} namespaces="git" ${key.type or "ssh-ed25519"} ${p}'') publics
+    );
   systemCaBundle = config.home.sessionVariables.SSL_CERT_FILE;
+  # The machine that holds the git-bare-store others reach over ssh://<it>/… (the claude-home
+  # registry's descriptors name it). There, git rewrites those URLs to the local path instead of
+  # opening ssh to itself; elsewhere the URL must stay ssh.
+  bareStoreHost = "bioskop";
+  onBareStoreHost = (osConfig.networking.hostName or null) == bareStoreHost;
   loggerTag = "home-manager.activationScripts.${userName}.generateAllowedSigners";
 in
 {
@@ -45,7 +67,9 @@ in
     signing = {
       key = "${signingKeysDir}/github-signing.pub";
       format = "ssh";
-      signByDefault = true;
+      # Signing goes through the agent, which only the seats (the Macs) hold: the agent is never forwarded, so a
+      # Linux guest commits unsigned and the work is signed and pushed from the seat.
+      signByDefault = pkgs.stdenv.isDarwin;
     };
 
     settings = {
@@ -74,6 +98,9 @@ in
       push.autoSetupRemote = true;
       rebase.autoStash = true;
       gpg.ssh.allowedSignersFile = allowedSignersFile;
+      url = lib.mkIf onBareStoreHost {
+        "file:///Volumes/git-bare-store/".insteadOf = "ssh://${bareStoreHost}/Volumes/git-bare-store/";
+      };
 
       alias = {
         fix = "commit --amend --no-edit";
@@ -111,12 +138,11 @@ in
         root = ./git.d;
         fileset = lib.fileset.difference (lib.fileset.fromSource ./git.d) (
           lib.fileset.unions [
-            ./git.d/config.d
             ./git.d/sops
             ./git.d/sops.d
             ./git.d/sops.sh
             ./git.d/sops.nix
-            ./git.d/git-sops-filter.nix
+            ./git.d/git-sops-diff.nix
             ./git.d/hooks/tests
           ]
         );
@@ -154,6 +180,9 @@ in
         nixBashTrampoline = nixBashTrampoline;
         allowedSignersFile = allowedSignersFile;
         hostKeysDir = hostKeysDir;
+        botSignersFile = pkgs.writeText "bot-allowed-signers" (
+          lib.concatMapStrings (l: l + "\n") botSigners
+        );
         loggerTag = loggerTag;
       };
     in

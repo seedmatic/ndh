@@ -12,9 +12,10 @@ This spec defines how a static key declared in `modules/home-manager/ssh.d/keys.
 *renewed*: how an entry holds two generations at once, which one is presented, which are accepted,
 and how a retired generation is revoked.
 
-It concerns only the keys that remain once access is granted by the control plane — the emergency
-door, the bridge, the service keys (see link:ssh-keys-architecture.adoc[SSH Keys]). There is no
-authority and no certificate, so nothing here signs.
+It concerns the keys that remain once access is granted by the control plane — their roles,
+holders and lifecycles are in link:ssh-keys-architecture.adoc[Roles × Keys]. Certificates are
+signed on the seat by the delegated authorities, from each consumer's public; nothing signs at
+activation, and an authority signs with its oldest slot that is not marked `compromised`.
 
 A renewal has to be *survivable*. Replacing a key in one step leaves an instant where the old one is
 refused and the new one is not yet authorised — for the bridge, that instant cuts the two segments
@@ -31,7 +32,7 @@ The model deliberately avoids two shapes that look simpler and are not:
 
 An entry holds its generations in `slots`, keyed by the date the key was generated. A slot holds
 the **public** half only: the private half lives on the owning machine
-(link:ssh-keys-architecture.adoc[SSH Keys], rule 1).
+(link:ssh-keys-architecture.adoc[Roles × Keys], principle 5).
 
 [source,yaml]
 ----
@@ -65,6 +66,34 @@ h|Rule|Form
 
 IMPORTANT: The asymmetry between *presenting* one generation and *accepting* all of them is the
 whole mechanism. Collapsing `slots` to a single pair removes the overlap.
+
+=== An authority presents its OLDEST generation
+
+A key presents its newest generation; an authority presents — and signs with — its **oldest slot
+that is not marked `compromised`**. One rule, applied by everything that signs: the enrichment, the
+TLS root bootstrap, the incus cluster certificate renewal, and rke2lab's keystore reader.
+
+[cols="1,2"]
+|===
+h|Rule|Why
+
+|The oldest slot signs
+|Trust distributes slowly: a host learns a new authority only when it activates. A signature from
+the new generation would be refused by every host not yet activated. The old generation keeps
+signing through phase 1; phase 2 drops it, and the signature moves to a generation every trust
+store already carries.
+
+|Each slot carries its own `ca_crt`
+|The root a TLS leaf chains to is the root of the slot that signed it. Trust stores take the
+`ca_crt` and `public` of every slot that is not compromised, so both generations are trusted during
+the overlap.
+
+|A `compromised` slot never signs
+|Keeping a leaked private as the signer through a whole phase would mint certificates an attacker
+can match. Mark the slot `compromised: <reason>`: the other generation signs at once, the slot
+leaves every trust store (a root already installed is removed at activation), the breakage is
+accepted (the screen is the fallback), and the slot is revoked in the same renewal.
+|===
 
 === Why `YY-MM-DD` and not `YYYY-MM-DD`
 
@@ -134,6 +163,86 @@ public is still known.
 Phase 2 is not optional, and the model makes that visible: while two slots exist, the assertion,
 the selector and the document all say a renewal is unfinished.
 
+The `revoked` list is read on BOTH sides. sshd refuses a revoked user key (`RevokedKeys`); every
+client, root included, refuses a revoked host key, and a certificate whose signing authority is
+revoked (`RevokedHostKeys`, openssh-policy.nix). Host certificates are valid forever by decision: the
+hosts are checked strictly, so a missed calendar renewal would break every connection, and an expiry
+only bounds a leaked key that nobody revoked. Revocation is what cuts one, at the next activation. A
+host certificate is renewed on an event — a leak, the authority's own renewal — never on a date. The seat
+signs it (`ssh-keys-certify`) after a renewal of the key or of the authority; the activation only installs
+what is recorded.
+
+=== Phase 2 of an AUTHORITY — the trust gate
+
+For an authority, phase 2 is also the moment the signature moves: once the old slot is gone, the new
+one signs. So the positive check is not "the new generation serves" but "every verifier already
+trusts it", and it is recorded.
+
+[cols="1,3"]
+|===
+h|Gesture|What it proves
+
+|`ndh-trust-check` on every host
+|Its live trust — the NixOS bundle, the darwin System keychain, `ssh_known_hosts`,
+`TrustedUserCAKeys` — carries every trusted slot of every authority, and no compromised one. Exit 0
+on each host, or phase 2 waits.
+
+|`trusted: <YY-MM-DD>` on the slot that will sign
+|Written in the same change that drops the old slot and writes its `revoked` entry. The record IS
+the attestation that `ndh-trust-check` passed on every host on that date: the evaluation checks that
+the record exists, it does not — and cannot — verify any host. It refuses an ordinary retirement
+without it (`keys-yaml.d/trust.nix`, `phase2Gaps`); a compromised retirement
+(`revoked.<id>.compromised: true`, written by `--replace`) is exempt, its breakage accepted.
+
+|On darwin, the System keychain trusts the new root
+|Setting or removing a trust setting needs an admin authorization only an interactive GUI session
+provides (no authorizationdb lift). Over ssh, `add-trusted-cert` imports the root WITHOUT trusting
+it and the `-t` removal is denied; the activation then exits 1 naming the gesture: run
+`sudo ndh-keychain-reconcile` from a Terminal in the GUI session — the same script, kept on the
+system PATH and exported as a flake package — until `ndh-trust-check` reports the keychain
+reconciled. Stale roots are removed unconditionally: a stale root is never legitimate, so keeping
+it protects no availability.
+
+|The cluster PKI re-sealed under the new generation
+|A cluster trusts what `ClusterSeal` minted from the old signing slot: its CA set, the cert-manager
+issuer, the admin credentials. No host check sees that. Before phase 2 of `mammoth-skate-tls`, purge
+every `ClusterPkiCoordinate` case from the cellar and re-grow, as rke2lab
+`docs/architecture/cluster-api/deterministic-cluster-access.adoc` describes — then drop the old slot.
+|===
+
+== Replacement — when the private is exposed
+
+The overlap protects the operator from a renewal that does not serve. When the retiring private is
+*published*, the overlap protects the attacker instead: it keeps the exposed generation accepted
+until phase 2. A replacement is therefore *one* change:
+
+. a new slot, generated as in phase 1;
+. every existing slot deleted, and written to `revoked` with the reason;
+. an authority and its leaves together, as in any renewal; the new authority generation is the only
+  one left, so it signs at once.
+
+[cols="1,3"]
+|===
+h|Cost|Consequence
+
+|No overlap
+|From its own activation on, a host refuses the old generation. Activate each host from a session
+that does not depend on it — a local console, screen sharing, or a session already open, which is
+never re-authenticated.
+
+|Lockout
+|A host not yet activated accepts only the old generation, while an activated client presents only
+the new one: nothing activated can reach it over SSH. Order the activations so that one working way
+in always remains.
+|===
+
+[WARNING]
+====
+A replacement re-encrypts through `.sops.yaml`. If a recipient there derives from an exposed key,
+remove it in the *same* change; otherwise the new privates are readable by whoever holds the old
+one.
+====
+
 [cols="1,2",options="header"]
 |===
 | Guard | Enforces
@@ -147,9 +256,18 @@ the selector and the document all say a renewal is unfinished.
 
 [source]
 ----
-nix run .#ssh-keys-renew -- [--key NAME]... [--older-than Nd] [--apply]
-nix run .#ssh-keys-renew -- --retire NAME@YY-MM-DD [--apply]
+nix run "git+file://$PWD?rev=$(git rev-parse HEAD)#ssh-keys-renew" -- [--key NAME]... [--older-than Nd] [--apply]
+nix run "git+file://$PWD?rev=$(git rev-parse HEAD)#ssh-keys-renew" -- [--key NAME]... --replace --reason TEXT [--apply]
+nix run "git+file://$PWD?rev=$(git rev-parse HEAD)#ssh-keys-renew" -- --create NAME --usage TAG... [--profile NAME]... [--apply]
+nix run "git+file://$PWD?rev=$(git rev-parse HEAD)#ssh-keys-renew" -- --retire NAME@YY-MM-DD [--apply]
+nix run "git+file://$PWD?rev=$(git rev-parse HEAD)#ssh-keys-certify" -- [--apply]
 ----
+
+By revision, never `.#`: an evaluation of the checkout copies it into the store. `--retire` is
+target only: phase 2 is still done by hand. `--replace` and `--create` are implemented. `--create`
+declares a new entry and generates its first slot in one change, because the schema requires a
+slot per entry; with no `--profile`, the key lands on no host and its consumer reads `keys.yaml`
+itself.
 
 [cols="1,2"]
 |===
@@ -170,7 +288,7 @@ two-phase rule needs a human to confirm phase 1.
 
 == Related Documentation
 
-* link:ssh-keys-architecture.adoc[SSH Keys] — which keys remain, who owns them, how they travel.
+* link:ssh-keys-architecture.adoc[Roles × Keys] — every key, its role, its holder, its acceptor, its lifecycle.
 * link:fabric-control-plane-spec.adoc[Fabric Control Plane] — the access model that makes these
   keys exceptions.
 * link:sops-two-phase-rollout.adoc[SOPS Two-Phase Rollout] — the same two-phase discipline for sops

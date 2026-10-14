@@ -109,8 +109,12 @@ in
     tailnet.tailscale.auth.${cfg.kind}.enable = cfg.controller == "saas";
     tailnet.headscale.auth.${cfg.kind}.enable = cfg.controller == "headscale";
 
-    # Trust every authority in keys.yaml that advertises
-    # `tls-authority` usage and carries a minted `ca_crt` PEM.
+    # Trust every TRUSTED generation of every authority in keys.yaml that
+    # advertises `tls-authority` usage: each slot's minted `ca_crt` PEM,
+    # except a slot marked `compromised` (ndh.keysYaml.trustedAuthoritySlots).
+    # Accepting both generations is what lets a renewal overlap — the old
+    # one keeps signing until phase 2, while the new root is already
+    # trusted (keys.schema.yaml, authoritySlots).
     # Same option name on Darwin + NixOS (both flavours of nix-pki
     # expose `security.pki.certificates`).  `ca_crt` is a plaintext
     # field inside the sops-encrypted keys.yaml — cert bytes are
@@ -124,8 +128,12 @@ in
     security.pki.certificates =
       let
         authorities = config.ndh.keysYaml.authorities or { };
-        isTlsAnchor = auth: (auth ? ca_crt) && (builtins.elem "tls-authority" (auth.usage or [ ]));
+        trusted = config.ndh.keysYaml.trustedAuthoritySlots;
+        isTlsAuthority = name: builtins.elem "tls-authority" (authorities.${name}.usage or [ ]);
+        roots =
+          name:
+          lib.concatMap (m: lib.optional (m ? ca_crt) m.ca_crt) (lib.attrValues (trusted.${name} or { }));
       in
-      lib.mapAttrsToList (_: a: a.ca_crt) (lib.filterAttrs (_: isTlsAnchor) authorities);
+      lib.concatMap roots (lib.filter isTlsAuthority (lib.attrNames authorities));
   };
 }

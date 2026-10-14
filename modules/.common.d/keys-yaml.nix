@@ -18,7 +18,7 @@ let
   # JSON so every consumer reads from the same store path.  sops
   # leaves plaintext fields (anything without a `# sops:encrypted`
   # marker in .sops.yaml's encrypted_comment_regex, including
-  # `public`, `ca_crt`, everything under `authorities`) untouched,
+  # `public`, each slot's `ca_crt`, everything under `authorities`) untouched,
   # so yq can pull them out of the encrypted file directly without
   # sops decryption at eval time.
   jsonDrv = pkgs.runCommand "ndh-keys-yaml.json" { buildInputs = [ pkgs.yq-go ]; } ''
@@ -29,6 +29,7 @@ let
   keysJson = parsed.keys or { };
   authoritiesJson = parsed.authorities or { };
   revokedJson = parsed.revoked or { };
+  trust = import ./keys-yaml.d/trust.nix { inherit lib; };
 
   # Every public blob a slot still carries, keys and authorities alike.
   livePublics =
@@ -48,11 +49,48 @@ let
   # sshd that reads this list would lock out every client still presenting it.
   stillLive = lib.filterAttrs (_id: r: lib.elem r.public livePublics) revokedJson;
 
+  phase2Gaps = trust.phase2Gaps authoritiesJson revokedJson;
+
+  # Roles × keys 6a: every SSH certificate (ssh-host, ssh-user) is signed on the seat and recorded
+  # in keys.yaml; the activation only installs it and signs nothing. So a generation of a key with an
+  # SSH cert_usage must carry its recorded public AND its recorded certificate — otherwise its host
+  # would have none. Refused here, before any host is switched.
+  uncertified = lib.concatLists (
+    lib.mapAttrsToList (
+      name: key:
+      lib.concatMap (
+        usage:
+        lib.concatLists (
+          lib.mapAttrsToList (
+            slot: material:
+            if (material.public or "") == "" then
+              [ "${name}@${slot} ${usage} (no recorded material)" ]
+            else
+              lib.optional (
+                ((material.certificates or { }).${key.authority} or { }).${usage} or "" == ""
+              ) "${name}@${slot} ${usage} (no recorded certificate)"
+          ) (key.slots or { })
+        )
+      ) (lib.filter (u: u == "ssh-host" || u == "ssh-user") (key.cert_usage or [ ]))
+    ) (lib.filterAttrs (_: key: (key.authority or null) != null) keysJson)
+  );
+
   revokedKeysFile =
     if stillLive != { } then
       throw ''
         ndh.keysYaml: revoked but still carried by a slot in keys.yaml: ${lib.concatStringsSep ", " (lib.attrNames stillLive)}
         A generation is revoked in the same change that deletes its slot, never before.''
+    else if uncertified != [ ] then
+      throw ''
+        ndh.keysYaml: SSH certificates not recorded: ${lib.concatStringsSep ", " uncertified}
+        Record the material on the seat (ssh-keys-renew), sign it (ssh-keys-certify --apply), and commit
+        keys.yaml (roles × keys 6a).''
+    else if phase2Gaps != [ ] then
+      throw ''
+        ndh.keysYaml: authority generation retired before its successor was trusted everywhere: ${lib.concatStringsSep ", " phase2Gaps}
+        Run ndh-trust-check on every host, then record `trusted: <YY-MM-DD>` on the slot that now signs
+        (docs/ssh-keys-renewal-spec.adoc, phase 2 of an authority). A compromised generation is marked
+        `compromised: true` in revoked instead.''
     else
       pkgs.writeText "ndh-revoked-keys.pub" (
         lib.concatStrings (lib.mapAttrsToList (id: r: "${r.type} ${r.public} revoked:${id}\n") revokedJson)
@@ -77,10 +115,30 @@ in
       default = authoritiesJson;
       description = ''
         Parsed `.authorities` map from keys.yaml.  Carries each
-        authority's `public`, `ca_crt`, `domain`, `usage`, etc.
+        authority's `domain`, `usage`, and per slot its `public` and `ca_crt`.
         (private is sops-encrypted and stays ENC[...] here; the only
         consumer that needs it reads from the enriched keys.yaml
         at activation time).
+      '';
+    };
+
+    trustedAuthoritySlots = lib.mkOption {
+      type = lib.types.attrsOf (lib.types.attrsOf lib.types.anything);
+      readOnly = true;
+      default = trust.trustedSlots authoritiesJson;
+      description = ''
+        Per authority, the slots every trust store carries: all of them except a slot
+        marked `compromised` (keys-yaml.d/trust.nix). The only source the trust paths read.
+      '';
+    };
+
+    compromisedAuthoritySlots = lib.mkOption {
+      type = lib.types.attrsOf (lib.types.attrsOf lib.types.anything);
+      readOnly = true;
+      default = trust.compromisedSlots authoritiesJson;
+      description = ''
+        Per authority, the slots marked `compromised`: removed from every trust store,
+        including a root an earlier activation already installed.
       '';
     };
 

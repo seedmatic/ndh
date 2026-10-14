@@ -34,7 +34,7 @@ LOG="/var/log/network-monitor.log"
 
     for bridge in $(ifconfig -l | tr ' ' '\n' | grep '^bridge'); do
       if netstat -rn | grep -q "^default.*$bridge"; then
-        echo "[$(date)] Removing default route from Lima bridge $bridge"
+        echo "[$(date)] Removing default route from bridge $bridge"
         route -n delete default -ifscope "$bridge" 2>/dev/null || true
       fi
     done
@@ -99,7 +99,7 @@ LOG="/var/log/network-monitor.log"
 
     for bridge in $(ifconfig -l | tr ' ' '\n' | grep '^bridge'); do
       if netstat -rn | grep -q "^default.*$bridge"; then
-        echo "[$(date)] Removing default route from Lima bridge $bridge"
+        echo "[$(date)] Removing default route from bridge $bridge"
         route -n delete default -ifscope "$bridge" 2>/dev/null || true
       fi
     done

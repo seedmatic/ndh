@@ -6,3 +6,10 @@
 \#*
 .\#*
 .local
+
+# Session scratchpads and machine-local files, at any depth of any repo
+.local.d/
+.scratchpad.d/
+
+# Editor and extension leftovers of a decrypted sops file — never staged
+*.decrypted~*

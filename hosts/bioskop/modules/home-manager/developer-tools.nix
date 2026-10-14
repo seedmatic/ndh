@@ -15,6 +15,7 @@
   ];
 
   ndh.claude-code.enable = true;
+  ndh.claude-code.sessionHooks.enable = true;
 
   ndh.cometDebug = {
     enable = true;

@@ -52,7 +52,8 @@
     sops.age.keyFile = "/etc/sops/age/keys.txt";
 
     services.nxmaticCachixWatchStore = {
-      enable = true;
+      # DISABLED 2026-10-10: watch-store pushed dirty-tree flake sources carrying sops-smudged .secrets/keys.yaml in clear to the PUBLIC nxmatic cache. Not removed; see the rke2lab memory note dirty-flake-eval-publishes-smudged-secrets.
+      enable = false;
       sopsEncryptedTokenFile = ../../.secrets;
     };
 
@@ -79,7 +80,9 @@
 
     tart.configGenerator = {
       forceEnable = false;
-      vmCpuCount = 8; # 8 of 14 cores (10P+4E) reserved for nerd-nixos; 6 remain for macOS
+      # M4 Pro: 12 cores, 8P+4E. 8 vCPUs took every P-core, and a vCPU the host preempts stops
+      # answering IPIs: the guest's soft lockups and RCU stalls of 2026-10. 6 leaves macOS 2 P-cores.
+      vmCpuCount = 6;
       vmMemoryMiB = halfRamMiB;
       vmRunBridgeInterface = hardware.vmBridgeService;
       vmRunSerialBridgeEnable = true;
@@ -92,5 +95,8 @@
     # (bioskop-nixos) is wired by modules/darwin/host-builder.nix;
     # see docs/host-builder-phases.adoc.
     ndh.hostBuilder = "steady";
+
+    # The Claude Code policy (deny/ask list and hook) is set here only: nikopol runs its employer policy.
+    ndh.claude-code.managedSettings.enable = true;
   };
 }

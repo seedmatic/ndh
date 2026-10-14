@@ -3,7 +3,6 @@
   lib,
   pkgs,
   worktreePath,
-  claude-hub ? null,
   ...
 }:
 with lib;
@@ -28,8 +27,8 @@ let
   # Once present, Claude Code owns the file — /model, /plugin, and
   # marketplace edits write back to it and we never overwrite them.
   #
-  # Intentionally carries only the mutable-but-worth-restoring keys
-  # (plugins + marketplaces) and the model ALIAS. The alias picks the tier
+  # Intentionally carries only the model ALIAS, and no plugin: the operator
+  # enables those one at a time, knowing what each changes. The alias picks the tier
   # and the context window; the `[1m]` suffix exists nowhere else, so
   # without it a fresh machine falls back to 200k. The Bedrock model id
   # behind the tier lives in cfg.env (real shell vars, highest precedence)
@@ -43,6 +42,11 @@ let
   # that one key so the per-tier defaults here (ANTHROPIC_DEFAULT_OPUS_MODEL)
   # decide the model.
   seedFile = pkgs.writeText "claude-settings-seed.json" (builtins.toJSON cfg.seed);
+
+  # The session hooks own the `hooks` key of ~/.claude/settings.json and nothing else: the file stays
+  # Claude's, and this block is replaced whole at every activation, so a hook removed here is gone.
+  sessionHooks = import ./claude-code.d/hooks/package.nix { inherit pkgs; };
+  hooksFile = pkgs.writeText "claude-code-hooks.json" (builtins.toJSON sessionHooks.hooks);
 in
 {
   options = {
@@ -63,10 +67,13 @@ in
           darwin claude-code-bedrock module (single source:
           modules/claude-code-bedrock-env.nix).
 
-          Shell env vars take HIGHEST precedence in Claude Code's settings
-          layering — above the `env` block of ~/.claude/settings.json — so
-          this declarative, read-only set always wins for model
-          config.
+          These do NOT outrank the `env` block of ~/.claude/settings.json:
+          Claude Code applies that block on top of the inherited
+          environment, and sessions the VSCode extension launches only get
+          the right model ids from there (the extension passes the binary's
+          built-in Bedrock defaults). The model ids are therefore set in
+          that block too, with the same values (see
+          modules/claude-code-bedrock-env.nix); change both together.
 
           Deliberately NOT managed via home.file on settings.json:
           Claude Code writes back to ~/.claude/settings.json at runtime
@@ -76,33 +83,17 @@ in
         '';
       };
 
+      sessionHooks.enable = mkEnableOption "the session hooks (memory guard and commit, checkpoints) in ~/.claude/settings.json";
+
       seed = mkOption {
         type = types.attrs;
         default = {
           model = "opus[1m]";
-          enabledPlugins = {
-            "claude-session-driver@superpowers-marketplace" = true;
-            "double-shot-latte@superpowers-marketplace" = true;
-            "elements-of-style@superpowers-marketplace" = true;
-            "episodic-memory@superpowers-marketplace" = true;
-            "private-journal-mcp@superpowers-marketplace" = true;
-            "superpowers@superpowers-marketplace" = true;
-            "superpowers-chrome@superpowers-marketplace" = true;
-          };
-          extraKnownMarketplaces = {
-            superpowers-marketplace = {
-              source = {
-                source = "github";
-                repo = "obra/superpowers-marketplace";
-              };
-            };
-          };
         };
         description = ''
           Bootstrap seed copied to ~/.claude/settings.json only when that
-          file does not yet exist (fresh machine). Protects the plugin and
-          marketplace list across machine rebuilds without ever clobbering
-          the live file Claude mutates at runtime.
+          file does not yet exist (fresh machine), so the model alias survives a
+          rebuild without ever clobbering the live file Claude mutates at runtime.
         '';
       };
     };
@@ -113,13 +104,16 @@ in
       home.sessionVariables = cfg.env;
     }
 
-    (mkIf (claude-hub != null) {
-      home.file.".claude/bin/claude-config-home-wrapper.sh" = {
-        source = "${
-          claude-hub.packages.${pkgs.stdenv.hostPlatform.system}.claude-config-home-wrapper
-        }/bin/claude-config-home-wrapper.sh";
-        executable = true;
-      };
+    (mkIf cfg.sessionHooks.enable {
+      home.activation.claudeCodeHooks = lib.hm.dag.entryAfter [ "writeBoundary" "claudeCodeSeed" ] ''
+        claudeSettings="$HOME/.claude/settings.json"
+        if [ -f "$claudeSettings" ]; then
+          claudeSettingsNew="$(mktemp)"
+          ${pkgs.jq}/bin/jq --slurpfile hooks ${hooksFile} '.hooks = $hooks[0]' "$claudeSettings" >"$claudeSettingsNew"
+          $DRY_RUN_CMD install -m 0644 "$claudeSettingsNew" "$claudeSettings"
+          rm -f "$claudeSettingsNew"
+        fi
+      '';
     })
 
     {

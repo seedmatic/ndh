@@ -20,7 +20,6 @@ while read -r line; do
     sleep 3
     
     # Fix routing - remove WiFi default route only
-    # NOTE (@codebase): preserve bridge* defaults for Lima compatibility.
     route -n delete default -ifscope en1 2>/dev/null || true
     
     # Log the result

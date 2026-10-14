@@ -11,7 +11,7 @@
 # used had no equipment at all.  Measured 2026-09-24 on nikopol, whose store was
 # cold for a private input:
 #
-#   error: unable to download '…/claude-hub/archive/<sha>.tar.gz': HTTP error 404
+#   error: unable to download '…/<private-input>/archive/<sha>.tar.gz': HTTP error 404
 #
 # That 404 is what makes it worth a module rather than a remembered flag. GitHub
 # answers 404 — not 403 — for a private repo fetched anonymously, so the message

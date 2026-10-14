@@ -1,0 +1,1731 @@
+= Private Binary Cache — build once, substitute everywhere
+:toc: left
+:toclevels: 3
+:icons: font
+
+**Status:** 📐 target architecture — decided 2026-10-10, amended 2026-10-11, not built +
+**Scope:** how the seedmatic hosts stop rebuilding the same paths, and where those paths are kept
+
+[NOTE]
+====
+This spec states the *target* only. The way there from today's state (each host builds, and a
+`cachix watch-store` daemon published every new store path to the public `nxmatic` cache) is
+described in the rke2lab migration atlas, `docs/architecture/atlas/fabric-control-plane.adoc`,
+section _The private binary cache_.
+
+Every figure marked *measured* was read on 2026-10-10 from store paths that already existed, or on
+2026-10-11 in an isolated throwaway store. No flake of ours was evaluated to get it.
+====
+
+== Overview
+
+The seedmatic hosts share most of one configuration, so they run mostly the same packages. Today
+each host builds them again. The cache makes a path **built once and substituted everywhere**:
+
+* **one builder**, bioskop, builds every host's configuration from a **pushed revision**, never from
+  a working tree, and **sends** each host its closure (`nix copy`). The other hosts never build from
+  source (see <<revisions-only>>);
+* what the builder **trusts enough to publish** goes to the **public** `nxmatic` cachix. That covers
+  an allow-list of named outputs, built and not added, which passed a content guard. The builder
+  signs those paths with a publication key and pushes them itself (see <<public-private-split>>);
+* **everything else** stays in the **private** cache: an **attic** server in an Incus container on
+  bioskop, filled by an `attic watch-store` on every host, every read of which needs a token.
+
+[cols="1,3",options="header"]
+|===
+| Property | What it gives
+
+| One build per path
+| The four host closures add up to 32 GiB, but their union is 15.7 GiB, and only 1.6 GiB of that union
+is not already on cache.nixos.org (measured, see <<sizing>>). That 1.6 GiB is the part the hosts
+rebuild today.
+
+| The active session only
+| The cache keeps what the current coding session needs, for a few hours, not a history and not
+the previous day (see <<retention>>). It skips the paths whose signature says an upstream cache
+serves them.
+
+| Trusted paths public, the rest private
+| The publication key marks a path as published. attic's upstream filter skips that key, so a
+published path is never kept privately, and a path the builder did not publish is never served by
+nobody (see <<public-private-split>>).
+
+| Every host writes the private cache
+| Each of the four hosts uploads to attic, with a write token of its own. The price is trust: attic
+is as trustworthy as its least trusted writer (see <<trust-model>>). The clusters read the public
+tier only, and hold **no** attic token: their nodes and workloads build through their nerd-nixos
+builder (see <<cluster-builds>>, design only). The infrastructure containers hold none either.
+
+| Private by authentication
+| The cache is created **without** `--public`, so an anonymous request is refused (see
+<<read-test>>). Listening on the fabric segment only, never on a public port, adds to that. It does
+not replace it.
+|===
+
+The motive is the incident of 2026-10-10. A daemon pushed every new store path to the public cache.
+On a machine whose git config smudge-decrypts sops files, evaluating a dirty rke2lab tree copies
+`.secrets` and `.ndh-ssh.d/keys.yaml` in clear into the store, so 52 such copies became public. The
+daemon was disabled on every host in `395b34a1`.
+
+It is not only a dirty tree. Measured on 2026-10-11: **any** evaluation that names a decrypted
+checkout (`.`, `.#x`, a bare `git+file://`) copies the files from disk, clean tree or dirty. Only a
+revision read from git objects stays encrypted (see <<revisions-only>>).
+
+This spec brings the cache back and narrows that shape in layers:
+
+* the builder evaluates revisions only;
+* only what it built from one, and not a path added from a tree, can be published;
+* everything else stays behind a read token.
+
+None of these proves a path's content clean. That is the job of the content guard on the way to
+the public cache, and of an attic fork that refuses such paths at upload (see <<attic-fork>>).
+Upstream of all of it: no plaintext on disk in a flake tree.
+
+== Vocabulary
+
+[cols="1,3",options="header"]
+|===
+| Term | Meaning
+
+| *nerd-nixos*
+| The Tart NixOS guest on a bare-metal (`bioskop-nixos`, `nikopol-nixos`). It hosts Incus. Its
+`/nix/store` is an overlay of read-only EROFS layers over a ZFS upper.
+
+| *Incus cluster*
+| The one Incus service, which ndh configures as part of nerd-nixos. Its members are the two
+nerd-nixos: `bioskop` (database leader) and `nikopol` (`database-client`), both online on
+2026-10-10. It hosts the rke2lab cluster nodes (project `rke2lab`) and the infrastructure containers
+below.
+
+| *attic-nixos*
+| The Incus container that runs attic. It exists **on bioskop only**.
+
+| *headscale-nixos*
+| The Incus container that runs headscale. There is one **on each bare-metal**; see
+link:fabric-control-plane-spec.adoc[the fabric control plane].
+
+| *Builder*
+| bioskop: a dedicated fill job on the darwin host evaluates every host's configuration, and builds
+the Linux parts on bioskop's nerd-nixos, its remote builder (see <<who-fills>>). No other host
+builds from source.
+
+| *Revision*
+| A commit read from git objects: `github:seedmatic/{repo}/{sha}`, or
+`git+file:///Volumes/git-bare-store/seedmatic/{repo}.git?ref=develop&rev={sha}` (host-registry id
+`{repo}-bare/develop/{sha}`). Never a working tree (see <<revisions-only>>).
+
+| *Publication key*
+| `seedmatic-publish-1`, the signing key that means "the fill job built this from a revision, and it
+passed the guard: publish it". It is **not** in `secret-key-files`. The fill job applies it
+explicitly (see <<public-private-split>>).
+
+| *Added path*
+| A path that entered the store by `addToStore`, not by a build: a flake `-source`, a
+`builtins.path`, a `builtins.toFile`, a sops-nix file. It has no deriver, and no key signs it.
+
+| *Fill*
+| One builder run: build from a revision, select and sign the paths to publish, push them to
+cachix, send each host its closure, then keep the private remainder alive.
+
+| *Public tier, private tier*
+| `nxmatic.cachix.org`, readable by anyone, which holds only what the fill job published; and attic,
+readable with a token, which holds everything else.
+
+| *Read token*
+| An attic token that can pull from the cache and nothing else. Every substituter of attic holds one
+(see <<secrets>>).
+
+| *Ours*
+| A path that has no `cache.nixos.org-1` or flox signature in the local Nix DB.
+
+| *Truly ours*
+| A path that is ours **and** whose narinfo returns 404 on cache.nixos.org. Only these belong in the
+cache.
+
+| *Live set*
+| The paths attic must keep while a session is active: for each host, the closure of its latest
+built generation, minus what the public tier serves.
+|===
+
+== C1 — system context
+
+[mermaid]
+....
+flowchart LR
+  op["Operator"]:::person
+  gh["Revisions — GitHub, or the bare repositories on bioskop"]:::ext
+  up["cache.nixos.org, cache.flox.dev — upstream substituters"]:::ext
+  cx["nxmatic.cachix.org — PUBLIC tier, what the fill job published"]:::pub
+
+  subgraph BIOSKOP["bioskop bare-metal"]
+    dj["fill job on darwin bioskop — dedicated user, revisions only, publication key, the only cachix token"]:::builder
+    dB["darwin bioskop — dev seat, watch-store"]:::host
+    subgraph NN_B["nerd-nixos bioskop-nixos"]
+      lb["Linux remote builder of the fill job — watch-store"]:::host
+      attic["attic-nixos — PRIVATE tier, reads need a token"]:::cache
+    end
+  end
+  subgraph NIKOPOL["corporate bare-metal"]
+    dN["darwin nikopol — watch-store"]:::host
+    nN["nerd-nixos nikopol-nixos — watch-store"]:::host
+  end
+  cl["cluster nodes and pods — public tier only, no attic token"]:::none
+
+  op -->|"triggers a fill"| dj
+  gh -->|"git objects — secrets stay encrypted"| dj
+  dj -->|"Linux builds"| lb
+  dj -->|"push the computed publishable set, after the guard"| cx
+  dj -->|"nix copy — each host its closure"| dN
+  dj -->|"nix copy, across the bridge"| nN
+  dB & lb -->|"watch-store, own write token"| attic
+  dN & nN -->|"watch-store, across the bridge"| attic
+  up -.->|"substitute, first"| dN
+  cx -.->|"substitute, second"| dN
+  attic -.->|"substitute, read token, third"| dN
+  up & cx -.->|"substitute"| cl
+
+  classDef person fill:#e7ebf0,stroke:#555;
+  classDef ext fill:#e7ebf0,stroke:#8a94a3;
+  classDef pub fill:#dcfce7,stroke:#15803d,stroke-width:2px;
+  classDef host fill:#dbeafe,stroke:#1d4ed8;
+  classDef builder fill:#fef3c7,stroke:#b45309,stroke-width:2px;
+  classDef cache fill:#ddd9f2,stroke:#5b52b8,stroke-width:2px;
+  classDef none fill:#f1f5f9,stroke:#64748b;
+....
+
+Legend: amber — the fill job, the only one that builds from source and the only one that
+publishes; blue — a host, which receives its closure, substitutes the rest and uploads its own
+builds to the private tier; violet — the private tier; green — the public tier; slate — the
+clusters, readers of the public tier only; grey — outside the fabric. The substitution order is drawn
+for nikopol and holds on every host.
+
+attic is addressed by a **private fabric-zone name** of bioskop's segment, never by a tailnet
+`100.x` address. nikopol's machines reach it across the bridge, under the rule of
+link:fabric-control-plane-spec.adoc[the fabric control plane]: address the other segment by its
+fabric name.
+
+[[who-fills]]
+== Who fills the cache — every host, into one common cache
+
+**Decided by the operator on 2026-10-10**, through the question prompt and with the price below in
+front of them: an `attic watch-store` daemon runs on **each of the four hosts** (bioskop, nikopol,
+bioskop-nixos, nikopol-nixos). Every host uploads what it builds, dev builds included.
+
+The reason is the topology. bioskop-nixos is bioskop's Linux builder (`/etc/nix/machines` →
+`ssh-ng://root@bioskop-nixos`), so it already receives the builds of bioskop's dirty trees. Whether
+a dirty build lands on the dev seat or on its builder is a difference of degree, not of kind.
+
+The builder still exists. It builds every host's configuration from a pushed revision, so that a
+host's switch finds its closure already in the cache. What the hosts upload on top is what they
+build themselves.
+
+[IMPORTANT]
+====
+**Amended by the operator on 2026-10-11.** The watch-stores stay, and the cache gains a public
+tier above them:
+
+* **the other hosts never build from source**: bioskop builds and **sends** each host its closure,
+  with `nix copy --to ssh-ng://nix-store.{host}` under the existing `nix-store` identity (see
+  <<revisions-only>>);
+* what the fill job trusts enough to publish goes to the public `nxmatic` cachix, and the
+  watch-stores fill attic with **everything else** (see <<public-private-split>>).
+
+So attic is the **private tier**: the hosts' own builds, dev builds included, and whatever the fill
+job built but did not publish.
+====
+
+[cols="1,3",options="header"]
+|===
+| | What the decision gives, and what it costs
+
+| Gain
+| every build on any host is shared, dev builds included: the most the cache can do for "build once"
+
+| Price — trust
+| a write token on every host, so the cache is as trustworthy as the **least trusted of the four
+writers** (see <<trust-model>>), and tokens that cannot yet be revoked one by one, so a single loss
+means rotating them all (see <<write-tokens>>)
+
+| Price — the corporate side
+| the write token inside nikopol, the darwin VM that runs on the corporate bare-metal (see
+<<trust-model>>)
+
+| Price — exposure
+| every dev seat's dirty evaluations reach the cache, confined by authenticated reads (see
+<<watch-store-sees>>)
+|===
+
+[[write-tokens]]
+=== One common cache, one write token per host
+
+**Decided by the operator on 2026-10-10**: one common cache, `seedmatic`, and **a write token per
+host**, each with its own subject. attic issues as many tokens for one cache as needed:
+
+[source,bash]
+----
+atticadm make-token --sub bioskop       --validity "3 months" --pull seedmatic --push seedmatic
+atticadm make-token --sub nikopol       --validity "3 months" --pull seedmatic --push seedmatic
+atticadm make-token --sub bioskop-nixos --validity "3 months" --pull seedmatic --push seedmatic
+atticadm make-token --sub nikopol-nixos --validity "3 months" --pull seedmatic --push seedmatic
+----
+
+What a per-host token does **not** give yet is revocation of that host alone. attic's tokens are
+**stateless JWTs**: the server checks a token's signature and expiry, and keeps no list of issued
+tokens (attic `token/src/lib.rs:3-12`: _"simple and stateless […] We may revisit this later"_).
+Ending one token means rotating the server secret (`ATTIC_SERVER_TOKEN_RS256_SECRET_BASE64`), which
+ends every token, reads included, or waiting for its expiry. Revoking one host alone is left to a
+later contribution to attic (see <<attic-fork>>). Access control is already far better than the
+public cache.
+
+[cols="1,3",options="header"]
+|===
+| A host's write token | Rule
+
+| subject
+| the host's name (`--sub {host}`), so that each token belongs to one host and none is shared
+
+| scope
+| `--push seedmatic` (plus `--pull seedmatic` for the keep-alive), nothing else: no `create-cache`,
+`configure-cache`, `delete` or `destroy-cache`
+
+| validity
+| bounded (`--validity`, three months in the example), re-issued on a schedule. Until the
+contribution, the validity is the only bound on how long a lost token keeps pushing. The value is
+open below.
+
+| a host is lost or compromised
+| rotate the server secret, then re-issue every other host's write token and every read token (see
+<<secrets>>)
+|===
+
+Considered and not chosen: a cache per writer. It would make a single host revocable (destroy its
+cache) and give each writer its own signing key, at no disk cost, since attic deduplicates NARs
+across caches. The operator kept one common cache.
+
+[[watch-store-sees]]
+=== What a host's watch-store uploads
+
+The daemon watches the whole store, not the fill. Read in attic `client/src/command/watch_store.rs`
+at `7a19204d`:
+
+* when a path becomes valid, the daemon skips it if its name ends in `.drv` or `-source`. That is a
+  test on the **name**, done once, when the path appears;
+* for every path it keeps, it pushes the **closure** by default (`--no-closure` is a hidden flag).
+  An output that references a flake source therefore carries that source, whatever its name.
+
+With a daemon on every host, these origins all reach the cache:
+
+[cols="1,1,2",options="header"]
+|===
+| Host | Origin | What lands in the cache
+
+| every host
+| its own builds
+| the outputs of whatever it builds, dirty trees included. A dirty evaluation's `-source` copy,
+plaintext included, is skipped by name, but an output that references one carries it in its closure.
+
+| bioskop-nixos, nikopol-nixos
+| the dev seats' remote builds (`ssh-ng`, `/etc/nix/machines` on the darwin hosts)
+| the outputs of derivations their darwin host evaluated, dirty trees included
+
+| bioskop-nixos, nikopol-nixos
+| the cluster nodes' and pods' remote builds (see <<cluster-builds>>)
+| what the nodes and their workloads build, the flox controller's realisations and unknown packages
+included. Inputs are accepted only signed or content-addressed (see <<builder-tests>>).
+
+| bioskop, bioskop-nixos
+| the fill job
+| what the fill job built but did not publish, plus a copy of what it did, by the race (see
+<<public-private-split>>)
+|===
+
+This is **accepted under authenticated reads**. A plaintext copy that reaches the cache can be read
+only by a holder of a read token, all of which are machines of the fabric (see <<secrets>>). It is
+not fixed by them. The fix is the fork in <<attic-fork>>.
+
+=== The darwin paths need a darwin builder
+
+nerd-nixos is Linux, and some of the darwin hosts' paths exist only on darwin. Measured on the two
+darwin system closures:
+
+[cols="2,1",options="header"]
+|===
+| Darwin "ours" paths | Size
+
+| shared by bioskop and nikopol | 0.97 GiB
+| bioskop only | 0.20 GiB
+| nikopol only | < 0.01 GiB
+| of which truly ours (not on cache.nixos.org) | 0.78 GiB
+|===
+
+The two darwin hosts overlap almost completely, so **one Mac builds both**, and that Mac is bioskop.
+nix-darwin builds `darwinConfigurations.nikopol.system` on any `aarch64-darwin` machine, and nikopol
+is a guest on a foreign, MDM-managed bare-metal.
+
+bioskop is also the dev seat, so the darwin fill does not run in the operator's session. It is a
+dedicated launchd job:
+
+* it runs under its own user, with its own fetcher cache (see <<revisions-only>>);
+* it evaluates a revision, with `--option allow-dirty false` on its own command line;
+* it holds no attic token, but the only cachix push token and the publication key: what it
+  publishes goes to cachix, and bioskop's watch-store uploads the rest to attic.
+
+The operator's `nix.conf` keeps `allow-dirty` at its default, because a global `false` would break
+the Maven build of manifests-core (`nix run .#stage-*-crd`) and the whole dev loop.
+
+=== What triggers a fill
+
+[cols="1,2",options="header"]
+|===
+| Trigger | When
+
+| the operator, by hand
+| **first**: a fill that the operator starts is a fill they can watch and measure
+
+| a poll of `develop`
+| **then**: the builder checks ndh's `develop` head on a timer, and the `develop` heads of the
+seedmatic flakes whose package outputs are in scope. A host's configuration changes only when ndh or
+its lock moves, so ndh's head is the event. Polling is pull-based, so nothing is opened into the
+private network for a webhook.
+|===
+
+=== One fill, step by step
+
+[mermaid]
+....
+sequenceDiagram
+  autonumber
+  participant G as Revision (GitHub or a bare repository)
+  participant F as Fill job (bioskop, dedicated user)
+  participant C as nxmatic.cachix.org (public tier)
+  participant W as watch-store on each host
+  participant A as attic-nixos (private tier)
+  participant H as Host
+  F->>G: fetch the revision — git objects, its own fetcher cache
+  F->>F: build every configuration, Linux parts on bioskop-nixos
+  F->>F: compute the publishable set — closure rule and content guard
+  F->>F: nix store sign with seedmatic-publish-1, that set only
+  F->>C: cachix push, that set only
+  F->>C: check that cachix holds exactly that set
+  F->>H: nix copy — each host its closure
+  W->>A: upload each new path, skipped if a listed key signed it
+  F->>A: keep-alive — download the NAR of every private live-set path
+....
+
+[[public-private-split]]
+== The public and the private tier — what the builder trusts goes public
+
+**Decided by the operator on 2026-10-11.** The paths the fill job trusts go to the **public**
+`nxmatic` cachix; everything else stays in the **private** attic. One signature does both jobs: it
+lets a path through to the public tier, and it keeps that path out of the private one.
+
+=== What makes a path publishable — the closure rule
+
+`cachix push` uploads a path **and its closure**, so a path cannot be judged alone: a built output
+that references an added `-source` at run time would drag that source to the public cache. A path
+is publishable only if **every** path of its runtime closure is either already served by an upstream
+public cache (a narinfo on cache.nixos.org or a flox cache answers 200), or itself meets all four
+conditions:
+
+[cols="1,3",options="header"]
+|===
+| Condition | Why
+
+| in the closure of an output on the **allow-list**
+| publication is a decision per named output, never "whatever was built"
+
+| **built**, not added: it has a deriver
+| an added path is a copy of something on disk, a flake `-source`, a sops-nix file, the ndh-ssh tree.
+Measured on 2026-10-11: 15 of 15 added paths in bioskop's closure have no deriver, and no
+`secret-key-files` key ever signs one (see <<signature-scope>>)
+
+| built **from a revision**
+| the fill job evaluates nothing else (see <<revisions-only>>)
+
+| passes the **content guard**
+| no private-key armour with a body, no `AGE-SECRET-KEY-1`, no JWT, no `tskey-`, `gh[opsu]_`,
+`github_pat_`, `dckr_pat_` or `glpat-` shape outside an `ENC[` value (the shapes of rke2lab's
+`.githooks/pre-commit` `token_shape_guard`), and no `# sops:encrypted` annotation followed by
+anything but `ENC[`
+|===
+
+[mermaid]
+....
+flowchart TD
+  P["a path in the closure of an allow-listed output"] --> U{"served upstream? narinfo 200"}
+  U -->|"yes"| OK["fine in a public closure — not pushed by us"]:::pub
+  U -->|"no"| D{"built — has a deriver?"}
+  D -->|"no: added — a -source, a sops-nix file"| PRIV["the path stays PRIVATE, and every path whose closure reaches it"]:::priv
+  D -->|"yes"| R{"built from a revision?"}
+  R -->|"no"| PRIV
+  R -->|"yes"| G{"passes the content guard?"}
+  G -->|"no"| PRIV
+  G -->|"yes"| C{"every reference publishable or upstream?"}
+  C -->|"no"| PRIV
+  C -->|"yes"| PUB["PUBLISHABLE — signed with seedmatic-publish-1, pushed to cachix"]:::pub
+
+  classDef pub fill:#dcfce7,stroke:#15803d,stroke-width:2px;
+  classDef priv fill:#ddd9f2,stroke:#5b52b8,stroke-width:2px;
+....
+
+Legend: green — public tier, or already upstream; violet — private tier, attic.
+
+Otherwise the **whole path stays private**. The job pushes the computed set explicitly, path by
+path, and after the push checks that cachix holds **exactly** that set: every path of the set
+answers 200, and no closure member outside it does.
+
+Measured on bioskop's system closure (2026-10-11, counts only):
+
+[cols="2,1,1",options="header"]
+|===
+| Paths of ours, built | Paths | NAR
+
+| publishable — closure clean, or only upstream-served added paths
+| 161 | 341 MiB
+
+| private — closure reaches an added path that no upstream serves
+| 18 | 2 MiB
+|===
+
+The 18 are the host's **aggregates**: `darwin-system`, `etc`, `etc-registry.json`,
+`set-environment`, `home-manager-files`, the sops-nix `manifest.json`,
+`io.seedmatic.ndh-flake.nix`, and the like. They reach the ndh `self` source, the sops-nix files
+or the home-manager files. 6 of the closure's 19 added paths are served by cache.nixos.org (the
+nixpkgs source among them) and do not taint. So the packages publish, and a system's private
+remainder is its aggregates.
+
+=== One signature for both tiers — the publication key
+
+[cols="1,3",options="header"]
+|===
+| Step | Rule
+
+| the key
+| `seedmatic-publish-1`, generated with `nix key generate-secret`, its secret half sops-encrypted in
+ndh and decrypted for the fill job's user only. **Never in a flake tree, never in
+`secret-key-files`**
+
+| signing
+| `nix store sign --key-file {key}` over the publishable set only, after the build. Applied like the
+layer key, by a step, never by the daemon
+
+| the private tier's filter
+| `seedmatic-publish-1` joins attic's `upstream-cache-key-names`, so a watch-store skips a path once
+it is published. `nxmatic.cachix.org-1` joins it too, for paths substituted from the public tier
+
+| the public tier's signature
+| `nxmatic` is a cachix-**managed** signing cache: ndh holds its push token
+(`cachix.nxmatic.token` in `.secrets`), not its private key. A published path therefore carries
+`seedmatic-publish-1` **locally** and `nxmatic.cachix.org-1` on the narinfo cachix serves
+|===
+
+Which key is checked where:
+
+[cols="1,2",options="header"]
+|===
+| Key | Checked by
+
+| `nxmatic.cachix.org-1`
+| every consumer of the public tier, in `trusted-public-keys`: the hosts and the clusters
+
+| attic's cache key
+| the hosts, in `trusted-public-keys`, for the private tier
+
+| `seedmatic-publish-1`
+| **nobody's** `trusted-public-keys`. It is read only locally, by attic's upload filter, as a
+key name. It proves nothing to a consumer, and no consumer needs it
+|===
+
+[[signature-scope]]
+=== What `secret-key-files` signs — measured, and why the key is not there
+
+Measured on 2026-10-11 (nix 2.34.8):
+
+* **in an isolated store** (its own store root, `HOME` and `XDG_CACHE_HOME`, a throwaway key, no
+  substituters): a `builtins.path`, a `builtins.toFile`, a flake `path:` source and a
+  `nix store add-path` receive **no** signature, only their `ca:` field. `nix store sign` on the
+  same path works, so the key was read;
+* **in bioskop's store**, 396 paths created since 2026-10-09: 69 of 69 built locally are signed by
+  `io-nxmatic-nix-darwin-home`, 0 of 210 added paths are;
+* fixed-output outputs (fetchers) are content-addressed too, but they have a deriver and are signed
+  like any build.
+
+And `secret-key-files` is **daemon-wide**. A publication key placed there would sign the operator's
+dirty dev builds on bioskop, and the dirty remote builds bioskop-nixos receives. A built output that
+copies `${self}` content into `$out` would be signed. So the key is applied by the fill job, never
+by the daemon.
+
+=== The limits
+
+[cols="1,3",options="header"]
+|===
+| Limit | What it means
+
+| the race
+| a watch-store judges a path once, when it becomes valid, which is **before** the fill job signs
+it. On bioskop and bioskop-nixos a fill output therefore also reaches attic. Harmless: a copy of
+public content in the private tier, which the short retention removes
+
+| publishing is final
+| a public path may be copied or indexed even after a purge. The content guard is the last line. A
+signature attests content, not how it was evaluated: a built output that copies `${self}` content
+passes if the guard misses it. So <<revisions-only>> stays mandatory
+
+| the cost
+| the public tier counts against cachix's storage quota (the free plan's, to read on the account),
+and every public path needs the internet
+
+| the stale signatures
+| about a hundred local paths still carry an `nxmatic.cachix.org-1` signature from before the purge.
+attic's filter skips them, and cachix no longer serves them, so they are served by nobody until a
+fill re-publishes them or a host rebuilds them
+|===
+
+[[cluster-builds]]
+== The clusters write and read through their builder — design only
+
+**Decided by the operator on 2026-10-10.** Cluster nodes and their workloads write to the cache
+**through the remote builder**: the nerd-nixos of the node's own bare-metal, which has the same
+architecture (bioskop-nixos for bioskop's clusters, nikopol-nixos for nikopol's). A node or a pod
+does not build: it delegates (`max-jobs = 0`, `builders = ssh-ng://…`). The builder's watch-store
+then uploads the result with that host's token. With `builders-use-substitutes = true`, the same
+builder substitutes from attic on their behalf.
+
+So **no attic token reaches a cluster**, neither read nor write. The four hosts remain the only
+holders. What the clusters hold instead is a way to reach their builder (see <<secrets>>). Their
+own substituters are the public ones only: cache.nixos.org, the flox caches and the public tier.
+What they need from us is therefore what the allow-list must name (see <<public-private-split>>).
+
+⚠️ **Design only today.** Measured on 2026-10-10: nothing declares `builders`, `max-jobs` or
+`builders-use-substitutes`, neither rke2lab's `nixos/*.nix` nor flox-nri-plugin. The node-base nix
+configuration that must carry them is **rke2lab's side**: it is a rke2lab follow-up, not something
+this spec implements.
+
+[cols="1,3",options="header"]
+|===
+| Client of the builder | How it gets there
+
+| the flox controller
+| it enters the node's namespace (`nsenter`) and realises an env with `flox activate`
+(flox-controller `internal/provisioner/exec.go:270`). So it runs the node's own nix, and the
+node-base nix configuration decides whether it delegates.
+
+| a workload with a writable store and the nix toolchain
+| it builds into its own upper (tmpfs or PVC), which no watch-store sees, so its builds are not
+shared. To share them, it delegates through the configuration the NRI plugin mounts (`max-jobs = 0`,
+`builders`). The in-cluster render, whose Maven closure is built into a PVC today, is the case in
+point.
+
+| a workload asking for an unknown package
+| rke2lab's flox runtime, Part 2, already designed to delegate (`max-jobs = 0` →
+`ssh-ng://nix-store.{host}-nixos`)
+|===
+
+[[revisions-only]]
+=== The builder evaluates revisions only — and with its own fetcher cache
+
+**A hard rule, measured by develop-2a on 2026-10-11 (nix 2.34.8, a fresh store per case).** On a
+machine whose git config smudge-decrypts sops files, **any** evaluation that names a checkout copies
+its files from disk into the store, decrypted, **clean tree or dirty**. That covers `.`, `.#x` and a
+bare `git+file://{worktree}`. Only a reference to a **revision** reads git objects, so the secrets
+stay encrypted:
+
+[source,bash]
+----
+# ✅ revisions — git objects
+github:seedmatic/{repo}/{sha}
+git+file:///Volumes/git-bare-store/seedmatic/{repo}.git?ref=develop&rev={sha}
+{repo}-bare/develop/{sha}          # the same, by its host-registry id
+# ❌ a working tree, clean or dirty
+.   .#x   git+file://{worktree}
+----
+
+**The source-cache trap.** nix's fetcher cache keys a commit's source by its revision, and the
+**first** evaluation wins. One `nix build .#x` in a decrypted worktree records a plaintext copy for
+that revision, and every later evaluation of the same commit, by `?rev=` or by the bare repository,
+reuses it as `${self}`. A revision reference is therefore safe only with a fetcher cache that no
+worktree evaluation ever wrote. So:
+
+. the fill job runs under its **own user**, with its own `XDG_CACHE_HOME`, which no operator
+  session and no worktree evaluation shares;
+. it evaluates only revisions, with `--option allow-dirty false` on its command line as a second
+  lock;
+. **no other host builds from source.** bioskop builds and sends each host its closure,
+  `nix copy --to ssh-ng://nix-store.{host}`, under the existing `nix-store` identity. A host's
+  switch then finds every path already local, added paths included. The receiving daemon accepts
+  the copy without trusting the sender: the built paths carry `io-nxmatic-nix-darwin-home`, which
+  every host of the fleet already trusts, and the added paths are content-addressed, which nix
+  accepts without a signature.
+
+The detector, while a worktree on disk is decrypted: a sweep of the store for new `-source` copies
+of a seedmatic tree, `find /nix/store -maxdepth 1 -newerct {absolute date}`. Then count, never
+print: `grep -c 'ENC\['` on its sops files, compared with the committed blob.
+
+=== A build client cannot write into the builder's store — on three settings
+
+A build over `ssh-ng` copies paths into the builder, and the builder's watch-store then uploads
+whatever is in its store, signed by attic. If a node could import an arbitrary path there, it would
+poison the cache without holding any token. Read in nix 2.34:
+
+* for a client it does not trust, the daemon **forces signature checking** on every import
+  (`src/libstore/daemon.cc:505-506`, `:907-908`). An unsigned, input-addressed path is refused;
+* the daemon refuses an untrusted client's `buildDerivation` of an input-addressed derivation
+  (`daemon.cc:632-633`: _"you are not privileged to build input-addressed derivations"_);
+* `build-remote` handles that case: when the builder does not trust the client and the derivation
+  is input-addressed, it copies the `.drv` closure, which is content-addressed and so accepted, and
+  asks for `buildPaths` instead (`src/nix/build-remote/build-remote.cc:300-340`). **The builder
+  computes the outputs itself.**
+
+So, with these three settings on nerd-nixos:
+
+. the build clients (nodes, pods) are **not** in `trusted-users`;
+. `require-sigs = true` (nix's default, stated so that nobody turns it off);
+. their input paths are signed by a trusted key or content-addressed.
+
+[mermaid]
+....
+sequenceDiagram
+  autonumber
+  participant N as Node or pod (not a trusted user)
+  participant B as Its builder ({host}-nixos)
+  participant U as cache.nixos.org, attic
+  participant W as watch-store on B
+  participant A as attic-nixos
+  N->>B: copy the .drv closure — content-addressed, accepted
+  N->>B: buildPaths of the derivation
+  B->>U: substitute the outputs if a cache has them
+  B->>B: otherwise build them itself
+  B-->>N: copy the outputs back
+  W->>A: upload what B realised, with B's own token
+  N-xB: nix copy of an unsigned input-addressed path
+  Note over N,B: refused — the daemon forces signature checks<br/>on an untrusted client
+....
+
+A node can then only **request builds of derivations**. The builder computes or substitutes the
+outputs, and nothing a node supplies reaches the cache unchecked. That is what makes this better
+than a write token in the clusters, and **it holds only with these settings**: one build client in
+`trusted-users`, and the property is gone.
+
+One gap remains. A node gets **by build** only what it has the derivation for. A flox package
+locked by its store path is **substituted**, not built. If it comes from cache.flox.dev or
+cache.nixos.org, nothing more is needed. If only attic holds it, there are two ways:
+
+* a read token on the node, which this design avoids;
+* the builder as a substituter: `substituters = ssh-ng://{host}-nixos` with `require-sigs = true`.
+  An untrusted client can substitute that way, as long as the path carries a key the node trusts.
+  The builder serves only what **its own** store holds, and its own builds are signed with
+  `io-nxmatic-nix-darwin-home`, not by attic, so that is the key the node must trust. Unverified;
+  test 3 below.
+
+[[builder-tests]]
+=== The tests the implementation must pass — the builder
+
+These sit next to <<read-test>>. Together they decide whether "the clusters hold no attic token"
+holds.
+
+[cols="1,2,2",options="header"]
+|===
+| Test | Gesture, from a node that is not a trusted user | Expected
+
+| 1 — an untrusted client gets a build
+| `nix build` of an input-addressed derivation, delegated to `ssh-ng://{host}-nixos`
+| the build succeeds, through `build-remote`'s `buildPaths` path, and the output is computed by the
+builder
+
+| 2 — an untrusted client cannot import
+| `nix copy --to ssh-ng://{host}-nixos {an unsigned, input-addressed path}`
+| refused, for lack of a trusted signature
+
+| 3 — an untrusted client substitutes, signed only
+| with `substituters = ssh-ng://{host}-nixos`, realise a path the builder signed, then one it did not
+| the signed path is substituted, the unsigned one is refused
+|===
+
+If test 1 **fails**, the design keeps no hole. It falls back to one of two shapes:
+
+[cols="1,2,2",options="header"]
+|===
+| Fallback | What it is | Its cost
+
+| A — content-addressed derivations
+| what nodes build is content-addressed (nix's experimental `ca-derivations`). The builder builds it
+for an untrusted client, and the outputs are checked by content, so nothing a node supplies is
+taken on trust.
+| maturity and coverage: the feature is experimental, and most of nixpkgs is input-addressed
+
+| B — nodes never build ✅ (the default if test 1 fails)
+| everything a node or a pod needs is built ahead by the host builder, from pushed commits, and
+uploaded. Nodes and pods only substitute. It is the shape this spec already uses for the hosts'
+closures, extended to the clusters.
+| a workload that needs an unplanned build **fails** until the builder has built it. The gain: the
+poisoning question disappears entirely.
+|===
+
+B is the default because it needs no experimental feature and fits the trust model.
+
+[[trust-model]]
+== Trust model — the cache is as trustworthy as its least trusted writer
+
+This is a fact of the design, not a footnote. It applies to the **private** tier. The public tier
+has one writer, the fill job, which builds from revisions only (see <<revisions-only>>) and
+publishes only what passes the closure rule (see <<public-private-split>>).
+
+attic signs, with **the cache's** key, every path a writer uploads. For an input-addressed path,
+which most outputs are, nothing proves the uploaded content is what the derivation would produce.
+Any writer can publish **arbitrary content under any input-addressed path**, and every consumer
+accepts it, signed by attic. Content-addressed paths, such as a `-source`, are the exception: their
+name is derived from their content, so a substitute for one cannot be swapped. With a write token on
+four hosts, the cache is therefore exactly as trustworthy as the **least trusted** of the four.
+
+[cols="1,3",options="header"]
+|===
+| Writer | What its token puts at stake
+
+| bioskop, bioskop-nixos, nikopol-nixos
+| a writer of the fabric: a compromise of any one of them can poison what all the others substitute
+
+| nikopol
+| its own write token (`--sub nikopol`) **inside the darwin VM that runs on the corporate
+bare-metal**. It sits next to the fabric rule that the corporate machine holds no key. The token
+lives in the VM, not on the bare-metal, and is scoped to pushing to `seedmatic` with a bounded
+validity. It is nikopol's alone, but until attic can revoke one token, losing it still means
+rotating every token (see <<write-tokens>>).
+|===
+
+**The plaintext the private tier accepts.** With a watch-store on every host, a plaintext
+`-source` produced by one slipped `.#x` on bioskop lands in attic. It is an added path, so no key
+signs it and `upstream-cache-key-names` never skips it. That is the risk the operator accepted on
+2026-10-10, under three bounds: the tier is private, every read needs a token, and the retention is
+short (see <<retention>>). It is detected, not prevented, by the store sweep of
+<<revisions-only>>, and prevented only by the fork (see <<attic-fork>>). The public tier never
+receives such a path: the closure rule refuses it.
+
+What would restore the trust, neither of which this spec builds:
+
+* a **content check at upload**, so that a writer cannot publish what the server rejects. That is
+  the fork, <<attic-fork>>;
+* **per-writer signing keys that consumers can tell apart**, so that a consumer trusts some writers
+  and not others. attic gives one key per cache, so this means a cache per writer, which the operator
+  did not choose (see <<write-tokens>>).
+
+== Scope — what is cached
+
+[cols="2,1,2",options="header"]
+|===
+| Item | Truly ours, measured | Note
+
+| system closures of bioskop, nikopol, bioskop-nixos, nikopol-nixos, deduplicated
+| 1.56 GiB (darwin 0.78, Linux 0.77)
+| the largest: two `vault-bin-2.0.0` builds (507 + 410 MiB, unfree, so Hydra does not build them),
+`tailscale`, `tart`, `sops-install-secrets`, the initrd
+
+| the containers' own closures (`attic-nixos`, `headscale-nixos`)
+| not built yet
+| almost entirely inside nerd-nixos's EROFS lowers, see <<container-store>>
+
+| the rke2lab cluster nodes' NixOS closures
+| **unmeasured**
+| the nodes are Incus containers in the same Incus cluster, project `rke2lab`. On 2026-10-10 no
+instance was running and no node closure was realised in bioskop's or bioskop-nixos's store. They
+are built by rke2lab, from a pushed rke2lab revision like every other fill input.
+
+| flox environments of the dev seats
+| 5.25 GiB on bioskop on 2026-10-10; **≈ 0.66 GiB** without `pulumi-bin`
+| `pulumi-3.261.0` was 4.59 GiB of it: nixpkgs' `pulumi-bin`, which Hydra never builds
+(`hydraPlatforms = [ ]`, "Output limit exceeded"). Since rke2lab `2ef9dab8f` the seat's operator
+toolchain comes from the rke2lab flake (`operatorToolchain`, nixpkgs-unstable), installed by
+`github:` reference: `pulumi` and `pulumi-java` are on cache.nixos.org, so they leave the scope
+
+| in-cluster `FloxEnv` closures (the `flox-catalog` locks the flox controller realises on each node)
+| **unmeasured**
+| no cluster was running on 2026-10-10. Built by the builder from the pushed lock, never realised
+from a dirty tree.
+
+| package and app outputs of the seedmatic flakes
+| **unmeasured**
+| `seed-outcluster`, `manifests-cli`, `plan-cli`, `flox-controller`, `flox-nri-plugin`,
+`seed-incluster` exist in **no** store, neither bioskop's nor bioskop-nixos's. Getting their size
+would take an evaluation.
+|===
+
+Out of scope: anything cache.nixos.org or cache.flox.dev serves, `.drv` files, and history beyond
+the live set.
+
+=== The upstream filter — signatures, for the watch-store and the push alike
+
+attic's filter is a setting **of the cache**, on the server: `upstream-cache-key-names`. Both
+`watch-store` and `push` read it. For each path of the closure, the client reads the path's
+signatures **from the local Nix DB**, splits each at the `:`, and drops the path if the key name is
+in the list. It asks no upstream server (attic `client/src/push.rs:449-466`).
+
+The list is `cache.nixos.org-1`, `flox-cache-public-1`, `floxhub-1`, the layer key below, and the
+two keys of the public tier: `seedmatic-publish-1` and `nxmatic.cachix.org-1` (see
+<<public-private-split>>). It is **not** ndh's `trusted-public-keys` as they stand:
+
+[cols="1,3",options="header"]
+|===
+| Key name | Why
+
+| `io-nxmatic-nix-darwin-home` — out
+| the fleet's own key, in `secret-key-files`, so nix signs **every local build** with it (about 1170
+of our paths carry it, measured). In the list, it would leave the cache empty.
+
+| `nxmatic.cachix.org-1` — in, since 2026-10-11
+| the public tier is fed again, by the fill job only. A path substituted from it carries that key and
+needs no private copy. The price: about a hundred local paths still carry it from before the purge
+(690 of 690 truly-ours paths answered 404 after it), and those are served by nobody until a fill
+re-publishes them.
+
+| `seedmatic-publish-1` — in
+| a path the fill job published carries it locally, before any consumer substitutes it from cachix
+|===
+
+The filter misses what upstream serves but no local signature says: **297 paths (0.66 GiB)** across
+the four host closures. On bioskop-nixos, 96 of its 289 such paths are in the EROFS layers,
+registered from `closureInfo` without signatures (`nix-store --load-db`,
+`modules/nixos/bringup-disk-image-common.sh:131`). The others were built locally. They cost disk,
+not a leak. No uploader can query upstream before uploading until the fork.
+
+=== Excluding the EROFS layers' own paths — a layer key
+
+A path that is in the layers is already on every consumer that mounts them, so it should not be
+uploaded. Paths substituted from upstream into the layers would be excluded by their signature, if
+the registration kept it. The paths **we** built into the layers carry only
+`io-nxmatic-nix-darwin-home`, like every other build of ours. A key of their own separates them:
+
+. **a dedicated key**, `nerd-erofs-layers-1`. It is generated with
+  `nix key generate-secret --key-name nerd-erofs-layers-1`, and its secret half is sops-encrypted
+  in ndh. It must **never** be in `secret-key-files`, or every build would be signed with it and
+  excluded;
+. **sign the layers only**, when their lower DB is generated, once per layer set: load the
+  registration into a scratch store, then run
+  `nix store sign --store 'local?root={scratch}' --key-file {key} --recursive {layer roots}`. That
+  signed DB ships with the layers. ⚠️ This is a step on the builder, **not** a derivation: in a
+  derivation, the secret key would enter the store, and from there the cache;
+. **carry the signatures to nerd-nixos's own DB**, which is loaded from the unsigned registration
+  today. Right after the load, `nix store copy-sigs -s 'local?root={signed lower}' -r {roots}`
+  imports them without the secret. That `copy-sigs` accepts a local store as its source is to verify;
+. **add `nerd-erofs-layers-1` to `upstream-cache-key-names`.** No fork is needed: attic compares
+  key names only (`push.rs:449-466`). A real signature still proves where the path came from.
+
+[mermaid]
+....
+sequenceDiagram
+  autonumber
+  participant L as Layer build (builder, outside any derivation)
+  participant S as sops — the layer key's secret half
+  participant D as Lower DB shipped with the layers
+  participant N as nerd-nixos DB
+  participant W as watch-store
+  participant A as attic-nixos
+  L->>S: decrypt the layer key
+  L->>D: load the closureInfo registration, then nix store sign --recursive
+  Note over D: every layer path now carries nerd-erofs-layers-1
+  N->>D: after load-db, nix store copy-sigs from the signed lower
+  W->>A: upload a new path
+  A-->>W: key name nerd-erofs-layers-1 is upstream — the layer path is skipped
+....
+
+The upstream paths inside the layers can be signed with the layer key too, so that everything in a
+layer is excluded, or given back their own signature with
+`nix store copy-sigs -s https://cache.nixos.org -r {roots}`.
+
+Measured on bioskop-nixos, the gain is small today: 115 of its 611 ours paths are in the layers,
+and the running generation is not, because the layers predate it. The key prevents duplicates; the
+delta since the layers is what the cache is for.
+
+=== The secret guard — no step left to run it in, so it is the fork
+
+Every host's system closure already carries sops files **by design**: sops-nix puts the encrypted
+file in the store. Measured, by counts only: `ndh-.secrets` (16 `ENC[` values), `keys.yaml` (10
+`ENC[`, no `PRIVATE KEY` marker, its 77 plain values are public by design) and `cache-trust.yaml`
+(2 `ENC[`). So a guard must judge **content, not names**. It would refuse a path that holds:
+
+* a `# sops:encrypted` annotation followed by anything but an `ENC[` value (the rule of
+  <<attic-fork>>);
+* a private-key armour header followed by a body;
+* a GitHub token shape (`gh[opsu]_…`, `github_pat_…`).
+
+For the **public** tier it runs in the fill job, before signing, as the fourth condition of the
+closure rule (see <<public-private-split>>). For the **private** tier, a watch-store on every host
+leaves no push step to run it in, and attic offers no hook. So there the guard **is** the fork.
+
+[[retention]]
+== Retention — the active session, not a history
+
+=== What attic actually does
+
+Read in attic's source at `7a19204d` (2026-07-06), not taken from the usual summary:
+
+[cols="1,3",options="header"]
+|===
+| Fact | Source
+
+| An object is collected when **both** `created_at` and `last_accessed_at` are older than the
+retention period.
+| `server/src/gc.rs:108-123`
+
+| Only a **NAR download** bumps `last_accessed_at`. A narinfo lookup does not.
+| `server/src/api/binary_cache.rs:212` (bump) and `:115-160` (narinfo, no bump)
+
+| A retention of **0 disables GC**, and 0 is the default.
+| `gc.rs:95`, `config.rs:561-563`
+
+| Re-pushing a path the cache already holds never reaches the server, so it refreshes nothing.
+| `client/src/push.rs:478-484`
+
+| There is **no pinning and no single-path delete**. The only DELETE destroys a whole cache.
+| `server/src/api/v1/mod.rs:10-37`
+
+| `attic cache configure` **without** `--retention-period` resets the cache's retention to the
+global default.
+| `client/src/command/cache.rs:225-229`
+
+| On SQLite, a GC run reaps at most **500 chunks**; on PostgreSQL, 65535.
+| `gc.rs:178-190`
+|===
+
+=== How "the active session only" is obtained
+
+**Decided by the operator on 2026-10-11**: the private tier only has to stay in step **while a
+coding session is active**. A slower restart after a pause is accepted, and no generation of the
+previous day is kept. Since nothing can be pinned or deleted path by path, that is **a short
+retention period plus a keep-alive**:
+
+. per cache, `retention-period = 6 hours` (proposed, in the order of magnitude the operator set). It
+  is set in the same declarative step as every other cache setting, so a later `configure` cannot
+  reset it silently;
+. at the end of every fill, the fill job **downloads the NAR** of every path of the private live set.
+  It uses a plain HTTP GET of the narinfo's `URL`, because it already holds those paths locally and
+  nix would never substitute them. A host substituting a path bumps it the same way;
+. a path nobody fills or substitutes for 6 hours is collected at the next GC run, within 15 minutes.
+  After a longer pause, attic holds nothing of the previous session: the first fill of the next one
+  refills it, and that is the slower restart the operator accepted;
+. a published path is not kept alive in attic. The public tier serves it, under cachix's own
+  retention (see <<public-private-split>>).
+
+[mermaid]
+....
+stateDiagram-v2
+  [*] --> Uploaded: created_at set
+  Uploaded --> Live: a fill or a substitution downloads its NAR
+  Live --> Live: last_accessed_at bumped
+  Live --> Idle: the session pauses, or a newer generation
+  Idle --> Expired: 6 hours without a download
+  Expired --> Orphaned: GC deletes the object, within 15 minutes
+  Orphaned --> Reaped: no NAR or chunk holder left
+  Reaped --> [*]: disk freed
+....
+
+An idle path goes back to _Live_ as soon as a fill or a host downloads it again. The disk is freed
+only at the last step, which is why the GC cadence matters: SQLite reaps at most 500 chunks per GC
+run.
+
+[cols="1,3",options="header"]
+|===
+| Guarantee | Holds when
+
+| a host never loses its running closure
+| always: the fill job sends it with `nix copy` (see <<revisions-only>>), so it is local and needs
+no cache
+
+| a host re-substitutes from the private tier
+| within 6 hours of the last fill or substitution of the path. After that, the next fill refills it
+|===
+
+=== GC cadence and database — SQLite, a GC every 15 minutes
+
+attic runs **no database service of its own**. `atticd` keeps its metadata (caches, objects, NARs,
+chunks, the GC's dates) in the database named by `[database] url`. The nixpkgs module's default is a
+SQLite **file**, `sqlite:///var/lib/atticd/server.db`; PostgreSQL is an option, which attic's
+template recommends for production (`server/src/config-template.toml:44`).
+
+What decides is the GC's reap rate. On SQLite a run frees at most **500 chunks**, on PostgreSQL
+65 535 (`gc.rs:178-190`). With a retention of hours, every session restart re-uploads the set that
+expired during the pause, so the worst case is **one full set reaped per day**. One full set of
+truly-ours paths is at most about 2.2 GiB of NAR (see <<sizing>>), roughly 36 000 chunks at
+FastCDC's 64 KiB average:
+
+[cols="1,1,1",options="header"]
+|===
+| GC interval on SQLite | Chunks reaped per day | Against one set a day (≈ 36 000)
+
+| 12 hours (default) | ≈ 1 000 | no: the disk grows without bound
+| 1 hour | ≈ 12 000 | no
+| **15 minutes** | **≈ 48 000** | **yes, 1.3 times the need**
+| 10 minutes | ≈ 72 000 | twice the need
+|===
+
+The margin at 15 minutes is thin against that upper bound, and wide in practice: the public tier
+takes the packages (measured on bioskop, 341 of the 343 MiB we build), so attic reaps only the private
+remainder and the dev builds. Watch the dataset's `used`, and shorten the interval if it climbs.
+
+**Decided by the operator on 2026-10-10: SQLite, with `[garbage-collection] interval` at 15
+minutes.** No database service is added; the SQLite file lives in the cache's dataset.
+PostgreSQL (nixpkgs `services.postgresql`, 65 535 chunks per run) is the fallback, if write
+contention appears. Four watch-store daemons and a frequent GC writing to one SQLite file could
+answer _database is locked_; that is unverified.
+
+[[sizing]]
+== Sizing the cache's own disk
+
+attic stores NARs in its own backend, as compressed chunks, **not in `/nix/store`**. The container's
+store overlay (see <<container-store>>) does not cover them, so they need a disk of their own.
+
+=== What was measured (2026-10-10, existing paths only)
+
+[cols="2,1,1,1",options="header"]
+|===
+| Host closure | Paths | Total | Ours
+
+| bioskop (darwin) | 755 | 6.88 GiB | 1.17 GiB
+| nikopol (darwin) | 744 | 6.86 GiB | 0.97 GiB
+| bioskop-nixos | 1667 | 9.12 GiB | 1.21 GiB
+| nikopol-nixos | 1667 | 9.12 GiB | 1.21 GiB
+| *sum* | | *31.99 GiB* | *4.56 GiB*
+| *union* | | *15.65 GiB* | *2.22 GiB*
+| *union, truly ours* | 643 | | *1.56 GiB*
+|===
+
+[cols="1,3",options="header"]
+|===
+| Input | Measured value
+
+| flox environments, truly ours (bioskop) | 5.25 GiB, of which `pulumi-3.261.0` was 4.59 GiB, gone
+since rke2lab `2ef9dab8f`: ≈ 0.66 GiB remain
+| compression, zstd level 8 (attic's default) | 757 MiB of NAR → 195 MiB, a ratio of **0.26**
+(322 Linux truly-ours paths, compressed on bioskop-nixos)
+| churn, a normal generation | +5 to +77 MiB of new ours paths (bioskop darwin, generations 717 to 724)
+| churn, a nixpkgs bump | +1124 MiB (bioskop generation 722, 2026-10-10) and +904 MiB (bioskop-nixos
+generation 19, 2026-10-09). That is nearly the whole ours set, about weekly.
+| generation rate | bioskop darwin: 27 in 10 days. nikopol: 20 in 14 days. Each nerd-nixos: 3 in 5 days.
+| free space | `tank` on bioskop-nixos is raidz1 over three disks. `zfs list` gives **168 GiB available**
+(`zpool list` shows 260 GiB free, but that raw figure includes parity).
+|===
+
+=== The arithmetic
+
+An upper bound: everything truly ours, as if nothing were published.
+
+[cols="2,2,1",options="header"]
+|===
+| Term | Computation | GiB
+
+| L — the latest set, NAR | 1.56 (systems) + 0.66 (flox, without `pulumi-bin`) + U (unmeasured:
+package outputs and cluster node closures) | 2.22 + U
+| L~c~ — compressed | 2.22 × 0.26 | 0.57 + 0.26 U
+| in-flight generation | a bump during a session replaces nearly the whole set: one more L~c~ | 0.57
+| superseded tail | none: nothing outlives the session (see <<retention>>) | 0
+| *steady-state worst case* | 2 × L~c~ | *1.15 + 0.52 U*
+|===
+
+The public tier then takes most of L out of attic. On bioskop's system closure, 341 of the 343 MiB we
+build is publishable (see <<public-private-split>>). What stays private is the aggregates, the added
+paths no upstream serves, and the dev builds. The four hosts' split is not measured yet.
+
+Two things are deliberately left out:
+
+* chunk dedup between successive versions of the same package, which only makes the real figure
+  smaller;
+* the SQLite file's footprint, for which attic publishes no guidance (unverified). It is small next
+  to the chunks: one row per chunk and per object.
+
+=== Quota — open until the split is measured
+
+A dataset `tank/nerd/attic`, holding the chunk storage and the SQLite file. Two sizes are on the
+table: **16G** or **about 8G**. Both are well above the upper bound (1.15 GiB + 0.52 U). The open
+variable is U, the unmeasured package outputs and cluster closures, together with how much of them
+the public tier takes. The operator decides once the public/private split is measured on the four
+hosts.
+
+It sits next to the other `nerd/*` datasets declared in `modules/nixos/zfs-disko-config.nix`, and is
+passed to attic-nixos as an Incus disk device, mounted at `/var/lib/private/atticd`. The nixpkgs
+module runs atticd under `DynamicUser`, and systemd hands ownership to its `StateDirectory` only. It
+is **not** replicated to the `recover` pool, because a fill can refill the cache from scratch. The
+signing key does not live on it (see <<secrets>>).
+
+[cols="1,1",options="header"]
+|===
+| ✅ Do | ❌ Don't
+
+| watch `used` against the quota: above 75 %, GC is not keeping up
+| put the chunks under `/nix/store` or in the container's root volume, which the overlay and the
+container's lifecycle would govern
+|===
+
+[[container-store]]
+== The containers' `/nix/store` — an overlay on nerd-nixos's EROFS lowers
+
+Both attic-nixos and headscale-nixos mount their `/nix/store` as an overlay **from the start** (the
+operator's choice: there is no plain-store first increment). The lowers are the EROFS layers that
+nerd-nixos already mounts. The upper is a per-container ZFS volume. The containers' system closures
+therefore overlap nerd-nixos's, and the upper receives only the **delta**.
+
+[mermaid]
+....
+flowchart TB
+  subgraph C["container /nix/store — local-overlay-store"]
+    U["upper — per-container Incus volume on ZFS, receives only the delta"]
+    L["lower — a complete read-only store: nix/store = the EROFS stack, nix/var/nix/db shipped with the layers"]
+    U --> L
+  end
+  subgraph N["nerd-nixos"]
+    E1["/nix/.ro-store — layer 001"]
+    E2["/nix/.ro-store.002"]
+    E3["/nix/.ro-store.003"]
+    R["closureInfo registration — already built by the bringup"]
+  end
+  L -. "the same immutable images" .-> E1 & E2 & E3
+  R -- "generated ONCE per layer set" --> L
+  X["nerd-nixos merged /nix/store — changes at every activation"]
+  X -. "NEVER a lower: a lower that changes while mounted is undefined" .-x L
+....
+
+[cols="1,3",options="header"]
+|===
+| Rule | Why
+
+| the lowers are the **EROFS layers**, never nerd-nixos's merged `/nix/store`
+| the merged store changes as nerd-nixos activates generations, and in OverlayFS a lower that changes
+while mounted is undefined behaviour
+
+| pass the **mount points** (`/nix/.ro-store`, `.002`, `.003`) read-only, never `/dev/vdX`
+| measured: the device names do not follow the layer index (vdh, vdf, vdg), while ndh already mounts
+the layers by label. Use the post-`switch_root` paths, not the initrd's `/sysroot/…`.
+
+| lowerdir order = nerd-nixos's, newest first (`.003:.002:.ro-store`), **projected** from
+`modules/nixos/erofs-store-layers.nix`
+| overlayfs reads left to right. A second, hand-written list would drift.
+
+| nix side: `local-overlay-store` with a lower that is a **complete** read-only store
+| nix then knows which paths come from the lower, so it never rebuilds or collects them. The layers
+carry no nix DB today (measured), so the lower DB is generated **once per layer set** from the same
+`closureInfo` registration (`baseClosureInfo`, `fleetRuntimeClosureInfo` in
+`modules/nixos/bringup-zfs-disk-image.nix`) and shipped with the layers.
+
+| same invariants as `modules/nixos/erofs-store-mount.nix`
+| immutable labels and UUIDs, and `index=on`, which refuses a changed lower (ESTALE)
+|===
+
+[source,ini]
+----
+# the shape of the container's store setting — {ro-root} and {upper} are the mount points
+store = local-overlay://?lower-store=local://?root={ro-root}%26read-only=true&upper-layer={upper}&check-mount=true
+----
+
+=== Three tiers of store, one immutable base
+
+attic-nixos and headscale-nixos are the first users of this mechanism, not the only ones. The rke2lab
+cluster nodes are Incus containers on the same members, and their workloads mount a store of their
+own through the flox NRI plugin. Each tier inherits the base of the tier below and substitutes only
+its delta, from attic:
+
+[mermaid]
+....
+flowchart TB
+  subgraph T1["Tier 1 — nerd-nixos"]
+    E["EROFS layers — immutable"]
+    Z["ZFS upper"]
+  end
+  subgraph T2["Tier 2 — Incus containers: attic-nixos, headscale-nixos, the cluster nodes"]
+    N["node store — overlay, lowers = the EROFS layers, upper = its own volume"]
+    F["FloxEnv closures — realised by the flox controller, GC-rooted"]
+  end
+  subgraph T3["Tier 3 — pods"]
+    P["pod /nix — overlay, lower = the node's /nix read-only, upper = 2 GiB tmpfs or a PVC"]
+  end
+  A["attic-nixos — the cache"]
+  E --> N
+  N --> F
+  N --> P
+  A -. "the delta of each tier" .-> N
+  A -. "env closures" .-> F
+....
+
+[cols="1,2,2",options="header"]
+|===
+| Tier | Its store | What it substitutes from attic
+
+| 1 — nerd-nixos
+| EROFS layers plus a ZFS upper
+| its generations beyond the layers
+
+| 2 — containers (infrastructure and cluster nodes)
+| overlay on the EROFS layers (this section)
+| its configuration's delta, then for a node the `FloxEnv` closures that the flox controller realises
+and GC-roots. A node collects on disk pressure (rke2lab node-base: `min-free = 128MB`,
+`max-free = 1GB`), so it re-substitutes what it collected. A node does so **through its builder**,
+holding no attic token (see <<cluster-builds>>).
+
+| 3 — pods
+| overlay whose lower is the node's `/nix`, bind-mounted read-only by
+`flox-nri-overlay-hook.sh`, and whose upper is a 2 GiB tmpfs or a PVC
+| nothing directly: they read the node's store. What they build is delegated to
+`{bioskop,nikopol}-nixos` (`max-jobs = 0`) and lands in the pod's upper, and that host's
+watch-store uploads it (see <<watch-store-sees>>). A pod that builds locally into its own upper is
+not shared.
+|===
+
+This is the intent of building the mechanism in ndh as a module rather than inside one service.
+Tiers 2 (nodes) and 3 are adopted in rke2lab; see its atlas, section _The private binary cache_.
+
+=== Boot, then switch — the container never evaluates a flake
+
+[mermaid]
+....
+sequenceDiagram
+  autonumber
+  participant Op as Operator (bioskop)
+  participant NN as nerd-nixos
+  participant C as Incus container
+  Note over C: boots a small boot.isContainer generation<br/>whose paths are already in the shared lowers
+  Op->>NN: build the target configuration (same lock as the layers)
+  NN->>NN: evaluate and build, never in the container
+  NN->>C: nix copy --to the closure (the delta lands in the upper)
+  C->>C: switch-to-configuration on the copied closure
+  Note over C: no flake source ever enters the container<br/>and attic's bootstrap needs no cache
+....
+
+Four conditions:
+
+. **share the paths, not the boot.** nerd-nixos's generation is a VM's (kernel, initrd, EROFS mounts
+  in the initrd) and cannot boot as an Incus container;
+. **build the containers and the layers from the same lock**, or the upper fills with copies;
+. **the delta does not come from the cache that does not exist yet.** attic's own container is filled
+  by `nix copy`, not by substitution;
+. **the container never evaluates a flake.** Evaluation, the incident's vector, stays on nerd-nixos.
+
+== Hosting — one Incus service, two owners of instances
+
+The Incus service already belongs to ndh: it is part of nerd-nixos's configuration
+(`modules/nixos/incus.nix`, `incus-cluster.nix`). What ndh does not do yet is declare an **instance**.
+On that one service, instances will have two owners:
+
+[cols="1,1,2",options="header"]
+|===
+| Owner | Project | Instances
+
+| rke2lab, through CAPN
+| `rke2lab`
+| the cluster nodes, which come and go with each grow
+
+| ndh
+| its own project, not `rke2lab`
+| attic-nixos and headscale-nixos, which outlive any cluster
+|===
+
+The infrastructure containers stay out of `rke2lab`, so nothing that tears down or re-grows a
+cluster can reach them. This is the single-owner rule applied to a shared service.
+
+=== Placement is stated, never left to Incus
+
+In a cluster, an instance created without a `target` lands on a member that Incus chooses. These
+containers depend on things that exist on **one** member only: their lowers (that member's
+`/nix/.ro-store*`), and for attic the `nerd/attic` dataset. So:
+
+* attic-nixos has `target = bioskop`;
+* each headscale-nixos has the member of its own bare-metal as its target;
+* none of them migrates when its member is evacuated. Incus's instance option `cluster.evacuate`
+  should be `stop`; that option name and value are to verify against the pinned Incus.
+
+=== One module for both containers
+
+attic-nixos and headscale-nixos are the first two instances ndh declares, and they share one module:
+
+* the container declaration, with its project and its target;
+* the overlay store described above;
+* the boot-then-switch delivery.
+
+Each service then adds only its own NixOS configuration: `services.atticd` (SQLite, no database
+service), or the
+existing `modules/nixos/headscale-daemon.nix`. There is no second way to host a service in Incus.
+
+`services.atticd` exists in ndh's stable nixpkgs (26.05, `7c8764b7`), identical to unstable's, but
+its attic is `12cbeca` (2025-09-24). ndh's `nixpkgs-unstable` (`e7439b6b`) carries `7a19204d`, the
+revision this spec's source facts were read on. So the module comes from stable and
+`services.atticd.package` from unstable, the way `modules/.common.d/headscale-pkg.nix` pins headscale.
+The hosts' `attic-client` takes the same revision.
+
+[[secrets]]
+== Secrets, tokens and substituters
+
+* attic's server secret (`ATTIC_SERVER_TOKEN_RS256_SECRET_BASE64`, through `services.atticd`'s
+  `environmentFile`), the cache's signing key, the layer key, the publication key
+  `seedmatic-publish-1`, the cachix push token and every attic token are **sops-encrypted at rest**,
+  in ndh. They are decrypted only into `/run/secrets` (tmpfs, root-only, mode 0400), and never sit in a
+  flake tree.
+* The publication key and the cachix push token are decrypted for the **fill job's user only**. No
+  host's watch-store, no consumer and no container holds either.
+* attic-nixos gets its `environmentFile` from nerd-nixos: decrypted there by sops-nix, and passed
+  as a read-only Incus disk device. The container holds no age key and evaluates nothing.
+* The cache is created **without** `--public`. Tokens come from `atticadm make-token`: **a write
+  token per host** (`--sub {host} --push seedmatic --pull seedmatic`, see <<write-tokens>>), and a
+  **read token** (`--pull seedmatic` only) per consumer class.
+* Each host's write token sits on that host only, in the attic client configuration of its
+  watch-store service (`attic login`). That configuration is written at service start from the
+  sops-decrypted token, and is readable only by the service. No token is shared between hosts.
+* nix reads a token from its `netrc-file`, as the `password` of the attic host's `machine` entry. That
+  is the same entry `attic use` writes (`client/src/command/use.rs:54-68`, `nix_netrc.rs:96`).
+* Substituter order on a host: cache.nixos.org and the flox caches, then the public tier
+  (`nxmatic.cachix.org`, key `nxmatic.cachix.org-1`), then attic (its fabric URL, its cache key, and
+  a `netrc-file` pointing at the decrypted read token). On a cluster: the public ones only, with no
+  attic entry.
+* `seedmatic-publish-1` is in **no** `trusted-public-keys`: it is a key name for attic's upload
+  filter, not a key any consumer checks (see <<public-private-split>>).
+
+[mermaid]
+....
+flowchart LR
+  subgraph HOSTS["The four hosts — the only token holders"]
+    h1["bioskop — write token sub=bioskop, read token"]:::writer
+    h2["nikopol — write token sub=nikopol, read token — on the corporate side"]:::corp
+    h3["bioskop-nixos — write token, read token — builder"]:::writer
+    h4["nikopol-nixos — write token, read token — builder"]:::writer
+  end
+  subgraph CLUSTERS["Clusters — no attic token"]
+    n1["nodes and the flox controller"]:::none
+    p1["pods with the nix toolchain"]:::none
+  end
+  subgraph INFRA["Infrastructure containers — no token"]
+    c1["their own system — delivered by nix copy from their nerd-nixos"]:::none
+  end
+  attic["attic-nixos — the private tier, reads need a token"]:::cache
+  cx["nxmatic.cachix.org — the public tier, no token to read"]:::pub
+  fj["fill job on bioskop — publication key, cachix push token"]:::writer
+
+  h1 & h2 & h3 & h4 -->|"upload and substitute"| attic
+  fj -->|"publishes the computed set"| cx
+  n1 & p1 -.->|"substitute, no token"| cx
+  n1 & p1 -->|"build and substitute through, SSH identity"| h3
+  n1 & p1 -->|"same, on nikopol"| h4
+
+  classDef writer fill:#fef3c7,stroke:#b45309,stroke-width:2px;
+  classDef corp fill:#fee2e2,stroke:#b91c1c,stroke-width:2px;
+  classDef none fill:#dcfce7,stroke:#15803d;
+  classDef cache fill:#ddd9f2,stroke:#5b52b8,stroke-width:2px;
+  classDef pub fill:#e7ebf0,stroke:#15803d,stroke-width:2px;
+....
+
+Legend: amber — a writer holding its own write token and a read token, or for the fill job the only
+publication credentials; red — the same, on the corporate side; green — holds no attic token;
+violet — the private tier; grey with a green border — the public tier.
+
+[cols="1,2,1",options="header"]
+|===
+| Consumer | Where its read token, or its credential, lives | Encrypted at rest
+
+| darwin hosts (bioskop, nikopol)
+| sops-nix secret under `/run/secrets/nix-darwin-home/`, named by `nix.settings.netrc-file`, read by
+the nix daemon
+| ndh `.secrets`
+
+| nerd-nixos (both)
+| sops-nix secret under `/run/secrets/`, named by `nix.settings.netrc-file`
+| ndh `.secrets`
+
+| attic-nixos, headscale-nixos
+| **none**: they never substitute. Their closure arrives by `nix copy` from nerd-nixos (boot, then
+switch)
+| —
+
+| cluster nodes
+| **no attic token**: they read and write through their builder (see <<cluster-builds>>). What they
+hold instead is an identity to reach it, in the row below.
+| —
+
+| pods (flox NRI)
+| **no attic token**, for the same reason: the configuration the NRI plugin mounts points their nix at
+the builder (`builders-use-substitutes = true`)
+| —
+
+| nodes and pods → their builder (not an attic token, but a credential they now hold)
+| an identity to reach `nix-daemon --stdio` on `{host}-nixos`. The shape that fits the fabric is
+**Tailscale SSH under a tailnet grant, scoped to the nix-daemon command only**, with no key on the
+node. Two things to settle first: the clusters stay on the SaaS tailnet, so the grant lives in that
+policy; and whether Tailscale SSH carries `nix-daemon --stdio` is already an open question of the
+fabric control plane spec. If it does not, the fallback is the static `nix-store` service key that
+rke2lab's flox runtime already designs: forced command `nix-daemon --stdio`, mounted read-only by the
+NRI plugin, never in an image.
+| rke2lab sops, for the fallback key
+|===
+
+=== Revocation — when a host is lost
+
+attic tokens cannot be revoked one by one (see <<write-tokens>>), so losing any host, or any token,
+means ending them all and re-issuing the rest:
+
+. rotate the server secret: a new `ATTIC_SERVER_TOKEN_RS256_SECRET_BASE64`, sops-encrypted, then
+  restart atticd. Every token, write and read, stops working at that moment;
+. mint new write tokens for the remaining hosts, one each, and new read tokens
+  (`atticadm make-token`, same subjects and scopes, bounded validity);
+. re-encrypt them with sops for every host except the lost one, and switch the remaining hosts;
+. check with <<read-test>> that the old read token gets 401 and the new one 200.
+
+Until step 3 reaches a host, that host can neither upload nor substitute from attic. It falls back to
+cache.nixos.org and to building.
+
+[mermaid]
+....
+sequenceDiagram
+  autonumber
+  participant Op as Operator
+  participant A as attic-nixos
+  participant K as sops (ndh)
+  participant H as Remaining hosts
+  participant X as Lost host
+  Op->>K: new server secret, encrypted
+  Op->>A: restart atticd on the new secret
+  Note over A,X: every token, write and read, stops working here
+  Op->>A: atticadm make-token — one write token per remaining host, new read tokens
+  Op->>K: encrypt them for the remaining hosts only
+  Op->>H: switch — the new tokens reach them
+  X-xA: the lost host's token is refused — 401
+  Op->>A: the read test — old token 401, new token 200
+....
+
+[[read-test]]
+=== The test the implementation must pass — an anonymous read is refused
+
+[source,bash]
+----
+# a path known to be in the cache: {hash} of the fill's last system closure
+curl -s -o /dev/null -w '%{http_code}\n' "https://{attic}/{cache}/{hash}.narinfo"
+# → 401  (anonymous: refused)
+curl -s -o /dev/null -w '%{http_code}\n' --netrc-file {netrc} "https://{attic}/{cache}/{hash}.narinfo"
+# → 200  (read token)
+----
+
+attic answers **401** to a client without the permission. It deliberately masks a missing cache, a
+missing object and a missing permission behind the same `Unauthorized` (`server/src/error.rs:194-205`,
+`:218`), so the anonymous answer reveals nothing about what the cache holds. A **200 without a token**
+means the cache was created or reconfigured `--public`: the cache is then not private, and this spec's
+condition for the watch-store no longer holds.
+
+== Usage patterns
+
+=== ✅ Fill from a revision, under the fill job's own user
+
+[source,bash]
+----
+# as the fill job's user: its own XDG_CACHE_HOME, never shared with a worktree evaluation
+nix build "git+file:///Volumes/git-bare-store/seedmatic/ndh.git?ref=develop&rev=$REV#nixosConfigurations.bioskop-nixos.config.system.build.toplevel" \
+  --option allow-dirty false
+# the same revision by GitHub
+nix build "github:seedmatic/ndh/$REV#darwinConfigurations.nikopol.system" --option allow-dirty false
+----
+
+=== ✅ Publish the computed set, then check it
+
+[source,bash]
+----
+# {set}: the publishable paths of the allow-listed outputs — closure rule and content guard
+nix store sign --key-file {publication key} {set}
+cachix push nxmatic {set}      # the set, explicitly, path by path
+# then: every path of {set} answers 200 on cachix, and no closure member outside it does
+----
+
+=== ❌ Publish an output with `cachix push` and let it take its closure
+
+`cachix push` uploads the closure. One built output whose closure reaches the ndh `self` source or a
+sops-nix file would publish them. Publish only the computed set (see <<public-private-split>>).
+
+=== ❌ Put the publication key in `secret-key-files`
+
+The daemon would sign every build with it, the operator's dirty dev builds and the remote builds
+included, and the key would stop meaning "published from a revision" (see <<signature-scope>>).
+
+=== ❌ Evaluate a working tree on the builder — even once, even clean
+
+`nix build .#x` in a decrypted checkout copies its files in clear. It also records that copy in the
+fetcher cache for the revision, where a later `?rev=` build of the same commit picks it up (see
+<<revisions-only>>).
+
+=== ✅ A watch-store on every host, behind authenticated reads
+
+[source,bash]
+----
+# on each of the four hosts, as the daemon's service: the cache was created without --public
+attic watch-store seedmatic
+----
+
+Allowed under one condition, which <<read-test>> checks: every read needs a token. What it uploads
+is listed in <<watch-store-sees>>, and what it costs in trust in <<trust-model>>.
+
+=== ❌ A watch-store towards a cache readable without a token
+
+On a `--public` cache, or on a public one like `nxmatic.cachix.org`, a watch-store brings the
+incident back as it was: every dirty evaluation of every host published.
+
+=== ❌ Share one write token between hosts, or give one more than push
+
+One token per host, each with its own `--sub`, never one copied to several hosts. And no
+`create-cache`, `configure-cache`, `delete` or `destroy-cache`: the tokens sit on four hosts, one of
+them on the corporate side, and none can be revoked alone yet.
+
+=== ❌ Derive the key-name list from `trusted-public-keys`
+
+That list holds `io-nxmatic-nix-darwin-home`, which signs every local build, so the cache would stay
+empty. It also holds `nxmatic.cachix.org-1`, whose paths the public cache no longer serves. Write
+the list out: the upstream substituters' key names, plus the layer key.
+
+== Troubleshooting
+
+[cols="2,2,2",options="header"]
+|===
+| Symptom | Cause | Fix
+
+| the dataset grows week after week
+| GC on SQLite, capped at 500 chunks per run
+| a GC interval of 15 minutes on SQLite; PostgreSQL if that is not enough
+
+| a superseded path is never collected
+| retention 0 (the default), or a `cache configure` that reset it
+| set `--retention-period` in the same declarative step as every other cache setting
+
+| attic holds nothing after a pause
+| expected: the retention is the active session (see <<retention>>)
+| the next fill refills it. Its running closure is local anyway, sent by the fill job
+
+| a published path is also in attic
+| the race: the watch-store saw it before the fill job signed it
+| nothing to do: it is public content, and the short retention removes it
+
+| a path is in no cache, and the host must rebuild it
+| it carries a stale `nxmatic.cachix.org-1` signature from before the purge, so attic skips it
+| a fill re-publishes it, if it is publishable. Otherwise the host's rebuild uploads it to attic
+
+| the post-push check finds a path on cachix outside the computed set
+| a push took a closure instead of the set
+| ⛔ treat it as a publication incident: purge it from cachix, then find the push that took the
+closure. Count, never print, what that path holds
+
+| a fill publishes nothing
+| the guard refused, or every output's closure reaches an added path no upstream serves
+| read the job's per-path verdicts. The paths stay private, which is the intended outcome
+
+| the cache uploads paths cache.nixos.org serves
+| they carry no upstream signature locally: layer registration, or a local rebuild
+| the layer key for the layer paths. The rest is disk, until the fork.
+
+| an anonymous narinfo request returns 200
+| the cache was created or reconfigured `--public`
+| make it private again. Until then the watch-store's condition does not hold, so stop it.
+
+| a host cannot substitute from attic at all
+| its `netrc-file` is missing, or its token is expired or has no `--pull`
+| check the decrypted token under `/run/secrets` and the `netrc-file` setting
+
+| the cache stays empty
+| `io-nxmatic-nix-darwin-home` is in `upstream-cache-key-names`
+| remove it: it signs every local build
+
+| a host is lost, or a token leaked
+| attic tokens cannot be revoked one by one
+| rotate the server secret and re-issue the tokens (see the revocation steps in <<secrets>>)
+
+| every host stops uploading on the same day
+| the write tokens were issued together and expired together
+| re-issue them; the validity is bounded on purpose
+
+| the container's store reports a stale file handle (ESTALE)
+| a lower changed under `index=on`
+| restart the container on the layer set nerd-nixos booted
+|===
+
+[[attic-fork]]
+== The real fix — an attic fork, later
+
+The read token **confines** a plaintext path that reaches the cache; it does not keep it out. The
+fix is upstream of the token: the cache must refuse such a path. attic offers no hook for that, so
+it is a fork, meant to be contributed upstream. Decided with the operator on 2026-10-10, for later.
+
+[cols="1,3",options="header"]
+|===
+| Change | What it does
+
+| a daemon-to-server protocol
+| the **server** judges what enters, rather than a filter in each client. The natural place for it
+is `get-missing-paths`, the exchange that already opens every push: the server can answer "served
+upstream" or "refused" as well as "missing".
+
+| an upstream check by query, not by signature
+| ask the upstream caches for the narinfo, instead of reading local signatures. That closes the
+297-path gap, and makes the layer key a convenience rather than a necessity.
+
+| a content filter, which refuses
+| with the repository's `.sops.yaml` shared to the server: a `# sops:encrypted` annotation followed
+by anything but an `ENC[` value marks a decrypted file. Measured on `keys.yaml`: the annotation
+survives in clear in both states (9 annotations, each followed by `ENC[` when encrypted, by a `\|`
+block when decrypted). A second test, independent of the rules, looks for private-key armour with a
+body, an `AGE-SECRET-KEY-1`, and GitHub token shapes, because the `.sops.yaml` itself was once wrong
+(2026-08-27).
+|===
+
+Two more contributions follow from the operator's choices on writers (see <<trust-model>>):
+
+[cols="1,3",options="header"]
+|===
+| Change | What it does
+
+| revocable per-host tokens
+| a token per host that can be ended alone, without rotating the server secret. That needs state on
+the server, a list of revoked subjects or of issued tokens, where attic is stateless today
+(`token/src/lib.rs:3-12`).
+
+| trust restored per writer
+| the content check above, at upload, so that no writer can publish what the server rejects. Or
+per-writer signing keys that consumers can tell apart.
+|===
+
+The filter **refuses**; it never re-encrypts. A `-source` path is addressed by its content, a cache
+signature covers the NAR hash, and sops draws a fresh IV at each encryption. A rewritten path would
+be a different path, and every closure that references it would have to be rebuilt.
+
+[[open-questions]]
+== Open questions
+
+* **The allow-list**: which named outputs it holds. Its criterion is what the clusters need, since
+  they read the public tier only, plus the hosts' public packages.
+* **The public/private split on the four hosts**: measured on bioskop's system closure only (161
+  publishable paths, 18 private). The quota (16G or about 8G) waits for it.
+* **The retention value**: 6 hours is a proposal in the operator's order of magnitude, to confirm
+  against a real session.
+* **The cachix plan**: the public tier's storage quota, and what cachix collects when it is full.
+* **Where the content guard runs**: in the fill job, before signing. The shapes are rke2lab's
+  `token_shape_guard`; whether to share that script or restate it is open.
+* **Package outputs, cluster node closures and in-cluster env closures**: their size, once a fill has
+  built them.
+* **Reaching the builder from the cluster nodes**: the nodes sit on their bare-metal's `vmnet`
+  segments and the clusters on the SaaS tailnet. The route and the identity from a node to its
+  `{host}-nixos` (see <<secrets>>) have to be stated. Nodes no longer need to reach attic itself.
+* **The node-base nix configuration** (`builders`, `max-jobs = 0`, `builders-use-substitutes`,
+  `require-sigs`): a rke2lab follow-up.
+* **The builder tests** (<<builder-tests>>): their results decide between the design as written and
+  fallback B.
+* **The pod tier's lower changes while mounted**: it is the node's live `/nix`, which the flox
+  controller grows and the node's GC shrinks. That is the case this spec forbids for tier 2. The hook
+  reconciles the pod's store DB at every container start, which repairs the DB, not the overlayfs
+  rule. Whether tier 3 should instead stack on the immutable layers is rke2lab's to decide.
+* **uid shifting**: an unprivileged container sees the store's files as `nobody`, and nix expects
+  root-owned store paths. Incus `shift` relies on idmapped mounts, and whether EROFS supports them is
+  unverified. If it does not: a privileged container or a `raw.idmap`.
+* **Dataset creation**: does disko create `tank/nerd/attic` on a pool that is already formatted, or
+  does an activation step have to?
+* **The TLS leaf behind attic's fabric URL**: from `mammoth-skate-tls`, like the control URL?
+* **`nix store copy-sigs` from a local store**: whether it accepts `local?root=…` as its source, for
+  the layer key.
+* **Token validity and re-issue**: the validity of the write and read tokens (three months in the
+  example), and what re-issues them on schedule.
+
+== Related Documentation
+
+* link:fabric-control-plane-spec.adoc[Fabric Control Plane] — the tailnets and the bridge attic is
+  reached over, and headscale-nixos, the other tenant of the shared container module.
+* link:host-builder-phases.adoc[Host Builder Phases] — how `<host>-nixos` became the Linux builder
+  this spec makes the cache's filler.
+* link:dataset-catalog.adoc[Dataset Catalog] — the ZFS layout the `nerd/attic` dataset joins.
+* link:security-handling-c4.adoc[Security Handling] — the sops model the cache's secrets follow.
+* rke2lab `docs/architecture/atlas/fabric-control-plane.adoc`, section _The private binary cache_
+  — the migration from the public watch-store to this target.
+* rke2lab `docs/architecture/nixos-substrate/erofs-store-layer-stack.adoc` — the EROFS stack whose
+  layers the containers reuse as lowers.

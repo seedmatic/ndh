@@ -79,10 +79,4 @@ if [ -n "$WIFI_SERVICE" ] && [ "${#ORDERED_ARRAY[@]}" -gt 0 ]; then
   fi
 fi
 
-# NOTE (@codebase): Preserve bridge-scoped defaults.
-# Lima startup can temporarily depend on these routes for guest reachability.
-# Deleting them here has been observed to cause intermittent
-# "connect tcp 192.168.5.x:22: no route to host" during limactl start.
-echo "[$(date)] Preserving bridge-scoped default routes (Lima compatibility)"
-
 echo "[$(date)] Bond maintenance complete"

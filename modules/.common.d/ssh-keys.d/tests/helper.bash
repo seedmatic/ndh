@@ -7,7 +7,13 @@
 
 # Locate the trampoline the scripts source. Fails loudly rather than stubbing: a
 # stub would let a test pass against a logger API the real script does not have.
+# The flake check passes it in NDH_TRAMPOLINE (the sandbox cannot search the store);
+# an interactive run finds the one a built closure left there.
 ndh_trampoline() {
+  if [[ -n "${NDH_TRAMPOLINE:-}" ]]; then
+    printf '%s\n' "$NDH_TRAMPOLINE"
+    return 0
+  fi
   local t
   t="$(find /nix/store -maxdepth 2 -name nix-bash-trampoline.sh -path '*ndh-trampoline-dir*' 2>/dev/null | head -1)"
   if [[ -z "$t" ]]; then

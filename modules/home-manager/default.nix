@@ -98,7 +98,6 @@ let
     ./shadow-repositories.nix
     # ./nushell.nix
     ./password-store.nix
-    ./socket-vmnet.nix
     ./shell.nix
     ./starship.nix
     ./ssh.nix
@@ -106,7 +105,6 @@ let
     ./ssh-tailnet-hosts.nix
     ./ssh-keychain-removal.nix
     ./tldr.nix
-    ./tmate.nix
     ./tmux.nix
     ./xdg.nix
   ];
@@ -137,7 +135,6 @@ let
     httpie
     jdk
     k9s
-    kpt
     krew
     kubectl
     kubectx

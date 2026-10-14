@@ -71,6 +71,9 @@ let
   videoDisplayConsole = "tty0";
   journaldConsoleDevice = "/dev/console"; # if bringupMode then "/dev/${virtualSerialConsole}" else "/dev/console";
   journaldConsoleLevel = if bootDebug then "debug" else "info";
+  # The seat records a tart guest's console to a file, so a running guest mirrors its journal there
+  # only on request: a traced unit's output would land in it. Bringup images always mirror.
+  journaldToConsole = bringupMode || consoleCfg.forwardToConsole;
   systemdManagerShowStatusNo = {
     # Don't clobber the console with duplicate systemd messages.
     ShowStatus = "no";
@@ -173,12 +176,14 @@ in
     forwardToConsole = lib.mkOption {
       type = lib.types.bool;
       default = false;
-      description = "Forward journald messages to the console.";
+      description = "Forward the stage-2 journal to the console on a running guest (bringup images always do; the initrd always does).";
     };
 
+    # A frozen guest takes journald down with it, so a lockup's only witness is the kernel writing
+    # straight to the console, which tart records on the host. At 0, no freeze left a trace.
     logLevel = lib.mkOption {
       type = lib.types.int;
-      default = 0;
+      default = 7;
       description = "Kernel/console log level (0=emerg, 7=debug).";
     };
   };
@@ -253,14 +258,14 @@ in
         ([
           # Kernel cmdline journald routing:
           # - rd.systemd.* applies in initrd (early boot stage before switch_root)
-          # - systemd.* applies in stage-2 (real root userspace)
-          # Keep both for consistent serial visibility across bootstrap.
+          # - systemd.* applies in stage-2 (real root userspace), only when journaldToConsole
+          # The initrd always forwards, so a boot stays visible on the serial console.
           "rd.systemd.journald.forward_to_console=1"
           # "rd.systemd.journald.console=/dev/${virtualSerialConsole}"
-          "systemd.journald.forward_to_console=1"
           # "systemd.journald.console=/dev/${virtualSerialConsole}"
           # Console kernel params (console=tty0 console=hvc0) configured via ./console-serial.nix
         ])
+        (lib.optionals journaldToConsole [ "systemd.journald.forward_to_console=1" ])
         (lib.optionals (!bringupMode || bootDebug) [
           "rootwait"
           "rootdelay=5"
@@ -283,9 +288,12 @@ in
         "net.bridge.bridge-nf-call-iptables" = 1;
         "net.bridge.bridge-nf-call-arptables" = 1;
         "net.core.devconf_inherit_init_net" = 1;
+        # A lockup report shows only the stuck CPU; the culprit is the CPU that never answered it.
+        "kernel.softlockup_all_cpu_backtrace" = 1;
+        "kernel.hardlockup_all_cpu_backtrace" = 1;
       };
 
-      # verbosity (default off; override per-host if needed)
+      # verbosity (consoleLogging.logLevel by default; override per-host if needed)
       consoleLogLevel =
         if bootDebug then
           lib.mkForce 7
@@ -434,7 +442,8 @@ in
       nscd.enable = lib.mkForce runtimeMode;
       nscd.enableNsncd = lib.mkForce runtimeMode;
 
-      nxmaticCachixWatchStore.enable = lib.mkDefault runtimeMode;
+      # DISABLED 2026-10-10: watch-store pushed dirty-tree flake sources carrying sops-smudged .secrets/keys.yaml in clear to the PUBLIC nxmatic cache. Not removed; see the rke2lab memory note dirty-flake-eval-publishes-smudged-secrets.
+      nxmaticCachixWatchStore.enable = lib.mkDefault false;
       ntopng = {
         enable = lib.mkDefault runtimeMode;
         interfaces = [ "all" ];
@@ -452,8 +461,7 @@ in
       journald = {
         console = lib.mkForce journaldConsoleDevice;
         extraConfig = ''
-          # Bootstrap mode: mirror journald to serial console.
-          ForwardToConsole=yes
+          ForwardToConsole=${if journaldToConsole then "yes" else "no"}
           MaxLevelConsole=${journaldConsoleLevel}
         '';
       };

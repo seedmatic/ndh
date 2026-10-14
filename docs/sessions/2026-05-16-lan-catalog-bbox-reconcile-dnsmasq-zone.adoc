@@ -335,9 +335,6 @@ Listed on the session todo list, no commitment yet:
 * `bbox-reconcile apply` mode — capture the body shape from the
   bbox UI's POST/PUT/DELETE on `/api/v1/dhcp/clients`, wire the
   three writes
-* Lima-era modules deprecation — `modules/{darwin,nixos}/lima-*`
-  + `bioskop-lima` / `nikopol-lima` flake outputs.  Nothing
-  currently consumes them; safe to delete or `lib.warn` them
 * Migrate `bin/*` and `modules/home-manager/ssh-key.d/*.sh` to
   `writeShellApplication` for shellcheck + runtimeInputs
 * `nerd-nixos` missing `/boot` mount on full config — long-parked

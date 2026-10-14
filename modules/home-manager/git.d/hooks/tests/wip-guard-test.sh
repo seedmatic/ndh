@@ -25,10 +25,19 @@ check_match "wiping.md"                            no  "wiping file"
 check_match "wip"                                  no  "bare file named wip"
 
 # --- behavioural checks (real repos, real hooks) ------------------------
+# Every scratch commit is signed by a trusted key, so the pre-push signing guard passes them and a
+# refusal below can only come from the wip guard.
+KEYS="$(mktemp -d)"
+trap 'rm -rf "${KEYS:?}"' EXIT
+ssh-keygen -q -t ed25519 -N '' -C t -f "$KEYS/key"
+printf 't@t namespaces="git" %s\n' "$(cat "$KEYS/key.pub")" >"$KEYS/allowed_signers"
+
 scratch() { # creates a repo, echoes its path
   local d; d="$(mktemp -d)"
   git -C "$d" init -q -b main
   git -C "$d" config user.email t@t; git -C "$d" config user.name t
+  git -C "$d" config gpg.format ssh; git -C "$d" config user.signingkey "$KEYS/key.pub"
+  git -C "$d" config commit.gpgsign true; git -C "$d" config gpg.ssh.allowedSignersFile "$KEYS/allowed_signers"
   printf '%s' "$d"
 }
 

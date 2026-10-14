@@ -134,7 +134,7 @@ ndh::bootstrap:runtime:install() {
 	if [[ -z "$install_attr" ]]; then
 		host_short="$(hostname -s 2>/dev/null || true)"
 		# Bringup guests use the composite hostname "<host>-nixos" (see
-		# modules/.common.d/lima-host.nix); strip the guest suffix so the
+		# modules/.common.d/vm.nix); strip the guest suffix so the
 		# installer attribute resolves to "<host>-bringup-install" (the
 		# canonical form in flake.nix after commit 1cc5d647).
 		host_short="${host_short%-nixos}"

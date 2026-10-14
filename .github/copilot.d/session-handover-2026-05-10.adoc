@@ -27,7 +27,6 @@ deleted:    modules/home-manager/ssh.d/keys.v2.yaml
 modified:   modules/home-manager/ssh.d/keys.yaml
 modified:   modules/nixos/bringup-minimal-system.nix
 modified:   modules/nixos/default.nix
-modified:   modules/nixos/systemd/lima-cloud-init.nix
 modified:   modules/nixos/systemd/ssh-keys-enrichment.nix
 modified:   modules/nixos/users.nix
 modified:   profile.nix
@@ -192,8 +191,7 @@ each before committing:
 
 * `modules/nixos/bringup-minimal-system.nix` — carries TODO(minimal-bringup)
   header about pruning linux-builder key inheritance.
-* `modules/nixos/default.nix`, `modules/nixos/users.nix`,
-  `modules/nixos/systemd/lima-cloud-init.nix` — v2 consumer-side updates
+* `modules/nixos/default.nix`, `modules/nixos/users.nix` — v2 consumer-side updates
   (yq paths into `.keys` / `.authorities`).
 * `modules/home-manager/ssh-key.d/ssh-extract-keys.sh` is NOT in the dirty
   list; the cert-kind `awk` block matching "host certificate" is OpenSSH

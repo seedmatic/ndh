@@ -11,7 +11,7 @@ This is a nix-darwin-home configuration managing:
 * Home Manager configurations
 * Development environments
 * Network infrastructure (Headscale/Tailscale replacing Teleport)
-* Container orchestration (Lima VM + Incus + RKE2)
+* Container orchestration (Incus + RKE2)
 
 === Architecture Overview
 
@@ -23,7 +23,6 @@ This is a nix-darwin-home configuration managing:
 ==== Deployment Architecture
 * **rke2lab**: Kubernetes deployment (git subtree)
 * **incus-headscale**: Network/VPN infrastructure (git subtree)
-* **Lima VM**: Primary deployment environment with shared directories
 * **Flox environments**: Shared tooling and variables across projects
 
 === Key Configuration Files
@@ -39,7 +38,6 @@ This is a nix-darwin-home configuration managing:
 
 ==== Development Workflow
 * **Git operations**: Done on macOS host
-* **Deployment operations**: Done in Lima VM via `ssh lima-nerd-nixos`
 * **Shared directories**: `/Users/nxmatic/Gits/nxmatic/nix-darwin-home/modules/nixos/rke2lab`
 * **Environment**: `flox activate -- remake NAME=headscale-server start`
 
@@ -58,14 +56,6 @@ This is a nix-darwin-home configuration managing:
 * Cloud-config templates for Headscale server and gateway
 * Documentation cleanup (moved to AsciiDoc format)
 * bioskop Darwin configured with Headscale client
-* RKE2 cluster running in Lima VM
-
-==== Current Goal (NEXT-SESSION-TODO.adoc)
-Deploy Headscale server and gateway in Lima VM using rke2lab
-
-**Prerequisites Met**: All cloud-config templates, client configuration, and infrastructure ready
-
-**Remaining Task**: Extend Makefile in rke2lab to recognize headscale instance types
 
 == Session Summaries
 
@@ -148,121 +138,9 @@ link:2026-04-05-remote-rebuild-reboot-behavior.adoc[Remote Rebuild Reboot Behavi
 * Confirmed NOPASSWD remote sudo works and was not the failure cause
 * Isolated false-negative to SSH disconnect during post-activation service/network restarts
 * Established preferred operational pattern: `boot` + reboot + post-boot generation verification
-* Executed remote poweroff + Lima restart and verified VM returned to running state
+* Executed remote poweroff + VM restart and verified VM returned to running state
 
 **Status:** Documented and validated
-
-=== 2025-10-12 (Planning)
-
-link:2025-10-12.adoc[Cluster Startup & Headscale Deployment (Planning)]:
-**Focus:** Kickoff to validate end-to-end network (RKE2 + Headscale) and define measurable health checks
-+
-**Planned Objectives:** RKE2 node readiness (<5m), Headscale server + gateway deployment, reusable auth key, route approval, health script, optional manual switch diff wrapper
-+
-**Status:** Planning initiated; execution pending
-+
-**Next Focus:** Execute cluster startup tasks and implement health-check script
-
-=== 2025-10-11 (Later Session)
-
-link:2025-10-11b.adoc[Guest Bootstrap & Network Alignment]::
-**Focus:** Consolidating guest system rebuild workflow, removing noisy failures, preparing cluster & Headscale deployment groundwork
-+
-**Achievements:**
-* Added manual system switch wrappers (system-manual-switch / nixos-rebuild-guest) to avoid transient unit failures
-* Converted inline scripts to external files with replaceVars (future-proof vs substituteAll deprecation)
-* Implemented link-first NixOS config initialization (no implicit clone) with optional clone fallback
-* Externalized bootstrap-zfs logic and ensured legacy mountpoint handling
-* Disabled bootloader install in Lima guest (no-bootloader.nix)
-* Added hm-state-dirs to guarantee Home Manager state path pre-exists
-* Added Darwin ssh-client module (dynamic guest + tailnet patterns) with guarded attribute access
-* Disabled systemd-networkd wait-online (rename-only mode) to eliminate 120s timeout
-* Introduced opt-in example container flag (zfsOverlays.examples.enableCtreg)
-+
-**Status:** Guest environment stable; cluster + Headscale exercise ready
-+
-**Next Focus:** RKE2 cluster startup verification, Headscale server/gateway deployment, unified network architecture docs refresh
-
-=== 2025-10-11
-
-link:2025-10-11.adoc[SSH Client Architecture Refactoring]::
-**Focus:** SSH configuration architecture overhaul
-+
-**Achievements:**
-* Created comprehensive SSH policy framework (openssh-policy.nix)
-* Built advanced SSH client configuration with dynamic host derivation
-* Implemented system-wide shell keychain integration
-* Enhanced flox environment and distributed builds
-* Applied recursion-safe design patterns throughout
-+
-**Stats:** +475 net lines across 10 files, 3 new modules created
-+
-**Status:** Architecture complete, staged and ready for testing
-
-=== 2025-01-10
-
-link:2025-01-10.adoc[Headscale Deployment Architecture]::
-**Focus:** Clean architectural separation
-+
-**Achievements:**
-* Created standalone incus-headscale repository
-* Configured flox environment with rke2lab includes
-* Updated git subtree sync script for multiple subtrees
-* Clean separation: RKE2 and Headscale as independent projects
-+
-**Status:** Architecture complete, ready for deployment testing
-
-=== 2025-01-09
-
-link:2025-01-09.adoc[Teleport Removal & Headscale Architecture]::
-**Focus:** Major refactoring from Teleport to Headscale/Tailscale
-+
-**Achievements:**
-* Completely removed Teleport from codebase
-* Created Headscale server and gateway modules (Incus-based)
-* Integrated rke2lab as git subtree
-* Successfully rebuilt bioskop Darwin with Headscale client
-* Created comprehensive deployment documentation
-+
-**Duration:** ~3.5 hours (21:00 - 00:22)
-+
-**Status:** Darwin configured, Lima VM deployment pending
-
-== Quick Reference
-
-=== By Topic
-
-**Network Architecture:**
-- link:2025-01-09.adoc#_architecture_design[Architecture Design (2025-01-09)]
-- link:2025-01-10.adoc#_deployment_approach[Deployment Approach (2025-01-10)]
-
-**Git Subtrees:**
-- link:2025-01-09.adoc#_git_subtree_integration[Initial Subtree Integration (2025-01-09)]
-- link:2025-01-10.adoc#_git_subtree_architecture[Multi-Subtree Architecture (2025-01-10)]
-
-**Flox Environments:**
-- link:2025-01-10.adoc#_flox_environment_integration[Environment Integration (2025-01-10)]
-
-**Deployment:**
-- link:2025-01-09.adoc#_pending_work[Next Steps from 2025-01-09]
-- link:2025-01-10.adoc#_deployment_status[Current Status (2025-01-10)]
-
-=== Commit History
-
-**2025-01-10:**
-- `3f0eb1c` Add incus-headscale subtree and update sync script
-- `6ff2475` Configure flox environment (incus-headscale repo)
-- `86c0476` Initial commit (incus-headscale repo)
-
-**2025-01-09:**
-- `108892d` Clean up and organize documentation
-- `c0b62ef` Add Headscale integration to rke2lab (reverted)
-- `c751db0` Fix duplicate environment.systemPackages
-- `6c224c1` Configure bioskop Darwin with Headscale client
-- `9d9019b` Add bioskop deployment guide
-- `9a91f17` Add git subtree documentation
-- `abf1abf` Merge rke2lab subtree
-- `9fc1764` Remove Teleport, add Headscale/Tailscale
 
 == Contributing
 

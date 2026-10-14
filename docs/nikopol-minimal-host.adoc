@@ -14,8 +14,7 @@ NOTE: naming. The corp bare-metal is addressed as `vzhost.nikopol` (`vzhost` = t
 host role). The *personal* environment is the Tart macOS VM `nikopol`. The Incus host is the
 Tart NixOS VM `nikopol-nixos`. This document historically predates that split (it was
 "alcide", and conflated host and VM); it now reflects the current three-part model. The
-Incus stack is *Tart/`vz`-based — not Lima* (the earlier Lima/`incusbr0`/`192.168.106`
-model is retired).
+Incus stack is *Tart/`vz`-based*.
 
 == Architecture
 

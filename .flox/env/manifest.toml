@@ -22,7 +22,6 @@ grpcurl.pkg-path = "grpcurl"
 # added to modules/.common.d/system-packages.nix so that both the dev
 # shell and the deployed host systems share the same signer.
 step-cli.pkg-path = "step-cli"
-ngrok.pkg-path = "ngrok"
 # manage-tailnet: administer the Tailscale tailnet (rotate per-kind auth keys,
 # sync-acl, retag + prune stale devices; dry-run by default, --apply to write). A
 # repo-LOCAL flake package, so a path: flakeref reflecting the working copy (not a
@@ -62,15 +61,12 @@ incus-client.systems = [
 ## Activation Hook ---------------------------------------------------
 ##  ... run by _bash_ shell when you run 'flox activate'.
 ## -------------------------------------------------------------------
-[hook]
-# on-activate = '''
-#   # -> Set variables, create files and directories
-#   # -> Perform initialization steps, e.g. create a python venv
-#   # -> Useful environment variables:
-#   #      - FLOX_ENV_PROJECT=/home/user/example
-#   #      - FLOX_ENV=/home/user/example/.flox/run
-#   #      - FLOX_ENV_CACHE=/home/user/example/.flox/cache
-# '''
+## ⓘ This seat has no hook of its own. The flake-input registry indirection was written out
+## here by hand first; it now arrives through fleet's `flake-registry` env, which the `nix` env
+## this seat already included pulls in. The logic was identical in every seat and only
+## `$FLOX_ENV_PROJECT` differed, so a copy per repo was a copy that could drift — and half the
+## seedmatic repos with a flake had no seat at all, which made a per-seat hook structurally
+## unable to be uniform.
 
 
 ## Profile script ----------------------------------------------------

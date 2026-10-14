@@ -8,8 +8,7 @@
 # consumer (openssh, ssh-keys enrichment, container registry, networking).
 # It names a ROLE, not a tool — it must evaluate and be consumable without
 # knowing which provider (tart, …) materializes the guest. Provider modules
-# depend on this; this depends on no provider. (This is the decoupling the
-# old lima-named module lacked.)
+# depend on this; this depends on no provider.
 let
   inherit (lib) mkOption types;
   ndhContext = ndh.context;

@@ -2,12 +2,12 @@
 name: nix-darwin-home
 description: >-
   Expert knowledge of the nix-darwin-home repository: architecture, module system,
-  ndh.store API, script bundling conventions, Lima/Tart VM materializers, ZFS integration,
+  ndh.store API, script bundling conventions, Tart VM materializer, ZFS integration,
   naming conventions, and flake outputs. Use when: working on nix-darwin-home modules,
   adding scripts, configuring VMs, debugging flake evaluation, understanding how hosts/profiles
-  compose, or applying ndh conventions. Triggers: nix-darwin-home, ndh.store, Lima VM,
+  compose, or applying ndh conventions. Triggers: nix-darwin-home, ndh.store,
   Tart VM, ZFS NixOS, io.nxmatic, bringup image, installBinScript, writeShellScriptBin,
-  ndhStoreApi, mkHostOutputs, Lima materializer, tart materializer.
+  ndhStoreApi, mkHostOutputs, tart materializer.
 ---
 
 # nix-darwin-home Repository Knowledge
@@ -15,8 +15,8 @@ description: >-
 ## Purpose
 
 Single-root Nix flake managing **macOS (Darwin) + NixOS VM** configurations for hosts
-bioskop and nikopol. Darwin orchestrates NixOS guests via Lima (QEMU/VZ) and Tart (VZ)
-VM materializers. All secrets via SOPS/age. No per-host flakes — one `flake.nix` at root.
+bioskop and nikopol. Darwin orchestrates NixOS guests via the Tart (VZ)
+VM materializer. All secrets via SOPS/age. No per-host flakes — one `flake.nix` at root.
 
 ## Repository Layout
 
@@ -28,7 +28,6 @@ modules/
     shell.d/                # logger.sh, nix-bash-trampoline.sh, post-activation.sh
     ssh/                    # SSH key management scripts
   darwin/                   # macOS-specific modules
-    lima-config.nix         # Lima VM configuration generator
     tart-config.nix         # Tart VM materializer
     outputs.nix             # mkDarwinConfig / mkDarwinOutputs
   nixos/
@@ -113,9 +112,9 @@ Returns a store-prefixing API for a given `pkgsForSystem`:
 
 For each host entry in `inventory/`:
 - Generates `darwinConfigurations.<host>`
-- Generates `nixosConfigurations.<host>-nixos`, `<host>-nixos-lima`, `<host>-nixos-tart`
-- Generates `packages.<system>.<host>-nixos-{lima,tart}-vm-materialize`
-- Generates `vmConfigurations.{lima,tart,selected}` aliases
+- Generates `nixosConfigurations.<host>-nixos`, `<host>-tart`, `<host>-bringup`
+- Generates `packages.<system>.nerd-tart-<host>-{config,materialize,deploy}` and `<host>-tart-vm-bootstrap-installer`
+- Generates the `vmConfigurations.tart` alias
 
 ### generationMode
 
@@ -129,7 +128,7 @@ Special arg passed to NixOS configs:
 ```nix
 { ndh, lib, pkgs, config, ... }
 # ndh.store     → ndh.store API (writeShellScriptBin, installBinScript, etc.)
-# ndh.vm        → VM provider info (provider = "lima"|"tart")
+# ndh.vm        → VM provider info (provider = "tart")
 # lib           → nixpkgs lib
 ```
 
@@ -138,15 +137,6 @@ Special arg passed to NixOS configs:
 2. `baseModules` — nixpkgs/darwin standard modules
 3. Platform modules — `modules/darwin/` or `modules/nixos/`
 4. `extraModules` — profile + host-specific additions
-
-## Lima VM Materializer (modules/darwin/lima-config.nix)
-
-Generates lima.yaml + materialize script. Key flow:
-1. `nixosDiskImageBringupSystemdZfs` path injected from flake as bringup image
-2. Materializer copies ZFS disk images → `$HOME/.lima/vms/<name>/`
-3. Lima config: VZ/QEMU, 3 networks (vzNAT/shared/bridged), additional ZFS disks
-4. Additional disks labeled `zpool=<pool>` to match `modules/nixos/zfs-pool-disk-map.nix`
-5. Gcroot at `~/.local/share/nix/gcroots/` keeps derivations alive
 
 ## Tart VM Materializer (modules/darwin/tart-config.nix)
 
@@ -173,11 +163,12 @@ Key components:
 | Pattern | Convention |
 |---------|-----------|
 | Nix store derivation names | `io.seedmatic.ndh-<name>` (via `ndh.store.prefixedName`) |
-| Lima VM hostname | `nerd-nixos` (from hostAlias) |
+| Tart VM name | `nerd-nixos` |
+| Guest hostname | `<hostAlias>-nixos` (`vm.guestHostName`) |
 | Disk images | `<vmName>-<pool>.img` |
 | Gcroot links | `~/.local/share/nix/gcroots/<name>` |
-| Packages (flake) | `<hostAlias>-nixos-{lima,tart}-vm-materialize` |
-| NixOS configs | `<mainName>-nixos`, `<mainName>-nixos-{lima,tart}` |
+| Packages (flake) | `nerd-tart-<hostAlias>-{config,materialize,deploy}` |
+| NixOS configs | `<mainName>-nixos`, `<mainName>-tart`, `<mainName>-bringup` |
 
 ## Common Pitfalls
 
@@ -196,7 +187,6 @@ Key components:
 
 - [`flake.nix`](../../flake.nix) — mkNdhStoreApiFor, mkHostOutputs, vmConfigurations
 - [`modules/.common.d/default.nix`](../../modules/.common.d/default.nix) — ndhStore API
-- [`modules/darwin/lima-config.nix`](../../modules/darwin/lima-config.nix) — Lima materializer
 - [`modules/darwin/tart-config.nix`](../../modules/darwin/tart-config.nix) — Tart materializer
 - [`modules/nixos/zfs.nix`](../../modules/nixos/zfs.nix) — ZFS overlays + boot integration
 - [`catalog/default.nix`](../../catalog/default.nix) — users, networks, clusters

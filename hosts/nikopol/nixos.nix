@@ -7,6 +7,21 @@
   config = {
     profile.user.home = lib.mkForce "/home/${config.profile.user.name}";
 
+    # ★ This guest decrypts with an age identity GENERATED ON IT, whose private never leaves
+    # its persistent root; only the public half is a recipient (.sops.yaml). It imports
+    # nothing from the vz host: that host is the corporate-managed Mac, and what this guest
+    # used to fetch from it — over remoteFetch or the /srv/host/sops.d share — was the
+    # OPERATOR identity, which opens every sops file in ndh.
+    #
+    # ⛔ No sshKeyPaths: the guest's sshd host key is the `rdp-host` material, a key that
+    # travels in keys.yaml to every host. An age identity derived from it would isolate
+    # nothing, and the next rdp-host rotation would force a re-key.
+    ndh.sopsAgeKeyBootstrap = {
+      defaultAgeKeyFile = "/var/lib/sops-nix/nikopol-nixos.age";
+      nixosHostKeyImport.enable = false;
+    };
+    sops.age.sshKeyPaths = [ ];
+
     # Vector observability agent forwards build events to Darwin aggregator
     bringupObserve = {
       # Forward to Darwin host Vector aggregator via VM network gateway

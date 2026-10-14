@@ -23,7 +23,7 @@ link:network-catalog.adoc[Network Catalog (model & contribution)]::
 The network catalog data model — the `{cidr,name,asn}` attribution triple + managed-network facts + `asns` dictionary — its consumers (nnh flow attribution, ndh provisioning), how to consume it (`nix eval --json …#catalog`), and how a domain (rke2lab, nnh) contributes spans via `lib.networkBlueprint` (the two-layer federation: data up at eval, infrastructure down at runtime).
 
 link:nikopol-minimal-host.adoc[Corp Bare-Metal Minimal Host (vzhost.nikopol)]::
-The minimal-host design for the JAMF-managed corp Mac and the Tart VMs it hosts (`nikopol`, `nikopol-nixos`/Incus). Supersedes the retired Lima model.
+The minimal-host design for the JAMF-managed corp Mac and the Tart VMs it hosts (`nikopol`, `nikopol-nixos`/Incus).
 
 link:nfs-kerberos.adoc[NFSv4 + Kerberos Plan]::
 Plan and bring-up steps for macOS/NixOS NFSv4 with Kerberos, including enabling NFSv4 on Darwin nfsd and roadmap for Kerberos-backed mounts.
@@ -47,7 +47,7 @@ the first dataset that will want replication into the `recover` pool.
 === Session Notes
 
 link:sessions/README.adoc[Development Session Notes]::
-Detailed session summaries documenting the evolution of the network infrastructure. Latest: link:sessions/2025-10-12.adoc[Cluster Startup & Headscale Deployment (Planning) – 2025-10-12]
+Detailed session summaries documenting the evolution of the network infrastructure. Latest: link:sessions/2026-05-19-rke2-cluster-bringup-prep.adoc[RKE2 Cluster Bring-up Preparation – 2026-05-19]
 
 === Other Documentation
 
@@ -78,11 +78,27 @@ from the GPG-encrypted password store. Covers the CGNAT sub-prefix per
 control plane, the bridge between the two gateways, the hard-coded `ts-forward` drop and the fork
 patch that lifts it, private zones plus one duckdns name, and the version floor.
 
-link:ssh-keys-architecture.adoc[SSH Keys — the Keys That Remain]::
-📐 Which keys exist once access is granted by the control plane — the bridge,
-the service keys, and the shared material — who generates each (always the machine that uses it),
-and how they travel: publics in `keys.yaml`, secrets only inside per-role projections encrypted
-for their own recipients.
+link:private-binary-cache-spec.adoc[Private Binary Cache — build once, substitute everywhere (spec)]::
+📐 attic in an Incus container on bioskop's nerd-nixos (`attic-nixos`), on the fabric only, and
+**private by authentication**: every read needs a token, and an anonymous narinfo request must be
+refused with a 401. **An `attic watch-store` runs on every host** (operator, 2026-10-10), into one
+common cache with a write token per host, so every build is shared, dev builds and remote builds
+included. The builder still prepares each host's closure from a pushed revision. The price is
+stated: the cache is as trustworthy as its least trusted writer, one of which sits on the corporate
+side, and attic tokens cannot be revoked one by one. The upstream filter is attic's own, by signature key names: the upstream
+substituters plus a dedicated EROFS-layer key, never the fleet's build key. The real fix, refusing
+secret-bearing paths at upload, is an attic fork, for later. "Latest only" is a retention period plus a keep-alive,
+because attic can neither pin nor delete a single path. SQLite (attic runs no database service) with
+a GC every 15 minutes, because SQLite reaps 500 chunks per GC run; PostgreSQL as the fallback. Sizing measured on 2026-10-10: a 15.7 GiB union of host closures, of which 1.56 GiB is
+not on cache.nixos.org, plus 5.25 GiB of flox environments. Proposed quota `tank/nerd/attic` = 32G.
+The containers' `/nix/store` is an overlay on nerd-nixos's EROFS layers. Their placement in the
+Incus cluster is stated, in a project separate from the `rke2lab` cluster nodes.
+
+link:ssh-keys-architecture.adoc[Roles × Keys — who holds, who accepts, who certifies]::
+📐 Every key and credential of the fabric: its one role, who holds the private, who accepts the
+public and as which account, the offline seedmatic root and its two delegations (TLS intermediate,
+SSH host and user CAs), and the lifecycle — permanent, bootstrap, transitional, break-glass — that
+decides how much effort each key gets.
 
 link:ssh-keys-renewal-spec.adoc[SSH Keys Renewal Model (spec)]::
 How a static key holds two dated generations at once, which one is presented and which are
@@ -345,10 +361,10 @@ The following files have been removed as their content was consolidated into Asc
 * `network-architecture-summary.md` → Consolidated into `network-setup.adoc`
 * `teleport-integration-summary.md` → Removed (Teleport no longer used)
 * `teleport-setup.md` → Removed (Teleport no longer used)
-* `bioskop-deployment.adoc` → Removed (Lima-era Headscale/RKE2 deployment guide; the Lima provider is retired)
-* `podman-remote-setup.adoc` → Removed (Lima-era Podman remote engine setup; the Lima provider is retired)
-* `vm-configuration-models-c4.adoc` → Removed (Lima/Tart dual-model C4 doc; obsolete under Tart-only)
-* `NEXT-SESSION-TODO.adoc` → Removed (stale Lima-era session plan)
+* `bioskop-deployment.adoc` → Removed (obsolete Headscale/RKE2 deployment guide)
+* `podman-remote-setup.adoc` → Removed (obsolete Podman remote engine setup)
+* `vm-configuration-models-c4.adoc` → Removed (dual-model C4 doc; obsolete under Tart-only)
+* `NEXT-SESSION-TODO.adoc` → Removed (stale session plan)
 
 === Remaining Markdown Files
 
@@ -436,8 +452,6 @@ NOTE: Both repositories remain active. The standalone repo is ideal for focused 
 
 * All automation secrets now reside in the SOPS-filtered YAML at `modules/nixos/rke2lab/.secrets` (fields for `tailscale.*`, `github.*`, and `docker.configJson` — store the base64-encoded Docker config JSON here). Edit the file in place with `sops --input-type yaml --output-type yaml --filename-override .secrets` so encrypted data never leaves disk unprotected.
 * Run `modules/nixos/rke2lab/bin/migrate-legacy-secrets.sh <legacy-secret-dir>` to import any remaining flat files into the YAML (the helper boots a template if missing, copies current plaintext values, and leaves the original files untouched so you can compare before cleaning up).
-* `rke2-cluster-repo-sync` and `rke2-kpt-package-sync` bootstrap `gh auth login --with-token`/`gh auth setup-git`, so git now leans on `gh auth git-credential` for HTTPS operations (falling back to `GIT_ASKPASS` only if the CLI is unavailable).
-* Porch manifests consume the GitHub PAT (`cluster-github-token`) and image pull secret (`porch-docker-config-json`) via `rke2-kpt-deploy`, so the Kubernetes Secrets materialize from runtime env vars instead of being tracked in git.
 * When rotating credentials, change the `.secrets` YAML, re-run `sops --in-place --input-type yaml --output-type yaml --filename-override .secrets modules/nixos/rke2lab/.secrets`, and restart the Incus nodes (or rerun the relevant systemd units) to propagate the refreshed values end-to-end.
 
 == Contributing

@@ -15,8 +15,9 @@
 #   - systemd.tmpfiles: seed the profile symlinks declaratively (avoids
 #     shell-trampoline mutation of profile state).
 #   - systemd.services: oneshot that runs the installer at boot, so
-#     `nixos-rebuild boot` (which skips activation) still has the
-#     command contract available before sops-install-secrets runs.
+#     `nixos-rebuild boot` (which skips activation) still installs the
+#     command contract. It is NOT ordered before sops-install-secrets:
+#     that unit runs before sysinit.target, this one after it.
 let
   cfg = config.ndh.bringupRuntime;
 in
@@ -63,17 +64,8 @@ in
     systemd.services.io-seedmatic-ndh-bringup-runtime-install = {
       description = "Install NDH bringup runtime profile for root (@codebase)";
       wantedBy = [ "multi-user.target" ];
-      requiredBy = [
-        "sops-install-secrets.service"
-        "io-seedmatic-ndh-hostkey-enrollment-check.service"
-      ];
-      before = [
-        # Read the configured name so NDH-prefixed (or otherwise overridden)
-        # unit names are honored.
-        "${config.ndh.sopsAgeKeyBootstrap.systemdUnitName}.service"
-        "sops-install-secrets.service"
-        "io-seedmatic-ndh-hostkey-enrollment-check.service"
-      ];
+      requiredBy = [ "io-seedmatic-ndh-hostkey-enrollment-check.service" ];
+      before = [ "io-seedmatic-ndh-hostkey-enrollment-check.service" ];
       path = [
         pkgs.bash
         config.nix.package
