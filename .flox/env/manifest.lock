@@ -65,9 +65,6 @@
       "moreutils": {
         "pkg-path": "moreutils"
       },
-      "ngrok": {
-        "pkg-path": "ngrok"
-      },
       "nix-eval-jobs": {
         "pkg-path": "nix-eval-jobs",
         "pkg-group": "nix",
@@ -2717,99 +2714,6 @@
       "priority": 5
     },
     {
-      "attr_path": "ngrok",
-      "broken": false,
-      "derivation": "/nix/store/zczmyp6c61649pakknrvjx13yf1xg99k-ngrok-3.39.5.drv",
-      "description": "Allows you to expose a web server running on your local machine to the internet",
-      "install_id": "ngrok",
-      "license": "Unfree",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=567a49d1913ce81ac6e9582e3553dd90a955875f",
-      "name": "ngrok-3.39.5",
-      "pname": "ngrok",
-      "rev": "567a49d1913ce81ac6e9582e3553dd90a955875f",
-      "rev_count": 1017464,
-      "rev_date": "2026-06-16T02:33:49Z",
-      "scrape_date": "2026-06-17T03:13:38.643313Z",
-      "stabilities": [
-        "staging",
-        "unstable",
-        "stable"
-      ],
-      "unfree": true,
-      "version": "3.39.5",
-      "outputs_to_install": [
-        "out"
-      ],
-      "outputs": {
-        "out": "/nix/store/4gjwprdsp03fbyjj0qhvml4fv1h1jips-ngrok-3.39.5"
-      },
-      "system": "aarch64-darwin",
-      "group": "toplevel",
-      "priority": 5
-    },
-    {
-      "attr_path": "ngrok",
-      "broken": false,
-      "derivation": "/nix/store/00yir1g9zkm78m99dqrcvlkmbzn008gd-ngrok-3.39.5.drv",
-      "description": "Allows you to expose a web server running on your local machine to the internet",
-      "install_id": "ngrok",
-      "license": "Unfree",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=567a49d1913ce81ac6e9582e3553dd90a955875f",
-      "name": "ngrok-3.39.5",
-      "pname": "ngrok",
-      "rev": "567a49d1913ce81ac6e9582e3553dd90a955875f",
-      "rev_count": 1017464,
-      "rev_date": "2026-06-16T02:33:49Z",
-      "scrape_date": "2026-06-17T03:44:47.341495Z",
-      "stabilities": [
-        "staging",
-        "unstable",
-        "stable"
-      ],
-      "unfree": true,
-      "version": "3.39.5",
-      "outputs_to_install": [
-        "out"
-      ],
-      "outputs": {
-        "out": "/nix/store/rrrbxxcnxb21p7d3mb4y1qa0kjfy52fk-ngrok-3.39.5"
-      },
-      "system": "aarch64-linux",
-      "group": "toplevel",
-      "priority": 5
-    },
-    {
-      "attr_path": "ngrok",
-      "broken": false,
-      "derivation": "/nix/store/i6yzmm1qcz1r51z6kylbzxawjrs0sj0r-ngrok-3.39.5.drv",
-      "description": "Allows you to expose a web server running on your local machine to the internet",
-      "install_id": "ngrok",
-      "license": "Unfree",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=567a49d1913ce81ac6e9582e3553dd90a955875f",
-      "name": "ngrok-3.39.5",
-      "pname": "ngrok",
-      "rev": "567a49d1913ce81ac6e9582e3553dd90a955875f",
-      "rev_count": 1017464,
-      "rev_date": "2026-06-16T02:33:49Z",
-      "scrape_date": "2026-06-17T04:47:47.096676Z",
-      "stabilities": [
-        "staging",
-        "unstable",
-        "stable"
-      ],
-      "unfree": true,
-      "version": "3.39.5",
-      "outputs_to_install": [
-        "out"
-      ],
-      "outputs": {
-        "out": "/nix/store/rgzsz8rlihrijyjqqmc9dji4nhk66lzw-ngrok-3.39.5"
-      },
-      "system": "x86_64-linux",
-      "group": "toplevel",
-      "priority": 5
-    },
-    {
       "attr_path": "nixos-rebuild-ng",
       "broken": false,
       "derivation": "/nix/store/3cqk1ahvlixsn7yf5ngn79q1r3c32c11-nixos-rebuild-ng-26.11.drv",
@@ -4115,9 +4019,6 @@
           "systems": [
             "aarch64-darwin"
           ]
-        },
-        "ngrok": {
-          "pkg-path": "ngrok"
         },
         "nixos-rebuild-ng": {
           "pkg-path": "nixos-rebuild-ng"
