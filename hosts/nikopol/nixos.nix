@@ -10,7 +10,7 @@
     # ★ This guest decrypts with an age identity GENERATED ON IT, whose private never leaves
     # its persistent root; only the public half is a recipient (.sops.yaml). It imports
     # nothing from the vz host: that host is the corporate-managed Mac, and what this guest
-    # used to fetch from it — over remoteFetch or the /srv/host/sops.d share — was the
+    # used to fetch from it — over ssh or the /srv/host/sops.d share — was the
     # OPERATOR identity, which opens every sops file in ndh.
     #
     # ⛔ No sshKeyPaths: the guest's sshd host key is the `rdp-host` material, a key that
