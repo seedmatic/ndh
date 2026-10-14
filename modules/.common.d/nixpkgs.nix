@@ -1,6 +1,7 @@
 {
   nixpkgsInput,
   config,
+  lib,
   pkgs,
   worktreePath,
   ...
@@ -18,14 +19,14 @@ in
 
   nix = {
     package = pkgs.nix;
-    # experimental-features declared in modules/.common.d/nix-settings.nix;
-    # keep the raw GC toggles here.
-    extraOptions = ''
-      keep-outputs = false
-      keep-derivations = false
-      keep-failed = false
-    '';
+    # experimental-features declared in modules/.common.d/nix-settings.nix.
     settings = {
+      # The GC toggles, as defaults: a raw extraOptions line comes after every setting in nix.conf
+      # and wins over them, so a module needing another value could not set it — the store freeze
+      # needs keep-derivations.
+      keep-outputs = lib.mkDefault false;
+      keep-derivations = lib.mkDefault false;
+      keep-failed = lib.mkDefault false;
       max-jobs = 4;
       trusted-users = [
         userName

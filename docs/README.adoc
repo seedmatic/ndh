@@ -78,6 +78,15 @@ from the GPG-encrypted password store. Covers the CGNAT sub-prefix per
 control plane, the bridge between the two gateways, the hard-coded `ts-forward` drop and the fork
 patch that lifts it, private zones plus one duckdns name, and the version floor.
 
+link:store-freeze-spec.adoc[Store Freeze — nerd-nixos freezes its store upper into a read-only layer, by command (spec)]::
+📐 increment 1 of the private-cache work, not built. The operator switches at runtime, then
+`ndh-store freeze` turns the upper into a ZFS snapshot layer and reboots. The initrd builds the stack
+from an A/B manifest on the pool: each snapshot checked by GUID, dataset and booted toplevel, and a
+LOUD fallback. The nix DB stays continuous, and there is no rollback: a compaction keeps only the
+current generation, which amends rke2lab's "Depth is part of the ABI". The freeze runs only after a
+GC and a secret sweep, since a frozen path is permanent. The Incus containers' contract lists the
+frozen layers, and their systems are GC roots of nerd-nixos.
+
 link:private-binary-cache-spec.adoc[Private Binary Cache — build once, substitute everywhere (spec)]::
 📐 attic in an Incus container on bioskop's nerd-nixos (`attic-nixos`), on the fabric only, and
 **private by authentication**: every read needs a token, and an anonymous narinfo request must be

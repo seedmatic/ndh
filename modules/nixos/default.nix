@@ -153,6 +153,8 @@ let
     ./incus.nix
     ./baremetal-segment.nix
     ./incus-cluster.nix
+    ./incus-nixos-container.nix
+    ./store-freeze.nix
     ./cluster-vmnet.nix
     ./podman.nix
     ./bringup-observe.nix
