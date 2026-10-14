@@ -9,11 +9,17 @@
 #
 # An `index=on` upper is bound to its lower set, but the kernel does NOT notice a newer snapshot of
 # the same dataset (measured 2026-10-14). So the stamp beside the upper names the snapshot and the
-# layer set, and a mismatch — layers appended since the delivery — fails before mounting.
+# layer set, and a mismatch — layers changed since the delivery — fails before mounting.
+#
+# The layers below the snapshot are the ones `deliver` stamped in `lower.layers` — nerd-nixos's
+# frozen layers of that boot, then the EROFS ones — never the current ones: after a freeze-reboot
+# the container comes back on its old snapshot while nerd-nixos already runs the new stack.
 #
 # Env: LAYER_CONTRACT (/etc/ndh/store-layers.json), CONTAINER_DIR, CONTAINER_NAME.
 
-mapfile -t layers < <(yq -p json -oy -r '.lowerdirs[]' "$LAYER_CONTRACT")
+[ -s "$CONTAINER_DIR/lower.layers" ] ||
+  { echo "ndh-incus-container-store: no stamped layer list — run: ndh-incus-container deliver $CONTAINER_NAME" >&2; exit 1; }
+mapfile -t layers <"$CONTAINER_DIR/lower.layers"
 mapfile -t required < <(yq -p json -oy -r '.requiredOptions[]' "$LAYER_CONTRACT")
 upper_root=$(yq -p json -oy -r '.upperRoot' "$LAYER_CONTRACT")
 snapshot=$(cat "$CONTAINER_DIR/lower.snapshot")
@@ -36,6 +42,9 @@ fail() {
 # ENOENT there (measured 2026-10-14).
 [ -d "$frozen" ] || fail "snapshot $snapshot of nerd-nixos's store is gone — run: ndh-incus-container deliver $CONTAINER_NAME"
 [ -e "$view/nix/var/nix/db/db.sqlite" ] || fail "no DB in $view — run: ndh-incus-container deliver $CONTAINER_NAME"
+for layer in "${layers[@]}"; do
+  [ -d "$layer" ] || fail "layer $layer, stamped at delivery, is gone — run: ndh-incus-container deliver $CONTAINER_NAME"
+done
 
 lowerdirs=$(IFS=:; echo "$frozen:${layers[*]}")
 requested=$(IFS=,; echo "${required[*]}")

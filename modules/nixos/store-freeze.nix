@@ -94,6 +94,7 @@ let
       ${exports}
       export SWEEP_SHAPES=${./store-freeze.d/sweep-shapes}
       export CONTAINER_PROJECT=${lib.escapeShellArg config.ndh.incusNixosContainers.project}
+      export CONTAINER_STATE_ROOT=${lib.escapeShellArg config.ndh.incusNixosContainers.stateRoot}
       ${builtins.readFile ./store-freeze.d/cli.sh}
     '';
   };

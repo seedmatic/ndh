@@ -5,7 +5,8 @@
 #   ndh-incus-container create  {name}   dataset, project, instance and its devices
 #   ndh-incus-container deliver {name}   restart the container on a snapshot of this generation's store
 #
-# Set by the wrapper: INSTANCES (JSON), PROJECT, POOL, LAYER_CONTRACT, GUEST_LOWER, GUEST_UPPER, NIX_CONFIG.
+# Set by the wrapper: INSTANCES (JSON), PROJECT, POOL, LAYER_CONTRACT, GUEST_LOWER, GUEST_UPPER,
+# PRESTART_HOOK, STACK_DESCRIPTION, STORE_DEGRADED, GCROOTS, NIX_CONFIG.
 
 usage() {
   sed -n '4,6p' "${BASH_SOURCE[0]}" >&2
@@ -23,6 +24,12 @@ instance() {
 }
 
 field() { KEY="$2" yq -p json -oy -r '.[strenv(KEY)]' <<<"$1"; }
+
+# raw_lxc {dir}: ONE key, so init and the pre-start hook share its value; a second `raw.lxc=` would
+# replace the first and lose init.
+raw_lxc() {
+  printf 'lxc.init.cmd = /nix/var/nix/profiles/system/init\nlxc.hook.pre-start = %s %s\n' "$PRESTART_HOOK" "$1"
+}
 
 create() {
   local info dir dataset target placement=()
@@ -57,7 +64,7 @@ create() {
     -c security.privileged=true \
     -c cluster.evacuate=stop \
     -c boot.autostart=true \
-    -c raw.lxc="lxc.init.cmd = /nix/var/nix/profiles/system/init"
+    -c raw.lxc="$(raw_lxc "$dir")"
   # From here a failure deletes the instance: a half-configured one would make the next `create`
   # stop at "already exists".
   created="$1"
@@ -92,6 +99,12 @@ create() {
 # only receives what the container itself writes. nerd-nixos's GC can no longer take a path from
 # under a container, since the snapshot keeps it. Each delivery is a restart on a fresh upper, the
 # way nerd-nixos itself takes a new generation; service data lives on its own devices.
+#
+# Once nerd-nixos freezes, its upper is nearly empty after each boot: the snapshot alone no longer
+# holds the system, its frozen layers do. So the delivery STAMPS the layers it was taken over —
+# nerd-nixos's frozen layers of this boot, then the EROFS ones — in `lower.layers`, and the store
+# unit mounts that list, never the current one: after a freeze-reboot the container comes back on
+# its old snapshot while /run already describes the new stack. Only a delivery moves it.
 deliver() {
   local info dir toplevel store upper_root rw db snapshot previous aside entry old
   info=$(instance "$1")
@@ -100,6 +113,7 @@ deliver() {
   store=$(field "$info" hostStore)
   upper_root=$(yq -p json -oy -r '.upperRoot' "$LAYER_CONTRACT")
 
+  [ ! -e "$STORE_DEGRADED" ] || die "nerd-nixos's store is degraded — repair it before delivering"
   incus info --project "$PROJECT" "$1" >/dev/null 2>&1 || die "$1 does not exist — create it first"
   [ -e "$toplevel" ] || die "$toplevel is not in nerd-nixos's store — switch nerd-nixos to this generation first"
   [ "$(findmnt -no FSTYPE "$upper_root")" = zfs ] || die "$upper_root is not a ZFS dataset"
@@ -124,7 +138,7 @@ deliver() {
 
   aside="$dir/.previous-$snapshot"
   mkdir -p "$aside/root/nix/var" "$aside/view/nix/var/nix"
-  for entry in upper work upper.layer-set lower.snapshot; do
+  for entry in upper work upper.layer-set lower.snapshot lower.layers; do
     if [ -e "$dir/$entry" ]; then mv "$dir/$entry" "$aside/"; fi
   done
   if [ -e "$dir/root/nix/var/nix" ]; then mv "$dir/root/nix/var/nix" "$aside/root/nix/var/"; fi
@@ -133,7 +147,12 @@ deliver() {
   # `immutable` mode would ignore the WAL.
   cp -a "/nix/var/nix/db/.zfs/snapshot/$snapshot" "$dir/view/nix/var/nix/db"
   mkdir -p "$dir/upper"
+  {
+    if [ -s "$STACK_DESCRIPTION" ]; then yq -p json -oy -r '.frozen[]' "$STACK_DESCRIPTION"; fi
+    yq -p json -oy -r '.lowerdirs[]' "$LAYER_CONTRACT"
+  } >"$dir/lower.layers"
   echo "$snapshot" >"$dir/lower.snapshot"
+  incus config set --project "$PROJECT" "$1" raw.lxc="$(raw_lxc "$dir")"
   systemctl start "ndh-incus-container-store-$1.service"
 
   # The snapshot carries the system, so this copies nothing; it stays as the check that it does.
@@ -141,6 +160,9 @@ deliver() {
   # signature, so a checked copy would refuse the first path of any delta.
   nix copy --no-check-sigs --to "$store" "$toplevel"
   nix-env --store "$store" -p "$dir/root/nix/var/nix/profiles/system" --set "$toplevel"
+  # nerd-nixos's GC, freeze and compaction keep what a container runs.
+  mkdir -p "$GCROOTS"
+  ln -sfn "$toplevel" "$GCROOTS/$1"
   incus start --project "$PROJECT" "$1"
 
   # The container runs on the new snapshot: the previous one, and what was set aside, can go.

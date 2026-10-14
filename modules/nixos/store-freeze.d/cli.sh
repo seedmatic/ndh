@@ -9,7 +9,7 @@
 # purge and confirm destroy data: without --yes they only list what they would do.
 #
 # Set by the wrapper: RW_DATASET, DB_DATASET, LAYERS_DATASET, RW_MOUNT, STACK_DIR, FROZEN_ROOT,
-# EROFS_LOWERS, RUN_DIR, MANIFEST_VERSION, SWEEP_SHAPES, CONTAINER_PROJECT.
+# EROFS_LOWERS, RUN_DIR, MANIFEST_VERSION, SWEEP_SHAPES, CONTAINER_PROJECT, CONTAINER_STATE_ROOT.
 
 usage() {
   sed -n '3,9p' "${BASH_SOURCE[0]}" >&2
@@ -361,6 +361,20 @@ confirm() {
     say "no layer to release"
     return
   fi
+  # A container stacks the layers stamped at its delivery: none of them may go from under it.
+  local stamped layer container
+  for stamped in "$CONTAINER_STATE_ROOT"/*/lower.layers; do
+    [ -e "$stamped" ] || continue
+    container=$(basename "$(dirname "$stamped")")
+    while read -r layer; do
+      [[ "$layer" == "$FROZEN_ROOT"/*/upper ]] || continue
+      layer="${layer#"$FROZEN_ROOT"/}"
+      layer="${layer%/upper}"
+      if grep -qE "[@/]$layer\$" <<<"$obsolete"; then
+        die "container $container still stacks $layer — run: ndh-incus-container deliver $container, then confirm"
+      fi
+    done <"$stamped"
+  done
   say "destroying the layers current.json no longer names:"
   listing "$obsolete"
   $yes || die "nothing destroyed — run again with --yes"

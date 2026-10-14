@@ -39,7 +39,7 @@ let
   # second consumer.
   layerContract = "/etc/ndh/store-layers.json";
 
-  stateRoot = "/var/lib/ndh-containers";
+  inherit (cfg) stateRoot;
 
   # Inside the container: the metadata view and the upper, at fixed paths.
   guestLower = "/nix/.lower";
@@ -130,6 +130,22 @@ let
     text = builtins.readFile ./incus-nixos-container.d/store.sh;
   };
 
+  # The container's LXC pre-start hook: it refuses to start the container without its store, so Incus
+  # never autostarts it on an empty /nix. Reached through /run/current-system, which every generation
+  # keeps, since raw.lxc outlives the generation that wrote it.
+  prestartHook = pkgs.writeShellApplication {
+    name = "ndh-incus-container-prestart";
+    runtimeInputs = [ pkgs.util-linux ];
+    text = ''
+      for store in "$1/root/nix/store" "$1/view/nix/store"; do
+        mountpoint -q "$store" || {
+          echo "ndh-incus-container-prestart: $store is not mounted — the container does not start without its store" >&2
+          exit 1
+        }
+      done
+    '';
+  };
+
   operatorCli = pkgs.writeShellApplication {
     name = "ndh-incus-container";
     runtimeInputs = [
@@ -148,6 +164,10 @@ let
       LAYER_CONTRACT=${lib.escapeShellArg layerContract}
       GUEST_LOWER=${lib.escapeShellArg guestLower}
       GUEST_UPPER=${lib.escapeShellArg guestUpper}
+      PRESTART_HOOK=/run/current-system/sw/bin/${prestartHook.name}
+      STACK_DESCRIPTION=/run/ndh/store-stack.json
+      STORE_DEGRADED=/run/ndh/store-degraded
+      GCROOTS=/nix/var/nix/gcroots/ndh-containers
       export NIX_CONFIG="extra-experimental-features = ${lib.concatStringsSep " " nixFeatures}"
       ${builtins.readFile ./incus-nixos-container.d/cli.sh}
     '';
@@ -162,6 +182,13 @@ in
         Incus project of ndh's instances. Never `rke2lab`: a cluster teardown or re-grow must not
         reach an instance that outlives every cluster.
       '';
+    };
+
+    stateRoot = lib.mkOption {
+      type = lib.types.str;
+      default = "/var/lib/ndh-containers";
+      readOnly = true;
+      description = "Where each container's directory lives; the store freeze reads the layers each one stacks there.";
     };
 
     datasetParent = lib.mkOption {
@@ -233,14 +260,25 @@ in
       ) cfg.instances
     );
 
-    environment.systemPackages = [ operatorCli ];
+    environment.systemPackages = [
+      operatorCli
+      prestartHook
+    ];
 
     systemd.services = lib.mapAttrs' (
       name: info:
       lib.nameValuePair "ndh-incus-container-store-${name}" {
         description = "Store overlay of the NixOS container ${name}";
-        wantedBy = [ "multi-user.target" ];
-        before = [ "incus.service" ];
+        # Wanted, never required, by the autostart: one container's failure must not stop the others,
+        # the cluster nodes included. Its own container refuses to start through its pre-start hook.
+        wantedBy = [
+          "multi-user.target"
+          "incus-startup.service"
+        ];
+        before = [
+          "incus.service"
+          "incus-startup.service"
+        ];
         after = [ "zfs-mount.service" ];
         unitConfig = {
           # The dataset is created by `ndh-incus-container create`, and mounted by zfs-mount, not by a

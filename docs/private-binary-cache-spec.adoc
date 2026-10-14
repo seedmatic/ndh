@@ -1182,16 +1182,21 @@ flowchart TB
   end
   subgraph N["nerd-nixos — owns every mount"]
     E["/nix/.ro-store.003 : .002 : .ro-store — the EROFS layers"]
+    F["/nix/.frozen/{layer}/upper — nerd-nixos's frozen layers of this boot"]
     J["/etc/ndh/store-layers.json — the layer contract, upperRoot included"]
+    L["lower.layers — the frozen then the EROFS layers, STAMPED at delivery"]
     Z["rwstore@T + db@T — ONE snapshot of nerd-nixos's upper and DB, taken by deliver"]
-    O["store overlay — lowerdir = the snapshot's upper : the layers, FLAT; upper = the container's dataset"]
+    O["store overlay — lowerdir = the snapshot's upper : the stamped layers, FLAT; upper = the container's dataset"]
     V["metadata view — a read-only overlay of the same lowers, a .links shim, the snapshot's DB copied"]
   end
-  J -- "lowerdirs, required options, upperRoot" --> O
-  J --> V
+  F -- "at delivery" --> L
+  J -- "EROFS lowerdirs, at delivery" --> L
+  J -- "required options, upperRoot" --> O
+  L -- "flat lowers" --> O
+  L --> V
   Z -- "top lower" --> O
-  E -- "flat lowers" --> O
   Z --> V
+  E -. "listed in the contract" .-> J
   E -. "never as an overlay lower" .-> V
   O --> S
   V --> M
@@ -1220,8 +1225,10 @@ mount, and `upperRoot`, where nerd-nixos's upper dataset is mounted (from `erofs
 second, hand-written list would drift. The flox NRI plugin's pod stores are a candidate second
 consumer
 
-| the store unit **asserts** the effective mount — the snapshot's upper over the contract's
-lowerdirs, and every required option — and fails hard, leaving nothing mounted
+| the store unit **asserts** the effective mount — the snapshot's upper over the layers stamped at
+delivery in `lower.layers` (nerd-nixos's frozen layers, then the contract's EROFS ones), and every
+required option — and fails hard, leaving nothing mounted (store-freeze spec, _What the containers
+need from increment 1_)
 | it replaces nix's `check-mount`, which must be off: nix wants lowerdir to be the lower store's
 single directory, and these lowers are four
 
