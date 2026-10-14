@@ -546,7 +546,7 @@ Measured on 2026-10-11 (nix 2.34.8):
   `nix store add-path` receive **no** signature, only their `ca:` field. `nix store sign` on the
   same path works, so the key was read;
 * **in bioskop's store**, 396 paths created since 2026-10-09: 69 of 69 built locally are signed by
-  `io-nxmatic-nix-darwin-home`, 0 of 210 added paths are;
+  `io-nxmatic-nix-darwin-home` (the fleet key then, rotated to `seedmatic-fleet-1` before T4), 0 of 210 added paths are;
 * fixed-output outputs (fetchers) are content-addressed too, but they have a deriver and are signed
   like any build.
 
@@ -653,7 +653,7 @@ worktree evaluation ever wrote. So:
 . **no other host builds from source.** bioskop builds and sends each host its closure,
   `nix copy --to ssh-ng://nix-store.{host}`, under the existing `nix-store` identity. A host's
   switch then finds every path already local, added paths included. The receiving daemon accepts
-  the copy without trusting the sender: the built paths carry `io-nxmatic-nix-darwin-home`, which
+  the copy without trusting the sender: the built paths carry `seedmatic-fleet-1`, which
   every host of the fleet already trusts, and the added paths are content-addressed, which nix
   accepts without a signature.
 
@@ -714,7 +714,7 @@ cache.nixos.org, nothing more is needed. If only attic holds it, there are two w
 * the builder as a substituter: `substituters = ssh-ng://{host}-nixos` with `require-sigs = true`.
   An untrusted client can substitute that way, as long as the path carries a key the node trusts.
   The builder serves only what **its own** store holds, and its own builds are signed with
-  `io-nxmatic-nix-darwin-home`, not by attic, so that is the key the node must trust. Unverified;
+  `seedmatic-fleet-1`, not by attic, so that is the key the node must trust. Unverified;
   test 3 below.
 
 [[builder-tests]]
@@ -866,7 +866,7 @@ two keys of the public tier: `seedmatic-publish-1` and `nxmatic.cachix.org-1` (s
 |===
 | Key name | Why
 
-| `io-nxmatic-nix-darwin-home` — out
+| `seedmatic-fleet-1` — out
 | the fleet's own key, in `secret-key-files`, so nix signs **every local build** with it (about 1170
 of our paths carry it, measured). In the list, it would leave the cache empty.
 
@@ -891,7 +891,7 @@ not a leak. No uploader can query upstream before uploading until the fork.
 A path that is in the layers is already on every consumer that mounts them, so it should not be
 uploaded. Paths substituted from upstream into the layers would be excluded by their signature, if
 the registration kept it. The paths **we** built into the layers carry only
-`io-nxmatic-nix-darwin-home`, like every other build of ours. A key of their own separates them:
+`seedmatic-fleet-1`, like every other build of ours. A key of their own separates them:
 
 . **a dedicated key**, `nerd-erofs-layers-1`. It is generated with
   `nix key generate-secret --key-name nerd-erofs-layers-1`, and its secret half is sops-encrypted
@@ -1824,7 +1824,7 @@ them on the corporate side, and none can be revoked alone yet.
 
 === ❌ Derive the key-name list from `trusted-public-keys`
 
-That list holds `io-nxmatic-nix-darwin-home`, which signs every local build, so the cache would stay
+That list holds `seedmatic-fleet-1`, which signs every local build, so the cache would stay
 empty. It also holds `nxmatic.cachix.org-1`, whose paths the public cache no longer serves. Write
 the list out: the upstream substituters' key names, plus the layer key.
 
@@ -1876,7 +1876,7 @@ closure. Count, never print, what that path holds
 | check the decrypted token under `/run/secrets` and the `netrc-file` setting
 
 | the cache stays empty
-| `io-nxmatic-nix-darwin-home` is in `upstream-cache-key-names`
+| `seedmatic-fleet-1` is in `upstream-cache-key-names`
 | remove it: it signs every local build
 
 | a host is lost, or a token leaked
