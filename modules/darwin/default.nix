@@ -35,6 +35,8 @@
     ./openssh.nix
     ./github-mcp-proxy.nix
     ./shell-keychain.nix
+    ./activation-order.nix
+    ./restart-on-secret-change.nix
     ./ssh-keys-enrichment.nix
     ./user-secret-mirror.nix
     ./ssh-client.nix
@@ -63,7 +65,7 @@
   activation.postActivationLogStreamCmd = "log stream --style compact --level debug --predicate 'eventMessage CONTAINS \"darwin.activationScripts\" OR eventMessage CONTAINS \"home-manager.activationScripts\"'";
 
   # Darwin-specific HM post-activation execution wiring.
-  system.activationScripts.postActivation.text = lib.mkOrder 2000 ''
+  system.activationScripts.postActivation.text = lib.mkOrder config.ndh.darwin.postActivationOrder.homeManager ''
     ${config.activation.homeManagerPostActivationScript}
   '';
 

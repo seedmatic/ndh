@@ -1115,6 +1115,11 @@
               {
                 inherit pkgs;
               };
+          restart-on-secret-change-bats =
+            import ./modules/darwin/restart-on-secret-change.d/tests/package.nix
+              {
+                inherit pkgs;
+              };
           # keys.yaml against its schema, ENCRYPTED as committed: the schema accepts ENC[...]
           # wherever a private may sit, so the sandbox needs no key and nothing is decrypted.
           # Each broken fixture must be REFUSED — a schema that accepts them proves nothing.
@@ -1235,6 +1240,23 @@
                         value = "accept-new";
                       }
                     ];
+                }
+              )
+            )
+            [
+              "bioskop"
+              "nikopol"
+            ]
+        )
+        // nixpkgs.lib.listToAttrs (
+          map
+            (
+              host:
+              nixpkgs.lib.nameValuePair "secrets-read-after-install-${host}" (
+                import ./modules/darwin/activation-order.d/tests/read-after-install.nix {
+                  inherit pkgs;
+                  name = host;
+                  text = self.darwinConfigurations.${host}.config.system.activationScripts.postActivation.text;
                 }
               )
             )

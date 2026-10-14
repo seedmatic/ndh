@@ -78,6 +78,13 @@ let
   };
 in
 {
+  # A keys.yaml-only change touches no unit, so neither the enrichment (a oneshot) nor sshd (which
+  # loads its host keys and certificates at start) would rerun: sops-nix restarts both instead.
+  config.sops.secrets."ssh-keys.yaml".restartUnits = [
+    "${ndhSystemd.mkUnitName "ssh-keys-enrichment"}.service"
+  ]
+  ++ lib.optional config.services.openssh.enable "sshd.service";
+
   config.systemd.services.${ndhSystemd.mkUnitName "ssh-keys-enrichment"} = {
     description = "Provision system linux-builder key from decrypted secrets (@codebase)";
     wantedBy = [ contributedTargetName ];
