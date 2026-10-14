@@ -49,6 +49,7 @@ let
   packScript = pkgs.replaceVars ./erofs-store-image.d/pack.sh {
     inherit nixBashTrampoline;
     loggerTag = "nixos.erofsStoreImage";
+    secretMaterialGuard = import ./secret-material-guard.nix { inherit pkgs; };
   };
 in
 pkgs.runCommand name

@@ -1265,6 +1265,18 @@
               "nikopol"
             ]
         )
+        # The bringup images' secret-material guard, proven by canaries — on aarch64-linux, where the
+        # store layers it guards are packed, through the remote builder, like the images themselves.
+        // {
+          secret-material-guard =
+            let
+              linuxPkgs = pkgsFor { system = "aarch64-linux"; };
+            in
+            import ./modules/nixos/secret-material-guard.d/tests/package.nix {
+              pkgs = linuxPkgs;
+              nixBashTrampoline = "${mkNdhNixBashTrampoline { pkgsForSystem = linuxPkgs; }}";
+            };
+        }
       );
 
       # Surface the resolved catalog + inventory as flat (OS-independent) outputs

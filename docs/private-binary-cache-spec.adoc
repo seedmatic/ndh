@@ -343,6 +343,27 @@ This is **accepted under authenticated reads**. A plaintext copy that reaches th
 only by a holder of a read token, all of which are machines of the fabric (see <<secrets>>). It is
 not fixed by them. The fix is the fork in <<attic-fork>>.
 
+[[bringup-images-never-cached]]
+=== Bringup images never go to a cache
+
+**Rule.** No cache — the public cachix, attic, or any other — receives a bringup disk image: the
+EROFS store layers (`io.seedmatic.ndh-nix-store-erofs-*`), the raw disk set
+(`*-bringup-zfs-disk-images-raw`) and its reference-free copy (`*-bringup-zfs-disk-images-raw-detached`),
+or the set that links them (`*-bringup-zfs-disk-images`). They reach a host only by `nix copy` from the
+builder, through `nerd-tart-<host>-materialize` or `nerd-tart-<host>-deploy`.
+
+**Why.** An image is a whole guest store and a whole guest pool in one opaque file: whatever a closure
+or the target root held lands there, and since the images record no reference to what they pack
+(2026-10-14, the materializer's closure fix), nothing downstream sees what they carry. The
+secret-material guard refuses key material when a layer is packed and when the target root is
+written (`modules/nixos/secret-material-guard.d/`), but it answers one question — an image that
+never reaches a cache cannot leak what the guard does not ask about.
+
+**State, measured 2026-10-14.** No `watch-store` runs: no cachix or attic process on darwin bioskop
+or on bioskop-nixos, and ndh declares none. When the watch-stores of this spec are deployed, they
+skip these names — the daemon's own test is on the name, done once, when the path appears (see
+<<watch-store-sees>>) — and the fill job never publishes them.
+
 === The darwin paths need a darwin builder
 
 nerd-nixos is Linux, and some of the darwin hosts' paths exist only on darwin. Measured on the two

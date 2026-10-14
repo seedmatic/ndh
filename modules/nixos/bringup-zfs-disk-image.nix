@@ -341,6 +341,7 @@ let
         # not part of it, so naming the runtime toplevel adds no reference to the
         # bringup closure.
         runtimeSystemToplevel = "${runtimeSystemPath}";
+        secretMaterialGuard = "${import ./secret-material-guard.nix { inherit pkgs; }}";
         systemdLibUdevd = "${pkgs.systemd}/lib/systemd/systemd-udevd";
         channelFlag = if includeChannel then "--channel ${channelSources}" else "";
         bootSizePolicyNote = builtins.toJSON "ZFS bringup artifacts generated from canonical zfs-pool-disk-map definitions.";
