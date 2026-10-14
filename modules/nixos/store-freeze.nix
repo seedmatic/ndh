@@ -76,12 +76,20 @@ let
     name = "ndh-store";
     runtimeInputs = [
       pkgs.coreutils
+      pkgs.findutils
+      pkgs.gnugrep
       pkgs.jq
+      pkgs.procps
       pkgs.util-linux
+      pkgs.getent
+      config.nix.package
       config.boot.zfs.package
+      config.systemd.package
     ];
     text = ''
       ${exports}
+      export SWEEP_SHAPES=${./store-freeze.d/sweep-shapes}
+      export CONTAINER_PROJECT=${lib.escapeShellArg config.ndh.incusNixosContainers.project}
       ${builtins.readFile ./store-freeze.d/cli.sh}
     '';
   };
