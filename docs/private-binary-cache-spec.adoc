@@ -1127,8 +1127,16 @@ Two things are deliberately left out:
 
 * chunk dedup between successive versions of the same package, which only makes the real figure
   smaller;
-* the SQLite file's footprint, for which attic publishes no guidance (unverified). It is small next
-  to the chunks: one row per chunk and per object.
+* the SQLite file's footprint, for which attic publishes no guidance. It is small next to the chunks:
+  one row per chunk and per object.
+
+Measured on 2026-10-14 on the probe (attic `7a19204d`, the module's default chunking, zstd): one
+`attic push` of a 572-path closure, 1260 MiB of NAR before the upstream filter, left **496 MiB** of
+storage in 17 492 chunk files and a **4.4 MiB** SQLite file. The push also uploaded paths that
+cache.nixos.org serves, such as `gcc-lib` and `incus`: they reached the probe's store through the
+layers' registration, which carries no signature, so the upstream filter did not recognise them. That
+is the 297-path, 0.66 GiB share measured on 2026-10-10, and it inflates the private tier until the
+layers' paths carry their upstream signatures.
 
 === Quota — open until the split is measured
 
@@ -1233,6 +1241,21 @@ then hid that upper (measured 2026-10-14)
 
 | the host-side store URL names the **resolved** view, never `.lower/current`
 | nix refuses a symlink on a store path or its parents
+
+| an extra device states its **`type`**, and never targets `/run` or `/tmp`; both are asserted at
+evaluation
+| Incus wants the type positionally and refuses it among the keys ("Unsupported device type"); the
+container's systemd mounts tmpfs on `/run` and `/tmp` at boot, over the device (attic's environment
+file at `/run/attic` was simply not there, 2026-10-14)
+
+| a device's **source must exist before Incus autostarts** the instance
+| a missing source fails the autostart three times, then gives up ("Missing source path", measured
+after a reboot of the probe). sops-nix decrypts into `/run/secrets` during activation, before any
+service, so a sops secret qualifies; a file written by a later service would not
+
+| the containers' firewall is **nftables**
+| the iptables firewall needs `xt_*` modules a container cannot load; nerd-nixos had loaded
+`xt_pkttype` only by chance, and after its reboot the firewall unit failed in every container
 
 | a delivery copies **without checking signatures**
 | its source is nerd-nixos's own store, which built or validated every path, and most carry no
@@ -1657,11 +1680,41 @@ curl -s -o /dev/null -w '%{http_code}\n' --netrc-file {netrc} "https://{attic}/{
 # → 200  (read token)
 ----
 
-attic answers **401** to a client without the permission. It deliberately masks a missing cache, a
-missing object and a missing permission behind the same `Unauthorized` (`server/src/error.rs:194-205`,
-`:218`), so the anonymous answer reveals nothing about what the cache holds. A **200 without a token**
-means the cache was created or reconfigured `--public`: the cache is then not private, and this spec's
-condition for the watch-store no longer holds.
+attic answers **401** to a client without the permission. A **200 without a token** means the cache
+was created or reconfigured `--public`: the cache is then not private, and this spec's condition for
+the watch-store no longer holds.
+
+⚠️ **The anonymous answer still tells present from absent.** This spec read attic's source as masking
+a missing object behind the same `Unauthorized` (`server/src/error.rs:194-205`, `:218`). Measured on
+2026-10-14 against attic `7a19204d` on the probe, anonymous:
+
+[cols="2,1,1",options="header"]
+|===
+| Request | Object in the cache | Object absent
+
+| `GET` or `HEAD` `/{cache}/{hash}.narinfo`
+| 401
+| **404**
+
+| `GET` `/{cache}/nar/{hash}.nar`, `/{cache}/nix-cache-info`, an unknown cache
+| 401
+| 401
+|===
+
+So anyone who reaches the port can test whether a store hash they already know is cached, without
+reading anything of it. Reaching the port is the fabric segment only, and a hash has to be known
+first, so the exposure is small; it is still one more reason never to listen beyond the fabric. The
+read test therefore uses a hash **known to be in the cache**, as written above: an absent one answers
+404 and proves nothing.
+
+⚠️ **nix caches narinfo answers**, positive ones included, under `~/.cache/nix`. A substitution test
+run after a successful one answers from that cache and looks authorised without a token. Run it with
+an empty `XDG_CACHE_HOME` and `narinfo-cache-positive-ttl = 0` (measured the same day: the cached run
+printed the path, the clean run got the 401).
+
+Measured the same day, with a read token: `nix path-info` through a `netrc-file` whose `password` is
+the token reads the narinfo, the path carries the cache key's signature, and `nix store verify`
+checks it against that key. A read token is refused a configuration change (403).
 
 == Usage patterns
 
