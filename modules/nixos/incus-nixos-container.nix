@@ -222,10 +222,23 @@ in
     assertions = lib.concatLists (
       lib.mapAttrsToList (
         name: instance:
-        lib.mapAttrsToList (device: keys: {
-          assertion = keys ? type;
-          message = "ndh.incusNixosContainers.instances.${name}.devices.${device} has no `type`";
-        }) instance.devices
+        lib.concatLists (
+          lib.mapAttrsToList (device: keys: [
+            {
+              assertion = keys ? type;
+              message = "ndh.incusNixosContainers.instances.${name}.devices.${device} has no `type`";
+            }
+            {
+              # The container's systemd mounts tmpfs on /run and /tmp at boot, over the device.
+              assertion =
+                !(lib.any (dir: lib.hasPrefix dir (keys.path or "")) [
+                  "/run/"
+                  "/tmp/"
+                ]);
+              message = "ndh.incusNixosContainers.instances.${name}.devices.${device}: path ${keys.path} is under a tmpfs the container mounts at boot";
+            }
+          ]) instance.devices
+        )
       ) cfg.instances
     );
 
