@@ -21,12 +21,13 @@
     # drive trusted-public-keys and the signing-key deploy wiring in
     # modules/.common.d/nix-signing.nix.
     cachix = {
-      # Single shared signing key for the nix-darwin-home fleet. Lets any
-      # host `nix copy` locally-built paths peer-to-peer over ssh-ng —
-      # they all trust each other's signatures. No substituter — the key
-      # signs intra-fleet traffic, not a published cache.
-      "io-nxmatic-nix-darwin-home" = {
-        publicKey = "io-nxmatic-nix-darwin-home:U/at4v0hCbZhn3u7uvQhQo+lzq5ZobOJyn3Be3txbqg=";
+      # Single shared signing key for the fleet, until per-host keys
+      # (seedmatic-<host>-<n>) replace it. Lets any host `nix copy`
+      # locally-built paths peer-to-peer over ssh-ng — they all trust each
+      # other's signatures. No substituter — the key signs intra-fleet
+      # traffic, not a published cache. Rotated with cache-signing-key-rotate.
+      "seedmatic-fleet-1" = {
+        publicKey = "seedmatic-fleet-1:NIMcslYpF5gOrJPyBrU6eY8HMI99R7rR9ysKsNDB1/o=";
       };
     };
 
