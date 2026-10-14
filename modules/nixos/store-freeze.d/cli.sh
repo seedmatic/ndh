@@ -30,7 +30,7 @@ status() {
   fi
   for manifest in next current previous; do
     if [ -e "$STACK_DIR/$manifest.json" ]; then
-      echo "$manifest: $(jq -c '[.layers[].snapshot]' "$STACK_DIR/$manifest.json")"
+      echo "$manifest: $(jq -c '[.layers[].snapshot]' "$STACK_DIR/$manifest.json" 2>/dev/null || echo unreadable)"
     fi
   done
   if [ -s "$RW_MOUNT/upper.base" ]; then
