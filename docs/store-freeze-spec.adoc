@@ -269,6 +269,16 @@ undone from the bootloader: the previous generation boots with its own, older in
 stack. A compaction brings it back to one. Decided by the operator on 2026-10-14 (❄️ nix, B3; it is
 how 🛡️'s "a tested way back" holds)
 
+| the degraded mode always reaches a state where the operator can **log in and repair**: the
+console they use (the serial screen) and sshd where the host has it, the store read-only,
+`nix-daemon` masked; from there the manifest can be rewritten
+| a bad **manifest** is read identically by both initrds, so for that case the way back IS the
+degraded boot (🛡️, condition 1)
+
+| the manifest carries a **version**; an initrd that meets a version newer than it knows takes the
+loud degraded path
+| an older initrd must never misread a newer manifest, nor crash on it (🛡️, condition 2)
+
 | the upper is **empty** at the first boot on a new stack, and its workdir is fresh — emptied by
 removing its contents, or a new dataset, **never by `zfs rollback`** of `rwstore`
 | the frozen content is in the new layer; an upper bound to the old stack would shadow it. A rollback
@@ -289,7 +299,9 @@ replacement. For nerd-nixos under this spec:
 * **there is no rollback of the stack**, so a compaction is allowed at any time. Between two
   compactions, **two generations** stay in the bootloader (the current and the previous, both
   initrds reading the manifest), so a bad initrd change is undone from the bootloader. A compaction
-  **keeps only the current generation**, and prunes the bootloader to it: an older generation left
+  **keeps only the current generation**, and prunes the bootloader to it — but **never before the
+  current generation has booted successfully at least once**, so the way back exists exactly when it
+  is needed (🛡️, condition 3). An older generation left
   there would find its closure in a layer the compaction removed, and stop in
   `initrd-find-nixos-closure`;
 * a compaction keeps **every valid path**, not only the current closure: the container systems,
@@ -465,6 +477,19 @@ manifest and builds the stack
 | 4c — a fallback never starts nix on a DB ahead of its stack
 | force a fallback to an older stack
 | the boot is loud, `nix-daemon` is masked and the store read-only
+
+| 4d — a corrupted manifest
+| corrupt the current manifest
+| both bootloader generations boot DEGRADED, and the operator can log in on the console and rewrite
+the manifest from there
+
+| 4e — a newer manifest version
+| a manifest with version N+1 under the previous generation's initrd
+| degraded and loud, never misread nor a crash
+
+| 4f — no compaction before a successful boot
+| a compaction requested before the current generation has booted once
+| refused; the second generation stays in the bootloader
 
 | 5 — the request record is never acted on
 | a planted freeze-request record, no gesture
