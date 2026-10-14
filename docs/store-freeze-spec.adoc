@@ -456,17 +456,22 @@ operator on 2026-10-14): bioskop is the working seat, the fleet's builder and th
 voter, so a runtime error there breaks the toolchain and the cluster API. A failed initrd on
 nikopol-nixos only breaks that VM, and nikopol is a database client.
 
-On nikopol, the corporate Mac, **every step is the operator's gesture**, made by them on nikopol (or
-through the Incus cluster from bioskop for what Incus covers), never something a session runs. The
-rollout is written as an ordered list of those gestures, each with its exact command, once the code
-exists:
+On nikopol, **no step is something a session runs on its own**. Gestures on the corporate Mac
+itself are the operator's, made by them on nikopol. Gestures on **nikopol-nixos**, a VM and not the
+protected corporate bare-metal (operator, 2026-10-13), are 🎛️ operations', each on the operator's go,
+on nikopol-nixos or through the Incus cluster from bioskop. The rollout is written as an ordered list
+of those gestures, each with its exact command and its owner, once the code exists:
 
-. take the cluster nodes off nikopol-nixos: after T4 it carries the nikopol-mgmt CAPN nodes, so they
-  are drained and stopped first (with 🎛️ operations);
+. take the cluster off nikopol-nixos: after T4 it carries nikopol-mgmt, a **single-node** cluster, so
+  a drain has nowhere to go. Take an inventory first (`incus list --all-projects`, filtered on location
+  nikopol), cordon if workloads need a graceful end, then `incus stop` its instances. nikopol-nixos
+  also carries ZFS data under `tank/rke2lab` (`persist/maven-cache`, `persist/funnel-cert`), which the
+  freeze does not touch (🎛️ operations);
 . switch nikopol-nixos to the generation carrying the stage-1 stack unit, and reboot it: it must boot
   as today, on the EROFS layers, with an empty manifest;
 . `ndh-store freeze`, and the checks of test 1;
-. re-deliver nikopol's containers, if any, then bring the nodes back.
+. re-deliver nikopol's containers, if any, start the cluster's instances, then check the Incus
+  cluster (runbook T23) and the cluster's health.
 
 [cols="1,2,2",options="header"]
 |===
