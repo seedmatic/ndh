@@ -25,6 +25,12 @@ say() {
   echo "ndh-store: $1" >&2
 }
 
+# listing {lines}: one indented line each, on stderr.
+listing() {
+  local line
+  while IFS= read -r line; do echo "  $line" >&2; done <<<"$1"
+}
+
 status() {
   local manifest
   if [ -s "$RUN_DIR/store-stack.json" ]; then
@@ -95,7 +101,7 @@ sweep() {
   case "$status" in
     0)
       say "a secret shape was found in:"
-      printf '  %s\n' "$hits" >&2
+      listing "$hits"
       return 1
       ;;
     1) ;;
@@ -284,7 +290,7 @@ purge() {
   closure=$(nix-store --query --referrers-closure "${named[@]}" | sort -u) || die "could not query the referrers"
   roots=$(nix-store --gc --print-roots 2>/dev/null | sed 's|.* -> ||' | sort -u)
   say "the purge removes $(wc -l <<<"$closure") paths:"
-  printf '  %s\n' "$closure" >&2
+  listing "$closure"
 
   while read -r member; do
     if grep -qxF "$member" <<<"$roots" && ! printf '%s\n' "${named[@]}" | grep -qxF "$member"; then
@@ -319,11 +325,16 @@ purge() {
   say "  the Macs' stores (a delegated build's output is copied back to the Mac)"
   say "  every binary cache the paths reached (attic, nxmatic.cachix if a watch-store ran)"
   say "  the old layers, until \`ndh-store confirm --yes\` after this reboot"
+  say "  the host's disk image and its SSD, even after confirm: a purge is hygiene, not erasure —"
+  say "  if these paths held a secret, ROTATE it"
   stage_next purge "[$(layer "$LAYERS_DATASET/$name" "$name")]" "$base"
 }
 
-# Once booted on the stack current.json names, the layers no other manifest needs are destroyed:
-# their bytes leave the pool, and previous.json, which names them, goes with them.
+# Once booted on the stack current.json names, the layers no other manifest needs are destroyed, and
+# previous.json, which names them, goes with them. Their blocks leave the pool's allocation, then a
+# trim clears them from the guest's disks; below that, a sparse host image does not rewrite what a
+# discard drops, and an SSD keeps its old cells (measured on the probe, 2026-10-14). So this is
+# hygiene: a secret that was frozen is rotated, whatever this did.
 confirm() {
   local yes=false keep obsolete
   [ "${1:-}" != "--yes" ] || yes=true
@@ -345,13 +356,16 @@ confirm() {
     return
   fi
   say "destroying the layers current.json no longer names:"
-  printf '  %s\n' "$obsolete" >&2
+  listing "$obsolete"
   $yes || die "nothing destroyed — run again with --yes"
   while read -r ds; do
     zfs destroy -r "$ds"
   done <<<"$obsolete"
   if [ -e "$STACK_DIR/previous.json" ]; then rm "$STACK_DIR/previous.json"; fi
   say "released; the way back is now this stack only"
+  say "trimming the pool's free space"
+  zpool trim -w "${RW_DATASET%%/*}" || die "the trim failed — the freed blocks are still readable on the guest's disks"
+  say "the host's disk image and its SSD may still hold the freed bytes: if a secret was frozen, ROTATE it"
 }
 
 case "${1:-}" in

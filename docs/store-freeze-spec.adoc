@@ -389,8 +389,9 @@ sequenceDiagram
   P->>Z: write the next manifest naming only the new layer, over the current base
   P->>Op: report what it cannot purge, stop the containers, reboot on the new stack
   Op->>P: after multi-user, ndh-store confirm --yes
-  P->>Z: zfs destroy the old layers and snapshots, drop previous.json
-  Note over Z: the leaked bytes leave the POOL, not just the overlay
+  P->>Z: zfs destroy the old layers and snapshots, drop previous.json, zpool trim
+  P->>Op: the host image and its SSD may still hold the bytes — ROTATE a secret
+  Note over Z: the path is unservable, unfrozen and unreplicable — hygiene, not erasure
 ....
 
 [cols="1,3",options="header"]
@@ -401,9 +402,19 @@ sequenceDiagram
 compaction, minus what is purged; a leaked layer is purged by its paths
 | an overlay whiteout hides a path; it does not remove its bytes
 
-| after the reboot on the new stack, the old snapshots are **destroyed** and the manifest entries
-naming them dropped
-| the bytes must leave the pool, not just the merged view
+| after the reboot on the new stack, the old snapshots are **destroyed**, the manifest entries
+naming them dropped, then the pool is **trimmed** (`zpool trim -w`)
+| the bytes must leave the pool's allocation, so no later send, cache or freeze can carry them, and
+the guest's disks: a destroyed snapshot frees its blocks without wiping them, and the trim makes the
+guest read zeros there (measured on the probe on 2026-10-14)
+
+| a purge is **hygiene; rotation is the remedy**. It never claims the bytes left the physical media,
+and it says so: when what it removed is a real credential, the credential is **rotated**, whatever
+the purge did. No `zpool initialize`
+| below ZFS sit Tart's sparse image, which does not rewrite what a guest discard drops (the marker
+was still in one Mac-side `tankN.img` after the trim, measured), then APFS, then an SSD with
+wear-levelling: no software step can promise erasure, and rewriting all free space would grow each
+image to its full size for no guarantee (🛡️, 2026-10-14; decided by the operator on 2026-10-14)
 
 | the verification is a **sweep**: the path is absent from every remaining layer and from the new
 one; then `nix-store --verify`
@@ -594,7 +605,8 @@ system and the profile included; the containers are re-delivered
 | 9 — purge
 | plant a path in a frozen layer, then `ndh-store purge` it
 | after the reboot and the confirmation, the sweep finds it in no layer, its old snapshots are gone
-from the pool, `nix-store --verify` is clean
+from the pool, `nix-store --verify` is clean, and after the trim a memory-bounded search of the
+guest's raw disks finds no copy (a marker delivered only over stdin, never in an argv)
 |===
 
 == Open questions
@@ -604,6 +616,10 @@ from the pool, `nix-store --verify` is clean
   chantier.
 * **The interplay with the materializer**: a re-materialization (new EROFS layers) recreates the
   pools, frozen layers included. Plan item 15 (`vm_cpu_count`) and nix's 2e sit on the same hosts.
+* **Native ZFS encryption of the store datasets**, the operator's decision, later: it makes every
+  remnant below ZFS ciphertext, the only real answer to media remnants, but it changes the pool
+  layout and the handling of a boot key. Not a purge requirement: the seat's disk is inside the
+  operator's accepted boundary today (🛡️, 2026-10-14).
 
 == Related documentation
 
