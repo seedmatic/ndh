@@ -9,12 +9,17 @@
 # added. What it prints is the PATH and that sha256, never a line of the file: the value is the
 # secret.
 #
+# What it does NOT see, so that "the guard passed" is read as no more than it is: content inside
+# compressed or archived files (.gz, .zip, .jar, .whl, a squashfs, a nested image), and a key whose
+# body lines end in CRLF (the body rule anchors on a line end). It is a line scan of plain files.
+# It never passes on a doubt: a subtree it cannot list, or a file it cannot read, refuses the image.
+#
 # guard.sh --paths-file FILE         every path listed in FILE, recursively
 # guard.sh --root DIR [--prune P]…   DIR, recursively, minus each pruned subtree
 set -euo pipefail
 
 allow_list='@allowList@'
-grep='@grep@' awk='@awk@' sha256sum='@sha256sum@' find='@find@'
+grep='@grep@' awk='@awk@' sha256sum='@sha256sum@' find='@find@' xargs='@xargs@'
 
 declare -a roots=() prunes=()
 case "${1:-}" in
@@ -26,14 +31,28 @@ case "${1:-}" in
 esac
 [ "$#" -eq 0 ] || { echo "secret-material-guard: unexpected argument '$1'" >&2; exit 2; }
 
-# The candidates: any file naming either marker anywhere. The exact rule below decides.
-candidates() {
-  local -a prune_args=()
-  local p
-  for p in "${prunes[@]}"; do prune_args+=(-path "$p" -prune -o); done
-  "$find" "${roots[@]}" "${prune_args[@]}" -type f \
-    -exec "$grep" -laE 'PRIVATE[ ]KEY|AGE-SECRET[-]KEY-1' -- {} + 2>/dev/null || true
-}
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+
+# Every file to scan, listed first, so that a subtree find cannot read is a REFUSAL, not a gap.
+declare -a prune_args=()
+for p in "${prunes[@]}"; do prune_args+=(-path "$p" -prune -o); done
+if ! "$find" "${roots[@]}" "${prune_args[@]}" -type f -print0 > "$work/files" 2> "$work/find.err"; then
+  echo "secret-material-guard: REFUSED — part of what it must scan cannot be listed:" >&2
+  sed 's/^/  /' "$work/find.err" >&2
+  exit 1
+fi
+
+# The candidates: any file naming either marker anywhere; the exact rule below decides. grep's own
+# "no match" (1) is not a failure, an unreadable file (2) is: each batch maps the first to success.
+# shellcheck disable=SC2016  # expanded by the batch's bash, not here
+if ! "$xargs" -0 -r bash -c '"$0" -laE "PRIVATE[ ]KEY|AGE-SECRET[-]KEY-1" -- "$@"; s=$?; [ "$s" -le 1 ]' "$grep" \
+  < "$work/files" > "$work/candidates" 2> "$work/grep.err"; then
+  echo "secret-material-guard: REFUSED — a file it must scan cannot be read:" >&2
+  sed 's/^/  /' "$work/grep.err" >&2
+  exit 1
+fi
+candidates() { cat "$work/candidates"; }
 
 refused=0
 while IFS= read -r f; do

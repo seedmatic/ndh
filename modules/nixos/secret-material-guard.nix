@@ -9,4 +9,5 @@ pkgs.replaceVars ./secret-material-guard.d/guard.sh {
   awk = "${pkgs.gawk}/bin/awk";
   sha256sum = "${pkgs.coreutils}/bin/sha256sum";
   find = "${pkgs.findutils}/bin/find";
+  xargs = "${pkgs.findutils}/bin/xargs";
 }

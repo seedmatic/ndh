@@ -55,5 +55,17 @@ pkgs.runCommand "secret-material-guard-tests" { } ''
     exit 1
   fi
   grep -q "REFUSED $PWD/root/keep/id_canary" err
+
+  # A subtree it cannot read refuses: never "nothing found" for what was not looked at.
+  rm root/keep/id_canary
+  mkdir -p root/locked
+  cp ${canaryKey}/id_canary root/locked/
+  chmod 000 root/locked
+  if bash ${guard} --root "$PWD/root" --prune "$PWD/root/skip" 2> err; then
+    echo "the guard passed a subtree it could not read" >&2
+    exit 1
+  fi
+  grep -q "cannot be listed" err
+  chmod 755 root/locked
   touch "$out"
 ''
