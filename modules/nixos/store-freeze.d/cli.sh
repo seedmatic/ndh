@@ -150,6 +150,7 @@ sweep() {
     say "$(wc -l <<<"$refused") paths hold a secret shape:"
     listing "$refused"
     say "purge them, or, for a PUBLIC one only: ndh-store freeze --accept {store path} …"
+    say "NEVER accept a -source copy of OUR repositories (rke2lab, ndh, nnh and their subtrees): purge it"
     return 1
   fi
   if [ -n "$accepted" ]; then
