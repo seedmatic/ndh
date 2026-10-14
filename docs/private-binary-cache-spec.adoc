@@ -1212,14 +1212,27 @@ holding an empty `.links`, and a DB
 | nix reads paths and metadata there, never through overlayfs. The shim: nix 2.34 creates `.links`
 even in a read-only store (`src/libstore/local-store.cc:139`), and the layers carry none
 
-| the view's DB is generated **at runtime, once per layer set**, keyed by a fingerprint of the
-layers' path lists, from nerd-nixos's own DB (`nix-store --dump-db` then `--load-db`)
+| the view's DB is generated **at runtime, once per layer set**, keyed by a fingerprint of each
+layer's paths and of the layers' order, from nerd-nixos's own DB (`nix-store --dump-db` then
+`--load-db`)
 | decided by the operator on 2026-10-11. Not shipped with the layers: the running generation cannot
 name the layers' union closure, which holds its own toplevel (`unionClosureInfo` in
 `bringup-zfs-disk-image.nix`). Measured: 1842 paths
 
 | the container's `/nix/var/nix` lives on its dataset, beside the upper
 | nerd-nixos then delivers into the container's store with a host-side `nix copy`, no SSH needed
+
+| the view enters the container as **two plain read-only binds**, its store and its DB
+| the view's store is a mount of its own, and the kernel refuses a recursive read-only bind
+("Recursive read-only bind-mounts aren't currently supported by the kernel", measured 2026-10-14)
+
+| the store unit runs **only once the container's dataset is mounted**
+| `create` makes the dataset, and zfs-mount mounts it, not a mount unit, so `RequiresMountsFor`
+cannot wait for it. Without the condition the unit ran at first boot on the root fs, and the dataset
+then hid that upper (measured 2026-10-14)
+
+| the host-side store URL names the **resolved** view, never `.lower/current`
+| nix refuses a symlink on a store path or its parents
 |===
 
 [source,ini]
@@ -1229,17 +1242,95 @@ store = local-overlay://?lower-store=local%3Froot%3D/nix/.lower%26read-only%3Dtr
 extra-experimental-features = local-overlay-store read-only-local-store
 ----
 
-⚠️ **The overlap needs layers from the same lock.** Measured on 2026-10-11: a test container built
-from ndh's current lock has 535 paths (869 MiB), of which 525 are **outside** the layers, all of
-them. The layers come from the last bringup and carry an older nixpkgs (`glibc-2.42-51` against the
-container's `glibc-2.42-100`). Until the layers are rebuilt from the current lock, each container's
-upper holds its whole closure.
+**The overlap needs layers from the same lock.** Measured on 2026-10-14 on a throwaway nerd-nixos
+whose layers were built from the container's own lock: the container's closure is 535 paths, **all
+535 in the layers**; `deliver` copied none, and the upper stayed empty. On 2026-10-11, against layers
+from an older lock, 525 of the same 535 were outside them. How that overlap evolves over nerd-nixos's
+life is the next section.
 
 ⚠️ **Privileged**, by the operator's decision of 2026-10-11, against the recommendation: the
 container's root is nerd-nixos's root. The question of uid shifting on an overlay does not arise
 there, and comes back with `shift=true` or a `raw.idmap`.
 
+[[container-lifecycle]]
+=== Across nerd-nixos's life — what moves under a container
+
+A container's lowers are nerd-nixos's EROFS layers, so the container lives through every event of
+nerd-nixos's own life cycle. That cycle is rke2lab's
+`docs/architecture/nixos-substrate/erofs-store-layer-stack.adoc`: a VM is materialized with its
+layers and pools, its first boot hands over to the target configuration and reboots, and from then
+on a generation is either switched inside the VM or delivered as an **appended** layer; replacing a
+layer's content means re-provisioning. Each event does something different to a container:
+
+[mermaid]
+....
+sequenceDiagram
+  autonumber
+  participant Op as Operator
+  participant M as Materializer (darwin)
+  participant N as nerd-nixos
+  participant C as Container
+  Op->>M: materialize — layers L1..L3 + pools
+  N->>N: first boot hands over to the target, reboots
+  Op->>N: ndh-incus-container create + deliver
+  N->>C: upper stamped with layer set {L1..L3}
+  rect rgb(240,253,244)
+    Note over N,C: A — a generation switched INSIDE the VM: the layers do not move
+    Op->>N: switch (newer lock), then deliver + switch the container
+    N->>C: only the paths outside the layers land in the upper — the overlap wears
+  end
+  rect rgb(254,249,231)
+    Note over N,C: B — a generation delivered as an APPENDED layer: pools kept
+    Op->>M: materialize — L4 appended, pools preserved
+    N->>N: boot + reboot on {L1..L4}
+    N--xC: store unit refuses: upper stamped {L1..L3}, booted {L1..L4} (ESTALE otherwise)
+    Op->>N: incus stop, ndh-incus-container reset, deliver, incus start
+    N->>C: fresh upper on {L1..L4} — the overlap is back
+  end
+  rect rgb(254,242,242)
+    Note over N,C: C — a layer's content REPLACED: refused unless VM_FACTORY_RESET
+    Op->>M: VM_FACTORY_RESET=true — new layers AND new pools
+    Op->>N: create + deliver again: the old upper went with the pools
+  end
+....
+
+Legend: green — layers unchanged; amber — layers changed, pools kept, the case the stamp exists
+for; red — layers and pools both new.
+
+[cols="1,2,2,2",options="header"]
+|===
+| Event on nerd-nixos | Layers | Pools (the container's upper) | What the container does
+
+| A — a generation switched inside the VM
+| unchanged
+| kept
+| nothing breaks. Its next system comes from a newer lock than the layers', so the paths outside
+them land in its upper: the overlap wears with every nixpkgs bump
+
+| B — a generation delivered as an appended layer (decided: "appending a layer is routine")
+| one more, newest first
+| kept — the materializer allows an append
+| its upper is bound to the old set. The store unit refuses before mounting and names
+`ndh-incus-container reset {name}`; after `reset` and `deliver`, its system sits in the new layers
+again, if built from their lock
+
+| C — a layer's content replaced
+| new
+| recreated — the materializer refuses this without `VM_FACTORY_RESET=true`
+| the upper went with the pools: `create` and `deliver` again
+|===
+
+So the stamp and `reset` exist for **B** only. B is decided ("every generation is an EROFS layer")
+but **not implemented**: the layer list is fixed at three in `modules/nixos/erofs-store-layers.nix`,
+one source the whole fleet shares. Today a nerd-nixos lives through A, and through C when it is
+re-provisioned; the operator has always updated systems inside the VM.
+A probe that rebuilds the image tests **C**, not B: the materializer refuses it, which says nothing
+about an append (a wrong conclusion drawn exactly that way on 2026-10-14, discarded before push).
+
 === The tests the implementation must pass — the container
+
+Tests 1 to 5 passed on 2026-10-14 on a throwaway nerd-nixos (`incus-probe`, standalone Incus, layers
+from the container's lock). Test 6 needs event B, which waits for the layer append to exist.
 
 [cols="1,2,2",options="header"]
 |===
@@ -1266,9 +1357,9 @@ and leaves nothing mounted
 | inside: `nix path-info` of a layer path, `nix store verify` of it
 | valid, served from `/nix/.lower`, never copied into the upper
 
-| 6 — a changed layer set is refused, then reset
-| re-bring-up nerd-nixos (new layers), start the store unit, then `incus stop`,
-`ndh-incus-container reset {name}`, `deliver`, `incus start`
+| 6 — an appended layer is refused, then reset (event B)
+| append a layer to nerd-nixos with its pools kept (materialize, no factory reset) and reboot; start
+the store unit, then `incus stop`, `ndh-incus-container reset {name}`, `deliver`, `incus start`
 | the unit fails **before** mounting and names the `reset` gesture: an `index=on` upper is bound to
 the lower set it was first mounted on, and the kernel would refuse it with ESTALE. After the reset,
 the previous store sits in one dated `.reset-{ts}`, and the container boots on the new layers
