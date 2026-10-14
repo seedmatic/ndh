@@ -169,6 +169,10 @@ in
       # Ensure SSL Cert file path located correctly
       ssl-cert-file = "/etc/ssl/cert.pem";
 
+      # Strict, not relaxed: nothing the Macs build needs __noChroot (measured 2026-10-13 on every
+      # derivation no public cache holds), and relaxed would let any derivation opt out.
+      sandbox = true;
+
       # Expose CA bundle inside sandboxes for fetchers
       extra-sandbox-paths = [
         "/etc/ssl/cert.pem"
