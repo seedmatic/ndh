@@ -173,14 +173,6 @@ in
       # derivation no public cache holds), and relaxed would let any derivation opt out.
       sandbox = true;
 
-      # Expose CA bundle inside sandboxes for fetchers
-      extra-sandbox-paths = [
-        "/etc/ssl/cert.pem"
-        "/etc/ssl/certs/ca-bundle.crt"
-        "/etc/gitconfig"
-        "${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
-      ];
-
     };
   };
   nixpkgs.config = import (worktreePath.of "modules/.common.d/nixpkgs-config.nix");
