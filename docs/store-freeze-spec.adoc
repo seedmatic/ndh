@@ -294,19 +294,26 @@ breaks them unless three things land in the **same** increment:
 |===
 | Rule | Why
 
-| the containers' layer contract lists nerd-nixos's **frozen layers** too, read from
-`/run/ndh/store-layers.json`
-| a delivery snapshots a nearly empty `rwstore`. Without the frozen layers in the container's stack,
-its copied DB calls valid paths that are absent ("valid but absent", measured on 2026-10-14 with a
-contract one layer short: the container broke)
+| a container's layer list includes nerd-nixos's **frozen layers**, and it is **stamped at
+delivery**, beside `lower.snapshot`: the store unit mounts with the stamped list, never with the
+current `/run/ndh/store-layers.json`; only a re-delivery moves a container to the new list
+| a delivery snapshots a nearly empty `rwstore`, so without the frozen layers its copied DB calls
+valid paths that are absent ("valid but absent", measured on 2026-10-14 with a contract one layer
+short: the container broke). And after a freeze-reboot the containers first come back on their OLD
+snapshot, while `/run` already describes the NEW stack: mounting one over the other is the same
+mismatch (🖥️ incus)
 
 | the container systems are **GC roots** of nerd-nixos
 | see the freeze gesture: nerd-nixos's GC must not take what a container still reads
 
-| the store unit of each container is **required by `incus-startup.service`** and **fails** on a
-missing snapshot, instead of skipping
-| today it is only ordered before `incus.service`, and its conditions make it skip silently; Incus
-then autostarts the container on an empty `/nix` ("init not found")
+| the store unit of each container is ordered `Before=` and `Wants=` by `incus-startup.service`, and
+**fails loudly** on a missing snapshot instead of skipping; the **container itself** refuses to start
+without its store, by an LXC `pre-start` hook (`raw.lxc`) that fails unless `{dir}/root/nix/store`
+is a mountpoint
+| today the unit is only ordered before `incus.service` and its conditions make it skip silently,
+so Incus autostarts the container on an empty `/nix` ("init not found"). `Requires=` would be too
+blunt: one container's failure would fail `incus-startup`, and no autostart instance of the member
+would start, the cluster nodes included (🖥️ incus). The hook keeps the refusal to that container
 
 | at a freeze-reboot: freeze, then **re-deliver every container**, then reap the old snapshots
 | a container's lower is a snapshot of the old upper; reaping first would pull it from under it
