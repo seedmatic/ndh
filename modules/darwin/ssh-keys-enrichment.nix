@@ -58,6 +58,7 @@ let
   sshAddKeysLabel =
     if sshAddKeysAgent != null && sshAddKeysAgent.enable then sshAddKeysAgent.config.Label else null;
 
+  slot = config.ndh.darwin.postActivationOrder.sshKeysEnrichment;
   loggerTagEnrich = "darwin.activationScripts.ssh-keys-enrichment.enrichSSHKeysYaml";
   loggerTagSplit = "darwin.activationScripts.ssh-keys-enrichment.splitSSHKeysYaml";
   loggerTagExtractSystem = "darwin.activationScripts.ssh-keys-enrichment.extractSystemKeys";
@@ -123,12 +124,11 @@ let
   '') profileNames;
 in
 {
-  # Split into two postActivation steps so ordering against sops-install-secrets
-  # (which runs mid-postActivation in the nix-darwin activate script) is explicit:
-  #   1. system-scope enrichment + extract → runs after sops via lib.mkOrder 1500
-  #      (sops-install-secrets lands around mkOrder 1000 by default).
+  # Split into two steps so their order against sops-nix's install is explicit:
+  #   1. system-scope enrichment + extract → the slot after the install
+  #      (modules/darwin/activation-order.nix);
   #   2. user-scope extract + authorized_keys maintenance → runs after (1).
-  config.system.activationScripts.postActivation.text = lib.mkOrder 1400 ''
+  config.system.activationScripts.postActivation.text = lib.mkOrder slot ''
     set -euo pipefail
 
     # Pre-create the split output directory tree so that enrichment/split

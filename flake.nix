@@ -1243,6 +1243,23 @@
               "nikopol"
             ]
         )
+        // nixpkgs.lib.listToAttrs (
+          map
+            (
+              host:
+              nixpkgs.lib.nameValuePair "secrets-read-after-install-${host}" (
+                import ./modules/darwin/activation-order.d/tests/read-after-install.nix {
+                  inherit pkgs;
+                  name = host;
+                  text = self.darwinConfigurations.${host}.config.system.activationScripts.postActivation.text;
+                }
+              )
+            )
+            [
+              "bioskop"
+              "nikopol"
+            ]
+        )
       );
 
       # Surface the resolved catalog + inventory as flat (OS-independent) outputs

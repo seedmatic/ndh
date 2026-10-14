@@ -64,10 +64,10 @@ in
     '';
   };
 
-  # mkOrder 1450: after sops-install-secrets (~1000) and the ssh-keys system
-  # extract (1400), before nothing in particular — the source must exist by now.
+  # After the install and the ssh-keys system extract (modules/darwin/activation-order.nix): the
+  # source must exist by now.
   config = lib.mkIf (cfg != { }) {
-    system.activationScripts.postActivation.text = lib.mkOrder 1450 (
+    system.activationScripts.postActivation.text = lib.mkOrder config.ndh.darwin.postActivationOrder.userSecretMirror (
       lib.concatStringsSep "\n" (lib.mapAttrsToList mirrorStep cfg)
     );
   };
