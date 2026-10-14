@@ -4,10 +4,12 @@
 # upper. A whiteout in a frozen layer must mask the EROFS paths below it, and an overlay used as a
 # lowerdir would consume its whiteouts instead of passing them on.
 #
-# Manifests live in $STACK_DIR on the upper's dataset: next.json (written by `ndh-store freeze`),
-# current.json, previous.json. The first valid one, in that order, is the stack. `upper.base` names
-# the layers the upper sits on: a stack is consistent only if it equals it, or extends it by the one
-# layer frozen from it — then the upper is emptied, once, before mounting.
+# Manifests live in $STACK_DIR on the upper's dataset: next.json (written by `ndh-store freeze`,
+# `compact` or `purge`), current.json, previous.json. The first valid one, in that order, is the
+# stack. A layer is a snapshot of the upper's dataset (a freeze) or the one snapshot of its own
+# dataset under $LAYERS_DATASET, named like it (a compaction or a purge). `upper.base` names the
+# layers the upper sits on: a stack is consistent only if it equals it, or if it is next.json and
+# was built over it (`over`) — then the upper is emptied, once, before mounting.
 #
 # Never fails the boot for a manifest problem. A refused manifest is reported in
 # $RUN_DIR/store-manifest-refused and the next one in order is tried. If the stack chosen is the
@@ -18,8 +20,8 @@
 # operator can log in and repair, while nothing is written. It fails only when no store can be
 # mounted at all.
 #
-# Env: SYSROOT, RW_DATASET, RW_MOUNT, STACK_DIR, FROZEN_ROOT, EROFS_LOWERS (colon list, newest first),
-#      RUN_DIR, MANIFEST_VERSION.
+# Env: SYSROOT, RW_DATASET, LAYERS_DATASET, RW_MOUNT, STACK_DIR, FROZEN_ROOT, EROFS_LOWERS (colon
+#      list, newest first), RUN_DIR, MANIFEST_VERSION.
 
 stack="$SYSROOT$STACK_DIR"
 rw="$SYSROOT$RW_MOUNT"
@@ -48,8 +50,8 @@ write() {
   sync "$(dirname "$1")"
 }
 
-# layers_of {manifest} — prints "snapshot guid" per layer, newest first; returns 1 and prints the
-# reason on stderr when the manifest is unusable.
+# layers_of {manifest} — prints "snapshot dataset" per layer, newest first; returns 1 and prints
+# the reason on stderr when the manifest is unusable.
 layers_of() {
   local f="$1" version ds snap guid actual
   if [ ! -s "$f" ]; then
@@ -64,17 +66,17 @@ layers_of() {
     echo "version $version, this initrd knows $MANIFEST_VERSION" >&2
     return 1
   fi
-  if ! jq -er '.layers | type == "array"' "$f" >/dev/null 2>&1; then
-    echo "no layer list" >&2
+  if ! jq -er '(.layers | type == "array") and (.over | type == "array")' "$f" >/dev/null 2>&1; then
+    echo "no layer list, or no over list" >&2
     return 1
   fi
   while IFS=$'\t' read -r ds snap guid; do
-    if [ "$ds" != "$RW_DATASET" ]; then
-      echo "layer $snap belongs to $ds, not $RW_DATASET" >&2
-      return 1
-    fi
     if ! [[ "$snap" =~ ^ndh-store-[0-9]{8}T[0-9]{6}Z$ ]]; then
       echo "layer name $snap" >&2
+      return 1
+    fi
+    if [ "$ds" != "$RW_DATASET" ] && [ "$ds" != "$LAYERS_DATASET/$snap" ]; then
+      echo "layer $snap belongs to $ds, neither $RW_DATASET nor $LAYERS_DATASET/$snap" >&2
       return 1
     fi
     if ! actual=$(zfs get -H -o value guid "$ds@$snap" 2>/dev/null); then
@@ -85,7 +87,7 @@ layers_of() {
       echo "snapshot $snap has GUID $actual, the manifest names $guid" >&2
       return 1
     fi
-    echo "$snap $guid"
+    echo "$snap $ds"
   done < <(jq -r '.layers[] | [.dataset, .snapshot, .guid] | @tsv' "$f")
 }
 
@@ -104,10 +106,11 @@ for candidate in next current previous; do
 done
 
 names=$(awk '{print $1}' <<<"$layers" | paste -sd' ')
-# The stack must be the upper's base, or extend it by exactly the one layer frozen from it.
+# The stack must be the upper's base, or the next stack built over exactly that base.
 if [ "$names" != "$base" ]; then
-  tail=$(cut -s -d' ' -f2- <<<"$names")
-  if [ "$chosen" = "next" ] && [ "$tail" = "$base" ] && [ -n "$names" ]; then
+  over=""
+  if [ "$chosen" = "next" ]; then over=$(jq -r '.over | join(" ")' "$stack/next.json"); fi
+  if [ "$chosen" = "next" ] && [ "$over" = "$base" ] && [ -n "$names" ]; then
     trash="$rw/trash/$(date -u +%Y%m%dT%H%M%SZ)"
     mkdir -p "$trash"
     if [ -d "$rw/upper" ]; then mv "$rw/upper" "$trash/"; fi
@@ -122,12 +125,13 @@ fi
 
 lowerdirs=""
 stage2=""
-for snap in $names; do
+while read -r snap ds; do
+  [ -n "$snap" ] || continue
   dir="$SYSROOT$FROZEN_ROOT/$snap"
   mkdir -p "$dir"
   if ! mountpoint -q "$dir"; then
-    if ! mount -t zfs -o ro "$RW_DATASET@$snap" "$dir"; then
-      degrade "cannot mount $RW_DATASET@$snap"
+    if ! mount -t zfs -o ro "$ds@$snap" "$dir"; then
+      degrade "cannot mount $ds@$snap"
       lowerdirs=""
       stage2=""
       break
@@ -135,7 +139,7 @@ for snap in $names; do
   fi
   lowerdirs="${lowerdirs:+$lowerdirs:}$dir/upper"
   stage2="${stage2:+$stage2,}\"$FROZEN_ROOT/$snap/upper\""
-done
+done <<<"$layers"
 
 erofs_sysroot=$(tr ':' '\n' <<<"$EROFS_LOWERS" | sed "s|^|$SYSROOT|" | paste -sd:)
 mkdir -p "$store" "$rw/upper"

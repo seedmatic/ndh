@@ -28,16 +28,19 @@ let
   # The datasets, read from the mounts that already declare them: one source.
   rwDataset = config.fileSystems.${rwMount}.device;
   dbDataset = config.fileSystems."/nix/var/nix/db".device;
+  # The datasets a compaction or a purge builds, one per layer, beside the upper's.
+  layersDataset = "${builtins.dirOf rwDataset}/layers";
 
   stackDir = "${rwMount}/stack";
   frozenRoot = "/nix/.frozen";
   runDir = "/run/ndh";
   # Bumped on any change of the manifest's shape: an older initrd refuses a newer version, loudly.
-  manifestVersion = "1";
+  manifestVersion = "2";
 
   env = {
     RW_DATASET = rwDataset;
     DB_DATASET = dbDataset;
+    LAYERS_DATASET = layersDataset;
     RW_MOUNT = rwMount;
     STACK_DIR = stackDir;
     FROZEN_ROOT = frozenRoot;
@@ -75,6 +78,7 @@ let
   operatorCli = pkgs.writeShellApplication {
     name = "ndh-store";
     runtimeInputs = [
+      pkgs.attr
       pkgs.coreutils
       pkgs.findutils
       pkgs.gnugrep

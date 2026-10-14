@@ -163,6 +163,19 @@ dir. It is already its own dataset on nerd-nixos (measured on the probe)
 | a name can be renamed, a GUID cannot. The toplevel is not a gate: the boot checks that the booted
 toplevel resolves in the stack plus the upper (<<boot>>)
 
+| a layer is a snapshot of the upper's dataset (a **freeze**), or the one snapshot of **its own
+dataset** `tank/nerd/nix/layers/{name}`, named like it (a **compaction** or a **purge**); the
+initrd refuses any other dataset
+| a rebuilt layer is a new copy, not a state of the upper; one dataset per layer makes its
+destruction one `zfs destroy -r`, so a purged path's bytes leave the pool in one gesture. Decided by
+the operator on 2026-10-14
+
+| the manifest records its **kind** and the layers it was built **over** (`over`), the upper's base
+when it was staged; the initrd applies a next stack, emptying the upper once, only when `over` IS
+the upper's base. Manifest version 2
+| one rule for the three gestures: a freeze extends the base, a compaction or a purge replaces it,
+and none may land on an upper built on another base
+
 | two manifests, **A/B**: the previous one is kept until the new boot reaches `multi-user`
 | without a rollback generation, the previous stack is the way back if the new one does not come up
 
@@ -325,9 +338,17 @@ replacement. For nerd-nixos under this spec:
   the profiles, `keep-outputs`, every GC root. It GCs to the roots, copies every remaining valid path
   into the new layer, then runs `nix-store --verify`. It never removes a layer a container still
   mounts, and it runs at a freeze, when everything stops and remounts;
-* the copy is of **files, not a store**: a `nix copy` would build a second DB to discard. The
-  candidate is `cp -a --reflink=auto` of the valid trees into a fresh dataset; with OpenZFS ≥ 2.2
-  block cloning it costs metadata, not data. To measure on the probe (❄️ nix);
+* the copy is of **files, not a store**: a `nix copy` would build a second DB to discard. Each valid
+  path the EROFS layers do not hold is copied with `cp -a --reflink=auto` **from the layer that holds
+  it** (the upper, or a frozen snapshot's mount), into the new layer's dataset; every EROFS path no
+  longer valid becomes a whiteout. Measured on the probe on 2026-10-14 (ZFS 2.4.4): from the upper or
+  a snapshot mount the blocks are **cloned** (`copy_file_range`, no data written); through the merged
+  `/nix/store` they are **copied in full**, silently, and `--reflink=always` (`FICLONE`) is `EXDEV`
+  from anywhere. A path spread over several layers (a non-opaque directory) is refused, since its top
+  alone would be incomplete;
+* once booted on the new stack, `ndh-store confirm --yes` destroys the layers and snapshots
+  `current.json` no longer names, and `previous.json` with them: until then the old stack is the way
+  back, and the space is not returned;
 * a GC on a layered store leaves **one whiteout per deleted store path** (measured: the per-file
   whiteouts of the deletion are folded into one at the final `rmdir`). Space comes back by
   compaction only.
@@ -350,15 +371,17 @@ sequenceDiagram
   participant P as ndh-store purge
   participant Z as ZFS
   participant N as nerd-nixos
-  Op->>P: ndh-store purge {store path | layer}
-  P->>P: refuse unless the daemon can be stopped and no container would lose a valid path
-  P->>N: stop nix-daemon.socket and nix-daemon, stop the containers
-  P->>Z: build a new layer from the valid trees MINUS the purged path (or minus the layer)
-  P->>P: sweep every remaining layer and the new one — the path must be ABSENT
-  P->>Z: write the next manifest naming only the new stack
-  P->>Op: reboot on the new stack
-  Op->>P: after multi-user, confirm
-  P->>Z: zfs destroy the old snapshots, drop the manifest entries naming them
+  Op->>P: ndh-store purge {store path}…
+  P->>Op: the paths and their referrers' closure, listed — nothing done without --yes
+  Op->>P: ndh-store purge --yes {store path}…
+  P->>P: refuse if one is an unnamed GC root, or lives in an EROFS layer (an image rebuild)
+  P->>N: stop nix-daemon.socket and nix-daemon, unregister the paths
+  P->>Z: build a new layer dataset from the valid trees — the purged paths are no longer valid
+  P->>P: the paths must be ABSENT from the new layer, then a secret sweep of it
+  P->>Z: write the next manifest naming only the new layer, over the current base
+  P->>Op: report what it cannot purge, stop the containers, reboot on the new stack
+  Op->>P: after multi-user, ndh-store confirm --yes
+  P->>Z: zfs destroy the old layers and snapshots, drop previous.json
   Note over Z: the leaked bytes leave the POOL, not just the overlay
 ....
 
@@ -366,8 +389,8 @@ sequenceDiagram
 |===
 | Rule | Why
 
-| the purge rebuilds the stack **without** a given store path, or without a given layer, by the same
-file copy as a compaction, minus what is purged
+| the purge rebuilds the stack **without** the given store paths, by the same file copy as a
+compaction, minus what is purged; a leaked layer is purged by its paths
 | an overlay whiteout hides a path; it does not remove its bytes
 
 | after the reboot on the new stack, the old snapshots are **destroyed** and the manifest entries
@@ -571,8 +594,6 @@ from the pool, `nix-store --verify` is clean
 * **The secret sweep**: its shapes are rke2lab's pre-commit guards (`token_shape_guard`); whether to
   share that script or restate it, and in which language. The Go porting of the tooling is a separate
   chantier.
-* **The compaction and purge copy**: `cp -a --reflink=auto` of the valid trees into a fresh dataset
-  (OpenZFS ≥ 2.2 block cloning), to measure on the probe: its time and the space it really costs.
 * **Where the manifest lives**: a dataset of its own on the pool, out of every container mount.
 * **The interplay with the materializer**: a re-materialization (new EROFS layers) recreates the
   pools, frozen layers included. Plan item 15 (`vm_cpu_count`) and nix's 2e sit on the same hosts.
