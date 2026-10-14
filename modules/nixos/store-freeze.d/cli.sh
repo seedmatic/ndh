@@ -336,7 +336,7 @@ purge() {
 # discard drops, and an SSD keeps its old cells (measured on the probe, 2026-10-14). So this is
 # hygiene: a secret that was frozen is rotated, whatever this did.
 confirm() {
-  local yes=false keep obsolete
+  local yes=false keep listed obsolete ds
   [ "${1:-}" != "--yes" ] || yes=true
   [ ! -e "$RUN_DIR/store-degraded" ] || die "this boot is degraded — repair it first"
   [ ! -e "$STACK_DIR/next.json" ] || die "a new stack is pending in next.json — reboot first"
@@ -344,13 +344,19 @@ confirm() {
   keep=$(jq -r '.layers[].snapshot' "$STACK_DIR/current.json")
   [ "$(jq -r '.frozen | map(split("/")[-2]) | join(" ")' "$RUN_DIR/store-stack.json")" = "$(paste -sd' ' <<<"$keep")" ] ||
     die "this boot is not on current.json's stack — reboot on it first"
+  # A listing that fails dies: a broken pool must not read as nothing to release.
+  listed=$(zfs list -H -t snapshot -o name "$RW_DATASET" "$DB_DATASET") ||
+    die "cannot list the stack's snapshots — nothing destroyed"
+  if zfs list -H "$LAYERS_DATASET" >/dev/null 2>&1; then
+    listed+=$'\n'$(zfs list -H -d 1 -t filesystem -o name "$LAYERS_DATASET") ||
+      die "cannot list the layer datasets — nothing destroyed"
+  fi
   # Only the stack's own names: the containers' delivery snapshots are theirs.
-  obsolete=$({
-    zfs list -H -t snapshot -o name "$RW_DATASET" "$DB_DATASET"
-    zfs list -H -d 1 -t filesystem -o name "$LAYERS_DATASET" 2>/dev/null || true
-  } | grep -E '[@/]ndh-store-[0-9]{8}T[0-9]{6}Z$' | while read -r ds; do
-    if ! grep -qxF "${ds##*[@/]}" <<<"$keep"; then echo "$ds"; fi
-  done)
+  obsolete=""
+  while read -r ds; do
+    [[ "$ds" =~ [@/]ndh-store-[0-9]{8}T[0-9]{6}Z$ ]] || continue
+    grep -qxF "${ds##*[@/]}" <<<"$keep" || obsolete+="${obsolete:+$'\n'}$ds"
+  done <<<"$listed"
   if [ -z "$obsolete" ]; then
     say "no layer to release"
     return
