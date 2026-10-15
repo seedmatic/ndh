@@ -118,7 +118,8 @@ run_renew() { HOME="$t/home" PATH="$t/bin:$PATH" run bash "$script" "$@"; }
   for f in ssh-keys.d/ssh-enrich-keys-yaml.sh ssh-keys-renew.d/ssh-keys-renew.sh \
     ssh-keys-certify.d/ssh-keys-certify.sh \
     cache-signing-key-rotate.d/cache-signing-key-rotate.sh \
-    authority-bootstrap-tls-root.d/authority-bootstrap-tls-root.sh ../home-manager/git.d/sops.sh; do
+    authority-bootstrap-tls-root.d/authority-bootstrap-tls-root.sh ../home-manager/git.d/sops.sh \
+    identity-push.d/ndh-identity-push.sh identity-push.d/ndh-identity-receive.sh; do
     [ "$(guard "$here/../$f")" = "$(guard "$here/incus-cluster-cert-renew.sh")" ]
   done
 }

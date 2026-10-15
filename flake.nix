@@ -1147,6 +1147,7 @@
           baremetal-link-deploy-bats = import ./pkgs/baremetal-link.d/tests/package.nix { inherit pkgs; };
           # incus-cluster-join: a join that did not take is never reported joined.
           incus-cluster-join-bats = import ./pkgs/incus-cluster-join.d/tests/package.nix { inherit pkgs; };
+          identity-push-bats = import ./modules/.common.d/identity-push.d/tests/package.nix { inherit pkgs; };
           incus-cluster-cert-bats = import ./modules/.common.d/incus-cluster-cert.d/tests/package.nix {
             inherit pkgs;
           };
