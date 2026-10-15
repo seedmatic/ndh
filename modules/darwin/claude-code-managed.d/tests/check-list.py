@@ -13,7 +13,11 @@ import sys
 
 path = sys.argv[1]
 settings = json.load(open(path))["permissions"]
-rules = [r[5:-1] for r in settings["deny"]]
+rules = [r[5:-1] for r in settings["deny"] if r.startswith("Bash(")]
+# Path rules (verbs.json list_path_rules) are not commands: no twins, an absolute `//` path only.
+path_rules = [r for r in settings["deny"] if not r.startswith("Bash(")]
+bad_paths = [r for r in path_rules if not re.fullmatch(r"(Read|Edit)\(//[^()\s]+\)", r)]
+print(f"{path}: path-rules={len(path_rules)} malformed={len(bad_paths)} {bad_paths}")
 ask_rules = [r[5:-1] for r in settings.get("ask", [])]
 
 
@@ -94,4 +98,4 @@ cleanup = ["rm -rf /tmp/x", "rm -rf /private/tmp/flox-sb", "rm -rf $T", "rm -rf 
            "rm -rf repo/.scratchpad.d/topic", "rm -rf ${T:?}/out"]
 caught = [c for c in cleanup if refused(c) or asked(c)]
 print(f"cleanup: {len(cleanup) - len(caught)}/{len(cleanup)} left to the hook", *(f"  CAUGHT {c}" for c in caught), sep="\n")
-sys.exit(1 if open_cases or fps or missing or not_asked or caught or len(rules) != len(set(rules)) else 0)
+sys.exit(1 if open_cases or fps or missing or not_asked or caught or bad_paths or len(rules) != len(set(rules)) else 0)
