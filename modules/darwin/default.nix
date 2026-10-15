@@ -37,6 +37,7 @@
     ./shell-keychain.nix
     ./activation-order.nix
     ./restart-on-secret-change.nix
+    ./incus-cluster-cert.nix
     ./ssh-keys-enrichment.nix
     ./user-secret-mirror.nix
     ./ssh-client.nix

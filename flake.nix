@@ -171,15 +171,6 @@
           )
         );
 
-      incusCertOperatorIdentity =
-        let
-          seat = self.darwinConfigurations.bioskop.config;
-        in
-        {
-          user = seat.profile.user.name;
-          keyFile = seat.sshPaths.privKeyFile;
-          certFile = seat.sshPaths.userCertPublic;
-        };
       catalogData = import ./catalog/default.nix {
         inherit cacheTrust networkBlueprint dataplan;
         hostForms = builtins.mapAttrs (_: entry: entry.hostProfile.form or null) hostCatalog;
@@ -1405,12 +1396,7 @@
         nixpkgs.lib.optionalAttrs (system == "aarch64-darwin") {
           ndh-keychain-reconcile = self.darwinConfigurations.bioskop.config.ndh.tlsAuthorityKeychain.package;
           # T14, by the same rule: one closure built by revision, run from the seat.
-          incus-cluster-cert-renew = import ./modules/.common.d/incus-cluster-cert.d/package.nix {
-            pkgs = systemPkgs;
-            inherit (nixpkgs) lib;
-            netplan = catalogData.netplan;
-            operatorIdentity = incusCertOperatorIdentity;
-          };
+          incus-cluster-cert-renew = self.darwinConfigurations.bioskop.config.ndh.incusClusterCert.package;
         }
         // {
           # manage-tailnet on PATH for BOTH systems (a packages output, not just the app):
@@ -1889,12 +1875,6 @@
           );
           # T14's closure: re-mint and install the Incus cluster certificate (one definition,
           # also packages.<system>.incus-cluster-cert-renew) — see its package.nix.
-          incusClusterCertRenewPackage = import ./modules/.common.d/incus-cluster-cert.d/package.nix {
-            pkgs = pkgsForSystem;
-            inherit (nixpkgs) lib;
-            netplan = catalogData.netplan;
-            operatorIdentity = incusCertOperatorIdentity;
-          };
           # System-admin helper: prune darwin/HM/user generations + GC. Drives the
           # AMBIENT sudo + system nix daemon (a pinned nix would desync from it), so
           # runtimeInputs stays empty — writeShellApplication PREPENDS to PATH, it
@@ -1978,11 +1958,6 @@
             program = "${bboxReconcilePackage}/bin/bbox-reconcile";
             meta.description = "Diff catalog.netplan.lan.hosts against the bbox /dhcp/clients reservations (read-only) — src: modules/.common.d/bbox-reconcile.d/";
           };
-          incus-cluster-cert-renew = {
-            type = "app";
-            program = "${incusClusterCertRenewPackage}/bin/incus-cluster-cert-renew";
-            meta.description = "Re-mint the Incus cluster certificate under the current TLS signing slot, install it on every member, re-pin the seat client, verify — run from the seat, built by revision — src: modules/.common.d/incus-cluster-cert.d/";
-          };
           authority-bootstrap-tls-root = {
             type = "app";
             program = "${authorityBootstrapTlsRootPackage}/bin/authority-bootstrap-tls-root";
@@ -2017,6 +1992,14 @@
         // hostBootstrapInstallerApps
         // baremetalLinkApps
         // incusClusterJoinApps
+        # A seat tool, darwin only: the one definition is bioskop's ndh.incusClusterCert.package.
+        // nixpkgs.lib.optionalAttrs (system == "aarch64-darwin") {
+          incus-cluster-cert-renew = {
+            type = "app";
+            program = "${self.darwinConfigurations.bioskop.config.ndh.incusClusterCert.package}/bin/incus-cluster-cert-renew";
+            meta.description = "Renew the Incus cluster certificate on the cluster's own key (a CSR signed on the seat), install it on every member, re-pin the seat client, verify — run from the seat, built by revision — src: modules/.common.d/incus-cluster-cert.d/";
+          };
+        }
       );
 
       mkHostOutputs =
