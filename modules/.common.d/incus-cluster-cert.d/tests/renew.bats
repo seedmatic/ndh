@@ -167,8 +167,10 @@ pub() { # <x509|pkey> <file> → the sha256 of its public key
   [ "$(pub x509 "$t/served.crt")" = "$(pub pkey "$t/leaf.key")" ]
   text="$("$realOpenssl" x509 -in "$t/served.crt" -noout -text)"
   [[ $text == *"CA:FALSE"* ]]
-  [[ $text == *"TLS Web Server Authentication"* ]]
-  [[ $text != *"TLS Web Client Authentication"* ]]
+  # serverAuth alone is Incus's own cluster profile (shared/tls/cert.go): members request a peer's
+  # certificate without verifying its usage (tls.RequestClientCert) and trust it by fingerprint.
+  eku="$("$realOpenssl" x509 -in "$t/served.crt" -noout -ext extendedKeyUsage | sed -n 2p | tr -d ' ')"
+  [ "$eku" = "TLSWebServerAuthentication" ]
   ls "$t/state/ndh/incus-cluster-cert/"*.crt >/dev/null
   # No private key is left anywhere the run wrote: its work dir, the member's tmpfs dir.
   run ! grep -rl 'PRIVATE KEY' "$t/tmp" "$t/run"

@@ -321,6 +321,7 @@ servedPem "${verifyNames[0]}" >"$work/served.crt"
   die "the CSR's key is not the key ${verifyNames[0]} serves — refused, nothing signed"
 
 # --- Sign with a pinned leaf profile, the CA key through a file descriptor ------------------
+# serverAuth alone, as Incus mints its own cluster certificate: members never check a peer's usage.
 cat >"$work/leaf.tpl" <<'TPL'
 {
   "subject": {"commonName": {{ toJson .Subject.CommonName }}},
