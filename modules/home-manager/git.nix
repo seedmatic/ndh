@@ -144,6 +144,7 @@ in
             ./git.d/sops.nix
             ./git.d/git-sops-diff.nix
             ./git.d/hooks/tests
+            ./git.d/tests
           ]
         );
       };
