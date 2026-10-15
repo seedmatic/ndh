@@ -1120,6 +1120,7 @@
               {
                 inherit pkgs;
               };
+          sops-age-bootstrap-bats = import ./modules/.common.d/sops.d/tests/package.nix { inherit pkgs; };
           # keys.yaml against its schema, ENCRYPTED as committed: the schema accepts ENC[...]
           # wherever a private may sit, so the sandbox needs no key and nothing is decrypted.
           # Each broken fixture must be REFUSED — a schema that accepts them proves nothing.

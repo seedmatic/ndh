@@ -68,6 +68,8 @@ let
     runtimeInputs = [ pkgs.coreutils ];
     text = ''
       set -euo pipefail
+      # A missing key is a failure, not a warning: nix-daemon would otherwise start with no signing key.
+      status=0
       ${concatMapStringsSep "\n" (name: ''
         bare=/run/secrets/${name}.key.bare
         if [ -r "$bare" ]; then
@@ -76,9 +78,11 @@ let
           install -m 0600 -o root "$tmp" /etc/nix/${name}.key
           rm -f "$tmp"
         else
-          echo "[cache-trust] bare secret missing: $bare (sops-install-secrets should have deployed it)" >&2
+          echo "[cache-trust] ERROR: bare secret missing: $bare (sops-install-secrets did not deploy it)" >&2
+          status=1
         fi
       '') cachixNames}
+      exit "$status"
     '';
   };
 in
