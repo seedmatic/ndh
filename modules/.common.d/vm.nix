@@ -79,7 +79,6 @@ in
 
     environment.variables = rec {
       NDH_RDP_HOST = hostName;
-      NDH_VZ_HOST = hostName;
       NDH_VZ_GUEST = guestName;
       NDH_DOMAIN = domainName;
       NDH_USER = profileUser;

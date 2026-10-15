@@ -22,12 +22,8 @@
       "user"
     ];
 
-    # Keep experiment/bootstrap mode until boot/login validation is complete.
-    # This avoids stage-2 panic when /etc/sops/age/keys.txt is not yet provisioned.
-    ndh.sopsAgeKeyBootstrap.phase = "bootstrap";
-
     # The NixOS guest does not receive an identity from the vz host at all — it decrypts
-    # with one generated on itself. See nixos.nix.
+    # with its own, placed by the operator from their keyring. See nixos.nix.
 
     nix.settings = {
       trusted-users = [

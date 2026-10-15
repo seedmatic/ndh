@@ -74,9 +74,8 @@ main() {
   # makes it.  So every run after the first one hit that refusal, the `|| true`
   # that used to guard the removal hid it, `remote add` then failed with
   # "already exists", and the server cert was never pinned.  Nothing reported
-  # it: errexit is INERT in here, because the logger calls this function from an
-  # `if` condition (shell.d/logger.sh:326), so only checked failures surface —
-  # and `main` returned the status of its last command, which succeeded.
+  # it: this script runs without errexit, so only checked failures surface — and
+  # `main` returned the status of its last command, which succeeded.
   if [[ "$("${incus_bin}" remote get-default 2>/dev/null || true)" == "${remote_name}" ]]; then
     if ! "${incus_bin}" remote set-default local; then
       echo "incus: cannot step off ${remote_name} as the default remote" >&2

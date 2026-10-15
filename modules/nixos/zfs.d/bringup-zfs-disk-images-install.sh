@@ -248,6 +248,18 @@ zfs set logbias=latency tank   || true
 zfs set logbias=latency recover || true
 # --------------------------------------─
 
+# - No secret material in the target root ---------------------------
+# Everything written here lands in the raw pool disks, the target's store upper included; the
+# store layers were checked when they were packed, so their mount points are left out, and so are
+# the kernel's pseudo-filesystems, should one still be mounted: they are not the pool's content.
+: '[bringup-zfs] checking the target root for secret material'
+if ! bash '@secretMaterialGuard@' --root /mnt/zfs-root \
+  --prune "/mnt/zfs-root@storeMountPoint@" \
+  --prune '/mnt/zfs-root/nix/.ro-store*' \
+  --prune /mnt/zfs-root/proc --prune /mnt/zfs-root/sys --prune /mnt/zfs-root/dev; then
+  exit 1
+fi
+
 # - Kill processes holding /mnt/zfs-root before unmount -----------
 # nixos-install may leave behind nix-daemon workers or chroot'd build processes
 # with open fds or CWDs inside /mnt/zfs-root, causing "target is busy" on umount.

@@ -6,6 +6,17 @@
 :date: 2026-05-16
 :status: plan, implementation in progress
 
+[IMPORTANT]
+.Superseded for the disk-image SET (2026-10-14)
+====
+The bringup NixOS configuration is still identity-less, but the disk-image set is per host again: its
+EROFS store stack ends with a layer holding the host's runtime residue
+(`modules/nixos/bringup-zfs-disk-image.nix`), so two hosts' sets differ and one host's set boots that
+host's system. The flake exposes `nerd-nixos-<host>-bringup-zfs-systemd-disk` (one per host), and
+`nerd-tart-<host>-deploy` copies its own host's set. The single `nerd-nixos-bringup-zfs-systemd-disk`
+below no longer exists.
+====
+
 == Problem statement
 
 Today the flake exposes two NixOS bringup disk images, one per Mac:

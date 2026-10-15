@@ -1,4 +1,6 @@
 #!/usr/bin/env -S bash -euo pipefail
+# Repeated below the shebang: the trampoline re-execs through `bash "$0"`, which drops its flags.
+set -euo pipefail
 # baremetal-link-deploy — install/refresh the baremetal-link LaunchDaemon on the
 # corporate bare-metal Mac.  The daemon uses only macOS system tools (ifconfig,
 # route, launchctl) and is bash-3.2 compatible, so NO nix runtime is needed on
@@ -90,12 +92,11 @@ main() {
 	# Pipe the chosen rendered script to the target and run it as root.  Idempotent
 	# on the target (install: bootout -> bootstrap); sudo is NOPASSWD on the vz host.
 	#
-	# The status is checked EXPLICITLY, not left to errexit: this function is invoked
-	# through `ndh::logger:command:run`, which calls it after `local rc=0` and so
-	# neutralises `set -e` inside it. Without this check a refused ssh was followed by
-	# `ndh::logger:command:run completed successfully` — the tool reporting success for
-	# an install that never happened, which is how a daemon came to be believed
-	# deployed on a machine it had never reached.
+	# The status is checked EXPLICITLY, so that the failure is SAID to the operator, not
+	# only stopped on. Before the logger wrapper kept errexit (2026-10-14), a refused ssh
+	# was followed by `ndh::logger:command:run completed successfully` — the tool
+	# reporting success for an install that never happened, which is how a daemon came
+	# to be believed deployed on a machine it had never reached.
 	if ! "${sshVz[@]}" "$target" sudo /bin/bash -s <"$script"; then
 		ndh::logger:notice "[baremetal-link-deploy] FAILED: ${action} on ${target} did not complete — NOTHING was applied"
 		return 1
@@ -121,8 +122,8 @@ main() {
 		# existing file's mode; BSD `install` can't read pipes, so no `install -m` from
 		# a heredoc without a temp). Outer heredoc UNQUOTED → local `$(cat …)` embeds
 		# the private + cert; INNER delimiters quoted → written verbatim; set -eu aborts
-		# on a failed write.
-		"${sshVz[@]}" "$target" sudo /bin/bash -s <<REMOTE
+		# on a failed write. Checked like the install pipe: a nudge identity that did not land is said.
+		if ! "${sshVz[@]}" "$target" sudo /bin/bash -s <<REMOTE
 set -eu
 install -d -m 700 /var/root/.ssh
 umask 077
@@ -135,6 +136,10 @@ VZ_NUDGE_CERT
 chmod 600 /var/root/.ssh/vz-nudge
 chmod 644 /var/root/.ssh/vz-nudge-cert.pub
 REMOTE
+		then
+			ndh::logger:notice "[baremetal-link-deploy] FAILED: the vz-nudge identity did not land on ${target} — the ${action} itself did"
+			return 1
+		fi
 	elif [[ "$action" == "install" ]]; then
 		ndh::logger:notice "[baremetal-link-deploy] vz-nudge identity absent here (${vzNudgeKey}) — nudge stays inert (manual reconfigure fallback)"
 	fi

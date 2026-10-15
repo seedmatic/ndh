@@ -48,7 +48,6 @@ At the current stage:
 Current canonical mapping for host/guest identity in this repo:
 
 * `NDH_RDP_HOST`
-* `NDH_VZ_HOST`
 * `NDH_DOMAIN`
 * `NDH_VZ_GUEST`
 * `NDH_USER`

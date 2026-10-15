@@ -1115,6 +1115,13 @@
               {
                 inherit pkgs;
               };
+          restart-on-secret-change-bats =
+            import ./modules/darwin/restart-on-secret-change.d/tests/package.nix
+              {
+                inherit pkgs;
+              };
+          sops-age-bootstrap-bats = import ./modules/.common.d/sops.d/tests/package.nix { inherit pkgs; };
+          git-sops-filters-bats = import ./modules/home-manager/git.d/tests/package.nix { inherit pkgs; };
           # keys.yaml against its schema, ENCRYPTED as committed: the schema accepts ENC[...]
           # wherever a private may sit, so the sandbox needs no key and nothing is decrypted.
           # Each broken fixture must be REFUSED — a schema that accepts them proves nothing.
@@ -1131,6 +1138,16 @@
                 done
                 touch $out
               '';
+          # The logger wrapper every ndh script runs under: a `set -e` script's failure stops it and fails
+          # the wrapper.
+          logger-command-run-bats = import ./modules/.common.d/shell.d/tests/package.nix { inherit pkgs; };
+          # The sshd post-flight checks: an unreadable host key is reported, an sshd not up refuses, the
+          # authorized-keys check never blocks sshd.
+          openssh-checks-bats = import ./modules/nixos/systemd/openssh.d/tests/package.nix { inherit pkgs; };
+          # baremetal-link deploy: nothing unapplied is ever reported done.
+          baremetal-link-deploy-bats = import ./pkgs/baremetal-link.d/tests/package.nix { inherit pkgs; };
+          # incus-cluster-join: a join that did not take is never reported joined.
+          incus-cluster-join-bats = import ./pkgs/incus-cluster-join.d/tests/package.nix { inherit pkgs; };
           incus-cluster-cert-bats = import ./modules/.common.d/incus-cluster-cert.d/tests/package.nix {
             inherit pkgs;
           };
@@ -1243,6 +1260,88 @@
               "nikopol"
             ]
         )
+        // nixpkgs.lib.listToAttrs (
+          map
+            (
+              host:
+              nixpkgs.lib.nameValuePair "secrets-read-after-install-${host}" (
+                import ./modules/darwin/activation-order.d/tests/read-after-install.nix {
+                  inherit pkgs;
+                  name = host;
+                  text = self.darwinConfigurations.${host}.config.system.activationScripts.postActivation.text;
+                }
+              )
+            )
+            [
+              "bioskop"
+              "nikopol"
+            ]
+        )
+        # The mask a failed install's log goes through into the build log: key material never passes.
+        // {
+          bringup-install-log-mask =
+            (pkgsFor { system = "aarch64-linux"; }).runCommand "bringup-install-log-mask"
+              { nativeBuildInputs = [ (pkgsFor { system = "aarch64-linux"; }).openssh ]; }
+              ''
+                ssh-keygen -q -t ed25519 -N "" -f key
+                { echo before; cat key; printf 'AGE-SECRET-'"KEY-1%s\\n" "$(head -c 400 /dev/urandom | base64 -w0 | tr -dc 'A-Z0-9' | head -c 58)"; echo after; } > log
+                sed -E -f ${./modules/nixos/bringup-zfs-disk-image.d/install-log-mask.sed} log > masked
+                grep -qx before masked && grep -qx after masked
+                if grep -qE '^[A-Za-z0-9+/=]{40,}$|AGE-SECRET-KEY-1[A-Z0-9]{50,}' masked; then
+                  echo "key material passed the mask" >&2
+                  exit 1
+                fi
+                [ "$(grep -c '\[MASKED\]' masked)" -ge 2 ]
+                # A window that starts INSIDE a key — its body and footer, no header: no body line survives.
+                tail -n +2 key > midkey
+                sed -E -f ${./modules/nixos/bringup-zfs-disk-image.d/install-log-mask.sed} midkey > midkey.masked
+                if grep -qE '^[A-Za-z0-9+/=]{40,}$' midkey.masked; then
+                  echo "a key body with no header passed the mask" >&2
+                  exit 1
+                fi
+                [ "$(grep -c '\[MASKED\]' midkey.masked)" -ge 1 ]
+                touch $out
+              '';
+        }
+        # The in-guest secret-material guard, on a real install: a private key born in the target root
+        # stops the raw build, and the refusal names it in the build log. A full VM build (~13 min).
+        // {
+          bringup-in-guest-secret-guard =
+            let
+              linuxPkgs = pkgsFor { system = "aarch64-linux"; };
+              # testers.testBuildFailure, by overrideDerivation: a runInLinuxVM derivation has no
+              # overrideAttrs. The same expect-failure.sh, around the original builder and args.
+              refused =
+                linuxPkgs.lib.overrideDerivation hostOutputs.nikopol.nixosBringupSecretCanaryBuild
+                  (orig: {
+                    builder = "${linuxPkgs.bash}/bin/bash";
+                    args = [
+                      (linuxPkgs.replaceVars "${linuxPkgs.path}/pkgs/build-support/testers/expect-failure.sh" {
+                        coreutils = linuxPkgs.coreutils;
+                        vars = linuxPkgs.lib.toShellVars { outputNames = orig.outputs or [ "out" ]; };
+                      })
+                      orig.builder
+                    ]
+                    ++ orig.args;
+                  });
+            in
+            linuxPkgs.runCommand "bringup-in-guest-secret-guard" { } ''
+              grep -q 'secret-material-guard: REFUSED /mnt/zfs-root/root/.secret-canary/id ' ${refused}/testBuildFailure.log
+              touch $out
+            '';
+        }
+        # The bringup images' secret-material guard, proven by canaries — on aarch64-linux, where the
+        # store layers it guards are packed, through the remote builder, like the images themselves.
+        // {
+          secret-material-guard =
+            let
+              linuxPkgs = pkgsFor { system = "aarch64-linux"; };
+            in
+            import ./modules/nixos/secret-material-guard.d/tests/package.nix {
+              pkgs = linuxPkgs;
+              nixBashTrampoline = "${mkNdhNixBashTrampoline { pkgsForSystem = linuxPkgs; }}";
+            };
+        }
       );
 
       # Surface the resolved catalog + inventory as flat (OS-independent) outputs
@@ -1396,9 +1495,8 @@
           # runs the Tart VM itself (not a remote vz host) it is the ONLY entry point
           # to (re)materialize the VM — e.g.
           # `VM_FACTORY_RESET=true nix run .#nerd-tart-bioskop-materialize`.
-          # Darwin activation deliberately never does this: staging the bringup image
-          # and the target NixOS runtime system is ~31 GiB of closure (see the
-          # `includeRuntimeClosure` / `includeBringupSymlink` notes in
+          # Darwin activation deliberately never does this: staging the bringup images
+          # is tens of GiB (see the `includeBringupSymlink` notes in
           # modules/darwin/tart-config.nix), and it has its own cadence, independent
           # of host convergence.  So the image stays out of the darwin system closure
           # and reaching it is an explicit operator gesture.
@@ -1407,12 +1505,14 @@
             anyHostName = builtins.head (builtins.attrNames hostCatalog);
             anyHostDeploy =
               hostOutputs.${anyHostName}.darwinConfiguration.config.tart.configGenerator.deployPackage;
-            anyHostBringup = hostOutputs.${anyHostName}.nixosDiskImageBringupSystemdZfs;
             mkDeployHelper =
               {
                 mainName,
                 vmName,
                 runManifest,
+                # The host's OWN bringup images: their third store layer is the host's runtime
+                # residue, so another host's images would boot another host's system.
+                bringupImages,
               }:
               systemPkgs.writeShellApplication {
                 name = "nerd-tart-${mainName}-deploy";
@@ -1439,7 +1539,7 @@
                   Usage: nerd-tart-${mainName}-deploy [vz-host] [-- extra tart run args]
 
                   Copies the generic Tart deploy bundle, the ${mainName}-specific
-                  per-VM YAML, and the fleet-wide bringup disk images to <vz-host>
+                  per-VM YAML, and ${mainName}'s bringup disk images to <vz-host>
                   (default: vzhost.${mainName}); installs the YAML at
                   ~/.config/nerd-tart/${mainName}.yaml on the vz host; then execs
                   nerd-tart there to materialize and run the VM.
@@ -1450,7 +1550,7 @@
 
                   deploy_bundle=${anyHostDeploy}
                   vm_config=${runManifest}
-                  bringup_images=${anyHostBringup}
+                  bringup_images=${bringupImages}
 
                   # Pull, don't push.  The operator host (e.g. bioskop) and
                   # the bare-metal vz host share a LAN, while `vzhost.<host>`
@@ -1512,6 +1612,7 @@
                 "nerd-tart-${mainName}-deploy" = mkDeployHelper {
                   inherit mainName runManifest;
                   vmName = hostOutput.darwinConfiguration.config.tart.configGenerator.vmName;
+                  bringupImages = hostOutput.nixosDiskImageBringupSystemdZfs;
                 };
                 "nerd-tart-${mainName}-materialize" =
                   hostOutput.darwinConfiguration.config.tart.configGenerator.materializerPackage;
@@ -1531,24 +1632,17 @@
           }
         )
         // nixpkgs.lib.optionalAttrs (system == "aarch64-linux") (
-          # Single shared bringup disk image — bit-identical for every
-          # host, per docs/bringup-image-unification.adoc.  The bringup
-          # NixOS config is identity-less; per-host identity is set by
-          # the full-system push at activation time, not by the image
-          # bytes (the speculative cloud-init seed in the original plan
-          # turned out to be unnecessary — see Phase 4 verdict in the
-          # plan note).
-          #
-          # Picks an arbitrary host's `nixosDiskImageBringupSystemdZfs`
-          # because the underlying derivation is the same regardless
-          # of which host's mkNixosOutputs computed it (the config
-          # closure no longer depends on hostProfile).  Nix dedups.
-          let
-            anyHostName = builtins.head (builtins.attrNames hostCatalog);
-          in
-          {
-            nerd-nixos-bringup-zfs-systemd-disk = hostOutputs.${anyHostName}.nixosDiskImageBringupSystemdZfs;
-          }
+          # One bringup disk-image set PER HOST: the third store layer is the host's runtime residue
+          # (see modules/nixos/bringup-zfs-disk-image.nix), so the sets are no longer bit-identical
+          # across hosts, and an arbitrary host's set boots that host's system.
+          builtins.listToAttrs (
+            map (hostName: {
+              name = "nerd-nixos-${
+                hostMainNameForProfile hostCatalog.${hostName}.hostProfile
+              }-bringup-zfs-systemd-disk";
+              value = hostOutputs.${hostName}.nixosDiskImageBringupSystemdZfs;
+            }) (builtins.attrNames hostCatalog)
+          )
         )
       );
 
@@ -1973,6 +2067,7 @@
           nixosDiskImage = nixosOutputs.diskImageFull;
           nixosDiskImageBringupSystemd = nixosOutputs.diskImageBringupSystemdBoot;
           nixosDiskImageBringupSystemdZfs = nixosOutputs.diskImageBringupZfsSystemdBoot;
+          nixosBringupSecretCanaryBuild = nixosOutputs.bringupSecretCanaryBuild;
           nixosDiskImageBringupGrub = nixosOutputs.diskImageBringupGrub;
           nixosDiskSizeHint = nixosOutputs.diskSizeHint;
           nixosDiskSizeMiB = nixosOutputs.diskSizeMiB;
@@ -2027,7 +2122,8 @@
                       # darwin system closure — no activation path consumes the bundle.
                       tart.configGenerator.rawImageManifestPath = "${nixosDiskImageBringupSystemdZfs}/manifest.yaml";
                       tart.configGenerator.rawImageStorePath = "${nixosDiskImageBringupSystemdZfs}/boot.img";
-                      tart.configGenerator.runtimeSystemPath = nixosOutputs.runtimeSystem;
+                      tart.configGenerator.vmRunSopsAgeHostShare =
+                        nixosOutputs.nixosConfigurations."${mainName}-nixos".config.ndh.sopsAgeKeyBootstrap.nixosHostKeyImport.enable;
                       tart.configGenerator.vmRunFirstBootAttachDiskManifestPath = null;
                       tart.configGenerator.vmRunFirstBootAttachDiskPath = "";
                       tart.configGenerator.linuxBuilderGcBeforeBuild = linuxBuilderGcBeforeBuild;
@@ -2129,6 +2225,7 @@
             nixosDiskImage
             nixosDiskImageBringupSystemd
             nixosDiskImageBringupSystemdZfs
+            nixosBringupSecretCanaryBuild
             nixosDiskImageBringupGrub
             nixosDiskSizeHint
             homeManagerConfigurations

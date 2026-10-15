@@ -32,6 +32,10 @@ main() {
     exit 1
   fi
 
+  # No layer packs secret material in the clear: a layer holds whole closures, and since it records
+  # no reference to them, nothing downstream would see what it carries.
+  bash "@secretMaterialGuard@" --paths-file "$store_paths_file"
+
   # --force-uid/gid=0 + -T 0 + a fixed UUID are what make the output
   # bit-identical across hosts, which is what lets the fleet share one layer.
   local -a mkfs_opts=(

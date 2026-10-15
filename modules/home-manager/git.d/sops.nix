@@ -1,6 +1,8 @@
-# The git sops diff driver (./git-sops-diff.nix): a textconv per format, so the operator's
-# `git diff` of a sops file shows it decrypted. The package bakes its own store path, so one
-# global include wires every format. Claude Code sessions neutralise it (sops-git-env.sh).
+# The git sops drivers (./git-sops-diff.nix): a textconv per format, so the operator's `git diff` of
+# a sops file shows it decrypted, and the yaml/binary clean+smudge filters, active only where a
+# .gitattributes names them (fleet, keyhole; never a repository holding a flake). The package bakes
+# its own store path, so one global include wires them all. Claude Code sessions neutralise them
+# (sops-git-env.sh).
 {
   pkgs,
   ...

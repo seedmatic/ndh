@@ -39,7 +39,8 @@ main() {
     if ! install_profile_from_runtime_path; then
       "$nix_bin" "${nix_cli_args[@]}" profile remove --profile "$profile_dir" "$runtime_name" >/dev/null 2>&1 || true
       if ! "$nix_bin" "${nix_cli_args[@]}" profile add --profile "$profile_dir" "$runtime_pkg"; then
-        install_profile_from_runtime_path
+        # The check on the profile's bin below says what is missing.
+        install_profile_from_runtime_path || true
       fi
     fi
   fi

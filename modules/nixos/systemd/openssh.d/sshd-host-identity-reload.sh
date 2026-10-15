@@ -54,7 +54,10 @@ main() {
     logger -p auth.warning -t "$LOG_TAG" "no host certificate at @hostCertificatePath@; sshd restarted for the key alone"
   fi
 
-  systemctl try-restart --no-block "$unit"
+  if ! systemctl try-restart --no-block "$unit"; then
+    logger -p auth.warning -t "$LOG_TAG" "sshd restart NOT queued (a conflicting job?); @systemHostKey@ is loaded at its next start"
+    return 0
+  fi
   logger -p auth.info -t "$LOG_TAG" "sshd restart queued to load @systemHostKey@ and @hostCertificatePath@"
 }
 

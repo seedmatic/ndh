@@ -114,9 +114,6 @@ let
       profileModule,
       catalog,
       inventory,
-      # When false, the bringup image omits the production runtime closure.
-      # Use for base/template images (e.g. nerd-nixos) that carry no runtime deployment.
-      includeRuntimeClosure ? true,
       # When true, the QEMU build VM pauses after nixos-install completes.
       # Remove /tmp/xchg/pause.lock from the debug shell to resume.
       # Set NDH_BRINGUP_PAUSE=true in the environment and pass --impure to nix build.
@@ -578,7 +575,7 @@ let
         espSizeMiB = 512;
         zfsStartMiB = 2 + 512;
       };
-      diskImageBringupZfsSystemdBootRaw = mkBringupZfsDiskImages {
+      bringupZfsDiskImagesArgs = {
         nixosSystem = selectedBringupSystemdZfs;
         name = "nerd-bringup-zfs-disk-images-raw";
         hostLabel = "nerd";
@@ -601,6 +598,32 @@ let
         builderVmCpuCores = 4;
         builderDiskoConfiguration = bringupDiskoConfiguration;
       };
+      diskImageBringupZfsSystemdBootRaw = mkBringupZfsDiskImages bringupZfsDiskImagesArgs;
+
+      # CHECK ONLY (checks.aarch64-darwin.bringup-in-guest-secret-guard): the same disk set, whose bringup
+      # system generates a private key in the target root at install — born there, never in the store,
+      # so the store layers pass their own guard and only the in-guest guard can refuse it. Nothing
+      # deploys it: its build must FAIL.
+      bringupSecretCanaryBuild =
+        (mkBringupZfsDiskImages (
+          bringupZfsDiskImagesArgs
+          // {
+            name = "nerd-bringup-zfs-disk-images-raw-secret-canary";
+            nixosSystem = selectedBringupSystemdZfs.extendModules {
+              modules = [
+                (
+                  { pkgs, ... }:
+                  {
+                    system.activationScripts.ndhSecretMaterialCanary.text = ''
+                      mkdir -p /root/.secret-canary
+                      ${pkgs.openssh}/bin/ssh-keygen -q -t ed25519 -N "" -f /root/.secret-canary/id </dev/null || true
+                    '';
+                  }
+                )
+              ];
+            };
+          }
+        )).builtDiskImages;
 
       diskImageBringupZfsSystemdBoot = mkDiskImageWithManifest {
         attr = "nerd-bringup-zfs-disk-images";
@@ -650,13 +673,8 @@ let
       };
       inherit
         diskImageBringupZfsSystemdBoot
+        bringupSecretCanaryBuild
         ;
-      # Full runtime system closure for the selected vmProvider. Exposed so
-      # the Darwin-side materializer can pull it into its own closure (one
-      # `nix build` stages both the bringup image and the full system the
-      # operator will activate remotely) and so callers can query it via
-      # `nix build .#<host>.runtimeSystem`.
-      runtimeSystem = selectedRuntime.config.system.build.toplevel;
     };
 in
 {

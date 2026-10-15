@@ -701,9 +701,8 @@ sequenceDiagram
   Note over V: console login — no key, no network
   V->>C: incus exec headscale
   C->>C: headscale serve — its CGNAT sub-prefix, TLS leaf from the shared root
-  V->>V: generate this guest's own age identity
-  V->>O: its age PUBLIC travels up to a seat
-  O->>V: the guest's projection, re-encrypted for that public, committed
+  O->>V: bioskop pushes this guest's host key and its access point's age identity, on the private LAN
+  Note over O,V: the keyring opened by the operator, the guest asks for nothing and generates nothing
   V->>T: tailscale up against the control URL, over the segment
   T-->>V: network map and policy
   S->>T: the darwin seat registers too

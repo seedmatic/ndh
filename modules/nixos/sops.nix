@@ -15,6 +15,34 @@ let
     map builtins.dirOf (lib.filter (path: path != "") bootstrapCfg.nixosHostKeyImport.candidates)
   );
   bootstrapRequiredMountPaths = lib.unique ([ config.sops.age.keyFile ] ++ importCandidateDirs);
+  bootstrapUnit = "${bootstrapCfg.systemdUnitName}.service";
+  # Every unit that reads a secret, computed from the configuration rather than listed: those ordered
+  # after or requiring sops-install-secrets, and those a secret names in its restartUnits.
+  secretReaders = lib.unique (
+    lib.filter (unit: unit != "sops-install-secrets.service" && unit != bootstrapUnit) (
+      lib.mapAttrsToList (name: _: "${name}.service") (
+        lib.filterAttrs (
+          _: svc:
+          builtins.elem "sops-install-secrets.service" (
+            (svc.after or [ ]) ++ (svc.requires or [ ]) ++ (svc.wants or [ ]) ++ (svc.bindsTo or [ ])
+          )
+        ) config.systemd.services
+      )
+      ++ lib.concatMap (secret: secret.restartUnits or [ ]) (lib.attrValues (config.sops.secrets or { }))
+    )
+  );
+  identityReload = pkgs.writeShellApplication {
+    name = "ndh-identity-reload";
+    text = ''
+      # After the operator placed an identity: one command instead of restarting units by name.
+      ${config.systemd.package}/bin/systemctl restart ${bootstrapUnit}
+      ${config.systemd.package}/bin/systemctl restart sops-install-secrets.service
+      ${lib.optionalString (
+        secretReaders != [ ]
+      ) "${config.systemd.package}/bin/systemctl restart ${lib.concatStringsSep " " secretReaders}"}
+      echo "[ndh-identity-reload] sops and its readers restarted: ${lib.concatStringsSep " " secretReaders}"
+    '';
+  };
 in
 {
   # The age-bootstrap service imports keys from the host-provided virtiofs
@@ -29,7 +57,6 @@ in
     ndh.sopsAgeKeyBootstrap = {
       defaultAgeKeyFile = lib.mkDefault config.ndh.sopsAgeKeyBootstrap.systemWideKeyFile;
       nixosHostKeyImport.enable = lib.mkDefault true;
-      nixosHostKeyImport.remoteFetch.enable = lib.mkDefault true;
       # Prefix the unit name so it groups with the other NDH systemd services
       # (mkUnitName is a no-op if the prefix is already present, so downstream
       # overrides remain effective).
@@ -79,9 +106,13 @@ in
             keysTargetUnit
             "${config.ndh.sopsAgeKeyBootstrap.systemdUnitName}.service"
           ];
-          # Do not gate this unit on key-file existence: bootstrap is responsible
-          # for creating/importing the key before install runs.
+          # Not gated on the key file's existence: the bootstrap unit before it fails loudly when the
+          # identity is missing, and ndh-identity-reload restarts both once the operator placed it.
         };
+
+    environment.systemPackages = lib.mkIf (
+      (config.sops.useSystemdActivation or false) && hasManagedSecrets
+    ) [ identityReload ];
 
   };
 }

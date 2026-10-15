@@ -1,6 +1,7 @@
-# The git sops DIFF driver as a self-contained package: a textconv per format that renders a sops
-# blob decrypted, so `git diff` shows what moved. A diff driver only — sops files stay encrypted on
-# disk everywhere and are opened in memory by their readers, so no clean/smudge filter exists.
+# The git sops drivers as a self-contained package: a textconv per format that renders a sops blob
+# decrypted, so `git diff` shows what moved; and, for yaml and binary, the clean/smudge filters that
+# encrypt at `git add` and decrypt at checkout. They act only where a .gitattributes names them (fleet,
+# keyhole), never in a repository holding a flake, and Claude sessions neutralise them.
 #
 # It bakes its OWN store path as `sopsConfigHome`: the top-level `sops` include and every
 # per-format fragment resolve the textconv to the script INSIDE this output, so a single
@@ -26,6 +27,11 @@ let
     "toml"
     "lua"
   ];
+  # The formats with a clean/smudge filter: what fleet's and keyhole's .gitattributes name.
+  filterFormats = [
+    "yaml"
+    "binary"
+  ];
 in
 stdenvNoCC.mkDerivation {
   name = "git-sops-diff";
@@ -41,9 +47,13 @@ stdenvNoCC.mkDerivation {
       substitute ${./sops.d}/$fmt $out/sops.d/$fmt --subst-var-by sopsConfigHome "$out/sops.d"
     done
 
-    # One textconv symlink per format — the dispatcher reads argv[0] for the format.
+    # One textconv symlink per format — the dispatcher reads argv[0] for the format and operation.
     for fmt in ${lib.concatStringsSep " " formats}; do
       ln -s $out/sops-dispatch $out/sops.d/$fmt-textconv
+    done
+    for fmt in ${lib.concatStringsSep " " filterFormats}; do
+      ln -s $out/sops-dispatch $out/sops.d/$fmt-clean
+      ln -s $out/sops-dispatch $out/sops.d/$fmt-smudge
     done
 
     # The top-level include file (relative `path = sops.d/<fmt>`), verbatim.

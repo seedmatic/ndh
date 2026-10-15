@@ -109,24 +109,15 @@ let
   # Bundle directory: bin/activate.sh + bringup-manifest → bringup images store dir.
   # The gcroot points here so one symlink keeps the entire disk-image closure alive.
   # manifest.yaml is linked here too so run.sh can resolve it via the stable gcroot path.
-  # runtime-system is a closure-only symlink (activation never dereferences it)
-  # that pulls the full NixOS runtime system into the bundle's closure so a
-  # single `nix build` stages both the bringup image and the target system the
-  # operator will activate remotely.  Build hosts pass includeRuntimeClosure=true
-  # to materialize the convenience symlink; deploy hosts (vz hosts that only
-  # consume artifacts) pass false to keep the closure to disk-image references
-  # only — saving ~16 GiB and ~1800 store paths.
+  # The runtime system is NOT staged beside the images: it is packed in their store layers, the guest
+  # boots into it from there (its toplevel travels as a data marker in the target root), and the
+  # images record no reference to what they hold — so the bundle's closure is the images' bytes.
   # `embedManifest`: when true, the bundle includes a manifest.yaml symlink
   # and bakes its store path into activate.sh's @manifestPath@ default.  Used
   # by the per-host materializer, so `nix run .#nerd-tart-<host>-materialize`
   # invokes activate.sh without --config.  The generic nerd-tart deploy
   # bundle passes false: it ships activate.sh with @manifestPath@ = "", and
   # the operator selects a VM identity via --config FILE at runtime.
-  #
-  # `includeRuntimeClosure`: when true, adds a runtime-system symlink that
-  # pulls the full target NixOS closure into the bundle.  Build hosts pass
-  # true so a single `nix build` stages both image and runtime system; the
-  # generic deploy bundle passes false.
   #
   # `includeBringupSymlink`: when true, adds a bringup-manifest symlink that
   # pulls the bringup disk images (~15 GiB of raw bytes scanned as store refs)
@@ -136,17 +127,16 @@ let
   # resolved store path via the per-VM YAML's
   # `raw_image_manifest_path_default` field.
   #
-  # Both heavy flags are reachable ONLY from `materializerPackage`, i.e. from
+  # The bringup symlink is reachable ONLY from `materializerPackage`, i.e. from
   # the `nerd-tart-<host>-materialize` app.  Nothing in the darwin system
   # closure refers to this bundle, which is what keeps `darwin-rebuild switch`
   # from building the image.  Do not wire it into an activation script or into
-  # `environment.systemPackages` — either one puts those ~31 GiB back on every
+  # `environment.systemPackages` — either one puts the images back on every
   # host convergence.
   mkActivationBundle =
     {
       drvName,
       embedManifest,
-      includeRuntimeClosure,
       includeBringupSymlink,
     }:
     ndh.store.runCommand drvName { } ''
@@ -175,20 +165,16 @@ let
       ${lib.optionalString (includeBringupSymlink && bringupImagesDir != "") ''
         ln -s ${lib.escapeShellArg bringupImagesDir} "$out/bringup-manifest"
       ''}
-      ${lib.optionalString (includeRuntimeClosure && cfg.runtimeSystemPath != null) ''
-        ln -s ${lib.escapeShellArg (toString cfg.runtimeSystemPath)} "$out/runtime-system"
-      ''}
     '';
 
   tartActivationBundle = mkActivationBundle {
     drvName = "tart-${cfg.vmName}-materialize";
     embedManifest = true;
-    includeRuntimeClosure = true;
     includeBringupSymlink = true;
   };
 
   # Generic, host-agnostic deploy bundle.  No baked-in run manifest, no
-  # runtime-system closure, no bringup symlink — closure is bounded by the
+  # bringup symlink — closure is bounded by the
   # activate/run scripts and their PATH dependencies (~50-100 MiB).  The
   # operator selects a VM identity at runtime by passing --config FILE to
   # activate.sh, where FILE is a per-VM YAML produced by the matching
@@ -199,7 +185,6 @@ let
   tartDeployBundle = mkActivationBundle {
     drvName = "nerd-tart-deploy";
     embedManifest = false;
-    includeRuntimeClosure = false;
     includeBringupSymlink = false;
   };
 
@@ -395,6 +380,7 @@ let
     raw_image_store_path_default: ${builtins.toJSON rawImageStorePath}
     raw_image_source_path_default: ${builtins.toJSON cfg.rawImageSourcePath}
     raw_image_target_path_default: ${builtins.toJSON cfg.rawImageTargetPath}
+    sops_age_host_share: ${builtins.toJSON cfg.vmRunSopsAgeHostShare}
     sops_age_host_dir_default: ${builtins.toJSON cfg.vmRunSopsAgeHostDir}
     sops_age_tag: ${builtins.toJSON cfg.vmRunSopsAgeTag}
     tart_bin: ${builtins.toJSON cfg.tartBinaryPath}
@@ -668,13 +654,23 @@ in
       '';
     };
 
+    vmRunSopsAgeHostShare = mkOption {
+      type = types.bool;
+      description = ''
+        Whether the guest imports its age identity from this host, through the SOPS age host share.
+        Set from the GUEST's own configuration (`ndh.sopsAgeKeyBootstrap.nixosHostKeyImport.enable`),
+        never guessed on the host: a guest with its own identity gets no share, and run.sh does not
+        require one.
+      '';
+    };
+
     vmRunSopsAgeHostDir = mkOption {
       type = types.str;
       default = "${profileHome}/.config/sops";
       description = ''
-        Host directory shared into the Tart VM via virtiofs as the SOPS config root.
-        The age key is expected at `<mountPoint>/age/keys.txt` inside the guest.
-        Canonical behavior requires this share for in-guest SOPS bootstrap decryption.
+        Host directory shared into the Tart VM via virtiofs as the SOPS config root, when
+        `vmRunSopsAgeHostShare` holds. The age key is expected at `<mountPoint>/age/keys.txt`
+        inside the guest.
       '';
     };
 
@@ -682,7 +678,7 @@ in
       type = types.str;
       default = "ndh-sops-age";
       description = ''
-        Virtiofs mount tag used for the mandatory SOPS age host directory share.
+        Virtiofs mount tag of the SOPS age host directory share, when `vmRunSopsAgeHostShare` holds.
       '';
     };
 
@@ -726,19 +722,6 @@ in
       description = ''
         Optional path to disk-image manifest output containing `manifest.yaml`.
         When provided, activation resolves the raw image through manifest metadata first.
-      '';
-    };
-
-    runtimeSystemPath = mkOption {
-      type = types.nullOr types.path;
-      default = null;
-      description = ''
-        Optional store path of the full NixOS runtime system closure the operator
-        will activate remotely once the minimal bringup image is up. When set, a
-        closure edge is added to the Tart activation bundle so `nix build` of
-        the materializer realises the full system in the same stage — the
-        operator ends up with both the bringup disk image and the full
-        toplevel ready for `nixos-rebuild switch --target-host`.
       '';
     };
 
@@ -818,10 +801,9 @@ in
       description = ''
         Store package exposing `nerd-tart` — the generic, host-agnostic
         sibling of `materializerPackage` for hosts that only consume
-        pre-built artifacts.  Skips the runtime-system closure symlink, the
-        linux-builder GC step, and the Darwin observability harness, so
-        its closure is bounded by the disk-image references rather than
-        the full NixOS runtime system.
+        pre-built artifacts.  Skips the bringup symlink, the linux-builder
+        GC step, and the Darwin observability harness, so its closure is
+        bounded by the activation and run scripts.
       '';
     };
 
