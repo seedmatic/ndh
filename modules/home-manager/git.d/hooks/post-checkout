@@ -17,9 +17,10 @@ if repo_holds_flake; then
   if [ -n "${hits}" ]; then
     {
       echo "⛔ sops-filter-guard (${hook}): this repository holds a flake, yet these files resolve to a sops filter:"
-      while read -r path _; do
+      # head first, never at the end of a pipe: under pipefail an early-closing head kills the writer (141).
+      head -20 <<<"${hits}" | while read -r path _; do
         if is_decrypted_on_disk "${path}"; then echo "   ${path}  ← IN THE CLEAR ON DISK NOW"; else echo "   ${path}"; fi
-      done <<<"${hits}" | head -20
+      done
       echo "Remove the filter= attribute, then restore the encrypted files: git checkout -- <path>."
     } >&2
   fi

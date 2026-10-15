@@ -25,7 +25,7 @@ if repo_holds_flake; then
   if [ -n "${hits}" ]; then
     {
       echo "⛔ sops-filter-guard: this repository holds a flake, and these files resolve to a sops filter:"
-      printf '%s\n' "${hits}" | head -20 | sed 's/^/   /'
+      head -20 <<<"${hits}" | sed 's/^/   /'
       echo "Remove the filter= attribute (a .gitattributes, .git/info/attributes or the global attributes"
       echo "file): a flake repository keeps its sops files encrypted on disk."
     } >&2

@@ -12,9 +12,11 @@
 # Sourced by the global pre-commit (refuses), post-checkout and post-merge (announce), and the Claude
 # SessionStart hook (announces).
 
-# True when the repository holds a flake, in its index or at HEAD.
+# True when the repository holds a flake at ANY depth, in its index or at HEAD: a flake evaluated from a
+# subdirectory still copies the whole repository into the store.
 repo_holds_flake() {
-  git cat-file -e :flake.nix 2>/dev/null || git cat-file -e HEAD:flake.nix 2>/dev/null
+  [ -n "$(git ls-files -- flake.nix ':(glob)**/flake.nix' 2>/dev/null)" ] ||
+    git ls-tree -r --name-only HEAD 2>/dev/null | grep -qE '(^|/)flake\.nix$'
 }
 
 # "<path> filter=<value>" for each tracked file whose resolved filter is sops-*. With --cached, the

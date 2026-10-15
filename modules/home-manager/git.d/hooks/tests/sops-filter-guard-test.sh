@@ -47,12 +47,19 @@ r=$(repo diffonly with-flake); printf '*.yaml diff=sops-yaml\n' >"$r/.gitattribu
 r=$(repo noflake no-flake); printf '*.yaml filter=sops-yaml\n' >"$r/.gitattributes"; git -C "$r" add .gitattributes
 [ "$(run_in "$r" "$HOOKS_DIR/pre-commit")" = 0 ] && ok "filter= in a repo without a flake: allowed" || bad "filter= without a flake"
 
+r=$(repo nested no-flake); mkdir -p "$r/sub/x" && echo '{ outputs = _: { }; }' >"$r/sub/x/flake.nix" && git -C "$r" add sub
+printf '*.yaml filter=sops-yaml\n' >"$r/.gitattributes"; git -C "$r" add .gitattributes
+[ "$(run_in "$r" "$HOOKS_DIR/pre-commit")" = 1 ] && ok "a NESTED flake counts: refused" || bad "nested flake"
+
 echo "global post-checkout / post-merge:"
 r=$(repo announce with-flake); printf '*.yaml filter=sops-yaml\n' >"$r/.gitattributes"
 [ "$(run_in "$r" "$HOOKS_DIR/post-checkout" 0 0 1)" = 0 ] && grep -q 'secret.yaml  ← IN THE CLEAR ON DISK NOW' "$T/out" && ok "post-checkout announces, never fails" || bad "post-checkout announcement"
 [ "$(run_in "$r" "$HOOKS_DIR/post-merge" 0)" = 0 ] && grep -q 'sops-filter-guard (post-merge)' "$T/out" && ok "post-merge announces under its own name" || bad "post-merge announcement"
 r=$(repo quiet with-flake)
 [ "$(run_in "$r" "$HOOKS_DIR/post-checkout" 0 0 1)" = 0 ] && [ ! -s "$T/out" ] && ok "post-checkout silent without filter=" || bad "post-checkout silence"
+r=$(repo many with-flake); mkdir -p "$r/m"; for i in $(seq 1 3000); do : >"$r/m/file-with-a-long-enough-name-$i.yaml"; done; git -C "$r" add m >/dev/null
+printf '*.yaml filter=sops-yaml\n' >"$r/.gitattributes"
+[ "$(run_in "$r" "$HOOKS_DIR/post-checkout" 0 0 1)" = 0 ] && grep -q 'Remove the filter= attribute' "$T/out" && ok "post-checkout with 3000 hits: still exit 0, message whole (no SIGPIPE)" || bad "post-checkout with many hits"
 
 echo "canonical pre-commit (no nix on PATH, so the formatter is skipped, never the guards):"
 mkdir -p "$T/bin" && ln -s "$(command -v git)" "$T/bin/git"
@@ -61,6 +68,10 @@ r=$(repo canon with-flake); printf '*.yaml filter=sops-yaml\n' >"$r/.gitattribut
 [ "$(cd "$r" && PATH="$nonix" "$CANONICAL" >"$T/out" 2>&1; echo $?)" = 1 ] && grep -q 'secret.yaml  filter=sops-yaml' "$T/out" && ok "canonical: staged filter= refused" || bad "canonical: staged filter="
 r=$(repo canonok with-flake); printf '*.yaml diff=sops-yaml\n' >"$r/.gitattributes"; git -C "$r" add .gitattributes
 [ "$(cd "$r" && PATH="$nonix" "$CANONICAL" >"$T/out" 2>&1; echo $?)" = 0 ] && ok "canonical: diff= only allowed" || bad "canonical: diff= only"
+
+r=$(repo canonnested no-flake); mkdir -p "$r/sub/x" && echo '{ outputs = _: { }; }' >"$r/sub/x/flake.nix" && git -C "$r" add sub
+printf '*.yaml filter=sops-yaml\n' >"$r/.gitattributes"; git -C "$r" add .gitattributes
+[ "$(cd "$r" && PATH="$nonix" "$CANONICAL" >"$T/out" 2>&1; echo $?)" = 1 ] && ok "canonical: a nested flake counts" || bad "canonical: nested flake"
 
 echo "passed=$PASS failed=$FAIL"
 [ "$FAIL" -eq 0 ]

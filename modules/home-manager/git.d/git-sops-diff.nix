@@ -1,7 +1,7 @@
 # The git sops drivers as a self-contained package: a textconv per format that renders a sops blob
 # decrypted, so `git diff` shows what moved; and, for yaml and binary, the clean/smudge filters that
-# encrypt at `git add` and decrypt at checkout. They act only where a .gitattributes names them (fleet,
-# keyhole), never in a repository holding a flake, and Claude sessions neutralise them.
+# encrypt at `git add` and decrypt at checkout. They act only where a .gitattributes names them
+# (keyhole), never in a repository holding a flake at any depth, and Claude sessions neutralise them.
 #
 # It bakes its OWN store path as `sopsConfigHome`: the top-level `sops` include and every
 # per-format fragment resolve the textconv to the script INSIDE this output, so a single
@@ -27,7 +27,8 @@ let
     "toml"
     "lua"
   ];
-  # The formats with a clean/smudge filter: what fleet's and keyhole's .gitattributes name.
+  # The formats with a clean/smudge filter: binary is what keyhole's .gitattributes name; yaml stays
+  # available to any repository without a flake.
   filterFormats = [
     "yaml"
     "binary"
