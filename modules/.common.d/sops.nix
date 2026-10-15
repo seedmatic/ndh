@@ -64,9 +64,7 @@ let
         "@publicKeyFile@"
         "@exportPublicKeyOnActivation@"
         "@nixosImportFromHost@"
-        "@phase@"
-        "@darwinUserKeyFile@"
-        "@importExistingUserKeyOnBootstrap@"
+        "@enforceRootKeyMode@"
         "@nixosHostKeyImportCandidates@"
       ]
       [
@@ -75,9 +73,7 @@ let
         (toString cfg.publicKeyFile)
         (if cfg.exportPublicKeyOnActivation then "1" else "0")
         (if cfg.nixosHostKeyImport.enable then "1" else "0")
-        (toString cfg.phase)
-        (toString cfg.darwinUserKeyFile)
-        (if cfg.importExistingUserKeyOnBootstrap then "1" else "0")
+        (if useSystemdSopsActivation then "1" else "0")
         (lib.concatStringsSep "\n" cfg.nixosHostKeyImport.candidates)
       ]
       (builtins.readFile ./sops.d/bootstrap.sh);
@@ -109,19 +105,6 @@ let
 in
 {
   options.ndh.sopsAgeKeyBootstrap = {
-    phase = mkOption {
-      type = types.enum [
-        "bootstrap"
-        "enforce"
-      ];
-      default = "enforce";
-      description = ''
-        Two-phase SOPS age-key provisioning mode.
-        - bootstrap: generate `${config.sops.age.keyFile}` on first activation if missing.
-        - enforce: fail activation when `${config.sops.age.keyFile}` is missing.
-      '';
-    };
-
     darwinSystemWideKey = mkOption {
       type = types.bool;
       default = false;
@@ -172,17 +155,7 @@ in
     darwinUserKeyFile = mkOption {
       type = types.str;
       default = "${userHome}/.config/sops/age/keys.txt";
-      description = "Darwin user-scoped SOPS age key file path used for migration/bootstrap import.";
-    };
-
-    importExistingUserKeyOnBootstrap = mkOption {
-      type = types.bool;
-      default = true;
-      description = ''
-        During bootstrap, if `${config.sops.age.keyFile}` is missing but
-        `darwinUserKeyFile` exists, copy it into the target key path before
-        generating a new key.
-      '';
+      description = "Darwin user-scoped SOPS age key file path, the keyFile when darwinSystemWideKey is off.";
     };
 
     exportPublicKeyOnActivation = mkOption {
@@ -209,7 +182,7 @@ in
         default = false;
         description = ''
           Enable NixOS pre-activation import of an existing host age key into
-          `${config.sops.age.keyFile}` when missing and phase is `enforce`.
+          `${config.sops.age.keyFile}` when missing.
           Intended for VM guests where a host-mounted path can provide key material.
         '';
       };
@@ -219,7 +192,7 @@ in
         default = nixosHostKeyImportCandidatesDefault;
         description = ''
           Ordered list of candidate file paths to import an existing age key from
-          when `${config.sops.age.keyFile}` is missing in `enforce` mode.
+          when `${config.sops.age.keyFile}` is missing.
         '';
       };
     };
@@ -287,8 +260,7 @@ in
       }
     ];
 
-    # Two-phase age-key bootstrap guard:
-    # phase=bootstrap provisions once, phase=enforce blocks activation when missing.
+    # The age identity guard: a missing identity blocks activation, and nothing generates one.
     system.activationScripts.preActivation.text = lib.mkBefore (
       if !useSystemdSopsActivation then sopsAgeBootstrapScript else ""
     );

@@ -66,8 +66,8 @@ runbook.
 link:collaboration-guide.adoc[Collaboration & Session Operations Guide]::
 Workflow for running, capturing, and closing collaborative sessions (includes pre-expiration reminder protocol and quality gates).
 
-link:sops-two-phase-rollout.adoc[SOPS Two-Phase Rollout (Shared Flake)]::
-Operational runbook for bootstrap/enforce lifecycle, host-by-host rollout, and onboarding new Darwin/NixOS hosts.
+link:sops-two-phase-rollout.adoc[A Machine's SOPS Identity (Shared Flake)]::
+Where a host's age identity comes from, the loud fault when it is missing, placing it, and onboarding a new machine.
 
 link:fabric-control-plane-spec.adoc[Fabric Control Plane — the Self-Managed Tailnet (spec)]::
 📐 The access model: one headscale control plane per bare-metal, in an Incus container on its NixOS

@@ -681,7 +681,7 @@ inventory names, `{host}-nixos`, `nixos.{host}`)
 * link:security-handling-c4.adoc[Security Handling (C4-Style UML)] — sops lifecycle and runtime
   materialisation.
 * link:private-binary-cache-spec.adoc[Private Binary Cache] — the per-host nix signing keys.
-* link:sops-two-phase-rollout.adoc[SOPS Two-Phase Rollout] — the two-phase discipline for sops
-  recipients.
+* link:sops-two-phase-rollout.adoc[A Machine's SOPS Identity] — where a host's age identity comes
+  from, and how a machine joins.
 * rke2lab `docs/architecture/atlas/fabric-control-plane.adoc` — the migration from today's inventory;
   its keys figure links here.

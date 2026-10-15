@@ -43,12 +43,8 @@
       sopsEncryptedTokenFile = ../../.secrets;
     };
 
-    # Two-phase SOPS age key provisioning on Darwin:
-    # phase 2 (enforce): key must already exist.
-    ndh.sopsAgeKeyBootstrap = {
-      phase = "enforce";
-      darwinSystemWideKey = true;
-    };
+    # The SOPS age key must already exist: nothing generates it.
+    ndh.sopsAgeKeyBootstrap.darwinSystemWideKey = true;
     sops.age.keyFile = "/etc/sops/age/keys.txt";
 
     services.nxmaticCachixWatchStore = {

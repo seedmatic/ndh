@@ -291,5 +291,5 @@ two-phase rule needs a human to confirm phase 1.
 * link:ssh-keys-architecture.adoc[Roles × Keys] — every key, its role, its holder, its acceptor, its lifecycle.
 * link:fabric-control-plane-spec.adoc[Fabric Control Plane] — the access model that makes these
   keys exceptions.
-* link:sops-two-phase-rollout.adoc[SOPS Two-Phase Rollout] — the same two-phase discipline for sops
-  recipients.
+* link:sops-two-phase-rollout.adoc[A Machine's SOPS Identity] — where a host's age identity comes
+  from, and how a machine joins.
