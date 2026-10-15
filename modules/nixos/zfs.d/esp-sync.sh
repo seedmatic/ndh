@@ -64,10 +64,17 @@ main() {
     target_mount="/run/esp-sync/$(basename "$esp_part")"
     mkdir -p "$target_mount"
     mount -t vfat "$esp_part" "$target_mount"
-    cp -a "$primary_esp/." "$target_mount/"
+    # vfat holds no owner and no mode: preserving them fails (EPERM). A failed copy still unmounts,
+    # so the next run does not find the partition mounted.
+    copied=1
+    cp -r --preserve=timestamps "$primary_esp/." "$target_mount/" || copied=0
     sync
     umount "$target_mount"
     rmdir "$target_mount"
+    if [ "$copied" = 0 ]; then
+      : "[esp-sync][ERROR] could not mirror the primary ESP onto $esp_part"
+      return 1
+    fi
     : "[esp-sync][INFO] mirrored primary ESP -> $esp_part"
   done
 }

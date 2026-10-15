@@ -63,9 +63,8 @@ EOF
   fi
 
   # Checked, not swallowed: if the removal fails the `remote add` below fails too
-  # ("already exists"), and a `|| true` here would hide the cause.  errexit does
-  # not help — the logger invokes main from an `if` condition, which makes it
-  # inert for the whole body (shell.d/logger.sh:326).  The config.yml written
+  # ("already exists"), and a `|| true` here would hide the cause.  This script
+  # runs without errexit, so only a checked failure stops it.  The config.yml written
   # above keeps `default-remote: local`, so unlike the Darwin operator script
   # this one is never removing the default remote.
   if runuser -u "${auto_user}" -- env HOME="${auto_home}" XDG_CONFIG_HOME="${auto_home}/.config" \

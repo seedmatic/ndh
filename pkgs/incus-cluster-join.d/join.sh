@@ -169,12 +169,10 @@ main() {
 	# storage-pool source. Networks need no member_config at all — none are Incus-managed any more,
 	# which is what let the per-host subnets survive clustering in the first place.
 	#
-	# ★ EVERY mutating step below is checked explicitly, and `set -e` is NOT relied on.  Measured
-	# 2026-09-26, the hard way: ndh::logger:command:run invokes `main` as `if "$@"; then`, and POSIX
-	# suppresses errexit throughout a command that forms a condition — re-running `set -e` inside
-	# changes nothing.  So every unchecked command in a logger-wrapped script fails SILENTLY.  This
-	# app reported "joined and out of the raft" about a join that never happened, on a cluster whose
-	# member list still had one entry.
+	# ★ EVERY mutating step below is checked explicitly: this script runs without errexit, so an
+	# unchecked command fails SILENTLY.  Measured 2026-09-26, the hard way, when the logger wrapper
+	# still dropped errexit for every script it ran: this app reported "joined and out of the raft"
+	# about a join that never happened, on a cluster whose member list still had one entry.
 	local preseed preseed_out
 	preseed="$(
 		cat <<-EOF

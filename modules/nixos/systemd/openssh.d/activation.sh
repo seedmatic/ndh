@@ -79,13 +79,9 @@ main() {
   fi
 
   install -m 555 "$GROUP_SRC" /etc/ssh/$GROUP_CMD
-  if [ ! -e /etc/ssh/ssh-group-authorized-keys ]; then
-    ln -s "$GROUP_CMD" /etc/ssh/ssh-group-authorized-keys
-  fi
+  ln -sfn "$GROUP_CMD" /etc/ssh/ssh-group-authorized-keys
   install -m 555 "$PRINCIPALS_SRC" /etc/ssh/$PRINCIPALS_CMD
-  if [ ! -e /etc/ssh/authorized-principals-command ]; then
-    ln -s "$PRINCIPALS_CMD" /etc/ssh/authorized-principals-command
-  fi
+  ln -sfn "$PRINCIPALS_CMD" /etc/ssh/authorized-principals-command
 
   install -d -m 755 /etc/ssh/sshd_config.d
   install -d -m 755 /etc/ssh/ssh_config.d

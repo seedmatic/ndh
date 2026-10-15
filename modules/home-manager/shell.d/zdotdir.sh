@@ -16,7 +16,10 @@ main() {
     mkdir -p "$HOME/.config"
     git clone --depth=1 https://github.com/nxmatic/zdotdir.git "$HOME/.config/zsh"
   else
-    git -C "$HOME/.config/zsh" pull --ff-only
+    # Offline, a GitHub outage, or a diverged checkout: keep the local one and finish the sync.
+    if ! git -C "$HOME/.config/zsh" pull --ff-only; then
+      echo "warning: zdotdir pull failed; keeping the local checkout" >&2
+    fi
   fi
 
   # Keep PNPM_HOME user-relative even if upstream zdotdir contains a stale

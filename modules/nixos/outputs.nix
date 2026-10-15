@@ -575,7 +575,7 @@ let
         espSizeMiB = 512;
         zfsStartMiB = 2 + 512;
       };
-      diskImageBringupZfsSystemdBootRaw = mkBringupZfsDiskImages {
+      bringupZfsDiskImagesArgs = {
         nixosSystem = selectedBringupSystemdZfs;
         name = "nerd-bringup-zfs-disk-images-raw";
         hostLabel = "nerd";
@@ -598,6 +598,32 @@ let
         builderVmCpuCores = 4;
         builderDiskoConfiguration = bringupDiskoConfiguration;
       };
+      diskImageBringupZfsSystemdBootRaw = mkBringupZfsDiskImages bringupZfsDiskImagesArgs;
+
+      # CHECK ONLY (checks.aarch64-darwin.bringup-in-guest-secret-guard): the same disk set, whose bringup
+      # system generates a private key in the target root at install — born there, never in the store,
+      # so the store layers pass their own guard and only the in-guest guard can refuse it. Nothing
+      # deploys it: its build must FAIL.
+      bringupSecretCanaryBuild =
+        (mkBringupZfsDiskImages (
+          bringupZfsDiskImagesArgs
+          // {
+            name = "nerd-bringup-zfs-disk-images-raw-secret-canary";
+            nixosSystem = selectedBringupSystemdZfs.extendModules {
+              modules = [
+                (
+                  { pkgs, ... }:
+                  {
+                    system.activationScripts.ndhSecretMaterialCanary.text = ''
+                      mkdir -p /root/.secret-canary
+                      ${pkgs.openssh}/bin/ssh-keygen -q -t ed25519 -N "" -f /root/.secret-canary/id </dev/null || true
+                    '';
+                  }
+                )
+              ];
+            };
+          }
+        )).builtDiskImages;
 
       diskImageBringupZfsSystemdBoot = mkDiskImageWithManifest {
         attr = "nerd-bringup-zfs-disk-images";
@@ -647,6 +673,7 @@ let
       };
       inherit
         diskImageBringupZfsSystemdBoot
+        bringupSecretCanaryBuild
         ;
     };
 in

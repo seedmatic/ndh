@@ -281,6 +281,29 @@ ndh::logger:notice() {
 	printf '%s\n' "$@" >&3 2>/dev/null || printf '%s\n' "$@" >&2
 }
 
+ndh::logger:command:invoke() {
+	# ndh::logger:command:invoke <command> [args...]
+	# Runs <command> as a PLAIN statement, in a subshell that keeps the caller's errexit, and leaves its
+	# exit status in NDH_LOGGER_COMMAND_RC; returns 0. Never put the call in an `if`, `!`, `&&` or `||`:
+	# bash ignores errexit for the WHOLE call tree of a command run there, subshells included
+	# (measured, bash 5.3: `( set -e; f ) || rc=$?` runs on past f's failure). That is how this wrapper
+	# used to run its command (`if "$@"`), so a `set -e` script never stopped on a failure and was
+	# reported failed only when its LAST command failed (2026-09-20, 2026-09-26, 2026-10-14).
+	# A script without `set -e` keeps running past a failure, as it asked. The subshell keeps the
+	# command's shell state (variables, cwd) from the wrapper; what it writes to files and fds is as
+	# before.
+	local errexit=0
+	case $- in *e*) errexit=1 ;; esac
+	set +e
+	(
+		if [ "$errexit" = 1 ]; then set -e; fi
+		"$@"
+	)
+	NDH_LOGGER_COMMAND_RC=$?
+	if [ "$errexit" = 1 ]; then set -e; fi
+	return 0
+}
+
 ndh::logger:command:run() {
 	if [ "$#" -lt 2 ]; then
 		echo "[ndh::logger:command:run] usage: ndh::logger:command:run <tag> <command> [args...]" >&2
@@ -324,11 +347,12 @@ ndh::logger:command:run() {
 	# Traced only on request: a trace writes every value the command expands into the log sink,
 	# tokens and privates included. A script that handles privates unsets the request in its guard.
 	if [ "${NDH_LOGGER_XTRACE:-0}" = 1 ]; then set -x; fi
-	local rc=0
-	if "$@"; then
+	local rc
+	ndh::logger:command:invoke "$@"
+	rc=$NDH_LOGGER_COMMAND_RC
+	if [ "$rc" = 0 ]; then
 		echo "[$tag] ndh::logger:command:run completed successfully" >&2
 	else
-		rc=$?
 		echo "[$tag] ndh::logger:command:run failed (rc=$rc)" >&2
 		if [ -n "${ACTIVATION_LOG_FILE:-}" ]; then
 			printf '[%s] ndh::logger:command:run error details: %s\n' "$tag" "${ACTIVATION_LOG_FILE}" >&3

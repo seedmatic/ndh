@@ -33,7 +33,7 @@ main() {
 
   local expected_blob=""
   if [[ -r "$expected_pub" ]]; then
-    expected_blob="$(awk '{print $2}' "$expected_pub" | head -n1)"
+    expected_blob="$(awk '{print $2}' "$expected_pub" | head -n1 || true)"
     if [[ -z "$expected_blob" ]]; then
       logger -p auth.warning -t "$LOG_TAG" "could not parse key blob from: ${expected_pub}"
       findings=$((findings + 1))

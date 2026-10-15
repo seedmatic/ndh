@@ -1136,6 +1136,16 @@
                 done
                 touch $out
               '';
+          # The logger wrapper every ndh script runs under: a `set -e` script's failure stops it and fails
+          # the wrapper.
+          logger-command-run-bats = import ./modules/.common.d/shell.d/tests/package.nix { inherit pkgs; };
+          # The sshd post-flight checks: an unreadable host key is reported, an sshd not up refuses, the
+          # authorized-keys check never blocks sshd.
+          openssh-checks-bats = import ./modules/nixos/systemd/openssh.d/tests/package.nix { inherit pkgs; };
+          # baremetal-link deploy: nothing unapplied is ever reported done.
+          baremetal-link-deploy-bats = import ./pkgs/baremetal-link.d/tests/package.nix { inherit pkgs; };
+          # incus-cluster-join: a join that did not take is never reported joined.
+          incus-cluster-join-bats = import ./pkgs/incus-cluster-join.d/tests/package.nix { inherit pkgs; };
           incus-cluster-cert-bats = import ./modules/.common.d/incus-cluster-cert.d/tests/package.nix {
             inherit pkgs;
           };
@@ -1265,6 +1275,59 @@
               "nikopol"
             ]
         )
+        # The mask a failed install's log goes through into the build log: key material never passes.
+        // {
+          bringup-install-log-mask =
+            (pkgsFor { system = "aarch64-linux"; }).runCommand "bringup-install-log-mask"
+              { nativeBuildInputs = [ (pkgsFor { system = "aarch64-linux"; }).openssh ]; }
+              ''
+                ssh-keygen -q -t ed25519 -N "" -f key
+                { echo before; cat key; printf 'AGE-SECRET-'"KEY-1%s\\n" "$(head -c 400 /dev/urandom | base64 -w0 | tr -dc 'A-Z0-9' | head -c 58)"; echo after; } > log
+                sed -E -f ${./modules/nixos/bringup-zfs-disk-image.d/install-log-mask.sed} log > masked
+                grep -qx before masked && grep -qx after masked
+                if grep -qE '^[A-Za-z0-9+/=]{40,}$|AGE-SECRET-KEY-1[A-Z0-9]{50,}' masked; then
+                  echo "key material passed the mask" >&2
+                  exit 1
+                fi
+                [ "$(grep -c '\[MASKED\]' masked)" -ge 2 ]
+                # A window that starts INSIDE a key — its body and footer, no header: no body line survives.
+                tail -n +2 key > midkey
+                sed -E -f ${./modules/nixos/bringup-zfs-disk-image.d/install-log-mask.sed} midkey > midkey.masked
+                if grep -qE '^[A-Za-z0-9+/=]{40,}$' midkey.masked; then
+                  echo "a key body with no header passed the mask" >&2
+                  exit 1
+                fi
+                [ "$(grep -c '\[MASKED\]' midkey.masked)" -ge 1 ]
+                touch $out
+              '';
+        }
+        # The in-guest secret-material guard, on a real install: a private key born in the target root
+        # stops the raw build, and the refusal names it in the build log. A full VM build (~13 min).
+        // {
+          bringup-in-guest-secret-guard =
+            let
+              linuxPkgs = pkgsFor { system = "aarch64-linux"; };
+              # testers.testBuildFailure, by overrideDerivation: a runInLinuxVM derivation has no
+              # overrideAttrs. The same expect-failure.sh, around the original builder and args.
+              refused =
+                linuxPkgs.lib.overrideDerivation hostOutputs.nikopol.nixosBringupSecretCanaryBuild
+                  (orig: {
+                    builder = "${linuxPkgs.bash}/bin/bash";
+                    args = [
+                      (linuxPkgs.replaceVars "${linuxPkgs.path}/pkgs/build-support/testers/expect-failure.sh" {
+                        coreutils = linuxPkgs.coreutils;
+                        vars = linuxPkgs.lib.toShellVars { outputNames = orig.outputs or [ "out" ]; };
+                      })
+                      orig.builder
+                    ]
+                    ++ orig.args;
+                  });
+            in
+            linuxPkgs.runCommand "bringup-in-guest-secret-guard" { } ''
+              grep -q 'secret-material-guard: REFUSED /mnt/zfs-root/root/.secret-canary/id ' ${refused}/testBuildFailure.log
+              touch $out
+            '';
+        }
         # The bringup images' secret-material guard, proven by canaries — on aarch64-linux, where the
         # store layers it guards are packed, through the remote builder, like the images themselves.
         // {
@@ -2002,6 +2065,7 @@
           nixosDiskImage = nixosOutputs.diskImageFull;
           nixosDiskImageBringupSystemd = nixosOutputs.diskImageBringupSystemdBoot;
           nixosDiskImageBringupSystemdZfs = nixosOutputs.diskImageBringupZfsSystemdBoot;
+          nixosBringupSecretCanaryBuild = nixosOutputs.bringupSecretCanaryBuild;
           nixosDiskImageBringupGrub = nixosOutputs.diskImageBringupGrub;
           nixosDiskSizeHint = nixosOutputs.diskSizeHint;
           nixosDiskSizeMiB = nixosOutputs.diskSizeMiB;
@@ -2159,6 +2223,7 @@
             nixosDiskImage
             nixosDiskImageBringupSystemd
             nixosDiskImageBringupSystemdZfs
+            nixosBringupSecretCanaryBuild
             nixosDiskImageBringupGrub
             nixosDiskSizeHint
             homeManagerConfigurations

@@ -35,8 +35,9 @@ other:
   keep: as-is
 EOF
   (cd "$repo" && sops --input-type yaml --output-type yaml encrypt -i catalog/cache-trust.yaml)
-  # The real wrapper runs the command as `if "$@"`: errexit is OFF inside it, so the stub does the same.
-  printf 'ndh::logger:command:run() { shift; local rc=0; if "$@"; then :; else rc=$?; fi; return "$rc"; }\n' >"$BATS_TEST_TMPDIR/trampoline.sh"
+  # The stub runs the command the way the real wrapper does — through its ndh::logger:command:invoke,
+  # sourced from the real logger — without its log sinks.
+  printf 'source "%s"\nndh::logger:command:run() { shift; ndh::logger:command:invoke "$@"; return "$NDH_LOGGER_COMMAND_RC"; }\n' "$NDH_LOGGER_SH" >"$BATS_TEST_TMPDIR/trampoline.sh"
   sed -e "s#@nixBashTrampoline@#$BATS_TEST_TMPDIR/trampoline.sh#" -e 's#@loggerTag@#test#' -e "s#@nix@#$(command -v nix)#" \
     "$BATS_TEST_DIRNAME/../cache-signing-key-rotate.sh" >"$BATS_TEST_TMPDIR/rotate"
 }

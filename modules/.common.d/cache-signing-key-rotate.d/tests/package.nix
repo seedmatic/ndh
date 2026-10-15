@@ -3,6 +3,8 @@
 { pkgs }:
 pkgs.runCommand "cache-signing-key-rotate-bats"
   {
+    # The real logger, whose ndh::logger:command:invoke the suite's stub wrapper runs its command with.
+    NDH_LOGGER_SH = ../../shell.d/logger.sh;
     nativeBuildInputs = with pkgs; [
       age
       bats
