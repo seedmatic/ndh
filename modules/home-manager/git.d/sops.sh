@@ -6,6 +6,8 @@
 #   - filter smudge: decrypts at checkout, and writes nothing when it cannot;
 #   - filter clean: encrypts at `git add`, for the recipients of the file's OWN creation rule.
 # Claude sessions neutralise all of them (claude-code.d/hooks/sops-git-env.sh).
+# The filters hold the plaintext only in a 0700 directory under the user's TMPDIR, removed on exit; a
+# SIGKILL skips that trap and can leave it there, private to the user, until the system's tmp sweep.
 # ★ xtrace-guard — no trace, whatever the invocation (bash -x, an inherited SHELLOPTS=xtrace, a
 # caller's set -x): this script handles private keys, and a trace prints every value it expands.
 case $- in *x*) { set +x; } 2>/dev/null; echo "[xtrace-guard] xtrace disabled: this script handles private keys" >&2 ;; esac
