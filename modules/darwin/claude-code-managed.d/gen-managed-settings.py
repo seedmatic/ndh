@@ -58,6 +58,8 @@ def twins(base):
 
 
 deny = [r for base in bases for r in twins(base)]
+# Path rules are not commands: no flox twins, taken as they are.
+deny += [p["rule"] for p in table.get("list_path_rules", [])]
 ask = [r for base in table.get("list_ask_rules", []) for r in twins(base)]
 
 out = sys.argv[1]
