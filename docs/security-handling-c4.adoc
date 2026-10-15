@@ -59,7 +59,7 @@ rectangle "Host Security Boundary" {
 
   rectangle "Key Sources" as keysrc {
     [System age key\n/etc/sops/age/keys.txt] as sysage
-    [Role-scoped SSH server keys\n(rdp-host, vz-guest-*)] as sshkeys
+    [Per-machine SSH host keys\n(from the operator's keyring)] as sshkeys
   }
 
   rectangle "Secret Sources (repo)" as src {
@@ -105,9 +105,11 @@ note right of bootstrap
 end note
 
 note right of hostkeyinst
-  Server host key: a key generated on the
-  host itself, certified on the seat by the
-  ssh fabric HOSTS authority. See
+  Server host key: one per machine, generated
+  once by the operator into the keyring on
+  bioskop and pushed by bioskop; one host
+  certificate per machine, signed on the seat
+  by the ssh fabric HOSTS authority. See
   ssh-keys-architecture (Roles × Keys).
 end note
 @enduml
