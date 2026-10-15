@@ -12,6 +12,7 @@
       cacheTrustCompose = 1600;
       sshKeysEnrichment = 1610;
       userSecretMirror = 1620;
+      incusClusterCert = 1650;
       restartSecretReaders = 1700;
       homeManager = 2000;
     };

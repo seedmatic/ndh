@@ -45,6 +45,9 @@
 
     # The SOPS age key must already exist: nothing generates it.
     ndh.sopsAgeKeyBootstrap.darwinSystemWideKey = true;
+
+    # bioskop holds the TLS authority (the seat): its activation restores the Incus cluster certificate.
+    ndh.incusClusterCert.atActivation = true;
     sops.age.keyFile = "/etc/sops/age/keys.txt";
 
     services.nxmaticCachixWatchStore = {
