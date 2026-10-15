@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# A merge (a pull, a subtree pull) can run a sops smudge too: the same announcement as post-checkout,
+# chaining to the repository's own post-merge.
+set -euo pipefail
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SOPS_FILTER_GUARD_HOOK=post-merge exec "${here}/post-checkout" "$@"

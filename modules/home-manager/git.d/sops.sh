@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # -*- mode: sh -*-
-# The git sops drivers, for the repositories whose .gitattributes name them (fleet, keyhole; never a
+# The git sops drivers, for the repositories whose .gitattributes name them (keyhole; never a
 # repository holding a flake, so nix never evaluates a decrypted tree):
 #   - diff textconv: renders a sops blob decrypted, so `git diff` shows what moved;
 #   - filter smudge: decrypts at checkout, and writes nothing when it cannot;

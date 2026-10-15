@@ -19,6 +19,8 @@ let
   dir = pkgs.runCommand "claude-code-session-hooks" { } ''
     mkdir -p $out
     cp ${src}/*.sh ${src}/memory-dir.bash $out/
+    # sops-filter-check.sh shares the global git hooks' guard library: one source for both.
+    cp ${../../git.d/hooks/lib-sops-filter-guard.sh} $out/lib-sops-filter-guard.sh
     # sops-git-env.sh names sops-clean-guard.sh by its own directory, as the clean filter's command.
     chmod +x $out/*.sh
   '';
@@ -39,6 +41,7 @@ in
           (entry "memory-guard.sh" 5 "Verifying memory wiring...")
           (entry "live-page.sh" 5 "Registering with the integration...")
           (entry "sops-git-env.sh" 5 "Neutralising the sops git drivers for this session...")
+          (entry "sops-filter-check.sh" 5 "Checking that no sops filter decrypts in this flake repository...")
         ];
       }
     ];
@@ -79,6 +82,7 @@ in
       }
       ''
         cp -r ${src} src && chmod -R u+w src
+        cp ${../../git.d/hooks/lib-sops-filter-guard.sh} src/lib-sops-filter-guard.sh
         cd src/tests && HOME=$TMPDIR bats hooks.bats
         touch $out
       '';
