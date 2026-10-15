@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+# A checkout (and a merge, through post-merge) is when a sops smudge filter writes files in the CLEAR. In a
+# repository that holds a flake, that must never happen unnoticed, a stale checkout included: say it, and
+# name the files now in the clear on disk. It cannot be undone from here, so it never fails the checkout.
+# Then chain to the repository's own hook, so a global core.hooksPath does not shadow it.
+set -euo pipefail
+
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib-wip-guard.sh
+. "${here}/lib-wip-guard.sh"
+# shellcheck source=lib-sops-filter-guard.sh
+. "${here}/lib-sops-filter-guard.sh"
+
+hook="${SOPS_FILTER_GUARD_HOOK:-$(basename "${BASH_SOURCE[0]}")}"
+if repo_holds_flake; then
+  hits="$(sops_filtered_paths)"
+  if [ -n "${hits}" ]; then
+    {
+      echo "⛔ sops-filter-guard (${hook}): this repository holds a flake, yet these files resolve to a sops filter:"
+      # head first, never at the end of a pipe: under pipefail an early-closing head kills the writer (141).
+      head -20 <<<"${hits}" | while read -r path _; do
+        if is_decrypted_on_disk "${path}"; then echo "   ${path}  ← IN THE CLEAR ON DISK NOW"; else echo "   ${path}"; fi
+      done
+      echo "Remove the filter= attribute, then restore the encrypted files: git checkout -- <path>."
+    } >&2
+  fi
+fi
+
+chain_repo_local "${hook}" "${here}" "$@"

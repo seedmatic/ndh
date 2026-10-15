@@ -8,11 +8,27 @@ here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib-wip-guard.sh
 . "${here}/lib-wip-guard.sh"
 
+# shellcheck source=lib-sops-filter-guard.sh
+. "${here}/lib-sops-filter-guard.sh"
+
 branch="$(git symbolic-ref --short HEAD 2>/dev/null || true)"
 if is_protected_branch "${branch}"; then
   paths="$(wip_paths_in_index)"
   if [ -n "${paths}" ]; then
     reject "${paths}" "${branch}"
+    exit 1
+  fi
+fi
+
+if repo_holds_flake; then
+  hits="$(sops_filtered_paths_any)"
+  if [ -n "${hits}" ]; then
+    {
+      echo "⛔ sops-filter-guard: this repository holds a flake, and these files resolve to a sops filter:"
+      head -20 <<<"${hits}" | sed 's/^/   /'
+      echo "Remove the filter= attribute (a .gitattributes, .git/info/attributes or the global attributes"
+      echo "file): a flake repository keeps its sops files encrypted on disk."
+    } >&2
     exit 1
   fi
 fi

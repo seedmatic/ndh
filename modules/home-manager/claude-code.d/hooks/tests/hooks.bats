@@ -386,3 +386,59 @@ sops_drivers() {
   bash "$H/sops-git-env.sh" </dev/null
   [ ! -s "$CLAUDE_ENV_FILE" ]
 }
+
+# --- sops-filter-check: a flake repository naming a sops filter is announced at session start ---
+
+# A repository with (or without) a flake, one sops-shaped file in the clear and one envelope. No sops
+# driver is defined: check-attr reports the ATTRIBUTE, which is the question, whatever the driver.
+filter_repo() { # $1 = with-flake | no-flake
+  R="$T/fr"; mkdir -p "$R"; git -C "$R" init -q
+  [ "$1" = with-flake ] && echo '{ outputs = _: { }; }' >"$R/flake.nix"
+  printf 'token: in-the-clear\n' >"$R/secret.yaml"
+  printf 'data: ENC[x]\nsops:\n  mac: ENC[y]\n' >"$R/sealed.yaml"
+  git -C "$R" add -A && git -C "$R" commit -qm init
+}
+check() { printf '{"cwd":"%s"}' "$1" | bash "$H/sops-filter-check.sh"; }
+
+@test "sops-filter-check: a committed filter= in a flake repo is announced, the clear file marked" {
+  filter_repo with-flake
+  printf '*.yaml filter=sops-yaml\n' >"$R/.gitattributes"; git -C "$R" add .gitattributes; git -C "$R" commit -qm attrs
+  run check "$R"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'"systemMessage"'*'secret.yaml (IN THE CLEAR ON DISK)'* ]]
+  [[ "$output" == *'sealed.yaml'* && "$output" != *'sealed.yaml (IN THE CLEAR'* ]]
+}
+
+@test "sops-filter-check: .git/info/attributes counts too (no commit at all)" {
+  filter_repo with-flake
+  printf 'secret.yaml filter=sops-yaml\n' >"$R/.git/info/attributes"
+  run check "$R"
+  [[ "$output" == *'secret.yaml (IN THE CLEAR ON DISK)'* ]]
+}
+
+@test "sops-filter-check: an UNCOMMITTED .gitattributes in the worktree counts" {
+  filter_repo with-flake
+  printf 'secret.yaml filter=sops-yaml diff=sops-yaml\n' >"$R/.gitattributes"
+  run check "$R"
+  [[ "$output" == *'secret.yaml'* ]]
+}
+
+@test "sops-filter-check: a flake repo with no filter= is silent" {
+  filter_repo with-flake
+  printf '*.yaml diff=sops-yaml\n' >"$R/.gitattributes"; git -C "$R" add .gitattributes; git -C "$R" commit -qm diff-only
+  run check "$R"
+  [ "$status" -eq 0 ] && [ -z "$output" ]
+}
+
+@test "sops-filter-check: a repo without a flake may name filters, silent" {
+  filter_repo no-flake
+  printf '*.yaml filter=sops-yaml\n' >"$R/.gitattributes"; git -C "$R" add .gitattributes; git -C "$R" commit -qm attrs
+  run check "$R"
+  [ "$status" -eq 0 ] && [ -z "$output" ]
+}
+
+@test "sops-filter-check: outside a repository, silent" {
+  mkdir -p "$T/plain"
+  run check "$T/plain"
+  [ "$status" -eq 0 ] && [ -z "$output" ]
+}
