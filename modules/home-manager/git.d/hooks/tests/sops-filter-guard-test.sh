@@ -51,6 +51,11 @@ r=$(repo nested no-flake); mkdir -p "$r/sub/x" && echo '{ outputs = _: { }; }' >
 printf '*.yaml filter=sops-yaml\n' >"$r/.gitattributes"; git -C "$r" add .gitattributes
 [ "$(run_in "$r" "$HOOKS_DIR/pre-commit")" = 1 ] && ok "a NESTED flake counts: refused" || bad "nested flake"
 
+r=$(repo headonly with-flake); mkdir -p "$r/m"; for i in $(seq 1 3000); do : >"$r/m/file-with-a-long-enough-name-$i.txt"; done
+git -C "$r" add m >/dev/null && git -C "$r" commit -qm many && git -C "$r" rm -q --cached flake.nix
+printf '*.yaml filter=sops-yaml\n' >"$r/.gitattributes"; git -C "$r" add .gitattributes
+[ "$(run_in "$r" "$HOOKS_DIR/pre-commit")" = 1 ] && ok "flake.nix only at HEAD (git rm --cached), 3000 files: still refused (no SIGPIPE)" || bad "HEAD-only flake past the pipe buffer"
+
 echo "global post-checkout / post-merge:"
 r=$(repo announce with-flake); printf '*.yaml filter=sops-yaml\n' >"$r/.gitattributes"
 [ "$(run_in "$r" "$HOOKS_DIR/post-checkout" 0 0 1)" = 0 ] && grep -q 'secret.yaml  ← IN THE CLEAR ON DISK NOW' "$T/out" && ok "post-checkout announces, never fails" || bad "post-checkout announcement"

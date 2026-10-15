@@ -15,8 +15,11 @@
 # True when the repository holds a flake at ANY depth, in its index or at HEAD: a flake evaluated from a
 # subdirectory still copies the whole repository into the store.
 repo_holds_flake() {
+  # Captured, never `| grep -q`: under pipefail an early-exiting grep kills ls-tree (141), and the test
+  # would turn FALSE exactly when a flake is found past the pipe buffer.
+  # shellcheck disable=SC2143 # grep -q is the bug this avoids (see above)
   [ -n "$(git ls-files -- flake.nix ':(glob)**/flake.nix' 2>/dev/null)" ] ||
-    git ls-tree -r --name-only HEAD 2>/dev/null | grep -qE '(^|/)flake\.nix$'
+    [ -n "$(git ls-tree -r --name-only HEAD 2>/dev/null | grep -E '(^|/)flake\.nix$')" ]
 }
 
 # "<path> filter=<value>" for each tracked file whose resolved filter is sops-*. With --cached, the
