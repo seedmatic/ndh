@@ -39,6 +39,17 @@ def load_table():
         return json.load(fh)
 
 
+def protected_paths(table):
+    """The absolute paths of list_path_rules: the managed list's Read()/Edit() rules govern the file
+    tools only, so the hook refuses a Bash command reaching them. One source for both."""
+    paths = set()
+    for entry in table.get("list_path_rules", []):
+        m = re.fullmatch(r"(?:Read|Edit)\(/(/[^()\s]+?)(?:/\*\*)?\)", entry["rule"])
+        if m:
+            paths.add(os.path.normpath(m.group(1)))
+    return sorted(paths)
+
+
 HEREDOC = re.compile(r"<<(-?)\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\2")
 # Commands that run their standard input, or wrap a command that may: a heredoc fed to one of
 # these is code. Everything else (`cat`, `tee`, `git commit -F -`, `jq`) receives it as data.
@@ -294,6 +305,7 @@ class Analyzer:
         self.table = table
         self.cwd = cwd
         self.home = home
+        self.protected = protected_paths(table)
         self.verdicts = []
 
     def deny(self, why, argv):
@@ -467,6 +479,16 @@ class Analyzer:
             tok = os.path.join(self.cwd, tok)
         return os.path.normpath(tok)
 
+    def is_protected(self, path):
+        return path is not None and any(path == p or path.startswith(p + os.sep) for p in self.protected)
+
+    def reaches_protected(self, tok):
+        """TOK, an option's value included, resolved against the tracked cwd; a glob is cut at its first
+        wildcard, so `keyring/*` still names keyring."""
+        tok = tok.split("=", 1)[1] if tok.startswith("-") and "=" in tok else tok
+        stem = re.split(r"[*?\[]", tok, maxsplit=1)[0]
+        return self.is_protected(self.resolve(tok)) or (stem != tok and self.is_protected(self.resolve(stem.rstrip("/") or "/")))
+
     def is_scratch_target(self, tok):
         path = self.resolve(tok)
         if path is None:
@@ -488,6 +510,18 @@ class Analyzer:
 
     def check(self, argv):
         prog, args = argv[0], argv[1:]
+        if prog in ("cd", "pushd"):
+            # The simple commands come in order, so a chain of cd is followed: `cd …/keyhole.d && cd keyring`.
+            target = next((t for t in args if not t.startswith("-")), "~")
+            moved = self.resolve(target)
+            if moved:
+                self.cwd = moved
+            if self.is_protected(moved):
+                self.deny("enters the operator's keyring material", argv)
+            return
+        if any(self.reaches_protected(t) for t in args):
+            self.deny("names the operator's keyring material", argv)
+            return
         if prog == "rm":
             flags = "".join(t[1:] for t in args if t.startswith("-") and not t.startswith("--"))
             recursive = bool(set(flags) & {"r", "R"}) or "--recursive" in args
@@ -534,6 +568,13 @@ def main():
         if not isinstance(command, str):
             raise Refused("no command text to inspect")
         analyzer = Analyzer(load_table(), event.get("cwd") or "", os.environ.get("HOME") or os.path.expanduser("~"))
+        # The keyring material, a first line: by its text anywhere (a quoted path, a -c script) and by the
+        # session's own cwd. A path built at run time (a variable, a computed cd) escapes the text.
+        if analyzer.is_protected(os.path.normpath(analyzer.cwd) if analyzer.cwd else None):
+            analyzer.deny("runs inside the operator's keyring material", [command])
+        for p in analyzer.protected:
+            if re.search(re.escape(p) + r"(?=$|[/\s'\";&|)<>])", command):
+                analyzer.deny("names the operator's keyring material", [p])
         analyzer.analyze(command)
     except Refused as exc:
         print(f"deny-hook refused: {exc}", file=sys.stderr)

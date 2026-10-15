@@ -162,3 +162,24 @@ asked()   { [ "$status" -eq 0 ] && [[ "$output" == *'"permissionDecision": "ask"
 @test "parse still sees a verb after two heredocs" { run hook "$(printf "cat <<'A' && cat <<'B'\nx\nA\ny\nB\nkubectl delete pod z")"; denied; }
 @test "parse comment does not hide the next line" { run hook "$(printf "# kubectl delete here is prose\nkubectl delete pod z")"; denied; }
 @test "parse ANSI-C string still analysed"  { run hook "bash -c \$'kubectl delete pod z'"; denied; }
+
+# --- the operator's keyring material (verbs.json list_path_rules): the managed Read()/Edit() rules govern the
+#     file tools only, so the hook refuses a Bash command reaching it. A first line: a path built at run time escapes.
+KEY=/Volumes/git-bare-store/nxmatic/keyhole.git/.ssh
+RING=/Volumes/git-worktree-store/nxmatic/keyhole.d/keyring
+@test "keyring: cat of the key"                 { run hook "cat $KEY/id_ed25519"; denied; }
+@test "keyring: ssh-keygen -y of the key"       { run hook "ssh-keygen -y -f $KEY/id_ed25519"; denied; }
+@test "keyring: cp of the worktree"             { run hook "cp -r $RING /tmp/x"; denied; }
+@test "keyring: sops -d in the worktree"        { run hook "sops -d --input-type binary $RING/gpg.master~rehydrate.enc.sh"; denied; }
+@test "keyring: cd then cat"                    { run hook "cd $RING; cat gpg.master~rehydrate.sh"; denied; }
+@test "keyring: cd chain into it"               { run hook 'cd /Volumes/git-worktree-store/nxmatic/keyhole.d && cd keyring && cat x'; denied; }
+@test "keyring: relative path from its parent"  { run hook 'cat keyring/gpg.master~rehydrate.sh' /Volumes/git-worktree-store/nxmatic/keyhole.d; denied; }
+@test "keyring: a glob under it"                { run hook 'tar czf /tmp/k.tgz keyring/*' /Volumes/git-worktree-store/nxmatic/keyhole.d; denied; }
+@test "keyring: an option value"                { run hook "ssh -i $KEY/id_ed25519 host"; denied; }
+@test "keyring: --opt=path"                     { run hook "git --git-dir=$KEY/.. log"; denied; }
+@test "keyring: inside a -c script"             { run hook "python3 -c \"open('$KEY/id_ed25519').read()\""; denied; }
+@test "keyring: a session whose cwd is inside"  { run hook 'ls' "$RING"; denied; }
+@test "keyring: relative .ssh from the bare"    { run hook 'cat .ssh/id_ed25519' /Volumes/git-bare-store/nxmatic/keyhole.git; denied; }
+@test "keyring: the main worktree stays free"   { run hook 'git -C /Volumes/git-worktree-store/nxmatic/keyhole.d/main log -1'; allowed; }
+@test "keyring: a sibling name stays free"      { run hook 'ls /Volumes/git-worktree-store/nxmatic/keyhole.d/keyring-archive'; allowed; }
+@test "keyring: the bare's refs stay free"      { run hook 'git -C /Volumes/git-bare-store/nxmatic/keyhole.git for-each-ref'; allowed; }
