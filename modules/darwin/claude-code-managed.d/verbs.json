@@ -56,6 +56,11 @@
     "grow": { "verbs": ["up"], "window": 2, "value_opts": [], "in_list": false }
   },
   "list_extra_rules": ["mv ~/.claude*"],
+  "list_path_rules": [
+    { "rule": "Read(//Volumes/git-bare-store/nxmatic/keyhole.git/.ssh/**)", "why": "the keyring@keyhole private key, whose ssh-to-age opens the operator's keyring backups" },
+    { "rule": "Read(//Volumes/git-worktree-store/nxmatic/keyhole.d/keyring/**)", "why": "the keyring worktree, where the sops-keyring filter leaves the rehydrate scripts in the clear" },
+    { "rule": "Edit(//Volumes/git-worktree-store/nxmatic/keyhole.d/keyring/**)", "why": "the same worktree: a session never writes the operator's keyring" }
+  ],
   "list_ask_rules": ["rm -rf /", "rm -rf ~", "rm -rf ~/", "rm -rf $HOME", "rm -rf /Users", "rm -rf /Volumes", "rm -rf /nix", "rm -rf ~/.claude*"],
   "nix_attr_aliases": {
     "kubernetes-helm": "helm",
