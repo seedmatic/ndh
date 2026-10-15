@@ -46,6 +46,7 @@
     ./nfs-remote-identity.nix
     ./incus-remote-trust.nix
     ./sops.nix
+    ./identity-push.nix
     ./bringup-observe.nix
     ./tailscale-vnc-forward.nix
     ./tls-authority-keychain.nix

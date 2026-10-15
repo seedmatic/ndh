@@ -43,6 +43,11 @@ let
       echo "[ndh-identity-reload] sops and its readers restarted: ${lib.concatStringsSep " " secretReaders}"
     '';
   };
+  # The machine's side of ndh-identity-push: places what bioskop sends, then ndh-identity-reload.
+  identityReceive = (import ../.common.d/identity-push.d/package.nix { inherit pkgs lib; }).receive {
+    machine = config.networking.hostName;
+    keyFile = config.sops.age.keyFile;
+  };
 in
 {
   # The age-bootstrap service imports keys from the host-provided virtiofs
@@ -110,9 +115,12 @@ in
           # identity is missing, and ndh-identity-reload restarts both once the operator placed it.
         };
 
-    environment.systemPackages = lib.mkIf (
-      (config.sops.useSystemdActivation or false) && hasManagedSecrets
-    ) [ identityReload ];
+    environment.systemPackages =
+      lib.mkIf ((config.sops.useSystemdActivation or false) && hasManagedSecrets)
+        [
+          identityReload
+          identityReceive
+        ];
 
   };
 }
