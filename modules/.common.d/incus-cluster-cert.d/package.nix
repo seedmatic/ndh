@@ -1,6 +1,7 @@
-# incus-cluster-cert-renew: re-mint the Incus CLUSTER certificate under the TLS authority's
-# current signing slot, install it on every member, re-pin the seat's client, verify (T14; the
-# hotfix rule: built by revision, run by the operator from the seat). Everything that names the
+# incus-cluster-cert-renew: renew the Incus CLUSTER certificate under the TLS authority's current
+# signing slot, ON THE KEY INCUS GENERATED (a CSR made on a member, signed on the seat), install it on
+# every member, re-pin the seat's client, verify. Built by revision; run by the operator from the seat,
+# and by bioskop's darwin activation with --activation. Everything that names the
 # cluster is fixed at evaluation, from the catalog — the SAN set (the whole fleet's, sans.nix),
 # the members, the names to verify — and the keys.yaml it reads is the ENCRYPTED one of this
 # revision: nothing evaluates a working tree at run time. Imported by the flake's packages and

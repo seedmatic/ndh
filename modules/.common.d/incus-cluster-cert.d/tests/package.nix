@@ -1,4 +1,4 @@
-# incus-cluster-cert-renew's bats suite as a flake check: the real path up to the mint.
+# incus-cluster-cert-renew's bats suite as a flake check: the real path, a member simulated locally.
 { pkgs }:
 pkgs.runCommand "incus-cluster-cert-bats"
   {
@@ -9,6 +9,7 @@ pkgs.runCommand "incus-cluster-cert-bats"
       gnugrep
       gnused
       openssl
+      step-cli
       yq-go
     ];
   }
