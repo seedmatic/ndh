@@ -74,8 +74,11 @@ read -r _ served _ < <(ssh-keygen -l -E sha256 -f <(printf '%s\n' "${scanned[0]}
 printf '%s\n' "${scanned[0]}" >"$work/known_hosts"
 
 # ONE identity, no agent, no forwarding, no multiplexing, and ONLY the key just confirmed is trusted.
+# -F /dev/null: the options here are the whole configuration, so no `Host *` of the operator's can add a
+# ProxyJump (away from the link checked above) or a LocalCommand. No password: a fallback fails, never prompts.
 sshq() {
-  ssh -o IdentityAgent=none -o IdentitiesOnly=yes -o IdentityFile="$sshKey" -o CertificateFile="$sshCert" \
+  ssh -F /dev/null -o BatchMode=yes -o PasswordAuthentication=no -o KbdInteractiveAuthentication=no \
+    -o IdentityAgent=none -o IdentitiesOnly=yes -o IdentityFile="$sshKey" -o CertificateFile="$sshCert" \
     -o User="$sshUser" -o ForwardAgent=no -o ClearAllForwardings=yes -o ControlMaster=no -o ControlPath=none \
     -o UserKnownHostsFile="$work/known_hosts" -o GlobalKnownHostsFile=/dev/null -o StrictHostKeyChecking=yes \
     -o HostKeyAlgorithms=ssh-ed25519 -o ConnectTimeout=10 -o ServerAliveInterval=15 -o ServerAliveCountMax=2 \

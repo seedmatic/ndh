@@ -49,7 +49,8 @@ EOF
 #!/usr/bin/env bash
 # The pinning is checked, not trusted: ONLY the throwaway known_hosts, holding the served key.
 args=" \$* "
-for o in UserKnownHostsFile= "GlobalKnownHostsFile=/dev/null " "StrictHostKeyChecking=yes " "IdentityAgent=none "; do
+for o in "-F /dev/null " UserKnownHostsFile= "GlobalKnownHostsFile=/dev/null " "StrictHostKeyChecking=yes " \
+  "IdentityAgent=none " "BatchMode=yes " "PasswordAuthentication=no " "KbdInteractiveAuthentication=no "; do
   [[ \$args == *"\$o"* ]] || { echo "ssh stub: missing -o \$o" >&2; exit 97; }
 done
 kh="\${args#* UserKnownHostsFile=}"; kh="\${kh%% *}"
@@ -78,6 +79,8 @@ no_private_in() { ! grep -rqE 'AGE-SECRET-KEY|PRIVATE KEY' "$@"; }
   [ "$(age-keygen -y "$keyFile")" = "$(ssh-to-age -i "$t/seat.pub")" ]
   [ "$(ssh-keygen -y -f "$hostKeyFile" | cut -d' ' -f1,2)" = "$(cut -d' ' -f1,2 "$t/machine.pub")" ]
   [ -e "$t/reloaded" ]
+  # Both sessions ran with the user's ssh config ignored.
+  [ "$(grep -c -- '-F /dev/null ' "$t/ssh.log")" -eq 2 ]
   [[ $output != *AGE-SECRET-KEY* && $output != *"PRIVATE KEY"* ]]
   no_private_in "$t/tmp" "$t/ssh.log"
   [ -z "$(find "$t/root" -name '.ndh-identity.*')" ]
