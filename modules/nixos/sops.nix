@@ -50,6 +50,7 @@ let
     keyFile = config.sops.age.keyFile;
     served =
       if config.ndh.hostKey.own then config.ndh.hostKey.file else "/etc/ssh/ssh_host_ed25519_key.pub";
+    owner = "root:root";
   };
 in
 {

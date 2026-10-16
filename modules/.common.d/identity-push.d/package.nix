@@ -1,7 +1,7 @@
 # ndh-identity-push (the operator seat) and ndh-identity-receive (the machine): bioskop gives a machine its
 # identities, as a gesture of the operator (docs/ssh-keys-architecture.adoc). Everything that names the
 # target is fixed at evaluation: an operator seat pushes to ITS guest only, at the inventory's address, through its
-# own link. One definition, imported by the operator seat's and the machine's modules.
+# own link, or to itself, with no network. One definition, imported by the operator seat's and the machine's modules.
 { pkgs, lib }:
 let
   # Where the machine's own host key is placed; sshd serves it once the machine sets ndh.hostKey.own.
@@ -12,11 +12,13 @@ in
   inherit hostKeyFile;
 
   # operatorIdentity: the ONE ssh identity used to reach the machine: { user, keyFile, certFile }.
+  # receive: the seat's own ndh-identity-receive, called by its store path so sudo's PATH does not choose it.
   push =
     {
       seat,
       netplan,
       operatorIdentity,
+      receive,
     }:
     let
       bm = netplan.baremetal.${seat};
@@ -42,17 +44,21 @@ in
         sshCert=${lib.escapeShellArg operatorIdentity.certFile}
         maxBytes=${toString maxBytes}
         ttyIn=/dev/tty
+        localSudo=/usr/bin/sudo
+        localReceive=${receive}/bin/ndh-identity-receive
         PATH="$PATH:/sbin:/usr/sbin" # route and ifconfig, the operator seat's own
       ''
       + builtins.readFile ./ndh-identity-push.sh;
     };
 
   # served: what this machine's sshd serves, whose fingerprint the console prints for the push.
+  # keyFile: the sops keyFile the age identity goes to, or "" for a machine whose frame carries the host key only.
   receive =
     {
       machine,
       keyFile,
       served,
+      owner,
     }:
     pkgs.writeShellApplication {
       name = "ndh-identity-receive";
@@ -66,7 +72,7 @@ in
         keyFile=${lib.escapeShellArg keyFile}
         hostKeyFile=${lib.escapeShellArg hostKeyFile}
         served=${lib.escapeShellArg served}
-        owner=root:root
+        owner=${lib.escapeShellArg owner}
         maxBytes=${toString maxBytes}
       ''
       + builtins.readFile ./ndh-identity-receive.sh;
