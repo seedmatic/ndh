@@ -109,8 +109,8 @@ flowchart TB
     batt["attic.bioskop — private cache<br/><i>signs with seedmatic-bioskop-attic-1</i>"]:::cache
   end
   subgraph NIKOPOL["seat nikopol — two VMs on the corporate bare-metal"]
-    rdp["rdp.nikopol — the darwin seat VM<br/><i>builds · watch-store</i>"]:::writer
-    nnix["nixos.nikopol<br/><i>builds · watch-store</i>"]:::writer
+    rdp["rdp.nikopol — the darwin seat VM<br/><i>builds · watch-store</i>"]:::corpwriter
+    nnix["nixos.nikopol<br/><i>builds · watch-store</i>"]:::corpwriter
     natt["attic.nikopol — private cache<br/><i>signs with seedmatic-nikopol-attic-1</i>"]:::cache
   end
   vz["vzhost.nikopol — the corporate bare-metal<br/><i>builds nothing · receives nix copy</i>"]:::receiver
@@ -123,13 +123,14 @@ flowchart TB
   rdp & nnix ==>|"nix copy of closures"| vz
 
   classDef writer fill:#fef3c7,stroke:#b45309,stroke-width:2px;
+  classDef corpwriter fill:#fee2e2,stroke:#b91c1c,stroke-width:2px;
   classDef cache fill:#ddd9f2,stroke:#5b52b8,stroke-width:2px;
   classDef receiver fill:#dcfce7,stroke:#15803d;
 ....
 
-Legend: amber — a writer, which builds and holds its seat's write token; violet — a seat's private
-cache, which signs what it serves with its own key; green — the corporate bare-metal, a receiver
-only. Plain arrow = push; dotted = read (substitute); thick = `nix copy` into its store.
+Legend: amber — a writer, which builds and holds its seat's write token; red — the same, but a VM on
+the corporate bare-metal, whose hypervisor it trusts; violet — a seat's private cache, which signs
+what it serves with its own key; green — the corporate bare-metal, a receiver only. Plain arrow = push; dotted = read (substitute); thick = `nix copy` into its store.
 
 [cols="1,2,2",options="header"]
 |===
@@ -157,10 +158,16 @@ only. Plain arrow = push; dotted = read (substitute); thick = `nix copy` into it
 no attic substituter
 |===
 
-A cache is as trustworthy as its least trusted writer (<<trust-model>>), and now each cache has only
-its own seat's writers; no machine of the corporate side writes, so reading across seats is a mutual
-trust between the operator's two seats, nothing more. A blob's provenance is its signature: the key
-names the seat.
+A cache is as trustworthy as its least trusted writer (<<trust-model>>), and each cache has only its
+own seat's writers. But nikopol's writers, rdp.nikopol and nixos.nikopol, are VMs **on** the corporate
+bare-metal, whose hypervisor can read and alter their memory, disks and tokens. So bioskop's hosts,
+trusting nikopol's key, trust what the corporate bare-metal hosting nikopol's seat could inject: **an
+accepted risk** (the operator, under the security model's "corp IT"), **not an absence of risk** (🛡️,
+2026-10-16). A blob's provenance is its signature: the key names the seat.
+
+The private tiers' confidentiality still rests on <<revisions-only>>: a watch-store uploads any store
+path, including what an evaluation of a decrypted working tree copies into the store (the 2026-10-10
+class), and now the OTHER seat reads it too.
 
 === The path of a read across seats
 
@@ -172,16 +179,17 @@ flowchart LR
   nb["nixos.bioskop<br/><i>subnet router · advertises its /21</i>"]:::router
   a["attic.bioskop<br/><i>on bioskop's fabric-br, 172.16.x</i>"]:::cache
 
-  c -->|"① in clear — virtual interfaces, inside the corporate bare-metal"| nn
+  c -->|"① outside the tunnel, under TLS — virtual interfaces, inside the corporate bare-metal"| nn
   nn ==>|"② WireGuard tunnel (tailnet), direct over the LAN"| nb
-  nb -->|"③ in clear — fabric-br, inside bioskop-nixos"| a
+  nb -->|"③ outside the tunnel, under TLS — fabric-br, inside bioskop-nixos"| a
 
   classDef clear fill:#fee2e2,stroke:#b91c1c;
   classDef router fill:#dbeafe,stroke:#1d4ed8,stroke-width:2px;
   classDef cache fill:#ddd9f2,stroke:#5b52b8,stroke-width:2px;
 ....
 
-Legend: red — a hop outside the tunnel, on virtual interfaces inside one machine; blue — the two
+Legend: red — a hop outside the tunnel (in clear at the network layer, its payload under attic's
+TLS leaf), on virtual interfaces inside one machine; blue — the two
 subnet routers (each nerd-nixos advertises its bare-metal's fabric /21 and accepts its peer's, see
 `modules/nixos/baremetal-segment.nix`); violet — the cache. Thick = encrypted by the tailnet: the
 **only** traffic that crosses the LAN the two nerd-nixos share. Names resolve by split DNS: `.bioskop`
@@ -407,8 +415,10 @@ means rotating them all (see <<write-tokens>>)
 ====
 **Amended on 2026-10-15** by <<per-seat>>: still one write token per host, but each against **its
 own seat's** attic (two servers, two server secrets), and a read token per seat host for **each**
-of the two caches. A lost host now means rotating its seat's server secret only. The "cache per
-writer" considered below is not what was chosen either: the unit is the seat.
+of the two caches. A lost host means rotating **both** seats' server secrets: its write token is
+under its own seat's secret and its read tokens under both, and attic keeps no revocation list
+(🛡️, 2026-10-16). Short-lived read tokens would bound the second rotation; that is open. The "cache
+per writer" considered below is not what was chosen either: the unit is the seat.
 ====
 
 **Decided by the operator on 2026-10-10**: one common cache, `seedmatic`, and **a write token per
@@ -1835,9 +1845,9 @@ re-minted
 flowchart LR
   subgraph HOSTS["The four seat hosts — the only token holders"]
     h1["bioskop — write token to attic.bioskop, read tokens to both"]:::writer
-    h2["rdp.nikopol, darwin seat VM — write token to attic.nikopol, read tokens to both"]:::writer
+    h2["rdp.nikopol, darwin seat VM — write token to attic.nikopol, read tokens to both — on the corporate bare-metal"]:::corp
     h3["bioskop-nixos — write token to attic.bioskop, read tokens to both — builder"]:::writer
-    h4["nikopol-nixos — write token to attic.nikopol, read tokens to both — builder"]:::writer
+    h4["nikopol-nixos — write token to attic.nikopol, read tokens to both — builder, on the corporate bare-metal"]:::corp
   end
   subgraph CLUSTERS["Clusters — no attic token"]
     n1["nodes and the flox controller"]:::none
@@ -1861,13 +1871,15 @@ flowchart LR
   n1 & p1 -->|"same, on nikopol"| h4
 
   classDef writer fill:#fef3c7,stroke:#b45309,stroke-width:2px;
+  classDef corp fill:#fee2e2,stroke:#b91c1c,stroke-width:2px;
   classDef none fill:#dcfce7,stroke:#15803d;
   classDef cache fill:#ddd9f2,stroke:#5b52b8,stroke-width:2px;
   classDef pub fill:#e7ebf0,stroke:#15803d,stroke-width:2px;
 ....
 
 Legend: amber — a writer holding its write token to its own seat's cache and a read token to each
-cache, or a seat's publication credentials (each seat its own, see <<per-seat>>); green — holds no
+cache, or a seat's publication credentials (each seat its own, see <<per-seat>>); red — the same,
+on the corporate bare-metal, whose hypervisor can reach their tokens (an accepted risk); green — holds no
 attic token (the clusters, the infrastructure containers, the corporate bare-metal); violet — a
 seat's private tier; grey with a green border — the public tier.
 
