@@ -97,7 +97,9 @@
 
     # The Claude Code policy (deny/ask list and hook) is set here only: nikopol runs its employer policy.
     ndh.claude-code.managedSettings.enable = true;
-    # bioskop holds the keyring: it gives the machines their identities (ndh-identity-push).
+    # bioskop holds the keyring: it generates the machines' host keys (ndh-keyring) and gives them their
+    # identities (ndh-identity-push).
     ndh.identityPush.enable = true;
+    ndh.keyring.enable = true;
   };
 }
