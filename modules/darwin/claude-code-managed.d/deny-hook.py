@@ -498,6 +498,31 @@ class Analyzer:
         stem = re.split(r"[*?\[]", tok, maxsplit=1)[0]
         return self.is_protected(self.resolve(tok)) or (stem != tok and self.is_protected(self.resolve(stem.rstrip("/") or "/")))
 
+    def option_hits(self, args, rule):
+        """The first forbidden option of ARGS, and whether ARGS name a command. gpg takes any unique prefix
+        of a long option and clusters short ones, so `--decr` and `-qd` are --decrypt; in `-rd` the d is
+        -r's value."""
+        command, i = False, 0
+        while i < len(args):
+            tok = args[i]
+            i += 1
+            if tok == "--":
+                break
+            if tok.startswith("--") and len(tok) > 2:
+                name = tok.split("=", 1)[0]
+                if name not in rule["free_long"] and any(f.startswith(name) for f in rule["long"]):
+                    return tok, command
+                command = command or any(c.startswith(name) for c in rule["commands_long"])
+            elif tok.startswith("-") and len(tok) > 1:
+                for j, ch in enumerate(tok[1:], start=2):
+                    if ch in rule["short"]:
+                        return tok, command
+                    command = command or ch in rule["commands_short"]
+                    if ch in rule["value_short"]:
+                        i += j == len(tok)
+                        break
+        return None, command
+
     def is_scratch_target(self, tok):
         path = self.resolve(tok)
         if path is None:
@@ -544,6 +569,15 @@ class Analyzer:
                      for t in args)
             if any(n == store["prefix"] or n.startswith(store["prefix"] + "/") for n in names):
                 self.deny(f"{prog} reaches the {store['prefix']}/ entries", argv)
+            return
+        for rule in self.table.get("option_rules", []):
+            if prog not in rule["programs"]:
+                continue
+            forbidden, command = self.option_hits(args, rule)
+            if forbidden:
+                self.deny(f"{prog} {forbidden} {rule['why']}", argv)
+            elif rule["default_decrypts"] and not command:
+                self.deny(f"{prog} with no command runs its default operation, which decrypts its input", argv)
             return
         if prog == "rm":
             flags = "".join(t[1:] for t in args if t.startswith("-") and not t.startswith("--"))
