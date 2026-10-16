@@ -18,17 +18,19 @@ if [ -e "$exports" ]; then
   echo "[nfsd-off] $exports moved aside to $aside: no NFS export remains"
 fi
 
+# `nfsd status` exits 1 once the service is disabled, so its output is read apart from its status:
+# under pipefail a `nfsd status | grep` would read as "not running" and skip the stop.
+running() { grep -q "is running" <<<"$(nfsd status 2>/dev/null || true)"; }
+
 nfsd disable || true
-if nfsd status 2>/dev/null | grep -q "is running"; then
-  nfsd stop || true
-fi
+if running; then nfsd stop || true; fi
 
 # `nfsd status` exits 0 while the service is enabled.
 if nfsd status >/dev/null 2>&1; then
   echo "[nfsd-off] ERROR: nfsd is still ENABLED after \`nfsd disable\`" >&2
   exit 1
 fi
-if nfsd status 2>/dev/null | grep -q "is running"; then
+if running; then
   echo "[nfsd-off] ERROR: nfsd is still RUNNING after \`nfsd stop\`" >&2
   exit 1
 fi
