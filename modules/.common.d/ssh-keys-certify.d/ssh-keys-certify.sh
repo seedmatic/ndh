@@ -18,9 +18,11 @@ unset BASH_XTRACEFD 2>/dev/null || true
 #                host-<machine>  that machine's names: its own host key (roles × keys S3a)
 #                rdp-host        nikopol's machines only, the interim decided 2026-10-15: the shared key
 #                                nikopol's sshd still serves (baked: interimKey), until nikopol's own key
-#                                is placed (its push). Gated: only once every other machine's host-<machine>
-#                                certificate is current or signed earlier in the same run; until then
-#                                its recorded union certificate is left untouched (interim::waiting)
+#                                is placed (its push). Gated: only once every other machine SERVES its own
+#                                key, `ndh.hostKey.own` on in its configuration (baked: ownMachines), and
+#                                its host-<machine> certificate is current or signed earlier in the same
+#                                run; until then its recorded union certificate is left untouched
+#                                (interim::waiting)
 #                any other key   refused: a host key serves one machine, or nikopol's in the interim
 #   ssh-user   the principals the key declares (`principals`)
 #
@@ -55,10 +57,11 @@ readonly sshKeygen="@sshKeygen@"
 readonly sha256sum="@sha256sum@"
 readonly interimKey="@interimKey@"
 declare -g keysYaml tmpdir decrypted apply nextSerial interimWaiting=""
-declare -ga plan=() current=() unrecorded=() interimMachines=() interimPending=() interimKept=()
+declare -ga plan=() current=() unrecorded=() interimMachines=() interimPending=() interimKept=() ownMachines=()
 # machine → its names, comma-separated: baked as `machine=name,name machine=name,…`.
 declare -gA hostNames=()
 read -r -a interimMachines <<<"@interimMachines@"
+read -r -a ownMachines <<<"@ownMachines@"
 read -r -a hostNameEntries <<<"@hostNames@"
 for entry in ${hostNameEntries[@]+"${hostNameEntries[@]}"}; do
 	hostNames["${entry%%=*}"]="${entry#*=}"
@@ -261,15 +264,19 @@ plan::build() {
 }
 
 # The rollout gate (S3a K3: every host serves its OWN certificate before the union one goes away):
-# until every machine outside the interim set has its own host key certified, current or signed in
-# this run, its sshd still serves the interim key, so the interim key keeps the union certificate it
-# has, untouched; re-signing it would also mint a second union id for the KRL to cut. Prints the
-# machines still waiting, space-separated.
+# until every machine outside the interim set serves its own host key — `ndh.hostKey.own` on in its
+# configuration, and its certificate current or signed in this run — its sshd still serves the
+# interim key, so the interim key keeps the union certificate it has, untouched; re-signing it would
+# also mint a second union id for the KRL to cut. A certificate alone is not enough: recorded before
+# the machine's switch, it would leave that machine serving an interim certificate that does not
+# name it. Prints the machines still waiting, each with why.
 interim::waiting() {
-	local machine line key usage waiting=() found
+	local machine line key usage waiting="" found why
 	while IFS= read -r machine; do
 		[[ -n "$machine" ]] || continue
 		[[ " ${interimMachines[*]} " == *" ${machine} "* ]] && continue
+		why=""
+		[[ " ${ownMachines[*]} " == *" ${machine} "* ]] || why="ndh.hostKey.own off"
 		found=0
 		for line in ${current[@]+"${current[@]}"}; do
 			IFS=$'\t' read -r key _ usage <<<"$line"
@@ -284,9 +291,10 @@ interim::waiting() {
 			IFS=$'\t' read -r key _ usage <<<"$line"
 			[[ "$key" == "host-${machine}" && "$usage" == ssh-host ]] && found=0
 		done
-		((found)) || waiting+=("$machine")
+		((found)) || why="${why:+${why}, }host-${machine} not certified"
+		[[ -z "$why" ]] || waiting="${waiting:+${waiting}; }${machine} (${why})"
 	done < <(printf '%s\n' "${!hostNames[@]}" | LC_ALL=C sort)
-	printf '%s\n' "${waiting[*]}"
+	printf '%s\n' "$waiting"
 }
 
 plan::show() {
@@ -295,7 +303,8 @@ plan::show() {
 	while IFS= read -r machine; do
 		printf 'host names   %-14s %s\n' "$machine" "${hostNames[$machine]}"
 	done < <(printf '%s\n' "${!hostNames[@]}" | LC_ALL=C sort)
-	printf 'interim      %-14s %s\nnext serial  %s\n\n' "$interimKey" "${interimMachines[*]}" "$nextSerial"
+	printf 'interim      %-14s %s\nown key      %s\nnext serial  %s\n\n' "$interimKey" "${interimMachines[*]}" \
+		"${ownMachines[*]:-(none)}" "$nextSerial"
 	for line in ${current[@]+"${current[@]}"}; do
 		IFS=$'\t' read -r key slot usage <<<"$line"
 		printf '  current  %-22s %-9s %s\n' "$key" "$slot" "$usage"
@@ -306,7 +315,7 @@ plan::show() {
 	done
 	for line in ${interimKept[@]+"${interimKept[@]}"}; do
 		IFS=$'\t' read -r key slot authority authSlot usage why <<<"$line"
-		printf '  kept     %-22s %-9s %-9s its sshd still serves it on %s\n' "$key" "$slot" "$usage" "$interimWaiting"
+		printf '  kept     %-22s %-9s %-9s its union certificate, still served on %s\n' "$key" "$slot" "$usage" "$interimWaiting"
 	done
 	for line in ${plan[@]+"${plan[@]}"}; do
 		IFS=$'\t' read -r key slot authority authSlot usage why <<<"$line"
@@ -314,7 +323,7 @@ plan::show() {
 	done
 	printf '\n'
 	if ((${#interimKept[@]} > 0)); then
-		log::info "${interimKey} keeps its union cert until ${interimWaiting} have their own host key"
+		log::info "${interimKey} keeps its union cert: not yet on their own host key: ${interimWaiting}"
 	fi
 }
 
@@ -458,6 +467,11 @@ main() {
 	for machine in "${interimMachines[@]}"; do
 		[[ -v "hostNames[$machine]" ]] && continue
 		log::error "interim machine ${machine} has no baked names"
+		return 1
+	done
+	for machine in ${ownMachines[@]+"${ownMachines[@]}"}; do
+		[[ -v "hostNames[$machine]" ]] && continue
+		log::error "machine ${machine} serves its own key but has no baked names"
 		return 1
 	done
 

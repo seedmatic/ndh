@@ -1,20 +1,29 @@
 #!/usr/bin/env bats
 # RevokedHostKeys, the client-side twin of sshd's RevokedKeys, against a REAL sshd on loopback: a host
-# certificate is valid forever by decision, so revocation is what must cut a leaked host key. The
-# revoked file has the shape keys-yaml.nix writes (`<type> <blob> revoked:<id>`), which ssh-keygen -Q
-# cannot read (it wants a KRL) — hence a connection, not a query. What is asserted is the HOST
-# authentication (`ssh -v`: "Authenticated to" or "revoked"), not the session: a build user's shell
-# may be nologin.
+# certificate is valid forever by decision, so revocation is what must cut a leaked host key, or one
+# certificate of a key that stays valid (the union host certificate, roles × keys S3a). Every list is
+# the KRL keys-yaml.d/krl.sh builds, from an extraction shaped as keys-yaml.nix writes it. What is
+# asserted is the HOST authentication (`ssh -v`: "Authenticated to" or "revoked"), not the session: a
+# build user's shell may be nologin.
+
+UNION='{"marker":"ndh-ssh-key-meta-v1","owner":"home-manager.ssh-add-keys","key":"rdp-host","usage":["ssh-host"]}'
+OWN='{"marker":"ndh-ssh-key-meta-v1","key":"rdp-host","names":"beta","issued":"2026-10-16T00:00:00Z"}'
 
 setup() {
   cd "$BATS_TEST_TMPDIR"
   for n in host ca leaked user; do ssh-keygen -q -t ed25519 -N '' -f "$n" -C "$n"; done
   ssh-keygen -q -s ca -h -I host -n localhost host.pub
   ssh-keygen -q -s ca -h -I leaked -n localhost leaked.pub
-  revoked() { for k in "$@"; do awk -v id="$k" '{print $1" "$2" revoked:"id}' "$k.pub"; done; }
-  revoked leaked >revoked-leaked.pub
-  revoked ca >revoked-ca.pub
-  : >revoked-none.pub
+  # Two certificates of ONE key, the union one (serial 0, as signed before S3a) and its successor.
+  cp host.pub shared.pub
+  cp host shared
+  ssh-keygen -q -s ca -h -I "$UNION" -z 0 -n localhost shared.pub && mv shared-cert.pub union-cert.pub
+  ssh-keygen -q -s ca -h -I "$OWN" -z 3 -n localhost shared.pub && mv shared-cert.pub own-cert.pub
+  CA="$(cut -d' ' -f2 ca.pub)" yq -n -o json '.authorities.fabric = {"type": "ssh-ed25519", "slots": {"26-01-01": {"public": strenv(CA)}}} | .keys = {} | .revoked = {} | .revoked_certificates = {}' >base.json
+  krl revoked-none.krl '.'
+  krl revoked-leaked.krl '.revoked."leaked@26-01-01" = {"type": "ssh-ed25519", "public": strenv(LEAKED), "reason": "leaked"}'
+  krl revoked-ca.krl '.revoked."fabric@26-01-01" = {"type": "ssh-ed25519", "public": strenv(CA), "reason": "leaked"}'
+  krl revoked-union.krl '.revoked_certificates."rdp-host@26-01-01/0" = {"authority": "fabric", "authority_slot": "26-01-01", "key_id": strenv(UNION), "serial": 0}'
   cp user.pub authorized_keys
   echo "@cert-authority localhost $(cut -d' ' -f1-2 ca.pub)" >known-ca
   echo "localhost $(cut -d' ' -f1-2 leaked.pub)" >known-leaked
@@ -25,11 +34,17 @@ setup() {
   printf '%s:x:%s:\n' "$(id -gn)" "$(id -g)" >group
 }
 
+# The KRL of base.json changed by a yq expression, through the builder the evaluation runs.
+krl() { # <out> <yq expression>
+  CA="$(cut -d' ' -f2 ca.pub)" LEAKED="$(cut -d' ' -f2 leaked.pub)" UNION="$UNION" yq -o json "$2" base.json >"$1.json"
+  bash "$KRL_SH" "$1.json" "$1"
+}
+
 teardown() {
   [ -f sshd.pid ] && kill "$(cat sshd.pid)" 2>/dev/null || true
 }
 
-# $1 host key, $2 host certificate or "", then: connect with $3 revoked file and $4 known hosts.
+# $1 host key, $2 host certificate or "", then: connect with $3 revocation list and $4 known hosts.
 connect() {
   cat >sshd_config <<EOF
 Port $port
@@ -53,32 +68,44 @@ EOF
 }
 
 @test "a healthy host certificate from the trusted authority is accepted" {
-  connect host host-cert.pub revoked-none.pub known-ca
+  connect host host-cert.pub revoked-none.krl known-ca
   [[ "$output" == *"Authenticated to localhost"* ]]
 }
 
-@test "a revoked host KEY behind a valid certificate is refused" {
-  connect leaked leaked-cert.pub revoked-leaked.pub known-ca
+@test "a revoked host KEY behind a valid certificate is refused, through the KRL" {
+  connect leaked leaked-cert.pub revoked-leaked.krl known-ca
   [ "$status" -eq 255 ]
   [[ "$output" == *"revoked"* ]]
   [[ "$output" != *"Authenticated to"* ]]
 }
 
 @test "a certificate signed by a revoked authority is refused" {
-  connect host host-cert.pub revoked-ca.pub known-ca
+  connect host host-cert.pub revoked-ca.krl known-ca
   [ "$status" -eq 255 ]
   [[ "$output" == *"revoked"* ]]
   [[ "$output" != *"Authenticated to"* ]]
 }
 
 @test "a revoked host key is refused even where it is pinned" {
-  connect leaked "" revoked-leaked.pub known-leaked
+  connect leaked "" revoked-leaked.krl known-leaked
   [ "$status" -eq 255 ]
   [[ "$output" == *"revoked"* ]]
   [[ "$output" != *"Authenticated to"* ]]
 }
 
-@test "an empty revoked list refuses nothing" {
-  connect leaked leaked-cert.pub revoked-none.pub known-ca
+@test "an empty revocation list refuses nothing" {
+  connect leaked leaked-cert.pub revoked-none.krl known-ca
+  [[ "$output" == *"Authenticated to localhost"* ]]
+}
+
+@test "a certificate revoked by its key id is refused" {
+  connect shared union-cert.pub revoked-union.krl known-ca
+  [ "$status" -eq 255 ]
+  [[ "$output" == *"revoked"* ]]
+  [[ "$output" != *"Authenticated to"* ]]
+}
+
+@test "another certificate of the same key, with another id, is accepted under the same list" {
+  connect shared own-cert.pub revoked-union.krl known-ca
   [[ "$output" == *"Authenticated to localhost"* ]]
 }

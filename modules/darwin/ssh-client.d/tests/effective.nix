@@ -1,6 +1,6 @@
-# The EFFECTIVE ssh client settings of a host, from its rendered /etc/ssh/ssh_config and every drop-in
-# it includes: `ssh -G` resolves them the way a connection would, first value wins. Checking the
-# stanzas one by one missed that a leading `Host *` shadowed all of them.
+# The EFFECTIVE ssh client settings of a host (an operator seat or a NixOS guest), from its rendered
+# /etc/ssh/ssh_config and every drop-in it includes: `ssh -G` resolves them the way a connection would,
+# first value wins. Checking the stanzas one by one missed that a leading `Host *` shadowed all of them.
 {
   pkgs,
   lib,
@@ -11,13 +11,18 @@
   name,
 }:
 let
-  sshFiles = lib.filterAttrs (n: _: lib.hasPrefix "ssh/ssh_config" n) etc;
+  # A NixOS entry declares `text = null` when it is given by `source`: its stanzas are not read here.
+  sshFiles = lib.filterAttrs (n: v: lib.hasPrefix "ssh/ssh_config" n && (v.text or null) != null) etc;
   copyLines = lib.concatStringsSep "\n" (
     lib.mapAttrsToList (
       n: v:
       let
+        # Without context: `ssh -G` opens none of the paths the stanzas name, so a NixOS guest's
+        # (Linux) store paths need no build here.
         rendered = pkgs.writeText (builtins.baseNameOf n) (
-          builtins.replaceStrings [ "/etc/ssh/" ] [ "@ROOT@/etc/ssh/" ] (v.text or "")
+          builtins.replaceStrings [ "/etc/ssh/" ] [ "@ROOT@/etc/ssh/" ] (
+            builtins.unsafeDiscardStringContext v.text
+          )
         );
       in
       ''sed "s#@ROOT@#$root#g" ${rendered} > "$root/etc/${n}"''
@@ -25,7 +30,7 @@ let
   );
   checkLines = lib.concatMapStringsSep "\n" (
     e:
-    "check ${lib.escapeShellArg e.target} ${lib.escapeShellArg e.option} ${lib.escapeShellArg e.value}"
+    "check ${lib.escapeShellArg e.target} ${lib.escapeShellArg e.option} ${lib.escapeShellArg (builtins.unsafeDiscardStringContext e.value)}"
   ) expect;
 in
 pkgs.runCommand "ssh-client-effective-${name}" { nativeBuildInputs = [ pkgs.openssh ]; } ''

@@ -138,8 +138,10 @@
       # user) so it is never retyped. Step 9 moves it from rdp-host to the `operator` key here.
       # Roles × keys S3a: what ssh-keys-certify signs host certificates for on the operator seat, computed,
       # never retyped. `names`: each machine's own names (host-names.nix refuses a name two machines
-      # claim). `interim` (decided 2026-10-15, ends at nikopol's push): the shared key nikopol's sshd
-      # still serves, certified for nikopol's machines only.
+      # claim). `own`: the machines whose configuration serves their own host key (ndh.hostKey.own), the
+      # interim's gate; read from each machine's configuration, which consumes nothing of certify, so no
+      # cycle. `interim` (decided 2026-10-15, ends at nikopol's push): the shared key nikopol's sshd still
+      # serves, certified for nikopol's machines only.
       fleetHostCertificates =
         let
           lib = nixpkgs.lib;
@@ -151,17 +153,23 @@
               "fleetHostCertificates: exactly one ssh-authority is expected, found ${toString (lib.attrNames authorities)}";
             (lib.head (lib.attrValues authorities)).domain;
           hosts = lib.attrNames inventoryData.hosts;
-          guests = lib.concatMap (
-            host:
-            lib.optional (
-              self.nixosConfigurations ? "${host}-nixos"
-            ) self.nixosConfigurations."${host}-nixos".config.vm
-          ) hosts;
-        in
-        {
+          guestConfigs = map (host: self.nixosConfigurations."${host}-nixos".config) (
+            lib.filter (host: self.nixosConfigurations ? "${host}-nixos") hosts
+          );
+          guests = map (config: config.vm) guestConfigs;
           names = import ./modules/.common.d/ssh-keys-certify.d/host-names.nix { inherit lib; } {
             inherit domain hosts guests;
           };
+          configs =
+            lib.genAttrs (lib.filter (host: self.darwinConfigurations ? ${host}) hosts) (
+              host: self.darwinConfigurations.${host}.config
+            )
+            // lib.listToAttrs (map (config: lib.nameValuePair config.vm.guestHostName config) guestConfigs);
+        in
+        {
+          inherit names;
+          # A machine without a configuration is not on its own key: the gate stays closed on it.
+          own = lib.filter (machine: configs.${machine}.ndh.hostKey.own or false) (lib.attrNames names);
           interim = {
             key = builtins.baseNameOf self.darwinConfigurations.nikopol.config.sshPaths.privKeyFile;
             machines = [
@@ -1242,7 +1250,7 @@
                     ++ map (target: {
                       inherit target;
                       option = "revokedhostkeys";
-                      value = "${darwin.ndh.keysYaml.revokedKeysFile}";
+                      value = "${darwin.ndh.keysYaml.krlFile}";
                     }) everywhere
                     ++ [
                       {
@@ -1259,6 +1267,70 @@
               "nikopol"
             ]
         )
+        # Root's client on a NixOS guest resolves the fleet's revocation list for every host, as the
+        # operator seats' does (roles × keys S3a K3): nix-daemon's remote builds and the sshfs mounts run
+        # ssh as root.
+        // nixpkgs.lib.listToAttrs (
+          map
+            (
+              guest:
+              let
+                nixos = self.nixosConfigurations.${guest}.config;
+              in
+              nixpkgs.lib.nameValuePair "ssh-client-effective-${guest}" (
+                import ./modules/darwin/ssh-client.d/tests/effective.nix {
+                  inherit pkgs;
+                  inherit (nixpkgs) lib;
+                  name = guest;
+                  etc = nixos.environment.etc;
+                  expect =
+                    map
+                      (target: {
+                        inherit target;
+                        option = "revokedhostkeys";
+                        value = "${nixos.ndh.keysYaml.krlFile}";
+                      })
+                      [
+                        "root@bioskop"
+                        "nikopol.local"
+                        "example.com"
+                      ];
+                }
+              )
+            )
+            [
+              "bioskop-nixos"
+              "nikopol-nixos"
+            ]
+        )
+        # The operator's own client config carries the same list, on every operator seat and NixOS guest.
+        // {
+          ssh-client-operator-revocation =
+            let
+              lib = nixpkgs.lib;
+              configs = {
+                bioskop = self.darwinConfigurations.bioskop.config;
+                nikopol = self.darwinConfigurations.nikopol.config;
+                bioskop-nixos = self.nixosConfigurations.bioskop-nixos.config;
+                nikopol-nixos = self.nixosConfigurations.nikopol-nixos.config;
+              };
+              # Without context on either side: hasInfix builds a regex, which evaluation refuses to
+              # build from a string carrying store paths.
+              plain = builtins.unsafeDiscardStringContext;
+              missing = lib.attrNames (
+                lib.filterAttrs (
+                  _: c:
+                  !(lib.hasInfix (plain "RevokedHostKeys ${c.ndh.keysYaml.krlFile}\n") (
+                    plain c.home-manager.users.${c.profile.user.name}.programs.ssh.extraConfig
+                  ))
+                ) configs
+              );
+            in
+            assert lib.assertMsg (
+              missing == [ ]
+            ) "the operator's ssh client config has no RevokedHostKeys on: ${toString missing}";
+            pkgs.runCommand "ssh-client-operator-revocation" { } "touch $out";
+        }
         // nixpkgs.lib.listToAttrs (
           map
             (
@@ -1911,6 +1983,7 @@
               );
               interimKey = fleetHostCertificates.interim.key;
               interimMachines = nixpkgs.lib.concatStringsSep " " fleetHostCertificates.interim.machines;
+              ownMachines = nixpkgs.lib.concatStringsSep " " fleetHostCertificates.own;
               sha256sum = "${pkgsForSystem.coreutils}/bin/sha256sum";
               sshKeygen = "${pkgsForSystem.openssh}/bin/ssh-keygen";
             }

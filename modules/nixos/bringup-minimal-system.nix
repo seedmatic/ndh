@@ -196,7 +196,7 @@ in
       TrustedUserCAKeys = "${config.sshPaths.systemKeysDir}/trusted-user-ca.pub";
       # The same list every runtime sshd reads (openssh-policy.nix): a bringup
       # VM is no reason to accept a key the fleet has revoked.
-      RevokedKeys = "${config.ndh.keysYaml.revokedKeysFile}";
+      RevokedKeys = "${config.ndh.keysYaml.krlFile}";
     };
   };
 

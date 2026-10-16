@@ -294,3 +294,135 @@ record() {
   [[ "$output" == *"already in keys.yaml"* ]]
   cmp "$keys" "$BATS_TEST_TMPDIR/before"
 }
+
+# --revoke-certificate: `shared` plays rdp-host. Its union certificate is recorded and committed, then
+# re-signed (the interim) and committed again; the revocation reads the union one back from history.
+LEGACY='{"marker":"ndh-ssh-key-meta-v1","owner":"home-manager.ssh-add-keys","key":"shared","usage":["ssh-host"]}'
+
+commit() { # <message> → the new commit
+  git -C "$repo" add .sops.yaml modules/home-manager/ssh.d/keys.yaml
+  git -C "$repo" -c user.name=test -c user.email=test@example.invalid commit -qm "$1"
+  git -C "$repo" rev-parse HEAD
+}
+
+record_host_cert() { # <key id> <serial>
+  rm -f "$BATS_TEST_TMPDIR/shared-cert.pub"
+  ssh-keygen -q -s "$BATS_TEST_TMPDIR/fabric" -h -I "$1" -z "$2" -n shared "$BATS_TEST_TMPDIR/shared.pub"
+  (cd "$repo" && sops set modules/home-manager/ssh.d/keys.yaml '["keys"]["shared"]["slots"]["26-01-01"]["certificates"]' \
+    "{\"fabric\": {\"ssh-host\": \"$(<"$BATS_TEST_TMPDIR/shared-cert.pub")\"}}")
+}
+
+# The fixture's history: before (no certificate), union (the legacy one recorded), interim (re-signed).
+history() {
+  before="$(commit before)"
+  record_host_cert "$LEGACY" 0
+  union="$(commit union)"
+  record_host_cert '{"marker":"ndh-ssh-key-meta-v1","key":"shared","names":"beta","issued":"2026-10-16T00:00:00Z"}' 7
+  interim="$(commit interim)"
+}
+
+revoke() { renew --revoke-certificate shared@26-01-01 --reason "union certificate, every machine on its own" "$@"; }
+
+# Every value but the one entry, ciphertexts included, as committed.
+rest() { yq eval -o json 'del(.sops) | del(.revoked_certificates)' "$keys"; }
+
+@test "--revoke-certificate dry run names the exact key id and changes nothing" {
+  history
+  cp "$keys" "$BATS_TEST_TMPDIR/before"
+  run revoke --from-revision "$union"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"revoke        revoked_certificates.shared@26-01-01/0"* ]]
+  [[ "$output" == *"key id      ${LEGACY}"* ]]
+  [[ "$output" == *"signed by   fabric@26-01-01"* ]]
+  cmp "$keys" "$BATS_TEST_TMPDIR/before"
+}
+
+@test "--revoke-certificate --apply records the exact id, its authority slot, serial and revision, in clear" {
+  history
+  run revoke --from-revision "${union:0:10}" --apply
+  [ "$status" -eq 0 ]
+  entry='.revoked_certificates."shared@26-01-01/0"'
+  [ "$(yq eval -r "${entry}.key_id" "$keys")" = "$LEGACY" ]
+  [ "$(yq eval -r "${entry}.authority" "$keys")" = fabric ]
+  [ "$(yq eval -r "${entry}.authority_slot" "$keys")" = 26-01-01 ]
+  [ "$(yq eval -r "${entry}.serial | tag" "$keys")" = '!!int' ]
+  [ "$(yq eval -r "${entry}.serial" "$keys")" = 0 ]
+  [ "$(yq eval -r "${entry}.revision" "$keys")" = "$union" ]
+  [ "$(yq eval -r "${entry}.reason" "$keys")" = "union certificate, every machine on its own" ]
+  # The id ssh-keygen reads from the certificate the revision recorded, character for character.
+  [ "$(git -C "$repo" show "${union}:modules/home-manager/ssh.d/keys.yaml" |
+    yq eval -r '.keys.shared.slots."26-01-01".certificates.fabric."ssh-host"' - | ssh-keygen -L -f - |
+    awk '/Key ID:/ { sub(/^[^"]*"/, ""); sub(/"$/, ""); print }')" = "$LEGACY" ]
+  decrypted | yq eval -r "${entry}.key_id" - | grep -Fxq "$LEGACY"
+}
+
+@test "--revoke-certificate leaves the rest of keys.yaml, ciphertexts included, byte for byte, and decrypts nothing" {
+  history
+  rest >"$BATS_TEST_TMPDIR/rest-before"
+  mkdir -p "$BATS_TEST_TMPDIR/bin"
+  printf '#!%s\necho "$*" >>"%s/sops.log"\nexec %s "$@"\n' "$(command -v bash)" "$BATS_TEST_TMPDIR" "$(command -v sops)" \
+    >"$BATS_TEST_TMPDIR/bin/sops"
+  chmod +x "$BATS_TEST_TMPDIR/bin/sops"
+  PATH="$BATS_TEST_TMPDIR/bin:$PATH" run revoke --from-revision "$union" --apply
+  [ "$status" -eq 0 ]
+  rest | cmp - "$BATS_TEST_TMPDIR/rest-before"
+  [ "$(cut -d' ' -f1 "$BATS_TEST_TMPDIR/sops.log" | sort -u)" = set ]
+  [ "$(yq eval '[.keys[].slots[].private, .authorities[].slots[].private] | map(select(. != null)) | all_c(test("^ENC\["))' "$keys")" = true ]
+}
+
+@test "--revoke-certificate refuses a certificate keys.yaml still records, or a live one with its id" {
+  history
+  git -C "$repo" show "${union}:modules/home-manager/ssh.d/keys.yaml" |
+    yq eval -r '.keys.shared.slots."26-01-01".certificates.fabric."ssh-host"' - >"$BATS_TEST_TMPDIR/union-cert.pub"
+  (cd "$repo" && sops set modules/home-manager/ssh.d/keys.yaml '["keys"]["shared"]["slots"]["26-01-01"]["certificates"]["fabric"]["ssh-host"]' \
+    "\"$(<"$BATS_TEST_TMPDIR/union-cert.pub")\"")
+  cp "$keys" "$BATS_TEST_TMPDIR/before"
+  run revoke --from-revision "$union" --apply
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"keys.yaml still records this certificate (shared@26-01-01 fabric ssh-host)"* ]]
+  record_host_cert "$LEGACY" 9
+  cp "$keys" "$BATS_TEST_TMPDIR/before"
+  run revoke --from-revision "$union" --apply
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"keys.yaml still records a certificate with its key id (shared@26-01-01 fabric ssh-host)"* ]]
+  cmp "$keys" "$BATS_TEST_TMPDIR/before"
+}
+
+@test "--revoke-certificate refuses a revision without that certificate, and an unknown revision" {
+  history
+  cp "$keys" "$BATS_TEST_TMPDIR/before"
+  run revoke --from-revision "$before" --apply
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"keys.shared.slots.26-01-01 records no ssh-host certificate in that revision"* ]]
+  run revoke --from-revision does-not-exist --apply
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"no such commit"* ]]
+  cmp "$keys" "$BATS_TEST_TMPDIR/before"
+}
+
+@test "--revoke-certificate refuses to record the same certificate twice" {
+  history
+  revoke --from-revision "$union" --apply
+  cp "$keys" "$BATS_TEST_TMPDIR/before"
+  run revoke --from-revision "$union" --apply
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"revoked_certificates already holds shared@26-01-01/0"* ]]
+  cmp "$keys" "$BATS_TEST_TMPDIR/before"
+}
+
+@test "--revoke-certificate stands alone, and needs --from-revision, --reason and KEY@SLOT" {
+  run renew --revoke-certificate shared@26-01-01 --from-revision HEAD --reason r --key existing
+  [ "$status" -eq 64 ]
+  [[ "$output" == *"--revoke-certificate stands alone"* ]]
+  run renew --revoke-certificate shared@26-01-01 --reason r
+  [ "$status" -eq 64 ]
+  [[ "$output" == *"needs --from-revision"* ]]
+  run renew --revoke-certificate shared@26-01-01 --from-revision HEAD
+  [ "$status" -eq 64 ]
+  run renew --revoke-certificate 'shared"]|del(.)' --from-revision HEAD --reason r
+  [ "$status" -eq 64 ]
+  [[ "$output" == *"KEY@YY-MM-DD"* ]]
+  run renew --key existing --from-revision HEAD
+  [ "$status" -eq 64 ]
+  [[ "$output" == *"--from-revision names the revision of a --revoke-certificate"* ]]
+}

@@ -95,10 +95,10 @@ in
 
     revokedKeysPath = mkOption {
       type = types.str;
-      default = "${config.ndh.keysYaml.revokedKeysFile}";
+      default = "${config.ndh.keysYaml.krlFile}";
       description = ''
-        RevokedKeys file. Defaults to the store path built from keys.yaml's
-        `.revoked` — see ndh.keysYaml.revokedKeysFile for why it is not a
+        RevokedKeys file. Defaults to the KRL built from keys.yaml's `.revoked`
+        and `.revoked_certificates` — see ndh.keysYaml.krlFile for why it is not a
         runtime file.
       '';
     };
@@ -294,10 +294,13 @@ in
       )
     );
     # Revocation on the CLIENT side, from the list sshd's RevokedKeys already reads: every client, root
-    # included, refuses a host key in keys.yaml `revoked` — and a certificate whose signing authority is
-    # there. Host certificates are valid forever by decision (a missed calendar renewal would break every
-    # strict connection), so this is what cuts a leaked host key: at the next activation, not at an expiry.
-    programs.ssh.extraConfig = "RevokedHostKeys ${config.ndh.keysYaml.revokedKeysFile}\n";
+    # included (nix-daemon's remote builds, the sshfs mounts, the vzhost deploy), refuses a host key in
+    # keys.yaml `revoked`, a certificate whose signing authority is there, and a certificate
+    # `revoked_certificates` names by its key id. Host certificates are valid forever by decision (a
+    # missed calendar renewal would break every strict connection), so this is what cuts a leaked host
+    # key: at the next activation, not at an expiry. First, before any Host line: ssh keeps the first
+    # value it obtains, and under a Host stanza the line would bind that host only.
+    programs.ssh.extraConfig = lib.mkBefore "RevokedHostKeys ${config.ndh.keysYaml.krlFile}\n";
 
     # Expose helpers
     opensshPolicy.hostKeys = cfg.hostKeyPaths;

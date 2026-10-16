@@ -64,14 +64,16 @@ EOF
 }
 
 # alpha, beta and their guests; beta plays nikopol, whose machines the interim key is certified for,
-# alpha bioskop, whose machines must have their own host keys before the interim replaces the union.
+# alpha bioskop, whose machines must serve their own host keys before the interim replaces the union.
+# OWN: the machines whose configuration has ndh.hostKey.own on, by default both of alpha's.
+OWN="alpha alpha-nixos"
 FLEET="alpha=alpha,alpha.lan alpha-nixos=alpha-nixos,nixos.alpha beta=beta,beta.lan beta-nixos=beta-nixos,nixos.beta"
 # The names the union host certificate signed before S3a carried: a recorded certificate's, never signed now.
 UNION="alpha,alpha-nixos,alpha.lan,beta,beta-nixos,beta.lan,nixos.alpha,nixos.beta"
 
-bake() { # <machine=names …>
+bake() { # <machine=names …> [own machines]
   sed -e "s#@nixBashTrampoline@#$BATS_TEST_TMPDIR/trampoline.sh#" -e 's#@loggerTag@#test#' -e "s#@hostNames@#$1#" \
-    -e 's#@interimKey@#rdp-host#' -e 's#@interimMachines@#beta beta-nixos#' \
+    -e 's#@interimKey@#rdp-host#' -e 's#@interimMachines@#beta beta-nixos#' -e "s#@ownMachines@#${2-$OWN}#" \
     -e "s#@sha256sum@#$(command -v sha256sum)#" -e "s#@sshKeygen@#$(command -v ssh-keygen)#" \
     "$BATS_TEST_DIRNAME/../ssh-keys-certify.sh" >"$BATS_TEST_TMPDIR/ssh-keys-certify"
 }
@@ -186,13 +188,45 @@ recorded_cert() { yq eval -r ".keys.\"$1\".slots.\"26-03-03\".certificates.fabri
   recorded_cert rdp-host >union
   run certify --apply
   [ "$status" -eq 0 ]
-  [[ "$output" == *"rdp-host keeps its union cert until alpha-nixos have their own host key"* ]]
+  [[ "$output" == *"rdp-host keeps its union cert: not yet on their own host key: alpha-nixos (host-alpha-nixos not certified)"* ]]
   [[ "$output" != *"signed rdp-host"* ]]
   [ "$(recorded_cert rdp-host)" = "$(cat union)" ]
   [ "$(names host-alpha ssh-host)" = "alpha,alpha.lan" ]
 }
 
-@test "the gate open on recorded host keys: the interim is signed, the union id logged" {
+@test "the gate closed: a machine with its host key certified but ndh.hostKey.own off keeps the union certificate byte-identical" {
+  record_legacy rdp-host rdp.pub 0 ca-new
+  bake "$FLEET" alpha
+  certify --apply
+  run cert host-alpha-nixos ssh-host
+  [[ "$output" == *"host certificate"* ]]
+  recorded_cert rdp-host >union
+  run certify --apply
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"current"*"host-alpha-nixos"*"ssh-host"* ]]
+  [[ "$output" == *"rdp-host keeps its union cert: not yet on their own host key: alpha-nixos (ndh.hostKey.own off)"* ]]
+  [[ "$output" != *"signed rdp-host"* ]]
+  [ "$(recorded_cert rdp-host)" = "$(cat union)" ]
+}
+
+@test "the gate closed on no machine at all on its own key, each named with why" {
+  (cd "$repo" && sops unset modules/home-manager/ssh.d/keys.yaml '["keys"]["host-alpha-nixos"]')
+  record_legacy rdp-host rdp.pub 0 ca-new
+  bake "$FLEET" ""
+  run certify --apply
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"own key      (none)"* ]]
+  [[ "$output" == *"not yet on their own host key: alpha (ndh.hostKey.own off); alpha-nixos (ndh.hostKey.own off, host-alpha-nixos not certified)"* ]]
+}
+
+@test "an own machine the build has no names for refuses to run" {
+  bake "$FLEET" "alpha gamma"
+  run certify
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"machine gamma serves its own key but has no baked names"* ]]
+}
+
+@test "the gate open, every other machine on its own certified key: the interim is signed, the union id logged" {
   certify --apply
   record_legacy rdp-host rdp.pub 0 ca-new
   legacy="$(key_id rdp-host ssh-host)"

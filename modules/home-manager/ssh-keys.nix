@@ -1,5 +1,6 @@
 {
   config,
+  osConfig ? { },
   pkgs,
   lib,
   worktreePath,
@@ -184,8 +185,11 @@ in
     }
   );
 
+  # The system's revocation list here too (roles × keys S3a K3): `ssh -F` reads this file alone, and a
+  # host the operator reaches must be cut exactly as root's connections are.
   programs.ssh.extraConfig = ''
     KnownHostsCommand ${knownHostsScript}
     EnableSSHKeysign yes
-  '';
+  ''
+  + lib.optionalString (osConfig ? ndh.keysYaml) "RevokedHostKeys ${osConfig.ndh.keysYaml.krlFile}\n";
 }
