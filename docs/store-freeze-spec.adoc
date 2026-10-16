@@ -550,7 +550,7 @@ keeps its old cells (<<purge>>)
 == The tests the implementation must pass
 
 All on the throwaway probe first. Live after T4, on **nikopol first, then bioskop** (decided by the
-operator on 2026-10-14): bioskop is the working seat, the fleet's builder and the only Incus database
+operator on 2026-10-14): bioskop is the operator seat, the fleet's builder and the only Incus database
 voter, so a runtime error there breaks the toolchain and the cluster API. A failed initrd on
 nikopol-nixos only breaks that VM, and nikopol is a database client.
 
@@ -658,7 +658,7 @@ guest's raw disks finds no copy (a marker delivered only over stdin, never in an
   pools, frozen layers included. Plan item 15 (`vm_cpu_count`) and nix's 2e sit on the same hosts.
 * **Native ZFS encryption of the store datasets**, the operator's decision, later: it makes every
   remnant below ZFS ciphertext, the only real answer to media remnants, but it changes the pool
-  layout and the handling of a boot key. Not a purge requirement: the seat's disk is inside the
+  layout and the handling of a boot key. Not a purge requirement: the operator seat's disk is inside the
   operator's accepted boundary today (🛡️, 2026-10-14).
 
 == Related documentation

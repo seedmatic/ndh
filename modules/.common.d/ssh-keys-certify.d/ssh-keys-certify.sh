@@ -6,11 +6,11 @@ case $- in *x*) { set +x; } 2>/dev/null; echo "[xtrace-guard] xtrace disabled: t
 export -n SHELLOPTS 2>/dev/null || true # readonly in bash, so not unset; un-exported, it stops at this process
 unset NDH_LOGGER_XTRACE # ndh::logger:command:run traces its command only when this is 1
 unset BASH_XTRACEFD 2>/dev/null || true
-# ssh-keys-certify — sign, ON THE SEAT, every SSH certificate keys.yaml declares, and record it
+# ssh-keys-certify — sign, ON THE OPERATOR SEAT, every SSH certificate keys.yaml declares, and record it
 # in keys.yaml next to the generation it certifies.
 #
 # Roles × keys 6a. Every host used to sign its own certificates at activation, which is why every
-# host held the authority's private (L4). Here the seat signs once, from each key's PUBLIC, and the
+# host held the authority's private (L4). Here the operator seat signs once, from each key's PUBLIC, and the
 # certificates travel in keys.yaml as public data: the activation only installs them.
 #
 #   ssh-host   the union of every name a fleet host or guest answers to (baked at build, computed

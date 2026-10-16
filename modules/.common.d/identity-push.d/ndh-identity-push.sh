@@ -6,10 +6,10 @@ unset NDH_LOGGER_XTRACE # ndh::logger:command:run traces its command only when t
 unset BASH_XTRACEFD 2>/dev/null || true
 
 # ndh-identity-push — bioskop gives a machine its identities (docs/ssh-keys-architecture.adoc): its
-# SSH host key and the age identity of its access point, ssh-to-age of the SEAT's host key. A gesture
+# SSH host key and the age identity of its access point, ssh-to-age of the operator seat's host key. A gesture
 # of the operator, with the keyring open; the machine asks for nothing.
 #
-#   ndh-identity-push <machine> 3<"the machine's host key" 4<"the seat's host key"
+#   ndh-identity-push <machine> 3<"the machine's host key" 4<"the operator seat's host key"
 #
 # The privates come on file descriptors fed by the keyring, so its format stays its own, and they are
 # never written on this side: the age identity is derived in memory, the host key's public is read from
@@ -19,7 +19,7 @@ unset BASH_XTRACEFD 2>/dev/null || true
 # console (`ndh-identity-receive`) and typed here: ssh then trusts THAT key only. This stands on the
 # operator's assumption that the home LAN carries only their devices (they grant access to its
 # hotspot and start the VMs): the guest is L2-bridged onto that LAN, so the bridge itself proves nothing.
-# The address is the inventory's, never a DNS answer, and must be reached through this seat's own link.
+# The address is the inventory's, never a DNS answer, and must be reached through this operator seat's own link.
 
 log() { printf '[ndh-identity-push] %s\n' "$*" >&2; }
 die() {
@@ -27,10 +27,10 @@ die() {
   exit 1
 }
 
-[[ $# -eq 1 ]] || die "usage: ndh-identity-push <machine> 3<the machine's host key 4<the seat's host key"
+[[ $# -eq 1 ]] || die "usage: ndh-identity-push <machine> 3<the machine's host key 4<the operator seat's host key"
 [[ $1 == "$machine" ]] || die "${seat} pushes to ${machine} only, not to $1"
 { : <&3; } 2>/dev/null || die "file descriptor 3 (the machine's host key) is not open"
-{ : <&4; } 2>/dev/null || die "file descriptor 4 (the seat's host key) is not open"
+{ : <&4; } 2>/dev/null || die "file descriptor 4 (the operator seat's host key) is not open"
 machineKey="$(head -c "$((maxBytes + 1))" <&3)"
 seatKey="$(head -c "$((maxBytes + 1))" <&4)"
 exec 3<&- 4<&-
@@ -53,7 +53,7 @@ agePub="$(printf '%s\n' "$ageKey" | age-keygen -y 2>/dev/null)" || die "the deri
 log "${machine}: host key ${machinePub#ssh-ed25519 }"
 log "${machine}: age identity of the ${seat} access point ${agePub}"
 
-# This seat's own link to the machine: the route to its address leaves by the interface holding ours.
+# This operator seat's own link to the machine: the route to its address leaves by the interface holding ours.
 iface="$(route -n get "$address" 2>/dev/null | awk '/interface:/ { print $2 }')"
 if [[ -z $iface ]] || ! ifconfig "$iface" 2>/dev/null | grep -F "inet ${localAddress} " >/dev/null; then
   die "${address} is not reached through ${seat}'s own link (${localAddress}) — refused, nothing sent"

@@ -1,7 +1,7 @@
-# ndh-identity-push (the seat) and ndh-identity-receive (the machine): bioskop gives a machine its
+# ndh-identity-push (the operator seat) and ndh-identity-receive (the machine): bioskop gives a machine its
 # identities, as a gesture of the operator (docs/ssh-keys-architecture.adoc). Everything that names the
-# target is fixed at evaluation: a seat pushes to ITS guest only, at the inventory's address, through its
-# own link. One definition, imported by the seat's and the machine's modules.
+# target is fixed at evaluation: an operator seat pushes to ITS guest only, at the inventory's address, through its
+# own link. One definition, imported by the operator seat's and the machine's modules.
 { pkgs, lib }:
 let
   # Where the machine's own host key is placed. Nothing serves it yet: sshd moves to it with S3.
@@ -42,7 +42,7 @@ in
         sshCert=${lib.escapeShellArg operatorIdentity.certFile}
         maxBytes=${toString maxBytes}
         ttyIn=/dev/tty
-        PATH="$PATH:/sbin:/usr/sbin" # route and ifconfig, the seat's own
+        PATH="$PATH:/sbin:/usr/sbin" # route and ifconfig, the operator seat's own
       ''
       + builtins.readFile ./ndh-identity-push.sh;
     };

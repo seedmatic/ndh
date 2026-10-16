@@ -5,7 +5,7 @@
   catalog,
   ...
 }:
-# The Incus cluster certificate on the seat: the one definition of incus-cluster-cert-renew, on the
+# The Incus cluster certificate on the operator seat: the one definition of incus-cluster-cert-renew, on the
 # operator's PATH, and run by this host's activation when it holds the TLS authority.
 #
 # ⚠️ At activation the TLS authority's signing slot is used AUTOMATICALLY, as the operator (sudo -u),
@@ -30,9 +30,9 @@ in
           certFile = config.sshPaths.userCertPublic;
         };
       };
-      description = "incus-cluster-cert-renew, built for this seat's operator identity.";
+      description = "incus-cluster-cert-renew, built for this operator seat's operator identity.";
     };
-    atActivation = lib.mkEnableOption "renewing the Incus cluster certificate at activation (the seat holding the TLS authority)";
+    atActivation = lib.mkEnableOption "renewing the Incus cluster certificate at activation (the operator seat holding the TLS authority)";
   };
 
   config = lib.mkIf cfg.atActivation {

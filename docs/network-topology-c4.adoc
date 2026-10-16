@@ -1,11 +1,11 @@
-= Baremetal Instance Segments & vz-host Access (C4-Style UML)
+= Metalspace Segments & vz-host Access (C4-Style UML)
 :toc: left
 :toclevels: 3
 :icons: font
 
 == Overview
 
-Each *baremetal host* owns a per-host *instance segment*: a *systemd-networkd* bridge with
+Each *metalspace* owns its *instance segment*: a *systemd-networkd* bridge with
 its own dnsmasq, a DNS domain `.<host>`, and a subnet route advertised into the tailnet.
 
 NOTE: It was an *Incus managed network* until 2026-09-25. Clustering forced the change: Incus
@@ -62,7 +62,7 @@ project). The corp Mac carries a return route to the tailnet range (`100.64.0.0/
 
 [IMPORTANT]
 ====
-*Controllers: one self-managed headscale per bare-metal for the infrastructure; Tailscale SaaS for
+*Controllers: one self-managed headscale per metalspace for the infrastructure; Tailscale SaaS for
 the clusters.* Each bare-metal runs the control plane of its own segment, in an Incus container on
 its NixOS guest; the infrastructure nodes (darwin hosts, NixOS guests) are members of their
 segment's tailnet. The clusters stay on the SaaS `mammoth-skate` tailnet. See
@@ -128,7 +128,7 @@ dnsmasq (`172.16.16.1`) and reaches them over the advertised `172.16.16.0/20` ro
 `vzhost.nikopol` (rose) is resolved by a dnsmasq `host-record` and reached over the `/30` —
 never a tailnet member.
 
-== C4 Level 2 — Container view
+== C4 Level 2 — C4 container view
 
 [plantuml,vz-host-container,svg]
 ----
@@ -221,7 +221,7 @@ its vz-host, and whether it is fixed to the home LAN.
 |===
 | Field | Value | Role
 | `domain` | `nikopol` | dnsmasq DNS zone + split-DNS domain
-| `advertiseCidr` | `172.16.16.0/20` | the whole slice — ONE tailnet route per bare-metal
+| `advertiseCidr` | `172.16.16.0/20` | the whole slice — ONE tailnet route per metalspace
 | `netCidr` | `172.16.16.0/21` | managed Incus network (dnsmasq) — slots 0-7, on `fabric-br`
 | `netGateway` | `172.16.16.1` | Incus bridge + dnsmasq + split-DNS target
 | `dynamicCidr` | `172.16.16.0/27` | DHCP pool; statics live above it (filled top-down)
@@ -238,7 +238,7 @@ under the `172.16.0.0/12` `baremetal` supernet.
 === Second host — bioskop (the same shape, a different reason)
 
 `bioskop` is a *personal* Mac Mini already on the tailnet + home LAN, so unlike nikopol it is
-reachable *without* the `/30` — and it declares one anyway, because its *tenants* are not. A
+reachable *without* the `/30` — and it declares one anyway, because the instances of its metalspace are not. A
 cluster node addressed in this segment cannot reach `192.168.1.129`: `baremetal-nat` masquerades
 only public-bound egress (the LAN is in its exclusion set) and the home LAN has no return route to
 `172.16.0.0/21`. So the vz-host takes a segment address on the same `/30` shape nikopol uses, and
@@ -248,7 +248,7 @@ the Mac *keeps* `192.168.1.129` — the alias is additional, the LAN identity un
 |===
 | Field | Value | Role
 | `domain` | `bioskop` | dnsmasq DNS zone + split-DNS domain
-| `advertiseCidr` | `172.16.0.0/20` | the whole slice — ONE tailnet route per bare-metal
+| `advertiseCidr` | `172.16.0.0/20` | the whole slice — ONE tailnet route per metalspace
 | `netCidr` | `172.16.0.0/21` | managed Incus network (dnsmasq) — slots 0-7, on `fabric-br`
 | `netGateway` | `172.16.0.1` | Incus bridge + dnsmasq + split-DNS target
 | `dynamicCidr` | `172.16.0.0/27` | DHCP pool; statics live above it (filled top-down)
@@ -294,7 +294,7 @@ both reachable at the same moment.
 *Applied 2026-09-23.* The tables above are this carve's output, not a separate plan. The motive was not
 tidiness: it makes each bare-metal's segment the *sole* address authority for everything running behind
 it, so a host on a mobile hotspot (nikopol) is as well-addressed as one on the home LAN. rke2lab's
-cluster nodes are the segment's main tenant.
+cluster nodes are the segment's main consumer.
 
 *The addresses stopped being allocated and started being derived* — from rke2lab's `hostId`
 (`bioskop = 0`, `nikopol = 1`, `test = 2`), the same table that already generates the vmnet plane, the
@@ -312,7 +312,7 @@ bridge while `linkCidr` sat at `.252` — **outside** that `/25`, on `lan-br` �
 by nothing. The carve encodes the link *in the address*: one bit of the third octet.
 
 ....
-172.16.<hostId*16>.0/20        advertiseCidr — ONE tailnet route per bare-metal
+172.16.<hostId*16>.0/20        advertiseCidr — ONE tailnet route per metalspace
 │                                bioskop .0/20 · nikopol .16/20 · test .32/20
 ├── slots 0-7  →  ON fabric-br   (the Incus L2, gateway .1, dnsmasq zone .<domain>)
 │   ├── slot 0   .0/24          HOST INFRA — ndh owns
@@ -368,7 +368,7 @@ Three notes on why these are not cosmetic:
 * *bioskop's vz-host gained a segment address for a functional reason, not for symmetry* (now landed
   at `172.16.8.2`). Once the cluster nodes live in the fabric they cannot reach `192.168.0.0/16`
   (excluded from `baremetal-nat`'s masquerade, and the LAN has no return route), so a `vzhost.bioskop`
-  answering only at a LAN address would be unreachable from the tenants now sharing its host. The Mac
+  answering only at a LAN address would be unreachable from the instances now sharing its host. The Mac
   *keeps* `192.168.1.129`.
 * *`192.168.1.0/24` is a frozen input.* No device on the home LAN renumbers. The only LAN-side effects
   are deletions — rke2lab stops claiming `192.168.1.128/25`, and the `kind = "rke2"` reservations leave
@@ -492,7 +492,7 @@ segment routes its gateway advertises:
 unmanaged zone, and advertising it is what caused the outage recorded in
 `modules/nixos/baremetal-segment.nix`.
 
-=== The off-tailnet seat
+=== The off-tailnet vz-host
 
 The corporate bare-metal can never join a tailnet. Its segment address is its identity: no NAT
 anywhere, so a packet the gateway forwards keeps `172.16.24.2` as its source, and the grant's `src`

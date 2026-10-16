@@ -134,10 +134,10 @@
       # vz-host is nix-managed exactly when the config named <host> is the bare metal itself.
       # Injected from here because this file owns the host tree; see catalog/default.nix.
       # The ONE identity the incus cluster-cert closure reaches a member with: the OPERATOR
-      # principal's key on the seat, read from bioskop's configuration (sshPaths, the profile
+      # principal's key on the operator seat, read from bioskop's configuration (sshPaths, the profile
       # user) so it is never retyped. Step 9 moves it from rdp-host to the `operator` key here.
       # Roles × keys 6a: every name a fleet host or guest answers to, the union ONE host certificate is
-      # signed for on the seat (ssh-keys-certify). Each inventory host, and each guest read from its own
+      # signed for on the operator seat (ssh-keys-certify). Each inventory host, and each guest read from its own
       # configuration (vm.guestHostName, and vm.guestName.vm.hostName, the bare-metal's dnsmasq zone), in
       # the bare, .lan, .local and <ssh authority domain> forms. Computed, never retyped.
       fleetHostPrincipals =
@@ -760,7 +760,7 @@
       # segment, re-applied whenever that link comes back (a WatchPaths LaunchDaemon).
       # Every baremetal host with a `linkCidr` gets one — BOTH of them do, for different
       # reasons: nikopol's corp Mac is off-tailnet so the /30 is its only path in, while
-      # bioskop's Mac is reachable itself but not from its own tenants (see
+      # bioskop's Mac is reachable itself but not from the instances of its metalspace (see
       # catalog.netplan.baremetal.bioskop).
       #
       # `vzHostKind` decides the DELIVERY. A `foreign` vz-host (nikopol's JAMF Mac: no nix,
@@ -782,7 +782,7 @@
         # The tailnet's MagicDNS zone, unqualified.  A FOREIGN vz-host can never join the
         # tailnet, so it gets a SECOND scoped resolver for this zone pointing at the segment's
         # dnsmasq, which forwards it to MagicDNS (modules/nixos/baremetal-segment.nix).  Without
-        # it that seat can reach a Tailscale Service only by its virtual IP.  Shared by install
+        # it that vz-host can reach a Tailscale Service only by its virtual IP.  Shared by install
         # and uninstall so the teardown removes the same file the install wrote.
         tailnetZone = nixpkgs.lib.removePrefix "." catalogData.netplan.tailnet.domain;
 
@@ -1111,6 +1111,7 @@
               {
                 inherit pkgs;
               };
+          nfsd-off-bats = import ./modules/darwin/nfsd-off.d/tests/package.nix { inherit pkgs; };
           sops-age-bootstrap-bats = import ./modules/.common.d/sops.d/tests/package.nix { inherit pkgs; };
           git-sops-filters-bats = import ./modules/home-manager/git.d/tests/package.nix { inherit pkgs; };
           # keys.yaml against its schema, ENCRYPTED as committed: the schema accepts ENC[...]
@@ -1140,6 +1141,7 @@
           # incus-cluster-join: a join that did not take is never reported joined.
           incus-cluster-join-bats = import ./pkgs/incus-cluster-join.d/tests/package.nix { inherit pkgs; };
           identity-push-bats = import ./modules/.common.d/identity-push.d/tests/package.nix { inherit pkgs; };
+          keyring-bats = import ./modules/.common.d/keyring.d/tests/package.nix { inherit pkgs; };
           incus-cluster-cert-bats = import ./modules/.common.d/incus-cluster-cert.d/tests/package.nix {
             inherit pkgs;
           };
@@ -1397,7 +1399,7 @@
         # activation runs (modules/darwin/tls-authority-keychain.nix).
         nixpkgs.lib.optionalAttrs (system == "aarch64-darwin") {
           ndh-keychain-reconcile = self.darwinConfigurations.bioskop.config.ndh.tlsAuthorityKeychain.package;
-          # T14, by the same rule: one closure built by revision, run from the seat.
+          # T14, by the same rule: one closure built by revision, run from the operator seat.
           incus-cluster-cert-renew = self.darwinConfigurations.bioskop.config.ndh.incusClusterCert.package;
         }
         // {
@@ -1718,13 +1720,13 @@
           };
           # The envs vendored under .flox-envs.d arrive WITHOUT their manifest.lock: fleet
           # gitignores it, and the lock is what makes an env includable — so a fresh clone
-          # cannot activate the seat until this runs ("manifest and lockfile are out of sync").
+          # cannot activate the flox seat until this runs ("manifest and lockfile are out of sync").
           # The locks stay gitignored on purpose: fleet publishes manifests, each checkout
           # realises its own lock.
           #
           # The include graph is WALKED, not listed: `nix` includes `../keyhole`, and a composed
           # env must be locked after the ones it includes. A hardcoded list rots the next time
-          # fleet adds an include. Both quote styles are read because fleet writes the seat form
+          # fleet adds an include. Both quote styles are read because fleet writes the flox seat form
           # with double quotes and the internal form with single quotes.
           #
           # `flox` comes from the host (the flox installer), not nixpkgs —
@@ -1751,7 +1753,7 @@
                        -e 's|^[[:space:]]*{\? *dir = "\.\./\([^"]*\)".*|\1|p' "$1"
               }
 
-              seat_includes() {
+              flox_seat_includes() {
                 sed -n -e "s|^[[:space:]]*{\? *dir = '\./\.flox-envs\.d/\([^']*\)'.*|\1|p" \
                        -e 's|^[[:space:]]*{\? *dir = "\./\.flox-envs\.d/\([^"]*\)".*|\1|p' "$1"
               }
@@ -1787,7 +1789,7 @@
               # are out of sync" this app exists to prevent. A locker that cannot read the
               # manifest must SAY SO, not answer "nothing" — so this stays correct even for an
               # include form neither reader above anticipates.
-              includes="$(seat_includes .flox/env/manifest.toml)"
+              includes="$(flox_seat_includes .flox/env/manifest.toml)"
               if [ -z "$includes" ]; then
                 echo "lock-flox-envs: no [include] entries under .flox-envs.d found in" >&2
                 echo "  .flox/env/manifest.toml — refusing to report success." >&2
@@ -1856,9 +1858,9 @@
               loggerTag = "ndh.ssh-keys-renew";
             }
           );
-          # 6a: the seat signs every SSH certificate keys.yaml declares, host certificates for
+          # 6a: the operator seat signs every SSH certificate keys.yaml declares, host certificates for
           # fleetHostPrincipals; the activation only installs them.
-          # The fleet's nix signing key, replaced on the seat (the interim rotation of 2026-10-13).
+          # The fleet's nix signing key, replaced on the operator seat (the interim rotation of 2026-10-13).
           cacheSigningKeyRotatePackage = ndhStoreApiDarwin.installBinScript "cache-signing-key-rotate" (
             pkgsForSystem.replaceVars ./modules/.common.d/cache-signing-key-rotate.d/cache-signing-key-rotate.sh
               {
@@ -1935,7 +1937,7 @@
           lock-flox-envs = {
             type = "app";
             program = "${lockFloxEnvsPackage}/bin/lock-flox-envs";
-            meta.description = "Lock the flox envs vendored under .flox-envs.d so the seat can activate (fresh-clone bootstrap) — src: flake.nix (lockFloxEnvsPackage)";
+            meta.description = "Lock the flox envs vendored under .flox-envs.d so the flox seat can activate (fresh-clone bootstrap) — src: flake.nix (lockFloxEnvsPackage)";
           };
           # relock — nix-flake-commons' `lib.mkRelockApp`, the one implementation every seedmatic
           # flake shares. ndh supplies its name; the heads, the order and what each head pins are read
@@ -1973,12 +1975,12 @@
           cache-signing-key-rotate = {
             type = "app";
             program = "${cacheSigningKeyRotatePackage}/bin/cache-signing-key-rotate";
-            meta.description = "Replace the fleet's nix signing key on the seat: generate it, write it encrypted into catalog/cache-trust.yaml, print the new public — --to NAME [--apply], dry run by default, run from repo root — src: modules/.common.d/cache-signing-key-rotate.d/";
+            meta.description = "Replace the fleet's nix signing key on the operator seat: generate it, write it encrypted into catalog/cache-trust.yaml, print the new public — --to NAME [--apply], dry run by default, run from repo root — src: modules/.common.d/cache-signing-key-rotate.d/";
           };
           ssh-keys-certify = {
             type = "app";
             program = "${sshKeysCertifyPackage}/bin/ssh-keys-certify";
-            meta.description = "Sign, on the seat, every SSH certificate keys.yaml declares (host certificates for every fleet name) and record them in keys.yaml — [--apply], dry run by default, run from repo root — src: modules/.common.d/ssh-keys-certify.d/";
+            meta.description = "Sign, on the operator seat, every SSH certificate keys.yaml declares (host certificates for every fleet name) and record them in keys.yaml — [--apply], dry run by default, run from repo root — src: modules/.common.d/ssh-keys-certify.d/";
           };
           cleanup-activations = {
             type = "app";
@@ -1994,12 +1996,12 @@
         // hostBootstrapInstallerApps
         // baremetalLinkApps
         // incusClusterJoinApps
-        # A seat tool, darwin only: the one definition is bioskop's ndh.incusClusterCert.package.
+        # An operator seat tool, darwin only: the one definition is bioskop's ndh.incusClusterCert.package.
         // nixpkgs.lib.optionalAttrs (system == "aarch64-darwin") {
           incus-cluster-cert-renew = {
             type = "app";
             program = "${self.darwinConfigurations.bioskop.config.ndh.incusClusterCert.package}/bin/incus-cluster-cert-renew";
-            meta.description = "Renew the Incus cluster certificate on the cluster's own key (a CSR signed on the seat), install it on every member, re-pin the seat client, verify — run from the seat, built by revision — src: modules/.common.d/incus-cluster-cert.d/";
+            meta.description = "Renew the Incus cluster certificate on the cluster's own key (a CSR signed on the operator seat), install it on every member, re-pin the operator seat client, verify — run from the seat, built by revision — src: modules/.common.d/incus-cluster-cert.d/";
           };
         }
       );

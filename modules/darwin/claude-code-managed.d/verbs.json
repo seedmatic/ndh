@@ -59,14 +59,53 @@
   "list_path_rules": [
     { "rule": "Read(//Volumes/git-bare-store/nxmatic/keyhole.git/.ssh/**)", "why": "the keyring@keyhole private key, whose ssh-to-age opens the operator's keyring backups" },
     { "rule": "Read(//Volumes/git-worktree-store/nxmatic/keyhole.d/keyring/**)", "why": "the keyring worktree, where the sops-keyring filter leaves the rehydrate scripts in the clear" },
-    { "rule": "Edit(//Volumes/git-worktree-store/nxmatic/keyhole.d/keyring/**)", "why": "the same worktree: a session never writes the operator's keyring" }
+    { "rule": "Edit(//Volumes/git-worktree-store/nxmatic/keyhole.d/keyring/**)", "why": "the same worktree: a session never writes the operator's keyring" },
+    { "rule": "Read(~/.local/share/password-store/seedmatic/**)", "why": "the seat identities, encrypted to the seedmatic subkey whose passphrase the seat's keychain holds" },
+    { "rule": "Edit(~/.local/share/password-store/seedmatic/**)", "why": "the same store: a session never writes the seat identities" },
+    { "rule": "Read(//Volumes/git-worktree-store/nxmatic/claude-home.d/pass/seedmatic/**)", "why": "a checkout of claude-home's pass/seedmatic head, the replica of the same store" },
+    { "rule": "Edit(//Volumes/git-worktree-store/nxmatic/claude-home.d/pass/seedmatic/**)", "why": "the same replica" }
+  ],
+  "store_rules": [
+    { "program": "pass", "prefix": "seedmatic", "free_verbs": ["find", "search", "help", "version"], "decrypts_all": ["grep"],
+      "why": "pass ls and show are one command, which decrypts a file it names; find prints names only, grep decrypts every entry" }
+  ],
+  "option_rules": [
+    { "programs": ["gpg", "gpg2"],
+      "long": ["--decrypt", "--decrypt-files", "--export-secret-keys", "--export-secret-subkeys"],
+      "short": "d", "value_short": "orRuzfFN", "free_long": ["--export"],
+      "commands_long": ["--sign", "--clear-sign", "--clearsign", "--detach-sign", "--encrypt", "--encrypt-files",
+                        "--symmetric", "--store", "--verify", "--verify-files", "--list-keys", "--list-public-keys",
+                        "--list-secret-keys", "--list-signatures", "--list-sigs", "--check-signatures", "--check-sigs",
+                        "--fingerprint", "--list-packets", "--show-keys", "--locate-keys", "--locate-external-keys",
+                        "--export", "--export-options", "--export-ssh-key", "--export-ownertrust", "--import",
+                        "--import-ownertrust", "--send-keys", "--recv-keys", "--receive-keys", "--search-keys",
+                        "--refresh-keys", "--fetch-keys", "--dearmor", "--dearmour", "--enarmor", "--enarmour",
+                        "--generate-key", "--gen-key", "--full-generate-key", "--full-gen-key", "--quick-generate-key",
+                        "--quick-gen-key", "--quick-add-key", "--quick-add-uid", "--quick-revoke-uid",
+                        "--quick-set-expire", "--quick-set-primary-uid", "--quick-sign-key", "--quick-lsign-key",
+                        "--edit-key", "--sign-key", "--lsign-key", "--passwd", "--delete-keys", "--delete-secret-keys",
+                        "--delete-secret-and-public-keys", "--generate-revocation", "--gen-revoke",
+                        "--generate-designated-revocation", "--desig-revoke", "--card-status", "--card-edit",
+                        "--change-pin", "--update-trustdb", "--check-trustdb", "--rebuild-keydb-caches",
+                        "--print-md", "--print-mds", "--gen-random", "--gen-prime", "--tofu-policy", "--list-config",
+                        "--list-gcrypt-config", "--dump-options", "--version", "--help", "--warranty"],
+      "commands_short": "sbeckKh", "default_decrypts": true,
+      "why": "decrypts with, or exports, the operator's secret keys" },
+    { "programs": ["gpgtar"],
+      "long": ["--decrypt", "--extract"], "short": "dx", "value_short": "CorRu", "free_long": [],
+      "commands_long": [], "commands_short": "", "default_decrypts": false,
+      "why": "decrypts an archive with the operator's secret keys" }
+  ],
+  "text_rules": [
+    { "pattern": "(?:^|[\\s'\"=/])pass/seedmatic:", "why": "a blob of claude-home's pass/seedmatic head, the replica's content" }
   ],
   "list_ask_rules": ["rm -rf /", "rm -rf ~", "rm -rf ~/", "rm -rf $HOME", "rm -rf /Users", "rm -rf /Volumes", "rm -rf /nix", "rm -rf ~/.claude*"],
   "nix_attr_aliases": {
     "kubernetes-helm": "helm",
     "pulumi-bin": "pulumi",
     "incus-lts": "incus",
-    "incus-client": "incus"
+    "incus-client": "incus",
+    "gnupg": "gpg"
   },
   "ask_launchers": [
     { "program": "java", "any_arg_contains": ["io.seedmatic.rke2lab.controlplane.Main", "seed-outcluster"] },

@@ -3,7 +3,7 @@
   ndh,
   ...
 }:
-# Scoped macOS resolvers for the per-baremetal DNS domains.  Each baremetal host
+# Scoped macOS resolvers for the per-metalspace DNS domains.  Each metalspace
 # owns an Incus segment with a dnsmasq `.<domain>` zone (vzhost.<domain> + the
 # instances), advertised into the tailnet.  macOS resolves a split-horizon
 # domain ONLY via a scoped `/etc/resolver/<domain>` file — the flat global

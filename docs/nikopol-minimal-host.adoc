@@ -11,8 +11,8 @@ Tart/`vz` VM engine — while all personal development and the Incus workloads l
 Tart VMs* it hosts.
 
 NOTE: naming. The corp bare-metal is addressed as `vzhost.nikopol` (`vzhost` = the VZ/Tart
-host role). The *personal* environment is the Tart macOS VM `nikopol`. The Incus host is the
-Tart NixOS VM `nikopol-nixos`. This document historically predates that split (it was
+host role). The *personal* environment is the Tart macOS VM `nikopol`. The Incus member runs on the
+NixOS guest `nikopol-nixos`. This document historically predates that split (it was
 "alcide", and conflated host and VM); it now reflects the current three-part model. The
 Incus stack is *Tart/`vz`-based*.
 

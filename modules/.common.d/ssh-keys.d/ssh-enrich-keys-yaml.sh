@@ -32,7 +32,7 @@ unset BASH_XTRACEFD 2>/dev/null || true
 #           private: <pem>
 #           certificates: { <authority>: { ssh-host: <cert line>, ssh-user: <cert line> } }
 #
-# An SSH certificate (ssh-host, ssh-user) is signed ON THE SEAT (ssh-keys-certify) and recorded in
+# An SSH certificate (ssh-host, ssh-user) is signed ON THE OPERATOR SEAT (ssh-keys-certify) and recorded in
 # keys.yaml; the activation installs it as recorded and signs nothing, so no host needs the SSH
 # authority's private (roles × keys 6a). A key with an SSH cert_usage whose material or certificate
 # is not recorded is a hard error. Only a TLS leaf (tls-server) is still signed here, until its CSR
@@ -377,11 +377,11 @@ enrich::all_keys() {
 				case "$certUsage" in
 					ssh-host | ssh-user)
 						if [[ -z "$(yq::get ".keys.\"${keyName}\".slots.\"${keySlot}\".public // \"\"")" ]]; then
-							log::error "${keyName}@${keySlot} ${certUsage}: no recorded material — record it on the seat (ssh-keys-renew), then sign it (ssh-keys-certify)"
+							log::error "${keyName}@${keySlot} ${certUsage}: no recorded material — record it on the operator seat (ssh-keys-renew), then sign it (ssh-keys-certify)"
 							return 1
 						fi
 						if [[ -z "$(yq::get ".keys.\"${keyName}\".slots.\"${keySlot}\".certificates.\"${authorityName}\".\"${certUsage}\" // \"\"")" ]]; then
-							log::error "${keyName}@${keySlot} ${certUsage}: its public is recorded but its certificate is not — run ssh-keys-certify on the seat"
+							log::error "${keyName}@${keySlot} ${certUsage}: its public is recorded but its certificate is not — run ssh-keys-certify on the operator seat"
 							return 1
 						fi
 						continue

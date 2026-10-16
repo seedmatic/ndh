@@ -73,7 +73,7 @@ foreign, MDM-managed).
 | The headscale server of one segment, in an Incus container on that segment's NixOS guest.
 
 | *Tailnet*
-| The network one control plane governs. **Two tailnets, one per bare-metal.**
+| The network one control plane governs. **Two tailnets, one per metalspace.**
 
 | *Gateway*
 | The segment's NixOS guest (`bioskop-nixos`, `nikopol-nixos`): subnet router of its segment, and
@@ -98,11 +98,11 @@ flowchart LR
   bbox["bbox — WAN tcp/2222 + the bridge UDP port"]:::ext
 
   subgraph TB_["Tailnet bioskop"]
-    bioskop["bioskop — bare-metal, RDP seat, vz host"]:::seat
+    bioskop["bioskop — bare-metal, operator seat, vz host"]:::seat
     hsB["control plane bioskop"]:::cp
   end
   subgraph TN_["Tailnet nikopol"]
-    nikopol["nikopol — darwin VM, RDP seat"]:::seat
+    nikopol["nikopol — darwin VM, operator seat"]:::seat
     hsN["control plane nikopol"]:::cp
   end
 
@@ -124,7 +124,7 @@ flowchart LR
   classDef cp fill:#ddd9f2,stroke:#5b52b8,stroke-width:2px;
 ....
 
-Legend: blue — RDP seat; violet — control plane; red — outside the fabric's trust; grey dashed —
+Legend: blue — operator seat; violet — control plane; red — outside the fabric's trust; grey dashed —
 deliberately unmanaged.
 
 The **home segment is unmanaged by design**. bioskop is LAN-fixed; it accepts VNC there behind the
@@ -289,7 +289,7 @@ administrator-added, so no ceiling applies. Recommended: a decade, which makes i
 gesture rather than a recurring chore. The exact `tls.not_after_days` is to choose.
 
 | Who signs
-| a **seat**, with `step-cli` against the root — the same path the retired `headscale-tls-server`
+| an **operator seat**, with `step-cli` against the root — the same path the retired `headscale-tls-server`
 leaf used. Never at activation: that entry had an empty slot and regenerated its key on every
 activation on every host, which is exactly the defect this model removes.
 
@@ -306,7 +306,7 @@ cuts the control plane (the data plane keeps running on its last map); recovery 
 |===
 | ✅ Do | ❌ Don't
 
-| generate the leaf key in the container, sign its public half on a seat, commit the certificate
+| generate the leaf key in the container, sign its public half on an operator seat, commit the certificate
 | sign at activation, or let a key regenerate itself — the `headscale-tls-server` defect
 
 | watch the expiry, however distant
@@ -421,7 +421,7 @@ flowchart TB
   end
   subgraph L2["Layer 2 — emergency path, off-site AND the segment down"]
     direction LR
-    l2a["a seat — nikopol"] --> l2b["bbox VNC forward"] --> l2c["bioskop's screen"] --> l2d["screen on the serial console"]
+    l2a["an operator seat — nikopol"] --> l2b["bbox VNC forward"] --> l2c["bioskop's screen"] --> l2d["screen on the serial console"]
   end
   L0 ==>|"headscale up"| L1
   L1 -.->|"control plane down, off-site"| L2
@@ -508,8 +508,8 @@ flowchart LR
   scr["screen-sharing credential — the emergency path"]:::secret
   age["sops/age operator identity"]:::secret
   repos["the repositories — ndh, rke2lab"]:::plain
-  seat["bioskop — the first seat"]:::seat
-  nk["nikopol — the second seat, by authorized replication"]:::seat
+  seat["bioskop — the first operator seat"]:::seat
+  nk["nikopol — the second operator seat, by authorized replication"]:::seat
   fab["the fabric — control planes, grants, guests"]:::ok
 
   gpg -->|"decrypts"| store
@@ -548,7 +548,7 @@ path, and the sops/age operator identity.
 
 ==== The initiating gesture
 
-The root is **deliberately manual**, and it is the only manual step in the whole model. On a seat that
+The root is **deliberately manual**, and it is the only manual step in the whole model. On an operator seat that
 holds nothing yet, the operator:
 
 [source,bash]
@@ -577,7 +577,7 @@ the one thing the root must not delegate. The operator's presence *is* the authe
 | GitHub reachable, and the GPG key present. Everything after it is self-hosted — see the note above.
 |===
 
-`pass` itself is already installed and configured on the seats
+`pass` itself is already installed and configured on the operator seats
 (`modules/home-manager/password-store.nix`: the `pass-audit` / `pass-otp` / … extensions, and
 `PASSWORD_STORE_DIR` pointing at that location), so the gesture needs no setup beyond the clone.
 
@@ -590,7 +590,7 @@ after that is self-hosted. Naming it is the point: a reader who believes the fab
 would plan a cold start that cannot complete.
 ====
 
-*Measured 2026-10-06 — the tool is already there, the role is new.* GnuPG is configured on the seats
+*Measured 2026-10-06 — the tool is already there, the role is new.* GnuPG is configured on the operator seats
 (`modules/home-manager/gpg.nix`: `programs.gpg`, `services.gpg-agent` with loopback pinentry), but it
 plays **no part** in today's secret chain: `.sops.yaml` carries age recipients only, and commit signing
 is SSH-based (`github-signing.pub`, `modules/home-manager/git.nix`). So this adds a role to an existing
@@ -606,7 +606,7 @@ flowchart TB
 
   subgraph HOME["Home — bioskop, the always-at-home bare-metal"]
     direction TB
-    bs["bioskop — darwin seat, holds the operator identity"]:::seat
+    bs["bioskop — operator seat, holds the operator identity"]:::seat
     subgraph VB["Tart VM nerd-nixos → bioskop-nixos"]
       direction TB
       sb["serial console — screen -r"]:::oob
@@ -617,8 +617,8 @@ flowchart TB
 
   subgraph CORP["Corporate bare-metal — holds no identity"]
     direction TB
-    subgraph VN["Tart VM nikopol → the second seat"]
-      nk["nikopol — darwin seat, receives by replication"]:::seat
+    subgraph VN["Tart VM nikopol → the second operator seat"]
+      nk["nikopol — operator seat, receives by replication"]:::seat
     end
     subgraph VNX["Tart VM nerd-nixos → nikopol-nixos"]
       direction TB
@@ -629,7 +629,7 @@ flowchart TB
   end
 
   op -->|"1 · by hand"| bs
-  bs -->|"2 · authorized replication, seats only"| nk
+  bs -->|"2 · authorized replication, operator seats only"| nk
   bs -->|"3 · screen + serial"| sb
   sb --> gb --> cb
   nk -->|"screen"| sn
@@ -645,7 +645,7 @@ flowchart TB
   classDef cp fill:#ddd9f2,stroke:#5b52b8,stroke-width:2px;
 ....
 
-Legend: amber — the out-of-band link, which depends on no network; blue — a seat holding the operator
+Legend: amber — the out-of-band link, which depends on no network; blue — an operator seat holding the operator
 identity; green — a segment gateway; violet — a control plane.
 
 === Components — what each step depends on
@@ -693,7 +693,7 @@ sequenceDiagram
   participant B as the bare-metal
   participant V as its NixOS guest
   participant C as the headscale container
-  participant S as the darwin seat
+  participant S as the operator seat
   participant T as that segment's tailnet
 
   O->>B: screen sharing — the machine addressed by NAME, macOS credentials
@@ -705,7 +705,7 @@ sequenceDiagram
   Note over O,V: the keyring opened by the operator, the guest asks for nothing and generates nothing
   V->>T: tailscale up against the control URL, over the segment
   T-->>V: network map and policy
-  S->>T: the darwin seat registers too
+  S->>T: the operator seat registers too
   Note over T: from here every managed access is a grant
   O->>V: Tailscale SSH on 2222 — no key
 ....
@@ -729,11 +729,11 @@ step is the only thing that makes the next one possible.
 ....
 flowchart TB
   r["0 · the root — the operator's GnuPG key and a GitHub session, carried to bioskop"]:::root
-  b1["1 · bioskop, the first seat — the operator identity and the repositories land here"]:::seat
+  b1["1 · bioskop, the first operator seat — the operator identity and the repositories land here"]:::seat
   b2["2 · its NixOS guest — Tart VM, reached by the serial console"]:::oob
   b3["3 · its control plane — headscale in an Incus container, TLS leaf from the shared root"]:::cp
   b4["4 · the bioskop segment lives — its two members registered, access by grants"]:::ok
-  n1["5 · nikopol, the second seat — the operator identity by authorized replication"]:::seat
+  n1["5 · nikopol, the second operator seat — the operator identity by authorized replication"]:::seat
   n2["6 · its NixOS guest and its control plane — the same path, from the corporate bare-metal"]:::cp
   n3["7 · the nikopol segment lives"]:::ok
   g["8 · the departure gate — roaming may begin"]:::gate
@@ -764,7 +764,7 @@ flowchart TB
 
 | 1 — bioskop first
 | it is the bare-metal that never leaves home, so it is the only one reachable without the fabric
-already existing. It becomes the distribution point for the second seat.
+already existing. It becomes the distribution point for the second operator seat.
 
 | 2 — its NixOS guest
 | the control plane is hosted there, and the serial console is the only way in before a network
@@ -777,7 +777,7 @@ exists.
 | its two members can now register. From here the operator stops using the console for routine work.
 
 | 5 — nikopol, by replication
-| the second seat receives the operator identity from the first. This needs a path between the seats,
+| the second operator seat receives the operator identity from the first. This needs a path between the operator seats,
 which at this point is the home LAN.
 
 | 6–7 — the nikopol segment
@@ -813,14 +813,14 @@ through the bare-metal's screen-sharing app.
 |===
 | Why it gates | Consequence if skipped
 
-| `nikopol` is the second seat
-| off-site it is the ONLY seat you hold. Without it there is no place to run a gesture from.
+| `nikopol` is the second operator seat
+| off-site it is the ONLY operator seat you hold. Without it there is no place to run a gesture from.
 
 | its screen is the out-of-band entry to that bare-metal
 | without it, `nikopol-nixos`'s serial console is out of reach, and so is `incus exec` — the whole
 layer 0 of that segment.
 
-| the first replication bioskop → nikopol needs a path between the seats
+| the first replication bioskop → nikopol needs a path between the operator seats
 | at home that is the LAN. Off-site it needs the bridge (both control planes up) or the emergency
 door — a worse place to discover it is missing.
 |===
@@ -830,7 +830,7 @@ door — a worse place to discover it is missing.
 | ✅ Check before leaving | ❌ Don't leave with
 
 | the screen-sharing app opens `nikopol`
-| only `nikopol-nixos` verified — the seat is what you operate from
+| only `nikopol-nixos` verified — the operator seat is what you operate from
 
 | `nikopol` holds the replicated operator identity
 | the identity still only on bioskop
@@ -858,7 +858,7 @@ flowchart TB
   ula["ULA fd7a:115c:a1e0::/48"]:::super
   ula --> ub["v6 sub-prefix — bioskop"]:::tb
   ula --> un["v6 sub-prefix — nikopol"]:::tn
-  fab["fabric — one /20 per bare-metal"]:::super
+  fab["fabric — one /20 per metalspace"]:::super
   fab --> fb["segment bioskop"]:::tb
   fab --> fn["segment nikopol, incl. the corporate /30"]:::tn
 
@@ -1133,7 +1133,7 @@ Same machine as a subnet router: the FAQ's unsupported case. Container, always.
 * link:network-topology-c4.adoc[Baremetal Instance Segments] — the segments, the `/30` links and the
   routes the gateways advertise.
 * link:network-setup.adoc[Network Infrastructure Setup] — operating the control planes.
-* link:private-binary-cache-spec.adoc[Private Binary Cache] — attic-nixos, the other tenant of the
+* link:private-binary-cache-spec.adoc[Private Binary Cache] — attic-nixos, the other consumer of the
   container module, reached over these tailnets and the bridge.
 * rke2lab `docs/architecture/atlas/fabric-control-plane.adoc` — the migration from today's state
   to this target.

@@ -18,6 +18,7 @@
     ./disable-spotlight.nix
     ./disable-google-updaters.nix
     ./disable-unwanted-agents.nix
+    ./nfsd-off.nix
     ./tailnet-client.nix
     ./headscale-daemon.nix
     ./headscale-client-kind.nix
@@ -47,6 +48,7 @@
     ./incus-remote-trust.nix
     ./sops.nix
     ./identity-push.nix
+    ./keyring.nix
     ./bringup-observe.nix
     ./tailscale-vnc-forward.nix
     ./tls-authority-keychain.nix

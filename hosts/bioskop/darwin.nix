@@ -46,7 +46,7 @@
     # The SOPS age key must already exist: nothing generates it.
     ndh.sopsAgeKeyBootstrap.darwinSystemWideKey = true;
 
-    # bioskop holds the TLS authority (the seat): its activation restores the Incus cluster certificate.
+    # bioskop holds the TLS authority (the operator seat): its activation restores the Incus cluster certificate.
     ndh.incusClusterCert.atActivation = true;
     sops.age.keyFile = "/etc/sops/age/keys.txt";
 
@@ -97,7 +97,9 @@
 
     # The Claude Code policy (deny/ask list and hook) is set here only: nikopol runs its employer policy.
     ndh.claude-code.managedSettings.enable = true;
-    # bioskop holds the keyring: it gives the machines their identities (ndh-identity-push).
+    # bioskop holds the keyring: it generates the machines' host keys (ndh-keyring) and gives them their
+    # identities (ndh-identity-push).
     ndh.identityPush.enable = true;
+    ndh.keyring.enable = true;
   };
 }
