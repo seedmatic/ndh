@@ -1111,6 +1111,7 @@
               {
                 inherit pkgs;
               };
+          nfsd-off-bats = import ./modules/darwin/nfsd-off.d/tests/package.nix { inherit pkgs; };
           sops-age-bootstrap-bats = import ./modules/.common.d/sops.d/tests/package.nix { inherit pkgs; };
           git-sops-filters-bats = import ./modules/home-manager/git.d/tests/package.nix { inherit pkgs; };
           # keys.yaml against its schema, ENCRYPTED as committed: the schema accepts ENC[...]
