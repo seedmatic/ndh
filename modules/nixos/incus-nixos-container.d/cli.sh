@@ -32,11 +32,17 @@ raw_lxc() {
 }
 
 create() {
-  local info dir dataset target placement=()
+  local info dir dataset target privileged placement=() shift=()
   info=$(instance "$1")
   dir=$(field "$info" dir)
   dataset=$(field "$info" dataset)
   target=$(yq -p json -oy -r '.target // ""' <<<"$info")
+  privileged=$(field "$info" privileged)
+  # Unprivileged: the container's ids are mapped above the host's, so its declared disks are shifted
+  # back. The store's four cannot be: an overlay below a recursive bind and the EROFS view refuse an
+  # idmapped mount (measured on the probe, 2026-10-16). The container then sees its store as
+  # `nobody`'s — readable, never writable, which it never needs.
+  [ "$privileged" = true ] || shift=(shift=true)
 
   if [ "$(incus query /1.0/cluster | yq -p json -oy -r '.enabled')" = true ]; then
     [ -n "$target" ] || die "this member is clustered, and $1 states no target"
@@ -61,7 +67,7 @@ create() {
   # mount points LXC needs.
   # A new project's default profile has no root disk, and Incus refuses an instance without one.
   incus init --empty --project "$PROJECT" --storage "$POOL" "${placement[@]}" "$1" \
-    -c security.privileged=true \
+    -c security.privileged="$privileged" \
     -c cluster.evacuate=stop \
     -c boot.autostart=true \
     -c raw.lxc="$(raw_lxc "$dir")"
@@ -87,6 +93,7 @@ create() {
     # Incus takes the type as a positional argument and refuses `type=` among the keys.
     type=$(DEVICE="$device" yq -p json -oy -r '.devices[strenv(DEVICE)].type' <<<"$info")
     mapfile -t keys < <(DEVICE="$device" yq -p json -oy -r '.devices[strenv(DEVICE)] | to_entries | .[] | select(.key != "type") | .key + "=" + .value' <<<"$info")
+    [ "$type" != disk ] || keys+=("${shift[@]}")
     incus config device add --project "$PROJECT" "$1" "$device" "$type" "${keys[@]}"
   done
   trap - ERR

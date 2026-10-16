@@ -18,9 +18,9 @@
 # list against the layer contract (/etc/ndh/store-layers.json, rendered by erofs-store-mount.nix)
 # instead, and fails hard on a mismatch.
 #
-# ⚠️ Privileged, by the operator's decision of 2026-10-11, against the recommendation: the
-# container's root IS nerd-nixos's root. A consumer that listens on the tailnet (attic) is a root
-# shell on the Incus host if it is compromised. Revisit with `shift=true` or a `raw.idmap`.
+# ⚠️ Privileged by default, by the operator's decision of 2026-10-11, against the recommendation:
+# the container's root IS nerd-nixos's root. An instance exposed to the fabric (the cache container)
+# sets `privileged = false` and runs in its own user namespace, its disk devices shifted.
 #
 # The container never evaluates a flake. Its system is built here, into nerd-nixos's store, so the
 # snapshot `deliver` takes already carries it; the container restarts on it with an empty upper.
@@ -106,7 +106,7 @@ let
 
   instanceInfo = lib.mapAttrs (name: instance: {
     inherit name;
-    inherit (instance) target;
+    inherit (instance) target privileged;
     dir = "${stateRoot}/${name}";
     dataset = "${cfg.datasetParent}/${name}";
     toplevel = toplevelOf name instance;
@@ -211,6 +211,15 @@ in
       type = lib.types.attrsOf (
         lib.types.submodule {
           options = {
+            privileged = lib.mkOption {
+              type = lib.types.bool;
+              default = true;
+              description = ''
+                Whether the container's root is the NixOS guest's root. `false` runs it in its own
+                user namespace, every disk device shifted: what a service exposed to the fabric needs,
+                so that a compromise of it stays inside the container.
+              '';
+            };
             target = lib.mkOption {
               type = lib.types.nullOr lib.types.str;
               description = ''
