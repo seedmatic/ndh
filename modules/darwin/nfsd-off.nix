@@ -17,6 +17,6 @@ let
 in
 {
   system.activationScripts.postActivation.text = ''
-    ${nfsdOff}/bin/nfsd-off /etc/exports
+    ${nfsdOff}/bin/nfsd-off /etc/exports /sbin/nfsd
   '';
 }

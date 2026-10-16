@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# nfsd-off against a stand-in nfsd first on PATH: the exports moved aside and kept, the service
+# nfsd-off against a stand-in nfsd, passed as its binary: the exports moved aside and kept, the service
 # disabled and stopped, an idempotent rerun, and a loud failure when nfsd will not go away.
 
 bats_require_minimum_version 1.5.0
@@ -25,7 +25,7 @@ EOF
   printf '/Users\t-alldirs -maproot=501:30001 -network 192.168.1.0 -mask 255.255.255.0\n' >"$t/etc/exports"
 }
 
-off() { PATH="$t/bin:$PATH" bash -euo pipefail "$BATS_TEST_DIRNAME/../nfsd-off.sh" "$t/etc/exports"; }
+off() { bash -euo pipefail "$BATS_TEST_DIRNAME/../nfsd-off.sh" "$t/etc/exports" "$t/bin/nfsd"; }
 
 @test "the exports are moved aside, kept whole and root-only, and nfsd is disabled and stopped" {
   run off
