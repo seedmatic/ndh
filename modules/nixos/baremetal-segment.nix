@@ -122,6 +122,17 @@ let
   ) (netplan.segments or [ ]);
   qualify = name: if lib.hasInfix "." name then name else "${name}.${bm.domain}";
 
+  # What the vz-host's /30 end may open into the metalspace (see metalspace-guard below).
+  vzHostForwardRules =
+    if !hasLink then
+      [ ]
+    else if bm.vzHostKind == "nix-managed" then
+      [ "ip daddr ${bm.netCidr}" ]
+    else
+      map (h: "ip daddr ${h.ip} udp dport 2055") (
+        lib.filter (h: (h.name or "") == "nnh-inlet") segmentHostRecords
+      );
+
   # The dotted netmask dnsmasq wants in `dhcp-range` (it takes a mask, not a prefix length).
   # Integer division truncates in Nix, which is what makes the octet extraction work.
   intToIpv4 =
@@ -390,6 +401,45 @@ lib.mkIf enabled {
       chain postrouting {
         type nat hook postrouting priority srcnat; policy accept;
         ip saddr ${bm.advertiseCidr} ip daddr != { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, ${netplan.tailnet.cidr} } masquerade
+      }
+    '';
+  };
+
+  # The home LAN reaches into the metalspace only by what it is GIVEN, never by routing through
+  # this host. Before this table every forward hook here was `policy accept`, so any LAN device
+  # with a route via this host's LAN address was forwarded into fabric-br and the vmnet planes,
+  # with its source kept (measured 2026-10-16 on both NixOS guests; the cache container now also
+  # filters its own sources — both layers, by the operator's decision).
+  #
+  # An ALLOWLIST on the ingress foot, not a denylist of protected bridges: `lan-br` is this
+  # metalspace's way OUT, so nothing legitimate is forwarded as NEW from it, and a bridge added
+  # later (a new vmnet role, an Incus-managed one) is covered without anyone remembering to list
+  # it. Replies to the metalspace's own egress, the public-bound masquerade included, pass as
+  # established. The tailnet path enters on tailscale0 and is untouched.
+  #
+  # The ONE measured exception is the vz-host's /30 end, scoped by WHAT KIND of machine it is:
+  #   * nix-managed (darwin.bioskop, the operator seat): it routes `172.16/21 via` its link, more
+  #     specific than the tailnet's /20, so it reaches the fabric's Incus containers this way. The
+  #     fabric /21, never the vmnet planes or the rest of the slice.
+  #   * foreign (vzhost.nikopol, the CORPORATE bare-metal): only its NetFlow export to nnh's inlet
+  #     in this metalspace, the one flow measured. Anything more it ever needs is a deliberate,
+  #     reviewed opening here — the accepted corp-IT risk covers what that host already controls,
+  #     not reach into the fabric's instances and cluster nodes. 2055 is nnh's NetFlow port; the
+  #     catalog carries the inlet's address, not its port.
+  #
+  # `drop`, not `reject`: a LAN scanner learns nothing. A drop in any base chain at this hook is
+  # final, so the other tables' `policy accept` cannot undo it.
+  networking.nftables.tables.metalspace-guard = {
+    family = "inet";
+    content = ''
+      chain forward {
+        type filter hook forward priority filter; policy accept;
+        ct state established,related accept
+        ${lib.concatMapStrings (
+          r: ''iifname "lan-br" ip saddr ${bm.vzHostAddress} ${r} accept'' + "\n"
+        ) vzHostForwardRules}
+        iifname "lan-br" ct state invalid drop
+        iifname "lan-br" ct state new counter drop
       }
     '';
   };
