@@ -99,6 +99,22 @@ entry() { printf '%s' "$PASSWORD_STORE_DIR/seedmatic/host-key/$1.gpg"; }
   [ ! -e "$(entry bioskop)" ]
 }
 
+@test "a machine name with a space is refused, never split into an entry" {
+  keyring host-key "bioskop nikopol"
+  [ "$status" -eq 1 ]
+  [[ $output == *"not one of the inventory's machines"* ]]
+  [ ! -e "$PASSWORD_STORE_DIR/seedmatic/host-key" ]
+}
+
+@test "a recipient override in the environment is refused before generating" {
+  PASSWORD_STORE_KEY="$personal" keyring host-key bioskop
+  [ "$status" -eq 1 ]
+  [[ $output == *"would override the seedmatic recipient"* ]]
+  PASSWORD_STORE_GPG_OPTS="--recipient $personal" keyring host-key bioskop
+  [ "$status" -eq 1 ]
+  [ ! -e "$(entry bioskop)" ]
+}
+
 @test "under bash -x, the trace says xtrace is off and carries no private" {
   TMPDIR="$t/tmp" PATH="$t/bin:$PATH" run bash -x "$t/keyring" host-key bioskop
   [ "$status" -eq 0 ]

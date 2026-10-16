@@ -26,7 +26,12 @@ ulimit -c 0
 
 [[ $# -eq 2 && $1 == host-key ]] || die "usage: ndh-keyring host-key <machine>"
 machine="$2"
-[[ " ${machines[*]} " == *" ${machine} "* ]] || die "${machine} is not one of the inventory's machines (${machines[*]})"
+known=0
+for m in "${machines[@]}"; do [[ $m == "$machine" ]] && known=1; done
+((known)) || die "${machine} is not one of the inventory's machines (${machines[*]})"
+# Both bypass .gpg-id: the first replaces the recipients, the second can add one.
+[[ -z ${PASSWORD_STORE_KEY:-} && -z ${PASSWORD_STORE_GPG_OPTS:-} ]] ||
+  die "PASSWORD_STORE_KEY or PASSWORD_STORE_GPG_OPTS is set, which would override the seedmatic recipient — unset it"
 
 store="${PASSWORD_STORE_DIR:-$HOME/.password-store}"
 entry="seedmatic/host-key/${machine}"
@@ -34,13 +39,15 @@ entry="seedmatic/host-key/${machine}"
   die "${store}/seedmatic/.gpg-id is not exactly ${recipient}! — refused, nothing generated"
 [[ ! -e "$store/seedmatic/host-key/.gpg-id" ]] ||
   die "${store}/seedmatic/host-key/.gpg-id would override the seedmatic recipient — refused, nothing generated"
+# The ONLY guard against an overwrite: `pass insert -m` fed by a pipe answers its own overwrite prompt yes.
 [[ ! -e "$store/${entry}.gpg" ]] || die "${entry} exists; a host key is never overwritten (a replacement is a rotation)"
 
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 chmod 700 "$work"
 
-"$generate" 3>"$work/generated.pub" | pass insert -m "$entry" >/dev/null || die "pass insert of ${entry} failed"
+"$generate" 3>"$work/generated.pub" | pass insert -m "$entry" >/dev/null ||
+  die "generating or inserting ${entry} failed — an empty entry may exist: check with pass find host-key"
 read -r type blob _ <"$work/generated.pub"
 [[ $type == ssh-ed25519 && -n $blob ]] || die "the generator returned no ed25519 public"
 
