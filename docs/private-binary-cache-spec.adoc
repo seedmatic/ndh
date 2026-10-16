@@ -22,14 +22,16 @@ Every figure marked *measured* was read on 2026-10-10 from store paths that alre
 The seedmatic hosts share most of one configuration, so they run mostly the same packages. Today
 each host builds them again. The cache makes a path **built once and substituted everywhere**:
 
-* **one builder**, bioskop, builds every host's configuration from a **pushed revision**, never from
-  a working tree, and **sends** each host its closure (`nix copy`). The other hosts never build from
-  source (see <<revisions-only>>);
-* what the builder **trusts enough to publish** goes to the **public** `nxmatic` cachix. That covers
-  an allow-list of named outputs, built and not added, which passed a content guard. The builder
-  signs those paths with a publication key and pushes them itself (see <<public-private-split>>);
-* **everything else** stays in the **private** cache: an **attic** server in an Incus container on
-  bioskop, filled by an `attic watch-store` on every host, every read of which needs a token.
+* **each access point builds** — bioskop and nikopol, from its darwin host or its NixOS guest —
+  from a **pushed revision**, never from a working tree (see <<per-metalspace>>, <<revisions-only>>);
+* what is **trusted enough to publish** goes to the **public** `nxmatic` cachix. That covers an
+  allow-list of named outputs, built and not added, which passed a content guard, signed with a
+  publication key; **both access points publish**, each with its own (see <<public-private-split>>,
+  <<per-metalspace>>);
+* **everything else** stays in **each metalspace's private** cache: an **attic** server in a cache
+  container (an Incus container) on that metalspace's NixOS guest, filled by an `attic watch-store`
+  on each machine of the access point, read by every machine, every read of which needs a token (see
+  <<per-metalspace>>).
 
 [cols="1,3",options="header"]
 |===
@@ -50,9 +52,11 @@ serves them.
 published path is never kept privately, and a path the builder did not publish is never served by
 nobody (see <<public-private-split>>).
 
-| Every host writes the private cache
-| Each of the four hosts uploads to attic, with a write token of its own. The price is trust: attic
-is as trustworthy as its least trusted writer (see <<trust-model>>). The clusters read the public
+| Each access point writes its own metalspace's private cache, and reads both
+| Each machine uploads to its own metalspace's attic, with a write token of its own, and reads both
+caches. The price is trust: a cache is as trustworthy as its least trusted writer, and each has only
+its own access point's writers (see <<per-metalspace>>, <<trust-model>>). The corporate bare-metal writes nothing.
+The clusters read the public
 tier only, and hold **no** attic token: their nodes and workloads build through their nerd-nixos
 builder (see <<cluster-builds>>, design only). The infrastructure containers hold none either.
 
@@ -80,6 +84,156 @@ This spec brings the cache back and narrows that shape in layers:
 None of these proves a path's content clean. That is the job of the content guard on the way to
 the public cache, and of an attic fork that refuses such paths at upload (see <<attic-fork>>).
 Upstream of all of it: no plaintext on disk in a flake tree.
+
+[[per-metalspace]]
+== One private cache per metalspace — decided 2026-10-15
+
+[IMPORTANT]
+====
+**Decided by the operator on 2026-10-15**, superseding the one common cache on bioskop and the one
+builder of 2026-10-10/11. **Each access point builds** — its darwin host and its NixOS guest — from
+revisions, and pushes what it builds into the private cache of **its own metalspace**; every
+machine reads **both** caches. The sections still written for one cache or one builder
+(<<who-fills>>, <<write-tokens>>, <<revisions-only>>, <<builder-tests>>, the fill job of
+<<public-private-split>>) are superseded where they contradict this one, until they are rewritten.
+**Both access points publish** to the public cachix tier (operator, 2026-10-16), each with its own
+publication key, `seedmatic-<metalspace>-publish-1`, and its own cachix push token, so a published
+path's provenance stays legible. Each publication keeps the three guards of the former single fill
+job: a **dedicated publishing user**, **revisions only**, and the **content guard** before the push.
+Revoking a metalspace's publication means removing its key from every consumer's
+`trusted-public-keys` **and** purging, or re-signing, the paths it already signed in cachix.
+
+⚠️ nikopol's publication key and cachix token live on the darwin host nikopol, a macOS guest under
+the corporate hypervisor, and the public tier is the one the **clusters** trust: the corporate
+bare-metal's reach extends to every cluster, beyond bioskop's private reads. **Accepted by the
+operator on 2026-10-16** (the security model's "corp IT"), not an absence of risk (🛡️).
+====
+
+[mermaid]
+....
+flowchart TB
+  dbio["darwin host bioskop — bare-metal, outside its metalspace<br/><i>builds · watch-store</i>"]:::writer
+  subgraph BIOSKOP["🌌 metalspace bioskop"]
+    bnix["bioskop-nixos — NixOS guest<br/><i>builds · watch-store</i>"]:::writer
+    batt["📦 attic.bioskop — cache container<br/><i>signs with seedmatic-bioskop-attic-1</i>"]:::cache
+  end
+  subgraph NIKOPOL["🌌 metalspace nikopol — two Tart VMs on the corporate bare-metal"]
+    dnik["darwin host nikopol — macOS guest<br/><i>builds · watch-store</i>"]:::corpwriter
+    nnix["nikopol-nixos — NixOS guest<br/><i>builds · watch-store</i>"]:::corpwriter
+    natt["📦 attic.nikopol — cache container<br/><i>signs with seedmatic-nikopol-attic-1</i>"]:::cache
+  end
+  vz["vzhost.nikopol — the corporate bare-metal, its vz-host<br/><i>builds nothing · receives nix copy · not a machine</i>"]:::receiver
+  dbio -->|"push, bioskop write token"| batt
+  bnix -->|"push, bioskop write token"| batt
+  dnik -->|"push, nikopol write token"| natt
+  nnix -->|"push, nikopol write token"| natt
+  dbio & bnix -.->|"read both, trust both keys"| natt
+  dnik & nnix -.->|"read both, trust both keys"| batt
+  dnik & nnix ==>|"nix copy of closures"| vz
+
+  classDef writer fill:#fef3c7,stroke:#b45309,stroke-width:2px;
+  classDef corpwriter fill:#fee2e2,stroke:#b91c1c,stroke-width:2px;
+  classDef cache fill:#ddd9f2,stroke:#5b52b8,stroke-width:2px;
+  classDef receiver fill:#dcfce7,stroke:#15803d;
+....
+
+Legend: amber — a writer, a machine of the access point, which builds and holds its metalspace's
+write token; red — the same, but a Tart VM on the corporate bare-metal, whose hypervisor it trusts;
+violet — a metalspace's cache container, which signs what it serves with its own key; green — the
+corporate bare-metal, a receiver only. Plain arrow = push; dotted = read (substitute); thick =
+`nix copy` into its store.
+
+[cols="1,2,2",options="header"]
+|===
+| | Metalspace bioskop | Metalspace nikopol
+
+| cache container
+| attic.bioskop, an Incus container on bioskop-nixos
+| attic.nikopol, an Incus container on nikopol-nixos
+
+| signing key (attic signs what it serves)
+| `seedmatic-bioskop-attic-1`
+| `seedmatic-nikopol-attic-1`
+
+| writers — the access point's two machines, each with a watch-store and its metalspace's write token
+| the darwin host bioskop, bioskop-nixos
+| the darwin host nikopol (a macOS guest), nikopol-nixos
+
+| readers
+| every machine, of both caches, trusting both keys
+| the same
+
+| the corporate bare-metal
+| —
+| vzhost.nikopol builds nothing: it receives `nix copy` from its access point, and holds no attic
+token and no attic substituter
+|===
+
+A cache is as trustworthy as its least trusted writer (<<trust-model>>), and each cache has only its
+own access point's writers. But nikopol's writers, the darwin host nikopol and nikopol-nixos, are
+Tart VMs **on** the corporate bare-metal, whose hypervisor can read and alter their memory, disks and
+tokens. So bioskop's machines, trusting nikopol's key, trust what the corporate bare-metal hosting
+metalspace nikopol could inject: **an accepted risk** (the operator, under the security model's
+"corp IT"), **not an absence of risk** (🛡️, 2026-10-16). A blob's provenance is its signature: the
+key names the metalspace.
+
+The private tiers' confidentiality still rests on <<revisions-only>>: a watch-store uploads any store
+path, including what an evaluation of a decrypted working tree copies into the store (the 2026-10-10
+class), and now the OTHER metalspace reads it too.
+
+=== The path of a read across metalspaces
+
+[mermaid]
+....
+flowchart LR
+  c["darwin host nikopol, a macOS guest<br/><i>on the same bare-metal as nikopol-nixos</i>"]:::clear
+  nn["nikopol-nixos — fabric gateway<br/><i>accepts bioskop's /21</i>"]:::router
+  nb["bioskop-nixos — fabric gateway<br/><i>exports its /21</i>"]:::router
+  a["📦 attic.bioskop<br/><i>on bioskop's fabric-br, 172.16.x</i>"]:::cache
+
+  c -->|"① outside the tunnel, under TLS — virtual interfaces, inside the corporate bare-metal"| nn
+  nn ==>|"② WireGuard tunnel (tailnet), direct over the LAN"| nb
+  nb -->|"③ outside the tunnel, under TLS — fabric-br, inside bioskop-nixos"| a
+
+  classDef clear fill:#fee2e2,stroke:#b91c1c;
+  classDef router fill:#dbeafe,stroke:#1d4ed8,stroke-width:2px;
+  classDef cache fill:#ddd9f2,stroke:#5b52b8,stroke-width:2px;
+....
+
+Legend: red — a hop outside the tunnel (in clear at the network layer, its payload under attic's TLS
+leaf), on virtual interfaces inside one bare-metal; blue — the two fabric gateways (each NixOS guest
+exports its metalspace's fabric /21 and accepts its peer's, see `modules/nixos/baremetal-segment.nix`);
+violet — the cache container. Thick = encrypted by the tailnet: the **only** traffic that crosses the
+LAN the two NixOS guests share. Names resolve by split DNS: the zones `.bioskop` and `.nikopol`
+answer 172.16.x addresses, each served by its fabric's dnsmasq.
+
+[cols="1,3",options="header"]
+|===
+| Rule | Why
+
+| an access point's darwin host and its NixOS guest talk over virtual interfaces only (vmnet, the
+link, fabric-br); between metalspaces, only the WireGuard tunnel crosses the LAN
+| no clear packet of a metalspace is ever on the LAN (operator, 2026-10-15)
+
+| attic listens on its **fabric address only** (172.16.x), never on the NixOS guest's LAN interface,
+and machines reach it by its **fabric name** (`attic.bioskop`, `attic.nikopol`); proven by a measured
+negative
+| the NixOS guests' LAN foot (`lan-br`, 192.168.1.x) is their way OUT — to the public network and as
+the tunnel's underlay — never a place to serve from: anything addressed to it, or to a `.local`
+name, crosses the LAN outside the tunnel
+
+| attic serves TLS with a **leaf from mammoth-skate tls** (decided by the operator on 2026-10-15)
+| hop ③ is shared with every Incus container on fabric-br, cluster nodes included; the leaf keeps the
+read and push tokens end to end
+
+| the cache container's dataset `tank/nerd/attic` has a quota of **8G**, and a retention of **6
+hours** (both decided by the operator on 2026-10-15)
+| see <<sizing>> and <<retention>>; the quota is raised with `zfs set quota` if the 75 % alarm fires
+|===
+
+Open, for the implementation: the tailnet grants from every machine to each attic's address and port
+(a missing grant times out, it is never refused); each metalspace's machines querying the other
+zone; the substituter order on a machine (its own metalspace's cache, then the other's).
 
 == Vocabulary
 
@@ -155,33 +309,34 @@ flowchart LR
   op["Operator"]:::person
   gh["Revisions — GitHub, or the bare repositories on bioskop"]:::ext
   up["cache.nixos.org, cache.flox.dev — upstream substituters"]:::ext
-  cx["nxmatic.cachix.org — PUBLIC tier, what the fill job published"]:::pub
+  cx["nxmatic.cachix.org — PUBLIC tier, what either access point published"]:::pub
 
-  subgraph BIOSKOP["bioskop bare-metal"]
-    dj["fill job on darwin bioskop — dedicated user, revisions only, publication key, the only cachix token"]:::builder
-    dB["darwin bioskop — operator seat, watch-store"]:::host
-    subgraph NN_B["nerd-nixos bioskop-nixos"]
-      lb["Linux remote builder of the fill job — watch-store"]:::host
-      attic["attic-nixos — PRIVATE tier, reads need a token"]:::cache
+  pub["publication to the public tier — both access points, each with its own key"]:::open
+  subgraph BIOSKOP["🌌 metalspace bioskop, with the darwin host bioskop (its bare-metal)"]
+    dB["darwin bioskop — builds, watch-store"]:::host
+    subgraph NN_B["bioskop-nixos — NixOS guest, builds, watch-store"]
+      attB["📦 attic.bioskop — PRIVATE tier of the metalspace"]:::cache
     end
   end
-  subgraph NIKOPOL["corporate bare-metal"]
-    dN["darwin nikopol — watch-store"]:::host
-    nN["nerd-nixos nikopol-nixos — watch-store"]:::host
+  subgraph NIKOPOL["🌌 metalspace nikopol — on the corporate bare-metal"]
+    dN["darwin host nikopol, a macOS guest — builds, watch-store"]:::host
+    subgraph NN_N["nikopol-nixos — NixOS guest, builds, watch-store"]
+      attN["📦 attic.nikopol — PRIVATE tier of the metalspace"]:::cache
+    end
+    vz["vzhost.nikopol — receives nix copy only"]:::none
   end
   cl["cluster nodes and pods — public tier only, no attic token"]:::none
 
-  op -->|"triggers a fill"| dj
-  gh -->|"git objects — secrets stay encrypted"| dj
-  dj -->|"Linux builds"| lb
-  dj -->|"push the computed publishable set, after the guard"| cx
-  dj -->|"nix copy — each host its closure"| dN
-  dj -->|"nix copy, across the bridge"| nN
-  dB & lb -->|"watch-store, own write token"| attic
-  dN & nN -->|"watch-store, across the bridge"| attic
+  gh -->|"git objects — secrets stay encrypted"| dB & dN & NN_B & NN_N
+  op -.->|"decides"| pub
+  pub -.-> cx
+  dB & NN_B -->|"watch-store, bioskop write token"| attB
+  dN & NN_N -->|"watch-store, nikopol write token"| attN
+  dN ==>|"nix copy"| vz
   up -.->|"substitute, first"| dN
   cx -.->|"substitute, second"| dN
-  attic -.->|"substitute, read token, third"| dN
+  attN -.->|"substitute, read token, own metalspace"| dN
+  attB -.->|"substitute, read token, other metalspace, through the tunnel"| dN
   up & cx -.->|"substitute"| cl
 
   classDef person fill:#e7ebf0,stroke:#555;
@@ -191,21 +346,34 @@ flowchart LR
   classDef builder fill:#fef3c7,stroke:#b45309,stroke-width:2px;
   classDef cache fill:#ddd9f2,stroke:#5b52b8,stroke-width:2px;
   classDef none fill:#f1f5f9,stroke:#64748b;
+  classDef open fill:#ffffff,stroke:#9ca3af,stroke-dasharray:4 3;
 ....
 
-Legend: amber — the fill job, the only one that builds from source and the only one that
-publishes; blue — a host, which receives its closure, substitutes the rest and uploads its own
-builds to the private tier; violet — the private tier; green — the public tier; slate — the
-clusters, readers of the public tier only; grey — outside the fabric. The substitution order is drawn
-for nikopol and holds on every host.
+Legend: blue — a machine of an access point, which builds from revisions and uploads its own builds
+to its metalspace's private tier; violet — a metalspace's private tier; green — the public tier; slate — the clusters and the
+corporate bare-metal, which write nothing (the bare-metal receives `nix copy`, the clusters read the
+public tier); dashed — the publication, by both access points; grey — outside the fabric. The
+substitution order is drawn for the darwin host nikopol and holds on every machine: upstream, the
+public tier, its own metalspace's cache, then the other's (see <<per-metalspace>>; the order between
+the two private caches is still open).
 
-attic is addressed by a **private fabric-zone name** of bioskop's segment, never by a tailnet
-`100.x` address. nikopol's machines reach it across the bridge, under the rule of
-link:fabric-control-plane-spec.adoc[the fabric control plane]: address the other segment by its
-fabric name.
+Each attic is addressed by a **private fabric-zone name** of its own segment (`attic.bioskop`,
+`attic.nikopol`), never by a tailnet `100.x` address. The other metalspace reaches it through the tunnel,
+under the rule of link:fabric-control-plane-spec.adoc[the fabric control plane]: address the other
+segment by its fabric name.
 
 [[who-fills]]
 == Who fills the cache — every host, into one common cache
+
+[IMPORTANT]
+====
+**Superseded on 2026-10-15** by <<per-metalspace>>: each access point's machines fill **their own metalspace's** cache, and
+there is no longer one builder sending every host its closure. What follows keeps the reasoning of
+2026-10-10/11 (a watch-store on every writer, dev builds included); its "one common cache" and "the
+other hosts never build" no longer hold. The corporate bare-metal itself writes nothing: it only
+receives `nix copy`. nikopol's two writers, the darwin host nikopol (a macOS guest) and nikopol-nixos,
+are Tart VMs on it, the accepted risk stated in <<per-metalspace>>.
+====
 
 **Decided by the operator on 2026-10-10**, through the question prompt and with the price below in
 front of them: an `attic watch-store` daemon runs on **each of the four hosts** (bioskop, nikopol,
@@ -257,6 +425,17 @@ means rotating them all (see <<write-tokens>>)
 
 [[write-tokens]]
 === One common cache, one write token per host
+
+[IMPORTANT]
+====
+**Amended on 2026-10-15** by <<per-metalspace>>: still one write token per machine, but each against
+**its own metalspace's** attic (two servers, two server secrets), and a read token per machine for
+**each** of the two caches. A lost machine means rotating **both** metalspaces' server secrets: its
+write token is under its own metalspace's secret and its read tokens under both, and attic keeps no
+revocation list (🛡️, 2026-10-16). Short-lived read tokens bound the second rotation (decided with
+the token transport, see <<secrets>>). The "cache per writer" considered below is not what was chosen
+either: the unit is the metalspace.
+====
 
 **Decided by the operator on 2026-10-10**: one common cache, `seedmatic`, and **a write token per
 host**, each with its own subject. attic issues as many tokens for one cache as needed:
@@ -1159,13 +1338,12 @@ layers' registration, which carries no signature, so the upstream filter did not
 is the 297-path, 0.66 GiB share measured on 2026-10-10, and it inflates the private tier until the
 layers' paths carry their upstream signatures.
 
-=== Quota — open until the split is measured
+=== Quota — 8G per metalspace
 
-A dataset `tank/nerd/attic`, holding the chunk storage and the SQLite file. Two sizes are on the
-table: **16G** or **about 8G**. Both are well above the upper bound (1.15 GiB + 0.52 U). The open
-variable is U, the unmeasured package outputs and cluster closures, together with how much of them
-the public tier takes. The operator decides once the public/private split is measured on the four
-hosts.
+A dataset `tank/nerd/attic` on each metalspace's NixOS guest, holding the chunk storage and the SQLite
+file. **Decided by the operator on 2026-10-15: 8G**, of the two sizes on the table (16G or about
+8G), both well above the upper bound (1.15 GiB + 0.52 U), U being the unmeasured package outputs and
+cluster closures. The quota is raised with `zfs set quota` if the 75 % alarm below fires.
 
 It sits next to the other `nerd/*` datasets declared in `modules/nixos/zfs-disko-config.nix`, and is
 passed to attic-nixos as an Incus disk device, mounted at `/var/lib/private/atticd`. The nixpkgs
@@ -1585,7 +1763,9 @@ In a cluster, an instance created without a `target` lands on a member that Incu
 containers depend on things that exist on **one** member only: their lowers (that member's
 `/nix/.ro-store*`), and for attic the `nerd/attic` dataset. So:
 
-* attic-nixos has `target = bioskop`;
+* each metalspace's cache container has its own metalspace's Incus member as its target (bioskop for attic.bioskop,
+  nikopol's for attic.nikopol), since each depends on that member's lowers and `nerd/attic` dataset
+  (<<per-metalspace>>); a standalone Incus takes no target;
 * each headscale-nixos has the member of its own bare-metal as its target;
 * none of them migrates when its member is evacuated. Incus's instance option `cluster.evacuate`
   should be `stop`; that option name and value are to verify against the pinned Incus.
@@ -1610,6 +1790,59 @@ The hosts' `attic-client` takes the same revision.
 
 [[secrets]]
 == Secrets, tokens and substituters
+
+[IMPORTANT]
+====
+**Decided by the operator on 2026-10-16**, adopting 🔑 roles × keys' recommendations and, for the
+signing key, 🛡️'s P3. Where the bullets below disagree, this table holds:
+
+[cols="1,2,2",options="header"]
+|===
+| Secret | Where it lives | Who mints it
+
+| a metalspace cache's **signing key**, `seedmatic-<metalspace>-attic-<n>`
+| generated **inside the container**, on its persistent disk: the private never leaves it, with no
+host-decrypted copy and no operator recipient (operator, 2026-10-16, on 🛡️'s P3). Only the public
+half is exported: it enters `catalog/cache-trust.nix` behind the consumers / `acceptedBy` axis, and
+an eval check refuses it in `trusted-public-keys` before `acceptedBy`
+| attic itself, which makes a cache's keypair natively. Losing the disk is a rotation: a new key, and
+its public half accepted again
+
+| attic's **TLS key**, for its leaf from mammoth-skate tls
+| generated **inside the container**, on its persistent disk (an Incus disk device), never in the
+store and never in `keys.yaml`
+| the S6 model (`incus-cluster-cert-renew`): the operator seat fetches a CSR, checks that its SANs equal the
+names fixed at eval from the catalog (the attic fabric FQDN) and that its key is the served one,
+signs it through an fd under a pinned template (CN, SANs, digitalSignature, serverAuth, CA:false,
+`--not-after`), keeps a ledger of what it signed, installs it; renewal by the same tool. The leaf's
+key is **ECDSA P-256** (the darwin and nix curl stacks); keyEncipherment only if RSA were chosen
+
+| atticd's **server secret** (`ATTIC_SERVER_TOKEN_RS256_SECRET_BASE64`, the JWT signing secret)
+| generated **by the container at its first start**, on its persistent disk, mode 0400; it never
+leaves the container, with no sops and no store
+| the container itself; the tokens are minted inside with `atticadm`. If it is lost, the tokens are
+re-minted
+
+| an access point's **publication key** `seedmatic-<metalspace>-publish-1` and its **cachix push token**
+| sops, per access point, decrypted for its dedicated publishing user only
+| both access points publish (operator, 2026-10-16); one key and one cachix token each
+
+| the **attic tokens** — a write token per machine to its own metalspace's cache, a read token per machine to
+each cache
+| **inside an access point**, an **sshfs drop-box**: a dedicated Mac account confined by `Match User` +
+`ChrootDirectory` (root-owned path) + `ForceCommand internal-sftp`, reached with a per-guest key
+`sshfs-<guest>` (delivered by S2, `restrict` in `authorized_keys`), `StrictHostKeyChecking yes`
+against the operator seat's pinned host key (never `accept-new`), one automount entry for one 0700 directory
+(guest-side, without `allow_other`, owned by the consuming service, short idle timeout), holding
+**age ciphertext only**, to the access point's recipient. **Across metalspaces**, an S2-style **push**
+from the issuing metalspace's NixOS guest to the other one's through the tunnel, the read tokens
+**short-lived** and re-pushed on a schedule. Never through a file the operator opens in the IDE.
+Decided by the operator on 2026-10-16, on 🛡️'s P4 and 🔑's answer
+| atticadm, inside each metalspace's cache container; the drop-box waits for 🔑's S3 pieces (the dedicated
+account, the `sshfs-<guest>` key, per-machine host certs). Identities never take this path: they
+stay on S2
+|===
+====
 
 * attic's server secret (`ATTIC_SERVER_TOKEN_RS256_SECRET_BASE64`, through `services.atticd`'s
   `environmentFile`), the cache's signing key, the layer key, the publication key
@@ -1638,25 +1871,30 @@ The hosts' `attic-client` takes the same revision.
 [mermaid]
 ....
 flowchart LR
-  subgraph HOSTS["The four hosts — the only token holders"]
-    h1["bioskop — write token sub=bioskop, read token"]:::writer
-    h2["nikopol — write token sub=nikopol, read token — on the corporate side"]:::corp
-    h3["bioskop-nixos — write token, read token — builder"]:::writer
-    h4["nikopol-nixos — write token, read token — builder"]:::writer
+  subgraph HOSTS["The four machines — the only token holders"]
+    h1["bioskop — write token to attic.bioskop, read tokens to both"]:::writer
+    h2["darwin host nikopol, a macOS guest — write token to attic.nikopol, read tokens to both — on the corporate bare-metal"]:::corp
+    h3["bioskop-nixos — write token to attic.bioskop, read tokens to both — builder"]:::writer
+    h4["nikopol-nixos — write token to attic.nikopol, read tokens to both — builder, on the corporate bare-metal"]:::corp
   end
   subgraph CLUSTERS["Clusters — no attic token"]
     n1["nodes and the flox controller"]:::none
     p1["pods with the nix toolchain"]:::none
   end
-  subgraph INFRA["Infrastructure containers — no token"]
+  subgraph INFRA["Infrastructure containers and the corporate bare-metal — no token"]
     c1["their own system — a snapshot of their nerd-nixos's store"]:::none
+    vz["vzhost.nikopol — receives nix copy"]:::none
   end
-  attic["attic-nixos — the private tier, reads need a token"]:::cache
+  attB["attic.bioskop — bioskop's private tier, reads need a token"]:::cache
+  attN["attic.nikopol — nikopol's private tier, reads need a token"]:::cache
   cx["nxmatic.cachix.org — the public tier, no token to read"]:::pub
-  fj["fill job on bioskop — publication key, cachix push token"]:::writer
+  fj["bioskop's publication — its own key and cachix token"]:::writer
+  fjn["nikopol's publication — its own key and cachix token, on the corporate bare-metal"]:::corp
 
-  h1 & h2 & h3 & h4 -->|"upload and substitute"| attic
-  fj -->|"publishes the computed set"| cx
+  h1 & h3 -->|"upload"| attB
+  h2 & h4 -->|"upload"| attN
+  h1 & h2 & h3 & h4 -.->|"substitute, both"| attB & attN
+  fj & fjn -->|"publish the computed set"| cx
   n1 & p1 -.->|"substitute, no token"| cx
   n1 & p1 -->|"build and substitute through, SSH identity"| h3
   n1 & p1 -->|"same, on nikopol"| h4
@@ -1668,9 +1906,11 @@ flowchart LR
   classDef pub fill:#e7ebf0,stroke:#15803d,stroke-width:2px;
 ....
 
-Legend: amber — a writer holding its own write token and a read token, or for the fill job the only
-publication credentials; red — the same, on the corporate side; green — holds no attic token;
-violet — the private tier; grey with a green border — the public tier.
+Legend: amber — a writer holding its write token to its own metalspace's cache and a read token to
+each cache, or an access point's publication credentials (each its own, see <<per-metalspace>>); red —
+the same, on the corporate bare-metal, whose hypervisor can reach their tokens (an accepted risk);
+green — holds no attic token (the clusters, the infrastructure Incus containers, the corporate
+bare-metal); violet — a metalspace's private tier; grey with a green border — the public tier.
 
 [cols="1,2,1",options="header"]
 |===
