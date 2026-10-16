@@ -30,6 +30,7 @@ let
     system = pkgs.stdenv.hostPlatform.system;
     config = pkgs.config;
   };
+  paths = import ./attic-cache.d/paths.nix;
   fabricIp = lib.head (lib.splitString "/" cfg.address);
   # Container-side paths of the three directories of the dataset.
   stateDir = "/var/lib/private/atticd";
@@ -150,6 +151,17 @@ let
       wants = [ "network-online.target" ];
       after = [ "network-online.target" ];
     };
+    # The operator seat writes a new leaf on the NixOS guest (attic-leaf-sign); the container takes it
+    # by itself: attic-tls-key checks it certifies the held key, then nginx serves it.
+    systemd.paths.attic-tls-leaf = {
+      wantedBy = [ "multi-user.target" ];
+      pathConfig.PathChanged = "${tlsDir}/cert.pem";
+    };
+    systemd.services.attic-tls-leaf = {
+      description = "Take a new TLS leaf: check it against the held key, then serve it";
+      serviceConfig.Type = "oneshot";
+      script = "systemctl restart attic-tls-key.service nginx.service";
+    };
 
     systemd.services.attic-cache-ensure = {
       description = "The private cache ${cfg.cacheName}, created and configured";
@@ -205,8 +217,8 @@ in
 
     fqdn = lib.mkOption {
       type = lib.types.str;
-      default = "attic.${metalspaceEntry.domain}";
-      defaultText = lib.literalExpression "\"attic.\${netplan.baremetal.\${metalspace}.domain}\"";
+      default = metalspaceEntry.atticFqdn;
+      defaultText = lib.literalExpression "netplan.baremetal.\${metalspace}.atticFqdn";
       example = "attic.bioskop";
       description = "The cache's fabric name: the TLS leaf's only SAN, and attic's API endpoint.";
     };
@@ -289,17 +301,17 @@ in
         };
         attic-state = {
           type = "disk";
-          source = "/var/lib/ndh-attic/state";
+          source = "${paths.hostRoot}/state";
           path = stateDir;
         };
         attic-secrets = {
           type = "disk";
-          source = "/var/lib/ndh-attic/secrets";
+          source = "${paths.hostRoot}/secrets";
           path = secretsDir;
         };
         attic-tls = {
           type = "disk";
-          source = "/var/lib/ndh-attic/tls";
+          source = paths.hostTls;
           path = tlsDir;
         };
       };
@@ -320,14 +332,13 @@ in
       };
       script = ''
         zfs list -H -o name ${lib.escapeShellArg cfg.dataset} >/dev/null 2>&1 \
-          || zfs create -p -o mountpoint=/var/lib/ndh-attic ${lib.escapeShellArg cfg.dataset}
+          || zfs create -p -o mountpoint=${paths.hostRoot} ${lib.escapeShellArg cfg.dataset}
         zfs set quota=${lib.escapeShellArg cfg.quota} ${lib.escapeShellArg cfg.dataset}
-        # systemd owns atticd's StateDirectory as `nobody` on disk (DynamicUser + PrivateUsers, systemd
-        # 260), and the container is privileged: closed here, no `nobody` of this NixOS guest reaches
-        # the cache's database and NARs.
-        chmod 0700 /var/lib/ndh-attic
-        install -d -m 0700 /var/lib/ndh-attic/state /var/lib/ndh-attic/secrets
-        install -d -m 0755 /var/lib/ndh-attic/tls
+        # On disk the cache's database and NARs belong to a uid of the container's range (systemd 260
+        # maps atticd's StateDirectory): closed here, nothing of this NixOS guest walks into them.
+        chmod 0700 ${paths.hostRoot}
+        install -d -m 0700 ${paths.hostRoot}/state ${paths.hostRoot}/secrets
+        install -d -m 0755 ${paths.hostTls}
       '';
     };
   };

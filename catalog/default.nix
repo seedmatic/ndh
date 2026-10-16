@@ -116,6 +116,9 @@ in
           fabricFqdn = networkBlueprint.hostFacts.${host}.fabricFqdn;
           # Likewise the `<host>-nixos` hostname, which the cert's SAN carries as its primary name.
           nixosHostname = networkBlueprint.hostFacts.${host}.hostname;
+          # The metalspace's cache container: the only SAN of its TLS leaf, signed on the operator
+          # seat (attic-leaf-sign), and its attic API endpoint (modules/nixos/attic-cache.nix).
+          atticFqdn = "attic.${host}";
           advertiseCidr = "${octets bare}.0/20"; # ONE tailnet route per metalspace
           netCidr = "${octets bare}.0/21"; # managed Incus net (fabric-br dnsmasq) — slots 0-7
           netGateway = "${octets bare}.1"; # Incus bridge + dnsmasq + split-DNS target

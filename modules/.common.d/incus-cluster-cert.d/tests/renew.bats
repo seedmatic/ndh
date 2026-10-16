@@ -149,7 +149,7 @@ run_renew() { HOME="$t/home" XDG_STATE_HOME="$t/state" PATH="$t/bin:$PATH" run b
     cache-signing-key-rotate.d/cache-signing-key-rotate.sh \
     authority-bootstrap-tls-root.d/authority-bootstrap-tls-root.sh ../home-manager/git.d/sops.sh \
     identity-push.d/ndh-identity-push.sh identity-push.d/ndh-identity-receive.sh \
-    keyring.d/ndh-keyring.sh; do
+    keyring.d/ndh-keyring.sh attic-leaf.d/attic-leaf-sign.sh; do
     [ "$(guard "$here/../$f")" = "$(guard "$here/incus-cluster-cert-renew.sh")" ]
   done
 }

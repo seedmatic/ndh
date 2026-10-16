@@ -1,0 +1,232 @@
+#!/usr/bin/env bats
+#
+# attic-leaf-sign on its REAL path: classification, preflight, the exit contract, the CSR's
+# refusals, and a full signature through to the served leaf.
+#
+# Only the outside world is stubbed, first on PATH: sops (a test keys.yaml with a real CA),
+# `openssl s_client` (serves $t/served.crt, or nothing; every other openssl subcommand runs the real
+# one) and ssh (the guest: its CSR, the preflight probe's answer, the install into $t/served.crt).
+
+setup() {
+  realOpenssl="$(command -v openssl)"
+  t="$BATS_TEST_TMPDIR"
+  mkdir -p "$t/bin" "$t/home"
+
+  ca() { # <name> — a self-signed P-256 test root
+    "$realOpenssl" req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes \
+      -keyout "$t/$1.key" -out "$t/$1.crt" -subj "/CN=test-tls" -days 30 \
+      -addext "basicConstraints=critical,CA:TRUE" -addext "keyUsage=critical,keyCertSign,cRLSign" 2>/dev/null
+  }
+  ca current
+  ca old
+  # The cache container's key and the CSR attic-tls-key writes beside it.
+  "$realOpenssl" genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 -out "$t/cache.key" 2>/dev/null
+  csr() { # <out> <san list> — a CSR on the cache's key
+    "$realOpenssl" req -new -key "$t/cache.key" -subj "/CN=attic.m1" -addext "subjectAltName=$2" -out "$1" 2>/dev/null
+  }
+  csr "$t/request.csr" "DNS:attic.m1"
+  # What attic.m1 serves today: a leaf on the same key, from the OLD root.
+  "$realOpenssl" x509 -req -in "$t/request.csr" -CA "$t/old.crt" -CAkey "$t/old.key" \
+    -CAcreateserial -out "$t/served.crt" -days 30 2>/dev/null
+
+  CA="$(<"$t/current.crt")" KEY="$(<"$t/current.key")" yq --null-input '
+    {"authorities": {"test-tls": {"usage": ["tls-authority"],
+      "slots": {"26-10-10": {"ca_crt": strenv(CA), "private": strenv(KEY)}}}}}' >"$t/keys.yaml"
+
+  cat >"$t/bin/sops" <<EOF
+#!/usr/bin/env bash
+cat "$t/keys.yaml"
+EOF
+  cat >"$t/bin/openssl" <<EOF
+#!/usr/bin/env bash
+if [[ \$1 == s_client ]]; then
+  [[ -s "$t/served.crt" ]] || exit 1
+  echo CONNECTED
+  cat "$t/served.crt"
+  if "$realOpenssl" verify -CAfile "$t/current.crt" "$t/served.crt" >/dev/null 2>&1; then
+    echo "Verification: OK"
+  else
+    echo "Verification error: unable to verify the first certificate"
+  fi
+  exit 0
+fi
+exec "$realOpenssl" "\$@"
+EOF
+  # The guest, by the remote command it is given (the last argument).
+  cat >"$t/bin/ssh" <<EOF
+#!/usr/bin/env bash
+# Every session runs with the operator's ssh config ignored, and never prompts.
+args=" \$* "
+for o in "-F /dev/null " "BatchMode=yes " "PasswordAuthentication=no " "KbdInteractiveAuthentication=no " \\
+  "StrictHostKeyChecking=yes "; do
+  [[ \$args == *"\$o"* ]] || { echo "ssh stub: missing \$o" >&2; exit 97; }
+done
+cmd="\${@: -1}"
+case "\$cmd" in
+  # The preflight probe first: its text contains the other patterns.
+  *"sh -c"*)
+    if [[ -n \${STUB_SSH_ERROR:-} ]]; then echo "ERROR /run/wrappers/bin/sudo is not the setuid sudo: must be owned by uid 0"
+    else echo "OK /run/wrappers/bin/sudo runs without a password"; fi
+    echo "OK /tls/request.csr present"; echo "OK /tls writable"; echo "OK /run/user/501 present (tmpfs)" ;;
+  *"test -s"*) [[ -s "$t/request.csr" && -z \${STUB_NO_CSR:-} ]] ;;
+  *"cat '/tls/request.csr'"*) cat "$t/request.csr" ;;
+  *mktemp*) mkdir -p "$t/remote" && echo "$t/remote" ;;
+  *"cat > "*) cat >"$t/remote/leaf.crt" ;;
+  *install*) cp "$t/remote/leaf.crt" "$t/served.crt" ;;
+  *"rm -rf"*) rm -rf "$t/remote" ;;
+  *) echo "unexpected remote command: \$cmd" >&2; exit 99 ;;
+esac
+EOF
+  chmod +x "$t/bin/"*
+  touch "$t/operator" "$t/operator-cert.pub"
+
+  script="$t/sign.sh"
+  write_script 'fqdns=(attic.m1) vias=(nixos.m1)'
+}
+
+write_script() { # <the caches' arrays>
+  {
+    echo 'set -euo pipefail'
+    echo "keysYaml=$t/keys.yaml authority=test-tls days=365 hostTls=/tls"
+    echo "sshUser=op sshKey=$t/operator sshCert=$t/operator-cert.pub"
+    echo "$1"
+    cat "${BATS_TEST_DIRNAME}/../attic-leaf-sign.sh"
+  } >"$script"
+}
+
+# Every run is confined to the test's own directory: a run whose state could land in the operator's
+# real home (a test leaf once did, through an inherited XDG_STATE_HOME) refuses to start.
+isolated() { # <cmd>... — runs <cmd> with HOME and XDG_STATE_HOME under $BATS_TMPDIR, or fails
+  local home="$t/home" state="$t/home/.local/state"
+  [[ $home == "$BATS_TMPDIR"/* && $state == "$BATS_TMPDIR"/* ]] || {
+    echo "refusing: HOME or XDG_STATE_HOME is not under BATS_TMPDIR" >&2
+    return 1
+  }
+  HOME="$home" XDG_STATE_HOME="$state" PATH="$t/bin:$PATH" "$@"
+}
+run_sign() { run isolated bash "$script" "$@"; }
+# <file> holds no line of the test CA's private (its PEM armour excepted).
+no_ca_key_in() {
+  local l
+  [[ $1 != *"PRIVATE KEY"* ]] || return 1
+  while IFS= read -r l; do
+    [[ $l == -----* ]] && continue
+    [[ $1 != *"$l"* ]] || return 1
+  done <"$t/current.key"
+}
+
+@test "no NixOS guest declares a cache: nothing to sign, exit 0" {
+  write_script 'fqdns=() vias=()'
+  run_sign --check
+  [ "$status" -eq 0 ]
+  [[ $output == *"nothing to sign"* ]]
+}
+
+@test "--dry-run on a leaf of another root reaches the signature and stops there" {
+  run_sign --dry-run
+  [ "$status" -eq 0 ]
+  [[ $output == *"SIGN:"* ]]
+  [[ $output == *"does not chain"* ]]
+  [[ $output == *"DRY RUN: would certify attic.m1"* ]]
+}
+
+@test "--check that finds a leaf to sign exits 10, never 1" {
+  run_sign --check
+  [ "$status" -eq 10 ]
+}
+
+@test "a first leaf: nothing served, the CSR held — it is signed, even at activation" {
+  rm "$t/served.crt"
+  run_sign --check
+  [ "$status" -eq 10 ]
+  [[ $output == *"serves no leaf yet"* ]]
+  run_sign --activation --dry-run
+  [ "$status" -eq 0 ]
+  [[ $output == *"DRY RUN: would certify attic.m1"* ]]
+}
+
+@test "nothing served and no CSR is ABSENT: exit 2, and a warning at activation" {
+  rm "$t/served.crt"
+  STUB_NO_CSR=1 run_sign --check
+  [ "$status" -eq 2 ]
+  [[ $output == *"ABSENT: no leaf served and no CSR held for attic.m1"* ]]
+  STUB_NO_CSR=1 run_sign --activation
+  [ "$status" -eq 0 ]
+  [[ $output == *"WARN"* ]]
+}
+
+@test "a preflight ERROR stops the run before anything is signed" {
+  STUB_SSH_ERROR=1 run_sign --dry-run
+  [ "$status" -eq 1 ]
+  [[ $output == *"preflight found 1 error(s)"* ]]
+  [[ $output != *"would certify"* ]]
+}
+
+@test "a CSR naming more than the cache is refused, nothing signed" {
+  csr "$t/request.csr" "DNS:attic.m1,DNS:attic.m2"
+  run_sign
+  [ "$status" -eq 1 ]
+  [[ $output == *"does not name exactly attic.m1"* ]]
+  [ ! -d "$t/home/.local/state/ndh/attic-leaf" ] || [ -z "$(ls "$t/home/.local/state/ndh/attic-leaf")" ]
+}
+
+@test "a CSR on another key than the served one is refused, nothing signed" {
+  "$realOpenssl" genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 -out "$t/cache.key" 2>/dev/null
+  csr "$t/request.csr" "DNS:attic.m1"
+  run_sign
+  [ "$status" -eq 1 ]
+  [[ $output == *"CSR key is not the key it serves"* ]]
+}
+
+@test "the full path signs, records and serves exactly the signed leaf, by the pinned profile" {
+  run_sign
+  [ "$status" -eq 0 ]
+  [[ $output == *"ok   attic.m1: serves the signed leaf"* ]]
+  ledgerFile="$(ls "$t/home/.local/state/ndh/attic-leaf/"*.crt)"
+  grep -q '^# signed .* by test-tls@26-10-10 for attic.m1$' "$ledgerFile"
+  text="$("$realOpenssl" x509 -in "$t/served.crt" -noout -text)"
+  [[ $text == *"Digital Signature"* && $text != *"Key Encipherment"* ]]
+  [[ $text == *"TLS Web Server Authentication"* && $text != *"Client Authentication"* ]]
+  [[ $text == *"CA:FALSE"* ]]
+  [[ "$("$realOpenssl" x509 -in "$t/served.crt" -noout -ext subjectAltName | tail -1 | tr -d ' ')" == "DNS:attic.m1" ]]
+  run_sign --check
+  [ "$status" -eq 0 ]
+  [[ $output == *"CURRENT"* ]]
+}
+
+@test "a session that would read the operator's ssh config is refused by the stub" {
+  sed -i 's| -F /dev/null | |' "$script"
+  run_sign
+  [ "$status" -ne 0 ]
+  [[ $output == *"ssh stub: missing -F /dev/null"* ]]
+}
+
+# X1 / R1: a trace prints every value it expands, the CA private included — on the FULL path, the
+# signature too. The test CA key is real, so a leak of any of its lines would show.
+@test "under bash -x, the full path says xtrace is off and carries no line of the CA private" {
+  run isolated bash -x "$script"
+  [ "$status" -eq 0 ]
+  [[ $output == *"xtrace disabled"* ]]
+  [[ $output == *"serves the signed leaf"* ]]
+  no_ca_key_in "$output"
+}
+
+@test "an exported SHELLOPTS=xtrace is disabled too, on the full path" {
+  run isolated env SHELLOPTS=xtrace bash "$script"
+  [ "$status" -eq 0 ]
+  [[ $output == *"xtrace disabled"* ]]
+  no_ca_key_in "$output"
+}
+
+@test "the leak check bites: an xtrace after the key is loaded prints it" {
+  sed -i 's|^caKey="\$(field key)"$|&\nset -x|' "$script"
+  grep -q '^set -x$' "$script"
+  run_sign
+  ! no_ca_key_in "$output"
+}
+
+@test "there is no trace mode: --debug is refused" {
+  run_sign --debug
+  [ "$status" -eq 1 ]
+  [[ $output == *"usage: attic-leaf-sign"* ]]
+}
