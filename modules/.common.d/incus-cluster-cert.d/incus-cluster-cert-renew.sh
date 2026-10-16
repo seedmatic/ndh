@@ -41,22 +41,20 @@ die() {
 # RENEW or REPIN to do · 2 a member is ABSENT · 1 anything that failed. --check classifies only;
 # --dry-run runs the real path — classification and preflight — up to the signature and stops there.
 # A renewal needed is 10, never 1, so a real failure can never pass for a normal check.
-# --debug traces the PUBLIC part only — classification and preflight, after the keys are loaded
-# and before the signature — never the reading of keys.yaml nor the signature itself.
+# No mode traces: this script holds the authority's private, and its steps are logged by name only.
 #
 # --activation: the step bioskop's darwin activation runs (the operator launches the switch, so it
 # stays a gesture). It acts ONLY on a wrong issuer, a missing fleet name or diverging leaves — never on
 # an expiry date —, never prompts, and an ABSENT cluster (down, a member away) is a warning, exit 0,
 # so the activation goes on.
-force=0 check=0 dryRun=0 debug=0 activation=0
+force=0 check=0 dryRun=0 activation=0
 for arg in "$@"; do
   case "$arg" in
     --force) force=1 ;;
     --check) check=1 ;;
     --dry-run) dryRun=1 ;;
-    --debug) debug=1 ;;
     --activation) activation=1 ;;
-    *) die "usage: incus-cluster-cert-renew [--check | --dry-run | --force | --activation] [--debug]" ;;
+    *) die "usage: incus-cluster-cert-renew [--check | --dry-run | --force | --activation]" ;;
   esac
 done
 # An interactive run lets sudo prompt on the member (ssh -t); the activation never prompts.
@@ -118,7 +116,6 @@ unset selected
 printf '%s\n' "$caCrt" >"$work/ca.crt"
 caFp="$(openssl x509 -noout -fingerprint -sha1 -in "$work/ca.crt" | sed -e 's/.*=//' -e 's/://g')"
 log "signing slot ${authority}@${slot}, root ${caFp}"
-if ((debug == 1)); then set -x; fi
 
 # --- Three cases, decided before anything changes --------------------------------------------
 #   CURRENT  every name serves a leaf that chains to this root, names itself, carries every SAN,
@@ -294,8 +291,6 @@ if ((dryRun == 1)); then
   log "DRY RUN: would certify ${via}'s cluster key for ${days}d, CN=${cn} with ${#sans[@]} SANs — stopping here"
   exit 0
 fi
-
-{ set +x; } 2>/dev/null
 
 # --- A CSR on the cluster's own key, made on ONE member ---------------------------------------
 log "opening a private tmpfs directory on ${via}…"
