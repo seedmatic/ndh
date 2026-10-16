@@ -4,7 +4,7 @@
 # own link. One definition, imported by the operator seat's and the machine's modules.
 { pkgs, lib }:
 let
-  # Where the machine's own host key is placed. Nothing serves it yet: sshd moves to it with S3.
+  # Where the machine's own host key is placed; sshd serves it once the machine sets ndh.hostKey.own.
   hostKeyFile = "/var/lib/ndh/host-key/ssh_host_ed25519_key";
   maxBytes = 8192;
 in
@@ -47,8 +47,13 @@ in
       + builtins.readFile ./ndh-identity-push.sh;
     };
 
+  # served: what this machine's sshd serves, whose fingerprint the console prints for the push.
   receive =
-    { machine, keyFile }:
+    {
+      machine,
+      keyFile,
+      served,
+    }:
     pkgs.writeShellApplication {
       name = "ndh-identity-receive";
       runtimeInputs = [
@@ -60,7 +65,7 @@ in
         machine=${lib.escapeShellArg machine}
         keyFile=${lib.escapeShellArg keyFile}
         hostKeyFile=${lib.escapeShellArg hostKeyFile}
-        served=/etc/ssh/ssh_host_ed25519_key.pub
+        served=${lib.escapeShellArg served}
         owner=root:root
         maxBytes=${toString maxBytes}
       ''

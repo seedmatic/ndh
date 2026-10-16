@@ -45,6 +45,18 @@ main() {
 
   install_host_key
 
+  # NixOS generates no host key: an sshd started before this first copy had none to serve, and its
+  # restarts ran into the start limit.
+  if systemctl is-failed --quiet "$unit"; then
+    systemctl reset-failed "$unit"
+    if ! systemctl start --no-block "$unit"; then
+      logger -p auth.warning -t "$LOG_TAG" "sshd failed and its start was NOT queued; start it by hand"
+      return 0
+    fi
+    logger -p auth.notice -t "$LOG_TAG" "sshd had failed; start queued to load @systemHostKey@ and @hostCertificatePath@"
+    return 0
+  fi
+
   if ! systemctl is-active --quiet "$unit"; then
     logger -p auth.info -t "$LOG_TAG" "sshd not active; it will load the host key and @hostCertificatePath@ when it starts"
     return 0

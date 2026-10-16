@@ -15,7 +15,8 @@ let
   sshPaths = config.sshPaths;
   hostKeysDir = sshPaths.secretsKeysDir;
   clientKeyName = builtins.baseNameOf sshPaths.privKeyFile;
-  # Host keys now extracted to user directory (keys with both system + user profiles)
+  ownsHostKey = config.ndh.hostKey.own;
+  # Until the seat owns its host key: rdp-host, extracted to the user's directory with its certificate.
   hostKeyPrivateFile = sshPaths.privKeyFile;
   hostKeyPublicCert = "${sshPaths.secretsKeysDir}/${clientKeyName}-server-cert.pub";
   caPublicKeyFile = "${config.opensshPolicy.keysDir}/trusted-user-ca.pub";
@@ -83,8 +84,9 @@ in
       principalsCommandUser = "_sshd";
       groupKeysCommandSource = groupKeysScriptStore;
       groupCommandUser = "_sshd";
-      hostKeyPaths = [ hostKeyPrivateFile ];
-      hostCertificatePath = hostKeyPublicCert;
+      hostKeyPaths = [ (if ownsHostKey then config.ndh.hostKey.file else hostKeyPrivateFile) ];
+      hostCertificatePath =
+        if ownsHostKey then "${config.ndh.hostKey.certificateFile}" else hostKeyPublicCert;
 
       # Force IPv4 only for SSH server; expose the SFTP subsystem explicitly.
       # Our canonical /etc/ssh/sshd_config is a bare `Include …` (baseSshdConfigText),
@@ -130,10 +132,16 @@ in
       enable = true;
     };
 
-    # Ensure OpenSSH helper scripts are installed during the etc phase.
-    system.activationScripts.etc.text = lib.mkAfter ''
-      bash ${opensshActivationScript}/bin/openssh-activation
-    '';
+    # Ensure OpenSSH helper scripts are installed during the etc phase. launchd starts sshd per
+    # connection, so a missing owned key is said here, without failing the rest of the activation.
+    system.activationScripts.etc.text = lib.mkAfter (
+      ''
+        bash ${opensshActivationScript}/bin/openssh-activation
+      ''
+      + lib.optionalString ownsHostKey ''
+        ${config.ndh.hostKey.check} || true
+      ''
+    );
 
     # CA aggregation happens in-place inside sshPaths.systemKeysDir during
     # the ssh-keys enrichment activation pass (modules/darwin/ssh-keys-

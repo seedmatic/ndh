@@ -22,7 +22,8 @@ unset BASH_XTRACEFD 2>/dev/null || true
 #   -----END OPENSSH PRIVATE KEY-----
 #   end
 #
-# The host key is PLACED, not served: sshd reads it once each machine owns its own (S3).
+# The host key is PLACED; sshd serves it once the machine sets ndh.hostKey.own (S3), and $served is then
+# that private file, read as root.
 
 log() { printf '[ndh-identity-receive] %s\n' "$*" >&2; }
 die() {

@@ -1,4 +1,5 @@
-# The client-side host-key revocation, as a flake check: a real sshd on loopback and a real ssh client.
+# The client-side host-key revocation, and a missing host key stopping sshd, as a flake check: a real sshd
+# on loopback and a real ssh client.
 { pkgs }:
 pkgs.runCommand "openssh-revoked-host-keys-bats"
   {

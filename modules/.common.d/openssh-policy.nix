@@ -20,9 +20,8 @@ let
   # Notes:
   #  - We DO NOT inject multiple HostKey directives here because an attrset
   #    would collapse duplicate keys. Instead we expose hostKeyPaths (and
-  #    an internal helper hostKeys) and expect platform modules to map them
-  #    to their native options (e.g. services.openssh.hostKeys on NixOS) or
-  #    render lines explicitly on Darwin if desired.
+  #    an internal helper hostKeys), which platform modules render as HostKey
+  #    lines. Not services.openssh.hostKeys on NixOS: it also generates the keys.
   #  - On Darwin we auto-fold authorizedKeysFiles into a single space-separated
   #    AuthorizedKeysFile directive (OpenSSH accepts a list written as a single line).
   baseSettings =
@@ -68,7 +67,10 @@ let
     lib.filterAttrs (_: v: v != null && v != "") raw;
 in
 {
-  imports = [ ./ssh-paths.nix ];
+  imports = [
+    ./ssh-paths.nix
+    ./host-key.nix
+  ];
 
   options.opensshPolicy = {
     enable = mkEnableOption "Unified OpenSSH policy (NixOS + Darwin).";

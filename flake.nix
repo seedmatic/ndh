@@ -1276,6 +1276,21 @@
               "nikopol"
             ]
         )
+        # The host key sshd serves (ndh.hostKey.own, roles × keys S3a), on every guest and operator seat.
+        // (
+          let
+            lib = nixpkgs.lib;
+            hosts = lib.attrNames inventoryData.hosts;
+          in
+          import ./modules/.common.d/host-key.d/tests/checks.nix {
+            inherit pkgs pkgsForLinux lib;
+            inherit (self) nixosConfigurations darwinConfigurations;
+            guests = map (host: "${host}-nixos") (
+              lib.filter (host: self.nixosConfigurations ? "${host}-nixos") hosts
+            );
+            seats = lib.filter (host: self.darwinConfigurations ? ${host}) hosts;
+          }
+        )
         # The mask a failed install's log goes through into the build log: key material never passes.
         // {
           bringup-install-log-mask =
