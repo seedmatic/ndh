@@ -10,7 +10,9 @@ setup() {
   # The stub runs the command the way the real ndh::logger:command:run does, without its log sinks.
   printf 'source "%s"\nndh::logger:command:run() { shift; ndh::logger:command:invoke "$@"; return "$NDH_LOGGER_COMMAND_RC"; }\n' \
     "$NDH_LOGGER_SH" >trampoline.sh
-  sed -e "s#@nixBashTrampoline@#$PWD/trampoline.sh#" -e "s#@caDir@#$PWD/ca.d#" -e "s#@hostNames@#$NAMES#" \
+  # The build sandbox has no /usr/bin/env: the copy names this bash.
+  sed -e "1s#^\#!/usr/bin/env bash#\#!$(command -v bash)#" \
+    -e "s#@nixBashTrampoline@#$PWD/trampoline.sh#" -e "s#@caDir@#$PWD/ca.d#" -e "s#@hostNames@#$NAMES#" \
     "$KNOWN_HOSTS_COMMAND" >known-hosts-command
   chmod +x known-hosts-command
   ssh-keygen -q -t ed25519 -N '' -f fabric -C fabric
