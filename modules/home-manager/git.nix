@@ -30,7 +30,7 @@ let
   signingKeysDir = sshPaths.secretsKeysDir;
   allowedSignersFile = "${config.xdg.configHome}/git/github_allowed_signers";
   # The rke2lab bots commit as rke2lab+<tool>@<authority domain> and sign with their OWN key, which
-  # vouches for that identity pattern only — never with the operator's, which leaves the seat for
+  # vouches for that identity pattern only — never with the operator's, which leaves the operator seat for
   # no one. Read from keys.yaml at evaluation: the key has no profile, so no host holds its .pub.
   # Empty until the key's first slot exists, and then a bot commit is simply not trusted.
   keysYaml = osConfig.ndh.keysYaml or null;
@@ -67,8 +67,8 @@ in
     signing = {
       key = "${signingKeysDir}/github-signing.pub";
       format = "ssh";
-      # Signing goes through the agent, which only the seats (the Macs) hold: the agent is never forwarded, so a
-      # Linux guest commits unsigned and the work is signed and pushed from the seat.
+      # Signing goes through the agent, which only the operator seats (the Macs) hold: the agent is never forwarded, so a
+      # Linux guest commits unsigned and the work is signed and pushed from the operator seat.
       signByDefault = pkgs.stdenv.isDarwin;
     };
 

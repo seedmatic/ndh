@@ -28,18 +28,18 @@ the keyFile is absent  ──► ONE loud fault naming the path ──► the un
 == Placing an identity
 
 From bioskop, with the keyring open, for bioskop's own guest. The age identity is that of the access
-point: `ssh-to-age` of the SEAT's host key, derived in memory.
+point: `ssh-to-age` of the operator seat's host key, derived in memory.
 
 [source,bash]
 ----
 # 1. at the machine's console: the fingerprint its sshd serves
 ndh-identity-receive
-# 2. on bioskop: the machine's host key on fd 3, the seat's on fd 4, fed by the keyring
-ndh-identity-push bioskop-nixos 3<"<machine host key>" 4<"<seat host key>"
+# 2. on bioskop: the machine's host key on fd 3, the operator seat's on fd 4, fed by the keyring
+ndh-identity-push bioskop-nixos 3<"<machine host key>" 4<"<operator seat host key>"
 ----
 
 The push asks for the fingerprint read at the console and trusts that key only. It reaches the machine
-at its inventory address, through the seat's own link. It places both identities (0400, both or
+at its inventory address, through the operator seat's own link. It places both identities (0400, both or
 nothing), checks their publics, and runs `ndh-identity-reload`. This rests on one assumption: the home
 LAN carries only the operator's devices. The guest is bridged onto that LAN, so the bridge proves
 nothing by itself. The host key is placed at `/var/lib/ndh/host-key/` and not yet served by sshd.
@@ -64,7 +64,7 @@ before pasting keeps the private out of the console log.
 1. The operator generates its identity into their keyring, and records its **public** recipient
    (`age1...`) — never `AGE-SECRET-KEY-...`.
 2. The recipient is added to the `.sops.yaml` creation rules, then the affected files are re-keyed on a
-   seat. For extensionless YAML secrets files (for example `.secrets`), pass explicit format flags:
+   operator seat. For extensionless YAML secrets files (for example `.secrets`), pass explicit format flags:
    `sops updatekeys -y --input-type yaml --output-type yaml .secrets`.
 3. The identity is placed on the machine (above), and the machine activates.
 

@@ -279,7 +279,7 @@ in
       # can't reach).  The replacement is the single `vzhost.nikopol`
       # stanza in modules/home-manager/ssh-tailnet-hosts.nix, rendered
       # uniformly on every managed host — resolution + reachability
-      # ride the per-baremetal split-DNS zone + advertised subnet route.
+      # ride the per-metalspace split-DNS zone + advertised subnet route.
       # Leaving these symbols defined-but-empty keeps allExtraStanzas's
       # concat shape unchanged.
 

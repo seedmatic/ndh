@@ -46,7 +46,7 @@ Run this once per clone, before any `flox activate`:
 nix run .#lock-flox-envs
 ```
 
-It walks the seat's include graph dependency-first (`nix` includes `keyhole`, so keyhole is
+It walks the flox seat's include graph dependency-first (`nix` includes `keyhole`, so keyhole is
 locked first) and locks whatever has no lock. The locks stay gitignored on purpose: fleet
 publishes manifests, each checkout realises its own.
 
@@ -291,7 +291,7 @@ The setup relies on a flox environment that provides:
 - Additional build tools and utilities
 - Consistent development environment across hosts
 
-The seat composes three environments from the vendored subtree — `./.flox-envs.d/{nix,shell,tart}`
+The flox seat composes three environments from the vendored subtree — `./.flox-envs.d/{nix,shell,tart}`
 — so they travel with the checkout. They were previously reached through absolute paths under
 `/var/lib/git/seedmatic/fleet/flox`, which exist on no host any more; see the re-lock step in
 Prerequisites, which a fresh clone must run first.

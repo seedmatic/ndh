@@ -104,7 +104,7 @@ flowchart LR
 ....
 
 NOTE: *bioskop* carries the same shape for a different reason — its vz-host is an
-on-LAN Mac Mini, reachable at `192.168.1.129`, but its *tenants* are not, so it too
+on-LAN Mac Mini, reachable at `192.168.1.129`, but the instances of its metalspace are not, so it too
 declares a `/30` and its `host-record` points at the segment address
 (`172.16.8.2`); the Mac keeps its LAN address alongside. bioskop additionally
 advertises the whole home LAN (`lanAttachment = "fixed"`).
@@ -158,7 +158,7 @@ sequenceDiagram
 
 | catalog `linkCidr` | `172.16.24.0/30` | `172.16.8.0/30`
 | `vzHostAddress`    | `172.16.24.2` (/30 alias) | `172.16.8.2` (/30 alias)
-| why a `/30`        | it is the Mac's ONLY path in | the Mac is reachable, its TENANTS are not
+| why a `/30`        | it is the Mac's ONLY path in | the Mac is reachable, its INSTANCES are not
 | reached via        | advertised `/24` -> `/30` link | advertised `/24` -> `/30` link
 | `vzHostKind`       | `foreign` — JAMF Mac, no nix, no tailscale | `nix-managed` — it IS the darwin host `bioskop`
 | alias delivery     | the rendered install piped over ssh (`nix run '.#nikopol-baremetal-link-deploy'`, also run by `nikopol-nixos` at activation) | its own `darwin-rebuild switch` (`modules/darwin/baremetal-link.nix`)
@@ -193,7 +193,7 @@ bridge mode, and resolved to a device at run time. See
 *These two shapes are now ONE* (2026-09-23). bioskop gained a `/30` link, a `dynamicCidr` and a
 `dhcpRange`, so `vzHostAddress` is a segment address on *both* hosts rather than a `/30` alias on one
 and a home-LAN address on the other. What stays host-specific is only the *reason* — the corp Mac is
-off-tailnet and has no other path in, the Mac Mini is reachable but its tenants are not — never the
+off-tailnet and has no other path in, the Mac Mini is reachable but the instances of its metalspace are not — never the
 shape. Two genuine differences remain: `lanAttachment`, which encodes a physical fact (a roaming
 laptop must not advertise a LAN it may leave). `staticHosts` is no longer one of them — it is gone,
 derived from the published segments instead (see <<handoff,Status & handoff>>).
@@ -284,7 +284,7 @@ catalog contribution path are implemented and verified end-to-end:
 * ✅ Catalog consumable as JSON (`nix eval --json '…#catalog.netplan.segments'`);
   contribution path defined (`lib.networkBlueprint` union — see
   link:network-catalog.adoc#contributing[Contributing]).
-* 📐 One headscale control plane per bare-metal for the infrastructure nodes; the clusters
+* 📐 One headscale control plane per metalspace for the infrastructure nodes; the clusters
   stay on Tailscale SaaS — see link:fabric-control-plane-spec.adoc[Fabric Control Plane].
 
 *Known open item on the ndh side:* an Incus instance cannot yet reach *home-LAN*
@@ -295,7 +295,7 @@ needs LAN egress and we will land it.
 
 === Incoming tenancy — rke2lab's cluster nodes (decided 2026-09-23)
 
-So far the only tenants have been nnh's collector and the vz-host name. *rke2lab's cluster nodes are
+So far the only consumers have been nnh's collector and the vz-host name. *rke2lab's cluster nodes are
 moving in*, which changes this feature's status from "ready, awaiting a consumer" to "the substrate of
 the lab's address plane".
 
@@ -310,7 +310,7 @@ What this means concretely for ndh:
   `netplan.baremetal.<effectiveHostName>`, so bioskop qualifies today. Verified live on 2026-09-23:
   `fabric-br` is `Created` on `bioskop-nixos` at `172.16.0.1/25` with its `.bioskop` zone — and **empty**
   (`used_by: []`, link `DOWN`, which is normal for a memberless Linux bridge). The logic did not need
-  extending; it needed a tenant.
+  extending; it needed a consumer.
 * *the joint is now made* (2026-09-23). `raw.dnsmasq` used to be built from a hand-written
   `bm.staticHosts` that restated values nnh already publishes in `netplan.segments[].hosts` — whose
   MAC-less form exists *explicitly* to match this module's `host-record` shape. It is now derived, and
@@ -330,9 +330,9 @@ Two corrections to how that derivation was first planned here, both found while 
 +
 A name is qualified with the zone only when it carries no dot: ndh publishes `vzhost.<domain>` already
 qualified — the segment list is also read for *flow attribution*, where a bare `vzhost` would be
-ambiguous across bare-metals — while a tenant publishes bare instance names.
+ambiguous across bare-metals — while a consumer publishes bare instance names.
 +
-The win is not fewer lines: a tenant's pins now reach dnsmasq *without this catalog being edited*.
+The win is not fewer lines: an instance's pins now reach dnsmasq *without this catalog being edited*.
 Verified byte-identical to the previous output on both hosts.
 * *one addressing prerequisite* — bioskop's `dhcpRange`, see the Troubleshooting note above and
   `network-topology-c4.adoc#target-carve`.

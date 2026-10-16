@@ -1,5 +1,5 @@
 # ndh-keyring: the machines' host keys in the operator's keyring (the seedmatic/ part of their pass store),
-# on the seat holding it. The machines it knows and the recipient it requires are fixed at evaluation.
+# on the operator seat holding it. The machines it knows and the recipient it requires are fixed at evaluation.
 {
   pkgs,
   lib,
@@ -7,7 +7,7 @@
 }:
 let
   hosts = lib.attrNames netplan.baremetal;
-  # The four machines: each seat and its guest, named as the inventory names them.
+  # The four machines: each operator seat and its guest, named as the inventory names them.
   machines = hosts ++ map (h: netplan.baremetal.${h}.nixosHostname) hosts;
   python = pkgs.python3.withPackages (ps: [ ps.cryptography ]);
   generate = pkgs.writeShellScript "ndh-keyring-gen-ed25519" ''

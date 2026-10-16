@@ -121,7 +121,7 @@ Safe by default. Manages the per-kind Tailscale SaaS auth keys + the ACL.
   --rotate-auth-key  Mint fresh per-kind auth keys and write .secrets.
   --sync-policy         Reconcile the live tailnet ACL with our canonical fragment;
                      shows a diff.  POSTs only with --apply.
-  --sync-dns         Reconcile the tailnet split-DNS map (each per-baremetal zone
+  --sync-dns         Reconcile the tailnet split-DNS map (each per-metalspace zone
                      -> that segment's dnsmasq) from the catalog; shows a diff.
                      PATCHes only with --apply.
   --sync-services    Reconcile the tailnet's Tailscale SERVICE definitions from
@@ -345,7 +345,7 @@ sync_policy() {
 	log "SaaS ACL updated.  If not already done, assign '$OWNER_TAG' to the OAuth client (console)."
 }
 
-# Reconcile the tailnet SPLIT-DNS map with the catalog: each per-baremetal zone resolved by that
+# Reconcile the tailnet SPLIT-DNS map with the catalog: each per-metalspace zone resolved by that
 # segment's own Incus dnsmasq.
 #
 # This closes the last tailnet fact that was not in git. Its absence is what let the map keep

@@ -71,7 +71,7 @@ let
   videoDisplayConsole = "tty0";
   journaldConsoleDevice = "/dev/console"; # if bringupMode then "/dev/${virtualSerialConsole}" else "/dev/console";
   journaldConsoleLevel = if bootDebug then "debug" else "info";
-  # The seat records a tart guest's console to a file, so a running guest mirrors its journal there
+  # The vz-host records a tart guest's console to a file, so a running guest mirrors its journal there
   # only on request: a traced unit's output would land in it. Bringup images always mirror.
   journaldToConsole = bringupMode || consoleCfg.forwardToConsole;
   systemdManagerShowStatusNo = {

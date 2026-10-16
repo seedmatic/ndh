@@ -6,7 +6,7 @@ case $- in *x*) { set +x; } 2>/dev/null; echo "[xtrace-guard] xtrace disabled: t
 export -n SHELLOPTS 2>/dev/null || true # readonly in bash, so not unset; un-exported, it stops at this process
 unset NDH_LOGGER_XTRACE # ndh::logger:command:run traces its command only when this is 1
 unset BASH_XTRACEFD 2>/dev/null || true
-# cache-signing-key-rotate — replace the fleet's nix signing key, ON THE SEAT.
+# cache-signing-key-rotate — replace the fleet's nix signing key, ON THE OPERATOR SEAT.
 #
 # catalog/cache-trust.yaml holds ONE fleet signing key under caches.cachix.<name>.private (the bare
 # base64, without the `<name>:` prefix nix-daemon reads). This generates a new one under a new name,
@@ -183,7 +183,7 @@ main() {
 		return 1
 	fi
 
-	printf '\n%s\n  caches.cachix.%s  →  caches.cachix.%s (generated on this seat)\n\n' "$fileRel" "$oldName" "$newName"
+	printf '\n%s\n  caches.cachix.%s  →  caches.cachix.%s (generated on this operator seat)\n\n' "$fileRel" "$oldName" "$newName"
 	if ((apply == 0)); then
 		log::info "dry run — nothing generated; pass --apply to generate the key and rewrite ${fileRel}"
 		return 0

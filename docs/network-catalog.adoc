@@ -136,7 +136,7 @@ Knowing the tier is what makes a new span's placement decidable instead of a jud
 | `192.168.0.0/16` | *The family's network.* One `/24` live, the bbox at `.254`. Physical devices,
   served by a DHCP authority we do not run. **Frozen** — see the caution below.
 | `172.16.0.0/12` | *The fabric.* Everything reachable *across* bare-metals: per-host segments, node
-  addresses, the vz `/30` — all advertised into the tailnet. Deliberately co-tenanted (host infra at
+  addresses, the vz `/30` — all advertised into the tailnet. Deliberately shared (host infra at
   65000, cluster nodes at 6501x): the tier is defined by *nature*, not by owner.
 | `10.0.0.0/8` | *Cluster internals.* Pods, services, and the vmnet supernet. rke2lab's space.
 | `100.64.0.0/10` | *The transport.* Tailscale's CGNAT range. Not decorative — without it the fabric

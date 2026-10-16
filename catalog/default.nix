@@ -55,12 +55,12 @@ in
 
   netplan =
     let
-      # Per-baremetal instance segments: each baremetal host owns an Incus segment + dnsmasq
+      # Per-metalspace instance segments: each metalspace owns an Incus segment + dnsmasq
       # DNS domain, advertised into the tailnet so peers resolve <inst>.<domain> via that
       # dnsmasq and reach it — including each vz-host, which answers at the far end of a static
       # /30 to its Incus host. Both bare-metals declare that /30, for two DIFFERENT reasons:
       # nikopol's Mac is off-tailnet and has no other path at all, while bioskop's Mac is
-      # reachable but its TENANTS are not.
+      # reachable but the instances of its metalspace are not.
       #
       # ★ The ADDRESSES ARE DERIVED, not chosen: every span is a projection of rke2lab's
       # `hostId` (bioskop 0, nikopol 1, test 2) — the same table that already generates the
@@ -92,15 +92,15 @@ in
         let
           hostId = networkBlueprint.hosts.${host};
           # DERIVED, not declared: the vz-host is nix-managed exactly when the darwin config
-          # named `host` IS the bare metal (form = "baremetal", bioskop — which is at once the
-          # vz-host and the rdp-host). When that config is a VM (form = "vm", nikopol), the
-          # vz-host is the physical Mac underneath it, corp-managed and running neither nix nor
-          # tailscale. These are the same fact, so it is read from `form` rather than restated —
+          # named `host` IS the bare metal (form = "baremetal", bioskop — which is at once bare-metal,
+          # vz-host and darwin host). When that config is a VM (form = "vm", nikopol), the
+          # vz-host is the physical Mac underneath it, corp-managed: a nix store, no nix-darwin,
+          # no tailnet. These are the same fact, so it is read from `form` rather than restated —
           # a second copy is how they come to disagree.
           vzHostKind = if hostForms.${host} == "baremetal" then "nix-managed" else "foreign";
           # Two halves of the /20, split by LINK: the low eight /24s are the fabric-br L2, the
           # high eight are other links. Slot 0 of the low half is ndh's own infra (gateway,
-          # DHCP pool, tenant pins); slots 1-4 are rke2lab's per-cluster spans. Slot 8 is the
+          # DHCP pool, instance pins); slots 1-4 are rke2lab's per-cluster spans. Slot 8 is the
           # vz-host /30.
           bare = hostId * 16;
           link = bare + 8;
@@ -116,7 +116,7 @@ in
           fabricFqdn = networkBlueprint.hostFacts.${host}.fabricFqdn;
           # Likewise the `<host>-nixos` hostname, which the cert's SAN carries as its primary name.
           nixosHostname = networkBlueprint.hostFacts.${host}.hostname;
-          advertiseCidr = "${octets bare}.0/20"; # ONE tailnet route per bare-metal
+          advertiseCidr = "${octets bare}.0/20"; # ONE tailnet route per metalspace
           netCidr = "${octets bare}.0/21"; # managed Incus net (fabric-br dnsmasq) — slots 0-7
           netGateway = "${octets bare}.1"; # Incus bridge + dnsmasq + split-DNS target
           dynamicCidr = "${octets bare}.0/27"; # DHCP pool; statics live above it (top-down)
@@ -160,7 +160,7 @@ in
         # ssh, and the tailnet is NOT routed over the /30 — it is a tailnet member and owns its
         # own utun route, which routing 100.64/10 at the guest would hijack.
         #
-        # It declares a /30 at all because its TENANTS cannot reach 192.168.1.129:
+        # It declares a /30 at all because the instances of its metalspace cannot reach 192.168.1.129:
         # baremetal-nat masquerades only PUBLIC-bound egress (the LAN is in its exclusion set)
         # and the home LAN has no return route to this segment. The Mac KEEPS its LAN address;
         # the alias is additional.
@@ -168,14 +168,14 @@ in
           host = "bioskop";
           lanAttachment = "fixed"; # Mac Mini, permanently on the home LAN — so it can advertise the `bbox` Service
         };
-        # nikopol: the vz-host is a CORPORATE Mac that runs neither tailscale nor nix, so the
-        # /30 is its ONLY path in and its daemon must be shipped over ssh — both consequences of
+        # nikopol: the vz-host is a CORPORATE Mac with a nix store but no nix-darwin and no tailnet, so
+        # the /30 is its ONLY path in and its daemon must be shipped over ssh — both consequences of
         # `foreign`.
         #
         # No `staticHosts`: the host-records for nnh's pinned collector instances used to be
         # hand-copied here, duplicating values nnh ALREADY publishes on the /30 it owns (in its
         # lib.networkBlueprint.segments). The consumer derives them from the merged segments
-        # contained in `netCidr` — see modules/nixos/baremetal-segment.nix. A tenant's pins
+        # contained in `netCidr` — see modules/nixos/baremetal-segment.nix. An instance's pins
         # therefore reach dnsmasq without this catalog being edited, which is the point: two
         # copies of an address is how they come to disagree.
         nikopol = mkBaremetal {
@@ -405,8 +405,8 @@ in
                 name = "home";
                 asn = 65000;
               }
-              # 172.16.0.0/12 is reserved for per-BAREMETAL instance segments.  Each baremetal
-              # host (nikopol today; bioskop later) owns a slice with an Incus segment + dnsmasq
+              # 172.16.0.0/12 is reserved for per-METALSPACE instance segments.  Each metalspace
+              # (nikopol today; bioskop later) owns a slice with an Incus segment + dnsmasq
               # DNS domain + a subnet route advertised into the tailnet, so peers resolve
               # <inst>.<domain> and reach it — including the off-tailnet corp Mac vzhost.nikopol,
               # reached over a static /30 via its Incus host (nikopol-nixos).  The per-host
@@ -514,7 +514,7 @@ in
         "65000" = "home";
       };
 
-      # Per-baremetal instance segments (defined in the `let` above) — the single source
+      # Per-metalspace instance segments (defined in the `let` above) — the single source
       # the Darwin corp-Mac package and the NixOS Incus host derive addresses from.
       baremetal = baremetal;
 
@@ -535,20 +535,20 @@ in
         # in the answer.
         #
         # `vzhost.<host>` is intentionally absent from this DNS section, for
-        # BOTH bare-metals.  The name resolves via the per-baremetal split-DNS
+        # BOTH bare-metals.  The name resolves via the per-metalspace split-DNS
         # zone (the segment's dnsmasq host-record) and is reached over the
         # advertised subnet route, never via tailnet DNS.  For nikopol it could
         # not be otherwise — the corp-managed Mac can't be a tailnet member (VPN
         # binaries not allowed), so a tailnet record would have nothing to
         # resolve to; that host also carries the one SSH alias, `vzhostNikopolAlias`
         # in modules/home-manager/ssh-tailnet-hosts.nix.  bioskop's Mac IS a tailnet
-        # member, so its `vzhost.bioskop` record exists for its TENANTS — it denotes
+        # member, so its `vzhost.bioskop` record exists for the instances of its metalspace — it denotes
         # the segment address 172.16.8.2, the only one they can reach — and needs
         # no SSH alias, since an operator reaches that Mac as `bioskop`.
         hosts = {
           bioskop = {
             serviceNames = [
-              "rdp"
+              "darwin"
               "ssh-host"
               # Phase A bootstrap: the headscale primary lives on
               # bioskop, so `headscale.bioskop.<zone>` resolves to the
@@ -559,7 +559,7 @@ in
           };
           nikopol = {
             serviceNames = [
-              "rdp"
+              "darwin"
               "ssh-host"
             ];
           };
