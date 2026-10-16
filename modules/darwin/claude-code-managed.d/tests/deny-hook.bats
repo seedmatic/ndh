@@ -183,3 +183,57 @@ RING=/Volumes/git-worktree-store/nxmatic/keyhole.d/keyring
 @test "keyring: the main worktree stays free"   { run hook 'git -C /Volumes/git-worktree-store/nxmatic/keyhole.d/main log -1'; allowed; }
 @test "keyring: a sibling name stays free"      { run hook 'ls /Volumes/git-worktree-store/nxmatic/keyhole.d/keyring-archive'; allowed; }
 @test "keyring: the bare's refs stay free"      { run hook 'git -C /Volumes/git-bare-store/nxmatic/keyhole.git for-each-ref'; allowed; }
+
+# --- the seat identities (verbs.json list_path_rules, store_rules, text_rules): the seedmatic/ entries of the
+#     operator's pass store, its claude-home replica, and pass naming them. A ~ rule resolves under the session's HOME.
+STORE=/Users/tester/.local/share/password-store
+REPLICA=/Volumes/git-worktree-store/nxmatic/claude-home.d/pass/seedmatic
+@test "seedmatic: gpg -d of an entry"           { run hook "gpg -d $STORE/seedmatic/host-key/bioskop.gpg"; denied; }
+@test "seedmatic: the ~ spelling"               { run hook 'cat ~/.local/share/password-store/seedmatic/x.gpg'; denied; }
+@test "seedmatic: the \$HOME spelling in -c"    { run hook "bash -c 'cp -r \$HOME/.local/share/password-store/seedmatic /tmp/x'"; denied; }
+@test "seedmatic: cd into the store then cat"   { run hook 'cd ~/.local/share/password-store && cat seedmatic/x.gpg'; denied; }
+@test "seedmatic: a store dir variable"         { run hook 'PASSWORD_STORE_DIR=~/.local/share/password-store/seedmatic pass show x'; denied; }
+@test "seedmatic: the replica checkout"         { run hook "cat $REPLICA/.gpg-id"; denied; }
+@test "seedmatic: pass show"                    { run hook 'pass show seedmatic/host-key/bioskop'; denied; }
+@test "seedmatic: pass with no verb"            { run hook 'pass seedmatic/host-key/bioskop'; denied; }
+@test "seedmatic: pass ls of an entry"          { run hook 'pass ls seedmatic/host-key/bioskop'; denied; }
+@test "seedmatic: pass -c behind sudo"          { run hook 'sudo -u nxmatic pass show -c seedmatic/x'; denied; }
+@test "seedmatic: pass init -p"                 { run hook 'pass init -p seedmatic 08C86550EBC4589C!'; denied; }
+@test "seedmatic: pass through nix run"         { run hook 'nix run nixpkgs#pass -- show seedmatic/x'; denied; }
+@test "seedmatic: pass grep decrypts it all"    { run hook 'pass grep ssh-ed25519'; denied; }
+@test "seedmatic: a replica blob"               { run hook 'git -C /Volumes/git-bare-store/nxmatic/claude-home.git show pass/seedmatic:host-key/bioskop.gpg'; denied; }
+@test "seedmatic: a replica blob by full ref"   { run hook 'git -C /Volumes/git-bare-store/nxmatic/claude-home.git cat-file -p refs/heads/pass/seedmatic:.gpg-id'; denied; }
+@test "seedmatic: pass find prints names"       { run hook 'pass find seedmatic'; allowed; }
+@test "seedmatic: another entry stays free"     { run hook 'pass show web/forge'; allowed; }
+@test "seedmatic: a sibling name stays free"    { run hook "ls $STORE/seedmatic-archive"; allowed; }
+@test "seedmatic: the replica's log stays free" { run hook 'git -C /Volumes/git-bare-store/nxmatic/claude-home.git log --format=%h pass/seedmatic'; allowed; }
+@test "seedmatic: the store's git log stays free" { run hook "git -C $STORE log -1 --format=%h -- seedmatic"; allowed; }
+
+# --- gpg (verbs.json option_rules): a session never decrypts with, nor exports, the operator's secret keys.
+#     gpg takes a unique prefix of a long option, clusters short ones, and decrypts when given no command.
+@test "gpg: -d"                                 { run hook 'gpg -d /tmp/x.gpg'; denied; }
+@test "gpg: --decrypt"                          { run hook 'gpg --batch --decrypt /tmp/x.gpg'; denied; }
+@test "gpg: a unique prefix --decr"             { run hook 'gpg --decr /tmp/x.gpg'; denied; }
+@test "gpg: -d clustered as -qd"                { run hook 'gpg -qd /tmp/x.gpg'; denied; }
+@test "gpg: --decrypt-files"                    { run hook 'gpg --decrypt-files /tmp/x.gpg'; denied; }
+@test "gpg: no command decrypts its input"      { run hook 'gpg -o /tmp/out /tmp/x.gpg'; denied; }
+@test "gpg: no command, from a pipe"            { run hook 'cat /tmp/x.gpg | gpg --batch'; denied; }
+@test "gpg: --export-secret-keys"               { run hook 'gpg --armor --export-secret-keys 074DF25347508C66'; denied; }
+@test "gpg: --export-secret-subkeys"            { run hook 'gpg --export-secret-subkeys 08C86550EBC4589C!'; denied; }
+@test "gpg: a prefix --export-secret-key"       { run hook 'gpg --export-secret-key 074DF25347508C66'; denied; }
+@test "gpg: gpg2 behind sudo"                   { run hook 'sudo -u nxmatic gpg2 -d /tmp/x.gpg'; denied; }
+@test "gpg: through env"                        { run hook 'env GNUPGHOME=/tmp/g gpg --decrypt /tmp/x.gpg'; denied; }
+@test "gpg: through nix run"                    { run hook 'nix run nixpkgs#gnupg -- -d /tmp/x.gpg'; denied; }
+@test "gpg: through nix shell -c"               { run hook 'nix shell nixpkgs#gnupg -c gpg -d /tmp/x.gpg'; denied; }
+@test "gpg: inside a -c script"                 { run hook "bash -c 'gpg -d /tmp/x.gpg > /tmp/y'"; denied; }
+@test "gpg: gpgtar --decrypt"                   { run hook 'gpgtar --decrypt -C /tmp/out /tmp/a.gpgtar'; denied; }
+@test "gpg: gpgtar a unique prefix --decr"      { run hook 'gpgtar --decr /tmp/a.gpgtar'; denied; }
+@test "gpg: gpgtar -x clustered as -vx"         { run hook 'gpgtar -vx /tmp/a.gpgtar'; denied; }
+@test "gpg: gpgtar a d in -C's value"           { run hook 'gpgtar -Cdir --list-archive /tmp/a.gpgtar'; allowed; }
+@test "gpg: --verify stays free"                { run hook 'gpg --verify /tmp/x.sig /tmp/x'; allowed; }
+@test "gpg: a public --export stays free"       { run hook 'gpg --armor --export 074DF25347508C66'; allowed; }
+@test "gpg: --export-ssh-key stays free"        { run hook 'gpg --export-ssh-key 074DF25347508C66'; allowed; }
+@test "gpg: -K stays free"                      { run hook 'gpg -K --with-keygrip'; allowed; }
+@test "gpg: --list-packets --list-only free"    { run hook 'gpg --batch --list-only --list-packets /tmp/x.gpg'; allowed; }
+@test "gpg: a d in -r's value stays free"       { run hook 'gpg -rdave -e /tmp/x'; allowed; }
+@test "gpg: --dearmor stays free"               { run hook 'gpg --dearmor < /tmp/k.asc > /tmp/k.gpg'; allowed; }

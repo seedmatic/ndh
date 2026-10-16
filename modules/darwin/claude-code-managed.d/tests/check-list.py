@@ -14,9 +14,9 @@ import sys
 path = sys.argv[1]
 settings = json.load(open(path))["permissions"]
 rules = [r[5:-1] for r in settings["deny"] if r.startswith("Bash(")]
-# Path rules (verbs.json list_path_rules) are not commands: no twins, an absolute `//` path only.
+# Path rules (verbs.json list_path_rules) are not commands: no twins, an absolute `//` or a home `~/` path only.
 path_rules = [r for r in settings["deny"] if not r.startswith("Bash(")]
-bad_paths = [r for r in path_rules if not re.fullmatch(r"(Read|Edit)\(//[^()\s]+\)", r)]
+bad_paths = [r for r in path_rules if not re.fullmatch(r"(Read|Edit)\((?://|~/)[^()\s]+\)", r)]
 print(f"{path}: path-rules={len(path_rules)} malformed={len(bad_paths)} {bad_paths}")
 ask_rules = [r[5:-1] for r in settings.get("ask", [])]
 
