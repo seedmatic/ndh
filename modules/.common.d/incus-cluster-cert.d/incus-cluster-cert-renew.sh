@@ -71,8 +71,11 @@ chmod 700 "$work"
 # hangs silently. Timeouts so a dead link fails instead of waiting.
 # And ONE identity, stated here and not taken from the operator seat's ssh config or its agent: the
 # operator principal's key and certificate, fixed at evaluation (no agent is consulted at all).
+# -F /dev/null: these options are the whole configuration, so no `Host *` of the operator's can add a
+# ProxyJump or a LocalCommand; hosts are still trusted through /etc/ssh/ssh_known_hosts. No password.
 sshq() {
-  ssh -o IdentityAgent=none -o IdentitiesOnly=yes -o IdentityFile="$sshKey" -o CertificateFile="$sshCert" \
+  ssh -F /dev/null -o BatchMode=yes -o PasswordAuthentication=no -o KbdInteractiveAuthentication=no \
+    -o StrictHostKeyChecking=yes -o IdentityAgent=none -o IdentitiesOnly=yes -o IdentityFile="$sshKey" -o CertificateFile="$sshCert" \
     -o User="$sshUser" -o ForwardAgent=no -o ClearAllForwardings=yes -o ControlMaster=no -o ControlPath=none \
     -o ConnectTimeout=10 -o ServerAliveInterval=15 -o ServerAliveCountMax=2 "$@"
 }
