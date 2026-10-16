@@ -1860,6 +1860,15 @@
             pkgsForSystem.replaceVars ./modules/.common.d/ssh-keys-renew.d/ssh-keys-renew.sh {
               nixBashTrampoline = ndhNixBashTrampolineDarwin;
               loggerTag = "ndh.ssh-keys-renew";
+              # The machines a host key is recorded for (--public): the four ndh-keyring knows, each
+              # operator seat and its guest, as the inventory names them.
+              machines =
+                let
+                  hosts = nixpkgs.lib.attrNames catalogData.netplan.baremetal;
+                in
+                nixpkgs.lib.concatStringsSep " " (
+                  hosts ++ map (h: catalogData.netplan.baremetal.${h}.nixosHostname) hosts
+                );
             }
           );
           # 6a: the operator seat signs every SSH certificate keys.yaml declares, host certificates for
@@ -1974,7 +1983,7 @@
           ssh-keys-renew = {
             type = "app";
             program = "${sshKeysRenewPackage}/bin/ssh-keys-renew";
-            meta.description = "Phase 1 of an SSH key renewal: add a dated slot and generate into it — [--key NAME] [--authority NAME] [--older-than Nd] [--apply], or declare a new entry with --create NAME --usage TAG, dry run by default, run from repo root — src: modules/.common.d/ssh-keys-renew.d/";
+            meta.description = "Phase 1 of an SSH key renewal: add a dated slot and generate into it — [--key NAME] [--authority NAME] [--older-than Nd] [--apply], or declare a new entry with --create NAME --usage TAG (record a host key public from stdin with --public -), dry run by default, run from repo root — src: modules/.common.d/ssh-keys-renew.d/";
           };
           cache-signing-key-rotate = {
             type = "app";
