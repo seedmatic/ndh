@@ -136,11 +136,11 @@
       # The ONE identity the incus cluster-cert closure reaches a member with: the OPERATOR
       # principal's key on the operator seat, read from bioskop's configuration (sshPaths, the profile
       # user) so it is never retyped. Step 9 moves it from rdp-host to the `operator` key here.
-      # Roles × keys 6a: every name a fleet host or guest answers to, the union ONE host certificate is
-      # signed for on the operator seat (ssh-keys-certify). Each inventory host, and each guest read from its own
-      # configuration (vm.guestHostName, and vm.guestName.vm.hostName, the bare-metal's dnsmasq zone), in
-      # the bare, .lan, .local and <ssh authority domain> forms. Computed, never retyped.
-      fleetHostPrincipals =
+      # Roles × keys S3a: what ssh-keys-certify signs host certificates for on the operator seat, computed,
+      # never retyped. `names`: each machine's own names (host-names.nix refuses a name two machines
+      # claim). `interim` (decided 2026-10-15, ends at nikopol's push): the shared key nikopol's sshd
+      # still serves, certified for nikopol's machines only.
+      fleetHostCertificates =
         let
           lib = nixpkgs.lib;
           authorities = lib.filterAttrs (
@@ -148,14 +148,8 @@
           ) self.darwinConfigurations.bioskop.config.ndh.keysYaml.authorities;
           domain =
             assert lib.assertMsg (lib.length (lib.attrNames authorities) == 1)
-              "fleetHostPrincipals: exactly one ssh-authority is expected, found ${toString (lib.attrNames authorities)}";
+              "fleetHostCertificates: exactly one ssh-authority is expected, found ${toString (lib.attrNames authorities)}";
             (lib.head (lib.attrValues authorities)).domain;
-          forms = name: [
-            name
-            "${name}.lan"
-            "${name}.local"
-            "${name}.${domain}"
-          ];
           hosts = lib.attrNames inventoryData.hosts;
           guests = lib.concatMap (
             host:
@@ -164,12 +158,18 @@
             ) self.nixosConfigurations."${host}-nixos".config.vm
           ) hosts;
         in
-        lib.sort lib.lessThan (
-          lib.unique (
-            lib.concatMap forms hosts
-            ++ lib.concatMap (vm: forms vm.guestHostName ++ [ "${vm.guestName}.${vm.hostName}" ]) guests
-          )
-        );
+        {
+          names = import ./modules/.common.d/ssh-keys-certify.d/host-names.nix { inherit lib; } {
+            inherit domain hosts guests;
+          };
+          interim = {
+            key = builtins.baseNameOf self.darwinConfigurations.nikopol.config.sshPaths.privKeyFile;
+            machines = [
+              "nikopol"
+            ]
+            ++ map (vm: vm.guestHostName) (lib.filter (vm: vm.hostName == "nikopol") guests);
+          };
+        };
 
       catalogData = import ./catalog/default.nix {
         inherit cacheTrust networkBlueprint dataplan;
@@ -1101,6 +1101,9 @@
           ssh-keys-certify-bats = import ./modules/.common.d/ssh-keys-certify.d/tests/package.nix {
             inherit pkgs;
           };
+          ssh-keys-certify-host-names = import ./modules/.common.d/ssh-keys-certify.d/tests/host-names.nix {
+            inherit pkgs;
+          };
           cache-signing-key-rotate-bats =
             import ./modules/.common.d/cache-signing-key-rotate.d/tests/package.nix
               {
@@ -1871,8 +1874,6 @@
                 );
             }
           );
-          # 6a: the operator seat signs every SSH certificate keys.yaml declares, host certificates for
-          # fleetHostPrincipals; the activation only installs them.
           # The fleet's nix signing key, replaced on the operator seat (the interim rotation of 2026-10-13).
           cacheSigningKeyRotatePackage = ndhStoreApiDarwin.installBinScript "cache-signing-key-rotate" (
             pkgsForSystem.replaceVars ./modules/.common.d/cache-signing-key-rotate.d/cache-signing-key-rotate.sh
@@ -1882,11 +1883,20 @@
                 nix = "${pkgsForSystem.nix}/bin/nix";
               }
           );
+          # 6a: the operator seat signs every SSH certificate keys.yaml declares, host certificates for
+          # fleetHostCertificates; the activation only installs them.
           sshKeysCertifyPackage = ndhStoreApiDarwin.installBinScript "ssh-keys-certify" (
             pkgsForSystem.replaceVars ./modules/.common.d/ssh-keys-certify.d/ssh-keys-certify.sh {
               nixBashTrampoline = ndhNixBashTrampolineDarwin;
               loggerTag = "ndh.ssh-keys-certify";
-              hostPrincipals = nixpkgs.lib.concatStringsSep "," fleetHostPrincipals;
+              hostNames = nixpkgs.lib.concatStringsSep " " (
+                nixpkgs.lib.mapAttrsToList (
+                  machine: names: "${machine}=${nixpkgs.lib.concatStringsSep "," names}"
+                ) fleetHostCertificates.names
+              );
+              interimKey = fleetHostCertificates.interim.key;
+              interimMachines = nixpkgs.lib.concatStringsSep " " fleetHostCertificates.interim.machines;
+              sha256sum = "${pkgsForSystem.coreutils}/bin/sha256sum";
               sshKeygen = "${pkgsForSystem.openssh}/bin/ssh-keygen";
             }
           );
@@ -1993,7 +2003,7 @@
           ssh-keys-certify = {
             type = "app";
             program = "${sshKeysCertifyPackage}/bin/ssh-keys-certify";
-            meta.description = "Sign, on the operator seat, every SSH certificate keys.yaml declares (host certificates for every fleet name) and record them in keys.yaml — [--apply], dry run by default, run from repo root — src: modules/.common.d/ssh-keys-certify.d/";
+            meta.description = "Sign, on the operator seat, every SSH certificate keys.yaml declares (one host certificate per machine, its own names) and record them in keys.yaml — [--apply], dry run by default, run from repo root — src: modules/.common.d/ssh-keys-certify.d/";
           };
           cleanup-activations = {
             type = "app";

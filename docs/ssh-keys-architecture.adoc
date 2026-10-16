@@ -666,8 +666,12 @@ today holding the `public` only. The private never enters keys.yaml; a private o
 being printed. Evaluation refuses that public until it is certified, so `ssh-keys-certify` runs before the
 commit.
 
-`ssh-keys-certify` signs every SSH certificate keys.yaml declares, host certificates for every name a fleet
-host or guest answers to, and records them under `keys.{key}.slots.{YY-MM-DD}.certificates`. The activation
+`ssh-keys-certify` signs every SSH certificate keys.yaml declares and records them under
+`keys.{key}.slots.{YY-MM-DD}.certificates`. A host certificate names one machine's own names: `host-<machine>`
+gets that machine's, and the shared `rdp-host`, nikopol's interim host key, gets nikopol's and its guest's
+(evaluation refuses a name two machines claim). Each certificate's key id carries the hash of its names and
+its issue stamp, and its serial is one above the highest recorded, so the union certificate signed before can
+be revoked by its exact id without touching another. The activation
 installs them as recorded and signs nothing for them; evaluation refuses a recorded public without its
 certificate. A slot with no recorded public (material still generated at activation) is signed on its host
 until its slot is recorded, so the authority's private leaves the hosts only then.
