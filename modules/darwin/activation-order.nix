@@ -13,6 +13,7 @@
       sshKeysEnrichment = 1610;
       userSecretMirror = 1620;
       incusClusterCert = 1650;
+      atticLeaf = 1660;
       restartSecretReaders = 1700;
       homeManager = 2000;
     };

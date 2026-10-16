@@ -1145,6 +1145,8 @@
           incus-cluster-cert-bats = import ./modules/.common.d/incus-cluster-cert.d/tests/package.nix {
             inherit pkgs;
           };
+          attic-leaf-bats = import ./modules/.common.d/attic-leaf.d/tests/package.nix { inherit pkgs; };
+          attic-tls-key-bats = import ./modules/nixos/attic-cache.d/tests/package.nix { inherit pkgs; };
           tls-authority-keychain-bats = import ./modules/darwin/tls-authority-keychain.d/tests/package.nix {
             inherit pkgs;
             trampoline = mkNdhNixBashTrampoline { pkgsForSystem = pkgs; };
@@ -1401,6 +1403,8 @@
           ndh-keychain-reconcile = self.darwinConfigurations.bioskop.config.ndh.tlsAuthorityKeychain.package;
           # T14, by the same rule: one closure built by revision, run from the operator seat.
           incus-cluster-cert-renew = self.darwinConfigurations.bioskop.config.ndh.incusClusterCert.package;
+          # 2a′, its twin: the cache containers' TLS leaves.
+          attic-leaf-sign = self.darwinConfigurations.bioskop.config.ndh.atticLeaf.package;
         }
         // {
           # manage-tailnet on PATH for BOTH systems (a packages output, not just the app):
@@ -2002,6 +2006,11 @@
             type = "app";
             program = "${self.darwinConfigurations.bioskop.config.ndh.incusClusterCert.package}/bin/incus-cluster-cert-renew";
             meta.description = "Renew the Incus cluster certificate on the cluster's own key (a CSR signed on the operator seat), install it on every member, re-pin the operator seat client, verify — run from the seat, built by revision — src: modules/.common.d/incus-cluster-cert.d/";
+          };
+          attic-leaf-sign = {
+            type = "app";
+            program = "${self.darwinConfigurations.bioskop.config.ndh.atticLeaf.package}/bin/attic-leaf-sign";
+            meta.description = "Certify each cache container's own TLS key (a CSR signed on the operator seat), install the leaf on its NixOS guest, verify — run from the seat, built by revision — src: modules/.common.d/attic-leaf.d/";
           };
         }
       );
