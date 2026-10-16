@@ -183,3 +183,28 @@ RING=/Volumes/git-worktree-store/nxmatic/keyhole.d/keyring
 @test "keyring: the main worktree stays free"   { run hook 'git -C /Volumes/git-worktree-store/nxmatic/keyhole.d/main log -1'; allowed; }
 @test "keyring: a sibling name stays free"      { run hook 'ls /Volumes/git-worktree-store/nxmatic/keyhole.d/keyring-archive'; allowed; }
 @test "keyring: the bare's refs stay free"      { run hook 'git -C /Volumes/git-bare-store/nxmatic/keyhole.git for-each-ref'; allowed; }
+
+# --- the seat identities (verbs.json list_path_rules, store_rules, text_rules): the seedmatic/ entries of the
+#     operator's pass store, its claude-home replica, and pass naming them. A ~ rule resolves under the session's HOME.
+STORE=/Users/tester/.local/share/password-store
+REPLICA=/Volumes/git-worktree-store/nxmatic/claude-home.d/pass/seedmatic
+@test "seedmatic: gpg -d of an entry"           { run hook "gpg -d $STORE/seedmatic/host-key/bioskop.gpg"; denied; }
+@test "seedmatic: the ~ spelling"               { run hook 'cat ~/.local/share/password-store/seedmatic/x.gpg'; denied; }
+@test "seedmatic: the \$HOME spelling in -c"    { run hook "bash -c 'cp -r \$HOME/.local/share/password-store/seedmatic /tmp/x'"; denied; }
+@test "seedmatic: cd into the store then cat"   { run hook 'cd ~/.local/share/password-store && cat seedmatic/x.gpg'; denied; }
+@test "seedmatic: a store dir variable"         { run hook 'PASSWORD_STORE_DIR=~/.local/share/password-store/seedmatic pass show x'; denied; }
+@test "seedmatic: the replica checkout"         { run hook "cat $REPLICA/.gpg-id"; denied; }
+@test "seedmatic: pass show"                    { run hook 'pass show seedmatic/host-key/bioskop'; denied; }
+@test "seedmatic: pass with no verb"            { run hook 'pass seedmatic/host-key/bioskop'; denied; }
+@test "seedmatic: pass ls of an entry"          { run hook 'pass ls seedmatic/host-key/bioskop'; denied; }
+@test "seedmatic: pass -c behind sudo"          { run hook 'sudo -u nxmatic pass show -c seedmatic/x'; denied; }
+@test "seedmatic: pass init -p"                 { run hook 'pass init -p seedmatic 08C86550EBC4589C!'; denied; }
+@test "seedmatic: pass through nix run"         { run hook 'nix run nixpkgs#pass -- show seedmatic/x'; denied; }
+@test "seedmatic: pass grep decrypts it all"    { run hook 'pass grep ssh-ed25519'; denied; }
+@test "seedmatic: a replica blob"               { run hook 'git -C /Volumes/git-bare-store/nxmatic/claude-home.git show pass/seedmatic:host-key/bioskop.gpg'; denied; }
+@test "seedmatic: a replica blob by full ref"   { run hook 'git -C /Volumes/git-bare-store/nxmatic/claude-home.git cat-file -p refs/heads/pass/seedmatic:.gpg-id'; denied; }
+@test "seedmatic: pass find prints names"       { run hook 'pass find seedmatic'; allowed; }
+@test "seedmatic: another entry stays free"     { run hook 'pass show web/forge'; allowed; }
+@test "seedmatic: a sibling name stays free"    { run hook "ls $STORE/seedmatic-archive"; allowed; }
+@test "seedmatic: the replica's log stays free" { run hook 'git -C /Volumes/git-bare-store/nxmatic/claude-home.git log --format=%h pass/seedmatic'; allowed; }
+@test "seedmatic: the store's git log stays free" { run hook "git -C $STORE log -1 --format=%h -- seedmatic"; allowed; }

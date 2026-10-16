@@ -59,7 +59,18 @@
   "list_path_rules": [
     { "rule": "Read(//Volumes/git-bare-store/nxmatic/keyhole.git/.ssh/**)", "why": "the keyring@keyhole private key, whose ssh-to-age opens the operator's keyring backups" },
     { "rule": "Read(//Volumes/git-worktree-store/nxmatic/keyhole.d/keyring/**)", "why": "the keyring worktree, where the sops-keyring filter leaves the rehydrate scripts in the clear" },
-    { "rule": "Edit(//Volumes/git-worktree-store/nxmatic/keyhole.d/keyring/**)", "why": "the same worktree: a session never writes the operator's keyring" }
+    { "rule": "Edit(//Volumes/git-worktree-store/nxmatic/keyhole.d/keyring/**)", "why": "the same worktree: a session never writes the operator's keyring" },
+    { "rule": "Read(~/.local/share/password-store/seedmatic/**)", "why": "the seat identities, encrypted to the seedmatic subkey whose passphrase the seat's keychain holds" },
+    { "rule": "Edit(~/.local/share/password-store/seedmatic/**)", "why": "the same store: a session never writes the seat identities" },
+    { "rule": "Read(//Volumes/git-worktree-store/nxmatic/claude-home.d/pass/seedmatic/**)", "why": "a checkout of claude-home's pass/seedmatic head, the replica of the same store" },
+    { "rule": "Edit(//Volumes/git-worktree-store/nxmatic/claude-home.d/pass/seedmatic/**)", "why": "the same replica" }
+  ],
+  "store_rules": [
+    { "program": "pass", "prefix": "seedmatic", "free_verbs": ["find", "search", "help", "version"], "decrypts_all": ["grep"],
+      "why": "pass ls and show are one command, which decrypts a file it names; find prints names only, grep decrypts every entry" }
+  ],
+  "text_rules": [
+    { "pattern": "(?:^|[\\s'\"=/])pass/seedmatic:", "why": "a blob of claude-home's pass/seedmatic head, the replica's content" }
   ],
   "list_ask_rules": ["rm -rf /", "rm -rf ~", "rm -rf ~/", "rm -rf $HOME", "rm -rf /Users", "rm -rf /Volumes", "rm -rf /nix", "rm -rf ~/.claude*"],
   "nix_attr_aliases": {

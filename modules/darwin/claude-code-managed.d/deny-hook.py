@@ -39,15 +39,24 @@ def load_table():
         return json.load(fh)
 
 
-def protected_paths(table):
+def protected_paths(table, home):
     """The absolute paths of list_path_rules: the managed list's Read()/Edit() rules govern the file
     tools only, so the hook refuses a Bash command reaching them. One source for both."""
     paths = set()
     for entry in table.get("list_path_rules", []):
-        m = re.fullmatch(r"(?:Read|Edit)\(/(/[^()\s]+?)(?:/\*\*)?\)", entry["rule"])
+        m = re.fullmatch(r"(?:Read|Edit)\((/|~)(/[^()\s]+?)(?:/\*\*)?\)", entry["rule"])
         if m:
-            paths.add(os.path.normpath(m.group(1)))
+            paths.add(os.path.normpath((home if m.group(1) == "~" else "") + m.group(2)))
     return sorted(paths)
+
+
+def spellings(path, home):
+    """The ways a command text names PATH: under the home, its ~ and $HOME forms too."""
+    home = os.path.normpath(home)
+    if not path.startswith(home + os.sep):
+        return [path]
+    rest = path[len(home):]
+    return [path, "~" + rest, "$HOME" + rest, "${HOME}" + rest]
 
 
 HEREDOC = re.compile(r"<<(-?)\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\2")
@@ -305,7 +314,7 @@ class Analyzer:
         self.table = table
         self.cwd = cwd
         self.home = home
-        self.protected = protected_paths(table)
+        self.protected = protected_paths(table, home)
         self.verdicts = []
 
     def deny(self, why, argv):
@@ -517,10 +526,24 @@ class Analyzer:
             if moved:
                 self.cwd = moved
             if self.is_protected(moved):
-                self.deny("enters the operator's keyring material", argv)
+                self.deny("enters the operator's secret material", argv)
             return
         if any(self.reaches_protected(t) for t in args):
-            self.deny("names the operator's keyring material", argv)
+            self.deny("names the operator's secret material", argv)
+            return
+        for store in self.table.get("store_rules", []):
+            if prog != store["program"]:
+                continue
+            verb = next((t for t in args if not t.startswith("-")), None)
+            if verb in store["free_verbs"]:
+                return
+            if verb in store["decrypts_all"]:
+                self.deny(f"{prog} {verb} decrypts the whole store, {store['prefix']}/ included", argv)
+                return
+            names = (os.path.normpath(t.split("=", 1)[1] if t.startswith("-") and "=" in t else t).lstrip("/")
+                     for t in args)
+            if any(n == store["prefix"] or n.startswith(store["prefix"] + "/") for n in names):
+                self.deny(f"{prog} reaches the {store['prefix']}/ entries", argv)
             return
         if prog == "rm":
             flags = "".join(t[1:] for t in args if t.startswith("-") and not t.startswith("--"))
@@ -571,10 +594,14 @@ def main():
         # The keyring material, a first line: by its text anywhere (a quoted path, a -c script) and by the
         # session's own cwd. A path built at run time (a variable, a computed cd) escapes the text.
         if analyzer.is_protected(os.path.normpath(analyzer.cwd) if analyzer.cwd else None):
-            analyzer.deny("runs inside the operator's keyring material", [command])
+            analyzer.deny("runs inside the operator's secret material", [command])
         for p in analyzer.protected:
-            if re.search(re.escape(p) + r"(?=$|[/\s'\";&|)<>])", command):
-                analyzer.deny("names the operator's keyring material", [p])
+            for s in spellings(p, analyzer.home):
+                if re.search(re.escape(s) + r"(?=$|[/\s'\";&|)<>])", command):
+                    analyzer.deny("names the operator's secret material", [s])
+        for rule in analyzer.table.get("text_rules", []):
+            if re.search(rule["pattern"], command):
+                analyzer.deny("names the operator's secret material", [rule["why"]])
         analyzer.analyze(command)
     except Refused as exc:
         print(f"deny-hook refused: {exc}", file=sys.stderr)
