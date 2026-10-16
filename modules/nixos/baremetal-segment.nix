@@ -122,9 +122,12 @@ let
   ) (netplan.segments or [ ]);
   qualify = name: if lib.hasInfix "." name then name else "${name}.${bm.domain}";
 
-  # What the vz-host's /30 end may open into the metalspace (see metalspace-guard below).
+  # What the vz-host's /30 end may open into the metalspace (see metalspace-guard below). The /30
+  # rides lan-br, the home LAN's L2, so its address alone could be claimed by any LAN device: the
+  # vz-host is also matched by its catalog MAC, and with no MAC in the catalog it opens nothing.
+  vzHostMac = (netplan.lan.hosts or { }).${bm.vzHostLanName}.mac or null;
   vzHostForwardRules =
-    if !hasLink then
+    if !hasLink || vzHostMac == null then
       [ ]
     else if bm.vzHostKind == "nix-managed" then
       [ "ip daddr ${bm.netCidr}" ]
@@ -436,7 +439,7 @@ lib.mkIf enabled {
         type filter hook forward priority filter; policy accept;
         ct state established,related accept
         ${lib.concatMapStrings (
-          r: ''iifname "lan-br" ip saddr ${bm.vzHostAddress} ${r} accept'' + "\n"
+          r: ''iifname "lan-br" ether saddr ${vzHostMac} ip saddr ${bm.vzHostAddress} ${r} accept'' + "\n"
         ) vzHostForwardRules}
         iifname "lan-br" ct state invalid drop
         iifname "lan-br" ct state new counter drop
