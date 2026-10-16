@@ -159,7 +159,7 @@ flowchart LR
 
   subgraph BIOSKOP["bioskop bare-metal"]
     dj["fill job on darwin bioskop — dedicated user, revisions only, publication key, the only cachix token"]:::builder
-    dB["darwin bioskop — dev seat, watch-store"]:::host
+    dB["darwin bioskop — operator seat, watch-store"]:::host
     subgraph NN_B["nerd-nixos bioskop-nixos"]
       lb["Linux remote builder of the fill job — watch-store"]:::host
       attic["attic-nixos — PRIVATE tier, reads need a token"]:::cache
@@ -213,7 +213,7 @@ bioskop-nixos, nikopol-nixos). Every host uploads what it builds, dev builds inc
 
 The reason is the topology. bioskop-nixos is bioskop's Linux builder (`/etc/nix/machines` →
 `ssh-ng://root@bioskop-nixos`), so it already receives the builds of bioskop's dirty trees. Whether
-a dirty build lands on the dev seat or on its builder is a difference of degree, not of kind.
+a dirty build lands on the operator seat or on its builder is a difference of degree, not of kind.
 
 The builder still exists. It builds every host's configuration from a pushed revision, so that a
 host's switch finds its closure already in the cache. What the hosts upload on top is what they
@@ -251,7 +251,7 @@ means rotating them all (see <<write-tokens>>)
 <<trust-model>>)
 
 | Price — exposure
-| every dev seat's dirty evaluations reach the cache, confined by authenticated reads (see
+| every operator seat's dirty evaluations reach the cache, confined by authenticated reads (see
 <<watch-store-sees>>)
 |===
 
@@ -325,7 +325,7 @@ With a daemon on every host, these origins all reach the cache:
 plaintext included, is skipped by name, but an output that references one carries it in its closure.
 
 | bioskop-nixos, nikopol-nixos
-| the dev seats' remote builds (`ssh-ng`, `/etc/nix/machines` on the darwin hosts)
+| the operator seats' remote builds (`ssh-ng`, `/etc/nix/machines` on the darwin hosts)
 | the outputs of derivations their darwin host evaluated, dirty trees included
 
 | bioskop-nixos, nikopol-nixos
@@ -383,7 +383,7 @@ The two darwin hosts overlap almost completely, so **one Mac builds both**, and 
 nix-darwin builds `darwinConfigurations.nikopol.system` on any `aarch64-darwin` machine, and nikopol
 is a guest on a foreign, MDM-managed bare-metal.
 
-bioskop is also the dev seat, so the darwin fill does not run in the operator's session. It is a
+bioskop is also the operator seat, so the darwin fill does not run in the operator's session. It is a
 dedicated launchd job:
 
 * it runs under its own user, with its own fetcher cache (see <<revisions-only>>);
@@ -850,10 +850,10 @@ What would restore the trust, neither of which this spec builds:
 instance was running and no node closure was realised in bioskop's or bioskop-nixos's store. They
 are built by rke2lab, from a pushed rke2lab revision like every other fill input.
 
-| flox environments of the dev seats
+| flox environments of the operator seats
 | 5.25 GiB on bioskop on 2026-10-10; **≈ 0.66 GiB** without `pulumi-bin`
 | `pulumi-3.261.0` was 4.59 GiB of it: nixpkgs' `pulumi-bin`, which Hydra never builds
-(`hydraPlatforms = [ ]`, "Output limit exceeded"). Since rke2lab `2ef9dab8f` the seat's operator
+(`hydraPlatforms = [ ]`, "Output limit exceeded"). Since rke2lab `2ef9dab8f` the flox seat's operator
 toolchain comes from the rke2lab flake (`operatorToolchain`, nixpkgs-unstable), installed by
 `github:` reference: `pulumi` and `pulumi-java` are on cache.nixos.org, so they leave the scope
 
@@ -2016,7 +2016,7 @@ be a different path, and every closure that references it would have to be rebui
   their systems as GC roots of nerd-nixos).
 
 * link:fabric-control-plane-spec.adoc[Fabric Control Plane] — the tailnets and the bridge attic is
-  reached over, and headscale-nixos, the other tenant of the shared container module.
+  reached over, and headscale-nixos, the other consumer of the shared container module.
 * link:host-builder-phases.adoc[Host Builder Phases] — how `<host>-nixos` became the Linux builder
   this spec makes the cache's filler.
 * link:dataset-catalog.adoc[Dataset Catalog] — the ZFS layout the `nerd/attic` dataset joins.

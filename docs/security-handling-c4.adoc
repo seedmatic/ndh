@@ -108,7 +108,7 @@ note right of hostkeyinst
   Server host key: one per machine, generated
   once by the operator into the keyring on
   bioskop and pushed by bioskop; one host
-  certificate per machine, signed on the seat
+  certificate per machine, signed on the operator seat
   by the ssh fabric HOSTS authority. See
   ssh-keys-architecture (Roles × Keys).
 end note

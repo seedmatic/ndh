@@ -5,10 +5,10 @@
   catalog,
   ...
 }:
-# ndh-keyring on the seat's PATH: the operator generates the machines' host keys into their keyring.
+# ndh-keyring on the operator seat's PATH: the operator generates the machines' host keys into their keyring.
 # A gesture, never run by the activation.
 {
-  options.ndh.keyring.enable = lib.mkEnableOption "ndh-keyring on this seat (the seat holding the keyring)";
+  options.ndh.keyring.enable = lib.mkEnableOption "ndh-keyring on this operator seat (the one holding the keyring)";
 
   config = lib.mkIf config.ndh.keyring.enable {
     environment.systemPackages = [

@@ -104,7 +104,7 @@ let
   # Render catalog.netplan.tailnet.hosts into the list shape expected
   # by headscale's `dns.extra_records`.  Each (host, serviceName) pair
   # becomes one CNAME entry like
-  #   rdp.bioskop.mammoth-skate.ts.net  CNAME  bioskop.mammoth-skate.ts.net
+  #   darwin.bioskop.mammoth-skate.ts.net  CNAME  bioskop.mammoth-skate.ts.net
   # Tailscaled (patched, see overlays/tailscale.nix) chases the chain
   # locally; MagicDNS resolves the bare-host name to its current
   # tailnet IP at the end of the chain — no hardcoded IPs anywhere
@@ -148,7 +148,7 @@ let
   # preferred; DERP only activates as fallback.  The embedded DERP
   # server stays disabled, saving the TLS/port complexity.
   #
-  # DNS: structured service names (rdp.bioskop, ssh-host.nikopol,
+  # DNS: structured service names (darwin.bioskop, ssh-host.nikopol,
   # headscale.bioskop, …) come from `extraRecords` above; tailscaled
   # answers them directly from the MapResponse-pushed list with no
   # per-host DNS daemon involved.

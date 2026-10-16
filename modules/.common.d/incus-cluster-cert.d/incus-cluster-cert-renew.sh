@@ -6,26 +6,26 @@ unset NDH_LOGGER_XTRACE # ndh::logger:command:run traces its command only when t
 unset BASH_XTRACEFD 2>/dev/null || true
 
 # incus-cluster-cert-renew — renew the Incus CLUSTER certificate under the authority's CURRENT
-# signing slot, on the cluster's OWN key, install it on every member, re-pin the seat's client, verify.
+# signing slot, on the cluster's OWN key, install it on every member, re-pin the operator seat's client, verify.
 #
-# Built BY REVISION and run by the operator from the seat (the hotfix rule): the SAN set,
+# Built BY REVISION and run by the operator from the operator seat (the hotfix rule): the SAN set,
 # the members, the names to verify and the ENCRYPTED keys.yaml are fixed at evaluation —
 # nothing evaluates a working tree at run time.
 #
 # ★ Nothing of ours generates a key (docs/ssh-keys-architecture.adoc, principle "no key generated at
 # activation"): the cluster keeps the key Incus generated. On ONE member, as root, step-cli writes a
 # CSR on /var/lib/incus/cluster.key into a 0700 dir on its tmpfs (/run/user/<uid>); only that CSR
-# (public) comes to the seat, which checks it names EXACTLY the fleet's names and carries the key the
+# (public) comes to the operator seat, which checks it names EXACTLY the fleet's names and carries the key the
 # cluster serves, then signs it with a pinned leaf profile; only the certificate (public) goes back,
 # installed with the same key through the member's LOCAL unix socket (`sudo incus cluster
 # update-certificate`). The authority's private is never written: sops is piped and step-cli reads it
-# through process substitution. Each signed leaf is recorded in the seat's ledger.
+# through process substitution. Each signed leaf is recorded in the operator seat's ledger.
 #
 # ★ ONE certificate serves every member: `update-certificate` installs it cluster-wide. A
 # member still serving the old leaf after the update is restarted (`systemctl restart incus`) —
 # safe only while the members run no instance, which the operator confirms for this gesture.
 #
-# The seat's client PINS the leaf (servercerts/<remote>.crt, in both config dirs incus uses on
+# The operator seat's client PINS the leaf (servercerts/<remote>.crt, in both config dirs incus uses on
 # darwin); both copies are backed up and replaced. Moving the client to CA trust is a later
 # step. The cluster's own consumer, CAPN, pins NOTHING: rke2lab renders its identity Secrets
 # without `server-crt`, so the provider verifies the leaf by NAME against the TLS authority's root,
@@ -65,11 +65,11 @@ if ((activation == 1)); then tty=(); fi
 
 work="$(mktemp -d)"
 chmod 700 "$work"
-# Every ssh forwards NOTHING: no agent (the seat's ForwardAgent may still say yes), no port.
+# Every ssh forwards NOTHING: no agent (the operator seat's ForwardAgent may still say yes), no port.
 # And no MULTIPLEXING: with ControlMaster auto, a session rides an existing master — one that may
 # have been opened with ForwardAgent yes, which would defeat the option above, and a stale one
 # hangs silently. Timeouts so a dead link fails instead of waiting.
-# And ONE identity, stated here and not taken from the seat's ssh config or its agent: the
+# And ONE identity, stated here and not taken from the operator seat's ssh config or its agent: the
 # operator principal's key and certificate, fixed at evaluation (no agent is consulted at all).
 sshq() {
   ssh -o IdentityAgent=none -o IdentitiesOnly=yes -o IdentityFile="$sshKey" -o CertificateFile="$sshCert" \
@@ -101,7 +101,7 @@ selected="$(sops --decrypt --input-type yaml --output-type yaml "$keysYaml" | yq
      | map(select((.value.compromised // \"\") == \"\")) | .[0]) as \$s
   | {\"usage\": ((\$a.usage // []) | join(\",\")), \"slot\": (\$s.key // \"\"),
      \"ca\": (\$s.value.ca_crt // \"\"), \"key\": (\$s.value.private // \"\")}")" ||
-  die "cannot decrypt keys.yaml — is the operator's sops age key available on this seat?"
+  die "cannot decrypt keys.yaml — is the operator's sops age key available on this operator seat?"
 field() { printf '%s' "$selected" | yq -r ".$1"; }
 usage="$(field usage)"
 slot="$(field slot)"
@@ -180,7 +180,7 @@ for pin in "${pins[@]}"; do
     pinReasons+=("client pin ${pin} is not the served leaf")
 done
 
-repin() { # <pem file> — back up and replace every pin of the seat's client
+repin() { # <pem file> — back up and replace every pin of the operator seat's client
   local pin
   for pin in "${pins[@]}"; do
     cp -p "$pin" "${pin}.bak.$(date +%s)"
@@ -306,7 +306,7 @@ sshq "${tty[@]}" "$via" "$rsudo step certificate create '$cn' '$remoteDir/cluste
 sshq "$via" "cat '$remoteDir/cluster.csr'" >"$work/cluster.csr" || die "cannot read the CSR back from ${via}"
 openssl req -in "$work/cluster.csr" -noout -verify >/dev/null 2>&1 || die "the CSR from ${via} does not verify"
 
-# The seat trusts nothing the CSR claims: its names must be EXACTLY the fleet's, so a member cannot
+# The operator seat trusts nothing the CSR claims: its names must be EXACTLY the fleet's, so a member cannot
 # obtain a leaf for another host's name or a wildcard, and its key must be the one the cluster serves.
 pubOf() { openssl "$1" -in "$2" -noout -pubkey 2>/dev/null | openssl pkey -pubin -outform DER 2>/dev/null | openssl sha256 | sed -e 's/.*= *//'; }
 sanSet() { # <x509|req> <file> → its SANs, one per line, normalised, sorted
@@ -342,7 +342,7 @@ step certificate verify "$work/leaf.crt" --roots "$work/ca.crt" >/dev/null ||
 leafFp="$(openssl x509 -noout -fingerprint -sha256 -in "$work/leaf.crt" | sed -e 's/.*=//')"
 log "signed leaf sha256 ${leafFp}"
 
-# --- The record: the seat's ledger -----------------------------------------------------------
+# --- The record: the operator seat's ledger -----------------------------------------------------------
 ledger="${XDG_STATE_HOME:-$HOME/.local/state}/ndh/incus-cluster-cert"
 mkdir -p "$ledger"
 {

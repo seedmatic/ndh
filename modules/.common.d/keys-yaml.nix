@@ -51,7 +51,7 @@ let
 
   phase2Gaps = trust.phase2Gaps authoritiesJson revokedJson;
 
-  # Roles × keys 6a: every SSH certificate (ssh-host, ssh-user) is signed on the seat and recorded
+  # Roles × keys 6a: every SSH certificate (ssh-host, ssh-user) is signed on the operator seat and recorded
   # in keys.yaml; the activation only installs it and signs nothing. So a generation of a key with an
   # SSH cert_usage must carry its recorded public AND its recorded certificate — otherwise its host
   # would have none. Refused here, before any host is switched.
@@ -83,7 +83,7 @@ let
     else if uncertified != [ ] then
       throw ''
         ndh.keysYaml: SSH certificates not recorded: ${lib.concatStringsSep ", " uncertified}
-        Record the material on the seat (ssh-keys-renew), sign it (ssh-keys-certify --apply), and commit
+        Record the material on the operator seat (ssh-keys-renew), sign it (ssh-keys-certify --apply), and commit
         keys.yaml (roles × keys 6a).''
     else if phase2Gaps != [ ] then
       throw ''

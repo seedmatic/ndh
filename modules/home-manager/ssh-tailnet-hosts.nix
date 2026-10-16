@@ -23,34 +23,34 @@ let
   # Canonical operator alias layout: `{service}.{host}` with consistent auth.
   # Service names match the headscale `dns.extra_records` namespace
   # (catalog.netplan.tailnet.hosts.<host>.serviceNames), so muscle
-  # memory carries between `dig rdp.bioskop.<zone>` and
-  # `ssh rdp.bioskop`.
+  # memory carries between `dig darwin.bioskop.<zone>` and
+  # `ssh darwin.bioskop`.
   #
   # The two roles target the same host from two routes:
-  #   rdp.{host}    → the Darwin host itself (via MagicDNS)
-  #   nixos.{host}  → the NixOS guest VM living on the Darwin host
+  #   darwin.{host} → the darwin host (via MagicDNS)
+  #   nixos.{host}  → the NixOS guest of the same bare-metal (on bioskop it runs on
+  #                   the darwin host; on nikopol beside it, on the corporate bare-metal)
   # Both present the profile user's rdp-host key+cert so mammoth-skate's
   # TrustedUserCAKeys check accepts the login without per-host key
   # pinning.  The SSH cert *principal* stays `rdp-host` (server-side
-  # identity, internal); only the operator-facing alias prefix is `rdp`.
+  # identity, internal); only the operator-facing alias prefix is `darwin`.
   #
   # `vzhost.{host}` is intentionally NOT in operatorAliasesForHost
   # because there's no clean generic shape: it only makes sense for
-  # hosts that have a separate bare-metal layer (a Tart VM running
-  # this nixos config on top of a managed Mac), which today is only
-  # nikopol.  Bioskop's "bare metal" IS bioskop — there's no
-  # separate VZ host above it.
+  # a darwin host that is itself a macOS guest of a separate
+  # bare-metal, which today is only nikopol.  bioskop is its own
+  # bare-metal and vz-host, reached as `darwin.bioskop`.
   #
   # The single nikopol-specific alias is `vzhostNikopolAlias` below,
   # rendered uniformly on every managed host — resolution and
-  # reachability now ride the per-baremetal split-DNS zone + advertised
+  # reachability now ride the per-metalspace split-DNS zone + advertised
   # subnet route (the former per-host ARP resolver is retired).
   # The publickey identity every operator-facing alias presents: the profile
   # user's rdp-host key+cert read straight from disk (IdentityAgent none) so
   # auth never depends on a populated ssh-agent.  Single-sourced here because
   # the bare/.local/-ts host block below must present the SAME identity —
   # otherwise the literal `.local` name (a bringup fallback that does NOT match
-  # the rdp./nixos. operator aliases nor the `*.nikopol` zone block) would fall
+  # the darwin./nixos. operator aliases nor the `*.nikopol` zone block) would fall
   # through to OpenSSH's built-in default identities (none of which carry the
   # rdp-host key+cert) and be rejected by the CA-cert sshd.
   operatorIdentityLines = ''
@@ -93,11 +93,11 @@ let
   # certificate carries. It resolves on its own (measured above), so the block exists only for the User
   # and the identity.
   #
-  # `rdp.` still needs its HostName, and that asymmetry is the measurement, not a style choice:
-  # `rdp.<host>` does not resolve at all, while `nixos.<host>` does. One alias names a target DNS knows
+  # `darwin.` still needs its HostName, and that asymmetry is the measurement, not a style choice:
+  # `darwin.<host>` does not resolve at all, while `nixos.<host>` does. One alias names a target DNS knows
   # nothing about; the other names a target DNS already answers for.
   operatorAliasesForHost = host: ''
-    ${operatorAliasForService host "rdp" host}
+    ${operatorAliasForService host "darwin" host}
     ${operatorAliasForService host "nixos" null}
   '';
 
@@ -108,7 +108,7 @@ let
   # TWO names, one stanza, because they are two PATHS to the same machine and each resolves
   # differently — so neither is redundant:
   #
-  #   vzhost.<domain>          the segment name. The per-baremetal dnsmasq holds a host-record
+  #   vzhost.<domain>          the segment name. The per-metalspace dnsmasq holds a host-record
   #                            for it (modules/nixos/baremetal-segment.nix) and the segment is
   #                            advertised into the tailnet, so this is the path that works from
   #                            ANYWHERE, including off-site. It is also the path that does not
@@ -139,7 +139,7 @@ let
     '';
 
   # `nerd-nixos` — the NixOS guest materialised as a Tart VM on a bare-metal Mac
-  # (today nikopol's corp Mac).  It is not an inventory host (a guest, not a managed
+  # (on each vz-host, before it becomes `<seat>-nixos`).  It is not an inventory host (a guest, not a managed
   # Darwin host), so the per-host loop above never emits it; this single alias is
   # rendered uniformly on every managed host.  Reached by its mDNS `.local` name
   # because the guest carries no MagicDNS/tailnet alias of its own during bring-up.

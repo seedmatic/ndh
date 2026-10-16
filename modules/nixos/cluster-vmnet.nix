@@ -35,7 +35,7 @@ let
   bm = netplan.baremetal.${effectiveHostName} or null;
 
   # Derived from rke2lab's `<domain>-<role>-net` segments rather than restated: the blueprint owns
-  # the addressing.  The set is CLOSED (two roles per bare-metal), so declaring them statically
+  # the addressing.  The set is CLOSED (two roles per metalspace), so declaring them statically
   # costs no flexibility — and a bridge whose cluster does not exist yet simply sits memberless,
   # which fabric-br already proves is harmless.
   pattern = "^${bm.domain}-([a-z]+)-net$";

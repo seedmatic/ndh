@@ -453,7 +453,7 @@ tart:run-args:host-shares:add() {
 # with its own identity (nikopol-nixos) gets no share, so a host holding no age key can launch it.
 # A run manifest without the field was written by an earlier materialization (the gcroot keeps it
 # until the next one): it keeps the share required, as it always was, so a darwin switch alone never
-# stops a running seat's VM from relaunching.
+# stops a running NixOS guest from relaunching.
 tart:share:sops:apply() {
 	if ! tart:bool:is-true "${sops_age_host_share:-true}"; then
 		echo "[INFO] the guest keeps its own age identity: no SOPS age host share"

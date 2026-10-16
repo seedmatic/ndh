@@ -14,10 +14,10 @@ link:network-setup.adoc[Network Infrastructure Setup]::
 Complete guide covering Tailscale and Headscale deployment, configuration, usage, and troubleshooting. Start here for setting up your network.
 
 link:network-topology-c4.adoc[Baremetal Instance Segments & vz-host Access (C4-Style UML)]::
-Context/container/sequence diagrams for the per-baremetal Incus instance segments (nikopol `172.16.16.0/20`/`.nikopol`, bioskop `172.16.0.0/20`/`.bioskop`) advertised into the tailnet with split-DNS, so peers resolve/reach the netflow instances and the vz-hosts (`vzhost.nikopol`, `vzhost.bioskop`) by name — no NAT, single-source addressing from the catalog. Both hosts have the same shape — a `/30` to the vz-host — for different reasons: nikopol's corp Mac is off-tailnet, bioskop's Mac is reachable but its tenants are not. (Advertise + split-DNS are Tailscale-SaaS-console steps today; declarative under Headscale later.)
+Context/container/sequence diagrams for the per-metalspace Incus instance segments (nikopol `172.16.16.0/20`/`.nikopol`, bioskop `172.16.0.0/20`/`.bioskop`) advertised into the tailnet with split-DNS, so peers resolve/reach the netflow instances and the vz-hosts (`vzhost.nikopol`, `vzhost.bioskop`) by name — no NAT, single-source addressing from the catalog. Both hosts have the same shape — a `/30` to the vz-host — for different reasons: nikopol's corp Mac is off-tailnet, bioskop's Mac is reachable but the instances of its metalspace are not. (Advertise + split-DNS are Tailscale-SaaS-console steps today; declarative under Headscale later.)
 
 link:network-catalog-segments.adoc[Network Catalog Segments (feature: spec, architecture, usage)]::
-Specs + C4/UML architecture + usage of the per-baremetal Incus segments advertised into the tailnet: how to attach a probe/service to `fabric-br`, reach `vzhost.<domain>`, the reachability model (route + ACL tag→CIDR + scoped resolvers + auto-approvers), operations, and troubleshooting. Includes the ndh→nnh handoff (what's ready + open items).
+Specs + C4/UML architecture + usage of the per-metalspace Incus segments advertised into the tailnet: how to attach a probe/service to `fabric-br`, reach `vzhost.<domain>`, the reachability model (route + ACL tag→CIDR + scoped resolvers + auto-approvers), operations, and troubleshooting. Includes the ndh→nnh handoff (what's ready + open items).
 
 link:network-catalog.adoc[Network Catalog (model & contribution)]::
 The network catalog data model — the `{cidr,name,asn}` attribution triple + managed-network facts + `asns` dictionary — its consumers (nnh flow attribution, ndh provisioning), how to consume it (`nix eval --json …#catalog`), and how a domain (rke2lab, nnh) contributes spans via `lib.networkBlueprint` (the two-layer federation: data up at eval, infrastructure down at runtime).
@@ -70,7 +70,7 @@ link:sops-two-phase-rollout.adoc[A Machine's SOPS Identity (Shared Flake)]::
 Where a host's age identity comes from, the loud fault when it is missing, placing it, and onboarding a new machine.
 
 link:fabric-control-plane-spec.adoc[Fabric Control Plane — the Self-Managed Tailnet (spec)]::
-📐 The access model: one headscale control plane per bare-metal, in an Incus container on its NixOS
+📐 The access model: one headscale control plane per metalspace, in an Incus container on its NixOS
 guest, carrying the infrastructure nodes (the clusters stay on Tailscale SaaS). Every managed access
 is a grant; the bootstrap is out of band (screen sharing → bare-metal → serial console → `incus
 exec` → headscale); **no SSH key reaches the fabric** — the emergency path is a screen, its credential
@@ -179,7 +179,7 @@ Use Tailscale for external access and mobile devices, use Headscale for fast loc
 
 [source]
 ----
-one headscale tailnet per bare-metal               ← infrastructure nodes (clusters: Tailscale SaaS)
+one headscale tailnet per metalspace                ← infrastructure nodes (clusters: Tailscale SaaS)
     ↓
 Darwin hosts + personal VMs (bioskop, nikopol)
     ↓
@@ -191,7 +191,7 @@ RKE2 workload clusters (Incus instances, 10.80.x internal + a reachable address)
 
 vzhost.<host> (the physical Macs; the corp one is NOT on the tailnet)
     ↓
-172.16.<hostId*16>.0/20 per-baremetal fabric slice (advertised + .<host> split-DNS)
+172.16.<hostId*16>.0/20 per-metalspace fabric slice (advertised + .<host> split-DNS)
     DERIVED from rke2lab's hostId: bioskop 0 → .0/20 · nikopol 1 → .16/20
     offset < 8 = on fabric-br · offset >= 8 = another link   → network-topology-c4.adoc
 ----
@@ -333,7 +333,7 @@ table and host reservations (sourced from `catalog/default.nix`).
 
 Full options in link:modules-reference.adoc[Modules Reference]. Current-model notes:
 
-* *Tailnets* — one self-managed headscale tailnet per bare-metal for the infrastructure nodes;
+* *Tailnets* — one self-managed headscale tailnet per metalspace for the infrastructure nodes;
   the clusters stay on the Tailscale SaaS tailnet `mammoth-skate`. See
   link:fabric-control-plane-spec.adoc[Fabric Control Plane].
 * *Subnet routing* — each NixOS guest advertises its segment's `/20` into its own tailnet; the

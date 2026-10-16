@@ -1,4 +1,4 @@
-# ssh-keys-renew's bats suite as a flake check: a real sops and a throwaway age key: the seat-side signer.
+# ssh-keys-renew's bats suite as a flake check: a real sops and a throwaway age key: the operator-seat-side signer.
 { pkgs }:
 pkgs.runCommand "ssh-keys-certify-bats"
   {

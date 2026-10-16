@@ -5,13 +5,13 @@
   catalog,
   ...
 }:
-# ndh-identity-push on the seat's PATH: the seat gives its guest its identities, a gesture of the
+# ndh-identity-push on the operator seat's PATH: the operator seat gives its guest its identities, a gesture of the
 # operator with the keyring open (docs/ssh-keys-architecture.adoc). Never run by the activation.
 let
   cfg = config.ndh.identityPush;
 in
 {
-  options.ndh.identityPush.enable = lib.mkEnableOption "ndh-identity-push on this seat (the seat holding the keyring)";
+  options.ndh.identityPush.enable = lib.mkEnableOption "ndh-identity-push on this operator seat (the one holding the keyring)";
 
   config = lib.mkIf cfg.enable {
     environment.systemPackages = [

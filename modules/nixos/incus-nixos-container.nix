@@ -1,6 +1,6 @@
 # The one way ndh hosts a service in Incus: a NixOS container whose /nix/store is an overlay on
 # a ZFS snapshot of nerd-nixos's own store over its EROFS layers (docs/private-binary-cache-spec.adoc,
-# _The containers' /nix/store_). attic-nixos and headscale-nixos are its tenants; each adds only its
+# _The containers' /nix/store_). attic-nixos and headscale-nixos are its consumers; each adds only its
 # own NixOS modules.
 #
 # Every mount belongs to nerd-nixos — the container cannot mount its own /nix/store before an init
@@ -19,7 +19,7 @@
 # instead, and fails hard on a mismatch.
 #
 # ⚠️ Privileged, by the operator's decision of 2026-10-11, against the recommendation: the
-# container's root IS nerd-nixos's root. A tenant that listens on the tailnet (attic) is a root
+# container's root IS nerd-nixos's root. A consumer that listens on the tailnet (attic) is a root
 # shell on the Incus host if it is compromised. Revisit with `shift=true` or a `raw.idmap`.
 #
 # The container never evaluates a flake. Its system is built here, into nerd-nixos's store, so the

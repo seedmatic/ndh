@@ -14,7 +14,7 @@ and how a retired generation is revoked.
 
 It concerns the keys that remain once access is granted by the control plane — their roles,
 holders and lifecycles are in link:ssh-keys-architecture.adoc[Roles × Keys]. Certificates are
-signed on the seat by the delegated authorities, from each consumer's public; nothing signs at
+signed on the operator seat by the delegated authorities, from each consumer's public; nothing signs at
 activation, and an authority signs with its oldest slot that is not marked `compromised`.
 
 A renewal has to be *survivable*. Replacing a key in one step leaves an instant where the old one is
@@ -168,7 +168,7 @@ client, root included, refuses a revoked host key, and a certificate whose signi
 revoked (`RevokedHostKeys`, openssh-policy.nix). Host certificates are valid forever by decision: the
 hosts are checked strictly, so a missed calendar renewal would break every connection, and an expiry
 only bounds a leaked key that nobody revoked. Revocation is what cuts one, at the next activation. A
-host certificate is renewed on an event — a leak, the authority's own renewal — never on a date. The seat
+host certificate is renewed on an event — a leak, the authority's own renewal — never on a date. The operator seat
 signs it (`ssh-keys-certify`) after a renewal of the key or of the authority; the activation only installs
 what is recorded.
 

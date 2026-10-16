@@ -224,9 +224,9 @@ let
           value = uniq (map advertiserTag tailnetServices.${n}.advertisers);
         }) serviceNames
       );
-      # ★ Operator seats that are NOT tailnet members.  A vz-host declared `foreign` is a
+      # ★ vz-hosts that are NOT tailnet members.  A vz-host declared `foreign` is a
       # corp-managed Mac that cannot join the tailnet (VPN binaries are not allowed on it),
-      # yet it is the operator's primary seat for the shared screens — so it must be able to
+      # yet it is where the operator watches the shared screens from — so it must be able to
       # REACH a service even though it can never carry a tag.
       #
       # Its segment address is the identity, because there is no NAT anywhere: a packet
@@ -237,15 +237,15 @@ let
       # routes `100.64.0.0/10` via its link (baremetal-link), every service VIP falls inside
       # that /10, and the reply path is live — bioskop holds `172.16.16/20 -> utun0` and
       # reaches `172.16.24.2` today.
-      offTailnetOperatorSeats = map (h: bm.${h}.vzHostAddress) (
+      offTailnetVzHosts = map (h: bm.${h}.vzHostAddress) (
         builtins.filter (h: (bm.${h}.vzHostKind or "") == "foreign") (builtins.attrNames bm)
       );
       # Every service here is operator-facing, so one src list covers them all — including
-      # the bbox, since the seat that needs a screen is the seat that needs the router's UI.
+      # the bbox, since whoever needs a screen also needs the router's UI.
       # A service is named in `dst` WITH its prefix; unlike a subnet route it needs no CIDR,
       # and unlike a tag it grants no reach to the advertiser's own addresses.
       serviceGrants = map (n: {
-        src = [ (tg t.role.console) ] ++ offTailnetOperatorSeats;
+        src = [ (tg t.role.console) ] ++ offTailnetVzHosts;
         dst = [ "svc:${n}" ];
         ip = tailnetServices.${n}.ip;
       }) serviceNames;
@@ -316,7 +316,7 @@ let
           ip = [ "*" ];
         }
         # Operator (console) hosts reach the whole fleet by role tag AND
-        # the per-baremetal segments (vzhost.<domain> + the Incus instances
+        # the per-metalspace segments (vzhost.<domain> + the Incus instances
         # behind each subnet router) AND the cluster vmnet supernet (kube-vip VIPs /
         # apiservers, advertised since 2026-09-27 by the BARE-METAL that owns
         # each vmnet bridge — see modules/nixos/cluster-vmnet.nix — not by a
@@ -509,7 +509,7 @@ let
     builtins.toJSON tailnetAclCanonical
   );
 
-  # The tailnet's SPLIT-DNS map: each per-baremetal DNS zone resolved by that segment's own Incus
+  # The tailnet's SPLIT-DNS map: each per-metalspace DNS zone resolved by that segment's own Incus
   # dnsmasq.  `{ "<domain>": [ "<netGateway>" ] }`, derived from the same catalog entries the route
   # auto-approvers come from.
   #
@@ -555,7 +555,7 @@ let
   tailnetSplitDnsFile = pkgs.writeText "tailnet-split-dns.json" (
     builtins.toJSON (
       builtins.listToAttrs (
-        # Every per-baremetal zone, resolved by that segment's own dnsmasq …
+        # Every per-metalspace zone, resolved by that segment's own dnsmasq …
         map (host: {
           name = catalog.netplan.baremetal.${host}.domain;
           value = [ catalog.netplan.baremetal.${host}.netGateway ];

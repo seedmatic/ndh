@@ -221,7 +221,7 @@ RESOLVER
   chown root:wheel "/etc/resolver/${domain}"
   chmod 0644 "/etc/resolver/${domain}"
 
-  # Second scoped resolver: the TAILNET zone, so this seat can dial a Tailscale SERVICE by
+  # Second scoped resolver: the TAILNET zone, so this vz-host can dial a Tailscale SERVICE by
   # NAME.  It can never be a tailnet member — no VPN binaries on a corp-managed Mac — so it
   # has no MagicDNS of its own, and without this it must type the service's virtual IP.  The
   # same segment dnsmasq answers, because it forwards this zone to MagicDNS; the query gets
@@ -230,7 +230,7 @@ RESOLVER
   # for a ts.net name would otherwise be taken as definitive.
   : "[baremetal-link] scoping resolver: .${tailnet_zone} -> ${net_gateway}"
   cat >"/etc/resolver/${tailnet_zone}" <<RESOLVER
-# Tailscale MagicDNS (machines + Services) for a seat that is not a tailnet member.
+# Tailscale MagicDNS (machines + Services) for a vz-host that is not a tailnet member.
 # Resolves via the segment's dnsmasq, which forwards this zone to 100.100.100.100.
 nameserver ${net_gateway}
 RESOLVER

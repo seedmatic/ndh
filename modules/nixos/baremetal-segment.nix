@@ -7,7 +7,7 @@
   ndhSystemd,
   ...
 }:
-# Per-baremetal instance segment for a NixOS Incus host.  Any host whose
+# Per-metalspace instance segment for a NixOS Incus host.  Any host whose
 # canonical name matches a `catalog.netplan.baremetal.<name>` entry (nikopol,
 # bioskop) becomes the Incus host + subnet router for that segment: a `fabric-br`
 # /21 bridge owned by systemd-networkd, its `.<domain>` zone and DHCP served by
@@ -109,14 +109,14 @@ let
   # stalling the pipeline. Static records make those names independent of DHCP.
   #
   # The source is `netplan.segments`, whose `hosts` the catalog merge concatenates by cidr: ndh
-  # contributes `vzhost.<domain>` on the managed net, and a tenant (nnh) contributes its own
+  # contributes `vzhost.<domain>` on the managed net, and a consumer (nnh) contributes its own
   # pinned hosts on the sub-segment it owns. Selecting by CONTAINMENT rather than by an exact
-  # cidr match is what makes the tenant's hosts visible at all — they sit on a /30 inside the
+  # cidr match is what makes the consumer's hosts visible at all — they sit on a /30 inside the
   # /25, so a match on `bm.netCidr` alone would never see them.
   #
   # A name is qualified with the zone only when it carries no dot: ndh publishes `vzhost.<domain>`
   # already qualified (the segment list is also read for flow attribution, where a bare `vzhost`
-  # would be ambiguous across bare-metals), while a tenant publishes bare instance names.
+  # would be ambiguous across bare-metals), while a consumer publishes bare instance names.
   segmentHostRecords = lib.concatMap (
     seg: if cidrWithin bm.netCidr seg.cidr then seg.hosts or [ ] else [ ]
   ) (netplan.segments or [ ]);
@@ -169,7 +169,7 @@ lib.mkIf enabled {
   # Why the ownership moved off Incus. A CLUSTERED Incus requires that "all members of a cluster
   # must have identical networks defined": only `bridge.external_interfaces`, `parent`,
   # `bgp.ipv4.nexthop` and `bgp.ipv6.nexthop` may differ per member — `ipv4.address` may NOT. Our
-  # fabric subnets differ BY DESIGN (one routed slice per bare-metal, each advertised into the
+  # fabric subnets differ BY DESIGN (one routed slice per metalspace, each advertised into the
   # tailnet) and so do the zones (`.bioskop` / `.nikopol`). As an Incus-managed network that is
   # unrepresentable in a cluster; as a host bridge it is just a NAME that resolves locally on each
   # member, so everything cluster-wide referring to `fabric-br` keeps working unchanged.
@@ -242,7 +242,7 @@ lib.mkIf enabled {
       # zone itself stays authoritative.
       server = peerZoneServers ++ [ "/${tailnetZone}/100.100.100.100" ];
       # Register a DHCP client under the hostname IT sends, qualified into the zone — the property
-      # Incus spelled `dns.mode = dynamic`, and the reason a tenant's collector/probe appear under
+      # Incus spelled `dns.mode = dynamic`, and the reason a consumer's collector/probe appear under
       # their real names rather than under an instance name.
       expand-hosts = true;
       dhcp-authoritative = true;
@@ -376,7 +376,7 @@ lib.mkIf enabled {
   #
   # The source is the whole SLICE (`advertiseCidr`), not the fabric-br half (`netCidr`),
   # because the slice is this bare-metal's unit of ownership — that is exactly what it
-  # advertises into the tailnet. Scoping to the /21 covered the fabric-br tenants and left
+  # advertises into the tailnet. Scoping to the /21 covered the fabric-br instances and left
   # every slot at offset >= 8 out: correct today, since the only one in use is the
   # vz-host /30 whose far end is a Mac with its own default route, but a silent hole for
   # slots 9-15. An unmasqueraded public-bound packet is not refused, it BLACKHOLES, so

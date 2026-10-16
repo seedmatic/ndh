@@ -37,7 +37,7 @@ mapfile -t desired_names_sorted < <(printf '%s\n' "${desired_names[@]}" | sed '/
 
 # Nothing here generates a key (docs/ssh-keys-architecture.adoc: no key is generated at activation):
 # Incus makes its own at first start, and a wrong name set is a loud warning, never a re-key, since a
-# fresh self-signed key here would undo the certificate the seat signed on the existing one.
+# fresh self-signed key here would undo the certificate the operator seat signed on the existing one.
 if [[ ! -s "${server_cert}" || ! -s "${server_key}" ]]; then
   echo "[incus-cert] no server certificate yet: incus generates its own at first start" >&2
   exit 0
@@ -49,4 +49,4 @@ if [[ "${existing_names[*]-}" == "${desired_names_sorted[*]-}" ]]; then
 fi
 
 echo "[incus-cert] WARNING: ${server_cert} names [${existing_names[*]-}], the fleet expects [${desired_names_sorted[*]-}]" >&2
-echo "[incus-cert] the certificate and its key are kept; renew it on the seat: incus-cluster-cert-renew" >&2
+echo "[incus-cert] the certificate and its key are kept; renew it on the operator seat: incus-cluster-cert-renew" >&2
