@@ -9,6 +9,7 @@
   ...
 }:
 let
+  nixDaemonTmpDir = "/private/var/nix-daemon.tmp";
   user = config.profile.user;
   userName = user.name;
   userDescription = user.description;
@@ -169,16 +170,39 @@ in
       # Ensure SSL Cert file path located correctly
       ssl-cert-file = "/etc/ssl/cert.pem";
 
-      # Expose CA bundle inside sandboxes for fetchers
-      extra-sandbox-paths = [
-        "/etc/ssl/cert.pem"
-        "/etc/ssl/certs/ca-bundle.crt"
-        "/etc/gitconfig"
-        "${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
+      # Strict, not relaxed: nothing the darwin hosts build needs __noChroot (measured 2026-10-13 on every
+      # derivation no public cache holds), and relaxed would let any derivation opt out.
+      sandbox = true;
+      # A COPY of nix 2.34.8's darwin default (src/libstore/globals.cc) WITHOUT /private/tmp and
+      # /private/var/tmp: the profile opens every sandbox path, so those two let a build read whatever
+      # any user leaves there. With the daemon's own TMPDIR below, a sandboxed build no longer sees
+      # /private/tmp (measured 2026-10-13: a 0644 file of another user there turns unreadable, and
+      # every darwin host build still builds). A nix bump that adds a default path loses it here: re-check
+      # globals.cc and re-run the darwin sandbox probe at every nix bump.
+      sandbox-paths = [
+        "/System/Library/Frameworks"
+        "/System/Library/PrivateFrameworks"
+        "/bin/sh"
+        "/bin/bash"
+        "/usr/lib"
       ];
 
     };
+
+    # The other door to /private/tmp: Nix's darwin profile also opens `(subpath _GLOBAL_TMP_DIR)`, the
+    # DAEMON's TMPDIR — /private/tmp when unset, where any user or installer drops files. The
+    # builds' own directories live under build-dir (/nix/var/nix/builds), so this dir only holds the
+    # root daemon's temp files: 0700 root, never a shared /tmp.
+    envVars.TMPDIR = nixDaemonTmpDir;
   };
+  # Before the daemon is reloaded with the TMPDIR above: it must exist, owned by root and closed to
+  # everyone else, on every activation (a mode someone loosened is put back).
+  system.activationScripts.preActivation.text = ''
+    mkdir -p ${nixDaemonTmpDir}
+    chown root:wheel ${nixDaemonTmpDir}
+    chmod 0700 ${nixDaemonTmpDir}
+  '';
+
   nixpkgs.config = import (worktreePath.of "modules/.common.d/nixpkgs-config.nix");
 
   nixpkgs.overlays = (config.nixpkgs.overlays or [ ]) ++ [
