@@ -56,6 +56,12 @@ EOF
   mkdir -p "$t/run"
   cat >"$t/bin/ssh" <<EOF
 #!/usr/bin/env bash
+# Every session runs with the operator's ssh config ignored, and never prompts.
+args=" \$* "
+for o in "-F /dev/null " "BatchMode=yes " "PasswordAuthentication=no " "KbdInteractiveAuthentication=no " \\
+  "StrictHostKeyChecking=yes "; do
+  [[ \$args == *"\$o"* ]] || { echo "ssh stub: missing \$o" >&2; exit 97; }
+done
 cmd="\${!#}"
 if [[ \$cmd == *'rsudo="\$1"'* ]]; then
   if [[ -n \${STUB_SSH_ERROR:-} ]]; then
