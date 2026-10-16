@@ -333,8 +333,13 @@ class Analyzer:
             self.unwrap(argv, depth)
 
     def unwrap(self, argv, depth):
+        # The assignments in front of the command, kept for check(): GIT_CONFIG_GLOBAL=/dev/null drops the
+        # global hooks and sops filters of the git command it prefixes.
+        self.assignments = []
         while argv:
             while argv and (ASSIGNMENT.match(argv[0]) or argv[0] in KEYWORDS):
+                if ASSIGNMENT.match(argv[0]):
+                    self.assignments.append(argv[0])
                 argv = argv[1:]
             if not argv:
                 return
@@ -363,7 +368,10 @@ class Analyzer:
                     return []
                 if tok in ("-u", "--unset", "-C", "--chdir"):
                     i += 2
-                elif tok.startswith("-") or ASSIGNMENT.match(tok):
+                elif ASSIGNMENT.match(tok):
+                    self.assignments.append(tok)
+                    i += 1
+                elif tok.startswith("-"):
                     i += 1
                 else:
                     break
@@ -544,16 +552,50 @@ class Analyzer:
 
     GIT_VALUE = {"-C", "-c", "--git-dir", "--work-tree", "--namespace", "--exec-path", "--config-env"}
     PUSH_VALUE = {"-o", "--push-option", "--repo", "--receive-pack", "--exec"}
+    # git commit's short options that take a value: in a cluster, what follows one of them is that value.
+    COMMIT_VALUE_SHORT = "mFCctSu"
+    # A guard lives in the global config (hooksPath, the sops filters): these drop it for the command.
+    GUARD_KEYS = re.compile(r"^(?:core\.hookspath|filter\.sops)", re.I)
+    GUARD_ENV = {"GIT_CONFIG_GLOBAL", "GIT_CONFIG_NOSYSTEM"}
+    WRITES_HISTORY = {"commit", "merge", "rebase", "cherry-pick", "am"}
 
     def check_git(self, argv):
-        """--no-verify anywhere; a push that forces or deletes a protected branch. A forced push with no
-        refspec is refused too: its target is the upstream, which the text does not name."""
+        """A guard bypass (--no-verify, commit -n, a -c or an assignment that drops the global hooks or sops
+        filters); a push that forces or deletes a protected branch. A forced push with no refspec is refused
+        too: its target is the upstream, which the text does not name."""
         args = argv[1:]
         if "--no-verify" in args:
             self.deny("git --no-verify skips the hooks that guard commits and pushes", argv)
             return
         i = skip_options(args, self.GIT_VALUE)
-        if args[i:i + 1] != ["push"]:
+        for j, tok in enumerate(args[:i]):
+            key = None
+            if tok == "-c" and j + 1 < i:
+                key = args[j + 1]
+            elif tok.startswith("-c") and not tok.startswith("--"):
+                key = tok[2:]
+            elif tok.startswith("--config-env="):
+                key = tok.split("=", 1)[1]
+            if key and self.GUARD_KEYS.match(key):
+                self.deny("git -c overrides a guard (core.hooksPath or a sops filter)", argv)
+                return
+        sub = args[i] if i < len(args) else None
+        if sub in self.WRITES_HISTORY and any(a.split("=", 1)[0] in self.GUARD_ENV for a in self.assignments):
+            self.deny(f"git {sub} without the global config drops its hooks and sops filters", argv)
+            return
+        if sub == "commit":
+            for tok in args[i + 1:]:
+                if tok == "--":
+                    break
+                if tok.startswith("-") and not tok.startswith("--"):
+                    for ch in tok[1:]:
+                        if ch == "n":
+                            self.deny("git commit -n is --no-verify", argv)
+                            return
+                        if ch in self.COMMIT_VALUE_SHORT:
+                            break
+            return
+        if sub != "push":
             return
         push = args[i + 1:]
         refs = positionals(push, self.PUSH_VALUE)[1:]

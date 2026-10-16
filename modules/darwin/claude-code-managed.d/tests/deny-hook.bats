@@ -259,6 +259,20 @@ REPLICA=/Volumes/git-worktree-store/nxmatic/claude-home.d/pass/seedmatic
 @test "ok security find-certificate"            { run hook 'security find-certificate -a -p'; allowed; }
 @test "guard: git commit --no-verify"           { run hook 'git commit --no-verify -m x'; denied; }
 @test "guard: git -C push --no-verify"          { run hook 'git -C /tmp/r push --no-verify origin feature/x'; denied; }
+@test "guard: git commit -n"                    { run hook 'git commit -n -m x'; denied; }
+@test "guard: git commit -an clustered"         { run hook 'git commit -an'; denied; }
+@test "guard: git commit -nm clustered"         { run hook 'git commit -nm x'; denied; }
+@test "ok git commit -m with an n in its value" { run hook 'git commit -mfinal'; allowed; }
+@test "ok git commit -am"                       { run hook 'git commit -am x'; allowed; }
+@test "ok git push -n is a dry run"             { run hook 'git push -n origin feature/x'; allowed; }
+@test "guard: git -c core.hooksPath="           { run hook 'git -c core.hooksPath=/dev/null commit -m x'; denied; }
+@test "guard: git -ccore.hooksPath= glued"      { run hook 'git -ccore.hookspath=/tmp commit -m x'; denied; }
+@test "guard: git -c filter.sops-*"             { run hook 'git -c filter.sops-keyring.clean=cat add .secrets'; denied; }
+@test "guard: GIT_CONFIG_GLOBAL before commit"  { run hook 'GIT_CONFIG_GLOBAL=/dev/null git commit -m x'; denied; }
+@test "guard: GIT_CONFIG_NOSYSTEM before rebase" { run hook 'GIT_CONFIG_NOSYSTEM=1 git rebase develop'; denied; }
+@test "guard: env GIT_CONFIG_GLOBAL before am"  { run hook 'env GIT_CONFIG_GLOBAL=/dev/null git am x.patch'; denied; }
+@test "ok GIT_CONFIG_GLOBAL before git log"     { run hook 'GIT_CONFIG_GLOBAL=/dev/null git log -1'; allowed; }
+@test "ok git -c user.name commit"              { run hook 'git -c user.name=x commit -m y'; allowed; }
 @test "history: push --force develop"           { run hook 'git push --force origin develop'; denied; }
 @test "history: push -f main"                   { run hook 'git push -f origin main'; denied; }
 @test "history: push +develop"                  { run hook 'git push origin +develop'; denied; }
