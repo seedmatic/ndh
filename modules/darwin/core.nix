@@ -170,14 +170,14 @@ in
       # Ensure SSL Cert file path located correctly
       ssl-cert-file = "/etc/ssl/cert.pem";
 
-      # Strict, not relaxed: nothing the Macs build needs __noChroot (measured 2026-10-13 on every
+      # Strict, not relaxed: nothing the darwin hosts build needs __noChroot (measured 2026-10-13 on every
       # derivation no public cache holds), and relaxed would let any derivation opt out.
       sandbox = true;
       # A COPY of nix 2.34.8's darwin default (src/libstore/globals.cc) WITHOUT /private/tmp and
       # /private/var/tmp: the profile opens every sandbox path, so those two let a build read whatever
       # any user leaves there. With the daemon's own TMPDIR below, a sandboxed build no longer sees
       # /private/tmp (measured 2026-10-13: a 0644 file of another user there turns unreadable, and
-      # every Mac build still builds). A nix bump that adds a default path loses it here: re-check
+      # every darwin host build still builds). A nix bump that adds a default path loses it here: re-check
       # globals.cc and re-run the darwin sandbox probe at every nix bump.
       sandbox-paths = [
         "/System/Library/Frameworks"
