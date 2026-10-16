@@ -15,7 +15,12 @@
 # frozen layers of that boot, then the EROFS ones — never the current ones: after a freeze-reboot
 # the container comes back on its old snapshot while nerd-nixos already runs the new stack.
 #
-# Env: LAYER_CONTRACT (/etc/ndh/store-layers.json), CONTAINER_DIR, CONTAINER_NAME.
+# An UNPRIVILEGED container sees its store as `nobody`'s and cannot write it (its store disks cannot
+# be idmapped): its upper stays empty between deliveries, and each delivery starts a fresh one. A
+# non-empty upper under it was written from the NixOS guest's side, outside every delivery, so it is
+# refused rather than served — and such a container has nothing to freeze (measured 2026-10-16).
+#
+# Env: LAYER_CONTRACT (/etc/ndh/store-layers.json), CONTAINER_DIR, CONTAINER_NAME, CONTAINER_PRIVILEGED.
 
 [ -s "$CONTAINER_DIR/lower.layers" ] && [ -s "$CONTAINER_DIR/lower.frozen" ] ||
   { echo "ndh-incus-container-store: no stamped layer list — run: ndh-incus-container deliver $CONTAINER_NAME" >&2; exit 1; }
@@ -72,6 +77,17 @@ layer_set=$({
   find "${layers[@]}" -mindepth 1 -maxdepth 1 ! -name '.*' -printf '%H/%f\n' | sort
 } | sha256sum | cut -c1-16)
 expected="$snapshot $layer_set"
+
+# It judges the mode the module declares, not the instance's live security.privileged; anything but
+# `true` is the strict branch. It never answers "empty" for "could not look": no upper fails, and a
+# find error fails the unit through errexit (an assignment, not a test).
+if [ "$CONTAINER_PRIVILEGED" != true ]; then
+  [ -d "$CONTAINER_DIR/upper" ] ||
+    fail "the unprivileged $CONTAINER_NAME has no upper at $CONTAINER_DIR/upper — run: ndh-incus-container deliver $CONTAINER_NAME"
+  written=$(find "$CONTAINER_DIR/upper" -mindepth 1 -print -quit)
+  [ -z "$written" ] ||
+    fail "the upper of the unprivileged $CONTAINER_NAME is not empty, and it cannot write its store: something on this NixOS guest did — inspect $CONTAINER_DIR/upper, then run: ndh-incus-container deliver $CONTAINER_NAME"
+fi
 
 if [ -e "$stamp" ] && [ "$(cat "$stamp")" != "$expected" ]; then
   fail "the upper of $CONTAINER_NAME belongs to ($(cat "$stamp")), nerd-nixos booted ($expected) — run: ndh-incus-container deliver $CONTAINER_NAME"

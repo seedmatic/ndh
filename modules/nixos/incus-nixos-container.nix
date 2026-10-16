@@ -312,6 +312,7 @@ in
           LAYER_CONTRACT = layerContract;
           CONTAINER_DIR = info.dir;
           CONTAINER_NAME = name;
+          CONTAINER_PRIVILEGED = lib.boolToString info.privileged;
         };
         script = lib.getExe storeScript;
       }
