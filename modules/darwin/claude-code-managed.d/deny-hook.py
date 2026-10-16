@@ -542,6 +542,53 @@ class Analyzer:
         return (path.count("/") <= 1 or path == home or home.startswith(path.rstrip("/") + "/")
                 or path == "/nix" or path.startswith("/nix/"))
 
+    GIT_VALUE = {"-C", "-c", "--git-dir", "--work-tree", "--namespace", "--exec-path", "--config-env"}
+    PUSH_VALUE = {"-o", "--push-option", "--repo", "--receive-pack", "--exec"}
+
+    def check_git(self, argv):
+        """--no-verify anywhere; a push that forces or deletes a protected branch. A forced push with no
+        refspec is refused too: its target is the upstream, which the text does not name."""
+        args = argv[1:]
+        if "--no-verify" in args:
+            self.deny("git --no-verify skips the hooks that guard commits and pushes", argv)
+            return
+        i = skip_options(args, self.GIT_VALUE)
+        if args[i:i + 1] != ["push"]:
+            return
+        push = args[i + 1:]
+        refs = positionals(push, self.PUSH_VALUE)[1:]
+        force = any(t in ("--force", "--force-with-lease") or t.startswith("--force-with-lease=")
+                    or (t.startswith("-") and not t.startswith("--") and "f" in t[1:]) for t in push)
+        force = force or any(r.startswith("+") for r in refs)
+        delete = "--delete" in push or any(t.startswith("-") and not t.startswith("--") and "d" in t[1:] for t in push)
+        protected = self.table.get("protected_branches", [])
+
+        def target(ref):
+            return ref.lstrip("+").rsplit(":", 1)[-1].removeprefix("refs/heads/")
+
+        if force and (not refs or any(target(r) in protected for r in refs)):
+            self.deny(f"forced push to {'/'.join(protected)}, or with no refspec, rewrites public history", argv)
+        elif any(r.startswith(":") and target(r) in protected for r in refs) or \
+                (delete and any(target(r) in protected for r in refs)):
+            self.deny(f"deletes a remote {'/'.join(protected)}", argv)
+
+    COPY_TO_HOSTS = ("ssh://", "ssh-ng://")
+
+    def check_nix_copy(self, argv):
+        """A --to a binary cache publishes; a --to a fleet machine over ssh only feeds it. Anything that is
+        not an ssh store, a bare path included, is taken for a cache."""
+        args = argv[1:]
+        for i, tok in enumerate(args):
+            if tok == "--to":
+                dest = args[i + 1] if i + 1 < len(args) else ""
+            elif tok.startswith("--to="):
+                dest = tok.split("=", 1)[1]
+            else:
+                continue
+            if not dest.startswith(self.COPY_TO_HOSTS):
+                self.deny("nix copy --to a binary cache publishes; publication is the publishing user's job", argv)
+                return
+
     def check(self, argv):
         prog, args = argv[0], argv[1:]
         if prog in ("cd", "pushd"):
@@ -604,8 +651,14 @@ class Analyzer:
             if any(v in pos[:spec.get("nested_window", 0)] for v in spec.get("nested_verbs", [])):
                 self.deny(f"mutating {prog} sub-verb", argv)
                 return
-            if any(f in args for f in spec.get("flag_verbs", [])):
+            if any(a == f or a.startswith(f + "=") for a in args for f in spec.get("flag_verbs", [])):
                 self.deny(f"mutating {prog} flag", argv)
+            return
+        if prog == "git":
+            self.check_git(argv)
+            return
+        if prog == "nix":
+            self.check_nix_copy(argv)
             return
         for launcher in self.table.get("ask_launchers", []):
             if prog != launcher["program"]:

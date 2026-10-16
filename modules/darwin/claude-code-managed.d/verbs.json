@@ -53,9 +53,15 @@
                      "--profile-name", "--specialisation", "-c"]
     },
     "rke2lab-grow": { "verbs": ["up"], "window": 2, "value_opts": [], "in_list": false },
-    "grow": { "verbs": ["up"], "window": 2, "value_opts": [], "in_list": false }
+    "grow": { "verbs": ["up"], "window": 2, "value_opts": [], "in_list": false },
+    "cachix": { "verbs": ["push", "watch-store", "watch-exec"], "window": 1, "value_opts": ["-c", "--config", "--hostname"] },
+    "attic": { "verbs": ["push", "watch-store"], "window": 1, "value_opts": [] },
+    "security": { "verbs": ["dump-keychain"], "flag_verbs": ["-w", "-g"], "window": 1, "value_opts": [] }
   },
-  "list_extra_rules": ["mv ~/.claude*"],
+  "protected_branches": ["develop", "main"],
+  "list_extra_rules": ["mv ~/.claude*",
+                       "nix * --to https://*", "nix * --to http://*", "nix * --to s3://*", "nix * --to file://*", "nix * --to /*",
+                       "nix * --to=https://*", "nix * --to=http://*", "nix * --to=s3://*", "nix * --to=file://*", "nix * --to=/*"],
   "list_path_rules": [
     { "rule": "Read(//Volumes/git-bare-store/nxmatic/keyhole.git/.ssh/**)", "why": "the keyring@keyhole private key, whose ssh-to-age opens the operator's keyring backups" },
     { "rule": "Read(//Volumes/git-worktree-store/nxmatic/keyhole.d/keyring/**)", "why": "the keyring worktree, where the sops-keyring filter leaves the rehydrate scripts in the clear" },
@@ -63,7 +69,13 @@
     { "rule": "Read(~/.local/share/password-store/seedmatic/**)", "why": "the seat identities, encrypted to the seedmatic subkey whose passphrase the seat's keychain holds" },
     { "rule": "Edit(~/.local/share/password-store/seedmatic/**)", "why": "the same store: a session never writes the seat identities" },
     { "rule": "Read(//Volumes/git-worktree-store/nxmatic/claude-home.d/pass/seedmatic/**)", "why": "a checkout of claude-home's pass/seedmatic head, the replica of the same store" },
-    { "rule": "Edit(//Volumes/git-worktree-store/nxmatic/claude-home.d/pass/seedmatic/**)", "why": "the same replica" }
+    { "rule": "Edit(//Volumes/git-worktree-store/nxmatic/claude-home.d/pass/seedmatic/**)", "why": "the same replica" },
+    { "rule": "Read(~/.ssh/id_ed25519)", "why": "an ssh private key; its .pub stays readable" },
+    { "rule": "Read(~/.ssh/id_ecdsa)", "why": "an ssh private key; its .pub stays readable" },
+    { "rule": "Read(~/.ssh/id_rsa)", "why": "an ssh private key; its .pub stays readable" },
+    { "rule": "Read(~/.ssh/id_ed25519_sk)", "why": "an ssh private key handle; its .pub stays readable" },
+    { "rule": "Read(~/.ssh/id_ecdsa_sk)", "why": "an ssh private key handle; its .pub stays readable" },
+    { "rule": "Read(~/.config/sops/age/**)", "why": "the age identities that decrypt every sops file of the seat" }
   ],
   "store_rules": [
     { "program": "pass", "prefix": "seedmatic", "free_verbs": ["find", "search", "help", "version"], "decrypts_all": ["grep"],
