@@ -1820,10 +1820,18 @@ re-minted
 
 | the **attic tokens** — a write token per host to its own seat's cache, a read token per host to
 each cache
-| ⚠️ **open, to specify before the code** (🛡️ P4): they are minted inside the containers with
-`atticadm`, and how they REACH the hosts is the new secret path — per-host sops, pushed like the S2
-identity, or another — never through a file the operator opens in the IDE
-| atticadm, inside each seat's container
+| **inside a seat**, an **sshfs drop-box**: a dedicated Mac account confined by `Match User` +
+`ChrootDirectory` (root-owned path) + `ForceCommand internal-sftp`, reached with a per-guest key
+`sshfs-<guest>` (delivered by S2, `restrict` in `authorized_keys`), `StrictHostKeyChecking yes`
+against the seat's pinned host key (never `accept-new`), one automount entry for one 0700 directory
+(guest-side, without `allow_other`, owned by the consuming service, short idle timeout), holding
+**age ciphertext only**, to the access point's recipient. **Across seats**, an S2-style **push** from
+the issuing seat's nerd-nixos to the other seat's nerd-nixos through the tunnel, the read tokens
+**short-lived** and re-pushed on a schedule. Never through a file the operator opens in the IDE.
+Decided by the operator on 2026-10-16, on 🛡️'s P4 and 🔑's answer
+| atticadm, inside each seat's container; the drop-box waits for 🔑's S3 pieces (the dedicated
+account, the `sshfs-<guest>` key, per-machine host certs). Identities never take this path: they
+stay on S2
 |===
 ====
 
