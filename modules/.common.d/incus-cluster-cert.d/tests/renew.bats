@@ -138,6 +138,24 @@ run_renew() { HOME="$t/home" XDG_STATE_HOME="$t/state" PATH="$t/bin:$PATH" run b
   [[ $output != *"PRIVATE KEY"* ]]
 }
 
+@test "there is no trace mode: --debug is refused before anything is read" {
+  run_renew --debug
+  [ "$status" -eq 1 ]
+  [[ $output == *"usage:"* ]]
+  [ ! -e "$t/updated" ]
+}
+
+@test "a full renewal under bash -x, with an inherited BASH_XTRACEFD, traces no private" {
+  mkdir -p "$t/tmp"
+  HOME="$t/home" XDG_STATE_HOME="$t/state" TMPDIR="$t/tmp" BASH_XTRACEFD=2 PATH="$t/bin:$PATH" \
+    run bash -x "$script"
+  [ "$status" -eq 0 ]
+  [ -e "$t/updated" ]
+  [[ $output == *"xtrace disabled"* ]]
+  [[ $output != *"PRIVATE KEY"* ]]
+  [[ $output != *"$(sed -n 2p "$t/current.key")"* ]]
+}
+
 @test "an exported SHELLOPTS=xtrace is disabled too" {
   # SHELLOPTS is readonly in this shell: set it for the CHILD, as an inherited environment would.
   HOME="$t/home" XDG_STATE_HOME="$t/state" PATH="$t/bin:$PATH" run env SHELLOPTS=xtrace bash "$script" --dry-run
