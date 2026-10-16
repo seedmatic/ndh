@@ -26,7 +26,8 @@ each host builds them again. The cache makes a path **built once and substituted
   **pushed revision**, never from a working tree (see <<per-seat>>, <<revisions-only>>);
 * what is **trusted enough to publish** goes to the **public** `nxmatic` cachix. That covers an
   allow-list of named outputs, built and not added, which passed a content guard, signed with a
-  publication key (see <<public-private-split>>; who publishes is open since <<per-seat>>);
+  publication key; **both seats publish**, each with its own (see <<public-private-split>>,
+  <<per-seat>>);
 * **everything else** stays in **each seat's private** cache: an **attic** server in an Incus
   container on that seat's nerd-nixos, filled by an `attic watch-store` on each of the seat's hosts,
   read by every seat host, every read of which needs a token (see <<per-seat>>).
@@ -93,8 +94,10 @@ builder of 2026-10-10/11. **Each seat builds**, from revisions, and pushes what 
 **own** private cache; every seat host reads **both** caches. The sections still written for one
 cache or one builder (<<who-fills>>, <<write-tokens>>, <<revisions-only>>, <<builder-tests>>, the
 fill job of <<public-private-split>>) are superseded where they contradict this one, until they are
-rewritten. **Open**: who publishes to the public cachix tier — one seat, or each with its own
-publication key.
+rewritten. **Both seats publish** to the public cachix tier (operator, 2026-10-16), each with its
+own publication key, `seedmatic-<seat>-publish-1`, and its own cachix push token (proposed with that
+decision, for 🛡️'s review): a published path's provenance stays legible, and losing a seat revokes
+that seat's only.
 ====
 
 [mermaid]
@@ -285,9 +288,9 @@ flowchart LR
   op["Operator"]:::person
   gh["Revisions — GitHub, or the bare repositories on bioskop"]:::ext
   up["cache.nixos.org, cache.flox.dev — upstream substituters"]:::ext
-  cx["nxmatic.cachix.org — PUBLIC tier, what the fill job published"]:::pub
+  cx["nxmatic.cachix.org — PUBLIC tier, what either seat published"]:::pub
 
-  pub["publication to the public tier — WHO publishes is open"]:::open
+  pub["publication to the public tier — both seats, each with its own key"]:::open
   subgraph BIOSKOP["seat bioskop — bioskop bare-metal"]
     dB["darwin bioskop — builds, watch-store"]:::host
     subgraph NN_B["nerd-nixos bioskop-nixos — builds, watch-store"]
@@ -328,7 +331,7 @@ flowchart LR
 Legend: blue — a seat host, which builds from revisions and uploads its own builds to its seat's
 private tier; violet — a seat's private tier; green — the public tier; slate — the clusters and the
 corporate bare-metal, which write nothing (the bare-metal receives `nix copy`, the clusters read the
-public tier); dashed — open (who publishes); grey — outside the fabric. The substitution order is
+public tier); dashed — the publication, by both seats; grey — outside the fabric. The substitution order is
 drawn for rdp.nikopol and holds on every seat host: upstream, the public tier, its own seat's cache,
 then the other seat's (see <<per-seat>>; the order between the two private caches is still open).
 
@@ -1762,6 +1765,47 @@ The hosts' `attic-client` takes the same revision.
 [[secrets]]
 == Secrets, tokens and substituters
 
+[IMPORTANT]
+====
+**Decided by the operator on 2026-10-16**, adopting 🔑 roles × keys' recommendations (for 🛡️'s
+review). Where the bullets below disagree, this table holds:
+
+[cols="1,2,2",options="header"]
+|===
+| Secret | Where it lives | Who mints it
+
+| a seat cache's **signing key**, `seedmatic-<seat>-attic-<n>`
+| a **per-host sops file**, `catalog/cache-trust.d/<host>.yaml`, with its own `.sops.yaml`
+creation rule whose recipients are that host's age identity and the operator's (sops picks
+recipients per FILE, not per leaf, so the shared `cache-trust.yaml` cannot hold it); marker mode,
+`# sops:encrypted` on the private leaf. The public half enters `catalog/cache-trust.nix` behind the
+consumers / `acceptedBy` axis only, and an eval check refuses it in `trusted-public-keys` before
+`acceptedBy`
+| a fail-closed mint tool, modeled on `modules/.common.d/cache-signing-key-rotate.d` (the same
+xtrace guard; a dry run generates nothing; it refuses a private left unencrypted after the
+re-encryption, a recipient change, any change outside the entry, a readable private); the operator
+runs it on the seat, 🔑 then 🛡️ review the tool
+
+| attic's **TLS key**, for its leaf from mammoth-skate tls
+| generated **inside the container**, on its persistent disk (an Incus disk device), never in the
+store and never in `keys.yaml`
+| the S6 model (`incus-cluster-cert-renew`): the seat fetches a CSR, checks that its SANs equal the
+names fixed at eval from the catalog (the attic fabric FQDN) and that its key is the served one,
+signs it through an fd under a pinned template (CN, SANs, digitalSignature, serverAuth, CA:false,
+`--not-after`), keeps a ledger of what it signed, installs it; renewal by the same tool
+
+| atticd's **server secret** (`ATTIC_SERVER_TOKEN_RS256_SECRET_BASE64`, the JWT signing secret)
+| generated **by the container at its first start**, on its persistent disk, mode 0400; it never
+leaves the container, with no sops and no store
+| the container itself; the tokens are minted inside with `atticadm`. If it is lost, the tokens are
+re-minted
+
+| a seat's **publication key** `seedmatic-<seat>-publish-1` and its **cachix push token**
+| sops, per seat, decrypted for that seat's publishing user only
+| both seats publish (operator, 2026-10-16); one key and one cachix token per seat
+|===
+====
+
 * attic's server secret (`ATTIC_SERVER_TOKEN_RS256_SECRET_BASE64`, through `services.atticd`'s
   `environmentFile`), the cache's signing key, the layer key, the publication key
   `seedmatic-publish-1`, the cachix push token and every attic token are **sops-encrypted at rest**,
@@ -1806,7 +1850,7 @@ flowchart LR
   attB["attic.bioskop — bioskop's private tier, reads need a token"]:::cache
   attN["attic.nikopol — nikopol's private tier, reads need a token"]:::cache
   cx["nxmatic.cachix.org — the public tier, no token to read"]:::pub
-  fj["publication — who publishes is open (per-seat)"]:::writer
+  fj["publication — both seats, each its own key and cachix token"]:::writer
 
   h1 & h3 -->|"upload"| attB
   h2 & h4 -->|"upload"| attN
@@ -1823,7 +1867,7 @@ flowchart LR
 ....
 
 Legend: amber — a writer holding its write token to its own seat's cache and a read token to each
-cache, or the publication credentials (who holds them is open since <<per-seat>>); green — holds no
+cache, or a seat's publication credentials (each seat its own, see <<per-seat>>); green — holds no
 attic token (the clusters, the infrastructure containers, the corporate bare-metal); violet — a
 seat's private tier; grey with a green border — the public tier.
 
