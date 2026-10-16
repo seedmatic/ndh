@@ -95,9 +95,16 @@ builder of 2026-10-10/11. **Each seat builds**, from revisions, and pushes what 
 cache or one builder (<<who-fills>>, <<write-tokens>>, <<revisions-only>>, <<builder-tests>>, the
 fill job of <<public-private-split>>) are superseded where they contradict this one, until they are
 rewritten. **Both seats publish** to the public cachix tier (operator, 2026-10-16), each with its
-own publication key, `seedmatic-<seat>-publish-1`, and its own cachix push token (proposed with that
-decision, for 🛡️'s review): a published path's provenance stays legible, and losing a seat revokes
-that seat's only.
+own publication key, `seedmatic-<seat>-publish-1`, and its own cachix push token, so a published
+path's provenance stays legible. Each seat's publication keeps the three guards of the former single
+fill job: a **dedicated publishing user**, **revisions only**, and the **content guard** before the
+push. Revoking a seat's publication means removing its key from every consumer's
+`trusted-public-keys` **and** purging, or re-signing, the paths it already signed in cachix.
+
+⚠️ nikopol's publication key and cachix token live on rdp.nikopol, under the corporate hypervisor,
+and the public tier is the one the **clusters** trust: the corporate bare-metal's reach extends to
+every cluster, beyond bioskop's private reads. **Accepted by the operator on 2026-10-16** (the
+security model's "corp IT"), not an absence of risk (🛡️).
 ====
 
 [mermaid]
@@ -1777,24 +1784,20 @@ The hosts' `attic-client` takes the same revision.
 
 [IMPORTANT]
 ====
-**Decided by the operator on 2026-10-16**, adopting 🔑 roles × keys' recommendations (for 🛡️'s
-review). Where the bullets below disagree, this table holds:
+**Decided by the operator on 2026-10-16**, adopting 🔑 roles × keys' recommendations and, for the
+signing key, 🛡️'s P3. Where the bullets below disagree, this table holds:
 
 [cols="1,2,2",options="header"]
 |===
 | Secret | Where it lives | Who mints it
 
 | a seat cache's **signing key**, `seedmatic-<seat>-attic-<n>`
-| a **per-host sops file**, `catalog/cache-trust.d/<host>.yaml`, with its own `.sops.yaml`
-creation rule whose recipients are that host's age identity and the operator's (sops picks
-recipients per FILE, not per leaf, so the shared `cache-trust.yaml` cannot hold it); marker mode,
-`# sops:encrypted` on the private leaf. The public half enters `catalog/cache-trust.nix` behind the
-consumers / `acceptedBy` axis only, and an eval check refuses it in `trusted-public-keys` before
-`acceptedBy`
-| a fail-closed mint tool, modeled on `modules/.common.d/cache-signing-key-rotate.d` (the same
-xtrace guard; a dry run generates nothing; it refuses a private left unencrypted after the
-re-encryption, a recipient change, any change outside the entry, a readable private); the operator
-runs it on the seat, 🔑 then 🛡️ review the tool
+| generated **inside the container**, on its persistent disk: the private never leaves it, with no
+host-decrypted copy and no operator recipient (operator, 2026-10-16, on 🛡️'s P3). Only the public
+half is exported: it enters `catalog/cache-trust.nix` behind the consumers / `acceptedBy` axis, and
+an eval check refuses it in `trusted-public-keys` before `acceptedBy`
+| attic itself, which makes a cache's keypair natively. Losing the disk is a rotation: a new key, and
+its public half accepted again
 
 | attic's **TLS key**, for its leaf from mammoth-skate tls
 | generated **inside the container**, on its persistent disk (an Incus disk device), never in the
@@ -1802,7 +1805,8 @@ store and never in `keys.yaml`
 | the S6 model (`incus-cluster-cert-renew`): the seat fetches a CSR, checks that its SANs equal the
 names fixed at eval from the catalog (the attic fabric FQDN) and that its key is the served one,
 signs it through an fd under a pinned template (CN, SANs, digitalSignature, serverAuth, CA:false,
-`--not-after`), keeps a ledger of what it signed, installs it; renewal by the same tool
+`--not-after`), keeps a ledger of what it signed, installs it; renewal by the same tool. The leaf's
+key is **ECDSA P-256** (the darwin and nix curl stacks); keyEncipherment only if RSA were chosen
 
 | atticd's **server secret** (`ATTIC_SERVER_TOKEN_RS256_SECRET_BASE64`, the JWT signing secret)
 | generated **by the container at its first start**, on its persistent disk, mode 0400; it never
@@ -1811,8 +1815,15 @@ leaves the container, with no sops and no store
 re-minted
 
 | a seat's **publication key** `seedmatic-<seat>-publish-1` and its **cachix push token**
-| sops, per seat, decrypted for that seat's publishing user only
+| sops, per seat, decrypted for that seat's dedicated publishing user only
 | both seats publish (operator, 2026-10-16); one key and one cachix token per seat
+
+| the **attic tokens** — a write token per host to its own seat's cache, a read token per host to
+each cache
+| ⚠️ **open, to specify before the code** (🛡️ P4): they are minted inside the containers with
+`atticadm`, and how they REACH the hosts is the new secret path — per-host sops, pushed like the S2
+identity, or another — never through a file the operator opens in the IDE
+| atticadm, inside each seat's container
 |===
 ====
 
@@ -1860,12 +1871,13 @@ flowchart LR
   attB["attic.bioskop — bioskop's private tier, reads need a token"]:::cache
   attN["attic.nikopol — nikopol's private tier, reads need a token"]:::cache
   cx["nxmatic.cachix.org — the public tier, no token to read"]:::pub
-  fj["publication — both seats, each its own key and cachix token"]:::writer
+  fj["bioskop's publication — its own key and cachix token"]:::writer
+  fjn["nikopol's publication — its own key and cachix token, on the corporate bare-metal"]:::corp
 
   h1 & h3 -->|"upload"| attB
   h2 & h4 -->|"upload"| attN
   h1 & h2 & h3 & h4 -.->|"substitute, both"| attB & attN
-  fj -->|"publishes the computed set"| cx
+  fj & fjn -->|"publish the computed set"| cx
   n1 & p1 -.->|"substitute, no token"| cx
   n1 & p1 -->|"build and substitute through, SSH identity"| h3
   n1 & p1 -->|"same, on nikopol"| h4
