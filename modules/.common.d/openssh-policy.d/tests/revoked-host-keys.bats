@@ -19,6 +19,10 @@ setup() {
   echo "@cert-authority localhost $(cut -d' ' -f1-2 ca.pub)" >known-ca
   echo "localhost $(cut -d' ' -f1-2 leaked.pub)" >known-leaked
   port=$((20000 + RANDOM % 20000))
+  # The nix sandbox's passwd gives the build user the shell /noshell, which does not exist, and sshd
+  # refuses such a user before any key. sshd alone reads this one, naming a shell that does.
+  printf '%s:x:%s:%s::%s:%s\n' "$(id -un)" "$(id -u)" "$(id -g)" "$PWD" "$(command -v bash)" >passwd
+  printf '%s:x:%s:\n' "$(id -gn)" "$(id -g)" >group
 }
 
 teardown() {
@@ -36,7 +40,8 @@ AuthorizedKeysFile $PWD/authorized_keys
 StrictModes no
 PidFile $PWD/sshd.pid
 EOF
-  "$(command -v sshd)" -f "$PWD/sshd_config" -E "$PWD/sshd.log"
+  LD_PRELOAD="$NSS_WRAPPER_LIB" NSS_WRAPPER_PASSWD="$PWD/passwd" NSS_WRAPPER_GROUP="$PWD/group" \
+    "$(command -v sshd)" -f "$PWD/sshd_config" -E "$PWD/sshd.log"
   for _ in 1 2 3 4 5 6 7 8 9 10; do [ -s sshd.pid ] && break; sleep 0.2; done
   run ssh -v -F /dev/null -p "$port" -i user -o IdentitiesOnly=yes -o BatchMode=yes \
     -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$PWD/$4" -o GlobalKnownHostsFile=/dev/null \

@@ -3,6 +3,7 @@
 { pkgs }:
 pkgs.runCommand "openssh-revoked-host-keys-bats"
   {
+    NSS_WRAPPER_LIB = "${pkgs.nss_wrapper}/lib/libnss_wrapper.so";
     nativeBuildInputs = with pkgs; [
       bats
       coreutils

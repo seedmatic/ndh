@@ -105,7 +105,10 @@ let
       "HostCertificate ${owned.ndh.hostKey.certificateFile}"
     ];
     assert lib.assertMsg
-      (lib.hasInfix "${owned.ndh.hostKey.check}" owned.system.activationScripts.etc.text)
+      # Without context: hasInfix builds a regex from the needle, and a regex may not name a store path.
+      (lib.hasInfix (builtins.unsafeDiscardStringContext "${owned.ndh.hostKey.check}") (
+        builtins.unsafeDiscardStringContext owned.system.activationScripts.etc.text
+      ))
       "${name} (own = true): the activation does not report a missing host key";
     pkgs.runCommand "host-key-served-${name}" { } "touch $out";
 in
