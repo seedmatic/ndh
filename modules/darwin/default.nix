@@ -18,6 +18,7 @@
     ./disable-spotlight.nix
     ./disable-google-updaters.nix
     ./disable-unwanted-agents.nix
+    ./nfsd-off.nix
     ./tailnet-client.nix
     ./headscale-daemon.nix
     ./headscale-client-kind.nix
