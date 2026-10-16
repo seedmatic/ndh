@@ -47,6 +47,9 @@ let
   # Claude's, and this block is replaced whole at every activation, so a hook removed here is gone.
   sessionHooks = import ./claude-code.d/hooks/package.nix { inherit pkgs; };
   hooksFile = pkgs.writeText "claude-code-hooks.json" (builtins.toJSON sessionHooks.hooks);
+
+  # The same ownership for the `autoMode` key: replaced whole, so a rule removed here is gone.
+  autoModeFile = import ./claude-code.d/auto-mode/package.nix { inherit pkgs; };
 in
 {
   options = {
@@ -85,6 +88,8 @@ in
 
       sessionHooks.enable = mkEnableOption "the session hooks (memory guard and commit, checkpoints) in ~/.claude/settings.json";
 
+      autoMode.enable = mkEnableOption "the auto-mode classifier rules (the `autoMode` key) in ~/.claude/settings.json";
+
       seed = mkOption {
         type = types.attrs;
         default = {
@@ -110,6 +115,18 @@ in
         if [ -f "$claudeSettings" ]; then
           claudeSettingsNew="$(mktemp)"
           ${pkgs.jq}/bin/jq --slurpfile hooks ${hooksFile} '.hooks = $hooks[0]' "$claudeSettings" >"$claudeSettingsNew"
+          $DRY_RUN_CMD install -m 0644 "$claudeSettingsNew" "$claudeSettings"
+          rm -f "$claudeSettingsNew"
+        fi
+      '';
+    })
+
+    (mkIf cfg.autoMode.enable {
+      home.activation.claudeCodeAutoMode = lib.hm.dag.entryAfter [ "writeBoundary" "claudeCodeSeed" ] ''
+        claudeSettings="$HOME/.claude/settings.json"
+        if [ -f "$claudeSettings" ]; then
+          claudeSettingsNew="$(mktemp)"
+          ${pkgs.jq}/bin/jq --slurpfile autoMode ${autoModeFile} '.autoMode = $autoMode[0]' "$claudeSettings" >"$claudeSettingsNew"
           $DRY_RUN_CMD install -m 0644 "$claudeSettingsNew" "$claudeSettings"
           rm -f "$claudeSettingsNew"
         fi

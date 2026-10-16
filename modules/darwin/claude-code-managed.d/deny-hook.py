@@ -333,8 +333,13 @@ class Analyzer:
             self.unwrap(argv, depth)
 
     def unwrap(self, argv, depth):
+        # The assignments in front of the command, kept for check(): GIT_CONFIG_GLOBAL=/dev/null drops the
+        # global hooks and sops filters of the git command it prefixes.
+        self.assignments = []
         while argv:
             while argv and (ASSIGNMENT.match(argv[0]) or argv[0] in KEYWORDS):
+                if ASSIGNMENT.match(argv[0]):
+                    self.assignments.append(argv[0])
                 argv = argv[1:]
             if not argv:
                 return
@@ -363,7 +368,10 @@ class Analyzer:
                     return []
                 if tok in ("-u", "--unset", "-C", "--chdir"):
                     i += 2
-                elif tok.startswith("-") or ASSIGNMENT.match(tok):
+                elif ASSIGNMENT.match(tok):
+                    self.assignments.append(tok)
+                    i += 1
+                elif tok.startswith("-"):
                     i += 1
                 else:
                     break
@@ -542,6 +550,87 @@ class Analyzer:
         return (path.count("/") <= 1 or path == home or home.startswith(path.rstrip("/") + "/")
                 or path == "/nix" or path.startswith("/nix/"))
 
+    GIT_VALUE = {"-C", "-c", "--git-dir", "--work-tree", "--namespace", "--exec-path", "--config-env"}
+    PUSH_VALUE = {"-o", "--push-option", "--repo", "--receive-pack", "--exec"}
+    # git commit's short options that take a value: in a cluster, what follows one of them is that value.
+    COMMIT_VALUE_SHORT = "mFCctSu"
+    # A guard lives in the global config (hooksPath, the sops filters): these drop it for the command.
+    GUARD_KEYS = re.compile(r"^(?:core\.hookspath|filter\.sops)", re.I)
+    GUARD_ENV = {"GIT_CONFIG_GLOBAL", "GIT_CONFIG_NOSYSTEM"}
+    WRITES_HISTORY = {"commit", "merge", "rebase", "cherry-pick", "am"}
+
+    def check_git(self, argv):
+        """A guard bypass (--no-verify, commit -n, a -c or an assignment that drops the global hooks or sops
+        filters); a push that forces or deletes a protected branch. A forced push with no refspec is refused
+        too: its target is the upstream, which the text does not name."""
+        args = argv[1:]
+        if "--no-verify" in args:
+            self.deny("git --no-verify skips the hooks that guard commits and pushes", argv)
+            return
+        i = skip_options(args, self.GIT_VALUE)
+        for j, tok in enumerate(args[:i]):
+            key = None
+            if tok == "-c" and j + 1 < i:
+                key = args[j + 1]
+            elif tok.startswith("-c") and not tok.startswith("--"):
+                key = tok[2:]
+            elif tok.startswith("--config-env="):
+                key = tok.split("=", 1)[1]
+            if key and self.GUARD_KEYS.match(key):
+                self.deny("git -c overrides a guard (core.hooksPath or a sops filter)", argv)
+                return
+        sub = args[i] if i < len(args) else None
+        if sub in self.WRITES_HISTORY and any(a.split("=", 1)[0] in self.GUARD_ENV for a in self.assignments):
+            self.deny(f"git {sub} without the global config drops its hooks and sops filters", argv)
+            return
+        if sub == "commit":
+            for tok in args[i + 1:]:
+                if tok == "--":
+                    break
+                if tok.startswith("-") and not tok.startswith("--"):
+                    for ch in tok[1:]:
+                        if ch == "n":
+                            self.deny("git commit -n is --no-verify", argv)
+                            return
+                        if ch in self.COMMIT_VALUE_SHORT:
+                            break
+            return
+        if sub != "push":
+            return
+        push = args[i + 1:]
+        refs = positionals(push, self.PUSH_VALUE)[1:]
+        force = any(t in ("--force", "--force-with-lease") or t.startswith("--force-with-lease=")
+                    or (t.startswith("-") and not t.startswith("--") and "f" in t[1:]) for t in push)
+        force = force or any(r.startswith("+") for r in refs)
+        delete = "--delete" in push or any(t.startswith("-") and not t.startswith("--") and "d" in t[1:] for t in push)
+        protected = self.table.get("protected_branches", [])
+
+        def target(ref):
+            return ref.lstrip("+").rsplit(":", 1)[-1].removeprefix("refs/heads/")
+
+        if force and (not refs or any(target(r) in protected for r in refs)):
+            self.deny(f"forced push to {'/'.join(protected)}, or with no refspec, rewrites public history", argv)
+        elif any(r.startswith(":") and target(r) in protected for r in refs) or \
+                (delete and any(target(r) in protected for r in refs)):
+            self.deny(f"deletes a remote {'/'.join(protected)}", argv)
+
+    COPY_TO_HOSTS = ("ssh://", "ssh-ng://")
+
+    def check_nix_copy(self, argv):
+        """A --to a binary cache publishes; a --to a fleet machine over ssh only feeds it. Anything that is
+        not an ssh store, a bare path included, is taken for a cache."""
+        args = argv[1:]
+        for i, tok in enumerate(args):
+            if tok == "--to":
+                dest = args[i + 1] if i + 1 < len(args) else ""
+            elif tok.startswith("--to="):
+                dest = tok.split("=", 1)[1]
+            else:
+                continue
+            if not dest.startswith(self.COPY_TO_HOSTS):
+                self.deny("nix copy --to a binary cache publishes; publication is the publishing user's job", argv)
+                return
+
     def check(self, argv):
         prog, args = argv[0], argv[1:]
         if prog in ("cd", "pushd"):
@@ -604,8 +693,14 @@ class Analyzer:
             if any(v in pos[:spec.get("nested_window", 0)] for v in spec.get("nested_verbs", [])):
                 self.deny(f"mutating {prog} sub-verb", argv)
                 return
-            if any(f in args for f in spec.get("flag_verbs", [])):
+            if any(a == f or a.startswith(f + "=") for a in args for f in spec.get("flag_verbs", [])):
                 self.deny(f"mutating {prog} flag", argv)
+            return
+        if prog == "git":
+            self.check_git(argv)
+            return
+        if prog == "nix":
+            self.check_nix_copy(argv)
             return
         for launcher in self.table.get("ask_launchers", []):
             if prog != launcher["program"]:

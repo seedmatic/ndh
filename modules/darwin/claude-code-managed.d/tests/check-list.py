@@ -77,6 +77,7 @@ read_only = [
     "nixos-rebuild build --flake .#bioskop", "nixos-rebuild dry-build --flake .#bioskop",
     "sudo nixos-rebuild build --flake .#test-host", "darwin-rebuild build --flake .#nikopol",
     "home-manager generations", "home-manager news --flake . switchboard",
+    "nix copy --to ssh-ng://bioskop-nixos ./result", "nix copy --to=ssh://nikopol-nixos ./result",
 ]
 fps = [(c, refused(c)) for c in read_only]
 fps = [(c, hit) for c, hit in fps if hit]

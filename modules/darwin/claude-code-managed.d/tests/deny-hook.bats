@@ -237,3 +237,52 @@ REPLICA=/Volumes/git-worktree-store/nxmatic/claude-home.d/pass/seedmatic
 @test "gpg: --list-packets --list-only free"    { run hook 'gpg --batch --list-only --list-packets /tmp/x.gpg'; allowed; }
 @test "gpg: a d in -r's value stays free"       { run hook 'gpg -rdave -e /tmp/x'; allowed; }
 @test "gpg: --dearmor stays free"               { run hook 'gpg --dearmor < /tmp/k.asc > /tmp/k.gpg'; allowed; }
+
+# --- security's additions (2026-10-16): publishing, keychain, guards, public history, keys ---
+@test "pub: cachix push"                        { run hook 'cachix push seedmatic ./result'; denied; }
+@test "pub: cachix -c before watch-store"       { run hook 'cachix -c /tmp/c.dhall watch-store seedmatic'; denied; }
+@test "pub: attic push"                         { run hook 'attic push cluster ./result'; denied; }
+@test "pub: nix copy --to"                      { run hook 'nix copy --to s3://cache ./result'; denied; }
+@test "pub: nix copy --to=…"                    { run hook 'nix copy --to=https://cache.example ./result'; denied; }
+@test "pub: cachix push through flox"           { run hook 'flox activate -- cachix push seedmatic ./result'; denied; }
+@test "pub: nix copy --to file://"              { run hook 'nix copy --to file:///tmp/cache ./result'; denied; }
+@test "pub: nix copy --to a bare path"          { run hook 'nix copy --to /tmp/cache ./result'; denied; }
+@test "pub: nix copy -L --to http:// via flox"  { run hook 'flox activate -- nix copy -L --to http://cache:8080 ./result'; denied; }
+@test "ok nix copy --to ssh-ng:// a guest"      { run hook 'nix copy --to ssh-ng://bioskop-nixos ./result'; allowed; }
+@test "ok nix copy --to=ssh://"                 { run hook 'nix copy --to=ssh://nikopol-nixos ./result'; allowed; }
+@test "ok nix copy --from"                      { run hook 'nix copy --from https://cache.nixos.org /nix/store/x'; allowed; }
+@test "ok cachix use"                           { run hook 'cachix use seedmatic'; allowed; }
+@test "keychain: find-generic-password -w"      { run hook 'security find-generic-password -s seedmatic -w'; denied; }
+@test "keychain: find-internet-password -w"     { run hook 'security find-internet-password -s github.com -w'; denied; }
+@test "keychain: -g prints the secret"          { run hook 'security find-generic-password -g -s seedmatic'; denied; }
+@test "keychain: dump-keychain"                 { run hook 'security dump-keychain -d'; denied; }
+@test "ok security find-certificate"            { run hook 'security find-certificate -a -p'; allowed; }
+@test "guard: git commit --no-verify"           { run hook 'git commit --no-verify -m x'; denied; }
+@test "guard: git -C push --no-verify"          { run hook 'git -C /tmp/r push --no-verify origin feature/x'; denied; }
+@test "guard: git commit -n"                    { run hook 'git commit -n -m x'; denied; }
+@test "guard: git commit -an clustered"         { run hook 'git commit -an'; denied; }
+@test "guard: git commit -nm clustered"         { run hook 'git commit -nm x'; denied; }
+@test "ok git commit -m with an n in its value" { run hook 'git commit -mfinal'; allowed; }
+@test "ok git commit -am"                       { run hook 'git commit -am x'; allowed; }
+@test "ok git push -n is a dry run"             { run hook 'git push -n origin feature/x'; allowed; }
+@test "guard: git -c core.hooksPath="           { run hook 'git -c core.hooksPath=/dev/null commit -m x'; denied; }
+@test "guard: git -ccore.hooksPath= glued"      { run hook 'git -ccore.hookspath=/tmp commit -m x'; denied; }
+@test "guard: git -c filter.sops-*"             { run hook 'git -c filter.sops-keyring.clean=cat add .secrets'; denied; }
+@test "guard: GIT_CONFIG_GLOBAL before commit"  { run hook 'GIT_CONFIG_GLOBAL=/dev/null git commit -m x'; denied; }
+@test "guard: GIT_CONFIG_NOSYSTEM before rebase" { run hook 'GIT_CONFIG_NOSYSTEM=1 git rebase develop'; denied; }
+@test "guard: env GIT_CONFIG_GLOBAL before am"  { run hook 'env GIT_CONFIG_GLOBAL=/dev/null git am x.patch'; denied; }
+@test "ok GIT_CONFIG_GLOBAL before git log"     { run hook 'GIT_CONFIG_GLOBAL=/dev/null git log -1'; allowed; }
+@test "ok git -c user.name commit"              { run hook 'git -c user.name=x commit -m y'; allowed; }
+@test "history: push --force develop"           { run hook 'git push --force origin develop'; denied; }
+@test "history: push -f main"                   { run hook 'git push -f origin main'; denied; }
+@test "history: push +develop"                  { run hook 'git push origin +develop'; denied; }
+@test "history: push lease to refs/heads/main"  { run hook 'git push --force-with-lease origin HEAD:refs/heads/main'; denied; }
+@test "history: forced push, no refspec"        { run hook 'git push --force'; denied; }
+@test "history: delete remote develop"          { run hook 'git push origin --delete develop'; denied; }
+@test "history: delete via :main"               { run hook 'git push origin :main'; denied; }
+@test "ok forced push of a feature branch"      { run hook 'git push --force-with-lease origin feature/x'; allowed; }
+@test "ok push develop"                         { run hook 'git push origin develop'; allowed; }
+@test "ok delete a feature branch"              { run hook 'git push origin --delete feature/x'; allowed; }
+@test "keys: cat an ssh private key"            { run hook 'cat ~/.ssh/id_ed25519'; denied; }
+@test "keys: the age identities"                { run hook 'cat ~/.config/sops/age/keys.txt'; denied; }
+@test "ok the ssh public key"                   { run hook 'cat ~/.ssh/id_ed25519.pub'; allowed; }

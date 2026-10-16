@@ -55,5 +55,7 @@
     # The buildMachine (<host>-nixos) is wired by modules/darwin/host-builder.nix;
     # see docs/host-builder-phases.adoc.
     ndh.hostBuilder = "steady";
+
+    ndh.claude-code.managedSettings.enable = true;
   };
 }

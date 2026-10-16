@@ -1091,6 +1091,9 @@
           claude-code-managed-settings = managed.settings;
           claude-code-deny-hook = managed.tests;
           claude-code-session-hooks = sessionHooks.tests;
+          claude-code-auto-mode = import ./modules/home-manager/claude-code.d/auto-mode/package.nix {
+            inherit pkgs;
+          };
           ssh-keys-bats = import ./modules/.common.d/ssh-keys.d/tests/package.nix {
             inherit pkgs;
             trampoline = mkNdhNixBashTrampoline { pkgsForSystem = pkgs; };
