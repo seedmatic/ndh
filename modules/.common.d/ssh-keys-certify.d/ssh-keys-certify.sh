@@ -425,8 +425,10 @@ certify::apply() {
 		Next, in order:
 		  1. nix run "git+file://\$PWD?rev=\$(git rev-parse HEAD)#ssh-keys-v2-validate" -- modules/home-manager/ssh.d/keys.yaml
 		  2. commit the keys.yaml diff
-		  3. the hosts install them once the enrichment reads recorded certificates (the next ndh
-		     change of 6a part B); until then each activation still signs its own
+		  3. switch: each host installs the certificates recorded for it
+
+		A re-signed certificate has a new key id and serial, user certificates included: a copy
+		pinned elsewhere (another machine's known_hosts, a saved user cert) is the old one.
 	EOF
 }
 
