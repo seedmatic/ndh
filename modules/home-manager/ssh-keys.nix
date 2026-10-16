@@ -4,6 +4,7 @@
   pkgs,
   lib,
   worktreePath,
+  self,
   ...
 }:
 
@@ -55,6 +56,7 @@ let
       pkgs.replaceVars ./ssh.d/scripts/ca-known-hosts-command.sh {
         nixBashTrampoline = nixBashTrampoline;
         caDir = perUserKeysDir;
+        hostNames = lib.concatStringsSep "," self.fleetHostNames;
       }
     } "$out"
     chmod +x "$out"

@@ -3,6 +3,7 @@
   config,
   pkgs,
   ndh,
+  self,
   ...
 }:
 let
@@ -85,6 +86,14 @@ in
       type = types.str; # Accept OpenSSH values: "no", "prohibit-password", etc.
       default = "no";
       description = "PermitRootLogin directive value.";
+    };
+
+    # ssh matches a Host line against the name given, never against its HostName, so an alias to a fleet
+    # machine is strict only when it is listed itself. Filled by the module that defines the alias.
+    fleetHostAliases = mkOption {
+      type = types.listOf types.str;
+      default = [ ];
+      description = "Aliases whose HostName is a fleet name, checked as strictly as the fleet's names.";
     };
 
     trustedCAPath = mkOption {
@@ -269,7 +278,9 @@ in
     # authority here, a certificate-presenting host is accepted even past a stale
     # raw pin, so the existing pins need no cleanup. One entry per TRUSTED slot, so
     # both generations are trusted while the authority itself renews, and a slot
-    # marked `compromised` is not (ndh.keysYaml.trustedAuthoritySlots).
+    # marked `compromised` is not (ndh.keysYaml.trustedAuthoritySlots). For the
+    # fleet's names only, never `*`: under `*`, a host certificate the authority
+    # signed would be accepted for any host, the corporate bare-metal or GitHub included.
     programs.ssh.knownHosts = lib.listToAttrs (
       lib.concatLists (
         lib.mapAttrsToList (
@@ -280,7 +291,7 @@ in
                 name = "${name}@${slot}";
                 value = {
                   certAuthority = true;
-                  hostNames = [ "*" ];
+                  hostNames = self.fleetHostNames;
                   publicKey = "${authority.type or "ssh-ed25519"} ${material.public}";
                 };
               })
@@ -301,6 +312,14 @@ in
     # key: at the next activation, not at an expiry. First, before any Host line: ssh keeps the first
     # value it obtains, and under a Host stanza the line would bind that host only.
     programs.ssh.extraConfig = lib.mkBefore "RevokedHostKeys ${config.ndh.keysYaml.krlFile}\n";
+    # The fleet's names and the aliases to them are checked strictly for root as for the operator: each presents a certificate
+    # the authority above verifies, so an unknown key there is refused instead of pinned on first use.
+    # A drop-in, read before every `Host *` default: in the main file this stanza would also capture
+    # the Include lines after it, an Include under a Host line being conditional on that host.
+    environment.etc."ssh/ssh_config.d/10-fleet-hosts.conf".text = ''
+      Host ${lib.concatStringsSep " " (lib.unique (self.fleetHostNames ++ cfg.fleetHostAliases))}
+        StrictHostKeyChecking yes
+    '';
 
     # Expose helpers
     opensshPolicy.hostKeys = cfg.hostKeyPaths;

@@ -3,6 +3,7 @@
   lib,
   ndh,
   pkgs,
+  self,
   ...
 }:
 # Platform-agnostic nix-store identity options.
@@ -65,7 +66,6 @@ let
       CertificateFile ${cfg.certPath}
       IdentitiesOnly yes
       AddKeysToAgent no
-      StrictHostKeyChecking accept-new
   '';
 
   sshClientFragmentText =
@@ -182,6 +182,9 @@ in
 
   config = lib.mkIf cfg.enable {
     nixStoreIdentity.sshClientFragment = sshClientFragmentText;
+    opensshPolicy.fleetHostAliases = map (host: "nix-store.${host}") (
+      lib.filter (host: lib.elem "${host}${cfg.hostSuffix}" self.fleetHostNames) peerHostNames
+    );
 
     environment.etc."ssh/ssh_config.d/75-nix-store.conf" = lib.mkIf (peerHostNames != [ ]) {
       text = sshClientFragmentText;
