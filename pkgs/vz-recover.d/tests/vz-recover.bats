@@ -26,6 +26,8 @@ EOF
   chmod +x "$T/bin/tart" "$T/bin/open"
   {
     printf '#!%s\nset -o errexit -o nounset -o pipefail\n' "$BASH"
+    # As writeShellApplication's runtimeInputs do: sshd starts the program with its own default PATH.
+    printf 'export PATH=%s:$PATH\n' "$(dirname "$(command -v mkdir)")"
     printf 'vms=(nerd-nixos nikopol)\nkinds=(nixos darwin)\n'
     printf 'tart=%s\ntimeout=%s\nopen=%s\n' "$T/bin/tart" "$(command -v timeout)" "$T/bin/open"
     cat "$BATS_TEST_DIRNAME/../ndh-vz-recover.sh"
