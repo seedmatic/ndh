@@ -41,6 +41,7 @@
     ./incus-cluster-cert.nix
     ./attic-leaf.nix
     ./attic-client.nix
+    ./cache-publish.nix
     ./ssh-keys-enrichment.nix
     ./user-secret-mirror.nix
     ./ssh-client.nix

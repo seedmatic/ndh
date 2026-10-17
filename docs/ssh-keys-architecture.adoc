@@ -269,8 +269,8 @@ the operator; both pushed by bioskop, never generated on the guest
 | `cluster-age` for in-cluster decryption; git through the GitHub App, not an SSH key
 
 | Publication
-| the cache fill job
-| `seedmatic-publish-1` + the cachix token
+| cache-publish, per access point
+| its cachix push token (no publication key, operator 2026-10-17)
 
 | TLS servers
 | incus listeners, nch relay, headscale
@@ -487,9 +487,9 @@ project `rke2lab` · the node's `sops-install-secrets`
 | the enrolling host, once · the control plane
 | bootstrap
 
-| `seedmatic-publish-1` + cachix token
+| an access point's cachix push token
 | public cache publication
-| the publish job · cachix
+| its `_ndh-publish` user · cachix
 | permanent
 
 | GitHub App key, incus client certificates

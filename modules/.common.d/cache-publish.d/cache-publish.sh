@@ -17,8 +17,10 @@ unset BASH_XTRACEFD 2>/dev/null || true
 #
 # Env, fixed at eval: OUTPUTS (one flake attribute per line), CACHE (the cachix cache), PUBLIC_URL
 # (its substituter), UPSTREAMS (one substituter URL per line), TOKEN_FILE (the push token, read by
-# --apply only), JOBS (parallel narinfo queries).
+# --apply only), REMOTE (the canonical ndh remote --apply checks ancestry against), JOBS (parallel
+# narinfo queries).
 # Usage: cache-publish [--apply] <flake ref naming a revision, ?rev=<40 hex> or /<40 hex>>
+#        (--apply: github:seedmatic/ndh/<40 hex>, merged into develop or main)
 apply=0
 if [ "${1:-}" = --apply ]; then
   apply=1
@@ -41,6 +43,28 @@ die() {
 
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
+
+# What goes public derives from public sources only: --apply takes a revision GitHub serves (a local
+# bare can hold an unpushed commit), merged into develop or main of the canonical remote, read from
+# that remote (a fork's commits are served under the same github: name too).
+if [ "$apply" = 1 ]; then
+  [[ $ref =~ ^github:seedmatic/ndh/([0-9a-f]{40})$ ]] ||
+    die "--apply publishes a pushed revision only: github:seedmatic/ndh/<40 hex>, not ${ref}"
+  rev="${BASH_REMATCH[1]}"
+  git init -q --bare "$work/remote.git"
+  git -C "$work/remote.git" fetch -q --filter=blob:none "$REMOTE" \
+    +refs/heads/develop:refs/heads/develop +refs/heads/main:refs/heads/main ||
+    die "cannot fetch develop and main from ${REMOTE}"
+  merged=""
+  for branch in develop main; do
+    if git -C "$work/remote.git" merge-base --is-ancestor "$rev" "refs/heads/$branch" 2>/dev/null; then
+      merged=$branch
+      break
+    fi
+  done
+  [ -n "$merged" ] || die "${rev} is not merged into develop or main of ${REMOTE}"
+  log "${rev} is on ${merged} of ${REMOTE}"
+fi
 
 roots=()
 attrs=0
