@@ -1,7 +1,8 @@
 # What sshd serves, read from the evaluated configurations: no NixOS configuration generates a host key,
 # and every guest and operator seat serves exactly the key ndh.hostKey.own says, with its certificate.
-# own = true is evaluated on each machine with a test certificate: keys.yaml holds none until the
-# operator records them, and ndh.hostKey.certificate is otherwise read from it.
+# Both values of ndh.hostKey.own are forced on each machine, whatever its configuration commits (bioskop and
+# bioskop-nixos commit true since S3a): own = true with a test certificate, as keys.yaml holds none for a machine
+# whose key is not recorded yet, and ndh.hostKey.certificate is otherwise read from it.
 {
   pkgs,
   pkgsForLinux,
@@ -19,12 +20,14 @@ let
       modules = [
         {
           ndh.hostKey = {
-            own = true;
+            own = lib.mkForce true;
             certificate = testCertificate;
           };
         }
       ];
     }).config;
+  sharing =
+    system: (system.extendModules { modules = [ { ndh.hostKey.own = lib.mkForce false; } ]; }).config;
   linesOf = keyword: text: lib.filter (lib.hasPrefix "${keyword} ") (lib.splitString "\n" text);
   expect =
     what: actual: wanted:
@@ -35,7 +38,7 @@ let
   guest =
     name:
     let
-      shared = nixosConfigurations.${name}.config;
+      shared = sharing nixosConfigurations.${name};
       owned = owning nixosConfigurations.${name};
       units = c: c.systemd.services;
       copiesRdpHost =
@@ -132,7 +135,7 @@ let
   seat =
     name:
     let
-      shared = darwinConfigurations.${name}.config;
+      shared = sharing darwinConfigurations.${name};
       owned = owning darwinConfigurations.${name};
       dropIn = c: c.environment.etc."ssh/sshd_config.d/999-ndh.conf".text;
     in
