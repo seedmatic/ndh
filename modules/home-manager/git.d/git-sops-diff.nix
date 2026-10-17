@@ -12,6 +12,7 @@
 {
   lib,
   stdenvNoCC,
+  bash,
 }:
 let
   formats = [
@@ -39,8 +40,10 @@ stdenvNoCC.mkDerivation {
   buildCommand = ''
     mkdir -p $out/sops.d
 
-    # The dispatcher, its @sopsConfigHome@ pointed at this output's sops.d.
-    substitute ${./sops.sh} $out/sops-dispatch --subst-var-by sopsConfigHome "$out/sops.d"
+    # The dispatcher, its @sopsConfigHome@ pointed at this output's sops.d, on the store's bash: git runs it as
+    # every repository's clean/smudge filter, and /usr/bin/env is neither ours nor reachable in a build sandbox.
+    substitute ${./sops.sh} $out/sops-dispatch --subst-var-by sopsConfigHome "$out/sops.d" \
+      --replace-fail '#!/usr/bin/env bash' '#!${bash}/bin/bash'
     chmod +x $out/sops-dispatch
 
     # Per-format git config fragments — the textconv commands point at the script here.

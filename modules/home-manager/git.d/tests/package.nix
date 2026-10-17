@@ -19,6 +19,18 @@ pkgs.runCommand "git-sops-filters-bats"
     GIT_SOPS = gitSopsDiff;
   }
   ''
+    # Every script git runs from this package (the filters and textconvs all resolve to them) names its
+    # interpreter in the store: /usr/bin/env is not ours, and a build sandbox refuses it.
+    bad=0
+    while IFS= read -r -d "" f; do
+      first=$(head -c 256 "$f" | head -n 1)
+      case $first in
+        '#!/nix/store/'*) ;;
+        '#!'*) echo "not hermetic: $f starts with $first" >&2; bad=1 ;;
+      esac
+    done < <(find -L ${gitSopsDiff} -type f -print0)
+    [ "$bad" = 0 ]
+
     cp -r ${./.} tests && chmod -R u+w tests
     cd tests && HOME=$TMPDIR bats .
     touch $out
