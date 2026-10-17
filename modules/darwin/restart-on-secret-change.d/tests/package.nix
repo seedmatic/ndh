@@ -11,6 +11,6 @@ pkgs.runCommand "restart-on-secret-change-bats"
   }
   ''
     cp -r ${./..} restart && chmod -R u+w restart
-    cd restart/tests && HOME=$TMPDIR bats .
+    cd restart/tests && HOME=$TMPDIR bats --print-output-on-failure .
     touch $out
   ''

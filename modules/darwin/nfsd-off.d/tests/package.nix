@@ -11,6 +11,6 @@ pkgs.runCommand "nfsd-off-bats"
   }
   ''
     cp -r ${./..} nfsd-off && chmod -R u+w nfsd-off
-    cd nfsd-off/tests && HOME=$TMPDIR bats .
+    cd nfsd-off/tests && HOME=$TMPDIR bats --print-output-on-failure .
     touch $out
   ''

@@ -13,6 +13,6 @@ pkgs.runCommand "sops-age-bootstrap-bats"
   }
   ''
     cp -r ${./..} sops.d && chmod -R u+w sops.d
-    cd sops.d/tests && HOME=$TMPDIR bats .
+    cd sops.d/tests && HOME=$TMPDIR bats --print-output-on-failure .
     touch $out
   ''

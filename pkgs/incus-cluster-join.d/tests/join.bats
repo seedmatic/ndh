@@ -21,27 +21,27 @@ refute() {
 setup() {
   T=$BATS_TEST_TMPDIR
   mkdir -p "$T/bin"
-  cat > "$T/bin/ssh" <<'SSH'
-#!/usr/bin/env bash
-host=""; for a in "$@"; do case $a in join.test|boot.test) host=$a ;; esac; done
-all="$*"; cmd=${all#*-- }
-printf '%s: %s\n' "$host" "$cmd" >> "$T/ssh-calls"
-case "$host:$cmd" in
+  cat > "$T/bin/ssh" <<SSH
+#!$BASH
+host=""; for a in "\$@"; do case \$a in join.test|boot.test) host=\$a ;; esac; done
+all="\$*"; cmd=\${all#*-- }
+printf '%s: %s\n' "\$host" "\$cmd" >> "\$T/ssh-calls"
+case "\$host:\$cmd" in
   "join.test:incus query /1.0")
-    if [ -f "$T/joined" ]; then echo '{"environment":{"server_clustered": true}}'; else echo '{"environment":{"server_clustered": false}}'; fi ;;
+    if [ -f "\$T/joined" ]; then echo '{"environment":{"server_clustered": true}}'; else echo '{"environment":{"server_clustered": false}}'; fi ;;
   "boot.test:incus query /1.0")
-    [ "${STUB_BOOTSTRAP:-cluster}" = cluster ] && echo '{"environment":{"server_clustered": true}}' || echo '{"environment":{"server_clustered": false}}' ;;
+    [ "\${STUB_BOOTSTRAP:-cluster}" = cluster ] && echo '{"environment":{"server_clustered": true}}' || echo '{"environment":{"server_clustered": false}}' ;;
   "boot.test:incus config get cluster.https_address") echo boot.test:8443 ;;
   "join.test:incus storage list --format json") echo '[]' ;;
   "boot.test:incus cluster add --quiet join") echo 'Member join join token:'; printf 'eyFAKEtokenFAKEtokenFAKEtokenFAKEtoken0000\n' ;;
   "join.test:incus admin init --preseed")
     cat > /dev/null
-    [ "${STUB_PRESEED:-ok}" = ok ] || { echo "Error: failed to join cluster" >&2; exit 1; }
-    touch "$T/joined" ;;
-  "boot.test:incus cluster role add join database-client") [ "${STUB_ROLE:-ok}" = ok ] || exit 1 ;;
+    [ "\${STUB_PRESEED:-ok}" = ok ] || { echo "Error: failed to join cluster" >&2; exit 1; }
+    touch "\$T/joined" ;;
+  "boot.test:incus cluster role add join database-client") [ "\${STUB_ROLE:-ok}" = ok ] || exit 1 ;;
   "boot.test:incus cluster show join") echo 'roles: [database-client]' ;;
   "boot.test:incus cluster list") echo '| join | ONLINE |' ;;
-  *) echo "stub ssh: unexpected $host: $cmd" >&2; exit 99 ;;
+  *) echo "stub ssh: unexpected \$host: \$cmd" >&2; exit 99 ;;
 esac
 SSH
   sed -i "1a T=$T" "$T/bin/ssh"
