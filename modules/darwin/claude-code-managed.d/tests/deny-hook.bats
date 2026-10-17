@@ -318,4 +318,6 @@ REPLICA=/Volumes/git-worktree-store/nxmatic/claude-home.d/pass/seedmatic
 @test "ok ndh-ops runs a tool, the delegation decides" { run hook 'nix run github:seedmatic/ndh/0123abcd#ndh-ops -- ssh-keys-renew --apply'; allowed; }
 @test "ok ndh-ops status"                       { run hook 'ndh-ops status'; allowed; }
 @test "ok ndh-ops disarm"                       { run hook 'ndh-ops disarm'; allowed; }
+@test "keys: the vz-recover private, by name"    { run hook 'ssh -i ~/.ssh/vz-recover vzhost.nikopol tart list'; denied; }
+@test "ok vz-recover through its Host block"     { run hook 'ssh vzrecover.nikopol list'; allowed; }
 @test "ok the ssh public key"                   { run hook 'cat ~/.ssh/id_ed25519.pub'; allowed; }
