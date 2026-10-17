@@ -28,7 +28,8 @@ EOF
   chmod +x "$t/bin/pass"
   {
     printf 'set -euo pipefail\n'
-    printf 'machines=(bioskop nikopol bioskop-nixos nikopol-nixos) recipient=%s generate=%q\n' \
+    printf 'machines=(bioskop nikopol bioskop-nixos nikopol-nixos) guests=(bioskop-nixos nikopol-nixos)\n'
+    printf 'recipient=%s generate=%q\n' \
       "$seedmatic" "$t/gen"
     cat "$here/ndh-keyring.sh"
   } >"$t/keyring"
@@ -37,7 +38,7 @@ EOF
 }
 
 keyring() { TMPDIR="$t/tmp" PATH="$t/bin:$PATH" run bash "$t/keyring" "$@"; }
-entry() { printf '%s' "$PASSWORD_STORE_DIR/seedmatic/host-key/$1.gpg"; }
+entry() { printf '%s' "$PASSWORD_STORE_DIR/seedmatic/${2:-host-key}/$1.gpg"; }
 
 @test "a host key is generated into seedmatic/, to the seedmatic subkey alone, and its public printed" {
   TMPDIR="$t/tmp" PATH="$t/bin:$PATH" run --separate-stderr bash "$t/keyring" host-key bioskop-nixos
@@ -120,4 +121,53 @@ entry() { printf '%s' "$PASSWORD_STORE_DIR/seedmatic/host-key/$1.gpg"; }
   [ "$status" -eq 0 ]
   [[ $output == *"[xtrace-guard] xtrace disabled"* ]]
   [[ $output != *"PRIVATE KEY"* ]]
+}
+
+@test "an sshfs key is generated into seedmatic/sshfs-key/, to the seedmatic subkey alone, named for keys.yaml" {
+  TMPDIR="$t/tmp" PATH="$t/bin:$PATH" run --separate-stderr bash "$t/keyring" sshfs-key bioskop-nixos
+  [ "$status" -eq 0 ]
+  [[ $output == "ssh-ed25519 "*" sshfs-bioskop-nixos" ]]
+  [[ $stderr == *"ssh-keys-renew --create sshfs-bioskop-nixos --public - --usage ssh-user"* ]]
+  [ "$(printf '%s\n' "$output" | ssh-to-age)" = "$(pass show seedmatic/sshfs-key/bioskop-nixos | ssh-to-age -private-key | age-keygen -y)" ]
+  run gpg --batch --list-only --list-packets "$(entry bioskop-nixos sshfs-key)"
+  [ "$(grep -c ':pubkey enc packet:' <<<"$output")" -eq 1 ]
+  [[ $output == *"keyid ${seedmatic}"* ]]
+  grep -qx 'insert -m seedmatic/sshfs-key/bioskop-nixos' "$t/pass.argv"
+  [ ! -e "$PASSWORD_STORE_DIR/seedmatic/host-key" ]
+}
+
+@test "an sshfs key is for a NixOS guest only, never an operator seat or a name outside the inventory" {
+  for name in bioskop corp-mac; do
+    keyring sshfs-key "$name"
+    [ "$status" -eq 1 ]
+    [[ $output == *"not one of the inventory's NixOS guests (bioskop-nixos nikopol-nixos)"* ]]
+  done
+  [ ! -e "$PASSWORD_STORE_DIR/seedmatic/sshfs-key" ]
+}
+
+@test "an existing sshfs key is never overwritten, and its host key is a separate entry" {
+  keyring sshfs-key nikopol-nixos
+  before="$(sha256sum "$(entry nikopol-nixos sshfs-key)")"
+  keyring sshfs-key nikopol-nixos
+  [ "$status" -eq 1 ]
+  [[ $output == *"never overwritten"* ]]
+  [ "$(sha256sum "$(entry nikopol-nixos sshfs-key)")" = "$before" ]
+  keyring host-key nikopol-nixos
+  [ "$status" -eq 0 ]
+  [ "$(sha256sum "$(entry nikopol-nixos sshfs-key)")" = "$before" ]
+}
+
+@test "a nearer .gpg-id under seedmatic/sshfs-key is refused before generating" {
+  pass init -p seedmatic/sshfs-key "${seedmatic}!" "$personal" >/dev/null
+  keyring sshfs-key bioskop-nixos
+  [ "$status" -eq 1 ]
+  [[ $output == *"seedmatic/sshfs-key/.gpg-id would override the seedmatic recipient"* ]]
+  [ ! -e "$(entry bioskop-nixos sshfs-key)" ]
+}
+
+@test "an unknown kind is a usage error, and generates nothing" {
+  keyring user-key bioskop-nixos
+  [ "$status" -eq 1 ]
+  [[ $output == *"usage: ndh-keyring host-key <machine> | sshfs-key <guest>"* ]]
+  [ -z "$(find "$PASSWORD_STORE_DIR/seedmatic" -name '*.gpg')" ]
 }

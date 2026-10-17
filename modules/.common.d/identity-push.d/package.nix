@@ -6,10 +6,12 @@
 let
   # Where the machine's own host key is placed; sshd serves it once the machine sets ndh.hostKey.own.
   hostKeyFile = "/var/lib/ndh/host-key/ssh_host_ed25519_key";
+  # Where a NixOS guest's sshfs key is placed; its mounts use it once the guest sets ndh.sshfs.ownKey.
+  sshfsKeyFile = "/var/lib/ndh/sshfs/id_ed25519";
   maxBytes = 8192;
 in
 {
-  inherit hostKeyFile;
+  inherit hostKeyFile sshfsKeyFile;
 
   # operatorIdentity: the ONE ssh identity used to reach the machine: { user, keyFile, certFile }.
   # receive: the seat's own ndh-identity-receive, called by its store path so sudo's PATH does not choose it.
@@ -53,10 +55,12 @@ in
 
   # served: what this machine's sshd serves, whose fingerprint the console prints for the push.
   # keyFile: the sops keyFile the age identity goes to, or "" for a machine whose frame carries the host key only.
+  # sshfs: whether the frame carries the guest's sshfs key, placed at sshfsKeyFile (a guest that mounts sshfs).
   receive =
     {
       machine,
       keyFile,
+      sshfs,
       served,
       owner,
     }:
@@ -71,6 +75,7 @@ in
         machine=${lib.escapeShellArg machine}
         keyFile=${lib.escapeShellArg keyFile}
         hostKeyFile=${lib.escapeShellArg hostKeyFile}
+        sshfsKeyFile=${lib.escapeShellArg (lib.optionalString sshfs sshfsKeyFile)}
         served=${lib.escapeShellArg served}
         owner=${lib.escapeShellArg owner}
         maxBytes=${toString maxBytes}

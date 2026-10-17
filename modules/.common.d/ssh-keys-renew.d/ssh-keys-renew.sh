@@ -33,6 +33,12 @@ unset BASH_XTRACEFD 2>/dev/null || true
 # prints the public), so the slot holds the public and nothing else. The evaluation then refuses the
 # uncertified public until ssh-keys-certify signs it, which is meant: both land in one commit.
 #
+# --create sshfs-<guest> --public - --usage ssh-user records, the same way, the key a NixOS guest mounts
+# its operator seat's git stores with (ndh-keyring sshfs-key <guest>). It gets NO certificate: the seat
+# authorizes it by an authorized_keys line generated from this public (modules/darwin/openssh.nix), on
+# that one seat and with that one forced command, which a certificate cannot scope as narrowly — its
+# principal would be honored by every sshd trusting the authority, and nothing would revoke it but a KRL.
+#
 # --revoke-certificate KEY@SLOT --from-revision REV records the revocation of ONE host certificate, a
 # gesture of its own (roles × keys S3a, decided 2026-10-16): the union host certificate, once every
 # machine serves its own. Its key stays valid; the KRL cuts that certificate alone, by the exact key id
@@ -46,6 +52,8 @@ unset BASH_XTRACEFD 2>/dev/null || true
 #   ssh-keys-renew --create NAME --usage TAG... [--profile NAME]... [--comment TEXT]
 #                  [--type TYPE] [--apply]
 #   ndh-keyring host-key MACHINE | ssh-keys-renew --create host-MACHINE --public - --usage ssh-host
+#                  [--comment TEXT] [--apply]
+#   ndh-keyring sshfs-key GUEST | ssh-keys-renew --create sshfs-GUEST --public - --usage ssh-user
 #                  [--comment TEXT] [--apply]
 #   ssh-keys-renew --revoke-certificate KEY@SLOT --from-revision REV --reason TEXT [--apply]
 #
@@ -82,9 +90,11 @@ declare -g keysYaml tmpdir decrypted today apply olderThanDays replace reason
 declare -g createName createComment createType createPublic createPublicBlob
 declare -g revokeTarget revokeRevision
 declare -ga selectKeys=() selectAuthorities=() plan=() refusals=()
-declare -ga createUsages=() createProfiles=() machines=()
-# The machines a host key is recorded for, fixed at evaluation from the inventory.
+declare -ga createUsages=() createProfiles=() machines=() guests=()
+# The machines a host key is recorded for, and the NixOS guests an sshfs key is, fixed at evaluation from
+# the inventory.
 IFS=' ' read -r -a machines <<<"@machines@"
+IFS=' ' read -r -a guests <<<"@guests@"
 
 # ⚠️ stdout, NOT stderr — the opposite of the activation scripts' convention, and
 # for a reason. ndh::logger:command:run redirects stderr into the logger sink and
@@ -106,6 +116,9 @@ usage() {
 		                      [--comment TEXT] [--type TYPE] [--apply]
 		       ndh-keyring host-key MACHINE |
 		         ssh-keys-renew --create host-MACHINE --public - --usage ssh-host
+		                      [--comment TEXT] [--apply]
+		       ndh-keyring sshfs-key GUEST |
+		         ssh-keys-renew --create sshfs-GUEST --public - --usage ssh-user
 		                      [--comment TEXT] [--apply]
 		       ssh-keys-renew --revoke-certificate KEY@SLOT --from-revision REV
 		                      --reason TEXT [--apply]
@@ -130,9 +143,11 @@ usage() {
 		  --comment TEXT     The new entry's comment (default: NAME).
 		  --type TYPE        The new entry's key type (default: ssh-ed25519).
 		  --public -         Record the ONE ssh-ed25519 public line read from stdin instead of
-		                     generating: a machine's host key, whose private stays in the
-		                     keyring. Only with --create host-MACHINE (${machines[*]})
-		                     and --usage ssh-host. Run ssh-keys-certify before committing.
+		                     generating, a key whose private stays in the keyring: a
+		                     machine's host key, with --create host-MACHINE (${machines[*]})
+		                     and --usage ssh-host, then ssh-keys-certify before committing;
+		                     or a NixOS guest's sshfs key, with --create sshfs-GUEST
+		                     (${guests[*]}) and --usage ssh-user, never certified.
 		  --revoke-certificate KEY@SLOT
 		                     Record in revoked_certificates the ssh-host certificate
 		                     keys.KEY.slots.SLOT carried at --from-revision, by its exact
@@ -263,10 +278,14 @@ plan::consider_create() {
 		plan+=("keys	${createName}	${createType}	create")
 		return 0
 	fi
-	# One host key per machine: a public some slot already carries, or that revoked holds, would make
-	# two identities one, or bring a retired one back.
+	# One key per role: a public some slot already carries, or that revoked holds, would make two
+	# identities one, or bring a retired one back.
 	if [[ "$(BLOB="$createPublicBlob" yq eval -r '[(.keys // {}, .authorities // {})[] | .slots // {} | .[] | .public // ""] + [(.revoked // {})[] | .public // ""] | any_c(. == strenv(BLOB))' "$decrypted")" == "true" ]]; then
-		refusals+=("keys.${createName}: this public is already in keys.yaml (a slot or revoked) — a host key belongs to one machine")
+		refusals+=("keys.${createName}: this public is already in keys.yaml (a slot or revoked) — a recorded key holds one role")
+		return 0
+	fi
+	if [[ "$createName" == sshfs-* ]]; then
+		plan+=("keys	${createName}	${createType}	record")
 		return 0
 	fi
 	local authority
@@ -333,6 +352,8 @@ plan::show() {
 			IFS=$'\t' read -r section name keyType existing authority <<<"$line"
 			if [[ "$existing" == create ]]; then
 				printf '%-13s %-24s %-22s %s\n' "$section" "$name" "$keyType" "${today} (new entry)"
+			elif [[ "$existing" == record && -z "$authority" ]]; then
+				printf '%-13s %-24s %-22s %s\n' "$section" "$name" "$keyType" "${today} (new entry, public only, no certificate)"
 			elif [[ "$existing" == record ]]; then
 				printf '%-13s %-24s %-22s %s\n' "$section" "$name" "$keyType" "${today} (new entry, public only, under ${authority})"
 			elif ((replace == 1)); then
@@ -388,7 +409,8 @@ renew::one() { # <section> <name> <keyType>
 		"$decrypted"
 }
 
-# Record a machine's host key: the public in clear, no private, no certificate yet (ssh-keys-certify).
+# Record a key held in the keyring: the public in clear, no private, and no certificate (a host key's
+# comes from ssh-keys-certify).
 record::one() { # <name>
 	log::info "recording keys.${1} slot ${today} (public only)"
 	PUB="$createPublicBlob" yq eval -i ".keys.\"${1}\".slots.\"${today}\".public = strenv(PUB)" "$decrypted"
@@ -518,6 +540,20 @@ renew::apply() {
 
 	install -m 0644 "$reencrypted" "$keysYaml" || return 1
 
+	if ((createPublic == 1)) && [[ "$createName" == sshfs-* ]]; then
+		cat <<-EOF
+
+			keys.${createName} recorded: slot ${today} holds its public only, the private stays in
+			the keyring. It is never certified: ${createName#sshfs-}'s operator seat authorizes it, read-only.
+
+			Next, in order:
+			  1. nix run "git+file://\$PWD?rev=\$(git rev-parse HEAD)#ssh-keys-v2-validate" -- modules/home-manager/ssh.d/keys.yaml
+			  2. commit the keys.yaml diff, then switch the operator seat (it authorizes the key)
+			  3. ndh-identity-push ${createName#sshfs-} with the key on fd 5, then ndh.sshfs.ownKey = true for it
+		EOF
+		return 0
+	fi
+
 	if ((createPublic == 1)); then
 		cat <<-EOF
 
@@ -577,24 +613,30 @@ renew::apply() {
 	EOF
 }
 
-# A recorded host key is one machine's, of the ssh-host role only, ed25519, on no profile: the
-# placement (ndh-identity-push) is what puts it on its machine, not keys.yaml.
-host::check_record() {
-	local machine
-	if [[ "${createUsages[*]}" != ssh-host ]]; then
-		log::error "--public records a host key: its one --usage is ssh-host"
+# A recorded key is ed25519, on no profile (the placement, ndh-identity-push, puts it on its machine,
+# not keys.yaml), of one role: a machine's host key (host-MACHINE, ssh-host), or a NixOS guest's sshfs
+# key (sshfs-GUEST, ssh-user).
+public::check_record() {
+	local name role usageTag prefix placeholder
+	local -a allowed
+	case "$createName" in
+		sshfs-*) role="an sshfs key" usageTag=ssh-user prefix=sshfs- placeholder=GUEST allowed=("${guests[@]}") ;;
+		*) role="a host key" usageTag=ssh-host prefix=host- placeholder=MACHINE allowed=("${machines[@]}") ;;
+	esac
+	if [[ "${createUsages[*]}" != "$usageTag" ]]; then
+		log::error "--public records ${role}: its one --usage is ${usageTag}"
 		usage
 		return $?
 	fi
 	if ((${#createProfiles[@]} > 0)) || [[ -n "$createType" ]]; then
-		log::error "--public takes no --profile and no --type: a host key is ssh-ed25519 and lands on no profile"
+		log::error "--public takes no --profile and no --type: ${role} is ssh-ed25519 and lands on no profile"
 		usage
 		return $?
 	fi
-	for machine in "${machines[@]}"; do
-		[[ "$createName" == "host-${machine}" ]] && return 0
+	for name in "${allowed[@]}"; do
+		[[ "$createName" == "${prefix}${name}" ]] && return 0
 	done
-	log::error "--create ${createName@Q} --public: the name is host-MACHINE, MACHINE one of: ${machines[*]}"
+	log::error "--create ${createName@Q} --public: the name is ${prefix}${placeholder}, ${placeholder} one of: ${allowed[*]}"
 	usage
 	return $?
 }
@@ -605,7 +647,7 @@ public::read() {
 	local input type blob rest bits
 	input="$(cat)"
 	if [[ "$input" == *"PRIVATE KEY"* ]]; then
-		log::error "stdin holds a PRIVATE key — refused, and not printed: pipe the public only (ndh-keyring host-key MACHINE prints it)"
+		log::error "stdin holds a PRIVATE key — refused, and not printed: pipe the public only (ndh-keyring prints it)"
 		return 1
 	fi
 	if [[ -z "$input" || "$input" == *$'\n'* ]]; then
@@ -614,7 +656,7 @@ public::read() {
 	fi
 	read -r type blob rest <<<"$input"
 	if [[ "$type" != ssh-ed25519 || ! "$blob" =~ ^[A-Za-z0-9+/]+={0,2}$ ]]; then
-		log::error "stdin is not an ssh-ed25519 public line — a host key is ed25519 only"
+		log::error "stdin is not an ssh-ed25519 public line — a recorded key is ed25519 only"
 		return 1
 	fi
 	# Checked by ssh-keygen, not by shape: the blob must decode to an ed25519 public key.
@@ -821,7 +863,7 @@ main() {
 			--public)
 				# stdin only: a path would invite pointing at the keyring's decrypted private.
 				if [[ "${2:-}" != - ]]; then
-					log::error "--public takes - : the public line is read from stdin (ndh-keyring host-key MACHINE | ...)"
+					log::error "--public takes - : the public line is read from stdin (ndh-keyring ... | ...)"
 					usage
 					return $?
 				fi
@@ -909,7 +951,7 @@ main() {
 			return $?
 		fi
 		if ((createPublic == 1)); then
-			host::check_record || return $?
+			public::check_record || return $?
 			public::read || return $?
 		fi
 		[[ -n "$createComment" ]] || createComment="$createName"
