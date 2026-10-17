@@ -1246,7 +1246,9 @@
               !(wantedNotRequired mutant.config)
             ) "nix-signing: the requiredBy mutant passed the predicate";
             assert lib.assertMsg
-              (lib.hasInfix "if ! ${darwin.config.ndh.nixSigning.placeScript}/bin/ndh-nix-signing-key; then" darwin.config.system.activationScripts.postActivation.text)
+              (lib.hasInfix (builtins.unsafeDiscardStringContext "if ! ${darwin.config.ndh.nixSigning.placeScript}/bin/ndh-nix-signing-key; then") (
+                builtins.unsafeDiscardStringContext darwin.config.system.activationScripts.postActivation.text
+              ))
               "nix-signing: darwin's step must not abort the activation";
             pkgs.runCommand "nix-signing-signs-path" {
               scripts = [
