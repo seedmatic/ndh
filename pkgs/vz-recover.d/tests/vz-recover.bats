@@ -182,8 +182,11 @@ ssh_as_user() {
   serve
   ssh_as_user localhost "touch $T/shell-ran" </dev/null
   [ "$status" -eq 64 ]
+  # A login asks for a pty, which restrict denies; the program still answers, and ssh's own status then varies.
   ssh_as_user -tt localhost </dev/null
-  [ "$status" -eq 64 ]
+  echo "# login: status $status" >&3
+  [ "$status" -ne 0 ]
+  [ "$(grep -c ' refused 64 $' "$log")" -eq 1 ]
   printf 'ls\n' >batch
   run sftp -q -b batch -F /dev/null -P "$port" -i "$T/user" -o IdentitiesOnly=yes -o BatchMode=yes \
     -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o GlobalKnownHostsFile=/dev/null localhost
