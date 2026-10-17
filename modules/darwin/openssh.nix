@@ -125,13 +125,21 @@ in
       hostCertificatePath =
         if ownsHostKey then "${config.ndh.hostKey.certificateFile}" else hostKeyPublicCert;
 
+      # The operator and the restricted service accounts (nix-store), nobody else: not root, whose
+      # PermitRootLogin is no.
+      allowUsers = [ userName ] ++ lib.attrNames config.opensshPolicy.restrictedUsers;
+
       # Force IPv4 only for SSH server; expose the SFTP subsystem explicitly.
       # Our canonical /etc/ssh/sshd_config is a bare `Include …` (baseSshdConfigText),
       # which drops macOS's default `Subsystem sftp` line — without re-adding it here
       # sshd answers exec but resets every SFTP channel, so sshfs (SFTP-based) fails.
+      # No PAM (the operator's decision, 2026-10-18): authentication is by key or certificate only, and
+      # AllowUsers is the list of who logs in; nix-darwin manages no sshd PAM stack, and with PAM macOS's
+      # Remote Login limit refused nix-store on one seat while the other ran without it.
       extraSettings = {
         AddressFamily = "inet";
         Subsystem = "sftp internal-sftp";
+        UsePAM = "no";
       };
 
     };
@@ -161,6 +169,19 @@ in
     # probing per-user files (e.g. /etc/ssh/nix_authorized_keys.d/%u).
     environment.etc."ssh/sshd_config.d/101-authorized-keys.conf".text = canonicalAuthorizedKeysDropIn;
     environment.etc."ssh/sshd_config.d/999-ndh.conf".text = ndhSshdConfigText;
+    # macOS's own drop-in, owned: it sorts before 999-ndh.conf and sshd keeps the first value it reads, so
+    # its `UsePAM yes` would win. Its other lines stay. The hash is macOS 26's file, moved aside as
+    # *.before-nix-darwin, which the *.conf Include does not read.
+    environment.etc."ssh/sshd_config.d/100-macos.conf" = {
+      text = ''
+        # Options set by macOS that differ from the OpenSSH defaults, but UsePAM (no, in 999-ndh.conf).
+        AcceptEnv LANG LC_*
+        Include /etc/ssh/crypto.conf
+      '';
+      knownSha256Hashes = [
+        "d00c20ceb9d84fb42f0a04d3872952d456f6329b04df3db16aad4ae4b9c5d6cb"
+      ];
+    };
     # The restricted users' Match blocks in a drop-in of their own: a Match in an included file ends with that
     # file, so its place among the drop-ins does not matter; in sshd_config, before the Include, it would
     # swallow every drop-in.

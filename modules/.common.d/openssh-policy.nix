@@ -33,6 +33,7 @@ let
         # yes (NixOS, macOS), so turning only the first off leaves password login open.
         KbdInteractiveAuthentication = cfg.passwordAuthentication;
         PermitRootLogin = cfg.permitRootLogin;
+        AllowUsers = if cfg.allowUsers == [ ] then null else cfg.allowUsers;
         TrustedUserCAKeys = cfg.trustedCAPath;
         RevokedKeys = cfg.revokedKeysPath;
         AuthorizedPrincipalsFile = cfg.principalsFilePath;
@@ -86,6 +87,14 @@ in
       type = types.str; # Accept OpenSSH values: "no", "prohibit-password", etc.
       default = "no";
       description = "PermitRootLogin directive value.";
+    };
+
+    # The accounts sshd lets log in at all, every other one refused before authentication. Empty: no
+    # AllowUsers line, every account with a key or a certificate may log in.
+    allowUsers = mkOption {
+      type = types.listOf types.str;
+      default = [ ];
+      description = "AllowUsers: the only accounts sshd admits; empty renders no line.";
     };
 
     # ssh matches a Host line against the name given, never against its HostName, so an alias to a fleet
