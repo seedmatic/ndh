@@ -59,7 +59,12 @@
     "security": { "verbs": ["dump-keychain"], "flag_verbs": ["-w", "-g"], "window": 1, "value_opts": [] }
   },
   "protected_branches": ["develop", "main"],
+  "operator_tools": {
+    "programs": ["ssh-keys-certify", "ssh-keys-renew", "attic-leaf-sign", "incus-cluster-cert-renew", "ndh-keyring", "ndh-identity-push"],
+    "why": "reads the operator's secrets (keys.yaml, an authority's signing slot, the keyring): the operator runs it"
+  },
   "list_extra_rules": ["mv ~/.claude*",
+                       "ssh-keys-certify", "ssh-keys-certify *", "ssh-keys-renew", "ssh-keys-renew *", "attic-leaf-sign", "attic-leaf-sign *", "incus-cluster-cert-renew", "incus-cluster-cert-renew *", "ndh-keyring", "ndh-keyring *", "ndh-identity-push", "ndh-identity-push *",
                        "nix * --to https://*", "nix * --to http://*", "nix * --to s3://*", "nix * --to file://*", "nix * --to /*",
                        "nix * --to=https://*", "nix * --to=http://*", "nix * --to=s3://*", "nix * --to=file://*", "nix * --to=/*"],
   "list_path_rules": [
@@ -75,7 +80,8 @@
     { "rule": "Read(~/.ssh/id_rsa)", "why": "an ssh private key; its .pub stays readable" },
     { "rule": "Read(~/.ssh/id_ed25519_sk)", "why": "an ssh private key handle; its .pub stays readable" },
     { "rule": "Read(~/.ssh/id_ecdsa_sk)", "why": "an ssh private key handle; its .pub stays readable" },
-    { "rule": "Read(~/.config/sops/age/**)", "why": "the age identities that decrypt every sops file of the seat" }
+    { "rule": "Read(~/.config/sops/age/**)", "why": "the age identities that decrypt every sops file of the seat" },
+    { "rule": "Edit(//var/db/ndh-ops/**)", "why": "the operator's armed delegation: only ndh-ops arm, run by the operator, writes it" }
   ],
   "store_rules": [
     { "program": "pass", "prefix": "seedmatic", "free_verbs": ["find", "search", "help", "version"], "decrypts_all": ["grep"],

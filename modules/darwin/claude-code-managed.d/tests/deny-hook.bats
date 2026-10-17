@@ -292,4 +292,25 @@ REPLICA=/Volumes/git-worktree-store/nxmatic/claude-home.d/pass/seedmatic
 @test "switch: an ndh-switch under /tmp"        { run hook '/tmp/x/ndh-switch bioskop 0123abcd'; denied; }
 @test "switch: raw darwin-rebuild stays denied" { run hook 'sudo darwin-rebuild switch --flake github:seedmatic/ndh/0123abcd#bioskop'; denied; }
 @test "switch: raw nixos-rebuild stays denied"  { run hook 'nixos-rebuild switch --target-host root@nixos.bioskop --flake .#bioskop-nixos'; denied; }
+@test "operator tool: ssh-keys-certify" { run hook 'ssh-keys-certify --dry-run'; denied; }
+@test "operator tool: ssh-keys-renew" { run hook 'ssh-keys-renew --dry-run'; denied; }
+@test "operator tool: attic-leaf-sign" { run hook 'attic-leaf-sign --dry-run'; denied; }
+@test "operator tool: incus-cluster-cert-renew" { run hook 'incus-cluster-cert-renew --dry-run'; denied; }
+@test "operator tool: ndh-keyring" { run hook 'ndh-keyring --dry-run'; denied; }
+@test "operator tool: ndh-identity-push" { run hook 'ndh-identity-push --dry-run'; denied; }
+@test "operator tool: by its store path" { run hook '/nix/store/abc-ssh-keys-renew/bin/ssh-keys-renew --revoke-host x'; denied; }
+@test "operator tool: nix run of a pushed revision" { run hook 'nix run github:seedmatic/ndh/0123abcd#ssh-keys-certify -- --apply'; denied; }
+@test "operator tool: nix run by revision of the bare" { run hook 'nix run "git+file:///Volumes/git-bare-store/seedmatic/ndh.git?rev=0123abcd#attic-leaf-sign"'; denied; }
+@test "operator tool: inside a bash -c" { run hook "bash -c 'ndh-keyring status'"; denied; }
+@test "operator tool: through flox and sudo" { run hook 'flox activate -- sudo incus-cluster-cert-renew'; denied; }
+@test "operator tool: over ssh" { run hook 'ssh darwin.nikopol ndh-identity-push'; denied; }
+@test "ok reading an operator tool's source" { run hook 'cat modules/.common.d/ssh-keys-certify.d/certify.sh'; allowed; }
+@test "ok building an operator tool by revision" { run hook 'nix build github:seedmatic/ndh/0123abcd#ssh-keys-certify'; allowed; }
+@test "ops: ndh-ops arm is the operator's"      { run hook 'ndh-ops arm --hours 4 --tools ssh-keys-renew'; denied; }
+@test "ops: ndh-ops arm from a pushed revision" { run hook 'nix run github:seedmatic/ndh/0123abcd#ndh-ops -- arm --hours 4 --tools ndh-keyring'; denied; }
+@test "ops: writing the delegation by sudo tee" { run hook 'echo tools=ndh-keyring | sudo tee /var/db/ndh-ops/delegation'; denied; }
+@test "ops: a local ndh-ops copy"               { run hook './ndh-ops ssh-keys-renew --apply'; denied; }
+@test "ok ndh-ops runs a tool, the delegation decides" { run hook 'nix run github:seedmatic/ndh/0123abcd#ndh-ops -- ssh-keys-renew --apply'; allowed; }
+@test "ok ndh-ops status"                       { run hook 'ndh-ops status'; allowed; }
+@test "ok ndh-ops disarm"                       { run hook 'ndh-ops disarm'; allowed; }
 @test "ok the ssh public key"                   { run hook 'cat ~/.ssh/id_ed25519.pub'; allowed; }

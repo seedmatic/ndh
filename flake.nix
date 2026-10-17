@@ -1202,6 +1202,7 @@
           };
           attic-leaf-bats = import ./modules/.common.d/attic-leaf.d/tests/package.nix { inherit pkgs; };
           ndh-switch-bats = import ./modules/.common.d/ndh-switch.d/tests/package.nix { inherit pkgs; };
+          ndh-ops-bats = import ./modules/.common.d/ndh-ops.d/tests/package.nix { inherit pkgs; };
           attic-tls-key-bats = import ./modules/nixos/attic-cache.d/tests/package.nix { inherit pkgs; };
           tls-authority-keychain-bats = import ./modules/darwin/tls-authority-keychain.d/tests/package.nix {
             inherit pkgs;
@@ -2276,6 +2277,28 @@
         // incusClusterJoinApps
         # An operator seat tool, darwin only: the one definition is bioskop's ndh.incusClusterCert.package.
         // nixpkgs.lib.optionalAttrs (system == "aarch64-darwin") {
+          # The armed delegation's runner: its tools are the very packages of their own apps, by store path.
+          ndh-ops = {
+            type = "app";
+            program = "${
+              import ./modules/.common.d/ndh-ops.d/package.nix {
+                pkgs = pkgsForSystem;
+                tools =
+                  let
+                    bioskop = self.darwinConfigurations.bioskop.config;
+                  in
+                  {
+                    ssh-keys-certify = "${sshKeysCertifyPackage}/bin/ssh-keys-certify";
+                    ssh-keys-renew = "${sshKeysRenewPackage}/bin/ssh-keys-renew";
+                    attic-leaf-sign = "${bioskop.ndh.atticLeaf.package}/bin/attic-leaf-sign";
+                    incus-cluster-cert-renew = "${bioskop.ndh.incusClusterCert.package}/bin/incus-cluster-cert-renew";
+                    ndh-keyring = "${bioskop.system.path}/bin/ndh-keyring";
+                    ndh-identity-push = "${bioskop.system.path}/bin/ndh-identity-push";
+                  };
+              }
+            }/bin/ndh-ops";
+            meta.description = "Run one of the operator's secret-reading tools on the delegation the operator armed (arm --hours N --tools a,b, operator only; status; disarm), every run logged — src: modules/.common.d/ndh-ops.d/";
+          };
           incus-cluster-cert-renew = {
             type = "app";
             program = "${self.darwinConfigurations.bioskop.config.ndh.incusClusterCert.package}/bin/incus-cluster-cert-renew";
