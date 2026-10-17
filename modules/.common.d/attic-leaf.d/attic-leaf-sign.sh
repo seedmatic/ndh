@@ -17,8 +17,8 @@ unset BASH_XTRACEFD 2>/dev/null || true
 # seat, which checks it names EXACTLY the cache's fabric name and carries the key the cache serves,
 # then signs it with a pinned leaf profile; only the certificate (public) goes back, into the
 # dataset on the guest, where the container takes it by itself (attic-tls-leaf.path). The
-# authority's private is never written: sops is piped and step-cli reads it through process
-# substitution. Each signed leaf is recorded in the operator seat's ledger.
+# authority's private is never written nor held: only the signing step decrypts it, that one slot's,
+# into step-cli through process substitution; every other path reads cleartext metadata only. Each signed leaf is recorded in the operator seat's ledger.
 
 log() { printf '[attic-leaf] %s\n' "$*" >&2; }
 die() {
@@ -87,28 +87,26 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# --- The authority's signing slot, never materialised ---------------------------------------
-# keys.yaml is decrypted straight into yq through a PIPE, and only the signing slot of this
-# authority comes out: the fleet's other privates are never held in a variable, and nothing
-# goes through a here-string, which bash may back with a temporary FILE.
-log "reading ${authority} from keys.yaml (piped, nothing written)"
-selected="$(sops --decrypt --input-type yaml --output-type yaml "$keysYaml" | yq -o=json "
+# --- The authority's signing slot, read from keys.yaml's CLEARTEXT fields --------------------
+# usage, the slots, `compromised` and `ca_crt` are stored in clear, only `private` is ENC[]: the
+# classification, the preflight, --check, --dry-run and a run with nothing to sign never decrypt.
+# The private is decrypted once a signature is certain, below (🛡️, 2026-10-17).
+log "reading ${authority} from keys.yaml (cleartext fields, nothing decrypted)"
+clear="$(yq -o=json "
   .authorities.\"${authority}\" as \$a
   | ((\$a.slots // {}) | to_entries | sort_by(.key)
      | map(select((.value.compromised // \"\") == \"\")) | .[0]) as \$s
   | {\"usage\": ((\$a.usage // []) | join(\",\")), \"slot\": (\$s.key // \"\"),
-     \"ca\": (\$s.value.ca_crt // \"\"), \"key\": (\$s.value.private // \"\")}")" ||
-  die "cannot decrypt keys.yaml — is the operator's sops age key available on this operator seat?"
-field() { printf '%s' "$selected" | yq -r ".$1"; }
+     \"ca\": (\$s.value.ca_crt // \"\")}" "$keysYaml")" || die "cannot read ${keysYaml}"
+field() { printf '%s' "$clear" | yq -r ".$1"; }
 usage="$(field usage)"
 slot="$(field slot)"
 caCrt="$(field ca)"
-caKey="$(field key)"
-unset selected
+unset clear
 [[ ,${usage}, == *,tls-authority,* ]] || die "${authority} does not advertise tls-authority"
 # The signing slot: the oldest one not marked compromised (keys.schema.yaml, authoritySlots).
 [[ -n $slot ]] || die "${authority} has no slot that may sign"
-[[ -n $caCrt && -n $caKey ]] || die "${authority}@${slot} lacks its ca_crt or its private"
+[[ $caCrt == "-----BEGIN CERTIFICATE-----"* ]] || die "${authority}@${slot} has no cleartext ca_crt"
 printf '%s\n' "$caCrt" >"$work/ca.crt"
 caFp="$(openssl x509 -noout -fingerprint -sha1 -in "$work/ca.crt" | sed -e 's/.*=//' -e 's/://g')"
 log "signing slot ${authority}@${slot}, root ${caFp}"
@@ -274,9 +272,18 @@ for i in "${toSign[@]}"; do
 
   # --- Sign with the pinned profile, the CA key through a file descriptor ---------------------
   log "signing ${name}'s CSR for ${days}d with ${authority}@${slot}"
-  step certificate sign "$work/$i.csr" "$work/ca.crt" <(printf '%s\n' "$caKey") \
-    --template "$work/leaf.tpl" --not-after "$((days * 24))h" >"$work/$i.crt" 2>"$work/sign.err" ||
+  # The only sops call: everything before it reads cleartext metadata. It decrypts this one slot's
+  # private, straight into step's fd — never a variable, never a file; once per signed leaf. Its
+  # stderr stays in the 0700 work dir: sops' text never reaches the terminal or a log.
+  step certificate sign "$work/$i.csr" "$work/ca.crt" \
+    <(sops --decrypt --extract "[\"authorities\"][\"${authority}\"][\"slots\"][\"${slot}\"][\"private\"]" "$keysYaml" 2>"$work/sops.err") \
+    --template "$work/leaf.tpl" --not-after "$((days * 24))h" >"$work/$i.crt" 2>"$work/sign.err" || {
+    # $! is the process substitution: its own exit, never its text.
+    sopsRc=0
+    wait "$!" || sopsRc=$?
+    [ "$sopsRc" -eq 0 ] || die "sops decrypt of ${authority}@${slot} failed (exit ${sopsRc}) — is the operator's sops age key available on this operator seat?"
     die "step certificate sign failed: $(tail -1 "$work/sign.err")"
+  }
   step certificate verify "$work/$i.crt" --roots "$work/ca.crt" --host "$name" >/dev/null ||
     die "the signed leaf does not chain to ${authority}@${slot} for ${name}"
   [[ "$(pubOf x509 "$work/$i.crt")" == "$(pubOf req "$work/$i.csr")" ]] || die "the signed leaf does not carry the CSR's key"
@@ -314,6 +321,5 @@ for i in "${toSign[@]}"; do
     die "${name} serves ${now:-nothing}, not the signed leaf ${leafFp} (${verdict:-no verification}) — check \`journalctl -u attic-tls-key\` in its container"
   fi
 done
-unset caKey
 
 log "done. Every cache serves a leaf of ${authority}@${slot} naming itself alone."

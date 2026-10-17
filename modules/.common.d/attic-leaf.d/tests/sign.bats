@@ -3,7 +3,7 @@
 # attic-leaf-sign on its REAL path: classification, preflight, the exit contract, the CSR's
 # refusals, and a full signature through to the served leaf.
 #
-# Only the outside world is stubbed, first on PATH: sops (a test keys.yaml with a real CA),
+# Only the outside world is stubbed, first on PATH: sops (it answers the one-slot extract only),
 # `openssl s_client` (serves $t/served.crt, or nothing; every other openssl subcommand runs the real
 # one) and ssh (the guest: its CSR, the preflight probe's answer, the install into $t/served.crt).
 
@@ -29,16 +29,22 @@ setup() {
   "$realOpenssl" x509 -req -in "$t/request.csr" -CA "$t/old.crt" -CAkey "$t/old.key" \
     -CAcreateserial -out "$t/served.crt" -days 30 2>/dev/null
 
-  CA="$(<"$t/current.crt")" KEY="$(<"$t/current.key")" yq --null-input '
+  # As the real one: the metadata and ca_crt in clear, the private ENC[] — only sops holds it.
+  CA="$(<"$t/current.crt")" yq --null-input '
     {"authorities": {"test-tls": {"usage": ["tls-authority"],
-      "slots": {"26-10-10": {"ca_crt": strenv(CA), "private": strenv(KEY)}}}}}' >"$t/keys.yaml"
+      "slots": {"26-10-10": {"ca_crt": strenv(CA), "private": "ENC[AES256_GCM,data:test,type:str]"}}}}}' >"$t/keys.yaml"
 
+  # sops answers ONLY the signing step's one-slot extract, and records every call: any other call,
+  # on any path, exits 97 (the no-decrypt shape shared with ssh-keys-certify and S6).
   cat >"$t/bin/sops" <<EOF
-#!/usr/bin/env bash
-cat "$t/keys.yaml"
+#!$BASH
+printf '%s\n' "\$*" >>"$t/sops.calls"
+[[ "\$*" == '--decrypt --extract ["authorities"]["test-tls"]["slots"]["26-10-10"]["private"] $t/keys.yaml' ]] || exit 97
+if [[ -n \${STUB_SOPS_FAIL:-} ]]; then echo "SOPS-STDERR-MARKER: no identity matched" >&2; exit 128; fi
+cat "$t/current.key"
 EOF
   cat >"$t/bin/openssl" <<EOF
-#!/usr/bin/env bash
+#!$BASH
 if [[ \$1 == s_client ]]; then
   [[ -s "$t/served.crt" ]] || exit 1
   echo CONNECTED
@@ -54,7 +60,7 @@ exec "$realOpenssl" "\$@"
 EOF
   # The guest, by the remote command it is given (the last argument).
   cat >"$t/bin/ssh" <<EOF
-#!/usr/bin/env bash
+#!$BASH
 # Every session runs with the operator's ssh config ignored, and never prompts.
 args=" \$* "
 for o in "-F /dev/null " "BatchMode=yes " "PasswordAuthentication=no " "KbdInteractiveAuthentication=no " \\
@@ -189,9 +195,40 @@ no_ca_key_in() {
   [[ $text == *"TLS Web Server Authentication"* && $text != *"Client Authentication"* ]]
   [[ $text == *"CA:FALSE"* ]]
   [[ "$("$realOpenssl" x509 -in "$t/served.crt" -noout -ext subjectAltName | tail -1 | tr -d ' ')" == "DNS:attic.m1" ]]
+  # One leaf signed, one sops call: the extract of that slot's private.
+  [ "$(wc -l <"$t/sops.calls")" -eq 1 ]
   run_sign --check
   [ "$status" -eq 0 ]
   [[ $output == *"CURRENT"* ]]
+  [ "$(wc -l <"$t/sops.calls")" -eq 1 ]
+}
+
+@test "no path that signs nothing calls sops: --check, --dry-run, a refused CSR, nothing to sign" {
+  run_sign --check
+  [ "$status" -eq 10 ]
+  run_sign --dry-run
+  [ "$status" -eq 0 ]
+  run_sign --activation --dry-run
+  [ "$status" -eq 0 ]
+  csr "$t/request.csr" "DNS:attic.m1,DNS:attic.m2"
+  run_sign
+  [ "$status" -eq 1 ]
+  [ ! -e "$t/sops.calls" ]
+}
+
+@test "a failed sops extract says so, and its text never reaches the output" {
+  STUB_SOPS_FAIL=1 run_sign
+  [ "$status" -eq 1 ]
+  [[ $output == *"sops decrypt of test-tls@26-10-10 failed (exit 128)"* ]]
+  [[ $output != *"SOPS-STDERR-MARKER"* ]]
+}
+
+@test "a ca_crt that is not cleartext fails closed, before anything" {
+  yq -i '.authorities."test-tls".slots."26-10-10".ca_crt = "ENC[AES256_GCM,data:x,type:str]"' "$t/keys.yaml"
+  run_sign --check
+  [ "$status" -eq 1 ]
+  [[ $output == *"has no cleartext ca_crt"* ]]
+  [ ! -e "$t/sops.calls" ]
 }
 
 @test "a session that would read the operator's ssh config is refused by the stub" {
@@ -218,11 +255,19 @@ no_ca_key_in() {
   no_ca_key_in "$output"
 }
 
-@test "the leak check bites: an xtrace after the key is loaded prints it" {
-  sed -i 's|^caKey="\$(field key)"$|&\nset -x|' "$script"
-  grep -q '^set -x$' "$script"
+@test "the leak check bites: a key held in the shell under an xtrace is caught" {
+  sed -i 's|^  step certificate sign "\$work/\$i.csr" "\$work/ca.crt" \\$|  caKey="$(sops --decrypt --extract "[\\"authorities\\"][\\"${authority}\\"][\\"slots\\"][\\"${slot}\\"][\\"private\\"]" "$keysYaml")"; set -x; : "$caKey"\n&|' "$script"
+  grep -q 'set -x; : "\$caKey"' "$script"
   run_sign
   ! no_ca_key_in "$output"
+}
+
+@test "an xtrace at the signing step prints no key: it never enters the shell" {
+  sed -i 's|^  step certificate sign "\$work/\$i.csr" "\$work/ca.crt" \\$|  set -x\n&|' "$script"
+  grep -q '^  set -x$' "$script"
+  run_sign
+  [ "$status" -eq 0 ]
+  no_ca_key_in "$output"
 }
 
 @test "there is no trace mode: --debug is refused" {
