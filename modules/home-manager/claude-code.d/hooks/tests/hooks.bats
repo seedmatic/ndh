@@ -277,6 +277,10 @@ chantier() { # a chantier page that claims the test conversation
   done <"$BATS_TEST_DIRNAME/leak-guard-cases.tsv"
   [[ -z "$bad" ]] || { printf '%s' "$bad"; false; }
 }
+@test "leak-guard: a refusal says a variable is opaque and gives the literal form" {
+  out="$(jq -cn --arg c 'nix build "$R#checks.x"' '{tool_input: {command: $c}}' | bash "$H/leak-guard.sh" | jq -r .hookSpecificOutput.permissionDecisionReason)"
+  [[ "$out" == *"A shell variable is opaque to this hook"* && "$out" == *'?rev=$(git rev-parse HEAD) form out literally'* ]]
+}
 
 # --- sops-git-env ---
 

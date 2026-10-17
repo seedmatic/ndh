@@ -5,9 +5,13 @@ let
   src = ./.;
   python = pkgs.python3;
 
-  hookDir = pkgs.runCommand "claude-code-deny-hook" { } ''
+  # The deletion areas security engraves; until it lands, no session has one.
+  hasOwned = builtins.pathExists ./owned-dirs.json;
+
+  hookDir = pkgs.runCommand "claude-code-deny-hook" { nativeBuildInputs = [ python ]; } ''
     mkdir -p $out
     cp ${src}/deny-hook.py ${src}/verbs.json $out/
+    ${pkgs.lib.optionalString hasOwned "python3 -I ${src}/tests/check-owned-dirs.py ${src}/owned-dirs.json && cp ${src}/owned-dirs.json $out/"}
   '';
 in
 {
@@ -39,7 +43,7 @@ in
       }
       ''
         cp -r ${src} src && chmod -R u+w src
-        cd src/tests && bats deny-hook.bats
+        cd src/tests && bats .
         touch $out
       '';
 }

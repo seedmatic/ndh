@@ -266,6 +266,11 @@ REPLICA=/Volumes/git-worktree-store/nxmatic/claude-home.d/pass/seedmatic
 @test "ok git commit -am"                       { run hook 'git commit -am x'; allowed; }
 @test "ok git push -n is a dry run"             { run hook 'git push -n origin feature/x'; allowed; }
 @test "guard: git -c core.hooksPath="           { run hook 'git -c core.hooksPath=/dev/null commit -m x'; denied; }
+@test "guard: the refusals name today's commit recipe" {
+  for c in 'git -c core.hooksPath=/dev/null commit -m x' 'GIT_CONFIG_GLOBAL=/dev/null git commit -m x' 'git commit --no-verify -m x' 'git commit -n -m x'; do
+    run hook "$c"; denied; [[ "$output" == *'plain `git commit`'* ]] || { echo "no recipe for: $c"; false; }
+  done
+}
 @test "guard: git -ccore.hooksPath= glued"      { run hook 'git -ccore.hookspath=/tmp commit -m x'; denied; }
 @test "guard: git -c filter.sops-*"             { run hook 'git -c filter.sops-keyring.clean=cat add .secrets'; denied; }
 @test "guard: GIT_CONFIG_GLOBAL before commit"  { run hook 'GIT_CONFIG_GLOBAL=/dev/null git commit -m x'; denied; }
