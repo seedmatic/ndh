@@ -43,6 +43,10 @@ unset BASH_XTRACEFD 2>/dev/null || true
 # key the sessions recover a foreign vz-host's VMs with (ndh-keyring vz-recover-key <host>): that vz-host's
 # account authorizes it by a line the operator places, forcing ndh-vz-recover.
 #
+# --record-nix-signing host-<machine> --public - records the nix signing public derived from that machine's
+# host key (ndh-keyring nix-signing-public <machine>, roles × keys B2) as its newest slot's `nixSigning`, with
+# `sops set` and nothing decrypted, like the revocation below. A new host-key slot records a new one.
+#
 # --revoke-certificate KEY@SLOT --from-revision REV records the revocation of ONE host certificate, a
 # gesture of its own (roles × keys S3a, decided 2026-10-16): the union host certificate, once every
 # machine serves its own. Its key stays valid; the KRL cuts that certificate alone, by the exact key id
@@ -139,8 +143,10 @@ usage() {
 		                      [--comment TEXT] [--apply]
 		       ssh-keys-renew --revoke-certificate KEY@SLOT --from-revision REV
 		                      --reason TEXT [--apply]
+		       ndh-keyring nix-signing-public MACHINE |
+		         ssh-keys-renew --record-nix-signing host-MACHINE --public - [--apply]
 
-		  --key NAME         Renew keys.<NAME>. Repeatable.
+		  --key NAME        Renew keys.<NAME>. Repeatable.
 		  --authority NAME   Renew authorities.<NAME>. Repeatable. The new generation
 		                     signs only once phase 2 drops the old one.
 		  --older-than Nd    Select every entry whose newest slot is more than N days
@@ -175,6 +181,11 @@ usage() {
 		                     while keys.yaml still records it (or its id). Decrypts nothing.
 		  --from-revision REV
 		                     The commit whose keys.yaml recorded the certificate.
+		  --record-nix-signing host-MACHINE
+		                     Record, with --public -, the nix signing public derived from that
+		                     machine's host key (seedmatic-MACHINE-N:<base64>) in its newest slot,
+		                     as nixSigning. Refused if that slot already has one, or if it equals
+		                     the host key. Decrypts nothing.
 		  --apply            Actually generate and rewrite keys.yaml. Without it this
 		                     prints the plan and changes nothing.
 
@@ -831,6 +842,87 @@ revoke::run() {
 	EOF
 }
 
+# keys.yaml with one slot's nixSigning left out, as compared JSON: what `sops set` must not have changed.
+nixsign::rest() { # <file> <key> <slot>
+	K="$2" S="$3" yq eval -o json --indent=0 'del(.sops) | del(.keys[strenv(K)].slots[strenv(S)].nixSigning)' "$1"
+}
+
+# Record the nix signing public of keys.<host-MACHINE>'s newest slot, read from stdin. Nothing read is ever
+# printed: a mistaken pipe may carry a secret.
+nixsign::run() {
+	local key="$nixSigningKey" machine="${nixSigningKey#host-}" m known=0 input name pk slot hostBlob hostRaw updated
+	for m in "${machines[@]}"; do [[ "$m" == "$machine" ]] && known=1; done
+	if [[ "$key" != host-* ]] || ((known == 0)); then
+		log::error "--record-nix-signing ${key@Q}: host-MACHINE, MACHINE one of: ${machines[*]}"
+		return 1
+	fi
+	input="$(cat)"
+	# A public is 32 bytes, 44 base64 characters; a nix secret, 64 bytes, cannot match.
+	if [[ "$input" == *"PRIVATE KEY"* || "$input" == *$'\n'* ||
+		! "$input" =~ ^(seedmatic-[a-z][a-z0-9.-]*-[0-9]+):([A-Za-z0-9+/]{43}=)$ ]]; then
+		log::error "stdin is not ONE nix signing public, <name>:<base64 of 32 bytes> — refused, and not printed"
+		log::error "pipe ndh-keyring nix-signing-public ${machine} into it"
+		return 1
+	fi
+	name="${BASH_REMATCH[1]}" pk="${BASH_REMATCH[2]}"
+	if [[ ! "$name" =~ ^seedmatic-${machine}-[0-9]+$ ]]; then
+		log::error "the public is named ${name}, not seedmatic-${machine}-N: it is another machine's"
+		return 1
+	fi
+	slot="$(K="$key" yq eval -r '.keys[strenv(K)].slots // {} | keys | sort | .[-1] // ""' "$keysYaml")"
+	if [[ -z "$slot" ]]; then
+		log::error "keys.${key} has no slot: record the machine's host key first (--create ${key} --public -)"
+		return 1
+	fi
+	if [[ -n "$(K="$key" S="$slot" yq eval -r '.keys[strenv(K)].slots[strenv(S)].nixSigning // ""' "$keysYaml")" ]]; then
+		log::error "keys.${key}.slots.${slot} already records a nixSigning: a new host-key slot records a new one"
+		return 1
+	fi
+	hostBlob="$(K="$key" S="$slot" yq eval -r '.keys[strenv(K)].slots[strenv(S)].public // ""' "$keysYaml")"
+	# The ed25519 public is the last 32 bytes of the ssh wire blob.
+	hostRaw="$(printf '%s' "$hostBlob" | base64 -d 2>/dev/null | tail -c 32 | base64)"
+	if [[ -z "$hostBlob" || "$hostRaw" == "$pk" ]]; then
+		log::error "keys.${key}.slots.${slot}: no host public, or the nix public equals it — refused (no derivation)"
+		return 1
+	fi
+
+	cat <<-EOF
+
+		keys.yaml     ${keysYaml}
+		record        keys.${key}.slots.${slot}.nixSigning
+		  public      ${name}:${pk}
+
+	EOF
+	if ((apply == 0)); then
+		log::info "dry run — pass --apply to record it in keys.yaml"
+		return 0
+	fi
+	updated="${tmpdir}/keys.nixsigning.yaml"
+	cp "$keysYaml" "$updated"
+	if ! sops set "$updated" "[\"keys\"][\"${key}\"][\"slots\"][\"${slot}\"][\"nixSigning\"]" "\"${name}:${pk}\""; then
+		log::error "sops set failed; keys.yaml left untouched"
+		return 1
+	fi
+	if [[ "$(nixsign::rest "$updated" "$key" "$slot")" != "$(nixsign::rest "$keysYaml" "$key" "$slot")" ]]; then
+		log::error "sops set changed more than keys.${key}.slots.${slot}.nixSigning; keys.yaml left untouched"
+		return 1
+	fi
+	if [[ "$(K="$key" S="$slot" yq eval -r '.keys[strenv(K)].slots[strenv(S)].nixSigning' "$updated")" != "${name}:${pk}" ]]; then
+		log::error "keys.${key}.slots.${slot}.nixSigning does not read back in clear, as given; keys.yaml left untouched"
+		return 1
+	fi
+	install -m 0644 "$updated" "$keysYaml" || return 1
+	cat <<-EOF
+
+		keys.${key}.slots.${slot}.nixSigning recorded: ${machine} signs with it once it serves its own host
+		key, and every fleet machine trusts it while that slot is current.
+
+		Next, in order:
+		  1. nix run "git+file://\$PWD?rev=\$(git rev-parse HEAD)#ssh-keys-v2-validate" -- modules/home-manager/ssh.d/keys.yaml
+		  2. commit the keys.yaml diff
+	EOF
+}
+
 main() {
 	apply=0
 	replace=0
@@ -843,6 +935,7 @@ main() {
 	createPublicBlob=""
 	revokeTarget=""
 	revokeRevision=""
+	nixSigningKey=""
 
 	while (($# > 0)); do
 		case "$1" in
@@ -918,6 +1011,11 @@ main() {
 				revokeRevision="$2"
 				shift 2
 				;;
+			--record-nix-signing)
+				[[ -n "${2:-}" ]] || return "$(usage || echo $?)"
+				nixSigningKey="$2"
+				shift 2
+				;;
 			--apply)
 				apply=1
 				shift
@@ -933,6 +1031,26 @@ main() {
 				;;
 		esac
 	done
+
+	if [[ -n "$nixSigningKey" ]]; then
+		if [[ -n "$createName$olderThanDays$revokeTarget$revokeRevision$reason" ]] || ((createPublic == 0)) ||
+			((${#selectKeys[@]} + ${#selectAuthorities[@]} + ${#createUsages[@]} + ${#createProfiles[@]} + replace > 0)) ||
+			[[ -n "$createComment$createType" ]]; then
+			log::error "--record-nix-signing goes with --public - and --apply only"
+			usage
+			return $?
+		fi
+		keysYaml="$(git rev-parse --show-toplevel)/${keysRel}"
+		if [[ ! -r "$keysYaml" ]]; then
+			log::error "keys.yaml not readable at ${keysYaml} (run from the ndh repo root)"
+			return 1
+		fi
+		tmpdir="$(mktemp -d)"
+		chmod 700 "$tmpdir"
+		trap 'rm -rf "$tmpdir"' EXIT
+		nixsign::run
+		return $?
+	fi
 
 	if [[ -n "$revokeTarget" ]]; then
 		if [[ -n "$createName$olderThanDays" ]] || ((${#selectKeys[@]} + ${#selectAuthorities[@]} + ${#createUsages[@]} + ${#createProfiles[@]} + createPublic + replace > 0)) ||

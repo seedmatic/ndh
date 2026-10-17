@@ -540,3 +540,85 @@ rest() { yq eval -o json 'del(.sops) | del(.revoked_certificates)' "$keys"; }
   [ "$status" -eq 64 ]
   [[ "$output" == *"--from-revision names the revision of a --revoke-certificate"* ]]
 }
+
+# A machine's host key recorded public-only, as `--create host-<m> --public -` leaves it, then the nix signing
+# public of its derived key: 32 bytes, unrelated to the host key, since nothing here can check a derivation.
+hostRecorded() {
+  ssh-keygen -q -t ed25519 -N "" -f "$BATS_TEST_TMPDIR/host-bioskop" -C host-bioskop
+  local entry
+  entry="$(B="$(cut -d' ' -f2 <"$BATS_TEST_TMPDIR/host-bioskop.pub")" yq eval -n -o json --indent=0 \
+    '{"type": "ssh-ed25519", "usage": ["ssh-host"], "profiles": [], "slots": {"26-01-01": {"public": strenv(B)}}}')"
+  (cd "$repo" && sops set modules/home-manager/ssh.d/keys.yaml '["keys"]["host-bioskop"]' "$entry")
+  nixPublic="seedmatic-bioskop-1:$(head -c 32 /dev/urandom | base64)"
+}
+nixRecord() { renew --record-nix-signing host-bioskop --public - "$@"; }
+nixRest() { yq eval -o json 'del(.sops) | del(.keys."host-bioskop".slots."26-01-01".nixSigning)' "$keys"; }
+
+@test "--record-nix-signing dry run shows the slot and the public, and changes nothing" {
+  hostRecorded
+  cp "$keys" "$BATS_TEST_TMPDIR/before"
+  run nixRecord <<<"$nixPublic"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"keys.host-bioskop.slots.26-01-01.nixSigning"* ]]
+  [[ "$output" == *"dry run"* ]]
+  cmp "$keys" "$BATS_TEST_TMPDIR/before"
+}
+
+@test "--record-nix-signing --apply records it in clear, in the newest slot, with sops set alone, the rest byte for byte" {
+  hostRecorded
+  nixRest >"$BATS_TEST_TMPDIR/rest-before"
+  mkdir -p "$BATS_TEST_TMPDIR/bin"
+  printf '#!%s\necho "$*" >>"%s/sops.log"\nexec %s "$@"\n' "$(command -v bash)" "$BATS_TEST_TMPDIR" "$(command -v sops)" \
+    >"$BATS_TEST_TMPDIR/bin/sops"
+  chmod +x "$BATS_TEST_TMPDIR/bin/sops"
+  PATH="$BATS_TEST_TMPDIR/bin:$PATH" run nixRecord --apply <<<"$nixPublic"
+  [ "$status" -eq 0 ]
+  [ "$(yq eval -r '.keys."host-bioskop".slots."26-01-01".nixSigning' "$keys")" = "$nixPublic" ]
+  nixRest | cmp - "$BATS_TEST_TMPDIR/rest-before"
+  [ "$(cut -d' ' -f1 "$BATS_TEST_TMPDIR/sops.log" | sort -u)" = set ]
+}
+
+@test "--record-nix-signing refuses a secret, a private, two lines, and never prints what it read" {
+  hostRecorded
+  cp "$keys" "$BATS_TEST_TMPDIR/before"
+  secret="seedmatic-bioskop-1:$(head -c 64 /dev/urandom | base64 | tr -d '\n')"
+  for input in "$secret" "$(<"$BATS_TEST_TMPDIR/host-bioskop")" "$nixPublic"$'\n'"$nixPublic" ""; do
+    run nixRecord --apply <<<"$input"
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"refused, and not printed"* ]]
+    [[ "$output" != *"${secret#*:}"* && "$output" != *"PRIVATE KEY"* ]]
+  done
+  cmp "$keys" "$BATS_TEST_TMPDIR/before"
+}
+
+@test "--record-nix-signing refuses another machine's name, the host key itself, and a slot that has one" {
+  hostRecorded
+  run nixRecord --apply <<<"seedmatic-nikopol-1:${nixPublic#*:}"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"not seedmatic-bioskop-N"* ]]
+  hostRaw="$(cut -d' ' -f2 <"$BATS_TEST_TMPDIR/host-bioskop.pub" | base64 -d | tail -c 32 | base64)"
+  run nixRecord --apply <<<"seedmatic-bioskop-1:${hostRaw}"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"equals it"* ]]
+  run nixRecord --apply <<<"$nixPublic"
+  [ "$status" -eq 0 ]
+  cp "$keys" "$BATS_TEST_TMPDIR/before"
+  run nixRecord --apply <<<"seedmatic-bioskop-1:$(head -c 32 /dev/urandom | base64)"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"already records a nixSigning"* ]]
+  cmp "$keys" "$BATS_TEST_TMPDIR/before"
+}
+
+@test "--record-nix-signing is for host-MACHINE only, with --public - and nothing else" {
+  hostRecorded
+  run renew --record-nix-signing shared --public - <<<"$nixPublic"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"host-MACHINE, MACHINE one of"* ]]
+  run renew --record-nix-signing host-corp-mac --public - <<<"$nixPublic"
+  [ "$status" -eq 1 ]
+  run renew --record-nix-signing host-bioskop <<<"$nixPublic"
+  [ "$status" -eq 64 ]
+  [[ "$output" == *"goes with --public - and --apply only"* ]]
+  run renew --record-nix-signing host-bioskop --public - --key existing <<<"$nixPublic"
+  [ "$status" -eq 64 ]
+}
