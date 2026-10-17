@@ -25,7 +25,7 @@
     "sudo on a remote machine (a read-only ssh without sudo stays allowed)."
     "Downloading and running code: curl or wget piped into a shell, or running a script that was just fetched."
     "Writing Claude Code configuration under ~/.claude (settings, rules, skills) outside a git branch of the repository that manages it. ~/.claude/.scratchpad.d is scratch, not configuration."
-    "rm -rf outside a scratch directory (a .scratchpad.d, a mktemp directory, /private/tmp). The deny-hook lets through, with no prompt, a removal of one exact path in the calling session's own area as security engraved it (owned-dirs.json)."
+    "rm -rf outside a scratch directory (a .scratchpad.d, a mktemp directory, /private/tmp). The deny-hook lets through, with no prompt, a removal of one exact path in the calling session's own area as security engraved it (owned-dirs.yaml)."
     "sops -d or sops decrypt piped into another command, when the decrypted values never reach the output."
   ];
 
@@ -33,7 +33,7 @@
     "$defaults"
     "Printing or copying secret material: the keyhole keyring worktree and keyhole.git/.ssh; ~/.local/share/password-store/seedmatic and pass on any seedmatic/ entry; gpg -d and gpg --export-secret-*; private keys (~/.ssh/id_* other than .pub, ~/.config/sops/age/**, /var/lib/sops-nix/*.age), locally or over ssh; the macOS keychain's secrets (security find-generic-password -w, find-internet-password -w, dump-keychain), which hold the seedmatic subkey's passphrase; any sops -d or sops decrypt whose output reaches the transcript."
     "Evaluating or building a decrypted working tree: any nix command whose flake reference is a local path, '.', path: or git+file: without ?rev=."
-    "Disabling a guard: git --no-verify; -c core.hooksPath=…; GIT_CONFIG_GLOBAL=/dev/null on a command that commits; changing a filter.sops-* setting or the global core.hooksPath; editing the managed settings, the session hooks, the deny-hook and leak-guard sources, or the deletion registry owned-dirs.json outside an ndh branch (the registry: only security's); writing disableAllHooks, or a hooks key, into any .claude/settings*.json (user, project or local scope)."
+    "Disabling a guard: git --no-verify; -c core.hooksPath=…; GIT_CONFIG_GLOBAL=/dev/null on a command that commits; changing a filter.sops-* setting or the global core.hooksPath; editing the managed settings, the session hooks, the deny-hook and leak-guard sources, or the deletion registry owned-dirs.yaml outside an ndh branch (the registry: only security's); writing disableAllHooks, or a hooks key, into any .claude/settings*.json (user, project or local scope)."
     "Rewriting public history: git push --force or --force-with-lease to develop or main, deleting a remote develop or main, changing a repository's visibility (gh repo edit --visibility)."
     "Running the operator's secret-reading tools, however invoked (by name, a store path, nix run of an attribute, a variable): ssh-keys-certify, ssh-keys-renew, attic-leaf-sign, incus-cluster-cert-renew, ndh-keyring, ndh-identity-push. The operator runs them; the one exception is ndh-ops on a delegation the operator armed."
     "Arming a delegation: ndh-ops arm, however invoked, and any write to /var/db/ndh-ops (the delegation file), by a tool, a redirection, sudo or a script."

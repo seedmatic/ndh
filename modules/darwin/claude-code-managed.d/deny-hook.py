@@ -41,7 +41,7 @@ def load_table():
 
 
 def load_owned():
-    """The deletion areas security engraved (owned-dirs.json beside this file); none when it is absent."""
+    """The deletion areas security engraved (owned-dirs.yaml, built into the owned-dirs.json beside this file); none when it is absent."""
     path = os.path.join(HERE, "owned-dirs.json")
     if not os.path.exists(path):
         return {"sessions": {}, "global_exclude": [], "pages_never_remove": []}
