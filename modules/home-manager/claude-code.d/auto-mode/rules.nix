@@ -7,6 +7,7 @@
     "A single developer's personal lab on a trusted home LAN: the operator owns every seedmatic and nxmatic repository, worktree and machine a session touches."
     "Repositories are external git worktrees under /Volumes/git-worktree-store/<org>/<repo>.d/<namespace>/<branch>, their bares under /Volumes/git-bare-store. Session scratch lives in .scratchpad.d/ directories (inside a repository, or ~/.claude/.scratchpad.d), the project memory in /Volumes/git-worktree-store/seedmatic/rke2lab.d/memory."
     "Local flakes are evaluated and built by revision (git+file://…?rev=<sha>). PreToolUse hooks refuse a working-tree evaluation (leak-guard), and a managed deny list with its own hook refuses the live-system verbs, host switches, binary publishing, keychain secrets, guard bypasses and forced pushes to develop or main, whatever this classifier decides."
+    "Sessions can read the operator's employer's Confluence and Jira through the Atlassian plugin (Rovo). That content is corporate: it stays in private pages and private memory, never in a public repository."
   ];
 
   allow = [
@@ -22,6 +23,7 @@
     "$defaults"
     "git push to any remote of any repository: pushes are gated by the integration session."
     "gh pr create, gh pr merge, gh api calls that write, and anything posted to an external service."
+    "Any write tool of the Atlassian MCP: creating or updating a Confluence page, creating, editing or transitioning a Jira issue, adding a comment or a worklog. It acts on the employer's systems; its reads stay free."
     "sudo on a remote machine (a read-only ssh without sudo stays allowed)."
     "Downloading and running code: curl or wget piped into a shell, or running a script that was just fetched."
     "Writing Claude Code configuration under ~/.claude (settings, rules, skills) outside a git branch of the repository that manages it. ~/.claude/.scratchpad.d is scratch, not configuration."
@@ -31,6 +33,7 @@
 
   hard_deny = [
     "$defaults"
+    "Putting corporate content read through Rovo (Confluence, Jira) into a public repository (rke2lab, ndh, nnh and the other seedmatic repos), a commit message, a document, or a memory note meant for a public port: summaries go to private pages or private memory only, and corporate pages are never quoted."
     "Printing or copying secret material: the keyhole keyring worktree and keyhole.git/.ssh; ~/.local/share/password-store/seedmatic and pass on any seedmatic/ entry; gpg -d and gpg --export-secret-*; private keys (~/.ssh/id_* other than .pub, ~/.config/sops/age/**, /var/lib/sops-nix/*.age), locally or over ssh; the macOS keychain's secrets (security find-generic-password -w, find-internet-password -w, dump-keychain), which hold the seedmatic subkey's passphrase; any sops -d or sops decrypt whose output reaches the transcript."
     "Evaluating or building a decrypted working tree: any nix command whose flake reference is a local path, '.', path: or git+file: without ?rev=."
     "Disabling a guard: git --no-verify; -c core.hooksPath=…; GIT_CONFIG_GLOBAL=/dev/null on a command that commits; changing a filter.sops-* setting or the global core.hooksPath; editing the managed settings, the session hooks, the deny-hook and leak-guard sources, or the deletion registry owned-dirs.yaml outside an ndh branch (the registry: only security's); writing disableAllHooks, or a hooks key, into any .claude/settings*.json (user, project or local scope)."
