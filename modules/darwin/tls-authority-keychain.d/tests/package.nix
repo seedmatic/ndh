@@ -13,6 +13,9 @@ pkgs.runCommand "tls-authority-keychain-bats"
       xxd
     ];
     NDH_TRAMPOLINE = trampoline;
+    NDH_BOOTSTRAP_PROFILE_DIR = import ../../../.common.d/shell.d/tests/bootstrap-profile.nix {
+      inherit pkgs;
+    };
   }
   ''
     cp -r ${./..} src && chmod -R u+w src

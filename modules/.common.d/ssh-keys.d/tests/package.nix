@@ -21,6 +21,7 @@ pkgs.runCommand "ssh-keys-bats"
       yq-go
     ];
     NDH_TRAMPOLINE = trampoline;
+    NDH_BOOTSTRAP_PROFILE_DIR = import ../../shell.d/tests/bootstrap-profile.nix { inherit pkgs; };
   }
   # split-exp.bats reads the extractor's expression from the home-manager tree, by a
   # path relative to the tests; both trees keep their places under `modules/`.
