@@ -16,13 +16,19 @@ let
   account = "_ndh-attic";
   home = "/var/db/ndh-attic-watch-store";
   log = "${home}/watch-store.log";
-  # Its identity is its own host key, the access point the tokens are sealed to, converted in memory.
-  unseal = import ../.common.d/attic-tokens.d/package.nix {
+  tokens = import ../.common.d/attic-tokens.d/package.nix {
     inherit pkgs lib;
     inherit (ndh.context.catalog) netplan;
+  };
+  # Its identity is its own host key, the access point the tokens are sealed to, converted in memory.
+  unseal = tokens.unseal {
     inherit (cfg) paths;
     identityMode = "hostkey";
     identity = config.ndh.hostKey.file;
+  };
+  receive = tokens.receive {
+    machine = config.networking.hostName;
+    unsealer = unseal;
   };
 in
 {
@@ -43,12 +49,31 @@ in
 
     (lib.mkIf (cfg.read.enable || cfg.watchStore.enable) {
       # The tokens rest as ciphertext; /var/run is emptied at every boot, so they are unsealed at load.
+      # The operator seat's deposit reaches it by its fixed path under sudo -n: that one command, nothing else.
+      environment.systemPackages = [ receive ];
+      security.sudo.extraConfig = ''
+        ${config.profile.user.name} ALL=(root) NOPASSWD: /run/current-system/sw/bin/ndh-attic-tokens-receive
+      '';
       launchd.daemons.ndh-attic-tokens.serviceConfig = {
         Label = ndh.store.mkLaunchdLabel "attic-tokens";
         ProgramArguments = [ (lib.getExe unseal) ];
         RunAtLoad = true;
         StandardErrorPath = "/var/log/ndh-attic-tokens.log";
       };
+    })
+
+    # The keyring seat deposits every other live machine's tokens, by the operator's ssh name for each.
+    (lib.mkIf config.ndh.identityPush.enable {
+      environment.systemPackages = [
+        (tokens.deposit {
+          seat = config.networking.hostName;
+          localReceive = receive;
+          targets = map (m: {
+            inherit (m) name kind;
+            ssh = "${m.kind}.${m.metalspace}";
+          }) (lib.filter (m: m.name != config.networking.hostName) ndh.context.catalog.machines);
+        })
+      ];
     })
 
     (lib.mkIf cfg.watchStore.enable {

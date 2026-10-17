@@ -1,6 +1,7 @@
-# ndh-attic-tokens-unseal's bats suite as a flake check: real age and ssh-to-age, everything made in the sandbox.
+# The attic token delivery's bats suites as a flake check (unseal, receive, deposit): real age and ssh-to-age,
+# everything made in the sandbox.
 { pkgs }:
-pkgs.runCommand "attic-tokens-unseal-bats"
+pkgs.runCommand "attic-tokens-bats"
   {
     nativeBuildInputs = with pkgs; [
       age
@@ -8,6 +9,7 @@ pkgs.runCommand "attic-tokens-unseal-bats"
       bats
       coreutils
       findutils
+      gnugrep
       openssh
       ssh-to-age
     ];
