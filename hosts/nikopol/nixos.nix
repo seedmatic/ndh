@@ -44,7 +44,8 @@
 
     # sshfs mounts of the Darwin-side git store (replaces the old NFS /net automount).
     # Root executes the mount but authenticates as nxmatic — the operator who owns the
-    # trees — via the CA-signed rdp-host key; remote files map back to uid/gid 501:30001.
+    # trees — via the CA-signed rdp-host key, or read-only with the guest's own key once
+    # ndh.sshfs.ownKey is set (roles × keys S3b); remote files map back to uid/gid 501:30001.
     # nikopol keeps its git trees on dedicated /Volumes stores.
     services.sshfsMounts = {
       enable = true;

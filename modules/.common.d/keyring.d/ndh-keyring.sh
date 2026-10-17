@@ -5,17 +5,19 @@ export -n SHELLOPTS 2>/dev/null || true # readonly in bash, so not unset; un-exp
 unset NDH_LOGGER_XTRACE # ndh::logger:command:run traces its command only when this is 1
 unset BASH_XTRACEFD 2>/dev/null || true
 
-# ndh-keyring — the machines' host keys in the operator's keyring (docs/ssh-keys-architecture.adoc): the
+# ndh-keyring — the fleet's machine-held keys in the operator's keyring (docs/ssh-keys-architecture.adoc): the
 # seedmatic/ part of their pass store, encrypted to the seedmatic subkey alone.
 #
-#   ndh-keyring host-key <machine>
+#   ndh-keyring host-key <machine>      a machine's ssh host key, as seedmatic/host-key/<machine>
+#   ndh-keyring sshfs-key <guest>       the key a NixOS guest mounts its operator seat's git stores with,
+#                                       as seedmatic/sshfs-key/<guest>
 #
-# Generates the machine's ed25519 host key IN MEMORY and inserts it as seedmatic/host-key/<machine>; the
-# private only ever flows through pipes, never a variable, a file or an argument. Never overwrites: a
-# replacement is a rotation, with its revocation. Before the insert, the entry's recipient must be the
-# seedmatic subkey alone (pass encrypts to the NEAREST .gpg-id, and the store root's are personal keys);
-# after it, the file's packets must name that subkey only, and the private read back must match the
-# public. Prints publics only: recording the public in keys.yaml is the next step.
+# Generates the ed25519 key IN MEMORY and inserts it; the private only ever flows through pipes, never a
+# variable, a file or an argument. Never overwrites: a replacement is a rotation, with its revocation.
+# Before the insert, the entry's recipient must be the seedmatic subkey alone (pass encrypts to the
+# NEAREST .gpg-id, and the store root's are personal keys); after it, the file's packets must name that
+# subkey only, and the private read back must match the public. Prints publics only: recording the
+# public in keys.yaml is the next step.
 
 log() { printf '[ndh-keyring] %s\n' "$*" >&2; }
 die() {
@@ -24,30 +26,37 @@ die() {
 }
 ulimit -c 0
 
-[[ $# -eq 2 && $1 == host-key ]] || die "usage: ndh-keyring host-key <machine>"
-machine="$2"
+usage="usage: ndh-keyring host-key <machine> | sshfs-key <guest>"
+[[ $# -eq 2 ]] || die "$usage"
+kind="$1"
+name="$2"
+case "$kind" in
+  host-key) allowed=("${machines[@]}") among="machines" recorded="host-${name}" usageTag=ssh-host ;;
+  sshfs-key) allowed=("${guests[@]}") among="NixOS guests" recorded="sshfs-${name}" usageTag=ssh-user ;;
+  *) die "$usage" ;;
+esac
 known=0
-for m in "${machines[@]}"; do [[ $m == "$machine" ]] && known=1; done
-((known)) || die "${machine} is not one of the inventory's machines (${machines[*]})"
+for m in "${allowed[@]}"; do [[ $m == "$name" ]] && known=1; done
+((known)) || die "${name} is not one of the inventory's ${among} (${allowed[*]})"
 # Both bypass .gpg-id: the first replaces the recipients, the second can add one.
 [[ -z ${PASSWORD_STORE_KEY:-} && -z ${PASSWORD_STORE_GPG_OPTS:-} ]] ||
   die "PASSWORD_STORE_KEY or PASSWORD_STORE_GPG_OPTS is set, which would override the seedmatic recipient — unset it"
 
 store="${PASSWORD_STORE_DIR:-$HOME/.password-store}"
-entry="seedmatic/host-key/${machine}"
+entry="seedmatic/${kind}/${name}"
 [[ -f "$store/seedmatic/.gpg-id" && "$(<"$store/seedmatic/.gpg-id")" == "${recipient}!" ]] ||
   die "${store}/seedmatic/.gpg-id is not exactly ${recipient}! — refused, nothing generated"
-[[ ! -e "$store/seedmatic/host-key/.gpg-id" ]] ||
-  die "${store}/seedmatic/host-key/.gpg-id would override the seedmatic recipient — refused, nothing generated"
+[[ ! -e "$store/seedmatic/${kind}/.gpg-id" ]] ||
+  die "${store}/seedmatic/${kind}/.gpg-id would override the seedmatic recipient — refused, nothing generated"
 # The ONLY guard against an overwrite: `pass insert -m` fed by a pipe answers its own overwrite prompt yes.
-[[ ! -e "$store/${entry}.gpg" ]] || die "${entry} exists; a host key is never overwritten (a replacement is a rotation)"
+[[ ! -e "$store/${entry}.gpg" ]] || die "${entry} exists; a key is never overwritten (a replacement is a rotation)"
 
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 chmod 700 "$work"
 
 "$generate" 3>"$work/generated.pub" | pass insert -m "$entry" >/dev/null ||
-  die "generating or inserting ${entry} failed — an empty entry may exist: check with pass find host-key"
+  die "generating or inserting ${entry} failed — an empty entry may exist: check with pass find ${kind}"
 read -r type blob _ <"$work/generated.pub"
 [[ $type == ssh-ed25519 && -n $blob ]] || die "the generator returned no ed25519 public"
 
@@ -64,7 +73,8 @@ fromPrivate="$(pass show "$entry" | ssh-to-age -private-key | age-keygen -y)" ||
   die "${entry} reads back as another key than the one generated — check it, nothing was removed"
 
 fingerprint="$(ssh-keygen -l -E sha256 -f <(printf '%s %s\n' "$type" "$blob") | awk '{ print $2 }')"
-printf '%s %s host-%s\n' "$type" "$blob" "$machine"
+printf '%s %s %s\n' "$type" "$blob" "$recorded"
 log "${entry}: generated, encrypted to ${recipient} alone, read back; fingerprint ${fingerprint}"
-log "next: record this public in keys.yaml (host-${machine}); replicate seedmatic/ with git subtree push —"
-log "it carries seedmatic's history only while seedmatic/ is never deleted and re-created in the store"
+log "next: record this public in keys.yaml: ... | ssh-keys-renew --create ${recorded} --public - --usage ${usageTag};"
+log "replicate seedmatic/ with git subtree push — it carries seedmatic's history only while seedmatic/ is"
+log "never deleted and re-created in the store"

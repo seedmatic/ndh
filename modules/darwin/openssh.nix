@@ -4,6 +4,7 @@
   pkgs,
   lib,
   ndh,
+  catalog,
   ...
 }:
 let
@@ -32,6 +33,9 @@ let
   groupKeysScriptStore = "${opensshAuthzTools}/bin/openssh-group-authorized-keys";
   inherit (lib) mkIf optionalString concatStringsSep;
 
+  # The NixOS guest that mounts this operator seat's git stores (roles × keys S3b), by the inventory.
+  sshfsGuest = (catalog.netplan.baremetal.${config.networking.hostName} or { }).nixosHostname or null;
+  sshfsKeyName = "sshfs-${sshfsGuest}";
   ndhSshdConfigText =
     let
       boolToYesNo = v: if v then "yes" else "no";
@@ -72,7 +76,40 @@ in
     (worktreePath.of "modules/.common.d/ssh-paths.nix")
   ];
 
+  # Read-only sftp and nothing else: `restrict` drops pty, port/agent/X11 forwarding and ~/.ssh/rc, and
+  # the forced command replaces whatever the client asks for, a shell or the sftp subsystem alike. sshd
+  # runs a forced `internal-sftp` in process, so the operator's login shell, its rc files and BASH_ENV never
+  # run and cannot write into the sftp stream. An option so the real-sshd check runs this very string.
+  options.ndh.sshfs.authorizedOptions = lib.mkOption {
+    type = lib.types.str;
+    readOnly = true;
+    default = ''restrict,command="internal-sftp -R"'';
+    description = "The authorized_keys options of the guest's sshfs key on its operator seat.";
+  };
+
+  # Not read-only only so the eval checks can give a test configuration a public that keys.yaml does not hold.
+  options.ndh.sshfs.guestKeyLines = lib.mkOption {
+    type = lib.types.listOf lib.types.str;
+    internal = true;
+    default = lib.optionals (sshfsGuest != null && config.ndh.keysYaml.keys ? ${sshfsKeyName}) (
+      config.ndh.keysYaml.authorizedLinesFor [ sshfsKeyName ]
+    );
+    description = ''
+      The authorized_keys lines of this seat's NixOS guest's sshfs key, from its public recorded in keys.yaml
+      (`sshfs-<guest>`), one per slot; none until it is recorded. Authorized for the operator with
+      read-only sftp only.
+    '';
+  };
+
   config = {
+    # The guest's sshfs key: an authorized_keys line, not a certificate, because it must hold on THIS seat
+    # only, with its forced command; a certificate principal is honored by every sshd trusting the
+    # authority. nix-darwin writes the lines to /etc/ssh/nix_authorized_keys.d/<user>, which the group-keys
+    # AuthorizedKeysCommand reads: a command, because sshd does not read that store symlink as a file.
+    users.users.${userName}.openssh.authorizedKeys.keys = map (
+      line: "${config.ndh.sshfs.authorizedOptions} ${line}"
+    ) config.ndh.sshfs.guestKeyLines;
+
     # Server policy wiring
     opensshPolicy = {
       enable = true;

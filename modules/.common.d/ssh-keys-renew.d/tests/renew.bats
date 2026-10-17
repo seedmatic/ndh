@@ -56,7 +56,7 @@ EOF
   # script does not check behaves here as it does there.
   printf 'source "%s"\nndh::logger:command:run() { shift; ndh::logger:command:invoke "$@"; return "$NDH_LOGGER_COMMAND_RC"; }\n' "$NDH_LOGGER_SH" >"$BATS_TEST_TMPDIR/trampoline.sh"
   sed -e "s#@nixBashTrampoline@#$BATS_TEST_TMPDIR/trampoline.sh#" -e 's#@loggerTag@#test#' \
-    -e 's#@machines@#bioskop nikopol bioskop-nixos nikopol-nixos#' \
+    -e 's#@machines@#bioskop nikopol bioskop-nixos nikopol-nixos#' -e 's#@guests@#bioskop-nixos nikopol-nixos#' \
     "$BATS_TEST_DIRNAME/../ssh-keys-renew.sh" >"$BATS_TEST_TMPDIR/ssh-keys-renew"
   today="$(date +%y-%m-%d)"
 }
@@ -290,6 +290,66 @@ record() {
   [[ "$output" == *"keys.host-bioskop-nixos: already exists"* ]]
   run bash -c 'cd "$1" && bash -euo pipefail "$2" --create host-nikopol --public - --usage ssh-host --apply <"$3"' _ \
     "$repo" "$BATS_TEST_TMPDIR/ssh-keys-renew" "$BATS_TEST_TMPDIR/shared.pub"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"already in keys.yaml"* ]]
+  cmp "$keys" "$BATS_TEST_TMPDIR/before"
+}
+
+sshfs_record() {
+  (cd "$repo" && bash -euo pipefail "$BATS_TEST_TMPDIR/ssh-keys-renew" --create sshfs-bioskop-nixos --public - --usage ssh-user "$@")
+}
+
+@test "--public --apply records an sshfs key: public only, in clear, no authority and no certificate" {
+  host_public >"$BATS_TEST_TMPDIR/line"
+  entry='.keys."sshfs-bioskop-nixos"'
+  decrypted | yq eval "del($entry)" - >"$BATS_TEST_TMPDIR/before.yaml"
+  run sshfs_record --apply <"$BATS_TEST_TMPDIR/line"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"never certified"*"ndh-identity-push bioskop-nixos with the key on fd 5"* ]]
+  [[ "$output" != *"ssh-keys-certify"* ]]
+  [ "$(yq eval -r "$entry.type" "$keys")" = ssh-ed25519 ]
+  [ "$(yq eval -r "$entry.usage | join(\",\")" "$keys")" = ssh-user ]
+  [ "$(yq eval -r "$entry | has(\"authority\") or has(\"cert_usage\")" "$keys")" = false ]
+  [ "$(yq eval -r "$entry.profiles | length" "$keys")" = 0 ]
+  [ "$(yq eval -r "$entry.slots.\"$today\" | keys | join(\",\")" "$keys")" = public ]
+  [ "$(yq eval -r "$entry.slots.\"$today\".public" "$keys")" = "$(cut -d' ' -f2 <"$BATS_TEST_TMPDIR/line")" ]
+  decrypted | yq eval "del($entry)" - >"$BATS_TEST_TMPDIR/after.yaml"
+  cmp "$BATS_TEST_TMPDIR/before.yaml" "$BATS_TEST_TMPDIR/after.yaml"
+}
+
+@test "a dry run of an sshfs record says no certificate, and writes nothing" {
+  cp "$keys" "$BATS_TEST_TMPDIR/before"
+  run sshfs_record < <(host_public)
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"sshfs-bioskop-nixos"*"${today} (new entry, public only, no certificate)"* ]]
+  cmp "$keys" "$BATS_TEST_TMPDIR/before"
+}
+
+@test "an sshfs record is a NixOS guest's, of usage ssh-user only, on no profile" {
+  host_public >"$BATS_TEST_TMPDIR/line"
+  for name in sshfs-bioskop sshfs-elsewhere; do
+    run bash -c 'cd "$1" && bash -euo pipefail "$2" --create "$4" --public - --usage ssh-user --apply <"$3"' _ \
+      "$repo" "$BATS_TEST_TMPDIR/ssh-keys-renew" "$BATS_TEST_TMPDIR/line" "$name"
+    [ "$status" -eq 64 ]
+    [[ "$output" == *"sshfs-GUEST, GUEST one of: bioskop-nixos nikopol-nixos"* ]]
+  done
+  run renew --create sshfs-bioskop-nixos --public - --usage ssh-host </dev/null
+  [ "$status" -eq 64 ]
+  [[ "$output" == *"an sshfs key: its one --usage is ssh-user"* ]]
+  run renew --create host-bioskop-nixos --public - --usage ssh-user </dev/null
+  [ "$status" -eq 64 ]
+  [[ "$output" == *"a host key: its one --usage is ssh-host"* ]]
+  run renew --create sshfs-bioskop-nixos --public - --usage ssh-user --profile system </dev/null
+  [ "$status" -eq 64 ]
+  [[ "$output" == *"no --profile and no --type"* ]]
+}
+
+@test "an sshfs record refuses a public keys.yaml already carries: its guest's host key, for one" {
+  host_public >"$BATS_TEST_TMPDIR/line"
+  run record --apply <"$BATS_TEST_TMPDIR/line"
+  [ "$status" -eq 0 ]
+  cp "$keys" "$BATS_TEST_TMPDIR/before"
+  run sshfs_record --apply <"$BATS_TEST_TMPDIR/line"
   [ "$status" -eq 1 ]
   [[ "$output" == *"already in keys.yaml"* ]]
   cmp "$keys" "$BATS_TEST_TMPDIR/before"

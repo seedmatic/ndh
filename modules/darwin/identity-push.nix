@@ -16,6 +16,7 @@ let
   receive = identityPush.receive {
     machine = config.networking.hostName;
     keyFile = "";
+    sshfs = false;
     served = lib.head config.opensshPolicy.hostKeyPaths;
     owner = "root:wheel";
   };

@@ -1197,6 +1197,11 @@
           incus-cluster-join-bats = import ./pkgs/incus-cluster-join.d/tests/package.nix { inherit pkgs; };
           identity-push-bats = import ./modules/.common.d/identity-push.d/tests/package.nix { inherit pkgs; };
           keyring-bats = import ./modules/.common.d/keyring.d/tests/package.nix { inherit pkgs; };
+          # What the operator seat serves a guest's sshfs key, internal-sftp -R, refuses every write.
+          sshfs-read-only-sftp-bats = import ./modules/nixos/sshfs-mounts.d/tests/package.nix {
+            pkgs = pkgsForLinux;
+            inherit (self.darwinConfigurations.bioskop.config.ndh.sshfs) authorizedOptions;
+          };
           incus-cluster-cert-bats = import ./modules/.common.d/incus-cluster-cert.d/tests/package.nix {
             inherit pkgs;
           };
@@ -1529,6 +1534,22 @@
               lib.filter (host: self.nixosConfigurations ? "${host}-nixos") hosts
             );
             seats = lib.filter (host: self.darwinConfigurations ? ${host}) hosts;
+          }
+        )
+        # The guests' sshfs mounts of their operator seats' git stores, and what each seat authorizes for them
+        # (ndh.sshfs.ownKey, roles × keys S3b).
+        // (
+          let
+            lib = nixpkgs.lib;
+            hosts = lib.filter (
+              host: self.nixosConfigurations ? "${host}-nixos" && self.darwinConfigurations ? ${host}
+            ) (lib.attrNames inventoryData.hosts);
+          in
+          import ./modules/nixos/sshfs-mounts.d/tests/checks.nix {
+            inherit pkgs lib;
+            inherit (self) nixosConfigurations darwinConfigurations;
+            seatOf = lib.listToAttrs (map (host: lib.nameValuePair "${host}-nixos" host) hosts);
+            hostNames = fleetHostCertificates.names;
           }
         )
         # The mask a failed install's log goes through into the build log: key material never passes.
@@ -2114,21 +2135,21 @@
           # provides them or refuses with an install hint. `sops` was the one that
           # was NOT in that profile and had to come from the system closure — it is
           # in the contract now (53 MB of closure, measured).
-          sshKeysRenewPackage = ndhStoreApiDarwin.installBinScript "ssh-keys-renew" (
-            pkgsForSystem.replaceVars ./modules/.common.d/ssh-keys-renew.d/ssh-keys-renew.sh {
-              nixBashTrampoline = ndhNixBashTrampolineDarwin;
-              loggerTag = "ndh.ssh-keys-renew";
-              # The machines a host key is recorded for (--public): the four ndh-keyring knows, each
-              # operator seat and its guest, as the inventory names them.
-              machines =
-                let
-                  hosts = nixpkgs.lib.attrNames catalogData.netplan.baremetal;
-                in
-                nixpkgs.lib.concatStringsSep " " (
-                  hosts ++ map (h: catalogData.netplan.baremetal.${h}.nixosHostname) hosts
-                );
-            }
-          );
+          sshKeysRenewPackage =
+            let
+              hosts = nixpkgs.lib.attrNames catalogData.netplan.baremetal;
+              guests = map (h: catalogData.netplan.baremetal.${h}.nixosHostname) hosts;
+            in
+            ndhStoreApiDarwin.installBinScript "ssh-keys-renew" (
+              pkgsForSystem.replaceVars ./modules/.common.d/ssh-keys-renew.d/ssh-keys-renew.sh {
+                nixBashTrampoline = ndhNixBashTrampolineDarwin;
+                loggerTag = "ndh.ssh-keys-renew";
+                # What --public records, as ndh-keyring names it: a host key for each of the four machines
+                # (each operator seat and its guest), an sshfs key for each NixOS guest.
+                machines = nixpkgs.lib.concatStringsSep " " (hosts ++ guests);
+                guests = nixpkgs.lib.concatStringsSep " " guests;
+              }
+            );
           # The fleet's nix signing key, replaced on the operator seat (the interim rotation of 2026-10-13).
           cacheSigningKeyRotatePackage = ndhStoreApiDarwin.installBinScript "cache-signing-key-rotate" (
             pkgsForSystem.replaceVars ./modules/.common.d/cache-signing-key-rotate.d/cache-signing-key-rotate.sh
@@ -2249,7 +2270,7 @@
           ssh-keys-renew = {
             type = "app";
             program = "${sshKeysRenewPackage}/bin/ssh-keys-renew";
-            meta.description = "Phase 1 of an SSH key renewal: add a dated slot and generate into it — [--key NAME] [--authority NAME] [--older-than Nd] [--apply], or declare a new entry with --create NAME --usage TAG (record a host key public from stdin with --public -), dry run by default, run from repo root — src: modules/.common.d/ssh-keys-renew.d/";
+            meta.description = "Phase 1 of an SSH key renewal: add a dated slot and generate into it — [--key NAME] [--authority NAME] [--older-than Nd] [--apply], or declare a new entry with --create NAME --usage TAG (record a host or sshfs key public from stdin with --public -), dry run by default, run from repo root — src: modules/.common.d/ssh-keys-renew.d/";
           };
           cache-signing-key-rotate = {
             type = "app";
