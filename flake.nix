@@ -1166,6 +1166,27 @@
               };
           nfsd-off-bats = import ./modules/darwin/nfsd-off.d/tests/package.nix { inherit pkgs; };
           sops-age-bootstrap-bats = import ./modules/.common.d/sops.d/tests/package.nix { inherit pkgs; };
+          # nix itself reads the derived secret: its public, as nix computes it, is the one --public prints. On a
+          # throwaway host key generated here; the package's own tests carry the known vector.
+          nix-signing-derive-nix-format =
+            let
+              derive = "${self.packages.${system}.ndh-nix-signing-derive}/bin/ndh-nix-signing-derive";
+              args = "--name seedmatic-check-1 --label seedmatic/nix-signing/1";
+            in
+            pkgs.runCommand "nix-signing-derive-nix-format"
+              {
+                nativeBuildInputs = [
+                  pkgs.openssh
+                  pkgs.nix
+                ];
+              }
+              ''
+                ssh-keygen -q -t ed25519 -N "" -C throwaway -f host
+                ${derive} ${args} --secret <host >derived.sec
+                ${derive} ${args} --public <host >derived.pub
+                [ "$(nix --extra-experimental-features nix-command key convert-secret-to-public <derived.sec)" = "$(cat derived.pub)" ]
+                touch $out
+              '';
           git-sops-filters-bats = import ./modules/home-manager/git.d/tests/package.nix { inherit pkgs; };
           # keys.yaml against its schema, ENCRYPTED as committed: the schema accepts ENC[...]
           # wherever a private may sit, so the sandbox needs no key and nothing is decrypted.
@@ -1885,6 +1906,8 @@
           # advertise a fleet-scoped alias pointing at the current owner.
           # See packages/ndh-mdns-publish/{main.go,default.nix}.
           ndh-mdns-publish = systemPkgs.callPackage ./packages/ndh-mdns-publish { };
+          # A builder's nix signing key, derived from its ssh host key (roles × keys B2).
+          ndh-nix-signing-derive = systemPkgs.callPackage ./packages/ndh-nix-signing-derive { };
         }
         // mkBaremetalLinkPackages system
         # Darwin only: the join is an operator act run from the operator's machine, and the recipe is
