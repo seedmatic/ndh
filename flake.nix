@@ -1434,7 +1434,20 @@
                       "bioskop-ts"
                       "nikopol-ts"
                     ]
-                  );
+                  )
+                  # A darwin host's alias names it FULLY qualified: a single label would go through the
+                  # search list, and an operator seat may have no MagicDNS search domain.
+                  ++
+                    map
+                      (seat: {
+                        target = "darwin.${seat}";
+                        option = "hostname";
+                        value = "${seat}${catalogData.netplan.tailnet.domain}";
+                      })
+                      [
+                        "bioskop"
+                        "nikopol"
+                      ];
               }
             )
           ) configs
