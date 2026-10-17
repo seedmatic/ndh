@@ -26,6 +26,15 @@
     # failure on nikopol breaks nothing we depend on (docs/store-freeze-spec.adoc, the rollout).
     ndh.storeFreeze.enable = true;
 
+    # This metalspace's private cache (docs/private-binary-cache-spec.adoc, per-metalspace). At a
+    # switch: its dataset under its quota; the container itself is the operator's gesture
+    # (ndh-incus-container create + deliver attic), then attic-leaf-sign for its TLS leaf.
+    ndh.atticCache = {
+      enable = true;
+      metalspace = "nikopol";
+      target = "nikopol";
+    };
+
     # Vector observability agent forwards build events to Darwin aggregator
     bringupObserve = {
       # Forward to Darwin host Vector aggregator via VM network gateway
