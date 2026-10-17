@@ -20,6 +20,8 @@ in
           # The write token to this machine's own metalspace's cache.
           writeToken = "/run/ndh-attic/write.token";
         };
+        # LoadCredential reads it as root and hands the service its own copy.
+        writeTokenOwner = "root";
       };
     }
 

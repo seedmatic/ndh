@@ -1312,6 +1312,34 @@
               "build-users-group: Darwin primary-group mutant passed";
             assert lib.assertMsg (fired darwinMember member) "build-users-group: Darwin member mutant passed";
             pkgs.runCommand "build-users-group-guard" { } "touch $out";
+          attic-watch-store-not-root =
+            let
+              lib = nixpkgs.lib;
+              on = {
+                ndh.atticClient = {
+                  watchStore.enable = true;
+                  ownCache = "attic.bioskop";
+                };
+              };
+              nixos = (self.nixosConfigurations.bioskop-nixos.extendModules { modules = [ on ]; }).config;
+              darwin = (self.darwinConfigurations.bioskop.extendModules { modules = [ on ]; }).config;
+              service = nixos.systemd.services.ndh-attic-watch-store.serviceConfig;
+              daemon = darwin.launchd.daemons.ndh-attic-watch-store.serviceConfig;
+              account = darwin.ndh.atticClient.writeTokenOwner;
+            in
+            assert lib.assertMsg (
+              service.DynamicUser && lib.hasPrefix "write.token:" service.LoadCredential
+            ) "attic watch-store: the NixOS service must be a DynamicUser fed by LoadCredential";
+            assert lib.assertMsg (
+              nixos.ndh.atticClient.writeTokenOwner == "root"
+            ) "attic watch-store: on NixOS the token stays root's";
+            assert lib.assertMsg (
+              account != "root" && daemon.UserName == account && daemon.GroupName == account
+            ) "attic watch-store: the darwin daemon must run as the account the token is given to, never root";
+            assert lib.assertMsg (
+              darwin.users.users.${account}.uid != 0 && lib.elem account darwin.users.knownUsers
+            ) "attic watch-store: the darwin account must be a managed, non-root account";
+            pkgs.runCommand "attic-watch-store-not-root" { } "touch $out";
           nix-signing-trust =
             let
               lib = nixpkgs.lib;
