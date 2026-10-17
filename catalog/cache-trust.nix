@@ -48,4 +48,19 @@
     # round including that 404. To use a regional mirror while travelling, pass
     # `--option extra-substituters …` for that invocation instead.
   };
+
+  # The metalspaces' attics, outside `caches` on purpose: every entry there is trusted on every host,
+  # while a private cache's key is trusted only by the machine kinds it lists. Keyed by metalspace;
+  # an entry appears only with the operator's acceptance, and its schema is checked by
+  # catalog/private-caches.nix:
+  #
+  #   bioskop = {
+  #     publicKey = "seedmatic-bioskop-attic-1:<base64>";
+  #     consumers = [ "attic.bioskop" ];
+  #     acceptedBy = [ "darwin" "nixos" ];
+  #     accepted.date = "YYYY-MM-DD";
+  #     origin.revision = "<ndh revision the container was delivered from>";
+  #     lifecycle = "permanent";
+  #   };
+  privateCaches = { };
 }

@@ -21,8 +21,15 @@ let
     email = "stephane.lacoin@gmail.com";
   };
 in
-{
+rec {
   caches = cacheTrust.caches;
+
+  # The metalspaces' attic keys, each trusted only by the machine kinds that accepted it (see
+  # catalog/private-caches.nix). Refused at evaluation when an entry breaks the schema.
+  privateCaches = import ./private-caches.nix {
+    atticFqdns = builtins.mapAttrs (_: bm: bm.atticFqdn) netplan.baremetal;
+    inherit machines;
+  } cacheTrust.privateCaches;
 
   # The cluster ZFS dataset LAYOUT — the storage twin of `netplan`. rke2lab (seed-master) owns the
   # tank/rke2lab/* layout and exposes it as `lib.dataplan`; ndh materialises it on the host pool via

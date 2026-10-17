@@ -1149,6 +1149,10 @@
           ssh-keys-certify-host-names = import ./modules/.common.d/ssh-keys-certify.d/tests/host-names.nix {
             inherit pkgs;
           };
+          # The fleet's own entries too: a machine reads them only once its read side is on.
+          private-caches-schema = builtins.deepSeq catalogData.privateCaches.entries (
+            import ./catalog/private-caches.d/tests/checks.nix { inherit pkgs; }
+          );
           ssh-known-hosts-command-bats = import ./modules/home-manager/ssh-keys.d/tests/package.nix {
             inherit pkgs;
           };

@@ -4,8 +4,8 @@
 # the token delivery (roles × keys' S3b drop-box) fills, and nothing here mints or stores one.
 #
 # The caches are named by the catalog (`atticFqdn`), and served under the fleet's TLS root, which
-# security.pki already trusts. A cache's public key enters `trusted-public-keys` only once accepted
-# (the cache-trust catalog's acceptedBy): this module takes the keys it is given, never a default.
+# security.pki already trusts. A cache's public key enters `trusted-public-keys` only once accepted for
+# this machine's kind (catalog/private-caches.nix): the keys are read from the catalog, never given here.
 {
   config,
   lib,
@@ -15,6 +15,7 @@
 let
   cfg = config.ndh.atticClient;
   netplan = ndh.context.catalog.netplan;
+  publicKeys = ndh.context.catalog.privateCaches.readKeysFor "nixos";
   url = fqdn: "https://${fqdn}/${cfg.cacheName}";
   # Its own metalspace's cache first: the other one is reached through the tunnel. Both after the
   # upstream and public tiers (cache.nixos.org's priority is 40).
@@ -53,14 +54,7 @@ in
       description = "The cache every attic serves (ndh.atticCache.cacheName).";
     };
 
-    read = {
-      enable = lib.mkEnableOption "substituting from the private caches, with the delivered read tokens";
-      publicKeys = lib.mkOption {
-        type = lib.types.listOf lib.types.str;
-        default = [ ];
-        description = "The caches' public keys, once accepted (cache-trust's acceptedBy).";
-      };
-    };
+    read.enable = lib.mkEnableOption "substituting from the private caches, with the delivered read tokens";
 
     watchStore.enable = lib.mkEnableOption "pushing what this machine builds into its own metalspace's cache";
   };
@@ -69,13 +63,13 @@ in
     (lib.mkIf cfg.read.enable {
       assertions = [
         {
-          assertion = cfg.read.publicKeys != [ ];
+          assertion = publicKeys != [ ];
           message = "ndh.atticClient.read: no accepted cache key — a substituter whose signatures nothing checks";
         }
       ];
       nix.settings = {
         extra-substituters = map (fqdn: "${url fqdn}?priority=${toString (priority fqdn)}") cfg.caches;
-        extra-trusted-public-keys = cfg.read.publicKeys;
+        extra-trusted-public-keys = publicKeys;
         # Absent until the delivery: nix then simply holds no credential for the caches.
         netrc-file = cfg.paths.netrc;
       };
