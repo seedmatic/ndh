@@ -306,4 +306,11 @@ REPLICA=/Volumes/git-worktree-store/nxmatic/claude-home.d/pass/seedmatic
 @test "operator tool: over ssh" { run hook 'ssh darwin.nikopol ndh-identity-push'; denied; }
 @test "ok reading an operator tool's source" { run hook 'cat modules/.common.d/ssh-keys-certify.d/certify.sh'; allowed; }
 @test "ok building an operator tool by revision" { run hook 'nix build github:seedmatic/ndh/0123abcd#ssh-keys-certify'; allowed; }
+@test "ops: ndh-ops arm is the operator's"      { run hook 'ndh-ops arm --hours 4 --tools ssh-keys-renew'; denied; }
+@test "ops: ndh-ops arm from a pushed revision" { run hook 'nix run github:seedmatic/ndh/0123abcd#ndh-ops -- arm --hours 4 --tools ndh-keyring'; denied; }
+@test "ops: writing the delegation by sudo tee" { run hook 'echo tools=ndh-keyring | sudo tee /var/db/ndh-ops/delegation'; denied; }
+@test "ops: a local ndh-ops copy"               { run hook './ndh-ops ssh-keys-renew --apply'; denied; }
+@test "ok ndh-ops runs a tool, the delegation decides" { run hook 'nix run github:seedmatic/ndh/0123abcd#ndh-ops -- ssh-keys-renew --apply'; allowed; }
+@test "ok ndh-ops status"                       { run hook 'ndh-ops status'; allowed; }
+@test "ok ndh-ops disarm"                       { run hook 'ndh-ops disarm'; allowed; }
 @test "ok the ssh public key"                   { run hook 'cat ~/.ssh/id_ed25519.pub'; allowed; }

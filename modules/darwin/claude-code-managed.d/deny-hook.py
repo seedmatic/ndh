@@ -332,7 +332,8 @@ class Analyzer:
         for argv in simple_commands(outer):
             self.unwrap(argv, depth)
 
-    # The sessions may switch a machine through ndh-switch only; a copy elsewhere could run anything under its name.
+    # The sessions' gated verbs: a copy outside the store could run anything under their name.
+    NDH_VERBS = ("ndh-switch", "ndh-ops")
     NDH_SWITCH_HOMES = ("/nix/store/", "/run/current-system/sw/bin/", "/etc/profiles/per-user/")
 
     def unwrap(self, argv, depth):
@@ -348,8 +349,8 @@ class Analyzer:
                 return
             prog = os.path.basename(argv[0])
             rest = argv[1:]
-            if prog == "ndh-switch" and "/" in argv[0] and not argv[0].startswith(self.NDH_SWITCH_HOMES):
-                self.deny("ndh-switch is trusted only as installed by ndh (the store or the system profile)", argv)
+            if prog in self.NDH_VERBS and "/" in argv[0] and not argv[0].startswith(self.NDH_SWITCH_HOMES):
+                self.deny(f"{prog} is trusted only as installed by ndh (the store or the system profile)", argv)
                 return
             nxt = self.peel(prog, rest, depth)
             if nxt is None:
@@ -643,6 +644,9 @@ class Analyzer:
         tools = self.table.get("operator_tools", {})
         if prog in tools.get("programs", []):
             self.deny(f"{prog} {tools['why']}", argv)
+            return
+        if prog == "ndh-ops" and args[:1] == ["arm"]:
+            self.deny("ndh-ops arm is the operator's: a session never arms its own delegation", argv)
             return
         if prog in ("cd", "pushd"):
             # The simple commands come in order, so a chain of cd is followed: `cd …/keyhole.d && cd keyring`.
