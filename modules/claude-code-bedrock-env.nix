@@ -3,8 +3,8 @@
 # required on darwin because home.sessionVariables alone does not reach
 # GUI apps launched by launchd (the VSCode extension host, Dock-launched
 # claude):
-#   - modules/darwin/claude-code-bedrock.nix -> launchd.user.envVariables
-#     (the login launchd session; GUI apps inherit it)
+#   - modules/darwin/claude-code-bedrock.nix -> a RunAtLoad agent that
+#     `launchctl setenv`s them in the user's GUI session (GUI apps inherit it)
 #   - modules/home-manager/claude-code.nix   -> home.sessionVariables
 #     (login shells / terminals)
 #
