@@ -1200,7 +1200,7 @@
             pkgs = pkgsForLinux;
             inherit (self.darwinConfigurations.bioskop.config.ndh.sshfs) authorizedOptions;
           };
-          # The vz-recover key's forced command: four verbs or a refusal, and no shell through a real sshd.
+          # The vz-recover key's forced command: five verbs or a refusal, and no shell through a real sshd.
           vz-recover-bats = import ./pkgs/vz-recover.d/tests/package.nix {
             pkgs = pkgsForLinux;
             inherit (self.packages.aarch64-darwin.nikopol-vz-recover) authorizedOptions;

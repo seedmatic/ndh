@@ -3,4 +3,6 @@
 {
   options = command: ''restrict,command="${command}"'';
   installed = home: "${home}/.nix-profile/bin/ndh-vz-recover";
+  # What `probe` prints, and nothing else: a caller goes on only when it reads exactly this.
+  probeMarker = version: "ndh-vz-recover ok ${version}";
 }

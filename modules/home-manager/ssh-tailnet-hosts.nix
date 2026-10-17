@@ -153,7 +153,8 @@ let
     '';
 
   # The vz-recover key's path to each foreign vz-host (roles × keys): that account forces ndh-vz-recover on
-  # the key, four verbs, so any session may call `ssh vzrecover.<domain> <verb> [vm]`, and this block alone
+  # the key, five verbs, so any session may call `ssh vzrecover.<domain> <verb> [vm]` once `probe` has
+  # answered exactly ndh-vz-recover's marker (anything else: the forced command is not in force), and this block alone
   # names the key file (sessions are denied reading it). One identity, no agent, publickey only, so no other
   # key that account trusts is ever offered: IdentityFile accumulates over every matching block, so this one
   # comes before any block that adds one, which the vz-recover-ssh-alias check holds. The
