@@ -57,7 +57,7 @@ in
           derive=${derive}/bin/ndh-nix-signing-derive
           hostKeyFile=${lib.escapeShellArg config.ndh.hostKey.file}
           name=${lib.escapeShellArg name}
-          label=seedmatic/nix-signing/${version}
+          label=${lib.escapeShellArg "seedmatic/nix-signing/${version}"}
           recorded=${lib.escapeShellArg recorded}
           dir=${lib.escapeShellArg cfg.dir}
         ''
