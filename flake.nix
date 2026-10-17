@@ -59,9 +59,7 @@
     flox.follows = "flake-commons/flox";
     home-manager.follows = "flake-commons/home-manager";
     impermanence.follows = "flake-commons/impermanence";
-    lix-module.follows = "flake-commons/lix-module";
     maven-mvnd.follows = "flake-commons/maven-mvnd";
-    nix.follows = "flake-commons/nix";
     nixos-hardware.follows = "flake-commons/nixos-hardware";
     nixpkgs.follows = "flake-commons/nixpkgs";
     nixpkgs-unstable.follows = "flake-commons/nixpkgs-unstable";
