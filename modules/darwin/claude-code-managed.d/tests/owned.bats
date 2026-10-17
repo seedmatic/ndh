@@ -202,3 +202,23 @@ deny() { [ "$status" -eq 2 ] || { echo "expected deny, got status=$status output
 @test "cd: a relative rm in my own area after a resolved cd is unchanged" {
   run as "$MINE" "cd $A/mine && rm -rf probe"; allowed_owned
 }
+@test "cd: pushd's stack forms lose the cwd (no argument, +N, -N)" {
+  run as "$MINE" "pushd $A/mine; pushd; rm x"; deny
+  run as "$MINE" "pushd $A/mine; pushd +1; rm x"; deny
+  run as "$MINE" "pushd $A/mine; pushd -1; rm x"; deny
+  [[ "$output" == *"cannot resolve"* ]]
+}
+@test "cd: HOME assigned in the command, then ~, \$HOME or a bare cd, loses the cwd" {
+  run as "$MINE" "HOME=$A/theirs; cd ~ && rm x"; deny
+  run as "$MINE" "export HOME=$A/theirs; cd && rm x"; deny
+  run as "$MINE" "HOME=$A/theirs cd \$HOME && rm x"; deny
+  run as "$MINE" "declare HOME=$A/theirs; cd ~/ && rm x"; deny
+  run as "$MINE" "unset HOME; cd && rm x"; deny
+}
+@test "cd: CDPATH assigned, then a relative cd, loses the cwd" {
+  run as "$MINE" "CDPATH=$A; cd theirs && rm x"; deny
+  run as "$MINE" "export CDPATH=$A; cd theirs && rm x"; deny
+}
+@test "cd: an absolute cd with CDPATH set is still followed" {
+  run as "$MINE" "CDPATH=/elsewhere; cd $A/mine && rm -rf probe"; allowed_owned
+}
