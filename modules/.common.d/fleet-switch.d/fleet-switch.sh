@@ -138,13 +138,13 @@ guard_seat() { # the seat's activation must sign nothing: every enabled signer, 
 
 for m in "${plan[@]}"; do
   if [[ $m != "$seat" ]] && [[ $(m=$m yq -r '.[] | select(.name == strenv(m)) | .kind' "$machines") == darwin ]]; then
-    if ! list=$(enabled_signers "$m"); then
+    if ! remote_signers=$(enabled_signers "$m"); then
       result "$m" "STOPPED: cannot evaluate its activation signers"
       stop_rest "$m"
       finish 4
     fi
-    if [[ -n $list ]]; then
-      result "$m" "STOPPED: a remote darwin host whose activation signs ($list): only the seat may hold the authority"
+    if [[ -n $remote_signers ]]; then
+      result "$m" "STOPPED: a remote darwin host whose activation signs ($remote_signers): only the seat may hold the authority"
       stop_rest "$m"
       finish 4
     fi
