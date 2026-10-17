@@ -170,6 +170,12 @@ in
       hostKeys = lib.mkForce [ ];
     };
 
+    # The seat's sops identity, named explicitly (roles × keys S4b): its own host key once it serves it, the
+    # system's /etc/ssh key before. Never chosen by what /etc/ssh happens to hold, which the rescue aliases link.
+    sops.age.sshKeyPaths = [
+      (if ownsHostKey then config.ndh.hostKey.file else "/etc/ssh/ssh_host_ed25519_key")
+    ];
+
     # Ensure OpenSSH helper scripts are installed during the etc phase. launchd starts sshd per
     # connection, so a missing owned key is said here, without failing the rest of the activation.
     system.activationScripts.etc.text = lib.mkAfter (
