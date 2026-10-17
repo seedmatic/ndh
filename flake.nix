@@ -1256,6 +1256,62 @@
                 darwin.config.ndh.nixSigning.placeScript
               ];
             } "touch $out";
+          build-users-group-guard =
+            let
+              lib = nixpkgs.lib;
+              nixos = self.nixosConfigurations.bioskop-nixos;
+              darwin = self.darwinConfigurations.bioskop;
+              fired = c: part: lib.any (a: !a.assertion && lib.hasInfix part a.message) c.config.assertions;
+              primary = "is the primary group of";
+              member = "would be build users";
+              nixosPrimary = nixos.extendModules {
+                modules = [
+                  {
+                    users.users.mutant = {
+                      isSystemUser = true;
+                      group = "nixbld";
+                    };
+                  }
+                ];
+              };
+              nixosMember = nixos.extendModules {
+                modules = [
+                  {
+                    users.users.mutant = {
+                      isSystemUser = true;
+                      group = "nogroup";
+                      extraGroups = [ "nixbld" ];
+                    };
+                  }
+                ];
+              };
+              darwinPrimary = darwin.extendModules {
+                modules = [
+                  (
+                    { config, ... }:
+                    {
+                      users.users.mutant = {
+                        uid = 701;
+                        gid = config.ids.gids.nixbld;
+                      };
+                    }
+                  )
+                ];
+              };
+              darwinMember = darwin.extendModules {
+                modules = [ { users.groups.nixbld.members = [ "mutant" ]; } ];
+              };
+            in
+            assert lib.assertMsg (
+              !(fired nixos primary || fired nixos member || fired darwin primary || fired darwin member)
+            ) "build-users-group: the real configurations trip the guard";
+            assert lib.assertMsg (fired nixosPrimary primary)
+              "build-users-group: NixOS primary-group mutant passed";
+            assert lib.assertMsg (fired nixosMember member) "build-users-group: NixOS member mutant passed";
+            assert lib.assertMsg (fired darwinPrimary primary)
+              "build-users-group: Darwin primary-group mutant passed";
+            assert lib.assertMsg (fired darwinMember member) "build-users-group: Darwin member mutant passed";
+            pkgs.runCommand "build-users-group-guard" { } "touch $out";
           nix-signing-trust =
             let
               lib = nixpkgs.lib;

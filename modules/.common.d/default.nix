@@ -243,6 +243,7 @@ in
     # Nix daemon configuration
     ./nixpkgs.nix
     ./nix-settings.nix
+    ./build-users-group.nix
     ./cache-trust.nix
     ./nix-signing.nix
     ./io-seedmatic-ndh-bringup-runtime.nix

@@ -25,13 +25,6 @@
     # The NixOS guest does not receive an identity from the vz host at all — it decrypts
     # with its own, placed by the operator from their keyring. See nixos.nix.
 
-    nix.settings = {
-      trusted-users = [
-        "root"
-        "nxmatic"
-      ];
-    };
-
     # Headscale role assignments are Darwin-specific — they live in
     # hosts/nikopol/darwin.nix so the NixOS VM does not inherit the
     # role and run a second daemon.
