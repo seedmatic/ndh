@@ -30,6 +30,7 @@ setup() {
 printf '%s\n' "ssh \$*" >>"$T/calls"
 case "\$*" in
   *readlink*) [ -e "$T/down" ] && exit 255; echo "/nix/store/gen-\$(cat "$T/gen")-system" ;;
+  *configuration-revision*) [ -e "$T/down" ] && exit 255; [ -e "$T/norev" ] || printf '%040d\n' "\$(cat "$T/gen")" ;;
 esac
 STUB
   cat >"$T/bin/nixos-rebuild" <<STUB
@@ -113,8 +114,8 @@ sw() { bash "$T/ndh-switch" "$@"; }
 @test "watch: the generation left is printed and logged before the switch" {
   run sw nikopol-nixos "$MERGED"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"previous: /nix/store/gen-1-system"* ]]
-  grep -q "started (develop), previous: /nix/store/gen-1-system" "$T/state/ndh-switch/log"
+  [[ "$output" == *"previous: /nix/store/gen-1-system (revision 0000000000000000000000000000000000000001)"* ]]
+  grep -q "started (develop), previous: /nix/store/gen-1-system (revision 0000000000000000000000000000000000000001)" "$T/state/ndh-switch/log"
 }
 @test "watch: a machine that answers after the switch is reported reachable, on its new generation" {
   run sw nikopol-nixos "$MERGED"
@@ -126,7 +127,19 @@ sw() { bash "$T/ndh-switch" "$@"; }
   run sw nikopol-nixos "$MERGED"
   [ "$status" -eq 6 ]
   [[ "$output" == *"UNREACHABLE: recover now (previous: /nix/store/gen-1-system)"* ]]
-  grep -q "UNREACHABLE after 2s: recover now (previous: /nix/store/gen-1-system)" "$T/state/ndh-switch/log"
+  [[ "$output" == *"recover: ndh-switch nikopol-nixos 0000000000000000000000000000000000000001"* ]]
+  grep -q "UNREACHABLE after 2s: recover now (previous: /nix/store/gen-1-system; ndh-switch nikopol-nixos 0000000000000000000000000000000000000001)" "$T/state/ndh-switch/log"
+}
+@test "watch: with no readable revision, the recovery says so instead of guessing" {
+  touch "$T/norev" "$T/break"
+  run sw nikopol-nixos "$MERGED"
+  [ "$status" -eq 6 ]
+  [[ "$output" == *"previous: /nix/store/gen-1-system (revision unknown)"* ]]
+  [[ "$output" == *"recover: revision unknown: by generation only"* ]]
+}
+@test "watch: a darwin host's revision is read with its darwin-version" {
+  run sw nikopol "$MERGED"
+  grep -q "darwin.nikopol /run/current-system/sw/bin/darwin-version --configuration-revision" "$T/calls"
 }
 @test "watch: a remote darwin host is probed over ssh with its own options" {
   run sw nikopol "$MERGED"
