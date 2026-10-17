@@ -1326,6 +1326,9 @@
         # bioskop-nixos's sops files are encrypted to its access point's recipient before the identity is
         # pushed (roles × keys S4, first half): the files are the ones its configuration declares.
         // {
+          sops-looks-encrypted = import ./modules/.common.d/sops.d/tests/looks-encrypted.nix {
+            inherit pkgs;
+          };
           sops-access-point-recipients-bioskop-nixos =
             let
               c = self.nixosConfigurations.bioskop-nixos.config;

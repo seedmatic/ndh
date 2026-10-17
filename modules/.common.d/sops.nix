@@ -17,9 +17,9 @@ let
   secretNamespaceDir = "/run/secrets/nix-darwin-home";
   sshKeysSopsFile = (worktreePath.of "modules/home-manager/ssh.d/keys.yaml");
   sshKeysSopsContent = builtins.readFile sshKeysSopsFile;
-  sshKeysSourceLooksEncrypted =
-    lib.hasInfix "sops:" sshKeysSopsContent
-    && !(lib.hasInfix "BEGIN OPENSSH PRIVATE KEY" sshKeysSopsContent);
+  sshKeysSourceLooksEncrypted = import ./sops.d/looks-encrypted.nix {
+    inherit lib;
+  } sshKeysSopsContent;
 
   effectiveHostProfile = ndhContext.hostProfile;
   effectiveGenerationMode = ndhContext.generationMode;
@@ -245,7 +245,7 @@ in
       {
         assertion = sshKeysSourceLooksEncrypted;
         message = ''
-          sops source-of-truth violation: modules/home-manager/ssh.d/keys.yaml appears decrypted in this worktree.
+          sops source-of-truth violation: modules/home-manager/ssh.d/keys.yaml is not sops ciphertext in its YAML form in this worktree (decrypted, or written as JSON).
           Refusing evaluation to prevent accidental plaintext secret ingestion into the Nix store.
           Re-encrypt the file with sops before rebuild.
         '';
