@@ -2,7 +2,8 @@
 """Validates the deletion areas security engraves (owned-dirs.json): the build fails on a registry the hook would
 apply too widely. Every owned and worktree pattern lies under an allowed root and below it; a pattern directly
 under /private/tmp names at least 3 characters before any wildcard; no pattern belongs to two sessions; every
-session names its conversations."""
+session names its conversations; a session's workspace, when engraved, is absolute, under the worktree store or the
+home."""
 import json
 import re
 import sys
@@ -25,6 +26,9 @@ errors, owners = [], {}
 for name, session in registry.get("sessions", {}).items():
     if not session.get("conversations"):
         errors.append(f"{name}: no conversation id, so no session could ever use its areas")
+    workspace = session.get("workspace")
+    if workspace is not None and not (isinstance(workspace, str) and re.fullmatch(r"(?:~|/Volumes/git-worktree-store)(?:/[^/\s]+)+", workspace)):
+        errors.append(f"{name}: workspace {workspace!r} is not an absolute path under /Volumes/git-worktree-store/ or ~")
     for key in ("owned", "worktrees"):
         for raw in session.get(key, []):
             for pattern in expand(raw):

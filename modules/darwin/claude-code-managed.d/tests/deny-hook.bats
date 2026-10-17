@@ -321,3 +321,5 @@ REPLICA=/Volumes/git-worktree-store/nxmatic/claude-home.d/pass/seedmatic
 @test "keys: the vz-recover private, by name"    { run hook 'ssh -i ~/.ssh/vz-recover vzhost.nikopol tart list'; denied; }
 @test "ok vz-recover through its Host block"     { run hook 'ssh vzrecover.nikopol list'; allowed; }
 @test "ok the ssh public key"                   { run hook 'cat ~/.ssh/id_ed25519.pub'; allowed; }
+@test "wake: ndh-claude-wake by name"             { run hook 'ndh-claude-wake --dry-run'; allowed; }
+@test "wake: a local ndh-claude-wake copy"        { run hook './ndh-claude-wake'; denied; }

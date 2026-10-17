@@ -237,6 +237,42 @@ live() {
   [ -f "$T/integration-sow/sessions.jsonl" ]
 }
 
+registry() { # $1 = the name engraved for the test conversation
+  printf '{"sessions": {"%s": {"conversations": ["abcd1234-0000"]}, "other": {"conversations": ["ffff0000-0000"]}}}\n' "$1" >"$T/owned-dirs.json"
+  export CLAUDE_SESSION_REGISTRY="$T/owned-dirs.json"
+}
+title_of() { printf '%s' "$1" | jq -r '.hookSpecificOutput.sessionTitle // ""'; }
+
+@test "live: an engraved session gets its registry name at every start, even when a title is already set" {
+  live; registry develop-claude
+  run start resume develop-46;      [ "$(title_of "$output")" = develop-claude ]
+  run start resume develop-claude;  [ "$(title_of "$output")" = develop-claude ]
+  run start startup;                [ "$(title_of "$output")" = develop-claude ]
+  run start fork session-autonomy;  [ "$(title_of "$output")" = develop-claude ]
+}
+@test "live: the registry name wins over the page's declared title" {
+  live; chantier; registry develop-claude
+  run start resume
+  [ "$(title_of "$output")" = develop-claude ]
+  [[ "$(printf '%s' "$output" | jq -r .hookSpecificOutput.additionalContext)" == *"(title develop-claude)"* ]]
+}
+@test "live: a session that is not engraved keeps the current rule, and no name is guessed" {
+  live; printf '{"sessions": {"other": {"conversations": ["ffff0000-0000"]}}}\n' >"$T/owned-dirs.json"
+  export CLAUDE_SESSION_REGISTRY="$T/owned-dirs.json"
+  run start resume develop-46
+  [ "$(title_of "$output")" = "" ]
+}
+@test "live: without a registry, nothing changes" {
+  live; export CLAUDE_SESSION_REGISTRY="$T/no-such.json"
+  run start resume develop-46
+  [ "$(title_of "$output")" = "" ]
+}
+@test "live: /clear sets no title, engraved or not" {
+  live; registry develop-claude
+  run start clear develop-claude
+  [ "$(title_of "$output")" = "" ]
+}
+
 chantier() { # a chantier page that claims the test conversation
   mkdir -p "$T/chantierx"
   printf '# Chantier X — LIVE\n> conversation: abcd1234-0000\n> title: chantier-x\n## 1. Etat\nok\n' >"$T/chantierx/LIVE.md"

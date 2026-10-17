@@ -16,3 +16,4 @@ sessions:
       - "~/.claude/.scratchpad.d/fixture-a/keep.md"
     conversations:
       - "00000000-0000-0000-0000-00000000000a"
+    workspace: /Volumes/git-worktree-store/seedmatic/rke2lab.d/develop

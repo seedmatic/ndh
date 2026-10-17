@@ -16,6 +16,7 @@
     "Read-only inspection of the operator's machines and services: ssh to the lab hosts without sudo, read-only incus, kubectl and gh commands, pulumi preview, git fetch."
     "Writing in the sessions' own work areas, ~/.claude/.scratchpad.d/** and the memory worktree /Volumes/git-worktree-store/seedmatic/rke2lab.d/memory/**, by the file tools or by Bash (redirections, heredocs, tee, mkdir, cp, mv), and running the helper scripts kept there. The managed denies still apply inside them."
     "Running ndh-ops <tool> from a pushed ndh revision (nix run github:seedmatic/ndh/<sha>#ndh-ops -- <tool> …) while the operator's armed delegation names that tool, and ndh-ops status or disarm at any time: ndh-ops refuses the tool otherwise and logs every run."
+    "Running ndh-claude-wake after a cold restart (the integration, or operations as its fallback): it reopens the sessions security engraved through VS Code's documented open?session= link, never runs claude itself, and the sessions it wakes stay idle until the integration messages them."
     "Switching a machine through ndh-switch <machine> <rev>, as installed by ndh (on the PATH of the system profile) or run from a pushed ndh revision (nix run github:seedmatic/ndh/<sha>#ndh-switch): it switches only a pushed revision of a known machine, and logs what it ran. The operator delegated these switches to the sessions on 2026-10-17."
   ];
 
