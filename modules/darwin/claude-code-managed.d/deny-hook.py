@@ -639,6 +639,11 @@ class Analyzer:
 
     def check(self, argv):
         prog, args = argv[0], argv[1:]
+        # By its base name, so a store path and `nix run …#<tool>` (unwrapped to the attribute) count too.
+        tools = self.table.get("operator_tools", {})
+        if prog in tools.get("programs", []):
+            self.deny(f"{prog} {tools['why']}", argv)
+            return
         if prog in ("cd", "pushd"):
             # The simple commands come in order, so a chain of cd is followed: `cd …/keyhole.d && cd keyring`.
             target = next((t for t in args if not t.startswith("-")), "~")

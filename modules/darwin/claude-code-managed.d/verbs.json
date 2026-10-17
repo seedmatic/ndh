@@ -59,7 +59,12 @@
     "security": { "verbs": ["dump-keychain"], "flag_verbs": ["-w", "-g"], "window": 1, "value_opts": [] }
   },
   "protected_branches": ["develop", "main"],
+  "operator_tools": {
+    "programs": ["ssh-keys-certify", "ssh-keys-renew", "attic-leaf-sign", "incus-cluster-cert-renew", "ndh-keyring", "ndh-identity-push"],
+    "why": "reads the operator's secrets (keys.yaml, an authority's signing slot, the keyring): the operator runs it"
+  },
   "list_extra_rules": ["mv ~/.claude*",
+                       "ssh-keys-certify", "ssh-keys-certify *", "ssh-keys-renew", "ssh-keys-renew *", "attic-leaf-sign", "attic-leaf-sign *", "incus-cluster-cert-renew", "incus-cluster-cert-renew *", "ndh-keyring", "ndh-keyring *", "ndh-identity-push", "ndh-identity-push *",
                        "nix * --to https://*", "nix * --to http://*", "nix * --to s3://*", "nix * --to file://*", "nix * --to /*",
                        "nix * --to=https://*", "nix * --to=http://*", "nix * --to=s3://*", "nix * --to=file://*", "nix * --to=/*"],
   "list_path_rules": [
