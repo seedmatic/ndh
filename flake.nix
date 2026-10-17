@@ -2208,9 +2208,13 @@
                 nixBashTrampoline = ndhNixBashTrampolineDarwin;
                 loggerTag = "ndh.ssh-keys-renew";
                 # What --public records, as ndh-keyring names it: a host key for each of the four machines
-                # (each operator seat and its guest), an sshfs key for each NixOS guest.
+                # (each operator seat and its guest), an sshfs key for each NixOS guest, a vz-recover key for
+                # each foreign vz-host.
                 machines = nixpkgs.lib.concatStringsSep " " (hosts ++ guests);
                 guests = nixpkgs.lib.concatStringsSep " " guests;
+                vzHosts = nixpkgs.lib.concatStringsSep " " (
+                  nixpkgs.lib.filter (h: catalogData.netplan.baremetal.${h}.vzHostKind == "foreign") hosts
+                );
               }
             );
           # The fleet's nix signing key, replaced on the operator seat (the interim rotation of 2026-10-13).

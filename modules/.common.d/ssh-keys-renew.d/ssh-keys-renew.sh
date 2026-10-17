@@ -39,6 +39,10 @@ unset BASH_XTRACEFD 2>/dev/null || true
 # that one seat and with that one forced command, which a certificate cannot scope as narrowly — its
 # principal would be honored by every sshd trusting the authority, and nothing would revoke it but a KRL.
 #
+# --create vz-recover-<host> --public - --usage ssh-user records, the same way and for the same reason, the
+# key the sessions recover a foreign vz-host's VMs with (ndh-keyring vz-recover-key <host>): that vz-host's
+# account authorizes it by a line the operator places, forcing ndh-vz-recover.
+#
 # --revoke-certificate KEY@SLOT --from-revision REV records the revocation of ONE host certificate, a
 # gesture of its own (roles × keys S3a, decided 2026-10-16): the union host certificate, once every
 # machine serves its own. Its key stays valid; the KRL cuts that certificate alone, by the exact key id
@@ -54,6 +58,8 @@ unset BASH_XTRACEFD 2>/dev/null || true
 #   ndh-keyring host-key MACHINE | ssh-keys-renew --create host-MACHINE --public - --usage ssh-host
 #                  [--comment TEXT] [--apply]
 #   ndh-keyring sshfs-key GUEST | ssh-keys-renew --create sshfs-GUEST --public - --usage ssh-user
+#                  [--comment TEXT] [--apply]
+#   ndh-keyring vz-recover-key HOST | ssh-keys-renew --create vz-recover-HOST --public - --usage ssh-user
 #                  [--comment TEXT] [--apply]
 #   ssh-keys-renew --revoke-certificate KEY@SLOT --from-revision REV --reason TEXT [--apply]
 #
@@ -90,11 +96,12 @@ declare -g keysYaml tmpdir decrypted today apply olderThanDays replace reason
 declare -g createName createComment createType createPublic createPublicBlob
 declare -g revokeTarget revokeRevision
 declare -ga selectKeys=() selectAuthorities=() plan=() refusals=()
-declare -ga createUsages=() createProfiles=() machines=() guests=()
-# The machines a host key is recorded for, and the NixOS guests an sshfs key is, fixed at evaluation from
-# the inventory.
+declare -ga createUsages=() createProfiles=() machines=() guests=() vzHosts=()
+# The machines a host key is recorded for, the NixOS guests an sshfs key is and the foreign vz-hosts a
+# vz-recover key is, fixed at evaluation from the inventory.
 IFS=' ' read -r -a machines <<<"@machines@"
 IFS=' ' read -r -a guests <<<"@guests@"
+IFS=' ' read -r -a vzHosts <<<"@vzHosts@"
 
 # ⚠️ stdout, NOT stderr — the opposite of the activation scripts' convention, and
 # for a reason. ndh::logger:command:run redirects stderr into the logger sink and
@@ -119,6 +126,9 @@ usage() {
 		                      [--comment TEXT] [--apply]
 		       ndh-keyring sshfs-key GUEST |
 		         ssh-keys-renew --create sshfs-GUEST --public - --usage ssh-user
+		                      [--comment TEXT] [--apply]
+		       ndh-keyring vz-recover-key HOST |
+		         ssh-keys-renew --create vz-recover-HOST --public - --usage ssh-user
 		                      [--comment TEXT] [--apply]
 		       ssh-keys-renew --revoke-certificate KEY@SLOT --from-revision REV
 		                      --reason TEXT [--apply]
@@ -147,7 +157,10 @@ usage() {
 		                     machine's host key, with --create host-MACHINE (${machines[*]})
 		                     and --usage ssh-host, then ssh-keys-certify before committing;
 		                     or a NixOS guest's sshfs key, with --create sshfs-GUEST
-		                     (${guests[*]}) and --usage ssh-user, never certified.
+		                     (${guests[*]}) and --usage ssh-user, never certified;
+		                     or a foreign vz-host's vz-recover key, with --create
+		                     vz-recover-HOST (${vzHosts[*]}) and --usage ssh-user, never
+		                     certified.
 		  --revoke-certificate KEY@SLOT
 		                     Record in revoked_certificates the ssh-host certificate
 		                     keys.KEY.slots.SLOT carried at --from-revision, by its exact
@@ -284,7 +297,7 @@ plan::consider_create() {
 		refusals+=("keys.${createName}: this public is already in keys.yaml (a slot or revoked) — a recorded key holds one role")
 		return 0
 	fi
-	if [[ "$createName" == sshfs-* ]]; then
+	if [[ "$createName" == sshfs-* || "$createName" == vz-recover-* ]]; then
 		plan+=("keys	${createName}	${createType}	record")
 		return 0
 	fi
@@ -554,6 +567,23 @@ renew::apply() {
 		return 0
 	fi
 
+	if ((createPublic == 1)) && [[ "$createName" == vz-recover-* ]]; then
+		cat <<-EOF
+
+			keys.${createName} recorded: slot ${today} holds its public only, the private stays in
+			the keyring and at ~/.ssh/vz-recover. It is never certified: ${createName#vz-recover-}'s vz-host
+			account authorizes it, forcing ndh-vz-recover.
+
+			Next, in order:
+			  1. nix run "git+file://\$PWD?rev=\$(git rev-parse HEAD)#ssh-keys-v2-validate" -- modules/home-manager/ssh.d/keys.yaml
+			  2. commit the keys.yaml diff
+			  3. on the vz-host: nix profile install the pushed revision's ${createName#vz-recover-}-vz-recover, then place
+			     the line ndh-keyring printed in that account's ~/.ssh/authorized_keys, by hand
+			  4. ssh vzrecover.${createName#vz-recover-} list
+		EOF
+		return 0
+	fi
+
 	if ((createPublic == 1)); then
 		cat <<-EOF
 
@@ -614,13 +644,14 @@ renew::apply() {
 }
 
 # A recorded key is ed25519, on no profile (the placement, ndh-identity-push, puts it on its machine,
-# not keys.yaml), of one role: a machine's host key (host-MACHINE, ssh-host), or a NixOS guest's sshfs
-# key (sshfs-GUEST, ssh-user).
+# not keys.yaml), of one role: a machine's host key (host-MACHINE, ssh-host), a NixOS guest's sshfs key
+# (sshfs-GUEST, ssh-user), or a foreign vz-host's vz-recover key (vz-recover-HOST, ssh-user).
 public::check_record() {
 	local name role usageTag prefix placeholder
 	local -a allowed
 	case "$createName" in
 		sshfs-*) role="an sshfs key" usageTag=ssh-user prefix=sshfs- placeholder=GUEST allowed=("${guests[@]}") ;;
+		vz-recover-*) role="a vz-recover key" usageTag=ssh-user prefix=vz-recover- placeholder=HOST allowed=("${vzHosts[@]}") ;;
 		*) role="a host key" usageTag=ssh-host prefix=host- placeholder=MACHINE allowed=("${machines[@]}") ;;
 	esac
 	if [[ "${createUsages[*]}" != "$usageTag" ]]; then

@@ -57,6 +57,7 @@ EOF
   printf 'source "%s"\nndh::logger:command:run() { shift; ndh::logger:command:invoke "$@"; return "$NDH_LOGGER_COMMAND_RC"; }\n' "$NDH_LOGGER_SH" >"$BATS_TEST_TMPDIR/trampoline.sh"
   sed -e "s#@nixBashTrampoline@#$BATS_TEST_TMPDIR/trampoline.sh#" -e 's#@loggerTag@#test#' \
     -e 's#@machines@#bioskop nikopol bioskop-nixos nikopol-nixos#' -e 's#@guests@#bioskop-nixos nikopol-nixos#' \
+    -e 's#@vzHosts@#nikopol#' \
     "$BATS_TEST_DIRNAME/../ssh-keys-renew.sh" >"$BATS_TEST_TMPDIR/ssh-keys-renew"
   today="$(date +%y-%m-%d)"
 }
@@ -323,6 +324,40 @@ sshfs_record() {
   [ "$status" -eq 0 ]
   [[ "$output" == *"sshfs-bioskop-nixos"*"${today} (new entry, public only, no certificate)"* ]]
   cmp "$keys" "$BATS_TEST_TMPDIR/before"
+}
+
+vz_recover_record() {
+  (cd "$repo" && bash -euo pipefail "$BATS_TEST_TMPDIR/ssh-keys-renew" --create vz-recover-nikopol --public - --usage ssh-user "$@")
+}
+
+@test "--public --apply records a vz-recover key: public only, in clear, no authority and no certificate" {
+  host_public >"$BATS_TEST_TMPDIR/line"
+  entry='.keys."vz-recover-nikopol"'
+  decrypted | yq eval "del($entry)" - >"$BATS_TEST_TMPDIR/before.yaml"
+  run vz_recover_record --apply <"$BATS_TEST_TMPDIR/line"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"never certified"*"forcing ndh-vz-recover"*"ssh vzrecover.nikopol list"* ]]
+  [[ "$output" != *"ssh-keys-certify"* ]]
+  [ "$(yq eval -r "$entry.usage | join(\",\")" "$keys")" = ssh-user ]
+  [ "$(yq eval -r "$entry | has(\"authority\") or has(\"cert_usage\")" "$keys")" = false ]
+  [ "$(yq eval -r "$entry.profiles | length" "$keys")" = 0 ]
+  [ "$(yq eval -r "$entry.slots.\"$today\" | keys | join(\",\")" "$keys")" = public ]
+  [ "$(yq eval -r "$entry.slots.\"$today\".public" "$keys")" = "$(cut -d' ' -f2 <"$BATS_TEST_TMPDIR/line")" ]
+  decrypted | yq eval "del($entry)" - >"$BATS_TEST_TMPDIR/after.yaml"
+  cmp "$BATS_TEST_TMPDIR/before.yaml" "$BATS_TEST_TMPDIR/after.yaml"
+}
+
+@test "a vz-recover record is a foreign vz-host's, of usage ssh-user only" {
+  host_public >"$BATS_TEST_TMPDIR/line"
+  for name in vz-recover-bioskop vz-recover-nikopol-nixos vz-recover-elsewhere; do
+    run bash -c 'cd "$1" && bash -euo pipefail "$2" --create "$4" --public - --usage ssh-user --apply <"$3"' _ \
+      "$repo" "$BATS_TEST_TMPDIR/ssh-keys-renew" "$BATS_TEST_TMPDIR/line" "$name"
+    [ "$status" -eq 64 ]
+    [[ "$output" == *"vz-recover-HOST, HOST one of: nikopol"* ]]
+  done
+  run renew --create vz-recover-nikopol --public - --usage ssh-host </dev/null
+  [ "$status" -eq 64 ]
+  [[ "$output" == *"a vz-recover key: its one --usage is ssh-user"* ]]
 }
 
 @test "an sshfs record is a NixOS guest's, of usage ssh-user only, on no profile" {

@@ -18,5 +18,5 @@ pkgs.writeShellApplication {
   + builtins.readFile ./ndh-vz-recover.sh;
   # The authorized_keys options of the vz-recover key: no pty, no forwarding, no agent, no rc, and this
   # program in place of whatever the client asks. The real-sshd check serves this very string.
-  passthru.authorizedOptions = command: ''restrict,command="${command}"'';
+  passthru.authorizedOptions = (import ./authorized-options.nix).options;
 }
