@@ -1202,6 +1202,11 @@
             pkgs = pkgsForLinux;
             inherit (self.darwinConfigurations.bioskop.config.ndh.sshfs) authorizedOptions;
           };
+          # The vz-recover key's forced command: four verbs or a refusal, and no shell through a real sshd.
+          vz-recover-bats = import ./pkgs/vz-recover.d/tests/package.nix {
+            pkgs = pkgsForLinux;
+            inherit (self.packages.aarch64-darwin.nikopol-vz-recover) authorizedOptions;
+          };
           incus-cluster-cert-bats = import ./modules/.common.d/incus-cluster-cert.d/tests/package.nix {
             inherit pkgs;
           };
@@ -1685,6 +1690,30 @@
           # 2a′, its twin: the cache containers' TLS leaves.
           attic-leaf-sign = self.darwinConfigurations.bioskop.config.ndh.atticLeaf.package;
         }
+        # The vz-recover key's forced command, one per foreign vz-host: installed by the operator from a pushed
+        # revision into that host's account profile, the path its authorized_keys line names. Its VMs are the
+        # NixOS guest its darwin config materializes and the darwin guest, which Tart names after the metalspace.
+        // nixpkgs.lib.optionalAttrs (system == "aarch64-darwin") (
+          nixpkgs.lib.mapAttrs' (
+            host: _:
+            nixpkgs.lib.nameValuePair "${host}-vz-recover" (
+              import ./pkgs/vz-recover.d/package.nix {
+                pkgs = systemPkgs;
+                inherit (nixpkgs) lib;
+                vms = [
+                  {
+                    name = self.darwinConfigurations.${host}.config.tart.configGenerator.vmName;
+                    kind = "nixos";
+                  }
+                  {
+                    name = host;
+                    kind = "darwin";
+                  }
+                ];
+              }
+            )
+          ) (nixpkgs.lib.filterAttrs (_: bm: bm.vzHostKind == "foreign") catalogData.netplan.baremetal)
+        )
         // {
           # manage-tailnet on PATH for BOTH systems (a packages output, not just the app):
           # rke2lab's flox-catalogue re-exports packages.aarch64-linux.manage-tailnet so the
