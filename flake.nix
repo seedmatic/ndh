@@ -1557,6 +1557,10 @@
             pkgs = pkgsForLinux;
             inherit (self.darwinConfigurations.bioskop.config.ndh.sshfs) authorizedOptions;
           };
+          # The attic tokens' boot-time unseal: shapes checked, the previous generation as fallback, nothing printed.
+          attic-tokens-unseal-bats = import ./modules/.common.d/attic-tokens.d/tests/package.nix {
+            inherit pkgs;
+          };
           # The vz-recover key's forced command: five verbs or a refusal, and no shell through a real sshd.
           vz-recover-bats = import ./pkgs/vz-recover.d/tests/package.nix {
             pkgs = pkgsForLinux;

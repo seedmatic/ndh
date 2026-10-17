@@ -7,6 +7,7 @@
 {
   config,
   lib,
+  pkgs,
   ndh,
   ...
 }:
@@ -15,6 +16,14 @@ let
   account = "_ndh-attic";
   home = "/var/db/ndh-attic-watch-store";
   log = "${home}/watch-store.log";
+  # Its identity is its own host key, the access point the tokens are sealed to, converted in memory.
+  unseal = import ../.common.d/attic-tokens.d/package.nix {
+    inherit pkgs lib;
+    inherit (ndh.context.catalog) netplan;
+    inherit (cfg) paths;
+    identityMode = "hostkey";
+    identity = config.ndh.hostKey.file;
+  };
 in
 {
   config = lib.mkMerge [
@@ -31,6 +40,16 @@ in
         writeTokenOwner = account;
       };
     }
+
+    (lib.mkIf (cfg.read.enable || cfg.watchStore.enable) {
+      # The tokens rest as ciphertext; /var/run is emptied at every boot, so they are unsealed at load.
+      launchd.daemons.ndh-attic-tokens.serviceConfig = {
+        Label = ndh.store.mkLaunchdLabel "attic-tokens";
+        ProgramArguments = [ (lib.getExe unseal) ];
+        RunAtLoad = true;
+        StandardErrorPath = "/var/log/ndh-attic-tokens.log";
+      };
+    })
 
     (lib.mkIf cfg.watchStore.enable {
       users = {
