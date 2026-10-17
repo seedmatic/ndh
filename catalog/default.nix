@@ -48,6 +48,9 @@ in
   # catalog/tailnet/default.nix.
   tailnet = import ./tailnet;
 
+  # The live machines the switch verbs act on (ndh-switch, fleet-switch). See catalog/machines.nix.
+  machines = import ./machines.nix;
+
   # v2 has a single OS user; the catalog holds it directly without the
   # former per-profile wrapper. Hoisted into the `let` above so the per-baremetal entries can
   # default their operator login to it instead of restating the name.

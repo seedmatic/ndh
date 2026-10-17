@@ -21,6 +21,16 @@ let
   userName = profile.user.name;
   catalogUserName = catalog.user.name;
   inventoryHostNames = builtins.attrNames (inventory.hosts or { });
+  inherit
+    (import ../.common.d/operator-aliases.nix {
+      inherit lib;
+      catalog = ndhContext.catalog or { };
+    })
+    lanDomain
+    operatorAliasesOf
+    tailnetHostAlias
+    hostAliases
+    ;
   sshUserForHost = _host: catalogUserName;
   # Canonical operator alias layout: `{service}.{host}` with consistent auth.
   # Service names match the headscale `dns.extra_records` namespace
@@ -96,27 +106,8 @@ let
   # certificate carries. It resolves on its own (measured above), so the block exists only for the User
   # and the identity.
   #
-  # `darwin.` still needs its HostName, and that asymmetry is a choice of plane: `darwin.<host>` resolves
-  # in its zone to the Mac's HOME-LAN reservation (catalog segment hosts), which answers only while the Mac
-  # sits on the home LAN, so the alias keeps the tailnet path for ssh. Its HostName is the FULLY qualified
-  # MagicDNS name, for the reason above: a single label goes through the search list, and bioskop has no
-  # MagicDNS search domain (measured 2026-10-17: `darwin.nikopol` → `nikopol` did not resolve).
-  # Each alias with the name its HostName points at (null: none written). The same records render the
-  # stanzas and list the aliases checked strictly, so an alias added here cannot miss the strict list.
-  operatorAliasesOf = host: [
-    {
-      service = "darwin";
-      hostName =
-        if tailnetDomain != "" then
-          tailnetAlias host
-        else
-          throw "ssh-tailnet-hosts: darwin.${host} needs the catalog's tailnet domain for a fully qualified HostName";
-    }
-    {
-      service = "nixos";
-      hostName = null;
-    }
-  ];
+  # `darwin.` still needs its HostName: see operatorAliasesOf in modules/.common.d/operator-aliases.nix, the
+  # one definition of these names, which the switch verbs dial too.
   operatorAliasesForHost =
     host:
     lib.concatMapStringsSep "\n" (alias: operatorAliasForService host alias.service alias.hostName) (
@@ -210,26 +201,6 @@ let
       IdentitiesOnly yes
   '';
 
-  tailnetDomain =
-    if ndhContext ? catalog && ndhContext.catalog.netplan ? tailnet then
-      ndhContext.catalog.netplan.tailnet.domain
-    else
-      "";
-  tailnetAlias = host: if tailnetDomain != "" then "${host}${tailnetDomain}" else null;
-  # LAN domain from the catalog (single source, dotted `.lan`) — same guarded
-  # shape as tailnetDomain above, no re-typed literal.
-  lanDomain =
-    if ndhContext ? catalog && ndhContext.catalog.netplan ? lan then
-      ndhContext.catalog.netplan.lan.domain
-    else
-      "";
-  lanAlias = host: if lanDomain != "" then "${host}${lanDomain}" else null;
-  tailnetHostAlias =
-    host:
-    lib.optional (tailnetDomain != "") {
-      name = "${host}-ts";
-      hostName = tailnetAlias host;
-    };
   # ssh matches a Host line against the alias, never its HostName: an alias to a fleet machine is strict
   # only when listed itself. The system's aliases too (nix-store.<peer>), which this file's `Host *`
   # would otherwise shadow for the operator.
@@ -251,15 +222,6 @@ let
         )
     )
     ++ (osConfig.opensshPolicy.fleetHostAliases or [ ]);
-  hostAliases =
-    host:
-    lib.filter (x: x != null && x != "") [
-      host
-      (lanAlias host)
-      "${host}.local"
-      (tailnetAlias "${host}-ts")
-      (tailnetAlias host)
-    ];
 in
 {
   programs.ssh.extraConfig = lib.mkAfter ''
