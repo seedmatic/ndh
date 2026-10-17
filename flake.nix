@@ -1169,6 +1169,34 @@
           nix-signing-place-bats = import ./modules/.common.d/nix-signing.d/tests/package.nix {
             inherit pkgs;
           };
+          # keys.schema.yaml keeps a nix signing public on host keys: the same slot passes on an ssh-host key and is
+          # refused on an ssh-user one (the mutant a mistaken record would write).
+          ssh-keys-schema-nix-signing =
+            pkgs.runCommand "ssh-keys-schema-nix-signing"
+              {
+                nativeBuildInputs = [
+                  pkgs.check-jsonschema
+                  pkgs.openssh
+                  pkgs.yq-go
+                ];
+              }
+              ''
+                ssh-keygen -q -t ed25519 -N "" -C k -f k
+                doc() { # <usage>
+                  B="$(cut -d' ' -f2 k.pub)" U="$1" N="seedmatic-x-1:$(printf 'A%.0s' $(seq 43))=" yq -n '
+                    .authorities = {} | .keys.k.type = "ssh-ed25519" | .keys.k.usage = [strenv(U)] |
+                    .keys.k.profiles = [] | .keys.k.slots."26-01-01".public = strenv(B) |
+                    .keys.k.slots."26-01-01".nixSigning = strenv(N)' >"$1.yaml"
+                }
+                doc ssh-host
+                doc ssh-user
+                check-jsonschema --schemafile ${./modules/home-manager/ssh.d/keys.schema.yaml} ssh-host.yaml
+                if check-jsonschema --schemafile ${./modules/home-manager/ssh.d/keys.schema.yaml} ssh-user.yaml; then
+                  echo "FAIL: a nixSigning on an ssh-user key passed the schema" >&2
+                  exit 1
+                fi
+                touch $out
+              '';
           # The fleet trusts every current slot's nixSigning and nothing else: a host key's two slots, never a slot
           # without one or a non-host key, and a retired slot (deleted from keys.yaml) leaves the list with it. And
           # every key a machine signs with is in every machine's trust.
