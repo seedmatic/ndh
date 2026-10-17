@@ -1323,6 +1323,23 @@
               "nikopol-nixos"
             ]
         )
+        # bioskop-nixos's sops files are encrypted to its access point's recipient before the identity is
+        # pushed (roles × keys S4, first half): the files are the ones its configuration declares.
+        // {
+          sops-access-point-recipients-bioskop-nixos =
+            let
+              c = self.nixosConfigurations.bioskop-nixos.config;
+              seat = self.darwinConfigurations.bioskop.config.ndh.keysYaml.keys."host-bioskop";
+            in
+            import ./modules/.common.d/sops.d/tests/access-point-recipients.nix {
+              inherit pkgs;
+              name = "bioskop-nixos";
+              files = nixpkgs.lib.unique (map (x: x.sopsFile) (builtins.attrValues c.sops.secrets));
+              seatPublic = (nixpkgs.lib.last (builtins.attrValues seat.slots)).public;
+              # The identity both NixOS guests hold today (.sops.yaml), until each decrypts with its own.
+              current = "age1fe9gs0mljq82cwxasugyrjd4pqg9h4uym5r3rwfc2084q558hd7qt4845j";
+            };
+        }
         # The operator's own client config carries the same list, on every operator seat and NixOS guest.
         // {
           ssh-client-operator-revocation =

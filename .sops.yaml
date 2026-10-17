@@ -13,15 +13,17 @@
 #                                         rewrites.
 #   age1trxp…   bioskop host key        — the DARWIN host.
 #   age17q5k…   nikopol host key        — the DARWIN guest.
-#   age1fe9g…   nikopol-nixos            — ★ GENERATED ON THAT GUEST (/var/lib/sops-nix/
-#                                         nikopol-nixos.age); its private never leaves it. NOT
-#                                         derived from its sshd host key, which is the `rdp-host`
-#                                         material and travels in keys.yaml. Recipient of the
-#                                         three files that guest declares, and of nothing else.
+#   age1fe9g…   the NixOS guests, interim — generated on nikopol-nixos, held by BOTH guests today
+#                                         (/var/lib/sops-nix/<guest>.age). Recipient of the three
+#                                         files the guests declare, and of nothing else. It goes
+#                                         once each access point decrypts with its own (S4).
+#   age1avmc…   the bioskop access point — `ssh-to-age` of host-bioskop's recorded PUBLIC (the
+#                                         operator seat's host key, roles × keys): the identity
+#                                         ndh-identity-push places in bioskop-nixos. Added beside
+#                                         age1fe9g… first, so the push lands on files it already
+#                                         opens (S4, first half).
 #
-# ⚠️ bioskop-nixos still decrypts with the OPERATOR identity, imported from its host's
-# /srv/host/sops.d share — the same exposure, on a machine nobody else manages; it gets the
-# nikopol-nixos treatment next.  And the narrow rule below narrows LESS than it looks:
+# ⚠️ The narrow rule below narrows LESS than it looks:
 # keys.yaml is decrypted whole by every host, so the guest still opens every SSH private.
 # What it buys is that nothing travels — the real narrowing is one sops file per consumer.
 #
@@ -48,12 +50,14 @@ creation_rules:
       - 'age1trxpn8efl5jctwakgpxxjd2h6x5h2m40ggugxl909qsj0h99p9yqkk8tej'
       - 'age17q5kw0epcl9ft7ecegr20040vx3g86z0f7vtecn9t8kk27qjspaqp66pp4'
       - 'age1fe9gs0mljq82cwxasugyrjd4pqg9h4uym5r3rwfc2084q558hd7qt4845j'
+      - 'age1avmcejlekelhkm02v3algs9z37fsp27658zpjagkr5w7uxhqguesdmmz0m'
   - path_regex: '(^|/)\.secrets$'
     age:
       - 'age1hlvu7l7kefeum8drzvc5jp0jhgsqw2h3t3a8rmzvx05lcrsmx48q2ehxsk'
       - 'age1trxpn8efl5jctwakgpxxjd2h6x5h2m40ggugxl909qsj0h99p9yqkk8tej'
       - 'age17q5kw0epcl9ft7ecegr20040vx3g86z0f7vtecn9t8kk27qjspaqp66pp4'
       - 'age1fe9gs0mljq82cwxasugyrjd4pqg9h4uym5r3rwfc2084q558hd7qt4845j'
+      - 'age1avmcejlekelhkm02v3algs9z37fsp27658zpjagkr5w7uxhqguesdmmz0m'
   # Text formats keep the encrypted comment regex for inline markers.
   - path_regex: '.*\.(ya?ml|json|env|ini|toml|cert)$'
     encrypted_comment_regex: 'sops:encrypted'
