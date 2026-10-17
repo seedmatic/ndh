@@ -281,6 +281,61 @@ in
       default = [ "cache.nixos.org-1" ];
       description = "Key names whose signatures make a path skipped at upload (attic's upstream filter).";
     };
+
+    tokenTargets = lib.mkOption {
+      type = lib.types.listOf (
+        lib.types.submodule {
+          options = {
+            machine = lib.mkOption { type = lib.types.str; };
+            metalspace = lib.mkOption { type = lib.types.str; };
+            publicKey = lib.mkOption {
+              type = lib.types.str;
+              description = "Its access point's operator-seat host key, PUBLIC (`ssh-ed25519 AAAA…`).";
+            };
+          };
+        }
+      );
+      # Every metalspace's two machines — its darwin host and its NixOS guest — that share one access
+      # point, whose age recipient is ssh-to-age of the operator seat's host key (roles x keys, S3b).
+      # An access point with no host-<seat> key recorded yet is left out: its machines wait for it.
+      default = lib.concatLists (
+        lib.mapAttrsToList (
+          host: bm:
+          let
+            slots = (config.ndh.keysYaml.keys."host-${host}" or { }).slots or { };
+            newest = lib.last (lib.sort lib.lessThan (lib.attrNames slots));
+            key = "${config.ndh.keysYaml.keys."host-${host}".type or "ssh-ed25519"} ${slots.${newest}.public}";
+          in
+          lib.optionals (slots != { }) (
+            map
+              (machine: {
+                inherit machine;
+                metalspace = host;
+                publicKey = key;
+              })
+              [
+                host
+                bm.nixosHostname
+              ]
+          )
+        ) (netplan.baremetal or { })
+      );
+      defaultText = lib.literalExpression "each metalspace's darwin host and NixOS guest, with its host-<seat> public key";
+      description = "The machines attic-token-issue issues for, each with its access point's public key.";
+    };
+
+    tokenValidity = {
+      read = lib.mkOption {
+        type = lib.types.str;
+        default = "7 days";
+        description = "A read token's life: short, re-issued on the schedule the operator decides.";
+      };
+      write = lib.mkOption {
+        type = lib.types.str;
+        default = "90 days";
+        description = "A write token's life.";
+      };
+    };
   };
 
   config = lib.mkIf cfg.enable {
@@ -313,6 +368,38 @@ in
         };
       };
     };
+
+    # The operator (or the drop-box's channel) runs it on this NixOS guest: ciphertext only comes out.
+    environment.systemPackages = [
+      (pkgs.writeShellApplication {
+        name = "attic-token-issue";
+        runtimeInputs = [
+          config.virtualisation.incus.package
+          pkgs.age
+          pkgs.ssh-to-age
+          pkgs.coreutils
+          pkgs.findutils
+        ];
+        text = ''
+          CACHE_FQDN=${lib.escapeShellArg cfg.fqdn}
+          METALSPACE=${
+            lib.escapeShellArg (
+              if cfg.metalspace != null then cfg.metalspace else lib.removePrefix "attic." cfg.fqdn
+            )
+          }
+          CACHE_NAME=${lib.escapeShellArg cfg.cacheName}
+          PROJECT=${lib.escapeShellArg config.ndh.incusNixosContainers.project}
+          INSTANCE=attic
+          TARGETS=${
+            lib.escapeShellArg (
+              lib.concatMapStringsSep "\n" (t: "${t.machine} ${t.metalspace} ${t.publicKey}") cfg.tokenTargets
+            )
+          }
+          set -- "''${1:?usage: attic-token-issue <out dir>}" ${lib.escapeShellArg cfg.tokenValidity.read} ${lib.escapeShellArg cfg.tokenValidity.write}
+        ''
+        + builtins.readFile ./attic-cache.d/token-issue.sh;
+      })
+    ];
 
     systemd.services.ndh-attic-dataset = {
       description = "The cache container's dataset, under its quota";
