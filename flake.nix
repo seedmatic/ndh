@@ -1207,6 +1207,36 @@
             pkgs = pkgsForLinux;
             inherit (self.packages.aarch64-darwin.nikopol-vz-recover) authorizedOptions;
           };
+          # The vz-recover alias on the operator seat, as a connection resolves it (`ssh -G`, first value wins):
+          # one identity and no agent, publickey only, no forwarding, and the pinned host key alone.
+          vz-recover-ssh-alias =
+            let
+              home = nixpkgs.lib.head (
+                nixpkgs.lib.attrValues self.darwinConfigurations.bioskop.config.home-manager.users
+              );
+              bm = catalogData.netplan.baremetal.nikopol;
+              alias = "vzrecover.${bm.domain}";
+            in
+            # The fleet's KnownHostsCommand applies to every name, and vouches for the fleet's names only.
+            assert nixpkgs.lib.assertMsg (
+              !(builtins.elem alias self.fleetHostNames)
+            ) "${alias} is a fleet name: the host authority would vouch for it";
+            pkgs.runCommand "vz-recover-ssh-alias" { nativeBuildInputs = [ pkgs.openssh ]; } ''
+              ssh -G -F ${home.home.file.".ssh/config".source} ${alias} >effective
+              want() { grep -qxF "$1" effective || { echo "FAIL: no '$1' in"; cat effective; exit 1; }; }
+              want "hostname vzhost.${bm.domain}"
+              want "identityfile ~/.ssh/vz-recover"
+              [ "$(grep -c '^identityfile ' effective)" -eq 1 ] || { echo "FAIL: identities:"; grep '^identityfile ' effective; exit 1; }
+              for line in "identitiesonly yes" "identityagent none" "preferredauthentications publickey" \
+                "passwordauthentication no" "kbdinteractiveauthentication no" "batchmode yes" "requesttty false" \
+                "forwardagent no" "clearallforwardings yes" "hostkeyalias ${alias}" "stricthostkeychecking true" \
+                "globalknownhostsfile /dev/null" "updatehostkeys false"; do
+                want "$line"
+              done
+              known="$(awk '$1 == "userknownhostsfile" { print $2 }' effective)"
+              [ "$(cat "$known")" = "${alias} ${bm.vzHostKey}" ] || { echo "FAIL: known hosts: $(cat "$known")"; exit 1; }
+              touch $out
+            '';
           incus-cluster-cert-bats = import ./modules/.common.d/incus-cluster-cert.d/tests/package.nix {
             inherit pkgs;
           };
@@ -2208,9 +2238,13 @@
                 nixBashTrampoline = ndhNixBashTrampolineDarwin;
                 loggerTag = "ndh.ssh-keys-renew";
                 # What --public records, as ndh-keyring names it: a host key for each of the four machines
-                # (each operator seat and its guest), an sshfs key for each NixOS guest.
+                # (each operator seat and its guest), an sshfs key for each NixOS guest, a vz-recover key for
+                # each foreign vz-host.
                 machines = nixpkgs.lib.concatStringsSep " " (hosts ++ guests);
                 guests = nixpkgs.lib.concatStringsSep " " guests;
+                vzHosts = nixpkgs.lib.concatStringsSep " " (
+                  nixpkgs.lib.filter (h: catalogData.netplan.baremetal.${h}.vzHostKind == "foreign") hosts
+                );
               }
             );
           # The fleet's nix signing key, replaced on the operator seat (the interim rotation of 2026-10-13).

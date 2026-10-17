@@ -21,6 +21,7 @@ setup() {
   pass init "$personal" >/dev/null
   pass init -p seedmatic "${seedmatic}!" >/dev/null
 
+  vzOptions='restrict,command="/Users/corp/.nix-profile/bin/ndh-vz-recover"'
   realPass="$(command -v pass)"
   cat >"$t/bin/pass" <<EOF
 $shebang
@@ -31,6 +32,7 @@ EOF
   {
     printf 'set -euo pipefail\n'
     printf 'machines=(bioskop nikopol bioskop-nixos nikopol-nixos) guests=(bioskop-nixos nikopol-nixos)\n'
+    printf 'vzHosts=(nikopol)\ndeclare -A vzRecoverOptions=([nikopol]=%q)\n' "$vzOptions"
     printf 'recipient=%s generate=%q\n' \
       "$seedmatic" "$t/gen"
     cat "$here/ndh-keyring.sh"
@@ -172,4 +174,37 @@ entry() { printf '%s' "$PASSWORD_STORE_DIR/seedmatic/${2:-host-key}/$1.gpg"; }
   [ "$status" -eq 1 ]
   [[ $output == *"usage: ndh-keyring host-key <machine> | sshfs-key <guest>"* ]]
   [ -z "$(find "$PASSWORD_STORE_DIR/seedmatic" -name '*.gpg')" ]
+}
+
+@test "a vz-recover key is generated into seedmatic/vz-recover-key/, installed 0600, and its line printed on stderr" {
+  TMPDIR="$t/tmp" PATH="$t/bin:$PATH" run --separate-stderr bash "$t/keyring" vz-recover-key nikopol
+  [ "$status" -eq 0 ]
+  # stdout is the one public line ssh-keys-renew --public - records.
+  [[ $output == "ssh-ed25519 "*" vz-recover-nikopol" ]]
+  [ "$(wc -l <<<"$output")" -eq 1 ]
+  read -r _ blob _ <<<"$output"
+  [ "$(pass show seedmatic/vz-recover-key/nikopol | ssh-to-age -private-key | age-keygen -y)" = "$(printf '%s\n' "$output" | ssh-to-age)" ]
+  [ "$(stat -c %a "$HOME/.ssh/vz-recover" 2>/dev/null || stat -f %Lp "$HOME/.ssh/vz-recover")" = 600 ]
+  [ "$(ssh-keygen -y -f "$HOME/.ssh/vz-recover" | awk '{ print $2 }')" = "$blob" ]
+  grep -qxF "$vzOptions ssh-ed25519 $blob vz-recover-nikopol" <<<"$stderr"
+  [[ $output$stderr != *"PRIVATE KEY"* ]]
+  [ ! -e "$HOME/.ssh/vz-recover.new" ]
+}
+
+@test "a vz-recover key is for a foreign vz-host only, and generates nothing otherwise" {
+  for name in bioskop nikopol-nixos elsewhere; do
+    keyring vz-recover-key "$name"
+    [ "$status" -eq 1 ]
+    [[ $output == *"not one of the inventory's foreign vz-hosts"* ]]
+  done
+  [ ! -e "$PASSWORD_STORE_DIR/seedmatic/vz-recover-key" ] && [ ! -e "$HOME/.ssh/vz-recover" ]
+}
+
+@test "an installed vz-recover file is never overwritten: refused before anything is generated" {
+  mkdir -p "$HOME/.ssh" && printf 'kept\n' >"$HOME/.ssh/vz-recover"
+  keyring vz-recover-key nikopol
+  [ "$status" -eq 1 ]
+  [[ $output == *"never overwritten"* ]]
+  [ ! -e "$(entry nikopol vz-recover-key)" ]
+  [ "$(<"$HOME/.ssh/vz-recover")" = kept ]
 }

@@ -160,6 +160,37 @@ let
         PreferredAuthentications publickey
     '';
 
+  # The vz-recover key's path to each foreign vz-host (roles × keys): that account forces ndh-vz-recover on
+  # the key, four verbs, so any session may call `ssh vzrecover.<domain> <verb> [vm]`, and this block alone
+  # names the key file (sessions are denied reading it). One identity, no agent, publickey only, so no other
+  # key that account trusts is ever offered: IdentityFile accumulates over every matching block, so this one
+  # comes before any block that adds one, which the vz-recover-ssh-alias check holds. The
+  # host key is the one the operator read on that machine, pinned strictly under this alias alone: a
+  # foreign vz-host presents no fleet certificate. The fleet's KnownHostsCommand still applies (the leading
+  # `Host *` sets it first), but it vouches for the fleet's names only, which this alias is not. Placed
+  # before this file's `Host *`, whose values would win otherwise.
+  vzRecoverAliases = lib.concatMapStrings (bm: ''
+    Host vzrecover.${bm.domain}
+      HostName vzhost.${bm.domain}
+      User ${bm.vzHostUser}
+      IdentityFile ~/.ssh/vz-recover
+      IdentitiesOnly yes
+      IdentityAgent none
+      PreferredAuthentications publickey
+      PasswordAuthentication no
+      KbdInteractiveAuthentication no
+      BatchMode yes
+      RequestTTY no
+      ForwardAgent no
+      ClearAllForwardings yes
+      HostKeyAlias vzrecover.${bm.domain}
+      StrictHostKeyChecking yes
+      UserKnownHostsFile ${pkgs.writeText "vzrecover-${bm.domain}-known-hosts" "vzrecover.${bm.domain} ${bm.vzHostKey}\n"}
+      GlobalKnownHostsFile /dev/null
+      UpdateHostKeys no
+
+  '') (lib.filter (bm: bm.vzHostKind == "foreign") (lib.attrValues catalog.netplan.baremetal));
+
   # `nerd-nixos` — the NixOS guest materialised as a Tart VM on a bare-metal Mac
   # (on each vz-host, before it becomes `<seat>-nixos`).  It is not an inventory host (a guest, not a managed
   # Darwin host), so the per-host loop above never emits it; this single alias is
@@ -236,6 +267,7 @@ in
         # Generated/maintained list of Tailscale (MagicDNS) hosts.
         ###############################################################################
 
+    ${vzRecoverAliases}
         # Every fleet name presents a certificate from the host authority, which
         # KnownHostsCommand and /etc/ssh/ssh_known_hosts trust for these names only:
         # a renewed key still verifies, so they are checked strictly, and an unknown
