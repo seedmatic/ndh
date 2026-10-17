@@ -75,10 +75,11 @@ export UPSTREAMS
 # shellcheck disable=SC2016 # $1 is the inner bash's, intentionally single-quoted
 cut -f1 "$work/closure.tsv" | xargs -P "${JOBS:-16}" -I{} bash -c 'upstream_of "$1"' _ {} | sort >"$work/upstream"
 
-# The content guard (the shapes of rke2lab's token_shape_guard): a hit makes the path private.
+# The content guard (the shapes of rke2lab's token_shape_guard, and AWS's: the sessions reach Bedrock
+# through an AWS profile on these machines): a hit makes the path private.
 guard_hits() { # <path> → exit 0 when the path carries a secret shape
   LC_ALL=C grep -a -r -l -q -E \
-    'AGE-SECRET-KEY-1[A-Z0-9]{50,}|eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}|tskey-[A-Za-z0-9-]{16,}|gh[opsu]_[A-Za-z0-9]{36}|github_pat_[A-Za-z0-9_]{22,}|dckr_pat_[A-Za-z0-9_-]{20,}|glpat-[A-Za-z0-9_-]{20,}' \
+    'AGE-SECRET-KEY-1[A-Z0-9]{50,}|eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}|tskey-[A-Za-z0-9-]{16,}|gh[opsu]_[A-Za-z0-9]{36}|github_pat_[A-Za-z0-9_]{22,}|dckr_pat_[A-Za-z0-9_-]{20,}|glpat-[A-Za-z0-9_-]{20,}|(^|[^A-Z0-9])(AKIA|ASIA)[A-Z0-9]{16}([^A-Z0-9]|$)|aws_(secret_access_key|session_token)["'\'']?[[:space:]]*[=:][[:space:]]*["'\'']?[A-Za-z0-9/+=]{20,}' \
     "$1" && return 0
   # A private-key armour WITH a body, or a sops annotation not followed by ENC[.
   # shellcheck disable=SC2016 # awk's $0, intentionally single-quoted

@@ -28,6 +28,9 @@ setup() {
   mk hdr1-ssh "$(printf -- 'grep for -----BEGIN OPENSSH PRIVATE KEY-----\nto tell a key file')"
   mk sopb-secret "$(printf '# sops:encrypted\nprivate: hunter2')"
   mk sopk-secret "$(printf '# sops:encrypted\nprivate: ENC[AES256_GCM,data:x]')"
+  mk awsk-cfg "key=AKIA$(printf 'Z%.0s' {1..16})"
+  mk awss-cred "aws_secret_access_key = $(printf 'w%.0s' {1..40})"
+  mk awsd-doc "the AKIA prefix names an access key; set aws_secret_access_key = <yours>"
 
   # sys reaches everything; the allow-list has two attributes.
   printf '%s\n' "$s/sys1-system" >"$t/build.a"
@@ -49,7 +52,11 @@ setup() {
     p hdr1-ssh '"/d/h.drv"'
     p sopb-secret '"/d/sb.drv"'
     p sopk-secret '"/d/sk.drv"'
-    p sys1-system '"/d/s.drv"' pkga-tool pkgb-wrapper leak1-cfg armr-keys hdr1-ssh sopb-secret sopk-secret | sed 's/,$//'
+    p awsk-cfg '"/d/ak.drv"'
+    p awss-cred '"/d/as.drv"'
+    p awsd-doc '"/d/ad.drv"'
+    p sys1-system '"/d/s.drv"' pkga-tool pkgb-wrapper leak1-cfg armr-keys hdr1-ssh sopb-secret sopk-secret \
+      awsk-cfg awss-cred awsd-doc | sed 's/,$//'
     printf '}'
   } >"$t/closure.json"
 
@@ -93,8 +100,8 @@ listed() { printf '%s\n' "$output" | grep "^$1 " | sed "s|$s/||" | cut -d' ' -f2
 @test "the publishable set is the clean builds; added paths, secret shapes and what reaches them stay private" {
   publish "git+file:///repo?ref=develop&rev=$rev"
   [ "$status" -eq 0 ]
-  [ "$(listed publish)" = "hdr1-ssh pkga-tool sopk-secret " ]
-  [ "$(listed private)" = "added src1-source guard armr-keys guard leak1-cfg guard sopb-secret reaches pkgb-wrapper reaches sys1-system " ]
+  [ "$(listed publish)" = "awsd-doc hdr1-ssh pkga-tool sopk-secret " ]
+  [ "$(listed private)" = "added src1-source guard armr-keys guard awsk-cfg guard awss-cred guard leak1-cfg guard sopb-secret reaches pkgb-wrapper reaches sys1-system " ]
 }
 
 @test "a dry run pushes nothing and reads no token" {
@@ -116,7 +123,7 @@ listed() { printf '%s\n' "$output" | grep "^$1 " | sed "s|$s/||" | cut -d' ' -f2
 @test "--apply pushes exactly the publishable set, with the token through cachix's stdin" {
   publish --apply "git+file:///repo?rev=$rev"
   [ "$status" -eq 0 ]
-  [ "$(sort "$t/public.hashes" | tr '\n' ' ')" = "hdr1 pkga sopk " ]
+  [ "$(sort "$t/public.hashes" | tr '\n' ' ')" = "awsd hdr1 pkga sopk " ]
   [ "$(cat "$t/cachix.token")" = the-push-token ]
   [[ $output != *the-push-token* ]]
   run grep -q the-push-token "$t/cachix.argv"
