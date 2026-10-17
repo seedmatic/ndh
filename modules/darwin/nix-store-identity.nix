@@ -23,12 +23,16 @@ in
 
     # nix-darwin user provisioning idiom: both users.knownUsers and
     # users.users.<name> (with explicit uid + gid) are required.
+    # Its own group, never the build-users-group (nixbld, gid 350 here): the nix daemon refuses a client
+    # whose primary group is build-users-group (nix 2.34 daemon.cc, authPeer). 30000 is the gid the user
+    # already had, which named no group: it now names this one, so nothing is re-owned.
     users = lib.mkIf (cfg.enable && cfg.provisionInboundUser) {
       knownUsers = [ cfg.inboundUserName ];
+      knownGroups = [ cfg.inboundUserName ];
+      groups.${cfg.inboundUserName}.gid = 30000;
       users.${cfg.inboundUserName} = {
         uid = cfg.inboundUserUid;
-        # Use the nixbld group family created by the Nix installer (gid 30000).
-        gid = 30000;
+        gid = config.users.groups.${cfg.inboundUserName}.gid;
         description = "Inbound nix-daemon --stdio endpoint";
         shell = cfg.inboundUserShellPath;
         home = homeDir;
