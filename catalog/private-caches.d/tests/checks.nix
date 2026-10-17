@@ -26,11 +26,9 @@ let
     publicKey = key "alpha";
     consumers = [ "attic.alpha" ];
     acceptedBy = [ "nixos" ];
-    accepted = {
-      date = "2026-10-17";
-      commit = "8c27a29e";
-    };
-    lifecycle = "stable";
+    accepted.date = "2026-10-17";
+    origin.revision = "8c27a29e";
+    lifecycle = "permanent";
   };
   accepted = entries: (privateCaches entries).entries;
   refused = entries: !(builtins.tryEval (builtins.deepSeq (accepted entries) true)).success;
@@ -85,25 +83,27 @@ assert lib.assertMsg (refusedAlpha {
   ];
 }) "private-caches: a cluster in acceptedBy must be refused";
 assert lib.assertMsg (refusedAlpha {
-  accepted = {
-    date = "17/10/2026";
-    commit = "8c27a29e";
-  };
+  accepted.date = "17/10/2026";
 }) "private-caches: a malformed acceptance date must be refused";
 assert lib.assertMsg (refusedAlpha {
   accepted = {
     date = "2026-10-17";
-    commit = "develop";
-  };
-}) "private-caches: an acceptance commit that is no revision must be refused";
-assert lib.assertMsg (refusedAlpha {
-  accepted = {
-    date = "2026-10-17";
     commit = "8c27a29e";
-    by = "x";
   };
 }) "private-caches: a field outside accepted's schema must be refused";
+assert lib.assertMsg (refused {
+  alpha = builtins.removeAttrs entry [ "origin" ];
+}) "private-caches: an entry without its origin must be refused";
 assert lib.assertMsg (refusedAlpha {
-  lifecycle = "retired";
+  origin.revision = "develop";
+}) "private-caches: an origin that is no revision must be refused";
+assert lib.assertMsg (refusedAlpha {
+  origin = {
+    revision = "8c27a29e";
+    by = "x";
+  };
+}) "private-caches: a field outside origin's schema must be refused";
+assert lib.assertMsg (refusedAlpha {
+  lifecycle = "stable";
 }) "private-caches: a lifecycle outside the enum must be refused";
 pkgs.runCommand "private-caches-schema" { } "touch $out"

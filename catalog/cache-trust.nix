@@ -58,8 +58,9 @@
   #     publicKey = "seedmatic-bioskop-attic-1:<base64>";
   #     consumers = [ "attic.bioskop" ];
   #     acceptedBy = [ "darwin" "nixos" ];
-  #     accepted = { date = "YYYY-MM-DD"; commit = "<ndh revision the container was delivered from>"; };
-  #     lifecycle = "stable";
+  #     accepted.date = "YYYY-MM-DD";
+  #     origin.revision = "<ndh revision the container was delivered from>";
+  #     lifecycle = "permanent";
   #   };
   privateCaches = { };
 }
