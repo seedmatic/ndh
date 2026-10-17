@@ -13,6 +13,9 @@ unset BASH_XTRACEFD 2>/dev/null || true
 #                                       as seedmatic/sshfs-key/<guest>
 #   ndh-keyring vz-recover-key <host>   the key the sessions recover a foreign vz-host's VMs with, as
 #                                       seedmatic/vz-recover-key/<host>, installed at ~/.ssh/vz-recover
+#   ndh-keyring nix-signing-public <machine>
+#                                       prints the nix signing public derived from that machine's host key
+#                                       (ndh-nix-signing-derive), for keys.yaml; generates and writes nothing
 #
 # Generates the ed25519 key IN MEMORY and inserts it; the private only ever flows through pipes, never a
 # variable, a file or an argument. Never overwrites: a replacement is a rotation, with its revocation.
@@ -30,12 +33,12 @@ die() {
 }
 ulimit -c 0
 
-usage="usage: ndh-keyring host-key <machine> | sshfs-key <guest> | vz-recover-key <host>"
+usage="usage: ndh-keyring host-key <machine> | sshfs-key <guest> | vz-recover-key <host> | nix-signing-public <machine>"
 [[ $# -eq 2 ]] || die "$usage"
 kind="$1"
 name="$2"
 case "$kind" in
-  host-key) allowed=("${machines[@]}") among="machines" recorded="host-${name}" usageTag=ssh-host ;;
+  host-key | nix-signing-public) allowed=("${machines[@]}") among="machines" recorded="host-${name}" usageTag=ssh-host ;;
   sshfs-key) allowed=("${guests[@]}") among="NixOS guests" recorded="sshfs-${name}" usageTag=ssh-user ;;
   vz-recover-key) allowed=("${vzHosts[@]}") among="foreign vz-hosts" recorded="vz-recover-${name}" usageTag=ssh-user ;;
   *) die "$usage" ;;
@@ -48,6 +51,19 @@ for m in "${allowed[@]}"; do [[ $m == "$name" ]] && known=1; done
   die "PASSWORD_STORE_KEY or PASSWORD_STORE_GPG_OPTS is set, which would override the seedmatic recipient — unset it"
 
 store="${PASSWORD_STORE_DIR:-$HOME/.password-store}"
+
+# The machine's nix signing public, derived from the host key already in the keyring: nothing is generated or
+# written, so nothing here needs the guards below. The private flows from pass to the deriver through a pipe.
+if [[ $kind == nix-signing-public ]]; then
+  hostEntry="seedmatic/host-key/${name}"
+  [[ -f "$store/${hostEntry}.gpg" ]] || die "${hostEntry} is not in the keyring: its host key comes first"
+  pass show "$hostEntry" |
+    "$derive" --name "seedmatic-${name}-${nixSigningVersion}" --label "seedmatic/nix-signing/${nixSigningVersion}" --public ||
+    die "deriving ${name}'s nix signing key from ${hostEntry} failed"
+  log "next: record it in keys.yaml: ... | ssh-keys-renew --record-nix-signing ${recorded} --public -"
+  exit 0
+fi
+
 entry="seedmatic/${kind}/${name}"
 [[ -f "$store/seedmatic/.gpg-id" && "$(<"$store/seedmatic/.gpg-id")" == "${recipient}!" ]] ||
   die "${store}/seedmatic/.gpg-id is not exactly ${recipient}! — refused, nothing generated"

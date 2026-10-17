@@ -44,6 +44,7 @@
     ./user-secret-mirror.nix
     ./ssh-client.nix
     ./cache-trust.nix
+    ./nix-signing.nix
     ./nix-store-identity.nix
     ./build-users-group.nix
     ./nfs-remote-identity.nix

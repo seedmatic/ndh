@@ -1166,6 +1166,161 @@
               };
           nfsd-off-bats = import ./modules/darwin/nfsd-off.d/tests/package.nix { inherit pkgs; };
           sops-age-bootstrap-bats = import ./modules/.common.d/sops.d/tests/package.nix { inherit pkgs; };
+          nix-signing-place-bats = import ./modules/.common.d/nix-signing.d/tests/package.nix {
+            inherit pkgs;
+          };
+          # keys.schema.yaml keeps a nix signing public on host keys: the same slot passes on an ssh-host key and is
+          # refused on an ssh-user one (the mutant a mistaken record would write).
+          ssh-keys-schema-nix-signing =
+            pkgs.runCommand "ssh-keys-schema-nix-signing"
+              {
+                nativeBuildInputs = [
+                  pkgs.check-jsonschema
+                  pkgs.openssh
+                  pkgs.yq-go
+                ];
+              }
+              ''
+                ssh-keygen -q -t ed25519 -N "" -C k -f k
+                doc() { # <usage>
+                  B="$(cut -d' ' -f2 k.pub)" U="$1" N="seedmatic-x-1:$(printf 'A%.0s' $(seq 43))=" yq -n '
+                    .authorities = {} | .keys.k.type = "ssh-ed25519" | .keys.k.usage = [strenv(U)] |
+                    .keys.k.profiles = [] | .keys.k.slots."26-01-01".public = strenv(B) |
+                    .keys.k.slots."26-01-01".nixSigning = strenv(N)' >"$1.yaml"
+                }
+                doc ssh-host
+                doc ssh-user
+                check-jsonschema --schemafile ${./modules/home-manager/ssh.d/keys.schema.yaml} ssh-host.yaml
+                if check-jsonschema --schemafile ${./modules/home-manager/ssh.d/keys.schema.yaml} ssh-user.yaml; then
+                  echo "FAIL: a nixSigning on an ssh-user key passed the schema" >&2
+                  exit 1
+                fi
+                touch $out
+              '';
+          # The fleet trusts every current slot's nixSigning and nothing else: a host key's two slots, never a slot
+          # without one or a non-host key, and a retired slot (deleted from keys.yaml) leaves the list with it. And
+          # every key a machine signs with is in every machine's trust.
+          # The signing path, which no real configuration takes before a public is recorded: a NixOS guest and an
+          # operator seat given one, as keys.yaml would. secret-key-files names exactly the placed file; NixOS's unit
+          # is wanted by and ordered before nix-daemon, never required by it (the mutant proves the predicate bites);
+          # darwin's step cannot abort the activation; both place scripts build, shellcheck included.
+          nix-signing-signs-path =
+            let
+              lib = nixpkgs.lib;
+              given = name: {
+                ndh.nixSigning.recorded = "${name}:${lib.concatStrings (lib.replicate 43 "A")}=";
+              };
+              nixos = self.nixosConfigurations.bioskop-nixos.extendModules {
+                modules = [ (given "seedmatic-bioskop-nixos-1") ];
+              };
+              darwin = self.darwinConfigurations.bioskop.extendModules {
+                modules = [ (given "seedmatic-bioskop-1") ];
+              };
+              mutant = nixos.extendModules {
+                modules = [ { systemd.services.ndh-nix-signing-key.requiredBy = [ "nix-daemon.service" ]; } ];
+              };
+              placedOnly =
+                c: name:
+                c.ndh.nixSigning.signs
+                &&
+                  lib.filter (lib.hasPrefix c.ndh.nixSigning.dir) c.nix.settings.secret-key-files == [
+                    "${c.ndh.nixSigning.dir}/${name}.sec"
+                  ];
+              wantedNotRequired =
+                c:
+                let
+                  unit = c.systemd.services.ndh-nix-signing-key;
+                in
+                lib.elem "nix-daemon.service" unit.wantedBy
+                && lib.elem "nix-daemon.service" unit.before
+                && !(lib.elem "nix-daemon.service" unit.requiredBy)
+                && !(lib.elem "ndh-nix-signing-key.service" (c.systemd.services.nix-daemon.requires or [ ]));
+            in
+            assert lib.assertMsg (placedOnly nixos.config "seedmatic-bioskop-nixos-1")
+              "nix-signing: the guest's secret-key-files";
+            assert lib.assertMsg (placedOnly darwin.config "seedmatic-bioskop-1")
+              "nix-signing: the seat's secret-key-files";
+            assert lib.assertMsg (wantedNotRequired nixos.config)
+              "nix-signing: the unit must be wanted by and before nix-daemon, never required";
+            assert lib.assertMsg (
+              !(wantedNotRequired mutant.config)
+            ) "nix-signing: the requiredBy mutant passed the predicate";
+            assert lib.assertMsg
+              (lib.hasInfix (builtins.unsafeDiscardStringContext "if ! ${darwin.config.ndh.nixSigning.placeScript}/bin/ndh-nix-signing-key; then") (
+                builtins.unsafeDiscardStringContext darwin.config.system.activationScripts.postActivation.text
+              ))
+              "nix-signing: darwin's step must not abort the activation";
+            pkgs.runCommand "nix-signing-signs-path" {
+              scripts = [
+                nixos.config.ndh.nixSigning.placeScript
+                darwin.config.ndh.nixSigning.placeScript
+              ];
+            } "touch $out";
+          nix-signing-trust =
+            let
+              lib = nixpkgs.lib;
+              trust = import ./modules/.common.d/nix-signing.d/trust.nix { inherit lib; };
+              fixture = {
+                host-a.slots."26-01-01".nixSigning = "seedmatic-a-1:old";
+                host-a.slots."26-10-01".nixSigning = "seedmatic-a-2:new";
+                host-b.slots."26-01-01".public = "no-nix-signing";
+                sshfs-c.slots."26-01-01".nixSigning = "seedmatic-c-1:not-a-host";
+              };
+              # The superseded slot deleted, as phase 2 of a renewal leaves keys.yaml.
+              retired = fixture // {
+                host-a.slots = removeAttrs fixture.host-a.slots [ "26-01-01" ];
+              };
+              machines =
+                map (n: self.darwinConfigurations.${n}.config) [
+                  "bioskop"
+                  "nikopol"
+                ]
+                ++ map (n: self.nixosConfigurations.${n}.config) [
+                  "bioskop-nixos"
+                  "nikopol-nixos"
+                ];
+              signing = lib.concatMap (
+                c:
+                map (f: lib.removeSuffix ".sec" (baseNameOf f)) (
+                  lib.filter (lib.hasPrefix c.ndh.nixSigning.dir) c.nix.settings.secret-key-files
+                )
+              ) machines;
+              trusted = c: map (k: lib.head (lib.splitString ":" k)) c.nix.settings.extra-trusted-public-keys;
+            in
+            assert lib.assertMsg (
+              lib.sort lib.lessThan (trust fixture) == [
+                "seedmatic-a-1:old"
+                "seedmatic-a-2:new"
+              ]
+            ) "nix-signing trust: the current host-key slots, and only them";
+            assert lib.assertMsg (
+              trust retired == [ "seedmatic-a-2:new" ]
+            ) "nix-signing trust: a retired slot still trusted";
+            assert lib.assertMsg (lib.all (
+              c: lib.all (n: lib.elem n (trusted c)) signing
+            ) machines) "nix-signing trust: a machine signs with a key another machine does not trust";
+            pkgs.runCommand "nix-signing-trust" { } "touch $out";
+          # nix itself reads the derived secret: its public, as nix computes it, is the one --public prints. On a
+          # throwaway host key generated here; the package's own tests carry the known vector.
+          nix-signing-derive-nix-format =
+            let
+              derive = "${self.packages.${system}.ndh-nix-signing-derive}/bin/ndh-nix-signing-derive";
+              args = "--name seedmatic-check-1 --label seedmatic/nix-signing/1";
+            in
+            pkgs.runCommand "nix-signing-derive-nix-format"
+              {
+                nativeBuildInputs = [
+                  pkgs.openssh
+                  pkgs.nix
+                ];
+              }
+              ''
+                ssh-keygen -q -t ed25519 -N "" -C throwaway -f host
+                ${derive} ${args} --secret <host >derived.sec
+                ${derive} ${args} --public <host >derived.pub
+                [ "$(nix --extra-experimental-features nix-command key convert-secret-to-public <derived.sec)" = "$(cat derived.pub)" ]
+                touch $out
+              '';
           git-sops-filters-bats = import ./modules/home-manager/git.d/tests/package.nix { inherit pkgs; };
           # keys.yaml against its schema, ENCRYPTED as committed: the schema accepts ENC[...]
           # wherever a private may sit, so the sandbox needs no key and nothing is decrypted.
@@ -1894,6 +2049,8 @@
           # advertise a fleet-scoped alias pointing at the current owner.
           # See packages/ndh-mdns-publish/{main.go,default.nix}.
           ndh-mdns-publish = systemPkgs.callPackage ./packages/ndh-mdns-publish { };
+          # A builder's nix signing key, derived from its ssh host key (roles × keys B2).
+          ndh-nix-signing-derive = systemPkgs.callPackage ./packages/ndh-nix-signing-derive { };
         }
         // mkBaremetalLinkPackages system
         # Darwin only: the join is an operator act run from the operator's machine, and the recipe is

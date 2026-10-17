@@ -2,6 +2,9 @@
 { pkgs }:
 pkgs.runCommand "keyring-bats"
   {
+    NIX_SIGNING_DERIVE = "${
+      pkgs.callPackage ../../../../packages/ndh-nix-signing-derive { }
+    }/bin/ndh-nix-signing-derive";
     nativeBuildInputs = with pkgs; [
       age
       bats
