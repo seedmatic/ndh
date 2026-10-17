@@ -2,7 +2,9 @@
 # ssh-keys-certify against a real sops and a throwaway age key, in a throwaway git repository: an
 # authority with two slots (the older compromised), a key with ssh-user, a TLS-only key, a
 # machine's public-only host key (host-alpha) and the shared interim host key (rdp-host).
-# No private value is printed: the assertions read certificates, which are public.
+# No private value is printed: the assertions read certificates, which are public. The tool reaches
+# sops only through a stub that records every call and refuses it (97) unless it is one an --apply
+# may make: the --decrypt --extract of one authority slot's private, or a set.
 
 setup() {
   repo="$BATS_TEST_TMPDIR/repo"
@@ -61,6 +63,32 @@ EOF
   # script does not check behaves here as it does there.
   printf 'source "%s"\nndh::logger:command:run() { shift; ndh::logger:command:invoke "$@"; return "$NDH_LOGGER_COMMAND_RC"; }\n' "$NDH_LOGGER_SH" >"$BATS_TEST_TMPDIR/trampoline.sh"
   bake "$FLEET"
+  # The stub runs under the bats bash itself: the darwin build sandbox refuses to exec /usr/bin/env.
+  shebang="#!$BASH"
+  export REAL_SOPS SOPS_LOG="$BATS_TEST_TMPDIR/sops.log"
+  REAL_SOPS="$(command -v sops)"
+  mkdir -p "$BATS_TEST_TMPDIR/bin"
+  {
+    printf '%s\n' "$shebang"
+    cat <<'EOF'
+line="" prev="" decrypt=0 extract=""
+for a in "$@"; do
+  case "$a" in -d | --decrypt | decrypt) decrypt=1 ;; esac
+  [[ "$prev" == --extract ]] && extract="$a"
+  prev="$a"
+  if [[ "$a" == \"* ]]; then a="<value>"; elif [[ "$a" == */* ]]; then a="${a##*/}"; fi
+  line="${line:+$line }$a"
+done
+printf '%s\n' "$line" >>"$SOPS_LOG"
+private='^\["authorities"\]\["[^"]+"\]\["slots"\]\["[^"]+"\]\["private"\]$'
+if [[ "$SOPS_STUB" == apply ]] && { [[ "$1" == set ]] || { ((decrypt)) && [[ "$extract" =~ $private ]]; }; }; then
+  exec "$REAL_SOPS" "$@"
+fi
+echo "sops stub: refused: $line" >&2
+exit 97
+EOF
+  } >"$BATS_TEST_TMPDIR/bin/sops"
+  chmod +x "$BATS_TEST_TMPDIR/bin/sops"
 }
 
 # alpha, beta and their guests; beta plays nikopol, whose machines the interim key is certified for,
@@ -78,8 +106,9 @@ bake() { # <machine=names …> [own machines]
     "$BATS_TEST_DIRNAME/../ssh-keys-certify.sh" >"$BATS_TEST_TMPDIR/ssh-keys-certify"
 }
 
-# keys.yaml's own rule names TWO recipients, the catch-all after it only one: the shape that let a
-# temp-path encryption drop a recipient. `$1` = sync|nosync: re-key the fixture to its rule or not.
+# keys.yaml's own rule names TWO recipients, the catch-all after it only one: the shape in which a
+# re-encryption by rule would drop a recipient, so the tests prove a write keeps the envelope it finds.
+# `$1` = sync|nosync: re-key the fixture to its rule or not.
 narrow_rule() {
   age-keygen -o "$BATS_TEST_TMPDIR/age2.txt" 2>/dev/null
   local first second
@@ -99,7 +128,12 @@ EOF
 
 recipients() { yq eval -r '.sops.age | length' "$keys"; }
 
-certify() { (cd "$repo" && bash -euo pipefail "$BATS_TEST_TMPDIR/ssh-keys-certify" "$@"); }
+# A dry run may call no sops at all; an --apply only what the stub lets through.
+certify() {
+  local stub=dry
+  [[ " $* " == *" --apply "* ]] && stub=apply
+  (cd "$repo" && PATH="$BATS_TEST_TMPDIR/bin:$PATH" SOPS_STUB="$stub" bash -euo pipefail "$BATS_TEST_TMPDIR/ssh-keys-certify" "$@")
+}
 
 cert() { # <key> <usage> → describe the recorded certificate
   yq eval -r ".keys.\"$1\".slots.\"26-03-03\".certificates.fabric.\"$2\"" "$keys" | ssh-keygen -L -f -
@@ -130,6 +164,39 @@ record_legacy() { # <key> <public file> <serial> <ca private>
   [[ "$output" == *"missing"*"host"*"ssh-host"*"fabric@26-02-02"* ]]
   [[ "$output" == *"missing"*"host"*"ssh-user"* ]]
   cmp "$keys" before
+}
+
+@test "a dry run plans every missing certificate, in order, each signed by the signing slot, and calls no sops" {
+  run certify
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"next serial  1"* ]]
+  [ "$(grep -E '^  (missing|stale|current|kept|unrecorded) ' <<<"$output")" = "$(printf '%s\n' \
+    '  missing  host                   26-03-03  ssh-user  signed by fabric@26-02-02' \
+    '  missing  host-alpha             26-03-03  ssh-host  signed by fabric@26-02-02' \
+    '  missing  host-alpha-nixos       26-03-03  ssh-host  signed by fabric@26-02-02' \
+    '  missing  rdp-host               26-03-03  ssh-host  signed by fabric@26-02-02')" ]
+  [ ! -e "$SOPS_LOG" ]
+}
+
+@test "--apply decrypts the signing slot's private alone, once, and records each certificate with sops set" {
+  run certify --apply
+  [ "$status" -eq 0 ]
+  [ "$(cat "$SOPS_LOG")" = "$(printf '%s\n' \
+    '--decrypt --extract ["authorities"]["fabric"]["slots"]["26-02-02"]["private"] keys.yaml' \
+    'set keys.certified.yaml ["keys"]["host"]["slots"]["26-03-03"]["certificates"]["fabric"]["ssh-user"] <value>' \
+    'set keys.certified.yaml ["keys"]["host-alpha"]["slots"]["26-03-03"]["certificates"]["fabric"]["ssh-host"] <value>' \
+    'set keys.certified.yaml ["keys"]["host-alpha-nixos"]["slots"]["26-03-03"]["certificates"]["fabric"]["ssh-host"] <value>' \
+    'set keys.certified.yaml ["keys"]["rdp-host"]["slots"]["26-03-03"]["certificates"]["fabric"]["ssh-host"] <value>')" ]
+}
+
+@test "a value the plan reads that is ciphertext refuses the run, before any sops call" {
+  (cd "$repo" && sops --input-type yaml --output-type yaml -d -i modules/home-manager/ssh.d/keys.yaml &&
+    yq eval -i '(.keys.host.type | key) headComment = "sops:encrypted"' modules/home-manager/ssh.d/keys.yaml &&
+    sops --input-type yaml --output-type yaml encrypt -i modules/home-manager/ssh.d/keys.yaml)
+  run certify --apply
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"encrypts values that are not privates"*"keys.host.type"* ]]
+  [ ! -e "$SOPS_LOG" ]
 }
 
 @test "--apply records a host certificate signed by the signing slot, valid forever" {
@@ -297,10 +364,12 @@ recorded_cert() { yq eval -r ".keys.\"$1\".slots.\"26-03-03\".certificates.fabri
 @test "a second run finds everything current and leaves keys.yaml byte-identical" {
   certify --apply
   cp "$keys" after-first
+  rm "$SOPS_LOG"
   run certify --apply
   [ "$status" -eq 0 ]
   [[ "$output" == *"every certificate is current"* ]]
   cmp "$keys" after-first
+  [ ! -e "$SOPS_LOG" ]
 }
 
 @test "a changed name list makes the host certificate stale, and only that one is re-signed" {
@@ -328,13 +397,12 @@ recorded_cert() { yq eval -r ".keys.\"$1\".slots.\"26-03-03\".certificates.fabri
   [ "$(recipients)" = 2 ]
 }
 
-@test "a run that would change keys.yaml's recipients is refused, and changes nothing" {
+@test "a creation rule that disagrees with keys.yaml's envelope changes no recipient: sops set keeps the envelope" {
   narrow_rule nosync
-  cp "$keys" before
+  [ "$(recipients)" = 1 ]
   run certify --apply
-  [ "$status" -eq 1 ]
-  [[ "$output" == *"recipients would change"*"sops updatekeys"* ]]
-  cmp "$keys" before
+  [ "$status" -eq 0 ]
+  [ "$(recipients)" = 1 ]
 }
 
 @test "a slot with no recorded public is reported as unrecorded, and nothing is recorded for it" {

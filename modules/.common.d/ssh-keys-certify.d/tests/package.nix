@@ -20,6 +20,6 @@ pkgs.runCommand "ssh-keys-certify-bats"
   }
   ''
     cp -r ${./..} certify && chmod -R u+w certify
-    cd certify/tests && HOME=$TMPDIR bats .
+    cd certify/tests && HOME=$TMPDIR bats --print-output-on-failure .
     touch $out
   ''
