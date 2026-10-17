@@ -20,7 +20,6 @@ in
 {
   imports = [
     ./networking.nix
-    ./cachix.nix
   ];
 
   # Enable automatic backup of conflicting files during activation
@@ -143,8 +142,8 @@ in
       # (baseline for both NixOS and nix-darwin).
       extra-platforms = aarch64-darwin
       # Add binary caches for substitution
-      extra-trusted-substituters = ${cacheCatalog.nxmatic.substituter} ${cacheCatalog.flox.substituter}
-      extra-trusted-public-keys = ${cacheCatalog.nxmatic.publicKey} ${cacheCatalog.nixos.publicKey} ${cacheCatalog.flox.publicKey}
+      extra-trusted-substituters = ${cacheCatalog.flox.substituter}
+      extra-trusted-public-keys = ${cacheCatalog.nixos.publicKey} ${cacheCatalog.flox.publicKey}
       # Increase download buffer size to prevent buffer full warnings
       download-buffer-size = 268435456  # 256 MB (was 64 MB default)
       # No `extra-substituters` here: modules/.common.d/cache-trust.nix is its SINGLE owner and

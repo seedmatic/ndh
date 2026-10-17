@@ -112,7 +112,6 @@ let
   baseHomePackages = with pkgs; [
     awscli2
     avahi
-    cachix
     cirrus-cli
     comma
     coreutils-full

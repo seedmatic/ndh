@@ -4,13 +4,11 @@
   nixConfig = {
     substituters = [
       "https://cache.nixos.org"
-      "https://nxmatic.cachix.org"
       "https://cache.flox.dev"
     ];
 
     trusted-public-keys = [
       "cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY="
-      "nxmatic.cachix.org-1:huMghYiwDpPa1PMXHXK4G1Dp4QOZjgsNqxcjf/AjuJ0="
       "flox-cache-public-1:7F4OyH7ZCnFhcze3fJdfyXYLQw/aV7GEed86nQ7IsOs="
     ];
 
@@ -1286,18 +1284,9 @@
               '';
           ndh-ops-bats = import ./modules/.common.d/ndh-ops.d/tests/package.nix { inherit pkgs; };
           attic-cache-bats = import ./modules/nixos/attic-cache.d/tests/package.nix { inherit pkgs; };
-          cache-publish-bats = import ./modules/.common.d/cache-publish.d/tests/package.nix { inherit pkgs; };
-          # Built here so its shellcheck runs while no machine enables the publication yet.
-          cache-publish-package = import ./modules/.common.d/cache-publish.d/package.nix {
-            inherit pkgs;
-            inherit (pkgs) lib;
-            outputs = [ "packages.aarch64-darwin.default" ];
-            cache = "nxmatic";
-            publicUrl = "https://nxmatic.cachix.org";
-            upstreams = [ "https://cache.nixos.org" ];
-            tokenFile = "/nonexistent";
-            remote = "https://github.com/seedmatic/ndh";
-          };
+          content-guard-bats = import ./modules/.common.d/content-guard.d/tests/package.nix { inherit pkgs; };
+          # Built here so its shellcheck runs.
+          content-guard-package = import ./modules/.common.d/content-guard.d/package.nix { inherit pkgs; };
           tls-authority-keychain-bats = import ./modules/darwin/tls-authority-keychain.d/tests/package.nix {
             inherit pkgs;
             trampoline = mkNdhNixBashTrampoline { pkgsForSystem = pkgs; };
@@ -2507,11 +2496,6 @@
                     incus-cluster-cert-renew = "${bioskop.ndh.incusClusterCert.package}/bin/incus-cluster-cert-renew";
                     ndh-keyring = "${bioskop.system.path}/bin/ndh-keyring";
                     ndh-identity-push = "${bioskop.system.path}/bin/ndh-identity-push";
-                    # Run as the publishing user, from the system profile: its package names the push token's sops
-                    # path, which exists only where ndh.cachePublish is enabled.
-                    cache-publish = "${pkgsForSystem.writeShellScript "cache-publish-as-publisher" ''
-                      exec /usr/bin/sudo -u ${bioskop.ndh.cachePublish.user.name} -H /run/current-system/sw/bin/cache-publish "$@"
-                    ''}";
                   };
               }
             }/bin/ndh-ops";

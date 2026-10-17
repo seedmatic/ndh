@@ -50,12 +50,6 @@
     ndh.incusClusterCert.atActivation = true;
     sops.age.keyFile = "/etc/sops/age/keys.txt";
 
-    services.nxmaticCachixWatchStore = {
-      # DISABLED 2026-10-10: watch-store pushed dirty-tree flake sources carrying sops-smudged .secrets/keys.yaml in clear to the PUBLIC nxmatic cache. Not removed; see the rke2lab memory note dirty-flake-eval-publishes-smudged-secrets.
-      enable = false;
-      sopsEncryptedTokenFile = ../../.secrets;
-    };
-
     # macOS 26.5's directory-services consistency pass rewrote the nix-store
     # record's NFSHomeDirectory to /private/var/empty_1 and then LOCKED the
     # record against writes even by root (dscl -change/-create/-delete and

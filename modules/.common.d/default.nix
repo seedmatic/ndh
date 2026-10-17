@@ -244,7 +244,6 @@ in
     ./nixpkgs.nix
     ./nix-settings.nix
     ./cache-trust.nix
-    ./cachix-watch-store.nix
     ./io-seedmatic-ndh-bringup-runtime.nix
 
     # Networking
