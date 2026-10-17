@@ -22,16 +22,30 @@ setup() {
   git clone -q --bare "$T/work" "$T/github.git"
 
   # The switch commands record their argv instead of running; their shebang is this bash, since the nix sandbox
-  # has no /usr/bin/env.
-  for c in nixos-rebuild ssh; do
-    printf '#!%s\nprintf "%%s\\n" "%s $*" >>"%s/calls"\n' "$BASH" "$c" "$T" >"$T/bin/$c"
-    chmod +x "$T/bin/$c"
-  done
+  # has no /usr/bin/env. The guest answers readlink with its generation, which a switch moves on; a `down` file
+  # makes it unreachable, and `break` makes the next switch take it down.
+  echo 1 >"$T/gen"
+  cat >"$T/bin/ssh" <<STUB
+#!$BASH
+printf '%s\n' "ssh \$*" >>"$T/calls"
+case "\$*" in
+  *readlink*) [ -e "$T/down" ] && exit 255; echo "/nix/store/gen-\$(cat "$T/gen")-system" ;;
+esac
+STUB
+  cat >"$T/bin/nixos-rebuild" <<STUB
+#!$BASH
+printf '%s\n' "nixos-rebuild \$*" >>"$T/calls"
+echo \$((\$(cat "$T/gen") + 1)) >"$T/gen"
+[ -e "$T/break" ] && touch "$T/down"
+exit \${STUB_EXIT:-0}
+STUB
+  chmod +x "$T/bin/ssh" "$T/bin/nixos-rebuild"
   export PATH="$T/bin:$PATH"
 
   host=$(uname -n)
   # The package fixes the remote to GitHub; here it is the fake one, set the same way.
-  { printf 'machines=%q\nseat=%q\nremote=%q\n' "$D/machines.json" "${host%%.*}" "$T/github.git"; cat "$D/ndh-switch.sh"; } >"$T/ndh-switch"
+  { printf 'machines=%q\nseat=%q\nremote=%q\nprobe_every=1\nprobe_until=2\n' "$D/machines.json" "${host%%.*}" "$T/github.git"
+    cat "$D/ndh-switch.sh"; } >"$T/ndh-switch"
 }
 
 sw() { bash "$T/ndh-switch" "$@"; }
@@ -92,10 +106,38 @@ sw() { bash "$T/ndh-switch" "$@"; }
   [ "$status" -eq 3 ] && [[ "$output" == *"cannot fetch develop and main"* ]]
 }
 @test "a failed switch is logged with its exit status, and returned" {
-  printf '#!%s\nexit 7\n' "$BASH" >"$T/bin/nixos-rebuild"
-  run sw nikopol-nixos "$MERGED"
+  STUB_EXIT=7 run sw nikopol-nixos "$MERGED"
   [ "$status" -eq 7 ]
   grep -q "nikopol-nixos $MERGED failed: exit 7" "$T/state/ndh-switch/log"
+}
+@test "watch: the generation left is printed and logged before the switch" {
+  run sw nikopol-nixos "$MERGED"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"previous: /nix/store/gen-1-system"* ]]
+  grep -q "started (develop), previous: /nix/store/gen-1-system" "$T/state/ndh-switch/log"
+}
+@test "watch: a machine that answers after the switch is reported reachable, on its new generation" {
+  run sw nikopol-nixos "$MERGED"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"reachable: /nix/store/gen-2-system"* ]]
+}
+@test "watch: a machine lost after the switch ends UNREACHABLE: recover now, exit 6, with the way back" {
+  touch "$T/break"
+  run sw nikopol-nixos "$MERGED"
+  [ "$status" -eq 6 ]
+  [[ "$output" == *"UNREACHABLE: recover now (previous: /nix/store/gen-1-system)"* ]]
+  grep -q "UNREACHABLE after 2s: recover now (previous: /nix/store/gen-1-system)" "$T/state/ndh-switch/log"
+}
+@test "watch: a remote darwin host is probed over ssh with its own options" {
+  run sw nikopol "$MERGED"
+  [ "$status" -eq 0 ]
+  grep -q "^ssh -o BatchMode=yes -o ConnectTimeout=10 -o HostName=nikopol.mammoth-skate.ts.net darwin.nikopol readlink -f /run/current-system" "$T/calls"
+}
+@test "watch: a machine unreachable BEFORE the switch is not switched (no way back known)" {
+  touch "$T/down"
+  run sw nikopol-nixos "$MERGED"
+  [ "$status" -eq 3 ] && [[ "$output" == *"cannot read the running generation of nikopol-nixos"* ]]
+  ! grep -q '^nixos-rebuild' "$T/calls"
 }
 @test "the remote is not taken from the environment" {
   NDH_SWITCH_REMOTE="$T/nowhere.git" run sw --dry-run nikopol-nixos "$MERGED"
