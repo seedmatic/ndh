@@ -227,6 +227,7 @@ in
     ./sops.nix
     ./tailnet.nix
     ./headscale-pkg.nix
+    ./attic-pkg.nix
 
     # SSH identity (keys.yaml access, nix-store cert-signed identity)
     ./keys-yaml.nix

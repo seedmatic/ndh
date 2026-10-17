@@ -14,7 +14,6 @@
   config,
   lib,
   pkgs,
-  self,
   ndh,
   ...
 }:
@@ -26,10 +25,6 @@ let
       netplan.baremetal.${cfg.metalspace}
     else
       throw "ndh.atticCache: outside the catalog (metalspace = null), state fqdn, gateway and allowedSources";
-  unstable = import self.inputs.nixpkgs-unstable {
-    system = pkgs.stdenv.hostPlatform.system;
-    config = pkgs.config;
-  };
   paths = import ./attic-cache.d/paths.nix;
   fabricIp = lib.head (lib.splitString "/" cfg.address);
   # Container-side paths of the three directories of the dataset.
@@ -69,7 +64,7 @@ let
 
     services.atticd = {
       enable = true;
-      package = unstable.attic-server;
+      package = config.ndh.atticPkgs.server;
       environmentFile = envFile;
       settings = {
         listen = loopback;
@@ -169,7 +164,7 @@ let
       requires = [ "atticd.service" ];
       after = [ "atticd.service" ];
       path = [
-        unstable.attic-client
+        config.ndh.atticPkgs.client
         "/run/current-system/sw"
       ];
       serviceConfig = {

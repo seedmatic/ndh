@@ -155,6 +155,7 @@ let
     ./incus-cluster.nix
     ./incus-nixos-container.nix
     ./attic-cache.nix
+    ./attic-client.nix
     ./store-freeze.nix
     ./cluster-vmnet.nix
     ./podman.nix
