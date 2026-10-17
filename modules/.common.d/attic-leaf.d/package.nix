@@ -15,6 +15,16 @@
 let
   paths = import ../../nixos/attic-cache.d/paths.nix;
   array = xs: "(" + lib.concatMapStringsSep " " lib.escapeShellArg xs + ")";
+  tools = [
+    pkgs.sops
+    pkgs.yq-go
+    pkgs.step-cli
+    pkgs.openssl
+    pkgs.coreutils
+    pkgs.gnused
+    pkgs.gnugrep
+    pkgs.openssh
+  ];
 in
 pkgs.writeShellApplication {
   name = "attic-leaf-sign";
@@ -27,17 +37,10 @@ pkgs.writeShellApplication {
     "SC2016"
     "SC1091"
   ];
-  runtimeInputs = [
-    pkgs.sops
-    pkgs.yq-go
-    pkgs.step-cli
-    pkgs.openssl
-    pkgs.coreutils
-    pkgs.gnused
-    pkgs.gnugrep
-  ];
+  runtimeInputs = tools;
   text = ''
     source ${../shell.d/logger.sh}
+    toolPath=${lib.makeBinPath tools}
     loggerTag=ndh.attic-leaf-sign
     keysYaml=${lib.escapeShellArg "${../../home-manager/ssh.d/keys.yaml}"}
     authority=mammoth-skate-tls

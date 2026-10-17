@@ -104,6 +104,7 @@ EOF
     echo 'set -euo pipefail'
     echo "source ${BATS_TEST_DIRNAME}/../../shell.d/logger.sh"
     echo 'loggerTag=test.incus-cluster-cert'
+    echo "toolPath=$t/bin:$PATH"
     echo "keysYaml=$t/keys.yaml authority=test-tls cn=m1 via=m1 remote=m1 days=365"
     echo "sshUser=op sshKey=$t/operator sshCert=$t/operator-cert.pub"
     echo 'sans=(m1 m2) members=(m1 m2) verifyNames=(m1 m2)'
@@ -112,6 +113,24 @@ EOF
 }
 
 run_renew() { HOME="$t/home" XDG_STATE_HOME="$t/state" PATH="$t/bin:$PATH" run bash "$script" "$@"; }
+
+# A caller's shell at its worst: failing tools first on PATH, a UTF-8 locale and POSIXLY_CORRECT.
+hostile() { # <cmd>... — runs <cmd> under it
+  local d="$BATS_TEST_TMPDIR/hostile" c
+  mkdir -p "$d"
+  for c in yq awk gawk sort tr paste cut sed grep diff sops ssh ssh-keygen openssl step git; do
+    printf '#!%s\necho hostile-%s >&2\nexit 1\n' "$BASH" "$c" >"$d/$c" && chmod +x "$d/$c"
+  done
+  PATH="$d:$PATH" LANG=fr_FR.UTF-8 LC_ALL=fr_FR.UTF-8 LC_COLLATE=fr_FR.UTF-8 POSIXLY_CORRECT=1 "$@"
+}
+
+@test "a caller's PATH, locale and POSIXLY_CORRECT change nothing, and none of its tools ran" {
+  hostile run_renew --dry-run
+  [ "$status" -eq 0 ]
+  [[ $output == *"DRY RUN: would certify"* ]]
+  [[ $output != *hostile-* ]]
+  [ ! -e "$t/sops.calls" ]
+}
 
 @test "--dry-run with every member OK reaches the signature and stops there" {
   run_renew --dry-run

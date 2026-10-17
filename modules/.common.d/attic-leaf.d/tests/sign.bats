@@ -97,6 +97,7 @@ write_script() { # <the caches' arrays>
     echo 'set -euo pipefail'
     echo "source ${BATS_TEST_DIRNAME}/../../shell.d/logger.sh"
     echo 'loggerTag=test.attic-leaf'
+    echo "toolPath=$t/bin:$PATH"
     echo "keysYaml=$t/keys.yaml authority=test-tls days=365 hostTls=/tls"
     echo "sshUser=op sshKey=$t/operator sshCert=$t/operator-cert.pub"
     echo "$1"
@@ -130,6 +131,23 @@ no_ca_key_in() {
   run_sign --check
   [ "$status" -eq 0 ]
   [[ $output == *"nothing to sign"* ]]
+}
+
+# A caller's shell at its worst: failing tools first on PATH, a UTF-8 locale and POSIXLY_CORRECT.
+hostile() { # <cmd>... — runs <cmd> under it
+  local d="$BATS_TEST_TMPDIR/hostile" c
+  mkdir -p "$d"
+  for c in yq awk gawk sort tr paste cut sed grep diff sops ssh ssh-keygen openssl step git; do
+    printf '#!%s\necho hostile-%s >&2\nexit 1\n' "$BASH" "$c" >"$d/$c" && chmod +x "$d/$c"
+  done
+  PATH="$d:$PATH" LANG=fr_FR.UTF-8 LC_ALL=fr_FR.UTF-8 LC_COLLATE=fr_FR.UTF-8 POSIXLY_CORRECT=1 "$@"
+}
+
+@test "a caller's PATH, locale and POSIXLY_CORRECT change nothing, and none of its tools ran" {
+  hostile run_sign --dry-run
+  [ "$status" -eq 0 ]
+  [[ $output == *"DRY RUN: would certify attic.m1"* ]]
+  [[ $output != *hostile-* ]]
 }
 
 @test "--dry-run on a leaf of another root reaches the signature and stops there" {

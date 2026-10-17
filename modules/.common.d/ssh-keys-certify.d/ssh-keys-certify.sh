@@ -54,9 +54,9 @@ unset BASH_XTRACEFD 2>/dev/null || true
 # shellcheck disable=SC1091
 source @nixBashTrampoline@
 
-# The plan compares text these tools produce, so none comes from the caller's shell: the PATH is this
-# package's store paths, then the system's own directories (logger), and the locale is C, whatever the
-# caller's PATH, LANG or POSIXLY_CORRECT (which makes awk compare strings by collation).
+# None of these tools comes from the caller's shell, nor does the locale: the PATH is this package's store
+# paths, then the system's own directories (logger), and LC_ALL is C, whatever the caller's PATH, LANG or
+# POSIXLY_CORRECT (which makes awk compare strings by collation). What they print is compared and signed.
 PATH="@toolPath@:/usr/bin:/bin"
 export PATH LC_ALL=C
 unset POSIXLY_CORRECT GREP_OPTIONS

@@ -57,7 +57,7 @@ EOF
   printf 'source "%s"\nndh::logger:command:run() { shift; ndh::logger:command:invoke "$@"; return "$NDH_LOGGER_COMMAND_RC"; }\n' "$NDH_LOGGER_SH" >"$BATS_TEST_TMPDIR/trampoline.sh"
   sed -e "s#@nixBashTrampoline@#$BATS_TEST_TMPDIR/trampoline.sh#" -e 's#@loggerTag@#test#' \
     -e 's#@machines@#bioskop nikopol bioskop-nixos nikopol-nixos#' -e 's#@guests@#bioskop-nixos nikopol-nixos#' \
-    -e 's#@vzHosts@#nikopol#' \
+    -e 's#@vzHosts@#nikopol#' -e "s#@toolPath@#$BATS_TEST_TMPDIR/bin:$PATH#" \
     "$BATS_TEST_DIRNAME/../ssh-keys-renew.sh" >"$BATS_TEST_TMPDIR/ssh-keys-renew"
   today="$(date +%y-%m-%d)"
 }
@@ -89,6 +89,25 @@ renew() {
 
 decrypted() {
   sops --input-type yaml --output-type yaml -d "$keys"
+}
+
+# A caller's shell at its worst: failing tools first on PATH, a UTF-8 locale and POSIXLY_CORRECT.
+hostile() { # <cmd>... — runs <cmd> under it
+  local d="$BATS_TEST_TMPDIR/hostile" c
+  mkdir -p "$d"
+  for c in yq awk gawk sort tr paste cut sed grep diff sops ssh ssh-keygen openssl step git; do
+    printf '#!%s\necho hostile-%s >&2\nexit 1\n' "$BASH" "$c" >"$d/$c" && chmod +x "$d/$c"
+  done
+  PATH="$d:$PATH" LANG=fr_FR.UTF-8 LC_ALL=fr_FR.UTF-8 LC_COLLATE=fr_FR.UTF-8 POSIXLY_CORRECT=1 "$@"
+}
+
+@test "a caller's PATH, locale and POSIXLY_CORRECT change nothing, and none of its tools ran" {
+  cp "$keys" "$BATS_TEST_TMPDIR/before"
+  hostile run renew --create bot --usage bot-signing
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"bot"*"${today} (new entry)"* ]]
+  [[ "$output" != *hostile-* ]]
+  cmp "$keys" "$BATS_TEST_TMPDIR/before"
 }
 
 @test "a dry run of --create shows the new entry and leaves keys.yaml untouched" {

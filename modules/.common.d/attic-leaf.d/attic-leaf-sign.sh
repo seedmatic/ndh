@@ -5,6 +5,13 @@ export -n SHELLOPTS 2>/dev/null || true # readonly in bash, so not unset; un-exp
 unset NDH_LOGGER_XTRACE # ndh::logger:command:run traces its command only when this is 1
 unset BASH_XTRACEFD 2>/dev/null || true
 
+# None of these tools comes from the caller's shell, nor does the locale: the PATH is this package's store
+# paths, then the system's own directories (logger), and LC_ALL is C, whatever the caller's PATH, LANG or
+# POSIXLY_CORRECT (which makes awk compare strings by collation). What they print is compared and signed.
+PATH="$toolPath:/usr/bin:/bin"
+export PATH LC_ALL=C
+unset POSIXLY_CORRECT GREP_OPTIONS
+
 # attic-leaf-sign — certify each cache container's TLS key under the authority's CURRENT signing
 # slot, install the leaf on its NixOS guest, verify — the model of incus-cluster-cert-renew (S6).
 #
