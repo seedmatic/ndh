@@ -22,9 +22,10 @@ setup() {
   git clone -q --bare "$T/work" "$T/github.git"
   export NDH_SWITCH_REMOTE="$T/github.git"
 
-  # The switch commands record their argv instead of running.
+  # The switch commands record their argv instead of running; their shebang is this bash, since the nix sandbox
+  # has no /usr/bin/env.
   for c in nixos-rebuild ssh; do
-    printf '#!/usr/bin/env bash\nprintf "%%s\\n" "%s $*" >>"%s/calls"\n' "$c" "$T" >"$T/bin/$c"
+    printf '#!%s\nprintf "%%s\\n" "%s $*" >>"%s/calls"\n' "$BASH" "$c" "$T" >"$T/bin/$c"
     chmod +x "$T/bin/$c"
   done
   export PATH="$T/bin:$PATH"
@@ -91,7 +92,7 @@ sw() { bash "$T/ndh-switch" "$@"; }
   [ "$status" -eq 3 ] && [[ "$output" == *"cannot fetch develop and main"* ]]
 }
 @test "a failed switch is logged with its exit status, and returned" {
-  printf '#!/usr/bin/env bash\nexit 7\n' >"$T/bin/nixos-rebuild"
+  printf '#!%s\nexit 7\n' "$BASH" >"$T/bin/nixos-rebuild"
   run sw nikopol-nixos "$MERGED"
   [ "$status" -eq 7 ]
   grep -q "nikopol-nixos $MERGED failed: exit 7" "$T/state/ndh-switch/log"
