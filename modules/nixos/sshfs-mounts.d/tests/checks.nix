@@ -97,6 +97,7 @@ let
           modules = [ { ndh.sshfs.guestKeyLines = [ line ]; } ];
         }).config;
     in
+    assert expect "${seat}: its sshfs key options" shared.ndh.sshfs.authorizedOptions sftpReadOnly;
     assert expect "${seat}: the sshfs key it authorizes, with a test public" (sshfsLines tested) [
       "${sftpReadOnly} ${line}"
     ];

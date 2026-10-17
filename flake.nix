@@ -1186,7 +1186,8 @@
           keyring-bats = import ./modules/.common.d/keyring.d/tests/package.nix { inherit pkgs; };
           # What the operator seat serves a guest's sshfs key, internal-sftp -R, refuses every write.
           sshfs-read-only-sftp-bats = import ./modules/nixos/sshfs-mounts.d/tests/package.nix {
-            inherit pkgs;
+            pkgs = pkgsForLinux;
+            inherit (self.darwinConfigurations.bioskop.config.ndh.sshfs) authorizedOptions;
           };
           incus-cluster-cert-bats = import ./modules/.common.d/incus-cluster-cert.d/tests/package.nix {
             inherit pkgs;
