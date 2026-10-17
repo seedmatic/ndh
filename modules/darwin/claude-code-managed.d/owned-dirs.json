@@ -25,8 +25,8 @@
     "**/.secrets",
     "**/.secrets/**"
   ],
-  "roles": {
-    "security": {
+  "sessions": {
+    "develop-sec": {
       "owned": [
         "~/.claude/.scratchpad.d/security/**",
         "/private/tmp/claude-sec-*"
@@ -39,9 +39,11 @@
       ],
       "conversations": [
         "e009d868-b4d4-44db-98b8-3bfb4d9c0d97"
-      ]
+      ],
+      "role": "security",
+      "icon": "🛡️"
     },
-    "integration": {
+    "develop": {
       "owned": [
         "~/.claude/.scratchpad.d/integration-sow/**",
         "~/.claude/.scratchpad.d/vocabulary/**",
@@ -68,9 +70,11 @@
       ],
       "conversations": [
         "f45de9ce-1198-48b5-aa6b-3da49f833ea9"
-      ]
+      ],
+      "role": "integration",
+      "icon": "🧭"
     },
-    "operations": {
+    "develop-ops": {
       "owned": [
         "~/.claude/.scratchpad.d/operations/**",
         "/private/tmp/ops-*",
@@ -92,9 +96,11 @@
       "note": "remote probe derivations /tmp/<name>.nix on checked hosts: never deleted remotely",
       "conversations": [
         "c0aa166d-2d74-41a5-9226-7df1d763ab5a"
-      ]
+      ],
+      "role": "operations",
+      "icon": "🎛️"
     },
-    "k8s": {
+    "develop-k8s": {
       "owned": [
         "~/.claude/.scratchpad.d/k8s/**",
         "~/.claude/.scratchpad.d/node-store-freeze/k8s-facts.md"
@@ -113,9 +119,11 @@
       "note": "no standing worktree namespace; none in /private/tmp",
       "conversations": [
         "f9147322-48ad-46cb-8c3a-f88266dda598"
-      ]
+      ],
+      "role": "k8s",
+      "icon": "☸️"
     },
-    "cache": {
+    "develop-cache": {
       "owned": [
         "~/.claude/.scratchpad.d/private-binary-cache/**",
         "/private/tmp/mmdc.*",
@@ -145,9 +153,11 @@
       "note": "worktrees only as 🧭 grants, removed with `git worktree remove` after clean+merged; nothing inside the incus-probe VM",
       "conversations": [
         "9ba38f26-3549-4e68-b3ef-e4441594213f"
-      ]
+      ],
+      "role": "cache",
+      "icon": "📦"
     },
-    "outcluster": {
+    "develop-outcluster": {
       "owned": [
         "~/.claude/.scratchpad.d/outcluster/**",
         "~/.claude/.scratchpad.d/render-without-checkout/**",
@@ -175,9 +185,11 @@
       "note": "worktrees: only the EXACT path 🧭 assigns per task; the fix/ chore/ refactor/ namespaces are shared. NOT its: /private/tmp/claude-501, /private/tmp/rn-test",
       "conversations": [
         "341e7689-dd41-4936-9d5c-8bf35e808742"
-      ]
+      ],
+      "role": "outcluster (seeding)",
+      "icon": "🌱"
     },
-    "go": {
+    "develop-golang": {
       "owned": [
         "~/.claude/.scratchpad.d/go-applications/scaffold/.tmp/**",
         "/Volumes/git-worktree-store/seedmatic/nix-flake-commons.d/relock/develop/.scratchpad.d/gotmp/**",
@@ -207,9 +219,11 @@
       "note": "the relock/develop worktree and its tracked files are 🧭's, never removed",
       "conversations": [
         "43f36783-5d90-47cb-bc04-ce1cde2a1992"
-      ]
+      ],
+      "role": "go",
+      "icon": "🐹"
     },
-    "incus": {
+    "develop-incus": {
       "owned": [
         "~/.claude/.scratchpad.d/incus/**",
         "~/.claude/.scratchpad.d/node-store-freeze/design.md",
@@ -232,7 +246,9 @@
       ],
       "conversations": [
         "360eea08-3764-4db2-a48e-f34053daa428"
-      ]
+      ],
+      "role": "incus",
+      "icon": "🖥️"
     }
   }
 }
