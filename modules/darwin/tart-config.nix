@@ -46,11 +46,9 @@ let
   guestTailnetName = config.vm.guestHostName;
 
   sopsSecretsFile = worktreePath.runtimeFile ".secrets";
-  sopsSecretsLooksEncrypted =
-    let
-      content = builtins.readFile sopsSecretsFile;
-    in
-    lib.hasInfix "ENC[" content && lib.hasInfix "\"sops\"" content;
+  sopsSecretsLooksEncrypted = import ../.common.d/sops.d/looks-encrypted.nix { inherit lib; } (
+    builtins.readFile sopsSecretsFile
+  );
 
   profileUser = config.profile.user.name;
   profileHome = config.profile.user.home;
@@ -837,7 +835,7 @@ in
         # the sops git filters off (see .gitattributes). Same guard as sops.nix applies to keys.yaml.
         assertion = sopsSecretsLooksEncrypted;
         message = ''
-          sops source-of-truth violation: .secrets appears decrypted in this worktree.
+          sops source-of-truth violation: .secrets is not sops ciphertext in its YAML form in this worktree (decrypted, or written as JSON).
           Refusing evaluation — the Tart materializer carries this file into /nix/store, so a
           decrypted worktree copy would publish every secret it holds, world-readable.
           Re-encrypt it with sops before rebuild, and do not add `filter=sops-*` to .gitattributes.

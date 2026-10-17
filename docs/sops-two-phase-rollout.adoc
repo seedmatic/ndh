@@ -65,7 +65,7 @@ before pasting keeps the private out of the console log.
    (`age1...`) — never `AGE-SECRET-KEY-...`.
 2. The recipient is added to the `.sops.yaml` creation rules, then the affected files are re-keyed on a
    operator seat. For extensionless YAML secrets files (for example `.secrets`), pass explicit format flags:
-   `sops updatekeys -y --input-type yaml --output-type yaml .secrets`.
+   `sops updatekeys -y --input-type yaml .secrets`.
 3. The identity is placed on the machine (above), and the machine activates.
 
 == Security reminders
