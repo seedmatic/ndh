@@ -786,7 +786,8 @@ worktree evaluation ever wrote. So:
   `nix copy --to ssh-ng://nix-store.{host}`, under the existing `nix-store` identity. A host's
   switch then finds every path already local, added paths included. The receiving daemon accepts
   the copy without trusting the sender: the built paths carry `seedmatic-fleet-1`, which
-  every host of the fleet already trusts, and the added paths are content-addressed, which nix
+  every host of the fleet already trusts (the per-machine builder keys from step 9, see
+  <<one-key-per-machine>>), and the added paths are content-addressed, which nix
   accepts without a signature.
 
 The detector, while a worktree on disk is decrypted: a sweep of the store for new `-source` copies
@@ -888,7 +889,7 @@ flowchart LR
   HK["a machine's host key, private<br/>on that machine only"]
   NP["its nix signing key, private<br/>HKDF of the host seed, in no repository"]
   KY["keys.yaml, the machine's entry<br/>host public + nix signing public"]
-  CT["catalog/cache-trust.yaml<br/>the attic CACHE keys only"]
+  CT["catalog/cache-trust.nix privateCaches<br/>the attic cache PUBLICS, accepted (F3c)"]
   CAT["acceptedBy / trusted-public-keys<br/>read keys.yaml, copy nothing"]
   KR --> HK
   KR -->|"HKDF, label seedmatic/nix-signing/n"| NP
@@ -963,8 +964,11 @@ read it from there and restate nothing
 | the user authority, from the recorded host public
 
 | an attic cache key
-| `catalog/cache-trust.yaml`, sealed per host (unchanged): that file loses its builders' section
-| 📦's tooling
+| its **private** inside its cache container only, generated there by attic and never exported; its
+**public** in `catalog/cache-trust.nix`'s `privateCaches`, as the operator's acceptance (see the
+accepted-key schema in `catalog/private-caches.nix`). `catalog/cache-trust.yaml` holds no cache key:
+it keeps `seedmatic-fleet-1`'s private until step 9, then empties
+| attic in the container; the operator's merge for the public
 
 | the cluster builder's two publics
 | the cluster's own cellar, never fleet `keys.yaml` (<<cluster-builds>>)
@@ -973,7 +977,7 @@ read it from there and restate nothing
 
 * **Naming:** `seedmatic-<machine>-<n>`, where `<n>` is the HKDF label's version and `<machine>` the
   machine's `keys.yaml` name, as in `host-<machine>`. Cache keys keep their names
-  (`seedmatic-<bare-metal>-attic-<n>`, `seedmatic-<cluster>-attic-<n>`).
+  (`seedmatic-<metalspace>-attic-<n>`, `seedmatic-<cluster>-attic-<n>`).
 * **A distinct key, not the host key itself** (🛡️): the same ed25519 key would sign both ssh and
   narinfo with no domain separation. So the nix public cannot be computed from the host public, and
   `ndh-keyring`, which holds the private at generation, records both.
