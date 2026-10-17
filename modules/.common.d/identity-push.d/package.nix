@@ -14,6 +14,20 @@ in
 {
   inherit hostKeyFile sshfsKeyFile;
 
+  # The public keys.yaml records for <name>, from its newest slot, or "" when it records none: what a receive
+  # accepts, so that only the keyring's keys can ever be installed on a machine.
+  recordedPublic =
+    keys: name:
+    let
+      entry = keys.${name} or { };
+      slots = entry.slots or { };
+      newest = lib.last (lib.sort lib.lessThan (lib.attrNames slots));
+    in
+    if slots == { } || !(slots.${newest} ? public) then
+      ""
+    else
+      "${entry.type or "ssh-ed25519"} ${slots.${newest}.public}";
+
   # operatorIdentity: the ONE ssh identity used to reach the machine: { user, keyFile, certFile }.
   # receive: the seat's own ndh-identity-receive, called by its store path so sudo's PATH does not choose it.
   push =
@@ -88,6 +102,8 @@ in
   # served: what this machine's sshd serves, whose fingerprint the console prints for the push.
   # keyFile: the sops keyFile the age identity goes to, or "" for a machine whose frame carries the host key only.
   # sshfs: whether the frame carries the guest's sshfs key, placed at sshfsKeyFile (a guest that mounts sshfs).
+  # recorded: keys.yaml's publics each item must match (recordedPublic): hostKey, sshfsKey, and accessPoint, the
+  # host key whose ssh-to-age is the age identity's public; "" refuses that item.
   receive =
     {
       machine,
@@ -95,6 +111,7 @@ in
       sshfs,
       served,
       owner,
+      recorded,
     }:
     pkgs.writeShellApplication {
       name = "ndh-identity-receive";
@@ -102,9 +119,13 @@ in
         pkgs.age
         pkgs.coreutils
         pkgs.openssh
+        pkgs.ssh-to-age
       ];
       text = ''
         machine=${lib.escapeShellArg machine}
+        recordedHostKey=${lib.escapeShellArg recorded.hostKey}
+        recordedSshfsKey=${lib.escapeShellArg (recorded.sshfsKey or "")}
+        recordedAccessPoint=${lib.escapeShellArg (recorded.accessPoint or "")}
         keyFile=${lib.escapeShellArg keyFile}
         hostKeyFile=${lib.escapeShellArg hostKeyFile}
         sshfsKeyFile=${lib.escapeShellArg (lib.optionalString sshfs sshfsKeyFile)}

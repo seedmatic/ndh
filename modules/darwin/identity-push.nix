@@ -19,6 +19,7 @@ let
     sshfs = false;
     served = lib.head config.opensshPolicy.hostKeyPaths;
     owner = "root:wheel";
+    recorded.hostKey = identityPush.recordedPublic config.ndh.keysYaml.keys "host-${config.networking.hostName}";
   };
 in
 {

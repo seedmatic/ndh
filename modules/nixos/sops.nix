@@ -5,6 +5,7 @@
   pkgs,
   ndhSystemd,
   worktreePath,
+  ndh,
   ...
 }:
 let
@@ -54,13 +55,24 @@ let
     '';
   };
   # The machine's side of ndh-identity-push: places what bioskop sends, then ndh-identity-reload.
-  identityReceive = (import ../.common.d/identity-push.d/package.nix { inherit pkgs lib; }).receive {
-    machine = config.networking.hostName;
+  identityPush = import ../.common.d/identity-push.d/package.nix { inherit pkgs lib; };
+  machine = config.networking.hostName;
+  # The operator seat whose guest this is: its host key gives this machine's age identity (its access point).
+  baremetal = ndh.context.catalog.netplan.baremetal;
+  seat = lib.findFirst (h: baremetal.${h}.nixosHostname == machine) null (lib.attrNames baremetal);
+  identityReceive = identityPush.receive {
+    inherit machine;
     keyFile = config.sops.age.keyFile;
     sshfs = config.services.sshfsMounts.enable;
     served =
       if config.ndh.hostKey.own then config.ndh.hostKey.file else "/etc/ssh/ssh_host_ed25519_key.pub";
     owner = "root:root";
+    recorded = {
+      hostKey = identityPush.recordedPublic config.ndh.keysYaml.keys "host-${machine}";
+      sshfsKey = identityPush.recordedPublic config.ndh.keysYaml.keys "sshfs-${machine}";
+      accessPoint =
+        if seat == null then "" else identityPush.recordedPublic config.ndh.keysYaml.keys "host-${seat}";
+    };
   };
 in
 {

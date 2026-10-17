@@ -25,8 +25,15 @@ setup() {
   keyFile="$t/root/var/lib/sops-nix/bioskop-nixos.age"
   hostKeyFile="$t/root/var/lib/ndh/host-key/ssh_host_ed25519_key"
   sshfsKeyFile="$t/root/var/lib/ndh/sshfs/id_ed25519"
+  # keys.yaml's records, as a receive bakes them: the test keys are the recorded ones.
+  recorded() { # [host key file] [sshfs key file] [access point file]
+    printf 'recordedHostKey=%q recordedSshfsKey=%q recordedAccessPoint=%q\n' \
+      "$(cut -d' ' -f1,2 "${1:-$t/machine.pub}" 2>/dev/null)" "$(cut -d' ' -f1,2 "${2:-$t/sshfs.pub}" 2>/dev/null)" \
+      "$(cut -d' ' -f1,2 "${3:-$t/seat.pub}" 2>/dev/null)"
+  }
   guest_receive() { # <sshfsKeyFile> [machine root]
     printf 'set -euo pipefail\n'
+    recorded
     printf 'machine=%s keyFile=%q hostKeyFile=%q sshfsKeyFile=%q served=%q owner="" maxBytes=8192\n' \
       "${2:-bioskop-nixos}" "${3:-$keyFile}" "${4:-$hostKeyFile}" "$1" "$t/served.pub"
     cat "$here/ndh-identity-receive.sh"
@@ -39,6 +46,7 @@ setup() {
   darwinHostKeyFile="$t/nikopol-root/var/lib/ndh/host-key/ssh_host_ed25519_key"
   {
     printf 'set -euo pipefail\n'
+    recorded
     printf 'machine=nikopol keyFile="" hostKeyFile=%q sshfsKeyFile="" served=%q owner="" maxBytes=8192\n' \
       "$darwinHostKeyFile" "$t/served.pub"
     cat "$here/ndh-identity-receive.sh"
@@ -48,6 +56,7 @@ setup() {
   seatHostKeyFile="$t/seat-root/var/lib/ndh/host-key/ssh_host_ed25519_key"
   {
     printf 'set -euo pipefail\n'
+    recorded
     printf 'machine=bioskop keyFile="" hostKeyFile=%q sshfsKeyFile="" served=%q owner="" maxBytes=8192\n' \
       "$seatHostKeyFile" "$t/served.pub"
     cat "$here/ndh-identity-receive.sh"
@@ -404,5 +413,45 @@ seat_push() { # [fd 4 source] — the seat's own push, every network tool failin
   [[ $output == *"a malformed frame end — refused, nothing written"* ]]
   receive < <(frame bioskop-nixos | sed '$d')
   [ "$status" -eq 1 ]
+  nothing_placed
+}
+
+# A receive whose keys.yaml records something else than the frame carries.
+receive_recording() { # <host key pub> <sshfs pub> <access point pub>
+  { printf 'set -euo pipefail\n'; recorded "$1" "$2" "$3"
+    printf 'machine=bioskop-nixos keyFile=%q hostKeyFile=%q sshfsKeyFile=%q served=%q owner="" maxBytes=8192\n' \
+      "$keyFile" "$hostKeyFile" "$sshfsKeyFile" "$t/served.pub"
+    cat "$here/ndh-identity-receive.sh"; } >"$t/bin/ndh-identity-receive"
+}
+
+@test "receive: nothing recorded for the machine writes nothing" {
+  receive_recording /dev/null "$t/sshfs.pub" "$t/seat.pub"
+  receive < <(frame bioskop-nixos)
+  [ "$status" -eq 1 ]
+  [[ $output == *"keys.yaml records no host-bioskop-nixos"* ]]
+  nothing_placed
+}
+
+@test "receive: a host key other than the recorded one writes nothing" {
+  receive_recording "$t/served.pub" "$t/sshfs.pub" "$t/seat.pub"
+  receive < <(frame bioskop-nixos)
+  [ "$status" -eq 1 ]
+  [[ $output == *"the host key is not host-bioskop-nixos's"* ]]
+  nothing_placed
+}
+
+@test "receive: an sshfs key other than the recorded one writes nothing" {
+  receive_recording "$t/machine.pub" "$t/operator.pub" "$t/seat.pub"
+  receive < <(frame bioskop-nixos)
+  [ "$status" -eq 1 ]
+  [[ $output == *"the sshfs key is not sshfs-bioskop-nixos's"* ]]
+  nothing_placed
+}
+
+@test "receive: an age identity not derived from the recorded access point writes nothing" {
+  receive_recording "$t/machine.pub" "$t/sshfs.pub" "$t/operator.pub"
+  receive < <(frame bioskop-nixos)
+  [ "$status" -eq 1 ]
+  [[ $output == *"the age identity is not the one of bioskop-nixos's access point"* ]]
   nothing_placed
 }
