@@ -19,10 +19,16 @@ in
     # identity is part of the fleet's baseline signing/copy infrastructure.
     nixStoreIdentity.enable = lib.mkDefault true;
 
+    # Its own group, never the build-users-group: the nix daemon refuses a client whose primary
+    # group is build-users-group, trusted or not (nix 2.34 daemon.cc, authPeer).
+    users.groups = lib.mkIf (cfg.enable && cfg.provisionInboundUser) {
+      ${cfg.inboundUserName} = { };
+    };
+
     users.users = lib.mkIf (cfg.enable && cfg.provisionInboundUser) {
       ${cfg.inboundUserName} = {
         isSystemUser = true;
-        group = "nixbld";
+        group = cfg.inboundUserName;
         description = "Inbound nix-daemon --stdio endpoint";
         # NixOS's users-groups validator needs a package with
         # passthru.shellPath, not a bare string path.

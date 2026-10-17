@@ -39,6 +39,31 @@ in
     system-features = lib.mkForce (lib.remove "kvm" defaultFeatures);
   };
 
+  # Only the nixbldN build users may hold build-users-group. The daemon refuses a client whose PRIMARY
+  # group it is, trusted or not (daemon.cc, authPeer), and takes the group's MEMBERS as build users
+  # (user-lock.cc, getgrnam's gr_mem).
+  assertions =
+    let
+      group = config.nix.settings.build-users-group;
+      buildUser = name: builtins.match "nixbld[0-9]+" name != null;
+      others = lib.filterAttrs (name: _: !buildUser name) config.users.users;
+      primary = lib.attrNames (lib.filterAttrs (_: u: u.group == group) others);
+      members = lib.filter (name: !buildUser name) (
+        config.users.groups.${group}.members or [ ]
+        ++ lib.attrNames (lib.filterAttrs (_: u: lib.elem group u.extraGroups) others)
+      );
+    in
+    [
+      {
+        assertion = primary == [ ];
+        message = "build-users-group '${group}' is the primary group of ${lib.concatStringsSep ", " primary}: the nix daemon refuses them as clients";
+      }
+      {
+        assertion = members == [ ];
+        message = "${lib.concatStringsSep ", " members} would be build users: only nixbldN may be members of '${group}'";
+      }
+    ];
+
   nix.extraOptions = ''
     !include /etc/nix/nix.custom.conf
     !include ${kvmConf}
