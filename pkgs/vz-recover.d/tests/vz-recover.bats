@@ -148,6 +148,21 @@ exec nikopol /usr/bin/sudo -n /bin/launchctl kickstart -k system/com.tailscale.t
   ! grep -q GUEST-OUTPUT "$log"
 }
 
+# Waits until the log holds exactly <count> lines matching <pattern>, for at most 10 s. Through sshd the client
+# may return before the program has written its log line: a `-tt` login whose pty restrict denies ends with the
+# connection's status 255 while the server side still runs, so a count read at that instant races the program.
+logged() { # <pattern> <count>
+  local n
+  for _ in $(seq 100); do
+    n=$(grep -c -- "$1" "$log" 2>/dev/null || true)
+    [ "${n:-0}" -eq "$2" ] && return 0
+    sleep 0.1
+  done
+  echo "logged: ${n:-0} lines match '$1', not $2" >&2
+  cat "$log" >&2 2>/dev/null || true
+  return 1
+}
+
 # Starts a real sshd authorizing user.pub with exactly the package's options, the program as the command.
 serve() {
   cd "$T"
@@ -222,13 +237,12 @@ ssh_as_user() {
   # A login asks for a pty, which restrict denies; the program still answers, and ssh's own status then varies.
   ssh_as_user -tt localhost </dev/null
   echo "# login: status $status" >&3
-  printf -- '--- log\n%s\n' "$(cat "$log" 2>/dev/null)"
   [ "$status" -ne 0 ]
-  [ "$(grep -c ' refused 64 $' "$log")" -eq 1 ]
+  logged ' refused 64 $' 1
   printf 'ls\n' >batch
   run sftp -q -b batch -F /dev/null -P "$port" -i "$T/user" -o IdentitiesOnly=yes -o BatchMode=yes \
     -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o GlobalKnownHostsFile=/dev/null localhost
   [ "$status" -ne 0 ]
+  logged ' refused 64' 3
   [ ! -e "$T/shell-ran" ] && [ ! -e "$T/tart.argv" ]
-  [ "$(grep -c ' refused 64' "$log")" -eq 3 ]
 }
