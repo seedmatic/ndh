@@ -158,6 +158,16 @@ corporate bare-metal, a receiver only. Plain arrow = push; dotted = read (substi
 token and no attic substituter
 |===
 
+The **client** is distinct from the **builder** (operator, 2026-10-17). Every **fleet** machine, the
+darwin host and the NixOS guest alike, is a build client and may ask for a package of **any** system, darwin or Linux.
+The access point's two machines hold the metalspace's **builder role**, which dispatches by system:
+`aarch64-darwin` to the darwin host (its loopback `nix-store`, see <<every-build-a-request>>),
+`aarch64-linux` to the NixOS guest. Within an access point, its two machines therefore trust each
+other's store: each is a trusted client of the other's `nix-store` (accepted: they already share every
+secret, and the darwin host runs the guest). **Every fleet builder** (the access point's two machines; the
+cluster builders hold no attic token, see <<cluster-builds>>) **pushes its outputs into its metalspace's
+attic**: each holds a write token and a watch-store, minted by `attic-token-issue` for both machines.
+
 A cache is as trustworthy as its least trusted writer (<<trust-model>>), and each cache has only its
 own access point's writers. But nikopol's writers, the darwin host nikopol and nikopol-nixos, are
 Tart VMs **on** the corporate bare-metal, whose hypervisor can read and alter their memory, disks and
