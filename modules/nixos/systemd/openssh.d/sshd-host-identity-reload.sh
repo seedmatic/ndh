@@ -38,6 +38,22 @@ install_host_key() {
     chmod 644 "@systemHostKey@.pub"
   fi
   logger -p auth.notice -t "$LOG_TAG" "installed @hostKeySource@ as @systemHostKey@"
+  restart_tailscaled
+}
+
+# Tailscale SSH reads /etc/ssh's host keys only at its start and advertises them in the netmap: one
+# started before this install keeps advertising the replaced key, and `tailscale ssh` then fails host
+# verification. Only on an actual install, so a run that changes nothing does not cut the tailnet.
+restart_tailscaled() {
+  local unit="tailscaled.service"
+  if [[ "$(systemctl show -p LoadState --value "$unit")" != loaded ]]; then
+    return 0
+  fi
+  if ! systemctl try-restart --no-block "$unit"; then
+    logger -p auth.warning -t "$LOG_TAG" "tailscaled restart NOT queued (a conflicting job?); it advertises @systemHostKey@ at its next start"
+    return 0
+  fi
+  logger -p auth.info -t "$LOG_TAG" "tailscaled restart queued to advertise @systemHostKey@"
 }
 
 main() {
