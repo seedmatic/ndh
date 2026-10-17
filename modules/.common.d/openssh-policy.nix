@@ -312,13 +312,16 @@ in
     # key: at the next activation, not at an expiry. First, before any Host line: ssh keeps the first
     # value it obtains, and under a Host stanza the line would bind that host only.
     programs.ssh.extraConfig = lib.mkBefore "RevokedHostKeys ${config.ndh.keysYaml.krlFile}\n";
-    # The fleet's names and the aliases to them are checked strictly for root as for the operator: each presents a certificate
-    # the authority above verifies, so an unknown key there is refused instead of pinned on first use.
+    # The fleet's names and the aliases to them are trusted through the authority ONLY, for root as for the
+    # operator (the operator's decision, 2026-10-17): no raw key is ever pinned for them, so a host without a
+    # valid, unrevoked certificate is refused, and a host key change needs no known_hosts upkeep.
     # A drop-in, read before every `Host *` default: in the main file this stanza would also capture
     # the Include lines after it, an Include under a Host line being conditional on that host.
     environment.etc."ssh/ssh_config.d/10-fleet-hosts.conf".text = ''
       Host ${lib.concatStringsSep " " (lib.unique (self.fleetHostNames ++ cfg.fleetHostAliases))}
         StrictHostKeyChecking yes
+        UserKnownHostsFile /dev/null
+        UpdateHostKeys no
     '';
 
     # Expose helpers
