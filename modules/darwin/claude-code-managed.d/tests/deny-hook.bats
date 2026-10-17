@@ -330,6 +330,9 @@ REPLICA=/Volumes/git-worktree-store/nxmatic/claude-home.d/pass/seedmatic
 @test "vz: a verb with a metacharacter"          { run hook "ssh vzrecover.nikopol 'list;id'"; denied; }
 @test "vz: a verb then a second command word"    { run hook "ssh vzrecover.nikopol 'restart nikopol-nixos && id'"; denied; }
 @test "vz: two arguments"                        { run hook 'ssh vzrecover.nikopol restart a b'; denied; }
+@test "vz: probe takes no argument"              { run hook 'ssh vzrecover.nikopol probe nikopol'; denied; }
+@test "vz: a VM name in upper case"              { run hook 'ssh vzrecover.nikopol restart Nikopol'; denied; }
+@test "vz: a VM name with a dot"                 { run hook 'ssh vzrecover.nikopol restart a.b'; denied; }
 @test "vz: a substitution in the argument"       { run hook "ssh vzrecover.nikopol restart '\$(id)'"; denied; }
 @test "vz: -N"                                   { run hook 'ssh -N vzrecover.nikopol list'; denied; }
 @test "vz: -L forwarding"                        { run hook 'ssh -L 1:localhost:1 vzrecover.nikopol list'; denied; }
@@ -350,6 +353,24 @@ REPLICA=/Volumes/git-worktree-store/nxmatic/claude-home.d/pass/seedmatic
 @test "vz: rsync"                                { run hook 'rsync -a /tmp/x vzrecover.nikopol:/tmp/'; denied; }
 @test "vz: sshfs"                                { run hook 'sshfs vzrecover.nikopol:/ /tmp/m'; denied; }
 @test "ok another host keeps its remote command" { run hook 'ssh nikopol-nixos.local true'; allowed; }
+@test "vz: \$( ) as the VM name"                 { run hook 'ssh vzrecover.nikopol restart $(id -un)'; denied; }
+@test "vz: a backtick as the verb"               { run hook 'ssh vzrecover.nikopol `echo list`'; denied; }
+@test "vz: \$( ) inside double quotes"           { run hook 'ssh vzrecover.nikopol "restart $(id)"'; denied; }
+@test "vz: a host variant (trailing domain)"     { run hook 'ssh vzrecover.nikopol.local id'; denied; }
+@test "vz: a host variant (dash)"                { run hook 'ssh vz-recover.nikopol id'; denied; }
+@test "vz: the host built by a substitution"     { run hook 'ssh vzrecover.$(echo nikopol) id'; denied; }
+@test "vz: -i the key by another spelling"       { run hook 'ssh -i $HOME/.ssh//vz-recover vzhost.nikopol id'; denied; }
+@test "vz: -i the key by a glob"                 { run hook 'ssh -i ~/.ssh/vz* vzhost.nikopol id'; denied; }
+@test "vz: -o IdentityFile naming the key"       { run hook "ssh -o 'IdentityFile ~/.ssh/./vz-recover' vzhost.nikopol id"; denied; }
+@test "vz: -F an alternate config"               { run hook 'ssh -F /tmp/cfg vzhost.nikopol id'; denied; }
+@test "vz: -o Include"                           { run hook "ssh -o 'Include /tmp/cfg' vzhost.nikopol id"; denied; }
+@test "vz: git to a scp-like url"                { run hook 'git clone vzrecover.nikopol:repo'; denied; }
+@test "vz: git to an ssh:// url"                 { run hook 'git fetch ssh://vzrecover.nikopol/x'; denied; }
+@test "vz: GIT_SSH_COMMAND naming the key"       { run hook "GIT_SSH_COMMAND='ssh -i ~/.ssh/vz-recover' git fetch vzhost.nikopol:x"; denied; }
+@test "vz: git -c core.sshCommand"               { run hook "git -c 'core.sshCommand=ssh -i ~/.ssh/vz-recover' fetch vzhost.nikopol:x"; denied; }
+@test "vz: rsync -e naming the key"              { run hook "rsync -e 'ssh -i ~/.ssh/vz-recover' /tmp/x vzhost.nikopol:/tmp/"; denied; }
+@test "ok a commit message naming the host"      { run hook "git commit -m 'deny-hook: ssh vzrecover.nikopol list only'"; allowed; }
+@test "ok ssh -i another key elsewhere"          { run hook 'ssh -i ~/.ssh/other nikopol-nixos.local true'; allowed; }
 @test "ok the ssh public key"                   { run hook 'cat ~/.ssh/id_ed25519.pub'; allowed; }
 @test "wake: ndh-claude-wake by name"             { run hook 'ndh-claude-wake --dry-run'; allowed; }
 @test "wake: a local ndh-claude-wake copy"        { run hook './ndh-claude-wake'; denied; }

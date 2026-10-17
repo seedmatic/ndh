@@ -137,9 +137,10 @@
     { "program": "mvn", "all_args_contain": ["exec:java"], "any_arg_contains": ["seed-outcluster"] }
   ],
   "vz_recover": {
-    "host": "^(?:[^@/]+@)?vzrecover\\.[a-z0-9-]+$",
     "verbs": ["probe", "list", "restart", "rollback", "restart-access"],
-    "arg": "^[A-Za-z0-9._-]+$",
+    "arg": "^[a-z0-9-]+$",
+    "bare_verbs": ["probe"],
+    "key_spelling": "(?i)vz.{0,3}rec",
     "flags": "qTv46",
     "options": ["BatchMode", "ConnectTimeout", "ServerAliveInterval", "ServerAliveCountMax"],
     "other_programs": ["scp", "sftp", "rsync", "sshfs", "mosh", "autossh", "ssh-copy-id"],

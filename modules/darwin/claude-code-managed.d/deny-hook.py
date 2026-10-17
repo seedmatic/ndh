@@ -478,11 +478,12 @@ class Analyzer:
             return []
         if prog == "ssh":
             i = skip_options(rest, set("-b -c -D -E -e -F -I -i -J -L -l -m -O -o -p -Q -R -S -W -w -B".split()))
-            if i < len(rest) and self.is_vz_recover(rest[i]):
+            if i < len(rest) and self.names_vz_recover(rest[i]):
                 self.check_vz_recover(rest[:i], rest[i + 1:], ["ssh"] + rest)
                 return []
-            if any(self.is_vz_recover(tok) or "vzrecover." in tok.lower() for tok in rest[:i]):
-                self.deny(f"vzrecover.* is a destination only: {self.table['vz_recover']['why']}", ["ssh"] + rest)
+            why = self.ssh_override(rest[:i])
+            if why:
+                self.deny(f"{why}: {self.table['vz_recover']['why']}", ["ssh"] + rest)
                 return []
             if i + 1 < len(rest):
                 self.analyze(" ".join(rest[i + 1:]), depth + 1)
@@ -510,12 +511,28 @@ class Analyzer:
             return self.peel_nix(rest)
         return None
 
-    def is_vz_recover(self, dest):
+    def names_vz_recover(self, tok):
+        """Whether TOK spells the vz-recover host or key in any form a client config could map: the
+        alias, a variant of it, the key's file under any path or case."""
         spec = self.table.get("vz_recover")
-        if not spec:
-            return False
-        host = re.sub(r"^ssh://", "", dest.lower())
-        return re.fullmatch(spec["host"], re.sub(r":\d+$", "", host)) is not None
+        return bool(spec) and re.search(spec["key_spelling"], tok) is not None
+
+    def ssh_override(self, opts):
+        """Why an ssh toward any other host is refused: an option naming the vz-recover key or host, an
+        alternate config (-F, -o Include) that could map the key, or an identity given by a glob."""
+        i = 0
+        while i < len(opts):
+            tok = opts[i]
+            value = opts[i + 1] if tok in ("-i", "-F", "-o", "-J") and i + 1 < len(opts) else tok[2:]
+            if self.names_vz_recover(tok) or self.names_vz_recover(value):
+                return f"ssh option {tok} names vz-recover"
+            if tok.startswith("-F") or (tok.startswith("-o") and re.match(r"(?i)\s*include\b", value)):
+                return "an alternate ssh config could map the vz-recover key"
+            if (tok.startswith("-i") or (tok.startswith("-o") and re.match(r"(?i)\s*(identityfile|certificatefile)\b", value))) \
+                    and re.search(r"[*?\[]", value):
+                return "an ssh identity given by a glob"
+            i += 2 if tok in ("-i", "-F", "-o", "-J") else 1
+        return None
 
     def check_vz_recover(self, opts, remote, argv):
         """The vz-recover key is a forced command on the operator's corporate account, and the guard must hold even
@@ -542,7 +559,11 @@ class Analyzer:
             i += 1
         # ssh joins the remote words with spaces and the far side splits them again, so judge the joined words.
         words = " ".join(remote).split()
+        if "__subst__" in words or any("__subst__" in tok for tok in opts):
+            self.deny(f"a substitution in a call toward vzrecover.*: {spec['why']}", argv)
+            return
         if (not words or words[0] not in spec["verbs"] or len(words) > 2
+                or (words[0] in spec.get("bare_verbs", []) and len(words) > 1)
                 or not all(re.fullmatch(spec["arg"], w) for w in words[1:])):
             self.deny(f"remote command {' '.join(remote)!r} toward vzrecover.*: {spec['why']}", argv)
 
@@ -822,9 +843,19 @@ class Analyzer:
     def check(self, argv):
         prog, args = argv[0], argv[1:]
         spec = self.table.get("vz_recover")
-        if spec and prog in spec["other_programs"] and any("vzrecover." in a.lower() for a in args):
-            self.deny(f"{prog} toward vzrecover.*: {spec['why']}", argv)
-            return
+        if spec:
+            if any(self.names_vz_recover(a) for a in self.assignments):
+                self.deny(f"an assignment naming vz-recover: {spec['why']}", argv)
+                return
+            if prog in spec["other_programs"] and any(self.names_vz_recover(a) for a in args):
+                self.deny(f"{prog} toward vz-recover: {spec['why']}", argv)
+                return
+            # git reaches a host through a remote url or its own ssh command; a message that names the host is not a call.
+            if prog == "git" and any(re.search(r"(?i)(^|[@/])vzrecover\.[^\s/]*:|ssh://[^\s]*vzrecover", a)
+                                     or (re.match(r"(?i)core\.sshcommand=", a) and self.names_vz_recover(a))
+                                     for a in args):
+                self.deny(f"git toward vz-recover: {spec['why']}", argv)
+                return
         if prog in ("rm", "rmdir"):
             flags = [t for t in args if t.startswith("-")]
             targets = [t for t in args if not t.startswith("-")]
