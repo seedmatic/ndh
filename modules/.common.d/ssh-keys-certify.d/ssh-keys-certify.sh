@@ -44,22 +44,31 @@ unset BASH_XTRACEFD 2>/dev/null || true
 # principals, identity (its issue stamp aside), a non-zero serial and validity is kept as it is. Dry
 # run by default; --apply rewrites keys.yaml.
 #
+# Nothing is decrypted to plan: keys.yaml encrypts its privates only (`# sops:encrypted`), so every
+# value the plan reads is a clear leaf of the file as committed, and the dry run calls no sops at all.
+# --apply decrypts ONE value, the signing slot's private, straight into this run's own ssh-agent, and
+# records the certificates with `sops set` on the encrypted file.
+#
 # Usage: ssh-keys-certify [--apply]     (run from the ndh repository root)
 
 # shellcheck disable=SC1091
 source @nixBashTrampoline@
 
-# keys.yaml relative to the repository root: the real file, and the copy whose path picks its sops rule.
 readonly keysRel="modules/home-manager/ssh.d/keys.yaml"
 # ssh-keygen is pinned: the signature AND the comparison of a recorded certificate read its `-L`
 # output, and the first ssh-keygen on PATH (Apple's or nix's) made a current certificate look stale.
+# The agent that holds the signing private comes from the same openssh.
 readonly sshKeygen="@sshKeygen@"
+readonly sshAgent="${sshKeygen%/*}/ssh-agent"
+readonly sshAdd="${sshKeygen%/*}/ssh-add"
 readonly sha256sum="@sha256sum@"
 readonly interimKey="@interimKey@"
-declare -g keysYaml tmpdir decrypted apply nextSerial interimWaiting=""
+declare -g keysYaml tmpdir updated expected apply nextSerial interimWaiting="" agentPid="" sopsErr=""
 declare -ga plan=() current=() unrecorded=() interimMachines=() interimPending=() interimKept=() ownMachines=()
 # machine → its names, comma-separated: baked as `machine=name,name machine=name,…`.
 declare -gA hostNames=()
+# authority@slot → loaded in the agent.
+declare -gA loaded=()
 read -r -a interimMachines <<<"@interimMachines@"
 read -r -a ownMachines <<<"@ownMachines@"
 read -r -a hostNameEntries <<<"@hostNames@"
@@ -80,12 +89,22 @@ usage() {
 		  signing slot, and record each one under
 		  keys.<key>.slots.<slot>.certificates.<authority>.<usage>. Dry run by default.
 
-		  --apply   sign what is missing or stale and rewrite keys.yaml (re-encrypted)
+		  --apply   sign what is missing or stale and record each certificate in keys.yaml (sops set)
 	EOF
 	return 64
 }
 
-yq::get() { yq eval -r "$1" "$decrypted"; }
+yq::get() { yq eval -r "$1" "$keysYaml"; }
+
+# The plan reads keys.yaml as committed, so a leaf it reads that is ciphertext would compare as garbage
+# and be signed as such: the run stops instead. Only privates may be encrypted (keys.schema.yaml).
+keys::clear_or_refuse() {
+	local encrypted
+	encrypted="$(yq eval -r '[del(.sops) | .. | select(tag == "!!str" and test("^ENC\[")) | path | select(.[-1] != "private") | map(tostring) | join(".")] | .[]' "$keysYaml")" || return 1
+	[[ -z "$encrypted" ]] && return 0
+	log::error "keys.yaml encrypts values that are not privates, which this tool reads in clear: $(paste -sd' ' - <<<"$encrypted")"
+	return 1
+}
 
 # The oldest authority slot not marked compromised: the generation that signs (keys.schema.yaml).
 authority::signing_slot() { # <authority>
@@ -327,42 +346,41 @@ plan::show() {
 	fi
 }
 
-# Who can read a sops file, every key provider included, sorted.
-recipients::of() { # <sops file>
-	yq eval -r '[
-		((.sops.age // [])[] | "age:" + .recipient),
-		((.sops.pgp // [])[] | "pgp:" + .fp),
-		((.sops.kms // [])[] | "kms:" + .arn),
-		((.sops.gcp_kms // [])[] | "gcp_kms:" + .resource_id),
-		((.sops.azure_kv // [])[] | "azure_kv:" + .vault_url + "/" + .name),
-		((.sops.hc_vault // [])[] | "hc_vault:" + .vault_address + "/" + .engine_path + "/" + .key_name)
-	] | sort | join(",")' "$1"
-}
-
-# A tool that rewrites key material never changes who can read it. The re-encryption follows
-# keys.yaml's own creation rule (the decrypted copy sits at its relative path — a temp path once
-# matched the catch-all and dropped a recipient), and a recipient set that would still change —
-# the rule and the committed envelope disagree — is refused: that is `sops updatekeys`, an
-# explicit gesture of its own.
-recipients::unchanged() { # <committed file> <re-encrypted file>
-	local before after
-	before="$(recipients::of "$1")"
-	after="$(recipients::of "$2")"
-	[[ "$before" == "$after" ]] && return 0
-	log::error "keys.yaml's recipients would change: +[$(comm -13 <(tr ',' '\n' <<<"$before") <(tr ',' '\n' <<<"$after") | paste -sd, -)] -[$(comm -23 <(tr ',' '\n' <<<"$before") <(tr ',' '\n' <<<"$after") | paste -sd, -)]"
-	log::error "keys.yaml left untouched — align its recipients with its creation rule first: sops updatekeys ${keysRel}"
-	return 1
+# The signing slot's private, from sops into this run's own agent through a pipe. Not `ssh-keygen -s
+# <(…)`: ssh-keygen refuses a key it reads from a pipe (darwin gives a pipe mode 0660, "UNPROTECTED
+# PRIVATE KEY FILE"), and a file would put the private on disk.
+authority::load() { # <authority> <authority slot>
+	local sock="${tmpdir}/agent.sock"
+	if [[ -z "$agentPid" ]]; then
+		agentPid="$("$sshAgent" -s -a "$sock" | sed -n 's/^SSH_AGENT_PID=\([0-9]*\);.*/\1/p')"
+		if [[ -z "$agentPid" ]]; then
+			log::error "cannot start the ssh-agent that signs"
+			return 1
+		fi
+	fi
+	# The only sops call: everything before it reads cleartext metadata.
+	# Its stderr stays in sopsErr, never shown: sops can quote plaintext. -t: a SIGKILLed run skips the
+	# EXIT trap, and its agent would hold the private until reboot; the key expires by itself instead.
+	local -a rcs=(0 0)
+	{ sops --decrypt --extract "[\"authorities\"][\"$1\"][\"slots\"][\"$2\"][\"private\"]" "$keysYaml" 2>"$sopsErr" && echo; } |
+		SSH_AUTH_SOCK="$sock" "$sshAdd" -t 120 -q - || rcs=("${PIPESTATUS[@]}")
+	if ((rcs[0] != 0)); then
+		log::error "sops decrypt failed (exit ${rcs[0]}) (check SOPS_AGE_KEY_FILE / sops.age.keyFile)"
+		return 1
+	fi
+	if ((rcs[1] != 0)); then
+		log::error "cannot load ${1}@${2}'s private into the agent (ssh-add exit ${rcs[1]})"
+		return 1
+	fi
+	printf '%s %s\n' "$(yq::get ".authorities.\"$1\".type // \"ssh-ed25519\"")" "$(yq::get ".authorities.\"$1\".slots.\"$2\".public")" \
+		>"${tmpdir}/authority-${1}@${2}.pub"
+	loaded["${1}@${2}"]=1
 }
 
 certify::one() { # <key> <slot> <authority> <authority slot> <usage> <serial>
-	local key="$1" slot="$2" authority="$3" authSlot="$4" usage="$5" serial="$6" principals identity replaced
-	local authFile="${tmpdir}/authority-${authority}@${authSlot}"
-	if [[ ! -s "$authFile" ]]; then
-		(
-			umask 077
-			yq::get ".authorities.\"${authority}\".slots.\"${authSlot}\".private" >"$authFile"
-		)
-		chmod 400 "$authFile"
+	local key="$1" slot="$2" authority="$3" authSlot="$4" usage="$5" serial="$6" principals identity replaced cert value
+	if [[ ! -v "loaded[${authority}@${authSlot}]" ]]; then
+		authority::load "$authority" "$authSlot" || return 1
 	fi
 	local stem="${tmpdir}/${key}@${slot}-${usage}"
 	printf '%s %s %s\n' "$(yq::get ".keys.\"${key}\".type")" "$(yq::get ".keys.\"${key}\".slots.\"${slot}\".public")" \
@@ -372,7 +390,7 @@ certify::one() { # <key> <slot> <authority> <authority slot> <usage> <serial>
 		log::error "cannot compose the key id of ${key}@${slot} ${usage}"
 		return 1
 	fi
-	local -a args=(-q -s "$authFile" -I "$identity" -z "$serial" -n "$principals")
+	local -a args=(-q -U -s "${tmpdir}/authority-${authority}@${authSlot}.pub" -I "$identity" -z "$serial" -n "$principals")
 	[[ "$usage" == ssh-host ]] && args+=(-h)
 	# The certificate this one replaces keeps its id and serial wherever it was installed: logged, so
 	# the revocation that cuts it can name it exactly.
@@ -384,7 +402,7 @@ certify::one() { # <key> <slot> <authority> <authority slot> <usage> <serial>
 	fi
 	# Every step is checked: the logger wrapper runs this script with errexit OFF, and an unchecked
 	# failure once recorded EMPTY certificates as "signed".
-	if ! "$sshKeygen" "${args[@]}" "${stem}.pub"; then
+	if ! SSH_AUTH_SOCK="${tmpdir}/agent.sock" "$sshKeygen" "${args[@]}" "${stem}.pub"; then
 		log::error "ssh-keygen could not sign ${key}@${slot} ${usage}"
 		return 1
 	fi
@@ -392,8 +410,19 @@ certify::one() { # <key> <slot> <authority> <authority slot> <usage> <serial>
 		log::error "no certificate was written for ${key}@${slot} ${usage}"
 		return 1
 	fi
-	if ! CERT="$(<"${stem}-cert.pub")" yq eval -i \
-		".keys.\"${key}\".slots.\"${slot}\".certificates.\"${authority}\".\"${usage}\" = strenv(CERT)" "$decrypted"; then
+	cert="$(<"${stem}-cert.pub")"
+	if ! value="$(CERT="$cert" yq --null-input --output-format=json 'strenv(CERT)')"; then
+		log::error "cannot record the certificate of ${key}@${slot} ${usage}"
+		return 1
+	fi
+	# The write-back: sops set writes this clear certificate leaf and keeps the envelope (stderr in sopsErr).
+	local rc=0
+	sops set "$updated" "[\"keys\"][\"${key}\"][\"slots\"][\"${slot}\"][\"certificates\"][\"${authority}\"][\"${usage}\"]" "$value" 2>"$sopsErr" || rc=$?
+	if ((rc != 0)); then
+		log::error "sops set failed (exit ${rc}) for ${key}@${slot} ${usage}"
+		return 1
+	fi
+	if ! CERT="$cert" yq eval -i ".keys.\"${key}\".slots.\"${slot}\".certificates.\"${authority}\".\"${usage}\" = strenv(CERT)" "$expected"; then
 		log::error "cannot record the certificate of ${key}@${slot} ${usage}"
 		return 1
 	fi
@@ -401,7 +430,15 @@ certify::one() { # <key> <slot> <authority> <authority slot> <usage> <serial>
 }
 
 certify::apply() {
-	local line reencrypted
+	local line
+	# .yaml: sops set reads the format from the extension. `expected` takes the same edits through yq
+	# on the committed text: what sops set must produce, every other value and comment byte for byte.
+	updated="${tmpdir}/keys.certified.yaml"
+	expected="${tmpdir}/keys.expected.yaml"
+	if ! cp "$keysYaml" "$updated" || ! cp "$keysYaml" "$expected"; then
+		log::error "cannot copy keys.yaml; keys.yaml left untouched"
+		return 1
+	fi
 	for line in "${plan[@]}"; do
 		IFS=$'\t' read -r key slot authority authSlot usage _ <<<"$line"
 		certify::one "$key" "$slot" "$authority" "$authSlot" "$usage" "$nextSerial" || {
@@ -410,23 +447,17 @@ certify::apply() {
 		}
 		nextSerial=$((nextSerial + 1))
 	done
-	reencrypted="${tmpdir}/keys.yaml.reenc"
-	if ! (cd "${tmpdir}/repo" && sops --input-type yaml --output-type yaml encrypt "$keysRel") >"$reencrypted"; then
-		log::error "sops encrypt failed; keys.yaml left untouched"
+	if [[ "$(yq eval 'del(.sops)' "$updated")" != "$(yq eval 'del(.sops)' "$expected")" ]]; then
+		log::error "sops set changed more than the certificates; keys.yaml left untouched"
 		return 1
 	fi
-	[[ -s "$reencrypted" ]] || {
-		log::error "sops encrypt produced an empty file; keys.yaml left untouched"
-		return 1
-	}
-	recipients::unchanged "$keysYaml" "$reencrypted" || return 1
 	# Every private, of every key and authority, must still be ciphertext: a certificate is public
 	# and travels in clear, nothing else may.
-	if [[ "$(yq eval '[.keys[].slots[].private, .authorities[].slots[].private] | map(select(. != null)) | all_c(test("^ENC\["))' "$reencrypted")" != true ]]; then
-		log::error "a private is NOT encrypted in the re-encrypted file; keys.yaml left untouched"
+	if [[ "$(yq eval '[.keys[].slots[].private, .authorities[].slots[].private] | map(select(. != null)) | all_c(test("^ENC\["))' "$updated")" != true ]]; then
+		log::error "a private is NOT encrypted in the rewritten file; keys.yaml left untouched"
 		return 1
 	fi
-	install -m 0644 "$reencrypted" "$keysYaml" || return 1
+	install -m 0644 "$updated" "$keysYaml" || return 1
 	cat <<-EOF
 
 		${#plan[@]} certificate(s) recorded in keys.yaml.
@@ -480,32 +511,33 @@ main() {
 		log::error "keys.yaml not readable at ${keysYaml} (run from the ndh repo root)"
 		return 1
 	}
+	keys::clear_or_refuse || return 1
 	tmpdir="$(mktemp -d)"
 	chmod 700 "$tmpdir"
-	trap 'rm -rf "$tmpdir"' EXIT
-	# The decrypted copy sits at keys.yaml's OWN relative path, beside a copy of the repository's
-	# .sops.yaml: sops picks the creation rule by the path it encrypts (--filename-override does not
-	# change that, measured with 3.13.3), so the re-encryption gets exactly keys.yaml's rule.
-	install -d -m 0700 "${tmpdir}/repo/$(dirname "$keysRel")"
-	cp "$(git rev-parse --show-toplevel)/.sops.yaml" "${tmpdir}/repo/.sops.yaml"
-	decrypted="${tmpdir}/repo/${keysRel}"
-	sops --input-type yaml --output-type yaml -d "$keysYaml" >"$decrypted"
-	[[ -s "$decrypted" ]] || {
-		log::error "sops -d produced an empty file (check SOPS_AGE_KEY_FILE / sops.age.keyFile)"
-		return 1
-	}
+	trap '[[ -z "$agentPid" ]] || kill "$agentPid" 2>/dev/null; rm -rf "$tmpdir"' EXIT
+	sopsErr="${tmpdir}/sops.stderr"
+	(umask 077 && : >"$sopsErr")
 
 	plan::build || return 1
 	plan::show
 	if ((${#plan[@]} == 0)); then
 		log::info "every certificate is current — nothing to sign"
+		log::info "decrypted: no (nothing to sign)"
 		return 0
 	fi
 	if ((apply == 0)); then
 		log::info "dry run — pass --apply to sign and rewrite keys.yaml"
+		log::info "decrypted: no (dry run)"
 		return 0
 	fi
-	certify::apply
+	local rc=0
+	certify::apply || rc=$?
+	if ((${#loaded[@]} > 0)); then
+		log::info "decrypted: $(printf '%s\n' "${!loaded[@]}" | LC_ALL=C sort | paste -sd, -)"
+	else
+		log::info "decrypted: no"
+	fi
+	return "$rc"
 }
 
 ndh::logger:command:run "@loggerTag@" main "$@"
