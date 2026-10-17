@@ -3,12 +3,13 @@
 # ndh-identity-push and ndh-identity-receive on their REAL path, the keys generated here. Only the outside
 # world is stubbed, first on PATH: route and ifconfig (the seat's link), ssh-keyscan (what the machine's
 # sshd serves) and ssh, which checks the pinning options and runs the real receive against a temp root.
+# The seat's own push goes through a sudo stub to a second receive, configured as the darwin seat's.
 
 bats_require_minimum_version 1.5.0
 
 setup() {
   t="$BATS_TEST_TMPDIR"
-  mkdir -p "$t/bin" "$t/tmp" "$t/root/var/lib/sops-nix"
+  mkdir -p "$t/bin" "$t/tmp" "$t/root/var/lib/sops-nix" "$t/seat-root"
   here="${BATS_TEST_DIRNAME}/.."
   key() { ssh-keygen -q -t ed25519 -N "${2:-}" -C "$1" -f "$t/$1"; }
   key machine
@@ -25,10 +26,19 @@ setup() {
     cat "$here/ndh-identity-receive.sh"
   } >"$t/bin/ndh-identity-receive"
   chmod +x "$t/bin/ndh-identity-receive"
+  seatHostKeyFile="$t/seat-root/var/lib/ndh/host-key/ssh_host_ed25519_key"
+  {
+    printf 'set -euo pipefail\n'
+    printf 'machine=bioskop keyFile="" hostKeyFile=%q served=%q owner="" maxBytes=8192\n' \
+      "$seatHostKeyFile" "$t/served.pub"
+    cat "$here/ndh-identity-receive.sh"
+  } >"$t/seat-receive"
+  chmod +x "$t/seat-receive"
   {
     printf 'set -euo pipefail\n'
     printf 'seat=bioskop machine=bioskop-nixos address=172.16.8.1 localAddress=172.16.8.2 maxBytes=8192\n'
     printf 'sshUser=nxmatic sshKey=%q sshCert=%q ttyIn=%q\n' "$t/operator" "$t/operator-cert.pub" "$t/typed"
+    printf 'localSudo=%q localReceive=%q\n' "$t/bin/sudo" "$t/seat-receive"
     cat "$here/ndh-identity-push.sh"
   } >"$t/push"
   ssh-keygen -l -E sha256 -f "$t/served.pub" | awk '{ print $2 }' >"$t/typed"
@@ -62,6 +72,13 @@ case "\${@: -1}" in
   *"ndh-identity-reload") touch "$t/reloaded"; echo "[ndh-identity-reload] restarted" ;;
   *) echo "ssh stub: unexpected \${@: -1}" >&2; exit 99 ;;
 esac
+EOF
+  cat >"$t/bin/sudo" <<EOF
+#!/usr/bin/env bash
+[[ \$1 == -n ]] || { echo "sudo stub: not -n" >&2; exit 96; }
+shift
+echo "\$*" >>"$t/sudo.log"
+exec "\$@"
 EOF
   chmod +x "$t/bin/"*
 }
@@ -178,4 +195,62 @@ receive() { PATH="$t/bin:$PATH" run ndh-identity-receive --accept; }
   [ "$status" -eq 0 ]
   [[ $output == *"[xtrace-guard] xtrace disabled"* ]]
   [[ $output != *AGE-SECRET-KEY* && $output != *"PRIVATE KEY"* ]]
+}
+
+seat_push() { # [fd 4 source] — the seat's own push, every network tool failing if called
+  local c
+  for c in route ifconfig ssh-keyscan ssh; do
+    printf '#!/usr/bin/env bash\necho %s >>%q\nexit 95\n' "$c" "$t/network.log" >"$t/bin/$c"
+  done
+  if [[ -n ${1:-} ]]; then
+    TMPDIR="$t/tmp" PATH="$t/bin:$PATH" run bash "$t/push" bioskop 3<"$t/machine" 4<"$1"
+  else
+    TMPDIR="$t/tmp" PATH="$t/bin:$PATH" run bash "$t/push" bioskop 3<"$t/machine" 4<&-
+  fi
+}
+
+@test "the seat's push places its host key only, locally, checked by its public, and says what comes next" {
+  seat_push
+  [ "$status" -eq 0 ]
+  [ "$(stat -c %a "$seatHostKeyFile")" = 400 ]
+  [ "$(ssh-keygen -y -f "$seatHostKeyFile" | cut -d' ' -f1,2)" = "$(cut -d' ' -f1,2 "$t/machine.pub")" ]
+  [ "$(find "$t/seat-root" -type f | wc -l)" -eq 1 ]
+  [ "$(<"$t/sudo.log")" = "$t/seat-receive --accept" ]
+  [ ! -e "$t/network.log" ]
+  [[ $output != *"The fingerprint"* ]]
+  [[ $output == *"next: commit ndh.hostKey.own = true for bioskop, then switch"* ]]
+  [[ $output == *"ssh-keygen -R <name>"* ]]
+  [[ $output != *AGE-SECRET-KEY* && $output != *"PRIVATE KEY"* ]]
+  nothing_placed
+}
+
+@test "the seat's push refuses a key on fd 4, and sends nothing" {
+  seat_push "$t/seat"
+  [ "$status" -eq 1 ]
+  [[ $output == *"takes its host key only, on fd 3"* ]]
+  [ ! -e "$t/sudo.log" ]
+  [ ! -e "$t/network.log" ]
+}
+
+@test "the seat's push stops when the placed public differs" {
+  printf '#!/usr/bin/env bash\ncat >/dev/null\necho "host-key ssh-ed25519 AAAAtampered"\n' >"$t/seat-receive"
+  seat_push
+  [ "$status" -eq 1 ]
+  [[ $output == *"public differs from the one sent"* ]]
+  [[ $output != *"next:"* ]]
+}
+
+@test "receive on the seat: a frame carrying an age identity writes nothing" {
+  PATH="$t/bin:$PATH" run "$t/seat-receive" --accept < <(frame bioskop)
+  [ "$status" -eq 1 ]
+  [[ $output == *"an age identity, which bioskop does not take — refused, nothing written"* ]]
+  [ -z "$(find "$t/seat-root" -type f)" ]
+  [[ $output != *AGE-SECRET-KEY* ]]
+}
+
+@test "receive on a NixOS guest: a frame without the age identity writes nothing" {
+  receive < <(printf 'ndh-identity/1 bioskop-nixos\n%s\nend\n' "$(<"$t/machine")")
+  [ "$status" -eq 1 ]
+  [[ $output == *"a malformed age identity — refused, nothing written"* ]]
+  nothing_placed
 }

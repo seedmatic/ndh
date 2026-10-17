@@ -16,13 +16,18 @@ unset BASH_XTRACEFD 2>/dev/null || true
 # publics are printed, for the push to compare with what it derived. Nothing here echoes the frame.
 #
 #   ndh-identity/1 <machine>
-#   AGE-SECRET-KEY-1...
+#   AGE-SECRET-KEY-1...                  (only when keyFile is set)
 #   -----BEGIN OPENSSH PRIVATE KEY-----
 #   ...
 #   -----END OPENSSH PRIVATE KEY-----
 #   end
 #
-# The host key is PLACED, not served: sshd reads it once each machine owns its own (S3).
+# keyFile is empty on the operator seat: its sops keyFile still holds the retired identities that roles × keys
+# S4/S8 replace once every file is re-keyed, so writing its access point's identity there now would break sops.
+# Its frame is then the host key alone, and a frame carrying an age identity is refused, never skipped.
+#
+# The host key is PLACED; sshd serves it once the machine sets ndh.hostKey.own (S3), and $served is then
+# that private file, read as root.
 
 log() { printf '[ndh-identity-receive] %s\n' "$*" >&2; }
 die() {
@@ -51,19 +56,25 @@ mapfile -t lines < <(printf '%s\n' "$frame")
 unset frame
 n=${#lines[@]}
 refuse() { die "$1 — refused, nothing written"; }
-((n >= 6)) || refuse "a malformed frame"
+h=1 # the host key's first line
+[[ -z $keyFile ]] || h=2
+((n >= h + 4)) || refuse "a malformed frame"
 [[ ${lines[0]} == "ndh-identity/1 ${machine}" ]] || refuse "the frame is not addressed to ${machine}"
-[[ ${lines[1]} =~ ^AGE-SECRET-KEY-1[0-9A-Z]{58}$ ]] || refuse "a malformed age identity"
-[[ ${lines[2]} == "-----BEGIN OPENSSH PRIVATE KEY-----" ]] || refuse "a malformed host key"
+if [[ -n $keyFile ]]; then
+  [[ ${lines[1]} =~ ^AGE-SECRET-KEY-1[0-9A-Z]{58}$ ]] || refuse "a malformed age identity"
+else
+  [[ ${lines[1]} != AGE-SECRET-KEY-* ]] || refuse "an age identity, which ${machine} does not take"
+fi
+[[ ${lines[h]} == "-----BEGIN OPENSSH PRIVATE KEY-----" ]] || refuse "a malformed host key"
 [[ ${lines[n - 2]} == "-----END OPENSSH PRIVATE KEY-----" && ${lines[n - 1]} == end ]] || refuse "a malformed frame end"
-for ((i = 3; i < n - 2; i++)); do
+for ((i = h + 1; i < n - 2; i++)); do
   [[ ${lines[i]} =~ ^[A-Za-z0-9+/=]+$ ]] || refuse "a malformed host key"
 done
 
-keyDir="$(dirname "$keyFile")"
 hostKeyDir="$(dirname "$hostKeyFile")"
-mkdir -p "$keyDir"
 install -d -m 0700 "$hostKeyDir"
+keyDir="$(dirname "${keyFile:-$hostKeyFile}")" # with no age identity, the stage sits beside the host key
+mkdir -p "$keyDir"
 stage="$(mktemp -d "$(dirname "$keyDir")/.ndh-identity.XXXXXX")"
 trap 'rm -rf "$stage"' EXIT
 chmod 0700 "$stage"
@@ -74,17 +85,20 @@ done
 
 (
   umask 077
-  printf '%s\n' "${lines[1]}" >"$stage/age"
-  printf '%s\n' "${lines[@]:2:n-3}" >"$stage/host_key"
+  [[ -z $keyFile ]] || printf '%s\n' "${lines[1]}" >"$stage/age"
+  printf '%s\n' "${lines[@]:h:n-h-1}" >"$stage/host_key"
 )
 unset lines
-agePub="$(age-keygen -y "$stage/age" 2>/dev/null)" || refuse "the age identity does not load"
+if [[ -n $keyFile ]]; then
+  agePub="$(age-keygen -y "$stage/age" 2>/dev/null)" || refuse "the age identity does not load"
+fi
 read -r hostType hostBlob _ < <(ssh-keygen -y -f "$stage/host_key" 2>/dev/null) || refuse "the host key does not load"
 [[ $hostType == ssh-ed25519 ]] || refuse "the host key is not ed25519"
 
-chmod 0400 "$stage/age" "$stage/host_key"
-[[ -z $owner ]] || chown "$owner" "$stage/age" "$stage/host_key"
-mv -f "$stage/age" "$keyFile"
+chmod 0400 "$stage"/*
+[[ -z $owner ]] || chown "$owner" "$stage"/*
+[[ -z $keyFile ]] || mv -f "$stage/age" "$keyFile"
 mv -f "$stage/host_key" "$hostKeyFile"
-log "placed ${keyFile} and ${hostKeyFile} (0400)"
-printf 'age %s\nhost-key %s %s\n' "$agePub" "$hostType" "$hostBlob"
+log "placed ${keyFile:+$keyFile and }${hostKeyFile} (0400)"
+[[ -z $keyFile ]] || printf 'age %s\n' "$agePub"
+printf 'host-key %s %s\n' "$hostType" "$hostBlob"

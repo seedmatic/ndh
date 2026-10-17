@@ -651,15 +651,27 @@ authorities); at fabric iteration 1, `operator` moves to the password store
 
 [source,bash]
 ----
-d="$(mktemp -d)"; ssh-keygen -q -t ed25519 -N "" -C "<machine>" -f "$d/key"   # once, by the operator
-# the private goes into the keyring, the public is recorded under keys.{key}.slots.{YY-MM-DD}.public;
-# then rm -rf "$d"
+ndh-keyring host-key <machine>   # once, by the operator: the private goes into the keyring, the public is printed
+ndh-keyring host-key <machine> |   # or in one gesture: record the public as a public-only entry
+  nix run "git+file://$PWD?rev=$(git rev-parse HEAD)#ssh-keys-renew" -- \
+    --create host-<machine> --public - --usage ssh-host --apply
 nix run "git+file://$PWD?rev=$(git rev-parse HEAD)#ssh-keys-certify" -- --apply   # on the operator seat: one cert
+git add modules/home-manager/ssh.d/keys.yaml && git commit   # the public and its certificate together
 ndh-identity-push <machine>   # on bioskop, the keyring opened, at install or after a reset (step 8)
 ----
 
-`ssh-keys-certify` signs every SSH certificate keys.yaml declares, host certificates for every name a fleet
-host or guest answers to, and records them under `keys.{key}.slots.{YY-MM-DD}.certificates`. The activation
+`--public -` records the one `ssh-ed25519` line read from stdin under `keys.host-<machine>`: usage and
+`cert_usage` `ssh-host`, the authority the existing host certificates name, no profile, and one slot dated
+today holding the `public` only. The private never enters keys.yaml; a private on stdin is refused without
+being printed. Evaluation refuses that public until it is certified, so `ssh-keys-certify` runs before the
+commit.
+
+`ssh-keys-certify` signs every SSH certificate keys.yaml declares and records them under
+`keys.{key}.slots.{YY-MM-DD}.certificates`. A host certificate names one machine's own names: `host-<machine>`
+gets that machine's, and the shared `rdp-host`, nikopol's interim host key, gets nikopol's and its guest's
+(evaluation refuses a name two machines claim). Each certificate's key id carries the hash of its names and
+its issue stamp, and its serial is one above the highest recorded, so the union certificate signed before can
+be revoked by its exact id without touching another. The activation
 installs them as recorded and signs nothing for them; evaluation refuses a recorded public without its
 certificate. A slot with no recorded public (material still generated at activation) is signed on its host
 until its slot is recorded, so the authority's private leaves the hosts only then.

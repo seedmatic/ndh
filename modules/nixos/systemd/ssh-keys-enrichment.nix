@@ -98,8 +98,8 @@ in
     ++ lib.optionals hasSopsInstallSecretsService [ "sops-install-secrets.service" ];
     before = [
       "sshd.service"
-      hostkeyEnrollmentCheckServiceName
-    ];
+    ]
+    ++ lib.optional (!config.ndh.hostKey.own) hostkeyEnrollmentCheckServiceName;
     path = with pkgs; [
       bash
       coreutils

@@ -3,6 +3,7 @@
   config,
   pkgs,
   ndh,
+  self,
   ...
 }:
 let
@@ -20,9 +21,8 @@ let
   # Notes:
   #  - We DO NOT inject multiple HostKey directives here because an attrset
   #    would collapse duplicate keys. Instead we expose hostKeyPaths (and
-  #    an internal helper hostKeys) and expect platform modules to map them
-  #    to their native options (e.g. services.openssh.hostKeys on NixOS) or
-  #    render lines explicitly on Darwin if desired.
+  #    an internal helper hostKeys), which platform modules render as HostKey
+  #    lines. Not services.openssh.hostKeys on NixOS: it also generates the keys.
   #  - On Darwin we auto-fold authorizedKeysFiles into a single space-separated
   #    AuthorizedKeysFile directive (OpenSSH accepts a list written as a single line).
   baseSettings =
@@ -68,7 +68,10 @@ let
     lib.filterAttrs (_: v: v != null && v != "") raw;
 in
 {
-  imports = [ ./ssh-paths.nix ];
+  imports = [
+    ./ssh-paths.nix
+    ./host-key.nix
+  ];
 
   options.opensshPolicy = {
     enable = mkEnableOption "Unified OpenSSH policy (NixOS + Darwin).";
@@ -85,6 +88,14 @@ in
       description = "PermitRootLogin directive value.";
     };
 
+    # ssh matches a Host line against the name given, never against its HostName, so an alias to a fleet
+    # machine is strict only when it is listed itself. Filled by the module that defines the alias.
+    fleetHostAliases = mkOption {
+      type = types.listOf types.str;
+      default = [ ];
+      description = "Aliases whose HostName is a fleet name, checked as strictly as the fleet's names.";
+    };
+
     trustedCAPath = mkOption {
       type = types.nullOr types.str;
       default = null;
@@ -93,10 +104,10 @@ in
 
     revokedKeysPath = mkOption {
       type = types.str;
-      default = "${config.ndh.keysYaml.revokedKeysFile}";
+      default = "${config.ndh.keysYaml.krlFile}";
       description = ''
-        RevokedKeys file. Defaults to the store path built from keys.yaml's
-        `.revoked` — see ndh.keysYaml.revokedKeysFile for why it is not a
+        RevokedKeys file. Defaults to the KRL built from keys.yaml's `.revoked`
+        and `.revoked_certificates` — see ndh.keysYaml.krlFile for why it is not a
         runtime file.
       '';
     };
@@ -267,7 +278,9 @@ in
     # authority here, a certificate-presenting host is accepted even past a stale
     # raw pin, so the existing pins need no cleanup. One entry per TRUSTED slot, so
     # both generations are trusted while the authority itself renews, and a slot
-    # marked `compromised` is not (ndh.keysYaml.trustedAuthoritySlots).
+    # marked `compromised` is not (ndh.keysYaml.trustedAuthoritySlots). For the
+    # fleet's names only, never `*`: under `*`, a host certificate the authority
+    # signed would be accepted for any host, the corporate bare-metal or GitHub included.
     programs.ssh.knownHosts = lib.listToAttrs (
       lib.concatLists (
         lib.mapAttrsToList (
@@ -278,7 +291,7 @@ in
                 name = "${name}@${slot}";
                 value = {
                   certAuthority = true;
-                  hostNames = [ "*" ];
+                  hostNames = self.fleetHostNames;
                   publicKey = "${authority.type or "ssh-ed25519"} ${material.public}";
                 };
               })
@@ -292,10 +305,21 @@ in
       )
     );
     # Revocation on the CLIENT side, from the list sshd's RevokedKeys already reads: every client, root
-    # included, refuses a host key in keys.yaml `revoked` — and a certificate whose signing authority is
-    # there. Host certificates are valid forever by decision (a missed calendar renewal would break every
-    # strict connection), so this is what cuts a leaked host key: at the next activation, not at an expiry.
-    programs.ssh.extraConfig = "RevokedHostKeys ${config.ndh.keysYaml.revokedKeysFile}\n";
+    # included (nix-daemon's remote builds, the sshfs mounts, the vzhost deploy), refuses a host key in
+    # keys.yaml `revoked`, a certificate whose signing authority is there, and a certificate
+    # `revoked_certificates` names by its key id. Host certificates are valid forever by decision (a
+    # missed calendar renewal would break every strict connection), so this is what cuts a leaked host
+    # key: at the next activation, not at an expiry. First, before any Host line: ssh keeps the first
+    # value it obtains, and under a Host stanza the line would bind that host only.
+    programs.ssh.extraConfig = lib.mkBefore "RevokedHostKeys ${config.ndh.keysYaml.krlFile}\n";
+    # The fleet's names and the aliases to them are checked strictly for root as for the operator: each presents a certificate
+    # the authority above verifies, so an unknown key there is refused instead of pinned on first use.
+    # A drop-in, read before every `Host *` default: in the main file this stanza would also capture
+    # the Include lines after it, an Include under a Host line being conditional on that host.
+    environment.etc."ssh/ssh_config.d/10-fleet-hosts.conf".text = ''
+      Host ${lib.concatStringsSep " " (lib.unique (self.fleetHostNames ++ cfg.fleetHostAliases))}
+        StrictHostKeyChecking yes
+    '';
 
     # Expose helpers
     opensshPolicy.hostKeys = cfg.hostKeyPaths;

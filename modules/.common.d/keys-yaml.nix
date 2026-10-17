@@ -22,7 +22,7 @@ let
   # so yq can pull them out of the encrypted file directly without
   # sops decryption at eval time.
   jsonDrv = pkgs.runCommand "ndh-keys-yaml.json" { buildInputs = [ pkgs.yq-go ]; } ''
-    yq -o=json '{"keys": .keys, "authorities": .authorities, "revoked": (.revoked // {})}' \
+    yq -o=json '{"keys": .keys, "authorities": .authorities, "revoked": (.revoked // {}), "revoked_certificates": (.revoked_certificates // {})}' \
       "${worktreePath.of "modules/home-manager/ssh.d/keys.yaml"}" > "$out"
   '';
   parsed = builtins.fromJSON (builtins.readFile jsonDrv);
@@ -75,7 +75,7 @@ let
     ) (lib.filterAttrs (_: key: (key.authority or null) != null) keysJson)
   );
 
-  revokedKeysFile =
+  krlFile =
     if stillLive != { } then
       throw ''
         ndh.keysYaml: revoked but still carried by a slot in keys.yaml: ${lib.concatStringsSep ", " (lib.attrNames stillLive)}
@@ -92,9 +92,12 @@ let
         (docs/ssh-keys-renewal-spec.adoc, phase 2 of an authority). A compromised generation is marked
         `compromised: true` in revoked instead.''
     else
-      pkgs.writeText "ndh-revoked-keys.pub" (
-        lib.concatStrings (lib.mapAttrsToList (id: r: "${r.type} ${r.public} revoked:${id}\n") revokedJson)
-      );
+      pkgs.runCommand "ndh-revoked-keys.krl" {
+        nativeBuildInputs = [
+          pkgs.openssh
+          pkgs.yq-go
+        ];
+      } "bash ${./keys-yaml.d/krl.sh} ${jsonDrv} $out";
 in
 {
   options.ndh.keysYaml = {
@@ -142,16 +145,19 @@ in
       '';
     };
 
-    revokedKeysFile = lib.mkOption {
+    krlFile = lib.mkOption {
       type = lib.types.path;
       readOnly = true;
-      default = revokedKeysFile;
+      default = krlFile;
       description = ''
-        sshd's RevokedKeys: one public key per line, built from `.revoked` in
-        keys.yaml. A STORE path on purpose — sshd refuses ALL public-key
-        authentication when this file is unreadable, so it must not depend on
-        an activation step that can fail. Refuses to evaluate if a revoked
-        key is still carried by a slot.
+        The fleet's key revocation list, sshd's RevokedKeys and every client's
+        RevokedHostKeys: the publics of `.revoked` in keys.yaml, and each certificate
+        of `.revoked_certificates` by its exact key id under the authority slot that
+        signed it (keys-yaml.d/krl.sh). A STORE path on purpose — sshd refuses ALL
+        public-key authentication when this file is unreadable, so it must not
+        depend on an activation step that can fail. Refuses to evaluate if a revoked
+        key is still carried by a slot, and to build if a live certificate shares a
+        revoked key id.
       '';
     };
 

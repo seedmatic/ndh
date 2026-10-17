@@ -10,6 +10,7 @@ unset BASH_XTRACEFD 2>/dev/null || true
 # of the operator, with the keyring open; the machine asks for nothing.
 #
 #   ndh-identity-push <machine> 3<"the machine's host key" 4<"the operator seat's host key"
+#   ndh-identity-push <seat> 3<"the operator seat's host key"
 #
 # The privates come on file descriptors fed by the keyring, so its format stays its own, and they are
 # never written on this side: the age identity is derived in memory, the host key's public is read from
@@ -20,6 +21,9 @@ unset BASH_XTRACEFD 2>/dev/null || true
 # operator's assumption that the home LAN carries only their devices (they grant access to its
 # hotspot and start the VMs): the guest is L2-bridged onto that LAN, so the bridge itself proves nothing.
 # The address is the inventory's, never a DNS answer, and must be reached through this operator seat's own link.
+#
+# The operator seat itself takes its host key ONLY (ndh-identity-receive says why), through its local receive:
+# nothing crosses a network, so there is no fingerprint to confirm and no ssh.
 
 log() { printf '[ndh-identity-push] %s\n' "$*" >&2; }
 die() {
@@ -27,12 +31,20 @@ die() {
   exit 1
 }
 
-[[ $# -eq 1 ]] || die "usage: ndh-identity-push <machine> 3<the machine's host key 4<the operator seat's host key"
-[[ $1 == "$machine" ]] || die "${seat} pushes to ${machine} only, not to $1"
-{ : <&3; } 2>/dev/null || die "file descriptor 3 (the machine's host key) is not open"
-{ : <&4; } 2>/dev/null || die "file descriptor 4 (the operator seat's host key) is not open"
+[[ $# -eq 1 ]] || die "usage: ndh-identity-push <machine> 3<the machine's host key 4<the operator seat's host key | <seat> 3<its host key"
+[[ $1 == "$machine" || $1 == "$seat" ]] || die "${seat} pushes to ${machine} only, or to itself, not to $1"
+target=$1
+{ : <&3; } 2>/dev/null || die "file descriptor 3 (${target}'s host key) is not open"
+if [[ $target == "$seat" ]]; then
+  # A key given for an age identity the seat does not take would be dropped unseen: refused instead.
+  if { : <&4; } 2>/dev/null; then
+    die "${seat} takes its host key only, on fd 3: close fd 4 (its age identity is not placed yet)"
+  fi
+else
+  { : <&4; } 2>/dev/null || die "file descriptor 4 (the operator seat's host key) is not open"
+  seatKey="$(head -c "$((maxBytes + 1))" <&4)"
+fi
 machineKey="$(head -c "$((maxBytes + 1))" <&3)"
-seatKey="$(head -c "$((maxBytes + 1))" <&4)"
 exec 3<&- 4<&-
 
 # "ssh-ed25519 <blob>" of an UNENCRYPTED ed25519 OpenSSH private key, read from its encoding: the
@@ -46,6 +58,20 @@ hostPubOf() {
   printf 'ssh-ed25519 %s\n' "$(printf '%s' "$body" | base64 -d | tail -c +44 | head -c 51 | base64 | tr -d '\n')"
 }
 machinePub="$(hostPubOf "$machineKey")" || die "fd 3 is not an unencrypted ed25519 OpenSSH private key"
+
+if [[ $target == "$seat" ]]; then
+  log "${seat}: host key ${machinePub#ssh-ed25519 }"
+  placed="$(printf 'ndh-identity/1 %s\n%s\nend\n' "$seat" "$machineKey" | "$localSudo" -n "$localReceive" --accept)" ||
+    die "${seat} refused its host key (its message is above; sudo -n needs credentials cached by sudo -v)"
+  unset machineKey
+  [[ $placed == "host-key ${machinePub}" ]] ||
+    die "${seat} placed a host key whose public differs from the one sent — check it before serving it"
+  log "${seat}: host key placed and checked by its public"
+  log "next: commit ndh.hostKey.own = true for ${seat}, then switch; then on BOTH operator seats, for each name of ${seat}:"
+  log "  ssh-keygen -R <name>, then ssh -o HostKeyAlgorithms=ssh-ed25519-cert-v01@openssh.com <name> true"
+  exit 0
+fi
+
 hostPubOf "$seatKey" >/dev/null || die "fd 4 is not an unencrypted ed25519 OpenSSH private key"
 ageKey="$(printf '%s\n' "$seatKey" | ssh-to-age -private-key 2>/dev/null)" || die "fd 4 does not convert to an age identity"
 unset seatKey

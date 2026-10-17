@@ -1,7 +1,9 @@
 {
   config,
+  osConfig ? { },
   lib,
   pkgs,
+  self,
   ...
 }:
 # Modular Tailnet SSH host definitions (@codebase)
@@ -96,10 +98,24 @@ let
   # `darwin.` still needs its HostName, and that asymmetry is the measurement, not a style choice:
   # `darwin.<host>` does not resolve at all, while `nixos.<host>` does. One alias names a target DNS knows
   # nothing about; the other names a target DNS already answers for.
-  operatorAliasesForHost = host: ''
-    ${operatorAliasForService host "darwin" host}
-    ${operatorAliasForService host "nixos" null}
-  '';
+  # Each alias with the name its HostName points at (null: none written). The same records render the
+  # stanzas and list the aliases checked strictly, so an alias added here cannot miss the strict list.
+  operatorAliasesOf = host: [
+    {
+      service = "darwin";
+      hostName = host;
+    }
+    {
+      service = "nixos";
+      hostName = null;
+    }
+  ];
+  operatorAliasesForHost =
+    host:
+    lib.concatMapStringsSep "\n" (alias: operatorAliasForService host alias.service alias.hostName) (
+      operatorAliasesOf host
+    )
+    + "\n";
 
   # The corporate bare-metal Mac hosting the nikopol VM. It runs no nix-darwin config, so it
   # has no generated stanza of its own; every managed host (the nikopol VM, nikopol-nixos,
@@ -170,6 +186,33 @@ let
     else
       "";
   lanAlias = host: if lanDomain != "" then "${host}${lanDomain}" else null;
+  tailnetHostAlias =
+    host:
+    lib.optional (tailnetDomain != "") {
+      name = "${host}-ts";
+      hostName = tailnetAlias host;
+    };
+  # ssh matches a Host line against the alias, never its HostName: an alias to a fleet machine is strict
+  # only when listed itself. The system's aliases too (nix-store.<peer>), which this file's `Host *`
+  # would otherwise shadow for the operator.
+  fleetAliases =
+    map (alias: alias.name) (
+      lib.filter
+        (
+          alias: lib.elem (if alias.hostName == null then alias.name else alias.hostName) self.fleetHostNames
+        )
+        (
+          lib.concatMap (
+            host:
+            map (alias: {
+              name = "${alias.service}.${host}";
+              inherit (alias) hostName;
+            }) (operatorAliasesOf host)
+            ++ tailnetHostAlias host
+          ) inventoryHostNames
+        )
+    )
+    ++ (osConfig.opensshPolicy.fleetHostAliases or [ ]);
   hostAliases =
     host:
     lib.filter (x: x != null && x != "") [
@@ -185,15 +228,16 @@ in
         ###############################################################################
         # Tailnet Hosts (modular file ssh-tailnet-hosts.nix) (@codebase)
         # Generated/maintained list of Tailscale (MagicDNS) hosts.
-        # Policy: use accept-new to reduce friction; tighten to 'yes' if host keys
-        # are stabilized via your OpenSSH CA instead of Tailscale SSH rotation.
         ###############################################################################
 
-        # NixOS guests rotate their host keys on a rebuild, and each presents a
-        # certificate from the host authority, which KnownHostsCommand and
-        # /etc/ssh/ssh_known_hosts trust: a rotated key still verifies, so the
-        # guests are checked strictly instead of being accepted blindly.
-        Host *-nixos *-nixos.local
+        # Every fleet name presents a certificate from the host authority, which
+        # KnownHostsCommand and /etc/ssh/ssh_known_hosts trust for these names only:
+        # a renewed key still verifies, so they are checked strictly, and an unknown
+        # key there is refused instead of pinned. So are the aliases to them, and the
+        # NixOS guests' names.
+        Host ${
+          lib.concatStringsSep " " (lib.unique (self.fleetHostNames ++ fleetAliases))
+        } *-nixos *-nixos.local
           StrictHostKeyChecking yes
 
         Host *
@@ -215,10 +259,10 @@ in
           HostName ${host}
 
       ''
-      + lib.optionalString (tailnetDomain != "") ''
-        Host ${host}-ts
-          HostName ${tailnetAlias host}
-      ''
+      + lib.concatMapStrings (alias: ''
+        Host ${alias.name}
+          HostName ${alias.hostName}
+      '') (tailnetHostAlias host)
     ) inventoryHostNames}
 
     ${vzhostNikopolAlias}

@@ -13,9 +13,17 @@ unset BASH_XTRACEFD 2>/dev/null || true
 # host held the authority's private (L4). Here the operator seat signs once, from each key's PUBLIC, and the
 # certificates travel in keys.yaml as public data: the activation only installs them.
 #
-#   ssh-host   the union of every name a fleet host or guest answers to (baked at build, computed
-#              from the inventory and the guests' own configurations): one certificate per key
-#              generation, valid wherever that key serves
+#   ssh-host   the names of the machine(s) the key serves, baked at build per machine from the
+#              inventory and the guests' own configurations (each name one machine's only):
+#                host-<machine>  that machine's names: its own host key (roles × keys S3a)
+#                rdp-host        nikopol's machines only, the interim decided 2026-10-15: the shared key
+#                                nikopol's sshd still serves (baked: interimKey), until nikopol's own key
+#                                is placed (its push). Gated: only once every other machine SERVES its own
+#                                key, `ndh.hostKey.own` on in its configuration (baked: ownMachines), and
+#                                its host-<machine> certificate is current or signed earlier in the same
+#                                run; until then its recorded union certificate is left untouched
+#                                (interim::waiting)
+#                any other key   refused: a host key serves one machine, or nikopol's in the interim
 #   ssh-user   the principals the key declares (`principals`)
 #
 # Valid forever, by decision: the hosts are checked strictly, so a certificate that expired
@@ -23,8 +31,18 @@ unset BASH_XTRACEFD 2>/dev/null || true
 # RevokedKeys, every client's RevokedHostKeys). Signed by the authority's SIGNING slot — the oldest
 # not marked compromised — the generation every trust store already carries.
 #
+# Every certificate is revocable on its own (S3a K1, K2): its key id adds to {marker, owner, key, usage}
+# the sha256 of its sorted principals (`names`; bounded, the names themselves are the principals) and
+# its UTC issue stamp (`issued`), and its serial is one above the highest any certificate recorded in
+# keys.yaml carries (never 0). So the union host certificate signed before S3a for the shared key, its
+# id the bare {marker, owner, key, usage} and its serial 0, is shared by no certificate signed here:
+# re-signed for the interim, it leaves keys.yaml but stays valid wherever it was installed, until the
+# KRL step revokes it by that exact id (`ssh-keygen -L` on the revision that recorded it, also logged
+# here when it is replaced). Nothing here deletes a recorded certificate otherwise.
+#
 # Idempotent: a certificate already recorded with the same key, authority generation, type,
-# principals, identity and validity is kept as it is. Dry run by default; --apply rewrites keys.yaml.
+# principals, identity (its issue stamp aside), a non-zero serial and validity is kept as it is. Dry
+# run by default; --apply rewrites keys.yaml.
 #
 # Usage: ssh-keys-certify [--apply]     (run from the ndh repository root)
 
@@ -36,9 +54,19 @@ readonly keysRel="modules/home-manager/ssh.d/keys.yaml"
 # ssh-keygen is pinned: the signature AND the comparison of a recorded certificate read its `-L`
 # output, and the first ssh-keygen on PATH (Apple's or nix's) made a current certificate look stale.
 readonly sshKeygen="@sshKeygen@"
-declare -g keysYaml tmpdir decrypted apply
-declare -ga hostPrincipals=() plan=() current=() unrecorded=()
-IFS=',' read -r -a hostPrincipals <<<"@hostPrincipals@"
+readonly sha256sum="@sha256sum@"
+readonly interimKey="@interimKey@"
+declare -g keysYaml tmpdir decrypted apply nextSerial interimWaiting=""
+declare -ga plan=() current=() unrecorded=() interimMachines=() interimPending=() interimKept=() ownMachines=()
+# machine → its names, comma-separated: baked as `machine=name,name machine=name,…`.
+declare -gA hostNames=()
+read -r -a interimMachines <<<"@interimMachines@"
+read -r -a ownMachines <<<"@ownMachines@"
+read -r -a hostNameEntries <<<"@hostNames@"
+for entry in ${hostNameEntries[@]+"${hostNameEntries[@]}"}; do
+	hostNames["${entry%%=*}"]="${entry#*=}"
+done
+unset entry hostNameEntries
 
 # stdout, like ssh-keys-renew: the logger sends stderr to the syslog, and the operator must see the plan.
 log::info() { echo "[ssh-keys-certify][INFO] $*"; }
@@ -71,23 +99,53 @@ authority::signing_slot() { # <authority>
 	return 1
 }
 
-# The `-I` identity the downstream consumers (split-exp, extract-keys) read.
-cert::identity() { # <key> <usage>
-	KEYNAME="$1" USAGE="$2" yq --null-input --indent=0 --output-format=json eval \
-		'{"marker": "ndh-ssh-key-meta-v1", "owner": "home-manager.ssh-add-keys", "key": strenv(KEYNAME), "usage": [strenv(USAGE)]}'
+# The `-I` identity the downstream consumers (split-exp, extract-keys) read; they match `marker` only.
+cert::identity() { # <key> <usage> <principals, comma-separated> <issue stamp>
+	local names
+	names="$(printf '%s' "$3" | "$sha256sum" | cut -d' ' -f1)" || return 1
+	KEYNAME="$1" USAGE="$2" NAMES="$names" ISSUED="$4" yq --null-input --indent=0 --output-format=json eval \
+		'{"marker": "ndh-ssh-key-meta-v1", "owner": "home-manager.ssh-add-keys", "key": strenv(KEYNAME), "usage": [strenv(USAGE)], "names": strenv(NAMES), "issued": strenv(ISSUED)}'
 }
 
+# An identity as compared: its issue stamp reduced to whether it is one, since every signature has its own.
+cert::identity_shape() { # <identity JSON>
+	printf '%s' "$1" | yq -p json -o json --indent=0 eval \
+		'.issued |= (tag == "!!str" and test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"))' -
+}
+
+# A host key's names: nikopol's machines' for the interim key, its machine's for host-<machine>.
+# plan::build has refused any other ssh-host key, and a host-<machine> naming no baked machine.
+cert::host_names() { # <key> → one name per line
+	local machine
+	if [[ "$1" == "$interimKey" ]]; then
+		for machine in "${interimMachines[@]}"; do tr ',' '\n' <<<"${hostNames[$machine]}"; done
+	else
+		tr ',' '\n' <<<"${hostNames[${1#host-}]}"
+	fi
+}
+
+# Sorted bytewise: the identity hashes this exact string, so it must not depend on the locale.
 cert::principals_for() { # <key> <usage> → comma-separated, sorted
 	if [[ "$2" == ssh-host ]]; then
-		printf '%s\n' "${hostPrincipals[@]}"
+		cert::host_names "$1"
 	else
 		yq::get ".keys.\"$1\".principals // {} | keys | .[]"
-	fi | sort -u | paste -sd, -
+	fi | LC_ALL=C sort -u | paste -sd, -
 }
 
-# What a recorded certificate says, normalised: type, key, CA, identity, serial, validity, principals,
-# critical options and extensions (each list sorted, "(none)" when empty).
+# What a recorded certificate says, normalised: type, key, CA, identity (cert::identity_shape), serial
+# (`set`, or 0), validity, principals, critical options and extensions (each list sorted, "(none)" when
+# empty).
 cert::describe() { # <cert file>
+	local line type key ca id serial rest
+	line="$(cert::describe_raw "$1")" || return 1
+	IFS='|' read -r type key ca id serial rest <<<"$line"
+	id="${id#\"}"
+	printf '%s|%s|%s|%s|%s|%s\n' "$type" "$key" "$ca" "$(cert::identity_shape "${id%\"}")" \
+		"$([[ "$serial" == 0 ]] && echo 0 || echo set)" "$rest"
+}
+
+cert::describe_raw() { # <cert file>
 	"$sshKeygen" -L -f "$1" | awk '
 		function flush(name) { if (sec == name) { n = split(buf, arr, "\n"); out = ""
 			for (i = 1; i <= n; i++) for (j = i + 1; j <= n; j++) if (arr[j] < arr[i]) { t = arr[i]; arr[i] = arr[j]; arr[j] = t }
@@ -121,16 +179,35 @@ cert::default_extensions() { # <usage>
 
 # The description a certificate signed now would have, to compare with the recorded one.
 cert::expected() { # <key> <slot> <authority> <authority slot> <usage>
-	local type keyFp caFp
+	local type keyFp caFp principals
 	type="$([[ "$5" == ssh-host ]] && echo host || echo user)"
 	keyFp="$(printf '%s %s\n' "$(yq::get ".keys.\"$1\".type")" "$(yq::get ".keys.\"$1\".slots.\"$2\".public")" | "$sshKeygen" -lf - | awk '{print $2}')"
 	caFp="$(printf '%s %s\n' "$(yq::get ".authorities.\"$3\".type // \"ssh-ed25519\"")" "$(yq::get ".authorities.\"$3\".slots.\"$4\".public")" | "$sshKeygen" -lf - | awk '{print $2}')"
-	printf '%s|%s|%s|"%s"|0|forever|%s|(none)|%s\n' "$type" "$keyFp" "$caFp" "$(cert::identity "$1" "$5")" \
-		"$(cert::principals_for "$1" "$5")" "$(cert::default_extensions "$5")"
+	principals="$(cert::principals_for "$1" "$5")"
+	printf '%s|%s|%s|%s|set|forever|%s|(none)|%s\n' "$type" "$keyFp" "$caFp" \
+		"$(cert::identity_shape "$(cert::identity "$1" "$5" "$principals" 1970-01-01T00:00:00Z)")" \
+		"$principals" "$(cert::default_extensions "$5")"
+}
+
+# The serial the next certificate gets: one above the highest any certificate recorded in keys.yaml
+# carries, read from each (publics only), so serials never repeat and never are 0. Set in nextSerial,
+# not printed: the log lines go to stdout.
+serial::next() {
+	local cert serial highest=0
+	while IFS= read -r cert; do
+		[[ -n "$cert" ]] || continue
+		if ! serial="$(printf '%s\n' "$cert" | "$sshKeygen" -L -f - | awk '/^ *Serial:/ { print $2 }')" ||
+			[[ ! "$serial" =~ ^[0-9]+$ ]]; then
+			log::error "a certificate recorded in keys.yaml cannot be read: no serial can be chosen"
+			return 1
+		fi
+		if ((serial > highest)); then highest="$serial"; fi
+	done < <(yq::get '(.keys // {})[] | (.slots // {})[] | (.certificates // {})[] | .[] | select(tag == "!!str" and test("^[a-z0-9-]+-cert-v01@openssh\.com "))')
+	nextSerial=$((highest + 1))
 }
 
 plan::build() {
-	local key authority authSlot slot usage recorded
+	local key authority authSlot slot usage recorded line
 	while IFS= read -r key; do
 		[[ -n "$key" ]] || continue
 		authority="$(yq::get ".keys.\"${key}\".authority // \"\"")"
@@ -143,6 +220,16 @@ plan::build() {
 			[[ -n "$slot" ]] || continue
 			while IFS= read -r usage; do
 				[[ "$usage" == ssh-host || "$usage" == ssh-user ]] || continue
+				if [[ "$usage" == ssh-host && "$key" != "$interimKey" ]]; then
+					if [[ "$key" != host-* ]]; then
+						log::error "${key}: an ssh-host key is host-<machine> or ${interimKey} — refusing to certify it for any machine"
+						return 1
+					fi
+					if [[ ! -v "hostNames[${key#host-}]" ]]; then
+						log::error "${key}: no machine ${key#host-} in this build's inventory — refusing to guess its names"
+						return 1
+					fi
+				fi
 				# A slot whose public is not recorded holds material generated at activation, on each host:
 				# there is nothing to sign here, so that host keeps signing it until its slot is recorded.
 				if [[ -z "$(yq::get ".keys.\"${key}\".slots.\"${slot}\".public // \"\"")" ]]; then
@@ -157,18 +244,67 @@ plan::build() {
 						continue
 					fi
 				fi
-				plan+=("${key}	${slot}	${authority}	${authSlot}	${usage}	$([[ -n "$recorded" ]] && echo stale || echo missing)")
+				line="${key}	${slot}	${authority}	${authSlot}	${usage}	$([[ -n "$recorded" ]] && echo stale || echo missing)"
+				if [[ "$key" == "$interimKey" && "$usage" == ssh-host ]]; then
+					interimPending+=("$line")
+				else
+					plan+=("$line")
+				fi
 			done < <(yq::get ".keys.\"${key}\".cert_usage // [] | .[]")
 		done < <(yq::get ".keys.\"${key}\".slots // {} | keys | sort | .[]")
 	done < <(yq::get '.keys // {} | keys | .[]')
+	interimWaiting="$(interim::waiting)"
+	if [[ -n "$interimWaiting" ]]; then
+		interimKept=(${interimPending[@]+"${interimPending[@]}"})
+	else
+		# Last, so the host-<machine> certificates the gate counted are signed before it in the run.
+		plan+=(${interimPending[@]+"${interimPending[@]}"})
+	fi
+	serial::next
+}
+
+# The rollout gate (S3a K3: every host serves its OWN certificate before the union one goes away):
+# until every machine outside the interim set serves its own host key — `ndh.hostKey.own` on in its
+# configuration, and its certificate current or signed in this run — its sshd still serves the
+# interim key, so the interim key keeps the union certificate it has, untouched; re-signing it would
+# also mint a second union id for the KRL to cut. A certificate alone is not enough: recorded before
+# the machine's switch, it would leave that machine serving an interim certificate that does not
+# name it. Prints the machines still waiting, each with why.
+interim::waiting() {
+	local machine line key usage waiting="" found why
+	while IFS= read -r machine; do
+		[[ -n "$machine" ]] || continue
+		[[ " ${interimMachines[*]} " == *" ${machine} "* ]] && continue
+		why=""
+		[[ " ${ownMachines[*]} " == *" ${machine} "* ]] || why="ndh.hostKey.own off"
+		found=0
+		for line in ${current[@]+"${current[@]}"}; do
+			IFS=$'\t' read -r key _ usage <<<"$line"
+			[[ "$key" == "host-${machine}" && "$usage" == ssh-host ]] && found=1
+		done
+		for line in ${plan[@]+"${plan[@]}"}; do
+			IFS=$'\t' read -r key _ _ _ usage _ <<<"$line"
+			[[ "$key" == "host-${machine}" && "$usage" == ssh-host ]] && found=1
+		done
+		# a slot of its key with no recorded public is not certified: not yet its own
+		for line in ${unrecorded[@]+"${unrecorded[@]}"}; do
+			IFS=$'\t' read -r key _ usage <<<"$line"
+			[[ "$key" == "host-${machine}" && "$usage" == ssh-host ]] && found=0
+		done
+		((found)) || why="${why:+${why}, }host-${machine} not certified"
+		[[ -z "$why" ]] || waiting="${waiting:+${waiting}; }${machine} (${why})"
+	done < <(printf '%s\n' "${!hostNames[@]}" | LC_ALL=C sort)
+	printf '%s\n' "$waiting"
 }
 
 plan::show() {
-	local line key slot authority authSlot usage why
-	printf '\nkeys.yaml   %s\nhost names  %s (%s)\n\n' "$keysYaml" "${#hostPrincipals[@]}" "$(
-		IFS=,
-		echo "${hostPrincipals[*]}"
-	)"
+	local line key slot authority authSlot usage why machine
+	printf '\nkeys.yaml    %s\n' "$keysYaml"
+	while IFS= read -r machine; do
+		printf 'host names   %-14s %s\n' "$machine" "${hostNames[$machine]}"
+	done < <(printf '%s\n' "${!hostNames[@]}" | LC_ALL=C sort)
+	printf 'interim      %-14s %s\nown key      %s\nnext serial  %s\n\n' "$interimKey" "${interimMachines[*]}" \
+		"${ownMachines[*]:-(none)}" "$nextSerial"
 	for line in ${current[@]+"${current[@]}"}; do
 		IFS=$'\t' read -r key slot usage <<<"$line"
 		printf '  current  %-22s %-9s %s\n' "$key" "$slot" "$usage"
@@ -177,11 +313,18 @@ plan::show() {
 		IFS=$'\t' read -r key slot usage <<<"$line"
 		printf '  unrecorded %-20s %-9s %-9s no public in keys.yaml: generated and signed at activation\n' "$key" "$slot" "$usage"
 	done
+	for line in ${interimKept[@]+"${interimKept[@]}"}; do
+		IFS=$'\t' read -r key slot authority authSlot usage why <<<"$line"
+		printf '  kept     %-22s %-9s %-9s its union certificate, still served on %s\n' "$key" "$slot" "$usage" "$interimWaiting"
+	done
 	for line in ${plan[@]+"${plan[@]}"}; do
 		IFS=$'\t' read -r key slot authority authSlot usage why <<<"$line"
 		printf '  %-8s %-22s %-9s %-9s signed by %s@%s\n' "$why" "$key" "$slot" "$usage" "$authority" "$authSlot"
 	done
 	printf '\n'
+	if ((${#interimKept[@]} > 0)); then
+		log::info "${interimKey} keeps its union cert: not yet on their own host key: ${interimWaiting}"
+	fi
 }
 
 # Who can read a sops file, every key provider included, sorted.
@@ -211,8 +354,8 @@ recipients::unchanged() { # <committed file> <re-encrypted file>
 	return 1
 }
 
-certify::one() { # <key> <slot> <authority> <authority slot> <usage>
-	local key="$1" slot="$2" authority="$3" authSlot="$4" usage="$5"
+certify::one() { # <key> <slot> <authority> <authority slot> <usage> <serial>
+	local key="$1" slot="$2" authority="$3" authSlot="$4" usage="$5" serial="$6" principals identity replaced
 	local authFile="${tmpdir}/authority-${authority}@${authSlot}"
 	if [[ ! -s "$authFile" ]]; then
 		(
@@ -224,8 +367,21 @@ certify::one() { # <key> <slot> <authority> <authority slot> <usage>
 	local stem="${tmpdir}/${key}@${slot}-${usage}"
 	printf '%s %s %s\n' "$(yq::get ".keys.\"${key}\".type")" "$(yq::get ".keys.\"${key}\".slots.\"${slot}\".public")" \
 		"$(yq::get ".keys.\"${key}\".comment // \"${key}\"")" >"${stem}.pub"
-	local -a args=(-q -s "$authFile" -I "$(cert::identity "$key" "$usage")" -n "$(cert::principals_for "$key" "$usage")")
+	principals="$(cert::principals_for "$key" "$usage")"
+	if ! identity="$(cert::identity "$key" "$usage" "$principals" "$(date -u +%Y-%m-%dT%H:%M:%SZ)")" || [[ -z "$identity" ]]; then
+		log::error "cannot compose the key id of ${key}@${slot} ${usage}"
+		return 1
+	fi
+	local -a args=(-q -s "$authFile" -I "$identity" -z "$serial" -n "$principals")
 	[[ "$usage" == ssh-host ]] && args+=(-h)
+	# The certificate this one replaces keeps its id and serial wherever it was installed: logged, so
+	# the revocation that cuts it can name it exactly.
+	replaced="$(yq::get ".keys.\"${key}\".slots.\"${slot}\".certificates.\"${authority}\".\"${usage}\" // \"\"")"
+	if [[ -n "$replaced" ]]; then
+		replaced="$(printf '%s\n' "$replaced" | "$sshKeygen" -L -f - | awk '/^ *Key ID:/ { sub(/^ *Key ID: /, ""); id = $0 } /^ *Serial:/ { serial = $2 } END { print "key id " id ", serial " serial }')" ||
+			replaced="(unreadable)"
+		log::info "replaces ${key}@${slot} ${usage}: ${replaced}"
+	fi
 	# Every step is checked: the logger wrapper runs this script with errexit OFF, and an unchecked
 	# failure once recorded EMPTY certificates as "signed".
 	if ! "$sshKeygen" "${args[@]}" "${stem}.pub"; then
@@ -241,17 +397,18 @@ certify::one() { # <key> <slot> <authority> <authority slot> <usage>
 		log::error "cannot record the certificate of ${key}@${slot} ${usage}"
 		return 1
 	fi
-	log::info "signed ${key}@${slot} ${usage} with ${authority}@${authSlot}"
+	log::info "signed ${key}@${slot} ${usage} with ${authority}@${authSlot}, serial ${serial}"
 }
 
 certify::apply() {
 	local line reencrypted
 	for line in "${plan[@]}"; do
 		IFS=$'\t' read -r key slot authority authSlot usage _ <<<"$line"
-		certify::one "$key" "$slot" "$authority" "$authSlot" "$usage" || {
+		certify::one "$key" "$slot" "$authority" "$authSlot" "$usage" "$nextSerial" || {
 			log::error "keys.yaml left untouched"
 			return 1
 		}
+		nextSerial=$((nextSerial + 1))
 	done
 	reencrypted="${tmpdir}/keys.yaml.reenc"
 	if ! (cd "${tmpdir}/repo" && sops --input-type yaml --output-type yaml encrypt "$keysRel") >"$reencrypted"; then
@@ -277,8 +434,10 @@ certify::apply() {
 		Next, in order:
 		  1. nix run "git+file://\$PWD?rev=\$(git rev-parse HEAD)#ssh-keys-v2-validate" -- modules/home-manager/ssh.d/keys.yaml
 		  2. commit the keys.yaml diff
-		  3. the hosts install them once the enrichment reads recorded certificates (the next ndh
-		     change of 6a part B); until then each activation still signs its own
+		  3. switch: each host installs the certificates recorded for it
+
+		A re-signed certificate has a new key id and serial, user certificates included: a copy
+		pinned elsewhere (another machine's known_hosts, a saved user cert) is the old one.
 	EOF
 }
 
@@ -296,10 +455,25 @@ main() {
 				;;
 		esac
 	done
-	if ((${#hostPrincipals[@]} == 0)); then
+	if ((${#hostNames[@]} == 0)); then
 		log::error "no host names were baked into this build — refusing to sign a host certificate for nobody"
 		return 1
 	fi
+	local machine
+	if [[ -z "$interimKey" ]] || ((${#interimMachines[@]} == 0)); then
+		log::error "no interim host key and machines were baked into this build"
+		return 1
+	fi
+	for machine in "${interimMachines[@]}"; do
+		[[ -v "hostNames[$machine]" ]] && continue
+		log::error "interim machine ${machine} has no baked names"
+		return 1
+	done
+	for machine in ${ownMachines[@]+"${ownMachines[@]}"}; do
+		[[ -v "hostNames[$machine]" ]] && continue
+		log::error "machine ${machine} serves its own key but has no baked names"
+		return 1
+	done
 
 	keysYaml="$(git rev-parse --show-toplevel)/${keysRel}"
 	[[ -r "$keysYaml" ]] || {

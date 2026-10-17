@@ -28,11 +28,26 @@ unset BASH_XTRACEFD 2>/dev/null || true
 # schema requires one slot per entry, so an entry cannot be committed empty and filled
 # later, and an entry with no slots at all is refused as one that predates the model.
 #
+# --create host-<machine> --public - --usage ssh-host RECORDS a machine's host key instead of
+# generating one: its private lives in the operator's keyring only (ndh-keyring host-key <machine>
+# prints the public), so the slot holds the public and nothing else. The evaluation then refuses the
+# uncertified public until ssh-keys-certify signs it, which is meant: both land in one commit.
+#
+# --revoke-certificate KEY@SLOT --from-revision REV records the revocation of ONE host certificate, a
+# gesture of its own (roles × keys S3a, decided 2026-10-16): the union host certificate, once every
+# machine serves its own. Its key stays valid; the KRL cuts that certificate alone, by the exact key id
+# read back from the revision that recorded it. Certificates are public and in clear in keys.yaml, so
+# nothing is decrypted: the revision is read as committed, and the entry is written with `sops set`,
+# which leaves every other value, ciphertexts included, byte for byte.
+#
 # Usage:
 #   ssh-keys-renew [--key NAME]... [--authority NAME]... [--older-than Nd]
 #                  [--replace --reason TEXT] [--apply]
 #   ssh-keys-renew --create NAME --usage TAG... [--profile NAME]... [--comment TEXT]
 #                  [--type TYPE] [--apply]
+#   ndh-keyring host-key MACHINE | ssh-keys-renew --create host-MACHINE --public - --usage ssh-host
+#                  [--comment TEXT] [--apply]
+#   ssh-keys-renew --revoke-certificate KEY@SLOT --from-revision REV --reason TEXT [--apply]
 #
 # Safe by default: nothing is generated and keys.yaml is not touched unless
 # --apply is given. A tool that rewrites key material shows its work first.
@@ -64,9 +79,12 @@ source @nixBashTrampoline@
 # keys.yaml relative to the repository root: the real file, and the copy whose path picks its sops rule.
 readonly keysRel="modules/home-manager/ssh.d/keys.yaml"
 declare -g keysYaml tmpdir decrypted today apply olderThanDays replace reason
-declare -g createName createComment createType
+declare -g createName createComment createType createPublic createPublicBlob
+declare -g revokeTarget revokeRevision
 declare -ga selectKeys=() selectAuthorities=() plan=() refusals=()
-declare -ga createUsages=() createProfiles=()
+declare -ga createUsages=() createProfiles=() machines=()
+# The machines a host key is recorded for, fixed at evaluation from the inventory.
+IFS=' ' read -r -a machines <<<"@machines@"
 
 # ⚠️ stdout, NOT stderr — the opposite of the activation scripts' convention, and
 # for a reason. ndh::logger:command:run redirects stderr into the logger sink and
@@ -86,6 +104,11 @@ usage() {
 		                      [--replace --reason TEXT] [--apply]
 		       ssh-keys-renew --create NAME --usage TAG... [--profile NAME]...
 		                      [--comment TEXT] [--type TYPE] [--apply]
+		       ndh-keyring host-key MACHINE |
+		         ssh-keys-renew --create host-MACHINE --public - --usage ssh-host
+		                      [--comment TEXT] [--apply]
+		       ssh-keys-renew --revoke-certificate KEY@SLOT --from-revision REV
+		                      --reason TEXT [--apply]
 
 		  --key NAME         Renew keys.<NAME>. Repeatable.
 		  --authority NAME   Renew authorities.<NAME>. Repeatable. The new generation
@@ -98,7 +121,7 @@ usage() {
 		                     deleted AND written to revoked in the same change.
 		                     For an EXPOSED private, where the overlap is the risk.
 		  --reason TEXT      The reason recorded in each revoked entry. Required with
-		                     --replace.
+		                     --replace and --revoke-certificate.
 		  --create NAME      Declare keys.<NAME>, which must not exist, and generate its
 		                     first slot. Needs at least one --usage.
 		  --usage TAG        A usage of the new entry (keys.schema.yaml). Repeatable.
@@ -106,6 +129,17 @@ usage() {
 		                     lands on no host and its consumer reads keys.yaml itself.
 		  --comment TEXT     The new entry's comment (default: NAME).
 		  --type TYPE        The new entry's key type (default: ssh-ed25519).
+		  --public -         Record the ONE ssh-ed25519 public line read from stdin instead of
+		                     generating: a machine's host key, whose private stays in the
+		                     keyring. Only with --create host-MACHINE (${machines[*]})
+		                     and --usage ssh-host. Run ssh-keys-certify before committing.
+		  --revoke-certificate KEY@SLOT
+		                     Record in revoked_certificates the ssh-host certificate
+		                     keys.KEY.slots.SLOT carried at --from-revision, by its exact
+		                     key id: the KRL cuts that certificate, never its key. Refused
+		                     while keys.yaml still records it (or its id). Decrypts nothing.
+		  --from-revision REV
+		                     The commit whose keys.yaml recorded the certificate.
 		  --apply            Actually generate and rewrite keys.yaml. Without it this
 		                     prints the plan and changes nothing.
 
@@ -225,8 +259,34 @@ plan::consider_create() {
 		refusals+=("keys.${createName}: unsupported type '${createType}'")
 		return 0
 	fi
-	plan+=("keys	${createName}	${createType}	create")
+	if ((createPublic == 0)); then
+		plan+=("keys	${createName}	${createType}	create")
+		return 0
+	fi
+	# One host key per machine: a public some slot already carries, or that revoked holds, would make
+	# two identities one, or bring a retired one back.
+	if [[ "$(BLOB="$createPublicBlob" yq eval -r '[(.keys // {}, .authorities // {})[] | .slots // {} | .[] | .public // ""] + [(.revoked // {})[] | .public // ""] | any_c(. == strenv(BLOB))' "$decrypted")" == "true" ]]; then
+		refusals+=("keys.${createName}: this public is already in keys.yaml (a slot or revoked) — a host key belongs to one machine")
+		return 0
+	fi
+	local authority
+	if ! authority="$(authority::ssh_host)"; then
+		refusals+=("keys.${createName}: no single SSH authority signs the host certificates in keys.yaml — nothing to record it under")
+		return 0
+	fi
+	plan+=("keys	${createName}	${createType}	record	${authority}")
 	return 0
+}
+
+# The authority host certificates are signed by today: the one named by every key whose cert_usage
+# includes ssh-host, and it must advertise ssh-authority (keys.schema.yaml). Read from the document,
+# never assumed, so a recorded host key is certified exactly like the ones it joins.
+authority::ssh_host() {
+	local -a found
+	mapfile -t found < <(yq eval -r '[(.keys // {})[] | select((.cert_usage // []) | any_c(. == "ssh-host")) | .authority // ""] | unique | .[]' "$decrypted")
+	((${#found[@]} == 1)) && [[ -n "${found[0]}" ]] || return 1
+	[[ "$(yq eval -r ".authorities.\"${found[0]}\".usage // [] | any_c(. == \"ssh-authority\")" "$decrypted")" == "true" ]] || return 1
+	printf '%s\n' "${found[0]}"
 }
 
 plan::build() {
@@ -257,7 +317,7 @@ plan::build() {
 }
 
 plan::show() {
-	local line section name keyType existing refusal
+	local line section name keyType existing authority refusal
 	cat <<-EOF
 
 		keys.yaml   ${keysYaml}
@@ -270,9 +330,11 @@ plan::show() {
 	else
 		printf '%-13s %-24s %-22s %s\n' SECTION ENTRY TYPE 'SLOTS AFTER'
 		for line in "${plan[@]}"; do
-			IFS=$'\t' read -r section name keyType existing <<<"$line"
+			IFS=$'\t' read -r section name keyType existing authority <<<"$line"
 			if [[ "$existing" == create ]]; then
 				printf '%-13s %-24s %-22s %s\n' "$section" "$name" "$keyType" "${today} (new entry)"
+			elif [[ "$existing" == record ]]; then
+				printf '%-13s %-24s %-22s %s\n' "$section" "$name" "$keyType" "${today} (new entry, public only, under ${authority})"
 			elif ((replace == 1)); then
 				printf '%-13s %-24s %-22s %s\n' "$section" "$name" "$keyType" "${today} (revokes ${existing})"
 			else
@@ -326,6 +388,12 @@ renew::one() { # <section> <name> <keyType>
 		"$decrypted"
 }
 
+# Record a machine's host key: the public in clear, no private, no certificate yet (ssh-keys-certify).
+record::one() { # <name>
+	log::info "recording keys.${1} slot ${today} (public only)"
+	PUB="$createPublicBlob" yq eval -i ".keys.\"${1}\".slots.\"${today}\".public = strenv(PUB)" "$decrypted"
+}
+
 # Who can read a sops file, every key provider included, sorted.
 recipients::of() { # <sops file>
 	yq eval -r '[
@@ -353,8 +421,9 @@ recipients::unchanged() { # <committed file> <re-encrypted file>
 	return 1
 }
 
-# Declare the new entry's public fields; renew::one then generates its first slot.
-create::declare() {
+# Declare the new entry's public fields; renew::one then generates its first slot, or record::one
+# records it.
+create::declare() { # [authority]
 	local item
 	log::info "declaring keys.${createName} (${createType})"
 	TYPE="$createType" COMMENT="$createComment" yq eval -i "
@@ -369,6 +438,11 @@ create::declare() {
 	for item in ${createProfiles[@]+"${createProfiles[@]}"}; do
 		ITEM="$item" yq eval -i ".keys.\"${createName}\".profiles += [strenv(ITEM)]" "$decrypted"
 	done
+	[[ -n "${1:-}" ]] || return 0
+	AUTHORITY="$1" yq eval -i "
+		.keys.\"${createName}\".authority = strenv(AUTHORITY) |
+		.keys.\"${createName}\".cert_usage = [\"ssh-host\"]
+	" "$decrypted"
 }
 
 # Delete each retiring slot and write its `revoked` entry in the same document:
@@ -391,11 +465,16 @@ renew::retire() { # <section> <name> <slot>...
 }
 
 renew::apply() {
-	local line section name keyType existing reencrypted value
+	local line section name keyType existing authority slot reencrypted value
 	local -a retiring
 
 	for line in "${plan[@]}"; do
-		IFS=$'\t' read -r section name keyType existing <<<"$line"
+		IFS=$'\t' read -r section name keyType existing authority <<<"$line"
+		if [[ "$existing" == record ]]; then
+			create::declare "$authority" || return 1
+			record::one "$name" || return 1
+			continue
+		fi
 		if [[ "$existing" == create ]]; then create::declare || return 1; fi
 		renew::one "$section" "$name" "$keyType" || return 1
 		if ((replace == 1)) && [[ "$existing" != create ]]; then
@@ -416,7 +495,16 @@ renew::apply() {
 	recipients::unchanged "$keysYaml" "$reencrypted" || return 1
 
 	for line in "${plan[@]}"; do
-		IFS=$'\t' read -r section name _ _ <<<"$line"
+		IFS=$'\t' read -r section name _ existing _ <<<"$line"
+		if [[ "$existing" == record ]]; then
+			slot=".${section}.\"${name}\".slots.\"${today}\""
+			if [[ "$(yq eval -r "(${slot}.public == \"${createPublicBlob}\") and ((${slot} | keys | join(\",\")) == \"public\")" "$reencrypted")" != true ]]; then
+				log::error "${section}.${name} slot ${today}: not exactly the public, in clear, in the re-encrypted file"
+				log::error "keys.yaml left untouched"
+				return 1
+			fi
+			continue
+		fi
 		value="$(yq eval -r ".${section}.\"${name}\".slots.\"${today}\".private" "$reencrypted")"
 		case "$value" in
 			ENC\[*) ;;
@@ -429,6 +517,20 @@ renew::apply() {
 	done
 
 	install -m 0644 "$reencrypted" "$keysYaml" || return 1
+
+	if ((createPublic == 1)); then
+		cat <<-EOF
+
+			keys.${createName} recorded: slot ${today} holds its public only, the private stays in
+			the keyring. The evaluation refuses it until it is certified.
+
+			Next, in order, BEFORE committing:
+			  1. nix run "git+file://\$PWD?rev=\$(git rev-parse HEAD)#ssh-keys-certify" -- --apply
+			  2. nix run "git+file://\$PWD?rev=\$(git rev-parse HEAD)#ssh-keys-v2-validate" -- modules/home-manager/ssh.d/keys.yaml
+			  3. commit the keys.yaml diff: the public and its certificate together
+		EOF
+		return 0
+	fi
 
 	if [[ -n "$createName" ]]; then
 		cat <<-EOF
@@ -475,6 +577,180 @@ renew::apply() {
 	EOF
 }
 
+# A recorded host key is one machine's, of the ssh-host role only, ed25519, on no profile: the
+# placement (ndh-identity-push) is what puts it on its machine, not keys.yaml.
+host::check_record() {
+	local machine
+	if [[ "${createUsages[*]}" != ssh-host ]]; then
+		log::error "--public records a host key: its one --usage is ssh-host"
+		usage
+		return $?
+	fi
+	if ((${#createProfiles[@]} > 0)) || [[ -n "$createType" ]]; then
+		log::error "--public takes no --profile and no --type: a host key is ssh-ed25519 and lands on no profile"
+		usage
+		return $?
+	fi
+	for machine in "${machines[@]}"; do
+		[[ "$createName" == "host-${machine}" ]] && return 0
+	done
+	log::error "--create ${createName@Q} --public: the name is host-MACHINE, MACHINE one of: ${machines[*]}"
+	usage
+	return $?
+}
+
+# Exactly one `ssh-ed25519 <blob> [comment]` line from stdin into createPublicBlob. Nothing read is
+# ever printed: a mistaken pipe may carry a private.
+public::read() {
+	local input type blob rest bits
+	input="$(cat)"
+	if [[ "$input" == *"PRIVATE KEY"* ]]; then
+		log::error "stdin holds a PRIVATE key — refused, and not printed: pipe the public only (ndh-keyring host-key MACHINE prints it)"
+		return 1
+	fi
+	if [[ -z "$input" || "$input" == *$'\n'* ]]; then
+		log::error "--public - reads exactly ONE line from stdin: ssh-ed25519 <blob> [comment]"
+		return 1
+	fi
+	read -r type blob rest <<<"$input"
+	if [[ "$type" != ssh-ed25519 || ! "$blob" =~ ^[A-Za-z0-9+/]+={0,2}$ ]]; then
+		log::error "stdin is not an ssh-ed25519 public line — a host key is ed25519 only"
+		return 1
+	fi
+	# Checked by ssh-keygen, not by shape: the blob must decode to an ed25519 public key.
+	if ! bits="$(printf '%s %s\n' "$type" "$blob" | ssh-keygen -l -f - 2>/dev/null)" || [[ "$bits" != *"(ED25519)" ]]; then
+		log::error "stdin is not a valid ssh-ed25519 public key (ssh-keygen -l refused it)"
+		return 1
+	fi
+	createPublicBlob="$blob"
+}
+
+# What `ssh-keygen -L` reads in a certificate, tab-separated: type, serial, signing CA fingerprint, key
+# id. The id keeps its inner quotes (it is JSON); only the pair ssh-keygen wraps it in goes.
+revoke::describe() { # <certificate line>
+	printf '%s\n' "$1" | ssh-keygen -L -f - | awk '
+		/^ *Type:/ { type = ($0 ~ /host certificate/) ? "host" : "user" }
+		/^ *Key ID:/ { sub(/^ *Key ID: "/, ""); sub(/"$/, ""); id = $0 }
+		/^ *Serial:/ { serial = $2 }
+		/^ *Signing CA:/ { if (match($0, /SHA256:[A-Za-z0-9+\/]+/)) ca = substr($0, RSTART, RLENGTH) }
+		END { print type "\t" serial "\t" ca "\t" id }'
+}
+
+# The slot of <authority> whose public signed a certificate, in keys.yaml as it is now: the KRL revokes
+# the id under that public.
+revoke::authority_slot() { # <authority> <CA fingerprint>
+	local slot type public
+	type="$(yq eval -r ".authorities.\"$1\".type // \"ssh-ed25519\"" "$keysYaml")"
+	while IFS= read -r slot; do
+		[[ -n "$slot" ]] || continue
+		public="$(yq eval -r ".authorities.\"$1\".slots.\"${slot}\".public // \"\"" "$keysYaml")"
+		[[ -n "$public" ]] || continue
+		if [[ "$(printf '%s %s\n' "$type" "$public" | ssh-keygen -lf - | awk '{print $2}')" == "$2" ]]; then
+			printf '%s\n' "$slot"
+			return 0
+		fi
+	done < <(yq eval -r ".authorities.\"$1\".slots // {} | keys | .[]" "$keysYaml")
+	return 1
+}
+
+# keys.yaml with one revoked_certificates entry left out, as compared JSON: what `sops set` must not
+# have changed.
+revoke::rest() { # <file> <entry name>
+	N="$2" yq eval -o json --indent=0 'del(.sops) | .revoked_certificates |= ((. // {}) | del(.[strenv(N)]))' "$1"
+}
+
+# Record the revocation of the ssh-host certificate keys.<key>.slots.<slot> carried at the revision.
+revoke::run() {
+	local key="${revokeTarget%@*}" slot="${revokeTarget#*@}"
+	local sha atRev authority cert type serial ca id where live liveId authSlot name entry updated
+	if ! sha="$(git rev-parse --verify --quiet "${revokeRevision}^{commit}")"; then
+		log::error "--from-revision ${revokeRevision@Q}: no such commit"
+		return 1
+	fi
+	atRev="${tmpdir}/keys-at-revision.yaml"
+	if ! git show "${sha}:${keysRel}" >"$atRev" 2>/dev/null; then
+		log::error "${sha}: no ${keysRel} in that commit"
+		return 1
+	fi
+	authority="$(yq eval -r ".keys.\"${key}\".authority // \"\"" "$atRev")"
+	cert="$(yq eval -r ".keys.\"${key}\".slots.\"${slot}\".certificates.\"${authority}\".\"ssh-host\" // \"\"" "$atRev")"
+	if [[ -z "$authority" || -z "$cert" ]]; then
+		log::error "${sha}: keys.${key}.slots.${slot} records no ssh-host certificate in that revision"
+		return 1
+	fi
+	IFS=$'\t' read -r type serial ca id < <(revoke::describe "$cert") || true
+	if [[ "$type" != host || ! "$serial" =~ ^[0-9]+$ || -z "$ca" || -z "$id" ]]; then
+		log::error "${sha}: keys.${key}.slots.${slot}'s ssh-host certificate is not a readable host certificate"
+		return 1
+	fi
+
+	# A certificate keys.yaml still records is one a host still serves: revoking it would cut that host.
+	while IFS=$'\t' read -r where live; do
+		[[ -n "$live" ]] || continue
+		IFS=$'\t' read -r _ _ _ liveId < <(revoke::describe "$live") || true
+		if [[ "$live" == "$cert" || "$liveId" == "$id" ]]; then
+			log::error "keys.yaml still records $([[ "$live" == "$cert" ]] && echo "this certificate" || echo "a certificate with its key id") (${where})"
+			log::error "re-sign it first (ssh-keys-certify --apply), commit, switch every host, then revoke"
+			return 1
+		fi
+	done < <(yq eval -r '(.keys // {}) | to_entries[] | .key as $k | (.value.slots // {}) | to_entries[] | .key as $s | (.value.certificates // {}) | to_entries[] | .key as $a | .value | to_entries[] | select(.value | tag == "!!str") | ($k + "@" + $s + " " + $a + " " + .key) + "\t" + .value' "$keysYaml")
+
+	name="${key}@${slot}/${serial}"
+	if [[ "$(N="$name" I="$id" yq eval -r '(.revoked_certificates // {}) | has(strenv(N)) or ([.[] | .key_id] | any_c(. == strenv(I)))' "$keysYaml")" == true ]]; then
+		log::error "revoked_certificates already holds ${name}, or this key id"
+		return 1
+	fi
+	if ! authSlot="$(revoke::authority_slot "$authority" "$ca")"; then
+		log::error "its signing CA (${ca}) is no slot of authorities.${authority} in keys.yaml — if that slot is in revoked, every certificate it signed is already cut"
+		return 1
+	fi
+
+	cat <<-EOF
+
+		keys.yaml     ${keysYaml}
+		revoke        revoked_certificates.${name}
+		  recorded    keys.${key}.slots.${slot}.certificates.${authority}.ssh-host at ${sha}
+		  key id      ${id}
+		  serial      ${serial}
+		  signed by   ${authority}@${authSlot}
+		  reason      ${reason}
+
+	EOF
+	if ((apply == 0)); then
+		log::info "dry run — pass --apply to record it in keys.yaml"
+		return 0
+	fi
+
+	entry="$(A="$authority" S="$authSlot" I="$id" N="$serial" R="$sha" W="$reason" yq eval -n -o json --indent=0 \
+		'{"authority": strenv(A), "authority_slot": strenv(S), "key_id": strenv(I), "serial": env(N), "revision": strenv(R), "reason": strenv(W)}')"
+	# .yaml: sops set reads the format from the extension.
+	updated="${tmpdir}/keys.revoked.yaml"
+	cp "$keysYaml" "$updated"
+	if ! sops set "$updated" "[\"revoked_certificates\"][\"${name}\"]" "$entry"; then
+		log::error "sops set failed; keys.yaml left untouched"
+		return 1
+	fi
+	if [[ "$(revoke::rest "$updated" "$name")" != "$(revoke::rest "$keysYaml" "$name")" ]]; then
+		log::error "sops set changed more than revoked_certificates.${name}; keys.yaml left untouched"
+		return 1
+	fi
+	if [[ "$(N="$name" yq eval -o json --indent=0 '.revoked_certificates[strenv(N)]' "$updated")" != "$entry" ]]; then
+		log::error "revoked_certificates.${name} does not read back in clear, as given; keys.yaml left untouched"
+		return 1
+	fi
+	install -m 0644 "$updated" "$keysYaml" || return 1
+	cat <<-EOF
+
+		revoked_certificates.${name} recorded: the KRL cuts that certificate by its key id, and its
+		key stays valid.
+
+		Next, in order:
+		  1. nix run "git+file://\$PWD?rev=\$(git rev-parse HEAD)#ssh-keys-v2-validate" -- modules/home-manager/ssh.d/keys.yaml
+		  2. commit the keys.yaml diff
+		  3. switch every host: sshd and every client, root's included, refuse it from their activation on
+	EOF
+}
+
 main() {
 	apply=0
 	replace=0
@@ -483,6 +759,10 @@ main() {
 	createName=""
 	createComment=""
 	createType=""
+	createPublic=0
+	createPublicBlob=""
+	revokeTarget=""
+	revokeRevision=""
 
 	while (($# > 0)); do
 		case "$1" in
@@ -538,6 +818,26 @@ main() {
 				createType="$2"
 				shift 2
 				;;
+			--public)
+				# stdin only: a path would invite pointing at the keyring's decrypted private.
+				if [[ "${2:-}" != - ]]; then
+					log::error "--public takes - : the public line is read from stdin (ndh-keyring host-key MACHINE | ...)"
+					usage
+					return $?
+				fi
+				createPublic=1
+				shift 2
+				;;
+			--revoke-certificate)
+				[[ -n "${2:-}" ]] || return "$(usage || echo $?)"
+				revokeTarget="$2"
+				shift 2
+				;;
+			--from-revision)
+				[[ -n "${2:-}" ]] || return "$(usage || echo $?)"
+				revokeRevision="$2"
+				shift 2
+				;;
 			--apply)
 				apply=1
 				shift
@@ -553,6 +853,40 @@ main() {
 				;;
 		esac
 	done
+
+	if [[ -n "$revokeTarget" ]]; then
+		if [[ -n "$createName$olderThanDays" ]] || ((${#selectKeys[@]} + ${#selectAuthorities[@]} + ${#createUsages[@]} + ${#createProfiles[@]} + createPublic + replace > 0)) ||
+			[[ -n "$createComment$createType" ]]; then
+			log::error "--revoke-certificate stands alone: only --from-revision, --reason and --apply go with it"
+			usage
+			return $?
+		fi
+		# The schema's key and slot patterns, checked here because both are spliced into yq expressions.
+		if [[ ! "$revokeTarget" =~ ^[a-z][a-z0-9-]*@[0-9]{2}-[0-9]{2}-[0-9]{2}$ ]]; then
+			log::error "--revoke-certificate ${revokeTarget@Q}: KEY@YY-MM-DD, the slot that recorded the certificate"
+			usage
+			return $?
+		fi
+		if [[ -z "$revokeRevision" || -z "$reason" ]]; then
+			log::error "--revoke-certificate needs --from-revision (the commit that recorded it) and --reason"
+			usage
+			return $?
+		fi
+		keysYaml="$(git rev-parse --show-toplevel)/${keysRel}"
+		if [[ ! -r "$keysYaml" ]]; then
+			log::error "keys.yaml not readable at ${keysYaml} (run from the ndh repo root)"
+			return 1
+		fi
+		tmpdir="$(mktemp -d)"
+		chmod 700 "$tmpdir"
+		trap 'rm -rf "$tmpdir"' EXIT
+		revoke::run
+		return $?
+	elif [[ -n "$revokeRevision" ]]; then
+		log::error "--from-revision names the revision of a --revoke-certificate"
+		usage
+		return $?
+	fi
 
 	if [[ -n "$createName" ]]; then
 		# One gesture at a time: a creation mixed with renewals would apply both or
@@ -574,10 +908,14 @@ main() {
 			usage
 			return $?
 		fi
+		if ((createPublic == 1)); then
+			host::check_record || return $?
+			public::read || return $?
+		fi
 		[[ -n "$createComment" ]] || createComment="$createName"
 		[[ -n "$createType" ]] || createType="ssh-ed25519"
-	elif ((${#createUsages[@]} + ${#createProfiles[@]} > 0)) || [[ -n "$createComment$createType" ]]; then
-		log::error "--usage, --profile, --comment and --type describe a new entry: they need --create"
+	elif ((${#createUsages[@]} + ${#createProfiles[@]} + createPublic > 0)) || [[ -n "$createComment$createType" ]]; then
+		log::error "--usage, --profile, --comment, --type and --public describe a new entry: they need --create"
 		usage
 		return $?
 	elif ((${#selectKeys[@]} == 0)) && ((${#selectAuthorities[@]} == 0)) && [[ -z "$olderThanDays" ]]; then

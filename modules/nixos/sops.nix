@@ -4,6 +4,7 @@
   lib,
   pkgs,
   ndhSystemd,
+  worktreePath,
   ...
 }:
 let
@@ -47,6 +48,9 @@ let
   identityReceive = (import ../.common.d/identity-push.d/package.nix { inherit pkgs lib; }).receive {
     machine = config.networking.hostName;
     keyFile = config.sops.age.keyFile;
+    served =
+      if config.ndh.hostKey.own then config.ndh.hostKey.file else "/etc/ssh/ssh_host_ed25519_key.pub";
+    owner = "root:root";
   };
 in
 {
@@ -54,7 +58,10 @@ in
   # mount (/srv/host/sops.d) when running under Tart. Pull that mount unit in
   # here so bringup-minimal picks it up transitively from sops.nix, without
   # needing to import the full systemd/ aggregator.
-  imports = [ ./systemd/tart-host-shares.nix ];
+  imports = [
+    ./systemd/tart-host-shares.nix
+    (worktreePath.of "modules/.common.d/host-key.nix")
+  ];
 
   config = {
     # NixOS policy: systemd-driven sops activation and host key import defaults.

@@ -136,11 +136,13 @@
       # The ONE identity the incus cluster-cert closure reaches a member with: the OPERATOR
       # principal's key on the operator seat, read from bioskop's configuration (sshPaths, the profile
       # user) so it is never retyped. Step 9 moves it from rdp-host to the `operator` key here.
-      # Roles × keys 6a: every name a fleet host or guest answers to, the union ONE host certificate is
-      # signed for on the operator seat (ssh-keys-certify). Each inventory host, and each guest read from its own
-      # configuration (vm.guestHostName, and vm.guestName.vm.hostName, the bare-metal's dnsmasq zone), in
-      # the bare, .lan, .local and <ssh authority domain> forms. Computed, never retyped.
-      fleetHostPrincipals =
+      # Roles × keys S3a: what ssh-keys-certify signs host certificates for on the operator seat, computed,
+      # never retyped. `names`: each machine's own names (host-names.nix refuses a name two machines
+      # claim). `own`: the machines whose configuration serves their own host key (ndh.hostKey.own), the
+      # interim's gate; read from each machine's configuration, which consumes nothing of certify, so no
+      # cycle. `interim` (decided 2026-10-15, ends at nikopol's push): the shared key nikopol's sshd still
+      # serves, certified for nikopol's machines only.
+      fleetHostCertificates =
         let
           lib = nixpkgs.lib;
           authorities = lib.filterAttrs (
@@ -148,28 +150,34 @@
           ) self.darwinConfigurations.bioskop.config.ndh.keysYaml.authorities;
           domain =
             assert lib.assertMsg (lib.length (lib.attrNames authorities) == 1)
-              "fleetHostPrincipals: exactly one ssh-authority is expected, found ${toString (lib.attrNames authorities)}";
+              "fleetHostCertificates: exactly one ssh-authority is expected, found ${toString (lib.attrNames authorities)}";
             (lib.head (lib.attrValues authorities)).domain;
-          forms = name: [
-            name
-            "${name}.lan"
-            "${name}.local"
-            "${name}.${domain}"
-          ];
           hosts = lib.attrNames inventoryData.hosts;
-          guests = lib.concatMap (
-            host:
-            lib.optional (
-              self.nixosConfigurations ? "${host}-nixos"
-            ) self.nixosConfigurations."${host}-nixos".config.vm
-          ) hosts;
+          guestConfigs = map (host: self.nixosConfigurations."${host}-nixos".config) (
+            lib.filter (host: self.nixosConfigurations ? "${host}-nixos") hosts
+          );
+          guests = map (config: config.vm) guestConfigs;
+          names = import ./modules/.common.d/ssh-keys-certify.d/host-names.nix { inherit lib; } {
+            inherit domain hosts guests;
+          };
+          configs =
+            lib.genAttrs (lib.filter (host: self.darwinConfigurations ? ${host}) hosts) (
+              host: self.darwinConfigurations.${host}.config
+            )
+            // lib.listToAttrs (map (config: lib.nameValuePair config.vm.guestHostName config) guestConfigs);
         in
-        lib.sort lib.lessThan (
-          lib.unique (
-            lib.concatMap forms hosts
-            ++ lib.concatMap (vm: forms vm.guestHostName ++ [ "${vm.guestName}.${vm.hostName}" ]) guests
-          )
-        );
+        {
+          inherit names;
+          # A machine without a configuration is not on its own key: the gate stays closed on it.
+          own = lib.filter (machine: configs.${machine}.ndh.hostKey.own or false) (lib.attrNames names);
+          interim = {
+            key = builtins.baseNameOf self.darwinConfigurations.nikopol.config.sshPaths.privKeyFile;
+            machines = [
+              "nikopol"
+            ]
+            ++ map (vm: vm.guestHostName) (lib.filter (vm: vm.hostName == "nikopol") guests);
+          };
+        };
 
       catalogData = import ./catalog/default.nix {
         inherit cacheTrust networkBlueprint dataplan;
@@ -1086,6 +1094,31 @@
           pkgs = pkgsFor { inherit system; };
           managed = import ./modules/darwin/claude-code-managed.d/package.nix { inherit pkgs; };
           sessionHooks = import ./modules/home-manager/claude-code.d/hooks/package.nix { inherit pkgs; };
+          # Names no fleet machine answers to (roles × keys S3a): the corporate bare-metal, a home-LAN
+          # device, the bring-up guest, a stranger. The host authority must not vouch for them.
+          outsideFleet = [
+            "vzhost.nikopol"
+            "router.lan"
+            "nerd-nixos"
+            "example.com"
+          ];
+          # What each client resolves StrictHostKeyChecking to: the fleet's names and the aliases to them
+          # strict, the wildcards that were strict before S3a still strict, every other name as before.
+          strictness =
+            value:
+            map (target: {
+              inherit target value;
+              option = "stricthostkeychecking";
+            });
+          nixStoreAliases = {
+            bioskop = [ "nix-store.nikopol" ];
+            nikopol = [ "nix-store.bioskop" ];
+            bioskop-nixos = [
+              "nix-store.bioskop"
+              "nix-store.nikopol"
+            ];
+            nikopol-nixos = nixStoreAliases.bioskop-nixos;
+          };
         in
         {
           claude-code-managed-settings = managed.settings;
@@ -1102,6 +1135,12 @@
             inherit pkgs;
           };
           ssh-keys-certify-bats = import ./modules/.common.d/ssh-keys-certify.d/tests/package.nix {
+            inherit pkgs;
+          };
+          ssh-keys-certify-host-names = import ./modules/.common.d/ssh-keys-certify.d/tests/host-names.nix {
+            inherit pkgs;
+          };
+          ssh-known-hosts-command-bats = import ./modules/home-manager/ssh-keys.d/tests/package.nix {
             inherit pkgs;
           };
           cache-signing-key-rotate-bats =
@@ -1207,15 +1246,7 @@
               host:
               let
                 darwin = self.darwinConfigurations.${host}.config;
-                owned = [
-                  "root@bioskop-nixos"
-                  "root@nikopol-nixos"
-                  "bioskop-nixos.local"
-                  "nikopol-nixos.local"
-                  "router.lan"
-                  "bioskop.mammoth-skate.ts.net"
-                ];
-                everywhere = owned ++ [ "example.com" ];
+                everywhere = self.fleetHostNames ++ outsideFleet;
               in
               nixpkgs.lib.nameValuePair "ssh-client-effective-${host}" (
                 import ./modules/darwin/ssh-client.d/tests/effective.nix {
@@ -1224,11 +1255,18 @@
                   name = host;
                   etc = darwin.environment.etc;
                   expect =
-                    map (target: {
-                      inherit target;
-                      option = "stricthostkeychecking";
-                      value = "true";
-                    }) owned
+                    strictness "true" (
+                      self.fleetHostNames
+                      ++ nixStoreAliases.${host}
+                      ++ [
+                        "router.lan"
+                        "nerd-nixos"
+                      ]
+                    )
+                    ++ strictness "accept-new" [
+                      "vzhost.nikopol"
+                      "example.com"
+                    ]
                     ++ map (target: {
                       inherit target;
                       option = "controlmaster";
@@ -1242,15 +1280,8 @@
                     ++ map (target: {
                       inherit target;
                       option = "revokedhostkeys";
-                      value = "${darwin.ndh.keysYaml.revokedKeysFile}";
-                    }) everywhere
-                    ++ [
-                      {
-                        target = "example.com";
-                        option = "stricthostkeychecking";
-                        value = "accept-new";
-                      }
-                    ];
+                      value = "${darwin.ndh.keysYaml.krlFile}";
+                    }) everywhere;
                 }
               )
             )
@@ -1258,6 +1289,121 @@
               "bioskop"
               "nikopol"
             ]
+        )
+        # Root's client on a NixOS guest resolves the fleet's revocation list for every host, as the
+        # operator seats' does (roles × keys S3a K3): nix-daemon's remote builds and the sshfs mounts run
+        # ssh as root. The fleet's names and the aliases to them are strict there too; elsewhere ssh's own
+        # default (`ask`) stands, which a non-interactive root cannot answer.
+        // nixpkgs.lib.listToAttrs (
+          map
+            (
+              guest:
+              let
+                nixos = self.nixosConfigurations.${guest}.config;
+              in
+              nixpkgs.lib.nameValuePair "ssh-client-effective-${guest}" (
+                import ./modules/darwin/ssh-client.d/tests/effective.nix {
+                  inherit pkgs;
+                  inherit (nixpkgs) lib;
+                  name = guest;
+                  etc = nixos.environment.etc;
+                  expect =
+                    map (target: {
+                      inherit target;
+                      option = "revokedhostkeys";
+                      value = "${nixos.ndh.keysYaml.krlFile}";
+                    }) (self.fleetHostNames ++ outsideFleet)
+                    ++ strictness "true" (self.fleetHostNames ++ nixStoreAliases.${guest})
+                    ++ strictness "ask" outsideFleet;
+                }
+              )
+            )
+            [
+              "bioskop-nixos"
+              "nikopol-nixos"
+            ]
+        )
+        # The operator's own client config carries the same list, on every operator seat and NixOS guest.
+        // {
+          ssh-client-operator-revocation =
+            let
+              lib = nixpkgs.lib;
+              configs = {
+                bioskop = self.darwinConfigurations.bioskop.config;
+                nikopol = self.darwinConfigurations.nikopol.config;
+                bioskop-nixos = self.nixosConfigurations.bioskop-nixos.config;
+                nikopol-nixos = self.nixosConfigurations.nikopol-nixos.config;
+              };
+              # Without context on either side: hasInfix builds a regex, which evaluation refuses to
+              # build from a string carrying store paths.
+              plain = builtins.unsafeDiscardStringContext;
+              missing = lib.attrNames (
+                lib.filterAttrs (
+                  _: c:
+                  !(lib.hasInfix (plain "RevokedHostKeys ${c.ndh.keysYaml.krlFile}\n") (
+                    plain c.home-manager.users.${c.profile.user.name}.programs.ssh.extraConfig
+                  ))
+                ) configs
+              );
+            in
+            assert lib.assertMsg (
+              missing == [ ]
+            ) "the operator's ssh client config has no RevokedHostKeys on: ${toString missing}";
+            pkgs.runCommand "ssh-client-operator-revocation" { } "touch $out";
+        }
+        # The operator's ~/.ssh/config and every host's /etc/ssh/ssh_known_hosts, on every operator seat
+        # and NixOS guest (roles × keys S3a): the fleet's names are vouched for by the host authority and
+        # nothing else is; they, the aliases to them and the guests' wildcard are checked strictly.
+        // (
+          let
+            lib = nixpkgs.lib;
+            configs = {
+              bioskop = self.darwinConfigurations.bioskop.config;
+              nikopol = self.darwinConfigurations.nikopol.config;
+              bioskop-nixos = self.nixosConfigurations.bioskop-nixos.config;
+              nikopol-nixos = self.nixosConfigurations.nikopol-nixos.config;
+            };
+          in
+          lib.mapAttrs' (
+            host: c:
+            lib.nameValuePair "ssh-client-operator-effective-${host}" (
+              import ./modules/darwin/ssh-client.d/tests/effective.nix {
+                inherit pkgs lib;
+                name = "operator-${host}";
+                etc."ssh/ssh_config".text =
+                  c.home-manager.users.${c.profile.user.name}.home.file.".ssh/config".text;
+                expect =
+                  strictness "true" (
+                    self.fleetHostNames
+                    ++ nixStoreAliases.${host}
+                    ++ [
+                      "darwin.bioskop"
+                      "darwin.nikopol"
+                      "bioskop-ts"
+                      "nikopol-ts"
+                      "nerd-nixos"
+                    ]
+                  )
+                  ++ strictness "accept-new" [
+                    "vzhost.nikopol"
+                    "router.lan"
+                    "example.com"
+                  ];
+              }
+            )
+          ) configs
+          // lib.mapAttrs' (
+            host: c:
+            lib.nameValuePair "ssh-known-hosts-scope-${host}" (
+              import ./modules/.common.d/openssh-policy.d/tests/known-hosts-scope.nix {
+                inherit pkgs lib;
+                name = host;
+                knownHosts = c.environment.etc."ssh/ssh_known_hosts".text;
+                fleet = self.fleetHostNames;
+                outside = outsideFleet ++ [ "github.com" ];
+              }
+            )
+          ) configs
         )
         // nixpkgs.lib.listToAttrs (
           map
@@ -1275,6 +1421,21 @@
               "bioskop"
               "nikopol"
             ]
+        )
+        # The host key sshd serves (ndh.hostKey.own, roles × keys S3a), on every guest and operator seat.
+        // (
+          let
+            lib = nixpkgs.lib;
+            hosts = lib.attrNames inventoryData.hosts;
+          in
+          import ./modules/.common.d/host-key.d/tests/checks.nix {
+            inherit pkgs pkgsForLinux lib;
+            inherit (self) nixosConfigurations darwinConfigurations;
+            guests = map (host: "${host}-nixos") (
+              lib.filter (host: self.nixosConfigurations ? "${host}-nixos") hosts
+            );
+            seats = lib.filter (host: self.darwinConfigurations ? ${host}) hosts;
+          }
         )
         # The mask a failed install's log goes through into the build log: key material never passes.
         // {
@@ -1863,10 +2024,17 @@
             pkgsForSystem.replaceVars ./modules/.common.d/ssh-keys-renew.d/ssh-keys-renew.sh {
               nixBashTrampoline = ndhNixBashTrampolineDarwin;
               loggerTag = "ndh.ssh-keys-renew";
+              # The machines a host key is recorded for (--public): the four ndh-keyring knows, each
+              # operator seat and its guest, as the inventory names them.
+              machines =
+                let
+                  hosts = nixpkgs.lib.attrNames catalogData.netplan.baremetal;
+                in
+                nixpkgs.lib.concatStringsSep " " (
+                  hosts ++ map (h: catalogData.netplan.baremetal.${h}.nixosHostname) hosts
+                );
             }
           );
-          # 6a: the operator seat signs every SSH certificate keys.yaml declares, host certificates for
-          # fleetHostPrincipals; the activation only installs them.
           # The fleet's nix signing key, replaced on the operator seat (the interim rotation of 2026-10-13).
           cacheSigningKeyRotatePackage = ndhStoreApiDarwin.installBinScript "cache-signing-key-rotate" (
             pkgsForSystem.replaceVars ./modules/.common.d/cache-signing-key-rotate.d/cache-signing-key-rotate.sh
@@ -1876,11 +2044,21 @@
                 nix = "${pkgsForSystem.nix}/bin/nix";
               }
           );
+          # 6a: the operator seat signs every SSH certificate keys.yaml declares, host certificates for
+          # fleetHostCertificates; the activation only installs them.
           sshKeysCertifyPackage = ndhStoreApiDarwin.installBinScript "ssh-keys-certify" (
             pkgsForSystem.replaceVars ./modules/.common.d/ssh-keys-certify.d/ssh-keys-certify.sh {
               nixBashTrampoline = ndhNixBashTrampolineDarwin;
               loggerTag = "ndh.ssh-keys-certify";
-              hostPrincipals = nixpkgs.lib.concatStringsSep "," fleetHostPrincipals;
+              hostNames = nixpkgs.lib.concatStringsSep " " (
+                nixpkgs.lib.mapAttrsToList (
+                  machine: names: "${machine}=${nixpkgs.lib.concatStringsSep "," names}"
+                ) fleetHostCertificates.names
+              );
+              interimKey = fleetHostCertificates.interim.key;
+              interimMachines = nixpkgs.lib.concatStringsSep " " fleetHostCertificates.interim.machines;
+              ownMachines = nixpkgs.lib.concatStringsSep " " fleetHostCertificates.own;
+              sha256sum = "${pkgsForSystem.coreutils}/bin/sha256sum";
               sshKeygen = "${pkgsForSystem.openssh}/bin/ssh-keygen";
             }
           );
@@ -1977,7 +2155,7 @@
           ssh-keys-renew = {
             type = "app";
             program = "${sshKeysRenewPackage}/bin/ssh-keys-renew";
-            meta.description = "Phase 1 of an SSH key renewal: add a dated slot and generate into it — [--key NAME] [--authority NAME] [--older-than Nd] [--apply], or declare a new entry with --create NAME --usage TAG, dry run by default, run from repo root — src: modules/.common.d/ssh-keys-renew.d/";
+            meta.description = "Phase 1 of an SSH key renewal: add a dated slot and generate into it — [--key NAME] [--authority NAME] [--older-than Nd] [--apply], or declare a new entry with --create NAME --usage TAG (record a host key public from stdin with --public -), dry run by default, run from repo root — src: modules/.common.d/ssh-keys-renew.d/";
           };
           cache-signing-key-rotate = {
             type = "app";
@@ -1987,7 +2165,7 @@
           ssh-keys-certify = {
             type = "app";
             program = "${sshKeysCertifyPackage}/bin/ssh-keys-certify";
-            meta.description = "Sign, on the operator seat, every SSH certificate keys.yaml declares (host certificates for every fleet name) and record them in keys.yaml — [--apply], dry run by default, run from repo root — src: modules/.common.d/ssh-keys-certify.d/";
+            meta.description = "Sign, on the operator seat, every SSH certificate keys.yaml declares (one host certificate per machine, its own names) and record them in keys.yaml — [--apply], dry run by default, run from repo root — src: modules/.common.d/ssh-keys-certify.d/";
           };
           cleanup-activations = {
             type = "app";
@@ -2294,6 +2472,10 @@
         nixBashTrampoline = ndhNixBashTrampolineDarwin;
         storagePools = incusStoragePools;
       };
+
+      # Every name a fleet machine answers to, from the map ssh-keys-certify signs (roles × keys S3a):
+      # the clients trust the host authority for these names only, and check them strictly.
+      fleetHostNames = nixpkgs.lib.concatLists (nixpkgs.lib.attrValues fleetHostCertificates.names);
 
       darwinConfigurations = builtins.foldl' (
         acc: hostOutput: acc // hostOutput.darwinConfigurations

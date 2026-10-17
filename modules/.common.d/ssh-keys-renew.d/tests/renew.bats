@@ -19,16 +19,35 @@ creation_rules:
 EOF
 
   ssh-keygen -q -t ed25519 -N "" -f "$BATS_TEST_TMPDIR/existing" -C existing
+  # The authority host certificates are signed by, and the host key it signs today: what --public
+  # reads the new entry's authority from.
+  ssh-keygen -q -t ed25519 -N "" -f "$BATS_TEST_TMPDIR/fabric" -C fabric
+  ssh-keygen -q -t ed25519 -N "" -f "$BATS_TEST_TMPDIR/shared" -C shared
   keys="$repo/modules/home-manager/ssh.d/keys.yaml"
   PUB="$(cut -d' ' -f2 <"$BATS_TEST_TMPDIR/existing.pub")" PRIV="$(<"$BATS_TEST_TMPDIR/existing")" \
+    CAPUB="$(cut -d' ' -f2 <"$BATS_TEST_TMPDIR/fabric.pub")" CAPRIV="$(<"$BATS_TEST_TMPDIR/fabric")" \
+    HPUB="$(cut -d' ' -f2 <"$BATS_TEST_TMPDIR/shared.pub")" HPRIV="$(<"$BATS_TEST_TMPDIR/shared")" \
     yq eval -n '
+      .authorities.fabric.type = "ssh-ed25519" |
+      .authorities.fabric.usage = ["ssh-authority"] |
+      .authorities.fabric.slots."26-01-01".public = strenv(CAPUB) |
+      .authorities.fabric.slots."26-01-01".private = strenv(CAPRIV) |
+      (.authorities.fabric.slots."26-01-01".private | key) headComment = "sops:encrypted" |
       .keys.existing.type = "ssh-ed25519" |
       .keys.existing.comment = "existing" |
       .keys.existing.usage = ["github-signing"] |
       .keys.existing.profiles = ["user"] |
       .keys.existing.slots."26-01-01".public = strenv(PUB) |
       .keys.existing.slots."26-01-01".private = strenv(PRIV) |
-      (.keys.existing.slots."26-01-01".private | key) headComment = "sops:encrypted"
+      (.keys.existing.slots."26-01-01".private | key) headComment = "sops:encrypted" |
+      .keys.shared.type = "ssh-ed25519" |
+      .keys.shared.usage = ["ssh-host"] |
+      .keys.shared.authority = "fabric" |
+      .keys.shared.cert_usage = ["ssh-host"] |
+      .keys.shared.profiles = ["system"] |
+      .keys.shared.slots."26-01-01".public = strenv(HPUB) |
+      .keys.shared.slots."26-01-01".private = strenv(HPRIV) |
+      (.keys.shared.slots."26-01-01".private | key) headComment = "sops:encrypted"
     ' >"$keys"
   (cd "$repo" && sops --input-type yaml --output-type yaml encrypt -i modules/home-manager/ssh.d/keys.yaml)
 
@@ -37,6 +56,7 @@ EOF
   # script does not check behaves here as it does there.
   printf 'source "%s"\nndh::logger:command:run() { shift; ndh::logger:command:invoke "$@"; return "$NDH_LOGGER_COMMAND_RC"; }\n' "$NDH_LOGGER_SH" >"$BATS_TEST_TMPDIR/trampoline.sh"
   sed -e "s#@nixBashTrampoline@#$BATS_TEST_TMPDIR/trampoline.sh#" -e 's#@loggerTag@#test#' \
+    -e 's#@machines@#bioskop nikopol bioskop-nixos nikopol-nixos#' \
     "$BATS_TEST_DIRNAME/../ssh-keys-renew.sh" >"$BATS_TEST_TMPDIR/ssh-keys-renew"
   today="$(date +%y-%m-%d)"
 }
@@ -158,4 +178,251 @@ decrypted() {
   [ "$status" -eq 1 ]
   [[ "$output" == *"recipients would change"*"sops updatekeys"* ]]
   cmp "$keys" "$BATS_TEST_TMPDIR/before"
+}
+
+# A machine's host key, as ndh-keyring host-key prints it: generated here, its private thrown away.
+host_public() {
+  rm -f "$BATS_TEST_TMPDIR/machine-${1:-ed25519}" "$BATS_TEST_TMPDIR/machine-${1:-ed25519}.pub"
+  ssh-keygen -q -t "${1:-ed25519}" -N "" -f "$BATS_TEST_TMPDIR/machine-${1:-ed25519}" -C host-bioskop-nixos
+  cat "$BATS_TEST_TMPDIR/machine-${1:-ed25519}.pub"
+}
+
+record() {
+  (cd "$repo" && bash -euo pipefail "$BATS_TEST_TMPDIR/ssh-keys-renew" --create host-bioskop-nixos --public - --usage ssh-host "$@")
+}
+
+@test "--public --apply records a public-only slot, in clear, under the host certificates' authority" {
+  host_public >"$BATS_TEST_TMPDIR/line"
+  entry='.keys."host-bioskop-nixos"'
+  decrypted | yq eval "del($entry)" - >"$BATS_TEST_TMPDIR/before.yaml"
+  run record --comment "bioskop-nixos host" --apply <"$BATS_TEST_TMPDIR/line"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"ssh-keys-certify"*"commit"* ]]
+  [ "$(yq eval -r "$entry.type" "$keys")" = ssh-ed25519 ]
+  [ "$(yq eval -r "$entry.comment" "$keys")" = "bioskop-nixos host" ]
+  [ "$(yq eval -r "$entry.usage | join(\",\")" "$keys")" = ssh-host ]
+  [ "$(yq eval -r "$entry.authority" "$keys")" = fabric ]
+  [ "$(yq eval -r "$entry.cert_usage | join(\",\")" "$keys")" = ssh-host ]
+  [ "$(yq eval -r "$entry.profiles | length" "$keys")" = 0 ]
+  [ "$(yq eval -r "$entry.slots | keys | join(\",\")" "$keys")" = "$today" ]
+  [ "$(yq eval -r "$entry.slots.\"$today\" | keys | join(\",\")" "$keys")" = public ]
+  [ "$(yq eval -r "$entry.slots.\"$today\".public" "$keys")" = "$(cut -d' ' -f2 <"$BATS_TEST_TMPDIR/line")" ]
+  # Nothing else changed: the decrypted document minus the new entry is the one before.
+  decrypted | yq eval "del($entry)" - >"$BATS_TEST_TMPDIR/after.yaml"
+  cmp "$BATS_TEST_TMPDIR/before.yaml" "$BATS_TEST_TMPDIR/after.yaml"
+  # And every private is still ciphertext.
+  [ "$(yq eval '[.keys[].slots[].private, .authorities[].slots[].private] | map(select(. != null)) | all_c(test("^ENC\\["))' "$keys")" = true ]
+}
+
+@test "a dry run of --public shows the record and writes nothing" {
+  cp "$keys" "$BATS_TEST_TMPDIR/before"
+  run record < <(host_public)
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"host-bioskop-nixos"*"${today} (new entry, public only, under fabric)"* ]]
+  [[ "$output" == *"dry run"* ]]
+  cmp "$keys" "$BATS_TEST_TMPDIR/before"
+}
+
+@test "--public refuses a private on stdin, and never prints it" {
+  cp "$keys" "$BATS_TEST_TMPDIR/before"
+  host_public >/dev/null
+  run record --apply <"$BATS_TEST_TMPDIR/machine-ed25519"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"PRIVATE key"*"not printed"* ]]
+  # No line of the private's body reaches the output.
+  while IFS= read -r line; do
+    [[ "$line" == -----* ]] && continue
+    [[ "$output" != *"$line"* ]]
+  done <"$BATS_TEST_TMPDIR/machine-ed25519"
+  cmp "$keys" "$BATS_TEST_TMPDIR/before"
+}
+
+@test "--public refuses a non-ed25519 public, two lines, an empty stdin and a malformed blob" {
+  cp "$keys" "$BATS_TEST_TMPDIR/before"
+  run record --apply < <(host_public rsa)
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"ed25519 only"* ]]
+  host_public >"$BATS_TEST_TMPDIR/line"
+  run record --apply < <(cat "$BATS_TEST_TMPDIR/line" "$BATS_TEST_TMPDIR/line")
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"exactly ONE line"* ]]
+  run record --apply </dev/null
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"exactly ONE line"* ]]
+  run record --apply <<<"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIA== host-bioskop-nixos"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"ssh-keygen -l refused it"* ]]
+  cmp "$keys" "$BATS_TEST_TMPDIR/before"
+}
+
+@test "--public refuses a machine outside the inventory" {
+  host_public >"$BATS_TEST_TMPDIR/line"
+  run bash -c 'cd "$1" && bash -euo pipefail "$2" --create host-elsewhere --public - --usage ssh-host --apply <"$3"' _ \
+    "$repo" "$BATS_TEST_TMPDIR/ssh-keys-renew" "$BATS_TEST_TMPDIR/line"
+  [ "$status" -eq 64 ]
+  [[ "$output" == *"host-MACHINE, MACHINE one of: bioskop nikopol bioskop-nixos nikopol-nixos"* ]]
+}
+
+@test "--public needs --create, takes only -, and only usage ssh-host" {
+  run renew --key existing --public -
+  [ "$status" -eq 64 ]
+  [[ "$output" == *"they need --create"* ]]
+  run renew --create host-bioskop --public "$BATS_TEST_TMPDIR/line" --usage ssh-host
+  [ "$status" -eq 64 ]
+  [[ "$output" == *"--public takes -"* ]]
+  run renew --create host-bioskop --public - --usage ssh-user </dev/null
+  [ "$status" -eq 64 ]
+  [[ "$output" == *"its one --usage is ssh-host"* ]]
+  run renew --create host-bioskop --public - --usage ssh-host --usage ssh-user </dev/null
+  [ "$status" -eq 64 ]
+  run renew --create host-bioskop --public - --usage ssh-host --profile system </dev/null
+  [ "$status" -eq 64 ]
+  [[ "$output" == *"no --profile and no --type"* ]]
+}
+
+@test "--public refuses an existing entry name, and a public keys.yaml already carries" {
+  cp "$keys" "$BATS_TEST_TMPDIR/before"
+  run record --apply < <(host_public)
+  [ "$status" -eq 0 ]
+  cp "$keys" "$BATS_TEST_TMPDIR/before"
+  run record --apply < <(host_public)
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"keys.host-bioskop-nixos: already exists"* ]]
+  run bash -c 'cd "$1" && bash -euo pipefail "$2" --create host-nikopol --public - --usage ssh-host --apply <"$3"' _ \
+    "$repo" "$BATS_TEST_TMPDIR/ssh-keys-renew" "$BATS_TEST_TMPDIR/shared.pub"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"already in keys.yaml"* ]]
+  cmp "$keys" "$BATS_TEST_TMPDIR/before"
+}
+
+# --revoke-certificate: `shared` plays rdp-host. Its union certificate is recorded and committed, then
+# re-signed (the interim) and committed again; the revocation reads the union one back from history.
+LEGACY='{"marker":"ndh-ssh-key-meta-v1","owner":"home-manager.ssh-add-keys","key":"shared","usage":["ssh-host"]}'
+
+commit() { # <message> → the new commit
+  git -C "$repo" add .sops.yaml modules/home-manager/ssh.d/keys.yaml
+  git -C "$repo" -c user.name=test -c user.email=test@example.invalid commit -qm "$1"
+  git -C "$repo" rev-parse HEAD
+}
+
+record_host_cert() { # <key id> <serial>
+  rm -f "$BATS_TEST_TMPDIR/shared-cert.pub"
+  ssh-keygen -q -s "$BATS_TEST_TMPDIR/fabric" -h -I "$1" -z "$2" -n shared "$BATS_TEST_TMPDIR/shared.pub"
+  (cd "$repo" && sops set modules/home-manager/ssh.d/keys.yaml '["keys"]["shared"]["slots"]["26-01-01"]["certificates"]' \
+    "{\"fabric\": {\"ssh-host\": \"$(<"$BATS_TEST_TMPDIR/shared-cert.pub")\"}}")
+}
+
+# The fixture's history: before (no certificate), union (the legacy one recorded), interim (re-signed).
+history() {
+  before="$(commit before)"
+  record_host_cert "$LEGACY" 0
+  union="$(commit union)"
+  record_host_cert '{"marker":"ndh-ssh-key-meta-v1","key":"shared","names":"beta","issued":"2026-10-16T00:00:00Z"}' 7
+  interim="$(commit interim)"
+}
+
+revoke() { renew --revoke-certificate shared@26-01-01 --reason "union certificate, every machine on its own" "$@"; }
+
+# Every value but the one entry, ciphertexts included, as committed.
+rest() { yq eval -o json 'del(.sops) | del(.revoked_certificates)' "$keys"; }
+
+@test "--revoke-certificate dry run names the exact key id and changes nothing" {
+  history
+  cp "$keys" "$BATS_TEST_TMPDIR/before"
+  run revoke --from-revision "$union"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"revoke        revoked_certificates.shared@26-01-01/0"* ]]
+  [[ "$output" == *"key id      ${LEGACY}"* ]]
+  [[ "$output" == *"signed by   fabric@26-01-01"* ]]
+  cmp "$keys" "$BATS_TEST_TMPDIR/before"
+}
+
+@test "--revoke-certificate --apply records the exact id, its authority slot, serial and revision, in clear" {
+  history
+  run revoke --from-revision "${union:0:10}" --apply
+  [ "$status" -eq 0 ]
+  entry='.revoked_certificates."shared@26-01-01/0"'
+  [ "$(yq eval -r "${entry}.key_id" "$keys")" = "$LEGACY" ]
+  [ "$(yq eval -r "${entry}.authority" "$keys")" = fabric ]
+  [ "$(yq eval -r "${entry}.authority_slot" "$keys")" = 26-01-01 ]
+  [ "$(yq eval -r "${entry}.serial | tag" "$keys")" = '!!int' ]
+  [ "$(yq eval -r "${entry}.serial" "$keys")" = 0 ]
+  [ "$(yq eval -r "${entry}.revision" "$keys")" = "$union" ]
+  [ "$(yq eval -r "${entry}.reason" "$keys")" = "union certificate, every machine on its own" ]
+  # The id ssh-keygen reads from the certificate the revision recorded, character for character.
+  [ "$(git -C "$repo" show "${union}:modules/home-manager/ssh.d/keys.yaml" |
+    yq eval -r '.keys.shared.slots."26-01-01".certificates.fabric."ssh-host"' - | ssh-keygen -L -f - |
+    awk '/Key ID:/ { sub(/^[^"]*"/, ""); sub(/"$/, ""); print }')" = "$LEGACY" ]
+  decrypted | yq eval -r "${entry}.key_id" - | grep -Fxq "$LEGACY"
+}
+
+@test "--revoke-certificate leaves the rest of keys.yaml, ciphertexts included, byte for byte, and decrypts nothing" {
+  history
+  rest >"$BATS_TEST_TMPDIR/rest-before"
+  mkdir -p "$BATS_TEST_TMPDIR/bin"
+  printf '#!%s\necho "$*" >>"%s/sops.log"\nexec %s "$@"\n' "$(command -v bash)" "$BATS_TEST_TMPDIR" "$(command -v sops)" \
+    >"$BATS_TEST_TMPDIR/bin/sops"
+  chmod +x "$BATS_TEST_TMPDIR/bin/sops"
+  PATH="$BATS_TEST_TMPDIR/bin:$PATH" run revoke --from-revision "$union" --apply
+  [ "$status" -eq 0 ]
+  rest | cmp - "$BATS_TEST_TMPDIR/rest-before"
+  [ "$(cut -d' ' -f1 "$BATS_TEST_TMPDIR/sops.log" | sort -u)" = set ]
+  [ "$(yq eval '[.keys[].slots[].private, .authorities[].slots[].private] | map(select(. != null)) | all_c(test("^ENC\["))' "$keys")" = true ]
+}
+
+@test "--revoke-certificate refuses a certificate keys.yaml still records, or a live one with its id" {
+  history
+  git -C "$repo" show "${union}:modules/home-manager/ssh.d/keys.yaml" |
+    yq eval -r '.keys.shared.slots."26-01-01".certificates.fabric."ssh-host"' - >"$BATS_TEST_TMPDIR/union-cert.pub"
+  (cd "$repo" && sops set modules/home-manager/ssh.d/keys.yaml '["keys"]["shared"]["slots"]["26-01-01"]["certificates"]["fabric"]["ssh-host"]' \
+    "\"$(<"$BATS_TEST_TMPDIR/union-cert.pub")\"")
+  cp "$keys" "$BATS_TEST_TMPDIR/before"
+  run revoke --from-revision "$union" --apply
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"keys.yaml still records this certificate (shared@26-01-01 fabric ssh-host)"* ]]
+  record_host_cert "$LEGACY" 9
+  cp "$keys" "$BATS_TEST_TMPDIR/before"
+  run revoke --from-revision "$union" --apply
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"keys.yaml still records a certificate with its key id (shared@26-01-01 fabric ssh-host)"* ]]
+  cmp "$keys" "$BATS_TEST_TMPDIR/before"
+}
+
+@test "--revoke-certificate refuses a revision without that certificate, and an unknown revision" {
+  history
+  cp "$keys" "$BATS_TEST_TMPDIR/before"
+  run revoke --from-revision "$before" --apply
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"keys.shared.slots.26-01-01 records no ssh-host certificate in that revision"* ]]
+  run revoke --from-revision does-not-exist --apply
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"no such commit"* ]]
+  cmp "$keys" "$BATS_TEST_TMPDIR/before"
+}
+
+@test "--revoke-certificate refuses to record the same certificate twice" {
+  history
+  revoke --from-revision "$union" --apply
+  cp "$keys" "$BATS_TEST_TMPDIR/before"
+  run revoke --from-revision "$union" --apply
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"revoked_certificates already holds shared@26-01-01/0"* ]]
+  cmp "$keys" "$BATS_TEST_TMPDIR/before"
+}
+
+@test "--revoke-certificate stands alone, and needs --from-revision, --reason and KEY@SLOT" {
+  run renew --revoke-certificate shared@26-01-01 --from-revision HEAD --reason r --key existing
+  [ "$status" -eq 64 ]
+  [[ "$output" == *"--revoke-certificate stands alone"* ]]
+  run renew --revoke-certificate shared@26-01-01 --reason r
+  [ "$status" -eq 64 ]
+  [[ "$output" == *"needs --from-revision"* ]]
+  run renew --revoke-certificate shared@26-01-01 --from-revision HEAD
+  [ "$status" -eq 64 ]
+  run renew --revoke-certificate 'shared"]|del(.)' --from-revision HEAD --reason r
+  [ "$status" -eq 64 ]
+  [[ "$output" == *"KEY@YY-MM-DD"* ]]
+  run renew --key existing --from-revision HEAD
+  [ "$status" -eq 64 ]
+  [[ "$output" == *"--from-revision names the revision of a --revoke-certificate"* ]]
 }
