@@ -1621,6 +1621,12 @@
             hostNames = fleetHostCertificates.names;
           }
         )
+        // import ./modules/nixos/baremetal-segment.d/tests/checks.nix {
+          inherit pkgs;
+          inherit (nixpkgs) lib;
+          inherit (self) nixosConfigurations;
+          catalog = catalogData;
+        }
         # The mask a failed install's log goes through into the build log: key material never passes.
         // {
           bringup-install-log-mask =

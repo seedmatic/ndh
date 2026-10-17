@@ -84,7 +84,8 @@ let
   #
   #   nikopol-nixos                       -> 192.168.1.34     the LAN resolver, via the `lan` search domain
   #   nixos.nikopol                       -> 172.16.16.1      our own dnsmasq, the fabric address
-  #   nikopol-nixos.mammoth-skate.ts.net  -> 100.106.165.29   MagicDNS, only when FULLY qualified
+  #   nikopol-nixos.mammoth-skate.ts.net  -> its 100.x        MagicDNS, only when FULLY qualified (the
+  #                                                           address changes when the machine re-registers)
   #
   # A single-label name gets the search list applied, so `lan` answers before MagicDNS ever does — the
   # alias was pointing at whatever the home LAN happens to call that name, and earlier at nothing at
@@ -95,9 +96,9 @@ let
   # certificate carries. It resolves on its own (measured above), so the block exists only for the User
   # and the identity.
   #
-  # `darwin.` still needs its HostName, and that asymmetry is the measurement, not a style choice:
-  # `darwin.<host>` does not resolve at all, while `nixos.<host>` does. One alias names a target DNS knows
-  # nothing about; the other names a target DNS already answers for. Its HostName is the FULLY qualified
+  # `darwin.` still needs its HostName, and that asymmetry is a choice of plane: `darwin.<host>` resolves
+  # in its zone to the Mac's HOME-LAN reservation (catalog segment hosts), which answers only while the Mac
+  # sits on the home LAN, so the alias keeps the tailnet path for ssh. Its HostName is the FULLY qualified
   # MagicDNS name, for the reason above: a single label goes through the search list, and bioskop has no
   # MagicDNS search domain (measured 2026-10-17: `darwin.nikopol` → `nikopol` did not resolve).
   # Each alias with the name its HostName points at (null: none written). The same records render the

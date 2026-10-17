@@ -196,8 +196,7 @@ in
           vzHostKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIEISa2HviJMjhjTkDoQt7nTVLvqyGG6iARGFbpuwRrR"; # read locally, 2026-10-17
         };
       };
-    in
-    {
+
       lan = {
         cidr = "192.168.1.0/24";
         domain = ".lan";
@@ -365,6 +364,11 @@ in
           # carry `hosts` for management clusters only.
         };
       };
+    in
+    {
+      # The home LAN (defined in the `let` above, so the per-metalspace segments can read its
+      # reservations): one source for the bbox reconciler and the split-DNS records.
+      lan = lan;
 
       # Network SEGMENTS for flow attribution — the single source nnh (the netflow
       # collector) derives its NetName + AS labelling from, replacing its hardcoded
@@ -483,6 +487,23 @@ in
                     {
                       name = bm.atticFqdn;
                       ip = bm.atticAddress;
+                    }
+                    # The metalspace's darwin host, at its static home-LAN reservation, so every
+                    # tool resolves `darwin.<domain>`, not only ssh. Not its tailnet address: the
+                    # catalog holds none, and they change when a machine re-registers. Answers
+                    # while that Mac sits on the home LAN; the ssh alias keeps the tailnet FQDN.
+                    # rescue.* stays an ssh alias: Tailscale SSH intercepts :2222 on the tailnet
+                    # address only.
+                    {
+                      name = "darwin.${bm.domain}";
+                      ip =
+                        let
+                          h = lan.hosts.${bm.domain};
+                        in
+                        if (h.kind or "") == "darwin-host" then
+                          h.ip
+                        else
+                          throw "catalog: lan.hosts.${bm.domain} is not a darwin-host, so darwin.${bm.domain} has no address";
                     }
                   ];
                 }
