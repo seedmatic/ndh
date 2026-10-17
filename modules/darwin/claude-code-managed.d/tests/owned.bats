@@ -141,7 +141,8 @@ not_allowed()   { [[ "$output" != *'"permissionDecision": "allow"'* ]] || { echo
 }
 @test "foreign: under a global exclude, for every session" {
   run as "$MINE" "rm -rf $A/frozen/y"
-  [ "$status" -eq 2 ] && [[ "$output" == *"excluded for every session"* ]]
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"excluded for every session"* ]]
   run as "$MINE" "rm /Volumes/git-bare-store/seedmatic/x.git/HEAD"; [ "$status" -eq 2 ]
 }
 @test "foreign: an unknown session gets a deny on any engraved area" {

@@ -80,31 +80,37 @@ sw() { bash "$T/ndh-switch" "$@"; }
 @test "refused: a pushed revision that is not merged into develop or main" {
   git -C "$T/work" push -q "$T/github.git" feature/x
   run sw nikopol-nixos "$UNMERGED"
-  [ "$status" -eq 3 ] && [[ "$output" == *"not merged into develop or main"* ]]
+  [ "$status" -eq 3 ]
+  [[ "$output" == *"not merged into develop or main"* ]]
   [ ! -e "$T/calls" ]
   grep -q "refused: $UNMERGED is not merged" "$T/state/ndh-switch/log"
 }
 @test "refused: an abbreviated revision" {
   run sw nikopol-nixos "${MERGED:0:8}"
-  [ "$status" -eq 3 ] && [[ "$output" == *"not a full revision"* ]]
+  [ "$status" -eq 3 ]
+  [[ "$output" == *"not a full revision"* ]]
 }
 @test "refused: a ref name instead of a revision" {
   run sw nikopol-nixos develop
-  [ "$status" -eq 3 ] && [[ "$output" == *"not a full revision"* ]]
+  [ "$status" -eq 3 ]
+  [[ "$output" == *"not a full revision"* ]]
 }
 @test "refused: an unknown machine" {
   run sw rke2lab-node-1 "$MERGED"
-  [ "$status" -eq 3 ] && [[ "$output" == *"unknown machine: rke2lab-node-1"* ]]
+  [ "$status" -eq 3 ]
+  [[ "$output" == *"unknown machine: rke2lab-node-1"* ]]
 }
 @test "refused: run from another seat" {
   sed -i.bak 's/^seat=.*/seat=elsewhere/' "$T/ndh-switch"
   run sw nikopol-nixos "$MERGED"
-  [ "$status" -eq 3 ] && [[ "$output" == *"runs from darwin.elsewhere only"* ]]
+  [ "$status" -eq 3 ]
+  [[ "$output" == *"runs from darwin.elsewhere only"* ]]
 }
 @test "refused: the remote cannot be fetched" {
   sed -i.bak "s|^remote=.*|remote=$T/nowhere.git|" "$T/ndh-switch"
   run sw nikopol-nixos "$MERGED"
-  [ "$status" -eq 3 ] && [[ "$output" == *"cannot fetch develop and main"* ]]
+  [ "$status" -eq 3 ]
+  [[ "$output" == *"cannot fetch develop and main"* ]]
 }
 @test "a failed switch is logged with its exit status, and returned" {
   STUB_EXIT=7 run sw nikopol-nixos "$MERGED"
@@ -149,7 +155,8 @@ sw() { bash "$T/ndh-switch" "$@"; }
 @test "watch: a machine unreachable BEFORE the switch is not switched (no way back known)" {
   touch "$T/down"
   run sw nikopol-nixos "$MERGED"
-  [ "$status" -eq 3 ] && [[ "$output" == *"cannot read the running generation of nikopol-nixos"* ]]
+  [ "$status" -eq 3 ]
+  [[ "$output" == *"cannot read the running generation of nikopol-nixos"* ]]
   ! grep -q '^nixos-rebuild' "$T/calls"
 }
 @test "the remote is not taken from the environment" {

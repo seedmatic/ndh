@@ -110,12 +110,14 @@ switched() { grep '^ndh-switch ' "$T/calls" | grep -v -- --dry-run | awk '{print
 }
 @test "refused before anything runs: an unknown machine in --only" {
   run fs --only rke2lab-node-1 --rev "$MERGED"
-  [ "$status" -eq 2 ] && [[ "$output" == *"unknown machine: rke2lab-node-1"* ]]
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"unknown machine: rke2lab-node-1"* ]]
   [ ! -e "$T/calls" ]
 }
 @test "refused before anything runs: an abbreviated revision" {
   run fs --rev "${MERGED:0:8}"
-  [ "$status" -eq 2 ] && [[ "$output" == *"not a full revision"* ]]
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"not a full revision"* ]]
   [ ! -e "$T/calls" ]
 }
 @test "the first failure stops the loop, with the copy-exact recovery, and the rest is not run" {
