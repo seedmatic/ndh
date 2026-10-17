@@ -116,6 +116,7 @@ bake() { # <machine=names …> [own machines]
   sed -e "s#@nixBashTrampoline@#$BATS_TEST_TMPDIR/trampoline.sh#" -e 's#@loggerTag@#test#' -e "s#@hostNames@#$1#" \
     -e 's#@interimKey@#rdp-host#' -e 's#@interimMachines@#beta beta-nixos#' -e "s#@ownMachines@#${2-$OWN}#" \
     -e "s#@sha256sum@#$(command -v sha256sum)#" -e "s#@sshKeygen@#$BATS_TEST_TMPDIR/openssh/ssh-keygen#" \
+    -e "s#@toolPath@#$BATS_TEST_TMPDIR/bin:$PATH#" \
     "$BATS_TEST_DIRNAME/../ssh-keys-certify.sh" >"$BATS_TEST_TMPDIR/ssh-keys-certify"
 }
 
@@ -177,6 +178,22 @@ record_legacy() { # <key> <public file> <serial> <ca private>
   [[ "$output" == *"missing"*"host"*"ssh-host"*"fabric@26-02-02"* ]]
   [[ "$output" == *"missing"*"host"*"ssh-user"* ]]
   cmp "$keys" before
+}
+
+@test "a caller's PATH, locale and POSIXLY_CORRECT change nothing: the plan is the same, and none of its tools ran" {
+  run certify
+  [ "$status" -eq 0 ]
+  local want="$output" c
+  mkdir -p "$BATS_TEST_TMPDIR/hostile"
+  for c in yq awk gawk sort tr paste cut sed grep diff sops ssh-keygen; do
+    printf '%s\necho hostile-%s >&2\nexit 1\n' "$shebang" "$c" >"$BATS_TEST_TMPDIR/hostile/$c"
+    chmod +x "$BATS_TEST_TMPDIR/hostile/$c"
+  done
+  run env PATH="$BATS_TEST_TMPDIR/hostile:$PATH" LANG=fr_FR.UTF-8 LC_ALL=fr_FR.UTF-8 LC_COLLATE=fr_FR.UTF-8 \
+    POSIXLY_CORRECT=1 SOPS_STUB=dry bash -c 'cd "$1" && bash -euo pipefail "$2"' _ "$repo" "$BATS_TEST_TMPDIR/ssh-keys-certify"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *hostile-* ]]
+  [ "$output" = "$want" ]
 }
 
 @test "a dry run plans every missing certificate, in order, each signed by the signing slot, and calls no sops" {

@@ -2286,6 +2286,19 @@
               ownMachines = nixpkgs.lib.concatStringsSep " " fleetHostCertificates.own;
               sha256sum = "${pkgsForSystem.coreutils}/bin/sha256sum";
               sshKeygen = "${pkgsForSystem.openssh}/bin/ssh-keygen";
+              toolPath = nixpkgs.lib.makeBinPath (
+                with pkgsForSystem;
+                [
+                  coreutils
+                  diffutils
+                  gawk
+                  gnugrep
+                  gnused
+                  openssh
+                  sops
+                  yq-go
+                ]
+              );
             }
           );
           # T14's closure: re-mint and install the Incus cluster certificate (one definition,
