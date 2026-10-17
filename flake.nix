@@ -1342,6 +1342,40 @@
         # bioskop-nixos's sops files are encrypted to its access point's recipient before the identity is
         # pushed (roles × keys S4, first half): the files are the ones its configuration declares.
         // {
+          # An operator seat's sshd serves its policy's host keys and nothing else: every HostKey line of its
+          # drop-ins is one of opensshPolicy.hostKeyPaths, and each of those is there.
+          darwin-sshd-host-keys =
+            let
+              lib = nixpkgs.lib;
+              wrong = lib.filter (x: x != null) (
+                map
+                  (
+                    seat:
+                    let
+                      c = self.darwinConfigurations.${seat}.config;
+                      texts = lib.mapAttrsToList (_: v: v.text or "") (
+                        lib.filterAttrs (n: _: lib.hasPrefix "ssh/sshd_config.d/" n) c.environment.etc
+                      );
+                      served = lib.unique (
+                        map (l: lib.removePrefix "HostKey " l) (
+                          lib.filter (lib.hasPrefix "HostKey ") (lib.concatMap (lib.splitString "\n") texts)
+                        )
+                      );
+                      expected = lib.unique (map toString c.opensshPolicy.hostKeyPaths);
+                    in
+                    if lib.sort lib.lessThan served == lib.sort lib.lessThan expected then
+                      null
+                    else
+                      "${seat} serves [${toString served}], policy [${toString expected}]"
+                  )
+                  [
+                    "bioskop"
+                    "nikopol"
+                  ]
+              );
+            in
+            assert lib.assertMsg (wrong == [ ]) "darwin sshd HostKey drift: ${lib.concatStringsSep "; " wrong}";
+            pkgs.runCommand "darwin-sshd-host-keys" { } "touch $out";
           sops-looks-encrypted = import ./modules/.common.d/sops.d/tests/looks-encrypted.nix {
             inherit pkgs;
           };
