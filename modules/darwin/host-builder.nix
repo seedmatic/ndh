@@ -5,6 +5,7 @@
 }:
 let
   cfg = config.ndh.hostBuilder;
+  guest = "${config.profile.host.hostName}-nixos";
 in
 {
   # The aarch64-linux build scheme for a Darwin host, as a lifecycle phase:
@@ -22,8 +23,9 @@ in
   #
   # The buildMachine name is DERIVED from the host (config.profile.host.hostName),
   # not hardcoded, so the same knob offloads bioskop→bioskop-nixos and
-  # nikopol→nikopol-nixos. <host>-nixos already authorizes root over ssh
-  # (root is a trusted nix user), so no builder key is deployed.
+  # nikopol→nikopol-nixos. The request goes through the `nix-store.<host>-nixos`
+  # ssh alias (modules/.common.d/nix-store-identity.nix): the guest's nix-store
+  # account, by its certificate, never root.
   #
   # See docs/host-builder-phases.adoc for the two-phase model and the
   # promotion runbook.
@@ -42,11 +44,11 @@ in
   };
 
   config = lib.mkIf (cfg == "steady") {
+    nixStoreIdentity.extraPeers = [ guest ];
     nix.distributedBuilds = true;
     nix.buildMachines = [
       {
-        hostName = "${config.profile.host.hostName}-nixos";
-        sshUser = "root";
+        hostName = "nix-store.${guest}";
         systems = [ "aarch64-linux" ];
         maxJobs = 8;
         protocol = "ssh-ng";

@@ -18,11 +18,6 @@
     # Enable rescue tooling for this host when needed (default is off)
     # rescue.enable = true;
 
-    # Sign locally produced store paths so peer hosts can trust nix copy --from ssh-ng://bioskop
-    nix.settings.trusted-users = [
-      "builder"
-    ];
-
     # Headscale role assignments (primary/standby) are Darwin-specific
     # today — the Darwin LaunchAgent is the bootstrap control-plane.
     # They live in hosts/bioskop/darwin.nix, not here, so the NixOS

@@ -29,9 +29,10 @@ dependencies straight from the caches instead of uploading its whole closure.
 
 The builder name is *derived* from `config.profile.host.hostName`
 (`<host>-nixos`), never hardcoded — so the same module offloads
-`bioskop → bioskop-nixos` and `nikopol → nikopol-nixos`. `<host>-nixos` already
-authorizes root over ssh (root is a trusted nix user), so no builder key is
-deployed.
+`bioskop → bioskop-nixos` and `nikopol → nikopol-nixos`. The Mac's nix-daemon
+reaches it through the `nix-store.<host>-nixos` ssh alias: the guest's
+`nix-store` account (forced `nix-daemon --stdio`, a trusted nix user), with the
+fleet's `nix-store` certificate. Builds never log in as root.
 
 == The two phases
 
@@ -160,12 +161,12 @@ builder and promote to `steady` (below); the hand-wired stock builder +
 
 == Operator: promoting a host to steady
 
-Once `<host>-nixos` is built, activated, and reachable over ssh as root:
+Once `<host>-nixos` is built, activated, and serves its `nix-store` account:
 
 . Set `ndh.hostBuilder = "steady"` in `hosts/<host>/darwin.nix`.
 . `darwin-rebuild switch` — regenerates `/etc/nix/machines` pointing at
   `<host>-nixos`, and drops the embedded `linux-builder` launchd job.
-. Verify: `nix store ping --store ssh-ng://root@<host>-nixos` succeeds, and a
+. Verify: `sudo nix store ping --store ssh-ng://nix-store.<host>-nixos` succeeds, and a
   fresh `aarch64-linux` build offloads (watch `nix.settings.builders`).
 
 To fall back (e.g. sibling wiped), flip to `bootstrap` and re-switch — the
