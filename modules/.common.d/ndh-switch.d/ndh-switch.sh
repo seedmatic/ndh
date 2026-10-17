@@ -3,7 +3,8 @@
 #
 # The flake is always github:seedmatic/ndh/<sha>, so a working tree, a dirty tree or an unpushed commit cannot be
 # switched to: GitHub cannot serve them. The revision must also be merged into develop or main (we switch from
-# develop to validate). Machines and their order come from machines.json, which the fleet loop reads too.
+# develop to validate). The machines come from the list the package generates from the catalog
+# (catalog/machines.nix), which the fleet loop reads too.
 # The ancestry is read from the canonical remote, fixed at build time: a fork would pass the check, and GitHub serves
 # a fork network's commits under github:seedmatic/ndh/<sha>.
 # Run from darwin.bioskop: the guests are evaluated there and pushed (keys.yaml's IFD is aarch64-darwin).
@@ -28,7 +29,7 @@ refuse() {
 }
 
 usage() {
-  echo "usage: ndh-switch [--dry-run] <machine> <rev>   (machines: $(jq -r 'map(.name) | join(" ")' "$machines"))" >&2
+  echo "usage: ndh-switch [--dry-run] <machine> <rev>   (machines: $(yq -r '[.[].name] | join(" ")' "$machines"))" >&2
   exit 2
 }
 
@@ -40,7 +41,8 @@ host=$(uname -n)
 host=${host%%.*}
 [[ $host == "$seat" ]] || refuse "runs from darwin.$seat only, not $host"
 [[ $rev =~ ^[0-9a-f]{40}$ ]] || refuse "not a full revision: $rev"
-entry=$(jq -ce --arg m "$machine" '.[] | select(.name == $m)' "$machines") || refuse "unknown machine: $machine"
+entry=$(m=$machine yq -e -o=json -I=0 '.[] | select(.name == strenv(m))' "$machines") ||
+  refuse "unknown machine: $machine"
 
 [[ -d $cache ]] || git init -q --bare "$cache"
 git -C "$cache" fetch -q --filter=blob:none "$remote" +refs/heads/develop:refs/heads/develop +refs/heads/main:refs/heads/main ||
@@ -55,9 +57,9 @@ done
 [[ -n $on ]] || refuse "$rev is not merged into develop or main of $remote"
 
 flake="github:seedmatic/ndh/$rev"
-kind=$(jq -r .kind <<<"$entry")
-ssh_name=$(jq -r .ssh <<<"$entry")
-mapfile -t ssh_opts < <(jq -r '.ssh_opts[]' <<<"$entry")
+kind=$(yq -r .kind <<<"$entry")
+ssh_name=$(yq -r .ssh <<<"$entry")
+mapfile -t ssh_opts < <(yq -r '.ssh_opts[]' <<<"$entry")
 
 case $kind in
   nixos) cmd=(nixos-rebuild switch --flake "$flake#$machine" --target-host "root@$ssh_name") ;;
