@@ -3,13 +3,17 @@
 # test's tmp dir for the on-disk exclude. Nothing here removes anything: the hook only answers.
 
 setup() {
-  T="$BATS_TEST_TMPDIR"
+  # Its real path: on macOS the tmp dir sits under /var, a symlink, and the hook checks real paths.
+  T="$(cd "$BATS_TEST_TMPDIR" && pwd -P)"
   mkdir -p "$T/hook" "$T/state"
   cp "$BATS_TEST_DIRNAME/../deny-hook.py" "$BATS_TEST_DIRNAME/../verbs.json" "$T/hook/"
   export HOME=/Users/tester XDG_STATE_HOME="$T/state"
   A="$T/areas"
   mkdir -p "$A/mine/probe" "$A/mine/logs" "$A/mine/vault" "$A/theirs/x" "$A/bare/sub"
   touch "$A/mine/vault/.secrets" "$A/mine/logs/redact.sh"
+  mkdir -p "$T/elsewhere"; touch "$T/elsewhere/f"
+  ln -s "$A/mine/vault" "$A/mine/link-vault"
+  ln -s "$T/elsewhere" "$A/mine/hop"
   cat >"$T/hook/owned-dirs.json" <<EOF
 {
   "pages_never_remove": ["~/.claude/.scratchpad.d/*/LIVE.md"],
@@ -98,6 +102,19 @@ not_allowed()   { [[ "$output" != *'"permissionDecision": "allow"'* ]] || { echo
 @test "owned: a denied command stays denied even in my area" {
   run as "$MINE" "rm -rf $A/mine/probe; cat ~/.ssh/id_ed25519"
   [ "$status" -eq 2 ]
+}
+@test "symlink: with a trailing slash rm empties the target, so it is never an owned removal" {
+  run as "$MINE" "rm -rf $A/mine/link-vault/"; not_allowed
+}
+@test "symlink: without one, the link alone goes, even when it points at an excluded directory" {
+  run as "$MINE" "rm $A/mine/link-vault"; allowed_owned
+}
+@test "symlink: a symlinked directory on the way may not lead out of the area" {
+  run as "$MINE" "rm -rf $A/mine/hop/f"; not_allowed
+}
+@test "/tmp is refused with the /private/tmp form to write instead" {
+  run as "$MINE" "rm -rf /tmp/mine-a.XYZ"
+  [ "$status" -eq 2 ] && [[ "$output" == *"write /private/tmp/mine-a.XYZ"* ]]
 }
 @test "owned: without a registry, nobody has an area" {
   rm "$T/hook/owned-dirs.json"

@@ -625,7 +625,8 @@ class Analyzer:
                 return pattern
             if psegs[0] == "**":
                 tail = psegs[1:]
-                for root, dirs, files in os.walk(path):
+                # Removing a link leaves what it points at: only a real directory is searched.
+                for root, dirs, files in ([] if os.path.islink(path) else os.walk(path)):
                     for name in dirs + files:
                         rel = os.path.relpath(os.path.join(root, name), path).split(os.sep)
                         if match_segments(["**"] + tail, rel):
@@ -653,8 +654,19 @@ class Analyzer:
         if re.search(r"[*?\[\]{}$`]", argv[-1]):
             return False
         resolved = self.resolve(argv[-1])
+        if resolved and resolved.startswith("/tmp/") and self.owned_pattern("/private" + resolved, key):
+            self.deny("/tmp is a symlink the deletion registry does not name: write /private" + resolved, argv)
+            return True
         pattern = self.owned_pattern(resolved, key)
         if pattern is None or self.excluded(resolved):
+            return False
+        # Symlinks. With a trailing slash rm works on a link's TARGET, so that is never an owned removal. Without one,
+        # rm removes the last component itself (a link alone, not what it points at), so the real place is its
+        # parent's real path: a symlinked directory on the way must not lead out of the area or into an exclude.
+        if argv[-1].endswith("/") and os.path.islink(resolved):
+            return False
+        real = os.path.join(os.path.realpath(os.path.dirname(resolved)), os.path.basename(resolved))
+        if real != resolved and (self.owned_pattern(real, key) is None or self.excluded(real)):
             return False
         self.owned_removals.append((pattern, resolved))
         return True
