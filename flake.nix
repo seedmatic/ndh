@@ -2466,6 +2466,11 @@
                     incus-cluster-cert-renew = "${bioskop.ndh.incusClusterCert.package}/bin/incus-cluster-cert-renew";
                     ndh-keyring = "${bioskop.system.path}/bin/ndh-keyring";
                     ndh-identity-push = "${bioskop.system.path}/bin/ndh-identity-push";
+                    # Run as the publishing user, from the system profile: its package names the push token's sops
+                    # path, which exists only where ndh.cachePublish is enabled.
+                    cache-publish = "${pkgsForSystem.writeShellScript "cache-publish-as-publisher" ''
+                      exec /usr/bin/sudo -u ${bioskop.ndh.cachePublish.user.name} -H /run/current-system/sw/bin/cache-publish "$@"
+                    ''}";
                   };
               }
             }/bin/ndh-ops";
