@@ -9,18 +9,21 @@
   current,
 }:
 let
-  # A sops file path read from a configuration has lost its store context, so the build sandbox would
-  # refuse it: give each back its store root as an input.
+  # A sops file path read from a configuration as a source path has lost its store context, so the build
+  # sandbox would refuse it: give it back its store root as an input. A derived file keeps its own.
   withContext =
     f:
-    let
-      root = pkgs.lib.concatStringsSep "/" (pkgs.lib.take 4 (pkgs.lib.splitString "/" (toString f)));
-    in
-    builtins.appendContext (toString f) {
-      ${root} = {
-        path = true;
+    if builtins.hasContext (toString f) then
+      toString f
+    else
+      let
+        root = pkgs.lib.concatStringsSep "/" (pkgs.lib.take 4 (pkgs.lib.splitString "/" (toString f)));
+      in
+      builtins.appendContext (toString f) {
+        ${root} = {
+          path = true;
+        };
       };
-    };
 in
 pkgs.runCommand "sops-access-point-recipients-${name}"
   {
