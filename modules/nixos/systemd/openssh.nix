@@ -38,7 +38,8 @@ let
       "/root";
   nixBashTrampoline = "${ndhContext.nixBashTrampoline}";
   ownsHostKey = config.ndh.hostKey.own;
-  # Until the guest owns its host key: the rdp-host copy sshd-host-identity-reload installs.
+  # The ed25519 path Tailscale SSH reads: the rdp-host copy sshd-host-identity-reload installs, or, once
+  # the guest owns its host key, a link to it.
   hostKeyPath = "/etc/ssh/ssh_host_ed25519_key";
   keysDir = config.opensshPolicy.keysDir;
   authorizedPrincipalsInputPath = "${config.opensshPolicy.canonicalCommandDir}/authorized-principals-command.yaml";
@@ -215,6 +216,7 @@ in
             "@userPrivateSourceDir@"
             "@userCaSourceDir@"
             "@clientKeyName@"
+            "@systemHostKey@"
           ]
           [
             nixBashTrampoline
@@ -234,6 +236,8 @@ in
             # substitution slot to avoid churn in the shell script.
             config.sshPaths.secretsKeysDir
             clientKeyName
+            # The fallback copies a previous rdp-host extraction; an owned key is no client identity.
+            (if ownsHostKey then "" else hostKeyPath)
           ]
           (builtins.readFile ./openssh.d/activation.sh);
     };
@@ -252,7 +256,31 @@ in
     "L+ /usr/bin/sudo - - - - /run/wrappers/bin/sudo"
     "L+ /bin/bash - - - - /run/current-system/sw/bin/bash"
     "d /run/ndh/ssh 0775 ${config.profile.user.name} ${config.profile.user.name} - -"
-  ];
+  ]
+  # Tailscale SSH serves the keys it finds under /etc/ssh, not sshd's HostKey: the link makes it present
+  # the owned key, and the removals leave no rdp-host private, nor a key of an earlier generation, on
+  # the guest.
+  ++ lib.optionals ownsHostKey (
+    [ "L+ ${hostKeyPath} - - - - ${config.ndh.hostKey.file}" ]
+    ++ map (path: "r ${path} - - - - -") (
+      [ "${hostKeyPath}.pub" ]
+      ++
+        lib.concatMap
+          (type: [
+            "/etc/ssh/ssh_host_${type}_key"
+            "/etc/ssh/ssh_host_${type}_key.pub"
+          ])
+          [
+            "rsa"
+            "ecdsa"
+          ]
+    )
+  );
+
+  # It reads them only at start, so the switch that flips ndh.hostKey.own restarts it once.
+  systemd.services.tailscaled = lib.mkIf config.services.tailscale.enable {
+    restartTriggers = [ (builtins.toJSON { inherit (config.ndh.hostKey) own file; }) ];
+  };
 
   # Ensure all systemd services (including sshd) inherit a wrapper-first PATH
   systemd.globalEnvironment.PATH = config.opensshPolicy.setEnvPath;

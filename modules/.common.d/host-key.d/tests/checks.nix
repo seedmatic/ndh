@@ -43,6 +43,26 @@ let
         lib.any (lib.hasInfix "openssh-sshd-host-identity-reload") (
           lib.toList ((units c)."home-manager-${c.profile.user.name}".serviceConfig.ExecStartPost or [ ])
         );
+      # What Tailscale SSH reads, which sshd's HostKey does not govern.
+      etcSshRules = c: lib.filter (lib.hasInfix " /etc/ssh/ssh_host_") c.systemd.tmpfiles.rules;
+      restartsTailscaledOn =
+        c:
+        lib.elem (builtins.toJSON { inherit (c.ndh.hostKey) own file; }) (
+          (units c).tailscaled.restartTriggers or [ ]
+        );
+      identityReloadText =
+        c:
+        builtins.unsafeDiscardStringContext
+          (lib.findFirst (
+            p: lib.getName p == "ndh-identity-reload"
+          ) (throw "${name}: no ndh-identity-reload") c.environment.systemPackages).text;
+      restartsHostKeyReaders = lib.hasInfix "/bin/systemctl try-restart sshd.service tailscaled.service";
+      reloadScript = lib.last (
+        lib.splitString " " (
+          lib.findFirst (lib.hasInfix "openssh-sshd-host-identity-reload") (throw "${name}: no rdp-host copy")
+            (lib.toList (units shared)."home-manager-${shared.profile.user.name}".serviceConfig.ExecStartPost)
+        )
+      );
     in
     assert expect "${name} HostKey (own = false)"
       (linesOf "HostKey" shared.services.openssh.extraConfig)
@@ -58,6 +78,12 @@ let
     assert lib.assertMsg (
       !((units shared) ? "io-seedmatic-ndh-host-key-check")
     ) "${name} (own = false): the owned-key check is wired";
+    assert expect "${name} /etc/ssh tmpfiles rules (own = false)" (etcSshRules shared) [ ];
+    assert lib.assertMsg (restartsTailscaledOn shared)
+      "${name} (own = false): tailscaled does not restart on the own state";
+    assert lib.assertMsg (
+      !(restartsHostKeyReaders (identityReloadText shared))
+    ) "${name} (own = false): ndh-identity-reload restarts the host key readers";
     assert expect "${name} hostKeys (own = true)" owned.services.openssh.hostKeys [ ];
     assert expect "${name} HostKey (own = true)" (linesOf "HostKey" owned.services.openssh.extraConfig)
       [
@@ -74,6 +100,19 @@ let
     assert expect "${name} host-key-check requiredBy (own = true)"
       (units owned)."io-seedmatic-ndh-host-key-check".requiredBy
       [ "sshd.service" ];
+    assert expect "${name} /etc/ssh tmpfiles rules (own = true)" (etcSshRules owned) [
+      "L+ /etc/ssh/ssh_host_ed25519_key - - - - ${owned.ndh.hostKey.file}"
+      "r /etc/ssh/ssh_host_ed25519_key.pub - - - - -"
+      "r /etc/ssh/ssh_host_rsa_key - - - - -"
+      "r /etc/ssh/ssh_host_rsa_key.pub - - - - -"
+      "r /etc/ssh/ssh_host_ecdsa_key - - - - -"
+      "r /etc/ssh/ssh_host_ecdsa_key.pub - - - - -"
+    ];
+    assert lib.assertMsg (restartsTailscaledOn owned)
+      "${name} (own = true): tailscaled does not restart on the own state";
+    assert lib.assertMsg (restartsHostKeyReaders (
+      identityReloadText owned
+    )) "${name} (own = true): ndh-identity-reload does not restart sshd and tailscaled";
     # The sandbox has no placed key: the check must fail, naming the file and the gesture.
     pkgsForLinux.runCommand "host-key-served-${name}" { } ''
       if ${owned.ndh.hostKey.check} 2>err; then
@@ -82,6 +121,11 @@ let
       fi
       grep -qF ${lib.escapeShellArg owned.ndh.hostKey.file} err
       grep -qF "ndh-identity-push ${owned.networking.hostName}" err
+      # The rdp-host copy restarts tailscaled from install_host_key, after its unchanged-key return.
+      sed -n '/^install_host_key()/,/^}/p' ${reloadScript} >install
+      grep -n 'cmp -s' install | head -1 | cut -d: -f1 >cmp
+      grep -nx '  restart_tailscaled' install | cut -d: -f1 >restart
+      [[ -s cmp && -s restart && $(cat restart) -gt $(cat cmp) ]]
       touch $out
     '';
 

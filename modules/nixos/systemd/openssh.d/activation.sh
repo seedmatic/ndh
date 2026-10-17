@@ -11,8 +11,8 @@ main() {
   USER_CA_SOURCE_DIR=@userCaSourceDir@
   PROFILE_USER_NAME=@profileUserName@
   ROOT_SSH_DIR=/root/.ssh
-  SYSTEM_HOST_KEY=/etc/ssh/ssh_host_ed25519_key
-  SYSTEM_HOST_KEY_PUB=/etc/ssh/ssh_host_ed25519_key.pub
+  SYSTEM_HOST_KEY=@systemHostKey@
+  SYSTEM_HOST_KEY_PUB="$SYSTEM_HOST_KEY.pub"
   HOSTNAME=@hostname@
   PRINCIPALS_CMD=@principalsCommand@
   GROUP_CMD=@groupCommand@
@@ -51,9 +51,9 @@ main() {
     if [ -s "$CLIENT_PUBLIC_SOURCE" ]; then
       install -m 644 "$CLIENT_PUBLIC_SOURCE" "$ROOT_SSH_DIR/id_ed25519.pub"
     fi
-  elif [ -s "$SYSTEM_HOST_KEY" ]; then
+  elif [ -n "$SYSTEM_HOST_KEY" ] && [ -s "$SYSTEM_HOST_KEY" ]; then
     # Bootstrap fallback: use system host key as root client identity until
-    # runtime per-user key material is available.
+    # runtime per-user key material is available. Empty when the guest owns its host key.
     install -d -m 700 "$ROOT_SSH_DIR"
     install -m 600 "$SYSTEM_HOST_KEY" "$ROOT_SSH_DIR/id_ed25519"
     if [ -s "$SYSTEM_HOST_KEY_PUB" ]; then

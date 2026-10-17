@@ -32,6 +32,10 @@ let
       ++ lib.concatMap (secret: secret.restartUnits or [ ]) (lib.attrValues (config.sops.secrets or { }))
     )
   );
+  hostKeyReaders = [
+    "sshd.service"
+  ]
+  ++ lib.optional config.services.tailscale.enable "tailscaled.service";
   identityReload = pkgs.writeShellApplication {
     name = "ndh-identity-reload";
     text = ''
@@ -42,6 +46,11 @@ let
         secretReaders != [ ]
       ) "${config.systemd.package}/bin/systemctl restart ${lib.concatStringsSep " " secretReaders}"}
       echo "[ndh-identity-reload] sops and its readers restarted: ${lib.concatStringsSep " " secretReaders}"
+      ${lib.optionalString config.ndh.hostKey.own ''
+        # The push placed a new host key under them, and both read it only at start.
+        ${config.systemd.package}/bin/systemctl try-restart ${lib.concatStringsSep " " hostKeyReaders}
+        echo "[ndh-identity-reload] host key readers restarted: ${lib.concatStringsSep " " hostKeyReaders}"
+      ''}
     '';
   };
   # The machine's side of ndh-identity-push: places what bioskop sends, then ndh-identity-reload.
