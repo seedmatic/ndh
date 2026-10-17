@@ -45,6 +45,7 @@ sessions:
       - e009d868-b4d4-44db-98b8-3bfb4d9c0d97
     role: security
     icon: "\U0001F6E1️"
+    workspace: /Volumes/git-worktree-store/seedmatic/rke2lab.d/develop # the project of its transcript (measured 2026-10-17); ndh-claude-wake opens it
   develop:
     # 🧭 integration
     owned:
@@ -72,6 +73,7 @@ sessions:
       - f45de9ce-1198-48b5-aa6b-3da49f833ea9
     role: integration
     icon: "\U0001F9ED"
+    workspace: /Volumes/git-worktree-store/seedmatic/rke2lab.d/develop # the project of its transcript (measured 2026-10-17); ndh-claude-wake opens it
   develop-ops:
     # 🎛️ operations
     owned:
@@ -95,6 +97,7 @@ sessions:
       - c0aa166d-2d74-41a5-9226-7df1d763ab5a
     role: operations
     icon: "\U0001F39B️"
+    workspace: /Volumes/git-worktree-store/seedmatic/rke2lab.d/develop # the project of its transcript (measured 2026-10-17); ndh-claude-wake opens it
   develop-k8s:
     # ☸️ k8s
     owned:
@@ -114,6 +117,7 @@ sessions:
       - f9147322-48ad-46cb-8c3a-f88266dda598
     role: k8s
     icon: ☸️
+    workspace: /Volumes/git-worktree-store/seedmatic/rke2lab.d/develop # the project of its transcript (measured 2026-10-17); ndh-claude-wake opens it
   develop-cache:
     # 📦 cache
     owned:
@@ -145,6 +149,7 @@ sessions:
       - 9ba38f26-3549-4e68-b3ef-e4441594213f
     role: cache
     icon: "\U0001F4E6"
+    workspace: /Volumes/git-worktree-store/seedmatic/rke2lab.d/develop # the project of its transcript (measured 2026-10-17); ndh-claude-wake opens it
   develop-outcluster:
     # 🌱 outcluster (seeding)
     owned:
@@ -174,6 +179,7 @@ sessions:
       - 341e7689-dd41-4936-9d5c-8bf35e808742
     role: outcluster (seeding)
     icon: "\U0001F331"
+    workspace: /Volumes/git-worktree-store/seedmatic/rke2lab.d/develop # the project of its transcript (measured 2026-10-17); ndh-claude-wake opens it
   develop-golang:
     # 🐹 go
     owned:
@@ -205,6 +211,7 @@ sessions:
       - 43f36783-5d90-47cb-bc04-ce1cde2a1992
     role: go
     icon: "\U0001F439"
+    workspace: /Volumes/git-worktree-store/seedmatic/rke2lab.d/develop # the project of its transcript (measured 2026-10-17); ndh-claude-wake opens it
   develop-incus:
     # 🖥️ incus
     owned:
@@ -228,6 +235,7 @@ sessions:
       - 360eea08-3764-4db2-a48e-f34053daa428
     role: incus
     icon: "\U0001F5A5️"
+    workspace: /Volumes/git-worktree-store/seedmatic/rke2lab.d/develop # the project of its transcript (measured 2026-10-17); ndh-claude-wake opens it
   develop-keys-role:
     # 🔑 roles × keys
     role: roles × keys
@@ -251,6 +259,7 @@ sessions:
       - ~/.claude/.scratchpad.d/roles-and-keys/step2/**
     lives_there: 'public material only: publics, certificate descriptions, fingerprints, plan lines'
     note: its worktrees themselves are removed by develop with git worktree remove (they may hold smudged .secrets)
+    workspace: /Volumes/git-worktree-store/seedmatic/rke2lab.d/develop # the project of its transcript (measured 2026-10-17); ndh-claude-wake opens it
   develop-claude:
     # 🤖 claude config
     role: claude config
@@ -276,6 +285,7 @@ sessions:
     exclude:
       - ~/.claude/.scratchpad.d/session-autonomy/LIVE.md
     lives_there: commit-message drafts, mktemp probes (generated managed lists, mutation copies, archive extracts), figure checks, build logs
+    workspace: /Volumes/git-worktree-store/seedmatic/rke2lab.d/develop # the project of its transcript (measured 2026-10-17); ndh-claude-wake opens it
   develop-nix:
     # ❄️ nix
     role: nix
@@ -295,3 +305,4 @@ sessions:
       - ~/.claude/.scratchpad.d/nix/*.md
     lives_there: throwaway clones, bats homes, logs, rebuild work; the acceptance and relock tooling; the 2e and relock-speed measurements
     note: its darwin.nikopol paths and /private/var/tmp canaries are out of the registry scope (remote / outside the roots; removed by its own scripts and traps)
+    workspace: /Volumes/git-worktree-store/seedmatic/rke2lab.d/develop # the project of its transcript (measured 2026-10-17); ndh-claude-wake opens it
