@@ -88,6 +88,9 @@ in
           # whose identity genuinely differs from the machine named `host`.
           vzHostLanName ? host,
           vzHostUser ? operatorUser.name,
+          # A foreign vz-host's ssh host key, read by the operator on that machine itself: it presents no
+          # fleet certificate, so the vz-recover alias pins it (modules/home-manager/ssh-tailnet-hosts.nix).
+          vzHostKey ? null,
         }:
         let
           hostId = networkBlueprint.hosts.${host};
@@ -142,6 +145,7 @@ in
           inherit
             vzHostLanName
             vzHostUser
+            vzHostKey
             vzHostKind
             lanAttachment
             ;
@@ -189,6 +193,7 @@ in
           vzHostLanName = "nikopol-vzhost"; # lan.hosts.nikopol-vzhost — the corp Mac, NOT the `nikopol` VM
           vzHostUser = "stephane.lacoin"; # the corp account; the Mac is not on the fleet's user
           lanAttachment = "roaming"; # itinerant (runs on the corp MacBook) — off-LAN as often as on it
+          vzHostKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIEISa2HviJMjhjTkDoQt7nTVLvqyGG6iARGFbpuwRrR"; # read locally, 2026-10-17
         };
       };
     in
