@@ -164,7 +164,7 @@ EOF
 ssh_as_user() {
   run ssh -F /dev/null -p "$port" -i "$T/user" -o IdentitiesOnly=yes -o BatchMode=yes \
     -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o GlobalKnownHostsFile=/dev/null "$@"
-  printf 'ssh: %s\n--- sshd.log\n%s\n' "$output" "$(cat "$T/sshd.log" 2>/dev/null)"
+  printf 'ssh: status %s: %s\n--- sshd.log\n%s\n' "$status" "$output" "$(cat "$T/sshd.log" 2>/dev/null)"
 }
 
 @test "the options are restrict and the program as the forced command, exactly" {
