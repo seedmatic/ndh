@@ -1285,7 +1285,7 @@
                 [ "$fail" = 0 ] && touch "$out"
               '';
           ndh-ops-bats = import ./modules/.common.d/ndh-ops.d/tests/package.nix { inherit pkgs; };
-          attic-tls-key-bats = import ./modules/nixos/attic-cache.d/tests/package.nix { inherit pkgs; };
+          attic-cache-bats = import ./modules/nixos/attic-cache.d/tests/package.nix { inherit pkgs; };
           tls-authority-keychain-bats = import ./modules/darwin/tls-authority-keychain.d/tests/package.nix {
             inherit pkgs;
             trampoline = mkNdhNixBashTrampoline { pkgsForSystem = pkgs; };

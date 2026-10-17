@@ -442,17 +442,17 @@ host**, each with its own subject. attic issues as many tokens for one cache as 
 
 [source,bash]
 ----
-atticadm make-token --sub bioskop       --validity "3 months" --pull seedmatic --push seedmatic
-atticadm make-token --sub nikopol       --validity "3 months" --pull seedmatic --push seedmatic
-atticadm make-token --sub bioskop-nixos --validity "3 months" --pull seedmatic --push seedmatic
-atticadm make-token --sub nikopol-nixos --validity "3 months" --pull seedmatic --push seedmatic
+atticadm make-token --sub bioskop       --validity "100 years" --pull seedmatic --push seedmatic
+atticadm make-token --sub nikopol       --validity "100 years" --pull seedmatic --push seedmatic
+atticadm make-token --sub bioskop-nixos --validity "100 years" --pull seedmatic --push seedmatic
+atticadm make-token --sub nikopol-nixos --validity "100 years" --pull seedmatic --push seedmatic
 ----
 
 What a per-host token does **not** give yet is revocation of that host alone. attic's tokens are
 **stateless JWTs**: the server checks a token's signature and expiry, and keeps no list of issued
 tokens (attic `token/src/lib.rs:3-12`: _"simple and stateless […] We may revisit this later"_).
 Ending one token means rotating the server secret (`ATTIC_SERVER_TOKEN_RS256_SECRET_BASE64`), which
-ends every token, reads included, or waiting for its expiry. Revoking one host alone is left to a
+ends every token, reads included. Revoking one host alone is left to a
 later contribution to attic (see <<attic-fork>>). Access control is already far better than the
 public cache.
 
@@ -468,9 +468,10 @@ public cache.
 `configure-cache`, `delete` or `destroy-cache`
 
 | validity
-| bounded (`--validity`, three months in the example), re-issued on a schedule. Until the
-contribution, the validity is the only bound on how long a lost token keeps pushing. The value is
-open below.
+| none of its own (**decided by the operator on 2026-10-17**: a token is renewed on an event, never
+on a calendar). attic cannot mint a token without an expiry, every JWT carries `exp`, so
+`attic-token-issue` mints every token, read and write, with one fixed `--validity "100 years"`, which
+stands for never. A token ends only when its cache's server secret rotates.
 
 | a host is lost or compromised
 | rotate the server secret, then re-issue every other host's write token and every read token (see
@@ -987,8 +988,8 @@ four hosts, the cache is therefore exactly as trustworthy as the **least trusted
 | nikopol
 | its own write token (`--sub nikopol`) **inside the darwin VM that runs on the corporate
 bare-metal**. It sits next to the fabric rule that the corporate machine holds no key. The token
-lives in the VM, not on the bare-metal, and is scoped to pushing to `seedmatic` with a bounded
-validity. It is nikopol's alone, but until attic can revoke one token, losing it still means
+lives in the VM, not on the bare-metal, and is scoped to pushing to `seedmatic`, with no end of its
+own. It is nikopol's alone, but until attic can revoke one token, losing it still means
 rotating every token (see <<write-tokens>>).
 |===
 
@@ -1951,16 +1952,41 @@ NRI plugin, never in an image.
 | rke2lab sops, for the fallback key
 |===
 
-=== Revocation — when a host is lost
+=== Revocation — the events that rotate a cache's server secret
 
-attic tokens cannot be revoked one by one (see <<write-tokens>>), so losing any host, or any token,
-means ending them all and re-issuing the rest:
+A token has no end of its own (see <<write-tokens>>): it is renewed on an EVENT, never on a calendar,
+and attic cannot revoke one token alone, so every event below ends all the tokens of the caches it
+names. Every machine reads BOTH caches, so it holds a read token of each: an event that touches a
+machine rotates both server secrets.
 
-. rotate the server secret: a new `ATTIC_SERVER_TOKEN_RS256_SECRET_BASE64`, sops-encrypted, then
-  restart atticd. Every token, write and read, stops working at that moment;
+[cols="2,1",options="header"]
+|===
+| The event | The caches to rotate
+
+| a machine holding tokens is lost, reinstalled or retired
+| both (its read tokens are for both; its write token for its own metalspace's)
+
+| a token is seen anywhere it should not be: a log, a transcript, a commit, a file outside
+`ndh.atticClient.paths`
+| the cache that issued it (the `machine` line of a netrc fragment, or the write token's endpoint);
+both if it cannot be told
+
+| an access point's age identity is rotated or exposed (the tokens' ciphertext was encrypted to it)
+| both, since that access point's machines hold tokens of both
+
+| a cache container's disk is copied or restored elsewhere (its server secret went with it)
+| that cache
+|===
+
+The rotation, for each cache named, then the re-issue:
+
+. rotate the server secret: in the cache container, remove `/var/lib/attic-secrets/server.env`, then
+  restart `attic-server-secret` (it generates a new one, which never leaves the container) and
+  `atticd`. Every token of that cache, write and read, stops working at that moment;
 . mint new write tokens for the remaining hosts, one each, and new read tokens
-  (`atticadm make-token`, same subjects and scopes, bounded validity);
-. re-encrypt them with sops for every host except the lost one, and switch the remaining hosts;
+  (`attic-token-issue`, same subjects and scopes, the same far validity);
+. carry the new ciphertext into the drop-box of every machine except a lost one (roles × keys' S3b),
+  which delivers it into `ndh.atticClient.paths`;
 . check with <<read-test>> that the old read token gets 401 and the new one 200.
 
 Until step 3 reaches a host, that host can neither upload nor substitute from attic. It falls back to
@@ -2144,7 +2170,7 @@ closure. Count, never print, what that path holds
 | make it private again. Until then the watch-store's condition does not hold, so stop it.
 
 | a host cannot substitute from attic at all
-| its `netrc-file` is missing, or its token is expired or has no `--pull`
+| its `netrc-file` is missing, or its token predates the server secret's rotation, or has no `--pull`
 | check the decrypted token under `/run/secrets` and the `netrc-file` setting
 
 | the cache stays empty
@@ -2154,10 +2180,6 @@ closure. Count, never print, what that path holds
 | a host is lost, or a token leaked
 | attic tokens cannot be revoked one by one
 | rotate the server secret and re-issue the tokens (see the revocation steps in <<secrets>>)
-
-| every host stops uploading on the same day
-| the write tokens were issued together and expired together
-| re-issue them; the validity is bounded on purpose
 
 | the container's store reports a stale file handle (ESTALE)
 | a lower changed under `index=on`
@@ -2246,8 +2268,6 @@ be a different path, and every closure that references it would have to be rebui
 * **The TLS leaf behind attic's fabric URL**: from `mammoth-skate-tls`, like the control URL?
 * **`nix store copy-sigs` from a local store**: whether it accepts `local?root=…` as its source, for
   the layer key.
-* **Token validity and re-issue**: the validity of the write and read tokens (three months in the
-  example), and what re-issues them on schedule.
 
 == Related Documentation
 

@@ -16,19 +16,23 @@ unset BASH_XTRACEFD 2>/dev/null || true
 #
 # Env, fixed at eval: CACHE_FQDN, METALSPACE, CACHE_NAME, PROJECT, INSTANCE, TARGETS (one line per
 # machine: `<machine> <metalspace> <ssh public key, type and base64>`).
-# Usage: attic-token-issue <out dir> <read validity> <write validity>
-out="${1:?usage: attic-token-issue <out dir> <read validity> <write validity>}"
-readValidity="${2:?usage: attic-token-issue <out dir> <read validity> <write validity>}"
-writeValidity="${3:?usage: attic-token-issue <out dir> <read validity> <write validity>}"
+#
+# A token has no end of its own (the operator, 2026-10-17: renewed on an event, never on a calendar).
+# attic cannot mint one without an expiry, every JWT carries `exp`, so a century stands for never.
+# The cut is the rotation of that attic's token-signing secret, which ends all its tokens at once,
+# then a re-issue.
+# Usage: attic-token-issue <out dir>
+out="${1:?usage: attic-token-issue <out dir>}"
+validity="100 years"
 
 log() { printf '[attic-token-issue] %s\n' "$*" >&2; }
 die() {
   printf '[attic-token-issue] ERROR: %s\n' "$*" >&2
   exit 1
 }
-mint() { # <sub> <validity> <scope flags>... — the token on stdout, straight into the next pipe stage
-  local sub="$1" validity="$2"
-  shift 2
+mint() { # <sub> <scope flags>... — the token on stdout, straight into the next pipe stage
+  local sub="$1"
+  shift
   incus --project "$PROJECT" exec --cwd / "$INSTANCE" -- \
     atticd-atticadm make-token --sub "$sub" --validity "$validity" "$@" </dev/null
 }
@@ -48,7 +52,7 @@ while read -r machine machineMetalspace keyType keyBase64; do
   mkdir -p "$out/$machine"
 
   # Every machine reads every cache: its netrc fragment for THIS cache.
-  { printf 'machine %s\npassword ' "$CACHE_FQDN" && mint "$machine" "$readValidity" --pull "$CACHE_NAME"; } |
+  { printf 'machine %s\npassword ' "$CACHE_FQDN" && mint "$machine" --pull "$CACHE_NAME"; } |
     age -r "$recipient" -o "$out/$machine/netrc.$METALSPACE.age.tmp" ||
     die "issuing ${machine}'s read token failed — nothing written for it"
   mv "$out/$machine/netrc.$METALSPACE.age.tmp" "$out/$machine/netrc.$METALSPACE.age"
@@ -56,7 +60,7 @@ while read -r machine machineMetalspace keyType keyBase64; do
 
   # Only this metalspace's own machines write into this cache.
   if [ "$machineMetalspace" = "$METALSPACE" ]; then
-    mint "$machine" "$writeValidity" --push "$CACHE_NAME" --pull "$CACHE_NAME" |
+    mint "$machine" --push "$CACHE_NAME" --pull "$CACHE_NAME" |
       age -r "$recipient" -o "$out/$machine/write.token.age.tmp" ||
       die "issuing ${machine}'s write token failed — its read fragment is written, its write token is not"
     mv "$out/$machine/write.token.age.tmp" "$out/$machine/write.token.age"
