@@ -358,6 +358,7 @@ class Analyzer:
     def __init__(self, table, cwd, home, owned=None, session_id=""):
         self.table = table
         self.cwd = cwd
+        self.cwd_lost = False
         self.home = home
         self.owned = owned or {"sessions": {}, "global_exclude": [], "pages_never_remove": []}
         self.session_id = session_id
@@ -606,7 +607,11 @@ class Analyzer:
             return True
         if self.cwd and os.path.normpath(self.cwd) == os.path.normpath(self.home):
             return bool(re.match(r"^(?:\./)?\.claude(?:$|[./_-])", tok))
-        return tok.startswith(self.home.rstrip("/") + "/.claude")
+        if tok.startswith(self.home.rstrip("/") + "/.claude"):
+            return True
+        # A relative path, against the cwd the cd chain left: `cd ~/.claude && rm -rf settings.json`.
+        path, home = self.resolve(tok), os.path.normpath(self.home)
+        return bool(path and path.startswith(home + os.sep) and CLAUDE_DIR.match("~" + path[len(home):]))
 
     def is_claude_config(self, tok):
         """A Claude path outside ~/.claude/.scratchpad.d, the one place under it a session files its own scratch."""
@@ -618,7 +623,10 @@ class Analyzer:
 
     def resolve(self, tok):
         """TOK as an absolute normalised path, or None when the shell would expand it."""
-        if re.search(r"[$`*?\[\]{}]", tok):
+        # $HOME is the one variable whose value the hook knows: a session writes `cd "$HOME/…"` as often as `cd ~/…`.
+        tok = re.sub(r"^\$(?:HOME|\{HOME\})(?=/|$)", "~", tok)
+        # A substitution was replaced by a neutral word (extract_substitutions): its value is unknown.
+        if re.search(r"[$`*?\[\]{}]", tok) or "__subst__" in tok:
             return None
         if tok == "~" or tok.startswith("~/"):
             tok = self.home + tok[1:]
@@ -867,6 +875,10 @@ class Analyzer:
         if prog in ("rm", "rmdir"):
             flags = [t for t in args if t.startswith("-")]
             targets = [t for t in args if not t.startswith("-")]
+            if self.cwd_lost and any(not t.startswith(("/", "~")) and not re.match(r"^\$(?:HOME|\{HOME\})(?:/|$)", t)
+                                     for t in targets):
+                self.deny("a relative removal after a cd whose target the hook cannot resolve; name the absolute path", argv)
+                return
             for t in targets:
                 why = self.foreign(self.resolve(t)) if self.resolve(t) else None
                 if why:
@@ -908,12 +920,16 @@ class Analyzer:
         if prog == "ndh-ops" and args[:1] == ["arm"]:
             self.deny("ndh-ops arm is the operator's: a session never arms its own delegation", argv)
             return
-        if prog in ("cd", "pushd"):
+        if prog in ("cd", "pushd", "popd"):
             # The simple commands come in order, so a chain of cd is followed: `cd …/keyhole.d && cd keyring`.
-            target = next((t for t in args if not t.startswith("-")), "~")
-            moved = self.resolve(target)
+            # A target the hook cannot resolve (a variable, a substitution, `cd -`, popd's stack) loses the cwd: a
+            # relative path after it could be anywhere, so it is never judged against the previous one.
+            target = "-" if prog == "popd" or "-" in args else next((t for t in args if not t.startswith("-")), "~")
+            moved = None if target == "-" else self.resolve(target)
             if moved:
                 self.cwd = moved
+            else:
+                self.cwd, self.cwd_lost = "", True
             if self.is_protected(moved):
                 self.deny("enters the operator's secret material", argv)
             return

@@ -78,6 +78,10 @@ asked()   { [ "$status" -eq 0 ] && [[ "$output" == *'"permissionDecision": "ask"
 @test "C rm -r ~/.claude (no force)"        { run hook 'rm -r ~/.claude'; asked; }
 @test "C rm -r \$HOME/.claude"              { run hook 'rm -r "$HOME/.claude"'; asked; }
 @test "C rm -r .claude from HOME"           { run hook 'rm -r .claude' /Users/tester; asked; }
+@test "C cd \$HOME then rm -rf .claude"      { run hook 'cd $HOME && rm -rf .claude'; asked; }
+@test "C cd \"\$HOME\" then rm -rf .claude"    { run hook 'cd "$HOME" && rm -rf .claude'; asked; }
+@test "C cd \$HOME/.claude then rm -rf a dir" { run hook 'cd $HOME/.claude && rm -rf .scratchpad.d'; asked; }
+@test "C cd \$d then rm -rf .claude"         { run hook 'cd $d && rm -rf .claude'; denied; }
 @test "C mv absolute home path"             { run hook 'mv /Users/tester/.claude /tmp/old'; denied; }
 @test "C mv \$HOME/.claude.json"            { run hook 'mv "$HOME/.claude.json" /tmp/x'; denied; }
 @test "C mv into ~/.claude"                 { run hook 'mv settings.json ~/.claude/settings.json'; denied; }

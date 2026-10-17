@@ -26,7 +26,7 @@ setup() {
       "conversations": ["11111111-0000-0000-0000-000000000001"]
     },
     "theirs": {
-      "owned": ["$A/theirs/**"],
+      "owned": ["$A/theirs/**", "~/.claude/.scratchpad.d/their-topic/**"],
       "conversations": ["22222222-0000-0000-0000-000000000002"]
     }
   }
@@ -160,4 +160,45 @@ not_allowed()   { [[ "$output" != *'"permissionDecision": "allow"'* ]] || { echo
 @test "owned: without a registry, nobody has an area" {
   rm "$T/hook/owned-dirs.json"
   run as "$MINE" "rm -rf $A/mine/probe"; not_allowed
+}
+
+# A cd the hook resolves is followed, $HOME included; one it cannot resolve loses the cwd, so a relative removal
+# after it is refused rather than judged against the previous directory (security, 2026-10-18).
+deny() { [ "$status" -eq 2 ] || { echo "expected deny, got status=$status output=$output"; return 1; }; }
+@test "cd: ~ into another area, then a relative rm" {
+  run as "$MINE" "cd ~/.claude/.scratchpad.d/their-topic && rm x.md"; deny
+}
+@test "cd: \$HOME, \${HOME} and \"\$HOME\" into another area, then a relative rm" {
+  run as "$MINE" 'cd $HOME/.claude/.scratchpad.d/their-topic && rm x.md'; deny
+  run as "$MINE" 'cd ${HOME}/.claude/.scratchpad.d/their-topic && rm x.md'; deny
+  run as "$MINE" 'cd "$HOME/.claude/.scratchpad.d/their-topic" && rm x.md'; deny
+  [[ "$output" == *"belongs to theirs"* ]]
+}
+@test "cd: \$HOME then a relative rm of the parent of another area" {
+  run as "$MINE" 'cd $HOME/.claude/.scratchpad.d && rm -rf their-topic'; deny
+}
+@test "cd: an absolute rm through \$HOME into another area is denied, not asked" {
+  run as "$MINE" 'rm -rf $HOME/.claude/.scratchpad.d/their-topic/x'; deny
+  [[ "$output" == *"belongs to theirs"* ]]
+}
+@test "cd: an unresolvable target loses the cwd (a variable, a substitution, cd -, pushd, popd)" {
+  run as "$MINE" "d=$A/theirs; cd \$d && rm x"; deny
+  run as "$MINE" "cd \"\$(dirname $A/theirs/x)\" && rm x"; deny
+  run as "$MINE" "cd - && rm x"; deny
+  run as "$MINE" "pushd \$d; rm x"; deny
+  run as "$MINE" "popd; rm -f x"; deny
+  [[ "$output" == *"cannot resolve"* ]]
+}
+@test "cd: after an unresolvable cd, an absolute exact path of mine stays an owned removal" {
+  run as "$MINE" "cd \$d && rm -rf $A/mine/probe"; allowed_owned
+}
+@test "cd: the resolved chains stay refused (/, .., a subshell, || exit, pushd)" {
+  run as "$MINE" "cd / && rm -rf ${A#/}/theirs/x"; deny
+  run as "$MINE" "cd $A/mine && cd .. && rm -rf theirs"; deny
+  run as "$MINE" "(cd $A/theirs && rm x)"; deny
+  run as "$MINE" "cd $A/theirs || exit; rm x"; deny
+  run as "$MINE" "pushd $A/theirs; rm x"; deny
+}
+@test "cd: a relative rm in my own area after a resolved cd is unchanged" {
+  run as "$MINE" "cd $A/mine && rm -rf probe"; allowed_owned
 }
