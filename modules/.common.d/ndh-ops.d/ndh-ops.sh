@@ -47,7 +47,9 @@ case ${1:-} in
       esac
       shift
     done
-    [[ $hours =~ ^[0-9]+$ ]] && ((hours >= 1 && hours <= max_hours)) || refuse "arm: --hours must be 1..$max_hours"
+    if ! [[ $hours =~ ^[0-9]+$ ]] || ((hours < 1 || hours > max_hours)); then
+      refuse "arm: --hours must be 1..$max_hours"
+    fi
     [[ -n $list ]] || refuse "arm: --tools is required"
     IFS=, read -ra wanted <<<"$list"
     for t in "${wanted[@]}"; do known "$t" || refuse "arm: $t is not one of: ${!tools[*]}"; done
