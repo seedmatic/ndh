@@ -181,7 +181,8 @@ no_private_in() { ! grep -rqE 'AGE-SECRET-KEY|PRIVATE KEY' "$@"; }
   [ "$status" -eq 0 ]
   [ "$(ssh-keygen -y -f "$nnRoot/ndh/host-key/ssh_host_ed25519_key" | cut -d' ' -f1,2)" = "$(cut -d' ' -f1,2 "$t/machine.pub")" ]
   [ "$(age-keygen -y "$nnRoot/sops-nix/nikopol-nixos.age")" = "$(ssh-to-age -i "$t/seat.pub")" ]
-  [ -e "$nnRoot/ndh/sshfs/id_ed25519" ] && [ -e "$t/reloaded" ]
+  [ -e "$nnRoot/ndh/sshfs/id_ed25519" ]
+  [ -e "$t/reloaded" ]
   grep -q '192.168.1.34 /run/wrappers/bin/sudo -n /run/current-system/sw/bin/ndh-identity-receive --accept$' "$t/ssh.log"
   nothing_placed
 }
@@ -202,7 +203,8 @@ push_darwin() { TMPDIR="$t/tmp" PATH="$t/bin:$PATH" STUB_LOCAL=192.168.1.129 run
   [ "$(ssh-keygen -y -f "$darwinHostKeyFile" | cut -d' ' -f1,2)" = "$(cut -d' ' -f1,2 "$t/machine.pub")" ]
   [ "$(stat -c %a "$darwinHostKeyFile")" = 400 ]
   grep -q '192.168.1.33 /usr/bin/sudo -n /run/current-system/sw/bin/ndh-identity-receive --accept$' "$t/ssh.log"
-  [ "$(wc -l <"$t/ssh.log")" -eq 1 ] && [ ! -e "$t/reloaded" ]
+  [ "$(wc -l <"$t/ssh.log")" -eq 1 ]
+  [ ! -e "$t/reloaded" ]
   [[ $output == *"next: commit ndh.hostKey.own = true for nikopol, then switch it, locally"* ]]
   [[ $output != *"age identity"* ]]
   no_private_in "$t/tmp" "$t/ssh.log"

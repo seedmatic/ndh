@@ -60,7 +60,7 @@ entry() { printf '%s' "$PASSWORD_STORE_DIR/seedmatic/${2:-host-key}/$1.gpg"; }
   keyring host-key bioskop
   [ "$status" -eq 0 ]
   [[ $output != *"PRIVATE KEY"* ]]
-  ! grep -q 'PRIVATE KEY' "$t/pass.argv"
+  ! grep -q 'PRIVATE KEY' "$t/pass.argv" || false
   grep -qx 'insert -m seedmatic/host-key/bioskop' "$t/pass.argv"
   [ -z "$(find "$t/tmp" -type f)" ]
 }

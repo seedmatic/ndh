@@ -50,9 +50,12 @@ run_issue() { PATH="$t/bin:$PATH" run bash -euo pipefail "$script" "$t/out"; }
 
 @test "each machine gets this cache's netrc fragment; only this metalspace's get a write token" {
   run_issue
-  [ -f "$t/out/m1/netrc.m1.age" ] && [ -f "$t/out/m1/write.token.age" ]
-  [ -f "$t/out/m1-nixos/netrc.m1.age" ] && [ -f "$t/out/m1-nixos/write.token.age" ]
-  [ -f "$t/out/m2/netrc.m1.age" ] && [ ! -e "$t/out/m2/write.token.age" ]
+  [ -f "$t/out/m1/netrc.m1.age" ]
+  [ -f "$t/out/m1/write.token.age" ]
+  [ -f "$t/out/m1-nixos/netrc.m1.age" ]
+  [ -f "$t/out/m1-nixos/write.token.age" ]
+  [ -f "$t/out/m2/netrc.m1.age" ]
+  [ ! -e "$t/out/m2/write.token.age" ]
   [ "$(cat "$t/out/m2/netrc.m1.age")" = $'machine attic.m1\npassword TOKEN-FOR-m2' ]
 }
 

@@ -1447,6 +1447,11 @@
                 [ "$fail" = 0 ] && touch "$out"
               '';
           ndh-ops-bats = import ./modules/.common.d/ndh-ops.d/tests/package.nix { inherit pkgs; };
+          # No bats test of the repository carries a line that checks nothing mid-test.
+          bats-weak-lines = import ./modules/.common.d/bats-lint.d/package.nix {
+            inherit pkgs;
+            src = self;
+          };
           attic-cache-bats = import ./modules/nixos/attic-cache.d/tests/package.nix { inherit pkgs; };
           content-guard-bats = import ./modules/.common.d/content-guard.d/tests/package.nix { inherit pkgs; };
           # Built here so its shellcheck runs.

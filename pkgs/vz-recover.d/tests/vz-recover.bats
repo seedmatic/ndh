@@ -90,7 +90,8 @@ exec nikopol /usr/bin/sudo -n /bin/launchctl kickstart -k system/com.tailscale.t
 @test "restart without the VM's launcher stops nothing and refuses with 66" {
   call "restart nerd-nixos"
   [ "$status" -eq 66 ]
-  [ ! -e "$T/tart.argv" ] && [ ! -e "$T/open.argv" ]
+  [ ! -e "$T/tart.argv" ]
+  [ ! -e "$T/open.argv" ]
   grep -q ' restart nerd-nixos 66 no-launcher$' "$log"
 }
 
@@ -108,7 +109,8 @@ exec nikopol /usr/bin/sudo -n /bin/launchctl kickstart -k system/com.tailscale.t
     call "$words"
     [ "$status" -eq 64 ]
   done
-  [ ! -e "$T/tart.argv" ] && [ ! -e "$T/open.argv" ]
+  [ ! -e "$T/tart.argv" ]
+  [ ! -e "$T/open.argv" ]
   [ "$(grep -c ' refused 64' "$log")" -eq 15 ]
   grep -q ' refused 64 rollback nerd-nixos?$' "$log"
 }
@@ -119,7 +121,8 @@ exec nikopol /usr/bin/sudo -n /bin/launchctl kickstart -k system/com.tailscale.t
   [ "$status" -eq 0 ]
   [ "$output" = "ndh-vz-recover ok test" ]
   [ -z "$stderr" ]
-  [ ! -e "$T/tart.argv" ] && [ ! -e "$T/open.argv" ]
+  [ ! -e "$T/tart.argv" ]
+  [ ! -e "$T/open.argv" ]
   grep -q ' probe - 0$' "$log"
 }
 

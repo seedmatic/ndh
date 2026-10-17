@@ -19,7 +19,8 @@ ops() { bash "$T/ndh-ops" "$@"; }
 
 @test "not armed: a tool is refused, nothing runs" {
   run ops ssh-keys-renew --apply
-  [ "$status" -eq 3 ] && [[ "$output" == *"no unexpired delegation names ssh-keys-renew"* ]]
+  [ "$status" -eq 3 ]
+  [[ "$output" == *"no unexpired delegation names ssh-keys-renew"* ]]
   [ ! -e "$T/calls" ]
 }
 @test "armed for a tool: it runs with its arguments, and the run is logged" {
@@ -63,13 +64,15 @@ ops() { bash "$T/ndh-ops" "$@"; }
 }
 @test "an unknown tool is refused" {
   run ops rm -rf /
-  [ "$status" -eq 3 ] && [[ "$output" == *"rm is not an operator tool"* ]]
+  [ "$status" -eq 3 ]
+  [[ "$output" == *"rm is not an operator tool"* ]]
 }
 @test "arm: hours out of range, a missing or unknown tool are refused" {
   run ops arm --hours 0 --tools ssh-keys-renew;  [ "$status" -eq 3 ]
   run ops arm --hours 73 --tools ssh-keys-renew; [ "$status" -eq 3 ]
   run ops arm --hours 2;                         [ "$status" -eq 3 ]
-  run ops arm --hours 2 --tools gpg;             [ "$status" -eq 3 ] && [[ "$output" == *"gpg is not one of"* ]]
+  run ops arm --hours 2 --tools gpg;             [ "$status" -eq 3 ]
+  [[ "$output" == *"gpg is not one of"* ]]
   [ ! -e "$T/db/delegation" ]
 }
 @test "status and disarm" {
