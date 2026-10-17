@@ -478,6 +478,12 @@ class Analyzer:
             return []
         if prog == "ssh":
             i = skip_options(rest, set("-b -c -D -E -e -F -I -i -J -L -l -m -O -o -p -Q -R -S -W -w -B".split()))
+            if i < len(rest) and self.is_vz_recover(rest[i]):
+                self.check_vz_recover(rest[:i], rest[i + 1:], ["ssh"] + rest)
+                return []
+            if any(self.is_vz_recover(tok) or "vzrecover." in tok.lower() for tok in rest[:i]):
+                self.deny(f"vzrecover.* is a destination only: {self.table['vz_recover']['why']}", ["ssh"] + rest)
+                return []
             if i + 1 < len(rest):
                 self.analyze(" ".join(rest[i + 1:]), depth + 1)
             return []
@@ -503,6 +509,42 @@ class Analyzer:
         if prog == "nix":
             return self.peel_nix(rest)
         return None
+
+    def is_vz_recover(self, dest):
+        spec = self.table.get("vz_recover")
+        if not spec:
+            return False
+        host = re.sub(r"^ssh://", "", dest.lower())
+        return re.fullmatch(spec["host"], re.sub(r":\d+$", "", host)) is not None
+
+    def check_vz_recover(self, opts, remote, argv):
+        """The vz-recover key is a forced command on the operator's corporate account, and the guard must hold even
+        when the server's line lost its `restrict,command=` (2026-10-17): only the wrapper's verbs, one VM name at
+        most, no forwarding, no option beyond a few harmless ones."""
+        spec = self.table["vz_recover"]
+        allowed = {k.lower() for k in spec["options"]}
+        i = 0
+        while i < len(opts):
+            tok = opts[i]
+            if tok == "--":
+                i += 1
+                continue
+            if tok == "-o" or tok.startswith("-o"):
+                value = (opts[i + 1] if i + 1 < len(opts) else "") if tok == "-o" else tok[2:]
+                if re.split(r"[=\s]", value.strip(), maxsplit=1)[0].lower() not in allowed:
+                    self.deny(f"ssh option {value!r} toward vzrecover.*: {spec['why']}", argv)
+                    return
+                i += 2 if tok == "-o" else 1
+                continue
+            if not re.fullmatch("-[" + re.escape(spec["flags"]) + "]+", tok):
+                self.deny(f"ssh option {tok} toward vzrecover.*: {spec['why']}", argv)
+                return
+            i += 1
+        # ssh joins the remote words with spaces and the far side splits them again, so judge the joined words.
+        words = " ".join(remote).split()
+        if (not words or words[0] not in spec["verbs"] or len(words) > 2
+                or not all(re.fullmatch(spec["arg"], w) for w in words[1:])):
+            self.deny(f"remote command {' '.join(remote)!r} toward vzrecover.*: {spec['why']}", argv)
 
     NIX_ARITY = {"--override-input": 2, "--option": 2, "--arg": 2, "--argstr": 2}
     NIX_VALUE = {"-I", "--inputs-from", "--profile", "--expr", "-f", "--file", "--override-input",
@@ -779,6 +821,10 @@ class Analyzer:
 
     def check(self, argv):
         prog, args = argv[0], argv[1:]
+        spec = self.table.get("vz_recover")
+        if spec and prog in spec["other_programs"] and any("vzrecover." in a.lower() for a in args):
+            self.deny(f"{prog} toward vzrecover.*: {spec['why']}", argv)
+            return
         if prog in ("rm", "rmdir"):
             flags = [t for t in args if t.startswith("-")]
             targets = [t for t in args if not t.startswith("-")]

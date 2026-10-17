@@ -135,5 +135,14 @@
     { "program": "java", "any_arg_contains": ["io.seedmatic.rke2lab.controlplane.Main", "seed-outcluster"] },
     { "program": "mvnw", "all_args_contain": ["exec:java"], "any_arg_contains": ["seed-outcluster"] },
     { "program": "mvn", "all_args_contain": ["exec:java"], "any_arg_contains": ["seed-outcluster"] }
-  ]
+  ],
+  "vz_recover": {
+    "host": "^(?:[^@/]+@)?vzrecover\\.[a-z0-9-]+$",
+    "verbs": ["probe", "list", "restart", "rollback", "restart-access"],
+    "arg": "^[A-Za-z0-9._-]+$",
+    "flags": "qTv46",
+    "options": ["BatchMode", "ConnectTimeout", "ServerAliveInterval", "ServerAliveCountMax"],
+    "other_programs": ["scp", "sftp", "rsync", "sshfs", "mosh", "autossh", "ssh-copy-id"],
+    "why": "the vz-recover key opens the operator's corporate account: a session runs only ndh-vz-recover's verbs through it, one VM name at most, no forwarding, no other command"
+  }
 }
