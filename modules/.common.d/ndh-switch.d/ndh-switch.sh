@@ -7,6 +7,8 @@
 # The ancestry is read from the canonical remote, fixed at build time: a fork would pass the check, and GitHub serves
 # a fork network's commits under github:seedmatic/ndh/<sha>.
 # Run from darwin.bioskop: the guests are evaluated there and pushed (keys.yaml's IFD is aarch64-darwin).
+# For 🎛️, who watches each switch and recovers: it prints and logs the generation it leaves (`previous:`), then probes
+# the machine every $probe_every s until T0+$probe_until s, ending `reachable` or `UNREACHABLE: recover now` (exit 6).
 set -euo pipefail
 
 state="${XDG_STATE_HOME:-$HOME/.local/state}/ndh-switch"
@@ -71,17 +73,64 @@ case $kind in
   *) refuse "unknown kind for $machine: $kind" ;;
 esac
 
+on_machine() { # $@ = a fixed command, run on the machine: over ssh unless it is this seat
+  case $kind in
+    nixos) ssh -o BatchMode=yes -o ConnectTimeout=10 "root@$ssh_name" "$*" ;;
+    darwin)
+      if [[ -z $ssh_name ]]; then
+        "$@"
+      else
+        ssh -o BatchMode=yes -o ConnectTimeout=10 "${ssh_opts[@]}" "$ssh_name" "$*"
+      fi
+      ;;
+  esac
+}
+
+generation() { on_machine readlink -f /run/current-system; }
+
+revision() { # the ndh revision the running generation was built from (system.configurationRevision)
+  case $kind in
+    nixos) on_machine nixos-version --configuration-revision ;;
+    darwin) on_machine /run/current-system/sw/bin/darwin-version --configuration-revision ;;
+  esac
+}
+
 echo "ndh-switch: $machine -> $flake (on $on)"
 echo "+ ${cmd[*]}"
 if ((dry)); then
   log "dry-run ($on)"
   exit 0
 fi
-log "started ($on)"
+previous=$(generation) || refuse "cannot read the running generation of $machine: no way back known, not switching"
+previous_rev=$(revision 2>/dev/null) || previous_rev=""
+if [[ $previous_rev =~ ^[0-9a-f]{40}$ ]]; then
+  back="ndh-switch $machine $previous_rev"
+else
+  back="revision unknown: by generation only"
+fi
+echo "previous: $previous (revision ${previous_rev:-unknown})"
+log "started ($on), previous: $previous (revision ${previous_rev:-unknown})"
+status=0
 if "${cmd[@]}"; then
   log "switched ($on)"
 else
   status=$?
   log "failed: exit $status"
-  exit "$status"
 fi
+
+start=$SECONDS
+while :; do
+  if current=$(generation 2>/dev/null); then
+    echo "reachable: $current"
+    log "reachable: $current"
+    break
+  fi
+  if ((SECONDS - start >= probe_until)); then
+    echo "UNREACHABLE: recover now (previous: $previous)" >&2
+    echo "recover: $back" >&2
+    log "UNREACHABLE after ${probe_until}s: recover now (previous: $previous; $back)"
+    exit 6
+  fi
+  sleep "$probe_every"
+done
+exit "$status"
