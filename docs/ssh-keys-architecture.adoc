@@ -268,10 +268,6 @@ the operator; both pushed by bioskop, never generated on the guest
 | Flux, PaC / Tekton, the seal
 | `cluster-age` for in-cluster decryption; git through the GitHub App, not an SSH key
 
-| Publication
-| cache-publish, per access point
-| its cachix push token (no publication key, operator 2026-10-17)
-
 | TLS servers
 | incus listeners, nch relay, headscale
 | a leaf under `mammoth-skate tls`, its key generated on the server
@@ -486,11 +482,6 @@ project `rke2lab` · the node's `sops-install-secrets`
 | enrols one node
 | the enrolling host, once · the control plane
 | bootstrap
-
-| an access point's cachix push token
-| public cache publication
-| its `_ndh-publish` user · cachix
-| permanent
 
 | GitHub App key, incus client certificates
 | cluster → GitHub, cluster → incus
