@@ -7,7 +7,7 @@
 bats_require_minimum_version 1.5.0
 
 setup() {
-  : "${AUTHORIZED_OPTIONS:?the vz-recover key's authorized_keys options}"
+  : "${AUTHORIZED_OPTIONS:?the authorized_keys options of the vz-recover key}"
   T=$BATS_TEST_TMPDIR
   export HOME=$T/home
   mkdir -p "$HOME" "$T/bin"
