@@ -90,6 +90,13 @@ unset BASH_XTRACEFD 2>/dev/null || true
 # shellcheck disable=SC1091
 source @nixBashTrampoline@
 
+# None of these tools comes from the caller's shell, nor does the locale: the PATH is this package's store
+# paths, then the system's own directories (logger), and LC_ALL is C, whatever the caller's PATH, LANG or
+# POSIXLY_CORRECT (which makes awk compare strings by collation). What they print is compared and signed.
+PATH="@toolPath@:/usr/bin:/bin"
+export PATH LC_ALL=C
+unset POSIXLY_CORRECT GREP_OPTIONS
+
 # keys.yaml relative to the repository root: the real file, and the copy whose path picks its sops rule.
 readonly keysRel="modules/home-manager/ssh.d/keys.yaml"
 declare -g keysYaml tmpdir decrypted today apply olderThanDays replace reason

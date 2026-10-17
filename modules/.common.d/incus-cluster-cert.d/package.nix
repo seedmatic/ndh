@@ -23,6 +23,17 @@ let
   # FQDN (`nixos.<host>`), the name the operator seat resolves — not `<host>-nixos`.
   operatorSeatGuest = memberOf "bioskop";
   array = xs: "(" + lib.concatMapStringsSep " " lib.escapeShellArg xs + ")";
+  tools = [
+    pkgs.sops
+    pkgs.yq-go
+    pkgs.step-cli
+    pkgs.openssl
+    pkgs.coreutils
+    pkgs.gnused
+    pkgs.gnugrep
+    pkgs.openssh
+    pkgs.incus.passthru.client
+  ];
 in
 pkgs.writeShellApplication {
   name = "incus-cluster-cert-renew";
@@ -35,18 +46,10 @@ pkgs.writeShellApplication {
     "SC2016"
     "SC1091"
   ];
-  runtimeInputs = [
-    pkgs.sops
-    pkgs.yq-go
-    pkgs.step-cli
-    pkgs.openssl
-    pkgs.coreutils
-    pkgs.gnused
-    pkgs.gnugrep
-    pkgs.incus.passthru.client
-  ];
+  runtimeInputs = tools;
   text = ''
     source ${../shell.d/logger.sh}
+    toolPath=${lib.makeBinPath tools}
     loggerTag=ndh.incus-cluster-cert-renew
     keysYaml=${lib.escapeShellArg "${../../home-manager/ssh.d/keys.yaml}"}
     authority=mammoth-skate-tls

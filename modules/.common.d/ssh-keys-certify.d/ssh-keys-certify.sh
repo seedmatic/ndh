@@ -54,6 +54,13 @@ unset BASH_XTRACEFD 2>/dev/null || true
 # shellcheck disable=SC1091
 source @nixBashTrampoline@
 
+# None of these tools comes from the caller's shell, nor does the locale: the PATH is this package's store
+# paths, then the system's own directories (logger), and LC_ALL is C, whatever the caller's PATH, LANG or
+# POSIXLY_CORRECT (which makes awk compare strings by collation). What they print is compared and signed.
+PATH="@toolPath@:/usr/bin:/bin"
+export PATH LC_ALL=C
+unset POSIXLY_CORRECT GREP_OPTIONS
+
 readonly keysRel="modules/home-manager/ssh.d/keys.yaml"
 # ssh-keygen is pinned: the signature AND the comparison of a recorded certificate read its `-L`
 # output, and the first ssh-keygen on PATH (Apple's or nix's) made a current certificate look stale.

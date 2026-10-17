@@ -2270,6 +2270,21 @@
                 vzHosts = nixpkgs.lib.concatStringsSep " " (
                   nixpkgs.lib.filter (h: catalogData.netplan.baremetal.${h}.vzHostKind == "foreign") hosts
                 );
+                toolPath = nixpkgs.lib.makeBinPath (
+                  with pkgsForSystem;
+                  [
+                    coreutils
+                    diffutils
+                    gawk
+                    git
+                    gnugrep
+                    gnused
+                    openssh
+                    sops
+                    step-cli
+                    yq-go
+                  ]
+                );
               }
             );
           # The fleet's nix signing key, replaced on the operator seat (the interim rotation of 2026-10-13).
@@ -2297,6 +2312,19 @@
               ownMachines = nixpkgs.lib.concatStringsSep " " fleetHostCertificates.own;
               sha256sum = "${pkgsForSystem.coreutils}/bin/sha256sum";
               sshKeygen = "${pkgsForSystem.openssh}/bin/ssh-keygen";
+              toolPath = nixpkgs.lib.makeBinPath (
+                with pkgsForSystem;
+                [
+                  coreutils
+                  diffutils
+                  gawk
+                  gnugrep
+                  gnused
+                  openssh
+                  sops
+                  yq-go
+                ]
+              );
             }
           );
           # T14's closure: re-mint and install the Incus cluster certificate (one definition,
