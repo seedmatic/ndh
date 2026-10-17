@@ -25,9 +25,14 @@ let
     chmod +x $out/*.sh
   '';
 
+  # Security's registry as installed beside the deny-hook: live-page.sh names an engraved session from it.
+  registry = "${
+    (import ../../../darwin/claude-code-managed.d/package.nix { inherit pkgs; }).hookDir
+  }/owned-dirs.json";
+
   entry = name: timeout: statusMessage: {
     type = "command";
-    command = "PATH=${lib.makeBinPath deps}:$PATH ${pkgs.bash}/bin/bash ${dir}/${name}";
+    command = "CLAUDE_SESSION_REGISTRY=${registry} PATH=${lib.makeBinPath deps}:$PATH ${pkgs.bash}/bin/bash ${dir}/${name}";
     inherit timeout statusMessage;
   };
 in

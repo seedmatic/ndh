@@ -383,7 +383,7 @@ class Analyzer:
             self.unwrap(argv, depth)
 
     # The sessions' gated verbs: a copy outside the store could run anything under their name.
-    NDH_VERBS = ("ndh-switch", "ndh-ops")
+    NDH_VERBS = ("ndh-switch", "ndh-ops", "ndh-claude-wake")
     NDH_SWITCH_HOMES = ("/nix/store/", "/run/current-system/sw/bin/", "/etc/profiles/per-user/")
 
     def unwrap(self, argv, depth):

@@ -1242,6 +1242,7 @@
           };
           attic-leaf-bats = import ./modules/.common.d/attic-leaf.d/tests/package.nix { inherit pkgs; };
           ndh-switch-bats = import ./modules/.common.d/ndh-switch.d/tests/package.nix { inherit pkgs; };
+          ndh-claude-wake-bats = import ./modules/.common.d/claude-wake.d/tests/package.nix { inherit pkgs; };
           # A darwin switch run over ssh: its user-launchd step must not need the Aqua session, since SIP
           # refuses a bare `launchctl setenv` from the System one (150), and the Bedrock env agent is there.
           darwin-user-launchd-over-ssh =
@@ -2427,6 +2428,11 @@
             type = "app";
             program = "${self.darwinConfigurations.bioskop.config.ndh.incusClusterCert.package}/bin/incus-cluster-cert-renew";
             meta.description = "Renew the Incus cluster certificate on the cluster's own key (a CSR signed on the operator seat), install it on every member, re-pin the operator seat client, verify — run from the seat, built by revision — src: modules/.common.d/incus-cluster-cert.d/";
+          };
+          ndh-claude-wake = {
+            type = "app";
+            program = "${self.darwinConfigurations.bioskop.config.ndh.claudeWake.package}/bin/ndh-claude-wake";
+            meta.description = "After a cold restart, reopen every Claude session security engraved, each in its VS Code workspace, by the extension's open?session= link; never runs claude itself — run from darwin.bioskop — src: modules/.common.d/claude-wake.d/";
           };
           ndh-switch = {
             type = "app";

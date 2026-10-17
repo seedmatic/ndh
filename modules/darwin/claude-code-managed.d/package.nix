@@ -22,6 +22,9 @@ let
   );
 in
 {
+  # The installed registry (owned-dirs.json) lives here: the session hooks read session names from it.
+  inherit hookDir;
+
   settings =
     pkgs.runCommand "claude-code-managed-settings.json"
       {
