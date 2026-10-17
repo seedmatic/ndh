@@ -1624,6 +1624,76 @@
             in
             assert lib.assertMsg (wrong == [ ]) "darwin sshd HostKey drift: ${lib.concatStringsSep "; " wrong}";
             pkgs.runCommand "darwin-sshd-host-keys" { } "touch $out";
+        }
+        # The restricted users (nix-store, the builders' inbound account) by the real sshd, on every host that
+        # declares them: an operator seat from its drop-ins, a guest from its extraConfig, which NixOS appends
+        # after the generated settings and which must END with the Match blocks.
+        // nixpkgs.lib.listToAttrs (
+          map
+            (
+              seat:
+              let
+                lib = nixpkgs.lib;
+                c = self.darwinConfigurations.${seat}.config;
+                dropIn = "ssh/sshd_config.d/restricted-users.conf";
+                files = lib.mapAttrs (_: v: v.text) (
+                  lib.filterAttrs (
+                    n: v: lib.hasPrefix "ssh/sshd_config" n && (v.text or null) != null
+                  ) c.environment.etc
+                );
+                withoutRestricted = builtins.removeAttrs files [ dropIn ];
+              in
+              lib.nameValuePair "sshd-restricted-users-${seat}" (
+                import ./modules/.common.d/openssh-policy.d/tests/restricted-users.nix {
+                  inherit pkgs lib withoutRestricted;
+                  name = seat;
+                  files =
+                    assert lib.assertMsg (files ? ${dropIn}) "${seat}: no ${dropIn}";
+                    files;
+                  misordered = withoutRestricted // {
+                    "ssh/sshd_config" = files.${dropIn} + files."ssh/sshd_config";
+                  };
+                  inherit (c.opensshPolicy) restrictedUsers;
+                  otherUser = c.profile.user.name;
+                }
+              )
+            )
+            [
+              "bioskop"
+              "nikopol"
+            ]
+        )
+        // nixpkgs.lib.listToAttrs (
+          map
+            (
+              guest:
+              let
+                lib = nixpkgs.lib;
+                c = self.nixosConfigurations.${guest}.config;
+                extra = c.services.openssh.extraConfig;
+                restricted = c.opensshPolicy.restrictedUsersText;
+                withoutText = lib.removeSuffix restricted extra;
+              in
+              assert lib.assertMsg (lib.hasSuffix restricted extra)
+                "${guest}: services.openssh.extraConfig does not end with the restricted users' Match blocks";
+              lib.nameValuePair "sshd-restricted-users-${guest}" (
+                import ./modules/.common.d/openssh-policy.d/tests/restricted-users.nix {
+                  inherit pkgs lib;
+                  name = guest;
+                  files."ssh/sshd_config" = extra;
+                  withoutRestricted."ssh/sshd_config" = withoutText;
+                  misordered."ssh/sshd_config" = restricted + withoutText;
+                  inherit (c.opensshPolicy) restrictedUsers;
+                  otherUser = c.profile.user.name;
+                }
+              )
+            )
+            [
+              "bioskop-nixos"
+              "nikopol-nixos"
+            ]
+        )
+        // {
           sops-looks-encrypted = import ./modules/.common.d/sops.d/tests/looks-encrypted.nix {
             inherit pkgs;
           };

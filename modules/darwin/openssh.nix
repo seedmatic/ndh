@@ -161,6 +161,14 @@ in
     # probing per-user files (e.g. /etc/ssh/nix_authorized_keys.d/%u).
     environment.etc."ssh/sshd_config.d/101-authorized-keys.conf".text = canonicalAuthorizedKeysDropIn;
     environment.etc."ssh/sshd_config.d/999-ndh.conf".text = ndhSshdConfigText;
+    # The restricted users' Match blocks in a drop-in of their own: a Match in an included file ends with that
+    # file, so its place among the drop-ins does not matter; in sshd_config, before the Include, it would
+    # swallow every drop-in.
+    environment.etc."ssh/sshd_config.d/restricted-users.conf" =
+      lib.mkIf (config.opensshPolicy.restrictedUsers != { })
+        {
+          text = config.opensshPolicy.restrictedUsersText;
+        };
 
     # NDH policy stays in 999-ndh.conf for explicit ordering. nix-darwin's own hostKeys default would
     # render macOS's /etc/ssh/ssh_host_{rsa,ecdsa,ed25519}_key into 099-host-keys.conf beside ours, so

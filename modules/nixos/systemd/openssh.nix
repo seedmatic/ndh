@@ -174,7 +174,10 @@ in
         # Enable remote forwarding of Unix domain sockets (for GPG agent forwarding)
         StreamLocalBindUnlink yes
         AllowStreamLocalForwarding yes
-      '';
+      ''
+      # The restricted users' Match blocks, LAST: a Match runs to the end of the config, so anything after it
+      # would apply to those users only.
+      + config.opensshPolicy.restrictedUsersText;
   };
 
   # OpenSSH client configuration: the drop-ins under /etc/ssh/ssh_config.d first, the `Host *`
