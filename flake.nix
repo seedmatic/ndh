@@ -1286,6 +1286,17 @@
               '';
           ndh-ops-bats = import ./modules/.common.d/ndh-ops.d/tests/package.nix { inherit pkgs; };
           attic-cache-bats = import ./modules/nixos/attic-cache.d/tests/package.nix { inherit pkgs; };
+          cache-publish-bats = import ./modules/.common.d/cache-publish.d/tests/package.nix { inherit pkgs; };
+          # Built here so its shellcheck runs while no machine enables the publication yet.
+          cache-publish-package = import ./modules/.common.d/cache-publish.d/package.nix {
+            inherit pkgs;
+            inherit (pkgs) lib;
+            outputs = [ "packages.aarch64-darwin.default" ];
+            cache = "nxmatic";
+            publicUrl = "https://nxmatic.cachix.org";
+            upstreams = [ "https://cache.nixos.org" ];
+            tokenFile = "/nonexistent";
+          };
           tls-authority-keychain-bats = import ./modules/darwin/tls-authority-keychain.d/tests/package.nix {
             inherit pkgs;
             trampoline = mkNdhNixBashTrampoline { pkgsForSystem = pkgs; };
