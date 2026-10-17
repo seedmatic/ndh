@@ -85,6 +85,8 @@ esac
 EOF
   chmod +x "$t/bin/"*
   touch "$t/operator" "$t/operator-cert.pub"
+  # The log sink: a file the cases read, instead of the host's unified log or journald.
+  export LOGGER_CMD="tee -a $t/sink"
 
   script="$t/sign.sh"
   write_script 'fqdns=(attic.m1) vias=(nixos.m1)'
@@ -93,6 +95,8 @@ EOF
 write_script() { # <the caches' arrays>
   {
     echo 'set -euo pipefail'
+    echo "source ${BATS_TEST_DIRNAME}/../../shell.d/logger.sh"
+    echo 'loggerTag=test.attic-leaf'
     echo "keysYaml=$t/keys.yaml authority=test-tls days=365 hostTls=/tls"
     echo "sshUser=op sshKey=$t/operator sshCert=$t/operator-cert.pub"
     echo "$1"
@@ -221,6 +225,27 @@ no_ca_key_in() {
   [ "$status" -eq 1 ]
   [[ $output == *"sops decrypt of test-tls@26-10-10 failed (exit 128)"* ]]
   [[ $output != *"SOPS-STDERR-MARKER"* ]]
+  run ! grep -q 'SOPS-STDERR-MARKER' "$t/sink"
+}
+
+@test "the log sink says whether a run decrypted: never on --dry-run, once on a signature" {
+  run_sign --dry-run
+  [ "$status" -eq 0 ]
+  grep -q '^\[test.attic-leaf\] .*nothing decrypted' "$t/sink"
+  run ! grep -q 'the only decryption of this run' "$t/sink"
+  : >"$t/sink"
+  run_sign
+  [ "$status" -eq 0 ]
+  [ "$(grep -c '^\[test.attic-leaf\] .*the only decryption of this run' "$t/sink")" -eq 1 ]
+}
+
+@test "the sink carries neither the age key's path, nor a private, nor a trace — even asked to trace" {
+  SOPS_AGE_KEY_FILE="$t/AGE-KEY-MARKER" NDH_LOGGER_XTRACE=1 run_sign
+  [ "$status" -eq 0 ]
+  [ -s "$t/sink" ]
+  run ! grep -q 'AGE-KEY-MARKER' "$t/sink"
+  run ! grep -q 'PRIVATE KEY' "$t/sink"
+  run ! grep -qE '^\[test\.attic-leaf\] \+' "$t/sink"
 }
 
 @test "a ca_crt that is not cleartext fails closed, before anything" {

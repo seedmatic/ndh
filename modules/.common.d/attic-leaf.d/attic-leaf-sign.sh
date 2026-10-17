@@ -20,11 +20,26 @@ unset BASH_XTRACEFD 2>/dev/null || true
 # authority's private is never written nor held: only the signing step decrypts it, that one slot's,
 # into step-cli through process substitution; every other path reads cleartext metadata only. Each signed leaf is recorded in the operator seat's ledger.
 
-log() { printf '[attic-leaf] %s\n' "$*" >&2; }
+# stderr goes to the log sink (below); each message is also written to the invoking console.
+log() {
+  printf '[attic-leaf] %s\n' "$*" >&2
+  ndh::logger:notice "[attic-leaf] $*"
+}
 die() {
   printf '[attic-leaf] ERROR: %s\n' "$*" >&2
+  ndh::logger:notice "[attic-leaf] ERROR: $*"
   exit 1
 }
+
+# Every run is logged under its tag, so whether an activation decrypted or signed is answerable from
+# the unified log, not only from the activation's output: the script re-runs itself ONCE inside
+# ndh::logger:command:run, which sends its stderr to the sink and keeps the console on fd 3. The
+# exit status is the re-run's.
+if [[ -z ${NDH_ATTIC_LEAF_SIGN_LOGGED:-} ]]; then
+  export NDH_ATTIC_LEAF_SIGN_LOGGED=1
+  ndh::logger:command:run "$loggerTag" bash "${BASH_SOURCE[0]}" "$@"
+  exit 0
+fi
 
 # Exit contract: 0 every cache is (now) CURRENT, ordie "usage: attic-leaf-sign [--check | --dry-run | --force | --activation]"reached the signature · 10 --check found a
 # leaf to sign · 2 a cache is ABSENT · 1 anything that failed. --check classifies only; --dry-run runs
@@ -91,7 +106,7 @@ trap cleanup EXIT
 # usage, the slots, `compromised` and `ca_crt` are stored in clear, only `private` is ENC[]: the
 # classification, the preflight, --check, --dry-run and a run with nothing to sign never decrypt.
 # The private is decrypted once a signature is certain, below (🛡️, 2026-10-17).
-log "reading ${authority} from keys.yaml (cleartext fields, nothing decrypted)"
+log "reading ${authority} from keys.yaml (cleartext metadata, nothing decrypted)"
 clear="$(yq -o=json "
   .authorities.\"${authority}\" as \$a
   | ((\$a.slots // {}) | to_entries | sort_by(.key)
@@ -275,6 +290,7 @@ for i in "${toSign[@]}"; do
   # The only sops call: everything before it reads cleartext metadata. It decrypts this one slot's
   # private, straight into step's fd — never a variable, never a file; once per signed leaf. Its
   # stderr stays in the 0700 work dir: sops' text never reaches the terminal or a log.
+  log "decrypting ${authority}@${slot}'s private to sign ${name} (the only decryption of this run for this leaf)"
   step certificate sign "$work/$i.csr" "$work/ca.crt" \
     <(sops --decrypt --extract "[\"authorities\"][\"${authority}\"][\"slots\"][\"${slot}\"][\"private\"]" "$keysYaml" 2>"$work/sops.err") \
     --template "$work/leaf.tpl" --not-after "$((days * 24))h" >"$work/$i.crt" 2>"$work/sign.err" || {
