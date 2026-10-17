@@ -88,6 +88,12 @@ in
   ];
 
   config = {
+    # The age identity's directory is root's alone, whatever umask made it: a file left beside the key (an editor's
+    # autosave was found there on nikopol-nixos, 2026-10-18) must not be readable by another account.
+    systemd.tmpfiles.rules = lib.mkIf (config.sops.age.keyFile != null) [
+      "d ${builtins.dirOf config.sops.age.keyFile} 0700 root root -"
+    ];
+
     # NixOS policy: systemd-driven sops activation and host key import defaults.
     sops.useSystemdActivation = lib.mkDefault true;
     ndh.sopsAgeKeyBootstrap = {

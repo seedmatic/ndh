@@ -1732,6 +1732,33 @@
             };
           # A retired recipient opens no sealed file any more (S4b): changing .sops.yaml re-keys nothing, so each file's
           # own metadata is read. The files are the ones .sops.yaml's rules match, so a new sealed file cannot escape.
+          # The guests' age identity directory is root's alone (0700), and no other tmpfiles rule names it with
+          # another mode; the mutant without the rule proves the predicate bites.
+          sops-key-dir-0700 =
+            let
+              lib = nixpkgs.lib;
+              guests = [
+                "bioskop-nixos"
+                "nikopol-nixos"
+              ];
+              rootOnly =
+                c:
+                let
+                  dir = builtins.dirOf c.sops.age.keyFile;
+                  naming = lib.filter (r: builtins.elemAt (lib.splitString " " r) 1 == dir) (
+                    lib.filter (r: lib.length (lib.splitString " " r) > 1) c.systemd.tmpfiles.rules
+                  );
+                in
+                naming == [ "d ${dir} 0700 root root -" ];
+              mutant = self.nixosConfigurations.bioskop-nixos.extendModules {
+                modules = [ { systemd.tmpfiles.rules = nixpkgs.lib.mkForce [ ]; } ];
+              };
+            in
+            assert lib.all (g: rootOnly self.nixosConfigurations.${g}.config) guests;
+            assert lib.assertMsg (
+              !(rootOnly mutant.config)
+            ) "sops-key-dir-0700: the mutant without the rule passed";
+            pkgs.runCommand "sops-key-dir-0700" { } "touch $out";
           sops-retired-recipients =
             let
               retired = [
