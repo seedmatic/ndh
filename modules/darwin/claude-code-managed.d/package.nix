@@ -5,10 +5,21 @@ let
   src = ./.;
   python = pkgs.python3;
 
-  hookDir = pkgs.runCommand "claude-code-deny-hook" { } ''
-    mkdir -p $out
-    cp ${src}/deny-hook.py ${src}/verbs.json $out/
+  # The deletion areas security engraves, written in YAML and handed to the hook as JSON; until the registry
+  # lands, no session has one. One conversion, the same for the hook and for its check.
+  hasOwned = builtins.pathExists ./owned-dirs.yaml;
+  ownedToJson = yaml: json: ''
+    ${pkgs.yq-go}/bin/yq -o=json '.' ${yaml} > ${json}
+    ${python}/bin/python3 -I ${src}/tests/check-owned-dirs.py ${json}
   '';
+
+  hookDir = pkgs.runCommand "claude-code-deny-hook" { } (
+    ''
+      mkdir -p $out
+      cp ${src}/deny-hook.py ${src}/verbs.json $out/
+    ''
+    + pkgs.lib.optionalString hasOwned (ownedToJson "${src}/owned-dirs.yaml" "$out/owned-dirs.json")
+  );
 in
 {
   settings =
@@ -38,8 +49,9 @@ in
         ];
       }
       ''
+        ${ownedToJson "${src}/tests/owned-dirs.fixture.yaml" "fixture.json"}
         cp -r ${src} src && chmod -R u+w src
-        cd src/tests && bats deny-hook.bats
+        cd src/tests && bats .
         touch $out
       '';
 }

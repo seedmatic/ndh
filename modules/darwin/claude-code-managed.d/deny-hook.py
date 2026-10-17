@@ -17,6 +17,7 @@ import os
 import re
 import shlex
 import sys
+import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 MAX_DEPTH = 8
@@ -37,6 +38,50 @@ class Refused(Exception):
 def load_table():
     with open(os.path.join(HERE, "verbs.json"), encoding="utf-8") as fh:
         return json.load(fh)
+
+
+def load_owned():
+    """The deletion areas security engraved (owned-dirs.yaml, built into the owned-dirs.json beside this file); none when it is absent."""
+    path = os.path.join(HERE, "owned-dirs.json")
+    if not os.path.exists(path):
+        return {"sessions": {}, "global_exclude": [], "pages_never_remove": []}
+    with open(path, encoding="utf-8") as fh:
+        return json.load(fh)
+
+
+def expand_braces(pattern):
+    """{a,b} and {1..8} into exact alternatives, as the registry's syntax allows."""
+    m = re.search(r"\{([^{}]*)\}", pattern)
+    if not m:
+        return [pattern]
+    body = m.group(1)
+    rng = re.fullmatch(r"(\d+)\.\.(\d+)", body)
+    alts = [str(i) for i in range(int(rng.group(1)), int(rng.group(2)) + 1)] if rng else body.split(",")
+    return [x for a in alts for x in expand_braces(pattern[:m.start()] + a + pattern[m.end():])]
+
+
+def segment_rx(seg):
+    return re.compile("^" + "".join("[^/]*" if c == "*" else re.escape(c) for c in seg) + "$")
+
+
+def match_segments(pat, path):
+    """`*` is one segment (or part of one), `**` any number of segments, including none."""
+    if not pat:
+        return not path
+    if pat[0] == "**":
+        return any(match_segments(pat[1:], path[i:]) for i in range(len(path) + 1))
+    return bool(path) and bool(segment_rx(pat[0]).match(path[0])) and match_segments(pat[1:], path[1:])
+
+
+def could_hold(pat, path):
+    """Whether a path the pattern matches could lie strictly below PATH (so removing PATH would take it)."""
+    if not path:
+        return bool(pat)
+    if not pat:
+        return False
+    if pat[0] == "**":
+        return True
+    return bool(segment_rx(pat[0]).match(path[0])) and could_hold(pat[1:], path[1:])
 
 
 def protected_paths(table, home):
@@ -310,10 +355,15 @@ def skip_options(args, value_opts):
 
 
 class Analyzer:
-    def __init__(self, table, cwd, home):
+    def __init__(self, table, cwd, home, owned=None, session_id=""):
         self.table = table
         self.cwd = cwd
         self.home = home
+        self.owned = owned or {"sessions": {}, "global_exclude": [], "pages_never_remove": []}
+        self.session = next((name for name, s in self.owned["sessions"].items()
+                             if session_id and session_id in s.get("conversations", [])), None)
+        self.owned_removals = []
+        self.other_commands = 0
         self.protected = protected_paths(table, home)
         self.verdicts = []
 
@@ -557,6 +607,70 @@ class Analyzer:
         return (path.count("/") <= 1 or path == home or home.startswith(path.rstrip("/") + "/")
                 or path == "/nix" or path.startswith("/nix/"))
 
+    def patterns(self, entries):
+        return [self.resolve_pattern(x) for e in entries for x in expand_braces(e)]
+
+    def resolve_pattern(self, pattern):
+        return os.path.normpath(self.home + pattern[1:]) if pattern == "~" or pattern.startswith("~/") else pattern
+
+    def excluded(self, path):
+        """Global, session and page excludes; a target is excluded too when it would take an excluded path with it.
+        A pattern that starts with ** (a .secrets anywhere) is looked for on disk below the target."""
+        sess = self.owned["sessions"].get(self.session, {})
+        entries = self.owned.get("global_exclude", []) + self.owned.get("pages_never_remove", []) + sess.get("exclude", [])
+        segs = path.strip("/").split("/")
+        for pattern in self.patterns(entries):
+            psegs = pattern.strip("/").split("/")
+            if match_segments(psegs, segs):
+                return pattern
+            if psegs[0] == "**":
+                tail = psegs[1:]
+                # Removing a link leaves what it points at: only a real directory is searched.
+                for root, dirs, files in ([] if os.path.islink(path) else os.walk(path)):
+                    for name in dirs + files:
+                        rel = os.path.relpath(os.path.join(root, name), path).split(os.sep)
+                        if match_segments(["**"] + tail, rel):
+                            return pattern
+            elif could_hold(psegs, segs):
+                return pattern
+        return None
+
+    def owned_pattern(self, path, key):
+        """The session's pattern under KEY that PATH matches strictly below its root, or None."""
+        if self.session is None or path is None:
+            return None
+        segs = path.strip("/").split("/")
+        for pattern in self.patterns(self.owned["sessions"][self.session].get(key, [])):
+            psegs = pattern.strip("/").split("/")
+            # The root of an area (`…/**` itself) is never removed: `**` must stand for one segment at least.
+            if psegs[-1] == "**" and len(segs) <= len(psegs) - 1:
+                continue
+            if match_segments(psegs, segs):
+                return pattern
+        return None
+
+    def owned_removal(self, key, argv):
+        """Record an owned removal: one exact path, in the calling session's area, touching no exclude."""
+        if re.search(r"[*?\[\]{}$`]", argv[-1]):
+            return False
+        resolved = self.resolve(argv[-1])
+        if resolved and resolved.startswith("/tmp/") and self.owned_pattern("/private" + resolved, key):
+            self.deny("/tmp is a symlink the deletion registry does not name: write /private" + resolved, argv)
+            return True
+        pattern = self.owned_pattern(resolved, key)
+        if pattern is None or self.excluded(resolved):
+            return False
+        # Symlinks. With a trailing slash rm works on a link's TARGET, so that is never an owned removal. Without one,
+        # rm removes the last component itself (a link alone, not what it points at), so the real place is its
+        # parent's real path: a symlinked directory on the way must not lead out of the area or into an exclude.
+        if argv[-1].endswith("/") and os.path.islink(resolved):
+            return False
+        real = os.path.join(os.path.realpath(os.path.dirname(resolved)), os.path.basename(resolved))
+        if real != resolved and (self.owned_pattern(real, key) is None or self.excluded(real)):
+            return False
+        self.owned_removals.append((pattern, resolved))
+        return True
+
     GIT_VALUE = {"-C", "-c", "--git-dir", "--work-tree", "--namespace", "--exec-path", "--config-env"}
     PUSH_VALUE = {"-o", "--push-option", "--repo", "--receive-pack", "--exec"}
     # git commit's short options that take a value: in a cluster, what follows one of them is that value.
@@ -565,6 +679,9 @@ class Analyzer:
     GUARD_KEYS = re.compile(r"^(?:core\.hookspath|filter\.sops)", re.I)
     GUARD_ENV = {"GIT_CONFIG_GLOBAL", "GIT_CONFIG_NOSYSTEM"}
     WRITES_HISTORY = {"commit", "merge", "rebase", "cherry-pick", "am"}
+    # Older briefs gave sessions a `-c core.hooksPath=… -c user.signingkey=…` recipe: the refusal names today's.
+    COMMIT_RECIPE = ("commit with a plain `git commit` (the global config already signs, runs the hooks and the "
+                     "sops filters); if a hook refuses, fix what it reports")
 
     def check_git(self, argv):
         """A guard bypass (--no-verify, commit -n, a -c or an assignment that drops the global hooks or sops
@@ -572,7 +689,7 @@ class Analyzer:
         too: its target is the upstream, which the text does not name."""
         args = argv[1:]
         if "--no-verify" in args:
-            self.deny("git --no-verify skips the hooks that guard commits and pushes", argv)
+            self.deny(f"git --no-verify skips the hooks that guard commits and pushes; {self.COMMIT_RECIPE}", argv)
             return
         i = skip_options(args, self.GIT_VALUE)
         for j, tok in enumerate(args[:i]):
@@ -584,11 +701,11 @@ class Analyzer:
             elif tok.startswith("--config-env="):
                 key = tok.split("=", 1)[1]
             if key and self.GUARD_KEYS.match(key):
-                self.deny("git -c overrides a guard (core.hooksPath or a sops filter)", argv)
+                self.deny(f"git -c overrides a guard (core.hooksPath or a sops filter); {self.COMMIT_RECIPE}", argv)
                 return
         sub = args[i] if i < len(args) else None
         if sub in self.WRITES_HISTORY and any(a.split("=", 1)[0] in self.GUARD_ENV for a in self.assignments):
-            self.deny(f"git {sub} without the global config drops its hooks and sops filters", argv)
+            self.deny(f"git {sub} without the global config drops its hooks and sops filters; {self.COMMIT_RECIPE}", argv)
             return
         if sub == "commit":
             for tok in args[i + 1:]:
@@ -597,7 +714,7 @@ class Analyzer:
                 if tok.startswith("-") and not tok.startswith("--"):
                     for ch in tok[1:]:
                         if ch == "n":
-                            self.deny("git commit -n is --no-verify", argv)
+                            self.deny(f"git commit -n is --no-verify; {self.COMMIT_RECIPE}", argv)
                             return
                         if ch in self.COMMIT_VALUE_SHORT:
                             break
@@ -640,6 +757,32 @@ class Analyzer:
 
     def check(self, argv):
         prog, args = argv[0], argv[1:]
+        if prog in ("rm", "rmdir"):
+            flags = [t for t in args if t.startswith("-")]
+            targets = [t for t in args if not t.startswith("-")]
+            plain = all(re.fullmatch(r"-[rRfdv]+|--recursive|--force|--dir|--verbose", f) for f in flags)
+            if len(targets) == 1 and plain and self.owned_removal("owned", argv):
+                return
+        elif prog == "git" and self.owned_worktree(argv):
+            return
+        elif prog not in ("cd", "pushd"):
+            self.other_commands += 1
+        self.check_rest(argv)
+
+    def owned_worktree(self, argv):
+        """`git [-C …] worktree remove <one exact path>`, no --force, a worktree of the calling session."""
+        args = argv[1:]
+        i = skip_options(args, self.GIT_VALUE)
+        rest = args[i:]
+        if rest[:2] != ["worktree", "remove"]:
+            return False
+        tail = rest[2:]
+        if len(tail) != 1 or tail[0].startswith("-"):
+            return False
+        return self.owned_removal("worktrees", argv)
+
+    def check_rest(self, argv):
+        prog, args = argv[0], argv[1:]
         # By its base name, so a store path and `nix run …#<tool>` (unwrapped to the attribute) count too.
         tools = self.table.get("operator_tools", {})
         if prog in tools.get("programs", []):
@@ -649,6 +792,8 @@ class Analyzer:
             self.deny("ndh-ops arm is the operator's: a session never arms its own delegation", argv)
             return
         if prog in ("cd", "pushd"):
+            if any(t == "/" for t in args):
+                self.other_commands += 1
             # The simple commands come in order, so a chain of cd is followed: `cd …/keyhole.d && cd keyring`.
             target = next((t for t in args if not t.startswith("-")), "~")
             moved = self.resolve(target)
@@ -726,6 +871,17 @@ class Analyzer:
                 self.ask("seed run whose live/preview mode is decided inside the JVM, not in this text", argv)
 
 
+def audit(line):
+    """The allowed removals, one line each, in the operator's state dir; a failed write never blocks."""
+    try:
+        state = os.path.join(os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state"), "claude-deny-hook")
+        os.makedirs(state, exist_ok=True)
+        with open(os.path.join(state, "log"), "a", encoding="utf-8") as fh:
+            fh.write(f"{time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())} {line}\n")
+    except OSError:
+        pass
+
+
 def main():
     try:
         event = json.load(sys.stdin)
@@ -734,7 +890,8 @@ def main():
         command = event.get("tool_input", {}).get("command")
         if not isinstance(command, str):
             raise Refused("no command text to inspect")
-        analyzer = Analyzer(load_table(), event.get("cwd") or "", os.environ.get("HOME") or os.path.expanduser("~"))
+        analyzer = Analyzer(load_table(), event.get("cwd") or "", os.environ.get("HOME") or os.path.expanduser("~"),
+                            load_owned(), event.get("session_id") or "")
         # The keyring material, a first line: by its text anywhere (a quoted path, a -c script) and by the
         # session's own cwd. A path built at run time (a variable, a computed cd) escapes the text.
         if analyzer.is_protected(os.path.normpath(analyzer.cwd) if analyzer.cwd else None):
@@ -758,6 +915,13 @@ def main():
         print("deny-hook refused — run it yourself if intended: " + "; ".join(denies), file=sys.stderr)
         return 2
     asks = [why for kind, why in analyzer.verdicts if kind == "ask"]
+    if not asks and analyzer.owned_removals and not analyzer.other_commands:
+        # A call made only of the session's own removals (and cd): no prompt, and an audit line.
+        reason = "; ".join(f"{analyzer.session} removes {path} ({pattern})" for pattern, path in analyzer.owned_removals)
+        audit(reason)
+        json.dump({"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "allow",
+                                          "permissionDecisionReason": "owned area: " + reason}}, sys.stdout)
+        return 0
     if asks:
         json.dump({"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "ask",
                                           "permissionDecisionReason": "; ".join(asks)}}, sys.stdout)

@@ -27,7 +27,7 @@ unsafe_ref() {
   return 1
 }
 
-why="Refused: this nix command evaluates a working tree, and a decrypted checkout copies its secrets into the store in clear (the 2026-10-10 leak). Name a revision instead: nix <cmd> \"git+file://\$PWD?rev=\$(git rev-parse HEAD)#<attr>\", or a pushed github: ref. Text that only MENTIONS such a command (a message, a document) is read as a command too: write it with the Edit or Write tool. Offending reference:"
+why="Refused: this nix command evaluates a working tree, and a decrypted checkout copies its secrets into the store in clear (the 2026-10-10 leak). Name a revision instead: nix <cmd> \"git+file://\$PWD?rev=\$(git rev-parse HEAD)#<attr>\", or a pushed github: ref. A shell variable is opaque to this hook: \"\$R#attr\" or \"\$out\" is refused even when it holds a revision or a store path, so write the git+file://…?rev=\$(git rev-parse HEAD) form out literally, and a store path as itself. Text that only MENTIONS such a command (a message, a document) is read as a command too: write it with the Edit or Write tool. Offending reference:"
 
 # Options whose next word is a value, not an installable.
 takes_value=" --arg --argstr --option --override-input --inputs-from --profile -o --out-link --apply --system --max-jobs -j --to --from --store --eval-store --cores --keep-failed-in --log-format --builders --reference-lock-file --output-lock-file --update-input "
