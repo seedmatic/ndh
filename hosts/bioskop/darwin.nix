@@ -43,12 +43,8 @@
       sopsEncryptedTokenFile = ../../.secrets;
     };
 
-    # The SOPS age key must already exist: nothing generates it.
-    ndh.sopsAgeKeyBootstrap.darwinSystemWideKey = true;
-
     # bioskop holds the TLS authority (the operator seat): its activation restores the Incus cluster certificate.
     ndh.incusClusterCert.atActivation = true;
-    sops.age.keyFile = "/etc/sops/age/keys.txt";
 
     # macOS 26.5's directory-services consistency pass rewrote the nix-store
     # record's NFSHomeDirectory to /private/var/empty_1 and then LOCKED the

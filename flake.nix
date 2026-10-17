@@ -1477,22 +1477,30 @@
               current = "age1fe9gs0mljq82cwxasugyrjd4pqg9h4uym5r3rwfc2084q558hd7qt4845j";
             };
           # A retired recipient opens no sealed file any more (S4b): changing .sops.yaml re-keys nothing, so each file's
-          # own metadata is read. The repository's sops files are the ones .sops.yaml has a rule for.
+          # own metadata is read. The files are the ones .sops.yaml's rules match, so a new sealed file cannot escape.
           sops-retired-recipients =
             let
               retired = [
                 # bioskop's macOS host key: bioskop decrypts with its own host key (6a)
                 "age1trxpn8efl5jctwakgpxxjd2h6x5h2m40ggugxl909qsj0h99p9yqkk8tej"
-              ];
-              files = [
-                ./.secrets
-                ./catalog/cache-trust.yaml
-                ./modules/home-manager/ssh.d/keys.yaml
+                # .sops.yaml's ⛔ former recipients, removed on 2026-10-10, whose privates were published or exposed
+                "age19fvdjd6gr3mwthv4vuvym24wxlkugvcy4fuvmnngecsg8fpj4y9qm33qu0"
+                "age10ey0lcup4zpjqcknpxw7enpsagn674nm634f2u75trfr5t62uq5qdjuxzv"
+                "age1k0tc4gmaqrk5df3ujja34gkqxstu0cye7fl7fktjeuua3yych3aqxfjlak"
+                "age1stxdeh0t6arhdm7uhyy2jcf2qj9r9vfzkwte4jr4gj6hlpxe740seq8j82"
               ];
             in
             pkgs.runCommand "sops-retired-recipients" { nativeBuildInputs = [ pkgs.yq-go ]; } ''
+              cd ${self}
+              mapfile -t tracked < <(find . -type f -not -path './.git/*' | sed 's#^\./##' | LC_ALL=C sort)
+              files=()
+              while IFS= read -r rule; do
+                mapfile -t matched < <(printf '%s\n' "''${tracked[@]}" | grep -E -- "$rule")
+                [ "''${#matched[@]}" -gt 0 ] || { echo "the .sops.yaml rule $rule matches no file" >&2; exit 1; }
+                files+=("''${matched[@]}")
+              done < <(yq -r '.creation_rules[].path_regex' .sops.yaml)
               fail=0
-              for f in ${nixpkgs.lib.concatMapStringsSep " " (f: ''"${f}"'') files}; do
+              for f in "''${files[@]}"; do
                 recipients="$(yq -p yaml -oy -r '.sops.age[].recipient' "$f")"
                 for r in ${nixpkgs.lib.escapeShellArgs retired}; do
                   if grep -qxF "$r" <<<"$recipients"; then
