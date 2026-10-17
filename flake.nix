@@ -59,16 +59,12 @@
     flox.follows = "flake-commons/flox";
     home-manager.follows = "flake-commons/home-manager";
     impermanence.follows = "flake-commons/impermanence";
-    lix-module.follows = "flake-commons/lix-module";
     maven-mvnd.follows = "flake-commons/maven-mvnd";
-    nix.follows = "flake-commons/nix";
     nixos-hardware.follows = "flake-commons/nixos-hardware";
     nixpkgs.follows = "flake-commons/nixpkgs";
     nixpkgs-unstable.follows = "flake-commons/nixpkgs-unstable";
-
-    # 3. Direct inputs (not aggregated upstream)
-    sops-nix.url = "github:Mic92/sops-nix";
-    treefmt-nix.url = "github:numtide/treefmt-nix";
+    sops-nix.follows = "flake-commons/sops-nix";
+    treefmt-nix.follows = "flake-commons/treefmt-nix";
 
     # The fabric's two deliveries, pinned as DATA rather than as the flakes that produce them.
     # rke2lab's plan is the source of truth for the cluster network underlay (cluster/node IDs,
