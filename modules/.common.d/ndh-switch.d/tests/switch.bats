@@ -45,7 +45,7 @@ STUB
 
   host=$(uname -n)
   # The package fixes the remote to GitHub; here it is the fake one, set the same way.
-  { printf 'machines=%q\nseat=%q\nremote=%q\nprobe_every=1\nprobe_until=2\n' "$D/machines.json" "${host%%.*}" "$T/github.git"
+  { printf 'machines=%q\nseat=%q\nremote=%q\nprobe_every=1\nprobe_until=2\n' "$MACHINES" "${host%%.*}" "$T/github.git"
     cat "$D/ndh-switch.sh"; } >"$T/ndh-switch"
 }
 

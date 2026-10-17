@@ -1,9 +1,9 @@
-# ndh-switch's bats suite as a flake check: the real script against a fake GitHub and recording stubs, plus a
-# build of the package, so its shellcheck runs here too.
-{ pkgs }:
+# ndh-switch's bats suite as a flake check: the real script against a fake GitHub and recording stubs, on the machine
+# list the package generates from the catalog, plus a build of the package, so its shellcheck runs here too.
+{ pkgs, catalog }:
 let
   package = import ../package.nix {
-    inherit pkgs;
+    inherit pkgs catalog;
     seat = "check";
   };
 in
@@ -16,8 +16,9 @@ pkgs.runCommand "ndh-switch-bats"
       git
       gnugrep
       gnused
-      jq
+      yq-go
     ];
+    MACHINES = package.machines;
   }
   ''
     test -x ${package}/bin/ndh-switch

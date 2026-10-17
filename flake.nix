@@ -1241,9 +1241,15 @@
             inherit pkgs;
           };
           attic-leaf-bats = import ./modules/.common.d/attic-leaf.d/tests/package.nix { inherit pkgs; };
-          ndh-switch-bats = import ./modules/.common.d/ndh-switch.d/tests/package.nix { inherit pkgs; };
+          ndh-switch-bats = import ./modules/.common.d/ndh-switch.d/tests/package.nix {
+            inherit pkgs;
+            catalog = catalogData;
+          };
           ndh-claude-wake-bats = import ./modules/.common.d/claude-wake.d/tests/package.nix { inherit pkgs; };
-          fleet-switch-bats = import ./modules/.common.d/fleet-switch.d/tests/package.nix { inherit pkgs; };
+          fleet-switch-bats = import ./modules/.common.d/fleet-switch.d/tests/package.nix {
+            inherit pkgs;
+            catalog = catalogData;
+          };
           # A darwin switch run over ssh: its user-launchd step must not need the Aqua session, since SIP
           # refuses a bare `launchctl setenv` from the System one (150), and the Bedrock env agent is there.
           darwin-user-launchd-over-ssh =

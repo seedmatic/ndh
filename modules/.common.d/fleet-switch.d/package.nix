@@ -1,5 +1,6 @@
 # fleet-switch: the fleet's ordered loop over ndh-switch (see fleet-switch.sh). Built with the seat's own ndh-switch,
-# so the per-machine switch has one implementation, and with ndh-switch's machines.json, so there is one list.
+# so the per-machine switch has one implementation, and with the machine list that ndh-switch generates from the
+# catalog, so there is one list.
 { pkgs, ndhSwitch }:
 pkgs.writeShellApplication {
   name = "fleet-switch";
@@ -11,7 +12,7 @@ pkgs.writeShellApplication {
   ];
   text = ''
     ndh_switch=${ndhSwitch}/bin/ndh-switch
-    machines=${../ndh-switch.d/machines.json}
+    machines=${ndhSwitch.machines}
     signers=${./signers.yaml}
     remote=https://github.com/seedmatic/ndh
     flake_base=github:seedmatic/ndh

@@ -2,6 +2,7 @@
   config,
   lib,
   pkgs,
+  catalog,
   ...
 }:
 # ndh-switch on the operator seat's PATH: the one switch verb the sessions may run (the managed list denies the raw
@@ -16,7 +17,7 @@ in
       type = lib.types.package;
       readOnly = true;
       default = import ../.common.d/ndh-switch.d/package.nix {
-        inherit pkgs;
+        inherit pkgs catalog;
         seat = config.networking.hostName;
       };
       description = "ndh-switch, built for this seat: it refuses to run from any other.";

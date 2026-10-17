@@ -64,7 +64,7 @@ STUB
   export PATH="$T/bin:$PATH"
 
   { printf 'ndh_switch=%q\nmachines=%q\nsigners=%q\nremote=%q\nflake_base=%q\n' \
-      "$T/bin/ndh-switch" "$D/../ndh-switch.d/machines.json" "$T/signers.yaml" "$T/github.git" github:seedmatic/ndh
+      "$T/bin/ndh-switch" "$MACHINES" "$T/signers.yaml" "$T/github.git" github:seedmatic/ndh
     cat "$D/fleet-switch.sh"; } >"$T/fleet-switch"
 }
 
@@ -81,7 +81,7 @@ refute() {
 }
 switched() { grep '^ndh-switch ' "$T/calls" | grep -v -- --dry-run | awk '{print $2}' | tr '\n' ' '; }
 
-@test "the order comes from machines.json: NixOS guests, the remote darwin host; the seat skipped without --with-seat" {
+@test "the order comes from the machine list: NixOS guests, the remote darwin host; the seat skipped without --with-seat" {
   run fs --rev "$MERGED"
   [ "$status" -eq 0 ]
   [ "$(switched)" = "bioskop-nixos nikopol-nixos nikopol " ]
