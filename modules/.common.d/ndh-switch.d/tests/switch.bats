@@ -20,7 +20,6 @@ setup() {
   git -C "$T/work" commit -q --allow-empty -m two
   UNMERGED=$(git -C "$T/work" rev-parse HEAD)
   git clone -q --bare "$T/work" "$T/github.git"
-  export NDH_SWITCH_REMOTE="$T/github.git"
 
   # The switch commands record their argv instead of running; their shebang is this bash, since the nix sandbox
   # has no /usr/bin/env.
@@ -31,7 +30,8 @@ setup() {
   export PATH="$T/bin:$PATH"
 
   host=$(uname -n)
-  { printf 'machines=%q\nseat=%q\n' "$D/machines.json" "${host%%.*}"; cat "$D/ndh-switch.sh"; } >"$T/ndh-switch"
+  # The package fixes the remote to GitHub; here it is the fake one, set the same way.
+  { printf 'machines=%q\nseat=%q\nremote=%q\n' "$D/machines.json" "${host%%.*}" "$T/github.git"; cat "$D/ndh-switch.sh"; } >"$T/ndh-switch"
 }
 
 sw() { bash "$T/ndh-switch" "$@"; }
@@ -87,7 +87,7 @@ sw() { bash "$T/ndh-switch" "$@"; }
   [ "$status" -eq 3 ] && [[ "$output" == *"runs from darwin.elsewhere only"* ]]
 }
 @test "refused: the remote cannot be fetched" {
-  export NDH_SWITCH_REMOTE="$T/nowhere.git"
+  sed -i.bak "s|^remote=.*|remote=$T/nowhere.git|" "$T/ndh-switch"
   run sw nikopol-nixos "$MERGED"
   [ "$status" -eq 3 ] && [[ "$output" == *"cannot fetch develop and main"* ]]
 }
@@ -96,6 +96,11 @@ sw() { bash "$T/ndh-switch" "$@"; }
   run sw nikopol-nixos "$MERGED"
   [ "$status" -eq 7 ]
   grep -q "nikopol-nixos $MERGED failed: exit 7" "$T/state/ndh-switch/log"
+}
+@test "the remote is not taken from the environment" {
+  NDH_SWITCH_REMOTE="$T/nowhere.git" run sw --dry-run nikopol-nixos "$MERGED"
+  [ "$status" -eq 0 ]
+  ! grep -q NDH_SWITCH_REMOTE "$D/ndh-switch.sh"
 }
 @test "usage: wrong argument count lists the machines" {
   run sw nikopol-nixos

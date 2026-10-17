@@ -13,6 +13,7 @@ pkgs.writeShellApplication {
   text = ''
     machines=${./machines.json}
     seat=${pkgs.lib.escapeShellArg seat}
+    remote=https://github.com/seedmatic/ndh
   ''
   + builtins.readFile ./ndh-switch.sh;
 }

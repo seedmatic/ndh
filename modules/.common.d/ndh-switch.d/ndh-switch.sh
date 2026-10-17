@@ -4,12 +4,13 @@
 # The flake is always github:seedmatic/ndh/<sha>, so a working tree, a dirty tree or an unpushed commit cannot be
 # switched to: GitHub cannot serve them. The revision must also be merged into develop or main (we switch from
 # develop to validate). Machines and their order come from machines.json, which the fleet loop reads too.
+# The ancestry is read from the canonical remote, fixed at build time: a fork would pass the check, and GitHub serves
+# a fork network's commits under github:seedmatic/ndh/<sha>.
 # Run from darwin.bioskop: the guests are evaluated there and pushed (keys.yaml's IFD is aarch64-darwin).
 set -euo pipefail
 
 state="${XDG_STATE_HOME:-$HOME/.local/state}/ndh-switch"
 cache="${XDG_CACHE_HOME:-$HOME/.cache}/ndh-switch/ndh.git"
-remote="${NDH_SWITCH_REMOTE:-https://github.com/seedmatic/ndh}"
 machine="" rev="" dry=0
 
 log() { # $1 = outcome
