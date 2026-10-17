@@ -45,11 +45,14 @@ let
   # environment.etc does not honour `mode`, and the /etc/static/<…>
   # symlink chain it materializes points at a 0444 store file, which
   # sshd rejects with "shell is not executable".
+  # The one command this account runs, as its shell and as sshd's ForceCommand (opensshPolicy.restrictedUsers):
+  # the shell alone would leave a client's forwardings and subsystems to sshd.
+  daemonCommand = "/run/current-system/sw/bin/nix-daemon --stdio";
   inboundUserShell =
     (pkgs.writeShellApplication {
       name = "nix-store-shell";
       text = ''
-        exec /run/current-system/sw/bin/nix-daemon --stdio
+        exec ${daemonCommand}
       '';
     }).overrideAttrs
       (_: {
@@ -207,5 +210,8 @@ in
     # *record* itself is declared in the platform module.
     environment.shells = lib.mkIf cfg.provisionInboundUser [ cfg.inboundUserShellPath ];
     nix.settings.trusted-users = lib.mkIf cfg.provisionInboundUser [ cfg.inboundUserName ];
+    opensshPolicy.restrictedUsers = lib.mkIf cfg.provisionInboundUser {
+      ${cfg.inboundUserName}.forceCommand = daemonCommand;
+    };
   };
 }

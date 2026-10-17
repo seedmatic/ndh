@@ -237,6 +237,25 @@ in
       default = { };
       description = "Additional raw sshd_config key/value pairs.";
     };
+    # A service account that only ever runs one command (nix-store's daemon endpoint; a cluster's builder
+    # account later): sshd forces that command and grants it nothing else, whatever its shell or its keys say.
+    restrictedUsers = mkOption {
+      type = types.attrsOf (
+        types.submodule {
+          options.forceCommand = mkOption {
+            type = types.str;
+            description = "The only command sshd runs for this user (ForceCommand).";
+          };
+        }
+      );
+      default = { };
+      description = "Users sshd restricts to one forced command, no forwarding, no tty, no rc.";
+    };
+    restrictedUsersText = mkOption {
+      type = types.lines;
+      readOnly = true;
+      description = "The Match blocks for restrictedUsers. A Match runs to the end of its file, so a platform renders it after the policy, or in a file of its own.";
+    };
 
     # Exposed computed settings
     settings = mkOption {
@@ -326,6 +345,19 @@ in
 
     # Expose helpers
     opensshPolicy.hostKeys = cfg.hostKeyPaths;
+    # ForceCommand also overrides a subsystem request (sftp included) and ~/.ssh/rc; DisableForwarding covers
+    # every kind of forwarding, and the last two are stated for older readers of the config.
+    opensshPolicy.restrictedUsersText = lib.concatStrings (
+      lib.mapAttrsToList (user: restricted: ''
+        Match User ${user}
+          ForceCommand ${restricted.forceCommand}
+          DisableForwarding yes
+          PermitTTY no
+          PermitUserRC no
+          X11Forwarding no
+          AllowAgentForwarding no
+      '') cfg.restrictedUsers
+    );
     opensshPolicy.authorizedKeysFileString =
       if cfg.platformRendersAuthorizedKeysFile then
         lib.concatStringsSep " " cfg.authorizedKeysFiles
