@@ -1592,6 +1592,26 @@
         // {
           # An operator seat's sshd serves its policy's host keys and nothing else: every HostKey line of its
           # drop-ins is one of opensshPolicy.hostKeyPaths, and each of those is there.
+          darwin-sshd-access = import ./modules/darwin/openssh.d/tests/sshd-access.nix {
+            inherit pkgs;
+            inherit (nixpkgs) lib;
+            seats = nixpkgs.lib.genAttrs [ "bioskop" "nikopol" ] (
+              seat:
+              let
+                c = self.darwinConfigurations.${seat}.config;
+              in
+              {
+                files = nixpkgs.lib.mapAttrs (_: v: v.text) (
+                  nixpkgs.lib.filterAttrs (
+                    n: v: nixpkgs.lib.hasPrefix "ssh/sshd_config" n && (v.text or null) != null
+                  ) c.environment.etc
+                );
+                inherit (c.opensshPolicy) allowUsers;
+                operator = c.profile.user.name;
+                restrictedUsers = nixpkgs.lib.attrNames c.opensshPolicy.restrictedUsers;
+              }
+            );
+          };
           darwin-sshd-host-keys =
             let
               lib = nixpkgs.lib;
