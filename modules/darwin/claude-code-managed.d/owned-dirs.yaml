@@ -1,0 +1,278 @@
+# The engraved registry of the sessions' deletion areas (ndh; the operator's decision of 2026-10-17:
+# the sessions propose, with their argument; security validates and engraves here; the deny-hook reads only this).
+# The hook gets the JSON generated from this file at build.
+
+# Rule: a session may remove ONE EXACT path inside one of ITS `owned` patterns (or `git worktree remove` one of its
+# `worktrees`), outside every exclude: global_exclude, pages_never_remove, and its own `exclude`. Never an area's root,
+# no glob or variable in the target, no `cd /` first; the real path (symlinks resolved) must satisfy the same.
+# Patterns: `*` = one path segment, `/**` = anything below, `{a,b}` and `{1..8}` expand to exact names at build.
+pages_never_remove:
+  - ~/.claude/.scratchpad.d/*/LIVE.md # every topic's live page: its header restores the session's title
+global_exclude:
+  - "~" # the home itself
+  - ~/.claude # the Claude config root (scratchpad topics below are per session)
+  - ~/.local/share/password-store/** # the operator's pass store
+  - ~/.ssh/** # ssh keys and config
+  - ~/.config/sops/** # the age identities
+  - /Volumes/git-bare-store/** # every bare: the repositories themselves
+  - /Volumes/git-worktree-store/seedmatic/rke2lab.d/memory/** # the shared memory worktree
+  - /Volumes/git-worktree-store/nxmatic/keyhole.d/** # the operator's keyring tooling and its encrypted backups
+  - /Volumes/git-worktree-store/nxmatic/claude-home.d/** # the private claude-home heads (registry, memory, pass replica)
+  - /Volumes/git-worktree-store/*/*.d/develop # every develop checkout (the trunk)
+  - /Volumes/git-worktree-store/*/*.d/develop/**
+  - /Volumes/git-worktree-store/*/*.d/main # every main checkout (the reference)
+  - /Volumes/git-worktree-store/*/*.d/main/**
+  - /Volumes/git-worktree-store/seedmatic/rke2lab.d/operator/develop # the ONE Pulumi stack home
+  - /Volumes/git-worktree-store/seedmatic/rke2lab.d/operator/develop/.pulumi-state # its state: never
+  - /Volumes/git-worktree-store/seedmatic/rke2lab.d/operator/develop/.pulumi-state/**
+  - ~/.tart/** # Tart VMs: removing a VM is the operator's gesture
+  - /private/var/lib/git/** # the old store, under the operator's own triage
+  - /nix/** # the nix store
+  - '**/.secrets' # any .secrets, anywhere, and what it holds
+  - '**/.secrets/**'
+sessions:
+  develop-sec:
+    # 🛡️ security
+    owned:
+      - ~/.claude/.scratchpad.d/security/**
+      - /private/tmp/claude-sec-*
+    lives_there: live page, models, reviews, probes, logs (redact.sh), mutation scratch
+    exclude:
+      - ~/.claude/.scratchpad.d/security/LIVE.md
+      - ~/.claude/.scratchpad.d/security/security-model.md
+      - ~/.claude/.scratchpad.d/security/logs/redact.sh
+    conversations:
+      - e009d868-b4d4-44db-98b8-3bfb4d9c0d97
+    role: security
+    icon: "\U0001F6E1️"
+  develop:
+    # 🧭 integration
+    owned:
+      - ~/.claude/.scratchpad.d/integration-sow/**
+      - ~/.claude/.scratchpad.d/vocabulary/**
+      - ~/.claude/.scratchpad.d/git-sync/**
+      - ~/.claude/.scratchpad.d/var-lib-git-triage/**
+      - /private/tmp/abs*
+      - /private/tmp/drv-*
+      - /private/tmp/sp-*
+    worktrees:
+      - /Volumes/git-worktree-store/seedmatic/*.d/*/*
+    lives_there: integration pages, work scripts, drafts; one-shot eval/render scratch in /private/tmp
+    exclude:
+      - ~/.claude/.scratchpad.d/*/LIVE.md
+      - ~/.claude/.scratchpad.d/integration-sow/ABSENCE-PLAN.md
+      - ~/.claude/.scratchpad.d/integration-sow/work/*.sh
+      - ~/.claude/.scratchpad.d/integration-sow/work/github-merged-branches-deleted-*.txt
+      - ~/.claude/.scratchpad.d/integration-sow/work/archived-worktree-scratch/**
+      - /Volumes/git-worktree-store/seedmatic/rke2lab.d/workspace/develop/**
+      - /Volumes/git-worktree-store/seedmatic/rke2lab.d/seed-incluster/develop/**
+      - /Volumes/git-worktree-store/seedmatic/rke2lab.d/flox-catalog/develop/**
+      - /Volumes/git-worktree-store/seedmatic/rke2lab.d/operator/develop/**
+    conversations:
+      - f45de9ce-1198-48b5-aa6b-3da49f833ea9
+    role: integration
+    icon: "\U0001F9ED"
+  develop-ops:
+    # 🎛️ operations
+    owned:
+      - ~/.claude/.scratchpad.d/operations/**
+      - /private/tmp/ops-*
+      - /private/tmp/ops-fig.mmd
+      - /private/tmp/ops-fig.svg
+      - /private/tmp/ops-fig5.mmd
+      - /private/tmp/ops-fig5.svg
+      - /private/tmp/bn-cert.pub
+      - /private/tmp/b-cert.pub
+      - /Volumes/git-worktree-store/seedmatic/rke2lab.d/operator/develop/.scratchpad.d/**
+    lives_there: live page, the post-switch check, notes, logs, absence logs; mmdc renders; public host certs
+    exclude:
+      - ~/.claude/.scratchpad.d/operations/LIVE.md
+      - ~/.claude/.scratchpad.d/operations/post-switch-check.sh
+      - ~/.claude/.scratchpad.d/operations/tailscale-ssh_known_hosts.*.bak
+      - ~/.claude/.scratchpad.d/operations/absence-*.log
+    note: 'remote probe derivations /tmp/<name>.nix on checked hosts: never deleted remotely'
+    conversations:
+      - c0aa166d-2d74-41a5-9226-7df1d763ab5a
+    role: operations
+    icon: "\U0001F39B️"
+  develop-k8s:
+    # ☸️ k8s
+    owned:
+      - ~/.claude/.scratchpad.d/k8s/**
+      - ~/.claude/.scratchpad.d/node-store-freeze/k8s-facts.md
+    worktrees:
+      - ~/.claude/.scratchpad.d/k8s/rev-wt
+    lives_there: live page, notes, plan C evidence (paths, kinds, recipient prefixes only), mmdc renders, GOTMPDIR
+    exclude:
+      - ~/.claude/.scratchpad.d/k8s/LIVE.md
+      - ~/.claude/.scratchpad.d/k8s/brief.md
+      - ~/.claude/.scratchpad.d/k8s/cold-start-cluster-checks.md
+      - ~/.claude/.scratchpad.d/k8s/s3b-in-cluster.md
+      - ~/.claude/.scratchpad.d/k8s/plan-c/**
+    note: no standing worktree namespace; none in /private/tmp
+    conversations:
+      - f9147322-48ad-46cb-8c3a-f88266dda598
+    role: k8s
+    icon: ☸️
+  develop-cache:
+    # 📦 cache
+    owned:
+      - ~/.claude/.scratchpad.d/private-binary-cache/**
+      - /private/tmp/mmdc.*
+      - /private/tmp/incus-probe-run.log
+      - /private/tmp/spec.adoc
+      - /private/tmp/sf.adoc
+      - /private/tmp/b.err
+      - /private/tmp/e.err
+      - /private/tmp/c.log
+    lives_there: live page, design notes, proofs, the probe's definition and helper scripts
+    exclude:
+      - ~/.claude/.scratchpad.d/private-binary-cache/LIVE.md
+      - ~/.claude/.scratchpad.d/private-binary-cache/decisions.md
+      - ~/.claude/.scratchpad.d/private-binary-cache/model.md
+      - ~/.claude/.scratchpad.d/private-binary-cache/distribution.md
+      - ~/.claude/.scratchpad.d/private-binary-cache/token-transport.md
+      - ~/.claude/.scratchpad.d/private-binary-cache/attic-facts.md
+      - ~/.claude/.scratchpad.d/private-binary-cache/attic-leaf-signer.md
+      - ~/.claude/.scratchpad.d/private-binary-cache/proofs/**
+      - ~/.claude/.scratchpad.d/private-binary-cache/probe/probe.nix
+      - ~/.claude/.scratchpad.d/private-binary-cache/probe/probe.yaml
+      - ~/.claude/.scratchpad.d/private-binary-cache/probe/sops-throwaway/**
+      - ~/.claude/.scratchpad.d/private-binary-cache/probe/attic-test-ca.crt
+      - ~/.claude/.scratchpad.d/private-binary-cache/probe/roots/**
+    note: "worktrees only as \U0001F9ED grants, removed with `git worktree remove` after clean+merged; nothing inside the incus-probe VM"
+    conversations:
+      - 9ba38f26-3549-4e68-b3ef-e4441594213f
+    role: cache
+    icon: "\U0001F4E6"
+  develop-outcluster:
+    # 🌱 outcluster (seeding)
+    owned:
+      - ~/.claude/.scratchpad.d/outcluster/**
+      - ~/.claude/.scratchpad.d/render-without-checkout/**
+      - /private/tmp/rfc-*
+      - /private/tmp/s21-*
+      - /private/tmp/rsv-*
+      - /private/tmp/rn-full*
+      - /private/tmp/rn-spotless*
+      - /private/tmp/dch-*
+      - /private/tmp/live-fix.*
+      - /private/tmp/live-oc.*
+      - /private/tmp/base.err
+      - /private/tmp/base.json
+      - /private/tmp/new.err
+      - /private/tmp/new.json
+      - /private/tmp/names.nix
+      - /private/tmp/sops-dec-probe/**
+    lives_there: live page, a closed chantier's notes, Maven logs, mutation .bak copies, flake-output comparisons
+    exclude:
+      - ~/.claude/.scratchpad.d/outcluster/LIVE.md
+      - ~/.claude/.scratchpad.d/render-without-checkout
+      - ~/.claude/.scratchpad.d/render-without-checkout/LIVE.md
+    note: "worktrees: only the EXACT path \U0001F9ED assigns per task; the fix/ chore/ refactor/ namespaces are shared. NOT its: /private/tmp/claude-501, /private/tmp/rn-test"
+    conversations:
+      - 341e7689-dd41-4936-9d5c-8bf35e808742
+    role: outcluster (seeding)
+    icon: "\U0001F331"
+  develop-golang:
+    # 🐹 go
+    owned:
+      - ~/.claude/.scratchpad.d/go-applications/scaffold/.tmp/**
+      - /Volumes/git-worktree-store/seedmatic/nix-flake-commons.d/relock/develop/.scratchpad.d/gotmp/**
+      - /private/tmp/go-fig.{mmd,svg}
+      - /private/tmp/go-shape-{1,2}.{mmd,svg}
+      - /private/tmp/go-design-{1..8}.{mmd,svg}
+      - /private/tmp/mmdc-go-design-{1..8}.mmd.log
+      - /private/tmp/m6.log
+      - /private/tmp/svc.{mmd,png}
+      - /private/tmp/svc-{1..16}.{mmd,svg}
+      - /private/tmp/wf-{1..4}.{mmd,svg}
+      - /private/tmp/bdd-{1..4}.{mmd,png}
+      - /private/tmp/live.svg
+      - /private/tmp/{case-service,bats-cases}.tsv
+      - /private/tmp/{body,app,appendix,vocab,phases,tekton,tworunners,concepts,engine-place,bdd-decided,ginkgo}.md
+      - /private/tmp/f4prose.txt
+    lives_there: Go build/test temp; regenerable mermaid renders and text fragments
+    exclude:
+      - ~/.claude/.scratchpad.d/go-applications/*.md
+      - ~/.claude/.scratchpad.d/go-applications/scaffold/*.go
+      - ~/.claude/.scratchpad.d/go-applications/scaffold/go.mod
+      - ~/.claude/.scratchpad.d/go-applications/scaffold/relock/**
+      - ~/.claude/.scratchpad.d/go-applications/scaffold/scenario/**
+      - /Volumes/git-worktree-store/seedmatic/nix-flake-commons.d/relock/develop
+    note: "the relock/develop worktree and its tracked files are \U0001F9ED's, never removed"
+    conversations:
+      - 43f36783-5d90-47cb-bc04-ce1cde2a1992
+    role: go
+    icon: "\U0001F439"
+  develop-incus:
+    # 🖥️ incus
+    owned:
+      - ~/.claude/.scratchpad.d/incus/**
+      - ~/.claude/.scratchpad.d/node-store-freeze/design.md
+      - /private/tmp/nsf/**
+      - /private/tmp/LIVE.mmd
+      - /private/tmp/l.mmd
+      - /private/tmp/l.svg
+      - /private/tmp/gc-advice.svg
+    worktrees:
+      - /Volumes/git-worktree-store/seedmatic/ndh.d/fix/incus-cert-renew-no-decrypt-dry-run
+    lives_there: notes, read-only Incus dumps (public certs, a Pulumi state export), the inc 3 design, mmdc renders
+    exclude:
+      - ~/.claude/.scratchpad.d/incus/LIVE.md
+      - ~/.claude/.scratchpad.d/incus/brief.md
+      - ~/.claude/.scratchpad.d/incus/patches/incus-cert-renew-no-decrypt-dry-run.patch
+      - ~/.claude/.scratchpad.d/node-store-freeze/design.md
+      - ~/.claude/.scratchpad.d/node-store-freeze/k8s-facts.md
+    conversations:
+      - 360eea08-3764-4db2-a48e-f34053daa428
+    role: incus
+    icon: "\U0001F5A5️"
+  develop-keys-role:
+    # 🔑 roles × keys
+    role: roles × keys
+    icon: "\U0001F511"
+    conversations:
+      - ad5a0355-a803-495d-bb49-84c97ce18a97
+    owned:
+      - ~/.claude/.scratchpad.d/roles-and-keys/**
+      - /private/tmp/roles-and-keys.*
+      - /private/tmp/certify-*
+      - /private/tmp/ndh-bats-proof*
+      - /Volumes/git-worktree-store/seedmatic/ndh.d/feature/vz-recover/.scratchpad.d/**
+      - /Volumes/git-worktree-store/seedmatic/ndh.d/feature/rdp-host-split/.scratchpad.d/**
+      - /Volumes/git-worktree-store/seedmatic/ndh.d/fix/certify-dry-run-no-decrypt/.scratchpad.d/**
+    exclude:
+      - ~/.claude/.scratchpad.d/roles-and-keys/LIVE.md
+      - ~/.claude/.scratchpad.d/roles-and-keys/*.md
+      - ~/.claude/.scratchpad.d/roles-and-keys/patches/**
+      - ~/.claude/.scratchpad.d/roles-and-keys/checkpoints/**
+      - ~/.claude/.scratchpad.d/roles-and-keys/nix_authorized_keys.*
+      - ~/.claude/.scratchpad.d/roles-and-keys/step2/**
+    lives_there: 'public material only: publics, certificate descriptions, fingerprints, plan lines'
+    note: its worktrees themselves are removed by develop with git worktree remove (they may hold smudged .secrets)
+  develop-claude:
+    # 🤖 claude config
+    role: claude config
+    icon: "\U0001F916"
+    conversations:
+      - af0dc1e5-609f-4ce0-8ab5-76a1c31bd7b0
+    owned:
+      - ~/.claude/.scratchpad.d/session-autonomy/**
+      - /private/tmp/cm.*
+      - /private/tmp/mut.*
+      - /private/tmp/hk.*
+      - /private/tmp/sa.mmd
+      - /private/tmp/sa.svg
+      - /private/tmp/sa-*.out
+      - /private/tmp/sa-*.log
+      - /private/tmp/ns.log
+      - /private/tmp/sw.log
+      - /private/tmp/op.log
+      - /private/tmp/dt.log
+    worktrees:
+      - /Volumes/git-worktree-store/seedmatic/ndh.d/fix/hook-messages
+      - /Volumes/git-worktree-store/seedmatic/ndh.d/fix/deny-secret-reading-tools
+    exclude:
+      - ~/.claude/.scratchpad.d/session-autonomy/LIVE.md
+    lives_there: commit-message drafts, mktemp probes (generated managed lists, mutation copies, archive extracts), figure checks, build logs
