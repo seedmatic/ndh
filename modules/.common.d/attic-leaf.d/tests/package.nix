@@ -14,7 +14,8 @@ pkgs.runCommand "attic-leaf-bats"
     ];
   }
   ''
-    cp -r ${../.} attic-leaf.d && chmod -R u+w attic-leaf.d
-    cd attic-leaf.d/tests && HOME=$TMPDIR bats .
+    # The whole modules tree: the signer sources ../shell.d/logger.sh.
+    cp -r ${../../..} modules && chmod -R u+w modules
+    cd modules/.common.d/attic-leaf.d/tests && HOME=$TMPDIR bats .
     touch $out
   ''

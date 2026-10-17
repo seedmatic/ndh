@@ -7,7 +7,7 @@
 setup() {
   t="$BATS_TEST_TMPDIR"
   mkdir -p "$t/bin" "$t/tls"
-  printf '#!/usr/bin/env bash\nexit 0\n' >"$t/bin/chgrp"
+  printf '#!%s\nexit 0\n' "$BASH" >"$t/bin/chgrp"
   chmod +x "$t/bin/chgrp"
   script="${BATS_TEST_DIRNAME}/../tls-key.sh"
 }

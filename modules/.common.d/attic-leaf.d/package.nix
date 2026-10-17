@@ -20,10 +20,12 @@ pkgs.writeShellApplication {
   name = "attic-leaf-sign";
   # SC2029: $remoteDir and $hostTls are expanded on the client ON PURPOSE, quoted into the remote
   # commands. SC2016: the single-quoted remote scripts (the tmpfs dir, the preflight) expand on the
-  # GUEST, which is the point.
+  # GUEST, which is the point. SC1091: the logger library is sourced from the store, which
+  # shellcheck cannot follow.
   excludeShellChecks = [
     "SC2029"
     "SC2016"
+    "SC1091"
   ];
   runtimeInputs = [
     pkgs.sops
@@ -35,6 +37,8 @@ pkgs.writeShellApplication {
     pkgs.gnugrep
   ];
   text = ''
+    source ${../shell.d/logger.sh}
+    loggerTag=ndh.attic-leaf-sign
     keysYaml=${lib.escapeShellArg "${../../home-manager/ssh.d/keys.yaml}"}
     authority=mammoth-skate-tls
     sshUser=${lib.escapeShellArg operatorIdentity.user}
