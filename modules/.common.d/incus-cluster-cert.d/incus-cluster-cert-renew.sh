@@ -18,8 +18,10 @@ unset BASH_XTRACEFD 2>/dev/null || true
 # (public) comes to the operator seat, which checks it names EXACTLY the fleet's names and carries the key the
 # cluster serves, then signs it with a pinned leaf profile; only the certificate (public) goes back,
 # installed with the same key through the member's LOCAL unix socket (`sudo incus cluster
-# update-certificate`). The authority's private is never written: sops is piped and step-cli reads it
-# through process substitution. Each signed leaf is recorded in the operator seat's ledger.
+# update-certificate`). The authority's private is decrypted at ONE place, right before the signature,
+# and step-cli reads it through process substitution: never written, never held in a variable, and
+# never decrypted by a run that signs nothing (--check, --dry-run, an activation with nothing due).
+# Each signed leaf is recorded in the operator seat's ledger.
 #
 # ★ ONE certificate serves every member: `update-certificate` installs it cluster-wide. A
 # member still serving the old leaf after the update is restarted (`systemctl restart incus`) —
@@ -31,11 +33,26 @@ unset BASH_XTRACEFD 2>/dev/null || true
 # without `server-crt`, so the provider verifies the leaf by NAME against the TLS authority's root,
 # which its pod trusts — a renewal needs no re-pin there.
 
-log() { printf '[incus-cluster-cert] %s\n' "$*" >&2; }
+# stderr goes to the log sink (below); each message is also written to the invoking console.
+log() {
+  printf '[incus-cluster-cert] %s\n' "$*" >&2
+  ndh::logger:notice "[incus-cluster-cert] $*"
+}
 die() {
   printf '[incus-cluster-cert] ERROR: %s\n' "$*" >&2
+  ndh::logger:notice "[incus-cluster-cert] ERROR: $*"
   exit 1
 }
+
+# Every run is logged under its tag, so whether an activation decrypted or signed is answerable from
+# the unified log, not only from the activation's output: the script re-runs itself ONCE inside
+# ndh::logger:command:run, which sends its stderr to the sink and keeps the console on fd 3. The
+# exit status is the re-run's.
+if [[ -z ${NDH_INCUS_CLUSTER_CERT_LOGGED:-} ]]; then
+  export NDH_INCUS_CLUSTER_CERT_LOGGED=1
+  ndh::logger:command:run "$loggerTag" bash "${BASH_SOURCE[0]}" "$@"
+  exit 0
+fi
 
 # Exit contract: 0 the cluster is (now) CURRENT, or --dry-run reached the signature · 10 --check found a
 # RENEW or REPIN to do · 2 a member is ABSENT · 1 anything that failed. --check classifies only;
@@ -91,28 +108,31 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# --- The authority's signing slot, never materialised ---------------------------------------
-# keys.yaml is decrypted straight into yq through a PIPE, and only the signing slot of this
-# authority comes out: the fleet's other privates are never held in a variable, and nothing
-# goes through a here-string, which bash may back with a temporary FILE.
-log "reading ${authority} from keys.yaml (piped, nothing written)"
-selected="$(sops --decrypt --input-type yaml --output-type yaml "$keysYaml" | yq -o=json "
+# --- The authority's signing slot: cleartext metadata, the private left encrypted ------------
+# sops encrypts only each slot's `private`: usage, slots, `compromised` and `ca_crt` are in the CLEAR
+# in the encrypted keys.yaml, so plain yq reads everything the classification needs, and the age
+# key is not touched here. A field read as `ENC[…]` means that contract changed: refused, so a
+# ciphertext can never pass for a certificate or a usage.
+log "reading ${authority} from keys.yaml (cleartext metadata, nothing decrypted)"
+selected="$(yq -o=json "
   .authorities.\"${authority}\" as \$a
   | ((\$a.slots // {}) | to_entries | sort_by(.key)
      | map(select((.value.compromised // \"\") == \"\")) | .[0]) as \$s
   | {\"usage\": ((\$a.usage // []) | join(\",\")), \"slot\": (\$s.key // \"\"),
-     \"ca\": (\$s.value.ca_crt // \"\"), \"key\": (\$s.value.private // \"\")}")" ||
-  die "cannot decrypt keys.yaml — is the operator's sops age key available on this operator seat?"
+     \"ca\": (\$s.value.ca_crt // \"\"), \"hasKey\": ((\$s.value.private // \"\") != \"\")}" "$keysYaml")" ||
+  die "cannot read keys.yaml at $keysYaml"
 field() { printf '%s' "$selected" | yq -r ".$1"; }
 usage="$(field usage)"
 slot="$(field slot)"
 caCrt="$(field ca)"
-caKey="$(field key)"
+hasKey="$(field hasKey)"
 unset selected
+[[ $usage != *ENC\[* && $caCrt == "-----BEGIN CERTIFICATE-----"* ]] ||
+  die "${authority}'s usage or ca_crt is not cleartext in keys.yaml — the cleartext-metadata contract changed"
 [[ ,${usage}, == *,tls-authority,* ]] || die "${authority} does not advertise tls-authority"
 # The signing slot: the oldest one not marked compromised (keys.schema.yaml, authoritySlots).
 [[ -n $slot ]] || die "${authority} has no slot that may sign"
-[[ -n $caCrt && -n $caKey ]] || die "${authority}@${slot} lacks its ca_crt or its private"
+[[ -n $caCrt && $hasKey == true ]] || die "${authority}@${slot} lacks its ca_crt or its private"
 printf '%s\n' "$caCrt" >"$work/ca.crt"
 caFp="$(openssl x509 -noout -fingerprint -sha1 -in "$work/ca.crt" | sed -e 's/.*=//' -e 's/://g')"
 log "signing slot ${authority}@${slot}, root ${caFp}"
@@ -330,10 +350,19 @@ cat >"$work/leaf.tpl" <<'TPL'
 }
 TPL
 log "signing the CSR for ${days}d with ${authority}@${slot}"
-step certificate sign "$work/cluster.csr" "$work/ca.crt" <(printf '%s\n' "$caKey") \
-  --template "$work/leaf.tpl" --not-after "$((days * 24))h" >"$work/leaf.crt" 2>"$work/sign.err" ||
-  die "step certificate sign failed: $(tail -1 "$work/sign.err")"
-unset caKey
+# The only sops call: everything before it reads cleartext metadata. One slot's private, straight
+# into step through a process substitution, never a variable or a file. sops' stderr goes to a file in
+# the 0700 work dir and is never reproduced, here or in the log: only its exit status is (`wait $!`
+# is the process substitution's).
+log "decrypting ${authority}@${slot}'s private to sign (the only decryption of this run)"
+signRc=0
+step certificate sign "$work/cluster.csr" "$work/ca.crt" \
+  <(sops --decrypt --extract "[\"authorities\"][\"${authority}\"][\"slots\"][\"${slot}\"][\"private\"]" "$keysYaml" 2>"$work/sops.err") \
+  --template "$work/leaf.tpl" --not-after "$((days * 24))h" >"$work/leaf.crt" 2>"$work/sign.err" || signRc=$?
+sopsRc=0
+wait "$!" || sopsRc=$?
+((sopsRc == 0)) || die "sops decrypt of ${authority}@${slot} failed (exit ${sopsRc})"
+((signRc == 0)) || die "step certificate sign failed: $(tail -1 "$work/sign.err")"
 step certificate verify "$work/leaf.crt" --roots "$work/ca.crt" >/dev/null ||
   die "the signed leaf does not chain to ${authority}@${slot}"
 [[ "$(pubOf x509 "$work/leaf.crt")" == "$(pubOf req "$work/cluster.csr")" ]] || die "the signed leaf does not carry the CSR's key"
