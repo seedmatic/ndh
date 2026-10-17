@@ -396,7 +396,7 @@ purge() {
   say "NOT purged by this gesture, to report to 🛡️ as remaining actions:"
   say "  the containers' delivery snapshots and their own frozen layers"
   say "  the Macs' stores (a delegated build's output is copied back to the Mac)"
-  say "  every binary cache the paths reached (attic, nxmatic.cachix if a watch-store ran)"
+  say "  every binary cache the paths reached (each metalspace's attic)"
   say "  the old layers, until \`ndh-store confirm --yes\` after this reboot"
   say "  the host's disk image and its SSD, even after confirm: a purge is hygiene, not erasure —"
   say "  if these paths held a secret, ROTATE it"

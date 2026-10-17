@@ -17,6 +17,8 @@ setup() {
   mk sopsbad "$(printf '# sops:encrypted\nprivate: hunter2')"
   mk akia "key=AKIA$(printf 'Z%.0s' {1..16})"
   mk awssecret "aws_secret_access_key = $(printf 'w%.0s' {1..40})"
+  mk nixsecret "secret-key = seedmatic-test-1:$(printf 'A%.0s' {1..86})=="
+  mk nixpublic "trusted-public-keys = seedmatic-test-1:$(printf 'A%.0s' {1..43})="
   mk header "$(printf -- 'grep for -----BEGIN OPENSSH PRIVATE KEY-----\nto tell a key file')"
   mk sopsok "$(printf '# sops:encrypted\nprivate: ENC[AES256_GCM,data:x]')"
   mk doc "the AKIA prefix names an access key; set aws_secret_access_key = <yours>"
@@ -26,7 +28,7 @@ setup() {
 guard() { run bash -euo pipefail "$script" "$@"; }
 
 @test "every secret shape is refused" {
-  for p in age jwt ghp armour sopsbad akia awssecret; do
+  for p in age jwt ghp armour sopsbad akia awssecret nixsecret; do
     guard "$t/$p"
     [ "$status" -eq 1 ]
     [ "$output" = "refused $t/$p" ]
@@ -34,7 +36,7 @@ guard() { run bash -euo pipefail "$script" "$@"; }
 }
 
 @test "the look-alikes pass" {
-  guard "$t/header" "$t/sopsok" "$t/doc" "$t/clean"
+  guard "$t/header" "$t/sopsok" "$t/doc" "$t/nixpublic" "$t/clean"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 }
