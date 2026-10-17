@@ -236,7 +236,7 @@ sessions:
     role: incus
     icon: "\U0001F5A5️"
     workspace: /Volumes/git-worktree-store/seedmatic/rke2lab.d/develop # the project of its transcript (measured 2026-10-17); ndh-claude-wake opens it
-  develop-keys-role:
+  develop-keys:
     # 🔑 roles × keys
     role: roles × keys
     icon: "\U0001F511"
