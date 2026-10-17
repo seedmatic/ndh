@@ -244,6 +244,7 @@ in
     ./nixpkgs.nix
     ./nix-settings.nix
     ./cache-trust.nix
+    ./nix-signing.nix
     ./io-seedmatic-ndh-bringup-runtime.nix
 
     # Networking

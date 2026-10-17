@@ -1166,6 +1166,55 @@
               };
           nfsd-off-bats = import ./modules/darwin/nfsd-off.d/tests/package.nix { inherit pkgs; };
           sops-age-bootstrap-bats = import ./modules/.common.d/sops.d/tests/package.nix { inherit pkgs; };
+          nix-signing-place-bats = import ./modules/.common.d/nix-signing.d/tests/package.nix {
+            inherit pkgs;
+          };
+          # The fleet trusts every current slot's nixSigning and nothing else: a host key's two slots, never a slot
+          # without one or a non-host key, and a retired slot (deleted from keys.yaml) leaves the list with it. And
+          # every key a machine signs with is in every machine's trust.
+          nix-signing-trust =
+            let
+              lib = nixpkgs.lib;
+              trust = import ./modules/.common.d/nix-signing.d/trust.nix { inherit lib; };
+              fixture = {
+                host-a.slots."26-01-01".nixSigning = "seedmatic-a-1:old";
+                host-a.slots."26-10-01".nixSigning = "seedmatic-a-2:new";
+                host-b.slots."26-01-01".public = "no-nix-signing";
+                sshfs-c.slots."26-01-01".nixSigning = "seedmatic-c-1:not-a-host";
+              };
+              retired = lib.recursiveUpdate fixture {
+                host-a.slots = removeAttrs fixture.host-a.slots [ "26-01-01" ];
+              };
+              machines =
+                map (n: self.darwinConfigurations.${n}.config) [
+                  "bioskop"
+                  "nikopol"
+                ]
+                ++ map (n: self.nixosConfigurations.${n}.config) [
+                  "bioskop-nixos"
+                  "nikopol-nixos"
+                ];
+              signing = lib.concatMap (
+                c:
+                map (f: lib.removeSuffix ".sec" (baseNameOf f)) (
+                  lib.filter (lib.hasPrefix c.ndh.nixSigning.dir) c.nix.settings.secret-key-files
+                )
+              ) machines;
+              trusted = c: map (k: lib.head (lib.splitString ":" k)) c.nix.settings.extra-trusted-public-keys;
+            in
+            assert lib.assertMsg (
+              lib.sort lib.lessThan (trust fixture) == [
+                "seedmatic-a-1:old"
+                "seedmatic-a-2:new"
+              ]
+            ) "nix-signing trust: the current host-key slots, and only them";
+            assert lib.assertMsg (
+              trust retired == [ "seedmatic-a-2:new" ]
+            ) "nix-signing trust: a retired slot still trusted";
+            assert lib.assertMsg (lib.all (
+              c: lib.all (n: lib.elem n (trusted c)) signing
+            ) machines) "nix-signing trust: a machine signs with a key another machine does not trust";
+            pkgs.runCommand "nix-signing-trust" { } "touch $out";
           # nix itself reads the derived secret: its public, as nix computes it, is the one --public prints. On a
           # throwaway host key generated here; the package's own tests carry the known vector.
           nix-signing-derive-nix-format =
