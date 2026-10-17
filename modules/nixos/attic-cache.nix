@@ -225,7 +225,9 @@ in
 
     address = lib.mkOption {
       type = lib.types.str;
-      example = "172.16.0.10/21";
+      default = "${metalspaceEntry.atticAddress}/${lib.last (lib.splitString "/" metalspaceEntry.netCidr)}";
+      defaultText = lib.literalExpression "\"\${netplan.baremetal.\${metalspace}.atticAddress}/<netCidr's prefix>\"";
+      example = "172.16.0.120/21";
       description = "The container's static address on fabric-br, with the fabric's prefix.";
     };
 
