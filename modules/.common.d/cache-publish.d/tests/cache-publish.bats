@@ -90,8 +90,20 @@ EOF
   printf 'the-push-token\n' >"$t/token"
 
   script="${BATS_TEST_DIRNAME}/../cache-publish.sh"
+  # The canonical remote: develop carries the pushed revision; a clone holds one commit never pushed.
+  g() { git -c user.name=t -c user.email=t@t -c commit.gpgsign=false "$@"; }
+  git init -q --bare "$t/remote.git"
+  g init -q -b develop "$t/clone"
+  g -C "$t/clone" commit -q --allow-empty -m pushed
+  g -C "$t/clone" push -q "$t/remote.git" develop
+  g -C "$t/clone" branch -q main
+  g -C "$t/clone" push -q "$t/remote.git" main
+  pushed="$(git -C "$t/clone" rev-parse HEAD)"
+  g -C "$t/clone" commit -q --allow-empty -m unpushed
+  unpushed="$(git -C "$t/clone" rev-parse HEAD)"
+
   export OUTPUTS=$'a\nb' CACHE=nxmatic PUBLIC_URL=https://pub.test UPSTREAMS=https://up.test \
-    TOKEN_FILE="$t/token" JOBS=4
+    TOKEN_FILE="$t/token" JOBS=4 REMOTE="file://$t/remote.git"
 }
 
 publish() { PATH="$t/bin:$PATH" run bash -euo pipefail "$script" "$@"; }
@@ -120,8 +132,18 @@ listed() { printf '%s\n' "$output" | grep "^$1 " | sed "s|$s/||" | cut -d' ' -f2
   [ ! -e "$t/nix.calls" ]
 }
 
+@test "--apply takes only a github revision merged into the canonical remote, before any build" {
+  for ref in "git+file:///repo?rev=$pushed" "github:fork/ndh/$pushed" "github:seedmatic/ndh/$unpushed"; do
+    publish --apply "$ref"
+    [ "$status" -eq 1 ]
+    [[ $output == *"pushed revision only"* || $output == *"not merged into develop or main"* ]]
+  done
+  [ ! -e "$t/nix.calls" ]
+  [ ! -e "$t/cachix.argv" ]
+}
+
 @test "--apply pushes exactly the publishable set, with the token through cachix's stdin" {
-  publish --apply "git+file:///repo?rev=$rev"
+  publish --apply "github:seedmatic/ndh/$pushed"
   [ "$status" -eq 0 ]
   [ "$(sort "$t/public.hashes" | tr '\n' ' ')" = "awsd hdr1 pkga sopk " ]
   [ "$(cat "$t/cachix.token")" = the-push-token ]
@@ -132,13 +154,13 @@ listed() { printf '%s\n' "$output" | grep "^$1 " | sed "s|$s/||" | cut -d' ' -f2
 
 @test "--apply fails loudly when a private path is already public" {
   printf 'src1\n' >"$t/public.hashes"
-  publish --apply "git+file:///repo?rev=$rev"
+  publish --apply "github:seedmatic/ndh/$pushed"
   [ "$status" -eq 1 ]
   [[ $output == *"PRIVATE path served by the public cache"*"src1-source"* ]]
 }
 
 @test "--apply fails when a published path is not served afterwards" {
-  DROP=pkga publish --apply "git+file:///repo?rev=$rev"
+  DROP=pkga publish --apply "github:seedmatic/ndh/$pushed"
   [ "$status" -eq 1 ]
   [[ $output == *"missing after the push"*"pkga-tool"* ]]
 }

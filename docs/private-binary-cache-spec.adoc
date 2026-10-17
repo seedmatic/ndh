@@ -25,9 +25,9 @@ each host builds them again. The cache makes a path **built once and substituted
 * **each access point builds** — bioskop and nikopol, from its darwin host or its NixOS guest —
   from a **pushed revision**, never from a working tree (see <<per-metalspace>>, <<revisions-only>>);
 * what is **trusted enough to publish** goes to the **public** `nxmatic` cachix. That covers an
-  allow-list of named outputs, built and not added, which passed a content guard, signed with a
-  publication key; **both access points publish**, each with its own (see <<public-private-split>>,
-  <<per-metalspace>>);
+  allow-list of named outputs, built and not added, which passed a content guard, from a pushed
+  revision merged into develop or main; **both access points publish**, each with its own cachix
+  push token (see <<public-private-split>>, <<per-metalspace>>);
 * **everything else** stays in **each metalspace's private** cache: an **attic** server in a cache
   container (an Incus container) on that metalspace's NixOS guest, filled by an `attic watch-store`
   on each machine of the access point, read by every machine, every read of which needs a token (see
@@ -48,9 +48,9 @@ the previous day (see <<retention>>). It skips the paths whose signature says an
 serves them.
 
 | Trusted paths public, the rest private
-| The publication key marks a path as published. attic's upstream filter skips that key, so a
-published path is never kept privately, and a path the builder did not publish is never served by
-nobody (see <<public-private-split>>).
+| Only the computed publishable set reaches cachix, which signs what it serves with
+`nxmatic.cachix.org-1`; the rest stays in attic. A published path may also be kept privately (a
+duplicate, disk only), and none is served by nobody (see <<public-private-split>>).
 
 | Each access point writes its own metalspace's private cache, and reads both
 | Each machine uploads to its own metalspace's attic, with a write token of its own, and reads both
@@ -97,13 +97,15 @@ machine reads **both** caches. The sections still written for one cache or one b
 (<<who-fills>>, <<write-tokens>>, <<revisions-only>>, <<builder-tests>>, the fill job of
 <<public-private-split>>) are superseded where they contradict this one, until they are rewritten.
 **Both access points publish** to the public cachix tier (operator, 2026-10-16), each with its own
-publication key, `seedmatic-<metalspace>-publish-1`, and its own cachix push token, so a published
-path's provenance stays legible. Each publication keeps the three guards of the former single fill
-job: a **dedicated publishing user**, **revisions only**, and the **content guard** before the push.
-Revoking a metalspace's publication means removing its key from every consumer's
-`trusted-public-keys` **and** purging, or re-signing, the paths it already signed in cachix.
+cachix push token. Each publication keeps the three guards of the former single fill job: a
+**dedicated publishing user**, **revisions only**, and the **content guard** before the push.
+**No publication key (operator, 2026-10-17)**, superseding "each its own key" of 2026-10-16: adding a
+signature to the store needs a trusted user of the daemon, which is root over the store and would
+defeat the dedicated user; and the key was checked by no consumer. The public trust is
+`nxmatic.cachix.org-1`, which cachix applies to what it serves. Revoking a metalspace's publication
+means revoking its cachix push token and purging what it pushed.
 
-⚠️ nikopol's publication key and cachix token live on the darwin host nikopol, a macOS guest under
+⚠️ nikopol's cachix token lives on the darwin host nikopol, a macOS guest under
 the corporate hypervisor, and the public tier is the one the **clusters** trust: the corporate
 bare-metal's reach extends to every cluster, beyond bioskop's private reads. **Accepted by the
 operator on 2026-10-16** (the security model's "corp IT"), not an absence of risk (🛡️).
@@ -268,18 +270,12 @@ builds from source.
 `git+file:///Volumes/git-bare-store/seedmatic/{repo}.git?ref=develop&rev={sha}` (host-registry id
 `{repo}-bare/develop/{sha}`). Never a working tree (see <<revisions-only>>).
 
-| *Publication key*
-| `seedmatic-publish-1`, the signing key that means "the fill job built this from a revision, and it
-passed the guard: publish it". It is **not** in `secret-key-files`. The fill job applies it
-explicitly (see <<public-private-split>>).
-
 | *Added path*
 | A path that entered the store by `addToStore`, not by a build: a flake `-source`, a
 `builtins.path`, a `builtins.toFile`, a sops-nix file. It has no deriver, and no key signs it.
 
 | *Fill*
-| One builder run: build from a revision, select and sign the paths to publish, push them to
-cachix, send each host its closure, then keep the private remainder alive.
+| One builder run: build from a revision, select the paths to publish, push them to cachix, send each host its closure, then keep the private remainder alive.
 
 | *Public tier, private tier*
 | `nxmatic.cachix.org`, readable by anyone, which holds only what the fill job published; and attic,
@@ -568,7 +564,7 @@ dedicated launchd job:
 
 * it runs under its own user, with its own fetcher cache (see <<revisions-only>>);
 * it evaluates a revision, with `--option allow-dirty false` on its own command line;
-* it holds no attic token, but the only cachix push token and the publication key: what it
+* it holds no attic token, but its access point's cachix push token: what it
   publishes goes to cachix, and bioskop's watch-store uploads the rest to attic.
 
 The operator's `nix.conf` keeps `allow-dirty` at its default, because a global `false` would break
@@ -605,11 +601,10 @@ sequenceDiagram
   F->>G: fetch the revision — git objects, its own fetcher cache
   F->>F: build every configuration, Linux parts on bioskop-nixos
   F->>F: compute the publishable set — closure rule and content guard
-  F->>F: nix store sign with seedmatic-publish-1, that set only
   F->>C: cachix push, that set only
   F->>C: check that cachix holds exactly that set
   F->>H: nix copy — each host its closure
-  W->>A: upload each new path, skipped if a listed key signed it
+  W->>A: upload each new path, skipped if a listed key signed it (a published one may be kept too)
   F->>A: keep-alive — download the NAR of every private live-set path
 ....
 
@@ -641,7 +636,9 @@ Measured on 2026-10-11: 15 of 15 added paths in bioskop's closure have no derive
 `secret-key-files` key ever signs one (see <<signature-scope>>)
 
 | built **from a revision**
-| the fill job evaluates nothing else (see <<revisions-only>>)
+| the fill job evaluates nothing else (see <<revisions-only>>); to push, a revision GitHub serves,
+`github:seedmatic/ndh/<sha>`, merged into develop or main of the canonical remote, since a local
+bare can hold an unpushed commit and what goes public derives from public sources only
 
 | passes the **content guard**
 | no private-key armour with a body, no `AGE-SECRET-KEY-1`, no JWT, no `tskey-`, `gh[opsu]_`,
@@ -663,7 +660,7 @@ flowchart TD
   G -->|"no"| PRIV
   G -->|"yes"| C{"every reference publishable or upstream?"}
   C -->|"no"| PRIV
-  C -->|"yes"| PUB["PUBLISHABLE — signed with seedmatic-publish-1, pushed to cachix"]:::pub
+  C -->|"yes"| PUB["PUBLISHABLE — pushed to cachix, which signs it nxmatic.cachix.org-1"]:::pub
 
   classDef pub fill:#dcfce7,stroke:#15803d,stroke-width:2px;
   classDef priv fill:#ddd9f2,stroke:#5b52b8,stroke-width:2px;
@@ -695,29 +692,26 @@ or the home-manager files. 6 of the closure's 19 added paths are served by cache
 nixpkgs source among them) and do not taint. So the packages publish, and a system's private
 remainder is its aggregates.
 
-=== One signature for both tiers — the publication key
+=== One signature, cachix's — no publication key
 
 [cols="1,3",options="header"]
 |===
 | Step | Rule
 
-| the key
-| `seedmatic-publish-1`, generated with `nix key generate-secret`, its secret half sops-encrypted in
-ndh and decrypted for the fill job's user only. **Never in a flake tree, never in
-`secret-key-files`**
-
-| signing
-| `nix store sign --key-file {key}` over the publishable set only, after the build. Applied like the
-layer key, by a step, never by the daemon
-
-| the private tier's filter
-| `seedmatic-publish-1` joins attic's `upstream-cache-key-names`, so a watch-store skips a path once
-it is published. `nxmatic.cachix.org-1` joins it too, for paths substituted from the public tier
+| no key of ours
+| **decided by the operator on 2026-10-17**: `nix store sign` adds a signature through the daemon,
+which accepts it only from a trusted user, i.e. root over the store. The publishing user is not one,
+so the job signs nothing
 
 | the public tier's signature
-| `nxmatic` is a cachix-**managed** signing cache: ndh holds its push token
-(`cachix.nxmatic.token` in `.secrets`), not its private key. A published path therefore carries
-`seedmatic-publish-1` **locally** and `nxmatic.cachix.org-1` on the narinfo cachix serves
+| `nxmatic` is a cachix-**managed** signing cache: each access point holds its own push token
+(`cachix/nxmatic/publish/<host>` in ndh's `.secrets`), not the cache's private key. A published path
+carries `nxmatic.cachix.org-1` on the narinfo cachix serves
+
+| the private tier's filter
+| `nxmatic.cachix.org-1` is in attic's `upstream-cache-key-names`, for paths substituted from the
+public tier. A path the job published from a local build carries no such signature locally, so its
+machine's watch-store may keep a private copy too: a duplicate, disk only
 |===
 
 Which key is checked where:
@@ -731,10 +725,6 @@ Which key is checked where:
 
 | attic's cache key
 | the hosts, in `trusted-public-keys`, for the private tier
-
-| `seedmatic-publish-1`
-| **nobody's** `trusted-public-keys`. It is read only locally, by attic's upload filter, as a
-key name. It proves nothing to a consumer, and no consumer needs it
 |===
 
 [[signature-scope]]
@@ -751,10 +741,9 @@ Measured on 2026-10-11 (nix 2.34.8):
 * fixed-output outputs (fetchers) are content-addressed too, but they have a deriver and are signed
   like any build.
 
-And `secret-key-files` is **daemon-wide**. A publication key placed there would sign the operator's
-dirty dev builds on bioskop, and the dirty remote builds bioskop-nixos receives. A built output that
-copies `${self}` content into `$out` would be signed. So the key is applied by the fill job, never
-by the daemon.
+And `secret-key-files` is **daemon-wide**. A key placed there signs the operator's dirty dev builds
+on bioskop, and the dirty remote builds bioskop-nixos receives. A built output that copies `${self}`
+content into `$out` is signed. So no key there can mean "published from a revision".
 
 === The limits
 
@@ -1060,8 +1049,7 @@ signatures **from the local Nix DB**, splits each at the `:`, and drops the path
 in the list. It asks no upstream server (attic `client/src/push.rs:449-466`).
 
 The list is `cache.nixos.org-1`, `flox-cache-public-1`, `floxhub-1`, the layer key below, and the
-two keys of the public tier: `seedmatic-publish-1` and `nxmatic.cachix.org-1` (see
-<<public-private-split>>). It is **not** ndh's `trusted-public-keys` as they stand:
+key of the public tier, `nxmatic.cachix.org-1` (see <<public-private-split>>). It is **not** ndh's `trusted-public-keys` as they stand:
 
 [cols="1,3",options="header"]
 |===
@@ -1077,8 +1065,6 @@ needs no private copy. The price: about a hundred local paths still carry it fro
 (690 of 690 truly-ours paths answered 404 after it), and those are served by nobody until a fill
 re-publishes them.
 
-| `seedmatic-publish-1` — in
-| a path the fill job published carries it locally, before any consumer substitutes it from cachix
 |===
 
 The filter misses what upstream serves but no local signature says: **297 paths (0.66 GiB)** across
@@ -1824,9 +1810,11 @@ leaves the container, with no sops and no store
 | the container itself; the tokens are minted inside with `atticadm`. If it is lost, the tokens are
 re-minted
 
-| an access point's **publication key** `seedmatic-<metalspace>-publish-1` and its **cachix push token**
-| sops, per access point, decrypted for its dedicated publishing user only
-| both access points publish (operator, 2026-10-16); one key and one cachix token each
+| an access point's **cachix push token**
+| sops (`cachix/nxmatic/publish/<host>`), per access point, decrypted for its dedicated publishing
+user (`_ndh-publish`) only
+| both access points publish (operator, 2026-10-16); one cachix token each and no publication key
+(operator, 2026-10-17)
 
 | the **attic tokens** — a write token per machine to its own metalspace's cache, a read token per machine to
 each cache
@@ -1846,12 +1834,12 @@ stay on S2
 ====
 
 * attic's server secret (`ATTIC_SERVER_TOKEN_RS256_SECRET_BASE64`, through `services.atticd`'s
-  `environmentFile`), the cache's signing key, the layer key, the publication key
-  `seedmatic-publish-1`, the cachix push token and every attic token are **sops-encrypted at rest**,
+  `environmentFile`), the cache's signing key, the layer key, the cachix push tokens and every attic
+  token are **sops-encrypted at rest**,
   in ndh. They are decrypted only into `/run/secrets` (tmpfs, root-only, mode 0400), and never sit in a
   flake tree.
-* The publication key and the cachix push token are decrypted for the **fill job's user only**. No
-  host's watch-store, no consumer and no container holds either.
+* An access point's cachix push token is decrypted for its **publishing user only**. No host's
+  watch-store, no consumer and no container holds it.
 * attic-nixos gets its `environmentFile` from nerd-nixos: decrypted there by sops-nix, and passed
   as a read-only Incus disk device. The container holds no age key and evaluates nothing.
 * The cache is created **without** `--public`. Tokens come from `atticadm make-token`: **a write
@@ -1866,8 +1854,6 @@ stay on S2
   (`nxmatic.cachix.org`, key `nxmatic.cachix.org-1`), then attic (its fabric URL, its cache key, and
   a `netrc-file` pointing at the decrypted read token). On a cluster: the public ones only, with no
   attic entry.
-* `seedmatic-publish-1` is in **no** `trusted-public-keys`: it is a key name for attic's upload
-  filter, not a key any consumer checks (see <<public-private-split>>).
 
 [mermaid]
 ....
@@ -2077,7 +2063,6 @@ nix build "github:seedmatic/ndh/$REV#darwinConfigurations.nikopol.system" --opti
 [source,bash]
 ----
 # {set}: the publishable paths of the allow-listed outputs — closure rule and content guard
-nix store sign --key-file {publication key} {set}
 cachix push nxmatic {set}      # the set, explicitly, path by path
 # then: every path of {set} answers 200 on cachix, and no closure member outside it does
 ----
@@ -2087,10 +2072,11 @@ cachix push nxmatic {set}      # the set, explicitly, path by path
 `cachix push` uploads the closure. One built output whose closure reaches the ndh `self` source or a
 sops-nix file would publish them. Publish only the computed set (see <<public-private-split>>).
 
-=== ❌ Put the publication key in `secret-key-files`
+=== ❌ Sign the published paths locally, as a trusted user or through `secret-key-files`
 
-The daemon would sign every build with it, the operator's dirty dev builds and the remote builds
-included, and the key would stop meaning "published from a revision" (see <<signature-scope>>).
+A trusted publishing user is root over the store, which defeats the dedicated user; in
+`secret-key-files`, the daemon signs every build, the operator's dirty dev builds and the remote
+builds included (see <<signature-scope>>). cachix signs what it serves.
 
 === ❌ Evaluate a working tree on the builder — even once, even clean
 

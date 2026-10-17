@@ -8,6 +8,7 @@ pkgs.runCommand "cache-publish-bats"
       coreutils
       findutils
       gawk
+      git
       gnugrep
       gnused
       yq-go

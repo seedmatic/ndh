@@ -1296,6 +1296,7 @@
             publicUrl = "https://nxmatic.cachix.org";
             upstreams = [ "https://cache.nixos.org" ];
             tokenFile = "/nonexistent";
+            remote = "https://github.com/seedmatic/ndh";
           };
           tls-authority-keychain-bats = import ./modules/darwin/tls-authority-keychain.d/tests/package.nix {
             inherit pkgs;
