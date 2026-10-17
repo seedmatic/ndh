@@ -17,6 +17,7 @@
     "Writing in the sessions' own work areas, ~/.claude/.scratchpad.d/** and the memory worktree /Volumes/git-worktree-store/seedmatic/rke2lab.d/memory/**, by the file tools or by Bash (redirections, heredocs, tee, mkdir, cp, mv), and running the helper scripts kept there. The managed denies still apply inside them."
     "Running ndh-ops <tool> from a pushed ndh revision (nix run github:seedmatic/ndh/<sha>#ndh-ops -- <tool> …) while the operator's armed delegation names that tool, and ndh-ops status or disarm at any time: ndh-ops refuses the tool otherwise and logs every run."
     "Running ndh-claude-wake after a cold restart (the integration, or operations as its fallback): it reopens the sessions security engraved through VS Code's documented open?session= link, never runs claude itself, and the sessions it wakes stay idle until the integration messages them."
+    "Switching the fleet through fleet-switch, as installed by ndh (on the PATH of the system profile) or run from a pushed ndh revision: operations' loop over the machines in their order, each switched by ndh-switch with its own refusals and logs. The operator delegated it to operations on 2026-10-17."
     "Switching a machine through ndh-switch <machine> <rev>, as installed by ndh (on the PATH of the system profile) or run from a pushed ndh revision (nix run github:seedmatic/ndh/<sha>#ndh-switch): it switches only a pushed revision of a known machine, and logs what it ran. The operator delegated these switches to the sessions on 2026-10-17."
   ];
 
@@ -42,6 +43,6 @@
     "Running the operator's secret-reading tools, however invoked (by name, a store path, nix run of an attribute, a variable): ssh-keys-certify, ssh-keys-renew, attic-leaf-sign, incus-cluster-cert-renew, ndh-keyring, ndh-identity-push. The operator runs them; the one exception is ndh-ops on a delegation the operator armed."
     "Arming a delegation: ndh-ops arm, however invoked, and any write to /var/db/ndh-ops (the delegation file), by a tool, a redirection, sudo or a script."
     "Publishing binaries: cachix push, attic push, nix copy --to a cache. Publication is the dedicated publishing user's job."
-    "The operator's live gestures: host switches by any other way than ndh-switch (darwin-rebuild, nixos-rebuild, home-manager switch, an activate script); creating, editing or shadowing an ndh-switch executable or alias outside an ndh branch; key generation, rotation and revocation (ssh-keygen into a key path, gpg --gen-key, --edit-key or --quick-*, sops rotate or updatekeys, ndh-keyring); live-system verbs (pulumi up, kubectl apply, incus mutations)."
+    "The operator's live gestures: host switches by any other way than ndh-switch or fleet-switch (darwin-rebuild, nixos-rebuild, home-manager switch, an activate script); creating, editing or shadowing an ndh-switch or fleet-switch executable or alias outside an ndh branch; key generation, rotation and revocation (ssh-keygen into a key path, gpg --gen-key, --edit-key or --quick-*, sops rotate or updatekeys, ndh-keyring); live-system verbs (pulumi up, kubectl apply, incus mutations)."
   ];
 }
