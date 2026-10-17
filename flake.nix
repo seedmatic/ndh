@@ -1487,6 +1487,47 @@
               # The identity both NixOS guests hold today (.sops.yaml), until each decrypts with its own.
               current = "age1fe9gs0mljq82cwxasugyrjd4pqg9h4uym5r3rwfc2084q558hd7qt4845j";
             };
+          # A retired recipient opens no sealed file any more (S4b): changing .sops.yaml re-keys nothing, so each file's
+          # own metadata is read. The repository's sops files are the ones .sops.yaml has a rule for.
+          sops-retired-recipients =
+            let
+              retired = [
+                # bioskop's macOS host key: bioskop decrypts with its own host key (6a)
+                "age1trxpn8efl5jctwakgpxxjd2h6x5h2m40ggugxl909qsj0h99p9yqkk8tej"
+              ];
+              files = [
+                ./.secrets
+                ./catalog/cache-trust.yaml
+                ./modules/home-manager/ssh.d/keys.yaml
+              ];
+            in
+            pkgs.runCommand "sops-retired-recipients" { nativeBuildInputs = [ pkgs.yq-go ]; } ''
+              fail=0
+              for f in ${nixpkgs.lib.concatMapStringsSep " " (f: ''"${f}"'') files}; do
+                recipients="$(yq -p yaml -oy -r '.sops.age[].recipient' "$f")"
+                for r in ${nixpkgs.lib.escapeShellArgs retired}; do
+                  if grep -qxF "$r" <<<"$recipients"; then
+                    echo "$f is still sealed to the retired $r: run sops updatekeys on it" >&2
+                    fail=1
+                  fi
+                done
+              done
+              [ "$fail" = 0 ]
+              touch $out
+            '';
+          # The operator seat decrypts with its own host key (S4b 6a): every file it declares is sealed to it.
+          sops-access-point-recipients-bioskop =
+            let
+              c = self.darwinConfigurations.bioskop.config;
+              seat = c.ndh.keysYaml.keys."host-bioskop";
+            in
+            import ./modules/.common.d/sops.d/tests/access-point-recipients.nix {
+              inherit pkgs;
+              name = "bioskop";
+              files = nixpkgs.lib.unique (map (x: x.sopsFile) (builtins.attrValues c.sops.secrets));
+              seatPublic = (nixpkgs.lib.last (builtins.attrValues seat.slots)).public;
+              current = "";
+            };
         }
         # The operator's own client config carries the same list, on every operator seat and NixOS guest.
         // {

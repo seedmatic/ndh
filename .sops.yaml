@@ -11,17 +11,18 @@
 #                                         keys.yaml. Lives only at ~/.config/sops/age/, which
 #                                         activation reads as an import candidate and never
 #                                         rewrites.
-#   age1trxp…   bioskop host key        — the DARWIN host.
+#   age1trxp…   bioskop's macOS host key — RETIRED from every rule (roles × keys S4b, 6a): bioskop's sops
+#                                         identity is its own host key, named explicitly
+#                                         (modules/darwin/openssh.nix), so age1avmc… below.
 #   age17q5k…   nikopol host key        — the DARWIN guest.
 #   age1fe9g…   the NixOS guests, interim — generated on nikopol-nixos, held by BOTH guests today
 #                                         (/var/lib/sops-nix/<guest>.age). Recipient of the three
 #                                         files the guests declare, and of nothing else. It goes
 #                                         once each access point decrypts with its own (S4).
 #   age1avmc…   the bioskop access point — `ssh-to-age` of host-bioskop's recorded PUBLIC (the
-#                                         operator seat's host key, roles × keys): the identity
-#                                         ndh-identity-push places in bioskop-nixos. Added beside
-#                                         age1fe9g… first, so the push lands on files it already
-#                                         opens (S4, first half).
+#                                         operator seat's host key, roles × keys): bioskop's own
+#                                         sops identity, and the one ndh-identity-push places in
+#                                         bioskop-nixos. In every rule.
 #
 # ⚠️ The narrow rule below narrows LESS than it looks:
 # keys.yaml is decrypted whole by every host, so the guest still opens every SSH private.
@@ -40,37 +41,24 @@
 # is done from a fabric host instead (`manage-tailnet --reclaim-host <guest> --apply`, then the reset
 # with NDH_TAILNET_RECLAIM=skip); the materializer's error says so.
 #
-# Rules match top-down, so the narrow ones come first.  Each keeps the settings its files were
-# encrypted with: the two YAML files mark values by comment, `.secrets` does not.
+# One rule per kind of file this repository holds, and no catch-all: a new sops file names its own rule
+# here, or sops refuses to encrypt it (roles × keys S4b removed the two generic rules, which matched no
+# file). Each keeps the settings its files were encrypted with: the two YAML files mark values by
+# comment, `.secrets` does not.
 creation_rules:
   - path_regex: '(^|/)(catalog/cache-trust\.yaml|modules/home-manager/ssh\.d/keys\.yaml)$'
     encrypted_comment_regex: 'sops:encrypted'
     age:
       - 'age1hlvu7l7kefeum8drzvc5jp0jhgsqw2h3t3a8rmzvx05lcrsmx48q2ehxsk'
-      - 'age1trxpn8efl5jctwakgpxxjd2h6x5h2m40ggugxl909qsj0h99p9yqkk8tej'
       - 'age17q5kw0epcl9ft7ecegr20040vx3g86z0f7vtecn9t8kk27qjspaqp66pp4'
       - 'age1fe9gs0mljq82cwxasugyrjd4pqg9h4uym5r3rwfc2084q558hd7qt4845j'
       - 'age1avmcejlekelhkm02v3algs9z37fsp27658zpjagkr5w7uxhqguesdmmz0m'
   - path_regex: '(^|/)\.secrets$'
     age:
       - 'age1hlvu7l7kefeum8drzvc5jp0jhgsqw2h3t3a8rmzvx05lcrsmx48q2ehxsk'
-      - 'age1trxpn8efl5jctwakgpxxjd2h6x5h2m40ggugxl909qsj0h99p9yqkk8tej'
       - 'age17q5kw0epcl9ft7ecegr20040vx3g86z0f7vtecn9t8kk27qjspaqp66pp4'
       - 'age1fe9gs0mljq82cwxasugyrjd4pqg9h4uym5r3rwfc2084q558hd7qt4845j'
       - 'age1avmcejlekelhkm02v3algs9z37fsp27658zpjagkr5w7uxhqguesdmmz0m'
-  # Text formats keep the encrypted comment regex for inline markers.
-  - path_regex: '.*\.(ya?ml|json|env|ini|toml|cert)$'
-    encrypted_comment_regex: 'sops:encrypted'
-    age:
-      - 'age1hlvu7l7kefeum8drzvc5jp0jhgsqw2h3t3a8rmzvx05lcrsmx48q2ehxsk'
-      - 'age1trxpn8efl5jctwakgpxxjd2h6x5h2m40ggugxl909qsj0h99p9yqkk8tej'
-      - 'age17q5kw0epcl9ft7ecegr20040vx3g86z0f7vtecn9t8kk27qjspaqp66pp4'
-  # Binary/other files skip comment regex to avoid the warning.
-  - path_regex: '.*'
-    age:
-      - 'age1hlvu7l7kefeum8drzvc5jp0jhgsqw2h3t3a8rmzvx05lcrsmx48q2ehxsk'
-      - 'age1trxpn8efl5jctwakgpxxjd2h6x5h2m40ggugxl909qsj0h99p9yqkk8tej'
-      - 'age17q5kw0epcl9ft7ecegr20040vx3g86z0f7vtecn9t8kk27qjspaqp66pp4'
 stores:
   json:
     indent: 2
