@@ -447,7 +447,7 @@ leave its referrers valid with a missing dependency, which fails at runtime, not
 
 | the purge **reports where it cannot purge**: the containers' delivery snapshots and their own
 frozen layers, the Macs' stores (a delegated build's output is copied back to the Mac), and every
-binary cache the path reached (attic, `nxmatic.cachix` if a watch-store ran) — as remaining
+binary cache the path reached (each metalspace's attic) — as remaining
 actions for 🛡️, never as done
 | a copy anywhere else is a copy that was not purged (❄️ nix)
 
