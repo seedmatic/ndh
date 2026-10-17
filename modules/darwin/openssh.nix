@@ -125,11 +125,12 @@ in
     environment.etc."ssh/sshd_config.d/101-authorized-keys.conf".text = canonicalAuthorizedKeysDropIn;
     environment.etc."ssh/sshd_config.d/999-ndh.conf".text = ndhSshdConfigText;
 
-    # Darwin option surface for OpenSSH is intentionally small
-    # (enable + extraConfig in the currently pinned nix-darwin). Keep NDH
-    # policy in 999-ndh.conf for explicit ordering.
+    # NDH policy stays in 999-ndh.conf for explicit ordering. nix-darwin's own hostKeys default would
+    # render macOS's /etc/ssh/ssh_host_{rsa,ecdsa,ed25519}_key into 099-host-keys.conf beside ours, so
+    # sshd served those raw keys too: the seat serves its policy's host keys only, as the NixOS guests do.
     services.openssh = {
       enable = true;
+      hostKeys = lib.mkForce [ ];
     };
 
     # Ensure OpenSSH helper scripts are installed during the etc phase. launchd starts sshd per
