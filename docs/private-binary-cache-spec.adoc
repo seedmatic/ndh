@@ -681,9 +681,11 @@ from a revision".
 
 **Decided by the operator on 2026-10-10, refined on 2026-10-17.** A cluster's nodes and workloads build
 nothing themselves: they delegate every build (`max-jobs = 0`, `builders = ssh-ng://…`,
-`builders-use-substitutes = true`) to their metalspace's **cluster builder**, the other metalspace's
-as fallback. The `builders` list is generated from the machines holding the builder role, each with
-its systems. seedmatic builds for **arm64 only**, so a cluster's derivations are all `aarch64-linux`
+`builders-use-substitutes = true`) to their metalspace's **cluster builder**, and to it only: a
+cluster trusts its **own** cluster builder and no other, so there is **no fallback** to the other
+metalspace's cluster builder (operator, 2026-10-17). The cross-metalspace fallback is the four fleet
+machines' alone (their own metalspace's builder first, then the other's). The `builders` list is
+generated from the machines holding the builder role, each with its systems. seedmatic builds for **arm64 only**, so a cluster's derivations are all `aarch64-linux`
 and the darwin hosts are never among its builders (they offload `aarch64-linux` to their guest
 themselves).
 
@@ -747,6 +749,10 @@ accepts; it cannot import an unsigned path nor relax the sandbox
 
 Both are bounded to that cluster (only its nodes trust the builder's key) and in time (a new key at
 each grow).
+
+**Future (b)**: a cluster spanning both metalspaces, with two cluster builders scoped to that cluster,
+one per metalspace, tied to the cluster mesh. Until then a cluster lives in one metalspace and has one
+builder.
 
 ⚠️ **Design only today.** Measured on 2026-10-10: nothing declares `builders`, `max-jobs` or
 `builders-use-substitutes`, neither rke2lab's `nixos/*.nix` nor flox-nri-plugin. The node-base nix
