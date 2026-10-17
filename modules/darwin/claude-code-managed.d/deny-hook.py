@@ -332,6 +332,9 @@ class Analyzer:
         for argv in simple_commands(outer):
             self.unwrap(argv, depth)
 
+    # The sessions may switch a machine through ndh-switch only; a copy elsewhere could run anything under its name.
+    NDH_SWITCH_HOMES = ("/nix/store/", "/run/current-system/sw/bin/", "/etc/profiles/per-user/")
+
     def unwrap(self, argv, depth):
         # The assignments in front of the command, kept for check(): GIT_CONFIG_GLOBAL=/dev/null drops the
         # global hooks and sops filters of the git command it prefixes.
@@ -345,6 +348,9 @@ class Analyzer:
                 return
             prog = os.path.basename(argv[0])
             rest = argv[1:]
+            if prog == "ndh-switch" and "/" in argv[0] and not argv[0].startswith(self.NDH_SWITCH_HOMES):
+                self.deny("ndh-switch is trusted only as installed by ndh (the store or the system profile)", argv)
+                return
             nxt = self.peel(prog, rest, depth)
             if nxt is None:
                 self.check([prog] + rest)
