@@ -193,7 +193,8 @@ ssh_as_user() {
   serve
   ssh_as_user localhost probe </dev/null
   [ "$status" -eq 0 ]
-  [ "$output" = "ndh-vz-recover ok test" ]
+  # run merges stderr, where ssh announces the unknown host key it accepts.
+  [ "$(printf '%s\n' "$output" | grep -v '^Warning: Permanently added')" = "ndh-vz-recover ok test" ]
 }
 
 @test "through sshd: restrict refuses a remote forward, and a local forward opens no channel" {
@@ -221,6 +222,7 @@ ssh_as_user() {
   # A login asks for a pty, which restrict denies; the program still answers, and ssh's own status then varies.
   ssh_as_user -tt localhost </dev/null
   echo "# login: status $status" >&3
+  printf -- '--- log\n%s\n' "$(cat "$log" 2>/dev/null)"
   [ "$status" -ne 0 ]
   [ "$(grep -c ' refused 64 $' "$log")" -eq 1 ]
   printf 'ls\n' >batch
