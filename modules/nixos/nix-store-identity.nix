@@ -3,13 +3,8 @@
   lib,
   ...
 }:
-# NixOS wiring for the nix-store identity.
-#
-# Options live at modules/.common.d/nix-store-identity.nix. This module
-# fills in the NixOS-specific pieces only: the inbound `nix-store`
-# system user. No deploy step — the ssh alias binds the identity files
-# directly at their enrichment-source path under sshPaths.systemKeysDir,
-# which the ssh-keys-enrichment unit writes before sshd starts.
+# NixOS idiom for the nix-store account declared in modules/.common.d/nix-store-identity.nix: a system user, its
+# ids allocated by NixOS. The ssh-keys-enrichment unit writes its identity files before sshd starts.
 let
   cfg = config.nixStoreIdentity;
 in
@@ -19,19 +14,11 @@ in
     # identity is part of the fleet's baseline signing/copy infrastructure.
     nixStoreIdentity.enable = lib.mkDefault true;
 
-    # Its own group, never the build-users-group: the nix daemon refuses a client whose primary
-    # group is build-users-group, trusted or not (nix 2.34 daemon.cc, authPeer).
-    users.groups = lib.mkIf (cfg.enable && cfg.provisionInboundUser) {
-      ${cfg.inboundUserName} = { };
-    };
-
     users.users = lib.mkIf (cfg.enable && cfg.provisionInboundUser) {
       ${cfg.inboundUserName} = {
         isSystemUser = true;
         group = cfg.inboundUserName;
-        description = "Inbound nix-daemon --stdio endpoint";
-        # NixOS's users-groups validator needs a package with
-        # passthru.shellPath, not a bare string path.
+        # NixOS's users-groups validator needs a package with passthru.shellPath, not a bare string path.
         shell = cfg.inboundUserShellPackage;
         useDefaultShell = false;
       };

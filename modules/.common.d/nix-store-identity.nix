@@ -21,7 +21,9 @@
 # new consumer should go through `ssh-ng://nix-store.<host>` and let
 # the alias supply IdentityFile + CertificateFile.
 #
-# Per-platform specifics (inbound nix-store user provisioning) live in:
+# The inbound account is declared here once (name, own group, description, home); the platform modules add only
+# their idiom: numeric ids, the shell as a store path and the directory-services heal on Darwin (a shell package
+# would render as /run/current-system/sw/…), a system user and the shell as a package on NixOS.
 #
 #   - modules/darwin/nix-store-identity.nix
 #   - modules/nixos/nix-store-identity.nix
@@ -114,10 +116,7 @@ in
       description = ''
         Provision a local `nix-store` system user that serves inbound
         `nix-daemon --stdio` connections, register it as a trusted nix
-        user, and expose its login shell. The user itself is declared
-        in the platform module (modules/darwin/nix-store-identity.nix
-        or modules/nixos/nix-store-identity.nix) because Darwin and
-        NixOS need different option surfaces.
+        user, and expose its login shell.
       '';
     };
 
@@ -204,10 +203,16 @@ in
       text = sshClientFragmentText;
     };
 
-    # Register the restricted shell + grant the user nix-daemon trust.
-    # Both options are platform-agnostic (environment.shells exists on
-    # Darwin and NixOS; nix.settings.trusted-users likewise). The user
-    # *record* itself is declared in the platform module.
+    # Its own group, never the build-users-group: the nix daemon refuses a client whose primary group is
+    # build-users-group, trusted or not (nix 2.34 daemon.cc, authPeer).
+    users.groups = lib.mkIf cfg.provisionInboundUser { ${cfg.inboundUserName} = { }; };
+    users.users = lib.mkIf cfg.provisionInboundUser {
+      ${cfg.inboundUserName} = {
+        description = "Inbound nix-daemon --stdio endpoint";
+        home = cfg.inboundUserHome;
+      };
+    };
+
     environment.shells = lib.mkIf cfg.provisionInboundUser [ cfg.inboundUserShellPath ];
     nix.settings.trusted-users = lib.mkIf cfg.provisionInboundUser [ cfg.inboundUserName ];
     opensshPolicy.restrictedUsers = lib.mkIf cfg.provisionInboundUser {

@@ -3,14 +3,9 @@
   lib,
   ...
 }:
-# Darwin wiring for the nix-store identity.
-#
-# Options live at modules/.common.d/nix-store-identity.nix. This module
-# fills in the Darwin-specific pieces only: the inbound `nix-store`
-# system user in the nix-darwin idiom (knownUsers + users.users.<name>
-# with explicit uid + gid). No deploy step — the ssh alias binds the
-# identity files directly at their enrichment-source path under
-# sshPaths.systemKeysDir.
+# Darwin idiom for the nix-store account declared in modules/.common.d/nix-store-identity.nix: nix-darwin manages
+# only known users and groups, by explicit numeric ids, and macOS's directory services must be healed before
+# nix-darwin checks the record.
 let
   cfg = config.nixStoreIdentity;
   homeDir = cfg.inboundUserHome;
@@ -21,11 +16,8 @@ in
     # and nix copy flows both rely on the identity being in place.
     nixStoreIdentity.enable = lib.mkDefault true;
 
-    # nix-darwin user provisioning idiom: both users.knownUsers and
-    # users.users.<name> (with explicit uid + gid) are required.
-    # Its own group, never the build-users-group (nixbld, gid 350 here): the nix daemon refuses a client
-    # whose primary group is build-users-group (nix 2.34 daemon.cc, authPeer). 30000 is the gid the user
-    # already had, which named no group: it now names this one, so nothing is re-owned.
+    # 30000 is the gid the user already had, which named no group: it now names this one, so nothing is re-owned.
+    # Darwin only: on NixOS 30000 is nixbld, the build-users-group the daemon refuses.
     users = lib.mkIf (cfg.enable && cfg.provisionInboundUser) {
       knownUsers = [ cfg.inboundUserName ];
       knownGroups = [ cfg.inboundUserName ];
@@ -33,9 +25,7 @@ in
       users.${cfg.inboundUserName} = {
         uid = cfg.inboundUserUid;
         gid = config.users.groups.${cfg.inboundUserName}.gid;
-        description = "Inbound nix-daemon --stdio endpoint";
         shell = cfg.inboundUserShellPath;
-        home = homeDir;
       };
     };
 
