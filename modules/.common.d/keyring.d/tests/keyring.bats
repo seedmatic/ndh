@@ -33,8 +33,8 @@ EOF
     printf 'set -euo pipefail\n'
     printf 'machines=(bioskop nikopol bioskop-nixos nikopol-nixos) guests=(bioskop-nixos nikopol-nixos)\n'
     printf 'vzHosts=(nikopol)\ndeclare -A vzRecoverOptions=([nikopol]=%q)\n' "$vzOptions"
-    printf 'recipient=%s generate=%q\n' \
-      "$seedmatic" "$t/gen"
+    printf 'recipient=%s generate=%q derive=%q nixSigningVersion=1\n' \
+      "$seedmatic" "$t/gen" "${NIX_SIGNING_DERIVE:?the ndh-nix-signing-derive binary}"
     cat "$here/ndh-keyring.sh"
   } >"$t/keyring"
   printf '%s\nexec python3 -I %q\n' "$shebang" "$here/gen-ed25519.py" >"$t/gen"
@@ -72,6 +72,36 @@ entry() { printf '%s' "$PASSWORD_STORE_DIR/seedmatic/${2:-host-key}/$1.gpg"; }
   [ "$status" -eq 1 ]
   [[ $output == *"never overwritten"* ]]
   [ "$(sha256sum "$(entry bioskop)")" = "$before" ]
+}
+
+@test "nix-signing-public prints the public derived from the keyring's host key, and writes nothing" {
+  keyring host-key bioskop
+  before="$(find "$PASSWORD_STORE_DIR" -type f -exec sha256sum {} + | LC_ALL=C sort)"
+  : >"$t/pass.argv"
+  TMPDIR="$t/tmp" PATH="$t/bin:$PATH" run --separate-stderr bash "$t/keyring" nix-signing-public bioskop
+  [ "$status" -eq 0 ]
+  [[ $output =~ ^seedmatic-bioskop-1:[A-Za-z0-9+/]{43}=$ ]]
+  [[ $stderr == *"ssh-keys-renew --record-nix-signing host-bioskop --public -"* ]]
+  # The deriver run directly on the same host key gives the same line (it refuses one equal to the host key).
+  [ "$output" = "$(pass show seedmatic/host-key/bioskop |
+    "$NIX_SIGNING_DERIVE" --name seedmatic-bioskop-1 --label seedmatic/nix-signing/1 --public)" ]
+  [ "$(find "$PASSWORD_STORE_DIR" -type f -exec sha256sum {} + | LC_ALL=C sort)" = "$before" ]
+  [ "$(<"$t/pass.argv")" = "show seedmatic/host-key/bioskop" ]
+  [[ $output$stderr != *"PRIVATE KEY"* ]]
+  [ -z "$(find "$t/tmp" -type f)" ]
+}
+
+@test "nix-signing-public without the machine's host key in the keyring derives nothing" {
+  keyring nix-signing-public nikopol
+  [ "$status" -eq 1 ]
+  [[ $output == *"seedmatic/host-key/nikopol is not in the keyring"* ]]
+  [[ $output != *"seedmatic-nikopol-1:"* ]]
+}
+
+@test "nix-signing-public is for the inventory's machines only" {
+  keyring nix-signing-public corp-mac
+  [ "$status" -eq 1 ]
+  [[ $output == *"not one of the inventory's machines"* ]]
 }
 
 @test "a machine outside the inventory is refused" {

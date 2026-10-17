@@ -45,6 +45,9 @@ pkgs.writeShellApplication {
     # The seedmatic encryption subkey: the only recipient of seedmatic/.
     recipient=08C86550EBC4589C
     generate=${generate}
+    derive=${pkgs.callPackage ../../../packages/ndh-nix-signing-derive { }}/bin/ndh-nix-signing-derive
+    # The label's version, so the key name's: seedmatic/nix-signing/<n> gives seedmatic-<machine>-<n>.
+    nixSigningVersion=1
   ''
   + builtins.readFile ./ndh-keyring.sh;
 }
