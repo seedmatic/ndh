@@ -102,5 +102,7 @@
     # identities (ndh-identity-push).
     ndh.identityPush.enable = true;
     ndh.keyring.enable = true;
+    # Its own host key is placed (S3a step 4b), so sshd serves it and its certificate, nothing else.
+    ndh.hostKey.own = true;
   };
 }
