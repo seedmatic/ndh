@@ -1110,6 +1110,19 @@
               inherit target value;
               option = "stricthostkeychecking";
             });
+          # The fleet's names are trusted through the authority only: no raw key pinned, none learned.
+          certsOnly = nixpkgs.lib.concatMap (target: [
+            {
+              inherit target;
+              option = "userknownhostsfile";
+              value = "/dev/null";
+            }
+            {
+              inherit target;
+              option = "updatehostkeys";
+              value = "false";
+            }
+          ]);
           nixStoreAliases = {
             bioskop = [ "nix-store.nikopol" ];
             nikopol = [ "nix-store.bioskop" ];
@@ -1268,6 +1281,7 @@
                       "vzhost.nikopol"
                       "example.com"
                     ]
+                    ++ certsOnly (self.fleetHostNames ++ nixStoreAliases.${host})
                     ++ map (target: {
                       inherit target;
                       option = "controlmaster";
@@ -1315,6 +1329,7 @@
                       value = "${nixos.ndh.keysYaml.krlFile}";
                     }) (self.fleetHostNames ++ outsideFleet)
                     ++ strictness "true" (self.fleetHostNames ++ nixStoreAliases.${guest})
+                    ++ certsOnly (self.fleetHostNames ++ nixStoreAliases.${guest})
                     ++ strictness "ask" outsideFleet;
                 }
               )
@@ -1409,7 +1424,17 @@
                     "vzhost.nikopol"
                     "router.lan"
                     "example.com"
-                  ];
+                  ]
+                  ++ certsOnly (
+                    self.fleetHostNames
+                    ++ nixStoreAliases.${host}
+                    ++ [
+                      "darwin.bioskop"
+                      "darwin.nikopol"
+                      "bioskop-ts"
+                      "nikopol-ts"
+                    ]
+                  );
               }
             )
           ) configs
