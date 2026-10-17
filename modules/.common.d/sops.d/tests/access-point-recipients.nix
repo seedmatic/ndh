@@ -8,6 +8,20 @@
   seatPublic,
   current,
 }:
+let
+  # A sops file path read from a configuration has lost its store context, so the build sandbox would
+  # refuse it: give each back its store root as an input.
+  withContext =
+    f:
+    let
+      root = pkgs.lib.concatStringsSep "/" (pkgs.lib.take 4 (pkgs.lib.splitString "/" (toString f)));
+    in
+    builtins.appendContext (toString f) {
+      ${root} = {
+        path = true;
+      };
+    };
+in
 pkgs.runCommand "sops-access-point-recipients-${name}"
   {
     nativeBuildInputs = [
@@ -18,7 +32,7 @@ pkgs.runCommand "sops-access-point-recipients-${name}"
   ''
     expected="$(printf 'ssh-ed25519 %s\n' ${pkgs.lib.escapeShellArg seatPublic} | ssh-to-age)"
     fail=0
-    for f in ${pkgs.lib.escapeShellArgs files}; do
+    for f in ${pkgs.lib.escapeShellArgs (map withContext files)}; do
       recipients="$(yq -r '.sops.age[].recipient' "$f")"
       for r in "$expected" ${pkgs.lib.escapeShellArg current}; do
         if ! grep -qxF "$r" <<<"$recipients"; then
