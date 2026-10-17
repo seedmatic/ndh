@@ -1200,6 +1200,60 @@
           # The fleet trusts every current slot's nixSigning and nothing else: a host key's two slots, never a slot
           # without one or a non-host key, and a retired slot (deleted from keys.yaml) leaves the list with it. And
           # every key a machine signs with is in every machine's trust.
+          # The signing path, which no real configuration takes before a public is recorded: a NixOS guest and an
+          # operator seat given one, as keys.yaml would. secret-key-files names exactly the placed file; NixOS's unit
+          # is wanted by and ordered before nix-daemon, never required by it (the mutant proves the predicate bites);
+          # darwin's step cannot abort the activation; both place scripts build, shellcheck included.
+          nix-signing-signs-path =
+            let
+              lib = nixpkgs.lib;
+              given = name: {
+                ndh.nixSigning.recorded = "${name}:${lib.concatStrings (lib.replicate 43 "A")}=";
+              };
+              nixos = self.nixosConfigurations.bioskop-nixos.extendModules {
+                modules = [ (given "seedmatic-bioskop-nixos-1") ];
+              };
+              darwin = self.darwinConfigurations.bioskop.extendModules {
+                modules = [ (given "seedmatic-bioskop-1") ];
+              };
+              mutant = nixos.extendModules {
+                modules = [ { systemd.services.ndh-nix-signing-key.requiredBy = [ "nix-daemon.service" ]; } ];
+              };
+              placedOnly =
+                c: name:
+                c.ndh.nixSigning.signs
+                &&
+                  lib.filter (lib.hasPrefix c.ndh.nixSigning.dir) c.nix.settings.secret-key-files == [
+                    "${c.ndh.nixSigning.dir}/${name}.sec"
+                  ];
+              wantedNotRequired =
+                c:
+                let
+                  unit = c.systemd.services.ndh-nix-signing-key;
+                in
+                lib.elem "nix-daemon.service" unit.wantedBy
+                && lib.elem "nix-daemon.service" unit.before
+                && !(lib.elem "nix-daemon.service" unit.requiredBy)
+                && !(lib.elem "ndh-nix-signing-key.service" (c.systemd.services.nix-daemon.requires or [ ]));
+            in
+            assert lib.assertMsg (placedOnly nixos.config "seedmatic-bioskop-nixos-1")
+              "nix-signing: the guest's secret-key-files";
+            assert lib.assertMsg (placedOnly darwin.config "seedmatic-bioskop-1")
+              "nix-signing: the seat's secret-key-files";
+            assert lib.assertMsg (wantedNotRequired nixos.config)
+              "nix-signing: the unit must be wanted by and before nix-daemon, never required";
+            assert lib.assertMsg (
+              !(wantedNotRequired mutant.config)
+            ) "nix-signing: the requiredBy mutant passed the predicate";
+            assert lib.assertMsg
+              (lib.hasInfix "if ! ${darwin.config.ndh.nixSigning.placeScript}/bin/ndh-nix-signing-key; then" darwin.config.system.activationScripts.postActivation.text)
+              "nix-signing: darwin's step must not abort the activation";
+            pkgs.runCommand "nix-signing-signs-path" {
+              scripts = [
+                nixos.config.ndh.nixSigning.placeScript
+                darwin.config.ndh.nixSigning.placeScript
+              ];
+            } "touch $out";
           nix-signing-trust =
             let
               lib = nixpkgs.lib;

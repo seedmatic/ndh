@@ -17,13 +17,19 @@ let
   slots = hostEntry.slots or { };
   newest =
     if slots == { } then null else slots.${lib.last (lib.sort lib.lessThan (lib.attrNames slots))};
-  recorded = if newest == null then null else newest.nixSigning or null;
+  recorded = cfg.recorded;
   name = if recorded == null then null else lib.head (lib.splitString ":" recorded);
   version = if name == null then null else lib.last (lib.splitString "-" name);
   derive = pkgs.callPackage ../../packages/ndh-nix-signing-derive { };
 in
 {
   options.ndh.nixSigning = {
+    recorded = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      internal = true;
+      default = if newest == null then null else newest.nixSigning or null;
+      description = "This machine's nixSigning, read from its host key's newest slot in keys.yaml. Set only by the checks, to evaluate the signing path before any public is recorded.";
+    };
     signs = lib.mkOption {
       type = lib.types.bool;
       readOnly = true;
