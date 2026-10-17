@@ -1182,7 +1182,8 @@
                 host-b.slots."26-01-01".public = "no-nix-signing";
                 sshfs-c.slots."26-01-01".nixSigning = "seedmatic-c-1:not-a-host";
               };
-              retired = lib.recursiveUpdate fixture {
+              # The superseded slot deleted, as phase 2 of a renewal leaves keys.yaml.
+              retired = fixture // {
                 host-a.slots = removeAttrs fixture.host-a.slots [ "26-01-01" ];
               };
               machines =
