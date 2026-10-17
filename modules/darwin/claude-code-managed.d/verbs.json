@@ -64,16 +64,11 @@
     "ask": ["mcp__plugin_atlassian_atlassian__createConfluenceContent", "mcp__plugin_atlassian_atlassian__updateConfluenceContent", "mcp__plugin_atlassian_atlassian__createJiraIssue", "mcp__plugin_atlassian_atlassian__editJiraIssue", "mcp__plugin_atlassian_atlassian__transitionJiraIssue", "mcp__plugin_atlassian_atlassian__addOrEditJiraIssueComment", "mcp__plugin_atlassian_atlassian__executeWrite"],
     "deny": ["mcp__plugin_atlassian_atlassian__executeDestructive"]
   },
-  "operator_apply": {
-    "programs": ["cache-publish"],
-    "flags": ["--apply"],
-    "why": "publishes to the public cache: the operator's gesture, or operations' under an armed ndh-ops delegation; its dry run stays free"
-  },
   "operator_tools": {
     "programs": ["ssh-keys-certify", "ssh-keys-renew", "attic-leaf-sign", "incus-cluster-cert-renew", "ndh-keyring", "ndh-identity-push"],
     "why": "reads the operator's secrets (keys.yaml, an authority's signing slot, the keyring): the operator runs it"
   },
-  "list_extra_rules": ["mv ~/.claude*", "cache-publish --apply", "cache-publish --apply *", "sudo * cache-publish --apply *",
+  "list_extra_rules": ["mv ~/.claude*",
                        "ssh-keys-certify", "ssh-keys-certify *", "ssh-keys-renew", "ssh-keys-renew *", "attic-leaf-sign", "attic-leaf-sign *", "incus-cluster-cert-renew", "incus-cluster-cert-renew *", "ndh-keyring", "ndh-keyring *", "ndh-identity-push", "ndh-identity-push *",
                        "nix * --to https://*", "nix * --to http://*", "nix * --to s3://*", "nix * --to file://*", "nix * --to /*",
                        "nix * --to=https://*", "nix * --to=http://*", "nix * --to=s3://*", "nix * --to=file://*", "nix * --to=/*"],

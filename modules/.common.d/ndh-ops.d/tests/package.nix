@@ -1,10 +1,10 @@
 # ndh-ops's bats suite as a flake check: the real script, a throwaway delegation directory, stub tools. It also
-# builds the package itself (stub tools, the real operator_tools and operator_apply names), so its shellcheck runs
+# builds the package itself (stub tools, the real operator_tools names), so its shellcheck runs
 # with the check.
 { pkgs }:
 let
   verbs = builtins.fromJSON (builtins.readFile ../../../darwin/claude-code-managed.d/verbs.json);
-  operatorTools = verbs.operator_tools.programs ++ verbs.operator_apply.programs;
+  operatorTools = verbs.operator_tools.programs;
   package = import ../package.nix {
     inherit pkgs;
     tools = pkgs.lib.genAttrs operatorTools (_: "${pkgs.coreutils}/bin/true");
