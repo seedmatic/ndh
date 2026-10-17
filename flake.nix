@@ -1242,6 +1242,7 @@
           };
           attic-leaf-bats = import ./modules/.common.d/attic-leaf.d/tests/package.nix { inherit pkgs; };
           ndh-switch-bats = import ./modules/.common.d/ndh-switch.d/tests/package.nix { inherit pkgs; };
+          fleet-switch-bats = import ./modules/.common.d/fleet-switch.d/tests/package.nix { inherit pkgs; };
           # A darwin switch run over ssh: its user-launchd step must not need the Aqua session, since SIP
           # refuses a bare `launchctl setenv` from the System one (150), and the Bedrock env agent is there.
           darwin-user-launchd-over-ssh =
@@ -2432,6 +2433,11 @@
             type = "app";
             program = "${self.darwinConfigurations.bioskop.config.ndh.ndhSwitch.package}/bin/ndh-switch";
             meta.description = "Switch ONE machine to a pushed revision merged into develop or main (github:seedmatic/ndh/<sha>), the sessions' only switch verb; refuses anything else and logs what it ran — run from darwin.bioskop — src: modules/.common.d/ndh-switch.d/";
+          };
+          fleet-switch = {
+            type = "app";
+            program = "${self.darwinConfigurations.bioskop.config.ndh.ndhSwitch.fleetSwitch}/bin/fleet-switch";
+            meta.description = "Switch the fleet to ONE merged revision through ndh-switch, one machine at a time (NixOS guests, remote darwin hosts, the operator seat last and only with --with-seat), stopping at the first failure with the recovery; refuses to activate the seat when its activation would sign — run from darwin.bioskop — src: modules/.common.d/fleet-switch.d/";
           };
           attic-leaf-sign = {
             type = "app";
