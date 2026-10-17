@@ -133,6 +133,18 @@ if [[ -n $sshfsKeyFile ]]; then
   # One key, one role: revoking either would cut the other.
   [[ $sshfsBlob != "$hostBlob" ]] || refuse "the sshfs key is the host key"
 fi
+# Only the keyring's keys: each item matches the public keys.yaml records for this machine, baked at build, so a
+# local process that may run this receive cannot install a key of its own.
+[[ -n $recordedHostKey ]] || refuse "keys.yaml records no host-${machine}: record it, then switch ${machine}, then push"
+[[ "${hostType} ${hostBlob}" == "$recordedHostKey" ]] || refuse "the host key is not host-${machine}'s, as keys.yaml records it"
+if [[ -n $sshfsKeyFile ]]; then
+  [[ -n $recordedSshfsKey && "${sshfsType} ${sshfsBlob}" == "$recordedSshfsKey" ]] ||
+    refuse "the sshfs key is not sshfs-${machine}'s, as keys.yaml records it"
+fi
+if [[ -n $keyFile ]]; then
+  [[ -n $recordedAccessPoint && $agePub == "$(printf '%s\n' "$recordedAccessPoint" | ssh-to-age 2>/dev/null)" ]] ||
+    refuse "the age identity is not the one of ${machine}'s access point, as keys.yaml records its host key"
+fi
 
 chmod 0400 "$stage"/*
 [[ -z $owner ]] || chown "$owner" "$stage"/*

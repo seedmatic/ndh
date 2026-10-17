@@ -4,7 +4,8 @@
 # world is stubbed, first on PATH: route and ifconfig (the seat's link), ssh-keyscan (what the machine's
 # sshd serves) and ssh, which checks the pinning options and runs the real receive against a temp root.
 # The seat's own push goes through a sudo stub to a second receive, configured as the darwin seat's. The
-# guest's receive takes the sshfs key (it mounts sshfs); a third receive is a guest that does not.
+# guest's receive takes the sshfs key (it mounts sshfs); a third receive is a guest that does not. The other
+# metalspace's guest and darwin host, reached on the home LAN, each have their own receive, chosen by address.
 
 bats_require_minimum_version 1.5.0
 
@@ -24,18 +25,38 @@ setup() {
   keyFile="$t/root/var/lib/sops-nix/bioskop-nixos.age"
   hostKeyFile="$t/root/var/lib/ndh/host-key/ssh_host_ed25519_key"
   sshfsKeyFile="$t/root/var/lib/ndh/sshfs/id_ed25519"
-  guest_receive() { # <sshfsKeyFile>
+  # keys.yaml's records, as a receive bakes them: the test keys are the recorded ones.
+  recorded() { # [host key file] [sshfs key file] [access point file]
+    printf 'recordedHostKey=%q recordedSshfsKey=%q recordedAccessPoint=%q\n' \
+      "$(cut -d' ' -f1,2 "${1:-$t/machine.pub}" 2>/dev/null)" "$(cut -d' ' -f1,2 "${2:-$t/sshfs.pub}" 2>/dev/null)" \
+      "$(cut -d' ' -f1,2 "${3:-$t/seat.pub}" 2>/dev/null)"
+  }
+  guest_receive() { # <sshfsKeyFile> [machine root]
     printf 'set -euo pipefail\n'
-    printf 'machine=bioskop-nixos keyFile=%q hostKeyFile=%q sshfsKeyFile=%q served=%q owner="" maxBytes=8192\n' \
-      "$keyFile" "$hostKeyFile" "$1" "$t/served.pub"
+    recorded
+    printf 'machine=%s keyFile=%q hostKeyFile=%q sshfsKeyFile=%q served=%q owner="" maxBytes=8192\n' \
+      "${2:-bioskop-nixos}" "${3:-$keyFile}" "${4:-$hostKeyFile}" "$1" "$t/served.pub"
     cat "$here/ndh-identity-receive.sh"
   }
   guest_receive "$sshfsKeyFile" >"$t/bin/ndh-identity-receive"
   guest_receive "" >"$t/no-sshfs-receive"
-  chmod +x "$t/bin/ndh-identity-receive" "$t/no-sshfs-receive"
+  nnRoot="$t/nikopol-nixos-root/var/lib"
+  guest_receive "$nnRoot/ndh/sshfs/id_ed25519" nikopol-nixos "$nnRoot/sops-nix/nikopol-nixos.age" \
+    "$nnRoot/ndh/host-key/ssh_host_ed25519_key" >"$t/nikopol-nixos-receive"
+  darwinHostKeyFile="$t/nikopol-root/var/lib/ndh/host-key/ssh_host_ed25519_key"
+  {
+    printf 'set -euo pipefail\n'
+    recorded
+    printf 'machine=nikopol keyFile="" hostKeyFile=%q sshfsKeyFile="" served=%q owner="" maxBytes=8192\n' \
+      "$darwinHostKeyFile" "$t/served.pub"
+    cat "$here/ndh-identity-receive.sh"
+  } >"$t/darwin-receive"
+  mkdir -p "$nnRoot/sops-nix"
+  chmod +x "$t/bin/ndh-identity-receive" "$t/no-sshfs-receive" "$t/nikopol-nixos-receive" "$t/darwin-receive"
   seatHostKeyFile="$t/seat-root/var/lib/ndh/host-key/ssh_host_ed25519_key"
   {
     printf 'set -euo pipefail\n'
+    recorded
     printf 'machine=bioskop keyFile="" hostKeyFile=%q sshfsKeyFile="" served=%q owner="" maxBytes=8192\n' \
       "$seatHostKeyFile" "$t/served.pub"
     cat "$here/ndh-identity-receive.sh"
@@ -43,7 +64,11 @@ setup() {
   chmod +x "$t/seat-receive"
   {
     printf 'set -euo pipefail\n'
-    printf 'seat=bioskop machine=bioskop-nixos address=172.16.8.1 localAddress=172.16.8.2 maxBytes=8192\n'
+    printf 'seat=bioskop maxBytes=8192\n'
+    printf 'declare -A targetKind=([bioskop-nixos]=nixos [nikopol-nixos]=nixos [nikopol]=darwin)\n'
+    printf 'declare -A targetAddress=([bioskop-nixos]=172.16.8.1 [nikopol-nixos]=192.168.1.34 [nikopol]=192.168.1.33)\n'
+    printf 'declare -A targetLocal=([bioskop-nixos]=172.16.8.2 [nikopol-nixos]=192.168.1.129 [nikopol]=192.168.1.129)\n'
+    printf 'machine="" kind="" address="" localAddress=""\n'
     printf 'sshUser=nxmatic sshKey=%q sshCert=%q ttyIn=%q\n' "$t/operator" "$t/operator-cert.pub" "$t/typed"
     printf 'localSudo=%q localReceive=%q\n' "$t/bin/sudo" "$t/seat-receive"
     cat "$here/ndh-identity-push.sh"
@@ -73,10 +98,16 @@ done
 kh="\${args#* UserKnownHostsFile=}"; kh="\${kh%% *}"
 grep -qF "\$(cut -d' ' -f2 "$t/served.pub")" "\$kh" || { echo "ssh stub: host key not pinned" >&2; exit 98; }
 echo "\$*" >>"$t/ssh.log"
+# The receive the address names, and the sudo and fixed path its kind is reached by.
+case "\${@: -2:1}" in
+  192.168.1.33) rcv="$t/darwin-receive" sudo=/usr/bin/sudo ;;
+  192.168.1.34) rcv="$t/nikopol-nixos-receive" sudo=/run/wrappers/bin/sudo ;;
+  *) rcv=ndh-identity-receive sudo=/run/wrappers/bin/sudo ;;
+esac
 case "\${@: -1}" in
-  *"ndh-identity-receive --accept")
-    if [[ -n \${STUB_TAMPER:-} ]]; then ndh-identity-receive --accept | sed 's/^age .*/age age1tampered/'; else exec ndh-identity-receive --accept; fi ;;
-  *"ndh-identity-reload") touch "$t/reloaded"; echo "[ndh-identity-reload] restarted" ;;
+  "\$sudo -n /run/current-system/sw/bin/ndh-identity-receive --accept")
+    if [[ -n \${STUB_TAMPER:-} ]]; then "\$rcv" --accept | sed 's/^age .*/age age1tampered/'; else exec "\$rcv" --accept; fi ;;
+  "\$sudo -n /run/current-system/sw/bin/ndh-identity-reload") touch "$t/reloaded"; echo "[ndh-identity-reload] restarted" ;;
   *) echo "ssh stub: unexpected \${@: -1}" >&2; exit 99 ;;
 esac
 EOF
@@ -138,10 +169,53 @@ no_private_in() { ! grep -rqE 'AGE-SECRET-KEY|PRIVATE KEY' "$@"; }
   [ ! -e "$t/ssh.log" ]
 }
 
-@test "a seat pushes to its own guest only" {
+@test "the keyring seat pushes to the inventory's machines only" {
+  push elsewhere
+  [ "$status" -eq 1 ]
+  [[ $output == *"pushes to the inventory's machines"*"not to elsewhere"* ]]
+  [ ! -e "$t/ssh.log" ]
+}
+
+@test "the other metalspace's guest gets its three identities over the home LAN, on the seat's own link" {
+  STUB_LOCAL=192.168.1.129 push nikopol-nixos
+  [ "$status" -eq 0 ]
+  [ "$(ssh-keygen -y -f "$nnRoot/ndh/host-key/ssh_host_ed25519_key" | cut -d' ' -f1,2)" = "$(cut -d' ' -f1,2 "$t/machine.pub")" ]
+  [ "$(age-keygen -y "$nnRoot/sops-nix/nikopol-nixos.age")" = "$(ssh-to-age -i "$t/seat.pub")" ]
+  [ -e "$nnRoot/ndh/sshfs/id_ed25519" ] && [ -e "$t/reloaded" ]
+  grep -q '192.168.1.34 /run/wrappers/bin/sudo -n /run/current-system/sw/bin/ndh-identity-receive --accept$' "$t/ssh.log"
+  nothing_placed
+}
+
+@test "a home-LAN target not reached on the seat's own link is refused, nothing sent" {
   push nikopol-nixos
   [ "$status" -eq 1 ]
-  [[ $output == *"pushes to bioskop-nixos only"* ]]
+  [[ $output == *"192.168.1.34 is not reached through bioskop's own link"* ]]
+  [ ! -e "$t/ssh.log" ]
+}
+
+# fd 4 and fd 5 closed, as a darwin host's push has them.
+push_darwin() { TMPDIR="$t/tmp" PATH="$t/bin:$PATH" STUB_LOCAL=192.168.1.129 run bash "$t/push" nikopol 3<"$t/machine" 4<&- 5<&-; }
+
+@test "a darwin host gets its host key only, by sudo -n and the receive's fixed path, and nothing reloads" {
+  push_darwin
+  [ "$status" -eq 0 ]
+  [ "$(ssh-keygen -y -f "$darwinHostKeyFile" | cut -d' ' -f1,2)" = "$(cut -d' ' -f1,2 "$t/machine.pub")" ]
+  [ "$(stat -c %a "$darwinHostKeyFile")" = 400 ]
+  grep -q '192.168.1.33 /usr/bin/sudo -n /run/current-system/sw/bin/ndh-identity-receive --accept$' "$t/ssh.log"
+  [ "$(wc -l <"$t/ssh.log")" -eq 1 ] && [ ! -e "$t/reloaded" ]
+  [[ $output == *"next: commit ndh.hostKey.own = true for nikopol, then switch it, locally"* ]]
+  [[ $output != *"age identity"* ]]
+  no_private_in "$t/tmp" "$t/ssh.log"
+}
+
+@test "a darwin host refuses an access point key on fd 4 or an sshfs key on fd 5, and nothing is sent" {
+  TMPDIR="$t/tmp" PATH="$t/bin:$PATH" STUB_LOCAL=192.168.1.129 run bash "$t/push" nikopol 3<"$t/machine" 4<"$t/seat" 5<&-
+  [ "$status" -eq 1 ]
+  [[ $output == *"nikopol takes its host key only, on fd 3: close fd 4"* ]]
+  TMPDIR="$t/tmp" PATH="$t/bin:$PATH" STUB_LOCAL=192.168.1.129 run bash "$t/push" nikopol 3<"$t/machine" 4<&- 5<"$t/sshfs"
+  [ "$status" -eq 1 ]
+  [[ $output == *"nikopol takes its host key only, on fd 3: close fd 5"* ]]
+  [ ! -e "$t/ssh.log" ] && [ ! -e "$darwinHostKeyFile" ]
 }
 
 @test "a passphrase-protected key on fd 4 is refused before anything is sent" {
@@ -339,5 +413,45 @@ seat_push() { # [fd 4 source] — the seat's own push, every network tool failin
   [[ $output == *"a malformed frame end — refused, nothing written"* ]]
   receive < <(frame bioskop-nixos | sed '$d')
   [ "$status" -eq 1 ]
+  nothing_placed
+}
+
+# A receive whose keys.yaml records something else than the frame carries.
+receive_recording() { # <host key pub> <sshfs pub> <access point pub>
+  { printf 'set -euo pipefail\n'; recorded "$1" "$2" "$3"
+    printf 'machine=bioskop-nixos keyFile=%q hostKeyFile=%q sshfsKeyFile=%q served=%q owner="" maxBytes=8192\n' \
+      "$keyFile" "$hostKeyFile" "$sshfsKeyFile" "$t/served.pub"
+    cat "$here/ndh-identity-receive.sh"; } >"$t/bin/ndh-identity-receive"
+}
+
+@test "receive: nothing recorded for the machine writes nothing" {
+  receive_recording /dev/null "$t/sshfs.pub" "$t/seat.pub"
+  receive < <(frame bioskop-nixos)
+  [ "$status" -eq 1 ]
+  [[ $output == *"keys.yaml records no host-bioskop-nixos"* ]]
+  nothing_placed
+}
+
+@test "receive: a host key other than the recorded one writes nothing" {
+  receive_recording "$t/served.pub" "$t/sshfs.pub" "$t/seat.pub"
+  receive < <(frame bioskop-nixos)
+  [ "$status" -eq 1 ]
+  [[ $output == *"the host key is not host-bioskop-nixos's"* ]]
+  nothing_placed
+}
+
+@test "receive: an sshfs key other than the recorded one writes nothing" {
+  receive_recording "$t/machine.pub" "$t/operator.pub" "$t/seat.pub"
+  receive < <(frame bioskop-nixos)
+  [ "$status" -eq 1 ]
+  [[ $output == *"the sshfs key is not sshfs-bioskop-nixos's"* ]]
+  nothing_placed
+}
+
+@test "receive: an age identity not derived from the recorded access point writes nothing" {
+  receive_recording "$t/machine.pub" "$t/sshfs.pub" "$t/operator.pub"
+  receive < <(frame bioskop-nixos)
+  [ "$status" -eq 1 ]
+  [[ $output == *"the age identity is not the one of bioskop-nixos's access point"* ]]
   nothing_placed
 }
