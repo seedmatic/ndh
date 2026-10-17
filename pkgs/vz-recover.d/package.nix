@@ -5,10 +5,16 @@
   lib,
   vms,
 }:
+let
+  authorized = import ./authorized-options.nix;
+  # The vocabulary's version: bumped whenever a verb is added, removed or changes its meaning.
+  version = "2";
+in
 pkgs.writeShellApplication {
   name = "ndh-vz-recover";
   runtimeInputs = [ pkgs.coreutils ];
   text = ''
+    probeMarker=${lib.escapeShellArg (authorized.probeMarker version)}
     vms=(${lib.concatMapStringsSep " " (vm: lib.escapeShellArg vm.name) vms})
     kinds=(${lib.concatMapStringsSep " " (vm: lib.escapeShellArg vm.kind) vms})
     tart=${pkgs.tart}/bin/tart
@@ -18,5 +24,6 @@ pkgs.writeShellApplication {
   + builtins.readFile ./ndh-vz-recover.sh;
   # The authorized_keys options of the vz-recover key: no pty, no forwarding, no agent, no rc, and this
   # program in place of whatever the client asks. The real-sshd check serves this very string.
-  passthru.authorizedOptions = (import ./authorized-options.nix).options;
+  passthru.authorizedOptions = authorized.options;
+  passthru.probeMarker = authorized.probeMarker version;
 }

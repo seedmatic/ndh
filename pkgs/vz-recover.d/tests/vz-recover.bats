@@ -2,7 +2,7 @@
 #
 # ndh-vz-recover against stubbed tart and open, then through a REAL sshd on loopback serving the package's
 # own authorized_keys options (AUTHORIZED_OPTIONS, with @COMMAND@ for the program's path): the client's
-# words select one of four verbs or are refused, and no request ever yields a shell.
+# words select one of five verbs or are refused, and no request ever yields a shell or a forward.
 
 bats_require_minimum_version 1.5.0
 
@@ -28,6 +28,7 @@ EOF
     printf '#!%s\nset -o errexit -o nounset -o pipefail\n' "$BASH"
     # As writeShellApplication's runtimeInputs do: sshd starts the program with its own default PATH.
     printf 'export PATH=%s:$PATH\n' "$(dirname "$(command -v mkdir)")"
+    printf "probeMarker='ndh-vz-recover ok test'\n"
     printf 'vms=(nerd-nixos nikopol)\nkinds=(nixos darwin)\n'
     printf 'tart=%s\ntimeout=%s\nopen=%s\n' "$T/bin/tart" "$(command -v timeout)" "$T/bin/open"
     cat "$BATS_TEST_DIRNAME/../ndh-vz-recover.sh"
@@ -103,13 +104,23 @@ exec nikopol /usr/bin/sudo -n /bin/launchctl kickstart -k system/com.tailscale.t
 @test "anything outside the vocabulary is refused with 64, runs nothing, and is logged" {
   for words in "" "bash" "list nerd-nixos" "rollback" "rollback nerd-nixos now" "rollback other" \
     "rollback nerd-nixos;id" "rollback  nerd-nixos" "list " "Rollback nerd-nixos" "internal-sftp" \
-    "/usr/libexec/sftp-server" $'rollback nerd-nixos\n' "rollback \$(id)"; do
+    "/usr/libexec/sftp-server" $'rollback nerd-nixos\n' "rollback \$(id)" "probe nerd-nixos"; do
     call "$words"
     [ "$status" -eq 64 ]
   done
   [ ! -e "$T/tart.argv" ] && [ ! -e "$T/open.argv" ]
-  [ "$(grep -c ' refused 64' "$log")" -eq 14 ]
+  [ "$(grep -c ' refused 64' "$log")" -eq 15 ]
   grep -q ' refused 64 rollback nerd-nixos?$' "$log"
+}
+
+@test "probe prints the marker alone, runs nothing, takes no lock, and is logged" {
+  mkdir -p "$HOME/.local/state/ndh-vz-recover/lock"
+  call probe
+  [ "$status" -eq 0 ]
+  [ "$output" = "ndh-vz-recover ok test" ]
+  [ -z "$stderr" ]
+  [ ! -e "$T/tart.argv" ] && [ ! -e "$T/open.argv" ]
+  grep -q ' probe - 0$' "$log"
 }
 
 @test "a second call while one runs is refused with 75 and leaves the lock to its holder" {
@@ -176,6 +187,31 @@ ssh_as_user() {
   ssh_as_user localhost "rollback nerd-nixos" </dev/null
   [ "$status" -eq 0 ]
   [ "$(<"$T/tart.argv")" = "exec nerd-nixos /run/current-system/sw/bin/nixos-rebuild switch --rollback" ]
+}
+
+@test "through sshd: probe answers the marker, exactly" {
+  serve
+  ssh_as_user localhost probe </dev/null
+  [ "$status" -eq 0 ]
+  [ "$output" = "ndh-vz-recover ok test" ]
+}
+
+@test "through sshd: restrict refuses a remote forward, and a local forward opens no channel" {
+  serve
+  ssh_as_user -N -o ExitOnForwardFailure=yes -R "0:127.0.0.1:$port" localhost </dev/null
+  [ "$status" -ne 0 ]
+  lport=$((port + 1))
+  ssh -F /dev/null -p "$port" -i "$T/user" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=no \
+    -o UserKnownHostsFile=/dev/null -o GlobalKnownHostsFile=/dev/null -N -L "$lport:127.0.0.1:$port" localhost \
+    </dev/null 2>"$T/forward.log" &
+  fwd=$!
+  for _ in 1 2 3 4 5 6 7 8 9 10; do (: >"/dev/tcp/127.0.0.1/$lport") 2>/dev/null && break; sleep 0.2; done
+  run timeout 10 ssh -F /dev/null -p "$lport" -i "$T/user" -o IdentitiesOnly=yes -o BatchMode=yes \
+    -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o GlobalKnownHostsFile=/dev/null 127.0.0.1 probe
+  kill "$fwd" 2>/dev/null || true
+  printf 'through the tunnel: status %s: %s\n--- forward.log\n%s\n' "$status" "$output" "$(cat "$T/forward.log")"
+  [ "$status" -ne 0 ]
+  [[ $output != *"ndh-vz-recover ok"* ]]
 }
 
 @test "through sshd: a shell command, a login and the sftp subsystem all meet the program's refusal" {

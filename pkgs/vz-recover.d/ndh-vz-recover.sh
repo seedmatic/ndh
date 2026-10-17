@@ -1,6 +1,9 @@
 # ndh-vz-recover: the forced command of the vz-recover key on a foreign vz-host, a closed vocabulary over the
-# Tart VMs of its metalspace. The header sets vms, kinds (nixos|darwin, by index), tart, timeout and open.
+# Tart VMs of its metalspace. The header sets probeMarker, vms, kinds (nixos|darwin, by index), tart, timeout
+# and open.
 #
+#   probe                  prints probeMarker alone: a caller that reads anything else (a shell's output, a
+#                          login banner, an error) knows the forced command is not in force, and stops
 #   list                   each VM: its guest agent answers or not
 #   restart <vm>           tart stop, then the VM's launcher in a new Terminal window, as the operator runs it
 #   rollback <vm>          in the guest: back to the previous system generation
@@ -28,13 +31,20 @@ record() {
 
 refuse() {
   record "refused 64 $(printf '%s' "${raw:0:80}" | LC_ALL=C tr -c '[:print:]' '?')"
-  echo "ndh-vz-recover: refused; usage: list | restart <vm> | rollback <vm> | restart-access <vm>" >&2
+  echo "ndh-vz-recover: refused; usage: probe | list | restart <vm> | rollback <vm> | restart-access <vm>" >&2
   exit 64
 }
 
-[[ $raw =~ ^(list|restart|rollback|restart-access)( ([a-z0-9-]+))?$ ]] || refuse
+[[ $raw =~ ^(probe|list|restart|rollback|restart-access)( ([a-z0-9-]+))?$ ]] || refuse
 verb=${BASH_REMATCH[1]}
 vm=${BASH_REMATCH[3]}
+
+if [[ $verb == probe ]]; then
+  [[ -z $vm ]] || refuse
+  printf '%s\n' "$probeMarker"
+  record "probe - 0"
+  exit 0
+fi
 
 if [[ $verb == list ]]; then
   [[ -z $vm ]] || refuse
