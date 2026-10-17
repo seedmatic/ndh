@@ -715,6 +715,11 @@ initiating nothing toward the fabric (reachable by its nodes, upstream outbound)
 new nix key, at each grow
 | the container is the boundary
 
+| the nodes' `builders` entry is `ssh-ng://`, **asserted at build** in the node configuration; the
+builder's `trusted-substituters` is empty
+| with `ssh://` the build hook assumes trust, so the untrusted form would silently need it (🛡️); no
+client may add a substituter the builder would then use
+
 | every package of ours a cluster consumes is locked by something the builder can **build** (a flake
 ref, a derivation), **never a bare store path**
 | the builder cannot fetch from attic, so a path only attic holds would fail the activation; no
@@ -725,8 +730,22 @@ Whether `cluster-build` is a trusted user of that container's daemon is decided 
 the chantier. nix 2.34.9's `build-remote` gets an untrusted client its build of an input-addressed
 derivation by copying the `.drv` closure and asking for `buildPaths` (❄️, read in
 `src/nix/build-remote/build-remote.cc:300-345`), so the account stays **untrusted** if test 1 passes.
-Otherwise it is trusted on that container only (🛡️), with an accepted residual: a node can poison
-its own cluster builder's store, which only that cluster's nodes trust.
+Otherwise it is trusted on that container only (🛡️). The accepted residual, for each outcome (🛡️):
+
+[cols="1,3",options="header"]
+|===
+| Outcome | What a node of the cluster can do
+
+| untrusted (test 1 passes)
+| have the builder build, and sign, any derivation it submits, which every node of that cluster then
+accepts; it cannot import an unsigned path nor relax the sandbox
+
+| trusted (the fallback)
+| the same, plus import unsigned paths and override the daemon's settings, the sandbox included
+|===
+
+Both are bounded to that cluster (only its nodes trust the builder's key) and in time (a new key at
+each grow).
 
 ⚠️ **Design only today.** Measured on 2026-10-10: nothing declares `builders`, `max-jobs` or
 `builders-use-substitutes`, neither rke2lab's `nixos/*.nix` nor flox-nri-plugin. The node-base nix
@@ -868,6 +887,16 @@ the unsigned input is refused; `ssh://` fails (it assumes trust)
 | 3 — an untrusted client substitutes, signed only
 | with the cluster builder as a substituter, realise a path it signed, then one it did not
 | the signed path is substituted, the unsigned one is refused
+
+| 4 — the forced command admits the daemon protocol only
+| open a shell, forward a port; then connect with a certificate at principal `nix-store`, and with a
+node of ANOTHER cluster
+| no shell, no forwarding; both connections refused
+
+| 5 — a client cannot relax the builder
+| delegate a build with `--option sandbox false` (or any option an untrusted client may not set)
+| the option is ignored, the build runs sandboxed, and the output carries the builder's signature,
+which the node accepts
 |===
 
 If test 1 **fails**, `cluster-build` becomes a trusted user of that container only, with the residual
@@ -892,7 +921,7 @@ flowchart LR
   CT["catalog/cache-trust.nix privateCaches<br/>the attic cache PUBLICS, accepted (F3c)"]
   CAT["acceptedBy / trusted-public-keys<br/>read keys.yaml, copy nothing"]
   KR --> HK
-  KR -->|"HKDF, label seedmatic/nix-signing/n"| NP
+  HK -->|"HKDF at activation, label seedmatic/nix-signing/n"| NP
   KR -->|"both publics, one gesture"| KY
   KY --> CAT
   CT --> CAT
@@ -949,9 +978,10 @@ the caches' substitutes, the guests' console
 | Record | Its one place | Written by
 
 | a builder's nix signing **private**
-| nowhere in a repository: HKDF of the machine's host-key seed, label `seedmatic/nix-signing/<n>`,
-computed inside `ndh-keyring` only; placed on its machine by the identity push
-| `ndh-keyring`, in the operator's gesture, never in a session
+| nowhere in a repository, and it never transits: HKDF of the machine's host-key seed, label
+`seedmatic/nix-signing/<n>`, re-derived on its machine at activation from its own host key, root 0400
+outside the store
+| the machine's activation; `ndh-keyring` derives it once, at generation, only to record the public
 
 | a builder's nix signing **public**
 | `keys.yaml`, the machine's entry, beside its host public; `acceptedBy` and `trusted-public-keys`
