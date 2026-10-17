@@ -323,19 +323,6 @@ in
       defaultText = lib.literalExpression "each metalspace's darwin host and NixOS guest, with its host-<seat> public key";
       description = "The machines attic-token-issue issues for, each with its access point's public key.";
     };
-
-    tokenValidity = {
-      read = lib.mkOption {
-        type = lib.types.str;
-        default = "7 days";
-        description = "A read token's life: short, re-issued on the schedule the operator decides.";
-      };
-      write = lib.mkOption {
-        type = lib.types.str;
-        default = "90 days";
-        description = "A write token's life.";
-      };
-    };
   };
 
   config = lib.mkIf cfg.enable {
@@ -395,7 +382,6 @@ in
               lib.concatMapStringsSep "\n" (t: "${t.machine} ${t.metalspace} ${t.publicKey}") cfg.tokenTargets
             )
           }
-          set -- "''${1:?usage: attic-token-issue <out dir>}" ${lib.escapeShellArg cfg.tokenValidity.read} ${lib.escapeShellArg cfg.tokenValidity.write}
         ''
         + builtins.readFile ./attic-cache.d/token-issue.sh;
       })

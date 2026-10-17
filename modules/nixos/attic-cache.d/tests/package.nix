@@ -1,11 +1,13 @@
-# attic-tls-key's bats suite as a flake check: the key is never replaced, a foreign leaf is refused.
+# The cache container's bats suites as a flake check: attic-tls-key (the key is never replaced, a
+# foreign leaf is refused) and attic-token-issue (one far validity, the scopes, who gets a write token).
 { pkgs }:
-pkgs.runCommand "attic-tls-key-bats"
+pkgs.runCommand "attic-cache-bats"
   {
     nativeBuildInputs = with pkgs; [
       bats
       bash
       coreutils
+      findutils
       gnugrep
       openssl
     ];
