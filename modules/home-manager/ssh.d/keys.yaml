@@ -359,6 +359,14 @@ revoked:
     public: AAAAC3NzaC1lZDI1NTE5AAAAIJqOSghhMGKjb/jTASwBH1agjL3xHmLW+Ht+0U4QkNMR
     reason: private tracked in the clear in the public ndh repository (hosts/bioskop/keys.d/builder_ed25519) since 2026-04-10
     compromised: true
+revoked_certificates:
+  rdp-host@26-10-10/0:
+    authority: mammoth-skate
+    authority_slot: 26-10-10
+    key_id: '{"marker":"ndh-ssh-key-meta-v1","owner":"home-manager.ssh-add-keys","key":"rdp-host","usage":["ssh-host"]}'
+    serial: 0
+    revision: 8c27a29e7e95bccf0471e7926349bad8628cde46
+    reason: union host certificate retired (roles x keys S3a)
 sops:
   age:
     - enc: |
@@ -407,6 +415,6 @@ sops:
         -----END AGE ENCRYPTED FILE-----
       recipient: age1avmcejlekelhkm02v3algs9z37fsp27658zpjagkr5w7uxhqguesdmmz0m
   encrypted_comment_regex: sops:encrypted
-  lastmodified: "2026-10-17T17:26:10Z"
-  mac: ENC[AES256_GCM,data:2e97B9OHQXqKlUdgCL0qwh3ljopOePh65MYB/l+oGtN4a2pSwd70/XbAmvp7nUkGBGE3DL95wLTvL+UZ62PEjn7I2XfsC21tOs9Lmk6SmB6aThQX2QGQW82Kw/kdR6iY1B7axAv7KMyVq8zGWXLHYmWRMVQZXwCPCzDcCOIiAx4=,iv:nizjDcsdVYoKay3290Kh6p/dFfay4JpCzxWMC2esi0M=,tag:Bd6yiPo0lamaUkvDf7rI5Q==,type:str]
+  lastmodified: "2026-10-17T17:47:12Z"
+  mac: ENC[AES256_GCM,data:hsL0tOlPyetQtvaG1SJdSB68fhvc19V7jiaSCFNXHH8WOxq0qBpfL7S3fgJ49wqurc0juRvSLyevOs/5GOWmWm0fQIB/2sF0cfvxjIyCnkzC6TcYOjb4MW0RoPy/C/O1AdPSZfBzAXjFEPWi83M+ePV9jl9oWt7ZzXzYtbLTh0w=,iv:PNsTd5IEng9RzkoOtT8ZIbsJF8ed0aY0t7F2a1zcP5w=,tag:/9VmltY6xIr0dWhckH+IjA==,type:str]
   version: 3.13.3
