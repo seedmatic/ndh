@@ -1212,6 +1212,40 @@
           };
           attic-leaf-bats = import ./modules/.common.d/attic-leaf.d/tests/package.nix { inherit pkgs; };
           ndh-switch-bats = import ./modules/.common.d/ndh-switch.d/tests/package.nix { inherit pkgs; };
+          # A darwin switch run over ssh: its user-launchd step must not need the Aqua session, since SIP
+          # refuses a bare `launchctl setenv` from the System one (150), and the Bedrock env agent is there.
+          darwin-user-launchd-over-ssh =
+            let
+              hosts = [
+                "bioskop"
+                "nikopol"
+              ];
+              config = h: self.darwinConfigurations.${h}.config;
+              text = h: builtins.unsafeDiscardStringContext (config h).system.activationScripts.userLaunchd.text;
+              agent = h: (config h).launchd.user.agents ? claude-code-bedrock-env;
+            in
+            pkgs.runCommand "darwin-user-launchd-over-ssh"
+              (
+                {
+                  passAsFile = hosts;
+                  agents = pkgs.lib.concatMapStringsSep " " (h: "${h}=${pkgs.lib.boolToString (agent h)}") hosts;
+                }
+                // pkgs.lib.genAttrs hosts text
+              )
+              ''
+                fail=0
+                for h in ${pkgs.lib.concatStringsSep " " hosts}; do
+                  f="''${h}Path"
+                  if grep -nE '^[[:space:]]*sudo --user=[^ ]+ -- launchctl setenv ' "''${!f}"; then
+                    echo "$h: a user-launchd setenv outside launchctl asuser: it fails over ssh" >&2
+                    fail=1
+                  fi
+                done
+                for a in $agents; do
+                  [ "''${a#*=}" = true ] || { echo "''${a%%=*}: no claude-code-bedrock-env agent" >&2; fail=1; }
+                done
+                [ "$fail" = 0 ] && touch "$out"
+              '';
           ndh-ops-bats = import ./modules/.common.d/ndh-ops.d/tests/package.nix { inherit pkgs; };
           attic-tls-key-bats = import ./modules/nixos/attic-cache.d/tests/package.nix { inherit pkgs; };
           tls-authority-keychain-bats = import ./modules/darwin/tls-authority-keychain.d/tests/package.nix {

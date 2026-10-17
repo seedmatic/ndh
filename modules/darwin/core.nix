@@ -218,8 +218,6 @@ in
     })
   ];
 
-  # launchd.user.envVariables = { XDG_RUNTIME_DIR = "${userHome}/.xdg"; };
-
   # Disable Google update services that trigger notifications
   services.disable-google-updaters.enable = true;
 
