@@ -370,6 +370,14 @@ REPLICA=/Volumes/git-worktree-store/nxmatic/claude-home.d/pass/seedmatic
 @test "vz: git -c core.sshCommand"               { run hook "git -c 'core.sshCommand=ssh -i ~/.ssh/vz-recover' fetch vzhost.nikopol:x"; denied; }
 @test "vz: rsync -e naming the key"              { run hook "rsync -e 'ssh -i ~/.ssh/vz-recover' /tmp/x vzhost.nikopol:/tmp/"; denied; }
 @test "ok a commit message naming the host"      { run hook "git commit -m 'deny-hook: ssh vzrecover.nikopol list only'"; allowed; }
+@test "ok vz: -O check of the master"            { run hook 'ssh -O check vzrecover.nikopol'; allowed; }
+@test "ok vz: -O exit of the master"             { run hook 'ssh -O exit vzrecover.nikopol'; allowed; }
+@test "ok vz: -O stop of the master"             { run hook 'ssh -O stop vzrecover.nikopol'; allowed; }
+@test "ok vz: -Ocheck, attached"                 { run hook 'ssh -Ocheck vzrecover.nikopol'; allowed; }
+@test "vz: -O forward"                           { run hook 'ssh -O forward -L 1:localhost:1 vzrecover.nikopol'; denied; }
+@test "vz: -O cancel"                            { run hook 'ssh -O cancel vzrecover.nikopol'; denied; }
+@test "vz: -O exit with a remote command"        { run hook 'ssh -O exit vzrecover.nikopol id'; denied; }
+@test "vz: -O exit beside another option"        { run hook 'ssh -O exit -L 1:localhost:1 vzrecover.nikopol'; denied; }
 @test "ok ssh -i another key elsewhere"          { run hook 'ssh -i ~/.ssh/other nikopol-nixos.local true'; allowed; }
 @test "ok the ssh public key"                   { run hook 'cat ~/.ssh/id_ed25519.pub'; allowed; }
 @test "wake: ndh-claude-wake by name"             { run hook 'ndh-claude-wake --dry-run'; allowed; }

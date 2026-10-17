@@ -140,6 +140,7 @@
     "verbs": ["probe", "list", "restart", "rollback", "restart-access"],
     "arg": "^[a-z0-9-]+$",
     "bare_verbs": ["probe"],
+    "control_commands": ["check", "exit", "stop"],
     "key_spelling": "(?i)vz.{0,3}rec",
     "flags": "qTv46",
     "options": ["BatchMode", "ConnectTimeout", "ServerAliveInterval", "ServerAliveCountMax"],

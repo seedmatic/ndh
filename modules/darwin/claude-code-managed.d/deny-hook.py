@@ -540,6 +540,14 @@ class Analyzer:
         most, no forwarding, no option beyond a few harmless ones."""
         spec = self.table["vz_recover"]
         allowed = {k.lower() for k in spec["options"]}
+        # The client's own multiplexing master: closing it after a line change must stay possible, and it runs nothing there.
+        control = [t for t in opts if t != "--"]
+        if control[:1] == ["-O"] and len(control) == 2 or len(control) == 1 and control[0].startswith("-O"):
+            command = control[1] if control[0] == "-O" else control[0][2:]
+            if command in spec["control_commands"] and not remote:
+                return
+            self.deny(f"ssh -O {command} toward vzrecover.*: {spec['why']}", argv)
+            return
         i = 0
         while i < len(opts):
             tok = opts[i]
