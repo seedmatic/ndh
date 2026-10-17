@@ -1,6 +1,7 @@
 {
   config,
   lib,
+  pkgs,
   ...
 }:
 # Only the build users (nixbldN on NixOS, _nixbldN on Darwin) may hold the build-users-group. The nix daemon
@@ -12,7 +13,8 @@
 let
   group = config.nix.settings.build-users-group;
   gid = config.ids.gids.${group};
-  buildUser = name: builtins.match "_?nixbld[0-9]+" name != null;
+  buildUserPrefix = if pkgs.stdenv.hostPlatform.isDarwin then "_nixbld" else "nixbld";
+  buildUser = name: builtins.match "${buildUserPrefix}[0-9]+" name != null;
   others = lib.filterAttrs (name: _: !buildUser name) config.users.users;
   primary = lib.attrNames (
     lib.filterAttrs (_: u: (u.group or null) == group || (u.gid or null) == gid) others

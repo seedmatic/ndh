@@ -1339,6 +1339,11 @@
             assert lib.assertMsg (
               darwin.users.users.${account}.uid != 0 && lib.elem account darwin.users.knownUsers
             ) "attic watch-store: the darwin account must be a managed, non-root account";
+            assert lib.assertMsg (
+              darwin.users.users.${account}.shell == "/usr/bin/false"
+              && !(lib.elem account darwin.nix.settings.trusted-users)
+              && !(lib.elem account darwin.opensshPolicy.allowUsers)
+            ) "attic watch-store: the darwin account must have no shell, no daemon trust and no ssh login";
             pkgs.runCommand "attic-watch-store-not-root" { } "touch $out";
           nix-signing-trust =
             let
