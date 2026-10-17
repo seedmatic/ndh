@@ -873,6 +873,129 @@ If test 1 **fails**, `cluster-build` becomes a trusted user of that container on
 stated above; content-addressed derivations are never the basis (an experimental feature, and our
 flakes are not content-addressed).
 
+[[builder-keys]]
+== The fleet's builds and its builders' keys — decided 2026-10-17
+
+**Decided by the operator on 2026-10-17** (🔑 roles × keys, 📦, 🛡️ and ❄️ agreeing). Two rules. Every
+build on the four machines is a **request** served by a `nix-store` account. Each machine has **one**
+key, its host key: its roles are certificates on it or keys derived from it, so no builder's signing
+private is ever in a repository.
+
+[mermaid]
+....
+flowchart LR
+  KR["ndh-keyring<br/>the operator's gesture, never a session"]
+  HK["a machine's host key, private<br/>on that machine only"]
+  NP["its nix signing key, private<br/>HKDF of the host seed, in no repository"]
+  KY["keys.yaml, the machine's entry<br/>host public + nix signing public"]
+  CT["catalog/cache-trust.yaml<br/>the attic CACHE keys only"]
+  CAT["acceptedBy / trusted-public-keys<br/>read keys.yaml, copy nothing"]
+  KR --> HK
+  KR -->|"HKDF, label seedmatic/nix-signing/n"| NP
+  KR -->|"both publics, one gesture"| KY
+  KY --> CAT
+  CT --> CAT
+
+  classDef secret fill:#fee2e2,stroke:#b91c1c
+  classDef record fill:#dcfce7,stroke:#15803d
+  classDef tool fill:#dbeafe,stroke:#1d4ed8
+  class HK,NP secret
+  class KY,CT,CAT record
+  class KR tool
+....
+
+Blue: the tool that makes keys. Red: a private, never in a repository. Green: a record, one place each.
+
+[[every-build-a-request]]
+=== Every build is a request
+
+With `max-jobs = 0`, a machine's own daemon builds nothing: each derivation goes over `ssh-ng`, by
+certificate, to a `nix-store` account (forced `nix-daemon --stdio`, a trusted user of its store). The
+machine's own system goes through a **loopback** entry on its fleet name, never `localhost`, which no
+certificate vouches for; the other system goes to a builder of that system. The `builders` list is
+generated from the machines holding the builder role, as for <<cluster-builds>>.
+
+The first step is in ndh `feature/builds-as-nix-store`: a Darwin host's `aarch64-linux` builds reach
+its guest through the `nix-store.<host>-nixos` alias, no longer as root with the operator's raw key.
+`max-jobs = 0` follows, under these conditions (🛡️):
+
+[cols="1,2",options="header"]
+|===
+| Condition | Why
+
+| a documented and proven way out: `--option max-jobs 1` or `--option builders ''`, passed by root,
+the caches' substitutes, the guests' console
+| a broken sshd, certificate or KRL would otherwise leave the machine unable to build anything
+
+| `ndh-switch` and `fleet-switch` keep an explicit local-build option
+| a broken loopback must never prevent building the switch that repairs it
+
+| a probe of the loopback passes, machine by machine, before it is enabled
+| the failure is found before it locks a machine
+
+| the loopback accepts certificates only, on the fleet name
+| `localhost` and a raw key would bypass the role
+
+| a build check that the KRL never cuts a machine's own `nix-store` certificate
+| a machine would lock itself out of its own builds
+|===
+
+[[one-key-per-machine]]
+=== One key per machine — where each record lives
+
+[cols="2,3,2",options="header"]
+|===
+| Record | Its one place | Written by
+
+| a builder's nix signing **private**
+| nowhere in a repository: HKDF of the machine's host-key seed, label `seedmatic/nix-signing/<n>`,
+computed inside `ndh-keyring` only; placed on its machine by the identity push
+| `ndh-keyring`, in the operator's gesture, never in a session
+
+| a builder's nix signing **public**
+| `keys.yaml`, the machine's entry, beside its host public; `acceptedBy` and `trusted-public-keys`
+read it from there and restate nothing
+| `ndh-keyring`, in the same gesture as the host public
+
+| a builder's ssh identity for build requests
+| a second, **user** certificate on its host key, principal `nix-store`, replacing keys.yaml's single
+`nix-store` key shared by every machine; the KRL cuts it alone, by its key id
+| the user authority, from the recorded host public
+
+| an attic cache key
+| `catalog/cache-trust.yaml`, sealed per host (unchanged): that file loses its builders' section
+| 📦's tooling
+
+| the cluster builder's two publics
+| the cluster's own cellar, never fleet `keys.yaml` (<<cluster-builds>>)
+| the cluster's own scenario
+|===
+
+* **Naming:** `seedmatic-<machine>-<n>`, where `<n>` is the HKDF label's version and `<machine>` the
+  machine's `keys.yaml` name, as in `host-<machine>`. Cache keys keep their names
+  (`seedmatic-<bare-metal>-attic-<n>`, `seedmatic-<cluster>-attic-<n>`).
+* **A distinct key, not the host key itself** (🛡️): the same ed25519 key would sign both ssh and
+  narinfo with no domain separation. So the nix public cannot be computed from the host public, and
+  `ndh-keyring`, which holds the private at generation, records both.
+* **The cost** (❄️): one leak is both keys, and renewing a host key renews its signing key; paths the
+  old key signed are re-signed or re-substituted.
+* **When:** a host key generated before this rule gets its nix key at the single renewal (roles × keys
+  step 9), not before. Until then `seedmatic-fleet-1` stays the interim key of every builder, and the
+  gate of T4; <<revisions-only>>'s copies carry it until then.
+
+[[who-imposes]]
+=== Who imposes "built by a builder"
+
+Each **consumer**, through its own `trusted-public-keys`, generated from the catalog. Nobody else
+imposes; attic only stores.
+
+* **Nodes:** their cluster builder's key and upstream's (cache.nixos.org, flox) only.
+* **The four machines:** the attic cache keys, and the builders' keys (`seedmatic-fleet-1` today, the
+  derived keys from step 9). A builder's signature is **accepted**, not required, while an attic key
+  is also trusted: it is recorded provenance.
+* **Later:** once <<attic-fork>> serves `object.sigs`, the builders' keys become the only accepted
+  ones on the hosts, and the cache keys stop being trusted.
+
 [[trust-model]]
 == Trust model — the cache is as trustworthy as its least trusted writer
 
