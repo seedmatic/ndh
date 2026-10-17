@@ -249,6 +249,61 @@
       ],
       "role": "incus",
       "icon": "🖥️"
+    },
+    "develop-keys-role": {
+      "role": "roles × keys",
+      "icon": "🔑",
+      "conversations": [
+        "ad5a0355-a803-495d-bb49-84c97ce18a97"
+      ],
+      "owned": [
+        "~/.claude/.scratchpad.d/roles-and-keys/**",
+        "/private/tmp/roles-and-keys.*",
+        "/private/tmp/certify-*",
+        "/private/tmp/ndh-bats-proof*",
+        "/Volumes/git-worktree-store/seedmatic/ndh.d/feature/vz-recover/.scratchpad.d/**",
+        "/Volumes/git-worktree-store/seedmatic/ndh.d/feature/rdp-host-split/.scratchpad.d/**",
+        "/Volumes/git-worktree-store/seedmatic/ndh.d/fix/certify-dry-run-no-decrypt/.scratchpad.d/**"
+      ],
+      "exclude": [
+        "~/.claude/.scratchpad.d/roles-and-keys/LIVE.md",
+        "~/.claude/.scratchpad.d/roles-and-keys/*.md",
+        "~/.claude/.scratchpad.d/roles-and-keys/patches/**",
+        "~/.claude/.scratchpad.d/roles-and-keys/checkpoints/**",
+        "~/.claude/.scratchpad.d/roles-and-keys/nix_authorized_keys.*",
+        "~/.claude/.scratchpad.d/roles-and-keys/step2/**"
+      ],
+      "lives_there": "public material only: publics, certificate descriptions, fingerprints, plan lines",
+      "note": "its worktrees themselves are removed by develop with git worktree remove (they may hold smudged .secrets)"
+    },
+    "develop-claude": {
+      "role": "claude config",
+      "icon": "🤖",
+      "conversations": [
+        "af0dc1e5-609f-4ce0-8ab5-76a1c31bd7b0"
+      ],
+      "owned": [
+        "~/.claude/.scratchpad.d/session-autonomy/**",
+        "/private/tmp/cm.*",
+        "/private/tmp/mut.*",
+        "/private/tmp/hk.*",
+        "/private/tmp/sa.mmd",
+        "/private/tmp/sa.svg",
+        "/private/tmp/sa-*.out",
+        "/private/tmp/sa-*.log",
+        "/private/tmp/ns.log",
+        "/private/tmp/sw.log",
+        "/private/tmp/op.log",
+        "/private/tmp/dt.log"
+      ],
+      "worktrees": [
+        "/Volumes/git-worktree-store/seedmatic/ndh.d/fix/hook-messages",
+        "/Volumes/git-worktree-store/seedmatic/ndh.d/fix/deny-secret-reading-tools"
+      ],
+      "exclude": [
+        "~/.claude/.scratchpad.d/session-autonomy/LIVE.md"
+      ],
+      "lives_there": "commit-message drafts, mktemp probes (generated managed lists, mutation copies, archive extracts), figure checks, build logs"
     }
   }
 }
