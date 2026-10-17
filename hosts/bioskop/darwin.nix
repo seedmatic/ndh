@@ -43,12 +43,8 @@
       sopsEncryptedTokenFile = ../../.secrets;
     };
 
-    # The SOPS age key must already exist: nothing generates it.
-    ndh.sopsAgeKeyBootstrap.darwinSystemWideKey = true;
-
     # bioskop holds the TLS authority (the operator seat): its activation restores the Incus cluster certificate.
     ndh.incusClusterCert.atActivation = true;
-    sops.age.keyFile = "/etc/sops/age/keys.txt";
 
     services.nxmaticCachixWatchStore = {
       # DISABLED 2026-10-10: watch-store pushed dirty-tree flake sources carrying sops-smudged .secrets/keys.yaml in clear to the PUBLIC nxmatic cache. Not removed; see the rke2lab memory note dirty-flake-eval-publishes-smudged-secrets.

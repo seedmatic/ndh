@@ -9,9 +9,6 @@ source @nixBashTrampoline@
 
 key_file="@keyFile@"
 key_dir="$(dirname "$key_file")"
-public_key_file="@publicKeyFile@"
-public_key_dir="$(dirname "$public_key_file")"
-export_public_key_on_activation="@exportPublicKeyOnActivation@"
 nixos_import_from_host="@nixosImportFromHost@"
 # 1 on a NixOS guest, where the keyFile belongs to root alone; 0 on darwin, where it may be the
 # operator's own file, read by their sops too.
@@ -63,11 +60,4 @@ if [ "$enforce_root_key_mode" = "1" ]; then
     echo "[sops-age-bootstrap] ERROR: cannot set $key_file to root:root 0400" >&2
     exit 1
   fi
-fi
-
-if [ "$export_public_key_on_activation" = "1" ]; then
-  install -d -m 755 "$public_key_dir"
-  age-keygen -y "$key_file" > "$public_key_file"
-  chmod 644 "$public_key_file"
-  echo "[sops-age-bootstrap] published host age recipient to $public_key_file"
 fi

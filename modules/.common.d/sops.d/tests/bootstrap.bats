@@ -12,7 +12,6 @@ setup() {
   cat >"$t/bin/age-keygen" <<EOF
 #!$BASH
 echo "age-keygen \$*" >>"$t/calls"
-[ "\$1" = -y ] && echo age1testrecipient
 EOF
   cat >"$t/bin/chown" <<EOF
 #!$BASH
@@ -26,7 +25,6 @@ EOF
 
 render() { # <import-from-host 0|1> <enforce-root-mode 0|1>
   sed -e "s#@nixBashTrampoline@#$t/trampoline.sh#" -e "s#@keyFile@#$key#" \
-    -e "s#@publicKeyFile@#$t/var/etc/keys.pub#" -e 's#@exportPublicKeyOnActivation@#1#' \
     -e "s#@nixosImportFromHost@#$1#" -e "s#@enforceRootKeyMode@#$2#" \
     -e "s#@nixosHostKeyImportCandidates@#$t/share/keys.txt#" \
     "$BATS_TEST_DIRNAME/../bootstrap.sh" >"$t/bootstrap"
@@ -53,8 +51,16 @@ mode() { stat -c '%a' "$1" 2>/dev/null || stat -f '%Lp' "$1"; }
   [ "$status" -eq 0 ]
   [ "$(mode "$key")" = 400 ]
   grep -q "chown root:root $key" "$t/calls"
-  [ "$(cat "$t/var/etc/keys.pub")" = age1testrecipient ]
-  run ! grep -q 'age-keygen -o' "$t/calls"
+  run ! grep -q 'age-keygen' "$t/calls"
+}
+
+@test "nothing derives or publishes a recipient from the identity" {
+  mkdir -p "$(dirname "$key")"
+  printf 'AGE-SECRET-KEY-1TEST\n' >"$key"
+  run_bootstrap
+  [ "$status" -eq 0 ]
+  run ! grep -q 'age-keygen' "$t/calls"
+  [ -z "$(find "$t/var" -name '*.pub')" ]
 }
 
 @test "on darwin the keyFile's mode and owner are left alone" {

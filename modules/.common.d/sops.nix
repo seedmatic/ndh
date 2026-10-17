@@ -61,8 +61,6 @@ let
       [
         "@nixBashTrampoline@"
         "@keyFile@"
-        "@publicKeyFile@"
-        "@exportPublicKeyOnActivation@"
         "@nixosImportFromHost@"
         "@enforceRootKeyMode@"
         "@nixosHostKeyImportCandidates@"
@@ -70,8 +68,6 @@ let
       [
         "${trampolineDir}/nix-bash-trampoline.sh"
         (toString config.sops.age.keyFile)
-        (toString cfg.publicKeyFile)
-        (if cfg.exportPublicKeyOnActivation then "1" else "0")
         (if cfg.nixosHostKeyImport.enable then "1" else "0")
         (if useSystemdSopsActivation then "1" else "0")
         (lib.concatStringsSep "\n" cfg.nixosHostKeyImport.candidates)
@@ -105,16 +101,6 @@ let
 in
 {
   options.ndh.sopsAgeKeyBootstrap = {
-    darwinSystemWideKey = mkOption {
-      type = types.bool;
-      default = false;
-      description = ''
-        Darwin-only toggle to install/use a system-wide SOPS age key file.
-        When enabled, `${config.sops.age.keyFile}` defaults to `systemWideKeyFile`
-        instead of the per-user key path.
-      '';
-    };
-
     systemWideKeyFile = mkOption {
       type = types.str;
       default = "/etc/sops/age/keys.txt";
@@ -122,11 +108,11 @@ in
     };
 
     defaultAgeKeyFile = mkOption {
-      type = types.str;
+      type = types.nullOr types.str;
       default = cfg.systemWideKeyFile;
       description = ''
-        Canonical default for `sops.age.keyFile`.
-        Platform modules should set this via `mkDefault`.
+        Canonical default for `sops.age.keyFile`, null when the machine's identity is its own host
+        key alone (`sops.age.sshKeyPaths`). Platform modules should set this via `mkDefault`.
       '';
     };
 
@@ -155,25 +141,7 @@ in
     darwinUserKeyFile = mkOption {
       type = types.str;
       default = "${userHome}/.config/sops/age/keys.txt";
-      description = "Darwin user-scoped SOPS age key file path, the keyFile when darwinSystemWideKey is off.";
-    };
-
-    exportPublicKeyOnActivation = mkOption {
-      type = types.bool;
-      default = true;
-      description = ''
-        Derive and publish the host public age recipient from
-        `${config.sops.age.keyFile}` on each activation.
-      '';
-    };
-
-    publicKeyFile = mkOption {
-      type = types.str;
-      default = "/etc/sops/age/keys.pub";
-      description = ''
-        Path where the host public age recipient is published.
-        This file is safe to collect into `.sops.yaml` recipient groups.
-      '';
+      description = "Darwin user-scoped SOPS age key file path, the keyFile of a darwin host that does not own its host key.";
     };
 
     nixosHostKeyImport = {
@@ -260,9 +228,10 @@ in
       }
     ];
 
-    # The age identity guard: a missing identity blocks activation, and nothing generates one.
+    # The age identity guard: a missing identity blocks activation, and nothing generates one. A machine whose
+    # identity is its own host key alone has no keyFile to guard.
     system.activationScripts.preActivation.text = lib.mkBefore (
-      if !useSystemdSopsActivation then sopsAgeBootstrapScript else ""
+      if !useSystemdSopsActivation && config.sops.age.keyFile != null then sopsAgeBootstrapScript else ""
     );
 
   };
