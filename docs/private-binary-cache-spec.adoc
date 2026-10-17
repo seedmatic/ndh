@@ -647,8 +647,9 @@ What follows from it:
   the cache, which still holds what was pushed before 2026-10-10's purge.
 * No publication code: no cachix watch-store, no publication job, no publishing user, no cachix push
   token in sops.
-* The **content guard** stays, as a library with its tests: it gates whatever leaves a metalspace (the
-  copy to the corporate vz-host, a future check before an attic upload).
+* The **content guard** stays, as a library with its tests (`content-guard`,
+  `modules/.common.d/content-guard.d/`): it gates whatever leaves a metalspace (the copy to the
+  corporate vz-host, a future check before an attic upload).
 * `cachix push` stays denied to the sessions.
 
 Why the public tier went, rather than being filtered better: the 2026-10-10 incident came from a
@@ -2263,8 +2264,6 @@ be a different path, and every closure that references it would have to be rebui
 
 * **The retention value**: 6 hours is a proposal in the operator's order of magnitude, to confirm
   against a real session.
-* **The content guard as a library**: the shapes are rke2lab's `token_shape_guard` and ndh's
-  `cache-publish` guard (AWS shapes included); where the shared library lives is open.
 * **Package outputs, cluster node closures and in-cluster env closures**: their size, once a fill has
   built them.
 * **The cluster builder chantier** (🖥️ + ❄️): the container, its dataset and quota, its keys born

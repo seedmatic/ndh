@@ -113,17 +113,7 @@ in
 
         # Use the same binary caches and settings as the Darwin configuration
         nix.settings = {
-          trusted-substituters = [
-            cacheCatalog.nxmatic.substituter # nxmatic cache
-          ];
-          trusted-public-keys = [
-            cacheCatalog.nxmatic.publicKey # nxmatic key
-          ];
-
-          # Additional substituters from flox.conf
-          extra-trusted-substituters = [
-            cacheCatalog.nxmatic.substituter
-          ];
+          # Additional keys from flox.conf
           extra-trusted-public-keys = [
             "floxhub-1:0QOAlcobcEvq1mqEf4qAYCaWnTTOXpyoRv/PmqfSixM="
           ];

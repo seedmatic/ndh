@@ -329,11 +329,3 @@ REPLICA=/Volumes/git-worktree-store/nxmatic/claude-home.d/pass/seedmatic
 @test "fleet: a local fleet-switch copy"          { run hook './fleet-switch'; denied; }
 @test "fleet: a fleet-switch under /tmp"          { run hook '/tmp/x/fleet-switch'; denied; }
 @test "fleet: raw rebuilds stay denied beside it" { run hook 'fleet-switch --dry-run && sudo darwin-rebuild switch --flake github:seedmatic/ndh/0123abcd#bioskop'; denied; }
-@test "publish: cache-publish --apply"            { run hook 'cache-publish --apply github:seedmatic/ndh/0123abcd'; denied; }
-@test "publish: behind sudo -u _ndh-publish -H"   { run hook 'sudo -u _ndh-publish -H cache-publish --apply github:seedmatic/ndh/0123abcd'; denied; }
-@test "publish: by its store path"                { run hook '/nix/store/abc-cache-publish/bin/cache-publish --apply x'; denied; }
-@test "publish: nix run of a pushed revision"     { run hook 'nix run github:seedmatic/ndh/0123abcd#cache-publish -- --apply github:seedmatic/ndh/0123abcd'; denied; }
-@test "publish: inside a bash -c"                 { run hook "bash -c 'cache-publish --apply x'"; denied; }
-@test "publish: the --apply=… form"               { run hook 'cache-publish --apply=1 x'; denied; }
-@test "ok cache-publish dry run"                  { run hook 'sudo -u _ndh-publish -H cache-publish "git+file:///Volumes/git-bare-store/seedmatic/ndh.git?rev=0123abcd"'; allowed; }
-@test "ok cache-publish through an armed ndh-ops" { run hook 'nix run github:seedmatic/ndh/0123abcd#ndh-ops -- cache-publish --apply github:seedmatic/ndh/0123abcd'; allowed; }

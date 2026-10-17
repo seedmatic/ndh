@@ -14,13 +14,11 @@ left to right direction
 
 actor "Operator" as operator
 cloud "Git Repository\n(nix-darwin-home)" as repo
-cloud "Cachix" as cachix
 
 rectangle "Managed Host\n(Darwin or NixOS)" as host {
   [nix activation\n(darwin-rebuild / nixos-rebuild)] as activation
   [sops-install-secrets] as sopsinst
   [Runtime secrets\n/run/secrets*] as runtimesecrets
-  [Cachix watch-store] as watchstore
 }
 
 operator --> repo : edits flake + encrypted files
@@ -28,7 +26,6 @@ operator --> host : triggers activation
 repo --> activation : flake evaluation
 activation --> sopsinst : manifest + key sources
 sopsinst --> runtimesecrets : decrypt + materialize
-watchstore --> cachix : upload store paths
 
 note right of runtimesecrets
   Namespaced runtime links:
@@ -75,7 +72,6 @@ rectangle "Host Security Boundary" {
   }
 
   rectangle "Consumers" as consumers {
-    [Cachix watch-store] as cachixwatch
     [SSH key deploy scripts] as sshdeploy
   }
 }
@@ -95,7 +91,6 @@ symlink --> namespaced : namespaced links
 namespaced --> hostkeyinst : host key material
 hostkeyinst --> consumers : installs /etc/ssh/ssh_host_ed25519_key
 
-namespaced --> cachixwatch : auth token path
 namespaced --> sshdeploy : SSH key YAML path
 
 note right of bootstrap

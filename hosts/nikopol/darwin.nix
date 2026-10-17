@@ -27,12 +27,6 @@
     # Keep Darwin user home aligned with vm-mounted persistent volume.
     profile.user.home = lib.mkForce (builtins.toPath "/Volumes/user-home");
 
-    services.nxmaticCachixWatchStore = {
-      # DISABLED 2026-10-10: watch-store pushed dirty-tree flake sources carrying sops-smudged .secrets/keys.yaml in clear to the PUBLIC nxmatic cache. Not removed; see the rke2lab memory note dirty-flake-eval-publishes-smudged-secrets.
-      enable = false;
-      sopsEncryptedTokenFile = ../../.secrets;
-    };
-
     tart.configGenerator = {
       forceEnable = false;
       vmMemoryMiB = halfRamMiB;

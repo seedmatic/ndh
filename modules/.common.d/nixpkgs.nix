@@ -41,7 +41,6 @@ in
       # modules/.common.d/cache-trust.nix walking the catalog.
       trusted-substituters = [
         cacheCatalog.nixos.substituter
-        cacheCatalog.nxmatic.substituter
       ];
     };
     gc = {

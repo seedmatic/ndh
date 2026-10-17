@@ -14,7 +14,6 @@
     ./core.nix
     ./darwin-rebuild-gh.nix
     ./etc-backup.nix
-    ./cachix-watch-store.nix
     ./disable-spotlight.nix
     ./disable-google-updaters.nix
     ./disable-unwanted-agents.nix
@@ -41,7 +40,6 @@
     ./incus-cluster-cert.nix
     ./attic-leaf.nix
     ./attic-client.nix
-    ./cache-publish.nix
     ./ssh-keys-enrichment.nix
     ./user-secret-mirror.nix
     ./ssh-client.nix

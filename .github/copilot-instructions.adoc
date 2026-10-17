@@ -293,7 +293,7 @@ Both configurations are generated from same host flake.
 [options="header"]
 |===
 | Dependency | Purpose
-| Cachix | Binary cache (`nxmatic.cachix.org`)
+| attic | Private binary caches, one per metalspace (`attic.<metalspace>`)
 | Flox | Environment management (from `flake-commons`)
 | Incus | Container orchestration (replaces LXD)
 |===

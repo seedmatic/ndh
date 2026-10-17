@@ -820,11 +820,6 @@ class Analyzer:
         if prog in tools.get("programs", []):
             self.deny(f"{prog} {tools['why']}", argv)
             return
-        apply = self.table.get("operator_apply", {})
-        if prog in apply.get("programs", []) and any(
-                a == f or a.startswith(f + "=") for a in args for f in apply.get("flags", [])):
-            self.deny(f"{prog} --apply {apply['why']}", argv)
-            return
         if prog == "ndh-ops" and args[:1] == ["arm"]:
             self.deny("ndh-ops arm is the operator's: a session never arms its own delegation", argv)
             return

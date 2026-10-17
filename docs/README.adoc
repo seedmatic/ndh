@@ -115,7 +115,7 @@ accepted. Two phases — declare and install, then retire AND revoke in the same
 rotates at activation.
 
 link:security-handling-c4.adoc[Security Handling (C4-Style UML)]::
-Context + container diagrams for SOPS key lifecycle, runtime secret materialization, and Cachix publish/consume flows.
+Context + container diagrams for SOPS key lifecycle, and runtime secret materialization.
 
 link:env-prefix-policy.adoc[Environment Variable Prefix Policy]::
 Canonical prefix boundaries for `RKE2LAB_*` (lab domain) and `NDH_*` (`nix-darwin-home` domain), with a single-name/no-alias policy.
