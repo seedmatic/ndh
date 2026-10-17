@@ -8,6 +8,8 @@ bats_require_minimum_version 1.5.0
 
 setup() {
   t="$BATS_TEST_TMPDIR"
+  # The stubs run under the bats bash itself: the darwin build sandbox refuses to exec /usr/bin/env.
+  shebang="#!$BASH"
   here="${BATS_TEST_DIRNAME}/.."
   export GNUPGHOME="$t/gnupg" PASSWORD_STORE_DIR="$t/store" HOME="$t/home"
   mkdir -p "$GNUPGHOME" "$HOME" "$t/bin" "$t/tmp" && chmod 700 "$GNUPGHOME"
@@ -21,7 +23,7 @@ setup() {
 
   realPass="$(command -v pass)"
   cat >"$t/bin/pass" <<EOF
-#!/usr/bin/env bash
+$shebang
 printf '%s\n' "\$*" >>"$t/pass.argv"
 exec "$realPass" "\$@"
 EOF
@@ -33,7 +35,7 @@ EOF
       "$seedmatic" "$t/gen"
     cat "$here/ndh-keyring.sh"
   } >"$t/keyring"
-  printf '#!/usr/bin/env bash\nexec python3 -I %q\n' "$here/gen-ed25519.py" >"$t/gen"
+  printf '%s\nexec python3 -I %q\n' "$shebang" "$here/gen-ed25519.py" >"$t/gen"
   chmod +x "$t/gen"
 }
 

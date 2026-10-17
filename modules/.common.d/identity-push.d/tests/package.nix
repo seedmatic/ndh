@@ -17,6 +17,6 @@ pkgs.runCommand "identity-push-bats"
   }
   ''
     cp -r ${./..} identity-push.d && chmod -R u+w identity-push.d
-    cd identity-push.d/tests && HOME=$TMPDIR bats .
+    cd identity-push.d/tests && HOME=$TMPDIR bats --print-output-on-failure .
     touch $out
   ''

@@ -10,6 +10,8 @@ bats_require_minimum_version 1.5.0
 
 setup() {
   t="$BATS_TEST_TMPDIR"
+  # The stubs run under the bats bash itself: the darwin build sandbox refuses to exec /usr/bin/env.
+  shebang="#!$BASH"
   mkdir -p "$t/bin" "$t/tmp" "$t/root/var/lib/sops-nix" "$t/seat-root"
   here="${BATS_TEST_DIRNAME}/.."
   key() { ssh-keygen -q -t ed25519 -N "${2:-}" -C "$1" -f "$t/$1"; }
@@ -48,20 +50,20 @@ setup() {
   } >"$t/push"
   ssh-keygen -l -E sha256 -f "$t/served.pub" | awk '{ print $2 }' >"$t/typed"
 
-  cat >"$t/bin/route" <<'EOF'
-#!/usr/bin/env bash
-printf '   route to: %s\n  interface: en9\n' "${@: -1}"
+  cat >"$t/bin/route" <<EOF
+$shebang
+printf '   route to: %s\n  interface: en9\n' "\${@: -1}"
 EOF
-  cat >"$t/bin/ifconfig" <<'EOF'
-#!/usr/bin/env bash
-printf 'en9: flags=8963<UP>\n\tinet %s netmask 0xfffffffc\n' "${STUB_LOCAL:-172.16.8.2}"
+  cat >"$t/bin/ifconfig" <<EOF
+$shebang
+printf 'en9: flags=8963<UP>\n\tinet %s netmask 0xfffffffc\n' "\${STUB_LOCAL:-172.16.8.2}"
 EOF
   cat >"$t/bin/ssh-keyscan" <<EOF
-#!/usr/bin/env bash
+$shebang
 printf '# 172.16.8.1:22 SSH-2.0-OpenSSH\n172.16.8.1 %s\n' "\$(cut -d' ' -f1,2 "${STUB_SERVED:-$t/served.pub}")"
 EOF
   cat >"$t/bin/ssh" <<EOF
-#!/usr/bin/env bash
+$shebang
 # The pinning is checked, not trusted: ONLY the throwaway known_hosts, holding the served key.
 args=" \$* "
 for o in "-F /dev/null " UserKnownHostsFile= "GlobalKnownHostsFile=/dev/null " "StrictHostKeyChecking=yes " \
@@ -79,7 +81,7 @@ case "\${@: -1}" in
 esac
 EOF
   cat >"$t/bin/sudo" <<EOF
-#!/usr/bin/env bash
+$shebang
 [[ \$1 == -n ]] || { echo "sudo stub: not -n" >&2; exit 96; }
 shift
 echo "\$*" >>"$t/sudo.log"
@@ -211,7 +213,7 @@ receive() { PATH="$t/bin:$PATH" run ndh-identity-receive --accept; }
 seat_push() { # [fd 4 source] — the seat's own push, every network tool failing if called
   local c
   for c in route ifconfig ssh-keyscan ssh; do
-    printf '#!/usr/bin/env bash\necho %s >>%q\nexit 95\n' "$c" "$t/network.log" >"$t/bin/$c"
+    printf '%s\necho %s >>%q\nexit 95\n' "$shebang" "$c" "$t/network.log" >"$t/bin/$c"
   done
   if [[ -n ${1:-} ]]; then
     TMPDIR="$t/tmp" PATH="$t/bin:$PATH" run bash "$t/push" bioskop 3<"$t/machine" 4<"$1"
@@ -244,7 +246,7 @@ seat_push() { # [fd 4 source] — the seat's own push, every network tool failin
 }
 
 @test "the seat's push stops when the placed public differs" {
-  printf '#!/usr/bin/env bash\ncat >/dev/null\necho "host-key ssh-ed25519 AAAAtampered"\n' >"$t/seat-receive"
+  printf '%s\ncat >/dev/null\necho "host-key ssh-ed25519 AAAAtampered"\n' "$shebang" >"$t/seat-receive"
   seat_push
   [ "$status" -eq 1 ]
   [[ $output == *"public differs from the one sent"* ]]
@@ -287,7 +289,7 @@ seat_push() { # [fd 4 source] — the seat's own push, every network tool failin
 
 @test "the seat's push refuses an sshfs key on fd 5, and sends nothing" {
   for c in route ifconfig ssh-keyscan ssh; do
-    printf '#!/usr/bin/env bash\necho %s >>%q\nexit 95\n' "$c" "$t/network.log" >"$t/bin/$c"
+    printf '%s\necho %s >>%q\nexit 95\n' "$shebang" "$c" "$t/network.log" >"$t/bin/$c"
   done
   TMPDIR="$t/tmp" PATH="$t/bin:$PATH" run bash "$t/push" bioskop 3<"$t/machine" 4<&- 5<"$t/sshfs"
   [ "$status" -eq 1 ]

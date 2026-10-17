@@ -20,6 +20,6 @@ pkgs.runCommand "keyring-bats"
   }
   ''
     cp -r ${./..} keyring.d && chmod -R u+w keyring.d
-    cd keyring.d/tests && HOME=$TMPDIR bats .
+    cd keyring.d/tests && HOME=$TMPDIR bats --print-output-on-failure .
     touch $out
   ''
