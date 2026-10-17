@@ -97,13 +97,19 @@ let
   #
   # `darwin.` still needs its HostName, and that asymmetry is the measurement, not a style choice:
   # `darwin.<host>` does not resolve at all, while `nixos.<host>` does. One alias names a target DNS knows
-  # nothing about; the other names a target DNS already answers for.
+  # nothing about; the other names a target DNS already answers for. Its HostName is the FULLY qualified
+  # MagicDNS name, for the reason above: a single label goes through the search list, and bioskop has no
+  # MagicDNS search domain (measured 2026-10-17: `darwin.nikopol` → `nikopol` did not resolve).
   # Each alias with the name its HostName points at (null: none written). The same records render the
   # stanzas and list the aliases checked strictly, so an alias added here cannot miss the strict list.
   operatorAliasesOf = host: [
     {
       service = "darwin";
-      hostName = host;
+      hostName =
+        if tailnetDomain != "" then
+          tailnetAlias host
+        else
+          throw "ssh-tailnet-hosts: darwin.${host} needs the catalog's tailnet domain for a fully qualified HostName";
     }
     {
       service = "nixos";

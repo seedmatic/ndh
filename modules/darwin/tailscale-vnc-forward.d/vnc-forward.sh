@@ -28,4 +28,4 @@ exec @ssh@ \
   -o ServerAliveCountMax=3 \
   -o StrictHostKeyChecking=accept-new \
   -L 0.0.0.0:5901:@bioskopHost@:5900 \
-  nxmatic@@@bioskopHost@
+  nxmatic@@bioskopHost@
