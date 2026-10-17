@@ -15,6 +15,8 @@ setup() {
   realOpenssl="$(command -v openssl)"
   t="$BATS_TEST_TMPDIR"
   mkdir -p "$t/bin" "$t/home"
+  # The log sink: a file the cases read, instead of the host's unified log or journald.
+  export LOGGER_CMD="tee -a $t/sink"
 
   ca() { # <name> — a self-signed P-256 test root
     "$realOpenssl" req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes \
@@ -32,12 +34,18 @@ setup() {
     {"authorities": {"test-tls": {"usage": ["tls-authority"],
       "slots": {"26-10-10": {"ca_crt": strenv(CA), "private": strenv(KEY)}}}}}' >"$t/keys.yaml"
 
+  # The ONE decryption the script may make: one slot's private, by --extract. Every call is recorded,
+  # and anything else (a whole-file --decrypt) fails, so a run that should sign nothing proves it
+  # never reached the operator's age key.
   cat >"$t/bin/sops" <<EOF
-#!/usr/bin/env bash
-cat "$t/keys.yaml"
+#!$BASH
+printf '%s\n' "\$*" >>"$t/sops.calls"
+[[ \$1 == --decrypt && \$2 == --extract ]] || { echo "sops stub: only --decrypt --extract of one slot" >&2; exit 97; }
+[[ -z \${STUB_SOPS_FAIL:-} ]] || { echo "SOPS-STDERR-MARKER: Failed to get the data key" >&2; exit 128; }
+yq -r ".\$(printf '%s' "\$3" | sed -e 's/^\[//' -e 's/\]\$//' -e 's/\]\[/./g')" "\$4"
 EOF
   cat >"$t/bin/openssl" <<EOF
-#!/usr/bin/env bash
+#!$BASH
 if [[ \$1 == s_client ]]; then
   [[ -n \${STUB_ABSENT:-} ]] && exit 1
   echo CONNECTED
@@ -55,7 +63,7 @@ exec "$realOpenssl" "\$@"
 EOF
   mkdir -p "$t/run"
   cat >"$t/bin/ssh" <<EOF
-#!/usr/bin/env bash
+#!$BASH
 # Every session runs with the operator's ssh config ignored, and never prompts.
 args=" \$* "
 for o in "-F /dev/null " "BatchMode=yes " "PasswordAuthentication=no " "KbdInteractiveAuthentication=no " \\
@@ -83,17 +91,19 @@ if [[ -n \${STUB_EXTRA_SAN:-} && \$cmd == *"step certificate create"* ]]; then c
 exec bash -c "\$cmd"
 EOF
   cat >"$t/bin/incus" <<EOF
-#!/usr/bin/env bash
+#!$BASH
 if [[ "\$1 \$2" == "cluster update-certificate" ]]; then cp "\$3" "$t/served.crt"; touch "$t/updated"; fi
 exit 0
 EOF
-  printf '#!/usr/bin/env bash\nexit 0\n' >"$t/bin/systemctl"
+  printf '#!%s\nexit 0\n' "$BASH" >"$t/bin/systemctl"
   chmod +x "$t/bin/"*
   touch "$t/operator" "$t/operator-cert.pub"
 
   script="$t/renew.sh"
   {
     echo 'set -euo pipefail'
+    echo "source ${BATS_TEST_DIRNAME}/../../shell.d/logger.sh"
+    echo 'loggerTag=test.incus-cluster-cert'
     echo "keysYaml=$t/keys.yaml authority=test-tls cn=m1 via=m1 remote=m1 days=365"
     echo "sshUser=op sshKey=$t/operator sshCert=$t/operator-cert.pub"
     echo 'sans=(m1 m2) members=(m1 m2) verifyNames=(m1 m2)'
@@ -108,12 +118,65 @@ run_renew() { HOME="$t/home" XDG_STATE_HOME="$t/state" PATH="$t/bin:$PATH" run b
   [ "$status" -eq 0 ]
   [[ $output == *"RENEW:"* ]]
   [[ $output == *"DRY RUN: would certify"* ]]
+  [ ! -e "$t/sops.calls" ]
 }
 
 @test "--check that finds a renewal exits 10, never 1" {
   run_renew --check
   [ "$status" -eq 10 ]
   [[ $output == *"RENEW:"* ]]
+  [ ! -e "$t/sops.calls" ]
+}
+
+@test "a renewal decrypts exactly once: the signing slot's private, by --extract" {
+  mkdir -p "$t/tmp"
+  TMPDIR="$t/tmp" run_renew
+  [ "$status" -eq 0 ]
+  [ "$(wc -l <"$t/sops.calls")" -eq 1 ]
+  [[ $(<"$t/sops.calls") == '--decrypt --extract ["authorities"]["test-tls"]["slots"]["26-10-10"]["private"] '* ]]
+}
+
+@test "the log sink says whether a run decrypted: never on --dry-run, once on a renewal" {
+  run_renew --dry-run
+  [ "$status" -eq 0 ]
+  grep -q '^\[test.incus-cluster-cert\] .*nothing decrypted' "$t/sink"
+  run ! grep -q 'the only decryption of this run' "$t/sink"
+  mkdir -p "$t/tmp"
+  : >"$t/sink"
+  TMPDIR="$t/tmp" run_renew
+  [ "$status" -eq 0 ]
+  [ "$(grep -c '^\[test.incus-cluster-cert\] .*the only decryption of this run' "$t/sink")" -eq 1 ]
+}
+
+@test "the sink carries neither the age key's path, nor a private, nor a trace — even asked to trace" {
+  mkdir -p "$t/tmp"
+  SOPS_AGE_KEY_FILE="$t/AGE-KEY-MARKER" NDH_LOGGER_XTRACE=1 TMPDIR="$t/tmp" run_renew
+  [ "$status" -eq 0 ]
+  SOPS_AGE_KEY_FILE="$t/AGE-KEY-MARKER" NDH_LOGGER_XTRACE=1 HOME="$t/home" XDG_STATE_HOME="$t/state" \
+    PATH="$t/bin:$PATH" run bash -x "$script" --dry-run
+  [ "$status" -eq 0 ]
+  [ -s "$t/sink" ]
+  run ! grep -q 'AGE-KEY-MARKER' "$t/sink"
+  run ! grep -q 'PRIVATE KEY' "$t/sink"
+  run ! grep -qE '^\[test\.incus-cluster-cert\] \+' "$t/sink"
+}
+
+@test "a failed decryption reports sops' exit status only, never its stderr" {
+  mkdir -p "$t/tmp"
+  STUB_SOPS_FAIL=1 TMPDIR="$t/tmp" run_renew
+  [ "$status" -eq 1 ]
+  [[ $output == *"sops decrypt of test-tls@26-10-10 failed (exit 128)"* ]]
+  [[ $output != *"SOPS-STDERR-MARKER"* ]]
+  run ! grep -q 'SOPS-STDERR-MARKER' "$t/sink"
+  [ ! -e "$t/updated" ]
+}
+
+@test "a ca_crt read as ENC[…] is refused before anything is decrypted" {
+  yq -i '.authorities."test-tls".slots."26-10-10".ca_crt = "ENC[AES256_GCM,data:x,type:str]"' "$t/keys.yaml"
+  run_renew --dry-run
+  [ "$status" -eq 1 ]
+  [[ $output == *"cleartext-metadata contract changed"* ]]
+  [ ! -e "$t/sops.calls" ]
 }
 
 @test "a preflight ERROR stops the run before anything is signed" {
@@ -228,10 +291,13 @@ pub() { # <x509|pkey> <file> → the sha256 of its public key
   [ "$status" -eq 0 ]
   [[ $output == *"CURRENT"* ]]
   [ ! -e "$t/updated" ]
+  # Neither the check nor an activation with nothing due ever reaches the age key.
+  [ ! -e "$t/sops.calls" ]
 }
 
 @test "an absent cluster at activation is a warning, and the activation goes on" {
   STUB_ABSENT=1 run_renew --activation
   [ "$status" -eq 0 ]
   [[ $output == *"WARN: no certificate served"* ]]
+  [ ! -e "$t/sops.calls" ]
 }

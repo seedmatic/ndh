@@ -29,9 +29,11 @@ pkgs.writeShellApplication {
   # SC2029: $remoteDir is expanded on the client ON PURPOSE — it is the remote path the first ssh
   # returned, quoted into each later remote command. SC2016: the single-quoted remote scripts
   # (the tmpfs dir, the preflight) expand $(id -u) on the MEMBER, which is the point.
+  # SC1091: the logger library is sourced from the store, which shellcheck cannot follow.
   excludeShellChecks = [
     "SC2029"
     "SC2016"
+    "SC1091"
   ];
   runtimeInputs = [
     pkgs.sops
@@ -44,6 +46,8 @@ pkgs.writeShellApplication {
     pkgs.incus.passthru.client
   ];
   text = ''
+    source ${../shell.d/logger.sh}
+    loggerTag=ndh.incus-cluster-cert-renew
     keysYaml=${lib.escapeShellArg "${../../home-manager/ssh.d/keys.yaml}"}
     authority=mammoth-skate-tls
     cn=${lib.escapeShellArg operatorSeatGuest.nixosHostname}
