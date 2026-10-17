@@ -59,6 +59,11 @@
     "security": { "verbs": ["dump-keychain"], "flag_verbs": ["-w", "-g"], "window": 1, "value_opts": [] }
   },
   "protected_branches": ["develop", "main"],
+  "list_tool_rules": {
+    "why": "the Atlassian plugin acts on the employer's systems: its writes ask, its destructive operations are the operator's, in the web UI",
+    "ask": ["mcp__plugin_atlassian_atlassian__createConfluenceContent", "mcp__plugin_atlassian_atlassian__updateConfluenceContent", "mcp__plugin_atlassian_atlassian__createJiraIssue", "mcp__plugin_atlassian_atlassian__editJiraIssue", "mcp__plugin_atlassian_atlassian__transitionJiraIssue", "mcp__plugin_atlassian_atlassian__addOrEditJiraIssueComment", "mcp__plugin_atlassian_atlassian__executeWrite"],
+    "deny": ["mcp__plugin_atlassian_atlassian__executeDestructive"]
+  },
   "operator_tools": {
     "programs": ["ssh-keys-certify", "ssh-keys-renew", "attic-leaf-sign", "incus-cluster-cert-renew", "ndh-keyring", "ndh-identity-push"],
     "why": "reads the operator's secrets (keys.yaml, an authority's signing slot, the keyring): the operator runs it"
