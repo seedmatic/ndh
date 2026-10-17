@@ -276,3 +276,22 @@ sessions:
     exclude:
       - ~/.claude/.scratchpad.d/session-autonomy/LIVE.md
     lives_there: commit-message drafts, mktemp probes (generated managed lists, mutation copies, archive extracts), figure checks, build logs
+  develop-nix:
+    # ❄️ nix
+    role: nix
+    icon: ❄️
+    conversations:
+      - 4cd076c7-101f-4b97-888e-6f369e6c8477
+    owned:
+      - ~/.claude/.scratchpad.d/nix/**
+    worktrees:
+      - /Volumes/git-worktree-store/seedmatic/ndh.d/feature/fleet-switch-app
+      - /Volumes/git-worktree-store/seedmatic/ndh.d/feature/gh-get-bare-worktrees
+    exclude:
+      - ~/.claude/.scratchpad.d/nix/LIVE.md
+      - ~/.claude/.scratchpad.d/nix/brief.md
+      - ~/.claude/.scratchpad.d/nix/tools/**
+      - ~/.claude/.scratchpad.d/nix/probes/**
+      - ~/.claude/.scratchpad.d/nix/*.md
+    lives_there: throwaway clones, bats homes, logs, rebuild work; the acceptance and relock tooling; the 2e and relock-speed measurements
+    note: its darwin.nikopol paths and /private/var/tmp canaries are out of the registry scope (remote / outside the roots; removed by its own scripts and traps)
