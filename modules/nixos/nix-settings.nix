@@ -26,12 +26,12 @@ in
     trusted-users = [
       cfgUserName
       "root"
-      "builder" # remote builder user (nerd-nixos VM)
     ];
     # Builds run as the nixbldN users. NixOS emits no build-users-group here, so
     # Nix fell back to a default that depends on the daemon's uid; stated, it is
     # a reviewed fact. Nix takes the group's MEMBERS as build users: only the
-    # nixbldN accounts may be members (see the builder user in users.nix).
+    # nixbldN accounts may be members: Nix would build as any other member, and kill its
+    # processes (an ssh session) before each build.
     build-users-group = "nixbld";
     sandbox = true;
     # mkForce: NixOS DEFINES its feature list (kvm included) rather than defaulting it, so a plain

@@ -1,5 +1,5 @@
 # User management configuration for NixOS systems.
-# Configures the profile user, builder user, and root authorized keys.
+# Configures the profile user and root authorized keys.
 { config, lib, ... }:
 let
   ndhContext = config.ndh.context or { };
@@ -35,20 +35,7 @@ in
   };
   users.groups.${cfgUserName} = lib.optionalAttrs (cfgUser.gid != null) { gid = cfgUser.gid; };
 
-  # builder user: accepts the linux-builder key from the Darwin host for remote builds.
-  # Never in nixbld: Nix takes that group's members as build users, so it would build
-  # as this login user and kill its processes (its ssh session) before each build.
-  users.users.builder = lib.mkIf runtimeMode {
-    isNormalUser = true;
-    group = "builder";
-    extraGroups = [ "wheel" ];
-    description = "Nix remote builder";
-    openssh.authorizedKeys.keys = config.ndh.keysYaml.authorizedLinesFor [ "linux-builder" ];
-  };
-  users.groups.builder = lib.mkIf runtimeMode { };
-
-  # nix-store user provisioning moved to modules/.common.d/nix-store-identity.nix
-  # so Darwin gets the same treatment via a single source of truth.
+  # The remote builds are served by the nix-store account (modules/.common.d/nix-store-identity.nix).
 
   # root: accepts the linux-builder key (for root-level build operations)
   # and the rdp-host key (interactive operator access).

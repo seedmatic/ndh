@@ -31,7 +31,9 @@ let
   ndhContext = lib.attrByPath [ "context" ] { } ndh;
   inventoryHostNames = builtins.attrNames (lib.attrByPath [ "inventory" "hosts" ] { } ndhContext);
   selfHostName = config.networking.hostName or "";
-  peerHostNames = lib.filter (h: h != selfHostName && h != "") inventoryHostNames;
+  peerHostNames = lib.filter (h: h != selfHostName && h != "") (
+    lib.unique (inventoryHostNames ++ cfg.extraPeers)
+  );
 
   # Restricted login shell for the inbound nix-daemon user. Rendered as a
   # writeShellApplication so the file is 0555 and shellcheck-clean; the
@@ -165,6 +167,15 @@ in
       type = lib.types.str;
       default = "${cfg.inboundUserShellPackage}${cfg.inboundUserShellPackage.shellPath}";
       description = "Absolute path to the inbound user's login shell inside its store package.";
+    };
+
+    extraPeers = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [ ];
+      description = ''
+        Machines outside the inventory's hosts that also get a `nix-store.<peer>`
+        alias: the NixOS guest a Darwin host builds on (modules/darwin/host-builder.nix).
+      '';
     };
 
     hostSuffix = lib.mkOption {
