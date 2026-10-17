@@ -11,16 +11,16 @@ setup() {
   A="$T/areas"
   mkdir -p "$A/mine/probe" "$A/mine/logs" "$A/mine/vault" "$A/theirs/x" "$A/bare/sub"
   touch "$A/mine/vault/.secrets" "$A/mine/logs/redact.sh"
-  mkdir -p "$T/elsewhere"; touch "$T/elsewhere/f"
+  mkdir -p "$T/elsewhere" "$A/probe-root/x"; touch "$T/elsewhere/f"
   ln -s "$A/mine/vault" "$A/mine/link-vault"
   ln -s "$T/elsewhere" "$A/mine/hop"
   cat >"$T/hook/owned-dirs.json" <<EOF
 {
   "pages_never_remove": ["~/.claude/.scratchpad.d/*/LIVE.md"],
-  "global_exclude": ["~", "/Volumes/git-bare-store/**", "**/.secrets", "**/.secrets/**"],
+  "global_exclude": ["~", "/Volumes/git-bare-store/**", "**/.secrets", "**/.secrets/**", "$A/frozen/**"],
   "sessions": {
     "mine": {
-      "owned": ["$A/mine/**", "$A/bare/**", "~/.claude/.scratchpad.d/topic/**", "/private/tmp/mine-{a,b}.*", "/private/tmp/run{1..3}"],
+      "owned": ["$A/mine/**", "$A/bare/**", "$A/probe-root", "$A/probe-root/**", "~/.claude/.scratchpad.d/topic/**", "/private/tmp/mine-{a,b}.*", "/private/tmp/run{1..3}"],
       "worktrees": ["/Volumes/git-worktree-store/seedmatic/ndh.d/*/*"],
       "exclude": ["$A/mine/logs/redact.sh"],
       "conversations": ["11111111-0000-0000-0000-000000000001"]
@@ -43,10 +43,10 @@ MINE=11111111-0000-0000-0000-000000000001
 allowed_owned() { [ "$status" -eq 0 ] && [[ "$output" == *'"permissionDecision": "allow"'* ]] || { echo "expected owned allow, got status=$status output=$output"; return 1; }; }
 not_allowed()   { [[ "$output" != *'"permissionDecision": "allow"'* ]] || { echo "expected no allow, got $output"; return 1; }; }
 
-@test "owned: one exact path in my area is removed without a prompt, and audited" {
+@test "owned: one exact path in my area is removed without a prompt, and audited with the session id" {
   run as "$MINE" "rm -rf $A/mine/probe"
   allowed_owned
-  grep -q "mine removes $A/mine/probe ($A/mine/\*\*)" "$T/state/claude-deny-hook/log"
+  grep -q "mine $MINE removes $A/mine/probe ($A/mine/\*\*)" "$T/state/claude-deny-hook/log"
 }
 @test "owned: a scratchpad topic of mine, after a cd elsewhere" {
   run as "$MINE" "cd ~ && rm -rf ~/.claude/.scratchpad.d/topic/old-draft"
@@ -89,9 +89,23 @@ not_allowed()   { [[ "$output" != *'"permissionDecision": "allow"'* ]] || { echo
   run as 99999999-0000-0000-0000-000000000009 "rm -rf $A/mine/probe"; not_allowed
   run as "" "rm -rf $A/mine/probe"; not_allowed
 }
-@test "owned: mixed with any other command, the call goes the usual way" {
-  run as "$MINE" "rm -rf $A/mine/probe && ls"; not_allowed
-  run as "$MINE" "cd / && rm -rf $A/mine/probe"; not_allowed
+@test "owned: cd anywhere and read-only commands around the removal keep the grant" {
+  run as "$MINE" "cd / && rm $A/mine/probe && echo removed"; allowed_owned
+  run as "$MINE" "rm -rf $A/mine/probe; ls $A/mine"; allowed_owned
+  run as "$MINE" "cd $A/mine && rm -rf probe && test ! -e probe"; allowed_owned
+}
+@test "owned: any other command in the call leaves it to the usual rules" {
+  run as "$MINE" "rm -rf $A/mine/probe && touch $A/mine/x"; not_allowed
+  run as "$MINE" "rm -rf $A/mine/probe; bash -c true"; not_allowed
+}
+@test "owned: a substitution runs a command of its own, so it voids the grant" {
+  run as "$MINE" 'rm -rf '"$A"'/mine/probe; echo $(true)'; not_allowed
+}
+@test "owned: a relative target after a cd must still resolve inside the area" {
+  run as "$MINE" "cd $A && rm -rf theirs-not-mine"; not_allowed
+}
+@test "owned: one rm that does not qualify voids the grant for the whole call" {
+  run as "$MINE" "rm -rf $A/mine/probe && rm /private/tmp/somewhere-unregistered"; not_allowed
 }
 @test "owned: a worktree of mine through git worktree remove, never with --force" {
   run as "$MINE" "git -C /Volumes/git-worktree-store/seedmatic/ndh.d/develop worktree remove /Volumes/git-worktree-store/seedmatic/ndh.d/fix/old"
@@ -115,6 +129,33 @@ not_allowed()   { [[ "$output" != *'"permissionDecision": "allow"'* ]] || { echo
 @test "/tmp is refused with the /private/tmp form to write instead" {
   run as "$MINE" "rm -rf /tmp/mine-a.XYZ"
   [ "$status" -eq 2 ] && [[ "$output" == *"write /private/tmp/mine-a.XYZ"* ]]
+}
+@test "foreign: a NON-recursive rm in another session's area is denied, naming its owner" {
+  run as "$MINE" "rm $A/theirs/x/file"
+  [ "$status" -eq 2 ] && [[ "$output" == *"belongs to theirs"* ]]
+}
+@test "foreign: recursive too, and the area's root, existing or not" {
+  run as "$MINE" "rm -rf $A/theirs/x"; [ "$status" -eq 2 ]
+  run as "$MINE" "rm -rf $A/theirs"; [ "$status" -eq 2 ]
+  run as "$MINE" "rm $A/theirs/does-not-exist"; [ "$status" -eq 2 ]
+}
+@test "foreign: under a global exclude, for every session" {
+  run as "$MINE" "rm -rf $A/frozen/y"
+  [ "$status" -eq 2 ] && [[ "$output" == *"excluded for every session"* ]]
+  run as "$MINE" "rm /Volumes/git-bare-store/seedmatic/x.git/HEAD"; [ "$status" -eq 2 ]
+}
+@test "foreign: an unknown session gets a deny on any engraved area" {
+  run as 99999999-0000-0000-0000-000000000009 "rm $A/mine/probe"
+  [ "$status" -eq 2 ] && [[ "$output" == *"belongs to mine"* ]]
+}
+@test "foreign: an unregistered path keeps the usual rules" {
+  run as "$MINE" "rm /private/tmp/somewhere-unregistered"
+  [ "$status" -eq 0 ] && not_allowed
+}
+@test "root: <p>/** never grants <p>, a bare <p> does, the exclude walk still applies below" {
+  run as "$MINE" "rm -rf $A/probe-root"; allowed_owned
+  touch "$A/probe-root/x/.secrets"
+  run as "$MINE" "rm -rf $A/probe-root"; not_allowed
 }
 @test "owned: without a registry, nobody has an area" {
   rm "$T/hook/owned-dirs.json"

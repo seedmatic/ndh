@@ -360,6 +360,7 @@ class Analyzer:
         self.cwd = cwd
         self.home = home
         self.owned = owned or {"sessions": {}, "global_exclude": [], "pages_never_remove": []}
+        self.session_id = session_id
         self.session = next((name for name, s in self.owned["sessions"].items()
                              if session_id and session_id in s.get("conversations", [])), None)
         self.owned_removals = []
@@ -377,6 +378,8 @@ class Analyzer:
         if depth > MAX_DEPTH:
             raise Refused("wrapping nested deeper than the hook follows")
         outer, bodies = extract_substitutions(text)
+        # A substitution runs a command of its own: never beside an owned removal.
+        self.other_commands += len(bodies)
         for body in bodies:
             self.analyze(body, depth + 1)
         for argv in simple_commands(outer):
@@ -403,6 +406,9 @@ class Analyzer:
                 self.deny(f"{prog} is trusted only as installed by ndh (the store or the system profile)", argv)
                 return
             nxt = self.peel(prog, rest, depth)
+            if nxt is not None:
+                # A launcher (bash -c, sudo, env, ssh, nix run…) is not a plain removal either.
+                self.other_commands += 1
             if nxt is None:
                 self.check([prog] + rest)
                 return
@@ -649,6 +655,22 @@ class Analyzer:
                 return pattern
         return None
 
+    def foreign(self, path):
+        """Why PATH may not be removed by this session at all: another session's area, or a global exclude."""
+        segs = path.strip("/").split("/")
+        for pattern in self.patterns(self.owned.get("global_exclude", [])):
+            if match_segments(pattern.strip("/").split("/"), segs):
+                return f"{path} is excluded for every session"
+        for name, sess in self.owned["sessions"].items():
+            if name == self.session:
+                continue
+            for pattern in self.patterns(sess.get("owned", [])):
+                psegs = pattern.strip("/").split("/")
+                root = psegs[:-1] if psegs[-1] == "**" else None
+                if match_segments(psegs, segs) or (root is not None and segs == root):
+                    return f"{path} belongs to {name}"
+        return None
+
     def owned_removal(self, key, argv):
         """Record an owned removal: one exact path, in the calling session's area, touching no exclude."""
         if re.search(r"[*?\[\]{}$`]", argv[-1]):
@@ -760,14 +782,24 @@ class Analyzer:
         if prog in ("rm", "rmdir"):
             flags = [t for t in args if t.startswith("-")]
             targets = [t for t in args if not t.startswith("-")]
+            for t in targets:
+                why = self.foreign(self.resolve(t)) if self.resolve(t) else None
+                if why:
+                    self.deny(f"{why}; ask its owner", argv)
+                    return
             plain = all(re.fullmatch(r"-[rRfdv]+|--recursive|--force|--dir|--verbose", f) for f in flags)
             if len(targets) == 1 and plain and self.owned_removal("owned", argv):
                 return
+            # An rm that does not qualify voids the grant for the whole call.
+            self.other_commands += 1
         elif prog == "git" and self.owned_worktree(argv):
             return
-        elif prog not in ("cd", "pushd"):
+        elif prog not in self.NEUTRAL:
             self.other_commands += 1
         self.check_rest(argv)
+
+    # Commands that neither write nor run anything else: they may stand beside an owned removal (security, 2026-10-17).
+    NEUTRAL = {"cd", "pushd", "echo", "printf", "ls", "test", "[", "true", "stat"}
 
     def owned_worktree(self, argv):
         """`git [-C …] worktree remove <one exact path>`, no --force, a worktree of the calling session."""
@@ -792,8 +824,6 @@ class Analyzer:
             self.deny("ndh-ops arm is the operator's: a session never arms its own delegation", argv)
             return
         if prog in ("cd", "pushd"):
-            if any(t == "/" for t in args):
-                self.other_commands += 1
             # The simple commands come in order, so a chain of cd is followed: `cd …/keyhole.d && cd keyring`.
             target = next((t for t in args if not t.startswith("-")), "~")
             moved = self.resolve(target)
@@ -917,7 +947,8 @@ def main():
     asks = [why for kind, why in analyzer.verdicts if kind == "ask"]
     if not asks and analyzer.owned_removals and not analyzer.other_commands:
         # A call made only of the session's own removals (and cd): no prompt, and an audit line.
-        reason = "; ".join(f"{analyzer.session} removes {path} ({pattern})" for pattern, path in analyzer.owned_removals)
+        reason = "; ".join(f"{analyzer.session} {analyzer.session_id} removes {path} ({pattern})"
+                           for pattern, path in analyzer.owned_removals)
         audit(reason)
         json.dump({"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "allow",
                                           "permissionDecisionReason": "owned area: " + reason}}, sys.stdout)
