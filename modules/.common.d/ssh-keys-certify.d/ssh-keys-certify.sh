@@ -63,7 +63,7 @@ readonly sshAgent="${sshKeygen%/*}/ssh-agent"
 readonly sshAdd="${sshKeygen%/*}/ssh-add"
 readonly sha256sum="@sha256sum@"
 readonly interimKey="@interimKey@"
-declare -g keysYaml tmpdir updated expected apply nextSerial interimWaiting="" agentPid=""
+declare -g keysYaml tmpdir updated expected apply nextSerial interimWaiting="" agentPid="" sopsErr=""
 declare -ga plan=() current=() unrecorded=() interimMachines=() interimPending=() interimKept=() ownMachines=()
 # machine → its names, comma-separated: baked as `machine=name,name machine=name,…`.
 declare -gA hostNames=()
@@ -358,11 +358,18 @@ authority::load() { # <authority> <authority slot>
 			return 1
 		fi
 	fi
-	# The run's only decryption, past the last exit that signs nothing: --extract prints this one
-	# private, and every other value of keys.yaml stays inside sops.
-	if ! { sops --decrypt --extract "[\"authorities\"][\"$1\"][\"slots\"][\"$2\"][\"private\"]" "$keysYaml" && echo; } |
-		SSH_AUTH_SOCK="$sock" "$sshAdd" -q -; then
-		log::error "cannot load ${1}@${2}'s private into the agent (check SOPS_AGE_KEY_FILE / sops.age.keyFile)"
+	# The only sops call: everything before it reads cleartext metadata.
+	# Its stderr stays in sopsErr, never shown: sops can quote plaintext. -t: a SIGKILLed run skips the
+	# EXIT trap, and its agent would hold the private until reboot; the key expires by itself instead.
+	local -a rcs=(0 0)
+	{ sops --decrypt --extract "[\"authorities\"][\"$1\"][\"slots\"][\"$2\"][\"private\"]" "$keysYaml" 2>"$sopsErr" && echo; } |
+		SSH_AUTH_SOCK="$sock" "$sshAdd" -t 120 -q - || rcs=("${PIPESTATUS[@]}")
+	if ((rcs[0] != 0)); then
+		log::error "sops decrypt failed (exit ${rcs[0]}) (check SOPS_AGE_KEY_FILE / sops.age.keyFile)"
+		return 1
+	fi
+	if ((rcs[1] != 0)); then
+		log::error "cannot load ${1}@${2}'s private into the agent (ssh-add exit ${rcs[1]})"
 		return 1
 	fi
 	printf '%s %s\n' "$(yq::get ".authorities.\"$1\".type // \"ssh-ed25519\"")" "$(yq::get ".authorities.\"$1\".slots.\"$2\".public")" \
@@ -404,11 +411,18 @@ certify::one() { # <key> <slot> <authority> <authority slot> <usage> <serial>
 		return 1
 	fi
 	cert="$(<"${stem}-cert.pub")"
-	# The only write: `sops set` adds this clear leaf to the encrypted file and leaves every other value
-	# as it is. It needs the data key, since the MAC covers the clear values too; nothing leaves sops.
-	if ! value="$(CERT="$cert" yq --null-input --output-format=json 'strenv(CERT)')" ||
-		! sops set "$updated" "[\"keys\"][\"${key}\"][\"slots\"][\"${slot}\"][\"certificates\"][\"${authority}\"][\"${usage}\"]" "$value" ||
-		! CERT="$cert" yq eval -i ".keys.\"${key}\".slots.\"${slot}\".certificates.\"${authority}\".\"${usage}\" = strenv(CERT)" "$expected"; then
+	if ! value="$(CERT="$cert" yq --null-input --output-format=json 'strenv(CERT)')"; then
+		log::error "cannot record the certificate of ${key}@${slot} ${usage}"
+		return 1
+	fi
+	# The write-back: sops set writes this clear certificate leaf and keeps the envelope (stderr in sopsErr).
+	local rc=0
+	sops set "$updated" "[\"keys\"][\"${key}\"][\"slots\"][\"${slot}\"][\"certificates\"][\"${authority}\"][\"${usage}\"]" "$value" 2>"$sopsErr" || rc=$?
+	if ((rc != 0)); then
+		log::error "sops set failed (exit ${rc}) for ${key}@${slot} ${usage}"
+		return 1
+	fi
+	if ! CERT="$cert" yq eval -i ".keys.\"${key}\".slots.\"${slot}\".certificates.\"${authority}\".\"${usage}\" = strenv(CERT)" "$expected"; then
 		log::error "cannot record the certificate of ${key}@${slot} ${usage}"
 		return 1
 	fi
@@ -501,18 +515,29 @@ main() {
 	tmpdir="$(mktemp -d)"
 	chmod 700 "$tmpdir"
 	trap '[[ -z "$agentPid" ]] || kill "$agentPid" 2>/dev/null; rm -rf "$tmpdir"' EXIT
+	sopsErr="${tmpdir}/sops.stderr"
+	(umask 077 && : >"$sopsErr")
 
 	plan::build || return 1
 	plan::show
 	if ((${#plan[@]} == 0)); then
 		log::info "every certificate is current — nothing to sign"
+		log::info "decrypted: no (nothing to sign)"
 		return 0
 	fi
 	if ((apply == 0)); then
 		log::info "dry run — pass --apply to sign and rewrite keys.yaml"
+		log::info "decrypted: no (dry run)"
 		return 0
 	fi
-	certify::apply
+	local rc=0
+	certify::apply || rc=$?
+	if ((${#loaded[@]} > 0)); then
+		log::info "decrypted: $(printf '%s\n' "${!loaded[@]}" | LC_ALL=C sort | paste -sd, -)"
+	else
+		log::info "decrypted: no"
+	fi
+	return "$rc"
 }
 
 ndh::logger:command:run "@loggerTag@" main "$@"

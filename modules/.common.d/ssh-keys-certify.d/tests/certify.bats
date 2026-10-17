@@ -62,9 +62,17 @@ EOF
   # ndh::logger:command:invoke, sourced from the real logger — without its log sinks: a failure the
   # script does not check behaves here as it does there.
   printf 'source "%s"\nndh::logger:command:run() { shift; ndh::logger:command:invoke "$@"; return "$NDH_LOGGER_COMMAND_RC"; }\n' "$NDH_LOGGER_SH" >"$BATS_TEST_TMPDIR/trampoline.sh"
-  bake "$FLEET"
-  # The stub runs under the bats bash itself: the darwin build sandbox refuses to exec /usr/bin/env.
+  # The stubs run under the bats bash itself: the darwin build sandbox refuses to exec /usr/bin/env.
   shebang="#!$BASH"
+  # The tool takes ssh-agent and ssh-add from ssh-keygen's directory: the real ones, ssh-add recorded.
+  local openssh
+  openssh="$(dirname "$(command -v ssh-keygen)")"
+  mkdir -p "$BATS_TEST_TMPDIR/openssh"
+  ln -s "$openssh/ssh-keygen" "$openssh/ssh-agent" "$BATS_TEST_TMPDIR/openssh/"
+  printf '%s\nprintf "%%s\\n" "$*" >>%q\nexec %q "$@"\n' "$shebang" "$BATS_TEST_TMPDIR/ssh-add.log" "$openssh/ssh-add" \
+    >"$BATS_TEST_TMPDIR/openssh/ssh-add"
+  chmod +x "$BATS_TEST_TMPDIR/openssh/ssh-add"
+  bake "$FLEET"
   export REAL_SOPS SOPS_LOG="$BATS_TEST_TMPDIR/sops.log"
   REAL_SOPS="$(command -v sops)"
   mkdir -p "$BATS_TEST_TMPDIR/bin"
@@ -80,11 +88,16 @@ for a in "$@"; do
   line="${line:+$line }$a"
 done
 printf '%s\n' "$line" >>"$SOPS_LOG"
+op=""
+[[ "$1" == set ]] && op=set
+((decrypt)) && op=decrypt
 private='^\["authorities"\]\["[^"]+"\]\["slots"\]\["[^"]+"\]\["private"\]$'
-if [[ "$SOPS_STUB" == apply ]] && { [[ "$1" == set ]] || { ((decrypt)) && [[ "$extract" =~ $private ]]; }; }; then
+if [[ "$SOPS_STUB" == apply && "$op" != "${SOPS_STUB_FAIL:-}" ]] &&
+  { [[ "$op" == set ]] || { [[ "$op" == decrypt ]] && [[ "$extract" =~ $private ]]; }; }; then
   exec "$REAL_SOPS" "$@"
 fi
-echo "sops stub: refused: $line" >&2
+# A canary for the plaintext sops can quote on stderr: the tool must never show it.
+echo "sops stub: refused: $line SOPS-STDERR-CANARY" >&2
 exit 97
 EOF
   } >"$BATS_TEST_TMPDIR/bin/sops"
@@ -102,7 +115,7 @@ UNION="alpha,alpha-nixos,alpha.lan,beta,beta-nixos,beta.lan,nixos.alpha,nixos.be
 bake() { # <machine=names …> [own machines]
   sed -e "s#@nixBashTrampoline@#$BATS_TEST_TMPDIR/trampoline.sh#" -e 's#@loggerTag@#test#' -e "s#@hostNames@#$1#" \
     -e 's#@interimKey@#rdp-host#' -e 's#@interimMachines@#beta beta-nixos#' -e "s#@ownMachines@#${2-$OWN}#" \
-    -e "s#@sha256sum@#$(command -v sha256sum)#" -e "s#@sshKeygen@#$(command -v ssh-keygen)#" \
+    -e "s#@sha256sum@#$(command -v sha256sum)#" -e "s#@sshKeygen@#$BATS_TEST_TMPDIR/openssh/ssh-keygen#" \
     "$BATS_TEST_DIRNAME/../ssh-keys-certify.sh" >"$BATS_TEST_TMPDIR/ssh-keys-certify"
 }
 
@@ -175,6 +188,7 @@ record_legacy() { # <key> <public file> <serial> <ca private>
     '  missing  host-alpha             26-03-03  ssh-host  signed by fabric@26-02-02' \
     '  missing  host-alpha-nixos       26-03-03  ssh-host  signed by fabric@26-02-02' \
     '  missing  rdp-host               26-03-03  ssh-host  signed by fabric@26-02-02')" ]
+  [[ "$output" == *"decrypted: no (dry run)"* ]]
   [ ! -e "$SOPS_LOG" ]
 }
 
@@ -187,6 +201,30 @@ record_legacy() { # <key> <public file> <serial> <ca private>
     'set keys.certified.yaml ["keys"]["host-alpha"]["slots"]["26-03-03"]["certificates"]["fabric"]["ssh-host"] <value>' \
     'set keys.certified.yaml ["keys"]["host-alpha-nixos"]["slots"]["26-03-03"]["certificates"]["fabric"]["ssh-host"] <value>' \
     'set keys.certified.yaml ["keys"]["rdp-host"]["slots"]["26-03-03"]["certificates"]["fabric"]["ssh-host"] <value>')" ]
+  [ "$(cat "$BATS_TEST_TMPDIR/ssh-add.log")" = "-t 120 -q -" ]
+  [[ "$output" == *"decrypted: fabric@26-02-02"* ]]
+}
+
+@test "a failing decryption says only that sops failed, never what it printed, and changes nothing" {
+  export SOPS_STUB_FAIL=decrypt
+  cp "$keys" before
+  run certify --apply
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"sops decrypt failed (exit 97)"* ]]
+  [[ "$output" != *CANARY* ]]
+  [[ "$output" == *"decrypted: no"* ]]
+  cmp "$keys" before
+}
+
+@test "a failing sops set says only that sops failed, never what it printed, and changes nothing" {
+  export SOPS_STUB_FAIL=set
+  cp "$keys" before
+  run certify --apply
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"sops set failed (exit 97)"* ]]
+  [[ "$output" != *CANARY* ]]
+  [[ "$output" == *"decrypted: fabric@26-02-02"* ]]
+  cmp "$keys" before
 }
 
 @test "a value the plan reads that is ciphertext refuses the run, before any sops call" {
@@ -368,6 +406,7 @@ recorded_cert() { yq eval -r ".keys.\"$1\".slots.\"26-03-03\".certificates.fabri
   run certify --apply
   [ "$status" -eq 0 ]
   [[ "$output" == *"every certificate is current"* ]]
+  [[ "$output" == *"decrypted: no (nothing to sign)"* ]]
   cmp "$keys" after-first
   [ ! -e "$SOPS_LOG" ]
 }
