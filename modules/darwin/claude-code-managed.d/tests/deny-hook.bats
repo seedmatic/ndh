@@ -285,4 +285,11 @@ REPLICA=/Volumes/git-worktree-store/nxmatic/claude-home.d/pass/seedmatic
 @test "ok delete a feature branch"              { run hook 'git push origin --delete feature/x'; allowed; }
 @test "keys: cat an ssh private key"            { run hook 'cat ~/.ssh/id_ed25519'; denied; }
 @test "keys: the age identities"                { run hook 'cat ~/.config/sops/age/keys.txt'; denied; }
+@test "switch: ndh-switch by name"              { run hook 'ndh-switch nikopol 0123abcd'; allowed; }
+@test "switch: ndh-switch from the system profile" { run hook '/run/current-system/sw/bin/ndh-switch bioskop 0123abcd'; allowed; }
+@test "switch: ndh-switch from a pushed revision" { run hook 'nix run github:seedmatic/ndh/0123abcd#ndh-switch -- bioskop 0123abcd'; allowed; }
+@test "switch: a local ndh-switch copy"         { run hook './ndh-switch bioskop 0123abcd'; denied; }
+@test "switch: an ndh-switch under /tmp"        { run hook '/tmp/x/ndh-switch bioskop 0123abcd'; denied; }
+@test "switch: raw darwin-rebuild stays denied" { run hook 'sudo darwin-rebuild switch --flake github:seedmatic/ndh/0123abcd#bioskop'; denied; }
+@test "switch: raw nixos-rebuild stays denied"  { run hook 'nixos-rebuild switch --target-host root@nixos.bioskop --flake .#bioskop-nixos'; denied; }
 @test "ok the ssh public key"                   { run hook 'cat ~/.ssh/id_ed25519.pub'; allowed; }

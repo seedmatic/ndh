@@ -241,9 +241,12 @@ in
         # a renewed key still verifies, so they are checked strictly, and an unknown
         # key there is refused instead of pinned. So are the aliases to them, and the
         # NixOS guests' names.
-        Host ${
-          lib.concatStringsSep " " (lib.unique (self.fleetHostNames ++ fleetAliases))
-        } *-nixos *-nixos.local
+        Host ${lib.concatStringsSep " " (lib.unique (self.fleetHostNames ++ fleetAliases))}
+          StrictHostKeyChecking yes
+          UserKnownHostsFile /dev/null
+          UpdateHostKeys no
+
+        Host *-nixos *-nixos.local
           StrictHostKeyChecking yes
 
         Host *

@@ -96,6 +96,8 @@
     ndh.hostBuilder = "steady";
 
     ndh.claude-code.managedSettings.enable = true;
+    # The guests are evaluated here and pushed, so the fleet is switched from this seat only.
+    ndh.ndhSwitch.enable = true;
     # bioskop holds the keyring: it generates the machines' host keys (ndh-keyring) and gives them their
     # identities (ndh-identity-push).
     ndh.identityPush.enable = true;

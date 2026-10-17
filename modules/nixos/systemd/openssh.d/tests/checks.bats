@@ -101,3 +101,37 @@ authkeys_check() {
   [ "$status" -eq 0 ]
   grep -q 'authorized key check passed' "$T/journal"
 }
+
+reload() {
+  render sshd-host-identity-reload.sh -e "s#@hostKeySource@#$T/keys/extracted#" \
+    -e "s#@hostKeyPublicSource@#$T/keys/extracted.pub#" -e "s#@systemHostKey@#$T/etc/ssh_host_ed25519_key#" \
+    -e "s#@hostCertificatePath@#$T/cert.pub#"
+  run bash "$T/sshd-host-identity-reload.sh"
+}
+
+@test "a changed host key restarts tailscaled once; an unchanged one, or no tailscaled, does not" {
+  printf '#!%s\nprintf "%%s\\n" "$*" >> %q\ncase "$*" in\n  *LoadState*) echo "${STUB_LOAD_STATE:-loaded}" ;;\n  is-failed*) exit 1 ;;\nesac\n' \
+    "$(command -v bash)" "$T/systemctl.calls" > "$T/bin/systemctl"
+  mkdir -p "$T/etc"
+  extracted() { newkey "$1" "$T/keys/extracted.pub" && cp "$T/keys/$1" "$T/keys/extracted"; }
+  extracted first
+  reload
+  [ "$status" -eq 0 ]
+  cmp -s "$T/keys/extracted" "$T/etc/ssh_host_ed25519_key"
+  [ "$(grep -c '^try-restart --no-block tailscaled.service$' "$T/systemctl.calls")" -eq 1 ]
+  grep -q 'tailscaled restart queued' "$T/journal"
+  grep -q '^try-restart --no-block sshd.service$' "$T/systemctl.calls"
+
+  : > "$T/systemctl.calls"
+  reload
+  [ "$status" -eq 0 ]
+  [ "$(grep -c tailscaled "$T/systemctl.calls")" -eq 0 ]
+  grep -q '^try-restart --no-block sshd.service$' "$T/systemctl.calls"
+
+  extracted second
+  : > "$T/systemctl.calls"
+  STUB_LOAD_STATE=not-found reload
+  [ "$status" -eq 0 ]
+  cmp -s "$T/keys/extracted" "$T/etc/ssh_host_ed25519_key"
+  [ "$(grep -c "^try-restart --no-block tailscaled" "$T/systemctl.calls")" -eq 0 ]
+}

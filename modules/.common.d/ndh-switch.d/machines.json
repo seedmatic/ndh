@@ -1,0 +1,6 @@
+[
+  { "name": "bioskop-nixos", "kind": "nixos", "ssh": "nixos.bioskop", "ssh_opts": [] },
+  { "name": "bioskop", "kind": "darwin", "ssh": "", "ssh_opts": [] },
+  { "name": "nikopol-nixos", "kind": "nixos", "ssh": "nixos.nikopol", "ssh_opts": [] },
+  { "name": "nikopol", "kind": "darwin", "ssh": "darwin.nikopol", "ssh_opts": ["-o", "HostName=nikopol.mammoth-skate.ts.net"] }
+]

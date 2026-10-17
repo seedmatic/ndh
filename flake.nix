@@ -1110,6 +1110,19 @@
               inherit target value;
               option = "stricthostkeychecking";
             });
+          # The fleet's names are trusted through the authority only: no raw key pinned, none learned.
+          certsOnly = nixpkgs.lib.concatMap (target: [
+            {
+              inherit target;
+              option = "userknownhostsfile";
+              value = "/dev/null";
+            }
+            {
+              inherit target;
+              option = "updatehostkeys";
+              value = "false";
+            }
+          ]);
           nixStoreAliases = {
             bioskop = [ "nix-store.nikopol" ];
             nikopol = [ "nix-store.bioskop" ];
@@ -1188,6 +1201,7 @@
             inherit pkgs;
           };
           attic-leaf-bats = import ./modules/.common.d/attic-leaf.d/tests/package.nix { inherit pkgs; };
+          ndh-switch-bats = import ./modules/.common.d/ndh-switch.d/tests/package.nix { inherit pkgs; };
           attic-tls-key-bats = import ./modules/nixos/attic-cache.d/tests/package.nix { inherit pkgs; };
           tls-authority-keychain-bats = import ./modules/darwin/tls-authority-keychain.d/tests/package.nix {
             inherit pkgs;
@@ -1267,6 +1281,7 @@
                       "vzhost.nikopol"
                       "example.com"
                     ]
+                    ++ certsOnly (self.fleetHostNames ++ nixStoreAliases.${host})
                     ++ map (target: {
                       inherit target;
                       option = "controlmaster";
@@ -1314,6 +1329,7 @@
                       value = "${nixos.ndh.keysYaml.krlFile}";
                     }) (self.fleetHostNames ++ outsideFleet)
                     ++ strictness "true" (self.fleetHostNames ++ nixStoreAliases.${guest})
+                    ++ certsOnly (self.fleetHostNames ++ nixStoreAliases.${guest})
                     ++ strictness "ask" outsideFleet;
                 }
               )
@@ -1323,6 +1339,26 @@
               "nikopol-nixos"
             ]
         )
+        # bioskop-nixos's sops files are encrypted to its access point's recipient before the identity is
+        # pushed (roles × keys S4, first half): the files are the ones its configuration declares.
+        // {
+          sops-looks-encrypted = import ./modules/.common.d/sops.d/tests/looks-encrypted.nix {
+            inherit pkgs;
+          };
+          sops-access-point-recipients-bioskop-nixos =
+            let
+              c = self.nixosConfigurations.bioskop-nixos.config;
+              seat = self.darwinConfigurations.bioskop.config.ndh.keysYaml.keys."host-bioskop";
+            in
+            import ./modules/.common.d/sops.d/tests/access-point-recipients.nix {
+              inherit pkgs;
+              name = "bioskop-nixos";
+              files = nixpkgs.lib.unique (map (x: x.sopsFile) (builtins.attrValues c.sops.secrets));
+              seatPublic = (nixpkgs.lib.last (builtins.attrValues seat.slots)).public;
+              # The identity both NixOS guests hold today (.sops.yaml), until each decrypts with its own.
+              current = "age1fe9gs0mljq82cwxasugyrjd4pqg9h4uym5r3rwfc2084q558hd7qt4845j";
+            };
+        }
         # The operator's own client config carries the same list, on every operator seat and NixOS guest.
         // {
           ssh-client-operator-revocation =
@@ -1389,6 +1425,16 @@
                     "router.lan"
                     "example.com"
                   ]
+                  ++ certsOnly (
+                    self.fleetHostNames
+                    ++ nixStoreAliases.${host}
+                    ++ [
+                      "darwin.bioskop"
+                      "darwin.nikopol"
+                      "bioskop-ts"
+                      "nikopol-ts"
+                    ]
+                  )
                   # A darwin host's alias names it FULLY qualified: a single label would go through the
                   # search list, and an operator seat may have no MagicDNS search domain.
                   ++
@@ -2200,6 +2246,11 @@
             type = "app";
             program = "${self.darwinConfigurations.bioskop.config.ndh.incusClusterCert.package}/bin/incus-cluster-cert-renew";
             meta.description = "Renew the Incus cluster certificate on the cluster's own key (a CSR signed on the operator seat), install it on every member, re-pin the operator seat client, verify — run from the seat, built by revision — src: modules/.common.d/incus-cluster-cert.d/";
+          };
+          ndh-switch = {
+            type = "app";
+            program = "${self.darwinConfigurations.bioskop.config.ndh.ndhSwitch.package}/bin/ndh-switch";
+            meta.description = "Switch ONE machine to a pushed revision merged into develop or main (github:seedmatic/ndh/<sha>), the sessions' only switch verb; refuses anything else and logs what it ran — run from darwin.bioskop — src: modules/.common.d/ndh-switch.d/";
           };
           attic-leaf-sign = {
             type = "app";

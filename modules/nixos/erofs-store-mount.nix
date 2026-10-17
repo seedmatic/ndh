@@ -7,7 +7,12 @@
 #
 # Each layer is found by filesystem label rather than device node: Tart decides
 # which virtio slot each disk lands in, and that order is not ours to pin.
-{ lib, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 let
   storeLayers = import ./erofs-store-layers.nix;
 
@@ -31,6 +36,39 @@ let
 in
 {
   environment.etc."ndh/store-layers.json".text = builtins.toJSON layerContract;
+
+  # The layers' upstream paths get their own cache.nixos.org signatures back (the registration loaded
+  # them unsigned), so attic's upload filter can skip them: erofs-store-mount.d/upstream-sigs.sh.
+  # Best-effort, after the network: it fails nothing, and a boot without network retries later.
+  systemd.services.ndh-layer-upstream-sigs = {
+    description = "Copy cache.nixos.org's own signatures onto the EROFS layers' upstream paths";
+    wantedBy = [ "multi-user.target" ];
+    wants = [ "network-online.target" ];
+    after = [
+      "network-online.target"
+      "nix-daemon.service"
+    ];
+    serviceConfig.Type = "oneshot";
+    script = lib.escapeShellArgs (
+      [
+        (lib.getExe (
+          pkgs.writeShellApplication {
+            name = "upstream-sigs";
+            runtimeInputs = [
+              config.nix.package
+              pkgs.coreutils
+              pkgs.findutils
+              pkgs.gawk
+            ];
+            text = builtins.readFile ./erofs-store-mount.d/upstream-sigs.sh;
+          }
+        ))
+        "https://cache.nixos.org"
+        "/var/lib/ndh/layer-upstream-sigs.stamp"
+      ]
+      ++ lowerdirs
+    );
+  };
 
   # /nix/store must be mountable in stage 1 to reach stage 2 at all, and
   # nixos/modules/tasks/filesystems/erofs.nix only adds the `erofs` module to
