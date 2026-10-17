@@ -1220,7 +1220,12 @@
               !(builtins.elem alias self.fleetHostNames)
             ) "${alias} is a fleet name: the host authority would vouch for it";
             pkgs.runCommand "vz-recover-ssh-alias" { nativeBuildInputs = [ pkgs.openssh ]; } ''
-              ssh -G -F ${home.home.file.".ssh/config".source} ${alias} >effective
+              # The config as ssh resolves it, config.d included: that Include comes first, and the sandbox has no ~.
+              mkdir ssh && cp -rL ${home.home-files}/.ssh/config.d ssh/config.d
+              sed "s#^Include config.d/#Include $PWD/ssh/config.d/#" ${
+                home.home.file.".ssh/config".source
+              } >ssh/config
+              ssh -G -F ssh/config ${alias} >effective
               want() { grep -qxF "$1" effective || { echo "FAIL: no '$1' in"; cat effective; exit 1; }; }
               want "hostname vzhost.${bm.domain}"
               want "identityfile ~/.ssh/vz-recover"
@@ -1233,6 +1238,10 @@
               done
               known="$(awk '$1 == "userknownhostsfile" { print $2 }' effective)"
               [ "$(cat "$known")" = "${alias} ${bm.vzHostKey}" ] || { echo "FAIL: known hosts: $(cat "$known")"; exit 1; }
+              # No control socket at all, so the alias can never join a master the operator's key opened to the same
+              # host (ControlPath none prints no line; ControlMaster no alone would still join one).
+              want "controlmaster false"
+              ! grep '^controlpath ' effective || { echo "FAIL: a control path, so a master could carry it"; exit 1; }
               touch $out
             '';
           incus-cluster-cert-bats = import ./modules/.common.d/incus-cluster-cert.d/tests/package.nix {

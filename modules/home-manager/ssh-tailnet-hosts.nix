@@ -157,7 +157,8 @@ let
   # answered exactly ndh-vz-recover's marker (anything else: the forced command is not in force), and this block alone
   # names the key file (sessions are denied reading it). One identity, no agent, publickey only, so no other
   # key that account trusts is ever offered: IdentityFile accumulates over every matching block, so this one
-  # comes before any block that adds one, which the vz-recover-ssh-alias check holds. The
+  # comes before any block that adds one, which the vz-recover-ssh-alias check holds. It uses no control socket
+  # (vzNoMultiplexing below). The
   # host key is the one the operator read on that machine, pinned strictly under this alias alone: a
   # foreign vz-host presents no fleet certificate. The fleet's KnownHostsCommand still applies (the leading
   # `Host *` sets it first), but it vouches for the fleet's names only, which this alias is not. Placed
@@ -182,6 +183,18 @@ let
       GlobalKnownHostsFile /dev/null
       UpdateHostKeys no
 
+  '') (lib.filter (bm: bm.vzHostKind == "foreign") (lib.attrValues catalog.netplan.baremetal));
+
+  # The vz-recover alias uses no control socket at all. vzhost.<domain> reaches the same host, port and user, so
+  # ssh's %C gave both ONE socket, and a vz-recover call rode the master the operator's own key had opened there,
+  # an unrestricted shell (measured on nikopol, 2026-10-17). `ControlMaster no` alone still joins an existing
+  # master; `ControlPath none` is what keeps it off. vzhost.<domain> may keep multiplexing: this alias never opens
+  # a master it could join. In config.d, which the generated config includes before ssh.nix's `Host *`, since the
+  # first value wins and that `Host *` would win over any block after it.
+  vzNoMultiplexing = lib.concatMapStrings (bm: ''
+    Host vzrecover.${bm.domain}
+      ControlMaster no
+      ControlPath none
   '') (lib.filter (bm: bm.vzHostKind == "foreign") (lib.attrValues catalog.netplan.baremetal));
 
   # `nerd-nixos` — the NixOS guest materialised as a Tart VM on a bare-metal Mac
@@ -225,6 +238,8 @@ let
     ++ (osConfig.opensshPolicy.fleetHostAliases or [ ]);
 in
 {
+  home.file.".ssh/config.d/no-multiplexing.conf".text = vzNoMultiplexing;
+
   programs.ssh.extraConfig = lib.mkAfter ''
         ###############################################################################
         # Tailnet Hosts (modular file ssh-tailnet-hosts.nix) (@codebase)
