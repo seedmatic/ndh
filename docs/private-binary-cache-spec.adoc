@@ -1952,17 +1952,41 @@ NRI plugin, never in an image.
 | rke2lab sops, for the fallback key
 |===
 
-=== Revocation — when a host is lost
+=== Revocation — the events that rotate a cache's server secret
 
-attic tokens cannot be revoked one by one (see <<write-tokens>>), so losing any host, or any token,
-means ending them all and re-issuing the rest:
+A token has no end of its own (see <<write-tokens>>): it is renewed on an EVENT, never on a calendar,
+and attic cannot revoke one token alone, so every event below ends all the tokens of the caches it
+names. Every machine reads BOTH caches, so it holds a read token of each: an event that touches a
+machine rotates both server secrets.
+
+[cols="2,1",options="header"]
+|===
+| The event | The caches to rotate
+
+| a machine holding tokens is lost, reinstalled or retired
+| both (its read tokens are for both; its write token for its own metalspace's)
+
+| a token is seen anywhere it should not be: a log, a transcript, a commit, a file outside
+`ndh.atticClient.paths`
+| the cache that issued it (the `machine` line of a netrc fragment, or the write token's endpoint);
+both if it cannot be told
+
+| an access point's age identity is rotated or exposed (the tokens' ciphertext was encrypted to it)
+| both, since that access point's machines hold tokens of both
+
+| a cache container's disk is copied or restored elsewhere (its server secret went with it)
+| that cache
+|===
+
+The rotation, for each cache named, then the re-issue:
 
 . rotate the server secret: in the cache container, remove `/var/lib/attic-secrets/server.env`, then
   restart `attic-server-secret` (it generates a new one, which never leaves the container) and
   `atticd`. Every token of that cache, write and read, stops working at that moment;
 . mint new write tokens for the remaining hosts, one each, and new read tokens
   (`attic-token-issue`, same subjects and scopes, the same far validity);
-. re-encrypt them with sops for every host except the lost one, and switch the remaining hosts;
+. carry the new ciphertext into the drop-box of every machine except a lost one (roles × keys' S3b),
+  which delivers it into `ndh.atticClient.paths`;
 . check with <<read-test>> that the old read token gets 401 and the new one 200.
 
 Until step 3 reaches a host, that host can neither upload nor substitute from attic. It falls back to
