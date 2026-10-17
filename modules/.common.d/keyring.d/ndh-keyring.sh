@@ -81,7 +81,7 @@ fromPrivate="$(pass show "$entry" | ssh-to-age -private-key | age-keygen -y)" ||
   die "${entry} reads back as another key than the one generated — check it, nothing was removed"
 
 if [[ $kind == vz-recover-key ]]; then
-  mkdir -p -m 0700 "$HOME/.ssh"
+  [[ -d $HOME/.ssh ]] || mkdir -m 0700 "$HOME/.ssh"
   if ! (umask 077 && pass show "$entry" >"${installed}.new") || ! mv "${installed}.new" "$installed"; then
     rm -f "${installed}.new"
     die "installing ${entry} at ${installed} failed — the entry is kept; nothing else was written"
