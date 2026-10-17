@@ -21,15 +21,15 @@ refute() {
 setup() {
   T=$BATS_TEST_TMPDIR
   mkdir -p "$T/bin" "$T/keys"
-  cat > "$T/bin/ssh" <<'SSH'
-#!/usr/bin/env bash
-printf '%s\n' "$*" >> "$T/ssh-calls"
-case "$*" in
-  *" true")                 [ "${STUB_PROBE:-ok}" = ok ] || exit 255 ;;
+  cat > "$T/bin/ssh" <<SSH
+#!$BASH
+printf '%s\n' "\$*" >> "\$T/ssh-calls"
+case "\$*" in
+  *" true")                 [ "\${STUB_PROBE:-ok}" = ok ] || exit 255 ;;
   *"sudo /bin/bash -s"*)
-    payload=$(cat)
-    if [[ "$payload" == *vz-nudge* ]]; then [ "${STUB_NUDGE:-ok}" = ok ] || exit 1
-    else [ "${STUB_INSTALL:-ok}" = ok ] || exit 1; echo "$payload" > "$T/installed"; fi ;;
+    payload=\$(cat)
+    if [[ "\$payload" == *vz-nudge* ]]; then [ "\${STUB_NUDGE:-ok}" = ok ] || exit 1
+    else [ "\${STUB_INSTALL:-ok}" = ok ] || exit 1; echo "\$payload" > "\$T/installed"; fi ;;
 esac
 exit 0
 SSH

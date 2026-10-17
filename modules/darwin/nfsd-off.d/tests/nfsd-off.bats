@@ -11,7 +11,7 @@ setup() {
   echo enabled >"$t/enabled"
   echo running >"$t/running"
   cat >"$t/bin/nfsd" <<EOF
-#!/usr/bin/env bash
+#!$BASH
 case "\$1" in
   disable) [ -e "$t/stuck" ] || echo disabled >"$t/enabled" ;;
   stop) [ -e "$t/stuck" ] || echo stopped >"$t/running" ;;

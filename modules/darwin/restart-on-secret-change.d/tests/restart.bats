@@ -9,12 +9,12 @@ setup() {
   mkdir -p "$t/bin" "$t/secrets.d/3" "$t/secrets.d/4"
   ln -s "$t/secrets.d/4" "$t/secrets"
   cat >"$t/bin/launchctl" <<EOF
-#!/usr/bin/env bash
+#!$BASH
 echo "\$*" >>"$t/kickstarts"
 EOF
-  cat >"$t/bin/id" <<'EOF'
-#!/usr/bin/env bash
-[ "$1" = -u ] && [ "$2" = alice ] && echo 501
+  cat >"$t/bin/id" <<EOF
+#!$BASH
+[ "\$1" = -u ] && [ "\$2" = alice ] && echo 501
 EOF
   chmod +x "$t/bin/launchctl" "$t/bin/id"
   printf 'old-token-value' >"$t/secrets.d/3/token"

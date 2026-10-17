@@ -41,7 +41,7 @@ sink_has() { # $1 text
 wrapped() { # $1 header ('set -e' or ''), then the lines of main's body
   local header=$1; shift
   {
-    printf '#!/usr/bin/env bash\n%s\nsource %q\n' "$header" "$NDH_LOGGER_SH"
+    printf '#!%s\n%s\nsource %q\n' "$BASH" "$header" "$NDH_LOGGER_SH"
     printf 'main() {\n'
     printf '  %s\n' "$@"
     printf '}\n'

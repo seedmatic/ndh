@@ -10,12 +10,12 @@ setup() {
   mkdir -p "$t/bin" "$t/share" "$t/var"
   : >"$t/trampoline.sh"
   cat >"$t/bin/age-keygen" <<EOF
-#!/usr/bin/env bash
+#!$BASH
 echo "age-keygen \$*" >>"$t/calls"
 [ "\$1" = -y ] && echo age1testrecipient
 EOF
   cat >"$t/bin/chown" <<EOF
-#!/usr/bin/env bash
+#!$BASH
 echo "chown \$*" >>"$t/calls"
 EOF
   chmod +x "$t/bin/age-keygen" "$t/bin/chown"
