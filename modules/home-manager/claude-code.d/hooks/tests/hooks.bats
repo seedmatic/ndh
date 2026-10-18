@@ -534,7 +534,8 @@ logged() { jq -r "$1" "$T/state/claude-notify/log.jsonl"; }
 # A stand-in osascript records each argument on its own line, so a test reads exactly what AppleScript received.
 stub_osascript() {
   mkdir -p "$T/bin"
-  printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$@" >>"%s/osascript.argv"\n' "$T" >"$T/bin/osascript"
+  # $BASH, not /usr/bin/env: the nix build sandbox has no /usr/bin/env.
+  printf '#!%s\nprintf "%%s\\n" "$@" >>"%s/osascript.argv"\n' "$BASH" "$T" >"$T/bin/osascript"
   chmod +x "$T/bin/osascript"
 }
 notified() { PATH="$T/bin:$PATH" notify "$1"; }
