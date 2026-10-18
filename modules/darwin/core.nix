@@ -127,6 +127,12 @@ in
     in
     ndh.store.writeText "flake.nix" flakeContent;
 
+  # nix-darwin's weekly GC daemon logs nowhere: it exited 1 on both Macs on 2026-10-18 and left no trace of why.
+  launchd.daemons.nix-gc.serviceConfig = lib.mkIf config.nix.gc.automatic {
+    StandardOutPath = "/var/log/nix-gc.log";
+    StandardErrorPath = "/var/log/nix-gc.log";
+  };
+
   # auto manage nixbld users with nix darwin
   nix = {
 

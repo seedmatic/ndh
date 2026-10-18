@@ -1351,6 +1351,27 @@
               done
               touch $out
             '';
+          # The weekly GC daemon of each Mac says why it fails: its output goes to /var/log/nix-gc.log.
+          darwin-nix-gc-logs =
+            let
+              lib = nixpkgs.lib;
+              unlogged =
+                lib.filter
+                  (
+                    seat:
+                    let
+                      sc = self.darwinConfigurations.${seat}.config.launchd.daemons.nix-gc.serviceConfig;
+                    in
+                    (sc.StandardOutPath or null) != "/var/log/nix-gc.log"
+                    || (sc.StandardErrorPath or null) != "/var/log/nix-gc.log"
+                  )
+                  [
+                    "bioskop"
+                    "nikopol"
+                  ];
+            in
+            assert lib.assertMsg (unlogged == [ ]) "nix-gc logs nowhere on ${toString unlogged}";
+            pkgs.runCommand "darwin-nix-gc-logs" { } "touch $out";
           nix-conf-no-foreign-include =
             let
               conf = c: c.config.environment.etc."nix/nix.conf".source;
