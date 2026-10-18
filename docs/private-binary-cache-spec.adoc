@@ -1078,18 +1078,18 @@ the caches' substitutes, the guests' console
 |===
 | Record | Its one place | Written by
 
-| a builder's nix signing **private**
+| a fleet machine's nix signing **private**
 | nowhere in a repository, and it never transits: HKDF of the machine's host-key seed, label
 `seedmatic/nix-signing/<n>`, re-derived on its machine at activation from its own host key, root 0400
 outside the store
 | the machine's activation; `ndh-keyring` derives it once, at generation, only to record the public
 
-| a builder's nix signing **public**
+| a fleet machine's nix signing **public**
 | `keys.yaml`, the machine's entry, beside its host public; `acceptedBy` and `trusted-public-keys`
 read it from there and restate nothing
 | `ndh-keyring`, in the same gesture as the host public
 
-| a builder's ssh identity for build requests
+| a fleet machine's ssh identity for build requests
 | a second, **user** certificate on its host key, principal `nix-store`, replacing keys.yaml's single
 `nix-store` key shared by every machine; the KRL cuts it alone, by its key id
 | the user authority, from the recorded host public
@@ -1101,10 +1101,20 @@ accepted-key schema in `catalog/private-caches.nix`). `catalog/cache-trust.yaml`
 it keeps `seedmatic-fleet-1`'s private until step 9, then empties
 | attic in the container; the operator's merge for the public
 
+| the cluster builder's nix signing **private**
+| inside its container only: **generated** at first start (`nix key generate-secret`, root 0400), never
+derived from its host key, never leaving; a grow is a new container, so a new key (🛡️'s condition 7, 🔑)
+| the container, at first start
+
 | the cluster builder's two publics
-| the cluster's own cellar, never fleet `keys.yaml` (<<cluster-builds>>)
+| the cluster's own cellar, never fleet `keys.yaml`, `acceptedBy` that cluster only (<<cluster-builds>>)
 | the cluster's own scenario
 |===
+
+**Derive or generate.** The fleet machines **derive** their nix key from their host key, because that host key is
+recorded (`keys.yaml`, the operator's keyring), so its public is derived and recorded ahead and the private
+re-derived at every activation without being stored. A cluster builder **generates** its own: its host key is
+born and destroyed with each grow and recorded nowhere, and deriving would only tie the two keys together.
 
 * **Naming:** `seedmatic-<machine>-<n>`, where `<n>` is the HKDF label's version and `<machine>` the
   machine's `keys.yaml` name, as in `host-<machine>`. Cache keys keep their names
