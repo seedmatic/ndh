@@ -168,7 +168,6 @@ sessions:
       - /private/tmp/new.err
       - /private/tmp/new.json
       - /private/tmp/names.nix
-      - /private/tmp/sops-dec-probe/**
     lives_there: live page, a closed chantier's notes, Maven logs, mutation .bak copies, flake-output comparisons
     exclude:
       - ~/.claude/.scratchpad.d/outcluster/LIVE.md
@@ -223,12 +222,11 @@ sessions:
       - /private/tmp/l.svg
       - /private/tmp/gc-advice.svg
     worktrees:
-      - /Volumes/git-worktree-store/seedmatic/ndh.d/fix/incus-cert-renew-no-decrypt-dry-run
+      - /Volumes/git-worktree-store/seedmatic/ndh.d/fix/bringup-eval-netplan
     lives_there: notes, read-only Incus dumps (public certs, a Pulumi state export), the inc 3 design, mmdc renders
     exclude:
       - ~/.claude/.scratchpad.d/incus/LIVE.md
       - ~/.claude/.scratchpad.d/incus/brief.md
-      - ~/.claude/.scratchpad.d/incus/patches/incus-cert-renew-no-decrypt-dry-run.patch
       - ~/.claude/.scratchpad.d/node-store-freeze/design.md
       - ~/.claude/.scratchpad.d/node-store-freeze/k8s-facts.md
     conversations:
@@ -247,9 +245,7 @@ sessions:
       - /private/tmp/roles-and-keys.*
       - /private/tmp/certify-*
       - /private/tmp/ndh-bats-proof*
-      - /Volumes/git-worktree-store/seedmatic/ndh.d/feature/vz-recover/.scratchpad.d/**
-      - /Volumes/git-worktree-store/seedmatic/ndh.d/feature/rdp-host-split/.scratchpad.d/**
-      - /Volumes/git-worktree-store/seedmatic/ndh.d/fix/certify-dry-run-no-decrypt/.scratchpad.d/**
+      - /Volumes/git-worktree-store/seedmatic/ndh.d/feature/rescue-ssh-aliases/.scratchpad.d/**
     exclude:
       - ~/.claude/.scratchpad.d/roles-and-keys/LIVE.md
       - ~/.claude/.scratchpad.d/roles-and-keys/*.md
