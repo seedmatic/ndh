@@ -691,7 +691,7 @@ from a revision".
 
 **Decided by the operator on 2026-10-10, refined on 2026-10-17.** A cluster's nodes and workloads build
 nothing themselves: they delegate every build (`max-jobs = 0`, `builders = ssh-ng://…`,
-`builders-use-substitutes = true`) to their metalspace's **cluster builder**, and to it only: a
+`builders-use-substitutes = true`) to **their cluster's builder**, and to it only: a
 cluster trusts its **own** cluster builder and no other, so there is **no fallback** to the other
 metalspace's cluster builder (operator, 2026-10-17). The cross-metalspace fallback is the four fleet
 machines' alone (their own metalspace's builder first, then the other's). The `builders` list is
@@ -699,13 +699,15 @@ generated from the machines holding the builder role, each with its systems. see
 and the darwin hosts are never among its builders (they offload `aarch64-linux` to their guest
 themselves).
 
-The cluster builder is **its own unprivileged Incus container per metalspace**, not the NixOS guest:
+The cluster builder is **its own unprivileged Incus container, one per cluster**, not the NixOS guest:
 a node-supplied derivation runs arbitrary code in the builder's sandbox, and on the guest an escape
 would land on the access point's age identity, its sops secrets, the Incus member, the fabric and
 attic's push token (❄️, 🛡️). It is a chantier of its own (B4: 📦 leads, ❄️ proves, 🖥️ the container).
 
-**Its shape, decided by the operator on 2026-10-18: an LXC image of its own**, from
-`modules/nixos/cluster-builder.nix`, built by revision, its store the image's rootfs, which Incus idmaps. Not the
+**Its shape, decided by the operator on 2026-10-18: an LXC image of its own**, its store the image's rootfs, which
+Incus idmaps. ndh **defines** it (`modules/nixos/cluster-builder.nix`, exported as `nixosModules.cluster-builder`,
+with its settings check) and builds no image of it, having no use for one; **rke2lab builds the image**, by
+revision, in a `nixosConfigurations` beside `rke2-node-base`, the same route as its node image. Not the
 shape of ndh's other containers (<<container-store>>): their store is composed by the NixOS guest, an
 unprivileged container sees it as `nobody`'s and cannot write it (measured on the probe, 2026-10-16: attic's upper
 stayed at 0 entries), and a builder writes every output; privileged, it could, but its root would be the guest's,
@@ -738,8 +740,17 @@ flowchart TB
 Its resources are declared once, `ndh.clusterBuilder.resources` (CPUs, memory, disk): they give its `max-jobs`
 and its GC window (10–30% of its store free), and `instanceConfig` the Incus keys it is launched with
 (unprivileged, `security.nesting` for the sandbox's namespaces, `limits.cpu`, `limits.memory`, the root disk's
-size). It shares its guest with that cluster's nodes, attic and the guest's own builds; the per-metalspace sizes
-are set after a measurement under load.
+size). It shares its guest with that cluster's nodes, attic and the guest's own builds; its sizes are set after a
+measurement under load.
+
+**Where it lives, decided by the operator on 2026-10-18.** Its whole life is its cluster's: only that cluster trusts
+it, its keys are born and die with the grow, its public goes to that cluster's cellar. So **rke2lab's cold start**
+creates and destroys it with the cluster, never ndh. Its Incus project is **its own, `rke2lab-<cluster>-build`**,
+made and removed by the same grow: not `ndh`, whose instances outlive every cluster, and not `rke2lab`, where CAPN's
+identity (restricted to that project) can `exec` into and `file pull` from any instance, so would reach the
+builder's signing key (🖥️). The cold start inherits from 🖥️: the image GC keeps what the desired instances
+reference before a second image lives beside the node image; the NIC is on the cluster's `vmnet-<role>`, at an
+address reserved in the network blueprint; its devices are declared inline, its GC marks are `user.rke2lab.*`.
 
 What this spec fixes:
 
