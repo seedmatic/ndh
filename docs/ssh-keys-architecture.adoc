@@ -376,8 +376,10 @@ recorded slot; remote builds use it too
 | bootstrap or permanent
 
 | `rke2-cluster`
-| replaced by `cluster-age`, a standalone age identity held in the operator's keyring and given to the
-seed by stdin or a file descriptor, never as a file under a checkout; no SSH use
+| replaced by `cluster-age`, a standalone age identity `rke2lab-cluster-age-<n>` generated into the
+operator's keyring by `ndh-keyring cluster-age <n>` (which prints only its age public) and given to the
+grow on a file descriptor opened on `pass show`, never as a file under a checkout — stdin does not reach a
+Pulumi program, an inherited descriptor does (measured 2026-10-18); no SSH use
 | retired
 
 | `github-signing`, `github-signing-hyland`

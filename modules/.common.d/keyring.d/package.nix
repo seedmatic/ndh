@@ -1,6 +1,7 @@
-# ndh-keyring: the machines' host keys, the NixOS guests' sshfs keys and the foreign vz-hosts' vz-recover keys
-# in the operator's keyring (the seedmatic/ part of their pass store), on the operator seat holding it. The
-# machines, guests and vz-hosts it knows and the recipient it requires are fixed at evaluation.
+# ndh-keyring: the machines' host keys, the NixOS guests' sshfs keys, the foreign vz-hosts' vz-recover keys and
+# the cluster's age identity in the operator's keyring (the seedmatic/ part of their pass store), on the operator
+# seat holding it. The machines, guests and vz-hosts it knows and the recipient it requires are fixed at
+# evaluation.
 {
   pkgs,
   lib,
