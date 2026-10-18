@@ -109,6 +109,9 @@ in
       shell = pkgs.bashInteractive;
     };
     nix.channel.enable = false;
+    # It forwards nothing: a builder that cannot send cannot chain (no /etc/nix/machines).
+    nix.distributedBuilds = false;
+    nix.buildMachines = [ ];
     documentation.enable = false;
 
     environment.etc."ssh/cluster-build-user-ca.pub".text =
@@ -157,8 +160,6 @@ in
       # A client may name no substituter of its own.
       trusted-substituters = [ ];
       require-sigs = true;
-      # It forwards nothing: a builder that cannot send cannot chain.
-      builders = "";
       secret-key-files = [ signingKey ];
       experimental-features = [ "nix-command" ] ++ lib.optionals (!cfg.trustedClient) untrustedFeatures;
       min-free = 2 * 1024 * 1024 * 1024;
@@ -171,7 +172,10 @@ in
         message = "ndh.clusterBuilder: the builder builds sandboxed, with no fallback";
       }
       {
-        assertion = config.nix.settings.trusted-substituters == [ ] && config.nix.settings.builders == "";
+        assertion =
+          config.nix.settings.trusted-substituters == [ ]
+          && config.nix.buildMachines == [ ]
+          && !config.nix.distributedBuilds;
         message = "ndh.clusterBuilder: no client substituter, no onward builder";
       }
       {

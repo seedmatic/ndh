@@ -1428,21 +1428,25 @@
               features = c: c.nix.settings.experimental-features;
               forced =
                 c:
-                lib.hasInfix "ForceCommand ${c.nix.package}/bin/nix-daemon --stdio" c.services.openssh.extraConfig;
+                lib.hasInfix "ForceCommand ${builtins.unsafeDiscardStringContext c.nix.package.outPath}/bin/nix-daemon --stdio" (
+                  builtins.unsafeDiscardStringContext c.services.openssh.extraConfig
+                );
             in
             assert lib.assertMsg (
               lib.elem "daemon-trust-override" (features untrusted)
               && lib.elem "mounted-ssh-store" (features untrusted)
             ) "cluster-builder: the untrusted endpoint lacks its experimental features";
-            assert lib.assertMsg
-              (lib.hasInfix "--force-untrusted --process-ops" untrusted.services.openssh.extraConfig)
-              "cluster-builder: the untrusted endpoint is not --stdio --force-untrusted --process-ops";
+            assert lib.assertMsg (lib.hasInfix "--force-untrusted --process-ops" (
+              builtins.unsafeDiscardStringContext untrusted.services.openssh.extraConfig
+            )) "cluster-builder: the untrusted endpoint is not --stdio --force-untrusted --process-ops";
             assert lib.assertMsg (
               !(lib.elem "cluster-build" untrusted.nix.settings.trusted-users)
             ) "cluster-builder: cluster-build is trusted on the untrusted endpoint";
             assert lib.assertMsg (
               !(lib.elem "daemon-trust-override" (features trusted))
-              && !(lib.hasInfix "--force-untrusted" trusted.services.openssh.extraConfig)
+              && !(lib.hasInfix "--force-untrusted" (
+                builtins.unsafeDiscardStringContext trusted.services.openssh.extraConfig
+              ))
               && lib.elem "cluster-build" trusted.nix.settings.trusted-users
             ) "cluster-builder: fallback A carries the untrusted endpoint's pieces";
             assert lib.assertMsg (lib.all forced [
