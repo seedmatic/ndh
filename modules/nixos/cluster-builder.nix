@@ -145,9 +145,16 @@ in
     nix.buildMachines = [ ];
     documentation.enable = false;
 
-    environment.etc."ssh/cluster-build-user-ca.pub".text =
-      lib.concatStringsSep "\n" cfg.userCaKeys + "\n";
-    environment.etc."ssh/principals/${account}".text = "${account}\n";
+    # Copies, not links into the store: with StrictModes, sshd refuses a principals file whose path crosses
+    # /nix/store (1775, group nixbld), so a link left the right certificate refused (T4 on the probe, 2026-10-18).
+    environment.etc."ssh/cluster-build-user-ca.pub" = {
+      text = lib.concatStringsSep "\n" cfg.userCaKeys + "\n";
+      mode = "0444";
+    };
+    environment.etc."ssh/principals/${account}" = {
+      text = "${account}\n";
+      mode = "0444";
+    };
     services.openssh = {
       enable = true;
       startWhenNeeded = false;

@@ -1470,6 +1470,8 @@
               && !untrusted.services.openssh.allowSFTP
               && untrusted.services.openssh.settings.AuthorizedPrincipalsFile == "/etc/ssh/principals/%u"
               && lib.hasInfix "DisableForwarding yes" untrusted.services.openssh.extraConfig
+              && untrusted.environment.etc."ssh/principals/cluster-build".mode == "0444"
+              && untrusted.environment.etc."ssh/cluster-build-user-ca.pub".mode == "0444"
             ) "cluster-builder: root has a password, sftp is offered, or the principals file is not sshd's";
             assert lib.assertMsg
               (
