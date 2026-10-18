@@ -3,12 +3,11 @@
   config,
   lib,
   pkgs,
-  worktreePath,
+  ndh,
   ...
 }:
 let
-  cacheTrust = import (worktreePath.of "catalog/cache-trust.nix");
-  cacheCatalog = cacheTrust.caches;
+  cacheCatalog = ndh.context.catalog.caches;
 
   cfg = config.profile;
   user = cfg.user;

@@ -264,9 +264,10 @@ let
                 # the bringup config doesn't dispatch on it.
                 vmProvider = selectedVmProvider;
                 nixBashTrampoline = ndhNixBashTrampoline;
-                # catalog: profile.nix reads catalog.user.  Pass only
-                # the user sub-tree.  No host-scoped catalog material.
-                catalog = { inherit (catalog) user; };
+                # catalog: profile.nix reads catalog.user, and the cache trust
+                # catalog.caches (fleet-wide, the same on every host).  No
+                # host-scoped catalog material.
+                catalog = { inherit (catalog) user caches; };
                 # inventory: ssh-keys-enrichment reads inventory.hosts
                 # for the comma-separated host list that seeds
                 # authorized_principals.  Same on every host —

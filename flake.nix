@@ -87,7 +87,9 @@
     let
       inherit (flake-utils.lib) eachSystemMap;
       nixpkgsConfig = import ./modules/.common.d/nixpkgs-config.nix;
-      cacheTrust = import ./catalog/cache-trust.nix;
+      cacheTrust = import ./catalog/cache-trust.nix {
+        upstream = inputs.flake-commons.lib.upstreamCaches;
+      };
       inventoryData = import ./inventory/default.nix;
       # The cluster underlay is rke2lab's plan, UNIONED with nnh's contribution (its fabric-br
       # segments; nnh introduces no ASNs) — both read from their pinned deliveries (see the
@@ -1057,7 +1059,10 @@
     in
     rec {
       # A cluster's builder, defined here and built by rke2lab beside its node image: ndh builds no image of it.
-      nixosModules.cluster-builder = ./modules/nixos/cluster-builder.nix;
+      nixosModules.cluster-builder = {
+        imports = [ ./modules/nixos/cluster-builder.nix ];
+        ndh.clusterBuilder.upstreamCaches = [ inputs.flake-commons.lib.upstreamCaches.nixos ];
+      };
 
       formatter = forAllSystems (
         system:
@@ -1163,6 +1168,8 @@
             inherit pkgs;
             src = ./.;
           };
+          # No nixConfig in this flake: no machine of ours takes one (nix-flake-commons' shared check).
+          no-nix-config = inputs.flake-commons.lib.noNixConfig pkgs ./flake.nix;
           sops-age-bootstrap-bats = import ./modules/.common.d/sops.d/tests/package.nix { inherit pkgs; };
           nix-signing-place-bats = import ./modules/.common.d/nix-signing.d/tests/package.nix {
             inherit pkgs;

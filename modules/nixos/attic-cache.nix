@@ -278,7 +278,14 @@ in
 
     upstreamKeyNames = lib.mkOption {
       type = lib.types.listOf lib.types.str;
-      default = [ "cache.nixos.org-1" ];
+      # The upstream caches' key names, from the catalog: never the fleet's build keys, which sign every path this
+      # cache is there to hold.
+      default = map (key: lib.head (lib.splitString ":" key)) (
+        lib.concatMap (cache: lib.optional (cache ? publicKey) cache.publicKey) (
+          lib.attrValues (builtins.removeAttrs ndh.context.catalog.caches [ "cachix" ])
+        )
+      );
+      defaultText = lib.literalExpression ''[ "cache.nixos.org-1" "flox-cache-public-1" ]'';
       description = "Key names whose signatures make a path skipped at upload (attic's upstream filter).";
     };
 
