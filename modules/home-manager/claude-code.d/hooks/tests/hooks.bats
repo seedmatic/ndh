@@ -482,3 +482,51 @@ check() { printf '{"cwd":"%s"}' "$1" | bash "$H/sops-filter-check.sh"; }
   run check "$T/plain"
   [ "$status" -eq 0 ] && [ -z "$output" ]
 }
+
+# --- notify-log ---
+notify() { # $1 = payload; the registry knows one session, "mine"
+  printf '{"sessions": {"mine": {"conversations": ["abcd1234-0000"]}}}\n' >"$T/registry.json"
+  printf '%s' "$1" | XDG_STATE_HOME="$T/state" CLAUDE_SESSION_REGISTRY="$T/registry.json" bash "$H/notify-log.sh"
+}
+logged() { jq -r "$1" "$T/state/claude-notify/log.jsonl"; }
+
+@test "notify: a permission prompt is logged with its type and the session's engraved name" {
+  run notify '{"hook_event_name": "Notification", "notification_type": "permission_prompt", "session_id": "abcd1234-0000", "message": "Claude needs your permission to use Bash", "cwd": "/w"}'
+  [ "$status" -eq 0 ]
+  [ "$(logged '.type + " " + .name + " " + .session_id')" = "permission_prompt mine abcd1234-0000" ]
+  [ "$(logged .message)" = "Claude needs your permission to use Bash" ]
+}
+
+@test "notify: a session the registry does not know is logged with no name" {
+  run notify '{"notification_type": "idle_prompt", "session_id": "ffff0000-0000", "message": "waiting"}'
+  [ "$status" -eq 0 ]
+  [ "$(logged '.type + "|" + .name')" = "idle_prompt|" ]
+}
+
+@test "notify: the payload's keys are recorded, so a field the docs omit shows up" {
+  run notify '{"notification_type": "elicitation_dialog", "message": "m", "transcript_path": "/t.jsonl"}'
+  [ "$status" -eq 0 ]
+  [ "$(logged '.keys | join(",")')" = "message,notification_type,transcript_path" ]
+}
+
+@test "notify: a long message is cut, a malformed payload is logged as such, and the hook never fails" {
+  run notify "{\"notification_type\": \"permission_prompt\", \"message\": \"$(printf 'x%.0s' {1..500})\"}"
+  [ "$status" -eq 0 ]
+  [ "$(logged '.message | length' | head -1)" -eq 240 ]
+  run notify 'not json'
+  [ "$status" -eq 0 ]
+  [ "$(logged .type | tail -1)" = "unparsed" ]
+}
+
+@test "notify: with no registry, the event is still logged" {
+  run bash -c 'printf "{\"notification_type\": \"auth_success\"}" | XDG_STATE_HOME="$1" CLAUDE_SESSION_REGISTRY=/nonexistent bash "$2"' _ "$T/state" "$H/notify-log.sh"
+  [ "$status" -eq 0 ]
+  [ "$(logged .type)" = "auth_success" ]
+}
+
+@test "notify: the log is the operator's alone, the directory 0700 and the file 0600" {
+  run notify '{"notification_type": "permission_prompt", "message": "m"}'
+  [ "$status" -eq 0 ]
+  [ "$(stat -c %a "$T/state/claude-notify")" = 700 ]
+  [ "$(stat -c %a "$T/state/claude-notify/log.jsonl")" = 600 ]
+}

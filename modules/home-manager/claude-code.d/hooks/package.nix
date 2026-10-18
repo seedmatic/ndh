@@ -74,6 +74,12 @@ in
         hooks = [ (entry "memory-commit.sh" 20 "Committing memory...") ];
       }
     ];
+    # No matcher: every notification type is logged, since which ones fire is what this measures.
+    Notification = [
+      {
+        hooks = [ (entry "notify-log.sh" 5 "Logging the notification...") ];
+      }
+    ];
   };
 
   tests =
