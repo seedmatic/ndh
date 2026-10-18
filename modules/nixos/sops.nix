@@ -58,7 +58,8 @@ let
   identityPush = import ../.common.d/identity-push.d/package.nix { inherit pkgs lib; };
   machine = config.networking.hostName;
   # The operator seat whose guest this is: its host key gives this machine's age identity (its access point).
-  baremetal = ndh.context.catalog.netplan.baremetal;
+  # A bring-up guest belongs to no metalspace: its catalog carries no netplan, so it has no seat and no access point.
+  baremetal = (ndh.context.catalog.netplan or { }).baremetal or { };
   seat = lib.findFirst (h: baremetal.${h}.nixosHostname == machine) null (lib.attrNames baremetal);
   identityReceive = identityPush.receive {
     inherit machine;
