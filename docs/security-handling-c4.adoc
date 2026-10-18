@@ -118,3 +118,8 @@ end note
 * Commit only public age recipients (`age1...`) in `.sops.yaml`.
 * Never commit private keys (`AGE-SECRET-KEY-...`).
 * Rotate/rekey encrypted files after recipient changes.
+* An accepted lab risk reaches this host's secrets from a cluster: CAPN's Incus identity is root-equivalent on the
+  NixOS guest that is the Incus member, hence on its sops identity and attic push token (operator, 2026-10-18:
+  pre-existing, documented, to be treated later; measured on `incus-probe`). Its conditions, one of which is that no
+  Claude session reads `.pulumi-state`, are in rke2lab's atlas, `docs/architecture/atlas/fabric-control-plane.adoc`,
+  section _Accepted lab risk — the CAPN identity is root on the Incus member_.
