@@ -20,6 +20,7 @@
   pkgs,
   lib,
   ndh,
+  worktreePath,
   ...
 }:
 
@@ -76,7 +77,9 @@ let
   # the host shell's PATH.
   hsConnectBin = pkgs.writeShellApplication {
     name = "hs-connect";
-    text = builtins.readFile (pkgs.replaceVars ./headscale-client.d/hs-connect.sh hsClientReplaceVars);
+    text =
+      import (worktreePath.of "nix/replace-vars-text.nix") lib ./headscale-client.d/hs-connect.sh
+        hsClientReplaceVars;
     runtimeInputs = with pkgs; [
       tailscale
       coreutils
