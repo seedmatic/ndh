@@ -1104,11 +1104,9 @@
           nixStoreAliases = {
             bioskop = [ "nix-store.nikopol" ];
             nikopol = [ "nix-store.bioskop" ];
-            bioskop-nixos = [
-              "nix-store.bioskop"
-              "nix-store.nikopol"
-            ];
-            nikopol-nixos = nixStoreAliases.bioskop-nixos;
+            # The guests only receive: no nix-store alias of their own.
+            bioskop-nixos = [ ];
+            nikopol-nixos = [ ];
           };
         in
         {
@@ -1390,68 +1388,61 @@
               touch $out
             '';
           ndh-builders-bats = import ./modules/darwin/host-builder.d/tests/package.nix { inherit pkgs; };
-          host-builder-requests =
+          host-builder-metalspace =
             let
               lib = nixpkgs.lib;
-              tailnet = catalogData.netplan.tailnet.domain;
-              requests = self.darwinConfigurations.bioskop.extendModules {
-                modules = [ { ndh.hostBuilder = lib.mkForce "requests"; } ];
+              mac = self.darwinConfigurations.bioskop;
+              c = mac.config;
+              fragment = cfg: cfg.config.environment.etc."ssh/ssh_config.d/75-nix-store.conf".text or "";
+              stanzas = cfg: lib.filter (lib.hasPrefix "nix-store.") (lib.splitString "Host " (fragment cfg));
+              aliasOf = cfg: host: lib.any (b: lib.hasPrefix "nix-store.${host}\n" b) (stanzas cfg);
+              entries = lib.concatLists (lib.attrValues c.ndh.builderSets);
+              selfPeer = mac.extendModules { modules = [ { nixStoreIdentity.extraPeers = [ "bioskop" ]; } ]; };
+              guests = map (n: self.nixosConfigurations.${n}) [
+                "bioskop-nixos"
+                "nikopol-nixos"
+              ];
+              guestOutbound = self.nixosConfigurations.bioskop-nixos.extendModules {
+                modules = [ { nixStoreIdentity.outbound = lib.mkForce true; } ];
               };
-              c = requests.config;
-              sets = c.ndh.builderSets;
-              entry = set: host: lib.findFirst (m: m.hostName == "nix-store.${host}") null sets.${set};
-              file = mode: c.environment.etc."nix/machines.${mode}".text;
-              lines = mode: lib.filter (l: l != "") (lib.splitString "\n" (file mode));
-              stanzas = lib.filter (lib.hasPrefix "nix-store.") (
-                lib.splitString "Host " c.environment.etc."ssh/ssh_config.d/75-nix-store.conf".text
-              );
-              stanza = host: lib.findFirst (b: lib.hasPrefix "nix-store.${host}\n" b) "" stanzas;
-              noLoopback = requests.extendModules {
-                modules = [
-                  {
-                    ndh.builderSets.metalspace = lib.mkForce [ (entry "metalspace" "bioskop-nixos") ];
-                  }
-                ];
-              };
-              coverage =
-                cfg: lib.any (a: !a.assertion && lib.hasInfix "max-jobs = 0" a.message) cfg.config.assertions;
-              capacity = c.ndh.builderCapacity;
             in
-            assert lib.assertMsg (c.nix.settings.max-jobs == 0) "requests: the Mac must build nothing itself";
             assert lib.assertMsg (
-              c.nix.buildMachines == [ ] && c.nix.settings.builders == "@/var/lib/ndh/builders/active"
-            ) "requests: the daemon reads the list ndh-builders points at, and nix-darwin renders none";
+              c.nix.settings.max-jobs == c.ndh.builderCapacity.darwin.own
+              && c.nix.buildMachines == [ ]
+              && c.nix.settings.builders == "@/var/lib/ndh/builders/active"
+            ) "metalspace: the Mac builds darwin itself and reads the list ndh-builders points at";
             assert lib.assertMsg (
-              (entry "metalspace" "bioskop").systems == [ "aarch64-darwin" ]
-              && (entry "metalspace" "bioskop").speedFactor == 10
-              && (entry "metalspace" "bioskop-nixos").speedFactor == 10
-              && entry "metalspace" "nikopol" == null
-            ) "requests: metalspace is the loopback and the own guest only";
+              map (m: m.hostName) c.ndh.builderSets.metalspace == [ "nix-store.bioskop-nixos" ]
+              &&
+                c.environment.etc."nix/machines.metalspace".text
+                == "ssh-ng://nix-store.bioskop-nixos aarch64-linux - 6 1 big-parallel,nixos-test,kvm - -\n"
+            ) "metalspace: the own guest only, for Linux";
             assert lib.assertMsg (
-              lib.take (lib.length (lines "metalspace")) (lines "fabric") == lines "metalspace"
-              && lib.length (lines "fabric") == lib.length (lines "metalspace") + 2
-              && (entry "fabric" "nikopol").speedFactor == 1
-              && (entry "fabric" "nikopol-nixos").speedFactor == 1
-            ) "requests: fabric is metalspace plus the other metalspace's Mac and guest, nothing else";
-            # A Mac in requests builds nothing of its own: what it receives, home + peer, is its own capacity.
+              !(lib.any (m: m.hostName == "nix-store.bioskop") entries) && !(aliasOf mac "bioskop")
+            ) "a Mac is never an entry of its own lists, nor has an alias to itself";
             assert lib.assertMsg (
-              capacity.darwin.home + capacity.darwin.peer == capacity.darwin.own
-            ) "requests: a Mac receives at most its capacity";
+              !(aliasOf selfPeer "bioskop")
+            ) "a self peer must be dropped: a request to the own store deadlocks on its output locks";
             assert lib.assertMsg (
-              lib.hasInfix "HostName nikopol${tailnet}\n" (stanza "nikopol")
-              && lib.hasInfix "HostName nikopol-nixos${tailnet}\n" (stanza "nikopol-nixos")
-              && lib.hasInfix "HostName bioskop.local\n" (stanza "bioskop")
-            ) "requests: the other metalspace over the tailnet, home on its own network";
+              lib.all (g: stanzas g == [ ]) guests && stanzas guestOutbound != [ ]
+            ) "the guests render no nix-store alias (a received build is never forwarded)";
             assert lib.assertMsg (lib.all (
-              b: lib.hasInfix "ConnectTimeout 5\n" b
-            ) stanzas) "requests: every nix-store alias fails fast on a cut route";
+              g:
+              lib.hasInfix ''del(.keys["nix-store"])'' (
+                builtins.unsafeDiscardStringContext g.config.systemd.services.io-seedmatic-ndh-ssh-keys-enrichment.script
+              )
+            ) guests) "the guests extract no nix-store client key";
+            assert lib.assertMsg (
+              self.nixosConfigurations.bioskop-bringup.config.nixStoreIdentity.outbound
+              && stanzas self.nixosConfigurations.bioskop-bringup != [ ]
+            ) "the bring-up system keeps its nix-store alias, for the operator's manual rescue";
+            assert lib.assertMsg (lib.all (b: lib.hasInfix "ConnectTimeout 5\n" b) (
+              stanzas mac
+            )) "every nix-store alias fails fast on a cut route";
             assert lib.assertMsg (lib.hasInfix "ndh-builders metalspace ||" (
               builtins.unsafeDiscardStringContext c.system.activationScripts.postActivation.text
-            )) "requests: the activation resets a missing pointer to metalspace, without aborting";
-            assert lib.assertMsg (
-              !(coverage requests) && coverage noLoopback
-            ) "requests: a set without a darwin entry must be refused while max-jobs = 0";
-            pkgs.runCommand "host-builder-requests" { } "touch $out";
+            )) "the activation resets a missing pointer to metalspace, without aborting";
+            pkgs.runCommand "host-builder-metalspace" { } "touch $out";
           # The cluster builder's daemon, both ways test 1 can go: the experimental features only on the
           # untrusted endpoint, never a trusted cluster-build there, the sandbox with no fallback.
           cluster-builder-settings =

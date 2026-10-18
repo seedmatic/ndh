@@ -1,16 +1,17 @@
 # ndh-builders [metalspace | fabric] — which builders this Mac's nix sends its builds to (docs/host-builder-phases.adoc).
-# The header sets dir (where the pointer lives) and machines (the prefix of the generated lists: <machines>.<mode>).
+# The header sets dir (where the pointer lives), machines (the prefix of the generated lists: <machines>.<mode>)
+# and modes (the lists this host has).
 #
 #   ndh-builders              prints the active mode; fails if there is none, or it points at nothing
-#   ndh-builders metalspace   this metalspace's builders only: the loopback and the guest (the default)
+#   ndh-builders metalspace   this metalspace's builders only: the guest (the default)
 #   ndh-builders fabric       the other metalspace's Mac and guest too, to spread builds when both are close by
 #
 # nix reads `builders = @<dir>/active` when a command's build hook starts: a new mode applies from the NEXT nix
-# command, with no daemon restart. A missing list is skipped SILENTLY by nix, and with max-jobs = 0 every build then
-# fails, so a mode whose list is missing or empty is refused here.
+# command, with no daemon restart. A missing list is skipped SILENTLY by nix, which then builds nothing remotely, so a
+# mode whose list is missing or empty is refused here.
 
 active="$dir/active"
-usage="usage: ndh-builders [metalspace | fabric]"
+usage="usage: ndh-builders [${modes// / | }]"
 
 die() {
   printf '[ndh-builders] ERROR: %s\n' "$*" >&2
@@ -26,10 +27,7 @@ fi
 
 (($# == 1)) || die "$usage"
 mode="$1"
-case "$mode" in
-  metalspace | fabric) ;;
-  *) die "$usage" ;;
-esac
+[[ " ${modes} " == *" ${mode} "* ]] || die "$usage"
 target="${machines}.${mode}"
 [[ -s $target ]] || die "${target} is missing or empty: nix would skip it silently and every build would fail"
 
