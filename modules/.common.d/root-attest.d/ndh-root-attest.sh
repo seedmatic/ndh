@@ -13,7 +13,8 @@
 
 readonly namespace="seedmatic-attest"
 readonly principal="seedmatic-root"
-usages=(ssh-host ssh-user tls-server)
+# The SSH authorities only: the TLS intermediate is attested by the root's X.509 signature over its certificate.
+usages=(ssh-host ssh-user)
 
 die() {
   printf '[ndh-root-attest] ERROR: %s\n' "$*" >&2

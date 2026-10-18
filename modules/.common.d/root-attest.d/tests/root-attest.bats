@@ -77,6 +77,8 @@ verify() { # [overrides…]
 @test "malformed inputs are refused before anything is written" {
   run --separate-stderr "$ATTEST" statement --name fabric-ssh-host --usage everything --key "$ca" --not-after 2028-10-18
   [ "$status" -eq 1 ]
+  run --separate-stderr "$ATTEST" statement --name mammoth-skate-tls --usage tls-server --key "$ca" --not-after 2028-10-18
+  [ "$status" -eq 1 ]
   run --separate-stderr "$ATTEST" statement --name fabric-ssh-host --usage ssh-host --key "$ca" --not-after 2028-02-30
   [ "$status" -eq 1 ]
   run --separate-stderr "$ATTEST" statement --name fabric-ssh-host --usage ssh-host --key "not a key" --not-after 2028-10-18
