@@ -1147,6 +1147,11 @@
                 inherit pkgs;
               };
           nfsd-off-bats = import ./modules/darwin/nfsd-off.d/tests/package.nix { inherit pkgs; };
+          # No nix file here reads a derivation's output at evaluation (import-from-derivation).
+          no-ifd-readfile = import ./nix/no-ifd-readfile.nix {
+            inherit pkgs;
+            src = ./.;
+          };
           sops-age-bootstrap-bats = import ./modules/.common.d/sops.d/tests/package.nix { inherit pkgs; };
           nix-signing-place-bats = import ./modules/.common.d/nix-signing.d/tests/package.nix {
             inherit pkgs;
