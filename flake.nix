@@ -1360,6 +1360,16 @@
                 ++ nixpkgs.lib.mapAttrsToList (line "darwin") self.darwinConfigurations
               )
             );
+          # Every app still EVALUATES, by its name in the flake: ndh-ops broke for a day unseen (2026-10-18, an
+          # operator tool added to verbs.json without its delegation list). Its program's path, context discarded,
+          # so this evaluates the app's assertions and builds nothing.
+          apps-evaluate = pkgs.writeText "apps-evaluate" (
+            nixpkgs.lib.concatLines (
+              nixpkgs.lib.mapAttrsToList (
+                name: app: "${name} ${builtins.unsafeDiscardStringContext app.program}"
+              ) (self.apps.${system} or { })
+            )
+          );
           nix-conf-no-accept-flake-config =
             let
               conf = c: c.config.environment.etc."nix/nix.conf".source;

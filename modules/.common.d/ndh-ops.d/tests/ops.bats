@@ -75,6 +75,17 @@ ops() { bash "$T/ndh-ops" "$@"; }
   [[ "$output" == *"gpg is not one of"* ]]
   [ ! -e "$T/db/delegation" ]
 }
+@test "arm: the root's ceremony is never delegated" {
+  run ops arm --hours 2 --tools ndh-ceremony-vm
+  [ "$status" -eq 3 ]
+  [[ "$output" == *"ndh-ceremony-vm is not one of"* ]]
+  [ ! -e "$T/db/delegation" ]
+}
+@test "the root's ceremony is refused, its smoke form too" {
+  run ops ndh-ceremony-vm --smoke
+  [ "$status" -eq 3 ]
+  [[ "$output" == *"ndh-ceremony-vm is not an operator tool"* ]]
+}
 @test "status and disarm" {
   run ops status; [ "$output" = "not armed" ]
   ops arm --hours 3 --tools ssh-keys-renew,ndh-keyring
