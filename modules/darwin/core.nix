@@ -127,6 +127,40 @@ in
     in
     ndh.store.writeText "flake.nix" flakeContent;
 
+  # nix-darwin's weekly GC daemon logs nowhere: it exited 1 on both Macs on 2026-10-18 and left no trace of why.
+  launchd.daemons.nix-gc.serviceConfig = lib.mkIf config.nix.gc.automatic {
+    StandardOutPath = "/var/log/nix-gc.log";
+    StandardErrorPath = "/var/log/nix-gc.log";
+  };
+
+  # Every launchd daemon's log under /var/log rotates weekly, 4 kept, compressed. The list is derived from the
+  # daemons, so a new one cannot be forgotten, and each file keeps its daemon's owner, so a daemon that is not
+  # root can still write it after a rotation. N: no process to signal (newsyslog would signal syslogd). None
+  # of them is KeepAlive today; a long-running daemon would keep writing into the renamed file until it restarts.
+  environment.etc."newsyslog.d/ndh.conf".text =
+    let
+      logs = lib.concatMap (
+        d:
+        let
+          sc = d.serviceConfig;
+          # nix-darwin's serviceConfig carries these options null by default: `or` does not cover null.
+          orDefault = v: d: if v == null then d else v;
+          owner = "${orDefault (sc.UserName or null) "root"}:${orDefault (sc.GroupName or null) "wheel"}";
+        in
+        map (path: { inherit path owner; }) (
+          lib.unique (
+            lib.filter (p: p != null && lib.hasPrefix "/var/log/" p) [
+              (sc.StandardOutPath or null)
+              (sc.StandardErrorPath or null)
+            ]
+          )
+        )
+      ) (lib.attrValues config.launchd.daemons);
+      byPath = lib.attrValues (lib.listToAttrs (map (l: lib.nameValuePair l.path l) logs));
+    in
+    "# logfilename\t[owner:group]\tmode\tcount\tsize\twhen\tflags\n"
+    + lib.concatMapStrings (l: "${l.path}\t${l.owner}\t644\t4\t*\t$W0D0\tZN\n") byPath;
+
   # auto manage nixbld users with nix darwin
   nix = {
 

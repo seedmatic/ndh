@@ -1351,6 +1351,68 @@
               done
               touch $out
             '';
+          # The weekly GC daemon of each Mac says why it fails: its output goes to /var/log/nix-gc.log.
+          darwin-nix-gc-logs =
+            let
+              lib = nixpkgs.lib;
+              unlogged =
+                lib.filter
+                  (
+                    seat:
+                    let
+                      sc = self.darwinConfigurations.${seat}.config.launchd.daemons.nix-gc.serviceConfig;
+                    in
+                    (sc.StandardOutPath or null) != "/var/log/nix-gc.log"
+                    || (sc.StandardErrorPath or null) != "/var/log/nix-gc.log"
+                  )
+                  [
+                    "bioskop"
+                    "nikopol"
+                  ];
+            in
+            assert lib.assertMsg (unlogged == [ ]) "nix-gc logs nowhere on ${toString unlogged}";
+            pkgs.runCommand "darwin-nix-gc-logs" { } "touch $out";
+          # Every launchd daemon's log under /var/log has its weekly rotation line in newsyslog.d/ndh.conf, a new
+          # daemon included, and an emptied file is caught.
+          darwin-var-log-rotation =
+            let
+              lib = nixpkgs.lib;
+              unrotated =
+                c:
+                let
+                  conf = c.config.environment.etc."newsyslog.d/ndh.conf".text;
+                  logs = lib.unique (
+                    lib.concatMap (
+                      d:
+                      lib.filter (p: p != null && lib.hasPrefix "/var/log/" p) [
+                        (d.serviceConfig.StandardOutPath or null)
+                        (d.serviceConfig.StandardErrorPath or null)
+                      ]
+                    ) (lib.attrValues c.config.launchd.daemons)
+                  );
+                in
+                lib.filter (p: !(lib.hasInfix "\n${p}\t" ("\n" + conf))) logs;
+              seats = map (n: self.darwinConfigurations.${n}) [
+                "bioskop"
+                "nikopol"
+              ];
+              bioskopWith = m: self.darwinConfigurations.bioskop.extendModules { modules = [ m ]; };
+              withNewDaemon = bioskopWith {
+                launchd.daemons.ndh-rotation-probe = {
+                  command = "/usr/bin/true";
+                  serviceConfig.StandardErrorPath = "/var/log/ndh-rotation-probe.log";
+                };
+              };
+              emptied = bioskopWith { environment.etc."newsyslog.d/ndh.conf".text = lib.mkForce ""; };
+            in
+            assert lib.assertMsg (lib.all (
+              c: unrotated c == [ ]
+            ) seats) "a /var/log file of a Mac rotates nowhere";
+            assert lib.assertMsg (
+              unrotated withNewDaemon == [ ]
+            ) "a new daemon's /var/log file is not picked up";
+            assert lib.assertMsg (unrotated emptied != [ ]) "an emptied newsyslog file passed";
+            pkgs.runCommand "darwin-var-log-rotation" { } "touch $out";
           nix-conf-no-foreign-include =
             let
               conf = c: c.config.environment.etc."nix/nix.conf".source;
