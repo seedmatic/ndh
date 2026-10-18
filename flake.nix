@@ -1069,6 +1069,9 @@
 
     in
     rec {
+      # A cluster's builder, defined here and built by rke2lab beside its node image: ndh builds no image of it.
+      nixosModules.cluster-builder = ./modules/nixos/cluster-builder.nix;
+
       formatter = forAllSystems (
         system:
         let
@@ -1406,7 +1409,7 @@
                 (nixpkgs.lib.nixosSystem {
                   system = "aarch64-linux";
                   modules = [
-                    ./modules/nixos/cluster-builder.nix
+                    self.nixosModules.cluster-builder
                     {
                       ndh.clusterBuilder = {
                         inherit trustedClient;
