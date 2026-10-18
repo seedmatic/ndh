@@ -111,12 +111,11 @@ once: `sudo lsof +D /nix/var/nix/current-load` lists the hooks holding them.
 
 | bioskop (first bring-up) | `bootstrap` (default) | ✅ baremetal | —
 | bioskop (post-bring-up)  | `steady`              | ❌            | `bioskop-nixos`
-| nikopol                  | `requests`            | ❌ (vm, never) | `nikopol` (loopback), `nikopol-nixos`; with `fabric`, `bioskop` and `bioskop-nixos`
+| nikopol                  | `steady`              | ❌ (vm, never) | `nikopol-nixos`
 |===
 
 `nikopol` is a `vm`-form host: it can never run a nested `linux-builder`, so it
-was `steady` from day one, offloading to `nikopol-nixos`; it is the first Mac in
-`requests`. The
+declares `steady` from day one and always offloads to `nikopol-nixos`. The
 `bootstrap` default exists for baremetal Macs (`bioskop`) that must first build
 their own sibling.
 
