@@ -751,12 +751,14 @@ What this spec fixes:
 | a read token would make the whole private cache's confidentiality depend on that sandbox never
 being escaped (🛡️); the cost is compute on our own packages
 
-| its keys are **born inside** it (its host key, and its nix key derived from it); only the publics
-leave, recorded by the cluster's own scenario in the cluster's cellar; that cluster's nodes trust its
-nix key and upstream's, and nothing else does, neither the four machines nor the attics (see
-<<builder-keys>>). ⚠️ As coded today the nix key is generated inside at first start, not yet derived
-from the host key: the derivation follows the proofs
-| one key per cache; trust flows down only
+| its keys are **born inside** it: its host key, and its nix key **generated** at first start, which never
+leaves; only the publics leave, the nix one registered in that cluster's cellar by its own scenario
+(`acceptedBy` = that cluster only); that cluster's nodes trust its nix key and upstream's, and nothing
+else does, neither the four machines nor the attics
+| one key per cache; trust flows down only. Not derived from the host key, unlike the fleet machines'
+(<<builder-keys>>): their host key is in keys.yaml and the operator's keyring, so their nix public is derived
+and recorded ahead; a cluster builder's host key is born and dies with each grow, recorded nowhere, and
+deriving would only tie the two keys together (🔑, 2026-10-18)
 
 | reached over the fabric by OpenSSH: an account `cluster-build` (never `nix-store`) forced to
 `nix-daemon --stdio --force-untrusted --process-ops`, reachable only with the user certificate at principal
