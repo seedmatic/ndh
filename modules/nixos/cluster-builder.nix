@@ -75,6 +75,17 @@ in
         fails. Trusted, a node can also import unsigned paths and override the daemon's settings.
       '';
     };
+    upstreamCaches = lib.mkOption {
+      type = lib.types.listOf (
+        lib.types.submodule {
+          options = {
+            substituter = lib.mkOption { type = lib.types.str; };
+            publicKey = lib.mkOption { type = lib.types.str; };
+          };
+        }
+      );
+      description = "The upstream caches it substitutes from, and only those (nix-flake-commons' data; ndh's export sets cache.nixos.org).";
+    };
     signingKeyName = lib.mkOption {
       type = lib.types.str;
       description = "The name of the nix signing key generated inside at first start.";
@@ -201,8 +212,8 @@ in
         "root"
         account
       ];
-      substituters = [ "https://cache.nixos.org" ];
-      trusted-public-keys = [ "cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY=" ];
+      substituters = map (cache: cache.substituter) cfg.upstreamCaches;
+      trusted-public-keys = map (cache: cache.publicKey) cfg.upstreamCaches;
       # A client may name no substituter of its own.
       trusted-substituters = [ ];
       require-sigs = true;

@@ -1,5 +1,5 @@
 {
-  worktreePath,
+  ndh,
   config,
   lib,
   pkgs,
@@ -37,8 +37,8 @@ let
     concatMapStringsSep
     ;
 
-  cacheTrust = import (worktreePath.of "catalog/cache-trust.nix");
-  allCaches = cacheTrust.caches;
+  # The catalog's, built once by the flake (catalog/cache-trust.nix fed with nix-flake-commons' upstream caches).
+  allCaches = ndh.context.catalog.caches;
 
   # Fleet-owned entries under caches.cachix.<name>. These have their
   # private deployed from catalog/cache-trust.yaml; the others do not.

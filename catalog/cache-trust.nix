@@ -1,14 +1,9 @@
+# The caches the fleet trusts. The upstream ones (cache.nixos.org, cache.flox.dev, the aseipp mirror) are
+# nix-flake-commons' data, shared by every seedmatic flake; what is ours stays here.
+{ upstream }:
 {
   caches = {
-    nixos = {
-      substituter = "https://cache.nixos.org";
-      publicKey = "cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY=";
-    };
-
-    flox = {
-      substituter = "https://cache.flox.dev";
-      publicKey = "flox-cache-public-1:7F4OyH7ZCnFhcze3fJdfyXYLQw/aV7GEed86nQ7IsOs=";
-    };
+    inherit (upstream) nixos flox aseippFastly;
 
     # Fleet-owned signing keypairs, grouped under `cachix` to distinguish
     # from external third-party caches above. Privates live encrypted at
@@ -24,10 +19,6 @@
       "seedmatic-fleet-1" = {
         publicKey = "seedmatic-fleet-1:NIMcslYpF5gOrJPyBrU6eY8HMI99R7rR9ysKsNDB1/o=";
       };
-    };
-
-    aseippFastly = {
-      substituter = "https://aseipp-nix-cache.freetls.fastly.net";
     };
 
     # ⚠️ An entry here with a `substituter` is ACTIVE on every host — the module walks this set and
