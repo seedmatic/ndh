@@ -21,7 +21,9 @@
 # new consumer should go through `ssh-ng://nix-store.<host>` and let
 # the alias supply IdentityFile + CertificateFile.
 #
-# Per-platform specifics (inbound nix-store user provisioning) live in:
+# The inbound account is declared here once (name, own group, description, home); the platform modules add only
+# their idiom: numeric ids, the shell as a store path and the directory-services heal on Darwin (a shell package
+# would render as /run/current-system/sw/…), a system user and the shell as a package on NixOS.
 #
 #   - modules/darwin/nix-store-identity.nix
 #   - modules/nixos/nix-store-identity.nix
@@ -31,8 +33,9 @@ let
   ndhContext = lib.attrByPath [ "context" ] { } ndh;
   inventoryHostNames = builtins.attrNames (lib.attrByPath [ "inventory" "hosts" ] { } ndhContext);
   selfHostName = config.networking.hostName or "";
-  peerHostNames = lib.filter (h: h != selfHostName && h != "") (
-    lib.unique (inventoryHostNames ++ cfg.extraPeers)
+  tailnetDomain = lib.attrByPath [ "catalog" "netplan" "tailnet" "domain" ] "" ndhContext;
+  peerHostNames = lib.filter (h: (cfg.selfAlias || h != selfHostName) && h != "") (
+    lib.unique (inventoryHostNames ++ cfg.extraPeers ++ lib.optional cfg.selfAlias selfHostName)
   );
 
   # Restricted login shell for the inbound nix-daemon user. Rendered as a
@@ -63,9 +66,14 @@ let
   # Per-host stanza. CertificateFile is mandatory: with cert-signed auth,
   # ssh must present the cert alongside the private or sshd will not
   # match the TrustedUserCAKeys / AuthorizedPrincipalsCommand pair.
+  # A peer in another metalspace is reached over the tailnet, by its fleet name there. The timeouts make a cut
+  # route fail in seconds: nix gives ssh none, and a build would wait on the TCP timeout.
   peerStanza = host: ''
     Host nix-store.${host}
-      HostName ${host}${cfg.hostSuffix}
+      HostName ${host}${if lib.elem host cfg.tailnetPeers then tailnetDomain else cfg.hostSuffix}
+      ConnectTimeout 5
+      ServerAliveInterval 15
+      ServerAliveCountMax 4
       User nix-store
       IdentityFile ${cfg.keyPath}
       CertificateFile ${cfg.certPath}
@@ -114,10 +122,7 @@ in
       description = ''
         Provision a local `nix-store` system user that serves inbound
         `nix-daemon --stdio` connections, register it as a trusted nix
-        user, and expose its login shell. The user itself is declared
-        in the platform module (modules/darwin/nix-store-identity.nix
-        or modules/nixos/nix-store-identity.nix) because Darwin and
-        NixOS need different option surfaces.
+        user, and expose its login shell.
       '';
     };
 
@@ -181,6 +186,18 @@ in
       '';
     };
 
+    selfAlias = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = "Also render `nix-store.<this host>`: the loopback a host that builds every request through it uses (modules/darwin/host-builder.nix, phase requests).";
+    };
+
+    tailnetPeers = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [ ];
+      description = "Peers in another metalspace: their alias reaches `<peer><tailnet domain>` instead of `<peer><hostSuffix>`.";
+    };
+
     hostSuffix = lib.mkOption {
       type = lib.types.str;
       default = ".local";
@@ -204,10 +221,16 @@ in
       text = sshClientFragmentText;
     };
 
-    # Register the restricted shell + grant the user nix-daemon trust.
-    # Both options are platform-agnostic (environment.shells exists on
-    # Darwin and NixOS; nix.settings.trusted-users likewise). The user
-    # *record* itself is declared in the platform module.
+    # Its own group, never the build-users-group: the nix daemon refuses a client whose primary group is
+    # build-users-group, trusted or not (nix 2.34 daemon.cc, authPeer).
+    users.groups = lib.mkIf cfg.provisionInboundUser { ${cfg.inboundUserName} = { }; };
+    users.users = lib.mkIf cfg.provisionInboundUser {
+      ${cfg.inboundUserName} = {
+        description = "Inbound nix-daemon --stdio endpoint";
+        home = cfg.inboundUserHome;
+      };
+    };
+
     environment.shells = lib.mkIf cfg.provisionInboundUser [ cfg.inboundUserShellPath ];
     nix.settings.trusted-users = lib.mkIf cfg.provisionInboundUser [ cfg.inboundUserName ];
     opensshPolicy.restrictedUsers = lib.mkIf cfg.provisionInboundUser {

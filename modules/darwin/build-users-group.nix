@@ -3,35 +3,16 @@
   lib,
   ...
 }:
-# Only the _nixbldN build users may hold the build-users-group (nixbld). The nix daemon refuses a client
-# whose PRIMARY group it is, trusted or not (nix 2.34 daemon.cc, authPeer), and takes the group's members
-# as build users (user-lock.cc, getgrnam's gr_mem, i.e. GroupMembership on macOS).
+# The guard on the build-users-group (nixbld) is common: modules/.common.d/build-users-group.nix.
 #
 # nix-darwin manages nixbld's GroupMembership but not its GroupMembers (the members' GUIDs), so a member
 # added by hand there survives every switch: the activation removes any GUID that is not a declared
 # member's. Measured 2026-10-17: the operator's account was in bioskop's GroupMembers, not in nikopol's.
 let
   group = config.nix.settings.build-users-group;
-  gid = config.ids.gids.${group};
-  buildUser = name: builtins.match "_nixbld[0-9]+" name != null;
-  primary = lib.attrNames (
-    lib.filterAttrs (name: u: !buildUser name && (u.gid or null) == gid) config.users.users
-  );
   members = config.users.groups.${group}.members or [ ];
-  strays = lib.filter (name: !buildUser name) members;
 in
 {
-  assertions = [
-    {
-      assertion = primary == [ ];
-      message = "build-users-group '${group}' (gid ${toString gid}) is the primary group of ${lib.concatStringsSep ", " primary}: the nix daemon refuses them as clients";
-    }
-    {
-      assertion = strays == [ ];
-      message = "${lib.concatStringsSep ", " strays} would be build users: only _nixbldN may be members of '${group}'";
-    }
-  ];
-
   # Only with declared members, and only when every one of their GUIDs is read: an empty allow-list would
   # delete every GUID, the build users' included, and break every build on that Mac.
   system.activationScripts.postActivation.text = lib.mkIf (members != [ ]) (

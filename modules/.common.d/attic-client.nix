@@ -37,7 +37,13 @@ in
     paths = lib.mkOption {
       type = lib.types.attrsOf lib.types.str;
       readOnly = true;
-      description = "Where the token delivery puts this machine's attic tokens (root-only, gone at boot): dir, netrc, writeToken.";
+      description = "Where the token delivery puts this machine's attic tokens (gone at boot): dir, netrc, writeToken.";
+    };
+
+    writeTokenOwner = lib.mkOption {
+      type = lib.types.str;
+      readOnly = true;
+      description = "The account the token delivery gives writeToken to, 0400; netrc stays root's, 0400, and dir must let that account through.";
     };
 
     caches = lib.mkOption {

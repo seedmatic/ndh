@@ -1,5 +1,6 @@
-# NixOS-specific nix daemon configuration: trusted-users, build users, sandbox,
-# kvm, auto-optimise. Substituter + trusted-public-key emission lives in
+# NixOS-specific nix daemon configuration: build users, sandbox, kvm,
+# auto-optimise. trusted-users is common (modules/.common.d/nixpkgs.nix); the build-users-group guard too
+# (modules/.common.d/build-users-group.nix). Substituter + trusted-public-key emission lives in
 # modules/.common.d/cache-trust.nix (walks the catalog automatically).
 {
   config,
@@ -9,9 +10,6 @@
   ...
 }:
 let
-  cfgUser = config.profile.user;
-  cfgUserName = cfgUser.name;
-
   # Whether this guest has KVM is decided when the VM is LAUNCHED (Tart's --nested, which
   # NESTED_VIRT overrides at runtime), not when it is evaluated. So the evaluated settings never
   # advertise kvm; a boot-time unit states what the running VM actually has, in a file the
@@ -23,10 +21,6 @@ in
 {
   nix.settings = {
     auto-optimise-store = false; # Manual optimise keeps build latency predictable during development.
-    trusted-users = [
-      cfgUserName
-      "root"
-    ];
     # Builds run as the nixbldN users. NixOS emits no build-users-group here, so
     # Nix fell back to a default that depends on the daemon's uid; stated, it is
     # a reviewed fact. Nix takes the group's MEMBERS as build users: only the
@@ -38,31 +32,6 @@ in
     # definition would be concatenated to it.
     system-features = lib.mkForce (lib.remove "kvm" defaultFeatures);
   };
-
-  # Only the nixbldN build users may hold build-users-group. The daemon refuses a client whose PRIMARY
-  # group it is, trusted or not (daemon.cc, authPeer), and takes the group's MEMBERS as build users
-  # (user-lock.cc, getgrnam's gr_mem).
-  assertions =
-    let
-      group = config.nix.settings.build-users-group;
-      buildUser = name: builtins.match "nixbld[0-9]+" name != null;
-      others = lib.filterAttrs (name: _: !buildUser name) config.users.users;
-      primary = lib.attrNames (lib.filterAttrs (_: u: u.group == group) others);
-      members = lib.filter (name: !buildUser name) (
-        config.users.groups.${group}.members or [ ]
-        ++ lib.attrNames (lib.filterAttrs (_: u: lib.elem group u.extraGroups) others)
-      );
-    in
-    [
-      {
-        assertion = primary == [ ];
-        message = "build-users-group '${group}' is the primary group of ${lib.concatStringsSep ", " primary}: the nix daemon refuses them as clients";
-      }
-      {
-        assertion = members == [ ];
-        message = "${lib.concatStringsSep ", " members} would be build users: only nixbldN may be members of '${group}'";
-      }
-    ];
 
   nix.extraOptions = ''
     !include /etc/nix/nix.custom.conf

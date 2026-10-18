@@ -1256,6 +1256,208 @@
                 darwin.config.ndh.nixSigning.placeScript
               ];
             } "touch $out";
+          build-users-group-guard =
+            let
+              lib = nixpkgs.lib;
+              nixos = self.nixosConfigurations.bioskop-nixos;
+              darwin = self.darwinConfigurations.bioskop;
+              fired = c: part: lib.any (a: !a.assertion && lib.hasInfix part a.message) c.config.assertions;
+              primary = "is the primary group of";
+              member = "would be build users";
+              nixosPrimary = nixos.extendModules {
+                modules = [
+                  {
+                    users.users.mutant = {
+                      isSystemUser = true;
+                      group = "nixbld";
+                    };
+                  }
+                ];
+              };
+              nixosMember = nixos.extendModules {
+                modules = [
+                  {
+                    users.users.mutant = {
+                      isSystemUser = true;
+                      group = "nogroup";
+                      extraGroups = [ "nixbld" ];
+                    };
+                  }
+                ];
+              };
+              darwinPrimary = darwin.extendModules {
+                modules = [
+                  (
+                    { config, ... }:
+                    {
+                      users.users.mutant = {
+                        uid = 701;
+                        gid = config.ids.gids.nixbld;
+                      };
+                    }
+                  )
+                ];
+              };
+              darwinMember = darwin.extendModules {
+                modules = [ { users.groups.nixbld.members = [ "mutant" ]; } ];
+              };
+            in
+            assert lib.assertMsg (
+              !(fired nixos primary || fired nixos member || fired darwin primary || fired darwin member)
+            ) "build-users-group: the real configurations trip the guard";
+            assert lib.assertMsg (fired nixosPrimary primary)
+              "build-users-group: NixOS primary-group mutant passed";
+            assert lib.assertMsg (fired nixosMember member) "build-users-group: NixOS member mutant passed";
+            assert lib.assertMsg (fired darwinPrimary primary)
+              "build-users-group: Darwin primary-group mutant passed";
+            assert lib.assertMsg (fired darwinMember member) "build-users-group: Darwin member mutant passed";
+            pkgs.runCommand "build-users-group-guard" { } "touch $out";
+          darwin-nix-conf-no-include =
+            let
+              conf = c: c.config.environment.etc."nix/nix.conf".source;
+              macs = map (n: conf self.darwinConfigurations.${n}) [
+                "bioskop"
+                "nikopol"
+              ];
+              mutant = conf (
+                self.darwinConfigurations.bioskop.extendModules {
+                  modules = [ { nix.extraOptions = "include /etc/nix/flox.conf"; } ];
+                }
+              );
+            in
+            pkgs.runCommand "darwin-nix-conf-no-include" { } ''
+              included() { grep -Eq '^[[:space:]]*!?include[[:space:]]' "$1"; }
+              for f in ${nixpkgs.lib.escapeShellArgs macs}; do
+                if included "$f"; then echo "a Mac's nix.conf includes a file outside ndh: $f" >&2; exit 1; fi
+              done
+              included ${mutant} || { echo "the include mutant passed" >&2; exit 1; }
+              touch $out
+            '';
+          ndh-builders-bats = import ./modules/darwin/host-builder.d/tests/package.nix { inherit pkgs; };
+          host-builder-requests =
+            let
+              lib = nixpkgs.lib;
+              tailnet = catalogData.netplan.tailnet.domain;
+              requests = self.darwinConfigurations.bioskop.extendModules {
+                modules = [ { ndh.hostBuilder = lib.mkForce "requests"; } ];
+              };
+              c = requests.config;
+              sets = c.ndh.builderSets;
+              entry = set: host: lib.findFirst (m: m.hostName == "nix-store.${host}") null sets.${set};
+              file = mode: c.environment.etc."nix/machines.${mode}".text;
+              lines = mode: lib.filter (l: l != "") (lib.splitString "\n" (file mode));
+              stanzas = lib.filter (lib.hasPrefix "nix-store.") (
+                lib.splitString "Host " c.environment.etc."ssh/ssh_config.d/75-nix-store.conf".text
+              );
+              stanza = host: lib.findFirst (b: lib.hasPrefix "nix-store.${host}\n" b) "" stanzas;
+              noLoopback = requests.extendModules {
+                modules = [
+                  {
+                    ndh.builderSets.metalspace = lib.mkForce [ (entry "metalspace" "bioskop-nixos") ];
+                  }
+                ];
+              };
+              coverage =
+                cfg: lib.any (a: !a.assertion && lib.hasInfix "max-jobs = 0" a.message) cfg.config.assertions;
+              capacity = c.ndh.builderCapacity;
+            in
+            assert lib.assertMsg (c.nix.settings.max-jobs == 0) "requests: the Mac must build nothing itself";
+            assert lib.assertMsg (
+              c.nix.buildMachines == [ ] && c.nix.settings.builders == "@/var/lib/ndh/builders/active"
+            ) "requests: the daemon reads the list ndh-builders points at, and nix-darwin renders none";
+            assert lib.assertMsg (
+              (entry "metalspace" "bioskop").systems == [ "aarch64-darwin" ]
+              && (entry "metalspace" "bioskop").speedFactor == 10
+              && (entry "metalspace" "bioskop-nixos").speedFactor == 10
+              && entry "metalspace" "nikopol" == null
+            ) "requests: metalspace is the loopback and the own guest only";
+            assert lib.assertMsg (
+              lib.take (lib.length (lines "metalspace")) (lines "fabric") == lines "metalspace"
+              && lib.length (lines "fabric") == lib.length (lines "metalspace") + 2
+              && (entry "fabric" "nikopol").speedFactor == 1
+              && (entry "fabric" "nikopol-nixos").speedFactor == 1
+            ) "requests: fabric is metalspace plus the other metalspace's Mac and guest, nothing else";
+            # A Mac in requests builds nothing of its own: what it receives, home + peer, is its own capacity.
+            assert lib.assertMsg (
+              capacity.darwin.home + capacity.darwin.peer == capacity.darwin.own
+            ) "requests: a Mac receives at most its capacity";
+            assert lib.assertMsg (
+              lib.hasInfix "HostName nikopol${tailnet}\n" (stanza "nikopol")
+              && lib.hasInfix "HostName nikopol-nixos${tailnet}\n" (stanza "nikopol-nixos")
+              && lib.hasInfix "HostName bioskop.local\n" (stanza "bioskop")
+            ) "requests: the other metalspace over the tailnet, home on its own network";
+            assert lib.assertMsg (lib.all (
+              b: lib.hasInfix "ConnectTimeout 5\n" b
+            ) stanzas) "requests: every nix-store alias fails fast on a cut route";
+            assert lib.assertMsg (lib.hasInfix "ndh-builders metalspace ||" (
+              builtins.unsafeDiscardStringContext c.system.activationScripts.postActivation.text
+            )) "requests: the activation resets a missing pointer to metalspace, without aborting";
+            assert lib.assertMsg (
+              !(coverage requests) && coverage noLoopback
+            ) "requests: a set without a darwin entry must be refused while max-jobs = 0";
+            pkgs.runCommand "host-builder-requests" { } "touch $out";
+          trusted-users-named =
+            let
+              lib = nixpkgs.lib;
+              machines =
+                map (n: self.darwinConfigurations.${n}) [
+                  "bioskop"
+                  "nikopol"
+                ]
+                ++ map (n: self.nixosConfigurations.${n}) [
+                  "bioskop-nixos"
+                  "nikopol-nixos"
+                ];
+              named =
+                c:
+                lib.sort lib.lessThan (lib.unique c.config.nix.settings.trusted-users) == lib.sort lib.lessThan [
+                  "root"
+                  c.config.profile.user.name
+                  c.config.nixStoreIdentity.inboundUserName
+                ];
+              refused =
+                c:
+                lib.any (a: !a.assertion && lib.hasInfix "trusted-users holds a group" a.message)
+                  (c.extendModules { modules = [ { nix.settings.trusted-users = [ "@admin" ]; } ]; })
+                  .config.assertions;
+            in
+            assert lib.assertMsg (lib.all named machines)
+              "trusted-users: a machine trusts other than root, its seat user and nix-store";
+            assert lib.assertMsg (lib.all refused machines) "trusted-users: a group mutant was not refused";
+            pkgs.runCommand "trusted-users-named" { } "touch $out";
+          attic-watch-store-not-root =
+            let
+              lib = nixpkgs.lib;
+              on = {
+                ndh.atticClient = {
+                  watchStore.enable = true;
+                  ownCache = "attic.bioskop";
+                };
+              };
+              nixos = (self.nixosConfigurations.bioskop-nixos.extendModules { modules = [ on ]; }).config;
+              darwin = (self.darwinConfigurations.bioskop.extendModules { modules = [ on ]; }).config;
+              service = nixos.systemd.services.ndh-attic-watch-store.serviceConfig;
+              daemon = darwin.launchd.daemons.ndh-attic-watch-store.serviceConfig;
+              account = darwin.ndh.atticClient.writeTokenOwner;
+            in
+            assert lib.assertMsg (
+              service.DynamicUser && lib.hasPrefix "write.token:" service.LoadCredential
+            ) "attic watch-store: the NixOS service must be a DynamicUser fed by LoadCredential";
+            assert lib.assertMsg (
+              nixos.ndh.atticClient.writeTokenOwner == "root"
+            ) "attic watch-store: on NixOS the token stays root's";
+            assert lib.assertMsg (
+              account != "root" && daemon.UserName == account && daemon.GroupName == account
+            ) "attic watch-store: the darwin daemon must run as the account the token is given to, never root";
+            assert lib.assertMsg (
+              darwin.users.users.${account}.uid != 0 && lib.elem account darwin.users.knownUsers
+            ) "attic watch-store: the darwin account must be a managed, non-root account";
+            assert lib.assertMsg (
+              darwin.users.users.${account}.shell == "/usr/bin/false"
+              && !(lib.elem account darwin.nix.settings.trusted-users)
+              && !(lib.elem account darwin.opensshPolicy.allowUsers)
+            ) "attic watch-store: the darwin account must have no shell, no daemon trust and no ssh login";
+            pkgs.runCommand "attic-watch-store-not-root" { } "touch $out";
           nix-signing-trust =
             let
               lib = nixpkgs.lib;
