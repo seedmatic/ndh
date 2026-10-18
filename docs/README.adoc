@@ -109,6 +109,10 @@ public and as which account, the offline seedmatic root and its two delegations 
 SSH host and user CAs), and the lifecycle — permanent, bootstrap, transitional, break-glass — that
 decides how much effort each key gets.
 
+link:root-ceremony.adoc[The seedmatic root's ceremony (runbook)]::
+The offline root in the operator's pass store under its own gpg key, decrypted only in a ceremony VM with no
+network device and nothing on disk; what `ndh-ceremony init` makes, where each output goes, and what it costs.
+
 link:ssh-keys-renewal-spec.adoc[SSH Keys Renewal Model (spec)]::
 How a static key holds two dated generations at once, which one is presented and which are
 accepted. Two phases — declare and install, then retire AND revoke in the same change. No key
