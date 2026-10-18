@@ -1301,6 +1301,23 @@
           # had flox's, the guests the Determinate installer's nix.custom.conf.
           # No machine takes a flake's nixConfig: accept-flake-config let a trusted user's flake add substituters
           # and keys silently. The built nix.conf of the 4 machines, and a mutant on each platform.
+          # Every machine configuration still EVALUATES. The bring-up guests broke for a day unseen (2026-10-17,
+          # a module read the catalog's netplan, which a bring-up has not): no toplevel list named them, and the
+          # only check that touched them builds a whole VM. So every configuration, by its name in the flake,
+          # never by a list: its toplevel's drvPath, context discarded, so this evaluates and builds nothing.
+          configurations-evaluate =
+            let
+              drv = c: builtins.unsafeDiscardStringContext c.config.system.build.toplevel.drvPath;
+              line =
+                kind: name: c:
+                "${kind}.${name} ${drv c}";
+            in
+            pkgs.writeText "configurations-evaluate" (
+              nixpkgs.lib.concatLines (
+                nixpkgs.lib.mapAttrsToList (line "nixos") self.nixosConfigurations
+                ++ nixpkgs.lib.mapAttrsToList (line "darwin") self.darwinConfigurations
+              )
+            );
           nix-conf-no-accept-flake-config =
             let
               conf = c: c.config.environment.etc."nix/nix.conf".source;
