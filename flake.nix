@@ -1312,7 +1312,7 @@
               "build-users-group: Darwin primary-group mutant passed";
             assert lib.assertMsg (fired darwinMember member) "build-users-group: Darwin member mutant passed";
             pkgs.runCommand "build-users-group-guard" { } "touch $out";
-          # Every machine's nix.conf includes ndh's own runtime files only (/run/ndh/), never a file nothing declares:
+          # Every machine's nix.conf includes ndh's own runtime files only (in /run/ndh, root's), never a file nothing declares:
           # an include is a way into the daemon's settings (trusted-users, builders) that no review sees. The Macs
           # had flox's, the guests the Determinate installer's nix.custom.conf.
           nix-conf-no-foreign-include =
@@ -1327,22 +1327,39 @@
                   "bioskop-nixos"
                   "nikopol-nixos"
                 ];
+              guestWith = m: self.nixosConfigurations.bioskop-nixos.extendModules { modules = [ m ]; };
               mutants = [
                 (conf (
                   self.darwinConfigurations.bioskop.extendModules {
                     modules = [ { nix.extraOptions = "include /etc/nix/flox.conf"; } ];
                   }
                 ))
-                (conf (
-                  self.nixosConfigurations.bioskop-nixos.extendModules {
-                    modules = [ { nix.extraOptions = "!include /etc/nix/nix.custom.conf"; } ];
-                  }
-                ))
+                (conf (guestWith {
+                  nix.extraOptions = "!include /etc/nix/nix.custom.conf";
+                }))
+                # /run/ndh/ssh is the operator's (modules/nixos/systemd/openssh.nix): only root's directory itself counts.
+                (conf (guestWith {
+                  nix.extraOptions = "!include /run/ndh/ssh/x.conf";
+                }))
               ];
+              # /run/ndh is root's alone (modules/nixos/nix-settings.nix): its assertion is quiet on the guests and
+              # fires on a guest that declares it writable.
+              runDirFires =
+                c:
+                nixpkgs.lib.any (
+                  a: !a.assertion && nixpkgs.lib.hasPrefix "/run/ndh:" a.message
+                ) c.config.assertions;
             in
+            assert nixpkgs.lib.assertMsg (
+              !(runDirFires self.nixosConfigurations.bioskop-nixos)
+              && !(runDirFires self.nixosConfigurations.nikopol-nixos)
+            ) "nix-conf-no-foreign-include: a guest's /run/ndh assertion fires";
+            assert nixpkgs.lib.assertMsg (runDirFires (guestWith {
+              systemd.tmpfiles.rules = [ "d /run/ndh 0777 root root - -" ];
+            })) "nix-conf-no-foreign-include: a writable /run/ndh passed";
             pkgs.runCommand "nix-conf-no-foreign-include" { } ''
-              # An include line whose path is not under /run/ndh/.
-              foreign() { grep -Ev '^[[:space:]]*!?include[[:space:]]+/run/ndh/' "$1" | grep -Eq '^[[:space:]]*!?include[[:space:]]'; }
+              # An include line whose path is not a file of /run/ndh itself.
+              foreign() { grep -Ev '^[[:space:]]*!?include[[:space:]]+/run/ndh/[^/[:space:]]+[[:space:]]*$' "$1" | grep -Eq '^[[:space:]]*!?include[[:space:]]'; }
               for f in ${nixpkgs.lib.escapeShellArgs machines}; do
                 if foreign "$f"; then echo "a nix.conf includes a file outside ndh: $f" >&2; exit 1; fi
               done
