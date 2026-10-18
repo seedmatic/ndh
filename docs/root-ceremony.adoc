@@ -1,0 +1,85 @@
+= The seedmatic root's ceremony (runbook)
+:toc: macro
+:toclevels: 2
+
+toc::[]
+
+**Status:** 📐 decided 2026-10-18 (roles × keys ⑧); the first ceremony is the operator's, when they choose.
+
+The seedmatic root is offline. It signs rarely: the TLS intermediate, and statements over the fabric's two SSH
+authorities (link:ssh-keys-architecture.adoc[Roles × Keys]). It lives in the operator's seedmatic `pass` store,
+encrypted to a DEDICATED root gpg key whose passphrase exists only on paper, and it is decrypted only inside a
+ceremony VM with no network device and nothing on disk.
+
+== The ceremony, in one figure
+
+[mermaid]
+....
+flowchart LR
+  IN["👤 in-dir<br/>the seedmatic key's public"]
+  VM["ndh-ceremony-vm<br/>no NIC · RAM only · built by revision"]
+  INIT["👤 at the VM's console:<br/>ndh-ceremony init<br/>the passphrase typed twice"]
+  OUT["out-dir<br/>ciphertext + publics + the log"]
+  PASS["👤 pass store<br/>seedmatic/root/ · seedmatic/authority/"]
+  MED["👤 one offline medium<br/>root.gpg + the root gpg key's export"]
+  PAPER["👤 the passphrase on paper<br/>a THIRD place"]
+  REC["B2: recorded in keys.yaml<br/>every certificate re-signed"]
+  IN --> VM --> INIT --> OUT
+  OUT --> PASS
+  OUT --> MED
+  INIT -.- PAPER
+  OUT --> REC
+....
+
+Every step marked 👤 is the operator's alone: no session runs pass, gpg or the ceremony.
+
+== What the ceremony makes
+
+[cols="2,3,2",options="header"]
+|===
+| Output | What it is | Where it goes
+
+| `root.gpg` | the P-384 root's private, encrypted to the root gpg key alone | `seedmatic/root/` and the offline medium
+| `root-gpg.sec.asc` | the root gpg key's secret export, protected by the paper passphrase | the offline medium, and the IN of a later ceremony
+| `root-gpg.pub.asc` | the root gpg key's public | `seedmatic/root/.gpg-id` names its fingerprint
+| `seedmatic-root.pub`, `seedmatic-root.crt` | the root's ssh public and self-signed X.509 root | keys.yaml (B2), the trust stores
+| `fabric-ssh-host.*`, `fabric-ssh-user.*` | each SSH authority's public, its private encrypted to the seedmatic subkey alone, the root's statement and its signature | `seedmatic/authority/` for the private; keys.yaml (B2) for the rest
+| `mammoth-skate-tls.crt`, `mammoth-skate-tls.gpg` | the TLS intermediate, signed by the root, and its private encrypted to the seedmatic subkey | keys.yaml (B2); `seedmatic/authority/`
+| `ceremony.log` | the date, every fingerprint, the authorities' not-after, the VM's destruction | kept with the store
+|===
+
+A statement names one authority, its usage, its key and a not-after, two years on; `ndh-root-attest verify`
+checks it (`seedmatic-attest v1`, signed with `ssh-keygen -Y sign`, namespace `seedmatic-attest`).
+
+== The first ceremony, step by step
+
+. **Prepare IN.** On the operator seat: `mkdir ~/ceremony-in && gpg --armor --export '08C86550EBC4589C!' >
+  ~/ceremony-in/seedmatic.asc` (a public).
+. **Start the VM**, by revision: `nix run 'github:seedmatic/ndh/<rev>#ndh-ceremony-vm' -- ~/ceremony-in
+  ~/ceremony-out`. `~/ceremony-out` must not exist. The terminal becomes the VM's serial console.
+. **Check it is sealed**, at the console: `ip -br link` shows `lo` only; `findmnt -t 9p,virtiofs` shows nothing;
+  `findmnt /` is a `tmpfs`.
+. **Run it**: `ndh-ceremony init`. Type the passphrase twice: 7 diceware words or more. It is read from the console
+  only and never echoed.
+. **Power off**: `poweroff`. The runner copies OUT to `~/ceremony-out`, deletes both images and its work directory,
+  checks that nothing of them is left, and writes that into `ceremony.log`.
+. **The pass store.** Create `seedmatic/root/`, import `root-gpg.pub.asc`, write its fingerprint to
+  `seedmatic/root/.gpg-id`, and copy `root.gpg` there (already encrypted: never `pass insert` a clear root, never
+  `pass show` it on the seat). Copy the three authority `.gpg` files to `seedmatic/authority/`. Commit the store.
+. **The offline medium.** Copy `root.gpg` and `root-gpg.sec.asc` to it. Keep it in one place, and the paper
+  passphrase in ANOTHER: together they ARE the root.
+. **Record.** The publics, certificates and statements go into keys.yaml through B2's recording verbs, and every
+  certificate is re-signed by usage, in the single renewal. Then delete `~/ceremony-out`.
+
+== A later ceremony
+
+Rare: an authority or the intermediate nears its not-after (`ndh-trust-check` warns 60 days ahead). The same VM by
+revision; IN holds `root.gpg` and `root-gpg.sec.asc`; the passphrase is typed at the console; the root signs; the
+VM is destroyed and checked; the log is kept.
+
+== What it costs, plainly
+
+* The ciphertext and the root gpg key's export sit on an online machine: their safety is the passphrase's strength
+  and bioskop's integrity, accepted as trusted.
+* During a ceremony the root is in clear in the VM's RAM, which bioskop's hypervisor can read (accepted).
+* No touch-policy. Two hardware tokens can be bought later and the same root imported into them: no re-root.
