@@ -23,6 +23,8 @@ let
     cp ${../../git.d/hooks/lib-sops-filter-guard.sh} $out/lib-sops-filter-guard.sh
     # sops-git-env.sh names sops-clean-guard.sh by its own directory, as the clean filter's command.
     chmod +x $out/*.sh
+    # notify.sh names osascript by its path, set here: the installed hook takes it from nothing else.
+    substituteInPlace $out/notify.sh --replace-fail @osascript@ /usr/bin/osascript
   '';
 
   # Security's registry as installed beside the deny-hook: live-page.sh names an engraved session from it.
@@ -74,10 +76,10 @@ in
         hooks = [ (entry "memory-commit.sh" 20 "Committing memory...") ];
       }
     ];
-    # No matcher: every notification type is logged, since which ones fire is what this measures.
+    # No matcher: every type is logged; the ones that wait on the operator also raise a macOS notification.
     Notification = [
       {
-        hooks = [ (entry "notify-log.sh" 5 "Logging the notification...") ];
+        hooks = [ (entry "notify.sh" 5 "Notifying the operator, and logging...") ];
       }
     ];
   };
@@ -95,6 +97,9 @@ in
         cp -r ${src} src && chmod -R u+w src
         cp ${../../git.d/hooks/lib-sops-filter-guard.sh} src/lib-sops-filter-guard.sh
         cd src/tests && HOME=$TMPDIR bats hooks.bats
+        # The installed notify.sh names /usr/bin/osascript, and no placeholder is left.
+        grep -qF '"/usr/bin/osascript"' ${dir}/notify.sh
+        if grep -q '@osascript@' ${dir}/notify.sh; then echo 'notify.sh: @osascript@ left unsubstituted' >&2; exit 1; fi
         touch $out
       '';
 }
