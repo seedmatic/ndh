@@ -16,6 +16,13 @@ let
   # daemon includes. The Mac's buildMachines line states the INTENT (tart vmRunNestedVirt): a
   # kvm build sent while the override is on fails on this side, loudly, instead of running TCG.
   kvmConf = "/run/ndh/nix-kvm.conf";
+  # The daemon includes a file of this directory, so only root may write in it: declared here once, and no other
+  # rule may declare it otherwise (its subdirectories, /run/ndh/ssh among them, may be another account's).
+  runDir = dirOf kvmConf;
+  runDirRule = "d ${runDir} 0755 root root - -";
+  runDirOthers = lib.filter (
+    r: r != runDirRule && builtins.elemAt (lib.splitString " " (lib.trim r) ++ [ "" ]) 1 == runDir
+  ) config.systemd.tmpfiles.rules;
   defaultFeatures = (options.nix.settings.type.getSubOptions [ ]).system-features.default;
 in
 {
@@ -33,10 +40,19 @@ in
     system-features = lib.mkForce (lib.remove "kvm" defaultFeatures);
   };
 
+  # ndh's own file only: an include of a file nothing declares is a way into the daemon's settings (trusted-users,
+  # builders) that no review sees. checks.<system>.nix-conf-no-foreign-include holds it.
   nix.extraOptions = ''
-    !include /etc/nix/nix.custom.conf
     !include ${kvmConf}
   '';
+
+  systemd.tmpfiles.rules = [ runDirRule ];
+  assertions = [
+    {
+      assertion = runDirOthers == [ ];
+      message = "${runDir}: root's alone (${runDirRule}), the nix daemon includes a file of it; other rules: ${lib.concatStringsSep "; " runDirOthers}";
+    }
+  ];
 
   systemd.services.ndh-nix-kvm-features = {
     description = "State whether this boot has /dev/kvm, for the nix daemon";
@@ -49,12 +65,14 @@ in
       RemainAfterExit = true;
     };
     script = ''
-      ${pkgs.coreutils}/bin/mkdir -p ${dirOf kvmConf}
+      ${pkgs.coreutils}/bin/install -d -m 0755 -o root -g root ${runDir}
       if [ -c /dev/kvm ]; then
-        printf 'extra-system-features = kvm\n' > ${kvmConf}
+        printf 'extra-system-features = kvm\n' > ${kvmConf}.new
       else
-        : > ${kvmConf}
+        : > ${kvmConf}.new
       fi
+      ${pkgs.coreutils}/bin/chmod 0644 ${kvmConf}.new
+      ${pkgs.coreutils}/bin/mv -f ${kvmConf}.new ${kvmConf}
     '';
   };
 
