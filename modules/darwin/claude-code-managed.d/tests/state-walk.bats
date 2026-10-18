@@ -34,6 +34,10 @@ allowed() { [ "$status" -eq 0 ] && [ -z "$output" ] || { echo "expected allow, g
 @test "walk: zip -r of the worktree"          { run hook "zip -r /tmp/x.zip $W"; denied; }
 @test "walk: ditto of the worktree"           { run hook "ditto $W /tmp/copy"; denied; }
 @test "walk: git grep --untracked"            { run hook "cd $W && git grep --untracked token"; denied; }
+@test "walk: git -C grep --untracked"         { run hook "git -C $W grep --untracked token"; denied; }
+@test "walk: git -C chained"                  { run hook "git -C $T -C wt grep --untracked token"; denied; }
+@test "walk: git --work-tree= grep --no-index" { run hook "git --work-tree=$W grep --no-index token"; denied; }
+@test "ok git -C grep, tracked files only"    { run hook "git -C $W grep token"; allowed; }
 @test "walk: find -exec cat" {
   run hook "find $W -name '*.json' -exec cat {} +"
   denied

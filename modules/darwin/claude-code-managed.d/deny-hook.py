@@ -108,9 +108,11 @@ def protected_globs(table, home):
     return sorted(globs)
 
 
-def expand_glob(pattern):
+def expand_glob(pattern, stop=None):
     """Every existing path PATTERN could expand to, hidden names included: wider than the shell's default, so a
-    `.p*` or `*` spelling of a protected directory is seen whatever the shell options."""
+    `.p*` or `*` spelling of a protected directory is seen whatever the shell options. With STOP, the walk ends at
+    the first INTERMEDIATE path STOP accepts, and returns it alone: a protected directory is never listed, and what
+    lies below it (absent, or unreadable) does not matter."""
     paths = ["/"]
     for seg in pattern.strip("/").split("/"):
         found = []
@@ -126,6 +128,10 @@ def expand_glob(pattern):
                 continue
             found += [os.path.join(base, n) for n in names if fnmatch.fnmatchcase(n, seg)]
         paths = found[:512]
+        if stop is not None:
+            hit = next((p for p in paths if stop(os.path.normpath(p))), None)
+            if hit is not None:
+                return [hit]
         if not paths:
             break
     return paths
@@ -735,7 +741,8 @@ class Analyzer:
             return True
         if stem != tok:
             pattern = self.glob_pattern(tok)
-            return pattern is not None and any(self.is_protected(os.path.normpath(m)) for m in expand_glob(pattern))
+            return pattern is not None and any(
+                self.is_protected(os.path.normpath(m)) for m in expand_glob(pattern, stop=self.is_protected))
         return False
 
     def glob_pattern(self, tok):
@@ -814,7 +821,23 @@ class Analyzer:
                 starts.append(a)
             return starts or ["."]
         if prog == "git" and "grep" in args and any(f in ("--untracked", "--no-index") for f in flags):
-            return ["."]
+            # The root git works in: -C (chained), --work-tree, else the cwd.
+            root, i = ".", 0
+            while i < len(args):
+                a = args[i]
+                if a == "-C" and i + 1 < len(args):
+                    root = os.path.join(root, args[i + 1]) if not os.path.isabs(args[i + 1]) else args[i + 1]
+                    i += 2
+                    continue
+                if a.startswith("--work-tree="):
+                    root = a.split("=", 1)[1]
+                elif a == "--work-tree" and i + 1 < len(args):
+                    root = args[i + 1]
+                    i += 1
+                elif a == "grep":
+                    break
+                i += 1
+            return [root]
         return []
 
     def walks_into_protected(self, prog, args):

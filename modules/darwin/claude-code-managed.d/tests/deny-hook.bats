@@ -415,3 +415,8 @@ mkstate() {
 @test "pulumi-state glob: .p*, absolute"           { mkstate; HOME="$BATS_TEST_TMPDIR/home" run hook "cat $W/.p*/.pulumi/stacks/dev.json"; denied; }
 @test "pulumi-state glob: .[p]ulumi-state"         { mkstate; HOME="$BATS_TEST_TMPDIR/home" run hook "cat $W/.[p]ulumi-state/.pulumi/stacks/dev.json"; denied; }
 @test "pulumi-state glob: .*/.pulumi/*, relative"  { mkstate; HOME="$BATS_TEST_TMPDIR/home" run hook "cd $W && cat .*/.pulumi/stacks/dev.json"; denied; }
+@test "pulumi-state glob: .pulumi-*/*"             { mkstate; HOME="$BATS_TEST_TMPDIR/home" run hook "cat $W/.pulumi-*/*"; denied; }
+@test "pulumi-state glob: .p*/**/*"                { mkstate; HOME="$BATS_TEST_TMPDIR/home" run hook "cat $W/.p*/**/*"; denied; }
+@test "pulumi-state glob: .[p]ulumi-state/*"       { mkstate; HOME="$BATS_TEST_TMPDIR/home" run hook "head $W/.[p]ulumi-state/*"; denied; }
+@test "pulumi-state glob: .pulumi-*/ an absent x"  { mkstate; HOME="$BATS_TEST_TMPDIR/home" run hook "cat $W/.pulumi-*/x"; denied; }
+@test "ok a glob that misses the state"            { mkstate; HOME="$BATS_TEST_TMPDIR/home" run hook "cat $W/src/*"; allowed; }
