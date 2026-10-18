@@ -133,8 +133,8 @@ in
     # No `include`: a file outside ndh, read after these settings, overrode them at the daemon's next start.
     # /etc/nix/flox.conf, the flox installer's, did (max-jobs = auto, a trust key the catalog does not
     # hold); what it set that we keep is declared in settings below.
+    # No accept-flake-config: with it, a trusted user took any flake's nixConfig (substituters, keys) silently.
     extraOptions = ''
-      accept-flake-config = true
       always-allow-substitutes = true
       min-free = ${toString (10 * 1024 * 1024 * 1024)}  # 10 GB
       max-free = ${toString (20 * 1024 * 1024 * 1024)}  # 20 GB
