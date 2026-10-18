@@ -235,8 +235,10 @@ if [[ ! -s "$reencrypted" ]]; then
 	exit 1
 fi
 install -m 0644 "$reencrypted" "$KEYS_YAML"
+# keys.yaml's public view for nix, keys.json (modules/.common.d/keys-yaml.d/public.yq): rewritten with it.
+ndh-keys-json "$KEYS_YAML"
 
 info "bootstrap complete for ${authority}"
 info "Inspect the minted cert with:"
 info "  yq eval -r '.authorities.\"${authority}\".slots.\"${slot}\".ca_crt' ${KEYS_YAML} | step certificate inspect -"
-info "Commit the yaml diff to ship the new trust anchor."
+info "Commit keys.yaml and keys.json together to ship the new trust anchor."

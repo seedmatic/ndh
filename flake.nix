@@ -3021,6 +3021,7 @@
           authorityBootstrapTlsRootPackage = pkgsForSystem.writeShellApplication {
             name = "authority-bootstrap-tls-root";
             runtimeInputs = [
+              keysJsonPackage
               pkgsForSystem.git
               pkgsForSystem.step-cli
               pkgsForSystem.sops
