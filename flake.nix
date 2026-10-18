@@ -1396,6 +1396,70 @@
               !(coverage requests) && coverage noLoopback
             ) "requests: a set without a darwin entry must be refused while max-jobs = 0";
             pkgs.runCommand "host-builder-requests" { } "touch $out";
+          # The cluster builder's daemon, both ways test 1 can go: the experimental features only on the
+          # untrusted endpoint, never a trusted cluster-build there, the sandbox with no fallback.
+          cluster-builder-settings =
+            let
+              lib = nixpkgs.lib;
+              builder =
+                trustedClient:
+                (nixpkgs.lib.nixosSystem {
+                  system = "aarch64-linux";
+                  modules = [
+                    ./modules/nixos/cluster-builder.nix
+                    {
+                      ndh.clusterBuilder = {
+                        inherit trustedClient;
+                        name = "cluster-builder-check";
+                        address = "172.16.248.20/21";
+                        gateway = "172.16.248.1";
+                        nameservers = [ "172.16.248.1" ];
+                        allowedSources = [ "172.16.248.1/32" ];
+                        userCaKeys = [
+                          "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl check-ca"
+                        ];
+                        signingKeyName = "cluster-builder-check-1";
+                      };
+                    }
+                  ];
+                }).config;
+              untrusted = builder false;
+              trusted = builder true;
+              features = c: c.nix.settings.experimental-features;
+              forced =
+                c:
+                lib.hasInfix "ForceCommand ${c.nix.package}/bin/nix-daemon --stdio" c.services.openssh.extraConfig;
+            in
+            assert lib.assertMsg (
+              lib.elem "daemon-trust-override" (features untrusted)
+              && lib.elem "mounted-ssh-store" (features untrusted)
+            ) "cluster-builder: the untrusted endpoint lacks its experimental features";
+            assert lib.assertMsg
+              (lib.hasInfix "--force-untrusted --process-ops" untrusted.services.openssh.extraConfig)
+              "cluster-builder: the untrusted endpoint is not --stdio --force-untrusted --process-ops";
+            assert lib.assertMsg (
+              !(lib.elem "cluster-build" untrusted.nix.settings.trusted-users)
+            ) "cluster-builder: cluster-build is trusted on the untrusted endpoint";
+            assert lib.assertMsg (
+              !(lib.elem "daemon-trust-override" (features trusted))
+              && !(lib.hasInfix "--force-untrusted" trusted.services.openssh.extraConfig)
+              && lib.elem "cluster-build" trusted.nix.settings.trusted-users
+            ) "cluster-builder: fallback A carries the untrusted endpoint's pieces";
+            assert lib.assertMsg (lib.all forced [
+              untrusted
+              trusted
+            ]) "cluster-builder: cluster-build is not forced to nix-daemon --stdio";
+            assert lib.assertMsg (lib.all
+              (c: c.nix.settings.sandbox == true && c.nix.settings.sandbox-fallback == false)
+              [
+                untrusted
+                trusted
+              ]
+            ) "cluster-builder: the sandbox can fall back";
+            assert lib.assertMsg (
+              untrusted.users.users.root.hashedPassword == "!" && !untrusted.services.openssh.allowSFTP
+            ) "cluster-builder: root has a password, or sftp is offered";
+            pkgs.runCommand "cluster-builder-settings" { } "touch $out";
           trusted-users-named =
             let
               lib = nixpkgs.lib;
