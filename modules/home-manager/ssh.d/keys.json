@@ -274,7 +274,8 @@
             "mammoth-skate": {
               "ssh-host": "ssh-ed25519-cert-v01@openssh.com AAAAIHNzaC1lZDI1NTE5LWNlcnQtdjAxQG9wZW5zc2guY29tAAAAICD7uTcQvc1daHJepOyLUGVZK2fz0bB7pF+3N0wsfk3wAAAAIHILc//oKMPL8FG7hkmRDs6RUqo+uoZLKx9yln4vPRx6AAAAAAAAAAUAAAACAAAA2XsibWFya2VyIjoibmRoLXNzaC1rZXktbWV0YS12MSIsIm93bmVyIjoiaG9tZS1tYW5hZ2VyLnNzaC1hZGQta2V5cyIsImtleSI6Imhvc3QtYmlvc2tvcCIsInVzYWdlIjpbInNzaC1ob3N0Il0sIm5hbWVzIjoiNmE3NDQxNzg4MTEwZTViYWQ3ZDY4Mjc5NzU0MTIxYjExOGIzYTFhYjEyZjM5ZmMzNTIzNDc5NjNlZTYxZTM2YiIsImlzc3VlZCI6IjIwMjYtMTAtMTdUMDU6NDk6NDdaIn0AAABLAAAAB2Jpb3Nrb3AAAAALYmlvc2tvcC5sYW4AAAANYmlvc2tvcC5sb2NhbAAAABxiaW9za29wLm1hbW1vdGgtc2thdGUudHMubmV0AAAAAAAAAAD//////////wAAAAAAAAAAAAAAAAAAADMAAAALc3NoLWVkMjU1MTkAAAAg9D6KfSqlhpd49WJ0Cl7eyoqUV8myY3i8UhGWy20AKTsAAABTAAAAC3NzaC1lZDI1NTE5AAAAQOWJfj474WRW8Ur0u439VsjZlpiznfykullb5lguu60guDu27IEJ8oVnwpK/3HszvX2VUEG3clkpz3+o7MAaSgs= host-bioskop"
             }
-          }
+          },
+          "nixSigning": "seedmatic-bioskop-1:6NV2srMMItn0KLrr8gDH+5wr31/Sq6od5llCx2RRYW0="
         }
       }
     },
@@ -296,7 +297,8 @@
             "mammoth-skate": {
               "ssh-host": "ssh-ed25519-cert-v01@openssh.com AAAAIHNzaC1lZDI1NTE5LWNlcnQtdjAxQG9wZW5zc2guY29tAAAAIO96zQACObUK9cQ7GKBO5J3bp1/5ICC0dJ8shWmYzG9hAAAAICxjKH6th3XhibVtGoqYAiFHWqZvmrACKLe30Yjxb3mzAAAAAAAAAAYAAAACAAAA33sibWFya2VyIjoibmRoLXNzaC1rZXktbWV0YS12MSIsIm93bmVyIjoiaG9tZS1tYW5hZ2VyLnNzaC1hZGQta2V5cyIsImtleSI6Imhvc3QtYmlvc2tvcC1uaXhvcyIsInVzYWdlIjpbInNzaC1ob3N0Il0sIm5hbWVzIjoiM2RlY2RjNzJkMTE0ODgzNTVjMDU1NDUyMTFjOGM0MWJiZTg1MmQ3MzM1NWIwZDhkOTA5NzM5NzA1ODYxMThhZiIsImlzc3VlZCI6IjIwMjYtMTAtMTdUMDU6NDk6NDdaIn0AAAB0AAAADWJpb3Nrb3Atbml4b3MAAAARYmlvc2tvcC1uaXhvcy5sYW4AAAATYmlvc2tvcC1uaXhvcy5sb2NhbAAAACJiaW9za29wLW5peG9zLm1hbW1vdGgtc2thdGUudHMubmV0AAAADW5peG9zLmJpb3Nrb3AAAAAAAAAAAP//////////AAAAAAAAAAAAAAAAAAAAMwAAAAtzc2gtZWQyNTUxOQAAACD0Pop9KqWGl3j1YnQKXt7KipRXybJjeLxSEZbLbQApOwAAAFMAAAALc3NoLWVkMjU1MTkAAABArIMvlfKPHmgldN9T003xyVHc6c5pdI3RdZO9+hXf7hVtrjA719mIiRez82CEMzlmW3Sa/eHRsg5ApHWl8xfPCA== host-bioskop-nixos"
             }
-          }
+          },
+          "nixSigning": "seedmatic-bioskop-nixos-1:eqGOz2GK5CojkBzHWfVBTKrAjVfxGhvA9j0OXjAqV54="
         }
       }
     },
