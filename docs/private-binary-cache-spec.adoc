@@ -99,7 +99,9 @@ ____
 
 A store holds everything its machine ever needed: sources, every `.drv` (`keep-derivations`), the inputs a client
 handed it, whatever an evaluation copied in. A cache holds only what was pushed into it, cache by cache: the set of
-seedmatic's own outputs. What follows from it:
+seedmatic's own outputs. It is the same idea as prefixing our packages' names `io.seedmatic.…`
+(`io.seedmatic.ndh-nix-store-erofs-001`, …), the operator's: our outputs found at a glance, physically in a store by
+their name, logically in attic by their cache. What follows from it:
 
 * **exposure**: serving a store exposes all of it to every reader, a slipped plaintext `-source` included (the
   2026-10-10 class); a cache exposes what was pushed, after the watch-store's own skips (`.drv`, `*-source`) and,
