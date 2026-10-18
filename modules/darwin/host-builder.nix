@@ -1,73 +1,32 @@
 {
   config,
   lib,
-  ndh,
   pkgs,
   ...
 }:
 let
   cfg = config.ndh.hostBuilder;
   capacity = config.ndh.builderCapacity;
-  self' = config.profile.host.hostName;
-  guestOf = host: "${host}-nixos";
-  guest = guestOf self';
-  # The other metalspaces: one darwin host each in the inventory, with its NixOS guest.
-  others = lib.filter (h: h != self') (
-    lib.attrNames (lib.attrByPath [ "context" "inventory" "hosts" ] { } ndh)
-  );
+  guest = "${config.profile.host.hostName}-nixos";
   # kvm is the INTENT: the guest has /dev/kvm when Tart launches it with --nested. The guest
   # advertises what the running VM really has (modules/nixos/nix-settings.nix), so a kvm build
   # sent while NESTED_VIRT=0 overrides it fails there instead of falling back to TCG.
-  guestFeatures = [
-    "big-parallel"
-    "nixos-test"
-  ];
   ownGuest = {
     hostName = "nix-store.${guest}";
     systems = [ "aarch64-linux" ];
     maxJobs = capacity.nixos.home;
-    supportedFeatures = guestFeatures ++ lib.optional config.tart.configGenerator.vmRunNestedVirt "kvm";
+    speedFactor = 1;
+    supportedFeatures = [
+      "big-parallel"
+      "nixos-test"
+    ]
+    ++ lib.optional config.tart.configGenerator.vmRunNestedVirt "kvm";
   };
-  # nix ranks the machines with a free slot by busy slots / speedFactor (build-remote.cc): home wins while both
-  # are idle, and an idle peer wins as soon as home has one build running (1/10 > 0/1). The operator accepted that
-  # order (2026-10-18); `ndh-builders metalspace`, the default, leaves the peers out.
-  home = 10;
-  peer = 1;
-  # The Mac's own system-features (nix's darwin default, not set in ndh).
-  darwinFeatures = [
-    "apple-virt"
-    "benchmark"
-    "big-parallel"
-    "nixos-test"
-  ];
-  loopback = {
-    hostName = "nix-store.${self'}";
-    systems = [ "aarch64-darwin" ];
-    maxJobs = capacity.darwin.home;
-    supportedFeatures = darwinFeatures;
-    speedFactor = home;
-  };
-  peerMac = host: {
-    hostName = "nix-store.${host}";
-    systems = [ "aarch64-darwin" ];
-    maxJobs = capacity.darwin.peer;
-    supportedFeatures = darwinFeatures;
-    speedFactor = peer;
-  };
-  # Another metalspace's guest: its launch-time kvm is not known here, so no kvm build goes to it.
-  peerGuest = host: {
-    hostName = "nix-store.${guestOf host}";
-    systems = [ "aarch64-linux" ];
-    maxJobs = capacity.nixos.peer;
-    supportedFeatures = guestFeatures;
-    speedFactor = peer;
-  };
-  sets = rec {
-    metalspace = [
-      loopback
-      (ownGuest // { speedFactor = home; })
-    ];
-    fabric = metalspace ++ map peerMac others ++ map peerGuest others;
+  # The builders sets ndh-builders switches between. A Mac builds its own darwin derivations itself: it is never
+  # an entry of its own lists, since a build holds its output locks while the hook runs and a request to the same
+  # store waits on them forever (nix 2.34 derivation-building-goal.cc; measured on nikopol, 2026-10-18).
+  sets = {
+    metalspace = [ ownGuest ];
   };
   # nix's machines file: uri, systems, ssh key, maxJobs, speedFactor, supported, mandatory, host key.
   line =
@@ -91,6 +50,7 @@ let
     text = ''
       dir=${lib.escapeShellArg dir}
       machines=${lib.escapeShellArg machines}
+      modes=${lib.escapeShellArg (lib.concatStringsSep " " (lib.attrNames sets))}
     ''
     + builtins.readFile ./host-builder.d/ndh-builders.sh;
   };
@@ -105,22 +65,16 @@ in
   #               first time.
   #   steady    — <host>-nixos is up next door and also hosts incus, so it
   #               IS the aarch64-linux builder. The local linux-builder is
-  #               turned off (it can't run on a VM host anyway) and the Mac
-  #               offloads to <host>-nixos over ssh, pulling deps straight
-  #               from the binary caches instead of uploading its closure.
+  #               turned off (it can't run on a VM host anyway); the Mac
+  #               builds its darwin derivations itself and offloads Linux
+  #               over ssh to the builders ndh-builders points at, pulling
+  #               deps straight from the binary caches.
   #
-  # The buildMachine name is DERIVED from the host (config.profile.host.hostName),
+  # The builder names are DERIVED from the host (config.profile.host.hostName),
   # not hardcoded, so the same knob offloads bioskop→bioskop-nixos and
   # nikopol→nikopol-nixos. The request goes through the `nix-store.<host>-nixos`
   # ssh alias (modules/.common.d/nix-store-identity.nix): the guest's nix-store
   # account, by its certificate, never root.
-  #
-  #   requests  — every build is a request (roles × keys B3, variant A): the
-  #               Mac builds nothing itself (max-jobs = 0). Its own darwin
-  #               builds go through ssh-ng to its own nix-store account (the
-  #               loopback), its Linux builds to its guest. `ndh-builders
-  #               fabric` adds the other metalspace's Mac and guest, over
-  #               the tailnet; `metalspace`, the default, leaves them out.
   #
   # See docs/host-builder-phases.adoc for the phases and the
   # promotion runbook.
@@ -128,16 +82,13 @@ in
     type = lib.types.enum [
       "bootstrap"
       "steady"
-      "requests"
     ];
     default = "bootstrap";
     description = ''
       aarch64-linux build phase for this Darwin host. 'bootstrap' uses the
       embedded linux-builder (baremetal) to first build <host>-nixos.
-      'steady' turns the local linux-builder off and offloads to <host>-nixos.
-      'requests' builds nothing locally: its own darwin builds through the
-      loopback; ndh-builders chooses whether the other metalspace's builders
-      are used too.
+      'steady' turns the local linux-builder off and offloads to the builders
+      ndh-builders points at (<host>-nixos by default).
     '';
     example = "steady";
   };
@@ -145,15 +96,6 @@ in
   config = lib.mkMerge [
     (lib.mkIf (cfg == "steady") {
       nixStoreIdentity.extraPeers = [ guest ];
-      nix.buildMachines = [ (ownGuest // { protocol = "ssh-ng"; }) ];
-    })
-    (lib.mkIf (cfg == "requests") {
-      nixStoreIdentity = {
-        selfAlias = true;
-        extraPeers = [ guest ] ++ map guestOf others;
-        tailnetPeers = others ++ map guestOf others;
-      };
-      nix.settings.max-jobs = 0;
       # No nix.buildMachines: nix-darwin then renders no list of its own, and the daemon reads the one
       # ndh-builders points at, from its next command.
       ndh.builderSets = sets;
@@ -168,7 +110,7 @@ in
       system.activationScripts.postActivation.text = lib.mkAfter ''
         if ! ${ndhBuilders}/bin/ndh-builders >/dev/null 2>&1; then
           ${ndhBuilders}/bin/ndh-builders ${defaultMode} ||
-            echo "[ndh-builders] FAILED at activation: no builders set, every build fails until sudo ndh-builders ${defaultMode}" >&2
+            echo "[ndh-builders] FAILED at activation: no builders set, no Linux build runs until sudo ndh-builders ${defaultMode}" >&2
         fi
       '';
     })

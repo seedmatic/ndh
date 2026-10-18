@@ -201,7 +201,6 @@ in
   ++ bootstrapRequiredImports
   ++ (lib.optionals runtimeMode runtimeOnlyImports)
   ++ (lib.optionals runtimeMode [
-    #(import ./remote-nix-store.nix { inherit config pkgs lib; })
     #(import ./nix-snapshotter.nix { inherit config pkgs lib user; })
     # Explicitly disable GPG in NixOS - agent is forwarded from Darwin host
     (

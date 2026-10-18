@@ -12,7 +12,7 @@ setup() {
   echo "ssh-ng://nix-store.peer aarch64-darwin - 1 1 - - -" >>"$t/etc/machines.fabric"
   {
     printf '#!%s\nset -euo pipefail\n' "$BASH"
-    printf 'dir=%q machines=%q\n' "$t/var/builders" "$t/etc/machines"
+    printf 'dir=%q machines=%q modes=%q\n' "$t/var/builders" "$t/etc/machines" "fabric metalspace"
     cat "$BATS_TEST_DIRNAME/../ndh-builders.sh"
   } >"$t/ndh-builders"
   chmod +x "$t/ndh-builders"
@@ -41,6 +41,9 @@ setup() {
 
 @test "an unknown mode or a second argument is refused, and nothing is written" {
   run --separate-stderr "$t/ndh-builders" everything
+  [ "$status" -eq 1 ]
+  [[ $stderr == *"usage: ndh-builders [fabric | metalspace]"* ]]
+  run --separate-stderr "$t/ndh-builders" metal
   [ "$status" -eq 1 ]
   run --separate-stderr "$t/ndh-builders" metalspace fabric
   [ "$status" -eq 1 ]

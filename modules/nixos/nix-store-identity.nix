@@ -13,6 +13,8 @@ in
     # Enable by default for every NixOS host in this repo — the nix-store
     # identity is part of the fleet's baseline signing/copy infrastructure.
     nixStoreIdentity.enable = lib.mkDefault true;
+    # A guest only receives: it renders no nix-store alias, so a build it receives is never forwarded.
+    nixStoreIdentity.outbound = false;
 
     users.users = lib.mkIf (cfg.enable && cfg.provisionInboundUser) {
       ${cfg.inboundUserName} = {

@@ -33,9 +33,9 @@ let
   ndhContext = lib.attrByPath [ "context" ] { } ndh;
   inventoryHostNames = builtins.attrNames (lib.attrByPath [ "inventory" "hosts" ] { } ndhContext);
   selfHostName = config.networking.hostName or "";
-  tailnetDomain = lib.attrByPath [ "catalog" "netplan" "tailnet" "domain" ] "" ndhContext;
-  peerHostNames = lib.filter (h: (cfg.selfAlias || h != selfHostName) && h != "") (
-    lib.unique (inventoryHostNames ++ cfg.extraPeers ++ lib.optional cfg.selfAlias selfHostName)
+  # Never this host itself: a build sent to its own store waits forever on the output locks it already holds.
+  peerHostNames = lib.optionals cfg.outbound (
+    lib.filter (h: h != selfHostName && h != "") (lib.unique (inventoryHostNames ++ cfg.extraPeers))
   );
 
   # Restricted login shell for the inbound nix-daemon user. Rendered as a
@@ -66,11 +66,10 @@ let
   # Per-host stanza. CertificateFile is mandatory: with cert-signed auth,
   # ssh must present the cert alongside the private or sshd will not
   # match the TrustedUserCAKeys / AuthorizedPrincipalsCommand pair.
-  # A peer in another metalspace is reached over the tailnet, by its fleet name there. The timeouts make a cut
-  # route fail in seconds: nix gives ssh none, and a build would wait on the TCP timeout.
+  # The timeouts make a cut route fail in seconds: nix gives ssh none, and a build would wait on the TCP timeout.
   peerStanza = host: ''
     Host nix-store.${host}
-      HostName ${host}${if lib.elem host cfg.tailnetPeers then tailnetDomain else cfg.hostSuffix}
+      HostName ${host}${cfg.hostSuffix}
       ConnectTimeout 5
       ServerAliveInterval 15
       ServerAliveCountMax 4
@@ -186,16 +185,14 @@ in
       '';
     };
 
-    selfAlias = lib.mkOption {
+    outbound = lib.mkOption {
       type = lib.types.bool;
-      default = false;
-      description = "Also render `nix-store.<this host>`: the loopback a host that builds every request through it uses (modules/darwin/host-builder.nix, phase requests).";
-    };
-
-    tailnetPeers = lib.mkOption {
-      type = lib.types.listOf lib.types.str;
-      default = [ ];
-      description = "Peers in another metalspace: their alias reaches `<peer><tailnet domain>` instead of `<peer><hostSuffix>`.";
+      default = true;
+      description = ''
+        Whether this host sends requests as nix-store: its `nix-store.<peer>` aliases. Off on the builders that only
+        receive (the NixOS guests): a build they receive cannot be forwarded, so it cannot come back to a store that
+        holds its output locks.
+      '';
     };
 
     hostSuffix = lib.mkOption {
