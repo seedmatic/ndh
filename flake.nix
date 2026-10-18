@@ -163,6 +163,12 @@
       ];
 
       forAllSystems = nixpkgs.lib.genAttrs defaultSystems;
+      # The seedmatic root's ceremony VM (roles × keys ⑧): aarch64-linux, built by revision, run by
+      # ndh-ceremony-vm on an operator seat.
+      ceremonyVm = nixpkgs.lib.nixosSystem {
+        system = "aarch64-linux";
+        modules = [ ./modules/nixos/ceremony-vm.nix ];
+      };
 
       pkgsFor =
         { system, ... }:
@@ -1822,6 +1828,68 @@
           keyring-bats = import ./modules/.common.d/keyring.d/tests/package.nix { inherit pkgs; };
           root-attest-bats = import ./modules/.common.d/root-attest.d/tests/package.nix { inherit pkgs; };
           root-ceremony-bats = import ./modules/.common.d/root-ceremony.d/tests/package.nix { inherit pkgs; };
+          # The ceremony VM is sealed: the runner's argv gives it no network device, no shared folder and
+          # nothing from the environment; the guest has a RAM root and no network or listening service. A
+          # runner with a NIC and a guest with a 9p share are refused.
+          ceremony-vm-sealed =
+            let
+              lib = nixpkgs.lib;
+              runnerSealed =
+                text:
+                lib.all (s: lib.hasInfix s text) [
+                  "-nodefaults"
+                  "-nic none"
+                  "readonly=on"
+                ]
+                && !(lib.any (s: lib.hasInfix s text) [
+                  "-netdev"
+                  "-net "
+                  "virtfs"
+                  "fsdev"
+                  "virtiofs"
+                  "chardev socket"
+                  "QEMU_OPTS"
+                  "\"$@\""
+                ]);
+              guestSealed =
+                c:
+                c.fileSystems."/".fsType == "tmpfs"
+                && !(lib.any (
+                  fs:
+                  lib.elem fs.fsType [
+                    "9p"
+                    "virtiofs"
+                  ]
+                ) (lib.attrValues c.fileSystems))
+                && !c.networking.useDHCP
+                && !c.services.openssh.enable
+                && !c.nix.enable
+                &&
+                  c.fileSystems."/ceremony/in".options == [
+                    "ro"
+                    "nofail"
+                  ];
+              runner = builtins.readFile ./modules/darwin/ceremony-vm.d/ndh-ceremony-vm.sh;
+              shared = ceremonyVm.extendModules {
+                modules = [
+                  {
+                    fileSystems."/host" = {
+                      device = "host";
+                      fsType = "9p";
+                    };
+                  }
+                ];
+              };
+            in
+            assert lib.assertMsg (runnerSealed runner)
+              "ceremony VM: the runner may give the VM a network or a share";
+            assert lib.assertMsg (
+              !(runnerSealed (runner + " -netdev user,id=n0"))
+            ) "ceremony VM: a runner with a NIC passed";
+            assert lib.assertMsg (guestSealed ceremonyVm.config)
+              "ceremony VM: the guest has a disk, a share or a network";
+            assert lib.assertMsg (!(guestSealed shared.config)) "ceremony VM: a guest with a 9p share passed";
+            pkgs.runCommand "ceremony-vm-sealed" { } "touch $out";
           # What the operator seat serves a guest's sshfs key, internal-sftp -R, refuses every write.
           sshfs-read-only-sftp-bats = import ./modules/nixos/sshfs-mounts.d/tests/package.nix {
             pkgs = pkgsForLinux;
@@ -2653,6 +2721,10 @@
           ndh-mdns-publish = systemPkgs.callPackage ./packages/ndh-mdns-publish { };
           # A builder's nix signing key, derived from its ssh host key (roles × keys B2).
           ndh-nix-signing-derive = systemPkgs.callPackage ./packages/ndh-nix-signing-derive { };
+          # The root's ceremony VM, its argv fixed (roles × keys ⑧, docs/root-ceremony.adoc).
+          ndh-ceremony-vm = systemPkgs.callPackage ./modules/darwin/ceremony-vm.d/package.nix {
+            ceremony = ceremonyVm;
+          };
         }
         // mkBaremetalLinkPackages system
         # Darwin only: the join is an operator act run from the operator's machine, and the recipe is
