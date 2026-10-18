@@ -73,6 +73,9 @@
                        "nix * --to https://*", "nix * --to http://*", "nix * --to s3://*", "nix * --to file://*", "nix * --to /*",
                        "nix * --to=https://*", "nix * --to=http://*", "nix * --to=s3://*", "nix * --to=file://*", "nix * --to=/*"],
   "list_path_rules": [
+    { "rule": "Read(//**/.pulumi-state/**)", "why": "Pulumi's file-backend state, the cellar: its seal's passphrase is in rke2lab's public source, so what it seals (the CAPN key after a grow) is in effect clear" },
+    { "rule": "Edit(//**/.pulumi-state/**)", "why": "the same state: a session never writes the operator's Pulumi state" },
+    { "rule": "Read(//Volumes/git-worktree-store/seedmatic/rke2lab.d/**/.local.d/**)", "why": "the operator's run logs: a pulumi up at high verbosity may log the cluster's age identity in clear" },
     { "rule": "Read(//Volumes/git-bare-store/nxmatic/keyhole.git/.ssh/**)", "why": "the keyring@keyhole private key, whose ssh-to-age opens the operator's keyring backups" },
     { "rule": "Read(//Volumes/git-worktree-store/nxmatic/keyhole.d/keyring/**)", "why": "the keyring worktree, where the sops-keyring filter leaves the rehydrate scripts in the clear" },
     { "rule": "Edit(//Volumes/git-worktree-store/nxmatic/keyhole.d/keyring/**)", "why": "the same worktree: a session never writes the operator's keyring" },

@@ -90,9 +90,21 @@ def protected_paths(table, home):
     paths = set()
     for entry in table.get("list_path_rules", []):
         m = re.fullmatch(r"(?:Read|Edit)\((/|~)(/[^()\s]+?)(?:/\*\*)?\)", entry["rule"])
-        if m:
+        if m and "*" not in m.group(2):
             paths.add(os.path.normpath((home if m.group(1) == "~" else "") + m.group(2)))
     return sorted(paths)
+
+
+def protected_globs(table, home):
+    """The list_path_rules whose path holds a wildcard before its last segment, `//**/.pulumi-state/**`: as segment
+    lists for match_segments, each ending in `**` so that the directory and everything under it match."""
+    globs = set()
+    for entry in table.get("list_path_rules", []):
+        m = re.fullmatch(r"(?:Read|Edit)\((/|~)(/[^()\s]+?)(?:/\*\*)?\)", entry["rule"])
+        if m and "*" in m.group(2):
+            root = (home if m.group(1) == "~" else "") + m.group(2)
+            globs.add(tuple(root.strip("/").split("/")) + ("**",))
+    return sorted(globs)
 
 
 def spellings(path, home):
@@ -370,6 +382,7 @@ class Analyzer:
         self.owned_removals = []
         self.other_commands = 0
         self.protected = protected_paths(table, home)
+        self.protected_globs = protected_globs(table, home)
         self.verdicts = []
 
     def deny(self, why, argv):
@@ -682,7 +695,11 @@ class Analyzer:
         return os.path.normpath(tok)
 
     def is_protected(self, path):
-        return path is not None and any(path == p or path.startswith(p + os.sep) for p in self.protected)
+        if path is None:
+            return False
+        segs = path.strip("/").split("/")
+        return (any(path == p or path.startswith(p + os.sep) for p in self.protected)
+                or any(match_segments(list(g), segs) for g in self.protected_globs))
 
     def reaches_protected(self, tok):
         """TOK, an option's value included, resolved against the tracked cwd; a glob is cut at its first

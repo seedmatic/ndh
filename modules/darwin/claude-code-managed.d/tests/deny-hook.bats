@@ -392,3 +392,16 @@ REPLICA=/Volumes/git-worktree-store/nxmatic/claude-home.d/pass/seedmatic
 @test "fleet: a local fleet-switch copy"          { run hook './fleet-switch'; denied; }
 @test "fleet: a fleet-switch under /tmp"          { run hook '/tmp/x/fleet-switch'; denied; }
 @test "fleet: raw rebuilds stay denied beside it" { run hook 'fleet-switch --dry-run && sudo darwin-rebuild switch --flake github:seedmatic/ndh/0123abcd#bioskop'; denied; }
+
+# --- the operator's Pulumi state and run logs (CAPN lab risk, 2026-10-18): the cellar's seal is no protection ---
+@test "pulumi-state: a direct read"               { run hook 'cat /Volumes/git-worktree-store/seedmatic/rke2lab.d/operator/develop/.pulumi-state/.pulumi/stacks/rke2lab/dev.json'; denied; }
+@test "pulumi-state: a relative read after cd"    { run hook 'cd /Volumes/git-worktree-store/seedmatic/rke2lab.d/operator/develop && cat .pulumi-state/.pulumi/meta.yaml'; denied; }
+@test "pulumi-state: a count is a read too"       { run hook 'grep -c capn /Volumes/git-worktree-store/seedmatic/rke2lab.d/operator/develop/.pulumi-state/.pulumi/stacks/rke2lab/dev.json'; denied; }
+@test "pulumi-state: a listing"                   { run hook 'ls /Volumes/git-worktree-store/seedmatic/rke2lab.d/operator/develop/.pulumi-state'; denied; }
+@test "pulumi-state: any worktree, any depth"     { run hook 'head /tmp/w/a/b/.pulumi-state/x.json'; denied; }
+@test "pulumi-state: a copy out"                  { run hook 'cp -r /Volumes/git-worktree-store/seedmatic/rke2lab.d/develop/.pulumi-state /tmp/s'; denied; }
+@test "ok a name that only resembles it"          { run hook 'cat /tmp/w/.pulumi-state.md'; allowed; }
+@test "ok pulumi stack ls stays free"             { run hook 'pulumi stack ls'; allowed; }
+@test "local.d: the operator's run log, rke2lab"  { run hook 'tail /Volumes/git-worktree-store/seedmatic/rke2lab.d/operator/develop/.local.d/up.log'; denied; }
+@test "local.d: relative, from a rke2lab worktree" { run hook 'cat .local.d/up.log' /Volumes/git-worktree-store/seedmatic/rke2lab.d/develop; denied; }
+@test "ok a .local.d outside rke2lab"             { run hook 'cat /tmp/w/.local.d/notes'; allowed; }
