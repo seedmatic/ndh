@@ -484,9 +484,16 @@ check() { printf '{"cwd":"%s"}' "$1" | bash "$H/sops-filter-check.sh"; }
 }
 
 # --- notify ---
+# A stand-in osascript records each argument on its own line, so a test reads exactly what AppleScript received.
+stub_osascript() {
+  mkdir -p "$T/bin"
+  # $BASH, not /usr/bin/env: the nix build sandbox has no /usr/bin/env.
+  printf '#!%s\nprintf "%%s\\n" "$@" >>"%s/osascript.argv"\n' "$BASH" "$T" >"$T/bin/osascript"
+  chmod +x "$T/bin/osascript"
+}
 notify() { # $1 = payload; the registry knows one session, "mine"
   printf '{"sessions": {"mine": {"conversations": ["abcd1234-0000"]}}}\n' >"$T/registry.json"
-  printf '%s' "$1" | XDG_STATE_HOME="$T/state" CLAUDE_SESSION_REGISTRY="$T/registry.json" bash "$H/notify.sh"
+  printf '%s' "$1" | XDG_STATE_HOME="$T/state" CLAUDE_SESSION_REGISTRY="$T/registry.json" bash "$(notify_hook)"
 }
 logged() { jq -r "$1" "$T/state/claude-notify/log.jsonl"; }
 
@@ -519,7 +526,7 @@ logged() { jq -r "$1" "$T/state/claude-notify/log.jsonl"; }
 }
 
 @test "notify: with no registry, the event is still logged" {
-  run bash -c 'printf "{\"notification_type\": \"auth_success\"}" | XDG_STATE_HOME="$1" CLAUDE_SESSION_REGISTRY=/nonexistent bash "$2"' _ "$T/state" "$H/notify.sh"
+  run bash -c 'printf "{\"notification_type\": \"auth_success\"}" | XDG_STATE_HOME="$1" CLAUDE_SESSION_REGISTRY=/nonexistent bash "$2"' _ "$T/state" "$(notify_hook)"
   [ "$status" -eq 0 ]
   [ "$(logged .type)" = "auth_success" ]
 }
@@ -531,14 +538,14 @@ logged() { jq -r "$1" "$T/state/claude-notify/log.jsonl"; }
   [ "$(stat -c %a "$T/state/claude-notify/log.jsonl")" = 600 ]
 }
 
-# A stand-in osascript records each argument on its own line, so a test reads exactly what AppleScript received.
-stub_osascript() {
-  mkdir -p "$T/bin"
-  # $BASH, not /usr/bin/env: the nix build sandbox has no /usr/bin/env.
-  printf '#!%s\nprintf "%%s\\n" "$@" >>"%s/osascript.argv"\n' "$BASH" "$T" >"$T/bin/osascript"
-  chmod +x "$T/bin/osascript"
+# The hook as a test runs it: a copy whose osascript is the stand-in (package.nix puts /usr/bin/osascript there), so
+# no test can reach the real one.
+notify_hook() { # $1 = the osascript to substitute (default: the stand-in)
+  stub_osascript
+  sed "s#@osascript@#${1:-$T/bin/osascript}#" "$H/notify.sh" >"$T/notify.sh"
+  printf '%s' "$T/notify.sh"
 }
-notified() { PATH="$T/bin:$PATH" notify "$1"; }
+notified() { notify "$1"; }
 
 @test "notify: a permission prompt raises a notification titled with the session's engraved name" {
   stub_osascript
@@ -559,6 +566,12 @@ notified() { PATH="$T/bin:$PATH" notify "$1"; }
   [ "$(logged .type | wc -l)" -eq 2 ]
 }
 
+@test "notify: unsubstituted, the hook names no program and notifies no one" {
+  run bash -c 'printf "{\"notification_type\": \"permission_prompt\", \"message\": \"m\"}" | XDG_STATE_HOME="$1" bash "$2"' _ "$T/state" "$H/notify.sh"
+  [ "$status" -eq 0 ]
+  [ "$(logged .type)" = "permission_prompt" ]
+}
+
 @test "notify: a message reaches AppleScript as an argument, quotes and all, never as script text" {
   stub_osascript
   run notified '{"notification_type": "permission_prompt", "session_id": "ffff0000-0000", "message": "x\" & (do shell script \"id\") & \""}'
@@ -568,10 +581,8 @@ notified() { PATH="$T/bin:$PATH" notify "$1"; }
   grep -qx 'on run argv' "$T/osascript.argv"
 }
 
-@test "notify: without osascript the prompt is still logged and the hook still succeeds" {
-  # jq and coreutils only: no directory that holds an osascript.
-  tools="$(dirname "$(command -v jq)"):$(dirname "$(command -v mkdir)")"
-  run env PATH="$tools" XDG_STATE_HOME="$T/state" "$BASH" "$H/notify.sh" <<<'{"notification_type": "permission_prompt", "message": "m"}'
+@test "notify: with no osascript at its path, the prompt is still logged and the hook still succeeds" {
+  run env XDG_STATE_HOME="$T/state" "$BASH" "$(notify_hook "$T/no-such-osascript")" <<<'{"notification_type": "permission_prompt", "message": "m"}'
   [ "$status" -eq 0 ]
   [ "$(logged .type)" = "permission_prompt" ]
 }

@@ -23,8 +23,11 @@ fi
 case "$type" in
   permission_prompt | elicitation_dialog | elicitation_url_dialog)
     message="$(field message)"
-    if command -v osascript >/dev/null 2>&1; then
-      osascript -e 'on run argv' \
+    # Fixed at build (package.nix: /usr/bin/osascript), never a PATH or environment lookup; the bats substitute a
+    # stand-in. Unsubstituted, it names no program and nothing runs.
+    osascript="@osascript@"
+    if [[ -x "$osascript" ]]; then
+      "$osascript" -e 'on run argv' \
         -e 'display notification (item 2 of argv) with title (item 1 of argv) sound name "Glass"' \
         -e 'end run' "Claude · ${name:-${session_id:0:8}}" "${message:0:200}" >/dev/null 2>&1 || true
     fi
