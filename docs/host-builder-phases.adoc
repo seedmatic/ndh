@@ -81,20 +81,24 @@ A missing list is skipped silently by nix, which then builds nothing remotely:
 the command refuses such a mode, and the activation sets a missing or dangling
 pointer back to `metalspace`, keeping an existing choice.
 
-A Mac serves `nix-store` UNTRUSTED, through `nix-daemon --stdio
---extra-experimental-features 'daemon-trust-override mounted-ssh-store'
---force-untrusted --process-ops --option builders ''` (the features first: the
-two flags require them as soon as they are parsed), and `nix-store` is no
-trusted user there. The stdio relay hands the real daemon an empty builders
-list and drops the client's, so a build a Mac receives is built there and never
-forwarded; an untrusted client imports no unsigned path and relaxes no setting.
-Root on one Mac holds the `nix-store` client key, so a trusted `nix-store`
-would make it root to the other Macs' daemons. The guests keep the plain daemon.
+`fabric` adds the other metalspace's Mac (darwin, 1 job) and guest (Linux, 2
+jobs), over the tailnet, to spread builds while the operator is on their local
+network; it is switched by hand. nix ranks the builders with a free slot by busy
+slots / speedFactor: home carries 10, the peers 1, so an idle peer wins as soon
+as home has one build running. A Mac receives as `nix-store` UNTRUSTED,
+through `nix-daemon --stdio --extra-experimental-features 'daemon-trust-override
+mounted-ssh-store' --force-untrusted --process-ops --option builders ''` (the
+features first: the two flags require them as soon as they are parsed): the stdio relay hands the real daemon an empty builders list and drops the
+client's, so a received build is built there and never forwarded (no chain, no
+ping-pong). An untrusted receiver checks the inputs' signatures, so the sending
+Mac's own darwin outputs must be signed by a key the receiver trusts.
 
 nix gives ssh no timeout, so every `nix-store.*` alias sets `ConnectTimeout 5`
-and `ServerAliveInterval 15` × 4. A receiving daemon has no cap across its
-connections, so `ndh.builderCapacity` splits a builder's capacity by who sends
-the builds: the guest runs 2 of its own and receives 6 from its Mac.
+and `ServerAliveInterval 15` × 4: cutting the tailnet route stops the fallback
+in seconds. A receiving daemon has no cap across its connections, so
+`ndh.builderCapacity` splits a builder's capacity by who sends the builds: a
+guest runs 2 of its own, receives 6 from its Mac and 2 from the other; a Mac
+builds 4 of its own and receives 1 from the other.
 
 == Per-host state
 

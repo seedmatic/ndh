@@ -1504,7 +1504,7 @@
               map (m: m.hostName) c.ndh.builderSets.metalspace == [ "nix-store.bioskop-nixos" ]
               &&
                 c.environment.etc."nix/machines.metalspace".text
-                == "ssh-ng://nix-store.bioskop-nixos aarch64-linux - 6 1 big-parallel,nixos-test,kvm - -\n"
+                == "ssh-ng://nix-store.bioskop-nixos aarch64-linux - 6 10 big-parallel,nixos-test,kvm - -\n"
             ) "metalspace: the own guest only, for Linux";
             assert lib.assertMsg (
               !(lib.any (m: m.hostName == "nix-store.bioskop") entries) && !(aliasOf mac "bioskop")
@@ -1531,6 +1531,19 @@
             assert lib.assertMsg (lib.hasInfix "ndh-builders metalspace ||" (
               builtins.unsafeDiscardStringContext c.system.activationScripts.postActivation.text
             )) "the activation resets a missing pointer to metalspace, without aborting";
+            assert lib.assertMsg (
+              c.environment.etc."nix/machines.fabric".text == c.environment.etc."nix/machines.metalspace".text
+              + "ssh-ng://nix-store.nikopol aarch64-darwin - 1 1 apple-virt,benchmark,big-parallel,nixos-test - -\n"
+              + "ssh-ng://nix-store.nikopol-nixos aarch64-linux - 2 1 big-parallel,nixos-test - -\n"
+            ) "fabric: metalspace plus the other metalspace's Mac (darwin) and guest (Linux), nothing else";
+            assert lib.assertMsg (
+              lib.hasInfix "HostName nikopol${catalogData.netplan.tailnet.domain}\n" (
+                lib.findFirst (b: lib.hasPrefix "nix-store.nikopol\n" b) "" (stanzas mac)
+              )
+              && lib.hasInfix "HostName nikopol-nixos${catalogData.netplan.tailnet.domain}\n" (
+                lib.findFirst (b: lib.hasPrefix "nix-store.nikopol-nixos\n" b) "" (stanzas mac)
+              )
+            ) "fabric: the other metalspace's builders over the tailnet";
             assert lib.assertMsg (lib.all
               (
                 n:
@@ -1542,7 +1555,7 @@
                 "bioskop"
                 "nikopol"
               ]
-            ) "a Mac receives untrusted and forwards nothing";
+            ) "fabric: a Mac receives untrusted and forwards nothing (the chaining cut)";
             assert lib.assertMsg (lib.all (
               g:
               g.config.opensshPolicy.restrictedUsers.nix-store.forceCommand
@@ -1655,7 +1668,7 @@
                   ]
                   ++ lib.optional c.config.nixStoreIdentity.inboundTrusted c.config.nixStoreIdentity.inboundUserName
                 );
-              # The Macs serve nix-store untrusted, so it is no trusted user there.
+              # The Macs serve nix-store untrusted (the chaining cut), so it is no trusted user there.
               untrustedOnMacs =
                 lib.all (n: !self.darwinConfigurations.${n}.config.nixStoreIdentity.inboundTrusted)
                   [

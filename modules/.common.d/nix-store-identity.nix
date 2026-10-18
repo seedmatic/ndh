@@ -34,6 +34,7 @@ let
   inventoryHostNames = builtins.attrNames (lib.attrByPath [ "inventory" "hosts" ] { } ndhContext);
   selfHostName = config.networking.hostName or "";
   # Never this host itself: a build sent to its own store waits forever on the output locks it already holds.
+  tailnetDomain = lib.attrByPath [ "catalog" "netplan" "tailnet" "domain" ] "" ndhContext;
   peerHostNames = lib.optionals cfg.outbound (
     lib.filter (h: h != selfHostName && h != "") (lib.unique (inventoryHostNames ++ cfg.extraPeers))
   );
@@ -71,7 +72,7 @@ let
   # The timeouts make a cut route fail in seconds: nix gives ssh none, and a build would wait on the TCP timeout.
   peerStanza = host: ''
     Host nix-store.${host}
-      HostName ${host}${cfg.hostSuffix}
+      HostName ${host}${if lib.elem host cfg.tailnetPeers then tailnetDomain else cfg.hostSuffix}
       ConnectTimeout 5
       ServerAliveInterval 15
       ServerAliveCountMax 4
@@ -195,6 +196,12 @@ in
         receive (the NixOS guests): a build they receive cannot be forwarded, so it cannot come back to a store that
         holds its output locks.
       '';
+    };
+
+    tailnetPeers = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [ ];
+      description = "Peers in another metalspace: their alias reaches `<peer><tailnet domain>` instead of `<peer><hostSuffix>`.";
     };
 
     inboundDaemonArgs = lib.mkOption {
