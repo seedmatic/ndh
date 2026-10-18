@@ -81,6 +81,16 @@ A missing list is skipped silently by nix, which then builds nothing remotely:
 the command refuses such a mode, and the activation sets a missing or dangling
 pointer back to `metalspace`, keeping an existing choice.
 
+A Mac serves `nix-store` UNTRUSTED, through `nix-daemon --stdio
+--extra-experimental-features 'daemon-trust-override mounted-ssh-store'
+--force-untrusted --process-ops --option builders ''` (the features first: the
+two flags require them as soon as they are parsed), and `nix-store` is no
+trusted user there. The stdio relay hands the real daemon an empty builders
+list and drops the client's, so a build a Mac receives is built there and never
+forwarded; an untrusted client imports no unsigned path and relaxes no setting.
+Root on one Mac holds the `nix-store` client key, so a trusted `nix-store`
+would make it root to the other Macs' daemons. The guests keep the plain daemon.
+
 nix gives ssh no timeout, so every `nix-store.*` alias sets `ConnectTimeout 5`
 and `ServerAliveInterval 15` × 4. A receiving daemon has no cap across its
 connections, so `ndh.builderCapacity` splits a builder's capacity by who sends
