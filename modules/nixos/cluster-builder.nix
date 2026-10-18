@@ -79,9 +79,38 @@ in
       type = lib.types.str;
       description = "The name of the nix signing key generated inside at first start.";
     };
+    # It shares its NixOS guest with that cluster's nodes, attic and the guest's own builds, so it is bounded.
+    resources = {
+      cpus = lib.mkOption {
+        type = lib.types.ints.positive;
+        description = "CPUs Incus gives it; also its concurrent builds (max-jobs).";
+      };
+      memoryGiB = lib.mkOption {
+        type = lib.types.ints.positive;
+        description = "Its memory limit.";
+      };
+      diskGiB = lib.mkOption {
+        type = lib.types.ints.positive;
+        description = "Its root disk, which is its store; nix collects garbage below 10% free, up to 30%.";
+      };
+    };
+    instanceConfig = lib.mkOption {
+      type = lib.types.attrsOf lib.types.str;
+      readOnly = true;
+      description = "The Incus instance keys this system expects at launch (`-c key=value`), the root disk size included.";
+    };
   };
 
   config = {
+    ndh.clusterBuilder.instanceConfig = {
+      # Unprivileged, nesting for the nix sandbox's namespaces (🖥️).
+      "security.privileged" = "false";
+      "security.nesting" = "true";
+      "limits.cpu" = toString cfg.resources.cpus;
+      "limits.memory" = "${toString cfg.resources.memoryGiB}GiB";
+      "user.ndh.role" = "cluster-builder";
+      rootSize = "${toString cfg.resources.diskGiB}GiB";
+    };
     networking.hostName = cfg.name;
     networking.useDHCP = false;
     systemd.network.enable = true;
@@ -171,8 +200,9 @@ in
       require-sigs = true;
       secret-key-files = [ signingKey ];
       experimental-features = [ "nix-command" ] ++ lib.optionals (!cfg.trustedClient) untrustedFeatures;
-      min-free = 2 * 1024 * 1024 * 1024;
-      max-free = 8 * 1024 * 1024 * 1024;
+      max-jobs = cfg.resources.cpus;
+      min-free = cfg.resources.diskGiB * 1024 * 1024 * 1024 / 10;
+      max-free = cfg.resources.diskGiB * 1024 * 1024 * 1024 * 3 / 10;
     };
 
     assertions = [

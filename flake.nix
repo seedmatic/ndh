@@ -1419,6 +1419,11 @@
                           "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl check-ca"
                         ];
                         signingKeyName = "cluster-builder-check-1";
+                        resources = {
+                          cpus = 2;
+                          memoryGiB = 2;
+                          diskGiB = 10;
+                        };
                       };
                     }
                   ];
@@ -1465,6 +1470,13 @@
               && !untrusted.services.openssh.allowSFTP
               && untrusted.services.openssh.settings.AuthorizedPrincipalsFile == "/etc/ssh/principals/%u"
             ) "cluster-builder: root has a password, sftp is offered, or the principals file is not sshd's";
+            assert lib.assertMsg
+              (
+                untrusted.ndh.clusterBuilder.instanceConfig."security.privileged" == "false"
+                && untrusted.ndh.clusterBuilder.instanceConfig."security.nesting" == "true"
+                && untrusted.nix.settings.max-jobs == 2
+              )
+              "cluster-builder: the instance is privileged, without nesting, or its jobs do not follow its CPUs";
             pkgs.runCommand "cluster-builder-settings" { } "touch $out";
           trusted-users-named =
             let
