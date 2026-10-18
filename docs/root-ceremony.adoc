@@ -58,7 +58,7 @@ checks it (`seedmatic-attest v1`, signed with `ssh-keygen -Y sign`, namespace `s
 . **Start the VM**, by revision: `nix run 'github:seedmatic/ndh/<rev>#ndh-ceremony-vm' -- ~/ceremony-in
   ~/ceremony-out`. `~/ceremony-out` must not exist. The terminal becomes the VM's serial console.
 . **Check it is sealed**, at the console: `ip -br link` shows `lo` only; `findmnt -t 9p,virtiofs` shows nothing;
-  `findmnt /` is a `tmpfs`.
+  `findmnt /` is a `tmpfs`. (Beforehand, 🎛️ runs `ndh-ceremony-vm --smoke`, which prints the same and powers off.)
 . **Run it**: `ndh-ceremony init`. Type the passphrase twice: 7 diceware words or more. It is read from the console
   only and never echoed.
 . **Power off**: `poweroff`. The runner copies OUT to `~/ceremony-out`, deletes both images and its work directory,
@@ -81,5 +81,9 @@ VM is destroyed and checked; the log is kept.
 
 * The ciphertext and the root gpg key's export sit on an online machine: their safety is the passphrase's strength
   and bioskop's integrity, accepted as trusted.
-* During a ceremony the root is in clear in the VM's RAM, which bioskop's hypervisor can read (accepted).
+* During a ceremony the root is in clear in the VM's RAM, which bioskop's hypervisor can read (accepted). macOS may
+  swap that RAM to disk; its swap is encrypted by default, so this is accepted too.
+* The VM's console is the terminal that runs `ndh-ceremony-vm`, and the passphrase is typed there: the runner
+  refuses to run a ceremony unless its stdin is a terminal, never a session's shell. `ndh-ceremony-vm --smoke`
+  (no drive, nothing typed) is the check a session may run.
 * No touch-policy. Two hardware tokens can be bought later and the same root imported into them: no re-root.

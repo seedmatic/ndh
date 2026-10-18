@@ -1883,6 +1883,12 @@
             in
             assert lib.assertMsg (runnerSealed runner)
               "ceremony VM: the runner may give the VM a network or a share";
+            assert lib.assertMsg (lib.hasInfix "[[ -t 0 ]] || die" runner)
+              "ceremony VM: a ceremony could run without a terminal, from a session that would keep the passphrase";
+            assert lib.assertMsg (
+              ceremonyVm.config.systemd.services.ceremony-smoke.unitConfig.ConditionKernelCommandLine
+              == "ceremony.smoke=1"
+            ) "ceremony VM: the smoke check could run in a real ceremony";
             assert lib.assertMsg (
               !(runnerSealed (runner + " -netdev user,id=n0"))
             ) "ceremony VM: a runner with a NIC passed";

@@ -1,5 +1,9 @@
 # ndh-ceremony-vm <in-dir> <out-dir> — run the seedmatic root's ceremony VM on this Mac (docs/root-ceremony.adoc).
+# ndh-ceremony-vm --smoke          — boot it with no drive, print what it sees, power off (🎛️'s check)
 # The header sets qemu, kernel, initrd, init and params (the VM's kernel command line).
+#
+# The VM's console is THIS terminal, and the root's passphrase is typed into it: the ceremony runs only from a
+# terminal (stdin a TTY), never from a session's shell, whose transcript would keep what was typed (🛡️).
 #
 # The VM gets NO network device (-nodefaults -nic none), no shared folder, no option from the environment: its
 # argv is fixed here. in-dir is copied onto a read-only vfat image (/ceremony/in), an empty vfat image becomes
@@ -11,7 +15,16 @@ die() {
   exit 1
 }
 
-(($# == 2)) || die "usage: ndh-ceremony-vm <in-dir> <out-dir>"
+sealed=(-nodefaults -nic none -machine "virt,accel=hvf" -cpu host -smp 2 -m 2048 -kernel "$kernel" -initrd "$initrd"
+  -serial stdio -monitor none -display none)
+
+if (($# == 1)) && [[ $1 == --smoke ]]; then
+  "$qemu" "${sealed[@]}" -append "init=${init} ${params} ceremony.smoke=1" </dev/null
+  exit 0
+fi
+
+(($# == 2)) || die "usage: ndh-ceremony-vm <in-dir> <out-dir> | --smoke"
+[[ -t 0 ]] || die "the ceremony runs from a terminal only: its console takes the root's passphrase"
 inDir="$1" outDir="$2"
 [[ -d $inDir ]] || die "${inDir} is not a directory"
 [[ ! -e $outDir ]] || die "${outDir} exists: the ceremony writes a new one"
@@ -25,11 +38,9 @@ shopt -s nullglob dotglob
 inputs=("$inDir"/*)
 ((${#inputs[@]})) && mcopy -i "$work/in.img" -s "${inputs[@]}" ::/
 
-"$qemu" -nodefaults -nic none -machine virt,accel=hvf -cpu host -smp 2 -m 2048 \
-  -kernel "$kernel" -initrd "$initrd" -append "init=${init} ${params}" \
+"$qemu" "${sealed[@]}" -append "init=${init} ${params}" \
   -drive "file=${work}/in.img,if=virtio,format=raw,readonly=on" \
-  -drive "file=${work}/out.img,if=virtio,format=raw" \
-  -serial stdio -monitor none -display none
+  -drive "file=${work}/out.img,if=virtio,format=raw"
 
 mkdir -p "$outDir"
 mcopy -i "$work/out.img" -s -n '::/*' "$outDir/"

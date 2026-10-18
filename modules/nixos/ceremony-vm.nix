@@ -47,6 +47,30 @@
     ];
   };
 
+  # `ndh-ceremony-vm --smoke` (🎛️'s check, no drive): print what the VM sees, then power off.
+  systemd.services.ceremony-smoke = {
+    description = "Show the ceremony VM's links and mounts, then power off";
+    wantedBy = [ "multi-user.target" ];
+    unitConfig.ConditionKernelCommandLine = "ceremony.smoke=1";
+    serviceConfig = {
+      Type = "oneshot";
+      StandardOutput = "tty";
+      TTYPath = "/dev/ttyAMA0";
+    };
+    path = [
+      pkgs.gawk
+      pkgs.iproute2
+      pkgs.util-linux
+    ];
+    script = ''
+      echo "[ceremony-smoke] links: $(ip -o link | awk -F': ' '{ print $2 }' | paste -sd' ')"
+      echo "[ceremony-smoke] 9p or virtiofs mounts: $(findmnt -n -t 9p,virtiofs | wc -l)"
+      echo "[ceremony-smoke] / is $(findmnt -n -o FSTYPE /)"
+      echo "[ceremony-smoke] /ceremony/in mounted: $(findmnt -n /ceremony/in >/dev/null && echo yes || echo no)"
+      systemctl poweroff
+    '';
+  };
+
   # The operator at the serial console is root; the VM lives minutes and holds nothing once powered off.
   services.getty.autologinUser = "root";
   environment.systemPackages = [
