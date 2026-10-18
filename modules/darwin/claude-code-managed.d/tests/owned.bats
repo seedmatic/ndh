@@ -252,6 +252,10 @@ deny() { [ "$status" -eq 2 ] || { echo "expected deny, got status=$status output
   run as "$MINE" "cd $A/theirs && find . -delete"; deny
   run as "$MINE" "find $A/theirs -type f -exec rm {} +"; deny
   run as "$MINE" "find $A/theirs -execdir rm -f {} \;"; deny
+  run as "$MINE" "find $A/theirs -exec unlink {} \;"; deny
+  run as "$MINE" "find $A/theirs -execdir shred -u {} +"; deny
+  run as "$MINE" "find $A/theirs -ok mv {} /tmp \;"; deny
+  run as "$MINE" "find $A/theirs -exec sh -c 'rm \"\$1\"' _ {} \;"; deny
 }
 @test "find: a relative or unresolvable start after a lost cwd is denied" {
   run as "$MINE" "cd \$d && find . -delete"; deny
