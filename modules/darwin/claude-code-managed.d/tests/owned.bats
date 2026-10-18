@@ -223,3 +223,47 @@ deny() { [ "$status" -eq 2 ] || { echo "expected deny, got status=$status output
 @test "cd: an absolute cd with CDPATH set is still followed" {
   run as "$MINE" "CDPATH=/elsewhere; cd $A/mine && rm -rf probe"; allowed_owned
 }
+
+# Execution order and launchers (security, 2026-10-18): a loop or a function runs its body any number of times, so a
+# cd after one is never followed; env -C moves the cwd; a deleting find is judged on its starts; ~user resolves only
+# for the home's owner.
+@test "order: a cd inside a loop body loses the cwd" {
+  run as "$MINE" "cd $A/mine/probe; for i in 1 2; do cd ..; done; rm -rf theirs"; deny
+  run as "$MINE" "while true; do cd $A/theirs; break; done; rm x"; deny
+  [[ "$output" == *"cannot resolve"* ]]
+}
+@test "order: a cd inside a function body loses the cwd, even after a later resolved cd" {
+  run as "$MINE" "f(){ cd $A/theirs; }; cd /tmp; f; rm x"; deny
+  run as "$MINE" "function g { cd $A/theirs; }; g; rm x"; deny
+}
+@test "order: a loop with no cd leaves absolute removals of mine alone" {
+  run as "$MINE" "for f in probe; do rm -rf $A/mine/probe; done"; not_allowed
+  run as "$MINE" "rm -rf $A/mine/probe"; allowed_owned
+}
+@test "env -C: it moves the cwd like a cd" {
+  run as "$MINE" "env -C $A/theirs rm x"; deny
+  run as "$MINE" "env --chdir=$A/theirs rm x"; deny
+  run as "$MINE" "env -C \$d rm x"; deny
+}
+@test "find: a deleting find in or above another area is denied" {
+  run as "$MINE" "find $A/theirs -delete"; deny
+  [[ "$output" == *"belongs to theirs"* ]]
+  run as "$MINE" "find $A -name '*.md' -delete"; deny
+  run as "$MINE" "cd $A/theirs && find . -delete"; deny
+  run as "$MINE" "find $A/theirs -type f -exec rm {} +"; deny
+  run as "$MINE" "find $A/theirs -execdir rm -f {} \;"; deny
+}
+@test "find: a relative or unresolvable start after a lost cwd is denied" {
+  run as "$MINE" "cd \$d && find . -delete"; deny
+  run as "$MINE" "find \$d -delete"; deny
+}
+@test "find: a find that deletes nothing is not judged as a removal" {
+  run as "$MINE" "find $A/theirs -name x -print"
+  [ "$status" -eq 0 ]
+}
+@test "~user: only the home's owner resolves; another ~user is denied" {
+  run as "$MINE" "rm -rf ~tester/.claude/.scratchpad.d/their-topic/x"; deny
+  [[ "$output" == *"belongs to theirs"* ]]
+  run as "$MINE" "rm -rf ~someone/x"; deny
+  [[ "$output" == *"~user"* ]]
+}

@@ -359,6 +359,7 @@ class Analyzer:
         self.table = table
         self.cwd = cwd
         self.cwd_lost = False
+        self.order_unknown = False
         self.home_tainted = False
         self.cdpath_set = False
         self.home = home
@@ -397,6 +398,15 @@ class Analyzer:
         # global hooks and sops filters of the git command it prefixes.
         self.assignments = []
         while argv:
+            # A loop or a function runs its body any number of times, in any order: from there on, a cd is never
+            # followed, since textual order is not execution order.
+            if argv[0] in ("for", "while", "until", "select", "function") or argv[1:2] == ["()"]:
+                self.order_unknown = True
+                # A definition's name is not a command: its body is analysed as what it runs.
+                if argv[0] == "function":
+                    argv = argv[2:]
+                elif argv[1:2] == ["()"]:
+                    argv = argv[2:]
             while argv and (ASSIGNMENT.match(argv[0]) or argv[0] in KEYWORDS):
                 if ASSIGNMENT.match(argv[0]):
                     self.assignments.append(argv[0])
@@ -433,7 +443,14 @@ class Analyzer:
                 if tok.startswith("--split-string="):
                     self.analyze(tok.split("=", 1)[1], depth + 1)
                     return []
-                if tok in ("-u", "--unset", "-C", "--chdir"):
+                if tok in ("-C", "--chdir") or tok.startswith(("--chdir=", "-C")) and tok != "-C":
+                    # env moves the cwd of the command it runs, like a cd before it.
+                    attached = tok.startswith("--chdir=") or (tok.startswith("-C") and tok != "-C")
+                    target = tok.split("=", 1)[1] if tok.startswith("--chdir=") else tok[2:] if attached else (
+                        rest[i + 1] if i + 1 < len(rest) else "")
+                    self.move_cwd(target)
+                    i += 1 if attached else 2
+                elif tok in ("-u", "--unset"):
                     i += 2
                 elif ASSIGNMENT.match(tok):
                     self.assignments.append(tok)
@@ -605,6 +622,15 @@ class Analyzer:
                 return args[args.index(flag) + 1:]
         return []
 
+    def move_cwd(self, target):
+        """A cd to TARGET: followed when it resolves, the cwd lost otherwise (None, inside a loop or a function)."""
+        moved = None if target is None or self.order_unknown else self.resolve(target)
+        if moved:
+            self.cwd = moved
+        else:
+            self.cwd, self.cwd_lost = "", True
+        return moved
+
     def note_env(self, tok):
         """An assignment (or an export/unset name) that changes how cd moves: HOME is what ~, $HOME and a bare cd
         expand to, and CDPATH sends a relative cd elsewhere. Once either is touched, the hook no longer trusts them."""
@@ -644,7 +670,11 @@ class Analyzer:
         if tok == "~" or tok.startswith("~/"):
             tok = self.home + tok[1:]
         elif tok.startswith("~"):
-            return None
+            # ~user: only the home's own owner is known; ~+ and ~- are the directory stack.
+            user, _, below = tok[1:].partition("/")
+            if user != os.path.basename(os.path.normpath(self.home)):
+                return None
+            tok = self.home + ("/" + below if below else "")
         if not os.path.isabs(tok):
             if not self.cwd:
                 return None
@@ -761,6 +791,16 @@ class Analyzer:
                 root = psegs[:-1] if psegs[-1] == "**" else None
                 if match_segments(psegs, segs) or (root is not None and segs == root):
                     return f"{path} belongs to {name}"
+        return None
+
+    def holds_foreign(self, path):
+        """Why a walk from PATH would reach another session's area: one of its patterns could lie below PATH."""
+        for name, sess in self.owned["sessions"].items():
+            if name == self.session:
+                continue
+            for pattern in self.patterns(sess.get("owned", [])):
+                if could_hold(pattern.strip("/").split("/"), path.strip("/").split("/")):
+                    return f"{path} holds an area of {name}"
         return None
 
     def owned_removal(self, key, argv):
@@ -888,12 +928,20 @@ class Analyzer:
                                      for a in args):
                 self.deny(f"git toward vz-recover: {spec['why']}", argv)
                 return
+        if prog == "find" and self.find_removes(args):
+            why = self.find_removal(args)
+            if why:
+                self.deny(why, argv)
+                return
         if prog in ("rm", "rmdir"):
             flags = [t for t in args if t.startswith("-")]
             targets = [t for t in args if not t.startswith("-")]
             if self.cwd_lost and any(not t.startswith(("/", "~")) and not re.match(r"^\$(?:HOME|\{HOME\})(?:/|$)", t)
                                      for t in targets):
                 self.deny("a relative removal after a cd whose target the hook cannot resolve; name the absolute path", argv)
+                return
+            if any(t.startswith("~") and self.resolve(t) is None for t in targets):
+                self.deny("a ~user path the hook cannot resolve; name the absolute path", argv)
                 return
             for t in targets:
                 why = self.foreign(self.resolve(t)) if self.resolve(t) else None
@@ -913,6 +961,34 @@ class Analyzer:
 
     # Commands that neither write nor run anything else: they may stand beside an owned removal (security, 2026-10-17).
     NEUTRAL = {"cd", "pushd", "echo", "printf", "ls", "test", "[", "true", "stat"}
+
+    @staticmethod
+    def find_removes(args):
+        """Whether find deletes what it finds: -delete, or rm/rmdir run by -exec, -execdir, -ok or -okdir."""
+        return any(a == "-delete" or (a in ("-exec", "-execdir", "-ok", "-okdir") and i + 1 < len(args)
+                                      and os.path.basename(args[i + 1]) in ("rm", "rmdir"))
+                   for i, a in enumerate(args))
+
+    def find_removal(self, args):
+        """Why a deleting find is refused: a start in another session's area (or holding one), a relative start after
+        a lost cwd, or a start the hook cannot resolve. None when every start may be judged by the other rules."""
+        i = 0
+        while i < len(args) and args[i] in ("-H", "-L", "-P", "-E", "-X", "-d", "-s", "-x"):
+            i += 1
+        starts = []
+        while i < len(args) and not args[i].startswith("-") and args[i] not in ("(", "!", ")"):
+            starts.append(args[i])
+            i += 1
+        for start in starts or ["."]:
+            if self.cwd_lost and not start.startswith(("/", "~")):
+                return "a deleting find from a relative start after a cd the hook cannot resolve; name the absolute path"
+            path = self.resolve(start)
+            if path is None:
+                return f"a deleting find from {start}, which the hook cannot resolve; name the absolute path"
+            why = self.foreign(path) or self.holds_foreign(path)
+            if why:
+                return f"a deleting find from {start}: {why}; ask its owner"
+        return None
 
     def owned_worktree(self, argv):
         """`git [-C …] worktree remove <one exact path>`, no --force, a worktree of the calling session."""
@@ -945,11 +1021,7 @@ class Analyzer:
             target = "-" if stack else (words[0] if words else "~")
             # CDPATH sends a relative name elsewhere; a bare cd goes to $HOME, which then is the assigned one.
             relative = not target.startswith(("/", "~", "$"))
-            moved = None if target == "-" or (self.cdpath_set and relative) else self.resolve(target)
-            if moved:
-                self.cwd = moved
-            else:
-                self.cwd, self.cwd_lost = "", True
+            moved = self.move_cwd(None if target == "-" or (self.cdpath_set and relative) else target)
             if self.is_protected(moved):
                 self.deny("enters the operator's secret material", argv)
             return
