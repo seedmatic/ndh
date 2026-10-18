@@ -1312,6 +1312,35 @@
               "build-users-group: Darwin primary-group mutant passed";
             assert lib.assertMsg (fired darwinMember member) "build-users-group: Darwin member mutant passed";
             pkgs.runCommand "build-users-group-guard" { } "touch $out";
+          trusted-users-named =
+            let
+              lib = nixpkgs.lib;
+              machines =
+                map (n: self.darwinConfigurations.${n}) [
+                  "bioskop"
+                  "nikopol"
+                ]
+                ++ map (n: self.nixosConfigurations.${n}) [
+                  "bioskop-nixos"
+                  "nikopol-nixos"
+                ];
+              named =
+                c:
+                lib.sort lib.lessThan (lib.unique c.config.nix.settings.trusted-users) == lib.sort lib.lessThan [
+                  "root"
+                  c.config.profile.user.name
+                  c.config.nixStoreIdentity.inboundUserName
+                ];
+              refused =
+                c:
+                lib.any (a: !a.assertion && lib.hasInfix "trusted-users holds a group" a.message)
+                  (c.extendModules { modules = [ { nix.settings.trusted-users = [ "@admin" ]; } ]; })
+                  .config.assertions;
+            in
+            assert lib.assertMsg (lib.all named machines)
+              "trusted-users: a machine trusts other than root, its seat user and nix-store";
+            assert lib.assertMsg (lib.all refused machines) "trusted-users: a group mutant was not refused";
+            pkgs.runCommand "trusted-users-named" { } "touch $out";
           attic-watch-store-not-root =
             let
               lib = nixpkgs.lib;

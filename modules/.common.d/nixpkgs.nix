@@ -16,6 +16,12 @@ let
 
 in
 {
+  assertions = [
+    {
+      assertion = !lib.any (lib.hasPrefix "@") config.nix.settings.trusted-users;
+      message = "nix trusted-users holds a group (${lib.concatStringsSep ", " (lib.filter (lib.hasPrefix "@") config.nix.settings.trusted-users)}): name the accounts";
+    }
+  ];
 
   nix = {
     package = pkgs.nix;
@@ -28,11 +34,11 @@ in
       keep-derivations = lib.mkDefault false;
       keep-failed = lib.mkDefault false;
       max-jobs = 4;
+      # Named accounts only: a trusted user is root to the daemon, and a group entry would extend that to
+      # whoever joins the group later, with no change here. The assertion below holds it on every machine.
       trusted-users = [
         userName
         "root"
-        "@admin"
-        "@wheel"
       ];
       # trusted-substituters gates which substituters non-root users may
       # add on the command line via `--substituters`. Distinct from
