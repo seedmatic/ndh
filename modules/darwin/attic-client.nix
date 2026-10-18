@@ -1,12 +1,13 @@
 # A darwin host's side of the private caches (modules/.common.d/attic-client.nix): where the token
-# delivery (roles x keys' S3b, its darwin twin reading this seat's own drop-box) puts its tokens, and its
-# watch-store as a launchd daemon under its own account, never root: launchd has no LoadCredential, so the
-# delivery hands write.token to that account (writeTokenOwner). macOS has no /run tmpfs; /var/run is emptied at
+# delivery (modules/.common.d/attic-tokens.d) unseals its tokens, and its watch-store as a launchd daemon
+# under its own account, never root: launchd has no LoadCredential, so the unseal hands write.token to that
+# account (writeTokenOwner). macOS has no /run tmpfs; /var/run is emptied at
 # every boot, so the account's home, which holds only attic's config (the token's path, never the token), is
 # under /var/db.
 {
   config,
   lib,
+  pkgs,
   ndh,
   ...
 }:
@@ -15,6 +16,20 @@ let
   account = "_ndh-attic";
   home = "/var/db/ndh-attic-watch-store";
   log = "${home}/watch-store.log";
+  tokens = import ../.common.d/attic-tokens.d/package.nix {
+    inherit pkgs lib;
+    inherit (ndh.context.catalog) netplan;
+  };
+  # Its identity is its own host key, the access point the tokens are sealed to, converted in memory.
+  unseal = tokens.unseal {
+    inherit (cfg) paths writeTokenOwner;
+    identityMode = "hostkey";
+    identity = config.ndh.hostKey.file;
+  };
+  receive = tokens.receive {
+    machine = config.networking.hostName;
+    unsealer = unseal;
+  };
 in
 {
   config = lib.mkMerge [
@@ -32,7 +47,10 @@ in
       };
     }
 
-    (lib.mkIf cfg.watchStore.enable {
+    {
+      # The tokens rest as ciphertext; /var/run is emptied at every boot, so they are unsealed at load. Present
+      # before the client is enabled, so a deposit lands first and the client starts on tokens in place.
+      # The account exists with them: the unseal gives it write.token.
       users = {
         knownUsers = [ account ];
         knownGroups = [ account ];
@@ -51,6 +69,34 @@ in
         install -d -o ${account} -g ${account} -m 0700 ${home}
       '';
 
+      # The operator seat's deposit reaches it by its fixed path under sudo -n: that one command, nothing else.
+      environment.systemPackages = [ receive ];
+      security.sudo.extraConfig = ''
+        ${config.profile.user.name} ALL=(root) NOPASSWD: /run/current-system/sw/bin/ndh-attic-tokens-receive
+      '';
+      launchd.daemons.ndh-attic-tokens.serviceConfig = {
+        Label = ndh.store.mkLaunchdLabel "attic-tokens";
+        ProgramArguments = [ (lib.getExe unseal) ];
+        RunAtLoad = true;
+        StandardErrorPath = "/var/log/ndh-attic-tokens.log";
+      };
+    }
+
+    # The keyring seat deposits every other live machine's tokens, by the operator's ssh name for each.
+    (lib.mkIf config.ndh.identityPush.enable {
+      environment.systemPackages = [
+        (tokens.deposit {
+          seat = config.networking.hostName;
+          localReceive = receive;
+          targets = map (m: {
+            inherit (m) name kind;
+            ssh = "${m.kind}.${m.metalspace}";
+          }) (lib.filter (m: m.name != config.networking.hostName) ndh.context.catalog.machines);
+        })
+      ];
+    })
+
+    (lib.mkIf cfg.watchStore.enable {
       launchd.daemons.ndh-attic-watch-store = {
         # attic reads its token from a file named in its config, so neither reaches an argument nor the
         # environment.

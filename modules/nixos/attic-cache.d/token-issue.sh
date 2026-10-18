@@ -8,8 +8,8 @@ unset BASH_XTRACEFD 2>/dev/null || true
 # attic-token-issue — mint this metalspace's cache tokens for every machine that reads it, and the
 # write tokens of its own access point's machines, each ENCRYPTED to the target access point's age
 # recipient, into <out>/<machine>/: `netrc.<metalspace>.age` (one `machine` + `password` netrc
-# fragment) and, for this metalspace's machines, `write.token.age`. roles x keys' drop-box carries
-# them; its delivery decrypts them into ndh.atticClient.paths.
+# fragment) and, for this metalspace's machines, `write.token.age`. The operator's
+# ndh-attic-tokens-deposit carries them; each machine's unseal decrypts its own into ndh.atticClient.paths.
 #
 # A token exists in clear only inside this pipe: minted in the cache container, piped into age on
 # this NixOS guest. It is never held in a variable, never an argument, never a file in clear.

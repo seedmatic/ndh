@@ -3,10 +3,22 @@
 {
   config,
   lib,
+  pkgs,
+  ndh,
   ...
 }:
 let
   cfg = config.ndh.atticClient;
+  tokens = import ../.common.d/attic-tokens.d/package.nix {
+    inherit pkgs lib;
+    inherit (ndh.context.catalog) netplan;
+  };
+  # Its identity is the sops keyFile: its access point's age identity, the one the tokens are sealed to.
+  unseal = tokens.unseal {
+    inherit (cfg) paths writeTokenOwner;
+    identityMode = "keyfile";
+    identity = config.sops.age.keyFile;
+  };
 in
 {
   config = lib.mkMerge [
@@ -22,6 +34,30 @@ in
         };
         # LoadCredential reads it as root and hands the service its own copy.
         writeTokenOwner = "root";
+      };
+    }
+
+    {
+      # The tokens rest as ciphertext; their tmpfs paths are filled at every boot, once the identity is placed.
+      # Present before the client is enabled, so a deposit lands first and the client starts on tokens in place.
+      systemd.tmpfiles.rules = [ "d ${tokens.store} 0700 root root - -" ];
+      # The operator seat's deposit reaches it over ssh, by its fixed path under sudo -n.
+      environment.systemPackages = [
+        (tokens.receive {
+          machine = config.networking.hostName;
+          unsealer = unseal;
+        })
+      ];
+      systemd.services.ndh-attic-tokens = {
+        description = "Unseal this machine's attic tokens into ${cfg.paths.dir}";
+        wantedBy = [ "multi-user.target" ];
+        after = [ "sops-install-secrets.service" ];
+        unitConfig.ConditionDirectoryNotEmpty = tokens.store;
+        serviceConfig = {
+          Type = "oneshot";
+          RemainAfterExit = true;
+          ExecStart = lib.getExe unseal;
+        };
       };
     }
 

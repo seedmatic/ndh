@@ -1,7 +1,7 @@
 # A machine's side of the private caches (docs/private-binary-cache-spec.adoc, per-metalspace): it
 # reads every metalspace's cache, and its watch-store pushes what it builds into its own
 # metalspace's. Both are OFF until the tokens can be delivered: they are read from FIXED paths that
-# the token delivery (roles × keys' S3b drop-box) fills, and nothing here mints or stores one.
+# the token delivery (modules/.common.d/attic-tokens.d) fills, and nothing here mints one.
 #
 # The caches are named by the catalog (`atticFqdn`), and served under the fleet's TLS root, which
 # security.pki already trusts. A cache's public key enters `trusted-public-keys` only once accepted for
