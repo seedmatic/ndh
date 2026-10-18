@@ -798,11 +798,14 @@ ref, a derivation), **never a bare store path**
 manifest of ours uses a bare store path today (❄️)
 |===
 
-Whether `cluster-build` is a trusted user of that container's daemon is decided by test 1 below, in
-the chantier. nix 2.34.9's `build-remote` gets an untrusted client its build of an input-addressed
-derivation by copying the `.drv` closure and asking for `buildPaths` (❄️, read in
-`src/nix/build-remote/build-remote.cc:300-345`), so the account stays **untrusted** if test 1 passes.
-Otherwise it is trusted on that container only (🛡️). The accepted residual, for each outcome (🛡️):
+**`cluster-build` is trusted nowhere: proven on 2026-10-18** on the throwaway builder of `incus-probe` (nix
+2.34.9, the untrusted endpoint, ❄️'s verdict). Tests 4, 1, 2, 3, 5, 6 and 7 below pass: `Trusted: 0`, a nonce
+input-addressed derivation built on the builder and signed by its key alone, an unsigned input and an unsigned import
+refused, a path substituted through the builder's key alone and an unsigned one refused, `--option sandbox false`
+and a client substituter both without effect. nix 2.34.9's `build-remote` gets an untrusted client its build of an
+input-addressed derivation by copying the `.drv` closure and asking for `buildPaths` (❄️, read in
+`src/nix/build-remote/build-remote.cc:300-345`). The fallback, trusted on that container only (🛡️), stays
+written for a nix bump that would break test 1. The accepted residual, for each outcome (🛡️):
 
 [cols="1,3",options="header"]
 |===
@@ -1011,7 +1014,7 @@ refuses it); no network, the sandbox's root
 | none
 |===
 
-If test 1 **fails**, `cluster-build` becomes a trusted user of that container only, with the residual
+Passed on 2026-10-18 (above). If test 1 ever **fails** at a nix bump, `cluster-build` becomes a trusted user of that container only, with the residual
 stated above (`trustedClient = true`: a plain `--stdio` endpoint, no experimental feature); content-addressed
 derivations are never the basis (an experimental feature, and our flakes are not content-addressed).
 
