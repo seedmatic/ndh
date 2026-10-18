@@ -118,8 +118,9 @@ checkRecipient() {
 # The cluster's age identity: age-keygen writes the identity on stdout, straight into pass, and its public on
 # stderr when stdout is not a terminal.
 if [[ $kind == cluster-age ]]; then
+  # With pipefail the insert may have run before age-keygen failed: the way out is to remove that entry.
   age-keygen 2>"$work/generated.pub" | pass insert -m "$entry" >/dev/null ||
-    die "generating or inserting ${entry} failed — an empty entry may exist: check with pass find ${kind}"
+    die "generating or inserting ${entry} failed — an empty entry may exist: check with pass find ${kind}, then pass rm ${entry}"
   public="$(sed -n 's/^Public key: \(age1[0-9a-z]*\)$/\1/p' "$work/generated.pub")"
   [[ $public == age1* ]] || die "age-keygen returned no age public"
   checkRecipient
@@ -128,7 +129,8 @@ if [[ $kind == cluster-age ]]; then
   printf '%s\n' "$public"
   log "${entry}: generated, encrypted to ${recipient} alone, read back; it is ${recorded}"
   log "next: name this public in the .sops.yaml of rke2lab and nnh and re-key them (sops updatekeys);"
-  log "the grow reads the private on a file descriptor: 3< <(pass show ${entry})"
+  log "the grow reads the private on fd 3, which YOUR shell opens on the grow's command line,"
+  log "3< <(pass show ${entry}); never write that into a script"
   log "replicate seedmatic/ with git subtree push — it carries seedmatic's history only while seedmatic/ is"
   log "never deleted and re-created in the store"
   exit 0
