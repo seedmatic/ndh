@@ -277,6 +277,7 @@ keys:
         certificates:
           mammoth-skate:
             ssh-host: ssh-ed25519-cert-v01@openssh.com AAAAIHNzaC1lZDI1NTE5LWNlcnQtdjAxQG9wZW5zc2guY29tAAAAIO96zQACObUK9cQ7GKBO5J3bp1/5ICC0dJ8shWmYzG9hAAAAICxjKH6th3XhibVtGoqYAiFHWqZvmrACKLe30Yjxb3mzAAAAAAAAAAYAAAACAAAA33sibWFya2VyIjoibmRoLXNzaC1rZXktbWV0YS12MSIsIm93bmVyIjoiaG9tZS1tYW5hZ2VyLnNzaC1hZGQta2V5cyIsImtleSI6Imhvc3QtYmlvc2tvcC1uaXhvcyIsInVzYWdlIjpbInNzaC1ob3N0Il0sIm5hbWVzIjoiM2RlY2RjNzJkMTE0ODgzNTVjMDU1NDUyMTFjOGM0MWJiZTg1MmQ3MzM1NWIwZDhkOTA5NzM5NzA1ODYxMThhZiIsImlzc3VlZCI6IjIwMjYtMTAtMTdUMDU6NDk6NDdaIn0AAAB0AAAADWJpb3Nrb3Atbml4b3MAAAARYmlvc2tvcC1uaXhvcy5sYW4AAAATYmlvc2tvcC1uaXhvcy5sb2NhbAAAACJiaW9za29wLW5peG9zLm1hbW1vdGgtc2thdGUudHMubmV0AAAADW5peG9zLmJpb3Nrb3AAAAAAAAAAAP//////////AAAAAAAAAAAAAAAAAAAAMwAAAAtzc2gtZWQyNTUxOQAAACD0Pop9KqWGl3j1YnQKXt7KipRXybJjeLxSEZbLbQApOwAAAFMAAAALc3NoLWVkMjU1MTkAAABArIMvlfKPHmgldN9T003xyVHc6c5pdI3RdZO9+hXf7hVtrjA719mIiRez82CEMzlmW3Sa/eHRsg5ApHWl8xfPCA== host-bioskop-nixos
+        nixSigning: seedmatic-bioskop-nixos-1:eqGOz2GK5CojkBzHWfVBTKrAjVfxGhvA9j0OXjAqV54=
   vz-recover-nikopol:
     type: ssh-ed25519
     comment: vz-recover-nikopol
@@ -415,6 +416,6 @@ sops:
         -----END AGE ENCRYPTED FILE-----
       recipient: age1avmcejlekelhkm02v3algs9z37fsp27658zpjagkr5w7uxhqguesdmmz0m
   encrypted_comment_regex: sops:encrypted
-  lastmodified: "2026-10-17T20:06:52Z"
-  mac: ENC[AES256_GCM,data:GpPgrncdCzf3cPMW5hcuY25IlY8bFiPnW+Pm+MsXi8wNUq7+SUJF1wjOp475XtlCcIWrM0RVbTJJtKC4W8cC2UuWFrdPeimCnHxCArgsk+IYNDNzc7sAtcosUJvRKs0eERMwMJp+f8F4RXw0wSUf3wM7P63ACDfSTVkaxr5I6LM=,iv:5dVO8dvyJnAzul8o1MghJ8Hpdz8O1oLZo6UQnsZgFCM=,tag:xeNzMbpVyiGpKxT6Qfi5kQ==,type:str]
+  lastmodified: "2026-10-18T06:20:18Z"
+  mac: ENC[AES256_GCM,data:KrySQFRwwJ084pUzjKrqyHGN0NfjU5SqLpKyzC75JYPelGQEYTeW7xL0QH2NdL2KPe192dhcZblk95RYLnuhJMmpCxg9Fn3nuqQiofj/Vtna1mPlmsjfg8ZwczsfQ1NTEsIxpLndKPfBliXRkPlrjNqqxHaBJOIuwCgumgrgkOg=,iv:4i76MOCJkG+x/ucQ0jg63dcOVMaWEfsdhL7C41pcVp0=,tag:8IWnhUWTO57GB7AIDwcFqA==,type:str]
   version: 3.13.3
