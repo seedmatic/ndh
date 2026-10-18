@@ -58,7 +58,8 @@ item_of() { printf 'item %s %s' "$(basename "$1")" "$(base64 <"$1" | tr -d '\n')
   deposit "$t/out"
   [ "$status" -eq 1 ]
   [[ $stderr == *"elsewhere: not a machine of the inventory — nothing sent"* ]]
-  [ ! -e "$t/ssh.log" ] && [ ! -e "$t/sudo.log" ]
+  [ ! -e "$t/ssh.log" ]
+  [ ! -e "$t/sudo.log" ]
 }
 
 @test "a machine that refuses is reported, and the others are still deposited" {
