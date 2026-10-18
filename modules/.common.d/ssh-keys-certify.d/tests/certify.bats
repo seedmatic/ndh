@@ -62,6 +62,9 @@ EOF
   # ndh::logger:command:invoke, sourced from the real logger — without its log sinks: a failure the
   # script does not check behaves here as it does there.
   printf 'source "%s"\nndh::logger:command:run() { shift; ndh::logger:command:invoke "$@"; return "$NDH_LOGGER_COMMAND_RC"; }\n' "$NDH_LOGGER_SH" >"$BATS_TEST_TMPDIR/trampoline.sh"
+  # keys.yaml's public view, rewritten by the real keys-json.sh with the real filter, as the package does.
+  printf '#!%s\nexec bash -euo pipefail "%s" "%s" "$@"\n' "$BASH" "$KEYS_JSON_SH" "$PUBLIC_YQ" >"$BATS_TEST_TMPDIR/keys-json"
+  chmod +x "$BATS_TEST_TMPDIR/keys-json"
   # The stubs run under the bats bash itself: the darwin build sandbox refuses to exec /usr/bin/env.
   shebang="#!$BASH"
   # The tool takes ssh-agent and ssh-add from ssh-keygen's directory: the real ones, ssh-add recorded.
@@ -116,7 +119,7 @@ bake() { # <machine=names …> [own machines]
   sed -e "s#@nixBashTrampoline@#$BATS_TEST_TMPDIR/trampoline.sh#" -e 's#@loggerTag@#test#' -e "s#@hostNames@#$1#" \
     -e 's#@interimKey@#rdp-host#' -e 's#@interimMachines@#beta beta-nixos#' -e "s#@ownMachines@#${2-$OWN}#" \
     -e "s#@sha256sum@#$(command -v sha256sum)#" -e "s#@sshKeygen@#$BATS_TEST_TMPDIR/openssh/ssh-keygen#" \
-    -e "s#@toolPath@#$BATS_TEST_TMPDIR/bin:$PATH#" \
+    -e "s#@toolPath@#$BATS_TEST_TMPDIR/bin:$PATH#" -e "s#@keysJson@#$BATS_TEST_TMPDIR/keys-json#" \
     "$BATS_TEST_DIRNAME/../ssh-keys-certify.sh" >"$BATS_TEST_TMPDIR/ssh-keys-certify"
 }
 
@@ -478,4 +481,21 @@ recorded_cert() { yq eval -r ".keys.\"$1\".slots.\"26-03-03\".certificates.fabri
   [ "$status" -eq 1 ]
   [[ "$output" == *"keys.yaml left untouched"* ]]
   cmp "$keys" before
+}
+
+@test "--apply rewrites keys.json, keys.yaml's public view, without a ciphertext or the sops metadata" {
+  run certify --apply
+  [ "$status" -eq 0 ]
+  json="${keys%/*}/keys.json"
+  [ -f "$json" ]
+  run grep -cF 'ENC[' "$json"
+  [ "$output" = 0 ]
+  [ "$(yq -r 'has("sops")' "$json")" = false ]
+  diff <(yq -o=json --from-file "$PUBLIC_YQ" "$keys") "$json"
+}
+
+@test "a dry run writes no keys.json" {
+  run certify
+  [ "$status" -eq 0 ]
+  [ ! -e "${keys%/*}/keys.json" ]
 }

@@ -1,0 +1,15 @@
+# keys.yaml's public view, keys.json, the only form nix reads (nix has no YAML reader, and reading the output
+# of a yq run at evaluation is import-from-derivation). keys.yaml stays the source of truth: the operator reads,
+# comments and edits it; keys.json is regenerated from it (keys-json.sh) and checked against it
+# (checks.<system>.keys-json-fresh).
+#
+# The sections modules/.common.d/keys-yaml.nix reads, without any sops ciphertext: a re-encryption changes every
+# ENC[…] and nothing nix reads, and the sops metadata never leaves keys.yaml.
+{
+  "_comment": "Generated from keys.yaml by modules/.common.d/keys-yaml.d/keys-json.sh: never edit it, edit keys.yaml.",
+  "keys": .keys,
+  "authorities": .authorities,
+  "revoked": (.revoked // {}),
+  "revoked_certificates": (.revoked_certificates // {})
+}
+| del(.. | select(tag == "!!str" and test("^ENC\[")))

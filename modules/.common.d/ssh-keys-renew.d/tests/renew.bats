@@ -55,9 +55,12 @@ EOF
   # ndh::logger:command:invoke, sourced from the real logger — without its log sinks: a failure the
   # script does not check behaves here as it does there.
   printf 'source "%s"\nndh::logger:command:run() { shift; ndh::logger:command:invoke "$@"; return "$NDH_LOGGER_COMMAND_RC"; }\n' "$NDH_LOGGER_SH" >"$BATS_TEST_TMPDIR/trampoline.sh"
+  # keys.yaml's public view, rewritten by the real keys-json.sh with the real filter, as the package does.
+  printf '#!%s\nexec bash -euo pipefail "%s" "%s" "$@"\n' "$BASH" "$KEYS_JSON_SH" "$PUBLIC_YQ" >"$BATS_TEST_TMPDIR/keys-json"
+  chmod +x "$BATS_TEST_TMPDIR/keys-json"
   sed -e "s#@nixBashTrampoline@#$BATS_TEST_TMPDIR/trampoline.sh#" -e 's#@loggerTag@#test#' \
     -e 's#@machines@#bioskop nikopol bioskop-nixos nikopol-nixos#' -e 's#@guests@#bioskop-nixos nikopol-nixos#' \
-    -e 's#@vzHosts@#nikopol#' -e "s#@toolPath@#$BATS_TEST_TMPDIR/bin:$PATH#" \
+    -e 's#@vzHosts@#nikopol#' -e "s#@toolPath@#$BATS_TEST_TMPDIR/bin:$PATH#" -e "s#@keysJson@#$BATS_TEST_TMPDIR/keys-json#" \
     "$BATS_TEST_DIRNAME/../ssh-keys-renew.sh" >"$BATS_TEST_TMPDIR/ssh-keys-renew"
   today="$(date +%y-%m-%d)"
 }
@@ -621,4 +624,21 @@ nixRest() { yq eval -o json 'del(.sops) | del(.keys."host-bioskop".slots."26-01-
   [[ "$output" == *"goes with --public - and --apply only"* ]]
   run renew --record-nix-signing host-bioskop --public - --key existing <<<"$nixPublic"
   [ "$status" -eq 64 ]
+}
+
+@test "--apply rewrites keys.json, keys.yaml's public view, without a ciphertext or the sops metadata" {
+  run renew --create bot --usage bot-signing --comment "rke2lab bot" --apply
+  [ "$status" -eq 0 ]
+  json="${keys%/*}/keys.json"
+  [ -f "$json" ]
+  run grep -cF 'ENC[' "$json"
+  [ "$output" = 0 ]
+  [ "$(yq -r 'has("sops")' "$json")" = false ]
+  diff <(yq -o=json --from-file "$PUBLIC_YQ" "$keys") "$json"
+}
+
+@test "a dry run writes no keys.json" {
+  run renew --create bot --usage bot-signing --comment "rke2lab bot"
+  [ "$status" -eq 0 ]
+  [ ! -e "${keys%/*}/keys.json" ]
 }

@@ -62,6 +62,8 @@ export PATH LC_ALL=C
 unset POSIXLY_CORRECT GREP_OPTIONS
 
 readonly keysRel="modules/home-manager/ssh.d/keys.yaml"
+# keys.yaml's public view for nix, keys.json, rewritten whenever keys.yaml is (keys-yaml.d/public.yq).
+readonly keysJson="@keysJson@"
 # ssh-keygen is pinned: the signature AND the comparison of a recorded certificate read its `-L`
 # output, and the first ssh-keygen on PATH (Apple's or nix's) made a current certificate look stale.
 # The agent that holds the signing private comes from the same openssh.
@@ -465,6 +467,7 @@ certify::apply() {
 		return 1
 	fi
 	install -m 0644 "$updated" "$keysYaml" || return 1
+	"$keysJson" "$keysYaml" || return 1
 	cat <<-EOF
 
 		${#plan[@]} certificate(s) recorded in keys.yaml.
