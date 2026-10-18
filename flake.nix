@@ -1312,25 +1312,43 @@
               "build-users-group: Darwin primary-group mutant passed";
             assert lib.assertMsg (fired darwinMember member) "build-users-group: Darwin member mutant passed";
             pkgs.runCommand "build-users-group-guard" { } "touch $out";
-          darwin-nix-conf-no-include =
+          # Every machine's nix.conf includes ndh's own runtime files only (/run/ndh/), never a file nothing declares:
+          # an include is a way into the daemon's settings (trusted-users, builders) that no review sees. The Macs
+          # had flox's, the guests the Determinate installer's nix.custom.conf.
+          nix-conf-no-foreign-include =
             let
               conf = c: c.config.environment.etc."nix/nix.conf".source;
-              macs = map (n: conf self.darwinConfigurations.${n}) [
-                "bioskop"
-                "nikopol"
+              machines =
+                map (n: conf self.darwinConfigurations.${n}) [
+                  "bioskop"
+                  "nikopol"
+                ]
+                ++ map (n: conf self.nixosConfigurations.${n}) [
+                  "bioskop-nixos"
+                  "nikopol-nixos"
+                ];
+              mutants = [
+                (conf (
+                  self.darwinConfigurations.bioskop.extendModules {
+                    modules = [ { nix.extraOptions = "include /etc/nix/flox.conf"; } ];
+                  }
+                ))
+                (conf (
+                  self.nixosConfigurations.bioskop-nixos.extendModules {
+                    modules = [ { nix.extraOptions = "!include /etc/nix/nix.custom.conf"; } ];
+                  }
+                ))
               ];
-              mutant = conf (
-                self.darwinConfigurations.bioskop.extendModules {
-                  modules = [ { nix.extraOptions = "include /etc/nix/flox.conf"; } ];
-                }
-              );
             in
-            pkgs.runCommand "darwin-nix-conf-no-include" { } ''
-              included() { grep -Eq '^[[:space:]]*!?include[[:space:]]' "$1"; }
-              for f in ${nixpkgs.lib.escapeShellArgs macs}; do
-                if included "$f"; then echo "a Mac's nix.conf includes a file outside ndh: $f" >&2; exit 1; fi
+            pkgs.runCommand "nix-conf-no-foreign-include" { } ''
+              # An include line whose path is not under /run/ndh/.
+              foreign() { grep -Ev '^[[:space:]]*!?include[[:space:]]+/run/ndh/' "$1" | grep -Eq '^[[:space:]]*!?include[[:space:]]'; }
+              for f in ${nixpkgs.lib.escapeShellArgs machines}; do
+                if foreign "$f"; then echo "a nix.conf includes a file outside ndh: $f" >&2; exit 1; fi
               done
-              included ${mutant} || { echo "the include mutant passed" >&2; exit 1; }
+              for f in ${nixpkgs.lib.escapeShellArgs mutants}; do
+                foreign "$f" || { echo "an include mutant passed: $f" >&2; exit 1; }
+              done
               touch $out
             '';
           ndh-builders-bats = import ./modules/darwin/host-builder.d/tests/package.nix { inherit pkgs; };

@@ -33,8 +33,9 @@ in
     system-features = lib.mkForce (lib.remove "kvm" defaultFeatures);
   };
 
+  # ndh's own file only: an include of a file nothing declares is a way into the daemon's settings (trusted-users,
+  # builders) that no review sees. checks.<system>.nix-conf-no-foreign-include holds it.
   nix.extraOptions = ''
-    !include /etc/nix/nix.custom.conf
     !include ${kvmConf}
   '';
 
