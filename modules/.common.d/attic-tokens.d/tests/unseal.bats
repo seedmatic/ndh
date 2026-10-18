@@ -15,10 +15,10 @@ setup() {
   header keyfile "$t/identity" >"$t/unseal"
 }
 
-header() { # <identityMode> <identity>
+header() { # <identityMode> <identity> [writeTokenOwner]
   printf 'set -euo pipefail\n'
-  printf 'store=%q dir=%q netrc=%q writeToken=%q identityMode=%q identity=%q\n' \
-    "$store" "$dir" "$dir/netrc" "$dir/write.token" "$1" "$2"
+  printf 'store=%q dir=%q netrc=%q writeToken=%q identityMode=%q identity=%q writeTokenOwner=%q\n' \
+    "$store" "$dir" "$dir/netrc" "$dir/write.token" "$1" "$2" "${3:-root}"
   printf 'declare -A cacheFqdn=([m1]=attic.m1 [m2]=attic.m2)\n'
   cat "$BATS_TEST_DIRNAME/../unseal.sh"
 }
@@ -43,6 +43,18 @@ no_token_in_output() { [[ $output$stderr != *body* && $output$stderr != *wbody* 
   [[ $stderr == *"read tokens of attic.m1 attic.m2, and the write token"* ]]
   no_token_in_output
   [ -z "$(find "$dir" -name '.unseal.*')" ]
+}
+
+@test "a write token owner other than root gets write.token, the dir lets it through but not list, netrc stays put" {
+  # The sandbox is not root: the build user stands for the watch-store's account.
+  header keyfile "$t/identity" "$(id -un)" >"$t/unseal"
+  seal "$store/netrc.m1.age" "$(read_fragment m1)"
+  seal "$store/write.token.age" "whead.wbody.wsig"
+  unseal
+  [ "$status" -eq 0 ]
+  [ "$(stat -c %U "$dir/write.token" 2>/dev/null || stat -f %Su "$dir/write.token")" = "$(id -un)" ]
+  [ "$(mode "$dir/write.token")" = 400 ] && [ "$(mode "$dir/netrc")" = 400 ] && [ "$(mode "$dir")" = 711 ]
+  no_token_in_output
 }
 
 @test "a darwin host's identity is its host key, converted in memory" {

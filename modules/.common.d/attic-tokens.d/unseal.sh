@@ -6,8 +6,8 @@ unset BASH_XTRACEFD 2>/dev/null || true
 
 # ndh-attic-tokens-unseal — this machine's attic tokens, kept at rest as age ciphertext in $store (one
 # netrc.<metalspace>.age per cache it reads, write.token.age for its own), decrypted into the tmpfs paths the
-# attic client reads: the netrc, every cache's fragment in one file, and the write token, root 0400, put in
-# place by a rename. Run at every boot, since those paths are gone at boot (roles × keys ⑤). Each item is
+# attic client reads: the netrc, every cache's fragment in one file, root 0400, and the write token, 0400 to
+# the account its watch-store runs as (writeTokenOwner), each put in place by a rename. Run at every boot, since those paths are gone at boot (roles × keys ⑤). Each item is
 # decrypted by this machine's identity and its clear text checked for its shape (a netrc fragment naming the
 # cache the catalog gives that metalspace, then a JWT; the write token, a JWT) before anything is put in place.
 # An item that does not decrypt or check falls back to its previous generation (`<item>.prev`, which the
@@ -15,7 +15,8 @@ unset BASH_XTRACEFD 2>/dev/null || true
 # decrypts is ever printed.
 #
 # Header, fixed at evaluation: store, dir, netrc, writeToken, identityMode (keyfile: an age identity file;
-# hostkey: an ssh host key, converted in memory), identity, cacheFqdn (metalspace → its cache's fabric name).
+# hostkey: an ssh host key, converted in memory), identity, writeTokenOwner, cacheFqdn (metalspace → its cache's
+# fabric name).
 
 umask 077
 shopt -s nullglob
@@ -60,7 +61,9 @@ unseal() {
   return 1
 }
 
-install -d -m 0700 "$dir"
+# An owner other than root reads its token through the dir, never lists it.
+if [[ $writeTokenOwner == root ]]; then dirMode=0700; else dirMode=0711; fi
+install -d -m "$dirMode" "$dir"
 stage="$(mktemp -d "${dir}/.unseal.XXXXXX")"
 trap 'rm -rf "$stage"' EXIT
 : >"$stage/netrc"
@@ -82,6 +85,7 @@ fi
 rm -f "$stage/item"
 
 chmod 0400 "$stage"/*
+[[ $writeTokenOwner == root || ! -e "$stage/write.token" ]] || chown "$writeTokenOwner" "$stage/write.token"
 mv -f "$stage/netrc" "$netrc"
 [[ ! -e "$stage/write.token" ]] || mv -f "$stage/write.token" "$writeToken"
 log "unsealed the read tokens of ${caches[*]:-no cache}$([[ -e "$store/write.token.age" ]] && echo ", and the write token")"

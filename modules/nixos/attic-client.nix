@@ -15,7 +15,7 @@ let
   };
   # Its identity is the sops keyFile: its access point's age identity, the one the tokens are sealed to.
   unseal = tokens.unseal {
-    inherit (cfg) paths;
+    inherit (cfg) paths writeTokenOwner;
     identityMode = "keyfile";
     identity = config.sops.age.keyFile;
   };
@@ -37,8 +37,9 @@ in
       };
     }
 
-    (lib.mkIf (cfg.read.enable || cfg.watchStore.enable) {
+    {
       # The tokens rest as ciphertext; their tmpfs paths are filled at every boot, once the identity is placed.
+      # Present before the client is enabled, so a deposit lands first and the client starts on tokens in place.
       systemd.tmpfiles.rules = [ "d ${tokens.store} 0700 root root - -" ];
       # The operator seat's deposit reaches it over ssh, by its fixed path under sudo -n.
       environment.systemPackages = [
@@ -58,7 +59,7 @@ in
           ExecStart = lib.getExe unseal;
         };
       };
-    })
+    }
 
     (lib.mkIf cfg.watchStore.enable {
       # Started as soon as the delivery writes the token, and at every boot once it is there.

@@ -16,11 +16,12 @@ in
 rec {
   inherit store;
 
-  # paths: the attic client's tmpfs paths. identityMode: keyfile (an age identity file) or hostkey (an ssh host
+  # paths: the attic client's tmpfs paths. writeTokenOwner: the account write.token is given to. identityMode: keyfile (an age identity file) or hostkey (an ssh host
   # key, converted in memory); identity: its path.
   unseal =
     {
       paths,
+      writeTokenOwner,
       identityMode,
       identity,
     }:
@@ -36,6 +37,7 @@ rec {
         dir=${lib.escapeShellArg paths.dir}
         netrc=${lib.escapeShellArg paths.netrc}
         writeToken=${lib.escapeShellArg paths.writeToken}
+        writeTokenOwner=${lib.escapeShellArg writeTokenOwner}
         identityMode=${lib.escapeShellArg identityMode}
         identity=${lib.escapeShellArg identity}
         declare -A cacheFqdn=(${cacheFqdn})
