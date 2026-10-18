@@ -39,7 +39,9 @@ no_token_in_output() { [[ $output$stderr != *body* && $output$stderr != *wbody* 
   [ "$status" -eq 0 ]
   [ "$(<"$dir/netrc")" = "$(read_fragment m1; read_fragment m2)" ]
   [ "$(<"$dir/write.token")" = whead.wbody.wsig ]
-  [ "$(mode "$dir/netrc")" = 400 ] && [ "$(mode "$dir/write.token")" = 400 ] && [ "$(mode "$dir")" = 700 ]
+  [ "$(mode "$dir/netrc")" = 400 ]
+  [ "$(mode "$dir/write.token")" = 400 ]
+  [ "$(mode "$dir")" = 700 ]
   [[ $stderr == *"read tokens of attic.m1 attic.m2, and the write token"* ]]
   no_token_in_output
   [ -z "$(find "$dir" -name '.unseal.*')" ]
@@ -53,7 +55,9 @@ no_token_in_output() { [[ $output$stderr != *body* && $output$stderr != *wbody* 
   unseal
   [ "$status" -eq 0 ]
   [ "$(stat -c %U "$dir/write.token" 2>/dev/null || stat -f %Su "$dir/write.token")" = "$(id -un)" ]
-  [ "$(mode "$dir/write.token")" = 400 ] && [ "$(mode "$dir/netrc")" = 400 ] && [ "$(mode "$dir")" = 711 ]
+  [ "$(mode "$dir/write.token")" = 400 ]
+  [ "$(mode "$dir/netrc")" = 400 ]
+  [ "$(mode "$dir")" = 711 ]
   no_token_in_output
 }
 
@@ -105,7 +109,8 @@ no_token_in_output() { [[ $output$stderr != *body* && $output$stderr != *wbody* 
   unseal
   [ "$status" -eq 1 ]
   [[ $stderr == *"write.token.age: neither it nor its previous generation"* ]]
-  [ ! -e "$dir/netrc" ] && [ ! -e "$dir/write.token" ]
+  [ ! -e "$dir/netrc" ]
+  [ ! -e "$dir/write.token" ]
 }
 
 @test "a fragment for a metalspace the catalog does not name fails the run" {
