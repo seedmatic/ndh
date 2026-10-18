@@ -19,6 +19,8 @@
 }:
 let
   cfg = config.ndh.storeFreeze;
+  runtimeInputs = import ./store-freeze.d/runtime-inputs.nix { inherit pkgs; };
+  incusEnabled = config.virtualisation.incus.enable;
   storeLayers = import ./erofs-store-layers.nix;
 
   # Newest first, as overlayfs reads lowerdir left to right; the same projection as
@@ -77,19 +79,14 @@ let
 
   operatorCli = pkgs.writeShellApplication {
     name = "ndh-store";
-    runtimeInputs = [
-      pkgs.attr
-      pkgs.coreutils
-      pkgs.findutils
-      pkgs.gnugrep
-      pkgs.jq
-      pkgs.procps
-      pkgs.util-linux
-      pkgs.getent
-      config.nix.package
-      config.boot.zfs.package
-      config.systemd.package
-    ];
+    runtimeInputs =
+      runtimeInputs.tools
+      ++ runtimeInputs.system {
+        nix = config.nix.package;
+        zfs = config.boot.zfs.package;
+        systemd = config.systemd.package;
+        incus = if incusEnabled then config.virtualisation.incus.package else null;
+      };
     text = ''
       ${exports}
       export SWEEP_SHAPES=${./store-freeze.d/sweep-shapes}
@@ -97,6 +94,7 @@ let
       export CONTAINER_STATE_ROOT=${lib.escapeShellArg config.ndh.incusNixosContainers.stateRoot}
       export SYSTEM_PROFILE=/nix/var/nix/profiles/system CURRENT_SYSTEM=/run/current-system
       export BOOTED_SYSTEM=/run/booted-system NIX_BUILDS_DIR=/nix/var/nix/builds
+      export INCUS_ENABLED=${lib.boolToString incusEnabled}
       ${builtins.readFile ./store-freeze.d/cli.sh}
     '';
   };

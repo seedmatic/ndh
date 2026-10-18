@@ -1910,7 +1910,7 @@
           };
           # ndh-store's gestures: every refusal before the first change, no unsealed layer left behind.
           store-freeze-bats = import ./modules/nixos/store-freeze.d/tests/package.nix {
-            inherit pkgs;
+            pkgs = pkgsForLinux;
           };
           # The attic token delivery: the deposit, the receive's checks, the boot-time unseal.
           attic-tokens-bats = import ./modules/.common.d/attic-tokens.d/tests/package.nix {

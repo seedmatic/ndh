@@ -16,10 +16,11 @@
 #
 # Set by the wrapper: RW_DATASET, DB_DATASET, LAYERS_DATASET, RW_MOUNT, STACK_DIR, FROZEN_ROOT,
 # EROFS_LOWERS, RUN_DIR, MANIFEST_VERSION, SWEEP_SHAPES, CONTAINER_PROJECT, CONTAINER_STATE_ROOT,
-# SYSTEM_PROFILE, CURRENT_SYSTEM, BOOTED_SYSTEM, NIX_BUILDS_DIR.
+# SYSTEM_PROFILE, CURRENT_SYSTEM, BOOTED_SYSTEM, NIX_BUILDS_DIR, INCUS_ENABLED.
 
 usage() {
-  sed -n '3,9p' "${BASH_SOURCE[0]}" >&2
+  # By its content, not its line numbers: the wrapper puts its own lines before this file.
+  sed -n '/^#   ndh-store /,/^#$/p' "${BASH_SOURCE[0]}" | sed '$d' >&2
   exit 2
 }
 
@@ -72,6 +73,8 @@ write() {
 
 # The layer being built, until it is sealed: any exit before that drops it.
 BUILDING=""
+# The Incus containers to stop before the reboot, listed by preflight.
+CONTAINERS=""
 
 # On every exit before the reboot: an unsealed layer is dropped, its mount point too, and nix comes back.
 cleanup() {
@@ -89,6 +92,13 @@ preflight() {
   fi
   [ ! -e "$RUN_DIR/store-degraded" ] || die "this boot is degraded — repair it first"
   [ ! -e "$STACK_DIR/next.json" ] || die "a new stack is already pending in next.json — reboot first"
+  # With Incus on, the containers are stopped before the reboot: a missing incus must refuse, never skip that.
+  if [ "$INCUS_ENABLED" = true ]; then
+    command -v incus >/dev/null || die "Incus is enabled but incus is not on this program's path — nothing done"
+    # Listed now, among the refusals: a listing that fails later would leave them running into the reboot.
+    CONTAINERS=$(incus list --project "$CONTAINER_PROJECT" -c n -f csv) ||
+      die "cannot list the Incus containers to stop before the reboot — nothing done"
+  fi
 
   # Delegated builds write into the upper: none may run, and none may start.
   if pgrep -u "$(getent group nixbld | cut -d: -f4)" >/dev/null 2>&1; then
@@ -249,16 +259,14 @@ stage_next() {
   local kind="$1" layers="$2" base="$3" snapshot instance
   snapshot=$(jq -r '.[0].snapshot' <<<"$layers")
   write "$STACK_DIR/next.json" "$(jq -cn --arg v "$MANIFEST_VERSION" --arg k "$kind" \
-    --arg sys "$(readlink -f /run/current-system)" --argjson layers "$layers" --argjson base "$base" \
+    --arg sys "$(readlink -f "$CURRENT_SYSTEM")" --argjson layers "$layers" --argjson base "$base" \
     '{version: ($v | tonumber), kind: $k, layers: $layers, over: [$base[].snapshot], frozenFor: $sys}')"
   write "$STACK_DIR/request.json" "$(jq -cn --arg s "$snapshot" '{snapshot: $s}')"
   say "$kind staged as $snapshot; the next boot stacks it"
 
-  if command -v incus >/dev/null; then
-    for instance in $(incus list --project "$CONTAINER_PROJECT" -c n -f csv 2>/dev/null); do
-      incus stop --project "$CONTAINER_PROJECT" "$instance"
-    done
-  fi
+  while read -r instance; do
+    if [ -n "$instance" ]; then incus stop --project "$CONTAINER_PROJECT" "$instance"; fi
+  done <<<"$CONTAINERS"
   # Not on the way down: the reboot stops everything anyway.
   trap - EXIT
   systemctl reboot
@@ -278,22 +286,31 @@ upper_layers() {
 # nothing when the EROFS layers hold it. A path spread over several layers is refused: copying its
 # top alone would drop the rest.
 top_of() {
-  local name="$1" dir top="" lower
+  local name="$1" dir top="" lower layers below seen=false
+  # Captured, never read through a process substitution: a tool failing there would skip the check silently.
+  layers=$(upper_layers) || die "cannot list the layers above the EROFS ones — nothing done"
   while read -r dir; do
     if [ -e "$dir/$name" ] || [ -L "$dir/$name" ]; then
       top="$dir"
       break
     fi
-  done < <(upper_layers)
+  done <<<"$layers"
   [ -n "$top" ] || return 0
   if [ -c "$top/$name" ]; then die "$name is valid but whited out in $top — nothing done"; fi
   if [ -d "$top/$name" ] && [ ! -L "$top/$name" ] &&
     [ "$(getfattr --absolute-names --only-values -n trusted.overlay.opaque "$top/$name" 2>/dev/null)" != "y" ]; then
+    # The layers from the top one down, then the EROFS ones.
+    below=""
+    while read -r dir; do
+      if [ "$dir" = "$top" ]; then seen=true; fi
+      if $seen; then below+="$dir"$'\n'; fi
+    done <<<"$layers"
+    below+="${EROFS_LOWERS//:/$'\n'}"
     while read -r lower; do
-      if [ "$lower" != "$top" ] && [ -d "$lower/$name" ]; then
+      if [ -n "$lower" ] && [ "$lower" != "$top" ] && [ -d "$lower/$name" ]; then
         die "$name is spread over $top and $lower — nothing done"
       fi
-    done < <(upper_layers | sed -n "\|^$top\$|,\$p"; tr ':' '\n' <<<"$EROFS_LOWERS")
+    done <<<"$below"
   fi
   echo "$top"
 }
@@ -429,7 +446,9 @@ purge() {
     esac
   done
   closure=$(nix-store --query --referrers-closure "${named[@]}" | sort -u) || die "could not query the referrers"
-  roots=$(nix-store --gc --print-roots 2>/dev/null | sed 's|.* -> ||' | sort -u)
+  local listed line
+  listed=$(nix-store --gc --print-roots 2>/dev/null) || die "cannot list the GC roots — nothing purged"
+  roots=$(while read -r line; do if [ -n "$line" ]; then echo "${line##* -> }"; fi; done <<<"$listed" | sort -u)
   say "the purge removes $(wc -l <<<"$closure") paths:"
   listing "$closure"
 
