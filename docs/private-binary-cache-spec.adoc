@@ -422,8 +422,8 @@ means rotating them all (see <<write-tokens>>)
 **its own metalspace's** attic (two servers, two server secrets), and a read token per machine for
 **each** of the two caches. A lost machine means rotating **both** metalspaces' server secrets: its
 write token is under its own metalspace's secret and its read tokens under both, and attic keeps no
-revocation list (🛡️, 2026-10-16). Short-lived read tokens bound the second rotation (decided with
-the token transport, see <<secrets>>). The "cache per writer" considered below is not what was chosen
+revocation list (🛡️, 2026-10-16). The tokens have no lifetime (the operator, 2026-10-17), so both
+rotations are always needed. The "cache per writer" considered below is not what was chosen
 either: the unit is the metalspace.
 ====
 
@@ -1900,18 +1900,22 @@ re-minted
 
 | the **attic tokens** — a write token per machine to its own metalspace's cache, a read token per machine to
 each cache
-| **inside an access point**, an **sshfs drop-box**: a dedicated Mac account confined by `Match User` +
-`ChrootDirectory` (root-owned path) + `ForceCommand internal-sftp`, reached with a per-guest key
-`sshfs-<guest>` (delivered by S2, `restrict` in `authorized_keys`), `StrictHostKeyChecking yes`
-against the operator seat's pinned host key (never `accept-new`), one automount entry for one 0700 directory
-(guest-side, without `allow_other`, owned by the consuming service, short idle timeout), holding
-**age ciphertext only**, to the access point's recipient. **Across metalspaces**, an S2-style **push**
-from the issuing metalspace's NixOS guest to the other one's through the tunnel, the read tokens
-**short-lived** and re-pushed on a schedule. Never through a file the operator opens in the IDE.
-Decided by the operator on 2026-10-16, on 🛡️'s P4 and 🔑's answer
-| atticadm, inside each metalspace's cache container; the drop-box waits for 🔑's S3 pieces (the dedicated
-account, the `sshfs-<guest>` key, per-machine host certs). Identities never take this path: they
-stay on S2
+| **on each machine, as age ciphertext at rest** (`/var/lib/ndh/attic-tokens`, root 0600), sealed to its
+access point's recipient, with one previous generation kept (`.prev`). A boot unit unseals it with the
+machine's own identity (NixOS: its sops keyFile; darwin: its host key, converted in memory), checks each
+clear text's shape, and writes `ndh.atticClient.paths`: the netrc root 0400, `write.token` 0400 to
+`writeTokenOwner` (darwin's watch-store account, root on NixOS, where `LoadCredential` copies it). Both
+pieces are on every machine before its client is enabled, so tokens are in place when it starts. Never
+through a file the operator opens in the IDE. Decided by the operator on 2026-10-17 (roles × keys ⑤,
+option B), replacing the sshfs drop-box of 2026-10-16, which was never built: with no token lifetime,
+nothing needs the periodic refresh it was for
+| atticadm, inside each metalspace's cache container (`attic-token-issue`, ciphertext only out); the
+operator's `ndh-attic-tokens-deposit <dir>` on the keyring seat sends each machine a frame of its own
+ciphertext over the fleet ssh (certificates only, over the tailnet, so a roaming metalspace is reached
+too) to `ndh-attic-tokens-receive`, by its fixed path under `sudo -n`. The receive checks the frame's
+address, the item names against the catalog, the age header and a size bound, keeps the items and runs
+the unseal; at worst a local caller replaces this machine's own tokens with garbage. Identities never
+take this path: they stay on S2
 |===
 ====
 
@@ -2044,8 +2048,8 @@ The rotation, for each cache named, then the re-issue:
   `atticd`. Every token of that cache, write and read, stops working at that moment;
 . mint new write tokens for the remaining hosts, one each, and new read tokens
   (`attic-token-issue`, same subjects and scopes, the same far validity);
-. carry the new ciphertext into the drop-box of every machine except a lost one (roles × keys' S3b),
-  which delivers it into `ndh.atticClient.paths`;
+. deposit the new ciphertext on every machine except a lost one (`ndh-attic-tokens-deposit`, roles ×
+  keys ⑤), whose receive unseals it into `ndh.atticClient.paths`;
 . check with <<read-test>> that the old read token gets 401 and the new one 200.
 
 Until step 3 reaches a host, that host can neither upload nor substitute from attic. It falls back to

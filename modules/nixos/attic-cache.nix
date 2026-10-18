@@ -356,7 +356,7 @@ in
       };
     };
 
-    # The operator (or the drop-box's channel) runs it on this NixOS guest: ciphertext only comes out.
+    # The operator runs it on this NixOS guest: ciphertext only comes out, for ndh-attic-tokens-deposit.
     environment.systemPackages = [
       (pkgs.writeShellApplication {
         name = "attic-token-issue";
