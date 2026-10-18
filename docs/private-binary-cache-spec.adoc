@@ -84,6 +84,39 @@ at upload (see <<attic-fork>>), and of the content guard on whatever leaves a me
 corporate vz-host's `nix copy`).
 Upstream of all of it: no plaintext on disk in a flake tree.
 
+[[why-attic]]
+== Why attic, and not the stores themselves — the operator's reason
+
+A nix store is already a cache for another store: a builder could serve its own store in place (harmonia, or
+`ssh-ng://`), signed with its key, and stacked stores (one store as an overlay on another's frozen layers) would
+share paths without any server. attic is chosen anyway, for one reason, the operator's (2026-10-18):
+
+[quote]
+____
+Les stores contiennent déjà le monde entier ; l'avantage d'attic, c'est d'avoir un contenu séparé par cache, et donc
+d'aider à identifier les vraies outputs des builds dans seedmatic.
+____
+
+A store holds everything its machine ever needed: sources, every `.drv` (`keep-derivations`), the inputs a client
+handed it, whatever an evaluation copied in. A cache holds only what was pushed into it, cache by cache: the set of
+seedmatic's own outputs. It is the same idea as prefixing our packages' names `io.seedmatic.…`
+(`io.seedmatic.ndh-nix-store-erofs-001`, …), the operator's: our outputs found at a glance, physically in a store by
+their name, logically in attic by their cache. What follows from it:
+
+* **exposure**: serving a store exposes all of it to every reader, a slipped plaintext `-source` included (the
+  2026-10-10 class); a cache exposes what was pushed, to its token holders only, after the watch-store's own skips
+  (`.drv`, `*-source`). Those skips are not enough: the watch-store pushes built outputs, and an output can EMBED an
+  evaluation-time value (a secret wrongly interpolated into a generated configuration file lands in the output
+  itself, not only in its `.drv`). That is what the fork's content filter is for, later, with the content guard on
+  what leaves by copy (see <<attic-fork>>);
+* **lifetime**: a builder's store dies with its machine; a cache outlives the builder that filled it;
+* **access**: a token per cache and per right (read, push), which a served store does not offer;
+* **retention**: per cache, independent of the machine's disk and its GC.
+
+Its cost, accepted: a second copy of each pushed path, and the push itself. Sharing a base by layers (a store over
+another's frozen layers) is not ruled out by this: it shares what a machine runs on, while attic records what
+seedmatic builds.
+
 [[per-metalspace]]
 == One private cache per metalspace — decided 2026-10-15
 
