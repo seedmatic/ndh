@@ -4,8 +4,8 @@
   pkgs,
   ...
 }:
-# How many builds each kind of builder runs at once, split by who sends them: its own (max-jobs) and its own
-# metalspace's clients (home). A receiving daemon has no cap across its
+# How many builds each kind of builder runs at once, split by who sends them: its own (max-jobs), its own
+# metalspace's clients (home) and the other metalspace's (peer). A receiving daemon has no cap across its
 # connections, each of which builds at max-jobs 1 (nix 2.34 build-remote.cc), so the sum of its shares is what a
 # builder runs at worst: the entries that point at it (modules/darwin/host-builder.nix) take their maxJobs here.
 let
@@ -24,13 +24,17 @@ in
       type = lib.types.attrsOf (lib.types.attrsOf lib.types.ints.unsigned);
       readOnly = true;
       default = {
-        darwin.own = 4;
+        darwin = {
+          own = 4;
+          peer = 1;
+        };
         nixos = {
           own = 2;
           home = 6;
+          peer = 2;
         };
       };
-      description = "Concurrent builds per kind of builder: its own max-jobs, and the maxJobs of the entries its own metalspace's clients (home) send it.";
+      description = "Concurrent builds per kind of builder: its own max-jobs, and the maxJobs of the entries its own (home) and the other (peer) metalspace's clients send it.";
     };
 
     builderSets = lib.mkOption {

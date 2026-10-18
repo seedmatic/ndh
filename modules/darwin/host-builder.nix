@@ -1,13 +1,24 @@
 {
   config,
   lib,
+  ndh,
   pkgs,
   ...
 }:
 let
   cfg = config.ndh.hostBuilder;
   capacity = config.ndh.builderCapacity;
-  guest = "${config.profile.host.hostName}-nixos";
+  self' = config.profile.host.hostName;
+  guestOf = host: "${host}-nixos";
+  guest = guestOf self';
+  # The other metalspaces: one darwin host each in the inventory, with its NixOS guest.
+  others = lib.filter (h: h != self') (
+    lib.attrNames (lib.attrByPath [ "context" "inventory" "hosts" ] { } ndh)
+  );
+  guestFeatures = [
+    "big-parallel"
+    "nixos-test"
+  ];
   # kvm is the INTENT: the guest has /dev/kvm when Tart launches it with --nested. The guest
   # advertises what the running VM really has (modules/nixos/nix-settings.nix), so a kvm build
   # sent while NESTED_VIRT=0 overrides it fails there instead of falling back to TCG.
@@ -15,18 +26,43 @@ let
     hostName = "nix-store.${guest}";
     systems = [ "aarch64-linux" ];
     maxJobs = capacity.nixos.home;
-    speedFactor = 1;
+    speedFactor = home;
+    supportedFeatures = guestFeatures ++ lib.optional config.tart.configGenerator.vmRunNestedVirt "kvm";
+  };
+  # nix ranks the machines with a free slot by busy slots / speedFactor (build-remote.cc): the own guest wins while
+  # both are idle, and an idle peer wins as soon as home has one build running (1/10 > 0/1).
+  home = 10;
+  peer = 1;
+  # The other metalspace's Mac, for darwin builds: it receives them untrusted and forwards none
+  # (inboundDaemonArgs below), so a build never comes back to the store holding its locks.
+  peerMac = host: {
+    hostName = "nix-store.${host}";
+    systems = [ "aarch64-darwin" ];
+    maxJobs = capacity.darwin.peer;
+    speedFactor = peer;
+    # The Mac's own system-features (nix's darwin default, not set in ndh).
     supportedFeatures = [
+      "apple-virt"
+      "benchmark"
       "big-parallel"
       "nixos-test"
-    ]
-    ++ lib.optional config.tart.configGenerator.vmRunNestedVirt "kvm";
+    ];
+  };
+  # Another metalspace's guest: its launch-time kvm is not known here, so no kvm build goes to it.
+  peerGuest = host: {
+    hostName = "nix-store.${guestOf host}";
+    systems = [ "aarch64-linux" ];
+    maxJobs = capacity.nixos.peer;
+    speedFactor = peer;
+    supportedFeatures = guestFeatures;
   };
   # The builders sets ndh-builders switches between. A Mac builds its own darwin derivations itself: it is never
   # an entry of its own lists, since a build holds its output locks while the hook runs and a request to the same
   # store waits on them forever (nix 2.34 derivation-building-goal.cc; measured on nikopol, 2026-10-18).
-  sets = {
+  sets = rec {
     metalspace = [ ownGuest ];
+    # To spread builds while the operator is on their local network, both metalspaces close by.
+    fabric = metalspace ++ map peerMac others ++ map peerGuest others;
   };
   # nix's machines file: uri, systems, ssh key, maxJobs, speedFactor, supported, mandatory, host key.
   line =
@@ -96,11 +132,11 @@ in
   config = lib.mkMerge [
     (lib.mkIf (cfg == "steady") {
       nixStoreIdentity = {
-        extraPeers = [ guest ];
-        # A Mac serves nix-store UNTRUSTED (❄️, nix 2.34): through the stdio relay, which hands the real daemon an
-        # empty builders list and drops the client's, so a build a Mac receives is built there and never forwarded;
-        # and an untrusted client imports no unsigned path and relaxes no setting. Root on one Mac holds the
-        # nix-store client key, so a trusted nix-store would make it root to every other Mac's daemon.
+        extraPeers = [ guest ] ++ map guestOf others;
+        tailnetPeers = others ++ map guestOf others;
+        # The chaining cut (❄️, nix 2.34): served untrusted through the stdio relay, which hands the real daemon
+        # an empty builders list and drops the client's, so a build this Mac receives is built here, never
+        # forwarded, by the client's list or its own fabric one.
         inboundTrusted = false;
         # The features first: --force-untrusted and --process-ops require them as soon as they are parsed.
         inboundDaemonArgs = [
