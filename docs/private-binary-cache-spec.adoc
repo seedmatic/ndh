@@ -104,8 +104,11 @@ seedmatic's own outputs. It is the same idea as prefixing our packages' names `i
 their name, logically in attic by their cache. What follows from it:
 
 * **exposure**: serving a store exposes all of it to every reader, a slipped plaintext `-source` included (the
-  2026-10-10 class); a cache exposes what was pushed, after the watch-store's own skips (`.drv`, `*-source`) and,
-  later, the fork's content filter (see <<attic-fork>>);
+  2026-10-10 class); a cache exposes what was pushed, to its token holders only, after the watch-store's own skips
+  (`.drv`, `*-source`). Those skips are not enough: the watch-store pushes built outputs, and an output can EMBED an
+  evaluation-time value (a secret wrongly interpolated into a generated configuration file lands in the output
+  itself, not only in its `.drv`). That is what the fork's content filter is for, later, with the content guard on
+  what leaves by copy (see <<attic-fork>>);
 * **lifetime**: a builder's store dies with its machine; a cache outlives the builder that filled it;
 * **access**: a token per cache and per right (read, push), which a served store does not offer;
 * **retention**: per cache, independent of the machine's disk and its GC.
