@@ -483,10 +483,10 @@ check() { printf '{"cwd":"%s"}' "$1" | bash "$H/sops-filter-check.sh"; }
   [ "$status" -eq 0 ] && [ -z "$output" ]
 }
 
-# --- notify-log ---
+# --- notify ---
 notify() { # $1 = payload; the registry knows one session, "mine"
   printf '{"sessions": {"mine": {"conversations": ["abcd1234-0000"]}}}\n' >"$T/registry.json"
-  printf '%s' "$1" | XDG_STATE_HOME="$T/state" CLAUDE_SESSION_REGISTRY="$T/registry.json" bash "$H/notify-log.sh"
+  printf '%s' "$1" | XDG_STATE_HOME="$T/state" CLAUDE_SESSION_REGISTRY="$T/registry.json" bash "$H/notify.sh"
 }
 logged() { jq -r "$1" "$T/state/claude-notify/log.jsonl"; }
 
@@ -519,7 +519,7 @@ logged() { jq -r "$1" "$T/state/claude-notify/log.jsonl"; }
 }
 
 @test "notify: with no registry, the event is still logged" {
-  run bash -c 'printf "{\"notification_type\": \"auth_success\"}" | XDG_STATE_HOME="$1" CLAUDE_SESSION_REGISTRY=/nonexistent bash "$2"' _ "$T/state" "$H/notify-log.sh"
+  run bash -c 'printf "{\"notification_type\": \"auth_success\"}" | XDG_STATE_HOME="$1" CLAUDE_SESSION_REGISTRY=/nonexistent bash "$2"' _ "$T/state" "$H/notify.sh"
   [ "$status" -eq 0 ]
   [ "$(logged .type)" = "auth_success" ]
 }
@@ -529,4 +529,48 @@ logged() { jq -r "$1" "$T/state/claude-notify/log.jsonl"; }
   [ "$status" -eq 0 ]
   [ "$(stat -c %a "$T/state/claude-notify")" = 700 ]
   [ "$(stat -c %a "$T/state/claude-notify/log.jsonl")" = 600 ]
+}
+
+# A stand-in osascript records each argument on its own line, so a test reads exactly what AppleScript received.
+stub_osascript() {
+  mkdir -p "$T/bin"
+  printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$@" >>"%s/osascript.argv"\n' "$T" >"$T/bin/osascript"
+  chmod +x "$T/bin/osascript"
+}
+notified() { PATH="$T/bin:$PATH" notify "$1"; }
+
+@test "notify: a permission prompt raises a notification titled with the session's engraved name" {
+  stub_osascript
+  run notified '{"notification_type": "permission_prompt", "session_id": "abcd1234-0000", "message": "Claude needs your permission to use Bash"}'
+  [ "$status" -eq 0 ]
+  [ "$(tail -2 "$T/osascript.argv" | head -1)" = "Claude · mine" ]
+  [ "$(tail -1 "$T/osascript.argv")" = "Claude needs your permission to use Bash" ]
+  grep -qxF 'display notification (item 2 of argv) with title (item 1 of argv) sound name "Glass"' "$T/osascript.argv"
+}
+
+@test "notify: an idle prompt or an auth success is logged, not notified" {
+  stub_osascript
+  run notified '{"notification_type": "idle_prompt", "session_id": "abcd1234-0000", "message": "waiting"}'
+  [ "$status" -eq 0 ]
+  run notified '{"notification_type": "auth_success", "message": "ok"}'
+  [ "$status" -eq 0 ]
+  [ ! -e "$T/osascript.argv" ]
+  [ "$(logged .type | wc -l)" -eq 2 ]
+}
+
+@test "notify: a message reaches AppleScript as an argument, quotes and all, never as script text" {
+  stub_osascript
+  run notified '{"notification_type": "permission_prompt", "session_id": "ffff0000-0000", "message": "x\" & (do shell script \"id\") & \""}'
+  [ "$status" -eq 0 ]
+  [ "$(tail -1 "$T/osascript.argv")" = 'x" & (do shell script "id") & "' ]
+  [ "$(tail -2 "$T/osascript.argv" | head -1)" = "Claude · ffff0000" ]
+  grep -qx 'on run argv' "$T/osascript.argv"
+}
+
+@test "notify: without osascript the prompt is still logged and the hook still succeeds" {
+  # jq and coreutils only: no directory that holds an osascript.
+  tools="$(dirname "$(command -v jq)"):$(dirname "$(command -v mkdir)")"
+  run env PATH="$tools" XDG_STATE_HOME="$T/state" "$BASH" "$H/notify.sh" <<<'{"notification_type": "permission_prompt", "message": "m"}'
+  [ "$status" -eq 0 ]
+  [ "$(logged .type)" = "permission_prompt" ]
 }

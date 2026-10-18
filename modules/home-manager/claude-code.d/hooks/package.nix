@@ -74,10 +74,10 @@ in
         hooks = [ (entry "memory-commit.sh" 20 "Committing memory...") ];
       }
     ];
-    # No matcher: every notification type is logged, since which ones fire is what this measures.
+    # No matcher: every type is logged; the ones that wait on the operator also raise a macOS notification.
     Notification = [
       {
-        hooks = [ (entry "notify-log.sh" 5 "Logging the notification...") ];
+        hooks = [ (entry "notify.sh" 5 "Notifying the operator, and logging...") ];
       }
     ];
   };

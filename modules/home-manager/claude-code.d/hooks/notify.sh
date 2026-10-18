@@ -1,16 +1,17 @@
 #!/usr/bin/env bash
-# Notification hook, step ① of notify-on-prompt: log every notification Claude Code sends, ping no one.
+# Notification hook: a session that waits on the operator says so, and every notification is logged.
 #
-# The docs name the types (permission_prompt, idle_prompt, elicitation_dialog…) but not whether a prompt
-# in the VS Code extension, or a hook's or the classifier's "ask", fires one. This log is the measure:
-# one JSON line per event, with the session's engraved name when the registry knows it, so the
-# notifying step is built on what actually fires. A Notification hook cannot block anything, and this
-# one never fails the session: a malformed payload is logged as such.
+# Measured with the log alone (2026-10-18): in the VS Code extension, permission_prompt fires for a tool prompt and
+# for a question (AskUserQuestion) alike, and idle_prompt never fired. So a permission_prompt, or an MCP dialog,
+# raises a macOS notification naming the session by its engraved name; every type is still logged. The message
+# reaches AppleScript as an argument, never as script text, so nothing in it can run. A Notification hook cannot
+# block anything, and this one never fails the session: a malformed payload is logged as such.
 set -uo pipefail
 
 input="$(cat)"
 field() { printf '%s' "$input" | jq -r --arg k "$1" '.[$k] // "" | tostring' 2>/dev/null; }
 session_id="$(field session_id)"
+type="$(field notification_type)"
 
 name=""
 registry="${CLAUDE_SESSION_REGISTRY:-}"
@@ -18,6 +19,17 @@ if [[ -n "$session_id" && -r "$registry" ]]; then
   name="$(jq -r --arg s "$session_id" \
     '.sessions | to_entries[] | select(.value.conversations // [] | index($s)) | .key' "$registry" 2>/dev/null | head -1)"
 fi
+
+case "$type" in
+  permission_prompt | elicitation_dialog | elicitation_url_dialog)
+    message="$(field message)"
+    if command -v osascript >/dev/null 2>&1; then
+      osascript -e 'on run argv' \
+        -e 'display notification (item 2 of argv) with title (item 1 of argv) sound name "Glass"' \
+        -e 'end run' "Claude · ${name:-${session_id:0:8}}" "${message:0:200}" >/dev/null 2>&1 || true
+    fi
+    ;;
+esac
 
 log="${XDG_STATE_HOME:-$HOME/.local/state}/claude-notify/log.jsonl"
 # Session names and paths are the operator's alone: the directory 0700, the log 0600.
