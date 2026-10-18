@@ -420,3 +420,75 @@ mkstate() {
 @test "pulumi-state glob: .[p]ulumi-state/*"       { mkstate; HOME="$BATS_TEST_TMPDIR/home" run hook "head $W/.[p]ulumi-state/*"; denied; }
 @test "pulumi-state glob: .pulumi-*/ an absent x"  { mkstate; HOME="$BATS_TEST_TMPDIR/home" run hook "cat $W/.pulumi-*/x"; denied; }
 @test "ok a glob that misses the state"            { mkstate; HOME="$BATS_TEST_TMPDIR/home" run hook "cat $W/src/*"; allowed; }
+
+# --- launchers: the command a launcher runs elsewhere is judged like an ssh remote command ---
+@test "launcher: tart exec of a mutating incus"       { run hook 'tart exec -i nikopol-nixos incus delete c1'; denied; }
+@test "launcher: tart exec of a shell of kubectl"     { run hook 'tart exec vm sh -c "kubectl delete ns x"'; denied; }
+@test "launcher: kubectl exec of a mutating helm"    { run hook 'kubectl exec -n x pod -- helm uninstall x'; denied; }
+@test "launcher: kubectl exec without -- keeps its flags" { run hook 'kubectl exec pod rm -rf /Users/tester/.claude'; asked; }
+@test "launcher: docker exec of a mutating helm"      { run hook 'docker exec -it -u root c1 helm uninstall x'; denied; }
+@test "launcher: podman exec of a mutating pulumi"    { run hook 'podman exec c1 pulumi up --yes'; denied; }
+@test "launcher: chroot of a protected read"          { run hook 'chroot /mnt cat /Users/tester/.ssh/id_ed25519'; denied; }
+@test "launcher: nsenter of a mutating kubectl"      { run hook 'nsenter -t 1 -m -- kubectl delete ns x'; denied; }
+@test "launcher: systemd-run of a mutating kubectl"   { run hook 'systemd-run --user -p X=1 kubectl apply -f m.yaml'; denied; }
+@test "launcher: machinectl shell of a mutating incus" { run hook 'machinectl shell root@c1 /run/current-system/sw/bin/incus delete c1'; denied; }
+@test "launcher: incus exec stays a gated verb"       { run hook 'incus exec c1 -- ls'; denied; }
+@test "launcher: chroot with no command is a shell"   { run hook 'chroot /mnt'; asked; }
+@test "launcher: machinectl shell with no command"    { run hook 'machinectl shell c1'; asked; }
+@test "ok launcher: tart exec of a read-only incus"   { run hook 'tart exec incus-probe incus list'; allowed; }
+@test "ok launcher: kubectl exec of a listing"        { run hook 'kubectl exec -n x pod -- ls /'; allowed; }
+@test "ok launcher: docker exec of a listing"         { run hook 'docker exec c1 ls /'; allowed; }
+
+# --- find: what -exec runs, and a removal fed by xargs ---
+@test "find: -exec sh reading a protected key" {
+  run hook 'find /tmp -name x -exec sh -c "cat /Users/tester/.ssh/id_ed25519" \;'
+  denied
+}
+@test "find: -exec sh of a mutating kubectl" {
+  run hook 'find /tmp/work -name m.yaml -exec sh -c "kubectl apply -f m.yaml" \;'
+  denied
+}
+@test "ok find: -exec of a reader on a scratch tree" {
+  run hook 'find /tmp/work -name "*.log" -exec wc -l {} +'
+  allowed
+}
+@test "xargs: rm fed by find"       { run hook 'find /tmp/work -name x | xargs rm'; denied; }
+@test "xargs: -0 rm -f"             { run hook 'find /tmp/work -print0 | xargs -0 rm -f'; denied; }
+@test "xargs: unlink"               { run hook 'ls | xargs -n1 unlink'; denied; }
+@test "xargs: mv"                   { run hook 'ls | xargs -I@ mv @ /tmp'; denied; }
+@test "ok xargs: a reader"          { run hook 'ls /tmp/work | xargs wc -l'; allowed; }
+
+# --- git under a reset environment: the session's sops-neutral config is gone ---
+@test "git env reset: env -i git show"            { run hook 'env -i git show HEAD:.secrets/x.yaml'; denied; }
+@test "git env reset: env - git diff"             { run hook 'env - git diff HEAD~1'; denied; }
+@test "git env reset: env -u GIT_CONFIG_COUNT"    { run hook 'env -u GIT_CONFIG_COUNT git log -p -1'; denied; }
+@test "git env reset: env -uGIT_CONFIG_COUNT"     { run hook 'env -uGIT_CONFIG_COUNT git blame x.yaml'; denied; }
+@test "git env reset: sudo git cat-file"          { run hook 'sudo git cat-file --textconv HEAD:x.yaml'; denied; }
+@test "git env reset: GIT_CONFIG_COUNT=0 prefix"  { run hook 'GIT_CONFIG_COUNT=0 git show HEAD'; denied; }
+@test "git env reset: GIT_CONFIG_PARAMETERS"      { run hook "GIT_CONFIG_PARAMETERS=\"'diff.x.textconv'='sops -d'\" git show HEAD"; denied; }
+@test "git env reset: unset then git diff"        { run hook 'unset GIT_CONFIG_COUNT; git diff HEAD~1'; denied; }
+@test "git env reset: export then git show"       { run hook 'export GIT_CONFIG_COUNT=0 && git show HEAD'; denied; }
+@test "git env reset: inherited by a nested shell" { run hook "env -i bash -c 'git show HEAD'"; denied; }
+@test "git env reset: exec env -i"                { run hook 'exec env -i PATH=/usr/bin git diff'; denied; }
+@test "git env reset: a push loses its pre-push hook" { run hook 'env -i git push origin memory'; denied; }
+@test "git env reset: git -c of a sops textconv"  { run hook 'git -c diff.sops-yaml.textconv=sops-d show HEAD'; denied; }
+@test "git env reset: exec -c"                   { run hook 'exec -c git diff HEAD~1'; denied; }
+@test "git env reset: exec -cl"                  { run hook 'exec -cl git show HEAD'; denied; }
+@test "git env reset: script then env -i"        { run hook 'script -q /dev/null env -i git diff HEAD~1'; denied; }
+@test "git env reset: script -c of env -i"       { run hook "script -q -c 'env -i git show HEAD' /dev/null"; denied; }
+@test "launcher: script of a mutating kubectl"   { run hook 'script -q /dev/null kubectl delete ns x'; denied; }
+@test "git env reset: unbuffer then env -i"      { run hook 'unbuffer env -i git diff HEAD~1'; denied; }
+@test "git env reset: stdbuf then env -i"        { run hook 'stdbuf -o0 env -i git diff HEAD~1'; denied; }
+@test "ok exec -a of a plain git"                { run hook 'exec -a x git diff HEAD~1'; allowed; }
+@test "ok script of a listing"                   { run hook 'script -q /dev/null ls'; allowed; }
+@test "ok git env reset: env -i git status"       { run hook 'env -i git status'; allowed; }
+@test "ok git env reset: sudo git log one line"   { run hook 'sudo git log --oneline -3'; allowed; }
+@test "ok git env reset: a sibling is not reset"  { run hook 'env -i true; git show HEAD'; allowed; }
+@test "ok git: bash --noprofile keeps the export" { run hook "bash --noprofile --norc -c 'git show HEAD'"; allowed; }
+
+# --- the root's ceremony VM is the operator's, but for its smoke boot ---
+@test "operator tool: ndh-ceremony-vm ceremony"   { run hook 'ndh-ceremony-vm /tmp/in /tmp/out'; denied; }
+@test "operator tool: ndh-ceremony-vm bare"       { run hook 'ndh-ceremony-vm'; denied; }
+@test "operator tool: ndh-ceremony-vm --smoke plus" { run hook 'ndh-ceremony-vm --smoke /tmp/out'; denied; }
+@test "operator tool: ndh-ceremony-vm by store path" { run hook '/nix/store/abc-ndh-ceremony-vm/bin/ndh-ceremony-vm /tmp/in /tmp/out'; denied; }
+@test "ok ndh-ceremony-vm --smoke"                { run hook 'ndh-ceremony-vm --smoke'; allowed; }

@@ -65,8 +65,10 @@
     "deny": ["mcp__plugin_atlassian_atlassian__executeDestructive"]
   },
   "operator_tools": {
-    "programs": ["ssh-keys-certify", "ssh-keys-renew", "attic-leaf-sign", "incus-cluster-cert-renew", "ndh-keyring", "ndh-identity-push"],
-    "why": "reads the operator's secrets (keys.yaml, an authority's signing slot, the keyring): the operator runs it"
+    "programs": ["ssh-keys-certify", "ssh-keys-renew", "attic-leaf-sign", "incus-cluster-cert-renew", "ndh-keyring", "ndh-identity-push",
+                 "ndh-ceremony-vm"],
+    "session_forms": {"ndh-ceremony-vm": [["--smoke"]]},
+    "why": "reads or makes the operator's secrets (keys.yaml, an authority's signing slot, the keyring, the root's ceremony): the operator runs it"
   },
   "list_extra_rules": ["mv ~/.claude*",
                        "ssh-keys-certify", "ssh-keys-certify *", "ssh-keys-renew", "ssh-keys-renew *", "attic-leaf-sign", "attic-leaf-sign *", "incus-cluster-cert-renew", "incus-cluster-cert-renew *", "ndh-keyring", "ndh-keyring *", "ndh-identity-push", "ndh-identity-push *",

@@ -29,6 +29,8 @@ KEYWORDS = {"if", "then", "else", "elif", "fi", "do", "done", "while", "until", 
 REDIRECTS = re.compile(r"^\d*(?:<<<|<<-|<<|>>|>&|<&|&>>|&>|>\||<>|<|>)$")
 ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 SHELLS = {"bash", "sh", "zsh", "dash", "ksh", "fish"}
+# The variables through which the session's git config is made sops-neutral (sops-git-env.sh).
+GIT_ENV = re.compile(r"^GIT_CONFIG(?:_COUNT|_KEY_\d+|_VALUE_\d+|_PARAMETERS|_GLOBAL|_SYSTEM|_NOSYSTEM)?$")
 CLAUDE_DIR = re.compile(r"^(?:~|\$\{?HOME\}?|/(?:Users|home)/[^/]+|/var/root)/\.claude(?:$|[./_-])")
 
 
@@ -415,6 +417,8 @@ class Analyzer:
         self.protected_globs = protected_globs(table, home)
         self._existing = None
         self.verdicts = []
+        self.git_env_reset = False
+        self.git_env_tainted = False
 
     def deny(self, why, argv):
         self.verdicts.append(("deny", f"{why}: {' '.join(argv)}"))
@@ -441,6 +445,13 @@ class Analyzer:
         # The assignments in front of the command, kept for check(): GIT_CONFIG_GLOBAL=/dev/null drops the
         # global hooks and sops filters of the git command it prefixes.
         self.assignments = []
+        saved = self.git_env_reset
+        try:
+            self.unwrap_chain(argv, depth)
+        finally:
+            self.git_env_reset = saved
+
+    def unwrap_chain(self, argv, depth):
         while argv:
             # A loop or a function runs its body any number of times, in any order: from there on, a cd is never
             # followed, since textual order is not execution order.
@@ -475,6 +486,8 @@ class Analyzer:
     def peel(self, prog, rest, depth):
         """The wrapped command line inside PROG REST, [] when there is none, None if PROG is not a wrapper."""
         if prog in ("sudo", "doas"):
+            # Their environment is reset: the session's sops-neutral git config is gone.
+            self.git_env_reset = True
             return rest[skip_options(rest, {"-u", "-g", "-C", "-D", "-h", "-p", "-r", "-t", "-U", "-T",
                                              "--user", "--group", "--host", "--prompt"}):]
         if prog == "env":
@@ -494,10 +507,18 @@ class Analyzer:
                         rest[i + 1] if i + 1 < len(rest) else "")
                     self.move_cwd(target)
                     i += 1 if attached else 2
-                elif tok in ("-u", "--unset"):
-                    i += 2
+                elif tok in ("-i", "-", "--ignore-environment"):
+                    self.git_env_reset = True
+                    i += 1
+                elif tok in ("-u", "--unset") or tok.startswith(("-u", "--unset=")):
+                    name = rest[i + 1] if tok in ("-u", "--unset") and i + 1 < len(rest) else tok.split("=", 1)[1] if \
+                        tok.startswith("--unset=") else tok[2:]
+                    if GIT_ENV.match(name):
+                        self.git_env_reset = True
+                    i += 2 if tok in ("-u", "--unset") else 1
                 elif ASSIGNMENT.match(tok):
                     self.assignments.append(tok)
+                    self.note_env(tok)
                     i += 1
                 elif tok.startswith("-"):
                     i += 1
@@ -509,7 +530,23 @@ class Analyzer:
                 return []
             return rest[skip_options(rest, {"-a"}):]
         if prog == "exec":
-            return rest[skip_options(rest, {"-a"}):]
+            i = skip_options(rest, {"-a"})
+            # bash's `exec -c` runs the command with an empty environment.
+            if any(t.startswith("-") and not t.startswith("--") and "c" in t[1:] for t in rest[:i] if t != "-a"):
+                self.git_env_reset = True
+            return rest[i:]
+        if prog == "script":
+            # util-linux: `script -c CMD [file]`; BSD: `script [opts] [file [command …]]`.
+            for k, tok in enumerate(rest):
+                if tok in ("-c", "--command") and k + 1 < len(rest):
+                    self.analyze(rest[k + 1], depth + 1)
+                    return []
+                if tok.startswith("--command="):
+                    self.analyze(tok.split("=", 1)[1], depth + 1)
+                    return []
+            i = skip_options(rest, {"-t", "-T", "-F", "-I", "-O", "-B", "-E", "-m", "--timing", "--log-in",
+                                    "--log-out", "--log-io", "--log-timing", "--echo", "--logging-format"})
+            return rest[i + 1:]
         if prog == "nice":
             return rest[skip_options(rest, {"-n", "--adjustment"}):]
         if prog == "ionice":
@@ -522,9 +559,14 @@ class Analyzer:
         if prog == "caffeinate":
             return rest[skip_options(rest, {"-t", "-w"}):]
         if prog == "xargs":
-            return rest[skip_options(rest, {"-n", "-L", "-l", "-I", "-i", "-P", "-d", "-E", "-e", "-s", "-a",
-                                             "--max-args", "--max-lines", "--max-procs", "--delimiter",
-                                             "--arg-file", "--replace"}):]
+            inner = rest[skip_options(rest, {"-n", "-L", "-l", "-I", "-i", "-P", "-d", "-E", "-e", "-s", "-a",
+                                              "--max-args", "--max-lines", "--max-procs", "--delimiter",
+                                              "--arg-file", "--replace"}):]
+            # Its targets come on stdin, which the hook never sees: a remover fed that way is judged blind.
+            if inner and os.path.basename(inner[0]) in self.FIND_REMOVERS - SHELLS:
+                self.deny("a removal fed by xargs, whose targets the hook cannot see; name the paths", ["xargs"] + rest)
+                return []
+            return inner
         if prog == "watch":
             i = skip_options(rest, {"-n", "--interval", "-d", "-q"})
             self.analyze(" ".join(rest[i:]), depth + 1)
@@ -540,6 +582,19 @@ class Analyzer:
                     return []
                 if not tok.startswith("-"):
                     break
+            return []
+        launched = self.launched(prog, rest)
+        if launched is not None:
+            # The launcher's own argv is judged too: `incus exec` stays a gated verb whatever it runs.
+            self.check([prog] + rest)
+            where, inner = launched
+            if where == "here":
+                return inner
+            if inner:
+                # It runs elsewhere (a VM, a pod, a container, a chroot): judged like an ssh remote command.
+                self.analyze(" ".join(shlex.quote(a) for a in inner), depth + 1)
+            elif where == "shell":
+                self.ask(f"an interactive shell through {prog}, which the hook cannot see into", [prog] + rest)
             return []
         if prog == "ssh":
             i = skip_options(rest, set("-b -c -D -E -e -F -I -i -J -L -l -m -O -o -p -Q -R -S -W -w -B".split()))
@@ -640,6 +695,57 @@ class Analyzer:
                 or not all(re.fullmatch(spec["arg"], w) for w in words[1:])):
             self.deny(f"remote command {' '.join(remote)!r} toward vzrecover.*: {spec['why']}", argv)
 
+    def launched(self, prog, rest):
+        """A launcher that runs a command elsewhere or as another context: ("away", argv) for a VM, a pod, a container
+        or a chroot; ("here", argv) for a local one (nsenter, systemd-run); ("shell", []) for an interactive shell;
+        None when PROG launches nothing."""
+        def after(i):
+            return rest[i:] if i < len(rest) else []
+        if prog == "tart" and rest[:1] == ["exec"]:
+            i = 1 + skip_options(rest[1:], set())
+            return ("away", after(i + 1)) if i < len(rest) else None
+        if prog == "kubectl":
+            value_opts = {"-n", "--namespace", "--context", "--kubeconfig", "--cluster", "--user", "-c", "--container",
+                          "-s", "--server", "--token", "-f", "--filename", "--pod-running-timeout"}
+            if positionals(rest, value_opts)[:1] != ["exec"]:
+                return None
+            if "--" in rest:
+                return ("away", rest[rest.index("--") + 1:])
+            # The old form, with no `--`: the command is all that follows the pod, its own flags kept.
+            seen, j = 0, 0
+            while j < len(rest) and seen < 2:
+                tok = rest[j]
+                if tok.startswith("-"):
+                    j += 2 if "=" not in tok and tok in value_opts else 1
+                    continue
+                seen += 1
+                j += 1
+            return ("away", rest[j:])
+        if prog in ("docker", "podman") and rest[:1] == ["exec"]:
+            i = 1 + skip_options(rest[1:], {"-u", "--user", "-w", "--workdir", "-e", "--env", "--env-file",
+                                            "--detach-keys"})
+            return ("away", after(i + 1)) if i < len(rest) else None
+        if prog == "chroot":
+            i = skip_options(rest, {"--userspec", "--groups"})
+            return (("away", after(i + 1)) if after(i + 1) else ("shell", [])) if i < len(rest) else None
+        if prog == "incus" and rest[:1] in (["exec"], ["shell"]):
+            i = 1 + skip_options(rest[1:], {"--project", "--target", "--env", "--cwd", "--user", "--group", "--mode"})
+            if rest[0] == "shell":
+                return ("shell", [])
+            tail = rest[rest.index("--", i) + 1:] if "--" in rest[i:] else after(i + 1)
+            return ("away", tail) if i < len(rest) else None
+        if prog == "machinectl" and rest[:1] in (["shell"], ["login"]):
+            pos = [a for a in rest[1:] if not a.startswith("-")]
+            return ("away", pos[1:]) if len(pos) > 1 else ("shell", [])
+        if prog == "nsenter":
+            return ("here", after(skip_options(rest, {"-t", "--target", "-S", "--setuid", "-G", "--setgid",
+                                                       "-w", "--wd", "-r", "--root"})))
+        if prog == "systemd-run":
+            return ("here", after(skip_options(rest, {"-u", "--unit", "-p", "--property", "-E", "--setenv", "--uid",
+                                                       "--gid", "-M", "--machine", "-H", "--host", "--description",
+                                                       "--slice", "--working-directory", "-d"})))
+        return None
+
     NIX_ARITY = {"--override-input": 2, "--option": 2, "--arg": 2, "--argstr": 2}
     NIX_VALUE = {"-I", "--inputs-from", "--profile", "--expr", "-f", "--file", "--override-input",
                  "--option", "--arg", "--argstr", "--store", "--eval-store", "--include"}
@@ -679,6 +785,9 @@ class Analyzer:
         """An assignment (or an export/unset name) that changes how cd moves: HOME is what ~, $HOME and a bare cd
         expand to, and CDPATH sends a relative cd elsewhere. Once either is touched, the hook no longer trusts them."""
         name = tok.split("=", 1)[0]
+        if GIT_ENV.match(name):
+            # The session's git env holds the sops-neutral config: once rewritten, a later git may decrypt.
+            self.git_env_tainted = True
         if name == "HOME":
             self.home_tainted = True
         elif name == "CDPATH":
@@ -993,7 +1102,11 @@ class Analyzer:
     # git commit's short options that take a value: in a cluster, what follows one of them is that value.
     COMMIT_VALUE_SHORT = "mFCctSu"
     # A guard lives in the global config (hooksPath, the sops filters): these drop it for the command.
-    GUARD_KEYS = re.compile(r"^(?:core\.hookspath|filter\.sops)", re.I)
+    GUARD_KEYS = re.compile(r"^(?:core\.hookspath|filter\.sops|diff\.sops)", re.I)
+    # Under a reset git environment, only what never runs a filter, a textconv or a hook.
+    RESET_SAFE = {"status", "rev-parse", "branch", "remote", "fetch", "ls-files", "ls-tree", "rev-list", "config",
+                  "tag", "describe", "show-ref", "for-each-ref", "merge-base", "version", "help", "log"}
+    PATCH_FLAGS = re.compile(r"^(?:-p|-u|-L.*|-c|--cc|--patch.*|--textconv|--word-diff.*|--full-diff|--ext-diff)$")
     GUARD_ENV = {"GIT_CONFIG_GLOBAL", "GIT_CONFIG_NOSYSTEM"}
     WRITES_HISTORY = {"commit", "merge", "rebase", "cherry-pick", "am"}
     # Older briefs gave sessions a `-c core.hooksPath=… -c user.signingkey=…` recipe: the refusal names today's.
@@ -1018,11 +1131,17 @@ class Analyzer:
             elif tok.startswith("--config-env="):
                 key = tok.split("=", 1)[1]
             if key and self.GUARD_KEYS.match(key):
-                self.deny(f"git -c overrides a guard (core.hooksPath or a sops filter); {self.COMMIT_RECIPE}", argv)
+                self.deny(f"git -c overrides a guard (core.hooksPath, a sops filter or textconv); {self.COMMIT_RECIPE}", argv)
                 return
         sub = args[i] if i < len(args) else None
         if sub in self.WRITES_HISTORY and any(a.split("=", 1)[0] in self.GUARD_ENV for a in self.assignments):
             self.deny(f"git {sub} without the global config drops its hooks and sops filters; {self.COMMIT_RECIPE}", argv)
+            return
+        if (self.git_env_reset or self.git_env_tainted) and (
+                sub not in self.RESET_SAFE or sub == "log" and any(self.PATCH_FLAGS.match(a) for a in args[i + 1:])):
+            self.deny(f"git {sub} under a reset or rewritten git environment, where the sops filters and textconv are no "
+                      "longer neutral (env -i/-u, sudo, a GIT_CONFIG* assignment); run it in the session's own environment",
+                      argv)
             return
         if sub == "commit":
             for tok in args[i + 1:]:
@@ -1091,6 +1210,12 @@ class Analyzer:
                                      for a in args):
                 self.deny(f"git toward vz-recover: {spec['why']}", argv)
                 return
+        if prog == "find":
+            for k, a in enumerate(args):
+                if a in ("-exec", "-execdir", "-ok", "-okdir"):
+                    end = next((j for j in range(k + 1, len(args)) if args[j] in (";", "+")), len(args))
+                    if args[k + 1:end]:
+                        self.analyze(" ".join(shlex.quote(x) for x in args[k + 1:end]), 1)
         if prog == "find" and self.find_removes(args):
             why = self.find_removal(args)
             if why:
@@ -1125,11 +1250,14 @@ class Analyzer:
     # Commands that neither write nor run anything else: they may stand beside an owned removal (security, 2026-10-17).
     NEUTRAL = {"cd", "pushd", "echo", "printf", "ls", "test", "[", "true", "stat"}
 
+    FIND_REMOVERS = {"rm", "rmdir", "unlink", "shred", "mv"} | SHELLS
+
     @staticmethod
     def find_removes(args):
-        """Whether find deletes what it finds: -delete, or rm/rmdir run by -exec, -execdir, -ok or -okdir."""
+        """Whether find deletes what it finds: -delete, or a remover or a shell run by -exec, -execdir, -ok or -okdir
+        (a shell's script is not seen, so it is taken for a remover)."""
         return any(a == "-delete" or (a in ("-exec", "-execdir", "-ok", "-okdir") and i + 1 < len(args)
-                                      and os.path.basename(args[i + 1]) in ("rm", "rmdir"))
+                                      and os.path.basename(args[i + 1]) in Analyzer.FIND_REMOVERS)
                    for i, a in enumerate(args))
 
     def find_removal(self, args):
@@ -1169,7 +1297,7 @@ class Analyzer:
         prog, args = argv[0], argv[1:]
         # By its base name, so a store path and `nix run …#<tool>` (unwrapped to the attribute) count too.
         tools = self.table.get("operator_tools", {})
-        if prog in tools.get("programs", []):
+        if prog in tools.get("programs", []) and args not in tools.get("session_forms", {}).get(prog, []):
             self.deny(f"{prog} {tools['why']}", argv)
             return
         if prog == "ndh-ops" and args[:1] == ["arm"]:
