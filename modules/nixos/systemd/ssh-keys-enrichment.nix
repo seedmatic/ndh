@@ -200,11 +200,26 @@ in
       #
       #    Feed generatedSystemKeysYamlPath (system-profile filtered) so
       #    keys outside the system profile don't spill their pubs here.
+      #    A guest that only receives (nixStoreIdentity.outbound off) gets no nix-store client key: its
+      #    sshd checks an inbound request against the authority and the principals, never this private.
+      ${
+        if config.nixStoreIdentity.outbound then
+          ''systemKeysInput="${generatedSystemKeysYamlPath}"''
+        else
+          ''
+            # Beside its source, in the same root-only directory: it holds the other keys' privates.
+            systemKeysInput="$(mktemp "$(dirname "${generatedSystemKeysYamlPath}")/system-keys.XXXXXX")"
+            ${pkgs.yq-go}/bin/yq eval 'del(.keys["${config.nixStoreIdentity.inboundUserName}"])' \
+              "${generatedSystemKeysYamlPath}" > "$systemKeysInput"
+            rm -f "${config.nixStoreIdentity.keyPath}" "${config.nixStoreIdentity.certPath}"
+          ''
+      }
       ${pkgs.bash}/bin/bash ${sshKeysEnrichmentTools}/bin/ssh-extract-keys \
-        "${generatedSystemKeysYamlPath}" \
+        "$systemKeysInput" \
         "${config.sshPaths.systemKeysDir}" \
         root \
         "${config.sshPaths.systemKeysDir}"
+      ${lib.optionalString (!config.nixStoreIdentity.outbound) ''rm -f "$systemKeysInput"''}
 
       ${lib.optionalString hasUserProfile ''
         # User-scope pass: populate sshPaths.secretsKeysDir for HM consumers.

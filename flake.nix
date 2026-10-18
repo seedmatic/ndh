@@ -1426,6 +1426,16 @@
             assert lib.assertMsg (
               lib.all (g: stanzas g == [ ]) guests && stanzas guestOutbound != [ ]
             ) "the guests render no nix-store alias (a received build is never forwarded)";
+            assert lib.assertMsg (lib.all (
+              g:
+              lib.hasInfix ''del(.keys["nix-store"])'' (
+                builtins.unsafeDiscardStringContext g.config.systemd.services.io-seedmatic-ndh-ssh-keys-enrichment.script
+              )
+            ) guests) "the guests extract no nix-store client key";
+            assert lib.assertMsg (
+              self.nixosConfigurations.bioskop-bringup.config.nixStoreIdentity.outbound
+              && stanzas self.nixosConfigurations.bioskop-bringup != [ ]
+            ) "the bring-up system keeps its nix-store alias, for the operator's manual rescue";
             assert lib.assertMsg (lib.all (b: lib.hasInfix "ConnectTimeout 5\n" b) (
               stanzas mac
             )) "every nix-store alias fails fast on a cut route";
