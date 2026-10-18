@@ -472,6 +472,15 @@ mkstate() {
 @test "git env reset: exec env -i"                { run hook 'exec env -i PATH=/usr/bin git diff'; denied; }
 @test "git env reset: a push loses its pre-push hook" { run hook 'env -i git push origin memory'; denied; }
 @test "git env reset: git -c of a sops textconv"  { run hook 'git -c diff.sops-yaml.textconv=sops-d show HEAD'; denied; }
+@test "git env reset: exec -c"                   { run hook 'exec -c git diff HEAD~1'; denied; }
+@test "git env reset: exec -cl"                  { run hook 'exec -cl git show HEAD'; denied; }
+@test "git env reset: script then env -i"        { run hook 'script -q /dev/null env -i git diff HEAD~1'; denied; }
+@test "git env reset: script -c of env -i"       { run hook "script -q -c 'env -i git show HEAD' /dev/null"; denied; }
+@test "launcher: script of a mutating kubectl"   { run hook 'script -q /dev/null kubectl delete ns x'; denied; }
+@test "git env reset: unbuffer then env -i"      { run hook 'unbuffer env -i git diff HEAD~1'; denied; }
+@test "git env reset: stdbuf then env -i"        { run hook 'stdbuf -o0 env -i git diff HEAD~1'; denied; }
+@test "ok exec -a of a plain git"                { run hook 'exec -a x git diff HEAD~1'; allowed; }
+@test "ok script of a listing"                   { run hook 'script -q /dev/null ls'; allowed; }
 @test "ok git env reset: env -i git status"       { run hook 'env -i git status'; allowed; }
 @test "ok git env reset: sudo git log one line"   { run hook 'sudo git log --oneline -3'; allowed; }
 @test "ok git env reset: a sibling is not reset"  { run hook 'env -i true; git show HEAD'; allowed; }

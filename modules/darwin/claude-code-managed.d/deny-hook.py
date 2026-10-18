@@ -530,7 +530,23 @@ class Analyzer:
                 return []
             return rest[skip_options(rest, {"-a"}):]
         if prog == "exec":
-            return rest[skip_options(rest, {"-a"}):]
+            i = skip_options(rest, {"-a"})
+            # bash's `exec -c` runs the command with an empty environment.
+            if any(t.startswith("-") and not t.startswith("--") and "c" in t[1:] for t in rest[:i] if t != "-a"):
+                self.git_env_reset = True
+            return rest[i:]
+        if prog == "script":
+            # util-linux: `script -c CMD [file]`; BSD: `script [opts] [file [command …]]`.
+            for k, tok in enumerate(rest):
+                if tok in ("-c", "--command") and k + 1 < len(rest):
+                    self.analyze(rest[k + 1], depth + 1)
+                    return []
+                if tok.startswith("--command="):
+                    self.analyze(tok.split("=", 1)[1], depth + 1)
+                    return []
+            i = skip_options(rest, {"-t", "-T", "-F", "-I", "-O", "-B", "-E", "-m", "--timing", "--log-in",
+                                    "--log-out", "--log-io", "--log-timing", "--echo", "--logging-format"})
+            return rest[i + 1:]
         if prog == "nice":
             return rest[skip_options(rest, {"-n", "--adjustment"}):]
         if prog == "ionice":
