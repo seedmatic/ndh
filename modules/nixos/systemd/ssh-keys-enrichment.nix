@@ -209,6 +209,7 @@ in
           ''
             # Beside its source, in the same root-only directory: it holds the other keys' privates.
             systemKeysInput="$(mktemp "$(dirname "${generatedSystemKeysYamlPath}")/system-keys.XXXXXX")"
+            trap 'rm -f "$systemKeysInput"' EXIT
             ${pkgs.yq-go}/bin/yq eval 'del(.keys["${config.nixStoreIdentity.inboundUserName}"])' \
               "${generatedSystemKeysYamlPath}" > "$systemKeysInput"
             rm -f "${config.nixStoreIdentity.keyPath}" "${config.nixStoreIdentity.certPath}"
@@ -219,7 +220,10 @@ in
         "${config.sshPaths.systemKeysDir}" \
         root \
         "${config.sshPaths.systemKeysDir}"
-      ${lib.optionalString (!config.nixStoreIdentity.outbound) ''rm -f "$systemKeysInput"''}
+      ${lib.optionalString (!config.nixStoreIdentity.outbound) ''
+        rm -f "$systemKeysInput"
+        trap - EXIT
+      ''}
 
       ${lib.optionalString hasUserProfile ''
         # User-scope pass: populate sshPaths.secretsKeysDir for HM consumers.
