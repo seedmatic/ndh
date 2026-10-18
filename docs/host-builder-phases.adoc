@@ -30,8 +30,9 @@ dependencies straight from the caches instead of uploading its whole closure.
 `requests`:: Every build is a request. The Mac builds nothing itself
 (`max-jobs = 0`): its own `aarch64-darwin` builds go through ssh-ng to its own
 `nix-store` account (the loopback, `nix-store.<host>`), its `aarch64-linux`
-builds to `<host>-nixos`. Both fall back to the other metalspace's Mac and
-guest over the tailnet (`nix-store.<peer>` → `<peer>.<tailnet domain>`).
+builds to `<host>-nixos`. `ndh-builders fabric` adds the other metalspace's Mac
+and guest, over the tailnet (`nix-store.<peer>` → `<peer>.<tailnet domain>`);
+`ndh-builders metalspace`, the default, leaves them out.
 
 The builder name is *derived* from `config.profile.host.hostName`
 (`<host>-nixos`), never hardcoded — so the same module offloads
@@ -70,18 +71,37 @@ embedded builder when the host is baremetal *and* `ndh.hostBuilder == "bootstrap
 `nix.buildMachines = [ <host>-nixos ]` + `builders-use-substitutes`. The two are
 mutually exclusive by construction — never both on.
 
-=== The order of the builders in `requests`
+=== The builders in `requests`, and `ndh-builders`
+
+Two lists are generated at every switch: `/etc/nix/machines.metalspace` (the
+loopback and the own guest) and `/etc/nix/machines.fabric` (the same, plus the
+other metalspace's Mac and guest). The daemon reads `builders =
+@/var/lib/ndh/builders/active`, a root symlink to one of them; nix-darwin
+renders no list of its own. nix reads the list when a command's build hook
+starts, so `sudo ndh-builders metalspace|fabric` applies from the next nix
+command, with no daemon restart; `ndh-builders` alone prints the mode. A
+missing list is skipped silently by nix, and with `max-jobs = 0` every build
+would then fail: the command refuses such a mode, and the activation sets a
+missing or dangling pointer back to `metalspace`, keeping an existing choice.
+`fabric` is for spreading builds while the operator is on their local network;
+it is switched by hand only.
 
 nix sends a build to the machine with a free slot whose busy slots divided by
-its `speedFactor` is lowest (nix 2.34 `build-remote.cc`). The home builders
-carry 10, the other metalspace's 1: home wins while both are idle or equally
-busy, and the other metalspace takes a build when home is the busier. nix gives
-ssh no timeout, so every `nix-store.*` alias sets `ConnectTimeout 5` and
-`ServerAliveInterval 15` × 4: cutting the tailnet route to the peer metalspace
-stops the fallback within seconds. An assertion refuses `max-jobs = 0` on a
-machine whose own system has no entry, and one table, `ndh.builderCapacity`
-(darwin 4, NixOS 8), gives both a machine's own `max-jobs` and the `maxJobs` of
-the entries that send it builds.
+its `speedFactor` is lowest (nix 2.34 `build-remote.cc`): home carries 10, the
+other metalspace 1, so an idle peer wins as soon as home has one build running.
+nix gives ssh no timeout, so every `nix-store.*` alias sets `ConnectTimeout 5`
+and `ServerAliveInterval 15` × 4: a cut tailnet route fails within seconds.
+
+A receiving daemon has no cap across its connections, so `ndh.builderCapacity`
+splits each builder's capacity by who sends the builds: its own `max-jobs`, its
+own metalspace's entries (`home`), the other's (`peer`). Darwin: 4 own (0 in
+`requests`), 3 home, 1 peer; NixOS: 2 own, 6 home, 2 peer. An assertion refuses
+`max-jobs = 0` when a list has no entry for the machine's own system.
+
+The trusted `nix-store` account receives its client's `builders`, so a build
+received through the loopback can be forwarded again (chaining), bounded by the
+free slots: the last hop builds it. An episode shows as several slots held at
+once: `sudo lsof +D /nix/var/nix/current-load` lists the hooks holding them.
 
 == Per-host state
 
@@ -202,7 +222,8 @@ Before the first host moves, 🎛️ proves on it, once: the way back (a build w
 option), and one fallback cut (the tailnet route to the peer metalspace down:
 a build falls back to home within the timeout).
 
-. Set `ndh.hostBuilder = "requests"` in `hosts/<host>/darwin.nix`, and switch.
+. Set `ndh.hostBuilder = "requests"` in `hosts/<host>/darwin.nix`, and switch:
+  the activation points `ndh-builders` at `metalspace`.
 . Verify: `sudo nix store ping --store ssh-ng://nix-store.<host>` succeeds, and
   a fresh `aarch64-darwin` build is sent to the loopback.
 
