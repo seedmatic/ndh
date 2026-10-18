@@ -181,6 +181,7 @@ in
         TrustedUserCAKeys /etc/ssh/cluster-build-user-ca.pub
         Match User ${account}
           ForceCommand ${endpoint}
+          DisableForwarding yes
       '';
     };
 
