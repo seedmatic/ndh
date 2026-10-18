@@ -16,6 +16,13 @@ unset BASH_XTRACEFD 2>/dev/null || true
 #   ndh-keyring nix-signing-public <machine>
 #                                       prints the nix signing public derived from that machine's host key
 #                                       (ndh-nix-signing-derive), for keys.yaml; generates and writes nothing
+#   ndh-keyring cluster-age <n>         the cluster's age identity rke2lab-cluster-age-<n> (sops for the cluster:
+#                                       Flux, the node bundle, the in-cluster render), as seedmatic/cluster-age/<n>;
+#                                       prints its age public, for the .sops.yaml of rke2lab and nnh
+#   ndh-keyring cluster-age-public <n>  prints that public again; generates and writes nothing
+#
+# The cluster-age private leaves the keyring only on a file descriptor its consumer opens on `pass show`
+# (the grow), never through this script.
 #
 # Generates the ed25519 key IN MEMORY and inserts it; the private only ever flows through pipes, never a
 # variable, a file or an argument. Never overwrites: a replacement is a rotation, with its revocation.
@@ -34,18 +41,27 @@ die() {
 ulimit -c 0
 
 usage="usage: ndh-keyring host-key <machine> | sshfs-key <guest> | vz-recover-key <host> | nix-signing-public <machine>"
+usage+=" | cluster-age <n> | cluster-age-public <n>"
 [[ $# -eq 2 ]] || die "$usage"
 kind="$1"
 name="$2"
+allowed=()
 case "$kind" in
   host-key | nix-signing-public) allowed=("${machines[@]}") among="machines" recorded="host-${name}" usageTag=ssh-host ;;
   sshfs-key) allowed=("${guests[@]}") among="NixOS guests" recorded="sshfs-${name}" usageTag=ssh-user ;;
   vz-recover-key) allowed=("${vzHosts[@]}") among="foreign vz-hosts" recorded="vz-recover-${name}" usageTag=ssh-user ;;
+  # Not a machine: a version. A new <n> is a new key, so the version is the rotation.
+  cluster-age | cluster-age-public)
+    [[ $name =~ ^[1-9][0-9]*$ ]] || die "a cluster-age version is a positive integer, not ${name}"
+    recorded="rke2lab-cluster-age-${name}"
+    ;;
   *) die "$usage" ;;
 esac
-known=0
-for m in "${allowed[@]}"; do [[ $m == "$name" ]] && known=1; done
-((known)) || die "${name} is not one of the inventory's ${among} (${allowed[*]})"
+if ((${#allowed[@]})); then
+  known=0
+  for m in "${allowed[@]}"; do [[ $m == "$name" ]] && known=1; done
+  ((known)) || die "${name} is not one of the inventory's ${among} (${allowed[*]})"
+fi
 # Both bypass .gpg-id: the first replaces the recipients, the second can add one.
 [[ -z ${PASSWORD_STORE_KEY:-} && -z ${PASSWORD_STORE_GPG_OPTS:-} ]] ||
   die "PASSWORD_STORE_KEY or PASSWORD_STORE_GPG_OPTS is set, which would override the seedmatic recipient — unset it"
@@ -64,6 +80,17 @@ if [[ $kind == nix-signing-public ]]; then
   exit 0
 fi
 
+# The cluster-age public, from the identity already in the keyring: nothing is generated or written, and the
+# private flows from pass to age-keygen through a pipe.
+if [[ $kind == cluster-age-public ]]; then
+  ageEntry="seedmatic/cluster-age/${name}"
+  [[ -f "$store/${ageEntry}.gpg" ]] || die "${ageEntry} is not in the keyring: generate it with ndh-keyring cluster-age ${name}"
+  public="$(pass show "$ageEntry" | age-keygen -y 2>/dev/null)" || die "${ageEntry} does not read back as an age identity"
+  [[ $public == age1* ]] || die "${ageEntry} does not read back as an age identity"
+  printf '%s\n' "$public"
+  exit 0
+fi
+
 entry="seedmatic/${kind}/${name}"
 [[ -f "$store/seedmatic/.gpg-id" && "$(<"$store/seedmatic/.gpg-id")" == "${recipient}!" ]] ||
   die "${store}/seedmatic/.gpg-id is not exactly ${recipient}! — refused, nothing generated"
@@ -79,16 +106,42 @@ work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 chmod 700 "$work"
 
+# The packets, read without decrypting: exactly one recipient, the seedmatic subkey.
+checkRecipient() {
+  local keyids
+  mapfile -t keyids < <(gpg --batch --list-only --list-packets "$store/${entry}.gpg" 2>/dev/null |
+    sed -n 's/^:pubkey enc packet:.* keyid \([0-9A-Fa-f]*\).*/\1/p')
+  [[ ${#keyids[@]} -eq 1 && ${keyids[0]^^} == "${recipient^^}" ]] ||
+    die "${entry} is encrypted to [${keyids[*]}], not to ${recipient} alone — check it, nothing was removed"
+}
+
+# The cluster's age identity: age-keygen writes the identity on stdout, straight into pass, and its public on
+# stderr when stdout is not a terminal.
+if [[ $kind == cluster-age ]]; then
+  # With pipefail the insert may have run before age-keygen failed: the way out is to remove that entry.
+  age-keygen 2>"$work/generated.pub" | pass insert -m "$entry" >/dev/null ||
+    die "generating or inserting ${entry} failed — an empty entry may exist: check with pass find ${kind}, then pass rm ${entry}"
+  public="$(sed -n 's/^Public key: \(age1[0-9a-z]*\)$/\1/p' "$work/generated.pub")"
+  [[ $public == age1* ]] || die "age-keygen returned no age public"
+  checkRecipient
+  [[ "$(pass show "$entry" | age-keygen -y 2>/dev/null)" == "$public" ]] ||
+    die "${entry} reads back as another identity than the one generated — check it, nothing was removed"
+  printf '%s\n' "$public"
+  log "${entry}: generated, encrypted to ${recipient} alone, read back; it is ${recorded}"
+  log "next: name this public in the .sops.yaml of rke2lab and nnh and re-key them (sops updatekeys);"
+  log "the grow reads the private on fd 3, which YOUR shell opens on the grow's command line,"
+  log "3< <(pass show ${entry}); never write that into a script"
+  log "replicate seedmatic/ with git subtree push — it carries seedmatic's history only while seedmatic/ is"
+  log "never deleted and re-created in the store"
+  exit 0
+fi
+
 "$generate" 3>"$work/generated.pub" | pass insert -m "$entry" >/dev/null ||
   die "generating or inserting ${entry} failed — an empty entry may exist: check with pass find ${kind}"
 read -r type blob _ <"$work/generated.pub"
 [[ $type == ssh-ed25519 && -n $blob ]] || die "the generator returned no ed25519 public"
 
-# The packets, read without decrypting: exactly one recipient, the seedmatic subkey.
-mapfile -t keyids < <(gpg --batch --list-only --list-packets "$store/${entry}.gpg" 2>/dev/null |
-  sed -n 's/^:pubkey enc packet:.* keyid \([0-9A-Fa-f]*\).*/\1/p')
-[[ ${#keyids[@]} -eq 1 && ${keyids[0]^^} == "${recipient^^}" ]] ||
-  die "${entry} is encrypted to [${keyids[*]}], not to ${recipient} alone — check it, nothing was removed"
+checkRecipient
 
 # The private read back loads, and is the generated key: its age conversion equals the public's.
 fromPrivate="$(pass show "$entry" | ssh-to-age -private-key | age-keygen -y)" ||

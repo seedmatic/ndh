@@ -238,3 +238,68 @@ entry() { printf '%s' "$PASSWORD_STORE_DIR/seedmatic/${2:-host-key}/$1.gpg"; }
   [ ! -e "$(entry nikopol vz-recover-key)" ]
   [ "$(<"$HOME/.ssh/vz-recover")" = kept ]
 }
+
+@test "a cluster-age identity is generated into seedmatic/, to the seedmatic subkey alone; stdout is its age public only" {
+  TMPDIR="$t/tmp" PATH="$t/bin:$PATH" run --separate-stderr bash "$t/keyring" cluster-age 1
+  [ "$status" -eq 0 ]
+  [[ $output =~ ^age1[0-9a-z]+$ ]]
+  [ "$(wc -l <<<"$output")" -eq 1 ]
+  # The printed public is the stored identity's.
+  [ "$(pass show seedmatic/cluster-age/1 | age-keygen -y)" = "$output" ]
+  run gpg --batch --list-only --list-packets "$(entry 1 cluster-age)"
+  [ "$(grep -c ':pubkey enc packet:' <<<"$output")" -eq 1 ]
+  [[ $output == *"keyid ${seedmatic}"* ]]
+}
+
+@test "the cluster-age private never appears in stdout, stderr, an argument or a scratch dir" {
+  TMPDIR="$t/tmp" PATH="$t/bin:$PATH" run --separate-stderr bash "$t/keyring" cluster-age 1
+  [ "$status" -eq 0 ]
+  [[ $output$stderr != *"AGE-SECRET-KEY"* ]]
+  # stderr carries the logs and no age material but the public stdout already printed.
+  ! grep -o 'age1[0-9a-z]*' <<<"$stderr" | grep -vxF "$output" || false
+  ! grep -q 'AGE-SECRET-KEY' "$t/pass.argv" || false
+  grep -qx 'insert -m seedmatic/cluster-age/1' "$t/pass.argv"
+  [ -z "$(find "$t/tmp" -type f)" ]
+}
+
+@test "an existing cluster-age version is never overwritten; a new version is a new key" {
+  keyring cluster-age 1
+  before="$(sha256sum "$(entry 1 cluster-age)")"
+  TMPDIR="$t/tmp" PATH="$t/bin:$PATH" run --separate-stderr bash "$t/keyring" cluster-age 1
+  [ "$status" -eq 1 ]
+  [[ $stderr == *"never overwritten"* ]]
+  [[ $output$stderr != *"AGE-SECRET-KEY"* ]]
+  [ "$(sha256sum "$(entry 1 cluster-age)")" = "$before" ]
+  keyring cluster-age 2
+  [ "$status" -eq 0 ]
+  [ "$(pass show seedmatic/cluster-age/2 | age-keygen -y)" != "$(pass show seedmatic/cluster-age/1 | age-keygen -y)" ]
+}
+
+@test "a cluster-age version is a positive integer, and nothing is generated otherwise" {
+  for name in 0 -1 01 one bioskop 1a ''; do
+    keyring cluster-age "$name"
+    [ "$status" -eq 1 ]
+    [[ $output == *"positive integer"* ]]
+  done
+  [ ! -e "$PASSWORD_STORE_DIR/seedmatic/cluster-age" ]
+}
+
+@test "cluster-age-public prints the stored identity's public again, and writes nothing" {
+  keyring cluster-age 1
+  generated="$(pass show seedmatic/cluster-age/1 | age-keygen -y)"
+  before="$(find "$PASSWORD_STORE_DIR" -type f -exec sha256sum {} + | LC_ALL=C sort)"
+  : >"$t/pass.argv"
+  TMPDIR="$t/tmp" PATH="$t/bin:$PATH" run --separate-stderr bash "$t/keyring" cluster-age-public 1
+  [ "$status" -eq 0 ]
+  [ "$output" = "$generated" ]
+  [[ $output$stderr != *"AGE-SECRET-KEY"* ]]
+  [ "$(find "$PASSWORD_STORE_DIR" -type f -exec sha256sum {} + | LC_ALL=C sort)" = "$before" ]
+  [ "$(<"$t/pass.argv")" = "show seedmatic/cluster-age/1" ]
+}
+
+@test "cluster-age-public of a version not in the keyring is refused" {
+  TMPDIR="$t/tmp" PATH="$t/bin:$PATH" run --separate-stderr bash "$t/keyring" cluster-age-public 3
+  [ "$status" -eq 1 ]
+  [[ $stderr == *"not in the keyring"* ]]
+  [ -z "$output" ]
+}
