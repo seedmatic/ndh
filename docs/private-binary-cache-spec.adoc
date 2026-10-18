@@ -822,6 +822,28 @@ accepts; it cannot import an unsigned path nor relax the sandbox
 Both are bounded to that cluster (only its nodes trust the builder's key) and in time (a new key at
 each grow).
 
+[[node-image-paths]]
+**A node's image paths keep their provenance — decided by the operator on 2026-10-18 (option B).** Found by
+test 0 (❄️): a store booted from an image is registered by `nix-store --load-db`, whose format
+(`Store::makeValidityRegistration`, nix 2.34.9 `src/libstore/store-api.cc:824-845`) keeps a path's hash, size, deriver
+and references, and **no content address and no signature**. So every path a node has from its image looks, to its
+untrusted builder, like an unsigned input-addressed path, and is refused when the node hands it over (test 1's case),
+even a pure source; paths fetched or built after boot keep theirs. Measured on the probe: a source of flox's build,
+`ca` null, deriver null, registered at the VM's creation, refused.
+
+The node image therefore registers its store **from a binary cache at boot**, keeping the content addresses and
+signatures its origin store gave those paths, and the untrusted builder accepts them: « c'est aussi cohérent avec la
+provenance ». Rejected: giving the builder read access to an attic (it reverses _no attic token_ above), and
+accepting the trap (builds touching an image path would fail at delegation). 🛡️'s two conditions:
+
+* the binary cache the node registers from is the image's **own local `file://` cache**, baked into the image, never a
+  network cache;
+* the builder trusts the key that signed the image's paths, a fleet machine's derived key (<<builder-keys>>), beside
+  cache.nixos.org's and flox's, and its trusted keys are **listed exactly by a check**. Trust flows down, from the fleet
+  to a cluster's builder, never the reverse: nothing of the fleet trusts a cluster builder's key.
+
+The work is **rke2lab's**, in node-base's image and the cold start, not this spec's code.
+
 **Future (b)**: a cluster spanning both metalspaces, with two cluster builders scoped to that cluster,
 one per metalspace, tied to the cluster mesh. Until then a cluster lives in one metalspace and has one
 builder.
@@ -965,10 +987,12 @@ automated, a nix bump does not reach a cluster builder without it.
 | 0 — no rebuild of the world
 | the closure's `.drv` evaluated by revision on the node, copied in (content-addressed, so accepted
 untrusted), then `nix-store --realise --dry-run` of it **inside the builder**, which measures its own
-substituters; `--eval-store auto --store ssh-ng://…` from the node as a second measure
+substituters; or a dry run on the node against the builder's substituters alone
 | "will be built" holds only our own derivations; a nixpkgs package there is a pin Hydra did not
-build, or an overlay of ours changing a widely used derivation. Measured on the four systems on
-2026-10-17: 55–93 derivations to build, all configuration glue (❄️)
+build, or an overlay of ours changing a widely used derivation. Measured on the probe on 2026-10-18
+(rke2-node-base, rke2lab `bbaa3be3`): 129, configuration glue and our packages, plus 7 static musl derivations
+cache.nixos.org does not serve for aarch64-linux, rebuilt once per GC (❄️: passes with that residue). The copy-in
+form met a path of the node's image refused unsigned: see <<node-image-paths>>
 
 | 1 — an untrusted client gets a build
 | `nix store info` of the builder; a delegated build (`max-jobs = 0`, `builders = ssh-ng://…`) of a
