@@ -190,15 +190,24 @@ sweep() {
   fi
 }
 
-# accepts {args}: the leading --accept pairs, each recorded; ACCEPTED_SHIFT says how many args they took.
+# accepts {args}: the leading --accept pairs, kept in ACCEPTS, not yet recorded; ACCEPTED_SHIFT says how many
+# args they took.
+ACCEPTS=()
 accepts() {
   ACCEPTED_SHIFT=0
   while [ "${1:-}" = --accept ]; do
     [ -n "${2:-}" ] || usage
-    accept "$2"
+    ACCEPTS+=("$2")
     shift 2
     ACCEPTED_SHIFT=$((ACCEPTED_SHIFT + 2))
   done
+}
+
+# record_accepts: the acceptances, recorded just before the sweep that reads them, so a gesture refused for
+# another reason leaves none on disk (🛡️).
+record_accepts() {
+  local path
+  for path in "${ACCEPTS[@]}"; do accept "$path"; done
 }
 
 # accept {store path}: let one path the sweep refuses through, recorded with its narHash, so the
@@ -365,6 +374,7 @@ freeze() {
       entries+="${entries:+$'\n'}$RW_MOUNT/upper/${entry#/nix/store/}"
     fi
   done <<<"$valid"
+  record_accepts
   sweep "$valid" "$entries" || die "nothing frozen — purge those paths first"
   gc_and_verify
   snapshot=$(new_name)
@@ -390,6 +400,7 @@ compact() {
   valid=$(nix-store --gc --print-live 2>/dev/null) || die "cannot list the valid paths — nothing done"
   # Captured first: a refusal inside a command substitution would not stop the sweep.
   entries=$(entries_of "$valid") || exit 1
+  record_accepts
   sweep "$valid" "$entries" || die "nothing compacted — purge those paths, or --accept a public one"
   say "keeping only the current generation"
   nix-env -p "$SYSTEM_PROFILE" --delete-generations old || die "could not drop the old generations"

@@ -120,6 +120,20 @@ changed() {
   [ ! -e "$t/stack/next.json" ]
 }
 
+@test "a compact --accept refused before the sweep records no acceptance" {
+  touch "$t/run/store-degraded"
+  run_cli compact --accept /nix/store/bbbb-secret "$t/sys"
+  [ "$status" -eq 1 ]
+  [[ $stderr == *"degraded"* ]]
+  [ ! -e "$t/stack/accepted" ]
+  rm "$t/run/store-degraded"
+  rm "$t/booted-system"
+  ln -s "$t/old-sys" "$t/booted-system"
+  run_cli compact --accept /nix/store/bbbb-secret "$t/sys"
+  [ "$status" -eq 1 ]
+  [ ! -e "$t/stack/accepted" ]
+}
+
 @test "compact before the current system has booted is refused before anything" {
   rm "$t/booted-system"
   ln -s "$t/old-sys" "$t/booted-system"
