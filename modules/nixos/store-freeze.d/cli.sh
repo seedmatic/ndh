@@ -3,18 +3,23 @@
 #   ndh-store status                       the stack this boot was built on, the manifests, the upper's base
 #   ndh-store freeze [--accept {store path}]… {validated system}
 #                                          freeze the upper into a new layer, then reboot
-#   ndh-store compact {validated system}   fold every layer above the EROFS ones into one, then reboot
+#   ndh-store compact [--accept {store path}]… {validated system}
+#                                          fold every layer above the EROFS ones into one, then reboot
 #   ndh-store purge [--yes] {store path}…  rebuild the layers without those paths and their referrers
 #   ndh-store confirm [--yes]              once booted on a new stack, destroy the layers it no longer names
 #
 # purge and confirm destroy data: without --yes they only list what they would do. --accept lets a
 # path the secret sweep refuses through, bound to its narHash: for a public one only.
 #
+# Every refusal comes before the first change: the sweep reads what the new layer would hold before a
+# generation, the bootloader or the GC is touched, so a refused gesture leaves the machine as it was.
+#
 # Set by the wrapper: RW_DATASET, DB_DATASET, LAYERS_DATASET, RW_MOUNT, STACK_DIR, FROZEN_ROOT,
-# EROFS_LOWERS, RUN_DIR, MANIFEST_VERSION, SWEEP_SHAPES, CONTAINER_PROJECT, CONTAINER_STATE_ROOT.
+# EROFS_LOWERS, RUN_DIR, MANIFEST_VERSION, SWEEP_SHAPES, CONTAINER_PROJECT, CONTAINER_STATE_ROOT,
+# SYSTEM_PROFILE, CURRENT_SYSTEM, BOOTED_SYSTEM, NIX_BUILDS_DIR.
 
 usage() {
-  sed -n '3,8p' "${BASH_SOURCE[0]}" >&2
+  sed -n '3,9p' "${BASH_SOURCE[0]}" >&2
   exit 2
 }
 
@@ -65,11 +70,20 @@ write() {
   sync "$(dirname "$1")"
 }
 
+# The layer being built, until it is sealed: any exit before that drops it.
+BUILDING=""
+
+# On every exit before the reboot: an unsealed layer is dropped, its mount point too, and nix comes back.
+cleanup() {
+  if [ -n "$BUILDING" ]; then drop_layer "$BUILDING"; fi
+  systemctl start nix-daemon.socket
+}
+
 # preflight [{validated system}]: the refusals every gesture shares, then nix stopped. From here any
 # exit before the reboot brings the builders back.
 preflight() {
   local validated="${1:-}" current
-  current=$(readlink -f /run/current-system)
+  current=$(readlink -f "$CURRENT_SYSTEM")
   if [ -n "$validated" ] && [ "$current" != "$(readlink -f "$validated")" ]; then
     die "the current system is $current, not the validated $validated — nothing done"
   fi
@@ -80,21 +94,37 @@ preflight() {
   if pgrep -u "$(getent group nixbld | cut -d: -f4)" >/dev/null 2>&1; then
     die "a build is running (a nixbld process) — nothing done"
   fi
-  trap 'systemctl start nix-daemon.socket' EXIT
+  trap cleanup EXIT
   systemctl stop nix-daemon.socket nix-daemon.service
-  if [ -n "$(find /nix/var/nix/builds -mindepth 1 -maxdepth 1 2>/dev/null | head -1)" ]; then
+  if [ -n "$(find "$NIX_BUILDS_DIR" -mindepth 1 -maxdepth 1 2>/dev/null | head -1)" ]; then
     die "a build dir is still in /nix/var/nix/builds — nothing done"
   fi
 }
 
-gc_and_verify() {
-  say "GC to the GC roots"
-  nix-store --gc || die "the GC failed — nothing done"
+# Before any change: a store that does not verify is repaired first, never frozen nor folded.
+verify_first() {
   say "every valid path must be present"
   nix-store --verify || die "nix-store --verify failed — nothing done"
 }
 
-# sweep {dir}: the entries of a store layer that hold a secret shape, text and binary files alike.
+gc_and_verify() {
+  say "GC to the GC roots"
+  nix-store --gc || die "the GC failed"
+  nix-store --verify || die "nix-store --verify failed after the GC"
+}
+
+# entries_of {live paths}: each one's entry in the layer above the EROFS ones that holds it.
+entries_of() {
+  local path top
+  while read -r path; do
+    [ -n "$path" ] || continue
+    top=$(top_of "${path#/nix/store/}") || exit 1
+    if [ -n "$top" ]; then echo "$top/${path#/nix/store/}"; fi
+  done <<<"$1"
+}
+
+# sweep {valid paths} {entries}: the entries that hold a secret shape, text and binary files alike, the
+# valid paths being the store as it will be.
 #
 # Its scope is every entry that is NOT a built output: paths with no deriver (sources, eval copies,
 # `nix-store --add`), outputs whose .drv is not in this store, every .drv, and anything invalid —
@@ -105,10 +135,9 @@ gc_and_verify() {
 # clean, since a sweep that could not run must never let a gesture make what it missed permanent.
 # It reports store paths only, never a matching line: the line would be the secret.
 sweep() {
-  local dir="$1" entry name status valid derivers missing hits="" refused="" accepted="" hash
+  local valid="$1" entries="$2" entry name status derivers missing hits="" refused="" accepted="" hash
   local -A built=() absent=()
-  say "secret sweep of $dir (every entry but built outputs)"
-  valid=$(nix-store --gc --print-live 2>/dev/null) || die "cannot list the valid paths — nothing done"
+  say "secret sweep of $(grep -c . <<<"$entries" || true) entries (every one but built outputs)"
   derivers=$(xargs -r nix-store -q --deriver <<<"$valid") || die "cannot query the derivers — nothing done"
   # A recorded deriver is not enough: a SUBSTITUTED output carries its deriver's name in the
   # narinfo while that .drv was never instantiated here, so nothing would sweep it. An output is
@@ -121,7 +150,8 @@ sweep() {
   while read -r entry name; do
     if [ "$name" != unknown-deriver ] && [ -z "${absent[$name]:-}" ]; then built["${entry#/nix/store/}"]=1; fi
   done < <(paste -d' ' <(echo "$valid") <(echo "$derivers"))
-  for entry in "$dir"/*; do
+  while read -r entry; do
+    [ -n "$entry" ] || continue
     [ -e "$entry" ] || [ -L "$entry" ] || continue
     name="${entry##*/}"
     [ -z "${built[$name]:-}" ] || continue
@@ -132,7 +162,7 @@ sweep() {
       1) ;;
       *) die "the secret sweep could not run (grep exit $status on $name) — nothing done" ;;
     esac
-  done
+  done <<<"$entries"
   while read -r name; do
     [ -n "$name" ] || continue
     hash=$(nix-store -q --hash "/nix/store/$name" 2>/dev/null || true)
@@ -158,6 +188,17 @@ sweep() {
   else
     say "secret sweep clean"
   fi
+}
+
+# accepts {args}: the leading --accept pairs, each recorded; ACCEPTED_SHIFT says how many args they took.
+accepts() {
+  ACCEPTED_SHIFT=0
+  while [ "${1:-}" = --accept ]; do
+    [ -n "${2:-}" ] || usage
+    accept "$2"
+    shift 2
+    ACCEPTED_SHIFT=$((ACCEPTED_SHIFT + 2))
+  done
 }
 
 # accept {store path}: let one path the sweep refuses through, recorded with its narHash, so the
@@ -257,6 +298,7 @@ build_layer() {
     zfs create -o canmount=off -o mountpoint=none "$LAYERS_DATASET"
   fi
   zfs create -o mountpoint=legacy "$ds"
+  BUILDING="$name"
   mkdir -p "$build"
   mount -t zfs "$ds" "$build"
   mkdir "$build/upper"
@@ -294,29 +336,37 @@ seal_layer() {
   umount "$RUN_DIR/build/$name"
   zfs snapshot "$ds@$name" "$DB_DATASET@$name"
   zfs set readonly=on "$ds"
+  BUILDING=""
+  rmdir "$RUN_DIR/build/$name"
 }
 
-# drop_layer {name}: a layer built and refused, so the next attempt starts clean.
+# drop_layer {name}: a layer built and not sealed, so the next attempt starts clean.
 drop_layer() {
   umount "$RUN_DIR/build/$1" 2>/dev/null || true
   zfs destroy -r "$LAYERS_DATASET/$1"
+  BUILDING=""
+  rmdir "$RUN_DIR/build/$1" 2>/dev/null || true
 }
 
 # A freeze makes the upper PERMANENT: no GC ever frees a frozen path. So it runs only on the system
 # the operator validated, with nix stopped, after a GC to the roots, a verify and a secret sweep —
 # and a failure stops it before any snapshot.
 freeze() {
-  local base snapshot
-  while [ "${1:-}" = --accept ]; do
-    [ -n "${2:-}" ] || usage
-    accept "$2"
-    shift 2
-  done
+  local base snapshot valid entry entries=""
+  accepts "$@"
+  shift "$ACCEPTED_SHIFT"
   [ -n "${1:-}" ] || usage
   preflight "$1"
-  gc_and_verify
-  sweep "$RW_MOUNT/upper" || die "nothing frozen — purge those paths first"
   base=$(base_layers)
+  verify_first
+  valid=$(nix-store --gc --print-live 2>/dev/null) || die "cannot list the valid paths — nothing done"
+  while read -r entry; do
+    if [ -n "$entry" ] && { [ -e "$RW_MOUNT/upper/${entry#/nix/store/}" ] || [ -L "$RW_MOUNT/upper/${entry#/nix/store/}" ]; }; then
+      entries+="${entries:+$'\n'}$RW_MOUNT/upper/${entry#/nix/store/}"
+    fi
+  done <<<"$valid"
+  sweep "$valid" "$entries" || die "nothing frozen — purge those paths first"
+  gc_and_verify
   snapshot=$(new_name)
   zfs snapshot "$RW_DATASET@$snapshot" "$DB_DATASET@$snapshot"
   stage_next freeze "$(jq -c --argjson new "$(layer "$RW_DATASET" "$snapshot")" '[$new] + .' <<<"$base")" "$base"
@@ -325,21 +375,28 @@ freeze() {
 # A compaction keeps only the current generation, so it waits until that generation has booted:
 # the previous one is the way back until then.
 compact() {
-  local base name
-  [ "$(readlink -f /run/booted-system)" = "$(readlink -f /run/current-system)" ] ||
+  local base name valid entries
+  accepts "$@"
+  shift "$ACCEPTED_SHIFT"
+  [ -n "${1:-}" ] || usage
+  [ "$(readlink -f "$BOOTED_SYSTEM")" = "$(readlink -f "$CURRENT_SYSTEM")" ] ||
     die "the current system has not booted yet — reboot on it before compacting"
   preflight "$1"
   base=$(base_layers)
+  verify_first
+  # Today's live set, a superset of what the compaction keeps: computing the kept set exactly would have
+  # to replay the GC's keep-derivations and keep-outputs, and a miss would fold an unswept path in. A
+  # path only an old generation holds is swept too: --accept it or purge it.
+  valid=$(nix-store --gc --print-live 2>/dev/null) || die "cannot list the valid paths — nothing done"
+  # Captured first: a refusal inside a command substitution would not stop the sweep.
+  entries=$(entries_of "$valid") || exit 1
+  sweep "$valid" "$entries" || die "nothing compacted — purge those paths, or --accept a public one"
   say "keeping only the current generation"
-  nix-env -p /nix/var/nix/profiles/system --delete-generations old || die "could not drop the old generations"
-  /nix/var/nix/profiles/system/bin/switch-to-configuration boot || die "could not rewrite the bootloader"
+  nix-env -p "$SYSTEM_PROFILE" --delete-generations old || die "could not drop the old generations"
+  "$SYSTEM_PROFILE/bin/switch-to-configuration" boot || die "could not rewrite the bootloader"
   gc_and_verify
   name=$(new_name)
   build_layer "$name"
-  if ! sweep "$RUN_DIR/build/$name/upper"; then
-    drop_layer "$name"
-    die "nothing compacted — purge those paths first"
-  fi
   seal_layer "$name"
   stage_next compaction "[$(layer "$LAYERS_DATASET/$name" "$name")]" "$base"
 }
@@ -348,7 +405,7 @@ compact() {
 # path's references are valid — and rebuilds the layers without them. What it cannot reach is
 # reported, never claimed.
 purge() {
-  local yes=false arg named=() closure roots member base name dir top
+  local yes=false arg named=() closure roots member base name top valid entries
   if [ "${1:-}" = "--yes" ]; then
     yes=true
     shift
@@ -376,6 +433,11 @@ purge() {
 
   preflight
   base=$(base_layers)
+  verify_first
+  valid=$(nix-store --gc --print-live 2>/dev/null | grep -vxF -f <(echo "$closure")) ||
+    die "cannot list the valid paths — nothing purged"
+  entries=$(entries_of "$valid") || exit 1
+  sweep "$valid" "$entries" || die "the layers left would still hold a secret shape — purge those paths too"
   # shellcheck disable=SC2086
   nix-store --delete --ignore-liveness $closure || die "could not unregister the paths — nothing purged"
   gc_and_verify
@@ -388,10 +450,6 @@ purge() {
       die "$member is still in the rebuilt layer — nothing purged"
     fi
   done <<<"$closure"
-  if ! sweep "$RUN_DIR/build/$name/upper"; then
-    drop_layer "$name"
-    die "the rebuilt layer still holds a secret shape — purge those paths too"
-  fi
   seal_layer "$name"
   say "NOT purged by this gesture, to report to 🛡️ as remaining actions:"
   say "  the containers' delivery snapshots and their own frozen layers"
@@ -468,8 +526,8 @@ case "${1:-}" in
     freeze "$@"
     ;;
   compact)
-    [ -n "${2:-}" ] || usage
-    compact "$2"
+    shift
+    compact "$@"
     ;;
   purge)
     shift
