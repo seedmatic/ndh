@@ -48,7 +48,7 @@
     # hosts incus). No bootstrap phase applies here — it is remote from day one.
     # The buildMachine (<host>-nixos) is wired by modules/darwin/host-builder.nix;
     # see docs/host-builder-phases.adoc.
-    ndh.hostBuilder = "steady";
+    ndh.hostBuilder = "requests";
 
     ndh.claude-code.managedSettings.enable = true;
   };
