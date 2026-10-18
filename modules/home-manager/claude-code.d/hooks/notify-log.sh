@@ -20,6 +20,8 @@ if [[ -n "$session_id" && -r "$registry" ]]; then
 fi
 
 log="${XDG_STATE_HOME:-$HOME/.local/state}/claude-notify/log.jsonl"
+# Session names and paths are the operator's alone: the directory 0700, the log 0600.
+umask 077
 mkdir -p "$(dirname "$log")"
 if printf '%s' "$input" | jq -e 'type == "object"' >/dev/null 2>&1; then
   printf '%s' "$input" | jq -c --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg name "$name" \

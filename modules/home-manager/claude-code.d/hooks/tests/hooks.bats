@@ -523,3 +523,10 @@ logged() { jq -r "$1" "$T/state/claude-notify/log.jsonl"; }
   [ "$status" -eq 0 ]
   [ "$(logged .type)" = "auth_success" ]
 }
+
+@test "notify: the log is the operator's alone, the directory 0700 and the file 0600" {
+  run notify '{"notification_type": "permission_prompt", "message": "m"}'
+  [ "$status" -eq 0 ]
+  [ "$(stat -c %a "$T/state/claude-notify")" = 700 ]
+  [ "$(stat -c %a "$T/state/claude-notify/log.jsonl")" = 600 ]
+}
