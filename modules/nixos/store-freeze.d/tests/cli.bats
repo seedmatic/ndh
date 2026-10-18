@@ -6,6 +6,9 @@
 
 bats_require_minimum_version 1.5.0
 
+# The wrapper's tools, exactly (runtime-inputs.nix): the program sees nothing else but the stubs.
+: "${TOOLS_PATH:?the suite needs TOOLS_PATH: the tools of the wrapper}"
+
 setup() {
   t=$BATS_TEST_TMPDIR
   log=$t/calls
@@ -47,7 +50,7 @@ setup() {
   printf '/nix/store/aaaa-clean\n/nix/store/bbbb-secret\n' >"$t/live"
   cli=$t/ndh-store
   {
-    printf 'set -euo pipefail\nexport PATH=%q:$PATH T=%q\n' "$t/bin" "$t"
+    printf 'set -euo pipefail\nexport PATH=%q:%q T=%q INCUS_ENABLED=${INCUS_ENABLED:-false}\n' "$t/bin" "$TOOLS_PATH" "$t"
     printf 'export RW_DATASET=tank/rw DB_DATASET=tank/db LAYERS_DATASET=tank/layers RW_MOUNT=%q\n' "$t/rw"
     printf 'export STACK_DIR=%q FROZEN_ROOT=%q EROFS_LOWERS=%q RUN_DIR=%q MANIFEST_VERSION=2\n' \
       "$t/stack" "$t/frozen" "$t/erofs" "$t/run"
@@ -133,6 +136,35 @@ changed() {
   run_cli compact --accept /nix/store/bbbb-secret "$t/sys"
   [ "$status" -eq 1 ]
   [ ! -e "$t/stack/accepted" ]
+}
+
+@test "usage names the verbs" {
+  run_cli
+  [ "$status" -eq 2 ]
+  [[ $stderr == *"ndh-store compact"* ]]
+}
+
+@test "a live path spread over two layers above the EROFS ones is refused before anything" {
+  # A non-opaque directory in the upper, also present in a frozen layer below it.
+  mkdir -p "$t/rw/upper/dddd-spread" "$t/frozen-a/dddd-spread"
+  echo '{"manifest": "current", "frozen": ["'"$t/frozen-a"'"]}' >"$t/run/store-stack.json"
+  rm "$t/rw/upper/bbbb-secret"
+  printf '/nix/store/aaaa-clean\n/nix/store/dddd-spread\n' >"$t/live"
+  run_cli compact "$t/sys"
+  [ "$status" -eq 1 ]
+  [[ $stderr == *"dddd-spread is spread over"* ]]
+  run changed
+  [ "$status" -eq 1 ]
+}
+
+@test "with Incus enabled, a missing incus refuses before anything" {
+  rm "$t/rw/upper/bbbb-secret"
+  echo /nix/store/aaaa-clean >"$t/live"
+  INCUS_ENABLED=true run_cli compact "$t/sys"
+  [ "$status" -eq 1 ]
+  [[ $stderr == *"Incus is enabled but incus is not"* ]]
+  run changed
+  [ "$status" -eq 1 ]
 }
 
 @test "compact before the current system has booted is refused before anything" {
