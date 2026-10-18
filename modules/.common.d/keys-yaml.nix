@@ -7,25 +7,14 @@
 # Single source of truth for build-time extractions of
 # modules/home-manager/ssh.d/keys.yaml.
 #
-# Every consumer that previously inlined a `pkgs.runCommand` running
-# `yq -o=json '.keys' keys.yaml` + a fromJSON + an authorized_keys line
-# builder should read from this module instead. Collapses duplicated
-# store derivations to a single one and keeps the "which key names go
-# into root's authorized_keys" decision expressed as a list of names,
-# not an open-coded conditional per key.
+# Every consumer reads keys.yaml's data from this module, never from the file itself, and the "which key
+# names go into root's authorized_keys" decision is a list of names, not an open-coded conditional per key.
 let
-  # Single runCommand extracts both `.keys` and `.authorities` maps as
-  # JSON so every consumer reads from the same store path.  sops
-  # leaves plaintext fields (anything without a `# sops:encrypted`
-  # marker in .sops.yaml's encrypted_comment_regex, including
-  # `public`, each slot's `ca_crt`, everything under `authorities`) untouched,
-  # so yq can pull them out of the encrypted file directly without
-  # sops decryption at eval time.
-  jsonDrv = pkgs.runCommand "ndh-keys-yaml.json" { buildInputs = [ pkgs.yq-go ]; } ''
-    yq -o=json '{"keys": .keys, "authorities": .authorities, "revoked": (.revoked // {}), "revoked_certificates": (.revoked_certificates // {})}' \
-      "${worktreePath.of "modules/home-manager/ssh.d/keys.yaml"}" > "$out"
-  '';
-  parsed = builtins.fromJSON (builtins.readFile jsonDrv);
+  # keys.yaml's public view, keys.json, committed next to it (keys-yaml.d/public.yq): nix reads no YAML, and
+  # reading a yq run's output here was import-from-derivation. checks.<system>.keys-json-fresh holds it to
+  # keys.yaml.
+  keysJsonFile = worktreePath.of "modules/home-manager/ssh.d/keys.json";
+  parsed = builtins.fromJSON (builtins.readFile keysJsonFile);
   keysJson = parsed.keys or { };
   authoritiesJson = parsed.authorities or { };
   revokedJson = parsed.revoked or { };
@@ -97,7 +86,7 @@ let
           pkgs.openssh
           pkgs.yq-go
         ];
-      } "bash ${./keys-yaml.d/krl.sh} ${jsonDrv} $out";
+      } "bash ${./keys-yaml.d/krl.sh} ${keysJsonFile} $out";
 in
 {
   options.ndh.keysYaml = {

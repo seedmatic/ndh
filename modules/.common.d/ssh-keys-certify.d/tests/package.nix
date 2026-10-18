@@ -4,6 +4,9 @@ pkgs.runCommand "ssh-keys-certify-bats"
   {
     # The real logger, whose ndh::logger:command:invoke the suite's stub wrapper runs its command with.
     NDH_LOGGER_SH = ../../shell.d/logger.sh;
+    # The view keys.yaml's rewrite also rewrites, by the real program and filter.
+    KEYS_JSON_SH = ../../keys-yaml.d/keys-json.sh;
+    PUBLIC_YQ = ../../keys-yaml.d/public.yq;
     nativeBuildInputs = with pkgs; [
       age
       bats

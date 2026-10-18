@@ -103,6 +103,8 @@ unset POSIXLY_CORRECT GREP_OPTIONS
 
 # keys.yaml relative to the repository root: the real file, and the copy whose path picks its sops rule.
 readonly keysRel="modules/home-manager/ssh.d/keys.yaml"
+# keys.yaml's public view for nix, keys.json, rewritten whenever keys.yaml is (keys-yaml.d/public.yq).
+readonly keysJson="@keysJson@"
 declare -g keysYaml tmpdir decrypted today apply olderThanDays replace reason
 declare -g createName createComment createType createPublic createPublicBlob
 declare -g revokeTarget revokeRevision
@@ -571,6 +573,8 @@ renew::apply() {
 
 	install -m 0644 "$reencrypted" "$keysYaml" || return 1
 
+	"$keysJson" "$keysYaml" || return 1
+
 	if ((createPublic == 1)) && [[ "$createName" == sshfs-* ]]; then
 		cat <<-EOF
 
@@ -830,6 +834,7 @@ revoke::run() {
 		return 1
 	fi
 	install -m 0644 "$updated" "$keysYaml" || return 1
+	"$keysJson" "$keysYaml" || return 1
 	cat <<-EOF
 
 		revoked_certificates.${name} recorded: the KRL cuts that certificate by its key id, and its
@@ -912,6 +917,7 @@ nixsign::run() {
 		return 1
 	fi
 	install -m 0644 "$updated" "$keysYaml" || return 1
+	"$keysJson" "$keysYaml" || return 1
 	cat <<-EOF
 
 		keys.${key}.slots.${slot}.nixSigning recorded: ${machine} signs with it once it serves its own host

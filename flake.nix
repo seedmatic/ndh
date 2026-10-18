@@ -1126,6 +1126,11 @@
           ssh-keys-certify-bats = import ./modules/.common.d/ssh-keys-certify.d/tests/package.nix {
             inherit pkgs;
           };
+          keys-json-fresh = import ./modules/.common.d/keys-yaml.d/tests/keys-json-fresh.nix {
+            inherit pkgs;
+            keysYaml = ./modules/home-manager/ssh.d/keys.yaml;
+            keysJson = ./modules/home-manager/ssh.d/keys.json;
+          };
           ssh-keys-certify-host-names = import ./modules/.common.d/ssh-keys-certify.d/tests/host-names.nix {
             inherit pkgs;
           };
@@ -3040,6 +3045,20 @@
           # provides them or refuses with an install hint. `sops` was the one that
           # was NOT in that profile and had to come from the system closure — it is
           # in the contract now (53 MB of closure, measured).
+          # keys.yaml's public view for nix, keys.json (modules/.common.d/keys-yaml.d/public.yq): rewritten by
+          # the two programs below whenever they rewrite keys.yaml, and by hand after a manual edit.
+          keysJsonPackage = pkgsForSystem.writeShellApplication {
+            name = "ndh-keys-json";
+            runtimeInputs = with pkgsForSystem; [
+              coreutils
+              gnugrep
+              yq-go
+            ];
+            text = ''
+              set -- ${./modules/.common.d/keys-yaml.d/public.yq} "$@"
+            ''
+            + builtins.readFile ./modules/.common.d/keys-yaml.d/keys-json.sh;
+          };
           sshKeysRenewPackage =
             let
               hosts = nixpkgs.lib.attrNames catalogData.netplan.baremetal;
@@ -3049,6 +3068,7 @@
               pkgsForSystem.replaceVars ./modules/.common.d/ssh-keys-renew.d/ssh-keys-renew.sh {
                 nixBashTrampoline = ndhNixBashTrampolineDarwin;
                 loggerTag = "ndh.ssh-keys-renew";
+                keysJson = "${keysJsonPackage}/bin/ndh-keys-json";
                 # What --public records, as ndh-keyring names it: a host key for each of the four machines
                 # (each operator seat and its guest), an sshfs key for each NixOS guest, a vz-recover key for
                 # each foreign vz-host.
@@ -3089,6 +3109,7 @@
             pkgsForSystem.replaceVars ./modules/.common.d/ssh-keys-certify.d/ssh-keys-certify.sh {
               nixBashTrampoline = ndhNixBashTrampolineDarwin;
               loggerTag = "ndh.ssh-keys-certify";
+              keysJson = "${keysJsonPackage}/bin/ndh-keys-json";
               hostNames = nixpkgs.lib.concatStringsSep " " (
                 nixpkgs.lib.mapAttrsToList (
                   machine: names: "${machine}=${nixpkgs.lib.concatStringsSep "," names}"
@@ -3218,6 +3239,11 @@
             type = "app";
             program = "${sshKeysCertifyPackage}/bin/ssh-keys-certify";
             meta.description = "Sign, on the operator seat, every SSH certificate keys.yaml declares (one host certificate per machine, its own names) and record them in keys.yaml — [--apply], dry run by default, run from repo root — src: modules/.common.d/ssh-keys-certify.d/";
+          };
+          keys-json = {
+            type = "app";
+            program = "${keysJsonPackage}/bin/ndh-keys-json";
+            meta.description = "Rewrite keys.json, keys.yaml's public view for nix, after a manual edit of keys.yaml — <keys.yaml>, run from repo root — src: modules/.common.d/keys-yaml.d/";
           };
           cleanup-activations = {
             type = "app";
