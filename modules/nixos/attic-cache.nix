@@ -177,10 +177,15 @@ let
             "${
               script "attic-cache-ensure" [
                 pkgs.coreutils
+                pkgs.curl
                 pkgs.gnugrep
+                pkgs.gnused
+                pkgs.jq
+                config.nix.package
               ] ./attic-cache.d/cache-ensure.sh
             }/bin/attic-cache-ensure"
             cfg.cacheName
+            cfg.keyName
             cfg.retention
             "http://${loopback}"
           ]
@@ -249,6 +254,17 @@ in
       type = lib.types.str;
       default = "6 hours";
       description = "attic's retention period, server-wide and on the cache (operator, 2026-10-15).";
+    };
+
+    keyName = lib.mkOption {
+      type = lib.types.str;
+      # Named after the metalspace, as catalog/private-caches.nix accepts it (the probe, outside the catalog,
+      # after its fabric name).
+      default = "seedmatic-${
+        if cfg.metalspace != null then cfg.metalspace else lib.removePrefix "attic." cfg.fqdn
+      }-attic-1";
+      defaultText = lib.literalExpression ''"seedmatic-''${metalspace}-attic-1"'';
+      description = "The name of the cache's signing key, generated inside the cache container (attic would name it after the cache).";
     };
 
     cacheName = lib.mkOption {

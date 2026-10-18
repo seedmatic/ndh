@@ -1149,6 +1149,27 @@
           private-caches-schema = builtins.deepSeq catalogData.privateCaches.entries (
             import ./catalog/private-caches.d/tests/checks.nix { inherit pkgs; }
           );
+          # Each cache container names its generated key as privateCaches accepts it, on its own metalspace: else
+          # the operator's acceptance of the printed key would be refused (attic would name it after the cache).
+          attic-cache-key-name =
+            let
+              lib = nixpkgs.lib;
+              guests = lib.filterAttrs (_: c: c.config.ndh.atticCache.enable or false) self.nixosConfigurations;
+              named =
+                _: c:
+                let
+                  a = c.config.ndh.atticCache;
+                in
+                a.metalspace != null
+                && builtins.match (catalogData.privateCaches.keyNamePattern a.metalspace) a.keyName != null;
+              wrong = lib.attrNames (lib.filterAttrs (n: c: !named n c) guests);
+            in
+            assert lib.assertMsg (
+              guests != { }
+            ) "attic-cache-key-name: no configuration enables a cache container";
+            assert lib.assertMsg (wrong == [ ])
+              "attic-cache-key-name: a cache key not named seedmatic-<metalspace>-attic-<n> on: ${toString wrong}";
+            pkgs.runCommand "attic-cache-key-name" { } "touch $out";
           ssh-known-hosts-command-bats = import ./modules/home-manager/ssh-keys.d/tests/package.nix {
             inherit pkgs;
           };
