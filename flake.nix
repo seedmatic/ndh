@@ -1,25 +1,6 @@
 {
   description = "nix system configurations";
 
-  nixConfig = {
-    substituters = [
-      "https://cache.nixos.org"
-      "https://cache.flox.dev"
-    ];
-
-    trusted-public-keys = [
-      "cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY="
-      "flox-cache-public-1:7F4OyH7ZCnFhcze3fJdfyXYLQw/aV7GEed86nQ7IsOs="
-    ];
-
-    extra-experimental-features = [
-      "nix-command"
-      "flakes"
-      "ca-derivations"
-      "configurable-impure-env"
-    ];
-  };
-
   # Inputs are organized into three groups to keep the surface scannable:
   #
   #   1. Aggregator pin — `flake-commons` is the single source of truth for
@@ -1315,6 +1296,43 @@
           # Every machine's nix.conf includes ndh's own runtime files only (in /run/ndh, root's), never a file nothing declares:
           # an include is a way into the daemon's settings (trusted-users, builders) that no review sees. The Macs
           # had flox's, the guests the Determinate installer's nix.custom.conf.
+          # No machine takes a flake's nixConfig: accept-flake-config let a trusted user's flake add substituters
+          # and keys silently. The built nix.conf of the 4 machines, and a mutant on each platform.
+          nix-conf-no-accept-flake-config =
+            let
+              conf = c: c.config.environment.etc."nix/nix.conf".source;
+              machines =
+                map (n: conf self.darwinConfigurations.${n}) [
+                  "bioskop"
+                  "nikopol"
+                ]
+                ++ map (n: conf self.nixosConfigurations.${n}) [
+                  "bioskop-nixos"
+                  "nikopol-nixos"
+                ];
+              mutants = [
+                (conf (
+                  self.darwinConfigurations.bioskop.extendModules {
+                    modules = [ { nix.extraOptions = "accept-flake-config = true"; } ];
+                  }
+                ))
+                (conf (
+                  self.nixosConfigurations.bioskop-nixos.extendModules {
+                    modules = [ { nix.settings.accept-flake-config = true; } ];
+                  }
+                ))
+              ];
+            in
+            pkgs.runCommand "nix-conf-no-accept-flake-config" { } ''
+              accepts() { grep -Eq '^[[:space:]]*(extra-)?accept-flake-config[[:space:]]*=' "$1"; }
+              for f in ${nixpkgs.lib.escapeShellArgs machines}; do
+                if accepts "$f"; then echo "a machine's nix.conf accepts flake configs: $f" >&2; exit 1; fi
+              done
+              for f in ${nixpkgs.lib.escapeShellArgs mutants}; do
+                accepts "$f" || { echo "an accept-flake-config mutant passed: $f" >&2; exit 1; }
+              done
+              touch $out
+            '';
           nix-conf-no-foreign-include =
             let
               conf = c: c.config.environment.etc."nix/nix.conf".source;

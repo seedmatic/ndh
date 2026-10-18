@@ -139,7 +139,6 @@ in
             "flakes"
             "ca-derivations"
           ];
-          accept-flake-config = true;
           always-allow-substitutes = true;
         };
 
