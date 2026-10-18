@@ -1,11 +1,62 @@
 {
   config,
   lib,
+  ndh,
   ...
 }:
 let
   cfg = config.ndh.hostBuilder;
-  guest = "${config.profile.host.hostName}-nixos";
+  capacity = config.ndh.builderCapacity;
+  self' = config.profile.host.hostName;
+  guestOf = host: "${host}-nixos";
+  guest = guestOf self';
+  # The other metalspaces: one darwin host each in the inventory, with its NixOS guest.
+  others = lib.filter (h: h != self') (
+    lib.attrNames (lib.attrByPath [ "context" "inventory" "hosts" ] { } ndh)
+  );
+  # kvm is the INTENT: the guest has /dev/kvm when Tart launches it with --nested. The guest
+  # advertises what the running VM really has (modules/nixos/nix-settings.nix), so a kvm build
+  # sent while NESTED_VIRT=0 overrides it fails there instead of falling back to TCG.
+  guestFeatures = [
+    "big-parallel"
+    "nixos-test"
+  ];
+  ownGuest = {
+    hostName = "nix-store.${guest}";
+    systems = [ "aarch64-linux" ];
+    maxJobs = capacity.nixos;
+    protocol = "ssh-ng";
+    supportedFeatures = guestFeatures ++ lib.optional config.tart.configGenerator.vmRunNestedVirt "kvm";
+  };
+  # nix ranks the machines with a free slot by busy slots / speedFactor (build-remote.cc): home wins while both
+  # are idle or equally busy, the other metalspace takes a build when home is the busier. The operator accepted
+  # that order (2026-10-18); cutting the tailnet route to the peer metalspace stops the fallback.
+  home = 10;
+  peer = 1;
+  # The Mac's own system-features (nix's darwin default, not set in ndh).
+  darwinFeatures = [
+    "apple-virt"
+    "benchmark"
+    "big-parallel"
+    "nixos-test"
+  ];
+  darwinEntry = host: speedFactor: {
+    hostName = "nix-store.${host}";
+    systems = [ "aarch64-darwin" ];
+    maxJobs = capacity.darwin;
+    protocol = "ssh-ng";
+    supportedFeatures = darwinFeatures;
+    inherit speedFactor;
+  };
+  # Another metalspace's guest: its launch-time kvm is not known here, so no kvm build goes to it.
+  peerGuest = host: {
+    hostName = "nix-store.${guestOf host}";
+    systems = [ "aarch64-linux" ];
+    maxJobs = capacity.nixos;
+    protocol = "ssh-ng";
+    supportedFeatures = guestFeatures;
+    speedFactor = peer;
+  };
 in
 {
   # The aarch64-linux build scheme for a Darwin host, as a lifecycle phase:
@@ -27,43 +78,56 @@ in
   # ssh alias (modules/.common.d/nix-store-identity.nix): the guest's nix-store
   # account, by its certificate, never root.
   #
-  # See docs/host-builder-phases.adoc for the two-phase model and the
+  #   requests  — every build is a request (roles × keys B3, variant A): the
+  #               Mac builds nothing itself (max-jobs = 0). Its own darwin
+  #               builds go through ssh-ng to its own nix-store account (the
+  #               loopback), its Linux builds to its guest, and both fall
+  #               back to the other metalspace's Mac and guest, over the
+  #               tailnet, by nix's busy/speedFactor order.
+  #
+  # See docs/host-builder-phases.adoc for the phases and the
   # promotion runbook.
   options.ndh.hostBuilder = lib.mkOption {
     type = lib.types.enum [
       "bootstrap"
       "steady"
+      "requests"
     ];
     default = "bootstrap";
     description = ''
       aarch64-linux build phase for this Darwin host. 'bootstrap' uses the
       embedded linux-builder (baremetal) to first build <host>-nixos.
       'steady' turns the local linux-builder off and offloads to <host>-nixos.
+      'requests' builds nothing locally: its own darwin builds through the
+      loopback, the other metalspace's builders as fallback.
     '';
     example = "steady";
   };
 
-  config = lib.mkIf (cfg == "steady") {
-    nixStoreIdentity.extraPeers = [ guest ];
-    nix.distributedBuilds = true;
-    nix.buildMachines = [
-      {
-        hostName = "nix-store.${guest}";
-        systems = [ "aarch64-linux" ];
-        maxJobs = 8;
-        protocol = "ssh-ng";
-        # kvm is the INTENT: the guest has /dev/kvm when Tart launches it with --nested. The guest
-        # advertises what the running VM really has (modules/nixos/nix-settings.nix), so a kvm build
-        # sent while NESTED_VIRT=0 overrides it fails there instead of falling back to TCG.
-        supportedFeatures = [
-          "big-parallel"
-          "nixos-test"
-        ]
-        ++ lib.optional config.tart.configGenerator.vmRunNestedVirt "kvm";
-      }
-    ];
-    # The remote builder pulls dependencies straight from the binary caches
-    # rather than having the Mac upload its whole closure over ssh.
-    nix.settings.builders-use-substitutes = true;
-  };
+  config = lib.mkMerge [
+    (lib.mkIf (cfg == "steady") {
+      nixStoreIdentity.extraPeers = [ guest ];
+      nix.buildMachines = [ ownGuest ];
+    })
+    (lib.mkIf (cfg == "requests") {
+      nixStoreIdentity = {
+        selfAlias = true;
+        extraPeers = [ guest ] ++ map guestOf others;
+        tailnetPeers = others ++ map guestOf others;
+      };
+      nix.settings.max-jobs = 0;
+      nix.buildMachines = [
+        (darwinEntry self' home)
+        (ownGuest // { speedFactor = home; })
+      ]
+      ++ map (h: darwinEntry h peer) others
+      ++ map peerGuest others;
+    })
+    (lib.mkIf (cfg != "bootstrap") {
+      nix.distributedBuilds = true;
+      # The remote builder pulls dependencies straight from the binary caches
+      # rather than having the Mac upload its whole closure over ssh.
+      nix.settings.builders-use-substitutes = true;
+    })
+  ];
 }

@@ -33,7 +33,6 @@ in
       keep-outputs = lib.mkDefault false;
       keep-derivations = lib.mkDefault false;
       keep-failed = lib.mkDefault false;
-      max-jobs = 4;
       # Named accounts only: a trusted user is root to the daemon, and a group entry would extend that to
       # whoever joins the group later, with no change here. The assertion below holds it on every machine.
       trusted-users = [

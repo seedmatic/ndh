@@ -1312,6 +1312,50 @@
               "build-users-group: Darwin primary-group mutant passed";
             assert lib.assertMsg (fired darwinMember member) "build-users-group: Darwin member mutant passed";
             pkgs.runCommand "build-users-group-guard" { } "touch $out";
+          host-builder-requests =
+            let
+              lib = nixpkgs.lib;
+              tailnet = catalogData.netplan.tailnet.domain;
+              requests = self.darwinConfigurations.bioskop.extendModules {
+                modules = [ { ndh.hostBuilder = lib.mkForce "requests"; } ];
+              };
+              c = requests.config;
+              entry = host: lib.findFirst (m: m.hostName == "nix-store.${host}") null c.nix.buildMachines;
+              stanzas = lib.filter (lib.hasPrefix "nix-store.") (
+                lib.splitString "Host " c.environment.etc."ssh/ssh_config.d/75-nix-store.conf".text
+              );
+              stanza = host: lib.findFirst (b: lib.hasPrefix "nix-store.${host}\n" b) "" stanzas;
+              noLoopback = requests.extendModules {
+                modules = [
+                  {
+                    nix.buildMachines = lib.mkForce [ (entry "bioskop-nixos") ];
+                  }
+                ];
+              };
+              coverage =
+                cfg: lib.any (a: !a.assertion && lib.hasInfix "max-jobs = 0" a.message) cfg.config.assertions;
+            in
+            assert lib.assertMsg (c.nix.settings.max-jobs == 0) "requests: the Mac must build nothing itself";
+            assert lib.assertMsg (
+              (entry "bioskop").systems == [ "aarch64-darwin" ] && (entry "bioskop").speedFactor == 10
+            ) "requests: the loopback is the home darwin builder";
+            assert lib.assertMsg (
+              (entry "bioskop-nixos").speedFactor == 10
+              && (entry "nikopol").speedFactor == 1
+              && (entry "nikopol-nixos").speedFactor == 1
+            ) "requests: home first, the other metalspace as fallback";
+            assert lib.assertMsg (
+              lib.hasInfix "HostName nikopol${tailnet}\n" (stanza "nikopol")
+              && lib.hasInfix "HostName nikopol-nixos${tailnet}\n" (stanza "nikopol-nixos")
+              && lib.hasInfix "HostName bioskop.local\n" (stanza "bioskop")
+            ) "requests: the other metalspace over the tailnet, home on its own network";
+            assert lib.assertMsg (lib.all (
+              b: lib.hasInfix "ConnectTimeout 5\n" b
+            ) stanzas) "requests: every nix-store alias fails fast on a cut route";
+            assert lib.assertMsg (
+              !(coverage requests) && coverage noLoopback
+            ) "requests: a Mac with max-jobs = 0 and no darwin entry must be refused";
+            pkgs.runCommand "host-builder-requests" { } "touch $out";
           trusted-users-named =
             let
               lib = nixpkgs.lib;

@@ -33,8 +33,9 @@ let
   ndhContext = lib.attrByPath [ "context" ] { } ndh;
   inventoryHostNames = builtins.attrNames (lib.attrByPath [ "inventory" "hosts" ] { } ndhContext);
   selfHostName = config.networking.hostName or "";
-  peerHostNames = lib.filter (h: h != selfHostName && h != "") (
-    lib.unique (inventoryHostNames ++ cfg.extraPeers)
+  tailnetDomain = lib.attrByPath [ "catalog" "netplan" "tailnet" "domain" ] "" ndhContext;
+  peerHostNames = lib.filter (h: (cfg.selfAlias || h != selfHostName) && h != "") (
+    lib.unique (inventoryHostNames ++ cfg.extraPeers ++ lib.optional cfg.selfAlias selfHostName)
   );
 
   # Restricted login shell for the inbound nix-daemon user. Rendered as a
@@ -65,9 +66,14 @@ let
   # Per-host stanza. CertificateFile is mandatory: with cert-signed auth,
   # ssh must present the cert alongside the private or sshd will not
   # match the TrustedUserCAKeys / AuthorizedPrincipalsCommand pair.
+  # A peer in another metalspace is reached over the tailnet, by its fleet name there. The timeouts make a cut
+  # route fail in seconds: nix gives ssh none, and a build would wait on the TCP timeout.
   peerStanza = host: ''
     Host nix-store.${host}
-      HostName ${host}${cfg.hostSuffix}
+      HostName ${host}${if lib.elem host cfg.tailnetPeers then tailnetDomain else cfg.hostSuffix}
+      ConnectTimeout 5
+      ServerAliveInterval 15
+      ServerAliveCountMax 4
       User nix-store
       IdentityFile ${cfg.keyPath}
       CertificateFile ${cfg.certPath}
@@ -178,6 +184,18 @@ in
         Machines outside the inventory's hosts that also get a `nix-store.<peer>`
         alias: the NixOS guest a Darwin host builds on (modules/darwin/host-builder.nix).
       '';
+    };
+
+    selfAlias = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = "Also render `nix-store.<this host>`: the loopback a host that builds every request through it uses (modules/darwin/host-builder.nix, phase requests).";
+    };
+
+    tailnetPeers = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [ ];
+      description = "Peers in another metalspace: their alias reaches `<peer><tailnet domain>` instead of `<peer><hostSuffix>`.";
     };
 
     hostSuffix = lib.mkOption {
