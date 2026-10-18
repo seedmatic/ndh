@@ -1,4 +1,4 @@
-= Host Builder Phases (bootstrap → steady)
+= Host Builder Phases (bootstrap → steady → requests)
 :toc: left
 :icons: font
 
@@ -27,6 +27,12 @@ first time.
 `linux-builder` is turned off and the Mac offloads over ssh, pulling
 dependencies straight from the caches instead of uploading its whole closure.
 
+`requests`:: Every build is a request. The Mac builds nothing itself
+(`max-jobs = 0`): its own `aarch64-darwin` builds go through ssh-ng to its own
+`nix-store` account (the loopback, `nix-store.<host>`), its `aarch64-linux`
+builds to `<host>-nixos`. Both fall back to the other metalspace's Mac and
+guest over the tailnet (`nix-store.<peer>` → `<peer>.<tailnet domain>`).
+
 The builder name is *derived* from `config.profile.host.hostName`
 (`<host>-nixos`), never hardcoded — so the same module offloads
 `bioskop → bioskop-nixos` and `nikopol → nikopol-nixos`. The Mac's nix-daemon
@@ -34,7 +40,7 @@ reaches it through the `nix-store.<host>-nixos` ssh alias: the guest's
 `nix-store` account (forced `nix-daemon --stdio`, a trusted nix user), with the
 fleet's `nix-store` certificate. Builds never log in as root.
 
-== The two phases
+== The three phases
 
 [mermaid]
 ....
@@ -44,9 +50,13 @@ stateDiagram-v2
     bootstrap: bootstrap
     bootstrap: local linux-builder (QEMU)<br/>baremetal only
     steady: steady
-    steady: offload to '&lt;host&gt;-nixos'<br/>linux-builder OFF
-    bootstrap --> steady: '&lt;host&gt;-nixos' built,<br/>activated & incus up
+    steady: offload to the host's -nixos guest<br/>linux-builder OFF
+    bootstrap --> steady: the -nixos guest built,<br/>activated and incus up
+    requests: requests
+    requests: max-jobs = 0, darwin via the loopback<br/>other metalspace as fallback
     steady --> steady: darwin-rebuild switch
+    steady --> requests: way back proven,<br/>one fallback cut proven
+    requests --> steady: way back
     note right of bootstrap
         vm-form hosts (nikopol) can
         never run a nested builder,
@@ -59,6 +69,19 @@ embedded builder when the host is baremetal *and* `ndh.hostBuilder == "bootstrap
 `modules/darwin/host-builder.nix` owns the reverse: in `steady` it wires
 `nix.buildMachines = [ <host>-nixos ]` + `builders-use-substitutes`. The two are
 mutually exclusive by construction — never both on.
+
+=== The order of the builders in `requests`
+
+nix sends a build to the machine with a free slot whose busy slots divided by
+its `speedFactor` is lowest (nix 2.34 `build-remote.cc`). The home builders
+carry 10, the other metalspace's 1: home wins while both are idle or equally
+busy, and the other metalspace takes a build when home is the busier. nix gives
+ssh no timeout, so every `nix-store.*` alias sets `ConnectTimeout 5` and
+`ServerAliveInterval 15` × 4: cutting the tailnet route to the peer metalspace
+stops the fallback within seconds. An assertion refuses `max-jobs = 0` on a
+machine whose own system has no entry, and one table, `ndh.builderCapacity`
+(darwin 4, NixOS 8), gives both a machine's own `max-jobs` and the `maxJobs` of
+the entries that send it builds.
 
 == Per-host state
 
@@ -171,6 +194,20 @@ Once `<host>-nixos` is built, activated, and serves its `nix-store` account:
 
 To fall back (e.g. sibling wiped), flip to `bootstrap` and re-switch — the
 embedded builder returns on baremetal hosts.
+
+== Operator: promoting a host to requests
+
+Before the first host moves, 🎛️ proves on it, once: the way back (a build with
+`--option max-jobs 4 --option builders ''`, and ndh-switch's local-build
+option), and one fallback cut (the tailnet route to the peer metalspace down:
+a build falls back to home within the timeout).
+
+. Set `ndh.hostBuilder = "requests"` in `hosts/<host>/darwin.nix`, and switch.
+. Verify: `sudo nix store ping --store ssh-ng://nix-store.<host>` succeeds, and
+  a fresh `aarch64-darwin` build is sent to the loopback.
+
+To go back, flip to `steady` and re-switch; for one command,
+`--option max-jobs 4 --option builders ''`.
 
 == Related Documentation
 
