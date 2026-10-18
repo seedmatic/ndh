@@ -73,6 +73,8 @@ write() {
 
 # The layer being built, until it is sealed: any exit before that drops it.
 BUILDING=""
+# The Incus containers to stop before the reboot, listed by preflight.
+CONTAINERS=""
 
 # On every exit before the reboot: an unsealed layer is dropped, its mount point too, and nix comes back.
 cleanup() {
@@ -93,6 +95,9 @@ preflight() {
   # With Incus on, the containers are stopped before the reboot: a missing incus must refuse, never skip that.
   if [ "$INCUS_ENABLED" = true ]; then
     command -v incus >/dev/null || die "Incus is enabled but incus is not on this program's path — nothing done"
+    # Listed now, among the refusals: a listing that fails later would leave them running into the reboot.
+    CONTAINERS=$(incus list --project "$CONTAINER_PROJECT" -c n -f csv) ||
+      die "cannot list the Incus containers to stop before the reboot — nothing done"
   fi
 
   # Delegated builds write into the upper: none may run, and none may start.
@@ -259,11 +264,9 @@ stage_next() {
   write "$STACK_DIR/request.json" "$(jq -cn --arg s "$snapshot" '{snapshot: $s}')"
   say "$kind staged as $snapshot; the next boot stacks it"
 
-  if [ "$INCUS_ENABLED" = true ]; then
-    for instance in $(incus list --project "$CONTAINER_PROJECT" -c n -f csv 2>/dev/null); do
-      incus stop --project "$CONTAINER_PROJECT" "$instance"
-    done
-  fi
+  while read -r instance; do
+    if [ -n "$instance" ]; then incus stop --project "$CONTAINER_PROJECT" "$instance"; fi
+  done <<<"$CONTAINERS"
   # Not on the way down: the reboot stops everything anyway.
   trap - EXIT
   systemctl reboot

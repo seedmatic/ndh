@@ -167,6 +167,21 @@ changed() {
   [ "$status" -eq 1 ]
 }
 
+@test "with Incus enabled, a failed container listing refuses before anything; a good one stops them before the reboot" {
+  rm "$t/rw/upper/bbbb-secret"
+  echo /nix/store/aaaa-clean >"$t/live"
+  stub incus 'case "$1" in list) [ -z "${FAIL_LIST:-}" ] || exit 1; echo attic ;; esac'
+  INCUS_ENABLED=true FAIL_LIST=1 run_cli compact "$t/sys"
+  [ "$status" -eq 1 ]
+  [[ $stderr == *"cannot list the Incus containers"* ]]
+  run changed
+  [ "$status" -eq 1 ]
+  : >"$log"
+  INCUS_ENABLED=true run_cli compact "$t/sys"
+  [ "$status" -eq 0 ]
+  grep -qx 'incus stop --project ndh attic' "$log"
+}
+
 @test "compact before the current system has booted is refused before anything" {
   rm "$t/booted-system"
   ln -s "$t/old-sys" "$t/booted-system"
