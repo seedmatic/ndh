@@ -687,11 +687,11 @@ content into `$out` is signed. So a signature from a key there says "built here"
 from a revision".
 
 [[cluster-builds]]
-== The clusters build through a cluster builder — design only
+== The clusters build through a cluster builder — coded, in proof
 
 **Decided by the operator on 2026-10-10, refined on 2026-10-17.** A cluster's nodes and workloads build
 nothing themselves: they delegate every build (`max-jobs = 0`, `builders = ssh-ng://…`,
-`builders-use-substitutes = true`) to their metalspace's **cluster builder**, and to it only: a
+`builders-use-substitutes = true`) to **their cluster's builder**, and to it only: a
 cluster trusts its **own** cluster builder and no other, so there is **no fallback** to the other
 metalspace's cluster builder (operator, 2026-10-17). The cross-metalspace fallback is the four fleet
 machines' alone (their own metalspace's builder first, then the other's). The `builders` list is
@@ -699,10 +699,60 @@ generated from the machines holding the builder role, each with its systems. see
 and the darwin hosts are never among its builders (they offload `aarch64-linux` to their guest
 themselves).
 
-The cluster builder is **its own unprivileged Incus container per metalspace**, not the NixOS guest:
+The cluster builder is **its own unprivileged Incus container, one per cluster**, not the NixOS guest:
 a node-supplied derivation runs arbitrary code in the builder's sandbox, and on the guest an escape
 would land on the access point's age identity, its sops secrets, the Incus member, the fabric and
-attic's push token (❄️, 🛡️). It is a chantier of its own (🖥️ + ❄️). What this spec fixes:
+attic's push token (❄️, 🛡️). It is a chantier of its own (B4: 📦 leads, ❄️ proves, 🖥️ the container).
+
+**Its shape, decided by the operator on 2026-10-18: an LXC image of its own**, its store the image's rootfs, which
+Incus idmaps. ndh **defines** it (`modules/nixos/cluster-builder.nix`, exported as `nixosModules.cluster-builder`,
+with its settings check) and builds no image of it, having no use for one; **rke2lab builds the image**, by
+revision, in a `nixosConfigurations` beside `rke2-node-base`, the same route as its node image. Not the
+shape of ndh's other containers (<<container-store>>): their store is composed by the NixOS guest, an
+unprivileged container sees it as `nobody`'s and cannot write it (measured on the probe, 2026-10-16: attic's upper
+stayed at 0 entries), and a builder writes every output; privileged, it could, but its root would be the guest's,
+so a sandbox escape would land next to the guest's keys. From nixpkgs' `lxc-container.nix` only the image is kept:
+`lxc-instance-common.nix`, which it imports, opens a password-less root login, enables sshd with its defaults and
+copies a channel in, so it is disabled. A new system is a new image, hence a new host key and a new nix key.
+
+**It never builds bringup** (the operator, 2026-10-18). Bringup and the disk images are ndh's, built by the fleet's
+builders for the fabric's bootstrap, and a node only inherits its system from them. The cluster builder serves
+what a cluster's nodes and workloads ask at run time, so it stays small and has no `/dev/kvm`.
+
+[mermaid]
+....
+flowchart TB
+  N["a node, untrusted client<br/>ssh-ng, certificate at principal cluster-build"]
+  subgraph G["the NixOS guest"]
+    K["its keys: the access point's age identity,<br/>sops secrets, the Incus member"]
+    subgraph B["cluster-builder: its own LXC image, unprivileged"]
+      EP["sshd, ForceCommand nix-daemon --stdio --force-untrusted --process-ops"]
+      SB["nix sandbox, no fallback:<br/>the node's build script as nixbldN"]
+      ST["/nix/store = the image's rootfs, idmapped, writable"]
+      BK["its own nix key, born inside"]
+    end
+  end
+  N --> EP --> SB --> ST
+  SB -.->|"an escape lands as a mapped uid"| BK
+  SB -.-x|"cannot reach"| K
+....
+
+Its resources are declared once, `ndh.clusterBuilder.resources` (CPUs, memory, disk): they give its `max-jobs`
+and its GC window (10–30% of its store free), and `instanceConfig` the Incus keys it is launched with
+(unprivileged, `security.nesting` for the sandbox's namespaces, `limits.cpu`, `limits.memory`, the root disk's
+size). It shares its guest with that cluster's nodes, attic and the guest's own builds; its sizes are set after a
+measurement under load.
+
+**Where it lives, decided by the operator on 2026-10-18.** Its whole life is its cluster's: only that cluster trusts
+it, its keys are born and die with the grow, its public goes to that cluster's cellar. So **rke2lab's cold start**
+creates and destroys it with the cluster, never ndh. Its Incus project is **its own, `rke2lab-<cluster>-build`**,
+made and removed by the same grow: not `ndh`, whose instances outlive every cluster, and not `rke2lab`, where CAPN's
+identity (restricted to that project) can `exec` into and `file pull` from any instance, so would reach the
+builder's signing key (🖥️). The cold start inherits from 🖥️: the image GC keeps what the desired instances
+reference before a second image lives beside the node image; the NIC is on the cluster's `vmnet-<role>`, at an
+address reserved in the network blueprint; its devices are declared inline, its GC marks are `user.rke2lab.*`.
+
+What this spec fixes:
 
 [cols="1,2",options="header"]
 |===
@@ -712,21 +762,30 @@ attic's push token (❄️, 🛡️). It is a chantier of its own (🖥️ + ❄
 | a read token would make the whole private cache's confidentiality depend on that sandbox never
 being escaped (🛡️); the cost is compute on our own packages
 
-| its keys are **born inside** it (its host key, and its nix key derived from it); only the publics
-leave, recorded by the cluster's own scenario in the cluster's cellar; that cluster's nodes trust its
-nix key and upstream's, and nothing else does, neither the four machines nor the attics (see
-<<builder-keys>>)
-| one key per cache; trust flows down only
+| its keys are **born inside** it: its host key, and its nix key **generated** at first start, which never
+leaves; only the publics leave, the nix one registered in that cluster's cellar by its own scenario
+(`acceptedBy` = that cluster only); that cluster's nodes trust its nix key and upstream's, and nothing
+else does, neither the four machines nor the attics
+| one key per cache; trust flows down only. Not derived from the host key, unlike the fleet machines'
+(<<builder-keys>>): their host key is in keys.yaml and the operator's keyring, so their nix public is derived
+and recorded ahead; a cluster builder's host key is born and dies with each grow, recorded nowhere, and
+deriving would only tie the two keys together (🔑, 2026-10-18)
 
 | reached over the fabric by OpenSSH: an account `cluster-build` (never `nix-store`) forced to
-`nix-daemon --stdio`, reachable only with the user certificate at principal `cluster-build` signed for
-that cluster's nodes
-| Tailscale SSH cannot force a command
+`nix-daemon --stdio --force-untrusted --process-ops`, reachable only with the user certificate at principal
+`cluster-build` signed for that cluster's nodes (`TrustedUserCAKeys` + sshd's own `AuthorizedPrincipalsFile`),
+`DisableForwarding`, no TTY, no sftp, root's login locked (the way in is `incus exec` from the guest)
+| Tailscale SSH cannot force a command. In nix 2.34.9 (`src/nix/unix/daemon.cc`) a plain `--stdio`
+endpoint answers the client as trusted and relays its ops, so build-remote takes the trusted path; only the
+three flags together make the endpoint itself untrusted. `--force-untrusted` needs `daemon-trust-override`, and
+both experimental features (`daemon-trust-override`, `mounted-ssh-store`) are in **that container's nix.conf
+only**, checked by `checks.*.cluster-builder-settings` (🛡️, 2026-10-18)
 
-| unprivileged, its own dataset and quota, `sandbox = true`, no host mount beyond its store,
-initiating nothing toward the fabric (reachable by its nodes, upstream outbound); a new host key, so a
-new nix key, at each grow
-| the container is the boundary
+| unprivileged, its root disk under its size, `sandbox = true` **and `sandbox-fallback = false`**, no host
+mount, no onward builder (no `buildMachines`), initiating nothing toward the fabric (reachable by its nodes,
+upstream outbound); a new host key, so a new nix key, at each grow
+| the container is the boundary; nix's default `sandbox-fallback = true` would silently build without a
+sandbox where the container refuses its namespaces (❄️); a builder that cannot send cannot chain
 
 | the nodes' `builders` entry is `ssh-ng://`, **asserted at build** in the node configuration; the
 builder's `trusted-substituters` is empty
@@ -739,11 +798,14 @@ ref, a derivation), **never a bare store path**
 manifest of ours uses a bare store path today (❄️)
 |===
 
-Whether `cluster-build` is a trusted user of that container's daemon is decided by test 1 below, in
-the chantier. nix 2.34.9's `build-remote` gets an untrusted client its build of an input-addressed
-derivation by copying the `.drv` closure and asking for `buildPaths` (❄️, read in
-`src/nix/build-remote/build-remote.cc:300-345`), so the account stays **untrusted** if test 1 passes.
-Otherwise it is trusted on that container only (🛡️). The accepted residual, for each outcome (🛡️):
+**`cluster-build` is trusted nowhere: proven on 2026-10-18** on the throwaway builder of `incus-probe` (nix
+2.34.9, the untrusted endpoint, ❄️'s verdict). Tests 4, 1, 2, 3, 5, 6 and 7 below pass: `Trusted: 0`, a nonce
+input-addressed derivation built on the builder and signed by its key alone, an unsigned input and an unsigned import
+refused, a path substituted through the builder's key alone and an unsigned one refused, `--option sandbox false`
+and a client substituter both without effect. nix 2.34.9's `build-remote` gets an untrusted client its build of an
+input-addressed derivation by copying the `.drv` closure and asking for `buildPaths` (❄️, read in
+`src/nix/build-remote/build-remote.cc:300-345`). The fallback, trusted on that container only (🛡️), stays
+written for a nix bump that would break test 1. The accepted residual, for each outcome (🛡️):
 
 [cols="1,3",options="header"]
 |===
@@ -878,47 +940,83 @@ locked by flake ref, never by a bare store path. What upstream serves, the node 
 === The tests the implementation must pass — the builder
 
 These sit next to <<read-test>>, and run on a **throwaway** cluster builder first, never on a live
-NixOS guest.
+NixOS guest: on `incus-probe`, whose VM plays the node, the builder a container on its stand-in fabric. The
+gestures are 🎛️'s, ❄️ judges them, every creation and deletion is the operator's go. **They are rerun at every
+bump of the builder's nix** (🛡️, 2026-10-18): its nix comes from ndh's nixpkgs, pinned through flake-commons, and
+the trust boundary rests on flags and a code path read in one nix version (2.34.9). Until that rerun is
+automated, a nix bump does not reach a cluster builder without it.
 
 [cols="1,2,2",options="header"]
 |===
 | Test | Gesture, from a node that is not a trusted user | Expected
 
+| I1 — the sandbox under nesting
+| a sandboxed build inside the container; `nix config show`
+| it builds, with `sandbox = true` and `sandbox-fallback = false`; without `security.nesting` it fails
+
+| I2 — its own store
+| after a build, `nix-store --verify` inside; the owner, seen from the guest, of a new store path
+| clean; the container's mapped root, never `nobody`
+
+| I3 — reach
+| tcp/22 from the node
+| open
+
 | 0 — no rebuild of the world
-| `nix build --dry-run` of the env or the closure a node or a workload needs, counted against the
-cluster builder's substituters (the same substituters, or `--eval-store auto --store ssh-ng://…`)
+| the closure's `.drv` evaluated by revision on the node, copied in (content-addressed, so accepted
+untrusted), then `nix-store --realise --dry-run` of it **inside the builder**, which measures its own
+substituters; `--eval-store auto --store ssh-ng://…` from the node as a second measure
 | "will be built" holds only our own derivations; a nixpkgs package there is a pin Hydra did not
 build, or an overlay of ours changing a widely used derivation. Measured on the four systems on
 2026-10-17: 55–93 derivations to build, all configuration glue (❄️)
 
 | 1 — an untrusted client gets a build
-| `nix build` of an input-addressed derivation, delegated to `ssh-ng://` the cluster builder; then
-an input the builder does not trust; then the same over `ssh://`
-| the first succeeds, through `build-remote`'s `buildPaths` path, the output computed by the builder;
-the unsigned input is refused; `ssh://` fails (it assumes trust)
+| `nix store info` of the builder; a delegated build (`max-jobs = 0`, `builders = ssh-ng://…`) of a
+nonce input-addressed derivation; then one with an unsigned input-addressed input; then the same over
+`ssh://`
+| `Trusted: 0`; the first is built **on the builder** (its journal), through `build-remote`'s
+`buildPaths` path, and `nix path-info --sigs` on the node shows the builder's key; the unsigned input is
+refused, "lacks a signature by a trusted key"; `ssh://` fails. A content-addressed input passes unsigned,
+which is correct, so the inputs are input-addressed
 
 | 2 — an untrusted client cannot import
 | `nix copy --to ssh-ng://` the cluster builder `{an unsigned, input-addressed path}`
 | refused, for lack of a trusted signature
 
 | 3 — an untrusted client substitutes, signed only
-| with the cluster builder as a substituter, realise a path it signed, then one it did not
-| the signed path is substituted, the unsigned one is refused
+| with the cluster builder as a substituter and its key alone trusted, realise a path it built, then one
+built inside it with signing off
+| the signed path is substituted, the unsigned one is refused. **The only proof that the node trusts the
+builder through its key**: a delegated build's outputs come back to the node without a signature check
+(`build-remote`, `NoCheckSigs`), so tests 1 and 5 show only that the builder signs
 
 | 4 — the forced command admits the daemon protocol only
-| open a shell, forward a port; then connect with a certificate at principal `nix-store`, and with a
-node of ANOTHER cluster
-| no shell, no forwarding; both connections refused
+| a shell, `ssh … true`, `-L`, `-W`, `-N -R`, the sftp subsystem, a command with arguments, `root@`;
+then a certificate at principal `nix-store`, and a node of ANOTHER cluster
+| no shell, `true` answers the daemon protocol, no forwarding, no sftp, nothing passed through; root and
+both other identities refused
 
 | 5 — a client cannot relax the builder
-| delegate a build with `--option sandbox false` (or any option an untrusted client may not set)
-| the option is ignored, the build runs sandboxed, and the output carries the builder's signature,
-which the node accepts
+| delegate a build with `--option sandbox false` that tries the network and lists `/`
+| the client's output: "ignoring the client-specified setting 'sandbox'" (the `--process-ops` endpoint
+refuses it); no network, the sandbox's root
+
+| 6 — no chaining
+| inside: `nix config show builders`; any client key or alias
+| nix's default `@/etc/nix/machines`, the file absent; none
+
+| 7 — no client substituter
+| a delegated build with `--option substituters https://cache.example.invalid`
+| the client's output: "ignoring untrusted substituter"; only the builder's own are used
+
+| I4 — nothing left
+| after the deletion: instances, images, volumes, the throwaway CAs and keys
+| none
 |===
 
-If test 1 **fails**, `cluster-build` becomes a trusted user of that container only, with the residual
-stated above; content-addressed derivations are never the basis (an experimental feature, and our
-flakes are not content-addressed).
+Passed on 2026-10-18 (above). If test 1 ever **fails** at a nix bump, `cluster-build` becomes a trusted user of that container only, with the residual
+stated above (`trustedClient = true`: a plain `--stdio` endpoint, no experimental feature); content-addressed
+derivations are never the basis (an experimental feature, and our flakes are not content-addressed).
 
 [[builder-keys]]
 == The fleet's builds and its builders' keys — decided 2026-10-17
@@ -994,18 +1092,18 @@ the caches' substitutes, the guests' console
 |===
 | Record | Its one place | Written by
 
-| a builder's nix signing **private**
+| a fleet machine's nix signing **private**
 | nowhere in a repository, and it never transits: HKDF of the machine's host-key seed, label
 `seedmatic/nix-signing/<n>`, re-derived on its machine at activation from its own host key, root 0400
 outside the store
 | the machine's activation; `ndh-keyring` derives it once, at generation, only to record the public
 
-| a builder's nix signing **public**
+| a fleet machine's nix signing **public**
 | `keys.yaml`, the machine's entry, beside its host public; `acceptedBy` and `trusted-public-keys`
 read it from there and restate nothing
 | `ndh-keyring`, in the same gesture as the host public
 
-| a builder's ssh identity for build requests
+| a fleet machine's ssh identity for build requests
 | a second, **user** certificate on its host key, principal `nix-store`, replacing keys.yaml's single
 `nix-store` key shared by every machine; the KRL cuts it alone, by its key id
 | the user authority, from the recorded host public
@@ -1017,10 +1115,20 @@ accepted-key schema in `catalog/private-caches.nix`). `catalog/cache-trust.yaml`
 it keeps `seedmatic-fleet-1`'s private until step 9, then empties
 | attic in the container; the operator's merge for the public
 
+| the cluster builder's nix signing **private**
+| inside its container only: **generated** at first start (`nix key generate-secret`, root 0400), never
+derived from its host key, never leaving; a grow is a new container, so a new key (🛡️'s condition 7, 🔑)
+| the container, at first start
+
 | the cluster builder's two publics
-| the cluster's own cellar, never fleet `keys.yaml` (<<cluster-builds>>)
+| the cluster's own cellar, never fleet `keys.yaml`, `acceptedBy` that cluster only (<<cluster-builds>>)
 | the cluster's own scenario
 |===
+
+**Derive or generate.** The fleet machines **derive** their nix key from their host key, because that host key is
+recorded (`keys.yaml`, the operator's keyring), so its public is derived and recorded ahead and the private
+re-derived at every activation without being stored. A cluster builder **generates** its own: its host key is
+born and destroyed with each grow and recorded nowhere, and deriving would only tie the two keys together.
 
 * **Naming:** `seedmatic-<machine>-<n>`, where `<n>` is the HKDF label's version and `<machine>` the
   machine's `keys.yaml` name, as in `host-<machine>`. Cache keys keep their names
