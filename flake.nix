@@ -1461,8 +1461,10 @@
               ]
             ) "cluster-builder: the sandbox can fall back";
             assert lib.assertMsg (
-              untrusted.users.users.root.hashedPassword == "!" && !untrusted.services.openssh.allowSFTP
-            ) "cluster-builder: root has a password, or sftp is offered";
+              untrusted.users.users.root.hashedPassword == "!"
+              && !untrusted.services.openssh.allowSFTP
+              && untrusted.services.openssh.settings.AuthorizedPrincipalsFile == "/etc/ssh/principals/%u"
+            ) "cluster-builder: root has a password, sftp is offered, or the principals file is not sshd's";
             pkgs.runCommand "cluster-builder-settings" { } "touch $out";
           trusted-users-named =
             let

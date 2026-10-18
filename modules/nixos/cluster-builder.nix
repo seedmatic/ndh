@@ -137,12 +137,19 @@ in
         PermitTTY = false;
         PermitUserRC = false;
         GatewayPorts = "no";
+        # Set here, not in extraConfig: NixOS writes its own `none` first, and sshd keeps the first one.
+        AuthorizedPrincipalsFile = "/etc/ssh/principals/%u";
       };
+      hostKeys = [
+        {
+          type = "ed25519";
+          path = "/etc/ssh/ssh_host_ed25519_key";
+        }
+      ];
       # No sftp subsystem: ForceCommand would win anyway, but the builder offers none.
       allowSFTP = false;
       extraConfig = ''
         TrustedUserCAKeys /etc/ssh/cluster-build-user-ca.pub
-        AuthorizedPrincipalsFile /etc/ssh/principals/%u
         Match User ${account}
           ForceCommand ${endpoint}
       '';
