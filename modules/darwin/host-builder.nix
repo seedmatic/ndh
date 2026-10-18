@@ -95,7 +95,24 @@ in
 
   config = lib.mkMerge [
     (lib.mkIf (cfg == "steady") {
-      nixStoreIdentity.extraPeers = [ guest ];
+      nixStoreIdentity = {
+        extraPeers = [ guest ];
+        # A Mac serves nix-store UNTRUSTED (❄️, nix 2.34): through the stdio relay, which hands the real daemon an
+        # empty builders list and drops the client's, so a build a Mac receives is built there and never forwarded;
+        # and an untrusted client imports no unsigned path and relaxes no setting. Root on one Mac holds the
+        # nix-store client key, so a trusted nix-store would make it root to every other Mac's daemon.
+        inboundTrusted = false;
+        # The features first: --force-untrusted and --process-ops require them as soon as they are parsed.
+        inboundDaemonArgs = [
+          "--extra-experimental-features"
+          "daemon-trust-override mounted-ssh-store"
+          "--force-untrusted"
+          "--process-ops"
+          "--option"
+          "builders"
+          ""
+        ];
+      };
       # No nix.buildMachines: nix-darwin then renders no list of its own, and the daemon reads the one
       # ndh-builders points at, from its next command.
       ndh.builderSets = sets;

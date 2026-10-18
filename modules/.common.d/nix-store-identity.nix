@@ -50,7 +50,9 @@ let
   # sshd rejects with "shell is not executable".
   # The one command this account runs, as its shell and as sshd's ForceCommand (opensshPolicy.restrictedUsers):
   # the shell alone would leave a client's forwardings and subsystems to sshd.
-  daemonCommand = "/run/current-system/sw/bin/nix-daemon --stdio";
+  daemonCommand = lib.concatStringsSep " " (
+    [ "/run/current-system/sw/bin/nix-daemon --stdio" ] ++ map lib.escapeShellArg cfg.inboundDaemonArgs
+  );
   inboundUserShell =
     (pkgs.writeShellApplication {
       name = "nix-store-shell";
@@ -195,6 +197,22 @@ in
       '';
     };
 
+    inboundDaemonArgs = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [ ];
+      description = "Extra arguments of the inbound `nix-daemon --stdio`, the account's shell and sshd's ForceCommand alike.";
+    };
+
+    inboundTrusted = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Whether the inbound account is a trusted nix user. Off where it is served untrusted (inboundDaemonArgs'
+        --force-untrusted): that flag guards only the connections through the ForceCommand, and any other way to
+        reach the daemon as this account would still be root to it.
+      '';
+    };
+
     hostSuffix = lib.mkOption {
       type = lib.types.str;
       default = ".local";
@@ -229,7 +247,9 @@ in
     };
 
     environment.shells = lib.mkIf cfg.provisionInboundUser [ cfg.inboundUserShellPath ];
-    nix.settings.trusted-users = lib.mkIf cfg.provisionInboundUser [ cfg.inboundUserName ];
+    nix.settings.trusted-users = lib.mkIf (cfg.provisionInboundUser && cfg.inboundTrusted) [
+      cfg.inboundUserName
+    ];
     opensshPolicy.restrictedUsers = lib.mkIf cfg.provisionInboundUser {
       ${cfg.inboundUserName}.forceCommand = daemonCommand;
     };

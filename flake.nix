@@ -1442,6 +1442,23 @@
             assert lib.assertMsg (lib.hasInfix "ndh-builders metalspace ||" (
               builtins.unsafeDiscardStringContext c.system.activationScripts.postActivation.text
             )) "the activation resets a missing pointer to metalspace, without aborting";
+            assert lib.assertMsg (lib.all
+              (
+                n:
+                lib.hasInfix
+                  "--stdio --extra-experimental-features 'daemon-trust-override mounted-ssh-store' --force-untrusted --process-ops --option builders ''"
+                  (self.darwinConfigurations.${n}.config.opensshPolicy.restrictedUsers.nix-store.forceCommand)
+              )
+              [
+                "bioskop"
+                "nikopol"
+              ]
+            ) "a Mac receives untrusted and forwards nothing";
+            assert lib.assertMsg (lib.all (
+              g:
+              g.config.opensshPolicy.restrictedUsers.nix-store.forceCommand
+              == "/run/current-system/sw/bin/nix-daemon --stdio"
+            ) guests) "the guests' inbound stays the plain daemon";
             pkgs.runCommand "host-builder-metalspace" { } "touch $out";
           # The cluster builder's daemon, both ways test 1 can go: the experimental features only on the
           # untrusted endpoint, never a trusted cluster-build there, the sandbox with no fallback.
@@ -1542,11 +1559,20 @@
                 ];
               named =
                 c:
-                lib.sort lib.lessThan (lib.unique c.config.nix.settings.trusted-users) == lib.sort lib.lessThan [
-                  "root"
-                  c.config.profile.user.name
-                  c.config.nixStoreIdentity.inboundUserName
-                ];
+                lib.sort lib.lessThan (lib.unique c.config.nix.settings.trusted-users) == lib.sort lib.lessThan (
+                  [
+                    "root"
+                    c.config.profile.user.name
+                  ]
+                  ++ lib.optional c.config.nixStoreIdentity.inboundTrusted c.config.nixStoreIdentity.inboundUserName
+                );
+              # The Macs serve nix-store untrusted, so it is no trusted user there.
+              untrustedOnMacs =
+                lib.all (n: !self.darwinConfigurations.${n}.config.nixStoreIdentity.inboundTrusted)
+                  [
+                    "bioskop"
+                    "nikopol"
+                  ];
               refused =
                 c:
                 lib.any (a: !a.assertion && lib.hasInfix "trusted-users holds a group" a.message)
@@ -1554,7 +1580,9 @@
                   .config.assertions;
             in
             assert lib.assertMsg (lib.all named machines)
-              "trusted-users: a machine trusts other than root, its seat user and nix-store";
+              "trusted-users: a machine trusts other than root, its seat user and (on a guest) nix-store";
+            assert lib.assertMsg untrustedOnMacs
+              "trusted-users: a Mac must not trust the nix-store it serves untrusted";
             assert lib.assertMsg (lib.all refused machines) "trusted-users: a group mutant was not refused";
             pkgs.runCommand "trusted-users-named" { } "touch $out";
           attic-watch-store-not-root =
