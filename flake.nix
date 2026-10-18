@@ -1820,6 +1820,7 @@
           incus-cluster-join-bats = import ./pkgs/incus-cluster-join.d/tests/package.nix { inherit pkgs; };
           identity-push-bats = import ./modules/.common.d/identity-push.d/tests/package.nix { inherit pkgs; };
           keyring-bats = import ./modules/.common.d/keyring.d/tests/package.nix { inherit pkgs; };
+          root-attest-bats = import ./modules/.common.d/root-attest.d/tests/package.nix { inherit pkgs; };
           # What the operator seat serves a guest's sshfs key, internal-sftp -R, refuses every write.
           sshfs-read-only-sftp-bats = import ./modules/nixos/sshfs-mounts.d/tests/package.nix {
             pkgs = pkgsForLinux;
