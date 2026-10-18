@@ -392,3 +392,31 @@ REPLICA=/Volumes/git-worktree-store/nxmatic/claude-home.d/pass/seedmatic
 @test "fleet: a local fleet-switch copy"          { run hook './fleet-switch'; denied; }
 @test "fleet: a fleet-switch under /tmp"          { run hook '/tmp/x/fleet-switch'; denied; }
 @test "fleet: raw rebuilds stay denied beside it" { run hook 'fleet-switch --dry-run && sudo darwin-rebuild switch --flake github:seedmatic/ndh/0123abcd#bioskop'; denied; }
+
+# --- the operator's Pulumi state and run logs (CAPN lab risk, 2026-10-18): the cellar's seal is no protection ---
+@test "pulumi-state: a direct read"               { run hook 'cat /Volumes/git-worktree-store/seedmatic/rke2lab.d/operator/develop/.pulumi-state/.pulumi/stacks/rke2lab/dev.json'; denied; }
+@test "pulumi-state: a relative read after cd"    { run hook 'cd /Volumes/git-worktree-store/seedmatic/rke2lab.d/operator/develop && cat .pulumi-state/.pulumi/meta.yaml'; denied; }
+@test "pulumi-state: a count is a read too"       { run hook 'grep -c capn /Volumes/git-worktree-store/seedmatic/rke2lab.d/operator/develop/.pulumi-state/.pulumi/stacks/rke2lab/dev.json'; denied; }
+@test "pulumi-state: a listing"                   { run hook 'ls /Volumes/git-worktree-store/seedmatic/rke2lab.d/operator/develop/.pulumi-state'; denied; }
+@test "pulumi-state: any worktree, any depth"     { run hook 'head /tmp/w/a/b/.pulumi-state/x.json'; denied; }
+@test "pulumi-state: a copy out"                  { run hook 'cp -r /Volumes/git-worktree-store/seedmatic/rke2lab.d/develop/.pulumi-state /tmp/s'; denied; }
+@test "ok a name that only resembles it"          { run hook 'cat /tmp/w/.pulumi-state.md'; allowed; }
+@test "ok pulumi stack ls stays free"             { run hook 'pulumi stack ls'; allowed; }
+@test "local.d: the operator's run log, rke2lab"  { run hook 'tail /Volumes/git-worktree-store/seedmatic/rke2lab.d/operator/develop/.local.d/up.log'; denied; }
+@test "local.d: relative, from a rke2lab worktree" { run hook 'cat .local.d/up.log' /Volumes/git-worktree-store/seedmatic/rke2lab.d/develop; denied; }
+@test "ok a .local.d outside rke2lab"             { run hook 'cat /tmp/w/.local.d/notes'; allowed; }
+
+# A glob that can expand to the state: a fake worktree under a throwaway home, so the glob meets a real directory.
+mkstate() {
+  W="$BATS_TEST_TMPDIR/home/seedmatic/wt"
+  mkdir -p "$W/.git" "$W/.pulumi-state/.pulumi/stacks" "$W/src/deep"
+  : >"$W/.pulumi-state/.pulumi/stacks/dev.json"
+}
+@test "pulumi-state glob: .p*, absolute"           { mkstate; HOME="$BATS_TEST_TMPDIR/home" run hook "cat $W/.p*/.pulumi/stacks/dev.json"; denied; }
+@test "pulumi-state glob: .[p]ulumi-state"         { mkstate; HOME="$BATS_TEST_TMPDIR/home" run hook "cat $W/.[p]ulumi-state/.pulumi/stacks/dev.json"; denied; }
+@test "pulumi-state glob: .*/.pulumi/*, relative"  { mkstate; HOME="$BATS_TEST_TMPDIR/home" run hook "cd $W && cat .*/.pulumi/stacks/dev.json"; denied; }
+@test "pulumi-state glob: .pulumi-*/*"             { mkstate; HOME="$BATS_TEST_TMPDIR/home" run hook "cat $W/.pulumi-*/*"; denied; }
+@test "pulumi-state glob: .p*/**/*"                { mkstate; HOME="$BATS_TEST_TMPDIR/home" run hook "cat $W/.p*/**/*"; denied; }
+@test "pulumi-state glob: .[p]ulumi-state/*"       { mkstate; HOME="$BATS_TEST_TMPDIR/home" run hook "head $W/.[p]ulumi-state/*"; denied; }
+@test "pulumi-state glob: .pulumi-*/ an absent x"  { mkstate; HOME="$BATS_TEST_TMPDIR/home" run hook "cat $W/.pulumi-*/x"; denied; }
+@test "ok a glob that misses the state"            { mkstate; HOME="$BATS_TEST_TMPDIR/home" run hook "cat $W/src/*"; allowed; }
