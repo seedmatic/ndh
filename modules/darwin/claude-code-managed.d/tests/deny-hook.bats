@@ -405,3 +405,13 @@ REPLICA=/Volumes/git-worktree-store/nxmatic/claude-home.d/pass/seedmatic
 @test "local.d: the operator's run log, rke2lab"  { run hook 'tail /Volumes/git-worktree-store/seedmatic/rke2lab.d/operator/develop/.local.d/up.log'; denied; }
 @test "local.d: relative, from a rke2lab worktree" { run hook 'cat .local.d/up.log' /Volumes/git-worktree-store/seedmatic/rke2lab.d/develop; denied; }
 @test "ok a .local.d outside rke2lab"             { run hook 'cat /tmp/w/.local.d/notes'; allowed; }
+
+# A glob that can expand to the state: a fake worktree under a throwaway home, so the glob meets a real directory.
+mkstate() {
+  W="$BATS_TEST_TMPDIR/home/seedmatic/wt"
+  mkdir -p "$W/.git" "$W/.pulumi-state/.pulumi/stacks" "$W/src/deep"
+  : >"$W/.pulumi-state/.pulumi/stacks/dev.json"
+}
+@test "pulumi-state glob: .p*, absolute"           { mkstate; HOME="$BATS_TEST_TMPDIR/home" run hook "cat $W/.p*/.pulumi/stacks/dev.json"; denied; }
+@test "pulumi-state glob: .[p]ulumi-state"         { mkstate; HOME="$BATS_TEST_TMPDIR/home" run hook "cat $W/.[p]ulumi-state/.pulumi/stacks/dev.json"; denied; }
+@test "pulumi-state glob: .*/.pulumi/*, relative"  { mkstate; HOME="$BATS_TEST_TMPDIR/home" run hook "cd $W && cat .*/.pulumi/stacks/dev.json"; denied; }

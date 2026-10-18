@@ -12,6 +12,7 @@ any other code FAILS OPEN, so every internal error here exits 2: an unreadable c
 never waved through.
 """
 
+import fnmatch
 import json
 import os
 import re
@@ -105,6 +106,29 @@ def protected_globs(table, home):
             root = (home if m.group(1) == "~" else "") + m.group(2)
             globs.add(tuple(root.strip("/").split("/")) + ("**",))
     return sorted(globs)
+
+
+def expand_glob(pattern):
+    """Every existing path PATTERN could expand to, hidden names included: wider than the shell's default, so a
+    `.p*` or `*` spelling of a protected directory is seen whatever the shell options."""
+    paths = ["/"]
+    for seg in pattern.strip("/").split("/"):
+        found = []
+        for base in paths:
+            if not re.search(r"[*?\[]", seg):
+                cand = os.path.join(base, seg)
+                if os.path.lexists(cand):
+                    found.append(cand)
+                continue
+            try:
+                names = os.listdir(base)
+            except OSError:
+                continue
+            found += [os.path.join(base, n) for n in names if fnmatch.fnmatchcase(n, seg)]
+        paths = found[:512]
+        if not paths:
+            break
+    return paths
 
 
 def spellings(path, home):
@@ -383,6 +407,7 @@ class Analyzer:
         self.other_commands = 0
         self.protected = protected_paths(table, home)
         self.protected_globs = protected_globs(table, home)
+        self._existing = None
         self.verdicts = []
 
     def deny(self, why, argv):
@@ -706,7 +731,105 @@ class Analyzer:
         wildcard, so `keyring/*` still names keyring."""
         tok = tok.split("=", 1)[1] if tok.startswith("-") and "=" in tok else tok
         stem = re.split(r"[*?\[]", tok, maxsplit=1)[0]
-        return self.is_protected(self.resolve(tok)) or (stem != tok and self.is_protected(self.resolve(stem.rstrip("/") or "/")))
+        if self.is_protected(self.resolve(tok)) or (stem != tok and self.is_protected(self.resolve(stem.rstrip("/") or "/"))):
+            return True
+        if stem != tok:
+            pattern = self.glob_pattern(tok)
+            return pattern is not None and any(self.is_protected(os.path.normpath(m)) for m in expand_glob(pattern))
+        return False
+
+    def glob_pattern(self, tok):
+        """TOK, a glob, as an absolute pattern: ~ and $HOME read as the home, a relative one against the tracked
+        cwd; None when the shell would expand something else first (a variable, a substitution) or the cwd is lost."""
+        tok = re.sub(r"^\$(?:HOME|\{HOME\})(?=/|$)", "~", tok)
+        if "$" in tok or "`" in tok or "__subst__" in tok or (self.home_tainted and tok.startswith("~")):
+            return None
+        if tok == "~" or tok.startswith("~/"):
+            return self.home + tok[1:]
+        if os.path.isabs(tok):
+            return tok
+        return os.path.join(self.cwd, tok) if self.cwd else None
+
+    def existing_protected_dirs(self):
+        """The directories that match a protected glob and exist, found once per call. They sit at worktree roots,
+        and every bare repository lists its worktrees (worktrees/*/gitdir): read those small files, then look only at
+        each worktree root's direct children. A walk of the disk took seconds."""
+        if self._existing is not None:
+            return self._existing
+        found = []
+        for root in self.table.get("protected_scan_bares", []):
+            root = self.home + root[1:] if root.startswith("~") else root
+            repos = []
+            for pattern in ("*.git", "*/*.git"):
+                repos += expand_glob(os.path.join(root, pattern))
+            for repo in repos:
+                for gitdir in expand_glob(os.path.join(repo, "worktrees", "*", "gitdir")):
+                    try:
+                        with open(gitdir, encoding="utf-8") as fh:
+                            worktree = os.path.dirname(fh.read().strip())
+                        children = [e.path for e in os.scandir(worktree) if e.is_dir(follow_symlinks=False)]
+                    except OSError:
+                        continue
+                    found += [c for c in children if self.is_protected(c)]
+        self._existing = found
+        return found
+
+    # A reader that walks a tree: the roots it walks, judged against the protected directories that exist below them.
+    TREE_READERS = {"grep", "egrep", "fgrep", "rg", "tar", "cp", "rsync", "scp", "zip", "ditto", "find", "git"}
+    CONTENT_PROGRAMS = {"cat", "grep", "egrep", "head", "tail", "less", "more", "strings", "xxd", "od", "base64",
+                        "cp", "tar", "sh", "bash", "zsh", "jq", "yq", "python3", "awk", "sed"}
+
+    def tree_roots(self, prog, args):
+        """The roots PROG walks recursively, or [] when it does not walk (a plain grep, a cp without -r)."""
+        flags = [a for a in args if a.startswith("-")]
+        pos = [a for a in args if not a.startswith("-")]
+        short = "".join(f[1:] for f in flags if not f.startswith("--"))
+        if prog in ("grep", "egrep", "fgrep"):
+            if not ("r" in short or "R" in short or any(f in ("--recursive", "--dereference-recursive") for f in flags)):
+                return []
+            pattern_given = any(f in ("-e", "-f") or f.startswith(("--regexp", "--file")) for f in flags)
+            return (pos if pattern_given else pos[1:]) or ["."]
+        if prog == "rg":
+            if not ("u" in short or any(f.startswith(("--no-ignore", "--hidden")) for f in flags)):
+                return []
+            return pos[1:] or ["."]
+        if prog == "cp":
+            return pos[:-1] if ("r" in short or "R" in short or "a" in short or "--recursive" in flags) else []
+        if prog in ("scp", "zip"):
+            return pos if "r" in short else []
+        if prog in ("rsync", "ditto"):
+            return pos[:-1]
+        if prog == "tar":
+            mode = (args[0] if args and not args[0].startswith("-") else "") + short
+            return [a for a in pos if os.path.isdir(self.resolve(a) or "")] if "c" in mode else []
+        if prog == "find":
+            runs = any(a in ("-exec", "-execdir", "-ok", "-okdir") and i + 1 < len(args)
+                       and os.path.basename(args[i + 1]) in self.CONTENT_PROGRAMS for i, a in enumerate(args))
+            if not runs:
+                return []
+            starts = []
+            for a in args:
+                if a.startswith("-") or a in ("(", "!", ")"):
+                    break
+                starts.append(a)
+            return starts or ["."]
+        if prog == "git" and "grep" in args and any(f in ("--untracked", "--no-index") for f in flags):
+            return ["."]
+        return []
+
+    def walks_into_protected(self, prog, args):
+        """Why PROG is refused: a recursive walk whose root holds (or is) an existing protected directory."""
+        roots = self.tree_roots(prog, args)
+        if not roots:
+            return None
+        for r in roots:
+            path = self.resolve(r)
+            if path is None:
+                return f"a recursive {prog} from {r}, which the hook cannot resolve; name the absolute path"
+            for d in self.existing_protected_dirs():
+                if d == path or d.startswith(path.rstrip("/") + "/"):
+                    return f"a recursive {prog} from {r} would read {d}"
+        return None
 
     def option_hits(self, args, rule):
         """The first forbidden option of ARGS, and whether ARGS name a command. gpg takes any unique prefix
@@ -1045,6 +1168,11 @@ class Analyzer:
         if any(self.reaches_protected(t) for t in args):
             self.deny("names the operator's secret material", argv)
             return
+        if prog in self.TREE_READERS:
+            why = self.walks_into_protected(prog, args)
+            if why:
+                self.deny(why, argv)
+                return
         for store in self.table.get("store_rules", []):
             if prog != store["program"]:
                 continue

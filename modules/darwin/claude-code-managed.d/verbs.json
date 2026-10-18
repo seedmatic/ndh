@@ -72,6 +72,7 @@
                        "ssh-keys-certify", "ssh-keys-certify *", "ssh-keys-renew", "ssh-keys-renew *", "attic-leaf-sign", "attic-leaf-sign *", "incus-cluster-cert-renew", "incus-cluster-cert-renew *", "ndh-keyring", "ndh-keyring *", "ndh-identity-push", "ndh-identity-push *",
                        "nix * --to https://*", "nix * --to http://*", "nix * --to s3://*", "nix * --to file://*", "nix * --to /*",
                        "nix * --to=https://*", "nix * --to=http://*", "nix * --to=s3://*", "nix * --to=file://*", "nix * --to=/*"],
+  "protected_scan_bares": ["/Volumes/git-bare-store"],
   "list_path_rules": [
     { "rule": "Read(//**/.pulumi-state/**)", "why": "Pulumi's file-backend state, the cellar: its seal's passphrase is in rke2lab's public source, so what it seals (the CAPN key after a grow) is in effect clear" },
     { "rule": "Edit(//**/.pulumi-state/**)", "why": "the same state: a session never writes the operator's Pulumi state" },
