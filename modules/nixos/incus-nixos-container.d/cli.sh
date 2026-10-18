@@ -9,9 +9,15 @@
 # PRESTART_HOOK, STACK_DESCRIPTION, STORE_DEGRADED, GCROOTS, NIX_CONFIG.
 
 usage() {
-  sed -n '4,6p' "${BASH_SOURCE[0]}" >&2
+  # By its content, not its line numbers: the wrapper puts its own lines before this file.
+  sed -n '/^#   ndh-incus-container /p' "${BASH_SOURCE[0]}" >&2
   exit 2
 }
+
+# Every incus call, its stdin closed: run over `ssh host sudo …` stdin is an open pipe, and `incus project
+# create` or `incus init` then wait there for a YAML configuration (measured live on bioskop-nixos,
+# 2026-10-18). One wrapper, so a call added later cannot forget it.
+incus() { command incus "$@" </dev/null; }
 
 die() {
   echo "ndh-incus-container: $1" >&2
