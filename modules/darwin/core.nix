@@ -130,9 +130,10 @@ in
   # auto manage nixbld users with nix darwin
   nix = {
 
+    # No `include`: a file outside ndh, read after these settings, overrode them at the daemon's next start.
+    # /etc/nix/flox.conf, the flox installer's, did (max-jobs = auto, a trust key the catalog does not
+    # hold); what it set that we keep is declared in settings below.
     extraOptions = ''
-      include /etc/nix/flox.conf
-      include /etc/nix/nix-custom.conf
       accept-flake-config = true
       always-allow-substitutes = true
       min-free = ${toString (10 * 1024 * 1024 * 1024)}  # 10 GB
@@ -168,6 +169,10 @@ in
 
       # Ensure SSL Cert file path located correctly
       ssl-cert-file = "/etc/ssl/cert.pem";
+
+      # Kept from flox.conf: fail a substitution quickly on Fastly's lossy routes, and let the caller retry.
+      connect-timeout = 10;
+      stalled-download-timeout = 30;
 
       # Strict, not relaxed: nothing the darwin hosts build needs __noChroot (measured 2026-10-13 on every
       # derivation no public cache holds), and relaxed would let any derivation opt out.

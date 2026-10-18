@@ -1312,6 +1312,27 @@
               "build-users-group: Darwin primary-group mutant passed";
             assert lib.assertMsg (fired darwinMember member) "build-users-group: Darwin member mutant passed";
             pkgs.runCommand "build-users-group-guard" { } "touch $out";
+          darwin-nix-conf-no-include =
+            let
+              conf = c: c.config.environment.etc."nix/nix.conf".source;
+              macs = map (n: conf self.darwinConfigurations.${n}) [
+                "bioskop"
+                "nikopol"
+              ];
+              mutant = conf (
+                self.darwinConfigurations.bioskop.extendModules {
+                  modules = [ { nix.extraOptions = "include /etc/nix/flox.conf"; } ];
+                }
+              );
+            in
+            pkgs.runCommand "darwin-nix-conf-no-include" { } ''
+              included() { grep -Eq '^[[:space:]]*!?include[[:space:]]' "$1"; }
+              for f in ${nixpkgs.lib.escapeShellArgs macs}; do
+                if included "$f"; then echo "a Mac's nix.conf includes a file outside ndh: $f" >&2; exit 1; fi
+              done
+              included ${mutant} || { echo "the include mutant passed" >&2; exit 1; }
+              touch $out
+            '';
           host-builder-requests =
             let
               lib = nixpkgs.lib;
