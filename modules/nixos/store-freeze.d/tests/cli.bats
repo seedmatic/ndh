@@ -42,7 +42,8 @@ setup() {
   stub sync ''
   # Two live paths in the upper: a clean one, and one with a secret shape unless a test removes it.
   echo hello >"$t/upper/aaaa-clean"
-  printf 'AGE-SECRET-KEY-1%s\n' "QWERTYUIOPASDFGHJKLZXCVBNM" >"$t/upper/bbbb-secret"
+  # Assembled at run time: this file must hold no secret shape, or ndh's own source would trip the sweep.
+  printf '%s-%s-%s-1%s\n' AGE SECRET KEY "QWERTYUIOPASDFGHJKLZXCVBNM" >"$t/upper/bbbb-secret"
   printf '/nix/store/aaaa-clean\n/nix/store/bbbb-secret\n' >"$t/live"
   cli=$t/ndh-store
   {
