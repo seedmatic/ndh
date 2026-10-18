@@ -95,6 +95,8 @@ let
       export SWEEP_SHAPES=${./store-freeze.d/sweep-shapes}
       export CONTAINER_PROJECT=${lib.escapeShellArg config.ndh.incusNixosContainers.project}
       export CONTAINER_STATE_ROOT=${lib.escapeShellArg config.ndh.incusNixosContainers.stateRoot}
+      export SYSTEM_PROFILE=/nix/var/nix/profiles/system CURRENT_SYSTEM=/run/current-system
+      export BOOTED_SYSTEM=/run/booted-system NIX_BUILDS_DIR=/nix/var/nix/builds
       ${builtins.readFile ./store-freeze.d/cli.sh}
     '';
   };

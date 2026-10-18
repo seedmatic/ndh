@@ -72,7 +72,7 @@ sequenceDiagram
   Op->>G: ndh-store freeze (names the validated system = /run/current-system)
   G->>G: refuse if the current system is not the named one, or a build is running
   G->>N: stop nix-daemon.socket and nix-daemon
-  G->>G: GC the upper to the validated closure plus declared roots, then the secret sweep
+  G->>G: the secret sweep of the upper's live paths, then the GC to the roots
   G->>Z: ONE zfs snapshot rwstore@T db@T (atomic)
   G->>Z: write the next manifest (tmp, rename, fsync of the dir), keep the previous one
   G->>C: stop the containers (they restart on the new stack at boot)
@@ -227,6 +227,16 @@ the pre-commit guards); a hit **refuses** the freeze and names only the path
 | the 2026-10-10 class: a plaintext path that reached the store becomes indelible once frozen. **The
 gesture refuses entirely until the sweep exists and passes**
 
+| **every refusal comes before the first change**, in the three gestures: the sweep reads what the new
+layer would hold, and `nix-store --verify` runs, before a generation is dropped, the bootloader rewritten,
+the GC run or a path unregistered; on any exit before the reboot, a layer built but not sealed is
+destroyed with its mount point, and nix-daemon comes back
+| measured on nikopol-nixos on 2026-10-18: a compaction dropped generations 5–15 and rewrote the
+bootloader, then its sweep refused, and left its build directory behind. A refused gesture must leave the
+machine as it was. A compaction sweeps today's live set, a superset of what it keeps: computing the kept
+set exactly would replay the GC's `keep-derivations` and `keep-outputs`, and a miss would fold an unswept
+path in; a path only an old generation holds is swept too, then accepted or purged
+
 | the sweep's **scope** is every entry but a built output whose `.drv` is **valid in this store**:
 paths with no deriver (sources, eval copies, `nix-store --add`), outputs whose recorded deriver is
 absent, every `.drv`, anything invalid. **`keep-derivations = true`** is asserted on a frozen level
@@ -238,8 +248,9 @@ that way. Measured on nikopol-nixos on 2026-10-14: an 11 G upper held 415 matchi
 public test fixtures of built packages (mbedtls, awscli, openssh…), which would block every freeze.
 Decided by 🛡️ on 2026-10-14
 
-| a hit passes only through **`ndh-store freeze --accept {store path}`**, recorded with the path's
-**narHash**, re-checked at every sweep, and listed in every report; never a name allow-list
+| a hit passes only through **`--accept {store path}`** on `ndh-store freeze` or `ndh-store compact`,
+recorded with the path's **narHash**, re-checked at every sweep, and listed in every report; never a name
+allow-list
 | a fetched public source or a build-time key (libcamera's `ipa-priv-key.pem`) is accepted once, until
 nixpkgs moves it; the hash binding means the same name with other content is refused again. Anyone
 can name a path, so a name alone proves nothing (🛡️, 2026-10-14)
@@ -360,8 +371,9 @@ replacement. For nerd-nixos under this spec:
   there would find its closure in a layer the compaction removed, and stop in
   `initrd-find-nixos-closure`;
 * a compaction keeps **every valid path**, not only the current closure: the container systems,
-  the profiles, `keep-outputs`, every GC root. It GCs to the roots, copies every remaining valid path
-  into the new layer, then runs `nix-store --verify`. It never removes a layer a container still
+  the profiles, `keep-outputs`, every GC root. It verifies the store and sweeps the live paths first, then
+  drops the old generations, GCs to the roots and copies every remaining valid path into the new layer.
+  A hit refuses it before any of that, or passes through `ndh-store compact --accept`. It never removes a layer a container still
   mounts, and it runs at a freeze, when everything stops and remounts;
 * the copy is of **files, not a store**: a `nix copy` would build a second DB to discard. Each valid
   path the EROFS layers do not hold is copied with `cp -a --reflink=auto` **from the layer that holds
@@ -400,9 +412,11 @@ sequenceDiagram
   P->>Op: the paths and their referrers' closure, listed — nothing done without --yes
   Op->>P: ndh-store purge --yes {store path}…
   P->>P: refuse if one is an unnamed GC root, or lives in an EROFS layer (an image rebuild)
-  P->>N: stop nix-daemon.socket and nix-daemon, unregister the paths
+  P->>N: stop nix-daemon.socket and nix-daemon
+  P->>P: the secret sweep of the paths that will stay — a hit refuses before anything is unregistered
+  P->>N: unregister the paths
   P->>Z: build a new layer dataset from the valid trees — the purged paths are no longer valid
-  P->>P: the paths must be ABSENT from the new layer, then a secret sweep of it
+  P->>P: the paths must be ABSENT from the new layer
   P->>Z: write the next manifest naming only the new layer, over the current base
   P->>Op: report what it cannot purge, stop the containers, reboot on the new stack
   Op->>P: after multi-user, ndh-store confirm --yes
