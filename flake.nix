@@ -1680,8 +1680,14 @@
             pkgs.runCommand "ssh-keys-schema" { nativeBuildInputs = [ pkgs.check-jsonschema ]; }
               ''
                 schema=${./modules/home-manager/ssh.d/keys.schema.yaml}
+                tests=${./modules/home-manager/ssh.d/tests}
                 check-jsonschema --schemafile "$schema" ${./modules/home-manager/ssh.d/keys.yaml}
-                for broken in ${./modules/home-manager/ssh.d/tests}/broken-*.yaml; do
+                # The plaintext-private fixture's armour is assembled here, never written in the tree.
+                armour() { printf -- '-----%s OPENSSH PRIVATE %s-----' "$1" KEY; }
+                cp "$tests"/broken-*.yaml .
+                sed -e "s|@BEGIN@|$(armour BEGIN)|" -e "s|@END@|$(armour END)|" \
+                  "$tests"/plaintext-private.yaml.in >broken-plaintext-private.yaml
+                for broken in ./broken-*.yaml; do
                   if check-jsonschema --schemafile "$schema" "$broken" >/dev/null 2>&1; then
                     echo "the schema ACCEPTED $broken, which it must refuse" >&2
                     exit 1
