@@ -101,6 +101,8 @@ in
 
     users.users.root.hashedPassword = "!";
     users.mutableUsers = false;
+    # Locked on purpose: the way in is `incus exec` from the NixOS guest, never a password nor a key.
+    users.allowNoPasswordLogin = true;
     users.groups.${account} = { };
     users.users.${account} = {
       isSystemUser = true;
