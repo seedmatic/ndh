@@ -23,6 +23,10 @@
 #                                         operator seat's host key, roles × keys): bioskop's own
 #                                         sops identity, and the one ndh-identity-push places in
 #                                         bioskop-nixos. In every rule.
+#   age1wenvx…  the nikopol access point — `ssh-to-age` of host-nikopol's recorded PUBLIC (darwin.nikopol's
+#                                         host key, roles × keys ④): the one ndh-identity-push places in
+#                                         nikopol-nixos, and darwin.nikopol's own once it serves its host
+#                                         key. In every rule. Added BEFORE any push that places it (⑥).
 #
 # ⚠️ The narrow rule below narrows LESS than it looks:
 # keys.yaml is decrypted whole by every host, so the guest still opens every SSH private.
@@ -53,12 +57,14 @@ creation_rules:
       - 'age17q5kw0epcl9ft7ecegr20040vx3g86z0f7vtecn9t8kk27qjspaqp66pp4'
       - 'age1fe9gs0mljq82cwxasugyrjd4pqg9h4uym5r3rwfc2084q558hd7qt4845j'
       - 'age1avmcejlekelhkm02v3algs9z37fsp27658zpjagkr5w7uxhqguesdmmz0m'
+      - 'age1wenvxmefp705lmg2qkf0mrpvp6mv7z560r4pklfz3hzkz3e5xacsxnfctf'
   - path_regex: '(^|/)\.secrets$'
     age:
       - 'age1hlvu7l7kefeum8drzvc5jp0jhgsqw2h3t3a8rmzvx05lcrsmx48q2ehxsk'
       - 'age17q5kw0epcl9ft7ecegr20040vx3g86z0f7vtecn9t8kk27qjspaqp66pp4'
       - 'age1fe9gs0mljq82cwxasugyrjd4pqg9h4uym5r3rwfc2084q558hd7qt4845j'
       - 'age1avmcejlekelhkm02v3algs9z37fsp27658zpjagkr5w7uxhqguesdmmz0m'
+      - 'age1wenvxmefp705lmg2qkf0mrpvp6mv7z560r4pklfz3hzkz3e5xacsxnfctf'
 stores:
   json:
     indent: 2
