@@ -9,9 +9,15 @@
 # PRESTART_HOOK, STACK_DESCRIPTION, STORE_DEGRADED, GCROOTS, NIX_CONFIG.
 
 usage() {
-  sed -n '4,6p' "${BASH_SOURCE[0]}" >&2
+  # By its content, not its line numbers: the wrapper puts its own lines before this file.
+  sed -n '/^#   ndh-incus-container /p' "${BASH_SOURCE[0]}" >&2
   exit 2
 }
+
+# Every incus call, its stdin closed: run over `ssh host sudo …` stdin is an open pipe, and `incus project
+# create` or `incus init` then wait there for a YAML configuration (measured live on bioskop-nixos,
+# 2026-10-18). One wrapper, so a call added later cannot forget it.
+incus() { command incus "$@" </dev/null; }
 
 die() {
   echo "ndh-incus-container: $1" >&2
@@ -112,6 +118,21 @@ create() {
 # nerd-nixos's frozen layers of this boot, then the EROFS ones — in `lower.layers`, and the store
 # unit mounts that list, never the current one: after a freeze-reboot the container comes back on
 # its old snapshot while /run already describes the new stack. Only a delivery moves it.
+# root_own {dir} {relative path}: every component of the path that exists is a directory of root's,
+# not a symlink. deliver runs as host root inside a tree the container has run in, and `mkdir -p`
+# follows symlinks: a component the container could replace would steer where root creates.
+root_own() {
+  local p="$1" c rel
+  IFS=/ read -ra rel <<<"$2"
+  for c in "" "${rel[@]}"; do
+    p="$p${c:+/$c}"
+    if [ -e "$p" ] || [ -L "$p" ]; then
+      [ -d "$p" ] && [ ! -L "$p" ] && [ "$(stat -c %u "$p")" = 0 ] ||
+        die "$p is not root's own directory — nothing delivered, and the container stays STOPPED"
+    fi
+  done
+}
+
 deliver() {
   local info dir toplevel store upper_root rw db snapshot aside entry old
   info=$(instance "$1")
@@ -131,6 +152,10 @@ deliver() {
   if [ "$(incus query "/1.0/instances/$1/state?project=$PROJECT" | yq -p json -oy -r '.status')" != Stopped ]; then
     incus stop --project "$PROJECT" "$1"
   fi
+  # Stopped first, so nothing in the container changes a component between this check and the mkdir.
+  for entry in "${GUEST_LOWER#/}/nix/store" "${GUEST_LOWER#/}/nix/var/nix" "${GUEST_UPPER#/}"; do
+    root_own "$dir/root" "$entry"
+  done
   # Before anything is snapshotted or moved: Incus can refuse it (an ETag race while it starts up,
   # measured), and a delivery that stops here has changed nothing.
   incus config set --project "$PROJECT" "$1" raw.lxc="$(raw_lxc "$dir")" ||
@@ -156,6 +181,10 @@ deliver() {
   # `immutable` mode would ignore the WAL.
   cp -a "/nix/var/nix/db/.zfs/snapshot/$snapshot" "$dir/view/nix/var/nix/db"
   mkdir -p "$dir/upper"
+  # The store devices' mount points, host side: LXC makes a missing one at start, as the container's
+  # root, and an unprivileged container's root cannot write in this root-owned tree (EPERM, measured
+  # live on bioskop-nixos, 2026-10-18).
+  mkdir -p "$dir/root$GUEST_LOWER/nix/store" "$dir/root$GUEST_LOWER/nix/var/nix" "$dir/root$GUEST_UPPER"
   local frozen_layers=""
   if [ -s "$STACK_DESCRIPTION" ]; then frozen_layers=$(yq -p json -oy -r '.frozen[]' "$STACK_DESCRIPTION"); fi
   {

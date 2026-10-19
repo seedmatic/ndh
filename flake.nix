@@ -2045,6 +2045,10 @@
             src = self;
           };
           attic-cache-bats = import ./modules/nixos/attic-cache.d/tests/package.nix { inherit pkgs; };
+          # ndh-incus-container: no incus call waits on an open stdin, as over `ssh host sudo …`.
+          incus-nixos-container-bats = import ./modules/nixos/incus-nixos-container.d/tests/package.nix {
+            inherit pkgs;
+          };
           content-guard-bats = import ./modules/.common.d/content-guard.d/tests/package.nix { inherit pkgs; };
           # Built here so its shellcheck runs.
           content-guard-package = import ./modules/.common.d/content-guard.d/package.nix { inherit pkgs; };
