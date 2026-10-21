@@ -506,6 +506,15 @@ mkstate() {
 @test "relay: the ask names the relay"         { run hook 'systemctl stop loopback-forward-vzhost-4001'; [[ "$output" == *"LLM gateway relay"* ]]; }
 @test "ok relay: its unit's status"            { run hook 'systemctl status loopback-forward-vzhost-4001'; allowed; }
 @test "ok relay: its journal"                  { run hook 'journalctl -u loopback-forward-vzhost-4001 -n 20'; allowed; }
+@test "relay: a dot segment out of /v1"       { run hook 'curl http://nixos.nikopol:4001/v1/../_aikey/'; denied; }
+@test "relay: an encoded dot segment"          { run hook 'curl http://nixos.nikopol:4001/v1/%2E%2E/_aikey/'; denied; }
+@test "relay: the host in capitals"            { run hook 'curl http://NIXOS.NIKOPOL:4001/_aikey/'; denied; }
+@test "relay: the address as one number"       { run hook 'curl http://2886733825:4001/_aikey/'; denied; }
+@test "relay: through the session's base url"  { run hook 'curl "$ANTHROPIC_BASE_URL/_aikey/"'; denied; }
+@test "relay: the base url in braces"          { run hook 'curl "${ANTHROPIC_BASE_URL}/v1/../_aikey/"'; denied; }
+@test "relay: curl's request target"           { run hook 'curl --request-target /_aikey/ http://nixos.nikopol:4001'; denied; }
+@test "ok relay: /v1 through the base url"     { run hook 'curl "$ANTHROPIC_BASE_URL/v1/messages" -d @req.json'; allowed; }
+@test "ok relay: request target in /v1"        { run hook 'curl --request-target /v1/models http://nixos.nikopol:4001'; allowed; }
 @test "ok relay: the /v1 API"                  { run hook 'curl -s http://nixos.nikopol:4001/v1/models'; allowed; }
 @test "ok relay: the base url in a grep"       { run hook 'git grep -n nixos.nikopol:4001 -- modules'; allowed; }
 @test "seed run: the ask keeps its own reason" { run hook 'mvn exec:java -pl :seed-outcluster'; [[ "$output" == *"live/preview mode"* ]]; }

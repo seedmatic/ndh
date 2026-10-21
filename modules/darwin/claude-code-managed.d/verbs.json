@@ -134,7 +134,9 @@
       "why": "decrypts an archive with the operator's secret keys" }
   ],
   "text_rules": [
-    {"pattern": "(?:nixos\\.nikopol|172\\.16\\.16\\.1):4001/(?!v1/)", "why": "the LLM gateway relay's port beyond its /v1 API: the agent's own pages hold the operator's corporate session"},
+    {"pattern": "(?:(?i:ANTHROPIC_BASE_URL)\\}?|:4001)/(?!v1/)", "why": "the LLM gateway relay beyond its /v1 API, by its port (any spelling of its host) or by the session's base URL: the agent's own pages hold the operator's corporate session. A tripwire, not a guard: a base URL held in another variable, or a path built at run time, escapes the text"},
+    {"pattern": "(?i)(?:ANTHROPIC_BASE_URL\\}?|:4001)/[^\\s'\"]*(?:\\.\\.|%2e)", "why": "a dot segment after the relay's port or base URL: curl squashes /v1/../ before sending, so the path would leave /v1"},
+    {"pattern": "(?i)--request-target(?:=|\\s+)['\"]?(?!/v1/)", "why": "curl's --request-target sends a path apart from the URL: beyond /v1, the relay's agent pages"},
     { "pattern": "(?:^|[\\s'\"=/])pass/seedmatic:", "why": "a blob of claude-home's pass/seedmatic head, the replica's content" }
   ],
   "list_ask_rules": ["rm -rf /", "rm -rf ~", "rm -rf ~/", "rm -rf $HOME", "rm -rf /Users", "rm -rf /Volumes", "rm -rf /nix", "rm -rf ~/.claude*"],
