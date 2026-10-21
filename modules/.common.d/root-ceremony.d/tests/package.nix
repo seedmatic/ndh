@@ -3,6 +3,7 @@
 pkgs.runCommand "root-ceremony-bats"
   {
     ATTEST = "${pkgs.callPackage ../../root-attest.d/package.nix { }}/bin/ndh-root-attest";
+    NDH_LOGGER_SH = ../../shell.d/logger.sh;
     nativeBuildInputs = with pkgs; [
       bats
       bash

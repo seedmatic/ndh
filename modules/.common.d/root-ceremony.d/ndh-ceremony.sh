@@ -1,7 +1,7 @@
 # ndh-ceremony init — the seedmatic root's first ceremony, run by the operator at the ceremony VM's console
 # (roles × keys ⑧, docs/root-ceremony.adoc). The header sets: in (read-only: the seedmatic key's PUBLIC,
-# seedmatic.asc), out (the outputs), work (RAM only), passphraseFrom (the console), attest (ndh-root-attest) and
-# recipient (the seedmatic encryption subkey, the keyring's only recipient).
+# seedmatic.asc), out (the outputs), work (RAM only), passphraseFrom (the console), attest (ndh-root-attest),
+# recipient (the seedmatic encryption subkey, the keyring's only recipient) and logger (its secret window).
 #
 # It generates, in RAM: the root's dedicated gpg key (the passphrase typed twice, diceware, 7 words or more); the
 # P-384 root and its self-signed X.509 root; the fabric's SSH HOST and USER authorities; the TLS intermediate,
@@ -35,6 +35,11 @@ today="$(date -u +%F)"
 notAfter="$(date -u -d "$today + $((years * 365)) days" +%F)"
 
 # The passphrase is read from the console only, never echoed, and kept in this process alone.
+# The passphrase reaches gpg only through a here-string (gpgp), which xtrace does not print (measured, bash 5.3);
+# the window covers where it is EXPANDED in a traced command: the two reads' comparison and the word count.
+# A failure inside it exits with xtrace off.
+source "$logger"
+ndh::secret:begin "the root passphrase is read and checked"
 read -r -s -p "root gpg passphrase (diceware, 7 words or more): " pass <"$passphraseFrom"
 printf '\n' >&2
 read -r -s -p "again: " again <"$passphraseFrom"
@@ -43,6 +48,7 @@ printf '\n' >&2
 read -r -a words <<<"$pass"
 ((${#words[@]} >= 7)) || die "the passphrase has ${#words[@]} words: 7 or more"
 unset again words
+ndh::secret:end
 
 gpgp() { gpg --batch --pinentry-mode loopback --passphrase-fd 3 "$@" 3<<<"$pass"; }
 

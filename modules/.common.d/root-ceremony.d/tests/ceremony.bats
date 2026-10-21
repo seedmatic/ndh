@@ -18,8 +18,8 @@ setup() {
   printf 'one two three four five six seven\n' >"$t/passphrase"
   {
     printf '#!%s\nset -euo pipefail\n' "$BASH"
-    printf 'in=%q out=%q work=%q passphraseFrom=%q attest=%q recipient=%q\n' \
-      "$t/in" "$t/out" "$t/work" "$t/passphrase" "$ATTEST" "$recipient"
+    printf 'in=%q out=%q work=%q passphraseFrom=%q attest=%q recipient=%q logger=%q\n' \
+      "$t/in" "$t/out" "$t/work" "$t/passphrase" "$ATTEST" "$recipient" "${NDH_LOGGER_SH:?the logger}"
     cat "$BATS_TEST_DIRNAME/../ndh-ceremony.sh"
   } >"$t/ceremony"
   chmod +x "$t/ceremony"
@@ -37,6 +37,15 @@ keyids() { gpg --batch --list-only --list-packets "$1" 2>/dev/null | sed -n 's/^
   [ "$(keyids "$t/out/mammoth-skate-tls.gpg")" = "$recipient" ]
   [ "$(keyids "$t/out/root.gpg" | wc -l)" -eq 1 ]
   [ "$(keyids "$t/out/root.gpg")" != "$recipient" ]
+}
+
+@test "traced, init never writes the passphrase to the trace, and the rest of its story stays in it" {
+  bash -x "$t/ceremony" init >"$t/stdout" 2>"$t/trace"
+  grep -qF 'secret window: the root passphrase is read and checked' "$t/trace"
+  grep -qF 'secret window closed' "$t/trace"
+  ! grep -qF 'one two three' "$t/trace" || false
+  ! grep -qF 'one two three' "$t/stdout" || false
+  grep -qF 'ssh-keygen -q -t ecdsa -b 384' "$t/trace"
 }
 
 @test "both statements verify against the root, and the intermediate chains to it" {
