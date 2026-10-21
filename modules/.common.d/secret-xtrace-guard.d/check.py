@@ -20,6 +20,8 @@ Classes (one finding per line):
                       on request, not after batch 1's flip                                   (report)
   guard-without-bash-env  a whole-script guard that leaves BASH_ENV, so a child bash is traced (report)
   masked         a value built by replacing every occurrence of a secret: for review           (report)
+  reviewed-hop   a tracked value passed to a function a reviewer followed and found safe (the
+                 manifest's "reviewed" list, one reason each)                                  (report)
 
 Usage: check.py <manifest.json>; the manifest lists {"path", "ast", "trampoline", "exempt"} per script and the
 `ast` is shfmt's JSON for it. Exit 1 when a STRICT class has a finding, after printing every finding.
@@ -47,12 +49,32 @@ SECRET_READERS = [
 ]
 # A file read is a secret read when the path names a secret.
 SECRET_PATH = re.compile(r"(?i)(token|secret|passphrase|password|api[._-]?key|\.sec\b|private|/run/secrets)")
-# A variable whose name says it holds a secret (TOKEN, API_KEY, secret_key, pass, passphrase…), not a path or a
-# name of one (…_FILE, …_PATH, …_DIR, …_NAME), nor a key's public half.
-SECRET_NAME = re.compile(
-    r"(?i)^(?!.*(_file|_path|_dir|_name|_index|_kind|_id|public|fpr|fingerprint)$)"
-    r"(.*(token|secret|passphrase|password|bearer|credential).*|.*_key|key|pass)$"
-)
+# A variable whose name says it holds a secret, judged on its WORDS (split on _ and on case: API_TOKEN, apiKey,
+# secret_key → api token / api key / secret key), so `sk` never matches `task`. Not when its last word says it is a
+# path or a name of one (…_FILE, …_DIR, …_NAME), nor a fingerprint. Over-detects on purpose: PUBLIC_KEY matches
+# (its `key` word), harmless — a public in a window costs a trace line.
+SECRET_WORDS = {
+    "token", "tokens", "keys", "secret", "secrets", "passphrase", "password", "passwd", "pw", "pass", "bearer", "credential",
+    "credentials", "key", "apikey", "auth", "jwt", "cookie", "session", "identity", "priv", "private", "sk", "otp",
+    "pin", "signing", "keyfile",
+}
+# The last word says what the variable holds when it is not the secret itself: a path, a name, a type, a slot id, a
+# fingerprint or a digest of a key, a listing of key NAMES.
+NOT_A_VALUE = {
+    "file", "path", "dir", "name", "names", "index", "kind", "id", "fpr", "fingerprint", "fp", "sum", "count", "len",
+    "list", "type", "slot", "yaml", "json",
+}
+# Commands that make a value out of nothing secret: a path, a date, a number. A secret-named variable filled by
+# them alone is no secret (`tmp_keys=$(mktemp -d)`, `OBS_SESSION="$(date …)-$$-…"`).
+GENERATORS = {"mktemp", "date", "hostname", "id", "uname", "basename", "dirname", "pwd", "realpath", "seq", "wc"}
+
+
+def secret_name(name):
+    words = [w.lower() for w in re.findall(r"[A-Z]?[a-z0-9]+|[A-Z]+(?![a-z])", name or "")]
+    if not words or words[-1] in NOT_A_VALUE:
+        return False
+    # keyfile is a word here: the variable holds the key file's CONTENT when filled by a command.
+    return any(w in SECRET_WORDS for w in words)
 # A command that reads only a public's file (an ssh .pub, a certificate, an armored public export).
 PUBLIC_FILE = re.compile(r'\.(pub|crt|pem\.pub|asc)\b(?!\.)')
 # Builtins whose arguments no `ps` shows. Anything else (and anything shadowed) is external.
@@ -78,6 +100,10 @@ class Checker:
         self.tracked = set()
         self.masked = set()
         self.seen = set()
+        self.secret_handling = False
+        self.here_redirs = []
+        self.stdin_redirected = 0
+        self.reviewed = set()
         self.findings = []
         self.window = 0
         self.base = 0  # 1 under the whole-script guard: every body starts inside it
@@ -171,6 +197,18 @@ class Checker:
         walk(value)
         return names - self.masked
 
+    def only_generators(self, value):
+        """Every command substitution in the value runs only GENERATORS (mktemp, date…): nothing secret goes in."""
+        subs = self.substitutions(value)
+        def gen(st):
+            cmd = st.get("Cmd") or {}
+            if cmd.get("Type") == "BinaryCmd":
+                return gen(cmd["X"]) and gen(cmd["Y"])
+            if cmd.get("Type") != "CallExpr" or not cmd.get("Args"):
+                return False
+            return (self.lits(cmd["Args"][0]) or "").rsplit("/", 1)[-1] in GENERATORS
+        return bool(subs) and all(all(gen(st) for st in s.get("Stmts") or []) for s in subs)
+
     def has_cmdsubst(self, word):
         return '"CmdSubst"' in json.dumps(word)
 
@@ -202,6 +240,46 @@ class Checker:
         words = [self.lits(a) or "" for a in cmd["Args"]]
         name = words[0].rsplit("/", 1)[-1]
         return (name in ("age-keygen", "ssh-keygen") and "-y" in words) or "--public" in words
+
+    def reads_stdin(self, stmt):
+        """Whether a statement reads its stdin: cat/head/tail/tr with no file operand, $(</dev/stdin), or the
+        first command of a pipeline doing so."""
+        cmd = stmt.get("Cmd") or {}
+        if cmd.get("Type") == "BinaryCmd":
+            return self.reads_stdin(cmd["X"])
+        redirs = stmt.get("Redirs") or []
+        if any(r.get("Op") == 65 and (self.lits(r.get("Word")) or "") in ("/dev/stdin", "/dev/fd/0") for r in redirs):
+            return True
+        if any(r.get("Op") in (65, 71, 72, 73) for r in redirs):
+            return False  # its stdin is a file or a here-doc of this script: judged as such elsewhere
+        if cmd.get("Type") != "CallExpr" or not cmd.get("Args"):
+            return False
+        words = [self.lits(a) for a in cmd["Args"]]
+        name = (words[0] or "").rsplit("/", 1)[-1]
+        if name == "tr":
+            return True  # tr never takes a file
+        operands, i = [], 1
+        while i < len(words):
+            w = words[i]
+            if w is not None and w in ("-c", "-n") and name in ("head", "tail"):
+                i += 2  # head -c 64, tail -n 1: the number is no file
+                continue
+            if w is None or not w.startswith("-") or w == "-":
+                operands.append(w)
+            i += 1
+        return name in ("cat", "head", "tail") and (not operands or operands == ["-"])
+
+    def stdin_source(self, value):
+        """A value filled by a command substitution that reads stdin (`value="$(cat)"`)."""
+        def walk(n):
+            if isinstance(n, dict):
+                if n.get("Type") == "CmdSubst":
+                    return any(self.reads_stdin(st) for st in n.get("Stmts") or [])
+                return any(walk(v) for k, v in n.items() if k not in ("Pos", "End"))
+            if isinstance(n, list):
+                return any(walk(v) for v in n)
+            return False
+        return walk(value)
 
     def reads_secret(self, stmt, line):
         cmd = stmt.get("Cmd") or {}
@@ -251,13 +329,30 @@ class Checker:
         if t is not None and t not in KNOWN:
             self.find("undecidable", line, f"unknown construct {t}")
             return
+        # A compound command whose stdin is redirected (`while read …; done < file`, `<<<"$list"`, `< <(cmd)`)
+        # feeds its reads that file, not the script's own stdin.
+        redirected = t != "CallExpr" and any(r.get("Op") in (65, 71, 72, 73) for r in st.get("Redirs") or [])
+        self.stdin_redirected += redirected
+        try:
+            self.stmt_cmd(st, cmd, t, line, traced_redirs, here_redirs)
+        finally:
+            self.stdin_redirected -= redirected
+
+    def stmt_cmd(self, st, cmd, t, line, traced_redirs, here_redirs):
         if t == "CallExpr":
+            self.here_redirs = here_redirs
             self.call(cmd, line, traced_redirs)
         elif t == "DeclClause":
             self.decl(cmd, line)
         elif t == "BinaryCmd":
             self.stmt(cmd["X"])
-            self.stmt(cmd["Y"])
+            # `cmd | while read …`: the right side of a pipe reads the pipe, not the script's stdin.
+            piped = cmd.get("Op") in (13, 14)  # | and |& (shfmt 3.13: && is 11, || is 12)
+            self.stdin_redirected += piped
+            try:
+                self.stmt(cmd["Y"])
+            finally:
+                self.stdin_redirected -= piped
         elif t in ("Block", "Subshell"):
             self.block(cmd.get("Stmts"), line)
         elif t == "IfClause":
@@ -286,7 +381,6 @@ class Checker:
         elif t in ("TimeClause", "CoprocClause"):
             self.find("undecidable", line, f"{t} around a command")
         # A here-string or heredoc carries a tracked value out of the trace: safe, wherever it is.
-        del here_redirs
 
     def block(self, stmts, line):
         before = self.window
@@ -341,8 +435,17 @@ class Checker:
             return
         # The backstop for a source the reader list does not know (an OAuth exchange, a new CLI): a variable named
         # as a secret and filled by a command is tracked. Over-detection is wanted; a false one reads as a window.
-        from_secret = self.source_of(value, line) or (
-            SECRET_NAME.search(name or "") and self.has_cmdsubst(value) and not PUBLIC_FILE.search(json.dumps(value))
+        from_secret = (
+            self.source_of(value, line)
+            or (
+                secret_name(name)
+                and self.has_cmdsubst(value)
+                and not PUBLIC_FILE.search(json.dumps(value))
+                and not self.only_generators(value)
+            )
+            # In a secret-handling script, what it reads from its stdin may be what a caller piped in (hs-lib's
+            # set_string): tracked, unnamed or not. Over-detection is the side asked for.
+            or (self.secret_handling and self.stdin_source(value))
         )
         names = self.expanded(value, line) | self.fed(value)
         if from_secret or names:
@@ -383,12 +486,17 @@ class Checker:
             words = [self.lits(a) or "" for a in rest]
             if any(re.fullmatch(r"-[a-zA-Z]*x[a-zA-Z]*", w) for w in words) or ("-o" in words and "xtrace" in words):
                 self.find("xtrace-in-window", line, "set -x inside a secret window")
-        if name == "read" and any(re.fullmatch(r"-[a-zA-Z]*s[a-zA-Z]*", self.lits(a) or "") for a in rest):
-            for a in rest:
-                v = self.lits(a) or ""
-                if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", v):
+        if name == "read":
+            silent = any(re.fullmatch(r"-[a-zA-Z]*s[a-zA-Z]*", self.lits(a) or "") for a in rest)
+            # A read from the script's own stdin (no redirect of a file or here-doc): in a secret-handling script,
+            # what it reads is tracked; `read -s` is a secret anywhere.
+            own_stdin = self.stdin_redirected == 0 and not any(
+                r.get("Op") in (65, 71, 72, 73) for r in traced_redirs + self.here_redirs
+            )
+            if silent or (self.secret_handling and own_stdin):
+                for v in read_targets([self.lits(a) or "" for a in rest]):
                     self.tracked.add(v)
-            if self.window == 0:
+            if silent and self.window == 0:
                 self.find("unwindowed", line, "read -s outside a window")
         names = self.expanded(rest, line) | self.expanded(traced_redirs, line)
         if not names:
@@ -396,11 +504,44 @@ class Checker:
         if name in UNDECIDABLE_CMDS:
             self.find("undecidable", line, f"a tracked value under {name}: " + ", ".join(sorted(names)))
         elif name in self.functions or "::" in name:
-            self.find("undecidable", line, f"a tracked value passed to the function {name}: " + ", ".join(sorted(names)))
+            # A hop a reviewer followed into the function and found safe stays in the report, never strict.
+            cls = "reviewed-hop" if name in self.reviewed else "undecidable"
+            self.find(cls, line, f"a tracked value passed to the function {name}: " + ", ".join(sorted(names)))
         elif name not in BUILTINS:
             self.find("argv-exposure", line, f"{name} gets " + ", ".join(sorted(names)) + " in its argv")
         if self.window == 0:
             self.find("unwindowed", line, f"{name} expands " + ", ".join(sorted(names)) + " outside a window")
+
+
+def read_targets(words):
+    """The variables a `read` fills: its plain words, and the array of -a. Options whose last letter takes an
+    argument (-p prompt, -d delim, -n/-N count, -t timeout, -u fd, -i text, -a array) consume the next word."""
+    out, i = [], 0
+    while i < len(words):
+        w = words[i]
+        if w.startswith("-") and len(w) > 1:
+            if w[-1] in "pdnNtuia":
+                if w[-1] == "a" and i + 1 < len(words):
+                    out.append(words[i + 1])
+                i += 2
+                continue
+            i += 1
+            continue
+        if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", w):
+            out.append(w)
+        i += 1
+    return out
+
+
+def secret_handling(ast):
+    """A script that handles a secret: it opens a window, carries the whole-script guard, or names a secret
+    reader. Its stdin reads are then tracked too."""
+    text = json.dumps(ast)
+    return (
+        f'"{WINDOW_BEGIN}"' in text
+        or ('"+x"' in text and '"SHELLOPTS"' in text)
+        or any(f'"Value": "{w}"' in text for w in ("sops", "age", "gpg", "pass", "atticadm", "make-token"))
+    )
 
 
 def whole_script_guard(ch, ast):
@@ -420,11 +561,13 @@ def main(manifest):
         if entry.get("exempt"):
             continue
         ch = Checker(entry["path"])
+        ch.reviewed = set(entry.get("reviewed") or [])
         ast = json.load(open(entry["ast"]))
         if "ParseError" in ast:
             # What the check cannot read, it cannot clear; a reviewed exemption names what shfmt cannot parse.
             findings.append(("undecidable", entry["path"], 0, "shfmt cannot parse it: " + ast["ParseError"]))
             continue
+        ch.secret_handling = secret_handling(ast)
         guarded = whole_script_guard(ch, ast)
         if guarded:
             # The whole script is one window (the guard of the scripts that handle privates throughout, until

@@ -20,6 +20,21 @@ let
     "modules/nixos/systemd/system-manual-boot.sh" =
       "shfmt: `\"$FLAKE\"#@systemAttr@`; sets a boot generation, no secret";
   };
+  # A tracked value handed to a function the check cannot follow, followed by a reviewer: the function, and the
+  # channel the value reaches a command through. All three scripts carry the whole-script guard (no trace).
+  reviewed = {
+    "modules/.common.d/identity-push.d/ndh-identity-push.sh" = {
+      pubOf = "builtin printf into a pipe (base64, tr): no argv";
+      log = "receives the derived PUBLIC (pubOf's output), tracked by over-detection";
+    };
+    "modules/.common.d/ssh-keys.d/ssh-enrich-keys-yaml.sh" = {
+      "key::set_field" = "slot::set: VALUE=… yq strenv(VALUE), a prefix assignment: environment, no argv";
+    };
+    "modules/home-manager/git.d/sops.sh" = {
+      "git::sops" =
+        "decrypt reads stdin (a here-string); show is builtin printf to git's textconv: no argv";
+    };
+  };
 in
 pkgs.runCommand "secret-xtrace-guard"
   {
@@ -28,8 +43,12 @@ pkgs.runCommand "secret-xtrace-guard"
       pkgs.python3
       pkgs.findutils
     ];
-    passAsFile = [ "unparseable" ];
+    passAsFile = [
+      "unparseable"
+      "reviewed"
+    ];
     unparseable = builtins.toJSON unparseable;
+    reviewed = builtins.toJSON (lib.mapAttrs (_: lib.attrNames) reviewed);
   }
   ''
     cd ${scripts}
@@ -51,7 +70,10 @@ pkgs.runCommand "secret-xtrace-guard"
         fi
         exempt=$(python3 -c 'import json,sys; print("true" if sys.argv[2] in json.load(open(sys.argv[1])) else "false")' \
           "$unparseablePath" "$f")
-        printf '%s{"path": "%s", "ast": "%s", "trampoline": %s, "exempt": %s}' "$sep" "$f" "$work/$i.json" "$tramp" "$exempt"
+        hops=$(python3 -c 'import json,sys; print(json.dumps(json.load(open(sys.argv[1])).get(sys.argv[2], [])))' \
+          "$reviewedPath" "$f")
+        printf '%s{"path": "%s", "ast": "%s", "trampoline": %s, "exempt": %s, "reviewed": %s}' \
+          "$sep" "$f" "$work/$i.json" "$tramp" "$exempt" "$hops"
         sep=","
       done < <(find . -name '*.sh' -print0 | sort -z)
       printf ']\n'

@@ -48,8 +48,62 @@ check() {
   check clean 'key="$(cut -d" " -f1,2 a.pub)"'
 }
 
+@test "stdin: in a secret-handling script, a value read from stdin is tracked, named or not" {
+  # 🛡️'s probe: the value a caller pipes in, used in a header outside any window.
+  check unwindowed $'ndh::secret:begin "w"\nndh::secret:end\nvalue="$(cat)"\ncurl -H "Authorization: Bearer $value" u'
+  check unwindowed $'ndh::secret:begin "w"\nndh::secret:end\nread -r line\nprintf %s "$line" >f'
+  check unwindowed $'ndh::secret:begin "w"\nndh::secret:end\nv="$(</dev/stdin)"\nprintf %s "$v" >f'
+  check unwindowed $'ndh::secret:begin "w"\nndh::secret:end\nv="$(head -c 64)"\nprintf %s "$v" >f'
+  # Inside its window, and in a script that handles no secret, it is clean.
+  check clean $'ndh::secret:begin "w"\nvalue="$(cat)"\nK="$value" yq .x f\nvalue=""\nndh::secret:end'
+  check clean $'v="$(cat)"\nprintf %s "$v" >f'
+}
+
+@test "stdin: hs-lib with its window removed goes red" {
+  sed -e '/ndh::secret:begin/d' -e '/ndh::secret:end/d' "$BATS_TEST_DIRNAME/../../../darwin/headscale-tools/hs-lib.sh" \
+    >"$T/hs-lib.sh"
+  # It still handles a secret (sops -d), so its `value="$(cat)"` is tracked, and its use is now outside any window.
+  check unwindowed "$(cat "$T/hs-lib.sh")"
+  check clean "$(cat "$BATS_TEST_DIRNAME/../../../darwin/headscale-tools/hs-lib.sh")"
+}
+
+@test "the secret-name backstop: each of the names 🛡️ listed is tracked when a command fills it" {
+  local n
+  for n in auth apikey apiKey jwt cookie identity age_identity priv sk pw PASSWD AUTH_HEADER keyfile session otp pin \
+    signing PUBLIC_KEY HS_SERVER_KEYS; do
+    check unwindowed "$n=\"\$(curl -fsS u)\""
+  done
+  for n in task skip pinned key_file token_len keyName; do
+    check clean "$n=\"\$(curl -fsS u)\""
+  done
+}
+
 @test "rule 2: a tracked value passed to a function is undecidable" {
   check undecidable $'f() { :; }\nndh::secret:begin "w"\nt="$(sops -d f)"\nf "$t"\nndh::secret:end'
+}
+
+@test "rule 2: a reviewed hop is reported, never strict; the same hop not reviewed stays undecidable" {
+  printf '%s\n' $'f() { :; }\nndh::secret:begin "w"\nt="$(sops -d f)"\nf "$t"\nt=""\nndh::secret:end' >"$T/s.sh"
+  shfmt --to-json <"$T/s.sh" >"$T/s.json"
+  printf '[{"path": "s.sh", "ast": "%s", "trampoline": true, "reviewed": ["f"]}]' "$T/s.json" >"$T/m.json"
+  run python3 -I "$CHECK" "$T/m.json"
+  [ "$status" -eq 0 ]
+  [[ $output == *"reviewed-hop"* ]]
+  printf '[{"path": "s.sh", "ast": "%s", "trampoline": true, "reviewed": ["g"]}]' "$T/s.json" >"$T/m.json"
+  run python3 -I "$CHECK" "$T/m.json"
+  [ "$status" -eq 1 ]
+  [[ $output == *"undecidable"* ]]
+}
+
+@test "rule 5: a private through env's argv is undecidable; the same as a prefix assignment, in a window, is clean" {
+  check undecidable $'ndh::secret:begin "w"\np="$(sops -d f)"\nenv NDH_PRIV="$p" yq .x f\np=""\nndh::secret:end'
+  check clean $'ndh::secret:begin "w"\np="$(sops -d f)"\nNDH_PRIV="$p" yq .x f\np=""\nndh::secret:end'
+}
+
+@test "the name backstop ignores a path, a date or a digest built by a generator" {
+  check clean 'tmp_keys=$(mktemp -d)'
+  check clean 'OBS_SESSION="$(date -u +%s)-$$"'
+  check clean 'key_fp="$(ssh-keygen -lf k | cut -d" " -f2)"'
 }
 
 @test "rule 2: a function body is judged on its own windows, not its callers'" {
