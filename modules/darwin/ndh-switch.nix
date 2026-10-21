@@ -4,6 +4,7 @@
   pkgs,
   catalog,
   ndh,
+  self,
   ...
 }:
 # ndh-switch on the operator seat's PATH: the one switch verb the sessions may run (the managed list denies the raw
@@ -41,6 +42,41 @@ in
       };
       description = "ops, the operator's entry point to the fabric's pending steps, its queue derived from keys.yaml.";
     };
+    sshKeysRenew = lib.mkOption {
+      type = lib.types.package;
+      readOnly = true;
+      default = import ../.common.d/ssh-keys-renew.d/package.nix {
+        inherit pkgs ndh;
+        inherit (catalog) netplan;
+      };
+      description = "ssh-keys-renew, built for this seat: one of ndh-ops's tools, and the flake's app.";
+    };
+    sshKeysCertify = lib.mkOption {
+      type = lib.types.package;
+      readOnly = true;
+      default = import ../.common.d/ssh-keys-certify.d/package.nix {
+        inherit pkgs ndh;
+        hostCertificates = self.fleetHostCertificates;
+      };
+      description = "ssh-keys-certify, built for this seat: one of ndh-ops's tools, and the flake's app.";
+    };
+    # The armed delegation's runner, installed by the switch: its tools are this seat's own packages, by store path.
+    ndhOps = lib.mkOption {
+      type = lib.types.package;
+      readOnly = true;
+      default = import ../.common.d/ndh-ops.d/package.nix {
+        inherit pkgs;
+        tools = {
+          ssh-keys-certify = "${cfg.sshKeysCertify}/bin/ssh-keys-certify";
+          ssh-keys-renew = "${cfg.sshKeysRenew}/bin/ssh-keys-renew";
+          attic-leaf-sign = "${config.ndh.atticLeaf.package}/bin/attic-leaf-sign";
+          incus-cluster-cert-renew = "${config.ndh.incusClusterCert.package}/bin/incus-cluster-cert-renew";
+          ndh-keyring = "${config.ndh.keyring.package}/bin/ndh-keyring";
+          ndh-identity-push = "${config.ndh.identityPush.package}/bin/ndh-identity-push";
+        };
+      };
+      description = "ndh-ops, on this seat's PATH: runs one of the operator's tools on the delegation they armed.";
+    };
   };
 
   config = lib.mkIf cfg.enable {
@@ -48,6 +84,7 @@ in
       cfg.package
       cfg.fleetSwitch
       cfg.ops
+      cfg.ndhOps
     ];
   };
 }

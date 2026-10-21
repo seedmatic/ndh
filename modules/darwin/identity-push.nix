@@ -23,7 +23,24 @@ let
   };
 in
 {
-  options.ndh.identityPush.enable = lib.mkEnableOption "ndh-identity-push on this operator seat (the one holding the keyring)";
+  options.ndh.identityPush = {
+    enable = lib.mkEnableOption "ndh-identity-push on this operator seat (the one holding the keyring)";
+    package = lib.mkOption {
+      type = lib.types.package;
+      readOnly = true;
+      default = identityPush.push {
+        seat = config.networking.hostName;
+        netplan = catalog.netplan;
+        operatorIdentity = {
+          user = config.profile.user.name;
+          keyFile = config.sshPaths.privKeyFile;
+          certFile = config.sshPaths.userCertPublic;
+        };
+        inherit receive;
+      };
+      description = "ndh-identity-push, built for this seat: on its PATH when enabled, and one of ndh-ops's tools.";
+    };
+  };
 
   config = lib.mkMerge [
     {
@@ -35,18 +52,7 @@ in
       '';
     }
     (lib.mkIf cfg.enable {
-      environment.systemPackages = [
-        (identityPush.push {
-          seat = config.networking.hostName;
-          netplan = catalog.netplan;
-          operatorIdentity = {
-            user = config.profile.user.name;
-            keyFile = config.sshPaths.privKeyFile;
-            certFile = config.sshPaths.userCertPublic;
-          };
-          inherit receive;
-        })
-      ];
+      environment.systemPackages = [ cfg.package ];
     })
   ];
 }
