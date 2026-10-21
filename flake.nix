@@ -1414,10 +1414,9 @@
             # Like every activation script, it runs under ndh's bash trampoline and logger: read from the built
             # script, at build time.
             pkgs.runCommand "host-key-generate-wiring" { } ''
-              for pair in ${nixos.ndh.hostKey.generate}/bin/host-key-generate=${nixos.ndh.context.nixBashTrampoline} \
-                ${darwin.ndh.hostKey.generate}/bin/host-key-generate=${darwin.ndh.context.nixBashTrampoline}; do
-                script=''${pair%%=*} trampoline=''${pair#*=}
-                grep -qxF "source $trampoline" "$script" ||
+              for script in ${nixos.ndh.hostKey.generate}/bin/host-key-generate ${darwin.ndh.hostKey.generate}/bin/host-key-generate; do
+                trampoline=$(sed -n 's|^source \(/nix/store/[^ ]*/nix-bash-trampoline\.sh\)$|\1|p' "$script")
+                [ -n "$trampoline" ] ||
                   { echo "FAIL $script does not source ndh's bash trampoline"; exit 1; }
                 [ "$(tail -n1 "$script")" = 'ndh::logger:command:run host-key.generate main "$@"' ] ||
                   { echo "FAIL $script is not run under ndh::logger:command:run"; exit 1; }
