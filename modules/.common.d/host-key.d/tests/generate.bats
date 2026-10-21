@@ -139,16 +139,15 @@ verify() { # the statement against the OLD key's public, as the seat will
   [ ! -e "$(pub public)" ]
 }
 
-@test "it runs under ndh's trampoline and logger, traced, and no private reaches the trace" {
-  run --separate-stderr env NDH_LOGGER_XTRACE=1 bash "$t/generate"
+@test "it runs under ndh's trampoline and logger, and no trace is ever written, whatever asks for one" {
+  run --separate-stderr env NDH_LOGGER_XTRACE=1 SHELLOPTS=xtrace bash -x "$t/generate"
   [ "$status" -eq 0 ]
+  [[ $stderr == *"[xtrace-guard] xtrace disabled"* ]]
   [[ $stderr == *"ndh::logger:command:run completed successfully"* ]]
-  [[ $stderr == *"+ : 'generating host-m@26-11-01, xtrace off while the private is written'"* ]]
-  [[ $stderr == *"+ owned_dirs"* ]]
+  [[ $stderr != *"+ owned_dirs"* ]]
+  [[ $stderr != *"+ born"* ]]
   [[ $stderr != *"PRIVATE KEY"* ]]
   [[ $stderr != *"$(sed -n 2p "$(key)")"* ]]
-  [[ $stderr != *".generate."* ]]
-  [[ $stderr != *"ssh-keygen -q -t ed25519"* ]]
 }
 
 @test "no private is ever printed" {
