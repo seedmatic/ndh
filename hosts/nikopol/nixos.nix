@@ -1,8 +1,12 @@
 {
   config,
   lib,
+  ndh,
   ...
 }:
+let
+  bm = ndh.context.catalog.netplan.baremetal.nikopol;
+in
 {
   config = {
     profile.user.home = lib.mkForce "/home/${config.profile.user.name}";
@@ -61,6 +65,26 @@
           remotePath = "/Volumes/git-bare-store";
           localPath = "/net/nikopol.local/Volumes/git-bare-store";
         }
+      ];
+    };
+
+    # The vz host serves its LLM gateway agent on its loopback :4001 only; this guest publishes it on the fabric
+    # gateway address for the two operator seats, which both arrive over the tailnet (measured 2026-10-21).
+    ndh.loopbackForward.vzhost-4001 = {
+      listen = {
+        address = bm.netGateway;
+        port = 4001;
+      };
+      target = {
+        address = bm.vzHostAddress;
+        user = bm.vzHostUser;
+        hostKey = bm.vzHostKey;
+        port = 4001;
+      };
+      from = bm.hostAddress;
+      clients = [
+        "100.76.71.8" # darwin.bioskop
+        "100.89.203.77" # darwin.nikopol
       ];
     };
 
