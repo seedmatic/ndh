@@ -586,3 +586,82 @@ notified() { notify "$1"; }
   [ "$status" -eq 0 ]
   [ "$(logged .type)" = "permission_prompt" ]
 }
+
+# --- flox-env ---
+# A stand-in flox: `flox activate -d <root> -- <cmd>` runs <cmd> with what a flox env would add, including a backend key
+# and bookkeeping that must both be dropped. The real flox is never run.
+stub_flox() {
+  mkdir -p "$T/bin" "$T/profiles/$(id -un)/bin"
+  printf '#!%s\n[ "$1" = activate ] && [ "$2" = -d ] || exit 9\nprintf "%%s\\n" "$3" >"%s/flox.root"\nshift 4\nexport PATH="%s/envbin:$PATH" FLOX_ENV=/nix/store/x-env KUBECONFIG="%s/kube.yaml" WITH_SPACE="a b" CLAUDE_CODE_USE_BEDROCK=1 AWS_PROFILE=p ANTHROPIC_BASE_URL=http://bad _FLOX_HOOK_DIFF=z FLOX_PROMPT_COLOR_1=1 GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=filter.sops-yaml.smudge GIT_CONFIG_VALUE_0=decrypt GIT_DIR=/x\nexec "$@"\n' \
+    "$BASH" "$T" "$T" "$T" >"$T/bin/flox"
+  chmod +x "$T/bin/flox"
+  ln -sf "$T/bin/flox" "$T/profiles/$(id -un)/bin/flox"
+  mkdir -p "$REPO/.flox/env"
+  : >"$REPO/.flox/env/manifest.toml"
+}
+
+flox_env() { # runs the hook as installed, the test's tree standing for the trusted roots and the profile
+  sed -e "s#@python@#$(command -v python3)#" -e 's#@backendKeys@#^(CLAUDE_CODE_USE_BEDROCK|CLAUDE_CODE_USE_VERTEX|AWS_|ANTHROPIC_)#' \
+    -e "s#@trustedRoots@#${TRUSTED-$(cd "$T" && pwd -P)}#" -e "s#@floxProfile@#$T/profiles#" "$H/flox-env.sh" >"$T/flox-env.sh"
+  jq -cn --arg c "${1:-$REPO}" '{cwd: $c}' | bash "$T/flox-env.sh"
+}
+
+@test "flox-env: a flox repository's tools and vars reach the session, quoted" {
+  stub_flox
+  export CLAUDE_ENV_FILE="$T/env"
+  flox_env
+  run bash -c '. "$CLAUDE_ENV_FILE"; printf "%s|%s|%s|%s\n" "${PATH%%:*}" "$FLOX_ENV" "$WITH_SPACE" "$CLAUDE_FLOX_ENV"'
+  [ "$output" = "$T/envbin|/nix/store/x-env|a b|$(git -C "$REPO" rev-parse --show-toplevel)" ]
+}
+
+@test "flox-env: no backend key and no flox bookkeeping is ever taken from the env" {
+  stub_flox
+  export CLAUDE_ENV_FILE="$T/env"
+  flox_env
+  run grep -cE 'CLAUDE_CODE_USE_BEDROCK|AWS_PROFILE|ANTHROPIC_BASE_URL|_FLOX_HOOK_DIFF|FLOX_PROMPT_COLOR|GIT_CONFIG|GIT_DIR' "$CLAUDE_ENV_FILE"
+  [ "$output" = 0 ]
+}
+
+@test "flox-env: a second read of the env file adds nothing" {
+  stub_flox
+  export CLAUDE_ENV_FILE="$T/env"
+  flox_env
+  run bash -c '. "$CLAUDE_ENV_FILE"; p1=$PATH; . "$CLAUDE_ENV_FILE"; [ "$PATH" = "$p1" ] && echo same'
+  [ "$output" = same ]
+}
+
+@test "flox-env: a subdirectory of the repository activates the repository's root" {
+  stub_flox
+  mkdir -p "$REPO/a/b"
+  export CLAUDE_ENV_FILE="$T/env"
+  flox_env "$REPO/a/b"
+  [ "$(cat "$T/flox.root")" = "$(git -C "$REPO" rev-parse --show-toplevel)" ]
+}
+
+@test "flox-env: no flox repository, no env file or no flox: nothing written" {
+  stub_flox
+  rm -r "$REPO/.flox"
+  export CLAUDE_ENV_FILE="$T/env"
+  flox_env
+  [ ! -e "$CLAUDE_ENV_FILE" ]
+  mkdir -p "$REPO/.flox/env" && : >"$REPO/.flox/env/manifest.toml"
+  run env -u CLAUDE_ENV_FILE bash -c 'jq -cn --arg c "$1" "{cwd: \$c}" | bash "$2"' _ "$REPO" "$T/flox-env.sh"
+  [ -z "$output" ]
+}
+
+@test "flox-env: a failing activation is said in one line, and nothing is written" {
+  stub_flox
+  printf '#!%s\necho boom >&2; exit 3\n' "$BASH" >"$T/bin/flox"
+  export CLAUDE_ENV_FILE="$T/env"
+  run flox_env
+  [[ "$output" == *'"systemMessage"'*"did not activate"*boom* ]]
+  [ ! -e "$CLAUDE_ENV_FILE" ]
+}
+
+@test "flox-env: a repository outside the trusted roots is never activated" {
+  stub_flox
+  export CLAUDE_ENV_FILE="$T/env" TRUSTED=/nowhere
+  flox_env
+  [ ! -e "$T/flox.root" ]
+  [ ! -e "$CLAUDE_ENV_FILE" ]
+}

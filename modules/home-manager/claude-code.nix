@@ -172,6 +172,18 @@ in
         lib.hm.dag.entryAfter [ "writeBoundary" ] ''
           $DRY_RUN_CMD ${pkgs.bash}/bin/bash ${purge.script}
         '';
+
+      # The Flox VS Code extension's activation snapshots, emptied: backend keys and tokens in clear (purge-flox-snapshot.sh).
+      home.activation.claudeCodePurgeFloxSnapshot =
+        let
+          purge = import ./claude-code.d/purge-flox-snapshot.nix {
+            inherit pkgs nixBashTrampoline;
+            loggerTag = "home-manager.activationScripts.${userName}.claudeCodePurgeFloxSnapshot";
+          };
+        in
+        lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+          $DRY_RUN_CMD ${pkgs.bash}/bin/bash ${purge.script}
+        '';
     }
   ]);
 }

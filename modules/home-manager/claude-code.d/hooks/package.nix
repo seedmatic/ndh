@@ -25,6 +25,17 @@ let
     chmod +x $out/*.sh
     # notify.sh names osascript by its path, set here: the installed hook takes it from nothing else.
     substituteInPlace $out/notify.sh --replace-fail @osascript@ /usr/bin/osascript
+    # flox-env.sh keeps no backend key from a flox env: the same regex as the ~/.claude.json purge.
+    substituteInPlace $out/flox-env.sh --replace-fail @python@ ${pkgs.python3}/bin/python3 \
+      --replace-fail @trustedRoots@ '/Volumes/git-worktree-store/seedmatic /Volumes/git-worktree-store/nxmatic' \
+      --replace-fail @floxProfile@ /etc/profiles/per-user \
+      --replace-fail @backendKeys@ '${
+        (import ../purge-backend-env.nix {
+          inherit pkgs;
+          nixBashTrampoline = "/unused";
+          loggerTag = "unused";
+        }).backendKeys
+      }'
   '';
 
   # Security's registry as installed beside the deny-hook: live-page.sh names an engraved session from it.
@@ -48,6 +59,7 @@ in
           (entry "memory-guard.sh" 5 "Verifying memory wiring...")
           (entry "live-page.sh" 5 "Registering with the integration...")
           (entry "sops-git-env.sh" 5 "Neutralising the sops git drivers for this session...")
+          (entry "flox-env.sh" 40 "Taking this repository's flox environment...")
           (entry "sops-filter-check.sh" 5 "Checking that no sops filter decrypts in this flake repository...")
         ];
       }
@@ -90,6 +102,8 @@ in
         nativeBuildInputs = [
           pkgs.bats
           pkgs.bash
+          # flox-env.sh's tests substitute @python@ with the python3 on PATH, as the installed hook gets one.
+          pkgs.python3
         ]
         ++ deps;
       }
