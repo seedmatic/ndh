@@ -2044,6 +2044,74 @@
                 done
                 [ "$fail" = 0 ] && touch "$out"
               '';
+          # Every seat carries the backend's values in its three layers (shells, the GUI launchd domain, settings.json's
+          # env), telemetry off included, and no layer names a retired backend key.
+          claude-code-backend-seats =
+            let
+              hosts = [
+                "bioskop"
+                "nikopol"
+              ];
+              backend = import ./modules/claude-code-backend-env.nix;
+              darwin = h: self.darwinConfigurations.${h}.config;
+              session = h: (darwin h).home-manager.users.${(darwin h).system.primaryUser}.home.sessionVariables;
+              # The settings.json layer is the JSON the activation writes into its `env` and `fallbackModel` keys. The path
+              # is matched out of the activation's text, which keeps its context: the match alone would drop it, and the
+              # sandbox would not hold the file.
+              settings =
+                h:
+                let
+                  data =
+                    (darwin h)
+                    .home-manager.users.${(darwin h).system.primaryUser}.home.activation.claudeCodeBackend.data;
+                  path = builtins.head (builtins.match ".*(/nix/store/[a-z0-9]+-claude-code-backend\\.json).*" data);
+                in
+                builtins.appendContext path (builtins.getContext data);
+              # The GUI layer is a script of launchctl lines: it must unset every retired key and set every value.
+              agent =
+                h:
+                builtins.head (darwin h).launchd.user.agents.claude-code-backend-env.serviceConfig.ProgramArguments;
+              missing =
+                h:
+                pkgs.lib.filter (k: ((session h).${k} or null) != backend.env.${k}) (
+                  builtins.attrNames backend.env
+                );
+              kept = h: pkgs.lib.filter (k: (session h) ? ${k}) backend.retired;
+              report = pkgs.lib.concatMapStrings (
+                h:
+                pkgs.lib.optionalString (missing h != [ ]) "${h}: the shell env lacks ${toString (missing h)}\n"
+                + pkgs.lib.optionalString (kept h != [ ]) "${h}: the shell env keeps ${toString (kept h)}\n"
+              ) hosts;
+            in
+            pkgs.runCommand "claude-code-backend-seats"
+              {
+                inherit report;
+                agents = map agent hosts;
+                settings = map settings hosts;
+                expected = builtins.toJSON {
+                  inherit (backend) env fallbackModel;
+                };
+                sets = pkgs.lib.concatStringsSep " " (pkgs.lib.mapAttrsToList (k: v: "${k}=${v}") backend.env);
+                unsets = pkgs.lib.concatStringsSep " " backend.retired;
+              }
+              ''
+                fail=0
+                if [ -n "$report" ]; then printf '%s' "$report" >&2; fail=1; fi
+                for s in $settings; do
+                  [ "$(${pkgs.jq}/bin/jq -cS . "$s")" = "$(printf '%s' "$expected" | ${pkgs.jq}/bin/jq -cS .)" ] ||
+                    { echo "$s: settings.json's env or fallbackModel differs from the backend" >&2; fail=1; }
+                done
+                for a in $agents; do
+                  for kv in $sets; do
+                    grep -qxF "/bin/launchctl setenv ''${kv%%=*} ''${kv#*=}" "$a" ||
+                      { echo "$a: no setenv ''${kv%%=*}" >&2; fail=1; }
+                  done
+                  for k in $unsets; do
+                    grep -qxF "/bin/launchctl unsetenv $k" "$a" || { echo "$a: no unsetenv $k" >&2; fail=1; }
+                  done
+                done
+                [ "$fail" = 0 ] && touch "$out"
+              '';
           ndh-ops-bats = import ./modules/.common.d/ndh-ops.d/tests/package.nix { inherit pkgs; };
           # No bats test of the repository carries a line that checks nothing mid-test.
           bats-weak-lines = import ./modules/.common.d/bats-lint.d/package.nix {
