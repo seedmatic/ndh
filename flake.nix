@@ -1154,6 +1154,10 @@
             keysYaml = ./modules/home-manager/ssh.d/keys.yaml;
             keysJson = ./modules/home-manager/ssh.d/keys.json;
           };
+          krl-reproducible = import ./modules/.common.d/keys-yaml.d/tests/krl-reproducible.nix {
+            inherit pkgs;
+            keysJson = ./modules/home-manager/ssh.d/keys.json;
+          };
           keys-slot-age = import ./modules/.common.d/keys-yaml.d/tests/keys-slot-age.nix {
             inherit pkgs;
             keysJson = ./modules/home-manager/ssh.d/keys.json;

@@ -71,9 +71,19 @@ while IFS=$'\t' read -r where cert; do
 done < <(yq -r '(.keys // {}) | to_entries[] | .key as $k | (.value.slots // {}) | to_entries[] | .key as $s | (.value.certificates // {}) | to_entries[] | .key as $a | .value | to_entries[] | select(.value | tag == "!!str") | ($k + "@" + $s + " " + $a + " " + .key) + "\t" + .value' "$json")
 
 ssh-keygen -k -f "$work/krl" "$work/keys.spec"
+# ssh-keygen stamps the header's generated_date (PROTOCOL.krl: a uint64 after the magic, the format version and
+# krl_version, so bytes 20-27) with the time of the build, and honours no SOURCE_DATE_EPOCH: the same revocations
+# would give a new file, and every host a new closure, at each rebuild. Zeroed, here and after each -u merge, the
+# list is a function of keys.json alone; nothing reads the date to decide.
+reproducible() {
+	[[ "$(head -c 8 "$work/krl" | od -An -tx1 | tr -d ' \n')" == 5353484b524c0a00 ]] || fail "the built list has no KRL magic"
+	printf '\0\0\0\0\0\0\0\0' | dd of="$work/krl" bs=1 seek=20 count=8 conv=notrunc status=none
+}
+reproducible
 for spec in "$work"/ca-*.spec; do
 	[[ -e "$spec" ]] || continue
 	ssh-keygen -k -u -s "${spec%.spec}.pub" -f "$work/krl" "$spec"
+	reproducible
 done
 
 # What was asked is what was built: every public reads as revoked, every id is listed.
