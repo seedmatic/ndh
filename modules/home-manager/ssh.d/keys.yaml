@@ -263,6 +263,10 @@ keys:
           mammoth-skate:
             ssh-host: ssh-ed25519-cert-v01@openssh.com AAAAIHNzaC1lZDI1NTE5LWNlcnQtdjAxQG9wZW5zc2guY29tAAAAICD7uTcQvc1daHJepOyLUGVZK2fz0bB7pF+3N0wsfk3wAAAAIHILc//oKMPL8FG7hkmRDs6RUqo+uoZLKx9yln4vPRx6AAAAAAAAAAUAAAACAAAA2XsibWFya2VyIjoibmRoLXNzaC1rZXktbWV0YS12MSIsIm93bmVyIjoiaG9tZS1tYW5hZ2VyLnNzaC1hZGQta2V5cyIsImtleSI6Imhvc3QtYmlvc2tvcCIsInVzYWdlIjpbInNzaC1ob3N0Il0sIm5hbWVzIjoiNmE3NDQxNzg4MTEwZTViYWQ3ZDY4Mjc5NzU0MTIxYjExOGIzYTFhYjEyZjM5ZmMzNTIzNDc5NjNlZTYxZTM2YiIsImlzc3VlZCI6IjIwMjYtMTAtMTdUMDU6NDk6NDdaIn0AAABLAAAAB2Jpb3Nrb3AAAAALYmlvc2tvcC5sYW4AAAANYmlvc2tvcC5sb2NhbAAAABxiaW9za29wLm1hbW1vdGgtc2thdGUudHMubmV0AAAAAAAAAAD//////////wAAAAAAAAAAAAAAAAAAADMAAAALc3NoLWVkMjU1MTkAAAAg9D6KfSqlhpd49WJ0Cl7eyoqUV8myY3i8UhGWy20AKTsAAABTAAAAC3NzaC1lZDI1NTE5AAAAQOWJfj474WRW8Ur0u439VsjZlpiznfykullb5lguu60guDu27IEJ8oVnwpK/3HszvX2VUEG3clkpz3+o7MAaSgs= host-bioskop
         nixSigning: seedmatic-bioskop-1:6NV2srMMItn0KLrr8gDH+5wr31/Sq6od5llCx2RRYW0=
+        state: serving
+        origin: keyring
+        age: age1avmcejlekelhkm02v3algs9z37fsp27658zpjagkr5w7uxhqguesdmmz0m
+        recipient: true
   host-bioskop-nixos:
     type: ssh-ed25519
     comment: host-bioskop-nixos
@@ -279,6 +283,10 @@ keys:
           mammoth-skate:
             ssh-host: ssh-ed25519-cert-v01@openssh.com AAAAIHNzaC1lZDI1NTE5LWNlcnQtdjAxQG9wZW5zc2guY29tAAAAIO96zQACObUK9cQ7GKBO5J3bp1/5ICC0dJ8shWmYzG9hAAAAICxjKH6th3XhibVtGoqYAiFHWqZvmrACKLe30Yjxb3mzAAAAAAAAAAYAAAACAAAA33sibWFya2VyIjoibmRoLXNzaC1rZXktbWV0YS12MSIsIm93bmVyIjoiaG9tZS1tYW5hZ2VyLnNzaC1hZGQta2V5cyIsImtleSI6Imhvc3QtYmlvc2tvcC1uaXhvcyIsInVzYWdlIjpbInNzaC1ob3N0Il0sIm5hbWVzIjoiM2RlY2RjNzJkMTE0ODgzNTVjMDU1NDUyMTFjOGM0MWJiZTg1MmQ3MzM1NWIwZDhkOTA5NzM5NzA1ODYxMThhZiIsImlzc3VlZCI6IjIwMjYtMTAtMTdUMDU6NDk6NDdaIn0AAAB0AAAADWJpb3Nrb3Atbml4b3MAAAARYmlvc2tvcC1uaXhvcy5sYW4AAAATYmlvc2tvcC1uaXhvcy5sb2NhbAAAACJiaW9za29wLW5peG9zLm1hbW1vdGgtc2thdGUudHMubmV0AAAADW5peG9zLmJpb3Nrb3AAAAAAAAAAAP//////////AAAAAAAAAAAAAAAAAAAAMwAAAAtzc2gtZWQyNTUxOQAAACD0Pop9KqWGl3j1YnQKXt7KipRXybJjeLxSEZbLbQApOwAAAFMAAAALc3NoLWVkMjU1MTkAAABArIMvlfKPHmgldN9T003xyVHc6c5pdI3RdZO9+hXf7hVtrjA719mIiRez82CEMzlmW3Sa/eHRsg5ApHWl8xfPCA== host-bioskop-nixos
         nixSigning: seedmatic-bioskop-nixos-1:eqGOz2GK5CojkBzHWfVBTKrAjVfxGhvA9j0OXjAqV54=
+        state: serving
+        origin: keyring
+        age: age1s4n043p3h4hsxfee6g2p2at63szfslgpm54luyup6ucevjfzpfxq4m8h7x
+        recipient: false
   vz-recover-nikopol:
     type: ssh-ed25519
     comment: vz-recover-nikopol
@@ -303,6 +311,10 @@ keys:
         certificates:
           mammoth-skate:
             ssh-host: ssh-ed25519-cert-v01@openssh.com AAAAIHNzaC1lZDI1NTE5LWNlcnQtdjAxQG9wZW5zc2guY29tAAAAILx1y0F1PI2fR6n7VAR5T7xXeRGdiwwNLgurDv+/+kpfAAAAIHepa/fSAQbHiF3VvnFW0mdTzv2qD05cxtla+12d9SlfAAAAAAAAAAgAAAACAAAA33sibWFya2VyIjoibmRoLXNzaC1rZXktbWV0YS12MSIsIm93bmVyIjoiaG9tZS1tYW5hZ2VyLnNzaC1hZGQta2V5cyIsImtleSI6Imhvc3Qtbmlrb3BvbC1uaXhvcyIsInVzYWdlIjpbInNzaC1ob3N0Il0sIm5hbWVzIjoiMDQ2MTBkYmNkMDY5OWNmNTY3YjU5NWEwZDcyYWM2MmYzNmU1YjQwZjQ4ZGQyNzU2YzliMzQ5N2ZjYTE4NTMxYiIsImlzc3VlZCI6IjIwMjYtMTAtMThUMjE6MDA6MDlaIn0AAAB0AAAADW5pa29wb2wtbml4b3MAAAARbmlrb3BvbC1uaXhvcy5sYW4AAAATbmlrb3BvbC1uaXhvcy5sb2NhbAAAACJuaWtvcG9sLW5peG9zLm1hbW1vdGgtc2thdGUudHMubmV0AAAADW5peG9zLm5pa29wb2wAAAAAAAAAAP//////////AAAAAAAAAAAAAAAAAAAAMwAAAAtzc2gtZWQyNTUxOQAAACD0Pop9KqWGl3j1YnQKXt7KipRXybJjeLxSEZbLbQApOwAAAFMAAAALc3NoLWVkMjU1MTkAAABA2PMhrcI5Cu3ij3kAU5vYW+uRFAm45djCznEeTUyXispu4YWlwomev3spDFVqSGka/fwNXiMDe+UcefjTqEZ3Bg== host-nikopol-nixos
+        state: recorded
+        origin: keyring
+        age: age18ufv8m967u84wsq4lrq8qeh5dgvzf7s0tczfckyuqk8x93kl0qxs7sdpdd
+        recipient: false
   host-nikopol:
     type: ssh-ed25519
     comment: host-nikopol
@@ -318,6 +330,10 @@ keys:
         certificates:
           mammoth-skate:
             ssh-host: ssh-ed25519-cert-v01@openssh.com AAAAIHNzaC1lZDI1NTE5LWNlcnQtdjAxQG9wZW5zc2guY29tAAAAIOSwv9Qugddzh0VmSvQBYvLmwA+1fzT8nQdB1Roq4jiTAAAAIKAEDgiY1JSMavOuGtyFc5b/1bjZrJnSGNrs7ayi6jdrAAAAAAAAAAkAAAACAAAA2XsibWFya2VyIjoibmRoLXNzaC1rZXktbWV0YS12MSIsIm93bmVyIjoiaG9tZS1tYW5hZ2VyLnNzaC1hZGQta2V5cyIsImtleSI6Imhvc3Qtbmlrb3BvbCIsInVzYWdlIjpbInNzaC1ob3N0Il0sIm5hbWVzIjoiODAzY2VlOGM0ZTAyZDQ2ZGJhMGYwMDBmNzllNjJkN2M1NDEyNTQxMDJlYjQ5OWNlYzdkOWIyNWRlZGRmOGMzYyIsImlzc3VlZCI6IjIwMjYtMTAtMThUMjE6MDA6MDlaIn0AAABLAAAAB25pa29wb2wAAAALbmlrb3BvbC5sYW4AAAANbmlrb3BvbC5sb2NhbAAAABxuaWtvcG9sLm1hbW1vdGgtc2thdGUudHMubmV0AAAAAAAAAAD//////////wAAAAAAAAAAAAAAAAAAADMAAAALc3NoLWVkMjU1MTkAAAAg9D6KfSqlhpd49WJ0Cl7eyoqUV8myY3i8UhGWy20AKTsAAABTAAAAC3NzaC1lZDI1NTE5AAAAQPnt2iYjx5R8aQxoshwpowb55cXCsK/MvmEfCt3X0evb85ZoKs1ygt/XxRJAPeFOtQiR3DyoQg5gIWHWzU7jPQI= host-nikopol
+        state: recorded
+        origin: keyring
+        age: age1wenvxmefp705lmg2qkf0mrpvp6mv7z560r4pklfz3hzkz3e5xacsxnfctf
+        recipient: true
   sshfs-nikopol-nixos:
     type: ssh-ed25519
     comment: sshfs-nikopol-nixos
@@ -327,6 +343,10 @@ keys:
     slots:
       26-10-18:
         public: AAAAC3NzaC1lZDI1NTE5AAAAIGlm4SkZY2PZITrqiQBhasyGZAA4g5Cppg1PTRjbX3f+
+        state: recorded
+        origin: keyring
+        age: age1wepqpfd8ww04f87tm44lz8pzn8nq2v5nrqc2kgkdggh7a2p4tg5qpdd6qj
+        recipient: false
 revoked:
   # Generations no sshd accepts any more — see keys.schema.yaml#revoked.
   mammoth-skate@26-05-29:
@@ -465,6 +485,6 @@ sops:
         -----END AGE ENCRYPTED FILE-----
       recipient: age1wenvxmefp705lmg2qkf0mrpvp6mv7z560r4pklfz3hzkz3e5xacsxnfctf
   encrypted_comment_regex: sops:encrypted
-  lastmodified: "2026-10-18T21:00:09Z"
-  mac: ENC[AES256_GCM,data:X0AJWjaI92Jrr5n6SyWzfovJmIQv0VtlfC2hLsWMVFyVmC7xwzz4cc/taM6EyCmPqMZKLFV756Gbrb3g8VCfjwFdUQbOlVk1Lr8iLnD87xI8LTr7z1mcffK0Xm/bcGQbHQfJkf28qGMzthpd9GzxiiQuItOJrKkD755qLxqch70=,iv:sZ0QI4dAnZuQnnQ+DNPu41+vClDyUHu6YxKPKoLaiCc=,tag:FSxjsilZFG5bhoHgbqo3XA==,type:str]
+  lastmodified: "2026-10-21T14:39:53Z"
+  mac: ENC[AES256_GCM,data:CwPV9p4bADlTR8SbOhNEa6odUnayjSOGJ10wDO5YN6cn1yLnuZ++T7bQ46XexiZTIQ7EU+yZC+QjKE8fVydL/rauhiGI91jjmf/ivg8sruNpMxhLFesVRjDBn6PFBW8rYIU1iohkoHJafwsJ5bU/hyG6QniCJ+Me9uaj7Bmt/8U=,iv:ERdftqOw+/nDExsBqBo6z9RxNdL3I0eXGQgQUhhIAQg=,tag:hbX6z8aSi5u5PGPuRMe2Lw==,type:str]
   version: 3.13.3

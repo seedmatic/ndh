@@ -1154,6 +1154,11 @@
             keysYaml = ./modules/home-manager/ssh.d/keys.yaml;
             keysJson = ./modules/home-manager/ssh.d/keys.json;
           };
+          keys-slot-age = import ./modules/.common.d/keys-yaml.d/tests/keys-slot-age.nix {
+            inherit pkgs;
+            keysJson = ./modules/home-manager/ssh.d/keys.json;
+            sopsYaml = ./.sops.yaml;
+          };
           ssh-keys-certify-host-names = import ./modules/.common.d/ssh-keys-certify.d/tests/host-names.nix {
             inherit pkgs;
           };
@@ -1299,6 +1304,28 @@
                 darwin.config.ndh.nixSigning.placeScript
               ];
             } "touch $out";
+          # ndh.hostKey.own and keys.yaml's slot state agree on every machine of the fleet, and the assertion that
+          # holds them together bites both ways: own on a machine whose slot is not `serving`, and a `serving` slot on
+          # a machine that does not set own.
+          host-key-own-is-serving =
+            let
+              lib = nixpkgs.lib;
+              failed =
+                c: lib.any (a: !a.assertion && lib.hasInfix "ndh.hostKey.own is" a.message) c.config.assertions;
+              machines = lib.attrValues self.nixosConfigurations ++ lib.attrValues self.darwinConfigurations;
+              ownOff = self.darwinConfigurations.bioskop.extendModules {
+                modules = [ { ndh.hostKey.own = nixpkgs.lib.mkForce false; } ];
+              };
+              ownOn = self.darwinConfigurations.nikopol.extendModules {
+                modules = [ { ndh.hostKey.own = nixpkgs.lib.mkForce true; } ];
+              };
+            in
+            assert lib.assertMsg (
+              !(lib.any failed machines)
+            ) "host-key-own-is-serving: a machine of the fleet drifts";
+            assert lib.assertMsg (failed ownOff) "host-key-own-is-serving: own off on a serving slot passed";
+            assert lib.assertMsg (failed ownOn) "host-key-own-is-serving: own on a recorded slot passed";
+            pkgs.runCommand "host-key-own-is-serving" { } "touch $out";
           build-users-group-guard =
             let
               lib = nixpkgs.lib;

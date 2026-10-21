@@ -35,6 +35,12 @@ properties:
       `linux-builder`). Each entry references a top-level authority by name
       instead of inlining the authority block.
     patternProperties:
+      "^(host|sshfs)-[a-z0-9-]+$":
+        allOf:
+          - $ref: "#/$defs/key"
+          - properties:
+              slots:
+                $ref: "#/$defs/machineSlots"
       "^[a-z][a-z0-9-]*$":
         $ref: "#/$defs/key"
     additionalProperties: false
@@ -250,6 +256,42 @@ $defs:
           $ref: "#/$defs/certificates"
         nixSigning:
           $ref: "#/$defs/nixSigningPublic"
+        state:
+          $ref: "#/$defs/slotState"
+        origin:
+          $ref: "#/$defs/slotOrigin"
+        age:
+          $ref: "#/$defs/ageRecipient"
+        recipient:
+          type: boolean
+          description: >
+            Whether `age` is a recipient of every creation rule of ndh's .sops.yaml (true) or of none (false);
+            checks.<system>.keys-slot-age holds it to .sops.yaml. A machine's sops identity is ssh-to-age of its
+            host key once it serves it; a recipient in some rules only is refused.
+
+  # A machine's key generation, from the fabric-delivery frame (roles × keys K1): pending (declared, no key) →
+  # generated (on the host, unused) → recorded (public and certificate here) → serving (its machine uses it) →
+  # retired. Each step is one transition; nothing reads the state yet but the checks.
+  slotState:
+    type: string
+    enum: [pending, generated, recorded, serving, retired]
+
+  # Where the private was born: on its machine at activation, or in the operator's keyring (pass) and pushed.
+  slotOrigin:
+    type: string
+    enum: [host, keyring]
+
+  ageRecipient:
+    description: >
+      ssh-to-age of this slot's ssh-ed25519 public, recorded rather than derived at evaluation (that would be
+      import-from-derivation). checks.<system>.keys-slot-age rebuilds it from `public` and refuses a mismatch.
+    type: string
+    pattern: "^age1[02-9ac-hj-np-z]{58}$"
+
+  # A machine's own key — its host key, or a guest's sshfs key — carries the frame's fields on every slot.
+  machineSlots:
+    additionalProperties:
+      required: [state, origin]
 
   nixSigningPublic:
     description: >
