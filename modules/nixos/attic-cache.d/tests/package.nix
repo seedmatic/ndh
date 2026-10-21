@@ -13,6 +13,8 @@ pkgs.runCommand "attic-cache-bats"
       gnused
       jq
       openssl
+      # cache-ensure builds its requests with yq, as the unit's runtimeInputs give it
+      yq-go
     ];
   }
   ''
