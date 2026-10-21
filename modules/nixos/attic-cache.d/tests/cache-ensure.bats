@@ -50,7 +50,7 @@ run_ensure() {
 }
 
 no_secret_out() {
-  ! grep -q -e TOKENVALUE -e SECRETVALUE "$t/calls"
+  ! grep -q -e TOKENVALUE -e SECRETVALUE "$t/calls" || false
   [[ $output$stderr != *TOKENVALUE* && $output$stderr != *SECRETVALUE* ]]
   [ -z "$(ls -A "$t/tmp")" ]
 }
@@ -80,8 +80,8 @@ no_secret_out() {
   echo "seedmatic-m1-attic-1" >"$state"
   run_ensure
   [ "$status" -eq 0 ]
-  ! grep -q '^curl ' "$t/calls"
-  ! grep -q '^nix ' "$t/calls"
+  ! grep -q '^curl ' "$t/calls" || false
+  ! grep -q '^nix ' "$t/calls" || false
   grep -q -- '--retention-period 6 hours --upstream-cache-key-name cache.nixos.org-1 --upstream-cache-key-name flox-cache-public-1' "$t/calls"
 }
 
