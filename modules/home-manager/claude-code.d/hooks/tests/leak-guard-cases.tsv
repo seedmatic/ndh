@@ -17,3 +17,10 @@ allow	nix-store --verify-path /nix/store/x
 allow	git commit -m "use nix run .#publish-plan"
 DENY	nix flake update --flake "$W"
 DENY	NIX_CONFIG=x nix develop
+DENY	nix build "path:/tmp/w?rev=0123abcd#x"
+DENY	nix build "/tmp/w?rev=0123abcd#x"
+DENY	nix eval --raw "path:$PWD?rev=0123abcd#a"
+DENY	nix build "./?rev=0123abcd#x"
+DENY	nix build "file:///tmp/w?rev=0123abcd#x"
+allow	nix build "git+file:///tmp/w?rev=0123abcd#x"
+allow	nix build "git+file://$PWD?rev=$(git rev-parse HEAD)#x"
