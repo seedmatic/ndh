@@ -3,6 +3,7 @@
   lib,
   pkgs,
   catalog,
+  ndh,
   ...
 }:
 # ndh-switch on the operator seat's PATH: the one switch verb the sessions may run (the managed list denies the raw
@@ -31,12 +32,22 @@ in
       };
       description = "fleet-switch, the ordered loop over this seat's ndh-switch.";
     };
+    ops = lib.mkOption {
+      type = lib.types.package;
+      readOnly = true;
+      default = import ../.common.d/ops-queue.d/package.nix {
+        inherit pkgs catalog ndh;
+        inherit (config.ndh.keysYaml) keys;
+      };
+      description = "ops, the operator's entry point to the fabric's pending steps, its queue derived from keys.yaml.";
+    };
   };
 
   config = lib.mkIf cfg.enable {
     environment.systemPackages = [
       cfg.package
       cfg.fleetSwitch
+      cfg.ops
     ];
   };
 }

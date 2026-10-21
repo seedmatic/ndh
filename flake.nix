@@ -2174,6 +2174,15 @@
             inherit pkgs;
             catalog = catalogData;
           };
+          ops-queue = import ./modules/.common.d/ops-queue.d/tests/package.nix {
+            inherit pkgs;
+            catalog = catalogData;
+            ndh = {
+              store = mkNdhStoreApiFor pkgs;
+              context.nixBashTrampoline =
+                if system == "aarch64-darwin" then ndhNixBashTrampolineDarwin else ndhNixBashTrampolineLinux;
+            };
+          };
           # A darwin switch run over ssh: its user-launchd step must not need the Aqua session, since SIP
           # refuses a bare `launchctl setenv` from the System one (150), and the backend env agent is there.
           darwin-user-launchd-over-ssh =
