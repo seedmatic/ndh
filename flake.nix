@@ -2038,6 +2038,54 @@
                 done
                 [ "$fail" = 0 ] && touch "$out"
               '';
+          # Every seat carries the backend's values in its three layers (shells, the GUI launchd domain, settings.json's
+          # env), telemetry off included, and no layer names a retired backend key.
+          claude-code-backend-seats =
+            let
+              hosts = [
+                "bioskop"
+                "nikopol"
+              ];
+              backend = import ./modules/claude-code-backend-env.nix;
+              darwin = h: self.darwinConfigurations.${h}.config;
+              session = h: (darwin h).home-manager.users.${(darwin h).system.primaryUser}.home.sessionVariables;
+              # The GUI layer is a script of launchctl lines: it must unset every retired key and set every value.
+              agent =
+                h:
+                builtins.head (darwin h).launchd.user.agents.claude-code-backend-env.serviceConfig.ProgramArguments;
+              missing =
+                h:
+                pkgs.lib.filter (k: ((session h).${k} or null) != backend.env.${k}) (
+                  builtins.attrNames backend.env
+                );
+              kept = h: pkgs.lib.filter (k: (session h) ? ${k}) backend.retired;
+              report = pkgs.lib.concatMapStrings (
+                h:
+                pkgs.lib.optionalString (missing h != [ ]) "${h}: the shell env lacks ${toString (missing h)}\n"
+                + pkgs.lib.optionalString (kept h != [ ]) "${h}: the shell env keeps ${toString (kept h)}\n"
+              ) hosts;
+            in
+            pkgs.runCommand "claude-code-backend-seats"
+              {
+                inherit report;
+                agents = map agent hosts;
+                sets = pkgs.lib.concatStringsSep " " (pkgs.lib.mapAttrsToList (k: v: "${k}=${v}") backend.env);
+                unsets = pkgs.lib.concatStringsSep " " backend.retired;
+              }
+              ''
+                fail=0
+                if [ -n "$report" ]; then printf "$report" >&2; fail=1; fi
+                for a in $agents; do
+                  for kv in $sets; do
+                    grep -qxF "/bin/launchctl setenv ''${kv%%=*} ''${kv#*=}" "$a" ||
+                      { echo "$a: no setenv ''${kv%%=*}" >&2; fail=1; }
+                  done
+                  for k in $unsets; do
+                    grep -qxF "/bin/launchctl unsetenv $k" "$a" || { echo "$a: no unsetenv $k" >&2; fail=1; }
+                  done
+                done
+                [ "$fail" = 0 ] && touch "$out"
+              '';
           ndh-ops-bats = import ./modules/.common.d/ndh-ops.d/tests/package.nix { inherit pkgs; };
           # No bats test of the repository carries a line that checks nothing mid-test.
           bats-weak-lines = import ./modules/.common.d/bats-lint.d/package.nix {

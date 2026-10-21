@@ -23,6 +23,9 @@
     ANTHROPIC_DEFAULT_OPUS_MODEL = "claude-opus-5-5";
     ANTHROPIC_DEFAULT_SONNET_MODEL = "claude-sonnet-5-5";
     ANTHROPIC_DEFAULT_HAIKU_MODEL = "claude-haiku-4-5";
+    # Claude Code's operational telemetry stays off on both seats (the operator, 2026-10-21): nikopol carried it by
+    # hand, and the switch now writes this block whole.
+    DISABLE_TELEMETRY = "1";
   };
 
   # The models tried, in order, when the chosen one is overloaded mid-session. No environment variable carries it.
