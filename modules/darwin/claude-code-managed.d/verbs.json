@@ -66,9 +66,9 @@
   },
   "operator_tools": {
     "programs": ["ssh-keys-certify", "ssh-keys-renew", "attic-leaf-sign", "incus-cluster-cert-renew", "ndh-keyring", "ndh-identity-push",
-                 "ndh-ceremony-vm"],
+                 "ndh-ceremony-vm", "pass-seedmatic-publish"],
     "session_forms": {"ndh-ceremony-vm": [["--smoke"]]},
-    "never_delegated": ["ndh-ceremony-vm"],
+    "never_delegated": ["ndh-ceremony-vm", "pass-seedmatic-publish"],
     "why": "reads or makes the operator's secrets (keys.yaml, an authority's signing slot, the keyring, the root's ceremony): the operator runs it"
   },
   "list_extra_rules": ["mv ~/.claude*",
@@ -83,6 +83,8 @@
   "list_path_rules": [
     {"rule": "Read(//var/lib/loopback-forward/**)", "why": "the LLM gateway relay's own ssh key, which opens the vz host's agent port"},
     {"rule": "Edit(//var/lib/loopback-forward/**)", "why": "the relay's key and state: a session never writes them"},
+    { "rule": "Read(~/Library/Application Support/*/User/workspaceStorage/*/state.vscdb*)", "why": "VS Code's per-workspace state: the Flox extension froze whole process environments there, GitHub tokens included (43 found, 2026-10-21)" },
+    { "rule": "Read(~/Library/Application Support/*/User/globalStorage/state.vscdb*)", "why": "VS Code's global state, the same SQLite store: extensions keep their secrets' metadata and settings there" },
     { "rule": "Read(//**/.pulumi-state/**)", "why": "Pulumi's file-backend state, the cellar: its seal's passphrase is in rke2lab's public source, so what it seals (the CAPN key after a grow) is in effect clear" },
     { "rule": "Edit(//**/.pulumi-state/**)", "why": "the same state: a session never writes the operator's Pulumi state" },
     { "rule": "Read(//Volumes/git-worktree-store/seedmatic/rke2lab.d/**/.local.d/**)", "why": "the operator's run logs: a pulumi up at high verbosity may log the cluster's age identity in clear" },
