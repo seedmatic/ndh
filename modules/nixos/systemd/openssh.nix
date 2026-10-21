@@ -111,6 +111,18 @@ in
     (worktreePath.of "modules/.common.d/ssh-paths.nix")
   ];
 
+  # A pending host-key slot: its key is born here (host-key.nix), at every activation, idempotently. Never fatal:
+  # the key is unused until recorded, and the next activation completes a run that stopped.
+  system.activationScripts.ndhHostKeyGenerate = lib.mkIf (config.ndh.hostKey.generate != null) {
+    deps = [ "specialfs" ];
+    supportsDryActivation = false;
+    text = ''
+      if ! ${pkgs.bash}/bin/bash ${config.ndh.hostKey.generate}/bin/host-key-generate; then
+        echo "[host-key] FAILED to generate or publish the pending host key; the next activation retries" >&2
+      fi
+    '';
+  };
+
   opensshPolicy = {
     enable = true;
     platformRendersAuthorizedKeysFile = lib.mkDefault false;

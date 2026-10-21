@@ -1160,6 +1160,10 @@
             keysYaml = ./modules/home-manager/ssh.d/keys.yaml;
             keysJson = ./modules/home-manager/ssh.d/keys.json;
           };
+          krl-reproducible = import ./modules/.common.d/keys-yaml.d/tests/krl-reproducible.nix {
+            inherit pkgs;
+            keysJson = ./modules/home-manager/ssh.d/keys.json;
+          };
           keys-slot-age = import ./modules/.common.d/keys-yaml.d/tests/keys-slot-age.nix {
             inherit pkgs;
             keysJson = ./modules/home-manager/ssh.d/keys.json;
@@ -1332,6 +1336,122 @@
             assert lib.assertMsg (failed ownOff) "host-key-own-is-serving: own off on a serving slot passed";
             assert lib.assertMsg (failed ownOn) "host-key-own-is-serving: own on a recorded slot passed";
             pkgs.runCommand "host-key-own-is-serving" { } "touch $out";
+          host-key-generate-bats = import ./modules/.common.d/host-key.d/tests/generate-bats.nix {
+            inherit pkgs;
+            trampoline = mkNdhNixBashTrampoline { pkgsForSystem = pkgs; };
+          };
+          # A key born on its machine (roles × keys K3) is wired only for a PENDING slot: no machine of the fleet has
+          # one, so none builds or runs ndh-host-key-generate; given one, a darwin host and a NixOS guest each run it
+          # at activation, for that slot, signing with the key they serve; and the current slot is never the pending
+          # one (a pending slot is newer by construction).
+          host-key-generate-wiring =
+            let
+              lib = nixpkgs.lib;
+              machines = lib.attrValues self.nixosConfigurations ++ lib.attrValues self.darwinConfigurations;
+              pendingOn =
+                system:
+                (system.extendModules {
+                  modules = [
+                    (
+                      { config, ... }:
+                      {
+                        ndh.hostKey.entry = lib.mkForce (
+                          lib.recursiveUpdate config.ndh.keysYaml.keys."host-${config.networking.hostName}" {
+                            slots."99-01-01".state = "pending";
+                          }
+                        );
+                      }
+                    )
+                  ];
+                }).config;
+              darwin = pendingOn self.darwinConfigurations.nikopol;
+              nixos = pendingOn self.nixosConfigurations.nikopol-nixos;
+              plain = c: builtins.unsafeDiscardStringContext c;
+              generateOf = c: plain "/bin/bash ${c.ndh.hostKey.generate}/bin/host-key-generate";
+              vars = c: c.ndh.hostKey.generateVars;
+              roles = import ./modules/.common.d/host-key.d/slots.nix { inherit lib; };
+            in
+            assert lib.assertMsg (lib.all (c: c.config.ndh.hostKey.generate == null)
+              machines
+            ) "host-key-generate: a machine of the fleet generates a host key, but none has a pending slot";
+            assert lib.assertMsg (lib.hasInfix (generateOf darwin) (
+              plain darwin.system.activationScripts.postActivation.text
+            )) "host-key-generate: darwin's activation does not run it";
+            assert lib.assertMsg (lib.hasInfix (generateOf nixos) (
+              plain nixos.system.activationScripts.ndhHostKeyGenerate.text
+            )) "host-key-generate: the guest's activation does not run it";
+            assert lib.assertMsg (
+              (vars nixos).slot == lib.escapeShellArg "99-01-01"
+            ) "host-key-generate: not the pending slot";
+            assert lib.assertMsg (
+              (vars nixos).keyFile
+              == lib.escapeShellArg "${nixos.ndh.hostKey.slotDir}/99-01-01/ssh_host_ed25519_key"
+            ) "host-key-generate: the new key is not in its own slot directory";
+            assert lib.assertMsg (
+              (vars nixos).oldKey == lib.escapeShellArg nixos.ndh.hostKey.servedKeyFile
+            ) "host-key-generate: the statement is not signed with the key the guest serves";
+            # A pending slot named before the current one is refused: it would be generated and never served.
+            assert lib.assertMsg (
+              let
+                early = self.nixosConfigurations.nikopol-nixos.extendModules {
+                  modules = [
+                    (
+                      { config, ... }:
+                      {
+                        ndh.hostKey.entry = lib.mkForce (
+                          lib.recursiveUpdate config.ndh.keysYaml.keys."host-${config.networking.hostName}" {
+                            slots."00-01-01".state = "pending";
+                          }
+                        );
+                      }
+                    )
+                  ];
+                };
+              in
+              lib.any (
+                a: !a.assertion && lib.hasInfix "does not sort after the current slot" a.message
+              ) early.config.assertions
+            ) "host-key-generate: a pending slot older than the current one passed";
+            # Every reader of the slot a machine serves goes through slots.nix's `current`.
+            assert lib.assertMsg (
+              (roles {
+                slots = {
+                  "26-10-17".state = "serving";
+                  "99-01-01".state = "pending";
+                };
+              }).currentName == "26-10-17"
+            ) "host-key-generate: a pending slot was taken for the current one";
+            assert lib.assertMsg (
+              (roles {
+                slots = {
+                  "26-10-17".state = "retired";
+                  "26-11-01".state = "serving";
+                };
+              }).currentName == "26-11-01"
+            ) "host-key-generate: a retired slot was taken for the current one";
+            assert lib.assertMsg (
+              !(builtins.tryEval
+                (roles {
+                  slots = {
+                    "99-01-01".state = "pending";
+                    "99-02-01".state = "pending";
+                  };
+                }).pendingName
+              ).success
+            ) "host-key-generate: two pending slots were accepted";
+            # Like every activation script, it runs under ndh's bash trampoline and logger: read from the built
+            # script, at build time.
+            pkgs.runCommand "host-key-generate-wiring" { } ''
+              for script in ${nixos.ndh.hostKey.generate}/bin/host-key-generate ${darwin.ndh.hostKey.generate}/bin/host-key-generate; do
+                trampoline=$(sed -n 's|^source \(/nix/store/[^ ]*/nix-bash-trampoline\.sh\)$|\1|p' "$script")
+                [ -n "$trampoline" ] ||
+                  { echo "FAIL $script does not source ndh's bash trampoline"; exit 1; }
+                [ "$(tail -n1 "$script")" = 'ndh::logger:command:run host-key.generate main "$@"' ] ||
+                  { echo "FAIL $script is not run under ndh::logger:command:run"; exit 1; }
+                if grep -q '@[a-zA-Z]*@' "$script"; then echo "FAIL $script has an unrendered placeholder"; exit 1; fi
+              done
+              touch $out
+            '';
           build-users-group-guard =
             let
               lib = nixpkgs.lib;

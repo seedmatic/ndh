@@ -14,19 +14,15 @@ in
 {
   inherit hostKeyFile sshfsKeyFile;
 
-  # The public keys.yaml records for <name>, from its newest slot, or "" when it records none: what a receive
+  # The public keys.yaml records for <name>, from its current slot (host-key.d/slots.nix), or "" when it records none: what a receive
   # accepts, so that only the keyring's keys can ever be installed on a machine.
   recordedPublic =
     keys: name:
     let
       entry = keys.${name} or { };
-      slots = entry.slots or { };
-      newest = lib.last (lib.sort lib.lessThan (lib.attrNames slots));
+      current = (import ../host-key.d/slots.nix { inherit lib; } entry).current;
     in
-    if slots == { } || !(slots.${newest} ? public) then
-      ""
-    else
-      "${entry.type or "ssh-ed25519"} ${slots.${newest}.public}";
+    if !(current ? public) then "" else "${entry.type or "ssh-ed25519"} ${current.public}";
 
   # operatorIdentity: the ONE ssh identity used to reach the machine: { user, keyFile, certFile }.
   # receive: the seat's own ndh-identity-receive, called by its store path so sudo's PATH does not choose it.
