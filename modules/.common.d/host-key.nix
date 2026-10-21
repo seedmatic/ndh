@@ -57,4 +57,26 @@ in
       description = "Fails, naming the file and the gesture that places it, when the machine's own host key is missing.";
     };
   };
+
+  # keys.yaml's slot state and this flag say the same thing (roles × keys K1): a machine serves its own host key
+  # exactly when its newest slot is `serving`. Until the flag is derived from the state, a drift either way is
+  # refused here, before any host is switched.
+  config.assertions =
+    let
+      slots = (config.ndh.keysYaml.keys."host-${machine}" or { }).slots or { };
+      newest =
+        if slots == { } then { } else slots.${lib.last (lib.sort lib.lessThan (lib.attrNames slots))};
+      serving = (newest.state or "") == "serving";
+    in
+    [
+      {
+        assertion = cfg.own == serving;
+        message = ''
+          ${machine}: ndh.hostKey.own is ${lib.boolToString cfg.own}, but keys.yaml's newest host-${machine} slot is
+          ${
+            if slots == { } then "absent" else "in state `${newest.state or "(none)"}`"
+          }: a machine serves its own host key
+          exactly when that slot is `serving`. Change both in the same commit.'';
+      }
+    ];
 }
