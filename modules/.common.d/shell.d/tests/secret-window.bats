@@ -92,6 +92,21 @@ windowed() { # $1 header, then the script's lines
   [[ "$output" == *"unset-after=unset"* ]]
 }
 
+@test "a caller's BASH_ENV with set -x traces no child bash inside a window, and comes back after it" {
+  printf 'set -x\n' >"$BATS_TEST_TMPDIR/bashenv"
+  windowed 'set -euo pipefail' \
+    'ndh::secret:begin "why"' \
+    'bash -c '\''v="VALUE-NOT-TO-TRACE"; : "$v"'\''' \
+    'ndh::secret:end' \
+    'echo "after=${BASH_ENV-unset}"' \
+    'BASH_ENV="" ; ndh::secret:begin "why"; ndh::secret:end; echo "empty-after=[${BASH_ENV-unset}]"'
+  BASH_ENV="$BATS_TEST_TMPDIR/bashenv" traced
+  [ "$status" -eq 0 ]
+  refute grep -qF "VALUE-NOT-TO-TRACE" "$trace"
+  [[ "$output" == *"after=$BATS_TEST_TMPDIR/bashenv"* ]]
+  [[ "$output" == *"empty-after=[]"* ]]
+}
+
 @test "a failure inside a window stops the script and traces no value, EXIT trap included" {
   windowed 'set -euo pipefail' \
     'trap '\''echo "exit sees $s"'\'' EXIT' \
