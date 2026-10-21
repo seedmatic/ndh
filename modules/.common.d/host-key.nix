@@ -56,27 +56,100 @@ in
       '';
       description = "Fails, naming the file and the gesture that places it, when the machine's own host key is missing.";
     };
+
+    # Not read-only only so the eval checks can give a test configuration a pending slot keys.yaml does not hold.
+    entry = lib.mkOption {
+      type = lib.types.attrsOf lib.types.anything;
+      internal = true;
+      default = config.ndh.keysYaml.keys."host-${machine}" or { };
+      description = "keys.yaml's host-<hostName> entry, the slots this module reads.";
+    };
+
+    slotDir = lib.mkOption {
+      type = lib.types.str;
+      readOnly = true;
+      default = "/var/lib/ndh/host-key/slots";
+      description = ''
+        Where a key born on the machine lives, one directory per keys.yaml slot (<slotDir>/<slot>/), beside the key
+        served and never over it: a rotation generates the next key while sshd still serves the current one.
+      '';
+    };
+
+    publishDir = lib.mkOption {
+      type = lib.types.str;
+      readOnly = true;
+      default = "/var/lib/ndh/host-key/published";
+      description = "Where a generated key's public and its F1 statement wait for the seat to collect them: publics only.";
+    };
+
+    servedKeyFile = lib.mkOption {
+      type = lib.types.str;
+      readOnly = true;
+      default = lib.head config.opensshPolicy.hostKeyPaths;
+      description = ''
+        The host key this machine's sshd serves now, whose certificate keys.yaml records: it signs the F1 statement
+        that vouches for a newly generated key.
+      '';
+    };
+
+    generateHeader = lib.mkOption {
+      type = lib.types.str;
+      default = "";
+      internal = true;
+      description = "The values ndh-host-key-generate runs with, fixed at evaluation for the pending slot.";
+    };
+
+    generate = lib.mkOption {
+      type = lib.types.nullOr lib.types.package;
+      default = null;
+      internal = true;
+      description = "ndh-host-key-generate for this machine's pending host-key slot, or null when none is pending.";
+    };
   };
 
-  # keys.yaml's slot state and this flag say the same thing (roles × keys K1): a machine serves its own host key
-  # exactly when its newest slot is `serving`. Until the flag is derived from the state, a drift either way is
-  # refused here, before any host is switched.
-  config.assertions =
+  config =
     let
-      slots = (config.ndh.keysYaml.keys."host-${machine}" or { }).slots or { };
-      newest =
-        if slots == { } then { } else slots.${lib.last (lib.sort lib.lessThan (lib.attrNames slots))};
-      serving = (newest.state or "") == "serving";
+      entry = cfg.entry;
+      roles = import ./host-key.d/slots.nix { inherit lib; } entry;
+      serving = (roles.current.state or "") == "serving";
+      pendingName = roles.pendingName;
     in
-    [
-      {
-        assertion = cfg.own == serving;
-        message = ''
-          ${machine}: ndh.hostKey.own is ${lib.boolToString cfg.own}, but keys.yaml's newest host-${machine} slot is
-          ${
-            if slots == { } then "absent" else "in state `${newest.state or "(none)"}`"
-          }: a machine serves its own host key
-          exactly when that slot is `serving`. Change both in the same commit.'';
-      }
-    ];
+    {
+      # keys.yaml's slot state and this flag say the same thing (roles × keys K1): a machine serves its own host
+      # key exactly when its current slot is `serving`. Until the flag is derived from the state, a drift either
+      # way is refused here, before any host is switched.
+      assertions = [
+        {
+          assertion = cfg.own == serving;
+          message = ''
+            ${machine}: ndh.hostKey.own is ${lib.boolToString cfg.own}, but keys.yaml's current host-${machine} slot is
+            ${
+              if roles.currentName == null then "absent" else "in state `${roles.current.state or "(none)"}`"
+            }: a machine serves its own host key
+            exactly when that slot is `serving`. Change both in the same commit.'';
+        }
+      ];
+
+      # A pending slot (declared in keys.yaml, no key yet): the activation generates its key in its own slot
+      # directory and publishes its public and the F1 statement for the seat to collect (host-key.d/generate.sh).
+      # Nothing serves it. With no pending slot, as today on every machine, nothing of this is built.
+      ndh.hostKey.generateHeader = lib.mkIf (pendingName != null) ''
+        machine=${lib.escapeShellArg machine}
+        slot=${lib.escapeShellArg pendingName}
+        keyFile=${lib.escapeShellArg "${cfg.slotDir}/${pendingName}/ssh_host_ed25519_key"}
+        publishDir=${lib.escapeShellArg cfg.publishDir}
+        oldKey=${lib.escapeShellArg cfg.servedKeyFile}
+        oldPublic=${lib.escapeShellArg "${entry.type or "ssh-ed25519"} ${roles.current.public or ""}"}
+      '';
+      ndh.hostKey.generate = lib.mkIf (pendingName != null) (
+        pkgs.writeShellApplication {
+          name = "ndh-host-key-generate";
+          runtimeInputs = [
+            pkgs.coreutils
+            pkgs.openssh
+          ];
+          text = cfg.generateHeader + builtins.readFile ./host-key.d/generate.sh;
+        }
+      );
+    };
 }

@@ -1330,6 +1330,88 @@
             assert lib.assertMsg (failed ownOff) "host-key-own-is-serving: own off on a serving slot passed";
             assert lib.assertMsg (failed ownOn) "host-key-own-is-serving: own on a recorded slot passed";
             pkgs.runCommand "host-key-own-is-serving" { } "touch $out";
+          host-key-generate-bats = import ./modules/.common.d/host-key.d/tests/generate-bats.nix {
+            inherit pkgs;
+          };
+          # A key born on its machine (roles × keys K3) is wired only for a PENDING slot: no machine of the fleet has
+          # one, so none builds or runs ndh-host-key-generate; given one, a darwin host and a NixOS guest each run it
+          # at activation, for that slot, signing with the key they serve; and the current slot is never the pending
+          # one (a pending slot is newer by construction).
+          host-key-generate-wiring =
+            let
+              lib = nixpkgs.lib;
+              machines = lib.attrValues self.nixosConfigurations ++ lib.attrValues self.darwinConfigurations;
+              pendingOn =
+                system:
+                (system.extendModules {
+                  modules = [
+                    (
+                      { config, ... }:
+                      {
+                        ndh.hostKey.entry = lib.mkForce (
+                          lib.recursiveUpdate config.ndh.keysYaml.keys."host-${config.networking.hostName}" {
+                            slots."99-01-01".state = "pending";
+                          }
+                        );
+                      }
+                    )
+                  ];
+                }).config;
+              darwin = pendingOn self.darwinConfigurations.nikopol;
+              nixos = pendingOn self.nixosConfigurations.nikopol-nixos;
+              plain = c: builtins.unsafeDiscardStringContext c;
+              generateOf = c: plain "${c.ndh.hostKey.generate}/bin/ndh-host-key-generate";
+              header = c: c.ndh.hostKey.generateHeader;
+              roles = import ./modules/.common.d/host-key.d/slots.nix { inherit lib; };
+            in
+            assert lib.assertMsg (lib.all (c: c.config.ndh.hostKey.generate == null)
+              machines
+            ) "host-key-generate: a machine of the fleet generates a host key, but none has a pending slot";
+            assert lib.assertMsg (lib.hasInfix (generateOf darwin) (
+              plain darwin.system.activationScripts.postActivation.text
+            )) "host-key-generate: darwin's activation does not run it";
+            assert lib.assertMsg (lib.hasInfix (generateOf nixos) (
+              plain nixos.system.activationScripts.ndhHostKeyGenerate.text
+            )) "host-key-generate: the guest's activation does not run it";
+            assert lib.assertMsg (lib.hasInfix "slot=${lib.escapeShellArg "99-01-01"}\n" (
+              header nixos
+            )) "host-key-generate: not the pending slot";
+            assert lib.assertMsg
+              (lib.hasInfix "keyFile=${lib.escapeShellArg "${nixos.ndh.hostKey.slotDir}/99-01-01/ssh_host_ed25519_key"}\n" (
+                header nixos
+              ))
+              "host-key-generate: the new key is not in its own slot directory";
+            assert lib.assertMsg
+              (lib.hasInfix "oldKey=${lib.escapeShellArg nixos.ndh.hostKey.servedKeyFile}\n" (header nixos))
+              "host-key-generate: the statement is not signed with the key the guest serves";
+            # Every reader of the slot a machine serves goes through slots.nix's `current`.
+            assert lib.assertMsg (
+              (roles {
+                slots = {
+                  "26-10-17".state = "serving";
+                  "99-01-01".state = "pending";
+                };
+              }).currentName == "26-10-17"
+            ) "host-key-generate: a pending slot was taken for the current one";
+            assert lib.assertMsg (
+              (roles {
+                slots = {
+                  "26-10-17".state = "retired";
+                  "26-11-01".state = "serving";
+                };
+              }).currentName == "26-11-01"
+            ) "host-key-generate: a retired slot was taken for the current one";
+            assert lib.assertMsg (
+              !(builtins.tryEval
+                (roles {
+                  slots = {
+                    "99-01-01".state = "pending";
+                    "99-02-01".state = "pending";
+                  };
+                }).pendingName
+              ).success
+            ) "host-key-generate: two pending slots were accepted";
+            pkgs.runCommand "host-key-generate-wiring" { } "touch $out";
           build-users-group-guard =
             let
               lib = nixpkgs.lib;

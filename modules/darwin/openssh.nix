@@ -216,6 +216,16 @@ in
       ''
     );
 
+    # A pending host-key slot: its key is born here (host-key.nix). Loud, but the activation goes on: the key is
+    # unused until recorded, and the next activation completes a run that stopped.
+    system.activationScripts.postActivation.text = lib.mkIf (config.ndh.hostKey.generate != null) (
+      lib.mkOrder config.ndh.darwin.postActivationOrder.hostKeyGenerate ''
+        if ! ${config.ndh.hostKey.generate}/bin/ndh-host-key-generate; then
+          echo "[host-key] FAILED to generate or publish the pending host key; the next activation retries" >&2
+        fi
+      ''
+    );
+
     # CA aggregation happens in-place inside sshPaths.systemKeysDir during
     # the ssh-keys enrichment activation pass (modules/darwin/ssh-keys-
     # enrichment.nix). No separate post-activation step needed — sshd's

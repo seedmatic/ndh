@@ -14,9 +14,8 @@ let
   cfg = config.ndh.nixSigning;
   machine = config.networking.hostName;
   hostEntry = config.ndh.keysYaml.keys."host-${machine}" or { };
-  slots = hostEntry.slots or { };
-  newest =
-    if slots == { } then null else slots.${lib.last (lib.sort lib.lessThan (lib.attrNames slots))};
+  current = (import ./host-key.d/slots.nix { inherit lib; } hostEntry).current;
+  newest = if current == { } then null else current;
   recorded = cfg.recorded;
   name = if recorded == null then null else lib.head (lib.splitString ":" recorded);
   version = if name == null then null else lib.last (lib.splitString "-" name);

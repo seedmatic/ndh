@@ -11,6 +11,7 @@
       secretsInstalled = 1500;
       cacheTrustCompose = 1600;
       nixSigningKey = 1605;
+      hostKeyGenerate = 1606;
       sshKeysEnrichment = 1610;
       userSecretMirror = 1620;
       incusClusterCert = 1650;
