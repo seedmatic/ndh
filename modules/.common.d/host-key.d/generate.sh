@@ -9,7 +9,7 @@ unset BASH_XTRACEFD 2>/dev/null || true
 source @nixBashTrampoline@
 
 # ndh-host-key-generate: give this machine its next host key, born here (roles × keys K3, the fabric-delivery frame).
-# Rendered by pkgs.replaceVars: machine, slot, keyFile, publishDir, oldKey and oldPublic, all fixed at evaluation
+# Rendered by pkgs.replaceVars: machine, slot, base (the root of the walk), slotDir, owner (0: root), keyFile, publishDir, oldKey and oldPublic, all fixed at evaluation
 # from keys.yaml's ONE pending host-<machine> slot; a machine with no pending slot does not run this at all.
 #
 # Idempotent at every activation: the private is generated once, by a rename into place, so it is absent or whole,
@@ -18,17 +18,42 @@ source @nixBashTrampoline@
 # stopped between the two is completed by the next. Nothing serves the new key: sshd and sops keep the old one
 # until keys.yaml records the slot and a later switch serves it. Only publics are printed.
 
-readonly machine=@machine@ slot=@slot@ keyFile=@keyFile@ publishDir=@publishDir@ oldKey=@oldKey@ oldPublic=@oldPublic@
+readonly machine=@machine@ slot=@slot@ base=@base@ slotDir=@slotDir@ owner=@owner@ keyFile=@keyFile@ publishDir=@publishDir@ oldKey=@oldKey@ oldPublic=@oldPublic@
 
 die() {
   printf '[ndh-host-key-generate] ERROR: %s\n' "$*" >&2
   exit 1
 }
 
+# owned_dirs <dir>…: from $base, every component down to each <dir> is a real directory owned by $owner, not a symlink
+# and not group- or world-writable; what is missing is created one component at a time (0700 from the slot
+# directory down, where the privates are; 0755 otherwise), so no `install -d -p` ever follows a link planted there.
+owned_dirs() {
+  local dir p c mode
+  local -a rel
+  for dir in "$@"; do
+    [[ $dir == "$base"/* ]] || die "${dir} is not under ${base}"
+    p="$base"
+    IFS=/ read -ra rel <<<"${dir#"$base"/}"
+    for c in "" "${rel[@]}"; do
+      p="$p${c:+/$c}"
+      if [[ ! -e $p && ! -L $p ]]; then
+        mode=0755
+        [[ $p == "$slotDir" || $p == "$slotDir"/* ]] && mode=0700
+        install -d -m "$mode" "$p" || die "creating ${p} failed"
+      fi
+      [[ -d $p && ! -L $p ]] || die "${p} is not a directory (a symlink?): nothing written"
+      [[ "$(stat -c %u "$p" 2>/dev/null || stat -f %u "$p")" == "$owner" ]] || die "${p} is not owned by uid ${owner}: nothing written"
+      mode="$(stat -c %a "$p" 2>/dev/null || stat -f %Lp "$p")"
+      (((8#$mode & 8#022) == 0)) || die "${p} is group- or world-writable (${mode}): nothing written"
+    done
+  done
+}
+
 main() {
   umask 077
   keyDir="$(dirname "$keyFile")"
-  install -d -m 0700 "$keyDir"
+  owned_dirs "$keyDir" "$publishDir"
 
   if [[ ! -e $keyFile ]]; then
     tmp="$(mktemp -d "${keyDir}/.generate.XXXXXX")"
@@ -51,7 +76,6 @@ main() {
   [[ "$(ssh-keygen -y -f "$oldKey" | cut -d' ' -f1,2)" == "$oldPublic" ]] ||
     die "${oldKey} is not the host key keys.yaml records for ${machine}: nothing published"
 
-  install -d -m 0755 "$publishDir"
   work="$(mktemp -d "${publishDir}/.publish.XXXXXX")"
   trap 'rm -rf "$work"' EXIT
   printf 'seedmatic-rotate v1\nname host-%s\nslot %s\nkey %s\n' "$machine" "$slot" "$public" >"$work/statement"

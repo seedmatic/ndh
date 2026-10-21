@@ -1332,6 +1332,7 @@
             pkgs.runCommand "host-key-own-is-serving" { } "touch $out";
           host-key-generate-bats = import ./modules/.common.d/host-key.d/tests/generate-bats.nix {
             inherit pkgs;
+            trampoline = mkNdhNixBashTrampoline { pkgsForSystem = pkgs; };
           };
           # A key born on its machine (roles × keys K3) is wired only for a PENDING slot: no machine of the fleet has
           # one, so none builds or runs ndh-host-key-generate; given one, a darwin host and a NixOS guest each run it

@@ -8,6 +8,7 @@ bats_require_minimum_version 1.5.0
 
 setup() {
   t="$BATS_TEST_TMPDIR"
+  install -d -m 0755 "$t/var"
   ssh-keygen -q -t ed25519 -N "" -C old -f "$t/old"
   render "$(cut -d' ' -f1,2 "$t/old.pub")"
 }
@@ -20,6 +21,7 @@ render() { # <recorded old public>
   q() { printf '%q' "$1"; }
   sed -e "s|@nixBashTrampoline@|${NDH_TRAMPOLINE}|" \
     -e "s|@machine@|m|" -e "s|@slot@|26-11-01|" \
+    -e "s|@base@|$(q "$t/var")|" -e "s|@slotDir@|$(q "$t/var/slots")|" -e "s|@owner@|$(id -u)|" \
     -e "s|@keyFile@|$(q "$t/var/slots/26-11-01/ssh_host_ed25519_key")|" \
     -e "s|@publishDir@|$(q "$t/var/published")|" \
     -e "s|@oldKey@|$(q "$t/old")|" \
@@ -41,7 +43,9 @@ verify() { # the statement against the OLD key's public, as the seat will
 @test "the key is born 0600 in a 0700 directory, and its public and F1 statement are published" {
   run --separate-stderr "$t/generate"
   [ "$status" -eq 0 ]
+  [ "$(mode "$t/var/slots")" = 700 ]
   [ "$(mode "$(dirname "$(key)")")" = 700 ]
+  [ "$(mode "$t/var/published")" = 755 ]
   [ "$(mode "$(key)")" = 600 ]
   [ "$(cat "$(pub public)")" = "$(ssh-keygen -y -f "$(key)" | cut -d' ' -f1,2)" ]
   grep -qxF "key $(cat "$(pub public)")" "$(pub statement)"
@@ -91,6 +95,36 @@ verify() { # the statement against the OLD key's public, as the seat will
   [[ $stderr == *"not the host key keys.yaml records"* ]]
   [ ! -e "$(pub public)" ]
   [ ! -e "$(pub statement.sig)" ]
+}
+
+@test "a slot directory that is a symlink is refused before anything is written" {
+  mkdir -p "$t/elsewhere" "$t/var/slots"
+  chmod 0700 "$t/var/slots"
+  ln -s "$t/elsewhere" "$t/var/slots/26-11-01"
+  run --separate-stderr "$t/generate"
+  [ "$status" -ne 0 ]
+  [[ $stderr == *"is not a directory (a symlink?)"* ]]
+  [ -z "$(ls -A "$t/elsewhere")" ]
+  [ ! -e "$t/var/published" ]
+}
+
+@test "a group- or world-writable directory on the way is refused" {
+  mkdir -p "$t/var/slots"
+  chmod 0777 "$t/var/slots"
+  run --separate-stderr "$t/generate"
+  [ "$status" -ne 0 ]
+  [[ $stderr == *"is group- or world-writable"* ]]
+  [ ! -e "$(key)" ]
+}
+
+@test "a published directory that is a symlink is refused" {
+  mkdir -p "$t/elsewhere"
+  ln -s "$t/elsewhere" "$t/var/published"
+  run --separate-stderr "$t/generate"
+  [ "$status" -ne 0 ]
+  [[ $stderr == *"is not a directory (a symlink?)"* ]]
+  [ ! -e "$(key)" ]
+  [ -z "$(ls -A "$t/elsewhere")" ]
 }
 
 @test "a key path that is a symlink is refused" {

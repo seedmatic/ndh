@@ -121,6 +121,12 @@ in
       # way is refused here, before any host is switched.
       assertions = [
         {
+          # slots.nix takes the newest usable slot for the current one: a pending slot named before it would be
+          # generated, recorded, and then never served.
+          assertion = pendingName == null || roles.currentName == null || roles.currentName < pendingName;
+          message = "${machine}: host-${machine}@${toString pendingName} is pending, but it does not sort after the current slot ${toString roles.currentName}: name the new slot by a later date.";
+        }
+        {
           assertion = cfg.own == serving;
           message = ''
             ${machine}: ndh.hostKey.own is ${lib.boolToString cfg.own}, but keys.yaml's current host-${machine} slot is
@@ -138,6 +144,9 @@ in
         lib.mapAttrs (_: lib.escapeShellArg) {
           inherit machine;
           slot = pendingName;
+          base = "/var/lib/ndh";
+          inherit (cfg) slotDir;
+          owner = "0";
           keyFile = "${cfg.slotDir}/${pendingName}/ssh_host_ed25519_key";
           inherit (cfg) publishDir;
           oldKey = cfg.servedKeyFile;
