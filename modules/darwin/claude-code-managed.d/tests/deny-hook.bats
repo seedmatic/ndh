@@ -492,3 +492,20 @@ mkstate() {
 @test "operator tool: ndh-ceremony-vm --smoke plus" { run hook 'ndh-ceremony-vm --smoke /tmp/out'; denied; }
 @test "operator tool: ndh-ceremony-vm by store path" { run hook '/nix/store/abc-ndh-ceremony-vm/bin/ndh-ceremony-vm /tmp/in /tmp/out'; denied; }
 @test "ok ndh-ceremony-vm --smoke"                { run hook 'ndh-ceremony-vm --smoke'; allowed; }
+
+# --- the LLM gateway relay: its key, its port beyond /v1, its unit ---
+@test "relay: reading its key"                 { run hook 'cat /var/lib/loopback-forward/vzhost-4001/id_ed25519'; denied; }
+@test "relay: reading its key over ssh"        { run hook 'ssh nixos.nikopol sudo cat /var/lib/loopback-forward/vzhost-4001/id_ed25519'; denied; }
+@test "relay: copying its state"               { run hook 'cp -r /var/lib/loopback-forward /tmp/x'; denied; }
+@test "relay: the agent's pages by name"       { run hook 'curl -s http://nixos.nikopol:4001/_aikey/'; denied; }
+@test "relay: the root path by address"        { run hook 'curl -s 172.16.16.1:4001/'; denied; }
+@test "relay: stopping its unit over ssh"      { run hook 'ssh nixos.nikopol sudo systemctl stop loopback-forward-vzhost-4001'; asked; }
+@test "relay: restarting its unit"             { run hook 'systemctl restart loopback-forward-vzhost-4001.service'; asked; }
+@test "relay: masking its unit"                { run hook 'systemctl mask loopback-forward-vzhost-4001'; asked; }
+@test "relay: killing its ssh"                 { run hook 'pkill -f loopback-forward'; asked; }
+@test "relay: the ask names the relay"         { run hook 'systemctl stop loopback-forward-vzhost-4001'; [[ "$output" == *"LLM gateway relay"* ]]; }
+@test "ok relay: its unit's status"            { run hook 'systemctl status loopback-forward-vzhost-4001'; allowed; }
+@test "ok relay: its journal"                  { run hook 'journalctl -u loopback-forward-vzhost-4001 -n 20'; allowed; }
+@test "ok relay: the /v1 API"                  { run hook 'curl -s http://nixos.nikopol:4001/v1/models'; allowed; }
+@test "ok relay: the base url in a grep"       { run hook 'git grep -n nixos.nikopol:4001 -- modules'; allowed; }
+@test "seed run: the ask keeps its own reason" { run hook 'mvn exec:java -pl :seed-outcluster'; [[ "$output" == *"live/preview mode"* ]]; }

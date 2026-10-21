@@ -1387,7 +1387,7 @@ class Analyzer:
             joined = " ".join(args)
             if all(s in joined for s in launcher.get("all_args_contain", [])) and \
                     any(s in joined for s in launcher.get("any_arg_contains", [""])):
-                self.ask("seed run whose live/preview mode is decided inside the JVM, not in this text", argv)
+                self.ask(launcher["why"], argv)
 
 
 def audit(line):

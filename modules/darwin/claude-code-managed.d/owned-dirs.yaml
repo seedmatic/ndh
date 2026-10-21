@@ -263,7 +263,7 @@ sessions:
     conversations:
       - af0dc1e5-609f-4ce0-8ab5-76a1c31bd7b0
     owned:
-      - ~/.claude/.scratchpad.d/session-autonomy/**
+      - ~/.claude/.scratchpad.d/claude-home/**
       - /private/tmp/cm.*
       - /private/tmp/mut.*
       - /private/tmp/hk.*
@@ -275,11 +275,8 @@ sessions:
       - /private/tmp/sw.log
       - /private/tmp/op.log
       - /private/tmp/dt.log
-    worktrees:
-      - /Volumes/git-worktree-store/seedmatic/ndh.d/fix/hook-messages
-      - /Volumes/git-worktree-store/seedmatic/ndh.d/fix/deny-secret-reading-tools
     exclude:
-      - ~/.claude/.scratchpad.d/session-autonomy/LIVE.md
+      - ~/.claude/.scratchpad.d/claude-home/LIVE.md
     lives_there: commit-message drafts, mktemp probes (generated managed lists, mutation copies, archive extracts), figure checks, build logs
     workspace: /Volumes/git-worktree-store/seedmatic/rke2lab.d/develop.code-workspace # the operator's workspace FILE of its transcript's project; ndh-claude-wake opens it (a folder would open a new window)
   develop-nix:
