@@ -20,7 +20,7 @@ let
       "${worktreePath.runtimeFile "modules/.common.d/shell.d/nix-bash-trampoline.sh"}";
   profile = config._module.specialArgs.profile;
   userName = profile.user.name;
-  loggerTag = "home-manager.activationScripts.${userName}.claudeCodePurgeModelOverride";
+  loggerTag = "home-manager.activationScripts.${userName}.claudeCodePurgeBackendEnv";
 
   # Bootstrap seed for ~/.claude/settings.json. Written to the Nix store
   # and copied into place ONLY when the file is absent (fresh machine).
@@ -35,12 +35,11 @@ let
   # NOT here — so the two concerns don't fight.
   #
   # Separately, the legacy env block inside ~/.claude.json (an
-  # onboarding-era remnant, a DIFFERENT file Claude owns) can carry an
-  # ANTHROPIC_MODEL hard override that pins the model above every
-  # settings.json "model" field — defeating the user's chosen default and
-  # /model alike. The claudeCodePurgeModelOverride activation below strips
-  # that one key so the per-tier defaults here (ANTHROPIC_DEFAULT_OPUS_MODEL)
-  # decide the model.
+  # onboarding-era remnant, a DIFFERENT file Claude owns) can carry backend
+  # keys that win over the backend: an ANTHROPIC_MODEL pinning the model
+  # above every settings.json "model" field, or a CLAUDE_CODE_USE_BEDROCK
+  # keeping a seat on a retired backend. The claudeCodePurgeBackendEnv
+  # activation below strips every backend key from that block.
   seedFile = pkgs.writeText "claude-settings-seed.json" (builtins.toJSON cfg.seed);
 
   # The session hooks own the `hooks` key of ~/.claude/settings.json and nothing else: the file stays
@@ -166,15 +165,12 @@ in
         fi
       '';
 
-      home.activation.claudeCodePurgeModelOverride =
+      home.activation.claudeCodePurgeBackendEnv =
         let
-          purgeModelOverrideScript = pkgs.replaceVars ./claude-code.d/purge-anthropic-model.sh {
-            nixBashTrampoline = nixBashTrampoline;
-            loggerTag = loggerTag;
-          };
+          purge = import ./claude-code.d/purge-backend-env.nix { inherit pkgs nixBashTrampoline loggerTag; };
         in
         lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-          $DRY_RUN_CMD ${pkgs.bash}/bin/bash ${purgeModelOverrideScript}
+          $DRY_RUN_CMD ${pkgs.bash}/bin/bash ${purge.script}
         '';
     }
   ]);

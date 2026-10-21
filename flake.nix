@@ -1124,6 +1124,12 @@
           claude-code-managed-settings = managed.settings;
           claude-code-deny-hook = managed.tests;
           claude-code-session-hooks = sessionHooks.tests;
+          claude-code-purge-backend-env =
+            (import ./modules/home-manager/claude-code.d/purge-backend-env.nix {
+              inherit pkgs;
+              nixBashTrampoline = "/the-check-stubs-it";
+              loggerTag = "check";
+            }).tests;
           claude-code-auto-mode = import ./modules/home-manager/claude-code.d/auto-mode/package.nix {
             inherit pkgs;
           };
