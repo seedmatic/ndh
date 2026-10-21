@@ -100,6 +100,8 @@ in
         nativeBuildInputs = [
           pkgs.bats
           pkgs.bash
+          # flox-env.sh's tests substitute @python@ with the python3 on PATH, as the installed hook gets one.
+          pkgs.python3
         ]
         ++ deps;
       }
