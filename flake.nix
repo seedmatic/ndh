@@ -1149,6 +1149,12 @@
           ssh-keys-certify-bats = import ./modules/.common.d/ssh-keys-certify.d/tests/package.nix {
             inherit pkgs;
           };
+          # .sops.yaml's recipients = keys.yaml's recorded recipients + the operator + the interim ones still needed.
+          sops-recipients = import ./modules/.common.d/keys-yaml.d/tests/sops-recipients.nix {
+            inherit pkgs;
+            sopsYaml = ./.sops.yaml;
+            keysJson = ./modules/home-manager/ssh.d/keys.json;
+          };
           keys-json-fresh = import ./modules/.common.d/keys-yaml.d/tests/keys-json-fresh.nix {
             inherit pkgs;
             keysYaml = ./modules/home-manager/ssh.d/keys.yaml;
