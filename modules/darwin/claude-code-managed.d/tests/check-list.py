@@ -15,7 +15,10 @@ path = sys.argv[1]
 settings = json.load(open(path))["permissions"]
 rules = [r[5:-1] for r in settings["deny"] if r.startswith("Bash(")]
 # Path rules (verbs.json list_path_rules) are not commands: no twins, an absolute `//` or a home `~/` path only.
-path_rules = [r for r in settings["deny"] if not r.startswith(("Bash(", "mcp__"))]
+path_rules = [r for r in settings["deny"] if not r.startswith(("Bash(", "mcp__", "WebFetch("))]
+fetch_rules = [r for r in settings["deny"] if r.startswith("WebFetch(")]
+bad_fetches = [r for r in fetch_rules if not re.fullmatch(r"WebFetch\(domain:[A-Za-z0-9.-]+\)", r)]
+print(f"{path}: fetch-rules={len(fetch_rules)} malformed={len(bad_fetches)} {bad_fetches}")
 tool_rules = [r for r in settings["deny"] + settings.get("ask", []) if r.startswith("mcp__")]
 bad_tools = [r for r in tool_rules if not re.fullmatch(r"mcp__[A-Za-z0-9_]+__[A-Za-z0-9]+", r)]
 print(f"{path}: tool-rules={len(tool_rules)} malformed={len(bad_tools)} {bad_tools}")
@@ -102,4 +105,4 @@ cleanup = ["rm -rf /tmp/x", "rm -rf /private/tmp/flox-sb", "rm -rf $T", "rm -rf 
            "rm -rf repo/.scratchpad.d/topic", "rm -rf ${T:?}/out"]
 caught = [c for c in cleanup if refused(c) or asked(c)]
 print(f"cleanup: {len(cleanup) - len(caught)}/{len(cleanup)} left to the hook", *(f"  CAUGHT {c}" for c in caught), sep="\n")
-sys.exit(1 if open_cases or fps or missing or not_asked or caught or bad_paths or bad_tools or len(rules) != len(set(rules)) else 0)
+sys.exit(1 if open_cases or fps or missing or not_asked or caught or bad_paths or bad_tools or bad_fetches or len(rules) != len(set(rules)) else 0)
