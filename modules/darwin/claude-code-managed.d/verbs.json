@@ -76,7 +76,13 @@
                        "nix * --to https://*", "nix * --to http://*", "nix * --to s3://*", "nix * --to file://*", "nix * --to /*",
                        "nix * --to=https://*", "nix * --to=http://*", "nix * --to=s3://*", "nix * --to=file://*", "nix * --to=/*"],
   "protected_scan_bares": ["/Volumes/git-bare-store"],
+  "list_fetch_rules": [
+    {"domain": "nixos.nikopol", "why": "the LLM gateway relay: a session reaches it as its backend, never by WebFetch (the agent's pages hold the operator's corporate session)"},
+    {"domain": "172.16.16.1", "why": "the same relay, by its fabric address"}
+  ],
   "list_path_rules": [
+    {"rule": "Read(//var/lib/loopback-forward/**)", "why": "the LLM gateway relay's own ssh key, which opens the vz host's agent port"},
+    {"rule": "Edit(//var/lib/loopback-forward/**)", "why": "the relay's key and state: a session never writes them"},
     { "rule": "Read(//**/.pulumi-state/**)", "why": "Pulumi's file-backend state, the cellar: its seal's passphrase is in rke2lab's public source, so what it seals (the CAPN key after a grow) is in effect clear" },
     { "rule": "Edit(//**/.pulumi-state/**)", "why": "the same state: a session never writes the operator's Pulumi state" },
     { "rule": "Read(//Volumes/git-worktree-store/seedmatic/rke2lab.d/**/.local.d/**)", "why": "the operator's run logs: a pulumi up at high verbosity may log the cluster's age identity in clear" },
@@ -128,6 +134,9 @@
       "why": "decrypts an archive with the operator's secret keys" }
   ],
   "text_rules": [
+    {"pattern": "(?:(?i:ANTHROPIC_BASE_URL)\\}?|:4001)/(?!v1/)", "why": "the LLM gateway relay beyond its /v1 API, by its port (any spelling of its host) or by the session's base URL: the agent's own pages hold the operator's corporate session. A tripwire, not a guard: a base URL held in another variable, or a path built at run time, escapes the text"},
+    {"pattern": "(?i)(?:ANTHROPIC_BASE_URL\\}?|:4001)/[^\\s'\"]*(?:\\.\\.|%2e)", "why": "a dot segment after the relay's port or base URL: curl squashes /v1/../ before sending, so the path would leave /v1"},
+    {"pattern": "(?i)--request-target(?:=|\\s+)['\"]?(?!/v1/)", "why": "curl's --request-target sends a path apart from the URL: beyond /v1, the relay's agent pages"},
     { "pattern": "(?:^|[\\s'\"=/])pass/seedmatic:", "why": "a blob of claude-home's pass/seedmatic head, the replica's content" }
   ],
   "list_ask_rules": ["rm -rf /", "rm -rf ~", "rm -rf ~/", "rm -rf $HOME", "rm -rf /Users", "rm -rf /Volumes", "rm -rf /nix", "rm -rf ~/.claude*"],
@@ -139,9 +148,21 @@
     "gnupg": "gpg"
   },
   "ask_launchers": [
-    { "program": "java", "any_arg_contains": ["io.seedmatic.rke2lab.controlplane.Main", "seed-outcluster"] },
-    { "program": "mvnw", "all_args_contain": ["exec:java"], "any_arg_contains": ["seed-outcluster"] },
-    { "program": "mvn", "all_args_contain": ["exec:java"], "any_arg_contains": ["seed-outcluster"] }
+    { "program": "java", "any_arg_contains": ["io.seedmatic.rke2lab.controlplane.Main", "seed-outcluster"], "why": "a seed run whose live/preview mode is decided inside the JVM, not in this text" },
+    { "program": "mvnw", "all_args_contain": ["exec:java"], "any_arg_contains": ["seed-outcluster"], "why": "a seed run whose live/preview mode is decided inside the JVM, not in this text" },
+    { "program": "mvn", "all_args_contain": ["exec:java"], "any_arg_contains": ["seed-outcluster"], "why": "a seed run whose live/preview mode is decided inside the JVM, not in this text" },
+    { "program": "systemctl", "all_args_contain": ["stop"], "any_arg_contains": ["loopback-forward"], "why": "the LLM gateway relay: stopping it cuts both seats' backend; the operator's or 🎛️'s gesture" },
+    { "program": "systemctl", "all_args_contain": ["restart"], "any_arg_contains": ["loopback-forward"], "why": "the LLM gateway relay: stopping it cuts both seats' backend; the operator's or 🎛️'s gesture" },
+    { "program": "systemctl", "all_args_contain": ["kill"], "any_arg_contains": ["loopback-forward"], "why": "the LLM gateway relay: stopping it cuts both seats' backend; the operator's or 🎛️'s gesture" },
+    { "program": "systemctl", "all_args_contain": ["disable"], "any_arg_contains": ["loopback-forward"], "why": "the LLM gateway relay: stopping it cuts both seats' backend; the operator's or 🎛️'s gesture" },
+    { "program": "systemctl", "all_args_contain": ["mask"], "any_arg_contains": ["loopback-forward"], "why": "the LLM gateway relay: stopping it cuts both seats' backend; the operator's or 🎛️'s gesture" },
+    { "program": "systemctl", "all_args_contain": ["reload"], "any_arg_contains": ["loopback-forward"], "why": "the LLM gateway relay: stopping it cuts both seats' backend; the operator's or 🎛️'s gesture" },
+    { "program": "systemctl", "all_args_contain": ["freeze"], "any_arg_contains": ["loopback-forward"], "why": "the LLM gateway relay: stopping it cuts both seats' backend; the operator's or 🎛️'s gesture" },
+    { "program": "systemctl", "all_args_contain": ["edit"], "any_arg_contains": ["loopback-forward"], "why": "the LLM gateway relay: stopping it cuts both seats' backend; the operator's or 🎛️'s gesture" },
+    { "program": "systemctl", "all_args_contain": ["revert"], "any_arg_contains": ["loopback-forward"], "why": "the LLM gateway relay: stopping it cuts both seats' backend; the operator's or 🎛️'s gesture" },
+    { "program": "systemctl", "all_args_contain": ["set-property"], "any_arg_contains": ["loopback-forward"], "why": "the LLM gateway relay: stopping it cuts both seats' backend; the operator's or 🎛️'s gesture" },
+    { "program": "pkill", "all_args_contain": [], "any_arg_contains": ["loopback-forward"], "why": "the LLM gateway relay: stopping it cuts both seats' backend; the operator's or 🎛️'s gesture" },
+    { "program": "killall", "all_args_contain": [], "any_arg_contains": ["loopback-forward"], "why": "the LLM gateway relay: stopping it cuts both seats' backend; the operator's or 🎛️'s gesture" }
   ],
   "vz_recover": {
     "verbs": ["probe", "list", "restart", "rollback", "restart-access"],

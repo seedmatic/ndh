@@ -60,6 +60,8 @@ def twins(base):
 deny = [r for base in bases for r in twins(base)]
 # Path rules are not commands: no flox twins, taken as they are.
 deny += [p["rule"] for p in table.get("list_path_rules", [])]
+# Fetch rules name a host a session never reaches by WebFetch.
+deny += [f"WebFetch(domain:{f['domain']})" for f in table.get("list_fetch_rules", [])]
 ask = [r for base in table.get("list_ask_rules", []) for r in twins(base)]
 # MCP tool rules are named whole, like path rules: no flox twins.
 deny += table.get("list_tool_rules", {}).get("deny", [])
