@@ -19,7 +19,11 @@ refuse() {
 unsafe_ref() {
   local ref="${1%%#*}"
   ref="${ref%%^*}"
-  [[ "$ref" == *rev=* ]] && return 1
+  # A revision pins a git ref only: to a `path:` or a bare path, `?rev=` means nothing and the directory is copied as
+  # it is on disk.
+  case "$ref" in
+    git+file:*rev=* | git+https:*rev=* | git+ssh:*rev=* | git:*rev=*) return 1 ;;
+  esac
   case "$ref" in
     /nix/store/* | path:/nix/store/*) return 1 ;;
     "" | . | .. | ./* | ../* | /* | '~'* | path:* | git+file:* | file:* | '$'*) return 0 ;;
