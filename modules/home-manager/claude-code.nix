@@ -173,7 +173,7 @@ in
           $DRY_RUN_CMD ${pkgs.bash}/bin/bash ${purge.script}
         '';
 
-      # The same backend keys, out of the Flox VS Code extension's activation snapshots (purge-flox-snapshot.sh).
+      # The Flox VS Code extension's activation snapshots, emptied: backend keys and tokens in clear (purge-flox-snapshot.sh).
       home.activation.claudeCodePurgeFloxSnapshot =
         let
           purge = import ./claude-code.d/purge-flox-snapshot.nix {

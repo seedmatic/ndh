@@ -27,6 +27,8 @@ let
     substituteInPlace $out/notify.sh --replace-fail @osascript@ /usr/bin/osascript
     # flox-env.sh keeps no backend key from a flox env: the same regex as the ~/.claude.json purge.
     substituteInPlace $out/flox-env.sh --replace-fail @python@ ${pkgs.python3}/bin/python3 \
+      --replace-fail @trustedRoots@ '/Volumes/git-worktree-store/seedmatic /Volumes/git-worktree-store/nxmatic' \
+      --replace-fail @floxProfile@ /etc/profiles/per-user \
       --replace-fail @backendKeys@ '${
         (import ../purge-backend-env.nix {
           inherit pkgs;

@@ -591,18 +591,19 @@ notified() { notify "$1"; }
 # A stand-in flox: `flox activate -d <root> -- <cmd>` runs <cmd> with what a flox env would add, including a backend key
 # and bookkeeping that must both be dropped. The real flox is never run.
 stub_flox() {
-  mkdir -p "$T/bin"
-  printf '#!%s\n[ "$1" = activate ] && [ "$2" = -d ] || exit 9\nprintf "%%s\\n" "$3" >"%s/flox.root"\nshift 4\nexport PATH="%s/envbin:$PATH" FLOX_ENV=/nix/store/x-env KUBECONFIG="%s/kube.yaml" WITH_SPACE="a b" CLAUDE_CODE_USE_BEDROCK=1 AWS_PROFILE=p ANTHROPIC_BASE_URL=http://bad _FLOX_HOOK_DIFF=z FLOX_PROMPT_COLOR_1=1\nexec "$@"\n' \
+  mkdir -p "$T/bin" "$T/profiles/$(id -un)/bin"
+  printf '#!%s\n[ "$1" = activate ] && [ "$2" = -d ] || exit 9\nprintf "%%s\\n" "$3" >"%s/flox.root"\nshift 4\nexport PATH="%s/envbin:$PATH" FLOX_ENV=/nix/store/x-env KUBECONFIG="%s/kube.yaml" WITH_SPACE="a b" CLAUDE_CODE_USE_BEDROCK=1 AWS_PROFILE=p ANTHROPIC_BASE_URL=http://bad _FLOX_HOOK_DIFF=z FLOX_PROMPT_COLOR_1=1 GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=filter.sops-yaml.smudge GIT_CONFIG_VALUE_0=decrypt GIT_DIR=/x\nexec "$@"\n' \
     "$BASH" "$T" "$T" "$T" >"$T/bin/flox"
   chmod +x "$T/bin/flox"
+  ln -sf "$T/bin/flox" "$T/profiles/$(id -un)/bin/flox"
   mkdir -p "$REPO/.flox/env"
   : >"$REPO/.flox/env/manifest.toml"
 }
 
-flox_env() { # runs the hook as installed: the python and the regex substituted
+flox_env() { # runs the hook as installed, the test's tree standing for the trusted roots and the profile
   sed -e "s#@python@#$(command -v python3)#" -e 's#@backendKeys@#^(CLAUDE_CODE_USE_BEDROCK|CLAUDE_CODE_USE_VERTEX|AWS_|ANTHROPIC_)#' \
-    "$H/flox-env.sh" >"$T/flox-env.sh"
-  jq -cn --arg c "${1:-$REPO}" '{cwd: $c}' | PATH="$T/bin:$PATH" bash "$T/flox-env.sh"
+    -e "s#@trustedRoots@#${TRUSTED-$(cd "$T" && pwd -P)}#" -e "s#@floxProfile@#$T/profiles#" "$H/flox-env.sh" >"$T/flox-env.sh"
+  jq -cn --arg c "${1:-$REPO}" '{cwd: $c}' | bash "$T/flox-env.sh"
 }
 
 @test "flox-env: a flox repository's tools and vars reach the session, quoted" {
@@ -617,7 +618,7 @@ flox_env() { # runs the hook as installed: the python and the regex substituted
   stub_flox
   export CLAUDE_ENV_FILE="$T/env"
   flox_env
-  run grep -cE 'CLAUDE_CODE_USE_BEDROCK|AWS_PROFILE|ANTHROPIC_BASE_URL|_FLOX_HOOK_DIFF|FLOX_PROMPT_COLOR' "$CLAUDE_ENV_FILE"
+  run grep -cE 'CLAUDE_CODE_USE_BEDROCK|AWS_PROFILE|ANTHROPIC_BASE_URL|_FLOX_HOOK_DIFF|FLOX_PROMPT_COLOR|GIT_CONFIG|GIT_DIR' "$CLAUDE_ENV_FILE"
   [ "$output" = 0 ]
 }
 
@@ -644,7 +645,7 @@ flox_env() { # runs the hook as installed: the python and the regex substituted
   flox_env
   [ ! -e "$CLAUDE_ENV_FILE" ]
   mkdir -p "$REPO/.flox/env" && : >"$REPO/.flox/env/manifest.toml"
-  run env -u CLAUDE_ENV_FILE bash -c 'jq -cn --arg c "$1" "{cwd: \$c}" | PATH="$2:$PATH" bash "$3"' _ "$REPO" "$T/bin" "$T/flox-env.sh"
+  run env -u CLAUDE_ENV_FILE bash -c 'jq -cn --arg c "$1" "{cwd: \$c}" | bash "$2"' _ "$REPO" "$T/flox-env.sh"
   [ -z "$output" ]
 }
 
@@ -654,5 +655,13 @@ flox_env() { # runs the hook as installed: the python and the regex substituted
   export CLAUDE_ENV_FILE="$T/env"
   run flox_env
   [[ "$output" == *'"systemMessage"'*"did not activate"*boom* ]]
+  [ ! -e "$CLAUDE_ENV_FILE" ]
+}
+
+@test "flox-env: a repository outside the trusted roots is never activated" {
+  stub_flox
+  export CLAUDE_ENV_FILE="$T/env" TRUSTED=/nowhere
+  flox_env
+  [ ! -e "$T/flox.root" ]
   [ ! -e "$CLAUDE_ENV_FILE" ]
 }

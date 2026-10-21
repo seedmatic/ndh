@@ -12,6 +12,10 @@
 # Claude Code runs $CLAUDE_ENV_FILE before each Bash command; the lines added here are guarded, so a file read twice
 # adds nothing. A repository is a flox one when its root holds .flox/env/manifest.toml. An activation that fails or
 # takes too long is said in one line, and the session goes on without it.
+#
+# Activating runs the manifest's hook, arbitrary code, at every session start and with no prompt: so only the
+# operator's own repositories are activated (@trustedRoots@), never a cloned third-party one. And nothing the env sets
+# may undo what sops-git-env neutralised: no GIT_CONFIG_* nor GIT_DIR, GIT_WORK_TREE, GIT_EXEC_PATH is taken.
 set -euo pipefail
 
 [[ -n "${CLAUDE_ENV_FILE:-}" ]] || exit 0
@@ -20,12 +24,17 @@ cwd="$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null || true)"
 [[ -n "$cwd" && -d "$cwd" ]] || exit 0
 root="$(git -C "$cwd" rev-parse --show-toplevel 2>/dev/null || true)"
 [[ -n "$root" && -f "$root/.flox/env/manifest.toml" ]] || exit 0
-flox="$(command -v flox || true)"
-[[ -n "$flox" ]] || exit 0
+trusted=""
+for t in @trustedRoots@; do [[ "$root/" == "$t"/* ]] && trusted=1; done
+[[ -n "$trusted" ]] || exit 0
+# Named by the seat's profile, never looked up on the session's PATH.
+flox="@floxProfile@/$(id -un)/bin/flox"
+[[ -x "$flox" ]] || exit 0
 
 backend='@backendKeys@'
-# The variables a flox activation sets for its own bookkeeping, or that only make sense inside the activated shell.
-skip='^(_|_flox_.*|_FLOX_.*|_activate_d|FLOX_PROMPT_.*|SHLVL|PWD|OLDPWD)$'
+# The variables a flox activation sets for its own bookkeeping, or that only make sense inside the activated shell,
+# and the git ones sops-git-env owns.
+skip='^(_|_flox_.*|_FLOX_.*|_activate_d|FLOX_PROMPT_.*|SHLVL|PWD|OLDPWD|GIT_CONFIG.*|GIT_DIR|GIT_WORK_TREE|GIT_EXEC_PATH)$'
 
 tmp="$(mktemp -d)"
 trap 'rm -rf -- "$tmp"' EXIT
