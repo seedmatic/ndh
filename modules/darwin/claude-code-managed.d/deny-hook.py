@@ -92,7 +92,7 @@ def protected_paths(table, home):
     tools only, so the hook refuses a Bash command reaching them. One source for both."""
     paths = set()
     for entry in table.get("list_path_rules", []):
-        m = re.fullmatch(r"(?:Read|Edit)\((/|~)(/[^()\s]+?)(?:/\*\*)?\)", entry["rule"])
+        m = re.fullmatch(r"(?:Read|Edit)\((/|~)(/[^()\t\n]+?)(?:/\*\*)?\)", entry["rule"])
         if m and "*" not in m.group(2):
             paths.add(os.path.normpath((home if m.group(1) == "~" else "") + m.group(2)))
     return sorted(paths)
@@ -103,7 +103,7 @@ def protected_globs(table, home):
     lists for match_segments, each ending in `**` so that the directory and everything under it match."""
     globs = set()
     for entry in table.get("list_path_rules", []):
-        m = re.fullmatch(r"(?:Read|Edit)\((/|~)(/[^()\s]+?)(?:/\*\*)?\)", entry["rule"])
+        m = re.fullmatch(r"(?:Read|Edit)\((/|~)(/[^()\t\n]+?)(?:/\*\*)?\)", entry["rule"])
         if m and "*" in m.group(2):
             root = (home if m.group(1) == "~" else "") + m.group(2)
             globs.add(tuple(root.strip("/").split("/")) + ("**",))

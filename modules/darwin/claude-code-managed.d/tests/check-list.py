@@ -22,7 +22,7 @@ print(f"{path}: fetch-rules={len(fetch_rules)} malformed={len(bad_fetches)} {bad
 tool_rules = [r for r in settings["deny"] + settings.get("ask", []) if r.startswith("mcp__")]
 bad_tools = [r for r in tool_rules if not re.fullmatch(r"mcp__[A-Za-z0-9_]+__[A-Za-z0-9]+", r)]
 print(f"{path}: tool-rules={len(tool_rules)} malformed={len(bad_tools)} {bad_tools}")
-bad_paths = [r for r in path_rules if not re.fullmatch(r"(Read|Edit)\((?://|~/)[^()\s]+\)", r)]
+bad_paths = [r for r in path_rules if not re.fullmatch(r"(Read|Edit)\((?://|~/)(?:[^()\s]| (?=\S))+\)", r)]
 print(f"{path}: path-rules={len(path_rules)} malformed={len(bad_paths)} {bad_paths}")
 ask_rules = [r[5:-1] for r in settings.get("ask", []) if r.startswith("Bash(")]
 

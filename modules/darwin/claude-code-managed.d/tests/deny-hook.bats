@@ -518,3 +518,24 @@ mkstate() {
 @test "ok relay: the /v1 API"                  { run hook 'curl -s http://nixos.nikopol:4001/v1/models'; allowed; }
 @test "ok relay: the base url in a grep"       { run hook 'git grep -n nixos.nikopol:4001 -- modules'; allowed; }
 @test "seed run: the ask keeps its own reason" { run hook 'mvn exec:java -pl :seed-outcluster'; [[ "$output" == *"live/preview mode"* ]]; }
+
+# --- VS Code's state stores: the Flox extension froze whole environments there, tokens included ---
+@test "vscode: reading a workspace's state db"   { run hook 'sqlite3 -readonly "/Users/tester/Library/Application Support/Code/User/workspaceStorage/abc123/state.vscdb" .dump'; denied; }
+@test "vscode: its backup"                       { run hook 'strings "/Users/tester/Library/Application Support/Code/User/workspaceStorage/abc123/state.vscdb.backup"'; denied; }
+@test "vscode: an Insiders workspace db"         { run hook 'cat ~/Library/Application\ Support/Code\ -\ Insiders/User/workspaceStorage/x/state.vscdb'; denied; }
+@test "vscode: the global state db"              { run hook 'cp "/Users/tester/Library/Application Support/Code/User/globalStorage/state.vscdb" /tmp/x'; denied; }
+@test "vscode: a glob over the workspaces" {
+  # A glob is judged by what it expands to: a real home holding one workspace's db.
+  HOME="$BATS_TEST_TMPDIR/h"
+  mkdir -p "$HOME/Library/Application Support/Code/User/workspaceStorage/w1"
+  touch "$HOME/Library/Application Support/Code/User/workspaceStorage/w1/state.vscdb"
+  run hook 'sqlite3 ~/Library/Application\ Support/Code/User/workspaceStorage/*/state.vscdb .tables'
+  denied
+}
+@test "ok vscode: the workspace.json beside it"  { run hook 'cat "/Users/tester/Library/Application Support/Code/User/workspaceStorage/abc123/workspace.json"'; allowed; }
+@test "ok vscode: the user settings"             { run hook 'cat "/Users/tester/Library/Application Support/Code/User/settings.json"'; allowed; }
+
+# --- pass-seedmatic-publish signs with the operator's key: theirs alone ---
+@test "operator tool: pass-seedmatic-publish"          { run hook 'pass-seedmatic-publish'; denied; }
+@test "operator tool: pass-seedmatic-publish dry run"  { run hook 'pass-seedmatic-publish --dry-run'; denied; }
+@test "operator tool: pass-seedmatic-publish by nix"   { run hook 'nix run "git+file:///Volumes/git-bare-store/nxmatic/claude-home.git?ref=claude/develop#pass-seedmatic-publish"'; denied; }
