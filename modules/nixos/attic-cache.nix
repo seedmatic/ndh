@@ -180,7 +180,7 @@ let
                 pkgs.curl
                 pkgs.gnugrep
                 pkgs.gnused
-                pkgs.jq
+                pkgs.yq-go
                 config.nix.package
               ] ./attic-cache.d/cache-ensure.sh
             }/bin/attic-cache-ensure"

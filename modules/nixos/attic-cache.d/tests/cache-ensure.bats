@@ -12,7 +12,7 @@ setup() {
   cat >"$t/bin/atticd-atticadm" <<EOF
 #!$BASH
 printf '%s\n' "atticadm \$*" >>"$t/calls"
-printf 'TOKENVALUE'
+printf 'TOKENVALUE\n' # println!, as atticadm make-token ends its output
 EOF
   cat >"$t/bin/attic" <<EOF
 #!$BASH
@@ -83,6 +83,15 @@ no_secret_out() {
   ! grep -q '^curl ' "$t/calls" || false
   ! grep -q '^nix ' "$t/calls" || false
   grep -q -- '--retention-period 6 hours --upstream-cache-key-name cache.nixos.org-1 --upstream-cache-key-name flox-cache-public-1' "$t/calls"
+}
+
+@test "traced, neither the token nor the secret key reaches the trace, and curl gets the header byte for byte" {
+  TMPDIR="$t/tmp" PATH="$t/bin:$PATH" bash -x "$script" \
+    seedmatic seedmatic-m1-attic-1 "6 hours" http://127.0.0.1:8080 cache.nixos.org-1 2>"$t/trace" >/dev/null
+  ! grep -q -e TOKENVALUE -e SECRETVALUE "$t/trace" || false
+  ! grep -q -e TOKENVALUE -e SECRETVALUE "$t/calls" || false
+  [ "$(od -An -c "$t/auth-seen" | tr -s ' ')" = "$(printf 'Authorization: Bearer TOKENVALUE\n' | od -An -c | tr -s ' ')" ]
+  grep -q '^+ attic cache configure seedmatic --private' "$t/trace"
 }
 
 @test "a public cache is refused" {
