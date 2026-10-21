@@ -4,6 +4,7 @@
   config,
   lib,
   pkgs,
+  ndh,
   ...
 }:
 let
@@ -92,11 +93,11 @@ in
       '';
     };
 
-    generateHeader = lib.mkOption {
-      type = lib.types.str;
-      default = "";
+    generateVars = lib.mkOption {
+      type = lib.types.attrsOf lib.types.str;
+      default = { };
       internal = true;
-      description = "The values ndh-host-key-generate runs with, fixed at evaluation for the pending slot.";
+      description = "The values ndh-host-key-generate is rendered with, shell-quoted, fixed at evaluation for the pending slot.";
     };
 
     generate = lib.mkOption {
@@ -133,23 +134,23 @@ in
       # A pending slot (declared in keys.yaml, no key yet): the activation generates its key in its own slot
       # directory and publishes its public and the F1 statement for the seat to collect (host-key.d/generate.sh).
       # Nothing serves it. With no pending slot, as today on every machine, nothing of this is built.
-      ndh.hostKey.generateHeader = lib.mkIf (pendingName != null) ''
-        machine=${lib.escapeShellArg machine}
-        slot=${lib.escapeShellArg pendingName}
-        keyFile=${lib.escapeShellArg "${cfg.slotDir}/${pendingName}/ssh_host_ed25519_key"}
-        publishDir=${lib.escapeShellArg cfg.publishDir}
-        oldKey=${lib.escapeShellArg cfg.servedKeyFile}
-        oldPublic=${lib.escapeShellArg "${entry.type or "ssh-ed25519"} ${roles.current.public or ""}"}
-      '';
-      ndh.hostKey.generate = lib.mkIf (pendingName != null) (
-        pkgs.writeShellApplication {
-          name = "ndh-host-key-generate";
-          runtimeInputs = [
-            pkgs.coreutils
-            pkgs.openssh
-          ];
-          text = cfg.generateHeader + builtins.readFile ./host-key.d/generate.sh;
+      ndh.hostKey.generateVars = lib.mkIf (pendingName != null) (
+        lib.mapAttrs (_: lib.escapeShellArg) {
+          inherit machine;
+          slot = pendingName;
+          keyFile = "${cfg.slotDir}/${pendingName}/ssh_host_ed25519_key";
+          inherit (cfg) publishDir;
+          oldKey = cfg.servedKeyFile;
+          oldPublic = "${entry.type or "ssh-ed25519"} ${roles.current.public or ""}";
         }
+      );
+      # The ndh bash trampoline and logger, like every activation script; ssh-keygen and coreutils by store path.
+      ndh.hostKey.generate = lib.mkIf (pendingName != null) (
+        ndh.store.installBinScript "host-key-generate" (
+          pkgs.replaceVars ./host-key.d/generate.sh (
+            cfg.generateVars // { inherit (ndh.context) nixBashTrampoline; }
+          )
+        )
       );
     };
 }

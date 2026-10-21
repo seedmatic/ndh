@@ -13,12 +13,19 @@ setup() {
 }
 
 render() { # <recorded old public>
-  {
-    printf '#!%s\nset -euo pipefail\n' "$BASH"
-    printf 'machine=m slot=26-11-01 keyFile=%q publishDir=%q oldKey=%q oldPublic=%q\n' \
-      "$t/var/slots/26-11-01/ssh_host_ed25519_key" "$t/var/published" "$t/old" "$1"
-    cat "$BATS_TEST_DIRNAME/../generate.sh"
-  } >"$t/generate"
+  # Rendered as replaceVars does, through the real ndh trampoline and logger, and run whole: its last line is the
+  # dispatch the activation runs. NDH_TRAMPOLINE comes from the flake check (the sandbox cannot search the store).
+  : "${NDH_TRAMPOLINE:?the ndh bash trampoline}"
+  local q
+  q() { printf '%q' "$1"; }
+  sed -e "s|@nixBashTrampoline@|${NDH_TRAMPOLINE}|" \
+    -e "s|@machine@|m|" -e "s|@slot@|26-11-01|" \
+    -e "s|@keyFile@|$(q "$t/var/slots/26-11-01/ssh_host_ed25519_key")|" \
+    -e "s|@publishDir@|$(q "$t/var/published")|" \
+    -e "s|@oldKey@|$(q "$t/old")|" \
+    -e "s|@oldPublic@|$(q "$1")|" \
+    "$BATS_TEST_DIRNAME/../generate.sh" >"$t/generate"
+  ! grep -q '@[a-zA-Z]*@' "$t/generate"
   chmod +x "$t/generate"
 }
 
@@ -93,6 +100,14 @@ verify() { # the statement against the OLD key's public, as the seat will
   [ "$status" -ne 0 ]
   [[ $stderr == *"is not a regular file"* ]]
   [ ! -e "$(pub public)" ]
+}
+
+@test "it runs under ndh's trampoline and logger, and a caller's xtrace is refused" {
+  run --separate-stderr bash -x "$t/generate"
+  [ "$status" -eq 0 ]
+  [[ $stderr == *"[xtrace-guard] xtrace disabled"* ]]
+  [[ $stderr == *"ndh::logger:command:run completed successfully"* ]]
+  [[ $output$stderr != *"PRIVATE KEY"* ]]
 }
 
 @test "no private is ever printed" {

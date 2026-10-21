@@ -220,7 +220,7 @@ in
     # unused until recorded, and the next activation completes a run that stopped.
     system.activationScripts.postActivation.text = lib.mkIf (config.ndh.hostKey.generate != null) (
       lib.mkOrder config.ndh.darwin.postActivationOrder.hostKeyGenerate ''
-        if ! ${config.ndh.hostKey.generate}/bin/ndh-host-key-generate; then
+        if ! ${config.ndh.hostKey.generate}/bin/host-key-generate; then
           echo "[host-key] FAILED to generate or publish the pending host key; the next activation retries" >&2
         fi
       ''

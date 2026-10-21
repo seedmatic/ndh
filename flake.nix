@@ -1360,8 +1360,8 @@
               darwin = pendingOn self.darwinConfigurations.nikopol;
               nixos = pendingOn self.nixosConfigurations.nikopol-nixos;
               plain = c: builtins.unsafeDiscardStringContext c;
-              generateOf = c: plain "${c.ndh.hostKey.generate}/bin/ndh-host-key-generate";
-              header = c: c.ndh.hostKey.generateHeader;
+              generateOf = c: plain "${c.ndh.hostKey.generate}/bin/host-key-generate";
+              vars = c: c.ndh.hostKey.generateVars;
               roles = import ./modules/.common.d/host-key.d/slots.nix { inherit lib; };
             in
             assert lib.assertMsg (lib.all (c: c.config.ndh.hostKey.generate == null)
@@ -1373,17 +1373,16 @@
             assert lib.assertMsg (lib.hasInfix (generateOf nixos) (
               plain nixos.system.activationScripts.ndhHostKeyGenerate.text
             )) "host-key-generate: the guest's activation does not run it";
-            assert lib.assertMsg (lib.hasInfix "slot=${lib.escapeShellArg "99-01-01"}\n" (
-              header nixos
-            )) "host-key-generate: not the pending slot";
-            assert lib.assertMsg
-              (lib.hasInfix "keyFile=${lib.escapeShellArg "${nixos.ndh.hostKey.slotDir}/99-01-01/ssh_host_ed25519_key"}\n" (
-                header nixos
-              ))
-              "host-key-generate: the new key is not in its own slot directory";
-            assert lib.assertMsg
-              (lib.hasInfix "oldKey=${lib.escapeShellArg nixos.ndh.hostKey.servedKeyFile}\n" (header nixos))
-              "host-key-generate: the statement is not signed with the key the guest serves";
+            assert lib.assertMsg (
+              (vars nixos).slot == lib.escapeShellArg "99-01-01"
+            ) "host-key-generate: not the pending slot";
+            assert lib.assertMsg (
+              (vars nixos).keyFile
+              == lib.escapeShellArg "${nixos.ndh.hostKey.slotDir}/99-01-01/ssh_host_ed25519_key"
+            ) "host-key-generate: the new key is not in its own slot directory";
+            assert lib.assertMsg (
+              (vars nixos).oldKey == lib.escapeShellArg nixos.ndh.hostKey.servedKeyFile
+            ) "host-key-generate: the statement is not signed with the key the guest serves";
             # Every reader of the slot a machine serves goes through slots.nix's `current`.
             assert lib.assertMsg (
               (roles {
@@ -1411,7 +1410,20 @@
                 }).pendingName
               ).success
             ) "host-key-generate: two pending slots were accepted";
-            pkgs.runCommand "host-key-generate-wiring" { } "touch $out";
+            # Like every activation script, it runs under ndh's bash trampoline and logger: read from the built
+            # script, at build time.
+            pkgs.runCommand "host-key-generate-wiring" { } ''
+              for pair in ${nixos.ndh.hostKey.generate}/bin/host-key-generate=${nixos.ndh.context.nixBashTrampoline} \
+                ${darwin.ndh.hostKey.generate}/bin/host-key-generate=${darwin.ndh.context.nixBashTrampoline}; do
+                script=''${pair%%=*} trampoline=''${pair#*=}
+                grep -qxF "source $trampoline" "$script" ||
+                  { echo "FAIL $script does not source ndh's bash trampoline"; exit 1; }
+                [ "$(tail -n1 "$script")" = 'ndh::logger:command:run host-key.generate main "$@"' ] ||
+                  { echo "FAIL $script is not run under ndh::logger:command:run"; exit 1; }
+                if grep -q '@[a-zA-Z]*@' "$script"; then echo "FAIL $script has an unrendered placeholder"; exit 1; fi
+              done
+              touch $out
+            '';
           build-users-group-guard =
             let
               lib = nixpkgs.lib;
