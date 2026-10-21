@@ -197,13 +197,21 @@ main() {
 	)"
 	preseed_out="$(printf '%s\n' "${preseed}" |
 		remote "${JOINING_SSH}" incus admin init --preseed 2>&1)" && consumed=1
-	token="" preseed=""
-	# A refusal's output may quote the preseed back: it is printed inside the window, the token spent.
-	((consumed == 1)) || printf '%s\n' "${preseed_out}" >&2
-	preseed_out=""
+	# A refusal's output may quote the preseed back, token included. Only its `Error:` lines reach the
+	# log, with the token replaced while it is still known, each cut to a bounded length.
+	local refusal="" line
+	if ((consumed == 0)); then
+		while IFS= read -r line; do
+			[[ ${line} == Error:* ]] || continue
+			line=${line//"${token}"/<token>}
+			refusal+="${line:0:200}"$'\n'
+		done <<<"${preseed_out}"
+	fi
+	token="" preseed="" preseed_out=""
 	ndh::secret:end
 	if ((consumed == 0)); then
 		ndh::logger:notice "join: ${JOINING} REFUSED the preseed — it is not a member, and the token is now spent"
+		printf '%s' "${refusal}" >&2
 		return 1
 	fi
 
