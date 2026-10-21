@@ -2049,6 +2049,18 @@
               backend = import ./modules/claude-code-backend-env.nix;
               darwin = h: self.darwinConfigurations.${h}.config;
               session = h: (darwin h).home-manager.users.${(darwin h).system.primaryUser}.home.sessionVariables;
+              # The settings.json layer is the JSON the activation writes into its `env` and `fallbackModel` keys. The path
+              # is matched out of the activation's text, which keeps its context: the match alone would drop it, and the
+              # sandbox would not hold the file.
+              settings =
+                h:
+                let
+                  data =
+                    (darwin h)
+                    .home-manager.users.${(darwin h).system.primaryUser}.home.activation.claudeCodeBackend.data;
+                  path = builtins.head (builtins.match ".*(/nix/store/[a-z0-9]+-claude-code-backend\\.json).*" data);
+                in
+                builtins.appendContext path (builtins.getContext data);
               # The GUI layer is a script of launchctl lines: it must unset every retired key and set every value.
               agent =
                 h:
@@ -2069,12 +2081,20 @@
               {
                 inherit report;
                 agents = map agent hosts;
+                settings = map settings hosts;
+                expected = builtins.toJSON {
+                  inherit (backend) env fallbackModel;
+                };
                 sets = pkgs.lib.concatStringsSep " " (pkgs.lib.mapAttrsToList (k: v: "${k}=${v}") backend.env);
                 unsets = pkgs.lib.concatStringsSep " " backend.retired;
               }
               ''
                 fail=0
-                if [ -n "$report" ]; then printf "$report" >&2; fail=1; fi
+                if [ -n "$report" ]; then printf '%s' "$report" >&2; fail=1; fi
+                for s in $settings; do
+                  [ "$(${pkgs.jq}/bin/jq -cS . "$s")" = "$(printf '%s' "$expected" | ${pkgs.jq}/bin/jq -cS .)" ] ||
+                    { echo "$s: settings.json's env or fallbackModel differs from the backend" >&2; fail=1; }
+                done
                 for a in $agents; do
                   for kv in $sets; do
                     grep -qxF "/bin/launchctl setenv ''${kv%%=*} ''${kv#*=}" "$a" ||
