@@ -2005,7 +2005,7 @@
             catalog = catalogData;
           };
           # A darwin switch run over ssh: its user-launchd step must not need the Aqua session, since SIP
-          # refuses a bare `launchctl setenv` from the System one (150), and the Bedrock env agent is there.
+          # refuses a bare `launchctl setenv` from the System one (150), and the backend env agent is there.
           darwin-user-launchd-over-ssh =
             let
               hosts = [
@@ -2014,7 +2014,7 @@
               ];
               config = h: self.darwinConfigurations.${h}.config;
               text = h: builtins.unsafeDiscardStringContext (config h).system.activationScripts.userLaunchd.text;
-              agent = h: (config h).launchd.user.agents ? claude-code-bedrock-env;
+              agent = h: (config h).launchd.user.agents ? claude-code-backend-env;
             in
             pkgs.runCommand "darwin-user-launchd-over-ssh"
               (
@@ -2034,7 +2034,7 @@
                   fi
                 done
                 for a in $agents; do
-                  [ "''${a#*=}" = true ] || { echo "''${a%%=*}: no claude-code-bedrock-env agent" >&2; fail=1; }
+                  [ "''${a#*=}" = true ] || { echo "''${a%%=*}: no claude-code-backend-env agent" >&2; fail=1; }
                 done
                 [ "$fail" = 0 ] && touch "$out"
               '';

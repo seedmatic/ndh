@@ -30,9 +30,9 @@ let
   # Intentionally carries only the model ALIAS, and no plugin: the operator
   # enables those one at a time, knowing what each changes. The alias picks the tier
   # and the context window; the `[1m]` suffix exists nowhere else, so
-  # without it a fresh machine falls back to 200k. The Bedrock model id
-  # behind the tier lives in cfg.env (real shell vars, highest precedence)
-  # — NOT here — so the two concerns don't fight.
+  # without it a fresh machine falls back to 200k. The model id behind the
+  # tier lives in the backend env (modules/claude-code-backend-env.nix) —
+  # NOT here — so the two concerns don't fight.
   #
   # Separately, the legacy env block inside ~/.claude.json (an
   # onboarding-era remnant, a DIFFERENT file Claude owns) can carry an
@@ -50,6 +50,16 @@ let
 
   # The same ownership for the `autoMode` key: replaced whole, so a rule removed here is gone.
   autoModeFile = import ./claude-code.d/auto-mode/package.nix { inherit pkgs; };
+
+  # And for the `env` and `fallbackModel` keys: the backend, replaced whole, so a key the former backend set there
+  # (CLAUDE_CODE_USE_BEDROCK, AWS_PROFILE…) is gone at the next activation.
+  backend = import ../claude-code-backend-env.nix;
+  backendFile = pkgs.writeText "claude-code-backend.json" (
+    builtins.toJSON {
+      env = cfg.env;
+      inherit (backend) fallbackModel;
+    }
+  );
 in
 {
   options = {
@@ -62,21 +72,18 @@ in
 
       env = mkOption {
         type = types.attrsOf types.str;
-        default = import ../claude-code-bedrock-env.nix;
+        default = backend.env;
         description = ''
           Stable Claude Code configuration exported as real shell
-          environment variables — the AWS Bedrock backend selection and
-          per-tier model ids, shared with the launchd session via the
-          darwin claude-code-bedrock module (single source:
-          modules/claude-code-bedrock-env.nix).
+          environment variables — the backend URL and per-tier model ids,
+          shared with the launchd session via the darwin claude-code-backend
+          module (single source: modules/claude-code-backend-env.nix).
 
           These do NOT outrank the `env` block of ~/.claude/settings.json:
           Claude Code applies that block on top of the inherited
           environment, and sessions the VSCode extension launches only get
-          the right model ids from there (the extension passes the binary's
-          built-in Bedrock defaults). The model ids are therefore set in
-          that block too, with the same values (see
-          modules/claude-code-bedrock-env.nix); change both together.
+          the right model ids from there. With backendSettings.enable, that
+          block is written from the same values.
 
           Deliberately NOT managed via home.file on settings.json:
           Claude Code writes back to ~/.claude/settings.json at runtime
@@ -89,6 +96,8 @@ in
       sessionHooks.enable = mkEnableOption "the session hooks (memory guard and commit, checkpoints) in ~/.claude/settings.json";
 
       autoMode.enable = mkEnableOption "the auto-mode classifier rules (the `autoMode` key) in ~/.claude/settings.json";
+
+      backendSettings.enable = mkEnableOption "the backend (the `env` and `fallbackModel` keys) in ~/.claude/settings.json";
 
       seed = mkOption {
         type = types.attrs;
@@ -127,6 +136,18 @@ in
         if [ -f "$claudeSettings" ]; then
           claudeSettingsNew="$(mktemp)"
           ${pkgs.jq}/bin/jq --slurpfile autoMode ${autoModeFile} '.autoMode = $autoMode[0]' "$claudeSettings" >"$claudeSettingsNew"
+          $DRY_RUN_CMD install -m 0644 "$claudeSettingsNew" "$claudeSettings"
+          rm -f "$claudeSettingsNew"
+        fi
+      '';
+    })
+
+    (mkIf cfg.backendSettings.enable {
+      home.activation.claudeCodeBackend = lib.hm.dag.entryAfter [ "writeBoundary" "claudeCodeSeed" ] ''
+        claudeSettings="$HOME/.claude/settings.json"
+        if [ -f "$claudeSettings" ]; then
+          claudeSettingsNew="$(mktemp)"
+          ${pkgs.jq}/bin/jq --slurpfile backend ${backendFile} '.env = $backend[0].env | .fallbackModel = $backend[0].fallbackModel' "$claudeSettings" >"$claudeSettingsNew"
           $DRY_RUN_CMD install -m 0644 "$claudeSettingsNew" "$claudeSettings"
           rm -f "$claudeSettingsNew"
         fi

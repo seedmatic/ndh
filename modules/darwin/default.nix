@@ -57,7 +57,7 @@
     ./tls-authority-keychain.nix
     ./launchd-orphan-cleanup.nix
     ./tmpdir-tmpfs.nix
-    ./claude-code-bedrock.nix
+    ./claude-code-backend.nix
     ./claude-code-managed.nix
     ./ndh-switch.nix
     ./claude-wake.nix
