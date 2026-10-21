@@ -117,7 +117,7 @@ in
     deps = [ "specialfs" ];
     supportsDryActivation = false;
     text = ''
-      if ! ${config.ndh.hostKey.generate}/bin/host-key-generate; then
+      if ! ${pkgs.bash}/bin/bash ${config.ndh.hostKey.generate}/bin/host-key-generate; then
         echo "[host-key] FAILED to generate or publish the pending host key; the next activation retries" >&2
       fi
     '';

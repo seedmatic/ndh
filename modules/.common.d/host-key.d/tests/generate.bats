@@ -41,7 +41,7 @@ verify() { # the statement against the OLD key's public, as the seat will
 }
 
 @test "the key is born 0600 in a 0700 directory, and its public and F1 statement are published" {
-  run --separate-stderr "$t/generate"
+  run --separate-stderr bash "$t/generate"
   [ "$status" -eq 0 ]
   [ "$(mode "$t/var/slots")" = 700 ]
   [ "$(mode "$(dirname "$(key)")")" = 700 ]
@@ -55,7 +55,7 @@ verify() { # the statement against the OLD key's public, as the seat will
 }
 
 @test "the statement does not verify under another namespace, nor against another key" {
-  "$t/generate"
+  bash "$t/generate"
   printf 'host-m %s\n' "$(cut -d' ' -f1,2 "$t/old.pub")" >"$t/allowed"
   run ssh-keygen -q -Y verify -f "$t/allowed" -I host-m -n seedmatic-attest -s "$(pub statement.sig)" <"$(pub statement)"
   [ "$status" -ne 0 ]
@@ -66,10 +66,10 @@ verify() { # the statement against the OLD key's public, as the seat will
 }
 
 @test "a second run regenerates nothing, and publishes the same public" {
-  "$t/generate"
+  bash "$t/generate"
   before="$(sha256sum "$(key)")"
   first="$(cat "$(pub public)")"
-  run --separate-stderr "$t/generate"
+  run --separate-stderr bash "$t/generate"
   [ "$status" -eq 0 ]
   [ "$(sha256sum "$(key)")" = "$before" ]
   [ "$(cat "$(pub public)")" = "$first" ]
@@ -78,10 +78,10 @@ verify() { # the statement against the OLD key's public, as the seat will
 }
 
 @test "a run that stopped after the key, before the publication, is completed by the next" {
-  "$t/generate"
+  bash "$t/generate"
   rm -f "$t/var/published/"*
   before="$(sha256sum "$(key)")"
-  "$t/generate"
+  bash "$t/generate"
   [ "$(sha256sum "$(key)")" = "$before" ]
   [ "$(cat "$(pub public)")" = "$(ssh-keygen -y -f "$(key)" | cut -d' ' -f1,2)" ]
   verify
@@ -90,7 +90,7 @@ verify() { # the statement against the OLD key's public, as the seat will
 @test "an old key that is not the recorded one publishes nothing" {
   ssh-keygen -q -t ed25519 -N "" -C other -f "$t/other"
   render "$(cut -d' ' -f1,2 "$t/other.pub")"
-  run --separate-stderr "$t/generate"
+  run --separate-stderr bash "$t/generate"
   [ "$status" -ne 0 ]
   [[ $stderr == *"not the host key keys.yaml records"* ]]
   [ ! -e "$(pub public)" ]
@@ -101,7 +101,7 @@ verify() { # the statement against the OLD key's public, as the seat will
   mkdir -p "$t/elsewhere" "$t/var/slots"
   chmod 0700 "$t/var/slots"
   ln -s "$t/elsewhere" "$t/var/slots/26-11-01"
-  run --separate-stderr "$t/generate"
+  run --separate-stderr bash "$t/generate"
   [ "$status" -ne 0 ]
   [[ $stderr == *"is not a directory (a symlink?)"* ]]
   [ -z "$(ls -A "$t/elsewhere")" ]
@@ -111,7 +111,7 @@ verify() { # the statement against the OLD key's public, as the seat will
 @test "a group- or world-writable directory on the way is refused" {
   mkdir -p "$t/var/slots"
   chmod 0777 "$t/var/slots"
-  run --separate-stderr "$t/generate"
+  run --separate-stderr bash "$t/generate"
   [ "$status" -ne 0 ]
   [[ $stderr == *"is group- or world-writable"* ]]
   [ ! -e "$(key)" ]
@@ -120,7 +120,7 @@ verify() { # the statement against the OLD key's public, as the seat will
 @test "a published directory that is a symlink is refused" {
   mkdir -p "$t/elsewhere"
   ln -s "$t/elsewhere" "$t/var/published"
-  run --separate-stderr "$t/generate"
+  run --separate-stderr bash "$t/generate"
   [ "$status" -ne 0 ]
   [[ $stderr == *"is not a directory (a symlink?)"* ]]
   [ ! -e "$(key)" ]
@@ -130,7 +130,7 @@ verify() { # the statement against the OLD key's public, as the seat will
 @test "a key path that is a symlink is refused" {
   install -d -m 0700 "$(dirname "$(key)")"
   ln -s "$t/old" "$(key)"
-  run --separate-stderr "$t/generate"
+  run --separate-stderr bash "$t/generate"
   [ "$status" -ne 0 ]
   [[ $stderr == *"is not a regular file"* ]]
   [ ! -e "$(pub public)" ]
@@ -145,7 +145,7 @@ verify() { # the statement against the OLD key's public, as the seat will
 }
 
 @test "no private is ever printed" {
-  run --separate-stderr "$t/generate"
+  run --separate-stderr bash "$t/generate"
   [ "$status" -eq 0 ]
   [[ $output$stderr != *"PRIVATE KEY"* ]]
   [[ $output$stderr != *"$(sed -n 2p "$(key)")"* ]]

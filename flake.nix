@@ -1361,7 +1361,7 @@
               darwin = pendingOn self.darwinConfigurations.nikopol;
               nixos = pendingOn self.nixosConfigurations.nikopol-nixos;
               plain = c: builtins.unsafeDiscardStringContext c;
-              generateOf = c: plain "${c.ndh.hostKey.generate}/bin/host-key-generate";
+              generateOf = c: plain "/bin/bash ${c.ndh.hostKey.generate}/bin/host-key-generate";
               vars = c: c.ndh.hostKey.generateVars;
               roles = import ./modules/.common.d/host-key.d/slots.nix { inherit lib; };
             in
