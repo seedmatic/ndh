@@ -86,6 +86,7 @@ let
     ./dotfiles
     ./emacs.nix
     # ./firefox.nix
+    ./flox-config.nix
     ./flox-direnv.nix
     ./fzf.nix
     ./git.nix

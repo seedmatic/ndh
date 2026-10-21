@@ -1190,6 +1190,11 @@
                 inherit pkgs;
               };
           nfsd-off-bats = import ./modules/darwin/nfsd-off.d/tests/package.nix { inherit pkgs; };
+          flox-config-bats = import ./modules/home-manager/flox-config.d/tests/package.nix {
+            inherit pkgs;
+            floxConfig =
+              self.darwinConfigurations.bioskop.config.home-manager.users.nxmatic.ndh.floxConfig.package;
+          };
           # No nix file here reads a derivation's output at evaluation (import-from-derivation).
           no-ifd-readfile = import ./nix/no-ifd-readfile.nix {
             inherit pkgs;
