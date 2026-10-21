@@ -12,7 +12,7 @@ let
   };
 in
 {
-  inherit script;
+  inherit script backendKeys;
 
   # A seat's file as the Bedrock backend left it: every backend key goes, the rest of the file stays byte for byte in
   # meaning, and a clean file is not rewritten.

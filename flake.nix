@@ -1130,6 +1130,12 @@
               nixBashTrampoline = "/the-check-stubs-it";
               loggerTag = "check";
             }).tests;
+          claude-code-purge-flox-snapshot =
+            (import ./modules/home-manager/claude-code.d/purge-flox-snapshot.nix {
+              inherit pkgs;
+              nixBashTrampoline = "/the-check-stubs-it";
+              loggerTag = "check";
+            }).tests;
           claude-code-auto-mode = import ./modules/home-manager/claude-code.d/auto-mode/package.nix {
             inherit pkgs;
           };
