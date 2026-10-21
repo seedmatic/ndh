@@ -38,6 +38,7 @@ notAfter="$(date -u -d "$today + $((years * 365)) days" +%F)"
 # The passphrase reaches gpg only through a here-string (gpgp), which xtrace does not print (measured, bash 5.3);
 # the window covers where it is EXPANDED in a traced command: the two reads' comparison and the word count.
 # A failure inside it exits with xtrace off.
+# shellcheck source=/dev/null
 source "$logger"
 ndh::secret:begin "the root passphrase is read and checked"
 read -r -s -p "root gpg passphrase (diceware, 7 words or more): " pass <"$passphraseFrom"
