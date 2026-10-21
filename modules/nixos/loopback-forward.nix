@@ -5,8 +5,12 @@
 # IPAddressDeny/IPAddressAllow (a cgroup eBPF filter on the ssh process), NOT the firewall, because the interfaces the
 # clients arrive on (fabric-br, tailscale0) are trusted ones, accepted before networking.firewall.extraInputRules is
 # read. The unit logs in with a key of its own, made here and never copied out; the target admits it with ONE
-# restricted authorized_keys line (`from=<this host>,restrict,port-forwarding,permitopen="127.0.0.1:<port>"`), which
-# the unit prints at start, so that key opens that one port and nothing else.
+# authorized_keys line, which the unit prints at start, so that key opens that one port and nothing else:
+#   - `restrict` drops the pty, every forwarding, ~/.ssh/rc and X11, but NOT running a command: `command=` forces
+#     /usr/bin/false, which `ssh -N` never reaches since it opens no session channel;
+#   - `port-forwarding` re-enables -L AND -R: `permitopen` limits -L to the one port, and `permitlisten` names an
+#     address the target cannot have (TEST-NET-1), so every -R bind fails. Not a low port on its loopback: macOS
+#     lets a user bind those.
 {
   config,
   lib,
@@ -84,7 +88,7 @@ in
             ${pkgs.openssh}/bin/ssh-keygen -q -t ed25519 -N "" -C "loopback-forward-${name}@${config.networking.hostName}" -f ${dir}/id_ed25519
           fi
           echo "authorized_keys line for ${f.target.user}@${f.target.address}:" \
-            "from=\"${f.from}\",restrict,port-forwarding,permitopen=\"127.0.0.1:${toString f.target.port}\" $(cat ${dir}/id_ed25519.pub)"
+            "from=\"${f.from}\",restrict,command=\"/usr/bin/false\",port-forwarding,permitopen=\"127.0.0.1:${toString f.target.port}\",permitlisten=\"192.0.2.1:1\" $(cat ${dir}/id_ed25519.pub)"
         '';
       in
       lib.nameValuePair "loopback-forward-${name}" {
@@ -128,11 +132,8 @@ in
           Restart = "always";
           RestartSec = 10;
           IPAddressDeny = "any";
-          IPAddressAllow = [
-            "127.0.0.1"
-            f.target.address
-          ]
-          ++ f.clients;
+          # The unit listens on one non-loopback address, so the loopback has nothing to admit.
+          IPAddressAllow = [ f.target.address ] ++ f.clients;
           NoNewPrivileges = true;
           ProtectSystem = "strict";
           ProtectHome = true;
