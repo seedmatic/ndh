@@ -56,8 +56,12 @@ EOF
   fi
 
   # --quiet outputs only the raw token (no TTY masking / ┅ characters)
+  local minted=0
+  ndh::secret:begin "a trust token is minted"
   token="$(@incusBin@ --force-local config trust add "${auto_user}-bootstrap-$(date +%s)" --quiet)"
-  if [[ -z "${token}" ]]; then
+  [[ -n "${token}" ]] && minted=1
+  ndh::secret:end
+  if ((minted == 0)); then
     echo "failed to obtain Incus trust token for remote bootstrap" >&2
     return 1
   fi
@@ -77,8 +81,13 @@ EOF
     fi
   fi
 
+  local rc=0
+  ndh::secret:begin "the trust token is spent on remote add"
   runuser -u "${auto_user}" -- env HOME="${auto_home}" XDG_CONFIG_HOME="${auto_home}/.config" \
-    @incusBin@ remote add "${remote_name}" "${token}"
+    @incusBin@ remote add "${remote_name}" "${token}" || rc=$?
+  token=""
+  ndh::secret:end
+  return "$rc"
 }
 
 ndh::logger:command:run "@loggerTag@" main "$@"

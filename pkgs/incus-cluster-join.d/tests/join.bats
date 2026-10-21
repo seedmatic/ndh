@@ -85,3 +85,30 @@ SSH
   [ "$status" -eq 0 ]
   [[ "$output" == *"join joined and out of the raft (roles: database-client)"* ]]
 }
+
+# The log sink is written by a process substitution, which may end after the script.
+log_settled() {
+  local i
+  for i in $(seq 30); do
+    grep -qE 'completed successfully|failed \(rc=' "$T/wrapper.log" 2>/dev/null && return 0
+    sleep 0.1
+  done
+  return 1
+}
+
+@test "traced, a join that takes never writes its token to the log" {
+  NDH_LOGGER_XTRACE=1 run bash "$T/join"
+  [ "$status" -eq 0 ]
+  log_settled
+  grep -qF 'secret window: a join token is minted' "$T/wrapper.log"
+  refute grep -qF 'eyFAKEtoken' "$T/wrapper.log"
+  [[ "$output" != *eyFAKEtoken* ]]
+}
+
+@test "traced, a refused join never writes its token to the log" {
+  STUB_PRESEED=fail NDH_LOGGER_XTRACE=1 run bash "$T/join"
+  [ "$status" -ne 0 ]
+  log_settled
+  refute grep -qF 'eyFAKEtoken' "$T/wrapper.log"
+  [[ "$output" != *eyFAKEtoken* ]]
+}
