@@ -60,11 +60,12 @@ check() {
 }
 
 @test "stdin: hs-lib with its window removed goes red" {
-  sed -e '/ndh::secret:begin/d' -e '/ndh::secret:end/d' "$BATS_TEST_DIRNAME/../../../darwin/headscale-tools/hs-lib.sh" \
-    >"$T/hs-lib.sh"
+  local lib=${HS_LIB:-$BATS_TEST_DIRNAME/../../../darwin/headscale-tools/hs-lib.sh}
+  [ -r "$lib" ]
+  sed -e '/ndh::secret:begin/d' -e '/ndh::secret:end/d' "$lib" >"$T/hs-lib.sh"
   # It still handles a secret (sops -d), so its `value="$(cat)"` is tracked, and its use is now outside any window.
   check unwindowed "$(cat "$T/hs-lib.sh")"
-  check clean "$(cat "$BATS_TEST_DIRNAME/../../../darwin/headscale-tools/hs-lib.sh")"
+  check clean "$(cat "$lib")"
 }
 
 @test "the secret-name backstop: each of the names 🛡️ listed is tracked when a command fills it" {

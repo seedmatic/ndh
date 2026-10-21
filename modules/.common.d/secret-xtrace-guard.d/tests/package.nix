@@ -2,6 +2,8 @@
 { pkgs }:
 pkgs.runCommand "secret-xtrace-guard-mutants"
   {
+    # The one real script a mutant is cut from: hs-lib, whose window the check must miss when removed.
+    HS_LIB = ../../../darwin/headscale-tools/hs-lib.sh;
     nativeBuildInputs = with pkgs; [
       bats
       bash
