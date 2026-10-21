@@ -1384,6 +1384,28 @@
             assert lib.assertMsg (
               (vars nixos).oldKey == lib.escapeShellArg nixos.ndh.hostKey.servedKeyFile
             ) "host-key-generate: the statement is not signed with the key the guest serves";
+            # A pending slot named before the current one is refused: it would be generated and never served.
+            assert lib.assertMsg (
+              let
+                early = self.nixosConfigurations.nikopol-nixos.extendModules {
+                  modules = [
+                    (
+                      { config, ... }:
+                      {
+                        ndh.hostKey.entry = lib.mkForce (
+                          lib.recursiveUpdate config.ndh.keysYaml.keys."host-${config.networking.hostName}" {
+                            slots."00-01-01".state = "pending";
+                          }
+                        );
+                      }
+                    )
+                  ];
+                };
+              in
+              lib.any (
+                a: !a.assertion && lib.hasInfix "does not sort after the current slot" a.message
+              ) early.config.assertions
+            ) "host-key-generate: a pending slot older than the current one passed";
             # Every reader of the slot a machine serves goes through slots.nix's `current`.
             assert lib.assertMsg (
               (roles {
