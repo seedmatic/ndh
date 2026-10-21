@@ -134,14 +134,22 @@ hs::check::user_exists() {
 HS_SERVER_KEYS=""
 
 # hs::slot::lookup <kind> <sops file> → prints "<id>\t<tags csv>" of the server key the slot holds, nothing when
-# the server does not know it; returns 3 when the slot is empty. Call it inside a window: it reads the slot's key
-# and HS_SERVER_KEYS. Only the id and the tags leave it.
+# the server does not know it; returns 3 when the slot is empty. Its window covers the slot's key; only the id
+# and the tags leave it.
 hs::slot::lookup() {
-	local kind="$1" sops_file="$2" slot_key
+	local kind="$1" sops_file="$2" slot_key rc=0
+	ndh::secret:begin "auth.${kind}: its key is looked up on the server"
 	slot_key="$(sops::edit::get_string "$sops_file" ".tailnet.headscale.auth.${kind}" 2>/dev/null)"
-	case "$slot_key" in "" | null) return 3 ;; esac
-	K="$slot_key" yq eval -r '.[] | select(.key == strenv(K)) | [.id, (.aclTags | join(","))] | @tsv' - \
-		<<<"$HS_SERVER_KEYS" 2>/dev/null
+	case "$slot_key" in
+		"" | null) rc=3 ;;
+		*)
+			K="$slot_key" yq eval -r '.[] | select(.key == strenv(K)) | [.id, (.aclTags | join(","))] | @tsv' - \
+				<<<"$HS_SERVER_KEYS" 2>/dev/null || rc=$?
+			;;
+	esac
+	slot_key=""
+	ndh::secret:end
+	return "$rc"
 }
 
 hs::check::preauth_keys() {
@@ -160,10 +168,8 @@ hs::check::preauth_keys() {
 
 	local entry rc
 	for kind in "${HS_KINDS[@]}"; do
-		ndh::secret:begin "auth.${kind}: its key is looked up on the server"
 		rc=0
 		entry="$(hs::slot::lookup "$kind" "$sops_file")" || rc=$?
-		ndh::secret:end
 		# Empty slot is fine — only the kinds actually in use need to be filled.
 		((rc == 3)) && continue
 		IFS=$'\t' read -r server_entry server_tags_csv <<<"$entry"
@@ -255,9 +261,7 @@ hs::mint::into_slot() {
 # Reads HS_SERVER_KEYS, which the caller filled.
 hs::mint::slot_is_live() {
 	local kind="$1" sops_file="$2" entry rc=0
-	ndh::secret:begin "auth.${kind}: its key is looked up on the server"
 	entry="$(hs::slot::lookup "$kind" "$sops_file")" || rc=$?
-	ndh::secret:end
 	((rc == 0)) || return 1
 
 	local server_entry actual_tags_csv
