@@ -12,6 +12,6 @@ pkgs.runCommand "logger-command-run-bats"
     ];
   }
   ''
-    HOME=$TMPDIR bats --print-output-on-failure ${./command-run.bats}
+    HOME=$TMPDIR bats --print-output-on-failure ${./command-run.bats} ${./secret-window.bats}
     touch $out
   ''

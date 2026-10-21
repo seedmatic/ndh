@@ -271,6 +271,41 @@ ndh::logger:stderr:redirect() {
 	ndh::logger:run:marker:emit "$tag"
 }
 
+# The secret window: a script's critical section, untraced, the rest of it traced. The operator's rule (2026-10-21):
+# the system log tells the story, xtrace included, except around the lines that handle a secret value.
+#
+#   ndh::secret:begin "<why>"   # writes `: "<why>"` into the trace, then turns xtrace off
+#   …lines that read or use the secret…
+#   ndh::secret:end             # turns xtrace back to what it was before begin
+#
+# The state is the shell's ($- has x), never a variable's absence. Inside a window NDH_LOGGER_XTRACE=0 is exported,
+# so a child the window starts stays untraced whatever the logger's default. Windows nest: each end restores what
+# its begin found. A failure that stops the script inside a window leaves xtrace OFF to the end, so no error path,
+# EXIT trap included, traces the value. No trap of its own: it would replace the script's.
+NDH_SECRET_WINDOWS=()
+ndh::secret:begin() {
+	local why="${1:?usage: ndh::secret:begin <why>}"
+	local was=off
+	case $- in *x*) was=on ;; esac
+	: "secret window: ${why}"
+	{ set +x; } 2>/dev/null
+	NDH_SECRET_WINDOWS+=("${was}:${NDH_LOGGER_XTRACE-__unset__}")
+	export NDH_LOGGER_XTRACE=0
+}
+ndh::secret:end() {
+	local n=${#NDH_SECRET_WINDOWS[@]}
+	if ((n == 0)); then
+		echo "[ndh::secret:end] no open window" >&2
+		return 1
+	fi
+	local top="${NDH_SECRET_WINDOWS[n - 1]}"
+	unset 'NDH_SECRET_WINDOWS[n - 1]'
+	local was="${top%%:*}" marker="${top#*:}"
+	if [ "$marker" = __unset__ ]; then unset NDH_LOGGER_XTRACE; else export NDH_LOGGER_XTRACE="$marker"; fi
+	if [ "$was" = on ]; then set -x; fi
+	: "secret window closed"
+}
+
 ndh::logger:notice() {
 	# Emit a message to the INVOKING console.  ndh::logger:command:run redirects
 	# fd2 to the log sink (journald / unified log) but first preserves the
