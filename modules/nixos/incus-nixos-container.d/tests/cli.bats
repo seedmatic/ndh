@@ -53,7 +53,8 @@ EOF
   # Records every call. The state dataset tank/nerd/attic, tank/x and tank/db (the store's upper and nerd-nixos's DB) are
   # MODELLED, so a rollback and a commit can be checked on what is left: a dataset is a directory under $t/zfs, a
   # snapshot a copy of it beside, a rollback that copy put back. A snapshot still mounted under .zfs/snapshot (a line
-  # in $t/mounts) is busy, and its destroy refused, as ZFS refuses it.
+  # in $t/mounts) is busy, and its destroy refused, as ZFS refuses it. As ZFS does, a rollback past newer snapshots
+  # refuses without -r and destroys them with it: each snapshot records its creation order in $t/zfs/order.
   mkdir -p "$t/zfs/tank/nerd/attic" "$t/zfs/tank/x" "$t/zfs/tank/db"
   touch "$t/mounts"
   # The real cp, by its path: $t/bin/cp below stands for deliver's DB copy and copies nothing.
@@ -68,12 +69,20 @@ case "\$1" in
     for a in "\${args[@]:1}"; do
       [ "\$a" != -r ] || continue
       ds=\${a%@*} snap=\${a#*@}
-      [ ! -d "\$z/\$ds" ] || { rm -rf "\$z/\$ds@\$snap"; $realcp -a "\$z/\$ds" "\$z/\$ds@\$snap"; }
+      [ -d "\$z/\$ds" ] || continue
+      rm -rf "\$z/\$ds@\$snap"; $realcp -a "\$z/\$ds" "\$z/\$ds@\$snap"
+      echo "\$ds@\$snap" >>"\$z/order"
     done ;;
   rollback)
     [ ! -e "$t/zfs-rollback-fails" ] || { echo "zfs rollback: failing" >&2; exit 1; }
     a=\${args[-1]}; ds=\${a%@*} snap=\${a#*@}
     [ -d "\$z/\$ds@\$snap" ] || { echo "zfs rollback: no snapshot \$a" >&2; exit 1; }
+    # The snapshots of ds taken after this one and not destroyed since.
+    newer=\$(sed -n "\\|^\$a\$|,\\\$p" "\$z/order" | tail -n +2 | grep "^\$ds@" | while read -r n; do [ ! -d "\$z/\$n" ] || echo "\$n"; done || true)
+    if [ -n "\$newer" ]; then
+      [ "\$2" = -r ] || { echo "zfs rollback: more recent snapshots exist; use '-r' to force deletion of: \$newer" >&2; exit 1; }
+      for n in \$newer; do rm -rf "\$z/\$n"; done
+    fi
     rm -rf "\$z/\$ds"; $realcp -a "\$z/\$ds@\$snap" "\$z/\$ds" ;;
   destroy)
     a=\${args[-1]}
@@ -821,4 +830,36 @@ no_leftovers() {
   run --separate-stderr "$t/run" "$t/mutant" _commit attic 'ndh-incus-attic-2026102.T14....Z' <"$t/stdin"
   [ -d "$t/zfs/tank/x@ndh-incus-attic-20261022T145633Z" ]
   [ ! -d "$t/zfs/tank/x@ndh-incus-attic-20261022T184302Z" ]
+}
+
+# A snapshot another tool takes of the state during the failed window (an auto-snapshot, a backup): newer than
+# the delivery's, it holds the rejected system's data. `zfs rollback -r` destroys it; without -r the rollback refuses.
+foreign_snapshot_on_start() {
+  printf '#!%s\n[ -e %q ] || { echo schema-2 >%q; touch %q; %q snapshot tank/nerd/attic@autosnap; }\n' \
+    "$BASH" "$t/migrated" "$t/zfs/tank/nerd/attic/db" "$t/migrated" "$t/bin/zfs" >"$t/on-start"
+  chmod +x "$t/on-start"
+}
+
+@test "the rollback destroys a snapshot taken of the state during the failed window, and restores the data" {
+  delivered_before
+  echo "atticd.service failed" >"$t/units"
+  foreign_snapshot_on_start
+  run --separate-stderr "$t/run" "$cli" converge <"$t/stdin"
+  [ "$status" -eq 1 ]
+  # It was taken, after the delivery's snapshot.
+  grep -qxF tank/nerd/attic@autosnap "$t/zfs/order"
+  [ ! -d "$t/zfs/tank/nerd/attic@autosnap" ]
+  [ "$(cat "$t/zfs/tank/nerd/attic/db")" = schema-1 ]
+}
+
+@test "mutant: a state rollback without -r leaves the rejected system's data in place" {
+  delivered_before
+  echo "atticd.service failed" >"$t/units"
+  foreign_snapshot_on_start
+  sed 's/zfs rollback -r "\$fs@\$2"/zfs rollback "$fs@$2"/' "$cli" >"$t/mutant"
+  run grep -c 'zfs rollback "\$fs@\$2"' "$t/mutant"
+  [ "$output" = 1 ]
+  run --separate-stderr "$t/run" "$t/mutant" converge <"$t/stdin"
+  [[ $stderr == *"more recent snapshots exist"* ]]
+  [ "$(cat "$t/zfs/tank/nerd/attic/db")" = schema-2 ]
 }
