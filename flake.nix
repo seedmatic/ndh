@@ -2610,111 +2610,6 @@
                 done
                 [ "$fail" = 0 ] && touch "$out"
               '';
-          # Every seat carries the backend's values in its three layers (shells, the GUI launchd domain, settings.json's
-          # env), telemetry off included, and no layer names a retired backend key.
-          claude-code-backend-seats =
-            let
-              hosts = [
-                "bioskop"
-                "nikopol"
-              ];
-              backend = import ./modules/claude-code-backend-env.nix;
-              darwin = h: self.darwinConfigurations.${h}.config;
-              session = h: (darwin h).home-manager.users.${(darwin h).system.primaryUser}.home.sessionVariables;
-              # The settings.json layer is the JSON the activation writes into its `env` and `fallbackModel` keys. The path
-              # is matched out of the activation's text, which keeps its context: the match alone would drop it, and the
-              # sandbox would not hold the file.
-              settings =
-                h:
-                let
-                  data =
-                    (darwin h)
-                    .home-manager.users.${(darwin h).system.primaryUser}.home.activation.claudeCodeBackend.data;
-                  path = builtins.head (builtins.match ".*(/nix/store/[a-z0-9]+-claude-code-backend\\.json).*" data);
-                in
-                builtins.appendContext path (builtins.getContext data);
-              # The GUI layer is a script of launchctl lines: it must unset every retired key and set every value. It is
-              # read as the exec target of nix-darwin's wait4path wrapper, so an agent that loses the wrapper has no
-              # script to check and is refused, rather than checked as nothing. The match drops the context; it is put back.
-              script =
-                c:
-                let
-                  args = c.launchd.user.agents.claude-code-backend-env.serviceConfig.ProgramArguments or [ ];
-                  m =
-                    if pkgs.lib.length args == 3 then
-                      builtins.match "/bin/wait4path /nix/store && exec (/nix/store/[^ ]+)" (pkgs.lib.elemAt args 2)
-                    else
-                      null;
-                in
-                if m == null then
-                  null
-                else
-                  builtins.appendContext (builtins.head m) (builtins.getContext (pkgs.lib.elemAt args 2));
-              agent =
-                h:
-                let
-                  s = script (darwin h);
-                in
-                assert pkgs.lib.assertMsg (
-                  s != null
-                ) "${h}: claude-code-backend-env does not run its script behind the wait4path wrapper";
-                s;
-              mutant =
-                script
-                  (self.darwinConfigurations.bioskop.extendModules {
-                    modules = [
-                      {
-                        launchd.user.agents.claude-code-backend-env = {
-                          command = pkgs.lib.mkForce "";
-                          serviceConfig.ProgramArguments = [ "/nix/store/x-mutant-claude-code-backend-env" ];
-                        };
-                      }
-                    ];
-                  }).config;
-              missing =
-                h:
-                pkgs.lib.filter (k: ((session h).${k} or null) != backend.env.${k}) (
-                  builtins.attrNames backend.env
-                );
-              kept = h: pkgs.lib.filter (k: (session h) ? ${k}) backend.retired;
-              report = pkgs.lib.concatMapStrings (
-                h:
-                pkgs.lib.optionalString (missing h != [ ]) "${h}: the shell env lacks ${toString (missing h)}\n"
-                + pkgs.lib.optionalString (kept h != [ ]) "${h}: the shell env keeps ${toString (kept h)}\n"
-              ) hosts;
-            in
-            assert pkgs.lib.assertMsg (
-              mutant == null
-            ) "claude-code-backend-seats: an agent without the wrapper was not refused";
-            pkgs.runCommand "claude-code-backend-seats"
-              {
-                inherit report;
-                agents = map agent hosts;
-                settings = map settings hosts;
-                expected = builtins.toJSON {
-                  inherit (backend) env fallbackModel;
-                };
-                sets = pkgs.lib.concatStringsSep " " (pkgs.lib.mapAttrsToList (k: v: "${k}=${v}") backend.env);
-                unsets = pkgs.lib.concatStringsSep " " backend.retired;
-              }
-              ''
-                fail=0
-                if [ -n "$report" ]; then printf '%s' "$report" >&2; fail=1; fi
-                for s in $settings; do
-                  [ "$(${pkgs.yq-go}/bin/yq -p=json -o=json -I0 'sort_keys(..)' "$s")" = "$(printf '%s' "$expected" | ${pkgs.yq-go}/bin/yq -p=json -o=json -I0 'sort_keys(..)')" ] ||
-                    { echo "$s: settings.json's env or fallbackModel differs from the backend" >&2; fail=1; }
-                done
-                for a in $agents; do
-                  for kv in $sets; do
-                    grep -qxF "/bin/launchctl setenv ''${kv%%=*} ''${kv#*=}" "$a" ||
-                      { echo "$a: no setenv ''${kv%%=*}" >&2; fail=1; }
-                  done
-                  for k in $unsets; do
-                    grep -qxF "/bin/launchctl unsetenv $k" "$a" || { echo "$a: no unsetenv $k" >&2; fail=1; }
-                  done
-                done
-                [ "$fail" = 0 ] && touch "$out"
-              '';
           ndh-ops-bats = import ./modules/.common.d/ndh-ops.d/tests/package.nix { inherit pkgs; };
           # No bats test of the repository carries a line that checks nothing mid-test.
           bats-weak-lines = import ./modules/.common.d/bats-lint.d/package.nix {
@@ -3312,6 +3207,136 @@
               pkgs = linuxPkgs;
               nixBashTrampoline = "${mkNdhNixBashTrampoline { pkgsForSystem = linuxPkgs; }}";
             };
+        }
+        # It runs the darwin seats' own activation, whose binaries only a darwin builder executes.
+        // nixpkgs.lib.optionalAttrs (system == "aarch64-darwin") {
+          # Every seat carries the backend's values in its three layers (shells, the GUI launchd domain, settings.json's
+          # env), telemetry off included, and no layer names a retired backend key.
+          claude-code-backend-seats =
+            let
+              hosts = [
+                "bioskop"
+                "nikopol"
+              ];
+              backend = import ./modules/claude-code-backend-env.nix;
+              darwin = h: self.darwinConfigurations.${h}.config;
+              session = h: (darwin h).home-manager.users.${(darwin h).system.primaryUser}.home.sessionVariables;
+              # The settings.json layer is checked by RUNNING the seat's own activation text on a fixture HOME, then reading
+              # what it wrote: comparing the JSON the activation reads with the declaration said nothing of its merge
+              # expression (a mutant writing `fallbackModel = []` passed, measured). The text keeps its string context, so
+              # the sandbox holds everything it names.
+              activation =
+                h:
+                pkgs.writeText "claude-code-backend-activation-${h}" (
+                  (darwin h)
+                  .home-manager.users.${(darwin h).system.primaryUser}.home.activation.claudeCodeBackend.data
+                );
+              # The GUI layer is a script of launchctl lines: it must unset every retired key and set every value. It is
+              # read as the exec target of nix-darwin's wait4path wrapper, so an agent that loses the wrapper has no
+              # script to check and is refused, rather than checked as nothing. The match drops the context; it is put back.
+              script =
+                c:
+                let
+                  args = c.launchd.user.agents.claude-code-backend-env.serviceConfig.ProgramArguments or [ ];
+                  m =
+                    if pkgs.lib.length args == 3 then
+                      builtins.match "/bin/wait4path /nix/store && exec (/nix/store/[^ ]+)" (pkgs.lib.elemAt args 2)
+                    else
+                      null;
+                in
+                if m == null then
+                  null
+                else
+                  builtins.appendContext (builtins.head m) (builtins.getContext (pkgs.lib.elemAt args 2));
+              agent =
+                h:
+                let
+                  s = script (darwin h);
+                in
+                assert pkgs.lib.assertMsg (
+                  s != null
+                ) "${h}: claude-code-backend-env does not run its script behind the wait4path wrapper";
+                s;
+              mutant =
+                script
+                  (self.darwinConfigurations.bioskop.extendModules {
+                    modules = [
+                      {
+                        launchd.user.agents.claude-code-backend-env = {
+                          command = pkgs.lib.mkForce "";
+                          serviceConfig.ProgramArguments = [ "/nix/store/x-mutant-claude-code-backend-env" ];
+                        };
+                      }
+                    ];
+                  }).config;
+              missing =
+                h:
+                pkgs.lib.filter (k: ((session h).${k} or null) != backend.env.${k}) (
+                  builtins.attrNames backend.env
+                );
+              kept = h: pkgs.lib.filter (k: (session h) ? ${k}) backend.retired;
+              report = pkgs.lib.concatMapStrings (
+                h:
+                pkgs.lib.optionalString (missing h != [ ]) "${h}: the shell env lacks ${toString (missing h)}\n"
+                + pkgs.lib.optionalString (kept h != [ ]) "${h}: the shell env keeps ${toString (kept h)}\n"
+              ) hosts;
+            in
+            assert pkgs.lib.assertMsg (
+              mutant == null
+            ) "claude-code-backend-seats: an agent without the wrapper was not refused";
+            pkgs.runCommand "claude-code-backend-seats"
+              {
+                inherit report;
+                agents = map agent hosts;
+                activations = map activation hosts;
+                expected = builtins.toJSON {
+                  inherit (backend) env fallbackModel;
+                };
+                # A settings.json as a seat has it: keys the activation must keep, and an old backend it must replace whole.
+                fixture = builtins.toJSON {
+                  model = "opus";
+                  theme = "dark";
+                  hooks.SessionStart = [ ];
+                  permissions.allow = [ "Bash(ls)" ];
+                  env = {
+                    CLAUDE_CODE_USE_BEDROCK = "1";
+                    AWS_PROFILE = "old";
+                  };
+                  fallbackModel = [ "old-model" ];
+                };
+                sets = pkgs.lib.concatStringsSep " " (pkgs.lib.mapAttrsToList (k: v: "${k}=${v}") backend.env);
+                unsets = pkgs.lib.concatStringsSep " " backend.retired;
+              }
+              ''
+                fail=0
+                if [ -n "$report" ]; then printf '%s' "$report" >&2; fail=1; fi
+                yq=${pkgs.yq-go}/bin/yq
+                canon() { $yq -p=json -o=json -I0 'sort_keys(..)'; }
+                want_backend="$(printf '%s' "$expected" | canon)"
+                want_rest="$(printf '%s' "$fixture" | $yq -p=json -o=json -I0 'del(.env, .fallbackModel) | sort_keys(..)')"
+                for a in $activations; do
+                  home="$(mktemp -d)"
+                  mkdir -p "$home/.claude"
+                  printf '%s' "$fixture" >"$home/.claude/settings.json"
+                  HOME="$home" DRY_RUN_CMD= ${pkgs.bash}/bin/bash -e "$a" ||
+                    { echo "$a: the activation failed on the fixture" >&2; fail=1; continue; }
+                  got="$home/.claude/settings.json"
+                  [ "$($yq -p=json -o=json -I0 '{"env": .env, "fallbackModel": .fallbackModel}' "$got" | canon)" = "$want_backend" ] ||
+                    { echo "$a: settings.json's env or fallbackModel differs from the backend after the activation" >&2; fail=1; }
+                  [ "$($yq -p=json -o=json -I0 'del(.env, .fallbackModel) | sort_keys(..)' "$got")" = "$want_rest" ] ||
+                    { echo "$a: the activation changed settings.json keys it does not own" >&2; fail=1; }
+                done
+                for a in $agents; do
+                  for kv in $sets; do
+                    grep -qxF "/bin/launchctl setenv ''${kv%%=*} ''${kv#*=}" "$a" ||
+                      { echo "$a: no setenv ''${kv%%=*}" >&2; fail=1; }
+                  done
+                  for k in $unsets; do
+                    grep -qxF "/bin/launchctl unsetenv $k" "$a" || { echo "$a: no unsetenv $k" >&2; fail=1; }
+                  done
+                done
+                [ "$fail" = 0 ] && touch "$out"
+              '';
         }
       );
 
