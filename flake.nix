@@ -1197,6 +1197,51 @@
             assert lib.assertMsg (wrong == [ ])
               "attic-cache-key-name: a cache key not named seedmatic-<metalspace>-attic-<n> on: ${toString wrong}";
             pkgs.runCommand "attic-cache-key-name" { } "touch $out";
+          # The attic container carries the trampoline's bringup profile (batch 2, precondition A): a bare
+          # container has none, and the strict trampoline refuses there. On every host that runs it, the
+          # container's toplevel holds the host's runtime package, and its activation links it at the profile dir.
+          attic-container-bringup-profile =
+            let
+              lib = nixpkgs.lib;
+              hosts = lib.filterAttrs (_: c: c.config.ndh.atticCache.enable or false) self.nixosConfigurations;
+              line =
+                name: c:
+                let
+                  r = c.config.ndh.bringupRuntime;
+                in
+                "${name} ${c.config.ndh.incusNixosContainers.toplevels.attic} ${r.runtimePackage} ${r.profileDir}";
+            in
+            assert lib.assertMsg (
+              hosts != { }
+            ) "attic-container-bringup-profile: no host runs the attic container";
+            pkgs.runCommand "attic-container-bringup-profile"
+              {
+                passAsFile = [ "hosts" ];
+                hosts = lib.concatLines (lib.mapAttrsToList line hosts);
+                # The closure of every container toplevel, so the check can read it in the sandbox.
+                exportReferencesGraph = lib.concatLists (
+                  lib.imap0 (i: c: [
+                    "closure-${toString i}"
+                    c.config.ndh.incusNixosContainers.toplevels.attic
+                  ]) (lib.attrValues hosts)
+                );
+              }
+              ''
+                rc=0
+                while read -r name top runtime dir; do
+                  # grep reads the graphs itself: `cat … | grep -q` fails under pipefail, cat killed by SIGPIPE
+                  # once grep has found the line.
+                  if ! grep -qxF -- "$runtime" closure-*; then
+                    echo "$name: the attic container's closure lacks the bringup profile $runtime" >&2; rc=1; continue
+                  fi
+                  if ! grep -qF -- "ln -sfn $runtime $dir" "$top/activate"; then
+                    echo "$name: the attic container's activation does not link the profile at $dir" >&2; rc=1; continue
+                  fi
+                  echo "$name: the attic container carries the bringup profile at $dir"
+                done <"$hostsPath"
+                [ "$rc" = 0 ] && touch $out
+                exit "$rc"
+              '';
           ssh-known-hosts-command-bats = import ./modules/home-manager/ssh-keys.d/tests/package.nix {
             inherit pkgs;
           };
