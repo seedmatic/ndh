@@ -23,6 +23,7 @@ readonly bare="${XDG_CACHE_HOME:-$HOME/.cache}/keys-reconcile/ndh.git"
 readonly ttyIn=@ttyIn@ ttyOut=@ttyOut@
 source @verify@
 source @write@
+source @classes@/attic-cache-key.sh
 
 die() {
   printf '[keys-reconcile] refused: %s\n' "$*" >&2
@@ -164,7 +165,7 @@ window() {
   measure "$work" || return $?
   : "the « oui » is the operator's, on the terminal: the logger owns stdin's neighbours (fd 2 and 3), not the tty"
   local answer
-  printf 'enregistrer, signer et re-chiffrer ces %s clé(s) à la révision %s ? [oui/non] ' "$(wc -l <"$work/measured")" "${revision:0:12}" >"$ttyOut"
+  printf 'enregistrer, signer et re-chiffrer ces %s clé(s) à la révision %s ? [oui/non] ' "$(cat "$work/measured" "$work"/*.measured 2>/dev/null | wc -l)" "${revision:0:12}" >"$ttyOut"
   read -r answer <"$ttyIn" || answer=""
   [[ $answer == oui ]] || { echo "rien écrit : la réponse n'est pas « oui »"; return 5; }
 

@@ -90,6 +90,21 @@ in
         inherit (cfg.package) machines;
         inherit (config.ndh.hostKey) publishDir;
         hostNames = self.fleetHostNamesByMachine;
+        atticCaches =
+          lib.concatMap
+            (
+              g:
+              let
+                a = g.config.ndh.atticCache;
+              in
+              lib.optional a.enable {
+                machine = g.config.networking.hostName;
+                metalspace = if a.metalspace != null then a.metalspace else lib.removePrefix "attic." a.fqdn;
+                inherit (a) fqdn;
+                dir = (import ../nixos/attic-cache.d/paths.nix).publishDir;
+              }
+            )
+            (map (m: self.nixosConfigurations.${m.name}) (lib.filter (m: m.kind == "nixos") catalog.machines));
         keysJsonTool = "${
           import ../.common.d/keys-yaml.d/json-tool.nix { inherit pkgs; }
         }/bin/ndh-keys-json";
