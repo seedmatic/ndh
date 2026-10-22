@@ -493,8 +493,10 @@ refused_untouched() {
 @test "mutant: without the snapshot check, a hostile name reaches zfs" {
   delivered_before
   mkdir -p "$t/attic/.previous-a@b"
-  grep -q 'is not a delivery snapshot of' "$cli"
-  sed '/is not a delivery snapshot of/d' "$cli" >"$t/mutant"
+  # The check dropped from rollback_steps alone, its call being the first line of it that names the snapshot.
+  grep -q '^  delivery_snapshot "\$1" "\$2"$' "$cli"
+  awk '/^rollback_steps\(\) \{/{r=1} r && /^  delivery_snapshot "\$1" "\$2"$/{r=0; next} {print}' "$cli" >"$t/mutant"
+  [ "$(grep -c '^  delivery_snapshot "\$1" "\$2"$' "$t/mutant")" = 1 ]
   run --separate-stderr "$t/run" "$t/mutant" _rollback attic a@b <"$t/stdin"
   grep -qE '^(zfs (rollback|destroy)|incus stop)' "$t/calls"
 }
@@ -784,3 +786,39 @@ no_leftovers() {
   grep -q '^zfs rollback -r tank/nerd/attic@ndh-incus-attic-20261022T184302Z$' "$t/calls"
 }
 
+@test "_commit refuses a snapshot to keep that is not a delivery snapshot of this instance, and destroys nothing" {
+  left_by_a_dead_commit
+  for snapshot in '.*' '' 'ndh-incus-attic-.*' 'ndh-incus-other-20261022T184302Z' '../x' 'a@b' \
+    'ndh-incus-attic-20261022T184302Z@x' 'ndh-incus-attic-2026102T184302Z'; do
+    : >"$t/calls"
+    run --separate-stderr "$t/run" "$cli" _commit attic "$snapshot" <"$t/stdin"
+    [ "$status" -ne 0 ]
+    run grep -E '^(zfs destroy|umount)' "$t/calls"
+    [ "$status" -eq 1 ]
+  done
+  [ -d "$t/zfs/tank/x@ndh-incus-attic-20261022T184302Z" ]
+  [ -d "$t/zfs/tank/x@ndh-incus-attic-20261022T145633Z" ]
+  [ -d "$t/attic/.previous-ndh-incus-attic-20261022T184302Z" ]
+}
+
+@test "mutant: a _commit without its check, given .*, destroys the snapshot the container runs on" {
+  left_by_a_dead_commit
+  awk '/^commit_steps\(\) \{/{r=1} r && /^  delivery_snapshot "\$1" "\$2"$/{r=0; next} {print}' "$cli" >"$t/mutant"
+  [ "$(grep -c '^  delivery_snapshot "\$1" "\$2"$' "$t/mutant")" = 1 ]
+  # Still matched as a fixed string: `.*` keeps nothing but itself, so every delivery snapshot goes, the current one too.
+  run --separate-stderr "$t/run" "$t/mutant" _commit attic '.*' <"$t/stdin"
+  [ ! -d "$t/zfs/tank/x@ndh-incus-attic-20261022T184302Z" ]
+}
+
+@test "mutant: 0e46f6a7's _commit (no check, the snapshot to keep as a pattern) keeps the old one and destroys the current" {
+  left_by_a_dead_commit
+  # The check gone, and `grep -v "@$2$"` back in place of the fixed-string match. `.*` there excludes every line, so
+  # it keeps all (measured); the danger is a pattern that matches ANOTHER snapshot: it keeps that one instead.
+  grep -q 'grep -vxF -e "\$rw@\$2" -e "\$db@\$2"' "$cli"
+  sed 's/grep -vxF -e "\$rw@\$2" -e "\$db@\$2"/grep -v "@$2$"/' "$cli" |
+    awk '/^commit_steps\(\) \{/{r=1} r && /^  delivery_snapshot "\$1" "\$2"$/{r=0; next} {print}' >"$t/mutant"
+  [ "$(grep -c 'grep -v "@\$2\$"' "$t/mutant")" = 1 ]
+  run --separate-stderr "$t/run" "$t/mutant" _commit attic 'ndh-incus-attic-2026102.T14....Z' <"$t/stdin"
+  [ -d "$t/zfs/tank/x@ndh-incus-attic-20261022T145633Z" ]
+  [ ! -d "$t/zfs/tank/x@ndh-incus-attic-20261022T184302Z" ]
+}

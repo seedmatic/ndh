@@ -328,6 +328,13 @@ state_snapshots() {
   done
 }
 
+# delivery_snapshot {name} {snapshot}: refuses anything but a delivery snapshot of this instance, in the one shape a
+# delivery makes. Every entry point that takes one (_rollback, _commit) checks it before any path, destroy or pattern
+# is built from it; matched afterwards as a fixed string, never as a pattern (🛡️: a `.*` kept nothing).
+delivery_snapshot() {
+  [[ $2 =~ ^ndh-incus-$1-[0-9]{8}T[0-9]{6}Z$ ]] || die "'$2' is not a delivery snapshot of $1"
+}
+
 # leftovers {name}: what a delivery leaves until its commit, one per line: every delivery snapshot of the instance but
 # the one its store runs on (lower.snapshot), every state snapshot, every `.previous-*`. Empty once committed.
 leftovers() {
@@ -338,7 +345,9 @@ leftovers() {
   rw=$(findmnt -no SOURCE "$upper_root") || return 1
   db=$(findmnt -no SOURCE /nix/var/nix/db) || return 1
   current=$(cat "$dir/lower.snapshot") || return 1
-  zfs list -H -t snapshot -o name "$rw" "$db" | grep -E "@ndh-incus-$1-[0-9]{8}T[0-9]{6}Z\$" | grep -v "@$current\$" || true
+  delivery_snapshot "$1" "$current"
+  zfs list -H -t snapshot -o name "$rw" "$db" | grep -E "@ndh-incus-$1-[0-9]{8}T[0-9]{6}Z\$" |
+    grep -vxF -e "$rw@$current" -e "$db@$current" || true
   state_snapshots "$info" "$1"
   local aside
   for aside in "$dir"/.previous-*; do [ ! -e "$aside" ] || echo "$aside"; done
@@ -352,12 +361,14 @@ commit() { "$BASH" "${BASH_SOURCE[0]}" _commit "$1" "$2"; }
 
 commit_steps() {
   local info dir upper_root rw db old
+  delivery_snapshot "$1" "$2"
   info=$(instance "$1")
   dir=$(field "$info" dir)
   upper_root=$(yq -p json -oy -r '.upperRoot' "$LAYER_CONTRACT")
   rw=$(findmnt -no SOURCE "$upper_root")
   db=$(findmnt -no SOURCE /nix/var/nix/db)
-  for old in $(zfs list -H -t snapshot -o name "$rw" "$db" | grep -E "@ndh-incus-$1-[0-9]{8}T[0-9]{6}Z\$" | grep -v "@$2\$" || true); do
+  for old in $(zfs list -H -t snapshot -o name "$rw" "$db" | grep -E "@ndh-incus-$1-[0-9]{8}T[0-9]{6}Z\$" |
+    grep -vxF -e "$rw@$2" -e "$db@$2" || true); do
     snapshot_destroy "$old"
   done
   for old in $(state_snapshots "$info" "$1"); do snapshot_destroy -r "$old"; done
@@ -380,9 +391,8 @@ rollback_steps() {
   upper_root=$(yq -p json -oy -r '.upperRoot' "$LAYER_CONTRACT")
   rw=$(findmnt -no SOURCE "$upper_root")
   db=$(findmnt -no SOURCE /nix/var/nix/db)
-  # An entry point of its own (_rollback): the snapshot names a path and the datasets rolled back and destroyed,
-  # so only a delivery snapshot of THIS instance, in commit's own pattern, before any of them is touched.
-  [[ $2 =~ ^ndh-incus-$1-[0-9]{8}T[0-9]{6}Z$ ]] || die "'$2' is not a delivery snapshot of $1 — nothing rolled back"
+  # The snapshot names a path and the datasets rolled back and destroyed: checked before any of them is touched.
+  delivery_snapshot "$1" "$2"
   aside="$dir/.previous-$2"
   [ -d "$aside" ] || die "nothing kept for $1 at $aside — no rollback possible"
 
