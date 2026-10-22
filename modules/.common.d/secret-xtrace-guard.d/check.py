@@ -18,7 +18,7 @@ Classes (one finding per line):
   trampoline-pending  a secret-handling script not yet on the trampoline (batch 2)            (report)
   guard-before-flip   a whole-script guard under the trampoline: safe while the logger traces only
                       on request, not after batch 1's flip                                   (report)
-  guard-without-bash-env  a whole-script guard that leaves BASH_ENV, so a child bash is traced (report)
+  guard-without-bash-env  a whole-script guard that leaves BASH_ENV, so a child bash is traced (strict)
   masked         a value built by replacing every occurrence of a secret: for review           (report)
   reviewed-hop   a tracked value passed to a function a reviewer followed and found safe (the
                  manifest's "reviewed" list, one reason each)                                  (report)
@@ -31,7 +31,7 @@ import json
 import re
 import sys
 
-STRICT = {"unwindowed", "unbalanced", "xtrace-in-window", "undecidable"}
+STRICT = {"unwindowed", "unbalanced", "xtrace-in-window", "undecidable", "guard-without-bash-env"}
 
 # A command substitution reads a secret when its first command is one of these (with the operands that matter).
 SECRET_READERS = [

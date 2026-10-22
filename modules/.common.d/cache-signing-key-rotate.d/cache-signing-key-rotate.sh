@@ -6,6 +6,7 @@ case $- in *x*) { set +x; } 2>/dev/null; echo "[xtrace-guard] xtrace disabled: t
 export -n SHELLOPTS 2>/dev/null || true # readonly in bash, so not unset; un-exported, it stops at this process
 unset NDH_LOGGER_XTRACE # ndh::logger:command:run traces its command only when this is 1
 unset BASH_XTRACEFD 2>/dev/null || true
+unset BASH_ENV # a caller's BASH_ENV holding `set -x` would trace every child bash this script starts
 # cache-signing-key-rotate — replace the fleet's nix signing key, ON THE OPERATOR SEAT.
 #
 # catalog/cache-trust.yaml holds ONE fleet signing key under caches.cachix.<name>.private (the bare

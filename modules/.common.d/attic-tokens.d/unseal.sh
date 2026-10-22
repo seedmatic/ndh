@@ -3,6 +3,7 @@
 case $- in *x*) { set +x; } 2>/dev/null; echo "[xtrace-guard] xtrace disabled: this script handles cache tokens" >&2 ;; esac
 export -n SHELLOPTS 2>/dev/null || true # readonly in bash, so not unset; un-exported, it stops at this process
 unset BASH_XTRACEFD 2>/dev/null || true
+unset BASH_ENV # a caller's BASH_ENV holding `set -x` would trace every child bash this script starts
 
 # ndh-attic-tokens-unseal — this machine's attic tokens, kept at rest as age ciphertext in $store (one
 # netrc.<metalspace>.age per cache it reads, write.token.age for its own), decrypted into the tmpfs paths the

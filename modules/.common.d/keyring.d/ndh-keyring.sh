@@ -4,6 +4,7 @@ case $- in *x*) { set +x; } 2>/dev/null; echo "[xtrace-guard] xtrace disabled: t
 export -n SHELLOPTS 2>/dev/null || true # readonly in bash, so not unset; un-exported, it stops at this process
 unset NDH_LOGGER_XTRACE # ndh::logger:command:run traces its command only when this is 1
 unset BASH_XTRACEFD 2>/dev/null || true
+unset BASH_ENV # a caller's BASH_ENV holding `set -x` would trace every child bash this script starts
 
 # ndh-keyring — the fleet's machine-held keys in the operator's keyring (docs/ssh-keys-architecture.adoc): the
 # seedmatic/ part of their pass store, encrypted to the seedmatic subkey alone.
