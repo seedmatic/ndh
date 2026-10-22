@@ -156,14 +156,19 @@ main() {
 	# Mint. `--quiet` drops the progress chatter; the token is the last non-empty line. The shape is
 	# NOT assumed beyond "long and on its own line" — a short answer means the CLI changed its output
 	# and we refuse rather than feed rubbish into a preseed.
-	local token
+	# The token, and the preseed that carries it, are a secret window from the mint to the consume; the
+	# preseed reaches the joining member on stdin, never in an argv. The returns sit outside the window.
+	local token token_len
+	ndh::secret:begin "a join token is minted"
 	token="$(remote "${BOOTSTRAP_SSH}" incus cluster add --quiet "${JOINING}" |
 		grep -v '^[[:space:]]*$' | tail -1 | tr -d '[:space:]')"
-	if ((${#token} < 32)); then
+	token_len=${#token}
+	ndh::secret:end
+	if ((token_len < 32)); then
 		ndh::logger:notice "join: no join token in the output of 'incus cluster add ${JOINING}'"
 		return 1
 	fi
-	ndh::logger:notice "join: token minted (${#token} chars), consuming it now"
+	ndh::logger:notice "join: token minted (${token_len} chars), consuming it now"
 
 	# Consume. `member_config` carries the one thing that IS member-specific here: this member's
 	# storage-pool source. Networks need no member_config at all — none are Incus-managed any more,
@@ -173,7 +178,8 @@ main() {
 	# unchecked command fails SILENTLY.  Measured 2026-09-26, the hard way, when the logger wrapper
 	# still dropped errexit for every script it ran: this app reported "joined and out of the raft"
 	# about a join that never happened, on a cluster whose member list still had one entry.
-	local preseed preseed_out
+	local preseed preseed_out consumed=0
+	ndh::secret:begin "the join token is consumed through the preseed"
 	preseed="$(
 		cat <<-EOF
 			cluster:
@@ -189,10 +195,23 @@ main() {
 			    value: ${POOL_SOURCE}
 		EOF
 	)"
-	if ! preseed_out="$(printf '%s\n' "${preseed}" |
-		remote "${JOINING_SSH}" incus admin init --preseed 2>&1)"; then
+	preseed_out="$(printf '%s\n' "${preseed}" |
+		remote "${JOINING_SSH}" incus admin init --preseed 2>&1)" && consumed=1
+	# A refusal's output may quote the preseed back, token included. Only its `Error:` lines reach the
+	# log, with the token replaced while it is still known, each cut to a bounded length.
+	local refusal="" line
+	if ((consumed == 0)); then
+		while IFS= read -r line; do
+			[[ ${line} == Error:* ]] || continue
+			line=${line//"${token}"/<token>}
+			refusal+="${line:0:200}"$'\n'
+		done <<<"${preseed_out}"
+	fi
+	token="" preseed="" preseed_out=""
+	ndh::secret:end
+	if ((consumed == 0)); then
 		ndh::logger:notice "join: ${JOINING} REFUSED the preseed — it is not a member, and the token is now spent"
-		printf '%s\n' "${preseed_out}" >&2
+		printf '%s' "${refusal}" >&2
 		return 1
 	fi
 

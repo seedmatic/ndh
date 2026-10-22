@@ -53,18 +53,21 @@ main() {
   # A node running the daemon locally (the NixOS guest) reaches it over the unix
   # socket; a Mac operator has no local daemon, so mint it on the guest over SSH
   # (the guest's incus talks to its own local socket).
-  local token=""
+  local token="" minted=0
+  ndh::secret:begin "a trust token is minted"
   if [[ -S /var/lib/incus/unix.socket ]]; then
     token="$("${incus_bin}" --force-local config trust add "${remote_name}-operator" --quiet 2>/dev/null || true)"
   else
     token="$(ssh -o ConnectTimeout=8 -o BatchMode=yes "${trust_host}" -- \
       incus config trust add "${remote_name}-operator" --quiet 2>/dev/null || true)"
   fi
+  [[ -n "${token}" ]] && minted=1
+  ndh::secret:end
 
   # Non-fatal by design: a server that cannot mint (the guest VM is down at
   # activation time) leaves the remote as it was rather than breaking the whole
   # home activation.  Re-activate once the server is up.
-  if [[ -z "${token}" ]]; then
+  if ((minted == 0)); then
     echo "incus: could not mint a trust token from ${trust_host}; leaving ${remote_name} as it is (re-activate once the server is up)" >&2
     return 0
   fi
@@ -96,10 +99,15 @@ main() {
   # No --project: the rke2lab project is created by the bootstrap (Pulumi's
   # incus:index:Project) and does not exist on a fresh node, so setting it here
   # would fail with "Project not found".
-  if ! "${incus_bin}" remote add "${remote_name}" "${remote_address}" \
+  local added=0
+  ndh::secret:begin "the trust token is spent on remote add"
+  "${incus_bin}" remote add "${remote_name}" "${remote_address}" \
     --token "${token}" \
     --accept-certificate \
-    --auth-type tls </dev/null; then
+    --auth-type tls </dev/null && added=1
+  token=""
+  ndh::secret:end
+  if ((added == 0)); then
     echo "incus: could not add ${remote_name} with a fresh trust token" >&2
     return 1
   fi

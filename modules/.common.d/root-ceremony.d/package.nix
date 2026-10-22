@@ -16,6 +16,7 @@ pkgs.writeShellApplication {
     work=/run/ceremony
     passphraseFrom=/dev/tty
     attest=${pkgs.callPackage ../root-attest.d/package.nix { }}/bin/ndh-root-attest
+    logger=${../shell.d/logger.sh}
     recipient=${import ../keyring.d/seedmatic-recipient.nix}
   ''
   + builtins.readFile ./ndh-ceremony.sh;

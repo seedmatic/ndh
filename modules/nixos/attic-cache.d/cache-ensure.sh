@@ -30,8 +30,11 @@ default-server = "local"
 endpoint = "$server"
 token-file = "$work/token"
 EOF
-# The same token as a header file for curl: printf is a builtin, so the token is no process's argument.
-printf 'Authorization: Bearer %s\n' "$(<"$work/token")" >"$work/auth"
+# The same token as a header file for curl, file to file: an expansion of it would be traced, `cat` copies it.
+{
+  printf 'Authorization: Bearer '
+  cat "$work/token"
+} >"$work/auth"
 
 upstream=()
 for name in "$@"; do
@@ -42,11 +45,12 @@ done
 # it (POST, private, as the CLI's defaults) or rekeyed (PATCH). The secret lives in $work only.
 set_keypair() {
   nix --extra-experimental-features nix-command key generate-secret --key-name "$keyName" >"$work/key"
+  # yq reads the key from its file (load_str): never an argument, an environment variable or a trace.
   if [ "$1" = POST ]; then
-    jq -n --rawfile key "$work/key" \
-      '{keypair: {Keypair: ($key | rtrimstr("\n"))}, is_public: false, store_dir: "/nix/store", priority: 41, upstream_cache_key_names: []}'
+    KEY_FILE="$work/key" yq -n -o=json -I=0 \
+      '{"keypair": {"Keypair": (load_str(strenv(KEY_FILE)) | sub("\n$"; ""))}, "is_public": false, "store_dir": "/nix/store", "priority": 41, "upstream_cache_key_names": []}'
   else
-    jq -n --rawfile key "$work/key" '{keypair: {Keypair: ($key | rtrimstr("\n"))}}'
+    KEY_FILE="$work/key" yq -n -o=json -I=0 '{"keypair": {"Keypair": (load_str(strenv(KEY_FILE)) | sub("\n$"; ""))}}'
   fi >"$work/request.json"
   rm -f "$work/key"
   curl -fsS -X "$1" -H "@$work/auth" -H 'Content-Type: application/json' \

@@ -2036,6 +2036,16 @@
           keyring-bats = import ./modules/.common.d/keyring.d/tests/package.nix { inherit pkgs; };
           root-attest-bats = import ./modules/.common.d/root-attest.d/tests/package.nix { inherit pkgs; };
           root-ceremony-bats = import ./modules/.common.d/root-ceremony.d/tests/package.nix { inherit pkgs; };
+          # hs: no preauth key and no API key in a trace or an argv.
+          hs-bats = import ./modules/darwin/headscale-tools/tests/package.nix { inherit pkgs; };
+          # No secret VALUE in a trace or an argv, over every .sh of the repo (report mode until batch 1).
+          secret-xtrace-guard = import ./modules/.common.d/secret-xtrace-guard.d/package.nix {
+            inherit pkgs;
+            src = ./.;
+          };
+          secret-xtrace-guard-mutants = import ./modules/.common.d/secret-xtrace-guard.d/tests/package.nix {
+            inherit pkgs;
+          };
           # The ceremony VM is sealed: the runner's argv gives it no network device, no shared folder and
           # nothing from the environment; the guest has a RAM root and no network or listening service. A
           # runner with a NIC and a guest with a 9p share are refused.

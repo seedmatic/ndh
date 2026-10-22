@@ -19,6 +19,12 @@
 #
 # @HS_LIB_INLINE@
 
+# The secret windows (ndh::secret:begin/end) come from the logger, a plain file: hs stays a writeShellApplication
+# until its tools are in the trampoline's profile. Preauth keys and the API key are values: they live inside
+# windows, and reach a command through its environment (strenv) or stdin, never its argv.
+# shellcheck source=/dev/null
+source "@LOGGER_SH@"
+
 API_KEY_FILE="@API_KEY_FILE@"
 HEADSCALE_HOSTNAME="@HEADSCALE_HOSTNAME@"
 EXPECTED_USER="@EXPECTED_USER@"
@@ -72,8 +78,12 @@ hs::headscale() {
 	fi
 	: "${HEADSCALE_CLI_ADDRESS:=${HEADSCALE_HOSTNAME}:50443}"
 	export HEADSCALE_CLI_ADDRESS
+	# The API key reaches headscale through its environment, the channel it reads; the assignment is the one
+	# traced line that would print it.
+	ndh::secret:begin "the headscale API key is loaded into the CLI's environment"
 	HEADSCALE_CLI_API_KEY="$(tr -d '[:space:]' <"$API_KEY_FILE")"
 	export HEADSCALE_CLI_API_KEY
+	ndh::secret:end
 	headscale "$@"
 }
 
@@ -118,30 +128,51 @@ hs::check::user_exists() {
 	fi
 }
 
+# The server's preauth keys, every one of them a bearer: listed once, kept as a value inside the windows that
+# read it. A lookup takes the key through yq's environment (strenv), the JSON through its stdin (a here-string,
+# which xtrace does not print, measured on bash 5.3).
+HS_SERVER_KEYS=""
+
+# hs::slot::lookup <kind> <sops file> → prints "<id>\t<tags csv>" of the server key the slot holds, nothing when
+# the server does not know it; returns 3 when the slot is empty. Its window covers the slot's key; only the id
+# and the tags leave it.
+hs::slot::lookup() {
+	local kind="$1" sops_file="$2" slot_key rc=0
+	ndh::secret:begin "auth.${kind}: its key is looked up on the server"
+	slot_key="$(sops::edit::get_string "$sops_file" ".tailnet.headscale.auth.${kind}" 2>/dev/null)"
+	case "$slot_key" in
+		"" | null) rc=3 ;;
+		*)
+			K="$slot_key" yq eval -r '.[] | select(.key == strenv(K)) | [.id, (.aclTags | join(","))] | @tsv' - \
+				<<<"$HS_SERVER_KEYS" 2>/dev/null || rc=$?
+			;;
+	esac
+	slot_key=""
+	ndh::secret:end
+	return "$rc"
+}
+
 hs::check::preauth_keys() {
 	local sops_file="$1"
-	local server_keys
-	server_keys="$(hs::headscale preauthkeys list --output json 2>/dev/null)"
-	if [ -z "$server_keys" ]; then
+	local kind found server_entry server_tags_csv
+	local expected_tags expected_canonical actual_canonical
+	ndh::secret:begin "the preauth keys of the server are listed"
+	HS_SERVER_KEYS="$(hs::headscale preauthkeys list --output json 2>/dev/null)"
+	found=0
+	[ -n "$HS_SERVER_KEYS" ] && found=1
+	ndh::secret:end
+	if ((found == 0)); then
 		log::warn "no preauth keys on server"
 		return 0
 	fi
 
-	local kind secret_key server_entry server_tags_csv
-	local expected_tags expected_canonical actual_canonical
+	local entry rc
 	for kind in "${HS_KINDS[@]}"; do
-		secret_key="$(sops::edit::get_string "$sops_file" \
-			".tailnet.headscale.auth.${kind}" 2>/dev/null)"
-
-		if [ -z "$secret_key" ] || [ "$secret_key" = "null" ]; then
-			# Empty slot is fine — only the kinds actually in use
-			# need to be filled.
-			continue
-		fi
-
-		server_entry="$(printf '%s' "$server_keys" |
-			yq eval -r ".[] | select(.key == \"${secret_key}\") | .id" - 2>/dev/null)"
-
+		rc=0
+		entry="$(hs::slot::lookup "$kind" "$sops_file")" || rc=$?
+		# Empty slot is fine — only the kinds actually in use need to be filled.
+		((rc == 3)) && continue
+		IFS=$'\t' read -r server_entry server_tags_csv <<<"$entry"
 		if [ -z "$server_entry" ]; then
 			log::warn "auth.${kind} in .secrets has no matching preauth key on server (stale; run 'hs mint --force ${kind}')"
 			continue
@@ -153,8 +184,6 @@ hs::check::preauth_keys() {
 		# but the existing preauth key still carries the old tags —
 		# registering with it would produce a node tagged under the
 		# old scheme, which the new ACL doesn't grant anything to.
-		server_tags_csv="$(printf '%s' "$server_keys" |
-			yq eval -r ".[] | select(.key == \"${secret_key}\") | .aclTags | join(\",\")" - 2>/dev/null)"
 		expected_tags="$(hs::kind::tags "$kind")" || continue
 		expected_canonical="$(hs::tags::canonical "$expected_tags")"
 		actual_canonical="$(hs::tags::canonical "$server_tags_csv")"
@@ -162,6 +191,7 @@ hs::check::preauth_keys() {
 			log::warn "auth.${kind} server tags [${actual_canonical}] disagree with expected [${expected_canonical}] (run 'hs mint --force ${kind}')"
 		fi
 	done
+	HS_SERVER_KEYS=""
 }
 
 hs::cmd::check() {
@@ -196,11 +226,14 @@ hs::mint::ensure_user() {
 		yq eval -r ".[] | select(.name == \"${EXPECTED_USER}\") | .id" -
 }
 
-hs::mint::key_for_kind() {
-	local kind="$1" user_id="$2" tags key
+# hs::mint::into_slot <kind> <user id> <sops file>: mints a preauth key and writes it into the kind's slot. The
+# key never leaves this window: from headscale's JSON to sops::edit::set_string's stdin.
+hs::mint::into_slot() {
+	local kind="$1" user_id="$2" sops_file="$3" tags key minted=0 written=0
 	tags="$(hs::kind::tags "$kind")" || return 1
 
 	log::info "minting preauth key for kind=${kind} tags=${tags}"
+	ndh::secret:begin "auth.${kind}: a preauth key is minted and written into its slot"
 	key="$(hs::headscale preauthkeys create \
 		--user "$user_id" \
 		--reusable \
@@ -208,34 +241,35 @@ hs::mint::key_for_kind() {
 		--tags "$tags" \
 		--output json |
 		yq eval -r '.key' -)"
+	case "$key" in "" | null) ;; *) minted=1 ;; esac
+	if ((minted == 1)); then
+		sops::edit::set_string "$sops_file" ".tailnet.headscale.auth.${kind}" <<<"$key" && written=1
+	fi
+	key=""
+	ndh::secret:end
 
-	if [ -z "$key" ] || [ "$key" = "null" ]; then
+	if ((minted == 0)); then
 		log::error "mint failed for kind=${kind}"
 		return 1
 	fi
-
-	printf '%s\n' "$key"
+	((written == 1))
 }
 
 # Returns 0 iff the slot already holds a key that exists on the
 # server AND has the tag pair this kind expects.  Drift on either
 # axis is treated as "not live" so mint rewrites the slot.
+# Reads HS_SERVER_KEYS, which the caller filled.
 hs::mint::slot_is_live() {
-	local kind="$1" server_keys="$2" sops_file="$3"
-	local current
-	current="$(sops::edit::get_string "$sops_file" \
-		".tailnet.headscale.auth.${kind}" 2>/dev/null)"
-	[ -n "$current" ] && [ "$current" != "null" ] || return 1
+	local kind="$1" sops_file="$2" entry rc=0
+	entry="$(hs::slot::lookup "$kind" "$sops_file")" || rc=$?
+	((rc == 0)) || return 1
 
-	local server_entry
-	server_entry="$(printf '%s' "$server_keys" |
-		yq eval -r ".[] | select(.key == \"${current}\") | .id" - 2>/dev/null)"
+	local server_entry actual_tags_csv
+	IFS=$'\t' read -r server_entry actual_tags_csv <<<"$entry"
 	[ -n "$server_entry" ] || return 1
 
 	# Tag pair must match too.
-	local actual_tags_csv expected_tags expected_canonical actual_canonical
-	actual_tags_csv="$(printf '%s' "$server_keys" |
-		yq eval -r ".[] | select(.key == \"${current}\") | .aclTags | join(\",\")" - 2>/dev/null)"
+	local expected_tags expected_canonical actual_canonical
 	expected_tags="$(hs::kind::tags "$kind")" || return 1
 	expected_canonical="$(hs::tags::canonical "$expected_tags")"
 	actual_canonical="$(hs::tags::canonical "$actual_tags_csv")"
@@ -313,21 +347,21 @@ hs::cmd::mint() {
 		return 1
 	fi
 
-	local server_keys
-	server_keys="$(hs::headscale preauthkeys list --output json 2>/dev/null || printf '[]')"
+	ndh::secret:begin "the preauth keys of the server are listed"
+	HS_SERVER_KEYS="$(hs::headscale preauthkeys list --output json 2>/dev/null || printf '[]')"
+	ndh::secret:end
 
-	local kind new_key
+	local kind
 	for kind in "${wanted[@]}"; do
-		if ! $force && hs::mint::slot_is_live "$kind" "$server_keys" "$sops_file"; then
+		if ! $force && hs::mint::slot_is_live "$kind" "$sops_file"; then
 			log::info "auth.${kind}: already live with expected tags, skipping (pass --force to overwrite)"
 			continue
 		fi
 
-		new_key="$(hs::mint::key_for_kind "$kind" "$user_id")" || return 1
-		sops::edit::set_string "$sops_file" \
-			".tailnet.headscale.auth.${kind}" "$new_key" || return 1
+		hs::mint::into_slot "$kind" "$user_id" "$sops_file" || { HS_SERVER_KEYS=""; return 1; }
 		log::info "auth.${kind}: minted and written"
 	done
+	HS_SERVER_KEYS=""
 
 	log::info "done; commit $sops_file when ready"
 }

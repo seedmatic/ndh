@@ -143,7 +143,8 @@ if [[ "$mode" == "--create" ]]; then
 	# encrypts scalars preceded by `# sops:encrypted` per the repo's
 	# .sops.yaml encrypted_comment_regex).
 	slot="$(date +%y-%m-%d)"
-	env NDH_PRIV="$privPem" NDH_PUB="$pubBlob" \
+	# Prefix assignments, never `env`'s argv: the private goes to yq's environment only, which ps does not show.
+	NDH_PRIV="$privPem" NDH_PUB="$pubBlob" \
 		NDH_TYPE="$modeArg" \
 		NDH_COMMENT="cert-authority@${authority}" \
 		yq eval -i "

@@ -35,6 +35,10 @@ case "\$host:\$cmd" in
   "join.test:incus storage list --format json") echo '[]' ;;
   "boot.test:incus cluster add --quiet join") echo 'Member join join token:'; printf 'eyFAKEtokenFAKEtokenFAKEtokenFAKEtoken0000\n' ;;
   "join.test:incus admin init --preseed")
+    if [ "\${STUB_PRESEED:-ok}" = echo ]; then
+      in=\$(cat); printf '%s\n' "\$in" >&2
+      echo "Error: invalid \$(printf '%s\n' "\$in" | grep cluster_token)" >&2; exit 1
+    fi
     cat > /dev/null
     [ "\${STUB_PRESEED:-ok}" = ok ] || { echo "Error: failed to join cluster" >&2; exit 1; }
     touch "\$T/joined" ;;
@@ -84,4 +88,42 @@ SSH
   run bash "$T/join"
   [ "$status" -eq 0 ]
   [[ "$output" == *"join joined and out of the raft (roles: database-client)"* ]]
+}
+
+# The log sink is written by a process substitution, which may end after the script.
+log_settled() {
+  local i
+  for i in $(seq 30); do
+    grep -qE 'completed successfully|failed \(rc=' "$T/wrapper.log" 2>/dev/null && return 0
+    sleep 0.1
+  done
+  return 1
+}
+
+@test "traced, a join that takes never writes its token to the log" {
+  NDH_LOGGER_XTRACE=1 run bash "$T/join"
+  [ "$status" -eq 0 ]
+  log_settled
+  grep -qF 'secret window: a join token is minted' "$T/wrapper.log"
+  refute grep -qF 'eyFAKEtoken' "$T/wrapper.log"
+  [[ "$output" != *eyFAKEtoken* ]]
+}
+
+@test "a refusal that echoes the preseed, token in its Error line, keeps the reason and drops the token" {
+  STUB_PRESEED=echo NDH_LOGGER_XTRACE=1 run bash "$T/join"
+  [ "$status" -ne 0 ]
+  log_settled
+  refute grep -qF 'eyFAKEtoken' "$T/wrapper.log"
+  [[ "$output" != *eyFAKEtoken* ]]
+  grep -qF 'Error: invalid' "$T/wrapper.log"
+  grep -qF '<token>' "$T/wrapper.log"
+  refute grep -qF 'server_name: join' "$T/wrapper.log"
+}
+
+@test "traced, a refused join never writes its token to the log" {
+  STUB_PRESEED=fail NDH_LOGGER_XTRACE=1 run bash "$T/join"
+  [ "$status" -ne 0 ]
+  log_settled
+  refute grep -qF 'eyFAKEtoken' "$T/wrapper.log"
+  [[ "$output" != *eyFAKEtoken* ]]
 }

@@ -193,18 +193,13 @@ authenticate() {
 	# targeted sops extract of .secrets, or a caller-supplied plaintext file — never
 	# a temp file, and never an argv.
 	#
-	# xtrace is MUTED for the whole function.  Keeping the secret out of argv and
+	# A secret window for the whole function.  Keeping the secret out of argv and
 	# passing the bearer through api()'s heredoc (heredoc bodies are NOT traced) are
-	# both defeated one line later: the trampoline runs everything under `set -x`, so
-	# the assignment below and each `[ … "$TOKEN" … ]` printed the bearer verbatim
-	# into the operator's unified log — three times per run, measured.
-	#
-	# `local -` scopes the `set` options to this function, so the mute is undone on
-	# return whatever the exit path — and it restores the CALLER's state rather than
-	# re-asserting `set -x`, which would switch tracing on for a run that never had it
-	# (the script is also runnable without the trampoline).
-	local -
-	set +x
+	# both defeated without it: under `set -x` the assignment below and each
+	# `[ … "$TOKEN" … ]` printed the bearer verbatim into the operator's unified log —
+	# three times per run, measured.  api() reads TOKEN only in its heredoc, so this is
+	# the one place it can reach a trace.
+	ndh::secret:begin "the OAuth client secret is exchanged for the API bearer"
 	if [ -n "$client_secret_file" ]; then
 		TOKEN="$($CURL -fsS \
 			--data-urlencode "client_secret@$client_secret_file" \
@@ -218,6 +213,7 @@ authenticate() {
 	fi
 	{ [ -n "$TOKEN" ] && [ "$TOKEN" != "null" ]; } ||
 		die "OAuth token exchange returned no access_token"
+	ndh::secret:end
 }
 
 # Authenticated Tailscale API call.  The bearer is injected via a stdin config

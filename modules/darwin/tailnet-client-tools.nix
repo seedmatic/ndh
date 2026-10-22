@@ -61,6 +61,7 @@ let
 
   renderedHsSource = pkgs.replaceVars "${headscaleToolsDir}/hs.sh" {
     HS_LIB_INLINE = hsLibText;
+    LOGGER_SH = "${worktreePath.of "modules/.common.d/shell.d/logger.sh"}";
     API_KEY_FILE = apiKeyFile;
     HEADSCALE_HOSTNAME = hsHostname;
     EXPECTED_USER = expectedUser;

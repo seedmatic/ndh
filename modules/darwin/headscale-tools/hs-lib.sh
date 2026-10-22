@@ -55,14 +55,12 @@ hs::exec() {
 #   $1  path to the sops-encrypted YAML file
 #   $2  yq expression identifying the target scalar,
 #       e.g. '.tailnet.headscale.auth.darwin'
-#   $3  plaintext value to write (read from stdin if "-")
+#   stdin  the plaintext value: never an argument, which ps and a
+#          trace would show
 sops::edit::set_string() {
 	local sopsFile="$1"
 	local yqPath="$2"
-	local value="$3"
-	if [ "$value" = "-" ]; then
-		value="$(cat)"
-	fi
+	local value
 
 	local tmp
 	tmp="$(mktemp -d)"
@@ -91,10 +89,21 @@ sops::edit::set_string() {
 	# lineComment sets the trailing comment — either position on the
 	# scalar is acceptable to sops.  Without this, a freshly-inserted
 	# leaf would land as plaintext inside the encrypted file.
-	env NDH_SOPS_VALUE="$value" yq eval -i "
+	# The value reaches yq through its environment, a prefix assignment (never `env`'s argv), inside a window: the
+	# assignment is the traced line that would print it.
+	ndh::secret:begin "a value is written into ${yqPath}"
+	value="$(cat)"
+	NDH_SOPS_VALUE="$value" yq eval -i "
 		${yqPath} = strenv(NDH_SOPS_VALUE) |
 		${yqPath} lineComment = \"sops:encrypted\"
 	" "$decrypted"
+	local wrote=$?
+	value=""
+	ndh::secret:end
+	if ((wrote != 0)); then
+		log::error "yq could not write ${yqPath}; $sopsFile left untouched"
+		return 1
+	fi
 
 	local reencrypted="${tmp}/reencrypted.yaml"
 	if ! sops --input-type yaml --output-type yaml encrypt "$decrypted" >"$reencrypted"; then
