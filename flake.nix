@@ -1234,7 +1234,8 @@
                 }
               ) hosts;
               missing = verdict hosts;
-              line = name: c: "${name} ${c.config.ndh.bringupRuntime.runtimePackage}";
+              line =
+                name: c: "${name} ${c.config.system.build.toplevel} ${c.config.ndh.bringupRuntime.runtimePackage}";
             in
             assert lib.assertMsg (
               hosts != { }
@@ -1244,29 +1245,27 @@
             assert lib.assertMsg (
               verdict mutant == lib.attrNames hosts
             ) "attic-container-bringup-profile: the mutant without the declared profile passed";
+            # A DIRECT reference of each guest's toplevel, not anywhere in its closure: stricter, and an
+            # exportReferencesGraph of a whole NixOS closure exceeds the darwin sandbox profile's 64 KiB limit
+            # ("data object length … exceeds maximum (65535)", measured). The toplevel is an input, so its
+            # references are readable here; `system.extraDependencies` would be the way to add one.
             pkgs.runCommand "attic-container-bringup-profile"
               {
+                nativeBuildInputs = [ pkgs.gnugrep ];
                 passAsFile = [ "hosts" ];
                 hosts = lib.concatLines (lib.mapAttrsToList line hosts);
-                # Each host guest's own system closure, so the check can read it in the sandbox.
-                exportReferencesGraph = lib.concatLists (
-                  lib.imap0 (i: c: [
-                    "closure-${toString i}"
-                    c.config.system.build.toplevel
-                  ]) (lib.attrValues hosts)
-                );
               }
               ''
                 rc=0
-                while read -r name runtime; do
-                  # grep reads the graphs itself: `cat … | grep -q` fails under pipefail, cat killed by SIGPIPE
-                  # once grep has found the line.
-                  if ! grep -qxF -- "$runtime" closure-*; then
-                    echo "$name: the guest's closure lacks the bringup runtime $runtime the attic profile links to" >&2
+                while read -r name top runtime; do
+                  # grep reads the toplevel's tree itself: `cat … | grep -q` fails under pipefail, cat killed by
+                  # SIGPIPE once grep has found the line.
+                  if ! grep -rqF -- "$runtime" "$top"; then
+                    echo "$name: the guest's toplevel does not reference the bringup runtime $runtime the attic profile links to" >&2
                     rc=1
                     continue
                   fi
-                  echo "$name: the attic instance declares the bringup profile, and the guest's closure holds it"
+                  echo "$name: the attic instance declares the bringup profile, and the guest's toplevel holds it"
                 done <"$hostsPath"
                 [ "$rc" = 0 ] && touch $out
                 exit "$rc"
