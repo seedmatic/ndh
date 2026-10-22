@@ -243,6 +243,32 @@ attic() { # the guest's attic publication, signed by the seat's serving (old) ke
   [ -z "$(git -C "$(tree)" status --porcelain)" ]
 }
 
+@test "mutant: a class that writes after another and spoils its file is refused, nothing committed" {
+  attic
+  : "the attic row, written second, also re-encrypts .secrets: the check after ALL writes must catch it"
+  cp "$BATS_TEST_DIRNAME/../classes/attic-cache-key.sh" "$t/attic-cache-key.sh"
+  sed -i '/catalog\/private-caches.json >>"\$work\/staged"$/i\  (cd "$tree" \&\& sops rotate -i --input-type yaml --output-type yaml .secrets)' "$t/attic-cache-key.sh"
+  grep -q 'sops rotate -i' "$t/attic-cache-key.sh"
+  sed -i "s|^source .*/attic-cache-key.sh\$|source $t/attic-cache-key.sh|" "$t/keys-reconcile"
+  grep -q "^source $t/attic-cache-key.sh\$" "$t/keys-reconcile"
+  run --separate-stderr window oui
+  [ "$status" -ne 0 ]
+  [[ $stderr == *".secrets: an encrypted value changed (a whole-file re-encryption?)"* ]]
+  [ "$(git -C "$(tree)" rev-parse HEAD)" = "$rev" ]
+}
+
+@test "mutant: an attic entry without its statement pair is refused, nothing committed" {
+  attic
+  cp "$BATS_TEST_DIRNAME/../classes/attic-cache-key.sh" "$t/attic-cache-key.sh"
+  sed -i 's|^    cp "\$work/attic-\${cache}.cache-key.statement" "\$work/attic-\${cache}.cache-key.statement.sig" "\$statements/"$|    :|' "$t/attic-cache-key.sh"
+  ! grep -q 'cache-key.statement.sig" "$statements/"' "$t/attic-cache-key.sh" || false
+  sed -i "s|^source .*/attic-cache-key.sh\$|source $t/attic-cache-key.sh|" "$t/keys-reconcile"
+  run --separate-stderr window oui
+  [ "$status" -ne 0 ]
+  [[ $stderr == *"privateCaches.m1 has no statement pair beside it"* ]]
+  [ "$(git -C "$(tree)" rev-parse HEAD)" = "$rev" ]
+}
+
 @test "attic-cache-key: a cache whose key the revision already records is refused, nothing committed" {
   attic
   : "the revision records a key for m1: a new one is a declared rotation, not a window's"

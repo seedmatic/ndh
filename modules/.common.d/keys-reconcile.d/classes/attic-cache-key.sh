@@ -94,10 +94,27 @@ reconcile::attic-cache-key::write() { # <work dir>
     printf '      privateCaches.%s enregistrée : %s\n' "$cache" "$public"
   done <"$work/attic-cache-key.measured"
 
-  : "postcondition: the entries are the input plus exactly the ones this window set"
-  [[ "$(yq -p json -o json -S . "$entries")" == "$(yq -p json -o json -S . "$work/attic-expected.json")" ]] ||
-    reconcile::fail "catalog/private-caches.json changed more than the entries this window set" || return 1
   printf '%s\n' catalog/private-caches.json >>"$work/staged"
   printf '\nkeys-reconcile: record %s attic cache key(s) at %s\n\n%s\n' "$(wc -l <"$work/attic-cache-key.measured")" "${revision:0:12}" \
     "$(cut -f2 "$work/attic-cache-key.measured")" >>"$work/summary"
+}
+
+# Its postcondition, run by the window after every class wrote: the entries are the input plus exactly the ones this
+# window set, and every entry has its statement pair and every statement pair its entry.
+reconcile::attic-cache-key::check() { # <work dir>
+  local entries="$tree/catalog/private-caches.json" statements="$tree/catalog/private-caches.d/statements" ms f
+  [[ -s "$1/attic-cache-key.measured" ]] || return 0
+  [[ "$(yq -p json -o json -S . "$entries")" == "$(yq -p json -o json -S . "$1/attic-expected.json")" ]] ||
+    reconcile::fail "catalog/private-caches.json changed more than the entries this window set" || return 1
+  for ms in $(yq -r -p json -o json 'keys | .[]' "$entries"); do
+    [[ -f "$statements/attic-${ms}.cache-key.statement" && -f "$statements/attic-${ms}.cache-key.statement.sig" ]] ||
+      reconcile::fail "privateCaches.${ms} has no statement pair beside it" || return 1
+  done
+  for f in "$statements"/*.cache-key.statement; do
+    [[ -e $f ]] || continue
+    ms="$(basename "$f" .cache-key.statement)"
+    ms="${ms#attic-}"
+    [[ "$(C="$ms" yq -p json -o json '.[strenv(C)] // null' "$entries")" != null ]] ||
+      reconcile::fail "a statement for ${ms}, which catalog/private-caches.json does not hold" || return 1
+  done
 }

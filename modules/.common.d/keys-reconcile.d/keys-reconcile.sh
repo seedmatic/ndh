@@ -71,14 +71,14 @@ fetch() { # <machine> <published dir> <into dir> <file>...: files a machine publ
   done
 }
 
-# An artifact class is a row of functions, reconcile::<class>::{measure,recheck,write}. The class names one only if it
+# An artifact class is a row of functions, reconcile::<class>::{measure,recheck,write,check}. The class names one only if it
 # comes from the batch frozen at evaluation and names a row this tool defines: no string a machine published ever
 # reaches a function name.
 class_of() { # <batch index> → its class, or fails
   local class f
   class=$(yq -r -p json -o json ".[$1].class" "$batch")
   [[ $class =~ ^[a-z][a-z0-9-]*$ ]] || return 1
-  for f in measure recheck write; do declare -F "reconcile::${class}::${f}" >/dev/null || return 1; done
+  for f in measure recheck write check; do declare -F "reconcile::${class}::${f}" >/dev/null || return 1; done
   printf '%s\n' "$class"
 }
 
@@ -173,9 +173,12 @@ window() {
   local again class
   again=$(mktemp -d "$work/again.XXXXXX")
   for class in "${present[@]}"; do "reconcile::${class}::recheck" "$work" "$again"; done
-  : "one worktree, every class writes into it and checks its own postconditions, one commit"
+  : "one worktree; every class writes into it; then EVERY class's postconditions, so a later class cannot spoil an"
+  : "earlier one's file; one commit"
   reconcile::tree::open || return 1
   for class in "${present[@]}"; do "reconcile::${class}::write" "$work" || return 1; done
+  for class in "${present[@]}"; do "reconcile::${class}::check" "$work" || return 1; done
+  reconcile::tree::check || return 1
   reconcile::tree::commit
 }
 
