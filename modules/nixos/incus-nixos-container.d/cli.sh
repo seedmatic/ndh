@@ -300,6 +300,26 @@ deliver_steps() {
   echo "$snapshot" >&9
 }
 
+# snapshot_destroy [-r] {dataset@snapshot}: unmount what the kernel automounted of it under .zfs/snapshot, then destroy
+# it. A snapshot read through .zfs/snapshot (deliver's upper and DB, the store's lowers) stays mounted until it
+# expires, and ZFS refuses to destroy it meanwhile: "dataset is busy" (live on bioskop-nixos, 2026-10-22). A bounded
+# retry backs it up, for a mount taken again between the umount and the destroy.
+snapshot_destroy() {
+  local recursive=() target name attempt
+  if [ "$1" = -r ]; then recursive=(-r); shift; fi
+  name=${1#*@}
+  for attempt in 1 2 3 4 5; do
+    while read -r target; do
+      [ -n "$target" ] || continue
+      umount "$target" || true
+    done < <(findmnt -rn -o TARGET | grep -E "/\.zfs/snapshot/${name//./\\.}(/|\$)" || true)
+    if zfs destroy "${recursive[@]}" "$1"; then return 0; fi
+    [ "$attempt" = 5 ] || sleep 2
+  done
+  echo "ndh-incus-container: $1 is still busy after 5 attempts" >&2
+  return 1
+}
+
 # state_snapshots {info} {name}: every delivery snapshot on the instance's state datasets.
 state_snapshots() {
   local state
@@ -308,10 +328,29 @@ state_snapshots() {
   done
 }
 
+# leftovers {name}: what a delivery leaves until its commit, one per line: every delivery snapshot of the instance but
+# the one its store runs on (lower.snapshot), every state snapshot, every `.previous-*`. Empty once committed.
+leftovers() {
+  local info dir upper_root rw db current
+  info=$(instance "$1") || return 1
+  dir=$(field "$info" dir) || return 1
+  upper_root=$(yq -p json -oy -r '.upperRoot' "$LAYER_CONTRACT") || return 1
+  rw=$(findmnt -no SOURCE "$upper_root") || return 1
+  db=$(findmnt -no SOURCE /nix/var/nix/db) || return 1
+  current=$(cat "$dir/lower.snapshot") || return 1
+  zfs list -H -t snapshot -o name "$rw" "$db" | grep -E "@ndh-incus-$1-[0-9]{8}T[0-9]{6}Z\$" | grep -v "@$current\$" || true
+  state_snapshots "$info" "$1"
+  local aside
+  for aside in "$dir"/.previous-*; do [ ! -e "$aside" ] || echo "$aside"; done
+}
+
 # commit {name} {snapshot}: the container runs on {snapshot} and is kept; every other delivery snapshot
 # of it (the previous one, and any a failed delivery left) and what was set aside can go. Its state
-# snapshots all go, this delivery's included: they were only the way back.
-commit() {
+# snapshots all go, this delivery's included: they were only the way back. Resumable: run again after a failure,
+# it destroys what is left and nothing else. In its own process, as rollback: converge runs it under `if`.
+commit() { "$BASH" "${BASH_SOURCE[0]}" _commit "$1" "$2"; }
+
+commit_steps() {
   local info dir upper_root rw db old
   info=$(instance "$1")
   dir=$(field "$info" dir)
@@ -319,9 +358,9 @@ commit() {
   rw=$(findmnt -no SOURCE "$upper_root")
   db=$(findmnt -no SOURCE /nix/var/nix/db)
   for old in $(zfs list -H -t snapshot -o name "$rw" "$db" | grep -E "@ndh-incus-$1-[0-9]{8}T[0-9]{6}Z\$" | grep -v "@$2\$" || true); do
-    zfs destroy "$old"
+    snapshot_destroy "$old"
   done
-  for old in $(state_snapshots "$info" "$1"); do zfs destroy -r "$old"; done
+  for old in $(state_snapshots "$info" "$1"); do snapshot_destroy -r "$old"; done
   for old in "$dir"/.previous-*; do rm -rf --one-file-system "$old"; done
 }
 
@@ -363,10 +402,10 @@ rollback_steps() {
     for fs in $(zfs list -H -o name -r -t filesystem "${state:?}"); do
       zfs rollback -r "$fs@$2"
     done
-    zfs destroy -r "$state@$2"
+    snapshot_destroy -r "$state@$2"
   done
-  zfs destroy "$rw@$2"
-  zfs destroy "$db@$2"
+  snapshot_destroy "$rw@$2"
+  snapshot_destroy "$db@$2"
   previous=$(cat "$dir/lower.snapshot" 2>/dev/null || true)
   [ -n "$previous" ] || die "$1 had no delivery before $2: it stays STOPPED"
   systemctl start "ndh-incus-container-store-$1.service"
@@ -398,14 +437,23 @@ healthy() {
     }
     sleep 2
   done
+  # Until the container's activation has made /run/current-system, its systemctl does not exist and Incus answers
+  # "Error: Command not found" (live, 2026-10-22). That answer is the one expected here, so it is waited out, quietly
+  # and within the same deadline, before any unit is probed.
+  until incus exec --project "$PROJECT" "$1" -- "$GUEST_SYSTEMCTL" --version >/dev/null 2>&1; do
+    [ "$(date +%s)" -lt "$deadline" ] || {
+      echo "ndh-incus-container: $1 has no $GUEST_SYSTEMCTL after ${HEALTH_TIMEOUT}s: its activation did not run" >&2
+      return 1
+    }
+    sleep 2
+  done
   # The list first, its status checked: `healthy` runs under `if`, errexit off, and an empty list read
   # from a failed yq would pass every container.
   units=$(yq -p json -oy -r '(.health.units // []) | .[] | .unit + "\t" + (.kind // "active")' <<<"$info") ||
     return 1
   while IFS=$'\t' read -r unit kind; do
     [ -n "$unit" ] || continue
-    # By its path: until the container's activation has run, its PATH holds no systemctl, and Incus
-    # answers "Error: Command not found" (seen live, 2026-10-22). Not yet answering is not yet active.
+    # By its path: the container's PATH is its activation's, and its system's systemctl is the one meant.
     until state=$(incus exec --project "$PROJECT" "$1" -- "$GUEST_SYSTEMCTL" is-active "$unit" || true) && [ "$state" = active ]; do
       if [ "$kind" = conditional ]; then
         result=$(incus exec --project "$PROJECT" "$1" -- "$GUEST_SYSTEMCTL" show -p ConditionResult --value "$unit" || true)
@@ -426,7 +474,7 @@ healthy() {
 # not yet created is the operator's (`create`), and is skipped, loudly. The exit status is 1 if any
 # container could not be converged, so the unit fails visibly.
 converge() {
-  local name info dir toplevel declared wrong snapshot aside failed=0
+  local name info dir toplevel declared wrong rest snapshot aside failed=0
   for name in $(yq -p json -oy -r 'keys | .[]' <<<"$INSTANCES"); do
     info=$(instance "$name")
     dir=$(field "$info" dir)
@@ -440,6 +488,25 @@ converge() {
     # links: system → system-N-link → the store path). One that is not means a delivery: the container's scripts
     # read those profiles, so one set under a running container would go unchecked by any health test.
     if wrong=$(declared_ok "$name"); then
+      # A commit that stopped half-way (a snapshot busy, live 2026-10-22) left the previous delivery behind; this
+      # run finishes it, once the container proves healthy on what it runs: before that, the aside is its way back.
+      local unfinished=0
+      if ! rest=$(leftovers "$name"); then
+        echo "ndh-incus-container: $name's leftovers could not be listed" >&2
+        unfinished=1
+      elif [ -n "$rest" ]; then
+        if ! healthy "$name"; then
+          echo "ndh-incus-container: $name holds its declared state but is unhealthy: its previous delivery is kept" >&2
+          unfinished=1
+        elif ! commit "$name" "$(cat "$dir/lower.snapshot")"; then
+          echo "ndh-incus-container: $name's commit is still unfinished; the next converge resumes it" >&2
+          unfinished=1
+        else
+          echo "ndh-incus-container: $name's previous delivery committed: ${rest//$'\n'/; }"
+        fi
+      fi
+      # What holds needs no attempt marker: a stale one (a commit that died after a healthy delivery) goes.
+      if [ "$unfinished" = 1 ]; then failed=1; else rm -f "$dir/converge.failed"; fi
       echo "ndh-incus-container: $name holds its declared system and profiles"
       continue
     fi
@@ -453,6 +520,26 @@ converge() {
       continue
     fi
     declared=$(printf 'tool\t%s\n%s' "$(readlink -f "${BASH_SOURCE[0]}")" "$declared")
+    # A previous delivery whose commit never finished is finished first, so that only one delivery is ever set aside:
+    # a failed delivery rolls back to the one aside there is. Not on an unhealthy container: that aside is its way back.
+    if ! rest=$(leftovers "$name"); then
+      echo "ndh-incus-container: $name's leftovers could not be listed: nothing delivered" >&2
+      failed=1
+      continue
+    fi
+    if [ -n "$rest" ]; then
+      if ! healthy "$name"; then
+        echo "ndh-incus-container: $name's previous delivery is unfinished and it is unhealthy on it: nothing delivered" >&2
+        failed=1
+        continue
+      fi
+      if ! commit "$name" "$(cat "$dir/lower.snapshot")"; then
+        echo "ndh-incus-container: $name's previous delivery could not be committed: nothing delivered, the next converge resumes it" >&2
+        failed=1
+        continue
+      fi
+      echo "ndh-incus-container: $name's previous delivery committed: ${rest//$'\n'/; }"
+    fi
     if [ -e "$dir/converge.failed" ] && [ "$(cat "$dir/converge.failed")" = "$declared" ]; then
       echo "ndh-incus-container: $name already failed on $toplevel; it stays on its previous system" >&2
       failed=1
@@ -474,9 +561,14 @@ converge() {
       continue
     fi
     if healthy "$name"; then
-      commit "$name" "$snapshot"
+      # Healthy is the verdict: the system is kept whatever its cleanup does. An unfinished commit is resumed by the
+      # next converge, and marks no failed attempt.
       rm -f "$dir/converge.failed"
       echo "ndh-incus-container: $name ← $toplevel, healthy, on snapshot $snapshot"
+      if ! commit "$name" "$snapshot"; then
+        echo "ndh-incus-container: $name's commit is unfinished; the next converge resumes it" >&2
+        failed=1
+      fi
     else
       echo "$declared" >"$dir/converge.failed"
       rollback "$name" "$snapshot" || echo "ndh-incus-container: $name's rollback FAILED: it needs a hand" >&2
@@ -503,6 +595,10 @@ main() {
   _rollback)
     [ -n "${3:-}" ] || usage
     rollback_steps "$2" "$3"
+    ;;
+  _commit)
+    [ -n "${3:-}" ] || usage
+    commit_steps "$2" "$3"
     ;;
   *) usage ;;
   esac
