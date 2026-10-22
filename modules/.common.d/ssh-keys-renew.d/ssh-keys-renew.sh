@@ -584,7 +584,7 @@ renew::apply() {
 			Next, in order:
 			  1. nix run "git+file://\$PWD?rev=\$(git rev-parse HEAD)#ssh-keys-v2-validate" -- modules/home-manager/ssh.d/keys.yaml
 			  2. commit the keys.yaml diff, then switch the operator seat (it authorizes the key)
-			  3. ndh-identity-push ${createName#sshfs-} with the key on fd 5, then ndh.sshfs.ownKey = true for it
+			  3. the key reaches ${createName#sshfs-} only as a key born there (K3, ops next): nothing places it
 		EOF
 		return 0
 	fi
@@ -665,8 +665,7 @@ renew::apply() {
 	EOF
 }
 
-# A recorded key is ed25519, on no profile (the placement, ndh-identity-push, puts it on its machine,
-# not keys.yaml), of one role: a machine's host key (host-MACHINE, ssh-host), a NixOS guest's sshfs key
+# A recorded key is ed25519, on no profile (keys.yaml carries no installation for it), of one role: a machine's host key (host-MACHINE, ssh-host), a NixOS guest's sshfs key
 # (sshfs-GUEST, ssh-user), or a foreign vz-host's vz-recover key (vz-recover-HOST, ssh-user).
 public::check_record() {
 	local name role usageTag prefix placeholder

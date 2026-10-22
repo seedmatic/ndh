@@ -19,8 +19,7 @@ let
     lib.assertMsg (
       actual == wanted
     ) "${what}: ${builtins.toJSON actual}, expected ${builtins.toJSON wanted}";
-  sshfsKeyFile =
-    (import ../../../.common.d/identity-push.d/package.nix { inherit pkgs lib; }).sshfsKeyFile;
+  sshfsKeyFile = "/var/lib/ndh/sshfs/id_ed25519";
   sftpReadOnly = ''restrict,command="internal-sftp -R"'';
 
   guest =
@@ -34,11 +33,6 @@ let
       cfg = shared.services.sshfsMounts;
       seat = seatOf.${name};
       optionsOf = c: map (m: c.fileSystems.${m.localPath}.options) c.services.sshfsMounts.mounts;
-      receiveText =
-        builtins.unsafeDiscardStringContext
-          (lib.findFirst (
-            p: lib.getName p == "ndh-identity-receive"
-          ) (throw "${name}: no ndh-identity-receive") shared.environment.systemPackages).text;
       today = [
         "x-systemd.automount"
         "x-systemd.idle-timeout=600"
@@ -80,8 +74,6 @@ let
     # StrictHostKeyChecking=yes holds only where the authority vouches for the name: the seat's own names.
     assert lib.assertMsg (lib.elem cfg.remoteHost hostNames.${seat})
       "${name}: remoteHost ${cfg.remoteHost} is not one of ${seat}'s certified names (${toString hostNames.${seat}})";
-    assert lib.assertMsg (lib.hasInfix "sshfsKeyFile=${lib.escapeShellArg sshfsKeyFile}" receiveText)
-      "${name}: its ndh-identity-receive does not take the sshfs key, though it mounts sshfs";
     pkgs.runCommand "sshfs-mount-${name}" { } "touch $out";
 
   seatCheck =

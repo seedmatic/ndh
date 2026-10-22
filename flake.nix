@@ -1314,28 +1314,105 @@
                 darwin.config.ndh.nixSigning.placeScript
               ];
             } "touch $out";
-          # ndh.hostKey.own and keys.yaml's slot state agree on every machine of the fleet, and the assertion that
-          # holds them together bites both ways: own on a machine whose slot is not `serving`, and a `serving` slot on
-          # a machine that does not set own.
+          # ndh.hostKey.own is read from keys.yaml's slot state (roles × keys K5), never set: each fleet machine's value
+          # is exactly "its current host-key slot is serving", and a configuration that tries to set it fails.
           host-key-own-is-serving =
             let
               lib = nixpkgs.lib;
-              failed =
-                c: lib.any (a: !a.assertion && lib.hasInfix "ndh.hostKey.own is" a.message) c.config.assertions;
+              roles = import ./modules/.common.d/host-key.d/slots.nix { inherit lib; };
               machines = lib.attrValues self.nixosConfigurations ++ lib.attrValues self.darwinConfigurations;
-              ownOff = self.darwinConfigurations.bioskop.extendModules {
-                modules = [ { ndh.hostKey.own = nixpkgs.lib.mkForce false; } ];
-              };
-              ownOn = self.darwinConfigurations.nikopol.extendModules {
-                modules = [ { ndh.hostKey.own = nixpkgs.lib.mkForce true; } ];
-              };
+              agrees =
+                c:
+                c.config.ndh.hostKey.own == ((roles c.config.ndh.hostKey.entry).current.state or "" == "serving");
+              forced =
+                builtins.tryEval
+                  (self.darwinConfigurations.nikopol.extendModules {
+                    modules = [ { ndh.hostKey.own = true; } ];
+                  }).config.ndh.hostKey.own;
             in
+            assert lib.assertMsg (lib.all agrees machines)
+              "host-key-own-is-serving: a machine's own differs from its slot state";
             assert lib.assertMsg (
-              !(lib.any failed machines)
-            ) "host-key-own-is-serving: a machine of the fleet drifts";
-            assert lib.assertMsg (failed ownOff) "host-key-own-is-serving: own off on a serving slot passed";
-            assert lib.assertMsg (failed ownOn) "host-key-own-is-serving: own on a recorded slot passed";
+              !forced.success
+            ) "host-key-own-is-serving: a configuration could set ndh.hostKey.own";
             pkgs.runCommand "host-key-own-is-serving" { } "touch $out";
+          # A partial batch (the operator's order, 2026-10-22: the guests first): with two machines pending and two
+          # serving their current key, keys-reconcile's batch is exactly the two pending, in fleet-switch's order, each
+          # with its own recorded old public; the serving ones are in no batch and keep their key.
+          keys-reconcile-partial-batch =
+            let
+              lib = nixpkgs.lib;
+              slot = state: origin: public: { inherit state origin public; };
+              keys = {
+                host-g1.slots = {
+                  "26-10-17" = slot "serving" "keyring" "AAAAg1old";
+                  "26-11-01" = {
+                    state = "pending";
+                    origin = "host";
+                  };
+                };
+                host-g2.slots = {
+                  "26-10-17" = slot "serving" "keyring" "AAAAg2old";
+                  "26-11-01" = {
+                    state = "pending";
+                    origin = "host";
+                  };
+                };
+                host-mac.slots."26-10-18" = slot "recorded" "keyring" "AAAAmac";
+                host-seat.slots."26-10-17" = slot "serving" "keyring" "AAAAseat";
+              };
+              catalog.machines = [
+                {
+                  name = "seat";
+                  kind = "darwin";
+                  seat = true;
+                }
+                {
+                  name = "g2";
+                  kind = "nixos";
+                }
+                {
+                  name = "mac";
+                  kind = "darwin";
+                }
+                {
+                  name = "g1";
+                  kind = "nixos";
+                }
+              ];
+              batch =
+                (import ./modules/.common.d/keys-reconcile.d/package.nix {
+                  pkgs = pkgsForDarwin;
+                  ndh = {
+                    store.installBinScript = _: x: x;
+                    context.nixBashTrampoline = "/dev/null";
+                  };
+                  inherit catalog keys;
+                  revision = "";
+                  machines = "/dev/null";
+                  publishDir = "/var/lib/ndh/host-key/published";
+                  hostNames = lib.genAttrs [ "g1" "g2" "mac" "seat" ] (m: [ m ]);
+                  keysJsonTool = "/dev/null";
+                  delegation = "/dev/null";
+                }).passthru.batch;
+            in
+            assert lib.assertMsg
+              (
+                map (e: e.machine) batch == [
+                  "g2"
+                  "g1"
+                ]
+              )
+              "keys-reconcile-partial-batch: ${
+                builtins.toJSON (map (e: e.machine) batch)
+              }, expected the two pending guests in fleet-switch's order";
+            assert lib.assertMsg (
+              map (e: e.oldPublic) batch == [
+                "ssh-ed25519 AAAAg2old"
+                "ssh-ed25519 AAAAg1old"
+              ]
+            ) "keys-reconcile-partial-batch: an entry's old public is not its own recorded serving one";
+            pkgs.runCommand "keys-reconcile-partial-batch" { } "touch $out";
           keys-reconcile-bats = import ./modules/.common.d/keys-reconcile.d/tests/package.nix {
             inherit pkgs;
             trampoline = mkNdhNixBashTrampoline { pkgsForSystem = pkgs; };
@@ -2149,7 +2226,6 @@
           baremetal-link-deploy-bats = import ./pkgs/baremetal-link.d/tests/package.nix { inherit pkgs; };
           # incus-cluster-join: a join that did not take is never reported joined.
           incus-cluster-join-bats = import ./pkgs/incus-cluster-join.d/tests/package.nix { inherit pkgs; };
-          identity-push-bats = import ./modules/.common.d/identity-push.d/tests/package.nix { inherit pkgs; };
           keyring-bats = import ./modules/.common.d/keyring.d/tests/package.nix { inherit pkgs; };
           root-attest-bats = import ./modules/.common.d/root-attest.d/tests/package.nix { inherit pkgs; };
           root-ceremony-bats = import ./modules/.common.d/root-ceremony.d/tests/package.nix { inherit pkgs; };

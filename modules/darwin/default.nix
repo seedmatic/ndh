@@ -50,7 +50,6 @@
     ./nfs-remote-identity.nix
     ./incus-remote-trust.nix
     ./sops.nix
-    ./identity-push.nix
     ./keyring.nix
     ./bringup-observe.nix
     ./tailscale-vnc-forward.nix

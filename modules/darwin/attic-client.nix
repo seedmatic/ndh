@@ -85,7 +85,7 @@ in
     }
 
     # The keyring seat deposits every other live machine's tokens, by the operator's ssh name for each.
-    (lib.mkIf config.ndh.identityPush.enable {
+    (lib.mkIf config.ndh.keyring.enable {
       environment.systemPackages = [
         (tokens.deposit {
           seat = config.networking.hostName;

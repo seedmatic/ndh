@@ -23,10 +23,6 @@ let
   # A tracked value handed to a function the check cannot follow, followed by a reviewer: the function, and the
   # channel the value reaches a command through. All three scripts carry the whole-script guard (no trace).
   reviewed = {
-    "modules/.common.d/identity-push.d/ndh-identity-push.sh" = {
-      pubOf = "builtin printf into a pipe (base64, tr): no argv";
-      log = "receives the derived PUBLIC (pubOf's output), tracked by over-detection";
-    };
     "modules/.common.d/ssh-keys.d/ssh-enrich-keys-yaml.sh" = {
       "key::set_field" = "slot::set: VALUE=… yq strenv(VALUE), a prefix assignment: environment, no argv";
     };

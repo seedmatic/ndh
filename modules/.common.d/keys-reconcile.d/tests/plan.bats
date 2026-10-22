@@ -100,6 +100,25 @@ kr() { HOME="$t/home" XDG_CACHE_HOME="$t/cache" bash "$t/keys-reconcile" "$@"; }
   [[ $output == *"its public is already in keys.yaml"* ]]
 }
 
+@test "a partial batch: two machines measured, while the others keep serving their key" {
+  : "a second machine in the batch, its own old and new key; a third machine listed but in no batch"
+  ssh-keygen -q -t ed25519 -N "" -C old2 -f "$t/old2"
+  ssh-keygen -q -t ed25519 -N "" -C new2 -f "$t/new2"
+  public="$(cut -d' ' -f1,2 "$t/new2.pub")"
+  printf '%s\n' "$public" >"$t/published/host-mate@26-11-01.public"
+  printf 'seedmatic-rotate v1\nname host-mate\nslot 26-11-01\nkey %s\n' "$public" >"$t/published/host-mate@26-11-01.statement"
+  ssh-keygen -q -Y sign -f "$t/old2" -n seedmatic-rotate "$t/published/host-mate@26-11-01.statement" </dev/null
+  printf -- '- {name: seat, kind: darwin, ssh: "", ssh_opts: []}\n- {name: mate, kind: darwin, ssh: "", ssh_opts: []}\n- {name: other, kind: nixos, ssh: "", ssh_opts: []}\n' >"$t/machines.yaml"
+  printf '[{"machine": "seat", "key": "host-seat", "slot": "26-11-01", "oldPublic": "%s", "files": [".secrets"]}, {"machine": "mate", "key": "host-mate", "slot": "26-11-01", "oldPublic": "%s", "files": [".secrets"]}]\n' \
+    "$old" "$(cut -d' ' -f1,2 "$t/old2.pub")" >"$t/batch.json"
+  run --separate-stderr kr plan
+  [ "$status" -eq 0 ]
+  [[ $output == *"2 clé(s)"* ]]
+  [[ $output == *"✓ seat — host-seat@26-11-01"* ]]
+  [[ $output == *"✓ mate — host-mate@26-11-01"* ]]
+  [[ $output != *"other"* ]]
+}
+
 @test "an unpushed revision is refused, before anything is collected" {
   render "$(printf '%040d' 0 | tr 0 a)"
   run --separate-stderr kr plan

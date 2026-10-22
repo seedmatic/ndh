@@ -28,9 +28,6 @@
       target = "bioskop";
     };
 
-    # Its own host key is placed (S3a step 4a), so sshd serves it and its certificate, nothing else.
-    ndh.hostKey.own = true;
-
     # Vector observability agent forwards build events to Darwin aggregator
     bringupObserve = {
       # Forward to Darwin host Vector aggregator via VM network gateway
