@@ -2392,6 +2392,12 @@
             pkgs = pkgsForLinux;
             inherit (self.darwinConfigurations.bioskop.config.ndh.sshfs) authorizedOptions;
           };
+          # jq is replaced by yq-go in every script ndh runs, but for the initrd's one reviewed exception. Report
+          # mode until 🤖's Claude Code part has moved too; a mutant (a jq added) is refused at every build.
+          no-jq = import ./modules/.common.d/no-jq.d/package.nix {
+            inherit pkgs;
+            src = ./.;
+          };
           # ndh-store's gestures: every refusal before the first change, no unsealed layer left behind.
           store-freeze-bats = import ./modules/nixos/store-freeze.d/tests/package.nix {
             pkgs = pkgsForLinux;
