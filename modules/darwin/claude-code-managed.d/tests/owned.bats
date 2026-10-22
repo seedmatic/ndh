@@ -35,8 +35,8 @@ EOF
 }
 
 as() { # $1 = session id, $2 = command
-  jq -n --arg c "$2" --arg s "$1" \
-    '{hook_event_name:"PreToolUse", tool_name:"Bash", tool_input:{command:$c}, cwd:"/tmp/work", session_id:$s}' |
+  C="$2" S="$1" yq -n -o=json \
+    '{"hook_event_name":"PreToolUse", "tool_name":"Bash", "tool_input":{"command":strenv(C)}, "cwd":"/tmp/work", "session_id":strenv(S)}' |
     python3 "$T/hook/deny-hook.py"
 }
 MINE=11111111-0000-0000-0000-000000000001

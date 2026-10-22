@@ -8,7 +8,7 @@
 let
   tools = pkgs.lib.makeBinPath [
     pkgs.sqlite
-    pkgs.jq
+    pkgs.yq-go
     pkgs.python3
     pkgs.lsof
     pkgs.coreutils
@@ -39,7 +39,7 @@ in
       {
         nativeBuildInputs = [
           pkgs.sqlite
-          pkgs.jq
+          pkgs.yq-go
           pkgs.python3
           pkgs.coreutils
         ];
@@ -66,7 +66,7 @@ in
         chmod +x fakebin/lsof
         FAKEBIN="$PWD/fakebin" ${pkgs.bash}/bin/bash ${build stub "$FAKEBIN:"} 2>log
 
-        env_of() { sqlite3 "$ws/$1/state.vscdb" "select value from ItemTable where key = 'flox.flox'" | jq -c '."flox.previousActivatedEnv"'; }
+        env_of() { sqlite3 "$ws/$1/state.vscdb" "select value from ItemTable where key = 'flox.flox'" | yq -p=json -o=json -I0 '."flox.previousActivatedEnv"'; }
         [ "$(env_of closed)" = '{}' ] || { echo "FAIL: closed: $(env_of closed)" >&2; cat log >&2; exit 1; }
         [ "$(sqlite3 "$ws/closed/state.vscdb" "select value from ItemTable where key = 'other'")" = kept ] ||
           { echo "FAIL: the rest of the database changed" >&2; exit 1; }

@@ -20,7 +20,7 @@ set -euo pipefail
 
 [[ -n "${CLAUDE_ENV_FILE:-}" ]] || exit 0
 input="$(cat)"
-cwd="$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null || true)"
+cwd="$(printf '%s' "$input" | yq -p=json -o=json -r '.cwd // ""' 2>/dev/null || true)"
 [[ -n "$cwd" && -d "$cwd" ]] || exit 0
 root="$(git -C "$cwd" rev-parse --show-toplevel 2>/dev/null || true)"
 [[ -n "$root" && -f "$root/.flox/env/manifest.toml" ]] || exit 0
@@ -42,8 +42,8 @@ env -0 >"$tmp/before"
 # Quiet: no FloxHub reminder, no metrics, nothing on the session's screen but our own line.
 if ! FLOX_AUTH_NOTIFICATIONS=false FLOX_DISABLE_METRICS=true timeout 30 \
   "$flox" activate -d "$root" -- env -0 >"$tmp/after" 2>"$tmp/err"; then
-  jq -cn --arg r "$root" --arg e "$(tail -c 300 "$tmp/err")" \
-    '{systemMessage: ("flox-env: the flox environment of " + $r + " did not activate; this session runs without it: " + $e)}'
+  R="$root" E="$(tail -c 300 "$tmp/err")" yq -n -o=json -I0 \
+    '{"systemMessage": ("flox-env: the flox environment of " + strenv(R) + " did not activate; this session runs without it: " + strenv(E))}'
   exit 0
 fi
 

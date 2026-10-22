@@ -12,7 +12,6 @@ let
     git
     gnugrep
     gnused
-    jq
     yq-go
   ];
 

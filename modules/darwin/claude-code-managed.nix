@@ -4,7 +4,7 @@
 # Two failure modes shape this module, both silent:
 #   - a managed-settings.json that is not world-readable leaves every session WITHOUT the policy and
 #     with no error, hence `install -m 0644`;
-#   - an invalid JSON stops EVERY session from starting, hence the `jq -e` in the derivation, and the
+#   - an invalid JSON stops EVERY session from starting, hence the `yq -e` in the derivation, and the
 #     list checker, which fails the build on an open gap or a false positive.
 {
   config,

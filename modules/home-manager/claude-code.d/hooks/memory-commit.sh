@@ -15,8 +15,8 @@
 set -uo pipefail
 
 input="$(cat 2>/dev/null || true)"
-session_id="$(printf '%s' "$input" | jq -r '.session_id // empty' 2>/dev/null || true)"
-transcript="$(printf '%s' "$input" | jq -r '.transcript_path // empty' 2>/dev/null || true)"
+session_id="$(printf '%s' "$input" | yq -p=json -o=json -r '.session_id // ""' 2>/dev/null || true)"
+transcript="$(printf '%s' "$input" | yq -p=json -o=json -r '.transcript_path // ""' 2>/dev/null || true)"
 # shellcheck source=memory-dir.bash
 source "$(dirname "${BASH_SOURCE[0]}")/memory-dir.bash"
 
@@ -36,9 +36,9 @@ while IFS= read -r f; do
   [[ "$rel" == "$real_dir"/* ]] || continue
   rel="${rel#"$real_dir"/}"
   [[ -n "$(git -C "$dir" status --porcelain -- "$rel")" ]] && files+=("$rel")
-done < <(jq -r 'select(.type == "assistant") | .message.content[]?
-    | select(.type == "tool_use" and (.name | IN("Write", "Edit", "MultiEdit", "NotebookEdit")))
-    | .input.file_path // .input.notebook_path // empty' "$transcript" 2>/dev/null | sort -u)
+done < <(yq -p=json -o=json -r 'select(.type == "assistant") | .message.content[]? | select(.type == "tool_use")
+    | select(.name == "Write" or .name == "Edit" or .name == "MultiEdit" or .name == "NotebookEdit")
+    | .input.file_path // .input.notebook_path // ""' "$transcript" 2>/dev/null | awk 'NF' | sort -u)
 
 ((${#files[@]} > 0)) || exit 0
 

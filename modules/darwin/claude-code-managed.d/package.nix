@@ -30,15 +30,15 @@ in
       {
         nativeBuildInputs = [
           python
-          pkgs.jq
+          pkgs.yq-go
         ];
       }
       ''
         python3 -I ${src}/gen-managed-settings.py list.json
         python3 -I ${src}/tests/check-list.py list.json
         # A hook that crashes lets the call through, so the interpreter is the store's, never PATH's.
-        jq -e --arg hook "${python}/bin/python3 -I ${hookDir}/deny-hook.py" '
-          . + {hooks: {PreToolUse: [{matcher: "Bash", hooks: [{type: "command", command: $hook, timeout: 10}]}]}}
+        HOOK="${python}/bin/python3 -I ${hookDir}/deny-hook.py" yq -p=json -o=json -e '
+          . + {"hooks": {"PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": strenv(HOOK), "timeout": 10}]}]}}
         ' list.json > $out
       '';
 
@@ -47,7 +47,7 @@ in
       {
         nativeBuildInputs = [
           pkgs.bats
-          pkgs.jq
+          pkgs.yq-go
           python
         ];
       }

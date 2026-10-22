@@ -6,14 +6,15 @@
 { pkgs }:
 pkgs.runCommand "claude-code-auto-mode.json"
   {
-    nativeBuildInputs = [ pkgs.jq ];
+    nativeBuildInputs = [ pkgs.yq-go ];
     rules = builtins.toJSON (import ./rules.nix);
     passAsFile = [ "rules" ];
   }
   ''
-    jq -e '
-      (keys - ["environment", "allow", "soft_deny", "hard_deny"] | length == 0)
-      and all(.[]; type == "array" and all(.[]; type == "string") and (map(select(. == "$defaults")) | length == 1))
-    ' "$rulesPath" >/dev/null
-    jq . "$rulesPath" > $out
+    # yq has no array subtraction nor all(gen; cond): the same test, measured equal on good and bad blocks.
+    yq -p=json -o=json -e '
+      ((keys | map(select(. != "environment" and . != "allow" and . != "soft_deny" and . != "hard_deny")) | length) == 0)
+      and (map((tag == "!!seq") and ((map(tag == "!!str") | all)) and ((map(select(. == "$defaults")) | length) == 1)) | all)
+    ' "$rulesPath" >/dev/null 2>&1
+    yq -p=json -o=json . "$rulesPath" > $out
   ''

@@ -14,7 +14,7 @@
 set -euo pipefail
 
 input="$(cat)"
-field() { printf '%s' "$input" | jq -r "$1 // empty" 2>/dev/null || true; }
+field() { printf '%s' "$input" | yq -p=json -o=json -r "$1 // \"\"" 2>/dev/null || true; }
 tool="$(field .tool_name)"
 case "$tool" in
   SendMessage) ;;
@@ -39,15 +39,18 @@ page="$(grep -lxF "> conversation: ${session_id}" "$scratch"/*/LIVE.md 2>/dev/nu
 # The transcript's tail first: the operator's last message is near its end, and the whole file of a long session
 # (155 MB, measured) takes a second to read, which the hook's timeout would turn into silence. The whole file only when
 # the tail holds none.
-last_human() { jq -r 'select(.type == "user" and .origin.kind == "human") | .timestamp // empty' 2>/dev/null | tail -1; }
+# `awk NF`, not `grep -v '^$'`: under pipefail a grep that matches nothing fails the pipeline and kills the hook before
+# the fallback (measured); awk always exits 0.
+last_human() { yq -p=json -o=json -r 'select(.type == "user" and .origin.kind == "human") | .timestamp // ""' 2>/dev/null |
+  awk 'NF' | tail -1; }
 start="$(tail -n 2000 "$transcript" | last_human)"
 [[ -n "$start" ]] || start="$(last_human <"$transcript")"
-start_epoch="$(printf '%s' "$start" | jq -Rr 'sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601' 2>/dev/null || true)"
+start_epoch="$(printf '%s\n' "$start" | yq -p=yaml -r 'with_dtf("2006-01-02T15:04:05.999Z07:00"; to_unix)' 2>/dev/null || true)"
 [[ -n "$start_epoch" ]] || exit 0
 page_epoch="$(stat -c %Y "$page")"
 ((page_epoch < start_epoch)) || exit 0
 
 what="a cross-session message"
 [[ "$tool" == Bash ]] && what="a commit or a push"
-jq -cn --arg p "$page" --arg w "$what" '{hookSpecificOutput: {hookEventName: "PostToolUse",
-  additionalContext: ("Whiteboard: you just made " + $w + ", and your live page " + $p + " has not changed in this turn. Update it now, as the operator asks at every step: its Last update and Now lines, the figure if the state changed (validated), what remains, and any question for them.")}}'
+P="$page" WHAT="$what" yq -n -o=json -I0 '{"hookSpecificOutput": {"hookEventName": "PostToolUse",
+  "additionalContext": ("Whiteboard: you just made " + strenv(WHAT) + ", and your live page " + strenv(P) + " has not changed in this turn. Update it now, as the operator asks at every step: its Last update and Now lines, the figure if the state changed (validated), what remains, and any question for them.")}}'
