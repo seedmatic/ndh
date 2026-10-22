@@ -40,8 +40,10 @@ let
       lib.mapAttrs (_: lib.escapeShellArg) {
         machine = config.networking.hostName;
         cache = metalspace;
+        inherit (cfg) fqdn;
         keyNameRegex = ndh.context.catalog.privateCaches.keyNamePattern metalspace;
-        shared = "${paths.hostTls}/cache-key.public";
+        sharedPublic = "${paths.hostTls}/cache-key.public";
+        sharedCsr = "${paths.hostTls}/request.csr";
         base = "/var/lib/ndh";
         owner = "0";
         inherit (paths) publishDir;
@@ -49,6 +51,7 @@ let
       }
       // {
         inherit (ndh.context) nixBashTrampoline;
+        openssl = "${pkgs.openssl}/bin/openssl";
       }
     )
   );
@@ -476,13 +479,16 @@ in
       supportsDryActivation = false;
       text = ''
         if ! ${pkgs.bash}/bin/bash ${publish}/bin/attic-publish; then
-          echo "[attic-publish] FAILED to publish ${cfg.cacheName}'s public key; the next activation retries" >&2
+          echo "[attic-publish] FAILED to publish ${cfg.cacheName}'s public key or TLS CSR; the next activation retries" >&2
         fi
       '';
     };
     systemd.paths.ndh-attic-publish = {
       wantedBy = [ "multi-user.target" ];
-      pathConfig.PathChanged = "${paths.hostTls}/cache-key.public";
+      pathConfig.PathChanged = [
+        "${paths.hostTls}/cache-key.public"
+        "${paths.hostTls}/request.csr"
+      ];
     };
     systemd.services.ndh-attic-publish = {
       description = "Publish the cache container's public key, signed by this guest";

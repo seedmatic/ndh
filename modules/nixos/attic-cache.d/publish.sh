@@ -1,21 +1,22 @@
 #!/usr/bin/env -S bash -euo pipefail
 # @codebase
-# ndh-attic-publish: this NixOS guest publishes its cache container's public key for the seat to collect (keys-reconcile,
-# class attic-cache-key). Rendered by pkgs.replaceVars, each value shell-quoted: machine, cache, keyNameRegex (the
-# catalog's keyNamePattern for this metalspace, anchored), shared (the cache-key.public the container writes on the
+# ndh-attic-publish: this NixOS guest publishes what its cache container produced, for the seat to collect
+# (keys-reconcile): the cache's public key (class attic-cache-key) and the CSR of its TLS key (class attic-tls-csr).
+# Rendered by pkgs.replaceVars, each value shell-quoted: machine, cache, fqdn (the cache's fabric name), keyNameRegex
+# (the catalog's keyNamePattern for this metalspace), sharedPublic and sharedCsr (the files the container writes on the
 # disk device it shares with this guest), base (the root of the directory walk), owner (0: root), publishDir, hostKey
 # (the key this guest's sshd serves, whose certificate keys.yaml records).
 #
-# The shared file is HOSTILE input: the container's root writes it. It is read only if it is a regular file, not a
-# link, and only its first bytes, into this run's own directory; that copy is the one checked, hashed and signed, so
-# the container cannot swap the file between the check and the signature. The statement binds the public to THIS guest
-# (namespace seedmatic-attic), not to the container: root in the container can hand any well-formed public.
+# The shared files are HOSTILE input: the container's root writes them. Each is read only if it is a regular file, not
+# a link, and only its first bytes, into this run's own directory; that copy is the one checked, hashed and signed, so
+# the container cannot swap a file between the check and the signature. Each statement binds its artifact to THIS
+# guest (namespace seedmatic-attic), not to the container: root in the container can hand any well-formed artifact.
 #
-# Idempotent, at every activation and on every write of the shared file: the same content re-signs to the same files.
-# Prints names, the cache and the public only.
+# Idempotent, at every activation and on every write of a shared file: the same content re-signs to the same files.
+# Prints names, the cache, the public and the CSR's name only.
 source @nixBashTrampoline@
 
-readonly machine=@machine@ cache=@cache@ keyNameRegex=@keyNameRegex@ shared=@shared@
+readonly machine=@machine@ cache=@cache@ fqdn=@fqdn@ keyNameRegex=@keyNameRegex@ sharedPublic=@sharedPublic@ sharedCsr=@sharedCsr@
 readonly base=@base@ owner=@owner@ publishDir=@publishDir@ hostKey=@hostKey@
 
 die() {
@@ -44,34 +45,59 @@ owned_dirs() {
   done
 }
 
+# take <shared file> <bytes> <copy>: the bounded read of a hostile file into this run's own copy; 1 if it is absent
+take() {
+  if [[ ! -e $1 && ! -L $1 ]]; then return 1; fi
+  [[ -f $1 && ! -L $1 ]] || die "${1} is not a regular file (a symlink?): nothing published"
+  head -c "$2" -- "$1" >"$3" || die "reading ${1} failed"
+}
+
+# sign <class> <artifact copy> <published stem> <extension>: the statement over the copy's sha256, signed with the key
+# this guest serves, then the artifact, its statement and signature put in place by renames
+sign() {
+  local class="$1" copy="$2" stem="$3" ext="$4" sum
+  sum="$(sha256sum "$copy" | cut -d' ' -f1)"
+  printf 'seedmatic-attic v1\nclass %s\ncache %s\nmachine %s\nsha256 %s\n' "$class" "$cache" "$machine" "$sum" >"$work/${class}.statement"
+  ssh-keygen -q -Y sign -f "$hostKey" -n seedmatic-attic "$work/${class}.statement" </dev/null || die "signing the ${class} statement failed"
+  chmod 0644 "$copy" "$work/${class}.statement" "$work/${class}.statement.sig"
+  mv -f "$copy" "${stem}.${ext}"
+  mv -f "$work/${class}.statement" "${stem}.statement"
+  mv -f "$work/${class}.statement.sig" "${stem}.statement.sig"
+}
+
 main() {
   umask 022
-  if [[ ! -e $shared && ! -L $shared ]]; then
-    printf '[ndh-attic-publish] %s: the container has not written its public yet; nothing to publish\n' "$cache" >&2
-    return 0
-  fi
-  [[ -f $shared && ! -L $shared ]] || die "${shared} is not a regular file (a symlink?): nothing published"
   owned_dirs "$publishDir"
-
   work="$(mktemp -d "${publishDir}/.publish.XXXXXX")"
   trap 'rm -rf "$work"' EXIT
-  : "a bounded read into this run's own copy: what is checked below is what is signed"
-  head -c 256 -- "$shared" >"$work/read" || die "reading ${shared} failed"
-  local public
-  public="$(<"$work/read")"
-  [[ $public =~ ^${keyNameRegex}:[A-Za-z0-9+/]{43}=$ ]] ||
-    die "${shared} is not one ${cache} public key named as the catalog accepts it: nothing published"
-  printf '%s\n' "$public" >"$work/public"
 
-  local sum
-  sum="$(sha256sum "$work/public" | cut -d' ' -f1)"
-  printf 'seedmatic-attic v1\nclass attic-cache-key\ncache %s\nmachine %s\nsha256 %s\n' "$cache" "$machine" "$sum" >"$work/statement"
-  ssh-keygen -q -Y sign -f "$hostKey" -n seedmatic-attic "$work/statement" </dev/null || die "signing the statement failed"
-  chmod 0644 "$work/public" "$work/statement" "$work/statement.sig"
-  for f in public statement statement.sig; do mv -f "$work/$f" "${publishDir}/attic-${cache}.cache-key.${f}"; done
+  : "the cache's public: one line, named as the catalog accepts it"
+  if take "$sharedPublic" 256 "$work/public.read"; then
+    local public
+    public="$(<"$work/public.read")"
+    [[ $public =~ ^${keyNameRegex}:[A-Za-z0-9+/]{43}=$ ]] ||
+      die "${sharedPublic} is not one ${cache} public key named as the catalog accepts it: nothing published"
+    printf '%s\n' "$public" >"$work/public"
+    sign attic-cache-key "$work/public" "${publishDir}/attic-${cache}.cache-key" public
+    printf '[ndh-attic-publish] %s public published by %s: %s\n' "$cache" "$machine" "$public" >&2
+  else
+    printf '[ndh-attic-publish] %s: the container has not written its public yet\n' "$cache" >&2
+  fi
+
+  : "the TLS key's CSR: one PEM request, self-signed, naming exactly the cache's fabric name"
+  if take "$sharedCsr" 4096 "$work/csr.read"; then
+    @openssl@ req -in "$work/csr.read" -noout -verify >/dev/null 2>&1 ||
+      die "${sharedCsr} is not one CSR that verifies: nothing published"
+    @openssl@ req -in "$work/csr.read" -out "$work/csr" >/dev/null 2>&1 || die "re-encoding ${sharedCsr} failed"
+    [[ "$(@openssl@ req -in "$work/csr" -noout -subject -nameopt RFC2253 2>/dev/null)" == "subject=CN=${fqdn}" ]] ||
+      die "${sharedCsr}'s subject is not CN=${fqdn}: nothing published"
+    sign attic-tls-csr "$work/csr" "${publishDir}/attic-${cache}.tls-csr" csr
+    printf '[ndh-attic-publish] %s TLS CSR published by %s: CN=%s\n' "$cache" "$machine" "$fqdn" >&2
+  else
+    printf '[ndh-attic-publish] %s: the container has not written its CSR yet\n' "$cache" >&2
+  fi
   rm -rf "$work"
   trap - EXIT
-  printf '[ndh-attic-publish] %s published by %s: %s\n' "$cache" "$machine" "$public" >&2
 }
 
 ndh::logger:command:run attic.publish main "$@"
