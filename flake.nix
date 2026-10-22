@@ -1579,6 +1579,67 @@
               done
               touch $out
             '';
+          # A launchd job that runs a store program waits for the store: at boot launchd spawns a RunAtLoad job
+          # before the /nix volume is mounted, and a missing program puts it in the penalty box, never retried
+          # (attic-tokens on nikopol, 2026-10-21). nix-darwin's `command` wraps it in /bin/wait4path; a hand-written
+          # ProgramArguments does not. Every darwin configuration, every daemon and agent; a mutant must be caught.
+          darwin-launchd-waits-for-store =
+            let
+              lib = nixpkgs.lib;
+              unwaited =
+                c:
+                lib.concatMap
+                  (
+                    set:
+                    lib.mapAttrsToList (name: _: name) (
+                      lib.filterAttrs (
+                        _: j:
+                        let
+                          args = j.serviceConfig.ProgramArguments or [ ];
+                          program = j.serviceConfig.Program or "";
+                        in
+                        (lib.any (lib.hasInfix "/nix/store/") args || lib.hasInfix "/nix/store/" program)
+                        && !(
+                          lib.length args >= 3
+                          && lib.elemAt args 0 == "/bin/sh"
+                          && lib.elemAt args 1 == "-c"
+                          && lib.hasPrefix "/bin/wait4path /nix/store && exec " (lib.elemAt args 2)
+                        )
+                      ) set
+                    )
+                  )
+                  [
+                    c.config.launchd.daemons
+                    c.config.launchd.agents
+                    c.config.launchd.user.agents
+                  ];
+              found = lib.filter (l: l.jobs != [ ]) (
+                lib.mapAttrsToList (name: c: {
+                  inherit name;
+                  jobs = unwaited c;
+                }) self.darwinConfigurations
+              );
+              mutant = unwaited (
+                self.darwinConfigurations.nikopol.extendModules {
+                  modules = [
+                    {
+                      launchd.daemons.ndh-attic-tokens = {
+                        command = lib.mkForce "";
+                        serviceConfig.ProgramArguments = [ "/nix/store/x-mutant/bin/unseal" ];
+                      };
+                    }
+                  ];
+                }
+              );
+            in
+            assert lib.assertMsg (found == [ ])
+              "launchd jobs run a store program without waiting for /nix/store: ${
+                lib.concatMapStringsSep "; " (l: "${l.name}: ${toString l.jobs}") found
+              }";
+            assert lib.assertMsg (
+              mutant == [ "ndh-attic-tokens" ]
+            ) "the bare-ProgramArguments mutant was not caught (found: ${toString mutant})";
+            pkgs.runCommand "darwin-launchd-waits-for-store" { } "touch $out";
           # The weekly GC daemon of each Mac says why it fails: its output goes to /var/log/nix-gc.log.
           darwin-nix-gc-logs =
             let
@@ -2254,10 +2315,44 @@
                   path = builtins.head (builtins.match ".*(/nix/store/[a-z0-9]+-claude-code-backend\\.json).*" data);
                 in
                 builtins.appendContext path (builtins.getContext data);
-              # The GUI layer is a script of launchctl lines: it must unset every retired key and set every value.
+              # The GUI layer is a script of launchctl lines: it must unset every retired key and set every value. It is
+              # read as the exec target of nix-darwin's wait4path wrapper, so an agent that loses the wrapper has no
+              # script to check and is refused, rather than checked as nothing. The match drops the context; it is put back.
+              script =
+                c:
+                let
+                  args = c.launchd.user.agents.claude-code-backend-env.serviceConfig.ProgramArguments or [ ];
+                  m =
+                    if pkgs.lib.length args == 3 then
+                      builtins.match "/bin/wait4path /nix/store && exec (/nix/store/[^ ]+)" (pkgs.lib.elemAt args 2)
+                    else
+                      null;
+                in
+                if m == null then
+                  null
+                else
+                  builtins.appendContext (builtins.head m) (builtins.getContext (pkgs.lib.elemAt args 2));
               agent =
                 h:
-                builtins.head (darwin h).launchd.user.agents.claude-code-backend-env.serviceConfig.ProgramArguments;
+                let
+                  s = script (darwin h);
+                in
+                assert pkgs.lib.assertMsg (
+                  s != null
+                ) "${h}: claude-code-backend-env does not run its script behind the wait4path wrapper";
+                s;
+              mutant =
+                script
+                  (self.darwinConfigurations.bioskop.extendModules {
+                    modules = [
+                      {
+                        launchd.user.agents.claude-code-backend-env = {
+                          command = pkgs.lib.mkForce "";
+                          serviceConfig.ProgramArguments = [ "/nix/store/x-mutant-claude-code-backend-env" ];
+                        };
+                      }
+                    ];
+                  }).config;
               missing =
                 h:
                 pkgs.lib.filter (k: ((session h).${k} or null) != backend.env.${k}) (
@@ -2270,6 +2365,9 @@
                 + pkgs.lib.optionalString (kept h != [ ]) "${h}: the shell env keeps ${toString (kept h)}\n"
               ) hosts;
             in
+            assert pkgs.lib.assertMsg (
+              mutant == null
+            ) "claude-code-backend-seats: an agent without the wrapper was not refused";
             pkgs.runCommand "claude-code-backend-seats"
               {
                 inherit report;

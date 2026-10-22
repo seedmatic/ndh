@@ -32,9 +32,9 @@ in
   config = lib.mkIf (config.profile.host.hostName == "nikopol") {
     # LaunchAgent that reacts to network state changes (event-driven, not polling)
     launchd.user.agents.tailscale-vnc-forward = {
+      command = "${vncForwardScript}";
       serviceConfig = {
         Label = "io.seedmatic.ndh-tailscale-vnc-forward";
-        ProgramArguments = [ "${vncForwardScript}" ];
 
         # Event-driven: react to SystemConfiguration network state changes
         # This triggers when any network interface state changes (VPN connect/disconnect, etc.)

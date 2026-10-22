@@ -23,9 +23,11 @@ let
   );
 in
 {
-  launchd.user.agents.claude-code-backend-env.serviceConfig = {
-    Label = "io.seedmatic.ndh.claude-code-backend-env";
-    ProgramArguments = [ "${setenv}" ];
-    RunAtLoad = true;
+  launchd.user.agents.claude-code-backend-env = {
+    command = "${setenv}";
+    serviceConfig = {
+      Label = "io.seedmatic.ndh.claude-code-backend-env";
+      RunAtLoad = true;
+    };
   };
 }

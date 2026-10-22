@@ -79,13 +79,13 @@ in
     };
 
     launchd.user.agents.bringup-observe-vector = {
+      command = lib.escapeShellArgs [
+        "${vectorPkg}/bin/vector"
+        "--config-yaml"
+        "${vectorConfigFile}"
+      ];
       serviceConfig = {
         Label = "io.seedmatic.ndh-bringup-observe-vector";
-        ProgramArguments = [
-          "${vectorPkg}/bin/vector"
-          "--config-yaml"
-          "${vectorConfigFile}"
-        ];
         RunAtLoad = true;
         KeepAlive = true;
         ProcessType = "Background";
