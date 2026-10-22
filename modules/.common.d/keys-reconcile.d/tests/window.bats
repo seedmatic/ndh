@@ -41,6 +41,7 @@ EOF
       .keys."host-seat".slots."26-11-01" = {"state": "pending", "origin": "host"}
     ' >"$src/modules/home-manager/ssh.d/keys.yaml"
   printf 'caches:\n  k: v1\n  # sops:encrypted\n  s: secret\n' >"$src/catalog/cache-trust.yaml"
+  printf '{}\n' >"$src/catalog/private-caches.json"
   printf 'a: one\nb: two\n' >"$src/.secrets"
   (cd "$src" && for f in modules/home-manager/ssh.d/keys.yaml catalog/cache-trust.yaml .secrets; do
     sops encrypt -i --input-type yaml --output-type yaml "$f"
@@ -76,7 +77,7 @@ arm() { # <expires> <tools>: the delegation as ndh-ops writes it (owned by the t
 
 render() {
   local -A vars=(
-    [nixBashTrampoline]="$NDH_TRAMPOLINE" [toolPath]="$PATH" [verify]="$BATS_TEST_DIRNAME/../verify.sh" [write]="$BATS_TEST_DIRNAME/../write.sh"
+    [nixBashTrampoline]="$NDH_TRAMPOLINE" [toolPath]="$PATH" [verify]="$BATS_TEST_DIRNAME/../verify.sh" [write]="$BATS_TEST_DIRNAME/../write.sh" [classes]="$BATS_TEST_DIRNAME/../classes"
     [revision]="$rev" [remote]="$t/remote.git" [batch]="$t/batch.json" [machines]="$t/machines.yaml"
     [keysJson]="$t/keys.json" [publishDir]="$t/published" [delegation]="$t/delegation" [keysJsonTool]="$t/keys-json" [ttyIn]="$t/tty" [ttyOut]="$t/prompt"
   )
@@ -84,7 +85,7 @@ render() {
   text="$(cat "$BATS_TEST_DIRNAME/../keys-reconcile.sh")"
   for k in "${!vars[@]}"; do
     case $k in
-      nixBashTrampoline | toolPath | verify | write | machines | batch | keysJson) text="${text//@$k@/${vars[$k]}}" ;;
+      nixBashTrampoline | toolPath | verify | write | classes | machines | batch | keysJson) text="${text//@$k@/${vars[$k]}}" ;;
       *) text="${text//@$k@/$(printf '%q' "${vars[$k]}")}" ;;
     esac
   done
@@ -211,6 +212,48 @@ encrypted() { yq -r 'del(.sops) | .. | select(tag == "!!str" and test("^ENC\["))
   run --separate-stderr window oui
   [ "$status" -ne 0 ]
   [[ $stderr == *"has no ndh::secret window"* ]]
+  [ "$(git -C "$(tree)" rev-parse HEAD)" = "$rev" ]
+}
+
+attic() { # the guest's attic publication, signed by the seat's serving (old) key, appended to the batch
+  local public sum
+  public="seedmatic-m1-attic-1:$(printf 'A%.0s' {1..43})="
+  install -d -m 0755 "$t/attic"
+  printf '%s\n' "$public" >"$t/attic/attic-m1.cache-key.public"
+  sum="$(sha256sum "$t/attic/attic-m1.cache-key.public" | cut -d' ' -f1)"
+  printf 'seedmatic-attic v1\nclass attic-cache-key\ncache m1\nmachine seat\nsha256 %s\n' "$sum" >"$t/attic/attic-m1.cache-key.statement"
+  ssh-keygen -q -Y sign -f "$t/old" -n seedmatic-attic "$t/attic/attic-m1.cache-key.statement" </dev/null
+  D="$t/attic" S="$(cut -d' ' -f1,2 "$t/old.pub")" yq -i -p json -o json \
+    '. += [{"class": "attic-cache-key", "machine": "seat", "cache": "m1", "fqdn": "attic.m1", "dir": strenv(D), "keyNameRegex": "seedmatic-m1-attic-[0-9]+", "servingPublic": strenv(S)}]' \
+    "$t/batch.json"
+}
+
+@test "a window holding a host key and an attic cache key: one worktree, one commit, both recorded" {
+  attic
+  run --separate-stderr window oui
+  [ "$status" -eq 0 ]
+  [ "$(yq -r '.keys."host-seat".slots."26-11-01".state' "$(tree)/modules/home-manager/ssh.d/keys.yaml")" = recorded ]
+  [ "$(yq -r -p json -o json '.m1.publicKey' "$(tree)/catalog/private-caches.json")" = "$(cat "$t/attic/attic-m1.cache-key.public")" ]
+  [ "$(yq -r -p json -o json '.m1.consumers[0]' "$(tree)/catalog/private-caches.json")" = attic.m1 ]
+  [ "$(yq -r -p json -o json '.m1.origin.revision' "$(tree)/catalog/private-caches.json")" = "$rev" ]
+  cmp "$t/attic/attic-m1.cache-key.statement" "$(tree)/catalog/private-caches.d/statements/attic-m1.cache-key.statement"
+  [ "$(git -C "$(tree)" rev-list --count "$rev..HEAD")" = 1 ]
+  git -C "$(tree)" log -1 --format=%B | grep -q '^keys-reconcile: record 1 host key(s) at '
+  git -C "$(tree)" log -1 --format=%B | grep -q '^keys-reconcile: record 1 attic cache key(s) at '
+  [ -z "$(git -C "$(tree)" status --porcelain)" ]
+}
+
+@test "attic-cache-key: a cache whose key the revision already records is refused, nothing committed" {
+  attic
+  : "the revision records a key for m1: a new one is a declared rotation, not a window's"
+  printf '{"m1": {"publicKey": "seedmatic-m1-attic-1:%s="}}\n' "$(printf 'B%.0s' {1..43})" >"$t/src/catalog/private-caches.json"
+  git -C "$t/src" -c user.email=t@t -c user.name=t commit -q -am recorded
+  rev=$(git -C "$t/src" rev-parse HEAD)
+  git -C "$t/src" push -q -f "$t/remote.git" HEAD:refs/heads/develop HEAD:refs/heads/main
+  render
+  run --separate-stderr window oui
+  [ "$status" -ne 0 ]
+  [[ $stderr == *"privateCaches.m1 already records a key"* ]]
   [ "$(git -C "$(tree)" rev-parse HEAD)" = "$rev" ]
 }
 
