@@ -1336,6 +1336,10 @@
             assert lib.assertMsg (failed ownOff) "host-key-own-is-serving: own off on a serving slot passed";
             assert lib.assertMsg (failed ownOn) "host-key-own-is-serving: own on a recorded slot passed";
             pkgs.runCommand "host-key-own-is-serving" { } "touch $out";
+          keys-reconcile-bats = import ./modules/.common.d/keys-reconcile.d/tests/package.nix {
+            inherit pkgs;
+            trampoline = mkNdhNixBashTrampoline { pkgsForSystem = pkgs; };
+          };
           host-key-generate-bats = import ./modules/.common.d/host-key.d/tests/generate-bats.nix {
             inherit pkgs;
             trampoline = mkNdhNixBashTrampoline { pkgsForSystem = pkgs; };
@@ -3895,6 +3899,8 @@
       fleetHostNames = nixpkgs.lib.concatLists (nixpkgs.lib.attrValues fleetHostCertificates.names);
       # What ssh-keys-certify signs host certificates for, read by the seat's module (ndh.ndhSwitch.sshKeysCertify).
       inherit fleetHostCertificates;
+      # Each machine's own names, the principals of its ONE host certificate (keys-reconcile signs it from these).
+      fleetHostNamesByMachine = fleetHostCertificates.names;
 
       darwinConfigurations = builtins.foldl' (
         acc: hostOutput: acc // hostOutput.darwinConfigurations
