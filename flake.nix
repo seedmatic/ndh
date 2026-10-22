@@ -2496,8 +2496,8 @@
             pkgs = pkgsForLinux;
             inherit (self.darwinConfigurations.bioskop.config.ndh.sshfs) authorizedOptions;
           };
-          # jq is replaced by yq-go in every script ndh runs, but for the initrd's one reviewed exception. Report
-          # mode until 🤖's Claude Code part has moved too; a mutant (a jq added) is refused at every build.
+          # jq is replaced by yq-go in every script ndh runs, but for the initrd's one reviewed exception; a mutant
+          # (a jq added) is refused at every build.
           no-jq = import ./modules/.common.d/no-jq.d/package.nix {
             inherit pkgs;
             src = ./.;
