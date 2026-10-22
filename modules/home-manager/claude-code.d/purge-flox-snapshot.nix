@@ -18,12 +18,10 @@ let
     trampoline: pathFirst:
     pkgs.writeShellScript "purge-flox-snapshot" ''
       export PATH=${pathFirst}${tools}
-      ${builtins.readFile (
-        pkgs.replaceVars ./purge-flox-snapshot.sh {
-          nixBashTrampoline = trampoline;
-          inherit loggerTag;
-        }
-      )}
+      ${import ../../../nix/replace-vars-text.nix pkgs.lib ./purge-flox-snapshot.sh {
+        nixBashTrampoline = trampoline;
+        inherit loggerTag;
+      }}
     '';
 in
 {
