@@ -139,6 +139,32 @@ root_own() {
   done
 }
 
+# declared_profiles {info}: "<path in the container>\t<package>" for every profile the instance declares, its
+# system's first. What converge requires TRUE of a container, and what a delivery sets.
+declared_profiles() {
+  local profiles
+  profiles=$(yq -p json -oy -r '(.profiles // {}) | to_entries | .[] | .key + "\t" + .value' <<<"$1") || return 1
+  printf '/nix/var/nix/profiles/system\t%s\n%s\n' "$(field "$1" toplevel)" "$profiles"
+}
+
+# declared_ok {name}: every declared profile resolves to its package, each one that does not named on stdout.
+# The one postcondition: converge's "up to date" and the end of a delivery. Called under `if`, errexit off,
+# so every status is returned by hand.
+declared_ok() {
+  local info dir profiles profile package ok=0
+  info=$(instance "$1") || return 1
+  dir=$(field "$info" dir) || return 1
+  profiles=$(declared_profiles "$info") || return 1
+  while IFS=$'\t' read -r profile package; do
+    [ -n "$profile" ] || continue
+    if [ "$(readlink -f "$dir/root$profile" 2>/dev/null || true)" != "$(readlink -f "$package")" ]; then
+      echo "$profile is not $package"
+      ok=1
+    fi
+  done <<<"$profiles"
+  return "$ok"
+}
+
 # deliver_keep {name}: the delivery up to the container's start, the previous state kept aside in
 # `.previous-<snapshot>` (its upper, DB, lowers stamps and profiles) and its snapshot kept, so
 # `rollback` can put it back exactly. Prints ONLY the new snapshot's name on stdout: what the steps
@@ -233,8 +259,7 @@ deliver_steps() {
   # The source is nerd-nixos's own store, which built or validated every path; most carry no
   # signature, so a checked copy would refuse the first path of any delta.
   local profiles profile parent
-  profiles=$(yq -p json -oy -r '(.profiles // {}) | to_entries | .[] | .key + "\t" + .value' <<<"$info")
-  profiles=$(printf '/nix/var/nix/profiles/system\t%s\n%s' "$toplevel" "$profiles")
+  profiles=$(declared_profiles "$info")
   while IFS=$'\t' read -r profile runtime; do
     [ -n "$profile" ] || continue
     parent=$(dirname "${profile#/}")
@@ -243,10 +268,9 @@ deliver_steps() {
     (umask 022 && mkdir -p "$dir/root/$parent")
     nix copy --no-check-sigs --to "$store" "$runtime"
     nix-env --store "$store" -p "$dir/root$profile" --set "$runtime"
-    # Read on what landed: the profile resolves to the declared package.
-    [ "$(readlink -f "$dir/root$profile")" = "$(readlink -f "$runtime")" ] ||
-      die "$1's profile $profile does not resolve to $runtime after delivery"
   done <<<"$profiles"
+  # Read on what landed, by converge's own test.
+  declared_ok "$1" >&2 || die "$1 does not hold its declared profiles after delivery"
   # nerd-nixos's GC, freeze and compaction keep what a container runs.
   mkdir -p "$GCROOTS"
   ln -sfn "$toplevel" "$GCROOTS/$1"
@@ -380,7 +404,7 @@ healthy() {
 # not yet created is the operator's (`create`), and is skipped, loudly. The exit status is 1 if any
 # container could not be converged, so the unit fails visibly.
 converge() {
-  local name info dir toplevel current snapshot aside failed=0
+  local name info dir toplevel declared wrong snapshot aside failed=0
   for name in $(yq -p json -oy -r 'keys | .[]' <<<"$INSTANCES"); do
     info=$(instance "$name")
     dir=$(field "$info" dir)
@@ -390,20 +414,28 @@ converge() {
       failed=1
       continue
     fi
-    # Both sides resolved: a profile is a chain of links (system → system-N-link → the store path).
-    current=$(readlink -f "$dir/root/nix/var/nix/profiles/system" 2>/dev/null || true)
-    if [ -n "$current" ] && [ "$current" = "$(readlink -f "$toplevel")" ]; then
-      echo "ndh-incus-container: $name runs its declared system"
+    # Every declared profile, the system's and the others, resolved on both sides (a profile is a chain of
+    # links: system → system-N-link → the store path). One that is not means a delivery: the container's scripts
+    # read those profiles, so one set under a running container would go unchecked by any health test.
+    if wrong=$(declared_ok "$name"); then
+      echo "ndh-incus-container: $name holds its declared system and profiles"
       continue
     fi
-    if [ -e "$dir/converge.failed" ] && [ "$(cat "$dir/converge.failed")" = "$toplevel" ]; then
+    echo "ndh-incus-container: $name to deliver: ${wrong//$'\n'/; }" >&2
+    # One attempt per declared state, the profiles included: a changed profile alone is a new attempt.
+    if ! declared=$(declared_profiles "$info"); then
+      echo "ndh-incus-container: $name's declared profiles could not be read: nothing delivered" >&2
+      failed=1
+      continue
+    fi
+    if [ -e "$dir/converge.failed" ] && [ "$(cat "$dir/converge.failed")" = "$declared" ]; then
       echo "ndh-incus-container: $name already failed on $toplevel; it stays on its previous system" >&2
       failed=1
       continue
     fi
     if ! snapshot=$(deliver_keep "$name"); then
       echo "ndh-incus-container: $name could not be delivered" >&2
-      echo "$toplevel" >"$dir/converge.failed"
+      echo "$declared" >"$dir/converge.failed"
       # Stopped past its snapshot, the delivery has moved the previous system aside: put it back.
       for aside in "$dir"/.previous-*; do
         [ -d "$aside" ] || continue
@@ -421,7 +453,7 @@ converge() {
       rm -f "$dir/converge.failed"
       echo "ndh-incus-container: $name ← $toplevel, healthy, on snapshot $snapshot"
     else
-      echo "$toplevel" >"$dir/converge.failed"
+      echo "$declared" >"$dir/converge.failed"
       rollback "$name" "$snapshot" || echo "ndh-incus-container: $name's rollback FAILED: it needs a hand" >&2
       echo "ndh-incus-container: $name was unhealthy on $toplevel and is back on its previous system" >&2
       failed=1

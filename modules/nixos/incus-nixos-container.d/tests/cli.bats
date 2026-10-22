@@ -204,9 +204,11 @@ delivered_before() {
 @test "converge on the declared system does nothing" {
   delivered_before
   ln -sfn "$t/x-attic" "$t/attic/root/nix/var/nix/profiles/system"
+  mkdir -p "$t/attic/root/nix/var/nix/profiles/per-user/root"
+  ln -sfn "$t/x-runtime" "$t/attic/root/nix/var/nix/profiles/per-user/root/runtime"
   run --separate-stderr bash "$cli" converge <"$t/stdin"
   [ "$status" -eq 0 ]
-  [[ $output == *"attic runs its declared system"* ]]
+  [[ $output == *"attic holds its declared system and profiles"* ]]
   run grep -E '^(zfs snapshot|incus stop|incus start)' "$t/calls"
   [ "$status" -eq 1 ]
 }
@@ -236,7 +238,7 @@ delivered_before() {
   [ "$(cat "$t/attic/upper/marker")" = old-upper ]
   [ "$(cat "$t/attic/lower.snapshot")" = ndh-incus-attic-20261001T000000Z ]
   grep -q '^zfs destroy tank/x@ndh-incus-attic-20261018T000000Z$' "$t/calls"
-  [ "$(cat "$t/attic/converge.failed")" = "$t/x-attic" ]
+  [ "$(head -1 "$t/attic/converge.failed")" = "/nix/var/nix/profiles/system	$t/x-attic" ]
   # Once per toplevel: the next converge does not deliver it again.
   : >"$t/calls"
   run --separate-stderr bash "$cli" converge <"$t/stdin"
@@ -333,7 +335,7 @@ delivered_before() {
   [ "$(cat "$t/attic/upper/marker")" = old-upper ]
   [ "$(cat "$t/attic/lower.snapshot")" = ndh-incus-attic-20261001T000000Z ]
   [ -z "$(ls -d "$t/attic"/.previous-* 2>/dev/null)" ]
-  [ "$(cat "$t/attic/converge.failed")" = "$t/x-attic" ]
+  [ "$(head -1 "$t/attic/converge.failed")" = "/nix/var/nix/profiles/system	$t/x-attic" ]
 }
 
 @test "mutant: the delivery steps in the caller's process lose the nix-env failure" {
@@ -342,27 +344,31 @@ delivered_before() {
   grep -q 'bash "\${BASH_SOURCE\[0\]}" _deliver-steps "\$1"' "$cli"
   # The postcondition goes too, so only the process boundary stands between the failure and "healthy".
   sed -e 's/bash "\${BASH_SOURCE\[0\]}" _deliver-steps "\$1"/deliver_steps "$1"/' \
-    -e '/Read on what landed/,/does not resolve to/d' "$cli" >"$t/mutant"
+    -e '/^  declared_ok "\$1" >&2 || die/d' "$cli" >"$t/mutant"
+  run grep -q 'declared_ok "\$1" >&2' "$t/mutant"
+  [ "$status" -eq 1 ]
   run --separate-stderr bash "$t/mutant" converge <"$t/stdin"
   [[ $output == *healthy* ]]
 }
 
-@test "a yq failure reading the profiles fails the delivery, and rolls back" {
+@test "a yq failure reading the profiles fails converge loudly, and delivers nothing" {
   delivered_before
   touch "$t/yq-profiles-fails"
   run --separate-stderr bash "$cli" converge <"$t/stdin"
   [ "$status" -eq 1 ]
-  [[ $stderr == *"could not be delivered"* ]]
+  [[ $stderr == *"declared profiles could not be read"* ]]
   [[ $output != *healthy* ]]
   [ "$(readlink "$t/attic/root/nix/var/nix/profiles/system")" = "$t/x-attic-old" ]
+  run grep -E '^(zfs snapshot|incus start)' "$t/calls"
+  [ "$status" -eq 1 ]
 }
 
 @test "mutant: a profiles read whose yq status is lost passes as healthy" {
   delivered_before
   touch "$t/yq-profiles-fails"
-  grep -q '^  profiles=\$(yq .*<<<"\$info")$' "$cli"
-  sed 's/^\(  profiles=\$(yq .*<<<"\$info")\)$/\1 || true/' "$cli" >"$t/mutant"
-  grep -q '<<<"\$info") || true$' "$t/mutant"
+  grep -q '^  profiles=\$(yq .*<<<"\$1") || return 1$' "$cli"
+  sed 's/^\(  profiles=\$(yq .*<<<"\$1")\) || return 1$/\1 || true/' "$cli" >"$t/mutant"
+  grep -q '<<<"\$1") || true$' "$t/mutant"
   run --separate-stderr bash "$t/mutant" converge <"$t/stdin"
   [[ $output == *healthy* ]]
 }
@@ -375,7 +381,8 @@ delivered_before() {
   chmod +x "$t/bin/nix-env"
   run --separate-stderr bash "$cli" converge <"$t/stdin"
   [ "$status" -eq 1 ]
-  [[ $stderr == *"does not resolve to $t/x-runtime"* ]]
+  [[ $stderr == *"per-user/root/runtime is not $t/x-runtime"* ]]
+  [[ $stderr == *"does not hold its declared profiles after delivery"* ]]
 }
 
 @test "mutant: without the postcondition, a misplaced profile passes as healthy" {
@@ -383,8 +390,8 @@ delivered_before() {
   printf '#!%s\nprintf "nix-env %%s\\n" "$*" >>%q\ncase "$4" in */per-user/*) ln -sfn %q "$4" ;; *) ln -sfn "$6" "$4" ;; esac\n' \
     "$BASH" "$t/calls" "$t/x-attic-old" >"$t/bin/nix-env"
   chmod +x "$t/bin/nix-env"
-  grep -q 'does not resolve to' "$cli"
-  sed -e '/Read on what landed/,/does not resolve to/d' "$cli" >"$t/mutant"
+  grep -q '^  declared_ok "\$1" >&2 || die' "$cli"
+  sed '/^  declared_ok "\$1" >&2 || die/d' "$cli" >"$t/mutant"
   run --separate-stderr bash "$t/mutant" converge <"$t/stdin"
   [[ $output == *healthy* ]]
 }
@@ -460,4 +467,62 @@ refused_untouched() {
   sed '/is not an instance name/d' "$t/declared" >"$t/mutant"
   run --separate-stderr bash "$t/mutant" _deliver-steps 'att.c' <"$t/stdin"
   [[ $stderr != *"is not an instance name"* && $stderr != *"no instance 'att.c' is declared"* ]]
+}
+
+# What converge must leave TRUE, whatever it did to get there: every declared profile resolves to its package.
+holds_declared() {
+  [ "$(readlink -f "$t/attic/root/nix/var/nix/profiles/system")" = "$(readlink -f "$t/x-attic")" ]
+  [ "$(readlink -f "$t/attic/root/nix/var/nix/profiles/per-user/root/runtime")" = "$(readlink -f "$t/x-runtime")" ]
+}
+
+# The system already the declared one: only the profiles differ.
+system_current() {
+  delivered_before
+  ln -sfn "$t/x-attic" "$t/attic/root/nix/var/nix/profiles/system"
+}
+
+@test "the system matches but a declared profile is missing: converge delivers, and it then holds" {
+  system_current
+  run --separate-stderr bash "$cli" converge <"$t/stdin"
+  [ "$status" -eq 0 ]
+  [[ $stderr == *"per-user/root/runtime is not $t/x-runtime"* ]]
+  holds_declared
+}
+
+@test "the system matches but a declared profile points elsewhere: converge delivers, and it then holds" {
+  system_current
+  mkdir -p "$t/attic/root/nix/var/nix/profiles/per-user/root"
+  ln -sfn "$t/x-attic-old" "$t/attic/root/nix/var/nix/profiles/per-user/root/runtime"
+  run --separate-stderr bash "$cli" converge <"$t/stdin"
+  [ "$status" -eq 0 ]
+  holds_declared
+}
+
+@test "mutant: an up-to-date test on the system alone leaves a missing profile missing" {
+  system_current
+  # Its shape before this fix: the system's profile only.
+  grep -q 'if wrong=\$(declared_ok "\$name"); then' "$cli"
+  sed 's|if wrong=\$(declared_ok "\$name"); then|if [ "$(readlink -f "$dir/root/nix/var/nix/profiles/system")" = "$(readlink -f "$toplevel")" ]; then|' "$cli" >"$t/mutant"
+  run --separate-stderr bash "$t/mutant" converge <"$t/stdin"
+  run holds_declared
+  [ "$status" -ne 0 ]
+}
+
+@test "a profile changed alone, the system the same, is a new attempt after a failed one" {
+  system_current
+  echo "atticd.service failed" >"$t/units"
+  run --separate-stderr bash "$cli" converge <"$t/stdin"
+  [ "$status" -eq 1 ]
+  # The same declared state: not retried.
+  : >"$t/calls"
+  run --separate-stderr bash "$cli" converge <"$t/stdin"
+  [[ $stderr == *"already failed"* ]]
+  # A new runtime declared, the system unchanged: a new attempt.
+  touch "$t/x-runtime-2"
+  sed '/^INSTANCES=/a INSTANCES=$(yq -p json -o json -I0 '"'"'.attic.profiles[] += "-2"'"'"' <<<"$INSTANCES")' "$cli" >"$t/cli-2"
+  [ "$(grep -c 'x-runtime-2\|+= "-2"' "$t/cli-2")" = 1 ]
+  : >"$t/units"
+  run --separate-stderr bash "$t/cli-2" converge <"$t/stdin"
+  [ "$status" -eq 0 ]
+  [ "$(readlink -f "$t/attic/root/nix/var/nix/profiles/per-user/root/runtime")" = "$(readlink -f "$t/x-runtime-2")" ]
 }
