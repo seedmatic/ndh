@@ -12,9 +12,13 @@ pkgs.runCommand "store-freeze-bats"
       coreutils
     ];
     TOOLS_PATH = pkgs.lib.makeBinPath runtimeInputs.tools;
+    # ndh-store-commit's own tools, as store-freeze.nix gives them: the suite runs it with exactly these.
+    COMMIT_TOOLS_PATH = pkgs.lib.makeBinPath runtimeInputs.commit;
   }
   ''
     cp -r ${./..} store-freeze.d && chmod -R u+w store-freeze.d
-    cd store-freeze.d/tests && HOME=$TMPDIR bats --print-output-on-failure .
+    cd store-freeze.d/tests
+    HOME=$TMPDIR bats --print-output-on-failure cli.bats
+    HOME=$TMPDIR TOOLS_PATH=$COMMIT_TOOLS_PATH bats --print-output-on-failure commit.bats
     touch $out
   ''

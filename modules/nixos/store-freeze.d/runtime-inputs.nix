@@ -9,9 +9,14 @@
     getent
     gnugrep
     gnused
-    jq
     procps
     util-linux
+    yq-go
+  ];
+  # ndh-store-commit's: the stage-2 commit reads its manifests with yq.
+  commit = with pkgs; [
+    coreutils
+    yq-go
   ];
   # The machine's own: stubbed in the suite.
   system =

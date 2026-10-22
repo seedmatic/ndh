@@ -2,13 +2,13 @@
 # @nixBashTrampoline@
 
 # Check if we're connected to tailscale
-if ! @tailscale@ status --json | @jq@ -e '.Self.Online' >/dev/null 2>&1; then
+if ! @tailscale@ status --json | @yq@ -p json -o json -e '.Self.Online' >/dev/null 2>&1; then
   logger -t "@loggerTag@" "Tailscale not connected, skipping VNC forward"
   exit 0
 fi
 
 # Check if bioskop is reachable on tailnet
-if ! @tailscale@ status --json | @jq@ -e ".Peer[] | select(.HostName == \"bioskop\")" >/dev/null 2>&1; then
+if ! @tailscale@ status --json | @yq@ -p json -o json -e ".Peer[] | select(.HostName == \"bioskop\")" >/dev/null 2>&1; then
   logger -t "@loggerTag@" "bioskop not reachable on tailnet, skipping VNC forward"
   exit 0
 fi

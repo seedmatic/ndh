@@ -108,7 +108,7 @@ let
   isClusteredFn = ''
     is_clustered() {
       ${pkgs.incus}/bin/incus query /1.0 \
-        | ${pkgs.jq}/bin/jq -e '.environment.server_clustered == true' >/dev/null 2>&1
+        | ${pkgs.yq-go}/bin/yq -p json -o json -e '.environment.server_clustered == true' >/dev/null 2>&1
     }
   '';
 
@@ -244,13 +244,13 @@ let
     name = "incus-cluster-roles";
     text = ''
       if ! ${pkgs.incus}/bin/incus query /1.0 \
-        | ${pkgs.jq}/bin/jq -e '.environment.server_clustered == true' >/dev/null 2>&1; then
+        | ${pkgs.yq-go}/bin/yq -p json -o json -e '.environment.server_clustered == true' >/dev/null 2>&1; then
         echo "incus-cluster-roles: not clustered yet — nothing to reconcile"
         exit 0
       fi
 
       members="$(${pkgs.incus}/bin/incus cluster list --format json \
-        | ${pkgs.jq}/bin/jq -r '.[] | .server_name')"
+        | ${pkgs.yq-go}/bin/yq -p json -o json -r '.[] | .server_name')"
 
       failed=0
       for member in $members; do

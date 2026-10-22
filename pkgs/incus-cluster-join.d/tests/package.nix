@@ -9,7 +9,6 @@ pkgs.runCommand "incus-cluster-join-bats"
       coreutils
       gnugrep
       gnused
-      jq
       yq-go
     ];
   }

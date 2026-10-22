@@ -18,7 +18,7 @@ sync_rename() {
   sync "$(dirname "$2")"
 }
 
-chosen=$(jq -r '.manifest' "$RUN_DIR/store-stack.json")
+chosen=$(yq -p json -o json -r '.manifest' "$RUN_DIR/store-stack.json")
 if [ "$chosen" = "next" ]; then
   if [ -e "$STACK_DIR/current.json" ]; then sync_rename "$STACK_DIR/current.json" "$STACK_DIR/previous.json"; fi
   sync_rename "$STACK_DIR/next.json" "$STACK_DIR/current.json"
@@ -32,8 +32,10 @@ fi
 
 # A freeze request this stack satisfies is done.
 if [ -s "$STACK_DIR/request.json" ] && [ -s "$STACK_DIR/current.json" ]; then
-  wanted=$(jq -r '.snapshot // empty' "$STACK_DIR/request.json")
-  if [ -n "$wanted" ] && jq -e --arg s "$wanted" '[.layers[].snapshot] | index($s) != null' "$STACK_DIR/current.json" >/dev/null; then
+  # yq-go has no `empty`: `// empty` is a syntax error there, on every input. `// ""` gives jq's `// empty` exactly,
+  # nothing and exit 0 on a null, a missing or an empty snapshot (measured). A request without one is not satisfied.
+  wanted=$(yq -p json -o json -r '.snapshot // ""' "$STACK_DIR/request.json")
+  if [ -n "$wanted" ] && S="$wanted" yq -p json -o json -e '[.layers[].snapshot] | any_c(. == strenv(S))' "$STACK_DIR/current.json" >/dev/null; then
     rm "$STACK_DIR/request.json"
   fi
 fi

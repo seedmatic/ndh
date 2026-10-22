@@ -65,7 +65,7 @@ in
         PORT=${toString cfg.debugPort}
         if curl -s "http://localhost:$PORT/json/version" > /dev/null 2>&1; then
           echo "✓ Comet debug interface available at http://localhost:$PORT"
-          ${pkgs.curl}/bin/curl -s "http://localhost:$PORT/json/version" | ${pkgs.jq}/bin/jq .
+          ${pkgs.curl}/bin/curl -s "http://localhost:$PORT/json/version" | ${pkgs.yq-go}/bin/yq -p json -o json .
         else
           echo "⚠ Comet debug port $PORT not responding"
           exit 1

@@ -16,7 +16,7 @@
 # apps.  ssh and timeout are pinned by store path because the trampoline owns PATH.
 #
 # Build-time tokens (pkgs.replaceVars), written WITHOUT at-sigils so replaceVars does not substitute
-# them in this comment: nixBashTrampoline, loggerTag, ssh, timeout, jq, yq, joiningMember,
+# them in this comment: nixBashTrampoline, loggerTag, ssh, timeout, yq, joiningMember,
 # bootstrapMember, joiningSsh, bootstrapSsh, joiningAddress, poolName, poolSource.
 #
 # Usage: <host>-incus-cluster-join [--dry-run]
@@ -44,7 +44,7 @@ remote() {
 # cluster that was live and Fully operational.  Same form as modules/nixos/incus-cluster.nix.
 is_clustered() {
 	remote "$1" incus query /1.0 2>/dev/null |
-		@jq@ -e '.environment.server_clustered == true' >/dev/null 2>&1
+		@yq@ -p json -o json -e '.environment.server_clustered == true' >/dev/null 2>&1
 }
 
 # A joining member must have NO storage pool of its own.  Measured 2026-09-26, and the message is
@@ -62,7 +62,7 @@ clear_joining_config() {
 	local do_clear="$1" pools
 
 	pools="$(remote "${JOINING_SSH}" incus storage list --format json |
-		@jq@ -r '[.[].name] | join(" ")')"
+		@yq@ -p json -o json -r '[.[].name] | join(" ")')"
 	[[ -n "${pools// /}" ]] || return 0
 
 	if [[ "${do_clear}" != true ]]; then

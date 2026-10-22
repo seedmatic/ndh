@@ -19,7 +19,7 @@ let
       loggerTag = loggerTag;
       bioskopHost = bioskopHost;
       tailscale = lib.getExe pkgs.tailscale;
-      jq = lib.getExe pkgs.jq;
+      yq = lib.getExe pkgs.yq-go;
       ssh = lib.getExe pkgs.openssh;
     };
     preferLocalBuild = true;
