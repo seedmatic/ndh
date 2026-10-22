@@ -1705,12 +1705,25 @@
               others = builtins.attrNames (
                 nixpkgs.lib.filterAttrs (_: c: c.pkgs.stdenv.hostPlatform.system != system) all
               );
+              # The system path a NixOS machine's commands live in; a darwin one keeps its system-bound commands
+              # elsewhere, so it has none to compare ("-").
+              sysPath = c: if c.pkgs.stdenv.hostPlatform.isLinux then "${c.config.system.path}" else "-";
               line =
                 name: c:
                 let
                   r = c.config.ndh.bringupRuntime;
                 in
-                "${name} ${r.runtimePackage} ${nixpkgs.lib.concatStringsSep " " r.requiredCommands}";
+                "${name} ${r.runtimePackage} ${sysPath c} ${nixpkgs.lib.concatStringsSep " " r.requiredCommands}";
+              # The trampoline puts the profile FIRST on PATH: a system-bound command there must be the system's own
+              # file (zfs matched to its kernel module, incus to its daemon, systemctl to its init), never a sibling
+              # build that happens to share a version.
+              systemBound = [
+                "nix"
+                "incus"
+                "zfs"
+                "zpool"
+                "systemctl"
+              ];
               # The reviewed exceptions stay OUT of the profile, or the list and the profile say two things.
               exceptions = builtins.attrNames (
                 import ./modules/.common.d/bringup-runtime.d/profile-exceptions.nix
@@ -1719,6 +1732,7 @@
             pkgs.runCommand "bringup-profile-contract"
               {
                 exceptions = nixpkgs.lib.concatStringsSep " " exceptions;
+                systemBound = nixpkgs.lib.concatStringsSep " " systemBound;
                 passAsFile = [ "machines" ];
                 machines = nixpkgs.lib.concatLines (
                   nixpkgs.lib.mapAttrsToList line (
@@ -1729,7 +1743,17 @@
               ''
                 [ -s "$machinesPath" ] || { echo "no machine of ${system} carries the bringup profile" >&2; exit 1; }
                 rc=0
-                while read -r name profile commands; do
+                while read -r name profile syspath commands; do
+                  # A system-bound command both carry must be the same file, or the profile's shadows the system's.
+                  if [ "$syspath" != - ]; then
+                    for c in $systemBound; do
+                      [ -e "$profile/bin/$c" ] && [ -e "$syspath/bin/$c" ] || continue
+                      if [ "$(readlink -f "$profile/bin/$c")" != "$(readlink -f "$syspath/bin/$c")" ]; then
+                        echo "$name: the profile's $c is not the system's ($(readlink -f "$profile/bin/$c") vs $(readlink -f "$syspath/bin/$c"))" >&2
+                        rc=1
+                      fi
+                    done
+                  fi
                   missing=""
                   for c in $commands; do [ -e "$profile/bin/$c" ] || missing="$missing $c"; done
                   if [ -n "$missing" ]; then echo "$name: its profile lacks:$missing" >&2; rc=1; else echo "$name: $(echo $commands | wc -w) commands"; fi

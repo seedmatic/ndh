@@ -64,16 +64,19 @@ let
     ssh-to-age
   ];
   # No darwin program calls a util-linux command (surveyed), and its darwin build ships a partial set: Linux only.
+  # The trampoline puts this profile FIRST on PATH, so a command here wins over the system's: a system-bound one must
+  # BE the system's package (its zfs matched to its kernel module, its incus to its daemon), never a sibling build.
+  incusEnabled = config.virtualisation.incus.enable or false;
   linuxLayer = lib.optionals pkgs.stdenv.hostPlatform.isLinux (
     with pkgs;
     [
       getent
-      incus.client
       iproute2
       util-linux.bin
       config.boot.zfs.package
       config.systemd.package
     ]
+    ++ lib.optional incusEnabled config.virtualisation.incus.package
   );
   darwinLayer = lib.optionals pkgs.stdenv.hostPlatform.isDarwin [ pkgs.tart ];
   bootstrapRuntimePackage = pkgs.symlinkJoin {
@@ -225,12 +228,12 @@ in
       ]
       ++ lib.optionals pkgs.stdenv.hostPlatform.isLinux [
         "getent"
-        "incus"
         "ip"
         "findmnt"
         "zfs"
         "systemctl"
       ]
+      ++ lib.optional incusEnabled "incus"
       ++ lib.optionals pkgs.stdenv.hostPlatform.isDarwin [ "tart" ];
       description = "Command contract that must be present in the dedicated bringup runtime profile.";
     };
