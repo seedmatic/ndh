@@ -1205,46 +1205,68 @@
               "attic-cache-key-name: a cache key not named seedmatic-<metalspace>-attic-<n> on: ${toString wrong}";
             pkgs.runCommand "attic-cache-key-name" { } "touch $out";
           # The attic container carries the trampoline's bringup profile (batch 2, precondition A): a bare
-          # container has none, and the strict trampoline refuses there. On every host that runs it, the
-          # container's toplevel holds the host's runtime package, and its activation links it at the profile dir.
+          # container has none, and the strict trampoline refuses there. On every host that runs it, the instance
+          # declares the host's runtime package at the profile dir, which `deliver` sets host side (the container's
+          # own activation cannot: unprivileged, its root cannot write in the host-owned /nix bind, so a link made
+          # there was a silent no-op). The link is to a HOST store path, so that path must be in the NixOS
+          # guest's own closure, or it dangles. That deliver sets every declared profile is proven by
+          # incus-nixos-container-bats; the mutant drops the declaration and must fail.
           attic-container-bringup-profile =
             let
               lib = nixpkgs.lib;
               hosts = lib.filterAttrs (_: c: c.config.ndh.atticCache.enable or false) self.nixosConfigurations;
-              line =
-                name: c:
+              verdict =
+                configs:
                 let
-                  r = c.config.ndh.bringupRuntime;
+                  declares =
+                    _: c:
+                    let
+                      r = c.config.ndh.bringupRuntime;
+                      profiles = c.config.ndh.incusNixosContainers.instances.attic.profiles;
+                    in
+                    (profiles.${r.profileDir} or null) == r.runtimePackage;
                 in
-                "${name} ${c.config.ndh.incusNixosContainers.toplevels.attic} ${r.runtimePackage} ${r.profileDir}";
+                lib.attrNames (lib.filterAttrs (n: c: !declares n c) configs);
+              mutant = lib.mapAttrs (
+                _: c:
+                c.extendModules {
+                  modules = [ { ndh.incusNixosContainers.instances.attic.profiles = lib.mkForce { }; } ];
+                }
+              ) hosts;
+              missing = verdict hosts;
+              line = name: c: "${name} ${c.config.ndh.bringupRuntime.runtimePackage}";
             in
             assert lib.assertMsg (
               hosts != { }
             ) "attic-container-bringup-profile: no host runs the attic container";
+            assert lib.assertMsg (missing == [ ])
+              "attic-container-bringup-profile: the attic instance does not declare the bringup runtime at its profile dir on: ${toString missing}";
+            assert lib.assertMsg (
+              verdict mutant == lib.attrNames hosts
+            ) "attic-container-bringup-profile: the mutant without the declared profile passed";
             pkgs.runCommand "attic-container-bringup-profile"
               {
                 passAsFile = [ "hosts" ];
                 hosts = lib.concatLines (lib.mapAttrsToList line hosts);
-                # The closure of every container toplevel, so the check can read it in the sandbox.
+                # Each host guest's own system closure, so the check can read it in the sandbox.
                 exportReferencesGraph = lib.concatLists (
                   lib.imap0 (i: c: [
                     "closure-${toString i}"
-                    c.config.ndh.incusNixosContainers.toplevels.attic
+                    c.config.system.build.toplevel
                   ]) (lib.attrValues hosts)
                 );
               }
               ''
                 rc=0
-                while read -r name top runtime dir; do
+                while read -r name runtime; do
                   # grep reads the graphs itself: `cat … | grep -q` fails under pipefail, cat killed by SIGPIPE
                   # once grep has found the line.
                   if ! grep -qxF -- "$runtime" closure-*; then
-                    echo "$name: the attic container's closure lacks the bringup profile $runtime" >&2; rc=1; continue
+                    echo "$name: the guest's closure lacks the bringup runtime $runtime the attic profile links to" >&2
+                    rc=1
+                    continue
                   fi
-                  if ! grep -qF -- "ln -sfn $runtime $dir" "$top/activate"; then
-                    echo "$name: the attic container's activation does not link the profile at $dir" >&2; rc=1; continue
-                  fi
-                  echo "$name: the attic container carries the bringup profile at $dir"
+                  echo "$name: the attic instance declares the bringup profile, and the guest's closure holds it"
                 done <"$hostsPath"
                 [ "$rc" = 0 ] && touch $out
                 exit "$rc"

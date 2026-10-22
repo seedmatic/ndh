@@ -190,13 +190,6 @@ in
       '';
     };
 
-    toplevels = lib.mkOption {
-      type = lib.types.attrsOf lib.types.package;
-      readOnly = true;
-      default = lib.mapAttrs (_: info: info.toplevel) instanceInfo;
-      description = "Each instance's system toplevel, the one `deliver` sets as its profile: what a check reads to say what reaches a container.";
-    };
-
     stateRoot = lib.mkOption {
       type = lib.types.str;
       default = "/var/lib/ndh-containers";
