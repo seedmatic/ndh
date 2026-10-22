@@ -145,9 +145,10 @@ check() {
   check masked $'ndh::secret:begin "w"\nt="$(sops -d f)"\nl=${o//"$t"/x}\nt=""\nndh::secret:end\nprintf %s "$l" >&2'
 }
 
-@test "the whole-script guard covers the script; under the trampoline it is flagged for batch 1" {
+@test "the whole-script guard covers the script; under the trampoline it is flagged for batch 1; without BASH_ENV it is red" {
   check guard-before-flip $'case $- in *x*) { set +x; } 2>/dev/null ;; esac\nexport -n SHELLOPTS\nunset BASH_ENV\nt="$(sops -d f)"'
   check guard-without-bash-env $'case $- in *x*) { set +x; } 2>/dev/null ;; esac\nexport -n SHELLOPTS\nt="$(sops -d f)"'
+  [ "$status" -eq 1 ] || { echo "guard-without-bash-env must be strict, exit $status" >&2; return 1; }
 }
 
 @test "what shfmt cannot parse is undecidable, never cleared" {

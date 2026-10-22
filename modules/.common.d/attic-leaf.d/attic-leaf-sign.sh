@@ -4,6 +4,7 @@ case $- in *x*) { set +x; } 2>/dev/null; echo "[xtrace-guard] xtrace disabled: t
 export -n SHELLOPTS 2>/dev/null || true # readonly in bash, so not unset; un-exported, it stops at this process
 unset NDH_LOGGER_XTRACE # ndh::logger:command:run traces its command only when this is 1
 unset BASH_XTRACEFD 2>/dev/null || true
+unset BASH_ENV # a caller's BASH_ENV holding `set -x` would trace every child bash this script starts
 
 # None of these tools comes from the caller's shell, nor does the locale: the PATH is this package's store
 # paths, then the system's own directories (logger), and LC_ALL is C, whatever the caller's PATH, LANG or
