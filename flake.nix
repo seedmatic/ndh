@@ -1395,6 +1395,50 @@
               stopped mutant != [ ]
             ) "incus-container-store-survives-removal: the mutant stopped on removal was not caught";
             pkgs.runCommand "incus-container-store-survives-removal" { } "touch $out";
+          # Each recorded attic TLS leaf is one keys-reconcile signed over its guest's CSR: a hand-placed leaf has no
+          # chain to the TLS authority's slot nor a CSR statement its guest signed. A forged leaf must be caught.
+          attic-leaves-recorded =
+            let
+              lib = nixpkgs.lib;
+              keys = self.darwinConfigurations.bioskop.config.ndh.keysYaml.keys;
+              authorities = self.darwinConfigurations.bioskop.config.ndh.keysYaml.authorities;
+              roles = import ./modules/.common.d/host-key.d/slots.nix { inherit lib; };
+              tls = lib.head (
+                lib.attrNames (lib.filterAttrs (_: a: lib.elem "tls-authority" (a.usage or [ ])) authorities)
+              );
+              slot = lib.head (
+                lib.sort lib.lessThan (
+                  lib.attrNames (lib.filterAttrs (_: s: !(s.compromised or false)) authorities.${tls}.slots)
+                )
+              );
+              signers = lib.listToAttrs (
+                lib.concatMap
+                  (
+                    c:
+                    let
+                      a = c.config.ndh.atticCache;
+                      machine = c.config.networking.hostName;
+                      key = keys."host-${machine}" or { };
+                    in
+                    lib.optional a.enable {
+                      name = a.metalspace;
+                      value = {
+                        inherit machine;
+                        inherit (a) fqdn;
+                        public = "${key.type or "ssh-ed25519"} ${(roles key).current.public or ""}";
+                      };
+                    }
+                  )
+                  (
+                    map (m: self.nixosConfigurations.${m.name}) (lib.filter (m: m.kind == "nixos") catalogData.machines)
+                  )
+              );
+            in
+            import ./catalog/attic-leaves.d/recorded.nix {
+              inherit pkgs signers;
+              leaves = ./catalog/attic-leaves;
+              caCrt = authorities.${tls}.slots.${slot}.ca_crt;
+            };
           # Each cache container names its generated key as privateCaches accepts it, on its own metalspace: else
           # the operator's acceptance of the printed key would be refused (attic would name it after the cache).
           attic-cache-key-name =
@@ -2736,7 +2780,6 @@
           incus-cluster-cert-bats = import ./modules/.common.d/incus-cluster-cert.d/tests/package.nix {
             inherit pkgs;
           };
-          attic-leaf-bats = import ./modules/.common.d/attic-leaf.d/tests/package.nix { inherit pkgs; };
           ndh-switch-bats = import ./modules/.common.d/ndh-switch.d/tests/package.nix {
             inherit pkgs;
             catalog = catalogData;
@@ -3581,7 +3624,6 @@
           # T14, by the same rule: one closure built by revision, run from the operator seat.
           incus-cluster-cert-renew = self.darwinConfigurations.bioskop.config.ndh.incusClusterCert.package;
           # 2a′, its twin: the cache containers' TLS leaves.
-          attic-leaf-sign = self.darwinConfigurations.bioskop.config.ndh.atticLeaf.package;
         }
         # The vz-recover key's forced command, one per foreign vz-host: installed by the operator from a pushed
         # revision into that host's account profile, the path its authorized_keys line names. Its VMs are the
@@ -4230,11 +4272,6 @@
             type = "app";
             program = "${self.darwinConfigurations.bioskop.config.ndh.ndhSwitch.fleetSwitch}/bin/fleet-switch";
             meta.description = "Switch the fleet to ONE merged revision through ndh-switch, one machine at a time (NixOS guests, remote darwin hosts, the operator seat last and only with --with-seat), stopping at the first failure with the recovery; refuses to activate the seat when its activation would sign — run from darwin.bioskop — src: modules/.common.d/fleet-switch.d/";
-          };
-          attic-leaf-sign = {
-            type = "app";
-            program = "${self.darwinConfigurations.bioskop.config.ndh.atticLeaf.package}/bin/attic-leaf-sign";
-            meta.description = "Certify each cache container's own TLS key (a CSR signed on the operator seat), install the leaf on its NixOS guest, verify — run from the seat, built by revision — src: modules/.common.d/attic-leaf.d/";
           };
         }
       );

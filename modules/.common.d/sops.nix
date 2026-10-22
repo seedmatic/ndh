@@ -141,7 +141,7 @@ in
     darwinUserKeyFile = mkOption {
       type = types.str;
       default = "${userHome}/.config/sops/age/keys.txt";
-      description = "The operator's own age key on a darwin seat, read only by the operator tools that run as the operator (incus-cluster-cert, attic-leaf); never a machine's sops identity.";
+      description = "The operator's own age key on a darwin seat, read only by the operator tools that run as the operator (incus-cluster-cert, keys-reconcile); never a machine's sops identity.";
     };
 
     nixosHostKeyImport = {

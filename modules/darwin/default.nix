@@ -38,7 +38,6 @@
     ./activation-order.nix
     ./restart-on-secret-change.nix
     ./incus-cluster-cert.nix
-    ./attic-leaf.nix
     ./attic-client.nix
     ./ssh-keys-enrichment.nix
     ./user-secret-mirror.nix

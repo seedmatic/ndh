@@ -71,7 +71,6 @@ in
         tools = {
           ssh-keys-certify = "${cfg.sshKeysCertify}/bin/ssh-keys-certify";
           ssh-keys-renew = "${cfg.sshKeysRenew}/bin/ssh-keys-renew";
-          attic-leaf-sign = "${config.ndh.atticLeaf.package}/bin/attic-leaf-sign";
           incus-cluster-cert-renew = "${config.ndh.incusClusterCert.package}/bin/incus-cluster-cert-renew";
           ndh-keyring = "${config.ndh.keyring.package}/bin/ndh-keyring";
           keys-reconcile = "${cfg.keysReconcile}/bin/keys-reconcile";
