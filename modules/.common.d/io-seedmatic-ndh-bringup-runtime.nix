@@ -46,40 +46,74 @@ let
     echo "[ndh][WARN] logger binary unavailable; message was: $*" >&2
     exit 0
   '';
+  # The tools every trampoline script finds here, on top of the base set below: one profile per machine, built
+  # for its platform, a common layer and a platform's own. Two costs, both measured 2026-10-22: what the machine
+  # pays is what its system does not already hold, 0 MB on the NixOS guests and 4 MB on the darwin seats; what a
+  # `nix copy` of the profile ALONE pays is its own closure, which the layers grow (see the profile's check). A
+  # symlinkJoin links each package's own default output only, so a tool reached as another's dependency (gpg under
+  # pass) is listed for itself, and a split output (util-linux's bin) is named.
+  commonLayer = with pkgs; [
+    curl
+    diffutils
+    gnupg
+    openssl
+    # pass depends on the full git, which pulls python3, llvm, clang and the apple-sdk: +1428 MB on darwin.
+    # Against gitMinimal it builds the same password-store, and init/insert/show/git init work (measured).
+    (pass.override { git = gitMinimal; })
+    procps
+    ssh-to-age
+  ];
+  # No darwin program calls a util-linux command (surveyed), and its darwin build ships a partial set: Linux only.
+  linuxLayer = lib.optionals pkgs.stdenv.hostPlatform.isLinux (
+    with pkgs;
+    [
+      getent
+      incus.client
+      iproute2
+      util-linux.bin
+      config.boot.zfs.package
+      config.systemd.package
+    ]
+  );
+  darwinLayer = lib.optionals pkgs.stdenv.hostPlatform.isDarwin [ pkgs.tart ];
   bootstrapRuntimePackage = pkgs.symlinkJoin {
     name = prefixStoreName "bringup-runtime-profile-holder";
-    paths = with pkgs; [
-      (lib.getBin bashInteractive)
-      (lib.getBin config.nix.package)
-      age
-      coreutils-full
-      findutils
-      gawk
-      # ⛔ NOT `git`. On darwin git pulls python3, which pulls clang, cctools and
-      # the apple-sdk: 1614.9 MB of closure against gitMinimal's 159.3 MB, both
-      # measured — git alone was 95% of this profile, and this profile is
-      # `nix copy`'d to every vz-host. gitMinimal pulls no python3, clang or
-      # apple-sdk at all.
-      #
-      # Everything reachable from the trampoline uses add / commit / rev-parse /
-      # diff / clone / checkout / push / config, and nothing uses the perl or
-      # python subcommands gitMinimal drops (`add -i`, `rebase -i`, send-email,
-      # p4, svn, gitk) — surveyed across every *.sh and *.nix in the repo.
-      gitMinimal
-      gnugrep
-      gnused
-      keychain
-      loggerShim
-      openssh
-      # The profile already carries `age`, which decrypts; `sops` is what every
-      # script that reads or rewrites an encrypted document actually calls, and it
-      # was the one tool a trampoline-sourced script had to find in the SYSTEM
-      # profile instead. 53 MB of closure, against 1.6 GB for the git already
-      # here — measured, not assumed.
-      sops
-      step-cli
-      yq-go
-    ];
+    paths =
+      commonLayer
+      ++ linuxLayer
+      ++ darwinLayer
+      ++ (with pkgs; [
+        (lib.getBin bashInteractive)
+        (lib.getBin config.nix.package)
+        age
+        coreutils-full
+        findutils
+        gawk
+        # ⛔ NOT `git`. On darwin git pulls python3, which pulls clang, cctools and
+        # the apple-sdk: 1614.9 MB of closure against gitMinimal's 159.3 MB, both
+        # measured — git alone was 95% of this profile, and this profile is
+        # `nix copy`'d to every vz-host. gitMinimal pulls no python3, clang or
+        # apple-sdk at all.
+        #
+        # Everything reachable from the trampoline uses add / commit / rev-parse /
+        # diff / clone / checkout / push / config, and nothing uses the perl or
+        # python subcommands gitMinimal drops (`add -i`, `rebase -i`, send-email,
+        # p4, svn, gitk) — surveyed across every *.sh and *.nix in the repo.
+        gitMinimal
+        gnugrep
+        gnused
+        keychain
+        loggerShim
+        openssh
+        # The profile already carries `age`, which decrypts; `sops` is what every
+        # script that reads or rewrites an encrypted document actually calls, and it
+        # was the one tool a trampoline-sourced script had to find in the SYSTEM
+        # profile instead. 53 MB of closure, against 1.6 GB for the git already
+        # here — measured, not assumed.
+        sops
+        step-cli
+        yq-go
+      ]);
   };
   activationCheckSource =
     builtins.replaceStrings
@@ -181,7 +215,23 @@ in
         "yq"
         "git"
         "logger"
-      ];
+        "curl"
+        "diff"
+        "gpg"
+        "openssl"
+        "pass"
+        "ps"
+        "ssh-to-age"
+      ]
+      ++ lib.optionals pkgs.stdenv.hostPlatform.isLinux [
+        "getent"
+        "incus"
+        "ip"
+        "findmnt"
+        "zfs"
+        "systemctl"
+      ]
+      ++ lib.optionals pkgs.stdenv.hostPlatform.isDarwin [ "tart" ];
       description = "Command contract that must be present in the dedicated bringup runtime profile.";
     };
 
