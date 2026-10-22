@@ -246,16 +246,31 @@ hostile() { # <cmd>... — runs <cmd> under it
   [[ $output != *"PRIVATE KEY"* ]]
 }
 
-@test "the xtrace guard is the SAME block in every script that handles a private" {
+@test "the xtrace guard is the SAME block in every script that handles a private throughout" {
   local here="${BATS_TEST_DIRNAME}/.." f
-  guard() { sed -n '/^# ★ xtrace-guard/,/^unset BASH_XTRACEFD/p' "$1"; }
+  # The same block, but for what the script handles (private keys, cache tokens), named in its two messages.
+  guard() { sed -n '/^# ★ xtrace-guard/,/^unset BASH_XTRACEFD/p' "$1" | sed -E 's/this script handles (private keys|cache tokens)/this script handles <secret>/'; }
   [ -n "$(guard "$here/incus-cluster-cert-renew.sh")" ]
-  for f in ssh-keys.d/ssh-enrich-keys-yaml.sh ssh-keys-renew.d/ssh-keys-renew.sh \
-    ssh-keys-certify.d/ssh-keys-certify.sh \
-    cache-signing-key-rotate.d/cache-signing-key-rotate.sh \
-    authority-bootstrap-tls-root.d/authority-bootstrap-tls-root.sh ../home-manager/git.d/sops.sh \
-    keyring.d/ndh-keyring.sh attic-leaf.d/attic-leaf-sign.sh ../nixos/attic-cache.d/token-issue.sh; do
-    [ "$(guard "$here/../$f")" = "$(guard "$here/incus-cluster-cert-renew.sh")" ]
+  for f in authority-bootstrap-tls-root.d/authority-bootstrap-tls-root.sh ../home-manager/git.d/sops.sh \
+    keyring.d/ndh-keyring.sh attic-leaf.d/attic-leaf-sign.sh ../nixos/attic-cache.d/token-issue.sh keys-yaml.d/krl.sh \
+    attic-tokens.d/unseal.sh; do
+    [ "$(guard "$here/../$f")" = "$(guard "$here/incus-cluster-cert-renew.sh")" ] || { echo "${f}: not the same guard" >&2; return 1; }
+  done
+}
+
+# The scripts on the trampoline hold their secrets in local windows instead (guard-before-flip): no whole-script block,
+# the trampoline sourced, so secret-xtrace-guard judges every line of them strictly (unwindowed, guard-before-flip),
+# and a window wherever one holds a secret value. ssh-keys-certify holds none: its private goes sops → ssh-add by a pipe.
+@test "the trampoline scripts that handle a private carry no whole-script guard, and their windows" {
+  local here="${BATS_TEST_DIRNAME}/.." f want
+  for f in ssh-keys.d/ssh-enrich-keys-yaml.sh=2 ssh-keys-renew.d/ssh-keys-renew.sh=3 \
+    cache-signing-key-rotate.d/cache-signing-key-rotate.sh=3 ssh-keys-certify.d/ssh-keys-certify.sh=0; do
+    want=${f#*=} f=${f%=*}
+    [ -s "$here/../$f" ] || { echo "${f}: not found" >&2; return 1; }
+    if grep -q '^# ★ xtrace-guard\|^case \$- in \*x\*)' "$here/../$f"; then echo "${f}: a whole-script guard" >&2; return 1; fi
+    grep -qE '^source "?@nixBashTrampoline@"?' "$here/../$f" || { echo "${f}: not on the trampoline" >&2; return 1; }
+    [ "$(grep -c '^[[:space:]]*ndh::secret:begin ' "$here/../$f")" -eq "$want" ] || { echo "${f}: not ${want} window(s)" >&2; return 1; }
+    [ "$(grep -c '^[[:space:]]*ndh::secret:end$' "$here/../$f")" -eq "$want" ] || { echo "${f}: not ${want} close(s)" >&2; return 1; }
   done
 }
 
