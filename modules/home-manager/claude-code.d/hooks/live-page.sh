@@ -18,7 +18,7 @@ sow="$scratch/integration-sow"
 page="$sow/LIVE.md"
 
 input="$(cat)"
-field() { printf '%s' "$input" | jq -r --arg k "$1" '.[$k] // ""'; }
+field() { printf '%s' "$input" | K="$1" yq -p=json -o=json -r '.[strenv(K)] // ""'; }
 session_id="$(field session_id)"
 source="$(field source)"
 cwd="$(field cwd)"
@@ -45,10 +45,9 @@ chantier=""
 [[ -n "$own" ]] && chantier="$(basename "$(dirname "$own")")"
 
 mkdir -p "$sow"
-jq -cn --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg id "$session_id" --arg source "$source" \
-  --arg cwd "$cwd" --arg transcript "$transcript" --arg chantier "$chantier" \
-  --arg title "${registered:-${current_title:-$declared}}" \
-  '{ts: $ts, session_id: $id, source: $source, cwd: $cwd, transcript: $transcript, chantier: $chantier, title: $title}' \
+TS="$(date -u +%Y-%m-%dT%H:%M:%SZ)" ID="$session_id" SRC="$source" CWD="$cwd" TR="$transcript" CH="$chantier" \
+  TITLE="${registered:-${current_title:-$declared}}" yq -n -o=json -I0 \
+  '{"ts": strenv(TS), "session_id": strenv(ID), "source": strenv(SRC), "cwd": strenv(CWD), "transcript": strenv(TR), "chantier": strenv(CH), "title": strenv(TITLE)}' \
   >>"$sow/sessions.jsonl"
 
 case "$source" in
@@ -83,5 +82,8 @@ ${excerpt}"
   fi
 fi
 
-jq -n --arg c "$context" --arg t "$title" \
-  '{hookSpecificOutput: ({hookEventName: "SessionStart", additionalContext: $c} + (if $t == "" then {} else {sessionTitle: $t} end))}'
+# The title is set, then removed when empty: yq has no `if`, and its `with(select(…))` dropped a non-empty title
+# (measured), which the SessionStart title restore depends on.
+C="$context" T="$title" yq -n -o=json \
+  '{"hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": strenv(C), "sessionTitle": strenv(T)}}
+   | del(.hookSpecificOutput.sessionTitle | select(. == ""))'

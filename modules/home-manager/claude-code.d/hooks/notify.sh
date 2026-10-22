@@ -9,15 +9,16 @@
 set -uo pipefail
 
 input="$(cat)"
-field() { printf '%s' "$input" | jq -r --arg k "$1" '.[$k] // "" | tostring' 2>/dev/null; }
+field() { printf '%s' "$input" | K="$1" yq -p=json -o=json -r '.[strenv(K)] // "" | tostring' 2>/dev/null; }
 session_id="$(field session_id)"
 type="$(field notification_type)"
 
 name=""
 registry="${CLAUDE_SESSION_REGISTRY:-}"
 if [[ -n "$session_id" && -r "$registry" ]]; then
-  name="$(jq -r --arg s "$session_id" \
-    '.sessions | to_entries[] | select(.value.conversations // [] | index($s)) | .key' "$registry" 2>/dev/null | head -1)"
+  name="$(S="$session_id" yq -p=json -o=json -r \
+    '.sessions | to_entries[] | select((.value.conversations // []) | any_c(. == strenv(S))) | .key' "$registry" 2>/dev/null |
+    head -1)"
 fi
 
 case "$type" in
@@ -38,13 +39,15 @@ log="${XDG_STATE_HOME:-$HOME/.local/state}/claude-notify/log.jsonl"
 # Session names and paths are the operator's alone: the directory 0700, the log 0600.
 umask 077
 mkdir -p "$(dirname "$log")"
-if printf '%s' "$input" | jq -e 'type == "object"' >/dev/null 2>&1; then
-  printf '%s' "$input" | jq -c --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg name "$name" \
-    '{ts: $ts, type: (.notification_type // ""), session_id: (.session_id // ""), name: $name,
-      title: (.title // "" | tostring | .[0:120]), message: (.message // "" | tostring | .[0:240]),
-      cwd: (.cwd // ""), keys: (keys)}' >>"$log"
+# The payload's keys are bound FIRST: in yq, reading `.k // ""` adds the key it reads, so a later `keys` would list
+# keys the payload never had (measured). And `sort`: yq lists a map's keys in insertion order; the log keeps them sorted.
+if printf '%s' "$input" | yq -p=json -o=json -e '(type) == "!!map"' >/dev/null 2>&1; then
+  printf '%s' "$input" | TS="$(date -u +%Y-%m-%dT%H:%M:%SZ)" NAME="$name" yq -p=json -o=json -I0 \
+    '(keys | sort) as $k | {"ts": strenv(TS), "type": (.notification_type // ""), "session_id": (.session_id // ""), "name": strenv(NAME),
+      "title": (.title // "" | tostring | .[0:120]), "message": (.message // "" | tostring | .[0:240]),
+      "cwd": (.cwd // ""), "keys": $k}' >>"$log"
 else
-  jq -cn --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg raw "${input:0:240}" \
-    '{ts: $ts, type: "unparsed", raw: $raw}' >>"$log"
+  TS="$(date -u +%Y-%m-%dT%H:%M:%SZ)" RAW="${input:0:240}" yq -n -o=json -I0 \
+    '{"ts": strenv(TS), "type": "unparsed", "raw": strenv(RAW)}' >>"$log"
 fi
 exit 0

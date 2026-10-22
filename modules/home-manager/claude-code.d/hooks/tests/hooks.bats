@@ -27,12 +27,12 @@ setup() {
 
 # A transcript line in Claude Code's shape: one assistant turn with one tool_use.
 wrote() { # $1 = tool, $2 = path
-  jq -cn --arg t "$1" --arg p "$2" \
-    '{type: "assistant", message: {content: [{type: "tool_use", name: $t, input: {file_path: $p}}]}}' >>"$TR"
+  TOOL="$1" P="$2" yq -n -o=json -I0 \
+    '{"type": "assistant", "message": {"content": [{"type": "tool_use", "name": strenv(TOOL), "input": {"file_path": strenv(P)}}]}}' >>"$TR"
 }
 
 hook() { # $1 = script, stdin payload built from the session
-  (cd "$REPO" && jq -cn --arg tr "$TR" '{session_id: "abcd1234-0000", transcript_path: $tr}' | bash "$H/$1")
+  (cd "$REPO" && TRP="$TR" yq -n -o=json -I0 '{"session_id": "abcd1234-0000", "transcript_path": strenv(TRP)}' | bash "$H/$1")
 }
 
 commits() { git -C "$MEM" rev-list --count HEAD; }
@@ -198,8 +198,9 @@ commits() { git -C "$MEM" rev-list --count HEAD; }
 
 # --- live-page ---
 start() { # $1 = source, $2 = the session's current title (empty: never renamed)
-  jq -cn --arg s "$1" --arg t "${2:-}" \
-    '{session_id: "abcd1234-0000", source: $s, cwd: "/w", transcript_path: "/t.jsonl"} + (if $t == "" then {} else {session_title: $t} end)' |
+  SRC="$1" TTL="${2:-}" yq -n -o=json -I0 \
+    '{"session_id": "abcd1234-0000", "source": strenv(SRC), "cwd": "/w", "transcript_path": "/t.jsonl", "session_title": strenv(TTL)}
+     | del(.session_title | select(. == ""))' |
     CLAUDE_SCRATCHPAD="$T" bash "$H/live-page.sh"
 }
 
@@ -213,13 +214,13 @@ live() {
   start startup >/dev/null
   start compact >/dev/null
   [ "$(wc -l <"$T/integration-sow/sessions.jsonl")" -eq 2 ]
-  [[ "$(jq -r .source "$T/integration-sow/sessions.jsonl" | tr '\n' ' ')" == "startup compact " ]]
+  [[ "$(yq -p=json -o=json -r .source "$T/integration-sow/sessions.jsonl" | tr '\n' ' ')" == "startup compact " ]]
 }
 
 @test "live: a fresh start receives the header, section 1 and the tree, nothing else" {
   live
   run start startup
-  c="$(printf '%s' "$output" | jq -r .hookSpecificOutput.additionalContext)"
+  c="$(printf '%s' "$output" | yq -p=json -o=json -r .hookSpecificOutput.additionalContext)"
   [[ "$c" == *"tenu par develop-ab"* && "$c" == *T1* && "$c" == *tree* ]]
   [[ "$c" != *FIGBODY* && "$c" != *noise* ]]
   [[ "$c" == *"conversation is abcd1234-0000"* ]]
@@ -233,7 +234,7 @@ live() {
 
 @test "live: a missing page is said, and the start is still registered" {
   run start startup
-  [[ "$(printf '%s' "$output" | jq -r .hookSpecificOutput.additionalContext)" == *"does not exist"* ]]
+  [[ "$(printf '%s' "$output" | yq -p=json -o=json -r .hookSpecificOutput.additionalContext)" == *"does not exist"* ]]
   [ -f "$T/integration-sow/sessions.jsonl" ]
 }
 
@@ -241,7 +242,7 @@ registry() { # $1 = the name engraved for the test conversation
   printf '{"sessions": {"%s": {"conversations": ["abcd1234-0000"]}, "other": {"conversations": ["ffff0000-0000"]}}}\n' "$1" >"$T/owned-dirs.json"
   export CLAUDE_SESSION_REGISTRY="$T/owned-dirs.json"
 }
-title_of() { printf '%s' "$1" | jq -r '.hookSpecificOutput.sessionTitle // ""'; }
+title_of() { printf '%s' "$1" | yq -p=json -o=json -r '.hookSpecificOutput.sessionTitle // ""'; }
 
 @test "live: an engraved session gets its registry name at every start, even when a title is already set" {
   live; registry develop-claude
@@ -254,7 +255,7 @@ title_of() { printf '%s' "$1" | jq -r '.hookSpecificOutput.sessionTitle // ""'; 
   live; chantier; registry develop-claude
   run start resume
   [ "$(title_of "$output")" = develop-claude ]
-  [[ "$(printf '%s' "$output" | jq -r .hookSpecificOutput.additionalContext)" == *"(title develop-claude)"* ]]
+  [[ "$(printf '%s' "$output" | yq -p=json -o=json -r .hookSpecificOutput.additionalContext)" == *"(title develop-claude)"* ]]
 }
 @test "live: a session that is not engraved keeps the current rule, and no name is guessed" {
   live; printf '{"sessions": {"other": {"conversations": ["ffff0000-0000"]}}}\n' >"$T/owned-dirs.json"
@@ -282,24 +283,24 @@ chantier() { # a chantier page that claims the test conversation
   live
   chantier
   run start resume
-  [[ "$(printf '%s' "$output" | jq -r .hookSpecificOutput.sessionTitle)" == chantier-x ]]
-  [[ "$(printf '%s' "$output" | jq -r .hookSpecificOutput.additionalContext)" == *"You are the chantierx session"* ]]
-  [[ "$(tail -1 "$T/integration-sow/sessions.jsonl" | jq -r '.chantier + "/" + .title')" == chantierx/chantier-x ]]
+  [[ "$(printf '%s' "$output" | yq -p=json -o=json -r .hookSpecificOutput.sessionTitle)" == chantier-x ]]
+  [[ "$(printf '%s' "$output" | yq -p=json -o=json -r .hookSpecificOutput.additionalContext)" == *"You are the chantierx session"* ]]
+  [[ "$(tail -1 "$T/integration-sow/sessions.jsonl" | yq -p=json -o=json -r '.chantier + "/" + .title')" == chantierx/chantier-x ]]
 }
 
 @test "live: a title the operator set wins over the declared one" {
   live
   chantier
   run start resume operator-choice
-  [[ "$(printf '%s' "$output" | jq -r '.hookSpecificOutput.sessionTitle // "none"')" == none ]]
-  [[ "$(tail -1 "$T/integration-sow/sessions.jsonl" | jq -r .title)" == operator-choice ]]
+  [[ "$(printf '%s' "$output" | yq -p=json -o=json -r '.hookSpecificOutput.sessionTitle // "none"')" == none ]]
+  [[ "$(tail -1 "$T/integration-sow/sessions.jsonl" | yq -p=json -o=json -r .title)" == operator-choice ]]
 }
 
 @test "live: a session no page claims is told how to declare itself" {
   live
   run start resume
-  [[ "$(printf '%s' "$output" | jq -r .hookSpecificOutput.additionalContext)" == *"> conversation: abcd1234-0000"* ]]
-  [[ "$(printf '%s' "$output" | jq -r '.hookSpecificOutput.sessionTitle // "none"')" == none ]]
+  [[ "$(printf '%s' "$output" | yq -p=json -o=json -r .hookSpecificOutput.additionalContext)" == *"> conversation: abcd1234-0000"* ]]
+  [[ "$(printf '%s' "$output" | yq -p=json -o=json -r '.hookSpecificOutput.sessionTitle // "none"')" == none ]]
 }
 
 # --- leak-guard ---
@@ -307,14 +308,16 @@ chantier() { # a chantier page that claims the test conversation
 @test "leak-guard: every case gets its verdict" {
   local want cmd got bad=""
   while IFS=$'\t' read -r want cmd; do
-    got="$(jq -cn --arg c "$cmd" '{tool_input: {command: $c}}' | bash "$H/leak-guard.sh" | jq -r '.hookSpecificOutput.permissionDecision // "allow"')"
+    got="$(C="$cmd" yq -n -o=json -I0 '{"tool_input": {"command": strenv(C)}}' | bash "$H/leak-guard.sh" |
+      yq -p=json -o=json -r '.hookSpecificOutput.permissionDecision // "allow"')"
     got="${got:-allow}"
     [[ "$got" == "${want,,}" ]] || bad+="  want $want, got $got: $cmd"$'\n'
   done <"$BATS_TEST_DIRNAME/leak-guard-cases.tsv"
   [[ -z "$bad" ]] || { printf '%s' "$bad"; false; }
 }
 @test "leak-guard: a refusal says a variable is opaque and gives the literal form" {
-  out="$(jq -cn --arg c 'nix build "$R#checks.x"' '{tool_input: {command: $c}}' | bash "$H/leak-guard.sh" | jq -r .hookSpecificOutput.permissionDecisionReason)"
+  out="$(C='nix build "$R#checks.x"' yq -n -o=json -I0 '{"tool_input": {"command": strenv(C)}}' | bash "$H/leak-guard.sh" |
+    yq -p=json -o=json -r .hookSpecificOutput.permissionDecisionReason)"
   [[ "$out" == *"A shell variable is opaque to this hook"* && "$out" == *'?rev=$(git rev-parse HEAD) form out literally'* ]]
 }
 
@@ -495,7 +498,7 @@ notify() { # $1 = payload; the registry knows one session, "mine"
   printf '{"sessions": {"mine": {"conversations": ["abcd1234-0000"]}}}\n' >"$T/registry.json"
   printf '%s' "$1" | XDG_STATE_HOME="$T/state" CLAUDE_SESSION_REGISTRY="$T/registry.json" bash "$(notify_hook)"
 }
-logged() { jq -r "$1" "$T/state/claude-notify/log.jsonl"; }
+logged() { yq -p=json -o=json -r "$1" "$T/state/claude-notify/log.jsonl"; }
 
 @test "notify: a permission prompt is logged with its type and the session's engraved name" {
   run notify '{"hook_event_name": "Notification", "notification_type": "permission_prompt", "session_id": "abcd1234-0000", "message": "Claude needs your permission to use Bash", "cwd": "/w"}'
@@ -603,9 +606,9 @@ stub_flox() {
 flox_env() { # runs the hook as installed, the test's tree standing for the trusted roots and the profile
   sed -e "s#@python@#$(command -v python3)#" -e 's#@backendKeys@#^(CLAUDE_CODE_USE_BEDROCK|CLAUDE_CODE_USE_VERTEX|AWS_|ANTHROPIC_)#' \
     -e "s#@trustedRoots@#${TRUSTED-$(cd "$T" && pwd -P)}#" -e "s#@floxProfile@#$T/profiles#" "$H/flox-env.sh" >"$T/flox-env.sh"
-  # flox-env exits before reading its stdin when it has nothing to do: jq then writes into a closed pipe, and on linux
-  # says so on stderr. Only jq's stderr is silenced; the hook's own output stays in what the tests see.
-  jq -cn --arg c "${1:-$REPO}" '{cwd: $c}' 2>/dev/null | bash "$T/flox-env.sh"
+  # flox-env exits before reading its stdin when it has nothing to do: the writer then writes into a closed pipe, and
+  # on linux says so on stderr. Only the writer's stderr is silenced; the hook's own output stays in what tests see.
+  CWD="${1:-$REPO}" yq -n -o=json -I0 '{"cwd": strenv(CWD)}' 2>/dev/null | bash "$T/flox-env.sh"
 }
 
 @test "flox-env: a flox repository's tools and vars reach the session, quoted" {
@@ -647,7 +650,7 @@ flox_env() { # runs the hook as installed, the test's tree standing for the trus
   flox_env
   [ ! -e "$CLAUDE_ENV_FILE" ]
   mkdir -p "$REPO/.flox/env" && : >"$REPO/.flox/env/manifest.toml"
-  run env -u CLAUDE_ENV_FILE bash -c 'jq -cn --arg c "$1" "{cwd: \$c}" 2>/dev/null | bash "$2"' _ "$REPO" "$T/flox-env.sh"
+  run env -u CLAUDE_ENV_FILE bash -c 'CWD="$1" yq -n -o=json -I0 "{\"cwd\": strenv(CWD)}" 2>/dev/null | bash "$2"' _ "$REPO" "$T/flox-env.sh"
   [ -z "$output" ]
 }
 
@@ -677,12 +680,13 @@ whiteboard_setup() {
   PAGE="$CLAUDE_SCRATCHPAD/chantier/LIVE.md"
   printf '# x\n\n> conversation: abcd1234-0000\n> title: x\n' >"$PAGE"
   : >"$TR"
-  jq -cn '{type: "user", origin: {kind: "human"}, timestamp: "2026-10-22T08:00:00.000Z", message: {content: [{type: "text", text: "go"}]}}' >>"$TR"
-  jq -cn '{type: "user", origin: {kind: "peer"}, timestamp: "2026-10-22T09:00:00.000Z", message: {content: "a peer"}}' >>"$TR"
+  yq -n -o=json -I0 '{"type": "user", "origin": {"kind": "human"}, "timestamp": "2026-10-22T08:00:00.000Z", "message": {"content": [{"type": "text", "text": "go"}]}}' >>"$TR"
+  yq -n -o=json -I0 '{"type": "user", "origin": {"kind": "peer"}, "timestamp": "2026-10-22T09:00:00.000Z", "message": {"content": "a peer"}}' >>"$TR"
 }
 wb() { # $1 = tool, $2 = command (Bash), $3 = session id
-  jq -cn --arg t "$1" --arg c "${2:-}" --arg s "${3:-abcd1234-0000}" --arg tr "$TR" \
-    '{tool_name: $t, tool_input: {command: $c}, session_id: $s, transcript_path: $tr}' | bash "$H/whiteboard-reminder.sh"
+  TOOL="$1" C="${2:-}" S="${3:-abcd1234-0000}" TRP="$TR" yq -n -o=json -I0 \
+    '{"tool_name": strenv(TOOL), "tool_input": {"command": strenv(C)}, "session_id": strenv(S), "transcript_path": strenv(TRP)}' |
+    bash "$H/whiteboard-reminder.sh"
 }
 
 @test "whiteboard-reminder: a step with a page stale since the operator's turn is reminded, in the tool's result" {
@@ -690,8 +694,8 @@ wb() { # $1 = tool, $2 = command (Bash), $3 = session id
   TZ=UTC touch -t 202610220700 "$PAGE"
   run wb SendMessage
   [ "$status" -eq 0 ]
-  [ "$(printf '%s' "$output" | jq -r '.hookSpecificOutput.hookEventName')" = PostToolUse ]
-  [[ "$(printf '%s' "$output" | jq -r '.hookSpecificOutput.additionalContext')" == *"$PAGE"*"has not changed in this turn"* ]]
+  [ "$(printf '%s' "$output" | yq -p=json -o=json -r '.hookSpecificOutput.hookEventName')" = PostToolUse ]
+  [[ "$(printf '%s' "$output" | yq -p=json -o=json -r '.hookSpecificOutput.additionalContext')" == *"$PAGE"*"has not changed in this turn"* ]]
   run wb Bash 'git -C /x commit -m y'
   [[ "$output" == *"a commit or a push"* ]]
 }
@@ -726,7 +730,7 @@ wb() { # $1 = tool, $2 = command (Bash), $3 = session id
 @test "whiteboard-reminder: no operator turn in the transcript, or no transcript, is silent" {
   whiteboard_setup
   TZ=UTC touch -t 202610220700 "$PAGE"
-  jq -cn '{type: "user", origin: {kind: "peer"}, timestamp: "2026-10-22T09:00:00.000Z", message: {content: "a peer"}}' >"$TR"
+  yq -n -o=json -I0 '{"type": "user", "origin": {"kind": "peer"}, "timestamp": "2026-10-22T09:00:00.000Z", "message": {"content": "a peer"}}' >"$TR"
   run wb SendMessage
   [ -z "$output" ]
   rm "$TR"

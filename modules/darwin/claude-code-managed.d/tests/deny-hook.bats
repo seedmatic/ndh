@@ -8,9 +8,9 @@ setup() {
 }
 
 hook() {
-  jq -n --arg c "$1" --arg cwd "${2:-/tmp/work}" \
-    '{hook_event_name:"PreToolUse", permission_mode:"bypassPermissions",
-      tool_name:"Bash", tool_input:{command:$c}, cwd:$cwd}' | python3 "$HOOK"
+  C="$1" CWD="${2:-/tmp/work}" yq -n -o=json \
+    '{"hook_event_name":"PreToolUse", "permission_mode":"bypassPermissions",
+      "tool_name":"Bash", "tool_input":{"command":strenv(C)}, "cwd":strenv(CWD)}' | python3 "$HOOK"
 }
 
 denied()  { [ "$status" -eq 2 ] || { echo "expected deny, got status=$status output=$output"; return 1; }; }

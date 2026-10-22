@@ -2701,7 +2701,7 @@
                 fail=0
                 if [ -n "$report" ]; then printf '%s' "$report" >&2; fail=1; fi
                 for s in $settings; do
-                  [ "$(${pkgs.jq}/bin/jq -cS . "$s")" = "$(printf '%s' "$expected" | ${pkgs.jq}/bin/jq -cS .)" ] ||
+                  [ "$(${pkgs.yq-go}/bin/yq -p=json -o=json -I0 'sort_keys(..)' "$s")" = "$(printf '%s' "$expected" | ${pkgs.yq-go}/bin/yq -p=json -o=json -I0 'sort_keys(..)')" ] ||
                     { echo "$s: settings.json's env or fallbackModel differs from the backend" >&2; fail=1; }
                 done
                 for a in $agents; do

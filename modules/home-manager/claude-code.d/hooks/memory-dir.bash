@@ -5,7 +5,7 @@ memory_dir() {
   local root="$1" f v dir=""
   for f in "$HOME/.claude/settings.json" "$root/.claude/settings.json" "$root/.claude/settings.local.json"; do
     [[ -f "$f" ]] || continue
-    v="$(jq -r '.autoMemoryDirectory // empty' "$f" 2>/dev/null)" || continue
+    v="$(yq -p=json -o=json -r '.autoMemoryDirectory // ""' "$f" 2>/dev/null)" || continue
     [[ -n "$v" ]] && dir="$v"
   done
   [[ "$dir" == "~/"* ]] && dir="$HOME/${dir#\~/}"

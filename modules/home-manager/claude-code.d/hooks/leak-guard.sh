@@ -8,10 +8,10 @@
 # A rule a session has to remember was not enough; this one is refused before it runs.
 set -euo pipefail
 
-command="$(jq -r '.tool_input.command // ""')"
+command="$(yq -p=json -o=json -r '.tool_input.command // ""')"
 
 refuse() {
-  jq -n --arg r "$1" '{hookSpecificOutput: {hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: $r}}'
+  R="$1" yq -n -o=json '{"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny", "permissionDecisionReason": strenv(R)}}'
   exit 0
 }
 

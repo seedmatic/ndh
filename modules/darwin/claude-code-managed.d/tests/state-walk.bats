@@ -7,7 +7,7 @@ setup() {
   T="$(cd "$BATS_TEST_TMPDIR" && pwd -P)"
   mkdir -p "$T/hook" "$T/state"
   cp "$BATS_TEST_DIRNAME/../deny-hook.py" "$T/hook/"
-  jq --arg b "$T/bares" '.protected_scan_bares = [$b]' "$BATS_TEST_DIRNAME/../verbs.json" >"$T/hook/verbs.json"
+  B="$T/bares" yq -p=json -o=json '.protected_scan_bares = [strenv(B)]' "$BATS_TEST_DIRNAME/../verbs.json" >"$T/hook/verbs.json"
   export HOME=/Users/tester XDG_STATE_HOME="$T/state"
   W="$T/wt"
   mkdir -p "$W/.pulumi-state/.pulumi/stacks" "$W/src/deep" "$T/bares/repo.git/worktrees/wt"
@@ -16,7 +16,7 @@ setup() {
 }
 
 hook() {
-  jq -n --arg c "$1" '{hook_event_name:"PreToolUse", tool_name:"Bash", tool_input:{command:$c}, cwd:"/tmp/work"}' |
+  C="$1" yq -n -o=json '{"hook_event_name":"PreToolUse", "tool_name":"Bash", "tool_input":{"command":strenv(C)}, "cwd":"/tmp/work"}' |
     python3 "$T/hook/deny-hook.py"
 }
 denied()  { [ "$status" -eq 2 ] || { echo "expected deny, got status=$status output=$output"; return 1; }; }

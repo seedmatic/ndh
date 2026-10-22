@@ -32,7 +32,6 @@ in
       {
         nativeBuildInputs = [
           pkgs.bash
-          pkgs.jq
           pkgs.yq-go
           pkgs.coreutils
         ];
@@ -46,14 +45,14 @@ in
                  "ANTHROPIC_MODEL": "m", "ANTHROPIC_BASE_URL": "u", "CLAUDE_CODE_USE_VERTEX": "1",
                  "CLAUDE_CODE_MAX_OUTPUT_TOKENS": "64000", "MAX_THINKING_TOKENS": "31999"}}
         EOF
-        before="$(jq -S 'del(.env)' $HOME/.claude.json)"
+        before="$(yq -p=json -o=json -I0 'del(.env) | sort_keys(..)' $HOME/.claude.json)"
         bash ${testScript}
 
-        left="$(jq -r --arg re '${backendKeys}' '.env | keys[] | select(test($re))' $HOME/.claude.json)"
+        left="$(RE='${backendKeys}' yq -p=json -o=json -r '.env | keys | .[] | select(test(strenv(RE)))' $HOME/.claude.json)"
         if [ -n "$left" ]; then echo "FAIL: backend keys left: $left" >&2; exit 1; fi
-        [ "$(jq -c '.env' $HOME/.claude.json)" = '{"CLAUDE_CODE_MAX_OUTPUT_TOKENS":"64000","MAX_THINKING_TOKENS":"31999"}' ] ||
-          { echo "FAIL: the other env keys did not survive" >&2; jq . $HOME/.claude.json >&2; exit 1; }
-        [ "$(jq -S 'del(.env)' $HOME/.claude.json)" = "$before" ] ||
+        [ "$(yq -p=json -o=json -I0 '.env' $HOME/.claude.json)" = '{"CLAUDE_CODE_MAX_OUTPUT_TOKENS":"64000","MAX_THINKING_TOKENS":"31999"}' ] ||
+          { echo "FAIL: the other env keys did not survive" >&2; yq -p=json -o=json . $HOME/.claude.json >&2; exit 1; }
+        [ "$(yq -p=json -o=json -I0 'del(.env) | sort_keys(..)' $HOME/.claude.json)" = "$before" ] ||
           { echo "FAIL: the rest of the file changed" >&2; exit 1; }
 
         # A clean file is left untouched: not even rewritten.
@@ -65,7 +64,7 @@ in
         # No env block, and no file at all: both are no-ops.
         printf '%s\n' '{"numStartups": 1}' >$HOME/.claude.json
         bash ${testScript}
-        [ "$(jq -c . $HOME/.claude.json)" = '{"numStartups":1}' ] || { echo "FAIL: a file without env changed" >&2; exit 1; }
+        [ "$(yq -p=json -o=json -I0 . $HOME/.claude.json)" = '{"numStartups":1}' ] || { echo "FAIL: a file without env changed" >&2; exit 1; }
         rm $HOME/.claude.json
         bash ${testScript}
         if [ -e $HOME/.claude.json ]; then echo "FAIL: the purge created ~/.claude.json" >&2; exit 1; fi

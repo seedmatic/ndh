@@ -60,5 +60,5 @@ mismatch="$(
   done < <(overrides)
 )"
 if [ -n "$mismatch" ]; then
-  jq -cn --arg m "$mismatch" '{systemMessage: ("⛔ sops-git-env: these sops git overrides did not take — a git diff or checkout of a sops file may decrypt in this session: " + $m)}'
+  M="$mismatch" yq -n -o=json -I0 '{"systemMessage": ("⛔ sops-git-env: these sops git overrides did not take — a git diff or checkout of a sops file may decrypt in this session: " + strenv(M))}'
 fi

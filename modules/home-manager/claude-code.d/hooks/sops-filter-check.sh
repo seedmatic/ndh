@@ -9,7 +9,7 @@ here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../../git.d/hooks/lib-sops-filter-guard.sh
 . "${here}/lib-sops-filter-guard.sh"
 
-cwd="$(jq -r '.cwd // ""' 2>/dev/null || true)"
+cwd="$(yq -p=json -o=json -r '.cwd // ""' 2>/dev/null || true)"
 [[ -n "$cwd" && -d "$cwd" ]] || exit 0
 top="$(git -C "$cwd" rev-parse --show-toplevel 2>/dev/null)" || exit 0
 cd "$top"
@@ -23,4 +23,4 @@ while read -r path _; do
   if is_decrypted_on_disk "$path"; then list+="${path} (IN THE CLEAR ON DISK), "; else list+="${path}, "; fi
 done <<<"$(head -20 <<<"$hits")"
 
-jq -cn --arg top "$top" --arg l "${list%, }" '{systemMessage: ("⛔ sops-filter-guard: " + $top + " holds a flake, yet these files resolve to a sops filter, so a checkout may have decrypted them on disk. Do NOT read them; tell the operator: " + $l)}'
+TOP="$top" L="${list%, }" yq -n -o=json -I0 '{"systemMessage": ("⛔ sops-filter-guard: " + strenv(TOP) + " holds a flake, yet these files resolve to a sops filter, so a checkout may have decrypted them on disk. Do NOT read them; tell the operator: " + strenv(L))}'

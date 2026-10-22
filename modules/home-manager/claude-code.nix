@@ -122,7 +122,7 @@ in
         claudeSettings="$HOME/.claude/settings.json"
         if [ -f "$claudeSettings" ]; then
           claudeSettingsNew="$(mktemp)"
-          ${pkgs.jq}/bin/jq --slurpfile hooks ${hooksFile} '.hooks = $hooks[0]' "$claudeSettings" >"$claudeSettingsNew"
+          H=${hooksFile} ${pkgs.yq-go}/bin/yq -p=json -o=json '.hooks = load(strenv(H))' "$claudeSettings" >"$claudeSettingsNew"
           $DRY_RUN_CMD install -m 0644 "$claudeSettingsNew" "$claudeSettings"
           rm -f "$claudeSettingsNew"
         fi
@@ -134,7 +134,7 @@ in
         claudeSettings="$HOME/.claude/settings.json"
         if [ -f "$claudeSettings" ]; then
           claudeSettingsNew="$(mktemp)"
-          ${pkgs.jq}/bin/jq --slurpfile autoMode ${autoModeFile} '.autoMode = $autoMode[0]' "$claudeSettings" >"$claudeSettingsNew"
+          A=${autoModeFile} ${pkgs.yq-go}/bin/yq -p=json -o=json '.autoMode = load(strenv(A))' "$claudeSettings" >"$claudeSettingsNew"
           $DRY_RUN_CMD install -m 0644 "$claudeSettingsNew" "$claudeSettings"
           rm -f "$claudeSettingsNew"
         fi
@@ -146,7 +146,7 @@ in
         claudeSettings="$HOME/.claude/settings.json"
         if [ -f "$claudeSettings" ]; then
           claudeSettingsNew="$(mktemp)"
-          ${pkgs.jq}/bin/jq --slurpfile backend ${backendFile} '.env = $backend[0].env | .fallbackModel = $backend[0].fallbackModel' "$claudeSettings" >"$claudeSettingsNew"
+          B=${backendFile} ${pkgs.yq-go}/bin/yq -p=json -o=json '.env = load(strenv(B)).env | .fallbackModel = load(strenv(B)).fallbackModel' "$claudeSettings" >"$claudeSettingsNew"
           $DRY_RUN_CMD install -m 0644 "$claudeSettingsNew" "$claudeSettings"
           rm -f "$claudeSettingsNew"
         fi

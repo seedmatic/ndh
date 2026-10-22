@@ -19,8 +19,8 @@ main() {
       [ -f "$db" ] || continue
       value="$(sqlite3 -readonly "$db" "select value from ItemTable where key = 'flox.flox'" 2>/dev/null || true)"
       [ -n "$value" ] || continue
-      purged="$(printf '%s' "$value" | jq -c \
-        'if (."flox.previousActivatedEnv" // {} | length) > 0 then ."flox.previousActivatedEnv" = {} else empty end' \
+      purged="$(printf '%s' "$value" | yq -p=json -o=json -I0 \
+        'select((."flox.previousActivatedEnv" // {} | length) > 0) | ."flox.previousActivatedEnv" = {}' \
         2>/dev/null || true)"
       [ -n "$purged" ] || continue
       if lsof -t -- "$db" >/dev/null 2>&1; then
