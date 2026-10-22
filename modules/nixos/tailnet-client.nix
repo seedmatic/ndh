@@ -346,7 +346,7 @@ in
         if [ -z "$1" ]; then
           echo "Usage: hs-ssh <hostname>"
           echo "Available hosts:"
-          ${pkgs.tailscale}/bin/tailscale status --json | ${pkgs.jq}/bin/jq -r '.Peer[].HostName'
+          ${pkgs.tailscale}/bin/tailscale status --json | ${pkgs.yq-go}/bin/yq -p json -o json -r '.Peer[].HostName'
           exit 1
         fi
         ${pkgs.tailscale}/bin/tailscale ssh "$1"

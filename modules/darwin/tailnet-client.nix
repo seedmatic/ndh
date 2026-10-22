@@ -157,7 +157,8 @@ in
           if [ -z "$1" ]; then
             echo "Usage: hs-ssh <hostname>"
             echo "Available hosts:"
-            tailscale status --json 2>/dev/null | ${pkgs.jq}/bin/jq -r '.Peer[].HostName' || tailscale status
+            hosts=$(tailscale status --json 2>/dev/null | ${pkgs.yq-go}/bin/yq -p json -o json -r '.Peer[].HostName' 2>/dev/null)
+            if [ -n "$hosts" ]; then printf '%s\n' "$hosts"; else tailscale status; fi
             exit 1
           fi
           tailscale ssh "$@"

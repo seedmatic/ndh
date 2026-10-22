@@ -96,10 +96,9 @@ let
         # ssh's ConnectTimeout does not cover NAME RESOLUTION, so a hard timeout wraps it — the
         # lesson the baremetal-link deploy learned when a segment's resolver moved.
         timeout = "${pkgs.coreutils}/bin/timeout";
-        # Structural parsers, because both facts this script branches on were measured to be
-        # unmatchable by the obvious grep (see join.sh).  jq for the daemon's JSON, yq-go for
-        # `incus cluster show`'s YAML — the same pair modules/nixos/incus-cluster.nix uses.
-        jq = "${pkgs.jq}/bin/jq";
+        # A structural parser, because both facts this script branches on were measured to be
+        # unmatchable by the obvious grep (see join.sh). yq-go for the daemon's JSON (-p json) and for
+        # `incus cluster show`'s YAML, as modules/nixos/incus-cluster.nix.
         yq = "${pkgs.yq-go}/bin/yq";
         joiningMember = memberNameOf entry;
         bootstrapMember = memberNameOf bootstrapEntry;

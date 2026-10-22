@@ -151,7 +151,7 @@ in
         ${pkgs.tailscale}/bin/tailscale status
         echo ""
         echo "=== Advertised Routes ==="
-        ${pkgs.tailscale}/bin/tailscale status --json | ${pkgs.jq}/bin/jq -r '.Self.AllowedIPs[]'
+        ${pkgs.tailscale}/bin/tailscale status --json | ${pkgs.yq-go}/bin/yq -p json -o json -r '.Self.AllowedIPs[]'
         echo ""
         echo "=== IP Forwarding Status ==="
         echo "IPv4: $(sysctl -n net.ipv4.ip_forward)"

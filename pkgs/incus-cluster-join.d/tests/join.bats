@@ -2,7 +2,7 @@
 # incus-cluster-join, run the way the logger wrapper runs it (its real ndh::logger:command:invoke): a
 # bootstrap that is not a cluster, a preseed the joining member refuses, or a role that cannot be given
 # STOPS the join with its reason said — never "joined" about a join that did not take. ssh is a stub that
-# plays both incus daemons; jq and yq are real.
+# plays both incus daemons; yq is real.
 
 # `! cmd` asserts nothing in bats: bash exempts a negated command from errexit, so it never fails a test
 # unless it is the last line. refute does — and only on a NO: the command must answer 1 (grep's "no
@@ -55,7 +55,7 @@ SSH
   chmod +x "$T/sink"
   export LOGGER_CMD="$T/sink $T/wrapper.log"
   sed -e "s#@nixBashTrampoline@#$T/trampoline.sh#g" -e 's#@loggerTag@#test#g' -e "s#@ssh@#$T/bin/ssh#g" \
-    -e "s#@timeout@#$(command -v timeout)#g" -e "s#@jq@#$(command -v jq)#g" -e "s#@yq@#$(command -v yq)#g" \
+    -e "s#@timeout@#$(command -v timeout)#g" -e "s#@yq@#$(command -v yq)#g" \
     -e 's#@joiningMember@#join#g' -e 's#@bootstrapMember@#boot#g' -e 's#@joiningSsh@#join.test#g' \
     -e 's#@bootstrapSsh@#boot.test#g' -e 's#@joiningAddress@#join.test#g' -e 's#@poolName@#default#g' \
     -e 's#@poolSource@#tank/incus#g' \
