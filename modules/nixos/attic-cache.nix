@@ -42,6 +42,14 @@ let
     };
 
   guest = {
+    # The trampoline's bringup profile, so the container's scripts can move onto the trampoline (batch 2): a bare
+    # container imports none of ndh's common modules, and the strict trampoline refuses where the profile is missing.
+    # The host's own runtime package (the container takes the host's pkgs), linked at activation as
+    # bringup-minimal-system does: the link is in the toplevel, so whatever delivers the container delivers it.
+    system.activationScripts.ndhBringupRuntime = ''
+      install -d -m 0755 ${builtins.dirOf config.ndh.bringupRuntime.profileDir}
+      ln -sfn ${config.ndh.bringupRuntime.runtimePackage} ${config.ndh.bringupRuntime.profileDir}
+    '';
     networking.useDHCP = false;
     # networkd without systemd-resolved, which a container's host resolv.conf refuses; the cache
     # container resolves nothing.
