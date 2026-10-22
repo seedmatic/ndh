@@ -667,3 +667,85 @@ flox_env() { # runs the hook as installed, the test's tree standing for the trus
   [ ! -e "$T/flox.root" ]
   [ ! -e "$CLAUDE_ENV_FILE" ]
 }
+
+# --- whiteboard-reminder ---
+# A page that claims this conversation, and a transcript whose operator turn started at T0. The page's mtime is set
+# around T0 to make it stale or fresh.
+whiteboard_setup() {
+  export CLAUDE_SCRATCHPAD="$T/scratch"
+  mkdir -p "$CLAUDE_SCRATCHPAD/chantier"
+  PAGE="$CLAUDE_SCRATCHPAD/chantier/LIVE.md"
+  printf '# x\n\n> conversation: abcd1234-0000\n> title: x\n' >"$PAGE"
+  : >"$TR"
+  jq -cn '{type: "user", origin: {kind: "human"}, timestamp: "2026-10-22T08:00:00.000Z", message: {content: [{type: "text", text: "go"}]}}' >>"$TR"
+  jq -cn '{type: "user", origin: {kind: "peer"}, timestamp: "2026-10-22T09:00:00.000Z", message: {content: "a peer"}}' >>"$TR"
+}
+wb() { # $1 = tool, $2 = command (Bash), $3 = session id
+  jq -cn --arg t "$1" --arg c "${2:-}" --arg s "${3:-abcd1234-0000}" --arg tr "$TR" \
+    '{tool_name: $t, tool_input: {command: $c}, session_id: $s, transcript_path: $tr}' | bash "$H/whiteboard-reminder.sh"
+}
+
+@test "whiteboard-reminder: a step with a page stale since the operator's turn is reminded, in the tool's result" {
+  whiteboard_setup
+  TZ=UTC touch -t 202610220700 "$PAGE"
+  run wb SendMessage
+  [ "$status" -eq 0 ]
+  [ "$(printf '%s' "$output" | jq -r '.hookSpecificOutput.hookEventName')" = PostToolUse ]
+  [[ "$(printf '%s' "$output" | jq -r '.hookSpecificOutput.additionalContext')" == *"$PAGE"*"has not changed in this turn"* ]]
+  run wb Bash 'git -C /x commit -m y'
+  [[ "$output" == *"a commit or a push"* ]]
+}
+
+@test "whiteboard-reminder: a page updated in the turn is silent; a peer's later message does not move the turn" {
+  whiteboard_setup
+  TZ=UTC touch -t 202610220830 "$PAGE"
+  run wb SendMessage
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "whiteboard-reminder: no page claiming the conversation is silent (a helper session)" {
+  whiteboard_setup
+  TZ=UTC touch -t 202610220700 "$PAGE"
+  run wb SendMessage "" other-0000
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "whiteboard-reminder: a Bash command that is not a commit or a push is silent (a paused session's reads)" {
+  whiteboard_setup
+  TZ=UTC touch -t 202610220700 "$PAGE"
+  run wb Bash 'git -C /x status && ls'
+  [ -z "$output" ]
+  run wb Bash 'echo git commit'
+  [ -z "$output" ]
+  run wb Read
+  [ -z "$output" ]
+}
+
+@test "whiteboard-reminder: no operator turn in the transcript, or no transcript, is silent" {
+  whiteboard_setup
+  TZ=UTC touch -t 202610220700 "$PAGE"
+  jq -cn '{type: "user", origin: {kind: "peer"}, timestamp: "2026-10-22T09:00:00.000Z", message: {content: "a peer"}}' >"$TR"
+  run wb SendMessage
+  [ -z "$output" ]
+  rm "$TR"
+  run wb SendMessage
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "whiteboard-reminder: a push through -C and options is a step" {
+  whiteboard_setup
+  TZ=UTC touch -t 202610220700 "$PAGE"
+  run wb Bash 'cd /x && git -C /y push origin feature/z'
+  [[ "$output" == *"a commit or a push"* ]]
+}
+
+@test "whiteboard-reminder: an operator turn older than the transcript's tail is still found" {
+  whiteboard_setup
+  TZ=UTC touch -t 202610220700 "$PAGE"
+  for i in $(seq 2100); do printf '{"type":"assistant","n":%s}\n' "$i"; done >>"$TR"
+  run wb SendMessage
+  [[ "$output" == *"has not changed in this turn"* ]]
+}
