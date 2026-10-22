@@ -27,7 +27,10 @@ die() {
   exit 1
 }
 
+# instance {name}: the declared instance, as JSON. The name goes into paths, unit names and patterns: an
+# Incus instance name's shape only, checked before anything uses it.
 instance() {
+  [[ $1 =~ ^[a-z][a-z0-9-]{0,62}$ ]] || die "'$1' is not an instance name"
   NAME="$1" yq -p json -o json -I0 -e '.[strenv(NAME)]' <<<"$INSTANCES" 2>/dev/null ||
     die "no instance '$1' is declared on this member"
 }
@@ -292,6 +295,9 @@ rollback_steps() {
   upper_root=$(yq -p json -oy -r '.upperRoot' "$LAYER_CONTRACT")
   rw=$(findmnt -no SOURCE "$upper_root")
   db=$(findmnt -no SOURCE /nix/var/nix/db)
+  # An entry point of its own (_rollback): the snapshot names a path and the datasets rolled back and destroyed,
+  # so only a delivery snapshot of THIS instance, in commit's own pattern, before any of them is touched.
+  [[ $2 =~ ^ndh-incus-$1-[0-9]{8}T[0-9]{6}Z$ ]] || die "'$2' is not a delivery snapshot of $1 — nothing rolled back"
   aside="$dir/.previous-$2"
   [ -d "$aside" ] || die "nothing kept for $1 at $aside — no rollback possible"
 

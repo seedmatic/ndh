@@ -408,3 +408,56 @@ delivered_before() {
   [[ $stderr == *"rollback FAILED: it needs a hand"* ]]
   [[ $output != *"rolled back"* ]]
 }
+
+# A rollback refused on its arguments has touched nothing: no zfs call, no stop, the kept state in place.
+refused_untouched() {
+  run grep -E '^(zfs (rollback|destroy)|incus stop)' "$t/calls"
+  [ "$status" -eq 1 ]
+  [ -d "$t/attic/.previous-ndh-incus-attic-20261018T000000Z" ]
+}
+
+@test "_rollback refuses a snapshot that is not a delivery snapshot of this instance, and touches nothing" {
+  delivered_before
+  mkdir -p "$t/attic/.previous-ndh-incus-attic-20261018T000000Z" "$t/x"
+  for snapshot in ../x a@b "" ndh-incus-other-20261018T000000Z ndh-incus-attic-20261018T000000Z/../../x \
+    ndh-incus-attic-2026101T000000Z ndh-incus-attic-20261018T000000Z@x; do
+    : >"$t/calls"
+    run --separate-stderr bash "$cli" _rollback attic "$snapshot" <"$t/stdin"
+    [ "$status" -ne 0 ]
+    refused_untouched
+  done
+  [ -d "$t/x" ]
+}
+
+@test "mutant: without the snapshot check, a hostile name reaches zfs" {
+  delivered_before
+  mkdir -p "$t/attic/.previous-a@b"
+  grep -q 'is not a delivery snapshot of' "$cli"
+  sed '/is not a delivery snapshot of/d' "$cli" >"$t/mutant"
+  run --separate-stderr bash "$t/mutant" _rollback attic a@b <"$t/stdin"
+  grep -qE '^(zfs (rollback|destroy)|incus stop)' "$t/calls"
+}
+
+@test "an instance name outside an Incus name's shape is refused before any use" {
+  for name in ../attic 'att.c' 'attic;x' '' ATTIC; do
+    : >"$t/calls"
+    run --separate-stderr bash "$cli" _deliver-steps "$name" <"$t/stdin"
+    [ "$status" -ne 0 ]
+    run --separate-stderr bash "$cli" _rollback "$name" ndh-incus-attic-20261018T000000Z <"$t/stdin"
+    [ "$status" -ne 0 ]
+    [ ! -s "$t/calls" ]
+  done
+}
+
+@test "a DECLARED name of the wrong shape is refused too, and the mutant without the check takes it" {
+  # The declaration lookup alone would accept it: the shape check is what refuses it.
+  # att.c declared as a copy of attic, right after the wrapper's INSTANCES line.
+  sed '/^INSTANCES=/a INSTANCES=$(yq -p json -o json -I0 '"'"'.["att.c"] = .attic'"'"' <<<"$INSTANCES")' "$cli" >"$t/declared"
+  [ "$(grep -c '"att.c"' "$t/declared")" = 1 ]
+  run --separate-stderr bash "$t/declared" _deliver-steps 'att.c' <"$t/stdin"
+  [ "$status" -ne 0 ]
+  [[ $stderr == *"is not an instance name"* ]]
+  sed '/is not an instance name/d' "$t/declared" >"$t/mutant"
+  run --separate-stderr bash "$t/mutant" _deliver-steps 'att.c' <"$t/stdin"
+  [[ $stderr != *"is not an instance name"* && $stderr != *"no instance 'att.c' is declared"* ]]
+}
