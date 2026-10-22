@@ -6,12 +6,16 @@
 # generates after the CACHE, and its CLI only generates, so the cache is created with ours through
 # attic's API, on loopback. A cache found under another key name gets a new key the same way. Neither
 # the token nor the key is ever an argument, which /proc shows, nor printed.
-usage="usage: attic-cache-ensure <cache> <key name> <retention> <server> [upstream key name]..."
+#
+# The cache's PUBLIC key, once right, is written to <public file>, on the disk device this container shares with
+# its NixOS guest: the guest signs and publishes it for the seat to collect (keys-reconcile, class attic-cache-key).
+usage="usage: attic-cache-ensure <cache> <key name> <retention> <server> <public file> [upstream key name]..."
 cache="${1:?$usage}"
 keyName="${2:?$usage}"
 retention="${3:?$usage}"
 server="${4:?$usage}"
-shift 4
+publicFile="${5:?$usage}"
+shift 5
 
 umask 077
 work="$(mktemp -d)"
@@ -82,3 +86,8 @@ if [ "$named" != "$keyName" ]; then
   }
 fi
 grep 'Public Key:' <<<"$info"
+public="$(sed -n 's/^.*Public Key: \([^ ]*\)$/\1/p' <<<"$info")"
+# By a rename: the guest never reads a half-written public.
+printf '%s\n' "$public" >"$work/public"
+chmod 0644 "$work/public"
+mv -f "$work/public" "$publicFile"

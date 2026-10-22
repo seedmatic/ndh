@@ -4,4 +4,6 @@
 rec {
   hostRoot = "/var/lib/ndh-attic";
   hostTls = "${hostRoot}/tls";
+  # Where this guest publishes its cache's public for keys-reconcile: its own directory, never host-key's.
+  publishDir = "/var/lib/ndh/attic/published";
 }

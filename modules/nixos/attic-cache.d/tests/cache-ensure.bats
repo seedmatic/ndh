@@ -46,7 +46,7 @@ EOF
 
 run_ensure() {
   TMPDIR="$t/tmp" PATH="$t/bin:$PATH" run --separate-stderr bash -euo pipefail "$script" \
-    seedmatic seedmatic-m1-attic-1 "6 hours" http://127.0.0.1:8080 cache.nixos.org-1 flox-cache-public-1
+    seedmatic seedmatic-m1-attic-1 "6 hours" http://127.0.0.1:8080 "$t/cache-key.public" cache.nixos.org-1 flox-cache-public-1
 }
 
 no_secret_out() {
@@ -64,6 +64,20 @@ no_secret_out() {
   [[ $output == *"Public Key: seedmatic-m1-attic-1:"* ]]
   grep -qx 'Authorization: Bearer TOKENVALUE' "$t/auth-seen"
   no_secret_out
+}
+
+@test "the public key, once right, is written for the guest to publish; never the secret" {
+  run_ensure
+  [ "$status" -eq 0 ]
+  [ "$(cat "$t/cache-key.public")" = "seedmatic-m1-attic-1:PUBLICBASE64=" ]
+  ! grep -q SECRETVALUE "$t/cache-key.public" || false
+}
+
+@test "a public cache refused writes no public for the guest" {
+  echo "seedmatic-m1-attic-1 public" >"$state"
+  run_ensure
+  [ "$status" -eq 1 ]
+  [ ! -e "$t/cache-key.public" ]
 }
 
 @test "a cache found under another key name gets a new key, named right" {
@@ -87,7 +101,7 @@ no_secret_out() {
 
 @test "traced, neither the token nor the secret key reaches the trace, and curl gets the header byte for byte" {
   TMPDIR="$t/tmp" PATH="$t/bin:$PATH" bash -x "$script" \
-    seedmatic seedmatic-m1-attic-1 "6 hours" http://127.0.0.1:8080 cache.nixos.org-1 2>"$t/trace" >/dev/null
+    seedmatic seedmatic-m1-attic-1 "6 hours" http://127.0.0.1:8080 "$t/cache-key.public" cache.nixos.org-1 2>"$t/trace" >/dev/null
   ! grep -q -e TOKENVALUE -e SECRETVALUE "$t/trace" || false
   ! grep -q -e TOKENVALUE -e SECRETVALUE "$t/calls" || false
   [ "$(od -An -c "$t/auth-seen" | tr -s ' ')" = "$(printf 'Authorization: Bearer TOKENVALUE\n' | od -An -c | tr -s ' ')" ]

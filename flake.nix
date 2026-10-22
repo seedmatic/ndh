@@ -2611,7 +2611,10 @@
             inherit pkgs;
             src = self;
           };
-          attic-cache-bats = import ./modules/nixos/attic-cache.d/tests/package.nix { inherit pkgs; };
+          attic-cache-bats = import ./modules/nixos/attic-cache.d/tests/package.nix {
+            inherit pkgs;
+            trampoline = mkNdhNixBashTrampoline { pkgsForSystem = pkgs; };
+          };
           # ndh-incus-container: no incus call waits on an open stdin, as over `ssh host sudo …`.
           incus-nixos-container-bats = import ./modules/nixos/incus-nixos-container.d/tests/package.nix {
             inherit pkgs;
