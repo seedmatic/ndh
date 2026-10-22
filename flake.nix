@@ -1575,6 +1575,67 @@
               done
               touch $out
             '';
+          # A launchd job that runs a store program waits for the store: at boot launchd spawns a RunAtLoad job
+          # before the /nix volume is mounted, and a missing program puts it in the penalty box, never retried
+          # (attic-tokens on nikopol, 2026-10-21). nix-darwin's `command` wraps it in /bin/wait4path; a hand-written
+          # ProgramArguments does not. Every darwin configuration, every daemon and agent; a mutant must be caught.
+          darwin-launchd-waits-for-store =
+            let
+              lib = nixpkgs.lib;
+              unwaited =
+                c:
+                lib.concatMap
+                  (
+                    set:
+                    lib.mapAttrsToList (name: _: name) (
+                      lib.filterAttrs (
+                        _: j:
+                        let
+                          args = j.serviceConfig.ProgramArguments or [ ];
+                          program = j.serviceConfig.Program or "";
+                        in
+                        (lib.any (lib.hasInfix "/nix/store/") args || lib.hasInfix "/nix/store/" program)
+                        && !(
+                          lib.length args >= 3
+                          && lib.elemAt args 0 == "/bin/sh"
+                          && lib.elemAt args 1 == "-c"
+                          && lib.hasPrefix "/bin/wait4path /nix/store && exec " (lib.elemAt args 2)
+                        )
+                      ) set
+                    )
+                  )
+                  [
+                    c.config.launchd.daemons
+                    c.config.launchd.agents
+                    c.config.launchd.user.agents
+                  ];
+              found = lib.filter (l: l.jobs != [ ]) (
+                lib.mapAttrsToList (name: c: {
+                  inherit name;
+                  jobs = unwaited c;
+                }) self.darwinConfigurations
+              );
+              mutant = unwaited (
+                self.darwinConfigurations.nikopol.extendModules {
+                  modules = [
+                    {
+                      launchd.daemons.ndh-attic-tokens = {
+                        command = lib.mkForce "";
+                        serviceConfig.ProgramArguments = [ "/nix/store/x-mutant/bin/unseal" ];
+                      };
+                    }
+                  ];
+                }
+              );
+            in
+            assert lib.assertMsg (found == [ ])
+              "launchd jobs run a store program without waiting for /nix/store: ${
+                lib.concatMapStringsSep "; " (l: "${l.name}: ${toString l.jobs}") found
+              }";
+            assert lib.assertMsg (
+              mutant == [ "ndh-attic-tokens" ]
+            ) "the bare-ProgramArguments mutant was not caught (found: ${toString mutant})";
+            pkgs.runCommand "darwin-launchd-waits-for-store" { } "touch $out";
           # The weekly GC daemon of each Mac says why it fails: its output goes to /var/log/nix-gc.log.
           darwin-nix-gc-logs =
             let

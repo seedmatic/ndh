@@ -184,9 +184,9 @@ in
     '';
 
     launchd.user.agents.nxmatic-os-only-softwareupdate-notifier = {
+      command = "${osOnlyUpdateNotifierScript}/bin/darwin-os-only-update-notifier";
       serviceConfig = {
         Label = "com.nxmatic.softwareupdate.os-only.notifier";
-        ProgramArguments = [ "${osOnlyUpdateNotifierScript}/bin/darwin-os-only-update-notifier" ];
         StartCalendarInterval = {
           Weekday = 1;
           Hour = 9;

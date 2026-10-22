@@ -74,11 +74,13 @@ in
       security.sudo.extraConfig = ''
         ${config.profile.user.name} ALL=(root) NOPASSWD: /run/current-system/sw/bin/ndh-attic-tokens-receive
       '';
-      launchd.daemons.ndh-attic-tokens.serviceConfig = {
-        Label = ndh.store.mkLaunchdLabel "attic-tokens";
-        ProgramArguments = [ (lib.getExe unseal) ];
-        RunAtLoad = true;
-        StandardErrorPath = "/var/log/ndh-attic-tokens.log";
+      launchd.daemons.ndh-attic-tokens = {
+        command = lib.getExe unseal;
+        serviceConfig = {
+          Label = ndh.store.mkLaunchdLabel "attic-tokens";
+          RunAtLoad = true;
+          StandardErrorPath = "/var/log/ndh-attic-tokens.log";
+        };
       };
     }
 
