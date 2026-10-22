@@ -603,7 +603,9 @@ stub_flox() {
 flox_env() { # runs the hook as installed, the test's tree standing for the trusted roots and the profile
   sed -e "s#@python@#$(command -v python3)#" -e 's#@backendKeys@#^(CLAUDE_CODE_USE_BEDROCK|CLAUDE_CODE_USE_VERTEX|AWS_|ANTHROPIC_)#' \
     -e "s#@trustedRoots@#${TRUSTED-$(cd "$T" && pwd -P)}#" -e "s#@floxProfile@#$T/profiles#" "$H/flox-env.sh" >"$T/flox-env.sh"
-  jq -cn --arg c "${1:-$REPO}" '{cwd: $c}' | bash "$T/flox-env.sh"
+  # flox-env exits before reading its stdin when it has nothing to do: jq then writes into a closed pipe, and on linux
+  # says so on stderr. Only jq's stderr is silenced; the hook's own output stays in what the tests see.
+  jq -cn --arg c "${1:-$REPO}" '{cwd: $c}' 2>/dev/null | bash "$T/flox-env.sh"
 }
 
 @test "flox-env: a flox repository's tools and vars reach the session, quoted" {
@@ -645,7 +647,7 @@ flox_env() { # runs the hook as installed, the test's tree standing for the trus
   flox_env
   [ ! -e "$CLAUDE_ENV_FILE" ]
   mkdir -p "$REPO/.flox/env" && : >"$REPO/.flox/env/manifest.toml"
-  run env -u CLAUDE_ENV_FILE bash -c 'jq -cn --arg c "$1" "{cwd: \$c}" | bash "$2"' _ "$REPO" "$T/flox-env.sh"
+  run env -u CLAUDE_ENV_FILE bash -c 'jq -cn --arg c "$1" "{cwd: \$c}" 2>/dev/null | bash "$2"' _ "$REPO" "$T/flox-env.sh"
   [ -z "$output" ]
 }
 
