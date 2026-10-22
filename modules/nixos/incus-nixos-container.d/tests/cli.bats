@@ -62,6 +62,7 @@ case "\$1" in
       [ ! -d "\$z/\$ds" ] || { rm -rf "\$z/\$ds@\$snap"; $realcp -a "\$z/\$ds" "\$z/\$ds@\$snap"; }
     done ;;
   rollback)
+    [ ! -e "$t/zfs-rollback-fails" ] || { echo "zfs rollback: failing" >&2; exit 1; }
     a=\${args[-1]}; ds=\${a%@*} snap=\${a#*@}
     [ -d "\$z/\$ds@\$snap" ] || { echo "zfs rollback: no snapshot \$a" >&2; exit 1; }
     rm -rf "\$z/\$ds"; $realcp -a "\$z/\$ds@\$snap" "\$z/\$ds" ;;
@@ -105,11 +106,21 @@ EOF
 c=\$(cat "$t/clock" 2>/dev/null || echo 1000); echo \$((c + \${1%.*})) >"$t/clock"
 EOF
   printf '#!%s\nexit 1\n' "$BASH" >"$t/bin/mountpoint"
-  # nix-env --store S -p PROFILE --set TARGET: the profile becomes a link to TARGET, as nix makes it.
+  # nix-env --store S -p PROFILE --set TARGET: the profile becomes a link to TARGET, as nix makes it, and
+  # like nix it makes no parent ("cannot read directory", live). nix-env-fails makes it fail for that profile.
   cat >"$t/bin/nix-env" <<EOF
 #!$BASH
 printf 'nix-env %s\n' "\$*" >>"$t/calls"
-mkdir -p "\$(dirname "\$4")"; ln -sfn "\$6" "\$4"
+[ "\$4" != "\$(cat "$t/nix-env-fails" 2>/dev/null)" ] || { echo "nix-env: failing on \$4" >&2; exit 1; }
+[ -d "\$(dirname "\$4")" ] || { echo "error: cannot read directory \"\$(dirname "\$4")\": No such file or directory" >&2; exit 1; }
+ln -sfn "\$6" "\$4"
+EOF
+  # yq, failing on the expression that reads the profiles when yq-profiles-fails exists.
+  realyq=$(command -v yq)
+  cat >"$t/bin/yq" <<EOF
+#!$BASH
+if [ -e "$t/yq-profiles-fails" ] && [[ " \$* " == *".profiles"* ]]; then echo "yq: failing" >&2; exit 1; fi
+exec $realyq "\$@"
 EOF
   for c in systemctl nix; do printf '#!%s\nprintf "%s %%s\\n" "$*" >>%q\nexit 0\n' "$BASH" "$c" "$t/calls" >"$t/bin/$c"; done
   chmod +x "$t/bin/"*
@@ -120,7 +131,7 @@ EOF
     printf 'set -euo pipefail\nexport PATH=%q:$PATH\n' "$t/bin"
     printf 'INSTANCES=%q PROJECT=ndh POOL=default PRESTART_HOOK=/run/current-system/sw/bin/ndh-incus-container-prestart\n' \
       '{"attic":{"name":"attic","target":null,"privileged":false,"dir":"'"$t"'/attic","dataset":"tank/nerd/ndh-containers/attic","toplevel":"'"$t"'/x-attic","hostStore":"local","devices":{},"profiles":{"/nix/var/nix/profiles/per-user/root/runtime":"'"$t"'/x-runtime"},"stateDatasets":["tank/nerd/attic"],"health":{"units":[{"unit":"atticd.service"},{"unit":"nginx.service","kind":"conditional"}]}}}'
-    printf 'GUEST_LOWER=/nix/.lower GUEST_UPPER=/nix/.upper LAYER_CONTRACT=%q STACK_DESCRIPTION=%q STORE_DEGRADED=%q GCROOTS=%q HEALTH_TIMEOUT=20\n' \
+    printf 'GUEST_LOWER=/nix/.lower GUEST_UPPER=/nix/.upper LAYER_CONTRACT=%q STACK_DESCRIPTION=%q STORE_DEGRADED=%q GCROOTS=%q HEALTH_TIMEOUT=20 GUEST_SYSTEMCTL=/run/current-system/sw/bin/systemctl\n' \
       "$t/layers.json" "$t/stack.json" "$t/degraded" "$t/gcroots"
     cat "$BATS_TEST_DIRNAME/../cli.sh"
   } >"$cli"
@@ -283,4 +294,170 @@ delivered_before() {
   [ -n "$start" ]
   [ "$stop" -lt "$snap" ]
   [ "$snap" -lt "$start" ]
+}
+
+
+@test "converge makes a profile's missing parent host side, root's own, and lands the profile" {
+  delivered_before
+  # The old /nix/var/nix, per-user/root with it, goes aside at delivery: nothing of the parent is left.
+  [ ! -e "$t/attic/root/nix/var/nix/profiles/per-user" ]
+  # A strict umask in the caller: the mode below is the CLI's doing.
+  umask 077
+  run --separate-stderr bash "$cli" converge <"$t/stdin"
+  [ "$status" -eq 0 ]
+  [ -d "$t/attic/root/nix/var/nix/profiles/per-user/root" ]
+  [ "$(stat -c %a "$t/attic/root/nix/var/nix/profiles/per-user")" = 755 ]
+  [ "$(stat -c %a "$t/attic/root/nix/var/nix/profiles/per-user/root")" = 755 ]
+  [ "$(readlink "$t/attic/root/nix/var/nix/profiles/per-user/root/runtime")" = "$t/x-runtime" ]
+}
+
+@test "mutant: without the parent's mkdir, the delivery fails and rolls back, never healthy" {
+  delivered_before
+  grep -q '^    (umask 022 && mkdir -p "\$dir/root/\$parent")$' "$cli"
+  sed '/^    (umask 022 && mkdir -p "\$dir\/root\/\$parent")$/d' "$cli" >"$t/mutant"
+  run --separate-stderr bash "$t/mutant" converge <"$t/stdin"
+  [ "$status" -eq 1 ]
+  [[ $stderr == *"cannot read directory"* ]]
+  [[ $output != *healthy* ]]
+  [ "$(readlink "$t/attic/root/nix/var/nix/profiles/system")" = "$t/x-attic-old" ]
+}
+
+@test "a nix-env failure on a profile fails the delivery, rolls back, and is not retried" {
+  delivered_before
+  echo "$t/attic/root/nix/var/nix/profiles/per-user/root/runtime" >"$t/nix-env-fails"
+  run --separate-stderr bash "$cli" converge <"$t/stdin"
+  [ "$status" -eq 1 ]
+  [[ $stderr == *"could not be delivered"* && $stderr == *"back on its previous system"* ]]
+  [[ $output != *healthy* ]]
+  [ "$(readlink "$t/attic/root/nix/var/nix/profiles/system")" = "$t/x-attic-old" ]
+  [ "$(cat "$t/attic/upper/marker")" = old-upper ]
+  [ "$(cat "$t/attic/lower.snapshot")" = ndh-incus-attic-20261001T000000Z ]
+  [ -z "$(ls -d "$t/attic"/.previous-* 2>/dev/null)" ]
+  [ "$(cat "$t/attic/converge.failed")" = "$t/x-attic" ]
+}
+
+@test "mutant: the delivery steps in the caller's process lose the nix-env failure" {
+  delivered_before
+  echo "$t/attic/root/nix/var/nix/profiles/per-user/root/runtime" >"$t/nix-env-fails"
+  grep -q 'bash "\${BASH_SOURCE\[0\]}" _deliver-steps "\$1"' "$cli"
+  # The postcondition goes too, so only the process boundary stands between the failure and "healthy".
+  sed -e 's/bash "\${BASH_SOURCE\[0\]}" _deliver-steps "\$1"/deliver_steps "$1"/' \
+    -e '/Read on what landed/,/does not resolve to/d' "$cli" >"$t/mutant"
+  run --separate-stderr bash "$t/mutant" converge <"$t/stdin"
+  [[ $output == *healthy* ]]
+}
+
+@test "a yq failure reading the profiles fails the delivery, and rolls back" {
+  delivered_before
+  touch "$t/yq-profiles-fails"
+  run --separate-stderr bash "$cli" converge <"$t/stdin"
+  [ "$status" -eq 1 ]
+  [[ $stderr == *"could not be delivered"* ]]
+  [[ $output != *healthy* ]]
+  [ "$(readlink "$t/attic/root/nix/var/nix/profiles/system")" = "$t/x-attic-old" ]
+}
+
+@test "mutant: a profiles read whose yq status is lost passes as healthy" {
+  delivered_before
+  touch "$t/yq-profiles-fails"
+  grep -q '^  profiles=\$(yq .*<<<"\$info")$' "$cli"
+  sed 's/^\(  profiles=\$(yq .*<<<"\$info")\)$/\1 || true/' "$cli" >"$t/mutant"
+  grep -q '<<<"\$info") || true$' "$t/mutant"
+  run --separate-stderr bash "$t/mutant" converge <"$t/stdin"
+  [[ $output == *healthy* ]]
+}
+
+@test "a profile that does not resolve to its declared package after nix-env fails the delivery" {
+  delivered_before
+  # nix-env "succeeds" but lands the profile elsewhere.
+  printf '#!%s\nprintf "nix-env %%s\\n" "$*" >>%q\ncase "$4" in */per-user/*) ln -sfn %q "$4" ;; *) ln -sfn "$6" "$4" ;; esac\n' \
+    "$BASH" "$t/calls" "$t/x-attic-old" >"$t/bin/nix-env"
+  chmod +x "$t/bin/nix-env"
+  run --separate-stderr bash "$cli" converge <"$t/stdin"
+  [ "$status" -eq 1 ]
+  [[ $stderr == *"does not resolve to $t/x-runtime"* ]]
+}
+
+@test "mutant: without the postcondition, a misplaced profile passes as healthy" {
+  delivered_before
+  printf '#!%s\nprintf "nix-env %%s\\n" "$*" >>%q\ncase "$4" in */per-user/*) ln -sfn %q "$4" ;; *) ln -sfn "$6" "$4" ;; esac\n' \
+    "$BASH" "$t/calls" "$t/x-attic-old" >"$t/bin/nix-env"
+  chmod +x "$t/bin/nix-env"
+  grep -q 'does not resolve to' "$cli"
+  sed -e '/Read on what landed/,/does not resolve to/d' "$cli" >"$t/mutant"
+  run --separate-stderr bash "$t/mutant" converge <"$t/stdin"
+  [[ $output == *healthy* ]]
+}
+
+@test "the health probes call the guest's systemctl by its path" {
+  delivered_before
+  run --separate-stderr bash "$cli" converge <"$t/stdin"
+  [ "$status" -eq 0 ]
+  grep -q -- '-- /run/current-system/sw/bin/systemctl is-active atticd.service$' "$t/calls"
+  run grep -E -- '-- systemctl ' "$t/calls"
+  [ "$status" -eq 1 ]
+}
+
+@test "a rollback whose step fails says it needs a hand, and never claims it rolled back" {
+  delivered_before
+  echo "atticd.service failed" >"$t/units"
+  touch "$t/zfs-rollback-fails"
+  run --separate-stderr bash "$cli" converge <"$t/stdin"
+  [ "$status" -eq 1 ]
+  [[ $stderr == *"zfs rollback: failing"* ]]
+  [[ $stderr == *"rollback FAILED: it needs a hand"* ]]
+  [[ $output != *"rolled back"* ]]
+}
+
+# A rollback refused on its arguments has touched nothing: no zfs call, no stop, the kept state in place.
+refused_untouched() {
+  run grep -E '^(zfs (rollback|destroy)|incus stop)' "$t/calls"
+  [ "$status" -eq 1 ]
+  [ -d "$t/attic/.previous-ndh-incus-attic-20261018T000000Z" ]
+}
+
+@test "_rollback refuses a snapshot that is not a delivery snapshot of this instance, and touches nothing" {
+  delivered_before
+  mkdir -p "$t/attic/.previous-ndh-incus-attic-20261018T000000Z" "$t/x"
+  for snapshot in ../x a@b "" ndh-incus-other-20261018T000000Z ndh-incus-attic-20261018T000000Z/../../x \
+    ndh-incus-attic-2026101T000000Z ndh-incus-attic-20261018T000000Z@x; do
+    : >"$t/calls"
+    run --separate-stderr bash "$cli" _rollback attic "$snapshot" <"$t/stdin"
+    [ "$status" -ne 0 ]
+    refused_untouched
+  done
+  [ -d "$t/x" ]
+}
+
+@test "mutant: without the snapshot check, a hostile name reaches zfs" {
+  delivered_before
+  mkdir -p "$t/attic/.previous-a@b"
+  grep -q 'is not a delivery snapshot of' "$cli"
+  sed '/is not a delivery snapshot of/d' "$cli" >"$t/mutant"
+  run --separate-stderr bash "$t/mutant" _rollback attic a@b <"$t/stdin"
+  grep -qE '^(zfs (rollback|destroy)|incus stop)' "$t/calls"
+}
+
+@test "an instance name outside an Incus name's shape is refused before any use" {
+  for name in ../attic 'att.c' 'attic;x' '' ATTIC; do
+    : >"$t/calls"
+    run --separate-stderr bash "$cli" _deliver-steps "$name" <"$t/stdin"
+    [ "$status" -ne 0 ]
+    run --separate-stderr bash "$cli" _rollback "$name" ndh-incus-attic-20261018T000000Z <"$t/stdin"
+    [ "$status" -ne 0 ]
+    [ ! -s "$t/calls" ]
+  done
+}
+
+@test "a DECLARED name of the wrong shape is refused too, and the mutant without the check takes it" {
+  # The declaration lookup alone would accept it: the shape check is what refuses it.
+  # att.c declared as a copy of attic, right after the wrapper's INSTANCES line.
+  sed '/^INSTANCES=/a INSTANCES=$(yq -p json -o json -I0 '"'"'.["att.c"] = .attic'"'"' <<<"$INSTANCES")' "$cli" >"$t/declared"
+  [ "$(grep -c '"att.c"' "$t/declared")" = 1 ]
+  run --separate-stderr bash "$t/declared" _deliver-steps 'att.c' <"$t/stdin"
+  [ "$status" -ne 0 ]
+  [[ $stderr == *"is not an instance name"* ]]
+  sed '/is not an instance name/d' "$t/declared" >"$t/mutant"
+  run --separate-stderr bash "$t/mutant" _deliver-steps 'att.c' <"$t/stdin"
+  [[ $stderr != *"is not an instance name"* && $stderr != *"no instance 'att.c' is declared"* ]]
 }
