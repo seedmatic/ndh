@@ -248,10 +248,12 @@ hostile() { # <cmd>... — runs <cmd> under it
 
 @test "the xtrace guard is the SAME block in every script that handles a private throughout" {
   local here="${BATS_TEST_DIRNAME}/.." f
-  guard() { sed -n '/^# ★ xtrace-guard/,/^unset BASH_XTRACEFD/p' "$1"; }
+  # The same block, but for what the script handles (private keys, cache tokens), named in its two messages.
+  guard() { sed -n '/^# ★ xtrace-guard/,/^unset BASH_XTRACEFD/p' "$1" | sed -E 's/this script handles (private keys|cache tokens)/this script handles <secret>/'; }
   [ -n "$(guard "$here/incus-cluster-cert-renew.sh")" ]
   for f in authority-bootstrap-tls-root.d/authority-bootstrap-tls-root.sh ../home-manager/git.d/sops.sh \
-    keyring.d/ndh-keyring.sh attic-leaf.d/attic-leaf-sign.sh ../nixos/attic-cache.d/token-issue.sh keys-yaml.d/krl.sh; do
+    keyring.d/ndh-keyring.sh attic-leaf.d/attic-leaf-sign.sh ../nixos/attic-cache.d/token-issue.sh keys-yaml.d/krl.sh \
+    attic-tokens.d/unseal.sh; do
     [ "$(guard "$here/../$f")" = "$(guard "$here/incus-cluster-cert-renew.sh")" ] || { echo "${f}: not the same guard" >&2; return 1; }
   done
 }
@@ -265,7 +267,7 @@ hostile() { # <cmd>... — runs <cmd> under it
     cache-signing-key-rotate.d/cache-signing-key-rotate.sh=3 ssh-keys-certify.d/ssh-keys-certify.sh=0; do
     want=${f#*=} f=${f%=*}
     [ -s "$here/../$f" ] || { echo "${f}: not found" >&2; return 1; }
-    ! grep -q '^# ★ xtrace-guard\|^case \$- in \*x\*)' "$here/../$f" || { echo "${f}: a whole-script guard" >&2; return 1; }
+    if grep -q '^# ★ xtrace-guard\|^case \$- in \*x\*)' "$here/../$f"; then echo "${f}: a whole-script guard" >&2; return 1; fi
     grep -qE '^source "?@nixBashTrampoline@"?' "$here/../$f" || { echo "${f}: not on the trampoline" >&2; return 1; }
     [ "$(grep -c '^[[:space:]]*ndh::secret:begin ' "$here/../$f")" -eq "$want" ] || { echo "${f}: not ${want} window(s)" >&2; return 1; }
     [ "$(grep -c '^[[:space:]]*ndh::secret:end$' "$here/../$f")" -eq "$want" ] || { echo "${f}: not ${want} close(s)" >&2; return 1; }
