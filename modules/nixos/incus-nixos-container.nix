@@ -174,6 +174,7 @@ let
       STORE_DEGRADED=/run/ndh/store-degraded
       GCROOTS=/nix/var/nix/gcroots/ndh-containers
       HEALTH_TIMEOUT=${toString cfg.healthTimeout}
+      GUEST_SYSTEMCTL=/run/current-system/sw/bin/systemctl
       export NIX_CONFIG="extra-experimental-features = ${lib.concatStringsSep " " nixFeatures}"
       ${builtins.readFile ./incus-nixos-container.d/cli.sh}
     '';

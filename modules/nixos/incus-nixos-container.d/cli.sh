@@ -9,7 +9,7 @@
 #                                         healthy, restore the previous system if not
 #
 # Set by the wrapper: INSTANCES (JSON), PROJECT, POOL, LAYER_CONTRACT, GUEST_LOWER, GUEST_UPPER,
-# PRESTART_HOOK, STACK_DESCRIPTION, STORE_DEGRADED, GCROOTS, NIX_CONFIG, HEALTH_TIMEOUT.
+# PRESTART_HOOK, STACK_DESCRIPTION, STORE_DEGRADED, GCROOTS, NIX_CONFIG, HEALTH_TIMEOUT, GUEST_SYSTEMCTL.
 
 usage() {
   # By its content, not its line numbers: the wrapper puts its own lines before this file.
@@ -140,9 +140,15 @@ root_own() {
 # `.previous-<snapshot>` (its upper, DB, lowers stamps and profiles) and its snapshot kept, so
 # `rollback` can put it back exactly. Prints ONLY the new snapshot's name on stdout: what the steps
 # print goes to stderr, since the caller captures stdout.
+#
+# The steps run in a process of their own: called under `||` or `if !`, as every caller here does, a
+# function runs with errexit OFF for its whole body, and neither `set -e` again nor inherit_errexit
+# turns it back on (measured, bash 5). A failed nix-env then went unseen and the delivery "succeeded"
+# with a declared profile missing (🎛️, live on bioskop-nixos, 2026-10-22). A new process honours it.
 deliver_keep() {
   local snapshot
-  snapshot=$(deliver_steps "$1" 3>&1 1>&2) || return 1
+  snapshot=$(bash "${BASH_SOURCE[0]}" _deliver-steps "$1" 3>&1 1>&2) || return 1
+  [ -n "$snapshot" ] || return 1
   echo "$snapshot"
 }
 
@@ -215,19 +221,28 @@ deliver_steps() {
   echo "$snapshot" >"$dir/lower.snapshot"
   systemctl start "ndh-incus-container-store-$1.service"
 
-  # The snapshot carries the system, so this copies nothing; it stays as the check that it does.
+  # The system's profile, then every other one the instance declares, all host side: the container's root
+  # cannot write in the host-owned /nix bind when it is idmapped (EPERM, silently, from the container's
+  # activation: measured by 🎛️ on bioskop-nixos, 2026-10-22, for the bringup runtime profile).
+  # The list first, its status checked: a `while … < <(yq …)` loses yq's. Each profile's parent is made
+  # here, root's own: nix-env makes none, and the old /nix/var/nix, its per-user/root included, went aside.
+  # The snapshot carries each package, so `nix copy` copies nothing; it stays as the check that it does.
   # The source is nerd-nixos's own store, which built or validated every path; most carry no
   # signature, so a checked copy would refuse the first path of any delta.
-  nix copy --no-check-sigs --to "$store" "$toplevel"
-  nix-env --store "$store" -p "$dir/root/nix/var/nix/profiles/system" --set "$toplevel"
-  # Every profile the system declares, host side like the system's: the container's root cannot write
-  # in the host-owned /nix bind when it is idmapped (EPERM, silently, from the container's activation:
-  # measured by 🎛️ on bioskop-nixos, 2026-10-22, for the bringup runtime profile).
+  local profiles profile parent
+  profiles=$(yq -p json -oy -r '(.profiles // {}) | to_entries | .[] | .key + "\t" + .value' <<<"$info")
+  profiles=$(printf '/nix/var/nix/profiles/system\t%s\n%s' "$toplevel" "$profiles")
   while IFS=$'\t' read -r profile runtime; do
     [ -n "$profile" ] || continue
+    parent=$(dirname "${profile#/}")
+    root_own "$dir/root" "$parent"
+    mkdir -p -m 0755 "$dir/root/$parent"
     nix copy --no-check-sigs --to "$store" "$runtime"
     nix-env --store "$store" -p "$dir/root$profile" --set "$runtime"
-  done < <(yq -p json -oy -r '(.profiles // {}) | to_entries | .[] | .key + "\t" + .value' <<<"$info")
+    # Read on what landed: the profile resolves to the declared package.
+    [ "$(readlink -f "$dir/root$profile")" = "$(readlink -f "$runtime")" ] ||
+      die "$1's profile $profile does not resolve to $runtime after delivery"
+  done <<<"$profiles"
   # nerd-nixos's GC, freeze and compaction keep what a container runs.
   mkdir -p "$GCROOTS"
   ln -sfn "$toplevel" "$GCROOTS/$1"
@@ -264,7 +279,11 @@ commit() {
 # its previous system, upper, DB, lowers and profiles byte for byte, and its state datasets as they
 # were when it stopped; then {snapshot} goes. What the service wrote to its data meanwhile is lost: it
 # is the price of bringing a forward data migration back.
-rollback() {
+#
+# In its own process, as deliver_keep's steps: its callers run it under `if` and `||`, errexit off.
+rollback() { bash "${BASH_SOURCE[0]}" _rollback "$1" "$2"; }
+
+rollback_steps() {
   local info dir toplevel upper_root rw db aside entry previous state fs
   info=$(instance "$1")
   dir=$(field "$info" dir)
@@ -299,6 +318,7 @@ rollback() {
   [ -n "$previous" ] || die "$1 had no delivery before $2: it stays STOPPED"
   systemctl start "ndh-incus-container-store-$1.service"
   # The GC root follows what runs again: the previous system is the profile's target.
+  mkdir -p "$GCROOTS"
   ln -sfn "$(readlink -f "$dir/root/nix/var/nix/profiles/system")" "$GCROOTS/$1"
   incus start --project "$PROJECT" "$1"
   echo "ndh-incus-container: $1 rolled back from $toplevel to snapshot $previous"
@@ -315,7 +335,7 @@ deliver() {
 # declared `conditional` is also healthy when systemd skipped it on its condition (ConditionResult=no),
 # so a service waiting for material that is not there yet (nginx before its TLS leaf) is not a failure.
 healthy() {
-  local info deadline unit kind state result
+  local info deadline units unit kind state result
   info=$(instance "$1")
   deadline=$(($(date +%s) + HEALTH_TIMEOUT))
   until [ "$(incus query "/1.0/instances/$1/state?project=$PROJECT" | yq -p json -oy -r '.status')" = Running ]; do
@@ -325,11 +345,17 @@ healthy() {
     }
     sleep 2
   done
+  # The list first, its status checked: `healthy` runs under `if`, errexit off, and an empty list read
+  # from a failed yq would pass every container.
+  units=$(yq -p json -oy -r '(.health.units // []) | .[] | .unit + "\t" + (.kind // "active")' <<<"$info") ||
+    return 1
   while IFS=$'\t' read -r unit kind; do
     [ -n "$unit" ] || continue
-    until state=$(incus exec --project "$PROJECT" "$1" -- systemctl is-active "$unit" || true) && [ "$state" = active ]; do
+    # By its path: until the container's activation has run, its PATH holds no systemctl, and Incus
+    # answers "Error: Command not found" (seen live, 2026-10-22). Not yet answering is not yet active.
+    until state=$(incus exec --project "$PROJECT" "$1" -- "$GUEST_SYSTEMCTL" is-active "$unit" || true) && [ "$state" = active ]; do
       if [ "$kind" = conditional ]; then
-        result=$(incus exec --project "$PROJECT" "$1" -- systemctl show -p ConditionResult --value "$unit" || true)
+        result=$(incus exec --project "$PROJECT" "$1" -- "$GUEST_SYSTEMCTL" show -p ConditionResult --value "$unit" || true)
         [ "$result" != no ] || break
       fi
       [ "$state" != failed ] && [ "$(date +%s)" -lt "$deadline" ] || {
@@ -338,7 +364,7 @@ healthy() {
       }
       sleep 2
     done
-  done < <(yq -p json -oy -r '(.health.units // []) | .[] | .unit + "\t" + (.kind // "active")' <<<"$info")
+  done <<<"$units"
 }
 
 # converge: every declared container whose system profile is not its declared toplevel is delivered,
@@ -347,7 +373,7 @@ healthy() {
 # not yet created is the operator's (`create`), and is skipped, loudly. The exit status is 1 if any
 # container could not be converged, so the unit fails visibly.
 converge() {
-  local name info dir toplevel current snapshot failed=0
+  local name info dir toplevel current snapshot aside failed=0
   for name in $(yq -p json -oy -r 'keys | .[]' <<<"$INSTANCES"); do
     info=$(instance "$name")
     dir=$(field "$info" dir)
@@ -371,6 +397,15 @@ converge() {
     if ! snapshot=$(deliver_keep "$name"); then
       echo "ndh-incus-container: $name could not be delivered" >&2
       echo "$toplevel" >"$dir/converge.failed"
+      # Stopped past its snapshot, the delivery has moved the previous system aside: put it back.
+      for aside in "$dir"/.previous-*; do
+        [ -d "$aside" ] || continue
+        if rollback "$name" "${aside##*/.previous-}"; then
+          echo "ndh-incus-container: $name is back on its previous system" >&2
+        else
+          echo "ndh-incus-container: $name's rollback FAILED: it needs a hand" >&2
+        fi
+      done
       failed=1
       continue
     fi
@@ -395,5 +430,14 @@ case "${1:-}" in
     "$1" "$2"
     ;;
   converge) converge ;;
+  # deliver_keep's and rollback's own processes; not verbs of the operator's.
+  _deliver-steps)
+    [ -n "${2:-}" ] || usage
+    deliver_steps "$2"
+    ;;
+  _rollback)
+    [ -n "${3:-}" ] || usage
+    rollback_steps "$2" "$3"
+    ;;
   *) usage ;;
 esac
