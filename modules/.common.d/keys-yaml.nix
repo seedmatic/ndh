@@ -15,7 +15,19 @@ let
   # keys.yaml.
   keysJsonFile = worktreePath.of "modules/home-manager/ssh.d/keys.json";
   parsed = builtins.fromJSON (builtins.readFile keysJsonFile);
-  keysJson = parsed.keys or { };
+  # Every slot as keys.yaml records it, pending and retired included: read only by what declares, generates and
+  # records a key (host-key.nix through slots.nix, the ops queue, keys-reconcile).
+  allSlotsJson = parsed.keys or { };
+  # What every other consumer sees (roles × keys K5+): a slot `pending` (no key yet) or `retired` (no longer used)
+  # does not exist for trust stores, certificates, installs or KRLs. One filter, here.
+  hidden = [
+    "pending"
+    "retired"
+  ];
+  keysJson = lib.mapAttrs (
+    _: key:
+    key // { slots = lib.filterAttrs (_: s: !(lib.elem (s.state or "") hidden)) (key.slots or { }); }
+  ) allSlotsJson;
   authoritiesJson = parsed.authorities or { };
   revokedJson = parsed.revoked or { };
   trust = import ./keys-yaml.d/trust.nix { inherit lib; };
@@ -95,9 +107,19 @@ in
       readOnly = true;
       default = keysJson;
       description = ''
-        Parsed `.keys` map from `modules/home-manager/ssh.d/keys.yaml`.
-        The build-time derivation producing the JSON is shared via the
-        Nix store so consumers never rebuild it.
+        Parsed `.keys` map from `modules/home-manager/ssh.d/keys.yaml`, without its `pending` and `retired` slots
+        (see `allSlots`). The build-time derivation producing the JSON is shared via the Nix store so consumers never
+        rebuild it.
+      '';
+    };
+
+    allSlots = lib.mkOption {
+      type = lib.types.attrsOf lib.types.anything;
+      readOnly = true;
+      default = allSlotsJson;
+      description = ''
+        The `.keys` map with every slot, `pending` and `retired` included. Only what declares, generates and records a
+        key reads it (host-key.nix, the ops queue, keys-reconcile); every other consumer reads `keys`, which has neither.
       '';
     };
 

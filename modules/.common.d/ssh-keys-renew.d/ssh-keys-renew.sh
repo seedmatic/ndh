@@ -213,8 +213,8 @@ keygen::args_for() { # <wire type>
 	esac
 }
 
-slot::list() { # <section> <name>
-	yq eval -r ".${1}.\"${2}\".slots // {} | keys | sort | .[]" "$decrypted"
+slot::list() { # <section> <name>: the slots a renewal works on; a pending or retired one is not (roles × keys K5+)
+	yq eval -r ".${1}.\"${2}\".slots // {} | with_entries(select((.value.state // \"\") != \"pending\" and (.value.state // \"\") != \"retired\")) | keys | sort | .[]" "$decrypted"
 }
 
 slot::newest() { # <section> <name>
@@ -873,7 +873,7 @@ nixsign::run() {
 		log::error "the public is named ${name}, not seedmatic-${machine}-N: it is another machine's"
 		return 1
 	fi
-	slot="$(K="$key" yq eval -r '.keys[strenv(K)].slots // {} | keys | sort | .[-1] // ""' "$keysYaml")"
+	slot="$(K="$key" yq eval -r '.keys[strenv(K)].slots // {} | with_entries(select((.value.state // "") != "pending" and (.value.state // "") != "retired")) | keys | sort | .[-1] // ""' "$keysYaml")"
 	if [[ -z "$slot" ]]; then
 		log::error "keys.${key} has no slot: record the machine's host key first (--create ${key} --public -)"
 		return 1

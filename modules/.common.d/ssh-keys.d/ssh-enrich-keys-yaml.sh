@@ -71,9 +71,13 @@ yq::get() { yq eval -r "${1}" "$inputFile" 2>/dev/null || true; }
 # trusted-user-ca.pub concatenates every *-ca.pub on each activation, so two
 # authority generations are both trusted while the leaves move across.
 
+# A slot `pending` (no key yet) or `retired` (no longer used) is not this machine's to install, sign for or count
+# (roles × keys K5+): every slot reader goes through this filter. Authorities' slots carry no state, so it keeps them.
+usableSlots='| with_entries(select((.value.state // "") != "pending" and (.value.state // "") != "retired"))'
+
 slot::count() { # <section> <name>
 	local n
-	n="$(yq eval -r ".${1}.\"${2}\".slots | length" "$inputFile" 2>/dev/null || true)"
+	n="$(yq eval -r ".${1}.\"${2}\".slots ${usableSlots} | length" "$inputFile" 2>/dev/null || true)"
 	[[ -n "$n" && "$n" != "null" ]] || n=0
 	printf '%s\n' "$n"
 }
@@ -88,7 +92,7 @@ slot::list() { # <section> <name>
 		log::error "${1} entry ${2} has no slots — the flat public/private shape is not supported"
 		return 1
 	fi
-	yq eval -r ".${1}.\"${2}\".slots | keys | sort | .[]" "$inputFile"
+	yq eval -r ".${1}.\"${2}\".slots ${usableSlots} | keys | sort | .[]" "$inputFile"
 }
 
 slot::newest() { # <section> <name>

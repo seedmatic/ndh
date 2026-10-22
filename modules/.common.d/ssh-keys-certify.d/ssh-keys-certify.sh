@@ -279,7 +279,8 @@ plan::build() {
 					plan+=("$line")
 				fi
 			done < <(yq::get ".keys.\"${key}\".cert_usage // [] | .[]")
-		done < <(yq::get ".keys.\"${key}\".slots // {} | keys | sort | .[]")
+		# A pending slot is keys-reconcile's to certify, a retired one nobody's (roles × keys K5+).
+		done < <(yq::get ".keys.\"${key}\".slots // {} | with_entries(select((.value.state // \"\") != \"pending\" and (.value.state // \"\") != \"retired\")) | keys | sort | .[]")
 	done < <(yq::get '.keys // {} | keys | .[]')
 	interimWaiting="$(interim::waiting)"
 	if [[ -n "$interimWaiting" ]]; then

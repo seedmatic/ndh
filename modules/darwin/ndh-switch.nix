@@ -38,7 +38,7 @@ in
       readOnly = true;
       default = import ../.common.d/ops-queue.d/package.nix {
         inherit pkgs catalog ndh;
-        inherit (config.ndh.keysYaml) keys;
+        keys = config.ndh.keysYaml.allSlots;
         keysReconcile = "${cfg.keysReconcile}/bin/keys-reconcile";
         ndhOps = "${cfg.ndhOps}/bin/ndh-ops";
       };
@@ -84,7 +84,7 @@ in
       readOnly = true;
       default = import ../.common.d/keys-reconcile.d/package.nix {
         inherit pkgs catalog ndh;
-        inherit (config.ndh.keysYaml) keys;
+        keys = config.ndh.keysYaml.allSlots;
         # The revision this seat's closure is built from: keys-reconcile works on it alone, and refuses it unpushed.
         revision = config.system.configurationRevision or "";
         inherit (cfg.package) machines;

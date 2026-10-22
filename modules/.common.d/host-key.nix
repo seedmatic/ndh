@@ -65,7 +65,7 @@ in
     entry = lib.mkOption {
       type = lib.types.attrsOf lib.types.anything;
       internal = true;
-      default = config.ndh.keysYaml.keys."host-${machine}" or { };
+      default = config.ndh.keysYaml.allSlots."host-${machine}" or { };
       description = "keys.yaml's host-<hostName> entry, the slots this module reads.";
     };
 
