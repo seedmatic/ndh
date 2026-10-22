@@ -1,3 +1,4 @@
+#!/usr/bin/env bash
 # ndh's NixOS containers. `create` is the operator's gesture; `converge` runs by itself after every
 # switch and boot (ndh-incus-container-converge.service), and is the only thing that moves a container
 # to a new system: the hand verbs below stay for the probe and for repairs.
@@ -8,11 +9,30 @@
 #   ndh-incus-container converge          deliver every declared container whose system differs, keep it if
 #                                         healthy, restore the previous system if not
 #
-# Set by the wrapper: INSTANCES (JSON), PROJECT, POOL, LAYER_CONTRACT, GUEST_LOWER, GUEST_UPPER,
-# PRESTART_HOOK, STACK_DESCRIPTION, STORE_DEGRADED, GCROOTS, NIX_CONFIG, HEALTH_TIMEOUT, GUEST_SYSTEMCTL.
+# Under ndh's trampoline, no PATH of its own: incus, zfs, nix and systemctl are the guest system's, matched to its kernel
+# module and daemons; the rest comes from the bringup runtime profile. The guest's activation installs that profile
+# before any unit runs, and the trampoline refuses loudly where it is missing.
+set -euo pipefail
+
+# shellcheck disable=SC1091
+source @nixBashTrampoline@
+
+INSTANCES=@instances@
+PROJECT=@project@
+POOL=@pool@
+LAYER_CONTRACT=@layerContract@
+GUEST_LOWER=@guestLower@
+GUEST_UPPER=@guestUpper@
+PRESTART_HOOK=@prestartHook@
+STACK_DESCRIPTION=@stackDescription@
+STORE_DEGRADED=@storeDegraded@
+GCROOTS=@gcroots@
+HEALTH_TIMEOUT=@healthTimeout@
+GUEST_SYSTEMCTL=@guestSystemctl@
+NIX_CONFIG=@nixConfig@
+export NIX_CONFIG
 
 usage() {
-  # By its content, not its line numbers: the wrapper puts its own lines before this file.
   sed -n '/^#   ndh-incus-container /p' "${BASH_SOURCE[0]}" >&2
   exit 2
 }
@@ -176,7 +196,9 @@ declared_ok() {
 # with a declared profile missing (🎛️, live on bioskop-nixos, 2026-10-22). A new process honours it.
 deliver_keep() {
   local snapshot
-  snapshot=$(bash "${BASH_SOURCE[0]}" _deliver-steps "$1" 3>&1 1>&2) || return 1
+  # Through the running interpreter, a store path: the trampoline keeps no `bash` of the caller's on PATH. The
+  # snapshot comes back on fd 9: the logger holds fd 3.
+  snapshot=$("$BASH" "${BASH_SOURCE[0]}" _deliver-steps "$1" 9>&1 1>&2) || return 1
   [ -n "$snapshot" ] || return 1
   echo "$snapshot"
 }
@@ -275,7 +297,7 @@ deliver_steps() {
   mkdir -p "$GCROOTS"
   ln -sfn "$toplevel" "$GCROOTS/$1"
   incus start --project "$PROJECT" "$1"
-  echo "$snapshot" >&3
+  echo "$snapshot" >&9
 }
 
 # state_snapshots {info} {name}: every delivery snapshot on the instance's state datasets.
@@ -309,7 +331,7 @@ commit() {
 # is the price of bringing a forward data migration back.
 #
 # In its own process, as deliver_keep's steps: its callers run it under `if` and `||`, errexit off.
-rollback() { bash "${BASH_SOURCE[0]}" _rollback "$1" "$2"; }
+rollback() { "$BASH" "${BASH_SOURCE[0]}" _rollback "$1" "$2"; }
 
 rollback_steps() {
   local info dir toplevel upper_root rw db aside entry previous state fs
@@ -422,12 +444,15 @@ converge() {
       continue
     fi
     echo "ndh-incus-container: $name to deliver: ${wrong//$'\n'/; }" >&2
-    # One attempt per declared state, the profiles included: a changed profile alone is a new attempt.
+    # One attempt per declared state and per delivering tool: a changed profile alone is a new attempt, and so is
+    # a new revision of this script, since an attempt can fail on the tool rather than on what is declared (a bare
+    # `bash` not on PATH, live on bioskop-nixos, 2026-10-22).
     if ! declared=$(declared_profiles "$info"); then
       echo "ndh-incus-container: $name's declared profiles could not be read: nothing delivered" >&2
       failed=1
       continue
     fi
+    declared=$(printf 'tool\t%s\n%s' "$(readlink -f "${BASH_SOURCE[0]}")" "$declared")
     if [ -e "$dir/converge.failed" ] && [ "$(cat "$dir/converge.failed")" = "$declared" ]; then
       echo "ndh-incus-container: $name already failed on $toplevel; it stays on its previous system" >&2
       failed=1
@@ -462,7 +487,8 @@ converge() {
   return "$failed"
 }
 
-case "${1:-}" in
+main() {
+  case "${1:-}" in
   list) yq -p json -oy -r 'to_entries | .[] | .key + "  target=" + (.value.target // "standalone") + "  " + .value.toplevel' <<<"$INSTANCES" ;;
   create | deliver)
     [ -n "${2:-}" ] || usage
@@ -479,4 +505,7 @@ case "${1:-}" in
     rollback_steps "$2" "$3"
     ;;
   *) usage ;;
-esac
+  esac
+}
+
+ndh::logger:command:run "@logTag@" main "$@"

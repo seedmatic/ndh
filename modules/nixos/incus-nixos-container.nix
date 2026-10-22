@@ -29,6 +29,7 @@
   config,
   lib,
   pkgs,
+  ndh,
   ...
 }:
 let
@@ -121,22 +122,23 @@ let
     health.units = map (u: if lib.isString u then { unit = u; } else u) instance.health.units;
   }) cfg.instances;
 
-  storeScript = pkgs.writeShellApplication {
-    name = "ndh-incus-container-store";
-    runtimeInputs = [
-      config.boot.zfs.package
-      pkgs.coreutils
-      pkgs.findutils
-      pkgs.gnugrep
-      pkgs.yq-go
-      pkgs.util-linux
-    ];
-    text = builtins.readFile ./incus-nixos-container.d/store.sh;
-  };
+  # Both scripts under ndh's trampoline, with no PATH of their own: the guest system's incus, zfs, nix and systemctl,
+  # matched to its kernel module and daemons, then the bringup runtime profile for the rest. The guest's activation
+  # installs that profile before any unit runs; where it is missing the trampoline refuses, loudly.
+  nixBashTrampoline = "${ndh.context.nixBashTrampoline}";
+  storeScript = ndh.store.installBinScript "ndh-incus-container-store" (
+    pkgs.replaceVars ./incus-nixos-container.d/store.sh {
+      inherit nixBashTrampoline;
+      logTag = "nixos.services.ndh.incusContainerStore";
+    }
+  );
 
   # The container's LXC pre-start hook: it refuses to start the container without its store, so Incus
   # never autostarts it on an empty /nix. Reached through /run/current-system, which every generation
   # keeps, since raw.lxc outlives the generation that wrote it.
+  # A reviewed exception to the trampoline, its one tool pinned: LXC runs it in LXC's own environment, with no
+  # system PATH, where the strict trampoline could refuse at container start with nothing logged where one would
+  # look (❄️, 2026-10-22).
   prestartHook = pkgs.writeShellApplication {
     name = "ndh-incus-container-prestart";
     runtimeInputs = [ pkgs.util-linux ];
@@ -150,35 +152,25 @@ let
     '';
   };
 
-  operatorCli = pkgs.writeShellApplication {
-    name = "ndh-incus-container";
-    runtimeInputs = [
-      config.nix.package
-      config.virtualisation.incus.package
-      config.boot.zfs.package
-      pkgs.coreutils
-      pkgs.gnugrep
-      pkgs.yq-go
-      pkgs.systemd
-      pkgs.util-linux
-    ];
-    text = ''
-      INSTANCES=${lib.escapeShellArg (builtins.toJSON instanceInfo)}
-      PROJECT=${lib.escapeShellArg cfg.project}
-      POOL=${lib.escapeShellArg (lib.head config.virtualisation.incus.preseed.storage_pools).name}
-      LAYER_CONTRACT=${lib.escapeShellArg layerContract}
-      GUEST_LOWER=${lib.escapeShellArg guestLower}
-      GUEST_UPPER=${lib.escapeShellArg guestUpper}
-      PRESTART_HOOK=/run/current-system/sw/bin/${prestartHook.name}
-      STACK_DESCRIPTION=/run/ndh/store-stack.json
-      STORE_DEGRADED=/run/ndh/store-degraded
-      GCROOTS=/nix/var/nix/gcroots/ndh-containers
-      HEALTH_TIMEOUT=${toString cfg.healthTimeout}
-      GUEST_SYSTEMCTL=/run/current-system/sw/bin/systemctl
-      export NIX_CONFIG="extra-experimental-features = ${lib.concatStringsSep " " nixFeatures}"
-      ${builtins.readFile ./incus-nixos-container.d/cli.sh}
-    '';
-  };
+  operatorCli = ndh.store.installBinScript "ndh-incus-container" (
+    pkgs.replaceVars ./incus-nixos-container.d/cli.sh {
+      inherit nixBashTrampoline;
+      logTag = "nixos.services.ndh.incusContainer";
+      instances = lib.escapeShellArg (builtins.toJSON instanceInfo);
+      project = lib.escapeShellArg cfg.project;
+      pool = lib.escapeShellArg (lib.head config.virtualisation.incus.preseed.storage_pools).name;
+      layerContract = lib.escapeShellArg layerContract;
+      guestLower = lib.escapeShellArg guestLower;
+      guestUpper = lib.escapeShellArg guestUpper;
+      prestartHook = "/run/current-system/sw/bin/${prestartHook.name}";
+      gcroots = "/nix/var/nix/gcroots/ndh-containers";
+      stackDescription = "/run/ndh/store-stack.json";
+      storeDegraded = "/run/ndh/store-degraded";
+      guestSystemctl = "/run/current-system/sw/bin/systemctl";
+      healthTimeout = toString cfg.healthTimeout;
+      nixConfig = lib.escapeShellArg "extra-experimental-features = ${lib.concatStringsSep " " nixFeatures}";
+    }
+  );
 in
 {
   options.ndh.incusNixosContainers = {
@@ -370,7 +362,7 @@ in
             CONTAINER_NAME = name;
             CONTAINER_PRIVILEGED = lib.boolToString info.privileged;
           };
-          script = lib.getExe storeScript;
+          script = "${pkgs.bash}/bin/bash ${storeScript}/bin/ndh-incus-container-store";
         }
       ) instanceInfo
       // {
@@ -387,7 +379,7 @@ in
           restartIfChanged = false;
           serviceConfig = {
             Type = "oneshot";
-            ExecStart = "${lib.getExe operatorCli} converge";
+            ExecStart = "${pkgs.bash}/bin/bash ${operatorCli}/bin/ndh-incus-container converge";
           };
         };
         # What the switch restarts instead: changed whenever a declared system changes (the CLI carries them), and
